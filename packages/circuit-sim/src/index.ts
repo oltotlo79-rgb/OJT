@@ -148,3 +148,11 @@ export {
   type OhmReading,
   type VoltReading,
 } from './meter.js';
+export {
+  allowedShiftMs,
+  compareLogs,
+  DEFAULT_TOLERANCE,
+  type Mismatch,
+  type MismatchReason,
+  type Tolerance,
+} from './compare.js';
