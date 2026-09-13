@@ -6,6 +6,7 @@ import { CHATTER_MIN_TRANSITIONS, CHATTER_WINDOW_MS, EventBus } from './events.j
 import type { TerminalId, WireId } from './ids.js';
 import { SignalLog } from './log.js';
 import type { SignalValue } from './log.js';
+import { clearProbeState } from './meter-state.js';
 import {
   addWire as addWireToNetlist,
   buildNets,
@@ -81,8 +82,8 @@ export interface SimulationOptions {
 
 /** シミュレーション操作の失敗。 */
 export class SimulationError extends Error {
-  constructor(message: string) {
-    super(message);
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
     this.name = 'SimulationError';
   }
 }
@@ -134,7 +135,8 @@ export class Simulation {
     this.netlist = netlist;
     this.tickMs = tickMs;
     this.watch = options.watch ?? [];
-    this.reset();
+    // 公開メソッドではなく private 実装を呼ぶ（構築中に派生クラスの上書きを走らせないため）。
+    this.resetInternal();
   }
 
   /**
@@ -145,6 +147,11 @@ export class Simulation {
    * 配線（`addWire`）と部品構成（`mountPart`／`unmountPart`）もそのまま残る。
    */
   reset(): void {
+    this.resetInternal();
+  }
+
+  /** `reset()` の実装本体。コンストラクタからも呼ぶ。 */
+  private resetInternal(): void {
     this.log.clear();
     this.events.clear();
     this.relays.clear();
@@ -154,6 +161,8 @@ export class Simulation {
     this.chatterTimes.clear();
     this.chatterReported.clear();
     this.overWireReported.clear();
+    // `ohm-on-live` の重複発行記録（`meter.ts` が持つプローブ配置）も消す。§5.6 #1
+    clearProbeState(this);
     this.switches = { breakerOn: false, switchOn: false };
     this.tripped = false;
     this.resetStep = 0;
@@ -168,18 +177,35 @@ export class Simulation {
   /**
    * 部品を挿す（エピソード途中でも可）。時刻・ログ・イベントは消さずに、ランタイム表と
    * 節点だけを組み直す。同じIDの部品（`unmountPart` が残した空きソケット等）があれば
-   * それを置き換え、無ければ末尾に足す。
-   * 挿した部品の接点・電源は解放／非通電に戻すため、コイルが既存の配線ですでに励磁されていても
-   * 新品と同じく次tick以降で動作する（`operateTicks` ぶん遅れて接点が入る）。
+   * それを置き換え、無ければ末尾に足す。まだ生きている部品の上に挿した場合も置き換えになる。
+   * 置き換えるときは、挿す部品の端子が元の部品の端子をすべて含んでいなければならない
+   * （足りないと既設の電線が宙に浮くため）。含んでいなければ `SimulationError` を投げ、
+   * ネットリストは何も変えない。
+   * 挿した部品の接点・電源は解放／非通電に戻し、ランタイム状態（リレーの接点位置・タイマの
+   * 設定時間と経過・ランプ・押ボタン）も捨てて作り直すため、コイルが既存の配線ですでに
+   * 励磁されていても新品と同じく次tick以降で動作する（`operateTicks` ぶん遅れて接点が入る）。
    */
   mountPart(part: Part): void {
+    const index = this.netlist.parts.findIndex((p) => p.id === part.id);
+    const existing = index < 0 ? undefined : this.netlist.parts[index];
+    if (existing !== undefined) {
+      const incoming = new Set<TerminalId>(part.terminals);
+      if (existing.terminals.some((terminal) => !incoming.has(terminal))) {
+        throw new SimulationError(`端子配列が一致しません: ${part.id}`);
+      }
+    }
     for (const el of part.elements) {
       if (el.kind === 'contact') el.energized = false;
       else if (el.kind === 'source') el.enabled = false;
     }
-    const index = this.netlist.parts.findIndex((p) => p.id === part.id);
-    if (index < 0) this.netlist.parts.push(part);
+    if (existing === undefined) this.netlist.parts.push(part);
     else this.netlist.parts.splice(index, 1, part);
+    // 生きている同じIDの部品を置き換えた場合に前の状態を引き継がないよう、先に捨ててから組み直す。
+    const id: string = part.id;
+    this.relays.delete(id);
+    this.timers.delete(id);
+    this.lamps.delete(id);
+    this.buttons.delete(id);
     this.syncRuntimeMaps();
     this.syncSources();
   }
@@ -188,11 +214,13 @@ export class Simulation {
    * 部品を抜く。抜いた部品を返す（その部品が無ければ undefined）。時刻・ログ・イベントは消さない。
    * 端子は要素を持たない `terminal-block`（空きソケット）として残すので、その端子に張った電線は
    * そのまま残り、配線をやり直さずに `mountPart` で挿し直せる。§6.4
+   * すでに空きソケットになっている端子を抜こうとした場合は何もせず undefined を返す
+   * （ソケットは作り直さないので、端子も電線もそのまま残る）。
    */
   unmountPart(partId: string): Part | undefined {
     const index = this.netlist.parts.findIndex((p) => p.id === partId);
     const part = index < 0 ? undefined : this.netlist.parts[index];
-    if (part === undefined) return undefined;
+    if (part === undefined || part.kind === 'terminal-block') return undefined;
     this.netlist.parts.splice(index, 1, {
       id: part.id,
       kind: 'terminal-block',
@@ -308,14 +336,18 @@ export class Simulation {
       (terminal) => !canAddWire(this.netlist, terminal),
     );
     if (overLimit.length > 0) {
-      const unreported = overLimit.filter((terminal) => !this.overWireReported.has(terminal));
+      // 自己ループ電線は両端が同じ端子なので、重複を潰してから未報告ぶんだけを拾う。
+      const unreported = [...new Set(overLimit)].filter(
+        (terminal) => !this.overWireReported.has(terminal),
+      );
       if (unreported.length > 0) {
         for (const terminal of unreported) this.overWireReported.add(terminal);
         this.events.emit({
           type: 'hazard',
           kind: 'over-wires-per-terminal',
           tMs: this.tMs,
-          detail: overLimit.join(','),
+          // 今回新たに記録した端子だけを並べる（すでに報告済みの端子は含めない）。
+          detail: unreported.join(','),
         });
       }
       return false;
@@ -326,24 +358,30 @@ export class Simulation {
 
   /**
    * 電線を外す。ロックされた電線を外そうとすると `SimulationError`。
-   * 外せた電線の両端は空きができるので、`over-wires-per-terminal` の発行済み記録から外す。
+   * 外した結果その端子に空きができた（`canAddWire` が true になった）ときだけ、
+   * `over-wires-per-terminal` の発行済み記録から外す。手で組んだ3本以上の端子では
+   * 1本外してもまだ満杯のことがあり、その場合は記録を残して再発行を防ぐ。§5.6 #5
    */
   removeWire(id: WireId | string): boolean {
     const wire = findWire(this.netlist, id);
     const removed = this.rethrowNetlistErrors(() => removeWireFromNetlist(this.netlist, id));
     if (removed && wire !== undefined) {
-      this.overWireReported.delete(wire.from);
-      this.overWireReported.delete(wire.to);
+      for (const terminal of [wire.from, wire.to]) {
+        if (canAddWire(this.netlist, terminal)) this.overWireReported.delete(terminal);
+      }
     }
     return removed;
   }
 
-  /** `netlist.ts` の操作を実行し、`NetlistError` を `SimulationError` に変換して投げ直す（このクラスのエラー型を統一する）。 */
+  /**
+   * `netlist.ts` の操作を実行し、`NetlistError` を `SimulationError` に変換して投げ直す
+   * （このクラスのエラー型を統一する）。元の `NetlistError` は `cause` に残す。
+   */
   private rethrowNetlistErrors<T>(fn: () => T): T {
     try {
       return fn();
     } catch (err) {
-      if (err instanceof NetlistError) throw new SimulationError(err.message);
+      if (err instanceof NetlistError) throw new SimulationError(err.message, { cause: err });
       throw err;
     }
   }

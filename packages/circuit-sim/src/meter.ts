@@ -1,5 +1,7 @@
 import type { SourceElement } from './elements.js';
 import type { TerminalId } from './ids.js';
+import { getProbeState, setProbeState } from './meter-state.js';
+import type { ProbeRange } from './meter-state.js';
 import { buildNets } from './netlist.js';
 import type { Netlist } from './netlist.js';
 import type { Part } from './parts.js';
@@ -137,43 +139,32 @@ function ohmReading(rawOhms: number, live: boolean): OhmReading {
   };
 }
 
-/** Ω／導通レンジで直前に当てたプローブ配置と活線状態の記録。`ohm-on-live` の連続発行を防ぐ。 */
-interface ProbeRecord {
-  black: TerminalId;
-  red: TerminalId;
-  live: boolean;
-}
-
-/** `measureResistance` 用の直近プローブ記録。 */
-const ohmLiveRecords = new WeakMap<Simulation, ProbeRecord>();
-/** `continuity` 用の直近プローブ記録（Ωレンジとは独立に発行判定する）。 */
-const continuityLiveRecords = new WeakMap<Simulation, ProbeRecord>();
-
 /**
  * 同じプローブ配置のまま活線状態が変わらない限り再発行しない。§5.6 #1
  * 記録がない・プローブの組が変わった・前回は非活線だった、のいずれかで true。
+ * 記録そのものは `meter-state.ts` が持つ（`Simulation.reset()` から消せるようにするため）。
  */
 function isNewLiveExposure(
-  records: WeakMap<Simulation, ProbeRecord>,
+  range: ProbeRange,
   sim: Simulation,
   black: TerminalId,
   red: TerminalId,
   live: boolean,
 ): boolean {
   if (!live) return false;
-  const prior = records.get(sim);
+  const prior = getProbeState(sim, range);
   return prior === undefined || prior.black !== black || prior.red !== red || !prior.live;
 }
 
-/** Ω／導通共通の測定本体。呼び出し元ごとに別の `records` を渡し、独立に発行判定する。 */
+/** Ω／導通共通の測定本体。呼び出し元ごとに別の `range` を渡し、独立に発行判定する。 */
 function measureOhms(
   sim: Simulation,
   black: TerminalId,
   red: TerminalId,
-  records: WeakMap<Simulation, ProbeRecord>,
+  range: ProbeRange,
 ): OhmReading {
   const live = Math.abs(measureVoltage(sim, black, red).volts) >= LIVE_OHM_VOLTS;
-  if (isNewLiveExposure(records, sim, black, red, live)) {
+  if (isNewLiveExposure(range, sim, black, red, live)) {
     sim.events.emit({
       type: 'hazard',
       kind: 'ohm-on-live',
@@ -181,7 +172,7 @@ function measureOhms(
       detail: `${black}-${red}`,
     });
   }
-  records.set(sim, { black, red, live });
+  setProbeState(sim, range, { black, red, live });
   if (live) return ohmReading(Number.NaN, true);
   return ohmReading(equivalentResistance(sim.netlist, black, red), false);
 }
@@ -191,12 +182,12 @@ function measureOhms(
  * 続く限り `ohm-on-live` は初回のみ発行する。§5.5 / §5.6 #1
  */
 export function measureResistance(sim: Simulation, black: TerminalId, red: TerminalId): OhmReading {
-  return measureOhms(sim, black, red, ohmLiveRecords);
+  return measureOhms(sim, black, red, 'ohm');
 }
 
 /** 導通を調べる。Ωレンジと同じ制約を受ける（`ohm-on-live` の発行判定はΩレンジとは独立）。§5.5 */
 export function continuity(sim: Simulation, black: TerminalId, red: TerminalId): ContinuityReading {
-  const reading = measureOhms(sim, black, red, continuityLiveRecords);
+  const reading = measureOhms(sim, black, red, 'continuity');
   const conductive = !reading.overRange && reading.ohms <= CONTINUITY_OHMS;
   return {
     ohms: reading.ohms,
