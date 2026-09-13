@@ -163,3 +163,25 @@ export {
   POWER_SUPPLY_ID,
   toNetlist,
 } from './to-netlist.js';
+
+export {
+  channelsClearOfFootprints,
+  crossesFootprint,
+  crossingFootprint,
+  entryChannelFor,
+  filletCorners,
+  isManhattan,
+  MAX_WIRE_LANES,
+  pickLane,
+  routeFixedLinks,
+  routeSession,
+  routeWire,
+  RoutingError,
+  WIRE_DIAMETER_MM,
+  WIRE_FILLET_RADIUS_MM,
+  WIRE_FILLET_SEGMENTS,
+  WIRE_LANE_PITCH_MM,
+  type RoutableWire,
+  type RouteOptions,
+  type WireRoute,
+} from './routing.js';
