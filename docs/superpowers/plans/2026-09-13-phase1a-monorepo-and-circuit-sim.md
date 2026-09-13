@@ -5649,7 +5649,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 | Task 8c | bba1125 | `solve()` が節点数200超で `NetlistError`、0Ω/非有限抵抗のガード（`effectiveOhms`）、`SignalLog` の信号別索引と二分探索、`EventBus.all()` が複製を返す、`applyPowerAction` の同状態再操作は違反にしない（`test/actuators.test.ts` の該当期待値を false に変更）。テストは `test/robustness.test.ts` |
 | Task 8d | d6a0980 | `NetlistIssue` を `ownerKind`/`ownerId` に改名、`MAX_NODES` を 400 に、`Simulation.setTimerPreset` が `SimulationError` に統一、`contact-resistive` が非有限値を拒否、ヘルパー `t()` を `toTerminalId` に戻す。テストは `test/robustness.test.ts` |
 | Task 8e | 4ba4b47 | `Simulation.addWire` が3本目を拒否して `false` を返す（危険操作1回）、`wire-misrouted` の端子存在検証（`knownTerminals`）、数値故障の非数値 `param` を拒否、`CHATTER_MIN_TRANSITIONS` を 20 に、コンストラクタで `resetNetlist`、`overcurrent` 事象の追加（電源投入直後の保護動作のみ `short-circuit-power-on`）。テストは `test/robustness.test.ts` |
-| Task 8g | (コミットは後で追記) | `reset()`/`mountPart()`/`unmountPart()`、`step()` のエラー型統一、`tickMs` 検証、`nodeVoltages` 複製、レアショート NaN 防御、`over-wires-per-terminal` の端子ごと1回計上、再同期テスト、JSDoc/メッセージ修正、EOPT 有効化 |
+| Task 8g | ea11fae | `reset()`/`mountPart()`/`unmountPart()`、`step()` のエラー型統一、`tickMs` 検証、`nodeVoltages` 複製、レアショート NaN 防御、`over-wires-per-terminal` の端子ごと1回計上、再同期テスト、JSDoc/メッセージ修正、EOPT 有効化 |
 
 Task 13 以降の実装者への注意: 上記により `test/helpers/circuits.ts` は `toTerminalId` を使う形に変わっているが、ヘルパーの名前と引数は計画どおり。計画本文のコードはそのまま適用できる。
 
@@ -5660,4 +5660,4 @@ Task 13 以降の実装者への注意: 上記により `test/helpers/circuits.t
 3. `pnpm typecheck`・`pnpm exec eslint .`・`pnpm exec prettier --check .` がすべてエラーなしで終わる。
 4. `packages/circuit-sim` が外部ランタイム依存を持たない（`packages/circuit-sim/package.json` に `dependencies` が無い）。
 
-2026-09-14 完了: 21ファイル / 152テスト、カバレッジ Stmts 98.03 / Branches 92.56 / Funcs 100 / Lines 99.1、typecheck/lint/prettier クリーン。最終コミット 127ed71
+2026-09-14 完了（Task 8g 反映後）: 22ファイル / 168テスト、カバレッジ Stmts 98.68 / Branches 92.79 / Funcs 100 / Lines 99.88、typecheck/lint/prettier クリーン、exactOptionalPropertyTypes 有効。最終コミット ea11fae
