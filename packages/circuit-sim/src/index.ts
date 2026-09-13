@@ -62,3 +62,22 @@ export {
   type PartKind,
   type PartMeta,
 } from './parts.js';
+export {
+  addWire,
+  allElements,
+  buildNets,
+  createNetlist,
+  createWire,
+  exceedsWireLimit,
+  findElement,
+  findPart,
+  findWire,
+  MAX_WIRES_PER_TERMINAL,
+  NetlistError,
+  removeWire,
+  wireCountAt,
+  type Netlist,
+  type Nets,
+  type Wire,
+  type WireColor,
+} from './netlist.js';
