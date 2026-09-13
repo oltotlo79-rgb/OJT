@@ -10,6 +10,7 @@ export {
   type TerminalId,
   type WireId,
 } from './ids.js';
+
 export {
   BUZZER_OHMS,
   CLOSED_CONTACT_OHMS,
@@ -42,6 +43,7 @@ export {
   type LoadKind,
   type SourceElement,
 } from './elements.js';
+
 export {
   clampPreset,
   createBuzzer,
@@ -63,6 +65,7 @@ export {
   type PartKind,
   type PartMeta,
 } from './parts.js';
+
 export {
   addWire,
   allElements,
@@ -87,6 +90,7 @@ export {
   type Wire,
   type WireColor,
 } from './netlist.js';
+
 export {
   LEAK_SIEMENS,
   MAX_NODES,
@@ -95,6 +99,17 @@ export {
   type SolveOptions,
   type SolveResult,
 } from './solver.js';
+
+export {
+  applyPowerAction,
+  isPowerOn,
+  RESET_SEQUENCE,
+  setButtonPressed,
+  type PowerActionResult,
+  type PowerDevice,
+  type PowerSwitches,
+} from './actuators.js';
+
 export {
   CHATTER_MIN_TRANSITIONS,
   CHATTER_WINDOW_MS,
@@ -105,16 +120,9 @@ export {
   type HazardKind,
   type SimEvent,
 } from './events.js';
+
 export { LOG_DECIMALS, roundSignal, SignalLog, type LogEntry, type SignalValue } from './log.js';
-export {
-  applyPowerAction,
-  isPowerOn,
-  RESET_SEQUENCE,
-  setButtonPressed,
-  type PowerActionResult,
-  type PowerDevice,
-  type PowerSwitches,
-} from './actuators.js';
+
 export {
   LAMP_LEVEL_CODE,
   Simulation,
@@ -126,6 +134,7 @@ export {
   type SimulationState,
   type TimerRuntime,
 } from './simulation.js';
+
 export {
   clearFaults,
   FaultError,
@@ -133,6 +142,7 @@ export {
   type FaultKind,
   type FaultTarget,
 } from './faults.js';
+
 export {
   continuity,
   CONTINUITY_OHMS,
@@ -148,6 +158,7 @@ export {
   type OhmReading,
   type VoltReading,
 } from './meter.js';
+
 export {
   allowedShiftMs,
   compareLogs,
