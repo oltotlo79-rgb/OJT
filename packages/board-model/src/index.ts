@@ -116,3 +116,24 @@ export {
   type MountableKind,
   type TimerRange,
 } from './catalog.js';
+
+export {
+  addWire,
+  createSession,
+  DEFAULT_ALLOWED_COLORS,
+  fail,
+  mountedKinds,
+  ok,
+  plug,
+  removeWire,
+  SessionError,
+  setPreset,
+  unplug,
+  wireCountAtTerminal,
+  wiresAt,
+  type BoardSession,
+  type MountedPart,
+  type Result,
+  type SessionErrorCode,
+  type SessionOptions,
+} from './session.js';
