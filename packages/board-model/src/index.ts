@@ -1,2 +1,23 @@
-/** パッケージ名。スキャフォールドの疎通確認用。 */
-export const PACKAGE_NAME = '@ojt/board-model';
+export {
+  addVec,
+  distance,
+  rectBottom,
+  rectContains,
+  rectRight,
+  rectsOverlap,
+  segmentIntersectsRect,
+  nearestPointOnPolyline,
+  nearestPointOnSegment,
+  normalXY,
+  polylineLength,
+  roundVec,
+  scaleVec,
+  subVec,
+  vec3,
+  vecEquals,
+  vecLength,
+  type NearestPoint,
+  type Polyline,
+  type Rect,
+  type Vec3,
+} from './geometry.js';
