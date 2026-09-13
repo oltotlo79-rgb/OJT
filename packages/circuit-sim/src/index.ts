@@ -133,3 +133,18 @@ export {
   type FaultKind,
   type FaultTarget,
 } from './faults.js';
+export {
+  continuity,
+  CONTINUITY_OHMS,
+  equivalentResistance,
+  LIVE_OHM_VOLTS,
+  measureAcVolts,
+  measureResistance,
+  measureVoltage,
+  OVER_RANGE_OHMS,
+  PROBE_OHMS,
+  PROBE_VOLTS,
+  type ContinuityReading,
+  type OhmReading,
+  type VoltReading,
+} from './meter.js';
