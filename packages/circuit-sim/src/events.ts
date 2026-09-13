@@ -7,20 +7,24 @@ export const CHATTER_WINDOW_MS = 1000;
  */
 export const CHATTER_MIN_TRANSITIONS = 20;
 
-/** 危険操作・保護動作の種別。§5.6 */
-export type HazardKind =
+/** 危険操作・保護動作の種別。§5.6 網羅は `HAZARD_KINDS` を参照。 */
+export const HAZARD_KINDS = [
   /** 通電中（プローブ間電圧1V以上）にΩ／導通レンジを使った。§5.6 #1 */
-  | 'ohm-on-live'
+  'ohm-on-live',
   /** 指示値がレンジ上限を超えた。§5.6 #2 */
-  | 'range-exceeded'
+  'range-exceeded',
   /** 短絡状態で通電し電源保護が動作した。§5.6 #3 */
-  | 'short-circuit-power-on'
+  'short-circuit-power-on',
   /** 電源ON/OFFの手順違反。§5.6 #4 */
-  | 'power-sequence-violation'
+  'power-sequence-violation',
   /** 1端子に上限（2本）を超えて接続した。§5.6 #5 */
-  | 'over-wires-per-terminal'
+  'over-wires-per-terminal',
   /** 運転中の過電流で保護動作。 */
-  | 'overcurrent';
+  'overcurrent',
+] as const;
+
+/** 危険操作・保護動作の種別。§5.6 */
+export type HazardKind = (typeof HAZARD_KINDS)[number];
 
 /** 危険操作イベント。§5.6 */
 export interface HazardEvent {

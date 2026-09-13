@@ -115,6 +115,7 @@ export {
   CHATTER_MIN_TRANSITIONS,
   CHATTER_WINDOW_MS,
   EventBus,
+  HAZARD_KINDS,
   type ChatterEvent,
   type EventListener,
   type HazardEvent,
