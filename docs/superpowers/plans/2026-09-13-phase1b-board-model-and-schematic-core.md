@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Plan 1A で作った `@ojt/circuit-sim` の上に、設計仕様書 §6（JIPM標準盤の部品構成・ソケット4段配置・ピン割付・チェック用ソケットの固定配線・端子ID命名・3D座標・電線モデル）を満たす `@ojt/board-model` と、§11（展開接続図の文書形式・回路図→ネットリスト割当・読取専用レンダラ用レイアウト）を満たす `@ojt/schematic-core` を実装し、「回路図 → 物理割当 → 盤セッション → ネットリスト → `Simulation`」の一本道が実際に動く状態にする。
+**Goal:** Plan 1A で作った `@ojt/circuit-sim` の上に、設計仕様書 §6（盤の部品構成・ソケット4段配置・ピン割付・チェック用ソケットの固定配線・端子ID命名・3D座標・電線モデル）を実物の写真（`docs/reference/K96-CS3-board-photo.png`）どおりの配置で満たす `@ojt/board-model` と、§11（展開接続図の文書形式・回路図→ネットリスト割当・読取専用レンダラ用レイアウト）を満たす `@ojt/schematic-core` を実装し、「回路図 → 物理割当 → 盤セッション → ネットリスト → `Simulation`」の一本道が実際に動く状態にする。
 
-**Architecture:** `board-model` は盤の**物理**（ソケットID `S1`〜`S5`・端子座標・ダクト）だけを持ち、課題が与える役割割当（`S1 → CR1` など）を通して circuit-sim の**論理**（端子ID `CR1.13`）へ写す。訓練者の作業状態は `BoardSession`（装着状態＋電線）という1つのプレーンオブジェクトに集約し、`toNetlist()` がそれを circuit-sim の部品ファクトリで `Netlist` に変換する。`schematic-core` は展開接続図を「段（ラング）＝始点・終点・直列要素の列」で表し、段どうしの参照がそのまま縦線（分岐）になる。`assignToBoard()` が §11.3 の規則で回路図要素を物理端子へ割り当て、`toSession()` が `board-model` の `addWire()` を通して盤に落とす。3D描画とSVG描画は一切行わず、幾何データ（mm）と図形プリミティブ（論理座標）までを返す。
+**Architecture:** `board-model` は盤の**物理**（ソケットID `S1`〜`S8`・端子座標・部品の占有矩形・配線帯・傾斜コンソールの形状）だけを持ち、課題が与える役割割当（`S1 → CR1` など）を通して circuit-sim の**論理**（端子ID `CR1.13`）へ写す。訓練者の作業状態は `BoardSession`（装着状態＋電線）という1つのプレーンオブジェクトに集約し、`toNetlist()` がそれを circuit-sim の部品ファクトリで `Netlist` に変換する。`schematic-core` は展開接続図を「段（ラング）＝始点・終点・直列要素の列」で表し、段どうしの参照がそのまま縦線（分岐）になる。`assignToBoard()` が §11.3 の規則で回路図要素を物理端子へ割り当て、`toSession()` が `board-model` の `addWire()` を通して盤に落とす。3D描画とSVG描画は一切行わず、幾何データ（mm）と図形プリミティブ（論理座標）までを返す。
 
 **Tech Stack:** Plan 1A と同一（Node.js 22以上 / pnpm workspace / TypeScript 6 `strict` ＋ `noUncheckedIndexedAccess` / Vitest 5 / ESLint 10 flat config ＋ typescript-eslint / Prettier 3）。本計画で `eslint-plugin-import-x` ＋ `eslint-import-resolver-typescript` ＋ `@typescript-eslint/parser` を追加し、仕様 §4.2 の `import/no-cycle` をエラー設定にする。外部ランタイム依存はゼロ。
 
@@ -26,13 +26,13 @@
 | `package.json` | パッケージ名 `@ojt/board-model`、ESM、`exports`、`@ojt/circuit-sim` への workspace 依存 |
 | `tsconfig.json` | `tsconfig.base.json` を継承し、このパッケージの対象ファイルを指定する |
 | `vitest.config.ts` | テストの対象glob、カバレッジ設定（v8・しきい値90%） |
-| `src/geometry.ts` | 純粋な幾何ユーティリティ。`Vec3`（mm）／`Polyline`／`distance()`／`nearestPointOnPolyline()`／`normalXY()` |
-| `src/board-jipm.ts` | JIPM標準盤の定義データ。外形寸法・ソケット5個の端子座標（4段配置）・PB4・PL4・端子台12P/8P・P/N供給端子・ブレーカ・スイッチ・電源・ダクト・既設固定配線・既設0Ωリンク |
+| `src/geometry.ts` | 純粋な幾何ユーティリティ。`Vec3`（mm）／`Polyline`／`Rect`／`distance()`／`nearestPointOnPolyline()`／`segmentIntersectsRect()` |
+| `src/board-jipm.ts` | 標準盤（実物写真 K96-CS3 準拠）の定義データ。盤面寸法と傾斜コンソール形状・ソケット8個のネジ端子座標（上下2ティア）と差込穴・PB4・PL4（貫通穴つき）・端子台12P/8P・P/N供給端子・ブレーカ・スイッチ・電源・**部品の占有矩形**・**配線帯**・既設固定配線・既設0Ωリンク |
 | `src/roles.ts` | ソケットの役割割当。`SocketRoles` と `terminalIdFor(role, pin)`、物理端子IDと役割端子IDの相互変換 |
 | `src/catalog.ts` | 訓練者が装着できる部品のカタログ（`relay-my4n` / `timer-h3y4` とタイマレンジ）と課題の `inventory` 表現 |
 | `src/session.ts` | `BoardSession` と操作関数（`plug` / `unplug` / `setPreset` / `addWire` / `removeWire`）。失敗は Result 型で返す |
 | `src/to-netlist.ts` | `toNetlist(session, board)`。盤セッションを circuit-sim の `Netlist` に変換する |
-| `src/routing.ts` | `routeWire(board, wire, existingRoutes)`。ダクト経由の自動経路と並列オフセット（純関数・決定論） |
+| `src/routing.ts` | `routeWire(board, wire, existingRoutes)`。配線帯を使った**直角配線**、レーン割当（区間彩色）、フィレット、**部品の占有矩形を跨がない保証**（純関数・決定論） |
 | `src/index.ts` | 公開API。他パッケージはこのファイル経由でのみ参照する |
 | `test/geometry.test.ts` 〜 `test/routing.test.ts` | 各モジュールの単体テスト（モジュール名に対応） |
 | `test/to-netlist.test.ts` | 盤セッションで組んだ回路を実際に `Simulation` で動かす結合テスト |
@@ -529,6 +529,74 @@ export function normalXY(a: Vec3, b: Vec3): Vec3 {
 function unsignZero(value: number): number {
   return value === 0 ? 0 : value;
 }
+
+/** 盤面上の軸並行矩形[mm]（部品の占有領域など）。 */
+export interface Rect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+/** 矩形の右端・下端。 */
+export function rectRight(r: Rect): number {
+  return r.x + r.w;
+}
+
+/** 矩形の下端。 */
+export function rectBottom(r: Rect): number {
+  return r.y + r.h;
+}
+
+/** 点が矩形の内側（境界を含む）にあるか。 */
+export function rectContains(r: Rect, p: Vec3, epsilon = 1e-9): boolean {
+  return (
+    p.x >= r.x - epsilon &&
+    p.x <= rectRight(r) + epsilon &&
+    p.y >= r.y - epsilon &&
+    p.y <= rectBottom(r) + epsilon
+  );
+}
+
+/** 2つの矩形が重なるか（辺で接するだけは重なりとみなさない）。 */
+export function rectsOverlap(a: Rect, b: Rect): boolean {
+  return a.x < rectRight(b) && rectRight(a) > b.x && a.y < rectBottom(b) && rectBottom(a) > b.y;
+}
+
+/**
+ * 線分（XY平面に射影したもの）が矩形の**内部**を通るか。
+ * 境界に接するだけ（辺の上をなぞる・角に触れる）は通過とみなさない。
+ * 配線が部品の上を横切っていないことの検査に使う。
+ */
+export function segmentIntersectsRect(a: Vec3, b: Vec3, r: Rect, epsilon = 1e-9): boolean {
+  const x0 = r.x + epsilon;
+  const x1 = rectRight(r) - epsilon;
+  const y0 = r.y + epsilon;
+  const y1 = rectBottom(r) - epsilon;
+  if (x1 <= x0 || y1 <= y0) return false;
+  // Liang–Barsky のクリッピングで、線分と矩形内部の共通部分が長さを持つかを見る
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  let t0 = 0;
+  let t1 = 1;
+  const clip = (p: number, q: number): boolean => {
+    if (Math.abs(p) < epsilon) return q >= 0;
+    const t = q / p;
+    if (p < 0) {
+      if (t > t1) return false;
+      if (t > t0) t0 = t;
+    } else {
+      if (t < t0) return false;
+      if (t < t1) t1 = t;
+    }
+    return true;
+  };
+  if (!clip(-dx, a.x - x0)) return false;
+  if (!clip(dx, x1 - a.x)) return false;
+  if (!clip(-dy, a.y - y0)) return false;
+  if (!clip(dy, y1 - a.y)) return false;
+  return t1 - t0 > epsilon;
+}
 ```
 
 - [ ] `packages/board-model/src/index.ts` を次の内容に置き換える（`PACKAGE_NAME` は役目を終えたので消し、`test/scaffold.test.ts` も削除する）。
@@ -537,6 +605,11 @@ function unsignZero(value: number): number {
 export {
   addVec,
   distance,
+  rectBottom,
+  rectContains,
+  rectRight,
+  rectsOverlap,
+  segmentIntersectsRect,
   nearestPointOnPolyline,
   nearestPointOnSegment,
   normalXY,
@@ -549,6 +622,7 @@ export {
   vecLength,
   type NearestPoint,
   type Polyline,
+  type Rect,
   type Vec3,
 } from './geometry.js';
 ```
@@ -584,31 +658,63 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 
 ---
 
-## Task 4: src/board-jipm.ts — JIPM標準盤の定義データ
+## Task 4: src/board-jipm.ts — 標準盤の定義データ（写真 K96-CS3 準拠）
 
 **Files:**
 - Create: `packages/board-model/src/board-jipm.ts`
 - Test: `packages/board-model/test/board.test.ts`
 - Modify: `packages/board-model/src/index.ts`
 
-仕様 §6.1〜§6.5、調査資料 §2.1〜§2.2 / §3.1 / §3.5 に対応する。本アプリの既定として確定する数値と根拠:
+仕様 §6.1〜§6.5、調査資料 §2.1〜§2.2 / §3.1 / §3.5 に対応し、**配置は実物の写真**
+（`docs/reference/K96-CS3-board-photo.png`、OMRON「電気系保全作業練習器 形 K96-CS3」）に合わせる。
+
+写真から読み取った構成:
+
+| 位置 | 実物 | 本計画での表現 |
+|---|---|---|
+| 形状 | 傾斜コンソール（手前が低く奥が高い。奥に立ち上がりの脚がある） | 盤面は平面なので座標は 2.5D のまま。傾斜と立ち上がりは `BoardDefinition.console` に持たせる |
+| 上段・左 | DC24V 供給端子（透明カバー付きの端子台。銘板に `DC24V`） | `P.1`〜`P.6` / `N.1`〜`N.6`（§6.1 のまま6本ずつ） |
+| 上段・右 | 2極MCB | `CB.1` / `CB.2`（＋ 仕様 §5.3.5 が要求する電源スイッチ `SW.1` / `SW.2`） |
+| 上段中 | DINレールに 14ピンソケットが**左4個・右4個の計8個** | 物理ソケット `S1`〜`S4`（左クラスタ）／`S5`〜`S8`（右クラスタ） |
+| ソケット | 差込穴は本体中央。ネジ端子は本体の**奥端と手前端に段付きで2列ずつ**（黄色の取り外しレバーは手前端） | §6.2 の4段配置を「上ティア＝段1・段2（本体の奥端）／下ティア＝段3・段4（手前端）」に対応させ、中央を差込穴領域にする |
+| 中段・左 | ランプ用端子台（8P、DINレール上、白いマーカー帯） | `TB_PL.1+`〜`TB_PL.4-` |
+| 中段・右 | 押ボタン用端子台（12P、DINレール上） | `TB_PB.1c`〜`TB_PB.4b` |
+| 下段・左 | 表示灯 `PL1`(白) `PL2`(黄) `PL3`(緑) `PL4`(赤)。各1つの**貫通穴**から青線2本が端子台へ | `PL1`〜`PL4`（`panelHole` つき）＋ 盤裏の本体端子 ＋ `fixedLinks` 8本（色 `青`） |
+| 下段・右 | 押ボタン `PBS1`(黒) `PBS2`(黄) `PBS3`(緑) `PBS4`(赤)。各1つの貫通穴から青線3本 | `PB1`〜`PB4`（銘板表記は `panelLabel`、`panelHole` つき）＋ `fixedLinks` 12本（色 `青`） |
+| 配線 | **ダクトが無い**。電線は盤面の上を直角に整列して走り、部品の上は通らない | `footprints`（占有矩形）と `wiringChannels`（配線帯）を持たせ、Task 9 の直角配線で経路を作る |
+
+寸法は写真を平面射影として計測して決めた（方法: 盤面の4隅から矩形のメトリック復元を行い、焦点距離と
+盤面の縦横比を求めたうえで、ソケットの取付ピッチ（PYF14A の外形幅 27.5mm）を物差しに使う）。
 
 | 項目 | 本アプリの既定 | 根拠 |
 |---|---|---|
-| 盤面 W × H | **330 × 300 mm** | 公式PDFは外形を示さない。同等品の市販検定盤が2社とも 330×300（アドウィン AKE-1405 = 330×300×190、メカトロ教材社 MK-EP1 = 330×300×110。調査資料 §2.5）で一致するためこれを採る |
-| 盤の奥行 | **110 mm** | 上記2社のうち薄い方（MK-EP1）。3Dの厚みにのみ影響する |
-| ソケット端子の列ピッチ／段ピッチ | **9 mm** / **12 mm** | M3（No.2）ネジ端子（調査資料 §2.1）が半径4mmの当たり判定（§6.5）で重ならない最小値。4段4列で 27 × 36 mm に収まり、ソケット5個＋間隔が盤幅330mmに収まる |
-| 端子台のピッチ | **9 mm** | 同上。12P で 99mm、8P で 63mm |
-| P/N供給端子の本数 | **P.1〜P.6 / N.1〜N.6 の各6本** | 仕様 §6.1 の表がそのまま6本と定めている |
-| ダクト | 横3本（y=74 / 150 / 210）＋縦2本（x=14 / 316）、幅12mm・高さ25mm | §6.5 は「盤面上のポリライン列」とのみ定める。3段の機器列の**間**に横ダクトを置き、左右の縦ダクトで連結して1つのグラフにするのが最小の構成。幅12mmは 2mmピッチ（§6.6）で6本を並べられる値 |
+| 盤面の幅 | **330 mm** | 写真のソケットピッチから逆算すると 314〜360mm（左クラスタ/右クラスタ）。その範囲に入り、かつ市販の同等品2機種（アドウィン AKE-1405、メカトロ教材社 MK-EP1。調査資料 §2.5）がどちらも 330mm であることから 330 を採る |
+| 盤面の奥行 | **245 mm** | 写真の4隅からメトリック復元した縦横比 1.357（奥行/幅 = 0.737）× 330mm ≒ 243mm を丸めた値。**写真からの推定** |
+| 筐体の厚み | **50 mm** | 写真の側面（手前の立ち上がり）の見かけの高さからの推定。**写真からの推定** |
+| 傾斜角 | **13°**（手前端 50mm・奥端 105.1mm） | 写真の側面プロファイルからの推定。`frontHeightMm + 245 × sin(13°) = rearHeightMm` が整合することをテストで固定する。**写真からの推定** |
+| ソケット本体 | 幅 **30 mm** × 奥行 **76 mm**、取付ピッチ **32 mm** | 奥行は「奥端のネジ端子ティア＋差込穴領域＋手前端のティア」が収まる長さ（写真の見た目にも合う）。幅は下の列ピッチから決まる 27mm に取付の遊びを足した値で、PYF14A の外形幅 27.5mm とも整合する。ピッチは幅＋隣との隙間2mm。**写真からの推定** |
+| ネジ端子の列ピッチ | **9 mm**（4列 = 27mm） | §6.5 の当たり判定半径4mmで隣と重ならない最小値。本体幅30mmの中央に収まる |
+| ネジ端子のティア内段ピッチ | **8 mm** | 同じ理由（半径4mm×2）。写真の見た目（約7mm）に最も近い、重ならない値 |
+| ティアの本体端からの距離 | **6 mm**（段1は奥端から6mm、段4は手前端から6mm） | ネジ端子が本体の端に寄っている写真の見た目に合わせた。**写真からの推定** |
+| 差込穴（14ピン） | 2列 × 7段、列ピッチ **12 mm**、段ピッチ **5 mm**、本体端から **22 mm** の中央領域 | MY4／H3Y-4 の14ピンの並び。実寸は非公開なので**本アプリ既定** |
+| 端子台のピッチ | **9 mm** | 同上。12Pで99mm、8Pで63mm |
+| 左クラスタ／右クラスタのX | **28 / 180 mm** | 写真の実測（レバー位置）から本体左端に換算し、左右の余白と配線帯が入る位置に丸めた |
+| PL／PB の取付ピッチ | **24 / 21 mm** | 写真の実測（PL3→PL4 = 24mm、PBS2→PBS3→PBS4 = 約21mm） |
+| 貫通穴の位置 | 機器中心から奥へ **11 mm** | 写真では青線が機器の**奥側の根元**の1点に集まる。**写真からの推定** |
+| P/N供給端子の本数 | **P.1〜P.6 / N.1〜N.6** | 仕様 §6.1 の表がそのまま6本と定めている（写真の DC24V 端子台は2極に見えるが、§6.3 / §11.3 の「1端子2本」で回路を組むには6本必要なので仕様を優先する） |
 | 端子の当たり判定半径 | **4 mm** | §6.5 で確定 |
-| PB／PL本体端子の z | **−25 mm**（盤の裏） | §6.4「本体端子はテスター測定と3D表示のためだけに存在する」を座標で表現する。裏側にあるので配線操作の当たり判定に出てこない |
+| PB／PL本体端子の z | **−12 mm**（盤面のすぐ裏） | 端子は機器の根元にあり、貫通穴を抜けた青線がすぐ届く位置。§6.4「本体端子は測定と3D表示のためだけ」を座標で表す |
+
+各端子は 3D がそのまま印字できる銘板（`label`）を持つ。ソケットは「⑬ −」「⑭ +」「⑨ COM」「⑤ a」
+「① b」のように丸数字＋役割、端子台は `PL1+` / `PB1 c`、供給端子は `P1` / `N6`、本体端子は
+`PBS1 c` のように写真の銘板どおりにする。
 
 - [ ] 失敗するテストを書く。`packages/board-model/test/board.test.ts`:
 
 ```ts
 import { describe, expect, it } from 'vitest';
 import {
+  BOARD_DEPTH_MM,
   BOARD_HEIGHT_MM,
   BOARD_WIDTH_MM,
   BoardError,
@@ -619,10 +725,16 @@ import {
   loadBoard,
   pinRole,
   resolveEndpoint,
-  SOCKET_COL_PITCH_MM,
   SOCKET_IDS,
-  SOCKET_ROW_PITCH_MM,
+  SOCKET_BODY_LENGTH_MM,
+  SOCKET_BODY_WIDTH_MM,
+  SOCKET_PITCH_MM,
+  socketBodyRect,
+  socketPinHoleOffsets,
+  socketPinOffset,
   socketPinTerminal,
+  SOCKET_SLOT_INSET_MM,
+  rectsOverlap,
   SUPPLY_TERMINAL_COUNT,
   TERMINAL_PICK_RADIUS_MM,
 } from '../src/index.js';
@@ -633,20 +745,41 @@ function idsOf(prefix: string): string[] {
   return board.terminals.map((t) => t.id).filter((id) => id.startsWith(`${prefix}.`));
 }
 
-describe('board-jipm: 盤定義の不変条件', () => {
-  it('ソケット5・PB4・PL4（§6.1 / 調査資料 §2.1）', () => {
-    expect(board.sockets.map((s) => s.id)).toEqual(['S1', 'S2', 'S3', 'S4', 'S5']);
-    expect(board.pushButtons.map((p) => `${p.id}:${p.color}`)).toEqual([
-      'PB1:黒',
-      'PB2:黄',
-      'PB3:緑',
-      'PB4:赤',
+describe('board-jipm: 盤定義の不変条件（写真 K96-CS3 に準拠）', () => {
+  it('ソケット8（左4・右4）・PB4・PL4（§6.1 / 写真）', () => {
+    expect(board.sockets.map((s) => s.id)).toEqual([
+      'S1',
+      'S2',
+      'S3',
+      'S4',
+      'S5',
+      'S6',
+      'S7',
+      'S8',
     ]);
-    expect(board.lamps.map((l) => `${l.id}:${l.color}`)).toEqual([
-      'PL1:白',
-      'PL2:黄',
-      'PL3:緑',
-      'PL4:赤',
+    expect(board.sockets.filter((s) => s.cluster === 'left').map((s) => s.id)).toEqual([
+      'S1',
+      'S2',
+      'S3',
+      'S4',
+    ]);
+    expect(board.sockets.filter((s) => s.cluster === 'right').map((s) => s.id)).toEqual([
+      'S5',
+      'S6',
+      'S7',
+      'S8',
+    ]);
+    expect(board.pushButtons.map((p) => `${p.id}/${p.panelLabel}:${p.color}`)).toEqual([
+      'PB1/PBS1:黒',
+      'PB2/PBS2:黄',
+      'PB3/PBS3:緑',
+      'PB4/PBS4:赤',
+    ]);
+    expect(board.lamps.map((l) => `${l.id}/${l.panelLabel}:${l.color}`)).toEqual([
+      'PL1/PL1:白',
+      'PL2/PL2:黄',
+      'PL3/PL3:緑',
+      'PL4/PL4:赤',
     ]);
   });
 
@@ -665,29 +798,117 @@ describe('board-jipm: 盤定義の不変条件', () => {
     expect(board.terminals.every((t) => t.pickRadiusMm === TERMINAL_PICK_RADIUS_MM)).toBe(true);
   });
 
-  it('ソケットは14ピンで、4段配置どおりの座標を持つ（§6.2）', () => {
+  it('ソケットは8個とも14ピンで、ネジ端子が上下2ティアに分かれる（§6.2 / 写真）', () => {
     for (const socket of SOCKET_IDS) {
       expect(idsOf(socket)).toHaveLength(14);
     }
-    const origin = board.sockets[0]?.origin;
-    expect(origin).toEqual({ x: 24, y: 92, z: 10 });
+    expect(board.sockets[0]?.origin).toEqual({ x: 28, y: 60, z: 10 });
+    expect(board.sockets[4]?.origin).toEqual({ x: 180, y: 60, z: 10 });
+    expect(board.sockets[0]?.bodyMm).toEqual({
+      width: SOCKET_BODY_WIDTH_MM,
+      length: SOCKET_BODY_LENGTH_MM,
+    });
     const at = (pin: number): { x: number; y: number } => {
       const pos = boardTerminalPos(board, socketPinTerminal('S1', pin));
       return { x: pos.x, y: pos.y };
     };
-    // 段1: [空] ③ ② ①
-    expect(at(3)).toEqual({ x: 24 + SOCKET_COL_PITCH_MM, y: 92 });
-    expect(at(1)).toEqual({ x: 24 + 3 * SOCKET_COL_PITCH_MM, y: 92 });
-    // 段2: ⑧ ⑦ ⑥ ⑤
-    expect(at(8)).toEqual({ x: 24, y: 92 + SOCKET_ROW_PITCH_MM });
-    expect(at(5)).toEqual({ x: 24 + 3 * SOCKET_COL_PITCH_MM, y: 92 + SOCKET_ROW_PITCH_MM });
-    // 段3: ⑫ ⑪ ⑩ ⑨
-    expect(at(12)).toEqual({ x: 24, y: 92 + 2 * SOCKET_ROW_PITCH_MM });
-    expect(at(9)).toEqual({ x: 24 + 3 * SOCKET_COL_PITCH_MM, y: 92 + 2 * SOCKET_ROW_PITCH_MM });
-    // 段4: ④ ⑭ ⑬ [空]（④が混ざる非連番配置をそのまま再現する）
-    expect(at(4)).toEqual({ x: 24, y: 92 + 3 * SOCKET_ROW_PITCH_MM });
-    expect(at(14)).toEqual({ x: 24 + SOCKET_COL_PITCH_MM, y: 92 + 3 * SOCKET_ROW_PITCH_MM });
-    expect(at(13)).toEqual({ x: 24 + 2 * SOCKET_COL_PITCH_MM, y: 92 + 3 * SOCKET_ROW_PITCH_MM });
+    // 4段配置（§6.2）: 段1=[空]③②①、段2=⑧⑦⑥⑤、段3=⑫⑪⑩⑨、段4=④⑭⑬[空]
+    // 段1・段2は本体の奥端に、段3・段4は手前端に寄り、中央は差込穴の領域になる
+    const col = (i: number): number => 28 + socketPinOffset(0, i).dx;
+    expect(at(3)).toEqual({ x: col(1), y: 60 + 6 });
+    expect(at(1)).toEqual({ x: col(3), y: 60 + 6 });
+    expect(at(8)).toEqual({ x: col(0), y: 60 + 14 });
+    expect(at(5)).toEqual({ x: col(3), y: 60 + 14 });
+    expect(at(12)).toEqual({ x: col(0), y: 60 + 62 });
+    expect(at(9)).toEqual({ x: col(3), y: 60 + 62 });
+    expect(at(4)).toEqual({ x: col(0), y: 60 + 70 });
+    expect(at(14)).toEqual({ x: col(1), y: 60 + 70 });
+    expect(at(13)).toEqual({ x: col(2), y: 60 + 70 });
+    // 中央の差込穴領域には端子が無い（本体の 22mm〜54mm）
+    for (const term of board.terminals.filter((x) => x.id.startsWith('S1.'))) {
+      const dy = term.pos.y - 60;
+      expect(dy < 22 || dy > SOCKET_BODY_LENGTH_MM - 22).toBe(true);
+    }
+  });
+
+  it('ネジ端子は当たり判定（半径4mm）が重ならない間隔で並ぶ（§6.5）', () => {
+    const socketTerminals = board.terminals.filter((x) => x.id.startsWith('S1.'));
+    for (let i = 0; i < socketTerminals.length; i += 1) {
+      for (let j = i + 1; j < socketTerminals.length; j += 1) {
+        const a = socketTerminals[i];
+        const b = socketTerminals[j];
+        if (a === undefined || b === undefined) continue;
+        expect(Math.hypot(a.pos.x - b.pos.x, a.pos.y - b.pos.y)).toBeGreaterThanOrEqual(
+          2 * TERMINAL_PICK_RADIUS_MM,
+        );
+      }
+    }
+  });
+
+  it('端子は番号＋役割の銘板を持つ（3Dがそのまま印字できる）', () => {
+    expect(findBoardTerminal(board, 'S1.13')?.label).toBe('⑬ −');
+    expect(findBoardTerminal(board, 'S1.14')?.label).toBe('⑭ +');
+    expect(findBoardTerminal(board, 'S1.9')?.label).toBe('⑨ COM');
+    expect(findBoardTerminal(board, 'S1.5')?.label).toBe('⑤ a');
+    expect(findBoardTerminal(board, 'S1.1')?.label).toBe('① b');
+    expect(findBoardTerminal(board, 'TB_PL.1+')?.label).toBe('PL1+');
+    expect(findBoardTerminal(board, 'TB_PL.1-')?.label).toBe('PL1−');
+    expect(findBoardTerminal(board, 'TB_PB.1c')?.label).toBe('PB1 c');
+    expect(findBoardTerminal(board, 'P.1')?.label).toBe('P1');
+    expect(findBoardTerminal(board, 'N.6')?.label).toBe('N6');
+    expect(findBoardTerminal(board, 'PB1.c')?.label).toBe('PBS1 c');
+  });
+
+  it('部品の占有領域がそろっており、互いに重ならない（§6.6）', () => {
+    const ids = board.footprints.map((f) => f.id);
+    expect(ids).toContain('supply');
+    expect(ids).toContain('CB');
+    expect(ids).toContain('TB_PL');
+    expect(ids).toContain('TB_PB');
+    for (const socket of SOCKET_IDS) expect(ids).toContain(socket);
+    expect(new Set(ids).size).toBe(ids.length);
+    for (let i = 0; i < board.footprints.length; i += 1) {
+      for (let j = i + 1; j < board.footprints.length; j += 1) {
+        const a = board.footprints[i];
+        const b = board.footprints[j];
+        if (a === undefined || b === undefined) continue;
+        expect(rectsOverlap(a, b)).toBe(false);
+      }
+    }
+  });
+
+  it('配線帯は列と列の間・左右余白・クラスタ間に引かれている（§6.6）', () => {
+    expect(board.wiringChannels.map((c) => c.id)).toEqual([
+      'ch-top',
+      'ch-mid',
+      'ch-low',
+      'ch-left',
+      'ch-gap',
+      'ch-right',
+    ]);
+    const at = (id: string): number => board.wiringChannels.find((c) => c.id === id)?.at ?? -1;
+    // 奥から: P/N列 → ch-top → ソケット列 → ch-mid → 端子台列 → ch-low → PL/PB列
+    expect(at('ch-top')).toBeGreaterThan(boardTerminalPos(board, 'N.1').y);
+    expect(at('ch-top')).toBeLessThan(boardTerminalPos(board, 'S1.1').y);
+    expect(at('ch-mid')).toBeGreaterThan(boardTerminalPos(board, 'S1.13').y);
+    expect(at('ch-mid')).toBeLessThan(boardTerminalPos(board, 'TB_PL.1+').y);
+    expect(at('ch-low')).toBeGreaterThan(boardTerminalPos(board, 'TB_PB.1c').y);
+    expect(at('ch-low')).toBeLessThan(boardTerminalPos(board, 'PL1.+').y);
+    // ch-gap は左右のソケットクラスタの間
+    expect(at('ch-gap')).toBeGreaterThan(28 + 3 * SOCKET_PITCH_MM + SOCKET_BODY_WIDTH_MM);
+    expect(at('ch-gap')).toBeLessThan(180);
+  });
+
+  it('クラスタ内のソケットは取付ピッチどおりに等間隔で並ぶ（写真）', () => {
+    const originX = (id: (typeof SOCKET_IDS)[number]): number =>
+      board.sockets.find((s) => s.id === id)?.origin.x ?? -1;
+    expect(originX('S2') - originX('S1')).toBe(SOCKET_PITCH_MM);
+    expect(originX('S4') - originX('S3')).toBe(SOCKET_PITCH_MM);
+    expect(originX('S6') - originX('S5')).toBe(SOCKET_PITCH_MM);
+    expect(originX('S8') - originX('S7')).toBe(SOCKET_PITCH_MM);
+    // 左クラスタと右クラスタは離れており、同じDINレール列（同じy）に載る
+    expect(originX('S5') - originX('S4')).toBeGreaterThan(SOCKET_PITCH_MM);
+    expect(new Set(board.sockets.map((s) => s.origin.y)).size).toBe(1);
   });
 
   it('ピン割付が仕様どおり（§6.2）', () => {
@@ -701,14 +922,44 @@ describe('board-jipm: 盤定義の不変条件', () => {
     expect(() => socketPinTerminal('S1', 0)).toThrow(BoardError);
   });
 
-  it('全端子の座標が盤外形の中にある（§6.5）', () => {
+  it('全端子の座標が盤面の中にある（§6.5）', () => {
     for (const t of board.terminals) {
       expect(t.pos.x).toBeGreaterThanOrEqual(0);
       expect(t.pos.x).toBeLessThanOrEqual(BOARD_WIDTH_MM);
       expect(t.pos.y).toBeGreaterThanOrEqual(0);
       expect(t.pos.y).toBeLessThanOrEqual(BOARD_HEIGHT_MM);
     }
-    expect(board.sizeMm).toEqual({ width: 330, height: 300, depth: 110 });
+    expect(board.sizeMm).toEqual({ width: 330, height: 245, depth: 50 });
+    for (const fp of board.footprints) {
+      expect(fp.x).toBeGreaterThanOrEqual(0);
+      expect(fp.x + fp.w).toBeLessThanOrEqual(BOARD_WIDTH_MM);
+      expect(fp.y).toBeGreaterThanOrEqual(0);
+      expect(fp.y + fp.h).toBeLessThanOrEqual(BOARD_HEIGHT_MM);
+    }
+  });
+
+  it('傾斜コンソールの形状メタが奥行と整合する（写真からの推定）', () => {
+    const c = board.console;
+    expect(c.slopeDeg).toBe(13);
+    expect(c.frontHeightMm).toBe(BOARD_DEPTH_MM);
+    const rise = BOARD_HEIGHT_MM * Math.sin((c.slopeDeg * Math.PI) / 180);
+    expect(c.rearHeightMm).toBeCloseTo(c.frontHeightMm + rise, 1);
+    expect(c.rearHeightMm).toBeGreaterThan(c.frontHeightMm);
+  });
+
+  it('写真どおりの段構成（奥から: 電源/ブレーカ → ソケット → 端子台 → PL/PB）', () => {
+    const y = (id: string): number => boardTerminalPos(board, id).y;
+    expect(y('P.1')).toBeLessThan(y('S1.1'));
+    expect(y('CB.1')).toBeLessThan(y('S5.1'));
+    expect(y('S1.13')).toBeLessThan(y('TB_PL.1+'));
+    expect(y('S5.13')).toBeLessThan(y('TB_PB.1c'));
+    expect(y('TB_PL.1+')).toBeLessThan(y('PL1.+'));
+    expect(y('TB_PB.1c')).toBeLessThan(y('PB1.c'));
+    // 左上にDC24V供給端子、右上にブレーカ
+    expect(boardTerminalPos(board, 'P.1').x).toBeLessThan(BOARD_WIDTH_MM / 2);
+    expect(boardTerminalPos(board, 'CB.1').x).toBeGreaterThan(BOARD_WIDTH_MM / 2);
+    // 下段は左にPL、右にPB
+    expect(boardTerminalPos(board, 'PL4.+').x).toBeLessThan(boardTerminalPos(board, 'PB1.c').x);
   });
 
   it('PB／PL本体端子は配線できず、端子台とP/Nは配線できる（§6.4）', () => {
@@ -718,39 +969,57 @@ describe('board-jipm: 盤定義の不変条件', () => {
     expect(findBoardTerminal(board, 'PS.+')?.wirable).toBe(false);
     expect(findBoardTerminal(board, 'TB_PB.1c')?.wirable).toBe(true);
     expect(findBoardTerminal(board, 'P.1')?.wirable).toBe(true);
-    expect(findBoardTerminal(board, 'S5.14')?.wirable).toBe(true);
+    expect(findBoardTerminal(board, 'S7.14')?.wirable).toBe(true);
+    expect(findBoardTerminal(board, 'S8.14')?.wirable).toBe(true);
     expect(findBoardTerminal(board, 'BZ.+')?.optional).toBe(true);
     expect(findBoardTerminal(board, 'XX.1')).toBeUndefined();
     expect(() => boardTerminalPos(board, 'XX.1')).toThrow(BoardError);
   });
 
-  it('チェック用ソケットの黄色固定配線は3本で §6.3 の端子どおり', () => {
+  it('本体端子は盤の裏（z が負）にある（§6.4）', () => {
+    expect(boardTerminalPos(board, 'PL1.+').z).toBeLessThan(0);
+    expect(boardTerminalPos(board, 'PB1.c').z).toBeLessThan(0);
+    expect(boardTerminalPos(board, 'TB_PL.1+').z).toBeGreaterThan(0);
+  });
+
+  it('チェック用ソケットの既設固定配線は3本・青で §6.3 の端子どおり（CHK は S7）', () => {
     expect(board.fixedWires).toHaveLength(3);
-    expect(board.fixedWires.every((w) => w.color === '黄')).toBe(true);
+    expect(board.fixedWires.every((w) => w.color === '青')).toBe(true);
     const pairs = board.fixedWires.map(
       (w) => `${resolveEndpoint(w.from)}->${resolveEndpoint(w.to)}`,
     );
-    expect(pairs).toEqual(['P.6->TB_PB.4c', 'TB_PB.4a->S5.14', 'S5.13->N.6']);
+    expect(pairs).toEqual(['P.6->TB_PB.4c', 'TB_PB.4a->S7.14', 'S7.13->N.6']);
   });
 
-  it('既設リンクは P/N 12本＋PB 12本＋PL 8本＝32本（§6.4）', () => {
+  it('既設リンクは P/N 12本＋PB 12本＋PL 8本＝32本の青線ハーネス（§6.4 / 写真）', () => {
     expect(board.fixedLinks).toHaveLength(32);
     const ids = board.fixedLinks.map((l) => l.id);
     expect(new Set(ids).size).toBe(ids.length);
     expect(board.fixedLinks.filter((l) => l.id.startsWith('lk-pb-'))).toHaveLength(12);
     expect(board.fixedLinks.filter((l) => l.id.startsWith('lk-pl-'))).toHaveLength(8);
-    expect(board.fixedLinks[0]).toEqual({ id: 'lk-ps-p', from: 'PS.+', to: 'P.1' });
+    expect(board.fixedLinks.every((l) => l.color === '青')).toBe(true);
+    expect(board.fixedLinks[0]).toEqual({
+      id: 'lk-ps-p',
+      from: 'PS.+',
+      to: 'P.1',
+      color: '青',
+    });
   });
 
-  it('ダクトは連結した5区間（§6.5）', () => {
-    expect(board.ducts.map((d) => d.id)).toEqual([
-      'duct-top',
-      'duct-mid',
-      'duct-bottom',
-      'duct-left',
-      'duct-right',
-    ]);
-    expect(board.ducts.every((d) => d.widthMm === 12 && d.heightMm === 25)).toBe(true);
+  it('差込穴は14個（2列×7段）で本体中央にある（§6.2）', () => {
+    const holes = socketPinHoleOffsets();
+    expect(holes).toHaveLength(14);
+    expect(new Set(holes.map((h) => h.dx)).size).toBe(2);
+    expect(new Set(holes.map((h) => h.dy)).size).toBe(7);
+    for (const h of holes) {
+      expect(h.dy).toBeGreaterThanOrEqual(SOCKET_SLOT_INSET_MM);
+      expect(h.dy).toBeLessThanOrEqual(SOCKET_BODY_LENGTH_MM - SOCKET_SLOT_INSET_MM);
+    }
+  });
+
+  it('ソケット本体の外形を引ける', () => {
+    expect(socketBodyRect(board, 'S1')).toEqual({ x0: 28, y0: 60, x1: 58, y1: 136 });
+    expect(socketBodyRect(board, 'S9' as 'S1')).toBeUndefined();
   });
 
   it('盤IDで引ける', () => {
@@ -779,52 +1048,81 @@ import {
   type TerminalId,
   type WireColor,
 } from '@ojt/circuit-sim';
-import { vec3, type Vec3 } from './geometry.js';
+import { vec3, type Rect, type Vec3 } from './geometry.js';
 
 /**
- * JIPM標準盤 `board-jipm-std` の定義データ。設計仕様 §6.1〜§6.6、調査資料 §2.1〜§2.2 / §3.1 / §3.5。
+ * 標準盤 `board-jipm-std` の定義データ。設計仕様 §6.1〜§6.6、調査資料 §2.1〜§2.2 / §3.1 / §3.5。
  *
- * 寸法の根拠: 公式PDFは外形寸法を示さないため、同等品として市販されている検定用実習盤
- * （アドウィン AKE-1405 = 330×300×190mm、メカトロ教材社 MK-EP1 = 330×300×110mm。調査資料 §2.5）の
- * 一致する盤面寸法 **330 × 300 mm** を本アプリの既定とし、奥行は薄い方の 110mm を採る。
- * 盤面内の配置は調査資料 §2.2 の配置図の縦横比（上段=電源/ブレーカ、中段=ソケット5個、
- * その下=端子台2個、最下段=ランプ4個と押ボタン4個）をそのまま保つ。
+ * 実物の写真（`docs/reference/K96-CS3-board-photo.png`、OMRON「電気系保全作業練習器 形 K96-CS3」）に
+ * 合わせて配置を決めている。写真から読めない寸法はすべて**本アプリ既定（写真からの推定）**であり、
+ * 根拠は計画書 Task 4 の表に記す。
+ *
+ * 形状は**傾斜コンソール**（手前が低く奥が高い）。盤面そのものは平面なので座標は従来どおり
+ * 「盤面上の (x, y) ＋ 盤面からの高さ z」の 2.5D で持ち、傾斜と立ち上がりは `console` に
+ * メタデータとして持たせて3D側が使う。
  */
 
-/** 盤面の幅[mm]。 */
+/** 盤面（傾斜した操作面）の幅[mm]。 */
 export const BOARD_WIDTH_MM = 330;
-/** 盤面の高さ[mm]。 */
-export const BOARD_HEIGHT_MM = 300;
-/** 盤の奥行[mm]。 */
-export const BOARD_DEPTH_MM = 110;
+/** 盤面の奥行[mm]（傾斜面に沿った長さ。奥=0、手前=この値）。 */
+export const BOARD_HEIGHT_MM = 245;
+/** 筐体の厚み[mm]。 */
+export const BOARD_DEPTH_MM = 50;
 /** 端子の当たり判定半径[mm]。§6.5 */
 export const TERMINAL_PICK_RADIUS_MM = 4;
 /** P/N供給端子の本数（`P.1`〜`P.6` / `N.1`〜`N.6`）。§6.1 */
 export const SUPPLY_TERMINAL_COUNT = 6;
 
-/** ソケットのネジ端子の列ピッチ[mm]。 */
+/** ソケット本体の幅[mm]（PYF14A相当＋取付の遊び）。 */
+export const SOCKET_BODY_WIDTH_MM = 30;
+/** ソケット本体の奥行[mm]（奥のネジ端子ティアから手前のティアまでを含む全長）。 */
+export const SOCKET_BODY_LENGTH_MM = 76;
+/** 14ピンソケットの取付ピッチ[mm]（本体幅＋隣との隙間2mm）。 */
+export const SOCKET_PITCH_MM = 32;
+/** ソケットのネジ端子の列ピッチ[mm]（4列）。 */
 export const SOCKET_COL_PITCH_MM = 9;
-/** ソケットのネジ端子の段ピッチ[mm]。 */
-export const SOCKET_ROW_PITCH_MM = 12;
-/** 端子台のネジ端子ピッチ[mm]（M3端子台の一般的な値）。 */
+/** ソケット本体の端から最初のネジ端子列までの奥行方向の距離[mm]。 */
+export const SOCKET_TIER_INSET_MM = 6;
+/** 同じティア内のネジ端子の段ピッチ[mm]（当たり判定半径4mmが重ならない最小値）。 */
+export const SOCKET_TIER_ROW_PITCH_MM = 8;
+/** 本体中央の差込穴領域の、本体端からの奥行方向の距離[mm]。 */
+export const SOCKET_SLOT_INSET_MM = 22;
+/** 差込穴（14ピン）の列ピッチ[mm]（2列）。本アプリ既定。 */
+export const SOCKET_PIN_HOLE_COL_PITCH_MM = 12;
+/** 差込穴（14ピン）の段ピッチ[mm]（7段）。本アプリ既定。 */
+export const SOCKET_PIN_HOLE_ROW_PITCH_MM = 5;
+/** 端子台のネジ端子ピッチ[mm]。 */
 export const BLOCK_PITCH_MM = 9;
 /** ソケットのネジ端子の盤面からの高さ[mm]。 */
 export const SOCKET_TERMINAL_Z_MM = 10;
 /** 端子台のネジ端子の盤面からの高さ[mm]。 */
 export const BLOCK_TERMINAL_Z_MM = 8;
 /** PB／PL本体端子の盤面からの高さ[mm]（盤の裏側にあるため負）。§6.4 */
-export const BODY_TERMINAL_Z_MM = -25;
+export const BODY_TERMINAL_Z_MM = -12;
+/** 機器の根元（盤面の貫通穴）から機器中心までの距離[mm]（穴は機器の奥側にある）。 */
+export const PANEL_HOLE_OFFSET_MM = 11;
+/** 貫通穴に入る既設配線どうしの間隔[mm]。 */
+export const HARNESS_PITCH_MM = 2;
+/** 貫通穴の手前で既設配線が横に寄る位置（穴からの距離[mm]）。 */
+export const HARNESS_APPROACH_MM = 7;
+/** 電線が盤面上を走る高さ[mm]（配線帯の中の高さ）。 */
+export const WIRE_RUN_Z_MM = 3.5;
 
-/** ダクトの幅[mm]。 */
-export const DUCT_WIDTH_MM = 12;
-/** ダクトの高さ[mm]。 */
-export const DUCT_HEIGHT_MM = 25;
+/** 傾斜コンソールの形状メタデータ（3D側が筐体を描くために使う）。 */
+export interface ConsoleShape {
+  /** 盤面の傾斜角[度]（手前下がり）。 */
+  slopeDeg: number;
+  /** 手前端の机上高さ[mm]（＝筐体の厚み）。 */
+  frontHeightMm: number;
+  /** 奥端の机上高さ[mm]。`frontHeightMm + 奥行 × sin(slopeDeg)` と一致する。 */
+  rearHeightMm: number;
+}
 
-/** 物理ソケットID（盤上の位置で決まる。役割の割当は roles.ts）。§6.1 */
-export type SocketId = 'S1' | 'S2' | 'S3' | 'S4' | 'S5';
+/** 物理ソケットID（盤上の位置で決まる。役割の割当は roles.ts）。左クラスタ S1〜S4／右クラスタ S5〜S8。 */
+export type SocketId = 'S1' | 'S2' | 'S3' | 'S4' | 'S5' | 'S6' | 'S7' | 'S8';
 
-/** 物理ソケットIDの並び（左から右、最後がチェック用）。 */
-export const SOCKET_IDS: readonly SocketId[] = ['S1', 'S2', 'S3', 'S4', 'S5'];
+/** 物理ソケットIDの並び（左クラスタ4個 → 右クラスタ4個）。 */
+export const SOCKET_IDS: readonly SocketId[] = ['S1', 'S2', 'S3', 'S4', 'S5', 'S6', 'S7', 'S8'];
 
 /** 押ボタンの色。§5.3.3 */
 export type PushButtonColor = '黒' | '黄' | '緑' | '赤';
@@ -837,7 +1135,7 @@ export type TerminalRole =
 export interface BoardTerminal {
   /** 物理端子ID。ソケットは `S1.13` のように**物理**ソケットIDで持つ（役割IDへの変換は roles.ts）。 */
   id: TerminalId;
-  /** ツールチップ用の表示名（例: `S1 ⑨ COM`）。§8.2 */
+  /** ツールチップ用の表示名（例: `S1 ⑨ com`）。§8.2 */
   label: string;
   role: TerminalRole;
   pos: Vec3;
@@ -846,37 +1144,45 @@ export interface BoardTerminal {
   wirable: boolean;
   /** 既定の盤には無く、課題の `extraParts` で追加したときだけ使える端子（BZ）。§5.3.4 */
   optional: boolean;
+  /**
+   * 端子から電線を引き出す向き（盤面の奥行方向）。
+   * ソケットのネジ端子は本体の上端／下端に寄っているので向きが決まっている（上ティア=`rear`、
+   * 下ティア=`front`）。端子台・P/N・本体端子は空いている側へ出せるので `either`。
+   */
+  exit: 'rear' | 'front' | 'either';
 }
 
 /** 14ピンソケットの定義。 */
 export interface SocketDefinition {
   id: SocketId;
   kind: 'socket-14pin';
-  /** 段1・左端（①②③の段の左端の空きスロット）の中心座標。 */
+  /** 左右どちらのクラスタか（写真の2つのDINレール群に対応）。 */
+  cluster: 'left' | 'right';
+  /** 本体の左奥の角（盤面上）。ネジ端子と差込穴はここからの相対位置で決まる。 */
   origin: Vec3;
+  /** 本体の外形[mm]（3Dのモデルと、配線が本体上を横切らないことの検査に使う）。 */
+  bodyMm: { width: number; length: number };
 }
 
 /** 押ボタン本体の定義。 */
 export interface PushButtonDefinition {
   id: PartId;
   color: PushButtonColor;
+  /** 盤面の銘板表記（写真では `PBS1`〜`PBS4`）。部品IDは §6.4 の `PB1`〜`PB4` を使う。 */
+  panelLabel: string;
   pos: Vec3;
+  /** 既設配線が盤面を抜ける貫通穴（機器の奥側の根元）。写真ではここに青線が集まる。 */
+  panelHole: Vec3;
 }
 
 /** 表示灯本体の定義。 */
 export interface LampDefinition {
   id: PartId;
   color: LampColor;
+  panelLabel: string;
   pos: Vec3;
-}
-
-/** 配線ダクトの1区間。自動経路生成（routing.ts）が参照する。§6.5 */
-export interface DuctSegment {
-  id: string;
-  a: Vec3;
-  b: Vec3;
-  widthMm: number;
-  heightMm: number;
+  /** 既設配線が盤面を抜ける貫通穴（機器の奥側の根元）。 */
+  panelHole: Vec3;
 }
 
 /** 盤定義内で端子を指す参照。ソケットは役割割当で端子IDが変わるためピン番号で指す。 */
@@ -891,11 +1197,36 @@ export interface FixedWire {
   color: WireColor;
 }
 
-/** 既設の0Ωリンク（PB／PL本体と端子台の間、P/N供給端子どうし）。§6.4 */
+/**
+ * 既設の0Ωリンク（PB／PL本体と端子台の間、P/N供給端子どうし）。§6.4
+ * 写真では PB／PL の本体から端子台へ**青線**のハーネスが走っている。電気的には0Ωの内部結線として
+ * 扱う（故障注入の対象外・端子の本数制限にも数えない。§6.3 / §6.4）が、3Dで描けるように色を持つ。
+ */
 export interface FixedLink {
   id: string;
   from: TerminalId;
   to: TerminalId;
+  color: WireColor;
+}
+
+/**
+ * 配線帯（見えないガイド）。電線はここを直角に走る。§6.6
+ * `axis: 'x'` なら y = `at` の水平帯で、x が `from`〜`to` の範囲を走る。
+ * `axis: 'y'` なら x = `at` の垂直帯で、y が `from`〜`to` の範囲を走る。
+ */
+export interface WiringChannel {
+  id: string;
+  axis: 'x' | 'y';
+  at: number;
+  from: number;
+  to: number;
+  zMm: number;
+}
+
+/** 盤上の部品が占める領域（盤面への投影）。配線はこの内側を通ってはならない。§6.6 */
+export interface Footprint extends Rect {
+  id: string;
+  kind: 'socket' | 'block' | 'lamp' | 'button' | 'breaker' | 'switch' | 'supply';
 }
 
 /** 盤の定義データ。 */
@@ -903,12 +1234,17 @@ export interface BoardDefinition {
   id: string;
   displayName: string;
   sizeMm: { width: number; height: number; depth: number };
+  /** 傾斜コンソールの形状。 */
+  console: ConsoleShape;
   sockets: readonly SocketDefinition[];
   pushButtons: readonly PushButtonDefinition[];
   lamps: readonly LampDefinition[];
   supplyTerminalCount: number;
   terminals: readonly BoardTerminal[];
-  ducts: readonly DuctSegment[];
+  /** 部品の占有領域。配線はこの内側を通ってはならない。§6.6 */
+  footprints: readonly Footprint[];
+  /** 配線の自動経路が走る帯。占有領域と重ならない位置にだけ引く。§6.6 */
+  wiringChannels: readonly WiringChannel[];
   fixedWires: readonly FixedWire[];
   fixedLinks: readonly FixedLink[];
 }
@@ -963,74 +1299,173 @@ export function socketPinTerminal(socket: SocketId, pin: number): TerminalId {
   return terminalId(socket, String(pin));
 }
 
+/** 端子の役割の印字（ソケットのネジ端子の銘板表記）。 */
+export function roleLabel(role: TerminalRole): string {
+  switch (role) {
+    case 'coil+':
+      return '+';
+    case 'coil-':
+      return '−';
+    case 'com':
+      return 'COM';
+    case 'no':
+      return 'a';
+    case 'nc':
+      return 'b';
+    default:
+      return role;
+  }
+}
+
 function terminal(
   id: TerminalId,
   label: string,
   role: TerminalRole,
   pos: Vec3,
   wirable: boolean,
+  exit: BoardTerminal['exit'] = 'either',
   optional = false,
 ): BoardTerminal {
-  return { id, label, role, pos, pickRadiusMm: TERMINAL_PICK_RADIUS_MM, wirable, optional };
+  return { id, label, role, pos, pickRadiusMm: TERMINAL_PICK_RADIUS_MM, wirable, exit, optional };
 }
 
-/** ソケット5個の原点（段1・左端スロットの中心）。左から4個＋チェック用1個。§2.2 */
-const SOCKET_ORIGINS: ReadonlyArray<{ id: SocketId; origin: Vec3 }> = [
-  { id: 'S1', origin: vec3(24, 92, SOCKET_TERMINAL_Z_MM) },
-  { id: 'S2', origin: vec3(74, 92, SOCKET_TERMINAL_Z_MM) },
-  { id: 'S3', origin: vec3(124, 92, SOCKET_TERMINAL_Z_MM) },
-  { id: 'S4', origin: vec3(174, 92, SOCKET_TERMINAL_Z_MM) },
-  { id: 'S5', origin: vec3(254, 92, SOCKET_TERMINAL_Z_MM) },
-];
+/** ソケット本体の外形（盤面上の矩形）。配線が本体を横切らないことの検査に使う。 */
+export function socketBodyRect(
+  board: BoardDefinition,
+  socketId: SocketId,
+): { x0: number; y0: number; x1: number; y1: number } | undefined {
+  const socket = board.sockets.find((s) => s.id === socketId);
+  if (socket === undefined) return undefined;
+  return {
+    x0: socket.origin.x,
+    y0: socket.origin.y,
+    x1: socket.origin.x + socket.bodyMm.width,
+    y1: socket.origin.y + socket.bodyMm.length,
+  };
+}
+
+/**
+ * ソケットのネジ端子の位置。本体の左奥の角からの相対座標[mm]。
+ * 段1・段2は本体の**奥端**に、段3・段4は**手前端**に寄っており、中央は差込穴の領域になる。
+ */
+export function socketPinOffset(rowIndex: number, colIndex: number): { dx: number; dy: number } {
+  const dx = (SOCKET_BODY_WIDTH_MM - 3 * SOCKET_COL_PITCH_MM) / 2 + colIndex * SOCKET_COL_PITCH_MM;
+  const dy =
+    rowIndex <= 1
+      ? SOCKET_TIER_INSET_MM + rowIndex * SOCKET_TIER_ROW_PITCH_MM
+      : SOCKET_BODY_LENGTH_MM - SOCKET_TIER_INSET_MM - (3 - rowIndex) * SOCKET_TIER_ROW_PITCH_MM;
+  return { dx, dy };
+}
+
+/** そのネジ端子の段が本体のどちら端にあるか（電線の引き出し向き）。 */
+export function socketRowExit(rowIndex: number): 'rear' | 'front' {
+  return rowIndex <= 1 ? 'rear' : 'front';
+}
+
+/** 差込穴（14ピン、2列×7段）の中心座標。本体の左奥の角からの相対座標[mm]。 */
+export function socketPinHoleOffsets(): Array<{ dx: number; dy: number }> {
+  const out: Array<{ dx: number; dy: number }> = [];
+  const slotLength = SOCKET_BODY_LENGTH_MM - 2 * SOCKET_SLOT_INSET_MM;
+  const y0 = SOCKET_SLOT_INSET_MM + (slotLength - 6 * SOCKET_PIN_HOLE_ROW_PITCH_MM) / 2;
+  const x0 = (SOCKET_BODY_WIDTH_MM - SOCKET_PIN_HOLE_COL_PITCH_MM) / 2;
+  for (let row = 0; row < 7; row += 1) {
+    for (let col = 0; col < 2; col += 1) {
+      out.push({
+        dx: x0 + col * SOCKET_PIN_HOLE_COL_PITCH_MM,
+        dy: y0 + row * SOCKET_PIN_HOLE_ROW_PITCH_MM,
+      });
+    }
+  }
+  return out;
+}
+
+/** ソケット本体の奥端のY座標[mm]。 */
+const SOCKET_Y_MM = 60;
+/** 左クラスタ（S1〜S4）の左端X座標[mm]。 */
+const LEFT_CLUSTER_X_MM = 28;
+/** 右クラスタ（S5〜S8）の左端X座標[mm]。 */
+const RIGHT_CLUSTER_X_MM = 180;
+
+/** ソケット8個の本体左奥の角。写真の左右2クラスタ×4個に対応。 */
+const SOCKET_ORIGINS: ReadonlyArray<{ id: SocketId; cluster: 'left' | 'right'; origin: Vec3 }> =
+  SOCKET_IDS.map((id, index) => {
+    const left = index < 4;
+    const baseX = left ? LEFT_CLUSTER_X_MM : RIGHT_CLUSTER_X_MM;
+    const slot = left ? index : index - 4;
+    return {
+      id,
+      cluster: left ? ('left' as const) : ('right' as const),
+      origin: vec3(baseX + slot * SOCKET_PITCH_MM, SOCKET_Y_MM, SOCKET_TERMINAL_Z_MM),
+    };
+  });
 
 /** ランプ用端子台（8P）の左端端子のX座標[mm]。 */
-const TB_PL_X_MM = 24;
+const TB_PL_X_MM = 40;
+/** ランプ用端子台の段のY座標[mm]。 */
+const TB_PL_Y_MM = 168;
 /** 押ボタン用端子台（12P）の左端端子のX座標[mm]。 */
-const TB_PB_X_MM = 150;
-/** 端子台の段のY座標[mm]。 */
-const TB_Y_MM = 176;
+const TB_PB_X_MM = 186;
+/** 押ボタン用端子台の段のY座標[mm]（写真では PL 用より少し手前にある）。 */
+const TB_PB_Y_MM = 184;
 /** PL／PB本体の段のY座標[mm]。 */
-const BODY_Y_MM = 244;
+const BODY_Y_MM = 225;
+/** PL本体の取付ピッチ[mm]。 */
+const LAMP_PITCH_MM = 24;
+/** PB本体の取付ピッチ[mm]。 */
+const PB_PITCH_MM = 21;
 /** P/N供給端子の左端X座標[mm]。 */
-const SUPPLY_X_MM = 120;
+const SUPPLY_X_MM = 20;
 /** P（+24V）端子のY座標[mm]。 */
-const P_Y_MM = 30;
+const P_Y_MM = 14;
 /** N（0V）端子のY座標[mm]。 */
-const N_Y_MM = 52;
+const N_Y_MM = 30;
 
-/** PL本体4個（白・黄・緑・赤）。§2.2 */
-const LAMP_DEFS: readonly LampDefinition[] = [
-  { id: partId('PL1'), color: '白', pos: vec3(30, BODY_Y_MM, 0) },
-  { id: partId('PL2'), color: '黄', pos: vec3(68, BODY_Y_MM, 0) },
-  { id: partId('PL3'), color: '緑', pos: vec3(106, BODY_Y_MM, 0) },
-  { id: partId('PL4'), color: '赤', pos: vec3(144, BODY_Y_MM, 0) },
-];
+/** PL本体4個（白・黄・緑・赤）。写真の銘板は `PL1`〜`PL4`。 */
+const LAMP_DEFS: readonly LampDefinition[] = (['白', '黄', '緑', '赤'] as const).map(
+  (color, index) => {
+    const x = 49 + index * LAMP_PITCH_MM;
+    return {
+      id: partId(`PL${index + 1}`),
+      color,
+      panelLabel: `PL${index + 1}`,
+      pos: vec3(x, BODY_Y_MM, 0),
+      panelHole: vec3(x, BODY_Y_MM - PANEL_HOLE_OFFSET_MM, 0),
+    };
+  },
+);
 
-/** PB本体4個（黒・黄・緑・赤）。§2.2 */
-const PUSH_BUTTON_DEFS: readonly PushButtonDefinition[] = [
-  { id: partId('PB1'), color: '黒', pos: vec3(186, BODY_Y_MM, 0) },
-  { id: partId('PB2'), color: '黄', pos: vec3(224, BODY_Y_MM, 0) },
-  { id: partId('PB3'), color: '緑', pos: vec3(262, BODY_Y_MM, 0) },
-  { id: partId('PB4'), color: '赤', pos: vec3(300, BODY_Y_MM, 0) },
-];
+/** PB本体4個（黒・黄・緑・赤）。写真の銘板は `PBS1`〜`PBS4`、部品IDは §6.4 の `PB1`〜`PB4`。 */
+const PUSH_BUTTON_DEFS: readonly PushButtonDefinition[] = (['黒', '黄', '緑', '赤'] as const).map(
+  (color, index) => {
+    const x = 212 + index * PB_PITCH_MM;
+    return {
+      id: partId(`PB${index + 1}`),
+      color,
+      panelLabel: `PBS${index + 1}`,
+      pos: vec3(x, BODY_Y_MM, 0),
+      panelHole: vec3(x, BODY_Y_MM - PANEL_HOLE_OFFSET_MM, 0),
+    };
+  },
+);
 
 function buildTerminals(): BoardTerminal[] {
   const out: BoardTerminal[] = [];
 
   // DC24V電源の内部端子（測定のみ。訓練者は配線しない）
-  out.push(terminal(terminalId('PS', '+'), 'PS +24V', '+', vec3(106, P_Y_MM, 6), false));
-  out.push(terminal(terminalId('PS', '-'), 'PS 0V', '-', vec3(106, N_Y_MM, 6), false));
+  out.push(terminal(terminalId('PS', '+'), 'PS +24V', '+', vec3(12, P_Y_MM, 6), false));
+  out.push(terminal(terminalId('PS', '-'), 'PS 0V', '-', vec3(12, N_Y_MM, 6), false));
 
-  // P/N供給端子（内部で同電位。§6.1）
+  // P/N供給端子（DC24V供給端子台。内部で同電位。§6.1）
   for (let i = 1; i <= SUPPLY_TERMINAL_COUNT; i += 1) {
     const x = SUPPLY_X_MM + (i - 1) * BLOCK_PITCH_MM;
     out.push(
       terminal(
         terminalId('P', String(i)),
-        `P.${i} (+24V)`,
+        `P${i}`,
         '+',
         vec3(x, P_Y_MM, BLOCK_TERMINAL_Z_MM),
         true,
+        'front',
       ),
     );
   }
@@ -1039,38 +1474,36 @@ function buildTerminals(): BoardTerminal[] {
     out.push(
       terminal(
         terminalId('N', String(i)),
-        `N.${i} (0V)`,
+        `N${i}`,
         '-',
         vec3(x, N_Y_MM, BLOCK_TERMINAL_Z_MM),
         true,
+        'front',
       ),
     );
   }
 
-  // ブレーカ・電源スイッチ（AC一次側。開閉器としてのみ扱い、配線も測定対象にもしない。§5.3.5）
-  out.push(terminal(terminalId('CB', '1'), 'CB 1次', 'ac', vec3(216, P_Y_MM, 6), false));
-  out.push(terminal(terminalId('CB', '2'), 'CB 2次', 'ac', vec3(216, N_Y_MM, 6), false));
-  out.push(terminal(terminalId('SW', '1'), 'SW 1', 'ac', vec3(262, P_Y_MM, 6), false));
-  out.push(terminal(terminalId('SW', '2'), 'SW 2', 'ac', vec3(262, N_Y_MM, 6), false));
+  // ブレーカ（写真右上の2極MCB）・電源スイッチ。AC一次側なので配線も測定もしない。§5.3.5
+  out.push(terminal(terminalId('CB', '1'), 'CB 1', 'ac', vec3(286, P_Y_MM, 6), false));
+  out.push(terminal(terminalId('CB', '2'), 'CB 2', 'ac', vec3(286, N_Y_MM, 6), false));
+  out.push(terminal(terminalId('SW', '1'), 'SW 1', 'ac', vec3(310, P_Y_MM, 6), false));
+  out.push(terminal(terminalId('SW', '2'), 'SW 2', 'ac', vec3(310, N_Y_MM, 6), false));
 
-  // 14ピンソケット×5（4段配置。§6.2）
+  // 14ピンソケット×8。ネジ端子は本体の奥端（段1・段2）と手前端（段3・段4）に2列ずつ。§6.2
   for (const socket of SOCKET_ORIGINS) {
     SOCKET_PIN_GRID.forEach((row, rowIndex) => {
       row.forEach((pin, colIndex) => {
         if (pin === undefined) return;
-        const pos = vec3(
-          socket.origin.x + colIndex * SOCKET_COL_PITCH_MM,
-          socket.origin.y + rowIndex * SOCKET_ROW_PITCH_MM,
-          socket.origin.z,
-        );
+        const { dx, dy } = socketPinOffset(rowIndex, colIndex);
         const role = pinRole(pin);
         out.push(
           terminal(
             socketPinTerminal(socket.id, pin),
-            `${socket.id} ${circledNumber(pin)} ${role}`,
+            `${circledNumber(pin)} ${roleLabel(role)}`,
             role,
-            pos,
+            vec3(socket.origin.x + dx, socket.origin.y + dy, socket.origin.z),
             true,
+            socketRowExit(rowIndex),
           ),
         );
       });
@@ -1088,10 +1521,11 @@ function buildTerminals(): BoardTerminal[] {
       out.push(
         terminal(
           terminalId('TB_PL', `${n}${sign}`),
-          `TB_PL ${n}${sign}`,
+          `PL${n}${sign === '-' ? '−' : '+'}`,
           sign,
-          vec3(x, TB_Y_MM, BLOCK_TERMINAL_Z_MM),
+          vec3(x, TB_PL_Y_MM, BLOCK_TERMINAL_Z_MM),
           true,
+          'rear',
         ),
       );
     }
@@ -1109,66 +1543,46 @@ function buildTerminals(): BoardTerminal[] {
       out.push(
         terminal(
           terminalId('TB_PB', `${n}${sign}`),
-          `TB_PB ${n}${sign}`,
+          `PB${n} ${sign}`,
           sign,
-          vec3(x, TB_Y_MM, BLOCK_TERMINAL_Z_MM),
+          vec3(x, TB_PB_Y_MM, BLOCK_TERMINAL_Z_MM),
           true,
+          'rear',
         ),
       );
     }
   }
 
-  // PL本体（端子は盤の裏。測定と3D表示のためだけに存在する。§6.4）
+  // PL本体（端子は機器の根元・盤面のすぐ裏。測定と3D表示のためだけに存在する。§6.4）
   LAMP_DEFS.forEach((lamp) => {
-    out.push(
-      terminal(
-        terminalId(lamp.id, '+'),
-        `${lamp.id}(${lamp.color}) +`,
-        '+',
-        vec3(lamp.pos.x - 6, lamp.pos.y, BODY_TERMINAL_Z_MM),
-        false,
-      ),
-    );
-    out.push(
-      terminal(
-        terminalId(lamp.id, '-'),
-        `${lamp.id}(${lamp.color}) -`,
-        '-',
-        vec3(lamp.pos.x + 6, lamp.pos.y, BODY_TERMINAL_Z_MM),
-        false,
-      ),
-    );
+    (['+', '-'] as const).forEach((sign, index) => {
+      out.push(
+        terminal(
+          terminalId(lamp.id, sign),
+          `${lamp.panelLabel} ${sign === '-' ? '−' : '+'}`,
+          sign,
+          vec3(lamp.panelHole.x + (index - 0.5) * HARNESS_PITCH_MM, lamp.pos.y, BODY_TERMINAL_Z_MM),
+          false,
+          'rear',
+        ),
+      );
+    });
   });
 
-  // PB本体（端子は盤の裏。§6.4）
+  // PB本体（端子は機器の根元・盤面のすぐ裏。§6.4）
   PUSH_BUTTON_DEFS.forEach((pb) => {
-    out.push(
-      terminal(
-        terminalId(pb.id, 'c'),
-        `${pb.id}(${pb.color}) c`,
-        'c',
-        vec3(pb.pos.x - 8, pb.pos.y, BODY_TERMINAL_Z_MM),
-        false,
-      ),
-    );
-    out.push(
-      terminal(
-        terminalId(pb.id, 'a'),
-        `${pb.id}(${pb.color}) a`,
-        'a',
-        vec3(pb.pos.x + 8, pb.pos.y - 6, BODY_TERMINAL_Z_MM),
-        false,
-      ),
-    );
-    out.push(
-      terminal(
-        terminalId(pb.id, 'b'),
-        `${pb.id}(${pb.color}) b`,
-        'b',
-        vec3(pb.pos.x + 8, pb.pos.y + 6, BODY_TERMINAL_Z_MM),
-        false,
-      ),
-    );
+    (['c', 'a', 'b'] as const).forEach((sign, index) => {
+      out.push(
+        terminal(
+          terminalId(pb.id, sign),
+          `${pb.panelLabel} ${sign}`,
+          sign,
+          vec3(pb.panelHole.x + (index - 1) * HARNESS_PITCH_MM, pb.pos.y, BODY_TERMINAL_Z_MM),
+          false,
+          'rear',
+        ),
+      );
+    });
   });
 
   // BZ（任意部品。課題の extraParts で追加したときだけ使える。§5.3.4）
@@ -1177,18 +1591,20 @@ function buildTerminals(): BoardTerminal[] {
       terminalId('BZ', '+'),
       'BZ +',
       '+',
-      vec3(284, TB_Y_MM, BLOCK_TERMINAL_Z_MM),
+      vec3(120, TB_PL_Y_MM, BLOCK_TERMINAL_Z_MM),
       true,
+      'either',
       true,
     ),
   );
   out.push(
     terminal(
       terminalId('BZ', '-'),
-      'BZ -',
+      'BZ −',
       '-',
-      vec3(296, TB_Y_MM, BLOCK_TERMINAL_Z_MM),
+      vec3(130, TB_PL_Y_MM, BLOCK_TERMINAL_Z_MM),
       true,
+      'either',
       true,
     ),
   );
@@ -1196,124 +1612,178 @@ function buildTerminals(): BoardTerminal[] {
   return out;
 }
 
-/** 配線ダクト。3本の横ダクトを左右の縦ダクトでつないだ連結グラフ。§6.5 */
-const DUCTS: readonly DuctSegment[] = [
-  {
-    id: 'duct-top',
-    a: vec3(14, 74),
-    b: vec3(316, 74),
-    widthMm: DUCT_WIDTH_MM,
-    heightMm: DUCT_HEIGHT_MM,
-  },
-  {
-    id: 'duct-mid',
-    a: vec3(14, 150),
-    b: vec3(316, 150),
-    widthMm: DUCT_WIDTH_MM,
-    heightMm: DUCT_HEIGHT_MM,
-  },
-  {
-    id: 'duct-bottom',
-    a: vec3(14, 210),
-    b: vec3(316, 210),
-    widthMm: DUCT_WIDTH_MM,
-    heightMm: DUCT_HEIGHT_MM,
-  },
-  {
-    id: 'duct-left',
-    a: vec3(14, 74),
-    b: vec3(14, 210),
-    widthMm: DUCT_WIDTH_MM,
-    heightMm: DUCT_HEIGHT_MM,
-  },
-  {
-    id: 'duct-right',
-    a: vec3(316, 74),
-    b: vec3(316, 210),
-    widthMm: DUCT_WIDTH_MM,
-    heightMm: DUCT_HEIGHT_MM,
-  },
+/**
+ * 配線帯（§6.6）。写真の盤にはダクトが無く電線は盤面を直接走るので、
+ * 機器の列と列の**あいだ**に見えないガイドを引き、電線はここを直角に走る。
+ * 水平帯は「P/N列とソケット列の間」「ソケット列と端子台列の間」「端子台列とPL/PB列の間」、
+ * 垂直帯は「左右の余白」と「左右ソケットクラスタの間」。
+ */
+const WIRING_CHANNELS: readonly WiringChannel[] = [
+  { id: 'ch-top', axis: 'x', at: 42, from: 10, to: 322, zMm: WIRE_RUN_Z_MM },
+  { id: 'ch-mid', axis: 'x', at: 142, from: 10, to: 322, zMm: WIRE_RUN_Z_MM },
+  { id: 'ch-low', axis: 'x', at: 198, from: 10, to: 322, zMm: WIRE_RUN_Z_MM },
+  { id: 'ch-left', axis: 'y', at: 10, from: 42, to: 198, zMm: WIRE_RUN_Z_MM },
+  { id: 'ch-gap', axis: 'y', at: 159, from: 42, to: 198, zMm: WIRE_RUN_Z_MM },
+  { id: 'ch-right', axis: 'y', at: 322, from: 42, to: 198, zMm: WIRE_RUN_Z_MM },
 ];
 
 /**
- * チェック用ソケットの黄色固定配線（§6.3）。
+ * レーンを伸ばす向き（`+1` は x/y の増える側）。占有領域のない側へ伸ばす。§6.6
+ * 帯ごとに固定なので、レーン割当は決定論になる。
+ */
+export const CHANNEL_LANE_DIRECTION: Readonly<Record<string, 1 | -1>> = {
+  'ch-top': 1,
+  'ch-mid': 1,
+  'ch-low': 1,
+  'ch-left': 1,
+  'ch-gap': 1,
+  'ch-right': -1,
+};
+
+/** 部品の占有領域。配線帯はこれらと重ならない位置に置いてある。§6.6 */
+function buildFootprints(): Footprint[] {
+  const out: Footprint[] = [];
+  out.push({ id: 'supply', kind: 'supply', x: 14, y: 6, w: 57, h: 30 });
+  out.push({ id: 'CB', kind: 'breaker', x: 276, y: 6, w: 26, h: 30 });
+  out.push({ id: 'SW', kind: 'switch', x: 302, y: 6, w: 20, h: 30 });
+  for (const socket of SOCKET_ORIGINS) {
+    out.push({
+      id: socket.id,
+      kind: 'socket',
+      x: socket.origin.x,
+      y: socket.origin.y,
+      w: SOCKET_BODY_WIDTH_MM,
+      h: SOCKET_BODY_LENGTH_MM,
+    });
+  }
+  out.push({
+    id: 'TB_PL',
+    kind: 'block',
+    x: TB_PL_X_MM - 5,
+    y: TB_PL_Y_MM - 10,
+    w: 7 * BLOCK_PITCH_MM + 10,
+    h: 20,
+  });
+  out.push({
+    id: 'TB_PB',
+    kind: 'block',
+    x: TB_PB_X_MM - 5,
+    y: TB_PB_Y_MM - 8,
+    w: 11 * BLOCK_PITCH_MM + 10,
+    h: 16,
+  });
+  out.push({ id: 'BZ', kind: 'block', x: 114, y: TB_PL_Y_MM - 10, w: 22, h: 20 });
+  for (const lamp of LAMP_DEFS) {
+    out.push({ id: lamp.id, kind: 'lamp', x: lamp.pos.x - 10, y: lamp.pos.y - 10, w: 20, h: 20 });
+  }
+  for (const pb of PUSH_BUTTON_DEFS) {
+    out.push({ id: pb.id, kind: 'button', x: pb.pos.x - 9, y: pb.pos.y - 9, w: 18, h: 18 });
+  }
+  return out;
+}
+
+/**
+ * チェック用ソケットの既設固定配線（§6.3）。
  * `P.6 → TB_PB.4c` / `TB_PB.4a → CHK.14` / `CHK.13 → N.6` の3本。
  * PB4本体ではなく押ボタン用端子台側に接続する（盤上で配線できる端子は端子台側のため）。
+ * チェック用ソケットは既定の役割割当（roles.ts）で `S7` に割り当てられる。
  */
+const CHECK_SOCKET: SocketId = 'S7';
+
 const FIXED_WIRES: readonly FixedWire[] = [
   {
     id: 'fw-chk-1',
     from: { kind: 'terminal', id: terminalId('P', '6') },
     to: { kind: 'terminal', id: terminalId('TB_PB', '4c') },
-    color: '黄',
+    color: '青',
   },
   {
     id: 'fw-chk-2',
     from: { kind: 'terminal', id: terminalId('TB_PB', '4a') },
-    to: { kind: 'socket', socket: 'S5', pin: 14 },
-    color: '黄',
+    to: { kind: 'socket', socket: CHECK_SOCKET, pin: 14 },
+    color: '青',
   },
   {
     id: 'fw-chk-3',
-    from: { kind: 'socket', socket: 'S5', pin: 13 },
+    from: { kind: 'socket', socket: CHECK_SOCKET, pin: 13 },
     to: { kind: 'terminal', id: terminalId('N', '6') },
-    color: '黄',
+    color: '青',
   },
 ];
 
 function buildFixedLinks(): FixedLink[] {
   const out: FixedLink[] = [];
   // DC24V電源 → P/N供給端子（P.1〜P.6 / N.1〜N.6 は内部で同電位。§6.1）
-  out.push({ id: 'lk-ps-p', from: terminalId('PS', '+'), to: terminalId('P', '1') });
+  out.push({ id: 'lk-ps-p', from: terminalId('PS', '+'), to: terminalId('P', '1'), color: '青' });
   for (let i = 1; i < SUPPLY_TERMINAL_COUNT; i += 1) {
     out.push({
       id: `lk-p-${i}`,
       from: terminalId('P', String(i)),
       to: terminalId('P', String(i + 1)),
+      color: '青',
     });
   }
-  out.push({ id: 'lk-ps-n', from: terminalId('PS', '-'), to: terminalId('N', '1') });
+  out.push({ id: 'lk-ps-n', from: terminalId('PS', '-'), to: terminalId('N', '1'), color: '青' });
   for (let i = 1; i < SUPPLY_TERMINAL_COUNT; i += 1) {
     out.push({
       id: `lk-n-${i}`,
       from: terminalId('N', String(i)),
       to: terminalId('N', String(i + 1)),
+      color: '青',
     });
   }
-  // PB本体 ↔ 押ボタン用端子台（12本）。§6.4
+  // PB本体 ↔ 押ボタン用端子台（12本の青線ハーネス）。§6.4
   PUSH_BUTTON_DEFS.forEach((pb, index) => {
     for (const sign of ['c', 'a', 'b'] as const) {
       out.push({
         id: `lk-pb-${index + 1}${sign}`,
         from: terminalId(pb.id, sign),
         to: terminalId('TB_PB', `${index + 1}${sign}`),
+        color: '青',
       });
     }
   });
-  // PL本体 ↔ ランプ用端子台（8本）。§6.4
+  // PL本体 ↔ ランプ用端子台（8本の青線ハーネス）。§6.4
   LAMP_DEFS.forEach((lamp, index) => {
     for (const sign of ['+', '-'] as const) {
       out.push({
         id: `lk-pl-${index + 1}${sign}`,
         from: terminalId(lamp.id, sign),
         to: terminalId('TB_PL', `${index + 1}${sign}`),
+        color: '青',
       });
     }
   });
   return out;
 }
 
-/** JIPM標準盤。 */
+/** 盤面の傾斜（本アプリ既定・写真からの推定）。 */
+const CONSOLE_SHAPE: ConsoleShape = {
+  slopeDeg: 13,
+  frontHeightMm: BOARD_DEPTH_MM,
+  rearHeightMm:
+    Math.round((BOARD_DEPTH_MM + BOARD_HEIGHT_MM * Math.sin((13 * Math.PI) / 180)) * 10) / 10,
+};
+
+/** 標準盤（OMRON K96-CS3 相当）。 */
 export const JIPM_BOARD: BoardDefinition = {
   id: 'board-jipm-std',
-  displayName: 'JIPM標準 試験用盤',
+  displayName: '電気系保全作業練習器（K96-CS3 相当）',
   sizeMm: { width: BOARD_WIDTH_MM, height: BOARD_HEIGHT_MM, depth: BOARD_DEPTH_MM },
-  sockets: SOCKET_ORIGINS.map((s) => ({ id: s.id, kind: 'socket-14pin', origin: s.origin })),
+  console: CONSOLE_SHAPE,
+  sockets: SOCKET_ORIGINS.map((s) => ({
+    id: s.id,
+    kind: 'socket-14pin',
+    cluster: s.cluster,
+    origin: s.origin,
+    bodyMm: { width: SOCKET_BODY_WIDTH_MM, length: SOCKET_BODY_LENGTH_MM },
+  })),
   pushButtons: PUSH_BUTTON_DEFS,
   lamps: LAMP_DEFS,
   supplyTerminalCount: SUPPLY_TERMINAL_COUNT,
   terminals: buildTerminals(),
-  ducts: DUCTS,
+  footprints: buildFootprints(),
+  wiringChannels: WIRING_CHANNELS,
   fixedWires: FIXED_WIRES,
   fixedLinks: buildFixedLinks(),
 };
@@ -1359,34 +1829,51 @@ export {
   BoardError,
   BODY_TERMINAL_Z_MM,
   boardTerminalPos,
+  CHANNEL_LANE_DIRECTION,
   circledNumber,
-  DUCT_HEIGHT_MM,
-  DUCT_WIDTH_MM,
   findBoardTerminal,
+  HARNESS_APPROACH_MM,
+  HARNESS_PITCH_MM,
   JIPM_BOARD,
   loadBoard,
+  PANEL_HOLE_OFFSET_MM,
   pinRole,
   resolveEndpoint,
+  roleLabel,
+  SOCKET_BODY_LENGTH_MM,
+  SOCKET_BODY_WIDTH_MM,
   SOCKET_COL_PITCH_MM,
   SOCKET_IDS,
   SOCKET_PIN_GRID,
-  SOCKET_ROW_PITCH_MM,
+  SOCKET_PIN_HOLE_COL_PITCH_MM,
+  SOCKET_PIN_HOLE_ROW_PITCH_MM,
+  SOCKET_PITCH_MM,
+  SOCKET_SLOT_INSET_MM,
   SOCKET_TERMINAL_Z_MM,
+  SOCKET_TIER_INSET_MM,
+  SOCKET_TIER_ROW_PITCH_MM,
+  socketBodyRect,
+  socketPinHoleOffsets,
+  socketPinOffset,
   socketPinTerminal,
+  socketRowExit,
   SUPPLY_TERMINAL_COUNT,
   TERMINAL_PICK_RADIUS_MM,
+  WIRE_RUN_Z_MM,
   type BoardDefinition,
   type BoardEndpoint,
   type BoardTerminal,
-  type DuctSegment,
+  type ConsoleShape,
   type FixedLink,
   type FixedWire,
+  type Footprint,
   type LampDefinition,
   type PushButtonColor,
   type PushButtonDefinition,
   type SocketDefinition,
   type SocketId,
   type TerminalRole,
+  type WiringChannel,
 } from './board-jipm.js';
 ```
 
@@ -1400,7 +1887,7 @@ pnpm --filter @ojt/board-model test -- board.test.ts
 
 ```
  Test Files  1 passed (1)
-      Tests  11 passed (11)
+      Tests  20 passed (20)
 ```
 
 - [ ] コミットする。
@@ -1408,7 +1895,7 @@ pnpm --filter @ojt/board-model test -- board.test.ts
 ```powershell
 git add packages/board-model
 git commit -m @'
-feat(board-model): add jipm standard board definition
+feat(board-model): add board definition matching the K96-CS3 photo
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
 Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
@@ -1424,7 +1911,19 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 - Test: `packages/board-model/test/roles.test.ts`
 - Modify: `packages/board-model/src/index.ts`
 
-盤は物理ソケット `S1`〜`S5` を持ち、課題がそれぞれに役割（`CR1`〜`CR4` / `T1` / `T2` / `CHK`）を割り当てる（§6.1）。**役割名がそのまま circuit-sim の部品IDになる**ので、端子IDは `CR1.13` のようになる（§6.4）。この写像を担うのがこのファイルで、盤の幾何（`S1.13`）と回路の論理（`CR1.13`）の橋渡しをする。
+盤は物理ソケット `S1`〜`S8` を持ち、課題がそれぞれに役割（`CR1`〜`CR4` / `T1` / `T2` / `CHK`）を
+割り当てる（§6.1）。**役割名がそのまま circuit-sim の部品IDになる**ので、端子IDは `CR1.13` のように
+なる（§6.4）。この写像を担うのがこのファイルで、盤の幾何（`S1.13`）と回路の論理（`CR1.13`）の
+橋渡しをする。
+
+**役割が7つ・ソケットが8個であること**への対応:
+
+| 論点 | 決定 | 理由 |
+|---|---|---|
+| 「役割なし」の表し方 | `SocketRoles` を `Partial` にして、予備ソケットはキーごと**欠落**させる | 役割名はそのまま部品IDとして端子IDに埋め込まれる（§6.4）。`'NONE'` のような番兵値を入れると `NONE.13` という意味のない端子IDが生まれ、割当・変換・検証のすべてで特別扱いが要る |
+| 既定の割当 | `DEFAULT_SOCKET_ROLES` = S1〜S4 に `CR1`〜`CR4`、S5 に `T1`、S6 に `T2`、S7 に `CHK`、S8 は予備 | ソケットが8個あるので §6.1 の7役割をすべて同時に載せられる。MY4N と H3Y-4 はピン互換（調査資料 §3.3）なので、どのソケットにどちらを挿しても電気的には成立する |
+| §6.1 の課題1形式・課題2形式 | `TASK1_SOCKET_ROLES` / `TASK2_SOCKET_ROLES` として残す。割り当てないソケットは予備になる | 検定の盤（ソケット5個）と同じ制約で練習したい課題のために残す |
+| 予備ソケット | 端子は存在し配線もできる。部品を挿すと**物理ソケットIDが部品ID**になる（`S8.14` など） | 「余りは役割なしの予備として定義し、端子だけ存在し配線可」という要件をそのまま満たす |
 
 - [ ] 失敗するテストを書く。`packages/board-model/test/roles.test.ts`:
 
@@ -1432,12 +1931,14 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 import { describe, expect, it } from 'vitest';
 import type { TerminalId } from '@ojt/circuit-sim';
 import {
+  DEFAULT_SOCKET_ROLES,
   hasRole,
   isSocketId,
   isSocketRole,
   roleOf,
   RoleError,
   socketOf,
+  socketPartId,
   TASK1_SOCKET_ROLES,
   TASK2_SOCKET_ROLES,
   terminalIdFor,
@@ -1460,27 +1961,44 @@ describe('roles: 役割割当と端子ID', () => {
     expect(() => terminalIdFor('CR1', 15)).toThrow(RoleError);
   });
 
-  it('課題1形式・課題2形式の割当は妥当（§6.1）', () => {
+  it('既定の割当は7役割すべてを載せ、S8 を予備にする（ソケットは8個）', () => {
+    expect(DEFAULT_SOCKET_ROLES).toEqual({
+      S1: 'CR1',
+      S2: 'CR2',
+      S3: 'CR3',
+      S4: 'CR4',
+      S5: 'T1',
+      S6: 'T2',
+      S7: 'CHK',
+    });
+    expect(validateSocketRoles(DEFAULT_SOCKET_ROLES)).toEqual([]);
+    expect(roleOf(DEFAULT_SOCKET_ROLES, 'S8')).toBeUndefined();
+    expect(socketPartId(DEFAULT_SOCKET_ROLES, 'S1')).toBe('CR1');
+    expect(socketPartId(DEFAULT_SOCKET_ROLES, 'S8')).toBe('S8');
+  });
+
+  it('課題1形式・課題2形式の割当は妥当（§6.1）。残りは予備', () => {
     expect(TASK1_SOCKET_ROLES).toEqual({
       S1: 'CR1',
       S2: 'CR2',
       S3: 'CR3',
       S4: 'CR4',
-      S5: 'CHK',
+      S7: 'CHK',
     });
     expect(TASK2_SOCKET_ROLES).toEqual({
       S1: 'CR1',
       S2: 'CR2',
-      S3: 'T1',
-      S4: 'T2',
-      S5: 'CHK',
+      S5: 'T1',
+      S6: 'T2',
+      S7: 'CHK',
     });
     expect(validateSocketRoles(TASK1_SOCKET_ROLES)).toEqual([]);
     expect(validateSocketRoles(TASK2_SOCKET_ROLES)).toEqual([]);
+    expect(roleOf(TASK1_SOCKET_ROLES, 'S5')).toBeUndefined();
   });
 
   it('重複・CHK欠落・不正な役割名を検出する', () => {
-    const duplicated: SocketRoles = { S1: 'CR1', S2: 'CR1', S3: 'T1', S4: 'T2', S5: 'CHK' };
+    const duplicated: SocketRoles = { S1: 'CR1', S2: 'CR1', S5: 'T1', S6: 'T2', S7: 'CHK' };
     expect(validateSocketRoles(duplicated)).toContain('役割が重複しています: CR1');
     const noCheck: SocketRoles = { S1: 'CR1', S2: 'CR2', S3: 'CR3', S4: 'CR4', S5: 'T1' };
     expect(validateSocketRoles(noCheck)).toContain(
@@ -1489,29 +2007,31 @@ describe('roles: 役割割当と端子ID', () => {
     const broken = {
       S1: 'XX',
       S2: 'CR2',
-      S3: 'CR3',
-      S4: 'CR4',
-      S5: 'CHK',
+      S7: 'CHK',
     } as unknown as SocketRoles;
     expect(validateSocketRoles(broken)[0]).toBe('S1 の役割が不正です: XX');
+    const strange = { S1: 'CR1', S7: 'CHK', S9: 'CR2' } as unknown as SocketRoles;
+    expect(validateSocketRoles(strange)).toContain('盤に無いソケットIDです: S9');
   });
 
   it('物理端子IDと役割端子IDを相互変換する', () => {
-    expect(toPhysicalTerminal(TASK2_SOCKET_ROLES, t('T1.9'))).toBe('S3.9');
-    expect(toNetlistTerminal(TASK2_SOCKET_ROLES, t('S3.9'))).toBe('T1.9');
+    expect(toPhysicalTerminal(TASK2_SOCKET_ROLES, t('T1.9'))).toBe('S5.9');
+    expect(toNetlistTerminal(TASK2_SOCKET_ROLES, t('S5.9'))).toBe('T1.9');
     expect(toPhysicalTerminal(TASK1_SOCKET_ROLES, t('TB_PB.1a'))).toBe('TB_PB.1a');
     expect(toNetlistTerminal(TASK1_SOCKET_ROLES, t('P.1'))).toBe('P.1');
-    expect(toPhysicalTerminal(TASK1_SOCKET_ROLES, t('CHK.14'))).toBe('S5.14');
+    expect(toPhysicalTerminal(TASK1_SOCKET_ROLES, t('CHK.14'))).toBe('S7.14');
+    // 予備ソケットの端子は変換されずそのまま残る
+    expect(toNetlistTerminal(DEFAULT_SOCKET_ROLES, t('S8.13'))).toBe('S8.13');
   });
 
   it('割当の照会', () => {
-    expect(socketOf(TASK2_SOCKET_ROLES, 'T2')).toBe('S4');
-    expect(roleOf(TASK1_SOCKET_ROLES, 'S5')).toBe('CHK');
+    expect(socketOf(TASK2_SOCKET_ROLES, 'T2')).toBe('S6');
+    expect(roleOf(TASK1_SOCKET_ROLES, 'S7')).toBe('CHK');
     expect(hasRole(TASK1_SOCKET_ROLES, 'T1')).toBe(false);
     expect(() => socketOf(TASK1_SOCKET_ROLES, 'T1')).toThrow(RoleError);
     expect(isSocketRole('CR4')).toBe(true);
     expect(isSocketRole('CR9')).toBe(false);
-    expect(isSocketId('S5')).toBe(true);
+    expect(isSocketId('S8')).toBe(true);
     expect(isSocketId('S9')).toBe(false);
   });
 });
@@ -1534,33 +2054,53 @@ import { SOCKET_IDS, socketPinTerminal, type SocketId } from './board-jipm.js';
 /**
  * ソケットの役割割当。設計仕様 §6.1。
  * 役割名がそのまま circuit-sim 側の部品IDになり、端子IDは `<役割>.<ピン>`（例: `CR1.13`）となる（§6.4）。
+ *
+ * 実物（写真）はソケットを8個持つが、仕様 §6.1 の役割は7つ（`CR1`〜`CR4` / `T1` / `T2` / `CHK`）しか
+ * 無い。余ったソケットは**役割なしの予備**とし、`SocketRoles` から単に欠落させる。
+ * 予備ソケットは端子だけが存在して配線でき、部品を挿せば物理ソケットID（`S8`）が部品IDになる。
+ * 「役割なし」を `'NONE'` のような番兵値で表さないのは、役割名がそのまま部品IDとして端子IDに
+ * 埋め込まれる規約（§6.4）のもとでは、番兵値が `NONE.13` という意味のない端子IDを生んでしまうため。
  */
 
 /** ソケットに割り当てられる役割。 */
 export type SocketRole = 'CR1' | 'CR2' | 'CR3' | 'CR4' | 'T1' | 'T2' | 'CHK';
 
-/** 物理ソケットID → 役割。 */
-export type SocketRoles = Readonly<Record<SocketId, SocketRole>>;
+/** 物理ソケットID → 役割。欠落しているソケットは役割なしの予備。 */
+export type SocketRoles = Readonly<Partial<Record<SocketId, SocketRole>>>;
 
 /** チェック用ソケットの役割名。§6.3 */
 export const CHECK_SOCKET_ROLE: SocketRole = 'CHK';
 
-/** 課題1形式（CR4個＋チェック用）。§6.1 */
+/**
+ * 既定の役割割当。ソケットが8個あるので §6.1 の7役割をすべて同時に載せられる。
+ * 左クラスタ（S1〜S4）にCR、右クラスタの S5・S6 にタイマ、S7 をチェック用、S8 を予備とする。
+ */
+export const DEFAULT_SOCKET_ROLES: SocketRoles = {
+  S1: 'CR1',
+  S2: 'CR2',
+  S3: 'CR3',
+  S4: 'CR4',
+  S5: 'T1',
+  S6: 'T2',
+  S7: 'CHK',
+};
+
+/** 課題1形式（CR4個＋チェック用）。§6.1。残りのソケットは予備。 */
 export const TASK1_SOCKET_ROLES: SocketRoles = {
   S1: 'CR1',
   S2: 'CR2',
   S3: 'CR3',
   S4: 'CR4',
-  S5: 'CHK',
+  S7: 'CHK',
 };
 
-/** 課題2形式（CR2個＋T2個＋チェック用）。§6.1 */
+/** 課題2形式（CR2個＋T2個＋チェック用）。§6.1。残りのソケットは予備。 */
 export const TASK2_SOCKET_ROLES: SocketRoles = {
   S1: 'CR1',
   S2: 'CR2',
-  S3: 'T1',
-  S4: 'T2',
-  S5: 'CHK',
+  S5: 'T1',
+  S6: 'T2',
+  S7: 'CHK',
 };
 
 /** 役割割当の参照に失敗したときに投げる。 */
@@ -1600,6 +2140,7 @@ export function validateSocketRoles(roles: SocketRoles): string[] {
   const seen = new Set<SocketRole>();
   for (const socket of SOCKET_IDS) {
     const role = roles[socket];
+    if (role === undefined) continue; // 役割なしの予備ソケット
     if (!isSocketRole(role)) {
       errors.push(`${socket} の役割が不正です: ${String(role)}`);
       continue;
@@ -1607,8 +2148,12 @@ export function validateSocketRoles(roles: SocketRoles): string[] {
     if (seen.has(role)) errors.push(`役割が重複しています: ${role}`);
     seen.add(role);
   }
-  if (!seen.has(CHECK_SOCKET_ROLE))
+  for (const key of Object.keys(roles)) {
+    if (!isSocketId(key)) errors.push(`盤に無いソケットIDです: ${key}`);
+  }
+  if (!seen.has(CHECK_SOCKET_ROLE)) {
     errors.push('チェック用ソケット（CHK）が割り当てられていません');
+  }
   return errors;
 }
 
@@ -1619,8 +2164,8 @@ export function socketOf(roles: SocketRoles, role: SocketRole): SocketId {
   return hit;
 }
 
-/** その物理ソケットの役割。 */
-export function roleOf(roles: SocketRoles, socket: SocketId): SocketRole {
+/** その物理ソケットの役割。予備ソケットは undefined。 */
+export function roleOf(roles: SocketRoles, socket: SocketId): SocketRole | undefined {
   return roles[socket];
 }
 
@@ -1630,14 +2175,24 @@ export function hasRole(roles: SocketRoles, role: SocketRole): boolean {
 }
 
 /**
+ * ソケットに装着された部品のネットリスト上の部品ID。
+ * 役割が割り当てられていれば役割名、予備ソケットなら物理ソケットIDをそのまま使う。§6.4
+ */
+export function socketPartId(roles: SocketRoles, socket: SocketId): string {
+  return roles[socket] ?? socket;
+}
+
+/**
  * 物理端子ID（`S1.13`）を circuit-sim の端子ID（`CR1.13`）に変換する。
- * ソケット以外の端子（`TB_PB.1a` / `P.1` など）はそのまま返す。
+ * 予備ソケットとソケット以外の端子（`TB_PB.1a` / `P.1` など）はそのまま返す。
  */
 export function toNetlistTerminal(roles: SocketRoles, physical: TerminalId): TerminalId {
   const parsed = parseTerminalId(physical);
   const part: string = parsed.part;
   if (!isSocketId(part)) return physical;
-  return terminalId(roles[part], parsed.name);
+  const role = roles[part];
+  if (role === undefined) return physical;
+  return terminalId(role, parsed.name);
 }
 
 /**
@@ -1657,12 +2212,14 @@ export function toPhysicalTerminal(roles: SocketRoles, id: TerminalId): Terminal
 ```ts
 export {
   CHECK_SOCKET_ROLE,
+  DEFAULT_SOCKET_ROLES,
   hasRole,
   isSocketId,
   isSocketRole,
   roleOf,
   RoleError,
   socketOf,
+  socketPartId,
   TASK1_SOCKET_ROLES,
   TASK2_SOCKET_ROLES,
   terminalIdFor,
@@ -1684,7 +2241,7 @@ pnpm --filter @ojt/board-model test -- roles.test.ts
 
 ```
  Test Files  1 passed (1)
-      Tests  5 passed (5)
+      Tests  6 passed (6)
 ```
 
 - [ ] コミットする。
@@ -1692,7 +2249,7 @@ pnpm --filter @ojt/board-model test -- roles.test.ts
 ```powershell
 git add packages/board-model
 git commit -m @'
-feat(board-model): add socket role assignment and terminal id mapping
+feat(board-model): add socket role assignment for the 8-socket board
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
 Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
@@ -1708,7 +2265,9 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 - Test: `packages/board-model/test/catalog.test.ts`
 - Modify: `packages/board-model/src/index.ts`
 
-仕様 §6.6 の部品カタログのうち、**訓練者がソケットに装着できる部品だけ**を扱う。盤に固定されている PB／PL／電源は装着対象ではないので、それらの定義は Task 4 の盤定義側にある。タイマのレンジは §5.3.2 / §17.2 #12 の2種（0〜10s 既定・0〜60s）。
+仕様 §6.6 の部品カタログのうち、**訓練者がソケットに装着できる部品だけ**を扱う。盤に固定されている
+PB／PL／電源は装着対象ではないので、それらの定義は Task 4 の盤定義側にある。タイマのレンジは
+§5.3.2 / §17.2 #12 の2種（0〜10s 既定・0〜60s）。
 
 - [ ] 失敗するテストを書く。`packages/board-model/test/catalog.test.ts`:
 
@@ -1965,11 +2524,12 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 - Test: `packages/board-model/test/session.test.ts`
 - Modify: `packages/board-model/src/index.ts`
 
-訓練者の作業状態（§8.2）を1つのプレーンオブジェクト `BoardSession` に集約する。設計上の要点は3つ。
+訓練者の作業状態（§8.2）を1つのプレーンオブジェクト `BoardSession` に集約する。設計上の要点は4つ。
 
 1. **既設の黄色固定配線（§6.3）を最初から `session.wires` に入れる**。こうすると「1端子2本まで」（§6.6）の計算がこの配列だけで完結し、`TB_PB.4c` / `TB_PB.4a` / `P.6` / `N.6` に残り1本しか張れないことが自動的に効く。
-2. **失敗は例外ではなく Result で返す**。UIがそのまま理由を表示でき、`terminal-overload` を §5.6 #5 の危険操作として計上できる。
-3. **PB／PL本体端子には配線させない**（§6.4）。盤定義の `wirable: false` を見て拒否する。
+2. **PB／PL本体と端子台の間の青線ハーネス（写真）は `session.wires` に入れない**。§6.4 がこれを「0Ω相当のリンク」と定めており、電線として数えると端子台の全端子が最初から1本埋まってしまい §6.3 の「`TB_PB.4c` だけが残り1本」という前提が崩れる。3D用の色と経路は盤定義の `fixedLinks[].color` と `routeFixedLinks()` が受け持つ。
+3. **失敗は例外ではなく Result で返す**。UIがそのまま理由を表示でき、`terminal-overload` を §5.6 #5 の危険操作として計上できる。
+4. **PB／PL本体端子には配線させない**（§6.4）。盤定義の `wirable: false` を見て拒否する。
 
 - [ ] 失敗するテストを書く。`packages/board-model/test/session.test.ts`:
 
@@ -2012,10 +2572,10 @@ function added(result: ReturnType<typeof addWire>): Wire {
 }
 
 describe('session: 装着と配線', () => {
-  it('生成時にチェック用の黄色固定配線3本を持つ（§6.3）', () => {
+  it('生成時にチェック用ソケットの既設固定配線3本（青・locked）を持つ（§6.3）', () => {
     const s = session();
     expect(s.wires).toHaveLength(3);
-    expect(s.wires.every((w) => w.locked && w.color === '黄')).toBe(true);
+    expect(s.wires.every((w) => w.locked && w.color === '青')).toBe(true);
     expect(s.wires.map((w) => `${w.from}-${w.to}`)).toEqual([
       'P.6-TB_PB.4c',
       'TB_PB.4a-CHK.14',
@@ -2026,7 +2586,7 @@ describe('session: 装着と配線', () => {
   });
 
   it('役割割当が不正ならセッションを作れない', () => {
-    const broken: SocketRoles = { S1: 'CR1', S2: 'CR1', S3: 'CR3', S4: 'CR4', S5: 'CHK' };
+    const broken: SocketRoles = { S1: 'CR1', S2: 'CR1', S7: 'CHK' };
     expect(() => createSession(board, { roles: broken })).toThrow(SessionError);
   });
 
@@ -2055,7 +2615,7 @@ describe('session: 装着と配線', () => {
     expect(result.message).toBe('チェック用回路の黄色配線は変更できません');
   });
 
-  it('1端子2本まで。黄色配線が1本ある端子には1本しか足せない（§6.3 / §6.6）', () => {
+  it('1端子2本まで。既設配線が1本ある端子には1本しか足せない（§6.3 / §6.6）', () => {
     const s = session();
     expect(wireCountAtTerminal(s, t('TB_PB.4c'))).toBe(1);
     expect(addWire(s, board, t('TB_PB.4c'), t('P.1')).ok).toBe(true);
@@ -2075,7 +2635,7 @@ describe('session: 装着と配線', () => {
 
   it('パレット外の色・同一端子・配線不可端子・未知端子を拒否する（§6.4 / §8.1）', () => {
     const s = session();
-    const color = addWire(s, board, t('P.1'), t('TB_PB.1c'), '黄');
+    const color = addWire(s, board, t('P.1'), t('TB_PB.1c'), '白');
     expect(color.ok).toBe(false);
     if (color.ok) throw new Error('unreachable');
     expect(color.code).toBe('color-not-allowed');
@@ -2121,13 +2681,13 @@ describe('session: 装着と配線', () => {
     if (unknown.ok) throw new Error('unreachable');
     expect(unknown.code).toBe('unknown-socket');
 
-    expect(plug(s, 'S3', 'timer-h3y4', { presetMs: 3000 }).ok).toBe(true);
-    expect(plug(s, 'S4', 'timer-h3y4', { presetMs: 500, rangeMaxMs: 60_000 }).ok).toBe(true);
-    const noStock = plug(s, 'S5', 'timer-h3y4');
+    expect(plug(s, 'S5', 'timer-h3y4', { presetMs: 3000 }).ok).toBe(true);
+    expect(plug(s, 'S6', 'timer-h3y4', { presetMs: 500, rangeMaxMs: 60_000 }).ok).toBe(true);
+    const noStock = plug(s, 'S8', 'timer-h3y4');
     if (noStock.ok) throw new Error('unreachable');
     expect(noStock.code).toBe('inventory-exhausted');
 
-    expect(s.mounted.S4).toEqual({ kind: 'timer-h3y4', presetMs: 500, rangeMaxMs: 60_000 });
+    expect(s.mounted.S6).toEqual({ kind: 'timer-h3y4', presetMs: 500, rangeMaxMs: 60_000 });
     const removed = unplug(s, 'S1');
     expect(removed.ok).toBe(true);
     const again = unplug(s, 'S1');
@@ -2135,14 +2695,21 @@ describe('session: 装着と配線', () => {
     expect(again.code).toBe('socket-empty');
   });
 
+  it('役割なしの予備ソケット（S8）にも部品を装着でき、端子に配線できる', () => {
+    const s = session();
+    expect(plug(s, 'S8', 'relay-my4n').ok).toBe(true);
+    expect(s.mounted.S8).toEqual({ kind: 'relay-my4n' });
+    expect(addWire(s, board, t('S8.14'), t('P.1')).ok).toBe(true);
+  });
+
   it('タイマ設定はレンジの分解能に丸める（§5.3.2 / §8.2）', () => {
     const s = createSession(board, { roles: TASK2_SOCKET_ROLES });
-    expect(plug(s, 'S3', 'timer-h3y4').ok).toBe(true);
-    expect(s.mounted.S3).toEqual({ kind: 'timer-h3y4', presetMs: 3000, rangeMaxMs: 10_000 });
-    const updated = setPreset(s, 'S3', 5040);
+    expect(plug(s, 'S5', 'timer-h3y4').ok).toBe(true);
+    expect(s.mounted.S5).toEqual({ kind: 'timer-h3y4', presetMs: 3000, rangeMaxMs: 10_000 });
+    const updated = setPreset(s, 'S5', 5040);
     if (!updated.ok) throw new Error(updated.message);
     expect(updated.value).toEqual({ kind: 'timer-h3y4', presetMs: 5000, rangeMaxMs: 10_000 });
-    const clamped = setPreset(s, 'S3', 99_999);
+    const clamped = setPreset(s, 'S5', 99_999);
     if (!clamped.ok) throw new Error(clamped.message);
     expect(clamped.value.kind === 'timer-h3y4' ? clamped.value.presetMs : 0).toBe(10_000);
 
@@ -2197,11 +2764,11 @@ import {
   type MountableKind,
 } from './catalog.js';
 import {
+  DEFAULT_SOCKET_ROLES,
   toNetlistTerminal,
   toPhysicalTerminal,
   validateSocketRoles,
   type SocketRoles,
-  TASK1_SOCKET_ROLES,
 } from './roles.js';
 
 /**
@@ -2285,7 +2852,7 @@ export class SessionError extends Error {
  * 端子の本数上限（§6.6）の計算がこの配列だけで完結する。
  */
 export function createSession(board: BoardDefinition, options: SessionOptions = {}): BoardSession {
-  const roles = options.roles ?? TASK1_SOCKET_ROLES;
+  const roles = options.roles ?? DEFAULT_SOCKET_ROLES;
   const roleErrors = validateSocketRoles(roles);
   if (roleErrors.length > 0) throw new SessionError(roleErrors.join(' / '));
   const wires: Wire[] = board.fixedWires.map((fw) =>
@@ -2504,7 +3071,7 @@ pnpm --filter @ojt/board-model test -- session.test.ts
 
 ```
  Test Files  1 passed (1)
-      Tests  9 passed (9)
+      Tests  10 passed (10)
 ```
 
 - [ ] コミットする。
@@ -2528,11 +3095,13 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 - Test: `packages/board-model/test/to-netlist.test.ts`
 - Modify: `packages/board-model/src/index.ts`
 
-仕様 §4.4 のデータフロー「盤の初期状態 → ネットリスト」を実装する。ここが `board-model` が `circuit-sim` に依存する理由（§4.2）である。
+仕様 §4.4 のデータフロー「盤の初期状態 → ネットリスト」を実装する。ここが `board-model` が
+`circuit-sim` に依存する理由（§4.2）である。
 
 設計の要点:
 
 - 役割付きソケットに装着された部品は `createRelay4c(role)` / `createTimer4c(role, presetMs, rangeMaxMs)` で作る。役割名がそのまま部品IDなので端子IDは自動的に `CR1.13` になる。
+- **役割なしの予備ソケット**は物理ソケットID（`S8`）を部品IDにする。端子は `S8.1`〜`S8.14` として存在し、配線も測定もできる。
 - **空のソケットは「14端子だけを持ち要素を持たない部品」**として作る。端子は存在するので電線は張れるが、接点もコイルも無いので回路は開放になる（実機で部品を挿し忘れた状態と同じ）。
 - 端子台（`TB_PB` / `TB_PL`）と供給端子（`P` / `N`）も同じ「端子だけの部品」で表す。これらの端子を circuit-sim の `Part.terminals` に載せておくと、未接続の端子でもテスター測定（`measureVoltage`）の対象にできる。
 - ブレーカ（`CB`）と電源スイッチ（`SW`）は**ネットリストに載せない**。AC一次側であり電気的には解かないため（§5.3.5）。開閉は `Simulation.setBreaker()` / `setSwitch()` が担う。
@@ -2604,9 +3173,12 @@ describe('to-netlist: 盤セッション → ネットリスト', () => {
       'PL4',
       'CR1',
       'CR2',
+      'S3',
+      'S4',
       'T1',
       'T2',
       'CHK',
+      'S8',
     ]);
     expect(netlist.links).toHaveLength(32);
     expect(netlist.links.every((l) => l.locked)).toBe(true);
@@ -2626,7 +3198,7 @@ describe('to-netlist: 盤セッション → ネットリスト', () => {
 
     const plugged = plug(session, 'S1', 'relay-my4n');
     expect(plugged.ok).toBe(true);
-    const timer = plug(session, 'S3', 'timer-h3y4', { presetMs: 2500 });
+    const timer = plug(session, 'S5', 'timer-h3y4', { presetMs: 2500 });
     expect(timer.ok).toBe(true);
     const built = toNetlist(session, board);
     expect(findPart(built, 'CR1')?.kind).toBe('relay-my4n');
@@ -2679,7 +3251,7 @@ describe('to-netlist: 盤セッション → ネットリスト', () => {
 
   it('チェック用ソケットの黄色配線は赤PBで励磁する回路になっている（§6.3 / §9.1）', () => {
     const session = createSession(board);
-    const plugged = plug(session, 'S5', 'relay-my4n');
+    const plugged = plug(session, 'S7', 'relay-my4n');
     expect(plugged.ok).toBe(true);
     const sim = new Simulation(toNetlist(session, board));
     sim.setBreaker(true);
@@ -2726,7 +3298,7 @@ import {
   type Wire,
 } from '@ojt/circuit-sim';
 import { SOCKET_IDS, type BoardDefinition } from './board-jipm.js';
-import { terminalIdFor, type SocketRole } from './roles.js';
+import { socketPartId, type SocketRoles } from './roles.js';
 import type { BoardSession } from './session.js';
 
 /**
@@ -2761,11 +3333,14 @@ export function createTerminalOnlyPart(id: string, terminals: readonly TerminalI
   };
 }
 
-/** 空きソケットを「14端子だけを持つ部品」として作る。 */
-export function createEmptySocketPart(role: SocketRole): Part {
+/**
+ * 空きソケットを「14端子だけを持つ部品」として作る。
+ * `partIdOfSocket` は役割名（`CR1`）か、役割なしの予備ソケットなら物理ソケットID（`S8`）。
+ */
+export function createEmptySocketPart(partIdOfSocket: string): Part {
   const terminals: TerminalId[] = [];
-  for (let pin = 1; pin <= 14; pin += 1) terminals.push(terminalIdFor(role, pin));
-  return createTerminalOnlyPart(role, terminals);
+  for (let pin = 1; pin <= 14; pin += 1) terminals.push(terminalId(partIdOfSocket, String(pin)));
+  return createTerminalOnlyPart(partIdOfSocket, terminals);
 }
 
 function railPart(id: string, count: number): Part {
@@ -2797,7 +3372,8 @@ function lampBlockPart(): Part {
 /**
  * 盤セッションからネットリストを組み立てる。
  *
- * 部品の並び（決定論）: 電源 → P/N供給端子 → 端子台2つ → PB4個 → PL4個 → BZ（任意）→ ソケットS1〜S5。
+ * 部品の並び（決定論）: 電源 → P/N供給端子 → 端子台2つ → PB4個 → PL4個 → BZ（任意）→ ソケットS1〜S8。
+ * ソケットの部品IDは、役割が割り当てられていれば役割名（`CR1`）、予備ソケットなら物理ID（`S8`）。
  * リンクの並び: P/N供給端子どうし → PB本体↔端子台（12本）→ PL本体↔端子台（8本）。
  * 電線: セッションの並び順のまま（先頭に既設の黄色固定配線3本）。
  *
@@ -2814,15 +3390,16 @@ export function toNetlist(session: BoardSession, board: BoardDefinition): Netlis
   for (const pb of board.pushButtons) parts.push(createPushButton(pb.id));
   for (const lamp of board.lamps) parts.push(createLamp(lamp.id, lamp.color));
   if (session.extraParts.includes(partId(BUZZER_ID))) parts.push(createBuzzer(BUZZER_ID));
+  const roles: SocketRoles = session.socketRoles;
   for (const socket of SOCKET_IDS) {
-    const role = session.socketRoles[socket];
+    const id = socketPartId(roles, socket);
     const mounted = session.mounted[socket];
     if (mounted === undefined) {
-      parts.push(createEmptySocketPart(role));
+      parts.push(createEmptySocketPart(id));
     } else if (mounted.kind === 'relay-my4n') {
-      parts.push(createRelay4c(role));
+      parts.push(createRelay4c(id));
     } else {
-      parts.push(createTimer4c(role, mounted.presetMs, mounted.rangeMaxMs));
+      parts.push(createTimer4c(id, mounted.presetMs, mounted.rangeMaxMs));
     }
   }
 
@@ -2879,23 +3456,34 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 
 ---
 
-## Task 9: src/routing.ts — ダクト経由の自動経路
+## Task 9: src/routing.ts — 盤面を直角に走る自動経路
 
 **Files:**
 - Create: `packages/board-model/src/routing.ts`
 - Test: `packages/board-model/test/routing.test.ts`
 - Modify: `packages/board-model/src/index.ts`
 
-仕様 §6.6「経路は自動。端子 → 最寄りダクト入口 → ダクト内 → 目的端子の最寄り出口 → 端子。ダクト内で重なる線は幅方向に 2mmピッチ で並列オフセットして描く（電線の描画直径は 1.6mm）」を実装する。
+仕様 §6.6 は「経路は自動。端子 → 最寄りダクト入口 → ダクト内 → 目的端子の最寄り出口 → 端子。
+ダクト内で重なる線は幅方向に 2mmピッチ で並列オフセットして描く（電線の描画直径は 1.6mm）」と定める。
+**実物の写真には配線ダクトが無く**、電線は盤面の上を**直角に整列して**走っている。そこで「ダクト」を
+盤定義の**配線帯**（`wiringChannels`。見えないガイド）に置き換える。§6.6 の「自動」「2mmピッチ」
+「線径1.6mm」はそのまま守る。
 
-アルゴリズム:
+**最優先の制約: 電線はリレー／タイマなど部品の上を通ってはならない。**
 
-1. 両端子の座標を引き、それぞれ**ダクト全区間のうち最も近い点**（入口・出口）を求める。
-2. ダクト区間を入口・出口で分割して無向グラフを作り、ダイクストラ法で入口→出口の最短経路を求める。到達できない（ダクトが分断されている）場合は入口と出口を直結する。
-3. `existingRoutes` のうち**1区間でも共有する経路の本数**を段数（`lane`）とし、経路上の各点を隣接区間の法線の平均方向へ `lane × 2mm` ずらす。段数はダクト幅で頭打ちにする（幅12mm ÷ 2mm = 6本）。
-4. 端子そのものの点はずらさない。
+| 仕組み | 内容 |
+|---|---|
+| 占有矩形（`footprints`） | ソケット（装着した部品の本体を含む外形）・端子台・ランプ・押ボタン・ブレーカ・スイッチ・供給端子の盤面への投影。Task 4 の盤定義が持つ |
+| 配線帯（`wiringChannels`） | 占有矩形と**重ならない位置にだけ**引く。水平3本（P/N列とソケット列の間、ソケット列と端子台列の間、端子台列とPL/PB列の間）＋ 垂直3本（左余白、左右クラスタの間、右余白） |
+| 引き出し | 端子から盤面に垂直（奥または手前）に出て最寄りの水平帯に入る。ソケットのネジ端子は本体の奥端／手前端に寄っているので向きが決まる（`BoardTerminal.exit`）。端子台・P/N・本体端子は空いている側へ |
+| 帯の中 | 帯どうしの交点を節点にしたグラフをダイクストラ法で辿る。**帯はどれも占有矩形を通らないので、選ばれた経路は必ず部品を跨がない**。直交する帯で届かないときは余白やクラスタ間の帯を回る迂回路になる |
+| レーン | 帯ごとに「占有する区間」を持ち、**区間が重なる電線とだけ**レーンを分ける（区間彩色）。ずらす向きは帯ごとに固定（`CHANNEL_LANE_DIRECTION`）で、部品の無い側へ伸ばす |
+| 角 | 半径6mmのフィレット（2次ベジェを3分割）で丸める。丸める前の直角の折れ点は `WireRoute.corners` に残す |
+| 検証 | 経路を返す前に占有矩形との交差を実際に検査し、跨いでいたら `RoutingError` を投げる（UIが警告を出せる） |
+| 既設ハーネス | 端子台 → PB／PL本体の青線は配線帯を使わず、端子台から手前へまっすぐ降りて機器の**貫通穴**（`panelHole`）に2mmピッチで平行に入り、盤の裏の本体端子へつながる（`routeFixedLinks()`）。機器の中心（レンズ・ボタンの頭）の上は通らない |
 
-`routeWire()` の `from` / `to` は**物理**端子ID（`S1.13` / `TB_PB.1a`）である。役割ベースの端子ID（`CR1.13`）を持つセッションからは `routeSession()` を使う（内部で `toPhysicalTerminal()` を通す）。
+`routeWire()` の `from` / `to` は**物理**端子ID（`S1.13` / `TB_PB.1a`）である。役割ベースの端子ID
+（`CR1.13`）を持つセッションからは `routeSession()` を使う（内部で `toPhysicalTerminal()` を通す）。
 
 - [ ] 失敗するテストを書く。`packages/board-model/test/routing.test.ts`:
 
@@ -2904,13 +3492,24 @@ import { describe, expect, it } from 'vitest';
 import type { TerminalId } from '@ojt/circuit-sim';
 import {
   addWire,
-  BoardError,
   boardTerminalPos,
+  channelsClearOfFootprints,
   createSession,
+  crossesFootprint,
+  crossingFootprint,
+  entryChannelFor,
+  filletCorners,
+  findBoardTerminal,
+  isManhattan,
   JIPM_BOARD,
-  nearestDuctPoint,
+  MAX_WIRE_LANES,
+  pickLane,
+  plug,
+  routeFixedLinks,
   routeSession,
   routeWire,
+  RoutingError,
+  segmentIntersectsRect,
   vec3,
   WIRE_LANE_PITCH_MM,
   type WireRoute,
@@ -2926,92 +3525,285 @@ function route(id: string, from: string, to: string, existing: WireRoute[] = [])
   return routeWire(board, { id, from: t(from), to: t(to) }, existing);
 }
 
-describe('routing: ダクト経由の自動経路（§6.6）', () => {
-  it('端子 → ダクト → 端子 の折れ線を返す', () => {
+/** 自己保持回路ぶんの配線（役割端子ではなく物理端子で書く）。 */
+const SELF_HOLD_WIRING: ReadonlyArray<[string, string]> = [
+  ['P.1', 'TB_PB.2c'],
+  ['TB_PB.2b', 'TB_PB.1c'],
+  ['TB_PB.1a', 'S1.14'],
+  ['S1.13', 'N.1'],
+  ['TB_PB.1c', 'S1.9'],
+  ['S1.5', 'S1.14'],
+  ['P.2', 'S1.10'],
+  ['S1.6', 'TB_PL.1+'],
+  ['TB_PL.1-', 'N.2'],
+];
+
+/** フリッカ回路ぶんの配線（左右のクラスタをまたぐ）。 */
+const FLICKER_WIRING: ReadonlyArray<[string, string]> = [
+  ['P.1', 'TB_PB.1c'],
+  ['TB_PB.1a', 'S1.9'],
+  ['S1.1', 'S5.14'],
+  ['S5.13', 'N.1'],
+  ['TB_PB.1a', 'S2.9'],
+  ['S2.1', 'S5.9'],
+  ['S5.5', 'S1.14'],
+  ['S1.13', 'N.2'],
+  ['S1.10', 'S6.14'],
+  ['S6.13', 'N.3'],
+  ['S6.9', 'S2.14'],
+  ['S2.13', 'N.4'],
+  ['S1.12', 'TB_PL.1+'],
+  ['TB_PL.1-', 'N.5'],
+];
+
+function routeAll(pairs: ReadonlyArray<[string, string]>): WireRoute[] {
+  const routes: WireRoute[] = [];
+  pairs.forEach(([from, to], index) => {
+    routes.push(route(`w-${index}`, from, to, routes));
+  });
+  return routes;
+}
+
+describe('routing: 直角配線（§6.6 / 写真にダクトは無い）', () => {
+  it('配線帯は部品の占有領域と重ならない（レーンの広がりを含む）', () => {
+    expect(channelsClearOfFootprints(board)).toEqual([]);
+  });
+
+  it('端子 → 配線帯 → 端子 の直角経路を返す', () => {
     const r = route('w-1', 'TB_PB.1c', 'S1.9');
-    expect(r.points[0]).toEqual(boardTerminalPos(board, 'TB_PB.1c'));
-    expect(r.points[r.points.length - 1]).toEqual(boardTerminalPos(board, 'S1.9'));
-    expect(r.points.length).toBeGreaterThanOrEqual(4);
-    expect(r.segmentIds.length).toBeGreaterThan(0);
+    expect(r.corners[0]).toEqual(boardTerminalPos(board, 'TB_PB.1c'));
+    expect(r.corners[r.corners.length - 1]).toEqual(boardTerminalPos(board, 'S1.9'));
+    expect(isManhattan(r.corners)).toBe(true);
+    expect(r.channelIds.length).toBeGreaterThan(0);
+    expect(r.lane).toBe(0);
     expect(r.lengthMm).toBeGreaterThan(0);
-    expect(r.wireId).toBe('w-1');
+    expect(crossesFootprint(board, r)).toBe(false);
+  });
+
+  it('ソケットのネジ端子は本体の上端／下端の向きに引き出される', () => {
+    const upper = findBoardTerminal(board, 'S1.1');
+    const lower = findBoardTerminal(board, 'S1.13');
+    if (upper === undefined || lower === undefined) throw new Error('terminal');
+    expect(upper.exit).toBe('rear');
+    expect(lower.exit).toBe('front');
+    expect(entryChannelFor(board, upper)?.id).toBe('ch-top');
+    expect(entryChannelFor(board, lower)?.id).toBe('ch-mid');
   });
 
   it('同じ入力からは必ず同じ経路（決定論）', () => {
-    const a = route('w-1', 'TB_PL.1+', 'S4.14');
-    const b = route('w-1', 'TB_PL.1+', 'S4.14');
-    expect(b).toEqual(a);
+    expect(route('w-1', 'TB_PL.1+', 'S8.14')).toEqual(route('w-1', 'TB_PL.1+', 'S8.14'));
   });
 
-  it('同じダクト区間を通る電線は2mmピッチで並列オフセットする', () => {
-    const first = route('w-1', 'TB_PB.1c', 'TB_PB.4b');
-    expect(first.lane).toBe(0);
-    const second = route('w-2', 'TB_PB.2c', 'TB_PB.3b', [first]);
-    expect(second.lane).toBe(1);
-    const third = route('w-3', 'TB_PB.2a', 'TB_PB.3c', [first, second]);
-    expect(third.lane).toBe(2);
-
-    const firstDuct = first.points[1];
-    const secondDuct = second.points[1];
-    if (firstDuct === undefined || secondDuct === undefined) throw new Error('duct point');
-    expect(Math.abs(secondDuct.y - firstDuct.y)).toBeCloseTo(WIRE_LANE_PITCH_MM, 6);
+  it('同じ帯を通る電線は2mmピッチで別レーンに割り当てられる', () => {
+    const first = route('w-1', 'P.1', 'S1.1');
+    const second = route('w-2', 'P.2', 'S2.1', [first]);
+    const third = route('w-3', 'P.3', 'S3.1', [first, second]);
+    expect([first.lane, second.lane, third.lane]).toEqual([0, 1, 2]);
+    const runY = (r: WireRoute): number => {
+      const p = r.corners.find((c) => Math.abs(c.y - 42) < 12 && c.z < 5);
+      return p?.y ?? -1;
+    };
+    expect(runY(second) - runY(first)).toBeCloseTo(WIRE_LANE_PITCH_MM, 6);
+    expect(runY(third) - runY(second)).toBeCloseTo(WIRE_LANE_PITCH_MM, 6);
   });
 
-  it('ダクトを共有しない電線はオフセットされない', () => {
-    const first = route('w-1', 'TB_PB.1c', 'TB_PB.4b');
-    const far = route('w-2', 'P.1', 'P.4', [first]);
-    expect(far.lane).toBe(0);
-  });
-
-  it('並列オフセットはダクト幅で頭打ちになる（幅12mm ÷ 2mm = 6本）', () => {
+  it('レーンは MAX_WIRE_LANES で頭打ちになる', () => {
     const existing: WireRoute[] = [];
-    let last = route('w-0', 'TB_PB.1c', 'TB_PB.4b');
+    let last = route('w-0', 'P.1', 'S1.1');
     existing.push(last);
     for (let i = 1; i < 10; i += 1) {
-      last = route(`w-${i}`, 'TB_PB.1c', 'TB_PB.4b', existing);
+      last = route(`w-${i}`, 'P.1', 'S1.1', existing);
       existing.push(last);
     }
-    expect(last.lane).toBe(5);
+    expect(last.lane).toBe(MAX_WIRE_LANES - 1);
   });
 
-  it('ダクト上の最寄り点', () => {
-    const hit = nearestDuctPoint(board.ducts, vec3(100, 80));
-    expect(hit.segmentId).toBe('duct-top');
-    expect(hit.point).toEqual({ x: 100, y: 74, z: 0 });
-    expect(nearestDuctPoint([], vec3(1, 2)).segmentId).toBe('');
+  it('自己保持回路の全配線が部品の上を通らず、直角でレーンも重ならない', () => {
+    const routes = routeAll(SELF_HOLD_WIRING);
+    expect(routes).toHaveLength(SELF_HOLD_WIRING.length);
+    for (const r of routes) {
+      expect(isManhattan(r.corners)).toBe(true);
+      expect(crossingFootprint(board, r)).toBeUndefined();
+    }
+    // 同じ帯の同じ区間を走る経路どうしはレーンが違う（区間が離れていれば同じレーンでよい）
+    for (let i = 0; i < routes.length; i += 1) {
+      for (let j = i + 1; j < routes.length; j += 1) {
+        const a = routes[i];
+        const b = routes[j];
+        if (a === undefined || b === undefined) continue;
+        const overlaps = a.channelSpans.some((sa) =>
+          b.channelSpans.some(
+            (sb) => sa.channelId === sb.channelId && sa.lo < sb.hi && sb.lo < sa.hi,
+          ),
+        );
+        if (!overlaps) continue;
+        expect(a.lane).not.toBe(b.lane);
+      }
+    }
   });
 
-  it('盤に無い端子は BoardError', () => {
-    expect(() => route('w-1', 'ZZ.1', 'P.1')).toThrow(BoardError);
+  it('フリッカ回路（左右クラスタをまたぐ）の全配線も部品の上を通らない', () => {
+    const routes = routeAll(FLICKER_WIRING);
+    expect(routes).toHaveLength(FLICKER_WIRING.length);
+    for (const r of routes) {
+      expect(isManhattan(r.corners)).toBe(true);
+      expect(crossingFootprint(board, r)).toBeUndefined();
+    }
   });
 
-  it('ダクトが分断されていて到達できないときは入口と出口を直結する', () => {
-    const split = {
-      ...board,
-      ducts: [
-        { id: 'd1', a: vec3(14, 74), b: vec3(160, 74), widthMm: 12, heightMm: 25 },
-        { id: 'd2', a: vec3(200, 210), b: vec3(316, 210), widthMm: 12, heightMm: 25 },
-      ],
-    };
-    const r = routeWire(split, { id: 'w-1', from: t('P.1'), to: t('TB_PB.4b') }, []);
-    expect(r.segmentIds).toEqual(['d1', 'd2']);
-    expect(r.points).toHaveLength(4);
-    expect(r.points[1]).toEqual({ x: 120, y: 74, z: 0 });
-    expect(r.points[2]).toEqual({ x: 249, y: 210, z: 0 });
+  it('既設の青線ハーネスは機器の真上から降り、貫通穴で盤面を抜ける（§6.4 / 写真）', () => {
+    const routes = routeFixedLinks(board);
+    // PB 12本 ＋ PL 8本。P/N供給端子どうしのリンクは筐体内なので描かない
+    expect(routes).toHaveLength(20);
+    for (const r of routes) {
+      expect(isManhattan(r.corners)).toBe(true);
+      expect(crossingFootprint(board, r)).toBeUndefined();
+      expect(r.throughPanelAt).toBeDefined();
+      expect(r.channelIds).toEqual([]);
+    }
+    // PL1 の2本は PL1 の貫通穴に2mmピッチで入り、機器の中心は通らない
+    const pl1 = routes.filter((r) => r.wireId.startsWith('lk-pl-1'));
+    expect(pl1).toHaveLength(2);
+    const lamp = board.lamps[0];
+    if (lamp === undefined) throw new Error('PL1');
+    for (const r of pl1) {
+      expect(r.throughPanelAt?.y).toBe(lamp.panelHole.y);
+      expect(Math.abs((r.throughPanelAt?.x ?? 0) - lamp.panelHole.x)).toBeLessThanOrEqual(
+        WIRE_LANE_PITCH_MM,
+      );
+      // 機器の中心（レンズの真上）を通らない
+      for (let i = 1; i < r.corners.length; i += 1) {
+        const a = r.corners[i - 1];
+        const b = r.corners[i];
+        if (a === undefined || b === undefined) continue;
+        if (a.z <= 0 || b.z <= 0) continue; // 盤面より下（機器の内側）は対象外
+        expect(
+          segmentIntersectsRect(a, b, { x: lamp.pos.x - 6, y: lamp.pos.y - 6, w: 12, h: 12 }),
+        ).toBe(false);
+      }
+    }
+    const holes = new Set(
+      routes.filter((r) => r.wireId.startsWith('lk-pb-1')).map((r) => r.throughPanelAt?.x),
+    );
+    expect(holes.size).toBe(3);
   });
 
   it('セッションの全電線を並び順に経路化する', () => {
     const session = createSession(board);
-    const added = addWire(session, board, t('P.1'), t('TB_PB.1c'));
-    expect(added.ok).toBe(true);
+    expect(plug(session, 'S7', 'relay-my4n').ok).toBe(true);
+    expect(addWire(session, board, t('P.1'), t('TB_PB.1c')).ok).toBe(true);
     const routes = routeSession(board, session);
     expect(routes).toHaveLength(session.wires.length);
     expect(routes.map((r) => r.wireId)).toEqual(['fw-chk-1', 'fw-chk-2', 'fw-chk-3', 'w-001']);
-    // 役割端子（CHK.14）が物理端子（S5.14）に解決されている
+    // 役割端子（CHK.14）が物理端子（S7.14）に解決されている
     const chk = routes[1];
     if (chk === undefined) throw new Error('route');
-    expect(chk.points[chk.points.length - 1]).toEqual(boardTerminalPos(board, 'S5.14'));
+    expect(chk.corners[chk.corners.length - 1]).toEqual(boardTerminalPos(board, 'S7.14'));
+    for (const r of routes) expect(crossingFootprint(board, r)).toBeUndefined();
     expect(routeSession(board, session)).toEqual(routes);
+  });
+
+  it('盤に無い端子は RoutingError', () => {
+    expect(() => route('w-1', 'ZZ.1', 'P.1')).toThrow(RoutingError);
+  });
+
+  it('フィレットは角を丸め、両端の点は動かさない', () => {
+    const corners = [vec3(0, 0, 0), vec3(0, 40, 0), vec3(40, 40, 0)];
+    const filleted = filletCorners(corners, 6);
+    expect(filleted[0]).toEqual(corners[0]);
+    expect(filleted[filleted.length - 1]).toEqual(corners[2]);
+    expect(filleted.length).toBeGreaterThan(corners.length);
+    expect(isManhattan(filleted)).toBe(false);
+    expect(filletCorners([vec3(0, 0, 0), vec3(10, 0, 0)], 6)).toHaveLength(2);
+  });
+
+  it('レーンは帯ごとの占有区間が重なるときだけ分ける', () => {
+    expect(pickLane([{ channelId: 'ch-mid', lo: 0, hi: 10 }], [])).toBe(0);
+    const busy: WireRoute[] = [0, 1, 2, 3, 4, 5, 6, 7].map((lane) => ({
+      wireId: `x${lane}`,
+      points: [],
+      corners: [],
+      channelIds: ['ch-mid'],
+      channelSpans: [{ channelId: 'ch-mid', lo: 0, hi: 100 }],
+      lane,
+      lengthMm: 0,
+    }));
+    expect(pickLane([{ channelId: 'ch-mid', lo: 0, hi: 100 }], busy)).toBe(MAX_WIRE_LANES - 1);
+    // 区間が離れていればレーン0を再利用できる
+    expect(pickLane([{ channelId: 'ch-mid', lo: 200, hi: 300 }], busy)).toBe(0);
+    // 別の帯なら干渉しない
+    expect(pickLane([{ channelId: 'ch-top', lo: 0, hi: 100 }], busy)).toBe(0);
+  });
+
+  it('引き出し向きは端子ごとに強制できる（既設ハーネス用）', () => {
+    const tb = findBoardTerminal(board, 'TB_PL.1+');
+    if (tb === undefined) throw new Error('TB_PL.1+');
+    expect(entryChannelFor(board, tb)?.id).toBe('ch-mid');
+    expect(entryChannelFor(board, tb, 'front')?.id).toBe('ch-low');
+    expect(entryChannelFor(board, tb, 'rear')?.id).toBe('ch-mid');
+    const bodyTerminal = findBoardTerminal(board, 'PL1.+');
+    if (bodyTerminal === undefined) throw new Error('PL1.+');
+    expect(entryChannelFor(board, bodyTerminal)?.id).toBe('ch-low');
+  });
+
+  it('配線帯が無い盤では経路を作れない', () => {
+    const noChannels = { ...board, wiringChannels: [] };
+    expect(() => routeWire(noChannels, { id: 'w', from: t('P.1'), to: t('N.1') }, [])).toThrow(
+      RoutingError,
+    );
+    const split = {
+      ...board,
+      wiringChannels: board.wiringChannels.filter((c) => c.id === 'ch-top' || c.id === 'ch-low'),
+    };
+    expect(() => routeWire(split, { id: 'w', from: t('P.1'), to: t('PL1.+') }, [])).toThrow(
+      RoutingError,
+    );
+  });
+
+  it('部品の上を通ってしまう配線帯では経路生成が失敗する（迂回できないとき）', () => {
+    const bad = {
+      ...board,
+      wiringChannels: [{ id: 'ch-bad', axis: 'x' as const, at: 100, from: 10, to: 322, zMm: 3.5 }],
+    };
+    expect(() => routeWire(bad, { id: 'w', from: t('P.1'), to: t('N.6') }, [])).toThrow(
+      RoutingError,
+    );
+  });
+
+  it('部品の上を通る経路は検出できる', () => {
+    const bogus: WireRoute = {
+      wireId: 'bogus',
+      points: [vec3(0, 100, 3.5), vec3(330, 100, 3.5)],
+      corners: [vec3(0, 100, 3.5), vec3(330, 100, 3.5)],
+      channelIds: [],
+      channelSpans: [],
+      lane: 0,
+      lengthMm: 330,
+    };
+    expect(crossesFootprint(board, bogus)).toBe(true);
+    expect(crossingFootprint(board, bogus)?.kind).toBe('socket');
+  });
+
+  it('配線帯が部品と重なる盤は検出できる（盤定義の回帰防止）', () => {
+    const bad = {
+      ...board,
+      wiringChannels: [{ id: 'ch-bad', axis: 'x' as const, at: 100, from: 10, to: 320, zMm: 3.5 }],
+    };
+    expect(channelsClearOfFootprints(bad).length).toBeGreaterThan(0);
+  });
+
+  it('フィレット半径0では折れ点をそのまま返す', () => {
+    const corners = [vec3(0, 0, 0), vec3(0, 40, 0), vec3(40, 40, 0)];
+    expect(filletCorners(corners, 0)).toEqual(corners);
+  });
+
+  it('線分と矩形の交差判定（境界に接するだけは交差としない）', () => {
+    const rect = { x: 10, y: 10, w: 20, h: 20 };
+    expect(segmentIntersectsRect(vec3(0, 20), vec3(40, 20), rect)).toBe(true);
+    expect(segmentIntersectsRect(vec3(0, 10), vec3(40, 10), rect)).toBe(false);
+    expect(segmentIntersectsRect(vec3(0, 0), vec3(40, 0), rect)).toBe(false);
+    expect(segmentIntersectsRect(vec3(20, 0), vec3(20, 40), rect)).toBe(true);
+    expect(segmentIntersectsRect(vec3(0, 0), vec3(5, 5), rect)).toBe(false);
   });
 });
 ```
@@ -3028,15 +3820,23 @@ pnpm --filter @ojt/board-model test -- routing.test.ts
 
 ```ts
 import type { TerminalId } from '@ojt/circuit-sim';
-import { boardTerminalPos, type BoardDefinition, type DuctSegment } from './board-jipm.js';
 import {
-  addVec,
+  CHANNEL_LANE_DIRECTION,
+  findBoardTerminal,
+  HARNESS_APPROACH_MM,
+  HARNESS_PITCH_MM,
+  WIRE_RUN_Z_MM,
+  type BoardDefinition,
+  type BoardTerminal,
+  type Footprint,
+  type WiringChannel,
+} from './board-jipm.js';
+import {
   distance,
-  nearestPointOnSegment,
-  normalXY,
   polylineLength,
+  rectContains,
   roundVec,
-  scaleVec,
+  segmentIntersectsRect,
   vec3,
   vecEquals,
   type Vec3,
@@ -3045,14 +3845,25 @@ import { toPhysicalTerminal } from './roles.js';
 import type { BoardSession } from './session.js';
 
 /**
- * 電線の自動経路生成。設計仕様 §6.6「端子 → 最寄りダクト入口 → ダクト内 → 最寄り出口 → 端子」。
- * 純関数・決定論（乱数も時刻も使わない）。
+ * 電線の自動経路生成。設計仕様 §6.6。
+ *
+ * 実物（写真）には配線ダクトが無いが、電線は盤面の上を**直角**に整列して走っている。
+ * そこで盤定義に「配線帯」（見えないガイド。機器の列と列のあいだ）を置き、
+ * 端子 → 盤面に垂直に引き出す → 最寄りの配線帯 → 帯の中を直角に走る → 目的端子の列で曲がる → 端子
+ * という経路を作る。並走する電線は帯の幅方向に2mmピッチでレーンを割り当て、曲がり角は
+ * 半径6mmのフィレットで丸める。純関数・決定論（乱数も時刻も使わない）。
  */
 
 /** 電線の描画直径[mm]。§6.6 */
 export const WIRE_DIAMETER_MM = 1.6;
-/** ダクト内で重なる電線の並列オフセット幅[mm]。§6.6 */
+/** 並走する電線の並列オフセット幅[mm]。§6.6 */
 export const WIRE_LANE_PITCH_MM = 2;
+/** 並列オフセットの最大段数。 */
+export const MAX_WIRE_LANES = 8;
+/** 曲がり角のフィレット半径[mm]。 */
+export const WIRE_FILLET_RADIUS_MM = 6;
+/** フィレット1か所あたりの分割数（点数は控えめに）。 */
+export const WIRE_FILLET_SEGMENTS = 3;
 
 /** 経路を求める対象の電線（端子IDは**物理**端子ID）。 */
 export interface RoutableWire {
@@ -3064,165 +3875,215 @@ export interface RoutableWire {
 /** 求めた経路。 */
 export interface WireRoute {
   wireId: string;
-  /** 端子 → ダクト → 端子 の折れ線[mm]。 */
+  /** 描画用の折れ線[mm]（曲がり角はフィレットで丸めてある）。 */
   points: Vec3[];
-  /** 通過したダクト区間のID（通過順）。 */
-  segmentIds: string[];
-  /** ダクト内での並列オフセットの段数（0起点）。 */
+  /** 丸める前の直角経路の折れ点[mm]。隣り合う点は x・y・z のどれか1軸だけが変わる。 */
+  corners: Vec3[];
+  /** 通った配線帯のID（通過順）。 */
+  channelIds: string[];
+  /** 帯ごとの占有区間（帯に沿った座標の範囲）。同じ区間を使う電線は別レーンになる。 */
+  channelSpans: Array<{ channelId: string; lo: number; hi: number }>;
+  /** 帯の中での並走レーン（0起点）。 */
   lane: number;
+  /** 盤面を貫通する位置（既設ハーネスのみ）。ここから先は盤の裏側。 */
+  throughPanelAt?: Vec3;
   /** 経路長[mm]。 */
   lengthMm: number;
 }
 
-function nodeKey(v: Vec3): string {
-  const r = roundVec(v, 3);
+/** 帯ごとの占有区間が重なる既存経路を避けて、最小の空きレーンを選ぶ。 */
+export function pickLane(
+  spans: ReadonlyArray<{ channelId: string; lo: number; hi: number }>,
+  existingRoutes: readonly WireRoute[],
+): number {
+  const taken = new Set<number>();
+  for (const other of existingRoutes) {
+    const conflicts = other.channelSpans.some((b) =>
+      spans.some((a) => a.channelId === b.channelId && a.lo < b.hi + 1e-6 && b.lo < a.hi + 1e-6),
+    );
+    if (conflicts) taken.add(other.lane);
+  }
+  for (let lane = 0; lane < MAX_WIRE_LANES; lane += 1) {
+    if (!taken.has(lane)) return lane;
+  }
+  return MAX_WIRE_LANES - 1;
+}
+
+/** 経路の探索に失敗したときに投げる。 */
+export class RoutingError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'RoutingError';
+  }
+}
+
+function key(x: number, y: number): string {
+  const r = roundVec(vec3(x, y, 0), 3);
   return `${r.x},${r.y}`;
+}
+
+interface GraphNode {
+  x: number;
+  y: number;
+  /** この節点が載っている配線帯のID。 */
+  channels: string[];
 }
 
 interface GraphEdge {
   to: string;
-  segmentId: string;
+  channelId: string;
   weight: number;
 }
 
-interface DuctGraph {
-  points: Map<string, Vec3>;
-  edges: Map<string, GraphEdge[]>;
+/** 帯の上の位置（`axis: 'x'` なら x、`axis: 'y'` なら y）。 */
+function alongOf(channel: WiringChannel, x: number, y: number): number {
+  return channel.axis === 'x' ? x : y;
 }
 
-function addEdge(graph: DuctGraph, a: Vec3, b: Vec3, segmentId: string): void {
-  const ka = nodeKey(a);
-  const kb = nodeKey(b);
-  if (ka === kb) return;
-  graph.points.set(ka, a);
-  graph.points.set(kb, b);
-  const weight = distance(a, b);
-  const listA = graph.edges.get(ka) ?? [];
-  listA.push({ to: kb, segmentId, weight });
-  graph.edges.set(ka, listA);
-  const listB = graph.edges.get(kb) ?? [];
-  listB.push({ to: ka, segmentId, weight });
-  graph.edges.set(kb, listB);
+/** 帯の上の位置から座標に戻す。 */
+function pointOn(channel: WiringChannel, along: number): { x: number; y: number } {
+  return channel.axis === 'x' ? { x: along, y: channel.at } : { x: channel.at, y: along };
 }
 
-/** ダクト区間を、区間上に載る追加点で分割してグラフにする。 */
-function buildDuctGraph(ducts: readonly DuctSegment[], extras: readonly Vec3[]): DuctGraph {
-  const graph: DuctGraph = { points: new Map(), edges: new Map() };
-  for (const duct of ducts) {
-    const cuts: Array<{ t: number; p: Vec3 }> = [
-      { t: 0, p: duct.a },
-      { t: 1, p: duct.b },
-    ];
-    for (const extra of extras) {
-      const hit = nearestPointOnSegment(extra, duct.a, duct.b);
-      if (hit.distance > 1e-6) continue;
-      cuts.push({ t: hit.t, p: hit.point });
+function contains(channel: WiringChannel, along: number): boolean {
+  return along >= Math.min(channel.from, channel.to) && along <= Math.max(channel.from, channel.to);
+}
+
+/**
+ * 端子から引き出す先の配線帯を選ぶ。
+ * ソケットのネジ端子は本体の上端／下端に寄っているので向きが決まっている（`exit`）。
+ * 端子台・P/N・本体端子は `either` で、近いほうの帯に出る。
+ */
+export function entryChannelFor(
+  board: BoardDefinition,
+  terminal: BoardTerminal,
+  exitOverride?: 'rear' | 'front',
+): WiringChannel | undefined {
+  const exit = exitOverride ?? terminal.exit;
+  const candidates = board.wiringChannels.filter(
+    (c) => c.axis === 'x' && contains(c, terminal.pos.x),
+  );
+  const rear = candidates.filter((c) => c.at <= terminal.pos.y);
+  const front = candidates.filter((c) => c.at >= terminal.pos.y);
+  const nearest = (list: WiringChannel[]): WiringChannel | undefined =>
+    list.length === 0
+      ? undefined
+      : list.reduce((best, c) =>
+          Math.abs(c.at - terminal.pos.y) < Math.abs(best.at - terminal.pos.y) ? c : best,
+        );
+  if (exit === 'rear') return nearest(rear) ?? nearest(front);
+  if (exit === 'front') return nearest(front) ?? nearest(rear);
+  const a = nearest(rear);
+  const b = nearest(front);
+  if (a === undefined) return b;
+  if (b === undefined) return a;
+  return Math.abs(a.at - terminal.pos.y) <= Math.abs(b.at - terminal.pos.y) ? a : b;
+}
+
+/** 配線帯どうしの交点と、電線の出入口を節点にしたグラフを組む。 */
+function buildChannelGraph(
+  channels: readonly WiringChannel[],
+  entries: ReadonlyArray<{ channel: WiringChannel; along: number }>,
+): { nodes: Map<string, GraphNode>; edges: Map<string, GraphEdge[]> } {
+  const onChannel = new Map<string, number[]>();
+  const add = (channel: WiringChannel, along: number): void => {
+    const list = onChannel.get(channel.id) ?? [];
+    if (!list.some((v) => Math.abs(v - along) < 1e-6)) list.push(along);
+    onChannel.set(channel.id, list);
+  };
+  for (const a of channels) {
+    for (const b of channels) {
+      if (a.axis === b.axis) continue;
+      if (!contains(a, alongOf(a, b.at, b.at))) continue;
+      if (!contains(b, alongOf(b, a.at, a.at))) continue;
+      add(a, b.at);
+      add(b, a.at);
     }
-    cuts.sort((x, y) => x.t - y.t);
-    const unique: Vec3[] = [];
-    for (const cut of cuts) {
-      const last = unique[unique.length - 1];
-      if (last !== undefined && vecEquals(last, cut.p, 1e-6)) continue;
-      unique.push(cut.p);
+  }
+  for (const entry of entries) add(entry.channel, entry.along);
+
+  const nodes = new Map<string, GraphNode>();
+  const edges = new Map<string, GraphEdge[]>();
+  const link = (ka: string, kb: string, channelId: string, weight: number): void => {
+    const list = edges.get(ka) ?? [];
+    list.push({ to: kb, channelId, weight });
+    edges.set(ka, list);
+  };
+  for (const channel of channels) {
+    const alongs = (onChannel.get(channel.id) ?? []).slice().sort((p, q) => p - q);
+    for (const along of alongs) {
+      const p = pointOn(channel, along);
+      const k = key(p.x, p.y);
+      const node = nodes.get(k) ?? { x: p.x, y: p.y, channels: [] };
+      if (!node.channels.includes(channel.id)) node.channels.push(channel.id);
+      nodes.set(k, node);
     }
-    for (let i = 1; i < unique.length; i += 1) {
-      const a = unique[i - 1];
-      const b = unique[i];
+    for (let i = 1; i < alongs.length; i += 1) {
+      const a = alongs[i - 1];
+      const b = alongs[i];
       if (a === undefined || b === undefined) continue;
-      addEdge(graph, a, b, duct.id);
+      const pa = pointOn(channel, a);
+      const pb = pointOn(channel, b);
+      link(key(pa.x, pa.y), key(pb.x, pb.y), channel.id, Math.abs(b - a));
+      link(key(pb.x, pb.y), key(pa.x, pa.y), channel.id, Math.abs(b - a));
     }
   }
-  return graph;
+  return { nodes, edges };
 }
 
-/** ダクト上で指定点に最も近い点（同距離なら定義順で先の区間）。 */
-export function nearestDuctPoint(
-  ducts: readonly DuctSegment[],
-  p: Vec3,
-): { point: Vec3; segmentId: string; distance: number } {
-  let best: { point: Vec3; segmentId: string; distance: number } | undefined;
-  for (const duct of ducts) {
-    const hit = nearestPointOnSegment(p, duct.a, duct.b);
-    if (best === undefined || hit.distance < best.distance) {
-      best = { point: hit.point, segmentId: duct.id, distance: hit.distance };
-    }
-  }
-  if (best === undefined) return { point: p, segmentId: '', distance: 0 };
-  return best;
-}
-
-/** ダイクストラ法で最短経路（節点キーの列）を求める。到達できなければ undefined。 */
+/** ダイクストラ法で最短経路（節点キーの列と通った帯）を求める。 */
 function shortestPath(
-  graph: DuctGraph,
+  edges: Map<string, GraphEdge[]>,
   startKey: string,
   goalKey: string,
-): { keys: string[]; segmentIds: string[] } | undefined {
+): { keys: string[]; channelIds: string[] } | undefined {
+  if (startKey === goalKey) return { keys: [startKey], channelIds: [] };
   const dist = new Map<string, number>([[startKey, 0]]);
-  const prev = new Map<string, { key: string; segmentId: string }>();
+  const prev = new Map<string, { key: string; channelId: string }>();
   const visited = new Set<string>();
   for (;;) {
     let current: string | undefined;
     let best = Number.POSITIVE_INFINITY;
-    for (const [key, d] of dist) {
-      if (visited.has(key) || d >= best) continue;
-      current = key;
+    for (const [k, d] of dist) {
+      if (visited.has(k) || d >= best) continue;
+      current = k;
       best = d;
     }
-    if (current === undefined) break;
-    if (current === goalKey) break;
+    if (current === undefined || current === goalKey) break;
     visited.add(current);
-    for (const edge of graph.edges.get(current) ?? []) {
+    for (const edge of edges.get(current) ?? []) {
       const next = best + edge.weight;
       if (next >= (dist.get(edge.to) ?? Number.POSITIVE_INFINITY)) continue;
       dist.set(edge.to, next);
-      prev.set(edge.to, { key: current, segmentId: edge.segmentId });
+      prev.set(edge.to, { key: current, channelId: edge.channelId });
     }
   }
   if (!dist.has(goalKey)) return undefined;
-  const keys: string[] = [goalKey];
-  const segmentIds: string[] = [];
+  const keys = [goalKey];
+  const channelIds: string[] = [];
   let cursor = goalKey;
   while (cursor !== startKey) {
     const step = prev.get(cursor);
     if (step === undefined) return undefined;
     keys.push(step.key);
-    segmentIds.push(step.segmentId);
+    channelIds.push(step.channelId);
     cursor = step.key;
   }
   keys.reverse();
-  segmentIds.reverse();
-  return { keys, segmentIds };
+  channelIds.reverse();
+  return { keys, channelIds };
 }
 
-/** 折れ線の各点を、隣接区間の法線の平均方向へ `offset` [mm] ずらす。 */
-function offsetPath(path: readonly Vec3[], offset: number, fallbackNormal: Vec3): Vec3[] {
-  if (offset === 0) return [...path];
-  return path.map((point, index) => {
-    const before = index > 0 ? path[index - 1] : undefined;
-    const after = index + 1 < path.length ? path[index + 1] : undefined;
-    let nx = 0;
-    let ny = 0;
-    if (before !== undefined) {
-      const n = normalXY(before, point);
-      nx += n.x;
-      ny += n.y;
-    }
-    if (after !== undefined) {
-      const n = normalXY(point, after);
-      nx += n.x;
-      ny += n.y;
-    }
-    if (nx === 0 && ny === 0) {
-      nx = fallbackNormal.x;
-      ny = fallbackNormal.y;
-    }
-    const len = Math.sqrt(nx * nx + ny * ny);
-    if (len === 0) return point;
-    return addVec(point, scaleVec(vec3(nx / len, ny / len, 0), offset));
-  });
+function dedupeStrings(values: readonly string[]): string[] {
+  const out: string[] = [];
+  for (const v of values) {
+    if (v.length === 0 || out.includes(v)) continue;
+    out.push(v);
+  }
+  return out;
 }
 
-function dedupe(points: readonly Vec3[]): Vec3[] {
+function dedupePoints(points: readonly Vec3[]): Vec3[] {
   const out: Vec3[] = [];
   for (const p of points) {
     const last = out[out.length - 1];
@@ -3233,50 +4094,189 @@ function dedupe(points: readonly Vec3[]): Vec3[] {
 }
 
 /**
+ * 帯の走行座標をレーンぶんずらす。水平帯は y、垂直帯は x をずらす。
+ * ずらす向きは帯ごとに固定（`CHANNEL_LANE_DIRECTION`）で、部品の無い側へ伸ばす。
+ */
+function laneShift(channel: WiringChannel, lane: number): { dx: number; dy: number } {
+  const shift = lane * WIRE_LANE_PITCH_MM * (CHANNEL_LANE_DIRECTION[channel.id] ?? 1);
+  return channel.axis === 'x' ? { dx: 0, dy: shift } : { dx: shift, dy: 0 };
+}
+
+/** 直角の折れ点列を、角を半径 `radius` で丸めた折れ線にする。 */
+export function filletCorners(corners: readonly Vec3[], radius: number): Vec3[] {
+  if (corners.length < 3 || radius <= 0) return [...corners];
+  const out: Vec3[] = [];
+  const first = corners[0];
+  if (first !== undefined) out.push(first);
+  for (let i = 1; i < corners.length - 1; i += 1) {
+    const prev = corners[i - 1];
+    const cur = corners[i];
+    const next = corners[i + 1];
+    if (prev === undefined || cur === undefined || next === undefined) continue;
+    const inLen = distance(prev, cur);
+    const outLen = distance(cur, next);
+    const r = Math.min(radius, inLen / 2, outLen / 2);
+    if (r <= 1e-6) {
+      out.push(cur);
+      continue;
+    }
+    const lerp = (a: Vec3, b: Vec3, t: number): Vec3 =>
+      vec3(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t, a.z + (b.z - a.z) * t);
+    const a = lerp(cur, prev, r / inLen);
+    const b = lerp(cur, next, r / outLen);
+    for (let k = 0; k <= WIRE_FILLET_SEGMENTS; k += 1) {
+      const t = k / WIRE_FILLET_SEGMENTS;
+      const u = 1 - t;
+      out.push(
+        vec3(
+          u * u * a.x + 2 * u * t * cur.x + t * t * b.x,
+          u * u * a.y + 2 * u * t * cur.y + t * t * b.y,
+          u * u * a.z + 2 * u * t * cur.z + t * t * b.z,
+        ),
+      );
+    }
+  }
+  const last = corners[corners.length - 1];
+  if (last !== undefined) out.push(last);
+  return dedupePoints(out);
+}
+
+function terminalOf(board: BoardDefinition, id: TerminalId): BoardTerminal {
+  const found = findBoardTerminal(board, id);
+  if (found === undefined) throw new RoutingError(`盤に無い端子です: ${id}`);
+  return found;
+}
+
+/**
  * 1本の電線の経路を求める。§6.6
- * 同じダクト区間を通る既存経路の本数だけ、2mmピッチで幅方向に並列オフセットする。
+ * 端子 → 垂直に引き出す → 配線帯 → 直角に走る → 目的端子の列 → 端子。
+ * 既存経路のうち同じ帯を通るものの本数だけ、2mmピッチで帯の幅方向にずらす。
  * `wire.from` / `wire.to` は**物理**端子ID（`S1.13` / `TB_PB.1a` など）。
- * 役割ベースの端子IDから変換するには `toPhysicalTerminal()` を使う（`routeSession()` はそれを行う）。
  */
 export function routeWire(
   board: BoardDefinition,
   wire: RoutableWire,
   existingRoutes: readonly WireRoute[],
+  options: RouteOptions = {},
 ): WireRoute {
-  const fromPos = boardTerminalPos(board, wire.from);
-  const toPos = boardTerminalPos(board, wire.to);
-  const entry = nearestDuctPoint(board.ducts, fromPos);
-  const exit = nearestDuctPoint(board.ducts, toPos);
-  const graph = buildDuctGraph(board.ducts, [entry.point, exit.point]);
-  const found = shortestPath(graph, nodeKey(entry.point), nodeKey(exit.point));
+  const a = terminalOf(board, wire.from);
+  const b = terminalOf(board, wire.to);
+  const chA = entryChannelFor(board, a, options.exitOverride?.[wire.from]);
+  const chB = entryChannelFor(board, b, options.exitOverride?.[wire.to]);
+  if (chA === undefined || chB === undefined) {
+    throw new RoutingError(`端子から出られる配線帯がありません: ${wire.from} / ${wire.to}`);
+  }
 
-  const rawPath: Vec3[] =
-    found === undefined
-      ? [entry.point, exit.point]
-      : found.keys.map((key) => graph.points.get(key) ?? entry.point);
-  const segmentIds = dedupeStrings(
-    found === undefined ? [entry.segmentId, exit.segmentId] : found.segmentIds,
+  const entryA = { channel: chA, along: alongOf(chA, a.pos.x, a.pos.y) };
+  const entryB = { channel: chB, along: alongOf(chB, b.pos.x, b.pos.y) };
+  const graph = buildChannelGraph(board.wiringChannels, [entryA, entryB]);
+  const pa = pointOn(chA, entryA.along);
+  const pb = pointOn(chB, entryB.along);
+  const path = shortestPath(graph.edges, key(pa.x, pa.y), key(pb.x, pb.y));
+  if (path === undefined) {
+    throw new RoutingError(`配線帯がつながっていません: ${wire.from} → ${wire.to}`);
+  }
+
+  const channelIds = dedupeStrings(
+    path.channelIds.length === 0 ? [chA.id] : [chA.id, ...path.channelIds, chB.id],
   );
+  // 帯ごとの占有区間を求め、区間が重なる電線とだけレーンを分ける
+  const channelById = new Map(board.wiringChannels.map((c) => [c.id, c]));
+  const spanMap = new Map<string, { channelId: string; lo: number; hi: number }>();
+  path.keys.forEach((k, index) => {
+    const channelId = path.channelIds[index];
+    if (channelId === undefined) return;
+    const channel = channelById.get(channelId);
+    const nodeA = graph.nodes.get(k);
+    const nodeB = graph.nodes.get(path.keys[index + 1] ?? '');
+    if (channel === undefined || nodeA === undefined || nodeB === undefined) return;
+    const a = alongOf(channel, nodeA.x, nodeA.y);
+    const b = alongOf(channel, nodeB.x, nodeB.y);
+    const prev = spanMap.get(channelId);
+    const lo = Math.min(a, b, prev?.lo ?? Number.POSITIVE_INFINITY);
+    const hi = Math.max(a, b, prev?.hi ?? Number.NEGATIVE_INFINITY);
+    spanMap.set(channelId, { channelId, lo, hi });
+  });
+  if (spanMap.size === 0) {
+    const along = alongOf(chA, pa.x, pa.y);
+    spanMap.set(chA.id, { channelId: chA.id, lo: along, hi: along });
+  }
+  const channelSpans = [...spanMap.values()];
+  const lane = pickLane(channelSpans, existingRoutes);
 
-  const shared = existingRoutes.filter((r) => r.segmentIds.some((s) => segmentIds.includes(s)));
-  const widths = board.ducts.filter((d) => segmentIds.includes(d.id)).map((d) => d.widthMm);
-  const minWidth = widths.length === 0 ? WIRE_LANE_PITCH_MM : Math.min(...widths);
-  const maxLanes = Math.max(1, Math.floor(minWidth / WIRE_LANE_PITCH_MM));
-  const lane = Math.min(shared.length, maxLanes - 1);
+  const runPoints: Vec3[] = [];
+  path.keys.forEach((k, index) => {
+    const node = graph.nodes.get(k);
+    if (node === undefined) return;
+    // 帯の乗り換え点では、入ってきた帯と出ていく帯の**両方**のレーンずらしを足す。
+    // こうしないと角で x と y が同時に動いてしまい、直角経路でなくなる。
+    const incoming = index > 0 ? path.channelIds[index - 1] : undefined;
+    const outgoing = path.channelIds[index];
+    let dx = 0;
+    let dy = 0;
+    let zMm = WIRE_RUN_Z_MM;
+    // 同じ帯を通り抜けるだけの節点では二重に足さない（帯ごとに1回だけ）
+    const applied = new Set<string>();
+    for (const id of [incoming, outgoing]) {
+      if (id === undefined || applied.has(id)) continue;
+      applied.add(id);
+      const channel = channelById.get(id);
+      if (channel === undefined) continue;
+      const shift = laneShift(channel, lane);
+      dx += shift.dx;
+      dy += shift.dy;
+      zMm = channel.zMm;
+    }
+    if (incoming === undefined && outgoing === undefined) {
+      const shift = laneShift(chA, lane);
+      dx = shift.dx;
+      dy = shift.dy;
+      zMm = chA.zMm;
+    }
+    runPoints.push(vec3(node.x + dx, node.y + dy, zMm));
+  });
 
-  const fallback = normalXY(entry.point, exit.point);
-  const routed = offsetPath(rawPath, lane * WIRE_LANE_PITCH_MM, fallback);
-  const points = dedupe([fromPos, ...routed, toPos]);
-  return { wireId: wire.id, points, segmentIds, lane, lengthMm: polylineLength(points) };
+  const firstRun = runPoints[0];
+  const lastRun = runPoints[runPoints.length - 1];
+  if (firstRun === undefined || lastRun === undefined) {
+    throw new RoutingError(`経路が空です: ${wire.id}`);
+  }
+
+  // 端子 → 盤面の走行高さへ立ち下げ → 帯へ垂直に入る（各区間は1軸だけ動く）
+  const corners = dedupePoints([
+    a.pos,
+    vec3(a.pos.x, a.pos.y, WIRE_RUN_Z_MM),
+    vec3(firstRun.x, a.pos.y, WIRE_RUN_Z_MM),
+    firstRun,
+    ...runPoints.slice(1, -1),
+    lastRun,
+    vec3(lastRun.x, b.pos.y, WIRE_RUN_Z_MM),
+    vec3(b.pos.x, b.pos.y, WIRE_RUN_Z_MM),
+    b.pos,
+  ]);
+  const points = filletCorners(corners, WIRE_FILLET_RADIUS_MM);
+  const route: WireRoute = {
+    wireId: wire.id,
+    points,
+    corners,
+    channelIds,
+    channelSpans,
+    lane,
+    lengthMm: polylineLength(points),
+  };
+  const hit = crossingFootprint(board, route);
+  if (hit !== undefined) {
+    throw new RoutingError(
+      `経路が部品の上を通ります（${hit.kind} ${hit.id}）: ${wire.from} → ${wire.to}`,
+    );
+  }
+  return route;
 }
 
-function dedupeStrings(values: readonly string[]): string[] {
-  const out: string[] = [];
-  for (const v of values) {
-    if (v.length === 0 || out.includes(v)) continue;
-    out.push(v);
-  }
-  return out;
+/** 経路生成のオプション。 */
+export interface RouteOptions {
+  /** 端子ごとに引き出し向きを強制する（既設ハーネスを写真どおり手前へ出すのに使う）。 */
+  exitOverride?: Readonly<Record<string, 'rear' | 'front'>>;
 }
 
 /** セッションの全電線の経路を、配列の並び順に求める。§6.6 */
@@ -3297,18 +4297,162 @@ export function routeSession(board: BoardDefinition, session: BoardSession): Wir
   }
   return routes;
 }
+
+/**
+ * 既設の青線ハーネス（端子台 → PB／PL本体）の経路。§6.4 / 写真
+ * 配線帯は使わず、端子台の端子から**手前へまっすぐ降り**、機器の根元にある盤面の貫通穴に
+ * 2mmピッチで平行に入って、盤の裏側の本体端子へつながる。機器の中心（押ボタンの頭・
+ * ランプのレンズ）の上は通らない。
+ */
+export function routeFixedLinks(board: BoardDefinition): WireRoute[] {
+  const holeOf = new Map<string, Vec3>();
+  for (const lamp of board.lamps) holeOf.set(lamp.id, lamp.panelHole);
+  for (const pb of board.pushButtons) holeOf.set(pb.id, pb.panelHole);
+
+  const routes: WireRoute[] = [];
+  const seen = new Map<string, number>();
+  for (const link of board.fixedLinks) {
+    const owner = [...holeOf.keys()].find(
+      (id) => link.from.startsWith(`${id}.`) || link.to.startsWith(`${id}.`),
+    );
+    if (owner === undefined) continue; // P/N供給端子どうしのリンクは筐体内なので描かない
+    const hole = holeOf.get(owner);
+    const blockId = link.from.startsWith(`${owner}.`) ? link.to : link.from;
+    const bodyId = link.from.startsWith(`${owner}.`) ? link.from : link.to;
+    const block = findBoardTerminal(board, blockId);
+    const body = findBoardTerminal(board, bodyId);
+    if (hole === undefined || block === undefined || body === undefined) continue;
+
+    const index = seen.get(owner) ?? 0;
+    seen.set(owner, index + 1);
+    const total = link.from.startsWith('PB') || link.to.startsWith('PB') ? 3 : 2;
+    const offset = (index - (total - 1) / 2) * HARNESS_PITCH_MM;
+    const approachY = hole.y - HARNESS_APPROACH_MM;
+    const corners = dedupePoints([
+      block.pos,
+      vec3(block.pos.x, block.pos.y, WIRE_RUN_Z_MM),
+      vec3(block.pos.x, approachY, WIRE_RUN_Z_MM),
+      vec3(hole.x + offset, approachY, WIRE_RUN_Z_MM),
+      vec3(hole.x + offset, hole.y, WIRE_RUN_Z_MM),
+      vec3(hole.x + offset, hole.y, 0),
+      vec3(hole.x + offset, hole.y, body.pos.z),
+      vec3(hole.x + offset, body.pos.y, body.pos.z),
+      body.pos,
+    ]);
+    const points = filletCorners(corners, WIRE_FILLET_RADIUS_MM);
+    routes.push({
+      wireId: link.id,
+      points,
+      corners,
+      channelIds: [],
+      channelSpans: [],
+      lane: index,
+      throughPanelAt: vec3(hole.x + offset, hole.y, 0),
+      lengthMm: polylineLength(points),
+    });
+  }
+  return routes;
+}
+
+/** 折れ点列が直角経路か（隣り合う点で動く軸がちょうど1つか）。 */
+export function isManhattan(corners: readonly Vec3[], epsilon = 1e-6): boolean {
+  for (let i = 1; i < corners.length; i += 1) {
+    const p = corners[i - 1];
+    const q = corners[i];
+    if (p === undefined || q === undefined) return false;
+    const moved = [Math.abs(q.x - p.x), Math.abs(q.y - p.y), Math.abs(q.z - p.z)].filter(
+      (d) => d > epsilon,
+    );
+    if (moved.length !== 1) return false;
+  }
+  return true;
+}
+
+/**
+ * 経路が部品の占有領域の内側を通っていないか。§6.6
+ * 両端の端子が載っている部品（引き出し区間が必ず通る）は除いて調べる。
+ * 通っていればその占有領域を返す。
+ */
+export function crossingFootprint(board: BoardDefinition, route: WireRoute): Footprint | undefined {
+  const own = new Set<string>();
+  const ends = [route.corners[0], route.corners[route.corners.length - 1]];
+  for (const end of ends) {
+    if (end === undefined) continue;
+    for (const fp of board.footprints) {
+      if (rectContains(fp, end)) own.add(fp.id);
+    }
+  }
+  for (const fp of board.footprints) {
+    if (own.has(fp.id)) continue;
+    for (let i = 1; i < route.points.length; i += 1) {
+      const p = route.points[i - 1];
+      const q = route.points[i];
+      if (p === undefined || q === undefined) continue;
+      if (segmentIntersectsRect(p, q, fp)) return fp;
+    }
+  }
+  return undefined;
+}
+
+/** 経路が部品の上を横切っているか。 */
+export function crossesFootprint(board: BoardDefinition, route: WireRoute): boolean {
+  return crossingFootprint(board, route) !== undefined;
+}
+
+/** 配線帯が部品の占有領域と重なっていないか（盤定義の不変条件）。§6.6 */
+export function channelsClearOfFootprints(board: BoardDefinition): string[] {
+  const bad: string[] = [];
+  for (const channel of board.wiringChannels) {
+    const lanes = MAX_WIRE_LANES - 1;
+    const dir = CHANNEL_LANE_DIRECTION[channel.id] ?? 1;
+    const spread = lanes * WIRE_LANE_PITCH_MM * dir;
+    const a =
+      channel.axis === 'x' ? vec3(channel.from, channel.at, 0) : vec3(channel.at, channel.from, 0);
+    const b =
+      channel.axis === 'x'
+        ? vec3(channel.to, channel.at + spread, 0)
+        : vec3(channel.at + spread, channel.to, 0);
+    const rect = {
+      x: Math.min(a.x, b.x),
+      y: Math.min(a.y, b.y),
+      w: Math.abs(b.x - a.x),
+      h: Math.abs(b.y - a.y),
+    };
+    for (const fp of board.footprints) {
+      const overlap =
+        rect.x < fp.x + fp.w &&
+        rect.x + rect.w > fp.x &&
+        rect.y < fp.y + fp.h &&
+        rect.y + rect.h > fp.y;
+      if (overlap) bad.push(`${channel.id} × ${fp.id}`);
+    }
+  }
+  return bad;
+}
 ```
 
 - [ ] `packages/board-model/src/index.ts` の末尾に次を追記する。
 
 ```ts
 export {
-  nearestDuctPoint,
+  channelsClearOfFootprints,
+  crossesFootprint,
+  crossingFootprint,
+  entryChannelFor,
+  filletCorners,
+  isManhattan,
+  MAX_WIRE_LANES,
+  pickLane,
+  routeFixedLinks,
   routeSession,
   routeWire,
+  RoutingError,
   WIRE_DIAMETER_MM,
+  WIRE_FILLET_RADIUS_MM,
+  WIRE_FILLET_SEGMENTS,
   WIRE_LANE_PITCH_MM,
   type RoutableWire,
+  type RouteOptions,
   type WireRoute,
 } from './routing.js';
 ```
@@ -3323,7 +4467,7 @@ pnpm --filter @ojt/board-model test -- routing.test.ts
 
 ```
  Test Files  1 passed (1)
-      Tests  9 passed (9)
+      Tests  20 passed (20)
 ```
 
 - [ ] コミットする。
@@ -3331,7 +4475,7 @@ pnpm --filter @ojt/board-model test -- routing.test.ts
 ```powershell
 git add packages/board-model
 git commit -m @'
-feat(board-model): add deterministic duct routing with parallel offsets
+feat(board-model): route wires orthogonally without crossing components
 
 Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
 Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
@@ -3353,6 +4497,11 @@ Task 3〜9 で追記してきた再輸出を、次の最終形と一致してい
 export {
   addVec,
   distance,
+  rectBottom,
+  rectContains,
+  rectRight,
+  rectsOverlap,
+  segmentIntersectsRect,
   nearestPointOnPolyline,
   nearestPointOnSegment,
   normalXY,
@@ -3365,6 +4514,7 @@ export {
   vecLength,
   type NearestPoint,
   type Polyline,
+  type Rect,
   type Vec3,
 } from './geometry.js';
 
@@ -3377,44 +4527,63 @@ export {
   BoardError,
   BODY_TERMINAL_Z_MM,
   boardTerminalPos,
+  CHANNEL_LANE_DIRECTION,
   circledNumber,
-  DUCT_HEIGHT_MM,
-  DUCT_WIDTH_MM,
   findBoardTerminal,
+  HARNESS_APPROACH_MM,
+  HARNESS_PITCH_MM,
   JIPM_BOARD,
   loadBoard,
   pinRole,
   resolveEndpoint,
+  PANEL_HOLE_OFFSET_MM,
+  roleLabel,
+  SOCKET_BODY_LENGTH_MM,
+  SOCKET_BODY_WIDTH_MM,
   SOCKET_COL_PITCH_MM,
   SOCKET_IDS,
   SOCKET_PIN_GRID,
-  SOCKET_ROW_PITCH_MM,
+  SOCKET_PIN_HOLE_COL_PITCH_MM,
+  SOCKET_PIN_HOLE_ROW_PITCH_MM,
+  SOCKET_PITCH_MM,
+  SOCKET_SLOT_INSET_MM,
   SOCKET_TERMINAL_Z_MM,
+  SOCKET_TIER_INSET_MM,
+  SOCKET_TIER_ROW_PITCH_MM,
+  socketBodyRect,
+  socketPinHoleOffsets,
+  socketPinOffset,
   socketPinTerminal,
+  socketRowExit,
   SUPPLY_TERMINAL_COUNT,
   TERMINAL_PICK_RADIUS_MM,
+  WIRE_RUN_Z_MM,
   type BoardDefinition,
   type BoardEndpoint,
   type BoardTerminal,
-  type DuctSegment,
+  type ConsoleShape,
   type FixedLink,
   type FixedWire,
+  type Footprint,
   type LampDefinition,
   type PushButtonColor,
   type PushButtonDefinition,
   type SocketDefinition,
   type SocketId,
   type TerminalRole,
+  type WiringChannel,
 } from './board-jipm.js';
 
 export {
   CHECK_SOCKET_ROLE,
+  DEFAULT_SOCKET_ROLES,
   hasRole,
   isSocketId,
   isSocketRole,
   roleOf,
   RoleError,
   socketOf,
+  socketPartId,
   TASK1_SOCKET_ROLES,
   TASK2_SOCKET_ROLES,
   terminalIdFor,
@@ -3478,12 +4647,24 @@ export {
 } from './to-netlist.js';
 
 export {
-  nearestDuctPoint,
+  channelsClearOfFootprints,
+  crossesFootprint,
+  crossingFootprint,
+  entryChannelFor,
+  filletCorners,
+  isManhattan,
+  MAX_WIRE_LANES,
+  pickLane,
+  routeFixedLinks,
   routeSession,
   routeWire,
+  RoutingError,
   WIRE_DIAMETER_MM,
+  WIRE_FILLET_RADIUS_MM,
+  WIRE_FILLET_SEGMENTS,
   WIRE_LANE_PITCH_MM,
   type RoutableWire,
+  type RouteOptions,
   type WireRoute,
 } from './routing.js';
 ```
@@ -3496,7 +4677,7 @@ pnpm --filter @ojt/board-model typecheck
 pnpm exec eslint .
 ```
 
-期待出力: `Tests  47 passed (47)`、カバレッジは全項目90%以上（実測: Statements 97.75% / Branches 91.91% / Functions 100% / Lines 99.56%）、`tsc` と `eslint` は何も出さず終了。
+期待出力: `Tests  69 passed (69)`、カバレッジは全項目90%以上（実測: Statements 95.92% / Branches 90.18% / Functions 100% / Lines 97.87%）、`tsc` と `eslint` は何も出さず終了。
 
 - [ ] コミットする。
 
@@ -4237,13 +5418,17 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 | 上書き | `physicalOverride[要素ID] = [左, 右]` があれば既定規則より優先する（§7.2） |
 | エラー | 接点組の不足、端子本数超過、供給端子の枯渇を理由付きで返す |
 
-役割割当は `options.roles` で明示できる。省略した場合は回路図に現れる `CRn`／`Tn` を正準順（CR1→CR4→T1→T2）に `S1`〜`S4` へ、`S5` は常に `CHK` に割り当てる。5個以上現れたらエラー（盤のソケットは4個）。
+役割割当は `options.roles` で明示できる。省略した場合は `board-model` の `DEFAULT_SOCKET_ROLES`
+（S1〜S4=`CR1`〜`CR4`、S5=`T1`、S6=`T2`、S7=`CHK`、S8=予備）をそのまま使う。盤のソケットが8個あり
+§6.1 の役割は7つしかないので、**どんな回路図でも必ず載る**（旧版にあった「ソケットに載る機器が
+5個以上ならエラー」は、ソケット4個だった旧配置の制約なので無くなった）。明示的に
+`TASK1_SOCKET_ROLES` / `TASK2_SOCKET_ROLES` を渡して検定の盤と同じ制約で練習させることはできる。
 
 - [ ] 失敗するテストを書く。`packages/schematic-core/test/assign.test.ts`:
 
 ```ts
 import { describe, expect, it } from 'vitest';
-import { TASK2_SOCKET_ROLES } from '@ojt/board-model';
+import { DEFAULT_SOCKET_ROLES, TASK2_SOCKET_ROLES } from '@ojt/board-model';
 import type { TerminalId } from '@ojt/circuit-sim';
 import {
   assignToBoard,
@@ -4277,7 +5462,8 @@ describe('assign: 回路図 → 物理割当（§11.3）', () => {
   it('自己保持回路の割当', () => {
     const result = assigned(assignToBoard(selfHoldDoc()));
     expect(result.roles.S1).toBe('CR1');
-    expect(result.roles.S5).toBe('CHK');
+    expect(result.roles.S7).toBe('CHK');
+    expect(result.roles.S8).toBeUndefined();
     expect(result.parts).toEqual([{ socket: 'S1', role: 'CR1', kind: 'relay-my4n' }]);
     expect(result.cells.map((c) => `${c.cellId}:${c.left}-${c.right}`)).toEqual([
       'c1:TB_PB.2c-TB_PB.2b',
@@ -4381,19 +5567,12 @@ describe('assign: 回路図 → 物理割当（§11.3）', () => {
     });
   });
 
-  it('役割割当は回路図から決まり、明示指定もできる（§6.1）', () => {
+  it('役割割当は既定（8ソケットに7役割）で、明示指定もできる（§6.1）', () => {
     expect(requiredRoles(flickerDoc())).toEqual(['CR1', 'CR2', 'T1', 'T2']);
-    expect(deriveSocketRoles(flickerDoc())).toEqual(TASK2_SOCKET_ROLES);
-    expect(deriveSocketRoles(onDelayDoc())).toEqual({
-      S1: 'T1',
-      S2: 'CR1',
-      S3: 'CR2',
-      S4: 'CR3',
-      S5: 'CHK',
-    });
+    expect(deriveSocketRoles()).toEqual(DEFAULT_SOCKET_ROLES);
     const explicit = assigned(assignToBoard(onDelayDoc(), { roles: TASK2_SOCKET_ROLES }));
     expect(explicit.parts).toEqual([
-      { socket: 'S3', role: 'T1', kind: 'timer-h3y4', presetMs: 3000, rangeMaxMs: 10_000 },
+      { socket: 'S5', role: 'T1', kind: 'timer-h3y4', presetMs: 3000, rangeMaxMs: 10_000 },
     ]);
   });
 
@@ -4408,7 +5587,7 @@ describe('assign: 回路図 → 物理割当（§11.3）', () => {
     ]);
   });
 
-  it('ソケットに載る機器が5個以上ならエラー', () => {
+  it('CR4個とタイマを同時に使う回路図も既定の割当に載る（ソケットは8個）', () => {
     const doc = createDocument('x', '5機器', [
       rung('r1', BUS_P, BUS_N, [pbA('c1', 'PB1'), coil('c2', 'CR1')]),
       rung('r2', BUS_P, BUS_N, [crA('c3', 'CR1'), coil('c4', 'CR2')]),
@@ -4416,11 +5595,14 @@ describe('assign: 回路図 → 物理割当（§11.3）', () => {
       rung('r4', BUS_P, BUS_N, [crA('c7', 'CR3'), coil('c8', 'CR4')]),
       rung('r5', BUS_P, BUS_N, [crA('c9', 'CR4'), coil('c10', 'T1', 1000)]),
     ]);
-    const result = assignToBoard(doc);
-    if (result.ok) throw new Error('unreachable');
-    expect(result.errors[0]?.message).toBe(
-      'ソケットに載る機器が5個以上あります（盤のソケットは4個）',
-    );
+    const result = assigned(assignToBoard(doc));
+    expect(result.parts.map((p) => `${p.socket}:${p.role}`)).toEqual([
+      'S1:CR1',
+      'S2:CR2',
+      'S3:CR3',
+      'S4:CR4',
+      'S5:T1',
+    ]);
   });
 
   it('physicalOverride が既定規則より優先される（§7.2 / §11.3）', () => {
@@ -4453,7 +5635,7 @@ describe('assign: 回路図 → 物理割当（§11.3）', () => {
     ]);
     const result = assigned(assignToBoard(doc));
     expect(result.parts).toEqual([
-      { socket: 'S1', role: 'T1', kind: 'timer-h3y4', presetMs: 3000, rangeMaxMs: 10_000 },
+      { socket: 'S5', role: 'T1', kind: 'timer-h3y4', presetMs: 3000, rangeMaxMs: 10_000 },
     ]);
   });
 
@@ -4507,7 +5689,7 @@ pnpm --filter @ojt/schematic-core test -- assign.test.ts
 
 ```ts
 import {
-  CHECK_SOCKET_ROLE,
+  DEFAULT_SOCKET_ROLES,
   DEFAULT_TIMER_PRESET_MS,
   DEFAULT_TIMER_RANGE,
   JIPM_BOARD,
@@ -4621,18 +5803,14 @@ export function requiredRoles(doc: SchematicDocument): SocketRole[] {
   return ASSIGNABLE_ROLES.filter((role) => used.has(role));
 }
 
-/** 回路図に現れる機器から役割割当を決める。S5 は常にチェック用。§6.1 */
-export function deriveSocketRoles(doc: SchematicDocument): SocketRoles | undefined {
-  const needed = requiredRoles(doc);
-  if (needed.length > 4) return undefined;
-  const filler = ASSIGNABLE_ROLES.filter((role) => !needed.includes(role));
-  const ordered = [...needed, ...filler].slice(0, 4);
-  const roles: Partial<Record<SocketId, SocketRole>> = {};
-  SOCKET_IDS.slice(0, 4).forEach((socket, index) => {
-    roles[socket] = ordered[index];
-  });
-  roles.S5 = CHECK_SOCKET_ROLE;
-  return roles as SocketRoles;
+/**
+ * 回路図から役割割当を決める。
+ * 実物の盤はソケットを8個持ち、§6.1 の7役割（`CR1`〜`CR4` / `T1` / `T2` / `CHK`）を
+ * すべて同時に載せられるので、既定の割当（`DEFAULT_SOCKET_ROLES`）をそのまま使えばよい。
+ * 課題側で `options.roles` を渡せば §6.1 の課題1形式・課題2形式に絞ることもできる。
+ */
+export function deriveSocketRoles(): SocketRoles {
+  return DEFAULT_SOCKET_ROLES;
 }
 
 function terminalPair(
@@ -4731,15 +5909,7 @@ export function assignToBoard(doc: SchematicDocument, options: AssignOptions = {
   const structural = validateDocument(doc);
   if (structural.length > 0) return { ok: false, errors: structural };
 
-  const roles = options.roles ?? deriveSocketRoles(doc);
-  if (roles === undefined) {
-    return {
-      ok: false,
-      errors: [
-        { path: 'rungs', message: 'ソケットに載る機器が5個以上あります（盤のソケットは4個）' },
-      ],
-    };
-  }
+  const roles = options.roles ?? deriveSocketRoles();
   const needed = requiredRoles(doc);
   const missing = needed.filter((role) => !SOCKET_IDS.some((socket) => roles[socket] === role));
   if (missing.length > 0) {
@@ -4870,7 +6040,7 @@ export function assignToBoard(doc: SchematicDocument, options: AssignOptions = {
   const parts: PartAssignment[] = [];
   for (const socket of SOCKET_IDS) {
     const role = roles[socket];
-    if (!needed.includes(role)) continue;
+    if (role === undefined || !needed.includes(role)) continue;
     if (role.startsWith('T')) {
       parts.push({
         socket,
@@ -4938,9 +6108,13 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 - Test: `packages/schematic-core/test/to-session.test.ts`
 - Modify: `packages/schematic-core/src/index.ts`
 
-割当結果を board-model の `plug()` / `addWire()` に通して盤セッションを作る。**配線を自前で押し込まず必ず `addWire()` を通す**ことで、1端子2本の上限・線色パレット・配線不可端子の規則が盤モデル側の実装1か所で効く。違反は割当側のエラー（`AssignError`）として返す。
+割当結果を board-model の `plug()` / `addWire()` に通して盤セッションを作る。**配線を自前で押し込まず
+必ず `addWire()` を通す**ことで、1端子2本の上限・線色パレット・配線不可端子の規則が盤モデル側の
+実装1か所で効く。違反は割当側のエラー（`AssignError`）として返す。
 
-このタスクのテストが Plan 1B の結合点で、`回路図 → 割当 → セッション → ネットリスト → Simulation` を実際に走らせて、自己保持・インターロック・オンディレー・フリッカの4回路が期待どおり動くことを確かめる（§14.1 #5・#6・#8・#11 の回路図版）。
+このタスクのテストが Plan 1B の結合点で、`回路図 → 割当 → セッション → ネットリスト → Simulation` を
+実際に走らせて、自己保持・インターロック・オンディレー・フリッカの4回路が期待どおり動くことを
+確かめる（§14.1 #5・#6・#8・#11 の回路図版）。
 
 - [ ] 失敗するテストを書く。`packages/schematic-core/test/to-session.test.ts`:
 
@@ -5030,7 +6204,7 @@ describe('to-session: 回路図 → 盤セッション → ネットリスト �
 
   it('フリッカ回路が周期的に点滅し、チャタリングしない（§14.1 #11 / §5.5）', () => {
     const session = build(flickerDoc());
-    expect(session.mounted.S3).toEqual({
+    expect(session.mounted.S5).toEqual({
       kind: 'timer-h3y4',
       presetMs: 500,
       rangeMaxMs: 10_000,
@@ -5784,7 +6958,7 @@ pnpm exec eslint .
 pnpm exec prettier --check .
 ```
 
-期待出力: `@ojt/circuit-sim` は Plan 1A のテスト（91件）、`@ojt/board-model` が `Tests  47 passed (47)`、`@ojt/schematic-core` が `Tests  40 passed (40)`。`tsc` と `eslint` は無出力、prettier は `All matched files use Prettier code style!`。
+期待出力: `@ojt/circuit-sim` は Plan 1A のテスト、`@ojt/board-model` が `Tests  69 passed (69)`、`@ojt/schematic-core` が `Tests  40 passed (40)`。`tsc` と `eslint` は無出力、prettier は `All matched files use Prettier code style!`。
 
 - [ ] カバレッジがしきい値（行・分岐とも90%以上、§14.2）を満たすことを確認する。
 
@@ -5796,8 +6970,8 @@ pnpm --filter @ojt/schematic-core exec vitest run --coverage
 期待出力（実測値）:
 
 ```
-board-model     Statements 97.75% / Branches 91.91% / Functions 100% / Lines 99.56%
-schematic-core  Statements 97.72% / Branches 93.58% / Functions 100% / Lines 98.42%
+board-model     Statements 95.92% / Branches 90.18% / Functions 100% / Lines 97.87%
+schematic-core  Statements 97.64% / Branches 93.53% / Functions 100% / Lines 98.37%
 ```
 
 - [ ] 循環依存が無いことを確認する（仕様 §4.2）。
@@ -5826,35 +7000,37 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 
 | 仕様 | 内容 | 実装 | テスト |
 |---|---|---|---|
-| §6.1 | 盤の構成（ソケット5・PL4・PB4・端子台8P/12P・P/N各6・ブレーカ・スイッチ・電源・ダクト・M3端子） | Task 4 | `board`「ソケット5・PB4・PL4」「端子台は12P／8P」「ダクトは連結した5区間」 |
-| §6.1 | ソケットの役割割当（課題1形式 / 課題2形式） | Task 5 | `roles`「課題1形式・課題2形式の割当は妥当」 |
-| §6.2 | ソケット端子の4段配置とピン割付（COM 9-12 / NC 1-4 / NO 5-8 / コイル 13-14） | Task 4 | `board`「4段配置どおりの座標」「ピン割付が仕様どおり」 |
-| §6.3 | チェック用ソケットの黄色固定配線3本・`locked`・同端子は残り1本 | Task 4・7 | `board`「黄色固定配線は3本で §6.3 の端子どおり」／`session`「固定配線は削除できない」「黄色配線が1本ある端子には1本しか足せない」／`to-netlist`「赤PBで励磁する回路になっている」 |
+| §6.1 | 盤の構成（ソケット・PL4・PB4・端子台8P/12P・P/N各6・ブレーカ・スイッチ・電源・M3端子） | Task 4 | `board`「ソケット8（左4・右4）・PB4・PL4」「端子台は12P／8P」「写真どおりの段構成」 |
+| §6.1 | ソケットの役割割当（既定／課題1形式／課題2形式） | Task 5 | `roles`「既定の割当は7役割すべてを載せ、S8 を予備にする」「課題1形式・課題2形式の割当は妥当」 |
+| §6.2 | ソケット端子の4段配置とピン割付（COM 9-12 / NC 1-4 / NO 5-8 / コイル 13-14） | Task 4 | `board`「ネジ端子が上下2ティアに分かれる」「ピン割付が仕様どおり」「差込穴は14個」 |
+| §6.3 | チェック用ソケットの固定配線3本・`locked`・同端子は残り1本 | Task 4・7 | `board`「既設固定配線は3本・青で §6.3 の端子どおり」／`session`「固定配線は削除できない」「既設配線が1本ある端子には1本しか足せない」／`to-netlist`「赤PBで励磁する回路になっている」 |
 | §6.4 | 端子ID命名（`CR1.13` / `TB_PB.1a` / `TB_PL.1+` / `P.1` / `PS.+` / `BZ.+`） | Task 4・5・8 | `roles`「役割名がそのまま部品IDになる」／`to-netlist`「部品・リンク・電線の構成」 |
-| §6.4 | PB/PL本体↔端子台の既設リンク（12本・8本、`locked`、故障注入対象外） | Task 4・8 | `board`「既設リンクは32本」／`to-netlist`「`links.every(locked)`」 |
-| §6.4 | 本体端子には配線できない（測定と3D表示のためだけに存在する） | Task 4・7 | `board`「PB／PL本体端子は配線できず」／`session`「配線不可端子を拒否する」 |
-| §6.5 | 3D座標（mm・盤左上手前が原点・当たり判定半径4mm・ダクトのポリライン） | Task 3・4 | `board`「全端子の座標が盤外形の中にある」「当たり判定半径は4mm」 |
+| §6.4 | PB/PL本体↔端子台の既設リンク（12本・8本、`locked`、故障注入対象外）。写真では青線ハーネス | Task 4・8・9 | `board`「既設リンクは…32本の青線ハーネス」／`to-netlist`「`links.every(locked)`」／`routing`「既設の青線ハーネスは機器の真上から降り、貫通穴で盤面を抜ける」 |
+| §6.4 | 本体端子には配線できない（測定と3D表示のためだけに存在する） | Task 4・7 | `board`「PB／PL本体端子は配線できず」「本体端子は盤の裏（z が負）にある」／`session`「配線不可端子を拒否する」 |
+| §6.5 | 3D座標（mm・盤左上手前が原点・当たり判定半径4mm） | Task 3・4 | `geometry` 全件／`board`「全端子の座標が盤面の中にある」「ネジ端子は当たり判定が重ならない間隔で並ぶ」 |
+| §6.5 | 盤の形状（写真の傾斜コンソール） | Task 4 | `board`「傾斜コンソールの形状メタが奥行と整合する」 |
 | §6.6 | 部品カタログ（`relay-my4n` / `timer-h3y4` とレンジ） | Task 6 | `catalog`「装着できるのはリレーとタイマの2種」「タイマのレンジは 0〜10s と 0〜60s」 |
 | §6.6 | 電線モデル（id / from / to / color / locked） | Task 7 | `session`「電線を張る／外す」 |
 | §6.6 | 1端子2本まで。3本目は拒否する | Task 7 | `session`「1端子2本まで」 |
-| §6.6 | 経路は自動（端子→ダクト→端子）。重なる線は2mmピッチで並列オフセット。線径1.6mm | Task 9 | `routing`「端子 → ダクト → 端子 の折れ線を返す」「2mmピッチで並列オフセット」「決定論」 |
+| §6.6 | 経路は自動。重なる線は2mmピッチで並列オフセット。線径1.6mm | Task 9 | `routing`「端子 → 配線帯 → 端子 の直角経路を返す」「同じ帯を通る電線は2mmピッチで別レーンに」「決定論」 |
+| §6.6 | **配線は部品（リレー／タイマ等）の上を通らない** | Task 4・9 | `routing`「配線帯は部品の占有領域と重ならない」「自己保持回路の全配線が部品の上を通らず、直角でレーンも重ならない」「フリッカ回路…も部品の上を通らない」「部品の上を通ってしまう配線帯では経路生成が失敗する」／`board`「部品の占有領域が…互いに重ならない」 |
 | §6.6 | 電線の見た目（両端のY型圧着端子） | 範囲外 | 経路（`WireRoute.points`）と線径（`WIRE_DIAMETER_MM`）までを本計画が返し、チューブジオメトリと圧着端子の形状は `apps/desktop`（Plan 1D、§15 の3D規模）が描く |
 | §7.1 | 課題の `inventory`（使える部品と本数） | Task 6・7 | `catalog`「在庫の計算」／`session`「装着・取り外し・在庫」 |
 | §7.2 | `physicalOverride`（回路図要素 → 物理端子の手動指定） | Task 13 | `assign`「physicalOverride が既定規則より優先される」 |
-| §8.1 | 線色パレット（モードB=青 / C2=白。黄は選べない） | Task 7 | `session`「パレット外の色を拒否する」「白線モードでは青を拒否する」 |
+| §8.1 | 線色パレット（モードB=青 / C2=白） | Task 7 | `session`「パレット外の色を拒否する」「白線モードでは青を拒否する」 |
 | §8.2 | 配線・部品装着・タイマ設定の操作 | Task 7 | `session` 全件 |
 | §11.1 | 文書形式（横書き既定・左P右N・グリッド・要素種別・結線・分岐点・`formatVersion`） | Task 12 | `document` 全件 |
 | §11.2 | 読取専用レンダラ用の `layout()`（純関数・図形データまで） | Task 15 | `layout` 全件 |
 | §11.3 | 回路図→ネットリスト割当（接点の組・コイル・PB・PL・母線・上書き・エラー） | Task 13 | `assign` 全件 |
 | §11.3 | 割当結果から盤へ（線色は引数、既定は青） | Task 14 | `to-session`「割当どおりに装着と配線が入る」 |
+| §12.2 | 3D座標系の前提（盤の左上手前が原点・mm・2.5D） | Task 3・4 | `geometry` 全件／`board`「全端子の座標が盤面の中にある」 |
+| §12.2 | ピックの純粋関数化（`resolvePick(hit, uiState)`） | 範囲外 | 本計画は当たり判定に要る素材（端子ID・座標・半径4mm・`wirable`）を `BoardTerminal` として提供する。`resolvePick()` 自体はUI状態（選択中の線色・削除モード）を要するため `apps/desktop`（Plan 1D）で実装する |
 | §14.1 #5 | 自己保持回路 | Task 8・14 | `to-netlist`「自己保持回路が Simulation で動く」／`to-session`「自己保持回路が動く」 |
 | §14.1 #6 | インターロック（先行優先） | Task 14 | `to-session`「インターロック回路が動く」 |
 | §14.1 #8 | オンディレータイマ回路 | Task 14 | `to-session`「オンディレー回路が3秒で点灯する」 |
 | §14.1 #11 | フリッカ（リレー併用）・チャタリングしない | Task 14 | `to-session`「フリッカ回路が周期的に点滅し、チャタリングしない」 |
 | §14.1 #29 | 回路図→ネットリスト変換（5組目でエラー、4組目までは正しい端子） | Task 13 | `assign`「接点は出現順に組1〜組4へ」「5個目の接点はエラー」 |
 | §4.2 | 循環依存の禁止（`import/no-cycle` をエラー） | Task 1 | `pnpm exec eslint .`（Task 1 で発火を実地確認） |
-| §12.2 | 3D座標系の前提（盤の左上手前が原点・mm・2.5D） | Task 3・4 | `geometry` 全件／`board`「全端子の座標が盤外形の中にある」 |
-| §12.2 | ピックの純粋関数化（`resolvePick(hit, uiState)`） | 範囲外 | 本計画は当たり判定に要る素材（端子ID・座標・半径4mm・`wirable`）を `BoardTerminal` として提供する。`resolvePick()` 自体はUI状態（選択中の線色・削除モード）を要するため `apps/desktop`（Plan 1D）で実装する |
 | §14.2 | `board-model` / `schematic-core` の行・分岐カバレッジ90%以上 | Task 10・16 | `vitest run --coverage` のしきい値 |
 
 （§14.1 #1〜#4・#7・#9・#10・#12〜#24 は `circuit-sim` 側で Plan 1A が担当済み。#25〜#28 は Phase 3、#30 は `content`（Plan 1C）の担当で、いずれも本計画の範囲外。）
@@ -5866,22 +7042,50 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 | # | 仕様の記述 | 本計画での実装 | 理由 |
 |---|---|---|---|
 | 1 | §4.2「`board-model` はデータ定義のみ。`circuit-sim` に依存しない」 | `board-model` が `circuit-sim` の型と部品ファクトリに依存する | 盤セッション（装着部品＋電線）→ネットリスト変換（§4.4 のデータフロー）をどこかが担う必要があり、盤の構造を最もよく知っているのは `board-model` である。`content`（Plan 1C）に置くと課題スキーマが盤の内部構造を知ることになり、`circuit-sim` に置くとエンジンが特定の盤に依存する。**仕様書 §4.2 はこの計画に合わせて修正済み**（`board --> sim` を依存図に追加し、規則の行を差し替えた）。逆方向（`circuit-sim` → `board-model`）は引き続き禁止で、`import-x/no-cycle` と pnpm の厳格な node_modules の両方で守られる |
-| 2 | §6.5「具体座標は Phase 1 の実装で調査資料 §2.2 の配置図に基づき確定する（範囲決定）」 | 盤面 330×300×110mm、ソケット列ピッチ9mm・段ピッチ12mm、端子台ピッチ9mm、ダクト横3本＋縦2本 を確定した | 仕様が Phase 1 に委ねた範囲決定をここで行った。根拠は Task 4 冒頭の表のとおり（市販検定盤2社の一致する外形、M3端子と半径4mmの当たり判定が重ならない最小ピッチ、2mmピッチで6本を通せるダクト幅） |
-| 3 | §6.6 の `terminals[].role` 一覧（`coil+` / `coil-` / `com` / `no` / `nc` / `+` / `-` / `c` / `a` / `b` / `x` / `y` / `ss` / `plc-com` / `ac-l` / `ac-n`） | Phase 1 の盤で使う11種だけを `TerminalRole` に定義し、AC一次側は `ac` の1種にまとめた | `x` / `y` / `ss` / `plc-com` / `ac-l` / `ac-n` はPLC本体の端子役割で、PLC本体を盤モデルに足す Phase 3 で追加する。ブレーカ・電源スイッチは開閉器としてのみモデル化し電気的に解かない（§5.3.5）ので、一次・二次の区別を型に持たせる意味がない |
-| 4 | §6.4 の端子表（`CB.1` / `CB.2` / `SW.1` / `SW.2` / `OUTLET.*`） | `CB` / `SW` は盤定義に端子を持つが**ネットリストには載せない**。`OUTLET` は定義しない | AC一次側は電気的に解かない（§5.1.1「交流は扱わない」）。3D表示とホバー表示のために座標だけ要る。`OUTLET`（壁コンセント）はPLC電源の独立性チェック（§10.2）専用なので Phase 3 で足す |
-| 5 | §11.1「要素: …結線（横線・縦線）、分岐点」 | 横線は「段の中で隣り合う要素は繋がっている」という暗黙の規則にし、縦線と分岐点は「段の端点が他の段の節点を指す」形で表した | 横線・縦線を独立の要素として持つと、要素の並びと結線の整合をとる検証が別途必要になる。端点参照にすると「段は必ず1本の経路である」ことが型で保証され、検証・割当・レイアウトが同じ構造をそのまま辿れる。表示上は完全に同じ図になる |
-| 6 | §11.1 は段の中の負荷の位置を定めていない | 「右母線(N)に至る段は負荷1つで終わる／分岐段に負荷は置けない」を `validateDocument()` のエラーにした | 展開接続図の作法（右母線の直前が負荷）であり、これを外すと「コイルの後ろに接点がある」図が書けてしまい教材として誤りになる。電気的には直列順序に意味がないので、割当・シミュレーション結果は変わらない |
-| 7 | §11.3「母線 → `P.1`〜`P.6` / `N.1`〜`N.6` のうち、1端子2本の制約を満たすように若番から割り当てる」 | 上記に加えて、チェック用の黄色配線が既に1本使っている `P.6` / `N.6` を「残り1本」として数える | §6.3 が「`P.6` と `N.6` も同様に残り1本である」と定めているため。これを数えないと生成した配線が盤に載らない |
-| 8 | §6.6「経路は自動。端子 → 最寄りダクト入口 → ダクト内 → 目的端子の最寄り出口 → 端子」 | ダクトを区間グラフにしてダイクストラ法で最短経路を取る。並列オフセットは「1区間でも共有する既存経路の本数」を段数とし、経路全体を法線の平均方向へずらす | 「ダクト内」を最短経路と読む以外の解釈が無い。オフセットを区間ごとに変えると角で不連続になるため、経路単位で1段とした。どちらも決定論（§5.2）を満たす |
-| 9 | §5.3.4「PL は端子電圧19.2V以上で点灯表示」 | Plan 1A が採用した 14.4V/7.2V（点灯／暗点灯）をそのまま使う | Plan 1A の差分表#3 と同じ理由（接触抵抗による暗点灯を表現するため）。**仕様書 §5.3.4 と §17.2 はこの値に修正済み**（#23 として前提を追記した） |
+| 2 | §6.1「14ピンソケット 5個（うち4個が CR/T 用、1個がチェック用）」 | 物理ソケットを**8個**（左クラスタ `S1`〜`S4`、右クラスタ `S5`〜`S8`）定義する | 実物の写真（K96-CS3）がソケットを左右4個ずつ持つ。役割の数（§6.1 の7つ）は変えず、余った1個を役割なしの予備とした。検定の盤と同じ5個相当で練習させたい課題は `TASK1_SOCKET_ROLES` / `TASK2_SOCKET_ROLES` を渡せばよい（残りは予備になる） |
+| 3 | §6.1 の課題形式ごとの役割割当（課題1形式＝CR4＋CHK、課題2形式＝CR2＋T2＋CHK） | 既定を `DEFAULT_SOCKET_ROLES`（7役割すべてを同時に載せる）にし、§6.1 の2形式は選択肢として残す | ソケットが8個あるので両形式を同時に満たせる。§6.1 の「形式ごとに割り当てる」制約は、ソケットが5個しか無い検定盤の制約だった |
+| 4 | §6.5「具体座標は Phase 1 の実装で調査資料 §2.2 の配置図に基づき確定する（範囲決定）」 | 実物の写真（`docs/reference/K96-CS3-board-photo.png`）を平面射影として計測し、盤面 330×245mm・筐体厚 50mm・傾斜13°・ソケット本体 30×76mm／取付ピッチ32mm などを確定した | 仕様が Phase 1 に委ねた範囲決定を、調査資料の配置図よりも情報量の多い実物写真で行った。数値の根拠は Task 4 冒頭の表のとおり。**写真から読めない値（奥行・厚み・傾斜角・各段のY座標）はすべて「本アプリ既定（写真からの推定）」である** |
+| 5 | §6.5「ダクトは盤面上のポリライン列として定義する。各セグメントは幅と高さを持ち、配線の自動経路が参照する」 | **ダクトを定義しない**。代わりに `BoardDefinition.footprints`（部品の占有矩形）と `BoardDefinition.wiringChannels`（見えない配線帯）を持つ | 実物の写真に配線ダクトが無く、電線は盤面の上を直接走っている。存在しない部品の定義を残すと3D側が描けないものを描こうとする。一方「どこを通ってよいか」の情報は経路生成に必須なので、ダクトの役割は配線帯が引き継ぐ |
+| 6 | §6.6「経路は自動。端子 → 最寄りダクト入口 → ダクト内 → 目的端子の最寄り出口 → 端子」 | 端子 → 盤面に垂直に引き出す → 配線帯 → 直角に走る → 目的端子の列で曲がる → 端子。角は半径6mmのフィレットで丸める | 差分#5 の帰結。「ダクト」を「配線帯」に読み替えただけで、経路の骨格は §6.6 のとおり。「自動生成」「2mmピッチの並列オフセット」「線径1.6mm」も守っている |
+| 6a | （仕様に明記なし） | **電線は部品の占有矩形の内側を通らない**ことを必須制約にし、経路を返す前に実際に検査して違反なら `RoutingError` を投げる | 「配線がリレーやタイマの上を通るのはあり得ない」（依頼者）。配線帯を占有矩形と重ならない位置にだけ引いてあるので、帯の中を走る経路は構造的に部品を跨がない（帯と矩形が重なっていないことも `channelsClearOfFootprints()` でテストしている）。直交する帯で届かない場合は余白やクラスタ間の帯を回る迂回路が選ばれ、それでも届かなければ失敗する |
+| 6b | §6.6「ダクト内で重なる線は幅方向に2mmピッチで並列オフセット」 | 帯ごとに**占有する区間**を持ち、区間が重なる電線とだけレーンを分ける（区間彩色） | 帯を共有するだけで無条件にレーンを増やすと、盤の端から端まで走る電線が数本あるだけでレーンを使い切ってしまう。実際に重なる区間だけ分ければ、同じ2mmピッチのまま必要なレーン数が大きく減る |
+| 7 | §6.6 の `terminals[].role` 一覧（`coil+` / `coil-` / `com` / `no` / `nc` / `+` / `-` / `c` / `a` / `b` / `x` / `y` / `ss` / `plc-com` / `ac-l` / `ac-n`） | Phase 1 の盤で使う11種だけを `TerminalRole` に定義し、AC一次側は `ac` の1種にまとめた | `x` / `y` / `ss` / `plc-com` / `ac-l` / `ac-n` はPLC本体の端子役割で、PLC本体を盤モデルに足す Phase 3 で追加する。ブレーカ・電源スイッチは開閉器としてのみモデル化し電気的に解かない（§5.3.5）ので、一次・二次の区別を型に持たせる意味がない |
+| 8 | §6.4 の端子表（`CB.1` / `CB.2` / `SW.1` / `SW.2` / `OUTLET.*`） | `CB` / `SW` は盤定義に端子を持つが**ネットリストには載せない**。`OUTLET` は定義しない | AC一次側は電気的に解かない（§5.1.1「交流は扱わない」）。3D表示とホバー表示のために座標だけ要る。`OUTLET`（壁コンセント）はPLC電源の独立性チェック（§10.2）専用なので Phase 3 で足す。なお写真には独立した電源スイッチが見当たらず2極MCBが兼ねているように見えるが、§5.3.5 の「ブレーカ→スイッチ」の順序は教育項目（§5.6 #4）なので `SW` は残した |
+| 9 | §6.4「PB本体・PL本体と端子台の間は `locked: true` の0Ω相当リンク」 | リンクのまま（電線にしない）とし、写真どおりの**青色**を `FixedLink.color` に持たせ、経路は `routeFixedLinks()` が別に作る | 写真ではここが青線のハーネスだが、これを `Wire` として `session.wires` に入れると端子台の全端子が最初から1本埋まり、§6.3 の「固定配線がある `TB_PB.4c` / `TB_PB.4a` だけが残り1本」という前提と §11.3 の母線割当が崩れる |
+| 9a | （仕様に明記なし） | PB／PL の本体端子を機器の**根元**（盤面のすぐ裏、z = −12mm）に置き、各機器に盤面の**貫通穴** `panelHole` を持たせた。既設ハーネスは端子台から手前へまっすぐ降り、貫通穴に2mmピッチで平行に入る | 写真では青線が機器の奥側の根元の1点に集まって盤面を抜けている。本体端子を機器の中心に置くと、配線が押ボタンの頭やランプのレンズの上を通る絵になってしまう |
+| 9b | 調査資料 §4.2「チェック用回路の既設配線は**黄**」 | 既設固定配線をすべて**青**にする（`locked: true` で区別） | 依頼者の実機（K96-CS3）の既設配線が青であるため。線色の意味論（新規=青／修復=白）は §8.1 のまま変えず、既設かどうかは `locked` で判別する。JIPM の検定盤に合わせたい課題は `fixedWires[].color` を黄に差し替えれば足りる |
+| 10 | §11.1「要素: …結線（横線・縦線）、分岐点」 | 横線は「段の中で隣り合う要素は繋がっている」という暗黙の規則にし、縦線と分岐点は「段の端点が他の段の節点を指す」形で表した | 横線・縦線を独立の要素として持つと、要素の並びと結線の整合をとる検証が別途必要になる。端点参照にすると「段は必ず1本の経路である」ことが型で保証され、検証・割当・レイアウトが同じ構造をそのまま辿れる。表示上は完全に同じ図になる |
+| 11 | §11.1 は段の中の負荷の位置を定めていない | 「右母線(N)に至る段は負荷1つで終わる／分岐段に負荷は置けない」を `validateDocument()` のエラーにした | 展開接続図の作法（右母線の直前が負荷）であり、これを外すと「コイルの後ろに接点がある」図が書けてしまい教材として誤りになる。電気的には直列順序に意味がないので、割当・シミュレーション結果は変わらない |
+| 12 | §11.3「母線 → `P.1`〜`P.6` / `N.1`〜`N.6` のうち、1端子2本の制約を満たすように若番から割り当てる」 | 上記に加えて、チェック用の既設配線が既に1本使っている `P.6` / `N.6` を「残り1本」として数える | §6.3 が「`P.6` と `N.6` も同様に残り1本である」と定めているため。これを数えないと生成した配線が盤に載らない |
+| 13 | §5.3.4「PL は端子電圧19.2V以上で点灯表示」 | Plan 1A が採用した 14.4V/7.2V（点灯／暗点灯）をそのまま使う | Plan 1A の差分表#3 と同じ理由（接触抵抗による暗点灯を表現するため）。**仕様書 §5.3.4 と §17.2 はこの値に修正済み**（#23 として前提を追記した） |
+| 14 | §6.4 の `PB1`〜`PB4` | 部品IDは §6.4 のまま `PB1`〜`PB4`。写真の銘板表記 `PBS1`〜`PBS4` は `PushButtonDefinition.panelLabel` に持つ | 部品IDは端子ID（`PB1.c`）と信号ログ（§5.7）とゴールデンケースの全体で使われる規約なので変えない。3Dの銘板とツールチップだけ写真どおりに出せればよい |
+| 15 | §6.2 の4段配置（`[空]③②①` / `⑧⑦⑥⑤` / `⑫⑪⑩⑨` / `④⑭⑬[空]`） | 4段の並びはそのまま。ただし**段1・段2を本体の奥端、段3・段4を手前端**に寄せ、中央を差込穴の領域にした。ティア内の段ピッチは8mm | 実物のソケットは差込穴が本体中央にあり、ネジ端子は上下に段付きで2列ずつ寄っている。§6.2 の図は端子番号の並びを示すもので、等間隔の4段を要求してはいない。ティア内ピッチを写真の見た目（約7mm）ではなく8mmにしたのは、§6.5 の当たり判定半径4mmが重ならない最小値だから |
 
 ---
 
 ## 完了条件
 
-1. `pnpm test` が全て通る（`@ojt/circuit-sim` 91件、`@ojt/board-model` **47件**、`@ojt/schematic-core` **40件**）。
+1. `pnpm test` が全て通る（`@ojt/circuit-sim` は Plan 1A のテスト、`@ojt/board-model` **69件**、`@ojt/schematic-core` **40件**）。
 2. `pnpm --filter @ojt/board-model exec vitest run --coverage` と `pnpm --filter @ojt/schematic-core exec vitest run --coverage` が、行・分岐とも90%のしきい値を満たす。
 3. `pnpm typecheck`・`pnpm exec eslint .`・`pnpm exec prettier --check .` がすべてエラーなしで終わる。
 4. `import-x/no-cycle` がエラー設定で有効になっており、わざと作った循環を検出することを実地で確認済みである（Task 1）。
 5. `packages/board-model` と `packages/schematic-core` が外部ランタイム依存を持たない（`dependencies` は workspace 内のパッケージのみ）。
 6. 回路図（`SchematicDocument`）から `toSession()` → `toNetlist()` → `Simulation` の順に通して、自己保持・インターロック・オンディレー・フリッカの4回路が期待どおり動く。
+7. 盤定義が実物の写真（`docs/reference/K96-CS3-board-photo.png`）と食い違わない（ソケット8個・左右4個ずつ、ネジ端子は上下2ティア、上段左にDC24V供給端子・上段右にブレーカ、中段に端子台8P/12P、下段に PL4/PB4、ダクトなし）。
+8. `routeSession()` で解いた配線が、**どの部品の占有矩形の内側も通らない**（自己保持・フリッカ相当の配線と既設の青線ハーネスで検証済み）。経路は直角セグメントのみで構成され、同じ帯の同じ区間を走る電線はレーンが重ならない。
+
+---
+
+## 改訂履歴
+
+- **2026-09-14**: 依頼者から提供された実物写真（`docs/reference/K96-CS3-board-photo.png`、OMRON 形 K96-CS3）に合わせて盤配置と経路生成を改訂した。
+  - 盤の形状を傾斜コンソールとし、`BoardDefinition.console`（`slopeDeg` / `frontHeightMm` / `rearHeightMm`）を追加（Task 4）。
+  - 盤面を 330 × 300mm から **330 × 245mm** に、筐体厚を 110mm から **50mm** に変更（写真のメトリック復元による）。上段左=DC24V供給端子、上段右=ブレーカ、上段中=ソケット、中段=端子台8P/12P、下段=PL4/PB4 の座標をすべて写真の実測から引き直した（Task 4）。
+  - 物理ソケットを 5個から **8個**（`S1`〜`S8`、左右4個ずつ）に増やし、`SocketRoles` を `Partial` にして役割なしの予備ソケットを表せるようにした。既定割当 `DEFAULT_SOCKET_ROLES` を追加（Task 4・5）。
+  - PB／PL 本体と端子台の間の既設リンクに写真どおりの色（青）を持たせた（Task 4）。
+  - **ダクトを廃止**し（写真に無い）、`routing.ts` を「盤面から持ち上げた弧」に置き換えた。`DuctSegment` / `ducts` / `nearestDuctPoint` を削除（Task 4・9）。
+  - 上記に伴い Task 1・6・11・12・15 は内容変更なし、Task 3・7・8・10・13・14・16 は 8ソケット化などに合わせて更新した。
+  - **経路方式を「緩い弧」から「直角配線」に差し替え**（依頼者の指摘）。盤定義に部品の占有矩形 `footprints` と配線帯 `wiringChannels` を追加し、`routeWire()` は端子 → 垂直に引き出し → 配線帯 → 直角走行 → 端子 という経路を作る。**電線が部品の上を通らないことを必須制約**にし、違反すれば `RoutingError` で失敗する。レーンは帯ごとの区間彩色、角は半径6mmのフィレット（Task 3・4・9）。
+  - ソケットのネジ端子を実形状に合わせ、**奥端と手前端の2ティア**（段1・2／段3・4）に分け、中央を差込穴領域にした。本体寸法・差込穴・端子の銘板（`label`）を盤定義に追加（Task 4）。
+  - PB／PL の本体端子を機器の**根元**に移し、盤面の**貫通穴** `panelHole` を追加。既設の青線ハーネスは `routeFixedLinks()` が「端子台から手前へ降りて貫通穴へ」の形で引く（Task 4・9）。
+  - 既設固定配線の色を**黄から青**に変更（依頼者の実機に合わせる。`locked: true` で既設かどうかを判別する）。
