@@ -11,7 +11,7 @@
 **前提（このプランを始める前に満たしていること）:**
 
 - Plan 1A（`@ojt/circuit-sim`）が完了し、`packages/circuit-sim/src/` に `ids.ts` / `elements.ts` / `parts.ts` / `netlist.ts` / `solver.ts` / `events.ts` / `log.ts` / `actuators.ts` / `simulation.ts` / `faults.ts` / `meter.ts` / `compare.ts` / `index.ts` が揃っている。本プランが使うのは `Simulation` / `SignalLog` / `EventBus` / `compareLogs` / `createWire` / `terminalId` / `toTerminalId` / `TICK_MS` / `PICKUP_VOLTS` / `MAX_WIRES_PER_TERMINAL` / `DEFAULT_TOLERANCE` と各種型だけである。
-- Plan 1B（`@ojt/board-model` / `@ojt/schematic-core`）が完了している。本プランが使うのは `JIPM_BOARD` / `SOCKET_IDS` / `toNetlist` / `plug` / `removeWire` / `wireCountAtTerminal` / `BoardSession` / `BoardDefinition` / `SocketRoles` と、`toSession` / `validateDocument` / `SCHEMATIC_FORMAT_VERSION` だけである。
+- Plan 1B（`@ojt/board-model` / `@ojt/schematic-core`）が完了している。本プランが使うのは `JIPM_BOARD` / `SOCKET_IDS` / `toNetlist` / `plug` / `removeWire` / `wireCountAtTerminal` / `socketPartId` / `BoardSession` / `BoardDefinition` / `SocketRoles` と、`toSession` / `validateDocument` / `SCHEMATIC_FORMAT_VERSION` だけである。盤は**ソケットを8個**持ち、`SocketRoles` は役割を書かなかったソケットが予備になる `Partial` である（Plan 1B 改訂版 Task 5）。
 - ルートに `eslint.config.js`（`import-x/no-cycle` 込み）・`.prettierrc.json`・`tsconfig.base.json`・`vitest.workspace.ts` がある。
 
 ---
@@ -201,7 +201,7 @@ const HEADER = {
   timeLimit: { standardMin: 30, cutoffMin: 50 },
   board: {
     boardId: 'board-jipm-std',
-    socketRoles: { S1: 'CR1', S2: 'CR2', S3: 'T1', S4: 'T2', S5: 'CHK' },
+    socketRoles: { S1: 'CR1', S2: 'CR2', S5: 'T1', S6: 'T2', S7: 'CHK' },
   },
   inventory: [{ kind: 'relay-my4n', count: 2 }],
 };
@@ -234,26 +234,44 @@ describe('TimeLimitSchema', () => {
 });
 
 describe('SocketRolesSchema', () => {
-  it('accepts the two standard layouts (§6.1)', () => {
+  it('accepts the default layout that fills all seven roles (§6.1)', () => {
     expect(
-      SocketRolesSchema.safeParse({ S1: 'CR1', S2: 'CR2', S3: 'CR3', S4: 'CR4', S5: 'CHK' })
+      SocketRolesSchema.safeParse({
+        S1: 'CR1',
+        S2: 'CR2',
+        S3: 'CR3',
+        S4: 'CR4',
+        S5: 'T1',
+        S6: 'T2',
+        S7: 'CHK',
+      }).success,
+    ).toBe(true);
+  });
+
+  it('accepts the two exam layouts, leaving the rest as spare sockets (§6.1)', () => {
+    expect(
+      SocketRolesSchema.safeParse({ S1: 'CR1', S2: 'CR2', S3: 'CR3', S4: 'CR4', S7: 'CHK' })
         .success,
     ).toBe(true);
     expect(
-      SocketRolesSchema.safeParse({ S1: 'CR1', S2: 'CR2', S3: 'T1', S4: 'T2', S5: 'CHK' }).success,
+      SocketRolesSchema.safeParse({ S1: 'CR1', S2: 'CR2', S5: 'T1', S6: 'T2', S7: 'CHK' }).success,
     ).toBe(true);
   });
 
   it('rejects duplicated roles', () => {
     expect(
-      SocketRolesSchema.safeParse({ S1: 'CR1', S2: 'CR1', S3: 'T1', S4: 'T2', S5: 'CHK' }).success,
+      SocketRolesSchema.safeParse({ S1: 'CR1', S2: 'CR1', S5: 'T1', S6: 'T2', S7: 'CHK' }).success,
     ).toBe(false);
   });
 
   it('rejects a layout without the check socket', () => {
     expect(
-      SocketRolesSchema.safeParse({ S1: 'CR1', S2: 'CR2', S3: 'CR3', S4: 'T1', S5: 'T2' }).success,
+      SocketRolesSchema.safeParse({ S1: 'CR1', S2: 'CR2', S3: 'CR3', S5: 'T1', S6: 'T2' }).success,
     ).toBe(false);
+  });
+
+  it('rejects a socket id the board does not have', () => {
+    expect(SocketRolesSchema.safeParse({ S1: 'CR1', S7: 'CHK', S9: 'CR2' }).success).toBe(false);
   });
 });
 
@@ -272,7 +290,11 @@ describe('ProblemHeaderSchema', () => {
     expect(UNSUPPORTED_MODES).toEqual(['inspect-parts', 'inspect-repair', 'plc']);
   });
 
-  it('rejects an inventory count above the socket count', () => {
+  it('rejects an inventory count above the socket count (8)', () => {
+    expect(
+      ProblemHeaderSchema.safeParse({ ...HEADER, inventory: [{ kind: 'relay-my4n', count: 8 }] })
+        .success,
+    ).toBe(true);
     expect(
       ProblemHeaderSchema.safeParse({ ...HEADER, inventory: [{ kind: 'relay-my4n', count: 9 }] })
         .success,
@@ -355,23 +377,34 @@ export type TimeLimit = z.infer<typeof TimeLimitSchema>;
 /** ソケットの役割。board-model の `SocketRole` と同じ集合。§6.1 */
 export const SocketRoleSchema = z.enum(['CR1', 'CR2', 'CR3', 'CR4', 'T1', 'T2', 'CHK']);
 
-/** 5ソケットの役割割当。`S5` はチェック用に固定しない（課題が決める）。§6.1 */
+/**
+ * 8ソケットの役割割当。board-model の `SocketRoles`（`Readonly<Partial<Record<SocketId, SocketRole>>>`）
+ * に一致させる。**役割を書かなかったソケットは役割なしの予備**であり、端子だけが存在して配線できる（§6.1）。
+ * 盤に無いソケットIDはその場で弾く（`z.strictObject`）。
+ */
 export const SocketRolesSchema = z
-  .object({
-    S1: SocketRoleSchema,
-    S2: SocketRoleSchema,
-    S3: SocketRoleSchema,
-    S4: SocketRoleSchema,
-    S5: SocketRoleSchema,
+  .strictObject({
+    S1: SocketRoleSchema.optional(),
+    S2: SocketRoleSchema.optional(),
+    S3: SocketRoleSchema.optional(),
+    S4: SocketRoleSchema.optional(),
+    S5: SocketRoleSchema.optional(),
+    S6: SocketRoleSchema.optional(),
+    S7: SocketRoleSchema.optional(),
+    S8: SocketRoleSchema.optional(),
   })
-  .refine((v) => new Set(Object.values(v)).size === 5, {
-    message: 'ソケットの役割が重複しています',
-  })
+  .refine(
+    (v) => {
+      const assigned = Object.values(v).filter((role) => role !== undefined);
+      return new Set(assigned).size === assigned.length;
+    },
+    { message: 'ソケットの役割が重複しています' },
+  )
   .refine((v) => Object.values(v).includes('CHK'), {
     message: 'チェック用ソケット（CHK）が割り当てられていません',
   });
 
-/** 5ソケットの役割割当。 */
+/** 8ソケットの役割割当。 */
 export type SocketRolesData = z.infer<typeof SocketRolesSchema>;
 
 /** 盤に追加できる任意部品。標準盤に BZ は無い。§5.3.4 */
@@ -390,10 +423,10 @@ export type BoardRef = z.infer<typeof BoardRefSchema>;
 /** 装着できる部品種別。board-model の `MountableKind` と同じ集合。§6.6 */
 export const MountableKindSchema = z.enum(['relay-my4n', 'timer-h3y4']);
 
-/** 在庫1件。§7.1 */
+/** 在庫1件。上限は盤のソケット数（8）。§7.1 / §6.1 */
 export const InventoryItemSchema = z.object({
   kind: MountableKindSchema,
-  count: z.int().min(0).max(4),
+  count: z.int().min(0).max(8),
 });
 
 /** 在庫1件。 */
@@ -432,7 +465,7 @@ export const TerminalIdSchema = z
 pnpm --filter @ojt/content exec vitest run test/schema-common.test.ts
 ```
 
-Expected: `Test Files  1 passed (1)` / `Tests  13 passed (13)`
+Expected: `Test Files  1 passed (1)` / `Tests  15 passed (15)`
 
 - [ ] **Step 5: コミット**
 
@@ -1108,7 +1141,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 import { AssembleProblemSchema, type AssembleProblem } from '../../src/schema/assemble.js';
 
 /** 課題JSONの骨組み（テストごとに必要な部分だけ差し替える）。 */
-export const TASK2_ROLES = { S1: 'CR1', S2: 'CR2', S3: 'T1', S4: 'T2', S5: 'CHK' } as const;
+export const TASK2_ROLES = { S1: 'CR1', S2: 'CR2', S5: 'T1', S6: 'T2', S7: 'CHK' } as const;
 
 /** 自己保持回路の最小課題（テストの土台）。 */
 export function selfHoldProblemJson(): Record<string, unknown> {
@@ -1968,7 +2001,7 @@ describe('buildReferenceSession', () => {
     if (!built.ok) return;
     expect(built.value.session.mounted.S1).toEqual({ kind: 'relay-my4n' });
     expect(built.value.roles.S1).toBe('CR1');
-    // 既設の黄色固定配線3本（§6.3）＋ 回路図から起こした配線
+    // 既設の固定配線3本（チェック用回路。青・locked。§6.3）＋ 回路図から起こした配線
     expect(built.value.session.wires.filter((w) => w.locked)).toHaveLength(3);
     expect(built.value.session.wires.filter((w) => !w.locked).length).toBeGreaterThan(0);
     expect(built.value.netlist.parts.some((p) => p.id === 'CR1')).toBe(true);
@@ -1979,7 +2012,7 @@ describe('buildReferenceSession', () => {
       ...selfHoldProblemJson(),
       board: {
         boardId: 'board-other',
-        socketRoles: { S1: 'CR1', S2: 'CR2', S3: 'T1', S4: 'T2', S5: 'CHK' },
+        socketRoles: { S1: 'CR1', S2: 'CR2', S5: 'T1', S6: 'T2', S7: 'CHK' },
       },
     });
     const built = buildReferenceSession(problem, JIPM_BOARD);
@@ -2752,9 +2785,9 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 
 | ID | 判定の実体 |
 |---|---|
-| `wireColorRule` | 訓練者の電線がパレットの色（モードBは青のみ。§8.1）か、`locked` の電線が黄（§6.3）か |
+| `wireColorRule` | 訓練者が引いた電線がパレットの色（モードBは青のみ。§8.1）か。盤に最初から施工されている固定配線（`locked`）は実物でも青で、訓練者の責任範囲でもないので検査対象から外す（§6.3） |
 | `terminalLimit` | セッション上の電線で1端子3本以上になっている端子（§6.6。UIは3本目を拒否するので、ここで出るのは課題JSON・作業ファイル由来のもの） |
-| `unusedParts` | 装着したのにどのピンにも電線が来ていない部品（`CHK` は除く） |
+| `unusedParts` | 装着したのにどのピンにも電線が来ていない部品（`CHK` は除く）。役割なしの予備ソケットは `socketPartId()` が返す物理ソケットIDが部品IDになる（§6.4） |
 | `forbiddenCircuit` | 判定区間で `ChatterEvent` が出たか（§5.3.2 の復帰時間モデルにより、禁則回路は tick 周期で反転する） |
 | `coilPolarity` | 訓練者のログの `<部品ID>.coilV` が励磁しきい値ぶん負に振れていたら 13/14 の逆接続（§5.3.1） |
 | `powerSequence` | `power-sequence-violation` の危険操作イベント数（§5.3.5） |
@@ -2845,12 +2878,13 @@ describe('checkWireColorRule', () => {
     expect(result.details[0]).toContain(wire.id);
   });
 
-  it('fails when the check circuit wiring is not yellow', () => {
+  it('ignores the pre-installed fixed wiring whatever colour it has (§6.3)', () => {
     const input = inputFor(selfHoldProblemJson());
     const locked = input.session.wires.find((w) => w.locked);
     if (locked === undefined) throw new Error('no locked wire');
-    locked.color = '青';
-    expect(checkWireColorRule(input).ok).toBe(false);
+    expect(locked.color).toBe('青');
+    locked.color = '黄';
+    expect(checkWireColorRule(input).ok).toBe(true);
   });
 });
 
@@ -2884,7 +2918,7 @@ describe('checkUnusedParts', () => {
 
   it('ignores a part in the check socket', () => {
     const input = inputFor(selfHoldProblemJson());
-    plug(input.session, 'S5', 'relay-my4n');
+    plug(input.session, 'S7', 'relay-my4n');
     expect(checkUnusedParts(input).ok).toBe(true);
   });
 });
@@ -2949,7 +2983,7 @@ Expected: FAIL。`Failed Suites 1` ＋ `Error: Cannot find module '../src/static
 `packages/content/src/static-checks.ts`:
 
 ```ts
-import { SOCKET_IDS, wireCountAtTerminal, type BoardSession } from '@ojt/board-model';
+import { socketPartId, SOCKET_IDS, wireCountAtTerminal, type BoardSession } from '@ojt/board-model';
 import {
   MAX_WIRES_PER_TERMINAL,
   PICKUP_VOLTS,
@@ -2987,25 +3021,21 @@ export interface StaticCheckInput {
   allowedColors: readonly WireColor[];
 }
 
-/** チェック用回路の固定配線に使う線色。§6.3 */
-const LOCKED_WIRE_COLOR: WireColor = '黄';
-
 function result(id: StaticCheckId, details: string[], okMessage: string, ngMessage: string) {
   return details.length === 0
     ? { id, ok: true, message: okMessage, details }
     : { id, ok: false, message: ngMessage, details };
 }
 
-/** 線色ルール。新規配線は許可色のみ、固定配線は黄。§7.4 / §4.2 */
+/**
+ * 線色ルール。訓練者が引いた電線がパレットの色（モードBは青のみ）かを見る。§7.4 / §4.2 / §8.1
+ * 盤に最初から施工されている固定配線（`locked`）は訓練者の責任範囲ではなく、実物でも
+ * チェック用回路を含めて**青**で配線されているため、色の検査対象から外す（§6.3）。
+ */
 export function checkWireColorRule(input: StaticCheckInput): StaticCheckResult {
   const details: string[] = [];
   for (const wire of input.session.wires) {
-    if (wire.locked) {
-      if (wire.color !== LOCKED_WIRE_COLOR) {
-        details.push(`${wire.id}: チェック用回路の配線が${LOCKED_WIRE_COLOR}ではありません`);
-      }
-      continue;
-    }
+    if (wire.locked) continue;
     if (!input.allowedColors.includes(wire.color)) {
       details.push(
         `${wire.id}: この課題で使えるのは ${input.allowedColors.join('・')} です（${wire.color}）`,
@@ -3045,6 +3075,8 @@ export function checkTerminalLimit(input: StaticCheckInput): StaticCheckResult {
 /**
  * 未使用部品。装着したのにどのピンにも電線が1本も来ていない部品を検出する。§7.4
  * （回路への「組み込まれ方」の良否ではなく、盤上で完全に浮いている部品を指摘する。）
+ * チェック用ソケットは固定配線で常に励磁できる状態にあるため対象外にする（§6.3）。
+ * 役割なしの予備ソケットは物理ソケットIDがそのまま部品IDになる（`socketPartId`。§6.4）。
  */
 export function checkUnusedParts(input: StaticCheckInput): StaticCheckResult {
   const wired = new Set<string>();
@@ -3057,9 +3089,9 @@ export function checkUnusedParts(input: StaticCheckInput): StaticCheckResult {
   for (const socket of SOCKET_IDS) {
     const mounted = input.session.mounted[socket];
     if (mounted === undefined) continue;
-    const role = input.session.socketRoles[socket];
-    if (role === 'CHK') continue;
-    if (!wired.has(role)) details.push(`${socket}（${role}）: 装着していますが未接続です`);
+    if (input.session.socketRoles[socket] === 'CHK') continue;
+    const part = socketPartId(input.session.socketRoles, socket);
+    if (!wired.has(part)) details.push(`${socket}（${part}）: 装着していますが未接続です`);
   }
   return result(
     'unusedParts',
@@ -3324,7 +3356,7 @@ describe('judgeAssemble', () => {
       ...selfHoldProblemJson(),
       board: {
         boardId: 'board-other',
-        socketRoles: { S1: 'CR1', S2: 'CR2', S3: 'T1', S4: 'T2', S5: 'CHK' },
+        socketRoles: { S1: 'CR1', S2: 'CR2', S5: 'T1', S6: 'T2', S7: 'CHK' },
       },
     });
     const result = judgeAssemble(broken, JIPM_BOARD, sessionFor());
@@ -3338,7 +3370,7 @@ describe('judgeAssemble', () => {
       ...selfHoldProblemJson(),
       board: {
         boardId: 'board-other',
-        socketRoles: { S1: 'CR1', S2: 'CR2', S3: 'T1', S4: 'T2', S5: 'CHK' },
+        socketRoles: { S1: 'CR1', S2: 'CR2', S5: 'T1', S6: 'T2', S7: 'CHK' },
       },
     });
     expect(judgeReference(broken, JIPM_BOARD).ok).toBe(false);
@@ -3362,6 +3394,7 @@ Expected: FAIL。`Failed Suites 1` ＋ `Error: Cannot find module '../src/judge.
 import { toNetlist, type BoardDefinition, type BoardSession } from '@ojt/board-model';
 import {
   compareLogs,
+  HAZARD_KINDS,
   type ChatterEvent,
   type HazardEvent,
   type HazardKind,
@@ -3384,22 +3417,12 @@ import { buildTimeChart, defaultChartSignals, timerMarkers, type TimeChart } fro
 /** 危険操作の種別ごとの回数。§8.3 */
 export type HazardCounts = Readonly<Record<HazardKind, number>>;
 
-const HAZARD_KINDS: readonly HazardKind[] = [
-  'ohm-on-live',
-  'range-exceeded',
-  'short-circuit-power-on',
-  'power-sequence-violation',
-  'over-wires-per-terminal',
-];
-
+/**
+ * 危険操作の種別ごとの回数を数える。種別の集合は circuit-sim の `HAZARD_KINDS` を唯一の源とするので、
+ * エンジン側に種別が増えても結果画面の集計は自動で追随する（§5.6）。
+ */
 function countHazards(hazards: readonly HazardEvent[]): HazardCounts {
-  const out: Record<HazardKind, number> = {
-    'ohm-on-live': 0,
-    'range-exceeded': 0,
-    'short-circuit-power-on': 0,
-    'power-sequence-violation': 0,
-    'over-wires-per-terminal': 0,
-  };
+  const out = {} as Record<HazardKind, number>;
   for (const kind of HAZARD_KINDS) {
     out[kind] = hazards.filter((e) => e.kind === kind).length;
   }
@@ -3560,6 +3583,14 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 | ② | `b-002` | インターロック回路（先行優先） | 3 | 課題1形式 | CR1, CR2 | PB1/PB2 で PL1/PL2 を相互ロック、PB3(緑)で解除 |
 | ③ | `b-003` | オンディレー点灯回路 | 3 | 課題2形式 | CR1, T1(3秒) | 起動3秒後に PL1 点灯 |
 
+盤はソケットを8個持ち、課題が割り当てなかったソケットは役割なしの予備になる（Plan 1B 改訂版 Task 5）。
+内蔵課題が使う2つの割当は `@ojt/board-model` の定数と同じ写像にする。
+
+| 形式 | `board.socketRoles` | 予備 |
+|---|---|---|
+| 課題1形式（`TASK1_SOCKET_ROLES` 相当） | `{"S1":"CR1","S2":"CR2","S3":"CR3","S4":"CR4","S7":"CHK"}` | S5・S6・S8 |
+| 課題2形式（`TASK2_SOCKET_ROLES` 相当） | `{"S1":"CR1","S2":"CR2","S5":"T1","S6":"T2","S7":"CHK"}` | S3・S4・S8 |
+
 `hints.schematicVisible` は仕様 §8.4 に合わせ、3級=常時表示（`true`）、2級・1級=`false` にする。
 
 - [ ] **Step 1: 課題① 自己保持回路を書く**
@@ -3577,7 +3608,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
   "timeLimit": { "standardMin": 30, "cutoffMin": 50 },
   "board": {
     "boardId": "board-jipm-std",
-    "socketRoles": { "S1": "CR1", "S2": "CR2", "S3": "T1", "S4": "T2", "S5": "CHK" }
+    "socketRoles": { "S1": "CR1", "S2": "CR2", "S5": "T1", "S6": "T2", "S7": "CHK" }
   },
   "inventory": [
     { "kind": "relay-my4n", "count": 2 },
@@ -3653,7 +3684,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
   "timeLimit": { "standardMin": 30, "cutoffMin": 50 },
   "board": {
     "boardId": "board-jipm-std",
-    "socketRoles": { "S1": "CR1", "S2": "CR2", "S3": "CR3", "S4": "CR4", "S5": "CHK" }
+    "socketRoles": { "S1": "CR1", "S2": "CR2", "S3": "CR3", "S4": "CR4", "S7": "CHK" }
   },
   "inventory": [{ "kind": "relay-my4n", "count": 4 }],
   "schematic": {
@@ -3759,7 +3790,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
   "timeLimit": { "standardMin": 30, "cutoffMin": 50 },
   "board": {
     "boardId": "board-jipm-std",
-    "socketRoles": { "S1": "CR1", "S2": "CR2", "S3": "T1", "S4": "T2", "S5": "CHK" }
+    "socketRoles": { "S1": "CR1", "S2": "CR2", "S5": "T1", "S6": "T2", "S7": "CHK" }
   },
   "inventory": [
     { "kind": "relay-my4n", "count": 2 },
@@ -4040,7 +4071,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
   "timeLimit": { "standardMin": 30, "cutoffMin": 50 },
   "board": {
     "boardId": "board-jipm-std",
-    "socketRoles": { "S1": "CR1", "S2": "CR2", "S3": "T1", "S4": "T2", "S5": "CHK" }
+    "socketRoles": { "S1": "CR1", "S2": "CR2", "S5": "T1", "S6": "T2", "S7": "CHK" }
   },
   "inventory": [
     { "kind": "relay-my4n", "count": 2 },
@@ -4143,7 +4174,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
   "timeLimit": { "standardMin": 30, "cutoffMin": 50 },
   "board": {
     "boardId": "board-jipm-std",
-    "socketRoles": { "S1": "CR1", "S2": "CR2", "S3": "T1", "S4": "T2", "S5": "CHK" }
+    "socketRoles": { "S1": "CR1", "S2": "CR2", "S5": "T1", "S6": "T2", "S7": "CHK" }
   },
   "inventory": [
     { "kind": "relay-my4n", "count": 2 },
@@ -4226,7 +4257,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
   "timeLimit": { "standardMin": 30, "cutoffMin": 50 },
   "board": {
     "boardId": "board-jipm-std",
-    "socketRoles": { "S1": "CR1", "S2": "CR2", "S3": "T1", "S4": "T2", "S5": "CHK" }
+    "socketRoles": { "S1": "CR1", "S2": "CR2", "S5": "T1", "S6": "T2", "S7": "CHK" }
   },
   "inventory": [
     { "kind": "relay-my4n", "count": 2 },
@@ -4423,7 +4454,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 | ⑦ | `b-007` | 早押し優先回路（3点） | 1 | CR1, CR2, CR3 | PB1/PB2/PB3 の最初の1つだけが PL1/PL2/PL3 を自己保持、PB4(赤)で全消灯 |
 | ⑧ | `b-008` | 停止優先の起動・停止と警報表示 | 1 | CR1, CR2 | PB1 起動／PB3 警報／PB2 停止（同時押しは停止優先）。**盤にブザーが無いので警報出力は赤ランプ PL4 で代替**し、運転中かつ警報中は PL2 も点灯する |
 
-⑦は `PB4`（赤）の b接点を使う。`TB_PB.4c` にはチェック用回路の黄色配線が既に1本あるため（§6.3）、追加できるのは1本だけであり、この回路はその1本だけを使う。
+⑦は `PB4`（赤）の b接点を使う。`TB_PB.4c` にはチェック用回路の固定配線（青・`locked`）が既に1本あるため（§6.3）、追加できるのは1本だけであり、この回路はその1本だけを使う。
 
 - [ ] **Step 1: 課題⑦ 早押し優先回路を書く**
 
@@ -4440,7 +4471,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
   "timeLimit": { "standardMin": 50, "cutoffMin": 60 },
   "board": {
     "boardId": "board-jipm-std",
-    "socketRoles": { "S1": "CR1", "S2": "CR2", "S3": "CR3", "S4": "CR4", "S5": "CHK" }
+    "socketRoles": { "S1": "CR1", "S2": "CR2", "S3": "CR3", "S4": "CR4", "S7": "CHK" }
   },
   "inventory": [{ "kind": "relay-my4n", "count": 4 }],
   "schematic": {
@@ -4575,7 +4606,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
   "timeLimit": { "standardMin": 50, "cutoffMin": 60 },
   "board": {
     "boardId": "board-jipm-std",
-    "socketRoles": { "S1": "CR1", "S2": "CR2", "S3": "CR3", "S4": "CR4", "S5": "CHK" }
+    "socketRoles": { "S1": "CR1", "S2": "CR2", "S3": "CR3", "S4": "CR4", "S7": "CHK" }
   },
   "inventory": [{ "kind": "relay-my4n", "count": 4 }],
   "schematic": {
@@ -4964,7 +4995,7 @@ Remove-Item packages/content/test/scaffold.test.ts
 pnpm --filter @ojt/content exec vitest run
 ```
 
-Expected: `Test Files  13 passed (13)` / `Tests  131 passed (131)`
+Expected: `Test Files  13 passed (13)` / `Tests  133 passed (133)`
 
 - [ ] **Step 4: カバレッジを確かめる（仕様 §14.2 の90%）**
 
@@ -5060,16 +5091,17 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 | 2 | §7.4「`forbiddenCircuit` はチャタリング検出と**構造パターン照合の両方**で判定」 | Phase 1 はチャタリング検出のみ | 構造パターン照合（タイマ自己遮断・タイマ2個フリッカのネットリスト上の照合）はモードC2の故障探索と同じ解析基盤を要するため Phase 2 に回す。仕様 §5.3.2 の復帰時間モデルにより、禁則回路は必ず tick 周期のチャタリングとして現れるので、Phase 1 の検出漏れは無い（`test/static-checks.test.ts` の禁則ワンショットで実証） |
 | 3 | §7.4 `unusedParts`「装着したが回路に組み込まれていない部品」 | 「装着したのにどのピンにも電線が1本も来ていない部品」と定義した | 「組み込まれている」の程度（コイルだけ繋がっている等）を機械的に線引きすると誤検出が増える。盤上で完全に浮いている部品だけを確実に指摘する |
 | 4 | §7.1 `timeLimit` の既定は課題1形式 `{50,60}` / 課題2形式 `{30,50}` の2種 | 内蔵課題は 3級・2級相当の6題を `{30,50}`、1級相当の2題を `{50,60}` にした | 有接点の回路組立課題に対する公式の標準時間は非公開。仕様が示す2つの値のどちらかを課題の規模で選ぶ形にし、新しい値は作らない |
-| 5 | §7.1 `board.socketRoles` は `["CR1","CR2","T1","T2","CHK"]` のような配列で例示 | `{S1: 'CR1', ..., S5: 'CHK'}` のオブジェクトにした | `@ojt/board-model` の `SocketRoles` 型（Plan 1B）が物理ソケットID→役割のオブジェクトであり、そのまま渡せる形に合わせた。配列にすると変換層が要るだけで情報量は同じ |
+| 5 | §7.1 `board.socketRoles` は `["CR1","CR2","T1","T2","CHK"]` のような**5要素の配列**で例示 | `{"S1":"CR1", …, "S7":"CHK"}` のオブジェクトにし、**S1〜S8 すべて省略可**（書かなかったソケットは役割なしの予備）とした | 実物の盤はソケットを8個持ち、`@ojt/board-model` の `SocketRoles`（Plan 1B 改訂版）は `Readonly<Partial<Record<SocketId, SocketRole>>>` である。そのまま渡せる形に合わせた。盤に無いソケットIDは `z.strictObject` がその場で弾く |
 | 6 | §7.2 `physicalOverride` は `{[elementId]: TerminalId[]}` | 要素数をちょうど2に固定した（`[左(P側), 右(N側)]`） | `@ojt/schematic-core` の `assignToBoard()` が各要素に左右2端子を割り当てる仕様（Plan 1B Task 13）。可変長を許すと実行時に「端子2つを指定します」と落ちるだけなので、スキーマで先に止める |
 | 7 | §7.4 の判定設定のキーは `compare` | `compareSignals` にした | `compare` は動詞に読めて、`tolerance` / `staticChecks` と並べたときに何の集合か分からない。中身は仕様どおり「比較対象の出力信号名の配列」 |
-| 8 | §7.5 `faults` / §7.6 `plc` の課題形式 | Phase 1 では本体スキーマを定義しない。`mode` が `inspect-parts` / `inspect-repair` / `plc` の課題は `z.looseObject` でヘッダだけ読み、`parseProblem()` が `unsupported-mode` を返して課題一覧に理由付きで並べる | 範囲決定。`z.never()` のような「読めない」定義を置くと、Phase 2/3 で書いた課題ファイルが「壊れたファイル」と表示されてしまう。ヘッダだけ読めば一覧に出せるので、拡張点を塞がずに済む |
+| 8 | §6.3「チェック用回路の線色は黄」 | 固定配線（`locked`）は線色チェックの対象外にした | Plan 1B 改訂版で、実物の盤の既設配線はチェック用回路を含めてすべて**青**であることが写真から確定した。既設配線は訓練者の責任範囲ではないので、色ではなく `locked` で「触れない線」を識別する。訓練者が引ける色は `ASSEMBLE_WIRE_COLOR = '青'`（モードB）のまま |
+| 9 | §7.5 `faults` / §7.6 `plc` の課題形式 | Phase 1 では本体スキーマを定義しない。`mode` が `inspect-parts` / `inspect-repair` / `plc` の課題は `z.looseObject` でヘッダだけ読み、`parseProblem()` が `unsupported-mode` を返して課題一覧に理由付きで並べる | 範囲決定。`z.never()` のような「読めない」定義を置くと、Phase 2/3 で書いた課題ファイルが「壊れたファイル」と表示されてしまう。ヘッダだけ読めば一覧に出せるので、拡張点を塞がずに済む |
 
 ---
 
 ## 完了条件
 
-- [ ] `pnpm --filter @ojt/content exec vitest run` が `Test Files 13 passed` / `Tests 131 passed` で終わる。
+- [ ] `pnpm --filter @ojt/content exec vitest run` が `Test Files 13 passed` / `Tests 133 passed` で終わる。
 - [ ] `pnpm --filter @ojt/content exec vitest run --coverage` が閾値90%（lines / statements / functions / branches）を満たして終わる。
 - [ ] `pnpm -r typecheck` と `pnpm lint`（`import-x/no-cycle` 込み）が無警告で通る。
 - [ ] `npx prettier --check "packages/content/**/*.{ts,json}"` が `All matched files use Prettier code style!` を出す。
@@ -5077,3 +5109,12 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 - [ ] 内蔵課題8題（`b-001`〜`b-008`）が全件、自分の操作列で判定にかけて合格し、チャタリング0・危険操作0で、タイムチャートが空でなく始点・終点とも論理0である。
 - [ ] 模範回路から1本外す／線色を変える／1端子に3本差す／禁則ワンショットを組む、のいずれでも判定が不合格になり、差分一覧または該当する静的チェックに理由が出る。
 - [ ] `packages/content` は `React` / `Electron` / `three` に依存していない（`package.json` の `dependencies` が `@ojt/board-model` / `@ojt/circuit-sim` / `@ojt/schematic-core` / `zod` の4つだけ）。
+
+---
+
+## 改訂履歴
+
+| 日付 | 内容 |
+|---|---|
+| 2026-09-14 | 初版 |
+| 2026-09-14 | Plan 1B 改訂（8ソケット等）に追随。`SocketRolesSchema` を S1〜S8 の `Partial`（`z.strictObject`）に変え、内蔵課題8題の `board.socketRoles` を課題1形式 `{S1..S4, S7:CHK}` ／課題2形式 `{S1,S2,S5:T1,S6:T2,S7:CHK}` に更新。固定配線が青・`locked` になったため `checkWireColorRule()` は `locked` を検査対象外にし、`checkUnusedParts()` は予備ソケットに対応して `socketPartId()` を使うようにした。`judge.ts` の危険操作集計は circuit-sim の `HAZARD_KINDS` を唯一の源にした。在庫の上限をソケット数に合わせて8にした。`ducts` / `routeWire` / `WireRoute` は content から参照していないため影響なし |
