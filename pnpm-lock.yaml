@@ -50,6 +50,15 @@ importers:
 
   packages/circuit-sim: {}
 
+  packages/schematic-core:
+    dependencies:
+      '@ojt/board-model':
+        specifier: workspace:*
+        version: link:../board-model
+      '@ojt/circuit-sim':
+        specifier: workspace:*
+        version: link:../circuit-sim
+
 packages:
 
   '@babel/helper-string-parser@7.29.7':
