@@ -1,2 +1,11 @@
-/** パッケージ名。スキャフォールドの疎通確認用。 */
-export const PACKAGE_NAME = '@ojt/circuit-sim';
+export {
+  IdError,
+  parseTerminalId,
+  partId,
+  terminalId,
+  terminalOwner,
+  wireId,
+  type PartId,
+  type TerminalId,
+  type WireId,
+} from './ids.js';
