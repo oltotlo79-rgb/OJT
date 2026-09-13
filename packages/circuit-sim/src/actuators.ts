@@ -28,6 +28,8 @@ export function applyPowerAction(
   device: PowerDevice,
   on: boolean,
 ): PowerActionResult {
+  const current = device === 'breaker' ? switches.breakerOn : switches.switchOn;
+  if (current === on) return { switches: { ...switches }, violation: false };
   const next: PowerSwitches = { ...switches };
   let violation = false;
   if (device === 'breaker') {

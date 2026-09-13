@@ -1,6 +1,6 @@
-import { contactOhms, loadOhms, type SourceElement } from './elements.js';
+import { CLOSED_CONTACT_OHMS, contactOhms, loadOhms, type SourceElement } from './elements.js';
 import type { TerminalId } from './ids.js';
-import { allElements, type Nets, type Netlist } from './netlist.js';
+import { allElements, NetlistError, type Nets, type Netlist } from './netlist.js';
 
 /** 全節点に入れる対地漏れコンダクタンス[S]。特異行列を避ける。§5.2 */
 export const LEAK_SIEMENS = 1e-9;
@@ -12,6 +12,16 @@ const PIVOT_EPSILON = 1e-18;
 /** 数値配列の安全な添字読み（noUncheckedIndexedAccess 対策をここ1か所に閉じ込める）。 */
 function at(values: ArrayLike<number>, index: number): number {
   return values[index] ?? 0;
+}
+
+/**
+ * 抵抗値[Ω]から実効抵抗を求める。非有限（NaN／Infinity）または負値は「開放」として
+ * undefined を返す（コンダクタンス 1/ohms がNaNや負値を生んで解全体を汚染しないようにする）。
+ * それ以外の有限値は `CLOSED_CONTACT_OHMS` を下限にクランプする（0Ωなどの特異点を避ける）。
+ */
+function effectiveOhms(ohms: number): number | undefined {
+  if (!Number.isFinite(ohms) || ohms < 0) return undefined;
+  return Math.max(ohms, CLOSED_CONTACT_OHMS);
 }
 
 /** 1tickぶんの解。 */
@@ -124,6 +134,9 @@ export interface SolveOptions {
  * 基準節点を0Vとして消去し、電源は内部抵抗0.1Ωのノートン等価として行列に加える。
  */
 export function solve(netlist: Netlist, nets: Nets, options: SolveOptions = {}): SolveResult {
+  if (nets.nodeCount > MAX_NODES) {
+    throw new NetlistError(`節点数 ${nets.nodeCount} が上限 ${MAX_NODES} を超えています`);
+  }
   const n = nets.nodeCount;
   const reference = n === 0 ? 0 : pickReference(netlist, nets, options.reference);
   const elements = allElements(netlist);
@@ -146,16 +159,20 @@ export function solve(netlist: Netlist, nets: Nets, options: SolveOptions = {}):
     const to = nets.nodeOf(el.to);
     if (el.kind === 'source') {
       if (!el.enabled) continue;
-      const g = 1 / el.internalOhms;
+      const ohms = effectiveOhms(el.internalOhms);
+      if (ohms === undefined) continue;
+      const g = 1 / ohms;
       stampConductance(from, to, g);
       inject[from] = at(inject, from) + g * el.volts;
       inject[to] = at(inject, to) - g * el.volts;
     } else if (el.kind === 'contact') {
-      const ohms = contactOhms(el);
+      const raw = contactOhms(el);
+      const ohms = raw === undefined ? undefined : effectiveOhms(raw);
       if (ohms === undefined) continue;
       stampConductance(from, to, 1 / ohms);
     } else {
-      const ohms = loadOhms(el);
+      const raw = loadOhms(el);
+      const ohms = raw === undefined ? undefined : effectiveOhms(raw);
       if (ohms === undefined) continue;
       stampConductance(from, to, 1 / ohms);
     }
@@ -190,13 +207,16 @@ export function solve(netlist: Netlist, nets: Nets, options: SolveOptions = {}):
     elementVolts.set(el.id, volts);
     let amps = 0;
     if (el.kind === 'source') {
-      amps = el.enabled ? (el.volts - volts) / el.internalOhms : 0;
+      const ohms = el.enabled ? effectiveOhms(el.internalOhms) : undefined;
+      amps = ohms === undefined ? 0 : (el.volts - volts) / ohms;
       sourceAmps += amps;
     } else if (el.kind === 'contact') {
-      const ohms = contactOhms(el);
+      const raw = contactOhms(el);
+      const ohms = raw === undefined ? undefined : effectiveOhms(raw);
       amps = ohms === undefined ? 0 : volts / ohms;
     } else if (el.kind === 'load') {
-      const ohms = loadOhms(el);
+      const raw = loadOhms(el);
+      const ohms = raw === undefined ? undefined : effectiveOhms(raw);
       amps = ohms === undefined ? 0 : volts / ohms;
     }
     elementAmps.set(el.id, amps);

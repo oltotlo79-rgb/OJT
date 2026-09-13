@@ -62,9 +62,9 @@ export class EventBus {
     for (const listener of [...this.listeners]) listener(event);
   }
 
-  /** これまでに発行された全イベント。 */
+  /** これまでに発行された全イベント（コピー。戻り値への変更は内部状態に影響しない）。 */
   all(): readonly SimEvent[] {
-    return this.recorded;
+    return [...this.recorded];
   }
 
   /** 指定種別の危険操作イベントだけを返す。 */

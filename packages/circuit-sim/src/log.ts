@@ -31,6 +31,8 @@ export function roundSignal(value: number): number {
 export class SignalLog {
   private readonly recorded: LogEntry[] = [];
   private readonly last = new Map<string, SignalValue>();
+  /** 信号名 → その信号のエントリ列（`recorded` と同じ内容・同じ順序の索引）。 */
+  private readonly bySignal = new Map<string, LogEntry[]>();
 
   /**
    * 1tickぶんを記録する。前回と同じ値の信号は記録しない。
@@ -43,7 +45,11 @@ export class SignalLog {
       const previous = this.last.get(signal);
       if (previous !== undefined && previous === value) continue;
       this.last.set(signal, value);
-      this.recorded.push({ tMs, signal, value });
+      const entry: LogEntry = { tMs, signal, value };
+      this.recorded.push(entry);
+      const bucket = this.bySignal.get(signal);
+      if (bucket === undefined) this.bySignal.set(signal, [entry]);
+      else bucket.push(entry);
       changed.push(signal);
     }
     return changed;
@@ -61,23 +67,34 @@ export class SignalLog {
 
   /** その信号の変化点の列（最初の記録＝初期値を含む）。 */
   transitions(signal: string): LogEntry[] {
-    return this.recorded.filter((e) => e.signal === signal);
+    return [...(this.bySignal.get(signal) ?? [])];
   }
 
   /** その時刻における信号の値。まだ記録が無ければ undefined。 */
   valueAt(signal: string, tMs: number): SignalValue | undefined {
-    let value: SignalValue | undefined;
-    for (const e of this.recorded) {
-      if (e.signal !== signal) continue;
-      if (e.tMs > tMs) break;
-      value = e.value;
+    const bucket = this.bySignal.get(signal);
+    if (bucket === undefined || bucket.length === 0) return undefined;
+    // entry.tMs <= tMs を満たす最後のエントリを二分探索する（bucket は tMs 昇順）。
+    let lo = 0;
+    let hi = bucket.length - 1;
+    let found = -1;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      const entry = bucket[mid];
+      if (entry !== undefined && entry.tMs <= tMs) {
+        found = mid;
+        lo = mid + 1;
+      } else {
+        hi = mid - 1;
+      }
     }
-    return value;
+    return found < 0 ? undefined : bucket[found]?.value;
   }
 
   /** 記録を消す。 */
   clear(): void {
     this.recorded.length = 0;
     this.last.clear();
+    this.bySignal.clear();
   }
 }

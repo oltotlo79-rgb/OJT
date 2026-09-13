@@ -33,7 +33,9 @@ describe('actuators', () => {
     const bad = applyPowerAction(OFF, 'switch', true);
     expect(bad.violation).toBe(true);
     expect(bad.switches.switchOn).toBe(true);
-    expect(applyPowerAction(BOTH, 'breaker', true).violation).toBe(true);
+    // 既にブレーカON（かつスイッチON）の状態でブレーカONを再度押すのは同一状態への
+    // no-op であり、手順違反ではない。
+    expect(applyPowerAction(BOTH, 'breaker', true).violation).toBe(false);
     expect(applyPowerAction(BOTH, 'breaker', false).violation).toBe(true);
   });
 
