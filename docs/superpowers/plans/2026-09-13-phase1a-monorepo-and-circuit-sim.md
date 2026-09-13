@@ -5632,6 +5632,19 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 | 4 | §5.6 #2 `analog-overrange`（`range-exceeded`） | イベント種別と計数APIだけを用意し、発行はしない | 発行元はアナログテスターのレンジ選択UIであり、§16 のとおり Phase 2 の範囲。エンジン側で先に型を確定させておく |
 | 5 | §4.2「ESLint の `import/no-cycle` をエラー設定にする」 | Plan 1A では設定しない | パッケージが `circuit-sim` 1つしか無く検出対象が存在しない。2つ目のパッケージが生まれる Plan 1B で `eslint-plugin-import-x` とともに追加する |
 | 6 | §4.5「TypeScript は最新安定メジャー」 | `~6.0.3` に固定 | 最新の 7.0 系では typescript-eslint 8 系が `typescript-eslint does not support TS 7.0.` で起動しない（実機で確認済み）。typescript-eslint が TS 7 に対応したら上げる |
+| 7 | （仕様に記載なし。§4.5「ESLint ＋ Prettier」は整形対象の範囲を規定していない） | `.prettierignore` に `docs/` を追加 | 文書は散文なので Prettier 整形の対象外（Task 3 実行時のレビュー判断） |
+| 8 | （仕様に記載なし。§4.5「技術スタック」はスクリプト名・`.gitattributes` の要否を規定していない） | ルート `typecheck` を `tsc -p tsconfig.json --noEmit && pnpm -r typecheck` に変更、`.gitattributes`（`* text=auto eol=lf`）を追加、`test:coverage` スクリプトを追加 | Task 1〜4 の品質レビュー指摘 |
+| 9 | §4.5「TypeScript（`strict: true`、`noUncheckedIndexedAccess: true`）」（`exactOptionalPropertyTypes` の指定なし） | 有効化しない（Plan 1A 完了後に専用タスクで有効化を検討） | 計画コードは無効前提で検証済みのため |
+| 10 | §5.2「LU分解（部分ピボット選択）。行列の構造が変化しない間は分解結果を再利用する」（差分#2参照） | LU分解結果の再利用は未実装のまま（差分#2から変更なし） | 毎tickガウス消去で 200節点 0.45ms/tick と実測され、性能予算内であることを確認したため |
+
+## 追加タスク（実行中のレビュー指摘により追加）
+
+| タスク | コミット | 内容 |
+|---|---|---|
+| Task 8b | 7ed09b3 | `createNetlist` が入力配列を複製、`cloneNetlist`/`resetNetlist`/`validateNetlist`/`canAddWire`、`toTerminalId`、`partId` が `:` を拒否、`clampPreset` が非有限値を拒否し下限100msを保証。テストは `test/guards.test.ts` |
+| Task 8c | bba1125 | `solve()` が節点数200超で `NetlistError`、0Ω/非有限抵抗のガード（`effectiveOhms`）、`SignalLog` の信号別索引と二分探索、`EventBus.all()` が複製を返す、`applyPowerAction` の同状態再操作は違反にしない（`test/actuators.test.ts` の該当期待値を false に変更）。テストは `test/robustness.test.ts` |
+
+Task 13 以降の実装者への注意: 上記により `test/helpers/circuits.ts` は `toTerminalId` を使う形に変わっているが、ヘルパーの名前と引数は計画どおり。計画本文のコードはそのまま適用できる。
 
 ## 完了条件
 
