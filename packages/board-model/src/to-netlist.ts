@@ -7,18 +7,19 @@ import {
   createRelay4c,
   createTerminalBlockLink,
   createTimer4c,
-  createWire,
   partId,
   terminalId,
+  validateNetlist,
   type LinkElement,
   type Netlist,
+  type NetlistIssue,
   type Part,
   type TerminalId,
   type Wire,
 } from '@ojt/circuit-sim';
 import { SOCKET_IDS, type BoardDefinition } from './board-jipm.js';
 import { socketPartId, type SocketRoles } from './roles.js';
-import type { BoardSession } from './session.js';
+import { SessionError, type BoardSession } from './session.js';
 
 /**
  * 盤セッション → circuit-sim のネットリスト。設計仕様 §6.4 / §4.4。
@@ -98,8 +99,14 @@ function lampBlockPart(): Part {
  *
  * ブレーカ（`CB`）と電源スイッチ（`SW`）はAC一次側にあり電気的には解かないため、
  * ネットリストには載せない。開閉は `Simulation.setBreaker()` / `setSwitch()` が担う（§5.3.5）。
+ *
+ * セッションと違う盤を渡すのは呼び出し側の取り違えなので SessionError（端子IDが噛み合わず、
+ * 黙って壊れたネットリストを作るより早く落とす）。
  */
 export function toNetlist(session: BoardSession, board: BoardDefinition): Netlist {
+  if (session.boardId !== board.id) {
+    throw new SessionError(`このセッションの盤ではありません: ${session.boardId} ≠ ${board.id}`);
+  }
   const parts: Part[] = [];
   parts.push(createPowerSupply(POWER_SUPPLY_ID));
   parts.push(railPart(P_RAIL_ID, board.supplyTerminalCount));
@@ -126,7 +133,29 @@ export function toNetlist(session: BoardSession, board: BoardDefinition): Netlis
     createTerminalBlockLink(l.id, l.from, l.to, true),
   );
 
-  const wires: Wire[] = session.wires.map((w) => createWire(w.id, w.from, w.to, w.color, w.locked));
+  // 防御的コピー（セッションと状態を共有しない）。`createWire` で作り直すと `open`（断線。§5.4）が
+  // 落ちてしまうので、フィールドをそのまま写す。
+  const wires: Wire[] = session.wires.map((w) => ({ ...w }));
 
   return createNetlist(parts, wires, links);
+}
+
+/**
+ * 盤セッションのネットリストとしての整合性を検査する（§4.4）。例外は投げない。
+ * 正しく組めているセッションでは空配列。ネットリストを組み立てられないとき（盤の取り違えなど）は
+ * 1件の問題にまとめて返す。
+ */
+export function netlistIssues(session: BoardSession, board: BoardDefinition): NetlistIssue[] {
+  try {
+    return validateNetlist(toNetlist(session, board));
+  } catch (error) {
+    return [
+      {
+        kind: 'unknown-terminal',
+        ownerKind: 'wire',
+        ownerId: session.boardId,
+        message: error instanceof Error ? error.message : String(error),
+      },
+    ];
+  }
 }
