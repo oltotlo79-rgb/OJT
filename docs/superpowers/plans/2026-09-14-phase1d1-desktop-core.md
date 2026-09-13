@@ -14,8 +14,8 @@
 
 | 依存 | 使うもの |
 |---|---|
-| Plan 1A `@ojt/circuit-sim` | `Simulation`（`press` / `release` / `setBreaker` / `setSwitch` / `setTimerPreset` / `addWire` / `removeWire` / `step` / `state()` / `log` / `events`）、`TICK_MS`、`LogEntry`、`HazardEvent`、`ChatterEvent`、`LampLevel`、`Wire`、`WireColor`、`TerminalId`、`toTerminalId`、`partId`、`parseTerminalId` |
-| Plan 1B `@ojt/board-model` | `JIPM_BOARD`（`sizeMm` / `console` / `sockets` / `lamps` / `pushButtons` / `terminals` / `footprints` / `wiringChannels` / `fixedLinks`）、`BoardTerminal`（`pos` / `label` / `role` / `pickRadiusMm` / `wirable` / `exit`）、`SocketDefinition`（`cluster` / `origin` / `bodyMm`）、`SocketRoles`（`Partial`）、`createSession` / `plug` / `unplug` / `setPreset` / `addWire` / `removeWire`（Result型）、`toNetlist`、`routeWire` / `routeSession` / `routeFixedLinks`（`WireRoute`）、`crossesFootprint` / `crossingFootprint` / `isManhattan`、`roleLabel` / `socketPinHoleOffsets` / `socketRowExit`、`toNetlistTerminal` / `toPhysicalTerminal`、`remainingInventory` / `catalogEntry` / `findTimerRange` |
+| Plan 1A `@ojt/circuit-sim` | `Simulation`（`press` / `release` / `setBreaker` / `setSwitch` / `setTimerPreset` / `addWire` / `removeWire` / **`mountPart` / `unmountPart` / `reset`**（Task 8g）/ `step` / `state()` / `log` / `events`）、`createRelay4c` / `createTimer4c`、`TICK_MS`、`HAZARD_KINDS`、`HazardKind` / `MismatchReason`、`LogEntry`、`HazardEvent`、`ChatterEvent`、`LampLevel`、`Part`、`Wire`、`WireColor`、`TerminalId`、`toTerminalId` |
+| Plan 1B `@ojt/board-model` | `JIPM_BOARD`（`sizeMm` / `console` / `sockets` / `lamps` / `pushButtons` / `terminals` / `footprints` / `wiringChannels` / `fixedLinks`）、`BoardTerminal`（`pos` / `label` / `role` / `pickRadiusMm` / `wirable` / `exit`）、`SocketDefinition`（`cluster` / `origin` / `bodyMm`）、`SocketRoles`（`Partial`）、`SocketRoles`（`Partial`）と `socketPartId()`、**`P.1` / `N.1` の各1点だけの供給端子**（`SUPPLY_TERMINAL_COUNT = 1`）、`createSession` / `plug` / `unplug` / `setPreset` / `addWire` / `removeWire`（Result型）、`toNetlist`、`routeWire` / `routeSession` / `routeFixedLinks`（`WireRoute`）、`crossesFootprint` / `crossingFootprint` / `isManhattan`、`roleLabel` / `socketPinHoleOffsets` / `socketRowExit`、`toNetlistTerminal` / `toPhysicalTerminal`、`remainingInventory` / `catalogEntry` / `findTimerRange` |
 | Plan 1C `@ojt/content` | `BUILTIN_PROBLEMS`、`AssembleProblem`、`buildReferenceSession`、`runOperations`、`buildTimeChart` / `defaultChartSignals` / `timerMarkers` / `TimeChart`、`resolveCompareSignals`、`judgeAssemble` → `JudgeAssembleResult`、`loadProblemsFromDir` / `mergeProblemSets`（**main プロセスでのみ呼ぶ**） |
 
 **この計画に含めないもの**（Plan 1D2 が担当）: 設定画面、作業ファイルの保存／読込、一時保存と起動時の復帰、WebAudio の効果音、回路図ヒントの表示、利用者課題フォルダの合流と読込エラー表示、electron-builder による配布、仕上げのE2E。
@@ -1003,7 +1003,7 @@ TDD。まず追従ループの判断（`planTicks`）のテストを書き、落
 - [ ] **Step 1: `apps/desktop/src/worker/protocol.ts` を書く**
 
 ```ts
-import type { BoardSession, SocketRole } from '@ojt/board-model';
+import type { BoardSession, SocketId, SocketRole } from '@ojt/board-model';
 import type { ChatterEvent, HazardEvent, LampLevel, LogEntry, Wire } from '@ojt/circuit-sim';
 import type { AssembleProblem, JudgeAssembleResult } from '@ojt/content';
 
@@ -1016,6 +1016,8 @@ import type { AssembleProblem, JudgeAssembleResult } from '@ojt/content';
  *   その場でトースト表示する必要があり、往復させると1フレーム遅れるため。
  * - worker は**ネットリストと `Simulation` の所有者**。renderer が確定させた変更（電線オブジェクト、
  *   更新後のセッション）を受け取って適用するだけなので、二重バリデーションも ID のずれも起きない。
+ * - 装着・取り外し・タイマ設定は `Simulation` の差分API（`mountPart` / `unmountPart` /
+ *   `setTimerPreset`）で当てる。作り直すと `tMs`・信号ログ・イベントが切れてしまうため。
  */
 
 /** スナップショットの送出間隔[ms]（約30fpsに間引く）。§4.3 */
@@ -1032,12 +1034,14 @@ export type SimCommand =
   | { type: 'addWire'; wire: Wire }
   /** 電線を1本外す。 */
   | { type: 'removeWire'; wireId: string }
-  /** 部品を装着した（部品構成が変わるためネットリストを作り直す）。 */
-  | { type: 'plug'; session: BoardSession }
-  /** 部品を外した（同上）。 */
-  | { type: 'unplug'; session: BoardSession }
-  /** タイマの設定時間を変えた（差分適用）。 */
+  /** 部品を装着した（`Simulation.mountPart()` で差分適用する）。 */
+  | { type: 'plug'; socketId: SocketId; session: BoardSession }
+  /** 部品を外した（`Simulation.unmountPart()` で差分適用する）。`partId` は役割ID（`CR1` 等）。 */
+  | { type: 'unplug'; partId: string; session: BoardSession }
+  /** タイマの設定時間を変えた（`Simulation.setTimerPreset()` で差分適用する）。 */
   | { type: 'setPreset'; role: SocketRole; presetMs: number; session: BoardSession }
+  /** 時刻・ログ・イベント・保護状態を初期化する（課題のやり直し）。 */
+  | { type: 'reset' }
   /** 押ボタンを押す。 */
   | { type: 'press'; pbId: string }
   /** 押ボタンを離す。 */
@@ -1280,13 +1284,22 @@ Worker は `@ojt/board-model` の `toNetlist()` と `@ojt/circuit-sim` の `Simu
 - [ ] **Step 1: `apps/desktop/src/worker/sim.worker.ts` を書く**
 
 ```ts
-import { JIPM_BOARD, toNetlist, type BoardSession } from '@ojt/board-model';
 import {
+  JIPM_BOARD,
+  socketPartId,
+  toNetlist,
+  type BoardSession,
+  type SocketId,
+} from '@ojt/board-model';
+import {
+  createRelay4c,
+  createTimer4c,
   Simulation,
   TICK_MS,
   type ChatterEvent,
   type HazardEvent,
   type LogEntry,
+  type Part,
 } from '@ojt/circuit-sim';
 import { judgeAssemble } from '@ojt/content';
 import { planTicks } from './runtime.js';
@@ -1304,6 +1317,10 @@ import {
  * Simulation Worker。設計仕様 §4.3 / §5.2。
  * `circuit-sim` の `Simulation` を 10ms tick で回し、約30fpsでスナップショットを返す。
  * renderer のフレーム処理をブロックしない（§15 並行性）。
+ *
+ * 装着・取り外し・タイマ設定は `Simulation` の差分API（`mountPart` / `unmountPart` /
+ * `setTimerPreset`）で当てる。`new Simulation()` で作り直すと `tMs`・信号ログ・イベントが
+ * 消えてしまい、ライブのタイムチャートと危険操作の記録が途切れるため（§5.7 / §8.3）。
  */
 
 let simulation: Simulation | undefined;
@@ -1320,17 +1337,23 @@ function post(message: SimMessage): void {
   self.postMessage(message);
 }
 
-/** セッションからネットリストを作り直して `Simulation` を差し替える。電源の入切状態は引き継ぐ。 */
-function rebuild(next: BoardSession, keepPower: boolean): void {
-  const breakerOn = keepPower ? (simulation?.state().breakerOn ?? false) : false;
-  const switchOn = keepPower ? (simulation?.state().switchOn ?? false) : false;
+/** 課題を開く。ネットリストを作り直し、電源OFF・t=0 から回し始める。 */
+function load(next: BoardSession): void {
   session = next;
   simulation = new Simulation(toNetlist(next, JIPM_BOARD), { tickMs: TICK_MS });
   logCursor = 0;
   hazardCursor = 0;
   chatterCursor = 0;
-  if (breakerOn) simulation.setBreaker(true);
-  if (switchOn) simulation.setSwitch(true);
+}
+
+/** 装着した部品を circuit-sim の部品インスタンスにする。§6.6 */
+function partFor(next: BoardSession, socketId: SocketId): Part | undefined {
+  const mounted = next.mounted[socketId];
+  if (mounted === undefined) return undefined;
+  const id = socketPartId(next.socketRoles, socketId);
+  return mounted.kind === 'relay-my4n'
+    ? createRelay4c(id)
+    : createTimer4c(id, mounted.presetMs, mounted.rangeMaxMs);
 }
 
 function lampsOf(sim: Simulation): Record<string, LampSnapshot> {
@@ -1422,7 +1445,7 @@ function start(): void {
 
 function handle(command: SimCommand): void {
   if (command.type === 'load') {
-    rebuild(command.session, false);
+    load(command.session);
     start();
     return;
   }
@@ -1439,9 +1462,16 @@ function handle(command: SimCommand): void {
         session.wires = session.wires.filter((w) => w.id !== command.wireId);
       }
       break;
-    case 'plug':
+    case 'plug': {
+      // 差分で当てるので tMs・ログ・イベントは切れない
+      const part = partFor(command.session, command.socketId);
+      if (part !== undefined) sim.mountPart(part);
+      session = command.session;
+      break;
+    }
     case 'unplug':
-      rebuild(command.session, true);
+      sim.unmountPart(command.partId);
+      session = command.session;
       break;
     case 'setPreset':
       sim.setTimerPreset(command.role, command.presetMs);
@@ -1458,6 +1488,14 @@ function handle(command: SimCommand): void {
       break;
     case 'switch':
       sim.setSwitch(command.on);
+      break;
+    case 'reset':
+      // 時刻・ログ・イベント・保護状態を初期化する（課題のやり直し）
+      sim.reset();
+      logCursor = 0;
+      hazardCursor = 0;
+      chatterCursor = 0;
+      start();
       break;
     case 'resetTrip':
       // §5.1.1 の復帰手順そのもの: スイッチOFF → ブレーカOFF → ブレーカON → スイッチON
@@ -2069,9 +2107,14 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 仕様 §15「全文言を1箇所に集約しハードコードしない」。Plan 1D2 で足す文言もここに並べておく。
 
 ```ts
+import type { HazardKind, MismatchReason } from '@ojt/circuit-sim';
+
 /**
  * 日本語文言。設計仕様 §15「全文言を1箇所に集約しハードコードしない」。
  * 画面側は必ずこのモジュール経由で文字列を取る。文言の変更はこのファイルだけで完結する。
+ *
+ * エンジンの種別（`HazardKind` / `MismatchReason`）で索引する表は `satisfies` で網羅を検査する。
+ * エンジンに種別が増えたときに、画面で `undefined` が出るのではなく `tsc` が落ちる。
  */
 
 /** アプリ名称（仮称。§17.2 #18）。 */
@@ -2172,7 +2215,8 @@ export const JA = {
     'short-circuit-power-on': '短絡状態での通電（電源保護動作）',
     'power-sequence-violation': '電源操作の手順違反',
     'over-wires-per-terminal': '1端子に3本目を接続',
-  },
+    overcurrent: '運転中の過電流（電源保護動作）',
+  } satisfies Record<HazardKind, string>,
   staticCheck: {
     wireColorRule: '線色ルール',
     terminalLimit: '1端子の本数',
@@ -2186,7 +2230,8 @@ export const JA = {
     value: '値違い',
     missing: '遷移が無い',
     extra: '余分な遷移',
-  },
+    'unknown-signal': '比較対象の信号が模範回路に無い',
+  } satisfies Record<MismatchReason, string>,
   error: {
     banner: '予期しないエラーが発生しました',
     reset: 'セッションをリセット',
@@ -3906,6 +3951,9 @@ const NUMBER_MM = 4.6;
 /** 役割文字の高さ[mm]。 */
 const ROLE_MM = 3;
 
+/** 端子台の印字テクスチャの最小の幅・奥行[mm]（`TerminalBlock` の `MIN_BODY_MM` と合わせる）。 */
+const MIN_FACE_MM = 16;
+
 /** 役割ごとの印字色（極性は色でも区別する）。 */
 const ROLE_COLOR: Readonly<Record<TerminalRole, string>> = {
   'coil+': '#D14343',
@@ -4001,13 +4049,16 @@ export function blockFaceTexture(
   const maxX = Math.max(...xs);
   const minY = Math.min(...ys);
   const maxY = Math.max(...ys);
-  const widthMm = maxX - minX + padMm * 2;
-  const heightMm = maxY - minY + padMm * 2;
+  // 端子が1〜2点しかない端子台でもテクスチャが潰れないよう最小サイズを持たせる
+  const widthMm = Math.max(MIN_FACE_MM, maxX - minX + padMm * 2);
+  const heightMm = Math.max(MIN_FACE_MM, maxY - minY + padMm * 2);
+  const offsetX = (widthMm - (maxX - minX)) / 2;
+  const offsetY = (heightMm - (maxY - minY)) / 2;
   return makeCanvasTexture(widthMm, heightMm, (ctx) => {
     ctx.font = `700 ${ROLE_MM * PX_PER_MM}px sans-serif`;
     for (const terminal of terminals) {
-      const x = (terminal.pos.x - minX + padMm) * PX_PER_MM;
-      const y = (terminal.pos.y - minY + padMm) * PX_PER_MM;
+      const x = (terminal.pos.x - minX + offsetX) * PX_PER_MM;
+      const y = (terminal.pos.y - minY + offsetY) * PX_PER_MM;
       ctx.fillStyle = ROLE_COLOR[terminal.role];
       ctx.fillText(blockTerminalMark(terminal), x, y + ROLE_MM * PX_PER_MM * 1.5);
     }
@@ -4348,6 +4399,12 @@ import { toScene } from './coords.js';
  */
 
 /**
+ * ラベルは見せるだけ。drei の `Html` はラッパの div に `pointer-events: auto` を付けるので、
+ * ここで無効化しないと盤の上のラベルがツールバーのクリックまで飲み込んでしまう。
+ */
+const LABEL_STYLE = { pointerEvents: 'none' } as const;
+
+/**
  * 当たり判定の球を盤面から浮かせる量[mm]。
  * 端子台やソケットの筐体より必ず手前に来るようにして、端子のクリックが筐体に奪われないようにする。
  */
@@ -4405,7 +4462,7 @@ export function TerminalHit({
         }}
       />
       {hovered ? (
-        <Html center distanceFactor={260} position={[0, 6, 6]} zIndexRange={[20, 0]}>
+        <Html center style={LABEL_STYLE} distanceFactor={260} position={[0, 6, 6]} zIndexRange={[20, 0]}>
           <span className="terminal-tooltip">{tooltip}</span>
         </Html>
       ) : null}
@@ -4443,6 +4500,12 @@ import { TerminalHit } from './TerminalHit.js';
  * 本体の外形は盤定義の `bodyMm`、端子の座標と印字は `board.terminals` の `pos` / `label` から取る。
  * 数も配置もこの層ではハードコードしないので、Plan 1B が配置を変えれば3Dも追随する。
  */
+
+/**
+ * ラベルは見せるだけ。drei の `Html` はラッパの div に `pointer-events: auto` を付けるので、
+ * ここで無効化しないと盤の上のラベルがツールバーのクリックまで飲み込んでしまう。
+ */
+const LABEL_STYLE = { pointerEvents: 'none' } as const;
 
 /** ネジ端子ティアの奥行[mm]（2段ぶん＋余白）。 */
 const TIER_DEPTH_MM = 20;
@@ -4574,6 +4637,7 @@ export function Socket({
       )}
       <Html
         center
+        style={LABEL_STYLE}
         distanceFactor={280}
         position={[bodyCenter[0], bodyCenter[1] + length / 2 + 5, TIER_HEIGHT_MM]}
         zIndexRange={[10, 0]}
@@ -4603,7 +4667,7 @@ export function Socket({
 
 ```tsx
 import type { BoardTerminal } from '@ojt/board-model';
-import { parseTerminalId, type TerminalId } from '@ojt/circuit-sim';
+import type { TerminalId } from '@ojt/circuit-sim';
 import { Html } from '@react-three/drei';
 import { useMemo, type JSX } from 'react';
 import { TERMINAL_BLOCK_CAP_COLOR, TERMINAL_BLOCK_COLOR } from '../session/colors.js';
@@ -4617,8 +4681,17 @@ import { TerminalHit } from './TerminalHit.js';
  * 端子の座標は盤定義から取り、台座は端子の外接矩形から自動で作るのでハードコードしない。
  */
 
+/**
+ * ラベルは見せるだけ。drei の `Html` はラッパの div に `pointer-events: auto` を付けるので、
+ * ここで無効化しないと盤の上のラベルがツールバーのクリックまで飲み込んでしまう。
+ */
+const LABEL_STYLE = { pointerEvents: 'none' } as const;
+
 /** 台座の余白[mm]。 */
 const PAD_MM = 6;
+
+/** 台座の最小の幅・奥行[mm]。端子が1〜2点しかない DC24V 端子台でも潰れないようにする。§6.1 */
+const MIN_BODY_MM = 16;
 
 /** 端子台の奥側カバーの奥行[mm]。 */
 const CAP_DEPTH_MM = 9;
@@ -4661,6 +4734,8 @@ export function TerminalBlock({
   const maxY = Math.max(...ys);
   const height = Math.max(...zs);
   const center = toScene({ x: (minX + maxX) / 2, y: (minY + maxY) / 2, z: height / 2 });
+  const bodyWidth = Math.max(MIN_BODY_MM, maxX - minX + PAD_MM * 2);
+  const bodyDepth = Math.max(MIN_BODY_MM, maxY - minY + PAD_MM * 2);
   return (
     <group name={`block-${name}`}>
       <mesh
@@ -4668,12 +4743,12 @@ export function TerminalBlock({
         raycast={noPick}
         material={sharedMaterial(TERMINAL_BLOCK_COLOR, { roughness: 0.7 })}
         position={center}
-        scale={[maxX - minX + PAD_MM * 2, maxY - minY + PAD_MM * 2, height]}
+        scale={[bodyWidth, bodyDepth, height]}
       />
       {/* 端子の名前の印字（常時表示）。§6.4 */}
       {faceTexture === undefined ? null : (
         <mesh raycast={noPick} position={[center[0], center[1], height + LABEL_LIFT_MM]}>
-          <planeGeometry args={[maxX - minX + PAD_MM * 2, maxY - minY + PAD_MM * 2]} />
+          <planeGeometry args={[bodyWidth, bodyDepth]} />
           <meshBasicMaterial map={faceTexture} transparent depthWrite={false} />
         </mesh>
       )}
@@ -4682,13 +4757,14 @@ export function TerminalBlock({
         geometry={UNIT_BOX}
         raycast={noPick}
         material={sharedMaterial(TERMINAL_BLOCK_CAP_COLOR, { roughness: 0.6 })}
-        position={[center[0], center[1] + (maxY - minY) / 2 + PAD_MM + CAP_DEPTH_MM / 2, height / 2]}
-        scale={[maxX - minX + PAD_MM * 2, CAP_DEPTH_MM, height + 2]}
+        position={[center[0], center[1] + bodyDepth / 2 + CAP_DEPTH_MM / 2, height / 2]}
+        scale={[bodyWidth, CAP_DEPTH_MM, height + 2]}
       />
       <Html
         center
+        style={LABEL_STYLE}
         distanceFactor={320}
-        position={[center[0], center[1] + (maxY - minY) / 2 + PAD_MM + 4, height]}
+        position={[center[0], center[1] + bodyDepth / 2 + 4, height]}
         zIndexRange={[10, 0]}
       >
         <span className="block-label">{label}</span>
@@ -4707,21 +4783,6 @@ export function TerminalBlock({
     </group>
   );
 }
-
-/** 端子を部品ID（`TB_PL` / `TB_PB` / `P` / `N`）でまとめる。§6.4 */
-export function groupByPart(
-  terminals: readonly BoardTerminal[],
-  parts: readonly string[],
-): Map<string, BoardTerminal[]> {
-  const out = new Map<string, BoardTerminal[]>();
-  for (const part of parts) out.set(part, []);
-  for (const terminal of terminals) {
-    const owner = parseTerminalId(terminal.id).part as string;
-    const bucket = out.get(owner);
-    if (bucket !== undefined) bucket.push(terminal);
-  }
-  return out;
-}
 ```
 
 - [ ] **Step 6: `apps/desktop/src/renderer/three/Fixtures.tsx` を書く**
@@ -4739,6 +4800,12 @@ import { toScene } from './coords.js';
  * 実物写真では上段左に DC24V の端子台、上段右にブレーカが載る。
  * いずれも訓練者は配線できない（`wirable: false`）ので、当たり判定は持たせず見た目だけ描く。
  */
+
+/**
+ * ラベルは見せるだけ。drei の `Html` はラッパの div に `pointer-events: auto` を付けるので、
+ * ここで無効化しないと盤の上のラベルがツールバーのクリックまで飲み込んでしまう。
+ */
+const LABEL_STYLE = { pointerEvents: 'none' } as const;
 
 /** 機器の高さ[mm]。 */
 const FIXTURE_HEIGHT_MM = 22;
@@ -4785,6 +4852,7 @@ export function Fixture({
       />
       <Html
         center
+        style={LABEL_STYLE}
         distanceFactor={320}
         position={[center[0], center[1], FIXTURE_HEIGHT_MM + 1]}
         zIndexRange={[10, 0]}
@@ -4950,6 +5018,12 @@ import { toScene } from './coords.js';
  * 装着部品の選択・取り外しはソケット台座のクリックで行う（台座は本体より一回り大きい）。
  */
 
+/**
+ * ラベルは見せるだけ。drei の `Html` はラッパの div に `pointer-events: auto` を付けるので、
+ * ここで無効化しないと盤の上のラベルがツールバーのクリックまで飲み込んでしまう。
+ */
+const LABEL_STYLE = { pointerEvents: 'none' } as const;
+
 /** 本体の高さ[mm]（ソケット面からの突き出し）。 */
 const BODY_HEIGHT_MM = 34;
 /** 本体の余白[mm]（ソケット台座より一回り小さい）。 */
@@ -5031,6 +5105,7 @@ export function MountedPart({
       />
       <Html
         center
+        style={LABEL_STYLE}
         distanceFactor={300}
         position={[center[0], center[1] - height / 2 - 5, SOCKET_TOP_Z_MM + BODY_HEIGHT_MM]}
         zIndexRange={[12, 0]}
@@ -5348,12 +5423,12 @@ describe('routeWire（直角配線・部品回避）', () => {
   it('束になる電線はレーンがずれて並走する', () => {
     const first = routeWire(
       JIPM_BOARD,
-      { id: 'w-5', from: toTerminalId('P.1'), to: toTerminalId('S1.14') },
+      { id: 'w-5', from: toTerminalId('TB_PB.1c'), to: toTerminalId('S1.14') },
       [],
     );
     const second = routeWire(
       JIPM_BOARD,
-      { id: 'w-6', from: toTerminalId('P.1'), to: toTerminalId('S2.14') },
+      { id: 'w-6', from: toTerminalId('TB_PB.1c'), to: toTerminalId('S2.14') },
       [first],
     );
     expect(second.lane).toBeGreaterThan(first.lane);
@@ -5373,15 +5448,16 @@ describe('routeWire（直角配線・部品回避）', () => {
 describe('配線操作の結果の経路（§6.6 / §8.2）', () => {
   it('模範回路ぶんの配線をすべて張っても、どの経路も部品の上を通らない', () => {
     const board = session();
+    // P/N は各1点しかないので母線は渡り配線で分配する（§6.1）
     const pairs: ReadonlyArray<readonly [string, string]> = [
       ['P.1', 'TB_PB.2c'],
-      ['P.1', 'CR1.10'],
+      ['TB_PB.2c', 'CR1.10'],
       ['TB_PB.2b', 'TB_PB.1c'],
       ['TB_PB.1c', 'CR1.9'],
       ['TB_PB.1a', 'CR1.14'],
       ['CR1.14', 'CR1.5'],
       ['N.1', 'CR1.13'],
-      ['N.1', 'TB_PL.1-'],
+      ['CR1.13', 'TB_PL.1-'],
       ['CR1.6', 'TB_PL.1+'],
     ];
     for (const [from, to] of pairs) {
@@ -5506,8 +5582,7 @@ export function CameraPresets({
 
 ```tsx
 import { GizmoHelper, GizmoViewcube } from '@react-three/drei';
-import { useThree } from '@react-three/fiber';
-import { useEffect, type JSX } from 'react';
+import type { JSX } from 'react';
 
 /**
  * 視点ギズモ（Blender のビューキューブ相当）。設計仕様 §12.2。
@@ -5516,8 +5591,10 @@ import { useEffect, type JSX } from 'react';
  * 画面左上に小さなキューブを常設し、面をクリックするとその方向へカメラをスナップさせる。
  * 面ラベルは日本語（前／後／左／右／上／下）にする。
  *
- * `frameloop="demand"` と組み合わせるので、ギズモのドラッグや OrbitControls のダンピングで
- * カメラが動いている間も描画が回るよう、`GizmoHelper` の更新にあわせて `invalidate()` を呼ぶ。
+ * `frameloop="demand"` と組み合わせる。ギズモのスナップや OrbitControls の操作で
+ * カメラが動く間のフレームは、`OrbitControls` の `onChange` と drei 側の `invalidate()` が要求する。
+ * ここで一定間隔の `invalidate()` を回してはいけない（常時再描画になり `frameloop="demand"` の
+ * 意味が無くなるうえ、ソフトウェアラスタライザの環境では描画がメインスレッドを占有してしまう）。
  */
 
 /** キューブの面ラベル（日本語）。§15 の文言方針にあわせる。 */
@@ -5537,16 +5614,6 @@ const GIZMO_MARGIN: [number, number] = [76, 76];
 
 /** 左上のビューキューブ。 */
 export function ViewGizmo(): JSX.Element {
-  const invalidate = useThree((state) => state.invalidate);
-  // ダンピング中・ギズモのアニメーション中もフレームを回す（§12.2 の性能方針）
-  useEffect(() => {
-    const id = setInterval(() => {
-      invalidate();
-    }, 1000 / 30);
-    return () => {
-      clearInterval(id);
-    };
-  }, [invalidate]);
   return (
     <GizmoHelper alignment="top-left" margin={GIZMO_MARGIN} renderPriority={1}>
       <GizmoViewcube
@@ -5585,7 +5652,7 @@ import { OrbitControls } from '@react-three/drei';
 import { Canvas, useThree } from '@react-three/fiber';
 import { MOUSE } from 'three';
 import { useEffect, useMemo, useState, type JSX } from 'react';
-import { useStore } from '../app/store.js';
+import { useStore, type AppState } from '../app/store.js';
 import type { PickHit } from '../session/interaction.js';
 import { BoardPlate } from './BoardPlate.js';
 import { BOARD_TILT_RAD, CAMERA_FOV_DEG } from './camera.js';
@@ -5597,7 +5664,7 @@ import { Lamp } from './Lamp.js';
 import { MountedPart } from './MountedPart.js';
 import { PushButton } from './PushButton.js';
 import { Socket } from './Socket.js';
-import { groupByPart, TerminalBlock } from './TerminalBlock.js';
+import { TerminalBlock } from './TerminalBlock.js';
 import { ViewGizmo } from './ViewGizmo.js';
 import { Wire } from './Wire.js';
 
@@ -5619,21 +5686,72 @@ const MAX_CAMERA_DISTANCE_MM = 1200;
 /** 仰角の上限（盤の裏側へ回り込ませない）。§12.2 */
 const MAX_POLAR_ANGLE = Math.PI * 0.48;
 
-/** 端子台として描く部品ID。§6.4 */
-const BLOCK_PARTS: ReadonlyArray<{ id: string; label: string }> = [
-  { id: 'TB_PL', label: 'ランプ用端子台' },
-  { id: 'TB_PB', label: '押ボタン用端子台' },
-  { id: 'P', label: 'P (+24V)' },
-  { id: 'N', label: 'N (0V)' },
+/**
+ * 端子台として描くまとまり。§6.4
+ * P/N 供給端子は `P.1` / `N.1` の各1点しかない（§6.1）ので、
+ * 実物写真の DC24V 端子と同じく**2端子の小さな端子台1個**としてまとめて描く。
+ */
+const BLOCK_PARTS: ReadonlyArray<{ key: string; ids: readonly string[]; label: string }> = [
+  { key: 'TB_PL', ids: ['TB_PL'], label: 'ランプ用端子台' },
+  { key: 'TB_PB', ids: ['TB_PB'], label: '押ボタン用端子台' },
+  { key: 'PN', ids: ['P', 'N'], label: 'DC24V端子台' },
 ];
 
 /** DINレールを敷く機器のまとまり（ソケット群と端子台群）。実物写真のとおり。§6.5 */
 const RAIL_GROUPS: readonly string[][] = [['TB_PL'], ['TB_PB'], ['P', 'N']];
 
-/** ストアのスナップショットが変わるたびに再描画を要求する。 */
+/**
+ * 見た目が変わったときだけ再描画を要求する。§15
+ *
+ * Worker のスナップショットは約30fpsで届くが、その大半は「電圧の小数点以下が動いただけ」で
+ * 3Dの絵は1ピクセルも変わらない。毎回 `invalidate()` すると `frameloop="demand"` が
+ * 実質 30fps の常時描画になり、ソフトウェアラスタライザの環境ではメインスレッドを占有して
+ * クリックすら受け付けなくなる。そこで**描き分けに効く値だけ**から署名を作って比べる。
+ */
+function visualSignature(state: AppState): string {
+  const { snapshot, session } = state;
+  const lamps = Object.entries(snapshot.lamps)
+    .map(([id, lamp]) => `${id}:${lamp.level}`)
+    .join(',');
+  const relays = Object.entries(snapshot.relays)
+    .map(([id, relay]) => `${id}:${relay.coilOn ? 1 : 0}`)
+    .join(',');
+  const timers = Object.entries(snapshot.timers)
+    .map(([id, t]) => `${id}:${t.powered ? 1 : 0}${t.timedOut ? 1 : 0}`)
+    .join(',');
+  const buttons = Object.entries(snapshot.buttons)
+    .map(([id, pressed]) => `${id}:${pressed ? 1 : 0}`)
+    .join(',');
+  return [
+    lamps,
+    relays,
+    timers,
+    buttons,
+    snapshot.powered ? 1 : 0,
+    snapshot.tripped ? 1 : 0,
+    session?.wires.length ?? 0,
+    Object.keys(session?.mounted ?? {}).join('/'),
+    state.hoveredTerminal ?? '',
+    state.pendingTerminal ?? '',
+    state.selectedWire ?? '',
+    state.mode,
+    state.camera,
+  ].join('|');
+}
+
+/** 見た目が変わったときだけ再描画を要求する。 */
 function Invalidator(): null {
   const invalidate = useThree((state) => state.invalidate);
-  useEffect(() => useStore.subscribe(() => invalidate()), [invalidate]);
+  useEffect(() => {
+    let previous = visualSignature(useStore.getState());
+    invalidate();
+    return useStore.subscribe((state) => {
+      const next = visualSignature(state);
+      if (next === previous) return;
+      previous = next;
+      invalidate();
+    });
+  }, [invalidate]);
   return null;
 }
 
@@ -5657,16 +5775,64 @@ function BoardContents({
   const mode = useStore((s) => s.mode);
   const camera = useStore((s) => s.camera);
   const [controls, setControls] = useState<ControlsLike | null>(null);
+  const invalidate = useThree((state) => state.invalidate);
 
   const board = JIPM_BOARD;
   const routes: WireRoute[] = useMemo(
     () => (session === undefined ? [] : routeSession(board, session)),
     [board, session],
   );
-  const blocks = useMemo(
-    () => groupByPart(board.terminals, BLOCK_PARTS.map((b) => b.id)),
+  const blocks = useMemo(() => {
+    const out = new Map<string, typeof board.terminals>();
+    for (const group of BLOCK_PARTS) {
+      out.set(
+        group.key,
+        board.terminals.filter((t) => group.ids.some((id) => t.id.startsWith(`${id}.`))),
+      );
+    }
+    return out;
+  }, [board]);
+
+  /**
+   * ソケットごとの端子配列は**必ずメモ化する**。ここで毎回 `filter()` すると配列の同一性が変わり、
+   * `Socket` の印字テクスチャ（`useMemo`）がスナップショットのたびに焼き直されて
+   * メインスレッドを食い尽くす（クリックが受け付けられなくなる）。§15
+   */
+  /** 固定機器の端子（同一性を保つためメモ化する）。 */
+  const fixtureTerminals = useMemo(
+    () =>
+      FIXTURES.map((fixture) => ({
+        ...fixture,
+        terminals: board.terminals.filter((t) => t.id.startsWith(`${fixture.id}.`)),
+      })),
     [board],
   );
+
+  /** DINレールを敷く端子のまとまり（これもメモ化して同一性を保つ）。 */
+  const railTerminals = useMemo(
+    () => [
+      ...RAIL_GROUPS.map((ids) => ({
+        key: ids.join('-'),
+        terminals: board.terminals.filter((t) => ids.some((id) => t.id.startsWith(`${id}.`))),
+      })),
+      ...board.sockets.map((socket) => ({
+        key: `rail-${socket.id}`,
+        terminals: board.terminals.filter((t) => t.id.startsWith(`${socket.id}.`)),
+      })),
+    ],
+    [board],
+  );
+
+  const socketTerminals = useMemo(() => {
+    const out = new Map<string, typeof board.terminals>();
+    for (const socket of board.sockets) {
+      out.set(
+        socket.id,
+        board.terminals.filter((t) => t.id.startsWith(`${socket.id}.`)),
+      );
+    }
+    return out;
+  }, [board]);
 
   const pickTerminal = (terminal: BoardTerminal): void => {
     onPick({
@@ -5687,25 +5853,16 @@ function BoardContents({
       {/* 盤は傾斜コンソール。盤ローカル（+Z が盤面の法線）を机の上に寝かせて手前に起こす。§6.5 */}
       <group rotation={[BOARD_TILT_RAD, 0, 0]}>
       <BoardPlate board={board} />
-      {RAIL_GROUPS.map((ids) => (
-        <DinRail
-          key={ids.join('-')}
-          terminals={board.terminals.filter((t) => ids.some((id) => t.id.startsWith(`${id}.`)))}
-        />
+      {railTerminals.map((rail) => (
+        <DinRail key={rail.key} terminals={rail.terminals} />
       ))}
-      {board.sockets.map((socket) => (
-        <DinRail
-          key={`rail-${socket.id}`}
-          terminals={board.terminals.filter((t) => t.id.startsWith(`${socket.id}.`))}
-        />
-      ))}
-      {FIXTURES.map((fixture) => (
+      {fixtureTerminals.map((fixture) => (
         <Fixture
           key={fixture.id}
           name={fixture.id}
           label={fixture.label}
           color={fixture.color}
-          terminals={board.terminals.filter((t) => t.id.startsWith(`${fixture.id}.`))}
+          terminals={fixture.terminals}
         />
       ))}
       <FixedWires board={board} />
@@ -5713,7 +5870,7 @@ function BoardContents({
       {board.sockets.map((socket) => {
         const role = session?.socketRoles[socket.id];
         const mounted = session?.mounted[socket.id];
-        const terminals = board.terminals.filter((t) => t.id.startsWith(`${socket.id}.`));
+        const terminals = socketTerminals.get(socket.id) ?? [];
         return (
           <group key={socket.id}>
             <Socket
@@ -5745,10 +5902,10 @@ function BoardContents({
 
       {BLOCK_PARTS.map((block) => (
         <TerminalBlock
-          key={block.id}
-          name={block.id}
+          key={block.key}
+          name={block.key}
           label={block.label}
-          terminals={blocks.get(block.id) ?? []}
+          terminals={blocks.get(block.key) ?? []}
           hoveredTerminal={hovered}
           pendingTerminal={pending}
           onHoverTerminal={onHover}
@@ -5792,13 +5949,12 @@ function BoardContents({
       {/*
         操作は左ドラッグ回転・右ドラッグ平行移動・ホイールズーム（§12.2）。
         `maxPolarAngle` で盤の裏側へ回り込まないようにし、注視点は盤の中心に固定する。
-        ダンピングを入れると `frameloop="demand"` でも慣性中に描画が要るので、
-        `ViewGizmo` が 30fps で `invalidate()` を回す。
+        `frameloop="demand"` なので、カメラが動いたフレームだけ `onChange` で描画を要求する
+        （慣性を入れると常時再描画になり、§15 の性能方針と噛み合わないため damping は使わない）。
       */}
       <OrbitControls
         makeDefault
-        enableDamping
-        dampingFactor={0.12}
+        enableDamping={false}
         minDistance={MIN_CAMERA_DISTANCE_MM}
         maxDistance={MAX_CAMERA_DISTANCE_MM}
         maxPolarAngle={MAX_POLAR_ANGLE}
@@ -5806,6 +5962,9 @@ function BoardContents({
           LEFT: MOUSE.ROTATE,
           MIDDLE: MOUSE.DOLLY,
           RIGHT: MOUSE.PAN,
+        }}
+        onChange={() => {
+          invalidate();
         }}
         ref={(instance) => {
           setControls(instance);
@@ -6983,8 +7142,15 @@ export function buildSpecChart(problem: AssembleProblem): SpecChartResult {
 - [ ] **Step 2: `apps/desktop/src/renderer/screens/Session.tsx` を書く**
 
 ```tsx
-import { crossesFootprint, JIPM_BOARD, routeWire, toPhysicalTerminal } from '@ojt/board-model';
+import {
+  crossesFootprint,
+  JIPM_BOARD,
+  routeWire,
+  socketPartId,
+  toPhysicalTerminal,
+} from '@ojt/board-model';
 import type { BoardSession, MountableKind, SocketId } from '@ojt/board-model';
+import type { TerminalId } from '@ojt/circuit-sim';
 import { useCallback, useEffect, useMemo, type JSX } from 'react';
 import { useStore } from '../app/store.js';
 import { JA } from '../i18n/ja.js';
@@ -7174,6 +7340,17 @@ export function Session(): JSX.Element {
     [apply],
   );
 
+  /** 3Dへ渡すコールバックは安定させる。毎回作り直すとシーン全体が再構築される。§15 */
+  const onHover = useCallback((id: TerminalId | undefined) => {
+    useStore.getState().setHovered(id);
+  }, []);
+  const onPress = useCallback((pbId: string) => {
+    bridge.send({ type: 'press', pbId });
+  }, []);
+  const onRelease = useCallback((pbId: string) => {
+    bridge.send({ type: 'release', pbId });
+  }, []);
+
   const onPick = useCallback(
     (hit: PickHit): void => {
       const store = useStore.getState();
@@ -7240,14 +7417,15 @@ export function Session(): JSX.Element {
   const onPlug = (socketId: SocketId, kind: MountableKind): void => {
     apply(runPlug(session, socketId, kind), () => {
       const next = useStore.getState().session;
-      if (next !== undefined) bridge.send({ type: 'plug', session: cloneSession(next) });
+      if (next !== undefined) bridge.send({ type: 'plug', socketId, session: cloneSession(next) });
     });
   };
 
   const onUnplug = (socketId: SocketId): void => {
     apply(runUnplug(session, socketId), () => {
       const next = useStore.getState().session;
-      if (next !== undefined) bridge.send({ type: 'unplug', session: cloneSession(next) });
+      const partId = socketPartId(session.socketRoles, socketId);
+      if (next !== undefined) bridge.send({ type: 'unplug', partId, session: cloneSession(next) });
     });
   };
 
@@ -7346,15 +7524,9 @@ export function Session(): JSX.Element {
         <div className={styles.viewport} data-testid="viewport">
           <BoardScene
             onPick={onPick}
-            onHover={(id) => {
-              useStore.getState().setHovered(id);
-            }}
-            onPress={(pbId) => {
-              bridge.send({ type: 'press', pbId });
-            }}
-            onRelease={(pbId) => {
-              bridge.send({ type: 'release', pbId });
-            }}
+            onHover={onHover}
+            onPress={onPress}
+            onRelease={onRelease}
           />
           <div className={styles.statusOverlay} data-testid="status-overlay">
             {snapshot.powered ? '通電中' : '無通電'} / 電線 {session.wires.length} 本 /{' '}
@@ -7439,8 +7611,12 @@ describe('buildSpecChart', () => {
     expect(pl1?.segments.at(-1)?.value).toBe(false);
   });
 
-  it('内蔵課題は全件チャートを作れる', () => {
+  it('模範回路が組める課題はすべてチャートになる', () => {
+    // 「内蔵課題の模範回路が必ず組めること」は Plan 1C の自己整合テスト（§7.8 / §14.1 #30）の担当。
+    // ここで見るのは「組めた課題は必ずチャートになる」という 1D 側の変換の全域性。
     for (const problem of BUILTIN_PROBLEMS) {
+      const reference = buildReferenceSession(problem, JIPM_BOARD);
+      if (!reference.ok) continue;
       expect(buildSpecChart(problem).ok, problem.id).toBe(true);
     }
   });
@@ -8271,16 +8447,20 @@ export function boardPoint(
 /**
  * 内蔵課題 b-001「自己保持回路」の模範配線（9本）。
  * `buildReferenceSession()` が生成する配線と同じ組み合わせを、**物理**端子IDで書き下したもの。
+ *
+ * P/N 供給端子は `P.1` / `N.1` の各1点しかなく、うち1本はチェック用の固定配線が使うので、
+ * 訓練者が母線から直接取れるのは各1本だけ（§6.1）。母線は**渡り配線**で分配する
+ * （`P.1 → TB_PB.2c → S1.10`、`N.1 → S1.13 → TB_PL.1-` の鎖）。
  */
 export const SELF_HOLD_WIRES: ReadonlyArray<readonly [string, string]> = [
   ['P.1', 'TB_PB.2c'],
-  ['P.1', 'S1.10'],
+  ['TB_PB.2c', 'S1.10'],
   ['TB_PB.2b', 'TB_PB.1c'],
   ['TB_PB.1c', 'S1.9'],
   ['TB_PB.1a', 'S1.14'],
   ['S1.14', 'S1.5'],
   ['N.1', 'S1.13'],
-  ['N.1', 'TB_PL.1-'],
+  ['S1.13', 'TB_PL.1-'],
   ['S1.6', 'TB_PL.1+'],
 ];
 ```
@@ -8569,6 +8749,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 | §8.1 | 線色パレット（モードBは青のみ） | Task 13（`session.allowedColors` から生成） | — |
 | §8.2 | 端子ホバーのツールチップ `CR1 ⑨ COM` | Task 10 | — |
 | §8.2 | 配線（線色→端子→端子）・取消（Esc／空間クリック）・電線の選択と削除 | Task 7・14 | — |
+| §6.1 | P/N 供給端子は各1点。母線は渡り配線で分配する | Task 11・16（テストとE2Eの模範配線が鎖になっている） | — |
 | §8.2 | 元に戻す／やり直し（上限50手） | Task 8・14 | — |
 | §8.2 | 部品装着・取り外し・タイマ設定（ダイヤル＋数値入力） | Task 13・14 | — |
 | §8.2 | 通電（ブレーカ→スイッチ）・PB操作（押しっぱなし保持） | Task 13・14 | — |
@@ -8605,7 +8786,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 |---|---|---|---|
 | 1 | §8.2「電線クリックで選択、Delete で削除」 | 電線のレイキャストは**削除モードのときだけ**有効。配線モードでは電線がクリックを拾わない | 配線帯を走る電線が端子の手前を通るため、配線モードでも拾えるようにすると「クリックできない端子」が生まれる。選択は削除のための操作なので、削除モードに限っても操作の目的を損なわない |
 | 2 | §8.2「配線・部品装着・タイマ設定の全操作を対象に、上限50手」 | 元に戻す／やり直しは**盤を作り直す**ため無通電に戻る | 実機でも配線をやり直す前に電源を落とす（§5.3.5 の手順）。Worker のネットリストを作り直す実装とも一致する |
-| 3 | §4.3「コマンド: `plug` / `unplug`」 | `plug` / `unplug` は**更新後のセッション全体**を載せる | 装着は部品構成が変わるためネットリストの作り直しが要る。差分だけを送っても Worker 側で同じ計算をやり直すことになり、二重実装になる |
+| 3 | §4.3「コマンド: `mountPart` / `unmountPart`」 | `plug` / `unplug` という名前にし、**更新後のセッションも一緒に載せる** | 適用自体は `Simulation.mountPart()` / `unmountPart()` の差分API（`tMs`・ログ・イベントを保つ）で行う。セッションを添えるのは、Worker 側が持つ盤の状態を renderer と一致させておくため（判定のときに作り直す必要が出ない） |
 | 4 | §4.3「コマンド: `setPower`」 | `breaker` / `switch` の2コマンドに分ける | 仕様 §5.3.5 は「ブレーカ → 電源スイッチ」の**順序**を危険操作の判定に使う。1コマンドにまとめると順序が表現できない |
 | 5 | §4.3「通知: `event`」 | `snapshot` に `hazardDelta` / `chatterDelta` を載せる | イベントは必ず tick に紐づくので、スナップショットと別便にすると UI 側で時刻の突き合わせが要る。1本にまとめると順序が保証される |
 | 6 | §6.3「チェック用回路の線色は黄」 | 3Dでは既設配線をすべて**青**で描く（データ上の色は黄のまま） | 実物写真の既設配線はすべて青。線色ルールの静的チェックは Plan 1C 側の定数で見るため、3Dの表示色を変えても判定は変わらない |

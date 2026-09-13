@@ -1256,8 +1256,15 @@ export function Toolbar({
 - [ ] **Step 3: `apps/desktop/src/renderer/screens/Session.tsx` を書く**
 
 ```tsx
-import { crossesFootprint, JIPM_BOARD, routeWire, toPhysicalTerminal } from '@ojt/board-model';
+import {
+  crossesFootprint,
+  JIPM_BOARD,
+  routeWire,
+  socketPartId,
+  toPhysicalTerminal,
+} from '@ojt/board-model';
 import type { BoardSession, MountableKind, SocketId } from '@ojt/board-model';
+import type { TerminalId } from '@ojt/circuit-sim';
 import { useCallback, useEffect, useMemo, useRef, type JSX } from 'react';
 import { useStore } from '../app/store.js';
 import { sounds, soundsForSnapshot } from '../audio/sounds.js';
@@ -1476,6 +1483,17 @@ export function Session(): JSX.Element {
     [apply],
   );
 
+  /** 3Dへ渡すコールバックは安定させる。毎回作り直すとシーン全体が再構築される。§15 */
+  const onHover = useCallback((id: TerminalId | undefined) => {
+    useStore.getState().setHovered(id);
+  }, []);
+  const onPress = useCallback((pbId: string) => {
+    bridge.send({ type: 'press', pbId });
+  }, []);
+  const onRelease = useCallback((pbId: string) => {
+    bridge.send({ type: 'release', pbId });
+  }, []);
+
   const onPick = useCallback(
     (hit: PickHit): void => {
       const store = useStore.getState();
@@ -1542,14 +1560,15 @@ export function Session(): JSX.Element {
   const onPlug = (socketId: SocketId, kind: MountableKind): void => {
     apply(runPlug(session, socketId, kind), () => {
       const next = useStore.getState().session;
-      if (next !== undefined) bridge.send({ type: 'plug', session: cloneSession(next) });
+      if (next !== undefined) bridge.send({ type: 'plug', socketId, session: cloneSession(next) });
     });
   };
 
   const onUnplug = (socketId: SocketId): void => {
     apply(runUnplug(session, socketId), () => {
       const next = useStore.getState().session;
-      if (next !== undefined) bridge.send({ type: 'unplug', session: cloneSession(next) });
+      const partId = socketPartId(session.socketRoles, socketId);
+      if (next !== undefined) bridge.send({ type: 'unplug', partId, session: cloneSession(next) });
     });
   };
 
@@ -1680,15 +1699,9 @@ export function Session(): JSX.Element {
         <div className={styles.viewport} data-testid="viewport">
           <BoardScene
             onPick={onPick}
-            onHover={(id) => {
-              useStore.getState().setHovered(id);
-            }}
-            onPress={(pbId) => {
-              bridge.send({ type: 'press', pbId });
-            }}
-            onRelease={(pbId) => {
-              bridge.send({ type: 'release', pbId });
-            }}
+            onHover={onHover}
+            onPress={onPress}
+            onRelease={onRelease}
           />
           <div className={styles.statusOverlay} data-testid="status-overlay">
             {snapshot.powered ? '通電中' : '無通電'} / 電線 {session.wires.length} 本 /{' '}
