@@ -78,7 +78,7 @@
 | `corepack --version` | **未インストール**（`CommandNotFoundException`） | 不要（pnpmが直接入っているため） |
 | `npm -v` | `11.12.1` | pnpm導入のフォールバックに使う |
 
-- [ ] バージョンを確認する。
+- [x] バージョンを確認する。
 
 ```powershell
 node -v; pnpm -v; git --version; npm -v
@@ -93,9 +93,9 @@ git version 2.53.0.windows.2
 11.12.1
 ```
 
-- [ ] `node -v` が出ない、または 22未満だった場合のみ: **人手作業として** <https://nodejs.org> から Node 22 LTS の Windows x64 インストーラ（`.msi`）を入手して実行し、PowerShell を開き直してから `node -v` が `v22.` 以上を表示することを確認する。以降のタスクはこの確認が通るまで進めない。
+- [x] `node -v` が出ない、または 22未満だった場合のみ: **人手作業として** <https://nodejs.org> から Node 22 LTS の Windows x64 インストーラ（`.msi`）を入手して実行し、PowerShell を開き直してから `node -v` が `v22.` 以上を表示することを確認する。以降のタスクはこの確認が通るまで進めない。
 
-- [ ] `pnpm -v` が出なかった場合のみ、次の順で試す。
+- [x] `pnpm -v` が出なかった場合のみ、次の順で試す。
 
 ```powershell
 corepack enable
@@ -112,7 +112,7 @@ pnpm -v
 
 期待出力: `9.x.x` 以上のバージョン番号が1行。
 
-- [ ] リポジトリのルートで作業していることを確認する。
+- [x] リポジトリのルートで作業していることを確認する。
 
 ```powershell
 git rev-parse --show-toplevel
@@ -130,7 +130,7 @@ git rev-parse --show-toplevel
 - Create: `package.json`, `pnpm-workspace.yaml`, `tsconfig.base.json`, `tsconfig.json`, `.editorconfig`, `.nvmrc`
 - Modify: `.gitignore`
 
-- [ ] `pnpm-workspace.yaml` を作る。
+- [x] `pnpm-workspace.yaml` を作る。
 
 ```yaml
 packages:
@@ -138,7 +138,7 @@ packages:
   - 'apps/*'
 ```
 
-- [ ] `package.json` を作る。`packageManager` は **Task 1 で確認した `pnpm -v` の値をそのまま** 書く（執筆時の実機は 11.2.2。corepack が無い環境では、ここに実機と違う系列を書くとpnpmが自分自身の別バージョンをダウンロードしようとして詰まるため、実測値に合わせる）。
+- [x] `package.json` を作る。`packageManager` は **Task 1 で確認した `pnpm -v` の値をそのまま** 書く（執筆時の実機は 11.2.2。corepack が無い環境では、ここに実機と違う系列を書くとpnpmが自分自身の別バージョンをダウンロードしようとして詰まるため、実測値に合わせる）。
 
 ```json
 {
@@ -170,7 +170,7 @@ packages:
 
 > TypeScript は `~6.0.3` に固定する。最新の 7.0 系では typescript-eslint 8 系が `typescript-eslint does not support TS 7.0.` で起動しないことを確認済み。
 
-- [ ] `tsconfig.base.json` を作る。
+- [x] `tsconfig.base.json` を作る。
 
 ```json
 {
@@ -193,7 +193,7 @@ packages:
 }
 ```
 
-- [ ] `tsconfig.json` を作る（ルート直下の設定ファイルを型検査・lintの対象に入れるためだけのプロジェクト）。
+- [x] `tsconfig.json` を作る（ルート直下の設定ファイルを型検査・lintの対象に入れるためだけのプロジェクト）。
 
 ```json
 {
@@ -202,13 +202,13 @@ packages:
 }
 ```
 
-- [ ] `.nvmrc` を作る（内容は1行）。
+- [x] `.nvmrc` を作る（内容は1行）。
 
 ```
 22
 ```
 
-- [ ] `.editorconfig` を作る。
+- [x] `.editorconfig` を作る。
 
 ```ini
 root = true
@@ -225,7 +225,7 @@ trim_trailing_whitespace = true
 trim_trailing_whitespace = false
 ```
 
-- [ ] `.gitignore` に次の5行が含まれていなければ追記する。
+- [x] `.gitignore` に次の5行が含まれていなければ追記する。
 
 ```
 node_modules/
@@ -235,7 +235,7 @@ coverage/
 .DS_Store
 ```
 
-- [ ] 依存をインストールする。
+- [x] 依存をインストールする。
 
 ```powershell
 pnpm install
@@ -255,7 +255,7 @@ devDependencies:
 + vitest 5.0.0
 ```
 
-- [ ] TypeScript が意図したバージョンで入ったことを確認する。
+- [x] TypeScript が意図したバージョンで入ったことを確認する。
 
 ```powershell
 pnpm exec tsc -v
@@ -263,7 +263,7 @@ pnpm exec tsc -v
 
 期待出力: `Version 6.0.3`（`7.0.x` が出たら `package.json` の `typescript` を `~6.0.3` に直して `pnpm install` をやり直す）。
 
-- [ ] コミットする。
+- [x] コミットする。
 
 ```powershell
 git add package.json pnpm-workspace.yaml pnpm-lock.yaml tsconfig.base.json tsconfig.json .editorconfig .nvmrc .gitignore
@@ -282,7 +282,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 **Files:**
 - Create: `eslint.config.js`, `.prettierrc.json`, `.prettierignore`
 
-- [ ] `.prettierrc.json` を作る。
+- [x] `.prettierrc.json` を作る。
 
 ```json
 {
@@ -293,7 +293,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 }
 ```
 
-- [ ] `.prettierignore` を作る。
+- [x] `.prettierignore` を作る。
 
 ```
 pnpm-lock.yaml
@@ -302,7 +302,7 @@ coverage
 dist
 ```
 
-- [ ] `eslint.config.js` を作る。
+- [x] `eslint.config.js` を作る。
 
 ```js
 import js from '@eslint/js';
@@ -322,7 +322,7 @@ export default tseslint.config(
 );
 ```
 
-- [ ] lint が通ることを確認する（この時点では対象ファイルがルートの設定ファイルだけ）。
+- [x] lint が通ることを確認する（この時点では対象ファイルがルートの設定ファイルだけ）。
 
 ```powershell
 pnpm exec eslint .
@@ -330,7 +330,7 @@ pnpm exec eslint .
 
 期待出力: 何も表示されず終了（終了コード0）。`was not found by the project service` と出る場合は `tsconfig.json` の `include` に該当ファイルが入っていない。
 
-- [ ] 整形が揃っていることを確認する。
+- [x] 整形が揃っていることを確認する。
 
 ```powershell
 pnpm exec prettier --check .
@@ -338,7 +338,7 @@ pnpm exec prettier --check .
 
 期待出力: `All matched files use Prettier code style!`（崩れていたら `pnpm exec prettier --write .` を実行してからもう一度確認する）
 
-- [ ] コミットする。
+- [x] コミットする。
 
 ```powershell
 git add eslint.config.js .prettierrc.json .prettierignore
@@ -360,7 +360,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 
 このタスクは「ダミーテスト1本が通ること」をもってスキャフォールド完了とする。
 
-- [ ] 失敗するテストを書く。`packages/circuit-sim/test/scaffold.test.ts`:
+- [x] 失敗するテストを書く。`packages/circuit-sim/test/scaffold.test.ts`:
 
 ```ts
 import { describe, expect, it } from 'vitest';
@@ -373,7 +373,7 @@ describe('scaffold', () => {
 });
 ```
 
-- [ ] `packages/circuit-sim/package.json` を作る。
+- [x] `packages/circuit-sim/package.json` を作る。
 
 ```json
 {
@@ -391,7 +391,7 @@ describe('scaffold', () => {
 }
 ```
 
-- [ ] `packages/circuit-sim/tsconfig.json` を作る。
+- [x] `packages/circuit-sim/tsconfig.json` を作る。
 
 ```json
 {
@@ -401,7 +401,7 @@ describe('scaffold', () => {
 }
 ```
 
-- [ ] `packages/circuit-sim/vitest.config.ts` を作る。
+- [x] `packages/circuit-sim/vitest.config.ts` を作る。
 
 ```ts
 import { defineConfig } from 'vitest/config';
@@ -419,13 +419,13 @@ export default defineConfig({
 });
 ```
 
-- [ ] ルートの `vitest.workspace.ts` を作る。
+- [x] ルートの `vitest.workspace.ts` を作る。
 
 ```ts
 export default ['packages/*', 'apps/*'];
 ```
 
-- [ ] ルートの `vitest.config.ts` を作る（Vitest 5 は `vitest.workspace.ts` を自動では読まないため、`projects` として明示的に読み込む）。
+- [x] ルートの `vitest.config.ts` を作る（Vitest 5 は `vitest.workspace.ts` を自動では読まないため、`projects` として明示的に読み込む）。
 
 ```ts
 import { defineConfig } from 'vitest/config';
@@ -434,7 +434,7 @@ import projects from './vitest.workspace.js';
 export default defineConfig({ test: { projects } });
 ```
 
-- [ ] テストが失敗することを確認する。
+- [x] テストが失敗することを確認する。
 
 ```powershell
 pnpm install
@@ -447,14 +447,14 @@ pnpm --filter @ojt/circuit-sim test
 Error: Failed to load url ../src/index.js
 ```
 
-- [ ] `packages/circuit-sim/src/index.ts` を作る（Task 17 で公開APIの再輸出に置き換える）。
+- [x] `packages/circuit-sim/src/index.ts` を作る（Task 17 で公開APIの再輸出に置き換える）。
 
 ```ts
 /** パッケージ名。スキャフォールドの疎通確認用。 */
 export const PACKAGE_NAME = '@ojt/circuit-sim';
 ```
 
-- [ ] テストが通ることを確認する。
+- [x] テストが通ることを確認する。
 
 ```powershell
 pnpm --filter @ojt/circuit-sim test
@@ -467,7 +467,7 @@ pnpm --filter @ojt/circuit-sim test
       Tests  1 passed (1)
 ```
 
-- [ ] ルートからも全プロジェクトのテストが走ることを確認する。
+- [x] ルートからも全プロジェクトのテストが走ることを確認する。
 
 ```powershell
 pnpm test
@@ -476,7 +476,7 @@ pnpm exec vitest run
 
 期待出力: どちらも `Test Files  1 passed (1)` / `Tests  1 passed (1)`。
 
-- [ ] 型検査と lint を確認する。
+- [x] 型検査と lint を確認する。
 
 ```powershell
 pnpm typecheck
@@ -485,7 +485,7 @@ pnpm exec eslint .
 
 期待出力: `tsc` は何も出さず終了、`eslint` も何も出さず終了。
 
-- [ ] コミットする。
+- [x] コミットする。
 
 ```powershell
 git add vitest.workspace.ts vitest.config.ts packages/circuit-sim pnpm-lock.yaml
@@ -506,7 +506,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 - Test: `packages/circuit-sim/test/ids.test.ts`
 - Modify: `packages/circuit-sim/src/index.ts`
 
-- [ ] 失敗するテストを書く。`packages/circuit-sim/test/ids.test.ts`:
+- [x] 失敗するテストを書く。`packages/circuit-sim/test/ids.test.ts`:
 
 ```ts
 import { describe, expect, it } from 'vitest';
@@ -548,7 +548,7 @@ describe('ids', () => {
 });
 ```
 
-- [ ] テストが失敗することを確認する。
+- [x] テストが失敗することを確認する。
 
 ```powershell
 pnpm --filter @ojt/circuit-sim test -- ids.test.ts
@@ -556,7 +556,7 @@ pnpm --filter @ojt/circuit-sim test -- ids.test.ts
 
 期待出力の冒頭: `Error: No test suite found` ではなく、`does not provide an export named 'terminalId'` 相当の解決エラー（`src/index.ts` がまだ `PACKAGE_NAME` しか公開していないため）。
 
-- [ ] `packages/circuit-sim/src/ids.ts` を書く。
+- [x] `packages/circuit-sim/src/ids.ts` を書く。
 
 ```ts
 /**
@@ -613,7 +613,7 @@ export function terminalOwner(id: TerminalId): PartId {
 }
 ```
 
-- [ ] `packages/circuit-sim/src/index.ts` を次の内容に置き換える（`PACKAGE_NAME` は役目を終えたので消し、`test/scaffold.test.ts` も削除する）。
+- [x] `packages/circuit-sim/src/index.ts` を次の内容に置き換える（`PACKAGE_NAME` は役目を終えたので消し、`test/scaffold.test.ts` も削除する）。
 
 ```ts
 export {
@@ -633,7 +633,7 @@ export {
 Remove-Item packages\circuit-sim\test\scaffold.test.ts
 ```
 
-- [ ] テストが通ることを確認する。
+- [x] テストが通ることを確認する。
 
 ```powershell
 pnpm --filter @ojt/circuit-sim test -- ids.test.ts
@@ -646,7 +646,7 @@ pnpm --filter @ojt/circuit-sim test -- ids.test.ts
       Tests  4 passed (4)
 ```
 
-- [ ] コミットする。
+- [x] コミットする。
 
 ```powershell
 git add packages/circuit-sim
@@ -669,7 +669,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 
 このタスクのテストは Task 7 の `createRelay4c()` を使うため、**Task 7 を先に読み、`parts.ts` を作ってからテストを書く**のではなく、テストを先に書いて `createRelay4c` が無いことで失敗させ、Task 7 完了時に通る形にする。そのためこのタスクでは実装のみを追加し、テストの成功確認は Task 7 の末尾で行う。
 
-- [ ] 失敗するテストを書く。`packages/circuit-sim/test/elements.test.ts`:
+- [x] 失敗するテストを書く。`packages/circuit-sim/test/elements.test.ts`:
 
 ```ts
 import { describe, expect, it } from 'vitest';
@@ -741,7 +741,7 @@ describe('elements', () => {
 });
 ```
 
-- [ ] テストが失敗することを確認する。
+- [x] テストが失敗することを確認する。
 
 ```powershell
 pnpm --filter @ojt/circuit-sim test -- elements.test.ts
@@ -749,7 +749,7 @@ pnpm --filter @ojt/circuit-sim test -- elements.test.ts
 
 期待出力の冒頭: `does not provide an export named 'createRelay4c'`。
 
-- [ ] `packages/circuit-sim/src/elements.ts` を書く。
+- [x] `packages/circuit-sim/src/elements.ts` を書く。
 
 ```ts
 import type { PartId, TerminalId } from './ids.js';
@@ -883,7 +883,7 @@ export function loadOhms(el: LoadElement): number | undefined {
 }
 ```
 
-- [ ] `packages/circuit-sim/src/index.ts` の末尾に次を追記する。
+- [x] `packages/circuit-sim/src/index.ts` の末尾に次を追記する。
 
 ```ts
 export {
@@ -920,7 +920,7 @@ export {
 } from './elements.js';
 ```
 
-- [ ] 型検査が通ることを確認する（テストは Task 7 完了後に通る）。
+- [x] 型検査が通ることを確認する（テストは Task 7 完了後に通る）。
 
 ```powershell
 pnpm --filter @ojt/circuit-sim typecheck
@@ -928,7 +928,7 @@ pnpm --filter @ojt/circuit-sim typecheck
 
 期待出力: `test/elements.test.ts` の `createRelay4c` が解決できないエラーのみ（`src/` 側のエラーは0件）。
 
-- [ ] コミットする。
+- [x] コミットする。
 
 ```powershell
 git add packages/circuit-sim
@@ -949,7 +949,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 - Test: `packages/circuit-sim/test/parts.test.ts`
 - Modify: `packages/circuit-sim/src/index.ts`
 
-- [ ] 失敗するテストを書く。`packages/circuit-sim/test/parts.test.ts`:
+- [x] 失敗するテストを書く。`packages/circuit-sim/test/parts.test.ts`:
 
 ```ts
 import { describe, expect, it } from 'vitest';
@@ -1051,7 +1051,7 @@ describe('parts', () => {
 });
 ```
 
-- [ ] テストが失敗することを確認する。
+- [x] テストが失敗することを確認する。
 
 ```powershell
 pnpm --filter @ojt/circuit-sim test -- parts.test.ts
@@ -1059,7 +1059,7 @@ pnpm --filter @ojt/circuit-sim test -- parts.test.ts
 
 期待出力の冒頭: `does not provide an export named 'createRelay4c'`。
 
-- [ ] `packages/circuit-sim/src/parts.ts` を書く。
+- [x] `packages/circuit-sim/src/parts.ts` を書く。
 
 ```ts
 import {
@@ -1385,7 +1385,7 @@ export function createTerminalBlockLink(
 }
 ```
 
-- [ ] `packages/circuit-sim/src/index.ts` の末尾に次を追記する。
+- [x] `packages/circuit-sim/src/index.ts` の末尾に次を追記する。
 
 ```ts
 export {
@@ -1411,7 +1411,7 @@ export {
 } from './parts.js';
 ```
 
-- [ ] Task 6 と Task 7 のテストが両方通ることを確認する。
+- [x] Task 6 と Task 7 のテストが両方通ることを確認する。
 
 ```powershell
 pnpm --filter @ojt/circuit-sim test
@@ -1424,7 +1424,7 @@ pnpm --filter @ojt/circuit-sim test
       Tests  15 passed (15)
 ```
 
-- [ ] コミットする。
+- [x] コミットする。
 
 ```powershell
 git add packages/circuit-sim
@@ -1445,7 +1445,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 - Test: `packages/circuit-sim/test/netlist.test.ts`
 - Modify: `packages/circuit-sim/src/index.ts`
 
-- [ ] テスト用の糖衣を作る。`packages/circuit-sim/test/helpers/circuits.ts`（Task 13 で `Simulation` を使うヘルパを追加する）:
+- [x] テスト用の糖衣を作る。`packages/circuit-sim/test/helpers/circuits.ts`（Task 13 で `Simulation` を使うヘルパを追加する）:
 
 ```ts
 import { createNetlist, createWire, parseTerminalId, terminalId } from '../../src/index.js';
@@ -1468,7 +1468,7 @@ export function net(parts: Part[], wires: Wire[]): Netlist {
 }
 ```
 
-- [ ] 失敗するテストを書く。`packages/circuit-sim/test/netlist.test.ts`:
+- [x] 失敗するテストを書く。`packages/circuit-sim/test/netlist.test.ts`:
 
 ```ts
 import { describe, expect, it } from 'vitest';
@@ -1557,7 +1557,7 @@ describe('netlist', () => {
 });
 ```
 
-- [ ] テストが失敗することを確認する。
+- [x] テストが失敗することを確認する。
 
 ```powershell
 pnpm --filter @ojt/circuit-sim test -- netlist.test.ts
@@ -1565,7 +1565,7 @@ pnpm --filter @ojt/circuit-sim test -- netlist.test.ts
 
 期待出力の冒頭: `does not provide an export named 'buildNets'`。
 
-- [ ] `packages/circuit-sim/src/netlist.ts` を書く。
+- [x] `packages/circuit-sim/src/netlist.ts` を書く。
 
 ```ts
 import type { Element, LinkElement } from './elements.js';
@@ -1780,7 +1780,7 @@ export function buildNets(netlist: Netlist): Nets {
 }
 ```
 
-- [ ] `packages/circuit-sim/src/index.ts` の末尾に次を追記する。
+- [x] `packages/circuit-sim/src/index.ts` の末尾に次を追記する。
 
 ```ts
 export {
@@ -1804,7 +1804,7 @@ export {
 } from './netlist.js';
 ```
 
-- [ ] テストが通ることを確認する。
+- [x] テストが通ることを確認する。
 
 ```powershell
 pnpm --filter @ojt/circuit-sim test -- netlist.test.ts
@@ -1817,7 +1817,7 @@ pnpm --filter @ojt/circuit-sim test -- netlist.test.ts
       Tests  6 passed (6)
 ```
 
-- [ ] コミットする。
+- [x] コミットする。
 
 ```powershell
 git add packages/circuit-sim
@@ -1840,7 +1840,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 
 電源は「P側を固定電位にする」のではなく、**内部抵抗0.1Ωのノートン等価**（P–N間にコンダクタンス10S＋P節点へ240Aの電流源）として行列に加える。固定電位にすると内部抵抗（§5.1.1）を表現できず、P–N直結時の電流が有限値にならないため §5.1.1 の保護判定（>1A）が成立しないためである。基準（0V）にするのは電源のN側節点で、その行・列を消去して解く。
 
-- [ ] 失敗するテストを書く。`packages/circuit-sim/test/solver.test.ts`:
+- [x] 失敗するテストを書く。`packages/circuit-sim/test/solver.test.ts`:
 
 ```ts
 import { describe, expect, it } from 'vitest';
@@ -1937,7 +1937,7 @@ describe('solver', () => {
 });
 ```
 
-- [ ] テストが失敗することを確認する。
+- [x] テストが失敗することを確認する。
 
 ```powershell
 pnpm --filter @ojt/circuit-sim test -- solver.test.ts
@@ -1945,7 +1945,7 @@ pnpm --filter @ojt/circuit-sim test -- solver.test.ts
 
 期待出力の冒頭: `does not provide an export named 'solve'`。
 
-- [ ] `packages/circuit-sim/src/solver.ts` を書く。
+- [x] `packages/circuit-sim/src/solver.ts` を書く。
 
 ```ts
 import { contactOhms, loadOhms, type SourceElement } from './elements.js';
@@ -2162,7 +2162,7 @@ export function voltageAt(result: SolveResult, nets: Nets, terminal: TerminalId)
 }
 ```
 
-- [ ] `packages/circuit-sim/src/index.ts` の末尾に次を追記する。
+- [x] `packages/circuit-sim/src/index.ts` の末尾に次を追記する。
 
 ```ts
 export {
@@ -2175,7 +2175,7 @@ export {
 } from './solver.js';
 ```
 
-- [ ] テストが通ることを確認する。
+- [x] テストが通ることを確認する。
 
 ```powershell
 pnpm --filter @ojt/circuit-sim test -- solver.test.ts
@@ -2188,7 +2188,7 @@ pnpm --filter @ojt/circuit-sim test -- solver.test.ts
       Tests  6 passed (6)
 ```
 
-- [ ] コミットする。
+- [x] コミットする。
 
 ```powershell
 git add packages/circuit-sim
@@ -2209,7 +2209,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 - Test: `packages/circuit-sim/test/events.test.ts`
 - Modify: `packages/circuit-sim/src/index.ts`
 
-- [ ] 失敗するテストを書く。`packages/circuit-sim/test/events.test.ts`:
+- [x] 失敗するテストを書く。`packages/circuit-sim/test/events.test.ts`:
 
 ```ts
 import { describe, expect, it } from 'vitest';
@@ -2252,7 +2252,7 @@ describe('events', () => {
 });
 ```
 
-- [ ] テストが失敗することを確認する。
+- [x] テストが失敗することを確認する。
 
 ```powershell
 pnpm --filter @ojt/circuit-sim test -- events.test.ts
@@ -2260,7 +2260,7 @@ pnpm --filter @ojt/circuit-sim test -- events.test.ts
 
 期待出力の冒頭: `does not provide an export named 'EventBus'`。
 
-- [ ] `packages/circuit-sim/src/events.ts` を書く。
+- [x] `packages/circuit-sim/src/events.ts` を書く。
 
 ```ts
 /** チャタリング判定の窓[ms]。§5.3.2 */
@@ -2359,7 +2359,7 @@ export class EventBus {
 }
 ```
 
-- [ ] `packages/circuit-sim/src/index.ts` の末尾に次を追記する。
+- [x] `packages/circuit-sim/src/index.ts` の末尾に次を追記する。
 
 ```ts
 export {
@@ -2374,7 +2374,7 @@ export {
 } from './events.js';
 ```
 
-- [ ] テストが通ることを確認する。
+- [x] テストが通ることを確認する。
 
 ```powershell
 pnpm --filter @ojt/circuit-sim test -- events.test.ts
@@ -2387,7 +2387,7 @@ pnpm --filter @ojt/circuit-sim test -- events.test.ts
       Tests  3 passed (3)
 ```
 
-- [ ] コミットする。
+- [x] コミットする。
 
 ```powershell
 git add packages/circuit-sim
@@ -2408,7 +2408,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 - Test: `packages/circuit-sim/test/log.test.ts`
 - Modify: `packages/circuit-sim/src/index.ts`
 
-- [ ] 失敗するテストを書く。`packages/circuit-sim/test/log.test.ts`:
+- [x] 失敗するテストを書く。`packages/circuit-sim/test/log.test.ts`:
 
 ```ts
 import { describe, expect, it } from 'vitest';
@@ -2459,7 +2459,7 @@ describe('log', () => {
 });
 ```
 
-- [ ] テストが失敗することを確認する。
+- [x] テストが失敗することを確認する。
 
 ```powershell
 pnpm --filter @ojt/circuit-sim test -- log.test.ts
@@ -2467,7 +2467,7 @@ pnpm --filter @ojt/circuit-sim test -- log.test.ts
 
 期待出力の冒頭: `does not provide an export named 'SignalLog'`。
 
-- [ ] `packages/circuit-sim/src/log.ts` を書く。
+- [x] `packages/circuit-sim/src/log.ts` を書く。
 
 ```ts
 /** 信号値。接点・コイル・ランプは boolean、電位・電流は number。§5.7 */
@@ -2555,13 +2555,13 @@ export class SignalLog {
 }
 ```
 
-- [ ] `packages/circuit-sim/src/index.ts` の末尾に次を追記する。
+- [x] `packages/circuit-sim/src/index.ts` の末尾に次を追記する。
 
 ```ts
 export { LOG_DECIMALS, roundSignal, SignalLog, type LogEntry, type SignalValue } from './log.js';
 ```
 
-- [ ] テストが通ることを確認する。
+- [x] テストが通ることを確認する。
 
 ```powershell
 pnpm --filter @ojt/circuit-sim test -- log.test.ts
@@ -2574,7 +2574,7 @@ pnpm --filter @ojt/circuit-sim test -- log.test.ts
       Tests  3 passed (3)
 ```
 
-- [ ] コミットする。
+- [x] コミットする。
 
 ```powershell
 git add packages/circuit-sim
@@ -2595,7 +2595,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 - Test: `packages/circuit-sim/test/actuators.test.ts`
 - Modify: `packages/circuit-sim/src/index.ts`
 
-- [ ] 失敗するテストを書く。`packages/circuit-sim/test/actuators.test.ts`:
+- [x] 失敗するテストを書く。`packages/circuit-sim/test/actuators.test.ts`:
 
 ```ts
 import { describe, expect, it } from 'vitest';
@@ -2661,7 +2661,7 @@ describe('actuators', () => {
 });
 ```
 
-- [ ] テストが失敗することを確認する。
+- [x] テストが失敗することを確認する。
 
 ```powershell
 pnpm --filter @ojt/circuit-sim test -- actuators.test.ts
@@ -2669,7 +2669,7 @@ pnpm --filter @ojt/circuit-sim test -- actuators.test.ts
 
 期待出力の冒頭: `does not provide an export named 'applyPowerAction'`。
 
-- [ ] `packages/circuit-sim/src/actuators.ts` を書く。
+- [x] `packages/circuit-sim/src/actuators.ts` を書く。
 
 ```ts
 import type { Part } from './parts.js';
@@ -2739,7 +2739,7 @@ export const RESET_SEQUENCE: ReadonlyArray<{ device: PowerDevice; on: boolean }>
 ];
 ```
 
-- [ ] `packages/circuit-sim/src/index.ts` の末尾に次を追記する。
+- [x] `packages/circuit-sim/src/index.ts` の末尾に次を追記する。
 
 ```ts
 export {
@@ -2753,7 +2753,7 @@ export {
 } from './actuators.js';
 ```
 
-- [ ] テストが通ることを確認する。
+- [x] テストが通ることを確認する。
 
 ```powershell
 pnpm --filter @ojt/circuit-sim test -- actuators.test.ts
@@ -2766,7 +2766,7 @@ pnpm --filter @ojt/circuit-sim test -- actuators.test.ts
       Tests  5 passed (5)
 ```
 
-- [ ] コミットする。
+- [x] コミットする。
 
 ```powershell
 git add packages/circuit-sim
@@ -2789,7 +2789,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 
 1tickの処理順は「解く → 負荷の通電判定 → リレー／タイマ状態機械 → 接点更新 → 保護判定 → ログ記録」で固定する。リレーの接点は「前tickの励磁判定」を反映するので、コイル電圧がしきい値を越えてから接点が動くまでに1tick（10ms、§5.3.1）の遅れが入る。タイマは経過時間を加算してから設定時間と比較し、到達した tick で限時接点を反転する（§5.3.2）。乱数は一切使わない。
 
-- [ ] ヘルパを拡張する。`packages/circuit-sim/test/helpers/circuits.ts` を次の内容に置き換える。
+- [x] ヘルパを拡張する。`packages/circuit-sim/test/helpers/circuits.ts` を次の内容に置き換える。
 
 ```ts
 import {
@@ -2847,7 +2847,7 @@ export function firstTrue(sim: Simulation, signal: string): number | undefined {
 }
 ```
 
-- [ ] 失敗するテストを書く。`packages/circuit-sim/test/simulation.test.ts`:
+- [x] 失敗するテストを書く。`packages/circuit-sim/test/simulation.test.ts`:
 
 ```ts
 import { describe, expect, it } from 'vitest';
@@ -2931,7 +2931,7 @@ describe('simulation', () => {
 });
 ```
 
-- [ ] テストが失敗することを確認する。
+- [x] テストが失敗することを確認する。
 
 ```powershell
 pnpm --filter @ojt/circuit-sim test -- simulation.test.ts
@@ -2939,7 +2939,7 @@ pnpm --filter @ojt/circuit-sim test -- simulation.test.ts
 
 期待出力の冒頭: `does not provide an export named 'Simulation'`。
 
-- [ ] `packages/circuit-sim/src/simulation.ts` を書く。
+- [x] `packages/circuit-sim/src/simulation.ts` を書く。
 
 ```ts
 import { applyPowerAction, isPowerOn, setButtonPressed, RESET_SEQUENCE } from './actuators.js';
@@ -3428,7 +3428,7 @@ export class Simulation {
 }
 ```
 
-- [ ] `packages/circuit-sim/src/index.ts` の末尾に次を追記する。
+- [x] `packages/circuit-sim/src/index.ts` の末尾に次を追記する。
 
 ```ts
 export {
@@ -3444,7 +3444,7 @@ export {
 } from './simulation.js';
 ```
 
-- [ ] テストが通ることを確認する。
+- [x] テストが通ることを確認する。
 
 ```powershell
 pnpm --filter @ojt/circuit-sim test -- simulation.test.ts
@@ -3457,7 +3457,7 @@ pnpm --filter @ojt/circuit-sim test -- simulation.test.ts
       Tests  6 passed (6)
 ```
 
-- [ ] 全テストと型検査・lint を確認する。
+- [x] 全テストと型検査・lint を確認する。
 
 ```powershell
 pnpm --filter @ojt/circuit-sim test
@@ -3467,7 +3467,7 @@ pnpm exec eslint .
 
 期待出力: `Tests  44 passed (44)`、`tsc` と `eslint` は何も出さず終了。
 
-- [ ] コミットする。
+- [x] コミットする。
 
 ```powershell
 git add packages/circuit-sim
@@ -3490,7 +3490,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 
 溶着（`contact-welded`）は、鉄片が吸着したまま固まる現象なので、同じc接点組のもう一方の接点を機械的に開く（§7.5「溶着は組のもう一方の接点を機械的に開く」／ゴールデンケース#19）。
 
-- [ ] 失敗するテストを書く。`packages/circuit-sim/test/faults.test.ts`:
+- [x] 失敗するテストを書く。`packages/circuit-sim/test/faults.test.ts`:
 
 ```ts
 import { describe, expect, it } from 'vitest';
@@ -3611,7 +3611,7 @@ describe('faults', () => {
 });
 ```
 
-- [ ] テストが失敗することを確認する。
+- [x] テストが失敗することを確認する。
 
 ```powershell
 pnpm --filter @ojt/circuit-sim test -- faults.test.ts
@@ -3619,7 +3619,7 @@ pnpm --filter @ojt/circuit-sim test -- faults.test.ts
 
 期待出力の冒頭: `does not provide an export named 'injectFault'`。
 
-- [ ] `packages/circuit-sim/src/faults.ts` を書く。
+- [x] `packages/circuit-sim/src/faults.ts` を書く。
 
 ```ts
 import {
@@ -3775,7 +3775,7 @@ export function clearFaults(netlist: Netlist): void {
 }
 ```
 
-- [ ] `packages/circuit-sim/src/index.ts` の末尾に次を追記する。
+- [x] `packages/circuit-sim/src/index.ts` の末尾に次を追記する。
 
 ```ts
 export {
@@ -3787,7 +3787,7 @@ export {
 } from './faults.js';
 ```
 
-- [ ] テストが通ることを確認する。
+- [x] テストが通ることを確認する。
 
 ```powershell
 pnpm --filter @ojt/circuit-sim test -- faults.test.ts
@@ -3800,7 +3800,7 @@ pnpm --filter @ojt/circuit-sim test -- faults.test.ts
       Tests  6 passed (6)
 ```
 
-- [ ] コミットする。
+- [x] コミットする。
 
 ```powershell
 git add packages/circuit-sim
@@ -3823,7 +3823,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 
 抵抗測定は「全電源を外し、プローブ間に試験電源（1V・内部抵抗1Ω）を入れて、流れる電流から等価抵抗を逆算する」。内部抵抗を1Ωの有限値にしているのは、分圧から等価抵抗を数値的に安定して求めるため。全節点に1nSの漏れがあるので、開放は約2GΩ（>10MΩ）として `OL` になる。
 
-- [ ] 失敗するテストを書く。`packages/circuit-sim/test/meter.test.ts`:
+- [x] 失敗するテストを書く。`packages/circuit-sim/test/meter.test.ts`:
 
 ```ts
 import { describe, expect, it } from 'vitest';
@@ -3920,7 +3920,7 @@ describe('meter', () => {
 });
 ```
 
-- [ ] テストが失敗することを確認する。
+- [x] テストが失敗することを確認する。
 
 ```powershell
 pnpm --filter @ojt/circuit-sim test -- meter.test.ts
@@ -3928,7 +3928,7 @@ pnpm --filter @ojt/circuit-sim test -- meter.test.ts
 
 期待出力の冒頭: `does not provide an export named 'measureVoltage'`。
 
-- [ ] `packages/circuit-sim/src/meter.ts` を書く。
+- [x] `packages/circuit-sim/src/meter.ts` を書く。
 
 ```ts
 import type { SourceElement } from './elements.js';
@@ -4075,7 +4075,7 @@ export function continuity(sim: Simulation, t1: TerminalId, t2: TerminalId): Con
 }
 ```
 
-- [ ] `packages/circuit-sim/src/index.ts` の末尾に次を追記する。
+- [x] `packages/circuit-sim/src/index.ts` の末尾に次を追記する。
 
 ```ts
 export {
@@ -4095,7 +4095,7 @@ export {
 } from './meter.js';
 ```
 
-- [ ] テストが通ることを確認する。
+- [x] テストが通ることを確認する。
 
 ```powershell
 pnpm --filter @ojt/circuit-sim test -- meter.test.ts
@@ -4108,7 +4108,7 @@ pnpm --filter @ojt/circuit-sim test -- meter.test.ts
       Tests  6 passed (6)
 ```
 
-- [ ] コミットする。
+- [x] コミットする。
 
 ```powershell
 git add packages/circuit-sim
@@ -4131,7 +4131,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 
 許容差は「`edgeMs`（既定200ms）と『直前の区間長 × `ratio`（既定0.10）』の大きい方」（§7.4）。
 
-- [ ] 失敗するテストを書く。`packages/circuit-sim/test/compare.test.ts`:
+- [x] 失敗するテストを書く。`packages/circuit-sim/test/compare.test.ts`:
 
 ```ts
 import { describe, expect, it } from 'vitest';
@@ -4232,7 +4232,7 @@ describe('compare', () => {
 });
 ```
 
-- [ ] テストが失敗することを確認する。
+- [x] テストが失敗することを確認する。
 
 ```powershell
 pnpm --filter @ojt/circuit-sim test -- compare.test.ts
@@ -4240,7 +4240,7 @@ pnpm --filter @ojt/circuit-sim test -- compare.test.ts
 
 期待出力の冒頭: `does not provide an export named 'compareLogs'`。
 
-- [ ] `packages/circuit-sim/src/compare.ts` を書く。
+- [x] `packages/circuit-sim/src/compare.ts` を書く。
 
 ```ts
 import type { SignalLog, SignalValue } from './log.js';
@@ -4345,7 +4345,7 @@ export function compareLogs(
 }
 ```
 
-- [ ] `packages/circuit-sim/src/index.ts` の末尾に次を追記する。
+- [x] `packages/circuit-sim/src/index.ts` の末尾に次を追記する。
 
 ```ts
 export {
@@ -4358,7 +4358,7 @@ export {
 } from './compare.js';
 ```
 
-- [ ] テストが通ることを確認する。
+- [x] テストが通ることを確認する。
 
 ```powershell
 pnpm --filter @ojt/circuit-sim test -- compare.test.ts
@@ -4371,7 +4371,7 @@ pnpm --filter @ojt/circuit-sim test -- compare.test.ts
       Tests  5 passed (5)
 ```
 
-- [ ] コミットする。
+- [x] コミットする。
 
 ```powershell
 git add packages/circuit-sim
@@ -4392,7 +4392,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 
 Task 5〜16 で追記してきた再輸出を、次の最終形と一致しているか突き合わせる（並び順もこのとおりにする）。
 
-- [ ] `packages/circuit-sim/src/index.ts` を次の内容にする。
+- [x] `packages/circuit-sim/src/index.ts` を次の内容にする。
 
 ```ts
 export {
@@ -4560,7 +4560,7 @@ export {
 } from './compare.js';
 ```
 
-- [ ] 全テスト・型検査・lint・整形を確認する。
+- [x] 全テスト・型検査・lint・整形を確認する。
 
 ```powershell
 pnpm --filter @ojt/circuit-sim test
@@ -4571,7 +4571,7 @@ pnpm exec prettier --check .
 
 期待出力: `Tests  61 passed (61)`、`tsc` / `eslint` は無出力、prettier は `All matched files use Prettier code style!`。
 
-- [ ] コミットする。
+- [x] コミットする。
 
 ```powershell
 git add packages/circuit-sim
@@ -4592,7 +4592,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 
 仕様 §14.1 の #1（a接点）／#2（b接点）／#3（AND）／#4（OR）／#5（自己保持、停止先頭形と起動先頭形の両方）／#6（インターロック）／#7（新入力優先）／#15（CRの極性違反）に対応する。実装は変更しない（既にある機能の回帰テスト）。
 
-- [ ] テストを書く。`packages/circuit-sim/test/golden-basic.test.ts`:
+- [x] テストを書く。`packages/circuit-sim/test/golden-basic.test.ts`:
 
 ```ts
 import { describe, expect, it } from 'vitest';
@@ -4846,7 +4846,7 @@ describe('基本回路', () => {
 });
 ```
 
-- [ ] テストが通ることを確認する（実装済みの機能の回帰テストなので、この時点で通るのが正しい）。
+- [x] テストが通ることを確認する（実装済みの機能の回帰テストなので、この時点で通るのが正しい）。
 
 ```powershell
 pnpm --filter @ojt/circuit-sim test -- golden-basic.test.ts
@@ -4861,7 +4861,7 @@ pnpm --filter @ojt/circuit-sim test -- golden-basic.test.ts
 
 1本でも落ちた場合は実装のバグなので、`superpowers:systematic-debugging` に従って原因を特定してから `src/` を直す（テストの期待値を緩めて通してはならない）。
 
-- [ ] コミットする。
+- [x] コミットする。
 
 ```powershell
 git add packages/circuit-sim
@@ -4882,7 +4882,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 
 仕様 §14.1 の #8（オンディレー、±1tick）／#9（オフディレー、リレー併用）／#10（ワンショット、リレー併用）／#11（フリッカ、リレー併用）／#14（タイマ復帰時間の保持）に対応する。フリッカ回路は CR1・CR2・T1・T2 で組み、各タイマの通電断が 100ms 以上（相手タイマの設定時間ぶん）確保されるためチャタリングしない。
 
-- [ ] テストを書く。`packages/circuit-sim/test/golden-timer.test.ts`:
+- [x] テストを書く。`packages/circuit-sim/test/golden-timer.test.ts`:
 
 ```ts
 import { describe, expect, it } from 'vitest';
@@ -5089,7 +5089,7 @@ describe('タイマ回路', () => {
 });
 ```
 
-- [ ] テストが通ることを確認する。
+- [x] テストが通ることを確認する。
 
 ```powershell
 pnpm --filter @ojt/circuit-sim test -- golden-timer.test.ts
@@ -5102,7 +5102,7 @@ pnpm --filter @ojt/circuit-sim test -- golden-timer.test.ts
       Tests  5 passed (5)
 ```
 
-- [ ] コミットする。
+- [x] コミットする。
 
 ```powershell
 git add packages/circuit-sim
@@ -5123,7 +5123,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 
 仕様 §14.1 の #12（タイマ自己遮断ワンショット）／#13（タイマ2個フリッカ）。どちらも通電断が1tick（10ms）しか続かず §5.3.2 の復帰時間モデルで経過時間が保持されるため、tick周期で接点が反転して `ChatterEvent` が発火する（調査資料 §5.5 の「厳禁」の再現）。
 
-- [ ] テストを書く。`packages/circuit-sim/test/golden-forbidden.test.ts`:
+- [x] テストを書く。`packages/circuit-sim/test/golden-forbidden.test.ts`:
 
 ```ts
 import { describe, expect, it } from 'vitest';
@@ -5186,7 +5186,7 @@ describe('禁則回路', () => {
 });
 ```
 
-- [ ] テストが通ることを確認する。
+- [x] テストが通ることを確認する。
 
 ```powershell
 pnpm --filter @ojt/circuit-sim test -- golden-forbidden.test.ts
@@ -5199,7 +5199,7 @@ pnpm --filter @ojt/circuit-sim test -- golden-forbidden.test.ts
       Tests  2 passed (2)
 ```
 
-- [ ] コミットする。
+- [x] コミットする。
 
 ```powershell
 git add packages/circuit-sim
@@ -5220,7 +5220,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 
 仕様 §14.1 の #16（短絡と電源保護）／#17（コイル断線）／#18（レアショート: 動作は正常、抵抗のみ 422.5Ω／260Ω／552.5Ω）／#19（接点溶着）／#20（接触不良500Ω）／#21（抵抗測定の回り込み）／#22（1端子3本）／#24（決定論）と、§5.3.1 のヒステリシス、§5.6 #4 の電源手順違反、§5.6 #1 の通電中Ωに対応する。
 
-- [ ] テストを書く。`packages/circuit-sim/test/golden-fault-meter.test.ts`:
+- [x] テストを書く。`packages/circuit-sim/test/golden-fault-meter.test.ts`:
 
 ```ts
 import { describe, expect, it } from 'vitest';
@@ -5460,7 +5460,7 @@ describe('故障・測定・保護', () => {
 });
 ```
 
-- [ ] テストが通ることを確認する。
+- [x] テストが通ることを確認する。
 
 ```powershell
 pnpm --filter @ojt/circuit-sim test -- golden-fault-meter.test.ts
@@ -5473,7 +5473,7 @@ pnpm --filter @ojt/circuit-sim test -- golden-fault-meter.test.ts
       Tests  11 passed (11)
 ```
 
-- [ ] コミットする。
+- [x] コミットする。
 
 ```powershell
 git add packages/circuit-sim
@@ -5494,7 +5494,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 
 仕様 §14.1 #23（遷移が150msずれ→合格、250msずれ→不合格、区間長依存の10%規則）。ここでは模範ログも訓練者ログも実際にシミュレーションして作り、`compareLogs` にかける。
 
-- [ ] テストを書く。`packages/circuit-sim/test/golden-judge.test.ts`:
+- [x] テストを書く。`packages/circuit-sim/test/golden-judge.test.ts`:
 
 ```ts
 import { describe, expect, it } from 'vitest';
@@ -5543,7 +5543,7 @@ describe('判定の突き合わせ', () => {
 });
 ```
 
-- [ ] テストが通ることを確認する。
+- [x] テストが通ることを確認する。
 
 ```powershell
 pnpm --filter @ojt/circuit-sim test -- golden-judge.test.ts
@@ -5556,7 +5556,7 @@ pnpm --filter @ojt/circuit-sim test -- golden-judge.test.ts
       Tests  3 passed (3)
 ```
 
-- [ ] カバレッジを含む全体検証を行う（仕様 §14.2 の「行・分岐とも90%以上」）。
+- [x] カバレッジを含む全体検証を行う（仕様 §14.2 の「行・分岐とも90%以上」）。
 
 ```powershell
 pnpm --filter @ojt/circuit-sim exec vitest run --coverage
@@ -5574,7 +5574,7 @@ Functions    : 100% ( 115/115 )
 Lines        : 100% ( 649/649 )
 ```
 
-- [ ] ルートからの一括検証を行う。
+- [x] ルートからの一括検証を行う。
 
 ```powershell
 pnpm test
@@ -5585,7 +5585,7 @@ pnpm exec prettier --check .
 
 期待出力: `Tests  91 passed (91)`、`tsc` と `eslint` は無出力、prettier は `All matched files use Prettier code style!`。
 
-- [ ] コミットする。
+- [x] コミットする。
 
 ```powershell
 git add packages/circuit-sim
@@ -5656,3 +5656,4 @@ Task 13 以降の実装者への注意: 上記により `test/helpers/circuits.t
 3. `pnpm typecheck`・`pnpm exec eslint .`・`pnpm exec prettier --check .` がすべてエラーなしで終わる。
 4. `packages/circuit-sim` が外部ランタイム依存を持たない（`packages/circuit-sim/package.json` に `dependencies` が無い）。
 
+2026-09-14 完了: 21ファイル / 152テスト、カバレッジ Stmts 98.03 / Branches 92.56 / Funcs 100 / Lines 99.1、typecheck/lint/prettier クリーン。最終コミット 127ed71
