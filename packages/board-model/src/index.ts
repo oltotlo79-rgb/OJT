@@ -97,3 +97,22 @@ export {
   type SocketRole,
   type SocketRoles,
 } from './roles.js';
+
+export {
+  catalogEntry,
+  CatalogError,
+  DEFAULT_INVENTORY,
+  DEFAULT_TIMER_PRESET_MS,
+  DEFAULT_TIMER_RANGE,
+  findTimerRange,
+  inventoryCount,
+  isMountableKind,
+  PART_CATALOG,
+  remainingInventory,
+  snapPresetToStep,
+  TIMER_RANGES,
+  type CatalogEntry,
+  type InventoryItem,
+  type MountableKind,
+  type TimerRange,
+} from './catalog.js';
