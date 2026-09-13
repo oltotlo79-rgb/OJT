@@ -1135,7 +1135,10 @@ export type TerminalRole =
 export interface BoardTerminal {
   /** 物理端子ID。ソケットは `S1.13` のように**物理**ソケットIDで持つ（役割IDへの変換は roles.ts）。 */
   id: TerminalId;
-  /** ツールチップ用の表示名（例: `S1 ⑨ com`）。§8.2 */
+  /**
+   * ツールチップ用の表示名（例: `⑨ COM`＝番号＋役割。ソケットIDは `id` 側が持つ）。
+   * 同じ番号のラベルはソケットごとに繰り返すので、表示側はソケット単位でグループ化する。§8.2
+   */
   label: string;
   role: TerminalRole;
   pos: Vec3;
@@ -1189,7 +1192,7 @@ export interface LampDefinition {
 export type BoardEndpoint =
   { kind: 'terminal'; id: TerminalId } | { kind: 'socket'; socket: SocketId; pin: number };
 
-/** 既設の固定電線（チェック用ソケットの黄色配線）。`locked` で訓練者は変更できない。§6.3 */
+/** 既設の固定電線（チェック用ソケットの青色配線）。`locked` で訓練者は変更できない。§6.3 */
 export interface FixedWire {
   id: string;
   from: BoardEndpoint;
@@ -2526,7 +2529,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 
 訓練者の作業状態（§8.2）を1つのプレーンオブジェクト `BoardSession` に集約する。設計上の要点は4つ。
 
-1. **既設の黄色固定配線（§6.3）を最初から `session.wires` に入れる**。こうすると「1端子2本まで」（§6.6）の計算がこの配列だけで完結し、`TB_PB.4c` / `TB_PB.4a` / `P.6` / `N.6` に残り1本しか張れないことが自動的に効く。
+1. **既設の固定配線（青）（§6.3）を最初から `session.wires` に入れる**。こうすると「1端子2本まで」（§6.6）の計算がこの配列だけで完結し、`TB_PB.4c` / `TB_PB.4a` / `P.6` / `N.6` に残り1本しか張れないことが自動的に効く。
 2. **PB／PL本体と端子台の間の青線ハーネス（写真）は `session.wires` に入れない**。§6.4 がこれを「0Ω相当のリンク」と定めており、電線として数えると端子台の全端子が最初から1本埋まってしまい §6.3 の「`TB_PB.4c` だけが残り1本」という前提が崩れる。3D用の色と経路は盤定義の `fixedLinks[].color` と `routeFixedLinks()` が受け持つ。
 3. **失敗は例外ではなく Result で返す**。UIがそのまま理由を表示でき、`terminal-overload` を §5.6 #5 の危険操作として計上できる。
 4. **PB／PL本体端子には配線させない**（§6.4）。盤定義の `wirable: false` を見て拒否する。
@@ -2612,7 +2615,7 @@ describe('session: 装着と配線', () => {
     expect(result.ok).toBe(false);
     if (result.ok) throw new Error('unreachable');
     expect(result.code).toBe('locked-wire');
-    expect(result.message).toBe('チェック用回路の黄色配線は変更できません');
+    expect(result.message).toBe('チェック用回路の既設配線（青）は変更できません');
   });
 
   it('1端子2本まで。既設配線が1本ある端子には1本しか足せない（§6.3 / §6.6）', () => {
@@ -2816,7 +2819,7 @@ export interface BoardSession {
   socketRoles: SocketRoles;
   /** 物理ソケットID → 装着状態。未装着のソケットはキーを持たない。 */
   mounted: Partial<Record<SocketId, MountedPart>>;
-  /** 電線（既設の黄色固定配線を含む。端子IDは circuit-sim の役割ベース）。 */
+  /** 電線（既設の固定配線（青）を含む。端子IDは circuit-sim の役割ベース）。 */
   wires: Wire[];
   /** 選べる線色。モードB・D=青、C2=白（§8.1）。 */
   allowedColors: readonly WireColor[];
@@ -2848,7 +2851,7 @@ export class SessionError extends Error {
 }
 
 /**
- * 盤セッションを作る。既設の黄色固定配線（§6.3）を `locked` な電線として最初から持たせるので、
+ * 盤セッションを作る。既設の固定配線（青）（§6.3）を `locked` な電線として最初から持たせるので、
  * 端子の本数上限（§6.6）の計算がこの配列だけで完結する。
  */
 export function createSession(board: BoardDefinition, options: SessionOptions = {}): BoardSession {
@@ -3029,7 +3032,7 @@ export function removeWire(session: BoardSession, wireId: string): Result<Wire> 
   const wire = session.wires[index];
   if (wire === undefined) return fail('unknown-wire', `電線が見つかりません: ${wireId}`);
   if (wire.locked) {
-    return fail('locked-wire', 'チェック用回路の黄色配線は変更できません');
+    return fail('locked-wire', 'チェック用回路の既設配線（青）は変更できません');
   }
   session.wires.splice(index, 1);
   return ok(wire);
@@ -3249,7 +3252,7 @@ describe('to-netlist: 盤セッション → ネットリスト', () => {
     expect(sim.state().relays['CR1']).toBeUndefined();
   });
 
-  it('チェック用ソケットの黄色配線は赤PBで励磁する回路になっている（§6.3 / §9.1）', () => {
+  it('チェック用ソケットの既設配線（青）は赤PBで励磁する回路になっている（§6.3 / §9.1）', () => {
     const session = createSession(board);
     const plugged = plug(session, 'S7', 'relay-my4n');
     expect(plugged.ok).toBe(true);
@@ -3375,7 +3378,7 @@ function lampBlockPart(): Part {
  * 部品の並び（決定論）: 電源 → P/N供給端子 → 端子台2つ → PB4個 → PL4個 → BZ（任意）→ ソケットS1〜S8。
  * ソケットの部品IDは、役割が割り当てられていれば役割名（`CR1`）、予備ソケットなら物理ID（`S8`）。
  * リンクの並び: P/N供給端子どうし → PB本体↔端子台（12本）→ PL本体↔端子台（8本）。
- * 電線: セッションの並び順のまま（先頭に既設の黄色固定配線3本）。
+ * 電線: セッションの並び順のまま（先頭に既設の固定配線3本・青）。
  *
  * ブレーカ（`CB`）と電源スイッチ（`SW`）はAC一次側にあり電気的には解かないため、
  * ネットリストには載せない。開閉は `Simulation.setBreaker()` / `setSwitch()` が担う（§5.3.5）。
@@ -5413,7 +5416,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 | PB | a接点 → `TB_PB.nc` と `TB_PB.na`、b接点 → `TB_PB.nc` と `TB_PB.nb` |
 | PL | `TB_PL.n+` と `TB_PL.n-` |
 | BZ | `BZ.+` と `BZ.-` |
-| P/N | 母線に集まった端子ごとに `P.1`〜`P.6` / `N.1`〜`N.6` から**若番で空きのあるもの**を取る。チェック用の黄色配線が既に1本使っている `P.6` / `N.6` は残り1本として数える（§6.3） |
+| P/N | 母線に集まった端子ごとに `P.1`〜`P.6` / `N.1`〜`N.6` から**若番で空きのあるもの**を取る。チェック用の既設配線（青）が既に1本使っている `P.6` / `N.6` は残り1本として数える（§6.3） |
 | 母線以外の節点 | その節点に集まった端子を出現順に**鎖状に**結ぶ（渡り配線。調査資料 §4.5）。中間の端子はちょうど2本になる |
 | 上書き | `physicalOverride[要素ID] = [左, 右]` があれば既定規則より優先する（§7.2） |
 | エラー | 接点組の不足、端子本数超過、供給端子の枯渇を理由付きで返す |
@@ -5661,8 +5664,8 @@ describe('assign: 回路図 → 物理割当（§11.3）', () => {
     expect(result.errors).toHaveLength(2);
   });
 
-  it('チェック用の黄色配線がある端子を渡り配線に使うと上限超過になる（§6.3 / §6.6）', () => {
-    // `TB_PB.4c` には既に黄色配線が1本つながっている。中継点として使うと3本目になる。
+  it('チェック用の既設配線（青）がある端子を渡り配線に使うと上限超過になる（§6.3 / §6.6）', () => {
+    // `TB_PB.4c` には既に既設配線（青）が1本つながっている。中継点として使うと3本目になる。
     const doc = createDocument('x', '端子超過', [
       rung('r1', BUS_P, BUS_N, [pbA('c1', 'PB1'), pbA('c2', 'PB4'), coil('c3', 'CR1')]),
       rung('r2', BUS_P, at('r1', 1), [crA('c4', 'CR1')]),
@@ -5889,7 +5892,7 @@ function isAssignError(value: unknown): value is AssignError {
   return typeof value === 'object' && value !== null && 'message' in value && 'path' in value;
 }
 
-/** 既設の黄色固定配線で既に使われている端子の本数。§6.3 */
+/** 既設の固定配線（青）で既に使われている端子の本数。§6.3 */
 function preUsedCounts(roles: SocketRoles): Map<string, number> {
   const used = new Map<string, number>();
   for (const fw of JIPM_BOARD.fixedWires) {
@@ -6154,7 +6157,7 @@ describe('to-session: 回路図 → 盤セッション → ネットリスト �
   it('割当どおりに装着と配線が入る（§11.3）', () => {
     const session = build(selfHoldDoc());
     expect(session.mounted.S1).toEqual({ kind: 'relay-my4n' });
-    // 既設の黄色配線3本 ＋ 生成した9本
+    // 既設の配線3本・青 ＋ 生成した9本
     expect(session.wires).toHaveLength(12);
     expect(session.wires.filter((w) => !w.locked)).toHaveLength(9);
     expect(session.allowedColors).toEqual(['青']);
@@ -7060,6 +7063,11 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 | 13 | §5.3.4「PL は端子電圧19.2V以上で点灯表示」 | Plan 1A が採用した 14.4V/7.2V（点灯／暗点灯）をそのまま使う | Plan 1A の差分表#3 と同じ理由（接触抵抗による暗点灯を表現するため）。**仕様書 §5.3.4 と §17.2 はこの値に修正済み**（#23 として前提を追記した） |
 | 14 | §6.4 の `PB1`〜`PB4` | 部品IDは §6.4 のまま `PB1`〜`PB4`。写真の銘板表記 `PBS1`〜`PBS4` は `PushButtonDefinition.panelLabel` に持つ | 部品IDは端子ID（`PB1.c`）と信号ログ（§5.7）とゴールデンケースの全体で使われる規約なので変えない。3Dの銘板とツールチップだけ写真どおりに出せればよい |
 | 15 | §6.2 の4段配置（`[空]③②①` / `⑧⑦⑥⑤` / `⑫⑪⑩⑨` / `④⑭⑬[空]`） | 4段の並びはそのまま。ただし**段1・段2を本体の奥端、段3・段4を手前端**に寄せ、中央を差込穴の領域にした。ティア内の段ピッチは8mm | 実物のソケットは差込穴が本体中央にあり、ネジ端子は上下に段付きで2列ずつ寄っている。§6.2 の図は端子番号の並びを示すもので、等間隔の4段を要求してはいない。ティア内ピッチを写真の見た目（約7mm）ではなく8mmにしたのは、§6.5 の当たり判定半径4mmが重ならない最小値だから |
+
+### 実装時の注意
+
+- 同一ソケット内の端子同士（例: CR1.5→CR1.14）は現行の経路器では配線帯を経由して大きく迂回する。Phase 1 ではこの動作で可とし、ソケット側面の短い縦配線帯の追加は Phase 1D の見た目確認後に検討する
+- 配線帯の並走レーン上限8は内蔵課題で7まで使用。超過時は `RoutingError` になるので、課題追加時はレーン数（配線帯幅）を広げる
 
 ---
 
