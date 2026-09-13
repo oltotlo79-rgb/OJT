@@ -137,3 +137,15 @@ export {
   type SessionErrorCode,
   type SessionOptions,
 } from './session.js';
+
+export {
+  BUZZER_ID,
+  createEmptySocketPart,
+  createTerminalOnlyPart,
+  N_RAIL_ID,
+  P_RAIL_ID,
+  PB_BLOCK_ID,
+  PL_BLOCK_ID,
+  POWER_SUPPLY_ID,
+  toNetlist,
+} from './to-netlist.js';
