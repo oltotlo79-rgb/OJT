@@ -71,6 +71,9 @@ export function cloneNetlist(netlist: Netlist): Netlist {
  * - 電源（source）: `enabled` を `createPowerSupply` の初期値（false）に戻す。
  * `fault`（接点・負荷の故障）と `wire.open`（断線）はここでは変更しない。
  * 故障のクリアは別タスクの `clearFaults` が担う。
+ * これは実行前（pre-run）に部品要素の状態を初期化するためのヘルパーであり、稼働中の
+ * `Simulation` が内部に持つリレー／タイマ／押ボタンのランタイム状態は戻さない。
+ * それらをリセットするには新しい `Simulation` を作り直すこと。
  */
 export function resetNetlist(netlist: Netlist): void {
   for (const el of allElements(netlist)) {
@@ -148,7 +151,9 @@ export function canAddWire(netlist: Netlist, terminal: TerminalId): boolean {
 /** `validateNetlist` が報告する個々の問題。 */
 export interface NetlistIssue {
   kind: 'unknown-terminal' | 'duplicate-wire-id' | 'self-loop-wire';
-  wireId?: string;
+  /** 問題の原因が電線か、部品本体と端子台を結ぶ0Ωリンクか。§6.4 */
+  ownerKind: 'wire' | 'link';
+  ownerId: string;
   terminal?: string;
   message: string;
 }
@@ -166,22 +171,28 @@ export function validateNetlist(netlist: Netlist): NetlistIssue[] {
   for (const part of netlist.parts) {
     for (const terminal of part.terminals) knownTerminals.add(terminal);
   }
-  const checkTerminal = (ownerId: string, terminal: TerminalId): void => {
+  const checkTerminal = (
+    ownerKind: 'wire' | 'link',
+    ownerId: string,
+    terminal: TerminalId,
+  ): void => {
     if (knownTerminals.has(terminal)) return;
+    const label = ownerKind === 'wire' ? '電線' : 'リンク';
     issues.push({
       kind: 'unknown-terminal',
-      wireId: ownerId,
+      ownerKind,
+      ownerId,
       terminal,
-      message: `電線 ${ownerId} の端子 ${terminal} はどの部品にも存在しません`,
+      message: `${label} ${ownerId} の端子 ${terminal} はどの部品にも存在しません`,
     });
   };
   for (const wire of netlist.wires) {
-    checkTerminal(wire.id, wire.from);
-    checkTerminal(wire.id, wire.to);
+    checkTerminal('wire', wire.id, wire.from);
+    checkTerminal('wire', wire.id, wire.to);
   }
   for (const link of netlist.links) {
-    checkTerminal(link.id, link.from);
-    checkTerminal(link.id, link.to);
+    checkTerminal('link', link.id, link.from);
+    checkTerminal('link', link.id, link.to);
   }
 
   const seenWireIds = new Set<WireId>();
@@ -189,7 +200,8 @@ export function validateNetlist(netlist: Netlist): NetlistIssue[] {
     if (seenWireIds.has(wire.id)) {
       issues.push({
         kind: 'duplicate-wire-id',
-        wireId: wire.id,
+        ownerKind: 'wire',
+        ownerId: wire.id,
         message: `電線ID ${wire.id} が重複しています`,
       });
     } else {
@@ -201,7 +213,8 @@ export function validateNetlist(netlist: Netlist): NetlistIssue[] {
     if (wire.from === wire.to) {
       issues.push({
         kind: 'self-loop-wire',
-        wireId: wire.id,
+        ownerKind: 'wire',
+        ownerId: wire.id,
         message: `電線 ${wire.id} の両端が同じ端子です（自己ループ）: ${wire.from}`,
       });
     }

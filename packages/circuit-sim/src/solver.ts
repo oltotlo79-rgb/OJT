@@ -4,8 +4,11 @@ import { allElements, NetlistError, type Nets, type Netlist } from './netlist.js
 
 /** 全節点に入れる対地漏れコンダクタンス[S]。特異行列を避ける。§5.2 */
 export const LEAK_SIEMENS = 1e-9;
-/** 想定する節点数の上限。§5.2 */
-export const MAX_NODES = 200;
+/**
+ * 想定する節点数の上限。設計仕様は端子数400個を上限として想定しており、電線を1本も
+ * 張っていない盤はほぼ端子数と同数の節点を持つ（テスタは後でプローブ用の部品を追加する）。§5.2
+ */
+export const MAX_NODES = 400;
 /** ピボットがこの値未満なら特異とみなす。 */
 const PIVOT_EPSILON = 1e-18;
 

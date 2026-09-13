@@ -36,6 +36,8 @@ export class SignalLog {
 
   /**
    * 1tickぶんを記録する。前回と同じ値の信号は記録しない。
+   * 前提: `tMs` は呼び出しのたびに前回以上（非減少）でなければならない。信号ごとの
+   * 索引（`bySignal`）は `tMs` 昇順であることを前提に二分探索するため（`valueAt` 参照）。
    * @returns 値が変化した（=記録した）信号名の配列。
    */
   record(tMs: number, values: ReadonlyMap<string, SignalValue>): string[] {

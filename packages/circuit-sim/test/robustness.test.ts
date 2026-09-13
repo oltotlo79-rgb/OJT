@@ -2,19 +2,26 @@ import { describe, expect, it } from 'vitest';
 import {
   applyPowerAction,
   buildNets,
+  CLOSED_CONTACT_OHMS,
   createPowerSupply,
   createPushButton,
   createRelay4c,
+  createTimer4c,
   EventBus,
+  FaultError,
+  injectFault,
   NetlistError,
   partId,
   SignalLog,
+  SimulationError,
   solve,
+  SOURCE_INTERNAL_OHMS,
+  SOURCE_VOLTS,
   terminalId,
   voltageAt,
 } from '../src/index.js';
 import type { Netlist, Part, SignalValue, SimEvent } from '../src/index.js';
-import { net, t, w } from './helpers/circuits.js';
+import { bench, net, t, w } from './helpers/circuits.js';
 
 function energize(netlist: Netlist, on: boolean): void {
   for (const part of netlist.parts) {
@@ -27,19 +34,19 @@ function values(pairs: Array<[string, SignalValue]>): Map<string, SignalValue> {
 }
 
 describe('robustness: solver 節点数上限', () => {
-  it('210節点（リレー15台・電線なし）は MAX_NODES を超え NetlistError', () => {
-    const relays = Array.from({ length: 15 }, (_, i) => createRelay4c(`CR${i + 1}`));
+  it('406節点（リレー29台・電線なし）は MAX_NODES を超え NetlistError', () => {
+    const relays = Array.from({ length: 29 }, (_, i) => createRelay4c(`CR${i + 1}`));
     const netlist = net(relays, []);
     const nets = buildNets(netlist);
-    expect(nets.nodeCount).toBe(210);
+    expect(nets.nodeCount).toBe(406);
     expect(() => solve(netlist, nets)).toThrow(NetlistError);
   });
 
-  it('196節点（リレー14台）は上限内で解ける', () => {
-    const relays = Array.from({ length: 14 }, (_, i) => createRelay4c(`CR${i + 1}`));
+  it('392節点（リレー28台）は上限内で解ける', () => {
+    const relays = Array.from({ length: 28 }, (_, i) => createRelay4c(`CR${i + 1}`));
     const netlist = net(relays, []);
     const nets = buildNets(netlist);
-    expect(nets.nodeCount).toBe(196);
+    expect(nets.nodeCount).toBe(392);
     expect(() => solve(netlist, nets)).not.toThrow();
   });
 });
@@ -71,7 +78,8 @@ describe('robustness: 非有限コンダクタンスの防御', () => {
     // 直列合成 0.1(内部) + 0.001(接点、クランプ後) + 0.001(コイル、クランプ後) = 0.102Ω。
     // 注: 接点・コイルとも CLOSED_CONTACT_OHMS にクランプされるため、24Vの大部分は
     // 電源の内部抵抗0.1Ωで消費され、コイル電圧は約0.235Vになる（約24Vにはならない）。
-    expect(coilVolts).toBeCloseTo((24 / 0.102) * 0.001, 3);
+    const totalOhms = SOURCE_INTERNAL_OHMS + CLOSED_CONTACT_OHMS + CLOSED_CONTACT_OHMS;
+    expect(coilVolts).toBeCloseTo((SOURCE_VOLTS / totalOhms) * CLOSED_CONTACT_OHMS, 3);
   });
 
   it('負値・非有限の抵抗値は開放として扱われる（電源内部抵抗・接点・負荷いずれも）', () => {
@@ -222,5 +230,24 @@ describe('robustness: 電源操作の再押下', () => {
   it('状態が異なる操作は引き続き手順違反を検出する', () => {
     const result = applyPowerAction({ breakerOn: false, switchOn: true }, 'breaker', true);
     expect(result.violation).toBe(true);
+  });
+});
+
+describe('robustness: Simulation.setTimerPreset のエラー型', () => {
+  it('非有限の設定値は SimulationError になる（clampPreset の RangeError を包む）', () => {
+    const sim = bench([createPowerSupply('PS'), createTimer4c('T1', 3000)], []);
+    expect(() => sim.setTimerPreset('T1', NaN)).toThrow(SimulationError);
+  });
+});
+
+describe('robustness: contact-resistive の抵抗値検証', () => {
+  it('Infinity は FaultError、有限の正の値（500）は通る', () => {
+    const netlist = net([createPushButton('PB1')], []);
+    expect(() =>
+      injectFault(netlist, { partId: 'PB1', elementIndex: 0 }, 'contact-resistive', Infinity),
+    ).toThrow(FaultError);
+    expect(() =>
+      injectFault(netlist, { partId: 'PB1', elementIndex: 0 }, 'contact-resistive', 500),
+    ).not.toThrow();
   });
 });

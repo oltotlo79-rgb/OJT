@@ -158,13 +158,22 @@ export class Simulation {
     this.powerAction('switch', on);
   }
 
-  /** タイマの設定時間を変える。レンジ内に丸める。§5.3.2 */
+  /**
+   * タイマの設定時間を変える。レンジ内に丸める。§5.3.2
+   * `presetMs` が非有限（NaN／Infinity）だと `clampPreset` が RangeError を投げるが、
+   * ここで捕まえて `SimulationError` に変換する（この関数の失敗はすべて `SimulationError`）。
+   */
   setTimerPreset(timerId: string, presetMs: number): void {
     const part = findPart(this.netlist, timerId);
     if (part === undefined || part.meta.kind !== 'timer-h3y4') {
       throw new SimulationError(`タイマが見つかりません: ${timerId}`);
     }
-    const clamped = clampPreset(presetMs, part.meta.rangeMaxMs);
+    let clamped: number;
+    try {
+      clamped = clampPreset(presetMs, part.meta.rangeMaxMs);
+    } catch {
+      throw new SimulationError(`タイマ ${timerId} の設定値が不正です: ${presetMs}`);
+    }
     part.meta.presetMs = clamped;
     const runtime = this.timers.get(timerId);
     if (runtime !== undefined) runtime.presetMs = clamped;

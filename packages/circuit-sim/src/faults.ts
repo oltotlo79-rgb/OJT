@@ -115,7 +115,9 @@ export function injectFault(
     }
     case 'contact-resistive': {
       const ohms = typeof param === 'number' ? param : DEFAULT_CONTACT_RESISTIVE_OHMS;
-      if (!(ohms > 0)) throw new FaultError(`接触抵抗は正の値が必要です: ${String(param)}`);
+      if (!(Number.isFinite(ohms) && ohms > 0)) {
+        throw new FaultError(`接触抵抗は有限の正の値が必要です: ${String(param)}`);
+      }
       asContact(resolveElement(netlist, target)).fault = { kind: 'resistive', ohms };
       return;
     }

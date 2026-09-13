@@ -1,10 +1,4 @@
-import {
-  createNetlist,
-  createWire,
-  parseTerminalId,
-  Simulation,
-  terminalId,
-} from '../../src/index.js';
+import { createNetlist, createWire, Simulation, toTerminalId } from '../../src/index.js';
 import type {
   Netlist,
   Part,
@@ -16,8 +10,7 @@ import type {
 
 /** `"CR1.13"` 形式の文字列を TerminalId にする。テストを読みやすくするための糖衣。 */
 export function t(id: string): TerminalId {
-  const parsed = parseTerminalId(id);
-  return terminalId(parsed.part, parsed.name);
+  return toTerminalId(id);
 }
 
 /** 端子ID文字列から電線を作る。 */

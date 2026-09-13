@@ -147,7 +147,7 @@ describe('guards', () => {
     expect(issues[0]).toMatchObject({ kind: 'unknown-terminal', terminal: 'CR1.15' });
   });
 
-  it('未知の端子を参照するリンクも unknown-terminal として報告する（wireId にリンクIDが入る）', () => {
+  it('未知の端子を参照するリンクも unknown-terminal として報告する（ownerKind: "link" で区別する）', () => {
     const netlist = net([createRelay4c('CR1')], []);
     netlist.links.push(
       createTerminalBlockLink('lk1', terminalId('CR1', '9'), terminalId('CR1', '99')),
@@ -156,7 +156,8 @@ describe('guards', () => {
     expect(issues).toHaveLength(1);
     expect(issues[0]).toMatchObject({
       kind: 'unknown-terminal',
-      wireId: 'lk1',
+      ownerKind: 'link',
+      ownerId: 'lk1',
       terminal: 'CR1.99',
     });
   });
@@ -167,7 +168,11 @@ describe('guards', () => {
       [w('w1', 'PS.+', 'PL1.+'), w('w1', 'PS.-', 'PL1.-')],
     );
     const issues = validateNetlist(netlist);
-    expect(issues.some((i) => i.kind === 'duplicate-wire-id' && i.wireId === 'w1')).toBe(true);
+    expect(
+      issues.some(
+        (i) => i.kind === 'duplicate-wire-id' && i.ownerKind === 'wire' && i.ownerId === 'w1',
+      ),
+    ).toBe(true);
   });
 
   it('from === to の電線を self-loop-wire として報告する', () => {
@@ -176,7 +181,11 @@ describe('guards', () => {
       [createWire('w1', terminalId('CR1', '1'), terminalId('CR1', '1'))],
     );
     const issues = validateNetlist(netlist);
-    expect(issues.some((i) => i.kind === 'self-loop-wire' && i.wireId === 'w1')).toBe(true);
+    expect(
+      issues.some(
+        (i) => i.kind === 'self-loop-wire' && i.ownerKind === 'wire' && i.ownerId === 'w1',
+      ),
+    ).toBe(true);
   });
 
   it('canAddWire は本数上限（2本）未満かどうかを返す（§6.6）', () => {
