@@ -5637,6 +5637,9 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 | 9 | §4.5「TypeScript（`strict: true`、`noUncheckedIndexedAccess: true`）」（`exactOptionalPropertyTypes` の指定なし） | 有効化しない（Plan 1A 完了後に専用タスクで有効化を検討） | 計画コードは無効前提で検証済みのため |
 | 10 | §5.2「LU分解（部分ピボット選択）。行列の構造が変化しない間は分解結果を再利用する」（差分#2参照） | LU分解結果の再利用は未実装のまま（差分#2から変更なし） | 毎tickガウス消去で 200節点 0.45ms/tick と実測され、性能予算内であることを確認したため |
 | 11 | （仕様に記載なし） | ログの1tick整合: `updateLoads` は tick 開始時の解、`applyContacts`/記録は tick 終了時。接点閉とランプ点灯が同一 tick でずれて記録される（模範・訓練者とも同じエンジンなので判定には影響しない） | 変更しない |
+| 12 | §5.6 表・§14.1 #22・§17.2 #2/#25 が使っていたイベント名 `live-ohm` / `analog-overrange` / `terminal-overload` | エンジン実装の識別子 `ohm-on-live` / `range-exceeded` / `over-wires-per-terminal` に統一する（`short-circuit-power-on` と `power-sequence-violation` は仕様と実装で元から一致していた） | `packages/circuit-sim/src/events.ts` の `HAZARD_KINDS` が実装時に確定した名称であるため。本コミットで仕様側の表記もエンジン名に更新した |
+| 13 | §5.2「規模上限は端子400・節点200を想定」 | 節点数の上限は `MAX_NODES = 400`（`packages/circuit-sim/src/solver.ts`）としてコードで強制する。実測は200節点で0.9ms/tick、上限近傍の396節点で2.7ms/tick（10ms tick 予算の27%） | 想定値の200節点だけでなく上限近傍でも10ms/tickの予算内に収まることを実測で確認し、`MAX_NODES` を明文化した |
+| 14 | 差分#9（§4.5「TypeScript」で `exactOptionalPropertyTypes` は「Plan 1A 完了後に専用タスクで有効化を検討」としていた） | Task 22 完了後、追加タスク Task 8g で `exactOptionalPropertyTypes` を有効化した | 差分#9で先送りしていた検討を追加タスクとして実施し、型の厳格さを仕様に合わせた |
 
 ## 追加タスク（実行中のレビュー指摘により追加）
 
@@ -5646,6 +5649,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 | Task 8c | bba1125 | `solve()` が節点数200超で `NetlistError`、0Ω/非有限抵抗のガード（`effectiveOhms`）、`SignalLog` の信号別索引と二分探索、`EventBus.all()` が複製を返す、`applyPowerAction` の同状態再操作は違反にしない（`test/actuators.test.ts` の該当期待値を false に変更）。テストは `test/robustness.test.ts` |
 | Task 8d | d6a0980 | `NetlistIssue` を `ownerKind`/`ownerId` に改名、`MAX_NODES` を 400 に、`Simulation.setTimerPreset` が `SimulationError` に統一、`contact-resistive` が非有限値を拒否、ヘルパー `t()` を `toTerminalId` に戻す。テストは `test/robustness.test.ts` |
 | Task 8e | 4ba4b47 | `Simulation.addWire` が3本目を拒否して `false` を返す（危険操作1回）、`wire-misrouted` の端子存在検証（`knownTerminals`）、数値故障の非数値 `param` を拒否、`CHATTER_MIN_TRANSITIONS` を 20 に、コンストラクタで `resetNetlist`、`overcurrent` 事象の追加（電源投入直後の保護動作のみ `short-circuit-power-on`）。テストは `test/robustness.test.ts` |
+| Task 8g | (コミットは後で追記) | `reset()`/`mountPart()`/`unmountPart()`、`step()` のエラー型統一、`tickMs` 検証、`nodeVoltages` 複製、レアショート NaN 防御、`over-wires-per-terminal` の端子ごと1回計上、再同期テスト、JSDoc/メッセージ修正、EOPT 有効化 |
 
 Task 13 以降の実装者への注意: 上記により `test/helpers/circuits.ts` は `toTerminalId` を使う形に変わっているが、ヘルパーの名前と引数は計画どおり。計画本文のコードはそのまま適用できる。
 
