@@ -2,6 +2,13 @@
  * 盤の幾何ユーティリティ。すべて純関数で、単位は mm。
  * 座標系（設計仕様 §6.5 / §12.2）: 盤の左上手前が原点。
  * x = 右方向、y = 下方向（盤面に沿う）、z = 盤面からの高さ（表側が正、裏側が負）。
+ *
+ * 境界（辺・角）の扱いの規約（矩形・線分ユーティリティ共通）:
+ * - `rectContains` は境界を含む（inclusive, +ε）。点が辺・角上にあれば内側とみなす。
+ * - `rectsOverlap` と `segmentIntersectsRect` は境界を含まない（exclusive, −ε）。
+ *   辺で接するだけ・辺の上をなぞるだけの図形は重なり／通過とみなさない。
+ * 対になる2つの規約をあえて逆向きにすることで、「触れているだけ」の図形を
+ * 内外判定では内側、重なり／交差判定では非重なりとして一貫して扱える。
  */
 
 /** 3D座標[mm]。 */
@@ -48,9 +55,9 @@ export function distance(a: Vec3, b: Vec3): number {
 export function roundVec(v: Vec3, decimals = 3): Vec3 {
   const scale = 10 ** decimals;
   return {
-    x: Math.round(v.x * scale) / scale,
-    y: Math.round(v.y * scale) / scale,
-    z: Math.round(v.z * scale) / scale,
+    x: unsignZero(Math.round(v.x * scale) / scale),
+    y: unsignZero(Math.round(v.y * scale) / scale),
+    z: unsignZero(Math.round(v.z * scale) / scale),
   };
 }
 
@@ -98,10 +105,13 @@ export function nearestPointOnSegment(p: Vec3, a: Vec3, b: Vec3): NearestPoint {
 }
 
 /**
- * 折れ線上で p に最も近い点。折れ線が空のときは p 自身を返す（距離0）。
+ * 折れ線上で p に最も近い点。
+ * 折れ線が空のときは最寄り区間が存在しないことを表すため、
+ * { point: p, index: -1, t: 0, distance: Infinity } を返す。
  * 同距離の候補が複数あるときは先に現れた区間を選ぶ（決定論）。
  */
 export function nearestPointOnPolyline(p: Vec3, line: Polyline): NearestPoint {
+  if (line.length === 0) return { point: p, index: -1, t: 0, distance: Infinity };
   let best: NearestPoint = { point: p, index: 0, t: 0, distance: 0 };
   let found = false;
   for (let i = 1; i < line.length; i += 1) {
@@ -171,14 +181,22 @@ export function rectContains(r: Rect, p: Vec3, epsilon = 1e-9): boolean {
   );
 }
 
-/** 2つの矩形が重なるか（辺で接するだけは重なりとみなさない）。 */
-export function rectsOverlap(a: Rect, b: Rect): boolean {
-  return a.x < rectRight(b) && rectRight(a) > b.x && a.y < rectBottom(b) && rectBottom(a) > b.y;
+/** 2つの矩形が重なるか（辺で接するだけは重なりとみなさない。exclusive, −ε）。 */
+export function rectsOverlap(a: Rect, b: Rect, epsilon = 1e-9): boolean {
+  return (
+    a.x < rectRight(b) - epsilon &&
+    rectRight(a) - epsilon > b.x &&
+    a.y < rectBottom(b) - epsilon &&
+    rectBottom(a) - epsilon > b.y
+  );
 }
 
 /**
- * 線分（XY平面に射影したもの）が矩形の**内部**を通るか。
+ * 線分（始点・終点の x, y だけを使うXY平面への射影。z は無視する）が
+ * 矩形の**内部**を通るか（exclusive, −ε）。
  * 境界に接するだけ（辺の上をなぞる・角に触れる）は通過とみなさない。
+ * 始点と終点が一致する長さ0の線分は、排他的な点内判定（rectContains の
+ * inclusive とは逆に境界を含まない版）に縮退する。
  * 配線が部品の上を横切っていないことの検査に使う。
  */
 export function segmentIntersectsRect(a: Vec3, b: Vec3, r: Rect, epsilon = 1e-9): boolean {

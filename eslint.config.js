@@ -18,7 +18,7 @@ export default tseslint.config(
   // 解決器だけ workspace 対応のものに差し替える。
   importX.flatConfigs.typescript,
   {
-    files: ['**/*.ts'],
+    files: ['**/*.ts', '**/*.tsx'],
     plugins: { 'import-x': importX },
     settings: {
       'import-x/resolver-next': [
@@ -29,7 +29,10 @@ export default tseslint.config(
         }),
       ],
     },
-    rules: { 'import-x/no-cycle': ['error', { maxDepth: Infinity }] },
+    rules: {
+      'import-x/no-cycle': ['error', { maxDepth: Infinity }],
+      'import-x/no-unresolved': 'error',
+    },
   },
   { files: ['**/*.js'], extends: [tseslint.configs.disableTypeChecked] },
 );

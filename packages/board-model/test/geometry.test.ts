@@ -33,7 +33,7 @@ describe('geometry: 幾何ユーティリティ', () => {
     const line = nearestPointOnPolyline(vec3(5, 5), [vec3(0, 0), vec3(10, 0), vec3(10, 10)]);
     expect(line.index).toBe(0);
     expect(line.point).toEqual({ x: 5, y: 0, z: 0 });
-    expect(nearestPointOnPolyline(vec3(1, 1), []).distance).toBe(0);
+    expect(nearestPointOnPolyline(vec3(1, 1), []).distance).toBe(Infinity);
     expect(nearestPointOnPolyline(vec3(1, 1), [vec3(4, 5)]).distance).toBe(5);
   });
 
