@@ -126,3 +126,10 @@ export {
   type SimulationState,
   type TimerRuntime,
 } from './simulation.js';
+export {
+  clearFaults,
+  FaultError,
+  injectFault,
+  type FaultKind,
+  type FaultTarget,
+} from './faults.js';
