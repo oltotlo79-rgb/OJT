@@ -77,7 +77,7 @@ describe('session: 装着と配線', () => {
     expect(result.ok).toBe(false);
     if (result.ok) throw new Error('unreachable');
     expect(result.code).toBe('locked-wire');
-    expect(result.message).toBe('チェック用回路の黄色配線は変更できません');
+    expect(result.message).toBe('チェック用回路の既設配線（青）は変更できません');
   });
 
   it('1端子2本まで。既設配線が1本ある端子には1本しか足せない（§6.3 / §6.6）', () => {

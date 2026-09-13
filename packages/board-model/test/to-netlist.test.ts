@@ -138,7 +138,7 @@ describe('to-netlist: 盤セッション → ネットリスト', () => {
     expect(sim.state().relays['CR1']).toBeUndefined();
   });
 
-  it('チェック用ソケットの黄色配線は赤PBで励磁する回路になっている（§6.3 / §9.1）', () => {
+  it('チェック用ソケットの既設配線（青）は赤PBで励磁する回路になっている（§6.3 / §9.1）', () => {
     const session = createSession(board);
     const plugged = plug(session, 'S7', 'relay-my4n');
     expect(plugged.ok).toBe(true);

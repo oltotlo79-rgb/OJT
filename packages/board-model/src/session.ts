@@ -9,6 +9,7 @@ import {
   type WireColor,
 } from '@ojt/circuit-sim';
 import {
+  BoardError,
   findBoardTerminal,
   resolveEndpoint,
   SOCKET_IDS,
@@ -17,6 +18,7 @@ import {
 } from './board-jipm.js';
 import {
   catalogEntry,
+  CatalogError,
   DEFAULT_INVENTORY,
   DEFAULT_TIMER_PRESET_MS,
   DEFAULT_TIMER_RANGE,
@@ -25,9 +27,11 @@ import {
   snapPresetToStep,
   type InventoryItem,
   type MountableKind,
+  type TimerRange,
 } from './catalog.js';
 import {
   DEFAULT_SOCKET_ROLES,
+  RoleError,
   toNetlistTerminal,
   toPhysicalTerminal,
   validateSocketRoles,
@@ -46,6 +50,7 @@ export type SessionErrorCode =
   | 'socket-empty'
   | 'inventory-exhausted'
   | 'not-a-timer'
+  | 'invalid-preset'
   | 'unknown-terminal'
   | 'terminal-not-wirable'
   | 'terminal-unavailable'
@@ -79,7 +84,7 @@ export interface BoardSession {
   socketRoles: SocketRoles;
   /** 物理ソケットID → 装着状態。未装着のソケットはキーを持たない。 */
   mounted: Partial<Record<SocketId, MountedPart>>;
-  /** 電線（既設の黄色固定配線を含む。端子IDは circuit-sim の役割ベース）。 */
+  /** 電線（既設の固定配線（青）を含む。端子IDは circuit-sim の役割ベース）。 */
   wires: Wire[];
   /** 選べる線色。モードB・D=青、C2=白（§8.1）。 */
   allowedColors: readonly WireColor[];
@@ -111,7 +116,7 @@ export class SessionError extends Error {
 }
 
 /**
- * 盤セッションを作る。既設の黄色固定配線（§6.3）を `locked` な電線として最初から持たせるので、
+ * 盤セッションを作る。既設の固定配線（青。§6.3）を `locked` な電線として最初から持たせるので、
  * 端子の本数上限（§6.6）の計算がこの配列だけで完結する。
  */
 export function createSession(board: BoardDefinition, options: SessionOptions = {}): BoardSession {
@@ -149,6 +154,19 @@ export function mountedKinds(session: BoardSession): MountableKind[] {
   return out;
 }
 
+/**
+ * タイマ設定値をレンジの分解能に丸める。非有限な値（NaN・Infinity）は例外ではなく失敗で返す。§8.2
+ * UIの入力欄からそのまま渡ってくる値なので、操作関数は投げずに理由を返す。
+ */
+function snapPreset(presetMs: number, range: TimerRange): Result<number> {
+  try {
+    return ok(snapPresetToStep(presetMs, range));
+  } catch (error) {
+    if (error instanceof CatalogError) return fail('invalid-preset', error.message);
+    throw error;
+  }
+}
+
 /** 部品を装着する。§8.2 */
 export function plug(
   session: BoardSession,
@@ -175,11 +193,9 @@ export function plug(
   }
   const rangeMaxMs = options.rangeMaxMs ?? DEFAULT_TIMER_RANGE.maxMs;
   const range = findTimerRange(rangeMaxMs) ?? DEFAULT_TIMER_RANGE;
-  const part: MountedPart = {
-    kind,
-    presetMs: snapPresetToStep(options.presetMs ?? DEFAULT_TIMER_PRESET_MS, range),
-    rangeMaxMs: range.maxMs,
-  };
+  const snapped = snapPreset(options.presetMs ?? DEFAULT_TIMER_PRESET_MS, range);
+  if (!snapped.ok) return snapped;
+  const part: MountedPart = { kind, presetMs: snapped.value, rangeMaxMs: range.maxMs };
   session.mounted[socketId] = part;
   return ok(part);
 }
@@ -208,9 +224,11 @@ export function setPreset(
     return fail('not-a-timer', `${socketId} の部品はタイマではありません`);
   }
   const range = findTimerRange(mounted.rangeMaxMs) ?? DEFAULT_TIMER_RANGE;
+  const snapped = snapPreset(presetMs, range);
+  if (!snapped.ok) return snapped;
   const next: MountedPart = {
     kind: 'timer-h3y4',
-    presetMs: clampPreset(snapPresetToStep(presetMs, range), range.maxMs),
+    presetMs: clampPreset(snapped.value, range.maxMs),
     rangeMaxMs: mounted.rangeMaxMs,
   };
   session.mounted[socketId] = next;
@@ -237,7 +255,16 @@ function checkTerminal(
   board: BoardDefinition,
   id: TerminalId,
 ): Result<TerminalId> {
-  const physical = toPhysicalTerminal(session.socketRoles, id);
+  let physical: TerminalId;
+  try {
+    physical = toPhysicalTerminal(session.socketRoles, id);
+  } catch (error) {
+    // 役割名は正しいがピン番号が壊れている端子ID（`CR1.09` / `CR1.99`）。未知端子として扱う
+    if (error instanceof RoleError || error instanceof BoardError) {
+      return fail('unknown-terminal', `盤に無い端子です: ${id}`);
+    }
+    throw error;
+  }
   const found = findBoardTerminal(board, physical);
   if (found === undefined) return fail('unknown-terminal', `盤に無い端子です: ${id}`);
   if (!found.wirable) {
@@ -292,7 +319,7 @@ export function removeWire(session: BoardSession, wireId: string): Result<Wire> 
   const wire = session.wires[index];
   if (wire === undefined) return fail('unknown-wire', `電線が見つかりません: ${wireId}`);
   if (wire.locked) {
-    return fail('locked-wire', 'チェック用回路の黄色配線は変更できません');
+    return fail('locked-wire', 'チェック用回路の既設配線（青）は変更できません');
   }
   session.wires.splice(index, 1);
   return ok(wire);

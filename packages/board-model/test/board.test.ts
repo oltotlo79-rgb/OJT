@@ -78,10 +78,13 @@ describe('board-jipm: 盤定義の不変条件（写真 K96-CS3 に準拠）', (
     expect(idsOf('TB_PL').slice(0, 2)).toEqual(['TB_PL.1+', 'TB_PL.1-']);
   });
 
-  it('全端子IDが一意で、当たり判定半径は4mm（§6.5）', () => {
+  it('全端子IDが一意で、盤上のネジ端子の当たり判定半径は4mm（§6.5）', () => {
     const ids = board.terminals.map((t) => t.id);
     expect(new Set(ids).size).toBe(ids.length);
-    expect(board.terminals.every((t) => t.pickRadiusMm === TERMINAL_PICK_RADIUS_MM)).toBe(true);
+    // 盤面の裏の本体端子だけは2mm間隔で並ぶので専用の半径を持つ（board-validate.test.ts）
+    const onPanel = board.terminals.filter((t) => t.pos.z >= 0);
+    expect(onPanel.every((t) => t.pickRadiusMm === TERMINAL_PICK_RADIUS_MM)).toBe(true);
+    expect(onPanel.length).toBeLessThan(board.terminals.length);
   });
 
   it('ソケットは8個とも14ピンで、ネジ端子が上下2ティアに分かれる（§6.2 / 写真）', () => {
@@ -117,18 +120,23 @@ describe('board-jipm: 盤定義の不変条件（写真 K96-CS3 に準拠）', (
     }
   });
 
-  it('ネジ端子は当たり判定（半径4mm）が重ならない間隔で並ぶ（§6.5）', () => {
-    const socketTerminals = board.terminals.filter((x) => x.id.startsWith('S1.'));
-    for (let i = 0; i < socketTerminals.length; i += 1) {
-      for (let j = i + 1; j < socketTerminals.length; j += 1) {
-        const a = socketTerminals[i];
-        const b = socketTerminals[j];
+  it('盤上の配線できる端子は、どの2つも当たり判定が重ならない間隔で並ぶ（§6.5）', () => {
+    // 同じソケット内だけでなく、隣のソケット・端子台・供給端子も含めた全組み合わせを見る
+    const wirable = board.terminals.filter((x) => x.wirable);
+    expect(wirable.length).toBeGreaterThan(100);
+    const tooClose: string[] = [];
+    for (let i = 0; i < wirable.length; i += 1) {
+      for (let j = i + 1; j < wirable.length; j += 1) {
+        const a = wirable[i];
+        const b = wirable[j];
         if (a === undefined || b === undefined) continue;
-        expect(Math.hypot(a.pos.x - b.pos.x, a.pos.y - b.pos.y)).toBeGreaterThanOrEqual(
-          2 * TERMINAL_PICK_RADIUS_MM,
-        );
+        const gap = Math.hypot(a.pos.x - b.pos.x, a.pos.y - b.pos.y);
+        const limit = 2 * Math.max(a.pickRadiusMm, b.pickRadiusMm);
+        if (gap + 1e-9 < limit) tooClose.push(`${a.id}-${b.id}: ${gap}mm`);
       }
     }
+    expect(tooClose).toEqual([]);
+    expect(2 * TERMINAL_PICK_RADIUS_MM).toBe(8);
   });
 
   it('端子は番号＋役割の銘板を持つ（3Dがそのまま印字できる）', () => {
@@ -137,8 +145,9 @@ describe('board-jipm: 盤定義の不変条件（写真 K96-CS3 に準拠）', (
     expect(findBoardTerminal(board, 'S1.9')?.label).toBe('⑨ COM');
     expect(findBoardTerminal(board, 'S1.5')?.label).toBe('⑤ a');
     expect(findBoardTerminal(board, 'S1.1')?.label).toBe('① b');
-    expect(findBoardTerminal(board, 'TB_PL.1+')?.label).toBe('PL1+');
-    expect(findBoardTerminal(board, 'TB_PL.1-')?.label).toBe('PL1−');
+    expect(findBoardTerminal(board, 'TB_PL.1+')?.label).toBe('PL1 +');
+    expect(findBoardTerminal(board, 'TB_PL.1-')?.label).toBe('PL1 −');
+    expect(findBoardTerminal(board, 'PL1.+')?.label).toBe('PL1 +');
     expect(findBoardTerminal(board, 'TB_PB.1c')?.label).toBe('PB1 c');
     expect(findBoardTerminal(board, 'P.1')?.label).toBe('P1');
     expect(findBoardTerminal(board, 'N.1')?.label).toBe('N1');
