@@ -115,3 +115,14 @@ export {
   type PowerDevice,
   type PowerSwitches,
 } from './actuators.js';
+export {
+  LAMP_LEVEL_CODE,
+  Simulation,
+  SimulationError,
+  type LampLevel,
+  type LampRuntime,
+  type RelayRuntime,
+  type SimulationOptions,
+  type SimulationState,
+  type TimerRuntime,
+} from './simulation.js';
