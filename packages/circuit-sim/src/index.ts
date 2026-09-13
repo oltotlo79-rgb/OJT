@@ -100,3 +100,12 @@ export {
   type SimEvent,
 } from './events.js';
 export { LOG_DECIMALS, roundSignal, SignalLog, type LogEntry, type SignalValue } from './log.js';
+export {
+  applyPowerAction,
+  isPowerOn,
+  RESET_SEQUENCE,
+  setButtonPressed,
+  type PowerActionResult,
+  type PowerDevice,
+  type PowerSwitches,
+} from './actuators.js';
