@@ -81,3 +81,11 @@ export {
   type Wire,
   type WireColor,
 } from './netlist.js';
+export {
+  LEAK_SIEMENS,
+  MAX_NODES,
+  solve,
+  voltageAt,
+  type SolveOptions,
+  type SolveResult,
+} from './solver.js';
