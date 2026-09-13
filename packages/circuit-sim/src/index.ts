@@ -89,3 +89,13 @@ export {
   type SolveOptions,
   type SolveResult,
 } from './solver.js';
+export {
+  CHATTER_MIN_TRANSITIONS,
+  CHATTER_WINDOW_MS,
+  EventBus,
+  type ChatterEvent,
+  type EventListener,
+  type HazardEvent,
+  type HazardKind,
+  type SimEvent,
+} from './events.js';
