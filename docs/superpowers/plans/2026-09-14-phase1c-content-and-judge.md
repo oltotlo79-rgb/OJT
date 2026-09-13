@@ -11,7 +11,7 @@
 **前提（このプランを始める前に満たしていること）:**
 
 - Plan 1A（`@ojt/circuit-sim`）が完了し、`packages/circuit-sim/src/` に `ids.ts` / `elements.ts` / `parts.ts` / `netlist.ts` / `solver.ts` / `events.ts` / `log.ts` / `actuators.ts` / `simulation.ts` / `faults.ts` / `meter.ts` / `compare.ts` / `index.ts` が揃っている。本プランが使うのは `Simulation` / `SignalLog` / `EventBus` / `compareLogs` / `createWire` / `terminalId` / `toTerminalId` / `TICK_MS` / `PICKUP_VOLTS` / `MAX_WIRES_PER_TERMINAL` / `DEFAULT_TOLERANCE` と各種型だけである。
-- Plan 1B（`@ojt/board-model` / `@ojt/schematic-core`）が完了している。本プランが使うのは `JIPM_BOARD` / `SOCKET_IDS` / `toNetlist` / `plug` / `removeWire` / `wireCountAtTerminal` / `socketPartId` / `BoardSession` / `BoardDefinition` / `SocketRoles` と、`toSession` / `validateDocument` / `SCHEMATIC_FORMAT_VERSION` だけである。盤は**ソケットを8個**持ち、`SocketRoles` は役割を書かなかったソケットが予備になる `Partial` である（Plan 1B 改訂版 Task 5）。
+- Plan 1B（`@ojt/board-model` / `@ojt/schematic-core`）が完了している。本プランが使うのは `JIPM_BOARD` / `SOCKET_IDS` / `toNetlist` / `plug` / `removeWire` / `wireCountAtTerminal` / `socketPartId` / `BoardSession` / `BoardDefinition` / `SocketRoles` と、`toSession` / `validateDocument` / `SCHEMATIC_FORMAT_VERSION` だけである。盤は**ソケットを8個**持ち、`SocketRoles` は役割を書かなかったソケットが予備になる `Partial` である（Plan 1B 改訂版 Task 5）。供給端子は実機どおり **`P.1` / `N.1` の1点ずつ**しかなく、母線は `assignToBoard()` が**渡り配線（鎖状）**で分配する（同 Task 4 / Task 13）。
 - ルートに `eslint.config.js`（`import-x/no-cycle` 込み）・`.prettierrc.json`・`tsconfig.base.json`・`vitest.workspace.ts` がある。
 
 ---
@@ -107,6 +107,10 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
   test: {
     include: ['test/**/*.test.ts'],
+    // 1件の判定は模範と訓練者の2回ぶんを10msティックで最後まで回すため、盤の規模（端子150前後）では
+    // 1テストに数秒かかる。カバレッジ計測を付けるとさらに数倍になるので既定の5秒では足りない。
+    testTimeout: 30_000,
+    hookTimeout: 30_000,
     coverage: {
       provider: 'v8',
       include: ['src/**/*.ts'],
@@ -116,6 +120,10 @@ export default defineConfig({
   },
 });
 ```
+
+`testTimeout` を伸ばすのは、盤が14ピンソケット8個ぶんの端子を持ち、1tickあたり120前後の節点を
+密行列で解くためである（仕様 §5.2 の「端子400・節点200を想定」の範囲内）。判定1回＝模範＋訓練者の
+2回ぶんを判定区間の最後まで回すので、カバレッジ計測下では1テストが10秒近くかかることがある。
 
 - [ ] **Step 4: 依存をインストールする**
 
@@ -1982,6 +1990,8 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 
 `@ojt/schematic-core` の `toSession(doc, board, options)` は、内部で `assignToBoard()` を呼んで回路図を物理端子へ割り当て、`@ojt/board-model` の `plug()` / `addWire()` を通して盤セッションを作る。1端子2本の上限・線色パレット・接点組の不足はすべてそこで検出されるので、ここではその失敗を課題エラー（§13 #2「模範回路エラー」）に変換するだけでよい。
 
+供給端子は `P.1` / `N.1` の1点ずつしかないため、母線に付く端子は `P.1 → 1本目 → 2本目 → …` という**渡り配線の鎖**になる（調査資料 §4.5）。つまり母線に付く端子が増えても供給端子が枯れることはなく、超過は「1端子に◯本つながります」というエラーに一本化されている。
+
 - [ ] **Step 1: 失敗するテストを書く**
 
 `packages/content/test/reference.test.ts`:
@@ -2892,10 +2902,10 @@ describe('checkTerminalLimit', () => {
   it('fails when a terminal carries three wires', () => {
     const input = inputFor(selfHoldProblemJson());
     input.session.wires.push(
-      createWire('w-extra', terminalId('CR1', '14'), terminalId('P', '5'), ASSEMBLE_WIRE_COLOR),
+      createWire('w-extra', terminalId('CR1', '14'), terminalId('CR2', '14'), ASSEMBLE_WIRE_COLOR),
     );
     input.session.wires.push(
-      createWire('w-extra2', terminalId('CR1', '14'), terminalId('P', '4'), ASSEMBLE_WIRE_COLOR),
+      createWire('w-extra2', terminalId('CR1', '14'), terminalId('T1', '14'), ASSEMBLE_WIRE_COLOR),
     );
     const result = checkTerminalLimit(input);
     expect(result.ok).toBe(false);
@@ -3304,10 +3314,10 @@ describe('judgeAssemble', () => {
   it('fails the terminal limit check when a third wire is present', () => {
     const session = sessionFor();
     session.wires.push(
-      createWire('w-901', terminalId('CR1', '14'), terminalId('P', '5'), ASSEMBLE_WIRE_COLOR),
+      createWire('w-901', terminalId('CR1', '14'), terminalId('CR2', '14'), ASSEMBLE_WIRE_COLOR),
     );
     session.wires.push(
-      createWire('w-902', terminalId('CR1', '14'), terminalId('P', '4'), ASSEMBLE_WIRE_COLOR),
+      createWire('w-902', terminalId('CR1', '14'), terminalId('T1', '14'), ASSEMBLE_WIRE_COLOR),
     );
     const result = judgeAssemble(PROBLEM, JIPM_BOARD, session);
     expect(result.ok).toBe(true);
@@ -4454,7 +4464,11 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 | ⑦ | `b-007` | 早押し優先回路（3点） | 1 | CR1, CR2, CR3 | PB1/PB2/PB3 の最初の1つだけが PL1/PL2/PL3 を自己保持、PB4(赤)で全消灯 |
 | ⑧ | `b-008` | 停止優先の起動・停止と警報表示 | 1 | CR1, CR2 | PB1 起動／PB3 警報／PB2 停止（同時押しは停止優先）。**盤にブザーが無いので警報出力は赤ランプ PL4 で代替**し、運転中かつ警報中は PL2 も点灯する |
 
-⑦は `PB4`（赤）の b接点を使う。`TB_PB.4c` にはチェック用回路の固定配線（青・`locked`）が既に1本あるため（§6.3）、追加できるのは1本だけであり、この回路はその1本だけを使う。
+⑦は `PB4`（赤）の b接点を全体のリセットとして先頭に置き、**ランプ段もそのリセット節点から分岐させる**。
+`TB_PB.4c` にはチェック用回路の固定配線（青・`locked`）が既に1本あるため（§6.3）、追加できるのは1本だけである。
+母線が渡り配線（鎖状）になった今、`TB_PB.4c` を P 母線に付く端子のひとつにすると鎖の途中で2本を受け取り、
+固定配線と合わせて3本になってしまう。ランプ段を母線ではなくリセット節点から取ることで `TB_PB.4c` に付く
+訓練者の配線は1本だけになり、実機の制約（赤PBの端子には1本しか足せない。§7.6）とも一致する。
 
 - [ ] **Step 1: 課題⑦ 早押し優先回路を書く**
 
@@ -4534,7 +4548,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
       },
       {
         "id": "r4",
-        "from": { "bus": "P" },
+        "from": { "rung": "r1", "node": 1 },
         "to": { "bus": "N" },
         "cells": [
           { "kind": "cr-a", "id": "c17", "device": "CR1" },
@@ -4543,7 +4557,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
       },
       {
         "id": "r5",
-        "from": { "bus": "P" },
+        "from": { "rung": "r1", "node": 1 },
         "to": { "bus": "N" },
         "cells": [
           { "kind": "cr-a", "id": "c19", "device": "CR2" },
@@ -4552,7 +4566,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
       },
       {
         "id": "r6",
-        "from": { "bus": "P" },
+        "from": { "rung": "r1", "node": 1 },
         "to": { "bus": "N" },
         "cells": [
           { "kind": "cr-a", "id": "c21", "device": "CR3" },
@@ -5117,4 +5131,5 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 | 日付 | 内容 |
 |---|---|
 | 2026-09-14 | 初版 |
+| 2026-09-14 | Plan 1B 再改訂（供給端子は `P.1`/`N.1` の1点ずつ、母線は渡り配線で鎖状に分配）に追随。内蔵課題⑦（`b-007`）のランプ段を P 母線ではなくリセット節点（`PB4` b接点の後）から分岐させ、`TB_PB.4c` に付く訓練者の配線を1本に収めた。`terminalLimit` のテストで使っていた `P.4` / `P.5` は存在しなくなったため実在する端子（`CR2.14` / `T1.14`）に置き換え。盤の端子数が増えて判定1件が数秒かかるようになったので `vitest.config.ts` に `testTimeout: 30_000` を入れた。`WireRoute.channelIds` が空になるケースは content から経路を参照していないため影響なし |
 | 2026-09-14 | Plan 1B 改訂（8ソケット等）に追随。`SocketRolesSchema` を S1〜S8 の `Partial`（`z.strictObject`）に変え、内蔵課題8題の `board.socketRoles` を課題1形式 `{S1..S4, S7:CHK}` ／課題2形式 `{S1,S2,S5:T1,S6:T2,S7:CHK}` に更新。固定配線が青・`locked` になったため `checkWireColorRule()` は `locked` を検査対象外にし、`checkUnusedParts()` は予備ソケットに対応して `socketPartId()` を使うようにした。`judge.ts` の危険操作集計は circuit-sim の `HAZARD_KINDS` を唯一の源にした。在庫の上限をソケット数に合わせて8にした。`ducts` / `routeWire` / `WireRoute` は content から参照していないため影響なし |
