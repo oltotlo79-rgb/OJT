@@ -1192,7 +1192,7 @@ export interface LampDefinition {
 export type BoardEndpoint =
   { kind: 'terminal'; id: TerminalId } | { kind: 'socket'; socket: SocketId; pin: number };
 
-/** 既設の固定電線（チェック用ソケットの黄色配線）。`locked` で訓練者は変更できない。§6.3 */
+/** 既設の固定電線（チェック用ソケットの配線（青））。`locked` で訓練者は変更できない。§6.3 */
 export interface FixedWire {
   id: string;
   from: BoardEndpoint;
@@ -2616,7 +2616,7 @@ describe('session: 装着と配線', () => {
     expect(result.ok).toBe(false);
     if (result.ok) throw new Error('unreachable');
     expect(result.code).toBe('locked-wire');
-    expect(result.message).toBe('チェック用回路の黄色配線は変更できません');
+    expect(result.message).toBe('チェック用回路の既設配線（青）は変更できません');
   });
 
   it('1端子2本まで。既設配線が1本ある端子には1本しか足せない（§6.3 / §6.6）', () => {
@@ -2820,7 +2820,7 @@ export interface BoardSession {
   socketRoles: SocketRoles;
   /** 物理ソケットID → 装着状態。未装着のソケットはキーを持たない。 */
   mounted: Partial<Record<SocketId, MountedPart>>;
-  /** 電線（既設の黄色固定配線を含む。端子IDは circuit-sim の役割ベース）。 */
+  /** 電線（既設の固定配線（青）を含む。端子IDは circuit-sim の役割ベース）。 */
   wires: Wire[];
   /** 選べる線色。モードB・D=青、C2=白（§8.1）。 */
   allowedColors: readonly WireColor[];
@@ -2852,7 +2852,7 @@ export class SessionError extends Error {
 }
 
 /**
- * 盤セッションを作る。既設の黄色固定配線（§6.3）を `locked` な電線として最初から持たせるので、
+ * 盤セッションを作る。既設の固定配線（青）（§6.3）を `locked` な電線として最初から持たせるので、
  * 端子の本数上限（§6.6）の計算がこの配列だけで完結する。
  */
 export function createSession(board: BoardDefinition, options: SessionOptions = {}): BoardSession {
@@ -3033,7 +3033,7 @@ export function removeWire(session: BoardSession, wireId: string): Result<Wire> 
   const wire = session.wires[index];
   if (wire === undefined) return fail('unknown-wire', `電線が見つかりません: ${wireId}`);
   if (wire.locked) {
-    return fail('locked-wire', 'チェック用回路の黄色配線は変更できません');
+    return fail('locked-wire', 'チェック用回路の既設配線（青）は変更できません');
   }
   session.wires.splice(index, 1);
   return ok(wire);
@@ -3253,7 +3253,7 @@ describe('to-netlist: 盤セッション → ネットリスト', () => {
     expect(sim.state().relays['CR1']).toBeUndefined();
   });
 
-  it('チェック用ソケットの黄色配線は赤PBで励磁する回路になっている（§6.3 / §9.1）', () => {
+  it('チェック用ソケットの既設配線（青）は赤PBで励磁する回路になっている（§6.3 / §9.1）', () => {
     const session = createSession(board);
     const plugged = plug(session, 'S7', 'relay-my4n');
     expect(plugged.ok).toBe(true);
@@ -3379,7 +3379,7 @@ function lampBlockPart(): Part {
  * 部品の並び（決定論）: 電源 → P/N供給端子 → 端子台2つ → PB4個 → PL4個 → BZ（任意）→ ソケットS1〜S8。
  * ソケットの部品IDは、役割が割り当てられていれば役割名（`CR1`）、予備ソケットなら物理ID（`S8`）。
  * リンクの並び: P/N供給端子どうし → PB本体↔端子台（12本）→ PL本体↔端子台（8本）。
- * 電線: セッションの並び順のまま（先頭に既設の黄色固定配線3本）。
+ * 電線: セッションの並び順のまま（先頭に既設の固定配線（青）3本）。
  *
  * ブレーカ（`CB`）と電源スイッチ（`SW`）はAC一次側にあり電気的には解かないため、
  * ネットリストには載せない。開閉は `Simulation.setBreaker()` / `setSwitch()` が担う（§5.3.5）。
@@ -5748,8 +5748,8 @@ describe('assign: 回路図 → 物理割当（§11.3）', () => {
     expect(nChain).toHaveLength(1);
   });
 
-  it('チェック用の黄色配線がある端子を渡り配線に使うと上限超過になる（§6.3 / §6.6）', () => {
-    // `TB_PB.4c` には既に黄色配線が1本つながっている。中継点として使うと3本目になる。
+  it('チェック用の既設配線（青）がある端子を渡り配線に使うと上限超過になる（§6.3 / §6.6）', () => {
+    // `TB_PB.4c` には既に既設配線（青）が1本つながっている。中継点として使うと3本目になる。
     const doc = createDocument('x', '端子超過', [
       rung('r1', BUS_P, BUS_N, [pbA('c1', 'PB1'), pbA('c2', 'PB4'), coil('c3', 'CR1')]),
       rung('r2', BUS_P, at('r1', 1), [crA('c4', 'CR1')]),
@@ -5977,7 +5977,7 @@ function isAssignError(value: unknown): value is AssignError {
   return typeof value === 'object' && value !== null && 'message' in value && 'path' in value;
 }
 
-/** 既設の黄色固定配線で既に使われている端子の本数。§6.3 */
+/** 既設の固定配線（青）で既に使われている端子の本数。§6.3 */
 function preUsedCounts(roles: SocketRoles): Map<string, number> {
   const used = new Map<string, number>();
   for (const fw of JIPM_BOARD.fixedWires) {
@@ -6230,7 +6230,7 @@ describe('to-session: 回路図 → 盤セッション → ネットリスト �
   it('割当どおりに装着と配線が入る（§11.3）', () => {
     const session = build(selfHoldDoc());
     expect(session.mounted.S1).toEqual({ kind: 'relay-my4n' });
-    // 既設の黄色配線3本 ＋ 生成した9本
+    // 既設の配線（青）3本 ＋ 生成した9本
     expect(session.wires).toHaveLength(12);
     expect(session.wires.filter((w) => !w.locked)).toHaveLength(9);
     expect(session.allowedColors).toEqual(['青']);
@@ -7169,3 +7169,5 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
   - 既設固定配線の色を**黄から青**に変更（依頼者の実機に合わせる。`locked: true` で既設かどうかを判別する）。
   - **P/N 供給端子を各1本（`P.1` / `N.1`）に確定**し、母線の割当を**渡り配線（鎖状）**に変更した。チェック用の既設配線が `P.1` / `N.1` を各1本使うので、鎖の先頭に出せるのは各1本になる。これに伴い「供給端子が足りません」エラーは無くなり、超過は端子本数エラーとして現れる（Task 4・7・8・13・14）。
   - 同じ列（端子台の1列／ソケットの同じティア）の渡り線が配線帯を大回りしないよう、**列から5mm張り出す短い直角経路**を経路器に追加した（Task 9）。
+
+- **2026-09-14**: 固定配線の文言を青に再統一（P/N 改訂で戻っていた）。実装側は Task 4b/6b で `session.ts` の文言を修正済み。
