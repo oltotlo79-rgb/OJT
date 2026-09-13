@@ -99,3 +99,4 @@ export {
   type HazardKind,
   type SimEvent,
 } from './events.js';
+export { LOG_DECIMALS, roundSignal, SignalLog, type LogEntry, type SignalValue } from './log.js';
