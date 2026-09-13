@@ -136,7 +136,11 @@ export function injectFault(
         throw new FaultError(`レアショートの param は数値である必要があります: ${String(param)}`);
       }
       const ratio = typeof param === 'number' ? param : DEFAULT_LAYER_SHORT_RATIO;
-      if (ratio < MIN_LAYER_SHORT_RATIO || ratio > MAX_LAYER_SHORT_RATIO) {
+      if (
+        !Number.isFinite(ratio) ||
+        ratio < MIN_LAYER_SHORT_RATIO ||
+        ratio > MAX_LAYER_SHORT_RATIO
+      ) {
         throw new FaultError(
           `レアショートの ratio は ${MIN_LAYER_SHORT_RATIO}〜${MAX_LAYER_SHORT_RATIO} です: ${ratio}`,
         );

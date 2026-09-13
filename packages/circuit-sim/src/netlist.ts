@@ -14,7 +14,7 @@ export interface Wire {
   from: TerminalId;
   to: TerminalId;
   color: WireColor;
-  /** チェック用回路の黄色配線など、変更不可の電線。§6.3 */
+  /** チェック用回路の既設配線など、訓練者が変更できない電線。§6.3 */
   locked: boolean;
   /** `wire-open` 故障。true のとき導通しない。§5.4 */
   open: boolean;
@@ -122,7 +122,7 @@ export function removeWire(netlist: Netlist, id: string): boolean {
   if (index < 0) return false;
   const wire = netlist.wires[index];
   if (wire !== undefined && wire.locked) {
-    throw new NetlistError('チェック用回路の黄色配線は変更できません');
+    throw new NetlistError('チェック用回路の既設配線（青）は変更できません');
   }
   netlist.wires.splice(index, 1);
   return true;

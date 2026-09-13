@@ -12,12 +12,14 @@ import {
   canAddWire,
   findElement,
   findPart,
+  findWire,
   NetlistError,
   removeWire as removeWireFromNetlist,
   resetNetlist,
 } from './netlist.js';
 import type { Nets, Netlist, Wire } from './netlist.js';
 import { clampPreset } from './parts.js';
+import type { Part } from './parts.js';
 import { solve, voltageAt } from './solver.js';
 import type { SolveResult } from './solver.js';
 
@@ -85,6 +87,11 @@ export class SimulationError extends Error {
   }
 }
 
+/** ランタイム表から、いま存在しない部品ぶんの項目を捨てる。 */
+function pruneRuntime<T>(map: Map<string, T>, keep: ReadonlySet<string>): void {
+  for (const id of [...map.keys()]) if (!keep.has(id)) map.delete(id);
+}
+
 /**
  * 回路シミュレーション本体。§5.2
  * 1tickの処理順は「解く → 負荷の通電判定 → リレー／タイマ状態機械 → 接点更新 → 保護判定 → ログ記録」。
@@ -103,6 +110,8 @@ export class Simulation {
   private readonly buttons = new Map<string, boolean>();
   private readonly chatterTimes = new Map<string, number[]>();
   private readonly chatterReported = new Map<string, number>();
+  /** `over-wires-per-terminal` を発行済みの端子。その端子の電線が1本減るまで再発行しない。§5.6 #5 */
+  private readonly overWireReported = new Set<TerminalId>();
   private switches: PowerSwitches = { breakerOn: false, switchOn: false };
   private tripped = false;
   private resetStep = 0;
@@ -118,30 +127,124 @@ export class Simulation {
    * （故障〈`fault`〉と `wire.open` は意図的に対象外。§5.4 の責務）。
    */
   constructor(netlist: Netlist, options: SimulationOptions = {}) {
+    const tickMs = options.tickMs ?? TICK_MS;
+    if (!(Number.isFinite(tickMs) && tickMs > 0)) {
+      throw new SimulationError(`tickMs は有限の正の値が必要です: ${String(options.tickMs)}`);
+    }
     this.netlist = netlist;
-    this.tickMs = options.tickMs ?? TICK_MS;
+    this.tickMs = tickMs;
     this.watch = options.watch ?? [];
-    resetNetlist(netlist);
-    for (const part of netlist.parts) {
+    this.reset();
+  }
+
+  /**
+   * 判定開始前（t=0・非通電）の状態に戻す。時刻・ログ・イベント・押ボタン・保護動作と
+   * リレー／タイマ／ランプのランタイム状態を初期化し、`resetNetlist` で部品要素の実行時状態
+   * （接点の `energized`／電源の `enabled`）も戻す。以後は新しい `Simulation` と同じ結果になる。
+   * 故障（`fault`）と `wire.open` は §5.4 の責務なので触らない（取り消すには `clearFaults`）。
+   * 配線（`addWire`）と部品構成（`mountPart`／`unmountPart`）もそのまま残る。
+   */
+  reset(): void {
+    this.log.clear();
+    this.events.clear();
+    this.relays.clear();
+    this.timers.clear();
+    this.lamps.clear();
+    this.buttons.clear();
+    this.chatterTimes.clear();
+    this.chatterReported.clear();
+    this.overWireReported.clear();
+    this.switches = { breakerOn: false, switchOn: false };
+    this.tripped = false;
+    this.resetStep = 0;
+    this.elapsedMs = 0;
+    this.lastSolve = undefined;
+    this.lastSwitchOnMs = undefined;
+    resetNetlist(this.netlist);
+    this.syncRuntimeMaps();
+    this.syncSources();
+  }
+
+  /**
+   * 部品を挿す（エピソード途中でも可）。時刻・ログ・イベントは消さずに、ランタイム表と
+   * 節点だけを組み直す。同じIDの部品（`unmountPart` が残した空きソケット等）があれば
+   * それを置き換え、無ければ末尾に足す。
+   * 挿した部品の接点・電源は解放／非通電に戻すため、コイルが既存の配線ですでに励磁されていても
+   * 新品と同じく次tick以降で動作する（`operateTicks` ぶん遅れて接点が入る）。
+   */
+  mountPart(part: Part): void {
+    for (const el of part.elements) {
+      if (el.kind === 'contact') el.energized = false;
+      else if (el.kind === 'source') el.enabled = false;
+    }
+    const index = this.netlist.parts.findIndex((p) => p.id === part.id);
+    if (index < 0) this.netlist.parts.push(part);
+    else this.netlist.parts.splice(index, 1, part);
+    this.syncRuntimeMaps();
+    this.syncSources();
+  }
+
+  /**
+   * 部品を抜く。抜いた部品を返す（その部品が無ければ undefined）。時刻・ログ・イベントは消さない。
+   * 端子は要素を持たない `terminal-block`（空きソケット）として残すので、その端子に張った電線は
+   * そのまま残り、配線をやり直さずに `mountPart` で挿し直せる。§6.4
+   */
+  unmountPart(partId: string): Part | undefined {
+    const index = this.netlist.parts.findIndex((p) => p.id === partId);
+    const part = index < 0 ? undefined : this.netlist.parts[index];
+    if (part === undefined) return undefined;
+    this.netlist.parts.splice(index, 1, {
+      id: part.id,
+      kind: 'terminal-block',
+      terminals: [...part.terminals],
+      elements: [],
+      meta: { kind: 'terminal-block' },
+    });
+    this.syncRuntimeMaps();
+    return part;
+  }
+
+  /**
+   * 部品構成にあわせてランタイム表（リレー／タイマ／ランプ／押ボタン）を組み直す。
+   * 残っている部品の状態はそのまま保ち、増えた部品には初期状態を与え、消えた部品ぶんは捨てる。
+   */
+  private syncRuntimeMaps(): void {
+    const relayIds = new Set<string>();
+    const timerIds = new Set<string>();
+    const lampIds = new Set<string>();
+    const buttonIds = new Set<string>();
+    for (const part of this.netlist.parts) {
       const id: string = part.id;
-      if (part.meta.kind === 'relay-my4n') {
-        this.relays.set(id, { coilVolts: 0, coilOn: false, contactsOn: false, pendingTicks: 0 });
-      } else if (part.meta.kind === 'timer-h3y4') {
-        this.timers.set(id, {
-          coilVolts: 0,
-          powered: false,
-          elapsedMs: 0,
-          offMs: part.meta.resetGapMs,
-          timedOut: false,
-          presetMs: part.meta.presetMs,
-        });
-      } else if (part.meta.kind === 'lamp' || part.meta.kind === 'buzzer') {
-        this.lamps.set(id, { volts: 0, level: 'off' });
-      } else if (part.meta.kind === 'pushbutton') {
-        this.buttons.set(id, false);
+      const meta = part.meta;
+      if (meta.kind === 'relay-my4n') {
+        relayIds.add(id);
+        if (!this.relays.has(id)) {
+          this.relays.set(id, { coilVolts: 0, coilOn: false, contactsOn: false, pendingTicks: 0 });
+        }
+      } else if (meta.kind === 'timer-h3y4') {
+        timerIds.add(id);
+        if (!this.timers.has(id)) {
+          this.timers.set(id, {
+            coilVolts: 0,
+            powered: false,
+            elapsedMs: 0,
+            offMs: meta.resetGapMs,
+            timedOut: false,
+            presetMs: meta.presetMs,
+          });
+        }
+      } else if (meta.kind === 'lamp' || meta.kind === 'buzzer') {
+        lampIds.add(id);
+        if (!this.lamps.has(id)) this.lamps.set(id, { volts: 0, level: 'off' });
+      } else if (meta.kind === 'pushbutton') {
+        buttonIds.add(id);
+        if (!this.buttons.has(id)) this.buttons.set(id, false);
       }
     }
-    this.syncSources();
+    pruneRuntime(this.relays, relayIds);
+    pruneRuntime(this.timers, timerIds);
+    pruneRuntime(this.lamps, lampIds);
+    pruneRuntime(this.buttons, buttonIds);
   }
 
   /** 現在時刻[ms]（判定開始からの経過）。 */
@@ -192,29 +295,47 @@ export class Simulation {
 
   /**
    * 電線を張る。どちらかの端子が本数上限（1端子2本）に達していれば `over-wires-per-terminal` を
-   * 1回だけ発行し、電線は追加せず false を返す（両端が上限でもハザードは1件のみ）。
+   * 発行し、電線は追加せず false を返す（両端が上限でもハザードは1件のみ）。
    * 追加できたら true を返す。電線IDが重複していれば `SimulationError`。§6.6
+   *
+   * 重複発行の方針（§5.6 #5）: 同じ満杯の端子に何度挑んでもハザードは1件しか出ない。
+   * 発行済みの端子は記録しておき、`removeWire` でその端子の電線が1本外れて空きができた時点で
+   * 記録を消す。したがって「満杯 → 拒否 → 1本外す → また満杯にする → 拒否」で2件目が出る。
+   * （`ohm-on-live` も同じ考え方で、`meter.ts` がプローブ配置ごとに1件だけ発行する。）
    */
   addWire(wire: Wire): boolean {
     const overLimit = [wire.from, wire.to].filter(
       (terminal) => !canAddWire(this.netlist, terminal),
     );
     if (overLimit.length > 0) {
-      this.events.emit({
-        type: 'hazard',
-        kind: 'over-wires-per-terminal',
-        tMs: this.tMs,
-        detail: overLimit.join(','),
-      });
+      const unreported = overLimit.filter((terminal) => !this.overWireReported.has(terminal));
+      if (unreported.length > 0) {
+        for (const terminal of unreported) this.overWireReported.add(terminal);
+        this.events.emit({
+          type: 'hazard',
+          kind: 'over-wires-per-terminal',
+          tMs: this.tMs,
+          detail: overLimit.join(','),
+        });
+      }
       return false;
     }
     this.rethrowNetlistErrors(() => addWireToNetlist(this.netlist, wire));
     return true;
   }
 
-  /** 電線を外す。ロックされた電線を外そうとすると `SimulationError`。 */
+  /**
+   * 電線を外す。ロックされた電線を外そうとすると `SimulationError`。
+   * 外せた電線の両端は空きができるので、`over-wires-per-terminal` の発行済み記録から外す。
+   */
   removeWire(id: WireId | string): boolean {
-    return this.rethrowNetlistErrors(() => removeWireFromNetlist(this.netlist, id));
+    const wire = findWire(this.netlist, id);
+    const removed = this.rethrowNetlistErrors(() => removeWireFromNetlist(this.netlist, id));
+    if (removed && wire !== undefined) {
+      this.overWireReported.delete(wire.from);
+      this.overWireReported.delete(wire.to);
+    }
+    return removed;
   }
 
   /** `netlist.ts` の操作を実行し、`NetlistError` を `SimulationError` に変換して投げ直す（このクラスのエラー型を統一する）。 */
@@ -227,21 +348,26 @@ export class Simulation {
     }
   }
 
-  /** 1tick進める。 */
+  /**
+   * 1tick進める。節点数上限の超過や未知の端子など、内部で起きた `NetlistError` は
+   * メッセージをそのままに `SimulationError` へ包み直して投げる（このクラスのエラー型を統一する）。
+   */
   step(dtMs: number = this.tickMs): void {
-    this.syncSources();
-    const nets = buildNets(this.netlist);
-    const solved = solve(this.netlist, nets);
-    this.lastSolve = solved;
-    this.updateLoads(solved);
-    this.updateRelays(solved);
-    this.updateTimers(solved, dtMs);
-    this.applyContacts();
-    this.updateProtection(solved);
-    const values = this.snapshot(solved, nets);
-    const changed = this.log.record(this.tMs, values);
-    this.detectChatter(changed, values);
-    this.elapsedMs += dtMs;
+    this.rethrowNetlistErrors(() => {
+      this.syncSources();
+      const nets = buildNets(this.netlist);
+      const solved = solve(this.netlist, nets);
+      this.lastSolve = solved;
+      this.updateLoads(solved);
+      this.updateRelays(solved);
+      this.updateTimers(solved, dtMs);
+      this.applyContacts();
+      this.updateProtection(solved);
+      const values = this.snapshot(solved, nets);
+      const changed = this.log.record(this.tMs, values);
+      this.detectChatter(changed, values);
+      this.elapsedMs += dtMs;
+    });
   }
 
   /** 指定時刻に達するまで進める。 */
@@ -270,7 +396,8 @@ export class Simulation {
       relays,
       timers,
       lamps,
-      nodeVoltages: this.lastSolve?.nodeVoltages ?? [],
+      // 内部配列を渡すと呼び出し側から書き換えられてしまうので、必ずコピーを返す。
+      nodeVoltages: Array.from(this.lastSolve?.nodeVoltages ?? []),
     };
   }
 

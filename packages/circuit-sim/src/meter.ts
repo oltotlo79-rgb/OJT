@@ -32,8 +32,11 @@ export interface OhmReading {
   /** 等価抵抗[Ω]。測定不能・オーバーレンジのときは Infinity。 */
   ohms: number;
   /**
-   * OLクランプ前の生の等価抵抗値[Ω]。孤立ノード（開放）は Infinity、
-   * 活線で測定を拒否したときは NaN。
+   * OLクランプ前の生の等価抵抗値[Ω]。
+   * 孤立した端子対（どこにもつながっていない）でも Infinity にはならない：全節点に入れてある
+   * 数値安定化用の対地漏れコンダクタンス（`LEAK_SIEMENS`＝1nS）を通って電流が回るため、
+   * 1/(k×1nS)（k は小さな整数）＝数百MΩ程度の有限の大きな値になる。10MΩ超なので
+   * `overRange` が立ち、表示は `OL` になる。活線で測定を拒否したときは NaN。
    */
   rawOhms: number;
   /** オーバーレンジ（10MΩ超）または活線で測れなかった。 */
@@ -113,6 +116,8 @@ export function equivalentResistance(netlist: Netlist, t1: TerminalId, t2: Termi
     const result = solve(netlist, nets, { reference: t2 });
     const volts = result.elementVolts.get(probeSource.id) ?? 0;
     const amps = result.elementAmps.get(probeSource.id) ?? 0;
+    // 完全な無電流は実際には起きない（対地漏れ 1nS ぶんの電流が必ず流れるので、孤立した
+    // 端子対でも数百MΩ相当の有限値になり OL として表示される）。ゼロ除算に対する保険。
     if (Math.abs(amps) < 1e-15) return Number.POSITIVE_INFINITY;
     return Math.abs(volts / amps);
   } finally {
