@@ -19,10 +19,11 @@ export class IdError extends Error {
   }
 }
 
-/** 文字列を PartId にする。空文字と `.` を含む文字列は拒否する。 */
+/** 文字列を PartId にする。空文字、`.` を含む文字列、`:`（要素IDの区切り文字）を含む文字列は拒否する。 */
 export function partId(raw: string): PartId {
   if (raw.length === 0) throw new IdError('部品IDが空です');
   if (raw.includes('.')) throw new IdError(`部品IDに "." は使えません: ${raw}`);
+  if (raw.includes(':')) throw new IdError(`部品IDに ":" は使えません: ${raw}`);
   return raw as PartId;
 }
 
@@ -49,4 +50,10 @@ export function parseTerminalId(id: TerminalId | string): { part: PartId; name: 
 /** 端子IDが属する部品IDを返す。 */
 export function terminalOwner(id: TerminalId): PartId {
   return parseTerminalId(id).part;
+}
+
+/** 素の文字列を検証して TerminalId にする。`parseTerminalId` で形式を検証し、不正なら IdError。 */
+export function toTerminalId(raw: string): TerminalId {
+  parseTerminalId(raw);
+  return raw as TerminalId;
 }

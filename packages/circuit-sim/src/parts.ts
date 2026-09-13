@@ -155,9 +155,17 @@ export function createRelay4c(id: PartId | string): Part {
   };
 }
 
-/** タイマ設定値を [100ms, レンジ上限] に収める。§5.3.2 */
+/**
+ * タイマ設定値を [100ms, レンジ上限] に収める。§5.3.2
+ * レンジ上限が下限（100ms）未満のときは 100ms を下限として扱う。
+ * `presetMs` / `rangeMaxMs` が有限数でない場合は RangeError。
+ */
 export function clampPreset(presetMs: number, rangeMaxMs: number): number {
-  return Math.min(Math.max(presetMs, TIMER_MIN_PRESET_MS), rangeMaxMs);
+  if (!Number.isFinite(presetMs) || !Number.isFinite(rangeMaxMs)) {
+    throw new RangeError('timer preset and range must be finite numbers');
+  }
+  const effectiveRange = Math.max(rangeMaxMs, TIMER_MIN_PRESET_MS);
+  return Math.min(Math.max(presetMs, TIMER_MIN_PRESET_MS), effectiveRange);
 }
 
 /** H3Y-4相当のパワーオンディレータイマ（限時接点4c、瞬時接点なし）を作る。§5.3.2 */

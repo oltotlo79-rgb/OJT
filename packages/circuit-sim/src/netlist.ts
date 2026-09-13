@@ -47,13 +47,36 @@ export function createWire(
   return { id: wireId(id), from, to, color, locked, open: false };
 }
 
-/** ネットリストを作る。 */
+/** ネットリストを作る。渡された配列はコピーされるため、呼び出し元がその後配列を変更してもネットリストには影響しない。 */
 export function createNetlist(
   parts: Part[] = [],
   wires: Wire[] = [],
   links: LinkElement[] = [],
 ): Netlist {
-  return { parts, wires, links };
+  return { parts: [...parts], wires: [...wires], links: [...links] };
+}
+
+/**
+ * ネットリストを深く複製する。要素の実行時状態（`energized` / `enabled` 等）・故障（`fault`）・
+ * 電線（`open` を含む）はすべて複製され、複製後は元のネットリストと完全に独立する。
+ * データはすべてプレーンなオブジェクト・配列・プリミティブなので `structuredClone` で複製できる。
+ */
+export function cloneNetlist(netlist: Netlist): Netlist {
+  return structuredClone(netlist);
+}
+
+/**
+ * ランタイム状態のみをリセットする。
+ * - 接点（contact）: `energized` を false に戻す。
+ * - 電源（source）: `enabled` を `createPowerSupply` の初期値（false）に戻す。
+ * `fault`（接点・負荷の故障）と `wire.open`（断線）はここでは変更しない。
+ * 故障のクリアは別タスクの `clearFaults` が担う。
+ */
+export function resetNetlist(netlist: Netlist): void {
+  for (const el of allElements(netlist)) {
+    if (el.kind === 'contact') el.energized = false;
+    else if (el.kind === 'source') el.enabled = false;
+  }
 }
 
 /** 全部品の全要素を順に返す。並び順は parts の並び順・elements の並び順で決まる（決定論）。 */
@@ -115,6 +138,76 @@ export function wireCountAt(netlist: Netlist, terminal: TerminalId): number {
 /** その端子が本数上限（2本）を超えているか。§6.6 */
 export function exceedsWireLimit(netlist: Netlist, terminal: TerminalId): boolean {
   return wireCountAt(netlist, terminal) > MAX_WIRES_PER_TERMINAL;
+}
+
+/** その端子にこれ以上電線を追加できるか（本数上限未満）。§6.6 */
+export function canAddWire(netlist: Netlist, terminal: TerminalId): boolean {
+  return wireCountAt(netlist, terminal) < MAX_WIRES_PER_TERMINAL;
+}
+
+/** `validateNetlist` が報告する個々の問題。 */
+export interface NetlistIssue {
+  kind: 'unknown-terminal' | 'duplicate-wire-id' | 'self-loop-wire';
+  wireId?: string;
+  terminal?: string;
+  message: string;
+}
+
+/**
+ * ネットリストの整合性を検査する。例外は投げない。検査順序は決定論的。
+ * (a) 電線→リンクの順（それぞれ配列順）に、`from`/`to` が全部品の端子集合に存在するか
+ * (b) 電線IDの重複（2件目以降を報告）
+ * (c) `from === to` の自己ループ電線
+ */
+export function validateNetlist(netlist: Netlist): NetlistIssue[] {
+  const issues: NetlistIssue[] = [];
+
+  const knownTerminals = new Set<TerminalId>();
+  for (const part of netlist.parts) {
+    for (const terminal of part.terminals) knownTerminals.add(terminal);
+  }
+  const checkTerminal = (ownerId: string, terminal: TerminalId): void => {
+    if (knownTerminals.has(terminal)) return;
+    issues.push({
+      kind: 'unknown-terminal',
+      wireId: ownerId,
+      terminal,
+      message: `電線 ${ownerId} の端子 ${terminal} はどの部品にも存在しません`,
+    });
+  };
+  for (const wire of netlist.wires) {
+    checkTerminal(wire.id, wire.from);
+    checkTerminal(wire.id, wire.to);
+  }
+  for (const link of netlist.links) {
+    checkTerminal(link.id, link.from);
+    checkTerminal(link.id, link.to);
+  }
+
+  const seenWireIds = new Set<WireId>();
+  for (const wire of netlist.wires) {
+    if (seenWireIds.has(wire.id)) {
+      issues.push({
+        kind: 'duplicate-wire-id',
+        wireId: wire.id,
+        message: `電線ID ${wire.id} が重複しています`,
+      });
+    } else {
+      seenWireIds.add(wire.id);
+    }
+  }
+
+  for (const wire of netlist.wires) {
+    if (wire.from === wire.to) {
+      issues.push({
+        kind: 'self-loop-wire',
+        wireId: wire.id,
+        message: `電線 ${wire.id} の両端が同じ端子です（自己ループ）: ${wire.from}`,
+      });
+    }
+  }
+
+  return issues;
 }
 
 /** 端子から節点への写像。 */
