@@ -3,16 +3,20 @@ import {
   applyPowerAction,
   buildNets,
   CLOSED_CONTACT_OHMS,
+  createLamp,
   createPowerSupply,
   createPushButton,
   createRelay4c,
   createTimer4c,
+  createWire,
   EventBus,
   FaultError,
+  findWire,
   injectFault,
   NetlistError,
   partId,
   SignalLog,
+  Simulation,
   SimulationError,
   solve,
   SOURCE_INTERNAL_OHMS,
@@ -21,7 +25,7 @@ import {
   voltageAt,
 } from '../src/index.js';
 import type { Netlist, Part, SignalValue, SimEvent } from '../src/index.js';
-import { bench, net, t, w } from './helpers/circuits.js';
+import { bench, net, powerOn, t, w } from './helpers/circuits.js';
 
 function energize(netlist: Netlist, on: boolean): void {
   for (const part of netlist.parts) {
@@ -249,5 +253,207 @@ describe('robustness: contact-resistive の抵抗値検証', () => {
     expect(() =>
       injectFault(netlist, { partId: 'PB1', elementIndex: 0 }, 'contact-resistive', 500),
     ).not.toThrow();
+  });
+});
+
+describe('robustness: Simulation.addWire の上限超過時の挙動（§6.6 / Task8e #1）', () => {
+  it('3本目の電線は追加されず false を返し、ハザードは1件だけ発行される', () => {
+    const sim = bench(
+      [createPowerSupply('PS'), createLamp('PL1', '白'), createLamp('PL2', '白')],
+      [],
+    );
+    expect(sim.addWire(w('w1', 'PS.+', 'PL1.+'))).toBe(true);
+    expect(sim.addWire(w('w2', 'PS.+', 'PL2.+'))).toBe(true);
+
+    const added = sim.addWire(w('w3', 'PS.+', 'PL1.-'));
+
+    expect(added).toBe(false);
+    expect(sim.events.countOf('over-wires-per-terminal')).toBe(1);
+    expect(sim.netlist.wires.length).toBe(2);
+  });
+
+  it('両端がすでに上限のとき電線を追加しようとしても、ハザードは1件だけ発行される', () => {
+    const sim = bench(
+      [createPowerSupply('PS'), createLamp('PL1', '白'), createLamp('PL2', '白')],
+      [],
+    );
+    sim.addWire(w('w1', 'PS.+', 'PL1.+'));
+    sim.addWire(w('w2', 'PS.+', 'PL2.+'));
+    sim.addWire(w('w3', 'PS.-', 'PL1.-'));
+    sim.addWire(w('w4', 'PS.-', 'PL2.-'));
+    expect(sim.netlist.wires.length).toBe(4);
+
+    const added = sim.addWire(w('w5', 'PS.+', 'PS.-'));
+
+    expect(added).toBe(false);
+    expect(sim.events.countOf('over-wires-per-terminal')).toBe(1);
+    expect(sim.netlist.wires.length).toBe(4);
+  });
+
+  it('電線IDの重複は SimulationError（NetlistError からの変換）', () => {
+    const sim = bench([createPowerSupply('PS'), createLamp('PL1', '白')], []);
+    expect(sim.addWire(w('w1', 'PS.+', 'PL1.+'))).toBe(true);
+    expect(() => sim.addWire(w('w1', 'PS.-', 'PL1.-'))).toThrow(SimulationError);
+  });
+
+  it('ロックされた電線の removeWire は SimulationError（NetlistError からの変換）', () => {
+    const sim = bench([createPowerSupply('PS'), createLamp('PL1', '白')], []);
+    expect(sim.addWire(createWire('y1', t('PS.+'), t('PL1.+'), '黄', true))).toBe(true);
+    expect(() => sim.removeWire('y1')).toThrow(SimulationError);
+  });
+});
+
+describe('robustness: wire-misrouted の付け替え先端子の検証（Task8e #2）', () => {
+  function misroutedFixture(): Netlist {
+    return net(
+      [createPowerSupply('PS'), createPushButton('PB1'), createRelay4c('CR1')],
+      [w('w1', 'PS.+', 'PB1.c'), w('w2', 'PB1.a', 'CR1.14'), w('w3', 'CR1.13', 'PS.-')],
+    );
+  }
+
+  it('未知の端子への付け替えは FaultError', () => {
+    const netlist = misroutedFixture();
+    expect(() =>
+      injectFault(netlist, { wireId: 'w2' }, 'wire-misrouted', terminalId('ZZ', '1')),
+    ).toThrow(FaultError);
+  });
+
+  it('既知の端子への付け替えは通る', () => {
+    const netlist = misroutedFixture();
+    injectFault(netlist, { wireId: 'w2' }, 'wire-misrouted', terminalId('CR1', '9'));
+    expect(findWire(netlist, 'w2')?.to).toBe('CR1.9');
+  });
+});
+
+describe('robustness: 数値faultへの非数値paramの拒否（Task8e #3）', () => {
+  it('contact-resistive に非数値の param を渡すと FaultError', () => {
+    const netlist = net([createPushButton('PB1')], []);
+    expect(() =>
+      injectFault(
+        netlist,
+        { partId: 'PB1', elementIndex: 0 },
+        'contact-resistive',
+        terminalId('PB1', 'a'),
+      ),
+    ).toThrow(FaultError);
+  });
+
+  it('coil-layer-short に非数値の param を渡すと FaultError', () => {
+    const netlist = net([createRelay4c('CR1')], []);
+    expect(() =>
+      injectFault(
+        netlist,
+        { partId: 'CR1', elementIndex: 0 },
+        'coil-layer-short',
+        terminalId('CR1', '9'),
+      ),
+    ).toThrow(FaultError);
+  });
+});
+
+describe('robustness: チャタリング閾値は20回/秒（Task8e #4）', () => {
+  it('100ms周期（10回/秒）のフリッカはチャタリングとして検出されない', () => {
+    const sim = bench([createPowerSupply('PS'), createPushButton('PB1')], []);
+    let pressed = false;
+    for (let target = 100; target <= 2000; target += 100) {
+      pressed = !pressed;
+      if (pressed) sim.press('PB1');
+      else sim.release('PB1');
+      sim.run(target);
+    }
+    expect(sim.events.chatters('PB1')).toHaveLength(0);
+  });
+
+  it('10ms周期（100回/秒）の反転はチャタリングとして検出される', () => {
+    const sim = bench([createPowerSupply('PS'), createPushButton('PB1')], []);
+    let pressed = false;
+    for (let i = 0; i < 200; i += 1) {
+      pressed = !pressed;
+      if (pressed) sim.press('PB1');
+      else sim.release('PB1');
+      sim.step();
+    }
+    expect(sim.events.chatters('PB1').length).toBeGreaterThan(0);
+  });
+});
+
+describe('robustness: Simulation コンストラクタによるネットリストのリセット（Task8e #5）', () => {
+  function selfHoldParts(): Part[] {
+    return [createPowerSupply('PS'), createPushButton('PB1'), createRelay4c('CR1')];
+  }
+  // PB1 の a接点と CR1 自身の a接点（COM9-NO5）を並列にして自己保持させる。
+  function selfHoldWires() {
+    return [
+      w('w1', 'PS.+', 'PB1.c'),
+      w('w2', 'PB1.a', 'CR1.14'),
+      w('w3', 'CR1.5', 'CR1.14'),
+      w('w4', 'PS.+', 'CR1.9'),
+      w('w5', 'CR1.13', 'PS.-'),
+    ];
+  }
+
+  it('ラッチ済みネットリストで新しい Simulation を作ると最初の state() は解放・非通電', () => {
+    const sim1 = bench(selfHoldParts(), selfHoldWires());
+    powerOn(sim1);
+    sim1.press('PB1');
+    sim1.run(50);
+    sim1.release('PB1');
+    sim1.run(100);
+    expect(sim1.state().relays['CR1']?.contactsOn).toBe(true); // 自己保持でラッチ済み
+
+    const sim2 = new Simulation(sim1.netlist);
+    const initial = sim2.state();
+
+    expect(initial.relays['CR1']?.contactsOn).toBe(false);
+    expect(initial.powered).toBe(false);
+  });
+
+  it('リセットにより、ボタンを押さずに投入しても以前のラッチを引き継がない', () => {
+    const sim1 = bench(selfHoldParts(), selfHoldWires());
+    powerOn(sim1);
+    sim1.press('PB1');
+    sim1.run(50);
+    sim1.release('PB1');
+    sim1.run(100);
+
+    const sim2 = new Simulation(sim1.netlist);
+    powerOn(sim2); // PB1 は押さない
+    sim2.run(50);
+
+    expect(sim2.state().relays['CR1']?.contactsOn).toBe(false);
+  });
+});
+
+describe('robustness: overcurrent と short-circuit-power-on の切り分け（Task8e #6）', () => {
+  it('通電直後から短絡している回路は short-circuit-power-on（overcurrentは0）', () => {
+    const sim = bench([createPowerSupply('PS')], [w('w1', 'PS.+', 'PS.-')]);
+    powerOn(sim);
+    sim.run(50);
+
+    expect(sim.state().tripped).toBe(true);
+    expect(sim.events.countOf('short-circuit-power-on')).toBe(1);
+    expect(sim.events.countOf('overcurrent')).toBe(0);
+  });
+
+  it('稼働中にボタン操作で短絡が発生したときは overcurrent（short-circuit-power-onは0）', () => {
+    const sim = bench(
+      [createPowerSupply('PS'), createPushButton('PB1'), createLamp('PL1', '白')],
+      [
+        w('w1', 'PS.+', 'PL1.+'),
+        w('w2', 'PL1.-', 'PS.-'),
+        w('w3', 'PS.+', 'PB1.c'),
+        w('w4', 'PB1.a', 'PS.-'),
+      ],
+    );
+    powerOn(sim);
+    sim.run(500);
+    expect(sim.state().tripped).toBe(false);
+
+    sim.press('PB1'); // PB1.a が PS.+ と PS.- を直結し短絡させる
+    sim.run(550);
+
+    expect(sim.state().tripped).toBe(true);
+    expect(sim.events.countOf('overcurrent')).toBe(1);
+    expect(sim.events.countOf('short-circuit-power-on')).toBe(0);
   });
 });

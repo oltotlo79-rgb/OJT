@@ -6,7 +6,7 @@ import {
 } from './elements.js';
 import type { ContactElement, Element, LoadElement } from './elements.js';
 import type { TerminalId } from './ids.js';
-import { findPart, findWire } from './netlist.js';
+import { findPart, findWire, knownTerminals } from './netlist.js';
 import type { Netlist } from './netlist.js';
 
 /** 故障の種別。§5.4 */
@@ -99,6 +99,9 @@ export function injectFault(
         if (typeof param !== 'string') {
           throw new FaultError('wire-misrouted には付け替え先の端子IDが必要です');
         }
+        if (!knownTerminals(netlist).has(param)) {
+          throw new FaultError(`誤配線先の端子 ${param} はどの部品にも存在しません`);
+        }
         wire.to = param;
       }
       return;
@@ -114,6 +117,9 @@ export function injectFault(
       return;
     }
     case 'contact-resistive': {
+      if (param !== undefined && typeof param !== 'number') {
+        throw new FaultError(`接触抵抗の param は数値である必要があります: ${String(param)}`);
+      }
       const ohms = typeof param === 'number' ? param : DEFAULT_CONTACT_RESISTIVE_OHMS;
       if (!(Number.isFinite(ohms) && ohms > 0)) {
         throw new FaultError(`接触抵抗は有限の正の値が必要です: ${String(param)}`);
@@ -126,6 +132,9 @@ export function injectFault(
       return;
     }
     case 'coil-layer-short': {
+      if (param !== undefined && typeof param !== 'number') {
+        throw new FaultError(`レアショートの param は数値である必要があります: ${String(param)}`);
+      }
       const ratio = typeof param === 'number' ? param : DEFAULT_LAYER_SHORT_RATIO;
       if (ratio < MIN_LAYER_SHORT_RATIO || ratio > MAX_LAYER_SHORT_RATIO) {
         throw new FaultError(

@@ -148,6 +148,15 @@ export function canAddWire(netlist: Netlist, terminal: TerminalId): boolean {
   return wireCountAt(netlist, terminal) < MAX_WIRES_PER_TERMINAL;
 }
 
+/** ネットリストに存在する全端子の集合（全部品の `terminals` の和集合）。`validateNetlist` と故障注入の両方で使う。 */
+export function knownTerminals(netlist: Netlist): Set<TerminalId> {
+  const known = new Set<TerminalId>();
+  for (const part of netlist.parts) {
+    for (const terminal of part.terminals) known.add(terminal);
+  }
+  return known;
+}
+
 /** `validateNetlist` が報告する個々の問題。 */
 export interface NetlistIssue {
   kind: 'unknown-terminal' | 'duplicate-wire-id' | 'self-loop-wire';
@@ -167,16 +176,13 @@ export interface NetlistIssue {
 export function validateNetlist(netlist: Netlist): NetlistIssue[] {
   const issues: NetlistIssue[] = [];
 
-  const knownTerminals = new Set<TerminalId>();
-  for (const part of netlist.parts) {
-    for (const terminal of part.terminals) knownTerminals.add(terminal);
-  }
+  const known = knownTerminals(netlist);
   const checkTerminal = (
     ownerKind: 'wire' | 'link',
     ownerId: string,
     terminal: TerminalId,
   ): void => {
-    if (knownTerminals.has(terminal)) return;
+    if (known.has(terminal)) return;
     const label = ownerKind === 'wire' ? '電線' : 'リンク';
     issues.push({
       kind: 'unknown-terminal',

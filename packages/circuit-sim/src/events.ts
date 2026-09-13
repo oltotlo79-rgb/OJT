@@ -1,7 +1,11 @@
 /** チャタリング判定の窓[ms]。§5.3.2 */
 export const CHATTER_WINDOW_MS = 1000;
-/** チャタリング判定の遷移回数しきい値（この回数以上でチャタリング）。§5.3.2 */
-export const CHATTER_MIN_TRANSITIONS = 10;
+/**
+ * チャタリング判定の遷移回数しきい値（この回数以上でチャタリング）。§5.3.2
+ * 1秒間に20回以上の反転をチャタリングとみなす。最短の正規フリッカ（各タイマ休止100ms、周期200ms）は
+ * 10回/秒なので2倍の余裕を取る。禁則回路は100回/秒で反転する。
+ */
+export const CHATTER_MIN_TRANSITIONS = 20;
 
 /** 危険操作・保護動作の種別。§5.6 */
 export type HazardKind =
@@ -14,7 +18,9 @@ export type HazardKind =
   /** 電源ON/OFFの手順違反。§5.6 #4 */
   | 'power-sequence-violation'
   /** 1端子に上限（2本）を超えて接続した。§5.6 #5 */
-  | 'over-wires-per-terminal';
+  | 'over-wires-per-terminal'
+  /** 運転中の過電流で保護動作。 */
+  | 'overcurrent';
 
 /** 危険操作イベント。§5.6 */
 export interface HazardEvent {

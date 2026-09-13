@@ -3,9 +3,9 @@ import { CHATTER_MIN_TRANSITIONS, CHATTER_WINDOW_MS, EventBus } from '../src/ind
 import type { SimEvent } from '../src/index.js';
 
 describe('events', () => {
-  it('しきい値は1秒窓・10回（§5.3.2）', () => {
+  it('しきい値は1秒窓・20回（§5.3.2）', () => {
     expect(CHATTER_WINDOW_MS).toBe(1000);
-    expect(CHATTER_MIN_TRANSITIONS).toBe(10);
+    expect(CHATTER_MIN_TRANSITIONS).toBe(20);
   });
 
   it('購読・解除・記録', () => {

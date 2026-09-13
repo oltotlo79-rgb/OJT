@@ -78,6 +78,7 @@ export {
   findElement,
   findPart,
   findWire,
+  knownTerminals,
   MAX_WIRES_PER_TERMINAL,
   NetlistError,
   removeWire,

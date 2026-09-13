@@ -9,10 +9,12 @@ import type { SignalValue } from './log.js';
 import {
   addWire as addWireToNetlist,
   buildNets,
-  exceedsWireLimit,
+  canAddWire,
   findElement,
   findPart,
+  NetlistError,
   removeWire as removeWireFromNetlist,
+  resetNetlist,
 } from './netlist.js';
 import type { Nets, Netlist, Wire } from './netlist.js';
 import { clampPreset } from './parts.js';
@@ -106,11 +108,20 @@ export class Simulation {
   private resetStep = 0;
   private elapsedMs = 0;
   private lastSolve: SolveResult | undefined;
+  /** 直近に電源スイッチが正常にONへ操作された時刻[ms]。過電流の種別判定に使う。§5.6 #3/#6 */
+  private lastSwitchOnMs: number | undefined;
 
+  /**
+   * ネットリストを受け取り、部品の実行時状態（接点の `energized` ／電源の `enabled`）を
+   * `resetNetlist` でリセットしてから内部状態を組み立てる。これにより、他の `Simulation` が
+   * 同じネットリストを操作した後でも、新しいインスタンスは解放・非通電の状態から始まる
+   * （故障〈`fault`〉と `wire.open` は意図的に対象外。§5.4 の責務）。
+   */
   constructor(netlist: Netlist, options: SimulationOptions = {}) {
     this.netlist = netlist;
     this.tickMs = options.tickMs ?? TICK_MS;
     this.watch = options.watch ?? [];
+    resetNetlist(netlist);
     for (const part of netlist.parts) {
       const id: string = part.id;
       if (part.meta.kind === 'relay-my4n') {
@@ -179,24 +190,41 @@ export class Simulation {
     if (runtime !== undefined) runtime.presetMs = clamped;
   }
 
-  /** 電線を張る。上限（1端子2本）を超えたら `over-wires-per-terminal` を発行するが接続は保持する。§6.6 */
-  addWire(wire: Wire): void {
-    addWireToNetlist(this.netlist, wire);
-    for (const terminal of [wire.from, wire.to]) {
-      if (exceedsWireLimit(this.netlist, terminal)) {
-        this.events.emit({
-          type: 'hazard',
-          kind: 'over-wires-per-terminal',
-          tMs: this.tMs,
-          detail: terminal,
-        });
-      }
+  /**
+   * 電線を張る。どちらかの端子が本数上限（1端子2本）に達していれば `over-wires-per-terminal` を
+   * 1回だけ発行し、電線は追加せず false を返す（両端が上限でもハザードは1件のみ）。
+   * 追加できたら true を返す。電線IDが重複していれば `SimulationError`。§6.6
+   */
+  addWire(wire: Wire): boolean {
+    const overLimit = [wire.from, wire.to].filter(
+      (terminal) => !canAddWire(this.netlist, terminal),
+    );
+    if (overLimit.length > 0) {
+      this.events.emit({
+        type: 'hazard',
+        kind: 'over-wires-per-terminal',
+        tMs: this.tMs,
+        detail: overLimit.join(','),
+      });
+      return false;
     }
+    this.rethrowNetlistErrors(() => addWireToNetlist(this.netlist, wire));
+    return true;
   }
 
-  /** 電線を外す。 */
+  /** 電線を外す。ロックされた電線を外そうとすると `SimulationError`。 */
   removeWire(id: WireId | string): boolean {
-    return removeWireFromNetlist(this.netlist, id);
+    return this.rethrowNetlistErrors(() => removeWireFromNetlist(this.netlist, id));
+  }
+
+  /** `netlist.ts` の操作を実行し、`NetlistError` を `SimulationError` に変換して投げ直す（このクラスのエラー型を統一する）。 */
+  private rethrowNetlistErrors<T>(fn: () => T): T {
+    try {
+      return fn();
+    } catch (err) {
+      if (err instanceof NetlistError) throw new SimulationError(err.message);
+      throw err;
+    }
   }
 
   /** 1tick進める。 */
@@ -260,6 +288,7 @@ export class Simulation {
     if (current === on) return;
     const result = applyPowerAction(this.switches, device, on);
     this.switches = result.switches;
+    if (device === 'switch' && on) this.lastSwitchOnMs = this.tMs;
     if (result.violation) {
       this.events.emit({
         type: 'hazard',
@@ -404,7 +433,11 @@ export class Simulation {
     }
   }
 
-  /** 過電流保護。出力電流が保護値を超えた tick で出力を落とす。§5.1.1 / §5.6 #3 */
+  /**
+   * 過電流保護。出力電流が保護値を超えた tick で出力を落とす。§5.1.1 / §5.6 #3
+   * トリップが電源スイッチON操作から1tick以内なら「通電した瞬間に短絡していた」とみなし
+   * `short-circuit-power-on` を、それ以外（稼働中に故障が発生した等）は `overcurrent` を発行する。
+   */
   private updateProtection(solved: SolveResult): void {
     if (this.tripped || !isPowerOn(this.switches)) return;
     let limit = Number.POSITIVE_INFINITY;
@@ -417,9 +450,11 @@ export class Simulation {
     this.tripped = true;
     this.resetStep = 0;
     this.syncSources();
+    const justPoweredOn =
+      this.lastSwitchOnMs !== undefined && this.tMs - this.lastSwitchOnMs <= this.tickMs;
     this.events.emit({
       type: 'hazard',
-      kind: 'short-circuit-power-on',
+      kind: justPoweredOn ? 'short-circuit-power-on' : 'overcurrent',
       tMs: this.tMs,
       detail: `電源電流 ${solved.sourceAmps.toFixed(1)}A`,
     });
@@ -466,7 +501,7 @@ export class Simulation {
     return out;
   }
 
-  /** 同一信号が1秒窓で10回以上遷移したらチャタリングとして発行する。§5.3.2 */
+  /** 同一信号が1秒窓で `CHATTER_MIN_TRANSITIONS`（20）回以上遷移したらチャタリングとして発行する。§5.3.2 */
   private detectChatter(
     changed: readonly string[],
     values: ReadonlyMap<string, SignalValue>,
