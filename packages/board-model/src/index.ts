@@ -77,3 +77,23 @@ export {
   type TerminalRole,
   type WiringChannel,
 } from './board-jipm.js';
+
+export {
+  CHECK_SOCKET_ROLE,
+  DEFAULT_SOCKET_ROLES,
+  hasRole,
+  isSocketId,
+  isSocketRole,
+  roleOf,
+  RoleError,
+  socketOf,
+  socketPartId,
+  TASK1_SOCKET_ROLES,
+  TASK2_SOCKET_ROLES,
+  terminalIdFor,
+  toNetlistTerminal,
+  toPhysicalTerminal,
+  validateSocketRoles,
+  type SocketRole,
+  type SocketRoles,
+} from './roles.js';
