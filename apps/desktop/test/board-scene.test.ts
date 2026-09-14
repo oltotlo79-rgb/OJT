@@ -1,0 +1,115 @@
+import {
+  createSession,
+  JIPM_BOARD,
+  routeSession,
+  TASK2_SOCKET_ROLES,
+  type BoardSession,
+} from '@ojt/board-model';
+import { toTerminalId, wireId } from '@ojt/circuit-sim';
+import { describe, expect, it } from 'vitest';
+import { safeRoutes, visualSignature } from '../src/renderer/three/BoardScene.js';
+import { EMPTY_SNAPSHOT, useStore, type AppState } from '../src/renderer/app/store.js';
+import type { SimSnapshot } from '../src/worker/protocol.js';
+
+/**
+ * 3Dシーンの純粋な部分のテスト（§6.6 / §15）。
+ * `safeRoutes()` は「1本でも経路が解けなくても盤は描き続ける」ことの要。
+ * `visualSignature()` は「絵が変わったときだけ描く」判断そのもの。
+ */
+
+function freshSession(): BoardSession {
+  return createSession(JIPM_BOARD, { roles: TASK2_SOCKET_ROLES, allowedColors: ['青'] });
+}
+
+describe('safeRoutes（§6.6）', () => {
+  it('セッションが無ければ空を返す', () => {
+    expect(safeRoutes(JIPM_BOARD, undefined)).toEqual({ routes: [], errors: [] });
+  });
+
+  it('全部解ければ routeSession と同じ本数を返し、エラーは無い', () => {
+    const session = freshSession();
+    const { routes, errors } = safeRoutes(JIPM_BOARD, session);
+    expect(errors).toEqual([]);
+    expect(routes).toHaveLength(routeSession(JIPM_BOARD, session).length);
+  });
+
+  it('経路の作れない電線が1本混ざっても、他の電線は描けて理由だけが返る', () => {
+    const session = freshSession();
+    const before = safeRoutes(JIPM_BOARD, session).routes.length;
+    /*
+     * 経路の作れない電線を1本足す。盤に無い端子を指していれば経路器が
+     * `RoutingError('invalid-terminal')` で断る（保存した作業を新しい盤定義で開いたときに起きうる）。
+     */
+    session.wires.push({
+      id: wireId('w-broken'),
+      from: toTerminalId('S1.9'),
+      to: toTerminalId('NOPE.1'),
+      color: '青',
+      locked: false,
+      open: false,
+    });
+    const { routes, errors } = safeRoutes(JIPM_BOARD, session);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]?.wireId).toBe('w-broken');
+    expect(errors[0]?.reason).toBeTruthy();
+    // 解けた電線はそのまま描ける（盤が真っ黒にならない）
+    expect(routes).toHaveLength(before);
+    expect(routes.some((r) => r.wireId === 'w-broken')).toBe(false);
+  });
+});
+
+describe('visualSignature（§15 再描画の判断）', () => {
+  function stateWith(patch: Partial<AppState>): AppState {
+    return { ...useStore.getState(), ...patch };
+  }
+
+  it('時刻と電流だけが動いても署名は変わらない（毎秒30枚のスナップショットで描き直さない）', () => {
+    const base = stateWith({ snapshot: EMPTY_SNAPSHOT });
+    const moved = stateWith({
+      snapshot: { ...EMPTY_SNAPSHOT, tMs: 12_345, sourceAmps: 0.421 },
+    });
+    expect(visualSignature(moved)).toBe(visualSignature(base));
+  });
+
+  it('ランプ・リレー・タイマ・押ボタン・通電・遮断は署名を変える', () => {
+    const base = visualSignature(stateWith({ snapshot: EMPTY_SNAPSHOT }));
+    const changes: Array<Partial<SimSnapshot>> = [
+      { lamps: { PL1: { level: 'lit', volts: 24 } } },
+      { relays: { CR1: { coilOn: true, contactsOn: true, coilVolts: 24 } } },
+      { timers: { T1: { powered: true, timedOut: false, elapsedMs: 0, presetMs: 3000 } } },
+      { buttons: { PB1: true } },
+      { powered: true },
+      { tripped: true },
+    ];
+    for (const patch of changes) {
+      const next = visualSignature(stateWith({ snapshot: { ...EMPTY_SNAPSHOT, ...patch } }));
+      expect(next, JSON.stringify(patch)).not.toBe(base);
+    }
+  });
+
+  it('ホバー・配線待ち・電線の選択・モード・視点は署名を変える', () => {
+    const base = visualSignature(stateWith({}));
+    const changes: Array<Partial<AppState>> = [
+      { hoveredTerminal: toTerminalId('S1.9') },
+      { pendingTerminal: toTerminalId('S1.9') },
+      { selectedWire: 'w-001' },
+      { mode: 'delete' },
+      { camera: 'socket' },
+      // 同じプリセットを押し直しても視点は動くので、番号も署名に入っている
+      { cameraNonce: useStore.getState().cameraNonce + 1 },
+    ];
+    for (const patch of changes) {
+      expect(visualSignature(stateWith(patch)), JSON.stringify(patch)).not.toBe(base);
+    }
+  });
+
+  it('電線の本数と装着が変わると署名も変わる', () => {
+    const session = freshSession();
+    const base = visualSignature(stateWith({ session }));
+    const plugged: BoardSession = {
+      ...session,
+      mounted: { ...session.mounted, S1: { kind: 'relay-my4n' } },
+    };
+    expect(visualSignature(stateWith({ session: plugged }))).not.toBe(base);
+  });
+});

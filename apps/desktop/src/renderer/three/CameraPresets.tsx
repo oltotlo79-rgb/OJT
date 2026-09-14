@@ -36,12 +36,20 @@ interface PoseAnimation {
   startMs: number;
 }
 
-/** プリセットが変わったらカメラと OrbitControls の注視点を ~300ms で補間して動かす。 */
+/**
+ * プリセットが変わったらカメラと OrbitControls の注視点を ~300ms で補間して動かす。
+ *
+ * `nonce` はストアの `cameraNonce`（`setCamera()` のたびに増える番号）。盤をドラッグで回したあと
+ * **いま選ばれているのと同じ**ボタン（例: 正面）を押し直しても `preset` の値は変わらないので、
+ * これを依存に並べないと効果が張り直されず視点が戻らない（§12.2「視点プリセット」）。
+ */
 export function CameraPresets({
   preset,
+  nonce,
   controls,
 }: {
   preset: CameraPreset;
+  nonce: number;
   controls: ControlsLike | null;
 }): JSX.Element | null {
   const camera = useThree((state) => state.camera);
@@ -71,6 +79,8 @@ export function CameraPresets({
   );
 
   useEffect(() => {
+    // 値そのものは使わない。「同じプリセットを押し直した」ことを効果に伝えるためだけの依存。
+    void nonce;
     const to = cameraPose(preset);
     if (currentPose.current === null) {
       // マウント直後・OrbitControls 接続前は補間せず即座に合わせる
@@ -81,7 +91,7 @@ export function CameraPresets({
       animation.current = { from: currentPose.current, to, startMs: performance.now() };
     }
     invalidate();
-  }, [preset, applyPose, invalidate]);
+  }, [preset, nonce, applyPose, invalidate]);
 
   useFrame(() => {
     const anim = animation.current;

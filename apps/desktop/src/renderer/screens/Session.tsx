@@ -36,6 +36,7 @@ import {
   deleteKeyToAction,
   escapeToAction,
   pickToAction,
+  shouldIgnoreShortcut,
   type PickAction,
   type PickHit,
 } from '../session/interaction.js';
@@ -56,6 +57,27 @@ const ELAPSED_INTERVAL_MS = 200;
 /** ライブチャートの最小横軸長[ms]（開始直後に潰れないようにする）。 */
 const LIVE_MIN_DURATION_MS = 5000;
 
+/**
+ * ライブ記録のチャート。§8.2
+ * 毎秒約30回変わる `snapshot.tMs` をここで受けることで、`Session`（＝3Dビューポートを含む）を
+ * 巻き添えで再描画しない（§15）。
+ */
+function LivePanel(): JSX.Element {
+  const chartSpecs = useStore((s) => s.chartSpecs);
+  const liveTransitions = useStore((s) => s.liveTransitions);
+  const tMs = useStore((s) => s.snapshot.tMs);
+  const live = useMemo(
+    () => liveChart(chartSpecs, liveTransitions, Math.max(tMs, LIVE_MIN_DURATION_MS)),
+    [chartSpecs, liveTransitions, tMs],
+  );
+  return (
+    <section className={styles.panelLive}>
+      <h2 className={styles.liveTitle}>{JA.session.liveChart}</h2>
+      <TimeChartSvg chart={live} title={JA.session.liveChart} />
+    </section>
+  );
+}
+
 /** セッション画面。 */
 export function Session(): JSX.Element {
   const problem = useStore((s) => s.problem);
@@ -67,13 +89,19 @@ export function Session(): JSX.Element {
   const selectedWire = useStore((s) => s.selectedWire);
   const selectedSocket = useStore((s) => s.selectedSocket);
   const camera = useStore((s) => s.camera);
-  const snapshot = useStore((s) => s.snapshot);
+  /*
+   * スナップショットは毎秒約30枚届くが、この画面が見るのは電源まわりの真偽値だけ。
+   * `snapshot` をまるごと購読すると、この画面（＝3Dビューポートを含む部分木）が毎秒30回
+   * 再描画されてしまうので、**必要な値だけ**を個別に購読する。§15
+   */
+  const powered = useStore((s) => s.snapshot.powered);
+  const tripped = useStore((s) => s.snapshot.tripped);
+  const breakerOn = useStore((s) => s.snapshot.breakerOn);
+  const switchOn = useStore((s) => s.snapshot.switchOn);
   const hazards = useStore((s) => s.hazards);
   const chatters = useStore((s) => s.chatters);
   const logLines = useStore((s) => s.logLines);
-  const elapsedMs = useStore((s) => s.elapsedMs);
-  const chartSpecs = useStore((s) => s.chartSpecs);
-  const liveTransitions = useStore((s) => s.liveTransitions);
+  const judging = useStore((s) => s.judging);
   const webglLost = useStore((s) => s.webglLost);
   const problemId = problem?.id;
   const sessionEpoch = useStore((s) => s.sessionEpoch);
@@ -95,6 +123,7 @@ export function Session(): JSX.Element {
       },
       onJudge: (message) => {
         const state = useStore.getState();
+        state.setJudging(false);
         if (message.result.ok) {
           state.setJudge(message.result.value);
           state.setRoute('result');
@@ -104,6 +133,8 @@ export function Session(): JSX.Element {
       },
       onError: (text, fatal) => {
         const state = useStore.getState();
+        // 判定の往復中に落ちたら「判定中…」のまま固まるので、必ず戻す（§8.2）
+        state.setJudging(false);
         const line = `${JA.error.workerError}: ${text}`;
         // 追従ループが止まったら（§13 #6）トーストでは気づけない。バナーを出して立て直させる
         if (fatal) state.setFatalError(line);
@@ -248,6 +279,8 @@ export function Session(): JSX.Element {
   // キーボード操作（Esc で配線取消、Delete で電線削除、1/2/3 で視点。§8.2 / §12.2）
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
+      // 入力欄で打鍵中・IME変換中は盤のショートカットを動かさない（§8.2）
+      if (shouldIgnoreShortcut(event)) return;
       const store = useStore.getState();
       const current = store.session;
       if (current === undefined) return;
@@ -278,11 +311,6 @@ export function Session(): JSX.Element {
   const spec = useMemo(
     () => (problem === undefined ? undefined : buildSpecChart(problem)),
     [problem],
-  );
-
-  const live = useMemo(
-    () => liveChart(chartSpecs, liveTransitions, Math.max(snapshot.tMs, LIVE_MIN_DURATION_MS)),
-    [chartSpecs, liveTransitions, snapshot.tMs],
   );
 
   if (problem === undefined || session === undefined) {
@@ -363,7 +391,11 @@ export function Session(): JSX.Element {
         onRedo={() => {
           restore(redoHistory(history), JA.session.redo);
         }}
+        judging={judging}
         onJudge={() => {
+          // 往復中は押させない（結果が返るか Worker が落ちるまで `judging` が立つ）。§8.2
+          if (useStore.getState().judging) return;
+          useStore.getState().setJudging(true);
           bridge.send({
             type: 'judge',
             problem,
@@ -376,10 +408,10 @@ export function Session(): JSX.Element {
         }}
       >
         <PowerControls
-          breakerOn={snapshot.breakerOn}
-          switchOn={snapshot.switchOn}
-          powered={snapshot.powered}
-          tripped={snapshot.tripped}
+          breakerOn={breakerOn}
+          switchOn={switchOn}
+          powered={powered}
+          tripped={tripped}
           onBreaker={(on) => {
             bridge.send({ type: 'breaker', on });
             useStore.getState().addLog(powerLog(JA.session.breaker, on));
@@ -399,13 +431,13 @@ export function Session(): JSX.Element {
         <div className={styles.viewport} data-testid="viewport">
           <BoardScene onPick={onPick} onHover={onHover} onPress={onPress} onRelease={onRelease} />
           <div className={styles.statusOverlay} data-testid="status-overlay">
-            {snapshot.powered ? JA.session.powered : JA.session.unpowered} / {JA.session.wires}{' '}
+            {powered ? JA.session.powered : JA.session.unpowered} / {JA.session.wires}{' '}
             {session.wires.length} {JA.session.wiresUnit} /{' '}
             {pendingTerminal === undefined
               ? JA.session.noTerminal
               : `${JA.session.firstTerminal}: ${pendingTerminal}`}
             {selectedWire === undefined ? '' : ` / ${JA.session.selection}: ${selectedWire}`}
-            {snapshot.tripped ? ` / ${JA.session.tripped}` : ''}
+            {tripped ? ` / ${JA.session.tripped}` : ''}
             {webglLost ? ` / ${JA.error.webglLost}` : ''}
           </div>
         </div>
@@ -416,10 +448,7 @@ export function Session(): JSX.Element {
           {spec !== undefined && !spec.ok ? (
             <p data-testid="reference-error">{referenceErrorText(spec.errors)}</p>
           ) : null}
-          <section className={styles.panelLive}>
-            <h2 className={styles.liveTitle}>{JA.session.liveChart}</h2>
-            <TimeChartSvg chart={live} title={JA.session.liveChart} />
-          </section>
+          <LivePanel />
           <PartsPanel
             session={session}
             selectedSocket={selectedSocket}
@@ -434,7 +463,7 @@ export function Session(): JSX.Element {
 
         <div className={styles.bottomPanel}>
           <LogPanel lines={logLines} hazards={hazards} chatters={chatters} />
-          <ElapsedTimer elapsedMs={elapsedMs} limit={problem.timeLimit} />
+          <ElapsedTimer limit={problem.timeLimit} />
         </div>
       </div>
     </>

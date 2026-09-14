@@ -15,6 +15,11 @@
   padding: 6px 12px;
 }
 
+/*
+ * 入れ物は画面いっぱいに敷かれるので、クリックを吸わないよう `pointer-events: none` にする
+ * （トースト1枚1枚だけがクリックを受ける）。これが無いと、トーストが出ている間は
+ * 右下の3D盤やボタンが押せなくなる。
+ */
 .toasts {
   position: fixed;
   right: 16px;
@@ -23,6 +28,7 @@
   flex-direction: column;
   gap: 6px;
   z-index: 50;
+  pointer-events: none;
 }
 
 .toast {
@@ -32,6 +38,7 @@
   border-radius: 4px;
   padding: 8px 12px;
   max-width: 420px;
+  pointer-events: auto;
 }
 
 .toastError {

@@ -60,6 +60,34 @@ function hasSelection(state: InteractionState): boolean {
   return state.selectedWire !== undefined && state.selectedWire.length > 0;
 }
 
+/** 文字を打ち込む要素のタグ名。 */
+const TYPING_TAGS: ReadonlySet<string> = new Set(['INPUT', 'TEXTAREA', 'SELECT']);
+
+/**
+ * そのイベントの宛先が「文字を打ち込む欄」か。§8.2
+ * DOM の型に依存させないためダックタイピングで見る（`interaction.ts` は純粋な層）。
+ */
+export function isTypingTarget(target: unknown): boolean {
+  if (target === null || typeof target !== 'object') return false;
+  const element = target as { tagName?: unknown; isContentEditable?: unknown };
+  if (element.isContentEditable === true) return true;
+  return typeof element.tagName === 'string' && TYPING_TAGS.has(element.tagName.toUpperCase());
+}
+
+/**
+ * 盤のショートカット（Esc / Delete / 1・2・3）を**無視すべき**キー入力か。§8.2
+ *
+ * タイマの設定秒を数値入力欄へ打ち込むと `3` で視点が「ソケット拡大」に飛び、
+ * `Delete` で電線が消える、という取り違えが起きていた（レビュー指摘）。
+ * 入力欄に宛てられたキーと、IME の変換中（`isComposing`）は盤へ通さない。
+ */
+export function shouldIgnoreShortcut(event: {
+  target: unknown;
+  isComposing?: boolean | undefined;
+}): boolean {
+  return event.isComposing === true || isTypingTarget(event.target);
+}
+
 /**
  * ピック結果を操作に変換する。§12.2
  * - 削除モード: 電線を拾ったら選択（実際の削除は Delete キー。§8.2）、`locked` なら拒否、

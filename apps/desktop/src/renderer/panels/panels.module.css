@@ -131,10 +131,14 @@
   box-shadow: 0 0 8px var(--ng);
 }
 
+/*
+ * 高さは**固定**（`max-height` ではない）。行が増えるほど背が伸びると、
+ * 下部パネルごと膨らんで3Dビューポートが縮む（`screens.module.css` の `.sessionLayout` 参照）。
+ */
 .logList {
   font-size: 12px;
   line-height: 1.5;
-  max-height: 120px;
+  height: 120px;
   overflow-y: auto;
   margin: 0;
   padding-left: 16px;

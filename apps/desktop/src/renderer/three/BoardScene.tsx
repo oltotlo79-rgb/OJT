@@ -10,11 +10,12 @@ import {
   type SocketId,
   type WireRoute,
 } from '@ojt/board-model';
-import type { TerminalId } from '@ojt/circuit-sim';
+import type { LampLevel, TerminalId } from '@ojt/circuit-sim';
 import { OrbitControls } from '@react-three/drei';
 import { Canvas, useThree } from '@react-three/fiber';
 import { MOUSE } from 'three';
-import { useEffect, useMemo, useState, type JSX } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type JSX } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { useStore, type AppState } from '../app/store.js';
 import { JA, routeFailedLog } from '../i18n/ja.js';
 import type { PickHit } from '../session/interaction.js';
@@ -54,10 +55,17 @@ const MAX_POLAR_ANGLE = Math.PI * 0.48;
  * P/N 供給端子は `P.1` / `N.1` の各1点しかない（§6.1）ので、
  * 実物写真の DC24V 端子と同じく**2端子の小さな端子台1個**としてまとめて描く。
  */
-const BLOCK_PARTS: ReadonlyArray<{ key: string; ids: readonly string[]; label: string }> = [
+const BLOCK_PARTS: ReadonlyArray<{
+  key: string;
+  ids: readonly string[];
+  label: string;
+  /** 名札の位置（端子の外接矩形の中心からの盤モデル mm。省略すると台座の奥側）。 */
+  labelOffsetMm?: { x: number; y: number };
+}> = [
   { key: 'TB_PL', ids: ['TB_PL'], label: 'ランプ用端子台' },
   { key: 'TB_PB', ids: ['TB_PB'], label: '押ボタン用端子台' },
-  { key: 'PN', ids: ['P', 'N'], label: 'DC24V端子台' },
+  // 奥は盤の上端で、DC24V電源の名札と左上の状態オーバーレイが居る。右下へ逃がす（§8.1）
+  { key: 'PN', ids: ['P', 'N'], label: 'DC24V端子台', labelOffsetMm: { x: 46, y: 6 } },
 ];
 
 /** DINレールを敷く機器のまとまり（ソケット群と端子台群）。実物写真のとおり。§6.5 */
@@ -113,7 +121,7 @@ export function safeRoutes(
  * 実質 30fps の常時描画になり、ソフトウェアラスタライザの環境ではメインスレッドを占有して
  * クリックすら受け付けなくなる。そこで**描き分けに効く値だけ**から署名を作って比べる。
  */
-function visualSignature(state: AppState): string {
+export function visualSignature(state: AppState): string {
   const { snapshot, session } = state;
   const lamps = Object.entries(snapshot.lamps)
     .map(([id, lamp]) => `${id}:${lamp.level}`)
@@ -141,6 +149,8 @@ function visualSignature(state: AppState): string {
     state.selectedWire ?? '',
     state.mode,
     state.camera,
+    // 同じプリセットを押し直しても視点は動く（`cameraNonce`）ので、署名にも入れる
+    state.cameraNonce,
   ].join('|');
 }
 
@@ -160,6 +170,43 @@ function Invalidator(): null {
   return null;
 }
 
+/**
+ * ランプ・リレー・タイマ・押ボタンの「絵に効く値だけ」をスナップショットから抜き出す。§15
+ *
+ * `snapshot` をまるごと購読すると、電圧の小数点以下が動いただけの毎秒30枚のスナップショットで
+ * この部分木が再描画され、その都度 R3F が props を突き合わせて `invalidate()` するため
+ * `frameloop="demand"` が実質30fpsの常時描画になる（レビュー計測: アイドル中も約30fps）。
+ * `useShallow` で「値の集合が変わったときだけ」再描画されるようにする。
+ */
+function useLampLevels(): Record<string, LampLevel> {
+  return useStore(
+    useShallow((s: AppState) => {
+      const out: Record<string, LampLevel> = {};
+      for (const [id, lamp] of Object.entries(s.snapshot.lamps)) out[id] = lamp.level;
+      return out;
+    }),
+  );
+}
+
+/** 装着部品が励磁されているか（リレーのコイル／タイマの通電）。 */
+function useEnergized(): Record<string, boolean> {
+  return useStore(
+    useShallow((s: AppState) => {
+      const out: Record<string, boolean> = {};
+      for (const [id, relay] of Object.entries(s.snapshot.relays)) out[id] = relay.coilOn;
+      for (const [id, timer] of Object.entries(s.snapshot.timers)) {
+        out[id] = (out[id] ?? false) || timer.powered;
+      }
+      return out;
+    }),
+  );
+}
+
+/** 押ボタンが押されているか。 */
+function useButtons(): Record<string, boolean> {
+  return useStore(useShallow((s: AppState) => ({ ...s.snapshot.buttons })));
+}
+
 /** 盤のシーン本体（Canvas の中身）。 */
 function BoardContents({
   onPick,
@@ -173,12 +220,15 @@ function BoardContents({
   onRelease: (pbId: string) => void;
 }): JSX.Element {
   const session = useStore((s) => s.session);
-  const snapshot = useStore((s) => s.snapshot);
+  const lampLevels = useLampLevels();
+  const energized = useEnergized();
+  const buttons = useButtons();
   const hovered = useStore((s) => s.hoveredTerminal);
   const pending = useStore((s) => s.pendingTerminal);
   const selectedWire = useStore((s) => s.selectedWire);
   const mode = useStore((s) => s.mode);
   const camera = useStore((s) => s.camera);
+  const cameraNonce = useStore((s) => s.cameraNonce);
   const [controls, setControls] = useState<ControlsLike | null>(null);
 
   const board = JIPM_BOARD;
@@ -186,18 +236,33 @@ function BoardContents({
     () => safeRoutes(board, session),
     [board, session],
   );
-  // 経路が解けなかった電線は描けないので、理由をトーストとログに出す（盤は描き続ける）。§6.6
+  /*
+   * 経路が解けなかった電線は描けないので、理由をトーストとログに出す（盤は描き続ける）。§6.6
+   * `routeErrors` は `session` が変わるたびに新しい配列になるため、そのまま依存に並べると
+   * 無関係な操作のたびに同じトーストが出続ける。**どの電線が解けなかったか**が変わったときだけ
+   * 出すよう、電線IDの集合を鍵にする。
+   */
+  const routeErrorKey = useMemo(
+    () =>
+      routeErrors
+        .map((error) => error.wireId)
+        .sort((a, b) => a.localeCompare(b))
+        .join(','),
+    [routeErrors],
+  );
+  const latestRouteErrors = useRef(routeErrors);
+  latestRouteErrors.current = routeErrors;
   useEffect(() => {
-    if (routeErrors.length === 0) return;
+    if (routeErrorKey.length === 0) return;
     const store = useStore.getState();
-    for (const error of routeErrors) {
+    for (const error of latestRouteErrors.current) {
       store.toast(
         `${JA.session.routeFailed}（${error.wireId}: ${JA.routeReason[error.reason]}）`,
         'error',
       );
       store.addLog(routeFailedLog(error.wireId, JA.routeReason[error.reason]));
     }
-  }, [routeErrors]);
+  }, [routeErrorKey]);
   const blocks = useMemo(() => {
     const out = new Map<string, typeof board.terminals>();
     for (const group of BLOCK_PARTS) {
@@ -250,14 +315,36 @@ function BoardContents({
     return out;
   }, [board]);
 
-  const pickTerminal = (terminal: BoardTerminal): void => {
-    onPick({
-      kind: 'terminal',
-      id: terminal.id,
-      wirable: terminal.wirable,
-      label: terminal.label,
-    });
-  };
+  /*
+   * 3Dの子へ渡すハンドラは**必ず `useCallback` で安定させる**。§15
+   * 毎レンダーで新しい関数を作ると R3F が props の差分を検出して `invalidate()` を呼ぶため、
+   * 絵が1ピクセルも変わらないスナップショット更新でも描画が走ってしまう。
+   */
+  const pickTerminal = useCallback(
+    (terminal: BoardTerminal): void => {
+      onPick({
+        kind: 'terminal',
+        id: terminal.id,
+        wirable: terminal.wirable,
+        label: terminal.label,
+      });
+    },
+    [onPick],
+  );
+
+  const pickSocket = useCallback(
+    (socketId: SocketId, occupied: boolean): void => {
+      onPick({ kind: 'socket', id: socketId, occupied });
+    },
+    [onPick],
+  );
+
+  const pickWire = useCallback(
+    (wireId: string, locked: boolean): void => {
+      onPick({ kind: 'wire', id: wireId, locked });
+    },
+    [onPick],
+  );
 
   return (
     <>
@@ -300,19 +387,14 @@ function BoardContents({
                 pendingTerminal={pending}
                 onHoverTerminal={onHover}
                 onPickTerminal={pickTerminal}
-                onPickSocket={(socketId: SocketId, occupied: boolean) => {
-                  onPick({ kind: 'socket', id: socketId, occupied });
-                }}
+                onPickSocket={pickSocket}
               />
               {mounted === undefined || role === undefined ? null : (
                 <MountedPart
                   socket={socket}
                   role={role}
                   part={mounted}
-                  energized={
-                    snapshot.relays[role]?.coilOn === true ||
-                    snapshot.timers[role]?.powered === true
-                  }
+                  energized={energized[role] === true}
                 />
               )}
             </group>
@@ -324,6 +406,7 @@ function BoardContents({
             key={block.key}
             name={block.key}
             label={block.label}
+            {...(block.labelOffsetMm === undefined ? {} : { labelOffsetMm: block.labelOffsetMm })}
             terminals={blocks.get(block.key) ?? []}
             hoveredTerminal={hovered}
             pendingTerminal={pending}
@@ -333,14 +416,14 @@ function BoardContents({
         ))}
 
         {board.lamps.map((lamp) => (
-          <Lamp key={lamp.id} definition={lamp} level={snapshot.lamps[lamp.id]?.level ?? 'off'} />
+          <Lamp key={lamp.id} definition={lamp} level={lampLevels[lamp.id] ?? 'off'} />
         ))}
 
         {board.pushButtons.map((pb) => (
           <PushButton
             key={pb.id}
             definition={pb}
-            pressed={snapshot.buttons[pb.id] === true}
+            pressed={buttons[pb.id] === true}
             onPress={onPress}
             onRelease={onRelease}
           />
@@ -357,9 +440,7 @@ function BoardContents({
               locked={wire.locked}
               selected={selectedWire === route.wireId}
               pickable={mode === 'delete'}
-              onPick={(wireId: string) => {
-                onPick({ kind: 'wire', id: wireId, locked: wire.locked });
-              }}
+              onPick={pickWire}
             />
           );
         })}
@@ -396,7 +477,7 @@ function BoardContents({
           setControls(instance);
         }}
       />
-      <CameraPresets preset={camera} controls={controls} />
+      <CameraPresets preset={camera} nonce={cameraNonce} controls={controls} />
       <ViewGizmo />
     </>
   );
@@ -406,8 +487,12 @@ function BoardContents({
  * 3Dビューポート。§13 #4
  * `webglcontextlost` を捕まえたら `key` を変えて `Canvas` を丸ごと作り直す。
  * 盤の状態は Worker とストアが持っているので、シーンを捨てても失われない。
+ *
+ * `memo()` で包むのは §15 の性能目標のため。親（`Session`）は経過時間やライブチャートで
+ * 毎秒何度も再描画されるが、渡ってくる4つのハンドラはすべて `useCallback` で安定しているので、
+ * ここで止めれば `Canvas` の中身が巻き添えで再描画されることがなくなる。
  */
-export function BoardScene({
+function BoardSceneImpl({
   onPick,
   onHover,
   onPress,
@@ -455,3 +540,6 @@ export function BoardScene({
     </Canvas>
   );
 }
+
+/** 3Dビューポート（親の再描画で巻き添えにならないよう `memo` する）。§15 */
+export const BoardScene = memo(BoardSceneImpl);

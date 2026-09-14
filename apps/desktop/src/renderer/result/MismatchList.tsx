@@ -17,9 +17,9 @@ export function formatMs(ms: number): string {
 export function MismatchList({ mismatches }: { mismatches: readonly Mismatch[] }): JSX.Element {
   return (
     <div className={styles.card}>
-      <h3>
+      <h2>
         {JA.result.mismatches}（{mismatches.length}）
-      </h3>
+      </h2>
       {mismatches.length === 0 ? (
         <p data-testid="no-mismatch">{JA.result.noMismatch}</p>
       ) : (

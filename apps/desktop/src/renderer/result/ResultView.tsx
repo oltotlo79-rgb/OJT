@@ -32,13 +32,16 @@ export function ResultView({
   return (
     <div className={styles.wrap}>
       <div className={styles.header}>
+        {/* 合否は画面を開いた瞬間に読み上げてほしい情報なので、支援技術にも伝える（§8.3） */}
         <span
           className={`${styles.verdict} ${result.passed ? styles.passed : styles.failed}`}
           data-testid="verdict"
+          role="status"
+          aria-live="polite"
         >
           {result.passed ? JA.result.passed : JA.result.failed}
         </span>
-        <h1 style={{ fontSize: 18, margin: 0 }}>
+        <h1 className={styles.title}>
           {JA.result.title}: {problem.title}
         </h1>
         <span data-testid="result-elapsed">

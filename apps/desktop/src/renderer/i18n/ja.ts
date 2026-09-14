@@ -51,6 +51,8 @@ export const JA = {
   session: {
     back: '課題一覧へ戻る',
     judge: '判定',
+    /** 判定を Worker へ送って結果を待っているあいだのボタン文言。§8.2 */
+    judging: '判定中…',
     undo: '元に戻す',
     redo: 'やり直し',
     deleteMode: '削除モード',

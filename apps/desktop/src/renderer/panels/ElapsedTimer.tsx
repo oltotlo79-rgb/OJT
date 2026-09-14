@@ -1,5 +1,6 @@
 import type { TimeLimit } from '@ojt/content';
 import type { JSX } from 'react';
+import { useStore } from '../app/store.js';
 import { formatElapsed } from '../../worker/runtime.js';
 import { JA, minutesLabel } from '../i18n/ja.js';
 import styles from './panels.module.css';
@@ -26,14 +27,14 @@ export function elapsedScale(
   };
 }
 
-/** 経過時間の表示。 */
-export function ElapsedTimer({
-  elapsedMs,
-  limit,
-}: {
-  elapsedMs: number;
-  limit: TimeLimit;
-}): JSX.Element {
+/**
+ * 経過時間の表示。
+ *
+ * 経過時間は**この部品が自分でストアから受け取る**。0.2秒ごとに進む値をセッション画面が
+ * 受けると、3Dビューポートを含む画面全体が毎秒5回再描画されてしまうため（§15）。
+ */
+export function ElapsedTimer({ limit }: { limit: TimeLimit }): JSX.Element {
+  const elapsedMs = useStore((s) => s.elapsedMs);
   const scale = elapsedScale(elapsedMs, limit);
   return (
     <section className={styles.panel}>

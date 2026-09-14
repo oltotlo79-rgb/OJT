@@ -89,7 +89,18 @@ export interface AppState {
   selectedWire: string | undefined;
   selectedSocket: SocketId | undefined;
   camera: CameraPreset;
+  /**
+   * `setCamera()` を呼ぶたびに増える番号。§12.2
+   *
+   * プリセットは3つしかないので、盤をドラッグで回したあとに**いま選ばれているのと同じ**
+   * ボタン（例: 正面）を押し直しても `camera` の値は変わらず、`CameraPresets` の効果が
+   * 張り直されないため視点が戻らなかった。「押したこと」自体を状態として持たせ、
+   * 同じプリセットでも必ず再適用されるようにする。
+   */
+  cameraNonce: number;
   schematicVisible: boolean;
+  /** 判定を Worker へ送って結果待ちか（ツールバーの「判定」を二重に押させない）。§8.2 */
+  judging: boolean;
 
   snapshot: SimSnapshot;
   hazards: HazardEvent[];
@@ -123,6 +134,7 @@ export interface AppState {
   setSelectedSocket: (socketId: SocketId | undefined) => void;
   setCamera: (preset: CameraPreset) => void;
   toggleSchematic: () => void;
+  setJudging: (judging: boolean) => void;
   applySnapshot: (snapshot: SimSnapshot) => void;
   clearLive: () => void;
   addLog: (text: string) => void;
@@ -181,7 +193,9 @@ export const useStore = create<AppState>((set, get) => ({
   selectedWire: undefined,
   selectedSocket: undefined,
   camera: 'front',
+  cameraNonce: 0,
   schematicVisible: false,
+  judging: false,
 
   snapshot: EMPTY_SNAPSHOT,
   hazards: [],
@@ -224,6 +238,7 @@ export const useStore = create<AppState>((set, get) => ({
       liveTransitions: {},
       logLines: [],
       judge: undefined,
+      judging: false,
       fatalError: undefined,
       webglLost: false,
       reportedDroppedTicks: 0,
@@ -264,10 +279,14 @@ export const useStore = create<AppState>((set, get) => ({
     set({ selectedSocket });
   },
   setCamera: (camera) => {
-    set({ camera });
+    // プリセットが同じでも番号は必ず進める（同じボタンを押し直したら視点を組み直す）。§12.2
+    set({ camera, cameraNonce: get().cameraNonce + 1 });
   },
   toggleSchematic: () => {
     set({ schematicVisible: !get().schematicVisible });
+  },
+  setJudging: (judging) => {
+    set({ judging });
   },
   applySnapshot: (snapshot) => {
     const state = get();
@@ -356,6 +375,7 @@ export const useStore = create<AppState>((set, get) => ({
       fatalError: undefined,
       webglLost: false,
       judge: undefined,
+      judging: false,
       pendingTerminal: undefined,
       hoveredTerminal: undefined,
       selectedWire: undefined,

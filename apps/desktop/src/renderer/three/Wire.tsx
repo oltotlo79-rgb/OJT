@@ -1,6 +1,6 @@
 import { WIRE_DIAMETER_MM, type WireRoute } from '@ojt/board-model';
 import type { WireColor } from '@ojt/circuit-sim';
-import { useMemo, type JSX } from 'react';
+import { useEffect, useMemo, useRef, type JSX } from 'react';
 import type { ThreeEvent } from '@react-three/fiber';
 import { CatmullRomCurve3, TubeGeometry, Vector3 } from 'three';
 import {
@@ -10,7 +10,7 @@ import {
   WIRE_LANE_OVERFLOW_COLOR,
   WIRE_SELECTED_COLOR,
 } from '../session/colors.js';
-import { LUG_GEOMETRY, sharedMaterial } from './materials.js';
+import { INVISIBLE_MATERIAL, LUG_GEOMETRY, sharedMaterial } from './materials.js';
 import { toScene } from './coords.js';
 
 /**
@@ -29,10 +29,21 @@ import { toScene } from './coords.js';
 
 /** チューブの半径[mm]（描画直径 1.6mm の半分。§6.6）。 */
 export const WIRE_RADIUS_MM = WIRE_DIAMETER_MM / 2;
+/**
+ * 当たり判定だけを受け持つ太いチューブの半径[mm]。
+ *
+ * 見た目の電線は直径 1.6mm しかなく、画面では正面視で 4px 程度にしかならない。
+ * 削除モードで経路の真上を狙って押しても 1% 程度しか当たらず「電線が選べない」状態だった
+ * （レビュー指摘）。端子の当たり判定（`pickRadiusMm` = 4mm の球）と同じ考え方で、
+ * 見えない太いチューブを重ねてそちらでクリックを受ける。
+ */
+export const WIRE_PICK_RADIUS_MM = 3.5;
 /** チューブの分割数（1セグメントあたり）。 */
 const SEGMENTS_PER_POINT = 4;
 /** 断面の分割数。 */
 const RADIAL_SEGMENTS = 6;
+/** 当たり判定チューブの断面分割数（見えないので粗くてよい）。 */
+const PICK_RADIAL_SEGMENTS = 4;
 
 /** レイキャストを受けない（配線モードで端子のクリックを奪わないため）。 */
 function noPick(): void {
@@ -63,14 +74,83 @@ export function wireBodyColor(
  * **点をそのまま通す**（`curveType: 'catmullrom'` の `tension: 0` ＝ 直線補間）。
  * 勝手に丸めると直角配線の「整列して見える」利点が失われるため。
  */
-export function buildTubeGeometry(route: WireRoute): TubeGeometry {
+export function buildTubeGeometry(
+  route: WireRoute,
+  radiusMm: number = WIRE_RADIUS_MM,
+  radialSegments: number = RADIAL_SEGMENTS,
+): TubeGeometry {
   const points = route.points.map((p) => {
     const [x, y, z] = toScene(p);
     return new Vector3(x, y, z);
   });
   const curve = new CatmullRomCurve3(points, false, 'catmullrom', 0);
   const segments = Math.max(8, points.length * SEGMENTS_PER_POINT);
-  return new TubeGeometry(curve, segments, WIRE_RADIUS_MM, RADIAL_SEGMENTS, false);
+  return new TubeGeometry(curve, segments, radiusMm, radialSegments, false);
+}
+
+/**
+ * 経路の同一性を表す文字列。§15
+ * `safeRoutes()` はセッションが変わるたびに**全部**の経路を作り直すので、`WireRoute` の
+ * オブジェクト同一性でメモ化すると1本足すだけで全電線のチューブが作り直される。
+ * 折れ点の座標が同じなら形も同じなので、それを鍵にする。
+ */
+export function routeSignature(route: WireRoute): string {
+  return `${route.wireId}|${route.points.map((p) => `${p.x},${p.y},${p.z}`).join(';')}`;
+}
+
+/**
+ * 経路からチューブ形状を作り、**作り直したときに前のものを解放する**フック。§15
+ * `TubeGeometry` は GPU バッファを持つので、解放しないと配線・元に戻すを繰り返すたびに
+ * 積み上がる（レビュー指摘: undo/redo 40往復でヒープ +33MB）。
+ */
+export function useTubeGeometry(
+  route: WireRoute,
+  radiusMm: number = WIRE_RADIUS_MM,
+  radialSegments: number = RADIAL_SEGMENTS,
+): TubeGeometry {
+  const signature = routeSignature(route);
+  // 署名が同じなら中身も同じなので、最新の `route` をそのまま使ってよい
+  const latest = useRef(route);
+  latest.current = route;
+  const geometry = useMemo(() => {
+    // 署名が同じ＝形も同じ。値そのものは使わないが、作り直しの引き金として依存に並べる
+    void signature;
+    return buildTubeGeometry(latest.current, radiusMm, radialSegments);
+  }, [signature, radiusMm, radialSegments]);
+  useEffect(
+    () => () => {
+      geometry.dispose();
+    },
+    [geometry],
+  );
+  return geometry;
+}
+
+/**
+ * 当たり判定だけの太いチューブ。削除モードのときだけ組み込まれる。
+ * 別のコンポーネントにしてあるのは、配線モードでは形を**作らない**ためで、
+ * 外れたときにフックの後始末がそのまま `dispose()` になる。
+ */
+function WirePickBody({
+  route,
+  locked,
+  onPick,
+}: {
+  route: WireRoute;
+  locked: boolean;
+  onPick: (wireId: string, locked: boolean) => void;
+}): JSX.Element {
+  const geometry = useTubeGeometry(route, WIRE_PICK_RADIUS_MM, PICK_RADIAL_SEGMENTS);
+  return (
+    <mesh
+      geometry={geometry}
+      material={INVISIBLE_MATERIAL}
+      onClick={(event: ThreeEvent<MouseEvent>) => {
+        event.stopPropagation();
+        onPick(route.wireId, locked);
+      }}
+    />
+  );
 }
 
 /** 電線1本。 */
@@ -88,14 +168,16 @@ export function Wire({
   selected: boolean;
   /** 削除モードのときだけ true。§8.2 */
   pickable: boolean;
-  onPick: (wireId: string) => void;
+  onPick: (wireId: string, locked: boolean) => void;
 }): JSX.Element | null {
-  const geometry = useMemo(() => buildTubeGeometry(route), [route]);
+  const geometry = useTubeGeometry(route);
+  const signature = routeSignature(route);
   const ends = useMemo(() => {
     const first = route.points[0];
     const last = route.points[route.points.length - 1];
     return first === undefined || last === undefined ? [] : [toScene(first), toScene(last)];
-  }, [route]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 折れ点が同じなら端点も同じ（署名で十分）
+  }, [signature]);
   if (route.points.length < 2) return null;
   const material = sharedMaterial(wireBodyColor(route, color, locked, selected), {
     roughness: locked ? 0.35 : 0.55,
@@ -106,15 +188,14 @@ export function Wire({
       name={`wire-${route.wireId}`}
       userData={{ kind: route.kind, laneOverflow: route.laneOverflow }}
     >
-      <mesh
-        geometry={geometry}
-        material={material}
-        {...(pickable ? {} : { raycast: noPick })}
-        onClick={(event: ThreeEvent<MouseEvent>) => {
-          event.stopPropagation();
-          onPick(route.wireId);
-        }}
-      />
+      {/* 見た目の電線。クリックは常に下の当たり判定チューブに任せる */}
+      <mesh geometry={geometry} material={material} raycast={noPick} />
+      {/*
+        当たり判定だけの太いチューブ。`visible={false}` にすると three の `Raycaster` が
+        たどらないので、`INVISIBLE_MATERIAL`（`opacity: 0` / `depthWrite: false`）で
+        「見えないが交差候補にはなる」状態にする（`TerminalHit` の当たり判定球と同じ手）。
+      */}
+      {pickable ? <WirePickBody route={route} locked={locked} onPick={onPick} /> : null}
       {ends.map((pos, index) => (
         <mesh
           key={`${route.wireId}-lug-${index}`}

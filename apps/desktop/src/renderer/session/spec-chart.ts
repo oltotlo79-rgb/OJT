@@ -19,8 +19,43 @@ import {
 /** 仕様チャートの構築結果。模範回路が変換できなければ理由を返す（§13 #2）。 */
 export type SpecChartResult = { ok: true; chart: TimeChart } | { ok: false; errors: string[] };
 
-/** 課題の仕様タイムチャートを作る。 */
+/**
+ * 課題IDごとの結果のキャッシュ。
+ *
+ * 中身は模範回路を丸ごと1回シミュレートした結果で、内蔵課題でも 175〜260ms かかる
+ * （レビュー計測）。課題は開いている間ずっと同じものなので、セッション画面を開くたびに
+ * 作り直す必要はない。課題の中身が差し替わっても拾えるよう `formatVersion` も鍵に混ぜる。
+ * 結果は読み取り専用として扱う（呼び出し側は `chart` を書き換えない）。
+ */
+const CACHE = new Map<string, SpecChartResult>();
+
+/** キャッシュの鍵。 */
+function cacheKey(problem: AssembleProblem): string {
+  return `${problem.id}@${problem.formatVersion}`;
+}
+
+/** キャッシュを空にする（テスト用）。 */
+export function clearSpecChartCache(): void {
+  CACHE.clear();
+}
+
+/** その課題の仕様チャートがもうキャッシュにあるか（テスト用）。 */
+export function isSpecChartCached(problem: AssembleProblem): boolean {
+  return CACHE.has(cacheKey(problem));
+}
+
+/** 課題の仕様タイムチャートを作る（同じ課題の2度目以降はキャッシュを返す）。 */
 export function buildSpecChart(problem: AssembleProblem): SpecChartResult {
+  const key = cacheKey(problem);
+  const cached = CACHE.get(key);
+  if (cached !== undefined) return cached;
+  const result = computeSpecChart(problem);
+  CACHE.set(key, result);
+  return result;
+}
+
+/** 模範回路をその場で走らせて仕様チャートを作る（キャッシュの中身）。 */
+function computeSpecChart(problem: AssembleProblem): SpecChartResult {
   const reference = buildReferenceSession(problem, JIPM_BOARD);
   if (!reference.ok) {
     return { ok: false, errors: reference.errors.map((e) => `${e.path}: ${e.message}`) };

@@ -78,10 +78,15 @@
   padding: 10px 14px;
 }
 
+/*
+ * 下部パネルの高さは**固定**にする。`auto` にすると操作ログが1行増えるたびに
+ * 3Dビューポートの高さが変わり、盤の見た目の大きさが配線中にじわじわ縮む
+ * （レビュー指摘: セッション中にキャンバスが伸縮する）。
+ */
 .sessionLayout {
   display: grid;
   grid-template-columns: 1fr 380px;
-  grid-template-rows: 1fr auto;
+  grid-template-rows: 1fr var(--bottom-panel-h, 200px);
   flex: 1;
   min-height: 0;
 }
@@ -115,11 +120,23 @@
   grid-template-columns: 1fr 1fr;
   gap: 8px;
   padding: 8px;
+  /* 行の高さは固定。中身が増えてもパネルの外へは広がらない（ログ側が自分でスクロールする） */
+  min-height: 0;
+  overflow: hidden;
 }
 
+.bottomPanel > * {
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/*
+ * 状態オーバーレイは**右上**に置く。左上は盤の DC24V 電源・端子台の名札と
+ * 視点ギズモが並ぶ場所で、三つ巴で重なって読めなかった（レビュー指摘）。
+ */
 .statusOverlay {
   position: absolute;
-  left: 12px;
+  right: 12px;
   top: 12px;
   background: rgba(20, 24, 32, 0.75);
   border: 1px solid var(--line);

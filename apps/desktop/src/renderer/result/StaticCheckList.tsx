@@ -13,7 +13,7 @@ import styles from './result.module.css';
 export function StaticCheckList({ checks }: { checks: readonly StaticCheckResult[] }): JSX.Element {
   return (
     <div className={styles.card}>
-      <h3>{JA.result.staticChecks}</h3>
+      <h2>{JA.result.staticChecks}</h2>
       <div data-testid="static-checks">
         {checks.map((check) => (
           <div key={check.id}>
@@ -49,9 +49,9 @@ export function HazardList({
   const rows = (Object.keys(counts) as HazardKind[]).filter((kind) => counts[kind] > 0);
   return (
     <div className={styles.card}>
-      <h3>
+      <h2>
         {JA.result.hazards}（{total}）
-      </h3>
+      </h2>
       {rows.length === 0 ? (
         <p>{JA.result.hazardNone}</p>
       ) : (

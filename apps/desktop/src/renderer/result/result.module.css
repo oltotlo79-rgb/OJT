@@ -36,17 +36,33 @@
   gap: 16px;
 }
 
+.title {
+  font-size: 18px;
+  margin: 0;
+}
+
+/*
+ * カードの見出しは h2。h1（判定結果のタイトル）の次が h3 では見出しの階層が飛ぶ。
+ * 高さは頭打ちにして中身が多いカード（差分一覧）だけが自分でスクロールする
+ * （レビュー指摘: 差分が20件あるとカードが伸びて他の項目が画面外へ押し出される）。
+ */
 .card {
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 6px;
   padding: 10px 12px;
+  max-height: 420px;
+  overflow-y: auto;
 }
 
-.card h3 {
+.card h2 {
   color: var(--muted);
   font-size: 12px;
   margin: 0 0 8px;
+  position: sticky;
+  top: -10px;
+  background: var(--panel);
+  padding: 2px 0;
 }
 
 .table {

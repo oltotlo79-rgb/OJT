@@ -23,7 +23,7 @@ export function ChartOverlay({
   const actualByName = new Map(actual.signals.map((s) => [s.name, s] as const));
   return (
     <div className={styles.card}>
-      <h3>{JA.result.chartOverlay}</h3>
+      <h2>{JA.result.chartOverlay}</h2>
       <svg
         viewBox={`0 0 ${width} ${height}`}
         role="img"

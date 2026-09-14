@@ -3,9 +3,11 @@ import { describe, expect, it } from 'vitest';
 import {
   deleteKeyToAction,
   escapeToAction,
+  isTypingTarget,
   LOCKED_WIRE_MESSAGE,
   NOT_WIRABLE_MESSAGE,
   pickToAction,
+  shouldIgnoreShortcut,
   type InteractionState,
 } from '../src/renderer/session/interaction.js';
 
@@ -192,5 +194,40 @@ describe('キーボード', () => {
 
   it('Delete は配線モードでは無視される（電線が選択されていても）。§12.2', () => {
     expect(deleteKeyToAction(state({ selectedWire: 'w-002' }), [])).toEqual({ type: 'none' });
+  });
+});
+
+describe('shouldIgnoreShortcut（入力中はショートカットを止める。§8.2）', () => {
+  /** タグ名だけを持つ最小の「宛先」（DOM が無くても検査できる）。 */
+  const tag = (tagName: string): unknown => ({ tagName });
+
+  it('入力欄・テキストエリア・セレクトに宛てたキーは無視する', () => {
+    for (const tagName of ['INPUT', 'TEXTAREA', 'SELECT', 'input', 'textarea', 'select']) {
+      expect(shouldIgnoreShortcut({ target: tag(tagName) }), tagName).toBe(true);
+    }
+  });
+
+  it('編集可能な要素に宛てたキーも無視する', () => {
+    expect(shouldIgnoreShortcut({ target: { tagName: 'DIV', isContentEditable: true } })).toBe(
+      true,
+    );
+  });
+
+  it('IME の変換中はどこに宛てられていても無視する', () => {
+    expect(shouldIgnoreShortcut({ target: tag('BODY'), isComposing: true })).toBe(true);
+    expect(shouldIgnoreShortcut({ target: null, isComposing: true })).toBe(true);
+  });
+
+  it('盤（キャンバス）や本文へのキーは通す', () => {
+    expect(shouldIgnoreShortcut({ target: tag('CANVAS') })).toBe(false);
+    expect(shouldIgnoreShortcut({ target: tag('BODY') })).toBe(false);
+    expect(shouldIgnoreShortcut({ target: tag('BUTTON') })).toBe(false);
+    expect(shouldIgnoreShortcut({ target: null })).toBe(false);
+  });
+
+  it('isTypingTarget は単体でも使える（宛先の判定だけ）', () => {
+    expect(isTypingTarget(tag('INPUT'))).toBe(true);
+    expect(isTypingTarget(tag('CANVAS'))).toBe(false);
+    expect(isTypingTarget(undefined)).toBe(false);
   });
 });
