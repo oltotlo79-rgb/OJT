@@ -49,6 +49,26 @@ Plan 1D1 が完了していること。この計画は 1D1 が作った次のフ
 
 仕様 §7.8「同一IDが両方にある場合は利用者側を優先」、§13 #1「読込エラーは課題一覧に理由付きで表示し、他の課題の読込は継続する」、§13 #9「利用者課題フォルダが存在しなければ警告を出して内蔵課題のみで動作する」。
 
+### 1D2-a での変更（2026-09-14）
+
+品質レビューの指摘を受けて `content-loader.ts` を次の形に直した（下の Step のコードはこの変更前のもの。実装が正）。
+
+- **`loadContent()` は `async`** になった。フォルダの有無は `existsSync()` ではなく
+  `fs.promises.stat()` に **1秒の制限時間つき**（`DIR_PROBE_TIMEOUT_MS`）で聞く。
+  到達できない共有フォルダ（`\\server\share`）を指していると `existsSync()` が数十秒返らず、
+  その間 main プロセスごと止まってウィンドウが無反応になっていたため。
+  制限時間を過ぎたら「フォルダが無い」として §13 #9 の警告行を出す。
+- **読込結果を1件だけ覚える**（鍵は `(フォルダ, 更新時刻)` ＋ `CONTENT_CACHE_TTL_MS = 3000`）。
+  `content:read` は `content:list` の直後に必ず来るので、そのたびに8題＋利用者フォルダを
+  zod で検証し直すのは無駄だった。Windows のフォルダ更新時刻は同じ秒の追加で動かないことが
+  あるので、更新時刻だけでなく**有効期限**も併用する。捨てるのは `clearContentCache()`。
+- **配布版の同梱課題は `resources/content` から読む**（§7.8「同梱課題も
+  `resources/content/<mode>/<id>.json` を読む」）。`app.isPackaged` が真なら
+  `loadProblemsFromDir(join(process.resourcesPath, 'content'))` を `builtinSet()` が使い、
+  フォルダが無い／1題も読めないときだけ焼き込みの `BUILTIN_PROBLEMS` に落として
+  読込エラー欄に理由（`read-error`）を1行出す。開発中（`!app.isPackaged`）は焼き込みのまま。
+- `ipc.ts` の `content:list` / `content:read` ハンドラは `await loadContent(...)` になった。
+
 
 - [ ] **Step 1: `apps/desktop/test/content-loader.test.ts` を書く**
 
@@ -545,6 +565,37 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 
 **チャネルを増やさない工夫**: 仕様 §4.3 は IPC を6チャネルに限る。一時保存の削除は `workfile:load` に `discard: true` を載せて表す（読まずに消す）。7本目のチャネルを作らないための設計で、`WorkFileLoadRequest` のコメントに理由を書く。
 
+### 1D2-a での変更（2026-09-14）
+
+- **復元で経過時間と危険操作の回数を戻す**。`applyWorkFile()` は `openProblem()` のあとに
+  ストアの `restoreProgress(elapsedMs, hazardCount)` を呼び、`elapsedMs` を戻して
+  `startedAtMs = Date.now() − elapsedMs` と巻き戻す（続きから計時される）。
+  非有限・負数は 0 に丸める。復元した危険操作は `restoredHazardCount` に持ち、
+  下部の警告一覧と結果画面の見出しに出す。
+  **判定の合計の決め方**: `JudgeResult.hazardCount` は Worker が作り直したネットリストの上で
+  数えるので**復元後の分だけ**になる。種別ごとの内訳は復元できないため、
+  画面に出す合計だけを「今回の分 ＋ 復元した分」とし、合否には引き続き影響させない（§17.2 #3）。
+- **`toSession()` が要素まで検査する**。電線（`id` / `color` / `from` / `to` が文字列で、
+  端子は `toPhysicalTerminal()` で物理端子に直したうえで `JIPM_BOARD.terminals` に実在するか、
+  線色は `WireColor` のパレットにあるか）、装着（`kind` が `MOUNTABLE_KINDS`、ソケットが
+  `SOCKET_IDS`、`presetMs` / `rangeMaxMs` が有限）、`socketRoles`（`validateSocketRoles()`）、
+  本数（`MAX_RESTORED_WIRES = 200`）。1つでも壊れていれば従来どおり
+  「作業ファイルの盤の状態が読めません」で断る。要素を見ていなかったせいで、壊れた電線が
+  そのまま盤に載り、3Dシーンが描画のたびに `TypeError` を投げて例外バナーからも戻れなかった。
+- **main 側にも同じ上限**。`parseWorkFile()` が `session.wires.length > 200` を断り、
+  `loadWorkFile()` は読む前に `statSync().size > MAX_WORK_FILE_BYTES（5MB）` を断る。
+- **別の課題の作業ファイルは確認してから開く**。`needsDiscardConfirm()` が真
+  （`file.problemId` がいまの課題と違い、訓練者の電線か操作履歴がある）なら適用せず
+  `pendingWorkFile` に積み、外枠が「続行／取消」の小さな確認欄を出す
+  （`window.confirm()` は Electron の描画を止めるので使わない）。
+- **課題を開いたら復元の確認欄を引っ込める**（`App` が `problem?.id` の変化を見る）。
+- **判定結果を出したら一時保存を消す**。`Result` が `workfile:load` に `discard: true` を送る
+  （次の起動で終わった課題の復元を勧めない）。
+- **ダイアログは単一引数の形**。ウィンドウが無いときに `{} as BrowserWindow` を渡すのをやめ、
+  `dialog.showSaveDialog(options)` / `showOpenDialog(options)` を使う。
+- **main の文言は `src/shared/messages.ts`**（§15 の集約を main にも及ぼす。`ja.ts` は
+  `JA.main` として再輸出するだけ）。
+
 
 - [ ] **Step 1: `src/shared/ipc.ts` の `WorkFileLoadRequest` に `discard` を足す**
 
@@ -831,6 +882,20 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 - Modify: `apps/desktop/src/renderer/screens/screens.module.css`, `apps/desktop/src/renderer/app/routes.tsx`, `apps/desktop/src/renderer/screens/Home.tsx`
 
 仕様 §12.1 の設定画面のうち Phase 1 で扱うのは「利用者課題フォルダ」「音のON/OFFと音量」「起動時の復元確認」と、§15 の商標注記・§17.1 の前提注記を載せた「このアプリについて」。
+
+### 1D2-a での変更（2026-09-14）
+
+- **音量つまみは確定でだけ保存する**。`onChange` は手元の状態と `sounds.configure()` だけを
+  動かし、`onPointerUp` / `onKeyUp` / `onBlur` で1回だけ `settings:set` を送る。
+  つまみの確定では「設定を保存しました」のトーストを**出さない**（フォルダ欄では出す）。
+  以前はつまみを動かすたびに保存とトーストが走り、画面がトーストで埋まっていた。
+- **設定ファイルの BOM と破損に対応する**。`readSettings()` は UTF-8 BOM を落としてから
+  `JSON.parse()` する（`@ojt/content` の `loader.ts` と同じ扱い）。読めなかったときは
+  `settings:get` の戻り（`AppSettingsResponse`）に `warning` を載せ、画面には
+  `settings-warning` の欄とトーストで出す。上書きする前に
+  `settings.corrupt-<時刻>.json` として控えを残す。**チャネルは6本のまま**。
+- 利用者課題フォルダの使い方（`resources/content/assemble/` が同梱課題の実体で、
+  そこからコピーして書き換える）を `JA.settings.userContentHelp` として欄の下に添える。
 
 
 - [ ] **Step 1: `src/renderer/screens/screens.module.css` の末尾に設定画面のスタイルを足す**
@@ -1122,6 +1187,29 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 - Modify: `apps/desktop/src/renderer/i18n/ja.ts`, `apps/desktop/src/renderer/panels/Toolbar.tsx`, `apps/desktop/src/renderer/screens/Session.tsx`, `apps/desktop/src/renderer/app/App.tsx`
 
 作業の保存／読込・回路図ヒントの開閉をツールバーに足し、セッション画面に 30 秒ごとの一時保存（§12.3）と効果音（§15）と回路図ヒント（§8.4）をつなぐ。アプリ外枠には起動時の復帰プロンプトを足す。
+
+### 1D2-a での変更（2026-09-14）
+
+- **回路図ヒントは級だけで決める**（§8.4）。`store.ts` の `schematicPolicy(grade)` が
+  3級=`{ shown: true, toggleable: false }`（常時表示・開閉ボタンを出さない）、
+  2級=`{ shown: false, toggleable: true }`（開閉可・初期は閉）、
+  1級=`{ shown: false, toggleable: false }`（非表示）を返す。
+  課題JSONの `hints.schematicVisible` は Phase 2 の C2 用に残すだけで、Phase 1 では見ない。
+- **ヒントは部品パネルより後ろに描く**。3級は常時表示なので、先に置くと縦長の回路図に
+  押し出されて「部品」が画面外へ行き、右パネルを一番下まで繰らないと装着できなかった。
+  併せて `.schematicBox` に `max-height: 320px; overflow: auto` を入れる。
+- **例外バナーに「課題一覧へ戻る」を足す**（§13 #5）。押すと `abandonSession()` が
+  課題・盤・判定・エラーを捨てて一覧へ戻し、世代番号を進める。盤そのものが描けないときに
+  「セッションをリセット」では何度押しても同じ例外で落ち続け、詰んでいた。
+- **`restartSession()` は2回目で盤を作り直す**。`restartAttempts`（`ErrorBoundary` が子を
+  描けたら 0 に戻る）が `RESTART_FALLBACK_ATTEMPTS = 2` に達したら
+  `sessionForProblem(problem)` で盤を作り直し、「作業を初期化して再開しました」を出す。
+  1回目までは §13「作業保持の原則」どおり盤と履歴を残す。
+- **`safeRoutes()` はどんな例外も畳む**。`RoutingError` 以外（壊れた電線による `TypeError`）も
+  1本ぶんの失敗として `invalid-terminal` の理由で `errors` に載せ、描画中に投げない。
+- **Worker の `load` 失敗は致命扱い**。盤の食い違い（別の盤で保存した作業ファイル）は
+  以前トーストだけで、画面は課題を開いたつもりのまま無反応だった。追従ループを畳んで
+  `fatal: true` を返し、例外バナー（2つの導線つき）を出す。
 
 
 - [ ] **Step 1: `src/renderer/i18n/ja.ts` の `session` に文言を足す**
@@ -2334,6 +2422,21 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 
 仕様 §15「electron-builder。NSISインストーラ と ポータブル版（zip展開のみで動作）の2形態。コード署名なし。自動更新なし」。
 
+### 1D2-a での変更（2026-09-14）
+
+- **`resources/content/assemble/*.json` は複写であって正本ではない**。手で `Copy-Item` する
+  Step 1 の代わりに `apps/desktop/scripts/copy-content.mjs` を置き、`predist` と `dist` の
+  先頭で走らせる（pnpm は既定で `pre`/`post` スクリプトを走らせないので `dist` にも直接
+  並べる）。`test/content-resources.test.ts` が「複写した8件が正本とパースして完全一致」を
+  検査するので、片方だけ直したまま配布されることがない。
+- **配布版はこの複写を読んで同梱課題を組み立てる**（Task 1 の 1D2-a 変更を参照）。
+  フォルダが消えていてもアプリに焼き込んだ課題で起動し、読込エラー欄に理由を出す。
+- **asar から `node_modules` を外す**。`files` に `'!node_modules/**'` を足した。
+  main も renderer も electron-vite がバンドルして `out/` に出しており、実行時に
+  `node_modules` を `require` しない。zod のテストスイートまで混ざって無駄が大きかった。
+  実測: `app.asar` 10,182,851 → 3,886,129 バイト（9.71MiB → 3.71MiB）。
+  配布した exe を起動して課題8件が読めること・メニューが外れていることを確認済み。
+
 
 - [ ] **Step 1: 課題JSONを `resources/content/` へコピーする**
 
@@ -2547,11 +2650,12 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 
 - [ ] `pnpm --filter @ojt/desktop typecheck` が無出力で終わる
 - [ ] `pnpm lint` が無出力で終わる
-- [ ] `pnpm --filter @ojt/desktop test` が **11ファイル / 119テスト** すべて通る
+- [ ] `pnpm --filter @ojt/desktop test` が通る（1D2 完了時 21ファイル / 286テスト、
+      1D2-a の修正後 **25ファイル / 414テスト**）
 - [ ] `pnpm --filter @ojt/desktop e2e` の **4本**（スモーク1本＋仕上げ3本）が通る
 - [ ] `apps/desktop/screenshots/` に15枚のスクリーンショットが出る
 - [ ] `pnpm --filter @ojt/desktop dist` が `release/win-unpacked/` と ポータブル zip を作り、`release/win-unpacked/OJT電気保全トレーナー.exe` が起動してウィンドウタイトル「OJT電気保全トレーナー」を出す
-- [ ] `release/win-unpacked/resources/content/assemble/` に課題JSONが8件ある
+- [ ] `release/win-unpacked/resources/content/assemble/` に課題JSONが8件あり、配布版がそこから同梱課題を読む（1D2-a）
 - [ ] `pnpm -r test` が全パッケージで通る
 
 ---
@@ -2563,3 +2667,4 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 | 2026-09-14 | 初版 |
 | 2026-09-14 | 実装された `@ojt/schematic-core`（Task 11〜16 / 13b・13c・13d）と `@ojt/board-model` の経路器（Task 9b・9c）に合わせて整合を取った。①Task 4 の読取専用レンダラを実装どおりの `Shape`（`kind` / `role` に `line` / `circle` / `arc` / `text` の項目が付く直和。`fill` は `circle` だけ、`startDeg` / `endDeg` は `arc` だけ、`text` / `anchor` は `text` だけ）と `SchematicLayout`（`width` / `height` / `shapes`）に合わせ、`DEFAULT_LAYOUT_OPTIONS`（`colWidth: 24` / `rowHeight: 24` / `marginX: 12` / `marginY: 16` / `symbolWidth: 12`）を明記した。タイマコイルの銘板が `T1 (3.0秒)` と長く既定の列幅では隣と重なるので、`layout(doc, { colWidth: 40 })` を渡すようにした（Task 7 に検査を追加）。②Task 13d で `Shape` に付いた `rungId?` / `cellId?` は Phase 2 のホバー連動で使うものとして注記し、Phase 1 は配列の添字で `key` を振る方針を明示した。③Task 6 の `Session.tsx` から、`routeWire()` が `RoutingError` を投げるようになって死にコードになっていた `crossesFootprint()` の分岐を外し、`safeRoutes()`（Plan 1D1 Task 12）で受け止めて理由を出す形に揃えた。文言も `routeBlocked` → `routeFailed` / `laneOverflow` / `routeReason` に差し替えた。④`work-file.ts` の `toSession()` が `@ojt/schematic-core` の `toSession(doc, board, options)`（`{ ok, session, assignment } \| { ok: false, errors }`）と同名の別物であることを注記した。テスト総数 115 → 119（Plan 1D1 Task 11 の増加ぶん） |
 | 2026-09-14 | Plan 1D1 Task 1D1-b（renderer が `@ojt/content` バレル経由で `node:fs` を引き込み `pnpm --filter @ojt/desktop dev` が落ちる不具合の修正）で `loadProblemsFromDir` / `mergeProblemSets` / `ProblemSet` を `@ojt/content` のルートバレルから `@ojt/content/loader`（新設の subpath export）に移した。Step 3 の `content-loader.ts` の import を `import { BUILTIN_PROBLEMS, type AssembleProblem } from '@ojt/content'; import { loadProblemsFromDir, mergeProblemSets, type ProblemSet } from '@ojt/content/loader';` に更新（関数・型の挙動は無変更）。`BUILTIN_PROBLEMS` / `AssembleProblem` は引き続きルートバレルから取る |
+| 2026-09-14 | 1D2-a: エラーバナーからの復帰経路、復元時の経過時間・危険操作の復元、作業ファイルの要素検証、ヒントの配置、Electron の強化（メニュー無効化・外部遷移拒否）、確認ダイアログ、スライダーの確定保存、設定ファイルの BOM/破損対応、課題一覧のキャッシュ、3級ヒント常時表示、文言集約、predist。あわせて Task 7〜9 のレビュー指摘2件（配布版の同梱課題を `resources/content` から読む＝§7.8 の読込経路、asar から `node_modules` を外して 9.71MiB → 3.71MiB）も取り込んだ。詳細は各 Task の「1D2-a での変更」節 |
