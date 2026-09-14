@@ -109,8 +109,8 @@ describe('routing: 直角配線（§6.6 / 写真にダクトは無い）', () =>
     const ys = jumper.corners.map((c) => c.y);
     expect(Math.min(...ys)).toBeGreaterThan(142);
     expect(Math.max(...ys)).toBeLessThan(198);
-    // 同じ列の渡り線が増えると張り出し量が2mmずつ変わる
-    const second = route('w-2', 'TB_PB.3b', 'TB_PB.4c', [jumper]);
+    // x区間の重なる渡り線が増えると張り出し量が2mmずつ変わる
+    const second = route('w-2', 'TB_PB.2c', 'TB_PB.3b', [jumper]);
     expect(second.channelIds).toEqual([]);
     expect(second.lane).toBe(1);
     const jogOf = (r: WireRoute): number => Math.min(...r.corners.map((c) => c.y));
@@ -142,15 +142,17 @@ describe('routing: 直角配線（§6.6 / 写真にダクトは無い）', () =>
     expect(runY(third) - runY(second)).toBeCloseTo(WIRE_LANE_PITCH_MM, 6);
   });
 
-  it('レーンは MAX_WIRE_LANES で頭打ちになる', () => {
+  it('レーンを使い切ると上のレイヤ（高さの段）へ逃げる', () => {
     const existing: WireRoute[] = [];
-    let last = route('w-0', 'P.1', 'S1.1');
-    existing.push(last);
-    for (let i = 1; i < 10; i += 1) {
-      last = route(`w-${i}`, 'P.1', 'S1.1', existing);
-      existing.push(last);
+    for (let i = 0; i < MAX_WIRE_LANES + 1; i += 1) {
+      existing.push(route(`w-${i}`, 'P.1', 'S1.1', existing));
     }
-    expect(last.lane).toBe(MAX_WIRE_LANES - 1);
+    expect(existing.slice(0, MAX_WIRE_LANES).map((r) => r.lane)).toEqual([0, 1, 2, 3, 4, 5, 6, 7]);
+    for (const r of existing) expect(r.laneOverflow).toBe(false);
+    const ninth = existing[MAX_WIRE_LANES];
+    if (ninth === undefined) throw new Error('route');
+    expect(ninth.lanes.map((l) => `${l.channelId}:${l.lane}:${l.layer}`)).toEqual(['ch-top:0:1']);
+    expect(ninth.lane).toBe(0);
   });
 
   it('自己保持回路の全配線が部品の上を通らず、直角でレーンも重ならない', () => {
@@ -160,19 +162,17 @@ describe('routing: 直角配線（§6.6 / 写真にダクトは無い）', () =>
       expect(isManhattan(r.corners)).toBe(true);
       expect(crossingFootprint(board, r)).toBeUndefined();
     }
-    // 同じ帯の同じ区間を走る経路どうしはレーンが違う（区間が離れていれば同じレーンでよい）
-    for (let i = 0; i < routes.length; i += 1) {
-      for (let j = i + 1; j < routes.length; j += 1) {
-        const a = routes[i];
-        const b = routes[j];
+    // 同じ帯の同じ区間を走る経路どうしはレーン／レイヤが違う（区間が離れていれば同じでよい）
+    const slots = routes.flatMap((r) => r.lanes.map((lane) => ({ wireId: r.wireId, ...lane })));
+    for (let i = 0; i < slots.length; i += 1) {
+      for (let j = i + 1; j < slots.length; j += 1) {
+        const a = slots[i];
+        const b = slots[j];
         if (a === undefined || b === undefined) continue;
-        const overlaps = a.channelSpans.some((sa) =>
-          b.channelSpans.some(
-            (sb) => sa.channelId === sb.channelId && sa.lo < sb.hi && sb.lo < sa.hi,
-          ),
-        );
-        if (!overlaps) continue;
-        expect(a.lane).not.toBe(b.lane);
+        if (a.wireId === b.wireId) continue;
+        if (a.channelId !== b.channelId) continue;
+        if (a.span.lo >= b.span.hi || b.span.lo >= a.span.hi) continue;
+        expect(`${a.lane}:${a.layer}`).not.toBe(`${b.lane}:${b.layer}`);
       }
     }
   });
@@ -195,6 +195,8 @@ describe('routing: 直角配線（§6.6 / 写真にダクトは無い）', () =>
       expect(crossingFootprint(board, r)).toBeUndefined();
       expect(r.throughPanelAt).toBeDefined();
       expect(r.channelIds).toEqual([]);
+      expect(r.kind).toBe('harness');
+      expect(r.laneOverflow).toBe(false);
     }
     // PL1 の2本は PL1 の貫通穴に2mmピッチで入り、機器の中心は通らない
     const pl1 = routes.filter((r) => r.wireId.startsWith('lk-pl-1'));
@@ -253,21 +255,58 @@ describe('routing: 直角配線（§6.6 / 写真にダクトは無い）', () =>
   });
 
   it('レーンは帯ごとの占有区間が重なるときだけ分ける', () => {
-    expect(pickLane([{ channelId: 'ch-mid', lo: 0, hi: 10 }], [])).toBe(0);
-    const busy: WireRoute[] = [0, 1, 2, 3, 4, 5, 6, 7].map((lane) => ({
-      wireId: `x${lane}`,
+    expect(pickLane([{ channelId: 'ch-mid', lo: 0, hi: 10 }], [])).toEqual({
+      lanes: [{ channelId: 'ch-mid', lane: 0, layer: 0, span: { lo: 0, hi: 10 } }],
+      overflow: false,
+    });
+    const occupy = (lane: number, layer: number): WireRoute => ({
+      wireId: `x${layer}-${lane}`,
+      kind: 'channel',
       points: [],
       corners: [],
       channelIds: ['ch-mid'],
       channelSpans: [{ channelId: 'ch-mid', lo: 0, hi: 100 }],
+      lanes: [{ channelId: 'ch-mid', lane, layer, span: { lo: 0, hi: 100 } }],
       lane,
+      laneOverflow: false,
       lengthMm: 0,
-    }));
-    expect(pickLane([{ channelId: 'ch-mid', lo: 0, hi: 100 }], busy)).toBe(MAX_WIRE_LANES - 1);
+    });
+    const layer0: WireRoute[] = [0, 1, 2, 3, 4, 5, 6, 7].map((lane) => occupy(lane, 0));
+    // レーンが埋まったら上のレイヤへ
+    expect(pickLane([{ channelId: 'ch-mid', lo: 0, hi: 100 }], layer0)).toEqual({
+      lanes: [{ channelId: 'ch-mid', lane: 0, layer: 1, span: { lo: 0, hi: 100 } }],
+      overflow: false,
+    });
+    const busy = [...layer0, ...[0, 1, 2, 3, 4, 5, 6, 7].map((lane) => occupy(lane, 1))];
+    // 全スロットが埋まっても投げず、いちばん空いたスロット（同点なら最小）に載せて印を付ける
+    expect(pickLane([{ channelId: 'ch-mid', lo: 0, hi: 100 }], busy)).toEqual({
+      lanes: [{ channelId: 'ch-mid', lane: 0, layer: 0, span: { lo: 0, hi: 100 } }],
+      overflow: true,
+    });
     // 区間が離れていればレーン0を再利用できる
-    expect(pickLane([{ channelId: 'ch-mid', lo: 200, hi: 300 }], busy)).toBe(0);
+    expect(pickLane([{ channelId: 'ch-mid', lo: 200, hi: 300 }], busy).lanes[0]).toMatchObject({
+      lane: 0,
+      layer: 0,
+    });
     // 別の帯なら干渉しない
-    expect(pickLane([{ channelId: 'ch-top', lo: 0, hi: 100 }], busy)).toBe(0);
+    expect(pickLane([{ channelId: 'ch-top', lo: 0, hi: 100 }], busy).lanes[0]).toMatchObject({
+      lane: 0,
+      layer: 0,
+    });
+    // 端が触れるだけでも重なりとみなす（管がぶつかるので）
+    expect(pickLane([{ channelId: 'ch-mid', lo: 100, hi: 200 }], layer0).lanes[0]).toMatchObject({
+      lane: 0,
+      layer: 1,
+    });
+    // 同じ電線の中でも、重なる区間どうしは別スロットになる
+    const pair = pickLane(
+      [
+        { channelId: 'ch-mid', lo: 0, hi: 50 },
+        { channelId: 'ch-mid', lo: 40, hi: 90 },
+      ],
+      [],
+    );
+    expect(pair.lanes.map((l) => l.lane)).toEqual([0, 1]);
   });
 
   it('引き出し向きは端子ごとに強制できる（既設ハーネス用）', () => {
@@ -308,11 +347,14 @@ describe('routing: 直角配線（§6.6 / 写真にダクトは無い）', () =>
   it('部品の上を通る経路は検出できる', () => {
     const bogus: WireRoute = {
       wireId: 'bogus',
+      kind: 'channel',
       points: [vec3(0, 100, 3.5), vec3(330, 100, 3.5)],
       corners: [vec3(0, 100, 3.5), vec3(330, 100, 3.5)],
       channelIds: [],
       channelSpans: [],
+      lanes: [],
       lane: 0,
+      laneOverflow: false,
       lengthMm: 330,
     };
     expect(crossesFootprint(board, bogus)).toBe(true);

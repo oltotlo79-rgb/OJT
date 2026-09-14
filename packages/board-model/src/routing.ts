@@ -1,10 +1,14 @@
 import type { TerminalId } from '@ojt/circuit-sim';
 import {
+  channelBandRect,
   CHANNEL_LANE_DIRECTION,
   findBoardTerminal,
   HARNESS_APPROACH_MM,
   HARNESS_PITCH_MM,
-  WIRE_RUN_Z_MM,
+  WIRE_LAYER_COUNT,
+  WIRE_LAYER_STEP_MM,
+  WIRE_RUN_X_Z_MM,
+  WIRE_RUN_Y_Z_MM,
   type BoardDefinition,
   type BoardTerminal,
   type Footprint,
@@ -14,10 +18,12 @@ import {
   distance,
   polylineLength,
   rectContains,
+  rectsOverlap,
   roundVec,
   segmentIntersectsRect,
   vec3,
   vecEquals,
+  type Rect,
   type Vec3,
 } from './geometry.js';
 import { toPhysicalTerminal } from './roles.js';
@@ -29,15 +35,23 @@ import type { BoardSession } from './session.js';
  * 実物（写真）には配線ダクトが無いが、電線は盤面の上を**直角**に整列して走っている。
  * そこで盤定義に「配線帯」（見えないガイド。機器の列と列のあいだ）を置き、
  * 端子 → 盤面に垂直に引き出す → 最寄りの配線帯 → 帯の中を直角に走る → 目的端子の列で曲がる → 端子
- * という経路を作る。並走する電線は帯の幅方向に2mmピッチでレーンを割り当て、曲がり角は
- * 半径6mmのフィレットで丸める。純関数・決定論（乱数も時刻も使わない）。
+ * という経路を作る。純関数・決定論（乱数も時刻も使わない）。
+ *
+ * 並走する電線の分け方は2方向ある。
+ * - **レーン**（幅方向）: 帯の中で2mmピッチに `MAX_WIRE_LANES` 本ずらす。
+ * - **レイヤ**（高さ方向）: レーンを使い切ったら `WIRE_LAYER_STEP_MM` だけ上の段に載せる。
+ *
+ * さらに走る向きで高さの段を分けてある（x方向は {@link WIRE_RUN_X_Z_MM}、y方向は
+ * {@link WIRE_RUN_Y_Z_MM} 系）。直交する区間どうしは必ず1.8mm以上離れるので、
+ * 直径 {@link WIRE_DIAMETER_MM}（1.6mm）の管で描いても食い込まない。高さの変わる角には
+ * z だけ動く点を差し込むので、折れ点列は常に直角経路（{@link isManhattan}）である。
  */
 
 /** 電線の描画直径[mm]。§6.6 */
 export const WIRE_DIAMETER_MM = 1.6;
 /** 並走する電線の並列オフセット幅[mm]。§6.6 */
 export const WIRE_LANE_PITCH_MM = 2;
-/** 並列オフセットの最大段数。 */
+/** 並列オフセットの最大段数（1レイヤあたり）。 */
 export const MAX_WIRE_LANES = 8;
 /** 曲がり角のフィレット半径[mm]。 */
 export const WIRE_FILLET_RADIUS_MM = 6;
@@ -45,6 +59,10 @@ export const WIRE_FILLET_RADIUS_MM = 6;
 export const WIRE_FILLET_SEGMENTS = 3;
 /** 同じ列の隣り合う端子を直結する渡り線が、列から張り出す距離[mm]。 */
 export const DIRECT_JOG_MM = 5;
+/** 渡り線が使える張り出しの段数。これを超えるぶんは配線帯の経路にする。 */
+export const MAX_DIRECT_JOG_LEVELS = 3;
+
+const EPS = 1e-6;
 
 /** 経路を求める対象の電線（端子IDは**物理**端子ID）。 */
 export interface RoutableWire {
@@ -53,48 +71,142 @@ export interface RoutableWire {
   to: TerminalId;
 }
 
+/**
+ * 経路の種類。用途の違う経路を取り違えないための判別子。
+ * - `channel`: 配線帯を使う訓練者の電線（{@link routeWire} の既定）。
+ * - `direct`: 同じ列の隣り合う端子を結ぶ渡り線。列からわずかに張り出すだけで帯には入らない。
+ * - `harness`: 既設の青線ハーネス（{@link routeFixedLinks}）。帯もレーンも使わない。
+ */
+export type WireRouteKind = 'direct' | 'channel' | 'harness';
+
+/** 帯に沿った占有区間（`lo`〜`hi` は帯の走行軸の座標）。 */
+export interface ChannelSpan {
+  channelId: string;
+  lo: number;
+  hi: number;
+}
+
+/**
+ * 帯を1回走るごとの割当。1本の電線が同じ帯を2回走れば2つになる。
+ * 区間が重なる走行どうしは必ず別の `(lane, layer)` に載る。
+ */
+export interface ChannelLane {
+  channelId: string;
+  /** 帯の幅方向の位置（0起点。`CHANNEL_LANE_DIRECTION` の向きへ `WIRE_LANE_PITCH_MM` ずつ）。 */
+  lane: number;
+  /** 帯の高さ方向の段（0起点。レイヤ1は `WIRE_LAYER_STEP_MM` だけ上）。 */
+  layer: number;
+  /** この走行が占める区間（帯の走行軸の座標）。 */
+  span: { lo: number; hi: number };
+}
+
 /** 求めた経路。 */
 export interface WireRoute {
   wireId: string;
+  /** 経路の種類。渡り線・既設ハーネスを配線帯の経路と取り違えないために持つ。 */
+  kind: WireRouteKind;
   /** 描画用の折れ線[mm]（曲がり角はフィレットで丸めてある）。 */
   points: Vec3[];
   /** 丸める前の直角経路の折れ点[mm]。隣り合う点は x・y・z のどれか1軸だけが変わる。 */
   corners: Vec3[];
   /** 通った配線帯のID（通過順）。 */
   channelIds: string[];
-  /** 帯ごとの占有区間（帯に沿った座標の範囲）。同じ区間を使う電線は別レーンになる。 */
-  channelSpans: Array<{ channelId: string; lo: number; hi: number }>;
-  /** 帯の中での並走レーン（0起点）。 */
+  /** 帯ごとの占有区間。帯を走るたびに1つで、`lanes` と同じ並び。 */
+  channelSpans: ChannelSpan[];
+  /** 帯を走るたびのレーン・レイヤの割当。 */
+  lanes: ChannelLane[];
+  /** 最初の走行のレーン（渡り線では張り出しの段、既設ハーネスでは穴の中の並び順）。 */
   lane: number;
+  /** 空きスロットが無く、やむなく他の電線と同じスロットに載せた（UIが警告できる）。 */
+  laneOverflow: boolean;
   /** 盤面を貫通する位置（既設ハーネスのみ）。ここから先は盤の裏側。 */
   throughPanelAt?: Vec3;
   /** 経路長[mm]。 */
   lengthMm: number;
 }
 
-/** 帯ごとの占有区間が重なる既存経路を避けて、最小の空きレーンを選ぶ。 */
-export function pickLane(
-  spans: ReadonlyArray<{ channelId: string; lo: number; hi: number }>,
-  existingRoutes: readonly WireRoute[],
-): number {
-  const taken = new Set<number>();
-  for (const other of existingRoutes) {
-    const conflicts = other.channelSpans.some((b) =>
-      spans.some((a) => a.channelId === b.channelId && a.lo < b.hi + 1e-6 && b.lo < a.hi + 1e-6),
-    );
-    if (conflicts) taken.add(other.lane);
-  }
-  for (let lane = 0; lane < MAX_WIRE_LANES; lane += 1) {
-    if (!taken.has(lane)) return lane;
-  }
-  return MAX_WIRE_LANES - 1;
+/** レーン割当の結果。 */
+export interface LaneAssignment {
+  /** 入力の区間と同じ並びの割当。 */
+  lanes: ChannelLane[];
+  /** どれかの区間で空きスロットが無かった。 */
+  overflow: boolean;
 }
+
+/** 帯1本あたりのスロット数（レーン × レイヤ）。 */
+const SLOT_COUNT = MAX_WIRE_LANES * WIRE_LAYER_COUNT;
+
+/** スロット番号 → レーンとレイヤ（レイヤ0のレーン0..7 → レイヤ1のレーン0..7 の順に探す）。 */
+function slotAt(index: number): { lane: number; layer: number } {
+  return { lane: index % MAX_WIRE_LANES, layer: Math.floor(index / MAX_WIRE_LANES) };
+}
+
+/** 2つの区間が重なるか（端が触れるだけでも重なりとみなす。管がぶつかるので）。 */
+function spansOverlap(a: { lo: number; hi: number }, b: { lo: number; hi: number }): boolean {
+  return a.lo <= b.hi + EPS && b.lo <= a.hi + EPS;
+}
+
+/**
+ * 帯ごとの占有区間に、区間の重なる既存経路を避けたスロット（レーン・レイヤ）を割り当てる。
+ * レイヤ0のレーン0..7 → レイヤ1のレーン0..7 の順に探し、最初の空きを使う。
+ * 全スロットが埋まっていても投げず、いちばん重なりの少ないスロット（同点なら最小）に載せて
+ * `overflow` を立てる（配線は描けたほうが訓練の役に立つ。UIが警告を出せばよい）。
+ * 同じ電線の中でも、区間の重なる走行どうしは別スロットになる。
+ */
+export function pickLane(
+  spans: readonly ChannelSpan[],
+  existingRoutes: readonly WireRoute[],
+): LaneAssignment {
+  const occupied: ChannelLane[] = [];
+  for (const other of existingRoutes) occupied.push(...other.lanes);
+  const lanes: ChannelLane[] = [];
+  let overflow = false;
+  for (const span of spans) {
+    let bestIndex = 0;
+    let bestConflicts = Number.POSITIVE_INFINITY;
+    for (let index = 0; index < SLOT_COUNT; index += 1) {
+      const slot = slotAt(index);
+      let conflicts = 0;
+      for (const taken of occupied) {
+        if (taken.channelId !== span.channelId) continue;
+        if (taken.lane !== slot.lane || taken.layer !== slot.layer) continue;
+        if (spansOverlap(taken.span, span)) conflicts += 1;
+      }
+      if (conflicts < bestConflicts) {
+        bestConflicts = conflicts;
+        bestIndex = index;
+      }
+      if (conflicts === 0) break;
+    }
+    const slot = slotAt(bestIndex);
+    if (bestConflicts > 0) overflow = true;
+    const assigned: ChannelLane = {
+      channelId: span.channelId,
+      lane: slot.lane,
+      layer: slot.layer,
+      span: { lo: span.lo, hi: span.hi },
+    };
+    lanes.push(assigned);
+    occupied.push(assigned);
+  }
+  return { lanes, overflow };
+}
+
+/** 経路の探索に失敗した理由（UI・テストが分岐できるように機械可読にしてある）。 */
+export type RoutingErrorReason = 'invalid-terminal' | 'unreachable' | 'footprint-crossing';
 
 /** 経路の探索に失敗したときに投げる。 */
 export class RoutingError extends Error {
-  constructor(message: string) {
-    super(message);
+  /** 失敗した電線のID。 */
+  readonly wireId: string;
+  /** 失敗の理由。 */
+  readonly reason: RoutingErrorReason;
+
+  constructor(message: string, wireId: string, reason: RoutingErrorReason) {
+    super(`${message}（電線 ${wireId}）`);
     this.name = 'RoutingError';
+    this.wireId = wireId;
+    this.reason = reason;
   }
 }
 
@@ -128,6 +240,11 @@ function pointOn(channel: WiringChannel, along: number): { x: number; y: number 
 
 function contains(channel: WiringChannel, along: number): boolean {
   return along >= Math.min(channel.from, channel.to) && along <= Math.max(channel.from, channel.to);
+}
+
+/** 帯のレイヤの走行高さ[mm]。レイヤ1はレイヤ0の `WIRE_LAYER_STEP_MM` 上。 */
+function channelZ(channel: WiringChannel, layer: number): number {
+  return channel.zMm + layer * WIRE_LAYER_STEP_MM;
 }
 
 /**
@@ -169,7 +286,7 @@ function buildChannelGraph(
   const onChannel = new Map<string, number[]>();
   const add = (channel: WiringChannel, along: number): void => {
     const list = onChannel.get(channel.id) ?? [];
-    if (!list.some((v) => Math.abs(v - along) < 1e-6)) list.push(along);
+    if (!list.some((v) => Math.abs(v - along) < EPS)) list.push(along);
     onChannel.set(channel.id, list);
   };
   for (const a of channels) {
@@ -268,7 +385,7 @@ function dedupePoints(points: readonly Vec3[]): Vec3[] {
   const out: Vec3[] = [];
   for (const p of points) {
     const last = out[out.length - 1];
-    if (last !== undefined && vecEquals(last, p, 1e-6)) continue;
+    if (last !== undefined && vecEquals(last, p, EPS)) continue;
     out.push(p);
   }
   return out;
@@ -281,6 +398,52 @@ function dedupePoints(points: readonly Vec3[]): Vec3[] {
 function laneShift(channel: WiringChannel, lane: number): { dx: number; dy: number } {
   const shift = lane * WIRE_LANE_PITCH_MM * (CHANNEL_LANE_DIRECTION[channel.id] ?? 1);
   return channel.axis === 'x' ? { dx: 0, dy: shift } : { dx: shift, dy: 0 };
+}
+
+/**
+ * 直角経路の組み立て手順。
+ * `to` は XY を1軸だけ動かす区間（`z` はその区間の走行高さ）、`rise` は同じ XY で高さだけ動かす。
+ */
+type RouteStep =
+  | { readonly kind: 'to'; readonly x: number; readonly y: number; readonly z: number }
+  | { readonly kind: 'rise'; readonly z: number };
+
+function toStep(x: number, y: number, z: number): RouteStep {
+  return { kind: 'to', x, y, z };
+}
+
+function riseStep(z: number): RouteStep {
+  return { kind: 'rise', z };
+}
+
+/**
+ * 手順から直角の折れ点列を組み立てる。
+ * 区間ごとに走行高さが違うので、高さの変わる角には**z だけ動く点**を差し込む
+ * （そうしないと角で2軸が同時に動き、直角経路でなくなる）。
+ * XY が動かない `to` は長さ0なので捨てる（高さも変えない）。
+ */
+function buildCorners(start: Vec3, steps: readonly RouteStep[]): Vec3[] {
+  const out: Vec3[] = [start];
+  let x = start.x;
+  let y = start.y;
+  let z = start.z;
+  for (const step of steps) {
+    if (step.kind === 'rise') {
+      if (Math.abs(step.z - z) <= EPS) continue;
+      z = step.z;
+      out.push(vec3(x, y, z));
+      continue;
+    }
+    if (Math.abs(step.x - x) <= EPS && Math.abs(step.y - y) <= EPS) continue;
+    if (Math.abs(step.z - z) > EPS) {
+      z = step.z;
+      out.push(vec3(x, y, z));
+    }
+    x = step.x;
+    y = step.y;
+    out.push(vec3(x, y, z));
+  }
+  return out;
 }
 
 /** 直角の折れ点列を、角を半径 `radius` で丸めた折れ線にする。 */
@@ -297,7 +460,7 @@ export function filletCorners(corners: readonly Vec3[], radius: number): Vec3[] 
     const inLen = distance(prev, cur);
     const outLen = distance(cur, next);
     const r = Math.min(radius, inLen / 2, outLen / 2);
-    if (r <= 1e-6) {
+    if (r <= EPS) {
       out.push(cur);
       continue;
     }
@@ -328,10 +491,42 @@ function ownerOf(id: TerminalId): string {
   return dot < 0 ? id : id.slice(0, dot);
 }
 
+/** 渡り線が x 方向に占める範囲（折れ点が無ければ、何とも重ならない空の範囲）。 */
+function directRunXSpan(route: WireRoute): { lo: number; hi: number } {
+  const xs = route.corners.map((c) => c.x);
+  return { lo: Math.min(...xs), hi: Math.max(...xs) };
+}
+
+/**
+ * 渡り線の張り出し（管の太さぶん広げた矩形）が、どれかの配線帯の帯に入り込むか。
+ * 帯には占有領域が無い（`crossingFootprint` では見つけられない）ので、ここで直に調べる。
+ */
+function jogEntersChannelBand(
+  board: BoardDefinition,
+  lo: number,
+  hi: number,
+  rowY: number,
+  jogY: number,
+): boolean {
+  const radius = WIRE_DIAMETER_MM / 2;
+  const rect: Rect = {
+    x: lo - radius,
+    y: Math.min(rowY, jogY) - radius,
+    w: hi - lo + radius * 2,
+    h: Math.abs(jogY - rowY) + radius * 2,
+  };
+  return board.wiringChannels.some((channel) => rectsOverlap(rect, channelBandRect(channel)));
+}
+
 /**
  * 同じ列（端子台の1列、またはソケットの同じティア）の端子どうしを直結する短い渡り線。§4.5
  * 配線帯まで往復すると大回りになるので、列からわずかに張り出して直角に渡る。
- * 部品の占有矩形を跨ぐ場合は使わない（呼び出し側が配線帯の経路にフォールバックする）。
+ *
+ * 張り出しの段は「同じ列で x 区間が重なる既存の渡り線」だけを避けて決める
+ * （区間が離れていれば段0を使い回すので、端子台が別なら段が上がらない）。
+ * 張り出しが配線帯の帯に届くか、段が `MAX_DIRECT_JOG_LEVELS` を超えるときは
+ * `undefined` を返し、呼び出し側が配線帯の経路にフォールバックする（投げない）。
+ * 部品の占有矩形を跨ぐ場合も同様。
  */
 function directRunRoute(
   board: BoardDefinition,
@@ -341,53 +536,174 @@ function directRunRoute(
   existingRoutes: readonly WireRoute[],
 ): WireRoute | undefined {
   if (ownerOf(a.id) !== ownerOf(b.id)) return undefined;
-  if (Math.abs(a.pos.y - b.pos.y) > 1e-6) return undefined;
-  if (Math.abs(a.pos.x - b.pos.x) < 1e-6) return undefined;
+  if (Math.abs(a.pos.y - b.pos.y) > EPS) return undefined;
+  if (Math.abs(a.pos.x - b.pos.x) < EPS) return undefined;
   if (a.exit !== b.exit) return undefined;
   const dir = a.exit === 'front' ? 1 : -1;
-  const siblings = existingRoutes.filter(
-    (r) => r.channelIds.length === 0 && r.corners.length > 0 && sameRow(r, a),
-  );
-  const lane = Math.min(siblings.length, MAX_WIRE_LANES - 1);
-  const jogY = a.pos.y + dir * (DIRECT_JOG_MM + lane * WIRE_LANE_PITCH_MM);
-  const corners = dedupePoints([
-    a.pos,
-    vec3(a.pos.x, a.pos.y, WIRE_RUN_Z_MM),
-    vec3(a.pos.x, jogY, WIRE_RUN_Z_MM),
-    vec3(b.pos.x, jogY, WIRE_RUN_Z_MM),
-    vec3(b.pos.x, b.pos.y, WIRE_RUN_Z_MM),
-    b.pos,
+  const lo = Math.min(a.pos.x, b.pos.x);
+  const hi = Math.max(a.pos.x, b.pos.x);
+  const taken = new Set<number>();
+  for (const other of existingRoutes) {
+    if (other.kind !== 'direct' || !sameRow(other, a)) continue;
+    if (!spansOverlap(directRunXSpan(other), { lo, hi })) continue;
+    taken.add(other.lane);
+  }
+  let level = 0;
+  while (taken.has(level)) level += 1;
+  if (level >= MAX_DIRECT_JOG_LEVELS) return undefined;
+  const jogY = a.pos.y + dir * (DIRECT_JOG_MM + level * WIRE_LANE_PITCH_MM);
+  if (jogEntersChannelBand(board, lo, hi, a.pos.y, jogY)) return undefined;
+
+  const corners = buildCorners(a.pos, [
+    toStep(a.pos.x, jogY, WIRE_RUN_Y_Z_MM),
+    toStep(b.pos.x, jogY, WIRE_RUN_X_Z_MM),
+    toStep(b.pos.x, b.pos.y, WIRE_RUN_Y_Z_MM),
+    riseStep(b.pos.z),
   ]);
   const points = filletCorners(corners, WIRE_FILLET_RADIUS_MM);
   const route: WireRoute = {
     wireId: wire.id,
+    kind: 'direct',
     points,
     corners,
     channelIds: [],
     channelSpans: [],
-    lane,
+    lanes: [],
+    lane: level,
+    laneOverflow: false,
     lengthMm: polylineLength(points),
   };
   return crossingFootprint(board, route) === undefined ? route : undefined;
 }
 
-/** その経路が端子 `a` と同じ列の渡り線か（レーンを分けるための判定）。 */
+/** その経路が端子 `a` と同じ列の渡り線か（張り出しの段を分けるための判定）。 */
 function sameRow(route: WireRoute, a: BoardTerminal): boolean {
   const first = route.corners[0];
-  return first !== undefined && Math.abs(first.y - a.pos.y) < 1e-6;
+  return first !== undefined && Math.abs(first.y - a.pos.y) < EPS;
 }
 
-function terminalOf(board: BoardDefinition, id: TerminalId): BoardTerminal {
+/**
+ * 両端の端子が同じ節点に出るとき（同じ帯の同じ位置に引き出される）の経路。
+ * 帯まで下りて戻ると、帯を通り越して折り返すだけの経路になってしまうので、
+ * 端子のあいだをまっすぐ直角に渡す。
+ */
+function sameNodeRoute(
+  board: BoardDefinition,
+  wire: RoutableWire,
+  a: BoardTerminal,
+  b: BoardTerminal,
+): WireRoute {
+  const corners = buildCorners(a.pos, [
+    toStep(b.pos.x, a.pos.y, WIRE_RUN_X_Z_MM),
+    toStep(b.pos.x, b.pos.y, WIRE_RUN_Y_Z_MM),
+    riseStep(b.pos.z),
+  ]);
+  const points = filletCorners(corners, WIRE_FILLET_RADIUS_MM);
+  const route: WireRoute = {
+    wireId: wire.id,
+    kind: 'channel',
+    points,
+    corners,
+    channelIds: [],
+    channelSpans: [],
+    lanes: [],
+    lane: 0,
+    laneOverflow: false,
+    lengthMm: polylineLength(points),
+  };
+  const hit = crossingFootprint(board, route);
+  if (hit !== undefined) {
+    throw new RoutingError(
+      `経路が部品の上を通ります（${hit.kind} ${hit.id}）: ${wire.from} → ${wire.to}`,
+      wire.id,
+      'footprint-crossing',
+    );
+  }
+  return route;
+}
+
+function terminalOf(board: BoardDefinition, wire: RoutableWire, id: TerminalId): BoardTerminal {
   const found = findBoardTerminal(board, id);
-  if (found === undefined) throw new RoutingError(`盤に無い端子です: ${id}`);
+  if (found === undefined) {
+    throw new RoutingError(`盤に無い端子です: ${id}`, wire.id, 'invalid-terminal');
+  }
   return found;
+}
+
+/** 帯を1回続けて走る区間（ここがレーン割当の単位）。 */
+interface Traversal {
+  channelId: string;
+  channel: WiringChannel;
+  /** この走行が覆う最後の辺の番号（続きの辺をまとめるために持つ）。 */
+  lastEdge: number;
+  lo: number;
+  hi: number;
+  /** 帯の幅方向のレーン（`pickLane` のあとで入る）。 */
+  lane: number;
+  /** 帯の高さ方向のレイヤ（`pickLane` のあとで入る）。 */
+  layer: number;
+}
+
+/**
+ * 経路の辺を「同じ帯を続けて走るまとまり」に切り分ける。
+ * 帯ごとに min..max でまとめてしまうと、離れた2回の走行が1つの大きな区間になって
+ * レーンを無駄に食いつぶすので、走行ごとに区間を持つ。
+ */
+function buildTraversals(
+  path: { keys: string[]; channelIds: string[] },
+  nodes: Map<string, GraphNode>,
+  channelById: Map<string, WiringChannel>,
+): { traversals: Traversal[]; edgeTraversal: number[] } {
+  const traversals: Traversal[] = [];
+  const edgeTraversal: number[] = [];
+  path.channelIds.forEach((channelId, edge) => {
+    const channel = channelById.get(channelId);
+    const nodeA = nodes.get(path.keys[edge] ?? '');
+    const nodeB = nodes.get(path.keys[edge + 1] ?? '');
+    if (channel === undefined || nodeA === undefined || nodeB === undefined) {
+      edgeTraversal.push(-1);
+      return;
+    }
+    const va = alongOf(channel, nodeA.x, nodeA.y);
+    const vb = alongOf(channel, nodeB.x, nodeB.y);
+    const last = traversals[traversals.length - 1];
+    if (last !== undefined && last.channelId === channelId && last.lastEdge === edge - 1) {
+      last.lastEdge = edge;
+      last.lo = Math.min(last.lo, va, vb);
+      last.hi = Math.max(last.hi, va, vb);
+    } else {
+      traversals.push({
+        channelId,
+        channel,
+        lastEdge: edge,
+        lo: Math.min(va, vb),
+        hi: Math.max(va, vb),
+        lane: 0,
+        layer: 0,
+      });
+    }
+    edgeTraversal.push(traversals.length - 1);
+  });
+  return { traversals, edgeTraversal };
 }
 
 /**
  * 1本の電線の経路を求める。§6.6
  * 端子 → 垂直に引き出す → 配線帯 → 直角に走る → 目的端子の列 → 端子。
- * 既存経路のうち同じ帯を通るものの本数だけ、2mmピッチで帯の幅方向にずらす。
  * `wire.from` / `wire.to` は**物理**端子ID（`S1.13` / `TB_PB.1a` など）。
+ *
+ * 帯を走るたびに、区間の重なる既存経路を避けたレーン（幅方向2mmピッチ）と
+ * レイヤ（高さ方向）を割り当てる。空きが無ければ `laneOverflow` を立てる（投げない）。
+ *
+ * @param board 盤定義。
+ * @param wire 経路を求める電線（物理端子ID）。
+ * @param existingRoutes 先に引いてある経路。レーンを分けるために読むだけで、変更はしない。
+ *   {@link routeFixedLinks} の既設ハーネスは渡さないこと（`kind: 'harness'` なので
+ *   渡り線の段には数えないが、レーンの計算に混ぜる意味が無い）。
+ * @param options 経路生成のオプション。`exitOverride` で端子ごとの引き出し向きを強制できる
+ *   （指定すると渡り線のショートカットは使わず、必ず配線帯の経路になる）。
+ * @throws {RoutingError} 端子が盤に無い（`invalid-terminal`）、帯に出られない・帯がつながって
+ *   いない（`unreachable`）、部品の上を通ってしまう（`footprint-crossing`）とき。
  */
 export function routeWire(
   board: BoardDefinition,
@@ -395,8 +711,8 @@ export function routeWire(
   existingRoutes: readonly WireRoute[],
   options: RouteOptions = {},
 ): WireRoute {
-  const a = terminalOf(board, wire.from);
-  const b = terminalOf(board, wire.to);
+  const a = terminalOf(board, wire, wire.from);
+  const b = terminalOf(board, wire, wire.to);
   if (options.exitOverride === undefined) {
     const direct = directRunRoute(board, wire, a, b, existingRoutes);
     if (direct !== undefined) return direct;
@@ -404,7 +720,11 @@ export function routeWire(
   const chA = entryChannelFor(board, a, options.exitOverride?.[wire.from]);
   const chB = entryChannelFor(board, b, options.exitOverride?.[wire.to]);
   if (chA === undefined || chB === undefined) {
-    throw new RoutingError(`端子から出られる配線帯がありません: ${wire.from} / ${wire.to}`);
+    throw new RoutingError(
+      `端子から出られる配線帯がありません: ${wire.from} / ${wire.to}`,
+      wire.id,
+      'unreachable',
+    );
   }
 
   const entryA = { channel: chA, along: alongOf(chA, a.pos.x, a.pos.y) };
@@ -414,100 +734,86 @@ export function routeWire(
   const pb = pointOn(chB, entryB.along);
   const path = shortestPath(graph.edges, key(pa.x, pa.y), key(pb.x, pb.y));
   if (path === undefined) {
-    throw new RoutingError(`配線帯がつながっていません: ${wire.from} → ${wire.to}`);
+    throw new RoutingError(
+      `配線帯がつながっていません: ${wire.from} → ${wire.to}`,
+      wire.id,
+      'unreachable',
+    );
   }
+  // 両端が同じ節点に出るなら、帯まで下りて折り返さずまっすぐ渡す
+  if (path.channelIds.length === 0) return sameNodeRoute(board, wire, a, b);
 
-  const channelIds = dedupeStrings(
-    path.channelIds.length === 0 ? [chA.id] : [chA.id, ...path.channelIds, chB.id],
-  );
-  // 帯ごとの占有区間を求め、区間が重なる電線とだけレーンを分ける
   const channelById = new Map(board.wiringChannels.map((c) => [c.id, c]));
-  const spanMap = new Map<string, { channelId: string; lo: number; hi: number }>();
-  path.keys.forEach((k, index) => {
-    const channelId = path.channelIds[index];
-    if (channelId === undefined) return;
-    const channel = channelById.get(channelId);
-    const nodeA = graph.nodes.get(k);
-    const nodeB = graph.nodes.get(path.keys[index + 1] ?? '');
-    if (channel === undefined || nodeA === undefined || nodeB === undefined) return;
-    const a = alongOf(channel, nodeA.x, nodeA.y);
-    const b = alongOf(channel, nodeB.x, nodeB.y);
-    const prev = spanMap.get(channelId);
-    const lo = Math.min(a, b, prev?.lo ?? Number.POSITIVE_INFINITY);
-    const hi = Math.max(a, b, prev?.hi ?? Number.NEGATIVE_INFINITY);
-    spanMap.set(channelId, { channelId, lo, hi });
+  const { traversals, edgeTraversal } = buildTraversals(path, graph.nodes, channelById);
+  const channelSpans: ChannelSpan[] = traversals.map((t) => ({
+    channelId: t.channelId,
+    lo: t.lo,
+    hi: t.hi,
+  }));
+  const assignment = pickLane(channelSpans, existingRoutes);
+  assignment.lanes.forEach((assigned, index) => {
+    const traversal = traversals[index];
+    if (traversal === undefined) return;
+    traversal.lane = assigned.lane;
+    traversal.layer = assigned.layer;
   });
-  if (spanMap.size === 0) {
-    const along = alongOf(chA, pa.x, pa.y);
-    spanMap.set(chA.id, { channelId: chA.id, lo: along, hi: along });
-  }
-  const channelSpans = [...spanMap.values()];
-  const lane = pickLane(channelSpans, existingRoutes);
+  /** その辺を走る帯（辺の番号が範囲外なら `undefined`）。 */
+  const traversalOf = (edge: number): Traversal | undefined =>
+    traversals[edgeTraversal[edge] ?? -1];
 
-  const runPoints: Vec3[] = [];
-  path.keys.forEach((k, index) => {
-    const node = graph.nodes.get(k);
-    if (node === undefined) return;
-    // 帯の乗り換え点では、入ってきた帯と出ていく帯の**両方**のレーンずらしを足す。
-    // こうしないと角で x と y が同時に動いてしまい、直角経路でなくなる。
-    const incoming = index > 0 ? path.channelIds[index - 1] : undefined;
-    const outgoing = path.channelIds[index];
+  // 節点の位置。帯の乗り換え点では、入ってきた帯と出ていく帯の**両方**のレーンずらしを足す。
+  const positions = path.keys.map((k, index) => {
+    const node = graph.nodes.get(k) ?? { x: 0, y: 0, channels: [] };
     let dx = 0;
     let dy = 0;
-    let zMm = WIRE_RUN_Z_MM;
-    // 同じ帯を通り抜けるだけの節点では二重に足さない（帯ごとに1回だけ）
-    const applied = new Set<string>();
-    for (const id of [incoming, outgoing]) {
-      if (id === undefined || applied.has(id)) continue;
-      applied.add(id);
-      const channel = channelById.get(id);
-      if (channel === undefined) continue;
-      const shift = laneShift(channel, lane);
+    const applied = new Set<Traversal>();
+    for (const edge of [index - 1, index]) {
+      const traversal = traversalOf(edge);
+      if (traversal === undefined || applied.has(traversal)) continue;
+      applied.add(traversal);
+      const shift = laneShift(traversal.channel, traversal.lane);
       dx += shift.dx;
       dy += shift.dy;
-      zMm = channel.zMm;
     }
-    if (incoming === undefined && outgoing === undefined) {
-      const shift = laneShift(chA, lane);
-      dx = shift.dx;
-      dy = shift.dy;
-      zMm = chA.zMm;
-    }
-    runPoints.push(vec3(node.x + dx, node.y + dy, zMm));
+    return { x: node.x + dx, y: node.y + dy };
   });
 
-  const firstRun = runPoints[0];
-  const lastRun = runPoints[runPoints.length - 1];
-  if (firstRun === undefined || lastRun === undefined) {
-    throw new RoutingError(`経路が空です: ${wire.id}`);
-  }
+  const first = positions[0] ?? { x: a.pos.x, y: a.pos.y };
+  const last = positions[positions.length - 1] ?? { x: b.pos.x, y: b.pos.y };
+  // 端子 → 盤面へ立ち下げ → 帯へ引き出す → 帯を走る → 目的端子の列へ → 端子
+  const steps: RouteStep[] = [
+    toStep(first.x, a.pos.y, WIRE_RUN_X_Z_MM),
+    toStep(first.x, first.y, WIRE_RUN_Y_Z_MM),
+  ];
+  positions.forEach((p, index) => {
+    const traversal = traversalOf(index - 1);
+    if (traversal === undefined) return;
+    steps.push(toStep(p.x, p.y, channelZ(traversal.channel, traversal.layer)));
+  });
+  steps.push(toStep(last.x, b.pos.y, WIRE_RUN_Y_Z_MM));
+  steps.push(toStep(b.pos.x, b.pos.y, WIRE_RUN_X_Z_MM));
+  steps.push(riseStep(b.pos.z));
 
-  // 端子 → 盤面の走行高さへ立ち下げ → 帯へ垂直に入る（各区間は1軸だけ動く）
-  const corners = dedupePoints([
-    a.pos,
-    vec3(a.pos.x, a.pos.y, WIRE_RUN_Z_MM),
-    vec3(firstRun.x, a.pos.y, WIRE_RUN_Z_MM),
-    firstRun,
-    ...runPoints.slice(1, -1),
-    lastRun,
-    vec3(lastRun.x, b.pos.y, WIRE_RUN_Z_MM),
-    vec3(b.pos.x, b.pos.y, WIRE_RUN_Z_MM),
-    b.pos,
-  ]);
+  const corners = buildCorners(a.pos, steps);
   const points = filletCorners(corners, WIRE_FILLET_RADIUS_MM);
   const route: WireRoute = {
     wireId: wire.id,
+    kind: 'channel',
     points,
     corners,
-    channelIds,
+    channelIds: dedupeStrings([chA.id, ...path.channelIds, chB.id]),
     channelSpans,
-    lane,
+    lanes: assignment.lanes,
+    lane: assignment.lanes[0]?.lane ?? 0,
+    laneOverflow: assignment.overflow,
     lengthMm: polylineLength(points),
   };
   const hit = crossingFootprint(board, route);
   if (hit !== undefined) {
     throw new RoutingError(
       `経路が部品の上を通ります（${hit.kind} ${hit.id}）: ${wire.from} → ${wire.to}`,
+      wire.id,
+      'footprint-crossing',
     );
   }
   return route;
@@ -519,7 +825,13 @@ export interface RouteOptions {
   exitOverride?: Readonly<Record<string, 'rear' | 'front'>>;
 }
 
-/** セッションの全電線の経路を、配列の並び順に求める。§6.6 */
+/**
+ * セッションの全電線の経路を、配列の並び順に求める。§6.6
+ * 役割端子ID（`CR1.13`）は物理端子ID（`S1.13`）に解決してから経路にする。
+ *
+ * 既設の0Ωリンク（端子台 → PB／PL本体の青線ハーネス）は `session.wires` に入っていないので、
+ * ここには**含まれない**。3D側はこの結果と {@link routeFixedLinks} の両方を描くこと。
+ */
 export function routeSession(board: BoardDefinition, session: BoardSession): WireRoute[] {
   const routes: WireRoute[] = [];
   for (const wire of session.wires) {
@@ -543,6 +855,10 @@ export function routeSession(board: BoardDefinition, session: BoardSession): Wir
  * 配線帯は使わず、端子台の端子から**手前へまっすぐ降り**、機器の根元にある盤面の貫通穴に
  * 2mmピッチで平行に入って、盤の裏側の本体端子へつながる。機器の中心（押ボタンの頭・
  * ランプのレンズ）の上は通らない。
+ *
+ * 返す経路は `kind: 'harness'` で、レーンも配線帯も使わない。
+ * {@link routeWire} / {@link routeSession} の `existingRoutes` には**渡さないこと**
+ * （渡り線の段にもレーンにも数えないので意味が無い）。
  */
 export function routeFixedLinks(board: BoardDefinition): WireRoute[] {
   const holeOf = new Map<string, Vec3>();
@@ -568,26 +884,28 @@ export function routeFixedLinks(board: BoardDefinition): WireRoute[] {
     const total = link.from.startsWith('PB') || link.to.startsWith('PB') ? 3 : 2;
     const offset = (index - (total - 1) / 2) * HARNESS_PITCH_MM;
     const approachY = hole.y - HARNESS_APPROACH_MM;
-    const corners = dedupePoints([
-      block.pos,
-      vec3(block.pos.x, block.pos.y, WIRE_RUN_Z_MM),
-      vec3(block.pos.x, approachY, WIRE_RUN_Z_MM),
-      vec3(hole.x + offset, approachY, WIRE_RUN_Z_MM),
-      vec3(hole.x + offset, hole.y, WIRE_RUN_Z_MM),
-      vec3(hole.x + offset, hole.y, 0),
-      vec3(hole.x + offset, hole.y, body.pos.z),
-      vec3(hole.x + offset, body.pos.y, body.pos.z),
-      body.pos,
+    const holeX = hole.x + offset;
+    const corners = buildCorners(block.pos, [
+      toStep(block.pos.x, approachY, WIRE_RUN_Y_Z_MM),
+      toStep(holeX, approachY, WIRE_RUN_X_Z_MM),
+      toStep(holeX, hole.y, WIRE_RUN_Y_Z_MM),
+      riseStep(0),
+      riseStep(body.pos.z),
+      toStep(holeX, body.pos.y, body.pos.z),
+      toStep(body.pos.x, body.pos.y, body.pos.z),
     ]);
     const points = filletCorners(corners, WIRE_FILLET_RADIUS_MM);
     routes.push({
       wireId: link.id,
+      kind: 'harness',
       points,
       corners,
       channelIds: [],
       channelSpans: [],
+      lanes: [],
       lane: index,
-      throughPanelAt: vec3(hole.x + offset, hole.y, 0),
+      laneOverflow: false,
+      throughPanelAt: vec3(holeX, hole.y, 0),
       lengthMm: polylineLength(points),
     });
   }
@@ -595,7 +913,7 @@ export function routeFixedLinks(board: BoardDefinition): WireRoute[] {
 }
 
 /** 折れ点列が直角経路か（隣り合う点で動く軸がちょうど1つか）。 */
-export function isManhattan(corners: readonly Vec3[], epsilon = 1e-6): boolean {
+export function isManhattan(corners: readonly Vec3[], epsilon = EPS): boolean {
   for (let i = 1; i < corners.length; i += 1) {
     const p = corners[i - 1];
     const q = corners[i];

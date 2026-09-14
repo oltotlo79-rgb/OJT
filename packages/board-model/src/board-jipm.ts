@@ -81,8 +81,29 @@ export const HARNESS_PITCH_MM = 2;
  * どの帯からも2mm以上離れる値にしてある（`ch-low` の帯は 178〜194mm、横走りは 206mm）。
  */
 export const HARNESS_APPROACH_MM = 8;
-/** 電線が盤面上を走る高さ[mm]（配線帯の中の高さ）。 */
-export const WIRE_RUN_Z_MM = 3.5;
+/**
+ * 電線が盤面上を走る高さの段[mm]（低いほうから）。§6.6
+ *
+ * x方向に走る区間は段0・2（2.4 / 6.0mm）、y方向に走る区間は段1・3（4.2 / 7.8mm）を使う。
+ * こうすると直交する区間どうしは必ず1.8mm以上離れるので、直径 `WIRE_DIAMETER_MM`（1.6mm）の
+ * 管で描いても食い込まない。段0と段2（＝同じ向きのレイヤ0とレイヤ1）は3.6mm離れている。
+ */
+export const WIRE_Z_LADDER_MM = [2.4, 4.2, 6.0, 7.8] as const;
+/** 1本の配線帯が持つ高さのレイヤ数（レイヤ0＝帯の `zMm`、レイヤ1＝その上）。§6.6 */
+export const WIRE_LAYER_COUNT = 2;
+/** レイヤ1がレイヤ0より高い量[mm]（`WIRE_Z_LADDER_MM` の2段ぶん）。 */
+export const WIRE_LAYER_STEP_MM = 3.6;
+/** x方向に走る区間の基準の高さ[mm]（水平な配線帯のレイヤ0）。 */
+export const WIRE_RUN_X_Z_MM = WIRE_Z_LADDER_MM[0];
+/** y方向に走る区間の基準の高さ[mm]（垂直な配線帯のレイヤ0）。 */
+export const WIRE_RUN_Y_Z_MM = WIRE_Z_LADDER_MM[1];
+/**
+ * 電線が盤面上を走る高さ[mm]。
+ * @deprecated 走行高さは向きとレイヤで決まるようになった。
+ * x方向は {@link WIRE_RUN_X_Z_MM}、y方向は {@link WIRE_RUN_Y_Z_MM}、
+ * 段の一覧は {@link WIRE_Z_LADDER_MM} を使うこと。
+ */
+export const WIRE_RUN_Z_MM = WIRE_RUN_X_Z_MM;
 /** 1本の配線帯が持つレーンの数。§6.6 */
 export const CHANNEL_LANE_COUNT = 8;
 /** 配線帯のレーン間隔[mm]。§6.6 */
@@ -203,6 +224,11 @@ export interface WiringChannel {
   at: number;
   from: number;
   to: number;
+  /**
+   * この帯のレイヤ0の走行高さ[mm]。水平帯は {@link WIRE_RUN_X_Z_MM}、垂直帯は
+   * {@link WIRE_RUN_Y_Z_MM}（＝直交する帯どうしが必ず1.8mm以上離れる段）。
+   * 帯が混んでレーンを使い切ったぶんはレイヤ1（`zMm + WIRE_LAYER_STEP_MM`）に載る。§6.6
+   */
   zMm: number;
 }
 
@@ -628,19 +654,40 @@ const CH_LEFT_AT_MM = 10;
 const CH_RIGHT_AT_MM = 324;
 
 const WIRING_CHANNELS: readonly WiringChannel[] = [
-  { id: 'ch-top', axis: 'x', at: 42, from: CH_LEFT_AT_MM, to: CH_RIGHT_AT_MM, zMm: WIRE_RUN_Z_MM },
-  { id: 'ch-mid', axis: 'x', at: 142, from: CH_LEFT_AT_MM, to: CH_RIGHT_AT_MM, zMm: WIRE_RUN_Z_MM },
+  {
+    id: 'ch-top',
+    axis: 'x',
+    at: 42,
+    from: CH_LEFT_AT_MM,
+    to: CH_RIGHT_AT_MM,
+    zMm: WIRE_RUN_X_Z_MM,
+  },
+  {
+    id: 'ch-mid',
+    axis: 'x',
+    at: 142,
+    from: CH_LEFT_AT_MM,
+    to: CH_RIGHT_AT_MM,
+    zMm: WIRE_RUN_X_Z_MM,
+  },
   {
     id: 'ch-low',
     axis: 'x',
     at: CH_LOW_AT_MM,
     from: CH_LEFT_AT_MM,
     to: CH_RIGHT_AT_MM,
-    zMm: WIRE_RUN_Z_MM,
+    zMm: WIRE_RUN_X_Z_MM,
   },
-  { id: 'ch-left', axis: 'y', at: CH_LEFT_AT_MM, from: 42, to: CH_LOW_AT_MM, zMm: WIRE_RUN_Z_MM },
-  { id: 'ch-gap', axis: 'y', at: 159, from: 42, to: CH_LOW_AT_MM, zMm: WIRE_RUN_Z_MM },
-  { id: 'ch-right', axis: 'y', at: CH_RIGHT_AT_MM, from: 42, to: CH_LOW_AT_MM, zMm: WIRE_RUN_Z_MM },
+  { id: 'ch-left', axis: 'y', at: CH_LEFT_AT_MM, from: 42, to: CH_LOW_AT_MM, zMm: WIRE_RUN_Y_Z_MM },
+  { id: 'ch-gap', axis: 'y', at: 159, from: 42, to: CH_LOW_AT_MM, zMm: WIRE_RUN_Y_Z_MM },
+  {
+    id: 'ch-right',
+    axis: 'y',
+    at: CH_RIGHT_AT_MM,
+    from: 42,
+    to: CH_LOW_AT_MM,
+    zMm: WIRE_RUN_Y_Z_MM,
+  },
 ];
 
 /**
