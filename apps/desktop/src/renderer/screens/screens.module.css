@@ -1,0 +1,178 @@
+/* ホーム・課題一覧・セッション画面のレイアウト。設計仕様 §8.1 / §12.1。 */
+
+.center {
+  height: 100%;
+  overflow-y: auto;
+  padding: 32px 40px;
+}
+
+.title {
+  font-size: 26px;
+  margin: 0 0 4px;
+}
+
+.subtitle {
+  color: var(--muted);
+  margin: 0 0 24px;
+}
+
+.modeGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 16px;
+  max-width: 900px;
+}
+
+.modeCard {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  cursor: pointer;
+  padding: 18px 20px;
+  text-align: left;
+}
+
+.modeCard:disabled {
+  cursor: default;
+}
+
+.modeName {
+  display: block;
+  font-size: 18px;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.modeDesc {
+  color: var(--muted);
+  display: block;
+  font-size: 12px;
+}
+
+.problemTable {
+  border-collapse: collapse;
+  width: 100%;
+  max-width: 900px;
+}
+
+.problemTable th,
+.problemTable td {
+  border-bottom: 1px solid var(--line);
+  padding: 8px 10px;
+  text-align: left;
+}
+
+.tag {
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  font-size: 11px;
+  padding: 1px 6px;
+}
+
+.errorBox {
+  background: rgba(214, 69, 69, 0.12);
+  border-left: 4px solid var(--ng);
+  margin-top: 20px;
+  max-width: 900px;
+  padding: 10px 14px;
+}
+
+.sessionLayout {
+  display: grid;
+  grid-template-columns: 1fr 380px;
+  grid-template-rows: 1fr auto;
+  flex: 1;
+  min-height: 0;
+}
+
+.viewport {
+  grid-column: 1;
+  grid-row: 1;
+  min-height: 0;
+  position: relative;
+}
+
+.rightPanel {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  border-left: 1px solid var(--line);
+  overflow-y: auto;
+  padding: 8px;
+}
+
+.bottomPanel {
+  grid-column: 1;
+  grid-row: 2;
+  border-top: 1px solid var(--line);
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  padding: 8px;
+}
+
+.statusOverlay {
+  position: absolute;
+  left: 12px;
+  top: 12px;
+  background: rgba(20, 24, 32, 0.75);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  font-size: 12px;
+  padding: 4px 8px;
+  pointer-events: none;
+}
+
+.schematicBox {
+  background: #f7f7f4;
+  border-radius: 4px;
+  margin-top: 6px;
+  padding: 6px;
+}
+
+.panelLive {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  padding: 8px 10px;
+  margin-bottom: 8px;
+}
+
+.liveTitle {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  margin: 0 0 6px;
+}
+
+.settingRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-bottom: 1px solid var(--line);
+  padding: 10px 0;
+}
+
+.settingRow label {
+  width: 300px;
+}
+
+.settingRow input[type='text'] {
+  flex: 1;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  color: var(--text);
+  padding: 5px 8px;
+}
+
+.about {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.7;
+  margin-top: 20px;
+  padding: 10px 14px;
+}

@@ -1,0 +1,39 @@
+/* アプリの外枠。設計仕様 §8.1 の画面構成（中央3D／右パネル／下部／上部ツールバー）。 */
+
+.shell {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.banner {
+  background: var(--ng);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 12px;
+}
+
+.toasts {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  z-index: 50;
+}
+
+.toast {
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--accent);
+  border-radius: 4px;
+  padding: 8px 12px;
+  max-width: 420px;
+}
+
+.toastError {
+  border-left-color: var(--ng);
+}

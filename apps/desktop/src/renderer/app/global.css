@@ -1,0 +1,103 @@
+/* アプリ全体の素のCSS。設計仕様 §12。CSSフレームワークは使わない。 */
+
+:root {
+  --bg: #141820;
+  --panel: #1e232d;
+  --panel-2: #262c38;
+  --line: #39404e;
+  --text: #e7ebf2;
+  --muted: #9aa4b5;
+  --accent: #39d0ff;
+  --ok: #3fa34d;
+  --ng: #d64545;
+  --warn: #e8c22a;
+  font-family: 'Yu Gothic UI', 'Meiryo', system-ui, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-size: 14px;
+  overflow: hidden;
+  user-select: none;
+}
+
+button {
+  font: inherit;
+  color: var(--text);
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 5px 10px;
+  cursor: pointer;
+}
+
+button:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+button[aria-pressed='true'] {
+  background: var(--accent);
+  color: #10151c;
+  border-color: var(--accent);
+}
+
+/* drei の <Html> が描くラベル（CSS Modules の外なのでグローバルに置く） */
+.terminal-tooltip {
+  background: rgba(16, 21, 28, 0.92);
+  border: 1px solid var(--accent);
+  border-radius: 3px;
+  color: var(--text);
+  font-size: 11px;
+  padding: 2px 6px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.socket-label small {
+  font-weight: 400;
+  margin-left: 3px;
+  opacity: 0.75;
+}
+
+.socket-label,
+.block-label,
+.part-label {
+  color: #10151c;
+  background: rgba(231, 235, 242, 0.85);
+  border-radius: 2px;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 4px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.block-label {
+  background: rgba(231, 235, 242, 0.6);
+  font-weight: 400;
+}
+
+.part-label {
+  background: rgba(231, 235, 242, 0.92);
+}
+
+.part-label.timer {
+  background: rgba(232, 194, 42, 0.95);
+}
