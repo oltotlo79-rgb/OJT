@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -25,8 +25,9 @@ vi.mock('electron', () => ({
   },
 }));
 
-const { settingsPath, defaultUserContentDir, readSettings, writeSettings } =
+const { settingsPath, defaultUserContentDir, readSettings, readSettingsResponse, writeSettings } =
   await import('../src/main/settings.js');
+const { MSG } = await import('../src/shared/messages.js');
 
 const created: string[] = [];
 
@@ -63,6 +64,52 @@ describe('readSettings（未設定は既定値）', () => {
     writeFileSync(settingsPath(), JSON.stringify({ ...DEFAULT_SETTINGS, evil: 'payload' }), 'utf8');
     const settings = readSettings();
     expect((settings as unknown as Record<string, unknown>)['evil']).toBeUndefined();
+  });
+});
+
+describe('BOM と壊れたファイル（1D2-a のレビュー指摘）', () => {
+  it('メモ帳が付ける UTF-8 BOM があっても設定を読める', () => {
+    const body = JSON.stringify({ ...DEFAULT_SETTINGS, soundVolume: 0.25, soundEnabled: false });
+    const withBom = String.fromCharCode(0xfeff) + body;
+    writeFileSync(settingsPath(), withBom, 'utf8');
+
+    const settings = readSettings();
+    expect(settings.soundVolume).toBe(0.25);
+    expect(settings.soundEnabled).toBe(false);
+    // BOM 付きは「壊れている」ではないので警告も出さない
+    expect(readSettingsResponse().warning).toBeUndefined();
+  });
+
+  it('壊れたファイルは既定値で動き、settings:get に警告を添える', () => {
+    writeFileSync(settingsPath(), '{ not json', 'utf8');
+    const response = readSettingsResponse();
+    expect(response.soundEnabled).toBe(DEFAULT_SETTINGS.soundEnabled);
+    expect(response.warning).toBe(MSG.settings.corrupt);
+  });
+
+  it('ファイルが無いだけなら警告は出さない', () => {
+    expect(readSettingsResponse().warning).toBeUndefined();
+  });
+
+  it('壊れたファイルを上書きする前に控えを残す', () => {
+    writeFileSync(settingsPath(), '{ 壊れた設定', 'utf8');
+
+    writeSettings({ soundEnabled: false });
+
+    const left = readdirSync(electron.dir);
+    const backup = left.find((name) => name.startsWith('settings.corrupt-'));
+    expect(backup).toBeDefined();
+    if (backup === undefined) return;
+    expect(readFileSync(join(electron.dir, backup), 'utf8')).toBe('{ 壊れた設定');
+    // 本体は正しい設定になり、以後は警告も出ない
+    expect(onDisk()['soundEnabled']).toBe(false);
+    expect(readSettingsResponse().warning).toBeUndefined();
+  });
+
+  it('壊れていないファイルの保存では控えを作らない', () => {
+    writeSettings({ soundEnabled: false });
+    writeSettings({ soundVolume: 0.2 });
+    expect(readdirSync(electron.dir)).toEqual(['settings.json']);
   });
 });
 

@@ -60,13 +60,16 @@ export function Toolbar({
   onLoad: () => void;
   /** 回路図ヒントがいま開いているか。§8.4 */
   schematicVisible: boolean;
-  /** 回路図ヒントの開閉。1級課題では `undefined`（ボタン自体を出さない）。§8.4 */
+  /**
+   * 回路図ヒントの開閉。開閉できる級（2級）だけに渡す。§8.4
+   * 3級は**常時表示**、1級は**非表示**で、どちらも訓練者が切り替えられないので `undefined`。
+   */
   onToggleSchematic: (() => void) | undefined;
   children?: JSX.Element;
 }): JSX.Element {
   return (
     <div className={styles.toolbar} role="toolbar">
-      <button type="button" onClick={onBack}>
+      <button type="button" data-testid="session-back" onClick={onBack}>
         {JA.session.back}
       </button>
       <div className={styles.toolGroup}>

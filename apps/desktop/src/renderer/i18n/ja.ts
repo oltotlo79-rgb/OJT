@@ -1,5 +1,6 @@
 import type { RoutingErrorReason } from '@ojt/board-model';
 import type { HazardKind, MismatchReason } from '@ojt/circuit-sim';
+import { MSG } from '../../shared/messages.js';
 
 /**
  * 日本語文言。設計仕様 §15「全文言を1箇所に集約しハードコードしない」。
@@ -8,13 +9,21 @@ import type { HazardKind, MismatchReason } from '@ojt/circuit-sim';
  * エンジンの種別（`HazardKind` / `MismatchReason` / `RoutingErrorReason`）で索引する表は
  * `satisfies` で網羅を検査する。
  * エンジンに種別が増えたときに、画面で `undefined` が出るのではなく `tsc` が落ちる。
+ *
+ * main プロセスが返す文言だけは `src/shared/messages.ts` に置く（main は three / React 由来の
+ * 型を引くこのファイルを読み込めないため）。ここから `JA.main` として再輸出して、
+ * 画面側から見た入口はこのファイル1つに保つ。
  */
 
 /** アプリ名称（仮称。§17.2 #18）。 */
 export const APP_NAME = 'OJT電気保全トレーナー';
 
+export { MSG, readFailedText, saveFailedText } from '../../shared/messages.js';
+
 /** 画面文言。 */
 export const JA = {
+  /** main プロセスが返す文言（実体は `src/shared/messages.ts`）。§15 */
+  main: MSG,
   app: {
     name: APP_NAME,
     subtitle: '機械保全技能検定 電気系保全作業の練習',
@@ -59,6 +68,15 @@ export const JA = {
     about: 'このアプリについて',
     saved: '設定を保存しました',
     loadFailed: '設定を読み込めませんでした',
+    /**
+     * 利用者課題フォルダの説明。§7.8 / §15
+     * 配布版の同梱課題は asar の外の `resources/content/assemble/` から読むので、そこが
+     * 「書き換えの雛形」であると同時に「同梱課題そのもの」でもあることを明示する。
+     */
+    userContentHelp:
+      '利用者課題フォルダに置いた課題JSONは同梱課題と合流し、同じIDなら利用者側が優先されます。' +
+      'インストール先の resources/content/assemble/ が同梱課題の実体なので、' +
+      'そこからコピーして書き換えると雛形として使えます（消してもアプリ内蔵の課題で起動します）。',
     /** 商標注記。§15 */
     trademarkNotice:
       'MELSEC / MELSEC iQ-F / MELSOFT / GX Works3 は三菱電機株式会社、SYSMAC / CP1E / CP1L / ' +
@@ -109,6 +127,16 @@ export const JA = {
     restoreTitle: '前回の作業を復元しますか？',
     restoreYes: '復元する',
     restoreNo: '復元しない',
+    /** 別の課題の作業ファイルを読むと、いまの作業が失われることの確認。§12.3 */
+    discardTitle: 'いまの作業を破棄して別の課題の作業ファイルを開きますか？',
+    discardYes: '続行',
+    discardNo: '取消',
+    /** 作業ファイルの盤の状態が読めなかった（要素まで検査して断った）。§13 #8 */
+    badSession: '作業ファイルの盤の状態が読めません',
+    /** 作業ファイルを読み込めたときの操作ログ。§12.3 */
+    restoredLog: '作業ファイルを読み込みました',
+    /** 復元した危険操作の回数（今回の分とは別に数える）。§5.6 / §8.3 */
+    restoredHazards: '復元前の危険操作',
     showSchematic: '回路図を表示',
     hideSchematic: '回路図を隠す',
     /** 課題が選ばれていないままセッション画面が開かれたとき。§12.1 */
@@ -197,6 +225,13 @@ export const JA = {
   error: {
     banner: '予期しないエラーが発生しました',
     reset: 'セッションをリセット',
+    /**
+     * 例外バナーの2つ目の導線。§13 #5
+     * 盤そのものが壊れていて「リセット」では抜け出せないときに、課題を捨てて一覧へ戻る。
+     */
+    toList: '課題一覧へ戻る',
+    /** 2回目のリセットで盤を作り直したときの知らせ。§13 #5 */
+    boardReset: '作業を初期化して再開しました',
     webglLost: '描画を復旧しています…',
     workerError: 'シミュレーションでエラーが発生しました',
     /** preload が読み込まれていない（`window.ojt` が無い）。§4.3 */
@@ -300,4 +335,19 @@ export function elapsedSummaryText(
 /** ウィンドウが隠れていた間に捨てた tick の操作ログ。§5.2 */
 export function droppedTicksLog(ticks: number): string {
   return `ウィンドウが隠れていた間の ${ticks} tick を省略しました`;
+}
+
+/** 作業ファイルの課題が課題一覧に無い。§12.3 */
+export function workFileProblemMissingText(problemId: string): string {
+  return `作業ファイルの課題が見つかりません: ${problemId}`;
+}
+
+/** 作業ファイルを読み込んだときの操作ログ（`作業ファイルを読み込みました（…）`）。§12.3 */
+export function workFileRestoredLog(savedAt: string): string {
+  return `${JA.session.restoredLog}（${savedAt}）`;
+}
+
+/** 復元した危険操作の回数（操作ログ・警告一覧の1行）。§8.3 */
+export function restoredHazardsText(count: number): string {
+  return `${JA.session.restoredHazards}: ${count} ${JA.result.times}`;
 }

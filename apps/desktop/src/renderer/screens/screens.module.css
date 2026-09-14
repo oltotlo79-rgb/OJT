@@ -146,11 +146,17 @@
   pointer-events: none;
 }
 
+/*
+ * 回路図は課題によっては縦に長い（1級で 238mm 相当）。右パネルの高さを食い尽くして
+ * 「部品」パネルを画面外へ押し出さないよう、高さを頭打ちにして自分でスクロールさせる。§8.1 / §8.4
+ */
 .schematicBox {
   background: #f7f7f4;
   border-radius: 4px;
   margin-top: 6px;
   padding: 6px;
+  max-height: 320px;
+  overflow: auto;
 }
 
 .panelLive {

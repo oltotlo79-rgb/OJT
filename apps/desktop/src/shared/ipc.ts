@@ -97,6 +97,15 @@ export interface AppSettings {
   restorePrompt: boolean;
 }
 
+/**
+ * `settings:get` の戻り。§12.1
+ * 設定ファイルが壊れていた等の**警告**を添えられるようにする。§4.3 のチャネルを増やさずに
+ * 「既定値で起動した理由」を画面へ届けるため、7本目を作らずこの戻り値へ載せる。
+ */
+export interface AppSettingsResponse extends AppSettings {
+  warning?: string;
+}
+
 /** 設定の既定値。 */
 export const DEFAULT_SETTINGS: AppSettings = {
   userContentDir: '',
@@ -111,7 +120,7 @@ export interface OjtApi {
   readProblem: (id: string) => Promise<AssembleProblem | null>;
   saveWorkFile: (request: WorkFileSaveRequest) => Promise<WorkFileSaveResult>;
   loadWorkFile: (request: WorkFileLoadRequest) => Promise<WorkFileLoadResult>;
-  getSettings: () => Promise<AppSettings>;
+  getSettings: () => Promise<AppSettingsResponse>;
   setSettings: (patch: Partial<AppSettings>) => Promise<AppSettings>;
 }
 

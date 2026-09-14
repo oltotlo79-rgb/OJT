@@ -17,6 +17,12 @@ interface ErrorBoundaryProps {
   children: ReactNode;
   /** 捕まえた例外のメッセージ（バナーに出す文字列）。 */
   onError: (message: string) => void;
+  /**
+   * 子を描けた（＝この世代の画面が生きている）。§13 #5
+   * `App` が「連続で何回リセットしたか」を数え直すために使う。境界は `key` の付け替えで
+   * 作り直されるので、世代ごとに1回だけ呼ばれる。
+   */
+  onRender?: () => void;
 }
 
 /** 境界の状態。 */
@@ -31,6 +37,14 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
   /** 例外が出たら子を描くのをやめる（バナーは外枠が出す）。 */
   static getDerivedStateFromError(): ErrorBoundaryState {
     return { failed: true };
+  }
+
+  /**
+   * 子を描けたことを知らせる（描画中に `set` しないよう commit 後のここで呼ぶ）。
+   * 子が投げた場合は `failed` が立った状態でここへ来るので、そのときは呼ばない。§13 #5
+   */
+  override componentDidMount(): void {
+    if (!this.state.failed) this.props.onRender?.();
   }
 
   /** 例外の内容をストアへ渡す（描画中に `set` しないよう commit 後のここで呼ぶ）。 */

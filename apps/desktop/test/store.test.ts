@@ -3,9 +3,11 @@ import { toTerminalId } from '@ojt/circuit-sim';
 import { BUILTIN_PROBLEMS } from '@ojt/content';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { emptyHistory, HISTORY_LIMIT } from '../src/renderer/session/commands.js';
-import { droppedTicksLog } from '../src/renderer/i18n/ja.js';
+import { droppedTicksLog, JA } from '../src/renderer/i18n/ja.js';
 import {
   EMPTY_SNAPSHOT,
+  RESTART_FALLBACK_ATTEMPTS,
+  schematicPolicy,
   sessionForProblem,
   TOAST_LIMIT,
   TOAST_TTL_MS,
@@ -32,6 +34,11 @@ beforeEach(() => {
     fatalError: undefined,
     webglLost: false,
     reportedDroppedTicks: 0,
+    restartAttempts: 0,
+    restoredHazardCount: 0,
+    pendingWorkFile: undefined,
+    elapsedMs: 0,
+    startedAtMs: 0,
   });
 });
 
@@ -242,6 +249,69 @@ describe('restartSession / resetSession（§13 #5）', () => {
     expect(state.webglLost).toBe(false);
   });
 
+  /**
+   * 1D2-a のレビュー指摘: 盤そのもの（保存データ由来の壊れた電線など）が原因で落ちていると、
+   * 盤を残す `restartSession()` を何度押しても同じ例外で落ち続け、画面から抜け出せなかった。
+   */
+  it('2回続けてリセットしたら盤を作り直し、知らせを出す', () => {
+    if (PROBLEM === undefined) return;
+    useStore.getState().openProblem(PROBLEM);
+    const original = useStore.getState().session;
+    if (original === undefined) throw new Error('セッションが作られていません');
+    useStore
+      .getState()
+      .pushHistory({ kind: 'addWire', label: '配線 A', before: original, after: original });
+
+    useStore.getState().restartSession();
+    // 1回目は作業を残す（§13「作業保持の原則」）
+    expect(useStore.getState().session).toBe(original);
+    expect(useStore.getState().restartAttempts).toBe(1);
+    expect(useStore.getState().toasts).toHaveLength(0);
+
+    useStore.getState().restartSession();
+
+    const state = useStore.getState();
+    expect(RESTART_FALLBACK_ATTEMPTS).toBe(2);
+    expect(state.session).not.toBe(original);
+    expect(state.history.done).toHaveLength(0);
+    expect(state.restartAttempts).toBe(0);
+    expect(state.toasts.at(-1)?.text).toBe(JA.error.boardReset);
+  });
+
+  it('画面を描けたら連続リセットの数は 0 に戻る', () => {
+    if (PROBLEM === undefined) return;
+    useStore.getState().openProblem(PROBLEM);
+    useStore.getState().restartSession();
+    expect(useStore.getState().restartAttempts).toBe(1);
+
+    useStore.getState().noteRenderSuccess();
+    expect(useStore.getState().restartAttempts).toBe(0);
+
+    // 数え直したあとの1回目は、また盤を残す
+    const session = useStore.getState().session;
+    useStore.getState().restartSession();
+    expect(useStore.getState().session).toBe(session);
+  });
+
+  it('abandonSession は課題を捨てて一覧へ戻し、世代を進める', () => {
+    if (PROBLEM === undefined) return;
+    useStore.getState().openProblem(PROBLEM);
+    useStore.setState({ fatalError: '描画で落ちました', restartAttempts: 3 });
+    const epoch = useStore.getState().sessionEpoch;
+
+    useStore.getState().abandonSession();
+
+    const state = useStore.getState();
+    expect(state.route).toBe('list');
+    expect(state.problem).toBeUndefined();
+    expect(state.session).toBeUndefined();
+    expect(state.judge).toBeUndefined();
+    expect(state.fatalError).toBeUndefined();
+    expect(state.history.done).toHaveLength(0);
+    expect(state.sessionEpoch).toBe(epoch + 1);
+    expect(state.restartAttempts).toBe(0);
+  });
+
   it('resetSession は盤を作り直し、同じ課題でも世代を進める（Worker を張り直させる）', () => {
     if (PROBLEM === undefined) return;
     useStore.getState().openProblem(PROBLEM);
@@ -270,5 +340,54 @@ describe('setMode', () => {
     expect(state.mode).toBe('delete');
     expect(state.pendingTerminal).toBeUndefined();
     expect(state.selectedWire).toBeUndefined();
+  });
+});
+
+describe('restoreProgress（§12.3: 作業ファイルから経過時間と危険操作を戻す）', () => {
+  it('経過時間を戻し、始点を巻き戻して続きから計時する', () => {
+    const before = Date.now();
+    useStore.getState().restoreProgress(754_000, 3);
+    const state = useStore.getState();
+    expect(state.elapsedMs).toBe(754_000);
+    expect(state.restoredHazardCount).toBe(3);
+    expect(state.startedAtMs).toBeGreaterThanOrEqual(before - 754_000);
+
+    // そのまま計時を進めると、復元した時間の続きから増える
+    useStore.getState().tickElapsed();
+    expect(useStore.getState().elapsedMs).toBeGreaterThanOrEqual(754_000);
+  });
+
+  it.each([Number.NaN, Number.POSITIVE_INFINITY, -1, 0])('壊れた経過時間 %s は 0 にする', (bad) => {
+    useStore.getState().restoreProgress(bad, 0);
+    expect(useStore.getState().elapsedMs).toBe(0);
+  });
+
+  it.each([Number.NaN, -5])('壊れた危険操作回数 %s は 0 にする', (bad) => {
+    useStore.getState().restoreProgress(0, bad);
+    expect(useStore.getState().restoredHazardCount).toBe(0);
+  });
+});
+
+describe('schematicPolicy（§8.4: 級ごとの回路図ヒント）', () => {
+  it('3級は常時表示で開閉させない', () => {
+    expect(schematicPolicy(3)).toEqual({ shown: true, toggleable: false });
+  });
+
+  it('2級は開閉でき、初期は閉じている', () => {
+    expect(schematicPolicy(2)).toEqual({ shown: false, toggleable: true });
+  });
+
+  it('1級は出さない', () => {
+    expect(schematicPolicy(1)).toEqual({ shown: false, toggleable: false });
+  });
+
+  it('課題を開いたときの初期表示は級で決まる（課題JSONの hints では決めない）', () => {
+    for (const grade of [1, 2, 3] as const) {
+      const problem = BUILTIN_PROBLEMS.find((p) => p.grade === grade);
+      expect(problem, `${grade}級の課題`).toBeDefined();
+      if (problem === undefined) continue;
+      useStore.getState().openProblem(problem);
+      expect(useStore.getState().schematicVisible, `${grade}級`).toBe(schematicPolicy(grade).shown);
+    }
   });
 });

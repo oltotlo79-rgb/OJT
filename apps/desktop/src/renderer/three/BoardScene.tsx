@@ -71,6 +71,11 @@ const BLOCK_PARTS: ReadonlyArray<{
 /** DINレールを敷く機器のまとまり（ソケット群と端子台群）。実物写真のとおり。§6.5 */
 const RAIL_GROUPS: readonly string[][] = [['TB_PL'], ['TB_PB'], ['P', 'N']];
 
+/** 例外から1行の理由を作る。 */
+function reasonOf(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 /**
  * セッションの全電線の経路（純粋関数。テストで固定する）。§6.6
  *
@@ -79,20 +84,27 @@ const RAIL_GROUPS: readonly string[][] = [['TB_PL'], ['TB_PB'], ['P', 'N']];
  * ①解けた電線だけを描き、②解けなかった電線のIDと理由を返す（セッションの状態は変えない）。
  * 出荷する盤（`JIPM_BOARD`）では起こらないはずだが、起こったときに黒い画面ではなく
  * 「どの電線がなぜ描けないか」を出せるようにしておく。
+ *
+ * 受け止めるのは `RoutingError` だけではない（1D2-a のレビュー指摘）。壊れた作業ファイルから
+ * `wires: ['not-a-wire']` のような値が入ると `toPhysicalTerminal()` が `TypeError` を投げ、
+ * 描画のたびに同じ例外が出て例外バナーからも戻れなくなる。**どんな例外でも**1本ぶんの
+ * 失敗として畳み、`invalid-terminal`（＝盤に無い端子）として理由を返す。
  */
 export function safeRoutes(
   board: BoardDefinition,
   session: BoardSession | undefined,
 ): { routes: WireRoute[]; errors: RoutingError[] } {
   if (session === undefined) return { routes: [], errors: [] };
+  if (!Array.isArray(session.wires)) return { routes: [], errors: [] };
   try {
     return { routes: routeSession(board, session), errors: [] };
-  } catch (error) {
-    if (!(error instanceof RoutingError)) throw error;
+  } catch {
+    // 1本ずつやり直して、解けた電線だけでも描く（理由は下の loop が集める）
   }
   const routes: WireRoute[] = [];
   const errors: RoutingError[] = [];
-  for (const wire of session.wires) {
+  for (const [index, wire] of session.wires.entries()) {
+    const wireId = typeof wire?.id === 'string' ? wire.id : `w-?${index}`;
     try {
       routes.push(
         routeWire(
@@ -106,8 +118,11 @@ export function safeRoutes(
         ),
       );
     } catch (error) {
-      if (!(error instanceof RoutingError)) throw error;
-      errors.push(error);
+      errors.push(
+        error instanceof RoutingError
+          ? error
+          : new RoutingError(reasonOf(error), wireId, 'invalid-terminal'),
+      );
     }
   }
   return { routes, errors };

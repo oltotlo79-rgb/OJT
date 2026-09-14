@@ -1,5 +1,5 @@
 import { useEffect, useState, type JSX } from 'react';
-import type { AppSettings } from '../../shared/ipc.js';
+import type { AppSettings, AppSettingsResponse } from '../../shared/ipc.js';
 import { ojtApi } from '../app/ojt-api.js';
 import { useStore } from '../app/store.js';
 import { sounds } from '../audio/sounds.js';
@@ -30,7 +30,7 @@ function reasonOf(error: unknown): string {
 export function Settings(): JSX.Element {
   const setRoute = useStore((s) => s.setRoute);
   const toast = useStore((s) => s.toast);
-  const [settings, setSettings] = useState<AppSettings | undefined>(undefined);
+  const [settings, setSettings] = useState<AppSettingsResponse | undefined>(undefined);
   const [loadError, setLoadError] = useState<string | undefined>(undefined);
 
   useEffect(() => {
@@ -45,7 +45,12 @@ export function Settings(): JSX.Element {
     }
   }, []);
 
-  const patch = (next: Partial<AppSettings>): void => {
+  /**
+   * 設定を1キーだけ保存する。
+   * `silent` はスライダのように**確定のたびに保存する**ところで使う（1D2-a のレビュー指摘:
+   * つまみを動かすたびに「設定を保存しました」が5件並んで画面が埋まっていた）。
+   */
+  const patch = (next: Partial<AppSettings>, options: { silent?: boolean } = {}): void => {
     let api: ReturnType<typeof ojtApi>;
     try {
       api = ojtApi();
@@ -57,12 +62,22 @@ export function Settings(): JSX.Element {
       (saved) => {
         setSettings(saved);
         sounds.configure({ enabled: saved.soundEnabled, volume: saved.soundVolume });
-        toast(JA.settings.saved);
+        if (options.silent !== true) toast(JA.settings.saved);
       },
       (error: unknown) => {
         toast(reasonOf(error), 'error');
       },
     );
+  };
+
+  /**
+   * 音量つまみの確定。§15
+   * `onChange` は手元の状態だけを動かし（音もその場で反映して聞き比べられるようにする）、
+   * 指を離す・キーを離す・欄から外れたときに1回だけ保存する。
+   */
+  const commitVolume = (): void => {
+    if (settings === undefined) return;
+    patch({ soundVolume: settings.soundVolume }, { silent: true });
   };
 
   return (
@@ -86,6 +101,11 @@ export function Settings(): JSX.Element {
         <p className={styles.subtitle}>{JA.problemList.loading}</p>
       ) : (
         <div style={{ maxWidth: 760 }}>
+          {settings.warning === undefined ? null : (
+            <p className={styles.errorBox} data-testid="settings-warning">
+              {settings.warning}
+            </p>
+          )}
           <section className={styles.settingRow}>
             <label htmlFor="user-dir">{JA.settings.userContentDir}</label>
             <input
@@ -101,6 +121,9 @@ export function Settings(): JSX.Element {
               }}
             />
           </section>
+          <p className={styles.subtitle} data-testid="user-dir-help">
+            {JA.settings.userContentHelp}
+          </p>
 
           <section className={styles.settingRow}>
             <label htmlFor="sound-enabled">{JA.settings.soundEnabled}</label>
@@ -126,8 +149,14 @@ export function Settings(): JSX.Element {
               value={settings.soundVolume}
               data-testid="setting-sound-volume"
               onChange={(event) => {
-                patch({ soundVolume: Number(event.target.value) });
+                // 動かしている間は保存しない（確定は onPointerUp / onKeyUp / onBlur）
+                const soundVolume = Number(event.target.value);
+                setSettings({ ...settings, soundVolume });
+                sounds.configure({ enabled: settings.soundEnabled, volume: soundVolume });
               }}
+              onPointerUp={commitVolume}
+              onKeyUp={commitVolume}
+              onBlur={commitVolume}
             />
             <span>{Math.round(settings.soundVolume * 100)}%</span>
           </section>

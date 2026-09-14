@@ -90,6 +90,10 @@ beforeEach(() => {
     session: undefined,
     elapsedMs: 0,
     hazards: [],
+    restartAttempts: 0,
+    restoredHazardCount: 0,
+    pendingWorkFile: undefined,
+    history: { done: [], undone: [] },
   });
 });
 
@@ -122,11 +126,55 @@ describe('例外バナー（§13 #5）', () => {
     expect(screen.getByTestId('error-banner')).toBeTruthy();
 
     routeMock.throwing = false;
-    fireEvent.click(screen.getByRole('button', { name: JA.error.reset }));
+    fireEvent.click(screen.getByTestId('error-reset'));
 
     expect(screen.queryByTestId('error-banner')).toBeNull();
     expect(screen.getByTestId('route')).toBeTruthy();
     expect(useStore.getState().sessionEpoch).toBe(1);
+    // 描けたので連続リセットの数は 0 に戻る（次に落ちても、また盤を残して1回試せる）
+    expect(useStore.getState().restartAttempts).toBe(0);
+  });
+
+  /**
+   * 1D2-a のレビュー指摘: 盤そのものが描けないと「セッションをリセット」を押しても
+   * 同じ例外で落ち続け、訓練者は画面から一切抜け出せなかった（詰み）。
+   */
+  it('直らない画面でも「課題一覧へ戻る」で抜け出せる', () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    useStore.setState({ problem: PROBLEM, session: sessionForProblem(PROBLEM), route: 'session' });
+    routeMock.throwing = true;
+    render(<App />);
+
+    // 何度リセットしても直らない
+    fireEvent.click(screen.getByTestId('error-reset'));
+    expect(screen.getByTestId('error-banner')).toBeTruthy();
+    fireEvent.click(screen.getByTestId('error-reset'));
+    expect(screen.getByTestId('error-banner')).toBeTruthy();
+
+    // 課題ごと捨てれば一覧へ戻れる（差し替えたルートは落ちないことにして確かめる）
+    routeMock.throwing = false;
+    fireEvent.click(screen.getByTestId('error-to-list'));
+
+    expect(screen.queryByTestId('error-banner')).toBeNull();
+    const state = useStore.getState();
+    expect(state.route).toBe('list');
+    expect(state.problem).toBeUndefined();
+    expect(state.session).toBeUndefined();
+  });
+
+  it('2回目のリセットでは盤を作り直して知らせる', () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    useStore.setState({ problem: PROBLEM, session: sessionForProblem(PROBLEM), route: 'session' });
+    const original = useStore.getState().session;
+    routeMock.throwing = true;
+    render(<App />);
+
+    fireEvent.click(screen.getByTestId('error-reset'));
+    expect(useStore.getState().session).toBe(original);
+
+    fireEvent.click(screen.getByTestId('error-reset'));
+    expect(useStore.getState().session).not.toBe(original);
+    expect(useStore.getState().toasts.at(-1)?.text).toBe(JA.error.boardReset);
   });
 
   it('非同期の未捕捉例外もバナーに出る', () => {
@@ -249,6 +297,69 @@ describe('起動時の復元プロンプト（§12.3）', () => {
     expect(loadWorkFile).toHaveBeenLastCalledWith({ kind: 'autosave', discard: true });
     expect(workFileMock.applyWorkFile).not.toHaveBeenCalled();
     expect(screen.queryByTestId('restore-prompt')).toBeNull();
+  });
+
+  /**
+   * 1D2-a のレビュー指摘: 訓練者が先に課題一覧から作業を始めても確認欄が居座り続け、
+   * あとから「復元する」を押すと、いま組んでいる盤が黙って消えていた。
+   */
+  it('課題を開いたら確認欄は引っ込む', async () => {
+    setApi({
+      getSettings: () => Promise.resolve(DEFAULT_SETTINGS),
+      loadWorkFile: () => Promise.resolve({ ok: true, file: autosaveFile(), path: 'C:/a.json' }),
+    });
+    render(<App />);
+    await screen.findByTestId('restore-prompt');
+
+    act(() => {
+      useStore.getState().openProblem(PROBLEM);
+    });
+
+    expect(screen.queryByTestId('restore-prompt')).toBeNull();
+  });
+
+  it('設定ファイルが壊れていた警告をトーストで出す', async () => {
+    setApi({
+      getSettings: () => Promise.resolve({ ...DEFAULT_SETTINGS, warning: '設定が壊れていました' }),
+      loadWorkFile: () => Promise.resolve({ ok: false, canceled: false, message: '無し' }),
+    });
+    render(<App />);
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(useStore.getState().toasts.map((t) => t.text)).toContain('設定が壊れていました');
+  });
+});
+
+describe('別の課題を読むときの確認欄（§12.3）', () => {
+  it('pendingWorkFile があれば「続行／取消」を出し、続行で適用を呼び直す', () => {
+    const file = autosaveFile({ problemId: 'b-002' });
+    render(<App />);
+    act(() => {
+      useStore.getState().setPendingWorkFile(file);
+    });
+
+    const dialog = screen.getByTestId('discard-confirm');
+    expect(dialog.textContent).toContain(JA.session.discardTitle);
+
+    fireEvent.click(screen.getByRole('button', { name: JA.session.discardYes }));
+
+    expect(workFileMock.applyWorkFile).toHaveBeenCalledWith(file, { confirmed: true });
+    expect(screen.queryByTestId('discard-confirm')).toBeNull();
+    expect(useStore.getState().pendingWorkFile).toBeUndefined();
+  });
+
+  it('取消なら適用しない', () => {
+    render(<App />);
+    act(() => {
+      useStore.getState().setPendingWorkFile(autosaveFile({ problemId: 'b-002' }));
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: JA.session.discardNo }));
+
+    expect(workFileMock.applyWorkFile).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('discard-confirm')).toBeNull();
   });
 });
 

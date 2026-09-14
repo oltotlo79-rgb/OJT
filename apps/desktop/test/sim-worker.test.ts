@@ -246,3 +246,39 @@ describe('1端子3本目（§5.6 #5 / §17 #25）', () => {
     expect(vi.getTimerCount()).toBe(1);
   });
 });
+
+/**
+ * 1D2-a のレビュー指摘: 盤の食い違い（別の盤で保存した作業ファイル）で `load` が失敗しても
+ * `fatal: false` のトーストしか出ず、画面は「課題を開いた」つもりのまま無反応になっていた。
+ * `load` に失敗したら追従ループは動いていないので、致命として例外バナーを出させる（§13 #5 / #6）。
+ */
+describe('load の失敗（§13 #5）', () => {
+  it('別の盤のセッションを load したら致命エラーにしてループを畳む', async () => {
+    const h = await boot();
+    const session = { ...referenceSession(), boardId: 'jipm-2024' };
+
+    h.send({ type: 'load', problemId: 'b-001', session });
+
+    expect(h.errors).toHaveLength(1);
+    expect(h.errors[0]?.fatal).toBe(true);
+    expect(h.errors[0]?.message).toContain('jipm-2024');
+    expect(vi.getTimerCount()).toBe(0);
+
+    h.advance(300);
+    expect(h.snapshots).toHaveLength(0);
+  });
+
+  it('動いている最中に load が失敗しても、古い盤を回し続けない', async () => {
+    const h = await boot();
+    h.send({ type: 'load', problemId: 'b-001', session: referenceSession() });
+    h.advance(100);
+    const before = h.snapshots.length;
+    expect(before).toBeGreaterThan(0);
+
+    h.send({ type: 'load', problemId: 'b-002', session: { ...referenceSession(), boardId: 'x' } });
+    expect(h.errors.at(-1)?.fatal).toBe(true);
+
+    h.advance(300);
+    expect(h.snapshots).toHaveLength(before);
+  });
+});

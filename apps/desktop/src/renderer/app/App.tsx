@@ -4,7 +4,7 @@ import { sounds } from '../audio/sounds.js';
 import { JA } from '../i18n/ja.js';
 import { applyWorkFile, toWorkFile } from '../session/work-file.js';
 import { ErrorBoundary } from './ErrorBoundary.js';
-import { ojtApi } from './ojt-api.js';
+import { tryOjtApi } from './ojt-api.js';
 import { renderRoute } from './routes.js';
 import { useStore, type Route } from './store.js';
 import styles from './app.module.css';
@@ -27,11 +27,7 @@ const AUTOSAVE_INTERVAL_MS = 30_000;
 
 /** `window.ojt` を取り出す。preload が無ければ `undefined`（呼び出し側は黙って諦める）。 */
 function tryApi(): OjtApi | undefined {
-  try {
-    return ojtApi();
-  } catch {
-    return undefined;
-  }
+  return tryOjtApi();
 }
 
 /**
@@ -50,7 +46,18 @@ export function App(): JSX.Element {
   const toasts = useStore((s) => s.toasts);
   const fatalError = useStore((s) => s.fatalError);
   const sessionEpoch = useStore((s) => s.sessionEpoch);
+  const pendingWorkFile = useStore((s) => s.pendingWorkFile);
+  const problemId = useStore((s) => s.problem?.id);
   const [pendingRestore, setPendingRestore] = useState<WorkFile | undefined>(undefined);
+
+  /*
+   * 課題を開いたら復元の確認欄は引っ込める（1D2-a のレビュー指摘）。
+   * 訓練者が先に課題一覧から作業を始めたのに「前回の作業を復元しますか？」が居座り続けると、
+   * あとから押したときに、いま組んでいる盤が黙って消えてしまう。
+   */
+  useEffect(() => {
+    if (problemId !== undefined) setPendingRestore(undefined);
+  }, [problemId]);
 
   /*
    * 起動時: 設定を読み、効果音に反映したうえで一時保存が残っていれば復元を確認する（§12.3 / §15）。
@@ -63,6 +70,10 @@ export function App(): JSX.Element {
     void api.getSettings().then(
       (settings) => {
         sounds.configure({ enabled: settings.soundEnabled, volume: settings.soundVolume });
+        // 設定ファイルが壊れていた（main が控えを取って既定値で起動した）ことを知らせる。§12.1
+        if (settings.warning !== undefined) {
+          useStore.getState().toast(settings.warning, 'error');
+        }
         if (!settings.restorePrompt) return;
         void api.loadWorkFile({ kind: 'autosave' }).then(
           (restored) => {
@@ -145,11 +156,48 @@ export function App(): JSX.Element {
           </span>
           <button
             type="button"
+            data-testid="error-reset"
             onClick={() => {
               useStore.getState().restartSession();
             }}
           >
             {JA.error.reset}
+          </button>
+          {/*
+            盤そのものが描けないときは「リセット」では抜け出せない（レビュー指摘: 詰み）。
+            課題ごと捨てて一覧へ戻る導線を必ず添える。§13 #5
+          */}
+          <button
+            type="button"
+            data-testid="error-to-list"
+            onClick={() => {
+              useStore.getState().abandonSession();
+            }}
+          >
+            {JA.error.toList}
+          </button>
+        </div>
+      )}
+      {pendingWorkFile === undefined ? null : (
+        <div className={styles.restorePrompt} role="dialog" data-testid="discard-confirm">
+          <span>{JA.session.discardTitle}</span>
+          <button
+            type="button"
+            onClick={() => {
+              const file = pendingWorkFile;
+              useStore.getState().setPendingWorkFile(undefined);
+              void applyWorkFile(file, { confirmed: true });
+            }}
+          >
+            {JA.session.discardYes}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              useStore.getState().setPendingWorkFile(undefined);
+            }}
+          >
+            {JA.session.discardNo}
           </button>
         </div>
       )}
@@ -183,6 +231,9 @@ export function App(): JSX.Element {
         key={sessionEpoch}
         onError={(message) => {
           useStore.getState().setFatalError(message);
+        }}
+        onRender={() => {
+          useStore.getState().noteRenderSuccess();
         }}
       >
         <RouteView route={route} />

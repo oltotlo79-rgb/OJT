@@ -1,7 +1,15 @@
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  writeFileSync,
+} from 'node:fs';
 import { dirname, join } from 'node:path';
 import { app } from 'electron';
-import { DEFAULT_SETTINGS, type AppSettings } from '../shared/ipc.js';
+import { DEFAULT_SETTINGS, type AppSettings, type AppSettingsResponse } from '../shared/ipc.js';
+import { MSG } from '../shared/messages.js';
 
 /**
  * 設定の永続化。設計仕様 §12.1 / §4.3。
@@ -11,11 +19,24 @@ import { DEFAULT_SETTINGS, type AppSettings } from '../shared/ipc.js';
  * `sanitizePatch()` が `AppSettings` の4キーだけを型を確かめて取り込み、それ以外の
  * キー・型の違う値は黙って捨てる（renderer は信用しない。§4.3）。保存も `work-files.ts` と
  * 同じ一時ファイル→rename にする（書込の途中でアプリが落ちても本体が壊れた内容で残らない）。
+ *
+ * 壊れた設定ファイルは**黙って踏み潰さない**（1D2-a のレビュー指摘）。読めなかったことを
+ * `settings:get` の戻りに `warning` として載せ、上書きする前に `settings.corrupt-<時刻>.json`
+ * として控えを残す（手で直したい人が中身を取り戻せるように）。
  */
+
+/** UTF-8 の BOM。メモ帳で設定を直すと付く。`JSON.parse()` は受け付けない（`loader.ts` と同じ扱い）。 */
+const BOM = '\uFEFF';
 
 /** 設定ファイルのパス。 */
 export function settingsPath(): string {
   return join(app.getPath('userData'), 'settings.json');
+}
+
+/** 壊れた設定ファイルの控え先。時刻を入れて上書きを避ける（`:` は Windows のファイル名に使えない）。 */
+export function corruptSettingsPath(now: Date = new Date()): string {
+  const stamp = now.toISOString().replace(/[:.]/g, '-');
+  return join(app.getPath('userData'), `settings.corrupt-${stamp}.json`);
 }
 
 /** 利用者課題フォルダの既定パス。§7.8 */
@@ -49,25 +70,53 @@ function writeFileAtomic(target: string, content: string): void {
   renameSync(temp, target);
 }
 
-/** 設定を読む。未設定の利用者フォルダは既定パスに解決して返す。 */
-export function readSettings(): AppSettings {
+/**
+ * 設定を読む。未設定の利用者フォルダは既定パスに解決して返す。
+ * `corrupt` は「ファイルはあるのに読めなかった」ことを表す（ファイルが無いだけなら偽）。
+ */
+function loadSettings(): { settings: AppSettings; corrupt: boolean } {
   let raw: unknown;
+  let corrupt = false;
   try {
-    raw = JSON.parse(readFileSync(settingsPath(), 'utf8'));
+    let text = readFileSync(settingsPath(), 'utf8');
+    // メモ帳などが付ける BOM は落とす。残したままだと `JSON.parse()` が構文エラーにする（§7.8 と同じ）
+    if (text.startsWith(BOM)) text = text.slice(BOM.length);
+    raw = JSON.parse(text);
   } catch {
     raw = undefined;
+    corrupt = existsSync(settingsPath());
   }
   const settings = sanitizePatch(DEFAULT_SETTINGS, raw);
   if (settings.userContentDir.length === 0) settings.userContentDir = defaultUserContentDir();
-  return settings;
+  return { settings, corrupt };
+}
+
+/** 設定を読む。未設定の利用者フォルダは既定パスに解決して返す。 */
+export function readSettings(): AppSettings {
+  return loadSettings().settings;
+}
+
+/** 設定と警告（`settings:get` が返す形）。§12.1 */
+export function readSettingsResponse(): AppSettingsResponse {
+  const { settings, corrupt } = loadSettings();
+  return corrupt ? { ...settings, warning: MSG.settings.corrupt } : settings;
 }
 
 /**
  * 設定を部分更新して保存し、更新後の全体を返す。
  * `patch` は renderer からの生入力（`unknown`）でよい。`sanitizePatch()` が検証する。
+ * 元のファイルが読めなかったときは、上書きする前に控えを取る（訓練者が手で直せるように）。
  */
 export function writeSettings(patch: unknown): AppSettings {
-  const next = sanitizePatch(readSettings(), patch);
+  const { settings, corrupt } = loadSettings();
+  if (corrupt) {
+    try {
+      copyFileSync(settingsPath(), corruptSettingsPath());
+    } catch {
+      // 控えを取れなくても保存自体は続ける（既定値で動けることのほうが大事）
+    }
+  }
+  const next = sanitizePatch(settings, patch);
   writeFileAtomic(settingsPath(), `${JSON.stringify(next, null, 2)}\n`);
   return next;
 }

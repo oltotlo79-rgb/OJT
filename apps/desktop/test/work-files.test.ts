@@ -6,10 +6,13 @@ import {
   autosavePath,
   clearAutosave,
   loadWorkFile,
+  MAX_WORK_FILE_BYTES,
+  MAX_WORK_FILE_WIRES,
   parseWorkFile,
   saveWorkFile,
 } from '../src/main/work-files.js';
 import { WORK_FILE_FORMAT_VERSION, type WorkFile } from '../src/shared/ipc.js';
+import { MSG } from '../src/shared/messages.js';
 
 /**
  * 作業ファイルの保存／読込テスト。設計仕様 §12.3 / §13 #7 / §13 #8。
@@ -113,6 +116,26 @@ describe('parseWorkFile（§13 #8: 未知のバージョンは読み込まない
     expect(parseWorkFile('nope').ok).toBe(false);
     expect(parseWorkFile(null).ok).toBe(false);
   });
+
+  it('電線が上限を超える作業ファイルは拒否する（1D2-a: 10万本で画面が固まる）', () => {
+    const wires = Array.from({ length: MAX_WORK_FILE_WIRES + 1 }, (_, i) => ({
+      id: `w-${i}`,
+      from: 'CR1.13',
+      to: 'CR1.14',
+      color: '青',
+      locked: false,
+      open: false,
+    }));
+    const result = parseWorkFile(sampleFile({ session: { wires, socketRoles: {} } }));
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.message).toBe(MSG.workFile.tooManyWires);
+  });
+
+  it('上限ちょうどの本数は読める', () => {
+    const wires = Array.from({ length: MAX_WORK_FILE_WIRES }, (_, i) => ({ id: `w-${i}` }));
+    expect(parseWorkFile(sampleFile({ session: { wires, socketRoles: {} } })).ok).toBe(true);
+  });
 });
 
 describe('saveWorkFile / loadWorkFile（一時保存。§12.3）', () => {
@@ -215,5 +238,40 @@ describe('saveWorkFile / loadWorkFile（手動。§13 #7）', () => {
     electron.showOpenDialog.mockResolvedValue({ canceled: true, filePaths: [] });
     const result = await loadWorkFile(undefined, { kind: 'manual' });
     expect(result).toEqual({ ok: false, canceled: true, message: '読込を取り消しました' });
+  });
+
+  it('ウィンドウが無ければダイアログは引数1つの形で呼ぶ（1D2-a: 偽の BrowserWindow を渡さない）', async () => {
+    electron.showSaveDialog.mockResolvedValue({ canceled: true });
+    await saveWorkFile(undefined, { kind: 'manual', file: sampleFile() });
+    const saveArgs = electron.showSaveDialog.mock.calls[0];
+    expect(saveArgs).toHaveLength(1);
+    expect(saveArgs?.[0]).toMatchObject({ title: MSG.workFile.saveTitle });
+
+    electron.showOpenDialog.mockResolvedValue({ canceled: true, filePaths: [] });
+    await loadWorkFile(undefined, { kind: 'manual' });
+    const openArgs = electron.showOpenDialog.mock.calls[0];
+    expect(openArgs).toHaveLength(1);
+    expect(openArgs?.[0]).toMatchObject({ title: MSG.workFile.loadTitle });
+  });
+
+  it('ウィンドウがあれば親として渡す', async () => {
+    const window = { id: 1 } as unknown as Parameters<typeof saveWorkFile>[0];
+    electron.showSaveDialog.mockResolvedValue({ canceled: true });
+    await saveWorkFile(window, { kind: 'manual', file: sampleFile() });
+    expect(electron.showSaveDialog.mock.calls[0]).toHaveLength(2);
+    expect(electron.showSaveDialog.mock.calls[0]?.[0]).toBe(window);
+  });
+});
+
+describe('大きすぎる作業ファイル（1D2-a: 読む前に断る。§13 #8）', () => {
+  it('上限を超えるファイルは JSON を読まずに拒否する', async () => {
+    // 中身は妥当な JSON。大きさだけで断ることを確かめる
+    const filler = 'あ'.repeat(MAX_WORK_FILE_BYTES);
+    writeFileSync(autosavePath(), JSON.stringify(sampleFile({ savedAt: filler })), 'utf8');
+
+    const result = await loadWorkFile(undefined, { kind: 'autosave' });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.message).toBe(MSG.workFile.tooLarge);
   });
 });

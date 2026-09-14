@@ -56,6 +56,34 @@ describe('safeRoutes（§6.6）', () => {
     expect(routes).toHaveLength(before);
     expect(routes.some((r) => r.wireId === 'w-broken')).toBe(false);
   });
+
+  /**
+   * 1D2-a のレビュー指摘: 以前は `RoutingError` 以外を投げ直していたため、壊れた作業ファイル
+   * （電線の位置に文字列が入っている等）を読むと `toPhysicalTerminal()` の `TypeError` が
+   * 描画のたびに出て、例外バナーの「セッションをリセット」を押しても同じ例外で落ち続けた。
+   */
+  it.each([
+    ['電線が文字列', ['not-a-wire']],
+    ['電線が null', [null]],
+    ['端子が undefined', [{ id: 'w-x', color: '青', locked: false, open: false }]],
+    ['端子が数値', [{ id: 'w-x', from: 1, to: 2, color: '青', locked: false, open: false }]],
+  ])('壊れた電線（%s）が混ざっても投げない', (_label, wires) => {
+    const session = freshSession();
+    const before = safeRoutes(JIPM_BOARD, session).routes.length;
+    const broken = { ...session, wires: [...session.wires, ...wires] } as unknown as BoardSession;
+
+    const result = safeRoutes(JIPM_BOARD, broken);
+
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]?.wireId).toBeTruthy();
+    expect(result.errors[0]?.reason).toBe('invalid-terminal');
+    expect(result.routes).toHaveLength(before);
+  });
+
+  it('wires が配列ですらなくても投げない', () => {
+    const broken = { ...freshSession(), wires: 'nope' } as unknown as BoardSession;
+    expect(safeRoutes(JIPM_BOARD, broken)).toEqual({ routes: [], errors: [] });
+  });
 });
 
 describe('visualSignature（§15 再描画の判断）', () => {

@@ -82,6 +82,8 @@ const { sounds } = await import('../src/renderer/audio/sounds.js');
 const PROBLEM = BUILTIN_PROBLEMS.find((p) => p.id === 'b-001');
 /** 1級課題（回路図ヒントのトグル自体が出ない。§8.4）。 */
 const GRADE1_PROBLEM = BUILTIN_PROBLEMS.find((p) => p.grade === 1);
+/** 2級課題（回路図ヒントを開閉できる。初期は閉じている。§8.4）。 */
+const GRADE2_PROBLEM = BUILTIN_PROBLEMS.find((p) => p.grade === 2);
 
 /** preload を差し替える（`delete` で「読み込まれていない」状態に戻せる）。 */
 function setApi(api: Partial<OjtApi> | undefined): void {
@@ -393,31 +395,58 @@ describe('作業ファイルの保存・読込（§12.3）', () => {
   });
 });
 
-describe('回路図ヒントの開閉（§8.4）', () => {
-  it('3級課題（b-001）は開いた状態で始まり、ボタンで隠せる', () => {
+describe('回路図ヒント（§8.4: 3級=常時／2級=開閉可・初期は閉／1級=非表示）', () => {
+  /** 課題を1つ開いてセッション画面を描く。 */
+  function openProblemScreen(problem: typeof PROBLEM): void {
+    if (problem === undefined) throw new Error('課題が見つかりません');
+    act(() => {
+      useStore.getState().openProblem(problem);
+    });
+    render(<Session />);
+  }
+
+  it('3級課題（b-001）は常時表示で、開閉ボタンを出さない', () => {
     openSession();
     expect(screen.getByTestId('schematic-hint')).toBeTruthy();
+    // 常時表示なので訓練者が閉じる手段は無い（1D2-a: §8.4 の「常時表示」に合わせた）
+    expect(screen.queryByTestId('toggle-schematic')).toBeNull();
+  });
+
+  it('2級課題は閉じた状態で始まり、ボタンで開閉できる', () => {
+    expect(GRADE2_PROBLEM).toBeDefined();
+    if (GRADE2_PROBLEM === undefined) return;
+    openProblemScreen(GRADE2_PROBLEM);
+
+    expect(screen.queryByTestId('schematic-hint')).toBeNull();
     const toggle = screen.getByTestId('toggle-schematic');
-    expect(toggle.textContent).toBe(JA.session.hideSchematic);
+    expect(toggle.textContent).toBe(JA.session.showSchematic);
 
     fireEvent.click(toggle);
-    expect(screen.queryByTestId('schematic-hint')).toBeNull();
-    expect(screen.getByTestId('toggle-schematic').textContent).toBe(JA.session.showSchematic);
+    expect(screen.getByTestId('schematic-hint')).toBeTruthy();
+    expect(screen.getByTestId('toggle-schematic').textContent).toBe(JA.session.hideSchematic);
 
     fireEvent.click(screen.getByTestId('toggle-schematic'));
-    expect(screen.getByTestId('schematic-hint')).toBeTruthy();
+    expect(screen.queryByTestId('schematic-hint')).toBeNull();
   });
 
   it('1級課題はトグルボタン自体が無く、ヒントも出ない', () => {
     expect(GRADE1_PROBLEM).toBeDefined();
     if (GRADE1_PROBLEM === undefined) return;
-    act(() => {
-      useStore.getState().openProblem(GRADE1_PROBLEM);
-    });
-    render(<Session />);
+    openProblemScreen(GRADE1_PROBLEM);
 
     expect(screen.queryByTestId('toggle-schematic')).toBeNull();
     expect(screen.queryByTestId('schematic-hint')).toBeNull();
+  });
+
+  /**
+   * 1D2-a のレビュー指摘: 常時表示の3級で回路図が「部品」より前にあると、縦長の回路図に
+   * 押し出されて部品パネルが画面外へ行き、右パネルを一番下まで繰らないと部品を装着できなかった。
+   */
+  it('3級で常時表示になるヒントは、部品パネルより後ろに描く', () => {
+    openSession();
+    const parts = screen.getByTestId('parts-panel');
+    const hint = screen.getByTestId('schematic-hint');
+    expect(parts.compareDocumentPosition(hint) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 });
 

@@ -1,43 +1,131 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { BUILTIN_PROBLEMS } from '@ojt/content';
-import { afterEach, describe, expect, it } from 'vitest';
-import { builtinSet, loadContent } from '../src/main/content-loader.js';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 /**
- * 課題の供給テスト。設計仕様 §7.8（利用者側優先）/ §13 #1（読込エラー） / §13 #9（フォルダ無し）。
- * Plan 1D1 の内蔵課題だけのテストを置き換える（Plan 1D2 Task 1）。
+ * 課題の供給テスト。設計仕様 §7.8（利用者側優先・同梱課題は resources から）/ §13 #1（読込エラー） /
+ * §13 #9（フォルダ無し）。Plan 1D1 の内蔵課題だけのテストを置き換える（Plan 1D2 Task 1）。
+ *
+ * `app.isPackaged` と `process.resourcesPath` を差し替えて、配布版の分岐（resources/content から
+ * 同梱課題を読む）と開発時の分岐（焼き込みの `BUILTIN_PROBLEMS`）の両方を固定する。
  */
+
+const electron = vi.hoisted(() => ({ packaged: false }));
+
+vi.mock('electron', () => ({
+  app: {
+    get isPackaged(): boolean {
+      return electron.packaged;
+    },
+  },
+}));
+
+const {
+  builtinSet,
+  clearContentCache,
+  CONTENT_CACHE_TTL_MS,
+  loadContent,
+  probeUserDir,
+  withTimeout,
+} = await import('../src/main/content-loader.js');
 
 const created: string[] = [];
 
-function tempDir(): string {
-  const dir = mkdtempSync(join(tmpdir(), 'ojt-content-'));
+function tempDir(prefix = 'ojt-content-'): string {
+  const dir = mkdtempSync(join(tmpdir(), prefix));
   created.push(dir);
   return dir;
 }
 
+/** `process.resourcesPath` を差し替える（Node では未定義なので生やす）。 */
+function setResourcesPath(dir: string): void {
+  (process as unknown as Record<string, unknown>)['resourcesPath'] = dir;
+}
+
+const originalResourcesPath: unknown = (process as unknown as Record<string, unknown>)[
+  'resourcesPath'
+];
+
+beforeEach(() => {
+  electron.packaged = false;
+  clearContentCache();
+});
+
 afterEach(() => {
   for (const dir of created.splice(0)) rmSync(dir, { recursive: true, force: true });
+  (process as unknown as Record<string, unknown>)['resourcesPath'] = originalResourcesPath;
+  clearContentCache();
 });
 
 describe('builtinSet', () => {
-  it('内蔵課題8題を返す（§7.9）', () => {
+  it('開発時は焼き込みの内蔵課題8題を返す（§7.9）', () => {
     expect(builtinSet().problems).toHaveLength(BUILTIN_PROBLEMS.length);
     expect(builtinSet().errors).toHaveLength(0);
+  });
+
+  it('配布版は resources/content から同梱課題を読む（§7.8）', () => {
+    const resources = tempDir('ojt-resources-');
+    const assemble = join(resources, 'content', 'assemble');
+    mkdirSync(assemble, { recursive: true });
+    for (const problem of BUILTIN_PROBLEMS) {
+      writeFileSync(
+        join(assemble, `${problem.id}.json`),
+        JSON.stringify({ ...problem, title: `差し替え版 ${problem.title}` }),
+        'utf8',
+      );
+    }
+    electron.packaged = true;
+    setResourcesPath(resources);
+
+    const set = builtinSet();
+    expect(set.errors).toEqual([]);
+    expect(set.problems).toHaveLength(BUILTIN_PROBLEMS.length);
+    // ディスク側の内容がそのまま同梱課題になる（差し替えが効く）
+    expect(set.problems.every((p) => p.title.startsWith('差し替え版'))).toBe(true);
+  });
+
+  it('配布版でフォルダが空なら焼き込みに落として理由を残す（§13 #1）', () => {
+    const resources = tempDir('ojt-resources-');
+    mkdirSync(join(resources, 'content'), { recursive: true });
+    electron.packaged = true;
+    setResourcesPath(resources);
+
+    const set = builtinSet();
+    expect(set.problems).toHaveLength(BUILTIN_PROBLEMS.length);
+    expect(set.errors).toHaveLength(1);
+    expect(set.errors[0]?.message).toContain('内蔵した課題で起動します');
+  });
+
+  it('配布版でフォルダごと無くても起動できる（§13 #1）', () => {
+    electron.packaged = true;
+    setResourcesPath(join(tmpdir(), 'ojt-no-such-resources'));
+
+    const set = builtinSet();
+    expect(set.problems).toHaveLength(BUILTIN_PROBLEMS.length);
+    expect(set.errors[0]?.message).toContain('同梱課題フォルダがありません');
   });
 });
 
 describe('loadContent', () => {
-  it('利用者フォルダが無ければ内蔵課題だけで動く（§13 #9）', () => {
-    const payload = loadContent(join(tmpdir(), 'ojt-does-not-exist')).payload;
+  it('利用者フォルダが無ければ内蔵課題だけで動く（§13 #9）', async () => {
+    const { payload } = await loadContent(join(tmpdir(), 'ojt-does-not-exist'));
     expect(payload.userDirExists).toBe(false);
     expect(payload.problems).toHaveLength(BUILTIN_PROBLEMS.length);
     expect(payload.problems.every((p) => p.source === 'builtin')).toBe(true);
   });
 
-  it('利用者フォルダの課題を合流し、同一IDは利用者側を優先する（§7.8）', () => {
+  it('フォルダではなくファイルを指していても「無い」として扱う（§13 #9）', async () => {
+    const dir = tempDir();
+    const file = join(dir, 'not-a-dir.json');
+    writeFileSync(file, '{}', 'utf8');
+    const { payload } = await loadContent(file);
+    expect(payload.userDirExists).toBe(false);
+    expect(payload.problems).toHaveLength(BUILTIN_PROBLEMS.length);
+  });
+
+  it('利用者フォルダの課題を合流し、同一IDは利用者側を優先する（§7.8）', async () => {
     const dir = tempDir();
     const builtin = BUILTIN_PROBLEMS[0];
     expect(builtin).toBeDefined();
@@ -47,7 +135,7 @@ describe('loadContent', () => {
       JSON.stringify({ ...builtin, title: '利用者版の自己保持回路' }),
       'utf8',
     );
-    const { payload, byId } = loadContent(dir);
+    const { payload, byId } = await loadContent(dir);
     expect(payload.userDirExists).toBe(true);
     const row = payload.problems.find((p) => p.id === builtin.id);
     expect(row?.title).toBe('利用者版の自己保持回路');
@@ -55,16 +143,16 @@ describe('loadContent', () => {
     expect(byId.get(builtin.id)?.title).toBe('利用者版の自己保持回路');
   });
 
-  it('壊れた課題は理由付きで一覧に出し、他の課題は読み込む（§13 #1）', () => {
+  it('壊れた課題は理由付きで一覧に出し、他の課題は読み込む（§13 #1）', async () => {
     const dir = tempDir();
     writeFileSync(join(dir, 'broken.json'), '{ this is not json', 'utf8');
-    const payload = loadContent(dir).payload;
+    const { payload } = await loadContent(dir);
     expect(payload.errors).toHaveLength(1);
     expect(payload.errors[0]?.reason).toBe('invalid-json');
     expect(payload.problems).toHaveLength(BUILTIN_PROBLEMS.length);
   });
 
-  it('スキーマ違反はzodのパス付きで理由を出す（§13 #1）', () => {
+  it('スキーマ違反はzodのパス付きで理由を出す（§13 #1）', async () => {
     const dir = tempDir();
     const builtin = BUILTIN_PROBLEMS[0];
     if (builtin === undefined) return;
@@ -73,8 +161,92 @@ describe('loadContent', () => {
       JSON.stringify({ ...builtin, id: 'u-001', grade: 9 }),
       'utf8',
     );
-    const payload = loadContent(dir).payload;
+    const { payload } = await loadContent(dir);
     expect(payload.errors).toHaveLength(1);
     expect(payload.errors[0]?.details.join(' ')).toContain('grade');
   });
+});
+
+describe('loadContent の再利用（1D2-a: content:read のたびに読み直さない）', () => {
+  it('同じフォルダが変わっていなければ前回の結果をそのまま返す', async () => {
+    const dir = tempDir();
+    const first = await loadContent(dir);
+    const second = await loadContent(dir);
+    expect(second).toBe(first);
+  });
+
+  it('有効期限を過ぎたら読み直し、足された課題が見える', async () => {
+    const dir = tempDir();
+    const before = await loadContent(dir);
+    const builtin = BUILTIN_PROBLEMS[0];
+    if (builtin === undefined) return;
+    writeFileSync(
+      join(dir, 'added.json'),
+      JSON.stringify({ ...builtin, id: 'u-900', title: '追加された課題' }),
+      'utf8',
+    );
+    /*
+     * Windows のフォルダ更新時刻は同じ秒のうちの追加で動かないことがあるので、
+     * 覚えた結果は更新時刻が同じでも有効期限で必ず捨てる（`CONTENT_CACHE_TTL_MS`）。
+     * 時計だけを進めて、その仕組みが効いていることを確かめる。
+     */
+    vi.useFakeTimers();
+    vi.setSystemTime(Date.now() + CONTENT_CACHE_TTL_MS + 1);
+    const after = await loadContent(dir);
+    vi.useRealTimers();
+
+    expect(after).not.toBe(before);
+    expect(after.byId.get('u-900')?.title).toBe('追加された課題');
+  });
+
+  it('別のフォルダなら読み直す', async () => {
+    const a = tempDir();
+    const b = tempDir();
+    expect(await loadContent(b)).not.toBe(await loadContent(a));
+  });
+});
+
+describe('probeUserDir（1D2-a: 到達できないフォルダで main を止めない。§13 #9）', () => {
+  it('返ってこない問い合わせは制限時間で打ち切る（到達できない共有フォルダの代わり）', async () => {
+    // 到達できない `\\\\server\\share` は本物で用意できないので、決して片付かない約束で代用する
+    const never = new Promise<{ exists: boolean; mtimeMs: number }>(() => {
+      // 何もしない
+    });
+    const started = Date.now();
+    const state = await withTimeout(never, 20, { exists: false, mtimeMs: -1 });
+    expect(state).toEqual({ exists: false, mtimeMs: -1 });
+    expect(Date.now() - started).toBeLessThan(1000);
+  });
+
+  it('実在するフォルダは更新時刻付きで返る', async () => {
+    const dir = tempDir();
+    const state = await probeUserDir(dir);
+    expect(state.exists).toBe(true);
+    expect(state.mtimeMs).toBeGreaterThan(0);
+  });
+
+  it('空文字のフォルダは調べに行かない', async () => {
+    expect(await probeUserDir('')).toEqual({ exists: false, mtimeMs: -1 });
+  });
+});
+
+describe('loadContent の所要時間（1D2-a: 大きなフォルダでも一覧が返る）', () => {
+  it('1000ファイルの利用者フォルダでも 20 秒以内に読み終える', async () => {
+    const dir = tempDir();
+    const builtin = BUILTIN_PROBLEMS[0];
+    if (builtin === undefined) return;
+    for (let i = 0; i < 1000; i += 1) {
+      writeFileSync(
+        join(dir, `u-${String(i).padStart(4, '0')}.json`),
+        JSON.stringify({ ...builtin, id: `u-${String(i).padStart(4, '0')}` }),
+        'utf8',
+      );
+    }
+    const started = Date.now();
+    const { payload } = await loadContent(dir);
+    const tookMs = Date.now() - started;
+    expect(payload.problems).toHaveLength(BUILTIN_PROBLEMS.length + 1000);
+    // 実測は数秒。極端に遅くなったら気づけるだけの緩い上限にする
+    expect(tookMs).toBeLessThan(20_000);
+  }, 60_000);
 });

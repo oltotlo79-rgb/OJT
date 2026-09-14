@@ -79,19 +79,30 @@ test.describe('仕上げ', () => {
     await page.getByRole('button', { name: 'ホームへ戻る' }).click();
   });
 
-  test('2級相当の課題で回路図ヒントを開閉できる（§8.4）', async () => {
+  test('2級課題では回路図ヒントを開閉でき、3級課題では常時出ている（§8.4）', async () => {
+    // b-004 は2級課題。開閉でき、初期は閉じている
     await page.getByTestId('mode-assemble').click();
-    await page.getByTestId('open-b-001').click();
+    await page.getByTestId('open-b-004').click();
     await expect(page.getByTestId('viewport')).toBeVisible();
     await page.waitForTimeout(800);
-    // b-001 は3級課題で `hints.schematicVisible: true` なので最初から出ている
+    await expect(page.getByTestId('schematic-hint')).toHaveCount(0);
+
+    await page.getByRole('button', { name: '回路図を表示' }).click();
     await expect(page.getByTestId('schematic-hint')).toBeVisible();
     await expect(page.getByTestId('schematic-svg')).toBeVisible();
     await shot(app, '10-schematic-hint');
     await page.getByRole('button', { name: '回路図を隠す' }).click();
     await expect(page.getByTestId('schematic-hint')).toHaveCount(0);
-    await page.getByRole('button', { name: '回路図を表示' }).click();
+
+    // b-001 は3級課題。常時表示で、開閉ボタンそのものが出ない
+    await page.getByTestId('session-back').click();
+    await page.getByTestId('open-b-001').click();
+    await expect(page.getByTestId('viewport')).toBeVisible();
+    await page.waitForTimeout(800);
     await expect(page.getByTestId('schematic-hint')).toBeVisible();
+    await expect(page.getByTestId('toggle-schematic')).toHaveCount(0);
+    // 部品パネルより後ろに描く（回路図に押し出されて部品が画面外へ行かない）。1D2-a
+    await expect(page.getByTestId('parts-panel')).toBeVisible();
   });
 
   test('視点プリセットを切り替えても盤が描かれ続け、端子番号が読める（§6.2 / §12.2）', async () => {

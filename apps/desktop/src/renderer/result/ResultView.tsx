@@ -20,11 +20,20 @@ export const elapsedSummary = elapsedSummaryText;
 export function ResultView({
   problem,
   result,
+  restoredHazardCount = 0,
   onRetry,
   onBackToList,
 }: {
   problem: AssembleProblem;
   result: JudgeResult;
+  /**
+   * 作業ファイルから復元した危険操作の回数。§12.3 / §5.6
+   *
+   * 判定は Worker が作り直したネットリストの上で行うので `JudgeResult.hazardCount` は
+   * **復元後の分だけ**を数えている。種別ごとの内訳は復元できないため、見出しの合計だけを
+   * 「今回の分 ＋ 復元した分」にして、訓練者が実際に踏んだ回数と食い違わないようにする。
+   */
+  restoredHazardCount?: number;
   onRetry: () => void;
   onBackToList: () => void;
 }): JSX.Element {
@@ -60,7 +69,10 @@ export function ResultView({
         <ChartOverlay expected={result.charts.expected} actual={result.charts.actual} />
         <MismatchList mismatches={result.mismatches} />
         <StaticCheckList checks={result.staticChecks} />
-        <HazardList counts={result.hazardsByKind} total={result.hazardCount} />
+        <HazardList
+          counts={result.hazardsByKind}
+          total={result.hazardCount + restoredHazardCount}
+        />
       </div>
 
       <div className={styles.actions}>

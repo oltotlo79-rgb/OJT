@@ -285,11 +285,18 @@ self.onmessage = (event: MessageEvent<SimCommand>): void => {
   try {
     handle(event.data);
   } catch (cause) {
-    // コマンド1件が失敗しただけ。ループは回り続けるのでトーストで足りる（§13 #6）
+    /*
+     * コマンド1件が失敗しただけならループは回り続けるのでトーストで足りる（§13 #6）。
+     * ただし `load` の失敗（盤の食い違い・壊れた保存データ）は別で、盤を読み込めていないので
+     * 以後どのコマンドも通らない＝実質止まっている。ループを止めて致命扱いにし、
+     * renderer に例外バナー（「セッションをリセット」「課題一覧へ戻る」）を出させる（§13 #5）。
+     */
+    const fatal = event.data.type === 'load';
+    if (fatal) stopLoop();
     post({
       type: 'error',
       message: cause instanceof Error ? cause.message : String(cause),
-      fatal: false,
+      fatal,
     });
   }
 };

@@ -10,13 +10,22 @@ directories:
   buildResources: build
 
 # out/ は electron-vite のビルド成果物。asar にまとめる。
+#
+# node_modules は入れない（1D2-a のレビュー指摘）。main も renderer も electron-vite が
+# 依存ごとバンドルして out/ に出しているので、実行時に node_modules を require しない。
+# 入れたままだと zod のテストスイートまで asar に混ざって約6MB無駄になる。
 files:
   - out/**/*
   - package.json
+  - '!node_modules/**'
 
 asar: true
 
 # 課題JSONは asar の外に置き、利用者が差し替えられるようにする（§7.8）。
+# 中身は `scripts/copy-content.mjs`（predist）が packages/content/src/builtin から複写した
+# 正本と同一で、配布版の main は**このフォルダを読んで**同梱課題を組み立てる
+# （`content-loader.ts` の `builtinSet()`）。フォルダごと消えていればアプリに焼き込んだ
+# 課題に落として起動を続ける。
 extraResources:
   - from: resources/content
     to: content

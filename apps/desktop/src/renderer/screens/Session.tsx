@@ -3,7 +3,7 @@ import type { BoardSession, MountableKind, SocketId } from '@ojt/board-model';
 import type { TerminalId } from '@ojt/circuit-sim';
 import { useCallback, useEffect, useMemo, useRef, type JSX } from 'react';
 import { ojtApi } from '../app/ojt-api.js';
-import { useStore } from '../app/store.js';
+import { schematicPolicy, useStore } from '../app/store.js';
 import { sounds, soundsForSnapshot } from '../audio/sounds.js';
 import {
   failedLog,
@@ -130,6 +130,7 @@ export function Session(): JSX.Element {
   const judging = useStore((s) => s.judging);
   const webglLost = useStore((s) => s.webglLost);
   const schematicVisible = useStore((s) => s.schematicVisible);
+  const restoredHazardCount = useStore((s) => s.restoredHazardCount);
   const problemId = problem?.id;
   const sessionEpoch = useStore((s) => s.sessionEpoch);
 
@@ -344,6 +345,14 @@ export function Session(): JSX.Element {
     return <div className={styles.center}>{JA.session.noProblem}</div>;
   }
 
+  /*
+   * 回路図ヒントの出し方は級で決まる（§8.4）。3級は常時表示で開閉ボタンを出さない、
+   * 2級は開閉できて初期は閉じる、1級は出さない。開閉できない級ではストアの値を見ずに
+   * 規則そのものを見るので、何かの拍子に `schematicVisible` が倒れても3級の表示は消えない。
+   */
+  const policy = schematicPolicy(problem.grade);
+  const showSchematic = policy.toggleable ? schematicVisible : policy.shown;
+
   const onPlug = (socketId: SocketId, kind: MountableKind): void => {
     apply(runPlug(session, socketId, kind), () => {
       const next = useStore.getState().session;
@@ -471,13 +480,13 @@ export function Session(): JSX.Element {
             void applyWorkFile(result.file);
           });
         }}
-        schematicVisible={schematicVisible}
+        schematicVisible={showSchematic}
         onToggleSchematic={
-          problem.grade === 1
-            ? undefined
-            : () => {
+          policy.toggleable
+            ? () => {
                 useStore.getState().toggleSchematic();
               }
+            : undefined
         }
       >
         <PowerControls
@@ -522,14 +531,6 @@ export function Session(): JSX.Element {
             <p data-testid="reference-error">{referenceErrorText(spec.errors)}</p>
           ) : null}
           <LivePanel />
-          {schematicVisible && problem.grade !== 1 ? (
-            <section className={styles.panelLive} data-testid="schematic-hint">
-              <h2 className={styles.liveTitle}>{JA.session.schematicHint}</h2>
-              <div className={styles.schematicBox}>
-                <SchematicSvg document={problem.schematic} />
-              </div>
-            </section>
-          ) : null}
           <PartsPanel
             session={session}
             selectedSocket={selectedSocket}
@@ -540,10 +541,28 @@ export function Session(): JSX.Element {
             onUnplug={onUnplug}
             onPreset={onPreset}
           />
+          {/*
+            回路図ヒントは**部品パネルより後**に置く（1D2-a のレビュー指摘）。
+            3級は常時表示なので、先に置くと縦長の回路図に押し出されて「部品」が画面外へ行き、
+            右パネルを一番下までスクロールしないと部品を装着できなかった。§8.4 / §8.1
+          */}
+          {showSchematic ? (
+            <section className={styles.panelLive} data-testid="schematic-hint">
+              <h2 className={styles.liveTitle}>{JA.session.schematicHint}</h2>
+              <div className={styles.schematicBox}>
+                <SchematicSvg document={problem.schematic} />
+              </div>
+            </section>
+          ) : null}
         </div>
 
         <div className={styles.bottomPanel}>
-          <LogPanel lines={logLines} hazards={hazards} chatters={chatters} />
+          <LogPanel
+            lines={logLines}
+            hazards={hazards}
+            chatters={chatters}
+            restoredHazardCount={restoredHazardCount}
+          />
           <ElapsedTimer limit={problem.timeLimit} />
         </div>
       </div>

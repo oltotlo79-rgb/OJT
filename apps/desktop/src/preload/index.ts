@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron';
 import {
   IPC_CHANNELS,
   type AppSettings,
+  type AppSettingsResponse,
   type OjtApi,
   type ProblemListPayload,
   type WorkFileLoadRequest,
@@ -23,7 +24,7 @@ const api: OjtApi = {
     ipcRenderer.invoke(IPC_CHANNELS.workfileSave, request) as Promise<WorkFileSaveResult>,
   loadWorkFile: (request: WorkFileLoadRequest) =>
     ipcRenderer.invoke(IPC_CHANNELS.workfileLoad, request) as Promise<WorkFileLoadResult>,
-  getSettings: () => ipcRenderer.invoke(IPC_CHANNELS.settingsGet) as Promise<AppSettings>,
+  getSettings: () => ipcRenderer.invoke(IPC_CHANNELS.settingsGet) as Promise<AppSettingsResponse>,
   setSettings: (patch: Partial<AppSettings>) =>
     ipcRenderer.invoke(IPC_CHANNELS.settingsSet, patch) as Promise<AppSettings>,
 };

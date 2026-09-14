@@ -7,9 +7,12 @@ import {
   type JudgeResult,
 } from '@ojt/content';
 import { cleanup, render, screen } from '@testing-library/react';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { JA } from '../src/renderer/i18n/ja.js';
 import { ResultView } from '../src/renderer/result/ResultView.js';
+import { Result } from '../src/renderer/screens/Result.js';
+import { useStore } from '../src/renderer/app/store.js';
+import type { OjtApi } from '../src/shared/ipc.js';
 
 /**
  * 結果画面の表示テスト（§14.2 の「UI: Vitest ＋ Testing Library」）。
@@ -188,5 +191,66 @@ describe('ResultView（差分・危険操作が多いとき。§8.3）', () => {
     expect(screen.getByTestId('chart-overlay')).toBeTruthy();
     expect(screen.getByTestId('static-checks')).toBeTruthy();
     expect(screen.getByTestId('hazard-table')).toBeTruthy();
+  });
+});
+
+/**
+ * 1D2-a のレビュー指摘への追加分。
+ * - 復元した危険操作は判定結果には入らないので、合計だけを足して出す（§12.3 / §5.6）
+ * - 判定まで終わった作業の一時保存は消す（次の起動で終わった課題を勧めない。§12.3）
+ */
+describe('結果画面のルート（§8.3 / §12.3）', () => {
+  function setApi(api: Partial<OjtApi> | undefined): void {
+    if (api === undefined) delete window.ojt;
+    else window.ojt = api as OjtApi;
+  }
+
+  afterEach(() => {
+    setApi(undefined);
+    useStore.setState({ problem: undefined, judge: undefined, restoredHazardCount: 0 });
+  });
+
+  it('復元した危険操作の回数を今回の分に足して出す', () => {
+    if (PROBLEM === undefined) return;
+    render(
+      <ResultView
+        problem={PROBLEM}
+        result={{ ...judgeWith(), hazardCount: 2 }}
+        restoredHazardCount={3}
+        onRetry={() => undefined}
+        onBackToList={() => undefined}
+      />,
+    );
+    expect(screen.getByText(`${JA.result.hazards}（5）`)).toBeTruthy();
+  });
+
+  it('結果を出したら一時保存を消す', () => {
+    if (PROBLEM === undefined) return;
+    const loadWorkFile = vi.fn(() =>
+      Promise.resolve({ ok: false, canceled: true, message: '一時保存を削除しました' } as const),
+    );
+    setApi({ loadWorkFile });
+    useStore.setState({ problem: PROBLEM, judge: judgeWith(), restoredHazardCount: 0 });
+
+    render(<Result />);
+
+    expect(loadWorkFile).toHaveBeenCalledWith({ kind: 'autosave', discard: true });
+  });
+
+  it('判定結果が無ければ一時保存には触らない', () => {
+    const loadWorkFile = vi.fn();
+    setApi({ loadWorkFile });
+    useStore.setState({ problem: undefined, judge: undefined });
+
+    render(<Result />);
+
+    expect(loadWorkFile).not.toHaveBeenCalled();
+    expect(screen.getByText(JA.result.noResult)).toBeTruthy();
+  });
+
+  it('preload が無くても落ちない', () => {
+    if (PROBLEM === undefined) return;
+    useStore.setState({ problem: PROBLEM, judge: judgeWith() });
+    expect(() => render(<Result />)).not.toThrow();
   });
 });

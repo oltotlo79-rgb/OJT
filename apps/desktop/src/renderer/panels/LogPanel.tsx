@@ -1,6 +1,6 @@
 import type { ChatterEvent, HazardEvent } from '@ojt/circuit-sim';
 import type { JSX } from 'react';
-import { JA } from '../i18n/ja.js';
+import { JA, restoredHazardsText } from '../i18n/ja.js';
 import type { LogLine } from '../app/store.js';
 import styles from './panels.module.css';
 
@@ -14,10 +14,16 @@ export function LogPanel({
   lines,
   hazards,
   chatters,
+  restoredHazardCount = 0,
 }: {
   lines: readonly LogLine[];
   hazards: readonly HazardEvent[];
   chatters: readonly ChatterEvent[];
+  /**
+   * 作業ファイルから復元した危険操作の回数。§12.3 / §5.6
+   * Worker は復元でネットリストを作り直すので、保存前の分は種別まで残らない。回数だけを添える。
+   */
+  restoredHazardCount?: number;
 }): JSX.Element {
   return (
     <section className={styles.panel}>
@@ -29,8 +35,11 @@ export function LogPanel({
           <li key={line.id}>{line.text}</li>
         ))}
       </ul>
-      {hazards.length === 0 && chatters.length === 0 ? null : (
+      {hazards.length === 0 && chatters.length === 0 && restoredHazardCount === 0 ? null : (
         <ul className={styles.warnList} data-testid="warning-list">
+          {restoredHazardCount === 0 ? null : (
+            <li data-testid="restored-hazards">{restoredHazardsText(restoredHazardCount)}</li>
+          )}
           {hazards.map((hazard, index) => (
             <li key={`h-${index}`}>
               {JA.hazard[hazard.kind]}（{hazard.detail}）

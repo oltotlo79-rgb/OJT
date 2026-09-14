@@ -35,7 +35,7 @@ export function PartsPanel({
 }): JSX.Element {
   const remaining = remainingInventory(session.inventory, mountedKinds(session));
   return (
-    <section className={styles.panel}>
+    <section className={styles.panel} data-testid="parts-panel">
       <h2 className={styles.panelTitle}>{JA.session.parts}</h2>
       {remaining.map((item) => {
         const entry = catalogEntry(item.kind);

@@ -16,3 +16,11 @@ export function ojtApi(): OjtApi {
   if (api === undefined) throw new Error(JA.error.preloadMissing);
   return api;
 }
+
+/**
+ * preload の API を取り出す。無ければ `undefined`。
+ * 「あれば使う、無ければ黙って諦める」場所（起動時の設定読込・一時保存の後始末）用。§13 #5
+ */
+export function tryOjtApi(): OjtApi | undefined {
+  return window.ojt;
+}
