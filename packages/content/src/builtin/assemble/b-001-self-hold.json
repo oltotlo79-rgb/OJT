@@ -1,0 +1,69 @@
+{
+  "formatVersion": 1,
+  "id": "b-001",
+  "mode": "assemble",
+  "title": "自己保持回路",
+  "grade": 3,
+  "description": "黒押ボタン（PB1）で白ランプ（PL1）を点灯させ、離しても点灯を保持しなさい。黄押ボタン（PB2）で消灯すること。タイムチャートの始まりと終わりは論理0とする。",
+  "timeLimit": { "standardMin": 30, "cutoffMin": 50 },
+  "board": {
+    "boardId": "board-jipm-std",
+    "socketRoles": { "S1": "CR1", "S2": "CR2", "S5": "T1", "S6": "T2", "S7": "CHK" }
+  },
+  "inventory": [
+    { "kind": "relay-my4n", "count": 2 },
+    { "kind": "timer-h3y4", "count": 2 }
+  ],
+  "schematic": {
+    "formatVersion": 1,
+    "id": "sch-b-001",
+    "title": "自己保持回路",
+    "orientation": "horizontal",
+    "rungs": [
+      {
+        "id": "r1",
+        "from": { "bus": "P" },
+        "to": { "bus": "N" },
+        "cells": [
+          { "kind": "pb-b", "id": "c01", "device": "PB2" },
+          { "kind": "pb-a", "id": "c02", "device": "PB1" },
+          { "kind": "coil", "id": "c03", "device": "CR1" }
+        ]
+      },
+      {
+        "id": "r1h",
+        "from": { "rung": "r1", "node": 1 },
+        "to": { "rung": "r1", "node": 2 },
+        "cells": [{ "kind": "cr-a", "id": "c04", "device": "CR1" }]
+      },
+      {
+        "id": "r2",
+        "from": { "bus": "P" },
+        "to": { "bus": "N" },
+        "cells": [
+          { "kind": "cr-a", "id": "c05", "device": "CR1" },
+          { "kind": "lamp", "id": "c06", "device": "PL1" }
+        ]
+      }
+    ]
+  },
+  "operations": [
+    { "t": 500, "target": "PB1", "action": "press" },
+    { "t": 800, "target": "PB1", "action": "release" },
+    { "t": 3000, "target": "PB2", "action": "press" },
+    { "t": 3300, "target": "PB2", "action": "release" }
+  ],
+  "durationMs": 5000,
+  "judge": {
+    "tolerance": { "edgeMs": 200, "ratio": 0.1 },
+    "staticChecks": {
+      "wireColorRule": true,
+      "terminalLimit": true,
+      "unusedParts": true,
+      "forbiddenCircuit": true,
+      "coilPolarity": true,
+      "powerSequence": true
+    }
+  },
+  "hints": { "schematicVisible": true }
+}

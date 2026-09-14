@@ -1,0 +1,49 @@
+import type { AssembleProblem } from '../schema/assemble.js';
+import { parseProblem, type ProblemIssue } from '../schema/index.js';
+import selfHold from './assemble/b-001-self-hold.json';
+import interlock from './assemble/b-002-interlock.json';
+import onDelay from './assemble/b-003-on-delay.json';
+
+/**
+ * 内蔵課題。設計仕様 §7.8 / §7.9（モードB = 8題）。
+ * JSONを直接読み、`parseProblem()` を通した結果だけを公開する。
+ * 1件でも検証に落ちたら読み込み時に例外を投げるので、壊れた内蔵課題はビルド／テストで必ず落ちる。
+ */
+
+/** 内蔵課題のJSON（`resources/content/assemble/<id>.json` と同じ内容）。 */
+const BUILTIN_ASSEMBLE_JSON: readonly unknown[] = [selfHold, interlock, onDelay];
+
+/** 内蔵課題の検証に失敗したときに投げる。 */
+export class BuiltinProblemError extends Error {
+  constructor(
+    message: string,
+    readonly issues: ProblemIssue[],
+  ) {
+    super(message);
+    this.name = 'BuiltinProblemError';
+  }
+}
+
+/** 内蔵課題のJSONを検証する。1件でも落ちたら `BuiltinProblemError` を投げる。§7.8 */
+export function parseBuiltinProblems(sources: readonly unknown[]): AssembleProblem[] {
+  return sources.map((source, index) => {
+    const parsed = parseProblem(source);
+    if (parsed.ok) return parsed.problem;
+    throw new BuiltinProblemError(
+      `内蔵課題[${index}]（${parsed.id ?? '不明'}）が読めません: ${parsed.message}`,
+      parsed.issues,
+    );
+  });
+}
+
+/** 内蔵のモードB課題（8題）。§7.9 */
+export const BUILTIN_ASSEMBLE_PROBLEMS: readonly AssembleProblem[] =
+  parseBuiltinProblems(BUILTIN_ASSEMBLE_JSON);
+
+/** 内蔵課題すべて（Phase 1 はモードBのみ）。§16 */
+export const BUILTIN_PROBLEMS: readonly AssembleProblem[] = BUILTIN_ASSEMBLE_PROBLEMS;
+
+/** 内蔵課題をIDで引く。 */
+export function findBuiltinProblem(id: string): AssembleProblem | undefined {
+  return BUILTIN_PROBLEMS.find((p) => p.id === id);
+}
