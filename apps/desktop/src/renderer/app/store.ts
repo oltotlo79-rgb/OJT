@@ -203,7 +203,7 @@ export const useStore = create<AppState>((set, get) => ({
     set({ history });
   },
   setMode: (mode) => {
-    set({ mode, pendingTerminal: undefined });
+    set({ mode, pendingTerminal: undefined, selectedWire: undefined });
   },
   setWireColor: (wireColor) => {
     set({ wireColor });

@@ -64,11 +64,20 @@ describe('pickToAction（配線モード）', () => {
     });
   });
 
-  it('電線をクリックすると選択する', () => {
+  it('電線をクリックしても何も起きない（配線モードは端子クリックを優先する。§8.2）', () => {
     expect(pickToAction(state(), { kind: 'wire', id: 'w-001', locked: false })).toEqual({
-      type: 'selectWire',
-      wireId: 'w-001',
+      type: 'none',
     });
+  });
+
+  it('配線中に電線をクリックしても配線待ちは取り消されない（キャンセルではない）', () => {
+    expect(
+      pickToAction(state({ pendingTerminal: CR1_13 }), {
+        kind: 'wire',
+        id: 'w-001',
+        locked: false,
+      }),
+    ).toEqual({ type: 'none' });
   });
 
   it('空きソケットは装着用に選択する', () => {
@@ -105,10 +114,10 @@ describe('pickToAction（配線モード）', () => {
 });
 
 describe('pickToAction（削除モード）', () => {
-  it('電線を削除する', () => {
+  it('電線をクリックすると選択する（実際の削除は Delete キーで行う。§8.2）', () => {
     expect(
       pickToAction(state({ mode: 'delete' }), { kind: 'wire', id: 'w-003', locked: false }),
-    ).toEqual({ type: 'removeWire', wireId: 'w-003' });
+    ).toEqual({ type: 'selectWire', wireId: 'w-003' });
   });
 
   it('固定配線は削除できない', () => {
@@ -142,21 +151,27 @@ describe('キーボード', () => {
     expect(escapeToAction(state())).toEqual({ type: 'none' });
   });
 
-  it('Delete は選択中の電線を削除する', () => {
-    expect(deleteKeyToAction(state({ selectedWire: 'w-002' }), [])).toEqual({
+  it('Delete は削除モードで選択中の電線を削除する', () => {
+    expect(deleteKeyToAction(state({ mode: 'delete', selectedWire: 'w-002' }), [])).toEqual({
       type: 'removeWire',
       wireId: 'w-002',
     });
   });
 
-  it('Delete は固定配線を拒否する', () => {
-    expect(deleteKeyToAction(state({ selectedWire: 'fw-chk-2' }), ['fw-chk-2'])).toEqual({
+  it('Delete は削除モードでも固定配線を拒否する', () => {
+    expect(
+      deleteKeyToAction(state({ mode: 'delete', selectedWire: 'fw-chk-2' }), ['fw-chk-2']),
+    ).toEqual({
       type: 'reject',
       message: LOCKED_WIRE_MESSAGE,
     });
   });
 
   it('Delete は未選択なら何もしない', () => {
-    expect(deleteKeyToAction(state(), [])).toEqual({ type: 'none' });
+    expect(deleteKeyToAction(state({ mode: 'delete' }), [])).toEqual({ type: 'none' });
+  });
+
+  it('Delete は配線モードでは無視される（電線が選択されていても）。§12.2', () => {
+    expect(deleteKeyToAction(state({ selectedWire: 'w-002' }), [])).toEqual({ type: 'none' });
   });
 });

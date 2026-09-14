@@ -50,22 +50,25 @@ export type PickAction =
   /** 押ボタンを押す。§8.2 */
   | { type: 'pressButton'; pbId: string };
 
-/** 固定配線を触ったときの文言。§6.3 */
-export const LOCKED_WIRE_MESSAGE = 'チェック用回路の黄色配線は変更できません';
+/** 固定配線を触ったときの文言（既設配線は本アプリでは全て青。§6.3・§6.6）。 */
+export const LOCKED_WIRE_MESSAGE = 'チェック用回路の既設配線（青）は変更できません';
 /** 配線できない端子を触ったときの文言。§6.4 */
 export const NOT_WIRABLE_MESSAGE = 'この端子には配線できません（本体側は既設配線済みです）';
 
 /**
  * ピック結果を操作に変換する。§12.2
- * - 削除モード: 電線を拾ったら削除、`locked` なら拒否、それ以外は何もしない
- * - 配線モード: 端子 → 端子 で配線、同じ端子を2度押したら取り消し、空間クリックで取り消し
+ * - 削除モード: 電線を拾ったら選択（実際の削除は Delete キー。§8.2）、`locked` なら拒否、
+ *   それ以外は何もしない
+ * - 配線モード: 端子 → 端子 で配線、同じ端子を2度押したら取り消し、空間クリックで取り消し。
+ *   電線のクリック選択は削除モード限定なので、配線モードでは電線を拾っても何もしない
+ *   （配線中でも取り消し扱いにはしない。§8.2「配線モードでは端子クリックを優先」）
  */
 export function pickToAction(state: InteractionState, hit: PickHit): PickAction {
   if (state.mode === 'delete') {
     if (hit.kind === 'wire') {
       return hit.locked
         ? { type: 'reject', message: LOCKED_WIRE_MESSAGE }
-        : { type: 'removeWire', wireId: hit.id };
+        : { type: 'selectWire', wireId: hit.id };
     }
     if (hit.kind === 'pushbutton') return { type: 'pressButton', pbId: hit.id };
     return { type: 'none' };
@@ -80,9 +83,7 @@ export function pickToAction(state: InteractionState, hit: PickHit): PickAction 
       return { type: 'completeWire', from: pending, to: hit.id, color: state.wireColor };
     }
     case 'wire':
-      return state.pendingTerminal === undefined
-        ? { type: 'selectWire', wireId: hit.id }
-        : { type: 'cancelWire' };
+      return { type: 'none' };
     case 'socket':
       if (state.pendingTerminal !== undefined) return { type: 'cancelWire' };
       return hit.occupied
@@ -105,11 +106,12 @@ export function escapeToAction(state: InteractionState): PickAction {
   return state.pendingTerminal === undefined ? { type: 'none' } : { type: 'cancelWire' };
 }
 
-/** Delete キーの扱い（電線を選んでいれば削除）。§8.2 */
+/** Delete キーの扱い（削除モードで電線を選んでいれば削除。電線選択は削除モード限定。§8.2 / §12.2） */
 export function deleteKeyToAction(
   state: InteractionState,
   lockedWireIds: readonly string[],
 ): PickAction {
+  if (state.mode !== 'delete') return { type: 'none' };
   const id = state.selectedWire;
   if (id === undefined || id.length === 0) return { type: 'none' };
   if (lockedWireIds.includes(id)) return { type: 'reject', message: LOCKED_WIRE_MESSAGE };

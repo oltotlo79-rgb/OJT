@@ -89,9 +89,15 @@ export function redo(
   };
 }
 
-/** 操作の実行結果（成功なら新しいセッションと履歴1手）。 */
+/**
+ * 操作の実行結果（成功なら新しいセッションと履歴1手）。
+ * 失敗にも `wire` が付くことがある（`board-model` の `terminal-overload` のとき、張ろうとした
+ * 電線そのもの）。呼び出し側はそれを `Simulation.addWire()` に渡して §5.6 #5 の危険操作として
+ * 計上させる（`packages/board-model/src/session.ts` の `Result` を参照）。
+ */
 export type CommandResult<T> =
-  { ok: true; value: T; command: SessionCommand } | { ok: false; code: string; message: string };
+  | { ok: true; value: T; command: SessionCommand }
+  | { ok: false; code: string; message: string; wire?: Wire };
 
 function wrap<T>(
   before: BoardSession,
@@ -100,7 +106,14 @@ function wrap<T>(
   kind: SessionCommand['kind'],
   label: string,
 ): CommandResult<T> {
-  if (!result.ok) return { ok: false, code: result.code, message: result.message };
+  if (!result.ok) {
+    return {
+      ok: false,
+      code: result.code,
+      message: result.message,
+      ...(result.wire !== undefined ? { wire: result.wire } : {}),
+    };
+  }
   return {
     ok: true,
     value: result.value,

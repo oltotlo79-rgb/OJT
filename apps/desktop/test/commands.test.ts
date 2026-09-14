@@ -34,13 +34,16 @@ describe('runAddWire', () => {
     if (!result.ok) expect(result.code).toBe('color-not-allowed');
   });
 
-  it('1端子3本目は拒否する（§6.6 / §5.6 #5）', () => {
+  it('1端子3本目は拒否する。失敗にも張ろうとした電線が残る（§6.6 / §5.6 #5）', () => {
     const s = session();
     runAddWire(s, toTerminalId('P.1'), toTerminalId('CR1.14'), '青');
     runAddWire(s, toTerminalId('P.1'), toTerminalId('CR2.14'), '青');
     const third = runAddWire(s, toTerminalId('P.1'), toTerminalId('CR3.14'), '青');
     expect(third.ok).toBe(false);
-    if (!third.ok) expect(third.code).toBe('terminal-overload');
+    if (!third.ok) {
+      expect(third.code).toBe('terminal-overload');
+      expect(third.wire).toBeDefined();
+    }
   });
 
   it('PB本体端子には配線できない（§6.4）', () => {
@@ -60,7 +63,7 @@ describe('runRemoveWire', () => {
     expect(removed.ok).toBe(true);
   });
 
-  it('チェック用回路の黄色配線は外せない（§6.3）', () => {
+  it('チェック用回路の既設配線（青）は外せない（§6.3）', () => {
     const s = session();
     const locked = s.wires.find((w) => w.locked);
     expect(locked).toBeDefined();

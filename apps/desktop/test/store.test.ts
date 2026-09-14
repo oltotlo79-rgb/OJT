@@ -1,3 +1,4 @@
+import { toTerminalId } from '@ojt/circuit-sim';
 import { BUILTIN_PROBLEMS } from '@ojt/content';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { EMPTY_SNAPSHOT, sessionForProblem, useStore } from '../src/renderer/app/store.js';
@@ -110,5 +111,20 @@ describe('toast / log', () => {
     const lines = useStore.getState().logLines;
     expect(lines).toHaveLength(200);
     expect(lines[0]?.text).toBe('行 10');
+  });
+});
+
+describe('setMode', () => {
+  it('モードを切り替えると配線待ちの端子と選択中の電線を両方とも捨てる（§12.2）', () => {
+    useStore.setState({
+      mode: 'wire',
+      pendingTerminal: toTerminalId('CR1.13'),
+      selectedWire: 'w-001',
+    });
+    useStore.getState().setMode('delete');
+    const state = useStore.getState();
+    expect(state.mode).toBe('delete');
+    expect(state.pendingTerminal).toBeUndefined();
+    expect(state.selectedWire).toBeUndefined();
   });
 });
