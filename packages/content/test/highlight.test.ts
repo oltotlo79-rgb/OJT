@@ -1,5 +1,4 @@
 import { JIPM_BOARD } from '@ojt/board-model';
-import { assignToBoard } from '@ojt/schematic-core';
 import { describe, expect, it } from 'vitest';
 import {
   buildHighlightIndex,
@@ -7,24 +6,15 @@ import {
   cellIdsOfWire,
   highlightFor,
 } from '../src/highlight.js';
-import { ASSEMBLE_WIRE_COLOR, buildReferenceSession } from '../src/reference.js';
+import { buildReferenceSession } from '../src/reference.js';
 import { parseOrThrow, selfHoldProblemJson } from './helpers/problems.js';
 
-/**
- * 自己保持回路の模範回路から索引を作る。
- * 回路図要素の割当は `buildReferenceSession()` が `cells` を返すようになる（Task 10）まで
- * schematic-core から直接取る（同じ回路図・同じ役割割当なので割当は一致する）。
- */
+/** 自己保持回路の模範回路（`buildReferenceSession()` が返す `cells`）から索引を作る。 */
 function index() {
   const problem = parseOrThrow(selfHoldProblemJson());
   const built = buildReferenceSession(problem, JIPM_BOARD);
   if (!built.ok) throw new Error(JSON.stringify(built.errors));
-  const assigned = assignToBoard(problem.schematic, {
-    roles: built.value.roles,
-    color: ASSEMBLE_WIRE_COLOR,
-  });
-  if (!assigned.ok) throw new Error(JSON.stringify(assigned.errors));
-  return buildHighlightIndex(assigned.cells, built.value.session);
+  return buildHighlightIndex(built.value.cells, built.value.session);
 }
 
 describe('buildHighlightIndex', () => {

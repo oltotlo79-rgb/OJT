@@ -1,12 +1,7 @@
 import { JIPM_BOARD, plug, toNetlist, type BoardSession } from '@ojt/board-model';
-import {
-  createWire,
-  SignalLog,
-  terminalId,
-  type HazardEvent,
-  type WireColor,
-} from '@ojt/circuit-sim';
+import { createWire, SignalLog, terminalId, type HazardEvent } from '@ojt/circuit-sim';
 import { describe, expect, it } from 'vitest';
+import { REPAIR_WIRE_COLOR } from '../src/inspect-repair.js';
 import { buildReferenceSession, ASSEMBLE_WIRE_COLOR } from '../src/reference.js';
 import { runOperations } from '../src/runner.js';
 import { DEFAULT_STATIC_CHECKS } from '../src/schema/judge.js';
@@ -25,13 +20,6 @@ import {
   parseOrThrow,
   selfHoldProblemJson,
 } from './helpers/problems.js';
-
-/**
- * モードC2の修復に使う線色（白）。§8.1
- * 本来は `src/inspect-repair.ts` の `REPAIR_WIRE_COLOR` を使うが、そのモジュールは
- * Task 10 で作られる。ここでは同じ値を置いて `preexistingWireIds` の検査だけを先に固める。
- */
-const REPAIR_WIRE_COLOR: WireColor = '白';
 
 function inputFor(json: Record<string, unknown>): StaticCheckInput & { session: BoardSession } {
   const problem = parseOrThrow(json);

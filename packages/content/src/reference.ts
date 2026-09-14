@@ -6,7 +6,7 @@ import {
   type SocketRoles,
 } from '@ojt/board-model';
 import { partId, toTerminalId, type Netlist, type PartId, type TerminalId } from '@ojt/circuit-sim';
-import { toSession } from '@ojt/schematic-core';
+import { toSession, type CellAssignment } from '@ojt/schematic-core';
 import { toSocketRoles } from './schema/common.js';
 import type { AssembleProblem } from './schema/assemble.js';
 import type { InspectRepairProblem } from './schema/inspect-repair.js';
@@ -24,11 +24,13 @@ import type { ProblemIssue } from './schema/index.js';
  */
 export type SchematicProblem = AssembleProblem | InspectRepairProblem;
 
-/** 模範回路（盤セッション＋ネットリスト）。 */
+/** 模範回路（盤セッション＋ネットリスト＋回路図要素の物理割当）。 */
 export interface ReferenceCircuit {
   session: BoardSession;
   netlist: Netlist;
   roles: SocketRoles;
+  /** 回路図の要素 → 物理端子の対応。C2の連動ハイライト（§9.2）と指摘の説明に使う。 */
+  cells: readonly CellAssignment[];
 }
 
 /** 模範回路の構築結果。 */
@@ -137,6 +139,7 @@ export function buildReferenceSession(
       session: built.session,
       netlist: toNetlist(built.session, board),
       roles: built.assignment.roles,
+      cells: built.assignment.cells,
     },
   };
 }
