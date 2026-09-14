@@ -6,8 +6,14 @@
 /** 画面。§12.1 */
 export type Route = 'home' | 'list' | 'session' | 'result' | 'settings';
 
-/** 視点プリセット。§12.2 */
-export type CameraPreset = 'front' | 'top' | 'socket';
+/**
+ * 視点プリセット。§12.2
+ *
+ * `front`（正面）／`top`（俯瞰）／`socket`（ソケット拡大）はツールバーの3ボタンと同じ。
+ * `back` / `left` / `right` / `bottom` は Blender 風のテンキー操作とビューキューブの面から
+ * 使う方向プリセット（2026-09-14 の利用者要望）。
+ */
+export type CameraPreset = 'front' | 'top' | 'socket' | 'back' | 'left' | 'right' | 'bottom';
 
 /**
  * 画面に出す短いお知らせ（配線失敗の理由など）。§8.2

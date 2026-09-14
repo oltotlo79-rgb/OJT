@@ -270,6 +270,46 @@ describe('キーボードのショートカット（§8.2）', () => {
     });
     expect(useStore.getState().camera).toBe('front');
   });
+
+  it('テンキー 7 で俯瞰、Ctrl＋テンキー 7 で下から（Blender と同じ。§12.2）', () => {
+    openSession();
+    act(() => {
+      fireEvent.keyDown(document.body, { code: 'Numpad7', key: '7' });
+    });
+    expect(useStore.getState().camera).toBe('top');
+    act(() => {
+      fireEvent.keyDown(document.body, { code: 'Numpad3', key: '3' });
+    });
+    expect(useStore.getState().camera).toBe('right');
+    act(() => {
+      fireEvent.keyDown(document.body, { code: 'Numpad7', key: '7', ctrlKey: true });
+    });
+    expect(useStore.getState().camera).toBe('bottom');
+    act(() => {
+      fireEvent.keyDown(document.body, { code: 'Home', key: 'Home' });
+    });
+    expect(useStore.getState().camera).toBe('front');
+  });
+
+  it('入力欄で打ったテンキーでは視点が変わらない', () => {
+    openSession();
+    const input = document.createElement('input');
+    input.type = 'number';
+    document.body.appendChild(input);
+    input.focus();
+    const before = useStore.getState().cameraNonce;
+    act(() => {
+      fireEvent.keyDown(input, { code: 'Numpad7', key: '7' });
+    });
+    expect(useStore.getState().camera).toBe('front');
+    expect(useStore.getState().cameraNonce).toBe(before);
+    input.remove();
+  });
+
+  it('操作ヒントに Blender 風の割り当てが出ている（§12.2）', () => {
+    openSession();
+    expect(screen.getByTestId('view-hint').textContent).toBe(JA.session.viewHint);
+  });
 });
 
 describe('判定（§8.2 / §13 #2）', () => {

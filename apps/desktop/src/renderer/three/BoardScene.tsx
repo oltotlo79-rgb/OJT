@@ -14,14 +14,37 @@ import type { LampLevel, TerminalId } from '@ojt/circuit-sim';
 import { OrbitControls } from '@react-three/drei';
 import { Canvas, useThree } from '@react-three/fiber';
 import { MOUSE } from 'three';
-import { memo, useCallback, useEffect, useMemo, useRef, useState, type JSX } from 'react';
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type JSX,
+  type RefObject,
+} from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useStore, type AppState } from '../app/store.js';
 import { JA, routeFailedLog } from '../i18n/ja.js';
 import type { PickHit } from '../session/interaction.js';
 import { BoardPlate } from './BoardPlate.js';
-import { BOARD_TILT_RAD, CAMERA_FOV_DEG } from './camera.js';
-import { CameraPresets, type ControlsLike } from './CameraPresets.js';
+import {
+  BOARD_TILT_RAD,
+  CAMERA_FOV_DEG,
+  MAX_CAMERA_DISTANCE_MM,
+  MAX_POLAR_ANGLE,
+  MIN_CAMERA_DISTANCE_MM,
+} from './camera.js';
+import { CameraPresets } from './CameraPresets.js';
+import {
+  cameraReadoutText,
+  createPickDragGuard,
+  middleButtonAssignmentFor,
+  mouseButtonAssignment,
+  type MiddleDragAction,
+  type OrbitControlsLike,
+} from './navigation.js';
 import { DinRail } from './DinRail.js';
 import { FixedWires } from './FixedWires.js';
 import { Fixture, FIXTURES } from './Fixtures.js';
@@ -43,12 +66,18 @@ import { Wire } from './Wire.js';
  *   電線の `TubeGeometry` は経路オブジェクト単位でメモ化する。
  */
 
-/** カメラが盤へ寄れる最短距離[mm]（端子の印字が読める程度まで）。§12.2 */
-const MIN_CAMERA_DISTANCE_MM = 90;
-/** カメラが離れられる最長距離[mm]。 */
-const MAX_CAMERA_DISTANCE_MM = 1200;
-/** 仰角の上限（盤の裏側へ回り込ませない）。§12.2 */
-const MAX_POLAR_ANGLE = Math.PI * 0.48;
+/**
+ * 視点操作の効き（Blender の操作感に寄せる。§12.2 / 2026-09-14 の利用者要望）。
+ * 回転はやや控えめ、ズームは素直、慣性は 0.1（約0.5秒で止まる）。
+ */
+const ORBIT_FEEL = { rotateSpeed: 0.7, zoomSpeed: 0.9, dampingFactor: 0.1 } as const;
+
+/** ドラッグの操作 → three の `MOUSE`。 */
+const MOUSE_FOR_ACTION: Readonly<Record<MiddleDragAction, MOUSE>> = {
+  rotate: MOUSE.ROTATE,
+  pan: MOUSE.PAN,
+  dolly: MOUSE.DOLLY,
+};
 
 /**
  * 端子台として描くまとまり。§6.4
@@ -228,11 +257,14 @@ function BoardContents({
   onHover,
   onPress,
   onRelease,
+  readoutRef,
 }: {
   onPick: (hit: PickHit) => void;
   onHover: (id: TerminalId | undefined) => void;
   onPress: (pbId: string) => void;
   onRelease: (pbId: string) => void;
+  /** E2E 用のカメラ状態の書き出し先（`Canvas` の外の隠し要素）。§14.2 */
+  readoutRef: RefObject<HTMLDivElement | null>;
 }): JSX.Element {
   const session = useStore((s) => s.session);
   const lampLevels = useLampLevels();
@@ -244,7 +276,7 @@ function BoardContents({
   const mode = useStore((s) => s.mode);
   const camera = useStore((s) => s.camera);
   const cameraNonce = useStore((s) => s.cameraNonce);
-  const [controls, setControls] = useState<ControlsLike | null>(null);
+  const [controls, setControls] = useState<OrbitControlsLike | null>(null);
 
   const board = JIPM_BOARD;
   const { routes, errors: routeErrors } = useMemo(
@@ -361,6 +393,56 @@ function BoardContents({
     [onPick],
   );
 
+  /*
+   * Blender 風の中ボタン割り当て（§12.2 / 2026-09-14 の利用者要望）。
+   * three の `OrbitControls` は修飾キー付きのボタン割り当てを持たないので、
+   * Shift / Ctrl の上げ下げのたびに `mouseButtons.MIDDLE` を差し替える。
+   * ボタン割り当てを props で渡すと再描画のたびに上書きされてしまうため、
+   * 左右も含めてここで一度だけ入れる（唯一の情報源にする）。
+   */
+  useEffect(() => {
+    if (controls === null) return undefined;
+    const apply = (shift: boolean, ctrl: boolean): void => {
+      // three は修飾キーで回転と平行移動を入れ替えるので、左右の割り当ても打ち消して入れ直す
+      const held = shift || ctrl;
+      controls.mouseButtons.LEFT = MOUSE_FOR_ACTION[mouseButtonAssignment('rotate', held)];
+      controls.mouseButtons.RIGHT = MOUSE_FOR_ACTION[mouseButtonAssignment('pan', held)];
+      controls.mouseButtons.MIDDLE = MOUSE_FOR_ACTION[middleButtonAssignmentFor({ shift, ctrl })];
+    };
+    apply(false, false);
+    const onKey = (event: KeyboardEvent): void => {
+      apply(event.shiftKey, event.ctrlKey || event.metaKey);
+    };
+    // 修飾キーを押したまま別の窓へ移ると `keyup` が来ないので、戻ってきたときに素の割り当てへ戻す
+    const onBlur = (): void => {
+      apply(false, false);
+    };
+    window.addEventListener('keydown', onKey);
+    window.addEventListener('keyup', onKey);
+    window.addEventListener('blur', onBlur);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('keyup', onKey);
+      window.removeEventListener('blur', onBlur);
+    };
+  }, [controls]);
+
+  /**
+   * カメラの向き・距離・注視点を隠し要素へ書く（E2E の窓。§14.2）。
+   * React の状態にすると毎フレーム再描画になるので、DOM へ直接書く（§15）。
+   */
+  const writeReadout = useCallback((): void => {
+    const node = readoutRef.current;
+    if (node === null || controls === null) return;
+    node.textContent = cameraReadoutText({
+      azimuth: controls.getAzimuthalAngle(),
+      polar: controls.getPolarAngle(),
+      distance: controls.getDistance(),
+      target: [controls.target.x, controls.target.y, controls.target.z],
+    });
+  }, [controls, readoutRef]);
+  useEffect(writeReadout, [writeReadout]);
+
   return (
     <>
       <Invalidator />
@@ -462,10 +544,11 @@ function BoardContents({
       </group>
 
       {/*
-        操作は左ドラッグ回転・右または中ドラッグ平行移動・ホイールズーム（§12.2）。
+        操作は Blender に合わせる（§12.2 / 2026-09-14 の利用者要望）。
+        左ドラッグ・中ドラッグ＝軌道回転、Shift＋中／右ドラッグ＝平行移動、
+        Ctrl＋中ドラッグ／ホイール＝ズーム。ボタンの割り当ては上の効果が入れる。
+        `screenSpacePanning` は Blender と同じ画面平面の平行移動。
         `maxPolarAngle` で盤の裏側へ回り込まないようにし、注視点は盤の中心に固定する。
-        中ドラッグは `MOUSE.PAN`（ズームは別イベントのホイールが担うので、ドラッグの
-        割り当てを変えても `enableZoom` によるホイールズームには影響しない）。
         慣性（ダンピング）あり（§12.2「慣性（ダンピング）あり」）。`frameloop="demand"` と
         矛盾しない: drei の `OrbitControls` は内部の three-stdlib コントロールが発火する
         `change` イベントのたびに自分で `invalidate()` を呼ぶ
@@ -479,21 +562,20 @@ function BoardContents({
       <OrbitControls
         makeDefault
         enableDamping
-        dampingFactor={0.08}
+        dampingFactor={ORBIT_FEEL.dampingFactor}
+        rotateSpeed={ORBIT_FEEL.rotateSpeed}
+        zoomSpeed={ORBIT_FEEL.zoomSpeed}
+        screenSpacePanning
         minDistance={MIN_CAMERA_DISTANCE_MM}
         maxDistance={MAX_CAMERA_DISTANCE_MM}
         maxPolarAngle={MAX_POLAR_ANGLE}
-        mouseButtons={{
-          LEFT: MOUSE.ROTATE,
-          MIDDLE: MOUSE.PAN,
-          RIGHT: MOUSE.PAN,
-        }}
+        onChange={writeReadout}
         ref={(instance) => {
           setControls(instance);
         }}
       />
       <CameraPresets preset={camera} nonce={cameraNonce} controls={controls} />
-      <ViewGizmo />
+      <ViewGizmo controls={controls} />
     </>
   );
 }
@@ -520,39 +602,82 @@ function BoardSceneImpl({
 }): JSX.Element {
   const [generation, setGeneration] = useState(0);
   const setWebglLost = useStore((s) => s.setWebglLost);
+  const readoutRef = useRef<HTMLDivElement | null>(null);
+
+  /*
+   * 視点を回したあとのクリックで盤を拾わないようにする（§12.2 / 2026-09-14 の利用者要望）。
+   * R3F の `onClick` には移動量のしきい値が無いので、端子の上から左ドラッグで回すと
+   * 放した瞬間にその端子を拾って配線が始まってしまう。押した位置からの移動量を見張り、
+   * ドラッグだったらピックを捨てる（回転はできて、誤配線は起きない）。
+   */
+  const dragGuard = useMemo(() => createPickDragGuard(), []);
+  useEffect(() => {
+    const onDown = (event: PointerEvent): void => {
+      dragGuard.down(event.clientX, event.clientY);
+    };
+    const onMove = (event: PointerEvent): void => {
+      // ボタンを押していない移動（ただのホバー）は数えない
+      if (event.buttons === 0) return;
+      dragGuard.move(event.clientX, event.clientY);
+    };
+    window.addEventListener('pointerdown', onDown, true);
+    window.addEventListener('pointermove', onMove, true);
+    return () => {
+      window.removeEventListener('pointerdown', onDown, true);
+      window.removeEventListener('pointermove', onMove, true);
+    };
+  }, [dragGuard]);
+  const guardedPick = useCallback(
+    (hit: PickHit): void => {
+      if (dragGuard.dragged()) return;
+      onPick(hit);
+    },
+    [dragGuard, onPick],
+  );
+
   return (
-    <Canvas
-      key={generation}
-      frameloop="demand"
-      dpr={[1, 1.5]}
-      camera={{ fov: CAMERA_FOV_DEG, near: 1, far: 4000, position: [0, 0, 380] }}
-      data-testid="board-canvas"
-      onPointerMissed={() => {
-        onPick({ kind: 'empty' });
-      }}
-      onCreated={({ gl }) => {
-        const canvas = gl.domElement;
-        canvas.addEventListener(
-          'webglcontextlost',
-          (event) => {
-            event.preventDefault();
-            setWebglLost(true);
-            setGeneration((value) => value + 1);
-          },
-          { once: true },
-        );
-        canvas.addEventListener(
-          'webglcontextrestored',
-          () => {
-            setWebglLost(false);
-          },
-          { once: true },
-        );
-        setWebglLost(false);
-      }}
-    >
-      <BoardContents onPick={onPick} onHover={onHover} onPress={onPress} onRelease={onRelease} />
-    </Canvas>
+    <>
+      <Canvas
+        key={generation}
+        frameloop="demand"
+        dpr={[1, 1.5]}
+        camera={{ fov: CAMERA_FOV_DEG, near: 1, far: 4000, position: [0, 0, 380] }}
+        data-testid="board-canvas"
+        onPointerMissed={() => {
+          guardedPick({ kind: 'empty' });
+        }}
+        onCreated={({ gl }) => {
+          const canvas = gl.domElement;
+          canvas.addEventListener(
+            'webglcontextlost',
+            (event) => {
+              event.preventDefault();
+              setWebglLost(true);
+              setGeneration((value) => value + 1);
+            },
+            { once: true },
+          );
+          canvas.addEventListener(
+            'webglcontextrestored',
+            () => {
+              setWebglLost(false);
+            },
+            { once: true },
+          );
+          setWebglLost(false);
+        }}
+      >
+        <BoardContents
+          onPick={guardedPick}
+          onHover={onHover}
+          onPress={onPress}
+          onRelease={onRelease}
+          readoutRef={readoutRef}
+        />
+      </Canvas>
+      {/* E2E からカメラの向き・距離・注視点を読むための隠し要素（画面には出ない）。§14.2 */}
+      <div data-testid="camera-readout" hidden ref={readoutRef} />
+    </>
   );
 }
 

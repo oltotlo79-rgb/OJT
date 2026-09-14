@@ -9,6 +9,21 @@ import type { CameraPreset } from '../app/store-types.js';
 /** カメラの垂直視野角[度]。`BoardScene` の `Canvas` に渡す値。 */
 export const CAMERA_FOV_DEG = 38;
 
+/** カメラが盤へ寄れる最短距離[mm]（端子の印字が読める程度まで）。§12.2 */
+export const MIN_CAMERA_DISTANCE_MM = 90;
+
+/** カメラが離れられる最長距離[mm]。 */
+export const MAX_CAMERA_DISTANCE_MM = 1200;
+
+/**
+ * 仰角（極角）の上限[rad]。盤の裏側・真下へ回り込ませない。§12.2
+ *
+ * `OrbitControls` は `update()` のたびに極角をこの値へ丸めるので、**プリセットの視点も
+ * この範囲に収まっていなければならない**（超えた視点を置くと、次のフレームで引き戻される）。
+ * `cameraPose('bottom')` がちょうどこの角度を使うのはそのため。
+ */
+export const MAX_POLAR_ANGLE = Math.PI * 0.48;
+
 /** ソケット段の中心の盤モデル y[mm]。盤定義のソケット原点と本体寸法から求める（ハードコードしない）。 */
 export const SOCKET_ROW_CENTER_MM = ((): number => {
   const sockets = JIPM_BOARD.sockets;
@@ -110,6 +125,10 @@ export function boardUp(): [number, number, number] {
  * - `front`（正面）: 盤面の法線方向から見る。面直なので端子が重ならずいちばん操作しやすい
  * - `top`（俯瞰）: 実物写真と同じ左手前・上からの斜め俯瞰。盤の立体感を見せる
  * - `socket`（ソケット拡大）: 面直のままソケット段へ寄る
+ * - `back`（後）: 盤の裏側から。盤面の裏（板の背面）を見る
+ * - `left` / `right`（左・右）: 盤の側面から。傾斜角と機器の高さが分かる
+ * - `bottom`（下）: 盤を下から見上げる。ただし `MAX_POLAR_ANGLE` より下へは回り込めないので
+ *   「許される範囲でいちばん低い位置から見上げる」視点になる（2026-09-14 の利用者要望の注記）
  */
 export function cameraPose(preset: CameraPreset): CameraPose {
   const w = BOARD_WIDTH_MM;
@@ -123,6 +142,28 @@ export function cameraPose(preset: CameraPreset): CameraPose {
         position: boardToWorld([0, 0, faceDistance]),
         target: boardToWorld([0, 0, 0]),
         up: boardUp(),
+      };
+    case 'back':
+      return {
+        position: boardToWorld([0, 0, -faceDistance]),
+        target: boardToWorld([0, 0, 0]),
+        up: boardUp(),
+      };
+    case 'right':
+      return { position: [faceDistance, 0, 0], target: [0, 0, 0], up: boardUp() };
+    case 'left':
+      return { position: [-faceDistance, 0, 0], target: [0, 0, 0], up: boardUp() };
+    case 'bottom':
+      // 極角の上限ちょうど（＝許される範囲でいちばん低い位置）に置く。これより下は
+      // `OrbitControls` が `update()` で引き戻すので、視点が落ち着かない。§12.2
+      return {
+        position: [
+          0,
+          faceDistance * Math.cos(MAX_POLAR_ANGLE),
+          faceDistance * Math.sin(MAX_POLAR_ANGLE),
+        ],
+        target: [0, 0, 0],
+        up: [0, 1, 0],
       };
     case 'top':
       return {

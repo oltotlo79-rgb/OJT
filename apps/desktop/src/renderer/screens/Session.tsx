@@ -45,6 +45,7 @@ import {
   type PickHit,
 } from '../session/interaction.js';
 import { buildSpecChart } from '../session/spec-chart.js';
+import { useViewportShortcuts } from '../session/viewport-keys.js';
 import { applyWorkFile, toWorkFile } from '../session/work-file.js';
 import { bridge } from '../session/worker-bridge.js';
 import { BoardScene, safeRoutes } from '../three/BoardScene.js';
@@ -304,7 +305,13 @@ export function Session(): JSX.Element {
     [runAction],
   );
 
-  // キーボード操作（Esc で配線取消、Delete で電線削除、1/2/3 で視点。§8.2 / §12.2）
+  /*
+   * 視点のショートカット（上段 1/2/3、テンキー 1/3/7、Ctrl で反対側、Home で全体。§12.2）は
+   * 画面に依存しないので `useViewportShortcuts` に切り出してある（モードC1/C2 からも同じものを使う）。
+   */
+  useViewportShortcuts({ enabled: session !== undefined });
+
+  // キーボード操作（Esc で配線取消、Delete で電線削除。§8.2）
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
       // 入力欄で打鍵中・IME変換中は盤のショートカットを動かさない（§8.2）
@@ -326,9 +333,7 @@ export function Session(): JSX.Element {
             current.wires.filter((w) => w.locked).map((w) => w.id),
           ),
         );
-      } else if (event.key === '1') store.setCamera('front');
-      else if (event.key === '2') store.setCamera('top');
-      else if (event.key === '3') store.setCamera('socket');
+      }
     };
     window.addEventListener('keydown', onKey);
     return () => {
@@ -521,6 +526,10 @@ export function Session(): JSX.Element {
             {selectedWire === undefined ? '' : ` / ${JA.session.selection}: ${selectedWire}`}
             {tripped ? ` / ${JA.session.tripped}` : ''}
             {webglLost ? ` / ${JA.error.webglLost}` : ''}
+          </div>
+          {/* 視点操作の早見表（Blender 風の割り当て）。§12.2 */}
+          <div className={styles.viewHint} data-testid="view-hint">
+            {JA.session.viewHint}
           </div>
         </div>
 
