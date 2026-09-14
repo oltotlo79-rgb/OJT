@@ -1,7 +1,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { BUILTIN_PROBLEMS } from '@ojt/content';
+import { BUILTIN_PROBLEMS, parseProblem } from '@ojt/content';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 /**
@@ -249,4 +249,55 @@ describe('loadContent の所要時間（1D2-a: 大きなフォルダでも一覧
     // 実測は数秒。極端に遅くなったら気づけるだけの緩い上限にする
     expect(tookMs).toBeLessThan(20_000);
   }, 60_000);
+});
+
+describe('loadContent のモードB以外の扱い（Plan 2A Task 17: SupportedProblem の絞り込み）', () => {
+  /**
+   * モードC1（部品点検）の最小課題JSON。`packages/content/test/helpers/inspect.ts` の
+   * `inspectPartsProblemJson()` と同じ骨組み（正常1・コイル断線1・レアショート1・a接点溶着1）。
+   * `apps/desktop` の tsconfig は `rootDir: "."` で他パッケージの test を含められないため、
+   * 相対importはせずここに複製する。
+   */
+  function inspectPartsProblemJson(): Record<string, unknown> {
+    return {
+      formatVersion: 1,
+      id: 'x-c1',
+      mode: 'inspect-parts',
+      title: 'テスト用 部品点検',
+      grade: 2,
+      description: 'テスト用',
+      timeLimit: { standardMin: 30, cutoffMin: 50 },
+      board: { boardId: 'board-jipm-std', socketRoles: { S7: 'CHK' } },
+      inventory: [],
+      parts: [
+        { id: 'p1', kind: 'relay-my4n', truth: 'normal' },
+        { id: 'p2', kind: 'relay-my4n', truth: 'coil-open' },
+        { id: 'p3', kind: 'relay-my4n', truth: 'coil-layer-short', ratio: 0.65 },
+        { id: 'p4', kind: 'timer-h3y4', truth: 'a-weld', group: 1 },
+      ],
+      seed: 20260914,
+    };
+  }
+
+  it('利用者フォルダのinspect-parts課題は一覧に出さず、unsupported-modeの行にする（M-10）', async () => {
+    const dir = tempDir();
+    const json = inspectPartsProblemJson();
+    // 課題としては有効な形であることを確かめてから使う（壊れた前提のテストにしない）
+    const parsed = parseProblem(json);
+    expect(parsed.ok).toBe(true);
+    writeFileSync(join(dir, 'c1.json'), JSON.stringify(json), 'utf8');
+
+    const { payload, byId } = await loadContent(dir);
+
+    // 内蔵8題（モードB）はそのまま一覧に残り、C1課題は一覧にもbyIdにも出ない
+    expect(payload.problems).toHaveLength(BUILTIN_PROBLEMS.length);
+    expect(byId.size).toBe(BUILTIN_PROBLEMS.length);
+    expect(byId.get('x-c1')).toBeUndefined();
+
+    // 無言で消さず、理由付きの行が1つ出る
+    expect(payload.errors).toHaveLength(1);
+    expect(payload.errors[0]?.file).toBe('x-c1');
+    expect(payload.errors[0]?.reason).toBe('unsupported-mode');
+    expect(payload.errors[0]?.message).toContain('inspect-parts');
+  });
 });
