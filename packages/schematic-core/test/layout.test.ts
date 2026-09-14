@@ -7,6 +7,7 @@ import {
   coil,
   contactShapes,
   crA,
+  crB,
   createDocument,
   DEFAULT_LAYOUT_OPTIONS,
   LAMP_FILL,
@@ -17,12 +18,71 @@ import {
   rung,
   tA,
   tB,
+  type SchematicDocument,
   type Shape,
 } from '../src/index.js';
 import { flickerDoc, selfHoldDoc } from './helpers/docs.js';
 
 function roles(shapes: readonly Shape[], role: Shape['role']): Shape[] {
   return shapes.filter((s) => s.role === role);
+}
+
+/** ラベルの文字寸法（描画側の既定。fontSize 6 の全角混じり1文字ぶん）。 */
+const TEXT_HEIGHT = 6;
+const CHAR_WIDTH = 3.4;
+
+interface Box {
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+}
+
+function textBox(s: Shape): Box | undefined {
+  if (s.kind !== 'text') return undefined;
+  const width = s.text.length * CHAR_WIDTH;
+  const left = s.anchor === 'middle' ? s.x - width / 2 : s.anchor === 'end' ? s.x - width : s.x;
+  return { x1: left, x2: left + width, y1: s.y - TEXT_HEIGHT / 2, y2: s.y + TEXT_HEIGHT / 2 };
+}
+
+function markBox(s: Shape): Box | undefined {
+  if (s.kind === 'line') {
+    return {
+      x1: Math.min(s.x1, s.x2),
+      x2: Math.max(s.x1, s.x2),
+      y1: Math.min(s.y1, s.y2),
+      y2: Math.max(s.y1, s.y2),
+    };
+  }
+  if (s.kind === 'text') return undefined;
+  return { x1: s.cx - s.r, x2: s.cx + s.r, y1: s.cy - s.r, y2: s.cy + s.r };
+}
+
+function overlaps(a: Box, b: Box): boolean {
+  return a.x1 < b.x2 && b.x1 < a.x2 && a.y1 < b.y2 && b.y1 < a.y2;
+}
+
+/** 段の並び順に依らない図形の表現（y座標を「どの段の行か＋ずれ」に読み替える）。 */
+function shapesByRow(doc: SchematicDocument): string[] {
+  const o = DEFAULT_LAYOUT_OPTIONS;
+  const row = (y: number): string => {
+    const index = Math.round((y - o.marginY) / o.rowHeight);
+    const owner = doc.rungs[index];
+    const base = owner === undefined ? 0 : o.marginY + index * o.rowHeight;
+    return `@${owner?.id ?? '-'}${(y - base).toFixed(3)}`;
+  };
+  return layout(doc)
+    .shapes.map((s) => {
+      const source = `${s.rungId ?? '-'}/${s.cellId ?? '-'} ${s.role}`;
+      if (s.kind === 'line') {
+        return `${source} line ${s.x1},${row(s.y1)} ${s.x2},${row(s.y2)}`;
+      }
+      if (s.kind === 'text') return `${source} text ${s.x},${row(s.y)} ${s.text} ${s.anchor}`;
+      if (s.kind === 'circle')
+        return `${source} circle ${s.cx},${row(s.cy)} ${s.r} ${s.fill ?? ''}`;
+      return `${source} arc ${s.cx},${row(s.cy)} ${s.r} ${s.startDeg}-${s.endDeg}`;
+    })
+    .sort();
 }
 
 describe('layout: 読取専用レンダラ用の図形データ（§11.2）', () => {
@@ -128,6 +188,105 @@ describe('layout: 読取専用レンダラ用の図形データ（§11.2）', ()
     const result = layout(doc);
     expect(result.shapes.length).toBeGreaterThan(0);
     expect(result.shapes.filter((s) => s.role === 'junction')).toHaveLength(0);
+
+    // 循環参照でも止まる（親の解決は解決中の段を覚えておく）
+    const cyclic = createDocument('x', '循環参照', [
+      rung('r1', at('r2', 1), BUS_N, [crA('c1', 'CR1'), coil('c2', 'CR2')]),
+      rung('r2', at('r1', 1), BUS_N, [crA('c3', 'CR2'), coil('c4', 'CR1')]),
+    ]);
+    expect(layout(cyclic).shapes.length).toBeGreaterThan(0);
+
+    // 数値でない節点番号も左母線に寄せるだけ
+    const notANumber = createDocument('x', '節点番号がNaN', [
+      rung('r1', BUS_P, BUS_N, [pbA('c1', 'PB1'), coil('c2', 'CR1')]),
+      rung('r2', at('r1', Number.NaN), BUS_N, [crA('c3', 'CR1'), lamp('c4', 'PL1')]),
+    ]);
+    const zero = createDocument('x', '節点0', [
+      rung('r1', BUS_P, BUS_N, [pbA('c1', 'PB1'), coil('c2', 'CR1')]),
+      rung('r2', at('r1', 0), BUS_N, [crA('c3', 'CR1'), lamp('c4', 'PL1')]),
+    ]);
+    expect(layout(notANumber)).toEqual(layout(zero));
+  });
+
+  it('分岐の親が後ろに書かれていても同じ図になる（§11.2 決定論）', () => {
+    const o = DEFAULT_LAYOUT_OPTIONS;
+    const r1 = rung('r1', BUS_P, BUS_N, [
+      pbA('c1', 'PB1'),
+      crA('c2', 'CR1'),
+      crB('c3', 'CR2'),
+      coil('c4', 'CR1'),
+    ]);
+    const r2 = rung('r2', at('r1', 2), at('r1', 3), [crA('c5', 'CR1')]);
+    const r3 = rung('r3', at('r2', 0), at('r1', 3), [crA('c6', 'CR2')]);
+    const parentFirst = createDocument('x', '親が先', [r1, r2, r3]);
+    const childFirst = createDocument('x', '子が先', [r3, r1, r2]);
+
+    expect(shapesByRow(childFirst)).toEqual(shapesByRow(parentFirst));
+    expect(layout(childFirst).width).toBe(layout(parentFirst).width);
+
+    // 孫の段（r3）は親の親（r1）の節点2から下りる。左母線に描いてはいけない
+    const r3X = layout(childFirst)
+      .shapes.filter((s) => s.rungId === 'r3')
+      .flatMap((s) => (s.kind === 'line' ? [s.x1, s.x2] : []));
+    expect(Math.min(...r3X)).toBe(o.marginX + 2 * o.colWidth);
+  });
+
+  it('壊れた節点番号は親の節点範囲に丸める（図の幅が飛ばない。§13 #2）', () => {
+    const doc = (node: number): SchematicDocument =>
+      createDocument('x', '参照', [
+        rung('r1', BUS_P, BUS_N, [pbA('c1', 'PB1'), coil('c2', 'CR1')]),
+        rung('r2', at('r1', node), BUS_N, [crA('c3', 'CR1'), lamp('c4', 'PL1')]),
+      ]);
+    expect(layout(doc(99))).toEqual(layout(doc(2)));
+    expect(layout(doc(-5))).toEqual(layout(doc(0)));
+    expect(layout(doc(99)).width).toBe(layout(doc(2)).width);
+  });
+
+  it('ラベルは隣の行の記号にかぶらない（既定の rowHeight）', () => {
+    const shapes = layout(selfHoldDoc()).shapes;
+    const collisions: string[] = [];
+    for (const label of shapes) {
+      const box = textBox(label);
+      if (box === undefined || label.rungId === undefined) continue;
+      for (const mark of shapes) {
+        if (mark.rungId === undefined || mark.rungId === label.rungId) continue;
+        const other = markBox(mark);
+        if (other !== undefined && overlaps(box, other)) {
+          collisions.push(`${label.cellId ?? '?'} のラベルが ${mark.rungId} の図形にかぶる`);
+        }
+      }
+    }
+    expect(collisions).toEqual([]);
+  });
+
+  it('図形は出どころ（段ID・要素ID）を持ち、母線は持たない（§11.2）', () => {
+    const doc = flickerDoc();
+    const shapes = layout(doc).shapes;
+
+    // 母線の線とラベルだけが段にも要素にも属さない
+    const busShapes = shapes.filter((s) => s.rungId === undefined);
+    expect(busShapes).toHaveLength(4);
+    expect(busShapes.filter((s) => s.role === 'bus')).toHaveLength(2);
+    expect(busShapes.every((s) => s.cellId === undefined)).toBe(true);
+
+    const rungIds = new Set(doc.rungs.map((r) => r.id));
+    for (const s of shapes.filter((s) => s.rungId !== undefined)) {
+      expect(rungIds.has(s.rungId ?? '')).toBe(true);
+      // 記号とラベルは要素の物、電線と分岐点は段の物
+      if (s.role === 'symbol' || s.role === 'label') expect(s.cellId).toBeDefined();
+      else expect(s.cellId).toBeUndefined();
+    }
+
+    for (const r of doc.rungs) {
+      for (const cell of r.cells) {
+        const own = shapes.filter((s) => s.cellId === cell.id);
+        expect(own.every((s) => s.rungId === r.id)).toBe(true);
+        expect(own.filter((s) => s.role === 'symbol').length).toBeGreaterThan(0);
+        const label = own.filter((s) => s.kind === 'text');
+        expect(label).toHaveLength(1);
+        expect(label[0]?.kind === 'text' ? label[0].text : '').toContain(cell.device);
+      }
+    }
   });
 
   it('限時b接点も描ける', () => {

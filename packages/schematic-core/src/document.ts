@@ -30,8 +30,12 @@ export interface SchematicCell {
   id: string;
   /** 機器名（`PB1`〜`PB4` / `CR1`〜`CR4` / `T1`・`T2` / `PL1`〜`PL4` / `BZ`）。§6.4 */
   device: string;
-  /** タイマコイルの設定時間[ms]（`kind: 'coil'` かつ `device` が `Tn` のときだけ持つ）。§5.3.2 */
-  presetMs?: number;
+  /**
+   * タイマコイルの設定時間[ms]（`kind: 'coil'` かつ `device` が `Tn` のときだけ持つ）。§5.3.2
+   * 明示的な `undefined` も受ける（zodの `.optional()` は `number | undefined` を推論するため、
+   * `exactOptionalPropertyTypes` 下でも読み込んだ文書をそのまま載せられるようにする）。
+   */
+  presetMs?: number | undefined;
 }
 
 /** 段の端点。母線か、他の段の節点。 */
@@ -195,6 +199,100 @@ export function resolveNode(
 /** 解決済み端点の同一性キー（同じキー＝同じ電気的節点）。 */
 export function nodeKey(node: ResolvedNode): string {
   return node.kind === 'bus' ? `BUS:${node.bus}` : `${node.rungId}#${node.index}`;
+}
+
+/** 母線の節点キー。 */
+const BUS_P_KEY = nodeKey({ kind: 'bus', bus: 'P' });
+const BUS_N_KEY = nodeKey({ kind: 'bus', bus: 'N' });
+const BUS_KEYS: readonly string[] = [BUS_P_KEY, BUS_N_KEY];
+
+/** 段の節点キーを節点0〜節点 `cells.length` の順に返す。端点が解決できない段は undefined。 */
+function rungNodeKeys(doc: SchematicDocument, r: Rung): string[] | undefined {
+  const from = resolveNode(doc, r, 0);
+  const to = resolveNode(doc, r, r.cells.length);
+  if (from === undefined || to === undefined) return undefined;
+  const keys = [nodeKey(from)];
+  for (let index = 1; index < r.cells.length; index += 1) {
+    keys.push(nodeKey({ kind: 'node', rungId: r.id, index }));
+  }
+  keys.push(nodeKey(to));
+  return keys;
+}
+
+/**
+ * 節点キーの隣接表（回路の網）。要素1つが節点kと節点k+1を結ぶ1本の辺になり、
+ * 分岐の端点は解決済みの節点キーになるので、参照先の節点にそのままつながる。
+ */
+function netEdges(doc: SchematicDocument): Map<string, Set<string>> {
+  const edges = new Map<string, Set<string>>();
+  const link = (a: string, b: string): void => {
+    edges.set(a, (edges.get(a) ?? new Set<string>()).add(b));
+    edges.set(b, (edges.get(b) ?? new Set<string>()).add(a));
+  };
+  for (const r of doc.rungs) {
+    const keys = rungNodeKeys(doc, r);
+    if (keys === undefined) continue; // 参照切れ・循環は別のエラーで出ている
+    let previous: string | undefined;
+    for (const key of keys) {
+      if (previous !== undefined) link(previous, key);
+      previous = key;
+    }
+  }
+  return edges;
+}
+
+/**
+ * 母線 `start` から辿り着ける節点キー。**母線は通り抜けない**（もう一方の母線に着いたらそこで止める）。
+ * 通り抜けを許すと、N母線にだけぶら下がった島が、健全な段の負荷を経由してP母線につながって見える。
+ */
+function reachableNodes(
+  edges: ReadonlyMap<string, ReadonlySet<string>>,
+  start: string,
+): Set<string> {
+  const seen = new Set<string>([start]);
+  let frontier = [start];
+  while (frontier.length > 0) {
+    const next: string[] = [];
+    for (const current of frontier) {
+      if (current !== start && BUS_KEYS.includes(current)) continue;
+      for (const neighbor of edges.get(current) ?? []) {
+        if (seen.has(neighbor)) continue;
+        seen.add(neighbor);
+        next.push(neighbor);
+      }
+    }
+    frontier = next;
+  }
+  return seen;
+}
+
+/**
+ * すべての段がP母線とN母線の両方につながっているか見る。§11.1
+ *
+ * 端点を解決しただけでは、内部節点を指し合う段（`r1.from = at(r2,1)` と `r2.from = at(r1,1)`）や、
+ * N母線にしかぶら下がっていない島を見逃す。これらは循環参照ではないので今までの検査を通り抜け、
+ * 割当も配線も成功するのに1つも動かない回路になる（Plan 1C の採点が「何も配線していない訓練者」と
+ * 同じ扱いになってしまう）。そこで解決後の節点でつないだ網を辿り、両母線からの到達性を要求する。
+ */
+function checkBusReachability(doc: SchematicDocument, errors: DocumentError[]): void {
+  const edges = netEdges(doc);
+  const reached: readonly (readonly [string, ReadonlySet<string>])[] = [
+    ['P', reachableNodes(edges, BUS_P_KEY)],
+    ['N', reachableNodes(edges, BUS_N_KEY)],
+  ];
+  doc.rungs.forEach((r, ri) => {
+    if (r.cells.length === 0) return; // 空の段は別のエラーで出ている
+    const keys = rungNodeKeys(doc, r);
+    if (keys === undefined) return; // 参照切れ・循環も同様
+    for (const [bus, nodes] of reached) {
+      // 段の要素は節点を数珠つなぎにするので、両端が届いていれば途中の節点も届いている
+      if (keys.every((key) => nodes.has(key))) continue;
+      errors.push({
+        path: `rungs[${ri}]`,
+        message: `段が ${bus} 母線につながっていません: ${r.id}`,
+      });
+    }
+  });
 }
 
 function checkEnd(
@@ -370,6 +468,7 @@ export function validateDocument(doc: SchematicDocument): DocumentError[] {
     rungIds.add(r.id);
     checkRung(doc, r, rungPath, cellIds, errors);
   });
+  checkBusReachability(doc, errors);
 
   return errors;
 }

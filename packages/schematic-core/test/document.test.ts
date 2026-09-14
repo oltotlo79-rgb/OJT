@@ -20,8 +20,9 @@ import {
   tA,
   tB,
   validateDocument,
+  type SchematicCell,
 } from '../src/index.js';
-import { flickerDoc, selfHoldDoc } from './helpers/docs.js';
+import { flickerDoc, interlockDoc, onDelayDoc, selfHoldDoc } from './helpers/docs.js';
 
 describe('document: 展開接続図の文書モデル（§11.1）', () => {
   it('横書き・formatVersion を持つ', () => {
@@ -233,6 +234,62 @@ describe('document: 展開接続図の文書モデル（§11.1）', () => {
       ]),
     ]);
     expect(validateDocument(doc).map((e) => e.message)).toContain('未知の要素種別です: relay');
+  });
+
+  it('母線につながらない段を弾く（つないでも電流の流れない死んだ回路）', () => {
+    // 互いの内部節点を指し合う2段。循環参照ではない（resolveEnd は内部節点で止まる）が、
+    // どちらもP母線に届かないので、割当も配線も通るのに全く動かない回路になる
+    const floating = createDocument('x', '浮いた2段', [
+      rung('r1', at('r2', 1), BUS_N, [crA('c1', 'CR1'), coil('c2', 'CR2')]),
+      rung('r2', at('r1', 1), BUS_N, [crA('c3', 'CR2'), coil('c4', 'CR1')]),
+    ]);
+    expect(validateDocument(floating)).toEqual([
+      { path: 'rungs[0]', message: '段が P 母線につながっていません: r1' },
+      { path: 'rungs[1]', message: '段が P 母線につながっていません: r2' },
+    ]);
+
+    // 健全な段の隣にぶら下がる孤島。N母線にしか触れていない（母線は通り抜けない）
+    const island = createDocument('x', '孤島', [
+      rung('r1', BUS_P, BUS_N, [pbA('c1', 'PB1'), coil('c2', 'CR1')]),
+      rung('r2', at('r3', 1), BUS_N, [crA('c3', 'CR2'), lamp('c4', 'PL1')]),
+      rung('r3', at('r2', 1), BUS_N, [crA('c5', 'CR1'), coil('c6', 'CR2')]),
+    ]);
+    expect(validateDocument(island).map((e) => `${e.path}: ${e.message}`)).toEqual([
+      'rungs[1]: 段が P 母線につながっていません: r2',
+      'rungs[2]: 段が P 母線につながっていません: r3',
+    ]);
+
+    // P母線には触れるがN母線へ戻れない枝（同じく電流が流れない）
+    const noReturn = createDocument('x', 'N母線へ戻れない枝', [
+      rung('r1', BUS_P, BUS_N, [pbA('c1', 'PB1'), coil('c2', 'CR1')]),
+      rung('r2', BUS_P, at('r3', 1), [crA('c3', 'CR1'), crA('c4', 'CR1')]),
+      rung('r3', BUS_P, at('r2', 1), [crA('c5', 'CR1'), crA('c6', 'CR1')]),
+    ]);
+    expect(validateDocument(noReturn).map((e) => `${e.path}: ${e.message}`)).toEqual([
+      'rungs[1]: 段が N 母線につながっていません: r2',
+      'rungs[2]: 段が N 母線につながっていません: r3',
+    ]);
+
+    // 手本の回路はすべて両母線につながる
+    for (const doc of [selfHoldDoc(), interlockDoc(), onDelayDoc(), flickerDoc()]) {
+      expect(validateDocument(doc)).toEqual([]);
+    }
+  });
+
+  it('presetMs は明示的な undefined も受ける（zod由来の文書との互換。§13 #8）', () => {
+    // `.optional()` の推論は `number | undefined`。exactOptionalPropertyTypes 下でも代入できる
+    const explicitUndefined: SchematicCell = {
+      kind: 'coil',
+      id: 'c2',
+      device: 'CR1',
+      presetMs: undefined,
+    };
+    expect(explicitUndefined).toEqual(coil('c2', 'CR1', undefined));
+    expect(Object.hasOwn(coil('c2', 'CR1', undefined), 'presetMs')).toBe(false);
+    const doc = createDocument('x', '明示的undefined', [
+      rung('r1', BUS_P, BUS_N, [pbA('c1', 'PB1'), explicitUndefined]),
+    ]);
+    expect(validateDocument(doc)).toEqual([]);
   });
 
   it('要素の生成ヘルパ', () => {

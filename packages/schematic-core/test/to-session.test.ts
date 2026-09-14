@@ -5,7 +5,9 @@ import {
   BUS_N,
   BUS_P,
   buzzer,
+  coil,
   createDocument,
+  lamp,
   pbA,
   rung,
   toSession,
@@ -138,6 +140,28 @@ describe('to-session: 回路図 → 盤セッション → ネットリスト �
     });
     if (result.ok) throw new Error('unreachable');
     expect(result.errors[0]?.path).toBe('CR1');
+  });
+
+  it('盤に載っていない部品への配線はどの電線か分かるエラーになる（§11.3）', () => {
+    // BZ の端子は配線できる（`optional` な部品なので割当は通る）が、
+    // ブザーを使わない回路図では盤に BZ が載らないので addWire がそこで落ちる
+    const doc = createDocument('x', 'ブザー無しでBZ端子を指す', [
+      rung('r1', BUS_P, BUS_N, [pbA('c1', 'PB1'), coil('c2', 'CR1')]),
+      rung('r2', BUS_P, BUS_N, [pbA('c3', 'PB2'), lamp('c4', 'PL1')]),
+    ]);
+    const result = toSession(doc, board, {
+      physicalOverride: { c4: ['BZ.+' as TerminalId, 'BZ.-' as TerminalId] },
+    });
+    if (result.ok) throw new Error('unreachable');
+    expect(result.errors).toHaveLength(2);
+    for (const error of result.errors) {
+      expect(error.path).toMatch(/^sw-\d{3}$/);
+      expect(error.message).toContain('盤に載っていない部品の端子です: BZ.');
+      // 電線IDと両端の端子を message にも書く（path だけでは場所が分からない）
+      expect(error.message).toContain(`（${error.path}: `);
+      expect(error.message).toContain(' – ');
+      expect(error.message.endsWith('）')).toBe(true);
+    }
   });
 
   it('配線できない端子を physicalOverride で指すと配線エラーになる（§6.4）', () => {

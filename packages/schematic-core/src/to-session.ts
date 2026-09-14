@@ -65,7 +65,13 @@ export function toSession(
   // 電線IDは割当のID（`sw-NNN`）をそのまま使う。Phase 1D が割当と盤の電線を突き合わせる鍵になる
   for (const spec of assignment.wires) {
     const result = addWire(session, board, spec.from, spec.to, spec.color, { id: spec.id });
-    if (!result.ok) errors.push({ path: spec.id, message: result.message });
+    if (!result.ok) {
+      // 盤モデルの文言は端子1つしか指さないので、どの電線の話かを添える（path は突き合わせ用のID）
+      errors.push({
+        path: spec.id,
+        message: `${result.message}（${spec.id}: ${spec.from} – ${spec.to}）`,
+      });
+    }
   }
   if (errors.length > 0) return { ok: false, errors };
   return { ok: true, session, assignment };
