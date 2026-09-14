@@ -2,5 +2,11 @@ packages:
   - 'packages/*'
   - 'apps/*'
 
+# ビルドスクリプトの実行を許可する依存（pnpm 10 以降は既定で全て無効のため明示する）。
+# electron はバイナリのダウンロード、esbuild はプラットフォーム別バイナリのリンク、
+# electron-winstaller は electron-builder が使う NSIS ツール群の取得に必要。
 allowBuilds:
   unrs-resolver: true
+  electron: true
+  electron-winstaller: true
+  esbuild: true
