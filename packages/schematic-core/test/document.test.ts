@@ -133,6 +133,98 @@ describe('document: 展開接続図の文書モデル（§11.1）', () => {
     );
   });
 
+  it('端点は解決してから判定する（母線の向き）', () => {
+    // 始点N・終点P。PB2経由でP-N間を短絡するので弾く
+    const reversed = createDocument('x', '逆向き', [rung('r1', BUS_N, BUS_P, [pbA('c1', 'PB2')])]);
+    const errors = validateDocument(reversed);
+    expect(errors.map((e) => `${e.path}: ${e.message}`)).toContain(
+      'rungs[0].from: 段の始点が N 母線です',
+    );
+    expect(errors.map((e) => `${e.path}: ${e.message}`)).toContain(
+      'rungs[0].to: 段の終点が P 母線です',
+    );
+  });
+
+  it('参照でP-N間に届く段も負荷の規則で判定する（§11.1）', () => {
+    const base = (): ReturnType<typeof rung> =>
+      rung('r1', BUS_P, BUS_N, [pbA('c1', 'PB1'), coil('c2', 'CR1')]);
+
+    // at(r1,0)=P / at(r1,2)=N なので、接点だけの段はP-N間の短絡になる
+    const acrossBus = createDocument('x', '母線間の接点', [
+      base(),
+      rung('r2', at('r1', 0), at('r1', 2), [crA('c3', 'CR1')]),
+    ]);
+    expect(validateDocument(acrossBus).map((e) => e.message)).toContain(
+      '右母線(N)に至る段は負荷（コイル／ランプ／ブザー）で終わる必要があります: r2',
+    );
+
+    // at(r1,1)→at(r1,2) はコイルをまたぐ短絡
+    const acrossCoil = createDocument('x', 'コイルをまたぐ接点', [
+      base(),
+      rung('r2', at('r1', 1), at('r1', 2), [crA('c3', 'CR1')]),
+    ]);
+    expect(validateDocument(acrossCoil).map((e) => e.message)).toContain(
+      '右母線(N)に至る段は負荷（コイル／ランプ／ブザー）で終わる必要があります: r2',
+    );
+
+    // 同じ参照でも負荷で終われば普通の並列段なので通す
+    const parallel = createDocument('x', '並列段', [
+      base(),
+      rung('r2', at('r1', 0), at('r1', 2), [crA('c3', 'CR1'), lamp('c4', 'PL1')]),
+    ]);
+    expect(validateDocument(parallel)).toEqual([]);
+  });
+
+  it('端点の循環参照と、始点＝終点を弾く', () => {
+    const cyclic = createDocument('x', '循環', [
+      rung('r1', at('r2', 0), BUS_N, [pbA('c1', 'PB1'), coil('c2', 'CR1')]),
+      rung('r2', at('r1', 0), BUS_N, [crA('c3', 'CR1'), lamp('c4', 'PL1')]),
+    ]);
+    expect(validateDocument(cyclic)).toContainEqual({
+      path: 'rungs[0].from',
+      message: '段の端点が循環参照しています: rungs[0].from',
+    });
+
+    // 途中の段が範囲外の節点を指していると端点は解決できない（理由はその段に出る）
+    const brokenChain = createDocument('x', '解決不能', [
+      rung('r1', at('r2', 0), BUS_N, [pbA('c1', 'PB1'), coil('c2', 'CR1')]),
+      rung('r2', at('r3', 9), BUS_N, [crA('c3', 'CR1'), lamp('c4', 'PL1')]),
+      rung('r3', BUS_P, BUS_N, [pbA('c5', 'PB2'), lamp('c6', 'PL2')]),
+    ]);
+    expect(validateDocument(brokenChain).map((e) => `${e.path}: ${e.message}`)).toEqual([
+      'rungs[1].from: 参照先の節点番号が範囲外です: r3#9（0〜2）',
+    ]);
+
+    const sameNode = createDocument('x', '始点＝終点', [
+      rung('r1', BUS_P, BUS_N, [pbA('c1', 'PB1'), coil('c2', 'CR1')]),
+      rung('r2', at('r1', 1), at('r1', 1), [crA('c3', 'CR1')]),
+    ]);
+    expect(validateDocument(sameNode)).toEqual([
+      { path: 'rungs[1]', message: '段の始点と終点が同じ節点です: r2' },
+    ]);
+  });
+
+  it('タイマの設定時間はレンジに載る整数だけ（§5.3.2）', () => {
+    const timerDoc = (presetMs: number): ReturnType<typeof createDocument> =>
+      createDocument('x', 'タイマ', [
+        rung('r1', BUS_P, BUS_N, [pbA('c1', 'PB1'), coil('c2', 'T1', presetMs)]),
+      ]);
+    expect(validateDocument(timerDoc(1))).toEqual([
+      {
+        path: 'rungs[0].cells[1].presetMs',
+        message: 'タイマの設定時間は 100〜60000ms の整数です: 1',
+      },
+    ]);
+    expect(validateDocument(timerDoc(90_000)).map((e) => e.message)).toEqual([
+      'タイマの設定時間は 100〜60000ms の整数です: 90000',
+    ]);
+    expect(validateDocument(timerDoc(1500.5)).map((e) => e.message)).toEqual([
+      'タイマの設定時間は 100〜60000ms の整数です: 1500.5',
+    ]);
+    expect(validateDocument(timerDoc(100))).toEqual([]);
+    expect(validateDocument(timerDoc(60_000))).toEqual([]);
+  });
+
   it('未知の要素種別を弾く', () => {
     const doc = createDocument('x', '未知種別', [
       rung('r1', BUS_P, BUS_N, [

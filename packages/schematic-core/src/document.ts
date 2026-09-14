@@ -8,6 +8,9 @@
  * 段どうしを結ぶこの参照が、縦線（分岐）と分岐点そのものになる。
  */
 
+import { TIMER_RANGE_60S } from '@ojt/board-model';
+import { TIMER_MIN_PRESET_MS } from '@ojt/circuit-sim';
+
 /** 文書形式のバージョン。§13 #8 */
 export const SCHEMATIC_FORMAT_VERSION = 1;
 
@@ -145,6 +148,55 @@ export function at(rungId: string, node: number): RungEnd {
   return { rung: rungId, node };
 }
 
+/**
+ * 解決済みの端点。`at(r, 0)` は `r.from` を、`at(r, r.cells.length)` は `r.to` を指すだけなので、
+ * 「その端点が実際にどの電気的節点か」は参照をたどり切って初めて決まる。
+ */
+export type ResolvedNode =
+  { kind: 'bus'; bus: 'P' | 'N' } | { kind: 'node'; rungId: string; index: number };
+
+type EndResolution = ResolvedNode | { kind: 'cycle' } | { kind: 'unresolved' };
+
+function resolveEnd(doc: SchematicDocument, end: RungEnd, visited: Set<string>): EndResolution {
+  if ('bus' in end) return { kind: 'bus', bus: end.bus };
+  const key = `${end.rung}#${end.node}`;
+  if (visited.has(key)) return { kind: 'cycle' };
+  visited.add(key);
+  const target = doc.rungs.find((r) => r.id === end.rung);
+  if (target === undefined) return { kind: 'unresolved' };
+  if (!Number.isInteger(end.node) || end.node < 0 || end.node > target.cells.length) {
+    return { kind: 'unresolved' };
+  }
+  if (end.node === 0) return resolveEnd(doc, target.from, visited);
+  if (end.node === target.cells.length) return resolveEnd(doc, target.to, visited);
+  return { kind: 'node', rungId: target.id, index: end.node };
+}
+
+function resolveAt(doc: SchematicDocument, owner: Rung, index: number): EndResolution {
+  const visited = new Set<string>([`${owner.id}#${index}`]);
+  if (index === 0) return resolveEnd(doc, owner.from, visited);
+  if (index === owner.cells.length) return resolveEnd(doc, owner.to, visited);
+  return { kind: 'node', rungId: owner.id, index };
+}
+
+/**
+ * 段の節点 k（要素kの左側。節点0が `from`、節点 `cells.length` が `to`）を解決する。
+ * 参照切れ・循環で解決できないときは undefined（`validateDocument` がその文書を先に弾く）。
+ */
+export function resolveNode(
+  doc: SchematicDocument,
+  owner: Rung,
+  index: number,
+): ResolvedNode | undefined {
+  const resolved = resolveAt(doc, owner, index);
+  return resolved.kind === 'cycle' || resolved.kind === 'unresolved' ? undefined : resolved;
+}
+
+/** 解決済み端点の同一性キー（同じキー＝同じ電気的節点）。 */
+export function nodeKey(node: ResolvedNode): string {
+  return node.kind === 'bus' ? `BUS:${node.bus}` : `${node.rungId}#${node.index}`;
+}
+
 function checkEnd(
   doc: SchematicDocument,
   owner: Rung,
@@ -166,6 +218,125 @@ function checkEnd(
     errors.push({
       path,
       message: `参照先の節点番号が範囲外です: ${end.rung}#${end.node}（0〜${rungNodeCount(target) - 1}）`,
+    });
+  }
+}
+
+function resolvedOrError(
+  doc: SchematicDocument,
+  owner: Rung,
+  index: number,
+  path: string,
+  errors: DocumentError[],
+): ResolvedNode | undefined {
+  const resolved = resolveAt(doc, owner, index);
+  if (resolved.kind === 'cycle') {
+    errors.push({ path, message: `段の端点が循環参照しています: ${path}` });
+    return undefined;
+  }
+  if (resolved.kind === 'unresolved') return undefined; // checkEnd が理由を出している
+  return resolved;
+}
+
+/**
+ * 両端を**解決してから**向きを見る。書かれたとおりの端点（`at(r, 0)` など）で判定すると、
+ * 参照の先がP母線／N母線でもそれが分からず、母線間の短絡を通してしまう。
+ */
+function checkResolvedEnds(
+  doc: SchematicDocument,
+  r: Rung,
+  rungPath: string,
+  errors: DocumentError[],
+): { from: ResolvedNode; to: ResolvedNode } | undefined {
+  const from = resolvedOrError(doc, r, 0, `${rungPath}.from`, errors);
+  const to = resolvedOrError(doc, r, r.cells.length, `${rungPath}.to`, errors);
+  if (from === undefined || to === undefined) return undefined;
+  if (from.kind === 'bus' && from.bus === 'N') {
+    errors.push({ path: `${rungPath}.from`, message: '段の始点が N 母線です' });
+  }
+  if (to.kind === 'bus' && to.bus === 'P') {
+    errors.push({ path: `${rungPath}.to`, message: '段の終点が P 母線です' });
+  }
+  if (nodeKey(from) === nodeKey(to)) {
+    errors.push({ path: rungPath, message: `段の始点と終点が同じ節点です: ${r.id}` });
+  }
+  return { from, to };
+}
+
+function checkCell(cell: SchematicCell, cellPath: string, errors: DocumentError[]): void {
+  const pattern = DEVICE_PATTERNS[cell.kind];
+  if (pattern === undefined) {
+    errors.push({ path: cellPath, message: `未知の要素種別です: ${String(cell.kind)}` });
+  } else if (!pattern.test(cell.device)) {
+    errors.push({ path: cellPath, message: `${cell.kind} に使えない機器名です: ${cell.device}` });
+  }
+  if (cell.kind === 'coil' && cell.device.startsWith('T')) {
+    if (cell.presetMs === undefined) {
+      errors.push({
+        path: cellPath,
+        message: `タイマコイルには presetMs が必要です: ${cell.device}`,
+      });
+    } else if (
+      !Number.isInteger(cell.presetMs) ||
+      cell.presetMs < TIMER_MIN_PRESET_MS ||
+      cell.presetMs > TIMER_RANGE_60S.maxMs
+    ) {
+      errors.push({
+        path: `${cellPath}.presetMs`,
+        message: `タイマの設定時間は ${TIMER_MIN_PRESET_MS}〜${TIMER_RANGE_60S.maxMs}ms の整数です: ${cell.presetMs}`,
+      });
+    }
+  } else if (cell.presetMs !== undefined) {
+    errors.push({
+      path: cellPath,
+      message: `presetMs を持てるのはタイマコイルだけです: ${cell.id}`,
+    });
+  }
+}
+
+function checkRung(
+  doc: SchematicDocument,
+  r: Rung,
+  rungPath: string,
+  cellIds: Set<string>,
+  errors: DocumentError[],
+): void {
+  if (r.cells.length === 0) {
+    errors.push({ path: rungPath, message: `段に要素がありません: ${r.id}` });
+  }
+  const before = errors.length;
+  checkEnd(doc, r, r.from, `${rungPath}.from`, errors);
+  checkEnd(doc, r, r.to, `${rungPath}.to`, errors);
+  const ends = errors.length === before ? checkResolvedEnds(doc, r, rungPath, errors) : undefined;
+
+  let loadCount = 0;
+  r.cells.forEach((cell, ci) => {
+    const cellPath = `${rungPath}.cells[${ci}]`;
+    if (cellIds.has(cell.id)) {
+      errors.push({ path: cellPath, message: `要素IDが重複しています: ${cell.id}` });
+    }
+    cellIds.add(cell.id);
+    checkCell(cell, cellPath, errors);
+    if (isLoadCell(cell)) loadCount += 1;
+  });
+
+  if (loadCount > 1) {
+    errors.push({ path: rungPath, message: `1つの段に負荷は1つだけです: ${r.id}` });
+  }
+  if (ends === undefined) return;
+  // 負荷の規則も**解決後**の終点で見る（参照でP-N間に届く段は普通の段と同じ扱い）
+  const endsAtN = ends.to.kind === 'bus' && ends.to.bus === 'N';
+  const last = r.cells[r.cells.length - 1];
+  if (endsAtN && (last === undefined || !isLoadCell(last))) {
+    errors.push({
+      path: rungPath,
+      message: `右母線(N)に至る段は負荷（コイル／ランプ／ブザー）で終わる必要があります: ${r.id}`,
+    });
+  }
+  if (!endsAtN && loadCount > 0) {
+    errors.push({
+      path: rungPath,
+      message: `分岐段（右母線に至らない段）に負荷は置けません: ${r.id}`,
     });
   }
 }
@@ -193,63 +364,11 @@ export function validateDocument(doc: SchematicDocument): DocumentError[] {
   const cellIds = new Set<string>();
   doc.rungs.forEach((r, ri) => {
     const rungPath = `rungs[${ri}]`;
-    if (rungIds.has(r.id))
+    if (rungIds.has(r.id)) {
       errors.push({ path: rungPath, message: `段IDが重複しています: ${r.id}` });
+    }
     rungIds.add(r.id);
-    if (r.cells.length === 0)
-      errors.push({ path: rungPath, message: `段に要素がありません: ${r.id}` });
-    checkEnd(doc, r, r.from, `${rungPath}.from`, errors);
-    checkEnd(doc, r, r.to, `${rungPath}.to`, errors);
-
-    let loadCount = 0;
-    r.cells.forEach((cell, ci) => {
-      const cellPath = `${rungPath}.cells[${ci}]`;
-      if (cellIds.has(cell.id)) {
-        errors.push({ path: cellPath, message: `要素IDが重複しています: ${cell.id}` });
-      }
-      cellIds.add(cell.id);
-      const pattern = DEVICE_PATTERNS[cell.kind];
-      if (pattern === undefined) {
-        errors.push({ path: cellPath, message: `未知の要素種別です: ${String(cell.kind)}` });
-      } else if (!pattern.test(cell.device)) {
-        errors.push({
-          path: cellPath,
-          message: `${cell.kind} に使えない機器名です: ${cell.device}`,
-        });
-      }
-      if (cell.kind === 'coil' && cell.device.startsWith('T')) {
-        if (cell.presetMs === undefined || cell.presetMs <= 0) {
-          errors.push({
-            path: cellPath,
-            message: `タイマコイルには presetMs が必要です: ${cell.device}`,
-          });
-        }
-      } else if (cell.presetMs !== undefined) {
-        errors.push({
-          path: cellPath,
-          message: `presetMs を持てるのはタイマコイルだけです: ${cell.id}`,
-        });
-      }
-      if (isLoadCell(cell)) loadCount += 1;
-    });
-
-    if (loadCount > 1) {
-      errors.push({ path: rungPath, message: `1つの段に負荷は1つだけです: ${r.id}` });
-    }
-    const endsAtN = 'bus' in r.to && r.to.bus === 'N';
-    const last = r.cells[r.cells.length - 1];
-    if (endsAtN && (last === undefined || !isLoadCell(last))) {
-      errors.push({
-        path: rungPath,
-        message: `右母線(N)に至る段は負荷（コイル／ランプ／ブザー）で終わる必要があります: ${r.id}`,
-      });
-    }
-    if (!endsAtN && loadCount > 0) {
-      errors.push({
-        path: rungPath,
-        message: `分岐段（右母線に至らない段）に負荷は置けません: ${r.id}`,
-      });
-    }
+    checkRung(doc, r, rungPath, cellIds, errors);
   });
 
   return errors;

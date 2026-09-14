@@ -39,6 +39,17 @@ describe('to-session: 回路図 → 盤セッション → ネットリスト �
     expect(session.allowedColors).toEqual(['青']);
   });
 
+  it('盤の電線IDは割当の電線IDと同じ（Phase 1D の突き合わせ鍵。§11.3）', () => {
+    const result = toSession(selfHoldDoc(), board);
+    if (!result.ok) throw new Error(result.errors.map((e) => e.message).join(' / '));
+    const trainee = result.session.wires.filter((w) => !w.locked);
+    expect(trainee.map((w) => w.id)).toEqual(result.assignment.wires.map((w) => w.id));
+    for (const spec of result.assignment.wires) {
+      const wire = result.session.wires.find((w) => w.id === spec.id);
+      expect(wire).toMatchObject({ from: spec.from, to: spec.to, color: spec.color });
+    }
+  });
+
   it('自己保持回路が動く（§14.1 #5）', () => {
     const sim = powered(build(selfHoldDoc()));
     sim.run(100);

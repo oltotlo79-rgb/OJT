@@ -7,12 +7,7 @@ import {
   type InventoryItem,
 } from '@ojt/board-model';
 import { partId, type PartId, type WireColor } from '@ojt/circuit-sim';
-import {
-  assignToBoard,
-  type AssignError,
-  type AssignOptions,
-  type AssignResult,
-} from './assign.js';
+import { assignToBoard, type AssignError, type AssignOptions, type Assignment } from './assign.js';
 import { documentDevices, type SchematicDocument } from './document.js';
 
 /**
@@ -31,8 +26,8 @@ export interface ToSessionOptions extends AssignOptions {
 
 /** 生成結果。 */
 export type ToSessionResult =
-  | { ok: true; session: BoardSession; assignment: Extract<AssignResult, { ok: true }> }
-  | { ok: false; errors: AssignError[] };
+  | { ok: true; session: BoardSession; assignment: Assignment }
+  | { ok: false; errors: readonly AssignError[] };
 
 /** ブザーの部品ID。§6.4 */
 const BUZZER_PART_ID = partId('BZ');
@@ -67,8 +62,9 @@ export function toSession(
     });
     if (!result.ok) errors.push({ path: part.role, message: result.message });
   }
+  // 電線IDは割当のID（`sw-NNN`）をそのまま使う。Phase 1D が割当と盤の電線を突き合わせる鍵になる
   for (const spec of assignment.wires) {
-    const result = addWire(session, board, spec.from, spec.to, spec.color);
+    const result = addWire(session, board, spec.from, spec.to, spec.color, { id: spec.id });
     if (!result.ok) errors.push({ path: spec.id, message: result.message });
   }
   if (errors.length > 0) return { ok: false, errors };
