@@ -1,0 +1,83 @@
+import { JIPM_BOARD } from '@ojt/board-model';
+import { Simulation, terminalId } from '@ojt/circuit-sim';
+import { describe, expect, it } from 'vitest';
+import { buildReferenceSession } from '../src/reference.js';
+import { powerUp, runOperations } from '../src/runner.js';
+import { parseOrThrow, selfHoldProblemJson } from './helpers/problems.js';
+
+function referenceNetlist() {
+  const problem = parseOrThrow(selfHoldProblemJson());
+  const built = buildReferenceSession(problem, JIPM_BOARD);
+  if (!built.ok) throw new Error(JSON.stringify(built.errors));
+  return { problem, netlist: built.value.netlist };
+}
+
+describe('runOperations', () => {
+  it('powers up in the right order and records no hazard', () => {
+    const { problem, netlist } = referenceNetlist();
+    const run = runOperations(netlist, problem.operations, { durationMs: problem.durationMs });
+    expect(run.events.hazards()).toEqual([]);
+    expect(run.simulation.state().powered).toBe(true);
+    expect(run.lastTickMs).toBe(problem.durationMs - 10);
+  });
+
+  it('applies each operation at the tick it is scheduled for', () => {
+    const { problem, netlist } = referenceNetlist();
+    const run = runOperations(netlist, problem.operations, { durationMs: problem.durationMs });
+    expect(run.log.valueAt('PB1', 490)).toBe(false);
+    expect(run.log.valueAt('PB1', 500)).toBe(true);
+    expect(run.log.valueAt('PB1', 790)).toBe(true);
+    expect(run.log.valueAt('PB1', 800)).toBe(false);
+  });
+
+  it('keeps the self hold after the button is released', () => {
+    const { problem, netlist } = referenceNetlist();
+    const run = runOperations(netlist, problem.operations, { durationMs: problem.durationMs });
+    expect(run.log.valueAt('PL1', 1000)).toBe(true);
+    expect(run.log.valueAt('PL1', 4000)).toBe(false);
+  });
+
+  it('is deterministic', () => {
+    const first = referenceNetlist();
+    const second = referenceNetlist();
+    const a = runOperations(first.netlist, first.problem.operations, {
+      durationMs: first.problem.durationMs,
+    });
+    const b = runOperations(second.netlist, second.problem.operations, {
+      durationMs: second.problem.durationMs,
+    });
+    expect(a.log.entries()).toEqual(b.log.entries());
+  });
+
+  it('records the watched terminal voltages', () => {
+    const { problem, netlist } = referenceNetlist();
+    const run = runOperations(netlist, problem.operations, {
+      durationMs: 1000,
+      watch: [terminalId('CR1', '14')],
+    });
+    expect(run.log.signals()).toContain('V:CR1.14');
+  });
+
+  it('accepts a custom tick length', () => {
+    const { problem, netlist } = referenceNetlist();
+    const run = runOperations(netlist, problem.operations, { durationMs: 1000, tickMs: 20 });
+    expect(run.lastTickMs).toBe(980);
+  });
+});
+
+describe('powerUp', () => {
+  it('does not raise a power sequence hazard', () => {
+    const { netlist } = referenceNetlist();
+    const simulation = new Simulation(netlist);
+    powerUp(simulation);
+    expect(simulation.events.countOf('power-sequence-violation')).toBe(0);
+  });
+
+  it('the reverse order does raise one (§5.3.5)', () => {
+    const { netlist } = referenceNetlist();
+    const simulation = new Simulation(netlist);
+    simulation.setSwitch(true);
+    simulation.setBreaker(true);
+    expect(simulation.events.countOf('power-sequence-violation')).toBe(2);
+  });
+});
