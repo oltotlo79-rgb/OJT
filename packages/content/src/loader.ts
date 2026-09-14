@@ -1,30 +1,19 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import type { AssembleProblem } from './schema/assemble.js';
-import { parseProblem, type ProblemFailureReason, type ProblemIssue } from './schema/index.js';
+import { parseProblem } from './schema/index.js';
+import type { ProblemLoadError, ProblemSet } from './problem-set.js';
 
 /**
  * 課題フォルダの読込。設計仕様 §7.8 / §13 #1 / §13 #9。
  * 1ファイルの失敗で他の課題の読込を止めない。失敗は理由付きで `errors` に積み、
  * 課題一覧がそのまま表示できる形にする。
+ *
+ * `ProblemLoadError` / `ProblemSet` は fs に触れない型なので `./problem-set.ts` に定義されている。
+ * `@ojt/content/loader` の利用者（main プロセス）が型と実装を一箇所から取れるよう、ここで
+ * 再エクスポートする（Task 1D1-b。`@ojt/content` のルートバレルは `./index.ts` も参照）。
  */
-
-/** 読込に失敗した1件。§13 #1 */
-export interface ProblemLoadError {
-  /** 失敗したファイルのパス（フォルダごと読めない場合はフォルダのパス）。 */
-  file: string;
-  reason: ProblemFailureReason | 'read-error' | 'duplicate-id';
-  message: string;
-  issues: ProblemIssue[];
-  /** 読めた範囲のID。 */
-  id?: string;
-}
-
-/** 読込結果。§7.8 */
-export interface ProblemSet {
-  problems: AssembleProblem[];
-  errors: ProblemLoadError[];
-}
+export type { ProblemLoadError, ProblemSet };
 
 /** 拡張子が `.json` のファイルか。 */
 function isJsonFile(name: string): boolean {

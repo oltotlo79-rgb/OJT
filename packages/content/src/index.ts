@@ -83,12 +83,12 @@ export {
   type UnsupportedProblem,
 } from './schema/index.js';
 
-export {
-  loadProblemsFromDir,
-  mergeProblemSets,
-  type ProblemLoadError,
-  type ProblemSet,
-} from './loader.js';
+// `loadProblemsFromDir` / `mergeProblemSets`（`node:fs` を使う）はこのバレルに載せない。
+// renderer（ブラウザ相当）がこのバレルの何か1つでも import すると ESM の評価順で
+// `./loader.js` の `node:fs` import まで評価されてしまうため、main プロセス専用の
+// `@ojt/content/loader` からのみ公開する（Task 1D1-b）。型だけは fs に触れないので、
+// IPC の型付け（例: `apps/desktop/src/shared/ipc.ts`）のためにここでも公開する。
+export { type ProblemLoadError, type ProblemSet } from './problem-set.js';
 
 export {
   ASSEMBLE_WIRE_COLOR,

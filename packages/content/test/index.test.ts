@@ -55,9 +55,6 @@ import {
   ProblemSchema,
   toProblemIssues,
   UnsupportedProblemSchema,
-  // loader.js
-  loadProblemsFromDir,
-  mergeProblemSets,
   // reference.js
   ASSEMBLE_WIRE_COLOR,
   buildReferenceSession,
@@ -110,6 +107,12 @@ import {
  * 各モジュールの再エクスポートが正しいシンボルを指していることを、バレルファイル
  * （`../src/index.js`）だけを import して確かめる。個々の挙動の網羅は各モジュールの
  * 専用テストが担うので、ここでは「存在し、公開APIとして噛み合わせて使える」ことを見る。
+ *
+ * 例外は `loadProblemsFromDir()` / `mergeProblemSets()`（`node:fs` を使う）。Task 1D1-b で
+ * バレルから外し `@ojt/content/loader` 専用にしたので、下の `loader.js exports` はバレルに
+ * **無い**ことと、subpath から取れることの両方を確かめる（動的 import で確認する。バレルの
+ * 静的 import 一覧に無いシンボルをここだけ型で要求しないため、また subpath 解決に失敗しても
+ * このファイルの他のテストを道連れにしないため）。
  */
 
 /** 自己保持回路の課題（既定は selfHoldProblemJson）を模範回路まで組み立てる。 */
@@ -294,7 +297,14 @@ describe('schema/index.js exports', () => {
 });
 
 describe('loader.js exports', () => {
-  it('reports a read error for a missing folder and merges builtin with user problems', () => {
+  it('is not re-exported from the browser-safe barrel (Task 1D1-b)', async () => {
+    const barrel: Record<string, unknown> = await import('../src/index.js');
+    expect('loadProblemsFromDir' in barrel).toBe(false);
+    expect('mergeProblemSets' in barrel).toBe(false);
+  });
+
+  it('resolves from @ojt/content/loader and reports a read error / merges builtin with user problems', async () => {
+    const { loadProblemsFromDir, mergeProblemSets } = await import('@ojt/content/loader');
     const missing = loadProblemsFromDir(join(tmpdir(), 'ojt-content-index-test-missing-dir'));
     expect(missing.problems).toEqual([]);
     expect(missing.errors[0]?.reason).toBe('read-error');
