@@ -145,8 +145,17 @@ function nearestRange(ranges: readonly number[], range: number): number {
   return best;
 }
 
+/** 値がアナログΩレンジの一覧に含まれるか。§9.3 */
+function isAnalogOhmRange(value: number): value is AnalogOhmRange {
+  return (ANALOG_OHM_RANGES as readonly number[]).includes(value);
+}
+
 /**
  * 操作を適用して**新しい状態**を返す（引数は書き換えない）。§9.3
+ * `set-ohm-range` は一覧に無い値なら無視して元の状態を返す（`set-volt-range` が
+ * `nearestRange()` で丸めるのに対し、Ωレンジの倍率一覧は離散的で「最も近い」が実機の
+ * 操作として意味を持たないため）。想定外の `action.type`（実行時に型をすり抜けた値）が
+ * 来たときも同じく元の状態をそのまま返す。
  * つまみ・レンジ・種別が変わったら0Ω調整と `range-exceeded` の発行済み記録を両方捨てる
  * （レンジを変えるたびに0Ω調整をやり直す実機の作法をそのまま写す）。プローブを動かしたときは
  * `range-exceeded` の発行済み記録だけを捨て、0Ω調整は保持する（0Ω調整はレンジに対する校正で
@@ -171,7 +180,9 @@ export function applyTesterAction(state: TesterState, action: TesterAction): Tes
         voltRange: nearestRange(voltRangesFor(state.mode), action.range),
       };
     case 'set-ohm-range':
-      return { ...state, ...reset, ohmRange: action.range };
+      return isAnalogOhmRange(action.range)
+        ? { ...state, ...reset, ohmRange: action.range }
+        : state;
     case 'place-probe':
       // プローブを動かしても0Ω調整はやり直させない。校正はレンジに対して行うものであり、
       // プローブ位置とは独立なため。振れ角は変わるので range-exceeded の発行済み記録は捨てる。
@@ -181,6 +192,12 @@ export function applyTesterAction(state: TesterState, action: TesterAction): Tes
     case 'zero-adjust':
       return { ...state, zeroAdjusted: true };
   }
+  // 網羅性ガード: 上のどの case にも一致しない action.type が実行時に来た場合
+  // （型システムをすり抜けた未知の値）、状態を変えずにそのまま返す。`TesterAction` に
+  // 新しい種別を足したら、この代入が型エラーになって対応漏れに気付ける。
+  const exhaustive: never = action;
+  void exhaustive;
+  return state;
 }
 
 /**
@@ -360,6 +377,45 @@ export function readTester(sim: Simulation, state: TesterState): TesterReading {
 export const TESTER_TICK_MS = TICK_MS;
 
 /**
+ * `range-exceeded` の重複発行記録。`ohm-on-live`（`meter-state.ts` / `isNewLiveExposure()`）と
+ * 同じ考え方で、`Simulation` をキーにした `WeakMap` に持つ。呼び出し側が `stepTester()` の
+ * 戻り値をスレッドせず毎回同じ `state` を渡しても（`TesterState.rangeExceededReported` は
+ * 読まれないまま捨てられても）重複発行を防げるようにするため（コーディネータ指摘）。
+ * `tMs` も記録し、直前より巻き戻っていたら（`Simulation.reset()` で0に戻る）古い記録として
+ * 無視する。`meter-state.ts` のように `Simulation.reset()` から明示的に消す経路は無いが、
+ * リセットで回路の電圧が変わればレンジ内に戻って `overRange` が偽になり、その分岐で自然に
+ * `reported` が偽へ戻る。仮にリセット後も同じ振り切れ値が続く場合でも、この `tMs` 巻き戻り
+ * チェックが保険になる。
+ */
+interface RangeExceededRecord {
+  rangeKey: string;
+  black: TerminalId | undefined;
+  red: TerminalId | undefined;
+  tMs: number;
+  reported: boolean;
+}
+const rangeExceededRecords = new WeakMap<Simulation, RangeExceededRecord>();
+
+/** 今回の振り切れを新規発行すべきか。記録が無い・レンジ／プローブが変わった・時刻が
+ *  巻き戻った・前回は範囲内だった、のいずれかで true。 */
+function isNewRangeExceeded(
+  sim: Simulation,
+  rangeKey: string,
+  black: TerminalId | undefined,
+  red: TerminalId | undefined,
+): boolean {
+  const prior = rangeExceededRecords.get(sim);
+  return (
+    prior === undefined ||
+    prior.rangeKey !== rangeKey ||
+    prior.black !== black ||
+    prior.red !== red ||
+    prior.tMs > sim.tMs ||
+    !prior.reported
+  );
+}
+
+/**
  * 1tickぶん進めて読値と新しい状態を返す。§9.3 / §5.6 #2
  *
  * アナログ針は時定数100msの指数移動平均で目標角度へ寄せる（α ＝ 1 − exp(−dt ÷ 100)。
@@ -367,13 +423,17 @@ export const TESTER_TICK_MS = TICK_MS;
  * 目標角へスナップする。指数移動平均は理論上いつまでも収束しきらないため、スナップが無いと
  * 針が止まって見えても `needleDeg` が毎tick極小に変化し続け、描画側の差分検知（前回と同じ値
  * なら再描画しない）が効かずに再レンダーが止まらない（コーディネータ指示#3）。デジタルは
- * 針を持たないので常に0度のままにする。
+ * 針を持たないので常に0度のままにする。`dtMs` が非有限または0以下（`NaN`・負値・呼び出し側の
+ * フレーム落ち等）のときは0として扱い、針を動かさない（指数移動平均に負や `NaN` の時間を渡すと
+ * `needleDeg` が壊れた値のまま戻らなくなるため）。
  *
  * **この関数の副作用**: アナログでレンジ上限を超えた読値になったとき、`sim.events` に
  * `range-exceeded` を1件発行する（内部で呼ぶ `readTester()` も、活線でΩ／導通を当てると
  * `meter.ts` 経由で `ohm-on-live` を発行し得る。§5.6 #1）。同じ振り切れが続いている間は再発行せず、
  * 読値がレンジ内に戻ったときに再発行できる状態へ戻す（つまみ・レンジ・プローブを動かしたときは
  * `applyTesterAction()` が記録を消す）。重複抑制の考え方は `ohm-on-live`（§5.6 #1）と同じ。
+ * 発行済みの記録は `TesterState.rangeExceededReported` にも書き戻すが、判定の正は上の
+ * `rangeExceededRecords`（`Simulation` 単位の `WeakMap`）が持つ。
  */
 export function stepTester(
   sim: Simulation,
@@ -381,26 +441,30 @@ export function stepTester(
   dtMs: number = TESTER_TICK_MS,
 ): { state: TesterState; reading: TesterReading } {
   const reading = readTester(sim, state);
-  const alpha = 1 - Math.exp(-dtMs / NEEDLE_TIME_CONSTANT_MS);
+  const dt = Number.isFinite(dtMs) && dtMs > 0 ? dtMs : 0;
+  const alpha = 1 - Math.exp(-dt / NEEDLE_TIME_CONSTANT_MS);
   const eased =
     state.kind === 'analog' ? state.needleDeg + alpha * (reading.targetDeg - state.needleDeg) : 0;
   const needleDeg =
     state.kind === 'analog' && Math.abs(reading.targetDeg - eased) < NEEDLE_SNAP_DEG
       ? reading.targetDeg
       : eased;
-  let rangeExceededReported = state.rangeExceededReported;
-  if (reading.overRange) {
-    if (!rangeExceededReported) {
-      sim.events.emit({
-        type: 'hazard',
-        kind: 'range-exceeded',
-        tMs: sim.tMs,
-        detail: `${state.mode} ${state.voltRange}V レンジ`,
-      });
-      rangeExceededReported = true;
-    }
-  } else {
-    rangeExceededReported = false;
+  const rangeKey = `${state.mode}:${state.voltRange}`;
+  if (reading.overRange && isNewRangeExceeded(sim, rangeKey, state.black, state.red)) {
+    sim.events.emit({
+      type: 'hazard',
+      kind: 'range-exceeded',
+      tMs: sim.tMs,
+      detail: `${state.mode} ${state.voltRange}V レンジ`,
+    });
   }
+  const rangeExceededReported = reading.overRange;
+  rangeExceededRecords.set(sim, {
+    rangeKey,
+    black: state.black,
+    red: state.red,
+    tMs: sim.tMs,
+    reported: rangeExceededReported,
+  });
   return { state: { ...state, needleDeg, rangeExceededReported }, reading };
 }

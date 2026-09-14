@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   applyTesterAction,
+  CLOSED_CONTACT_OHMS,
   createPowerSupply,
   createRelay4c,
   createTesterState,
@@ -8,6 +9,7 @@ import {
   ohmNeedleDeg,
   readTester,
   stepTester,
+  TESTER_NO_PROBE_DISPLAY,
   voltNeedleDeg,
   voltRangesFor,
   withZeroAdjustError,
@@ -133,6 +135,43 @@ describe('readTester (analog)', () => {
     expect(reading.targetDeg).toBe(0);
     expect(reading.overRange).toBe(false);
   });
+
+  it('reads a closed relay contact as conductive near full scale, applying the zero-ohm error to value only (CONT)', () => {
+    const sim = relayBench();
+    const state = applyTesterAction(analog('CONT', 'CR1.9', 'CR1.1'), {
+      type: 'set-ohm-range',
+      range: 10,
+    });
+    const reading = readTester(sim, state);
+    expect(reading.display).toBe('導通');
+    expect(reading.targetDeg).toBeCloseTo(NEEDLE_FULL_SCALE_DEG, 1);
+    expect(reading.value / CLOSED_CONTACT_OHMS).toBeCloseTo(1.05, 3);
+  });
+
+  it('raises ohm-on-live once per probe exposure on a live circuit in CONT mode (§5.6 #1)', () => {
+    const sim = relayBench();
+    powerOn(sim);
+    sim.run(100);
+    const state = analog('CONT', 'PS.-', 'PS.+');
+    readTester(sim, state);
+    readTester(sim, state);
+    const third = readTester(sim, state);
+    expect(third.live).toBe(true);
+    expect(third.display).toBe(TESTER_NO_PROBE_DISPLAY);
+    expect(sim.events.countOf('ohm-on-live')).toBe(1);
+
+    const swapped = analog('CONT', 'PS.+', 'PS.-');
+    readTester(sim, swapped);
+    expect(sim.events.countOf('ohm-on-live')).toBe(2);
+
+    const back = analog('CONT', 'PS.-', 'PS.+');
+    readTester(sim, back);
+    expect(sim.events.countOf('ohm-on-live')).toBe(3);
+
+    let stepped = back;
+    for (let i = 0; i < 20; i += 1) stepped = stepTester(sim, stepped).state;
+    expect(sim.events.countOf('ohm-on-live')).toBe(3);
+  });
 });
 
 describe('stepTester', () => {
@@ -199,5 +238,41 @@ describe('stepTester', () => {
     stepTester(sim, state);
     expect(sim.events.countOf('range-exceeded')).toBe(2);
     expect(sim.events.hazards('range-exceeded')[0]?.detail).toContain('DCV');
+  });
+
+  it('dedups range-exceeded via the simulation even when the caller discards the returned state', () => {
+    const sim = relayBench();
+    powerOn(sim);
+    sim.run(100);
+    const state = applyTesterAction(analog('DCV', 'PS.-', 'PS.+'), {
+      type: 'set-volt-range',
+      range: 10,
+    });
+    for (let i = 0; i < 10; i += 1) stepTester(sim, state);
+    expect(sim.events.countOf('range-exceeded')).toBe(1);
+    const wide = applyTesterAction(state, { type: 'set-volt-range', range: 250 });
+    stepTester(sim, wide);
+    const narrow = applyTesterAction(wide, { type: 'set-volt-range', range: 10 });
+    stepTester(sim, narrow);
+    expect(sim.events.countOf('range-exceeded')).toBe(2);
+  });
+
+  it('treats a 100 ms tick as 63.2% toward target and clamps non-finite or non-positive dtMs to no movement', () => {
+    const sim = relayBench();
+    powerOn(sim);
+    sim.run(100);
+    const state = applyTesterAction(analog('DCV', 'PS.-', 'PS.+'), {
+      type: 'set-volt-range',
+      range: 50,
+    });
+    const target = readTester(sim, state).targetDeg;
+    expect(stepTester(sim, state, 100).state.needleDeg).toBeCloseTo(target * (1 - Math.exp(-1)), 6);
+    expect(stepTester(sim, state, 0).state.needleDeg).toBe(0);
+    const nanStep = stepTester(sim, state, Number.NaN).state.needleDeg;
+    expect(Number.isFinite(nanStep)).toBe(true);
+    expect(nanStep).toBe(0);
+    const negativeStep = stepTester(sim, state, -10).state.needleDeg;
+    expect(Number.isFinite(negativeStep)).toBe(true);
+    expect(negativeStep).toBe(0);
   });
 });

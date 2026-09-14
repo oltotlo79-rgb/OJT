@@ -10,7 +10,7 @@ import {
   TESTER_NO_PROBE_DISPLAY,
   TESTER_OFF_DISPLAY,
 } from '../src/index.js';
-import type { Simulation, TesterState } from '../src/index.js';
+import type { Simulation, TesterAction, TesterState } from '../src/index.js';
 import * as meter from '../src/meter.js';
 import { bench, powerOn, t, w } from './helpers/circuits.js';
 
@@ -109,6 +109,28 @@ describe('applyTesterAction', () => {
     expect(applyTesterAction(zeroed, { type: 'set-kind', kind: 'analog' }).zeroAdjusted).toBe(
       false,
     );
+  });
+});
+
+describe('applyTesterAction (hardening)', () => {
+  it('returns the input state unchanged for an action type outside the known union (exhaustiveness guard)', () => {
+    const state = createTesterState();
+    const bogus = { type: 'nope' } as unknown as TesterAction;
+    expect(applyTesterAction(state, bogus)).toBe(state);
+  });
+
+  it('ignores an out-of-range set-ohm-range value instead of storing it verbatim (§9.3)', () => {
+    const state = createTesterState('analog');
+    const bogus = { type: 'set-ohm-range', range: 100 } as unknown as TesterAction;
+    const next = applyTesterAction(state, bogus);
+    expect(next.ohmRange).toBe(state.ohmRange);
+    const sim = coilBench();
+    const probedState = probed(
+      applyTesterAction(next, { type: 'set-mode', mode: 'OHM' }),
+      'CR1.13',
+      'CR1.14',
+    );
+    expect(Number.isFinite(readTester(sim, probedState).targetDeg)).toBe(true);
   });
 });
 
