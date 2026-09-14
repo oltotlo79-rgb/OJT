@@ -1,6 +1,6 @@
 import { JIPM_BOARD } from '@ojt/board-model';
 import { BUILTIN_PROBLEMS, buildReferenceSession, judgeAssemble } from '@ojt/content';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   buildSpecChart,
   clearSpecChartCache,
@@ -9,6 +9,9 @@ import {
 
 const SELF_HOLD = BUILTIN_PROBLEMS.find((p) => p.id === 'b-001');
 const TIMER = BUILTIN_PROBLEMS.find((p) => p.id === 'b-003');
+
+// 既定の5秒だと並列実行時の負荷でまれに超過する（既知のflake）。このファイルだけ延ばす。
+vi.setConfig({ testTimeout: 15_000 });
 
 beforeEach(() => {
   clearSpecChartCache();

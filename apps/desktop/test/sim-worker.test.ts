@@ -32,6 +32,9 @@ vi.mock('@ojt/content', async (importOriginal) => {
   };
 });
 
+// 既定の5秒だと並列実行時の負荷でまれに超過する（既知のflake）。このファイルだけ延ばす。
+vi.setConfig({ testTimeout: 15_000 });
+
 const B001 = BUILTIN_PROBLEMS.find((p) => p.id === 'b-001');
 
 /** b-001 の模範回路のセッション（配線も部品も揃った状態）。 */
