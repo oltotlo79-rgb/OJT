@@ -397,24 +397,24 @@ describe('assign: 回路図 → 物理割当（§11.3）', () => {
   });
 
   it('既設配線と同じ節点に入る端子は鎖の端に置く（§6.3 / §6.6）', () => {
-    // `TB_PB.4c` は既設配線（P.1との1本）で埋まっているので、中継点には使えない
+    // `TB_PB.4a` は既設配線（チェック用コイルとの1本）で埋まっているので、中継点には使えない。
+    // 節点 r1#1 の文書順は `TB_PB.1a, CR1.14, TB_PB.4a, TB_PL.1+` で3番目に来るが、鎖の先頭へ回せば配線できる
     const doc = createDocument('x', '既設端子を含む節点', [
       rung('r1', BUS_P, BUS_N, [pbA('c1', 'PB1'), coil('c2', 'CR1')]),
-      rung('r2', at('r1', 1), BUS_N, [pbA('c3', 'PB4'), lamp('c4', 'PL1')]),
-      rung('r3', at('r1', 1), BUS_N, [crA('c5', 'CR1'), lamp('c6', 'PL2')]),
+      rung('r2', BUS_P, at('r1', 1), [pbA('c3', 'PB4')]),
+      rung('r3', at('r1', 1), BUS_N, [lamp('c4', 'PL1')]),
     ]);
     const result = assigned(assignToBoard(doc));
     expect(result.wires.map((w) => `${w.from}-${w.to}`)).toEqual([
       'P.1-TB_PB.1c',
-      'TB_PB.4c-TB_PB.1a',
+      'TB_PB.4a-TB_PB.1a',
       'TB_PB.1a-CR1.14',
-      'CR1.14-CR1.9',
+      'CR1.14-TB_PL.1+',
       'N.1-CR1.13',
       'CR1.13-TB_PL.1-',
-      'TB_PL.1--TB_PL.2-',
-      'TB_PB.4a-TB_PL.1+',
-      'CR1.5-TB_PL.2+',
     ]);
+    // PB4のCOM（TB_PB.4c）はP母線の節点。既設配線で P.1 と直結なので電線は要らない
+    expect(result.wires.some((w) => [w.from, w.to].includes(t('TB_PB.4c')))).toBe(false);
     wireAll(result);
   });
 
@@ -427,6 +427,98 @@ describe('assign: 回路図 → 物理割当（§11.3）', () => {
     expect(result.wires.map((w) => `${w.from}-${w.to}`)).toEqual(['TB_PB.4a-CR1.14', 'N.1-CR1.13']);
     const atP1 = result.wires.filter((w) => w.from === t('P.1') || w.to === t('P.1'));
     expect(atP1).toHaveLength(0);
+    wireAll(result);
+
+    // b接点も同じ（COMがP母線側なら使える。NC側の `TB_PB.4b` は既設配線と無関係）
+    const bContact = createDocument('x', 'PB4のb接点', [
+      rung('r1', BUS_P, BUS_N, [pbB('c1', 'PB4'), coil('c2', 'CR1')]),
+    ]);
+    const bResult = assigned(assignToBoard(bContact));
+    expect(bResult.wires.map((w) => `${w.from}-${w.to}`)).toEqual([
+      'TB_PB.4b-CR1.14',
+      'N.1-CR1.13',
+    ]);
+    wireAll(bResult);
+  });
+
+  it('既設配線で結ばれた端子の組は2つの節点に分けられない（§6.3）', () => {
+    // PB4のCOM（`TB_PB.4c`）は既設配線でP母線に直結。内部節点に置くと手前の接点を素通りしてしまう
+    const doc = createDocument('x', 'PB4を内部節点に置く', [
+      rung('r1', BUS_P, BUS_N, [pbA('c1', 'PB1'), coil('c2', 'CR1')]),
+      rung('r2', at('r1', 1), BUS_N, [pbA('c3', 'PB4'), lamp('c4', 'PL1')]),
+      rung('r3', at('r1', 1), BUS_N, [crA('c5', 'CR1'), lamp('c6', 'PL2')]),
+    ]);
+    expect(failed(assignToBoard(doc))).toEqual([
+      {
+        path: 'c3',
+        message:
+          '端子 TB_PB.4c は既設配線で P.1 と接続されているため、P 母線以外の節点には置けません',
+      },
+    ]);
+
+    // b接点でも同じ（COMを共有するため）
+    const bContact = createDocument('x', 'PB4のb接点を内部節点に置く', [
+      rung('r1', BUS_P, BUS_N, [pbA('c1', 'PB1'), coil('c2', 'CR1')]),
+      rung('r2', at('r1', 1), BUS_N, [pbB('c3', 'PB4'), lamp('c4', 'PL1')]),
+    ]);
+    expect(failed(assignToBoard(bContact))[0]?.path).toBe('c3');
+  });
+
+  it('チェック用コイルの端子も相方と同じ節点にしか置けない（§6.3）', () => {
+    // `CHK.13` は既設配線で N.1 に直結
+    const toN = createDocument('x', 'CHK.13をN母線以外へ', [
+      rung('r1', BUS_P, BUS_N, [pbA('c1', 'PB1'), coil('c2', 'CR1')]),
+    ]);
+    expect(
+      failed(assignToBoard(toN, { physicalOverride: { c1: [t('TB_PB.1c'), t('CHK.13')] } })),
+    ).toEqual([
+      {
+        path: 'c1',
+        message:
+          '端子 CHK.13 は既設配線で N.1 と接続されているため、N 母線以外の節点には置けません',
+      },
+    ]);
+
+    // 母線を含まない組（`TB_PB.4a` と `CHK.14`）は、どの節点でもよいが同じ節点でなければならない
+    const split = createDocument('x', 'CHK.14を別の節点へ', [
+      rung('r1', BUS_P, BUS_N, [pbA('c1', 'PB4'), coil('c2', 'CR1')]),
+      rung('r2', BUS_P, BUS_N, [crA('c3', 'CR1'), lamp('c4', 'PL1')]),
+    ]);
+    expect(
+      failed(assignToBoard(split, { physicalOverride: { c3: [t('CHK.14'), t('CR1.5')] } })),
+    ).toEqual([
+      {
+        path: 'c3',
+        message: '端子 CHK.14 は既設配線で TB_PB.4a と接続されているため、同じ節点にしか置けません',
+      },
+    ]);
+  });
+
+  it('P母線に居る既設配線の組は2本ぶんの中継に使える（§6.3 / §6.6）', () => {
+    // PB4のCOM（`TB_PB.4c`）がP母線に居ると、`P.1` と合わせて組の残り容量は2本になる
+    const doc = createDocument('x', 'P母線の中継', [
+      rung('r1', BUS_P, BUS_N, [pbB('c1', 'PB4'), coil('c2', 'CR1')]),
+      rung('r2', BUS_P, BUS_N, [lamp('c3', 'PL1')]),
+      rung('r3', BUS_P, BUS_N, [crA('c4', 'CR1'), lamp('c5', 'PL2')]),
+    ]);
+    // PL1の+をチェック用コイルの節点（`TB_PB.4a`）へ相乗りさせると、その端子が鎖の先頭になる
+    const result = assigned(
+      assignToBoard(doc, { physicalOverride: { c3: [t('TB_PB.4a'), t('TB_PL.1-')] } }),
+    );
+    expect(result.wires.map((w) => `${w.from}-${w.to}`)).toEqual([
+      'TB_PB.4a-P.1',
+      'TB_PB.4c-CR1.9',
+      'TB_PB.4b-CR1.14',
+      'N.1-CR1.13',
+      'CR1.13-TB_PL.1-',
+      'TB_PL.1--TB_PL.2-',
+      'CR1.5-TB_PL.2+',
+    ]);
+    // 組の中は既設配線で結ばれているので電線は張らない
+    expect(result.wires.some((w) => `${w.from}-${w.to}` === 'P.1-TB_PB.4c')).toBe(false);
+    // P.1 に来るのは1本だけ（既設配線の1本と合わせて上限ちょうど。残り1本は TB_PB.4c が受ける）
+    expect(result.wires.filter((w) => [w.from, w.to].includes(t('P.1')))).toHaveLength(1);
+    expect(result.wires.filter((w) => [w.from, w.to].includes(t('TB_PB.4c')))).toHaveLength(1);
     wireAll(result);
   });
 
@@ -450,16 +542,17 @@ describe('assign: 回路図 → 物理割当（§11.3）', () => {
     ]);
     wireAll(twoTight);
 
+    // 3つ目（`P.1`）が加わると鎖の端が足りない（電気的には無茶な指定だが、本数の規則を試すための上書き）
     const result = assignToBoard(doc, {
       physicalOverride: {
         c2: [t('TB_PL.1+'), t('TB_PB.4a')],
-        c4: [t('TB_PL.2+'), t('TB_PB.4c')],
+        c4: [t('TB_PL.2+'), t('P.1')],
       },
     });
     expect(failed(result)[0]).toEqual({
       path: 'BUS:N',
       message:
-        '節点に3本目の配線が要ります（既設配線で埋まった端子が3つあります）: N.1 / TB_PB.4a / TB_PB.4c',
+        '節点に3本目の配線が要ります（既設配線で埋まった端子が3つあります）: N.1 / TB_PB.4a / P.1',
     });
   });
 

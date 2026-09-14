@@ -134,9 +134,11 @@ const BUS_P_KEY = nodeKey({ kind: 'bus', bus: 'P' });
 const BUS_N_KEY = nodeKey({ kind: 'bus', bus: 'N' });
 
 /** 母線の供給端子（実機どおり1点ずつ）。§6.1 */
+const BUS_P_TERMINAL = terminalId('P', '1');
+const BUS_N_TERMINAL = terminalId('N', '1');
 const BUS_TERMINALS: Readonly<Record<string, TerminalId>> = {
-  [BUS_P_KEY]: terminalId('P', '1'),
-  [BUS_N_KEY]: terminalId('N', '1'),
+  [BUS_P_KEY]: BUS_P_TERMINAL,
+  [BUS_N_KEY]: BUS_N_TERMINAL,
 };
 
 function isSocketDevice(device: string): device is SocketRole {
@@ -382,6 +384,87 @@ function fixedBondKeys(roles: SocketRoles): Map<TerminalId, string> {
   return keys;
 }
 
+/** 既設配線の組ごとの端子（`bond:P.1` → `[P.1, TB_PB.4c]`）。§6.3 */
+function fixedBondGroups(roles: SocketRoles): Map<string, TerminalId[]> {
+  const groups = new Map<string, TerminalId[]>();
+  for (const [id, key] of fixedBondKeys(roles)) {
+    groups.set(key, [...(groups.get(key) ?? []), id]);
+  }
+  return groups;
+}
+
+function isBusTerminal(id: TerminalId): boolean {
+  return id === BUS_P_TERMINAL || id === BUS_N_TERMINAL;
+}
+
+/** 組に母線の供給端子が入っていれば、その母線（`P` / `N`）。 */
+function busOfBond(members: readonly TerminalId[]): 'P' | 'N' | undefined {
+  if (members.includes(BUS_P_TERMINAL)) return 'P';
+  if (members.includes(BUS_N_TERMINAL)) return 'N';
+  return undefined;
+}
+
+function bondMessage(id: TerminalId, mate: TerminalId, members: readonly TerminalId[]): string {
+  const bus = busOfBond(members);
+  const where =
+    bus === undefined ? '同じ節点にしか置けません' : `${bus} 母線以外の節点には置けません`;
+  return `端子 ${id} は既設配線で ${mate} と接続されているため、${where}`;
+}
+
+/** 端子 → その端子を置いた要素ID（初出優先。エラー箇所を指すために持つ）。 */
+function terminalOwners(cells: readonly CellAssignment[]): Map<TerminalId, string> {
+  const owners = new Map<TerminalId, string>();
+  for (const cell of cells) {
+    for (const id of [cell.left, cell.right]) {
+      if (!owners.has(id)) owners.set(id, cell.cellId);
+    }
+  }
+  return owners;
+}
+
+/**
+ * 端子 → その端子が居る節点キー。母線の供給端子は `chainWires` と同じく母線の節点へ差し込む。
+ * 要素が供給端子そのものを指しているとき（`physicalOverride`）は要素側の節点を採る。
+ * その指定は母線の鎖と要素の節点の両方に電線を呼ぶので、1端子2本の規則が別に弾く。§6.6
+ */
+function terminalNets(nets: Nets): Map<TerminalId, string> {
+  const netOf = new Map<TerminalId, string>();
+  for (const [key, terminals] of nets) {
+    for (const id of terminals) netOf.set(id, key);
+  }
+  for (const [key, id] of Object.entries(BUS_TERMINALS)) {
+    if (nets.has(key) && !netOf.has(id)) netOf.set(id, key);
+  }
+  return netOf;
+}
+
+/**
+ * 既設配線で直結された端子の組が2つの節点に分かれていないか検査する。§6.3
+ *
+ * 既設配線は訓練者が外せない（`locked`）ので、組の端子はどの課題でも電気的に同じ1点のままになる。
+ * たとえば `TB_PB.4c`（PB4のCOM）は `P.1` と直結なので、PB4の接点はCOMがP母線の節点にある段でしか
+ * 使えない。内部節点に置くと、その節点が既設配線でP母線に短絡し、手前の接点を素通りしてしまう。
+ *
+ * 逆に `TB_PB.4a` の組（相方はチェック用コイルの `CHK.14`）は、相方が回路図に現れない限りどの節点にも
+ * 置ける。その節点にチェック用コイルが**並列にぶら下がる**が、実機どおりの姿なので許す。§6.3
+ */
+function checkFixedBonds(build: CellBuild, roles: SocketRoles): AssignError[] {
+  const netOf = terminalNets(build.nets);
+  const owners = terminalOwners(build.cells);
+  const errors: AssignError[] = [];
+  for (const members of fixedBondGroups(roles).values()) {
+    const placed = members.filter((id) => netOf.has(id));
+    // 基準は母線の供給端子（動かせるのは要素の側）。母線を含まない組は最初の端子を基準にする
+    const anchor = placed.find(isBusTerminal) ?? placed[0];
+    if (anchor === undefined) continue;
+    for (const id of placed) {
+      if (netOf.get(id) === netOf.get(anchor)) continue;
+      errors.push({ path: owners.get(id) ?? id, message: bondMessage(id, anchor, members) });
+    }
+  }
+  return errors;
+}
+
 /** 鎖の1区間（既設配線で結ばれた端子は1つの区間にまとまる）。 */
 interface ChainGroup {
   key: string;
@@ -423,6 +506,14 @@ function orderGroups(groups: readonly ChainGroup[]): ChainGroup[] | undefined {
 /**
  * 節点ごとに**渡り配線**（鎖状）を作る。§11.3 / 調査資料 §4.5
  * 供給端子は実機どおり `P.1` / `N.1` の1点ずつなので、母線の節点もその端子を先頭にした鎖になる。
+ *
+ * 既設配線で直結された端子（`P.1`＋`TB_PB.4c` など）は1つの区間にまとめる。§6.3
+ * - 区間の中には電線を張らない（既設配線の重複になる）。
+ * - 区間の残り容量は**端子ごとの残り本数の合計**なので、両方が同じ節点に居れば2本ぶんの中継に使える
+ *   （`X–P.1` と `TB_PB.4c–Y` のように、入る電線と出る電線で別の端子を使う）。
+ * - 残り1本の区間は鎖の端にしか置けない。
+ *
+ * 同じ組の端子が2つの節点に分かれていないことは `checkFixedBonds` が先に保証している。
  */
 function chainWires(nets: Nets, roles: SocketRoles, color: WireColor): Outcome<WireSpec[]> {
   const fixedCount = fixedWireCounts(roles);
@@ -523,6 +614,11 @@ function mountedParts(
 /**
  * 回路図を物理端子へ割り当て、生成すべき電線と装着すべき部品を返す。§11.3
  * 同じ組を2つの接点に割り当てず、5個目の接点が現れたらエラーにする。
+ *
+ * 割当のあと、**既設配線で直結された端子の組**が2つの節点に分かれていないかを検査する（§6.3）。
+ * 既設配線は外せないので、たとえばPB4はCOM（`TB_PB.4c`）が `P.1` と直結しており、その接点は
+ * COMがP母線の節点にある段でしか使えない。チェック用コイル側の `TB_PB.4a` はどの節点にも置ける
+ * （チェック用コイルがその節点に並列にぶら下がるだけで、実機どおりの姿）。
  */
 export function assignToBoard(doc: SchematicDocument, options: AssignOptions = {}): AssignResult {
   const structural = validateDocument(doc);
@@ -550,6 +646,9 @@ export function assignToBoard(doc: SchematicDocument, options: AssignOptions = {
 
   const built = buildCellAssignments(doc, override);
   if (!built.ok) return built;
+
+  const bondErrors = checkFixedBonds(built.value, roles);
+  if (bondErrors.length > 0) return { ok: false, errors: bondErrors };
 
   const wires = chainWires(built.value.nets, roles, options.color ?? '青');
   if (!wires.ok) return wires;
