@@ -70,7 +70,7 @@ Plan 1D1 が完了していること。この計画は 1D1 が作った次のフ
 - `ipc.ts` の `content:list` / `content:read` ハンドラは `await loadContent(...)` になった。
 
 
-- [ ] **Step 1: `apps/desktop/test/content-loader.test.ts` を書く**
+- [x] **Step 1: `apps/desktop/test/content-loader.test.ts` を書く**
 
 先にテストを書く。1D1 の内蔵課題だけのテストを置き換える。
 
@@ -152,7 +152,7 @@ describe('loadContent', () => {
 });
 ```
 
-- [ ] **Step 2: テストが落ちることを確かめる**
+- [x] **Step 2: テストが落ちることを確かめる**
 
 実行:
 
@@ -167,7 +167,7 @@ AssertionError: expected false to be true // Object.is equality
 （`userDirExists` が常に false のため）
 ```
 
-- [ ] **Step 3: `apps/desktop/src/main/content-loader.ts` を書く**
+- [x] **Step 3: `apps/desktop/src/main/content-loader.ts` を書く**
 
 ```ts
 import { existsSync } from 'node:fs';
@@ -218,7 +218,7 @@ export function loadContent(userDir: string): LoadedContent {
 }
 ```
 
-- [ ] **Step 4: テストが通ることを確かめる**
+- [x] **Step 4: テストが通ることを確かめる**
 
 実行:
 
@@ -233,7 +233,7 @@ pnpm --filter @ojt/desktop test -- content-loader
       Tests  5 passed (5)
 ```
 
-- [ ] **Step 5: `apps/desktop/src/renderer/screens/ProblemList.tsx` を書く**
+- [x] **Step 5: `apps/desktop/src/renderer/screens/ProblemList.tsx` を書く**
 
 ```tsx
 import { useEffect, type JSX } from 'react';
@@ -361,7 +361,7 @@ export function ProblemList(): JSX.Element {
 }
 ```
 
-- [ ] **Step 6: コミットする**
+- [x] **Step 6: コミットする**
 
 追加・変更したファイル: `apps/desktop/src/main/content-loader.ts` `apps/desktop/src/renderer/screens/ProblemList.tsx` `apps/desktop/test/content-loader.test.ts`
 
@@ -389,7 +389,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 **設計**: 「いつ何の音を鳴らすか」は `soundsForSnapshot(previous, next)` という純粋関数に切り出し、`AudioContext` を触るのは `SoundPlayer` だけにする。こうすると鳴らす条件（リレーの接点が動いた／危険操作が出た／ブザーが点いた）を Vitest で検証できる。
 
 
-- [ ] **Step 1: `apps/desktop/src/renderer/audio/sounds.ts` を書く**
+- [x] **Step 1: `apps/desktop/src/renderer/audio/sounds.ts` を書く**
 
 ```ts
 /**
@@ -539,7 +539,7 @@ export function soundsForSnapshot(
 }
 ```
 
-- [ ] **Step 2: コミットする**
+- [x] **Step 2: コミットする**
 
 追加・変更したファイル: `apps/desktop/src/renderer/audio/sounds.ts`
 
@@ -597,7 +597,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
   `JA.main` として再輸出するだけ）。
 
 
-- [ ] **Step 1: `src/shared/ipc.ts` の `WorkFileLoadRequest` に `discard` を足す**
+- [x] **Step 1: `src/shared/ipc.ts` の `WorkFileLoadRequest` に `discard` を足す**
 
 ```ts
 /**
@@ -611,7 +611,7 @@ export interface WorkFileLoadRequest {
 }
 ```
 
-- [ ] **Step 2: `src/main/work-files.ts` の `loadWorkFile()` の先頭に削除の分岐を足す**
+- [x] **Step 2: `src/main/work-files.ts` の `loadWorkFile()` の先頭に削除の分岐を足す**
 
 ```ts
   if (request.discard === true) {
@@ -620,7 +620,7 @@ export interface WorkFileLoadRequest {
   }
 ```
 
-- [ ] **Step 3: `apps/desktop/src/renderer/session/work-file.ts` を書く**
+- [x] **Step 3: `apps/desktop/src/renderer/session/work-file.ts` を書く**
 
 ```ts
 import type { BoardSession } from '@ojt/board-model';
@@ -689,7 +689,7 @@ export async function applyWorkFile(file: WorkFile): Promise<boolean> {
 }
 ```
 
-- [ ] **Step 4: `src/renderer/app/store.ts` に WebGL 復旧用の状態を足す**
+- [x] **Step 4: `src/renderer/app/store.ts` に WebGL 復旧用の状態を足す**
 
 `AppState` に次を足し、初期値 `false`、`setWebglLost` を実装する（§13 #4。3Dシーン側は Plan 1D1 の `BoardScene` が既に呼んでいる）。
 
@@ -699,7 +699,7 @@ export async function applyWorkFile(file: WorkFile): Promise<boolean> {
   setWebglLost: (lost: boolean) => void;
 ```
 
-- [ ] **Step 5: コミットする**
+- [x] **Step 5: コミットする**
 
 追加・変更したファイル: `apps/desktop/src/shared/ipc.ts` `apps/desktop/src/main/work-files.ts` `apps/desktop/src/renderer/session/work-file.ts` `apps/desktop/src/renderer/app/store.ts`
 
@@ -729,7 +729,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 - `Shape` は Plan 1B Task 13d で `rungId?` / `cellId?`（どの段・どの要素から出た図形か。母線の線とラベルはどちらも持たない）を持つようになった。型は `Shape` に畳み込まれていて `ShapeSource` 単体は再エクスポートされていないので、必要なら `shape.cellId` をそのまま読む。Phase 1 の読取専用レンダラは配列の添字で `key` を振れば足りるのでそのままにし、Phase 2 で「盤の端子にホバーすると回路図の該当要素が光る」を作るときにこの2つを使う。
 
 
-- [ ] **Step 1: `apps/desktop/src/renderer/schematic/SchematicSvg.tsx` を書く**
+- [x] **Step 1: `apps/desktop/src/renderer/schematic/SchematicSvg.tsx` を書く**
 
 ```tsx
 import {
@@ -859,7 +859,7 @@ export function SchematicSvg({ document: doc }: { document: SchematicDocument })
 export const SCHEMATIC_LAMP_FILL = LAMP_FILL;
 ```
 
-- [ ] **Step 2: コミットする**
+- [x] **Step 2: コミットする**
 
 追加・変更したファイル: `apps/desktop/src/renderer/schematic/SchematicSvg.tsx`
 
@@ -898,7 +898,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
   そこからコピーして書き換える）を `JA.settings.userContentHelp` として欄の下に添える。
 
 
-- [ ] **Step 1: `src/renderer/screens/screens.module.css` の末尾に設定画面のスタイルを足す**
+- [x] **Step 1: `src/renderer/screens/screens.module.css` の末尾に設定画面のスタイルを足す**
 
 ```css
 
@@ -935,7 +935,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 }
 ```
 
-- [ ] **Step 2: `apps/desktop/src/renderer/screens/Settings.tsx` を書く**
+- [x] **Step 2: `apps/desktop/src/renderer/screens/Settings.tsx` を書く**
 
 ```tsx
 import { useEffect, useState, type JSX } from 'react';
@@ -1068,7 +1068,7 @@ export function Settings(): JSX.Element {
 }
 ```
 
-- [ ] **Step 3: `apps/desktop/src/renderer/app/routes.tsx` を書く**
+- [x] **Step 3: `apps/desktop/src/renderer/app/routes.tsx` を書く**
 
 ```tsx
 import type { JSX } from 'react';
@@ -1101,7 +1101,7 @@ export function renderRoute(route: Route): JSX.Element {
 }
 ```
 
-- [ ] **Step 4: `apps/desktop/src/renderer/screens/Home.tsx` を書く**
+- [x] **Step 4: `apps/desktop/src/renderer/screens/Home.tsx` を書く**
 
 ```tsx
 import type { JSX } from 'react';
@@ -1165,7 +1165,7 @@ export function Home(): JSX.Element {
 }
 ```
 
-- [ ] **Step 5: コミットする**
+- [x] **Step 5: コミットする**
 
 追加・変更したファイル: `apps/desktop/src/renderer/screens/Settings.tsx` `apps/desktop/src/renderer/screens/screens.module.css` `apps/desktop/src/renderer/app/routes.tsx` `apps/desktop/src/renderer/screens/Home.tsx`
 
@@ -1212,7 +1212,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
   `fatal: true` を返し、例外バナー（2つの導線つき）を出す。
 
 
-- [ ] **Step 1: `src/renderer/i18n/ja.ts` の `session` に文言を足す**
+- [x] **Step 1: `src/renderer/i18n/ja.ts` の `session` に文言を足す**
 
 （Plan 1D1 で既に書いてあるならそのままでよい。無ければ `cancelWire` の下に足す。）
 
@@ -1239,7 +1239,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
   } satisfies Record<RoutingErrorReason, string>,
 ```
 
-- [ ] **Step 2: `apps/desktop/src/renderer/panels/Toolbar.tsx` を書く**
+- [x] **Step 2: `apps/desktop/src/renderer/panels/Toolbar.tsx` を書く**
 
 ```tsx
 import type { WireColor } from '@ojt/circuit-sim';
@@ -1379,7 +1379,7 @@ export function Toolbar({
 }
 ```
 
-- [ ] **Step 3: `apps/desktop/src/renderer/screens/Session.tsx` を書く**
+- [x] **Step 3: `apps/desktop/src/renderer/screens/Session.tsx` を書く**
 
 ```tsx
 import { JIPM_BOARD, socketPartId } from '@ojt/board-model';
@@ -1872,7 +1872,7 @@ export function Session(): JSX.Element {
 }
 ```
 
-- [ ] **Step 4: `apps/desktop/src/renderer/app/App.tsx` を書く**
+- [x] **Step 4: `apps/desktop/src/renderer/app/App.tsx` を書く**
 
 ```tsx
 import { useEffect, useState, type JSX } from 'react';
@@ -2000,7 +2000,7 @@ export function App(): JSX.Element {
 }
 ```
 
-- [ ] **Step 5: 型チェックと lint を通す**
+- [x] **Step 5: 型チェックと lint を通す**
 
 実行:
 
@@ -2015,7 +2015,7 @@ pnpm lint
 （どちらも何も出力されない＝成功）
 ```
 
-- [ ] **Step 6: コミットする**
+- [x] **Step 6: コミットする**
 
 追加・変更したファイル: `apps/desktop/src/renderer/i18n/ja.ts` `apps/desktop/src/renderer/panels/Toolbar.tsx` `apps/desktop/src/renderer/screens/Session.tsx` `apps/desktop/src/renderer/app/App.tsx`
 
@@ -2037,7 +2037,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 - Create: `apps/desktop/test/polish.test.ts`
 
 
-- [ ] **Step 1: `apps/desktop/test/polish.test.ts` を書く**
+- [x] **Step 1: `apps/desktop/test/polish.test.ts` を書く**
 
 `work-files.ts` は `electron` を import するが、`parseWorkFile()` 自体は Electron の API を使わないので Vitest から直接呼べる。
 
@@ -2195,7 +2195,7 @@ describe('設定画面の注記（§15 / §17.1）', () => {
 });
 ```
 
-- [ ] **Step 2: 単体テストをすべて実行する**
+- [x] **Step 2: 単体テストをすべて実行する**
 
 実行:
 
@@ -2210,7 +2210,7 @@ pnpm --filter @ojt/desktop test
       Tests  119 passed (119)
 ```
 
-- [ ] **Step 3: コミットする**
+- [x] **Step 3: コミットする**
 
 追加・変更したファイル: `apps/desktop/test/polish.test.ts`
 
@@ -2236,7 +2236,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 **テストを繰り返し実行できるようにする**: 設定と一時保存は `userData` に残るので、`beforeAll` で復元プロンプトを片付け、設定は「値」ではなく「切り替わること」を確かめる。
 
 
-- [ ] **Step 1: `apps/desktop/e2e/polish.spec.ts` を書く**
+- [x] **Step 1: `apps/desktop/e2e/polish.spec.ts` を書く**
 
 ```ts
 import { mkdirSync, writeFileSync } from 'node:fs';
@@ -2346,7 +2346,7 @@ test.describe('仕上げ', () => {
 });
 ```
 
-- [ ] **Step 2: ビルドして E2E をすべて実行する**
+- [x] **Step 2: ビルドして E2E をすべて実行する**
 
 実行:
 
@@ -2368,7 +2368,7 @@ Running 4 tests using 1 worker
   4 passed
 ```
 
-- [ ] **Step 3: スクリーンショットを目視する**
+- [x] **Step 3: スクリーンショットを目視する**
 
 `12-view-socket-labels.png` でソケットの ①〜⑭ と COM/a/b/+/− が読めること、`13-view-front-labels.png` で正面視でも全端子の番号が見えていること、左上にビューキューブが写っていることを確かめる。
 
@@ -2398,7 +2398,7 @@ Get-ChildItem apps/desktop/screenshots | Select-Object -ExpandProperty Name
 13-view-front-labels.png
 ```
 
-- [ ] **Step 4: コミットする**
+- [x] **Step 4: コミットする**
 
 追加・変更したファイル: `apps/desktop/e2e/polish.spec.ts`
 
@@ -2438,7 +2438,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
   配布した exe を起動して課題8件が読めること・メニューが外れていることを確認済み。
 
 
-- [ ] **Step 1: 課題JSONを `resources/content/` へコピーする**
+- [x] **Step 1: 課題JSONを `resources/content/` へコピーする**
 
 `extraResources` は asar の外に置かれるので、利用者が差し替えられる（§7.8）。
 
@@ -2459,7 +2459,7 @@ Copy-Item packages/content/src/builtin/assemble/*.json apps/desktop/resources/co
 8
 ```
 
-- [ ] **Step 2: `apps/desktop/electron-builder.yml` を書く**
+- [x] **Step 2: `apps/desktop/electron-builder.yml` を書く**
 
 ```yaml
 # 配布パッケージ。設計仕様 §15。
@@ -2505,7 +2505,7 @@ nsis:
 publish: null
 ```
 
-- [ ] **Step 3: `apps/desktop/package.json` に `dist` スクリプトと electron-builder を足す**
+- [x] **Step 3: `apps/desktop/package.json` に `dist` スクリプトと electron-builder を足す**
 
 ```json
     "dist": "node scripts/build.mjs && electron-builder --config electron-builder.yml",
@@ -2517,7 +2517,7 @@ publish: null
     "electron-builder": "26.15.3",
 ```
 
-- [ ] **Step 4: `pnpm-workspace.yaml` の `allowBuilds` に `electron-winstaller` を足す**
+- [x] **Step 4: `pnpm-workspace.yaml` の `allowBuilds` に `electron-winstaller` を足す**
 
 electron-builder が NSIS のツール群を取りに行くためにビルドスクリプトを要る。
 
@@ -2540,7 +2540,7 @@ pnpm install
 Done in ...s using pnpm v11.2.2
 ```
 
-- [ ] **Step 5: パッケージを作る**
+- [x] **Step 5: パッケージを作る**
 
 実行:
 
@@ -2558,7 +2558,7 @@ pnpm --filter @ojt/desktop dist
 
 **既知の落とし穴（実機で確認済み）**: Windows on ARM のホストでは NSIS の `makensis.exe`（x86）の起動が `Error: read ENOTCONN` で失敗することがある。その場合でも `release/win-unpacked/` と ポータブル zip は生成されているので、**NSIS だけを x64 の Windows（またはCI）で作る**。x64 ホストでは両方とも通る。
 
-- [ ] **Step 6: ポータブル版が起動することを確かめる**
+- [x] **Step 6: ポータブル版が起動することを確かめる**
 
 実行:
 
@@ -2589,7 +2589,7 @@ OJT電気保全トレーナー
 8
 ```
 
-- [ ] **Step 7: コミットする**
+- [x] **Step 7: コミットする**
 
 追加・変更したファイル: `apps/desktop/electron-builder.yml` `apps/desktop/package.json` `apps/desktop/resources` `pnpm-workspace.yaml`
 
@@ -2644,19 +2644,44 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 | 4 | §15「NSISインストーラ と ポータブル版」 | ポータブルは `zip` ターゲット（`portable` ターゲットではない） | §15 の「zip展開のみで動作」をそのまま満たす。`portable` ターゲットは自己展開exeで一時フォルダに展開するため、オフライン運用の持ち運びには zip のほうが向く |
 | 5 | §8.4「2級は開いた回数を結果に表示する」 | 開閉はできるが回数は記録しない | 回数の記録先は `JudgeResult`（Plan 1C の型）で、Phase 1 の合否・結果画面の項目（§8.3）に含まれていない。Phase 2 で C2 のヒント制御を作るときに `JudgeOptions` へ足すのが自然 |
 
+### 実装で確定した公開API／構成（計画本文との差分）
+
+- `@ojt/content/loader` の `loadProblemsFromDir()` / `mergeProblemSets()` は main プロセスの `content-loader.ts` からだけ import する（1D1-b の分離を維持。renderer は §4.3 の6チャネル越しにしか課題を読まない）。
+- `settings:get` は `AppSettingsResponse extends AppSettings { warning?: string }` を返す。IPCチャネルは増えておらず6本のまま（`content:list` / `content:read` / `workfile:save` / `workfile:load` / `settings:get` / `settings:set`。`IPC_CHANNELS`）、設定ファイル破損の警告もこの戻り値に載せる。
+- `WorkFile { formatVersion, problemId, session, elapsedMs, hazardCount, savedAt }`。電線本数の上限は main 側 `MAX_WORK_FILE_WIRES` と renderer 側 `MAX_RESTORED_WIRES` のどちらも200、ファイルサイズ上限は `MAX_WORK_FILE_BYTES = 5 * 1024 * 1024`（`loadWorkFile()` が読む前に断る）。手動保存／読込は拡張子 `.ojtw` の `filters` で絞り、`work-files.ts` / `settings.ts` とも `writeFileAtomic()`（一時ファイル→`renameSync()`）で書く。
+- `store.ts` の `restoreProgress(elapsedMs, hazardCount)` が経過時間と危険操作の回数を復元し `startedAtMs` を巻き戻す。復元した危険操作は `restoredHazardCount` として持ち、判定結果に足して画面へ出す（合否には影響させない）。
+- `abandonSession()`（課題を捨てて一覧へ戻る。§13 #5 の2つ目の導線）と `restartAttempts`（`RESTART_FALLBACK_ATTEMPTS = 2` 回目で `sessionForProblem()` により盤を作り直す）。
+- `pendingWorkFile` と `App.tsx` の `data-testid="discard-confirm"` 確認欄。`work-file.ts` の `needsDiscardConfirm()` が真のときだけ `applyWorkFile()` は適用せず `setPendingWorkFile()` に積む。
+- `store.ts` の `schematicPolicy(grade: 1 | 2 | 3): { shown: boolean; toggleable: boolean }`（§8.4。3級=`{ shown: true, toggleable: false }` ／ 2級=`{ shown: false, toggleable: true }` ／ 1級=`{ shown: false, toggleable: false }`）。
+- `SoundPlayer`（`audio/sounds.ts` のインスタンス `sounds`）の `configure({ enabled, volume })` を、`App.tsx` の起動時 `useEffect`（`settings:get` の直後）と `Settings.tsx` の `patch()`（設定保存の直後）の両方から呼ぶ。
+- `content-loader.ts` の `CONTENT_CACHE_TTL_MS = 3000` と `DIR_PROBE_TIMEOUT_MS = 1000`、汎用の `withTimeout()`。`loadContent()` は `async` になり、`probeUserDir()` の結果と更新時刻を鍵に読込結果を1件だけ覚える。
+- `src/main/navigation.ts` の `isAppUrl(target, { rendererFile, devUrl })`（Electron に触らない純粋関数）。`index.ts` の `hardenWebContents()` が `setWindowOpenHandler` を常に `deny`、`will-navigate` をこの関数で判定し、`web-contents-created` で以後作られる `WebContents` にも及ぼす。`Menu.setApplicationMenu(null)` も同じ強化の一部。
+- `apps/desktop/scripts/copy-content.mjs`（`predist` と `dist` の先頭で実行）が `packages/content/src/builtin/assemble` を `resources/content/assemble` へ複写し、`test/content-resources.test.ts` が正本との完全一致を検査する。配布版は `content-loader.ts` の `builtinContentDir()`（`process.resourcesPath/content`）から同梱課題を読み、無ければ焼き込みの `BUILTIN_PROBLEMS` に落ちる。`electron-builder.yml` の `files` に `'!node_modules/**'` を追加した（`app.asar` 9.71→3.71MiB）。
+- `playwright.config.ts` は `retries: 1`。Vitest 側は `sim-worker.test.ts` / `spec-chart.test.ts` の2ファイルだけが `vi.setConfig({ testTimeout: 15_000 })` で個別に時間制限を延ばす。
+
+---
+
+## 追加タスク（レビュー指摘により追加）
+
+| タスク | 内容 | コミット |
+|---|---|---|
+| 1D2-a | 品質レビュー（Task 1〜6）とその追補（Task 7〜9）の指摘をまとめて直した。**例外からの復帰**（§13 #5）: 例外バナーに「課題一覧へ戻る」（`abandonSession()`）を足して盤ごと捨てて抜けられるようにし、`restartSession()` は `RESTART_FALLBACK_ATTEMPTS = 2` 回目で盤を作り直すフォールバックを持ち、`safeRoutes()` は `RoutingError` 以外の例外も1本ぶんの失敗として畳んで描画中に投げない。**復元**（§12.3）: `restoreProgress(elapsedMs, hazardCount)` が経過時間と危険操作の回数を戻し、`toSession()` が電線・装着・役割割当を要素まで検査して本数上限200本（`MAX_RESTORED_WIRES` / `MAX_WORK_FILE_WIRES`）を課し、main の読込にもファイルサイズ上限5MBを課した。**画面**（§8.4）: 回路図ヒントは部品パネルより後ろに描画して高さを320pxで頭打ちにし、音量つまみは確定（pointerup/keyup/blur）でだけ保存してトーストを出さないようにした。**Electron強化**（§1.2 / §13）: `Menu.setApplicationMenu(null)`・`setWindowOpenHandler` を常に `deny`・`will-navigate` を `src/main/navigation.ts` の純粋関数 `isAppUrl()` で判定するガードを `web-contents-created` で以後の `WebContents` にも適用。設定ファイルは BOM 除去・破損時に控えを残してから上書きし警告を `settings:get` に載せ（チャネルは6本のまま）、`loadContent()` を非同期化して1秒の制限時間つきフォルダ確認と読込結果のキャッシュ（`CONTENT_CACHE_TTL_MS`）を追加、ダイアログはウィンドウが無いとき単一引数のオーバーロードで呼び、Worker の `load` 失敗を致命扱いにして例外バナーへ、判定後は一時保存を消し、別課題の作業ファイルは `pendingWorkFile` ＋確認欄（`discard-confirm`）を経てから適用するようにした。**配布・文言**（§15）: main の文言を `src/shared/messages.ts` に集約し、`scripts/copy-content.mjs` を `predist`/`dist` の先頭で走らせて正本との一致をテストで固定し、配布版は `process.resourcesPath/content` から同梱課題を読み無ければ焼き込みに落とすフォールバックを追加、asar から `!node_modules/**` を除外した（`app.asar` 9.71→3.71MiB）。テスト 286 → 414（新規3ファイル）。react-hooks の lint 設定と `.prettierignore` の `test-results` 除外は 1D1-e／1D1-f で導入済みで、1D2 期間中の変更は無い。 | `2ddf349`, `0a744c2` |
+
 ---
 
 ## 完了条件
 
-- [ ] `pnpm --filter @ojt/desktop typecheck` が無出力で終わる
-- [ ] `pnpm lint` が無出力で終わる
-- [ ] `pnpm --filter @ojt/desktop test` が通る（1D2 完了時 21ファイル / 286テスト、
+- [x] `pnpm --filter @ojt/desktop typecheck` が無出力で終わる
+- [x] `pnpm lint` が無出力で終わる
+- [x] `pnpm --filter @ojt/desktop test` が通る（1D2 完了時 21ファイル / 286テスト、
       1D2-a の修正後 **25ファイル / 414テスト**）
-- [ ] `pnpm --filter @ojt/desktop e2e` の **4本**（スモーク1本＋仕上げ3本）が通る
-- [ ] `apps/desktop/screenshots/` に15枚のスクリーンショットが出る
-- [ ] `pnpm --filter @ojt/desktop dist` が `release/win-unpacked/` と ポータブル zip を作り、`release/win-unpacked/OJT電気保全トレーナー.exe` が起動してウィンドウタイトル「OJT電気保全トレーナー」を出す
-- [ ] `release/win-unpacked/resources/content/assemble/` に課題JSONが8件あり、配布版がそこから同梱課題を読む（1D2-a）
-- [ ] `pnpm -r test` が全パッケージで通る
+- [x] `pnpm --filter @ojt/desktop e2e` の **4本**（スモーク1本＋仕上げ3本）が通る
+- [x] `apps/desktop/screenshots/` に15枚のスクリーンショットが出る
+- [x] `pnpm --filter @ojt/desktop dist` が `release/win-unpacked/` と ポータブル zip を作り、`release/win-unpacked/OJT電気保全トレーナー.exe` が起動してウィンドウタイトル「OJT電気保全トレーナー」を出す
+- [x] `release/win-unpacked/resources/content/assemble/` に課題JSONが8件あり、配布版がそこから同梱課題を読む（1D2-a）
+- [x] `pnpm -r test` が全パッケージで通る
+
+2026-09-14 完了（1D2-a 反映後）: `apps/desktop` は `src`/`test`/`e2e`/`scripts` 合計101ファイル（`src` 70 = `main` 6 + `preload` 1 + `renderer` 58 + `shared` 2 + `worker` 3、`test` 25ファイル、`e2e` 3ファイル中スペックは2本、`scripts` 3ファイル）。単体テストは25ファイル / 414テスト、Playwright E2E は2スペック / 4テスト（`smoke.spec.ts` 1 + `polish.spec.ts` 3。実行 約25秒。`playwright.config.ts` は `retries: 1`、重い2ファイル `sim-worker.test.ts` / `spec-chart.test.ts` だけ `vi.setConfig({ testTimeout: 15_000 })`）。ルート全体 `pnpm -r test` は1007テスト（`circuit-sim` 178・`board-model` 154・`schematic-core` 64・`content` 197・`desktop` 414、5プロジェクト合計）。配布: NSIS `OJT電気保全トレーナー-0.1.0-x64.exe` ≈112MB（実測111,956,007バイト）、ポータブル zip ≈154MB（実測153,828,965バイト）、`app.asar` 3.9MB（実測3,886,129バイト）、`resources/content/assemble/` に課題JSON8件（配布版はここから同梱課題を読む）。最終コミット `0a744c2`（直前のコード変更は `2ddf349`）。レビュー: Sonnet による仕様レビューを3グループに分けて実施し全て ✅、Opus による品質レビュー（Task 1〜6）の指摘を追加タスク 1D2-a として反映（Task 7〜9への追補指摘も同じコミットで反映）。Phase 1 全体（1D1＋1D2）の受入基準（§16）に対する最終確認は別途実施中。スクリーンショット: `apps/desktop/screenshots/` に15枚（E2E生成、gitignore対象）。
 
 ---
 
@@ -2668,3 +2693,4 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 | 2026-09-14 | 実装された `@ojt/schematic-core`（Task 11〜16 / 13b・13c・13d）と `@ojt/board-model` の経路器（Task 9b・9c）に合わせて整合を取った。①Task 4 の読取専用レンダラを実装どおりの `Shape`（`kind` / `role` に `line` / `circle` / `arc` / `text` の項目が付く直和。`fill` は `circle` だけ、`startDeg` / `endDeg` は `arc` だけ、`text` / `anchor` は `text` だけ）と `SchematicLayout`（`width` / `height` / `shapes`）に合わせ、`DEFAULT_LAYOUT_OPTIONS`（`colWidth: 24` / `rowHeight: 24` / `marginX: 12` / `marginY: 16` / `symbolWidth: 12`）を明記した。タイマコイルの銘板が `T1 (3.0秒)` と長く既定の列幅では隣と重なるので、`layout(doc, { colWidth: 40 })` を渡すようにした（Task 7 に検査を追加）。②Task 13d で `Shape` に付いた `rungId?` / `cellId?` は Phase 2 のホバー連動で使うものとして注記し、Phase 1 は配列の添字で `key` を振る方針を明示した。③Task 6 の `Session.tsx` から、`routeWire()` が `RoutingError` を投げるようになって死にコードになっていた `crossesFootprint()` の分岐を外し、`safeRoutes()`（Plan 1D1 Task 12）で受け止めて理由を出す形に揃えた。文言も `routeBlocked` → `routeFailed` / `laneOverflow` / `routeReason` に差し替えた。④`work-file.ts` の `toSession()` が `@ojt/schematic-core` の `toSession(doc, board, options)`（`{ ok, session, assignment } \| { ok: false, errors }`）と同名の別物であることを注記した。テスト総数 115 → 119（Plan 1D1 Task 11 の増加ぶん） |
 | 2026-09-14 | Plan 1D1 Task 1D1-b（renderer が `@ojt/content` バレル経由で `node:fs` を引き込み `pnpm --filter @ojt/desktop dev` が落ちる不具合の修正）で `loadProblemsFromDir` / `mergeProblemSets` / `ProblemSet` を `@ojt/content` のルートバレルから `@ojt/content/loader`（新設の subpath export）に移した。Step 3 の `content-loader.ts` の import を `import { BUILTIN_PROBLEMS, type AssembleProblem } from '@ojt/content'; import { loadProblemsFromDir, mergeProblemSets, type ProblemSet } from '@ojt/content/loader';` に更新（関数・型の挙動は無変更）。`BUILTIN_PROBLEMS` / `AssembleProblem` は引き続きルートバレルから取る |
 | 2026-09-14 | 1D2-a: エラーバナーからの復帰経路、復元時の経過時間・危険操作の復元、作業ファイルの要素検証、ヒントの配置、Electron の強化（メニュー無効化・外部遷移拒否）、確認ダイアログ、スライダーの確定保存、設定ファイルの BOM/破損対応、課題一覧のキャッシュ、3級ヒント常時表示、文言集約、predist。あわせて Task 7〜9 のレビュー指摘2件（配布版の同梱課題を `resources/content` から読む＝§7.8 の読込経路、asar から `node_modules` を外して 9.71MiB → 3.71MiB）も取り込んだ。詳細は各 Task の「1D2-a での変更」節 |
+| 2026-09-14 | 実装完了。追加タスク 1D2-a を記録、完了条件を実績値に更新 |
