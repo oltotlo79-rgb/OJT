@@ -58,3 +58,27 @@ export function formatElapsed(ms: number): string {
   const seconds = (deciseconds % 600) / 10;
   return `${String(minutes).padStart(2, '0')}:${seconds.toFixed(1).padStart(4, '0')}`;
 }
+
+/** `formatSavedAt()` の表示体裁（`Intl.DateTimeFormat` の options）。 */
+const SAVED_AT_FORMAT: Intl.DateTimeFormatOptions = {
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+  hour12: false,
+};
+
+/**
+ * 一時保存の保存時刻（ISO 8601 / UTC）を、実行環境のローカル時刻で
+ * `2026/09/14 21:05` の形に整える（復元プロンプト表示用）。§12.3
+ *
+ * 生の ISO 文字列（`T`区切り・末尾`Z`）のまま出すと日本語ユーザーには読み取りづらく、
+ * UTCのままなのでローカル時刻とずれる。不正な値・空文字は空文字を返すので、
+ * 呼び出し側は時刻部分を省いた文言にフォールバックする。
+ */
+export function formatSavedAt(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return '';
+  return new Intl.DateTimeFormat('ja-JP', SAVED_AT_FORMAT).format(date);
+}

@@ -7,6 +7,7 @@ import { ErrorBoundary } from './ErrorBoundary.js';
 import { tryOjtApi } from './ojt-api.js';
 import { renderRoute } from './routes.js';
 import { useStore, type Route } from './store.js';
+import { formatSavedAt } from '../../worker/runtime.js';
 import styles from './app.module.css';
 
 /**
@@ -49,6 +50,9 @@ export function App(): JSX.Element {
   const pendingWorkFile = useStore((s) => s.pendingWorkFile);
   const problemId = useStore((s) => s.problem?.id);
   const [pendingRestore, setPendingRestore] = useState<WorkFile | undefined>(undefined);
+  /** 復元プロンプトの保存時刻（ローカル日時表記）。整形できなければ空文字（時刻無し表示）。 */
+  const restoreSavedAtLabel =
+    pendingRestore === undefined ? '' : formatSavedAt(pendingRestore.savedAt);
 
   /*
    * 課題を開いたら復元の確認欄は引っ込める（1D2-a のレビュー指摘）。
@@ -204,7 +208,9 @@ export function App(): JSX.Element {
       {pendingRestore === undefined ? null : (
         <div className={styles.restorePrompt} role="dialog" data-testid="restore-prompt">
           <span>
-            {JA.session.restoreTitle}（{pendingRestore.savedAt}）
+            {restoreSavedAtLabel === ''
+              ? JA.session.restoreTitle
+              : `${JA.session.restoreTitle}（${restoreSavedAtLabel}）`}
           </span>
           <button
             type="button"

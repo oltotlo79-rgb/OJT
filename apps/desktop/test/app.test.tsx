@@ -4,6 +4,7 @@ import { createElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from '../src/renderer/app/App.js';
 import { JA } from '../src/renderer/i18n/ja.js';
+import { formatSavedAt } from '../src/worker/runtime.js';
 import {
   DEFAULT_SETTINGS,
   type OjtApi,
@@ -247,7 +248,9 @@ describe('起動時の復元プロンプト（§12.3）', () => {
     render(<App />);
     const prompt = await screen.findByTestId('restore-prompt');
     expect(prompt.textContent).toContain(JA.session.restoreTitle);
-    expect(prompt.textContent).toContain(file.savedAt);
+    // 生のISO(UTC)文字列ではなく、ローカル日時表記（`T`/`Z`を含まない）で出す
+    expect(prompt.textContent).not.toContain(file.savedAt);
+    expect(prompt.textContent).toContain(formatSavedAt(file.savedAt));
   });
 
   it('設定で無効化していれば一時保存を確認しない', async () => {

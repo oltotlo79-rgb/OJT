@@ -1,6 +1,6 @@
 import { TICK_MS } from '@ojt/circuit-sim';
 import { describe, expect, it } from 'vitest';
-import { formatElapsed, planTicks } from '../src/worker/runtime.js';
+import { formatElapsed, formatSavedAt, planTicks } from '../src/worker/runtime.js';
 import { MAX_CATCHUP_TICKS } from '../src/worker/protocol.js';
 
 describe('planTicks', () => {
@@ -56,5 +56,22 @@ describe('formatElapsed', () => {
     expect(formatElapsed(3_599_999)).toBe('60:00.0');
     // 丸めの境目の手前は繰り上がらない
     expect(formatElapsed(59_940)).toBe('00:59.9');
+  });
+});
+
+describe('formatSavedAt', () => {
+  it('ISO(UTC)文字列をローカル日時表記に整える（`T`/`Z`を含まない）', () => {
+    const formatted = formatSavedAt('2026-09-14T09:00:00.000Z');
+    expect(formatted).not.toContain('T');
+    expect(formatted).not.toContain('Z');
+    expect(formatted).toMatch(/^\d{4}\/\d{2}\/\d{2} \d{2}:\d{2}$/);
+  });
+
+  it('不正な文字列なら空文字を返す（呼び出し側は時刻無しの文言にする）', () => {
+    expect(formatSavedAt('not-a-date')).toBe('');
+  });
+
+  it('空文字なら空文字を返す', () => {
+    expect(formatSavedAt('')).toBe('');
   });
 });
