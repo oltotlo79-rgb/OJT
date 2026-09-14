@@ -180,7 +180,6 @@ function BoardContents({
   const mode = useStore((s) => s.mode);
   const camera = useStore((s) => s.camera);
   const [controls, setControls] = useState<ControlsLike | null>(null);
-  const invalidate = useThree((state) => state.invalidate);
 
   const board = JIPM_BOARD;
   const { routes, errors: routeErrors } = useMemo(
@@ -279,7 +278,9 @@ function BoardContents({
             name={fixture.id}
             label={fixture.label}
             color={fixture.color}
+            kind={fixture.kind}
             terminals={fixture.terminals}
+            footprints={board.footprints}
           />
         ))}
         <FixedWires board={board} />
@@ -365,24 +366,31 @@ function BoardContents({
       </group>
 
       {/*
-        操作は左ドラッグ回転・右ドラッグ平行移動・ホイールズーム（§12.2）。
+        操作は左ドラッグ回転・右または中ドラッグ平行移動・ホイールズーム（§12.2）。
         `maxPolarAngle` で盤の裏側へ回り込まないようにし、注視点は盤の中心に固定する。
-        `frameloop="demand"` なので、カメラが動いたフレームだけ `onChange` で描画を要求する
-        （慣性を入れると常時再描画になり、§15 の性能方針と噛み合わないため damping は使わない）。
+        中ドラッグは `MOUSE.PAN`（ズームは別イベントのホイールが担うので、ドラッグの
+        割り当てを変えても `enableZoom` によるホイールズームには影響しない）。
+        慣性（ダンピング）あり（§12.2「慣性（ダンピング）あり」）。`frameloop="demand"` と
+        矛盾しない: drei の `OrbitControls` は内部の three-stdlib コントロールが発火する
+        `change` イベントのたびに自分で `invalidate()` を呼ぶ
+        （`node_modules/@react-three/drei/core/OrbitControls.js`）。減衰が進んでいる間は
+        毎フレームの `update()` が `change` を発火し続けて描画が続き、速度が閾値を下回って
+        `change` が止まれば `invalidate()` の呼び出しも止まって自然に描画が止まる
+        （ドラッグ／ホイール操作そのものも同じ仕組みで既に毎フレーム描画されていたので、
+        常時描画にはならない）。drei が自前で invalidate するため、ここでの
+        `onChange={() => invalidate()}` は不要（冗長）なので付けていない。
       */}
       <OrbitControls
         makeDefault
-        enableDamping={false}
+        enableDamping
+        dampingFactor={0.08}
         minDistance={MIN_CAMERA_DISTANCE_MM}
         maxDistance={MAX_CAMERA_DISTANCE_MM}
         maxPolarAngle={MAX_POLAR_ANGLE}
         mouseButtons={{
           LEFT: MOUSE.ROTATE,
-          MIDDLE: MOUSE.DOLLY,
+          MIDDLE: MOUSE.PAN,
           RIGHT: MOUSE.PAN,
-        }}
-        onChange={() => {
-          invalidate();
         }}
         ref={(instance) => {
           setControls(instance);

@@ -8,6 +8,7 @@ import {
   socketPinTerminal,
   socketRowExit,
   vec3,
+  type BoardTerminal,
 } from '@ojt/board-model';
 import { describe, expect, it } from 'vitest';
 import { scenePos, toScene } from '../src/renderer/three/coords.js';
@@ -16,10 +17,13 @@ import {
   boardToWorld,
   boardUp,
   cameraPose,
+  interpolatePose,
   SOCKET_ROW_CENTER_MM,
+  type CameraPose,
 } from '../src/renderer/three/camera.js';
 import { socketTerminalLabel } from '../src/renderer/three/Socket.js';
 import { mountedLabel } from '../src/renderer/three/MountedPart.js';
+import { findFixtureFootprint, fixtureTerminalMark } from '../src/renderer/three/Fixtures.js';
 import { secondsToMs } from '../src/renderer/panels/TimerDial.js';
 
 describe('toScene', () => {
@@ -99,6 +103,50 @@ describe('cameraPose', () => {
   });
 });
 
+describe('interpolatePose（視点プリセットとギズモの遷移で共有する補間）', () => {
+  const from: CameraPose = { position: [0, 100, 0], target: [0, 0, 0], up: [0, 1, 0] };
+  const to: CameraPose = { position: [50, 20, -30], target: [5, -5, 5], up: [0, 0, 1] };
+
+  it('t = 0 は from に一致する', () => {
+    expect(interpolatePose(from, to, 0)).toEqual(from);
+  });
+
+  it('t = 1 は to に一致する', () => {
+    expect(interpolatePose(from, to, 1)).toEqual(to);
+  });
+
+  it('t が増えるほど position・target・up の各成分が from → to の向きに単調に変化する', () => {
+    const samples = [0, 0.2, 0.4, 0.6, 0.8, 1].map((t) => interpolatePose(from, to, t));
+    const pickers: Array<(pose: CameraPose) => number> = [
+      (pose) => pose.position[0],
+      (pose) => pose.position[1],
+      (pose) => pose.position[2],
+      (pose) => pose.target[0],
+      (pose) => pose.target[1],
+      (pose) => pose.target[2],
+      (pose) => pose.up[0],
+      (pose) => pose.up[1],
+      (pose) => pose.up[2],
+    ];
+    for (const pick of pickers) {
+      const values = samples.map(pick);
+      const first = values[0];
+      const last = values.at(-1);
+      if (first === undefined || last === undefined) continue;
+      const direction = Math.sign(last - first);
+      for (let i = 1; i < values.length; i += 1) {
+        const prev = values[i - 1];
+        const next = values[i];
+        if (prev === undefined || next === undefined) continue;
+        const delta = next - prev;
+        if (direction === 0) expect(delta).toBeCloseTo(0, 9);
+        else if (direction > 0) expect(delta).toBeGreaterThanOrEqual(-1e-9);
+        else expect(delta).toBeLessThanOrEqual(1e-9);
+      }
+    }
+  });
+});
+
 describe('端子ラベル', () => {
   it('役割の印字は極性・接点種別の記号になる（§6.2）', () => {
     expect(roleLabel('coil+')).toBe('+');
@@ -131,6 +179,32 @@ describe('端子ラベル', () => {
 
   it('差込穴は2列×7段で中央に並ぶ（§6.2）', () => {
     expect(socketPinHoleOffsets()).toHaveLength(14);
+  });
+});
+
+describe('固定機器（PS/CB/SW）の外形と端子印字（§12.2 端子ラベル）', () => {
+  it('footprint は board.footprints から kind で引ける', () => {
+    expect(findFixtureFootprint(JIPM_BOARD.footprints, 'supply')?.id).toBe('supply');
+    expect(findFixtureFootprint(JIPM_BOARD.footprints, 'breaker')?.id).toBe('CB');
+    expect(findFixtureFootprint(JIPM_BOARD.footprints, 'switch')?.id).toBe('SW');
+  });
+
+  it('一致する footprint が無ければ undefined', () => {
+    expect(findFixtureFootprint([], 'supply')).toBeUndefined();
+  });
+
+  it('端子の印字は label から機器プレフィックスを除いた文字列になる', () => {
+    const byLabel = (label: string): BoardTerminal => {
+      const terminal = JIPM_BOARD.terminals.find((t) => t.label === label);
+      if (terminal === undefined) throw new Error(`fixture terminal not found: ${label}`);
+      return terminal;
+    };
+    expect(fixtureTerminalMark(byLabel('PS +24V'))).toBe('+24V');
+    expect(fixtureTerminalMark(byLabel('PS 0V'))).toBe('0V');
+    expect(fixtureTerminalMark(byLabel('CB 1'))).toBe('1');
+    expect(fixtureTerminalMark(byLabel('CB 2'))).toBe('2');
+    expect(fixtureTerminalMark(byLabel('SW 1'))).toBe('1');
+    expect(fixtureTerminalMark(byLabel('SW 2'))).toBe('2');
   });
 });
 

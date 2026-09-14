@@ -20,8 +20,14 @@ export const SOCKET_ROW_CENTER_MM = ((): number => {
 
 /**
  * 盤グループの X 軸回転量[rad]。
- * 盤面ローカル（+Z が盤面の法線、+Y が盤の手前方向）を机の上に寝かせ、
+ * 盤面ローカル（+Z が盤面の法線、+Y が盤の奥方向）を机の上に寝かせ、
  * 筐体の傾斜角ぶんだけ手前を下げる。`-90°` で完全に水平、`slopeDeg` ぶん戻して傾斜コンソールにする。
+ *
+ * 「+Y が奥」の根拠: この関数や `boardToWorld` 全般が受け取るのは `toScene()` の結果空間で、
+ * `toScene()` は盤モデルの y（0 = 奥のソケット側、BOARD_HEIGHT_MM = 手前の PL/PB 側）を
+ * `-(v.y - BOARD_HEIGHT_MM / 2)` で反転する。したがってこの空間の +Y は盤モデルの y が
+ * 小さくなる向き＝奥へ向かう（盤モデルの y 自体は手前が大きい）。
+ * `scene.test.ts`「盤の奥（盤ローカル +Y）は画面の奥へ倒れる」で検証している。
  */
 export const BOARD_TILT_RAD = -(Math.PI / 2 - (JIPM_BOARD.console.slopeDeg * Math.PI) / 180);
 
@@ -80,4 +86,38 @@ export function cameraPose(preset: CameraPreset): CameraPose {
         up: boardUp(),
       };
   }
+}
+
+/** `t`∈[0,1] を ease-out（3次）に変換する。速く動き出し、減速しながら止まる。 */
+function easeOutCubic(t: number): number {
+  const clamped = Math.min(1, Math.max(0, t));
+  return 1 - (1 - clamped) ** 3;
+}
+
+/** 3要素タプルの線形補間。 */
+function lerp3(
+  from: readonly [number, number, number],
+  to: readonly [number, number, number],
+  t: number,
+): [number, number, number] {
+  return [
+    from[0] + (to[0] - from[0]) * t,
+    from[1] + (to[1] - from[1]) * t,
+    from[2] + (to[2] - from[2]) * t,
+  ];
+}
+
+/**
+ * 2つの視点を ease-out で補間する純粋関数。§12.2「視点プリセットとギズモのスナップは
+ * 同じ短い補間で遷移」。`t = 0` で `from` に、`t = 1` で `to` に一致し、その間は各成分が
+ * 単調に変化する（イージングは内部で完結するので、呼び出し側は経過時間から求めた
+ * 線形の `t`（0→1）を渡すだけでよい）。`CameraPresets` が `useFrame` から毎フレーム呼ぶ。
+ */
+export function interpolatePose(from: CameraPose, to: CameraPose, t: number): CameraPose {
+  const eased = easeOutCubic(t);
+  return {
+    position: lerp3(from.position, to.position, eased),
+    target: lerp3(from.target, to.target, eased),
+    up: lerp3(from.up, to.up, eased),
+  };
 }
