@@ -44,8 +44,16 @@ export const TIMER_RANGES: readonly TimerRange[] = [TIMER_RANGE_10S, TIMER_RANGE
 /** 既定のタイマレンジ。§5.3.2 */
 export const DEFAULT_TIMER_RANGE: TimerRange = TIMER_RANGE_10S;
 
-/** タイマ設定の既定値[ms]。 */
-export const DEFAULT_TIMER_PRESET_MS = 3000;
+/**
+ * タイマ設定の既定値[ms]（新規装着時にダイヤルへ入る値）。
+ *
+ * 意図的に `DEFAULT_TIMER_RANGE`（0〜10秒レンジ・0.1秒刻み）で選べる最小値にしてある
+ * （`snapPresetToStep()` の下限 = `max(TIMER_MIN_PRESET_MS, range.stepMs)` = 100ms）。
+ * どの内蔵課題の設定時間とも一致しない値にすることで、訓練者がダイヤルへ一切触れなくても
+ * 課題に合格してしまう抜け穴を防ぐ（Phase 1 受け入れレビュー指摘）。内蔵課題を追加するときは
+ * `packages/content/test/builtin-timer-preset.test.ts` がこの既定値との重複を検出する。
+ */
+export const DEFAULT_TIMER_PRESET_MS = 100;
 
 /** カタログ1件。 */
 export interface CatalogEntry {

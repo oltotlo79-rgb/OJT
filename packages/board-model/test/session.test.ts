@@ -169,7 +169,8 @@ describe('session: 装着と配線', () => {
 
   it('タイマ設定はレンジの分解能に丸める（§5.3.2 / §8.2）', () => {
     const s = createSession(board, { roles: TASK2_SOCKET_ROLES });
-    expect(plug(s, 'S5', 'timer-h3y4').ok).toBe(true);
+    // このテストは setPreset() の丸めを見るためのもの（既定値のテストではないので明示指定にしてある）
+    expect(plug(s, 'S5', 'timer-h3y4', { presetMs: 3000 }).ok).toBe(true);
     expect(s.mounted.S5).toEqual({ kind: 'timer-h3y4', presetMs: 3000, rangeMaxMs: 10_000 });
     const updated = setPreset(s, 'S5', 5040);
     if (!updated.ok) throw new Error(updated.message);

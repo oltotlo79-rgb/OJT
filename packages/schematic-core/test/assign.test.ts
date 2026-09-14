@@ -576,7 +576,7 @@ describe('assign: 回路図 → 物理割当（§11.3）', () => {
     ]);
     const result = assigned(assignToBoard(doc));
     expect(result.parts).toEqual([
-      { socket: 'S5', role: 'T1', kind: 'timer-h3y4', presetMs: 3000, rangeMaxMs: 10_000 },
+      { socket: 'S5', role: 'T1', kind: 'timer-h3y4', presetMs: 100, rangeMaxMs: 10_000 },
     ]);
   });
 });

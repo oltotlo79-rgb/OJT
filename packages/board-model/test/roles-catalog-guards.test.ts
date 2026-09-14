@@ -116,7 +116,9 @@ describe('catalog: 種別・レンジ・丸めのガード（§5.3.2 / §6.6）'
       { kind: 'relay-my4n', count: 4 },
       { kind: 'timer-h3y4', count: 2 },
     ]);
-    expect(DEFAULT_TIMER_PRESET_MS).toBe(3000);
+    // 既定値は「レンジで選べる最小値」にしてあり、どの内蔵課題の設定時間とも重ならない
+    // （§5.3.2 / Phase 1 受け入れレビュー指摘。packages/content/test/builtin-timer-preset.test.ts）
+    expect(DEFAULT_TIMER_PRESET_MS).toBe(100);
   });
 });
 
@@ -128,7 +130,9 @@ describe('session: 不正な設定値・未割当役割の端子は例外にし�
     expect(bad.code).toBe('invalid-preset');
     expect(s.mounted.S5).toBeUndefined();
 
-    expect(plug(s, 'S5', 'timer-h3y4').ok).toBe(true);
+    // ここでの3000msは「不正な再設定が既存の装着状態を壊さない」ことを見るための
+    // 任意の初期値（既定値のテストではないので明示指定にしてある）
+    expect(plug(s, 'S5', 'timer-h3y4', { presetMs: 3000 }).ok).toBe(true);
     const badSet = setPreset(s, 'S5', Number.POSITIVE_INFINITY);
     if (badSet.ok) throw new Error('unreachable');
     expect(badSet.code).toBe('invalid-preset');
