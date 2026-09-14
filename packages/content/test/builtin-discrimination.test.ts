@@ -4,6 +4,7 @@ import { findBuiltinProblem } from '../src/builtin/index.js';
 import { judgeAssemble, judgeReference } from '../src/judge.js';
 import { buildReferenceSession } from '../src/reference.js';
 import type { AssembleProblem } from '../src/schema/assemble.js';
+import { isAssembleProblem } from '../src/schema/index.js';
 import type { TimeChart } from '../src/timechart.js';
 import { parseOrThrow } from './helpers/problems.js';
 
@@ -20,7 +21,8 @@ import { parseOrThrow } from './helpers/problems.js';
 /** 内蔵課題を取り出す（見つからなければテストを落とす）。 */
 function builtin(id: string): AssembleProblem {
   const problem = findBuiltinProblem(id);
-  if (problem === undefined) throw new Error(`内蔵課題 ${id} がありません`);
+  if (problem === undefined || !isAssembleProblem(problem))
+    throw new Error(`内蔵課題 ${id} がありません`);
   return problem;
 }
 

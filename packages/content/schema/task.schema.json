@@ -548,8 +548,836 @@
         },
         "mode": {
           "type": "string",
-          "enum": ["inspect-parts", "inspect-repair", "plc"],
-          "description": "課題モード。Phase 1 では開始できないモード。"
+          "const": "inspect-parts",
+          "description": "課題モード。部品点検は `inspect-parts`。"
+        },
+        "parts": {
+          "minItems": 2,
+          "maxItems": 8,
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "description": "部品の識別子（課題の中で一意）。マークシートの行になります。"
+              },
+              "kind": {
+                "type": "string",
+                "enum": ["relay-my4n", "timer-h3y4"],
+                "description": "部品種別（リレーかタイマ）。"
+              },
+              "truth": {
+                "type": "string",
+                "enum": [
+                  "normal",
+                  "coil-open",
+                  "coil-layer-short",
+                  "a-open",
+                  "a-weld",
+                  "b-open",
+                  "b-weld"
+                ],
+                "description": "その部品の本当の状態。訓練者の解答と突き合わせます。"
+              },
+              "ratio": {
+                "description": "レアショートのコイル抵抗の低下率（省略すると 0.65）。",
+                "type": "number",
+                "minimum": 0.4,
+                "maximum": 0.85
+              },
+              "group": {
+                "description": "接点の不良を入れる組（1〜4）。省略すると課題の seed と部品IDから決めます。",
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 4
+              }
+            },
+            "required": ["id", "kind", "truth"],
+            "additionalProperties": false
+          },
+          "description": "トレイに並ぶ部品（2〜8個）。正常と不良を混ぜます。"
+        },
+        "seed": {
+          "default": 0,
+          "description": "接点の不良をどの組に入れるかを決める種。同じ種からは必ず同じ組になります。",
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        }
+      },
+      "required": [
+        "formatVersion",
+        "id",
+        "title",
+        "grade",
+        "description",
+        "timeLimit",
+        "board",
+        "inventory",
+        "mode",
+        "parts"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "formatVersion": {
+          "type": "number",
+          "const": 1
+        },
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+          "description": "課題ID。課題フォルダの中で一意にします。"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "description": "課題一覧に出す課題名。"
+        },
+        "grade": {
+          "type": "number",
+          "enum": [1, 2, 3],
+          "description": "想定級（3級・2級・1級）。ヒントの出し方を決めます。"
+        },
+        "description": {
+          "type": "string",
+          "description": "訓練者に示す課題文。"
+        },
+        "timeLimit": {
+          "type": "object",
+          "properties": {
+            "standardMin": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 600
+            },
+            "cutoffMin": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 600
+            }
+          },
+          "required": ["standardMin", "cutoffMin"],
+          "additionalProperties": false,
+          "description": "標準時間と打切り時間（分）。"
+        },
+        "board": {
+          "type": "object",
+          "properties": {
+            "boardId": {
+              "type": "string",
+              "minLength": 1
+            },
+            "socketRoles": {
+              "type": "object",
+              "properties": {
+                "S1": {
+                  "type": "string",
+                  "enum": ["CR1", "CR2", "CR3", "CR4", "T1", "T2", "CHK"]
+                },
+                "S2": {
+                  "type": "string",
+                  "enum": ["CR1", "CR2", "CR3", "CR4", "T1", "T2", "CHK"]
+                },
+                "S3": {
+                  "type": "string",
+                  "enum": ["CR1", "CR2", "CR3", "CR4", "T1", "T2", "CHK"]
+                },
+                "S4": {
+                  "type": "string",
+                  "enum": ["CR1", "CR2", "CR3", "CR4", "T1", "T2", "CHK"]
+                },
+                "S5": {
+                  "type": "string",
+                  "enum": ["CR1", "CR2", "CR3", "CR4", "T1", "T2", "CHK"]
+                },
+                "S6": {
+                  "type": "string",
+                  "enum": ["CR1", "CR2", "CR3", "CR4", "T1", "T2", "CHK"]
+                },
+                "S7": {
+                  "type": "string",
+                  "enum": ["CR1", "CR2", "CR3", "CR4", "T1", "T2", "CHK"]
+                },
+                "S8": {
+                  "type": "string",
+                  "enum": ["CR1", "CR2", "CR3", "CR4", "T1", "T2", "CHK"]
+                }
+              },
+              "additionalProperties": false
+            },
+            "extraParts": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": ["BZ"]
+              }
+            }
+          },
+          "required": ["boardId", "socketRoles"],
+          "additionalProperties": false,
+          "description": "使う盤とソケットの役割割当。"
+        },
+        "inventory": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": ["relay-my4n", "timer-h3y4"]
+              },
+              "count": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 8
+              }
+            },
+            "required": ["kind", "count"],
+            "additionalProperties": false
+          },
+          "description": "訓練者が使える部品の在庫（種別ごとの個数）。"
+        },
+        "mode": {
+          "type": "string",
+          "const": "inspect-repair",
+          "description": "課題モード。回路点検・修復は `inspect-repair`。"
+        },
+        "schematic": {
+          "type": "object",
+          "properties": {
+            "formatVersion": {
+              "type": "number",
+              "const": 1
+            },
+            "id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "title": {
+              "type": "string",
+              "minLength": 1
+            },
+            "orientation": {
+              "type": "string",
+              "const": "horizontal"
+            },
+            "rungs": {
+              "minItems": 1,
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "from": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "bus": {
+                            "type": "string",
+                            "enum": ["P", "N"]
+                          }
+                        },
+                        "required": ["bus"],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "rung": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "node": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 9007199254740991
+                          }
+                        },
+                        "required": ["rung", "node"],
+                        "additionalProperties": false
+                      }
+                    ]
+                  },
+                  "to": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "bus": {
+                            "type": "string",
+                            "enum": ["P", "N"]
+                          }
+                        },
+                        "required": ["bus"],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "rung": {
+                            "type": "string",
+                            "minLength": 1
+                          },
+                          "node": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 9007199254740991
+                          }
+                        },
+                        "required": ["rung", "node"],
+                        "additionalProperties": false
+                      }
+                    ]
+                  },
+                  "cells": {
+                    "minItems": 1,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "type": "string",
+                          "enum": [
+                            "pb-a",
+                            "pb-b",
+                            "cr-a",
+                            "cr-b",
+                            "t-a",
+                            "t-b",
+                            "coil",
+                            "lamp",
+                            "buzzer"
+                          ]
+                        },
+                        "id": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "device": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "presetMs": {
+                          "type": "integer",
+                          "minimum": 100,
+                          "maximum": 60000
+                        }
+                      },
+                      "required": ["kind", "id", "device"],
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "required": ["id", "from", "to", "cells"],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": ["formatVersion", "id", "title", "orientation", "rungs"],
+          "additionalProperties": false,
+          "description": "基準になる回路（正解）。ここから初期配線を作り、faults を注入します。"
+        },
+        "physicalOverride": {
+          "description": "回路図の要素IDごとに、割り当てる物理端子2つを指定して既定の割当を上書きします。",
+          "type": "object",
+          "propertyNames": {
+            "type": "string",
+            "minLength": 1
+          },
+          "additionalProperties": {
+            "type": "array",
+            "prefixItems": [
+              {
+                "type": "string",
+                "pattern": "^[^.:]+\\.[^:]+$"
+              },
+              {
+                "type": "string",
+                "pattern": "^[^.:]+\\.[^:]+$"
+              }
+            ],
+            "items": false,
+            "minItems": 2,
+            "maxItems": 2
+          }
+        },
+        "faults": {
+          "anyOf": [
+            {
+              "minItems": 1,
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "target": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "wireId": {
+                            "type": "string",
+                            "minLength": 1,
+                            "description": "故障を入れる電線のID（課題の模範回路が生成する `sw-NNN`）。"
+                          }
+                        },
+                        "required": ["wireId"],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "partId": {
+                            "type": "string",
+                            "minLength": 1,
+                            "description": "故障を入れる部品のID（`CR1` / `T1` / `PL1` など）。"
+                          },
+                          "elementIndex": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 63,
+                            "description": "部品の要素番号。ソケットは 0=コイル、組kのb接点=2k−1、a接点=2k。"
+                          }
+                        },
+                        "required": ["partId", "elementIndex"],
+                        "additionalProperties": false
+                      }
+                    ],
+                    "description": "故障を入れる場所（電線か、部品の要素）。"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "wire-open",
+                      "wire-missing",
+                      "wire-misrouted",
+                      "contact-open",
+                      "contact-welded",
+                      "contact-resistive",
+                      "coil-open",
+                      "coil-layer-short",
+                      "lamp-open"
+                    ],
+                    "description": "故障の種別。"
+                  },
+                  "ohms": {
+                    "description": "`contact-resistive` の直列抵抗[Ω]。省略すると 500Ω。",
+                    "type": "number",
+                    "exclusiveMinimum": 0,
+                    "maximum": 1000000
+                  },
+                  "ratio": {
+                    "description": "`coil-layer-short` のコイル抵抗の低下率。省略すると 0.65。",
+                    "type": "number",
+                    "minimum": 0.4,
+                    "maximum": 0.85
+                  },
+                  "to": {
+                    "description": "`wire-misrouted` で片端を付け替える先の端子ID。",
+                    "type": "string",
+                    "pattern": "^[^.:]+\\.[^:]+$"
+                  }
+                },
+                "required": ["target", "kind"],
+                "additionalProperties": false
+              }
+            },
+            {
+              "type": "object",
+              "properties": {
+                "random": {
+                  "type": "object",
+                  "properties": {
+                    "count": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 8,
+                      "description": "注入する故障の数。"
+                    },
+                    "types": {
+                      "minItems": 1,
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "enum": [
+                          "wire-open",
+                          "wire-missing",
+                          "wire-misrouted",
+                          "contact-open",
+                          "contact-welded",
+                          "contact-resistive",
+                          "coil-open",
+                          "coil-layer-short",
+                          "lamp-open"
+                        ]
+                      },
+                      "description": "選んでよい故障の種別。"
+                    },
+                    "seed": {
+                      "description": "省略すると課題開始ごとに新しい乱数を使います。",
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "fallback": {
+                      "minItems": 1,
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "target": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "wireId": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "description": "故障を入れる電線のID（課題の模範回路が生成する `sw-NNN`）。"
+                                  }
+                                },
+                                "required": ["wireId"],
+                                "additionalProperties": false
+                              },
+                              {
+                                "type": "object",
+                                "properties": {
+                                  "partId": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "description": "故障を入れる部品のID（`CR1` / `T1` / `PL1` など）。"
+                                  },
+                                  "elementIndex": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 63,
+                                    "description": "部品の要素番号。ソケットは 0=コイル、組kのb接点=2k−1、a接点=2k。"
+                                  }
+                                },
+                                "required": ["partId", "elementIndex"],
+                                "additionalProperties": false
+                              }
+                            ],
+                            "description": "故障を入れる場所（電線か、部品の要素）。"
+                          },
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "wire-open",
+                              "wire-missing",
+                              "wire-misrouted",
+                              "contact-open",
+                              "contact-welded",
+                              "contact-resistive",
+                              "coil-open",
+                              "coil-layer-short",
+                              "lamp-open"
+                            ],
+                            "description": "故障の種別。"
+                          },
+                          "ohms": {
+                            "description": "`contact-resistive` の直列抵抗[Ω]。省略すると 500Ω。",
+                            "type": "number",
+                            "exclusiveMinimum": 0,
+                            "maximum": 1000000
+                          },
+                          "ratio": {
+                            "description": "`coil-layer-short` のコイル抵抗の低下率。省略すると 0.65。",
+                            "type": "number",
+                            "minimum": 0.4,
+                            "maximum": 0.85
+                          },
+                          "to": {
+                            "description": "`wire-misrouted` で片端を付け替える先の端子ID。",
+                            "type": "string",
+                            "pattern": "^[^.:]+\\.[^:]+$"
+                          }
+                        },
+                        "required": ["target", "kind"],
+                        "additionalProperties": false
+                      },
+                      "description": "引き直しの上限に達したときに使う明示リスト（要素数は count と同じ）。"
+                    }
+                  },
+                  "required": ["count", "types", "fallback"],
+                  "additionalProperties": false
+                }
+              },
+              "required": ["random"],
+              "additionalProperties": false
+            }
+          ],
+          "description": "注入する故障（明示リストまたはランダム指定）。"
+        },
+        "operations": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "t": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "target": {
+                "type": "string",
+                "enum": ["PB1", "PB2", "PB3", "PB4"]
+              },
+              "action": {
+                "type": "string",
+                "enum": ["press", "release"]
+              }
+            },
+            "required": ["t", "target", "action"],
+            "additionalProperties": false
+          },
+          "description": "判定で再生する押ボタン操作列（`t` は判定開始からのミリ秒で非減少）。"
+        },
+        "durationMs": {
+          "type": "integer",
+          "minimum": 10,
+          "maximum": 600000,
+          "description": "判定区間の長さ[ms]。タイムチャートの横軸長でもあります。"
+        },
+        "judge": {
+          "type": "object",
+          "properties": {
+            "compareSignals": {
+              "minItems": 1,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "tolerance": {
+              "default": {
+                "edgeMs": 200,
+                "ratio": 0.1
+              },
+              "type": "object",
+              "properties": {
+                "edgeMs": {
+                  "default": 200,
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 10000
+                },
+                "ratio": {
+                  "default": 0.1,
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                }
+              },
+              "additionalProperties": false
+            },
+            "staticChecks": {
+              "default": {
+                "wireColorRule": true,
+                "terminalLimit": true,
+                "unusedParts": true,
+                "forbiddenCircuit": true,
+                "coilPolarity": true,
+                "powerSequence": true
+              },
+              "type": "object",
+              "properties": {
+                "wireColorRule": {
+                  "default": true,
+                  "type": "boolean"
+                },
+                "terminalLimit": {
+                  "default": true,
+                  "type": "boolean"
+                },
+                "unusedParts": {
+                  "default": true,
+                  "type": "boolean"
+                },
+                "forbiddenCircuit": {
+                  "default": true,
+                  "type": "boolean"
+                },
+                "coilPolarity": {
+                  "default": true,
+                  "type": "boolean"
+                },
+                "powerSequence": {
+                  "default": true,
+                  "type": "boolean"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false,
+          "description": "比較する信号・許容差・静的チェックの設定。"
+        },
+        "hints": {
+          "type": "object",
+          "properties": {
+            "schematicVisible": {
+              "type": "boolean"
+            }
+          },
+          "required": ["schematicVisible"],
+          "additionalProperties": false,
+          "description": "回路図を提示するか（2級形式は true、1級形式は false）。"
+        }
+      },
+      "required": [
+        "formatVersion",
+        "id",
+        "title",
+        "grade",
+        "description",
+        "timeLimit",
+        "board",
+        "inventory",
+        "mode",
+        "schematic",
+        "faults",
+        "operations",
+        "durationMs",
+        "judge",
+        "hints"
+      ],
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "properties": {
+        "formatVersion": {
+          "type": "number",
+          "const": 1
+        },
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+          "description": "課題ID。課題フォルダの中で一意にします。"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "description": "課題一覧に出す課題名。"
+        },
+        "grade": {
+          "type": "number",
+          "enum": [1, 2, 3],
+          "description": "想定級（3級・2級・1級）。ヒントの出し方を決めます。"
+        },
+        "description": {
+          "type": "string",
+          "description": "訓練者に示す課題文。"
+        },
+        "timeLimit": {
+          "type": "object",
+          "properties": {
+            "standardMin": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 600
+            },
+            "cutoffMin": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 600
+            }
+          },
+          "required": ["standardMin", "cutoffMin"],
+          "additionalProperties": false,
+          "description": "標準時間と打切り時間（分）。"
+        },
+        "board": {
+          "type": "object",
+          "properties": {
+            "boardId": {
+              "type": "string",
+              "minLength": 1
+            },
+            "socketRoles": {
+              "type": "object",
+              "properties": {
+                "S1": {
+                  "type": "string",
+                  "enum": ["CR1", "CR2", "CR3", "CR4", "T1", "T2", "CHK"]
+                },
+                "S2": {
+                  "type": "string",
+                  "enum": ["CR1", "CR2", "CR3", "CR4", "T1", "T2", "CHK"]
+                },
+                "S3": {
+                  "type": "string",
+                  "enum": ["CR1", "CR2", "CR3", "CR4", "T1", "T2", "CHK"]
+                },
+                "S4": {
+                  "type": "string",
+                  "enum": ["CR1", "CR2", "CR3", "CR4", "T1", "T2", "CHK"]
+                },
+                "S5": {
+                  "type": "string",
+                  "enum": ["CR1", "CR2", "CR3", "CR4", "T1", "T2", "CHK"]
+                },
+                "S6": {
+                  "type": "string",
+                  "enum": ["CR1", "CR2", "CR3", "CR4", "T1", "T2", "CHK"]
+                },
+                "S7": {
+                  "type": "string",
+                  "enum": ["CR1", "CR2", "CR3", "CR4", "T1", "T2", "CHK"]
+                },
+                "S8": {
+                  "type": "string",
+                  "enum": ["CR1", "CR2", "CR3", "CR4", "T1", "T2", "CHK"]
+                }
+              },
+              "additionalProperties": false
+            },
+            "extraParts": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": ["BZ"]
+              }
+            }
+          },
+          "required": ["boardId", "socketRoles"],
+          "additionalProperties": false,
+          "description": "使う盤とソケットの役割割当。"
+        },
+        "inventory": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": ["relay-my4n", "timer-h3y4"]
+              },
+              "count": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 8
+              }
+            },
+            "required": ["kind", "count"],
+            "additionalProperties": false
+          },
+          "description": "訓練者が使える部品の在庫（種別ごとの個数）。"
+        },
+        "mode": {
+          "type": "string",
+          "enum": ["plc"],
+          "description": "課題モード。まだ開始できないモード（PLCは Phase 3）。"
         }
       },
       "required": [

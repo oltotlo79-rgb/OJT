@@ -1,7 +1,14 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { parseProblem, problemJsonSchema } from '../src/schema/index.js';
+import {
+  isAssembleProblem,
+  isInspectPartsProblem,
+  isInspectRepairProblem,
+  parseProblem,
+  problemJsonSchema,
+} from '../src/schema/index.js';
+import { inspectPartsProblemJson, inspectRepairProblemJson } from './helpers/inspect.js';
 import { selfHoldProblemJson } from './helpers/problems.js';
 
 describe('parseProblem', () => {
@@ -25,15 +32,14 @@ describe('parseProblem', () => {
   it('reports an unsupported mode instead of a schema error (§16)', () => {
     const result = parseProblem({
       ...selfHoldProblemJson(),
-      id: 'c-001',
-      mode: 'inspect-parts',
-      parts: [{ id: 'p1', kind: 'relay-my4n', truth: 'normal' }],
+      id: 'd-001',
+      mode: 'plc',
     });
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.reason).toBe('unsupported-mode');
-    expect(result.mode).toBe('inspect-parts');
-    expect(result.id).toBe('c-001');
+    expect(result.mode).toBe('plc');
+    expect(result.id).toBe('d-001');
     expect(result.issues).toEqual([]);
   });
 
@@ -47,7 +53,7 @@ describe('parseProblem', () => {
   });
 
   it('leaves the id out when an unsupported mode problem has none', () => {
-    const result = parseProblem({ mode: 'inspect-repair' });
+    const result = parseProblem({ mode: 'plc' });
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.reason).toBe('unsupported-mode');
@@ -62,6 +68,37 @@ describe('parseProblem', () => {
     expect(result.issues[0]?.path).toBe('(root)');
     expect(result.id).toBeUndefined();
     expect(result.mode).toBeUndefined();
+  });
+
+  it('parses a mode C1 problem (§7.5)', () => {
+    const result = parseProblem(inspectPartsProblemJson());
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.problem.mode).toBe('inspect-parts');
+    expect(isInspectPartsProblem(result.problem)).toBe(true);
+    expect(isAssembleProblem(result.problem)).toBe(false);
+  });
+
+  it('parses a mode C2 problem (§7.5)', () => {
+    const result = parseProblem(inspectRepairProblemJson());
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.problem.mode).toBe('inspect-repair');
+    expect(isInspectRepairProblem(result.problem)).toBe(true);
+  });
+
+  it('reports a C1 schema violation against the C1 schema, not the assemble one', () => {
+    const json = inspectPartsProblemJson();
+    json['parts'] = [
+      { id: 'p1', kind: 'timer-h3y4', truth: 'coil-layer-short' },
+      { id: 'p2', kind: 'relay-my4n', truth: 'normal' },
+    ];
+    const result = parseProblem(json);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.reason).toBe('schema');
+    expect(result.mode).toBe('inspect-parts');
+    expect(result.issues.some((i) => i.path === 'parts[0].truth')).toBe(true);
   });
 });
 
@@ -175,8 +212,10 @@ describe('problemJsonSchema', () => {
     const schema = problemJsonSchema();
     expect(schema.$schema).toBe('https://json-schema.org/draft/2020-12/schema');
     expect(schema).toHaveProperty('oneOf');
+    expect((schema.oneOf as unknown[]).length).toBe(4);
     const text = JSON.stringify(schema);
     expect(text).toContain('inspect-repair');
+    expect(text).toContain('inspect-parts');
     expect(text).toContain('socketRoles');
   });
 

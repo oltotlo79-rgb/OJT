@@ -1,5 +1,4 @@
-import type { AssembleProblem } from './schema/assemble.js';
-import type { ProblemFailureReason, ProblemIssue } from './schema/index.js';
+import type { ProblemFailureReason, ProblemIssue, SupportedProblem } from './schema/index.js';
 
 /**
  * 課題フォルダの読込結果の型。設計仕様 §7.8 / §13 #1。
@@ -23,6 +22,7 @@ export interface ProblemLoadError {
 
 /** 読込結果。§7.8 */
 export interface ProblemSet {
-  problems: AssembleProblem[];
+  /** 開始できるモードの課題（モードB／C1／C2）。 */
+  problems: SupportedProblem[];
   errors: ProblemLoadError[];
 }

@@ -6,6 +6,8 @@ import {
   UNSUPPORTED_MODES,
   type ProblemMode,
 } from './common.js';
+import { InspectPartsProblemSchema, type InspectPartsProblem } from './inspect-parts.js';
+import { InspectRepairProblemSchema, type InspectRepairProblem } from './inspect-repair.js';
 
 /**
  * 課題スキーマの入口。設計仕様 §7 / §13 #1。
@@ -26,10 +28,10 @@ import {
  */
 z.config(z.locales.ja());
 
-/** Phase 1 では本体を定義しないモードのヘッダ。本体フィールドはそのまま保持する。 */
+/** まだ本体を定義していないモードのヘッダ。本体フィールドはそのまま保持する。 */
 export const UnsupportedProblemSchema = z.looseObject({
   ...ProblemHeaderShape,
-  mode: z.enum(UNSUPPORTED_MODES).describe('課題モード。Phase 1 では開始できないモード。'),
+  mode: z.enum(UNSUPPORTED_MODES).describe('課題モード。まだ開始できないモード（PLCは Phase 3）。'),
 });
 
 /** 未対応モードの課題（ヘッダのみ）。 */
@@ -38,11 +40,31 @@ export type UnsupportedProblem = z.infer<typeof UnsupportedProblemSchema>;
 /** 課題（モードで判別する）。§7.1 */
 export const ProblemSchema = z.discriminatedUnion('mode', [
   AssembleProblemSchema,
+  InspectPartsProblemSchema,
+  InspectRepairProblemSchema,
   UnsupportedProblemSchema,
 ]);
 
 /** 課題。 */
 export type Problem = z.infer<typeof ProblemSchema>;
+
+/** いま開始できる課題（モードB／モードC1／モードC2）。§16 */
+export type SupportedProblem = AssembleProblem | InspectPartsProblem | InspectRepairProblem;
+
+/** モードB課題か。 */
+export function isAssembleProblem(problem: SupportedProblem): problem is AssembleProblem {
+  return problem.mode === 'assemble';
+}
+
+/** モードC1課題か。 */
+export function isInspectPartsProblem(problem: SupportedProblem): problem is InspectPartsProblem {
+  return problem.mode === 'inspect-parts';
+}
+
+/** モードC2課題か。 */
+export function isInspectRepairProblem(problem: SupportedProblem): problem is InspectRepairProblem {
+  return problem.mode === 'inspect-repair';
+}
 
 /** スキーマ違反1件（zodのパスとメッセージ）。§13 #1 */
 export interface ProblemIssue {
@@ -55,7 +77,7 @@ export type ProblemFailureReason = 'invalid-json' | 'schema' | 'unsupported-mode
 
 /** `parseProblem()` の結果。 */
 export type ParseProblemResult =
-  | { ok: true; problem: AssembleProblem }
+  | { ok: true; problem: SupportedProblem }
   | {
       ok: false;
       reason: ProblemFailureReason;
@@ -127,25 +149,37 @@ function peekId(value: unknown): string | undefined {
   return typeof raw === 'string' ? raw : undefined;
 }
 
+/** そのモードがまだ開始できないか。 */
+function isUnsupportedMode(mode: ProblemMode): boolean {
+  return (UNSUPPORTED_MODES as readonly ProblemMode[]).includes(mode);
+}
+
 /**
  * 課題JSON（パース済みの値）を検証する。§7.8 / §13 #1
- * Phase 1 が開始できるのは `assemble` だけなので、他モードは `unsupported-mode` で返す。
+ * Phase 2 で開始できるのは `assemble` / `inspect-parts` / `inspect-repair` の3モードで、
+ * `plc` はヘッダだけを読んで `unsupported-mode` として課題一覧に出す（§16）。
+ * `mode` を読めなかった場合はモードB課題として検証し、スキーマ違反として理由を返す。
  */
 export function parseProblem(json: unknown): ParseProblemResult {
   const mode = peekMode(json);
   const id = peekId(json);
-  if (mode !== undefined && mode !== 'assemble') {
+  if (mode !== undefined && isUnsupportedMode(mode)) {
     const header = UnsupportedProblemSchema.safeParse(json);
     return {
       ok: false,
       reason: 'unsupported-mode',
-      message: `このモードは Phase 1 では開始できません: ${mode}`,
+      message: `このモードはまだ開始できません: ${mode}`,
       issues: header.success ? [] : toProblemIssues(header.error),
       ...(header.success ? { id: header.data.id } : id === undefined ? {} : { id }),
       mode,
     };
   }
-  const parsed = AssembleProblemSchema.safeParse(json);
+  const parsed =
+    mode === 'inspect-parts'
+      ? InspectPartsProblemSchema.safeParse(json)
+      : mode === 'inspect-repair'
+        ? InspectRepairProblemSchema.safeParse(json)
+        : AssembleProblemSchema.safeParse(json);
   if (parsed.success) return { ok: true, problem: parsed.data };
   return {
     ok: false,

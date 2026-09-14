@@ -122,6 +122,7 @@ function buildFixtureReference(json: Record<string, unknown> = selfHoldProblemJs
 } {
   const parsed = parseProblem(json);
   if (!parsed.ok) throw new Error(JSON.stringify(parsed.issues, null, 2));
+  if (parsed.problem.mode !== 'assemble') throw new Error('モードB課題ではありません');
   const built = buildReferenceSession(parsed.problem, JIPM_BOARD);
   if (!built.ok) throw new Error(JSON.stringify(built.errors, null, 2));
   return { problem: parsed.problem, reference: built.value };
@@ -149,7 +150,7 @@ describe('schema/common.js exports', () => {
     expect(ProblemIdSchema.safeParse('b-001').success).toBe(true);
     expect(GradeSchema.safeParse(3).success).toBe(true);
     expect(ProblemModeSchema.safeParse('assemble').success).toBe(true);
-    expect(UNSUPPORTED_MODES).toEqual(['inspect-parts', 'inspect-repair', 'plc']);
+    expect(UNSUPPORTED_MODES).toEqual(['plc']);
     expect(TimeLimitSchema.safeParse({ standardMin: 30, cutoffMin: 50 }).success).toBe(true);
     expect(SocketRoleSchema.safeParse('CR1').success).toBe(true);
     expect(SocketRolesSchema.safeParse(task2Roles()).success).toBe(true);
@@ -263,6 +264,7 @@ describe('schema/index.js exports', () => {
   it('parses a valid problem and reports issues for a broken one', () => {
     const ok = parseProblem(selfHoldProblemJson());
     if (!ok.ok) throw new Error(JSON.stringify(ok.issues, null, 2));
+    if (ok.problem.mode !== 'assemble') throw new Error('モードB課題ではありません');
     const problem: AssembleProblem = ok.problem;
     expect(problem.id).toBe('x-001');
     expect(ProblemSchema.safeParse(selfHoldProblemJson()).success).toBe(true);

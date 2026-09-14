@@ -1,6 +1,6 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import type { AssembleProblem } from './schema/assemble.js';
+import type { SupportedProblem } from './schema/index.js';
 import { parseProblem } from './schema/index.js';
 import type { ProblemLoadError, ProblemSet } from './problem-set.js';
 
@@ -71,7 +71,7 @@ function collectJsonFiles(dir: string, errors: ProblemLoadError[]): string[] {
 const BOM = '\uFEFF';
 
 /** 1ファイルを読んで検証する。 */
-function loadOne(file: string, problems: AssembleProblem[], errors: ProblemLoadError[]): void {
+function loadOne(file: string, problems: SupportedProblem[], errors: ProblemLoadError[]): void {
   let text: string;
   try {
     text = readFileSync(file, 'utf8');
@@ -138,7 +138,7 @@ function loadOne(file: string, problems: AssembleProblem[], errors: ProblemLoadE
  * フォルダが無い場合は空の結果と `read-error` を1件返す（内蔵課題だけで動作を続ける。§13 #9）。
  */
 export function loadProblemsFromDir(dir: string): ProblemSet {
-  const problems: AssembleProblem[] = [];
+  const problems: SupportedProblem[] = [];
   const errors: ProblemLoadError[] = [];
   let files: string[];
   try {
@@ -168,7 +168,7 @@ export function loadProblemsFromDir(dir: string): ProblemSet {
 export function mergeProblemSets(builtin: ProblemSet, user: ProblemSet): ProblemSet {
   const userById = new Map(user.problems.map((p) => [p.id, p] as const));
   const taken = new Set<string>();
-  const problems: AssembleProblem[] = [];
+  const problems: SupportedProblem[] = [];
   for (const problem of builtin.problems) {
     const override = userById.get(problem.id);
     problems.push(override ?? problem);

@@ -43,12 +43,11 @@ export const ProblemModeSchema = z.enum(['assemble', 'inspect-parts', 'inspect-r
 /** 課題モード。 */
 export type ProblemMode = z.infer<typeof ProblemModeSchema>;
 
-/** Phase 1 では未対応のモード。読込時に `unsupported-mode` として一覧に出す。§13 #1 */
-export const UNSUPPORTED_MODES = [
-  'inspect-parts',
-  'inspect-repair',
-  'plc',
-] as const satisfies readonly ProblemMode[];
+/**
+ * まだ本体スキーマを定義していないモード。読込時に `unsupported-mode` として一覧に出す。§13 #1
+ * Phase 2 で `inspect-parts` / `inspect-repair` を実装したので、残るのは `plc`（Phase 3）だけである。
+ */
+export const UNSUPPORTED_MODES = ['plc'] as const satisfies readonly ProblemMode[];
 
 /** 標準時間／打切り時間（分）。§7.1 */
 export const TimeLimitSchema = z

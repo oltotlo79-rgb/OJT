@@ -1,5 +1,10 @@
 import type { AssembleProblem } from '../schema/assemble.js';
-import { parseProblem, type ProblemIssue } from '../schema/index.js';
+import {
+  isAssembleProblem,
+  parseProblem,
+  type ProblemIssue,
+  type SupportedProblem,
+} from '../schema/index.js';
 import selfHold from './assemble/b-001-self-hold.json' with { type: 'json' };
 import interlock from './assemble/b-002-interlock.json' with { type: 'json' };
 import onDelay from './assemble/b-003-on-delay.json' with { type: 'json' };
@@ -43,7 +48,7 @@ export class BuiltinProblemError extends Error {
 }
 
 /** 内蔵課題のJSONを検証する。1件でも落ちたら `BuiltinProblemError` を投げる。§7.8 */
-export function parseBuiltinProblems(sources: readonly unknown[]): AssembleProblem[] {
+export function parseBuiltinProblems(sources: readonly unknown[]): SupportedProblem[] {
   return sources.map((source, index) => {
     const parsed = parseProblem(source);
     if (parsed.ok) return parsed.problem;
@@ -54,11 +59,33 @@ export function parseBuiltinProblems(sources: readonly unknown[]): AssembleProbl
   });
 }
 
-/** 内蔵のモードB課題（8題）。§7.9 */
-export const BUILTIN_ASSEMBLE_PROBLEMS: readonly AssembleProblem[] =
-  parseBuiltinProblems(BUILTIN_ASSEMBLE_JSON);
+/** 期待したモードの課題だけを取り出す（違うモードが混ざっていたら例外）。 */
+function ofMode<T extends SupportedProblem>(
+  problems: readonly SupportedProblem[],
+  guard: (problem: SupportedProblem) => problem is T,
+  label: string,
+): T[] {
+  return problems.map((problem, index) => {
+    if (guard(problem)) return problem;
+    throw new BuiltinProblemError(
+      `内蔵課題[${index}]（${problem.id}）は${label}ではありません`,
+      [],
+    );
+  });
+}
 
-/** 内蔵課題すべて（Phase 1 はモードBのみ）。§16 */
+/** 内蔵のモードB課題（8題）。§7.9 */
+export const BUILTIN_ASSEMBLE_PROBLEMS: readonly AssembleProblem[] = ofMode(
+  parseBuiltinProblems(BUILTIN_ASSEMBLE_JSON),
+  isAssembleProblem,
+  'モードB課題',
+);
+
+/**
+ * 課題一覧に載せる内蔵課題。
+ * **Plan 2A ではモードBのままにしてある**（C1/C2を開始できる画面が入るのは Plan 2B のため）。
+ * Plan 2B が `BUILTIN_ALL_PROBLEMS` に差し替えると同時に、モード別の課題一覧を入れる。
+ */
 export const BUILTIN_PROBLEMS: readonly AssembleProblem[] = BUILTIN_ASSEMBLE_PROBLEMS;
 
 /** 内蔵課題をIDで引く。 */
