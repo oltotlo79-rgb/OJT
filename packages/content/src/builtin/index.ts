@@ -3,6 +3,9 @@ import { parseProblem, type ProblemIssue } from '../schema/index.js';
 import selfHold from './assemble/b-001-self-hold.json';
 import interlock from './assemble/b-002-interlock.json';
 import onDelay from './assemble/b-003-on-delay.json';
+import sequential from './assemble/b-004-sequential.json';
+import oneShot from './assemble/b-005-one-shot.json';
+import flicker from './assemble/b-006-flicker.json';
 
 /**
  * 内蔵課題。設計仕様 §7.8 / §7.9（モードB = 8題）。
@@ -11,7 +14,14 @@ import onDelay from './assemble/b-003-on-delay.json';
  */
 
 /** 内蔵課題のJSON（`resources/content/assemble/<id>.json` と同じ内容）。 */
-const BUILTIN_ASSEMBLE_JSON: readonly unknown[] = [selfHold, interlock, onDelay];
+const BUILTIN_ASSEMBLE_JSON: readonly unknown[] = [
+  selfHold,
+  interlock,
+  onDelay,
+  sequential,
+  oneShot,
+  flicker,
+];
 
 /** 内蔵課題の検証に失敗したときに投げる。 */
 export class BuiltinProblemError extends Error {
