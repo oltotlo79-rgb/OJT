@@ -28,3 +28,15 @@ export {
   type SchematicCell,
   type SchematicDocument,
 } from './document.js';
+
+export {
+  assignToBoard,
+  deriveSocketRoles,
+  requiredRoles,
+  type AssignError,
+  type AssignOptions,
+  type AssignResult,
+  type CellAssignment,
+  type PartAssignment,
+  type WireSpec,
+} from './assign.js';
