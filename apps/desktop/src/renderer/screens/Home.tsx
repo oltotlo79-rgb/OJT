@@ -43,6 +43,17 @@ export function Home(): JSX.Element {
           </button>
         ))}
       </div>
+      <p style={{ marginTop: 24 }}>
+        <button
+          type="button"
+          data-testid="open-settings"
+          onClick={() => {
+            setRoute('settings');
+          }}
+        >
+          {JA.home.settings}
+        </button>
+      </p>
     </div>
   );
 }

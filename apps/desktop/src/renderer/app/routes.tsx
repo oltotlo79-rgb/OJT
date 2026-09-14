@@ -3,6 +3,7 @@ import { Home } from '../screens/Home.js';
 import { ProblemList } from '../screens/ProblemList.js';
 import { Result } from '../screens/Result.js';
 import { Session } from '../screens/Session.js';
+import { Settings } from '../screens/Settings.js';
 import type { Route } from './store.js';
 
 /**
@@ -22,7 +23,6 @@ export function renderRoute(route: Route): JSX.Element {
     case 'result':
       return <Result />;
     case 'settings':
-      // 設定画面は Plan 1D2 で作る。それまではホームを出す。§12.1
-      return <Home />;
+      return <Settings />;
   }
 }

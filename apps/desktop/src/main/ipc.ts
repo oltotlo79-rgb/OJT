@@ -1,10 +1,5 @@
 import { BrowserWindow, ipcMain } from 'electron';
-import {
-  IPC_CHANNELS,
-  type AppSettings,
-  type WorkFileLoadRequest,
-  type WorkFileSaveRequest,
-} from '../shared/ipc.js';
+import { IPC_CHANNELS, type WorkFileLoadRequest, type WorkFileSaveRequest } from '../shared/ipc.js';
 import { loadContent } from './content-loader.js';
 import { readSettings, writeSettings } from './settings.js';
 import { loadWorkFile, saveWorkFile } from './work-files.js';
@@ -38,7 +33,6 @@ export function registerIpc(): void {
 
   ipcMain.handle(IPC_CHANNELS.settingsGet, () => readSettings());
 
-  ipcMain.handle(IPC_CHANNELS.settingsSet, (_event, patch: Partial<AppSettings>) =>
-    writeSettings(patch ?? {}),
-  );
+  // `patch` は renderer からの生入力。型は信用せず `writeSettings()` 内で1キーずつ検証する
+  ipcMain.handle(IPC_CHANNELS.settingsSet, (_event, patch: unknown) => writeSettings(patch));
 }

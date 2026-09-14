@@ -50,6 +50,24 @@ export const JA = {
     loadFailed: '課題を読み込めませんでした',
     listFailed: '課題一覧を読み込めませんでした',
   },
+  /** 設定画面。§12.1 / §15 */
+  settings: {
+    userContentDir: '利用者課題フォルダ',
+    soundEnabled: '効果音',
+    soundVolume: '音量',
+    restorePrompt: '起動時に前回の作業の復元を確認する',
+    about: 'このアプリについて',
+    saved: '設定を保存しました',
+    loadFailed: '設定を読み込めませんでした',
+    /** 商標注記。§15 */
+    trademarkNotice:
+      'MELSEC / MELSEC iQ-F / MELSOFT / GX Works3 は三菱電機株式会社、SYSMAC / CP1E / CP1L / ' +
+      'CX-Programmer / CX-One はオムロン株式会社、TOYOPUC / PCwin は株式会社ジェイテクト、' +
+      'JW / JW300 / JW-300SP はシャープ株式会社の商標または登録商標です。' +
+      '各社の製品名は識別を目的としてのみ使用しており、提携・後援関係を示すものではありません。',
+    /** 未確認事項の注記。§17.1 */
+    assumptionNotice: '一部の命令名・キー割当は実機マニュアル未確認のため本アプリの表記です。',
+  },
   session: {
     back: '課題一覧へ戻る',
     judge: '判定',
@@ -86,6 +104,8 @@ export const JA = {
     schematicHint: '回路図ヒント',
     save: '作業を保存',
     load: '作業を読込',
+    /** 手動保存が成功したときの接頭辞（`保存しました: C:\...`）。§12.3 */
+    saved: '保存しました',
     restoreTitle: '前回の作業を復元しますか？',
     restoreYes: '復元する',
     restoreNo: '復元しない',
@@ -236,6 +256,11 @@ export function referenceErrorText(reasons: readonly string[]): string {
 /** 経路を作れなかった電線の操作ログ。§6.6 */
 export function routeFailedLog(wireId: string, reason: string): string {
   return `${JA.session.routeFailed}: ${wireId} — ${reason}`;
+}
+
+/** 作業ファイルを手動保存できたときのトースト（`保存しました: C:\...`）。§12.3 */
+export function workFileSavedText(path: string): string {
+  return `${JA.session.saved}: ${path}`;
 }
 
 /** 部品パネルで選択中のソケットの表示（`S1（CR1）を選択中`）。§8.2 */
