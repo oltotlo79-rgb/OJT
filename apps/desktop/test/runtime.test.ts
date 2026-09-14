@@ -1,0 +1,52 @@
+import { TICK_MS } from '@ojt/circuit-sim';
+import { describe, expect, it } from 'vitest';
+import { formatElapsed, planTicks } from '../src/worker/runtime.js';
+import { MAX_CATCHUP_TICKS } from '../src/worker/protocol.js';
+
+describe('planTicks', () => {
+  it('1tick未満の遅れでは進めない', () => {
+    expect(planTicks(1005, 1000, TICK_MS)).toEqual({
+      ticks: 0,
+      nextBaselineMs: 1000,
+      dropped: 0,
+    });
+  });
+
+  it('遅れたぶんだけ進めて基準を進める', () => {
+    expect(planTicks(1055, 1000, TICK_MS)).toEqual({
+      ticks: 5,
+      nextBaselineMs: 1050,
+      dropped: 0,
+    });
+  });
+
+  it('追従上限までは取り返す', () => {
+    const plan = planTicks(1000 + MAX_CATCHUP_TICKS * TICK_MS, 1000, TICK_MS);
+    expect(plan.ticks).toBe(MAX_CATCHUP_TICKS);
+    expect(plan.dropped).toBe(0);
+  });
+
+  it('ウィンドウ非表示で詰まったぶんは捨てて基準を現在に引き直す', () => {
+    const now = 1000 + 5000;
+    const plan = planTicks(now, 1000, TICK_MS);
+    expect(plan.ticks).toBe(MAX_CATCHUP_TICKS);
+    expect(plan.dropped).toBe(500 - MAX_CATCHUP_TICKS);
+    expect(plan.nextBaselineMs).toBe(now);
+  });
+
+  it('tickMs が0以下なら RangeError', () => {
+    expect(() => planTicks(1000, 0, 0)).toThrow(RangeError);
+  });
+});
+
+describe('formatElapsed', () => {
+  it('分:秒.1桁 で整える', () => {
+    expect(formatElapsed(0)).toBe('00:00.0');
+    expect(formatElapsed(65_400)).toBe('01:05.4');
+    expect(formatElapsed(3_723_000)).toBe('62:03.0');
+  });
+
+  it('負の値は0として扱う', () => {
+    expect(formatElapsed(-5)).toBe('00:00.0');
+  });
+});
