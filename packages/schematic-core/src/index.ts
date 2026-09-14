@@ -40,3 +40,5 @@ export {
   type PartAssignment,
   type WireSpec,
 } from './assign.js';
+
+export { toSession, type ToSessionOptions, type ToSessionResult } from './to-session.js';
