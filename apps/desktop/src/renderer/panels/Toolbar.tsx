@@ -7,7 +7,7 @@ import styles from './panels.module.css';
 
 /**
  * 上部ツールバー。設計仕様 §8.1。
- * 線色／削除モード／元に戻す・やり直し／視点プリセット／判定を並べる。
+ * 線色／削除モード／元に戻す・やり直し／視点プリセット／作業の保存読込／回路図ヒントの開閉／判定を並べる。
  * 電源（ブレーカ・スイッチ）は `PowerControls` が描く。
  */
 
@@ -34,6 +34,10 @@ export function Toolbar({
   onRedo,
   onJudge,
   onBack,
+  onSave,
+  onLoad,
+  schematicVisible,
+  onToggleSchematic,
   children,
 }: {
   mode: ToolMode;
@@ -51,6 +55,13 @@ export function Toolbar({
   onRedo: () => void;
   onJudge: () => void;
   onBack: () => void;
+  /** 作業ファイルの保存・読込。§12.3 */
+  onSave: () => void;
+  onLoad: () => void;
+  /** 回路図ヒントがいま開いているか。§8.4 */
+  schematicVisible: boolean;
+  /** 回路図ヒントの開閉。1級課題では `undefined`（ボタン自体を出さない）。§8.4 */
+  onToggleSchematic: (() => void) | undefined;
   children?: JSX.Element;
 }): JSX.Element {
   return (
@@ -105,6 +116,24 @@ export function Toolbar({
             {view.label}
           </button>
         ))}
+      </div>
+      <div className={styles.toolGroup}>
+        <button type="button" onClick={onSave}>
+          {JA.session.save}
+        </button>
+        <button type="button" onClick={onLoad}>
+          {JA.session.load}
+        </button>
+        {onToggleSchematic === undefined ? null : (
+          <button
+            type="button"
+            aria-pressed={schematicVisible}
+            data-testid="toggle-schematic"
+            onClick={onToggleSchematic}
+          >
+            {schematicVisible ? JA.session.hideSchematic : JA.session.showSchematic}
+          </button>
+        )}
       </div>
       {children}
       <span className={styles.spacer} />

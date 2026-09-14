@@ -1,8 +1,10 @@
 import { JIPM_BOARD, socketPartId } from '@ojt/board-model';
 import type { BoardSession, MountableKind, SocketId } from '@ojt/board-model';
 import type { TerminalId } from '@ojt/circuit-sim';
-import { useCallback, useEffect, useMemo, type JSX } from 'react';
+import { useCallback, useEffect, useMemo, useRef, type JSX } from 'react';
+import { ojtApi } from '../app/ojt-api.js';
 import { useStore } from '../app/store.js';
+import { sounds, soundsForSnapshot } from '../audio/sounds.js';
 import {
   failedLog,
   historyLog,
@@ -11,6 +13,7 @@ import {
   powerLog,
   referenceErrorText,
   routeFailedLog,
+  workFileSavedText,
 } from '../i18n/ja.js';
 import { ElapsedTimer } from '../panels/ElapsedTimer.js';
 import { LogPanel } from '../panels/LogPanel.js';
@@ -19,6 +22,7 @@ import { PowerControls } from '../panels/PowerControls.js';
 import { ProblemPanel } from '../panels/ProblemPanel.js';
 import { liveChart, TimeChartPanel, TimeChartSvg } from '../panels/TimeChartPanel.js';
 import { Toolbar } from '../panels/Toolbar.js';
+import { SchematicSvg } from '../schematic/SchematicSvg.js';
 import {
   cloneSession,
   redo as redoHistory,
@@ -41,6 +45,7 @@ import {
   type PickHit,
 } from '../session/interaction.js';
 import { buildSpecChart } from '../session/spec-chart.js';
+import { applyWorkFile, toWorkFile } from '../session/work-file.js';
 import { bridge } from '../session/worker-bridge.js';
 import { BoardScene, safeRoutes } from '../three/BoardScene.js';
 import styles from './screens.module.css';
@@ -56,6 +61,11 @@ const ELAPSED_INTERVAL_MS = 200;
 
 /** ライブチャートの最小横軸長[ms]（開始直後に潰れないようにする）。 */
 const LIVE_MIN_DURATION_MS = 5000;
+
+/** 例外から画面に出す1行を作る。 */
+function reasonOf(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
 
 /**
  * ライブ記録のチャート。§8.2
@@ -76,6 +86,22 @@ function LivePanel(): JSX.Element {
       <TimeChartSvg chart={live} title={JA.session.liveChart} />
     </section>
   );
+}
+
+/**
+ * スナップショットの差分から効果音を鳴らす（§15: WebAudio の合成音のみ）。
+ * `LivePanel` と同じ理由で `snapshot` の購読を専用の小さなコンポーネントへ分離する
+ * （`Session` 本体で購読すると毎秒約30回、3Dビューポートを含む部分木ごと再描画されてしまう）。
+ * 何も描かないので、盤を組み直す（＝再マウントする）たびに「直前の音」の記憶も一緒に消える。
+ */
+function SoundEffects(): null {
+  const snapshot = useStore((s) => s.snapshot);
+  const previous = useRef<typeof snapshot | undefined>(undefined);
+  useEffect(() => {
+    for (const kind of soundsForSnapshot(previous.current, snapshot)) sounds.play(kind);
+    previous.current = snapshot;
+  }, [snapshot]);
+  return null;
 }
 
 /** セッション画面。 */
@@ -103,6 +129,7 @@ export function Session(): JSX.Element {
   const logLines = useStore((s) => s.logLines);
   const judging = useStore((s) => s.judging);
   const webglLost = useStore((s) => s.webglLost);
+  const schematicVisible = useStore((s) => s.schematicVisible);
   const problemId = problem?.id;
   const sessionEpoch = useStore((s) => s.sessionEpoch);
 
@@ -369,6 +396,7 @@ export function Session(): JSX.Element {
 
   return (
     <>
+      <SoundEffects />
       <Toolbar
         mode={mode}
         wireColor={wireColor}
@@ -406,6 +434,51 @@ export function Session(): JSX.Element {
         onBack={() => {
           useStore.getState().setRoute('list');
         }}
+        onSave={() => {
+          const store = useStore.getState();
+          let api: ReturnType<typeof ojtApi>;
+          try {
+            api = ojtApi();
+          } catch (error) {
+            store.toast(reasonOf(error), 'error');
+            return;
+          }
+          void api
+            .saveWorkFile({
+              kind: 'manual',
+              file: toWorkFile(problem.id, session, store.elapsedMs, store.hazards.length),
+            })
+            .then((result) => {
+              store.toast(
+                result.ok ? workFileSavedText(result.path) : result.message,
+                result.ok ? 'info' : 'error',
+              );
+            });
+        }}
+        onLoad={() => {
+          let api: ReturnType<typeof ojtApi>;
+          try {
+            api = ojtApi();
+          } catch (error) {
+            useStore.getState().toast(reasonOf(error), 'error');
+            return;
+          }
+          void api.loadWorkFile({ kind: 'manual' }).then((result) => {
+            if (!result.ok) {
+              if (!result.canceled) useStore.getState().toast(result.message, 'error');
+              return;
+            }
+            void applyWorkFile(result.file);
+          });
+        }}
+        schematicVisible={schematicVisible}
+        onToggleSchematic={
+          problem.grade === 1
+            ? undefined
+            : () => {
+                useStore.getState().toggleSchematic();
+              }
+        }
       >
         <PowerControls
           breakerOn={breakerOn}
@@ -449,6 +522,14 @@ export function Session(): JSX.Element {
             <p data-testid="reference-error">{referenceErrorText(spec.errors)}</p>
           ) : null}
           <LivePanel />
+          {schematicVisible && problem.grade !== 1 ? (
+            <section className={styles.panelLive} data-testid="schematic-hint">
+              <h2 className={styles.liveTitle}>{JA.session.schematicHint}</h2>
+              <div className={styles.schematicBox}>
+                <SchematicSvg document={problem.schematic} />
+              </div>
+            </section>
+          ) : null}
           <PartsPanel
             session={session}
             selectedSocket={selectedSocket}

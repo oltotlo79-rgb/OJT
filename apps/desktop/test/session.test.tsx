@@ -4,9 +4,11 @@ import { BUILTIN_PROBLEMS } from '@ojt/content';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { createElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { OjtApi, WorkFile } from '../src/shared/ipc.js';
 import type { SimCommand } from '../src/worker/protocol.js';
 import type { PickHit } from '../src/renderer/session/interaction.js';
 import type * as BoardSceneModule from '../src/renderer/three/BoardScene.js';
+import type * as WorkFileModule from '../src/renderer/session/work-file.js';
 
 /**
  * セッション画面の操作テスト（§8.2 / §14.2）。
@@ -15,6 +17,10 @@ import type * as BoardSceneModule from '../src/renderer/three/BoardScene.js';
  * 受け取った `onPick` / `onHover` をそのまま外へ出すので、**端子をクリックした**という
  * 出来事を本物と同じ経路（`pickToAction` → `commands` → `bridge.send`）に流せる。
  * Worker ブリッジも差し替えて、送られたコマンドを配列に溜める。
+ *
+ * 作業ファイルの読込（`onLoad`）は `applyWorkFile()` を差し替える（`app.test.tsx` と同じ理由。
+ * 課題の再読込みまで含めて本物を通すと盤の組み直しまで検証範囲が広がりすぎる）。
+ * `toWorkFile()`（保存）は本物のまま使う。
  */
 
 const scene = vi.hoisted(() => ({
@@ -31,6 +37,8 @@ const workerMock = vi.hoisted(() => ({
       }
     | undefined,
 }));
+
+const workFileMock = vi.hoisted(() => ({ applyWorkFile: vi.fn(() => Promise.resolve(true)) }));
 
 vi.mock('../src/renderer/three/BoardScene.js', async () => {
   const actual = await vi.importActual<typeof BoardSceneModule>(
@@ -61,11 +69,37 @@ vi.mock('../src/renderer/session/worker-bridge.js', () => ({
   },
 }));
 
+vi.mock('../src/renderer/session/work-file.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof WorkFileModule>();
+  return { ...actual, applyWorkFile: workFileMock.applyWorkFile };
+});
+
 const { Session } = await import('../src/renderer/screens/Session.js');
-const { useStore } = await import('../src/renderer/app/store.js');
+const { useStore, EMPTY_SNAPSHOT } = await import('../src/renderer/app/store.js');
 const { JA } = await import('../src/renderer/i18n/ja.js');
+const { sounds } = await import('../src/renderer/audio/sounds.js');
 
 const PROBLEM = BUILTIN_PROBLEMS.find((p) => p.id === 'b-001');
+/** 1級課題（回路図ヒントのトグル自体が出ない。§8.4）。 */
+const GRADE1_PROBLEM = BUILTIN_PROBLEMS.find((p) => p.grade === 1);
+
+/** preload を差し替える（`delete` で「読み込まれていない」状態に戻せる）。 */
+function setApi(api: Partial<OjtApi> | undefined): void {
+  if (api === undefined) delete window.ojt;
+  else window.ojt = api as OjtApi;
+}
+
+function autosaveFile(problemId: string, overrides: Partial<WorkFile> = {}): WorkFile {
+  return {
+    formatVersion: 1,
+    problemId,
+    session: { wires: [], socketRoles: {} },
+    elapsedMs: 0,
+    hazardCount: 0,
+    savedAt: '2026-09-14T09:00:00.000Z',
+    ...overrides,
+  };
+}
 
 /** 物理端子IDから `PickHit` を作る（3D盤が返すのと同じ形）。 */
 function terminalHit(id: string): PickHit {
@@ -91,12 +125,15 @@ beforeEach(() => {
   workerMock.sent = [];
   workerMock.handlers = undefined;
   scene.pick = undefined;
+  workFileMock.applyWorkFile.mockClear();
+  setApi(undefined);
   useStore.setState({ camera: 'front', cameraNonce: 0, judging: false });
 });
 
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+  setApi(undefined);
 });
 
 describe('端子 → 端子の配線（§8.2）', () => {
@@ -268,5 +305,170 @@ describe('判定（§8.2 / §13 #2）', () => {
       workerMock.handlers?.onError('worker died', true);
     });
     expect(useStore.getState().judging).toBe(false);
+  });
+});
+
+describe('作業ファイルの保存・読込（§12.3）', () => {
+  it('「作業を保存」は manual で保存し、成功したパスをトーストで出す', async () => {
+    const saveWorkFile = vi.fn().mockResolvedValue({ ok: true, path: 'C:/work.ojtw' });
+    setApi({ saveWorkFile });
+    openSession();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: JA.session.save }));
+      await Promise.resolve();
+    });
+
+    expect(saveWorkFile).toHaveBeenCalledTimes(1);
+    const request = saveWorkFile.mock.calls[0]?.[0] as {
+      kind: string;
+      file: { problemId: string };
+    };
+    expect(request.kind).toBe('manual');
+    expect(request.file.problemId).toBe('b-001');
+    expect(useStore.getState().toasts.at(-1)?.text).toContain('C:/work.ojtw');
+    expect(useStore.getState().toasts.at(-1)?.tone).toBe('info');
+  });
+
+  it('保存に失敗したら理由をエラートーストで出す', async () => {
+    const saveWorkFile = vi
+      .fn()
+      .mockResolvedValue({ ok: false, canceled: false, message: '保存に失敗しました' });
+    setApi({ saveWorkFile });
+    openSession();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: JA.session.save }));
+      await Promise.resolve();
+    });
+
+    const last = useStore.getState().toasts.at(-1);
+    expect(last?.text).toBe('保存に失敗しました');
+    expect(last?.tone).toBe('error');
+  });
+
+  it('preload が無ければ投げずにトーストで知らせる（保存・読込とも）', () => {
+    openSession();
+    expect(() => {
+      fireEvent.click(screen.getByRole('button', { name: JA.session.save }));
+    }).not.toThrow();
+    expect(useStore.getState().toasts.at(-1)?.tone).toBe('error');
+
+    expect(() => {
+      fireEvent.click(screen.getByRole('button', { name: JA.session.load }));
+    }).not.toThrow();
+    expect(useStore.getState().toasts.at(-1)?.tone).toBe('error');
+  });
+
+  it('「作業を読込」は manual で読み込み、結果を applyWorkFile へ渡す', async () => {
+    const file = autosaveFile('b-001');
+    const loadWorkFile = vi.fn().mockResolvedValue({ ok: true, file, path: 'C:/work.ojtw' });
+    setApi({ loadWorkFile });
+    openSession();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: JA.session.load }));
+      await Promise.resolve();
+    });
+
+    expect(loadWorkFile).toHaveBeenCalledWith({ kind: 'manual' });
+    expect(workFileMock.applyWorkFile).toHaveBeenCalledWith(file);
+  });
+
+  it('読込ダイアログを取り消しても失敗トーストは出さない', async () => {
+    const loadWorkFile = vi
+      .fn()
+      .mockResolvedValue({ ok: false, canceled: true, message: '読込を取り消しました' });
+    setApi({ loadWorkFile });
+    openSession();
+    const before = useStore.getState().toasts.length;
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: JA.session.load }));
+      await Promise.resolve();
+    });
+
+    expect(workFileMock.applyWorkFile).not.toHaveBeenCalled();
+    expect(useStore.getState().toasts).toHaveLength(before);
+  });
+});
+
+describe('回路図ヒントの開閉（§8.4）', () => {
+  it('3級課題（b-001）は開いた状態で始まり、ボタンで隠せる', () => {
+    openSession();
+    expect(screen.getByTestId('schematic-hint')).toBeTruthy();
+    const toggle = screen.getByTestId('toggle-schematic');
+    expect(toggle.textContent).toBe(JA.session.hideSchematic);
+
+    fireEvent.click(toggle);
+    expect(screen.queryByTestId('schematic-hint')).toBeNull();
+    expect(screen.getByTestId('toggle-schematic').textContent).toBe(JA.session.showSchematic);
+
+    fireEvent.click(screen.getByTestId('toggle-schematic'));
+    expect(screen.getByTestId('schematic-hint')).toBeTruthy();
+  });
+
+  it('1級課題はトグルボタン自体が無く、ヒントも出ない', () => {
+    expect(GRADE1_PROBLEM).toBeDefined();
+    if (GRADE1_PROBLEM === undefined) return;
+    act(() => {
+      useStore.getState().openProblem(GRADE1_PROBLEM);
+    });
+    render(<Session />);
+
+    expect(screen.queryByTestId('toggle-schematic')).toBeNull();
+    expect(screen.queryByTestId('schematic-hint')).toBeNull();
+  });
+});
+
+describe('効果音（§15）', () => {
+  /**
+   * `SoundEffects` はマウント時の `snapshot`（`openProblem()` が入れる `EMPTY_SNAPSHOT`。
+   * `relays: {}` でキー自体が無い）をすでに1枚目の基準として消費している。そのため
+   * 「`CR1` を初めて含む1枚」はキーの有無だけで差分と見なされ鳴ってしまう
+   * （`soundsForSnapshot()` は未知キーを `undefined` として比較するため）。ここでは
+   * その1枚で基準を揃えてから、値が変わらない2枚目・変わる3枚目で挙動を確かめる。
+   */
+  it('リレーの接点が動いたスナップショットで relay 音を鳴らし、変わらなければ鳴らさない', () => {
+    const play = vi.spyOn(sounds, 'play').mockImplementation(() => undefined);
+    openSession();
+
+    act(() => {
+      workerMock.handlers?.onSnapshot({
+        ...EMPTY_SNAPSHOT,
+        relays: { CR1: { contactsOn: false } },
+      });
+    });
+    play.mockClear();
+
+    act(() => {
+      workerMock.handlers?.onSnapshot({
+        ...EMPTY_SNAPSHOT,
+        relays: { CR1: { contactsOn: false } },
+      });
+    });
+    expect(play).not.toHaveBeenCalled();
+
+    act(() => {
+      workerMock.handlers?.onSnapshot({
+        ...EMPTY_SNAPSHOT,
+        relays: { CR1: { contactsOn: true } },
+      });
+    });
+    expect(play).toHaveBeenCalledWith('relay');
+  });
+
+  it('危険操作を含むスナップショットは warning を鳴らす', () => {
+    const play = vi.spyOn(sounds, 'play').mockImplementation(() => undefined);
+    openSession();
+
+    act(() => {
+      workerMock.handlers?.onSnapshot({
+        ...EMPTY_SNAPSHOT,
+        hazardDelta: [{ type: 'hazard', kind: 'ohm-on-live', tMs: 0, detail: '' }],
+      });
+    });
+
+    expect(play).toHaveBeenCalledWith('warning');
   });
 });

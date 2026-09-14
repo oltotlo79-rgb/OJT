@@ -1,5 +1,6 @@
 import { useEffect, useState, type JSX } from 'react';
 import type { OjtApi, WorkFile } from '../../shared/ipc.js';
+import { sounds } from '../audio/sounds.js';
 import { JA } from '../i18n/ja.js';
 import { applyWorkFile, toWorkFile } from '../session/work-file.js';
 import { ErrorBoundary } from './ErrorBoundary.js';
@@ -9,9 +10,10 @@ import { useStore, type Route } from './store.js';
 import styles from './app.module.css';
 
 /**
- * アプリの外枠。設計仕様 §12.1 / §13 #5 / §12.3。
+ * アプリの外枠。設計仕様 §12.1 / §13 #5 / §12.3 / §15。
  * 未捕捉例外は上部の例外バナーで知らせ、「セッションをリセット」で復帰できるようにする。
- * 起動時は設定を読み、一時保存が残っていれば復元を確認する。作業中は30秒ごとに一時保存する。
+ * 起動時は設定を読み、効果音に反映したうえで、一時保存が残っていれば復元を確認する。
+ * 作業中は30秒ごとに一時保存する。
  *
  * バナーとトーストは `ErrorBoundary` の**外**に置く。中に置くと、描画中に例外が出たときに
  * バナーごと消えてしまい、訓練者には真っ黒な画面しか残らない（§13 #5 の要件が満たせない）。
@@ -51,7 +53,7 @@ export function App(): JSX.Element {
   const [pendingRestore, setPendingRestore] = useState<WorkFile | undefined>(undefined);
 
   /*
-   * 起動時: 設定を読み、一時保存が残っていれば復元を確認する（§12.3）。
+   * 起動時: 設定を読み、効果音に反映したうえで一時保存が残っていれば復元を確認する（§12.3 / §15）。
    * `restorePrompt` 設定が無効なら一時保存には触れない（読み込みもしない）。
    * preload が無い環境（設定ミス・素のブラウザ）では黙って諦める（§13 #5）。
    */
@@ -60,6 +62,7 @@ export function App(): JSX.Element {
     if (api === undefined) return;
     void api.getSettings().then(
       (settings) => {
+        sounds.configure({ enabled: settings.soundEnabled, volume: settings.soundVolume });
         if (!settings.restorePrompt) return;
         void api.loadWorkFile({ kind: 'autosave' }).then(
           (restored) => {
@@ -71,7 +74,7 @@ export function App(): JSX.Element {
         );
       },
       () => {
-        // 設定が読めなくても起動は続ける（既定＝内蔵課題のみ・復元確認なし）
+        // 設定が読めなくても起動は続ける（既定＝内蔵課題のみ・復元確認なし・音は既定のまま）
       },
     );
   }, []);
