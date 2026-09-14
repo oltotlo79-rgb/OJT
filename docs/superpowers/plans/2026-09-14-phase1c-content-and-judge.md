@@ -10,8 +10,8 @@
 
 **前提（このプランを始める前に満たしていること）:**
 
-- Plan 1A（`@ojt/circuit-sim`）が完了し、`packages/circuit-sim/src/` に `ids.ts` / `elements.ts` / `parts.ts` / `netlist.ts` / `solver.ts` / `events.ts` / `log.ts` / `actuators.ts` / `simulation.ts` / `faults.ts` / `meter.ts` / `compare.ts` / `index.ts` が揃っている。本プランが使うのは `Simulation` / `SignalLog` / `EventBus` / `compareLogs` / `createWire` / `terminalId` / `toTerminalId` / `TICK_MS` / `PICKUP_VOLTS` / `MAX_WIRES_PER_TERMINAL` / `DEFAULT_TOLERANCE` と各種型だけである。
-- Plan 1B（`@ojt/board-model` / `@ojt/schematic-core`）が完了している。本プランが使うのは `JIPM_BOARD` / `SOCKET_IDS` / `toNetlist` / `plug` / `removeWire` / `wireCountAtTerminal` / `socketPartId` / `BoardSession` / `BoardDefinition` / `SocketRoles` と、`toSession` / `validateDocument` / `SCHEMATIC_FORMAT_VERSION` だけである。盤は**ソケットを8個**持ち、`SocketRoles` は役割を書かなかったソケットが予備になる `Partial` である（Plan 1B 改訂版 Task 5）。供給端子は実機どおり **`P.1` / `N.1` の1点ずつ**しかなく、母線は `assignToBoard()` が**渡り配線（鎖状）**で分配する（同 Task 4 / Task 13）。
+- Plan 1A（`@ojt/circuit-sim`）が完了し、`packages/circuit-sim/src/` に `ids.ts` / `elements.ts` / `parts.ts` / `netlist.ts` / `solver.ts` / `events.ts` / `log.ts` / `actuators.ts` / `simulation.ts` / `faults.ts` / `meter.ts` / `compare.ts` / `index.ts` が揃っている。本プランが使うのは `Simulation` / `SignalLog` / `EventBus` / `compareLogs` / `createWire` / `terminalId` / `toTerminalId` / `partId` / `TICK_MS` / `PICKUP_VOLTS` / `MAX_WIRES_PER_TERMINAL` / `TIMER_MIN_PRESET_MS` / `HAZARD_KINDS` / `DEFAULT_TOLERANCE` と各種型だけである。
+- Plan 1B（`@ojt/board-model` / `@ojt/schematic-core`）が完了している。本プランが使うのは `JIPM_BOARD` / `SOCKET_IDS` / `SOCKET_ROLES` / `MOUNTABLE_KINDS` / `TIMER_RANGES` / `TIMER_RANGE_60S` / `snapPresetToStep` / `validateSocketRoles` / `toNetlist` / `plug` / `removeWire` / `wireCountAtTerminal` / `socketPartId` / `BoardSession` / `BoardDefinition` / `SocketId` / `SocketRole` / `SocketRoles` と、`toSession` / `validateDocument` / `SCHEMATIC_FORMAT_VERSION` だけである。盤は**ソケットを8個**持ち、`SocketRoles` は役割を書かなかったソケットが予備になる `Partial` である（Plan 1B 改訂版 Task 5）。チェック用回路の既設配線は `S7` に固定で結線されているため、`validateSocketRoles()` は **`CHK` が `S7`（`CHECK_SOCKET_ID`）に割り当てられていること**を要求する（同 Task 5 / §6.3）。供給端子は実機どおり **`P.1` / `N.1` の1点ずつ**しかなく、母線は `assignToBoard()` が**渡り配線（鎖状）**で分配する（同 Task 4 / Task 13）。
 - ルートに `eslint.config.js`（`import-x/no-cycle` 込み）・`.prettierrc.json`・`tsconfig.base.json`・`vitest.workspace.ts` がある。
 
 ---
@@ -196,6 +196,7 @@ import {
   SocketRolesSchema,
   TerminalIdSchema,
   TimeLimitSchema,
+  toSocketRoles,
   UNSUPPORTED_MODES,
 } from '../src/schema/common.js';
 
@@ -278,8 +279,25 @@ describe('SocketRolesSchema', () => {
     ).toBe(false);
   });
 
+  it('rejects the check role on a socket other than S7 (§6.3)', () => {
+    const parsed = SocketRolesSchema.safeParse({ S1: 'CR1', S2: 'CR2', S8: 'CHK' });
+    expect(parsed.success).toBe(false);
+    if (parsed.success) return;
+    expect(parsed.error.issues[0]?.message).toContain('S7');
+  });
+
   it('rejects a socket id the board does not have', () => {
     expect(SocketRolesSchema.safeParse({ S1: 'CR1', S7: 'CHK', S9: 'CR2' }).success).toBe(false);
+  });
+});
+
+describe('toSocketRoles', () => {
+  it('drops the sockets that have no role (board-model の Partial に合わせる)', () => {
+    expect(toSocketRoles({ S1: 'CR1', S3: undefined, S7: 'CHK' })).toEqual({
+      S1: 'CR1',
+      S7: 'CHK',
+    });
+    expect(Object.keys(toSocketRoles({ S1: 'CR1', S7: 'CHK' }))).toEqual(['S1', 'S7']);
   });
 });
 
@@ -338,11 +356,24 @@ Expected: FAIL。`Failed Suites 1` ＋ `Error: Cannot find module '../src/schema
 `packages/content/src/schema/common.ts`:
 
 ```ts
+import {
+  MOUNTABLE_KINDS,
+  SOCKET_IDS,
+  SOCKET_ROLES,
+  validateSocketRoles,
+  type SocketId,
+  type SocketRole,
+  type SocketRoles,
+} from '@ojt/board-model';
 import { z } from 'zod';
 
 /**
  * 課題データの共通ヘッダ。設計仕様 §7.1。
  * 定義の唯一の源は zod（§4.5）。TypeScript 型はすべて `z.infer` で導出する。
+ *
+ * 役割名・部品種別・ソケット数といった**盤の語彙**は board-model が唯一の源なので、
+ * 文字列リテラルを書き写さず、公開されているタプル（`SOCKET_ROLES` / `MOUNTABLE_KINDS` /
+ * `SOCKET_IDS`）から zod の列挙を組み立てる。盤の語彙が増えたらスキーマが自動で追随する。
  */
 
 /** 課題ファイルの形式バージョン。未知のバージョンは読込エラーにする。§13 #8 */
@@ -382,13 +413,22 @@ export const TimeLimitSchema = z
 /** 標準時間／打切り時間。 */
 export type TimeLimit = z.infer<typeof TimeLimitSchema>;
 
-/** ソケットの役割。board-model の `SocketRole` と同じ集合。§6.1 */
-export const SocketRoleSchema = z.enum(['CR1', 'CR2', 'CR3', 'CR4', 'T1', 'T2', 'CHK']);
+/** ソケットの役割。board-model の `SOCKET_ROLES`（`CR1`〜`CR4` / `T1` / `T2` / `CHK`）そのもの。§6.1 */
+export const SocketRoleSchema = z.enum(SOCKET_ROLES);
+
+/** 役割割当の生データ。値が `undefined` のキーは「役割なしの予備ソケット」を表す。 */
+type SocketRolesInput = Readonly<Partial<Record<SocketId, SocketRole | undefined>>>;
 
 /**
  * 8ソケットの役割割当。board-model の `SocketRoles`（`Readonly<Partial<Record<SocketId, SocketRole>>>`）
  * に一致させる。**役割を書かなかったソケットは役割なしの予備**であり、端子だけが存在して配線できる（§6.1）。
- * 盤に無いソケットIDはその場で弾く（`z.strictObject`）。
+ * キーの集合は board-model の `SOCKET_IDS`（S1〜S8）と同じで、盤に無いソケットIDは
+ * その場で弾く（`z.strictObject`。パスが出るよう明示的に並べる）。
+ *
+ * 割当そのものの妥当性（役割の重複・`CHK` の有無・`CHK` は `S7` 固定）は board-model の
+ * `validateSocketRoles()` が唯一の源であり、**同じ判定を二重に書かず**それを refinement から呼ぶ
+ * （`schematic.ts` が `validateDocument()` を呼ぶのと同じ形）。チェック用回路の既設配線（§6.3）は
+ * `S7` に固定で結線されているため、`CHK` を別のソケットに置いた課題はここで落ちる。
  */
 export const SocketRolesSchema = z
   .strictObject({
@@ -401,19 +441,29 @@ export const SocketRolesSchema = z
     S7: SocketRoleSchema.optional(),
     S8: SocketRoleSchema.optional(),
   })
-  .refine(
-    (v) => {
-      const assigned = Object.values(v).filter((role) => role !== undefined);
-      return new Set(assigned).size === assigned.length;
-    },
-    { message: 'ソケットの役割が重複しています' },
-  )
-  .refine((v) => Object.values(v).includes('CHK'), {
-    message: 'チェック用ソケット（CHK）が割り当てられていません',
+  .superRefine((v, ctx) => {
+    for (const message of validateSocketRoles(toSocketRoles(v))) {
+      ctx.addIssue({ code: 'custom', message });
+    }
   });
 
 /** 8ソケットの役割割当。 */
 export type SocketRolesData = z.infer<typeof SocketRolesSchema>;
+
+/**
+ * 課題の役割割当を board-model の `SocketRoles` に直す。
+ * zod は省略可能なキーを `S1?: SocketRole | undefined` と推論するが、`exactOptionalPropertyTypes`
+ * のもとでの `Partial<Record<SocketId, SocketRole>>` は `S1?: SocketRole`（`undefined` を含まない）
+ * なのでそのままでは渡せない。値が `undefined` のキーは予備ソケットなので単に落とす。
+ */
+export function toSocketRoles(data: SocketRolesInput): SocketRoles {
+  const out: Partial<Record<SocketId, SocketRole>> = {};
+  for (const socket of SOCKET_IDS) {
+    const role = data[socket];
+    if (role !== undefined) out[socket] = role;
+  }
+  return out;
+}
 
 /** 盤に追加できる任意部品。標準盤に BZ は無い。§5.3.4 */
 export const ExtraPartSchema = z.enum(['BZ']);
@@ -428,13 +478,13 @@ export const BoardRefSchema = z.object({
 /** 課題が使う盤の指定。 */
 export type BoardRef = z.infer<typeof BoardRefSchema>;
 
-/** 装着できる部品種別。board-model の `MountableKind` と同じ集合。§6.6 */
-export const MountableKindSchema = z.enum(['relay-my4n', 'timer-h3y4']);
+/** 装着できる部品種別。board-model の `MOUNTABLE_KINDS`（`relay-my4n` / `timer-h3y4`）そのもの。§6.6 */
+export const MountableKindSchema = z.enum(MOUNTABLE_KINDS);
 
-/** 在庫1件。上限は盤のソケット数（8）。§7.1 / §6.1 */
+/** 在庫1件。上限は盤のソケット数（`SOCKET_IDS.length` = 8）。§7.1 / §6.1 */
 export const InventoryItemSchema = z.object({
   kind: MountableKindSchema,
-  count: z.int().min(0).max(8),
+  count: z.int().min(0).max(SOCKET_IDS.length),
 });
 
 /** 在庫1件。 */
@@ -473,7 +523,7 @@ export const TerminalIdSchema = z
 pnpm --filter @ojt/content exec vitest run test/schema-common.test.ts
 ```
 
-Expected: `Test Files  1 passed (1)` / `Tests  15 passed (15)`
+Expected: `Test Files  1 passed (1)` / `Tests  17 passed (17)`
 
 - [ ] **Step 5: コミット**
 
@@ -503,7 +553,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 
 ```ts
 import { describe, expect, it } from 'vitest';
-import { SchematicDocumentSchema, toZodPath } from '../src/schema/schematic.js';
+import { hasExactTimerRange, SchematicDocumentSchema, toZodPath } from '../src/schema/schematic.js';
 
 const DOC = {
   formatVersion: 1,
@@ -598,6 +648,33 @@ describe('SchematicDocumentSchema', () => {
     });
     expect(strayPreset.success).toBe(false);
   });
+
+  it('accepts only presets that a catalog timer range can hold exactly (§5.3.2)', () => {
+    const withPreset = (presetMs: number) =>
+      SchematicDocumentSchema.safeParse({
+        ...DOC,
+        rungs: [
+          {
+            id: 'r1',
+            from: { bus: 'P' },
+            to: { bus: 'N' },
+            cells: [
+              { kind: 'pb-a', id: 'c01', device: 'PB1' },
+              { kind: 'coil', id: 'c02', device: 'T1', presetMs },
+            ],
+          },
+        ],
+      });
+    // 0〜10秒レンジは0.1秒刻み
+    expect(withPreset(100).success).toBe(true);
+    expect(withPreset(3000).success).toBe(true);
+    expect(withPreset(150).success).toBe(false);
+    // 0〜10秒を超えると0〜60秒レンジ（0.5秒刻み・下限500ms）でしか表せない
+    expect(withPreset(20_000).success).toBe(true);
+    expect(withPreset(20_100).success).toBe(false);
+    expect(hasExactTimerRange(500)).toBe(true);
+    expect(hasExactTimerRange(60_001)).toBe(false);
+  });
 });
 
 describe('toZodPath', () => {
@@ -622,6 +699,8 @@ Expected: FAIL。`Failed Suites 1` ＋ `Error: Cannot find module '../src/schema
 `packages/content/src/schema/schematic.ts`:
 
 ```ts
+import { snapPresetToStep, TIMER_RANGE_60S, TIMER_RANGES } from '@ojt/board-model';
+import { TIMER_MIN_PRESET_MS } from '@ojt/circuit-sim';
 import { SCHEMATIC_FORMAT_VERSION, validateDocument } from '@ojt/schematic-core';
 import { z } from 'zod';
 
@@ -644,12 +723,32 @@ export const CellKindSchema = z.enum([
   'buzzer',
 ]);
 
+/**
+ * その設定値をそのまま保持できるタイマレンジ（丸めが起きないもの）があるか。§5.3.2
+ *
+ * board-model の `snapPresetToStep()` は設定値をレンジの分解能に丸め、下限を
+ * `max(TIMER_MIN_PRESET_MS, range.stepMs)` に切り上げる。つまり 0〜10秒レンジは0.1秒刻み・
+ * 下限100ms、0〜60秒レンジは0.5秒刻み・**下限500ms**であり、レンジごとに取れる値が違う。
+ * 課題JSONに書いた秒数と実際に装着されるタイマの秒数が黙って食い違わないよう、
+ * どれかのレンジに丸めなしで載る値だけを受け付ける（判定はレンジ定義を唯一の源にする）。
+ */
+export function hasExactTimerRange(presetMs: number): boolean {
+  return TIMER_RANGES.some((range) => snapPresetToStep(presetMs, range) === presetMs);
+}
+
 /** 段の中の1要素。§11.1 */
 export const SchematicCellSchema = z.object({
   kind: CellKindSchema,
   id: z.string().min(1),
   device: z.string().min(1),
-  presetMs: z.int().min(100).max(60_000).optional(),
+  presetMs: z
+    .int()
+    .min(TIMER_MIN_PRESET_MS)
+    .max(TIMER_RANGE_60S.maxMs)
+    .refine(hasExactTimerRange, {
+      message: 'タイマ設定値はレンジの刻みに載る値にします（0〜10秒は0.1秒刻み／0〜60秒は0.5秒刻み）',
+    })
+    .optional(),
 });
 
 /** 段の端点（母線か他の段の節点）。§11.1 */
@@ -708,7 +807,7 @@ export type SchematicDocumentData = z.infer<typeof SchematicDocumentSchema>;
 pnpm --filter @ojt/content exec vitest run test/schema-schematic.test.ts
 ```
 
-Expected: `Test Files  1 passed (1)` / `Tests  6 passed (6)`
+Expected: `Test Files  1 passed (1)` / `Tests  7 passed (7)`
 
 - [ ] **Step 5: コミット**
 
@@ -2106,6 +2205,7 @@ import {
 } from '@ojt/board-model';
 import { partId, toTerminalId, type Netlist, type PartId, type TerminalId } from '@ojt/circuit-sim';
 import { toSession } from '@ojt/schematic-core';
+import { toSocketRoles } from './schema/common.js';
 import type { AssembleProblem } from './schema/assemble.js';
 import type { ProblemIssue } from './schema/index.js';
 
@@ -2141,9 +2241,13 @@ export function toPhysicalOverride(
   return out;
 }
 
-/** 課題の盤指定を board-model の型に直す。 */
+/**
+ * 課題の盤指定を board-model の型に直す。
+ * zod の `S1?: SocketRole | undefined` を `SocketRoles`（`exactOptionalPropertyTypes` のもとでは
+ * `S1?: SocketRole`）に詰め替える。値が無いキー＝役割なしの予備ソケット。§6.1
+ */
 function toRoles(problem: AssembleProblem): SocketRoles {
-  return problem.board.socketRoles;
+  return toSocketRoles(problem.board.socketRoles);
 }
 
 /** 課題の任意追加部品を部品IDの配列に直す。§5.3.4 */
@@ -3477,6 +3581,11 @@ export type JudgeAssembleResult =
  * 1. 模範回路を組み立てて操作列を再生する
  * 2. 訓練者の盤セッションをネットリストにして同じ操作列を再生する
  * 3. 出力波形を比較し、静的チェックを走らせ、両方の波形をタイムチャートにする
+ *
+ * 課題エラー（`ok: false`）として返すのは**模範回路が作れない**場合だけである。`traineeSession` が
+ * この盤のセッションでないのは呼び出し側の取り違えなので、board-model の `toNetlist()` が
+ * `SessionError` を投げる（黙って壊れたネットリストを判定するより早く落とす。§8.2）。
+ * UIは課題が要求する盤で作ったセッションを渡すこと。
  */
 export function judgeAssemble(
   problem: AssembleProblem,
@@ -4877,6 +4986,7 @@ export {
   SocketRolesSchema,
   TerminalIdSchema,
   TimeLimitSchema,
+  toSocketRoles,
   UNSUPPORTED_MODES,
   type BoardRef,
   type Grade,
@@ -4888,6 +4998,7 @@ export {
 } from './schema/common.js';
 export {
   CellKindSchema,
+  hasExactTimerRange,
   RungEndSchema,
   RungSchema,
   SchematicCellSchema,
@@ -5009,7 +5120,7 @@ Remove-Item packages/content/test/scaffold.test.ts
 pnpm --filter @ojt/content exec vitest run
 ```
 
-Expected: `Test Files  13 passed (13)` / `Tests  133 passed (133)`
+Expected: `Test Files  13 passed (13)` / `Tests  136 passed (136)`
 
 - [ ] **Step 4: カバレッジを確かめる（仕様 §14.2 の90%）**
 
@@ -5105,7 +5216,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 | 2 | §7.4「`forbiddenCircuit` はチャタリング検出と**構造パターン照合の両方**で判定」 | Phase 1 はチャタリング検出のみ | 構造パターン照合（タイマ自己遮断・タイマ2個フリッカのネットリスト上の照合）はモードC2の故障探索と同じ解析基盤を要するため Phase 2 に回す。仕様 §5.3.2 の復帰時間モデルにより、禁則回路は必ず tick 周期のチャタリングとして現れるので、Phase 1 の検出漏れは無い（`test/static-checks.test.ts` の禁則ワンショットで実証） |
 | 3 | §7.4 `unusedParts`「装着したが回路に組み込まれていない部品」 | 「装着したのにどのピンにも電線が1本も来ていない部品」と定義した | 「組み込まれている」の程度（コイルだけ繋がっている等）を機械的に線引きすると誤検出が増える。盤上で完全に浮いている部品だけを確実に指摘する |
 | 4 | §7.1 `timeLimit` の既定は課題1形式 `{50,60}` / 課題2形式 `{30,50}` の2種 | 内蔵課題は 3級・2級相当の6題を `{30,50}`、1級相当の2題を `{50,60}` にした | 有接点の回路組立課題に対する公式の標準時間は非公開。仕様が示す2つの値のどちらかを課題の規模で選ぶ形にし、新しい値は作らない |
-| 5 | §7.1 `board.socketRoles` は `["CR1","CR2","T1","T2","CHK"]` のような**5要素の配列**で例示 | `{"S1":"CR1", …, "S7":"CHK"}` のオブジェクトにし、**S1〜S8 すべて省略可**（書かなかったソケットは役割なしの予備）とした | 実物の盤はソケットを8個持ち、`@ojt/board-model` の `SocketRoles`（Plan 1B 改訂版）は `Readonly<Partial<Record<SocketId, SocketRole>>>` である。そのまま渡せる形に合わせた。盤に無いソケットIDは `z.strictObject` がその場で弾く |
+| 5 | §7.1 `board.socketRoles` は `["CR1","CR2","T1","T2","CHK"]` のような**5要素の配列**で例示 | `{"S1":"CR1", …, "S7":"CHK"}` のオブジェクトにし、**S1〜S8 すべて省略可**（書かなかったソケットは役割なしの予備）とした。ただし `CHK` は `S7` 固定 | 実物の盤はソケットを8個持ち、`@ojt/board-model` の `SocketRoles`（Plan 1B 改訂版）は `Readonly<Partial<Record<SocketId, SocketRole>>>` である。そのまま渡せる形に合わせた。盤に無いソケットIDは `z.strictObject` がその場で弾き、役割の重複・`CHK` の有無・`CHK` の位置は board-model の `validateSocketRoles()` に委ねる（チェック用回路の既設配線が `S7` に固定で結線されているため。§6.3） |
 | 6 | §7.2 `physicalOverride` は `{[elementId]: TerminalId[]}` | 要素数をちょうど2に固定した（`[左(P側), 右(N側)]`） | `@ojt/schematic-core` の `assignToBoard()` が各要素に左右2端子を割り当てる仕様（Plan 1B Task 13）。可変長を許すと実行時に「端子2つを指定します」と落ちるだけなので、スキーマで先に止める |
 | 7 | §7.4 の判定設定のキーは `compare` | `compareSignals` にした | `compare` は動詞に読めて、`tolerance` / `staticChecks` と並べたときに何の集合か分からない。中身は仕様どおり「比較対象の出力信号名の配列」 |
 | 8 | §6.3「チェック用回路の線色は黄」 | 固定配線（`locked`）は線色チェックの対象外にした | Plan 1B 改訂版で、実物の盤の既設配線はチェック用回路を含めてすべて**青**であることが写真から確定した。既設配線は訓練者の責任範囲ではないので、色ではなく `locked` で「触れない線」を識別する。訓練者が引ける色は `ASSEMBLE_WIRE_COLOR = '青'`（モードB）のまま |
@@ -5115,7 +5226,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 
 ## 完了条件
 
-- [ ] `pnpm --filter @ojt/content exec vitest run` が `Test Files 13 passed` / `Tests 133 passed` で終わる。
+- [ ] `pnpm --filter @ojt/content exec vitest run` が `Test Files 13 passed` / `Tests 136 passed` で終わる。
 - [ ] `pnpm --filter @ojt/content exec vitest run --coverage` が閾値90%（lines / statements / functions / branches）を満たして終わる。
 - [ ] `pnpm -r typecheck` と `pnpm lint`（`import-x/no-cycle` 込み）が無警告で通る。
 - [ ] `npx prettier --check "packages/content/**/*.{ts,json}"` が `All matched files use Prettier code style!` を出す。
@@ -5133,3 +5244,4 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 | 2026-09-14 | 初版 |
 | 2026-09-14 | Plan 1B 再改訂（供給端子は `P.1`/`N.1` の1点ずつ、母線は渡り配線で鎖状に分配）に追随。内蔵課題⑦（`b-007`）のランプ段を P 母線ではなくリセット節点（`PB4` b接点の後）から分岐させ、`TB_PB.4c` に付く訓練者の配線を1本に収めた。`terminalLimit` のテストで使っていた `P.4` / `P.5` は存在しなくなったため実在する端子（`CR2.14` / `T1.14`）に置き換え。盤の端子数が増えて判定1件が数秒かかるようになったので `vitest.config.ts` に `testTimeout: 30_000` を入れた。`WireRoute.channelIds` が空になるケースは content から経路を参照していないため影響なし |
 | 2026-09-14 | Plan 1B 改訂（8ソケット等）に追随。`SocketRolesSchema` を S1〜S8 の `Partial`（`z.strictObject`）に変え、内蔵課題8題の `board.socketRoles` を課題1形式 `{S1..S4, S7:CHK}` ／課題2形式 `{S1,S2,S5:T1,S6:T2,S7:CHK}` に更新。固定配線が青・`locked` になったため `checkWireColorRule()` は `locked` を検査対象外にし、`checkUnusedParts()` は予備ソケットに対応して `socketPartId()` を使うようにした。`judge.ts` の危険操作集計は circuit-sim の `HAZARD_KINDS` を唯一の源にした。在庫の上限をソケット数に合わせて8にした。`ducts` / `routeWire` / `WireRoute` は content から参照していないため影響なし |
+| 2026-09-14 | 実装された `@ojt/board-model` の公開APIに合わせて整合を取った。①`SocketRolesSchema` の重複・`CHK` 判定を自前の `refine` から board-model の `validateSocketRoles()` 呼び出しに置き換え、**`CHK` は `S7` 固定**（`CHECK_SOCKET_ID`。チェック用回路の既設配線が S7 に結線されているため）という実装どおりの規則を課題JSONにも効かせた（テスト1件追加）。②`SocketRoleSchema` / `MountableKindSchema` を手書きの文字列列挙からエクスポート済みタプル `z.enum(SOCKET_ROLES)` / `z.enum(MOUNTABLE_KINDS)` に、在庫上限を `SOCKET_IDS.length` に変えて盤の語彙の二重定義を無くした。③zod の `S1?: SocketRole \| undefined` は `exactOptionalPropertyTypes` のもとで `SocketRoles` に直接渡せないため、変換関数 `toSocketRoles()` を `schema/common.ts` に足し（テスト1件追加）、`reference.ts` の `toRoles()` をそれ経由にした。④`SchematicCellSchema.presetMs` の範囲を実装の丸め規則に合わせ、`snapPresetToStep()` / `TIMER_RANGES` を使う `hasExactTimerRange()` で検証するようにした（0〜10秒は0.1秒刻み・下限100ms、**0〜60秒は0.5秒刻み・下限500ms**。テスト1件追加）。⑤`judgeAssemble()` に「訓練者セッションの盤が違う場合は `toNetlist()` が `SessionError` を投げる」ことを明記（board-model 側の設計。ここでは課題エラーに変換しない）。テスト総数 133 → 136 |
