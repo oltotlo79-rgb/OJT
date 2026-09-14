@@ -102,7 +102,7 @@
 - Create: `apps/desktop/package.json`, `apps/desktop/tsconfig.json`, `apps/desktop/electron.vite.config.ts`, `apps/desktop/vitest.config.ts`, `apps/desktop/scripts/build.mjs`, `apps/desktop/scripts/dev.mjs`
 
 
-- [ ] **Step 1: `pnpm-workspace.yaml` を書く**
+- [x] **Step 1: `pnpm-workspace.yaml` を書く**
 
 pnpm 10 以降はインストール時のビルドスクリプトを既定で全て止めるため、Electron 本体のダウンロードと esbuild のバイナリ配置を明示的に許可する。
 
@@ -120,7 +120,7 @@ allowBuilds:
   esbuild: true
 ```
 
-- [ ] **Step 2: `eslint.config.js` を書く**
+- [x] **Step 2: `eslint.config.js` を書く**
 
 `out/` は electron-vite の成果物、`test-results/` は Playwright の出力なので lint の対象から外す。`scripts/*.mjs` は型情報を使うルールの対象外にする。
 
@@ -188,7 +188,7 @@ export default tseslint.config(
 );
 ```
 
-- [ ] **Step 3: `packages/*/package.json` の `"type": "module"` の直後に `"sideEffects": false` を足す（4パッケージとも）**
+- [x] **Step 3: `packages/*/package.json` の `"type": "module"` の直後に `"sideEffects": false` を足す（4パッケージとも）**
 
 `@ojt/content` の公開APIは `loadProblemsFromDir()`（`node:fs` を使う）も含むため、renderer 側のバンドルに引きずり込まれる。`sideEffects: false` があると Rollup が未使用の再輸出を落とせるので、Worker バンドルが 53KB 小さくなり、`node:fs` のコードが実際に出力から消える（Task 14 の検証手順で確認する）。
 
@@ -197,7 +197,7 @@ export default tseslint.config(
   "sideEffects": false,
 ```
 
-- [ ] **Step 4: `apps/desktop/package.json` を書く**
+- [x] **Step 4: `apps/desktop/package.json` を書く**
 
 `dev` / `build` は electron-vite の CLI ではなく `scripts/*.mjs` 経由で呼ぶ（Step 7 に理由）。
 
@@ -245,7 +245,7 @@ export default tseslint.config(
 }
 ```
 
-- [ ] **Step 5: `apps/desktop/tsconfig.json` を書く**
+- [x] **Step 5: `apps/desktop/tsconfig.json` を書く**
 
 ```json
 {
@@ -271,7 +271,7 @@ export default tseslint.config(
 }
 ```
 
-- [ ] **Step 6: `apps/desktop/electron.vite.config.ts` を書く**
+- [x] **Step 6: `apps/desktop/electron.vite.config.ts` を書く**
 
 ```ts
 import { builtinModules } from 'node:module';
@@ -334,7 +334,7 @@ export default defineConfig({
 });
 ```
 
-- [ ] **Step 7: `apps/desktop/scripts/build.mjs` を書く**
+- [x] **Step 7: `apps/desktop/scripts/build.mjs` を書く**
 
 ```js
 import { build } from 'electron-vite';
@@ -349,7 +349,7 @@ import { build } from 'electron-vite';
 await build({ configFile: 'electron.vite.config.ts' });
 ```
 
-- [ ] **Step 8: `apps/desktop/scripts/dev.mjs` を書く**
+- [x] **Step 8: `apps/desktop/scripts/dev.mjs` を書く**
 
 ```js
 import { createServer } from 'electron-vite';
@@ -361,7 +361,7 @@ import { createServer } from 'electron-vite';
 await createServer({ configFile: 'electron.vite.config.ts' }, { rendererOnly: false });
 ```
 
-- [ ] **Step 9: `apps/desktop/vitest.config.ts` を書く**
+- [x] **Step 9: `apps/desktop/vitest.config.ts` を書く**
 
 ```ts
 import { defineConfig } from 'vitest/config';
@@ -375,7 +375,7 @@ export default defineConfig({
 });
 ```
 
-- [ ] **Step 10: 依存をインストールする**
+- [x] **Step 10: 依存をインストールする**
 
 実行:
 
@@ -418,7 +418,7 @@ pnpm add -D -w eslint-plugin-react-hooks
 node node_modules/.pnpm/electron@44.3.0/node_modules/electron/install.js
 ```
 
-- [ ] **Step 11: 型チェックが通ることを確かめる**
+- [x] **Step 11: 型チェックが通ることを確かめる**
 
 実行:
 
@@ -432,7 +432,7 @@ pnpm --filter @ojt/desktop typecheck
 （何も出力されない＝成功）
 ```
 
-- [ ] **Step 12: コミットする**
+- [x] **Step 12: コミットする**
 
 追加・変更したファイル: `pnpm-workspace.yaml` `eslint.config.js` `packages` `apps/desktop`
 
@@ -460,7 +460,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 仕様 §4.3 は IPC を6チャネルに限る。型はすべて `src/shared/ipc.ts` に置き、main と preload と renderer がそこだけを見る。
 
 
-- [ ] **Step 1: `apps/desktop/src/shared/ipc.ts` を書く**
+- [x] **Step 1: `apps/desktop/src/shared/ipc.ts` を書く**
 
 ```ts
 import type { AssembleProblem, ProblemLoadError } from '@ojt/content';
@@ -609,7 +609,7 @@ export function toSummary(
 }
 ```
 
-- [ ] **Step 2: `apps/desktop/src/main/content-loader.ts` を書く**
+- [x] **Step 2: `apps/desktop/src/main/content-loader.ts` を書く**
 
 Plan 1D1 では内蔵課題だけを返す。利用者フォルダの合流（`loadProblemsFromDir` ＋ `mergeProblemSets`）は Plan 1D2 でここを置き換えて足す。
 
@@ -644,7 +644,7 @@ export function loadContent(userDir: string): LoadedContent {
 }
 ```
 
-- [ ] **Step 3: `apps/desktop/src/main/settings.ts` を書く**
+- [x] **Step 3: `apps/desktop/src/main/settings.ts` を書く**
 
 ```ts
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -703,7 +703,7 @@ export function writeSettings(patch: Partial<AppSettings>): AppSettings {
 }
 ```
 
-- [ ] **Step 4: `apps/desktop/src/main/work-files.ts` を書く**
+- [x] **Step 4: `apps/desktop/src/main/work-files.ts` を書く**
 
 作業ファイルのUI（保存／読込ボタン、一時保存、復帰）は Plan 1D2 で足すが、IPC の口はここで揃えておく（チャネルを後から増やさないため）。
 
@@ -834,7 +834,7 @@ export async function loadWorkFile(
 }
 ```
 
-- [ ] **Step 5: `apps/desktop/src/main/ipc.ts` を書く**
+- [x] **Step 5: `apps/desktop/src/main/ipc.ts` を書く**
 
 ```ts
 import { BrowserWindow, ipcMain } from 'electron';
@@ -875,7 +875,7 @@ export function registerIpc(): void {
 }
 ```
 
-- [ ] **Step 6: `apps/desktop/src/main/index.ts` を書く**
+- [x] **Step 6: `apps/desktop/src/main/index.ts` を書く**
 
 ```ts
 import { join } from 'node:path';
@@ -943,7 +943,7 @@ app.on('window-all-closed', () => {
 });
 ```
 
-- [ ] **Step 7: `apps/desktop/src/preload/index.ts` を書く**
+- [x] **Step 7: `apps/desktop/src/preload/index.ts` を書く**
 
 ```ts
 import { contextBridge, ipcRenderer } from 'electron';
@@ -979,7 +979,7 @@ const api: OjtApi = {
 contextBridge.exposeInMainWorld('ojt', api);
 ```
 
-- [ ] **Step 8: `apps/desktop/src/renderer/env.d.ts` を書く**
+- [x] **Step 8: `apps/desktop/src/renderer/env.d.ts` を書く**
 
 ```ts
 import type { OjtApi } from '../shared/ipc.js';
@@ -1000,7 +1000,7 @@ declare global {
 export {};
 ```
 
-- [ ] **Step 9: `apps/desktop/test/content-loader.test.ts` を書く**
+- [x] **Step 9: `apps/desktop/test/content-loader.test.ts` を書く**
 
 ```ts
 import { BUILTIN_PROBLEMS } from '@ojt/content';
@@ -1026,7 +1026,7 @@ describe('loadContent（Plan 1D1: 内蔵課題のみ）', () => {
 });
 ```
 
-- [ ] **Step 10: テストを実行する**
+- [x] **Step 10: テストを実行する**
 
 実行:
 
@@ -1041,7 +1041,7 @@ pnpm --filter @ojt/desktop test -- content-loader
       Tests  2 passed (2)
 ```
 
-- [ ] **Step 11: コミットする**
+- [x] **Step 11: コミットする**
 
 追加・変更したファイル: `apps/desktop/src/shared` `apps/desktop/src/main` `apps/desktop/src/preload` `apps/desktop/src/renderer/env.d.ts` `apps/desktop/test/content-loader.test.ts`
 
@@ -1068,7 +1068,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 TDD。まず追従ループの判断（`planTicks`）のテストを書き、落ちることを見てから実装する。
 
 
-- [ ] **Step 1: `apps/desktop/src/worker/protocol.ts` を書く**
+- [x] **Step 1: `apps/desktop/src/worker/protocol.ts` を書く**
 
 ```ts
 import type { BoardSession, SocketId } from '@ojt/board-model';
@@ -1186,7 +1186,7 @@ export type SimMessage =
   | { type: 'error'; message: string; fatal: boolean };
 ```
 
-- [ ] **Step 2: `apps/desktop/test/runtime.test.ts` を書く**
+- [x] **Step 2: `apps/desktop/test/runtime.test.ts` を書く**
 
 ```ts
 import { TICK_MS } from '@ojt/circuit-sim';
@@ -1251,7 +1251,7 @@ describe('formatElapsed', () => {
 });
 ```
 
-- [ ] **Step 3: テストが落ちることを確かめる**
+- [x] **Step 3: テストが落ちることを確かめる**
 
 実行:
 
@@ -1265,7 +1265,7 @@ pnpm --filter @ojt/desktop test -- runtime
 Error: Failed to resolve import "../src/worker/runtime.js"
 ```
 
-- [ ] **Step 4: `apps/desktop/src/worker/runtime.ts` を書く**
+- [x] **Step 4: `apps/desktop/src/worker/runtime.ts` を書く**
 
 ```ts
 import { MAX_CATCHUP_TICKS } from './protocol.js';
@@ -1330,7 +1330,7 @@ export function formatElapsed(ms: number): string {
 }
 ```
 
-- [ ] **Step 5: テストが通ることを確かめる**
+- [x] **Step 5: テストが通ることを確かめる**
 
 実行:
 
@@ -1345,7 +1345,7 @@ pnpm --filter @ojt/desktop test -- runtime
       Tests  7 passed (7)
 ```
 
-- [ ] **Step 6: コミットする**
+- [x] **Step 6: コミットする**
 
 追加・変更したファイル: `apps/desktop/src/worker` `apps/desktop/test/runtime.test.ts`
 
@@ -1372,7 +1372,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 Worker は `@ojt/board-model` の `toNetlist()` と `@ojt/circuit-sim` の `Simulation` を持ち、renderer が確定させた変更だけを適用する。判定（`judgeAssemble`）もここで走らせる（renderer のフレームを止めないため。§15）。
 
 
-- [ ] **Step 1: `apps/desktop/src/worker/sim.worker.ts` を書く**
+- [x] **Step 1: `apps/desktop/src/worker/sim.worker.ts` を書く**
 
 ```ts
 import {
@@ -1672,7 +1672,7 @@ self.onmessage = (event: MessageEvent<SimCommand>): void => {
 };
 ```
 
-- [ ] **Step 1b: `apps/desktop/test/sim-worker.test.ts` を書く**
+- [x] **Step 1b: `apps/desktop/test/sim-worker.test.ts` を書く**
 
 Worker を本当に起こさずに中身を試す。`sim.worker.ts` は `self.onmessage` を張るだけの
 モジュールなので、**偽の `self`** を `globalThis` に置いてから読み込めば素のモジュールとして
@@ -1927,7 +1927,7 @@ describe('1端子3本目（§5.6 #5 / §17 #25）', () => {
 });
 ```
 
-- [ ] **Step 2: 型チェックが通ることを確かめる**
+- [x] **Step 2: 型チェックが通ることを確かめる**
 
 実行:
 
@@ -1941,7 +1941,7 @@ pnpm --filter @ojt/desktop typecheck
 （何も出力されない＝成功）
 ```
 
-- [ ] **Step 3: コミットする**
+- [x] **Step 3: コミットする**
 
 追加・変更したファイル: `apps/desktop/src/worker/sim.worker.ts`
 
@@ -1968,7 +1968,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 **状態管理に zustand を選ぶ理由**: Worker のスナップショットは約30fpsで届き、3Dシーン・タイムチャート・操作ログの3箇所が別々の一部分だけを見る。`useReducer` ＋ Context だと1スナップショットごとに配下が丸ごと再描画されるが、zustand はセレクタ単位で購読でき「ランプの色だけ」を見ている3Dシーンが操作ログの増加で再描画されない。さらに Worker ブリッジは React の外にいるため、Provider を介さず `useStore.getState()` で読み書きできる点も噛み合う。依存は 3KB 程度で §15 の性能目標に対する影響が小さい。
 
 
-- [ ] **Step 1: `apps/desktop/src/renderer/app/store-types.ts` を書く**
+- [x] **Step 1: `apps/desktop/src/renderer/app/store-types.ts` を書く**
 
 ```ts
 /**
@@ -2003,7 +2003,7 @@ export interface LogLine {
 }
 ```
 
-- [ ] **Step 2: `apps/desktop/src/renderer/app/store.ts` を書く**
+- [x] **Step 2: `apps/desktop/src/renderer/app/store.ts` を書く**
 
 ```ts
 import { createSession, JIPM_BOARD, type BoardSession, type SocketId } from '@ojt/board-model';
@@ -2392,7 +2392,7 @@ export const useStore = create<AppState>((set, get) => ({
 }));
 ```
 
-- [ ] **Step 3: `apps/desktop/src/renderer/session/worker-bridge.ts` を書く**
+- [x] **Step 3: `apps/desktop/src/renderer/session/worker-bridge.ts` を書く**
 
 ```ts
 import type { SimCommand, SimMessage, SimSnapshot } from '../../worker/protocol.js';
@@ -2462,7 +2462,7 @@ export class WorkerBridge {
 export const bridge = new WorkerBridge();
 ```
 
-- [ ] **Step 4: `apps/desktop/test/store.test.ts` を書く**
+- [x] **Step 4: `apps/desktop/test/store.test.ts` を書く**
 
 ```ts
 import { createSession, JIPM_BOARD, TASK2_SOCKET_ROLES } from '@ojt/board-model';
@@ -2741,7 +2741,7 @@ describe('setMode', () => {
 });
 ```
 
-- [ ] **Step 5: テストを実行する**
+- [x] **Step 5: テストを実行する**
 
 実行:
 
@@ -2756,7 +2756,7 @@ pnpm --filter @ojt/desktop test -- store
       Tests  7 passed (7)
 ```
 
-- [ ] **Step 6: コミットする**
+- [x] **Step 6: コミットする**
 
 追加・変更したファイル: `apps/desktop/src/renderer/app` `apps/desktop/src/renderer/session/worker-bridge.ts` `apps/desktop/test/store.test.ts`
 
@@ -2778,7 +2778,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 - Create: `apps/desktop/src/renderer/i18n/ja.ts`, `apps/desktop/src/renderer/session/colors.ts`, `apps/desktop/src/renderer/app/global.css`, `apps/desktop/src/renderer/app/app.module.css`, `apps/desktop/src/renderer/app/routes.tsx`, `apps/desktop/src/renderer/app/App.tsx`, `apps/desktop/src/renderer/main.tsx`, `apps/desktop/src/renderer/index.html`, `apps/desktop/src/renderer/screens/screens.module.css`, `apps/desktop/src/renderer/screens/Home.tsx`, `apps/desktop/src/renderer/screens/ProblemList.tsx`
 
 
-- [ ] **Step 1: `apps/desktop/src/renderer/i18n/ja.ts` を書く**
+- [x] **Step 1: `apps/desktop/src/renderer/i18n/ja.ts` を書く**
 
 仕様 §15「全文言を1箇所に集約しハードコードしない」。Plan 1D2 で足す文言もここに並べておく。
 
@@ -3061,7 +3061,7 @@ export function droppedTicksLog(ticks: number): string {
 }
 ```
 
-- [ ] **Step 2: `apps/desktop/src/renderer/session/colors.ts` を書く**
+- [x] **Step 2: `apps/desktop/src/renderer/session/colors.ts` を書く**
 
 ```ts
 import type { WireColor } from '@ojt/circuit-sim';
@@ -3139,7 +3139,7 @@ export const LAMP_EMISSIVE: Readonly<Record<string, number>> = {
 };
 ```
 
-- [ ] **Step 3: `apps/desktop/src/renderer/app/global.css` を書く**
+- [x] **Step 3: `apps/desktop/src/renderer/app/global.css` を書く**
 
 ```css
 /* アプリ全体の素のCSS。設計仕様 §12。CSSフレームワークは使わない。 */
@@ -3247,7 +3247,7 @@ button[aria-pressed='true'] {
 }
 ```
 
-- [ ] **Step 4: `apps/desktop/src/renderer/app/app.module.css` を書く**
+- [x] **Step 4: `apps/desktop/src/renderer/app/app.module.css` を書く**
 
 ```css
 /* アプリの外枠。設計仕様 §8.1 の画面構成（中央3D／右パネル／下部／上部ツールバー）。 */
@@ -3298,7 +3298,7 @@ button[aria-pressed='true'] {
 }
 ```
 
-- [ ] **Step 5: `apps/desktop/src/renderer/screens/screens.module.css` を書く**
+- [x] **Step 5: `apps/desktop/src/renderer/screens/screens.module.css` を書く**
 
 ```css
 /* ホーム・課題一覧・セッション画面のレイアウト。設計仕様 §8.1 / §12.1。 */
@@ -3504,7 +3504,7 @@ button[aria-pressed='true'] {
 }
 ```
 
-- [ ] **Step 6: `apps/desktop/src/renderer/app/routes.tsx` を書く**
+- [x] **Step 6: `apps/desktop/src/renderer/app/routes.tsx` を書く**
 
 ```tsx
 import type { JSX } from 'react';
@@ -3537,7 +3537,7 @@ export function renderRoute(route: Route): JSX.Element {
 }
 ```
 
-- [ ] **Step 7: `apps/desktop/src/renderer/app/App.tsx` を書く**
+- [x] **Step 7: `apps/desktop/src/renderer/app/App.tsx` を書く**
 
 ```tsx
 import { useEffect, type JSX } from 'react';
@@ -3648,7 +3648,7 @@ export function App(): JSX.Element {
 }
 ```
 
-- [ ] **Step 7b: `apps/desktop/src/renderer/app/ErrorBoundary.tsx` を書く**
+- [x] **Step 7b: `apps/desktop/src/renderer/app/ErrorBoundary.tsx` を書く**
 
 `window` の `error` / `unhandledrejection` は**非同期の例外しか拾えない**。描画中に投げられた
 例外は React が先に捕まえ、境界が無ければルートごとアンマウントして例外バナーまで消してしまう
@@ -3701,7 +3701,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
 }
 ```
 
-- [ ] **Step 8: `apps/desktop/src/renderer/main.tsx` を書く**
+- [x] **Step 8: `apps/desktop/src/renderer/main.tsx` を書く**
 
 ```tsx
 import { createRoot } from 'react-dom/client';
@@ -3722,7 +3722,7 @@ if (container === null) throw new Error(JA.error.rootMissing);
 createRoot(container).render(<App />);
 ```
 
-- [ ] **Step 9: `apps/desktop/src/renderer/index.html` を書く**
+- [x] **Step 9: `apps/desktop/src/renderer/index.html` を書く**
 
 ```html
 <!doctype html>
@@ -3742,7 +3742,7 @@ createRoot(container).render(<App />);
 </html>
 ```
 
-- [ ] **Step 10: `apps/desktop/src/renderer/screens/Home.tsx` を書く**
+- [x] **Step 10: `apps/desktop/src/renderer/screens/Home.tsx` を書く**
 
 ```tsx
 import type { JSX } from 'react';
@@ -3795,7 +3795,7 @@ export function Home(): JSX.Element {
 }
 ```
 
-- [ ] **Step 10b: `apps/desktop/src/renderer/app/ojt-api.ts` を書く**
+- [x] **Step 10b: `apps/desktop/src/renderer/app/ojt-api.ts` を書く**
 
 `window.ojt` を「必ずある」ことにすると、preload が読み込めなかったときに
 `undefined.listProblems is not a function` という読めない例外で画面が落ちる。
@@ -3822,7 +3822,7 @@ export function ojtApi(): OjtApi {
 }
 ```
 
-- [ ] **Step 11: `apps/desktop/src/renderer/screens/ProblemList.tsx` を書く**
+- [x] **Step 11: `apps/desktop/src/renderer/screens/ProblemList.tsx` を書く**
 
 ```tsx
 import { useEffect, useState, type JSX } from 'react';
@@ -3950,7 +3950,7 @@ export function ProblemList(): JSX.Element {
 }
 ```
 
-- [ ] **Step 11b: `apps/desktop/test/app.test.tsx` を書く**
+- [x] **Step 11b: `apps/desktop/test/app.test.tsx` を書く**
 
 外枠（例外バナー・トースト）のテスト。画面そのものは `vi.mock` で差し替える。ここで見たいのは
 「ルートの描画が落ちたときに外枠が生き残るか」であって、どの画面が出るかではない。
@@ -4074,7 +4074,7 @@ describe('トースト（§8.2）', () => {
 });
 ```
 
-- [ ] **Step 11c: `apps/desktop/test/problem-list.test.tsx` を書く**
+- [x] **Step 11c: `apps/desktop/test/problem-list.test.tsx` を書く**
 
 preload が読み込まれていない環境（`window.ojt` が無い）でも課題一覧が落ちず、
 理由を画面に出すことを担保する（§13 #5）。
@@ -4175,7 +4175,7 @@ describe('ProblemList', () => {
 });
 ```
 
-- [ ] **Step 12: コミットする**
+- [x] **Step 12: コミットする**
 
 追加・変更したファイル: `apps/desktop/src/renderer/i18n` `apps/desktop/src/renderer/session/colors.ts` `apps/desktop/src/renderer/app` `apps/desktop/src/renderer/main.tsx` `apps/desktop/src/renderer/index.html` `apps/desktop/src/renderer/screens`
 
@@ -4200,7 +4200,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 仕様 §12.2「『ピック結果 → 実行する操作』の対応は純粋関数に分離し、3Dなしで単体テストできるようにする」。TDD で書く。
 
 
-- [ ] **Step 1: `apps/desktop/test/interaction.test.ts` を書く**
+- [x] **Step 1: `apps/desktop/test/interaction.test.ts` を書く**
 
 ```ts
 import { toTerminalId } from '@ojt/circuit-sim';
@@ -4438,7 +4438,7 @@ describe('shouldIgnoreShortcut（入力中はショートカットを止める�
 });
 ```
 
-- [ ] **Step 2: テストが落ちることを確かめる**
+- [x] **Step 2: テストが落ちることを確かめる**
 
 実行:
 
@@ -4452,7 +4452,7 @@ pnpm --filter @ojt/desktop test -- interaction
 Error: Failed to resolve import "../src/renderer/session/interaction.js"
 ```
 
-- [ ] **Step 3: `apps/desktop/src/renderer/session/interaction.ts` を書く**
+- [x] **Step 3: `apps/desktop/src/renderer/session/interaction.ts` を書く**
 
 ```ts
 import type { SocketId } from '@ojt/board-model';
@@ -4610,7 +4610,7 @@ export function deleteKeyToAction(
 }
 ```
 
-- [ ] **Step 4: テストが通ることを確かめる**
+- [x] **Step 4: テストが通ることを確かめる**
 
 実行:
 
@@ -4625,7 +4625,7 @@ pnpm --filter @ojt/desktop test -- interaction
       Tests  21 passed (21)
 ```
 
-- [ ] **Step 5: コミットする**
+- [x] **Step 5: コミットする**
 
 追加・変更したファイル: `apps/desktop/src/renderer/session/interaction.ts` `apps/desktop/test/interaction.test.ts`
 
@@ -4650,7 +4650,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 **逆操作ではなくスナップショットを持つ理由**: タイマの設定値はレンジの分解能に丸められるため、逆操作を組み立てると元の値に戻らない場合がある。セッションは電線数十本ぶんの素のJSONなので、50手ぶん持っても数十KBにしかならない（§8.2 の上限50手）。
 
 
-- [ ] **Step 1: `apps/desktop/test/commands.test.ts` を書く**
+- [x] **Step 1: `apps/desktop/test/commands.test.ts` を書く**
 
 ```ts
 import { createSession, JIPM_BOARD, TASK2_SOCKET_ROLES } from '@ojt/board-model';
@@ -4820,7 +4820,7 @@ describe('cloneSession', () => {
 });
 ```
 
-- [ ] **Step 2: テストが落ちることを確かめる**
+- [x] **Step 2: テストが落ちることを確かめる**
 
 実行:
 
@@ -4834,7 +4834,7 @@ pnpm --filter @ojt/desktop test -- commands
 Error: Failed to resolve import "../src/renderer/session/commands.js"
 ```
 
-- [ ] **Step 3: `apps/desktop/src/renderer/session/commands.ts` を書く**
+- [x] **Step 3: `apps/desktop/src/renderer/session/commands.ts` を書く**
 
 ```ts
 import {
@@ -5023,7 +5023,7 @@ export function runSetPreset(
 }
 ```
 
-- [ ] **Step 4: テストが通ることを確かめる**
+- [x] **Step 4: テストが通ることを確かめる**
 
 実行:
 
@@ -5038,7 +5038,7 @@ pnpm --filter @ojt/desktop test -- commands
       Tests  15 passed (15)
 ```
 
-- [ ] **Step 5: コミットする**
+- [x] **Step 5: コミットする**
 
 追加・変更したファイル: `apps/desktop/src/renderer/session/commands.ts` `apps/desktop/test/commands.test.ts`
 
@@ -5063,7 +5063,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 **端子の印字をキャンバステクスチャにする理由**: `@react-three/drei` の `<Text>`（SDF）は1文字列につき1メッシュを作るため、ソケット8個 × 14端子 × 2行 ＋ 端子台 26端子で 250個以上のメッシュになる。機器1個につきテクスチャ1枚に焼けばドローコールは12枚で済み、解像度は `PX_PER_MM` を上げるだけで「ソケット拡大」視点の判読性を確保できる（§15 の性能目標）。
 
 
-- [ ] **Step 1: `apps/desktop/src/renderer/three/coords.ts` を書く**
+- [x] **Step 1: `apps/desktop/src/renderer/three/coords.ts` を書く**
 
 ```ts
 import { BOARD_HEIGHT_MM, BOARD_WIDTH_MM, type Vec3 } from '@ojt/board-model';
@@ -5087,7 +5087,7 @@ export function scenePos(x: number, y: number, z: number): [number, number, numb
 }
 ```
 
-- [ ] **Step 2: `apps/desktop/src/renderer/three/camera.ts` を書く**
+- [x] **Step 2: `apps/desktop/src/renderer/three/camera.ts` を書く**
 
 ```ts
 import { BOARD_HEIGHT_MM, BOARD_WIDTH_MM, JIPM_BOARD } from '@ojt/board-model';
@@ -5275,7 +5275,7 @@ export function interpolatePose(from: CameraPose, to: CameraPose, t: number): Ca
 }
 ```
 
-- [ ] **Step 3: `apps/desktop/src/renderer/three/materials.ts` を書く**
+- [x] **Step 3: `apps/desktop/src/renderer/three/materials.ts` を書く**
 
 ```ts
 import { useMemo } from 'react';
@@ -5345,7 +5345,7 @@ export function useLampMaterial(color: string, intensity: number): MeshStandardM
 }
 ```
 
-- [ ] **Step 4: `apps/desktop/src/renderer/three/labels.ts` を書く**
+- [x] **Step 4: `apps/desktop/src/renderer/three/labels.ts` を書く**
 
 ```ts
 import { roleLabel, type BoardTerminal, type TerminalRole } from '@ojt/board-model';
@@ -5603,7 +5603,7 @@ export function blockFaceTexture(
 }
 ```
 
-- [ ] **Step 5: `apps/desktop/test/scene.test.ts` を書く**
+- [x] **Step 5: `apps/desktop/test/scene.test.ts` を書く**
 
 `socketTerminalLabel` は Task 10 で作る `Socket.tsx` にあるので、この時点では import 解決に失敗する。Task 10 の後に通す。
 
@@ -6021,7 +6021,7 @@ function contrastRatio(a: string, b: string): number {
 }
 ```
 
-- [ ] **Step 6: コミットする**
+- [x] **Step 6: コミットする**
 
 追加・変更したファイル: `apps/desktop/src/renderer/three/coords.ts` `apps/desktop/src/renderer/three/camera.ts` `apps/desktop/src/renderer/three/materials.ts` `apps/desktop/src/renderer/three/labels.ts` `apps/desktop/test/scene.test.ts`
 
@@ -6045,7 +6045,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 すべて `JIPM_BOARD` の寸法・座標・`bodyMm`・`footprints` から生成し、ソケット数も端子番号も配置もこの層ではハードコードしない。実物写真（`docs/reference/K96-CS3-board-photo.png`）の見た目に合わせる。
 
 
-- [ ] **Step 1: `apps/desktop/src/renderer/three/BoardPlate.tsx` を書く**
+- [x] **Step 1: `apps/desktop/src/renderer/three/BoardPlate.tsx` を書く**
 
 ```tsx
 import type { BoardDefinition } from '@ojt/board-model';
@@ -6108,7 +6108,7 @@ export function BoardPlate({ board }: { board: BoardDefinition }): JSX.Element {
 }
 ```
 
-- [ ] **Step 2: `apps/desktop/src/renderer/three/DinRail.tsx` を書く**
+- [x] **Step 2: `apps/desktop/src/renderer/three/DinRail.tsx` を書く**
 
 ```tsx
 import type { BoardTerminal } from '@ojt/board-model';
@@ -6156,7 +6156,7 @@ export function DinRail({ terminals }: { terminals: readonly BoardTerminal[] }):
 }
 ```
 
-- [ ] **Step 3: `apps/desktop/src/renderer/three/TerminalHit.tsx` を書く**
+- [x] **Step 3: `apps/desktop/src/renderer/three/TerminalHit.tsx` を書く**
 
 ```tsx
 import type { BoardTerminal } from '@ojt/board-model';
@@ -6264,7 +6264,7 @@ export function TerminalHit({
 }
 ```
 
-- [ ] **Step 4: `apps/desktop/src/renderer/three/Socket.tsx` を書く**
+- [x] **Step 4: `apps/desktop/src/renderer/three/Socket.tsx` を書く**
 
 ```tsx
 import {
@@ -6475,7 +6475,7 @@ export function Socket({
 }
 ```
 
-- [ ] **Step 5: `apps/desktop/src/renderer/three/TerminalBlock.tsx` を書く**
+- [x] **Step 5: `apps/desktop/src/renderer/three/TerminalBlock.tsx` を書く**
 
 ```tsx
 import type { BoardTerminal } from '@ojt/board-model';
@@ -6609,7 +6609,7 @@ export function TerminalBlock({
 }
 ```
 
-- [ ] **Step 6: `apps/desktop/src/renderer/three/Fixtures.tsx` を書く**
+- [x] **Step 6: `apps/desktop/src/renderer/three/Fixtures.tsx` を書く**
 
 ```tsx
 import type { BoardTerminal, Footprint } from '@ojt/board-model';
@@ -6803,7 +6803,7 @@ export const FIXTURES: ReadonlyArray<{
 ];
 ```
 
-- [ ] **Step 7: `apps/desktop/src/renderer/three/Lamp.tsx` を書く**
+- [x] **Step 7: `apps/desktop/src/renderer/three/Lamp.tsx` を書く**
 
 ```tsx
 import type { LampDefinition } from '@ojt/board-model';
@@ -6857,7 +6857,7 @@ export function Lamp({
 }
 ```
 
-- [ ] **Step 8: `apps/desktop/src/renderer/three/PushButton.tsx` を書く**
+- [x] **Step 8: `apps/desktop/src/renderer/three/PushButton.tsx` を書く**
 
 ```tsx
 import type { PushButtonDefinition } from '@ojt/board-model';
@@ -6925,7 +6925,7 @@ export function PushButton({
 }
 ```
 
-- [ ] **Step 9: `apps/desktop/src/renderer/three/MountedPart.tsx` を書く**
+- [x] **Step 9: `apps/desktop/src/renderer/three/MountedPart.tsx` を書く**
 
 ```tsx
 import type {
@@ -7072,7 +7072,7 @@ export function MountedPart({
 }
 ```
 
-- [ ] **Step 10: Task 9 のテストが通ることを確かめる**
+- [x] **Step 10: Task 9 のテストが通ることを確かめる**
 
 実行:
 
@@ -7087,7 +7087,7 @@ pnpm --filter @ojt/desktop test -- scene
       Tests  18 passed (18)
 ```
 
-- [ ] **Step 11: コミットする**
+- [x] **Step 11: コミットする**
 
 追加・変更したファイル: `apps/desktop/src/renderer/three`
 
@@ -7120,7 +7120,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 3. **`laneOverflow` を必ず見せる**。帯のスロット（レーン8 × レイヤ2 ＝ 16）が埋まると経路器は投げずに他の電線と同じスロットへ載せ、`laneOverflow: true` を立てる。これが「2本が重なって1本に見えている」ことを知る唯一の手がかりなので、3Dで琥珀色に変えて知らせる。
 
 
-- [ ] **Step 1: `apps/desktop/src/renderer/three/Wire.tsx` を書く**
+- [x] **Step 1: `apps/desktop/src/renderer/three/Wire.tsx` を書く**
 
 ```tsx
 import { WIRE_DIAMETER_MM, type WireRoute } from '@ojt/board-model';
@@ -7340,7 +7340,7 @@ export function Wire({
 }
 ```
 
-- [ ] **Step 2: `apps/desktop/src/renderer/three/FixedWires.tsx` を書く**
+- [x] **Step 2: `apps/desktop/src/renderer/three/FixedWires.tsx` を書く**
 
 ```tsx
 import { routeFixedLinks, type BoardDefinition } from '@ojt/board-model';
@@ -7407,7 +7407,7 @@ export function FixedWires({ board }: { board: BoardDefinition }): JSX.Element {
 }
 ```
 
-- [ ] **Step 3: `apps/desktop/test/routing.test.ts` を書く**
+- [x] **Step 3: `apps/desktop/test/routing.test.ts` を書く**
 
 ```ts
 import {
@@ -7642,7 +7642,7 @@ describe('経路器の失敗と重なりの扱い（§6.6）', () => {
 });
 ```
 
-- [ ] **Step 3b: `apps/desktop/test/wire-geometry.test.ts` を書く（1D1-f で追加）**
+- [x] **Step 3b: `apps/desktop/test/wire-geometry.test.ts` を書く（1D1-f で追加）**
 
 ```ts
 import { createSession, JIPM_BOARD, routeSession, TASK2_SOCKET_ROLES } from '@ojt/board-model';
@@ -7740,7 +7740,7 @@ describe('useTubeGeometry', () => {
 });
 ```
 
-- [ ] **Step 4: テストを実行する**
+- [x] **Step 4: テストを実行する**
 
 実行:
 
@@ -7755,7 +7755,7 @@ pnpm --filter @ojt/desktop test -- routing
       Tests  15 passed (15)
 ```
 
-- [ ] **Step 5: コミットする**
+- [x] **Step 5: コミットする**
 
 追加・変更したファイル: `apps/desktop/src/renderer/three/Wire.tsx` `apps/desktop/src/renderer/three/FixedWires.tsx` `apps/desktop/test/routing.test.ts`
 
@@ -7782,7 +7782,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 **性能方針（§15: 内蔵GPUで60fps）**: `frameloop="demand"` にして状態が変わったときだけ描く。盤の静的ジオメトリはマテリアルとジオメトリを共有し、電線の `TubeGeometry` は**経路の署名**（電線ID＋折れ点）単位でメモ化し、作り直すときに前の形を `dispose()` する。スナップショットの購読は「絵に効く値だけ」に絞り（`useShallow`）、3Dへ渡すハンドラは `useCallback` で安定させ、`BoardScene` は `memo` で包む（そうしないと毎秒約30枚のスナップショットで部分木が再描画され、`frameloop="demand"` が実質30fpsの常時描画になる）。ダンピングとビューキューブのアニメーション中のフレームは drei の `OrbitControls` / `GizmoHelper` が自分で `invalidate()` して要求するので、一定間隔で回してはいけない。
 
 
-- [ ] **Step 1: `apps/desktop/src/renderer/three/CameraPresets.tsx` を書く**
+- [x] **Step 1: `apps/desktop/src/renderer/three/CameraPresets.tsx` を書く**
 
 ```tsx
 import { useFrame, useThree } from '@react-three/fiber';
@@ -7896,7 +7896,7 @@ export function CameraPresets({
 }
 ```
 
-- [ ] **Step 2: `apps/desktop/src/renderer/three/ViewGizmo.tsx` を書く**
+- [x] **Step 2: `apps/desktop/src/renderer/three/ViewGizmo.tsx` を書く**
 
 ```tsx
 import { GizmoHelper, GizmoViewcube } from '@react-three/drei';
@@ -7979,7 +7979,7 @@ export function ViewGizmo(): JSX.Element {
 }
 ```
 
-- [ ] **Step 3: `apps/desktop/src/renderer/three/BoardScene.tsx` を書く**
+- [x] **Step 3: `apps/desktop/src/renderer/three/BoardScene.tsx` を書く**
 
 ```tsx
 import {
@@ -8529,7 +8529,7 @@ function BoardSceneImpl({
 export const BoardScene = memo(BoardSceneImpl);
 ```
 
-- [ ] **Step 4: 型チェックが通ることを確かめる**
+- [x] **Step 4: 型チェックが通ることを確かめる**
 
 実行:
 
@@ -8543,7 +8543,7 @@ pnpm --filter @ojt/desktop typecheck
 （何も出力されない＝成功）
 ```
 
-- [ ] **Step 4b: `apps/desktop/test/camera-presets.test.tsx` を書く（1D1-f で追加）**
+- [x] **Step 4b: `apps/desktop/test/camera-presets.test.tsx` を書く（1D1-f で追加）**
 
 ```tsx
 import { cleanup, render } from '@testing-library/react';
@@ -8708,7 +8708,7 @@ describe('store.setCamera（§12.2）', () => {
 });
 ```
 
-- [ ] **Step 4c: `apps/desktop/test/board-scene.test.ts` を書く（1D1-f で追加）**
+- [x] **Step 4c: `apps/desktop/test/board-scene.test.ts` を書く（1D1-f で追加）**
 
 ```ts
 import {
@@ -8828,7 +8828,7 @@ describe('visualSignature（§15 再描画の判断）', () => {
 });
 ```
 
-- [ ] **Step 5: コミットする**
+- [x] **Step 5: コミットする**
 
 追加・変更したファイル: `apps/desktop/src/renderer/three/CameraPresets.tsx` `apps/desktop/src/renderer/three/ViewGizmo.tsx` `apps/desktop/src/renderer/three/BoardScene.tsx`
 
@@ -8851,7 +8851,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 - Test: `apps/desktop/test/charts.test.ts`
 
 
-- [ ] **Step 1: `apps/desktop/src/renderer/panels/panels.module.css` を書く**
+- [x] **Step 1: `apps/desktop/src/renderer/panels/panels.module.css` を書く**
 
 ```css
 /* 右パネル・下部パネル・ツールバー。設計仕様 §8.1。 */
@@ -9079,7 +9079,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 }
 ```
 
-- [ ] **Step 2: `apps/desktop/src/renderer/panels/Toolbar.tsx` を書く**
+- [x] **Step 2: `apps/desktop/src/renderer/panels/Toolbar.tsx` を書く**
 
 ```tsx
 import type { WireColor } from '@ojt/circuit-sim';
@@ -9206,7 +9206,7 @@ export function Toolbar({
 }
 ```
 
-- [ ] **Step 3: `apps/desktop/src/renderer/panels/PowerControls.tsx` を書く**
+- [x] **Step 3: `apps/desktop/src/renderer/panels/PowerControls.tsx` を書く**
 
 ```tsx
 import type { JSX } from 'react';
@@ -9270,7 +9270,7 @@ export function PowerControls({
 }
 ```
 
-- [ ] **Step 4: `apps/desktop/src/renderer/panels/ProblemPanel.tsx` を書く**
+- [x] **Step 4: `apps/desktop/src/renderer/panels/ProblemPanel.tsx` を書く**
 
 ```tsx
 import type { AssembleProblem } from '@ojt/content';
@@ -9297,7 +9297,7 @@ export function ProblemPanel({ problem }: { problem: AssembleProblem }): JSX.Ele
 }
 ```
 
-- [ ] **Step 5: `apps/desktop/src/renderer/panels/TimeChartPanel.tsx` を書く**
+- [x] **Step 5: `apps/desktop/src/renderer/panels/TimeChartPanel.tsx` を書く**
 
 ```tsx
 import type { TimeChart, TimeChartSegment, TimeChartSignalSpec } from '@ojt/content';
@@ -9453,7 +9453,7 @@ export function TimeChartPanel({ chart }: { chart: TimeChart }): JSX.Element {
 }
 ```
 
-- [ ] **Step 6: `apps/desktop/src/renderer/panels/TimerDial.tsx` を書く**
+- [x] **Step 6: `apps/desktop/src/renderer/panels/TimerDial.tsx` を書く**
 
 ```tsx
 import { findTimerRange, DEFAULT_TIMER_RANGE } from '@ojt/board-model';
@@ -9518,7 +9518,7 @@ export function TimerDial({
 }
 ```
 
-- [ ] **Step 7: `apps/desktop/src/renderer/panels/PartsPanel.tsx` を書く**
+- [x] **Step 7: `apps/desktop/src/renderer/panels/PartsPanel.tsx` を書く**
 
 ```tsx
 import {
@@ -9633,7 +9633,7 @@ export function PartsPanel({
 }
 ```
 
-- [ ] **Step 8: `apps/desktop/src/renderer/panels/LogPanel.tsx` を書く**
+- [x] **Step 8: `apps/desktop/src/renderer/panels/LogPanel.tsx` を書く**
 
 ```tsx
 import type { ChatterEvent, HazardEvent } from '@ojt/circuit-sim';
@@ -9682,7 +9682,7 @@ export function LogPanel({
 }
 ```
 
-- [ ] **Step 9: `apps/desktop/src/renderer/panels/ElapsedTimer.tsx` を書く**
+- [x] **Step 9: `apps/desktop/src/renderer/panels/ElapsedTimer.tsx` を書く**
 
 時間制限は**目盛の印として見せるだけ**で、到達しても強制終了しない（§12 / 決定事項#12 と同じ考え方）。
 
@@ -9755,7 +9755,7 @@ export function ElapsedTimer({ limit }: { limit: TimeLimit }): JSX.Element {
 }
 ```
 
-- [ ] **Step 10: `apps/desktop/test/charts.test.ts` を書く**
+- [x] **Step 10: `apps/desktop/test/charts.test.ts` を書く**
 
 `elapsedSummary` と `formatMs` は Task 15 の結果画面にあるので、この時点では import 解決に失敗する。Task 15 の後に通す。
 
@@ -9867,7 +9867,7 @@ describe('formatMs', () => {
 });
 ```
 
-- [ ] **Step 11: コミットする**
+- [x] **Step 11: コミットする**
 
 追加・変更したファイル: `apps/desktop/src/renderer/panels` `apps/desktop/test/charts.test.ts`
 
@@ -9890,7 +9890,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 - Test: `apps/desktop/test/spec-chart.test.ts`, `apps/desktop/test/session.test.tsx`
 
 
-- [ ] **Step 1: `apps/desktop/src/renderer/session/spec-chart.ts` を書く**
+- [x] **Step 1: `apps/desktop/src/renderer/session/spec-chart.ts` を書く**
 
 仕様 §7.7「波形は課題JSONに書かず模範回路をその場でシミュレートして作る」。5000msの課題でも500tickなので renderer の同期計算で足りる。
 
@@ -9975,7 +9975,7 @@ function computeSpecChart(problem: AssembleProblem): SpecChartResult {
 }
 ```
 
-- [ ] **Step 2: `apps/desktop/src/renderer/screens/Session.tsx` を書く**
+- [x] **Step 2: `apps/desktop/src/renderer/screens/Session.tsx` を書く**
 
 ```tsx
 import { JIPM_BOARD, socketPartId } from '@ojt/board-model';
@@ -10451,7 +10451,7 @@ export function Session(): JSX.Element {
 }
 ```
 
-- [ ] **Step 3: `apps/desktop/test/spec-chart.test.ts` を書く**
+- [x] **Step 3: `apps/desktop/test/spec-chart.test.ts` を書く**
 
 ```ts
 import { JIPM_BOARD } from '@ojt/board-model';
@@ -10599,7 +10599,7 @@ describe('判定（worker が呼ぶ経路と同じ）', () => {
 });
 ```
 
-- [ ] **Step 3b: `apps/desktop/test/session.test.tsx` を書く（1D1-f で追加）**
+- [x] **Step 3b: `apps/desktop/test/session.test.tsx` を書く（1D1-f で追加）**
 
 ```tsx
 import { JIPM_BOARD, remainingInventory, mountedKinds } from '@ojt/board-model';
@@ -10876,7 +10876,7 @@ describe('判定（§8.2 / §13 #2）', () => {
 });
 ```
 
-- [ ] **Step 4: テストを実行する**
+- [x] **Step 4: テストを実行する**
 
 実行:
 
@@ -10891,7 +10891,7 @@ pnpm --filter @ojt/desktop test -- spec-chart
       Tests  5 passed (5)
 ```
 
-- [ ] **Step 5: renderer のバンドルに `node:fs` を使うコードが入っていないことを確かめる**
+- [x] **Step 5: renderer のバンドルに `node:fs` を使うコードが入っていないことを確かめる**
 
 `@ojt/content` の `loadProblemsFromDir()` は main 専用である。ビルド時に「`node:fs` has been externalized」という警告は出るが（resolve 時の警告で、tree-shaking はその後に効く）、出力には含まれない。
 
@@ -10908,7 +10908,7 @@ Select-String -Path apps/desktop/out/renderer/assets/*.js -Pattern 'loadProblems
 （何も出力されない＝バンドルに含まれていない）
 ```
 
-- [ ] **Step 6: コミットする**
+- [x] **Step 6: コミットする**
 
 追加・変更したファイル: `apps/desktop/src/renderer/session/spec-chart.ts` `apps/desktop/src/renderer/screens/Session.tsx` `apps/desktop/test/spec-chart.test.ts`
 
@@ -10931,7 +10931,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 - Test: `apps/desktop/test/result-view.test.tsx`
 
 
-- [ ] **Step 1: `apps/desktop/src/renderer/result/result.module.css` を書く**
+- [x] **Step 1: `apps/desktop/src/renderer/result/result.module.css` を書く**
 
 ```css
 /* 結果画面。設計仕様 §8.3。 */
@@ -11070,7 +11070,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 }
 ```
 
-- [ ] **Step 2: `apps/desktop/src/renderer/result/ChartOverlay.tsx` を書く**
+- [x] **Step 2: `apps/desktop/src/renderer/result/ChartOverlay.tsx` を書く**
 
 ```tsx
 import type { TimeChart } from '@ojt/content';
@@ -11158,7 +11158,7 @@ export function ChartOverlay({
 }
 ```
 
-- [ ] **Step 3: `apps/desktop/src/renderer/result/MismatchList.tsx` を書く**
+- [x] **Step 3: `apps/desktop/src/renderer/result/MismatchList.tsx` を書く**
 
 ```tsx
 import type { Mismatch } from '@ojt/circuit-sim';
@@ -11217,7 +11217,7 @@ export function MismatchList({ mismatches }: { mismatches: readonly Mismatch[] }
 }
 ```
 
-- [ ] **Step 4: `apps/desktop/src/renderer/result/StaticCheckList.tsx` を書く**
+- [x] **Step 4: `apps/desktop/src/renderer/result/StaticCheckList.tsx` を書く**
 
 ```tsx
 import type { HazardCounts, StaticCheckResult } from '@ojt/content';
@@ -11295,7 +11295,7 @@ export function HazardList({
 }
 ```
 
-- [ ] **Step 5: `apps/desktop/src/renderer/result/ResultView.tsx` を書く**
+- [x] **Step 5: `apps/desktop/src/renderer/result/ResultView.tsx` を書く**
 
 ```tsx
 import type { AssembleProblem, JudgeResult } from '@ojt/content';
@@ -11376,7 +11376,7 @@ export function ResultView({
 }
 ```
 
-- [ ] **Step 6: `apps/desktop/src/renderer/screens/Result.tsx` を書く**
+- [x] **Step 6: `apps/desktop/src/renderer/screens/Result.tsx` を書く**
 
 ```tsx
 import type { JSX } from 'react';
@@ -11428,7 +11428,7 @@ export function Result(): JSX.Element {
 }
 ```
 
-- [ ] **Step 7: `apps/desktop/test/result-view.test.tsx` を書く**
+- [x] **Step 7: `apps/desktop/test/result-view.test.tsx` を書く**
 
 ```tsx
 import { JIPM_BOARD } from '@ojt/board-model';
@@ -11625,7 +11625,7 @@ describe('ResultView（差分・危険操作が多いとき。§8.3）', () => {
 });
 ```
 
-- [ ] **Step 8: 単体テストをすべて実行する**
+- [x] **Step 8: 単体テストをすべて実行する**
 
 実行:
 
@@ -11640,7 +11640,7 @@ pnpm --filter @ojt/desktop test
       Tests  101 passed (101)
 ```
 
-- [ ] **Step 9: lint と型チェックを通す**
+- [x] **Step 9: lint と型チェックを通す**
 
 実行:
 
@@ -11655,7 +11655,7 @@ pnpm --filter @ojt/desktop typecheck
 （どちらも何も出力されない＝成功）
 ```
 
-- [ ] **Step 10: コミットする**
+- [x] **Step 10: コミットする**
 
 追加・変更したファイル: `apps/desktop/src/renderer/result` `apps/desktop/src/renderer/screens/Result.tsx` `apps/desktop/test/result-view.test.tsx`
 
@@ -11683,7 +11683,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 **スクリーンショットについて**: Playwright の `page.screenshot()` は Electron のウィンドウが他ウィンドウに隠れていると `Unable to capture screenshot` で落ちることがあるため、`BrowserWindow.capturePage()` を使う。表示直後はコンポジタがまだフレームを出しておらず `UnknownVizError` になるので、`beforeAll` で 1.5 秒待つ。
 
 
-- [ ] **Step 1: `apps/desktop/playwright.config.ts` を書く**
+- [x] **Step 1: `apps/desktop/playwright.config.ts` を書く**
 
 ```ts
 import { defineConfig } from '@playwright/test';
@@ -11704,7 +11704,7 @@ export default defineConfig({
 });
 ```
 
-- [ ] **Step 2: `apps/desktop/e2e/projection.ts` を書く**
+- [x] **Step 2: `apps/desktop/e2e/projection.ts` を書く**
 
 端子の画面座標はアプリ側の `cameraPose()` と `boardToWorld()` をそのまま使って射影するので、カメラ設定や筐体の傾斜角を変えてもテストが追随する。
 
@@ -11808,7 +11808,7 @@ export const SELF_HOLD_WIRES: ReadonlyArray<readonly [string, string]> = [
 ];
 ```
 
-- [ ] **Step 3: `apps/desktop/e2e/smoke.spec.ts` を書く**
+- [x] **Step 3: `apps/desktop/e2e/smoke.spec.ts` を書く**
 
 ```ts
 import { mkdirSync, writeFileSync } from 'node:fs';
@@ -12006,7 +12006,7 @@ test.describe('モードB スモーク', () => {
 });
 ```
 
-- [ ] **Step 4: ビルドして E2E を実行する**
+- [x] **Step 4: ビルドして E2E を実行する**
 
 実行:
 
@@ -12025,7 +12025,7 @@ Running 1 test using 1 worker
   1 passed
 ```
 
-- [ ] **Step 5: スクリーンショットを目視する**
+- [x] **Step 5: スクリーンショットを目視する**
 
 `apps/desktop/screenshots/` に8枚出る。`03-board-3d.png` に傾斜コンソールの盤・左右4個ずつのソケット・端子の番号が写っていること、`05a-wire-bundle.png` で配線が束になって直角に走りソケットの上を横切っていないこと、`05b-board-birdseye.png` が実物写真に近い俯瞰であること、`07-result-pass.png` が「合格」とチャート重ね表示になっていることを確かめる。
 
@@ -12050,7 +12050,7 @@ Get-ChildItem apps/desktop/screenshots | Select-Object -ExpandProperty Name
 08-result-fail.png
 ```
 
-- [ ] **Step 6: スクリーンショットを git に含めない**
+- [x] **Step 6: スクリーンショットを git に含めない**
 
 `apps/desktop/.gitignore` を作る。
 
@@ -12061,7 +12061,7 @@ screenshots/
 test-results/
 ```
 
-- [ ] **Step 7: コミットする**
+- [x] **Step 7: コミットする**
 
 追加・変更したファイル: `apps/desktop/playwright.config.ts` `apps/desktop/e2e` `apps/desktop/.gitignore`
 
@@ -12135,19 +12135,51 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 | 6 | §6.3「チェック用回路の線色は黄」 | 3Dでは既設配線をすべて**青**で描く（データ上の色は黄のまま） | 実物写真の既設配線はすべて青。線色ルールの静的チェックは Plan 1C 側の定数で見るため、3Dの表示色を変えても判定は変わらない |
 | 7 | §12.2「プリセット3種（正面／俯瞰／ソケット拡大）」 | 3種に加えて左上にビューキューブ（`ViewGizmo`）を置く | 3Dの向きが分からなくなるという実使用上の問題への対処。プリセットのボタンは仕様どおり残す |
 
+### 実装で確定した公開API／構成（計画本文との差分）
+
+- `@ojt/content` の `loadProblemsFromDir()` / `mergeProblemSets()` は `@ojt/content/loader`（`package.json` の `exports["./loader"]`）専用にし、ルートバレル（`"."`）は `node:fs` に触れないブラウザ安全な構成のまま維持した。`ProblemLoadError` / `ProblemSet` 型は新設の `src/problem-set.ts` に移し、ルートバレルと `loader.ts` の両方から再エクスポートする。`"sideEffects": ["./src/schema/index.ts"]` は変更していない。
+- `apps/desktop` の React は `19.2.8` に固定した（`9505339` chore(desktop) / `26aa955` docs(plan-1d1)）。`vite 8.3.0` を `electron-vite 5.0.0` の上で使い、`@react-three/fiber 9.7.0` の peer range 警告は許容して pin した。
+- ルートの `eslint.config.js` はワークスペース共通の `import-x`（`no-cycle`: `{ maxDepth: Infinity }` / `no-unresolved`）をデスクトップ追加後も維持し、`apps/desktop/**/*.tsx` にだけ `eslint-plugin-react-hooks` を足した（`react-hooks/rules-of-hooks: 'error'` / `react-hooks/exhaustive-deps: 'warn'`）。
+- `store.ts` に `sessionEpoch`（`ErrorBoundary` の再マウント鍵・Worker の張り直し鍵）、`cameraNonce`（同じプリセットの再クリックを補間に伝える）、`restartSession()`、`judging` / `setJudging()`、トーストの `expiresAt` と表示件数の上限 `TOAST_LIMIT = 5`、`noteDroppedTicks()` を足した。
+- Simulation Worker: `SimMessage` の `error` に `fatal: boolean` を足し（`false` はコマンド1件の失敗でループは継続しトーストで足りる、`true` は追従ループ自体が止まり renderer が例外バナーを出す）、`SimCommand` の `setPreset` は `partId` を持つ（`{ type: 'setPreset'; partId: string; presetMs: number; session: BoardSession }`）。`judge` コマンドの間はループを `stopLoop()` で止め、`judgeAssemble()` の完了後に `resumeLoop()`（`finally`）で再開する。判定は模範・訓練者を並走させ240〜440msかかるため、回したままだと `MAX_CATCHUP_TICKS` の窓を越えて「捨てた tick」が誤って計上されるのを防ぐ。
+- `window.ojt` は `OjtApi | undefined` の任意プロパティにし（`env.d.ts`）、画面側は直接触らず `app/ojt-api.ts` の `ojtApi()` だけを通す。`ErrorBoundary` は `App.tsx` で `key={sessionEpoch}` を持たせてバナー・トーストの外に置き、`restartSession()` のたびに確実に再マウントされるようにした（§13 #5）。
+- `pickToAction()`（`session/interaction.ts`）は配線モードでは電線のヒットを無視し（`case 'wire': return { type: 'none' }`）、削除モードでは電線クリックで選択・`locked` なら `reject`、空クリックまたは `Esc` で選択解除する（実際の削除は `Delete` キー）。
+- `Wire.tsx` は削除モードのときだけ当たり判定専用の `WirePickBody`（`INVISIBLE_MATERIAL` で `visible={false}` ではなく `opacity: 0` / `depthWrite: false` にしてレイキャスト対象に残す太いチューブ）を組み込む。`useTubeGeometry()` は経路が変わる・アンマウントされるたびに前のジオメトリを `dispose()` する。
+- `CameraPresets` はプリセット切替を `interpolatePose()`（`camera.ts` の純粋関数）で ~300ms の ease-out 補間にした。「ソケット拡大」が収める矩形 `SOCKET_VIEW_RECT` は `JIPM_BOARD.sockets` と `footprints`（`kind === 'block'`。ランプ・押ボタン用端子台）の外接矩形の和集合から求める。
+- `three/labels.ts` の `socketLabelBoxes()` はソケット役割ラベルの行高さ `ROLE_MM = 2.2` を使い、役割ごとの色は `SOCKET_ROLE_COLOR` で塗り分ける。
+- 状態オーバーレイ（`.statusOverlay`）は画面右上（`position: absolute; right: 12px; top: 12px`）、視点ギズモ（`ViewGizmo`）は左上（`GizmoHelper alignment="top-left"`、中心の余白 `GIZMO_MARGIN: [number, number] = [72, 72]`）に置き、盤上端の名札と重ならないようにした。
+- 下部パネルは `screens.module.css` の `grid-template-rows: 1fr var(--bottom-panel-h, 200px)` で高さを固定 200px にした。
+- `buildSpecChart()`（`session/spec-chart.ts`）は課題単位でチャートをキャッシュし（`cacheKey()` → `Map`）、同じ課題を開き直しても作り直さない。
+- `.prettierignore` に `test-results`（Playwright の出力）を追加した。
+
+---
+
+## 追加タスク（レビュー指摘により追加）
+
+| タスク | 内容 | コミット |
+|---|---|---|
+| 1D1-a | デスクトップの scaffold 追加時に書き換えた `eslint.config.js` で、ワークスペース全体の循環依存検出 `import-x/no-cycle`（`maxDepth: Infinity`）と未解決 import 検出 `import-x/no-unresolved` が落ちていたのを復元した。 | `1c388b6`, `82ba366` |
+| 1D1-b | `pnpm --filter @ojt/desktop dev`（バンドルしない ESM）で renderer が `@ojt/content` から何か1つでも import すると、ESM の評価順で `src/index.ts` が再エクスポートしていた `src/loader.ts` の `node:fs` import まで評価され `Cannot access "node:fs.readdirSync"` で renderer がマウントできなくなる不具合を修正した。`loadProblemsFromDir()` / `mergeProblemSets()` をルートバレルから外し、`package.json` の `exports["./loader"]` で公開する `@ojt/content/loader` 専用の subpath にした。`ProblemLoadError` / `ProblemSet` 型は新設の `src/problem-set.ts` に移し、ルートバレルと `loader.ts` の両方から再エクスポートする。 | `dce28cc`, `4d42b4f` |
+| 1D1-c | 仕様レビュー（Task 5/7/8）の指摘を反映。電線のクリック選択を削除モード限定にし（配線モードでは電線のヒットを無視）、既設配線（`locked`）に触れたときの案内文言を実物写真どおり青に修正、`CommandResult.wire` を失敗時（`terminal-overload` 等）も保持して呼び出し側が対象の電線を扱えるようにした。 | `0a3c24c`, `8b1a2f2` |
+| 1D1-d | 仕様レビュー（Task 9/10/12）の指摘を反映。`OrbitControls` のダンピングを有効化、視点プリセット切替の補間（tween）、中ボタンドラッグでの平行移動、固定機器（端子台等）の端子印字を追加した。 | `bbb49da`, `43e3d99` |
+| 1D1-e | 品質レビューの指摘を反映。`ErrorBoundary`（`sessionEpoch` キー）、トーストの期限切れ（`expiresAt`）、`restartSession()` / `sessionEpoch`、Worker 追従ループの例外ガードと `judge` 中の一時停止（`stopLoop()`/`resumeLoop()`）、経過時間表示 `formatElapsed()`、preload アクセサ `ojtApi()`、`setPreset` を `partId` で当てる修正、削除モードでの選択解除、`ja.ts` への文言集約、react-hooks の lint 違反解消、捨てた tick 数のログ（`noteDroppedTicks`）、`terminal-overload`（1端子3本目）で断られた電線も Worker へ転送し危険操作として計上する処理を行った。 | `1659947`, `c50927a` |
+| 1D1-f | 品質レビューの指摘を反映した3D・画面まわりの仕上げ。可視化: P/N端子・ソケットラベルとネジ・装着済み部品の見え方・ソケット拡大の画角（`sockets` ∪ `footprints[kind==='block']`）・ラベル重なり・視点ギズモの配色コントラストを修正。操作・性能: 視点プリセットの再適用、文字入力中はショートカットを無視、電線の当たり判定専用ボディ、下部パネルの高さ固定、アイドル時の再描画停止（30fps→0）、`TubeGeometry` の解放（undo/redo 40往復で +33MB → 0）、`buildSpecChart` のキャッシュ化を行った。 | `80c95d1`, `8e2613a`, `7801b99`, `d0f6601` |
+
 ---
 
 ## 完了条件
 
-- [ ] `pnpm --filter @ojt/desktop typecheck` が無出力で終わる
-- [ ] `pnpm lint` が無出力で終わる
-- [ ] `pnpm --filter @ojt/desktop test` が **17ファイル / 190テスト** すべて通る
-- [ ] `pnpm --filter @ojt/desktop build` が main / preload / renderer の3つを出力する
-- [ ] `pnpm --filter @ojt/desktop e2e` のスモーク1本が通る
-- [ ] `apps/desktop/screenshots/` に10枚のスクリーンショットが出て、`03-board-3d.png` に3D盤（傾斜コンソール・左右4個ずつのソケット・端子番号）が写っている
-- [ ] `pnpm -r test` が全パッケージで通る
-- [ ] 3D盤に電線を張ったとき、`WireRoute.laneOverflow` が立った電線が琥珀色で描かれる（重なりに気づける）
-- [ ] `routeSession()` が `RoutingError` を投げても3D盤は描かれ続け、どの電線がなぜ描けないかがトーストとログに出る
+- [x] `pnpm --filter @ojt/desktop typecheck` が無出力で終わる
+- [x] `pnpm lint` が無出力で終わる
+- [x] `pnpm --filter @ojt/desktop test` が **17ファイル / 190テスト** すべて通る
+- [x] `pnpm --filter @ojt/desktop build` が main / preload / renderer の3つを出力する
+- [x] `pnpm --filter @ojt/desktop e2e` のスモーク1本が通る
+- [x] `apps/desktop/screenshots/` に10枚のスクリーンショットが出て、`03-board-3d.png` に3D盤（傾斜コンソール・左右4個ずつのソケット・端子番号）が写っている
+- [x] `pnpm -r test` が全パッケージで通る
+- [x] 3D盤に電線を張ったとき、`WireRoute.laneOverflow` が立った電線が琥珀色で描かれる（重なりに気づける）
+- [x] `routeSession()` が `RoutingError` を投げても3D盤は描かれ続け、どの電線がなぜ描けないかがトーストとログに出る
+
+2026-09-14 完了（1D1-f 反映後）: `desktop` 64ソースファイル（`src/main` 5 + `src/preload` 1 + `src/renderer` 54 + `src/shared` 1 + `src/worker` 3）/17テストファイル/190テスト + Playwright E2E 1本（`e2e/smoke.spec.ts`。§16 Phase 1 受入基準①〜④を自動確認、実行 約15秒）。ルート全体783テスト（`circuit-sim` 178・`board-model` 154・`schematic-core` 64・`content` 197・`desktop` 190、5プロジェクト合計）。最終コミット `d0f6601`。レビュー: 全8グループについて Sonnet による仕様レビュー ✅、Opus による品質レビュー A（Task 1〜8）・B（Task 9〜15）を実施し、指摘は追加タスク 1D1-c〜f として反映済み（1D1-a・1D1-b は仕様追随・起動不具合の修正）。スクリーンショット: `apps/desktop/screenshots/`（E2E生成、gitignore対象）。
 
 ---
 
@@ -12164,3 +12196,4 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 | 2026-09-14 | Task 1D1-d: 仕様レビュー（Task 9〜12）の指摘を反映。Task 9/10/12: ダンピング有効化、視点プリセットの補間、中ドラッグ平行移動、固定機器の端子印字と footprint 準拠の外形 |
 | 2026-09-14 | 1D1-e: ErrorBoundary、トースト期限、restartSession/sessionEpoch、Worker ループの例外処理と判定中の一時停止、formatElapsed、ojtApi()、setPreset を partId で、削除モードの選択解除、文言の ja.ts 集約、react-hooks lint |
 | 2026-09-14 | 1D1-f: 視点プリセット再適用、入力中のショートカット抑止、電線の当たり判定、固定高さの下部パネル、P/N 端子の可視化、ソケット印字の再配置、ネジ高さ、装着部品の見え方、ソケット拡大の画角、ラベル重なり、アイドル時の再描画停止、チューブ形状の解放、仕様チャートのキャッシュ |
+| 2026-09-14 | 実装完了。追加タスク 1D1-a〜f を記録、完了条件を実績値に更新 |
