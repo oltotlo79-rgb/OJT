@@ -25,6 +25,10 @@ import c2SelfHold from './inspect-repair/c2-001-self-hold.json' with { type: 'js
 import c2SelfHoldContact from './inspect-repair/c2-002-self-hold-contact.json' with { type: 'json' };
 import c2OnDelay from './inspect-repair/c2-003-on-delay.json' with { type: 'json' };
 import c2OneShot from './inspect-repair/c2-004-one-shot.json' with { type: 'json' };
+import c2Interlock from './inspect-repair/c2-005-interlock.json' with { type: 'json' };
+import c2Sequential from './inspect-repair/c2-006-sequential.json' with { type: 'json' };
+import c2Flicker from './inspect-repair/c2-007-flicker.json' with { type: 'json' };
+import c2StopPriority from './inspect-repair/c2-008-stop-priority.json' with { type: 'json' };
 
 /**
  * 内蔵課題。設計仕様 §7.8 / §7.9（モードB 8題・モードC1 4セット・モードC2 8題）。
@@ -62,6 +66,10 @@ const BUILTIN_INSPECT_REPAIR_JSON: readonly unknown[] = [
   c2SelfHoldContact,
   c2OnDelay,
   c2OneShot,
+  c2Interlock,
+  c2Sequential,
+  c2Flicker,
+  c2StopPriority,
 ];
 
 /** 内蔵課題の検証に失敗したときに投げる。 */
