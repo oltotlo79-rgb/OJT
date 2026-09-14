@@ -1,7 +1,7 @@
 import type { TimeLimit } from '@ojt/content';
 import type { JSX } from 'react';
 import { formatElapsed } from '../../worker/runtime.js';
-import { JA } from '../i18n/ja.js';
+import { JA, minutesLabel } from '../i18n/ja.js';
 import styles from './panels.module.css';
 
 /**
@@ -47,17 +47,17 @@ export function ElapsedTimer({
           <div
             className={`${styles.elapsedMark} ${styles.markStandard}`}
             style={{ left: `${scale.standard * 100}%` }}
-            title={`${JA.result.standardMark} ${limit.standardMin}${JA.problemList.minutes}`}
+            title={`${JA.result.standardMark} ${minutesLabel(limit.standardMin)}`}
           />
           <div
             className={`${styles.elapsedMark} ${styles.markCutoff}`}
             style={{ left: `${scale.cutoff * 100}%` }}
-            title={`${JA.result.cutoffMark} ${limit.cutoffMin}${JA.problemList.minutes}`}
+            title={`${JA.result.cutoffMark} ${minutesLabel(limit.cutoffMin)}`}
           />
         </div>
         <span className={styles.toolLabel}>
-          {JA.result.standardMark} {limit.standardMin} / {JA.result.cutoffMark} {limit.cutoffMin}
-          {JA.problemList.minutes}
+          {JA.result.standardMark} {limit.standardMin} / {JA.result.cutoffMark}{' '}
+          {minutesLabel(limit.cutoffMin)}
         </span>
       </div>
     </section>

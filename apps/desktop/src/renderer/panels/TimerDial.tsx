@@ -1,6 +1,7 @@
 import { findTimerRange, DEFAULT_TIMER_RANGE } from '@ojt/board-model';
 import { TIMER_MIN_PRESET_MS } from '@ojt/circuit-sim';
 import type { JSX } from 'react';
+import { JA } from '../i18n/ja.js';
 import styles from './panels.module.css';
 
 /**
@@ -33,7 +34,7 @@ export function TimerDial({
       <span className={styles.toolLabel}>{label}</span>
       <input
         type="range"
-        aria-label={`${label} スライダ`}
+        aria-label={`${label} ${JA.session.slider}`}
         min={TIMER_MIN_PRESET_MS / 1000}
         max={range.maxMs / 1000}
         step={stepSeconds}
@@ -44,7 +45,7 @@ export function TimerDial({
       />
       <input
         type="number"
-        aria-label={`${label} 数値`}
+        aria-label={`${label} ${JA.session.numberInput}`}
         min={TIMER_MIN_PRESET_MS / 1000}
         max={range.maxMs / 1000}
         step={stepSeconds}
@@ -53,7 +54,7 @@ export function TimerDial({
           onChange(secondsToMs(Number(event.target.value)));
         }}
       />
-      <span>秒</span>
+      <span>{JA.session.seconds}</span>
     </div>
   );
 }

@@ -101,10 +101,9 @@ describe('pickToAction（配線モード）', () => {
     });
   });
 
-  it('選択中の電線があるとき空間クリックで選択を外す', () => {
+  it('配線モードの空間クリックは選択解除にならない（電線選択は削除モード限定。§12.2）', () => {
     expect(pickToAction(state({ selectedWire: 'w-001' }), { kind: 'empty' })).toEqual({
-      type: 'selectWire',
-      wireId: '',
+      type: 'none',
     });
   });
 
@@ -143,12 +142,32 @@ describe('pickToAction（削除モード）', () => {
       }),
     ).toEqual({ type: 'none' });
   });
+
+  it('選択中の電線があるとき空間クリックで選択を外す（§8.2）', () => {
+    expect(
+      pickToAction(state({ mode: 'delete', selectedWire: 'w-001' }), { kind: 'empty' }),
+    ).toEqual({ type: 'selectWire', wireId: '' });
+  });
+
+  it('何も選んでいないときの空間クリックは何もしない', () => {
+    expect(pickToAction(state({ mode: 'delete' }), { kind: 'empty' })).toEqual({ type: 'none' });
+  });
 });
 
 describe('キーボード', () => {
-  it('Esc は配線中だけ取り消す', () => {
+  it('Esc は配線中なら取り消す', () => {
     expect(escapeToAction(state({ pendingTerminal: CR1_13 }))).toEqual({ type: 'cancelWire' });
     expect(escapeToAction(state())).toEqual({ type: 'none' });
+  });
+
+  it('Esc は削除モードで選択中の電線があれば選択を外す（§8.2）', () => {
+    expect(escapeToAction(state({ mode: 'delete', selectedWire: 'w-001' }))).toEqual({
+      type: 'selectWire',
+      wireId: '',
+    });
+    expect(escapeToAction(state({ mode: 'delete' }))).toEqual({ type: 'none' });
+    // 配線モードでは電線を選べないので、選択解除も起きない
+    expect(escapeToAction(state({ selectedWire: 'w-001' }))).toEqual({ type: 'none' });
   });
 
   it('Delete は削除モードで選択中の電線を削除する', () => {

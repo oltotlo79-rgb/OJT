@@ -132,29 +132,64 @@ function buildSnapshot(sim: Simulation): SimSnapshot {
   };
 }
 
-/** 追従ループの1周期。`performance.now()` 基準で遅れぶんだけ進める（§5.2）。 */
+/** 追従ループを止める（多重に張られないよう、必ずここを通す）。 */
+function stopLoop(): void {
+  if (timer !== undefined) clearTimeout(timer);
+  timer = undefined;
+}
+
+/**
+ * 追従ループを張り直す。基準時刻を現在に引き直すので、止まっていた間の遅れは
+ * 「捨てた tick」として数えない（判定などこちらの都合で止めた時間のため）。
+ */
+function resumeLoop(): void {
+  stopLoop();
+  baselineMs = performance.now();
+  timer = setTimeout(loop, 4);
+}
+
+/**
+ * 追従ループの1周期。`performance.now()` 基準で遅れぶんだけ進める（§5.2）。
+ *
+ * `Simulation.step()` は解けない回路で例外を投げうる（§13 #3）。素通しすると
+ * `setTimeout` の連鎖がそこで切れ、renderer からは「スナップショットが凍ったまま
+ * 理由が分からない」状態になる。ここで受け止めて**ループを畳み、理由を送り、
+ * 最後の状態を1枚送る**（§13 #6。renderer は例外バナーから立て直せる）。
+ */
 function loop(): void {
   timer = undefined;
   const sim = simulation;
   if (sim === undefined) return;
-  const now = performance.now();
-  const plan = planTicks(now, baselineMs, TICK_MS);
-  baselineMs = plan.nextBaselineMs;
-  droppedTicks += plan.dropped;
-  for (let i = 0; i < plan.ticks; i += 1) sim.step(TICK_MS);
-  if (now - lastSnapshotMs >= SNAPSHOT_INTERVAL_MS) {
-    lastSnapshotMs = now;
-    post({ type: 'snapshot', snapshot: buildSnapshot(sim) });
+  try {
+    const now = performance.now();
+    const plan = planTicks(now, baselineMs, TICK_MS);
+    baselineMs = plan.nextBaselineMs;
+    droppedTicks += plan.dropped;
+    for (let i = 0; i < plan.ticks; i += 1) sim.step(TICK_MS);
+    if (now - lastSnapshotMs >= SNAPSHOT_INTERVAL_MS) {
+      lastSnapshotMs = now;
+      post({ type: 'snapshot', snapshot: buildSnapshot(sim) });
+    }
+    timer = setTimeout(loop, 4);
+  } catch (cause) {
+    post({
+      type: 'error',
+      message: cause instanceof Error ? cause.message : String(cause),
+      fatal: true,
+    });
+    stopLoop();
+    try {
+      post({ type: 'snapshot', snapshot: buildSnapshot(sim) });
+    } catch {
+      // 最後の1枚すら作れないなら諦める（エラーは既に送ってある）
+    }
   }
-  timer = setTimeout(loop, 4);
 }
 
 function start(): void {
-  baselineMs = performance.now();
   lastSnapshotMs = 0;
   droppedTicks = 0;
-  if (timer !== undefined) clearTimeout(timer);
-  timer = setTimeout(loop, 4);
+  resumeLoop();
 }
 
 function handle(command: SimCommand): void {
@@ -166,10 +201,16 @@ function handle(command: SimCommand): void {
   const sim = simulation;
   if (sim === undefined) throw new Error('課題が読み込まれていません');
   switch (command.type) {
-    case 'addWire':
-      sim.addWire(command.wire);
-      if (session !== undefined) session.wires.push(command.wire);
+    case 'addWire': {
+      /*
+       * 上限（1端子2本）を超える電線は `Simulation` が**入れずに**危険操作
+       * `over-wires-per-terminal` を発行して false を返す（§5.6 #5）。
+       * renderer は断られた電線もここへ送ってくるので、戻り値を見て控えを合わせる。
+       */
+      const added = sim.addWire(command.wire);
+      if (added && session !== undefined) session.wires.push(command.wire);
       break;
+    }
     case 'removeWire':
       sim.removeWire(command.wireId);
       if (session !== undefined) {
@@ -188,7 +229,7 @@ function handle(command: SimCommand): void {
       session = command.session;
       break;
     case 'setPreset':
-      sim.setTimerPreset(command.role, command.presetMs);
+      sim.setTimerPreset(command.partId, command.presetMs);
       session = command.session;
       break;
     case 'press':
@@ -219,11 +260,22 @@ function handle(command: SimCommand): void {
       sim.setSwitch(true);
       break;
     case 'judge': {
-      const result = judgeAssemble(command.problem, JIPM_BOARD, command.session, {
-        elapsedMs: command.elapsedMs,
-        sessionHazards: sim.events.hazards(),
-      });
-      post({ type: 'judgeResult', result });
+      /*
+       * 判定は模範回路と訓練者回路を丸ごと並走させるので 240〜440ms かかる（§8.3）。
+       * その間ループを回したままにすると `MAX_CATCHUP_TICKS`（200ms相当）の窓を超え、
+       * 訓練者が何もしていないのに「捨てた tick」が計上されてしまう。
+       * 判定中は止め、終わったら基準時刻を引き直して再開する（UI は結果画面へ移る）。
+       */
+      stopLoop();
+      try {
+        const result = judgeAssemble(command.problem, JIPM_BOARD, command.session, {
+          elapsedMs: command.elapsedMs,
+          sessionHazards: sim.events.hazards(),
+        });
+        post({ type: 'judgeResult', result });
+      } finally {
+        resumeLoop();
+      }
       break;
     }
   }
@@ -233,6 +285,11 @@ self.onmessage = (event: MessageEvent<SimCommand>): void => {
   try {
     handle(event.data);
   } catch (cause) {
-    post({ type: 'error', message: cause instanceof Error ? cause.message : String(cause) });
+    // コマンド1件が失敗しただけ。ループは回り続けるのでトーストで足りる（§13 #6）
+    post({
+      type: 'error',
+      message: cause instanceof Error ? cause.message : String(cause),
+      fatal: false,
+    });
   }
 };

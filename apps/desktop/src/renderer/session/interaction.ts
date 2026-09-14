@@ -55,10 +55,15 @@ export const LOCKED_WIRE_MESSAGE = 'チェック用回路の既設配線（青�
 /** 配線できない端子を触ったときの文言。§6.4 */
 export const NOT_WIRABLE_MESSAGE = 'この端子には配線できません（本体側は既設配線済みです）';
 
+/** 電線が選択されているか（空文字は「選択なし」の別表現）。 */
+function hasSelection(state: InteractionState): boolean {
+  return state.selectedWire !== undefined && state.selectedWire.length > 0;
+}
+
 /**
  * ピック結果を操作に変換する。§12.2
  * - 削除モード: 電線を拾ったら選択（実際の削除は Delete キー。§8.2）、`locked` なら拒否、
- *   それ以外は何もしない
+ *   空間クリックは選択解除、それ以外は何もしない
  * - 配線モード: 端子 → 端子 で配線、同じ端子を2度押したら取り消し、空間クリックで取り消し。
  *   電線のクリック選択は削除モード限定なので、配線モードでは電線を拾っても何もしない
  *   （配線中でも取り消し扱いにはしない。§8.2「配線モードでは端子クリックを優先」）
@@ -71,6 +76,8 @@ export function pickToAction(state: InteractionState, hit: PickHit): PickAction 
         : { type: 'selectWire', wireId: hit.id };
     }
     if (hit.kind === 'pushbutton') return { type: 'pressButton', pbId: hit.id };
+    // 電線の選択は削除モードにしかないので、選択解除もここに置く（配線モード側では死に枝だった）
+    if (hit.kind === 'empty' && hasSelection(state)) return { type: 'selectWire', wireId: '' };
     return { type: 'none' };
   }
 
@@ -94,16 +101,15 @@ export function pickToAction(state: InteractionState, hit: PickHit): PickAction 
         ? { type: 'pressButton', pbId: hit.id }
         : { type: 'cancelWire' };
     case 'empty':
-      if (state.pendingTerminal !== undefined) return { type: 'cancelWire' };
-      return state.selectedWire === undefined
-        ? { type: 'none' }
-        : { type: 'selectWire', wireId: '' };
+      return state.pendingTerminal === undefined ? { type: 'none' } : { type: 'cancelWire' };
   }
 }
 
-/** Esc キーの扱い（配線中なら取り消し、それ以外は何もしない）。§8.2 */
+/** Esc キーの扱い（配線中なら取り消し、削除モードで電線を選んでいれば選択解除）。§8.2 */
 export function escapeToAction(state: InteractionState): PickAction {
-  return state.pendingTerminal === undefined ? { type: 'none' } : { type: 'cancelWire' };
+  if (state.pendingTerminal !== undefined) return { type: 'cancelWire' };
+  if (state.mode === 'delete' && hasSelection(state)) return { type: 'selectWire', wireId: '' };
+  return { type: 'none' };
 }
 
 /** Delete キーの扱い（削除モードで電線を選んでいれば削除。電線選択は削除モード限定。§8.2 / §12.2） */

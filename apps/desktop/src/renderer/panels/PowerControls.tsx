@@ -29,7 +29,7 @@ export function PowerControls({
     <div className={`${styles.toolGroup} ${styles.power}`}>
       <span
         className={`${styles.led} ${tripped ? styles.ledTrip : powered ? styles.ledOn : ''}`}
-        aria-label={powered ? '通電中' : '無通電'}
+        aria-label={powered ? JA.session.powered : JA.session.unpowered}
       />
       <button
         type="button"

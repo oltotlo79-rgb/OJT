@@ -1,5 +1,5 @@
 import { useFrame, useThree } from '@react-three/fiber';
-import { useEffect, useRef, type JSX } from 'react';
+import { useCallback, useEffect, useRef, type JSX } from 'react';
 import type { CameraPreset } from '../app/store-types.js';
 import { cameraPose, interpolatePose, type CameraPose } from './camera.js';
 
@@ -50,18 +50,25 @@ export function CameraPresets({
   const currentPose = useRef<CameraPose | null>(null);
   const animation = useRef<PoseAnimation | null>(null);
 
-  /** カメラと OrbitControls に1つの視点を反映する。 */
-  const applyPose = (pose: CameraPose): void => {
-    camera.up.set(...pose.up);
-    camera.position.set(...pose.position);
-    camera.lookAt(...pose.target);
-    if (controls !== null) {
-      controls.target.set(...pose.target);
-      controls.update();
-    }
-    camera.updateProjectionMatrix();
-    currentPose.current = pose;
-  };
+  /**
+   * カメラと OrbitControls に1つの視点を反映する。
+   * `useCallback` で包むのは、下の `useEffect` の依存に素直に並べられるようにするため
+   * （`camera` / `controls` が変わったときだけ作り直され、挙動は変わらない）。
+   */
+  const applyPose = useCallback(
+    (pose: CameraPose): void => {
+      camera.up.set(...pose.up);
+      camera.position.set(...pose.position);
+      camera.lookAt(...pose.target);
+      if (controls !== null) {
+        controls.target.set(...pose.target);
+        controls.update();
+      }
+      camera.updateProjectionMatrix();
+      currentPose.current = pose;
+    },
+    [camera, controls],
+  );
 
   useEffect(() => {
     const to = cameraPose(preset);
@@ -74,7 +81,7 @@ export function CameraPresets({
       animation.current = { from: currentPose.current, to, startMs: performance.now() };
     }
     invalidate();
-  }, [preset, camera, controls, invalidate]);
+  }, [preset, applyPose, invalidate]);
 
   useFrame(() => {
     const anim = animation.current;

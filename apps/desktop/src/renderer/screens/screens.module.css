@@ -86,10 +86,16 @@
   min-height: 0;
 }
 
+/*
+ * 3Dビューポート。グリッドの列・行は既定で `min-width: auto` / `min-height: auto`
+ * （＝中身より縮まない）なので、両方を 0 にしないと Canvas が右パネルを押し出して
+ * 画面から溢れる。高さだけ 0 にしても横方向で同じことが起きる。
+ */
 .viewport {
   grid-column: 1;
   grid-row: 1;
   min-height: 0;
+  min-width: 0;
   position: relative;
 }
 

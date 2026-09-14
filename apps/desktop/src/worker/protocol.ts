@@ -1,4 +1,4 @@
-import type { BoardSession, SocketId, SocketRole } from '@ojt/board-model';
+import type { BoardSession, SocketId } from '@ojt/board-model';
 import type { ChatterEvent, HazardEvent, LampLevel, LogEntry, Wire } from '@ojt/circuit-sim';
 import type { AssembleProblem, JudgeAssembleResult } from '@ojt/content';
 
@@ -33,8 +33,12 @@ export type SimCommand =
   | { type: 'plug'; socketId: SocketId; session: BoardSession }
   /** 部品を外した（`Simulation.unmountPart()` で差分適用する）。`partId` は役割ID（`CR1` 等）。 */
   | { type: 'unplug'; partId: string; session: BoardSession }
-  /** タイマの設定時間を変えた（`Simulation.setTimerPreset()` で差分適用する）。 */
-  | { type: 'setPreset'; role: SocketRole; presetMs: number; session: BoardSession }
+  /**
+   * タイマの設定時間を変えた（`Simulation.setTimerPreset()` で差分適用する）。
+   * 宛先は**ネットリスト上の部品ID**（`socketPartId()` の戻り）。役割が割り当てられていない
+   * ソケットの部品は `S3` のような物理IDで登録されるので、役割IDで指すと届かない（§6.4）。
+   */
+  | { type: 'setPreset'; partId: string; presetMs: number; session: BoardSession }
   /** 時刻・ログ・イベント・保護状態を初期化する（課題のやり直し）。 */
   | { type: 'reset' }
   /** 押ボタンを押す。 */
@@ -100,4 +104,10 @@ export interface SimSnapshot {
 export type SimMessage =
   | { type: 'snapshot'; snapshot: SimSnapshot }
   | { type: 'judgeResult'; result: JudgeAssembleResult }
-  | { type: 'error'; message: string };
+  /**
+   * エラー。§13 #6
+   * `fatal: false` はコマンド1件が失敗しただけ（ループは回り続けるのでトーストで足りる）。
+   * `fatal: true` は**追従ループが止まった**ことを意味し、renderer は例外バナーを出して
+   * 「セッションをリセット」で Worker を立て直せるようにする。
+   */
+  | { type: 'error'; message: string; fatal: boolean };

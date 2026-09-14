@@ -1,5 +1,6 @@
 import type { JSX } from 'react';
 import { useStore } from '../app/store.js';
+import { JA } from '../i18n/ja.js';
 import { ResultView } from '../result/ResultView.js';
 import styles from './screens.module.css';
 
@@ -18,14 +19,14 @@ export function Result(): JSX.Element {
   if (problem === undefined || judge === undefined) {
     return (
       <div className={styles.center}>
-        <p>判定結果がありません。</p>
+        <p>{JA.result.noResult}</p>
         <button
           type="button"
           onClick={() => {
             setRoute('list');
           }}
         >
-          課題一覧へ
+          {JA.result.toList}
         </button>
       </div>
     );

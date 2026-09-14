@@ -19,7 +19,7 @@ export function StaticCheckList({ checks }: { checks: readonly StaticCheckResult
           <div key={check.id}>
             <div className={styles.checkRow}>
               <span className={check.ok ? styles.badgeOk : styles.badgeNg}>
-                {check.ok ? 'OK' : 'エラー'}
+                {check.ok ? JA.result.ok : JA.result.ng}
               </span>
               <span>{JA.staticCheck[check.id]}</span>
               <span className={styles.detail}>{check.message}</span>
@@ -60,7 +60,9 @@ export function HazardList({
             {rows.map((kind) => (
               <tr key={kind}>
                 <td>{JA.hazard[kind]}</td>
-                <td>{counts[kind]} 回</td>
+                <td>
+                  {counts[kind]} {JA.result.times}
+                </td>
               </tr>
             ))}
           </tbody>

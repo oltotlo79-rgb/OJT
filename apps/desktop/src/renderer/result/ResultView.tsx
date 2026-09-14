@@ -1,7 +1,7 @@
 import type { AssembleProblem, JudgeResult } from '@ojt/content';
 import type { JSX } from 'react';
 import { formatElapsed } from '../../worker/runtime.js';
-import { JA } from '../i18n/ja.js';
+import { elapsedSummaryText, JA } from '../i18n/ja.js';
 import { ChartOverlay } from './ChartOverlay.js';
 import { MismatchList } from './MismatchList.js';
 import { HazardList, StaticCheckList } from './StaticCheckList.js';
@@ -13,14 +13,8 @@ import styles from './result.module.css';
  * チャタリングを検出していたら禁則回路の明示警告を出す。
  */
 
-/** 所要時間と標準・打切り時間の対比文。§8.3 */
-export function elapsedSummary(elapsedMs: number, standardMin: number, cutoffMin: number): string {
-  const standardMs = standardMin * 60_000;
-  const cutoffMs = cutoffMin * 60_000;
-  if (elapsedMs > cutoffMs) return `${JA.result.cutoffMark}（${cutoffMin}分）を超過`;
-  if (elapsedMs > standardMs) return `${JA.result.standardMark}（${standardMin}分）を超過`;
-  return `${JA.result.standardMark}（${standardMin}分）以内`;
-}
+/** 所要時間と標準・打切り時間の対比文。§8.3（文言そのものは `ja.ts` が持つ。§15） */
+export const elapsedSummary = elapsedSummaryText;
 
 /** 結果画面の本体。 */
 export function ResultView({

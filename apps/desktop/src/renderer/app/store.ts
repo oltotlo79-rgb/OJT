@@ -17,7 +17,13 @@ import {
 import { create } from 'zustand';
 import type { ProblemListPayload } from '../../shared/ipc.js';
 import type { SimSnapshot } from '../../worker/protocol.js';
-import { emptyHistory, type CommandHistory, type SessionCommand } from '../session/commands.js';
+import { droppedTicksLog } from '../i18n/ja.js';
+import {
+  emptyHistory,
+  pushCommand,
+  type CommandHistory,
+  type SessionCommand,
+} from '../session/commands.js';
 import type { ToolMode } from '../session/interaction.js';
 import type { CameraPreset, LogLine, Route, Toast } from './store-types.js';
 
@@ -53,6 +59,15 @@ export const EMPTY_SNAPSHOT: SimSnapshot = {
   droppedTicks: 0,
 };
 
+/** トーストを自動で消すまでの時間[ms]。§8.2 */
+export const TOAST_TTL_MS = 4000;
+
+/** 同時に出すトーストの上限（超えたら古いものから捨てる）。§8.2 */
+export const TOAST_LIMIT = 5;
+
+/** 操作ログに残す行数の上限。§8.1 */
+export const LOG_LIMIT = 200;
+
 /** ストアの形。 */
 export interface AppState {
   route: Route;
@@ -60,6 +75,12 @@ export interface AppState {
   problem: AssembleProblem | undefined;
   session: BoardSession | undefined;
   history: CommandHistory;
+  /**
+   * 同じ課題のまま「やり直す」たびに増える世代番号。§13 #5 / §13 #6
+   * セッション画面の Worker 起動は `[problemId, sessionEpoch]` で張り直すので、
+   * 同じ課題を開き直したときにも `load` が送り直される。
+   */
+  sessionEpoch: number;
 
   mode: ToolMode;
   wireColor: WireColor;
@@ -85,6 +106,8 @@ export interface AppState {
   fatalError: string | undefined;
   /** WebGL コンテキストが失われ再初期化中か。§13 #4 */
   webglLost: boolean;
+  /** 既に操作ログへ出した「捨てた tick」の累計。§5.2 */
+  reportedDroppedTicks: number;
 
   setRoute: (route: Route) => void;
   setProblems: (payload: ProblemListPayload) => void;
@@ -103,13 +126,27 @@ export interface AppState {
   applySnapshot: (snapshot: SimSnapshot) => void;
   clearLive: () => void;
   addLog: (text: string) => void;
+  /** 追従ループが捨てた tick を1行だけ操作ログに残す（累計の増分ぶん）。§5.2 */
+  noteDroppedTicks: (total: number) => void;
   toast: (text: string, tone?: Toast['tone']) => void;
   dismissToast: (id: number) => void;
+  /** 期限の切れたトーストを落とす（`App` の間引きタイマから呼ぶ）。§8.2 */
+  expireToasts: (nowMs?: number) => void;
   setJudge: (result: JudgeResult | undefined) => void;
   setFatalError: (message: string | undefined) => void;
   setWebglLost: (lost: boolean) => void;
   tickElapsed: () => void;
+  /**
+   * 同じ課題を頭からやり直す（結果画面の「もう一度」）。盤も履歴も作り直す。§8.3
+   * 世代番号を進めるので、同じ課題でもセッション画面が Worker に `load` を送り直す。
+   */
   resetSession: () => void;
+  /**
+   * 例外バナーからの復帰。§13 #5「作業保持の原則」
+   * 盤（`session`）と操作履歴は**残したまま**、ライブ記録・判定結果・エラー表示だけを捨てて
+   * 世代番号を進める。セッション画面はそれを見て Worker を立て直し、いまの盤を `load` し直す。
+   */
+  restartSession: () => void;
 }
 
 let sequence = 0;
@@ -135,6 +172,7 @@ export const useStore = create<AppState>((set, get) => ({
   problem: undefined,
   session: undefined,
   history: emptyHistory(),
+  sessionEpoch: 0,
 
   mode: 'wire',
   wireColor: '青',
@@ -157,6 +195,7 @@ export const useStore = create<AppState>((set, get) => ({
   judge: undefined,
   fatalError: undefined,
   webglLost: false,
+  reportedDroppedTicks: 0,
 
   setRoute: (route) => {
     set({ route });
@@ -186,6 +225,8 @@ export const useStore = create<AppState>((set, get) => ({
       logLines: [],
       judge: undefined,
       fatalError: undefined,
+      webglLost: false,
+      reportedDroppedTicks: 0,
       schematicVisible: problem.hints.schematicVisible,
       startedAtMs: Date.now(),
       elapsedMs: 0,
@@ -195,9 +236,8 @@ export const useStore = create<AppState>((set, get) => ({
     set({ session });
   },
   pushHistory: (command) => {
-    const history = get().history;
-    const done = [...history.done, command];
-    set({ history: { done: done.slice(Math.max(0, done.length - 50)), undone: [] } });
+    // 上限と「やり直し列を捨てる」規則の持ち主は `commands.ts` の1箇所だけにする（§8.2）
+    set({ history: pushCommand(get().history, command) });
   },
   setHistory: (history) => {
     set({ history });
@@ -251,19 +291,42 @@ export const useStore = create<AppState>((set, get) => ({
           ? state.chatters
           : [...state.chatters, ...snapshot.chatterDelta],
     });
+    if (snapshot.droppedTicks > 0) get().noteDroppedTicks(snapshot.droppedTicks);
   },
   clearLive: () => {
-    set({ snapshot: EMPTY_SNAPSHOT, liveTransitions: {}, hazards: [], chatters: [] });
+    set({
+      snapshot: EMPTY_SNAPSHOT,
+      liveTransitions: {},
+      hazards: [],
+      chatters: [],
+      reportedDroppedTicks: 0,
+    });
   },
   addLog: (text) => {
     const lines = [...get().logLines, { id: nextId(), text }];
-    set({ logLines: lines.slice(Math.max(0, lines.length - 200)) });
+    set({ logLines: lines.slice(Math.max(0, lines.length - LOG_LIMIT)) });
+  },
+  noteDroppedTicks: (total) => {
+    const reported = get().reportedDroppedTicks;
+    if (total <= reported) return;
+    get().addLog(droppedTicksLog(total - reported));
+    set({ reportedDroppedTicks: total });
   },
   toast: (text, tone = 'info') => {
-    set({ toasts: [...get().toasts, { id: nextId(), text, tone }] });
+    // 1件ごとに期限を持たせ、新しい5件だけ残す（連続して失敗しても画面が埋まらない）。§8.2
+    const next = [
+      ...get().toasts,
+      { id: nextId(), text, tone, expiresAt: Date.now() + TOAST_TTL_MS },
+    ];
+    set({ toasts: next.slice(Math.max(0, next.length - TOAST_LIMIT)) });
   },
   dismissToast: (id) => {
     set({ toasts: get().toasts.filter((t) => t.id !== id) });
+  },
+  expireToasts: (nowMs = Date.now()) => {
+    const toasts = get().toasts;
+    const left = toasts.filter((t) => t.expiresAt > nowMs);
+    if (left.length !== toasts.length) set({ toasts: left });
   },
   setJudge: (judge) => {
     set({ judge });
@@ -283,5 +346,19 @@ export const useStore = create<AppState>((set, get) => ({
     const problem = get().problem;
     if (problem === undefined) return;
     get().openProblem(problem);
+    // 同じ課題なら `problemId` は変わらないので、世代番号で Worker の張り直しを促す
+    set({ sessionEpoch: get().sessionEpoch + 1 });
+  },
+  restartSession: () => {
+    get().clearLive();
+    set({
+      sessionEpoch: get().sessionEpoch + 1,
+      fatalError: undefined,
+      webglLost: false,
+      judge: undefined,
+      pendingTerminal: undefined,
+      hoveredTerminal: undefined,
+      selectedWire: undefined,
+    });
   },
 }));

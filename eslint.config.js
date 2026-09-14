@@ -1,6 +1,7 @@
 import js from '@eslint/js';
 import { createTypeScriptImportResolver } from 'eslint-import-resolver-typescript';
 import importX from 'eslint-plugin-import-x';
+import reactHooks from 'eslint-plugin-react-hooks';
 import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
@@ -41,6 +42,18 @@ export default tseslint.config(
     rules: {
       'import-x/no-cycle': ['error', { maxDepth: Infinity }],
       'import-x/no-unresolved': 'error',
+    },
+  },
+  // React のフック規則（`apps/desktop` の renderer だけが React を使う）。
+  // `rules-of-hooks` は破れば必ずバグになるので error、`exhaustive-deps` は
+  // 「意図して依存を外す」場面（Worker の張り直しなど）があるので warn にし、
+  // 外すときは理由付きの `eslint-disable-next-line` を必ず添える。
+  {
+    files: ['apps/desktop/**/*.tsx'],
+    plugins: { 'react-hooks': reactHooks },
+    rules: {
+      'react-hooks/rules-of-hooks': 'error',
+      'react-hooks/exhaustive-deps': 'warn',
     },
   },
   // 素のJS（設定ファイル・ビルドスクリプト）は型情報を使うルールの対象外にする

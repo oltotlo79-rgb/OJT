@@ -16,7 +16,7 @@ import { Canvas, useThree } from '@react-three/fiber';
 import { MOUSE } from 'three';
 import { useEffect, useMemo, useState, type JSX } from 'react';
 import { useStore, type AppState } from '../app/store.js';
-import { JA } from '../i18n/ja.js';
+import { JA, routeFailedLog } from '../i18n/ja.js';
 import type { PickHit } from '../session/interaction.js';
 import { BoardPlate } from './BoardPlate.js';
 import { BOARD_TILT_RAD, CAMERA_FOV_DEG } from './camera.js';
@@ -195,7 +195,7 @@ function BoardContents({
         `${JA.session.routeFailed}（${error.wireId}: ${JA.routeReason[error.reason]}）`,
         'error',
       );
-      store.addLog(`${JA.session.routeFailed}: ${error.wireId} — ${JA.routeReason[error.reason]}`);
+      store.addLog(routeFailedLog(error.wireId, JA.routeReason[error.reason]));
     }
   }, [routeErrors]);
   const blocks = useMemo(() => {

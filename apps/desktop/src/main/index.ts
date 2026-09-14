@@ -25,6 +25,15 @@ function createWindow(): BrowserWindow {
       preload: join(import.meta.dirname, '../preload/index.js'),
       contextIsolation: true,
       nodeIntegration: false,
+      /*
+       * `sandbox: true` にできない理由（1D1-e のレビュー指摘に対する記録）:
+       * electron-vite は preload を **ESM の `.js`** として出力するが、サンドボックス化した
+       * preload は CommonJS でしか読み込めないため、このままだと preload が丸ごと読み込まれず
+       * `window.ojt` が生えない。`.cjs` 出力へ切り替えて `sandbox: true` にする作業は
+       * 影響範囲（ビルド設定・E2E・配布）が本タスクの外なので **Plan 1D2 で扱う**。
+       * それまでの安全網として、renderer は `window.ojt` を直接触らず `app/ojt-api.ts` の
+       * `ojtApi()` を通し、preload が無い場合は日本語の理由付きで例外バナーに出す（§13 #5）。
+       */
       sandbox: false,
     },
   });

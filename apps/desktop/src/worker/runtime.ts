@@ -46,10 +46,15 @@ export function planTicks(
   return { ticks: maxCatchUp, nextBaselineMs: nowMs, dropped: due - maxCatchUp };
 }
 
-/** 経過[ms]を `12:34.5` の形に整える（経過時間表示）。§8.1 */
+/**
+ * 経過[ms]を `12:34.5` の形に整える（経過時間表示）。§8.1
+ *
+ * **先に0.1秒へ丸めてから**分と秒に割る。分・秒を先に出して秒だけ丸めると、
+ * 59.95秒が `00:60.0`（分が繰り上がらないまま秒が60）になる。
+ */
 export function formatElapsed(ms: number): string {
-  const clamped = Math.max(0, ms);
-  const minutes = Math.floor(clamped / 60_000);
-  const seconds = (clamped % 60_000) / 1000;
+  const deciseconds = Math.round(Math.max(0, ms) / 100);
+  const minutes = Math.floor(deciseconds / 600);
+  const seconds = (deciseconds % 600) / 10;
   return `${String(minutes).padStart(2, '0')}:${seconds.toFixed(1).padStart(4, '0')}`;
 }

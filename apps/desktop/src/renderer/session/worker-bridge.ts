@@ -10,7 +10,11 @@ import type { SimCommand, SimMessage, SimSnapshot } from '../../worker/protocol.
 export interface BridgeHandlers {
   onSnapshot: (snapshot: SimSnapshot) => void;
   onJudge: (message: Extract<SimMessage, { type: 'judgeResult' }>) => void;
-  onError: (message: string) => void;
+  /**
+   * エラー。`fatal` が真なら追従ループが止まっている（Worker の異常終了も含む）。
+   * 呼び出し側は例外バナーを出して立て直せるようにする。§13 #6
+   */
+  onError: (message: string, fatal: boolean) => void;
 }
 
 /** Worker を1本持ち、コマンド送信とメッセージ配送を行う。 */
@@ -30,10 +34,11 @@ export class WorkerBridge {
       const message = event.data;
       if (message.type === 'snapshot') handlers.onSnapshot(message.snapshot);
       else if (message.type === 'judgeResult') handlers.onJudge(message);
-      else handlers.onError(message.message);
+      else handlers.onError(message.message, message.fatal);
     };
     worker.onerror = (event: ErrorEvent) => {
-      handlers.onError(event.message);
+      // Worker そのものが落ちた。ループは確実に止まっているので致命扱い（§13 #6）
+      handlers.onError(event.message, true);
     };
     this.worker = worker;
   }

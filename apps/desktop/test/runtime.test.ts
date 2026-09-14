@@ -49,4 +49,12 @@ describe('formatElapsed', () => {
   it('負の値は0として扱う', () => {
     expect(formatElapsed(-5)).toBe('00:00.0');
   });
+
+  it('秒の繰り上がりで `:60.0` を出さない（先に0.1秒へ丸める）', () => {
+    expect(formatElapsed(59_950)).toBe('01:00.0');
+    expect(formatElapsed(119_960)).toBe('02:00.0');
+    expect(formatElapsed(3_599_999)).toBe('60:00.0');
+    // 丸めの境目の手前は繰り上がらない
+    expect(formatElapsed(59_940)).toBe('00:59.9');
+  });
 });

@@ -8,7 +8,7 @@ import {
   type SocketId,
 } from '@ojt/board-model';
 import type { JSX } from 'react';
-import { JA } from '../i18n/ja.js';
+import { JA, mountedPartLabel, socketSelectedLabel, timerDialLabel } from '../i18n/ja.js';
 import { TimerDial } from './TimerDial.js';
 import styles from './panels.module.css';
 
@@ -60,7 +60,7 @@ export function PartsPanel({
       <p className={styles.problemText}>
         {selectedSocket === undefined
           ? JA.session.pickSocket
-          : `${selectedSocket}（${session.socketRoles[selectedSocket]}）を選択中`}
+          : socketSelectedLabel(selectedSocket, session.socketRoles[selectedSocket])}
       </p>
       {SOCKET_IDS.map((socketId) => {
         const mounted = session.mounted[socketId];
@@ -69,7 +69,7 @@ export function PartsPanel({
         return (
           <div key={socketId} className={styles.mountedRow}>
             <span className={styles.partName}>
-              {role}: {mounted.kind === 'relay-my4n' ? 'リレー' : 'タイマ'}
+              {mountedPartLabel(role, mounted.kind === 'timer-h3y4')}
             </span>
             <button
               type="button"
@@ -77,7 +77,7 @@ export function PartsPanel({
                 onSelectSocket(socketId);
               }}
             >
-              選択
+              {JA.session.select}
             </button>
             <button
               type="button"
@@ -96,7 +96,7 @@ export function PartsPanel({
         return (
           <TimerDial
             key={`dial-${socketId}`}
-            label={`${session.socketRoles[socketId]} ${JA.session.timerPreset}`}
+            label={timerDialLabel(session.socketRoles[socketId])}
             presetMs={mounted.presetMs}
             rangeMaxMs={mounted.rangeMaxMs}
             onChange={(presetMs) => {

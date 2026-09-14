@@ -3,7 +3,15 @@ import type { BoardSession, MountableKind, SocketId } from '@ojt/board-model';
 import type { TerminalId } from '@ojt/circuit-sim';
 import { useCallback, useEffect, useMemo, type JSX } from 'react';
 import { useStore } from '../app/store.js';
-import { JA } from '../i18n/ja.js';
+import {
+  failedLog,
+  historyLog,
+  JA,
+  openedProblemLog,
+  powerLog,
+  referenceErrorText,
+  routeFailedLog,
+} from '../i18n/ja.js';
 import { ElapsedTimer } from '../panels/ElapsedTimer.js';
 import { LogPanel } from '../panels/LogPanel.js';
 import { PartsPanel } from '../panels/PartsPanel.js';
@@ -68,8 +76,14 @@ export function Session(): JSX.Element {
   const liveTransitions = useStore((s) => s.liveTransitions);
   const webglLost = useStore((s) => s.webglLost);
   const problemId = problem?.id;
+  const sessionEpoch = useStore((s) => s.sessionEpoch);
 
-  // 課題を開いたら Worker を起動して `load` を送る（§4.3）
+  /*
+   * 課題を開いたら Worker を起動して `load` を送る（§4.3）。
+   * 依存に `sessionEpoch` を入れるのは、**同じ課題**をやり直したとき（結果画面の「もう一度」、
+   * 例外バナーの「セッションをリセット」）に `problemId` が変わらず、この効果が張り直されないため。
+   * 張り直されないと盤だけが作り直され、Worker は古いネットリストを回し続けて食い違う（§13 #5 / #6）。
+   */
   useEffect(() => {
     const store = useStore.getState();
     const current = store.problem;
@@ -85,22 +99,24 @@ export function Session(): JSX.Element {
           state.setJudge(message.result.value);
           state.setRoute('result');
         } else {
-          state.toast(
-            `模範回路エラー: ${message.result.errors.map((e) => e.message).join(' / ')}`,
-            'error',
-          );
+          state.toast(referenceErrorText(message.result.errors.map((e) => e.message)), 'error');
         }
       },
-      onError: (text) => {
-        useStore.getState().toast(`${JA.error.workerError}: ${text}`, 'error');
+      onError: (text, fatal) => {
+        const state = useStore.getState();
+        const line = `${JA.error.workerError}: ${text}`;
+        // 追従ループが止まったら（§13 #6）トーストでは気づけない。バナーを出して立て直させる
+        if (fatal) state.setFatalError(line);
+        else state.toast(line, 'error');
+        state.addLog(line);
       },
     });
     bridge.send({ type: 'load', problemId: current.id, session: cloneSession(currentSession) });
-    store.addLog(`課題「${current.title}」を開きました`);
+    store.addLog(openedProblemLog(current.title));
     return () => {
       bridge.stop();
     };
-  }, [problemId]);
+  }, [problemId, sessionEpoch]);
 
   // 経過時間を定期更新する（§8.1）
   useEffect(() => {
@@ -117,7 +133,16 @@ export function Session(): JSX.Element {
     const store = useStore.getState();
     if (!result.ok) {
       store.toast(result.message, 'error');
-      store.addLog(`失敗: ${result.message}`);
+      store.addLog(failedLog(result.message));
+      /*
+       * 1端子3本目は盤としては断るが、実機では**やってしまえる**操作なので
+       * 危険操作として数えたい（§5.6 #5 / §17 #25）。`Simulation.addWire()` は
+       * 上限を超えた電線を**ネットリストに入れずに** `over-wires-per-terminal` を発行して
+       * false を返すので、断られた電線をそのまま Worker へ送れば回路は汚さずに計上できる。
+       */
+      if (result.code === 'terminal-overload' && result.wire !== undefined) {
+        bridge.send({ type: 'addWire', wire: result.wire });
+      }
       return;
     }
     const current = store.session;
@@ -158,9 +183,7 @@ export function Session(): JSX.Element {
             const failed = errors.find((e) => e.wireId === wire.id);
             if (failed !== undefined) {
               next.toast(`${JA.session.routeFailed}（${JA.routeReason[failed.reason]}）`, 'error');
-              next.addLog(
-                `${JA.session.routeFailed}: ${wire.id} — ${JA.routeReason[failed.reason]}`,
-              );
+              next.addLog(routeFailedLog(wire.id, JA.routeReason[failed.reason]));
               return;
             }
             // 帯の空きスロットが尽きて他の電線と同じ位置に載った（3Dでは琥珀色で描かれる）
@@ -263,7 +286,7 @@ export function Session(): JSX.Element {
   );
 
   if (problem === undefined || session === undefined) {
-    return <div className={styles.center}>課題が選ばれていません。</div>;
+    return <div className={styles.center}>{JA.session.noProblem}</div>;
   }
 
   const onPlug = (socketId: SocketId, kind: MountableKind): void => {
@@ -286,11 +309,11 @@ export function Session(): JSX.Element {
       const next = useStore.getState().session;
       if (next === undefined) return;
       const mounted = next.mounted[socketId];
-      const role = next.socketRoles[socketId];
-      if (mounted === undefined || mounted.kind !== 'timer-h3y4' || role === undefined) return;
+      if (mounted === undefined || mounted.kind !== 'timer-h3y4') return;
+      // 宛先はネットリスト上の部品ID。役割が無いソケットでも `S3` として必ず届く（§6.4）
       bridge.send({
         type: 'setPreset',
-        role,
+        partId: socketPartId(next.socketRoles, socketId),
         presetMs: mounted.presetMs,
         session: cloneSession(next),
       });
@@ -312,7 +335,7 @@ export function Session(): JSX.Element {
     store.setPending(undefined);
     store.setSelectedWire(undefined);
     store.clearLive();
-    store.addLog(`${verb}: ${step.command.label}`);
+    store.addLog(historyLog(verb, step.command.label));
     bridge.send({ type: 'load', problemId: problem.id, session: cloneSession(step.session) });
   };
 
@@ -335,10 +358,10 @@ export function Session(): JSX.Element {
           useStore.getState().setCamera(preset);
         }}
         onUndo={() => {
-          restore(undoHistory(history), '元に戻す');
+          restore(undoHistory(history), JA.session.undo);
         }}
         onRedo={() => {
-          restore(redoHistory(history), 'やり直し');
+          restore(redoHistory(history), JA.session.redo);
         }}
         onJudge={() => {
           bridge.send({
@@ -359,15 +382,15 @@ export function Session(): JSX.Element {
           tripped={snapshot.tripped}
           onBreaker={(on) => {
             bridge.send({ type: 'breaker', on });
-            useStore.getState().addLog(`ブレーカ ${on ? 'ON' : 'OFF'}`);
+            useStore.getState().addLog(powerLog(JA.session.breaker, on));
           }}
           onSwitch={(on) => {
             bridge.send({ type: 'switch', on });
-            useStore.getState().addLog(`電源スイッチ ${on ? 'ON' : 'OFF'}`);
+            useStore.getState().addLog(powerLog(JA.session.switch, on));
           }}
           onResetTrip={() => {
             bridge.send({ type: 'resetTrip' });
-            useStore.getState().addLog('保護復帰の手順を実行');
+            useStore.getState().addLog(JA.session.resetTripLog);
           }}
         />
       </Toolbar>
@@ -376,9 +399,12 @@ export function Session(): JSX.Element {
         <div className={styles.viewport} data-testid="viewport">
           <BoardScene onPick={onPick} onHover={onHover} onPress={onPress} onRelease={onRelease} />
           <div className={styles.statusOverlay} data-testid="status-overlay">
-            {snapshot.powered ? '通電中' : '無通電'} / 電線 {session.wires.length} 本 /{' '}
-            {pendingTerminal === undefined ? '端子未選択' : `1本目: ${pendingTerminal}`}
-            {selectedWire === undefined ? '' : ` / 選択: ${selectedWire}`}
+            {snapshot.powered ? JA.session.powered : JA.session.unpowered} / {JA.session.wires}{' '}
+            {session.wires.length} {JA.session.wiresUnit} /{' '}
+            {pendingTerminal === undefined
+              ? JA.session.noTerminal
+              : `${JA.session.firstTerminal}: ${pendingTerminal}`}
+            {selectedWire === undefined ? '' : ` / ${JA.session.selection}: ${selectedWire}`}
             {snapshot.tripped ? ` / ${JA.session.tripped}` : ''}
             {webglLost ? ` / ${JA.error.webglLost}` : ''}
           </div>
@@ -388,11 +414,11 @@ export function Session(): JSX.Element {
           <ProblemPanel problem={problem} />
           {spec !== undefined && spec.ok ? <TimeChartPanel chart={spec.chart} /> : null}
           {spec !== undefined && !spec.ok ? (
-            <p data-testid="reference-error">模範回路エラー: {spec.errors.join(' / ')}</p>
+            <p data-testid="reference-error">{referenceErrorText(spec.errors)}</p>
           ) : null}
           <section className={styles.panelLive}>
-            <h2 className={styles.liveTitle}>ライブ記録</h2>
-            <TimeChartSvg chart={live} title="ライブ記録" />
+            <h2 className={styles.liveTitle}>{JA.session.liveChart}</h2>
+            <TimeChartSvg chart={live} title={JA.session.liveChart} />
           </section>
           <PartsPanel
             session={session}

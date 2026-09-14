@@ -25,9 +25,32 @@ export const GIZMO_FACES = {
 } as const;
 
 /** ギズモの1辺の大きさ[px]。 */
-const GIZMO_SIZE = 92;
-/** ビューポートの角からの余白[px]。盤の左上と重ならない値。 */
-const GIZMO_MARGIN: [number, number] = [76, 76];
+export const GIZMO_SIZE = 92;
+
+/**
+ * 左上の状態オーバーレイ（`screens.module.css` の `.statusOverlay`）が占める帯の下端[px]。
+ * `top: 12px` ＋ 高さ約22px ＋ 余白。
+ */
+export const STATUS_OVERLAY_BOTTOM_PX = 44;
+
+/**
+ * ビューポートの角からの**キューブ中心**の余白[px]。
+ * `margin` は中心の位置なので、キューブの上端は `margin[1] - GIZMO_SIZE / 2`。
+ * 状態オーバーレイと固定機器の名札の帯より下に降ろし、正面視点でも文字と重ならないようにする。
+ */
+export const GIZMO_MARGIN: [number, number] = [72, 104];
+
+/**
+ * キューブの色。暗い背景（`#141820`）の上で輪郭と面が読めるよう、
+ * 面は明るい灰、稜線は水色、ホバーは面とも稜線とも違う琥珀色にする
+ * （以前は稜線とホバーが同色で、どの面を指しているのか分からなかった）。
+ */
+export const GIZMO_COLORS = {
+  face: '#D8DDE6',
+  text: '#141820',
+  stroke: '#39D0FF',
+  hover: '#FFB400',
+} as const;
 
 /** 左上のビューキューブ。 */
 export function ViewGizmo(): JSX.Element {
@@ -42,11 +65,11 @@ export function ViewGizmo(): JSX.Element {
           GIZMO_FACES.front,
           GIZMO_FACES.back,
         ]}
-        color="#E6E4DE"
-        textColor="#1B1E23"
-        strokeColor="#39D0FF"
-        hoverColor="#39D0FF"
-        opacity={0.95}
+        color={GIZMO_COLORS.face}
+        textColor={GIZMO_COLORS.text}
+        strokeColor={GIZMO_COLORS.stroke}
+        hoverColor={GIZMO_COLORS.hover}
+        opacity={1}
         {...({ scale: [GIZMO_SIZE, GIZMO_SIZE, GIZMO_SIZE] } as Record<string, unknown>)}
       />
     </GizmoHelper>

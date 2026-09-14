@@ -1,5 +1,6 @@
 import { createRoot } from 'react-dom/client';
 import { App } from './app/App.js';
+import { JA } from './i18n/ja.js';
 import './app/global.css';
 
 /**
@@ -10,6 +11,6 @@ import './app/global.css';
  */
 
 const container = document.getElementById('root');
-if (container === null) throw new Error('#root が見つかりません');
+if (container === null) throw new Error(JA.error.rootMissing);
 
 createRoot(container).render(<App />);

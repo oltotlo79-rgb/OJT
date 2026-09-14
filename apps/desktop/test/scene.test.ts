@@ -25,6 +25,12 @@ import { socketTerminalLabel } from '../src/renderer/three/Socket.js';
 import { mountedLabel } from '../src/renderer/three/MountedPart.js';
 import { findFixtureFootprint, fixtureTerminalMark } from '../src/renderer/three/Fixtures.js';
 import { secondsToMs } from '../src/renderer/panels/TimerDial.js';
+import {
+  GIZMO_COLORS,
+  GIZMO_MARGIN,
+  GIZMO_SIZE,
+  STATUS_OVERLAY_BOTTOM_PX,
+} from '../src/renderer/three/ViewGizmo.js';
 
 describe('toScene', () => {
   it('盤の中心が原点になる', () => {
@@ -238,5 +244,19 @@ describe('secondsToMs', () => {
   it('10ms単位に丸める', () => {
     expect(secondsToMs(3.04)).toBe(3040);
     expect(secondsToMs(0.1)).toBe(100);
+  });
+});
+
+describe('視点ギズモの置き場所と色（§12.2）', () => {
+  it('キューブの上端は左上の状態オーバーレイの帯より下にある', () => {
+    // `margin` はキューブの中心位置なので、上端は 中心 − 半分
+    const top = GIZMO_MARGIN[1] - GIZMO_SIZE / 2;
+    expect(top).toBeGreaterThanOrEqual(STATUS_OVERLAY_BOTTOM_PX);
+  });
+
+  it('面・稜線・ホバーの色が互いに違う（どの面を指しているか分かる）', () => {
+    const used = new Set([GIZMO_COLORS.face, GIZMO_COLORS.stroke, GIZMO_COLORS.hover]);
+    expect(used.size).toBe(3);
+    expect(GIZMO_COLORS.text).not.toBe(GIZMO_COLORS.face);
   });
 });
