@@ -23,6 +23,7 @@ describe('judgeAssemble', () => {
     const result = judgeAssemble(PROBLEM, JIPM_BOARD, sessionFor());
     expect(result.ok).toBe(true);
     if (!result.ok) return;
+    expect(result.value.mode).toBe('assemble');
     expect(result.value.passed).toBe(true);
     expect(result.value.mismatches).toEqual([]);
     expect(result.value.staticChecks.every((c) => c.ok)).toBe(true);

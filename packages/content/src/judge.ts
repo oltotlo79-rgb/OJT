@@ -28,8 +28,9 @@ export type HazardCounts = Readonly<Record<HazardKind, number>>;
 /**
  * 危険操作の種別ごとの回数を数える。種別の集合は circuit-sim の `HAZARD_KINDS` を唯一の源とするので、
  * エンジン側に種別が増えても結果画面の集計は自動で追随する（§5.6）。
+ * モードC1/C2の判定（`judge-inspect.ts`）からも同じ関数を使う。
  */
-function countHazards(hazards: readonly HazardEvent[]): HazardCounts {
+export function countHazards(hazards: readonly HazardEvent[]): HazardCounts {
   const out = {} as Record<HazardKind, number>;
   for (const kind of HAZARD_KINDS) {
     out[kind] = hazards.filter((e) => e.kind === kind).length;
@@ -47,6 +48,8 @@ export interface JudgeOptions {
 
 /** 判定結果。§7.4 / §8.3 */
 export interface JudgeResult {
+  /** モードBの判定であることの印（`JudgeInspectPartsResult` / `JudgeInspectRepairResult` と `mode` で判別する）。 */
+  mode: 'assemble';
   /** 動作一致かつ有効な静的チェックにエラーが無い。§7.4 */
   passed: boolean;
   /** 許容差を超えた遷移の一覧。§8.3 */
@@ -205,6 +208,7 @@ export function judgeAssemble(
   return {
     ok: true,
     value: {
+      mode: 'assemble',
       passed: mismatches.length === 0 && staticChecks.every((c) => c.ok),
       mismatches,
       staticChecks,
