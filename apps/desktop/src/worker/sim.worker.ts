@@ -6,14 +6,22 @@ import {
   type SocketId,
 } from '@ojt/board-model';
 import {
+  applyTesterAction,
   createRelay4c,
+  createTesterState,
   createTimer4c,
+  readTester,
   Simulation,
+  stepTester,
+  TESTER_NO_PROBE_DISPLAY,
+  TESTER_OFF_DISPLAY,
   TICK_MS,
   type ChatterEvent,
   type HazardEvent,
   type LogEntry,
   type Part,
+  type TesterReading,
+  type TesterState,
 } from '@ojt/circuit-sim';
 import { judgeAssemble } from '@ojt/content';
 import { planTicks } from './runtime.js';
@@ -24,6 +32,7 @@ import {
   type SimCommand,
   type SimMessage,
   type SimSnapshot,
+  type TesterSnapshot,
   type TimerSnapshot,
 } from './protocol.js';
 
@@ -45,6 +54,23 @@ let logCursor = 0;
 let hazardCursor = 0;
 let chatterCursor = 0;
 let droppedTicks = 0;
+/** テスターの状態（つまみ・レンジ・プローブ・針）。§9.3 */
+let tester: TesterState = createTesterState();
+/** 直近の読値（スナップショットに載せる）。実測の間引きについては下記 `loop()` を参照（前提D）。 */
+let testerReading: TesterReading = {
+  kind: tester.kind,
+  mode: tester.mode,
+  value: Number.NaN,
+  display: 'OFF',
+  targetDeg: 0,
+  overRange: false,
+  live: false,
+  conductive: false,
+};
+/** 直近の `stepTester()` 実測からの経過tick数。§9.3 / 前提D */
+let ticksSinceTesterMeasure = 0;
+/** つまみ・レンジ・プローブ・盤が変わって、次tickで即座に実測し直す必要があるか。 */
+let testerDirty = true;
 let timer: ReturnType<typeof setTimeout> | undefined;
 
 function post(message: SimMessage): void {
@@ -58,6 +84,19 @@ function load(next: BoardSession): void {
   logCursor = 0;
   hazardCursor = 0;
   chatterCursor = 0;
+  /*
+   * 盤を作り直したらプローブは外す（前の盤の端子IDは新しいネットリストに無いかもしれない）。
+   * **つまみとレンジは残す。** テスターは盤ではなく計器であり、C1では部品を挿し替えるたびに
+   * `load` を送り直すので、そのたびにΩレンジへ回し直させるのは実機の手順と食い違う（§9.1）。
+   * 0Ω調整はプローブを動かしたらやり直す実機の作法に合わせて落ちる（`applyTesterAction`）。
+   */
+  tester = applyTesterAction(
+    applyTesterAction(tester, { type: 'place-probe', probe: 'red', terminal: undefined }),
+    { type: 'place-probe', probe: 'black', terminal: undefined },
+  );
+  testerReading = readTester(simulation, tester);
+  ticksSinceTesterMeasure = 0;
+  testerDirty = true;
 }
 
 /** 装着した部品を circuit-sim の部品インスタンスにする。§6.6 */
@@ -103,6 +142,21 @@ function timersOf(sim: Simulation): Record<string, TimerSnapshot> {
   return out;
 }
 
+/** 直近の読値と針の角度をスナップショットの形にする。§9.3 */
+function testerSnapshot(): TesterSnapshot {
+  return {
+    kind: testerReading.kind,
+    mode: testerReading.mode,
+    value: testerReading.value,
+    display: testerReading.display,
+    targetDeg: testerReading.targetDeg,
+    needleDeg: tester.needleDeg,
+    overRange: testerReading.overRange,
+    live: testerReading.live,
+    conductive: testerReading.conductive,
+  };
+}
+
 function buildSnapshot(sim: Simulation): SimSnapshot {
   const state = sim.state();
   const entries = sim.log.entries();
@@ -128,6 +182,7 @@ function buildSnapshot(sim: Simulation): SimSnapshot {
     logDelta,
     hazardDelta,
     chatterDelta,
+    tester: testerSnapshot(),
     droppedTicks,
   };
 }
@@ -165,7 +220,44 @@ function loop(): void {
     const plan = planTicks(now, baselineMs, TICK_MS);
     baselineMs = plan.nextBaselineMs;
     droppedTicks += plan.dropped;
-    for (let i = 0; i < plan.ticks; i += 1) sim.step(TICK_MS);
+    /*
+     * 1tick ＝「回路を進める」→「必要なら測る」の順。§9.3 / 前提D
+     * `stepTester()`（内部で `readTester()` が回路解析を行う）は1tickの回路更新より3桁重い
+     * （前提D。実端子数156の実盤でDCV/Ωいずれのモードでも0.4〜0.8ms）。renderer への描画も
+     * スナップショット（`SNAPSHOT_INTERVAL_MS` = 33ms）でしか動かないので、実測を間引いても
+     * 見た目は変わらない:
+     * ① つまみOFF、またはプローブが片方でも未配置なら `stepTester()` を呼ばない
+     *    （測る対象が無い。既定表示に戻すだけで、針は直近の位置のまま止まる）。
+     * ② それ以外は `SNAPSHOT_INTERVAL_MS` ごと、またはつまみ・レンジ・プローブ・盤を
+     *    変えた直後（`testerDirty`）だけ実測し直す。`stepTester()` に渡す `dtMs` を
+     *    「前回実測からの経過tick数 × TICK_MS」にすることで、時定数100msの指数移動平均は
+     *    経過時間どおりに進む（10msごとに3回進めるのと数学的に等価。指数減衰の合成則）。
+     * `range-exceeded` は実測した tick の `sim.events` に流れる（`hazardDelta` にそのまま乗る）。
+     */
+    for (let i = 0; i < plan.ticks; i += 1) {
+      sim.step(TICK_MS);
+      ticksSinceTesterMeasure += 1;
+      const measurable =
+        tester.mode !== 'off' && tester.black !== undefined && tester.red !== undefined;
+      if (!measurable) {
+        testerReading = {
+          ...testerReading,
+          value: Number.NaN,
+          targetDeg: 0,
+          display: tester.mode === 'off' ? TESTER_OFF_DISPLAY : TESTER_NO_PROBE_DISPLAY,
+        };
+        // 測れない間は経過tickを積み増さない。再開後の最初の実測が古いdtで一気に収束しないように
+        ticksSinceTesterMeasure = 0;
+        continue;
+      }
+      if (testerDirty || ticksSinceTesterMeasure * TICK_MS >= SNAPSHOT_INTERVAL_MS) {
+        const stepped = stepTester(sim, tester, ticksSinceTesterMeasure * TICK_MS);
+        tester = stepped.state;
+        testerReading = stepped.reading;
+        ticksSinceTesterMeasure = 0;
+        testerDirty = false;
+      }
+    }
     if (now - lastSnapshotMs >= SNAPSHOT_INTERVAL_MS) {
       lastSnapshotMs = now;
       post({ type: 'snapshot', snapshot: buildSnapshot(sim) });
@@ -258,6 +350,16 @@ function handle(command: SimCommand): void {
       sim.setBreaker(false);
       sim.setBreaker(true);
       sim.setSwitch(true);
+      break;
+    case 'tester':
+      /*
+       * つまみ・レンジ・プローブ・0Ω調整。状態の更新は Plan 2A のリデューサ1本に任せる。
+       * 読値の更新は次の tick の `loop()` が行うので、ここでは測らない
+       * （ここで測ると1tickに2回測ることになり、`ohm-on-live` が二重に計上される）。
+       * `testerDirty` を立てて、次tickで間引かずに即座に実測させる（前提D）。
+       */
+      tester = applyTesterAction(tester, command.action);
+      testerDirty = true;
       break;
     case 'judge': {
       /*

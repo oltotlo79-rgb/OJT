@@ -56,6 +56,17 @@ export const EMPTY_SNAPSHOT: SimSnapshot = {
   logDelta: [],
   hazardDelta: [],
   chatterDelta: [],
+  tester: {
+    kind: 'digital',
+    mode: 'off',
+    value: Number.NaN,
+    display: 'OFF',
+    targetDeg: 0,
+    needleDeg: 0,
+    overRange: false,
+    live: false,
+    conductive: false,
+  },
   droppedTicks: 0,
 };
 

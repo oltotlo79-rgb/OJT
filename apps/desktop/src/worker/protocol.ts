@@ -1,5 +1,14 @@
 import type { BoardSession, SocketId } from '@ojt/board-model';
-import type { ChatterEvent, HazardEvent, LampLevel, LogEntry, Wire } from '@ojt/circuit-sim';
+import type {
+  ChatterEvent,
+  HazardEvent,
+  LampLevel,
+  LogEntry,
+  TesterAction,
+  TesterKind,
+  TesterMode,
+  Wire,
+} from '@ojt/circuit-sim';
 import type { AssembleProblem, JudgeAssembleResult } from '@ojt/content';
 
 /**
@@ -55,7 +64,15 @@ export type SimCommand =
    */
   | { type: 'resetTrip' }
   /** 判定する。模範回路と訓練者回路を worker 内で並走させる。§8.3 */
-  | { type: 'judge'; problem: AssembleProblem; session: BoardSession; elapsedMs: number };
+  | { type: 'judge'; problem: AssembleProblem; session: BoardSession; elapsedMs: number }
+  /**
+   * テスターを操作する。§9.3
+   * つまみ・レンジ・プローブ・0Ω調整をまとめて **1本のコマンド**にし、中身は Plan 2A の
+   * `TesterAction` をそのまま運ぶ。renderer も worker も同じ `applyTesterAction()` に通すので、
+   * 画面のつまみの位置と worker が測っている状態がずれない（コマンドを種別ごとに分けると、
+   * 片方だけ実装し忘れたときに静かにずれる）。
+   */
+  | { type: 'tester'; action: TesterAction };
 
 /** ランプ1個の表示状態。 */
 export interface LampSnapshot {
@@ -78,6 +95,29 @@ export interface TimerSnapshot {
   timedOut: boolean;
 }
 
+/**
+ * テスター1個の表示状態。§9.3
+ * `TesterReading`（Plan 2A）に、worker が積分している針の現在角度 `needleDeg` を添えたもの。
+ */
+export interface TesterSnapshot {
+  kind: TesterKind;
+  mode: TesterMode;
+  /** 読値の生値（DCV/ACVは[V]、Ω／導通は[Ω]）。測定できないときは NaN。 */
+  value: number;
+  /** 表示文字列（`OFF` / `----` / `OL` / `導通` / `−−−` / 数値）。 */
+  display: string;
+  /** 針の目標角度[度]。 */
+  targetDeg: number;
+  /** 針の現在角度[度]（時定数100msで目標へ寄る）。 */
+  needleDeg: number;
+  /** レンジ上限を超えた（振り切れ）。§5.6 #2 */
+  overRange: boolean;
+  /** 通電中にΩ／導通を当てた。§5.6 #1 */
+  live: boolean;
+  /** 導通レンジでブザーが鳴る（50Ω以下）。§5.5 */
+  conductive: boolean;
+}
+
 /** 約30fpsで送る状態スナップショット。ログ・イベントは前回送出からの差分のみ。§4.3 */
 export interface SimSnapshot {
   tMs: number;
@@ -96,6 +136,8 @@ export interface SimSnapshot {
   hazardDelta: HazardEvent[];
   /** 前回送出以降に検出したチャタリング。§5.3.2 */
   chatterDelta: ChatterEvent[];
+  /** テスターの読値と針（約30fpsで送る。tick ごとの更新は worker の中で行う）。§9.3 */
+  tester: TesterSnapshot;
   /** 追従上限を超えて捨てた tick 数の累計（ウィンドウ非表示時の詰まり）。 */
   droppedTicks: number;
 }
