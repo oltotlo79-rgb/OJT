@@ -10,13 +10,13 @@ import { z } from 'zod';
 /** 標準盤に常設された出力部品。§6.1 */
 export const BOARD_OUTPUT_SIGNALS: readonly string[] = ['PL1', 'PL2', 'PL3', 'PL4'];
 
-/** 盤に実在する出力部品すべて(＝ `compareSignals` の既定)。§7.4 */
+/** 盤に実在する出力部品すべて（＝ `compareSignals` の既定）。§7.4 */
 export function defaultCompareSignals(extraParts: readonly string[] = []): string[] {
   return extraParts.includes('BZ') ? [...BOARD_OUTPUT_SIGNALS, 'BZ'] : [...BOARD_OUTPUT_SIGNALS];
 }
 
 /** 許容差。§7.4 */
-export const ToleranceSchema = z.object({
+export const ToleranceSchema = z.strictObject({
   edgeMs: z.int().min(0).max(10_000).default(DEFAULT_TOLERANCE.edgeMs),
   ratio: z.number().min(0).max(1).default(DEFAULT_TOLERANCE.ratio),
 });
@@ -37,8 +37,8 @@ export const STATIC_CHECK_IDS = [
 /** 静的チェックのID。 */
 export type StaticCheckId = (typeof STATIC_CHECK_IDS)[number];
 
-/** 静的チェックの有効/無効。モードB(`assemble`)では全項目が既定で有効。§7.4 */
-export const StaticChecksSchema = z.object({
+/** 静的チェックの有効/無効。モードB（`assemble`）では全項目が既定で有効。§7.4 */
+export const StaticChecksSchema = z.strictObject({
   wireColorRule: z.boolean().default(true),
   terminalLimit: z.boolean().default(true),
   unusedParts: z.boolean().default(true),
@@ -61,7 +61,7 @@ export const DEFAULT_STATIC_CHECKS: StaticChecksData = {
 };
 
 /** 判定設定。§7.4 */
-export const JudgeSettingsSchema = z.object({
+export const JudgeSettingsSchema = z.strictObject({
   compareSignals: z.array(z.string().min(1)).min(1).optional(),
   tolerance: ToleranceSchema.default({
     edgeMs: DEFAULT_TOLERANCE.edgeMs,
@@ -73,10 +73,10 @@ export const JudgeSettingsSchema = z.object({
 /** 判定設定。 */
 export type JudgeSettings = z.infer<typeof JudgeSettingsSchema>;
 
-/** 実際に比較する信号名を決める(`compareSignals` 省略時は盤の出力部品すべて)。§7.4 */
+/** 実際に比較する信号名を決める（`compareSignals` 省略時は盤の出力部品すべて）。§7.4 */
 export function resolveCompareSignals(
   judge: JudgeSettings,
-  extraParts: readonly string[] = [],
+  extraParts: readonly string[],
 ): string[] {
   return judge.compareSignals ?? defaultCompareSignals(extraParts);
 }

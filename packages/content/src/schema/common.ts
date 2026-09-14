@@ -39,11 +39,15 @@ export const ProblemModeSchema = z.enum(['assemble', 'inspect-parts', 'inspect-r
 export type ProblemMode = z.infer<typeof ProblemModeSchema>;
 
 /** Phase 1 では未対応のモード。読込時に `unsupported-mode` として一覧に出す。§13 #1 */
-export const UNSUPPORTED_MODES: readonly ProblemMode[] = ['inspect-parts', 'inspect-repair', 'plc'];
+export const UNSUPPORTED_MODES = [
+  'inspect-parts',
+  'inspect-repair',
+  'plc',
+] as const satisfies readonly ProblemMode[];
 
 /** 標準時間／打切り時間（分）。§7.1 */
 export const TimeLimitSchema = z
-  .object({
+  .strictObject({
     standardMin: z.int().min(1).max(600),
     cutoffMin: z.int().min(1).max(600),
   })
@@ -111,7 +115,7 @@ export function toSocketRoles(data: SocketRolesInput): SocketRoles {
 export const ExtraPartSchema = z.enum(['BZ']);
 
 /** 課題が使う盤の指定。§7.1 */
-export const BoardRefSchema = z.object({
+export const BoardRefSchema = z.strictObject({
   boardId: z.string().min(1),
   socketRoles: SocketRolesSchema,
   extraParts: z.array(ExtraPartSchema).optional(),
@@ -124,7 +128,7 @@ export type BoardRef = z.infer<typeof BoardRefSchema>;
 export const MountableKindSchema = z.enum(MOUNTABLE_KINDS);
 
 /** 在庫1件。上限は盤のソケット数（`SOCKET_IDS.length` = 8）。§7.1 / §6.1 */
-export const InventoryItemSchema = z.object({
+export const InventoryItemSchema = z.strictObject({
   kind: MountableKindSchema,
   count: z.int().min(0).max(SOCKET_IDS.length),
 });
@@ -135,17 +139,17 @@ export type InventoryItemData = z.infer<typeof InventoryItemSchema>;
 /** すべてのモードに共通するヘッダ項目。§7.1 */
 export const ProblemHeaderShape = {
   formatVersion: z.literal(CONTENT_FORMAT_VERSION),
-  id: ProblemIdSchema,
-  title: z.string().min(1),
-  grade: GradeSchema,
-  description: z.string(),
-  timeLimit: TimeLimitSchema,
-  board: BoardRefSchema,
-  inventory: z.array(InventoryItemSchema),
+  id: ProblemIdSchema.describe('課題ID。課題フォルダの中で一意にします。'),
+  title: z.string().min(1).describe('課題一覧に出す課題名。'),
+  grade: GradeSchema.describe('想定級（3級・2級・1級）。ヒントの出し方を決めます。'),
+  description: z.string().describe('訓練者に示す課題文。'),
+  timeLimit: TimeLimitSchema.describe('標準時間と打切り時間（分）。'),
+  board: BoardRefSchema.describe('使う盤とソケットの役割割当。'),
+  inventory: z.array(InventoryItemSchema).describe('訓練者が使える部品の在庫（種別ごとの個数）。'),
 };
 
 /** 共通ヘッダだけを取り出したスキーマ（モードの判別前に使う）。 */
-export const ProblemHeaderSchema = z.object({
+export const ProblemHeaderSchema = z.strictObject({
   ...ProblemHeaderShape,
   mode: ProblemModeSchema,
 });

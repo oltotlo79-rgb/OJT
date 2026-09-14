@@ -9,7 +9,8 @@
   "scripts": {
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "schema:write": "node --experimental-transform-types --import ./scripts/ts-source-resolve.js scripts/write-json-schema.ts && prettier --write schema/task.schema.json"
   },
   "dependencies": {
     "@ojt/board-model": "workspace:*",

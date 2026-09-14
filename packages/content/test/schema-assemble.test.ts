@@ -17,17 +17,49 @@ describe('AssembleProblemSchema', () => {
     expect(parsed.success).toBe(false);
     if (parsed.success) return;
     expect(parsed.error.issues[0]?.path).toEqual(['durationMs']);
+    expect(parsed.error.issues[0]?.message).toContain('1tick');
   });
 
-  it('rejects a visible schematic hint on a grade 1 problem (§8.4)', () => {
-    const parsed = AssembleProblemSchema.safeParse({
-      ...selfHoldProblemJson(),
-      grade: 1,
-      hints: { schematicVisible: true },
-    });
-    expect(parsed.success).toBe(false);
-    if (parsed.success) return;
-    expect(parsed.error.issues[0]?.path).toEqual(['hints', 'schematicVisible']);
+  it('requires at least one tick after the last operation (§7.3)', () => {
+    // 再生ループは `t < durationMs` なので、`durationMs === 最後の操作時刻` だと
+    // その操作が1度も適用されないまま終わる
+    const last = 3300;
+    expect(
+      AssembleProblemSchema.safeParse({ ...selfHoldProblemJson(), durationMs: last }).success,
+    ).toBe(false);
+    expect(
+      AssembleProblemSchema.safeParse({ ...selfHoldProblemJson(), durationMs: last + 10 }).success,
+    ).toBe(true);
+  });
+
+  it('ties the schematic hint to the grade (§8.4)', () => {
+    const rejected = (grade: number, schematicVisible: boolean): void => {
+      const parsed = AssembleProblemSchema.safeParse({
+        ...selfHoldProblemJson(),
+        grade,
+        hints: { schematicVisible },
+      });
+      expect(parsed.success).toBe(false);
+      if (parsed.success) return;
+      expect(parsed.error.issues[0]?.path).toEqual(['hints', 'schematicVisible']);
+    };
+    rejected(1, true);
+    rejected(2, true);
+    rejected(3, false);
+    expect(
+      AssembleProblemSchema.safeParse({
+        ...selfHoldProblemJson(),
+        grade: 3,
+        hints: { schematicVisible: true },
+      }).success,
+    ).toBe(true);
+    expect(
+      AssembleProblemSchema.safeParse({
+        ...selfHoldProblemJson(),
+        grade: 2,
+        hints: { schematicVisible: false },
+      }).success,
+    ).toBe(true);
   });
 
   it('accepts a physicalOverride of exactly two terminals (§7.2)', () => {

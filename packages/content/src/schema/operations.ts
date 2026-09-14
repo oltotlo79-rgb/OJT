@@ -20,7 +20,7 @@ export const OperationActionSchema = z.enum(['press', 'release']);
 export type OperationAction = z.infer<typeof OperationActionSchema>;
 
 /** 操作1件。§7.3 */
-export const OperationSchema = z.object({
+export const OperationSchema = z.strictObject({
   t: z
     .int()
     .min(0)
@@ -37,6 +37,7 @@ export const OperationListSchema = z.array(OperationSchema).superRefine((ops, ct
   for (let i = 1; i < ops.length; i += 1) {
     const previous = ops[i - 1];
     const current = ops[i];
+    /* c8 ignore next -- i は 1..length-1 なのでどちらも必ず取れる（型のための番人） */
     if (previous === undefined || current === undefined) continue;
     if (current.t < previous.t) {
       ctx.addIssue({

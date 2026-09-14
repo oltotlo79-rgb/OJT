@@ -1,5 +1,5 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": { "rootDir": ".", "resolveJsonModule": true },
-  "include": ["src/**/*.ts", "src/**/*.json", "test/**/*.ts", "vitest.config.ts"]
+  "include": ["src/**/*.ts", "src/**/*.json", "test/**/*.ts", "scripts/**/*.ts", "vitest.config.ts"]
 }

@@ -30,6 +30,18 @@ describe('SchematicDocumentSchema', () => {
     );
   });
 
+  it('rejects unknown keys instead of dropping them (§13 #1)', () => {
+    expect(SchematicDocumentSchema.safeParse({ ...DOC, author: 'x' }).success).toBe(false);
+    expect(
+      SchematicDocumentSchema.safeParse({
+        ...DOC,
+        rungs: [
+          { id: 'r1', from: { bus: 'P', node: 0 }, to: { bus: 'N' }, cells: DOC.rungs[0]?.cells },
+        ],
+      }).success,
+    ).toBe(false);
+  });
+
   it('rejects a device name that does not fit the cell kind', () => {
     const parsed = SchematicDocumentSchema.safeParse({
       ...DOC,

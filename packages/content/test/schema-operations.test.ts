@@ -24,6 +24,12 @@ describe('OperationSchema', () => {
     expect(OperationSchema.safeParse({ t: 0, target: 'PB5', action: 'press' }).success).toBe(false);
     expect(OperationSchema.safeParse({ t: 0, target: 'PB1', action: 'hold' }).success).toBe(false);
   });
+
+  it('rejects an unknown key instead of dropping it (§13 #1)', () => {
+    expect(
+      OperationSchema.safeParse({ t: 0, target: 'PB1', action: 'press', holdMs: 50 }).success,
+    ).toBe(false);
+  });
 });
 
 describe('OperationListSchema', () => {

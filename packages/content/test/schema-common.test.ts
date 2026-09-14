@@ -127,13 +127,33 @@ describe('ProblemHeaderSchema', () => {
     expect(UNSUPPORTED_MODES).toEqual(['inspect-parts', 'inspect-repair', 'plc']);
   });
 
-  it('rejects an inventory count above the socket count (8)', () => {
+  it('accepts an inventory count up to the socket count (8) and rejects more', () => {
     expect(
       ProblemHeaderSchema.safeParse({ ...HEADER, inventory: [{ kind: 'relay-my4n', count: 8 }] })
         .success,
     ).toBe(true);
     expect(
       ProblemHeaderSchema.safeParse({ ...HEADER, inventory: [{ kind: 'relay-my4n', count: 9 }] })
+        .success,
+    ).toBe(false);
+  });
+
+  it('rejects unknown keys instead of dropping them (§13 #1)', () => {
+    expect(ProblemHeaderSchema.safeParse({ ...HEADER, note: 'x' }).success).toBe(false);
+    expect(
+      ProblemHeaderSchema.safeParse({
+        ...HEADER,
+        timeLimit: { standardMin: 30, cutoffMin: 50, graceMin: 5 },
+      }).success,
+    ).toBe(false);
+    expect(
+      ProblemHeaderSchema.safeParse({
+        ...HEADER,
+        inventory: [{ kind: 'relay-my4n', count: 2, spare: 1 }],
+      }).success,
+    ).toBe(false);
+    expect(
+      ProblemHeaderSchema.safeParse({ ...HEADER, board: { ...HEADER.board, extraPart: 'BZ' } })
         .success,
     ).toBe(false);
   });

@@ -33,6 +33,16 @@ describe('JudgeSettingsSchema', () => {
     expect(JudgeSettingsSchema.safeParse({ compareSignals: [] }).success).toBe(false);
     expect(JudgeSettingsSchema.safeParse({ tolerance: { ratio: 2 } }).success).toBe(false);
   });
+
+  it('rejects unknown keys instead of dropping them (§13 #1)', () => {
+    expect(JudgeSettingsSchema.safeParse({ edgeMs: 200 }).success).toBe(false);
+    expect(JudgeSettingsSchema.safeParse({ tolerance: { edgeMs: 200, ratio2: 0.1 } }).success).toBe(
+      false,
+    );
+    expect(JudgeSettingsSchema.safeParse({ staticChecks: { wireColor: false } }).success).toBe(
+      false,
+    );
+  });
 });
 
 describe('compare signal defaults', () => {
@@ -43,15 +53,22 @@ describe('compare signal defaults', () => {
   });
 
   it('lets the problem override the list', () => {
-    expect(resolveCompareSignals(JudgeSettingsSchema.parse({}))).toEqual([
+    expect(resolveCompareSignals(JudgeSettingsSchema.parse({}), [])).toEqual([
       'PL1',
       'PL2',
       'PL3',
       'PL4',
     ]);
-    expect(resolveCompareSignals(JudgeSettingsSchema.parse({ compareSignals: ['PL1'] }))).toEqual([
+    expect(resolveCompareSignals(JudgeSettingsSchema.parse({}), ['BZ'])).toEqual([
       'PL1',
+      'PL2',
+      'PL3',
+      'PL4',
+      'BZ',
     ]);
+    expect(
+      resolveCompareSignals(JudgeSettingsSchema.parse({ compareSignals: ['PL1'] }), ['BZ']),
+    ).toEqual(['PL1']);
   });
 });
 

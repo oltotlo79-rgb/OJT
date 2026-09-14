@@ -1,9 +1,9 @@
 import { AssembleProblemSchema, type AssembleProblem } from '../../src/schema/assemble.js';
 
-/** 課題JSONの骨組み(テストごとに必要な部分だけ差し替える)。 */
+/** 課題JSONの骨組み（テストごとに必要な部分だけ差し替える）。 */
 export const TASK2_ROLES = { S1: 'CR1', S2: 'CR2', S5: 'T1', S6: 'T2', S7: 'CHK' } as const;
 
-/** 自己保持回路の最小課題(テストの土台)。 */
+/** 自己保持回路の最小課題（テストの土台）。 */
 export function selfHoldProblemJson(): Record<string, unknown> {
   return {
     formatVersion: 1,
@@ -73,7 +73,7 @@ export function selfHoldProblemJson(): Record<string, unknown> {
   };
 }
 
-/** 禁則回路(タイマ自身の限時b接点で自コイルを切るワンショット)の課題。調査資料 §5.5 */
+/** 禁則回路（タイマ自身の限時b接点で自コイルを切るワンショット）の課題。調査資料 §5.5 */
 export function forbiddenOneShotProblemJson(): Record<string, unknown> {
   return {
     ...selfHoldProblemJson(),
@@ -110,7 +110,7 @@ export function forbiddenOneShotProblemJson(): Record<string, unknown> {
   };
 }
 
-/** 課題JSONを検証済みの課題にする(テスト側で失敗したら即エラーにする)。 */
+/** 課題JSONを検証済みの課題にする（テスト側で失敗したら即エラーにする）。 */
 export function parseOrThrow(json: unknown): AssembleProblem {
   const parsed = AssembleProblemSchema.safeParse(json);
   if (!parsed.success) throw new Error(JSON.stringify(parsed.error.issues, null, 2));
