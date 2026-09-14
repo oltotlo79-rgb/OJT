@@ -16,7 +16,7 @@
 
 | # | 前提 | 確認方法 |
 |---|---|---|
-| 1 | Plan 1D1 / 1D2 が `main` に入っており、`pnpm --filter @ojt/desktop test` が 17ファイル / 190テスト通る | `pnpm --filter @ojt/desktop test` |
+| 1 | Plan 1D1 / 1D2 が `main` に入っており、`pnpm --filter @ojt/desktop test` が 25ファイル / 414テスト通る | `pnpm --filter @ojt/desktop test` |
 | 2 | **Plan 2A が `main` に入っている**（`packages/circuit-sim/src/tester.ts` と `packages/content` の C1/C2 一式）。本プランは 2A の公開APIを全面的に使うので、2A 未完了では Task 1 から通らない | `pnpm -r test` と下の API 表 |
 | 3 | `pnpm -r typecheck` / `pnpm lint` が無警告 | 同左 |
 | 4 | 内蔵課題が モードB 8題 ＋ C1 4セット ＋ C2 8題 の計20題（`BUILTIN_ALL_PROBLEMS`） | `BUILTIN_ALL_PROBLEMS.length` |
@@ -130,7 +130,7 @@ export function judgeInspectParts(
 export interface InspectRepairProblem {
   /* ProblemHeaderShape */ mode: 'inspect-repair';
   schematic: SchematicDocument;
-  physicalOverride?: Record<string, [TerminalId, TerminalId]>;
+  physicalOverride?: Record<string, [string, string]>;  // zodのTerminalIdSchemaは素の正規表現stringなので推論型もstring。toPhysicalOverride()がTerminalIdへ直す
   faults: FaultsData; operations: OperationList; durationMs: number;
   judge: JudgeSettings; hints: { schematicVisible: boolean };
 }
@@ -155,7 +155,8 @@ export interface RepairCircuit {
 }
 export type RepairCircuitResult = { ok: true; value: RepairCircuit } | { ok: false; errors: ProblemIssue[] };
 export function buildInspectRepairCircuit(
-  problem: InspectRepairProblem, board: BoardDefinition, options?: ResolveFaultsOptions,
+  problem: InspectRepairProblem, board: BoardDefinition,
+  options?: ResolveFaultsOptions & { resolvedFaults?: readonly FaultSpecData[] },
 ): RepairCircuitResult;
 export function repairNetlist(
   circuit: RepairCircuit, board: BoardDefinition,
@@ -210,11 +211,11 @@ export function findBuiltinProblem(id: string): SupportedProblem | undefined;
 export function countHazards(hazards: readonly HazardEvent[]): HazardCounts;
 export interface FaultSpecData {
   target: { wireId: string } | { partId: string; elementIndex: number };
-  kind: FaultKind; ohms?: number; ratio?: number; to?: string;
+  kind: FaultKind; ohms?: number | undefined; ratio?: number | undefined; to?: string | undefined;  // exactOptionalPropertyTypes 下でのzod推論
 }
 export function injectPartFaults(netlist: Netlist, partFaults: readonly FaultSpecData[]): ProblemIssue[];
 export interface ProblemIssue { path: string; message: string }
-export interface ResolveFaultsOptions { seed?: number }
+export interface ResolveFaultsOptions { seed?: number; maxAttempts?: number }
 ```
 
 ### 前提B: Plan 1D1 / 1D2 で実装が確定した `apps/desktop` のAPI（**本プランが触る分だけ**）
@@ -254,10 +255,21 @@ export interface ResolveFaultsOptions { seed?: number }
 | 導通ありの実測抵抗 | `0.001`（`CLOSED_CONTACT_OHMS`）→ 表示 `導通` | 同上 |
 | 導通なし | `Infinity` → 表示 `OL` | 同上 |
 | 赤PBを離した状態の `CHK.13`–`CHK.14` 間電圧 | `0.00 V` | 同上 |
-| 赤PBを押したままの同電圧 | `23.996…V`（表示 `24.00 V`）→ Ωレンジは `ohm-on-live` ＋ `display: 'OL'` | 同上 |
+| 赤PBを押したままの同電圧 | `23.996…V`（表示 `24.00 V`）→ Ωレンジは `ohm-on-live` ＋ `display: '----'`（`readTester()` が通電中は生の `'OL'` を上書きして測定不能の表示にする。2A ハンドオフ注記 M-8） | 同上 |
 | 針の時定数 | 100ms（10ms tick で α ≈ 0.0952） | 2A Task 2 |
 | フルスケール角 | 90度 | `NEEDLE_FULL_SCALE_DEG` |
 | タイマの点検待ち時間 | 1100ms（`CHECK_TIMER_PRESET_MS + 100`） | `checkSettleMs('timer-h3y4')` |
+
+### 前提D: Worker の性能実測（Task 3 の tick 予算の判断に使う）
+
+| 計測 | 値 | 出典 |
+|---|---|---|
+| 1tick（10ms）ぶんの回路更新（`Simulation.step()`） | 約0.3μs | 2A 実測 |
+| `stepTester()`（Ω・無通電・死回路の測定） | 0.79ms | 2A 実測（実端子数156の実盤） |
+| `stepTester()`（DCV・アナログ） | 0.50ms | 同上 |
+| `stepTester()`（Ω・通電中・測定拒否＝`ohm-on-live`） | 0.37ms | 同上 |
+
+Ω／導通の実測（`readTester()` 内部の回路解析）は1tickぶんの回路更新より**3桁重い**。Task 3 の Worker ループはこの非対称を前提に設計する（下記の決めたこと表を参照）。
 
 ---
 
@@ -268,7 +280,7 @@ export interface ResolveFaultsOptions { seed?: number }
 | `src/renderer/session/tester.ts` | **新規**。プローブ配置の純関数（`testerPickToAction` / `nextProbeAfter` / `probeSideAt`）とレンジ表示の文字列 |
 | `src/renderer/session/interaction.ts` | **変更**。`ToolMode` に `tester` / `report` を足し、`PickAction` に `placeProbe` / `liftProbe` / `openReport` を足す |
 | `src/renderer/session/inspect-parts.ts` | **新規**。C1 の純関数（`checkLoadFor` / `markSheetRows` / `answeredCount` / `probeTargets`） |
-| `src/renderer/session/inspect-repair.ts` | **新規**。C2 の純関数（`reportKindsFor` / `hasReportFor` / `reportTargetLabel` / `highlightFromPick`） |
+| `src/renderer/session/inspect-repair.ts` | **新規**。C2 の純関数（`reportKindsFor` / `hasReportFor` / `reportPickToAction` / `circuitForJudge`） |
 | `src/worker/protocol.ts` | **変更**。テスターコマンド・故障付き `load`・C1/C2 判定コマンド・`SimSnapshot.tester`・`inspectResult` |
 | `src/worker/sim.worker.ts` | **変更**。テスター状態と毎tickの `stepTester()`、`injectPartFaults()`、`judgeInspectParts()` / `judgeInspectRepair()` |
 | `src/renderer/app/store.ts` | **変更**。`problem: SupportedProblem`、`tester`、`hazardBanner`、`answers`、`reports`、`circuit`、`checkPartId`、`highlight` |
@@ -509,13 +521,35 @@ import { BUILTIN_ALL_PROBLEMS } from '@ojt/content';
 
 `配布版は resources/content から同梱課題を読む（§7.8）` のテストは同梱課題をすべて `content/assemble/` に書き出しているが、`loadProblemsFromDir()` はフォルダを再帰的に辿るので**置き場所に関係なく読める**。`BUILTIN_ALL_PROBLEMS` に置き換えるだけで通る（20題が `content/assemble/` に並ぶだけで、モードは課題JSONの `mode` が決める）。
 
+同ファイルの末尾に、内蔵課題の総数を直接固定するテストを足す（§7.9 / 前提#4）:
+
+```ts
+  it('内蔵課題は20題（モードB 8 / C1 4 / C2 8）', () => {
+    expect(BUILTIN_ALL_PROBLEMS).toHaveLength(20);
+  });
+```
+
+- [ ] **Step 5a: `test/problem-list.test.tsx` の既存リテラルに `mode` を足す**
+
+`ProblemSummary` に `mode` が増えたので（Step 3）、この型で書かれた既存のテストのリテラルが `pnpm --filter @ojt/desktop typecheck`（Step 7）で型エラーになる。`apps/desktop/test/problem-list.test.tsx` の `PAYLOAD` の中の課題オブジェクトの `source: 'builtin',` の**直前**に次を挿入する:
+
+```ts
+      mode: 'assemble',
+```
+
+同ファイルの「出所タグを列に出す（§7.8）」テストの `u-001` オブジェクトの `source: 'user',` の**直前**にも同じ行を挿入する:
+
+```ts
+              mode: 'assemble',
+```
+
 - [ ] **Step 6: GREEN を確認する**
 
 ```powershell
-pnpm --filter @ojt/desktop exec vitest run test/problem-modes.test.ts test/content-loader.test.ts --no-file-parallelism
+pnpm --filter @ojt/desktop exec vitest run test/problem-modes.test.ts test/content-loader.test.ts test/problem-list.test.tsx --no-file-parallelism
 ```
 
-Expected: `Test Files  2 passed (2)`。`problem-modes` 4件、`content-loader` は既存の件数のまま全て通る。
+Expected: `Test Files  3 passed (3)`。`problem-modes` 4件、`content-loader` は既存の件数＋1件、`problem-list` は既存の件数のまま全て通る。
 
 - [ ] **Step 6a: `ProblemList.tsx` に暫定のモード絞り込みを入れる**
 
@@ -543,7 +577,7 @@ Expected: 無出力。
 - [ ] **Step 8: コミットする**
 
 ```powershell
-git add apps/desktop/src/shared/ipc.ts apps/desktop/src/main/content-loader.ts apps/desktop/src/renderer/screens/ProblemList.tsx apps/desktop/test/content-loader.test.ts apps/desktop/test/problem-modes.test.ts
+git add apps/desktop/src/shared/ipc.ts apps/desktop/src/main/content-loader.ts apps/desktop/src/renderer/screens/ProblemList.tsx apps/desktop/test/content-loader.test.ts apps/desktop/test/problem-modes.test.ts apps/desktop/test/problem-list.test.tsx
 git commit -m @'
 feat(desktop): list all twenty builtin problems with their mode
 
@@ -859,7 +893,7 @@ describe('新しいツールモード（Plan 2B Task 2）', () => {
 pnpm --filter @ojt/desktop exec vitest run test/tester-ui.test.ts test/interaction.test.ts --no-file-parallelism
 ```
 
-Expected: `Test Files  2 passed (2)`。`tester-ui` 12件、`interaction` は既存＋1件。
+Expected: `Test Files  2 passed (2)`。`tester-ui` 13件、`interaction` は既存＋1件。
 
 - [ ] **Step 7: コミットする**
 
@@ -891,6 +925,9 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 | 読値の送出 | 約30fpsのスナップショットに `tester` を1個載せる | tick ごとに送ると1秒100通信になる。`SNAPSHOT_INTERVAL_MS = 33` の既存の間引きに乗せる |
 | 端子ID | コマンドに載せるのは**役割ID**（`CHK.13`）。3Dが返す物理ID（`S7.13`）は renderer 側で `toNetlistTerminal()` が直す | ネットリストは役割IDで組まれている（§6.4。`runAddWire()` と同じ流儀） |
 | つまみOFF | `mode === 'off'` のときも `stepTester()` は呼ぶ（針を0へ戻すため） | 実機のつまみを切っても針は戻りながら止まる |
+| Ω／導通の実測頻度 | 毎tick律儀に呼ばない。①つまみOFFかプローブが片方でも未配置なら `stepTester()` を呼ばない、②それ以外は `SNAPSHOT_INTERVAL_MS`（33ms）ごと、またはプローブ位置を変えた直後だけ実測し直す | `stepTester()` の実測（`readTester()` 内部の回路解析）は1tickの回路更新の3桁重い（前提D）。renderer への描画もスナップショット（33ms間隔）でしか動かないので、実測を間引いても見た目は変わらない |
+| 針の時定数の扱い | 実測を間引いても、`stepTester()` に渡す `dtMs` を「前回実測からの経過tick数 × TICK_MS」にすることで、指数移動平均の式そのものは経過時間どおりに進める | 一度にまとめて進めても、10msごとに3回進めるのと数学的に等価（指数減衰の合成則）。読値と針の再計算を1回にまとめ、余分な `readTester()` 呼び出しを避ける |
+| 2A側のキャッシュ | 上記に加えて `readTester()` 自身も `Simulation` 単位でキャッシュ済み（tick・プローブ・レンジ種別が同じ間はフルの回路解析をやり直さない） | 2A 側で実装済み（2A Task 2 のレビュー反映①）。本プランはそのAPIをそのまま呼ぶだけで、キャッシュの実装は持たない |
 
 - [ ] **Step 1: 失敗するテストを書く**
 
@@ -1197,6 +1234,8 @@ import {
   readTester,
   Simulation,
   stepTester,
+  TESTER_NO_PROBE_DISPLAY,
+  TESTER_OFF_DISPLAY,
   TICK_MS,
   type ChatterEvent,
   type HazardEvent,
@@ -1227,7 +1266,7 @@ import {
 ```ts
 /** テスターの状態（つまみ・レンジ・プローブ・針）。§9.3 */
 let tester: TesterState = createTesterState();
-/** 直近の読値（スナップショットに載せる）。tick ごとに `stepTester()` が更新する。 */
+/** 直近の読値（スナップショットに載せる）。実測の間引きについては下記 `loop()` を参照（前提D）。 */
 let testerReading: TesterReading = {
   kind: tester.kind,
   mode: tester.mode,
@@ -1238,6 +1277,10 @@ let testerReading: TesterReading = {
   live: false,
   conductive: false,
 };
+/** 直近の `stepTester()` 実測からの経過tick数。§9.3 / 前提D */
+let ticksSinceTesterMeasure = 0;
+/** つまみ・レンジ・プローブ・盤が変わって、次tickで即座に実測し直す必要があるか。 */
+let testerDirty = true;
 ```
 
 `load()` の末尾（`chatterCursor = 0;` の後ろ）に次を足す:
@@ -1254,6 +1297,8 @@ let testerReading: TesterReading = {
     { type: 'place-probe', probe: 'black', terminal: undefined },
   );
   testerReading = readTester(simulation, tester);
+  ticksSinceTesterMeasure = 0;
+  testerDirty = true;
 ```
 
 `buildSnapshot()` の戻り値の `droppedTicks,` の**直前**に次を挿入する:
@@ -1285,16 +1330,42 @@ function testerSnapshot(): TesterSnapshot {
 
 ```ts
     /*
-     * 1tick ＝「回路を進める」→「テスターで測る」の順。§9.3
-     * `stepTester()` は針を時定数100msで寄せ、アナログの振り切れで `range-exceeded` を
-     * `sim.events` に流す（`hazardDelta` にそのまま乗るので renderer 側の配線は要らない）。
-     * つまみOFFでも呼ぶ（針が0へ戻りながら止まる）。
+     * 1tick ＝「回路を進める」→「必要なら測る」の順。§9.3 / 前提D
+     * `stepTester()`（内部で `readTester()` が回路解析を行う）は1tickの回路更新より3桁重い
+     * （前提D。実端子数156の実盤でDCV/Ωいずれのモードでも0.4〜0.8ms）。renderer への描画も
+     * スナップショット（`SNAPSHOT_INTERVAL_MS` = 33ms）でしか動かないので、実測を間引いても
+     * 見た目は変わらない:
+     * ① つまみOFF、またはプローブが片方でも未配置なら `stepTester()` を呼ばない
+     *    （測る対象が無い。既定表示に戻すだけで、針は直近の位置のまま止まる）。
+     * ② それ以外は `SNAPSHOT_INTERVAL_MS` ごと、またはつまみ・レンジ・プローブ・盤を
+     *    変えた直後（`testerDirty`）だけ実測し直す。`stepTester()` に渡す `dtMs` を
+     *    「前回実測からの経過tick数 × TICK_MS」にすることで、時定数100msの指数移動平均は
+     *    経過時間どおりに進む（10msごとに3回進めるのと数学的に等価。指数減衰の合成則）。
+     * `range-exceeded` は実測した tick の `sim.events` に流れる（`hazardDelta` にそのまま乗る）。
      */
     for (let i = 0; i < plan.ticks; i += 1) {
       sim.step(TICK_MS);
-      const stepped = stepTester(sim, tester, TICK_MS);
-      tester = stepped.state;
-      testerReading = stepped.reading;
+      ticksSinceTesterMeasure += 1;
+      const measurable =
+        tester.mode !== 'off' && tester.black !== undefined && tester.red !== undefined;
+      if (!measurable) {
+        testerReading = {
+          ...testerReading,
+          value: Number.NaN,
+          targetDeg: 0,
+          display: tester.mode === 'off' ? TESTER_OFF_DISPLAY : TESTER_NO_PROBE_DISPLAY,
+        };
+        // 測れない間は経過tickを積み増さない。再開後の最初の実測が古いdtで一気に収束しないように
+        ticksSinceTesterMeasure = 0;
+        continue;
+      }
+      if (testerDirty || ticksSinceTesterMeasure * TICK_MS >= SNAPSHOT_INTERVAL_MS) {
+        const stepped = stepTester(sim, tester, ticksSinceTesterMeasure * TICK_MS);
+        tester = stepped.state;
+        testerReading = stepped.reading;
+        ticksSinceTesterMeasure = 0;
+        testerDirty = false;
+      }
     }
 ```
 
@@ -1304,10 +1375,12 @@ function testerSnapshot(): TesterSnapshot {
     case 'tester':
       /*
        * つまみ・レンジ・プローブ・0Ω調整。状態の更新は Plan 2A のリデューサ1本に任せる。
-       * 読値の更新は次の tick の `stepTester()` が行うので、ここでは測らない
+       * 読値の更新は次の tick の `loop()` が行うので、ここでは測らない
        * （ここで測ると1tickに2回測ることになり、`ohm-on-live` が二重に計上される）。
+       * `testerDirty` を立てて、次tickで間引かずに即座に実測させる（前提D）。
        */
       tester = applyTesterAction(tester, command.action);
+      testerDirty = true;
       break;
 ```
 
@@ -1372,6 +1445,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 | `checkPartId` | `string \| undefined` | C1 でいまチェック用ソケットに挿している部品 |
 | `reports` | `FaultReport[]` | C2 指摘一覧 |
 | `circuit` | `RepairCircuit \| undefined` | C2 の故障入り初期盤（判定に渡す） |
+| `faultSeed` | `number \| undefined` | C2 の故障の種（起動時に決め、作業ファイルへ残す。§5.2） |
 | `highlight` | `HighlightSelection` | C2 の回路図 ⇄ 3D 連動 |
 | `judge` | `AnyJudgeResult \| undefined` | 3モードの結果画面 |
 
@@ -1625,6 +1699,12 @@ export interface HighlightSelection {
 export const NO_HIGHLIGHT: HighlightSelection = { cellIds: [], terminals: [], wireIds: [] };
 ```
 
+`apps/desktop/src/renderer/session/tester.ts`（Task 2）の `export type ProbeSide = 'black' | 'red';` を次に置き換える（`ProbeSide` の定義をここ1箇所に一本化する。`tester.ts` は Task 2 で先に作られるが、以後は `store-types.ts` 側が正になる）:
+
+```ts
+export type { ProbeSide } from '../app/store-types.js';
+```
+
 - [ ] **Step 4: `store.ts` の import を広げる**
 
 `apps/desktop/src/renderer/app/store.ts` の先頭4ブロックの import を次に置き換える:
@@ -1714,10 +1794,10 @@ export type AnyJudgeResult = JudgeResult | JudgeInspectResult;
 
 /**
  * 点検系（C1/C2）の判定結果か。§9.1 / §9.2
- * モードBの `JudgeResult`（Plan 1C）は `mode` を持たないので、その有無だけで判別できる。
+ * 3モードとも `mode` を持つ（Plan 2A I-3）ので、`'assemble'` かどうかで判別する。
  */
 export function isInspectJudge(result: AnyJudgeResult): result is JudgeInspectResult {
-  return 'mode' in result;
+  return result.mode !== 'assemble';
 }
 
 /**
@@ -1767,6 +1847,13 @@ export function checkSessionFor(problem: InspectPartsProblem): BoardSession {
   reports: FaultReport[];
   /** モードC2の故障入り初期盤（判定にそのまま渡す）。§9.2 */
   circuit: RepairCircuit | undefined;
+  /**
+   * モードC2の故障の種。§5.2
+   * 起動時に決め（課題が持たなければ `Date.now()`）、作業ファイルへ残す。復元は種からの
+   * 再抽選ではなく `resolvedFaults`（解決済みの故障そのもの）を使うので、判定には使わない
+   * デバッグ用の記録である（Plan 2A I-4）。
+   */
+  faultSeed: number | undefined;
   /** 回路図 ⇄ 3D盤の連動ハイライト。§9.2 */
   highlight: HighlightSelection;
 ```
@@ -1811,6 +1898,7 @@ export function checkSessionFor(problem: InspectPartsProblem): BoardSession {
   checkPartId: undefined,
   reports: [],
   circuit: undefined,
+  faultSeed: undefined,
   highlight: NO_HIGHLIGHT,
 ```
 
@@ -1828,10 +1916,16 @@ export function checkSessionFor(problem: InspectPartsProblem): BoardSession {
      */
     let session: BoardSession;
     let circuit: RepairCircuit | undefined;
+    let faultSeed: number | undefined;
     let wireColor: WireColor = '青';
     let schematicVisible = false;
     if (isInspectRepairProblem(problem)) {
-      const built = buildInspectRepairCircuit(problem, JIPM_BOARD);
+      /*
+       * ランダム故障の課題は起動時に種を決め、あとで作業ファイルへ残す（§5.2）。
+       * 明示 `faults` 配列の課題（内蔵C2 8題）には使われない（`resolveFaults()` が無視する）。
+       */
+      faultSeed = Date.now();
+      const built = buildInspectRepairCircuit(problem, JIPM_BOARD, { seed: faultSeed });
       if (!built.ok) {
         get().toast(
           referenceErrorText(built.errors.map((e) => `${e.path}: ${e.message}`)),
@@ -1845,8 +1939,8 @@ export function checkSessionFor(problem: InspectPartsProblem): BoardSession {
       // C2の回路図の出し方は課題の hints が決める（2級は出す・1級は出さない）。§9.2
       schematicVisible = problem.hints.schematicVisible;
     } else if (isInspectPartsProblem(problem)) {
+      // C1は配線しないので線色パレットは空（`checkSessionFor()` が決める）。§9.1
       session = checkSessionFor(problem);
-      wireColor = '青';
     } else {
       session = sessionForProblem(problem);
       // 回路図ヒントの出し方は級だけで決まる（§8.4）
@@ -1892,6 +1986,7 @@ export function checkSessionFor(problem: InspectPartsProblem): BoardSession {
       answers: [],
       checkPartId: undefined,
       reports: [],
+      faultSeed,
       highlight: NO_HIGHLIGHT,
     });
   },
@@ -1996,14 +2091,33 @@ import { droppedTicksLog, JA, referenceErrorText } from '../i18n/ja.js';
   },
 ```
 
-`abandonSession()` の `set({ … })` に次の4行を足す（`restoredHazardCount: 0,` の直後）:
+`abandonSession()` の `set({ … })` に次の8行を足す（`restoredHazardCount: 0,` の直後）:
 
 ```ts
       circuit: undefined,
+      faultSeed: undefined,
       answers: [],
       reports: [],
+      checkPartId: undefined,
       highlight: NO_HIGHLIGHT,
+      tester: createTesterState(get().tester.kind),
+      nextProbe: 'black',
 ```
+
+`resetSession()` と `restartSession()` も同じ理由（C1/C2 の状態を残したまま次のセッションへ持ち越さない）で C1/C2 の欄をリセットする必要がある。`resetSession()` の `set({ … })` に次の6行を足す（同じく `restoredHazardCount: 0,` の直後。**`circuit` と `faultSeed` はここでは変えない**。「もう一度」は同じ故障のまま再挑戦するため）:
+
+```ts
+      answers: [],
+      reports: [],
+      checkPartId: undefined,
+      highlight: NO_HIGHLIGHT,
+      tester: createTesterState(get().tester.kind),
+      nextProbe: 'black',
+```
+
+`restartSession()` の `set({ … })` には `abandonSession()` と同じ8行（`circuit: undefined,` / `faultSeed: undefined,` を含む）を、同じく `restoredHazardCount: 0,` の直後に足す。
+
+（`resetSession()` は「もう一度」（結果画面からの再挑戦・同じ課題を同じ盤で続ける）に使うので `circuit` は保つ。`restartSession()` と `abandonSession()` は課題を離れる／作り直す操作なので `circuit` も手放す。）
 
 - [ ] **Step 9: `Session.tsx` をモードBに絞る**
 
@@ -2036,7 +2150,7 @@ import { isAssembleProblem } from '@ojt/content';
 pnpm --filter @ojt/desktop exec vitest run test/store-inspect.test.ts test/store.test.ts test/session.test.tsx --no-file-parallelism
 ```
 
-Expected: `Test Files  3 passed (3)`。`store-inspect` 13件と既存のストア・セッションのテストが通る。
+Expected: `Test Files  3 passed (3)`。`store-inspect` 14件と既存のストア・セッションのテストが通る。
 
 - [ ] **Step 12: 型検査を通す**
 
@@ -2325,9 +2439,16 @@ export function voltRangeLabel(range: number): string {
 }
 
 /** プローブの配置状況（`黒プローブ: CHK.13`）。§9.3 */
-export function probeLabel(side: '黒プローブ' | '赤プローブ', terminal: string | undefined): string {
-  return `${side}: ${terminal ?? JA.tester.probeNone}`;
+export function probeLabel(side: ProbeSide, terminal: string | undefined): string {
+  const name = side === 'black' ? JA.tester.probeBlack : JA.tester.probeRed;
+  return `${name}: ${terminal ?? JA.tester.probeNone}`;
 }
+```
+
+`apps/desktop/src/renderer/i18n/ja.ts` の先頭の import に次を足す（`ProbeSide` の定義は `store-types.ts` に一本化している。Task 4 I4）:
+
+```ts
+import type { ProbeSide } from '../app/store-types.js';
 ```
 
 - [ ] **Step 4: `panels/tester.module.css` を作る**
@@ -2520,13 +2641,12 @@ export function probeLabel(side: '黒プローブ' | '赤プローブ', terminal
 import {
   ANALOG_OHM_RANGES,
   voltRangesFor,
-  type AnalogOhmRange,
   type TesterAction,
   type TesterKind,
   type TesterMode,
 } from '@ojt/circuit-sim';
 import type { JSX } from 'react';
-import { useStore } from '../app/store.js';
+import { useStore, type ProbeSide } from '../app/store.js';
 import { JA, ohmRangeLabel, probeLabel, voltRangeLabel } from '../i18n/ja.js';
 import { bridge } from '../session/worker-bridge.js';
 import styles from './tester.module.css';
@@ -2595,10 +2715,9 @@ export function TesterReadout(): JSX.Element {
 }
 
 /** プローブ1本ぶんの行。 */
-function ProbeRow({ side }: { side: 'black' | 'red' }): JSX.Element {
+function ProbeRow({ side }: { side: ProbeSide }): JSX.Element {
   const terminal = useStore((s) => (side === 'black' ? s.tester.black : s.tester.red));
   const next = useStore((s) => s.nextProbe);
-  const name = side === 'black' ? JA.tester.probeBlack : JA.tester.probeRed;
   return (
     <div className={styles.probeRow}>
       <button
@@ -2610,7 +2729,7 @@ function ProbeRow({ side }: { side: 'black' | 'red' }): JSX.Element {
           useStore.getState().setNextProbe(side);
         }}
       >
-        {probeLabel(name, terminal)}
+        {probeLabel(side, terminal)}
       </button>
       {terminal === undefined ? null : (
         <button
@@ -2676,7 +2795,7 @@ export function TesterPanel({ children }: { children?: JSX.Element }): JSX.Eleme
         <p className={styles.hint} data-testid="tester-autorange">
           {JA.tester.autoRange}
         </p>
-      ) : (
+      ) : mode === 'off' ? null : (
         <div className={styles.row} data-testid="tester-ranges">
           <span className={styles.label}>{JA.tester.range}</span>
           {isOhmSide
@@ -2686,7 +2805,7 @@ export function TesterPanel({ children }: { children?: JSX.Element }): JSX.Eleme
                   type="button"
                   aria-pressed={ohmRange === range}
                   onClick={() => {
-                    dispatchTester({ type: 'set-ohm-range', range: range as AnalogOhmRange });
+                    dispatchTester({ type: 'set-ohm-range', range });
                   }}
                 >
                   {ohmRangeLabel(range)}
@@ -2738,7 +2857,7 @@ export function TesterPanel({ children }: { children?: JSX.Element }): JSX.Eleme
 pnpm --filter @ojt/desktop exec vitest run test/tester-panel.test.tsx
 ```
 
-Expected: `Test Files  1 passed (1)` / `Tests  9 passed (9)`。
+Expected: `Test Files  1 passed (1)` / `Tests  11 passed (11)`。
 
 - [ ] **Step 7: コミットする**
 
@@ -2887,7 +3006,7 @@ describe('AnalogMeter の描画', () => {
 
   it('針の角度を data 属性で出す（E2Eとテストが読めるように）', () => {
     render(<AnalogMeter />);
-    expect(screen.getByTestId('analog-needle').getAttribute('data-deg')).toBe('43.2');
+    expect(screen.getByTestId('analog-needle').getAttribute('data-deg')).toBe('43.20');
   });
 
   it('Ωレンジでは倍率つきの目盛になる', () => {
@@ -3059,7 +3178,7 @@ export function AnalogMeter(): JSX.Element {
       ))}
       <line
         data-testid="analog-needle"
-        data-deg={String(needleDeg)}
+        data-deg={needleDeg.toFixed(2)}
         x1={PIVOT_X}
         y1={PIVOT_Y}
         x2={tip.x}
@@ -3121,7 +3240,9 @@ import { AnalogMeter } from './AnalogMeter.js';
 pnpm --filter @ojt/desktop exec vitest run test/analog-meter.test.tsx test/tester-panel.test.tsx --no-file-parallelism
 ```
 
-Expected: `Test Files  2 passed (2)`。`analog-meter` 9件、`tester-panel` 9件。
+Expected: `Test Files  2 passed (2)`。`analog-meter` 11件、`tester-panel` 11件。
+
+`needleDeg` は 2A 側で目標角との差が0.05度未満になると目標角へスナップする（2A レビュー反映③）。`data-deg` を `toFixed(2)` にしたのはこのスナップのおかげで指数移動平均が理論上ずっと収束しきらず（残差が0に漸近するだけで届かない）、生の浮動小数点値を文字列化すると再レンダーが止まらなくなる問題を避けるため。
 
 - [ ] **Step 7: コミットする**
 
@@ -3146,6 +3267,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 - Modify: `apps/desktop/src/renderer/session/colors.ts`
 - Modify: `apps/desktop/src/renderer/audio/sounds.ts`
 - Modify: `apps/desktop/src/renderer/app/App.tsx`
+- Modify: `apps/desktop/src/renderer/screens/Session.tsx`
 - Modify: `apps/desktop/src/renderer/i18n/ja.ts`
 - Test: `apps/desktop/test/probe-markers.test.ts`, `apps/desktop/test/warning-banner.test.tsx`
 
@@ -3474,14 +3596,32 @@ export function ProbeMarkers({
 }
 ```
 
-`sharedMaterial()` が `opacity` / `transparent` を受けない場合は、`materials.ts` の options 型に次の2つを足す:
+`apps/desktop/src/renderer/three/materials.ts` の `sharedMaterial()` の options 型に次の2つを足す:
 
 ```ts
   opacity?: number;
   transparent?: boolean;
 ```
 
-そして `new MeshStandardMaterial({ … })` に同じ2つを渡す（既定は `opacity: 1` / `transparent: false`）。
+`sharedMaterial()` の `key` の行を次に置き換える（`opacity` / `transparent` をキャッシュ鍵に混ぜないと、同じ色で不透明・半透明の両方を要求したときに先に作った方のマテリアルを使い回してしまう）:
+
+```ts
+  const key = `${color}|${options.metalness ?? 0.1}|${options.roughness ?? 0.7}|${options.emissive ?? ''}|${options.emissiveIntensity ?? 0}|${options.opacity ?? 1}|${options.transparent === true ? 1 : 0}`;
+```
+
+そして `new MeshStandardMaterial({ … })` に `opacity` / `transparent` を渡す（既定は `opacity: 1` / `transparent: false`）:
+
+```ts
+  const material = new MeshStandardMaterial({
+    color,
+    metalness: options.metalness ?? 0.1,
+    roughness: options.roughness ?? 0.7,
+    ...(options.emissive === undefined ? {} : { emissive: options.emissive }),
+    emissiveIntensity: options.emissiveIntensity ?? 0,
+    opacity: options.opacity ?? 1,
+    transparent: options.transparent ?? false,
+  });
+```
 
 - [ ] **Step 5: `BoardScene.tsx` に組み込む**
 
@@ -3671,18 +3811,36 @@ export interface SoundSnapshot {
     }, TOAST_SWEEP_MS);
 ```
 
+- [ ] **Step 8a: `Session.tsx`（モードB）にも警告バナーを出す**
+
+モードBにも危険操作はある（`over-wires-per-terminal` / `power-sequence-violation` / `short-circuit-power-on` / `overcurrent`。§5.6）。C1/C2 のセッション画面と同じバナーをモードBにも出す。
+
+`apps/desktop/src/renderer/screens/Session.tsx` の `<SoundEffects />` の**直後**、`<Toolbar` の**直前**に次を挿入する:
+
+```tsx
+      <WarningBanner />
+```
+
+同ファイルの import に次を足す（`import { Toolbar } from '../panels/Toolbar.js';` の直前）:
+
+```ts
+import { WarningBanner } from '../panels/WarningBanner.js';
+```
+
+（`WarningBanner` は `hazardBanner` の種別を `JA.hazard[banner.kind]` でそのまま引くので、モードB固有の追加実装は要らない。）
+
 - [ ] **Step 9: GREEN を確認する**
 
 ```powershell
-pnpm --filter @ojt/desktop exec vitest run test/probe-markers.test.ts test/warning-banner.test.tsx test/sounds.test.ts test/board-scene.test.ts --no-file-parallelism
+pnpm --filter @ojt/desktop exec vitest run test/probe-markers.test.ts test/warning-banner.test.tsx test/sounds.test.ts test/board-scene.test.ts test/session.test.tsx --no-file-parallelism
 ```
 
-Expected: `Test Files  4 passed (4)`。既存の `sounds.test.ts` は `SoundSnapshot` に `tester` が増えたぶんだけ型エラーになるので、テスト内の擬似スナップショットに `tester: { conductive: false }` を足して通す。
+Expected: `Test Files  5 passed (5)`。既存の `sounds.test.ts` は `SoundSnapshot` に `tester` が増えたぶんだけ型エラーになるので、テスト内の擬似スナップショットに `tester: { conductive: false }` を足して通す。既存の `session.test.tsx` は `WarningBanner` の import 追加だけなのでそのまま通る。
 
 - [ ] **Step 10: コミットする**
 
 ```powershell
-git add apps/desktop/src/renderer/three/ProbeMarkers.tsx apps/desktop/src/renderer/three/BoardScene.tsx apps/desktop/src/renderer/three/materials.ts apps/desktop/src/renderer/panels/WarningBanner.tsx apps/desktop/src/renderer/panels/tester.module.css apps/desktop/src/renderer/session/colors.ts apps/desktop/src/renderer/audio/sounds.ts apps/desktop/src/renderer/app/App.tsx apps/desktop/src/renderer/i18n/ja.ts apps/desktop/test/probe-markers.test.ts apps/desktop/test/warning-banner.test.tsx apps/desktop/test/sounds.test.ts
+git add apps/desktop/src/renderer/three/ProbeMarkers.tsx apps/desktop/src/renderer/three/BoardScene.tsx apps/desktop/src/renderer/three/materials.ts apps/desktop/src/renderer/panels/WarningBanner.tsx apps/desktop/src/renderer/panels/tester.module.css apps/desktop/src/renderer/session/colors.ts apps/desktop/src/renderer/audio/sounds.ts apps/desktop/src/renderer/app/App.tsx apps/desktop/src/renderer/screens/Session.tsx apps/desktop/src/renderer/i18n/ja.ts apps/desktop/test/probe-markers.test.ts apps/desktop/test/warning-banner.test.tsx apps/desktop/test/sounds.test.ts
 git commit -m @'
 feat(desktop): show probes on the board and warn on hazardous measurements
 
@@ -4363,7 +4521,7 @@ function load(next: BoardSession, partFaults: readonly FaultSpecData[] = []): vo
 pnpm --filter @ojt/desktop exec vitest run test/inspect-parts-session.test.ts test/sim-worker-inspect.test.ts test/sim-worker.test.ts test/sim-worker-tester.test.ts --no-file-parallelism
 ```
 
-Expected: `Test Files  4 passed (4)`。`inspect-parts-session` 8件、`sim-worker-inspect` 10件、既存の Worker テストもそのまま通る。
+Expected: `Test Files  4 passed (4)`。`inspect-parts-session` 8件、`sim-worker-inspect` 11件、既存の Worker テストもそのまま通る。
 
 - [ ] **Step 7: コミットする**
 
@@ -5025,7 +5183,6 @@ Expected: 失敗。`Failed to resolve import "../src/renderer/screens/InspectPar
 ```ts
 /** キーボードでできるテスター操作。§8.2 / §9.3 */
 export type TesterShortcut =
-  | { type: 'set-mode'; mode: 'off' | 'DCV' | 'ACV' | 'OHM' | 'CONT' }
   | { type: 'zero-adjust' }
   | { type: 'next-probe'; probe: ProbeSide }
   | { type: 'lift-both' };
@@ -5405,6 +5562,8 @@ export function InspectPartsSession(): JSX.Element {
         if (action.probe === 'both') {
           dispatchTester({ type: 'place-probe', probe: 'black', terminal: undefined });
           dispatchTester({ type: 'place-probe', probe: 'red', terminal: undefined });
+          // 空クリックのあとは必ず「次は黒」に戻す（2回の place-probe の順序に依存しない。M-5）
+          useStore.getState().setNextProbe('black');
         } else {
           dispatchTester({ type: 'place-probe', probe: action.probe, terminal: undefined });
         }
@@ -5434,6 +5593,7 @@ export function InspectPartsSession(): JSX.Element {
         store.setCamera('socket');
         return;
       }
+      // 3種とも明示的に分岐する（`testerShortcut()` は未知のキーを既に上で弾いている）
       const shortcut = testerShortcut(event.key);
       if (shortcut === undefined) return;
       if (shortcut.type === 'next-probe') store.setNextProbe(shortcut.probe);
@@ -5441,7 +5601,9 @@ export function InspectPartsSession(): JSX.Element {
       else if (shortcut.type === 'lift-both') {
         dispatchTester({ type: 'place-probe', probe: 'black', terminal: undefined });
         dispatchTester({ type: 'place-probe', probe: 'red', terminal: undefined });
-      } else dispatchTester(shortcut);
+        // 空クリックと同じく「次は黒」に戻す（§9.1 / §9.3。M-5）
+        store.setNextProbe('black');
+      }
     };
     window.addEventListener('keydown', onKey);
     return () => {
@@ -5639,13 +5801,32 @@ import { SessionRoute } from '../screens/SessionRoute.js';
       return <SessionRoute />;
 ```
 
+- [ ] **Step 9a: 視点ショートカットを `useViewportShortcuts()` に揃える**
+
+Blender風の視点ショートカット（上段 1/2/3、テンキー 1/3/7、Ctrl で反対側、Home で全体。§12.2）は、並行して進む視点操作タスク（VIEW-NAV）が `src/renderer/session/viewport-keys.ts` の `useViewportShortcuts({ enabled })` フックへ切り出し、`Session.tsx`（モードB）は既にこれを呼んでいる。`InspectPartsSession.tsx` はまだ独自の `'1'/'2'/'3'` だけの簡易分岐を持っているので、同じフックに揃える。
+
+`apps/desktop/src/renderer/screens/InspectPartsSession.tsx` のキーボード操作の `useEffect` から、視点の3行（`if (event.key === '1') { … } if (event.key === '2') { … } if (event.key === '3') { … }`）を削除し、代わりにコンポーネント先頭（他の `useEffect` の直前）に次を足す:
+
+```ts
+  // 視点のショートカットは Session と共通のフックに任せる（§12.2）
+  useViewportShortcuts({ enabled: session !== undefined });
+```
+
+import に次を足す:
+
+```ts
+import { useViewportShortcuts } from '../session/viewport-keys.js';
+```
+
+（`viewport-keys.ts` 自体は VIEW-NAV タスクが作る。無ければこのステップは失敗するので、実装順は VIEW-NAV → このステップとする。）
+
 - [ ] **Step 10: GREEN を確認する**
 
 ```powershell
 pnpm --filter @ojt/desktop exec vitest run test/inspect-parts-screen.test.tsx test/routing.test.ts test/app.test.tsx --no-file-parallelism
 ```
 
-Expected: `Test Files  3 passed (3)`。`inspect-parts-screen` 10件。既存の `routing.test.ts` が `renderRoute('session')` の戻りをコンポーネント名で見ている場合は `SessionRoute` に直す。
+Expected: `Test Files  3 passed (3)`。`inspect-parts-screen` 12件。既存の `routing.test.ts` が `renderRoute('session')` の戻りをコンポーネント名で見ている場合は `SessionRoute` に直す。
 
 - [ ] **Step 11: コミットする**
 
@@ -6002,9 +6183,10 @@ import { isInspectJudge, useStore } from '../app/store.js';
 
 ```tsx
   /*
-   * 判定結果のモードで結果画面を選ぶ。モードBの `JudgeResult`（Plan 1C）は `mode` を持たない
-   * ので、`isInspectJudge()` で振り分ける（`store.ts`）。課題と結果のモードが食い違っている
-   * （保存データの取り違え等）ときは、判定が無いのと同じ扱いにして一覧へ戻せるようにする。
+   * 判定結果のモードで結果画面を選ぶ。3モードとも `mode` を持つ（Plan 2A I-3）ので、
+   * `isInspectJudge()` は `mode` が `'assemble'` 以外かどうかで振り分ける（`store.ts`）。
+   * 課題と結果のモードが食い違っている（保存データの取り違え等）ときは、判定が無いのと
+   * 同じ扱いにして一覧へ戻せるようにする。
    */
   if (isInspectJudge(judge)) {
     if (judge.mode === 'inspect-parts' && isInspectPartsProblem(problem)) {
@@ -7106,6 +7288,8 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 - Modify: `apps/desktop/src/renderer/screens/SessionRoute.tsx`
 - Modify: `apps/desktop/src/renderer/app/store-types.ts`
 - Modify: `apps/desktop/src/renderer/app/store.ts`
+- Modify: `apps/desktop/src/renderer/session/spec-chart.ts`
+- Modify: `apps/desktop/src/renderer/session/commands.ts`
 - Test: `apps/desktop/test/inspect-repair-screen.test.tsx`
 
 §9.2 の画面を組み上げる。故障入りの盤を「見たまま」描き、テスターで測り、指摘を登録し、白線で修復し、部品を交換して判定する。
@@ -7129,6 +7313,7 @@ import { BUILTIN_INSPECT_REPAIR_PROBLEMS } from '@ojt/content';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useStore } from '../src/renderer/app/store.js';
+import { JA } from '../src/renderer/i18n/ja.js';
 import { InspectRepairSession } from '../src/renderer/screens/InspectRepairSession.js';
 
 /**
@@ -7184,11 +7369,10 @@ describe('画面の骨格（§9.2）', () => {
   });
 
   it('開始時に故障入りの盤を load する', () => {
-    const load = sent.find((c) => c['type'] === 'load');
-    expect(load).toBeDefined();
     render(<InspectRepairSession />);
-    const after = sent.filter((c) => c['type'] === 'load').at(-1);
-    expect(after?.['partFaults']).toBeDefined();
+    const load = sent.filter((c) => c['type'] === 'load').at(-1);
+    expect(load).toBeDefined();
+    expect(load?.['partFaults']).toBeDefined();
   });
 });
 
@@ -7275,6 +7459,48 @@ describe('判定（§9.2）', () => {
     expect(useStore.getState().judging).toBe(true);
   });
 });
+
+describe('元に戻す・やり直し（§8.2 / §9.2。I-11）', () => {
+  it('白線を張ってから元に戻すと配線前の本数に戻る', () => {
+    render(<InspectRepairSession />);
+    const before = useStore.getState().session?.wires.length ?? 0;
+    const onPick = picks.at(-1);
+    if (onPick === undefined) return;
+    fireEvent.click(screen.getByRole('button', { name: '白', exact: true }));
+    onPick({ kind: 'terminal', id: toTerminalId('S1.13'), wirable: true, label: 'a' });
+    onPick({ kind: 'terminal', id: toTerminalId('S1.14'), wirable: true, label: 'b' });
+    expect(useStore.getState().session?.wires.length).toBe(before + 1);
+    fireEvent.click(screen.getByRole('button', { name: JA.session.undo }));
+    expect(useStore.getState().session?.wires.length).toBe(before);
+  });
+
+  it('元に戻したあとやり直すと配線後の本数に戻る', () => {
+    render(<InspectRepairSession />);
+    const before = useStore.getState().session?.wires.length ?? 0;
+    const onPick = picks.at(-1);
+    if (onPick === undefined) return;
+    fireEvent.click(screen.getByRole('button', { name: '白', exact: true }));
+    onPick({ kind: 'terminal', id: toTerminalId('S1.13'), wirable: true, label: 'a' });
+    onPick({ kind: 'terminal', id: toTerminalId('S1.14'), wirable: true, label: 'b' });
+    fireEvent.click(screen.getByRole('button', { name: JA.session.undo }));
+    fireEvent.click(screen.getByRole('button', { name: JA.session.redo }));
+    expect(useStore.getState().session?.wires.length).toBe(before + 1);
+  });
+
+  it('部品交換を元に戻すと故障が復活する（sites は変わらない。§9.2）', () => {
+    render(<InspectRepairSession />);
+    const before = useStore.getState().circuit;
+    if (before === undefined) return;
+    const row = screen.queryByTestId('replace-CR1');
+    if (row === null) return; // この課題に CR1 が無ければ何もしない
+    fireEvent.click(row);
+    const replaced = useStore.getState().circuit;
+    fireEvent.click(screen.getByRole('button', { name: JA.session.undo }));
+    const restored = useStore.getState().circuit;
+    expect(restored?.applied.partFaults).toEqual(before.applied.partFaults);
+    expect(restored?.applied.sites).toEqual(replaced?.applied.sites);
+  });
+});
 ```
 
 - [ ] **Step 2: RED を確認する**
@@ -7330,6 +7556,28 @@ export type { PendingReport as ReportTarget } from '../app/store-types.js';
 
 `store.ts` の `store-types.js` からの import と再エクスポートに `PendingReport` を足す（`type LogLine,` の直後に `type PendingReport,`）。
 
+- [ ] **Step 3a: `session/spec-chart.ts` を `SchematicProblem` へ広げる**
+
+C2は模範回路のタイムチャートをモードBと共有する（§9.2 は2級形式でタイムチャートも見せる。Task 14 Step 4 の `buildSpecChart(problem)` 呼び出しを参照）。`apps/desktop/src/renderer/session/spec-chart.ts` の import を次に置き換える:
+
+```ts
+import { JIPM_BOARD } from '@ojt/board-model';
+import {
+  buildReferenceSession,
+  buildTimeChart,
+  defaultChartSignals,
+  resolveCompareSignals,
+  runOperations,
+  timerMarkers,
+  type SchematicProblem,
+  type TimeChart,
+} from '@ojt/content';
+```
+
+同ファイルの `cacheKey()` / `isSpecChartCached()` / `buildSpecChart()` / `computeSpecChart()` の引数型 `AssembleProblem` を**すべて** `SchematicProblem` に置き換える（4関数）。`buildReferenceSession()` は Plan 2A で `SchematicProblem`（`AssembleProblem | InspectRepairProblem`）を受けるよう広がっているので、関数の中身は変えなくてよい。
+
+`test/spec-chart.test.ts` はモードBの課題（`AssembleProblem`）だけを渡しているので、型が広がっても引数はそのまま渡せる。**GREENのまま**で通る（新しいテストは要らない）。
+
 - [ ] **Step 4: `screens/InspectRepairSession.tsx` を作る**
 
 `apps/desktop/src/renderer/screens/InspectRepairSession.tsx`:
@@ -7380,6 +7628,7 @@ import {
 } from '../session/interaction.js';
 import { buildSpecChart } from '../session/spec-chart.js';
 import { testerPickToAction, testerShortcut } from '../session/tester.js';
+import { useViewportShortcuts } from '../session/viewport-keys.js';
 import { applyWorkFile, toWorkFile } from '../session/work-file.js';
 import { bridge } from '../session/worker-bridge.js';
 import { BoardScene, safeRoutes } from '../three/BoardScene.js';
@@ -7438,6 +7687,9 @@ export function InspectRepairSession(): JSX.Element {
   const restoredHazardCount = useStore((s) => s.restoredHazardCount);
   const problemId = problem?.id;
   const sessionEpoch = useStore((s) => s.sessionEpoch);
+
+  // 視点のショートカットは Session / InspectPartsSession と共通のフックに任せる（§12.2）
+  useViewportShortcuts({ enabled: session !== undefined });
 
   /* Worker を起こし、故障入りの盤を読ませる。§9.2 */
   useEffect(() => {
@@ -7564,6 +7816,8 @@ export function InspectRepairSession(): JSX.Element {
           if (action.probe === 'both') {
             dispatchTester({ type: 'place-probe', probe: 'black', terminal: undefined });
             dispatchTester({ type: 'place-probe', probe: 'red', terminal: undefined });
+            // 空クリックのあとは必ず「次は黒」に戻す（2回の place-probe の順序に依存しない。M-5）
+            store.setNextProbe('black');
           } else {
             dispatchTester({ type: 'place-probe', probe: action.probe, terminal: undefined });
           }
@@ -7639,9 +7893,6 @@ export function InspectRepairSession(): JSX.Element {
       const store = useStore.getState();
       const current = store.session;
       if (current === undefined) return;
-      if (event.key === '1') return void store.setCamera('front');
-      if (event.key === '2') return void store.setCamera('top');
-      if (event.key === '3') return void store.setCamera('socket');
       const state = {
         mode: store.mode,
         pendingTerminal: store.pendingTerminal,
@@ -7658,6 +7909,7 @@ export function InspectRepairSession(): JSX.Element {
         return;
       }
       if (store.mode === 'tester' || store.mode === 'report') {
+        // 3種とも明示的に分岐する（`testerShortcut()` は未知のキーを既に上で弾いている）
         const shortcut = testerShortcut(event.key);
         if (shortcut === undefined) return;
         if (shortcut.type === 'next-probe') store.setNextProbe(shortcut.probe);
@@ -7665,7 +7917,9 @@ export function InspectRepairSession(): JSX.Element {
         else if (shortcut.type === 'lift-both') {
           dispatchTester({ type: 'place-probe', probe: 'black', terminal: undefined });
           dispatchTester({ type: 'place-probe', probe: 'red', terminal: undefined });
-        } else dispatchTester(shortcut);
+          // 空クリックと同じく「次は黒」に戻す（§9.1 / §9.3。M-5）
+          store.setNextProbe('black');
+        }
         return;
       }
       if (event.key === 'Escape') runAction(escapeToAction(state));
@@ -7907,6 +8161,126 @@ export function InspectRepairSession(): JSX.Element {
 }
 ```
 
+- [ ] **Step 4a: 元に戻す・やり直しを実装する（I-11）**
+
+C2 も白線の追加・青線の削除・部品交換を `history`（既存の `session/commands.ts`）で元に戻せるようにする。配線コマンドは Task 14 Step 4 の `apply()` が既に `store.pushHistory()` を呼んでいるので、残るのは①部品交換もコマンドとして記録すること、②`Toolbar` の `canUndo`/`canRedo`/`onUndo`/`onRedo` を実際につなぐことの2点。
+
+`apps/desktop/src/renderer/session/commands.ts` の `SessionCommand` を次に置き換える（部品交換は盤（`BoardSession`）を変えないので、交換前後の `RepairCircuit` を別に持たせる）:
+
+```ts
+export interface SessionCommand {
+  kind: 'addWire' | 'removeWire' | 'plug' | 'unplug' | 'setPreset' | 'replacePart';
+  label: string;
+  before: BoardSession;
+  after: BoardSession;
+  /** モードC2の部品交換のときだけ持つ、交換前後の回路（故障を含む）。undo/redo で使う。§9.2 */
+  circuitBefore?: RepairCircuit;
+  circuitAfter?: RepairCircuit;
+}
+```
+
+同ファイルの import に次を足す:
+
+```ts
+import type { RepairCircuit } from '@ojt/content';
+```
+
+`apps/desktop/src/renderer/screens/InspectRepairSession.tsx` の `commands.js` の import を次に置き換える（`cloneSession, runAddWire, runRemoveWire` に4つ足す）:
+
+```ts
+import {
+  cloneSession,
+  redo as redoHistory,
+  runAddWire,
+  runRemoveWire,
+  undo as undoHistory,
+  type CommandHistory,
+  type SessionCommand,
+} from '../session/commands.js';
+```
+
+`@ojt/content` の import に `type RepairCircuit` を足す（`replacePart,` の直後）。
+
+コンポーネント先頭の購読（`const pendingReport = useStore((s) => s.pendingReport);` の**直後**）に次を足す:
+
+```ts
+  const history = useStore((s) => s.history);
+```
+
+`onReplacePart` を次に置き換える（部品交換もコマンドとして履歴に積む）:
+
+```ts
+  const onReplacePart = (socketId: SocketId, partId: string): void => {
+    const store = useStore.getState();
+    const cloned = cloneSession(session);
+    const nextCircuit = replacePart(circuit, partId);
+    const command: SessionCommand = {
+      kind: 'replacePart',
+      label: `${JA.inspectRepair.replaced}: ${partId}`,
+      before: cloned,
+      after: cloned,
+      circuitBefore: circuit,
+      circuitAfter: nextCircuit,
+    };
+    bridge.send({ type: 'unplug', partId, session: cloned });
+    bridge.send({ type: 'plug', socketId, session: cloned });
+    store.setCircuit(nextCircuit);
+    store.pushHistory(command);
+    store.addLog(command.label);
+  };
+```
+
+`onReplacePart` の**直前**に、元に戻す／やり直しの実装を足す:
+
+```ts
+  /**
+   * 元に戻す／やり直し。§8.2 / §9.2
+   * 部品交換の取り消しは、Worker の `plug` がそのたびに新しい良品を作ってしまうため
+   * `unplug`/`plug` の送り直しでは元の故障を戻せない。**`load` をやり直す**ことで、
+   * コマンドが持つ交換前後の `circuit`（故障つき `applied`）を丸ごと当て直す。
+   * `applied.sites`（指摘すべき対象）は `replacePart()` で変わらないので、元に戻しても・
+   * やり直しても指摘の要不要には影響しない（`sites` の義務は不変）。
+   */
+  const restore = (
+    step: { history: CommandHistory; session: BoardSession; command: SessionCommand } | undefined,
+    verb: string,
+    circuitFor: (command: SessionCommand) => RepairCircuit | undefined,
+  ): void => {
+    if (step === undefined) return;
+    const store = useStore.getState();
+    store.setHistory(step.history);
+    store.setSession(step.session);
+    store.setSelectedWire(undefined);
+    const nextCircuit = circuitFor(step.command) ?? store.circuit;
+    if (nextCircuit !== undefined) store.setCircuit(nextCircuit);
+    store.addLog(historyLog(verb, step.command.label));
+    bridge.send({
+      type: 'load',
+      problemId: problem.id,
+      session: cloneSession(step.session),
+      ...(nextCircuit === undefined ? {} : { partFaults: nextCircuit.applied.partFaults }),
+    });
+  };
+```
+
+`ja.js` の import に `historyLog` を足す（`failedLog,` の直後）。
+
+`<Toolbar` の `canUndo={false}` / `canRedo={false}` / `onUndo={() => undefined}` / `onRedo={() => undefined}` の4行を次に置き換える:
+
+```tsx
+        canUndo={history.done.length > 0}
+        canRedo={history.undone.length > 0}
+```
+
+```tsx
+        onUndo={() => {
+          restore(undoHistory(history), JA.session.undo, (c) => c.circuitBefore);
+        }}
+        onRedo={() => {
+          restore(redoHistory(history), JA.session.redo, (c) => c.circuitAfter);
+        }}
+```
+
 - [ ] **Step 5: `SessionRoute` に C2 を足す**
 
 `apps/desktop/src/renderer/screens/SessionRoute.tsx` の import に次を足す:
@@ -7928,12 +8302,12 @@ import { InspectRepairSession } from './InspectRepairSession.js';
 pnpm --filter @ojt/desktop exec vitest run test/inspect-repair-screen.test.tsx test/store-inspect.test.ts --no-file-parallelism
 ```
 
-Expected: `Test Files  2 passed (2)`。`inspect-repair-screen` 9件。
+Expected: `Test Files  2 passed (2)`。`inspect-repair-screen` 12件。
 
 - [ ] **Step 7: コミットする**
 
 ```powershell
-git add apps/desktop/src/renderer/screens/InspectRepairSession.tsx apps/desktop/src/renderer/screens/SessionRoute.tsx apps/desktop/src/renderer/app/store.ts apps/desktop/src/renderer/app/store-types.ts apps/desktop/src/renderer/session/interaction.ts apps/desktop/test/inspect-repair-screen.test.tsx
+git add apps/desktop/src/renderer/screens/InspectRepairSession.tsx apps/desktop/src/renderer/screens/SessionRoute.tsx apps/desktop/src/renderer/app/store.ts apps/desktop/src/renderer/app/store-types.ts apps/desktop/src/renderer/session/interaction.ts apps/desktop/src/renderer/session/spec-chart.ts apps/desktop/src/renderer/session/commands.ts apps/desktop/test/inspect-repair-screen.test.tsx
 git commit -m @'
 feat(desktop): add the mode C2 session screen with reports and repairs
 
@@ -8189,7 +8563,7 @@ export function SchematicSvg({
         // クリックされた図形の `data-cell` を読む。母線やラベルには無いので解除になる
         const target = event.target as { getAttribute?: (name: string) => string | null };
         const cellId = target.getAttribute?.('data-cell') ?? undefined;
-        onPickCell(cellId === null ? undefined : cellId);
+        onPickCell(cellId);
       }}
     >
       {result.shapes.map((shape, index) =>
@@ -8220,7 +8594,7 @@ export function SchematicSvg({
 import { NO_HIGHLIGHT } from '../app/store-types.js';
 ```
 
-`mountedParts` の `useMemo` の**直後**に次を足す:
+`mountedParts` の `useMemo` はそのままの位置に残す。`onHover` の**直前**（`runAction` の `useCallback` の直後あたり）に、回路図索引とそれを安定して読むための参照をまとめて足す。**`onHover` より前に置くこと。** 索引を使う `onHover` の後ろに置くと、`latestIndex.current = highlightIndex;` が宣言前の `highlightIndex` を読もうとして TDZ（Temporal Dead Zone）エラーになる（B-6）:
 
 ```ts
   /**
@@ -8235,6 +8609,9 @@ import { NO_HIGHLIGHT } from '../app/store-types.js';
         : buildHighlightIndex(circuit.cells, session),
     [circuit, session],
   );
+  /** 最新の索引（`onHover` は `useCallback([])` なので ref 経由で読む。§15） */
+  const latestIndex = useRef(highlightIndex);
+  latestIndex.current = highlightIndex;
 ```
 
 `onHover` を次に置き換える（盤 → 回路図の逆引き）:
@@ -8244,10 +8621,16 @@ import { NO_HIGHLIGHT } from '../app/store-types.js';
    * 端子のホバー。§9.2
    * 盤の端子から回路図の要素を逆引きして光らせる（連動ハイライトの「およびその逆」）。
    * 3Dが返すのは物理端子IDなので、索引が持つ役割IDへ直してから引く（§6.4）。
+   *
+   * 2点ガードする（I-8）: ①1級（`schematicVisible === false`）は回路図を出さないので
+   * 逆引きしても無駄な `set` になるだけで、毎フレームのホバーのたびにストアを揺らさない。
+   * ②同じ結果（`cellIds` の並びが同じ）なら `setHighlight()` を呼ばない。ホバーは
+   * マウス移動のたびに飛んでくるので、同一端子の上に留まっている間の再描画を防ぐ。
    */
   const onHover = useCallback((id: TerminalId | undefined) => {
     const store = useStore.getState();
     store.setHovered(id);
+    if (!store.schematicVisible) return;
     const current = store.session;
     const index = latestIndex.current;
     if (index === undefined || current === undefined || id === undefined) {
@@ -8256,18 +8639,12 @@ import { NO_HIGHLIGHT } from '../app/store-types.js';
     }
     const role = toNetlistTerminal(current.socketRoles, id);
     const cellIds = cellIdsAtTerminal(index, role);
+    const next = cellIds.join(',');
+    if (next === store.highlight.cellIds.join(',')) return;
     store.setHighlight(
       cellIds.length === 0 ? NO_HIGHLIGHT : { cellIds, terminals: [role], wireIds: [] },
     );
   }, []);
-```
-
-`onHover` の**直前**に、索引を安定して読むための参照を足す:
-
-```ts
-  /** 最新の索引（`onHover` は `useCallback([])` なので ref 経由で読む。§15） */
-  const latestIndex = useRef(highlightIndex);
-  latestIndex.current = highlightIndex;
 ```
 
 `SchematicSvg` の呼び出しを次に置き換える:
@@ -8370,7 +8747,11 @@ const NO_HAZARDS = {
   overcurrent: 0,
 } as const;
 
-const EMPTY_CHART = { durationMs: 1000, rows: [], markers: [] };
+const EMPTY_CHART: JudgeInspectRepairResult['charts']['expected'] = {
+  durationMs: 1000,
+  signals: [],
+  markers: [],
+};
 
 function result(overrides: Partial<JudgeInspectRepairResult> = {}): JudgeInspectRepairResult {
   return {
@@ -8386,8 +8767,8 @@ function result(overrides: Partial<JudgeInspectRepairResult> = {}): JudgeInspect
     chatter: [],
     elapsedMs: 600_000,
     charts: {
-      expected: EMPTY_CHART as JudgeInspectRepairResult['charts']['expected'],
-      actual: EMPTY_CHART as JudgeInspectRepairResult['charts']['actual'],
+      expected: EMPTY_CHART,
+      actual: EMPTY_CHART,
     },
     compareSignals: ['PL1'],
     ...overrides,
@@ -8783,7 +9164,7 @@ describe('toInspectWorkFile（§12.3）', () => {
     expect((file.tester as { mode: string }).mode).toBe('OHM');
   });
 
-  it('C2は指摘・故障・初期電線・回路図割当を載せる', () => {
+  it('C2は指摘・故障の種・解決済みの故障を載せる（§5.2 / Plan 2A I-4）', () => {
     expect(C2).toBeDefined();
     if (C2 === undefined) return;
     useStore.getState().openProblem(C2);
@@ -8793,9 +9174,9 @@ describe('toInspectWorkFile（§12.3）', () => {
     if (file === undefined) return;
     expect(file.mode).toBe('inspect-repair');
     expect(file.reports).toHaveLength(1);
-    expect(Array.isArray(file.applied)).toBe(false);
-    expect(file.initialWireIds).toBeDefined();
-    expect(file.cells).toBeDefined();
+    expect(typeof file.faultSeed).toBe('number');
+    expect(Array.isArray(file.resolvedFaults)).toBe(true);
+    expect((file.resolvedFaults as unknown[]).length).toBeGreaterThan(0);
   });
 });
 
@@ -8818,19 +9199,18 @@ describe('restoreInspectState（§12.3 / §13 #8）', () => {
     expect(useStore.getState().checkPartId).toBe(first.id);
   });
 
-  it('C2は保存した故障で回路を組み直す（ランダム故障でも同じ盤になる。§5.2）', () => {
+  it('C2は保存した解決済みの故障で回路を組み直す（ランダム故障でも同じ盤になる。§5.2 / Plan 2A I-4）', () => {
     expect(C2).toBeDefined();
     if (C2 === undefined) return;
     const built = buildInspectRepairCircuit(C2, JIPM_BOARD);
     expect(built.ok).toBe(true);
     if (!built.ok) return;
     useStore.getState().openProblem(C2);
+    const resolvedFaults = [...built.value.applied.wireFaults, ...built.value.applied.partFaults];
     const ok = restoreInspectState(C2, {
       mode: 'inspect-repair',
       reports: [{ target: { wireId: 'sw-001' }, kind: 'wire-open' }],
-      applied: built.value.applied,
-      initialWireIds: [...built.value.initialWireIds],
-      cells: [...built.value.cells],
+      resolvedFaults,
     });
     expect(ok).toBe(true);
     expect(useStore.getState().reports).toHaveLength(1);
@@ -8860,28 +9240,71 @@ describe('restoreInspectState（§12.3 / §13 #8）', () => {
 });
 ```
 
-`apps/desktop/test/problem-list.test.tsx` の末尾に次を足す（既存の import と道具立てをそのまま使う）:
+`apps/desktop/test/problem-list.test.tsx` の末尾に次を足す（既存の import と道具立てをそのまま使う。B-4: 元のテストは `listProblems` を一切モックしておらず、`window.ojt` が無いまま `problem-table` を探すので必ずタイムアウトしていた。3モードの課題を持つ専用のモックデータを用意する）:
 
 ```tsx
+/** 3モードそれぞれ1件ずつのモックデータ（絞り込みの確認用）。§12.1 */
+const THREE_MODE_PAYLOAD: ProblemListPayload = {
+  problems: [
+    {
+      id: 'b-001',
+      title: '自己保持回路',
+      mode: 'assemble',
+      grade: 3,
+      description: '起動と停止',
+      standardMin: 30,
+      cutoffMin: 50,
+      source: 'builtin',
+    },
+    {
+      id: 'c1-001',
+      title: '部品点検セット1',
+      mode: 'inspect-parts',
+      grade: 2,
+      description: 'リレー・タイマの点検',
+      standardMin: 20,
+      cutoffMin: 30,
+      source: 'builtin',
+    },
+    {
+      id: 'c2-001',
+      title: '回路点検・修復1',
+      mode: 'inspect-repair',
+      grade: 2,
+      description: '故障の指摘と白線修復',
+      standardMin: 40,
+      cutoffMin: 60,
+      source: 'builtin',
+    },
+  ],
+  errors: [],
+  userDir: 'C:/dummy',
+  userDirExists: true,
+};
+
 describe('モードで絞る（Plan 2B Task 17。§12.1）', () => {
-  it('ホームで選んだモードの課題だけを並べる', async () => {
+  it('「すべて」なら3モードの3行が並ぶ', async () => {
+    setApi({ listProblems: () => Promise.resolve(THREE_MODE_PAYLOAD) });
+    useStore.setState({ listMode: undefined });
+    render(<ProblemList />);
+    await screen.findByTestId('problem-table');
+    expect(screen.getByTestId('problem-table').querySelectorAll('tbody tr')).toHaveLength(3);
+  });
+
+  it('ホームで選んだモードだけに絞ると1行になる（3行 → 絞ると1行）', async () => {
+    setApi({ listProblems: () => Promise.resolve(THREE_MODE_PAYLOAD) });
     useStore.setState({ listMode: 'inspect-parts' });
     render(<ProblemList />);
     await screen.findByTestId('problem-table');
     const rows = screen.getByTestId('problem-table').querySelectorAll('tbody tr');
-    expect(rows.length).toBeGreaterThan(0);
+    expect(rows).toHaveLength(1);
     expect(screen.getByTestId('problem-table').textContent).not.toContain('自己保持回路');
-  });
-
-  it('「すべて」を選ぶと3モードが並ぶ', async () => {
-    useStore.setState({ listMode: undefined });
-    render(<ProblemList />);
-    await screen.findByTestId('problem-table');
-    const rows = screen.getByTestId('problem-table').querySelectorAll('tbody tr');
-    expect(rows).toHaveLength(20);
+    expect(screen.getByTestId('problem-table').textContent).toContain('部品点検セット1');
   });
 });
 ```
+
+内蔵20題すべてが一覧行にできることは `test/content-loader.test.ts`（Task 1）の `BUILTIN_ALL_PROBLEMS` 直接テストで確かめ済みなので、ここでは3モードの絞り込みだけを見ればよい（実際の20題を使うUIテストは `listMode` の組合せごとに遅く壊れやすい）。
 
 - [ ] **Step 2: RED を確認する**
 
@@ -8922,12 +9345,20 @@ export interface WorkFile {
   checkPartId?: string;
   /** モードC2の指摘（`FaultReport[]`）。§9.2 */
   reports?: unknown;
-  /** モードC2の故障（`AppliedFaults`）。ランダム故障でも同じ盤に戻すために保存する。§5.2 */
-  applied?: unknown;
-  /** モードC2の開始時の電線ID（改造と白線ルールの基準）。§9.2 */
-  initialWireIds?: string[];
-  /** モードC2の回路図要素の物理割当（`CellAssignment[]`）。連動ハイライト用。§9.2 */
-  cells?: unknown;
+  /**
+   * モードC2の故障の種（起動時に決めた・課題が持たない場合は生成した値）。§5.2
+   * `resolvedFaults` と対にして残す。デバッグ用の記録であり、復元には使わない
+   * （`seed` だけから `resolveFaults()` を呼び直すと、`random.seed` の無い課題は内部で
+   * `Date.now()` を使うため初回と別の故障になってしまう）。
+   */
+  faultSeed?: number;
+  /**
+   * モードC2の解決済みの故障（`FaultSpecData[]`）。§5.2 / Plan 2A I-4
+   * 復元時は `buildInspectRepairCircuit(problem, board, { resolvedFaults })` へそのまま渡し、
+   * `resolveFaults()` を呼び直させない。`initialWireIds` / `cells` は同じ入力（課題・盤・
+   * この配列）から毎回同じ値になるので、別項目としては保存しない。
+   */
+  resolvedFaults?: unknown;
 }
 ```
 
@@ -8947,12 +9378,8 @@ export interface WorkFile {
     optional.mode = mode;
   }
   if (typeof source['checkPartId'] === 'string') optional.checkPartId = source['checkPartId'];
-  if (Array.isArray(source['initialWireIds'])) {
-    optional.initialWireIds = source['initialWireIds'].filter(
-      (id): id is string => typeof id === 'string',
-    );
-  }
-  for (const key of ['tester', 'answers', 'reports', 'applied', 'cells'] as const) {
+  if (typeof source['faultSeed'] === 'number') optional.faultSeed = source['faultSeed'];
+  for (const key of ['tester', 'answers', 'reports', 'resolvedFaults'] as const) {
     if (source[key] !== undefined) optional[key] = source[key];
   }
   return {
@@ -8984,14 +9411,14 @@ import {
 } from '@ojt/board-model';
 import type { TerminalId, TesterState, WireColor } from '@ojt/circuit-sim';
 import {
+  buildInspectRepairCircuit,
   isInspectPartsProblem,
   isInspectRepairProblem,
-  type AppliedFaults,
   type FaultReport,
+  type FaultSpecData,
   type InspectPartAnswer,
   type SupportedProblem,
 } from '@ojt/content';
-import type { CellAssignment } from '@ojt/schematic-core';
 import { WORK_FILE_FORMAT_VERSION, type WorkFile } from '../../shared/ipc.js';
 import { ojtApi } from '../app/ojt-api.js';
 import { useStore } from '../app/store.js';
@@ -9009,8 +9436,18 @@ import { bridge } from './worker-bridge.js';
  * 課題も盤も無ければ `undefined`（保存できる状態にない）。
  */
 export function toInspectWorkFile(): WorkFile | undefined {
-  const { problem, session, elapsedMs, hazards, tester, answers, reports, circuit, checkPartId } =
-    useStore.getState();
+  const {
+    problem,
+    session,
+    elapsedMs,
+    hazards,
+    tester,
+    answers,
+    reports,
+    circuit,
+    checkPartId,
+    faultSeed,
+  } = useStore.getState();
   if (problem === undefined || session === undefined) return undefined;
   const base = toWorkFile(problem.id, session, elapsedMs, hazards.length);
   if (isInspectPartsProblem(problem)) {
@@ -9029,9 +9466,8 @@ export function toInspectWorkFile(): WorkFile | undefined {
       mode: 'inspect-repair',
       tester,
       reports: [...reports],
-      applied: circuit.applied,
-      initialWireIds: [...circuit.initialWireIds],
-      cells: [...circuit.cells],
+      ...(faultSeed === undefined ? {} : { faultSeed }),
+      resolvedFaults: [...circuit.applied.wireFaults, ...circuit.applied.partFaults],
     };
   }
   return { ...base, mode: 'assemble' };
@@ -9044,9 +9480,8 @@ export interface InspectWorkState {
   answers?: unknown;
   checkPartId?: string;
   reports?: unknown;
-  applied?: unknown;
-  initialWireIds?: string[];
-  cells?: unknown;
+  faultSeed?: number;
+  resolvedFaults?: unknown;
 }
 
 /** `TesterState` として読めるか（つまみとレンジだけ確かめる。§13 #8） */
@@ -9073,7 +9508,20 @@ export function restoreInspectState(
 ): boolean {
   const store = useStore.getState();
   if (state.mode !== undefined && state.mode !== problem.mode) return false;
-  if (isTesterState(state.tester)) store.setTester(state.tester);
+  if (isTesterState(state.tester)) {
+    store.setTester(state.tester);
+    /*
+     * Worker側の `tester` はストアとは別の複製（Task 3）なので、`load` の直後は
+     * つまみOFF・レンジ既定へ戻っている。4つの操作を送り直して同じ状態に揃える
+     * （新しいコマンドは増やさず、既存の `TesterAction` をそのまま使う。I-3）。
+     * プローブは `load` のたびに外れる仕様（Task 3）なので送り直さない。
+     */
+    const t = state.tester;
+    bridge.send({ type: 'tester', action: { type: 'set-kind', kind: t.kind } });
+    bridge.send({ type: 'tester', action: { type: 'set-mode', mode: t.mode } });
+    bridge.send({ type: 'tester', action: { type: 'set-volt-range', range: t.voltRange } });
+    bridge.send({ type: 'tester', action: { type: 'set-ohm-range', range: t.ohmRange } });
+  }
 
   if (isInspectPartsProblem(problem)) {
     if (Array.isArray(state.answers)) {
@@ -9093,19 +9541,18 @@ export function restoreInspectState(
 
   if (isInspectRepairProblem(problem)) {
     if (state.mode === undefined) return true; // Phase 1 の作業ファイル（モードB用）
-    const applied = state.applied;
-    const cells = state.cells;
-    if (!isRecord(applied) || !Array.isArray(cells) || !Array.isArray(state.initialWireIds)) {
-      return false;
-    }
-    const session = store.session;
-    if (session === undefined) return false;
-    store.setCircuit({
-      session,
-      applied: applied as unknown as AppliedFaults,
-      initialWireIds: state.initialWireIds,
-      cells: cells as CellAssignment[],
+    if (!Array.isArray(state.resolvedFaults)) return false;
+    /*
+     * 保存しておいた解決済みの故障をそのまま渡し、`resolveFaults()` を呼び直させない
+     * （Plan 2A I-4）。`seed` だけを保存して引き直すと、`random.seed` の無い課題は
+     * 内部で `Date.now()` を使うため初回と別の故障になってしまう。
+     * `buildInspectRepairCircuit()` を通すので、壊れた・古い保存内容は理由付きで断れる（§13 #8）。
+     */
+    const built = buildInspectRepairCircuit(problem, JIPM_BOARD, {
+      resolvedFaults: state.resolvedFaults as FaultSpecData[],
     });
+    if (!built.ok) return false;
+    store.setCircuit(built.value);
     if (Array.isArray(state.reports)) {
       for (const report of state.reports as FaultReport[]) {
         if (isRecord(report) && isRecord(report.target) && typeof report.kind === 'string') {
@@ -9169,11 +9616,17 @@ export function restoreInspectState(
 
 - [ ] **Step 6: ホームと課題一覧をモードで分ける**
 
-`apps/desktop/src/renderer/app/store-types.ts` の末尾に次を足す:
+`apps/desktop/src/renderer/app/store-types.ts` の先頭の import に `type SessionMode` を足す（`import type { HazardKind } from '@ojt/circuit-sim';` の直後）:
+
+```ts
+import type { SessionMode } from '../../shared/ipc.js';
+```
+
+同ファイルの末尾に次を足す（`SessionMode` は Task 1 で `shared/ipc.ts` に置いた `SupportedProblem['mode']` を再利用する。同じ3値のユニオンを2箇所に書かない）:
 
 ```ts
 /** 課題一覧の絞り込み（`undefined` は「すべて」）。§12.1 */
-export type ListMode = 'assemble' | 'inspect-parts' | 'inspect-repair' | undefined;
+export type ListMode = SessionMode | undefined;
 ```
 
 `apps/desktop/src/renderer/app/store.ts` の `AppState` の `problems` の**直後**に次を足す:
@@ -9356,7 +9809,7 @@ export function Home(): JSX.Element {
 pnpm --filter @ojt/desktop exec vitest run test/work-file-inspect.test.ts test/problem-list.test.tsx test/work-file.test.ts test/work-files.test.ts test/app.test.tsx --no-file-parallelism
 ```
 
-Expected: `Test Files  5 passed (5)`。`work-file-inspect` 8件、`problem-list` は既存＋2件。
+Expected: `Test Files  5 passed (5)`。`work-file-inspect` 7件、`problem-list` は既存＋2件。
 
 - [ ] **Step 8: コミットする**
 
@@ -9389,7 +9842,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 
 - [ ] **Step 1: `e2e/projection.ts` に役割IDの射影を足す**
 
-`apps/desktop/e2e/projection.ts` の import を次に置き換える:
+`apps/desktop/e2e/projection.ts` の**既存の import に追記する**（I-6: 「置き換える」と読んで先頭の import 節ごと差し替えると、既存の `import type { TerminalId } from '@ojt/circuit-sim';` を消してしまい、`terminalPoint()` の型が壊れる）。`import { boardTerminalPos, JIPM_BOARD } from '@ojt/board-model';` の1行だけを次に置き換え、`SocketRoles` の型 import を新たに1行足す。`import type { TerminalId } from '@ojt/circuit-sim';` は既存のまま変えない:
 
 ```ts
 import { boardTerminalPos, JIPM_BOARD, toPhysicalTerminal } from '@ojt/board-model';
@@ -9486,10 +9939,25 @@ async function powerOn(page: Page): Promise<void> {
   await expect(page.getByTestId('status-overlay')).toContainText('通電中');
 }
 
+/**
+ * `dialog.showSaveDialog` / `showOpenDialog` を固定パスへ差し替える（§16 Phase 2 受入基準⑤）。
+ * 手動保存・読込は実物のOSダイアログを開くので、E2Eでは自動化できない。同じファイルパスを
+ * 常に返すよう Electron 側を書き換え、ダイアログを介さず保存・読込のIPC往復だけを確かめる。
+ */
+async function stubFileDialogs(app: ElectronApplication, filePath: string): Promise<void> {
+  await app.evaluate(({ dialog }, path) => {
+    dialog.showSaveDialog = (() =>
+      Promise.resolve({ canceled: false, filePath: path })) as typeof dialog.showSaveDialog;
+    dialog.showOpenDialog = (() =>
+      Promise.resolve({ canceled: false, filePaths: [path] })) as typeof dialog.showOpenDialog;
+  }, filePath);
+}
+
 const C1 = BUILTIN_INSPECT_PARTS_PROBLEMS[0];
 const C2 = BUILTIN_INSPECT_REPAIR_PROBLEMS[0];
 
-test.describe('モードC1 部品点検（§16 Phase 2 受入基準①②④）', () => {
+// 2本目のテストが1本目の結果画面（「もう一度」）から続けるので、同じ worker で順番に走らせる（I-7）
+test.describe.serial('モードC1 部品点検（§16 Phase 2 受入基準①②④）', () => {
   let app: ElectronApplication;
   let page: Page;
 
@@ -9654,7 +10122,8 @@ test.describe('モードC1 部品点検（§16 Phase 2 受入基準①②④）'
   });
 });
 
-test.describe('モードC2 回路点検・修復（§16 Phase 2 受入基準③）', () => {
+// 2本目のテストが1本目の後に保存・再起動するので、同じ worker で順番に走らせる（I-7）
+test.describe.serial('モードC2 回路点検・修復（§16 Phase 2 受入基準③）', () => {
   let app: ElectronApplication;
   let page: Page;
 
@@ -9690,7 +10159,7 @@ test.describe('モードC2 回路点検・修復（§16 Phase 2 受入基準③�
     /*
      * 「どこが故障か」と「正しい配線は何か」は、アプリと同じライブラリ（Plan 2A）で
      * テストプロセス側でも組み立てて求める。UIを通して読み取るのではなく、**同じ入力から
-     * 同じ答えが出る**ことを利用する（`buildInspectRepairCircuit()` は決定論。§5.2）。
+     * 同じ答えが出る**ことを利用する（内蔵C2 8題は明示 `faults` 配列なので決定論。§5.2）。
      */
     const built = buildInspectRepairCircuit(C2, JIPM_BOARD);
     expect(built.ok).toBe(true);
@@ -9782,6 +10251,79 @@ test.describe('モードC2 回路点検・修復（§16 Phase 2 受入基準③�
     await expect(page.getByTestId('modification-list')).toContainText('改造はありません');
     await shot(app, '23-c2-result-pass');
   });
+
+  test('白線を張って保存し、閉じて開き直して読込むと本数が復元される（§16 Phase 2 受入基準⑤）', async () => {
+    test.skip(C2 === undefined, '内蔵C2課題がありません');
+    if (C2 === undefined) return;
+    const workFilePath = join(APP_ROOT, 'e2e-tmp', 'c2-worksave.json');
+    mkdirSync(dirname(workFilePath), { recursive: true });
+
+    // ① C2を開き、白線を1本張って盤の電線を1本増やす（§9.2）
+    await page.getByTestId('mode-inspect-repair').click();
+    await expect(page.getByTestId('problem-table')).toBeVisible();
+    await page.getByTestId(`open-${C2.id}`).click();
+    await expect(page.getByTestId('report-panel')).toBeVisible();
+    await expect
+      .poll(async () => page.locator('[data-testid="viewport"] canvas').count(), {
+        timeout: 30_000,
+      })
+      .toBe(1);
+    await page.waitForTimeout(1500);
+
+    const built = buildInspectRepairCircuit(C2, JIPM_BOARD);
+    expect(built.ok).toBe(true);
+    if (!built.ok) return;
+    const socketRoles = built.value.session.socketRoles;
+    const box = await canvasBox(page);
+    const before = built.value.session.wires.length;
+
+    await page.getByRole('button', { name: '白', exact: true }).click();
+    await page.mouse.click(
+      roleTerminalPoint(socketRoles, 'CR1.13', box).x,
+      roleTerminalPoint(socketRoles, 'CR1.13', box).y,
+    );
+    await page.mouse.click(
+      roleTerminalPoint(socketRoles, 'CR1.9', box).x,
+      roleTerminalPoint(socketRoles, 'CR1.9', box).y,
+    );
+    await expect(page.getByTestId('status-overlay')).toContainText(`${before + 1} 本`);
+
+    // ② 保存する（ダイアログは固定パスへスタブする）
+    await stubFileDialogs(app, workFilePath);
+    await page.getByRole('button', { name: '保存' }).click();
+    await expect(page.getByTestId('toast')).toContainText('保存しました');
+
+    // ③ 閉じて開き直す（作業ファイルはプロセスを跨いで残る）
+    await app.close();
+    app = await electron.launch({
+      args: [join(APP_ROOT, 'out', 'main', 'index.js'), ...CHROMIUM_FLAGS],
+      env: { ...process.env, NODE_ENV: 'production' },
+    });
+    page = await app.firstWindow();
+    await page.waitForLoadState('domcontentloaded');
+    await app.evaluate(({ BrowserWindow }) => {
+      const window = BrowserWindow.getAllWindows()[0];
+      if (window === undefined) throw new Error('ウィンドウがありません');
+      window.setBounds({ x: 0, y: 0, width: 1440, height: 900 });
+      window.show();
+      window.focus();
+    });
+    await page.waitForTimeout(1500);
+    const restore = page.getByTestId('restore-prompt');
+    if ((await restore.count()) > 0) {
+      await page.getByRole('button', { name: '復元しない' }).click();
+    }
+
+    // ④ C2を（故障入りの初期状態で）開き直してから、保存した作業ファイルを読み込む
+    await page.getByTestId('mode-inspect-repair').click();
+    await expect(page.getByTestId('problem-table')).toBeVisible();
+    await page.getByTestId(`open-${C2.id}`).click();
+    await expect(page.getByTestId('report-panel')).toBeVisible();
+    await page.waitForTimeout(1000);
+    await stubFileDialogs(app, workFilePath);
+    await page.getByRole('button', { name: '読込' }).click();
+    await expect(page.getByTestId('status-overlay')).toContainText(`${before + 1} 本`);
+  });
 });
 ```
 
@@ -9792,7 +10334,7 @@ pnpm --filter @ojt/desktop build
 pnpm --filter @ojt/desktop e2e
 ```
 
-Expected: `smoke.spec.ts` 1本・`polish.spec.ts` の既存本数・`inspect.spec.ts` 3本がすべて `passed`。`apps/desktop/screenshots/` に `10-c1-problem-list.png` 〜 `23-c2-result-pass.png` の11枚が増える。
+Expected: `smoke.spec.ts` 1本・`polish.spec.ts` の既存本数・`inspect.spec.ts` 4本（C1の2本＋C2の2本）がすべて `passed`。`apps/desktop/screenshots/` に `10-c1-problem-list.png` 〜 `23-c2-result-pass.png` の12枚が増える。
 
 - [ ] **Step 4: 全体を検証する**
 
@@ -9848,7 +10390,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 
 | 仕様 | 要件 | 実装 | 検証 |
 |---|---|---|---|
-| §4.3 | IPCチャネルは6本のまま | `IPC_CHANNELS` を変えない（`WorkFile` に項目を足すだけ） | `test/ipc.test.ts`（既存）/ Task 17 |
+| §4.3 | IPCチャネルは6本のまま | `IPC_CHANNELS` を変えない（`WorkFile` に項目を足すだけ） | `test/work-files.test.ts` / `test/settings.test.ts`（既存）/ Task 17 |
 | §4.3 | renderer ⇄ Worker のプロトコル | `SimCommand` に `tester` / `judgeParts` / `judgeRepair`、`load` に `partFaults` | `test/sim-worker-tester.test.ts` / `test/sim-worker-inspect.test.ts` / `test/sim-worker-repair.test.ts` |
 | §5.4 | 故障の適用（部品の故障は変換のたびに注入） | Worker の `load()` が `injectPartFaults()` を通す | `test/sim-worker-inspect.test.ts` |
 | §5.5 | テスター測定API（DCV/ACV/Ω/導通・`OL`） | `stepTester()` の読値を `snapshot.tester` に載せる | `test/sim-worker-tester.test.ts` |
@@ -9892,7 +10434,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 | §16 Phase 2 ② | コイル断線＝`OL`／レアショート＝約420Ωで正解になる | 同上 | Task 18 |
 | §16 Phase 2 ③ | C2で故障2箇所を指摘し白線で修復すると合格 | 同上 | Task 18 |
 | §16 Phase 2 ④ | 通電中のΩで警告＋結果に回数 | 同上 | Task 18 |
-| §16 Phase 2 ⑤ | 作業の保存・再起動後の復元 | Plan 1D2 で実装済み。本プランは C1/C2 の項目を足す | `test/work-file-inspect.test.ts` |
+| §16 Phase 2 ⑤ | 作業の保存・再起動後の復元 | Plan 1D2 で実装済み。本プランは C1/C2 の項目を足す | `test/work-file-inspect.test.ts` / `e2e/inspect.spec.ts`（C2・白線1本・保存→再起動→読込） |
 | §17.2 #3 | 定量減点は実装しない | 危険操作・所要時間は参考表示 | `test/inspect-parts-result.test.tsx` |
 | §17.2 #5 | マークシートは排他選択 | radio（同じ `name`） | `test/mark-sheet.test.tsx` |
 
@@ -9914,6 +10456,38 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 | 10 | §12.1 の画面遷移図は「セッション画面」1つ | モードごとに3つの画面（`Session` / `InspectPartsSession` / `InspectRepairSession`）に分け、`SessionRoute` が振り分ける | 3Dクリックの意味（配線／プローブ／指摘）も右パネルの中身も違う。1つの画面に条件分岐を積むと、モードBの回帰を起こさずにC1/C2を直すことが難しくなる。共通部分（ツールバー・電源・ログ・経過時間・3D・テスター）はコンポーネントとして共有している |
 | 11 | §9.1 は測定端子を文章で示す | プローブの置き場所ショートカット（コイル＋4組ぶんの a/b 接点＝9個）をパネルに出した | 端子の当たり判定は4mmで、正面視では数ピクセルしかない。§9.1 は「ON/OFFで何度も測る」手順を求めるので、毎回8本の端子を狙わせると手順の練習にならない。**4組すべて**出すので不良の組は漏れない（Plan 2A 差分 #14） |
 | 12 | §9.3 のレンジはデジタルにも一覧がある（オートレンジ） | デジタルではレンジ欄を出さず「オートレンジ」とだけ表示する | §9.3 が「デジタル … **オートレンジ**」と定めているので、選べるつまみを描くと実機と食い違う |
+| 13 | §5.6 の危険操作表示は Phase 1 になし | Phase 1 の警告経路（トースト・`LogPanel` の危険操作一覧・トリップLED）はそのまま残し、`WarningBanner`（画面上部の帯）を**その上に追加**する。置き換えではない | トーストは4秒で消えて気づかないまま回数だけ増える（§13 #4 の指摘と同じ理屈）。ログとLEDは「何が起きたか」の記録として引き続き要る。帯は「いま気づく」ための追加チャネルであり、既存の経路を壊さない |
+
+---
+
+## 実装者への MERGE 注意
+
+複数のタスクが同じファイルへ別々の箇所から手を入れる。下記「推奨バッチ」で複数を並行して走らせるときは、次の9点を守ること（レビューで指摘された衝突しやすい箇所）。
+
+1. **`BoardScene.tsx` は Task 7 Step 5 の4箇所の編集だけ**（import の追加・`visualSignature()` への3行・`BoardContents()` の4つの購読・`routes.map` ブロックの置き換え）。他のタスクがこのファイルへさらに手を入れる場合も、この4箇所の外側だけに追記する。
+2. **`Session.tsx` は Task 4 Step 9（モードB絞り込みの2箇所）＋ Task 7 Step 8a（`<WarningBanner />` の1行）だけ**。この5箇所以外は Phase 1 のまま変えない。
+3. **`Toolbar.tsx` は Task 10 Step 5 の1ブロックだけ**（`showWireTools?` / `extraTools?` の追加と、線色グループの `showWireTools` 条件化）。Task 14 は `Toolbar` の**呼び出し側**（props の渡し方）しか変えないので、`Toolbar.tsx` 自体を二重に編集しない。
+4. **`App.tsx` の `setInterval` は2つ**（Task 7 Step 8 のトースト掃除＋危険操作バナーの間引き、Task 17 Step 5 の自動保存を `toInspectWorkFile()` に差し替え）。別々の `useEffect` を新たに増やさず、既存の2つのタイマーの中身を書き換える形にする。
+5. **`sim.worker.ts` の `load()` は Task 3 と Task 8 の2回に分けて触られる。重複させない。** Task 3 Step 4 でプローブ解除（`applyTesterAction` の2回呼び出し）を末尾に足し、Task 8 Step 5 は `load()` の**宣言そのもの**（引数に `partFaults` を足す）を置き換える形で示してある。Task 8 を適用するときは、Task 3 で足した末尾の3行を消さずに新しい `load()` の中へ持っていくこと。
+6. **`store.ts` の `EMPTY_SNAPSHOT` は `SimSnapshot` の変更（`tester` フィールド追加）と同じコミットに入れる**（Task 3 Step 5）。片方だけ先に入ると `EMPTY_SNAPSHOT` が `SimSnapshot` を満たさず型検査が落ちる。
+7. **`ja.ts` への挿入は、挿入のたびにファイルを読み直してから行う。** 複数のタスク（5・7・9・11・13・17 など）がそれぞれ別の挿入位置を「〇〇の直後」で指定しており、先のタスクの挿入で行番号がずれるため、古い内容を前提に次を挿し込むと挿入先を見失うか、片方の追記が失われる。
+8. **Task 1 と Task 4 は同じバッチで直列に実行する。** Task 4 Step 10 が Task 1 Step 6a で入れた暫定ガード（モードB以外を弾く分岐）を外す前提になっており、Task 1 だけ済んで Task 4 が別バッチに回ると C1/C2 が一時的に開けないまま放置される。
+9. **`e2e/projection.ts` の import は置き換えでなく追記する（I-6）。** 既存の `import type { TerminalId } from '@ojt/circuit-sim';` を消さないこと。
+
+## 推奨バッチ
+
+タスクの依存関係（ストア → 3画面の土台 → 各モードの右パネル → 結果画面 → 一覧・作業ファイル → E2E）に沿って6つのバッチに分ける。同じバッチ内で複数タスクを並行させる場合は上記「MERGE 注意」を必ず確認する。
+
+| バッチ | タスク | 実行順 | モデル |
+|---|---|---|---|
+| 1 | Task 1 → Task 2 → Task 3 → Task 4 | 直列（Task 1・4 は同じバッチで。MERGE 注意 #8） | Opus |
+| 2 | Task 5＋6（直列）／ Task 9 ／ Task 13 ／ Task 7 | 3系統（5+6・9・13）を並列、Task 7 も同時並行 | Sonnet（Task 7 のみ Opus） |
+| 3 | Task 8 → Task 10 → Task 11 | 直列 | Opus |
+| 4 | Task 12 → Task 14 → Task 15 → Task 16 | 直列 | Opus |
+| 5 | Task 17 | 単独 | Sonnet |
+| 6 | Task 18 | 単独（バッチ1〜5がすべて完了してから） | Opus |
+
+バッチ1の完了後にバッチ2〜4を並行して始められる（Task 4 がストアと3モードの土台を作り終えているため）。バッチ2はテスターパネル（5・6）と3D・警告バナー（7）、C1/C2の右パネル（9・13）が互いに独立なので同時に走らせられる。バッチ5（Task 17）はホーム・一覧・作業ファイルを触るので、バッチ2〜4が触った画面が揃ってから始める。バッチ6（Task 18 の E2E）は全バッチの完了後、ビルドしたアプリの上で行う。
 
 ---
 
@@ -9934,7 +10508,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 - [ ] 3D盤に黒／赤のプローブが載り、テスターのつまみ・レンジ・0Ω調整・針が §9.3 のとおり動く。
 - [ ] C2の2級課題で、回路図の要素をクリックすると3D盤の対応端子と電線が光り、3Dの端子にホバーすると回路図の対応要素が光る。
 - [ ] 作業ファイルにテスター状態・マークシートの解答・指摘・故障が載り、読み込むと同じ状態から続けられる。Phase 1 に保存した作業ファイル（追加項目が無いもの）も読める。
-- [ ] `apps/desktop/screenshots/` に C1/C2 のスクリーンショット11枚（`10-` 〜 `23-`）が出ている。
+- [ ] `apps/desktop/screenshots/` に C1/C2 のスクリーンショット12枚（`10-` 〜 `23-`）が出ている。
 - [ ] `apps/desktop/package.json` の依存が Phase 1 から増えていない。
 - [ ] IPCチャネルは6本のまま（`IPC_CHANNELS` が変わっていない）。
 - [ ] 画面の文言がすべて `src/renderer/i18n/ja.ts`（と `src/shared/messages.ts`）にある。
@@ -9946,4 +10520,5 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 | 日付 | 内容 |
 |---|---|
 | 2026-09-14 | 初版。Plan 2（Phase 2）のうち `apps/desktop`（2B）を扱う。テスターの操作モデルを「ツールモード `tester` ＋ 黒→赤の順送り（明示選択つき）」に決定。Worker のテスターコマンドは `TesterAction` を運ぶ1本に統一。C1の部品挿抜は `load` の送り直し、C2の部品交換は `unplug`＋`plug`＋`replacePart()`。期待読値（正常 650.0 / レアショート 422.5 / コイル断線 OL / しきい値 552.5）はすべて Plan 2A の実測表から引いており、本プランでは新しい数値を作っていない |
+| 2026-09-14 | レビュー反映: B1〜B7、I1〜I16、M1〜M13、MERGE 注意、推奨バッチ。主な内容: `isInspectJudge` を `mode !== 'assemble'` 判別に修正（Plan 2A I-3 で3モードとも `mode` を持つようになったため）。C2の作業ファイルを `applied`/`cells`/`initialWireIds` の保存から `faultSeed`＋`resolvedFaults`（Plan 2A I-4 の `buildInspectRepairCircuit({ resolvedFaults })`）へ作り直し、復元時に再抽選しないようにした。C2に元に戻す／やり直し（白線・部品交換）を追加。C1/C2 のリストテストを3モードのモックで書き直し、内蔵20題の確認は `content-loader.test.ts` 側に寄せた。Worker のテスター実測を間引く設計を追加（つまみOFF・プローブ未配置ではスキップ、それ以外は33msごとかプローブ変更時だけ実測。前提D）。モードBにも警告バナーを追加。`sharedMaterial()` のキャッシュ鍵に `opacity`/`transparent` を追加。回路図の連動ハイライトの TDZ バグとホバーの間引きを修正。作業ファイルの保存→再起動→読込の E2E を追加。前提Cの「通電中のΩ測定」表示を `OL` から `----` に訂正し、`physicalOverride` / `FaultSpecData` の型を2A実装に合わせた |
 
