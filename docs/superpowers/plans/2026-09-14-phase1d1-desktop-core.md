@@ -3866,8 +3866,14 @@ export const SOCKET_ROW_CENTER_MM = ((): number => {
 
 /**
  * 盤グループの X 軸回転量[rad]。
- * 盤面ローカル（+Z が盤面の法線、+Y が盤の手前方向）を机の上に寝かせ、
+ * 盤面ローカル（+Z が盤面の法線、+Y が盤の奥方向）を机の上に寝かせ、
  * 筐体の傾斜角ぶんだけ手前を下げる。`-90°` で完全に水平、`slopeDeg` ぶん戻して傾斜コンソールにする。
+ *
+ * 「+Y が奥」の根拠: この関数や `boardToWorld` 全般が受け取るのは `toScene()` の結果空間で、
+ * `toScene()` は盤モデルの y（0 = 奥のソケット側、BOARD_HEIGHT_MM = 手前の PL/PB 側）を
+ * `-(v.y - BOARD_HEIGHT_MM / 2)` で反転する。したがってこの空間の +Y は盤モデルの y が
+ * 小さくなる向き＝奥へ向かう（盤モデルの y 自体は手前が大きい）。
+ * `scene.test.ts`「盤の奥（盤ローカル +Y）は画面の奥へ倒れる」で検証している。
  */
 export const BOARD_TILT_RAD = -(Math.PI / 2 - (JIPM_BOARD.console.slopeDeg * Math.PI) / 180);
 
@@ -3926,6 +3932,40 @@ export function cameraPose(preset: CameraPreset): CameraPose {
         up: boardUp(),
       };
   }
+}
+
+/** `t`∈[0,1] を ease-out（3次）に変換する。速く動き出し、減速しながら止まる。 */
+function easeOutCubic(t: number): number {
+  const clamped = Math.min(1, Math.max(0, t));
+  return 1 - (1 - clamped) ** 3;
+}
+
+/** 3要素タプルの線形補間。 */
+function lerp3(
+  from: readonly [number, number, number],
+  to: readonly [number, number, number],
+  t: number,
+): [number, number, number] {
+  return [
+    from[0] + (to[0] - from[0]) * t,
+    from[1] + (to[1] - from[1]) * t,
+    from[2] + (to[2] - from[2]) * t,
+  ];
+}
+
+/**
+ * 2つの視点を ease-out で補間する純粋関数。§12.2「視点プリセットとギズモのスナップは
+ * 同じ短い補間で遷移」。`t = 0` で `from` に、`t = 1` で `to` に一致し、その間は各成分が
+ * 単調に変化する（イージングは内部で完結するので、呼び出し側は経過時間から求めた
+ * 線形の `t`（0→1）を渡すだけでよい）。`CameraPresets` が `useFrame` から毎フレーム呼ぶ。
+ */
+export function interpolatePose(from: CameraPose, to: CameraPose, t: number): CameraPose {
+  const eased = easeOutCubic(t);
+  return {
+    position: lerp3(from.position, to.position, eased),
+    target: lerp3(from.target, to.target, eased),
+    up: lerp3(from.up, to.up, eased),
+  };
 }
 ```
 
@@ -4869,17 +4909,25 @@ export function TerminalBlock({
 - [ ] **Step 6: `apps/desktop/src/renderer/three/Fixtures.tsx` を書く**
 
 ```tsx
-import type { BoardTerminal } from '@ojt/board-model';
+import type { BoardTerminal, Footprint } from '@ojt/board-model';
 import { Html } from '@react-three/drei';
-import type { JSX } from 'react';
+import { useMemo, type JSX } from 'react';
+import type { Texture } from 'three';
 import { BREAKER_COLOR, SUPPLY_BLOCK_COLOR } from '../session/colors.js';
+import { makeCanvasTexture, PX_PER_MM } from './labels.js';
 import { sharedMaterial, UNIT_BOX } from './materials.js';
 import { toScene } from './coords.js';
 
 /**
- * 盤に固定された機器（DC24V電源・ブレーカ・電源スイッチ）。設計仕様 §6.1 / §6.5。
+ * 盤に固定された機器（DC24V電源・ブレーカ・電源スイッチ）。設計仕様 §6.1 / §6.5 / §12.2。
  * 実物写真では上段左に DC24V の端子台、上段右にブレーカが載る。
  * いずれも訓練者は配線できない（`wirable: false`）ので、当たり判定は持たせず見た目だけ描く。
+ *
+ * 外形は `board.footprints`（`kind: 'supply' | 'breaker' | 'switch'`）から取る。以前は
+ * 端子の外接矩形＋固定余白から箱を作っていたが、それだと配線の経路生成が避ける「占有領域」
+ * （footprint）と3Dの見た目の箱がずれてしまう。footprint を引ければそれが唯一の情報源になり、
+ * 見た目＝配線が避ける領域を保証できる。§12.2「ブレーカ・電源スイッチ・DC24V端子台にも名称」
+ * のとおり、端子1個ずつにも常時印字を焼く（`labels.ts` と同じキャンバステクスチャの方式）。
  */
 
 /**
@@ -4890,36 +4938,84 @@ const LABEL_STYLE = { pointerEvents: 'none' } as const;
 
 /** 機器の高さ[mm]。 */
 const FIXTURE_HEIGHT_MM = 22;
-/** 端子の外接矩形からの余白[mm]。 */
-const FIXTURE_PAD_MM = 9;
+
+/** 端子印字の文字高さ[mm]。機器の名称のみで数値・記号が短いので、端子台の役割文字より少し大きくする。 */
+const MARK_MM = 4;
+
+/** 印字の板をネジの頭より上に浮かせる量[mm]。 */
+const LABEL_LIFT_MM = 1.4;
+
+/** 端子の印字色（極性は色でも区別する。§12.2「極性 +/− は色でも区別」）。CB/SW の `ac` は黒。 */
+const FIXTURE_MARK_COLOR: Readonly<Partial<Record<BoardTerminal['role'], string>>> = {
+  '+': '#D14343',
+  '-': '#2E6BD6',
+  ac: '#1B1E23',
+};
 
 /** レイキャストを受けない。 */
 function noPick(): void {
   // 交差候補を積まない
 }
 
-/** 固定機器1台（端子の外接矩形から箱を作る）。 */
+/**
+ * 端子の印字文字列。盤定義の `label`（`PS +24V` のように「機器プレフィックス＋半角スペース＋名称」の形）
+ * から機器プレフィックスを除いた名称だけを返す（`PS +24V` → `+24V`、`CB 1` → `1`）。
+ */
+export function fixtureTerminalMark(terminal: BoardTerminal): string {
+  const spaceIndex = terminal.label.indexOf(' ');
+  return spaceIndex === -1 ? terminal.label : terminal.label.slice(spaceIndex + 1);
+}
+
+/** `board.footprints` から `kind` で固定機器の外形を引く。一致が無ければ `undefined`。 */
+export function findFixtureFootprint(
+  footprints: readonly Footprint[],
+  kind: Footprint['kind'],
+): Footprint | undefined {
+  return footprints.find((footprint) => footprint.kind === kind);
+}
+
+/** 固定機器1個ぶんの端子印字テクスチャ。footprint の左上を板の原点にするので印字は端子の真上に来る。 */
+function fixtureFaceTexture(
+  terminals: readonly BoardTerminal[],
+  footprint: Footprint,
+): Texture | undefined {
+  if (terminals.length === 0) return undefined;
+  return makeCanvasTexture(footprint.w, footprint.h, (ctx) => {
+    ctx.font = `700 ${MARK_MM * PX_PER_MM}px sans-serif`;
+    for (const terminal of terminals) {
+      const x = (terminal.pos.x - footprint.x) * PX_PER_MM;
+      const y = (terminal.pos.y - footprint.y) * PX_PER_MM;
+      ctx.fillStyle = FIXTURE_MARK_COLOR[terminal.role] ?? '#1B1E23';
+      ctx.fillText(fixtureTerminalMark(terminal), x, y);
+    }
+  });
+}
+
+/** 固定機器1台（外形は `board.footprints` から、端子印字は `terminals` から）。 */
 export function Fixture({
   name,
   label,
   color,
+  kind,
   terminals,
+  footprints,
 }: {
   name: string;
   label: string;
   color: string;
+  kind: Footprint['kind'];
   terminals: readonly BoardTerminal[];
+  footprints: readonly Footprint[];
 }): JSX.Element | null {
-  if (terminals.length === 0) return null;
-  const xs = terminals.map((t) => t.pos.x);
-  const ys = terminals.map((t) => t.pos.y);
-  const minX = Math.min(...xs);
-  const maxX = Math.max(...xs);
-  const minY = Math.min(...ys);
-  const maxY = Math.max(...ys);
+  const footprint = findFixtureFootprint(footprints, kind);
+  const faceTexture = useMemo(
+    () => (footprint === undefined ? undefined : fixtureFaceTexture(terminals, footprint)),
+    [terminals, footprint],
+  );
+  if (terminals.length === 0 || footprint === undefined) return null;
   const center = toScene({
-    x: (minX + maxX) / 2,
-    y: (minY + maxY) / 2,
+    x: footprint.x + footprint.w / 2,
+    y: footprint.y + footprint.h / 2,
     z: FIXTURE_HEIGHT_MM / 2,
   });
   return (
@@ -4929,8 +5025,15 @@ export function Fixture({
         material={sharedMaterial(color, { roughness: 0.6, metalness: 0.15 })}
         raycast={noPick}
         position={center}
-        scale={[maxX - minX + FIXTURE_PAD_MM * 2, maxY - minY + FIXTURE_PAD_MM * 2, FIXTURE_HEIGHT_MM]}
+        scale={[footprint.w, footprint.h, FIXTURE_HEIGHT_MM]}
       />
+      {/* 端子の名前の印字（常時表示）。§12.2 */}
+      {faceTexture === undefined ? null : (
+        <mesh raycast={noPick} position={[center[0], center[1], FIXTURE_HEIGHT_MM + LABEL_LIFT_MM]}>
+          <planeGeometry args={[footprint.w, footprint.h]} />
+          <meshBasicMaterial map={faceTexture} transparent depthWrite={false} />
+        </mesh>
+      )}
       <Html
         center
         style={LABEL_STYLE}
@@ -4945,10 +5048,15 @@ export function Fixture({
 }
 
 /** 盤の固定機器（電源・ブレーカ・電源スイッチ）の定義。§6.4 の部品ID順。 */
-export const FIXTURES: ReadonlyArray<{ id: string; label: string; color: string }> = [
-  { id: 'PS', label: 'DC24V電源', color: SUPPLY_BLOCK_COLOR },
-  { id: 'CB', label: 'ブレーカ', color: BREAKER_COLOR },
-  { id: 'SW', label: '電源スイッチ', color: BREAKER_COLOR },
+export const FIXTURES: ReadonlyArray<{
+  id: string;
+  label: string;
+  color: string;
+  kind: Footprint['kind'];
+}> = [
+  { id: 'PS', label: 'DC24V電源', color: SUPPLY_BLOCK_COLOR, kind: 'supply' },
+  { id: 'CB', label: 'ブレーカ', color: BREAKER_COLOR, kind: 'breaker' },
+  { id: 'SW', label: '電源スイッチ', color: BREAKER_COLOR, kind: 'switch' },
 ];
 ```
 
@@ -5733,17 +5841,30 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 - [ ] **Step 1: `apps/desktop/src/renderer/three/CameraPresets.tsx` を書く**
 
 ```tsx
-import { useThree } from '@react-three/fiber';
-import { useEffect, type JSX } from 'react';
+import { useFrame, useThree } from '@react-three/fiber';
+import { useEffect, useRef, type JSX } from 'react';
 import type { CameraPreset } from '../app/store-types.js';
-import { cameraPose } from './camera.js';
+import { cameraPose, interpolatePose, type CameraPose } from './camera.js';
 
 /**
  * 視点プリセットの適用。設計仕様 §12.2。
  * 位置・注視点・上方向の計算は `camera.ts`（純粋関数）に置き、ここは three への反映だけを行う。
  * 盤は傾斜コンソールなので、面直視（正面・ソケット拡大）ではカメラの上方向も盤面に合わせて
  * 変える（既定の `(0,1,0)` のままだと視線とほぼ平行になり画が回ってしまう）。
+ *
+ * プリセットの切り替えは瞬間移動させず、`interpolatePose()`（`camera.ts`）で ~300ms の
+ * ease-out 補間を掛ける（§12.2「視点プリセットとギズモのスナップは同じ短い補間で遷移」。
+ * ギズモ（`ViewGizmo`）のクリックは drei の `GizmoHelper` が内部で角速度一定の短い補間を
+ * 自前で行うので実装は共有できないが、遷移時間を揃えることで体感を合わせる）。
+ *
+ * `frameloop="demand"` の下で動かすため、補間中は `useFrame` の中で毎フレーム `invalidate()`
+ * を呼んで次のフレームを要求し、`t = 1` に達したら呼ぶのをやめてループを自己終結させる
+ * （`OrbitControls` の慣性や drei `GizmoHelper` の `tweenCamera` と同じ考え方）。
+ * マウント直後（および `OrbitControls` 接続前）は補間せず即座に反映する。
  */
+
+/** プリセット遷移の所要時間[ms]。ギズモのスナップと体感を揃える短い値。§12.2 */
+const TRANSITION_MS = 300;
 
 /** `OrbitControls` のうちこの層が使う部分。 */
 export interface ControlsLike {
@@ -5751,7 +5872,14 @@ export interface ControlsLike {
   update: () => void;
 }
 
-/** プリセットが変わったらカメラと OrbitControls の注視点を動かす。 */
+/** 進行中の視点補間。 */
+interface PoseAnimation {
+  from: CameraPose;
+  to: CameraPose;
+  startMs: number;
+}
+
+/** プリセットが変わったらカメラと OrbitControls の注視点を ~300ms で補間して動かす。 */
 export function CameraPresets({
   preset,
   controls,
@@ -5761,8 +5889,12 @@ export function CameraPresets({
 }): JSX.Element | null {
   const camera = useThree((state) => state.camera);
   const invalidate = useThree((state) => state.invalidate);
-  useEffect(() => {
-    const pose = cameraPose(preset);
+  // 直近に反映した視点（次の遷移の `from`）。マウント直後は null。
+  const currentPose = useRef<CameraPose | null>(null);
+  const animation = useRef<PoseAnimation | null>(null);
+
+  /** カメラと OrbitControls に1つの視点を反映する。 */
+  const applyPose = (pose: CameraPose): void => {
     camera.up.set(...pose.up);
     camera.position.set(...pose.position);
     camera.lookAt(...pose.target);
@@ -5771,8 +5903,34 @@ export function CameraPresets({
       controls.update();
     }
     camera.updateProjectionMatrix();
+    currentPose.current = pose;
+  };
+
+  useEffect(() => {
+    const to = cameraPose(preset);
+    if (currentPose.current === null) {
+      // マウント直後・OrbitControls 接続前は補間せず即座に合わせる
+      // （Canvas の初期カメラ位置から意図しない“飛行”をしないため）。
+      animation.current = null;
+      applyPose(to);
+    } else {
+      animation.current = { from: currentPose.current, to, startMs: performance.now() };
+    }
     invalidate();
   }, [preset, camera, controls, invalidate]);
+
+  useFrame(() => {
+    const anim = animation.current;
+    if (anim === null) return;
+    const t = Math.min(1, (performance.now() - anim.startMs) / TRANSITION_MS);
+    applyPose(interpolatePose(anim.from, anim.to, t));
+    if (t < 1) {
+      invalidate();
+    } else {
+      animation.current = null;
+    }
+  });
+
   return null;
 }
 ```
@@ -5882,7 +6040,6 @@ import { Wire } from './Wire.js';
  * - 盤の静的ジオメトリ（板・ダクト・ソケット台座・端子）はマテリアルとジオメトリを共有し、
  *   電線の `TubeGeometry` は経路オブジェクト単位でメモ化する。
  */
-
 
 /** カメラが盤へ寄れる最短距離[mm]（端子の印字が読める程度まで）。§12.2 */
 const MIN_CAMERA_DISTANCE_MM = 90;
@@ -6022,10 +6179,12 @@ function BoardContents({
   const mode = useStore((s) => s.mode);
   const camera = useStore((s) => s.camera);
   const [controls, setControls] = useState<ControlsLike | null>(null);
-  const invalidate = useThree((state) => state.invalidate);
 
   const board = JIPM_BOARD;
-  const { routes, errors: routeErrors } = useMemo(() => safeRoutes(board, session), [board, session]);
+  const { routes, errors: routeErrors } = useMemo(
+    () => safeRoutes(board, session),
+    [board, session],
+  );
   // 経路が解けなかった電線は描けないので、理由をトーストとログに出す（盤は描き続ける）。§6.6
   useEffect(() => {
     if (routeErrors.length === 0) return;
@@ -6108,119 +6267,129 @@ function BoardContents({
       <directionalLight position={[-320, 180, 360]} intensity={0.6} />
       {/* 盤は傾斜コンソール。盤ローカル（+Z が盤面の法線）を机の上に寝かせて手前に起こす。§6.5 */}
       <group rotation={[BOARD_TILT_RAD, 0, 0]}>
-      <BoardPlate board={board} />
-      {railTerminals.map((rail) => (
-        <DinRail key={rail.key} terminals={rail.terminals} />
-      ))}
-      {fixtureTerminals.map((fixture) => (
-        <Fixture
-          key={fixture.id}
-          name={fixture.id}
-          label={fixture.label}
-          color={fixture.color}
-          terminals={fixture.terminals}
-        />
-      ))}
-      <FixedWires board={board} />
+        <BoardPlate board={board} />
+        {railTerminals.map((rail) => (
+          <DinRail key={rail.key} terminals={rail.terminals} />
+        ))}
+        {fixtureTerminals.map((fixture) => (
+          <Fixture
+            key={fixture.id}
+            name={fixture.id}
+            label={fixture.label}
+            color={fixture.color}
+            kind={fixture.kind}
+            terminals={fixture.terminals}
+            footprints={board.footprints}
+          />
+        ))}
+        <FixedWires board={board} />
 
-      {board.sockets.map((socket) => {
-        const role = session?.socketRoles[socket.id];
-        const mounted = session?.mounted[socket.id];
-        const terminals = socketTerminals.get(socket.id) ?? [];
-        return (
-          <group key={socket.id}>
-            <Socket
-              socket={socket}
-              role={role}
-              occupied={mounted !== undefined}
-              terminals={terminals}
-              hoveredTerminal={hovered}
-              pendingTerminal={pending}
-              onHoverTerminal={onHover}
-              onPickTerminal={pickTerminal}
-              onPickSocket={(socketId: SocketId, occupied: boolean) => {
-                onPick({ kind: 'socket', id: socketId, occupied });
-              }}
-            />
-            {mounted === undefined || role === undefined ? null : (
-              <MountedPart
+        {board.sockets.map((socket) => {
+          const role = session?.socketRoles[socket.id];
+          const mounted = session?.mounted[socket.id];
+          const terminals = socketTerminals.get(socket.id) ?? [];
+          return (
+            <group key={socket.id}>
+              <Socket
                 socket={socket}
                 role={role}
-                part={mounted}
-                energized={
-                  snapshot.relays[role]?.coilOn === true || snapshot.timers[role]?.powered === true
-                }
+                occupied={mounted !== undefined}
+                terminals={terminals}
+                hoveredTerminal={hovered}
+                pendingTerminal={pending}
+                onHoverTerminal={onHover}
+                onPickTerminal={pickTerminal}
+                onPickSocket={(socketId: SocketId, occupied: boolean) => {
+                  onPick({ kind: 'socket', id: socketId, occupied });
+                }}
               />
-            )}
-          </group>
-        );
-      })}
+              {mounted === undefined || role === undefined ? null : (
+                <MountedPart
+                  socket={socket}
+                  role={role}
+                  part={mounted}
+                  energized={
+                    snapshot.relays[role]?.coilOn === true ||
+                    snapshot.timers[role]?.powered === true
+                  }
+                />
+              )}
+            </group>
+          );
+        })}
 
-      {BLOCK_PARTS.map((block) => (
-        <TerminalBlock
-          key={block.key}
-          name={block.key}
-          label={block.label}
-          terminals={blocks.get(block.key) ?? []}
-          hoveredTerminal={hovered}
-          pendingTerminal={pending}
-          onHoverTerminal={onHover}
-          onPickTerminal={pickTerminal}
-        />
-      ))}
-
-      {board.lamps.map((lamp) => (
-        <Lamp key={lamp.id} definition={lamp} level={snapshot.lamps[lamp.id]?.level ?? 'off'} />
-      ))}
-
-      {board.pushButtons.map((pb) => (
-        <PushButton
-          key={pb.id}
-          definition={pb}
-          pressed={snapshot.buttons[pb.id] === true}
-          onPress={onPress}
-          onRelease={onRelease}
-        />
-      ))}
-
-      {routes.map((route) => {
-        const wire = session?.wires.find((w) => w.id === route.wireId);
-        if (wire === undefined) return null;
-        return (
-          <Wire
-            key={route.wireId}
-            route={route}
-            color={wire.color}
-            locked={wire.locked}
-            selected={selectedWire === route.wireId}
-            pickable={mode === 'delete'}
-            onPick={(wireId: string) => {
-              onPick({ kind: 'wire', id: wireId, locked: wire.locked });
-            }}
+        {BLOCK_PARTS.map((block) => (
+          <TerminalBlock
+            key={block.key}
+            name={block.key}
+            label={block.label}
+            terminals={blocks.get(block.key) ?? []}
+            hoveredTerminal={hovered}
+            pendingTerminal={pending}
+            onHoverTerminal={onHover}
+            onPickTerminal={pickTerminal}
           />
-        );
-      })}
+        ))}
+
+        {board.lamps.map((lamp) => (
+          <Lamp key={lamp.id} definition={lamp} level={snapshot.lamps[lamp.id]?.level ?? 'off'} />
+        ))}
+
+        {board.pushButtons.map((pb) => (
+          <PushButton
+            key={pb.id}
+            definition={pb}
+            pressed={snapshot.buttons[pb.id] === true}
+            onPress={onPress}
+            onRelease={onRelease}
+          />
+        ))}
+
+        {routes.map((route) => {
+          const wire = session?.wires.find((w) => w.id === route.wireId);
+          if (wire === undefined) return null;
+          return (
+            <Wire
+              key={route.wireId}
+              route={route}
+              color={wire.color}
+              locked={wire.locked}
+              selected={selectedWire === route.wireId}
+              pickable={mode === 'delete'}
+              onPick={(wireId: string) => {
+                onPick({ kind: 'wire', id: wireId, locked: wire.locked });
+              }}
+            />
+          );
+        })}
       </group>
 
       {/*
-        操作は左ドラッグ回転・右ドラッグ平行移動・ホイールズーム（§12.2）。
+        操作は左ドラッグ回転・右または中ドラッグ平行移動・ホイールズーム（§12.2）。
         `maxPolarAngle` で盤の裏側へ回り込まないようにし、注視点は盤の中心に固定する。
-        `frameloop="demand"` なので、カメラが動いたフレームだけ `onChange` で描画を要求する
-        （慣性を入れると常時再描画になり、§15 の性能方針と噛み合わないため damping は使わない）。
+        中ドラッグは `MOUSE.PAN`（ズームは別イベントのホイールが担うので、ドラッグの
+        割り当てを変えても `enableZoom` によるホイールズームには影響しない）。
+        慣性（ダンピング）あり（§12.2「慣性（ダンピング）あり」）。`frameloop="demand"` と
+        矛盾しない: drei の `OrbitControls` は内部の three-stdlib コントロールが発火する
+        `change` イベントのたびに自分で `invalidate()` を呼ぶ
+        （`node_modules/@react-three/drei/core/OrbitControls.js`）。減衰が進んでいる間は
+        毎フレームの `update()` が `change` を発火し続けて描画が続き、速度が閾値を下回って
+        `change` が止まれば `invalidate()` の呼び出しも止まって自然に描画が止まる
+        （ドラッグ／ホイール操作そのものも同じ仕組みで既に毎フレーム描画されていたので、
+        常時描画にはならない）。drei が自前で invalidate するため、ここでの
+        `onChange={() => invalidate()}` は不要（冗長）なので付けていない。
       */}
       <OrbitControls
         makeDefault
-        enableDamping={false}
+        enableDamping
+        dampingFactor={0.08}
         minDistance={MIN_CAMERA_DISTANCE_MM}
         maxDistance={MAX_CAMERA_DISTANCE_MM}
         maxPolarAngle={MAX_POLAR_ANGLE}
         mouseButtons={{
           LEFT: MOUSE.ROTATE,
-          MIDDLE: MOUSE.DOLLY,
+          MIDDLE: MOUSE.PAN,
           RIGHT: MOUSE.PAN,
-        }}
-        onChange={() => {
-          invalidate();
         }}
         ref={(instance) => {
           setControls(instance);
@@ -9074,3 +9243,4 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 | 2026-09-14 | React を 19.2.x に固定（R3F 9.7 の peer 範囲） |
 | 2026-09-14 | Task 1D1-b: `pnpm --filter @ojt/desktop dev`（バンドルしない ESM）で renderer が `@ojt/content` から何か1つでも import すると、ESM の評価順で `src/index.ts` が再エクスポートしていた `src/loader.ts` の `node:fs` import まで評価され、`Module "node:fs" has been externalized … Cannot access "node:fs.readdirSync"` で renderer がマウントできなくなる不具合を修正した（`build` は tree-shaking で無症状だったため見つかっていなかった）。`loadProblemsFromDir` / `mergeProblemSets` を `@ojt/content` のルートバレルから外し、`package.json` の `exports["./loader"]` で `./src/loader.ts` を公開する専用の subpath にした。`ProblemLoadError` / `ProblemSet` 型は fs に触れないので新設の `src/problem-set.ts` に移し、ルートバレルと `loader.ts` の両方から再エクスポートする（`apps/desktop/src/shared/ipc.ts` の `import type { ProblemLoadError } from '@ojt/content'` は変更不要）。Step 3 の `sideEffects` によるツリーシェイクの説明は production build（`pnpm --filter @ojt/desktop build` → `Select-String ... 'loadProblemsFromDir','readdirSync'` が無出力）には今も当てはまるが、この修正後は renderer の依存グラフが `@ojt/content/loader` に一切届かなくなるため、dev サーバのログに「`node:fs` has been externalized」という警告自体が出なくなることを確認した。`apps/desktop` 側は今のところ `loadProblemsFromDir` / `mergeProblemSets` を呼ぶコードが無い（利用者フォルダの合流は Plan 1D2 Step 3 が足す。そちらの import 例を `@ojt/content/loader` に更新済み）ため、本プランのファイルには他の変更は無い |
 | 2026-09-14 | Task 1D1-c: 仕様レビュー（Task 6〜8）の指摘を反映。Task 7: 電線選択を削除モード限定に、既設配線メッセージを青に、CommandResult 失敗時に wire を保持 |
+| 2026-09-14 | Task 1D1-d: 仕様レビュー（Task 9〜12）の指摘を反映。Task 9/10/12: ダンピング有効化、視点プリセットの補間、中ドラッグ平行移動、固定機器の端子印字と footprint 準拠の外形 |
