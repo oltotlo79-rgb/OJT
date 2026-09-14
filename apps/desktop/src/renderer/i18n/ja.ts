@@ -339,9 +339,15 @@ export function elapsedSummaryText(
   return `${JA.result.standardMark}（${minutesLabel(standardMin)}）${JA.result.within}`;
 }
 
-/** ウィンドウが隠れていた間に捨てた tick の操作ログ。§5.2 */
-export function droppedTicksLog(ticks: number): string {
-  return `ウィンドウが隠れていた間の ${ticks} tick を省略しました`;
+/**
+ * ウィンドウが隠れていた間に捨てた tick の操作ログ。§5.2
+ *
+ * 同じ通知が連続すると、ストア側（`noteDroppedTicks`）が行を増やさずここへ積算値を渡し直す。
+ * `occurrences` が2以上のときだけ「（n 回）」を添える（初回の1件だけなら今まで通りの文言）。
+ */
+export function droppedTicksLog(ticks: number, occurrences: number = 1): string {
+  const base = `ウィンドウが隠れていた間の ${ticks} tick を省略しました`;
+  return occurrences <= 1 ? base : `${base}（${occurrences} 回）`;
 }
 
 /** 作業ファイルの課題が課題一覧に無い。§12.3 */

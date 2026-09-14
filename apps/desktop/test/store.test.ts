@@ -34,6 +34,7 @@ beforeEach(() => {
     fatalError: undefined,
     webglLost: false,
     reportedDroppedTicks: 0,
+    droppedTicksNotice: undefined,
     restartAttempts: 0,
     restoredHazardCount: 0,
     pendingWorkFile: undefined,
@@ -176,15 +177,32 @@ describe('toast / log', () => {
 });
 
 describe('noteDroppedTicks', () => {
-  it('累計の増分だけを1行ずつ操作ログに出す（§5.2）', () => {
+  it('連続する通知は1行にまとめ、tick数と回数を積算する（§5.2 / 復元プロンプトのレビュー指摘）', () => {
+    useStore.getState().noteDroppedTicks(5);
+    useStore.getState().noteDroppedTicks(9);
+    useStore.getState().noteDroppedTicks(12);
+    expect(useStore.getState().logLines.map((l) => l.text)).toEqual([droppedTicksLog(12, 3)]);
+    expect(useStore.getState().reportedDroppedTicks).toBe(12);
+  });
+
+  it('最初の行のidは書き換えず、まとめた行として更新する（§5.2）', () => {
     useStore.getState().noteDroppedTicks(20);
-    useStore.getState().noteDroppedTicks(20);
+    const firstId = useStore.getState().logLines.at(-1)?.id;
     useStore.getState().noteDroppedTicks(32);
+    expect(useStore.getState().logLines).toHaveLength(1);
+    expect(useStore.getState().logLines[0]?.id).toBe(firstId);
+    expect(useStore.getState().logLines[0]?.text).toBe(droppedTicksLog(32, 2));
+  });
+
+  it('間に別の操作ログが挟まれば、通知はまとめずに別の行になる（§5.2）', () => {
+    useStore.getState().noteDroppedTicks(5);
+    useStore.getState().addLog('別の操作ログ');
+    useStore.getState().noteDroppedTicks(9);
     expect(useStore.getState().logLines.map((l) => l.text)).toEqual([
-      droppedTicksLog(20),
-      droppedTicksLog(12),
+      droppedTicksLog(5),
+      '別の操作ログ',
+      droppedTicksLog(4),
     ]);
-    expect(useStore.getState().reportedDroppedTicks).toBe(32);
   });
 
   it('スナップショットが捨てた tick を報告したら操作ログに出る', () => {

@@ -168,6 +168,11 @@ export interface AppState {
   webglLost: boolean;
   /** 既に操作ログへ出した「捨てた tick」の累計。§5.2 */
   reportedDroppedTicks: number;
+  /**
+   * 直前に出した「tick を省略しました」通知（連続する間はここへ積算し、行を増やさず書き換える）。
+   * 間に別のログが挟まれば（＝操作ログの最後の行がこの `logId` でなくなれば）次の通知は新しい行にする。§5.2
+   */
+  droppedTicksNotice: { logId: number; ticks: number; occurrences: number } | undefined;
 
   setRoute: (route: Route) => void;
   setProblems: (payload: ProblemListPayload) => void;
@@ -276,6 +281,7 @@ export const useStore = create<AppState>((set, get) => ({
   fatalError: undefined,
   webglLost: false,
   reportedDroppedTicks: 0,
+  droppedTicksNotice: undefined,
 
   setRoute: (route) => {
     set({ route });
@@ -308,6 +314,7 @@ export const useStore = create<AppState>((set, get) => ({
       fatalError: undefined,
       webglLost: false,
       reportedDroppedTicks: 0,
+      droppedTicksNotice: undefined,
       // 回路図ヒントの出し方は級だけで決まる（§8.4）。課題JSONの `hints` は Phase 2 の C2 用
       schematicVisible: schematicPolicy(problem.grade).shown,
       startedAtMs: Date.now(),
@@ -389,6 +396,7 @@ export const useStore = create<AppState>((set, get) => ({
       hazards: [],
       chatters: [],
       reportedDroppedTicks: 0,
+      droppedTicksNotice: undefined,
     });
   },
   addLog: (text) => {
@@ -398,8 +406,36 @@ export const useStore = create<AppState>((set, get) => ({
   noteDroppedTicks: (total) => {
     const reported = get().reportedDroppedTicks;
     if (total <= reported) return;
-    get().addLog(droppedTicksLog(total - reported));
-    set({ reportedDroppedTicks: total });
+    const delta = total - reported;
+    const notice = get().droppedTicksNotice;
+    const lastLine = get().logLines.at(-1);
+    // 直前の操作ログが同じ「tick を省略しました」通知なら、行を増やさず積算して書き換える
+    // （間に別のログが挟まれば最後の行のidが一致しなくなるので、そのときは新しい行にする）。§5.2
+    if (notice !== undefined && lastLine !== undefined && lastLine.id === notice.logId) {
+      const merged = {
+        logId: notice.logId,
+        ticks: notice.ticks + delta,
+        occurrences: notice.occurrences + 1,
+      };
+      set({
+        logLines: get().logLines.map((line) =>
+          line.id === merged.logId
+            ? { id: line.id, text: droppedTicksLog(merged.ticks, merged.occurrences) }
+            : line,
+        ),
+        droppedTicksNotice: merged,
+        reportedDroppedTicks: total,
+      });
+      return;
+    }
+    get().addLog(droppedTicksLog(delta));
+    const added = get().logLines.at(-1);
+    /* c8 ignore next -- addLog は必ず1行追加するので、直前に取った行は必ず存在する */
+    const logId = added?.id ?? nextId();
+    set({
+      droppedTicksNotice: { logId, ticks: delta, occurrences: 1 },
+      reportedDroppedTicks: total,
+    });
   },
   toast: (text, tone = 'info') => {
     // 1件ごとに期限を持たせ、新しい5件だけ残す（連続して失敗しても画面が埋まらない）。§8.2
