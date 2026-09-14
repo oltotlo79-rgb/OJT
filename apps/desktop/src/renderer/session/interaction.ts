@@ -14,8 +14,12 @@ export type PickHit =
   | { kind: 'pushbutton'; id: string }
   | { kind: 'empty' };
 
-/** ツールバーのモード。§8.1 */
-export type ToolMode = 'wire' | 'delete';
+/**
+ * ツールバーのモード。§8.1 / §9.2 / §9.3
+ * `tester` はプローブを端子に置くモード（C1/C2）、`report` は3D要素をクリックして
+ * 故障を指摘するモード（C2）。どのモードでも押ボタンは押せる（励磁して測るため）。
+ */
+export type ToolMode = 'wire' | 'delete' | 'tester' | 'report';
 
 /** ピック判断に要る UI 状態だけを抜き出したもの。 */
 export interface InteractionState {
@@ -27,6 +31,12 @@ export interface InteractionState {
   /** 選択中の線色。§8.1 */
   wireColor: WireColor;
 }
+
+/**
+ * 故障の指摘先。§9.2 / Plan 2A の `FaultReport['target']` と同じ形にする。
+ * 未配線は盤に電線が無いので端子で指す（Plan 2A 意図的な差分 #6）。
+ */
+export type ReportTarget = { wireId: string } | { partId: string } | { terminalId: string };
 
 /** ピックの結果として実行する操作。 */
 export type PickAction =
@@ -48,7 +58,13 @@ export type PickAction =
   /** 装着済み部品を選ぶ（取り外しUIを出す）。§8.2 */
   | { type: 'selectMounted'; socketId: SocketId }
   /** 押ボタンを押す。§8.2 */
-  | { type: 'pressButton'; pbId: string };
+  | { type: 'pressButton'; pbId: string }
+  /** テスターのプローブを端子に置く。§9.3 */
+  | { type: 'placeProbe'; probe: 'black' | 'red'; terminal: TerminalId }
+  /** テスターのプローブを外す（`both` は両方）。§9.3 */
+  | { type: 'liftProbe'; probe: 'black' | 'red' | 'both' }
+  /** 故障の指摘先を選んだので種別ポップオーバーを出す。§9.2 */
+  | { type: 'openReport'; target: ReportTarget };
 
 /** 固定配線を触ったときの文言（既設配線は本アプリでは全て青。§6.3・§6.6）。 */
 export const LOCKED_WIRE_MESSAGE = 'チェック用回路の既設配線（青）は変更できません';
@@ -97,6 +113,11 @@ export function shouldIgnoreShortcut(event: {
  *   （配線中でも取り消し扱いにはしない。§8.2「配線モードでは端子クリックを優先」）
  */
 export function pickToAction(state: InteractionState, hit: PickHit): PickAction {
+  if (state.mode === 'tester' || state.mode === 'report') {
+    // テスター／指摘モードの判断は専用の純関数が持つ（`session/tester.ts` / `session/inspect-repair.ts`）
+    return { type: 'none' };
+  }
+
   if (state.mode === 'delete') {
     if (hit.kind === 'wire') {
       return hit.locked

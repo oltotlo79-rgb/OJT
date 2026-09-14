@@ -9,6 +9,7 @@ import {
   pickToAction,
   shouldIgnoreShortcut,
   type InteractionState,
+  type PickHit,
 } from '../src/renderer/session/interaction.js';
 
 const CR1_13 = toTerminalId('CR1.13');
@@ -229,5 +230,24 @@ describe('shouldIgnoreShortcut（入力中はショートカットを止める�
     expect(isTypingTarget(tag('INPUT'))).toBe(true);
     expect(isTypingTarget(tag('CANVAS'))).toBe(false);
     expect(isTypingTarget(undefined)).toBe(false);
+  });
+});
+
+describe('新しいツールモード（Plan 2B Task 2）', () => {
+  it('テスターモードと指摘モードでは pickToAction は判断しない（専用の純関数が持つ）', () => {
+    const hit: PickHit = {
+      kind: 'terminal',
+      id: toTerminalId('S1.13'),
+      wirable: true,
+      label: 'CR1 ⑬ −',
+    };
+    for (const mode of ['tester', 'report'] as const) {
+      expect(
+        pickToAction(
+          { mode, pendingTerminal: undefined, selectedWire: undefined, wireColor: '青' },
+          hit,
+        ),
+      ).toEqual({ type: 'none' });
+    }
   });
 });

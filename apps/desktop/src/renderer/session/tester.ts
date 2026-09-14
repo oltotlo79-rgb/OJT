@@ -1,0 +1,69 @@
+import type { TerminalId } from '@ojt/circuit-sim';
+import type { PickAction, PickHit } from './interaction.js';
+
+/**
+ * テスターのプローブ配置。設計仕様 §9.3 / §12.2。
+ * 3D も React も使わないので Vitest だけで全分岐を検証できる（§14.2）。
+ *
+ * §9.3 は「プローブは黒 → 赤 の順に端子をクリックして配置する」と定める。ここでは
+ * 「次に置く側」（`next`）を状態に持たせ、置くたびに黒→赤→黒…と巡らせることで
+ * その順序を既定にしつつ、パネルのボタンで明示的に選び直せる逃げ道も残す。
+ *
+ * §9.3 の「配置済みプローブはドラッグで付け替える」は、**クリックで外す → クリックで置く**
+ * に置き換えた。3Dビューポートでのドラッグは `OrbitControls` の回転と取り合いになり、
+ * 端子1個（当たり判定4mm）を掴んだまま別の端子へ運ぶ操作は内蔵GPUの画面では現実的でない。
+ */
+
+/** プローブの側。 */
+export type ProbeSide = 'black' | 'red';
+
+/** プローブ配置の判断に要る状態だけを抜き出したもの。 */
+export interface TesterPickState {
+  /** 黒プローブを置いた端子（物理端子ID）。 */
+  black: TerminalId | undefined;
+  /** 赤プローブを置いた端子（物理端子ID）。 */
+  red: TerminalId | undefined;
+  /** 次に置くプローブ。 */
+  next: ProbeSide;
+}
+
+/** 黒 → 赤 → 黒 … と巡る。§9.3 */
+export function nextProbeAfter(probe: ProbeSide): ProbeSide {
+  return probe === 'black' ? 'red' : 'black';
+}
+
+/** その端子にプローブが載っていれば側を返す。 */
+export function probeSideAt(state: TesterPickState, terminal: TerminalId): ProbeSide | undefined {
+  if (state.black === terminal) return 'black';
+  if (state.red === terminal) return 'red';
+  return undefined;
+}
+
+/**
+ * ピック結果をテスターの操作に変換する。§9.3
+ * - 端子: 既にプローブが載っていれば外し、載っていなければ `next` の側を置く
+ * - 押ボタン: 押す（§9.1 は赤PBで励磁しながら測る手順を要求する）
+ * - 空クリック: 置いてあるプローブを両方外す
+ * - 電線・ソケット: 何もしない（テスターは測るだけで盤を変えない）
+ *
+ * **`terminal.wirable` は見ない。** 配線できない本体側の端子（`CHK.9` など既設配線済みの
+ * ピン）こそ §9.1 測定2 が測る対象であり、そこにプローブを当てられなければ点検できない。
+ */
+export function testerPickToAction(state: TesterPickState, hit: PickHit): PickAction {
+  switch (hit.kind) {
+    case 'terminal': {
+      const side = probeSideAt(state, hit.id);
+      if (side !== undefined) return { type: 'liftProbe', probe: side };
+      return { type: 'placeProbe', probe: state.next, terminal: hit.id };
+    }
+    case 'pushbutton':
+      return { type: 'pressButton', pbId: hit.id };
+    case 'empty':
+      return state.black === undefined && state.red === undefined
+        ? { type: 'none' }
+        : { type: 'liftProbe', probe: 'both' };
+    case 'wire':
+    case 'socket':
+      return { type: 'none' };
+  }
+}
