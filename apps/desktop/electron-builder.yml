@@ -1,0 +1,41 @@
+# 配布パッケージ。設計仕様 §15。
+# NSISインストーラ（管理者権限不要）とポータブル版（zip展開のみ）の2形態を作る。
+# コード署名はしない（SmartScreen の回避手順は README とインストーラ説明画面に日本語で書く）。
+appId: jp.ojt.electrical-trainer
+productName: OJT電気保全トレーナー
+copyright: OJT電気保全トレーナー
+
+directories:
+  output: release
+  buildResources: build
+
+# out/ は electron-vite のビルド成果物。asar にまとめる。
+files:
+  - out/**/*
+  - package.json
+
+asar: true
+
+# 課題JSONは asar の外に置き、利用者が差し替えられるようにする（§7.8）。
+extraResources:
+  - from: resources/content
+    to: content
+
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+    - target: zip
+      arch: [x64]
+  artifactName: ${productName}-${version}-${arch}.${ext}
+
+nsis:
+  oneClick: false
+  perMachine: false # 管理者権限を要求しない（§15）
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: OJT電気保全トレーナー
+
+# 完全オフライン。自動更新の設定は持たない（§15）。
+publish: null

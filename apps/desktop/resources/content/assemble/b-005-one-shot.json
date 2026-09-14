@@ -1,0 +1,78 @@
+{
+  "formatVersion": 1,
+  "id": "b-005",
+  "mode": "assemble",
+  "title": "一定時間動作回路（ワンショット）",
+  "grade": 2,
+  "description": "黒押ボタン（PB1）を押すと白ランプ（PL1）が1.5秒だけ点灯し、自動的に消灯する回路を組みなさい。消灯後にもう一度押せば、同じように1.5秒だけ点灯すること。タイマの限時接点で自分のコイルを直接切ってはならない（リレー CR1 を介して復帰時間を確保すること）。",
+  "timeLimit": { "standardMin": 30, "cutoffMin": 50 },
+  "board": {
+    "boardId": "board-jipm-std",
+    "socketRoles": { "S1": "CR1", "S2": "CR2", "S5": "T1", "S6": "T2", "S7": "CHK" }
+  },
+  "inventory": [
+    { "kind": "relay-my4n", "count": 2 },
+    { "kind": "timer-h3y4", "count": 2 }
+  ],
+  "schematic": {
+    "formatVersion": 1,
+    "id": "sch-b-005",
+    "title": "一定時間動作回路（ワンショット）",
+    "orientation": "horizontal",
+    "rungs": [
+      {
+        "id": "r1",
+        "from": { "bus": "P" },
+        "to": { "bus": "N" },
+        "cells": [
+          { "kind": "t-b", "id": "c01", "device": "T1" },
+          { "kind": "pb-a", "id": "c02", "device": "PB1" },
+          { "kind": "coil", "id": "c03", "device": "CR1" }
+        ]
+      },
+      {
+        "id": "r1h",
+        "from": { "rung": "r1", "node": 1 },
+        "to": { "rung": "r1", "node": 2 },
+        "cells": [{ "kind": "cr-a", "id": "c04", "device": "CR1" }]
+      },
+      {
+        "id": "r2",
+        "from": { "bus": "P" },
+        "to": { "bus": "N" },
+        "cells": [
+          { "kind": "cr-a", "id": "c05", "device": "CR1" },
+          { "kind": "coil", "id": "c06", "device": "T1", "presetMs": 1500 }
+        ]
+      },
+      {
+        "id": "r3",
+        "from": { "bus": "P" },
+        "to": { "bus": "N" },
+        "cells": [
+          { "kind": "cr-a", "id": "c07", "device": "CR1" },
+          { "kind": "lamp", "id": "c08", "device": "PL1" }
+        ]
+      }
+    ]
+  },
+  "operations": [
+    { "t": 500, "target": "PB1", "action": "press" },
+    { "t": 800, "target": "PB1", "action": "release" },
+    { "t": 3000, "target": "PB1", "action": "press" },
+    { "t": 3300, "target": "PB1", "action": "release" }
+  ],
+  "durationMs": 6000,
+  "judge": {
+    "tolerance": { "edgeMs": 200, "ratio": 0.1 },
+    "staticChecks": {
+      "wireColorRule": true,
+      "terminalLimit": true,
+      "unusedParts": true,
+      "forbiddenCircuit": true,
+      "coilPolarity": true,
+      "powerSequence": true
+    }
+  },
+  "hints": { "schematicVisible": false }
+}
