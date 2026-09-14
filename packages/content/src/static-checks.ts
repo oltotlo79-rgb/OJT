@@ -9,6 +9,7 @@ import {
   type TerminalId,
   type WireColor,
 } from '@ojt/circuit-sim';
+import { findForbiddenPatterns } from './forbidden.js';
 import { STATIC_CHECK_IDS, type StaticCheckId, type StaticChecksData } from './schema/judge.js';
 
 /**
@@ -32,8 +33,14 @@ export interface StaticCheckInput {
   log: SignalLog;
   hazards: readonly HazardEvent[];
   chatters: readonly ChatterEvent[];
-  /** 新規配線に使ってよい線色。モードBは青のみ。§8.1 */
+  /** 新規配線に使ってよい線色。モードB・Dは青のみ、モードC2は白のみ。§8.1 */
   allowedColors: readonly WireColor[];
+  /**
+   * 課題の開始時点で既に盤にあった電線のID。線色の検査から外す。§9.2
+   * モードC2は「初期配線は青のまま・修復だけ白」なので、残っている青線を違反にしない。
+   * モードBでは渡さない（訓練者が引いた電線しか無いため）。
+   */
+  preexistingWireIds?: ReadonlySet<string>;
 }
 
 function result(id: StaticCheckId, details: string[], okMessage: string, ngMessage: string) {
@@ -51,6 +58,7 @@ export function checkWireColorRule(input: StaticCheckInput): StaticCheckResult {
   const details: string[] = [];
   for (const wire of input.session.wires) {
     if (wire.locked) continue;
+    if (input.preexistingWireIds?.has(wire.id) === true) continue;
     if (!input.allowedColors.includes(wire.color)) {
       details.push(
         `${wire.id}: この課題で使えるのは ${input.allowedColors.join('・')} です（${wire.color}）`,
@@ -128,12 +136,15 @@ function visibleChatterSignal(signal: string): string {
 }
 
 /**
- * 禁則回路。判定区間でチャタリングを検出したら不合格にする。§7.4 / §5.3.2 / 調査資料 §5.5
- * タイマ自身の限時接点で自コイルを切る構成・タイマ2個だけのフリッカは、通電断が
- * 100ms未満しか続かず経過時間が保持されるため tick 周期で反転し、ここで捕まる。
+ * 禁則回路。§7.4 / §5.3.2 / 調査資料 §5.5
+ * 判定は2本立てである。
+ * ①判定区間でチャタリングを検出したか（Phase 1 から。復帰時間モデルにより禁則回路は
+ *   必ず tick 周期で反転するので取りこぼさない）
+ * ②ネットリストの構造がタイマ自己遮断／タイマ2個フリッカのパターンに一致するか（Phase 2 で追加）
  *
  * 1つの震えは（接点要素ごと・1秒窓ごとに）何十件ものイベントになるため、そのまま並べると
  * 結果画面が同じ内容で埋まる。信号ごとに最初の1件だけを出す（§8.3）。
+ * 構造照合の行は「構造:」で始め、チャタリングの行（信号名で始まる）と混ざらないようにする。
  */
 export function checkForbiddenCircuit(input: StaticCheckInput): StaticCheckResult {
   const seen = new Set<string>();
@@ -143,6 +154,9 @@ export function checkForbiddenCircuit(input: StaticCheckInput): StaticCheckResul
     if (seen.has(signal)) continue;
     seen.add(signal);
     details.push(`${signal}: ${e.tMs}ms 付近で1秒間に${e.count}回反転しました`);
+  }
+  for (const pattern of findForbiddenPatterns(input.netlist)) {
+    details.push(`構造: ${pattern.message}`);
   }
   return result(
     'forbiddenCircuit',

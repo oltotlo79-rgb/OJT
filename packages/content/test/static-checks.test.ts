@@ -1,5 +1,11 @@
 import { JIPM_BOARD, plug, toNetlist, type BoardSession } from '@ojt/board-model';
-import { createWire, SignalLog, terminalId, type HazardEvent } from '@ojt/circuit-sim';
+import {
+  createWire,
+  SignalLog,
+  terminalId,
+  type HazardEvent,
+  type WireColor,
+} from '@ojt/circuit-sim';
 import { describe, expect, it } from 'vitest';
 import { buildReferenceSession, ASSEMBLE_WIRE_COLOR } from '../src/reference.js';
 import { runOperations } from '../src/runner.js';
@@ -19,6 +25,13 @@ import {
   parseOrThrow,
   selfHoldProblemJson,
 } from './helpers/problems.js';
+
+/**
+ * モードC2の修復に使う線色（白）。§8.1
+ * 本来は `src/inspect-repair.ts` の `REPAIR_WIRE_COLOR` を使うが、そのモジュールは
+ * Task 10 で作られる。ここでは同じ値を置いて `preexistingWireIds` の検査だけを先に固める。
+ */
+const REPAIR_WIRE_COLOR: WireColor = '白';
 
 function inputFor(json: Record<string, unknown>): StaticCheckInput & { session: BoardSession } {
   const problem = parseOrThrow(json);
@@ -85,6 +98,27 @@ describe('checkWireColorRule', () => {
     locked.color = '黄';
     expect(checkWireColorRule(input).ok).toBe(true);
   });
+
+  it('exempts the wires that were already on the board (§9.2 の修復)', () => {
+    const input = inputFor(selfHoldProblemJson());
+    const blue = input.session.wires.find((w) => !w.locked);
+    if (blue === undefined) throw new Error('no editable wire');
+    const repaired: StaticCheckInput = {
+      ...input,
+      allowedColors: [REPAIR_WIRE_COLOR],
+      preexistingWireIds: new Set(input.session.wires.map((w) => w.id)),
+    };
+    expect(checkWireColorRule(repaired).ok).toBe(true);
+    const withNewBlue: StaticCheckInput = {
+      ...repaired,
+      preexistingWireIds: new Set(
+        input.session.wires.filter((w) => w.id !== blue.id).map((w) => w.id),
+      ),
+    };
+    const result = checkWireColorRule(withNewBlue);
+    expect(result.ok).toBe(false);
+    expect(result.details[0]).toContain(blue.id);
+  });
 });
 
 describe('checkTerminalLimit', () => {
@@ -131,14 +165,15 @@ describe('checkForbiddenCircuit', () => {
     expect(result.message).toContain('リレーを介して');
   });
 
-  it('reports one line per user-visible signal instead of one per contact element', () => {
+  it('reports one line per user-visible signal plus the structural finding', () => {
     const input = inputFor(forbiddenOneShotProblemJson());
     expect(input.chatters.length).toBeGreaterThan(10);
     const details = checkForbiddenCircuit(input).details;
     const signals = details.map((d) => d.slice(0, d.indexOf(':')));
-    expect(signals).toEqual(['T1', 'PL1', 'T1.coil']);
+    expect(signals).toEqual(['T1', 'PL1', 'T1.coil', '構造']);
     expect(new Set(signals).size).toBe(signals.length);
     expect(details[0]).toContain('回反転しました');
+    expect(details[3]).toContain('自分のコイルを切っています');
   });
 
   it('folds a contact element back onto the part the trainee can see', () => {
@@ -152,6 +187,14 @@ describe('checkForbiddenCircuit', () => {
     });
     expect(result.ok).toBe(false);
     expect(result.details).toEqual(['CR1: 500ms 付近で1秒間に21回反転しました']);
+  });
+
+  it('reports the structural pattern even without chattering (§7.4 Phase 2)', () => {
+    const input = inputFor(forbiddenOneShotProblemJson());
+    const result = checkForbiddenCircuit({ ...input, chatters: [] });
+    expect(result.ok).toBe(false);
+    expect(result.details).toHaveLength(1);
+    expect(result.details[0]).toContain('構造');
   });
 });
 
