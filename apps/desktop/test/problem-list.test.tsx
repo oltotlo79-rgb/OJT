@@ -90,4 +90,76 @@ describe('ProblemList', () => {
     });
     expect(useStore.getState().toasts[0]?.text).toContain(JA.problemList.loadFailed);
   });
+
+  it('出所タグを列に出す（§7.8）', async () => {
+    setApi({
+      listProblems: () =>
+        Promise.resolve({
+          ...PAYLOAD,
+          problems: [
+            ...PAYLOAD.problems,
+            {
+              id: 'u-001',
+              title: '利用者課題',
+              grade: 2,
+              description: '利用者フォルダ由来',
+              standardMin: 20,
+              cutoffMin: 30,
+              source: 'user',
+            },
+          ],
+        }),
+    });
+    render(<ProblemList />);
+    await screen.findByTestId('problem-table');
+    expect(screen.getByText(JA.problemList.columnSource)).toBeTruthy();
+    expect(screen.getByText(JA.problemList.builtin)).toBeTruthy();
+    expect(screen.getByText(JA.problemList.user)).toBeTruthy();
+  });
+
+  it('利用者課題フォルダが無ければ警告を出す（§13 #9）', async () => {
+    setApi({
+      listProblems: () => Promise.resolve({ ...PAYLOAD, userDirExists: false, userDir: 'C:/none' }),
+    });
+    render(<ProblemList />);
+    const warning = await screen.findByTestId('user-dir-missing');
+    expect(warning.textContent).toContain(JA.problemList.userDirMissing);
+    expect(warning.textContent).toContain('C:/none');
+  });
+
+  it('利用者課題フォルダがあれば警告を出さない', async () => {
+    setApi({ listProblems: () => Promise.resolve(PAYLOAD) });
+    render(<ProblemList />);
+    await screen.findByTestId('problem-table');
+    expect(screen.queryByTestId('user-dir-missing')).toBeNull();
+  });
+
+  it('読込エラーを理由付きで一覧に出す（§13 #1）', async () => {
+    setApi({
+      listProblems: () =>
+        Promise.resolve({
+          ...PAYLOAD,
+          errors: [
+            {
+              file: 'C:/content/broken.json',
+              reason: 'invalid-json',
+              message: 'JSONとして読めませんでした',
+              details: ['行3: 予期しないトークン'],
+            },
+          ],
+        }),
+    });
+    render(<ProblemList />);
+    const box = await screen.findByTestId('problem-errors');
+    expect(box.textContent).toContain('C:/content/broken.json');
+    expect(box.textContent).toContain('JSONとして読めませんでした');
+    expect(box.textContent).toContain('行3: 予期しないトークン');
+  });
+
+  it('読込エラーが無ければエラー枠を出さない', async () => {
+    setApi({ listProblems: () => Promise.resolve(PAYLOAD) });
+    render(<ProblemList />);
+    await screen.findByTestId('problem-table');
+    expect(screen.queryByTestId('problem-errors')).toBeNull();
+  });
 });

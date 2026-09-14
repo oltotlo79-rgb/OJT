@@ -5,9 +5,8 @@ import { useStore } from '../app/store.js';
 import styles from './screens.module.css';
 
 /**
- * 課題一覧。設計仕様 §12.1。
- * main の `content:list` が返した一覧をそのまま並べる。
- * 利用者フォルダの合流は Plan 1D2 で足す（§13 #9）。
+ * 課題一覧。設計仕様 §12.1 / §7.8（利用者フォルダの合流）/ §13 #1（読込エラー） / §13 #9（フォルダ無し）。
+ * main の `content:list` が返した一覧をそのまま並べ、出所タグ・読込エラー・フォルダ無しの警告を出す。
  *
  * preload が無い環境でも落ちない。`ojtApi()` が投げる理由をそのまま画面に出す（§13 #5）。
  */
@@ -90,6 +89,7 @@ export function ProblemList(): JSX.Element {
               <th>
                 {JA.problemList.standard}/{JA.problemList.cutoff}
               </th>
+              <th>{JA.problemList.columnSource}</th>
               <th />
             </tr>
           </thead>
@@ -101,6 +101,11 @@ export function ProblemList(): JSX.Element {
                 <td>{gradeLabel(problem.grade)}</td>
                 <td>
                   {problem.standardMin}/{minutesLabel(problem.cutoffMin)}
+                </td>
+                <td>
+                  <span className={styles.tag}>
+                    {problem.source === 'builtin' ? JA.problemList.builtin : JA.problemList.user}
+                  </span>
                 </td>
                 <td>
                   <button
@@ -117,6 +122,32 @@ export function ProblemList(): JSX.Element {
             ))}
           </tbody>
         </table>
+      )}
+
+      {listError !== undefined || problems === undefined || problems.userDirExists ? null : (
+        <p className={styles.subtitle} data-testid="user-dir-missing">
+          {JA.problemList.userDirMissing}（{problems.userDir}）
+        </p>
+      )}
+
+      {listError !== undefined || problems === undefined || problems.errors.length === 0 ? null : (
+        <div className={styles.errorBox} data-testid="problem-errors">
+          <h2 style={{ fontSize: 14, margin: '0 0 6px' }}>{JA.problemList.errorsTitle}</h2>
+          <ul>
+            {problems.errors.map((error) => (
+              <li key={error.file}>
+                <strong>{error.file}</strong>: {error.message}
+                {error.details.length === 0 ? null : (
+                  <ul>
+                    {error.details.map((detail, index) => (
+                      <li key={index}>{detail}</li>
+                    ))}
+                  </ul>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
     </div>
   );

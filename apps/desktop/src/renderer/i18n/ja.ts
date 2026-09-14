@@ -45,6 +45,8 @@ export const JA = {
     loading: '読み込み中…',
     columnId: 'ID',
     columnTitle: '課題名',
+    /** 出所（内蔵／利用者）の列見出し。§7.8 */
+    columnSource: '出所',
     loadFailed: '課題を読み込めませんでした',
     listFailed: '課題一覧を読み込めませんでした',
   },
