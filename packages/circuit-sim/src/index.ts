@@ -169,3 +169,28 @@ export {
   type MismatchReason,
   type Tolerance,
 } from './compare.js';
+
+export {
+  ANALOG_ACV_RANGES,
+  ANALOG_DCV_RANGES,
+  ANALOG_OHM_INTERNAL_OHMS,
+  ANALOG_OHM_RANGES,
+  applyTesterAction,
+  createTesterState,
+  DEFAULT_ANALOG_OHM_RANGE,
+  DEFAULT_ANALOG_VOLT_RANGE,
+  NEEDLE_FULL_SCALE_DEG,
+  NEEDLE_TIME_CONSTANT_MS,
+  readTester,
+  TESTER_NO_PROBE_DISPLAY,
+  TESTER_OFF_DISPLAY,
+  TESTER_TICK_MS,
+  voltRangesFor,
+  ZERO_ADJUST_ERROR_RATIO,
+  type AnalogOhmRange,
+  type TesterAction,
+  type TesterKind,
+  type TesterMode,
+  type TesterReading,
+  type TesterState,
+} from './tester.js';
