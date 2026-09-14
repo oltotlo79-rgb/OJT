@@ -107,13 +107,37 @@ function findDeadReferenceIssue(
 }
 
 /**
+ * `judge.compareSignals` に、模範回路のログに存在しない信号が指定されているときの課題エラー。§13 #2
+ * 綴り違い（`PL9`）や盤に無い部品（`BZ` を `extraParts` に足し忘れた）を指定すると、エンジンは
+ * その信号を1度も記録しないので `compareLogs()` が `unknown-signal` の不一致を返し、
+ * **訓練者が不合格になってしまう**。訓練者の回路とは関係の無い課題データの誤りなので、
+ * 判定を進める前に課題一覧のエラー（§13 #2）として返す。
+ */
+function findUnknownCompareSignalIssues(
+  compareSignals: readonly string[],
+  log: SignalLog,
+): ProblemIssue[] {
+  const recorded = new Set(log.signals());
+  const out: ProblemIssue[] = [];
+  compareSignals.forEach((signal, index) => {
+    if (recorded.has(signal)) return;
+    out.push({
+      path: `judge.compareSignals[${index}]`,
+      message: `比較信号 ${signal} は模範回路の記録にありません`,
+    });
+  });
+  return out;
+}
+
+/**
  * モードBの判定を実行する。§8.3
  * 1. 模範回路を組み立てて操作列を再生する
  * 2. 訓練者の盤セッションをネットリストにして同じ操作列を再生する
  * 3. 出力波形を比較し、静的チェックを走らせ、両方の波形をタイムチャートにする
  *
  * 課題エラー（`ok: false`）として返すのは、**模範回路が作れない**か、**作れても実質動かない**
- * （`physicalOverride` の誤りなどでランプ・コイルが1回も変化しない。§13 #2）場合だけである。
+ * （`physicalOverride` の誤りなどでランプ・コイルが1回も変化しない）か、**比較信号の指定が
+ * 模範回路に存在しない**場合だけである（いずれも課題データ側の誤り。§13 #2）。
  * `traineeSession` がこの盤のセッションでないのは呼び出し側の取り違えなので、board-model の
  * `toNetlist()` が `SessionError` を投げる（黙って壊れたネットリストを判定するより早く落とす。§8.2）。
  * UIは課題が要求する盤で作ったセッションを渡すこと。
@@ -133,12 +157,15 @@ export function judgeAssemble(
   const deadReference = findDeadReferenceIssue(problem, expectedRun.log);
   if (deadReference !== undefined) return { ok: false, errors: [deadReference] };
 
+  const compareSignals = resolveCompareSignals(problem.judge, problem.board.extraParts ?? []);
+  const unknownSignals = findUnknownCompareSignalIssues(compareSignals, expectedRun.log);
+  if (unknownSignals.length > 0) return { ok: false, errors: unknownSignals };
+
   const traineeNetlist = toNetlist(traineeSession, board);
   const actualRun = runOperations(traineeNetlist, problem.operations, {
     durationMs: problem.durationMs,
   });
 
-  const compareSignals = resolveCompareSignals(problem.judge, problem.board.extraParts ?? []);
   const mismatches = compareLogs(
     expectedRun.log,
     actualRun.log,

@@ -4,7 +4,7 @@
   "mode": "assemble",
   "title": "一定時間動作回路（ワンショット）",
   "grade": 2,
-  "description": "黒押ボタン（PB1）を押すと白ランプ（PL1）が1.5秒だけ点灯し、自動的に消灯する回路を組みなさい。タイマの限時接点で自分のコイルを直接切ってはならない（リレー CR1 を介して復帰時間を確保すること）。",
+  "description": "黒押ボタン（PB1）を押すと白ランプ（PL1）が1.5秒だけ点灯し、自動的に消灯する回路を組みなさい。消灯後にもう一度押せば、同じように1.5秒だけ点灯すること。タイマの限時接点で自分のコイルを直接切ってはならない（リレー CR1 を介して復帰時間を確保すること）。",
   "timeLimit": { "standardMin": 30, "cutoffMin": 50 },
   "board": {
     "boardId": "board-jipm-std",
@@ -58,9 +58,11 @@
   },
   "operations": [
     { "t": 500, "target": "PB1", "action": "press" },
-    { "t": 800, "target": "PB1", "action": "release" }
+    { "t": 800, "target": "PB1", "action": "release" },
+    { "t": 3000, "target": "PB1", "action": "press" },
+    { "t": 3300, "target": "PB1", "action": "release" }
   ],
-  "durationMs": 5000,
+  "durationMs": 6000,
   "judge": {
     "tolerance": { "edgeMs": 200, "ratio": 0.1 },
     "staticChecks": {

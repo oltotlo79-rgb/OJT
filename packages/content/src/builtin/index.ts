@@ -1,18 +1,22 @@
 import type { AssembleProblem } from '../schema/assemble.js';
 import { parseProblem, type ProblemIssue } from '../schema/index.js';
-import selfHold from './assemble/b-001-self-hold.json';
-import interlock from './assemble/b-002-interlock.json';
-import onDelay from './assemble/b-003-on-delay.json';
-import sequential from './assemble/b-004-sequential.json';
-import oneShot from './assemble/b-005-one-shot.json';
-import flicker from './assemble/b-006-flicker.json';
-import firstPress from './assemble/b-007-first-press.json';
-import stopPriority from './assemble/b-008-stop-priority.json';
+import selfHold from './assemble/b-001-self-hold.json' with { type: 'json' };
+import interlock from './assemble/b-002-interlock.json' with { type: 'json' };
+import onDelay from './assemble/b-003-on-delay.json' with { type: 'json' };
+import sequential from './assemble/b-004-sequential.json' with { type: 'json' };
+import oneShot from './assemble/b-005-one-shot.json' with { type: 'json' };
+import flicker from './assemble/b-006-flicker.json' with { type: 'json' };
+import firstPress from './assemble/b-007-first-press.json' with { type: 'json' };
+import stopPriority from './assemble/b-008-stop-priority.json' with { type: 'json' };
 
 /**
  * 内蔵課題。設計仕様 §7.8 / §7.9（モードB = 8題）。
  * JSONを直接読み、`parseProblem()` を通した結果だけを公開する。
  * 1件でも検証に落ちたら読み込み時に例外を投げるので、壊れた内蔵課題はビルド／テストで必ず落ちる。
+ *
+ * JSONのimportには **import attributes**（`with { type: 'json' }`）を必ず付ける。
+ * Vite / Vitest は属性が無くても読めてしまうが、素の Node ESM（Electronのメインプロセス）は
+ * `ERR_IMPORT_ATTRIBUTE_MISSING` で落ちる。`test/builtin-node-esm.test.ts` が見張っている。
  */
 
 /** 内蔵課題のJSON（`resources/content/assemble/<id>.json` と同じ内容）。 */

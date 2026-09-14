@@ -158,6 +158,33 @@ describe('judgeAssemble', () => {
     expect(judgeReference(broken, JIPM_BOARD).ok).toBe(false);
   });
 
+  it('reports an unknown compare signal as a content error, not a failed trainee (§13 #2)', () => {
+    const json = selfHoldProblemJson();
+    const problem = parseOrThrow({
+      ...json,
+      judge: { ...(json.judge as Record<string, unknown>), compareSignals: ['PL1', 'PL9'] },
+    });
+    const result = judgeAssemble(problem, JIPM_BOARD, sessionFor());
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.errors).toEqual([
+      { path: 'judge.compareSignals[1]', message: '比較信号 PL9 は模範回路の記録にありません' },
+    ]);
+  });
+
+  it('compares the signals the problem asks for when they all exist', () => {
+    const json = selfHoldProblemJson();
+    const problem = parseOrThrow({
+      ...json,
+      judge: { ...(json.judge as Record<string, unknown>), compareSignals: ['PL1'] },
+    });
+    const result = judgeAssemble(problem, JIPM_BOARD, sessionFor());
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.compareSignals).toEqual(['PL1']);
+    expect(result.value.passed).toBe(true);
+  });
+
   it('reports a dead reference circuit instead of a verdict (§13 #2)', () => {
     // コイルの左（CR1.14）はそのまま、右をN母線へ直結し、実機のコイル端子（CR1.13）を宙に浮かせる
     const dead = parseOrThrow({

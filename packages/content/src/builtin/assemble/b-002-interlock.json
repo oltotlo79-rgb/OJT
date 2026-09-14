@@ -79,8 +79,10 @@
     { "t": 3300, "target": "PB3", "action": "release" },
     { "t": 4500, "target": "PB2", "action": "press" },
     { "t": 4800, "target": "PB2", "action": "release" },
-    { "t": 6000, "target": "PB3", "action": "press" },
-    { "t": 6300, "target": "PB3", "action": "release" }
+    { "t": 5500, "target": "PB1", "action": "press" },
+    { "t": 5800, "target": "PB1", "action": "release" },
+    { "t": 6500, "target": "PB3", "action": "press" },
+    { "t": 6800, "target": "PB3", "action": "release" }
   ],
   "durationMs": 8000,
   "judge": {

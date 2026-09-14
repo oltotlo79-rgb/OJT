@@ -107,12 +107,18 @@
     { "t": 2800, "target": "PB3", "action": "release" },
     { "t": 4000, "target": "PB4", "action": "press" },
     { "t": 4300, "target": "PB4", "action": "release" },
-    { "t": 5000, "target": "PB3", "action": "press" },
-    { "t": 5300, "target": "PB3", "action": "release" },
+    { "t": 5000, "target": "PB2", "action": "press" },
+    { "t": 5300, "target": "PB2", "action": "release" },
+    { "t": 5800, "target": "PB1", "action": "press" },
+    { "t": 6100, "target": "PB1", "action": "release" },
     { "t": 7000, "target": "PB4", "action": "press" },
-    { "t": 7300, "target": "PB4", "action": "release" }
+    { "t": 7300, "target": "PB4", "action": "release" },
+    { "t": 8000, "target": "PB3", "action": "press" },
+    { "t": 8300, "target": "PB3", "action": "release" },
+    { "t": 9000, "target": "PB4", "action": "press" },
+    { "t": 9300, "target": "PB4", "action": "release" }
   ],
-  "durationMs": 9000,
+  "durationMs": 11000,
   "judge": {
     "tolerance": { "edgeMs": 200, "ratio": 0.1 },
     "staticChecks": {
