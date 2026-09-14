@@ -30,7 +30,7 @@
 | ファイル | 単一責務 |
 |---|---|
 | `pnpm-workspace.yaml` | `apps/*` をワークスペースに含め、`allowBuilds` で electron / esbuild のビルドスクリプトを許可する |
-| `eslint.config.js` | `out/`（electron-vite の成果物）と `test-results/`（Playwright の出力）を無視し、`.mjs` を型情報ルールの対象外にする |
+| `eslint.config.js` | `out/`（electron-vite の成果物）と `test-results/`（Playwright の出力）を無視し、`.mjs` を型情報ルールの対象外にし、`apps/desktop/**/*.tsx` に React のフック規則を掛ける |
 | `packages/*/package.json` | `"sideEffects": false` を足し、renderer バンドルから `node:fs` を使う `loadProblemsFromDir` を落とせるようにする |
 
 ### `apps/desktop`
@@ -52,11 +52,13 @@
 | `src/preload/index.ts` | `contextBridge` で `window.ojt` を公開する |
 | `src/renderer/index.html` | renderer のエントリHTMLとCSP |
 | `src/renderer/main.tsx` | React のマウント |
-| `src/renderer/env.d.ts` | `window.ojt` の型宣言 |
+| `src/renderer/env.d.ts` | `window.ojt` の型宣言（**任意**。preload が無い環境があるため） |
+| `src/renderer/app/ojt-api.ts` | `window.ojt` を読む唯一の入口（無ければ日本語の理由を投げる） |
 | `src/renderer/app/store-types.ts` | ストアの値型のうち React にも three にも依存しないもの |
 | `src/renderer/app/store.ts` | zustand ストア（画面状態・セッション・スナップショット） |
 | `src/renderer/app/routes.tsx` | ルート → 画面の対応 |
 | `src/renderer/app/App.tsx` | 外枠（例外バナー・トースト） |
+| `src/renderer/app/ErrorBoundary.tsx` | 描画中の例外を受け止める境界（外枠は境界の外に残す。§13 #5） |
 | `src/renderer/app/global.css` / `app.module.css` | 全体のCSS変数と外枠のレイアウト |
 | `src/renderer/i18n/ja.ts` | 日本語文言（§15 の集約） |
 | `src/renderer/session/colors.ts` | 3D表示の色（線色・ランプ・押ボタン・筐体） |
@@ -126,6 +128,7 @@ allowBuilds:
 import js from '@eslint/js';
 import { createTypeScriptImportResolver } from 'eslint-import-resolver-typescript';
 import importX from 'eslint-plugin-import-x';
+import reactHooks from 'eslint-plugin-react-hooks';
 import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
@@ -166,6 +169,18 @@ export default tseslint.config(
     rules: {
       'import-x/no-cycle': ['error', { maxDepth: Infinity }],
       'import-x/no-unresolved': 'error',
+    },
+  },
+  // React のフック規則（`apps/desktop` の renderer だけが React を使う）。
+  // `rules-of-hooks` は破れば必ずバグになるので error、`exhaustive-deps` は
+  // 「意図して依存を外す」場面（Worker の張り直しなど）があるので warn にし、
+  // 外すときは理由付きの `eslint-disable-next-line` を必ず添える。
+  {
+    files: ['apps/desktop/**/*.tsx'],
+    plugins: { 'react-hooks': reactHooks },
+    rules: {
+      'react-hooks/rules-of-hooks': 'error',
+      'react-hooks/exhaustive-deps': 'warn',
     },
   },
   // 素のJS（設定ファイル・ビルドスクリプト）は型情報を使うルールの対象外にする
@@ -389,6 +404,12 @@ Test-Path node_modules/.pnpm/electron@44.3.0/node_modules/electron/path.txt
 
 ```text
 True
+```
+
+React のフック規則（Task 1 の `eslint.config.js` が使う）もルートの devDependencies に入れる。
+
+```powershell
+pnpm add -D -w eslint-plugin-react-hooks
 ```
 
 `False` のときは pnpm が以前の「ビルドを飛ばした」記録を持っている。次を1度だけ実行する。
@@ -884,6 +905,15 @@ function createWindow(): BrowserWindow {
       preload: join(import.meta.dirname, '../preload/index.js'),
       contextIsolation: true,
       nodeIntegration: false,
+      /*
+       * `sandbox: true` にできない理由（1D1-e のレビュー指摘に対する記録）:
+       * electron-vite は preload を **ESM の `.js`** として出力するが、サンドボックス化した
+       * preload は CommonJS でしか読み込めないため、このままだと preload が丸ごと読み込まれず
+       * `window.ojt` が生えない。`.cjs` 出力へ切り替えて `sandbox: true` にする作業は
+       * 影響範囲（ビルド設定・E2E・配布）が本タスクの外なので **Plan 1D2 で扱う**。
+       * それまでの安全網として、renderer は `window.ojt` を直接触らず `app/ojt-api.ts` の
+       * `ojtApi()` を通し、preload が無い場合は日本語の理由付きで例外バナーに出す（§13 #5）。
+       */
       sandbox: false,
     },
   });
@@ -954,10 +984,16 @@ contextBridge.exposeInMainWorld('ojt', api);
 ```ts
 import type { OjtApi } from '../shared/ipc.js';
 
-/** preload が `contextBridge` で公開する API。設計仕様 §4.3。 */
+/**
+ * preload が `contextBridge` で公開する API。設計仕様 §4.3。
+ *
+ * **任意**にしておく。preload が読み込まれなかった環境（設定ミス、素のブラウザで開いたとき）が
+ * 実在するため、「必ずある」ことにすると `tsc` が読み出しを検査してくれない。
+ * 画面側は直接触らず `app/ojt-api.ts` の `ojtApi()` を通す。
+ */
 declare global {
   interface Window {
-    ojt: OjtApi;
+    ojt?: OjtApi;
   }
 }
 
@@ -1035,7 +1071,7 @@ TDD。まず追従ループの判断（`planTicks`）のテストを書き、落
 - [ ] **Step 1: `apps/desktop/src/worker/protocol.ts` を書く**
 
 ```ts
-import type { BoardSession, SocketId, SocketRole } from '@ojt/board-model';
+import type { BoardSession, SocketId } from '@ojt/board-model';
 import type { ChatterEvent, HazardEvent, LampLevel, LogEntry, Wire } from '@ojt/circuit-sim';
 import type { AssembleProblem, JudgeAssembleResult } from '@ojt/content';
 
@@ -1070,8 +1106,12 @@ export type SimCommand =
   | { type: 'plug'; socketId: SocketId; session: BoardSession }
   /** 部品を外した（`Simulation.unmountPart()` で差分適用する）。`partId` は役割ID（`CR1` 等）。 */
   | { type: 'unplug'; partId: string; session: BoardSession }
-  /** タイマの設定時間を変えた（`Simulation.setTimerPreset()` で差分適用する）。 */
-  | { type: 'setPreset'; role: SocketRole; presetMs: number; session: BoardSession }
+  /**
+   * タイマの設定時間を変えた（`Simulation.setTimerPreset()` で差分適用する）。
+   * 宛先は**ネットリスト上の部品ID**（`socketPartId()` の戻り）。役割が割り当てられていない
+   * ソケットの部品は `S3` のような物理IDで登録されるので、役割IDで指すと届かない（§6.4）。
+   */
+  | { type: 'setPreset'; partId: string; presetMs: number; session: BoardSession }
   /** 時刻・ログ・イベント・保護状態を初期化する（課題のやり直し）。 */
   | { type: 'reset' }
   /** 押ボタンを押す。 */
@@ -1137,7 +1177,13 @@ export interface SimSnapshot {
 export type SimMessage =
   | { type: 'snapshot'; snapshot: SimSnapshot }
   | { type: 'judgeResult'; result: JudgeAssembleResult }
-  | { type: 'error'; message: string };
+  /**
+   * エラー。§13 #6
+   * `fatal: false` はコマンド1件が失敗しただけ（ループは回り続けるのでトーストで足りる）。
+   * `fatal: true` は**追従ループが止まった**ことを意味し、renderer は例外バナーを出して
+   * 「セッションをリセット」で Worker を立て直せるようにする。
+   */
+  | { type: 'error'; message: string; fatal: boolean };
 ```
 
 - [ ] **Step 2: `apps/desktop/test/runtime.test.ts` を書く**
@@ -1193,6 +1239,14 @@ describe('formatElapsed', () => {
 
   it('負の値は0として扱う', () => {
     expect(formatElapsed(-5)).toBe('00:00.0');
+  });
+
+  it('秒の繰り上がりで `:60.0` を出さない（先に0.1秒へ丸める）', () => {
+    expect(formatElapsed(59_950)).toBe('01:00.0');
+    expect(formatElapsed(119_960)).toBe('02:00.0');
+    expect(formatElapsed(3_599_999)).toBe('60:00.0');
+    // 丸めの境目の手前は繰り上がらない
+    expect(formatElapsed(59_940)).toBe('00:59.9');
   });
 });
 ```
@@ -1262,11 +1316,16 @@ export function planTicks(
   return { ticks: maxCatchUp, nextBaselineMs: nowMs, dropped: due - maxCatchUp };
 }
 
-/** 経過[ms]を `12:34.5` の形に整える（経過時間表示）。§8.1 */
+/**
+ * 経過[ms]を `12:34.5` の形に整える（経過時間表示）。§8.1
+ *
+ * **先に0.1秒へ丸めてから**分と秒に割る。分・秒を先に出して秒だけ丸めると、
+ * 59.95秒が `00:60.0`（分が繰り上がらないまま秒が60）になる。
+ */
 export function formatElapsed(ms: number): string {
-  const clamped = Math.max(0, ms);
-  const minutes = Math.floor(clamped / 60_000);
-  const seconds = (clamped % 60_000) / 1000;
+  const deciseconds = Math.round(Math.max(0, ms) / 100);
+  const minutes = Math.floor(deciseconds / 600);
+  const seconds = (deciseconds % 600) / 10;
   return `${String(minutes).padStart(2, '0')}:${seconds.toFixed(1).padStart(4, '0')}`;
 }
 ```
@@ -1450,29 +1509,64 @@ function buildSnapshot(sim: Simulation): SimSnapshot {
   };
 }
 
-/** 追従ループの1周期。`performance.now()` 基準で遅れぶんだけ進める（§5.2）。 */
+/** 追従ループを止める（多重に張られないよう、必ずここを通す）。 */
+function stopLoop(): void {
+  if (timer !== undefined) clearTimeout(timer);
+  timer = undefined;
+}
+
+/**
+ * 追従ループを張り直す。基準時刻を現在に引き直すので、止まっていた間の遅れは
+ * 「捨てた tick」として数えない（判定などこちらの都合で止めた時間のため）。
+ */
+function resumeLoop(): void {
+  stopLoop();
+  baselineMs = performance.now();
+  timer = setTimeout(loop, 4);
+}
+
+/**
+ * 追従ループの1周期。`performance.now()` 基準で遅れぶんだけ進める（§5.2）。
+ *
+ * `Simulation.step()` は解けない回路で例外を投げうる（§13 #3）。素通しすると
+ * `setTimeout` の連鎖がそこで切れ、renderer からは「スナップショットが凍ったまま
+ * 理由が分からない」状態になる。ここで受け止めて**ループを畳み、理由を送り、
+ * 最後の状態を1枚送る**（§13 #6。renderer は例外バナーから立て直せる）。
+ */
 function loop(): void {
   timer = undefined;
   const sim = simulation;
   if (sim === undefined) return;
-  const now = performance.now();
-  const plan = planTicks(now, baselineMs, TICK_MS);
-  baselineMs = plan.nextBaselineMs;
-  droppedTicks += plan.dropped;
-  for (let i = 0; i < plan.ticks; i += 1) sim.step(TICK_MS);
-  if (now - lastSnapshotMs >= SNAPSHOT_INTERVAL_MS) {
-    lastSnapshotMs = now;
-    post({ type: 'snapshot', snapshot: buildSnapshot(sim) });
+  try {
+    const now = performance.now();
+    const plan = planTicks(now, baselineMs, TICK_MS);
+    baselineMs = plan.nextBaselineMs;
+    droppedTicks += plan.dropped;
+    for (let i = 0; i < plan.ticks; i += 1) sim.step(TICK_MS);
+    if (now - lastSnapshotMs >= SNAPSHOT_INTERVAL_MS) {
+      lastSnapshotMs = now;
+      post({ type: 'snapshot', snapshot: buildSnapshot(sim) });
+    }
+    timer = setTimeout(loop, 4);
+  } catch (cause) {
+    post({
+      type: 'error',
+      message: cause instanceof Error ? cause.message : String(cause),
+      fatal: true,
+    });
+    stopLoop();
+    try {
+      post({ type: 'snapshot', snapshot: buildSnapshot(sim) });
+    } catch {
+      // 最後の1枚すら作れないなら諦める（エラーは既に送ってある）
+    }
   }
-  timer = setTimeout(loop, 4);
 }
 
 function start(): void {
-  baselineMs = performance.now();
   lastSnapshotMs = 0;
   droppedTicks = 0;
-  if (timer !== undefined) clearTimeout(timer);
-  timer = setTimeout(loop, 4);
+  resumeLoop();
 }
 
 function handle(command: SimCommand): void {
@@ -1484,10 +1578,16 @@ function handle(command: SimCommand): void {
   const sim = simulation;
   if (sim === undefined) throw new Error('課題が読み込まれていません');
   switch (command.type) {
-    case 'addWire':
-      sim.addWire(command.wire);
-      if (session !== undefined) session.wires.push(command.wire);
+    case 'addWire': {
+      /*
+       * 上限（1端子2本）を超える電線は `Simulation` が**入れずに**危険操作
+       * `over-wires-per-terminal` を発行して false を返す（§5.6 #5）。
+       * renderer は断られた電線もここへ送ってくるので、戻り値を見て控えを合わせる。
+       */
+      const added = sim.addWire(command.wire);
+      if (added && session !== undefined) session.wires.push(command.wire);
       break;
+    }
     case 'removeWire':
       sim.removeWire(command.wireId);
       if (session !== undefined) {
@@ -1506,7 +1606,7 @@ function handle(command: SimCommand): void {
       session = command.session;
       break;
     case 'setPreset':
-      sim.setTimerPreset(command.role, command.presetMs);
+      sim.setTimerPreset(command.partId, command.presetMs);
       session = command.session;
       break;
     case 'press':
@@ -1537,11 +1637,22 @@ function handle(command: SimCommand): void {
       sim.setSwitch(true);
       break;
     case 'judge': {
-      const result = judgeAssemble(command.problem, JIPM_BOARD, command.session, {
-        elapsedMs: command.elapsedMs,
-        sessionHazards: sim.events.hazards(),
-      });
-      post({ type: 'judgeResult', result });
+      /*
+       * 判定は模範回路と訓練者回路を丸ごと並走させるので 240〜440ms かかる（§8.3）。
+       * その間ループを回したままにすると `MAX_CATCHUP_TICKS`（200ms相当）の窓を超え、
+       * 訓練者が何もしていないのに「捨てた tick」が計上されてしまう。
+       * 判定中は止め、終わったら基準時刻を引き直して再開する（UI は結果画面へ移る）。
+       */
+      stopLoop();
+      try {
+        const result = judgeAssemble(command.problem, JIPM_BOARD, command.session, {
+          elapsedMs: command.elapsedMs,
+          sessionHazards: sim.events.hazards(),
+        });
+        post({ type: 'judgeResult', result });
+      } finally {
+        resumeLoop();
+      }
       break;
     }
   }
@@ -1551,9 +1662,269 @@ self.onmessage = (event: MessageEvent<SimCommand>): void => {
   try {
     handle(event.data);
   } catch (cause) {
-    post({ type: 'error', message: cause instanceof Error ? cause.message : String(cause) });
+    // コマンド1件が失敗しただけ。ループは回り続けるのでトーストで足りる（§13 #6）
+    post({
+      type: 'error',
+      message: cause instanceof Error ? cause.message : String(cause),
+      fatal: false,
+    });
   }
 };
+```
+
+- [ ] **Step 1b: `apps/desktop/test/sim-worker.test.ts` を書く**
+
+Worker を本当に起こさずに中身を試す。`sim.worker.ts` は `self.onmessage` を張るだけの
+モジュールなので、**偽の `self`** を `globalThis` に置いてから読み込めば素のモジュールとして
+動かせる。`performance.now()` と `setTimeout` も差し替え、追従ループの1周期ずつを手で進める。
+判定に掛かる実時間（240〜440ms。§8.3）は `vi.mock` で `judgeAssemble` を包んで模す。
+
+```ts
+import { JIPM_BOARD } from '@ojt/board-model';
+import type { BoardSession } from '@ojt/board-model';
+import { createWire } from '@ojt/circuit-sim';
+import type * as CircuitSim from '@ojt/circuit-sim';
+import { BUILTIN_PROBLEMS, buildReferenceSession } from '@ojt/content';
+import type * as Content from '@ojt/content';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { SimCommand, SimMessage, SimSnapshot } from '../src/worker/protocol.js';
+
+/**
+ * Simulation Worker 本体のテスト（§4.3 / §5.2 / §13 #6）。
+ *
+ * `sim.worker.ts` は `self.onmessage` を張るだけのモジュールなので、**偽の `self`** を
+ * `globalThis` に置いてから読み込めば、Worker を起こさずに素のモジュールとして動かせる。
+ * `performance.now()` と `setTimeout` は偽物に差し替え、追従ループの1周期ずつを手で進める。
+ *
+ * `judgeAssemble` は差し替えて「判定に掛かった実時間」を模す（判定は 240〜440ms かかる。§8.3）。
+ * ここを模さないと「判定中にループを止める」修正の効き目が測れない。
+ */
+
+/** 偽の時計と、判定1回が食う実時間[ms]。`vi.mock` の工場から触るので hoisted に置く。 */
+const clock = vi.hoisted(() => ({ nowMs: 0, judgeCostMs: 0 }));
+
+vi.mock('@ojt/content', async (importOriginal) => {
+  const actual = await importOriginal<typeof Content>();
+  return {
+    ...actual,
+    judgeAssemble: ((...args: Parameters<typeof actual.judgeAssemble>) => {
+      clock.nowMs += clock.judgeCostMs;
+      return actual.judgeAssemble(...args);
+    }) as typeof actual.judgeAssemble,
+  };
+});
+
+const B001 = BUILTIN_PROBLEMS.find((p) => p.id === 'b-001');
+
+/** b-001 の模範回路のセッション（配線も部品も揃った状態）。 */
+function referenceSession(): BoardSession {
+  if (B001 === undefined) throw new Error('b-001 が見つかりません');
+  const built = buildReferenceSession(B001, JIPM_BOARD);
+  if (!built.ok) throw new Error('模範回路を作れませんでした');
+  return built.value.session;
+}
+
+/** 偽 `self` で動かした Worker を操作する道具一式。 */
+interface Harness {
+  posted: SimMessage[];
+  snapshots: SimSnapshot[];
+  errors: Array<Extract<SimMessage, { type: 'error' }>>;
+  send: (command: SimCommand) => void;
+  /** 実時間とタイマを `stepMs` 刻みで進める。 */
+  advance: (ms: number, stepMs?: number) => void;
+  /** worker と同じ実体の `circuit-sim`（`step` を壊す検査で使う）。 */
+  sim: typeof CircuitSim;
+}
+
+async function boot(): Promise<Harness> {
+  const posted: SimMessage[] = [];
+  const fakeSelf = {
+    postMessage: (message: SimMessage) => {
+      posted.push(message);
+    },
+    onmessage: undefined as unknown as (event: { data: SimCommand }) => void,
+  };
+  Object.defineProperty(globalThis, 'self', {
+    value: fakeSelf,
+    configurable: true,
+    writable: true,
+  });
+  clock.nowMs = 0;
+  clock.judgeCostMs = 0;
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+  vi.spyOn(performance, 'now').mockImplementation(() => clock.nowMs);
+  vi.resetModules();
+  // `resetModules()` 後に読み直すことで、worker と同じ `Simulation` クラスを掴む
+  const sim = await import('@ojt/circuit-sim');
+  await import('../src/worker/sim.worker.js');
+  return {
+    posted,
+    get snapshots() {
+      return posted.filter((m) => m.type === 'snapshot').map((m) => m.snapshot);
+    },
+    get errors() {
+      return posted.filter((m) => m.type === 'error');
+    },
+    send: (command) => {
+      fakeSelf.onmessage({ data: command });
+    },
+    advance: (ms, stepMs = 4) => {
+      let left = ms;
+      while (left > 0) {
+        const chunk = Math.min(stepMs, left);
+        clock.nowMs += chunk;
+        vi.advanceTimersByTime(chunk);
+        left -= chunk;
+      }
+    },
+    sim,
+  };
+}
+
+afterEach(() => {
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+});
+
+describe('Simulation Worker の基本動作（§4.3）', () => {
+  it('load → ブレーカ → スイッチ → PB1 押下 で PL1 が点く', async () => {
+    const h = await boot();
+    h.send({ type: 'load', problemId: 'b-001', session: referenceSession() });
+    h.advance(100);
+    h.send({ type: 'breaker', on: true });
+    h.send({ type: 'switch', on: true });
+    h.advance(200);
+    expect(h.snapshots.at(-1)?.powered).toBe(true);
+    expect(h.snapshots.at(-1)?.lamps['PL1']?.level).toBe('off');
+
+    h.send({ type: 'press', pbId: 'PB1' });
+    h.advance(420);
+    // 開始からおよそ 720ms 以内に点灯する（自己保持なので離しても点いたまま）
+    expect(h.snapshots.at(-1)?.lamps['PL1']?.level).toBe('lit');
+    h.send({ type: 'release', pbId: 'PB1' });
+    h.advance(100);
+    expect(h.snapshots.at(-1)?.lamps['PL1']?.level).toBe('lit');
+    expect(h.errors).toEqual([]);
+  });
+
+  it('reset と2回目の load を受けても追従ループは1本のまま', async () => {
+    const h = await boot();
+    h.send({ type: 'load', problemId: 'b-001', session: referenceSession() });
+    h.advance(100);
+    expect(vi.getTimerCount()).toBe(1);
+
+    h.send({ type: 'reset' });
+    h.advance(100);
+    expect(vi.getTimerCount()).toBe(1);
+
+    h.send({ type: 'load', problemId: 'b-001', session: referenceSession() });
+    h.advance(100);
+    expect(vi.getTimerCount()).toBe(1);
+    // 2本走っていれば時計が倍速になる。100ms 進めたぶんしか進んでいないことを見る
+    const tMs = h.snapshots.at(-1)?.tMs ?? 0;
+    expect(tMs).toBeGreaterThan(60);
+    expect(tMs).toBeLessThan(160);
+  });
+
+  it('load 前のコマンドは理由付きで断り（致命ではない）、その後の load は通る', async () => {
+    const h = await boot();
+    h.send({ type: 'press', pbId: 'PB1' });
+    expect(h.errors).toHaveLength(1);
+    expect(h.errors[0]?.message).toContain('課題が読み込まれていません');
+    expect(h.errors[0]?.fatal).toBe(false);
+    expect(h.snapshots).toHaveLength(0);
+
+    h.send({ type: 'load', problemId: 'b-001', session: referenceSession() });
+    h.advance(200);
+    expect(h.snapshots.length).toBeGreaterThan(0);
+    expect(h.errors).toHaveLength(1);
+  });
+
+  it('知らない押ボタンはエラーになるが、スナップショットは流れ続ける', async () => {
+    const h = await boot();
+    h.send({ type: 'load', problemId: 'b-001', session: referenceSession() });
+    h.advance(100);
+    const before = h.snapshots.length;
+
+    h.send({ type: 'press', pbId: 'PB9' });
+    expect(h.errors).toHaveLength(1);
+    expect(h.errors[0]?.fatal).toBe(false);
+
+    h.advance(200);
+    expect(h.snapshots.length).toBeGreaterThan(before);
+  });
+});
+
+describe('追従ループの例外（§13 #6）', () => {
+  it('Simulation.step が投げたら致命エラーを1回だけ出してループを畳む', async () => {
+    const h = await boot();
+    h.send({ type: 'load', problemId: 'b-001', session: referenceSession() });
+    h.advance(100);
+    expect(h.errors).toHaveLength(0);
+
+    vi.spyOn(h.sim.Simulation.prototype, 'step').mockImplementation(() => {
+      throw new h.sim.SimulationError('回路の状態を解けませんでした');
+    });
+    h.advance(300);
+
+    expect(h.errors).toHaveLength(1);
+    expect(h.errors[0]?.fatal).toBe(true);
+    expect(h.errors[0]?.message).toContain('回路の状態を解けませんでした');
+    // ループは止まっている（タイマが残っていない）
+    expect(vi.getTimerCount()).toBe(0);
+    // 最後の状態を1枚だけ送ってある
+    expect(h.posted.at(-1)?.type).toBe('snapshot');
+
+    h.advance(300);
+    expect(h.errors).toHaveLength(1);
+  });
+});
+
+describe('判定中の一時停止（§8.3）', () => {
+  it('判定に 400ms かかっても tick を取りこぼさない', async () => {
+    const h = await boot();
+    if (B001 === undefined) return;
+    h.send({ type: 'load', problemId: 'b-001', session: referenceSession() });
+    h.advance(200);
+    expect(h.snapshots.at(-1)?.droppedTicks).toBe(0);
+
+    clock.judgeCostMs = 400;
+    h.send({ type: 'judge', problem: B001, session: referenceSession(), elapsedMs: 90_000 });
+    h.advance(300);
+
+    expect(h.posted.some((m) => m.type === 'judgeResult')).toBe(true);
+    expect(h.snapshots.at(-1)?.droppedTicks).toBe(0);
+    // 判定後もループは1本だけ回っている
+    expect(vi.getTimerCount()).toBe(1);
+  });
+});
+
+describe('1端子3本目（§5.6 #5 / §17 #25）', () => {
+  it('盤が断った電線を送ると危険操作だけが記録され、回路は変わらない', async () => {
+    const h = await boot();
+    const session = referenceSession();
+    h.send({ type: 'load', problemId: 'b-001', session });
+    h.advance(100);
+
+    // 模範回路で既に使われている端子どうしに、さらに電線を重ねて上限を超えさせる
+    const target = session.wires.find((w) => !w.locked);
+    expect(target).toBeDefined();
+    if (target === undefined) return;
+    for (let i = 0; i < 3; i += 1) {
+      h.send({
+        type: 'addWire',
+        wire: createWire(`w-over-${i}`, target.from, target.to, '青', false),
+      });
+    }
+    h.advance(100);
+
+    const hazards = h.snapshots.flatMap((s) => s.hazardDelta);
+    expect(hazards.some((e) => e.kind === 'over-wires-per-terminal')).toBe(true);
+    // 断られただけなのでループは生きており、致命エラーも出ない
+    expect(h.errors).toEqual([]);
+    expect(vi.getTimerCount()).toBe(1);
+  });
+});
 ```
 
 - [ ] **Step 2: 型チェックが通ることを確かめる**
@@ -1611,11 +1982,18 @@ export type Route = 'home' | 'list' | 'session' | 'result' | 'settings';
 /** 視点プリセット。§12.2 */
 export type CameraPreset = 'front' | 'top' | 'socket';
 
-/** 画面に出す短いお知らせ（配線失敗の理由など）。§8.2 */
+/**
+ * 画面に出す短いお知らせ（配線失敗の理由など）。§8.2
+ *
+ * 期限は**1件ごと**に持つ。先頭の1件だけにタイマを張ると、後から積まれた1件で
+ * そのタイマが張り直され、短時間に何件も出たときに誰も消えなくなる。
+ */
 export interface Toast {
   id: number;
   text: string;
   tone: 'info' | 'error';
+  /** これを過ぎたら消す時刻（`Date.now()` と同じ基準の[ms]）。 */
+  expiresAt: number;
 }
 
 /** 操作ログの1行。§8.1 */
@@ -1639,6 +2017,7 @@ import {
 import {
   defaultChartSignals,
   resolveCompareSignals,
+  toSocketRoles,
   type AssembleProblem,
   type JudgeResult,
   type TimeChartSignalSpec,
@@ -1646,8 +2025,10 @@ import {
 import { create } from 'zustand';
 import type { ProblemListPayload } from '../../shared/ipc.js';
 import type { SimSnapshot } from '../../worker/protocol.js';
+import { droppedTicksLog } from '../i18n/ja.js';
 import {
   emptyHistory,
+  pushCommand,
   type CommandHistory,
   type SessionCommand,
 } from '../session/commands.js';
@@ -1686,6 +2067,15 @@ export const EMPTY_SNAPSHOT: SimSnapshot = {
   droppedTicks: 0,
 };
 
+/** トーストを自動で消すまでの時間[ms]。§8.2 */
+export const TOAST_TTL_MS = 4000;
+
+/** 同時に出すトーストの上限（超えたら古いものから捨てる）。§8.2 */
+export const TOAST_LIMIT = 5;
+
+/** 操作ログに残す行数の上限。§8.1 */
+export const LOG_LIMIT = 200;
+
 /** ストアの形。 */
 export interface AppState {
   route: Route;
@@ -1693,6 +2083,12 @@ export interface AppState {
   problem: AssembleProblem | undefined;
   session: BoardSession | undefined;
   history: CommandHistory;
+  /**
+   * 同じ課題のまま「やり直す」たびに増える世代番号。§13 #5 / §13 #6
+   * セッション画面の Worker 起動は `[problemId, sessionEpoch]` で張り直すので、
+   * 同じ課題を開き直したときにも `load` が送り直される。
+   */
+  sessionEpoch: number;
 
   mode: ToolMode;
   wireColor: WireColor;
@@ -1718,6 +2114,8 @@ export interface AppState {
   fatalError: string | undefined;
   /** WebGL コンテキストが失われ再初期化中か。§13 #4 */
   webglLost: boolean;
+  /** 既に操作ログへ出した「捨てた tick」の累計。§5.2 */
+  reportedDroppedTicks: number;
 
   setRoute: (route: Route) => void;
   setProblems: (payload: ProblemListPayload) => void;
@@ -1736,13 +2134,27 @@ export interface AppState {
   applySnapshot: (snapshot: SimSnapshot) => void;
   clearLive: () => void;
   addLog: (text: string) => void;
+  /** 追従ループが捨てた tick を1行だけ操作ログに残す（累計の増分ぶん）。§5.2 */
+  noteDroppedTicks: (total: number) => void;
   toast: (text: string, tone?: Toast['tone']) => void;
   dismissToast: (id: number) => void;
+  /** 期限の切れたトーストを落とす（`App` の間引きタイマから呼ぶ）。§8.2 */
+  expireToasts: (nowMs?: number) => void;
   setJudge: (result: JudgeResult | undefined) => void;
   setFatalError: (message: string | undefined) => void;
   setWebglLost: (lost: boolean) => void;
   tickElapsed: () => void;
+  /**
+   * 同じ課題を頭からやり直す（結果画面の「もう一度」）。盤も履歴も作り直す。§8.3
+   * 世代番号を進めるので、同じ課題でもセッション画面が Worker に `load` を送り直す。
+   */
   resetSession: () => void;
+  /**
+   * 例外バナーからの復帰。§13 #5「作業保持の原則」
+   * 盤（`session`）と操作履歴は**残したまま**、ライブ記録・判定結果・エラー表示だけを捨てて
+   * 世代番号を進める。セッション画面はそれを見て Worker を立て直し、いまの盤を `load` し直す。
+   */
+  restartSession: () => void;
 }
 
 let sequence = 0;
@@ -1754,7 +2166,7 @@ function nextId(): number {
 /** 課題から盤セッションを作る。§7.1 / §8.1（モードBの新規配線は青のみ） */
 export function sessionForProblem(problem: AssembleProblem): BoardSession {
   return createSession(JIPM_BOARD, {
-    roles: problem.board.socketRoles,
+    roles: toSocketRoles(problem.board.socketRoles),
     allowedColors: ['青'],
     extraParts: (problem.board.extraParts ?? []).map((name) => partId(name)),
     inventory: problem.inventory,
@@ -1768,6 +2180,7 @@ export const useStore = create<AppState>((set, get) => ({
   problem: undefined,
   session: undefined,
   history: emptyHistory(),
+  sessionEpoch: 0,
 
   mode: 'wire',
   wireColor: '青',
@@ -1790,6 +2203,7 @@ export const useStore = create<AppState>((set, get) => ({
   judge: undefined,
   fatalError: undefined,
   webglLost: false,
+  reportedDroppedTicks: 0,
 
   setRoute: (route) => {
     set({ route });
@@ -1819,6 +2233,8 @@ export const useStore = create<AppState>((set, get) => ({
       logLines: [],
       judge: undefined,
       fatalError: undefined,
+      webglLost: false,
+      reportedDroppedTicks: 0,
       schematicVisible: problem.hints.schematicVisible,
       startedAtMs: Date.now(),
       elapsedMs: 0,
@@ -1828,9 +2244,8 @@ export const useStore = create<AppState>((set, get) => ({
     set({ session });
   },
   pushHistory: (command) => {
-    const history = get().history;
-    const done = [...history.done, command];
-    set({ history: { done: done.slice(Math.max(0, done.length - 50)), undone: [] } });
+    // 上限と「やり直し列を捨てる」規則の持ち主は `commands.ts` の1箇所だけにする（§8.2）
+    set({ history: pushCommand(get().history, command) });
   },
   setHistory: (history) => {
     set({ history });
@@ -1848,7 +2263,10 @@ export const useStore = create<AppState>((set, get) => ({
     set({ hoveredTerminal });
   },
   setSelectedWire: (selectedWire) => {
-    set({ selectedWire: selectedWire === undefined || selectedWire.length === 0 ? undefined : selectedWire });
+    set({
+      selectedWire:
+        selectedWire === undefined || selectedWire.length === 0 ? undefined : selectedWire,
+    });
   },
   setSelectedSocket: (selectedSocket) => {
     set({ selectedSocket });
@@ -1873,23 +2291,50 @@ export const useStore = create<AppState>((set, get) => ({
       snapshot,
       liveTransitions,
       hazards:
-        snapshot.hazardDelta.length === 0 ? state.hazards : [...state.hazards, ...snapshot.hazardDelta],
+        snapshot.hazardDelta.length === 0
+          ? state.hazards
+          : [...state.hazards, ...snapshot.hazardDelta],
       chatters:
-        snapshot.chatterDelta.length === 0 ? state.chatters : [...state.chatters, ...snapshot.chatterDelta],
+        snapshot.chatterDelta.length === 0
+          ? state.chatters
+          : [...state.chatters, ...snapshot.chatterDelta],
     });
+    if (snapshot.droppedTicks > 0) get().noteDroppedTicks(snapshot.droppedTicks);
   },
   clearLive: () => {
-    set({ snapshot: EMPTY_SNAPSHOT, liveTransitions: {}, hazards: [], chatters: [] });
+    set({
+      snapshot: EMPTY_SNAPSHOT,
+      liveTransitions: {},
+      hazards: [],
+      chatters: [],
+      reportedDroppedTicks: 0,
+    });
   },
   addLog: (text) => {
     const lines = [...get().logLines, { id: nextId(), text }];
-    set({ logLines: lines.slice(Math.max(0, lines.length - 200)) });
+    set({ logLines: lines.slice(Math.max(0, lines.length - LOG_LIMIT)) });
+  },
+  noteDroppedTicks: (total) => {
+    const reported = get().reportedDroppedTicks;
+    if (total <= reported) return;
+    get().addLog(droppedTicksLog(total - reported));
+    set({ reportedDroppedTicks: total });
   },
   toast: (text, tone = 'info') => {
-    set({ toasts: [...get().toasts, { id: nextId(), text, tone }] });
+    // 1件ごとに期限を持たせ、新しい5件だけ残す（連続して失敗しても画面が埋まらない）。§8.2
+    const next = [
+      ...get().toasts,
+      { id: nextId(), text, tone, expiresAt: Date.now() + TOAST_TTL_MS },
+    ];
+    set({ toasts: next.slice(Math.max(0, next.length - TOAST_LIMIT)) });
   },
   dismissToast: (id) => {
     set({ toasts: get().toasts.filter((t) => t.id !== id) });
+  },
+  expireToasts: (nowMs = Date.now()) => {
+    const toasts = get().toasts;
+    const left = toasts.filter((t) => t.expiresAt > nowMs);
+    if (left.length !== toasts.length) set({ toasts: left });
   },
   setJudge: (judge) => {
     set({ judge });
@@ -1909,6 +2354,20 @@ export const useStore = create<AppState>((set, get) => ({
     const problem = get().problem;
     if (problem === undefined) return;
     get().openProblem(problem);
+    // 同じ課題なら `problemId` は変わらないので、世代番号で Worker の張り直しを促す
+    set({ sessionEpoch: get().sessionEpoch + 1 });
+  },
+  restartSession: () => {
+    get().clearLive();
+    set({
+      sessionEpoch: get().sessionEpoch + 1,
+      fatalError: undefined,
+      webglLost: false,
+      judge: undefined,
+      pendingTerminal: undefined,
+      hoveredTerminal: undefined,
+      selectedWire: undefined,
+    });
   },
 }));
 ```
@@ -1928,7 +2387,11 @@ import type { SimCommand, SimMessage, SimSnapshot } from '../../worker/protocol.
 export interface BridgeHandlers {
   onSnapshot: (snapshot: SimSnapshot) => void;
   onJudge: (message: Extract<SimMessage, { type: 'judgeResult' }>) => void;
-  onError: (message: string) => void;
+  /**
+   * エラー。`fatal` が真なら追従ループが止まっている（Worker の異常終了も含む）。
+   * 呼び出し側は例外バナーを出して立て直せるようにする。§13 #6
+   */
+  onError: (message: string, fatal: boolean) => void;
 }
 
 /** Worker を1本持ち、コマンド送信とメッセージ配送を行う。 */
@@ -1948,10 +2411,11 @@ export class WorkerBridge {
       const message = event.data;
       if (message.type === 'snapshot') handlers.onSnapshot(message.snapshot);
       else if (message.type === 'judgeResult') handlers.onJudge(message);
-      else handlers.onError(message.message);
+      else handlers.onError(message.message, message.fatal);
     };
     worker.onerror = (event: ErrorEvent) => {
-      handlers.onError(event.message);
+      // Worker そのものが落ちた。ループは確実に止まっているので致命扱い（§13 #6）
+      handlers.onError(event.message, true);
     };
     this.worker = worker;
   }
@@ -1981,9 +2445,19 @@ export const bridge = new WorkerBridge();
 - [ ] **Step 4: `apps/desktop/test/store.test.ts` を書く**
 
 ```ts
+import { createSession, JIPM_BOARD, TASK2_SOCKET_ROLES } from '@ojt/board-model';
+import { toTerminalId } from '@ojt/circuit-sim';
 import { BUILTIN_PROBLEMS } from '@ojt/content';
-import { beforeEach, describe, expect, it } from 'vitest';
-import { EMPTY_SNAPSHOT, sessionForProblem, useStore } from '../src/renderer/app/store.js';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { emptyHistory, HISTORY_LIMIT } from '../src/renderer/session/commands.js';
+import { droppedTicksLog } from '../src/renderer/i18n/ja.js';
+import {
+  EMPTY_SNAPSHOT,
+  sessionForProblem,
+  TOAST_LIMIT,
+  TOAST_TTL_MS,
+  useStore,
+} from '../src/renderer/app/store.js';
 
 const PROBLEM = BUILTIN_PROBLEMS.find((p) => p.id === 'b-003');
 
@@ -1992,6 +2466,8 @@ beforeEach(() => {
     route: 'home',
     problem: undefined,
     session: undefined,
+    history: emptyHistory(),
+    sessionEpoch: 0,
     chartSpecs: [],
     liveTransitions: {},
     hazards: [],
@@ -1999,7 +2475,15 @@ beforeEach(() => {
     logLines: [],
     toasts: [],
     snapshot: EMPTY_SNAPSHOT,
+    judge: undefined,
+    fatalError: undefined,
+    webglLost: false,
+    reportedDroppedTicks: 0,
   });
+});
+
+afterEach(() => {
+  vi.useRealTimers();
 });
 
 describe('sessionForProblem', () => {
@@ -2094,6 +2578,146 @@ describe('toast / log', () => {
     expect(lines).toHaveLength(200);
     expect(lines[0]?.text).toBe('行 10');
   });
+
+  it('3秒おきに6件出しても、どれも期限どおりに消える（§8.2）', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    for (let i = 0; i < 6; i += 1) {
+      useStore.getState().toast(`失敗 ${i}`, 'error');
+      vi.advanceTimersByTime(3000);
+    }
+    // 1件目の期限（4秒）はとうに過ぎている。掃除すれば直近のものだけが残る
+    useStore.getState().expireToasts();
+    expect(useStore.getState().toasts.map((t) => t.text)).toEqual(['失敗 5']);
+
+    vi.setSystemTime(22_000);
+    useStore.getState().expireToasts();
+    expect(useStore.getState().toasts).toHaveLength(0);
+  });
+
+  it('一度に10件出しても新しい5件だけ残る（§8.2）', () => {
+    for (let i = 0; i < 10; i += 1) useStore.getState().toast(`失敗 ${i}`, 'error');
+    const toasts = useStore.getState().toasts;
+    expect(toasts).toHaveLength(TOAST_LIMIT);
+    expect(toasts[0]?.text).toBe('失敗 5');
+    expect(toasts.at(-1)?.text).toBe('失敗 9');
+  });
+
+  it('期限は1件ごとに持つ（後から積んでも前の期限は延びない）', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1000);
+    useStore.getState().toast('先の1件');
+    vi.setSystemTime(3000);
+    useStore.getState().toast('後の1件');
+    const [first, second] = useStore.getState().toasts;
+    expect(first?.expiresAt).toBe(1000 + TOAST_TTL_MS);
+    expect(second?.expiresAt).toBe(3000 + TOAST_TTL_MS);
+  });
+});
+
+describe('noteDroppedTicks', () => {
+  it('累計の増分だけを1行ずつ操作ログに出す（§5.2）', () => {
+    useStore.getState().noteDroppedTicks(20);
+    useStore.getState().noteDroppedTicks(20);
+    useStore.getState().noteDroppedTicks(32);
+    expect(useStore.getState().logLines.map((l) => l.text)).toEqual([
+      droppedTicksLog(20),
+      droppedTicksLog(12),
+    ]);
+    expect(useStore.getState().reportedDroppedTicks).toBe(32);
+  });
+
+  it('スナップショットが捨てた tick を報告したら操作ログに出る', () => {
+    useStore.getState().applySnapshot({ ...EMPTY_SNAPSHOT, droppedTicks: 7 });
+    expect(useStore.getState().logLines.at(-1)?.text).toBe(droppedTicksLog(7));
+    // 同じ累計が続く間は増えない
+    useStore.getState().applySnapshot({ ...EMPTY_SNAPSHOT, droppedTicks: 7 });
+    expect(useStore.getState().logLines).toHaveLength(1);
+  });
+});
+
+describe('pushHistory', () => {
+  it('上限と「やり直し列を捨てる」規則は commands.ts と同じものを使う（§8.2）', () => {
+    const before = createSession(JIPM_BOARD, {
+      roles: TASK2_SOCKET_ROLES,
+      allowedColors: ['青'],
+    });
+    useStore.setState({ history: { done: [], undone: [] } });
+    for (let i = 0; i < HISTORY_LIMIT + 5; i += 1) {
+      useStore.getState().pushHistory({
+        kind: 'addWire',
+        label: `配線 ${i}`,
+        before,
+        after: before,
+      });
+    }
+    const history = useStore.getState().history;
+    expect(history.done).toHaveLength(HISTORY_LIMIT);
+    expect(history.done[0]?.label).toBe('配線 5');
+    expect(history.undone).toEqual([]);
+  });
+});
+
+describe('restartSession / resetSession（§13 #5）', () => {
+  it('restartSession は盤と履歴を残し、ライブ記録とエラーだけ捨てて世代を進める', () => {
+    if (PROBLEM === undefined) return;
+    useStore.getState().openProblem(PROBLEM);
+    const session = useStore.getState().session;
+    if (session === undefined) throw new Error('セッションが作られていません');
+    useStore
+      .getState()
+      .pushHistory({ kind: 'addWire', label: '配線 A', before: session, after: session });
+    useStore.getState().applySnapshot({
+      ...EMPTY_SNAPSHOT,
+      tMs: 500,
+      logDelta: [{ tMs: 100, signal: 'PL1', value: true }],
+    });
+    useStore.setState({ fatalError: '描画で落ちました', webglLost: true, judge: undefined });
+    const epoch = useStore.getState().sessionEpoch;
+
+    useStore.getState().restartSession();
+
+    const state = useStore.getState();
+    expect(state.sessionEpoch).toBe(epoch + 1);
+    // 作業は失わない（§13「作業保持の原則」）
+    expect(state.session).toBe(session);
+    expect(state.history.done).toHaveLength(1);
+    // ライブ記録とエラー表示は捨てる
+    expect(state.snapshot.tMs).toBe(0);
+    expect(state.liveTransitions).toEqual({});
+    expect(state.fatalError).toBeUndefined();
+    expect(state.webglLost).toBe(false);
+  });
+
+  it('resetSession は盤を作り直し、同じ課題でも世代を進める（Worker を張り直させる）', () => {
+    if (PROBLEM === undefined) return;
+    useStore.getState().openProblem(PROBLEM);
+    const first = useStore.getState().session;
+    const epoch = useStore.getState().sessionEpoch;
+
+    useStore.getState().resetSession();
+
+    const state = useStore.getState();
+    expect(state.sessionEpoch).toBe(epoch + 1);
+    expect(state.session).not.toBe(first);
+    expect(state.history.done).toHaveLength(0);
+    expect(state.route).toBe('session');
+  });
+});
+
+describe('setMode', () => {
+  it('モードを切り替えると配線待ちの端子と選択中の電線を両方とも捨てる（§12.2）', () => {
+    useStore.setState({
+      mode: 'wire',
+      pendingTerminal: toTerminalId('CR1.13'),
+      selectedWire: 'w-001',
+    });
+    useStore.getState().setMode('delete');
+    const state = useStore.getState();
+    expect(state.mode).toBe('delete');
+    expect(state.pendingTerminal).toBeUndefined();
+    expect(state.selectedWire).toBeUndefined();
+  });
 });
 ```
 
@@ -2183,6 +2807,11 @@ export const JA = {
     errorsTitle: '読み込めなかった課題',
     userDirMissing: '利用者課題フォルダが見つかりません。内蔵課題のみで動作します。',
     empty: '課題がありません。',
+    loading: '読み込み中…',
+    columnId: 'ID',
+    columnTitle: '課題名',
+    loadFailed: '課題を読み込めませんでした',
+    listFailed: '課題一覧を読み込めませんでした',
   },
   session: {
     back: '課題一覧へ戻る',
@@ -2213,7 +2842,8 @@ export const JA = {
     /** 経路器が経路を作れなかった（`RoutingError`）。盤とセッションはそのまま保つ。§6.6 */
     routeFailed: '配線の経路を作れませんでした',
     /** 同じ帯の同じスロットに載せざるを得なかった電線がある（`laneOverflow`）。§6.6 */
-    laneOverflow: '他の電線と同じ配線位置に重なっています（見た目だけの重なりで、回路は正しく組めています）',
+    laneOverflow:
+      '他の電線と同じ配線位置に重なっています（見た目だけの重なりで、回路は正しく組めています）',
     schematicHint: '回路図ヒント',
     save: '作業を保存',
     load: '作業を読込',
@@ -2222,6 +2852,29 @@ export const JA = {
     restoreNo: '復元しない',
     showSchematic: '回路図を表示',
     hideSchematic: '回路図を隠す',
+    /** 課題が選ばれていないままセッション画面が開かれたとき。§12.1 */
+    noProblem: '課題が選ばれていません。',
+    powered: '通電中',
+    unpowered: '無通電',
+    wires: '電線',
+    wiresUnit: '本',
+    noTerminal: '端子未選択',
+    firstTerminal: '1本目',
+    selection: '選択',
+    select: '選択',
+    /** 模範回路（仕様チャート・判定）を作れなかった。§7.7 / §8.3 */
+    referenceError: '模範回路エラー',
+    liveChart: 'ライブ記録',
+    /** 操作が失敗したときのログ接頭辞。§8.2 */
+    failed: '失敗',
+    on: 'ON',
+    off: 'OFF',
+    resetTripLog: '保護復帰の手順を実行',
+    relay: 'リレー',
+    timer: 'タイマ',
+    seconds: '秒',
+    slider: 'スライダ',
+    numberInput: '数値',
   },
   result: {
     title: '判定結果',
@@ -2243,6 +2896,13 @@ export const JA = {
     chartOverlay: 'チャート重ね表示（薄色＝模範／濃色＝訓練者）',
     retry: 'もう一度',
     toList: '課題一覧へ',
+    /** 判定結果が無いのに結果画面が開かれたとき。§12.1 */
+    noResult: '判定結果がありません。',
+    ok: 'OK',
+    ng: 'エラー',
+    times: '回',
+    within: '以内',
+    exceeded: '超過',
     forbidden:
       'タイマの接点で自分のコイルを切る回路は実機では動作が不安定になります（リレーを介してください）。',
   },
@@ -2280,6 +2940,10 @@ export const JA = {
     reset: 'セッションをリセット',
     webglLost: '描画を復旧しています…',
     workerError: 'シミュレーションでエラーが発生しました',
+    /** preload が読み込まれていない（`window.ojt` が無い）。§4.3 */
+    preloadMissing: 'プリロードが読み込まれていません',
+    /** renderer のマウント先が無い（index.html の破損）。 */
+    rootMissing: '#root が見つかりません',
   },
 } as const;
 
@@ -2288,11 +2952,90 @@ export function gradeLabel(grade: number): string {
   return `${grade}${JA.problemList.grade}`;
 }
 
+/** 分の表示（`30分`）。 */
+export function minutesLabel(minutes: number): string {
+  return `${minutes}${JA.problemList.minutes}`;
+}
+
 /** 真偽値の信号表示（`ON` / `OFF`）。 */
 export function signalLabel(value: unknown): string {
-  if (typeof value === 'boolean') return value ? 'ON' : 'OFF';
+  if (typeof value === 'boolean') return value ? JA.session.on : JA.session.off;
   if (typeof value === 'number') return value.toFixed(2);
   return '—';
+}
+
+/** 入切の表示（`ON` / `OFF`）。§8.2 */
+export function onOffLabel(on: boolean): string {
+  return on ? JA.session.on : JA.session.off;
+}
+
+/** 課題を開いたときの操作ログ。§8.1 */
+export function openedProblemLog(title: string): string {
+  return `課題「${title}」を開きました`;
+}
+
+/** 操作が失敗したときの操作ログ。§8.2 */
+export function failedLog(message: string): string {
+  return `${JA.session.failed}: ${message}`;
+}
+
+/** 電源操作の操作ログ（`ブレーカ ON`）。§8.2 */
+export function powerLog(label: string, on: boolean): string {
+  return `${label} ${onOffLabel(on)}`;
+}
+
+/** 元に戻す／やり直しの操作ログ（`元に戻す: 配線 …`）。§8.2 */
+export function historyLog(verb: string, label: string): string {
+  return `${verb}: ${label}`;
+}
+
+/** 模範回路を作れなかったときの表示（理由付き）。§7.7 / §8.3 */
+export function referenceErrorText(reasons: readonly string[]): string {
+  return `${JA.session.referenceError}: ${reasons.join(' / ')}`;
+}
+
+/** 経路を作れなかった電線の操作ログ。§6.6 */
+export function routeFailedLog(wireId: string, reason: string): string {
+  return `${JA.session.routeFailed}: ${wireId} — ${reason}`;
+}
+
+/** 部品パネルで選択中のソケットの表示（`S1（CR1）を選択中`）。§8.2 */
+export function socketSelectedLabel(socketId: string, role: string | undefined): string {
+  return role === undefined
+    ? `${socketId} ${JA.session.selection}中`
+    : `${socketId}（${role}）を${JA.session.selection}中`;
+}
+
+/** 装着済み部品の表示（`CR1: リレー`）。§8.2 */
+export function mountedPartLabel(role: string | undefined, isTimer: boolean): string {
+  return `${role ?? ''}: ${isTimer ? JA.session.timer : JA.session.relay}`;
+}
+
+/** タイマ設定ダイヤルの見出し（`T1 タイマ設定`）。§8.2 */
+export function timerDialLabel(role: string | undefined): string {
+  return `${role ?? ''} ${JA.session.timerPreset}`;
+}
+
+/** 所要時間と標準・打切り時間の対比文。§8.3 */
+export function elapsedSummaryText(
+  elapsedMs: number,
+  standardMin: number,
+  cutoffMin: number,
+): string {
+  const standardMs = standardMin * 60_000;
+  const cutoffMs = cutoffMin * 60_000;
+  if (elapsedMs > cutoffMs) {
+    return `${JA.result.cutoffMark}（${minutesLabel(cutoffMin)}）を${JA.result.exceeded}`;
+  }
+  if (elapsedMs > standardMs) {
+    return `${JA.result.standardMark}（${minutesLabel(standardMin)}）を${JA.result.exceeded}`;
+  }
+  return `${JA.result.standardMark}（${minutesLabel(standardMin)}）${JA.result.within}`;
+}
+
+/** ウィンドウが隠れていた間に捨てた tick の操作ログ。§5.2 */
+export function droppedTicksLog(ticks: number): string {
+  return `ウィンドウが隠れていた間の ${ticks} tick を省略しました`;
 }
 ```
 
@@ -2617,10 +3360,16 @@ button[aria-pressed='true'] {
   min-height: 0;
 }
 
+/*
+ * 3Dビューポート。グリッドの列・行は既定で `min-width: auto` / `min-height: auto`
+ * （＝中身より縮まない）なので、両方を 0 にしないと Canvas が右パネルを押し出して
+ * 画面から溢れる。高さだけ 0 にしても横方向で同じことが起きる。
+ */
 .viewport {
   grid-column: 1;
   grid-row: 1;
   min-height: 0;
+  min-width: 0;
   position: relative;
 }
 
@@ -2747,25 +3496,40 @@ export function renderRoute(route: Route): JSX.Element {
 ```tsx
 import { useEffect, type JSX } from 'react';
 import { JA } from '../i18n/ja.js';
+import { ErrorBoundary } from './ErrorBoundary.js';
 import { renderRoute } from './routes.js';
-import { useStore } from './store.js';
+import { useStore, type Route } from './store.js';
 import styles from './app.module.css';
 
 /**
  * アプリの外枠。設計仕様 §12.1 / §13 #5。
  * 未捕捉例外は上部の例外バナーで知らせ、「セッションをリセット」で復帰できるようにする。
+ *
+ * バナーとトーストは `ErrorBoundary` の**外**に置く。中に置くと、描画中に例外が出たときに
+ * バナーごと消えてしまい、訓練者には真っ黒な画面しか残らない（§13 #5 の要件が満たせない）。
  */
 
-/** トーストを自動で消すまでの時間[ms]。 */
-const TOAST_TTL_MS = 4000;
+/** 期限切れトーストを掃除する間隔[ms]。 */
+const TOAST_SWEEP_MS = 250;
+
+/**
+ * 画面1枚。**必ず境界の子コンポーネントとして**描く。
+ * `<ErrorBoundary>{renderRoute(route)}</ErrorBoundary>` と書くと `renderRoute()` は
+ * `App` の描画中に評価されるので、そこで投げられた例外は境界より外で起きたことになり
+ * 受け止められない（`App` ごと落ちてバナーも消える）。
+ */
+function RouteView({ route }: { route: Route }): JSX.Element {
+  return renderRoute(route);
+}
 
 /** アプリ本体。 */
 export function App(): JSX.Element {
   const route = useStore((s) => s.route);
   const toasts = useStore((s) => s.toasts);
   const fatalError = useStore((s) => s.fatalError);
+  const sessionEpoch = useStore((s) => s.sessionEpoch);
 
-  // 未捕捉例外を拾って例外バナーに出す（§13 #5）
+  // 未捕捉例外を拾って例外バナーに出す（§13 #5）。描画中の例外は `ErrorBoundary` が拾う
   useEffect(() => {
     const onError = (event: ErrorEvent): void => {
       useStore.getState().setFatalError(event.message);
@@ -2781,17 +3545,20 @@ export function App(): JSX.Element {
     };
   }, []);
 
-  // トーストを時間で消す
+  /**
+   * トーストを時間で消す。§8.2
+   * 期限は1件ごとに `Toast.expiresAt` が持ち、ここは一定間隔で掃除するだけにする。
+   * 「先頭の1件にタイマを張る」方式だと、後から積まれるたびにタイマが張り直されて
+   * 連続して失敗したときに1件も消えなくなる。
+   */
   useEffect(() => {
-    const first = toasts[0];
-    if (first === undefined) return;
-    const id = setTimeout(() => {
-      useStore.getState().dismissToast(first.id);
-    }, TOAST_TTL_MS);
+    const id = setInterval(() => {
+      useStore.getState().expireToasts();
+    }, TOAST_SWEEP_MS);
     return () => {
-      clearTimeout(id);
+      clearInterval(id);
     };
-  }, [toasts]);
+  }, []);
 
   return (
     <div className={styles.shell}>
@@ -2803,16 +3570,21 @@ export function App(): JSX.Element {
           <button
             type="button"
             onClick={() => {
-              const store = useStore.getState();
-              store.setFatalError(undefined);
-              store.resetSession();
+              useStore.getState().restartSession();
             }}
           >
             {JA.error.reset}
           </button>
         </div>
       )}
-      {renderRoute(route)}
+      <ErrorBoundary
+        key={sessionEpoch}
+        onError={(message) => {
+          useStore.getState().setFatalError(message);
+        }}
+      >
+        <RouteView route={route} />
+      </ErrorBoundary>
       <div className={styles.toasts}>
         {toasts.map((toast) => (
           <div
@@ -2830,11 +3602,65 @@ export function App(): JSX.Element {
 }
 ```
 
+- [ ] **Step 7b: `apps/desktop/src/renderer/app/ErrorBoundary.tsx` を書く**
+
+`window` の `error` / `unhandledrejection` は**非同期の例外しか拾えない**。描画中に投げられた
+例外は React が先に捕まえ、境界が無ければルートごとアンマウントして例外バナーまで消してしまう
+（§13 #5 の要件が満たせない）。ルート要素だけをこの境界で包み、外枠は境界の外に置く。
+
+```tsx
+import { Component, type ReactNode } from 'react';
+
+/**
+ * 画面の描画中に投げられた例外を受け止める境界。設計仕様 §13 #5。
+ *
+ * `window` の `error` / `unhandledrejection` は**非同期の例外**しか拾えない。
+ * React の描画中に投げられた例外はそれより先に React が捕まえ、境界が無ければ
+ * ルートごとアンマウントしてしまう（例外バナー自体も消えて真っ黒になる）。
+ * そこでルート要素だけをこの境界で包み、外枠（バナーとトースト）は境界の外に置く。
+ *
+ * 復帰は `key` の付け替えで行う（`App` が `sessionEpoch` を渡す）。
+ * 境界自身が状態を戻すのではなく作り直すことで、壊れた部分木が確実に初期状態から描き直される。
+ */
+
+/** 境界の入力。 */
+interface ErrorBoundaryProps {
+  children: ReactNode;
+  /** 捕まえた例外のメッセージ（バナーに出す文字列）。 */
+  onError: (message: string) => void;
+}
+
+/** 境界の状態。 */
+interface ErrorBoundaryState {
+  failed: boolean;
+}
+
+/** 描画中の例外を受け止める境界。 */
+export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  override state: ErrorBoundaryState = { failed: false };
+
+  /** 例外が出たら子を描くのをやめる（バナーは外枠が出す）。 */
+  static getDerivedStateFromError(): ErrorBoundaryState {
+    return { failed: true };
+  }
+
+  /** 例外の内容をストアへ渡す（描画中に `set` しないよう commit 後のここで呼ぶ）。 */
+  override componentDidCatch(error: unknown): void {
+    this.props.onError(error instanceof Error ? error.message : String(error));
+  }
+
+  override render(): ReactNode {
+    return this.state.failed ? null : this.props.children;
+  }
+}
+```
+
 - [ ] **Step 8: `apps/desktop/src/renderer/main.tsx` を書く**
 
 ```tsx
 import { createRoot } from 'react-dom/client';
 import { App } from './app/App.js';
+import { JA } from './i18n/ja.js';
 import './app/global.css';
 
 /**
@@ -2845,7 +3671,7 @@ import './app/global.css';
  */
 
 const container = document.getElementById('root');
-if (container === null) throw new Error('#root が見つかりません');
+if (container === null) throw new Error(JA.error.rootMissing);
 
 createRoot(container).render(<App />);
 ```
@@ -2923,19 +3749,54 @@ export function Home(): JSX.Element {
 }
 ```
 
+- [ ] **Step 10b: `apps/desktop/src/renderer/app/ojt-api.ts` を書く**
+
+`window.ojt` を「必ずある」ことにすると、preload が読み込めなかったときに
+`undefined.listProblems is not a function` という読めない例外で画面が落ちる。
+読み出しはこの1箇所に集め、無ければ日本語の理由を持つ `Error` にして投げ直す。
+
+```ts
+import type { OjtApi } from '../../shared/ipc.js';
+import { JA } from '../i18n/ja.js';
+
+/**
+ * `window.ojt`（preload が `contextBridge` で公開する API）への唯一の入口。設計仕様 §4.3。
+ *
+ * 型の上で「必ずある」ことにすると、preload が読み込めなかったとき
+ * （ビルド設定の誤り・`sandbox` の切替ミス・E2E の素の Chromium）に
+ * `undefined.listProblems is not a function` という読めない例外で画面が落ちる。
+ * ここで1度だけ確かめ、日本語の理由を持つ `Error` にして投げ直す（§13 #5 の例外バナーに出る）。
+ */
+
+/** preload の API を取り出す。無ければ日本語の理由付きで投げる。 */
+export function ojtApi(): OjtApi {
+  const api = window.ojt;
+  if (api === undefined) throw new Error(JA.error.preloadMissing);
+  return api;
+}
+```
+
 - [ ] **Step 11: `apps/desktop/src/renderer/screens/ProblemList.tsx` を書く**
 
 ```tsx
-import { useEffect, type JSX } from 'react';
-import { gradeLabel, JA } from '../i18n/ja.js';
+import { useEffect, useState, type JSX } from 'react';
+import { gradeLabel, JA, minutesLabel } from '../i18n/ja.js';
+import { ojtApi } from '../app/ojt-api.js';
 import { useStore } from '../app/store.js';
 import styles from './screens.module.css';
 
 /**
  * 課題一覧。設計仕様 §12.1。
  * main の `content:list` が返した一覧をそのまま並べる。
- * 読込エラーの表示と利用者フォルダの合流は Plan 1D2 で足す（§13 #1 / §13 #9）。
+ * 利用者フォルダの合流は Plan 1D2 で足す（§13 #9）。
+ *
+ * preload が無い環境でも落ちない。`ojtApi()` が投げる理由をそのまま画面に出す（§13 #5）。
  */
+
+/** 例外から画面に出す1行を作る。 */
+function reasonOf(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
 
 /** 課題一覧画面。 */
 export function ProblemList(): JSX.Element {
@@ -2944,19 +3805,39 @@ export function ProblemList(): JSX.Element {
   const setRoute = useStore((s) => s.setRoute);
   const openProblem = useStore((s) => s.openProblem);
   const toast = useStore((s) => s.toast);
+  const [listError, setListError] = useState<string | undefined>(undefined);
 
   useEffect(() => {
-    void window.ojt.listProblems().then(setProblems);
+    try {
+      void ojtApi()
+        .listProblems()
+        .then(setProblems, (error: unknown) => {
+          setListError(reasonOf(error));
+        });
+    } catch (error) {
+      setListError(reasonOf(error));
+    }
   }, [setProblems]);
 
   const open = (id: string): void => {
-    void window.ojt.readProblem(id).then((problem) => {
-      if (problem === null) {
-        toast(`課題を読み込めませんでした: ${id}`, 'error');
-        return;
-      }
-      openProblem(problem);
-    });
+    try {
+      void ojtApi()
+        .readProblem(id)
+        .then(
+          (problem) => {
+            if (problem === null) {
+              toast(`${JA.problemList.loadFailed}: ${id}`, 'error');
+              return;
+            }
+            openProblem(problem);
+          },
+          (error: unknown) => {
+            toast(`${JA.problemList.loadFailed}: ${reasonOf(error)}`, 'error');
+          },
+        );
+    } catch (error) {
+      toast(`${JA.problemList.loadFailed}: ${reasonOf(error)}`, 'error');
+    }
   };
 
   return (
@@ -2972,17 +3853,21 @@ export function ProblemList(): JSX.Element {
       <h1 className={styles.title} style={{ marginTop: 12 }}>
         {JA.problemList.title}
       </h1>
-      {problems === undefined ? (
-        <p className={styles.subtitle}>読み込み中…</p>
+      {listError !== undefined ? (
+        <p className={styles.errorBox} data-testid="problem-list-error">
+          {JA.problemList.listFailed}: {listError}
+        </p>
+      ) : problems === undefined ? (
+        <p className={styles.subtitle}>{JA.problemList.loading}</p>
       ) : problems.problems.length === 0 ? (
         <p className={styles.subtitle}>{JA.problemList.empty}</p>
       ) : (
         <table className={styles.problemTable} data-testid="problem-table">
           <thead>
             <tr>
-              <th>ID</th>
-              <th>課題名</th>
-              <th>級</th>
+              <th>{JA.problemList.columnId}</th>
+              <th>{JA.problemList.columnTitle}</th>
+              <th>{JA.problemList.grade}</th>
               <th>
                 {JA.problemList.standard}/{JA.problemList.cutoff}
               </th>
@@ -2996,8 +3881,7 @@ export function ProblemList(): JSX.Element {
                 <td>{problem.title}</td>
                 <td>{gradeLabel(problem.grade)}</td>
                 <td>
-                  {problem.standardMin}/{problem.cutoffMin}
-                  {JA.problemList.minutes}
+                  {problem.standardMin}/{minutesLabel(problem.cutoffMin)}
                 </td>
                 <td>
                   <button
@@ -3015,10 +3899,234 @@ export function ProblemList(): JSX.Element {
           </tbody>
         </table>
       )}
-
     </div>
   );
 }
+```
+
+- [ ] **Step 11b: `apps/desktop/test/app.test.tsx` を書く**
+
+外枠（例外バナー・トースト）のテスト。画面そのものは `vi.mock` で差し替える。ここで見たいのは
+「ルートの描画が落ちたときに外枠が生き残るか」であって、どの画面が出るかではない。
+
+```tsx
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { createElement } from 'react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { App } from '../src/renderer/app/App.js';
+import { JA } from '../src/renderer/i18n/ja.js';
+import { EMPTY_SNAPSHOT, TOAST_LIMIT, useStore } from '../src/renderer/app/store.js';
+
+/**
+ * 外枠（例外バナー・トースト）のテスト。設計仕様 §13 #5 / §8.2。
+ *
+ * 画面そのものは差し替える。ここで見たいのは「ルートの描画が落ちたときに外枠が生き残るか」
+ * であって、どの画面が出るかではないため（3D を含む本物の画面は happy-dom では描けない）。
+ */
+
+const BOOM = '描画で落ちました';
+const routeMock = vi.hoisted(() => ({ throwing: false }));
+
+vi.mock('../src/renderer/app/routes.js', () => ({
+  renderRoute: () => {
+    if (routeMock.throwing) throw new Error(BOOM);
+    return createElement('div', { 'data-testid': 'route' });
+  },
+}));
+
+/** React の偽タイマ。スケジューラを壊さないよう最小限だけ差し替える。 */
+const FAKE_TIMERS = ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date'] as const;
+
+beforeEach(() => {
+  routeMock.throwing = false;
+  useStore.setState({
+    route: 'home',
+    toasts: [],
+    logLines: [],
+    fatalError: undefined,
+    webglLost: false,
+    judge: undefined,
+    sessionEpoch: 0,
+    snapshot: EMPTY_SNAPSHOT,
+    reportedDroppedTicks: 0,
+  });
+});
+
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+});
+
+describe('例外バナー（§13 #5）', () => {
+  it('描画中に投げられても外枠は残り、日本語のバナーとリセットボタンが出る', () => {
+    // React は境界が拾った例外を console.error に流す。テスト出力を汚さないよう黙らせる
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    routeMock.throwing = true;
+    render(<App />);
+
+    const banner = screen.getByTestId('error-banner');
+    expect(banner.textContent).toContain(JA.error.banner);
+    expect(banner.textContent).toContain(BOOM);
+    expect(screen.getByRole('button', { name: JA.error.reset })).toBeTruthy();
+    // 落ちた部分木は描かれない（外枠だけが残る）
+    expect(screen.queryByTestId('route')).toBeNull();
+  });
+
+  it('「セッションをリセット」で世代が進み、直った画面がまた描かれる', () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    routeMock.throwing = true;
+    render(<App />);
+    expect(screen.getByTestId('error-banner')).toBeTruthy();
+
+    routeMock.throwing = false;
+    fireEvent.click(screen.getByRole('button', { name: JA.error.reset }));
+
+    expect(screen.queryByTestId('error-banner')).toBeNull();
+    expect(screen.getByTestId('route')).toBeTruthy();
+    expect(useStore.getState().sessionEpoch).toBe(1);
+  });
+
+  it('非同期の未捕捉例外もバナーに出る', () => {
+    render(<App />);
+    act(() => {
+      window.dispatchEvent(new ErrorEvent('error', { message: 'Worker が落ちました' }));
+    });
+    expect(screen.getByTestId('error-banner').textContent).toContain('Worker が落ちました');
+  });
+});
+
+describe('トースト（§8.2）', () => {
+  it('3秒おきに6件出しても22秒後には1件も残らない', () => {
+    vi.useFakeTimers({ toFake: [...FAKE_TIMERS] });
+    vi.setSystemTime(0);
+    render(<App />);
+
+    for (let i = 0; i < 6; i += 1) {
+      act(() => {
+        useStore.getState().toast(`失敗 ${i}`, 'error');
+        vi.advanceTimersByTime(3000);
+      });
+    }
+    expect(screen.queryAllByTestId('toast').length).toBeGreaterThan(0);
+
+    act(() => {
+      vi.advanceTimersByTime(4000);
+    });
+    expect(screen.queryAllByTestId('toast')).toHaveLength(0);
+  });
+
+  it('一度に10件出しても画面には新しい5件しか出ない', () => {
+    render(<App />);
+    act(() => {
+      for (let i = 0; i < 10; i += 1) useStore.getState().toast(`失敗 ${i}`, 'error');
+    });
+    const shown = screen.queryAllByTestId('toast');
+    expect(shown).toHaveLength(TOAST_LIMIT);
+    expect(shown[0]?.textContent).toBe('失敗 5');
+  });
+});
+```
+
+- [ ] **Step 11c: `apps/desktop/test/problem-list.test.tsx` を書く**
+
+preload が読み込まれていない環境（`window.ojt` が無い）でも課題一覧が落ちず、
+理由を画面に出すことを担保する（§13 #5）。
+
+```tsx
+import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import type { OjtApi, ProblemListPayload } from '../src/renderer/../shared/ipc.js';
+import { ojtApi } from '../src/renderer/app/ojt-api.js';
+import { useStore } from '../src/renderer/app/store.js';
+import { JA } from '../src/renderer/i18n/ja.js';
+import { ProblemList } from '../src/renderer/screens/ProblemList.js';
+
+/**
+ * 課題一覧の表示テスト（§12.1 / §13 #5）。
+ * preload が読み込まれていない環境（`window.ojt` が無い）でも落ちないことを担保する。
+ */
+
+const PAYLOAD: ProblemListPayload = {
+  problems: [
+    {
+      id: 'b-001',
+      title: '自己保持回路',
+      grade: 3,
+      description: '起動と停止',
+      standardMin: 30,
+      cutoffMin: 50,
+      source: 'builtin',
+    },
+  ],
+  errors: [],
+  userDir: 'C:/dummy',
+  userDirExists: true,
+};
+
+/** preload を差し替える（`delete` で「読み込まれていない」状態に戻せる）。 */
+function setApi(api: Partial<OjtApi> | undefined): void {
+  if (api === undefined) delete window.ojt;
+  else window.ojt = api as OjtApi;
+}
+
+beforeEach(() => {
+  useStore.setState({ problems: undefined, toasts: [], route: 'list' });
+  setApi(undefined);
+});
+
+afterEach(() => {
+  cleanup();
+  setApi(undefined);
+});
+
+describe('ojtApi', () => {
+  it('preload が無ければ日本語の理由を持つ例外を投げる', () => {
+    expect(() => ojtApi()).toThrow(JA.error.preloadMissing);
+  });
+});
+
+describe('ProblemList', () => {
+  it('preload が無くても落ちず、理由を画面に出す（§13 #5）', async () => {
+    render(<ProblemList />);
+    const box = await screen.findByTestId('problem-list-error');
+    expect(box.textContent).toContain(JA.error.preloadMissing);
+    // 画面そのものは生きている（一覧へ戻る導線が残る）
+    expect(screen.getByRole('button', { name: JA.problemList.back })).toBeTruthy();
+  });
+
+  it('preload があれば一覧を並べる', async () => {
+    setApi({ listProblems: () => Promise.resolve(PAYLOAD) });
+    render(<ProblemList />);
+    await waitFor(() => {
+      expect(screen.getByTestId('problem-table')).toBeTruthy();
+    });
+    expect(screen.getByText('自己保持回路')).toBeTruthy();
+    expect(screen.getByText(JA.problemList.columnTitle)).toBeTruthy();
+    expect(screen.queryByTestId('problem-list-error')).toBeNull();
+  });
+
+  it('一覧の取得が失敗しても理由を出すだけで落ちない（§13 #1）', async () => {
+    setApi({ listProblems: () => Promise.reject(new Error('課題フォルダを開けません')) });
+    render(<ProblemList />);
+    const box = await screen.findByTestId('problem-list-error');
+    expect(box.textContent).toContain('課題フォルダを開けません');
+  });
+
+  it('課題を読めなかったらトーストで知らせる', async () => {
+    setApi({
+      listProblems: () => Promise.resolve(PAYLOAD),
+      readProblem: () => Promise.resolve(null),
+    });
+    render(<ProblemList />);
+    const open = await screen.findByTestId('open-b-001');
+    open.click();
+    await waitFor(() => {
+      expect(useStore.getState().toasts).toHaveLength(1);
+    });
+    expect(useStore.getState().toasts[0]?.text).toContain(JA.problemList.loadFailed);
+  });
+});
 ```
 
 - [ ] **Step 12: コミットする**
@@ -3152,10 +4260,9 @@ describe('pickToAction（配線モード）', () => {
     });
   });
 
-  it('選択中の電線があるとき空間クリックで選択を外す', () => {
+  it('配線モードの空間クリックは選択解除にならない（電線選択は削除モード限定。§12.2）', () => {
     expect(pickToAction(state({ selectedWire: 'w-001' }), { kind: 'empty' })).toEqual({
-      type: 'selectWire',
-      wireId: '',
+      type: 'none',
     });
   });
 
@@ -3194,12 +4301,32 @@ describe('pickToAction（削除モード）', () => {
       }),
     ).toEqual({ type: 'none' });
   });
+
+  it('選択中の電線があるとき空間クリックで選択を外す（§8.2）', () => {
+    expect(
+      pickToAction(state({ mode: 'delete', selectedWire: 'w-001' }), { kind: 'empty' }),
+    ).toEqual({ type: 'selectWire', wireId: '' });
+  });
+
+  it('何も選んでいないときの空間クリックは何もしない', () => {
+    expect(pickToAction(state({ mode: 'delete' }), { kind: 'empty' })).toEqual({ type: 'none' });
+  });
 });
 
 describe('キーボード', () => {
-  it('Esc は配線中だけ取り消す', () => {
+  it('Esc は配線中なら取り消す', () => {
     expect(escapeToAction(state({ pendingTerminal: CR1_13 }))).toEqual({ type: 'cancelWire' });
     expect(escapeToAction(state())).toEqual({ type: 'none' });
+  });
+
+  it('Esc は削除モードで選択中の電線があれば選択を外す（§8.2）', () => {
+    expect(escapeToAction(state({ mode: 'delete', selectedWire: 'w-001' }))).toEqual({
+      type: 'selectWire',
+      wireId: '',
+    });
+    expect(escapeToAction(state({ mode: 'delete' }))).toEqual({ type: 'none' });
+    // 配線モードでは電線を選べないので、選択解除も起きない
+    expect(escapeToAction(state({ selectedWire: 'w-001' }))).toEqual({ type: 'none' });
   });
 
   it('Delete は削除モードで選択中の電線を削除する', () => {
@@ -3302,10 +4429,15 @@ export const LOCKED_WIRE_MESSAGE = 'チェック用回路の既設配線（青�
 /** 配線できない端子を触ったときの文言。§6.4 */
 export const NOT_WIRABLE_MESSAGE = 'この端子には配線できません（本体側は既設配線済みです）';
 
+/** 電線が選択されているか（空文字は「選択なし」の別表現）。 */
+function hasSelection(state: InteractionState): boolean {
+  return state.selectedWire !== undefined && state.selectedWire.length > 0;
+}
+
 /**
  * ピック結果を操作に変換する。§12.2
  * - 削除モード: 電線を拾ったら選択（実際の削除は Delete キー。§8.2）、`locked` なら拒否、
- *   それ以外は何もしない
+ *   空間クリックは選択解除、それ以外は何もしない
  * - 配線モード: 端子 → 端子 で配線、同じ端子を2度押したら取り消し、空間クリックで取り消し。
  *   電線のクリック選択は削除モード限定なので、配線モードでは電線を拾っても何もしない
  *   （配線中でも取り消し扱いにはしない。§8.2「配線モードでは端子クリックを優先」）
@@ -3318,6 +4450,8 @@ export function pickToAction(state: InteractionState, hit: PickHit): PickAction 
         : { type: 'selectWire', wireId: hit.id };
     }
     if (hit.kind === 'pushbutton') return { type: 'pressButton', pbId: hit.id };
+    // 電線の選択は削除モードにしかないので、選択解除もここに置く（配線モード側では死に枝だった）
+    if (hit.kind === 'empty' && hasSelection(state)) return { type: 'selectWire', wireId: '' };
     return { type: 'none' };
   }
 
@@ -3341,14 +4475,15 @@ export function pickToAction(state: InteractionState, hit: PickHit): PickAction 
         ? { type: 'pressButton', pbId: hit.id }
         : { type: 'cancelWire' };
     case 'empty':
-      if (state.pendingTerminal !== undefined) return { type: 'cancelWire' };
-      return state.selectedWire === undefined ? { type: 'none' } : { type: 'selectWire', wireId: '' };
+      return state.pendingTerminal === undefined ? { type: 'none' } : { type: 'cancelWire' };
   }
 }
 
-/** Esc キーの扱い（配線中なら取り消し、それ以外は何もしない）。§8.2 */
+/** Esc キーの扱い（配線中なら取り消し、削除モードで電線を選んでいれば選択解除）。§8.2 */
 export function escapeToAction(state: InteractionState): PickAction {
-  return state.pendingTerminal === undefined ? { type: 'none' } : { type: 'cancelWire' };
+  if (state.pendingTerminal !== undefined) return { type: 'cancelWire' };
+  if (state.mode === 'delete' && hasSelection(state)) return { type: 'selectWire', wireId: '' };
+  return { type: 'none' };
 }
 
 /** Delete キーの扱い（削除モードで電線を選んでいれば削除。電線選択は削除モード限定。§8.2 / §12.2） */
@@ -4202,6 +5337,7 @@ import {
   socketPinTerminal,
   socketRowExit,
   vec3,
+  type BoardTerminal,
 } from '@ojt/board-model';
 import { describe, expect, it } from 'vitest';
 import { scenePos, toScene } from '../src/renderer/three/coords.js';
@@ -4210,11 +5346,20 @@ import {
   boardToWorld,
   boardUp,
   cameraPose,
+  interpolatePose,
   SOCKET_ROW_CENTER_MM,
+  type CameraPose,
 } from '../src/renderer/three/camera.js';
 import { socketTerminalLabel } from '../src/renderer/three/Socket.js';
 import { mountedLabel } from '../src/renderer/three/MountedPart.js';
+import { findFixtureFootprint, fixtureTerminalMark } from '../src/renderer/three/Fixtures.js';
 import { secondsToMs } from '../src/renderer/panels/TimerDial.js';
+import {
+  GIZMO_COLORS,
+  GIZMO_MARGIN,
+  GIZMO_SIZE,
+  STATUS_OVERLAY_BOTTOM_PX,
+} from '../src/renderer/three/ViewGizmo.js';
 
 describe('toScene', () => {
   it('盤の中心が原点になる', () => {
@@ -4293,6 +5438,50 @@ describe('cameraPose', () => {
   });
 });
 
+describe('interpolatePose（視点プリセットとギズモの遷移で共有する補間）', () => {
+  const from: CameraPose = { position: [0, 100, 0], target: [0, 0, 0], up: [0, 1, 0] };
+  const to: CameraPose = { position: [50, 20, -30], target: [5, -5, 5], up: [0, 0, 1] };
+
+  it('t = 0 は from に一致する', () => {
+    expect(interpolatePose(from, to, 0)).toEqual(from);
+  });
+
+  it('t = 1 は to に一致する', () => {
+    expect(interpolatePose(from, to, 1)).toEqual(to);
+  });
+
+  it('t が増えるほど position・target・up の各成分が from → to の向きに単調に変化する', () => {
+    const samples = [0, 0.2, 0.4, 0.6, 0.8, 1].map((t) => interpolatePose(from, to, t));
+    const pickers: Array<(pose: CameraPose) => number> = [
+      (pose) => pose.position[0],
+      (pose) => pose.position[1],
+      (pose) => pose.position[2],
+      (pose) => pose.target[0],
+      (pose) => pose.target[1],
+      (pose) => pose.target[2],
+      (pose) => pose.up[0],
+      (pose) => pose.up[1],
+      (pose) => pose.up[2],
+    ];
+    for (const pick of pickers) {
+      const values = samples.map(pick);
+      const first = values[0];
+      const last = values.at(-1);
+      if (first === undefined || last === undefined) continue;
+      const direction = Math.sign(last - first);
+      for (let i = 1; i < values.length; i += 1) {
+        const prev = values[i - 1];
+        const next = values[i];
+        if (prev === undefined || next === undefined) continue;
+        const delta = next - prev;
+        if (direction === 0) expect(delta).toBeCloseTo(0, 9);
+        else if (direction > 0) expect(delta).toBeGreaterThanOrEqual(-1e-9);
+        else expect(delta).toBeLessThanOrEqual(1e-9);
+      }
+    }
+  });
+});
+
 describe('端子ラベル', () => {
   it('役割の印字は極性・接点種別の記号になる（§6.2）', () => {
     expect(roleLabel('coil+')).toBe('+');
@@ -4328,6 +5517,32 @@ describe('端子ラベル', () => {
   });
 });
 
+describe('固定機器（PS/CB/SW）の外形と端子印字（§12.2 端子ラベル）', () => {
+  it('footprint は board.footprints から kind で引ける', () => {
+    expect(findFixtureFootprint(JIPM_BOARD.footprints, 'supply')?.id).toBe('supply');
+    expect(findFixtureFootprint(JIPM_BOARD.footprints, 'breaker')?.id).toBe('CB');
+    expect(findFixtureFootprint(JIPM_BOARD.footprints, 'switch')?.id).toBe('SW');
+  });
+
+  it('一致する footprint が無ければ undefined', () => {
+    expect(findFixtureFootprint([], 'supply')).toBeUndefined();
+  });
+
+  it('端子の印字は label から機器プレフィックスを除いた文字列になる', () => {
+    const byLabel = (label: string): BoardTerminal => {
+      const terminal = JIPM_BOARD.terminals.find((t) => t.label === label);
+      if (terminal === undefined) throw new Error(`fixture terminal not found: ${label}`);
+      return terminal;
+    };
+    expect(fixtureTerminalMark(byLabel('PS +24V'))).toBe('+24V');
+    expect(fixtureTerminalMark(byLabel('PS 0V'))).toBe('0V');
+    expect(fixtureTerminalMark(byLabel('CB 1'))).toBe('1');
+    expect(fixtureTerminalMark(byLabel('CB 2'))).toBe('2');
+    expect(fixtureTerminalMark(byLabel('SW 1'))).toBe('1');
+    expect(fixtureTerminalMark(byLabel('SW 2'))).toBe('2');
+  });
+});
+
 describe('装着部品のラベル', () => {
   it('リレーは役割ID、タイマは設定秒を添える', () => {
     expect(mountedLabel('CR1', { kind: 'relay-my4n' })).toBe('CR1');
@@ -4358,6 +5573,20 @@ describe('secondsToMs', () => {
   it('10ms単位に丸める', () => {
     expect(secondsToMs(3.04)).toBe(3040);
     expect(secondsToMs(0.1)).toBe(100);
+  });
+});
+
+describe('視点ギズモの置き場所と色（§12.2）', () => {
+  it('キューブの上端は左上の状態オーバーレイの帯より下にある', () => {
+    // `margin` はキューブの中心位置なので、上端は 中心 − 半分
+    const top = GIZMO_MARGIN[1] - GIZMO_SIZE / 2;
+    expect(top).toBeGreaterThanOrEqual(STATUS_OVERLAY_BOTTOM_PX);
+  });
+
+  it('面・稜線・ホバーの色が互いに違う（どの面を指しているか分かる）', () => {
+    const used = new Set([GIZMO_COLORS.face, GIZMO_COLORS.stroke, GIZMO_COLORS.hover]);
+    expect(used.size).toBe(3);
+    expect(GIZMO_COLORS.text).not.toBe(GIZMO_COLORS.face);
   });
 });
 ```
@@ -5842,7 +7071,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 
 ```tsx
 import { useFrame, useThree } from '@react-three/fiber';
-import { useEffect, useRef, type JSX } from 'react';
+import { useCallback, useEffect, useRef, type JSX } from 'react';
 import type { CameraPreset } from '../app/store-types.js';
 import { cameraPose, interpolatePose, type CameraPose } from './camera.js';
 
@@ -5893,18 +7122,25 @@ export function CameraPresets({
   const currentPose = useRef<CameraPose | null>(null);
   const animation = useRef<PoseAnimation | null>(null);
 
-  /** カメラと OrbitControls に1つの視点を反映する。 */
-  const applyPose = (pose: CameraPose): void => {
-    camera.up.set(...pose.up);
-    camera.position.set(...pose.position);
-    camera.lookAt(...pose.target);
-    if (controls !== null) {
-      controls.target.set(...pose.target);
-      controls.update();
-    }
-    camera.updateProjectionMatrix();
-    currentPose.current = pose;
-  };
+  /**
+   * カメラと OrbitControls に1つの視点を反映する。
+   * `useCallback` で包むのは、下の `useEffect` の依存に素直に並べられるようにするため
+   * （`camera` / `controls` が変わったときだけ作り直され、挙動は変わらない）。
+   */
+  const applyPose = useCallback(
+    (pose: CameraPose): void => {
+      camera.up.set(...pose.up);
+      camera.position.set(...pose.position);
+      camera.lookAt(...pose.target);
+      if (controls !== null) {
+        controls.target.set(...pose.target);
+        controls.update();
+      }
+      camera.updateProjectionMatrix();
+      currentPose.current = pose;
+    },
+    [camera, controls],
+  );
 
   useEffect(() => {
     const to = cameraPose(preset);
@@ -5917,7 +7153,7 @@ export function CameraPresets({
       animation.current = { from: currentPose.current, to, startMs: performance.now() };
     }
     invalidate();
-  }, [preset, camera, controls, invalidate]);
+  }, [preset, applyPose, invalidate]);
 
   useFrame(() => {
     const anim = animation.current;
@@ -5965,9 +7201,32 @@ export const GIZMO_FACES = {
 } as const;
 
 /** ギズモの1辺の大きさ[px]。 */
-const GIZMO_SIZE = 92;
-/** ビューポートの角からの余白[px]。盤の左上と重ならない値。 */
-const GIZMO_MARGIN: [number, number] = [76, 76];
+export const GIZMO_SIZE = 92;
+
+/**
+ * 左上の状態オーバーレイ（`screens.module.css` の `.statusOverlay`）が占める帯の下端[px]。
+ * `top: 12px` ＋ 高さ約22px ＋ 余白。
+ */
+export const STATUS_OVERLAY_BOTTOM_PX = 44;
+
+/**
+ * ビューポートの角からの**キューブ中心**の余白[px]。
+ * `margin` は中心の位置なので、キューブの上端は `margin[1] - GIZMO_SIZE / 2`。
+ * 状態オーバーレイと固定機器の名札の帯より下に降ろし、正面視点でも文字と重ならないようにする。
+ */
+export const GIZMO_MARGIN: [number, number] = [72, 104];
+
+/**
+ * キューブの色。暗い背景（`#141820`）の上で輪郭と面が読めるよう、
+ * 面は明るい灰、稜線は水色、ホバーは面とも稜線とも違う琥珀色にする
+ * （以前は稜線とホバーが同色で、どの面を指しているのか分からなかった）。
+ */
+export const GIZMO_COLORS = {
+  face: '#D8DDE6',
+  text: '#141820',
+  stroke: '#39D0FF',
+  hover: '#FFB400',
+} as const;
 
 /** 左上のビューキューブ。 */
 export function ViewGizmo(): JSX.Element {
@@ -5982,11 +7241,11 @@ export function ViewGizmo(): JSX.Element {
           GIZMO_FACES.front,
           GIZMO_FACES.back,
         ]}
-        color="#E6E4DE"
-        textColor="#1B1E23"
-        strokeColor="#39D0FF"
-        hoverColor="#39D0FF"
-        opacity={0.95}
+        color={GIZMO_COLORS.face}
+        textColor={GIZMO_COLORS.text}
+        strokeColor={GIZMO_COLORS.stroke}
+        hoverColor={GIZMO_COLORS.hover}
+        opacity={1}
         {...({ scale: [GIZMO_SIZE, GIZMO_SIZE, GIZMO_SIZE] } as Record<string, unknown>)}
       />
     </GizmoHelper>
@@ -6015,7 +7274,7 @@ import { Canvas, useThree } from '@react-three/fiber';
 import { MOUSE } from 'three';
 import { useEffect, useMemo, useState, type JSX } from 'react';
 import { useStore, type AppState } from '../app/store.js';
-import { JA } from '../i18n/ja.js';
+import { JA, routeFailedLog } from '../i18n/ja.js';
 import type { PickHit } from '../session/interaction.js';
 import { BoardPlate } from './BoardPlate.js';
 import { BOARD_TILT_RAD, CAMERA_FOV_DEG } from './camera.js';
@@ -6194,7 +7453,7 @@ function BoardContents({
         `${JA.session.routeFailed}（${error.wireId}: ${JA.routeReason[error.reason]}）`,
         'error',
       );
-      store.addLog(`${JA.session.routeFailed}: ${error.wireId} — ${JA.routeReason[error.reason]}`);
+      store.addLog(routeFailedLog(error.wireId, JA.routeReason[error.reason]));
     }
   }, [routeErrors]);
   const blocks = useMemo(() => {
@@ -6869,7 +8128,7 @@ export function PowerControls({
     <div className={`${styles.toolGroup} ${styles.power}`}>
       <span
         className={`${styles.led} ${tripped ? styles.ledTrip : powered ? styles.ledOn : ''}`}
-        aria-label={powered ? '通電中' : '無通電'}
+        aria-label={powered ? JA.session.powered : JA.session.unpowered}
       />
       <button
         type="button"
@@ -7088,6 +8347,7 @@ export function TimeChartPanel({ chart }: { chart: TimeChart }): JSX.Element {
 import { findTimerRange, DEFAULT_TIMER_RANGE } from '@ojt/board-model';
 import { TIMER_MIN_PRESET_MS } from '@ojt/circuit-sim';
 import type { JSX } from 'react';
+import { JA } from '../i18n/ja.js';
 import styles from './panels.module.css';
 
 /**
@@ -7120,7 +8380,7 @@ export function TimerDial({
       <span className={styles.toolLabel}>{label}</span>
       <input
         type="range"
-        aria-label={`${label} スライダ`}
+        aria-label={`${label} ${JA.session.slider}`}
         min={TIMER_MIN_PRESET_MS / 1000}
         max={range.maxMs / 1000}
         step={stepSeconds}
@@ -7131,7 +8391,7 @@ export function TimerDial({
       />
       <input
         type="number"
-        aria-label={`${label} 数値`}
+        aria-label={`${label} ${JA.session.numberInput}`}
         min={TIMER_MIN_PRESET_MS / 1000}
         max={range.maxMs / 1000}
         step={stepSeconds}
@@ -7140,7 +8400,7 @@ export function TimerDial({
           onChange(secondsToMs(Number(event.target.value)));
         }}
       />
-      <span>秒</span>
+      <span>{JA.session.seconds}</span>
     </div>
   );
 }
@@ -7159,7 +8419,7 @@ import {
   type SocketId,
 } from '@ojt/board-model';
 import type { JSX } from 'react';
-import { JA } from '../i18n/ja.js';
+import { JA, mountedPartLabel, socketSelectedLabel, timerDialLabel } from '../i18n/ja.js';
 import { TimerDial } from './TimerDial.js';
 import styles from './panels.module.css';
 
@@ -7211,7 +8471,7 @@ export function PartsPanel({
       <p className={styles.problemText}>
         {selectedSocket === undefined
           ? JA.session.pickSocket
-          : `${selectedSocket}（${session.socketRoles[selectedSocket]}）を選択中`}
+          : socketSelectedLabel(selectedSocket, session.socketRoles[selectedSocket])}
       </p>
       {SOCKET_IDS.map((socketId) => {
         const mounted = session.mounted[socketId];
@@ -7220,7 +8480,7 @@ export function PartsPanel({
         return (
           <div key={socketId} className={styles.mountedRow}>
             <span className={styles.partName}>
-              {role}: {mounted.kind === 'relay-my4n' ? 'リレー' : 'タイマ'}
+              {mountedPartLabel(role, mounted.kind === 'timer-h3y4')}
             </span>
             <button
               type="button"
@@ -7228,7 +8488,7 @@ export function PartsPanel({
                 onSelectSocket(socketId);
               }}
             >
-              選択
+              {JA.session.select}
             </button>
             <button
               type="button"
@@ -7247,7 +8507,7 @@ export function PartsPanel({
         return (
           <TimerDial
             key={`dial-${socketId}`}
-            label={`${session.socketRoles[socketId]} ${JA.session.timerPreset}`}
+            label={timerDialLabel(session.socketRoles[socketId])}
             presetMs={mounted.presetMs}
             rangeMaxMs={mounted.rangeMaxMs}
             onChange={(presetMs) => {
@@ -7318,7 +8578,7 @@ export function LogPanel({
 import type { TimeLimit } from '@ojt/content';
 import type { JSX } from 'react';
 import { formatElapsed } from '../../worker/runtime.js';
-import { JA } from '../i18n/ja.js';
+import { JA, minutesLabel } from '../i18n/ja.js';
 import styles from './panels.module.css';
 
 /**
@@ -7364,17 +8624,17 @@ export function ElapsedTimer({
           <div
             className={`${styles.elapsedMark} ${styles.markStandard}`}
             style={{ left: `${scale.standard * 100}%` }}
-            title={`${JA.result.standardMark} ${limit.standardMin}${JA.problemList.minutes}`}
+            title={`${JA.result.standardMark} ${minutesLabel(limit.standardMin)}`}
           />
           <div
             className={`${styles.elapsedMark} ${styles.markCutoff}`}
             style={{ left: `${scale.cutoff * 100}%` }}
-            title={`${JA.result.cutoffMark} ${limit.cutoffMin}${JA.problemList.minutes}`}
+            title={`${JA.result.cutoffMark} ${minutesLabel(limit.cutoffMin)}`}
           />
         </div>
         <span className={styles.toolLabel}>
-          {JA.result.standardMark} {limit.standardMin} / {JA.result.cutoffMark} {limit.cutoffMin}
-          {JA.problemList.minutes}
+          {JA.result.standardMark} {limit.standardMin} / {JA.result.cutoffMark}{' '}
+          {minutesLabel(limit.cutoffMin)}
         </span>
       </div>
     </section>
@@ -7572,7 +8832,15 @@ import type { BoardSession, MountableKind, SocketId } from '@ojt/board-model';
 import type { TerminalId } from '@ojt/circuit-sim';
 import { useCallback, useEffect, useMemo, type JSX } from 'react';
 import { useStore } from '../app/store.js';
-import { JA } from '../i18n/ja.js';
+import {
+  failedLog,
+  historyLog,
+  JA,
+  openedProblemLog,
+  powerLog,
+  referenceErrorText,
+  routeFailedLog,
+} from '../i18n/ja.js';
 import { ElapsedTimer } from '../panels/ElapsedTimer.js';
 import { LogPanel } from '../panels/LogPanel.js';
 import { PartsPanel } from '../panels/PartsPanel.js';
@@ -7637,8 +8905,14 @@ export function Session(): JSX.Element {
   const liveTransitions = useStore((s) => s.liveTransitions);
   const webglLost = useStore((s) => s.webglLost);
   const problemId = problem?.id;
+  const sessionEpoch = useStore((s) => s.sessionEpoch);
 
-  // 課題を開いたら Worker を起動して `load` を送る（§4.3）
+  /*
+   * 課題を開いたら Worker を起動して `load` を送る（§4.3）。
+   * 依存に `sessionEpoch` を入れるのは、**同じ課題**をやり直したとき（結果画面の「もう一度」、
+   * 例外バナーの「セッションをリセット」）に `problemId` が変わらず、この効果が張り直されないため。
+   * 張り直されないと盤だけが作り直され、Worker は古いネットリストを回し続けて食い違う（§13 #5 / #6）。
+   */
   useEffect(() => {
     const store = useStore.getState();
     const current = store.problem;
@@ -7654,22 +8928,24 @@ export function Session(): JSX.Element {
           state.setJudge(message.result.value);
           state.setRoute('result');
         } else {
-          state.toast(
-            `模範回路エラー: ${message.result.errors.map((e) => e.message).join(' / ')}`,
-            'error',
-          );
+          state.toast(referenceErrorText(message.result.errors.map((e) => e.message)), 'error');
         }
       },
-      onError: (text) => {
-        useStore.getState().toast(`${JA.error.workerError}: ${text}`, 'error');
+      onError: (text, fatal) => {
+        const state = useStore.getState();
+        const line = `${JA.error.workerError}: ${text}`;
+        // 追従ループが止まったら（§13 #6）トーストでは気づけない。バナーを出して立て直させる
+        if (fatal) state.setFatalError(line);
+        else state.toast(line, 'error');
+        state.addLog(line);
       },
     });
     bridge.send({ type: 'load', problemId: current.id, session: cloneSession(currentSession) });
-    store.addLog(`課題「${current.title}」を開きました`);
+    store.addLog(openedProblemLog(current.title));
     return () => {
       bridge.stop();
     };
-  }, [problemId]);
+  }, [problemId, sessionEpoch]);
 
   // 経過時間を定期更新する（§8.1）
   useEffect(() => {
@@ -7681,14 +8957,21 @@ export function Session(): JSX.Element {
     };
   }, []);
 
-
-
   /** コマンド結果を反映する。失敗はトーストとログに残すだけで盤は変わらない。§8.2 */
   const apply = useCallback(<T,>(result: CommandResult<T>, after: () => void): void => {
     const store = useStore.getState();
     if (!result.ok) {
       store.toast(result.message, 'error');
-      store.addLog(`失敗: ${result.message}`);
+      store.addLog(failedLog(result.message));
+      /*
+       * 1端子3本目は盤としては断るが、実機では**やってしまえる**操作なので
+       * 危険操作として数えたい（§5.6 #5 / §17 #25）。`Simulation.addWire()` は
+       * 上限を超えた電線を**ネットリストに入れずに** `over-wires-per-terminal` を発行して
+       * false を返すので、断られた電線をそのまま Worker へ送れば回路は汚さずに計上できる。
+       */
+      if (result.code === 'terminal-overload' && result.wire !== undefined) {
+        bridge.send({ type: 'addWire', wire: result.wire });
+      }
       return;
     }
     const current = store.session;
@@ -7728,11 +9011,8 @@ export function Session(): JSX.Element {
             const { routes, errors } = safeRoutes(JIPM_BOARD, board);
             const failed = errors.find((e) => e.wireId === wire.id);
             if (failed !== undefined) {
-              next.toast(
-                `${JA.session.routeFailed}（${JA.routeReason[failed.reason]}）`,
-                'error',
-              );
-              next.addLog(`${JA.session.routeFailed}: ${wire.id} — ${JA.routeReason[failed.reason]}`);
+              next.toast(`${JA.session.routeFailed}（${JA.routeReason[failed.reason]}）`, 'error');
+              next.addLog(routeFailedLog(wire.id, JA.routeReason[failed.reason]));
               return;
             }
             // 帯の空きスロットが尽きて他の電線と同じ位置に載った（3Dでは琥珀色で描かれる）
@@ -7830,13 +9110,12 @@ export function Session(): JSX.Element {
   );
 
   const live = useMemo(
-    () =>
-      liveChart(chartSpecs, liveTransitions, Math.max(snapshot.tMs, LIVE_MIN_DURATION_MS)),
+    () => liveChart(chartSpecs, liveTransitions, Math.max(snapshot.tMs, LIVE_MIN_DURATION_MS)),
     [chartSpecs, liveTransitions, snapshot.tMs],
   );
 
   if (problem === undefined || session === undefined) {
-    return <div className={styles.center}>課題が選ばれていません。</div>;
+    return <div className={styles.center}>{JA.session.noProblem}</div>;
   }
 
   const onPlug = (socketId: SocketId, kind: MountableKind): void => {
@@ -7859,11 +9138,11 @@ export function Session(): JSX.Element {
       const next = useStore.getState().session;
       if (next === undefined) return;
       const mounted = next.mounted[socketId];
-      const role = next.socketRoles[socketId];
-      if (mounted === undefined || mounted.kind !== 'timer-h3y4' || role === undefined) return;
+      if (mounted === undefined || mounted.kind !== 'timer-h3y4') return;
+      // 宛先はネットリスト上の部品ID。役割が無いソケットでも `S3` として必ず届く（§6.4）
       bridge.send({
         type: 'setPreset',
-        role,
+        partId: socketPartId(next.socketRoles, socketId),
         presetMs: mounted.presetMs,
         session: cloneSession(next),
       });
@@ -7885,7 +9164,7 @@ export function Session(): JSX.Element {
     store.setPending(undefined);
     store.setSelectedWire(undefined);
     store.clearLive();
-    store.addLog(`${verb}: ${step.command.label}`);
+    store.addLog(historyLog(verb, step.command.label));
     bridge.send({ type: 'load', problemId: problem.id, session: cloneSession(step.session) });
   };
 
@@ -7908,10 +9187,10 @@ export function Session(): JSX.Element {
           useStore.getState().setCamera(preset);
         }}
         onUndo={() => {
-          restore(undoHistory(history), '元に戻す');
+          restore(undoHistory(history), JA.session.undo);
         }}
         onRedo={() => {
-          restore(redoHistory(history), 'やり直し');
+          restore(redoHistory(history), JA.session.redo);
         }}
         onJudge={() => {
           bridge.send({
@@ -7932,31 +9211,29 @@ export function Session(): JSX.Element {
           tripped={snapshot.tripped}
           onBreaker={(on) => {
             bridge.send({ type: 'breaker', on });
-            useStore.getState().addLog(`ブレーカ ${on ? 'ON' : 'OFF'}`);
+            useStore.getState().addLog(powerLog(JA.session.breaker, on));
           }}
           onSwitch={(on) => {
             bridge.send({ type: 'switch', on });
-            useStore.getState().addLog(`電源スイッチ ${on ? 'ON' : 'OFF'}`);
+            useStore.getState().addLog(powerLog(JA.session.switch, on));
           }}
           onResetTrip={() => {
             bridge.send({ type: 'resetTrip' });
-            useStore.getState().addLog('保護復帰の手順を実行');
+            useStore.getState().addLog(JA.session.resetTripLog);
           }}
         />
       </Toolbar>
 
       <div className={styles.sessionLayout}>
         <div className={styles.viewport} data-testid="viewport">
-          <BoardScene
-            onPick={onPick}
-            onHover={onHover}
-            onPress={onPress}
-            onRelease={onRelease}
-          />
+          <BoardScene onPick={onPick} onHover={onHover} onPress={onPress} onRelease={onRelease} />
           <div className={styles.statusOverlay} data-testid="status-overlay">
-            {snapshot.powered ? '通電中' : '無通電'} / 電線 {session.wires.length} 本 /{' '}
-            {pendingTerminal === undefined ? '端子未選択' : `1本目: ${pendingTerminal}`}
-            {selectedWire === undefined ? '' : ` / 選択: ${selectedWire}`}
+            {snapshot.powered ? JA.session.powered : JA.session.unpowered} / {JA.session.wires}{' '}
+            {session.wires.length} {JA.session.wiresUnit} /{' '}
+            {pendingTerminal === undefined
+              ? JA.session.noTerminal
+              : `${JA.session.firstTerminal}: ${pendingTerminal}`}
+            {selectedWire === undefined ? '' : ` / ${JA.session.selection}: ${selectedWire}`}
             {snapshot.tripped ? ` / ${JA.session.tripped}` : ''}
             {webglLost ? ` / ${JA.error.webglLost}` : ''}
           </div>
@@ -7966,11 +9243,11 @@ export function Session(): JSX.Element {
           <ProblemPanel problem={problem} />
           {spec !== undefined && spec.ok ? <TimeChartPanel chart={spec.chart} /> : null}
           {spec !== undefined && !spec.ok ? (
-            <p data-testid="reference-error">模範回路エラー: {spec.errors.join(' / ')}</p>
+            <p data-testid="reference-error">{referenceErrorText(spec.errors)}</p>
           ) : null}
           <section className={styles.panelLive}>
-            <h2 className={styles.liveTitle}>ライブ記録</h2>
-            <TimeChartSvg chart={live} title="ライブ記録" />
+            <h2 className={styles.liveTitle}>{JA.session.liveChart}</h2>
+            <TimeChartSvg chart={live} title={JA.session.liveChart} />
           </section>
           <PartsPanel
             session={session}
@@ -8436,7 +9713,7 @@ export function StaticCheckList({ checks }: { checks: readonly StaticCheckResult
           <div key={check.id}>
             <div className={styles.checkRow}>
               <span className={check.ok ? styles.badgeOk : styles.badgeNg}>
-                {check.ok ? 'OK' : 'エラー'}
+                {check.ok ? JA.result.ok : JA.result.ng}
               </span>
               <span>{JA.staticCheck[check.id]}</span>
               <span className={styles.detail}>{check.message}</span>
@@ -8477,7 +9754,9 @@ export function HazardList({
             {rows.map((kind) => (
               <tr key={kind}>
                 <td>{JA.hazard[kind]}</td>
-                <td>{counts[kind]} 回</td>
+                <td>
+                  {counts[kind]} {JA.result.times}
+                </td>
               </tr>
             ))}
           </tbody>
@@ -8494,7 +9773,7 @@ export function HazardList({
 import type { AssembleProblem, JudgeResult } from '@ojt/content';
 import type { JSX } from 'react';
 import { formatElapsed } from '../../worker/runtime.js';
-import { JA } from '../i18n/ja.js';
+import { elapsedSummaryText, JA } from '../i18n/ja.js';
 import { ChartOverlay } from './ChartOverlay.js';
 import { MismatchList } from './MismatchList.js';
 import { HazardList, StaticCheckList } from './StaticCheckList.js';
@@ -8506,14 +9785,8 @@ import styles from './result.module.css';
  * チャタリングを検出していたら禁則回路の明示警告を出す。
  */
 
-/** 所要時間と標準・打切り時間の対比文。§8.3 */
-export function elapsedSummary(elapsedMs: number, standardMin: number, cutoffMin: number): string {
-  const standardMs = standardMin * 60_000;
-  const cutoffMs = cutoffMin * 60_000;
-  if (elapsedMs > cutoffMs) return `${JA.result.cutoffMark}（${cutoffMin}分）を超過`;
-  if (elapsedMs > standardMs) return `${JA.result.standardMark}（${standardMin}分）を超過`;
-  return `${JA.result.standardMark}（${standardMin}分）以内`;
-}
+/** 所要時間と標準・打切り時間の対比文。§8.3（文言そのものは `ja.ts` が持つ。§15） */
+export const elapsedSummary = elapsedSummaryText;
 
 /** 結果画面の本体。 */
 export function ResultView({
@@ -8577,6 +9850,7 @@ export function ResultView({
 ```tsx
 import type { JSX } from 'react';
 import { useStore } from '../app/store.js';
+import { JA } from '../i18n/ja.js';
 import { ResultView } from '../result/ResultView.js';
 import styles from './screens.module.css';
 
@@ -8595,14 +9869,14 @@ export function Result(): JSX.Element {
   if (problem === undefined || judge === undefined) {
     return (
       <div className={styles.center}>
-        <p>判定結果がありません。</p>
+        <p>{JA.result.noResult}</p>
         <button
           type="button"
           onClick={() => {
             setRoute('list');
           }}
         >
-          課題一覧へ
+          {JA.result.toList}
         </button>
       </div>
     );
@@ -9223,7 +10497,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 
 - [ ] `pnpm --filter @ojt/desktop typecheck` が無出力で終わる
 - [ ] `pnpm lint` が無出力で終わる
-- [ ] `pnpm --filter @ojt/desktop test` が **10ファイル / 101テスト** すべて通る
+- [ ] `pnpm --filter @ojt/desktop test` が **13ファイル / 141テスト** すべて通る
 - [ ] `pnpm --filter @ojt/desktop build` が main / preload / renderer の3つを出力する
 - [ ] `pnpm --filter @ojt/desktop e2e` のスモーク1本が通る
 - [ ] `apps/desktop/screenshots/` に10枚のスクリーンショットが出て、`03-board-3d.png` に3D盤（傾斜コンソール・左右4個ずつのソケット・端子番号）が写っている
@@ -9244,3 +10518,4 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 | 2026-09-14 | Task 1D1-b: `pnpm --filter @ojt/desktop dev`（バンドルしない ESM）で renderer が `@ojt/content` から何か1つでも import すると、ESM の評価順で `src/index.ts` が再エクスポートしていた `src/loader.ts` の `node:fs` import まで評価され、`Module "node:fs" has been externalized … Cannot access "node:fs.readdirSync"` で renderer がマウントできなくなる不具合を修正した（`build` は tree-shaking で無症状だったため見つかっていなかった）。`loadProblemsFromDir` / `mergeProblemSets` を `@ojt/content` のルートバレルから外し、`package.json` の `exports["./loader"]` で `./src/loader.ts` を公開する専用の subpath にした。`ProblemLoadError` / `ProblemSet` 型は fs に触れないので新設の `src/problem-set.ts` に移し、ルートバレルと `loader.ts` の両方から再エクスポートする（`apps/desktop/src/shared/ipc.ts` の `import type { ProblemLoadError } from '@ojt/content'` は変更不要）。Step 3 の `sideEffects` によるツリーシェイクの説明は production build（`pnpm --filter @ojt/desktop build` → `Select-String ... 'loadProblemsFromDir','readdirSync'` が無出力）には今も当てはまるが、この修正後は renderer の依存グラフが `@ojt/content/loader` に一切届かなくなるため、dev サーバのログに「`node:fs` has been externalized」という警告自体が出なくなることを確認した。`apps/desktop` 側は今のところ `loadProblemsFromDir` / `mergeProblemSets` を呼ぶコードが無い（利用者フォルダの合流は Plan 1D2 Step 3 が足す。そちらの import 例を `@ojt/content/loader` に更新済み）ため、本プランのファイルには他の変更は無い |
 | 2026-09-14 | Task 1D1-c: 仕様レビュー（Task 6〜8）の指摘を反映。Task 7: 電線選択を削除モード限定に、既設配線メッセージを青に、CommandResult 失敗時に wire を保持 |
 | 2026-09-14 | Task 1D1-d: 仕様レビュー（Task 9〜12）の指摘を反映。Task 9/10/12: ダンピング有効化、視点プリセットの補間、中ドラッグ平行移動、固定機器の端子印字と footprint 準拠の外形 |
+| 2026-09-14 | 1D1-e: ErrorBoundary、トースト期限、restartSession/sessionEpoch、Worker ループの例外処理と判定中の一時停止、formatElapsed、ojtApi()、setPreset を partId で、削除モードの選択解除、文言の ja.ts 集約、react-hooks lint |
