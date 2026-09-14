@@ -18,6 +18,58 @@ export const SOCKET_ROW_CENTER_MM = ((): number => {
   return top + first.bodyMm.length / 2;
 })();
 
+/** 「ソケット拡大」で必ず画角に入れる余白[mm]（機器の外形の外側）。§12.2 */
+export const SOCKET_VIEW_MARGIN_MM = 10;
+
+/**
+ * 「ソケット拡大」で使うビューポートの想定縦横比。
+ * 3D表示領域は「ウィンドウ幅 − 右パネル380px」×「ウィンドウ高 − ツールバー − 下部パネル200px」で、
+ * 1280×800 でも 1440×900 でも 1.6 程度になる。狭いほうに倒して 1.5 を想定にしておけば、
+ * 実際の縦横比がこれより横長な限り左右が切れない。
+ */
+export const SOCKET_VIEW_ASPECT = 1.5;
+
+/**
+ * 「ソケット拡大」が収める盤の矩形（盤モデル mm）。§12.2
+ *
+ * ソケット8個の本体に加え、**その手前のランプ用／押ボタン用端子台まで**を含める。
+ * 配線はソケットと端子台のあいだを往復するので、寄ったときに端子台が切れていると
+ * 「どこへ繋ぐか」が見えず拡大の意味が無い（レビュー指摘: S1/S8 と端子台が画面外）。
+ * 数値は盤定義（`sockets` と `footprints`）から求めるのでハードコードしない。
+ */
+export const SOCKET_VIEW_RECT = ((): { x: number; y: number; w: number; h: number } => {
+  const xs: number[] = [];
+  const ys: number[] = [];
+  for (const socket of JIPM_BOARD.sockets) {
+    xs.push(socket.origin.x, socket.origin.x + socket.bodyMm.width);
+    ys.push(socket.origin.y, socket.origin.y + socket.bodyMm.length);
+  }
+  for (const footprint of JIPM_BOARD.footprints) {
+    if (footprint.kind !== 'block') continue;
+    xs.push(footprint.x, footprint.x + footprint.w);
+    ys.push(footprint.y, footprint.y + footprint.h);
+  }
+  if (xs.length === 0 || ys.length === 0) {
+    return { x: 0, y: 0, w: BOARD_WIDTH_MM, h: BOARD_HEIGHT_MM };
+  }
+  const x = Math.min(...xs) - SOCKET_VIEW_MARGIN_MM;
+  const y = Math.min(...ys) - SOCKET_VIEW_MARGIN_MM;
+  return {
+    x,
+    y,
+    w: Math.max(...xs) + SOCKET_VIEW_MARGIN_MM - x,
+    h: Math.max(...ys) + SOCKET_VIEW_MARGIN_MM - y,
+  };
+})();
+
+/** 視野角の半分の tan（画角計算の共通項）。 */
+const HALF_FOV_TAN = Math.tan((CAMERA_FOV_DEG / 2) * (Math.PI / 180));
+
+/** 幅 `widthMm` × 高さ `heightMm` の矩形が視野 38° に収まる面直距離[mm]。 */
+export function fitDistanceMm(widthMm: number, heightMm: number, aspect: number): number {
+  return Math.max(widthMm / 2 / (HALF_FOV_TAN * aspect), heightMm / 2 / HALF_FOV_TAN);
+}
+
 /**
  * 盤グループの X 軸回転量[rad]。
  * 盤面ローカル（+Z が盤面の法線、+Y が盤の奥方向）を机の上に寝かせ、
@@ -65,7 +117,6 @@ export function cameraPose(preset: CameraPreset): CameraPose {
   // 視野角38°・横基準。盤の幅330mmが収まるには距離 ≥ 165/(tan(19°)×aspect) 必要で、
   // 16:10 のビューポート（aspect 1.6）なら 305mm。1割の余白を足した w × 1.05 を面直視の距離にする。
   const faceDistance = Math.max(w * 1.05, h * 1.55);
-  const socketY = h / 2 - SOCKET_ROW_CENTER_MM;
   switch (preset) {
     case 'front':
       return {
@@ -79,12 +130,21 @@ export function cameraPose(preset: CameraPreset): CameraPose {
         target: [0, 0, -h * 0.02],
         up: [0, 1, 0],
       };
-    case 'socket':
+    case 'socket': {
+      // ソケット段＋端子台の外接矩形がちょうど収まる距離まで寄る（固定倍率で寄せない）
+      const rect = SOCKET_VIEW_RECT;
+      const distance = fitDistanceMm(rect.w, rect.h, SOCKET_VIEW_ASPECT);
+      const center: [number, number, number] = [
+        rect.x + rect.w / 2 - w / 2,
+        h / 2 - (rect.y + rect.h / 2),
+        0,
+      ];
       return {
-        position: boardToWorld([0, socketY, faceDistance * 0.5]),
-        target: boardToWorld([0, socketY, 0]),
+        position: boardToWorld([center[0], center[1], distance]),
+        target: boardToWorld(center),
         up: boardUp(),
       };
+    }
   }
 }
 

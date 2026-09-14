@@ -29,6 +29,13 @@ const LABEL_STYLE = { pointerEvents: 'none' } as const;
  */
 const PICK_LIFT_MM = 3;
 
+/**
+ * ツールチップの位置（端子の中心からのずれ[mm]）。
+ * 盤の**手前**（−Y）へ降ろし、かつ手前へ浮かせる。奥へ出すとソケットのネジ端子ティアや
+ * 隣の段の印字に被って、いま指している端子の番号が読めなくなる（レビュー指摘）。
+ */
+const TOOLTIP_OFFSET_MM: [number, number, number] = [0, -8, 8];
+
 /** ツールチップのラベル文字列を作る（役割名は盤定義の `label` をそのまま使う）。§8.2 */
 export function terminalTooltip(terminal: BoardTerminal, roleLabel: string): string {
   return roleLabel.length > 0 ? roleLabel : terminal.label;
@@ -85,7 +92,7 @@ export function TerminalHit({
           center
           style={LABEL_STYLE}
           distanceFactor={260}
-          position={[0, 6, 6]}
+          position={TOOLTIP_OFFSET_MM}
           zIndexRange={[20, 0]}
         >
           <span className="terminal-tooltip">{tooltip}</span>

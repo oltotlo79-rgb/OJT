@@ -11,7 +11,7 @@ import { Html } from '@react-three/drei';
 import { useMemo, type JSX } from 'react';
 import type { ThreeEvent } from '@react-three/fiber';
 import { SOCKET_BODY_COLOR, SOCKET_LEVER_COLOR } from '../session/colors.js';
-import { socketFaceTexture } from './labels.js';
+import { socketFaceTexture, SOCKET_PLATE_MARGIN_MM } from './labels.js';
 import { sharedMaterial, UNIT_BOX } from './materials.js';
 import { toScene } from './coords.js';
 import { TerminalHit } from './TerminalHit.js';
@@ -33,8 +33,13 @@ const LABEL_STYLE = { pointerEvents: 'none' } as const;
 
 /** ネジ端子ティアの奥行[mm]（2段ぶん＋余白）。 */
 const TIER_DEPTH_MM = 20;
-/** ティアの高さ[mm]。 */
-const TIER_HEIGHT_MM = 11;
+/**
+ * ティアの高さ[mm]。
+ * ネジ端子は盤面から `SOCKET_TERMINAL_Z_MM`（10mm）にあり、ネジ頭の円柱は 9.2〜10.8mm を占める。
+ * 以前の 11mm はネジ頭をまるごと飲み込んでしまい、ホバー色（水色）も配線待ち色（橙）も
+ * 画面に出てこなかった（レビュー指摘）。ネジ頭が 1.8mm 突き出す 9mm にする。
+ */
+export const TIER_HEIGHT_MM = 9;
 /** 本体（差込領域）の高さ[mm]。 */
 const BODY_HEIGHT_MM = 9;
 /** 印字の板をネジの頭より上に浮かせる量[mm]（ネジに隠れないようにする）。 */
@@ -85,9 +90,19 @@ export function Socket({
   const centerX = originX + width / 2;
   const centerY = originY + length / 2;
 
+  // 印字の板は本体より四方に `SOCKET_PLATE_MARGIN_MM` だけ大きい（外側の列の `COM` が切れないため）
+  const plateWidth = width + SOCKET_PLATE_MARGIN_MM * 2;
+  const plateLength = length + SOCKET_PLATE_MARGIN_MM * 2;
   const faceTexture = useMemo(
-    () => socketFaceTexture(terminals, originX, originY, width, length),
-    [terminals, originX, originY, width, length],
+    () =>
+      socketFaceTexture(
+        terminals,
+        originX - SOCKET_PLATE_MARGIN_MM,
+        originY - SOCKET_PLATE_MARGIN_MM,
+        plateWidth,
+        plateLength,
+      ),
+    [terminals, originX, originY, plateWidth, plateLength],
   );
   const holes = useMemo(() => socketPinHoleOffsets(), []);
 
@@ -159,7 +174,7 @@ export function Socket({
           raycast={noPick}
           position={[bodyCenter[0], bodyCenter[1], TIER_HEIGHT_MM + LABEL_LIFT_MM]}
         >
-          <planeGeometry args={[width, length]} />
+          <planeGeometry args={[plateWidth, plateLength]} />
           <meshBasicMaterial map={faceTexture} transparent depthWrite={false} />
         </mesh>
       )}

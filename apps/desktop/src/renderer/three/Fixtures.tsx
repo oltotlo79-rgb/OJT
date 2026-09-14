@@ -28,11 +28,34 @@ const LABEL_STYLE = { pointerEvents: 'none' } as const;
 /** 機器の高さ[mm]。 */
 const FIXTURE_HEIGHT_MM = 22;
 
+/**
+ * DC24V電源（`supply`）の高さ[mm]。
+ *
+ * この機器の占有領域（`x12 y6 w26 h30`）は P/N 供給端子台（`P.1` / `N.1`、盤面から8mm）と
+ * 重なっている。22mm の箱にすると端子台ごと飲み込んでしまい、`P1` / `N1` の印字もネジも
+ * 見えなくなって「どこに +24V を取りに行くのか」が分からなかった（レビュー指摘）。
+ * 端子台（高さ8mm）より低い5mmの台に留め、端子台はその上に載る形にする。
+ * 占有領域（配線の経路が避ける矩形）は盤定義のままで変えない。
+ */
+const SUPPLY_HEIGHT_MM = 5;
+
 /** 端子印字の文字高さ[mm]。機器の名称のみで数値・記号が短いので、端子台の役割文字より少し大きくする。 */
 const MARK_MM = 4;
 
 /** 印字の板をネジの頭より上に浮かせる量[mm]。 */
 const LABEL_LIFT_MM = 1.4;
+
+/**
+ * 印字の板を機器の外形より外へ広げる量[mm]（四方）。
+ * `PS +24V` の端子は占有領域の左端（x=12）にあり、板を外形ぴったりにすると `+24V` が半分切れる。
+ */
+const PLATE_MARGIN_MM = 8;
+
+/** DC24V電源の印字の板の高さ[mm]（P/N 端子台の印字より上に出す）。 */
+const SUPPLY_LABEL_Z_MM = 11;
+
+/** 名札を機器の手前側へ降ろす量[mm]（外形の手前端からの距離）。 */
+const LABEL_OFFSET_MM = 6;
 
 /** 端子の印字色（極性は色でも区別する。§12.2「極性 +/− は色でも区別」）。CB/SW の `ac` は黒。 */
 const FIXTURE_MARK_COLOR: Readonly<Partial<Record<BoardTerminal['role'], string>>> = {
@@ -63,21 +86,29 @@ export function findFixtureFootprint(
   return footprints.find((footprint) => footprint.kind === kind);
 }
 
-/** 固定機器1個ぶんの端子印字テクスチャ。footprint の左上を板の原点にするので印字は端子の真上に来る。 */
+/**
+ * 固定機器1個ぶんの端子印字テクスチャ。
+ * footprint の左上から `PLATE_MARGIN_MM` だけ外へ広げた矩形を板にするので、
+ * 外形の端に載っている端子（`PS +24V` など）の印字も切れない。
+ */
 function fixtureFaceTexture(
   terminals: readonly BoardTerminal[],
   footprint: Footprint,
 ): Texture | undefined {
   if (terminals.length === 0) return undefined;
-  return makeCanvasTexture(footprint.w, footprint.h, (ctx) => {
-    ctx.font = `700 ${MARK_MM * PX_PER_MM}px sans-serif`;
-    for (const terminal of terminals) {
-      const x = (terminal.pos.x - footprint.x) * PX_PER_MM;
-      const y = (terminal.pos.y - footprint.y) * PX_PER_MM;
-      ctx.fillStyle = FIXTURE_MARK_COLOR[terminal.role] ?? '#1B1E23';
-      ctx.fillText(fixtureTerminalMark(terminal), x, y);
-    }
-  });
+  return makeCanvasTexture(
+    footprint.w + PLATE_MARGIN_MM * 2,
+    footprint.h + PLATE_MARGIN_MM * 2,
+    (ctx) => {
+      ctx.font = `700 ${MARK_MM * PX_PER_MM}px sans-serif`;
+      for (const terminal of terminals) {
+        const x = (terminal.pos.x - footprint.x + PLATE_MARGIN_MM) * PX_PER_MM;
+        const y = (terminal.pos.y - footprint.y + PLATE_MARGIN_MM) * PX_PER_MM;
+        ctx.fillStyle = FIXTURE_MARK_COLOR[terminal.role] ?? '#1B1E23';
+        ctx.fillText(fixtureTerminalMark(terminal), x, y);
+      }
+    },
+  );
 }
 
 /** 固定機器1台（外形は `board.footprints` から、端子印字は `terminals` から）。 */
@@ -102,10 +133,12 @@ export function Fixture({
     [terminals, footprint],
   );
   if (terminals.length === 0 || footprint === undefined) return null;
+  const heightMm = kind === 'supply' ? SUPPLY_HEIGHT_MM : FIXTURE_HEIGHT_MM;
+  const labelPlateZ = kind === 'supply' ? SUPPLY_LABEL_Z_MM : heightMm + LABEL_LIFT_MM;
   const center = toScene({
     x: footprint.x + footprint.w / 2,
     y: footprint.y + footprint.h / 2,
-    z: FIXTURE_HEIGHT_MM / 2,
+    z: heightMm / 2,
   });
   return (
     <group name={`fixture-${name}`}>
@@ -114,20 +147,27 @@ export function Fixture({
         material={sharedMaterial(color, { roughness: 0.6, metalness: 0.15 })}
         raycast={noPick}
         position={center}
-        scale={[footprint.w, footprint.h, FIXTURE_HEIGHT_MM]}
+        scale={[footprint.w, footprint.h, heightMm]}
       />
       {/* 端子の名前の印字（常時表示）。§12.2 */}
       {faceTexture === undefined ? null : (
-        <mesh raycast={noPick} position={[center[0], center[1], FIXTURE_HEIGHT_MM + LABEL_LIFT_MM]}>
-          <planeGeometry args={[footprint.w, footprint.h]} />
+        <mesh raycast={noPick} position={[center[0], center[1], labelPlateZ]}>
+          <planeGeometry
+            args={[footprint.w + PLATE_MARGIN_MM * 2, footprint.h + PLATE_MARGIN_MM * 2]}
+          />
           <meshBasicMaterial map={faceTexture} transparent depthWrite={false} />
         </mesh>
       )}
+      {/*
+        名札は機器の**手前側**に置く。以前は機器の真上に置いていたため、盤の上端に並ぶ
+        DC24V電源では左上の状態オーバーレイと、隣の DC24V端子台の名札と三つ巴で重なっていた
+        （レビュー指摘）。手前に降ろすと画面上でも下へずれてどちらとも離れる。
+      */}
       <Html
         center
         style={LABEL_STYLE}
         distanceFactor={320}
-        position={[center[0], center[1], FIXTURE_HEIGHT_MM + 1]}
+        position={[center[0], center[1] - footprint.h / 2 - LABEL_OFFSET_MM, labelPlateZ]}
         zIndexRange={[10, 0]}
       >
         <span className="block-label">{label}</span>

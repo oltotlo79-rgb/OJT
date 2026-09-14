@@ -40,6 +40,7 @@ function noPick(): void {
 export function TerminalBlock({
   name,
   label,
+  labelOffsetMm,
   terminals,
   hoveredTerminal,
   pendingTerminal,
@@ -48,6 +49,12 @@ export function TerminalBlock({
 }: {
   name: string;
   label: string;
+  /**
+   * 名札を置く位置（端子の外接矩形の中心からの盤モデル mm。+x は右、+y は手前）。
+   * 省略すると台座の奥側に置く。P/N 供給端子台だけは奥に DC24V電源の名札と
+   * 左上の状態オーバーレイが居るので、右斜め下へずらして重なりを避ける（レビュー指摘）。
+   */
+  labelOffsetMm?: { x: number; y: number };
   terminals: readonly BoardTerminal[];
   hoveredTerminal: string | undefined;
   pendingTerminal: string | undefined;
@@ -96,7 +103,12 @@ export function TerminalBlock({
         center
         style={LABEL_STYLE}
         distanceFactor={320}
-        position={[center[0], center[1] + bodyDepth / 2 + 4, height]}
+        position={
+          labelOffsetMm === undefined
+            ? [center[0], center[1] + bodyDepth / 2 + 4, height]
+            : // `toScene()` は盤モデルの y を反転するので、手前（+y）はシーンの −Y になる
+              [center[0] + labelOffsetMm.x, center[1] - labelOffsetMm.y, height]
+        }
         zIndexRange={[10, 0]}
       >
         <span className="block-label">{label}</span>

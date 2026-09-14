@@ -3,7 +3,10 @@ import {
   BOARD_WIDTH_MM,
   JIPM_BOARD,
   roleLabel,
+  SOCKET_BODY_WIDTH_MM,
+  SOCKET_COL_PITCH_MM,
   SOCKET_PIN_GRID,
+  SOCKET_TIER_ROW_PITCH_MM,
   socketPinHoleOffsets,
   socketPinTerminal,
   socketRowExit,
@@ -16,9 +19,13 @@ import {
   BOARD_TILT_RAD,
   boardToWorld,
   boardUp,
+  CAMERA_FOV_DEG,
   cameraPose,
   interpolatePose,
   SOCKET_ROW_CENTER_MM,
+  SOCKET_VIEW_ASPECT,
+  SOCKET_VIEW_MARGIN_MM,
+  SOCKET_VIEW_RECT,
   type CameraPose,
 } from '../src/renderer/three/camera.js';
 import { socketTerminalLabel } from '../src/renderer/three/Socket.js';
@@ -29,8 +36,19 @@ import {
   GIZMO_COLORS,
   GIZMO_MARGIN,
   GIZMO_SIZE,
-  STATUS_OVERLAY_BOTTOM_PX,
+  GIZMO_TOP_MARGIN_PX,
 } from '../src/renderer/three/ViewGizmo.js';
+import {
+  labelWidthMm,
+  NUMBER_MM,
+  ROLE_MM,
+  socketLabelBoxes,
+  SOCKET_PLATE_MARGIN_MM,
+  SOCKET_ROLE_COLOR,
+  TIER_CLEARANCE_MM,
+  type LabelBox,
+} from '../src/renderer/three/labels.js';
+import { SOCKET_BODY_COLOR } from '../src/renderer/session/colors.js';
 
 describe('toScene', () => {
   it('盤の中心が原点になる', () => {
@@ -105,7 +123,116 @@ describe('cameraPose', () => {
       socket.position[2] - socket.target[2],
     );
     expect(socketDistance).toBeLessThan(frontDistance);
-    expect(socket.target).toEqual(boardToWorld([0, BOARD_HEIGHT_MM / 2 - SOCKET_ROW_CENTER_MM, 0]));
+    // 注視点はソケット段と端子台をあわせた矩形の中心（ソケット段の中心より手前に下がる）
+    expect(socket.target).toEqual(
+      boardToWorld([
+        SOCKET_VIEW_RECT.x + SOCKET_VIEW_RECT.w / 2 - BOARD_WIDTH_MM / 2,
+        BOARD_HEIGHT_MM / 2 - (SOCKET_VIEW_RECT.y + SOCKET_VIEW_RECT.h / 2),
+        0,
+      ]),
+    );
+    expect(SOCKET_VIEW_RECT.y + SOCKET_VIEW_RECT.h / 2).toBeGreaterThan(SOCKET_ROW_CENTER_MM);
+  });
+});
+
+describe('ソケット拡大の画角（§12.2）', () => {
+  it('画角の矩形はソケット8個と端子台をすべて余白つきで含む', () => {
+    for (const socket of JIPM_BOARD.sockets) {
+      expect(SOCKET_VIEW_RECT.x).toBeLessThanOrEqual(socket.origin.x - SOCKET_VIEW_MARGIN_MM);
+      expect(SOCKET_VIEW_RECT.x + SOCKET_VIEW_RECT.w).toBeGreaterThanOrEqual(
+        socket.origin.x + socket.bodyMm.width + SOCKET_VIEW_MARGIN_MM,
+      );
+      expect(SOCKET_VIEW_RECT.y).toBeLessThanOrEqual(socket.origin.y - SOCKET_VIEW_MARGIN_MM);
+      expect(SOCKET_VIEW_RECT.y + SOCKET_VIEW_RECT.h).toBeGreaterThanOrEqual(
+        socket.origin.y + socket.bodyMm.length + SOCKET_VIEW_MARGIN_MM,
+      );
+    }
+    const blocks = JIPM_BOARD.footprints.filter((f) => f.kind === 'block');
+    expect(blocks.length).toBeGreaterThan(0);
+    for (const block of blocks) {
+      expect(SOCKET_VIEW_RECT.x).toBeLessThanOrEqual(block.x);
+      expect(SOCKET_VIEW_RECT.x + SOCKET_VIEW_RECT.w).toBeGreaterThanOrEqual(block.x + block.w);
+      expect(SOCKET_VIEW_RECT.y + SOCKET_VIEW_RECT.h).toBeGreaterThanOrEqual(block.y + block.h);
+    }
+  });
+
+  it('1280×800（3D表示領域の縦横比 ≥ 1.5）でソケット8個も端子台も画面に入る', () => {
+    const pose = cameraPose('socket');
+    const distance = Math.hypot(
+      pose.position[0] - pose.target[0],
+      pose.position[1] - pose.target[1],
+      pose.position[2] - pose.target[2],
+    );
+    const halfHeight = distance * Math.tan((CAMERA_FOV_DEG / 2) * (Math.PI / 180));
+    const halfWidth = halfHeight * SOCKET_VIEW_ASPECT;
+    expect(halfWidth * 2).toBeGreaterThanOrEqual(SOCKET_VIEW_RECT.w - 1e-9);
+    expect(halfHeight * 2).toBeGreaterThanOrEqual(SOCKET_VIEW_RECT.h - 1e-9);
+  });
+});
+
+describe('ソケットの印字（§6.2 / §8.2）', () => {
+  /** ソケット1個ぶんの印字の箱（板の左上を原点とする mm）。 */
+  function boxesFor(socketIndex: number): Array<{ box: LabelBox; y: number; label: string }> {
+    const socket = JIPM_BOARD.sockets[socketIndex];
+    if (socket === undefined) throw new Error('ソケットが定義されていません');
+    const originX = socket.origin.x - SOCKET_PLATE_MARGIN_MM;
+    const originY = socket.origin.y - SOCKET_PLATE_MARGIN_MM;
+    const out: Array<{ box: LabelBox; y: number; label: string }> = [];
+    for (const terminal of JIPM_BOARD.terminals) {
+      if (!terminal.id.startsWith(`${socket.id}.`)) continue;
+      const boxes = socketLabelBoxes(terminal, originX, originY);
+      out.push({ box: boxes.number, y: terminal.pos.y, label: `${terminal.label} 番号` });
+      out.push({ box: boxes.role, y: terminal.pos.y, label: `${terminal.label} 役割` });
+    }
+    return out;
+  }
+
+  it('役割文字は段ピッチ 8mm に収まる大きさになっている', () => {
+    expect(NUMBER_MM + ROLE_MM + TIER_CLEARANCE_MM).toBeLessThanOrEqual(
+      SOCKET_TIER_ROW_PITCH_MM - 1e-9,
+    );
+  });
+
+  it('どの印字も隣の段の印字と重ならない（`⑨ COM` が `⑬` に被らない）', () => {
+    const boxes = boxesFor(0);
+    for (const a of boxes) {
+      for (const b of boxes) {
+        if (a.y === b.y) continue;
+        const overlapY = a.box.y0 < b.box.y1 && b.box.y0 < a.box.y1;
+        const overlapX = a.box.x0 < b.box.x1 && b.box.x0 < a.box.x1;
+        expect(overlapY && overlapX, `${a.label} と ${b.label} が重なっています`).toBe(false);
+      }
+    }
+  });
+
+  it('どの印字も板からはみ出さない（外側の列の COM が切れない）', () => {
+    const socket = JIPM_BOARD.sockets[0];
+    if (socket === undefined) throw new Error('ソケットが定義されていません');
+    const plateWidth = socket.bodyMm.width + SOCKET_PLATE_MARGIN_MM * 2;
+    const plateLength = socket.bodyMm.length + SOCKET_PLATE_MARGIN_MM * 2;
+    for (const { box, label } of boxesFor(0)) {
+      expect(box.x0, `${label} が板の左端を越えています`).toBeGreaterThanOrEqual(0);
+      expect(box.x1, `${label} が板の右端を越えています`).toBeLessThanOrEqual(plateWidth);
+      expect(box.y0, `${label} が板の奥端を越えています`).toBeGreaterThanOrEqual(0);
+      expect(box.y1, `${label} が板の手前端を越えています`).toBeLessThanOrEqual(plateLength);
+    }
+  });
+
+  it('役割の印字は `COM` のまま短くしない（§12.2 の `⑨ COM`）', () => {
+    expect(roleLabel('com')).toBe('COM');
+    // 3文字ぶんの幅が板の余白に収まっている（切れないことの根拠）
+    expect(labelWidthMm('COM', ROLE_MM) / 2).toBeLessThanOrEqual(
+      SOCKET_PLATE_MARGIN_MM + (SOCKET_BODY_WIDTH_MM - 3 * SOCKET_COL_PITCH_MM) / 2,
+    );
+  });
+
+  it('役割の印字色は黒いソケット本体の上で読める（コントラスト比 4.5 以上）', () => {
+    for (const [role, color] of Object.entries(SOCKET_ROLE_COLOR)) {
+      expect(contrastRatio(color, SOCKET_BODY_COLOR), role).toBeGreaterThanOrEqual(4.5);
+    }
+    // 極性は色でも区別する（§12.2）
+    expect(SOCKET_ROLE_COLOR['+']).not.toBe(SOCKET_ROLE_COLOR['-']);
+    expect(SOCKET_ROLE_COLOR['coil+']).not.toBe(SOCKET_ROLE_COLOR.com);
   });
 });
 
@@ -248,10 +375,10 @@ describe('secondsToMs', () => {
 });
 
 describe('視点ギズモの置き場所と色（§12.2）', () => {
-  it('キューブの上端は左上の状態オーバーレイの帯より下にある', () => {
+  it('キューブの上端はビューポートの上端から余白ぶん下にある', () => {
     // `margin` はキューブの中心位置なので、上端は 中心 − 半分
     const top = GIZMO_MARGIN[1] - GIZMO_SIZE / 2;
-    expect(top).toBeGreaterThanOrEqual(STATUS_OVERLAY_BOTTOM_PX);
+    expect(top).toBeGreaterThanOrEqual(GIZMO_TOP_MARGIN_PX);
   });
 
   it('面・稜線・ホバーの色が互いに違う（どの面を指しているか分かる）', () => {
@@ -259,4 +386,26 @@ describe('視点ギズモの置き場所と色（§12.2）', () => {
     expect(used.size).toBe(3);
     expect(GIZMO_COLORS.text).not.toBe(GIZMO_COLORS.face);
   });
+
+  it('面の色は明るい盤（#E6E4DE）の上でも文字が読める暗さで、文字とのコントラスト比が 4.5 以上', () => {
+    expect(contrastRatio(GIZMO_COLORS.face, GIZMO_COLORS.text)).toBeGreaterThanOrEqual(4.5);
+    // 盤の色に溶けない（正面視でキューブが盤に重なっても輪郭が分かる）
+    expect(contrastRatio(GIZMO_COLORS.face, '#E6E4DE')).toBeGreaterThanOrEqual(3);
+  });
 });
+
+/** `#RRGGBB` の相対輝度（WCAG 2.x）。 */
+function relativeLuminance(hex: string): number {
+  const channels = [1, 3, 5].map((offset) => {
+    const value = Number.parseInt(hex.slice(offset, offset + 2), 16) / 255;
+    return value <= 0.03928 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * (channels[0] ?? 0) + 0.7152 * (channels[1] ?? 0) + 0.0722 * (channels[2] ?? 0);
+}
+
+/** 2色のコントラスト比（WCAG 2.x）。 */
+function contrastRatio(a: string, b: string): number {
+  const la = relativeLuminance(a);
+  const lb = relativeLuminance(b);
+  return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
+}

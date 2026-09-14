@@ -21,17 +21,105 @@ export const PX_PER_MM = 16;
 
 /**
  * 端子番号の文字高さ[mm]。
- * 正面視（盤の高さ300mmがビューポート高の約8割）で画面上 10px 相当になるよう 4.6mm とした。
- * ピン間隔は 9mm（列）× 12mm（段）なので、番号＋役割の2行（合計 9.1mm）でも隣と当たらない。
+ * 正面視（盤の高さ245mmがビューポート高の約9割）で画面上 10px 相当になるよう 4.6mm とした。
  */
-const NUMBER_MM = 4.6;
-/** 役割文字の高さ[mm]。 */
-const ROLE_MM = 3;
+export const NUMBER_MM = 4.6;
+
+/**
+ * 役割文字の高さ[mm]。
+ *
+ * ソケットのネジ端子の**段ピッチは 8mm**（`SOCKET_TIER_ROW_PITCH_MM`）しかない。
+ * 以前は「列 9mm × 段 12mm」という誤ったコメントのもとで 3mm にしていたため、
+ * 番号（4.6mm）＋役割（3mm）＋行間で 9.1mm となり、`⑨ COM` の COM が
+ * 次の段の `⑬` に重なっていた（レビュー指摘）。
+ * 8mm に「番号 4.6 ＋ 行間 0.4 ＋ 役割 2.2 ＋ 段間 0.8」で収まる値にする。
+ */
+export const ROLE_MM = 2.2;
+
+/** 番号と役割のあいだの余白[mm]。 */
+export const ROW_GAP_MM = 0.4;
+/** 隣の段の印字とのあいだに必ず空ける余白[mm]。 */
+export const TIER_CLEARANCE_MM = 0.8;
+
+/**
+ * 端子の中心から番号の中心までの奥行方向のずれ[mm]（負＝盤の奥側）。
+ * ネジ頭（半径1.8mm）の上にできるだけ文字を載せないよう、8mm の段ピッチの中で
+ * 許される範囲いっぱいまで奥へ寄せてある。
+ */
+export const NUMBER_CENTER_MM = -2;
+/** 端子の中心から役割文字の中心までの奥行方向のずれ[mm]（正＝盤の手前側）。 */
+export const ROLE_CENTER_MM = NUMBER_CENTER_MM + NUMBER_MM / 2 + ROW_GAP_MM + ROLE_MM / 2;
+
+/**
+ * 印字の板をソケット本体より外へ広げる量[mm]（四方）。
+ * 外側の列の `COM` は端子の中心から左右に 2mm ほどはみ出すが、端子の中心は本体の端から
+ * 3mm しかない。板を本体ぴったりにすると端が切れるので、板だけ一回り大きくする。
+ */
+export const SOCKET_PLATE_MARGIN_MM = 4;
+
+/**
+ * 半角1文字の幅比（sans-serif 700 のおおよその値）。
+ * 実測ではなく「はみ出さないこと」を検査するための概算なので、やや大きめに取る。
+ */
+const HALF_WIDTH_RATIO = 0.62;
+
+/** 印字1つぶんの外接矩形（板の左上を原点とする mm）。 */
+export interface LabelBox {
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+}
+
+/** 文字列の描画幅[mm]の概算（全角は1文字ぶん、半角は `HALF_WIDTH_RATIO` ぶん）。 */
+export function labelWidthMm(text: string, fontMm: number): number {
+  let units = 0;
+  for (const char of text) {
+    const code = char.codePointAt(0) ?? 0;
+    units += code >= 0x2000 ? 1 : HALF_WIDTH_RATIO;
+  }
+  return units * fontMm;
+}
+
+/** `fillText`（中央揃え・中央ベースライン）の外接矩形。 */
+function textBox(centerX: number, centerY: number, text: string, fontMm: number): LabelBox {
+  const half = labelWidthMm(text, fontMm) / 2;
+  return {
+    x0: centerX - half,
+    x1: centerX + half,
+    y0: centerY - fontMm / 2,
+    y1: centerY + fontMm / 2,
+  };
+}
+
+/**
+ * ソケットの端子1個ぶんの印字の位置（板の左上を原点とする mm）。
+ * 描画（`socketFaceTexture`）と、段どうしが当たらないことを確かめる単体テストの両方がこれを使う。
+ */
+export function socketLabelBoxes(
+  terminal: BoardTerminal,
+  originX: number,
+  originY: number,
+): { number: LabelBox; role: LabelBox } {
+  const x = terminal.pos.x - originX;
+  const y = terminal.pos.y - originY;
+  return {
+    number: textBox(x, y + NUMBER_CENTER_MM, terminalNumber(terminal), NUMBER_MM),
+    role: textBox(x, y + ROLE_CENTER_MM, roleLabel(terminal.role), ROLE_MM),
+  };
+}
 
 /** 端子台の印字テクスチャの最小の幅・奥行[mm]（`TerminalBlock` の `MIN_BODY_MM` と合わせる）。 */
 const MIN_FACE_MM = 16;
 
-/** 役割ごとの印字色（極性は色でも区別する）。 */
+/**
+ * 端子台の印字（`PL1+` / `P1`）の文字高さ[mm]。
+ * 端子台のネジ端子は 9mm ピッチで1行しか印字しないので、ソケットの役割文字（2.2mm）より
+ * 大きくてよい。ソケット側を詰めた影響がここに及ばないよう、別の定数にしてある。
+ */
+const BLOCK_MARK_MM = 3;
+
+/** 役割ごとの印字色（極性は色でも区別する）。端子台の**明るい**台座（`#F1EFE9`）に載せる用。 */
 const ROLE_COLOR: Readonly<Record<TerminalRole, string>> = {
   'coil+': '#D14343',
   'coil-': '#2E6BD6',
@@ -44,6 +132,25 @@ const ROLE_COLOR: Readonly<Record<TerminalRole, string>> = {
   a: '#1B1E23',
   b: '#1B1E23',
   ac: '#1B1E23',
+};
+
+/**
+ * ソケットの役割印字の色。ソケット本体は黒（`SOCKET_BODY_COLOR` = `#23262B`）なので、
+ * 端子台と同じ濃色（`#1B1E23`）では**黒地に黒**でまったく読めなかった（レビュー指摘の
+ * 「`COM` が見えない」の主因）。番号と同じ明るい字にし、極性だけ明るい赤／青で区別する。
+ */
+export const SOCKET_ROLE_COLOR: Readonly<Record<TerminalRole, string>> = {
+  'coil+': '#FF8A8A',
+  'coil-': '#8FB8FF',
+  com: '#E4E7EC',
+  no: '#E4E7EC',
+  nc: '#E4E7EC',
+  '+': '#FF8A8A',
+  '-': '#8FB8FF',
+  c: '#E4E7EC',
+  a: '#E4E7EC',
+  b: '#E4E7EC',
+  ac: '#E4E7EC',
 };
 
 /** キャンバスを作って描き、テクスチャにする。キャンバスが使えない環境では undefined。 */
@@ -86,16 +193,19 @@ export function socketFaceTexture(
   if (terminals.length === 0) return undefined;
   return makeCanvasTexture(plateWidthMm, plateHeightMm, (ctx) => {
     for (const terminal of terminals) {
+      // 位置は `socketLabelBoxes()` が持つ（テストが検査するのと同じ値で描く）
+      const boxes = socketLabelBoxes(terminal, originX, originY);
       const x = (terminal.pos.x - originX) * PX_PER_MM;
-      const y = (terminal.pos.y - originY) * PX_PER_MM;
-      // 盤定義のラベルは `S1 ⑨ com` の形。丸数字だけを取り出し、役割は `roleLabel()` で記号にする
-      const number = terminal.label.split(' ').at(-2) ?? terminal.label;
       ctx.fillStyle = '#F2F2EE';
       ctx.font = `700 ${NUMBER_MM * PX_PER_MM}px sans-serif`;
-      ctx.fillText(number, x, y - NUMBER_MM * PX_PER_MM * 0.55);
-      ctx.fillStyle = ROLE_COLOR[terminal.role];
+      ctx.fillText(
+        terminalNumber(terminal),
+        x,
+        ((boxes.number.y0 + boxes.number.y1) / 2) * PX_PER_MM,
+      );
+      ctx.fillStyle = SOCKET_ROLE_COLOR[terminal.role];
       ctx.font = `700 ${ROLE_MM * PX_PER_MM}px sans-serif`;
-      ctx.fillText(roleLabel(terminal.role), x, y + NUMBER_MM * PX_PER_MM * 0.6);
+      ctx.fillText(roleLabel(terminal.role), x, ((boxes.role.y0 + boxes.role.y1) / 2) * PX_PER_MM);
     }
   });
 }
@@ -132,12 +242,12 @@ export function blockFaceTexture(
   const offsetX = (widthMm - (maxX - minX)) / 2;
   const offsetY = (heightMm - (maxY - minY)) / 2;
   return makeCanvasTexture(widthMm, heightMm, (ctx) => {
-    ctx.font = `700 ${ROLE_MM * PX_PER_MM}px sans-serif`;
+    ctx.font = `700 ${BLOCK_MARK_MM * PX_PER_MM}px sans-serif`;
     for (const terminal of terminals) {
       const x = (terminal.pos.x - minX + offsetX) * PX_PER_MM;
       const y = (terminal.pos.y - minY + offsetY) * PX_PER_MM;
       ctx.fillStyle = ROLE_COLOR[terminal.role];
-      ctx.fillText(blockTerminalMark(terminal), x, y + ROLE_MM * PX_PER_MM * 1.5);
+      ctx.fillText(blockTerminalMark(terminal), x, y + BLOCK_MARK_MM * PX_PER_MM * 1.5);
     }
   });
 }

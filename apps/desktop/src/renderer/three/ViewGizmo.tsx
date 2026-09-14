@@ -28,27 +28,28 @@ export const GIZMO_FACES = {
 export const GIZMO_SIZE = 92;
 
 /**
- * 左上の状態オーバーレイ（`screens.module.css` の `.statusOverlay`）が占める帯の下端[px]。
- * `top: 12px` ＋ 高さ約22px ＋ 余白。
+ * ビューポートの上端からキューブの上端までに空ける余白[px]。
+ * 状態オーバーレイは右上へ移したので（`screens.module.css` の `.statusOverlay`）、
+ * 左上はキューブの場所として空いている。盤の上端の名札と重ならない高さに置く。
  */
-export const STATUS_OVERLAY_BOTTOM_PX = 44;
+export const GIZMO_TOP_MARGIN_PX = 20;
 
 /**
  * ビューポートの角からの**キューブ中心**の余白[px]。
  * `margin` は中心の位置なので、キューブの上端は `margin[1] - GIZMO_SIZE / 2`。
- * 状態オーバーレイと固定機器の名札の帯より下に降ろし、正面視点でも文字と重ならないようにする。
  */
-export const GIZMO_MARGIN: [number, number] = [72, 104];
+export const GIZMO_MARGIN: [number, number] = [72, 72];
 
 /**
- * キューブの色。暗い背景（`#141820`）の上で輪郭と面が読めるよう、
- * 面は明るい灰、稜線は水色、ホバーは面とも稜線とも違う琥珀色にする
- * （以前は稜線とホバーが同色で、どの面を指しているのか分からなかった）。
+ * キューブの色。暗い背景（`#141820`）の上で輪郭と面が読めること、かつ
+ * **正面視で明るい盤（`#E6E4DE`）に重なっても面と文字が読める**ことの両方を満たす必要がある。
+ * 以前は面が明るい灰（`#D8DDE6`）で盤の色とほとんど同じになり、`上` も側面も沈んで見えなかった
+ * （レビュー指摘）。面を中間の青灰に落とし、文字は白、稜線は濃紺にして対比を作る。
  */
 export const GIZMO_COLORS = {
-  face: '#D8DDE6',
-  text: '#141820',
-  stroke: '#39D0FF',
+  face: '#4A5563',
+  text: '#FFFFFF',
+  stroke: '#141820',
   hover: '#FFB400',
 } as const;
 
