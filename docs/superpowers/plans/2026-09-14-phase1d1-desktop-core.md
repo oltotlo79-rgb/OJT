@@ -124,11 +124,21 @@ allowBuilds:
 
 ```js
 import js from '@eslint/js';
+import { createTypeScriptImportResolver } from 'eslint-import-resolver-typescript';
+import importX from 'eslint-plugin-import-x';
 import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
   // `out/` は electron-vite のビルド成果物、`test-results/` は Playwright の出力
-  { ignores: ['**/dist/**', '**/out/**', '**/coverage/**', '**/node_modules/**', '**/test-results/**'] },
+  {
+    ignores: [
+      '**/dist/**',
+      '**/out/**',
+      '**/coverage/**',
+      '**/node_modules/**',
+      '**/test-results/**',
+    ],
+  },
   js.configs.recommended,
   ...tseslint.configs.recommendedTypeChecked,
   {
@@ -136,6 +146,27 @@ export default tseslint.config(
       parserOptions: { projectService: true, tsconfigRootDir: import.meta.dirname },
     },
     rules: { '@typescript-eslint/consistent-type-imports': 'error' },
+  },
+  // 循環依存の検出（設計仕様 §4.2）。import-x は依存グラフを辿るときに
+  // `import-x/parsers` を見るため、その設定を持つ typescript プリセットを取り込み、
+  // 解決器だけ workspace 対応のものに差し替える。
+  importX.flatConfigs.typescript,
+  {
+    files: ['**/*.ts', '**/*.tsx'],
+    plugins: { 'import-x': importX },
+    settings: {
+      'import-x/resolver-next': [
+        createTypeScriptImportResolver({
+          alwaysTryTypes: true,
+          noWarnOnMultipleProjects: true,
+          project: ['packages/*/tsconfig.json', 'apps/*/tsconfig.json'],
+        }),
+      ],
+    },
+    rules: {
+      'import-x/no-cycle': ['error', { maxDepth: Infinity }],
+      'import-x/no-unresolved': 'error',
+    },
   },
   // 素のJS（設定ファイル・ビルドスクリプト）は型情報を使うルールの対象外にする
   { files: ['**/*.js', '**/*.mjs'], extends: [tseslint.configs.disableTypeChecked] },
@@ -9007,3 +9038,4 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 |---|---|
 | 2026-09-14 | 初版 |
 | 2026-09-14 | 実装された `@ojt/board-model` の経路器（Task 9 / 9b / 9c / 9d）に合わせて整合を取った。①`WireRoute` の項目を実装どおり（`kind` / `points` / `corners` / `channelIds` / `lanes: ChannelLane[]` / `lane` / `laneOverflow` / `throughPanelAt?` / `lengthMm`）に書き換えた。`channelSpans` は存在せず、占有区間は `lanes[i].span`（レーンずらし前の節点座標）なので**描画には使わない**ことを前提表に明記（Task 11）。②走行高さが「全部同じ 2.4mm」から**高さのはしご** `WIRE_Z_LADDER_MM = [2.4, 4.2, 6.0, 7.8]`（x方向は段0・2、y方向は段1・3、レイヤは `runZ(axis, layer)`）に変わったので、Task 11 のテストの `WIRE_RUN_Z_MM`（`@deprecated` の別名）を使った「どこかに 2.4mm の折れ点がある」という検査を、**折れ点の高さがはしごの段・端子の高さ・盤面0のどれかに収まっている**という規則の検査に差し替えた（`P.1 → N.1` のような純y方向の渡り線は 2.4mm を1度も通らないため。その担保のテストも足した）。③`routeWire()` が部品を避けられない電線を `RoutingError`（`wireId` / `reason`）で**断る**ようになり、`crossesFootprint()` で後から調べる経路は返らなくなったので、Task 14 の「点線で仮表示」の分岐を削除し、`safeRoutes()`（Task 12）で `RoutingError` を受け止めて理由を出す形にした。`routeSession()` が全か無かで投げることも明記。④帯のスロット（レーン8 × レイヤ2）が尽きたときに立つ `laneOverflow` を3Dで琥珀色（`WIRE_LANE_OVERFLOW_COLOR`）に出し、配線時にトーストで知らせるようにした（`wireBodyColor()` と単体テスト）。⑤文言に `routeFailed` / `laneOverflow` / `routeReason`（`RoutingErrorReason` を網羅）を足し、使われなくなった `routeBlocked` を外した。⑥Task 11 の検査を `channelsClearOfFootprints()` / `validateBoard()` で実質のあるものにした。テスト総数 97 → 101 |
+| 2026-09-14 | Task 1 の eslint.config.js に import-x（no-cycle / no-unresolved）を復元 |
