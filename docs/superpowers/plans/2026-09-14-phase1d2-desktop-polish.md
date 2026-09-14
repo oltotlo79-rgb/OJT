@@ -605,7 +605,13 @@ export function toWorkFile(
   };
 }
 
-/** 作業ファイルの `session` を `BoardSession` として読む（形が違えば undefined）。§13 #8 */
+/**
+ * 作業ファイルの `session` を `BoardSession` として読む（形が違えば undefined）。§13 #8
+ *
+ * 名前が同じでも `@ojt/schematic-core` の `toSession(doc, board, options)`
+ * （回路図 → 盤セッション。`{ ok, session, assignment } | { ok: false, errors }` を返す）とは別物。
+ * このモジュールは保存した JSON を読み戻すだけで、割当も配線もしない。
+ */
 export function toSession(raw: unknown): BoardSession | undefined {
   if (typeof raw !== 'object' || raw === null) return undefined;
   const source = raw as Partial<BoardSession>;
@@ -670,6 +676,12 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 
 仕様 §11.2「Phase 1 は読取専用レンダラ（SVG）。`layout()` は文書モデルから SVG 要素の座標配列を返す純粋関数とし、描画そのものは `apps/desktop` が行う」、§8.4「3級は常時表示、2級は開閉可、1級は非表示」。
 
+実装済みの `@ojt/schematic-core` に合わせる点（Plan 1B Task 11〜16）:
+
+- `Shape` は4種の直和（`line` / `circle` / `arc` / `text`）で、共通の項目は `kind` と `role`（`'bus' | 'wire' | 'symbol' | 'label' | 'junction'`）。`fill` を持つのは **`circle` だけ**（表示灯の色。`LAMP_FILL[device]`）、`startDeg` / `endDeg` を持つのは `arc` だけ、`text` / `anchor`（`'start' | 'middle' | 'end'`）を持つのは `text` だけ。座標は mm/px 非依存の論理単位で、`viewBox` にそのまま流し込む。
+- `layout(doc, options?)` は `{ width, height, shapes }`（`SchematicLayout`）を返す。`DEFAULT_LAYOUT_OPTIONS` は `colWidth: 24` / `rowHeight: 24` / `marginX: 12` / `marginY: 16` / `symbolWidth: 12`（`rowHeight` は Plan 1B Task 13d で 16 → 24 になり、記号と次の段の銘板が重ならなくなった）。ただし**タイマコイルの銘板は `T1 (3.0秒)` のように長い**（`layout.ts` の `cellLabel()`。`presetMs` を持つコイルだけ）ので、`colWidth: 24` のままだと横方向で隣の銘板と重なる。ここでは `colWidth` を広げて渡す。
+- `Shape` は Plan 1B Task 13d で `rungId?` / `cellId?`（どの段・どの要素から出た図形か。母線の線とラベルはどちらも持たない）を持つようになった。型は `Shape` に畳み込まれていて `ShapeSource` 単体は再エクスポートされていないので、必要なら `shape.cellId` をそのまま読む。Phase 1 の読取専用レンダラは配列の添字で `key` を振れば足りるのでそのままにし、Phase 2 で「盤の端子にホバーすると回路図の該当要素が光る」を作るときにこの2つを使う。
+
 
 - [ ] **Step 1: `apps/desktop/src/renderer/schematic/SchematicSvg.tsx` を書く**
 
@@ -677,6 +689,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 import {
   layout,
   LAMP_FILL,
+  type LayoutOptions,
   type SchematicDocument,
   type Shape,
   type ShapeRole,
@@ -687,6 +700,11 @@ import { useMemo, type JSX } from 'react';
  * 回路図（展開接続図）の読取専用レンダラ。設計仕様 §11.2。
  * 座標計算は `@ojt/schematic-core` の `layout()`（純粋関数）が行い、ここは SVG 化だけを担う。
  * ヒントの出し方は級で決まる（§8.4: 1級は非表示、2級は開閉可、3級は常時表示）。
+ *
+ * 図形は `Shape`（`line` / `circle` / `arc` / `text`）の直和で、`role` から線幅と色を引く。
+ * `key` は配列の添字でよい（`layout()` は決定論なので同じ文書からは同じ並びが出る）。
+ * `shape.rungId` / `shape.cellId`（Plan 1B Task 13d）は、Phase 2 で
+ * 「盤の端子にホバーすると回路図の該当要素が光る」を作るときに使う。
  */
 
 /** 役割ごとの線幅と色。 */
@@ -697,6 +715,17 @@ const STROKE: Readonly<Record<ShapeRole, { color: string; width: number }>> = {
   label: { color: '#111418', width: 0 },
   junction: { color: '#111418', width: 0 },
 };
+
+/** 銘板の文字の大きさ（論理単位）。 */
+const LABEL_FONT_SIZE = 6;
+
+/**
+ * 寸法設定。`DEFAULT_LAYOUT_OPTIONS` の `colWidth: 24` だと、タイマコイルの銘板
+ * （`layout()` が `T1 (3.0秒)` の形で作る）が隣の要素の銘板と重なる。
+ * 文字は最大10字ぶん（全角混じりで約 6 × 5.5 ≒ 33）を見込んで1列を 40 にする。
+ * 段の高さは `@ojt/schematic-core` の既定（24）に任せる。
+ */
+const LAYOUT: LayoutOptions = { colWidth: 40 };
 
 /** 極座標の角度[度]を SVG の座標に直す（弧の端点計算）。 */
 function arcPoint(cx: number, cy: number, r: number, deg: number): [number, number] {
@@ -754,7 +783,7 @@ function renderShape(shape: Shape, index: number): JSX.Element | null {
           x={shape.x}
           y={shape.y}
           fill={style.color}
-          fontSize={6}
+          fontSize={LABEL_FONT_SIZE}
           textAnchor={shape.anchor}
           dominantBaseline="middle"
         >
@@ -766,7 +795,7 @@ function renderShape(shape: Shape, index: number): JSX.Element | null {
 
 /** 回路図の SVG。 */
 export function SchematicSvg({ document: doc }: { document: SchematicDocument }): JSX.Element {
-  const result = useMemo(() => layout(doc), [doc]);
+  const result = useMemo(() => layout(doc, LAYOUT), [doc]);
   return (
     <svg
       viewBox={`0 0 ${result.width} ${result.height}`}
@@ -1105,12 +1134,26 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 （Plan 1D1 で既に書いてあるならそのままでよい。無ければ `cancelWire` の下に足す。）
 
 ```ts
-    routeBlocked: '部品を避けた配線経路を作れませんでした（点線で仮表示しています）',
+    /** 経路器が経路を作れなかった（`RoutingError`）。§6.6 */
+    routeFailed: '配線の経路を作れませんでした',
+    /** 同じ帯の同じスロットに載せざるを得なかった電線がある（`laneOverflow`）。§6.6 */
+    laneOverflow: '他の電線と同じ配線位置に重なっています（見た目だけの重なりで、回路は正しく組めています）',
     save: '作業を保存',
     load: '作業を読込',
     restoreTitle: '前回の作業を復元しますか？',
     restoreYes: '復元する',
     restoreNo: '復元しない',
+```
+
+`JA` の直下に置く `routeReason`（`RoutingErrorReason` を網羅する表）も Plan 1D1 で書いてあるはず。無ければ `mismatchReason` の下に足す。
+
+```ts
+  /** 経路器の失敗理由（`RoutingError.reason`）。§6.6 */
+  routeReason: {
+    'invalid-terminal': '盤に無い端子です',
+    unreachable: '配線帯までたどり着けません',
+    'footprint-crossing': '部品の上を避けて通せません',
+  } satisfies Record<RoutingErrorReason, string>,
 ```
 
 - [ ] **Step 2: `apps/desktop/src/renderer/panels/Toolbar.tsx` を書く**
@@ -1256,13 +1299,7 @@ export function Toolbar({
 - [ ] **Step 3: `apps/desktop/src/renderer/screens/Session.tsx` を書く**
 
 ```tsx
-import {
-  crossesFootprint,
-  JIPM_BOARD,
-  routeWire,
-  socketPartId,
-  toPhysicalTerminal,
-} from '@ojt/board-model';
+import { JIPM_BOARD, socketPartId } from '@ojt/board-model';
 import type { BoardSession, MountableKind, SocketId } from '@ojt/board-model';
 import type { TerminalId } from '@ojt/circuit-sim';
 import { useCallback, useEffect, useMemo, useRef, type JSX } from 'react';
@@ -1300,7 +1337,7 @@ import {
 import { buildSpecChart } from '../session/spec-chart.js';
 import { applyWorkFile, toWorkFile } from '../session/work-file.js';
 import { bridge } from '../session/worker-bridge.js';
-import { BoardScene } from '../three/BoardScene.js';
+import { BoardScene, safeRoutes } from '../three/BoardScene.js';
 import styles from './screens.module.css';
 
 /**
@@ -1444,19 +1481,21 @@ export function Session(): JSX.Element {
             const wire = next.session?.wires.at(-1);
             if (wire === undefined) return;
             bridge.send({ type: 'addWire', wire });
-            // 経路器が部品を避けられなかった電線は点線で描かれるので、理由を知らせる（§6.6）
-            const roles = next.session?.socketRoles;
-            if (roles === undefined) return;
-            const route = routeWire(
-              JIPM_BOARD,
-              {
-                id: wire.id,
-                from: toPhysicalTerminal(roles, wire.from),
-                to: toPhysicalTerminal(roles, wire.to),
-              },
-              [],
-            );
-            if (crossesFootprint(JIPM_BOARD, route)) next.toast(JA.session.routeBlocked, 'error');
+            // 経路器は「部品を避けて通せない」電線を `RoutingError` で断る（§6.6）。
+            // `safeRoutes()`（Plan 1D1 Task 12）がそれを受け止めるので、ここでは結果を見るだけ。
+            const board = next.session;
+            if (board === undefined) return;
+            const { routes, errors } = safeRoutes(JIPM_BOARD, board);
+            const failed = errors.find((e) => e.wireId === wire.id);
+            if (failed !== undefined) {
+              next.toast(`${JA.session.routeFailed}（${JA.routeReason[failed.reason]}）`, 'error');
+              next.addLog(`${JA.session.routeFailed}: ${wire.id} — ${JA.routeReason[failed.reason]}`);
+              return;
+            }
+            // 帯の空きスロットが尽きて他の電線と同じ位置に載った（3Dでは琥珀色で描かれる）
+            if (routes.find((r) => r.wireId === wire.id)?.laneOverflow === true) {
+              next.toast(JA.session.laneOverflow, 'info');
+            }
           });
           break;
         case 'selectWire':
@@ -1922,7 +1961,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 ```ts
 import { createSession, JIPM_BOARD, TASK1_SOCKET_ROLES } from '@ojt/board-model';
 import { BUILTIN_PROBLEMS } from '@ojt/content';
-import { layout } from '@ojt/schematic-core';
+import { DEFAULT_LAYOUT_OPTIONS, layout } from '@ojt/schematic-core';
 import { describe, expect, it } from 'vitest';
 import { effectiveGain, SOUND_SPECS, soundsForSnapshot } from '../src/renderer/audio/sounds.js';
 import { parseWorkFile } from '../src/main/work-files.js';
@@ -2049,6 +2088,13 @@ describe('回路図レンダラ（§11.2）', () => {
     expect(result.height).toBeGreaterThan(0);
     expect(result.shapes.length).toBeGreaterThan(0);
     expect(result.shapes.some((s) => s.kind === 'text')).toBe(true);
+    // 図形は4種の直和で、`fill` を持つのは circle だけ（表示灯の色）
+    for (const shape of result.shapes) {
+      expect(['line', 'circle', 'arc', 'text']).toContain(shape.kind);
+    }
+    // 銘板が重ならないよう SchematicSvg は列幅を広げて渡す（既定の 24 では `T1 (3.0秒)` が溢れる）
+    expect(layout(problem.schematic, { colWidth: 40 }).width).toBeGreaterThan(result.width);
+    expect(DEFAULT_LAYOUT_OPTIONS.colWidth).toBe(24);
   });
 });
 
@@ -2078,7 +2124,7 @@ pnpm --filter @ojt/desktop test
 
 ```text
  Test Files  11 passed (11)
-      Tests  115 passed (115)
+      Tests  119 passed (119)
 ```
 
 - [ ] **Step 3: コミットする**
@@ -2506,9 +2552,18 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 
 - [ ] `pnpm --filter @ojt/desktop typecheck` が無出力で終わる
 - [ ] `pnpm lint` が無出力で終わる
-- [ ] `pnpm --filter @ojt/desktop test` が **11ファイル / 115テスト** すべて通る
+- [ ] `pnpm --filter @ojt/desktop test` が **11ファイル / 119テスト** すべて通る
 - [ ] `pnpm --filter @ojt/desktop e2e` の **4本**（スモーク1本＋仕上げ3本）が通る
 - [ ] `apps/desktop/screenshots/` に15枚のスクリーンショットが出る
 - [ ] `pnpm --filter @ojt/desktop dist` が `release/win-unpacked/` と ポータブル zip を作り、`release/win-unpacked/OJT電気保全トレーナー.exe` が起動してウィンドウタイトル「OJT電気保全トレーナー」を出す
 - [ ] `release/win-unpacked/resources/content/assemble/` に課題JSONが8件ある
 - [ ] `pnpm -r test` が全パッケージで通る
+
+---
+
+## 改訂履歴
+
+| 日付 | 内容 |
+|---|---|
+| 2026-09-14 | 初版 |
+| 2026-09-14 | 実装された `@ojt/schematic-core`（Task 11〜16 / 13b・13c・13d）と `@ojt/board-model` の経路器（Task 9b・9c）に合わせて整合を取った。①Task 4 の読取専用レンダラを実装どおりの `Shape`（`kind` / `role` に `line` / `circle` / `arc` / `text` の項目が付く直和。`fill` は `circle` だけ、`startDeg` / `endDeg` は `arc` だけ、`text` / `anchor` は `text` だけ）と `SchematicLayout`（`width` / `height` / `shapes`）に合わせ、`DEFAULT_LAYOUT_OPTIONS`（`colWidth: 24` / `rowHeight: 24` / `marginX: 12` / `marginY: 16` / `symbolWidth: 12`）を明記した。タイマコイルの銘板が `T1 (3.0秒)` と長く既定の列幅では隣と重なるので、`layout(doc, { colWidth: 40 })` を渡すようにした（Task 7 に検査を追加）。②Task 13d で `Shape` に付いた `rungId?` / `cellId?` は Phase 2 のホバー連動で使うものとして注記し、Phase 1 は配列の添字で `key` を振る方針を明示した。③Task 6 の `Session.tsx` から、`routeWire()` が `RoutingError` を投げるようになって死にコードになっていた `crossesFootprint()` の分岐を外し、`safeRoutes()`（Plan 1D1 Task 12）で受け止めて理由を出す形に揃えた。文言も `routeBlocked` → `routeFailed` / `laneOverflow` / `routeReason` に差し替えた。④`work-file.ts` の `toSession()` が `@ojt/schematic-core` の `toSession(doc, board, options)`（`{ ok, session, assignment } \| { ok: false, errors }`）と同名の別物であることを注記した。テスト総数 115 → 119（Plan 1D1 Task 11 の増加ぶん） |

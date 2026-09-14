@@ -15,7 +15,8 @@
 | 依存 | 使うもの |
 |---|---|
 | Plan 1A `@ojt/circuit-sim` | `Simulation`（`press` / `release` / `setBreaker` / `setSwitch` / `setTimerPreset` / `addWire` / `removeWire` / **`mountPart` / `unmountPart` / `reset`**（Task 8g）/ `step` / `state()` / `log` / `events`）、`createRelay4c` / `createTimer4c`、`TICK_MS`、`HAZARD_KINDS`、`HazardKind` / `MismatchReason`、`LogEntry`、`HazardEvent`、`ChatterEvent`、`LampLevel`、`Part`、`Wire`、`WireColor`、`TerminalId`、`toTerminalId` |
-| Plan 1B `@ojt/board-model` | `JIPM_BOARD`（`sizeMm` / `console` / `sockets` / `lamps` / `pushButtons` / `terminals` / `footprints` / `wiringChannels` / `fixedLinks`）、`BoardTerminal`（`pos` / `label` / `role` / `pickRadiusMm` / `wirable` / `exit`）、`SocketDefinition`（`cluster` / `origin` / `bodyMm`）、`SocketRoles`（`Partial`）、`SocketRoles`（`Partial`）と `socketPartId()`、**`P.1` / `N.1` の各1点だけの供給端子**（`SUPPLY_TERMINAL_COUNT = 1`）、`createSession` / `plug` / `unplug` / `setPreset` / `addWire` / `removeWire`（Result型）、`toNetlist`、`routeWire` / `routeSession` / `routeFixedLinks`（`WireRoute`）、`crossesFootprint` / `crossingFootprint` / `isManhattan`、`roleLabel` / `socketPinHoleOffsets` / `socketRowExit`、`toNetlistTerminal` / `toPhysicalTerminal`、`remainingInventory` / `catalogEntry` / `findTimerRange` |
+| Plan 1B `@ojt/board-model` | `JIPM_BOARD`（`sizeMm` / `console` / `sockets` / `lamps` / `pushButtons` / `terminals` / `footprints` / `wiringChannels` / `fixedWires` / `fixedLinks`）、`BoardTerminal`（`pos` / `label` / `role` / `pickRadiusMm` / `wirable` / `optional` / `exit`）、`SocketDefinition`（`cluster` / `origin` / `bodyMm`）、`SocketRoles`（`Partial`）と `socketPartId()`、**`P.1` / `N.1` の各1点だけの供給端子**（`SUPPLY_TERMINAL_COUNT = 1`）、`createSession(board, SessionOptions)` / `plug` / `unplug` / `setPreset` / `addWire(session, board, from, to, color, { id })` / `removeWire`（Result型）、`toNetlist` / `netlistIssues`、`routeWire` / `routeSession` / `routeFixedLinks` → **`WireRoute`（`wireId` / `kind: 'direct' \| 'channel' \| 'harness'` / `points` / `corners` / `channelIds` / `lanes: ChannelLane[]` / `lane` / `laneOverflow` / `throughPanelAt?` / `lengthMm`）**、`RoutingError`（`wireId` / `reason: 'invalid-terminal' \| 'unreachable' \| 'footprint-crossing'`）、`WIRE_Z_LADDER_MM` / `runZ()` / `WIRE_DIAMETER_MM` / `CHANNEL_LANE_COUNT` / `CHANNEL_LANE_PITCH_MM`、`crossesFootprint` / `crossingFootprint` / `isManhattan`、`roleLabel` / `socketPinHoleOffsets` / `socketRowExit`、`toNetlistTerminal` / `toPhysicalTerminal`、`remainingInventory` / `catalogEntry` / `findTimerRange`、`validateBoard` |
+| | **経路器の約束（Plan 1B 実装済み）**: ①走行高さは `WIRE_Z_LADDER_MM = [2.4, 4.2, 6.0, 7.8]` の段だけを取る（x方向の走りは段0・2、y方向は段1・3。`runZ(axis, layer)` が唯一の情報源）。`WIRE_RUN_Z_MM` は `@deprecated` の別名（＝2.4）なので**経路の不変条件として使わない**（純y方向の渡り線には 2.4 の折れ点が無い）。②高さの変わる角には `z` だけ動く点が必ず入るので、`points` をそのまま `TubeGeometry` に通せば直角経路のまま描ける。**描画側が z を計算してはいけない**。③`lanes[i].span` は帯の占有記録（レーンずらし前の節点座標）であって描画用の座標ではない。**描くのは必ず `points`**。④`routeSession()` は全か無かで、最初に失敗した電線で `RoutingError` を投げる（UI は捕まえること） |
 | Plan 1C `@ojt/content` | `BUILTIN_PROBLEMS`、`AssembleProblem`、`buildReferenceSession`、`runOperations`、`buildTimeChart` / `defaultChartSignals` / `timerMarkers` / `TimeChart`、`resolveCompareSignals`、`judgeAssemble` → `JudgeAssembleResult`、`loadProblemsFromDir` / `mergeProblemSets`（**main プロセスでのみ呼ぶ**） |
 
 **この計画に含めないもの**（Plan 1D2 が担当）: 設定画面、作業ファイルの保存／読込、一時保存と起動時の復帰、WebAudio の効果音、回路図ヒントの表示、利用者課題フォルダの合流と読込エラー表示、electron-builder による配布、仕上げのE2E。
@@ -2107,13 +2108,15 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 仕様 §15「全文言を1箇所に集約しハードコードしない」。Plan 1D2 で足す文言もここに並べておく。
 
 ```ts
+import type { RoutingErrorReason } from '@ojt/board-model';
 import type { HazardKind, MismatchReason } from '@ojt/circuit-sim';
 
 /**
  * 日本語文言。設計仕様 §15「全文言を1箇所に集約しハードコードしない」。
  * 画面側は必ずこのモジュール経由で文字列を取る。文言の変更はこのファイルだけで完結する。
  *
- * エンジンの種別（`HazardKind` / `MismatchReason`）で索引する表は `satisfies` で網羅を検査する。
+ * エンジンの種別（`HazardKind` / `MismatchReason` / `RoutingErrorReason`）で索引する表は
+ * `satisfies` で網羅を検査する。
  * エンジンに種別が増えたときに、画面で `undefined` が出るのではなく `tsc` が落ちる。
  */
 
@@ -2176,7 +2179,10 @@ export const JA = {
     chart: 'タイムチャート（仕様）',
     pickSocket: 'ソケットを選んでください',
     cancelWire: '配線を取り消しました',
-    routeBlocked: '部品を避けた配線経路を作れませんでした（点線で仮表示しています）',
+    /** 経路器が経路を作れなかった（`RoutingError`）。盤とセッションはそのまま保つ。§6.6 */
+    routeFailed: '配線の経路を作れませんでした',
+    /** 同じ帯の同じスロットに載せざるを得なかった電線がある（`laneOverflow`）。§6.6 */
+    laneOverflow: '他の電線と同じ配線位置に重なっています（見た目だけの重なりで、回路は正しく組めています）',
     schematicHint: '回路図ヒント',
     save: '作業を保存',
     load: '作業を読込',
@@ -2232,6 +2238,12 @@ export const JA = {
     extra: '余分な遷移',
     'unknown-signal': '比較対象の信号が模範回路に無い',
   } satisfies Record<MismatchReason, string>,
+  /** 経路器の失敗理由（`RoutingError.reason`）。§6.6 */
+  routeReason: {
+    'invalid-terminal': '盤に無い端子です',
+    unreachable: '配線帯までたどり着けません',
+    'footprint-crossing': '部品の上を避けて通せません',
+  } satisfies Record<RoutingErrorReason, string>,
   error: {
     banner: '予期しないエラーが発生しました',
     reset: 'セッションをリセット',
@@ -2312,6 +2324,12 @@ export const TERMINAL_HOVER_COLOR = '#39D0FF';
 export const TERMINAL_PENDING_COLOR = '#FF9F1C';
 /** 選択中の電線の色。§8.2 */
 export const WIRE_SELECTED_COLOR = '#FF4D6D';
+/**
+ * 配線帯のスロットが埋まり、他の電線と同じ位置に載った電線の色（琥珀）。§6.6
+ * `WireRoute.laneOverflow` は「見た目が重なっている」ことの**唯一の手がかり**なので、
+ * 3Dで色を変えて知らせる（電気的には正しく配線できているので、失敗としては扱わない）。
+ */
+export const WIRE_LANE_OVERFLOW_COLOR = '#E8A33D';
 /** 既設配線（`locked`）の端に付ける固定リングの色。訓練者が触れない配線の目印。§6.3 */
 export const LOCKED_RING_COLOR = '#8A9099';
 /** 盤面の穴（既設配線が裏へ潜る所）の色。§6.5 */
@@ -5160,6 +5178,12 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 
 仕様 §6.6 は「電線は端子間を直角に走り、部品の占有矩形を跨がない」ことを求める。経路の生成は Plan 1B の `routeWire()` が担うので、この層は**返ってきた折れ線をそのまま描く**（勝手に曲線で丸め直さない）。「配線がリレーやタイマの上を通らない」ことは見た目の問題ではないので、純粋関数のテストで担保する。
 
+経路器の実装（Plan 1B）で決まっている約束のうち、この層が守らなければならないのは3つ。
+
+1. **高さは経路器が決める**。走行高さは `WIRE_Z_LADDER_MM = [2.4, 4.2, 6.0, 7.8]` の段だけを取り（x方向の走りは段0・2、y方向は段1・3、レイヤは `runZ(axis, layer)`）、高さの変わる角には `z` だけ動く点が挿入されている。描画側で z を足したり丸めたりすると直角経路が壊れるので**一切計算しない**。`WIRE_RUN_Z_MM` は `@deprecated` の別名（＝2.4）なので、「全部の走りが同じ高さ」という前提のコードは書かない。
+2. **描くのは `points` だけ**。`WireRoute.lanes[i].span` は帯の占有記録（レーンずらしを掛ける前の節点座標）で、描画用の座標ではない。`channelSpans` という項目は**無い**。
+3. **`laneOverflow` を必ず見せる**。帯のスロット（レーン8 × レイヤ2 ＝ 16）が埋まると経路器は投げずに他の電線と同じスロットへ載せ、`laneOverflow: true` を立てる。これが「2本が重なって1本に見えている」ことを知る唯一の手がかりなので、3Dで琥珀色に変えて知らせる。
+
 
 - [ ] **Step 1: `apps/desktop/src/renderer/three/Wire.tsx` を書く**
 
@@ -5169,15 +5193,25 @@ import type { WireColor } from '@ojt/circuit-sim';
 import { useMemo, type JSX } from 'react';
 import type { ThreeEvent } from '@react-three/fiber';
 import { CatmullRomCurve3, TubeGeometry, Vector3 } from 'three';
-import { LOCKED_RING_COLOR, LUG_COLOR, WIRE_COLORS, WIRE_SELECTED_COLOR } from '../session/colors.js';
+import {
+  LOCKED_RING_COLOR,
+  LUG_COLOR,
+  WIRE_COLORS,
+  WIRE_LANE_OVERFLOW_COLOR,
+  WIRE_SELECTED_COLOR,
+} from '../session/colors.js';
 import { LUG_GEOMETRY, sharedMaterial } from './materials.js';
 import { toScene } from './coords.js';
 
 /**
  * 電線。設計仕様 §6.6 / §8.2。
- * `routeWire()` が返すポリライン（実物にダクトが無いので、盤面から浮いた緩い弧）を
- * `TubeGeometry`（半径0.8mm）で描き、両端に Y型圧着端子の簡易形状（輪）を付ける。
- * 色は青／白／黄の物理色。
+ * `routeWire()` が返す**直角経路の折れ線**（角はフィレット済み）を `TubeGeometry`（半径0.8mm）で
+ * 描き、両端に Y型圧着端子の簡易形状（輪）を付ける。色は青／白／黄の物理色。
+ *
+ * 高さは経路器が `WIRE_Z_LADDER_MM` の段（x方向は 2.4 / 6.0、y方向は 4.2 / 7.8）で決めてあり、
+ * 高さの変わる角には `z` だけ動く点が入っている。**ここで z を足したり丸めたりしない**
+ * （直角経路が壊れ、直交する電線どうしが食い込む）。`lanes[i].span` は帯の占有記録なので
+ * 描画には使わない。
  *
  * ピックは**削除モードのときだけ**受ける。配線モードでは端子より手前を通る電線が
  * 端子のクリックを奪ってしまい、配線できない端子が出るため（§8.2 の操作性を優先）。
@@ -5195,7 +5229,23 @@ function noPick(): void {
   // 交差候補を積まない
 }
 
-
+/**
+ * 電線の胴体の色（純粋関数。テストで固定する）。§6.3 / §6.6 / §8.2
+ * 優先順位は 選択中 → 既設配線（データ上の色が何であれ実物どおり青）→ レーン重なり → 物理色。
+ * `laneOverflow` は「他の電線と同じ配線位置に載った」ことの唯一の手がかりなので、
+ * 琥珀色にして訓練者が2本を1本と見誤らないようにする。
+ */
+export function wireBodyColor(
+  route: WireRoute,
+  color: WireColor,
+  locked: boolean,
+  selected: boolean,
+): string {
+  if (selected) return WIRE_SELECTED_COLOR;
+  if (locked) return WIRE_COLORS['青'];
+  if (route.laneOverflow) return WIRE_LANE_OVERFLOW_COLOR;
+  return WIRE_COLORS[color];
+}
 
 /**
  * 経路から `TubeGeometry` を作る（純粋関数。メモ化して使う）。
@@ -5237,14 +5287,15 @@ export function Wire({
     return first === undefined || last === undefined ? [] : [toScene(first), toScene(last)];
   }, [route]);
   if (route.points.length < 2) return null;
-  // 既設配線はデータ上の色（黄）に関わらず実物どおり青で描く。§6.3
-  const base = locked ? WIRE_COLORS['青'] : WIRE_COLORS[color];
-  const material = sharedMaterial(selected ? WIRE_SELECTED_COLOR : base, {
+  const material = sharedMaterial(wireBodyColor(route, color, locked, selected), {
     roughness: locked ? 0.35 : 0.55,
     metalness: 0.05,
   });
   return (
-    <group name={`wire-${route.wireId}`}>
+    <group
+      name={`wire-${route.wireId}`}
+      userData={{ kind: route.kind, laneOverflow: route.laneOverflow }}
+    >
       <mesh
         geometry={geometry}
         material={material}
@@ -5344,6 +5395,7 @@ export function FixedWires({ board }: { board: BoardDefinition }): JSX.Element {
 
 ```ts
 import {
+  channelsClearOfFootprints,
   createSession,
   crossesFootprint,
   crossingFootprint,
@@ -5352,13 +5404,18 @@ import {
   routeFixedLinks,
   routeSession,
   routeWire,
+  RoutingError,
   TASK2_SOCKET_ROLES,
   toPhysicalTerminal,
-  WIRE_RUN_Z_MM,
+  validateBoard,
+  WIRE_Z_LADDER_MM,
+  type WireRoute,
 } from '@ojt/board-model';
-import { toTerminalId } from '@ojt/circuit-sim';
+import { createWire, toTerminalId } from '@ojt/circuit-sim';
 import { describe, expect, it } from 'vitest';
 import { runAddWire } from '../src/renderer/session/commands.js';
+import { wireBodyColor } from '../src/renderer/three/Wire.js';
+import { WIRE_COLORS, WIRE_LANE_OVERFLOW_COLOR } from '../src/renderer/session/colors.js';
 
 /**
  * 配線経路の検証（§6.6）。
@@ -5370,6 +5427,25 @@ function session() {
   return createSession(JIPM_BOARD, { roles: TASK2_SOCKET_ROLES, allowedColors: ['青'] });
 }
 
+/**
+ * 折れ点に出てよい高さ[mm]。走行高さは `WIRE_Z_LADDER_MM` の段だけ、
+ * それ以外は端子の高さ（ソケット10・端子台8・本体−12・供給6）と盤面0（既設ハーネスの貫通）。
+ * 「どこかに 2.4mm の折れ点がある」ではなく**この集合に収まっている**ことを見る
+ * （純y方向の渡り線のように 2.4 を1度も通らない経路があるため）。
+ */
+const ALLOWED_CORNER_Z = new Set<number>([
+  ...WIRE_Z_LADDER_MM,
+  ...JIPM_BOARD.terminals.map((t) => t.pos.z),
+  0,
+]);
+
+/** はしごの段から外れた折れ点（足し算のずれもここで落ちる）。 */
+function strayCorners(route: WireRoute): string[] {
+  return route.corners
+    .filter((p) => !ALLOWED_CORNER_Z.has(p.z))
+    .map((p) => `${route.wireId} z=${p.z}`);
+}
+
 describe('部品の占有矩形（§6.6）', () => {
   it('盤定義がソケット・端子台・機器の占有矩形を持つ', () => {
     expect(JIPM_BOARD.footprints.length).toBeGreaterThanOrEqual(JIPM_BOARD.sockets.length);
@@ -5378,6 +5454,9 @@ describe('部品の占有矩形（§6.6）', () => {
 
   it('配線帯は占有矩形と重ならない位置にある', () => {
     expect(JIPM_BOARD.wiringChannels.length).toBeGreaterThan(0);
+    // 帯はレーン8本ぶんの幅を持つ（`channelBandRect`）。その帯が部品に被っていたら経路器が破綻する
+    expect(channelsClearOfFootprints(JIPM_BOARD)).toEqual([]);
+    expect(validateBoard(JIPM_BOARD)).toEqual([]);
   });
 });
 
@@ -5388,9 +5467,26 @@ describe('routeWire（直角配線・部品回避）', () => {
       { id: 'w-1', from: toTerminalId('P.1'), to: toTerminalId('S1.10') },
       [],
     );
-    expect(route.corners.some((p) => Math.abs(p.z - WIRE_RUN_Z_MM) < 1e-6)).toBe(true);
+    expect(route.kind).toBe('channel');
+    // 走行高さは経路器が決める（x方向は 2.4 / 6.0、y方向は 4.2 / 7.8）。描画側は計算しない
+    expect(strayCorners(route)).toEqual([]);
+    expect(route.corners.some((p) => (WIRE_Z_LADDER_MM as readonly number[]).includes(p.z))).toBe(
+      true,
+    );
     expect(isManhattan(route.corners)).toBe(true);
     expect(crossesFootprint(JIPM_BOARD, route)).toBe(false);
+  });
+
+  it('純粋にy方向だけ渡る経路は x方向の段（2.4mm）を1度も通らない', () => {
+    // 「どこかに 2.4mm がある」という決め打ちの検査が成り立たないことの担保（§6.6）
+    const route = routeWire(
+      JIPM_BOARD,
+      { id: 'w-0', from: toTerminalId('P.1'), to: toTerminalId('N.1') },
+      [],
+    );
+    expect(route.kind).toBe('direct');
+    expect(route.corners.every((p) => p.z !== WIRE_Z_LADDER_MM[0])).toBe(true);
+    expect(strayCorners(route)).toEqual([]);
   });
 
   it('ソケットをまたぐ配線でも部品の上を通らない', () => {
@@ -5469,6 +5565,9 @@ describe('配線操作の結果の経路（§6.6 / §8.2）', () => {
     for (const route of routes) {
       expect(crossingFootprint(JIPM_BOARD, route)?.id, route.wireId).toBeUndefined();
       expect(isManhattan(route.corners), route.wireId).toBe(true);
+      expect(strayCorners(route)).toEqual([]);
+      // 模範回路ぶんではスロットが余るので重なりは起きない（§6.6）
+      expect(route.laneOverflow, route.wireId).toBe(false);
     }
   });
 
@@ -5488,6 +5587,43 @@ describe('配線操作の結果の経路（§6.6 / §8.2）', () => {
     expect(physical).toBe('S1.13');
   });
 });
+
+describe('経路器の失敗と重なりの扱い（§6.6）', () => {
+  it('盤に無い端子は RoutingError（電線IDと理由が付く）', () => {
+    let caught: RoutingError | undefined;
+    try {
+      routeWire(
+        JIPM_BOARD,
+        { id: 'w-bad', from: toTerminalId('ZZ.1'), to: toTerminalId('P.1') },
+        [],
+      );
+    } catch (error) {
+      caught = error instanceof RoutingError ? error : undefined;
+    }
+    expect(caught?.wireId).toBe('w-bad');
+    expect(caught?.reason).toBe('invalid-terminal');
+  });
+
+  it('routeSession は全か無かで、1本でも失敗すれば投げる', () => {
+    const board = session();
+    board.wires.push(createWire('w-bad', toTerminalId('ZZ.1'), toTerminalId('P.1'), '青', false));
+    expect(() => routeSession(JIPM_BOARD, board)).toThrow(RoutingError);
+  });
+
+  it('レーンが重なった電線は琥珀色で描く（重なりを知る唯一の手がかり）', () => {
+    const normal = routeWire(
+      JIPM_BOARD,
+      { id: 'w-9', from: toTerminalId('TB_PB.1c'), to: toTerminalId('S1.14') },
+      [],
+    );
+    expect(normal.laneOverflow).toBe(false);
+    expect(wireBodyColor(normal, '青', false, false)).toBe(WIRE_COLORS['青']);
+    const crowded: WireRoute = { ...normal, laneOverflow: true };
+    expect(wireBodyColor(crowded, '青', false, false)).toBe(WIRE_LANE_OVERFLOW_COLOR);
+    // 既設配線と選択中は重なりより優先する
+    expect(wireBodyColor(crowded, '黄', true, false)).toBe(WIRE_COLORS['青']);
+  });
+});
 ```
 
 - [ ] **Step 4: テストを実行する**
@@ -5502,7 +5638,7 @@ pnpm --filter @ojt/desktop test -- routing
 
 ```text
  Test Files  1 passed (1)
-      Tests  11 passed (11)
+      Tests  15 passed (15)
 ```
 
 - [ ] **Step 5: コミットする**
@@ -5643,6 +5779,11 @@ export function ViewGizmo(): JSX.Element {
 import {
   JIPM_BOARD,
   routeSession,
+  routeWire,
+  RoutingError,
+  toPhysicalTerminal,
+  type BoardDefinition,
+  type BoardSession,
   type BoardTerminal,
   type SocketId,
   type WireRoute,
@@ -5653,6 +5794,7 @@ import { Canvas, useThree } from '@react-three/fiber';
 import { MOUSE } from 'three';
 import { useEffect, useMemo, useState, type JSX } from 'react';
 import { useStore, type AppState } from '../app/store.js';
+import { JA } from '../i18n/ja.js';
 import type { PickHit } from '../session/interaction.js';
 import { BoardPlate } from './BoardPlate.js';
 import { BOARD_TILT_RAD, CAMERA_FOV_DEG } from './camera.js';
@@ -5699,6 +5841,48 @@ const BLOCK_PARTS: ReadonlyArray<{ key: string; ids: readonly string[]; label: s
 
 /** DINレールを敷く機器のまとまり（ソケット群と端子台群）。実物写真のとおり。§6.5 */
 const RAIL_GROUPS: readonly string[][] = [['TB_PL'], ['TB_PB'], ['P', 'N']];
+
+/**
+ * セッションの全電線の経路（純粋関数。テストで固定する）。§6.6
+ *
+ * `routeSession()` は**全か無か**で、1本でも解けなければ `RoutingError` を投げる。
+ * React のレンダー中に投げるとシーンごと落ちて盤が消えてしまうので、ここで受け止めて
+ * ①解けた電線だけを描き、②解けなかった電線のIDと理由を返す（セッションの状態は変えない）。
+ * 出荷する盤（`JIPM_BOARD`）では起こらないはずだが、起こったときに黒い画面ではなく
+ * 「どの電線がなぜ描けないか」を出せるようにしておく。
+ */
+export function safeRoutes(
+  board: BoardDefinition,
+  session: BoardSession | undefined,
+): { routes: WireRoute[]; errors: RoutingError[] } {
+  if (session === undefined) return { routes: [], errors: [] };
+  try {
+    return { routes: routeSession(board, session), errors: [] };
+  } catch (error) {
+    if (!(error instanceof RoutingError)) throw error;
+  }
+  const routes: WireRoute[] = [];
+  const errors: RoutingError[] = [];
+  for (const wire of session.wires) {
+    try {
+      routes.push(
+        routeWire(
+          board,
+          {
+            id: wire.id,
+            from: toPhysicalTerminal(session.socketRoles, wire.from),
+            to: toPhysicalTerminal(session.socketRoles, wire.to),
+          },
+          routes,
+        ),
+      );
+    } catch (error) {
+      if (!(error instanceof RoutingError)) throw error;
+      errors.push(error);
+    }
+  }
+  return { routes, errors };
+}
 
 /**
  * 見た目が変わったときだけ再描画を要求する。§15
@@ -5778,10 +5962,19 @@ function BoardContents({
   const invalidate = useThree((state) => state.invalidate);
 
   const board = JIPM_BOARD;
-  const routes: WireRoute[] = useMemo(
-    () => (session === undefined ? [] : routeSession(board, session)),
-    [board, session],
-  );
+  const { routes, errors: routeErrors } = useMemo(() => safeRoutes(board, session), [board, session]);
+  // 経路が解けなかった電線は描けないので、理由をトーストとログに出す（盤は描き続ける）。§6.6
+  useEffect(() => {
+    if (routeErrors.length === 0) return;
+    const store = useStore.getState();
+    for (const error of routeErrors) {
+      store.toast(
+        `${JA.session.routeFailed}（${error.wireId}: ${JA.routeReason[error.reason]}）`,
+        'error',
+      );
+      store.addLog(`${JA.session.routeFailed}: ${error.wireId} — ${JA.routeReason[error.reason]}`);
+    }
+  }, [routeErrors]);
   const blocks = useMemo(() => {
     const out = new Map<string, typeof board.terminals>();
     for (const group of BLOCK_PARTS) {
@@ -7142,13 +7335,7 @@ export function buildSpecChart(problem: AssembleProblem): SpecChartResult {
 - [ ] **Step 2: `apps/desktop/src/renderer/screens/Session.tsx` を書く**
 
 ```tsx
-import {
-  crossesFootprint,
-  JIPM_BOARD,
-  routeWire,
-  socketPartId,
-  toPhysicalTerminal,
-} from '@ojt/board-model';
+import { JIPM_BOARD, socketPartId } from '@ojt/board-model';
 import type { BoardSession, MountableKind, SocketId } from '@ojt/board-model';
 import type { TerminalId } from '@ojt/circuit-sim';
 import { useCallback, useEffect, useMemo, type JSX } from 'react';
@@ -7183,7 +7370,7 @@ import {
 } from '../session/interaction.js';
 import { buildSpecChart } from '../session/spec-chart.js';
 import { bridge } from '../session/worker-bridge.js';
-import { BoardScene } from '../three/BoardScene.js';
+import { BoardScene, safeRoutes } from '../three/BoardScene.js';
 import styles from './screens.module.css';
 
 /**
@@ -7301,19 +7488,25 @@ export function Session(): JSX.Element {
             const wire = next.session?.wires.at(-1);
             if (wire === undefined) return;
             bridge.send({ type: 'addWire', wire });
-            // 経路器が部品を避けられなかった電線は点線で描かれるので、理由を知らせる（§6.6）
-            const roles = next.session?.socketRoles;
-            if (roles === undefined) return;
-            const route = routeWire(
-              JIPM_BOARD,
-              {
-                id: wire.id,
-                from: toPhysicalTerminal(roles, wire.from),
-                to: toPhysicalTerminal(roles, wire.to),
-              },
-              [],
-            );
-            if (crossesFootprint(JIPM_BOARD, route)) next.toast(JA.session.routeBlocked, 'error');
+            // 経路器は「部品を避けて通せない」電線を `RoutingError` で断る（§6.6）。
+            // `safeRoutes()` がそれを受け止めるので、ここでは結果を見て理由を知らせるだけでよい。
+            // 電気的な接続は既に成立しているので、盤の状態は戻さない（描けないのは見た目だけ）。
+            const board = next.session;
+            if (board === undefined) return;
+            const { routes, errors } = safeRoutes(JIPM_BOARD, board);
+            const failed = errors.find((e) => e.wireId === wire.id);
+            if (failed !== undefined) {
+              next.toast(
+                `${JA.session.routeFailed}（${JA.routeReason[failed.reason]}）`,
+                'error',
+              );
+              next.addLog(`${JA.session.routeFailed}: ${wire.id} — ${JA.routeReason[failed.reason]}`);
+              return;
+            }
+            // 帯の空きスロットが尽きて他の電線と同じ位置に載った（3Dでは琥珀色で描かれる）
+            if (routes.find((r) => r.wireId === wire.id)?.laneOverflow === true) {
+              next.toast(JA.session.laneOverflow, 'info');
+            }
           });
           break;
         case 'selectWire':
@@ -8294,7 +8487,7 @@ pnpm --filter @ojt/desktop test
 
 ```text
  Test Files  10 passed (10)
-      Tests  97 passed (97)
+      Tests  101 passed (101)
 ```
 
 - [ ] **Step 9: lint と型チェックを通す**
@@ -8798,8 +8991,19 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 
 - [ ] `pnpm --filter @ojt/desktop typecheck` が無出力で終わる
 - [ ] `pnpm lint` が無出力で終わる
-- [ ] `pnpm --filter @ojt/desktop test` が **10ファイル / 97テスト** すべて通る
+- [ ] `pnpm --filter @ojt/desktop test` が **10ファイル / 101テスト** すべて通る
 - [ ] `pnpm --filter @ojt/desktop build` が main / preload / renderer の3つを出力する
 - [ ] `pnpm --filter @ojt/desktop e2e` のスモーク1本が通る
 - [ ] `apps/desktop/screenshots/` に10枚のスクリーンショットが出て、`03-board-3d.png` に3D盤（傾斜コンソール・左右4個ずつのソケット・端子番号）が写っている
 - [ ] `pnpm -r test` が全パッケージで通る
+- [ ] 3D盤に電線を張ったとき、`WireRoute.laneOverflow` が立った電線が琥珀色で描かれる（重なりに気づける）
+- [ ] `routeSession()` が `RoutingError` を投げても3D盤は描かれ続け、どの電線がなぜ描けないかがトーストとログに出る
+
+---
+
+## 改訂履歴
+
+| 日付 | 内容 |
+|---|---|
+| 2026-09-14 | 初版 |
+| 2026-09-14 | 実装された `@ojt/board-model` の経路器（Task 9 / 9b / 9c / 9d）に合わせて整合を取った。①`WireRoute` の項目を実装どおり（`kind` / `points` / `corners` / `channelIds` / `lanes: ChannelLane[]` / `lane` / `laneOverflow` / `throughPanelAt?` / `lengthMm`）に書き換えた。`channelSpans` は存在せず、占有区間は `lanes[i].span`（レーンずらし前の節点座標）なので**描画には使わない**ことを前提表に明記（Task 11）。②走行高さが「全部同じ 2.4mm」から**高さのはしご** `WIRE_Z_LADDER_MM = [2.4, 4.2, 6.0, 7.8]`（x方向は段0・2、y方向は段1・3、レイヤは `runZ(axis, layer)`）に変わったので、Task 11 のテストの `WIRE_RUN_Z_MM`（`@deprecated` の別名）を使った「どこかに 2.4mm の折れ点がある」という検査を、**折れ点の高さがはしごの段・端子の高さ・盤面0のどれかに収まっている**という規則の検査に差し替えた（`P.1 → N.1` のような純y方向の渡り線は 2.4mm を1度も通らないため。その担保のテストも足した）。③`routeWire()` が部品を避けられない電線を `RoutingError`（`wireId` / `reason`）で**断る**ようになり、`crossesFootprint()` で後から調べる経路は返らなくなったので、Task 14 の「点線で仮表示」の分岐を削除し、`safeRoutes()`（Task 12）で `RoutingError` を受け止めて理由を出す形にした。`routeSession()` が全か無かで投げることも明記。④帯のスロット（レーン8 × レイヤ2）が尽きたときに立つ `laneOverflow` を3Dで琥珀色（`WIRE_LANE_OVERFLOW_COLOR`）に出し、配線時にトーストで知らせるようにした（`wireBodyColor()` と単体テスト）。⑤文言に `routeFailed` / `laneOverflow` / `routeReason`（`RoutingErrorReason` を網羅）を足し、使われなくなった `routeBlocked` を外した。⑥Task 11 の検査を `channelsClearOfFootprints()` / `validateBoard()` で実質のあるものにした。テスト総数 97 → 101 |
