@@ -1,7 +1,13 @@
 import { AssembleProblemSchema, type AssembleProblem } from '../../src/schema/assemble.js';
 
-/** 課題JSONの骨組み（テストごとに必要な部分だけ差し替える）。 */
-export const TASK2_ROLES = { S1: 'CR1', S2: 'CR2', S5: 'T1', S6: 'T2', S7: 'CHK' } as const;
+/**
+ * 課題JSONの骨組み（テストごとに必要な部分だけ差し替える）。
+ * 役割割当は**呼ぶたびに新しいオブジェクト**を返す。共有の定数にすると、盤の指定を書き換える
+ * テストが他のテストの土台まで書き換えてしまい、実行順で結果が変わる。
+ */
+export function task2Roles(): Record<string, string> {
+  return { S1: 'CR1', S2: 'CR2', S5: 'T1', S6: 'T2', S7: 'CHK' };
+}
 
 /** 自己保持回路の最小課題（テストの土台）。 */
 export function selfHoldProblemJson(): Record<string, unknown> {
@@ -13,7 +19,7 @@ export function selfHoldProblemJson(): Record<string, unknown> {
     grade: 3,
     description: 'テスト用',
     timeLimit: { standardMin: 30, cutoffMin: 50 },
-    board: { boardId: 'board-jipm-std', socketRoles: TASK2_ROLES },
+    board: { boardId: 'board-jipm-std', socketRoles: task2Roles() },
     inventory: [
       { kind: 'relay-my4n', count: 2 },
       { kind: 'timer-h3y4', count: 2 },

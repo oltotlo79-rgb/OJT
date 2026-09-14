@@ -161,7 +161,11 @@ describe('buildReferenceSession — エラーのパス (§13 #2)', () => {
     expect(built.errors[0]?.path).toBe('physicalOverride.c99');
   });
 
-  it('falls back to the schematic for anything else', () => {
-    expect(toProblemPath(parseOrThrow(selfHoldProblemJson()), 'sw-003')).toBe('schematic.sw-003');
+  it('falls back to the schematic itself for anything else (§13 #1)', () => {
+    // `sw-003` は盤の電線IDであって課題JSONのキーではないので、`schematic.sw-003` と書くと
+    // 存在しない場所を指してしまう。読み手が開ける一番近い場所（回路図）を指す。
+    const problem = parseOrThrow(selfHoldProblemJson());
+    expect(toProblemPath(problem, 'sw-003')).toBe('schematic');
+    expect(toProblemPath(problem, 'c03')).toBe('schematic.rungs[0].cells[2]');
   });
 });

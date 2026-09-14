@@ -83,7 +83,9 @@ export function toProblemPath(problem: AssembleProblem, path: string): string {
   if (cell !== undefined) return cell;
   // 部品を挿せなかったときのパスはソケットの役割名。原因は在庫（`inventory`）の不足
   if ((SOCKET_ROLES as readonly string[]).includes(path)) return 'inventory';
-  return `schematic.${path}`;
+  // 残りは盤側の語彙（電線ID `sw-003` など）で、課題JSONにそのキーは無い。
+  // `schematic.sw-003` と書くと存在しない場所を指してしまうので、回路図そのものを指す。
+  return 'schematic';
 }
 
 /**

@@ -102,7 +102,7 @@ import {
 import {
   forbiddenOneShotProblemJson,
   selfHoldProblemJson,
-  TASK2_ROLES,
+  task2Roles,
 } from './helpers/problems.js';
 
 /**
@@ -149,14 +149,14 @@ describe('schema/common.js exports', () => {
     expect(UNSUPPORTED_MODES).toEqual(['inspect-parts', 'inspect-repair', 'plc']);
     expect(TimeLimitSchema.safeParse({ standardMin: 30, cutoffMin: 50 }).success).toBe(true);
     expect(SocketRoleSchema.safeParse('CR1').success).toBe(true);
-    expect(SocketRolesSchema.safeParse(TASK2_ROLES).success).toBe(true);
+    expect(SocketRolesSchema.safeParse(task2Roles()).success).toBe(true);
     expect(toSocketRoles({ S1: 'CR1', S3: undefined, S7: 'CHK' })).toEqual({
       S1: 'CR1',
       S7: 'CHK',
     });
     expect(ExtraPartSchema.safeParse('BZ').success).toBe(true);
     expect(
-      BoardRefSchema.safeParse({ boardId: 'board-jipm-std', socketRoles: TASK2_ROLES }).success,
+      BoardRefSchema.safeParse({ boardId: 'board-jipm-std', socketRoles: task2Roles() }).success,
     ).toBe(true);
     expect(MountableKindSchema.safeParse('relay-my4n').success).toBe(true);
     expect(InventoryItemSchema.safeParse({ kind: 'relay-my4n', count: 2 }).success).toBe(true);
@@ -178,7 +178,7 @@ describe('schema/common.js exports', () => {
       mode: 'assemble',
       description: 'テスト用',
       timeLimit: { standardMin: 30, cutoffMin: 50 },
-      board: { boardId: 'board-jipm-std', socketRoles: TASK2_ROLES },
+      board: { boardId: 'board-jipm-std', socketRoles: task2Roles() },
       inventory: [{ kind: 'relay-my4n', count: 2 }],
     };
     expect(ProblemHeaderSchema.safeParse(header).success).toBe(true);
@@ -272,7 +272,7 @@ describe('schema/index.js exports', () => {
         mode: 'plc',
         description: 'd',
         timeLimit: { standardMin: 30, cutoffMin: 50 },
-        board: { boardId: 'board-jipm-std', socketRoles: TASK2_ROLES },
+        board: { boardId: 'board-jipm-std', socketRoles: task2Roles() },
         inventory: [],
       }).success,
     ).toBe(true);
@@ -325,7 +325,7 @@ describe('reference.js exports', () => {
 
     expect(toProblemPath(problem, 'roles')).toBe('board.socketRoles');
     expect(toProblemPath(problem, 'physicalOverride.c1')).toBe('physicalOverride.c1');
-    expect(toProblemPath(problem, 'sw-003')).toBe('schematic.sw-003');
+    expect(toProblemPath(problem, 'sw-003')).toBe('schematic');
   });
 });
 

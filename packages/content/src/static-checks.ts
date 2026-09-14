@@ -117,14 +117,33 @@ export function checkUnusedParts(input: StaticCheckInput): StaticCheckResult {
 }
 
 /**
+ * チャタリングを訓練者に見える単位の信号名に直す。§5.7
+ * エンジンは接点要素ごとに `CR1:a1.closed` という信号も記録するので、リレー1個が震えるだけで
+ * 接点8本ぶんのイベントが出る。盤の上で見えるのは**部品**（`CR1` / `PL1` / `T1.coil`）なので、
+ * `<部品ID>:<要素>.closed` は部品IDに畳む。
+ */
+function visibleChatterSignal(signal: string): string {
+  const colon = signal.indexOf(':');
+  return colon < 0 ? signal : signal.slice(0, colon);
+}
+
+/**
  * 禁則回路。判定区間でチャタリングを検出したら不合格にする。§7.4 / §5.3.2 / 調査資料 §5.5
  * タイマ自身の限時接点で自コイルを切る構成・タイマ2個だけのフリッカは、通電断が
  * 100ms未満しか続かず経過時間が保持されるため tick 周期で反転し、ここで捕まる。
+ *
+ * 1つの震えは（接点要素ごと・1秒窓ごとに）何十件ものイベントになるため、そのまま並べると
+ * 結果画面が同じ内容で埋まる。信号ごとに最初の1件だけを出す（§8.3）。
  */
 export function checkForbiddenCircuit(input: StaticCheckInput): StaticCheckResult {
-  const details = input.chatters.map(
-    (e) => `${e.signal}: ${e.tMs}ms 付近で1秒間に${e.count}回反転しました`,
-  );
+  const seen = new Set<string>();
+  const details: string[] = [];
+  for (const e of input.chatters) {
+    const signal = visibleChatterSignal(e.signal);
+    if (seen.has(signal)) continue;
+    seen.add(signal);
+    details.push(`${signal}: ${e.tMs}ms 付近で1秒間に${e.count}回反転しました`);
+  }
   return result(
     'forbiddenCircuit',
     details,

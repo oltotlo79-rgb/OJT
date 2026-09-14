@@ -130,6 +130,29 @@ describe('checkForbiddenCircuit', () => {
     expect(result.ok).toBe(false);
     expect(result.message).toContain('リレーを介して');
   });
+
+  it('reports one line per user-visible signal instead of one per contact element', () => {
+    const input = inputFor(forbiddenOneShotProblemJson());
+    expect(input.chatters.length).toBeGreaterThan(10);
+    const details = checkForbiddenCircuit(input).details;
+    const signals = details.map((d) => d.slice(0, d.indexOf(':')));
+    expect(signals).toEqual(['T1', 'PL1', 'T1.coil']);
+    expect(new Set(signals).size).toBe(signals.length);
+    expect(details[0]).toContain('回反転しました');
+  });
+
+  it('folds a contact element back onto the part the trainee can see', () => {
+    const input = inputFor(selfHoldProblemJson());
+    const result = checkForbiddenCircuit({
+      ...input,
+      chatters: [
+        { type: 'chatter', signal: 'CR1:b3.closed', tMs: 500, count: 21 },
+        { type: 'chatter', signal: 'CR1:a1.closed', tMs: 600, count: 22 },
+      ],
+    });
+    expect(result.ok).toBe(false);
+    expect(result.details).toEqual(['CR1: 500ms 付近で1秒間に21回反転しました']);
+  });
 });
 
 describe('checkCoilPolarity', () => {

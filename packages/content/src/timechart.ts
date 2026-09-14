@@ -85,6 +85,15 @@ function formatSeconds(ms: number): string {
 /**
  * 模範回路に装着されたタイマの設定時間から目盛の印を作る。§7.7
  * 例: `T1` が3秒なら `{ tMs: 3000, label: 'T1=3秒' }`。並びは部品の並び順（決定論）。
+ *
+ * **`tMs` は設定時間（長さ）のラベルであって、そのタイマが実際に動作する時刻ではない。**
+ * タイマが計り始めるのはコイルが励磁された瞬間なので、限時接点が反転する時刻は
+ * 「励磁時刻 + 設定時間」であり、印の位置とは一致しない（例: 0.5秒で励磁した3秒タイマは3.5秒で反転）。
+ * 印は「この課題のタイマは何秒か」を読み手に示す目盛であり、波形の読み合わせに使う。
+ *
+ * また、模範側・訓練者側の**両方のチャートに模範回路の設定値**を立てる（`judgeAssemble()`）。
+ * 訓練者が設定を間違えたときは、印（あるべき秒数）と実際の波形のずれとして見えるほうが分かりやすく、
+ * 2つのチャートの目盛が食い違って重ね表示（§8.3）が読めなくなるのも避けられる。
  */
 export function timerMarkers(netlist: Netlist): TimeChartMarker[] {
   const out: TimeChartMarker[] = [];
@@ -113,7 +122,9 @@ function segmentsOf(log: SignalLog, name: string, durationMs: number): TimeChart
     }
     value = point.value;
   }
-  segments.push({ fromMs: from, toMs: durationMs, value });
+  // 判定区間の終端ちょうどで変化した信号は、ここで `from === durationMs` になる。
+  // 長さ0の区間を足すと描画が潰れ、`startsAndEndsLow()` も終端の見せかけの値を拾うので足さない。
+  if (from < durationMs) segments.push({ fromMs: from, toMs: durationMs, value });
   return segments;
 }
 

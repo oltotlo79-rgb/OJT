@@ -26,8 +26,13 @@ export const ProblemIdSchema = z
   .string()
   .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/u, '課題IDは英小文字・数字・ハイフンで書きます');
 
-/** 想定級。ヒント表示の制御に使う。§7.1 / §8.4 */
-export const GradeSchema = z.union([z.literal(1), z.literal(2), z.literal(3)]);
+/**
+ * 想定級。ヒント表示の制御に使う。§7.1 / §8.4
+ * 候補の共用体（`z.union([z.literal(1), ...])`）にすると、級が違うだけで「共用体の不一致」＋
+ * 候補ごとの違反が並び、課題一覧に同じ意味の行が4つ出る（§13 #1）。zod 4 の `z.literal()` は
+ * 値の配列を取れるので、**1件の違反**として出る形で書く。
+ */
+export const GradeSchema = z.literal([1, 2, 3]);
 
 /** 想定級。 */
 export type Grade = z.infer<typeof GradeSchema>;

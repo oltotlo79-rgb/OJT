@@ -72,6 +72,23 @@ describe('buildTimeChart', () => {
     ]);
   });
 
+  it('never emits a zero-length segment at the very end of the chart', () => {
+    const chart = buildTimeChart(
+      logWith([
+        [0, false],
+        [500, true],
+        [1000, false],
+      ]),
+      [{ name: 'PL1', label: '白ランプ', kind: 'output' }],
+      1000,
+    );
+    expect(chart.signals[0]?.segments).toEqual([
+      { fromMs: 0, toMs: 500, value: false },
+      { fromMs: 500, toMs: 1000, value: true },
+    ]);
+    expect(chart.signals[0]?.segments.every((s) => s.toMs > s.fromMs)).toBe(true);
+  });
+
   it('puts the push buttons above the outputs', () => {
     const specs = defaultChartSignals(['PL1', 'BZ']);
     expect(specs.map((s) => s.name)).toEqual(['PB1', 'PB2', 'PB3', 'PB4', 'PL1', 'BZ']);

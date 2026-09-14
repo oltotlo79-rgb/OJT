@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { toProblemIssues } from '../src/schema/index.js';
 import {
   CONTENT_FORMAT_VERSION,
   GradeSchema,
@@ -163,6 +164,15 @@ describe('GradeSchema / TerminalIdSchema', () => {
   it('accepts only grades 1..3', () => {
     expect(GradeSchema.safeParse(2).success).toBe(true);
     expect(GradeSchema.safeParse(4).success).toBe(false);
+  });
+
+  it('reports a wrong grade as a single issue, not one line per candidate (§13 #1)', () => {
+    const parsed = GradeSchema.safeParse(4);
+    expect(parsed.success).toBe(false);
+    if (parsed.success) return;
+    expect(parsed.error.issues).toHaveLength(1);
+    expect(parsed.error.issues[0]?.code).not.toBe('invalid_union');
+    expect(toProblemIssues(parsed.error)).toHaveLength(1);
   });
 
   it('accepts `<part>.<name>` terminal ids (§6.4)', () => {
