@@ -9,6 +9,7 @@ import { partId, toTerminalId, type Netlist, type PartId, type TerminalId } from
 import { toSession } from '@ojt/schematic-core';
 import { toSocketRoles } from './schema/common.js';
 import type { AssembleProblem } from './schema/assemble.js';
+import type { InspectRepairProblem } from './schema/inspect-repair.js';
 import type { ProblemIssue } from './schema/index.js';
 
 /**
@@ -16,6 +17,12 @@ import type { ProblemIssue } from './schema/index.js';
  * 課題の回路図（＋ `physicalOverride`）を schematic-core で盤セッションに落とし、
  * board-model でネットリストにする。物理割当に失敗したら課題エラーとして返す。
  */
+
+/**
+ * 模範回路を持つ課題（モードB／モードC2）。どちらも回路図から模範回路を組み立てる。§7.2 / §9.2
+ * モードC2の「基準になる回路」は模範回路そのものであり、故障はそこへ後から注入する。
+ */
+export type SchematicProblem = AssembleProblem | InspectRepairProblem;
 
 /** 模範回路（盤セッション＋ネットリスト）。 */
 export interface ReferenceCircuit {
@@ -48,17 +55,17 @@ export function toPhysicalOverride(
  * zod の `S1?: SocketRole | undefined` を `SocketRoles`（`exactOptionalPropertyTypes` のもとでは
  * `S1?: SocketRole`）に詰め替える。値が無いキー＝役割なしの予備ソケット。§6.1
  */
-function toRoles(problem: AssembleProblem): SocketRoles {
+function toRoles(problem: SchematicProblem): SocketRoles {
   return toSocketRoles(problem.board.socketRoles);
 }
 
 /** 課題の任意追加部品を部品IDの配列に直す。§5.3.4 */
-function toExtraParts(problem: AssembleProblem): PartId[] {
+function toExtraParts(problem: SchematicProblem): PartId[] {
   return (problem.board.extraParts ?? []).map((name) => partId(name));
 }
 
 /** 回路図の要素IDから、その要素の課題JSON上の位置（`schematic.rungs[i].cells[j]`）を引く。 */
-function cellPath(problem: AssembleProblem, cellId: string): string | undefined {
+function cellPath(problem: SchematicProblem, cellId: string): string | undefined {
   const rungs = problem.schematic.rungs;
   for (let i = 0; i < rungs.length; i += 1) {
     const cells = rungs[i]?.cells ?? [];
@@ -76,7 +83,7 @@ function cellPath(problem: AssembleProblem, cellId: string): string | undefined 
  * `c05`、ソケットの役割 `CR1`、電線ID `sw-003`）なので、そのまま出すと課題JSONのどこを直せば
  * よいのか分からない。課題一覧のエラー表示はスキーマ違反と同じ形にそろえる（§13 #1）。
  */
-export function toProblemPath(problem: AssembleProblem, path: string): string {
+export function toProblemPath(problem: SchematicProblem, path: string): string {
   if (path.startsWith('physicalOverride.')) return path;
   if (path === 'roles') return 'board.socketRoles';
   const cell = cellPath(problem, path);
@@ -93,7 +100,7 @@ export function toProblemPath(problem: AssembleProblem, path: string): string {
  * 盤IDが課題と一致しない場合と、割当に失敗した場合はエラーを返す（課題一覧で「模範回路エラー」。§13 #2）。
  */
 export function buildReferenceSession(
-  problem: AssembleProblem,
+  problem: SchematicProblem,
   board: BoardDefinition,
 ): ReferenceResult {
   if (problem.board.boardId !== board.id) {

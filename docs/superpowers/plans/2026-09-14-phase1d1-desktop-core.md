@@ -63,6 +63,7 @@
 | `src/renderer/i18n/ja.ts` | 日本語文言（§15 の集約） |
 | `src/renderer/session/colors.ts` | 3D表示の色（線色・ランプ・押ボタン・筐体） |
 | `src/renderer/session/interaction.ts` | ピック結果 → 操作の純粋関数（§12.2） |
+| `src/renderer/session/viewport-keys.ts` | 視点ショートカット（テンキー1/3/7・Ctrl・Home・上段1/2/3）の純粋関数 `viewKeyAction()` と、画面に依存しないフック `useViewportShortcuts()`（VIEW-NAV。モードC1/C2 の画面からも同じものを使う） |
 | `src/renderer/session/commands.ts` | 盤操作のコマンド履歴（元に戻す／やり直し） |
 | `src/renderer/session/spec-chart.ts` | 課題の仕様タイムチャートを模範回路から生成する |
 | `src/renderer/session/worker-bridge.ts` | Simulation Worker との橋渡し |
@@ -85,7 +86,8 @@
 | `src/renderer/three/MountedPart.tsx` | 装着したリレー／タイマ |
 | `src/renderer/three/Wire.tsx` | 電線（`WireRoute` → チューブ） |
 | `src/renderer/three/CameraPresets.tsx` | 視点プリセットの適用 |
-| `src/renderer/three/ViewGizmo.tsx` | 左上のビューキューブ |
+| `src/renderer/three/ViewGizmo.tsx` | 左上のビューキューブ（クリックでスナップ／**ドラッグで回転**。VIEW-NAV） |
+| `src/renderer/three/navigation.ts` | Blender 風ナビゲーションの純粋計算（中ボタンの割り当て・キューブのドラッグ量 → 回転角・向き → 視点プリセット・カメラ読み出し・ドラッグ中のピック抑止。VIEW-NAV） |
 | `src/renderer/three/BoardScene.tsx` | 3Dシーンの組み立て |
 | `src/renderer/panels/*.tsx` | 右パネル・下部パネル・ツールバー |
 | `src/renderer/result/*.tsx` | 結果画面の各部品 |
@@ -7779,6 +7781,13 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 - Create: `apps/desktop/src/renderer/three/CameraPresets.tsx`, `apps/desktop/src/renderer/three/ViewGizmo.tsx`, `apps/desktop/src/renderer/three/BoardScene.tsx`
 - Test: `apps/desktop/test/camera-presets.test.tsx`, `apps/desktop/test/board-scene.test.ts`
 
+> **前提の更新（2026-09-14 / Task VIEW-NAV）**: 利用者要望「3D図の回転や拡大などは blender の操作感を目指し、キューブをドラッグすることで画面を回せるように」を受けて、このタスクが作った3つのファイルは §12.2 の新しい対応表（設計仕様 §12.2 のマウス・キーボード・ビューキューブの表）に合わせて次のように変わっている。以下のコードブロックは**当時の姿**なので、現物は `apps/desktop/src/renderer/three/` を見ること。
+> - `ViewGizmo` は `controls` を受け取り、キューブの上で押した `pointerdown` から**本体カメラの軌道回転**を始める（1000px で1回転。`three/navigation.ts` の `gizmoDragToSpherical()`）。ドラッグ中は `controls.enabled = false` で盤側の回転を止め、4px 未満で放したときだけ面・辺・角のクリック（`presetForDirection()` → `setCamera()`）として扱う。
+> - `BoardScene` は `mouseButtons` を props ではなく効果の中で入れる（Shift / Ctrl の上げ下げで中ボタンの割り当てを差し替えるため。three は修飾キーで ROTATE と PAN を入れ替えるので `mouseButtonAssignment()` で打ち消す）。`rotateSpeed` 0.7 / `zoomSpeed` 0.9 / `dampingFactor` 0.1 / `screenSpacePanning`。回したドラッグの終わりのクリックでピックしないよう `createPickDragGuard()` を通す。E2E 用の隠し要素 `camera-readout` もここが書く。
+> - `camera.ts` の `cameraPose()` は `back` / `left` / `right` / `bottom` を足した7プリセット（`bottom` は `MAX_POLAR_ANGLE` ちょうど）。`MIN_CAMERA_DISTANCE_MM` / `MAX_CAMERA_DISTANCE_MM` / `MAX_POLAR_ANGLE` は `camera.ts` へ移した。
+> - 視点のキー操作（テンキー1/3/7・Ctrl・Home・上段1/2/3）は `Session.tsx` から `session/viewport-keys.ts` の `useViewportShortcuts()` へ切り出した（Phase 2 のモードC1/C2 の画面も同じフックを呼ぶ）。
+> - 追加のテスト: `apps/desktop/test/view-navigation.test.ts`（純粋関数）と `apps/desktop/e2e/navigation.spec.ts`（実機のドラッグ・中ドラッグ・ホイール・テンキー）。
+
 **性能方針（§15: 内蔵GPUで60fps）**: `frameloop="demand"` にして状態が変わったときだけ描く。盤の静的ジオメトリはマテリアルとジオメトリを共有し、電線の `TubeGeometry` は**経路の署名**（電線ID＋折れ点）単位でメモ化し、作り直すときに前の形を `dispose()` する。スナップショットの購読は「絵に効く値だけ」に絞り（`useShallow`）、3Dへ渡すハンドラは `useCallback` で安定させ、`BoardScene` は `memo` で包む（そうしないと毎秒約30枚のスナップショットで部分木が再描画され、`frameloop="demand"` が実質30fpsの常時描画になる）。ダンピングとビューキューブのアニメーション中のフレームは drei の `OrbitControls` / `GizmoHelper` が自分で `invalidate()` して要求するので、一定間隔で回してはいけない。
 
 
@@ -12102,7 +12111,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 | §8.4 | 回路図ヒント（級による出し分け） | — | Task 6 |
 | §12.1 | 画面遷移（ホーム／課題一覧／セッション／結果） | Task 6・14・15 | — |
 | §12.1 | 設定画面 | — | Task 2 |
-| §12.2 | 3Dカメラ（軌道回転・ズーム・平行移動・プリセット3種・キー1/2/3） | Task 12・14 | — |
+| §12.2 | 3Dカメラ（軌道回転・ズーム・平行移動・プリセット3種・キー1/2/3）／Blender 風の操作感（キューブのドラッグ回転・中ボタンの修飾キー・テンキー視点・プリセット7種） | Task 12・14／Task VIEW-NAV | — |
 | §12.2 | ピック結果 → 操作の純粋関数化 | Task 7 | — |
 | §12.3 | 作業ファイルの保存／読込・一時保存・起動時の復帰 | IPC の口のみ（Task 2） | Task 3・4 |
 | §13 #1 | 課題JSONの読込エラーを一覧に理由付きで出す | — | Task 1 |
@@ -12197,3 +12206,4 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 | 2026-09-14 | 1D1-e: ErrorBoundary、トースト期限、restartSession/sessionEpoch、Worker ループの例外処理と判定中の一時停止、formatElapsed、ojtApi()、setPreset を partId で、削除モードの選択解除、文言の ja.ts 集約、react-hooks lint |
 | 2026-09-14 | 1D1-f: 視点プリセット再適用、入力中のショートカット抑止、電線の当たり判定、固定高さの下部パネル、P/N 端子の可視化、ソケット印字の再配置、ネジ高さ、装着部品の見え方、ソケット拡大の画角、ラベル重なり、アイドル時の再描画停止、チューブ形状の解放、仕様チャートのキャッシュ |
 | 2026-09-14 | 実装完了。追加タスク 1D1-a〜f を記録、完了条件を実績値に更新 |
+| 2026-09-14 | Task VIEW-NAV: 3Dの操作感を Blender に合わせた（利用者要望）。ビューキューブのドラッグで回転、中ドラッグ＝回転／Shift＋中＝平行移動／Ctrl＋中＝ズーム、テンキー1/3/7（Ctrl で反対側）・Home の視点ショートカット、視点プリセットを7種に拡張。Task 12 の前提注記とファイル表（`three/navigation.ts` / `session/viewport-keys.ts`）を更新。desktop のテストは 414 → 443、E2E は `e2e/navigation.spec.ts` を足して9本 |
