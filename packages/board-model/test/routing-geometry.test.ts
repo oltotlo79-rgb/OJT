@@ -1,18 +1,26 @@
 import { describe, expect, it } from 'vitest';
 import type { TerminalId } from '@ojt/circuit-sim';
 import {
+  boardTerminalPos,
   channelBandRect,
+  CHANNEL_LANE_PITCH_MM,
+  crossingFootprint,
+  DIRECT_JOG_MM,
   entryChannelFor,
   findBoardTerminal,
   isManhattan,
   JIPM_BOARD,
+  MAX_DIRECT_JOG_LEVELS,
   MAX_WIRE_LANES,
+  rectsOverlap,
   routeFixedLinks,
   routeWire,
   RoutingError,
+  validateBoard,
   WIRE_DIAMETER_MM,
   WIRE_LAYER_COUNT,
   WIRE_Z_LADDER_MM,
+  type BoardDefinition,
   type Vec3,
   type WireRoute,
   type WiringChannel,
@@ -139,6 +147,7 @@ describe('routing: 高さのはしごとレーンのスロット（Task 9b）', 
     ];
     const segments = routes.flatMap(segmentsOf).filter((s) => s.axis !== 'z');
     const violations: string[] = [];
+    let crossings = 0;
     for (let i = 0; i < segments.length; i += 1) {
       for (let j = i + 1; j < segments.length; j += 1) {
         const a = segments[i];
@@ -150,6 +159,7 @@ describe('routing: 高さのはしごとレーンのスロット（Task 9b）', 
         const yRun = a.axis === 'x' ? b : a;
         if (!within(yRun.a.x, xRun.lo, xRun.hi)) continue;
         if (!within(xRun.a.y, yRun.lo, yRun.hi)) continue;
+        crossings += 1;
         if (Math.abs(xRun.a.z - yRun.a.z) >= WIRE_DIAMETER_MM - EPS) continue;
         violations.push(
           `${xRun.wireId}@z${xRun.a.z} × ${yRun.wireId}@z${yRun.a.z} at (${yRun.a.x},${xRun.a.y})`,
@@ -157,6 +167,8 @@ describe('routing: 高さのはしごとレーンのスロット（Task 9b）', 
       }
     }
     expect(violations).toEqual([]);
+    // 交差をちゃんと拾えている（判定が空振りしていないことの担保）
+    expect(crossings).toBeGreaterThan(100);
   });
 
   it('配線帯の中では、同じ高さ・同じレーンを重なって走る区間が無い', () => {
@@ -298,6 +310,95 @@ describe('routing: 高さのはしごとレーンのスロット（Task 9b）', 
     expect(routes[2]?.channelIds).toContain('ch-top');
   });
 
+  it('折れ点の高さは必ず高さのはしごの段か、端子・貫通穴の高さ（足し算のずれが無い）', () => {
+    const routes = [
+      ...routeAll(SELF_HOLD_WIRING),
+      ...routeAll(FLICKER_WIRING),
+      ...routeFixedLinks(board),
+    ];
+    const allowed = new Set<number>([
+      ...WIRE_Z_LADDER_MM,
+      ...board.terminals.map((term) => term.pos.z),
+      0, // 盤面（既設ハーネスが貫通する高さ）
+    ]);
+    const strays: string[] = [];
+    const produced = new Set<number>();
+    let examined = 0;
+    for (const r of routes) {
+      for (const corner of r.corners) {
+        examined += 1;
+        produced.add(corner.z);
+        if (!allowed.has(corner.z)) strays.push(`${r.wireId} z=${corner.z}`);
+      }
+    }
+    // 完全一致で判定する（4.2 + 3.6 = 7.800000000000001 のようなずれはここで落ちる）
+    expect(strays).toEqual([]);
+    expect(examined).toBeGreaterThan(100);
+    // はしごの4段すべてが実際に出る（判定が空振りしていないことの担保）
+    for (const z of WIRE_Z_LADDER_MM) expect(produced.has(z)).toBe(true);
+  });
+
+  it('張り出しの段が上限に達した渡り線は配線帯の経路になる（帯が遠い盤で確かめる）', () => {
+    // ch-mid を端子台の列から離した盤。段3（y=157）の張り出しはどの帯にも触れないので、
+    // 4本目が配線帯へ逃げる理由は MAX_DIRECT_JOG_LEVELS しかない。
+    const farBoard: BoardDefinition = {
+      ...board,
+      wiringChannels: board.wiringChannels.map((c) => (c.id === 'ch-mid' ? { ...c, at: 137 } : c)),
+    };
+    expect(validateBoard(farBoard)).toEqual([]);
+
+    const rowY = boardTerminalPos(board, 'TB_PL.1+').y;
+    const jogY = rowY - DIRECT_JOG_MM - MAX_DIRECT_JOG_LEVELS * CHANNEL_LANE_PITCH_MM;
+    const jogRect = {
+      x: boardTerminalPos(board, 'TB_PL.1+').x - TUBE_RADIUS_MM,
+      y: jogY - TUBE_RADIUS_MM,
+      w: boardTerminalPos(board, 'TB_PL.4-').x - boardTerminalPos(board, 'TB_PL.1+').x + 2,
+      h: rowY - jogY + 2 * TUBE_RADIUS_MM,
+    };
+    for (const channel of farBoard.wiringChannels) {
+      expect(rectsOverlap(jogRect, channelBandRect(channel))).toBe(false);
+    }
+
+    const pairs: ReadonlyArray<[string, string]> = [
+      ['TB_PL.1+', 'TB_PL.4-'],
+      ['TB_PL.1-', 'TB_PL.4+'],
+      ['TB_PL.2+', 'TB_PL.3-'],
+      ['TB_PL.2-', 'TB_PL.3+'],
+    ];
+    const routes: WireRoute[] = [];
+    pairs.forEach(([from, to], index) => {
+      routes.push(routeWire(farBoard, { id: `j-${index}`, from: t(from), to: t(to) }, routes));
+    });
+    expect(routes.map((r) => r.kind)).toEqual(['direct', 'direct', 'direct', 'channel']);
+    expect(routes.slice(0, 3).map((r) => r.lane)).toEqual([0, 1, 2]);
+    expect(routes[3]?.channelIds).toContain('ch-mid');
+    for (const r of routes) expect(crossingFootprint(farBoard, r)).toBeUndefined();
+  });
+
+  it('引き出しと同じ向きの帯へ出る端子でも直角のまま（横ずらしを当てない）', () => {
+    // P.1 の真上（x=20）に縦の帯を足すと、引き出しの出口がそのまま縦帯の始点になる。
+    // このとき横ずらしは帯の角が吸収できないので当てない（当てると斜めの区間ができる）。
+    const withVertical: BoardDefinition = {
+      ...board,
+      wiringChannels: [
+        ...board.wiringChannels,
+        { id: 'ch-p', axis: 'y' as const, at: boardTerminalPos(board, 'P.1').x, from: 42, to: 178 },
+      ].map((c) => ({ ...c, zMm: WIRE_Z_LADDER_MM[c.axis === 'x' ? 0 : 1] })),
+    };
+    for (const [from, to] of [
+      ['P.1', 'TB_PL.1-'],
+      ['TB_PL.1-', 'P.1'],
+    ] as const) {
+      const r = routeWire(withVertical, { id: `w-${from}`, from: t(from), to: t(to) }, []);
+      expect(isManhattan(r.corners)).toBe(true);
+      expect(crossingFootprint(withVertical, r)).toBeUndefined();
+      expect(r.lanes.map((lane) => lane.channelId)).toContain('ch-p');
+      // 縦帯の走りは帯の線（レーン0）の上をまっすぐ通る
+      const alongVertical = r.corners.filter((c) => Math.abs(c.y - 100) < 40);
+      for (const c of alongVertical) expect(c.x).toBe(boardTerminalPos(board, 'P.1').x);
+    }
+  });
+
   it('同じ節点に出る2端子でも、部品の上を通るなら RoutingError', () => {
     const blocked = {
       ...board,
@@ -324,18 +425,26 @@ describe('routing: 高さのはしごとレーンのスロット（Task 9b）', 
 
   it('電線を1本足しても、先に引いた経路は1点も変わらない', () => {
     const before = routeAll(FLICKER_WIRING);
+    // 追加する前の姿を丸ごと控える（配列を複製しただけでは自分自身と比べることになる）
+    const snapshot = structuredClone(before);
     const after = [...before];
     after.push(route('w-extra', 'S3.1', 'S7.13', after));
-    expect(after.slice(0, before.length)).toEqual(before);
+    expect(after.slice(0, before.length)).toEqual(snapshot);
+    // routeWire は existingRoutes の配列も要素も書き換えない
+    expect(before).toHaveLength(FLICKER_WIRING.length);
+    expect(before).toEqual(snapshot);
     // 追加ぶんも決定論
     expect(route('w-extra', 'S3.1', 'S7.13', before)).toEqual(after[before.length]);
+    expect(before).toEqual(snapshot);
   });
 
   it('同じ節点に出る2端子は往復せずまっすぐ渡る（P.1 → N.1）', () => {
     const r = route('w-1', 'P.1', 'N.1');
     expect(isManhattan(r.corners)).toBe(true);
     expect(r.corners.length).toBeLessThanOrEqual(5);
-    expect(r.kind).toBe('channel');
+    // 帯もレーンも使わないので kind は direct（配線帯の経路と取り違えない）
+    expect(r.kind).toBe('direct');
+    expect(r.channelIds).toEqual([]);
     expect(r.lanes).toEqual([]);
     // 折り返しが無い（隣り合う進行方向の内積が負にならない）
     const dirs: Vec3[] = [];

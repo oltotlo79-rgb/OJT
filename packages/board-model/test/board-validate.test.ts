@@ -13,6 +13,7 @@ import {
   findBoardTerminal,
   HARNESS_APPROACH_MM,
   JIPM_BOARD,
+  runZ,
   segmentIntersectsRect,
   SOCKET_COL_PITCH_MM,
   SOCKET_IDS,
@@ -20,6 +21,9 @@ import {
   TERMINAL_PICK_RADIUS_MM,
   validateBoard,
   vec3,
+  WIRE_LAYER_STEP_MM,
+  WIRE_RUN_X_Z_MM,
+  WIRE_Z_LADDER_MM,
   type BoardDefinition,
   type BoardTerminal,
   type Rect,
@@ -148,12 +152,54 @@ describe('validateBoard: 盤定義の自己検査（§6.5 / §6.6）', () => {
     const errors = validateBoard(
       patched({
         wiringChannels: [
-          { id: 'ch-bad', axis: 'x', at: 70, from: 10, to: 322, zMm: 3.5 },
+          { id: 'ch-bad', axis: 'x', at: 70, from: 10, to: 322, zMm: WIRE_RUN_X_Z_MM },
           ...board.wiringChannels,
         ],
       }),
     );
     expect(errors).toContain('配線帯 ch-bad が占有領域 S1 と重なっています');
+  });
+
+  it('配線帯の高さが軸ごとの既定（runZ）とずれていることを検出する', () => {
+    // 高さは runZ(軸, レイヤ) が唯一の情報源。zMm がずれた盤を黙って通すと
+    // 直交する電線が食い込む（Task 9b の回帰）。
+    const errors = validateBoard(
+      patched({
+        wiringChannels: board.wiringChannels.map((c) =>
+          c.id === 'ch-mid' ? { ...c, zMm: 3.5 } : c,
+        ),
+      }),
+    );
+    expect(errors).toContain('配線チャネル ch-mid の高さ 3.5mm は軸 x の既定 2.4mm と一致しません');
+    // 垂直帯は y 方向の段（4.2mm）が既定
+    const vertical = validateBoard(
+      patched({
+        wiringChannels: board.wiringChannels.map((c) =>
+          c.id === 'ch-left' ? { ...c, zMm: WIRE_RUN_X_Z_MM } : c,
+        ),
+      }),
+    );
+    expect(vertical).toContain(
+      '配線チャネル ch-left の高さ 2.4mm は軸 y の既定 4.2mm と一致しません',
+    );
+    // 既定の盤は一致している
+    expect(validateBoard(board)).toEqual([]);
+    for (const channel of board.wiringChannels) {
+      expect(channel.zMm).toBe(runZ(channel.axis, 0));
+    }
+  });
+
+  it('runZ は高さのはしごの段をそのまま返す（浮動小数の足し算をしない）', () => {
+    expect(runZ('x', 0)).toBe(WIRE_Z_LADDER_MM[0]);
+    expect(runZ('y', 0)).toBe(WIRE_Z_LADDER_MM[1]);
+    expect(runZ('x', 1)).toBe(WIRE_Z_LADDER_MM[2]);
+    expect(runZ('y', 1)).toBe(WIRE_Z_LADDER_MM[3]);
+    // 足し算だと 4.2 + 3.6 = 7.800000000000001 になってはしごから外れる
+    expect(WIRE_Z_LADDER_MM[1] + WIRE_LAYER_STEP_MM).not.toBe(WIRE_Z_LADDER_MM[3]);
+    expect(WIRE_LAYER_STEP_MM).toBe(3.6);
+    // はしごの外のレイヤは、その向きのレイヤ0に丸める
+    expect(runZ('x', 2)).toBe(WIRE_Z_LADDER_MM[0]);
+    expect(runZ('y', -1)).toBe(WIRE_Z_LADDER_MM[1]);
   });
 });
 

@@ -1,12 +1,14 @@
 import type { TerminalId } from '@ojt/circuit-sim';
 import {
   channelBandRect,
+  CHANNEL_LANE_COUNT,
   CHANNEL_LANE_DIRECTION,
+  CHANNEL_LANE_PITCH_MM,
   findBoardTerminal,
   HARNESS_APPROACH_MM,
   HARNESS_PITCH_MM,
+  runZ,
   WIRE_LAYER_COUNT,
-  WIRE_LAYER_STEP_MM,
   WIRE_RUN_X_Z_MM,
   WIRE_RUN_Y_Z_MM,
   type BoardDefinition,
@@ -38,21 +40,36 @@ import type { BoardSession } from './session.js';
  * という経路を作る。純関数・決定論（乱数も時刻も使わない）。
  *
  * 並走する電線の分け方は2方向ある。
- * - **レーン**（幅方向）: 帯の中で2mmピッチに `MAX_WIRE_LANES` 本ずらす。
- * - **レイヤ**（高さ方向）: レーンを使い切ったら `WIRE_LAYER_STEP_MM` だけ上の段に載せる。
+ * - **レーン**（幅方向）: 帯の中で `CHANNEL_LANE_PITCH_MM` ピッチに `CHANNEL_LANE_COUNT` 本ずらす。
+ * - **レイヤ**（高さ方向）: レーンを使い切ったら高さのはしごを2段上げる（{@link runZ}）。
  *
  * さらに走る向きで高さの段を分けてある（x方向は {@link WIRE_RUN_X_Z_MM}、y方向は
  * {@link WIRE_RUN_Y_Z_MM} 系）。直交する区間どうしは必ず1.8mm以上離れるので、
  * 直径 {@link WIRE_DIAMETER_MM}（1.6mm）の管で描いても食い込まない。高さの変わる角には
  * z だけ動く点を差し込むので、折れ点列は常に直角経路（{@link isManhattan}）である。
+ *
+ * 端子からの引き出し（帯までの短い区間）は、同じ列・同じネジから出る電線どうしが1本の管に
+ * 見えてしまわないよう、レーンごとに**高さの段**（偶奇）と**横位置**（{@link LEAD_OUT_STAGGER_MM}）を
+ * ずらしてある。ずれは帯へ入る角が吸収するので、帯の中の走りは変わらない。
  */
 
 /** 電線の描画直径[mm]。§6.6 */
 export const WIRE_DIAMETER_MM = 1.6;
-/** 並走する電線の並列オフセット幅[mm]。§6.6 */
-export const WIRE_LANE_PITCH_MM = 2;
-/** 並列オフセットの最大段数（1レイヤあたり）。 */
-export const MAX_WIRE_LANES = 8;
+/**
+ * 並走する電線の並列オフセット幅[mm]。
+ * @deprecated 盤定義側の {@link CHANNEL_LANE_PITCH_MM} に一本化した。別名として残してある。
+ */
+export const WIRE_LANE_PITCH_MM = CHANNEL_LANE_PITCH_MM;
+/**
+ * 並列オフセットの最大段数（1レイヤあたり）。
+ * @deprecated 盤定義側の {@link CHANNEL_LANE_COUNT} に一本化した。別名として残してある。
+ */
+export const MAX_WIRE_LANES = CHANNEL_LANE_COUNT;
+/**
+ * 端子からの引き出しをレーン1本ぶんずらす量[mm]（レーン0が −2.1mm、レーン7が +2.1mm）。
+ * 端子の当たり判定半径（4mm）より小さく、いちばん詰まった列の間隔（8mm）の内側に収まる。
+ */
+export const LEAD_OUT_STAGGER_MM = 0.6;
 /** 曲がり角のフィレット半径[mm]。 */
 export const WIRE_FILLET_RADIUS_MM = 6;
 /** フィレット1か所あたりの分割数（点数は控えめに）。 */
@@ -73,8 +90,10 @@ export interface RoutableWire {
 
 /**
  * 経路の種類。用途の違う経路を取り違えないための判別子。
- * - `channel`: 配線帯を使う訓練者の電線（{@link routeWire} の既定）。
- * - `direct`: 同じ列の隣り合う端子を結ぶ渡り線。列からわずかに張り出すだけで帯には入らない。
+ * - `channel`: 配線帯を使う訓練者の電線（{@link routeWire} の既定）。`channelIds` は空でない。
+ * - `direct`: 帯を使わない直結。`channelIds` は必ず空で `lanes` も空。
+ *   同じ列の隣り合う端子を結ぶ渡り線（列からわずかに張り出す）のほか、
+ *   両端が帯の**同じ節点**に出る2端子をまっすぐ渡す経路もこれになる（帯まで下りて折り返さない）。
  * - `harness`: 既設の青線ハーネス（{@link routeFixedLinks}）。帯もレーンも使わない。
  */
 export type WireRouteKind = 'direct' | 'channel' | 'harness';
@@ -92,9 +111,9 @@ export interface ChannelSpan {
  */
 export interface ChannelLane {
   channelId: string;
-  /** 帯の幅方向の位置（0起点。`CHANNEL_LANE_DIRECTION` の向きへ `WIRE_LANE_PITCH_MM` ずつ）。 */
+  /** 帯の幅方向の位置（0起点。`CHANNEL_LANE_DIRECTION` の向きへ `CHANNEL_LANE_PITCH_MM` ずつ）。 */
   lane: number;
-  /** 帯の高さ方向の段（0起点。レイヤ1は `WIRE_LAYER_STEP_MM` だけ上）。 */
+  /** 帯の高さ方向の段（0起点。高さは `runZ(帯の軸, layer)`）。 */
   layer: number;
   /** この走行が占める区間（帯の走行軸の座標）。 */
   span: { lo: number; hi: number };
@@ -111,9 +130,7 @@ export interface WireRoute {
   corners: Vec3[];
   /** 通った配線帯のID（通過順）。 */
   channelIds: string[];
-  /** 帯ごとの占有区間。帯を走るたびに1つで、`lanes` と同じ並び。 */
-  channelSpans: ChannelSpan[];
-  /** 帯を走るたびのレーン・レイヤの割当。 */
+  /** 帯を走るたびのレーン・レイヤの割当（占有区間は各要素の `span`）。 */
   lanes: ChannelLane[];
   /** 最初の走行のレーン（渡り線では張り出しの段、既設ハーネスでは穴の中の並び順）。 */
   lane: number;
@@ -134,11 +151,11 @@ export interface LaneAssignment {
 }
 
 /** 帯1本あたりのスロット数（レーン × レイヤ）。 */
-const SLOT_COUNT = MAX_WIRE_LANES * WIRE_LAYER_COUNT;
+const SLOT_COUNT = CHANNEL_LANE_COUNT * WIRE_LAYER_COUNT;
 
 /** スロット番号 → レーンとレイヤ（レイヤ0のレーン0..7 → レイヤ1のレーン0..7 の順に探す）。 */
 function slotAt(index: number): { lane: number; layer: number } {
-  return { lane: index % MAX_WIRE_LANES, layer: Math.floor(index / MAX_WIRE_LANES) };
+  return { lane: index % CHANNEL_LANE_COUNT, layer: Math.floor(index / CHANNEL_LANE_COUNT) };
 }
 
 /** 2つの区間が重なるか（端が触れるだけでも重なりとみなす。管がぶつかるので）。 */
@@ -242,9 +259,20 @@ function contains(channel: WiringChannel, along: number): boolean {
   return along >= Math.min(channel.from, channel.to) && along <= Math.max(channel.from, channel.to);
 }
 
-/** 帯のレイヤの走行高さ[mm]。レイヤ1はレイヤ0の `WIRE_LAYER_STEP_MM` 上。 */
+/**
+ * 帯のレイヤの走行高さ[mm]。帯の `zMm` ではなく**走る向きとレイヤ**だけで決まる
+ * （{@link runZ} が唯一の情報源。`zMm` は検査用の控えで、食い違えば `validateBoard` が報告する）。
+ */
 function channelZ(channel: WiringChannel, layer: number): number {
-  return channel.zMm + layer * WIRE_LAYER_STEP_MM;
+  return runZ(channel.axis, layer);
+}
+
+/**
+ * 端子からの引き出しを、帯のレーンに合わせて横へずらす量[mm]（中央そろえ。±2.1mm）。
+ * 同じネジ・同じ列から出る電線が同じ直線に重なって1本の管に見えるのを防ぐ。
+ */
+function leadOutOffset(lane: number): number {
+  return (lane - (CHANNEL_LANE_COUNT - 1) / 2) * LEAD_OUT_STAGGER_MM;
 }
 
 /**
@@ -396,7 +424,7 @@ function dedupePoints(points: readonly Vec3[]): Vec3[] {
  * ずらす向きは帯ごとに固定（`CHANNEL_LANE_DIRECTION`）で、部品の無い側へ伸ばす。
  */
 function laneShift(channel: WiringChannel, lane: number): { dx: number; dy: number } {
-  const shift = lane * WIRE_LANE_PITCH_MM * (CHANNEL_LANE_DIRECTION[channel.id] ?? 1);
+  const shift = lane * CHANNEL_LANE_PITCH_MM * (CHANNEL_LANE_DIRECTION[channel.id] ?? 1);
   return channel.axis === 'x' ? { dx: 0, dy: shift } : { dx: shift, dy: 0 };
 }
 
@@ -491,7 +519,7 @@ function ownerOf(id: TerminalId): string {
   return dot < 0 ? id : id.slice(0, dot);
 }
 
-/** 渡り線が x 方向に占める範囲（折れ点が無ければ、何とも重ならない空の範囲）。 */
+/** 渡り線が x 方向に占める範囲（渡り線には必ず折れ点があるので、範囲は空にならない）。 */
 function directRunXSpan(route: WireRoute): { lo: number; hi: number } {
   const xs = route.corners.map((c) => c.x);
   return { lo: Math.min(...xs), hi: Math.max(...xs) };
@@ -551,7 +579,7 @@ function directRunRoute(
   let level = 0;
   while (taken.has(level)) level += 1;
   if (level >= MAX_DIRECT_JOG_LEVELS) return undefined;
-  const jogY = a.pos.y + dir * (DIRECT_JOG_MM + level * WIRE_LANE_PITCH_MM);
+  const jogY = a.pos.y + dir * (DIRECT_JOG_MM + level * CHANNEL_LANE_PITCH_MM);
   if (jogEntersChannelBand(board, lo, hi, a.pos.y, jogY)) return undefined;
 
   const corners = buildCorners(a.pos, [
@@ -567,7 +595,6 @@ function directRunRoute(
     points,
     corners,
     channelIds: [],
-    channelSpans: [],
     lanes: [],
     lane: level,
     laneOverflow: false,
@@ -585,7 +612,7 @@ function sameRow(route: WireRoute, a: BoardTerminal): boolean {
 /**
  * 両端の端子が同じ節点に出るとき（同じ帯の同じ位置に引き出される）の経路。
  * 帯まで下りて戻ると、帯を通り越して折り返すだけの経路になってしまうので、
- * 端子のあいだをまっすぐ直角に渡す。
+ * 端子のあいだをまっすぐ直角に渡す。帯もレーンも使わないので `kind` は `direct`。
  */
 function sameNodeRoute(
   board: BoardDefinition,
@@ -601,11 +628,10 @@ function sameNodeRoute(
   const points = filletCorners(corners, WIRE_FILLET_RADIUS_MM);
   const route: WireRoute = {
     wireId: wire.id,
-    kind: 'channel',
+    kind: 'direct',
     points,
     corners,
     channelIds: [],
-    channelSpans: [],
     lanes: [],
     lane: 0,
     laneOverflow: false,
@@ -634,8 +660,6 @@ function terminalOf(board: BoardDefinition, wire: RoutableWire, id: TerminalId):
 interface Traversal {
   channelId: string;
   channel: WiringChannel;
-  /** この走行が覆う最後の辺の番号（続きの辺をまとめるために持つ）。 */
-  lastEdge: number;
   lo: number;
   hi: number;
   /** 帯の幅方向のレーン（`pickLane` のあとで入る）。 */
@@ -648,6 +672,9 @@ interface Traversal {
  * 経路の辺を「同じ帯を続けて走るまとまり」に切り分ける。
  * 帯ごとに min..max でまとめてしまうと、離れた2回の走行が1つの大きな区間になって
  * レーンを無駄に食いつぶすので、走行ごとに区間を持つ。
+ *
+ * まとめ先は「直前の辺の走行」だけ（`current`）。辺を1つでも飛ばしたら区切りなおすので、
+ * 同じ帯へ戻ってきた2回目の走行は必ず別の区間になる。
  */
 function buildTraversals(
   path: { keys: string[]; channelIds: string[] },
@@ -656,31 +683,31 @@ function buildTraversals(
 ): { traversals: Traversal[]; edgeTraversal: number[] } {
   const traversals: Traversal[] = [];
   const edgeTraversal: number[] = [];
+  let current: Traversal | undefined;
   path.channelIds.forEach((channelId, edge) => {
     const channel = channelById.get(channelId);
     const nodeA = nodes.get(path.keys[edge] ?? '');
     const nodeB = nodes.get(path.keys[edge + 1] ?? '');
     if (channel === undefined || nodeA === undefined || nodeB === undefined) {
+      current = undefined;
       edgeTraversal.push(-1);
       return;
     }
     const va = alongOf(channel, nodeA.x, nodeA.y);
     const vb = alongOf(channel, nodeB.x, nodeB.y);
-    const last = traversals[traversals.length - 1];
-    if (last !== undefined && last.channelId === channelId && last.lastEdge === edge - 1) {
-      last.lastEdge = edge;
-      last.lo = Math.min(last.lo, va, vb);
-      last.hi = Math.max(last.hi, va, vb);
+    if (current !== undefined && current.channelId === channelId) {
+      current.lo = Math.min(current.lo, va, vb);
+      current.hi = Math.max(current.hi, va, vb);
     } else {
-      traversals.push({
+      current = {
         channelId,
         channel,
-        lastEdge: edge,
         lo: Math.min(va, vb),
         hi: Math.max(va, vb),
         lane: 0,
         layer: 0,
-      });
+      };
+      traversals.push(current);
     }
     edgeTraversal.push(traversals.length - 1);
   });
@@ -745,12 +772,12 @@ export function routeWire(
 
   const channelById = new Map(board.wiringChannels.map((c) => [c.id, c]));
   const { traversals, edgeTraversal } = buildTraversals(path, graph.nodes, channelById);
-  const channelSpans: ChannelSpan[] = traversals.map((t) => ({
+  const spans: ChannelSpan[] = traversals.map((t) => ({
     channelId: t.channelId,
     lo: t.lo,
     hi: t.hi,
   }));
-  const assignment = pickLane(channelSpans, existingRoutes);
+  const assignment = pickLane(spans, existingRoutes);
   assignment.lanes.forEach((assigned, index) => {
     const traversal = traversals[index];
     if (traversal === undefined) return;
@@ -780,18 +807,31 @@ export function routeWire(
 
   const first = positions[0] ?? { x: a.pos.x, y: a.pos.y };
   const last = positions[positions.length - 1] ?? { x: b.pos.x, y: b.pos.y };
+  // 引き出しのずらし。帯に入る／出る走行のレーンで高さの段（偶奇）と横位置を分ける。
+  // 横ずらしは帯の走行軸に沿うので、帯へ入る角がそのまま吸収する（帯の中の走りは変わらない）。
+  // 帯が縦向き（引き出しと同じ向き）のときは角が吸収できないので横ずらしはしない。
+  const startRun = traversals[0];
+  const endRun = traversals[traversals.length - 1];
+  const startLane = startRun?.lane ?? 0;
+  const endLane = endRun?.lane ?? 0;
+  const startDx = startRun?.channel.axis === 'x' ? leadOutOffset(startLane) : 0;
+  const endDx = endRun?.channel.axis === 'x' ? leadOutOffset(endLane) : 0;
+  const startX = first.x + startDx;
+  const endX = last.x + endDx;
   // 端子 → 盤面へ立ち下げ → 帯へ引き出す → 帯を走る → 目的端子の列へ → 端子
   const steps: RouteStep[] = [
-    toStep(first.x, a.pos.y, WIRE_RUN_X_Z_MM),
-    toStep(first.x, first.y, WIRE_RUN_Y_Z_MM),
+    toStep(startX, a.pos.y, runZ('x', startLane % WIRE_LAYER_COUNT)),
+    toStep(startX, first.y, runZ('y', startLane % WIRE_LAYER_COUNT)),
   ];
   positions.forEach((p, index) => {
     const traversal = traversalOf(index - 1);
     if (traversal === undefined) return;
-    steps.push(toStep(p.x, p.y, channelZ(traversal.channel, traversal.layer)));
+    // 最後の節点は引き出しのずれを織り込んだ位置にする（帯の中で折り返さないように）
+    const x = index === positions.length - 1 ? endX : p.x;
+    steps.push(toStep(x, p.y, channelZ(traversal.channel, traversal.layer)));
   });
-  steps.push(toStep(last.x, b.pos.y, WIRE_RUN_Y_Z_MM));
-  steps.push(toStep(b.pos.x, b.pos.y, WIRE_RUN_X_Z_MM));
+  steps.push(toStep(endX, b.pos.y, runZ('y', endLane % WIRE_LAYER_COUNT)));
+  steps.push(toStep(b.pos.x, b.pos.y, runZ('x', endLane % WIRE_LAYER_COUNT)));
   steps.push(riseStep(b.pos.z));
 
   const corners = buildCorners(a.pos, steps);
@@ -802,7 +842,6 @@ export function routeWire(
     points,
     corners,
     channelIds: dedupeStrings([chA.id, ...path.channelIds, chB.id]),
-    channelSpans,
     lanes: assignment.lanes,
     lane: assignment.lanes[0]?.lane ?? 0,
     laneOverflow: assignment.overflow,
@@ -901,7 +940,6 @@ export function routeFixedLinks(board: BoardDefinition): WireRoute[] {
       points,
       corners,
       channelIds: [],
-      channelSpans: [],
       lanes: [],
       lane: index,
       laneOverflow: false,
@@ -957,32 +995,16 @@ export function crossesFootprint(board: BoardDefinition, route: WireRoute): bool
   return crossingFootprint(board, route) !== undefined;
 }
 
-/** 配線帯が部品の占有領域と重なっていないか（盤定義の不変条件）。§6.6 */
+/**
+ * 配線帯が部品の占有領域と重なっていないか（盤定義の不変条件）。§6.6
+ * 帯の矩形は {@link channelBandRect} と同じもの（帯の定義は1か所だけ）。
+ */
 export function channelsClearOfFootprints(board: BoardDefinition): string[] {
   const bad: string[] = [];
   for (const channel of board.wiringChannels) {
-    const lanes = MAX_WIRE_LANES - 1;
-    const dir = CHANNEL_LANE_DIRECTION[channel.id] ?? 1;
-    const spread = lanes * WIRE_LANE_PITCH_MM * dir;
-    const a =
-      channel.axis === 'x' ? vec3(channel.from, channel.at, 0) : vec3(channel.at, channel.from, 0);
-    const b =
-      channel.axis === 'x'
-        ? vec3(channel.to, channel.at + spread, 0)
-        : vec3(channel.at + spread, channel.to, 0);
-    const rect = {
-      x: Math.min(a.x, b.x),
-      y: Math.min(a.y, b.y),
-      w: Math.abs(b.x - a.x),
-      h: Math.abs(b.y - a.y),
-    };
+    const band = channelBandRect(channel);
     for (const fp of board.footprints) {
-      const overlap =
-        rect.x < fp.x + fp.w &&
-        rect.x + rect.w > fp.x &&
-        rect.y < fp.y + fp.h &&
-        rect.y + rect.h > fp.y;
-      if (overlap) bad.push(`${channel.id} × ${fp.id}`);
+      if (rectsOverlap(band, fp)) bad.push(`${channel.id} × ${fp.id}`);
     }
   }
   return bad;

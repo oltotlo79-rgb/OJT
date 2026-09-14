@@ -89,14 +89,30 @@ export const HARNESS_APPROACH_MM = 8;
  * 管で描いても食い込まない。段0と段2（＝同じ向きのレイヤ0とレイヤ1）は3.6mm離れている。
  */
 export const WIRE_Z_LADDER_MM = [2.4, 4.2, 6.0, 7.8] as const;
-/** 1本の配線帯が持つ高さのレイヤ数（レイヤ0＝帯の `zMm`、レイヤ1＝その上）。§6.6 */
+/** 1本の配線帯が持つ高さのレイヤ数（レイヤ0＝はしごの下段、レイヤ1＝その2段上）。§6.6 */
 export const WIRE_LAYER_COUNT = 2;
-/** レイヤ1がレイヤ0より高い量[mm]（`WIRE_Z_LADDER_MM` の2段ぶん）。 */
-export const WIRE_LAYER_STEP_MM = 3.6;
+/**
+ * レイヤ1がレイヤ0より高い量[mm]（`WIRE_Z_LADDER_MM` の2段ぶん）。
+ * 説明用の値で、走行高さの計算には使わないこと（足し算だと 4.2 + 3.6 = 7.800000000000001 と
+ * はしごの値からずれる）。高さは必ず {@link runZ} ではしごの段を直に引く。
+ */
+export const WIRE_LAYER_STEP_MM = WIRE_Z_LADDER_MM[2] - WIRE_Z_LADDER_MM[0];
 /** x方向に走る区間の基準の高さ[mm]（水平な配線帯のレイヤ0）。 */
 export const WIRE_RUN_X_Z_MM = WIRE_Z_LADDER_MM[0];
 /** y方向に走る区間の基準の高さ[mm]（垂直な配線帯のレイヤ0）。 */
 export const WIRE_RUN_Y_Z_MM = WIRE_Z_LADDER_MM[1];
+
+/**
+ * 走る向きとレイヤから電線の走行高さ[mm]を求める。§6.6
+ *
+ * {@link WIRE_Z_LADDER_MM} の段を**直に引く**（x方向は段0・2、y方向は段1・3）ので、返る値は必ず
+ * はしごの値そのものになる。走行高さの唯一の情報源で、配線帯の `zMm` は検査用の控えでしかない。
+ * レイヤがはしごの外なら、その向きのレイヤ0の高さに丸める。
+ */
+export function runZ(axis: 'x' | 'y', layer: number): number {
+  const base = axis === 'x' ? 0 : 1;
+  return WIRE_Z_LADDER_MM[base + layer * 2] ?? WIRE_Z_LADDER_MM[base];
+}
 /**
  * 電線が盤面上を走る高さ[mm]。
  * @deprecated 走行高さは向きとレイヤで決まるようになった。
@@ -227,7 +243,10 @@ export interface WiringChannel {
   /**
    * この帯のレイヤ0の走行高さ[mm]。水平帯は {@link WIRE_RUN_X_Z_MM}、垂直帯は
    * {@link WIRE_RUN_Y_Z_MM}（＝直交する帯どうしが必ず1.8mm以上離れる段）。
-   * 帯が混んでレーンを使い切ったぶんはレイヤ1（`zMm + WIRE_LAYER_STEP_MM`）に載る。§6.6
+   *
+   * **書類と検査のための控え**であって、経路生成はこの値を読まない。実際の走行高さは
+   * 必ず {@link runZ}（軸とレイヤ）で決まる。食い違うと直交する電線が食い込むので、
+   * {@link validateBoard} が `runZ(axis, 0)` と一致しない帯を不正として報告する。§6.6
    */
   zMm: number;
 }
@@ -911,6 +930,7 @@ function footprintIdOfPart(part: string): string | undefined {
  * - 既設配線・既設リンクの端点が実在する端子であること
  * - 配線できる端子どうしの当たり判定（円）が重ならないこと
  * - 配線帯（レーンぶんの帯）がどの占有領域とも重ならないこと
+ * - 配線帯の `zMm` が軸ごとの既定の高さ（{@link runZ}）と一致すること
  */
 export function validateBoard(board: BoardDefinition): string[] {
   const errors: string[] = [];
@@ -970,6 +990,12 @@ export function validateBoard(board: BoardDefinition): string[] {
   }
 
   for (const channel of board.wiringChannels) {
+    const expectedZ = runZ(channel.axis, 0);
+    if (Math.abs(channel.zMm - expectedZ) > 1e-9) {
+      errors.push(
+        `配線チャネル ${channel.id} の高さ ${channel.zMm}mm は軸 ${channel.axis} の既定 ${expectedZ}mm と一致しません`,
+      );
+    }
     const band = channelBandRect(channel);
     for (const footprint of board.footprints) {
       if (rectsOverlap(band, footprint)) {

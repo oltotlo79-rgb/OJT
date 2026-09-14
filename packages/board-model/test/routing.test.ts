@@ -22,6 +22,7 @@ import {
   segmentIntersectsRect,
   vec3,
   WIRE_LANE_PITCH_MM,
+  WIRE_RUN_X_Z_MM,
   type WireRoute,
 } from '../src/index.js';
 
@@ -265,7 +266,6 @@ describe('routing: 直角配線（§6.6 / 写真にダクトは無い）', () =>
       points: [],
       corners: [],
       channelIds: ['ch-mid'],
-      channelSpans: [{ channelId: 'ch-mid', lo: 0, hi: 100 }],
       lanes: [{ channelId: 'ch-mid', lane, layer, span: { lo: 0, hi: 100 } }],
       lane,
       laneOverflow: false,
@@ -337,7 +337,9 @@ describe('routing: 直角配線（§6.6 / 写真にダクトは無い）', () =>
   it('部品の上を通ってしまう配線帯では経路生成が失敗する（迂回できないとき）', () => {
     const bad = {
       ...board,
-      wiringChannels: [{ id: 'ch-bad', axis: 'x' as const, at: 100, from: 10, to: 322, zMm: 3.5 }],
+      wiringChannels: [
+        { id: 'ch-bad', axis: 'x' as const, at: 100, from: 10, to: 322, zMm: WIRE_RUN_X_Z_MM },
+      ],
     };
     expect(() => routeWire(bad, { id: 'w', from: t('P.1'), to: t('TB_PL.1+') }, [])).toThrow(
       RoutingError,
@@ -351,7 +353,6 @@ describe('routing: 直角配線（§6.6 / 写真にダクトは無い）', () =>
       points: [vec3(0, 100, 3.5), vec3(330, 100, 3.5)],
       corners: [vec3(0, 100, 3.5), vec3(330, 100, 3.5)],
       channelIds: [],
-      channelSpans: [],
       lanes: [],
       lane: 0,
       laneOverflow: false,
@@ -364,7 +365,9 @@ describe('routing: 直角配線（§6.6 / 写真にダクトは無い）', () =>
   it('配線帯が部品と重なる盤は検出できる（盤定義の回帰防止）', () => {
     const bad = {
       ...board,
-      wiringChannels: [{ id: 'ch-bad', axis: 'x' as const, at: 100, from: 10, to: 320, zMm: 3.5 }],
+      wiringChannels: [
+        { id: 'ch-bad', axis: 'x' as const, at: 100, from: 10, to: 320, zMm: WIRE_RUN_X_Z_MM },
+      ],
     };
     expect(channelsClearOfFootprints(bad).length).toBeGreaterThan(0);
   });
