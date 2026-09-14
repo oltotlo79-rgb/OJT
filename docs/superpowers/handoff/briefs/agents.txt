@@ -1,0 +1,2 @@
+# id | task | started(local) | budget_min | notes
+aa36994aa83011a40 | Plan 2A Tasks 14+16 C1 built-ins, C2 5-8, 弁別 (Sonnet) | 22:16 | 75 | packages/content builtin json + index
