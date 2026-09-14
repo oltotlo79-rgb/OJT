@@ -172,6 +172,32 @@ export function applyTesterAction(state: TesterState, action: TesterAction): Tes
   }
 }
 
+/**
+ * アナログ電圧計の針の角度[度]。目盛に対して線形。§9.3
+ * 逆極性（負の測定値）は左端＝0度に張り付き、レンジ上限を超えたらフルスケールで止まる。
+ */
+export function voltNeedleDeg(volts: number, range: number): number {
+  const ratio = volts / range;
+  if (!(ratio > 0)) return 0;
+  return Math.min(ratio, 1) * NEEDLE_FULL_SCALE_DEG;
+}
+
+/**
+ * アナログΩ計の針の角度[度]。中央目盛方式（非線形）。§9.3
+ * 振れ角 ＝ フルスケール角 × Rin ÷ (Rin + R)。右端（フルスケール）が0Ω、左端（0度）が∞。
+ */
+export function ohmNeedleDeg(ohms: number, range: AnalogOhmRange): number {
+  if (!Number.isFinite(ohms) || ohms < 0) return 0;
+  const rin = ANALOG_OHM_INTERNAL_OHMS[range];
+  return NEEDLE_FULL_SCALE_DEG * (rin / (rin + ohms));
+}
+
+/** 0Ω調整が未実施なら読値に +5% の誤差を乗せる。§9.3 */
+export function withZeroAdjustError(ohms: number, zeroAdjusted: boolean): number {
+  if (!Number.isFinite(ohms)) return ohms;
+  return zeroAdjusted ? ohms : ohms * (1 + ZERO_ADJUST_ERROR_RATIO);
+}
+
 /** 測定できないときの読値。 */
 function blankReading(state: TesterState, display: string, live = false): TesterReading {
   return {
@@ -186,15 +212,31 @@ function blankReading(state: TesterState, display: string, live = false): Tester
   };
 }
 
-/** 電圧の読値を組み立てる。アナログはレンジで振り切れを判定する（Task 2 で角度を足す）。 */
+/**
+ * 電圧の読値を組み立てる。アナログはレンジで振り切れを判定し、針の目標角度を入れる。§9.3
+ * 振り切れの判定は絶対値で見る（逆極性で大きく振れた場合も可動コイルには同じ負担がかかるため）。
+ */
 function voltReading(state: TesterState, volts: number, display: string): TesterReading {
+  if (state.kind === 'digital') {
+    return {
+      kind: state.kind,
+      mode: state.mode,
+      value: volts,
+      display,
+      targetDeg: 0,
+      overRange: false,
+      live: false,
+      conductive: false,
+    };
+  }
+  const overRange = Math.abs(volts) > state.voltRange;
   return {
     kind: state.kind,
     mode: state.mode,
     value: volts,
-    display,
-    targetDeg: 0,
-    overRange: false,
+    display: overRange ? 'OL' : display,
+    targetDeg: voltNeedleDeg(volts, state.voltRange),
+    overRange,
     live: false,
     conductive: false,
   };
@@ -222,12 +264,25 @@ export function readTester(sim: Simulation, state: TesterState): TesterReading {
   if (state.mode === 'OHM') {
     const reading = measureResistance(sim, black, red);
     if (reading.live) return blankReading(state, TESTER_NO_PROBE_DISPLAY, true);
+    if (state.kind === 'digital') {
+      return {
+        kind: state.kind,
+        mode: state.mode,
+        value: reading.ohms,
+        display: reading.display,
+        targetDeg: 0,
+        overRange: false,
+        live: false,
+        conductive: false,
+      };
+    }
+    const shown = withZeroAdjustError(reading.ohms, state.zeroAdjusted);
     return {
       kind: state.kind,
       mode: state.mode,
-      value: reading.ohms,
-      display: reading.display,
-      targetDeg: 0,
+      value: shown,
+      display: Number.isFinite(shown) ? shown.toFixed(1) : 'OL',
+      targetDeg: ohmNeedleDeg(shown, state.ohmRange),
       overRange: false,
       live: false,
       conductive: false,
@@ -235,12 +290,13 @@ export function readTester(sim: Simulation, state: TesterState): TesterReading {
   }
   const reading = continuity(sim, black, red);
   if (reading.live) return blankReading(state, TESTER_NO_PROBE_DISPLAY, true);
+  const shown = withZeroAdjustError(reading.ohms, state.zeroAdjusted);
   return {
     kind: state.kind,
     mode: state.mode,
-    value: reading.ohms,
+    value: state.kind === 'analog' ? shown : reading.ohms,
     display: reading.display,
-    targetDeg: 0,
+    targetDeg: state.kind === 'analog' ? ohmNeedleDeg(shown, state.ohmRange) : 0,
     overRange: false,
     live: false,
     conductive: reading.conductive,
@@ -249,3 +305,41 @@ export function readTester(sim: Simulation, state: TesterState): TesterReading {
 
 /** 針の追従に使う1tickの既定の長さ[ms]。 */
 export const TESTER_TICK_MS = TICK_MS;
+
+/**
+ * 1tickぶん進めて読値と新しい状態を返す。§9.3 / §5.6 #2
+ *
+ * アナログ針は時定数100msの指数移動平均で目標角度へ寄せる（α ＝ 1 − exp(−dt ÷ 100)。
+ * 10ms tick では約0.0952）。デジタルは針を持たないので常に0度のままにする。
+ *
+ * **この関数の副作用**: アナログでレンジ上限を超えた読値になったとき、`sim.events` に
+ * `range-exceeded` を1件発行する（内部で呼ぶ `readTester()` も、活線でΩ／導通を当てると
+ * `meter.ts` 経由で `ohm-on-live` を発行し得る。§5.6 #1）。同じ振り切れが続いている間は再発行せず、
+ * 読値がレンジ内に戻ったときに再発行できる状態へ戻す（つまみ・レンジ・プローブを動かしたときは
+ * `applyTesterAction()` が記録を消す）。重複抑制の考え方は `ohm-on-live`（§5.6 #1）と同じ。
+ */
+export function stepTester(
+  sim: Simulation,
+  state: TesterState,
+  dtMs: number = TESTER_TICK_MS,
+): { state: TesterState; reading: TesterReading } {
+  const reading = readTester(sim, state);
+  const alpha = 1 - Math.exp(-dtMs / NEEDLE_TIME_CONSTANT_MS);
+  const needleDeg =
+    state.kind === 'analog' ? state.needleDeg + alpha * (reading.targetDeg - state.needleDeg) : 0;
+  let rangeExceededReported = state.rangeExceededReported;
+  if (reading.overRange) {
+    if (!rangeExceededReported) {
+      sim.events.emit({
+        type: 'hazard',
+        kind: 'range-exceeded',
+        tMs: sim.tMs,
+        detail: `${state.mode} ${state.voltRange}V レンジ`,
+      });
+      rangeExceededReported = true;
+    }
+  } else {
+    rangeExceededReported = false;
+  }
+  return { state: { ...state, needleDeg, rangeExceededReported }, reading };
+}
