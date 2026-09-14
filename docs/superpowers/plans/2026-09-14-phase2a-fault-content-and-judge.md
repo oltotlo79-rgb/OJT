@@ -43,6 +43,7 @@
 - 赤PBを**押したまま**Ωレンジを当てるとプローブ間電圧が `23.996…V`（表示 `24.00 V`）になり、`measureResistance()` は `live: true` / `display: 'OL'` を返して `ohm-on-live` を1件発行する（§5.6 #1）。
 - レアショートの判定しきい値は正常値の85%＝`650 × 0.85 = 552.5Ω`（§9.1 補足・§17.2 #7）。既定の 422.5Ω はこれを下回る。
 - コイル抵抗の公称値は `COIL_OHMS = 650`、レアショート既定 `ratio = 0.65` なので `650 × 0.65 = 422.5`。タイマ（`createTimer4c`）のコイルも同じ 650Ω なので上表の `normal` と同じ読値になる。
+- 上表の a接点／b接点のON/OFF状態はリレーなら励磁と同時に成り立つが、タイマは違う。タイマの接点は `checkSettleMs('timer-h3y4')`（プリセット時間＋マージン）だけ待ってから初めて上表どおりの状態になる（M-13）。
 
 ---
 
@@ -74,6 +75,22 @@
 | `packages/content/src/builtin/index.ts` | C1/C2の登録（変更） |
 | `packages/content/src/index.ts` | 公開APIの確定（変更） |
 | `packages/content/test/helpers/inspect.ts` | C1/C2のテスト用課題JSONの骨組み |
+
+---
+
+## 実装バッチ（推奨）
+
+レビュー指摘の反映後、依存関係にもとづいて次のとおりバッチ化して実装できる。バッチ内のタスクは互いへの依存が無いか浅いので並行でき、バッチ間は原則この順で進める（`@ojt/circuit-sim` のバッチAだけは他のどのバッチにも依存しないため、B〜Gと並行してよい）。
+
+| バッチ | タスク | 対象 | 備考 |
+|---|---|---|---|
+| A | 1, 2 | `@ojt/circuit-sim` | テスターの状態機械（デジタル→アナログ）。他バッチから独立 |
+| B | 3, 5, 6, 8 | `@ojt/content`（スキーマ） | 故障・C1・C2のスキーマ定義と判別共用体の拡張。C以降より先に必要 |
+| C | 4, 7 | `@ojt/content`（故障の適用） | Bのスキーマに依存。故障の適用とランダム故障生成 |
+| D | 9, 10, 11, 13 | `@ojt/content`（ドメイン） | B・Cに依存。C1/C2のドメインロジック・構造照合・連動ハイライト索引 |
+| E | 12 | `@ojt/content`（判定） | Dに依存。C1/C2の判定 |
+| F | 14, 15, 16 | `@ojt/content`（内蔵課題） | D・Eに依存。内蔵C1/C2課題データと弁別テスト |
+| G | 17 | 全体 | A〜Fすべてに依存。公開APIの確定と全体検証 |
 
 ---
 
@@ -267,7 +284,14 @@ Expected: 失敗。`Error: Failed to load url ../src/tester.js`（`src/index.ts`
 ```ts
 import { TICK_MS } from './elements.js';
 import type { TerminalId } from './ids.js';
-import { continuity, measureAcVolts, measureResistance, measureVoltage } from './meter.js';
+import {
+  continuity,
+  measureAcVolts,
+  measureResistance,
+  measureVoltage,
+  type ContinuityReading,
+  type OhmReading,
+} from './meter.js';
 import type { Simulation } from './simulation.js';
 
 /**
@@ -278,9 +302,11 @@ import type { Simulation } from './simulation.js';
  * という**計器の状態**を担う。UI（React・DOM・3D）には一切依存せず、数値と整形済みの
  * 文字列（`display`）・針の角度（`targetDeg`）だけを返す。描画は `apps/desktop`（Plan 2B）の責務。
  *
- * 副作用はただ1つ、`stepTester()` がアナログの振り切れで `range-exceeded` を
- * `sim.events` に発行することだけである（§5.6 #2）。`ohm-on-live` を `meter.ts` が
- * 発行するのと同じ位置づけで、UIは `snapshot.hazardDelta` から両方を同じ形で受け取れる。
+ * 副作用は2つある。`readTester()` は `meter.ts` の測定関数（`measureResistance()` 等）を
+ * 呼ぶため、活線でΩ／導通を当てると `ohm-on-live` を発行する（§5.6 #1。`meter.ts` 側の副作用で、
+ * `readTester()` を内部で呼ぶ `stepTester()` からも起こり得る）。加えて `stepTester()` 自身は、
+ * アナログの振り切れで `range-exceeded` を `sim.events` に発行する（§5.6 #2）。UIは
+ * `snapshot.hazardDelta` から両方を同じ形で受け取れる。
  */
 
 /** テスターの種別。切替可能（決定事項#10）。§9.3 */
@@ -310,6 +336,10 @@ export const ANALOG_OHM_INTERNAL_OHMS: Readonly<Record<AnalogOhmRange, number>> 
 export const NEEDLE_FULL_SCALE_DEG = 90;
 /** 針の追従の時定数[ms]。実機の慣性を模す。§9.3 */
 export const NEEDLE_TIME_CONSTANT_MS = 100;
+/** 目標角との差がこれ未満なら目標角へスナップする[度]。指数移動平均は理論上収束しきらないため、
+ *  スナップが無いと描画側の差分検知（前回と値が同じなら再描画しない）が働かず、針が止まって
+ *  見えても毎tick再描画され続ける（コーディネータ指示#3）。 */
+export const NEEDLE_SNAP_DEG = 0.05;
 /** 0Ω調整をせずにΩを測ったときに読値へ乗る誤差の割合（+5%）。§9.3 */
 export const ZERO_ADJUST_ERROR_RATIO = 0.05;
 
@@ -401,29 +431,32 @@ function nearestRange(ranges: readonly number[], range: number): number {
 
 /**
  * 操作を適用して**新しい状態**を返す（引数は書き換えない）。§9.3
- * つまみ・レンジ・プローブ・種別が変わったら 0Ω調整と `range-exceeded` の発行済み記録を捨てる
- * （レンジを変えるたびに0Ω調整をやり直す実機の作法をそのまま写す）。
+ * つまみ・レンジ・種別が変わったら 0Ω調整と `range-exceeded` の発行済み記録を両方とも捨てる
+ * （レンジを変えるたびに0Ω調整をやり直す実機の作法をそのまま写す）。プローブの置き直しは
+ * `range-exceeded` の発行済み記録だけ戻す（レンジ自体は変わらないので0Ω調整は保持する）。
  */
 export function applyTesterAction(state: TesterState, action: TesterAction): TesterState {
-  const reset = { zeroAdjusted: false, rangeExceededReported: false };
+  const resetRange = { zeroAdjusted: false, rangeExceededReported: false };
   switch (action.type) {
     case 'set-kind':
-      return { ...state, ...reset, kind: action.kind };
+      return { ...state, ...resetRange, kind: action.kind };
     case 'set-mode':
       return {
         ...state,
-        ...reset,
+        ...resetRange,
         mode: action.mode,
         voltRange: nearestRange(voltRangesFor(action.mode), state.voltRange),
       };
     case 'set-volt-range':
-      return { ...state, ...reset, voltRange: nearestRange(voltRangesFor(state.mode), action.range) };
+      return { ...state, ...resetRange, voltRange: nearestRange(voltRangesFor(state.mode), action.range) };
     case 'set-ohm-range':
-      return { ...state, ...reset, ohmRange: action.range };
+      return { ...state, ...resetRange, ohmRange: action.range };
     case 'place-probe':
+      // プローブの置き直しは0Ω調整をやり直させない(レンジ・モード・種別の変更と違い、
+      // 調整の前提となるレンジ自体は変わらないため)。振り切れの再発行可否だけ戻す。
       return action.probe === 'black'
-        ? { ...state, ...reset, black: action.terminal }
-        : { ...state, ...reset, red: action.terminal };
+        ? { ...state, rangeExceededReported: false, black: action.terminal }
+        : { ...state, rangeExceededReported: false, red: action.terminal };
     case 'zero-adjust':
       return { ...state, zeroAdjusted: true };
   }
@@ -740,6 +773,22 @@ describe('stepTester', () => {
     expect(state.needleDeg).toBeCloseTo(56.891, 2);
   });
 
+  it('snaps the needle onto the target within 0.05 degrees so it stops changing (コーディネータ指示#3)', () => {
+    const sim = relayBench();
+    powerOn(sim);
+    sim.run(100);
+    let state = applyTesterAction(analog('DCV', 'PS.-', 'PS.+'), {
+      type: 'set-volt-range',
+      range: 10,
+    });
+    // 76 tick前後で目標90度との差が0.05度を切る（90 × 0.904837^76 ≒ 0.049）。余裕を見て200tick進める。
+    for (let i = 0; i < 200; i += 1) state = stepTester(sim, state).state;
+    expect(state.needleDeg).toBe(90);
+    // スナップ後はこれ以上動かない（同じ値が続く＝描画側は再レンダーしなくてよい）。
+    const settled = stepTester(sim, state).state;
+    expect(settled.needleDeg).toBe(90);
+  });
+
   it('keeps the digital needle at zero', () => {
     const sim = relayBench();
     powerOn(sim);
@@ -768,7 +817,7 @@ describe('stepTester', () => {
     state = stepTester(sim, state).state;
     expect(sim.events.countOf('range-exceeded')).toBe(1);
     state = applyTesterAction(state, { type: 'set-volt-range', range: 10 });
-    state = stepTester(sim, state).state;
+    stepTester(sim, state);
     expect(sim.events.countOf('range-exceeded')).toBe(2);
     expect(sim.events.hazards('range-exceeded')[0]?.detail).toContain('DCV');
   });
@@ -853,11 +902,52 @@ function voltReading(state: TesterState, volts: number, display: string): Tester
 
 - [ ] **Step 5: `readTester()` のΩ／導通分岐をアナログ対応に差し替える**
 
-`packages/circuit-sim/src/tester.ts` の `readTester()` のうち `if (state.mode === 'OHM') {` から関数の閉じ括弧までを丸ごと次に置き換える:
+`packages/circuit-sim/src/tester.ts` の `readTester()` の**直前**に、Ω／導通の再計算を避けるキャッシュを足す（コーディネータ指示#1）。`measureResistance()` / `continuity()` は呼ぶたびにフルの回路解析をやり直す（`measureVoltage()` で1回、内部の `equivalentResistance()` でさらに1回）ため、`stepTester()` を毎tick呼ぶ構成では無視できないコストになる。`Simulation` は変更を数える版数を公開していないので、`tick（`sim.tMs`）・プローブ配置・レンジ種別`が前回と同じなら結果も同じである、という構造的な事実でキャッシュする:
+
+```ts
+/**
+ * readTester() のΩ／導通の再計算を避けるキャッシュ。`Simulation` インスタンスをキーにした
+ * `WeakMap` なので、セッションをまたいで古い結果が残ることはない。tick・プローブ配置・
+ * レンジ種別のどれかが変わったら破棄する（この3つが同じなら回路の状態も同じなので、
+ * 再度フルの回路解析をする必要が無い）。
+ */
+interface OhmCacheEntry {
+  tMs: number;
+  black: TerminalId;
+  red: TerminalId;
+  kind: 'OHM' | 'CONT';
+  reading: OhmReading | ContinuityReading;
+}
+const ohmCache = new WeakMap<Simulation, OhmCacheEntry>();
+
+function cachedMeasure<T extends OhmReading | ContinuityReading>(
+  sim: Simulation,
+  black: TerminalId,
+  red: TerminalId,
+  kind: 'OHM' | 'CONT',
+  measure: () => T,
+): T {
+  const cached = ohmCache.get(sim);
+  if (
+    cached !== undefined &&
+    cached.kind === kind &&
+    cached.tMs === sim.tMs &&
+    cached.black === black &&
+    cached.red === red
+  ) {
+    return cached.reading as T;
+  }
+  const reading = measure();
+  ohmCache.set(sim, { tMs: sim.tMs, black, red, kind, reading });
+  return reading;
+}
+```
+
+続けて、`readTester()` のうち `if (state.mode === 'OHM') {` から関数の閉じ括弧までを丸ごと次に置き換える（`measureResistance()` / `continuity()` の直接呼び出しを `cachedMeasure()` 経由に変える）:
 
 ```ts
   if (state.mode === 'OHM') {
-    const reading = measureResistance(sim, black, red);
+    const reading = cachedMeasure(sim, black, red, 'OHM', () => measureResistance(sim, black, red));
     if (reading.live) return blankReading(state, TESTER_NO_PROBE_DISPLAY, true);
     if (state.kind === 'digital') {
       return {
@@ -883,7 +973,7 @@ function voltReading(state: TesterState, volts: number, display: string): Tester
       conductive: false,
     };
   }
-  const reading = continuity(sim, black, red);
+  const reading = cachedMeasure(sim, black, red, 'CONT', () => continuity(sim, black, red));
   if (reading.live) return blankReading(state, TESTER_NO_PROBE_DISPLAY, true);
   const shown = withZeroAdjustError(reading.ohms, state.zeroAdjusted);
   return {
@@ -899,6 +989,37 @@ function voltReading(state: TesterState, volts: number, display: string): Tester
 }
 ```
 
+**キャッシュの副作用への注意:** `measureResistance()` / `continuity()` は活線を検出すると `ohm-on-live` を発行する副作用を持つ（§5.6 #1）が、同じプローブ配置のまま活線が続く間は2回目以降を呼んでも `isNewLiveExposure()` が再発行を防ぐので、キャッシュでヒットして呼び出し自体を省いても観測できる挙動は変わらない。
+
+- [ ] **Step 5a: キャッシュのテストを足す (コーディネータ指示#1)**
+
+`packages/circuit-sim/test/tester.test.ts` の `describe('readTester (digital)', …)` の末尾に足す:
+
+```ts
+  it('does not re-solve on a second readTester call at the same tick with the same probes (perf)', () => {
+    const sim = coilBench();
+    const state = probed(applyTesterAction(createTesterState(), { type: 'set-mode', mode: 'OHM' }), 'CR1.13', 'CR1.14');
+    const spy = vi.spyOn(meter, 'measureResistance');
+    readTester(sim, state);
+    readTester(sim, state);
+    expect(spy).toHaveBeenCalledTimes(1);
+    spy.mockRestore();
+  });
+```
+
+同ファイルの import に、名前空間版の `meter.js` と `vi` を足す:
+
+```ts
+import { vi } from 'vitest';
+import * as meter from '../src/meter.js';
+```
+
+```powershell
+pnpm --filter @ojt/circuit-sim exec vitest run test/tester.test.ts
+```
+
+Expected: 追加した1件を含めて通る。
+
 - [ ] **Step 6: `stepTester()` を足す**
 
 `packages/circuit-sim/src/tester.ts` の末尾（`export const TESTER_TICK_MS = TICK_MS;` の後ろ）に足す:
@@ -908,11 +1029,16 @@ function voltReading(state: TesterState, volts: number, display: string): Tester
  * 1tickぶん進めて読値と新しい状態を返す。§9.3 / §5.6 #2
  *
  * アナログ針は時定数100msの指数移動平均で目標角度へ寄せる（α ＝ 1 − exp(−dt ÷ 100)。
- * 10ms tick では約0.0952）。デジタルは針を持たないので常に0度のままにする。
+ * 10ms tick では約0.0952）。目標角との差が `NEEDLE_SNAP_DEG`（0.05度）未満になったら
+ * 目標角へスナップする。指数移動平均は理論上いつまでも収束しきらないため、スナップが無いと
+ * 針が止まって見えても `needleDeg` が毎tick極小に変化し続け、描画側の差分検知（前回と同じ値
+ * なら再描画しない）が効かずに再レンダーが止まらない（コーディネータ指示#3）。デジタルは
+ * 針を持たないので常に0度のままにする。
  *
- * **この関数だけが副作用を持つ**: アナログでレンジ上限を超えた読値になったとき、`sim.events` に
- * `range-exceeded` を1件発行する。同じ振り切れが続いている間は再発行せず、読値がレンジ内に
- * 戻ったときに再発行できる状態へ戻す（つまみ・レンジ・プローブを動かしたときは
+ * **この関数の副作用**: アナログでレンジ上限を超えた読値になったとき、`sim.events` に
+ * `range-exceeded` を1件発行する（内部で呼ぶ `readTester()` も、活線でΩ／導通を当てると
+ * `meter.ts` 経由で `ohm-on-live` を発行し得る。§5.6 #1）。同じ振り切れが続いている間は再発行せず、
+ * 読値がレンジ内に戻ったときに再発行できる状態へ戻す（つまみ・レンジ・プローブを動かしたときは
  * `applyTesterAction()` が記録を消す）。重複抑制の考え方は `ohm-on-live`（§5.6 #1）と同じ。
  */
 export function stepTester(
@@ -922,8 +1048,12 @@ export function stepTester(
 ): { state: TesterState; reading: TesterReading } {
   const reading = readTester(sim, state);
   const alpha = 1 - Math.exp(-dtMs / NEEDLE_TIME_CONSTANT_MS);
-  const needleDeg =
+  const eased =
     state.kind === 'analog' ? state.needleDeg + alpha * (reading.targetDeg - state.needleDeg) : 0;
+  const needleDeg =
+    state.kind === 'analog' && Math.abs(reading.targetDeg - eased) < NEEDLE_SNAP_DEG
+      ? reading.targetDeg
+      : eased;
   let rangeExceededReported = state.rangeExceededReported;
   if (reading.overRange) {
     if (!rangeExceededReported) {
@@ -959,7 +1089,7 @@ Task 1 で追記したブロックの中に、次の4行をアルファベット
 pnpm --filter @ojt/circuit-sim exec vitest run test/tester.test.ts test/tester-analog.test.ts
 ```
 
-Expected: `Test Files  2 passed (2)` / `Tests  27 passed (27)`。
+Expected: `Test Files  2 passed (2)` / `Tests  29 passed (29)`（`tester.test.ts` 14件・`tester-analog.test.ts` 15件）。
 
 - [ ] **Step 9: パッケージ全体とカバレッジを確認する**
 
@@ -1160,7 +1290,10 @@ describe('RandomFaultsSchema', () => {
       count: 2,
       types: ['wire-open', 'wire-missing'],
       seed: 12345,
-      fallback: [{ target: { wireId: 'sw-001' }, kind: 'wire-open' }],
+      fallback: [
+        { target: { wireId: 'sw-001' }, kind: 'wire-open' },
+        { target: { wireId: 'sw-002' }, kind: 'wire-missing' },
+      ],
     });
     expect(parsed.success).toBe(true);
   });
@@ -1724,7 +1857,7 @@ export interface AppliedFaults {
   wireFaults: readonly FaultSpecData[];
   /** ネットリストへ変換するたびに注入する部品の故障。 */
   partFaults: readonly FaultSpecData[];
-  /** 故障の在処（`wireFaults` と `partFaults` を合わせた並び順は課題の `faults` と同じ）。 */
+  /** 故障の在処。`sites` の並び順は課題の `faults` と同じ（`wireFaults` / `partFaults` は種別ごとの部分列）。 */
   sites: readonly FaultSite[];
 }
 
@@ -1765,6 +1898,9 @@ function toEngineTarget(target: FaultSpecData['target']): FaultTarget {
  * 課題の故障を盤セッションへ適用し、部品の故障は注入用に取り分ける。§5.4 / §9.2
  * セッションの電線配列は**その場で書き換える**（呼び出し側は初期盤を作った直後に呼ぶこと）。
  * 課題データの誤り（存在しない電線ID・既設配線の指定・1端子2本の超過）は `ok: false` で返す。
+ * 検証は `faults` を先頭から適用しながら行い、事前の一括検証はしない。そのため `ok: false` が
+ * 返ったときも、それより前の故障はすでにセッションへ反映済みである。呼び出し側は `ok: false` を
+ * 「このセッションはもう使わない」の合図として扱うこと（作り直した初期盤に対してやり直す）。
  */
 export function applyFaults(
   session: BoardSession,
@@ -1779,12 +1915,14 @@ export function applyFaults(
     const report = reportKindOf(spec.kind);
     if (!isWireFaultKind(spec.kind)) {
       const target = spec.target;
+      /* c8 ignore next -- スキーマが wireId ターゲットに部品系 kind を許さないため到達しない */
       if ('wireId' in target) return; // スキーマが弾くので到達しないが型のための番人
       partFaults.push(spec);
       sites.push({ kind: spec.kind, report, wireId: undefined, partId: target.partId, terminals: [] });
       return;
     }
     const target = spec.target;
+    /* c8 ignore next -- 同上、スキーマが弾くため到達しない */
     if (!('wireId' in target)) return; // 同上
     const position = session.wires.findIndex((w) => w.id === target.wireId);
     const wire = position < 0 ? undefined : session.wires[position];
@@ -1809,6 +1947,7 @@ export function applyFaults(
       session.wires.splice(position, 1);
     } else {
       const to = spec.to === undefined ? undefined : toTerminalId(spec.to);
+      /* c8 ignore next -- スキーマが to を必須にしているため到達しない */
       if (to === undefined) return; // スキーマが必須にしている
       if (wireCountAtTerminal(session, to) + 1 > MAX_WIRES_PER_TERMINAL) {
         errors.push({
@@ -3093,6 +3232,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 - Modify: `packages/content/src/schema/index.ts`
 - Modify: `packages/content/src/problem-set.ts`
 - Modify: `packages/content/src/loader.ts`
+- Modify: `packages/content/src/builtin/index.ts`（`parseBuiltinProblems()` / `ofMode()` を追加し `BUILTIN_ASSEMBLE_PROBLEMS` の検証をそれ経由にする。B-3）
 - Modify: `packages/content/schema/task.schema.json`（生成物）
 - Modify: `packages/content/test/schema-common.test.ts`
 - Modify: `packages/content/test/index.test.ts`
@@ -3386,7 +3526,52 @@ function loadOne(file: string, problems: SupportedProblem[], errors: ProblemLoad
 
 （`loadProblemsFromDir()` の1つと `mergeProblemSets()` の1つ。`import type { AssembleProblem } from './schema/assemble.js';` の行は削除する。）
 
-- [ ] **Step 6: 既存テストの `UNSUPPORTED_MODES` の期待値を直す**
+**`src/builtin/index.ts` も追随させる（B-3）:** `parseProblem()` の戻り値が `SupportedProblem` に広がったので、内蔵課題の検証もそれ経由にしないと `packages/content/src/builtin/index.ts` が型で落ちる（このタスクの完了条件「`typecheck` が通る」を満たすために必須。Step 9 の確認はこの変更を前提にしている）。`BuiltinProblemError` クラスと `BUILTIN_ASSEMBLE_JSON` の定義・`BUILTIN_PROBLEMS` / `findBuiltinProblem`（まだ `AssembleProblem` のまま。`SupportedProblem` への追随は Task 14 で行う）はここでは触らない。
+
+`packages/content/src/builtin/index.ts` の import に `parseProblem` と `SupportedProblem` を足す:
+
+```ts
+import { isAssembleProblem, parseProblem, type SupportedProblem } from '../schema/index.js';
+```
+
+内蔵のモードB課題を検証している箇所（`BUILTIN_ASSEMBLE_JSON` の定義の下、`BUILTIN_ASSEMBLE_PROBLEMS` の定義まで）を次に置き換える:
+
+```ts
+/** 内蔵課題のJSONを検証する。1件でも落ちたら `BuiltinProblemError` を投げる。§7.8 */
+export function parseBuiltinProblems(sources: readonly unknown[]): SupportedProblem[] {
+  return sources.map((source, index) => {
+    const parsed = parseProblem(source);
+    if (parsed.ok) return parsed.problem;
+    throw new BuiltinProblemError(
+      `内蔵課題[${index}]（${parsed.id ?? '不明'}）が読めません: ${parsed.message}`,
+      parsed.issues,
+    );
+  });
+}
+
+/** 期待したモードの課題だけを取り出す（違うモードが混ざっていたら例外）。 */
+function ofMode<T extends SupportedProblem>(
+  problems: readonly SupportedProblem[],
+  guard: (problem: SupportedProblem) => problem is T,
+  label: string,
+): T[] {
+  return problems.map((problem, index) => {
+    if (guard(problem)) return problem;
+    throw new BuiltinProblemError(`内蔵課題[${index}]（${problem.id}）は${label}ではありません`, []);
+  });
+}
+
+/** 内蔵のモードB課題（8題）。§7.9 */
+export const BUILTIN_ASSEMBLE_PROBLEMS: readonly AssembleProblem[] = ofMode(
+  parseBuiltinProblems(BUILTIN_ASSEMBLE_JSON),
+  isAssembleProblem,
+  'モードB課題',
+);
+```
+
+（`BUILTIN_PROBLEMS` は引き続きこの `BUILTIN_ASSEMBLE_PROBLEMS` を指すので無変更。以前の検証ロジックがこれと違う形だった場合は、ここで示した形に揃える。）
+
+- [ ] **Step 6: 既存テストの `UNSUPPORTED_MODES` の期待値を直し、型の絞り込みを2箇所足す**
 
 `packages/content/test/schema-common.test.ts` の128行目付近:
 
@@ -3398,6 +3583,26 @@ function loadOne(file: string, problems: SupportedProblem[], errors: ProblemLoad
 
 ```ts
     expect(UNSUPPORTED_MODES).toEqual(['plc']);
+```
+
+**型の絞り込みを2箇所足す（B-5）:** `parseProblem()` の戻り値が `SupportedProblem` に広がるため、`packages/content/test/index.test.ts` の中で `AssembleProblem` として扱っている2箇所が型で絞り込めなくなる。
+
+`buildFixtureReference()`（119行目付近）の `!parsed.ok` の判定の直後に1行足す:
+
+```ts
+  const parsed = parseProblem(json);
+  if (!parsed.ok) throw new Error(JSON.stringify(parsed.issues, null, 2));
+  if (parsed.problem.mode !== 'assemble') throw new Error('モードB課題ではありません');
+  const built = buildReferenceSession(parsed.problem, JIPM_BOARD);
+```
+
+`describe('schema/index.js exports', …)` の中（266行目付近）、`const problem: AssembleProblem = ok.problem;` の直前に1行足す:
+
+```ts
+    const ok = parseProblem(selfHoldProblemJson());
+    if (!ok.ok) throw new Error(JSON.stringify(ok.issues, null, 2));
+    if (ok.problem.mode !== 'assemble') throw new Error('モードB課題ではありません');
+    const problem: AssembleProblem = ok.problem;
 ```
 
 - [ ] **Step 7: JSON Schema を再生成する**
@@ -3423,12 +3628,12 @@ pnpm --filter @ojt/content exec vitest run
 pnpm --filter @ojt/content typecheck
 ```
 
-Expected: すべて通る（`apps/desktop` の型追随は Task 17）。
+Expected: すべて通る（`src/builtin/index.ts` は Step 5 で `parseBuiltinProblems()` / `ofMode()` 経由に直し済みなので、ここでも型が合う。`apps/desktop` の型追随だけは Task 17 で行う）。
 
 - [ ] **Step 10: コミットする**
 
 ```powershell
-git add packages/content/src/schema/common.ts packages/content/src/schema/index.ts packages/content/src/problem-set.ts packages/content/src/loader.ts packages/content/schema/task.schema.json packages/content/test/schema-index.test.ts packages/content/test/schema-common.test.ts packages/content/test/index.test.ts
+git add packages/content/src/schema/common.ts packages/content/src/schema/index.ts packages/content/src/problem-set.ts packages/content/src/loader.ts packages/content/src/builtin/index.ts packages/content/schema/task.schema.json packages/content/test/schema-index.test.ts packages/content/test/schema-common.test.ts packages/content/test/index.test.ts
 git commit -m @'
 feat(content): accept inspect-parts and inspect-repair problems
 
@@ -4018,6 +4223,7 @@ export function buildCheckCircuit(
   if (!mounted.ok) {
     return { ok: false, errors: [{ path: 'parts', message: mounted.message }] };
   }
+  /* c8 ignore next -- 盤定義がチェック用ソケットを固定しているため到達しない(防御的チェック) */
   if (socketPartId(roles, CHECK_SOCKET_ID) !== CHECK_PART_ID) {
     return {
       ok: false,
@@ -4069,7 +4275,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 |---|---|---|
 | 初期配線 | 模範回路を**青**で生成してから `faults` を適用する。生成後に `session.allowedColors` を **白のみ**に差し替えるので、訓練者が新しく引ける線は白だけになる | §9.2 / §8.1 |
 | 改造 | 「故障箇所でない青線を削除した本数」。初期状態にあった電線のうち、提出時に消えていて、かつ故障箇所（`wire-open` / `wire-misrouted` の電線）でないもの | §9.2 |
-| 白線ルール | 初期状態に無い電線（＝訓練者が引いた電線）が白でなければ違反。既存の `checkWireColorRule` に「初期からあった電線ID」を渡して検査する（Task 13） | §9.2 / §8.1 |
+| 白線ルール | 初期状態に無い電線（＝訓練者が引いた電線）が白でなければ違反。既存の `checkWireColorRule` に「初期からあった電線ID」を渡して検査する（Task 11） | §9.2 / §8.1 |
 | 部品交換 | `replacePart(circuit, partId)` がその部品の故障を捨てた新しい回路を返す。以後のネットリストには注入されない＝良品に差し替えたのと同じ | §9.2 |
 
 - [ ] **Step 1: `reference.ts` に回路図要素の割当を持たせる**
@@ -4323,11 +4529,18 @@ export type RepairCircuitResult =
 export function buildInspectRepairCircuit(
   problem: InspectRepairProblem,
   board: BoardDefinition,
-  options: ResolveFaultsOptions = {},
+  options: ResolveFaultsOptions & { resolvedFaults?: readonly FaultSpecData[] } = {},
 ): RepairCircuitResult {
   const built = buildReferenceSession(problem, board);
   if (!built.ok) return built;
-  const faults = resolveFaults(problem, board, options);
+  // 作業ファイルからの再開用（I-4）。解決済みの故障配列を渡されたら `resolveFaults()` を
+  // 呼び直さない。seed を指定しない課題は `resolveFaults()` が内部で `Date.now()` を使うため、
+  // 再解決すると初回と別の故障になってしまう（2Bはresolve結果を作業ファイルへ保存し、
+  // 再開時はここへそのまま渡すこと）。
+  const faults: ResolveFaultsResult =
+    options.resolvedFaults === undefined
+      ? resolveFaults(problem, board, options)
+      : { ok: true, value: options.resolvedFaults };
   if (!faults.ok) return faults;
   const session = built.value.session;
   const applied = applyFaults(session, faults.value);
@@ -4386,7 +4599,7 @@ export function addedWireIds(circuit: RepairCircuit, session: BoardSession): str
  * 故障箇所の電線を外して白線で引き直すのは正規の修復なので数えない。
  */
 export function modificationWireIds(circuit: RepairCircuit, session: BoardSession): string[] {
-  const present = new Set(session.wires.map((w) => w.id));
+  const present = new Set<string>(session.wires.map((w) => w.id));
   const faulted = faultedWireIds(circuit);
   return circuit.initialWireIds.filter((id) => !present.has(id) && !faulted.has(id));
 }
@@ -4512,6 +4725,43 @@ describe('findForbiddenPatterns', () => {
     expect(found[0]?.kind).toBe('timer-self-cut');
     expect(found[0]?.timerIds).toEqual(['T1']);
     expect(found[0]?.message).toContain('リレーを介して');
+  });
+
+  it('still detects the self-cut even if a different, unrelated wire is also broken (M-15)', () => {
+    const netlist = netlistOf(
+      [
+        {
+          id: 'r1',
+          from: { bus: 'P' },
+          to: { bus: 'N' },
+          cells: [
+            { kind: 't-b', id: 'c01', device: 'T1' },
+            { kind: 'coil', id: 'c02', device: 'T1', presetMs: 500 },
+          ],
+        },
+        {
+          id: 'r2',
+          from: { bus: 'P' },
+          to: { bus: 'N' },
+          cells: [
+            { kind: 't-a', id: 'c03', device: 'T1' },
+            { kind: 'lamp', id: 'c04', device: 'PL1' },
+          ],
+        },
+      ],
+      'x-f1b',
+    );
+    // r2（T1のa接点→表示灯PL1）はコイル自身の導通経路とは別の枝。ここを切ってもコイル側の
+    // P/N到達性には関係が無いので、自己遮断の検出（コイル自身の経路だけを見る）には影響しない
+    // はずである。「無関係な断線が1本あるだけで自己遮断を見逃す」退行が起きていないか見張る。
+    const wire = netlist.wires.find((w) => w.to === 'TB_PL.1+' || w.from === 'TB_PL.1+');
+    expect(wire).toBeDefined();
+    if (wire === undefined) return;
+    wire.open = true;
+    const found = findForbiddenPatterns(netlist);
+    expect(found).toHaveLength(1);
+    expect(found[0]?.kind).toBe('timer-self-cut');
+    expect(found[0]?.timerIds).toEqual(['T1']);
   });
 
   it('detects a flicker made of two timers only (調査資料 §5.5)', () => {
@@ -4775,7 +5025,7 @@ export function findForbiddenPatterns(netlist: Netlist): ForbiddenPattern[] {
 pnpm --filter @ojt/content exec vitest run test/forbidden.test.ts
 ```
 
-Expected: `Test Files  1 passed (1)` / `Tests  7 passed (7)`。
+Expected: `Test Files  1 passed (1)` / `Tests  8 passed (8)`。
 
 - [ ] **Step 5: 静的チェックのテストを直す／足す**
 
@@ -4971,6 +5221,27 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
  * モードC1/C2の判定（`judge-inspect.ts`）からも同じ関数を使う。
  */
 export function countHazards(hazards: readonly HazardEvent[]): HazardCounts {
+```
+
+`packages/content/src/judge.ts` の `JudgeResult` の定義を次に置き換える（`mode` を足し、`JudgeInspectPartsResult` / `JudgeInspectRepairResult` と同じ形で判別できるようにする。I-3）:
+
+```ts
+/** 判定結果。§7.4 / §8.3 */
+export interface JudgeResult {
+  /** モードBの判定であることの印（`JudgeInspectPartsResult` / `JudgeInspectRepairResult` と `mode` で判別する）。 */
+  mode: 'assemble';
+  /** 動作一致かつ有効な静的チェックにエラーが無い。§7.4 */
+  passed: boolean;
+```
+
+`judgeAssemble()` の戻り値の先頭に `mode: 'assemble'` を足す:
+
+```ts
+  return {
+    ok: true,
+    value: {
+      mode: 'assemble',
+      passed: mismatches.length === 0 && staticChecks.every((c) => c.ok),
 ```
 
 - [ ] **Step 2: 失敗するテストを書く**
@@ -5199,6 +5470,27 @@ describe('judgeInspectRepair', () => {
     expect(judged.ok).toBe(true);
     if (!judged.ok) return;
     expect(judged.value.staticChecks.find((c) => c.id === 'wireColorRule')?.ok).toBe(false);
+    expect(judged.value.passed).toBe(false);
+  });
+
+  it('白線ルールは judge.staticChecks.wireColorRule を無効にしても外れない (I-2)', () => {
+    const json = inspectRepairProblemJson();
+    const judge = json.judge as { tolerance: unknown; staticChecks: Record<string, boolean> };
+    const problem = parseInspectRepairOrThrow({
+      ...json,
+      judge: { ...judge, staticChecks: { ...judge.staticChecks, wireColorRule: false } },
+    });
+    const built = buildInspectRepairCircuit(problem, JIPM_BOARD);
+    if (!built.ok) throw new Error(JSON.stringify(built.errors));
+    const circuit = built.value;
+    repair(circuit.session);
+    const wire = circuit.session.wires.find((w) => w.id === addedIdOf(circuit.session));
+    if (wire === undefined) return;
+    wire.color = '青';
+    const judged = judgeInspectRepair(problem, JIPM_BOARD, circuit, CORRECT_REPORTS);
+    expect(judged.ok).toBe(true);
+    if (!judged.ok) return;
+    expect(judged.value.staticChecks.find((c) => c.id === 'wireColorRule')).toBeUndefined();
     expect(judged.value.passed).toBe(false);
   });
 
@@ -5449,6 +5741,13 @@ export function judgeInspectRepair(
   );
   const scored = scoreReports(circuit.applied.sites, reports);
   const modifications = modificationWireIds(circuit, circuit.session);
+  /**
+   * 新しく引いた電線が白か（§8.1 / §9.2 合格条件③）。`problem.judge.staticChecks.wireColorRule`
+   * を無効にした課題JSONでも white-wire ルールだけは外れないよう、ここで直接検査する（I-2）。
+   */
+  const colourViolations = circuit.session.wires.filter(
+    (w) => !w.locked && !circuit.initialWireIds.includes(w.id) && w.color !== REPAIR_WIRE_COLOR,
+  );
   const hazards = [...(options.sessionHazards ?? []), ...actualRun.events.hazards()];
   const chatter = actualRun.events.chatters();
   const staticChecks = runStaticChecks(
@@ -5480,6 +5779,7 @@ export function judgeInspectRepair(
         scored.extra.length === 0 &&
         mismatches.length === 0 &&
         modifications.length === 0 &&
+        colourViolations.length === 0 &&
         staticChecks.every((c) => c.ok),
       reports: scored,
       mismatches,
@@ -5503,7 +5803,7 @@ export function judgeInspectRepair(
 pnpm --filter @ojt/content exec vitest run test/judge-inspect.test.ts
 ```
 
-Expected: `Test Files  1 passed (1)` / `Tests  15 passed (15)`。
+Expected: `Test Files  1 passed (1)` / `Tests  16 passed (16)`。
 
 - [ ] **Step 6: コミットする**
 
@@ -5694,6 +5994,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 - Create: `packages/content/src/builtin/inspect-parts/c1-003-timer.json`
 - Create: `packages/content/src/builtin/inspect-parts/c1-004-mixed.json`
 - Modify: `packages/content/src/builtin/index.ts`
+- Modify: `packages/content/test/builtin-discrimination.test.ts`（B-4。`findBuiltinProblem()` の戻り値の広がりに追随）
 - Test: `packages/content/test/builtin-inspect-parts.test.ts`
 
 §7.9 の「C1（部品点検）1セット = リレー・タイマ複数個。正常と不良の組合せを変える。4セット」を作る。
@@ -5948,7 +6249,7 @@ Expected: 失敗。`BUILTIN_INSPECT_PARTS_PROBLEMS` が `../src/builtin/index.js
 
 - [ ] **Step 4: `src/builtin/index.ts` を書き換える**
 
-`packages/content/src/builtin/index.ts` を丸ごと次に置き換える:
+`parseBuiltinProblems()` / `ofMode()` と `BUILTIN_ASSEMBLE_PROBLEMS` の定義は Task 8 Step 5 で追加済みである（B-3）。下は完成形の全文（コピー用）で、Task 8 からの差分は C1 関連の import・`BUILTIN_INSPECT_PARTS_JSON`・`BUILTIN_INSPECT_PARTS_PROBLEMS`・`BUILTIN_ALL_PROBLEMS`・`findBuiltinProblem`（`SupportedProblem` を返すようになる）だけである。`packages/content/src/builtin/index.ts` を丸ごと次に置き換える:
 
 ```ts
 import type { AssembleProblem } from '../schema/assemble.js';
@@ -6074,18 +6375,34 @@ export function findBuiltinProblem(id: string): SupportedProblem | undefined {
 }
 ```
 
+**既存の `builtin-discrimination.test.ts` を追随させる（B-4）:** `findBuiltinProblem()` の戻り値が `SupportedProblem | undefined` に広がるため、既存の `packages/content/test/builtin-discrimination.test.ts` の21〜25行目（`builtin()` ヘルパ）が型で絞り込めなくなる。`isAssembleProblem` の import を足し、ガードを広げる:
+
+```ts
+import { isAssembleProblem } from '../src/schema/index.js';
+```
+
+```ts
+function builtin(id: string): AssembleProblem {
+  const problem = findBuiltinProblem(id);
+  if (problem === undefined || !isAssembleProblem(problem)) {
+    throw new Error(`内蔵課題 ${id} がありません`);
+  }
+  return problem;
+}
+```
+
 - [ ] **Step 5: GREEN を確認する**
 
 ```powershell
-pnpm --filter @ojt/content exec vitest run test/builtin-inspect-parts.test.ts test/builtin.test.ts test/builtin-node-esm.test.ts
+pnpm --filter @ojt/content exec vitest run test/builtin-inspect-parts.test.ts test/builtin.test.ts test/builtin-node-esm.test.ts test/builtin-discrimination.test.ts
 ```
 
-Expected: `Test Files  3 passed (3)`。`builtin-inspect-parts` は `Tests  7 passed (7)`。
+Expected: `Test Files  4 passed (4)`。`builtin-inspect-parts` は `Tests  7 passed (7)`。
 
 - [ ] **Step 6: コミットする**
 
 ```powershell
-git add packages/content/src/builtin/inspect-parts packages/content/src/builtin/index.ts packages/content/test/builtin-inspect-parts.test.ts
+git add packages/content/src/builtin/inspect-parts packages/content/src/builtin/index.ts packages/content/test/builtin-inspect-parts.test.ts packages/content/test/builtin-discrimination.test.ts
 git commit -m @'
 feat(content): add four built-in mode C1 inspection sets
 
@@ -6540,13 +6857,16 @@ describe('内蔵C2課題', () => {
     }
   });
 
-  it('弁別: どちらか片方の故障だけでも模範と動作が食い違う (§7.5)', () => {
-    for (const problem of BUILTIN_INSPECT_REPAIR_PROBLEMS) {
-      expect(mismatchCount(problem, [0]), `${problem.id}/fault0`).toBeGreaterThan(0);
-      expect(mismatchCount(problem, [1]), `${problem.id}/fault1`).toBeGreaterThan(0);
-      expect(mismatchCount(problem, [0, 1]), `${problem.id}/both`).toBeGreaterThan(0);
-    }
-  });
+  // 弁別テストは課題ごとに個別の it() へ分割する(B-6)。coverage 計測込みで1テストに
+  // まとめると136秒かかり、既定のテストタイムアウトを超えて落ちるため(Task 15 で
+  // testTimeout/hookTimeout を180_000へ上げる対応と合わせて、個別化して報告も見やすくする)。
+  for (const problem of BUILTIN_INSPECT_REPAIR_PROBLEMS) {
+    it(`${problem.id}: どちらか片方の故障だけでも模範と動作が食い違う (§7.5)`, () => {
+      expect(mismatchCount(problem, [0]), 'fault0').toBeGreaterThan(0);
+      expect(mismatchCount(problem, [1]), 'fault1').toBeGreaterThan(0);
+      expect(mismatchCount(problem, [0, 1]), 'both').toBeGreaterThan(0);
+    });
+  }
 
   it('故障を入れなければ模範と完全に一致する（基準回路の自己整合）', () => {
     for (const problem of BUILTIN_INSPECT_REPAIR_PROBLEMS) {
@@ -6628,12 +6948,33 @@ export const BUILTIN_ALL_PROBLEMS: readonly SupportedProblem[] = [
 pnpm --filter @ojt/content exec vitest run test/builtin-inspect-repair.test.ts
 ```
 
-Expected: `Test Files  1 passed (1)` / `Tests  6 passed (6)`（この時点でC2は4題）。
+Expected: `Test Files  1 passed (1)` / `Tests  9 passed (9)`（この時点でC2は4題。「弁別」は登録済みの4題ぶん個別の `it()` に分かれ、Task 16 で8題登録すると自動的に8件になる）。
+
+- [ ] **Step 5a: `vitest --coverage` のタイムアウトを上げる (B-6)**
+
+`mismatchCount()` は模範・訓練者2回ぶん回路をシミュレートするため、coverage計測（instrumentation）を
+付けると弁別テスト全体で136秒かかり、既定の `testTimeout` / `hookTimeout`（5000ms）を超えて
+タイムアウトで落ちる。Task 16で8題そろう前のいま、`packages/content/vitest.config.ts` の既存の
+`test` 設定に `testTimeout` と `hookTimeout` を足しておく:
+
+```ts
+  test: {
+    // ...既存の設定はそのまま
+    testTimeout: 180_000,
+    hookTimeout: 180_000,
+  },
+```
+
+```powershell
+pnpm --filter @ojt/content exec vitest run test/builtin-inspect-repair.test.ts --coverage
+```
+
+Expected: `Test Files  1 passed (1)` / `Tests  9 passed (9)`。coverageを付けてもタイムアウトしない。
 
 - [ ] **Step 6: コミットする**
 
 ```powershell
-git add packages/content/src/builtin/inspect-repair packages/content/src/builtin/index.ts packages/content/test/builtin-inspect-repair.test.ts
+git add packages/content/src/builtin/inspect-repair packages/content/src/builtin/index.ts packages/content/test/builtin-inspect-repair.test.ts packages/content/vitest.config.ts
 git commit -m @'
 feat(content): add four grade-2 built-in mode C2 problems
 
@@ -7350,7 +7691,7 @@ const BUILTIN_INSPECT_REPAIR_JSON: readonly unknown[] = [
 pnpm --filter @ojt/content exec vitest run test/builtin-c2-discrimination.test.ts test/builtin-inspect-repair.test.ts
 ```
 
-Expected: `Test Files  2 passed (2)` / `Tests  32 passed (32)`（弁別 2 + 8題 × 3 = 26、登録まわり 6）。
+Expected: `Test Files  2 passed (2)` / `Tests  39 passed (39)`（`builtin-c2-discrimination.test.ts`: 固定2 + 8題 × 3 = 26、`builtin-inspect-repair.test.ts`: 登録まわり4 + 弁別(8題個別)8 + 自己整合1 = 13）。
 
 - [ ] **Step 6: コミットする**
 
@@ -7719,13 +8060,18 @@ import { inspectPartsProblemJson, inspectRepairProblemJson } from './helpers/ins
 
 - [ ] **Step 3: `apps/desktop` の型を追随させる**
 
-`apps/desktop/src/main/content-loader.ts` の2行目を次に置き換える:
+`apps/desktop/src/main/content-loader.ts` の4行目を次に置き換える:
 
 ```ts
-import { BUILTIN_PROBLEMS, isAssembleProblem, type AssembleProblem } from '@ojt/content';
+import {
+  BUILTIN_PROBLEMS,
+  isAssembleProblem,
+  type AssembleProblem,
+  type ProblemLoadError,
+} from '@ojt/content';
 ```
 
-同ファイルの `loadContent()` の中、`const merged = mergeProblemSets(builtin, user);` から `byId` の生成までを次に置き換える:
+同ファイルの `readContent()` の中、`const merged = mergeProblemSets(builtin, user);` から `byId` の生成までを次に置き換える:
 
 ```ts
   const merged = mergeProblemSets(builtin, user);
@@ -7733,6 +8079,17 @@ import { BUILTIN_PROBLEMS, isAssembleProblem, type AssembleProblem } from '@ojt/
   // 画面が入るのは Plan 2B なので、ここではモードBだけを一覧に載せる（利用者フォルダに
   // C1/C2 の課題を置いても、開ける画面ができるまでは一覧に出さない）。
   const startable = merged.problems.filter(isAssembleProblem);
+  // 弾いた課題（読込自体は成功しているC1/C2）を無言で消さず、理由付きでエラー一覧に出す(M-10)。
+  // 本物のファイルパスはここでは持てないので、`file` は課題IDで代える。
+  const notStartable: ProblemLoadError[] = merged.problems
+    .filter((p) => !isAssembleProblem(p))
+    .map((p) => ({
+      file: p.id,
+      reason: 'unsupported-mode',
+      message: `このアプリのこのバージョンではまだ開けないモードです（${p.mode}）: ${p.id}`,
+      issues: [],
+      id: p.id,
+    }));
   const userIds = new Set(user.problems.map((p) => p.id));
   const byId = new Map(startable.map((p) => [p.id, p] as const));
   return {
@@ -7740,7 +8097,7 @@ import { BUILTIN_PROBLEMS, isAssembleProblem, type AssembleProblem } from '@ojt/
       problems: startable.map((p) =>
         toSummary(p, userIds.has(p.id) || !builtinIds.has(p.id) ? 'user' : 'builtin'),
       ),
-      errors: merged.errors.map(toErrorRow),
+      errors: [...merged.errors, ...notStartable].map(toErrorRow),
       userDir,
       userDirExists: exists,
     },
@@ -7754,7 +8111,7 @@ import { BUILTIN_PROBLEMS, isAssembleProblem, type AssembleProblem } from '@ojt/
 pnpm --filter @ojt/content exec vitest run
 ```
 
-Expected: 全テストファイルが通る（Phase 2A で新しく足したのは `schema-faults` / `faults` / `schema-inspect-parts` / `schema-inspect-repair` / `rng` / `random-faults` / `inspect-parts` / `inspect-repair` / `forbidden` / `judge-inspect` / `highlight` / `builtin-inspect-parts` / `builtin-inspect-repair` / `builtin-c2-discrimination` の14ファイル・約170件）。
+Expected: 全テストファイルが通る（Phase 2A で新しく足したのは `schema-faults` / `faults` / `schema-inspect-parts` / `schema-inspect-repair` / `rng` / `random-faults` / `inspect-parts` / `inspect-repair` / `forbidden` / `judge-inspect` / `highlight` / `builtin-inspect-parts` / `builtin-inspect-repair` / `builtin-c2-discrimination` の14ファイル・約179件）。
 
 - [ ] **Step 5: カバレッジを確認する**
 
@@ -7765,16 +8122,26 @@ pnpm --filter @ojt/content exec vitest run --coverage
 
 Expected: どちらも `All files` の lines / statements / functions / branches が 90% 以上（§14.2）。
 
-- [ ] **Step 6: 型・リント・整形・全体テストを確認する**
+- [ ] **Step 6: 型・リントを確認する**
 
 ```powershell
 pnpm -r typecheck
 pnpm lint
+```
+
+Expected: `typecheck` は無出力で成功、`lint` は警告0（`import-x/no-cycle` 込み）。
+
+- [ ] **Step 6a: 整形を自動適用してから確認する (I-5)**
+
+このプランのコード例は手で書いているため、10箇所ほどで行幅100を超えている。`--check` だけでは落ちるので、先に `--write` で機械的に揃えてから確認する:
+
+```powershell
+npx prettier --write "packages/circuit-sim/**/*.ts" "packages/content/**/*.{ts,json}"
 npx prettier --check "packages/circuit-sim/**/*.ts" "packages/content/**/*.{ts,json}"
 pnpm -r test
 ```
 
-Expected: `typecheck` は無出力で成功、`lint` は警告0（`import-x/no-cycle` 込み）、`prettier` は `All matched files use Prettier code style!`、`pnpm -r test` は5プロジェクト（`circuit-sim` / `board-model` / `schematic-core` / `content` / `desktop`）すべて通る。
+Expected: `--write` が整形の崩れたファイルを書き換え、`--check` は `All matched files use Prettier code style!` を出す。`pnpm -r test` は5プロジェクト（`circuit-sim` / `board-model` / `schematic-core` / `content` / `desktop`）すべて通る。
 
 - [ ] **Step 7: JSON Schema が最新か確認する**
 
@@ -7884,11 +8251,11 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 | 8 | §7.4 の静的チェック `wireColorRule` は「訓練者が引いた電線が規定の色か」 | `StaticCheckInput.preexistingWireIds` を足し、課題開始時点で盤にあった電線を検査対象から外した | C2は初期配線が青のまま残り、修復だけが白になる（§9.2）。除外しないと残っている正常な青線をすべて違反として数えてしまう |
 | 9 | §7.4「`forbiddenCircuit` は構造パターン照合も行う」 | 「誰もタイムアップしていない状態でコイルが生きている」ことを条件に加えた | これが無いと、断線・未配線でコイルが死んでいるだけのC2初期盤を「タイマが自分のコイルを切っている」と誤検出する。実回路8題＋故障8通りで検出0を確認済み |
 | 10 | §9.3「レンジ不足は針を振り切れ位置に固定し `range-exceeded`」 | `range-exceeded` はDCV/ACVでのみ発行する | Ωレンジは中央目盛方式（右端が0Ω・左端が∞）で「上限を超える」状態が存在しない。ACVは常に0.00Vなので実際に出るのはDCVだけ |
-| 10a | §9.3 の「フルスケール角」に具体値の記載が無い | `NEEDLE_FULL_SCALE_DEG = 90` を本アプリの前提とした | 実機の可動範囲は資料に無い。実測値が判明したらこの定数だけ差し替えれば針の式は変わらない（§17.1 と同じ扱い） |
-| 11 | §16 Phase 2 は「モードB・C1・C2 が動くアプリ」 | 本プラン（2A）はライブラリまで。画面・Worker・作業ファイルは Plan 2B | 依頼による分割。2A の公開APIは下の「2B への引き渡し」に固定する |
-| 12 | §7.8 の課題一覧は全モードを載せる | `BUILTIN_PROBLEMS` はモードB 8題のまま据え置き、`BUILTIN_ALL_PROBLEMS`（20題）を別に公開。`apps/desktop` の一覧もモードBに絞る | C1/C2を開始できる画面が入るのは 2B。先に一覧へ出すと「選べるのに開けない課題」が並ぶ。2B が `BUILTIN_ALL_PROBLEMS` へ差し替える |
-| 13 | §7.1 の `inventory` は「訓練者が使える部品と本数」 | モードC1では空配列にした（トレイの中身は `parts` が決める） | C1は盤に配線せず、チェック用ソケットに1個ずつ挿すだけなので在庫という概念が無い。`buildCheckCircuit()` が挿す部品ぶんの在庫をその場で作る |
-| 14 | §9.1 の「解答は組を問わない」 | 接点の不良を入れる組は課題が `group` で明示するか、`seed` と部品IDから決定論的に決める | 組をランダムに散らしつつ、同じ課題を開き直しても同じ組になるようにする（§5.2 の決定論）。UIは組を表示しない |
+| 11 | §9.3 の「フルスケール角」に具体値の記載が無い | `NEEDLE_FULL_SCALE_DEG = 90` を本アプリの前提とした | 実機の可動範囲は資料に無い。実測値が判明したらこの定数だけ差し替えれば針の式は変わらない（§17.1 と同じ扱い） |
+| 12 | §16 Phase 2 は「モードB・C1・C2 が動くアプリ」 | 本プラン（2A）はライブラリまで。画面・Worker・作業ファイルは Plan 2B | 依頼による分割。2A の公開APIは下の「2B への引き渡し」に固定する |
+| 13 | §7.8 の課題一覧は全モードを載せる | `BUILTIN_PROBLEMS` はモードB 8題のまま据え置き、`BUILTIN_ALL_PROBLEMS`（20題）を別に公開。`apps/desktop` の一覧もモードBに絞る | C1/C2を開始できる画面が入るのは 2B。先に一覧へ出すと「選べるのに開けない課題」が並ぶ。2B が `BUILTIN_ALL_PROBLEMS` へ差し替える |
+| 14 | §7.1 の `inventory` は「訓練者が使える部品と本数」 | モードC1では空配列にした（トレイの中身は `parts` が決める） | C1は盤に配線せず、チェック用ソケットに1個ずつ挿すだけなので在庫という概念が無い。`buildCheckCircuit()` が挿す部品ぶんの在庫をその場で作る |
+| 15 | §9.1 の「解答は組を問わない」 | 接点の不良を入れる組は課題が `group` で明示するか、`seed` と部品IDから決定論的に決める | 組をランダムに散らしつつ、同じ課題を開き直しても同じ組になるようにする（§5.2 の決定論）。UIは組を表示しない |
 
 ---
 
@@ -7906,6 +8273,8 @@ Plan 2B（`apps/desktop` のUI）は下記だけを使う。これ以外の内�
 | `ANALOG_DCV_RANGES` / `ANALOG_ACV_RANGES` / `ANALOG_OHM_RANGES` / `voltRangesFor(mode)` | レンジ切替UIの選択肢 |
 | `NEEDLE_FULL_SCALE_DEG` / `ohmNeedleDeg()` / `voltNeedleDeg()` / `withZeroAdjustError()` | 針の目盛の描画（角度は `TesterReading.targetDeg` と `TesterState.needleDeg` から取る） |
 | `TESTER_OFF_DISPLAY` / `TESTER_NO_PROBE_DISPLAY` | 表示器の文字列 |
+| （ハンドオフ注記 M-8） | 活線でΩ／導通を測った (`reading.live === true`) ときの表示は `readTester()` が `TESTER_NO_PROBE_DISPLAY`（`'----'`）に上書きする。`meter.ts` の生の `display`（`'OL'`）ではなく、必ず `TesterReading.display` の方をそのまま出すこと |
+| （ハンドオフ注記 M-16） | デジタルΩは `rawOhms.toFixed(1)` をそのまま `display` にする（桁区切りなし）ので、`2.4MΩ` は `'2400000.0'` と表示される。桁区切りや単位変換をするなら2B側の表示層で行う |
 
 **`@ojt/content`（モードC1）:**
 
@@ -7929,13 +8298,14 @@ Plan 2B（`apps/desktop` のUI）は下記だけを使う。これ以外の内�
 | `BUILTIN_INSPECT_REPAIR_PROBLEMS` / `isInspectRepairProblem(problem)` | 課題一覧とモード判別 |
 | `buildInspectRepairCircuit(problem, board, options?)` → `RepairCircuit` | 故障注入済みの初期盤。`session` をそのまま3Dに出す（`allowedColors` は白のみ） |
 | `repairNetlist(circuit, board)` → `{ netlist, errors }` | 盤を触るたびにネットリストを作り直す（部品の故障は毎回注入される） |
-| `replacePart(circuit, partId)` → `RepairCircuit` | 部品交換（訓練者がソケットから抜いて挿し直したとき） |
+| `replacePart(circuit, partId)` → `RepairCircuit` | 部品交換（訓練者がソケットから抜いて挿し直したとき）。**（ハンドオフ注記 M-12）** 返る `RepairCircuit` は新しいオブジェクトだが `session` は元の回路と同じ可変オブジェクトを共有する。古い `circuit` 参照を残さず、以後は常に戻り値の方を使うこと |
 | `addedWireIds(circuit, session)` / `modificationWireIds(circuit, session)` | 右パネルの「追加した白線」「改造（外した青線）」の一覧 |
 | `FaultReport` / `FaultReportKind` / `matchesSite()` / `scoreReports()` | 指摘一覧の登録と、途中経過の表示 |
 | `judgeInspectRepair(problem, board, circuit, reports, options)` → `JudgeInspectRepairOutcome` | 判定。`ok: false` は課題データの誤り（§13 #2） |
 | `JudgeInspectRepairResult` / `InspectReportScore` / `JudgeInspectResult` | 結果画面の型（`mode` で C1/C2 を判別できる） |
-| `buildHighlightIndex(cells, session)` / `highlightFor()` / `cellIdsAtTerminal()` / `cellIdsOfWire()` | 回路図 ⇄ 3D盤の連動ハイライト。回路図側は `@ojt/schematic-core` の `Shape.cellId` / `rungId` を鍵にする |
+| `buildHighlightIndex(cells, session)` / `highlightFor()` / `cellIdsAtTerminal()` / `cellIdsOfWire()` | 回路図 ⇄ 3D盤の連動ハイライト。回路図側は `@ojt/schematic-core` の `Shape.cellId` / `rungId` を鍵にする。**（ハンドオフ注記 M-11）** 索引は静的なスナップショットなので、配線を変える（追加・削除・改造）たびに `buildHighlightIndex()` を呼び直すこと。回路図の電線区間（rung間の縦線など）には盤側の電線IDへの順方向の対応が無いため、ハイライトは逆方向（端子・部品→回路図セル）でしか引けない |
 | `REPAIR_WIRE_COLOR` / `INITIAL_WIRE_COLOR` | 線色パレットの表示 |
+| （ハンドオフ注記 I-4）作業ファイルに何を残すか | 開始時に渡した／生成した **`seed`** と、`resolveFaults()` の解決結果（`resolvedFaults`）の両方を残すこと（**`seed` を指定しない課題は内部で `Date.now()` を使うため、`seed` だけ保存して再解決すると初回と別の故障になる。`resolvedFaults` を直接保存するのが確実**）／`initialWireIds`／`session.wires`（配線の現状）／交換済みの部品ID／`reports`（指摘の登録内容）。resume時は `buildInspectRepairCircuit(problem, board, { resolvedFaults })` に保存しておいた `faults` 配列を直接渡して `resolveFaults()` の再実行を避ける（Task 10 で `options.resolvedFaults` を追加） |
 
 **`@ojt/content`（共通）:**
 
@@ -7945,7 +8315,7 @@ Plan 2B（`apps/desktop` のUI）は下記だけを使う。これ以外の内�
 | `BUILTIN_ALL_PROBLEMS` | `BUILTIN_PROBLEMS`（モードBのみ）から差し替える |
 | `countHazards(hazards)` / `HazardCounts` | 結果画面の危険操作回数（`ohm-on-live` / `range-exceeded` を含む全種別） |
 | `findForbiddenPatterns(netlist)` | （任意）セッション中の警告表示 |
-| `resolveFaults(problem, board, options)` | ランダム故障課題を開始するときに seed を渡して確定させる |
+| `resolveFaults(problem, board, options)` → `ResolveFaultsResult`（`options: { seed?: number; maxAttempts?: number }`） | ランダム故障課題を開始するときに `seed` を渡して確定させる。`maxAttempts` は引き直しの上限（既定 `MAX_RANDOM_FAULT_ATTEMPTS`。0にすると即フォールバック） |
 
 **Plan 2B が自分で作るもの（2A では作らない）:** Worker プロトコルの新コマンド（`measure` / `injectFault` / `tester` など）、テスターパネル・マークシートパネル・指摘パネルのReactコンポーネント、3D上の部品／電線／端子のクリック → 指摘への変換（`resolvePick` の拡張）、C1/C2の結果画面、モード別の課題一覧、警告バナー。
 
@@ -7953,8 +8323,8 @@ Plan 2B（`apps/desktop` のUI）は下記だけを使う。これ以外の内�
 
 ## 完了条件
 
-- [ ] `pnpm --filter @ojt/circuit-sim exec vitest run` が全て通る（`test/tester.test.ts` 13件・`test/tester-analog.test.ts` 14件を含む）。
-- [ ] `pnpm --filter @ojt/content exec vitest run` が全て通る（Phase 2A で追加した14テストファイル・約170件を含む）。
+- [ ] `pnpm --filter @ojt/circuit-sim exec vitest run` が全て通る（`test/tester.test.ts` 14件・`test/tester-analog.test.ts` 15件を含む）。
+- [ ] `pnpm --filter @ojt/content exec vitest run` が全て通る（Phase 2A で追加した14テストファイル・約179件を含む）。
 - [ ] `pnpm --filter @ojt/circuit-sim exec vitest run --coverage` と `pnpm --filter @ojt/content exec vitest run --coverage` が閾値90%（lines / statements / functions / branches）を満たす。
 - [ ] `pnpm -r typecheck` と `pnpm lint`（`import-x/no-cycle` 込み）が無警告で通る。
 - [ ] `npx prettier --check "packages/circuit-sim/**/*.ts" "packages/content/**/*.{ts,json}"` が `All matched files use Prettier code style!` を出す。
@@ -7972,3 +8342,4 @@ Plan 2B（`apps/desktop` のUI）は下記だけを使う。これ以外の内�
 | 日付 | 内容 |
 |---|---|
 | 2026-09-14 | 初版。Plan 2（Phase 2）をライブラリ（2A）と `apps/desktop`（2B）に分割し、本書は 2A を扱う。テスターモデルの置き場所を `@ojt/circuit-sim/src/tester.ts` に決定（新パッケージ `@ojt/tester-model` は作らない）。C1の期待読値7通り・レアショート 422.5Ω・正常 650.0Ω・しきい値 552.5Ω、内蔵C2課題8題の故障と修復手順、禁則回路の構造照合の判定条件は、いずれも実装前に `@ojt/circuit-sim` ＋ `@ojt/board-model` を実際に走らせて確認した値である |
+| 2026-09-14 | レビュー反映: B-1〜B-6、I-1〜I-5、M-1〜M-16（内容は本書の該当箇所を参照）。加えて Plan 2B 側レビュー由来の3件を反映: ① `readTester()` のΩ／導通測定に `Simulation` 単位のキャッシュを追加し、tick・プローブ・レンジ種別が同じ間はフルの回路解析をやり直さないようにした（Task 2）。② `ResolveFaultsOptions.maxAttempts` と `buildInspectRepairCircuit` の `resolvedFaults` オプションを2Bへの引き渡し表に明記し、作業ファイルには `seed` だけでなく解決済みの故障配列そのものを保存するよう指示した（Task 7・Task 10・2Bへの引き渡し）。③ アナログ針を目標角との差が0.05度未満で目標角へスナップするようにし、指数移動平均が理論上収束しきらず描画が再レンダーし続ける問題を解消した（Task 2） |
