@@ -430,7 +430,18 @@ measure(mode: 'DCV'|'ACV'|'OHM'|'CONT', probeBlack: TerminalId, probeRed: Termin
 段4:   ④   ⑭  ⑬  [空]
 ```
 
-実物（PYF14A相当）に合わせ、リレー／タイマの差込穴（14ピン、2列×7）は本体中央、ネジ端子は本体の上端側に段1・段2、下端側に段3・段4の段付き2列ずつ（段ピッチ約7mm、本体約22×76mm、数値は本アプリ既定）。各端子には番号と役割のラベル（例「⑬ −」「⑭ +」「⑨ COM」「⑤ a」「① b」）を持たせ、3Dでそのまま印字する。
+実物（PYF14A相当）に合わせ、リレー／タイマの差込穴（14ピン、2列×7）は本体中央、ネジ端子は本体の奥端側（上）に段1・段2、手前端側（下）に段3・段4を2段ずつ置き、各段は4列である。数値は本アプリ既定で、`packages/board-model/src/board-jipm.ts` の定数が唯一の源である。
+
+| 項目 | 値 | 定数 |
+|---|---|---|
+| ソケット本体（幅 × 奥行） | 30 × 76 mm | `SOCKET_BODY_WIDTH_MM` / `SOCKET_BODY_LENGTH_MM` |
+| ソケットの取付ピッチ | 32 mm（本体幅30mm ＋ 隣との隙間2mm） | `SOCKET_PITCH_MM` |
+| ネジ端子の列ピッチ（4列） | 8 mm | `SOCKET_COL_PITCH_MM` |
+| 同じ側の段ピッチ（段1–段2／段3–段4） | 8 mm | `SOCKET_TIER_ROW_PITCH_MM` |
+| 本体端から最初のネジ端子段まで | 6 mm | `SOCKET_TIER_INSET_MM` |
+| 差込穴の列ピッチ／段ピッチ | 12 mm ／ 5 mm | `SOCKET_PIN_HOLE_COL_PITCH_MM` / `SOCKET_PIN_HOLE_ROW_PITCH_MM` |
+
+列・段のピッチが 8 mm なのは、端子の当たり判定（半径 4 mm、`TERMINAL_PICK_RADIUS_MM`。§6.5）が隣の端子と重ならない最小値だからである。本体両端の余白が (30 − 3×8) ÷ 2 = 3 mm になるので、取付ピッチ 32 mm では隣のソケットの端子とも 3 + 2 + 3 = 8 mm 空く。各端子には番号と役割のラベル（`circledNumber()` ＋ 半角スペース ＋ `roleLabel()`。例「⑬ −」「⑭ +」「⑨ COM」「⑤ a」「① b」）を持たせ、3Dでそのまま印字する。
 
 ピン割付（調査資料 §3.2, §3.3。MY4N と H3Y-4 で同一のため**ソケットモデルは1種類**）:
 
