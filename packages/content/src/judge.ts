@@ -52,9 +52,9 @@ export interface JudgeResult {
   /** 許容差を超えた遷移の一覧。§8.3 */
   mismatches: Mismatch[];
   staticChecks: StaticCheckResult[];
-  /** 危険操作の総数。 */
+  /** セッション中に記録した危険操作の総数（判定の再生ぶんは数えない。§5.6）。 */
   hazardCount: number;
-  /** 危険操作の種別ごとの回数。§8.3 */
+  /** セッション中に記録した危険操作の種別ごとの回数。§8.3 */
   hazardsByKind: HazardCounts;
   /** 検出したチャタリング。§8.3 の禁則回路の警告に使う。 */
   chatter: ChatterEvent[];
@@ -173,14 +173,22 @@ export function judgeAssemble(
     problem.judge.tolerance,
   );
 
-  const hazards = [...(options.sessionHazards ?? []), ...actualRun.events.hazards()];
+  /**
+   * 結果画面に出す危険操作は**セッション中に記録したものだけ**を数える（§5.6「セッションの
+   * カウンタを加算する」/ §8.3）。判定はいま提出された盤をもう一度通電し直すので、短絡したまま
+   * 提出された盤では同じ1回の短絡が `short-circuit-power-on` としてセッションと再生の両方に出る。
+   * 両方を足すと結果画面の回数が訓練者の実際の操作回数より多くなってしまう。
+   * 静的チェック（`powerSequence`）には再生ぶんも合わせて渡す（合否の根拠は従来どおり）。
+   */
+  const sessionHazards = options.sessionHazards ?? [];
+  const checkedHazards = [...sessionHazards, ...actualRun.events.hazards()];
   const chatter = actualRun.events.chatters();
   const staticChecks = runStaticChecks(
     {
       session: traineeSession,
       netlist: traineeNetlist,
       log: actualRun.log,
-      hazards,
+      hazards: checkedHazards,
       chatters: chatter,
       allowedColors: [ASSEMBLE_WIRE_COLOR],
     },
@@ -200,8 +208,8 @@ export function judgeAssemble(
       passed: mismatches.length === 0 && staticChecks.every((c) => c.ok),
       mismatches,
       staticChecks,
-      hazardCount: hazards.length,
-      hazardsByKind: countHazards(hazards),
+      hazardCount: sessionHazards.length,
+      hazardsByKind: countHazards(sessionHazards),
       chatter: [...chatter],
       ...(options.elapsedMs === undefined ? {} : { elapsedMs: options.elapsedMs }),
       charts,

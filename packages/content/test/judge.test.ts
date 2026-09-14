@@ -33,6 +33,26 @@ describe('judgeAssemble', () => {
     expect(result.value.elapsedMs).toBeUndefined();
   });
 
+  it('危険操作はセッションの記録だけを数える（判定の再生ぶんを二重計上しない。§5.6）', () => {
+    const session = sessionFor();
+    // P母線とN母線を直結した盤。判定の再生でも通電直後に短絡保護が動作するので、
+    // セッションの記録と再生の記録を足すと同じ1回の短絡が2件に見えてしまう。
+    session.wires.push(
+      createWire('w-903', terminalId('P', '1'), terminalId('N', '1'), ASSEMBLE_WIRE_COLOR),
+    );
+    const hazard: HazardEvent = {
+      type: 'hazard',
+      kind: 'short-circuit-power-on',
+      tMs: 0,
+      detail: '電源電流 240.0A',
+    };
+    const result = judgeAssemble(PROBLEM, JIPM_BOARD, session, { sessionHazards: [hazard] });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.hazardCount).toBe(1);
+    expect(result.value.hazardsByKind['short-circuit-power-on']).toBe(1);
+  });
+
   it('records the elapsed time and the session hazards without changing the verdict', () => {
     const hazard: HazardEvent = {
       type: 'hazard',
