@@ -1,19 +1,37 @@
+import { BUILTIN_PROBLEMS } from '@ojt/content';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { createElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from '../src/renderer/app/App.js';
 import { JA } from '../src/renderer/i18n/ja.js';
-import { EMPTY_SNAPSHOT, TOAST_LIMIT, useStore } from '../src/renderer/app/store.js';
+import {
+  DEFAULT_SETTINGS,
+  type OjtApi,
+  type WorkFile,
+  type WorkFileSaveRequest,
+  type WorkFileSaveResult,
+} from '../src/shared/ipc.js';
+import type * as WorkFileModule from '../src/renderer/session/work-file.js';
+import {
+  EMPTY_SNAPSHOT,
+  sessionForProblem,
+  TOAST_LIMIT,
+  useStore,
+} from '../src/renderer/app/store.js';
 
 /**
- * 外枠（例外バナー・トースト）のテスト。設計仕様 §13 #5 / §8.2。
+ * 外枠（例外バナー・トースト・起動時の復元プロンプト・一時保存）のテスト。
+ * 設計仕様 §13 #5 / §8.2 / §12.3。
  *
  * 画面そのものは差し替える。ここで見たいのは「ルートの描画が落ちたときに外枠が生き残るか」
  * であって、どの画面が出るかではないため（3D を含む本物の画面は happy-dom では描けない）。
+ * `applyWorkFile()` は `work-file.ts` 側で個別にテスト済みなので、ここでは
+ * 「正しい引数で呼ばれるか」だけを見る（`toWorkFile` は実物のまま使う）。
  */
 
 const BOOM = '描画で落ちました';
 const routeMock = vi.hoisted(() => ({ throwing: false }));
+const workFileMock = vi.hoisted(() => ({ applyWorkFile: vi.fn(() => Promise.resolve(true)) }));
 
 vi.mock('../src/renderer/app/routes.js', () => ({
   renderRoute: () => {
@@ -22,11 +40,42 @@ vi.mock('../src/renderer/app/routes.js', () => ({
   },
 }));
 
+vi.mock('../src/renderer/session/work-file.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof WorkFileModule>();
+  return { ...actual, applyWorkFile: workFileMock.applyWorkFile };
+});
+
+/** preload を差し替える（`delete` で「読み込まれていない」状態に戻せる）。 */
+function setApi(api: Partial<OjtApi> | undefined): void {
+  if (api === undefined) delete window.ojt;
+  else window.ojt = api as OjtApi;
+}
+
+const PROBLEM = BUILTIN_PROBLEMS.find((p) => p.id === 'b-001');
+if (PROBLEM === undefined) throw new Error('b-001 が見つかりません');
+
+function autosaveFile(overrides: Partial<WorkFile> = {}): WorkFile {
+  // モジュール先頭の `if (PROBLEM === undefined) throw` はここへは伝播しない
+  // （TS はこの関数がいつ呼ばれるか静的に追わないため。session.test.tsx と同じ書き方）
+  if (PROBLEM === undefined) throw new Error('b-001 が見つかりません');
+  return {
+    formatVersion: 1,
+    problemId: 'b-001',
+    session: sessionForProblem(PROBLEM),
+    elapsedMs: 4321,
+    hazardCount: 0,
+    savedAt: '2026-09-14T09:00:00.000Z',
+    ...overrides,
+  };
+}
+
 /** React の偽タイマ。スケジューラを壊さないよう最小限だけ差し替える。 */
 const FAKE_TIMERS = ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date'] as const;
 
 beforeEach(() => {
   routeMock.throwing = false;
+  workFileMock.applyWorkFile.mockClear();
+  setApi(undefined);
   useStore.setState({
     route: 'home',
     toasts: [],
@@ -37,6 +86,10 @@ beforeEach(() => {
     sessionEpoch: 0,
     snapshot: EMPTY_SNAPSHOT,
     reportedDroppedTicks: 0,
+    problem: undefined,
+    session: undefined,
+    elapsedMs: 0,
+    hazards: [],
   });
 });
 
@@ -44,6 +97,7 @@ afterEach(() => {
   cleanup();
   vi.useRealTimers();
   vi.restoreAllMocks();
+  setApi(undefined);
 });
 
 describe('例外バナー（§13 #5）', () => {
@@ -112,5 +166,153 @@ describe('トースト（§8.2）', () => {
     const shown = screen.queryAllByTestId('toast');
     expect(shown).toHaveLength(TOAST_LIMIT);
     expect(shown[0]?.textContent).toBe('失敗 5');
+  });
+});
+
+describe('起動時の復元プロンプト（§12.3）', () => {
+  it('preload が無くても落ちない', async () => {
+    render(<App />);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(screen.queryByTestId('restore-prompt')).toBeNull();
+  });
+
+  it('一時保存が無ければ何も出さない', async () => {
+    setApi({
+      getSettings: () => Promise.resolve(DEFAULT_SETTINGS),
+      loadWorkFile: () => Promise.resolve({ ok: false, canceled: false, message: '無し' }),
+    });
+    render(<App />);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(screen.queryByTestId('restore-prompt')).toBeNull();
+  });
+
+  it('一時保存があれば復元を確認するプロンプトを出す（testid: restore-prompt）', async () => {
+    const file = autosaveFile();
+    setApi({
+      getSettings: () => Promise.resolve(DEFAULT_SETTINGS),
+      loadWorkFile: () => Promise.resolve({ ok: true, file, path: 'C:/autosave.json' }),
+    });
+    render(<App />);
+    const prompt = await screen.findByTestId('restore-prompt');
+    expect(prompt.textContent).toContain(JA.session.restoreTitle);
+    expect(prompt.textContent).toContain(file.savedAt);
+  });
+
+  it('設定で無効化していれば一時保存を確認しない', async () => {
+    const loadWorkFile = vi.fn(() =>
+      Promise.resolve({ ok: true, file: autosaveFile(), path: 'C:/autosave.json' } as const),
+    );
+    setApi({
+      getSettings: () => Promise.resolve({ ...DEFAULT_SETTINGS, restorePrompt: false }),
+      loadWorkFile,
+    });
+    render(<App />);
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(loadWorkFile).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('restore-prompt')).toBeNull();
+  });
+
+  it('「復元する」で作業ファイルを適用し、プロンプトを消す', async () => {
+    const file = autosaveFile();
+    setApi({
+      getSettings: () => Promise.resolve(DEFAULT_SETTINGS),
+      loadWorkFile: () => Promise.resolve({ ok: true, file, path: 'C:/autosave.json' }),
+    });
+    render(<App />);
+    await screen.findByTestId('restore-prompt');
+
+    fireEvent.click(screen.getByRole('button', { name: JA.session.restoreYes }));
+
+    expect(workFileMock.applyWorkFile).toHaveBeenCalledWith(file);
+    expect(screen.queryByTestId('restore-prompt')).toBeNull();
+  });
+
+  it('「復元しない」で discard: true を送り、プロンプトを消す', async () => {
+    const file = autosaveFile();
+    const loadWorkFile = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: true, file, path: 'C:/autosave.json' })
+      .mockResolvedValue({ ok: false, canceled: true, message: '一時保存を削除しました' });
+    setApi({ getSettings: () => Promise.resolve(DEFAULT_SETTINGS), loadWorkFile });
+    render(<App />);
+    await screen.findByTestId('restore-prompt');
+
+    fireEvent.click(screen.getByRole('button', { name: JA.session.restoreNo }));
+
+    expect(loadWorkFile).toHaveBeenLastCalledWith({ kind: 'autosave', discard: true });
+    expect(workFileMock.applyWorkFile).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('restore-prompt')).toBeNull();
+  });
+});
+
+describe('30秒ごとの一時保存（§12.3）', () => {
+  it('セッション中は30秒ごとに一時保存する', async () => {
+    const saveWorkFile = vi.fn<(request: WorkFileSaveRequest) => Promise<WorkFileSaveResult>>(() =>
+      Promise.resolve({ ok: true, path: 'C:/autosave.json' }),
+    );
+    setApi({
+      getSettings: () => Promise.resolve(DEFAULT_SETTINGS),
+      loadWorkFile: () => Promise.resolve({ ok: false, canceled: false, message: '無し' }),
+      saveWorkFile,
+    });
+    useStore.setState({
+      route: 'session',
+      problem: PROBLEM,
+      session: sessionForProblem(PROBLEM),
+      elapsedMs: 999,
+      hazards: [
+        { type: 'hazard', kind: 'ohm-on-live', tMs: 100, detail: '' },
+        { type: 'hazard', kind: 'range-exceeded', tMs: 200, detail: '' },
+      ],
+    });
+    vi.useFakeTimers({ toFake: [...FAKE_TIMERS] });
+    render(<App />);
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      vi.advanceTimersByTime(30_000);
+      await Promise.resolve();
+    });
+
+    expect(saveWorkFile).toHaveBeenCalledTimes(1);
+    const request = saveWorkFile.mock.calls[0]?.[0];
+    expect(request).toBeDefined();
+    expect(request?.kind).toBe('autosave');
+    expect(request?.file.problemId).toBe('b-001');
+    expect(request?.file.elapsedMs).toBe(999);
+    expect(request?.file.hazardCount).toBe(2);
+  });
+
+  it('セッション外では一時保存しない', async () => {
+    const saveWorkFile = vi.fn<(request: WorkFileSaveRequest) => Promise<WorkFileSaveResult>>(() =>
+      Promise.resolve({ ok: true, path: 'C:/autosave.json' }),
+    );
+    setApi({
+      getSettings: () => Promise.resolve(DEFAULT_SETTINGS),
+      loadWorkFile: () => Promise.resolve({ ok: false, canceled: false, message: '無し' }),
+      saveWorkFile,
+    });
+    useStore.setState({ route: 'home' });
+    vi.useFakeTimers({ toFake: [...FAKE_TIMERS] });
+    render(<App />);
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      vi.advanceTimersByTime(30_000);
+      await Promise.resolve();
+    });
+
+    expect(saveWorkFile).not.toHaveBeenCalled();
   });
 });

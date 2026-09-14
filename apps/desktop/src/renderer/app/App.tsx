@@ -1,13 +1,17 @@
-import { useEffect, type JSX } from 'react';
+import { useEffect, useState, type JSX } from 'react';
+import type { OjtApi, WorkFile } from '../../shared/ipc.js';
 import { JA } from '../i18n/ja.js';
+import { applyWorkFile, toWorkFile } from '../session/work-file.js';
 import { ErrorBoundary } from './ErrorBoundary.js';
+import { ojtApi } from './ojt-api.js';
 import { renderRoute } from './routes.js';
 import { useStore, type Route } from './store.js';
 import styles from './app.module.css';
 
 /**
- * アプリの外枠。設計仕様 §12.1 / §13 #5。
+ * アプリの外枠。設計仕様 §12.1 / §13 #5 / §12.3。
  * 未捕捉例外は上部の例外バナーで知らせ、「セッションをリセット」で復帰できるようにする。
+ * 起動時は設定を読み、一時保存が残っていれば復元を確認する。作業中は30秒ごとに一時保存する。
  *
  * バナーとトーストは `ErrorBoundary` の**外**に置く。中に置くと、描画中に例外が出たときに
  * バナーごと消えてしまい、訓練者には真っ黒な画面しか残らない（§13 #5 の要件が満たせない）。
@@ -15,6 +19,18 @@ import styles from './app.module.css';
 
 /** 期限切れトーストを掃除する間隔[ms]。 */
 const TOAST_SWEEP_MS = 250;
+
+/** 一時保存の間隔[ms]。§12.3 */
+const AUTOSAVE_INTERVAL_MS = 30_000;
+
+/** `window.ojt` を取り出す。preload が無ければ `undefined`（呼び出し側は黙って諦める）。 */
+function tryApi(): OjtApi | undefined {
+  try {
+    return ojtApi();
+  } catch {
+    return undefined;
+  }
+}
 
 /**
  * 画面1枚。**必ず境界の子コンポーネントとして**描く。
@@ -32,6 +48,59 @@ export function App(): JSX.Element {
   const toasts = useStore((s) => s.toasts);
   const fatalError = useStore((s) => s.fatalError);
   const sessionEpoch = useStore((s) => s.sessionEpoch);
+  const [pendingRestore, setPendingRestore] = useState<WorkFile | undefined>(undefined);
+
+  /*
+   * 起動時: 設定を読み、一時保存が残っていれば復元を確認する（§12.3）。
+   * `restorePrompt` 設定が無効なら一時保存には触れない（読み込みもしない）。
+   * preload が無い環境（設定ミス・素のブラウザ）では黙って諦める（§13 #5）。
+   */
+  useEffect(() => {
+    const api = tryApi();
+    if (api === undefined) return;
+    void api.getSettings().then(
+      (settings) => {
+        if (!settings.restorePrompt) return;
+        void api.loadWorkFile({ kind: 'autosave' }).then(
+          (restored) => {
+            if (restored.ok) setPendingRestore(restored.file);
+          },
+          () => {
+            // 一時保存が読めなくても起動は続ける
+          },
+        );
+      },
+      () => {
+        // 設定が読めなくても起動は続ける（既定＝内蔵課題のみ・復元確認なし）
+      },
+    );
+  }, []);
+
+  /*
+   * 作業中は30秒ごとに一時保存する（§12.3）。
+   * Session 画面が持つ状態（課題・盤・経過時間・危険操作数）はすべてストアにあるので、
+   * ここから直接読める。`route === 'session'` の間だけ動かす。
+   */
+  useEffect(() => {
+    const id = setInterval(() => {
+      const api = tryApi();
+      if (api === undefined) return;
+      const state = useStore.getState();
+      if (state.route !== 'session' || state.problem === undefined || state.session === undefined) {
+        return;
+      }
+      const file = toWorkFile(
+        state.problem.id,
+        state.session,
+        state.elapsedMs,
+        state.hazards.length,
+      );
+      void api.saveWorkFile({ kind: 'autosave', file });
+    }, AUTOSAVE_INTERVAL_MS);
+    return () => {
+      clearInterval(id);
+    };
+  }, []);
 
   // 未捕捉例外を拾って例外バナーに出す（§13 #5）。描画中の例外は `ErrorBoundary` が拾う
   useEffect(() => {
@@ -78,6 +147,32 @@ export function App(): JSX.Element {
             }}
           >
             {JA.error.reset}
+          </button>
+        </div>
+      )}
+      {pendingRestore === undefined ? null : (
+        <div className={styles.restorePrompt} role="dialog" data-testid="restore-prompt">
+          <span>
+            {JA.session.restoreTitle}（{pendingRestore.savedAt}）
+          </span>
+          <button
+            type="button"
+            onClick={() => {
+              const file = pendingRestore;
+              setPendingRestore(undefined);
+              void applyWorkFile(file);
+            }}
+          >
+            {JA.session.restoreYes}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setPendingRestore(undefined);
+              void tryApi()?.loadWorkFile({ kind: 'autosave', discard: true });
+            }}
+          >
+            {JA.session.restoreNo}
           </button>
         </div>
       )}

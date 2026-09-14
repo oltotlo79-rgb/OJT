@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { app, dialog, type BrowserWindow } from 'electron';
 import {
@@ -13,11 +13,24 @@ import {
 /**
  * 作業ファイルの保存／読込と一時保存。設計仕様 §12.3 / §13 #7 / §13 #8。
  * 拡張子は `.ojtw`。一時保存は `app.getPath('userData')/autosave.json` に固定で書く。
+ *
+ * 保存は**一時ファイル→rename**で書く（1D1 のレビュー指摘: 直接 `writeFileSync(target, ...)`
+ * だと書込の途中でアプリが落ちる／電源が切れたときに本体が壊れた内容で残る。同じフォルダの
+ * 一時ファイルに書いてから `renameSync()` で置き換えると、置き換え自体は1回のファイル
+ * システム操作なので本体が半端な内容のまま残ることが無い）。
  */
 
 /** 一時保存のパス。§12.3 */
 export function autosavePath(): string {
   return join(app.getPath('userData'), 'autosave.json');
+}
+
+/** 一時ファイル→rename でアトミックに書く。 */
+function writeFileAtomic(target: string, content: string): void {
+  mkdirSync(dirname(target), { recursive: true });
+  const temp = `${target}.tmp`;
+  writeFileSync(temp, content, 'utf8');
+  renameSync(temp, target);
 }
 
 /** 作業ファイルの検証。未知の `formatVersion` は読み込まない。§13 #8 */
@@ -29,13 +42,18 @@ export function parseWorkFile(
   }
   const source = raw as Record<string, unknown>;
   const version = source['formatVersion'];
-  if (typeof version !== 'number') {
+  // 正の整数でなければ「形式バージョンが無い」と同じ扱いにする（0・負数・NaN・小数を含む）
+  if (typeof version !== 'number' || !Number.isInteger(version) || version < 1) {
     return { ok: false, message: '作業ファイルに形式バージョンがありません' };
   }
   if (version > WORK_FILE_FORMAT_VERSION) {
     return { ok: false, message: 'このファイルは新しいバージョンで作成されています' };
   }
-  if (typeof source['problemId'] !== 'string' || source['session'] === undefined) {
+  if (
+    typeof source['problemId'] !== 'string' ||
+    typeof source['session'] !== 'object' ||
+    source['session'] === null
+  ) {
     return { ok: false, message: '作業ファイルに課題IDまたは盤の状態がありません' };
   }
   return {
@@ -78,8 +96,7 @@ export async function saveWorkFile(
     target = picked.filePath;
   }
   try {
-    mkdirSync(dirname(target), { recursive: true });
-    writeFileSync(target, `${JSON.stringify(request.file, null, 2)}\n`, 'utf8');
+    writeFileAtomic(target, `${JSON.stringify(request.file, null, 2)}\n`);
     return { ok: true, path: target };
   } catch (cause) {
     return { ok: false, canceled: false, message: `保存に失敗しました: ${String(cause)}` };
