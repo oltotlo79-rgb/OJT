@@ -14,7 +14,12 @@ import { defineConfig, externalizeDepsPlugin } from 'electron-vite';
  * （Electron 実行ファイルのパスを返すだけの CLI ヘルパ）がバンドルされてしまい、
  * main プロセスが `app` を持たないオブジェクトを掴んでウィンドウを1枚も作らなくなる。
  */
-const OJT_PACKAGES = ['@ojt/circuit-sim', '@ojt/board-model', '@ojt/schematic-core', '@ojt/content'];
+const OJT_PACKAGES = [
+  '@ojt/circuit-sim',
+  '@ojt/board-model',
+  '@ojt/schematic-core',
+  '@ojt/content',
+];
 
 /** main / preload で必ず外部化するもの（Electron 本体と Node 組み込みモジュール）。 */
 const NODE_EXTERNALS = [

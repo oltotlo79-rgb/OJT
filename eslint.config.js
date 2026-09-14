@@ -3,7 +3,15 @@ import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
   // `out/` は electron-vite のビルド成果物、`test-results/` は Playwright の出力
-  { ignores: ['**/dist/**', '**/out/**', '**/coverage/**', '**/node_modules/**', '**/test-results/**'] },
+  {
+    ignores: [
+      '**/dist/**',
+      '**/out/**',
+      '**/coverage/**',
+      '**/node_modules/**',
+      '**/test-results/**',
+    ],
+  },
   js.configs.recommended,
   ...tseslint.configs.recommendedTypeChecked,
   {

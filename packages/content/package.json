@@ -3,7 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "sideEffects": ["./src/schema/index.ts"],
+  "sideEffects": [
+    "./src/schema/index.ts"
+  ],
   "exports": {
     ".": "./src/index.ts"
   },
