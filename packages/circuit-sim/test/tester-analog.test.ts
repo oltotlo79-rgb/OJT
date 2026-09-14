@@ -152,6 +152,22 @@ describe('stepTester', () => {
     expect(state.needleDeg).toBeCloseTo(56.891, 2);
   });
 
+  it('snaps the needle onto the target within 0.05 degrees so it stops changing (コーディネータ指示#3)', () => {
+    const sim = relayBench();
+    powerOn(sim);
+    sim.run(100);
+    let state = applyTesterAction(analog('DCV', 'PS.-', 'PS.+'), {
+      type: 'set-volt-range',
+      range: 10,
+    });
+    // 76 tick前後で目標90度との差が0.05度を切る（90 × 0.904837^76 ≒ 0.049）。余裕を見て200tick進める。
+    for (let i = 0; i < 200; i += 1) state = stepTester(sim, state).state;
+    expect(state.needleDeg).toBe(90);
+    // スナップ後はこれ以上動かない（同じ値が続く＝描画側は再レンダーしなくてよい）。
+    const settled = stepTester(sim, state).state;
+    expect(settled.needleDeg).toBe(90);
+  });
+
   it('keeps the digital needle at zero', () => {
     const sim = relayBench();
     powerOn(sim);

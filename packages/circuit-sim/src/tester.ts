@@ -1,6 +1,13 @@
 import { TICK_MS } from './elements.js';
 import type { TerminalId } from './ids.js';
-import { continuity, measureAcVolts, measureResistance, measureVoltage } from './meter.js';
+import {
+  continuity,
+  measureAcVolts,
+  measureResistance,
+  measureVoltage,
+  type ContinuityReading,
+  type OhmReading,
+} from './meter.js';
 import type { Simulation } from './simulation.js';
 
 /**
@@ -45,6 +52,10 @@ export const ANALOG_OHM_INTERNAL_OHMS: Readonly<Record<AnalogOhmRange, number>> 
 export const NEEDLE_FULL_SCALE_DEG = 90;
 /** 針の追従の時定数[ms]。実機の慣性を模す。§9.3 */
 export const NEEDLE_TIME_CONSTANT_MS = 100;
+/** 目標角との差がこれ未満なら目標角へスナップする[度]。指数移動平均は理論上収束しきらないため、
+ *  スナップが無いと描画側の差分検知（前回と値が同じなら再描画しない）が働かず、針が止まって
+ *  見えても毎tick再描画され続ける（コーディネータ指示#3）。 */
+export const NEEDLE_SNAP_DEG = 0.05;
 /** 0Ω調整をせずにΩを測ったときに読値へ乗る誤差の割合（+5%）。§9.3 */
 export const ZERO_ADJUST_ERROR_RATIO = 0.05;
 
@@ -243,6 +254,48 @@ function voltReading(state: TesterState, volts: number, display: string): Tester
 }
 
 /**
+ * readTester() のΩ／導通の再計算を避けるキャッシュ。`Simulation` インスタンスをキーにした
+ * `WeakMap` なので、セッションをまたいで古い結果が残ることはない。tick・プローブ配置・
+ * レンジ種別のどれかが変わったら破棄する（この3つが同じなら回路の状態も同じなので、
+ * 再度フルの回路解析をする必要が無い）。
+ *
+ * **キャッシュの副作用への注意:** `measureResistance()` / `continuity()` は活線を検出すると
+ * `ohm-on-live` を発行する副作用を持つ（§5.6 #1）が、同じプローブ配置のまま活線が続く間は
+ * 2回目以降を呼んでも `isNewLiveExposure()` が再発行を防ぐので、キャッシュでヒットして
+ * 呼び出し自体を省いても観測できる挙動は変わらない。
+ */
+interface OhmCacheEntry {
+  tMs: number;
+  black: TerminalId;
+  red: TerminalId;
+  kind: 'OHM' | 'CONT';
+  reading: OhmReading | ContinuityReading;
+}
+const ohmCache = new WeakMap<Simulation, OhmCacheEntry>();
+
+function cachedMeasure<T extends OhmReading | ContinuityReading>(
+  sim: Simulation,
+  black: TerminalId,
+  red: TerminalId,
+  kind: 'OHM' | 'CONT',
+  measure: () => T,
+): T {
+  const cached = ohmCache.get(sim);
+  if (
+    cached !== undefined &&
+    cached.kind === kind &&
+    cached.tMs === sim.tMs &&
+    cached.black === black &&
+    cached.red === red
+  ) {
+    return cached.reading as T;
+  }
+  const reading = measure();
+  ohmCache.set(sim, { tMs: sim.tMs, black, red, kind, reading });
+  return reading;
+}
+
+/**
  * いまの状態で1回測る。§9.3
  * プローブが両方置かれていなければ測定しない（`----`）。Ω／導通は `meter.ts` の制約
  * （プローブ間1V以上なら測定拒否＋`ohm-on-live`）をそのまま受ける（§5.5 / §5.6 #1）。
@@ -262,7 +315,7 @@ export function readTester(sim: Simulation, state: TesterState): TesterReading {
     return voltReading(state, reading.volts, reading.display);
   }
   if (state.mode === 'OHM') {
-    const reading = measureResistance(sim, black, red);
+    const reading = cachedMeasure(sim, black, red, 'OHM', () => measureResistance(sim, black, red));
     if (reading.live) return blankReading(state, TESTER_NO_PROBE_DISPLAY, true);
     if (state.kind === 'digital') {
       return {
@@ -288,7 +341,7 @@ export function readTester(sim: Simulation, state: TesterState): TesterReading {
       conductive: false,
     };
   }
-  const reading = continuity(sim, black, red);
+  const reading = cachedMeasure(sim, black, red, 'CONT', () => continuity(sim, black, red));
   if (reading.live) return blankReading(state, TESTER_NO_PROBE_DISPLAY, true);
   const shown = withZeroAdjustError(reading.ohms, state.zeroAdjusted);
   return {
@@ -310,7 +363,11 @@ export const TESTER_TICK_MS = TICK_MS;
  * 1tickぶん進めて読値と新しい状態を返す。§9.3 / §5.6 #2
  *
  * アナログ針は時定数100msの指数移動平均で目標角度へ寄せる（α ＝ 1 − exp(−dt ÷ 100)。
- * 10ms tick では約0.0952）。デジタルは針を持たないので常に0度のままにする。
+ * 10ms tick では約0.0952）。目標角との差が `NEEDLE_SNAP_DEG`（0.05度）未満になったら
+ * 目標角へスナップする。指数移動平均は理論上いつまでも収束しきらないため、スナップが無いと
+ * 針が止まって見えても `needleDeg` が毎tick極小に変化し続け、描画側の差分検知（前回と同じ値
+ * なら再描画しない）が効かずに再レンダーが止まらない（コーディネータ指示#3）。デジタルは
+ * 針を持たないので常に0度のままにする。
  *
  * **この関数の副作用**: アナログでレンジ上限を超えた読値になったとき、`sim.events` に
  * `range-exceeded` を1件発行する（内部で呼ぶ `readTester()` も、活線でΩ／導通を当てると
@@ -325,8 +382,12 @@ export function stepTester(
 ): { state: TesterState; reading: TesterReading } {
   const reading = readTester(sim, state);
   const alpha = 1 - Math.exp(-dtMs / NEEDLE_TIME_CONSTANT_MS);
-  const needleDeg =
+  const eased =
     state.kind === 'analog' ? state.needleDeg + alpha * (reading.targetDeg - state.needleDeg) : 0;
+  const needleDeg =
+    state.kind === 'analog' && Math.abs(reading.targetDeg - eased) < NEEDLE_SNAP_DEG
+      ? reading.targetDeg
+      : eased;
   let rangeExceededReported = state.rangeExceededReported;
   if (reading.overRange) {
     if (!rangeExceededReported) {

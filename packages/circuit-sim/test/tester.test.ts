@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   applyTesterAction,
   createLamp,
@@ -11,6 +11,7 @@ import {
   TESTER_OFF_DISPLAY,
 } from '../src/index.js';
 import type { Simulation, TesterState } from '../src/index.js';
+import * as meter from '../src/meter.js';
 import { bench, powerOn, t, w } from './helpers/circuits.js';
 
 /** リレー1個・ランプ1個の点検台。PB1でコイルを励磁する。 */
@@ -195,5 +196,19 @@ describe('readTester (digital)', () => {
     const open = readTester(sim, probed(state, 'CR1.1', 'CR1.5'));
     expect(open.conductive).toBe(false);
     expect(open.display).toBe('OL');
+  });
+
+  it('does not re-solve on a second readTester call at the same tick with the same probes (perf)', () => {
+    const sim = coilBench();
+    const state = probed(
+      applyTesterAction(createTesterState(), { type: 'set-mode', mode: 'OHM' }),
+      'CR1.13',
+      'CR1.14',
+    );
+    const spy = vi.spyOn(meter, 'measureResistance');
+    readTester(sim, state);
+    readTester(sim, state);
+    expect(spy).toHaveBeenCalledTimes(1);
+    spy.mockRestore();
   });
 });
