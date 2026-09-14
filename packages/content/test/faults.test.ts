@@ -19,6 +19,22 @@ function session() {
   return built.value.session;
 }
 
+/** 同じ回路を CR1 とチェック用ソケットだけに割り当てた盤（T1・T2・CR2 は役割なし）。 */
+function sessionWithoutTimers() {
+  const json = {
+    ...selfHoldProblemJson(),
+    board: { boardId: 'board-jipm-std', socketRoles: { S1: 'CR1', S7: 'CHK' } },
+  };
+  const built = buildReferenceSession(parseOrThrow(json), JIPM_BOARD);
+  if (!built.ok) throw new Error(JSON.stringify(built.errors));
+  return built.value.session;
+}
+
+/** 誤配線の付け替え先だけを差し替えた1件の故障を当てる。 */
+function misrouteTo(board: ReturnType<typeof session>, to: string) {
+  return applyFaults(board, [{ target: { wireId: 'sw-002' }, kind: 'wire-misrouted', to }]);
+}
+
 describe('applyFaults (wire faults)', () => {
   it('keeps a broken wire on the board but opens it electrically (§5.4)', () => {
     const board = session();
@@ -83,6 +99,59 @@ describe('applyFaults (wire faults)', () => {
     expect(applied.ok).toBe(false);
     if (applied.ok) return;
     expect(applied.errors[0]?.message).toContain('2本');
+  });
+
+  it('refuses a misrouting to a terminal the board does not have (§6.4)', () => {
+    const applied = misrouteTo(session(), 'CR1.99');
+    expect(applied.ok).toBe(false);
+    if (applied.ok) return;
+    expect(applied.errors[0]?.path).toBe('faults[0].to');
+    expect(applied.errors[0]?.message).toContain('CR1.99');
+    expect(applied.errors[0]?.message).toContain('盤に無い端子');
+  });
+
+  it('refuses a misrouting to a role that this problem does not assign (§6.1 / §6.4)', () => {
+    // この盤には T2 のソケットが無いので `T2.1` は解決できない（課題データの書き間違い）。
+    const applied = misrouteTo(sessionWithoutTimers(), 'T2.1');
+    expect(applied.ok).toBe(false);
+    if (applied.ok) return;
+    expect(applied.errors[0]?.path).toBe('faults[0].to');
+    expect(applied.errors[0]?.message).toContain('T2.1');
+  });
+
+  it('refuses a misrouting to a body terminal that cannot be wired (§6.4)', () => {
+    const applied = misrouteTo(session(), 'PB1.a');
+    expect(applied.ok).toBe(false);
+    if (applied.ok) return;
+    expect(applied.errors[0]?.path).toBe('faults[0].to');
+    expect(applied.errors[0]?.message).toContain('配線できません');
+  });
+
+  it('refuses a misrouting to an optional part that is not on the board (§5.3.4)', () => {
+    // BZ は課題の `extraParts` で足したときだけ使える端子。足していない盤では選べない。
+    const applied = misrouteTo(session(), 'BZ.+');
+    expect(applied.ok).toBe(false);
+    if (applied.ok) return;
+    expect(applied.errors[0]?.path).toBe('faults[0].to');
+    expect(applied.errors[0]?.message).toContain('盤に載っていない部品');
+  });
+
+  it('refuses a misrouting that folds the wire onto its own other end (M2)', () => {
+    const board = session();
+    const from = board.wires.find((w) => w.id === 'sw-002')?.from;
+    expect(from).toBe('TB_PB.2c');
+    const applied = misrouteTo(board, 'TB_PB.2c');
+    expect(applied.ok).toBe(false);
+    if (applied.ok) return;
+    expect(applied.errors[0]?.path).toBe('faults[0].to');
+    expect(applied.errors[0]?.message).toContain('同じ端子');
+  });
+
+  it('normalizes a physical socket terminal given as the misrouting destination (§6.4)', () => {
+    const board = session();
+    const applied = misrouteTo(board, 'S1.12');
+    expect(applied.ok).toBe(true);
+    expect(board.wires.find((w) => w.id === 'sw-002')?.to).toBe('CR1.12');
   });
 
   it('validates every spec before mutating anything: an invalid later spec leaves the session untouched (M-6)', () => {

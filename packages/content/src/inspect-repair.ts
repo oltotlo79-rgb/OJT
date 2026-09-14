@@ -71,7 +71,7 @@ export function buildInspectRepairCircuit(
       : { ok: true, value: [...options.resolvedFaults] };
   if (!faults.ok) return faults;
   const session = built.value.session;
-  const applied = applyFaults(session, faults.value);
+  const applied = applyFaults(session, faults.value, board);
   if (!applied.ok) return applied;
   session.allowedColors = [REPAIR_WIRE_COLOR];
   return {

@@ -338,16 +338,34 @@ function wireIdOfSeq(seq: number): string {
 }
 
 /**
- * 物理ソケットIDの端子（`S1.13`）を役割ベースの端子ID（`CR1.13`）に直す。
- * 形式が壊れている端子IDはそのまま返し、`checkTerminal` に未知端子として拒否させる（入口では投げない）。
+ * 物理ソケットIDの端子（`S1.13`）を役割ベースの端子ID（`CR1.13`）に直す（`addWire()` の入口と
+ * 同じ正規化）。形式が壊れている端子IDはそのまま返し、`checkWirableTerminal()` に未知端子として
+ * 拒否させる（入口では投げない）。セッションの `wires` は常に役割ベースなので、電線と突き合わせる
+ * 前に必ずこれを通すこと。
  */
-function normalizeTerminal(session: BoardSession, id: TerminalId): TerminalId {
+export function toSessionTerminal(session: BoardSession, id: TerminalId): TerminalId {
   try {
     return toNetlistTerminal(session.socketRoles, id);
   } catch (error) {
     if (error instanceof IdError || error instanceof RoleError) return id;
     throw error;
   }
+}
+
+/**
+ * その端子へ電線をもう1本つなげるか（`addWire()` が使うのと同じ検査）。§6.4 / §6.6
+ * 端子IDは入口で役割ベースへ正規化するので、物理ソケットID（`S1.13`）で呼んでもよい。
+ * 成功したら**正規化済みの端子ID**を返すので、呼び出し側はそれをそのまま電線に載せられる。
+ *
+ * `addWire()` を通さずに `session.wires` を書き換える処理（課題データの誤配線故障で電線の
+ * 片端を付け替える、など）が、盤の配線規則を重複実装せずに同じ判定を使えるように公開している。
+ */
+export function checkWirableTerminal(
+  session: BoardSession,
+  board: BoardDefinition,
+  id: TerminalId,
+): Result<TerminalId> {
+  return checkTerminal(session, board, toSessionTerminal(session, id));
 }
 
 /** 端子チェックの失敗を配線の失敗にする。本数超過だけは張ろうとした電線を添える。 */
@@ -382,8 +400,8 @@ export function addWire(
   if (session.boardId !== board.id) {
     return fail('board-mismatch', `このセッションの盤ではありません: ${board.id}`);
   }
-  const fromId = normalizeTerminal(session, from);
-  const toId = normalizeTerminal(session, to);
+  const fromId = toSessionTerminal(session, from);
+  const toId = toSessionTerminal(session, to);
   if (!session.allowedColors.includes(color)) {
     return fail('color-not-allowed', `この課題で使える線色ではありません: ${color}`);
   }

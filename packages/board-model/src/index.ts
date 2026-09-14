@@ -137,6 +137,7 @@ export {
 
 export {
   addWire,
+  checkWirableTerminal,
   createSession,
   DEFAULT_ALLOWED_COLORS,
   fail,
@@ -147,6 +148,7 @@ export {
   removeWire,
   SessionError,
   setPreset,
+  toSessionTerminal,
   unplug,
   wireCountAtTerminal,
   wiresAt,

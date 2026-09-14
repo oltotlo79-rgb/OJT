@@ -130,7 +130,7 @@ function isUsable(
   /* c8 ignore next -- resolveFaults は同じ problem/board で一度成功させてから isUsable を呼ぶため、
      決定論的な buildReferenceSession がここでだけ失敗することはない */
   if (!built.ok) return false;
-  const applied = applyFaults(built.value.session, candidate);
+  const applied = applyFaults(built.value.session, candidate, board);
   /* c8 ignore next -- candidate は faultableWireIds / spareTerminals から引いた実在する電線・
      空き端子しか使わないため、applyFaults が課題データの誤りとして拒否することはない */
   if (!applied.ok) return false;

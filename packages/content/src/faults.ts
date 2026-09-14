@@ -1,10 +1,15 @@
-import { wireCountAtTerminal, type BoardSession } from '@ojt/board-model';
+import {
+  checkWirableTerminal,
+  loadBoard,
+  toSessionTerminal,
+  type BoardDefinition,
+  type BoardSession,
+} from '@ojt/board-model';
 import {
   DEFAULT_CONTACT_RESISTIVE_OHMS,
   DEFAULT_LAYER_SHORT_RATIO,
   FaultError,
   injectFault,
-  MAX_WIRES_PER_TERMINAL,
   toTerminalId,
   type FaultKind,
   type FaultTarget,
@@ -99,14 +104,24 @@ function toEngineTarget(target: FaultSpecData['target']): FaultTarget {
  *
  * **全件を検証してから反映する**（レビュー指摘 M-6）。`faults` は盤セッションの電線配列の
  * 複製に対して先頭から順に適用してみる形で検証し、課題データの誤り（存在しない電線ID・
- * 既設配線の指定・1端子2本の超過）が1件でもあれば、実セッション（`session.wires`）を
- * **一切変更せずに** `ok: false` を返す。全件が解決できたときだけ、複製した電線配列を
- * まとめて実セッションへ反映する。呼び出し側は `ok: false` を見ても盤をそのまま使い続けてよい
- * （途中まで適用された中途半端な状態を心配する必要はない）。
+ * 既設配線の指定・同じ電線への二重指定・付け替え先の端子が盤に無い／配線できない／1端子2本の
+ * 超過）が1件でもあれば、実セッション（`session.wires`）を**一切変更せずに** `ok: false` を返す。
+ * 全件が解決できたときだけ、複製した電線配列をまとめて実セッションへ反映する。呼び出し側は
+ * `ok: false` を見ても盤をそのまま使い続けてよい（途中まで適用された中途半端な状態を心配する
+ * 必要はない）。
+ *
+ * **（レビュー指摘 M1）成功したときは `session.wires` が丸ごと差し替わる。** 配列も要素も新しい
+ * オブジェクトなので、呼び出し前に掴んでいた `session.wires` の参照・その中の `Wire` の参照は
+ * どちらも古いままになる（`wire.open` を立てても盤には効かない）。適用後は必ず `session.wires`
+ * を読み直すこと。`initialWireIds` のような派生値も適用後に取り直す。
+ *
+ * `board` は誤配線の付け替え先を `addWire()` と同じ規則で検査するために要る。省略すると
+ * セッションの `boardId` から引く（`buildReferenceSession()` が作ったセッションなら必ず引ける）。
  */
 export function applyFaults(
   session: BoardSession,
   faults: readonly FaultSpecData[],
+  board: BoardDefinition = loadBoard(session.boardId),
 ): ApplyFaultsResult {
   const errors: ProblemIssue[] = [];
   const wireFaults: FaultSpecData[] = [];
@@ -158,15 +173,26 @@ export function applyFaults(
     } else {
       /* c8 ignore next -- スキーマが to を必須にしているため到達しない */
       if (spec.to === undefined) return; // スキーマが必須にしている
-      const to = toTerminalId(spec.to);
-      if (wireCountAtTerminal({ ...session, wires: draft }, to) + 1 > MAX_WIRES_PER_TERMINAL) {
+      // 付け替え先は盤の配線規則そのもの（§6.4 / §6.6）で検査する。3D盤は「配線されているとおり」
+      // を描くので、盤に無い端子・配線できない本体端子・載っていない任意部品の端子を許すと
+      // 描画側が落ちる。判定は addWire() と同じ board-model の検査を借りて重複実装を避ける。
+      const to = toSessionTerminal(session, toTerminalId(spec.to));
+      if (to === wire.from) {
         errors.push({
           path: `faults[${index}].to`,
-          message: `誤配線の付け替え先 ${to} は1端子${MAX_WIRES_PER_TERMINAL}本の上限を超えます`,
+          message: `誤配線の付け替え先が同じ端子です（電線の両端が同じになります）: ${to}`,
         });
         return;
       }
-      wire.to = to;
+      const checked = checkWirableTerminal({ ...session, wires: draft }, board, to);
+      if (!checked.ok) {
+        errors.push({
+          path: `faults[${index}].to`,
+          message: `誤配線の付け替え先：${checked.message}`,
+        });
+        return;
+      }
+      wire.to = checked.value;
     }
     wireFaults.push(spec);
     sites.push({ kind: spec.kind, report, wireId: wire.id, partId: undefined, terminals });

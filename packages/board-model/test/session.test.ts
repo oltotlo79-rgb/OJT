@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { PartId, TerminalId, Wire } from '@ojt/circuit-sim';
 import {
   addWire,
+  checkWirableTerminal,
   createSession,
   JIPM_BOARD,
   mountedKinds,
@@ -123,6 +124,35 @@ describe('session: 装着と配線', () => {
 
     const withBz = createSession(board, { extraParts: [BZ_ID] });
     expect(addWire(withBz, board, t('BZ.+'), t('P.1')).ok).toBe(true);
+  });
+
+  it('checkWirableTerminal は addWire と同じ規則で端子1つ分を判定する（§6.4 / §6.6）', () => {
+    const s = session();
+    // 物理ソケットIDで呼んでも役割ベースに正規化した端子IDが返る（§6.4）
+    const normalized = checkWirableTerminal(s, board, t('S1.13'));
+    if (!normalized.ok) throw new Error(normalized.message);
+    expect(normalized.value).toBe('CR1.13');
+
+    const unknown = checkWirableTerminal(s, board, t('CR1.99'));
+    if (unknown.ok) throw new Error('unreachable');
+    expect(unknown.code).toBe('unknown-terminal');
+
+    const body = checkWirableTerminal(s, board, t('PB1.c'));
+    if (body.ok) throw new Error('unreachable');
+    expect(body.code).toBe('terminal-not-wirable');
+
+    const buzzer = checkWirableTerminal(s, board, t('BZ.+'));
+    if (buzzer.ok) throw new Error('unreachable');
+    expect(buzzer.code).toBe('terminal-unavailable');
+    expect(
+      checkWirableTerminal(createSession(board, { extraParts: [BZ_ID] }), board, t('BZ.+')).ok,
+    ).toBe(true);
+
+    expect(addWire(s, board, t('CR1.13'), t('P.1')).ok).toBe(true);
+    expect(addWire(s, board, t('CR1.13'), t('N.1')).ok).toBe(true);
+    const full = checkWirableTerminal(s, board, t('CR1.13'));
+    if (full.ok) throw new Error('unreachable');
+    expect(full.code).toBe('terminal-overload');
   });
 
   it('白線モード（C2）では青を拒否する（§8.1）', () => {
