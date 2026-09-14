@@ -6,6 +6,8 @@ import onDelay from './assemble/b-003-on-delay.json';
 import sequential from './assemble/b-004-sequential.json';
 import oneShot from './assemble/b-005-one-shot.json';
 import flicker from './assemble/b-006-flicker.json';
+import firstPress from './assemble/b-007-first-press.json';
+import stopPriority from './assemble/b-008-stop-priority.json';
 
 /**
  * 内蔵課題。設計仕様 §7.8 / §7.9（モードB = 8題）。
@@ -21,6 +23,8 @@ const BUILTIN_ASSEMBLE_JSON: readonly unknown[] = [
   sequential,
   oneShot,
   flicker,
+  firstPress,
+  stopPriority,
 ];
 
 /** 内蔵課題の検証に失敗したときに投げる。 */

@@ -35,6 +35,28 @@ describe('builtin problems', () => {
     }
   });
 
+  it('ships 8 assemble problems (§7.9)', () => {
+    expect(BUILTIN_PROBLEMS).toHaveLength(8);
+    expect(BUILTIN_PROBLEMS.map((p) => p.id)).toEqual([
+      'b-001',
+      'b-002',
+      'b-003',
+      'b-004',
+      'b-005',
+      'b-006',
+      'b-007',
+      'b-008',
+    ]);
+  });
+
+  it('covers every hint level (§8.4)', () => {
+    const grades = new Set(BUILTIN_PROBLEMS.map((p) => p.grade));
+    expect([...grades].sort()).toEqual([1, 2, 3]);
+    for (const problem of BUILTIN_PROBLEMS) {
+      expect(problem.hints.schematicVisible).toBe(problem.grade === 3);
+    }
+  });
+
   describe.each(BUILTIN_PROBLEMS.map((p) => [p.id, p] as const))('%s', (_id, problem) => {
     const result = judgeReference(problem, JIPM_BOARD);
 
