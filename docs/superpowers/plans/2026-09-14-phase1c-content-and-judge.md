@@ -1473,7 +1473,7 @@ export const AssembleProblemSchema = z
     ...ProblemHeaderShape,
     mode: z.literal('assemble'),
     schematic: SchematicDocumentSchema,
-    physicalOverride: z.record(z.string().min(1), z.array(TerminalIdSchema).length(2)).optional(),
+    physicalOverride: z.record(z.string().min(1), z.tuple([TerminalIdSchema, TerminalIdSchema])).optional(),
     operations: OperationListSchema,
     durationMs: DurationMsSchema,
     judge: JudgeSettingsSchema,
@@ -2231,12 +2231,12 @@ export const ASSEMBLE_WIRE_COLOR = '青';
 
 /** 課題の `physicalOverride` を schematic-core が要求する形に直す。§7.2 */
 export function toPhysicalOverride(
-  raw: Readonly<Record<string, readonly string[]>> | undefined,
-): Record<string, TerminalId[]> | undefined {
+  raw: Readonly<Record<string, readonly [string, string]>> | undefined,
+): Record<string, readonly [TerminalId, TerminalId]> | undefined {
   if (raw === undefined) return undefined;
-  const out: Record<string, TerminalId[]> = {};
-  for (const [cellId, terminals] of Object.entries(raw)) {
-    out[cellId] = terminals.map((t) => toTerminalId(t));
+  const out: Record<string, readonly [TerminalId, TerminalId]> = {};
+  for (const [cellId, [left, right]] of Object.entries(raw)) {
+    out[cellId] = [toTerminalId(left), toTerminalId(right)];
   }
   return out;
 }
@@ -3489,6 +3489,20 @@ describe('judgeAssemble', () => {
     });
     expect(judgeReference(broken, JIPM_BOARD).ok).toBe(false);
   });
+
+  it('reports a dead reference circuit instead of a verdict (§13 #2)', () => {
+    // コイルの左（CR1.14）はそのまま、右をN母線へ直結し、実機のコイル端子（CR1.13）を宙に浮かせる
+    const dead = parseOrThrow({
+      ...selfHoldProblemJson(),
+      physicalOverride: { c03: ['CR1.14', 'N.1'] },
+    });
+    const result = judgeReference(dead, JIPM_BOARD);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.errors[0]?.message).toBe(
+      '模範回路が動作しません（ランプ・コイルの変化がありません）',
+    );
+  });
 });
 ```
 
@@ -3513,6 +3527,7 @@ import {
   type HazardEvent,
   type HazardKind,
   type Mismatch,
+  type SignalLog,
 } from '@ojt/circuit-sim';
 import { buildReferenceSession, ASSEMBLE_WIRE_COLOR } from './reference.js';
 import { runOperations } from './runner.js';
@@ -3576,15 +3591,49 @@ export interface JudgeResult {
 export type JudgeAssembleResult =
   { ok: true; value: JudgeResult } | { ok: false; errors: ProblemIssue[] };
 
+/** 模範回路のログで見張るべき信号（ランプの点灯・コイルの励磁）。§13 #2 */
+function liveSignalsOf(problem: AssembleProblem): string[] {
+  const names: string[] = [];
+  for (const r of problem.schematic.rungs) {
+    for (const cell of r.cells) {
+      if (cell.kind === 'lamp') names.push(cell.device);
+      else if (cell.kind === 'coil') names.push(`${cell.device}.coil`);
+    }
+  }
+  return [...new Set(names)];
+}
+
+/** その信号がログの中で実際に値を変えたか（初回の記録＝初期値だけなら変化なし）。§5.7 */
+function hasTransition(log: SignalLog, signal: string): boolean {
+  return log.transitions(signal).length > 1;
+}
+
+/**
+ * 模範回路が構造上は組めても実質的に動かないときの課題エラー。§13 #2
+ * `physicalOverride` がコイルの片方の端子を盤の別の場所（母線など）へ逃がすと、
+ * `assignToBoard()` の検査（1端子2本・接点組の不足など）はすべて通ってしまうのに、
+ * そのコイル本来の端子（例: `CR1.13`）がどこにも配線されず宙に浮き、永久に励磁されない。
+ * ランプもコイルもログ上1回も変化しない模範回路は、判定を進める前にここで弾く。
+ */
+function findDeadReferenceIssue(
+  problem: AssembleProblem,
+  log: SignalLog,
+): ProblemIssue | undefined {
+  const live = liveSignalsOf(problem);
+  if (live.length === 0 || live.some((signal) => hasTransition(log, signal))) return undefined;
+  return { path: 'schematic', message: '模範回路が動作しません（ランプ・コイルの変化がありません）' };
+}
+
 /**
  * モードBの判定を実行する。§8.3
  * 1. 模範回路を組み立てて操作列を再生する
  * 2. 訓練者の盤セッションをネットリストにして同じ操作列を再生する
  * 3. 出力波形を比較し、静的チェックを走らせ、両方の波形をタイムチャートにする
  *
- * 課題エラー（`ok: false`）として返すのは**模範回路が作れない**場合だけである。`traineeSession` が
- * この盤のセッションでないのは呼び出し側の取り違えなので、board-model の `toNetlist()` が
- * `SessionError` を投げる（黙って壊れたネットリストを判定するより早く落とす。§8.2）。
+ * 課題エラー（`ok: false`）として返すのは、**模範回路が作れない**か、**作れても実質動かない**
+ * （`physicalOverride` の誤りなどでランプ・コイルが1回も変化しない。§13 #2）場合だけである。
+ * `traineeSession` がこの盤のセッションでないのは呼び出し側の取り違えなので、board-model の
+ * `toNetlist()` が `SessionError` を投げる（黙って壊れたネットリストを判定するより早く落とす。§8.2）。
  * UIは課題が要求する盤で作ったセッションを渡すこと。
  */
 export function judgeAssemble(
@@ -3599,6 +3648,9 @@ export function judgeAssemble(
   const expectedRun = runOperations(reference.value.netlist, problem.operations, {
     durationMs: problem.durationMs,
   });
+  const deadReference = findDeadReferenceIssue(problem, expectedRun.log);
+  if (deadReference !== undefined) return { ok: false, errors: [deadReference] };
+
   const traineeNetlist = toNetlist(traineeSession, board);
   const actualRun = runOperations(traineeNetlist, problem.operations, {
     durationMs: problem.durationMs,
@@ -3669,7 +3721,7 @@ export function judgeReference(
 pnpm --filter @ojt/content exec vitest run test/judge.test.ts
 ```
 
-Expected: `Test Files  1 passed (1)` / `Tests  10 passed (10)`
+Expected: `Test Files  1 passed (1)` / `Tests  11 passed (11)`
 
 - [ ] **Step 5: コミット**
 
@@ -5120,7 +5172,7 @@ Remove-Item packages/content/test/scaffold.test.ts
 pnpm --filter @ojt/content exec vitest run
 ```
 
-Expected: `Test Files  13 passed (13)` / `Tests  136 passed (136)`
+Expected: `Test Files  13 passed (13)` / `Tests  137 passed (137)`
 
 - [ ] **Step 4: カバレッジを確かめる（仕様 §14.2 の90%）**
 
@@ -5200,7 +5252,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 | §5.6 / §5.7 | 危険操作の集計、信号ログからの判定 | `countHazards()` / `checkPowerSequence()` | `test/judge.test.ts` / `test/static-checks.test.ts` |
 | §12.3 | 作業ファイルの `formatVersion` | `CONTENT_FORMAT_VERSION`（課題側の形式バージョン） | `test/schema-common.test.ts` |
 | §13 #1 | スキーマ違反は zod のパスとメッセージ付きで一覧表示 | `toProblemIssues()` | `test/schema-index.test.ts` |
-| §13 #2 | 模範回路が変換不能なら開始できないようにする | `buildReferenceSession()` の失敗 → `JudgeAssembleResult.ok === false` | `test/reference.test.ts` / `test/judge.test.ts` |
+| §13 #2 | 模範回路が変換不能、または変換できても実質動かないなら開始できないようにする | `buildReferenceSession()` の失敗、または `findDeadReferenceIssue()`（ランプ・コイルの変化なし）→ `JudgeAssembleResult.ok === false` | `test/reference.test.ts` / `test/judge.test.ts` |
 | §13 #9 | 利用者課題フォルダが無くても内蔵課題だけで動く | `loadProblemsFromDir()` の `read-error` | `test/loader.test.ts` |
 | §14.1 #30 | 課題の自己整合 | `judgeReference()` | `test/builtin.test.ts` |
 | §14.2 | `content` の行・分岐カバレッジ 90%以上 | `vitest.config.ts` の `thresholds` | Task 17 Step 4 |
@@ -5217,7 +5269,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 | 3 | §7.4 `unusedParts`「装着したが回路に組み込まれていない部品」 | 「装着したのにどのピンにも電線が1本も来ていない部品」と定義した | 「組み込まれている」の程度（コイルだけ繋がっている等）を機械的に線引きすると誤検出が増える。盤上で完全に浮いている部品だけを確実に指摘する |
 | 4 | §7.1 `timeLimit` の既定は課題1形式 `{50,60}` / 課題2形式 `{30,50}` の2種 | 内蔵課題は 3級・2級相当の6題を `{30,50}`、1級相当の2題を `{50,60}` にした | 有接点の回路組立課題に対する公式の標準時間は非公開。仕様が示す2つの値のどちらかを課題の規模で選ぶ形にし、新しい値は作らない |
 | 5 | §7.1 `board.socketRoles` は `["CR1","CR2","T1","T2","CHK"]` のような**5要素の配列**で例示 | `{"S1":"CR1", …, "S7":"CHK"}` のオブジェクトにし、**S1〜S8 すべて省略可**（書かなかったソケットは役割なしの予備）とした。ただし `CHK` は `S7` 固定 | 実物の盤はソケットを8個持ち、`@ojt/board-model` の `SocketRoles`（Plan 1B 改訂版）は `Readonly<Partial<Record<SocketId, SocketRole>>>` である。そのまま渡せる形に合わせた。盤に無いソケットIDは `z.strictObject` がその場で弾き、役割の重複・`CHK` の有無・`CHK` の位置は board-model の `validateSocketRoles()` に委ねる（チェック用回路の既設配線が `S7` に固定で結線されているため。§6.3） |
-| 6 | §7.2 `physicalOverride` は `{[elementId]: TerminalId[]}` | 要素数をちょうど2に固定した（`[左(P側), 右(N側)]`） | `@ojt/schematic-core` の `assignToBoard()` が各要素に左右2端子を割り当てる仕様（Plan 1B Task 13）。可変長を許すと実行時に「端子2つを指定します」と落ちるだけなので、スキーマで先に止める |
+| 6 | §7.2 `physicalOverride` は `{[elementId]: TerminalId[]}` | 要素数をちょうど2に固定した（`z.tuple([左(P側), 右(N側)])`） | `@ojt/schematic-core` の `assignToBoard()` が各要素に左右2端子を割り当てる仕様（Plan 1B Task 13）。可変長を許すと実行時に「端子2つを指定します」と落ちるだけなので、スキーマで先に止める。当初の `z.array(TerminalIdSchema).length(2)` は要素数がTS型に出ず `TerminalId[]` のままだったため、`AssignOptions.physicalOverride`（`readonly [TerminalId, TerminalId]`）に型として渡せなかった（`exactOptionalPropertyTypes` 下の `tsc` で判明）。`z.tuple` にして型レベルでも2要素に固定した |
 | 7 | §7.4 の判定設定のキーは `compare` | `compareSignals` にした | `compare` は動詞に読めて、`tolerance` / `staticChecks` と並べたときに何の集合か分からない。中身は仕様どおり「比較対象の出力信号名の配列」 |
 | 8 | §6.3「チェック用回路の線色は黄」 | 固定配線（`locked`）は線色チェックの対象外にした | Plan 1B 改訂版で、実物の盤の既設配線はチェック用回路を含めてすべて**青**であることが写真から確定した。既設配線は訓練者の責任範囲ではないので、色ではなく `locked` で「触れない線」を識別する。訓練者が引ける色は `ASSEMBLE_WIRE_COLOR = '青'`（モードB）のまま |
 | 9 | §7.5 `faults` / §7.6 `plc` の課題形式 | Phase 1 では本体スキーマを定義しない。`mode` が `inspect-parts` / `inspect-repair` / `plc` の課題は `z.looseObject` でヘッダだけ読み、`parseProblem()` が `unsupported-mode` を返して課題一覧に理由付きで並べる | 範囲決定。`z.never()` のような「読めない」定義を置くと、Phase 2/3 で書いた課題ファイルが「壊れたファイル」と表示されてしまう。ヘッダだけ読めば一覧に出せるので、拡張点を塞がずに済む |
@@ -5226,7 +5278,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 
 ## 完了条件
 
-- [ ] `pnpm --filter @ojt/content exec vitest run` が `Test Files 13 passed` / `Tests 136 passed` で終わる。
+- [ ] `pnpm --filter @ojt/content exec vitest run` が `Test Files 13 passed` / `Tests 137 passed` で終わる。
 - [ ] `pnpm --filter @ojt/content exec vitest run --coverage` が閾値90%（lines / statements / functions / branches）を満たして終わる。
 - [ ] `pnpm -r typecheck` と `pnpm lint`（`import-x/no-cycle` 込み）が無警告で通る。
 - [ ] `npx prettier --check "packages/content/**/*.{ts,json}"` が `All matched files use Prettier code style!` を出す。
@@ -5245,3 +5297,4 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 | 2026-09-14 | Plan 1B 再改訂（供給端子は `P.1`/`N.1` の1点ずつ、母線は渡り配線で鎖状に分配）に追随。内蔵課題⑦（`b-007`）のランプ段を P 母線ではなくリセット節点（`PB4` b接点の後）から分岐させ、`TB_PB.4c` に付く訓練者の配線を1本に収めた。`terminalLimit` のテストで使っていた `P.4` / `P.5` は存在しなくなったため実在する端子（`CR2.14` / `T1.14`）に置き換え。盤の端子数が増えて判定1件が数秒かかるようになったので `vitest.config.ts` に `testTimeout: 30_000` を入れた。`WireRoute.channelIds` が空になるケースは content から経路を参照していないため影響なし |
 | 2026-09-14 | Plan 1B 改訂（8ソケット等）に追随。`SocketRolesSchema` を S1〜S8 の `Partial`（`z.strictObject`）に変え、内蔵課題8題の `board.socketRoles` を課題1形式 `{S1..S4, S7:CHK}` ／課題2形式 `{S1,S2,S5:T1,S6:T2,S7:CHK}` に更新。固定配線が青・`locked` になったため `checkWireColorRule()` は `locked` を検査対象外にし、`checkUnusedParts()` は予備ソケットに対応して `socketPartId()` を使うようにした。`judge.ts` の危険操作集計は circuit-sim の `HAZARD_KINDS` を唯一の源にした。在庫の上限をソケット数に合わせて8にした。`ducts` / `routeWire` / `WireRoute` は content から参照していないため影響なし |
 | 2026-09-14 | 実装された `@ojt/board-model` の公開APIに合わせて整合を取った。①`SocketRolesSchema` の重複・`CHK` 判定を自前の `refine` から board-model の `validateSocketRoles()` 呼び出しに置き換え、**`CHK` は `S7` 固定**（`CHECK_SOCKET_ID`。チェック用回路の既設配線が S7 に結線されているため）という実装どおりの規則を課題JSONにも効かせた（テスト1件追加）。②`SocketRoleSchema` / `MountableKindSchema` を手書きの文字列列挙からエクスポート済みタプル `z.enum(SOCKET_ROLES)` / `z.enum(MOUNTABLE_KINDS)` に、在庫上限を `SOCKET_IDS.length` に変えて盤の語彙の二重定義を無くした。③zod の `S1?: SocketRole \| undefined` は `exactOptionalPropertyTypes` のもとで `SocketRoles` に直接渡せないため、変換関数 `toSocketRoles()` を `schema/common.ts` に足し（テスト1件追加）、`reference.ts` の `toRoles()` をそれ経由にした。④`SchematicCellSchema.presetMs` の範囲を実装の丸め規則に合わせ、`snapPresetToStep()` / `TIMER_RANGES` を使う `hasExactTimerRange()` で検証するようにした（0〜10秒は0.1秒刻み・下限100ms、**0〜60秒は0.5秒刻み・下限500ms**。テスト1件追加）。⑤`judgeAssemble()` に「訓練者セッションの盤が違う場合は `toNetlist()` が `SessionError` を投げる」ことを明記（board-model 側の設計。ここでは課題エラーに変換しない）。テスト総数 133 → 136 |
+| 2026-09-14 | 実装された `@ojt/schematic-core` の型（`AssignOptions` / `SchematicCell`）に合わせて、型レビュー（`exactOptionalPropertyTypes: true` 下の `tsc`）で見つかった2件を修正した。①`physicalOverride` は `z.record(z.string().min(1), z.array(TerminalIdSchema).length(2))` だと要素数がTS型に出ず `TerminalId[]` のままで、`toPhysicalOverride()` の戻り値が `AssignOptions.physicalOverride`（`Readonly<Record<string, readonly [TerminalId, TerminalId]>>`）に型として渡せなかった（TS2322）。`z.tuple([TerminalIdSchema, TerminalIdSchema])` に変え、`toPhysicalOverride()` の引数・戻り値を `readonly [TerminalId, TerminalId]` ベースに直した（差分表#6）。②模範回路は `physicalOverride` の誤りで、`assignToBoard()` の検査（1端子2本・接点組の不足など）をすべて通る＝構造上は組めても、実質動かないことがある（例: コイルの片方の端子を母線へ直結し、実機のコイル端子〈もう一方のピン〉を宙に浮かせる）。`judge.ts` の `judgeAssemble()` に、模範ログでランプ・コイル信号（`PLn` 本体／`CRn.coil`／`Tn.coil`）が1回も変化しなければ課題エラーを返す検査 `findDeadReferenceIssue()` を追加し、`judge.test.ts` に失敗するテストを1件足した（§13 #2 の表にも反映）。`SchematicCell.presetMs` の `number | undefined` への拡張（schematic-core 側 Task 13d）は既存コードのまま吸収できるため本プランの変更は無い。テスト総数 136 → 137 |
