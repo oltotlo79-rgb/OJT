@@ -1,0 +1,20 @@
+{
+  "name": "@ojt/content",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@ojt/board-model": "workspace:*",
+    "@ojt/circuit-sim": "workspace:*",
+    "@ojt/schematic-core": "workspace:*",
+    "zod": "4.6.0"
+  }
+}
