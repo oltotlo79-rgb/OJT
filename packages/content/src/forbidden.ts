@@ -44,6 +44,13 @@ function coilOf(timer: Part): { id: string; from: TerminalId; to: TerminalId } |
  * そのコイルが P / N から到達できないか（＝切られているか）を調べる。
  * `energized` に入れたタイマの接点だけをタイムアップ位置（a=閉 / b=開）にし、
  * それ以外の接点はすべて閉とみなす（最良ケース）。
+ *
+ * 導電辺に採るのは**接点とリンク（部品内部の内部結線・端子台）だけ**で、負荷（コイル・ランプ・
+ * ブザー）は採らない。負荷を導線と同一視すると「CR1コイル → PL1ランプ」のように負荷2個を
+ * 直列に通る幻の経路ができ、そこから対象タイマの限時b接点へ回り込んで、断線しただけの盤を
+ * 「タイマが自分のコイルを切っている」と誤検出してしまう（レビュー指摘 BLOCKING）。
+ * 見たいのは「コイルの両端が P / N に**繋がっているか**」であり、コイル自身より先に別の負荷を
+ * 通る経路は電気的にも給電経路ではない。
  */
 function isCoilCut(netlist: Netlist, timer: Part, energized: ReadonlySet<string>): boolean {
   const coil = coilOf(timer);
@@ -68,7 +75,7 @@ function isCoilCut(netlist: Netlist, timer: Part, energized: ReadonlySet<string>
       if (el.kind === 'contact') {
         const timedOut = el.driver === 'timer' && energized.has(el.driverId);
         if (timedOut ? el.contact === 'a' : true) connect(el.from, el.to);
-      } else if (el.kind === 'load' || el.kind === 'link') {
+      } else if (el.kind === 'link') {
         connect(el.from, el.to);
       }
     }

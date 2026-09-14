@@ -1,10 +1,19 @@
-import { JIPM_BOARD } from '@ojt/board-model';
-import { createNetlist, createTimer4c, terminalId, type Part } from '@ojt/circuit-sim';
+import { JIPM_BOARD, toNetlist } from '@ojt/board-model';
+import {
+  createNetlist,
+  createTimer4c,
+  terminalId,
+  toTerminalId,
+  type Part,
+} from '@ojt/circuit-sim';
 import { describe, expect, it } from 'vitest';
 import { BUILTIN_ASSEMBLE_PROBLEMS } from '../src/builtin/index.js';
+import { applyFaults } from '../src/faults.js';
 import { findForbiddenPatterns } from '../src/forbidden.js';
 import { buildReferenceSession } from '../src/reference.js';
+import type { FaultSpecData } from '../src/schema/faults.js';
 import { parseProblem } from '../src/schema/index.js';
+import type { AssembleProblem } from '../src/schema/assemble.js';
 import { selfHoldProblemJson } from './helpers/problems.js';
 
 /** 回路図だけを差し替えた課題のネットリスト。 */
@@ -54,6 +63,22 @@ function selfCutRungs(): unknown[] {
   ];
 }
 
+/** 模範回路に故障を1件だけ入れた盤のネットリスト（毎回まっさらな模範から作り直す）。 */
+function faultedNetlist(problem: AssembleProblem, fault: FaultSpecData) {
+  const built = buildReferenceSession(problem, JIPM_BOARD);
+  if (!built.ok) throw new Error(JSON.stringify(built.errors));
+  const applied = applyFaults(built.value.session, [fault]);
+  if (!applied.ok) throw new Error(JSON.stringify(applied.errors));
+  return toNetlist(built.value.session, JIPM_BOARD);
+}
+
+/** その課題の模範回路のうち、故障を入れてよい電線ID（既設の固定配線は除く）。 */
+function faultableWireIds(problem: AssembleProblem): string[] {
+  const built = buildReferenceSession(problem, JIPM_BOARD);
+  if (!built.ok) throw new Error(JSON.stringify(built.errors));
+  return built.value.session.wires.filter((w) => !w.locked).map((w) => w.id);
+}
+
 describe('findForbiddenPatterns', () => {
   it('finds nothing in the eight built-in mode B problems (§7.9)', () => {
     for (const problem of BUILTIN_ASSEMBLE_PROBLEMS) {
@@ -71,6 +96,22 @@ describe('findForbiddenPatterns', () => {
     expect(found[0]?.kind).toBe('timer-self-cut');
     expect(found[0]?.timerIds).toEqual(['T1']);
     expect(found[0]?.message).toContain('リレーを介して');
+  });
+
+  it('still detects the self-cut even if a different, unrelated wire is also broken (M-15)', () => {
+    const netlist = netlistOf(selfCutRungs(), 'x-f1b');
+    // r2（T1のa接点→表示灯PL1）はコイル自身の導通経路とは別の枝。ここを切ってもコイル側の
+    // P/N到達性には関係が無いので、自己遮断の検出（コイル自身の経路だけを見る）には影響しない
+    // はずである。「無関係な断線が1本あるだけで自己遮断を見逃す」退行が起きていないか見張る。
+    const lampPlus = toTerminalId('TB_PL.1+');
+    const wire = netlist.wires.find((w) => w.to === lampPlus || w.from === lampPlus);
+    expect(wire).toBeDefined();
+    if (wire === undefined) return;
+    wire.open = true;
+    const found = findForbiddenPatterns(netlist);
+    expect(found).toHaveLength(1);
+    expect(found[0]?.kind).toBe('timer-self-cut');
+    expect(found[0]?.timerIds).toEqual(['T1']);
   });
 
   it('detects a flicker made of two timers only (調査資料 §5.5)', () => {
@@ -174,6 +215,35 @@ describe('findForbiddenPatterns', () => {
     if (wire === undefined) return;
     wire.open = true;
     expect(findForbiddenPatterns(netlist)).toEqual([]);
+  });
+
+  it('does not invent a self-cut on the one-shot board when a single wire is faulted (b-005)', () => {
+    // b-005 は T1 の限時b接点 → PB1 → CR1 コイルの直列。負荷（コイル・ランプ）を導電要素として
+    // 扱うと「CR1コイル → PL1ランプ」の2負荷直列という物理的に存在しない経路ができ、そこから
+    // T1 のb接点へ回り込んで「T1 が自分のコイルを切っている」と誤検出してしまう。
+    const problem = BUILTIN_ASSEMBLE_PROBLEMS.find((p) => p.id === 'b-005');
+    expect(problem).toBeDefined();
+    if (problem === undefined) return;
+    for (const wireId of ['sw-002', 'sw-009']) {
+      for (const kind of ['wire-open', 'wire-missing'] as const) {
+        const netlist = faultedNetlist(problem, { target: { wireId }, kind });
+        expect(findForbiddenPatterns(netlist), `${wireId} / ${kind}`).toEqual([]);
+      }
+    }
+  });
+
+  it('never blames a timer for a single broken or missing wire on any built-in board', () => {
+    let boards = 0;
+    for (const problem of BUILTIN_ASSEMBLE_PROBLEMS) {
+      for (const wireId of faultableWireIds(problem)) {
+        for (const kind of ['wire-open', 'wire-missing'] as const) {
+          const netlist = faultedNetlist(problem, { target: { wireId }, kind });
+          expect(findForbiddenPatterns(netlist), `${problem.id} / ${wireId} / ${kind}`).toEqual([]);
+          boards += 1;
+        }
+      }
+    }
+    expect(boards).toBeGreaterThan(100);
   });
 
   it('returns nothing when the netlist has no P/N supply terminals', () => {
