@@ -1,8 +1,117 @@
+import type { SocketId } from '@ojt/board-model';
+import type { TerminalId, WireColor } from '@ojt/circuit-sim';
+
 /**
- * ツールモード。設計仕様 §12.2。
- *
- * このファイルは Task 5（ストアと Worker ブリッジ）が `ToolMode` を必要とするために
- * 最小限だけ先出ししたもの。ピック結果 → 操作の判断（`InteractionState` / `PickAction` /
- * 純粋関数 `decide`）は Task 7（ピック結果 → 操作の純粋関数）でこのファイルに追加する。
+ * 「ピック結果 → 実行する操作」の純粋関数。設計仕様 §12.2。
+ * 3D も React も使わないので Vitest だけで全分岐を検証できる（§14.2）。
  */
+
+/** レイキャストで拾えるもの。§12.2 */
+export type PickHit =
+  | { kind: 'terminal'; id: TerminalId; wirable: boolean; label: string }
+  | { kind: 'wire'; id: string; locked: boolean }
+  | { kind: 'socket'; id: SocketId; occupied: boolean }
+  | { kind: 'pushbutton'; id: string }
+  | { kind: 'empty' };
+
+/** ツールバーのモード。§8.1 */
 export type ToolMode = 'wire' | 'delete';
+
+/** ピック判断に要る UI 状態だけを抜き出したもの。 */
+export interface InteractionState {
+  mode: ToolMode;
+  /** 配線1本目に選んだ端子（未選択は undefined）。§8.2 */
+  pendingTerminal: TerminalId | undefined;
+  /** 選択中の電線ID。§8.2 */
+  selectedWire: string | undefined;
+  /** 選択中の線色。§8.1 */
+  wireColor: WireColor;
+}
+
+/** ピックの結果として実行する操作。 */
+export type PickAction =
+  | { type: 'none' }
+  /** 配線の1本目を選んだ。 */
+  | { type: 'beginWire'; from: TerminalId }
+  /** 2本目を選んだので電線を張る。 */
+  | { type: 'completeWire'; from: TerminalId; to: TerminalId; color: WireColor }
+  /** 配線操作を取り消す。§8.2 */
+  | { type: 'cancelWire' }
+  /** 電線を選択する。 */
+  | { type: 'selectWire'; wireId: string }
+  /** 電線を削除する。 */
+  | { type: 'removeWire'; wireId: string }
+  /** 固定配線には触れない。§6.3 */
+  | { type: 'reject'; message: string }
+  /** ソケットを選ぶ（部品パネルで装着する部品を選ばせる）。§8.2 */
+  | { type: 'selectSocket'; socketId: SocketId }
+  /** 装着済み部品を選ぶ（取り外しUIを出す）。§8.2 */
+  | { type: 'selectMounted'; socketId: SocketId }
+  /** 押ボタンを押す。§8.2 */
+  | { type: 'pressButton'; pbId: string };
+
+/** 固定配線を触ったときの文言。§6.3 */
+export const LOCKED_WIRE_MESSAGE = 'チェック用回路の黄色配線は変更できません';
+/** 配線できない端子を触ったときの文言。§6.4 */
+export const NOT_WIRABLE_MESSAGE = 'この端子には配線できません（本体側は既設配線済みです）';
+
+/**
+ * ピック結果を操作に変換する。§12.2
+ * - 削除モード: 電線を拾ったら削除、`locked` なら拒否、それ以外は何もしない
+ * - 配線モード: 端子 → 端子 で配線、同じ端子を2度押したら取り消し、空間クリックで取り消し
+ */
+export function pickToAction(state: InteractionState, hit: PickHit): PickAction {
+  if (state.mode === 'delete') {
+    if (hit.kind === 'wire') {
+      return hit.locked
+        ? { type: 'reject', message: LOCKED_WIRE_MESSAGE }
+        : { type: 'removeWire', wireId: hit.id };
+    }
+    if (hit.kind === 'pushbutton') return { type: 'pressButton', pbId: hit.id };
+    return { type: 'none' };
+  }
+
+  switch (hit.kind) {
+    case 'terminal': {
+      if (!hit.wirable) return { type: 'reject', message: NOT_WIRABLE_MESSAGE };
+      const pending = state.pendingTerminal;
+      if (pending === undefined) return { type: 'beginWire', from: hit.id };
+      if (pending === hit.id) return { type: 'cancelWire' };
+      return { type: 'completeWire', from: pending, to: hit.id, color: state.wireColor };
+    }
+    case 'wire':
+      return state.pendingTerminal === undefined
+        ? { type: 'selectWire', wireId: hit.id }
+        : { type: 'cancelWire' };
+    case 'socket':
+      if (state.pendingTerminal !== undefined) return { type: 'cancelWire' };
+      return hit.occupied
+        ? { type: 'selectMounted', socketId: hit.id }
+        : { type: 'selectSocket', socketId: hit.id };
+    case 'pushbutton':
+      return state.pendingTerminal === undefined
+        ? { type: 'pressButton', pbId: hit.id }
+        : { type: 'cancelWire' };
+    case 'empty':
+      if (state.pendingTerminal !== undefined) return { type: 'cancelWire' };
+      return state.selectedWire === undefined
+        ? { type: 'none' }
+        : { type: 'selectWire', wireId: '' };
+  }
+}
+
+/** Esc キーの扱い（配線中なら取り消し、それ以外は何もしない）。§8.2 */
+export function escapeToAction(state: InteractionState): PickAction {
+  return state.pendingTerminal === undefined ? { type: 'none' } : { type: 'cancelWire' };
+}
+
+/** Delete キーの扱い（電線を選んでいれば削除）。§8.2 */
+export function deleteKeyToAction(
+  state: InteractionState,
+  lockedWireIds: readonly string[],
+): PickAction {
+  const id = state.selectedWire;
+  if (id === undefined || id.length === 0) return { type: 'none' };
+  if (lockedWireIds.includes(id)) return { type: 'reject', message: LOCKED_WIRE_MESSAGE };
+  return { type: 'removeWire', wireId: id };
+}
