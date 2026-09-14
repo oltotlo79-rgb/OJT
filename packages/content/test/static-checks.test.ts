@@ -1,0 +1,169 @@
+import { JIPM_BOARD, plug, toNetlist, type BoardSession } from '@ojt/board-model';
+import { createWire, SignalLog, terminalId, type HazardEvent } from '@ojt/circuit-sim';
+import { describe, expect, it } from 'vitest';
+import { buildReferenceSession, ASSEMBLE_WIRE_COLOR } from '../src/reference.js';
+import { runOperations } from '../src/runner.js';
+import { DEFAULT_STATIC_CHECKS } from '../src/schema/judge.js';
+import {
+  checkCoilPolarity,
+  checkForbiddenCircuit,
+  checkPowerSequence,
+  checkTerminalLimit,
+  checkUnusedParts,
+  checkWireColorRule,
+  runStaticChecks,
+  type StaticCheckInput,
+} from '../src/static-checks.js';
+import {
+  forbiddenOneShotProblemJson,
+  parseOrThrow,
+  selfHoldProblemJson,
+} from './helpers/problems.js';
+
+function inputFor(json: Record<string, unknown>): StaticCheckInput & { session: BoardSession } {
+  const problem = parseOrThrow(json);
+  const built = buildReferenceSession(problem, JIPM_BOARD);
+  if (!built.ok) throw new Error(JSON.stringify(built.errors));
+  const run = runOperations(built.value.netlist, problem.operations, {
+    durationMs: problem.durationMs,
+  });
+  return {
+    session: built.value.session,
+    netlist: built.value.netlist,
+    log: run.log,
+    hazards: run.events.hazards(),
+    chatters: run.events.chatters(),
+    allowedColors: [ASSEMBLE_WIRE_COLOR],
+  };
+}
+
+describe('runStaticChecks', () => {
+  it('passes every check on a correct circuit', () => {
+    const results = runStaticChecks(inputFor(selfHoldProblemJson()), DEFAULT_STATIC_CHECKS);
+    expect(results.map((r) => r.id)).toEqual([
+      'wireColorRule',
+      'terminalLimit',
+      'unusedParts',
+      'forbiddenCircuit',
+      'coilPolarity',
+      'powerSequence',
+    ]);
+    expect(results.every((r) => r.ok)).toBe(true);
+  });
+
+  it('runs only the enabled checks', () => {
+    const results = runStaticChecks(inputFor(selfHoldProblemJson()), {
+      ...DEFAULT_STATIC_CHECKS,
+      unusedParts: false,
+      powerSequence: false,
+    });
+    expect(results.map((r) => r.id)).toEqual([
+      'wireColorRule',
+      'terminalLimit',
+      'forbiddenCircuit',
+      'coilPolarity',
+    ]);
+  });
+});
+
+describe('checkWireColorRule', () => {
+  it('fails on a wire that is not in the palette', () => {
+    const input = inputFor(selfHoldProblemJson());
+    const wire = input.session.wires.find((w) => !w.locked);
+    if (wire === undefined) throw new Error('no editable wire');
+    wire.color = '白';
+    const result = checkWireColorRule(input);
+    expect(result.ok).toBe(false);
+    expect(result.details[0]).toContain(wire.id);
+  });
+
+  it('ignores the pre-installed fixed wiring whatever colour it has (§6.3)', () => {
+    const input = inputFor(selfHoldProblemJson());
+    const locked = input.session.wires.find((w) => w.locked);
+    if (locked === undefined) throw new Error('no locked wire');
+    expect(locked.color).toBe('青');
+    locked.color = '黄';
+    expect(checkWireColorRule(input).ok).toBe(true);
+  });
+});
+
+describe('checkTerminalLimit', () => {
+  it('fails when a terminal carries three wires', () => {
+    const input = inputFor(selfHoldProblemJson());
+    input.session.wires.push(
+      createWire('w-extra', terminalId('CR1', '14'), terminalId('CR2', '14'), ASSEMBLE_WIRE_COLOR),
+    );
+    input.session.wires.push(
+      createWire('w-extra2', terminalId('CR1', '14'), terminalId('T1', '14'), ASSEMBLE_WIRE_COLOR),
+    );
+    const result = checkTerminalLimit(input);
+    expect(result.ok).toBe(false);
+    expect(result.details.some((d) => d.startsWith('CR1.14'))).toBe(true);
+  });
+});
+
+describe('checkUnusedParts', () => {
+  it('fails when a mounted part has no wire at all', () => {
+    const input = inputFor(selfHoldProblemJson());
+    const plugged = plug(input.session, 'S2', 'relay-my4n');
+    expect(plugged.ok).toBe(true);
+    const result = checkUnusedParts({
+      ...input,
+      netlist: toNetlist(input.session, JIPM_BOARD),
+    });
+    expect(result.ok).toBe(false);
+    expect(result.details[0]).toContain('S2');
+  });
+
+  it('ignores a part in the check socket', () => {
+    const input = inputFor(selfHoldProblemJson());
+    plug(input.session, 'S7', 'relay-my4n');
+    expect(checkUnusedParts(input).ok).toBe(true);
+  });
+});
+
+describe('checkForbiddenCircuit', () => {
+  it('fails when the timer breaks its own coil (chattering)', () => {
+    const input = inputFor(forbiddenOneShotProblemJson());
+    expect(input.chatters.length).toBeGreaterThan(0);
+    const result = checkForbiddenCircuit(input);
+    expect(result.ok).toBe(false);
+    expect(result.message).toContain('リレーを介して');
+  });
+});
+
+describe('checkCoilPolarity', () => {
+  it('fails when the coil is wired 13 = + / 14 = −', () => {
+    const input = inputFor({
+      ...selfHoldProblemJson(),
+      physicalOverride: { c03: ['CR1.13', 'CR1.14'] },
+    });
+    const result = checkCoilPolarity(input);
+    expect(result.ok).toBe(false);
+    expect(result.details[0]).toContain('CR1');
+  });
+
+  it('passes when nothing has been energised at all', () => {
+    const input = inputFor(selfHoldProblemJson());
+    expect(checkCoilPolarity({ ...input, log: new SignalLog() }).ok).toBe(true);
+  });
+});
+
+describe('checkPowerSequence', () => {
+  it('counts the violations recorded during the session', () => {
+    const input = inputFor(selfHoldProblemJson());
+    const hazard: HazardEvent = {
+      type: 'hazard',
+      kind: 'power-sequence-violation',
+      tMs: 0,
+      detail: 'breaker:off',
+    };
+    const result = checkPowerSequence({ ...input, hazards: [hazard] });
+    expect(result.ok).toBe(false);
+    expect(result.details).toEqual(['0ms: breaker:off']);
+  });
+
+  it('passes when the judging run powered up correctly', () => {
+    expect(checkPowerSequence(inputFor(selfHoldProblemJson())).ok).toBe(true);
+  });
+});
