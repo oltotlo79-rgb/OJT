@@ -1,10 +1,14 @@
 import type { AssembleProblem } from '../schema/assemble.js';
 import {
   isAssembleProblem,
+  isInspectPartsProblem,
+  isInspectRepairProblem,
   parseProblem,
   type ProblemIssue,
   type SupportedProblem,
 } from '../schema/index.js';
+import type { InspectPartsProblem } from '../schema/inspect-parts.js';
+import type { InspectRepairProblem } from '../schema/inspect-repair.js';
 import selfHold from './assemble/b-001-self-hold.json' with { type: 'json' };
 import interlock from './assemble/b-002-interlock.json' with { type: 'json' };
 import onDelay from './assemble/b-003-on-delay.json' with { type: 'json' };
@@ -13,9 +17,17 @@ import oneShot from './assemble/b-005-one-shot.json' with { type: 'json' };
 import flicker from './assemble/b-006-flicker.json' with { type: 'json' };
 import firstPress from './assemble/b-007-first-press.json' with { type: 'json' };
 import stopPriority from './assemble/b-008-stop-priority.json' with { type: 'json' };
+import relayBasic from './inspect-parts/c1-001-relay-basic.json' with { type: 'json' };
+import layerShort from './inspect-parts/c1-002-layer-short.json' with { type: 'json' };
+import timerCheck from './inspect-parts/c1-003-timer.json' with { type: 'json' };
+import mixedCheck from './inspect-parts/c1-004-mixed.json' with { type: 'json' };
+import c2SelfHold from './inspect-repair/c2-001-self-hold.json' with { type: 'json' };
+import c2SelfHoldContact from './inspect-repair/c2-002-self-hold-contact.json' with { type: 'json' };
+import c2OnDelay from './inspect-repair/c2-003-on-delay.json' with { type: 'json' };
+import c2OneShot from './inspect-repair/c2-004-one-shot.json' with { type: 'json' };
 
 /**
- * 内蔵課題。設計仕様 §7.8 / §7.9（モードB = 8題）。
+ * 内蔵課題。設計仕様 §7.8 / §7.9（モードB 8題・モードC1 4セット・モードC2 8題）。
  * JSONを直接読み、`parseProblem()` を通した結果だけを公開する。
  * 1件でも検証に落ちたら読み込み時に例外を投げるので、壊れた内蔵課題はビルド／テストで必ず落ちる。
  *
@@ -24,7 +36,7 @@ import stopPriority from './assemble/b-008-stop-priority.json' with { type: 'jso
  * `ERR_IMPORT_ATTRIBUTE_MISSING` で落ちる。`test/builtin-node-esm.test.ts` が見張っている。
  */
 
-/** 内蔵課題のJSON（`resources/content/assemble/<id>.json` と同じ内容）。 */
+/** 内蔵のモードB課題のJSON。 */
 const BUILTIN_ASSEMBLE_JSON: readonly unknown[] = [
   selfHold,
   interlock,
@@ -34,6 +46,22 @@ const BUILTIN_ASSEMBLE_JSON: readonly unknown[] = [
   flicker,
   firstPress,
   stopPriority,
+];
+
+/** 内蔵のモードC1課題のJSON。 */
+const BUILTIN_INSPECT_PARTS_JSON: readonly unknown[] = [
+  relayBasic,
+  layerShort,
+  timerCheck,
+  mixedCheck,
+];
+
+/** 内蔵のモードC2課題のJSON。 */
+const BUILTIN_INSPECT_REPAIR_JSON: readonly unknown[] = [
+  c2SelfHold,
+  c2SelfHoldContact,
+  c2OnDelay,
+  c2OneShot,
 ];
 
 /** 内蔵課題の検証に失敗したときに投げる。 */
@@ -81,6 +109,20 @@ export const BUILTIN_ASSEMBLE_PROBLEMS: readonly AssembleProblem[] = ofMode(
   'モードB課題',
 );
 
+/** 内蔵のモードC1課題（4セット）。§7.9 */
+export const BUILTIN_INSPECT_PARTS_PROBLEMS: readonly InspectPartsProblem[] = ofMode(
+  parseBuiltinProblems(BUILTIN_INSPECT_PARTS_JSON),
+  isInspectPartsProblem,
+  'モードC1課題',
+);
+
+/** 内蔵のモードC2課題（8題）。§7.9 */
+export const BUILTIN_INSPECT_REPAIR_PROBLEMS: readonly InspectRepairProblem[] = ofMode(
+  parseBuiltinProblems(BUILTIN_INSPECT_REPAIR_JSON),
+  isInspectRepairProblem,
+  'モードC2課題',
+);
+
 /**
  * 課題一覧に載せる内蔵課題。
  * **Plan 2A ではモードBのままにしてある**（C1/C2を開始できる画面が入るのは Plan 2B のため）。
@@ -88,7 +130,14 @@ export const BUILTIN_ASSEMBLE_PROBLEMS: readonly AssembleProblem[] = ofMode(
  */
 export const BUILTIN_PROBLEMS: readonly AssembleProblem[] = BUILTIN_ASSEMBLE_PROBLEMS;
 
-/** 内蔵課題をIDで引く。 */
-export function findBuiltinProblem(id: string): AssembleProblem | undefined {
-  return BUILTIN_PROBLEMS.find((p) => p.id === id);
+/** 内蔵課題すべて（モードB＋C1＋C2）。§7.9 */
+export const BUILTIN_ALL_PROBLEMS: readonly SupportedProblem[] = [
+  ...BUILTIN_ASSEMBLE_PROBLEMS,
+  ...BUILTIN_INSPECT_PARTS_PROBLEMS,
+  ...BUILTIN_INSPECT_REPAIR_PROBLEMS,
+];
+
+/** 内蔵課題をIDで引く（全モードから探す）。 */
+export function findBuiltinProblem(id: string): SupportedProblem | undefined {
+  return BUILTIN_ALL_PROBLEMS.find((p) => p.id === id);
 }
