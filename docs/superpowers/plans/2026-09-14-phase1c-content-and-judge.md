@@ -51,7 +51,7 @@
 - Create: `packages/content/vitest.config.ts`
 - Create: `packages/content/test/scaffold.test.ts`
 
-- [ ] **Step 1: パッケージ定義を作る**
+- [x] **Step 1: パッケージ定義を作る**
 
 `packages/content/package.json`:
 
@@ -83,7 +83,7 @@ zod のバージョンを 4.6.0 に固定する理由:
 - zod 4 系は `z.toJSONSchema()` を**標準で持つ**ため、`zod-to-json-schema` のような追加依存を入れずに `resources/schema/task.schema.json` を生成できる（仕様 §4.5「zod から JSON Schema を生成して同梱」）。
 - 4.6.0 は 4.6 系の最初のパッチで、pnpm の新規公開パッケージ抑止（`minimumReleaseAge`）に掛からない。実機で `pnpm install` が追加設定なしに通ることを確認済み。
 
-- [ ] **Step 2: TypeScript 設定を作る**
+- [x] **Step 2: TypeScript 設定を作る**
 
 `packages/content/tsconfig.json`:
 
@@ -97,7 +97,7 @@ zod のバージョンを 4.6.0 に固定する理由:
 
 `resolveJsonModule` は `src/builtin/index.ts` が課題JSONを `import` するために要る。
 
-- [ ] **Step 3: Vitest 設定を作る**
+- [x] **Step 3: Vitest 設定を作る**
 
 `packages/content/vitest.config.ts`:
 
@@ -125,7 +125,7 @@ export default defineConfig({
 密行列で解くためである（仕様 §5.2 の「端子400・節点200を想定」の範囲内）。判定1回＝模範＋訓練者の
 2回ぶんを判定区間の最後まで回すので、カバレッジ計測下では1テストが10秒近くかかることがある。
 
-- [ ] **Step 4: 依存をインストールする**
+- [x] **Step 4: 依存をインストールする**
 
 ```powershell
 pnpm install
@@ -133,7 +133,7 @@ pnpm install
 
 Expected: `packages/content` を含む全ワークスペースが解決され、`+ zod 4.6.0` が表示される。
 
-- [ ] **Step 5: 雛形が動くことを確かめるテストを書く**
+- [x] **Step 5: 雛形が動くことを確かめるテストを書く**
 
 `packages/content/test/scaffold.test.ts`:
 
@@ -154,7 +154,7 @@ describe('scaffold', () => {
 });
 ```
 
-- [ ] **Step 6: テストが通ることを確かめる**
+- [x] **Step 6: テストが通ることを確かめる**
 
 ```powershell
 pnpm --filter @ojt/content exec vitest run test/scaffold.test.ts
@@ -162,7 +162,7 @@ pnpm --filter @ojt/content exec vitest run test/scaffold.test.ts
 
 Expected: `Test Files  1 passed (1)` / `Tests  1 passed (1)`
 
-- [ ] **Step 7: コミット**
+- [x] **Step 7: コミット**
 
 ```powershell
 git add packages/content/package.json packages/content/tsconfig.json packages/content/vitest.config.ts packages/content/test/scaffold.test.ts pnpm-lock.yaml
@@ -182,7 +182,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 - Create: `packages/content/src/schema/common.ts`
 - Test: `packages/content/test/schema-common.test.ts`
 
-- [ ] **Step 1: 失敗するテストを書く**
+- [x] **Step 1: 失敗するテストを書く**
 
 `packages/content/test/schema-common.test.ts`:
 
@@ -343,7 +343,7 @@ describe('GradeSchema / TerminalIdSchema', () => {
 });
 ```
 
-- [ ] **Step 2: 失敗を確かめる**
+- [x] **Step 2: 失敗を確かめる**
 
 ```powershell
 pnpm --filter @ojt/content exec vitest run test/schema-common.test.ts
@@ -351,7 +351,7 @@ pnpm --filter @ojt/content exec vitest run test/schema-common.test.ts
 
 Expected: FAIL。`Failed Suites 1` ＋ `Error: Cannot find module '../src/schema/common.js' imported from ...`
 
-- [ ] **Step 3: 実装する**
+- [x] **Step 3: 実装する**
 
 `packages/content/src/schema/common.ts`:
 
@@ -517,7 +517,7 @@ export const TerminalIdSchema = z
   .regex(/^[^.:]+\.[^:]+$/u, '端子IDは `<部品ID>.<端子名>` の形式です');
 ```
 
-- [ ] **Step 4: 成功を確かめる**
+- [x] **Step 4: 成功を確かめる**
 
 ```powershell
 pnpm --filter @ojt/content exec vitest run test/schema-common.test.ts
@@ -525,7 +525,7 @@ pnpm --filter @ojt/content exec vitest run test/schema-common.test.ts
 
 Expected: `Test Files  1 passed (1)` / `Tests  17 passed (17)`
 
-- [ ] **Step 5: コミット**
+- [x] **Step 5: コミット**
 
 ```powershell
 git add packages/content/src/schema/common.ts packages/content/test/schema-common.test.ts
@@ -547,7 +547,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 
 `SchematicDocument` の構造検査は `@ojt/schematic-core` の `validateDocument()` が既に持っている（Plan 1B Task 12）。ここでは**同じ判定を二重に書かず**、zod の `superRefine` からそれを呼んで、返ってきた `{ path, message }` を zod の issue に変換する。
 
-- [ ] **Step 1: 失敗するテストを書く**
+- [x] **Step 1: 失敗するテストを書く**
 
 `packages/content/test/schema-schematic.test.ts`:
 
@@ -686,7 +686,7 @@ describe('toZodPath', () => {
 });
 ```
 
-- [ ] **Step 2: 失敗を確かめる**
+- [x] **Step 2: 失敗を確かめる**
 
 ```powershell
 pnpm --filter @ojt/content exec vitest run test/schema-schematic.test.ts
@@ -694,7 +694,7 @@ pnpm --filter @ojt/content exec vitest run test/schema-schematic.test.ts
 
 Expected: FAIL。`Failed Suites 1` ＋ `Error: Cannot find module '../src/schema/schematic.js' imported from ...`
 
-- [ ] **Step 3: 実装する**
+- [x] **Step 3: 実装する**
 
 `packages/content/src/schema/schematic.ts`:
 
@@ -801,7 +801,7 @@ export const SchematicDocumentSchema = z
 export type SchematicDocumentData = z.infer<typeof SchematicDocumentSchema>;
 ```
 
-- [ ] **Step 4: 成功を確かめる**
+- [x] **Step 4: 成功を確かめる**
 
 ```powershell
 pnpm --filter @ojt/content exec vitest run test/schema-schematic.test.ts
@@ -809,7 +809,7 @@ pnpm --filter @ojt/content exec vitest run test/schema-schematic.test.ts
 
 Expected: `Test Files  1 passed (1)` / `Tests  7 passed (7)`
 
-- [ ] **Step 5: コミット**
+- [x] **Step 5: コミット**
 
 ```powershell
 git add packages/content/src/schema/schematic.ts packages/content/test/schema-schematic.test.ts
@@ -829,7 +829,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 - Create: `packages/content/src/schema/operations.ts`
 - Test: `packages/content/test/schema-operations.test.ts`
 
-- [ ] **Step 1: 失敗するテストを書く**
+- [x] **Step 1: 失敗するテストを書く**
 
 `packages/content/test/schema-operations.test.ts`:
 
@@ -915,7 +915,7 @@ describe('pressedAt / lastOperationMs', () => {
 });
 ```
 
-- [ ] **Step 2: 失敗を確かめる**
+- [x] **Step 2: 失敗を確かめる**
 
 ```powershell
 pnpm --filter @ojt/content exec vitest run test/schema-operations.test.ts
@@ -923,7 +923,7 @@ pnpm --filter @ojt/content exec vitest run test/schema-operations.test.ts
 
 Expected: FAIL。`Failed Suites 1` ＋ `Error: Cannot find module '../src/schema/operations.js' imported from ...`
 
-- [ ] **Step 3: 実装する**
+- [x] **Step 3: 実装する**
 
 `packages/content/src/schema/operations.ts`:
 
@@ -1006,7 +1006,7 @@ export function lastOperationMs(operations: readonly Operation[]): number {
 }
 ```
 
-- [ ] **Step 4: 成功を確かめる**
+- [x] **Step 4: 成功を確かめる**
 
 ```powershell
 pnpm --filter @ojt/content exec vitest run test/schema-operations.test.ts
@@ -1014,7 +1014,7 @@ pnpm --filter @ojt/content exec vitest run test/schema-operations.test.ts
 
 Expected: `Test Files  1 passed (1)` / `Tests  9 passed (9)`
 
-- [ ] **Step 5: コミット**
+- [x] **Step 5: コミット**
 
 ```powershell
 git add packages/content/src/schema/operations.ts packages/content/test/schema-operations.test.ts
@@ -1036,7 +1036,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 
 `compareSignals` の既定は「盤に実在する出力部品すべて」（仕様 §7.4）で、これは課題の `board.extraParts` に依存する。そこでスキーマ上は省略可能にし、既定の解決は `resolveCompareSignals()` が担う。
 
-- [ ] **Step 1: 失敗するテストを書く**
+- [x] **Step 1: 失敗するテストを書く**
 
 `packages/content/test/schema-judge.test.ts`:
 
@@ -1112,7 +1112,7 @@ describe('STATIC_CHECK_IDS', () => {
 });
 ```
 
-- [ ] **Step 2: 失敗を確かめる**
+- [x] **Step 2: 失敗を確かめる**
 
 ```powershell
 pnpm --filter @ojt/content exec vitest run test/schema-judge.test.ts
@@ -1120,7 +1120,7 @@ pnpm --filter @ojt/content exec vitest run test/schema-judge.test.ts
 
 Expected: FAIL。`Failed Suites 1` ＋ `Error: Cannot find module '../src/schema/judge.js' imported from ...`
 
-- [ ] **Step 3: 実装する**
+- [x] **Step 3: 実装する**
 
 `packages/content/src/schema/judge.ts`:
 
@@ -1209,7 +1209,7 @@ export function resolveCompareSignals(
 }
 ```
 
-- [ ] **Step 4: 成功を確かめる**
+- [x] **Step 4: 成功を確かめる**
 
 ```powershell
 pnpm --filter @ojt/content exec vitest run test/schema-judge.test.ts
@@ -1217,7 +1217,7 @@ pnpm --filter @ojt/content exec vitest run test/schema-judge.test.ts
 
 Expected: `Test Files  1 passed (1)` / `Tests  6 passed (6)`
 
-- [ ] **Step 5: コミット**
+- [x] **Step 5: コミット**
 
 ```powershell
 git add packages/content/src/schema/judge.ts packages/content/test/schema-judge.test.ts
@@ -1240,7 +1240,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 
 **範囲決定（プレースホルダではない）:** Phase 1 が本体まで定義するのは `assemble` だけである。`inspect-parts` / `inspect-repair` の本体（`faults` / `parts`。仕様 §7.5）は **Phase 2** で、`plc` の本体（`plc` / `io` / `referenceLadder`。仕様 §7.6）は **Phase 3** で定義する。それまで未対応モードの課題は「読めるが開始できない」ものとして課題一覧に `unsupported-mode` の理由付きで並べる（Task 7）。`z.never()` のような「読めない」定義は置かない。
 
-- [ ] **Step 1: テスト用の課題の骨組みを作る**
+- [x] **Step 1: テスト用の課題の骨組みを作る**
 
 `packages/content/test/helpers/problems.ts`（`forbiddenOneShotProblemJson()` は Task 12・Task 13 で使う）:
 
@@ -1365,7 +1365,7 @@ export function parseOrThrow(json: unknown): AssembleProblem {
 }
 ```
 
-- [ ] **Step 2: 失敗するテストを書く**
+- [x] **Step 2: 失敗するテストを書く**
 
 `packages/content/test/schema-assemble.test.ts`:
 
@@ -1434,7 +1434,7 @@ describe('AssembleProblemSchema', () => {
 });
 ```
 
-- [ ] **Step 3: 失敗を確かめる**
+- [x] **Step 3: 失敗を確かめる**
 
 ```powershell
 pnpm --filter @ojt/content exec vitest run test/schema-assemble.test.ts
@@ -1442,7 +1442,7 @@ pnpm --filter @ojt/content exec vitest run test/schema-assemble.test.ts
 
 Expected: FAIL。`Failed Suites 1` ＋ `Error: Cannot find module '../src/schema/assemble.js' imported from ...`
 
-- [ ] **Step 4: 実装する**
+- [x] **Step 4: 実装する**
 
 `packages/content/src/schema/assemble.ts`:
 
@@ -1501,7 +1501,7 @@ export const AssembleProblemSchema = z
 export type AssembleProblem = z.infer<typeof AssembleProblemSchema>;
 ```
 
-- [ ] **Step 5: 成功を確かめる**
+- [x] **Step 5: 成功を確かめる**
 
 ```powershell
 pnpm --filter @ojt/content exec vitest run test/schema-assemble.test.ts
@@ -1509,7 +1509,7 @@ pnpm --filter @ojt/content exec vitest run test/schema-assemble.test.ts
 
 Expected: `Test Files  1 passed (1)` / `Tests  5 passed (5)`
 
-- [ ] **Step 6: コミット**
+- [x] **Step 6: コミット**
 
 ```powershell
 git add packages/content/src/schema/assemble.ts packages/content/test/helpers/problems.ts packages/content/test/schema-assemble.test.ts
@@ -1529,7 +1529,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 - Create: `packages/content/src/schema/index.ts`
 - Test: `packages/content/test/schema-index.test.ts`
 
-- [ ] **Step 1: 失敗するテストを書く**
+- [x] **Step 1: 失敗するテストを書く**
 
 `packages/content/test/schema-index.test.ts`:
 
@@ -1611,7 +1611,7 @@ describe('problemJsonSchema', () => {
 });
 ```
 
-- [ ] **Step 2: 失敗を確かめる**
+- [x] **Step 2: 失敗を確かめる**
 
 ```powershell
 pnpm --filter @ojt/content exec vitest run test/schema-index.test.ts
@@ -1619,7 +1619,7 @@ pnpm --filter @ojt/content exec vitest run test/schema-index.test.ts
 
 Expected: FAIL。`Failed Suites 1` ＋ `Error: Cannot find module '../src/schema/index.js' imported from ...`
 
-- [ ] **Step 3: 実装する**
+- [x] **Step 3: 実装する**
 
 `packages/content/src/schema/index.ts`:
 
@@ -1749,7 +1749,7 @@ export function problemJsonSchema(): Record<string, unknown> {
 }
 ```
 
-- [ ] **Step 4: 成功を確かめる**
+- [x] **Step 4: 成功を確かめる**
 
 ```powershell
 pnpm --filter @ojt/content exec vitest run test/schema-index.test.ts
@@ -1757,7 +1757,7 @@ pnpm --filter @ojt/content exec vitest run test/schema-index.test.ts
 
 Expected: `Test Files  1 passed (1)` / `Tests  7 passed (7)`
 
-- [ ] **Step 5: コミット**
+- [x] **Step 5: コミット**
 
 ```powershell
 git add packages/content/src/schema/index.ts packages/content/test/schema-index.test.ts
@@ -1779,7 +1779,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 
 仕様 §7.8 のフォルダ構成は `resources/content/<mode>/<id>.json` なので、フォルダ直下と1階層下の `.json` を名前順に集める。§13 #1 のとおり1ファイルの失敗で他を止めず、§13 #9 のとおりフォルダが無くても落ちない。
 
-- [ ] **Step 1: 失敗するテストを書く**
+- [x] **Step 1: 失敗するテストを書く**
 
 `packages/content/test/loader.test.ts`:
 
@@ -1890,7 +1890,7 @@ describe('mergeProblemSets', () => {
 });
 ```
 
-- [ ] **Step 2: 失敗を確かめる**
+- [x] **Step 2: 失敗を確かめる**
 
 ```powershell
 pnpm --filter @ojt/content exec vitest run test/loader.test.ts
@@ -1898,7 +1898,7 @@ pnpm --filter @ojt/content exec vitest run test/loader.test.ts
 
 Expected: FAIL。`Failed Suites 1` ＋ `Error: Cannot find module '../src/loader.js' imported from ...`
 
-- [ ] **Step 3: 実装する**
+- [x] **Step 3: 実装する**
 
 `packages/content/src/loader.ts`:
 
@@ -2059,7 +2059,7 @@ export function mergeProblemSets(builtin: ProblemSet, user: ProblemSet): Problem
 }
 ```
 
-- [ ] **Step 4: 成功を確かめる**
+- [x] **Step 4: 成功を確かめる**
 
 ```powershell
 pnpm --filter @ojt/content exec vitest run test/loader.test.ts
@@ -2067,7 +2067,7 @@ pnpm --filter @ojt/content exec vitest run test/loader.test.ts
 
 Expected: `Test Files  1 passed (1)` / `Tests  6 passed (6)`
 
-- [ ] **Step 5: コミット**
+- [x] **Step 5: コミット**
 
 ```powershell
 git add packages/content/src/loader.ts packages/content/test/loader.test.ts
@@ -2091,7 +2091,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 
 供給端子は `P.1` / `N.1` の1点ずつしかないため、母線に付く端子は `P.1 → 1本目 → 2本目 → …` という**渡り配線の鎖**になる（調査資料 §4.5）。つまり母線に付く端子が増えても供給端子が枯れることはなく、超過は「1端子に◯本つながります」というエラーに一本化されている。
 
-- [ ] **Step 1: 失敗するテストを書く**
+- [x] **Step 1: 失敗するテストを書く**
 
 `packages/content/test/reference.test.ts`:
 
@@ -2184,7 +2184,7 @@ describe('buildReferenceSession', () => {
 });
 ```
 
-- [ ] **Step 2: 失敗を確かめる**
+- [x] **Step 2: 失敗を確かめる**
 
 ```powershell
 pnpm --filter @ojt/content exec vitest run test/reference.test.ts
@@ -2192,7 +2192,7 @@ pnpm --filter @ojt/content exec vitest run test/reference.test.ts
 
 Expected: FAIL。`Failed Suites 1` ＋ `Error: Cannot find module '../src/reference.js' imported from ...`
 
-- [ ] **Step 3: 実装する**
+- [x] **Step 3: 実装する**
 
 `packages/content/src/reference.ts`:
 
@@ -2296,7 +2296,7 @@ export function buildReferenceSession(
 }
 ```
 
-- [ ] **Step 4: 成功を確かめる**
+- [x] **Step 4: 成功を確かめる**
 
 ```powershell
 pnpm --filter @ojt/content exec vitest run test/reference.test.ts
@@ -2304,7 +2304,7 @@ pnpm --filter @ojt/content exec vitest run test/reference.test.ts
 
 Expected: `Test Files  1 passed (1)` / `Tests  5 passed (5)`
 
-- [ ] **Step 5: コミット**
+- [x] **Step 5: コミット**
 
 ```powershell
 git add packages/content/src/reference.ts packages/content/test/reference.test.ts
@@ -2326,7 +2326,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 
 仕様 §7.3 のとおり、操作列に電源操作は書かない。`t=0` の時点で「ブレーカ → 電源スイッチ」の正しい手順（§5.3.5）で通電済みにしてから再生する。各 tick の先頭でその時刻の操作を適用してから `step()` するので、`t` の操作の効果は信号ログの `t` の記録に現れる。
 
-- [ ] **Step 1: 失敗するテストを書く**
+- [x] **Step 1: 失敗するテストを書く**
 
 `packages/content/test/runner.test.ts`:
 
@@ -2416,7 +2416,7 @@ describe('powerUp', () => {
 });
 ```
 
-- [ ] **Step 2: 失敗を確かめる**
+- [x] **Step 2: 失敗を確かめる**
 
 ```powershell
 pnpm --filter @ojt/content exec vitest run test/runner.test.ts
@@ -2424,7 +2424,7 @@ pnpm --filter @ojt/content exec vitest run test/runner.test.ts
 
 Expected: FAIL。`Failed Suites 1` ＋ `Error: Cannot find module '../src/runner.js' imported from ...`
 
-- [ ] **Step 3: 実装する**
+- [x] **Step 3: 実装する**
 
 `packages/content/src/runner.ts`:
 
@@ -2515,7 +2515,7 @@ export function runOperations(
 }
 ```
 
-- [ ] **Step 4: 成功を確かめる**
+- [x] **Step 4: 成功を確かめる**
 
 ```powershell
 pnpm --filter @ojt/content exec vitest run test/runner.test.ts
@@ -2523,7 +2523,7 @@ pnpm --filter @ojt/content exec vitest run test/runner.test.ts
 
 Expected: `Test Files  1 passed (1)` / `Tests  8 passed (8)`
 
-- [ ] **Step 5: コミット**
+- [x] **Step 5: コミット**
 
 ```powershell
 git add packages/content/src/runner.ts packages/content/test/runner.test.ts
@@ -2545,7 +2545,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 
 仕様 §7.7 のとおり、波形は課題JSONに書かず模範回路のシミュレーション結果から作る。上段が入力（PB）、下段が出力（PL／BZ）。タイマ設定秒のラベルは模範回路に装着されたタイマから付与する。
 
-- [ ] **Step 1: 失敗するテストを書く**
+- [x] **Step 1: 失敗するテストを書く**
 
 `packages/content/test/timechart.test.ts`:
 
@@ -2703,7 +2703,7 @@ describe('timerMarkers', () => {
 });
 ```
 
-- [ ] **Step 2: 失敗を確かめる**
+- [x] **Step 2: 失敗を確かめる**
 
 ```powershell
 pnpm --filter @ojt/content exec vitest run test/timechart.test.ts
@@ -2711,7 +2711,7 @@ pnpm --filter @ojt/content exec vitest run test/timechart.test.ts
 
 Expected: FAIL。`Failed Suites 1` ＋ `Error: Cannot find module '../src/timechart.js' imported from ...`
 
-- [ ] **Step 3: 実装する**
+- [x] **Step 3: 実装する**
 
 `packages/content/src/timechart.ts`:
 
@@ -2867,7 +2867,7 @@ export function startsAndEndsLow(chart: TimeChart): boolean {
 }
 ```
 
-- [ ] **Step 4: 成功を確かめる**
+- [x] **Step 4: 成功を確かめる**
 
 ```powershell
 pnpm --filter @ojt/content exec vitest run test/timechart.test.ts
@@ -2875,7 +2875,7 @@ pnpm --filter @ojt/content exec vitest run test/timechart.test.ts
 
 Expected: `Test Files  1 passed (1)` / `Tests  8 passed (8)`
 
-- [ ] **Step 5: コミット**
+- [x] **Step 5: コミット**
 
 ```powershell
 git add packages/content/src/timechart.ts packages/content/test/timechart.test.ts
@@ -2908,7 +2908,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 
 `coilPolarity` は「模範ではなく訓練者のネットリストで、通電時のコイル電圧が負」であることを見るため、再生後の `SignalLog` を入力に取る。
 
-- [ ] **Step 1: 失敗するテストを書く**
+- [x] **Step 1: 失敗するテストを書く**
 
 `packages/content/test/static-checks.test.ts`:
 
@@ -3084,7 +3084,7 @@ describe('checkPowerSequence', () => {
 });
 ```
 
-- [ ] **Step 2: 失敗を確かめる**
+- [x] **Step 2: 失敗を確かめる**
 
 ```powershell
 pnpm --filter @ojt/content exec vitest run test/static-checks.test.ts
@@ -3092,7 +3092,7 @@ pnpm --filter @ojt/content exec vitest run test/static-checks.test.ts
 
 Expected: FAIL。`Failed Suites 1` ＋ `Error: Cannot find module '../src/static-checks.js' imported from ...`
 
-- [ ] **Step 3: 実装する**
+- [x] **Step 3: 実装する**
 
 `packages/content/src/static-checks.ts`:
 
@@ -3295,7 +3295,7 @@ export function runStaticChecks(
 }
 ```
 
-- [ ] **Step 4: 成功を確かめる**
+- [x] **Step 4: 成功を確かめる**
 
 ```powershell
 pnpm --filter @ojt/content exec vitest run test/static-checks.test.ts
@@ -3303,7 +3303,7 @@ pnpm --filter @ojt/content exec vitest run test/static-checks.test.ts
 
 Expected: `Test Files  1 passed (1)` / `Tests  12 passed (12)`
 
-- [ ] **Step 5: コミット**
+- [x] **Step 5: コミット**
 
 ```powershell
 git add packages/content/src/static-checks.ts packages/content/test/static-checks.test.ts
@@ -3325,7 +3325,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 
 仕様 §8.3 の手順をそのまま実装する。模範と訓練者の両方を同じ操作列で再生 → `compareLogs()` で許容差付きに突き合わせ → 静的チェック → 結果を組み立てる。合格は「動作一致（不一致0）かつ有効な静的チェックにエラーが無い」（§7.4）。危険操作回数と所要時間は記録するが合否に影響しない（§17.2 #3）。
 
-- [ ] **Step 1: 失敗するテストを書く**
+- [x] **Step 1: 失敗するテストを書く**
 
 `packages/content/test/judge.test.ts`:
 
@@ -3506,7 +3506,7 @@ describe('judgeAssemble', () => {
 });
 ```
 
-- [ ] **Step 2: 失敗を確かめる**
+- [x] **Step 2: 失敗を確かめる**
 
 ```powershell
 pnpm --filter @ojt/content exec vitest run test/judge.test.ts
@@ -3514,7 +3514,7 @@ pnpm --filter @ojt/content exec vitest run test/judge.test.ts
 
 Expected: FAIL。`Failed Suites 1` ＋ `Error: Cannot find module '../src/judge.js' imported from ...`
 
-- [ ] **Step 3: 実装する**
+- [x] **Step 3: 実装する**
 
 `packages/content/src/judge.ts`:
 
@@ -3715,7 +3715,7 @@ export function judgeReference(
 }
 ```
 
-- [ ] **Step 4: 成功を確かめる**
+- [x] **Step 4: 成功を確かめる**
 
 ```powershell
 pnpm --filter @ojt/content exec vitest run test/judge.test.ts
@@ -3723,7 +3723,7 @@ pnpm --filter @ojt/content exec vitest run test/judge.test.ts
 
 Expected: `Test Files  1 passed (1)` / `Tests  11 passed (11)`
 
-- [ ] **Step 5: コミット**
+- [x] **Step 5: コミット**
 
 ```powershell
 git add packages/content/src/judge.ts packages/content/test/judge.test.ts
@@ -3764,7 +3764,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 
 `hints.schematicVisible` は仕様 §8.4 に合わせ、3級=常時表示（`true`）、2級・1級=`false` にする。
 
-- [ ] **Step 1: 課題① 自己保持回路を書く**
+- [x] **Step 1: 課題① 自己保持回路を書く**
 
 `packages/content/src/builtin/assemble/b-001-self-hold.json`:
 
@@ -3840,7 +3840,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 }
 ```
 
-- [ ] **Step 2: 課題② インターロック回路を書く**
+- [x] **Step 2: 課題② インターロック回路を書く**
 
 `packages/content/src/builtin/assemble/b-002-interlock.json`:
 
@@ -3883,10 +3883,9 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
       },
       {
         "id": "r2",
-        "from": { "bus": "P" },
+        "from": { "rung": "r1", "node": 1 },
         "to": { "bus": "N" },
         "cells": [
-          { "kind": "pb-b", "id": "c06", "device": "PB3" },
           { "kind": "pb-a", "id": "c07", "device": "PB2" },
           { "kind": "cr-b", "id": "c08", "device": "CR1" },
           { "kind": "coil", "id": "c09", "device": "CR2" }
@@ -3894,8 +3893,8 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
       },
       {
         "id": "r2h",
-        "from": { "rung": "r2", "node": 1 },
-        "to": { "rung": "r2", "node": 2 },
+        "from": { "rung": "r2", "node": 0 },
+        "to": { "rung": "r2", "node": 1 },
         "cells": [{ "kind": "cr-a", "id": "c10", "device": "CR2" }]
       },
       {
@@ -3927,8 +3926,10 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
     { "t": 3300, "target": "PB3", "action": "release" },
     { "t": 4500, "target": "PB2", "action": "press" },
     { "t": 4800, "target": "PB2", "action": "release" },
-    { "t": 6000, "target": "PB3", "action": "press" },
-    { "t": 6300, "target": "PB3", "action": "release" }
+    { "t": 5500, "target": "PB1", "action": "press" },
+    { "t": 5800, "target": "PB1", "action": "release" },
+    { "t": 6500, "target": "PB3", "action": "press" },
+    { "t": 6800, "target": "PB3", "action": "release" }
   ],
   "durationMs": 8000,
   "judge": {
@@ -3946,7 +3947,9 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 }
 ```
 
-- [ ] **Step 3: 課題③ オンディレー点灯回路を書く**
+**出荷時のJSONとの差分**: PB3のb接点は端子台の固定端子1組（`TB_PB.3b`/`TB_PB.3c`）しかなく、CRの接点のように複数の独立した組を持たない（`usesContactGroup()` がPB系のセルを「組を消費しない」扱いにしている理由）。計画本文のように r1 と r2 に別々の `pb-b PB3` 要素を置くと同じ物理端子が2つの節点に現れ、`assignToBoard()` が「端子 ... が2つの節点に現れます」で拒否する。実装は当初（Task 14, `87b4a32`）から r2 の起点を r1 のPB3接点通過後のノード（`{rung: 'r1', node: 1}`）にし、1個しかない物理b接点を2段で共有していた（cell `c06` は無く、`r2h` の橋渡しノードも `1`→`2` ではなく `0`→`1`）。加えて元の操作列はPB1→PB2の片方向しか試さず、CR1の段からCR2のb接点（`c03`）を落とした片側だけのインターロックでも合格してしまっていたため、CR2が自己保持している間にPB1を押す操作（`PB1@5500`）を足して先行優先の両方向を確認し、最後の消灯を`PB3@6500`にずらした（Task 1C-B, `5bb0264`）。
+
+- [x] **Step 3: 課題③ オンディレー点灯回路を書く**
 
 `packages/content/src/builtin/assemble/b-003-on-delay.json`:
 
@@ -4031,7 +4034,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 }
 ```
 
-- [ ] **Step 4: 自己整合テストを書く**
+- [x] **Step 4: 自己整合テストを書く**
 
 `packages/content/test/builtin.test.ts`（Task 16 で2つの `it` を足す）:
 
@@ -4125,7 +4128,7 @@ describe('builtin problems', () => {
 });
 ```
 
-- [ ] **Step 5: 失敗を確かめる**
+- [x] **Step 5: 失敗を確かめる**
 
 ```powershell
 pnpm --filter @ojt/content exec vitest run test/builtin.test.ts
@@ -4133,7 +4136,7 @@ pnpm --filter @ojt/content exec vitest run test/builtin.test.ts
 
 Expected: FAIL。`Failed Suites 1` ＋ `Error: Cannot find module '../src/builtin/index.js' imported from ...`
 
-- [ ] **Step 6: 内蔵課題を登録する**
+- [x] **Step 6: 内蔵課題を登録する**
 
 `packages/content/src/builtin/index.ts`:
 
@@ -4189,7 +4192,7 @@ export function findBuiltinProblem(id: string): AssembleProblem | undefined {
 }
 ```
 
-- [ ] **Step 7: 成功を確かめる**
+- [x] **Step 7: 成功を確かめる**
 
 ```powershell
 pnpm --filter @ojt/content exec vitest run test/builtin.test.ts
@@ -4197,7 +4200,7 @@ pnpm --filter @ojt/content exec vitest run test/builtin.test.ts
 
 Expected: `Test Files  1 passed (1)` / `Tests  14 passed (14)`（共通2件＋3題×4件）
 
-- [ ] **Step 8: コミット**
+- [x] **Step 8: コミット**
 
 ```powershell
 git add packages/content/src/builtin/assemble/b-001-self-hold.json packages/content/src/builtin/assemble/b-002-interlock.json packages/content/src/builtin/assemble/b-003-on-delay.json packages/content/src/builtin/index.ts packages/content/test/builtin.test.ts
@@ -4227,7 +4230,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 
 ⑤と⑥は仕様 §5.3.2 の復帰時間モデル（通電断が100ms未満なら経過時間を保持）の下で**正しく動く**構成にしてある。⑤はタイマの限時接点で自分のコイルを直接切らず CR1 を介し、⑥はタイマ2個だけで組まず CR2 を介する（調査資料 §5.5 の「厳禁」を避ける形）。この2題の模範回路は Task 14 で書いた自己整合テストがそのまま検証する（`chatter` が空であることを含む）。
 
-- [ ] **Step 1: 課題④ 順次点灯回路を書く**
+- [x] **Step 1: 課題④ 順次点灯回路を書く**
 
 `packages/content/src/builtin/assemble/b-004-sequential.json`:
 
@@ -4330,7 +4333,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 }
 ```
 
-- [ ] **Step 2: 課題⑤ 一定時間動作回路を書く**
+- [x] **Step 2: 課題⑤ 一定時間動作回路を書く**
 
 `packages/content/src/builtin/assemble/b-005-one-shot.json`:
 
@@ -4341,7 +4344,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
   "mode": "assemble",
   "title": "一定時間動作回路（ワンショット）",
   "grade": 2,
-  "description": "黒押ボタン（PB1）を押すと白ランプ（PL1）が1.5秒だけ点灯し、自動的に消灯する回路を組みなさい。タイマの限時接点で自分のコイルを直接切ってはならない（リレー CR1 を介して復帰時間を確保すること）。",
+  "description": "黒押ボタン（PB1）を押すと白ランプ（PL1）が1.5秒だけ点灯し、自動的に消灯する回路を組みなさい。消灯後にもう一度押せば、同じように1.5秒だけ点灯すること。タイマの限時接点で自分のコイルを直接切ってはならない（リレー CR1 を介して復帰時間を確保すること）。",
   "timeLimit": { "standardMin": 30, "cutoffMin": 50 },
   "board": {
     "boardId": "board-jipm-std",
@@ -4395,9 +4398,11 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
   },
   "operations": [
     { "t": 500, "target": "PB1", "action": "press" },
-    { "t": 800, "target": "PB1", "action": "release" }
+    { "t": 800, "target": "PB1", "action": "release" },
+    { "t": 3000, "target": "PB1", "action": "press" },
+    { "t": 3300, "target": "PB1", "action": "release" }
   ],
-  "durationMs": 5000,
+  "durationMs": 6000,
   "judge": {
     "tolerance": { "edgeMs": 200, "ratio": 0.1 },
     "staticChecks": {
@@ -4413,7 +4418,9 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 }
 ```
 
-- [ ] **Step 3: 課題⑥ フリッカ回路を書く**
+**出荷時のJSONとの差分**: 回路図（`rungs`）自体は計画本文のまま変更していない。元の操作列はPB1を1回しか押さないため、限時接点が自分のコイル（T1）を直接切ってCR1が復帰しない誤った回路（`r2` の `cr-a CR1` を欠いたまま `t-b T1` だけで自己遮断する回路）でも、1回目の1.5秒点灯さえ合えば合格してしまっていた。2回目の押下（`PB1@3000`）を足して消灯後にもう一度正しく点灯し直す（＝CR1が正しく復帰する）ことまで確認するようにし、`durationMs` を5000→6000に伸ばした。課題文にも「消灯後にもう一度押せば、同じように1.5秒だけ点灯すること」という復帰の要件を明記した（Task 1C-B, `5bb0264`）。
+
+- [x] **Step 3: 課題⑥ フリッカ回路を書く**
 
 `packages/content/src/builtin/assemble/b-006-flicker.json`:
 
@@ -4524,7 +4531,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 }
 ```
 
-- [ ] **Step 4: 内蔵課題の登録に3題を足す**
+- [x] **Step 4: 内蔵課題の登録に3題を足す**
 
 `packages/content/src/builtin/index.ts`（全文を次で置き換える）:
 
@@ -4590,7 +4597,7 @@ export function findBuiltinProblem(id: string): AssembleProblem | undefined {
 }
 ```
 
-- [ ] **Step 5: 成功を確かめる**
+- [x] **Step 5: 成功を確かめる**
 
 ```powershell
 pnpm --filter @ojt/content exec vitest run test/builtin.test.ts
@@ -4598,7 +4605,7 @@ pnpm --filter @ojt/content exec vitest run test/builtin.test.ts
 
 Expected: `Test Files  1 passed (1)` / `Tests  26 passed (26)`（共通2件＋6題×4件）
 
-- [ ] **Step 6: コミット**
+- [x] **Step 6: コミット**
 
 ```powershell
 git add packages/content/src/builtin/assemble/b-004-sequential.json packages/content/src/builtin/assemble/b-005-one-shot.json packages/content/src/builtin/assemble/b-006-flicker.json packages/content/src/builtin/index.ts
@@ -4631,7 +4638,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 固定配線と合わせて3本になってしまう。ランプ段を母線ではなくリセット節点から取ることで `TB_PB.4c` に付く
 訓練者の配線は1本だけになり、実機の制約（赤PBの端子には1本しか足せない。§7.6）とも一致する。
 
-- [ ] **Step 1: 課題⑦ 早押し優先回路を書く**
+- [x] **Step 1: 課題⑦ 早押し優先回路を書く**
 
 `packages/content/src/builtin/assemble/b-007-first-press.json`:
 
@@ -4745,12 +4752,18 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
     { "t": 2800, "target": "PB3", "action": "release" },
     { "t": 4000, "target": "PB4", "action": "press" },
     { "t": 4300, "target": "PB4", "action": "release" },
-    { "t": 5000, "target": "PB3", "action": "press" },
-    { "t": 5300, "target": "PB3", "action": "release" },
+    { "t": 5000, "target": "PB2", "action": "press" },
+    { "t": 5300, "target": "PB2", "action": "release" },
+    { "t": 5800, "target": "PB1", "action": "press" },
+    { "t": 6100, "target": "PB1", "action": "release" },
     { "t": 7000, "target": "PB4", "action": "press" },
-    { "t": 7300, "target": "PB4", "action": "release" }
+    { "t": 7300, "target": "PB4", "action": "release" },
+    { "t": 8000, "target": "PB3", "action": "press" },
+    { "t": 8300, "target": "PB3", "action": "release" },
+    { "t": 9000, "target": "PB4", "action": "press" },
+    { "t": 9300, "target": "PB4", "action": "release" }
   ],
-  "durationMs": 9000,
+  "durationMs": 11000,
   "judge": {
     "tolerance": { "edgeMs": 200, "ratio": 0.1 },
     "staticChecks": {
@@ -4766,7 +4779,9 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 }
 ```
 
-- [ ] **Step 2: 課題⑧ 停止優先の起動・停止と警報表示を書く**
+**出荷時のJSONとの差分**: 回路図（`rungs`）自体は計画本文のまま変更していない。元の操作列はPB1とPB3が最初に押されるラウンドしか試さず、PB2が最初に押されたときにPL2を点灯させる枝（`r2`/`r2h`/`r5`＝PB2・CR2・PL2）を丸ごと欠いた回路でも合格してしまっていた。PB2を最初に押すラウンド（`PB2@5000`→`PB1@5800`。PB2が勝ち、後からのPB1は無視される）を足し、PB1・PB2・PB3のそれぞれが最初に押されたときに対応する1灯だけが点灯する3ラウンドを確認する操作列にし、`durationMs` を9000→11000に伸ばした（Task 1C-B, `5bb0264`）。
+
+- [x] **Step 2: 課題⑧ 停止優先の起動・停止と警報表示を書く**
 
 `packages/content/src/builtin/assemble/b-008-stop-priority.json`:
 
@@ -4808,18 +4823,17 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
       },
       {
         "id": "r2",
-        "from": { "bus": "P" },
+        "from": { "rung": "r1", "node": 1 },
         "to": { "bus": "N" },
         "cells": [
-          { "kind": "pb-b", "id": "c05", "device": "PB2" },
           { "kind": "pb-a", "id": "c06", "device": "PB3" },
           { "kind": "coil", "id": "c07", "device": "CR2" }
         ]
       },
       {
         "id": "r2h",
-        "from": { "rung": "r2", "node": 1 },
-        "to": { "rung": "r2", "node": 2 },
+        "from": { "rung": "r2", "node": 0 },
+        "to": { "rung": "r2", "node": 1 },
         "cells": [{ "kind": "cr-a", "id": "c08", "device": "CR2" }]
       },
       {
@@ -4881,7 +4895,9 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 }
 ```
 
-- [ ] **Step 3: 8題ぶんの検査をテストに足す**
+**出荷時のJSONとの差分**: PB2のb接点もPB3と同様に端子台の固定端子1組しか持たない。計画本文のように r1 と r2 に別々の `pb-b PB2` 要素を置くと同じ物理端子が2つの節点に現れ `assignToBoard()` が拒否するため、実装は当初（Task 16, `5fa27bc`）から r2 の起点を r1 のPB2接点通過後のノード（`{rung: 'r1', node: 1}`）にし、1個しかない物理b接点を2段で共有していた（cell `c05` は無く、`r2h` の橋渡しノードも `1`→`2` ではなく `0`→`1`）。操作列・`durationMs`・タイムチャートは計画本文のとおりで変更していない。
+
+- [x] **Step 3: 8題ぶんの検査をテストに足す**
 
 `packages/content/test/builtin.test.ts` の `it('refuses to start when a builtin problem is broken', ...)` の直後、`describe.each(...)` の直前に次の2件を挿入する:
 
@@ -4910,7 +4926,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 
 ```
 
-- [ ] **Step 4: 失敗を確かめる**
+- [x] **Step 4: 失敗を確かめる**
 
 ```powershell
 pnpm --filter @ojt/content exec vitest run test/builtin.test.ts
@@ -4920,7 +4936,7 @@ Expected: FAIL。`Tests  2 failed | 26 passed (28)`。
 `ships 8 assemble problems (§7.9)` が `expected [ ... ] to have a length of 8 but got 6`、
 `covers every hint level (§8.4)` が `expected [ 2, 3 ] to deeply equal [ 1, 2, 3 ]` で落ちる。
 
-- [ ] **Step 5: 内蔵課題の登録を8題にする**
+- [x] **Step 5: 内蔵課題の登録を8題にする**
 
 `packages/content/src/builtin/index.ts`（全文を次で置き換える）:
 
@@ -4990,7 +5006,7 @@ export function findBuiltinProblem(id: string): AssembleProblem | undefined {
 }
 ```
 
-- [ ] **Step 6: 成功を確かめる**
+- [x] **Step 6: 成功を確かめる**
 
 ```powershell
 pnpm --filter @ojt/content exec vitest run test/builtin.test.ts
@@ -4998,7 +5014,7 @@ pnpm --filter @ojt/content exec vitest run test/builtin.test.ts
 
 Expected: `Test Files  1 passed (1)` / `Tests  36 passed (36)`（共通4件＋8題×4件）
 
-- [ ] **Step 7: コミット**
+- [x] **Step 7: コミット**
 
 ```powershell
 git add packages/content/src/builtin/assemble/b-007-first-press.json packages/content/src/builtin/assemble/b-008-stop-priority.json packages/content/src/builtin/index.ts packages/content/test/builtin.test.ts
@@ -5018,7 +5034,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 - Create: `packages/content/src/index.ts`
 - Delete: `packages/content/test/scaffold.test.ts`
 
-- [ ] **Step 1: 公開APIを書く**
+- [x] **Step 1: 公開APIを書く**
 
 `packages/content/src/index.ts`:
 
@@ -5158,7 +5174,7 @@ export {
 } from './builtin/index.js';
 ```
 
-- [ ] **Step 2: 雛形の疎通テストを消す**
+- [x] **Step 2: 雛形の疎通テストを消す**
 
 Task 1 の `test/scaffold.test.ts` は依存が解決できることの確認用だった。`src/index.ts` が全モジュールを束ねた今は不要なので削除する。
 
@@ -5166,7 +5182,7 @@ Task 1 の `test/scaffold.test.ts` は依存が解決できることの確認用
 Remove-Item packages/content/test/scaffold.test.ts
 ```
 
-- [ ] **Step 3: パッケージ全体のテストを通す**
+- [x] **Step 3: パッケージ全体のテストを通す**
 
 ```powershell
 pnpm --filter @ojt/content exec vitest run
@@ -5174,7 +5190,7 @@ pnpm --filter @ojt/content exec vitest run
 
 Expected: `Test Files  13 passed (13)` / `Tests  137 passed (137)`
 
-- [ ] **Step 4: カバレッジを確かめる（仕様 §14.2 の90%）**
+- [x] **Step 4: カバレッジを確かめる（仕様 §14.2 の90%）**
 
 ```powershell
 pnpm --filter @ojt/content exec vitest run --coverage
@@ -5182,7 +5198,7 @@ pnpm --filter @ojt/content exec vitest run --coverage
 
 Expected: 閾値（lines / statements / functions / branches とも90%）を下回らずに終了する。実測は Statements 97%台・Branches 93%台・Functions 98%台・Lines 98%台。
 
-- [ ] **Step 5: 型と静的解析を通す**
+- [x] **Step 5: 型と静的解析を通す**
 
 ```powershell
 pnpm -r typecheck
@@ -5191,7 +5207,7 @@ pnpm lint
 
 Expected: `packages/content typecheck: Done` が出て、`eslint .` が無出力で終わる（`import-x/no-cycle` を含む）。
 
-- [ ] **Step 6: 整形を確かめる**
+- [x] **Step 6: 整形を確かめる**
 
 ```powershell
 npx prettier --check "packages/content/**/*.{ts,json}"
@@ -5199,7 +5215,7 @@ npx prettier --check "packages/content/**/*.{ts,json}"
 
 Expected: `All matched files use Prettier code style!`
 
-- [ ] **Step 7: ワークスペース全体を通す**
+- [x] **Step 7: ワークスペース全体を通す**
 
 ```powershell
 pnpm -r test
@@ -5207,7 +5223,7 @@ pnpm -r test
 
 Expected: `circuit-sim` / `board-model` / `schematic-core` / `content` の4パッケージがすべて `Done`。
 
-- [ ] **Step 8: コミット**
+- [x] **Step 8: コミット**
 
 ```powershell
 git add packages/content/src/index.ts packages/content/test/scaffold.test.ts
@@ -5274,18 +5290,45 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 | 8 | §6.3「チェック用回路の線色は黄」 | 固定配線（`locked`）は線色チェックの対象外にした | Plan 1B 改訂版で、実物の盤の既設配線はチェック用回路を含めてすべて**青**であることが写真から確定した。既設配線は訓練者の責任範囲ではないので、色ではなく `locked` で「触れない線」を識別する。訓練者が引ける色は `ASSEMBLE_WIRE_COLOR = '青'`（モードB）のまま |
 | 9 | §7.5 `faults` / §7.6 `plc` の課題形式 | Phase 1 では本体スキーマを定義しない。`mode` が `inspect-parts` / `inspect-repair` / `plc` の課題は `z.looseObject` でヘッダだけ読み、`parseProblem()` が `unsupported-mode` を返して課題一覧に理由付きで並べる | 範囲決定。`z.never()` のような「読めない」定義を置くと、Phase 2/3 で書いた課題ファイルが「壊れたファイル」と表示されてしまう。ヘッダだけ読めば一覧に出せるので、拡張点を塞がずに済む |
 
+### 実装で確定した公開API（計画本文との差分）
+
+- すべてのオブジェクトスキーマは `z.strictObject`（未知のキーを拒否）にした。前方互換のため `UnsupportedProblemSchema` だけは `z.looseObject` のまま残した（§13 #8）。
+- `schema/index.ts` の読込時に `z.config(z.locales.ja())` を一度だけ呼び、zodの既定メッセージを日本語化する。この意図的な副作用を壊さないよう `package.json` に `"sideEffects": ["./src/schema/index.ts"]` を明記した。
+- `toProblemIssues(error)` は `unrecognized_keys` をキー名まで、`invalid_union` を候補ごとの違反位置まで展開して一覧化する（同一の位置・文言は1回だけ出す）。
+- `AssembleProblemSchema` の `superRefine` が `durationMs ≥ lastOperationMs(operations) + TICK_MS` を要求する（再生ループが `t < durationMs` なので、最後の操作と同じ長さだとその操作が1度も適用されない）。
+- 同じ `superRefine` が `hints.schematicVisible === (grade === 3)` を検証する（§8.4）。
+- `GradeSchema = z.literal([1, 2, 3])`（共用体ではなくリテラル和）にして、級違反がスキーマエラー一覧に1件だけ出るようにした。
+- `toProblemPath(problem, path)` を `reference.ts` から公開し、盤側の語彙（接点組・役割名・電線IDなど）で返る割当エラーのパスを課題JSON側のキー（`board.socketRoles` / `schematic.rungs[i].cells[j]` / `inventory` など、対応しないものは `schematic`）に直す。
+- `resolveCompareSignals(judge, extraParts)` は第2引数（`extraParts`）を必須にした。既定は `judge.compareSignals ?? defaultCompareSignals(extraParts)`。
+- `judgeAssemble()` は、模範回路が変換できても実質動かない（ランプ・コイルが1回もログ上で変化しない）場合と、`judge.compareSignals` に模範回路の記録に無い信号が指定されている場合の両方で、訓練者を誤判定せず `ok: false` を返す（前者は `findDeadReferenceIssue()`、後者は `judge.compareSignals[i]` を指すエラー）。
+- `runOperations()` の再生は時刻引きの表ではなく `cursor` を1つずつ進める先頭走査にした。`t ≤ tick` の操作を順に適用するので、tick に載らない `t` や既定と違う `tickMs` でも操作を取りこぼさない。
+- `loadProblemsFromDir()` はBOMを読込直後に落とし、UTF-8として読めないバイト（U+FFFD）を含むファイルは文字化けしたまま読まず `read-error` にする。1階層下の探索はフォルダを課題ファイルと取り違えず（それ以上は降りない）、1つのフォルダが読めなくてもそのフォルダだけを `read-error` にして残りは読み進める（§13 #9）。
+- `problemJsonSchema()`（`z.toJSONSchema(ProblemSchema, { io: 'input', target: 'draft-2020-12' })`）が生成するJSON Schemaを `packages/content/schema/task.schema.json` としてコミットし、テストが生成結果との一致を見張る（`pnpm --filter @ojt/content schema:write` で再生成）。
+- 内蔵課題のJSON importはすべて `with { type: 'json' }`（import attributes）を付けて読み込む。無いと素のNode ESM（Electronのメインプロセス相当）が `ERR_IMPORT_ATTRIBUTE_MISSING` で落ちる（Vite/Vitest は属性なしでも読めてしまうため、Node起動で見張るテストを別途足した）。
+
+---
+
+## 追加タスク（レビュー指摘により追加）
+
+| タスク | 内容 | コミット |
+|---|---|---|
+| 1C-A | 品質レビュー（Task 1〜10）の指摘のうちスキーマ・読込まわりを修正。未知キーを拒否する `z.strictObject` に統一（`UnsupportedProblemSchema` のみ `z.looseObject` のまま）。`z.config(z.locales.ja())` をスキーマ読込時に一度だけ呼び既定メッセージを日本語化（`package.json` に `sideEffects` を明記）。`toProblemIssues()` が `unrecognized_keys` をキー名まで、`invalid_union` を候補ごとの位置まで展開するようにした。`durationMs` は最後の操作より `TICK_MS` 以上長いことを要求し、`hints.schematicVisible` は3級のみ true であることを検証。`resolveCompareSignals()` の第2引数を必須化。`schema:write` スクリプト（`scripts/write-json-schema.ts` / `scripts/ts-source-resolve.js`）を追加し `schema/task.schema.json` を生成・コミット。課題ファイルのBOMを読込直後に落とし、UTF-8として読めない文字化けファイルは `read-error` にする。1階層下の探索でフォルダを課題ファイルと取り違えないようにし、1フォルダの読込失敗が他に波及しないようにした。割当エラーのパスを課題JSON側の語彙に直す `toProblemPath()` を追加。`runOperations()` の再生を時刻引き表からカーソル走査に変え、tick に載らない `t` でも操作を取りこぼさないようにした。 | `af0a12a`, `8bc5c1c` |
+| 1C-B | 品質レビュー（Task 11〜16 + 1C-A）の指摘のうち内蔵課題の中身と最終仕上げを修正。b-002・b-005・b-007 の操作列を、要点を欠いた訓練者回路が誤って合格しないよう作り直した（b-002はCR2自己保持中のPB1押下、b-005は2回目のPB1押下で復帰確認、b-007はPB2が最初に勝つラウンドを追加）。これを検証する弁別テスト `test/builtin-discrimination.test.ts` を追加。内蔵課題のJSON importに `with { type: 'json' }` を付け、生のNode ESMで読めることを見張る `test/builtin-node-esm.test.ts` を追加。`judge.compareSignals` に模範回路の記録に無い信号があれば訓練者を誤判定せず課題エラーとして返すガードを追加。`GradeSchema` を `z.literal([1, 2, 3])` にして級違反を1件にまとめ `schema/task.schema.json` を再生成（`anyOf`→`enum`）。タイムチャートが判定区間の終端ちょうどで長さ0の区間を作らないよう修正。禁則回路の詳細メッセージを信号ごとに1行へ集約。`toProblemPath()` の既定パスを `schematic.<ID>` から `schematic` に修正。テスト土台 `test/helpers/problems.ts` の役割割当を呼び出しごとに作り直し共有可変オブジェクトを排除。 | `5bb0264`, `16dd933` |
+
 ---
 
 ## 完了条件
 
-- [ ] `pnpm --filter @ojt/content exec vitest run` が `Test Files 13 passed` / `Tests 137 passed` で終わる。
-- [ ] `pnpm --filter @ojt/content exec vitest run --coverage` が閾値90%（lines / statements / functions / branches）を満たして終わる。
-- [ ] `pnpm -r typecheck` と `pnpm lint`（`import-x/no-cycle` 込み）が無警告で通る。
-- [ ] `npx prettier --check "packages/content/**/*.{ts,json}"` が `All matched files use Prettier code style!` を出す。
-- [ ] `pnpm -r test` で `circuit-sim` / `board-model` / `schematic-core` / `content` の4パッケージがすべて通る。
-- [ ] 内蔵課題8題（`b-001`〜`b-008`）が全件、自分の操作列で判定にかけて合格し、チャタリング0・危険操作0で、タイムチャートが空でなく始点・終点とも論理0である。
-- [ ] 模範回路から1本外す／線色を変える／1端子に3本差す／禁則ワンショットを組む、のいずれでも判定が不合格になり、差分一覧または該当する静的チェックに理由が出る。
-- [ ] `packages/content` は `React` / `Electron` / `three` に依存していない（`package.json` の `dependencies` が `@ojt/board-model` / `@ojt/circuit-sim` / `@ojt/schematic-core` / `zod` の4つだけ）。
+- [x] `pnpm --filter @ojt/content exec vitest run` が `Test Files 13 passed` / `Tests 137 passed` で終わる。
+- [x] `pnpm --filter @ojt/content exec vitest run --coverage` が閾値90%（lines / statements / functions / branches）を満たして終わる。
+- [x] `pnpm -r typecheck` と `pnpm lint`（`import-x/no-cycle` 込み）が無警告で通る。
+- [x] `npx prettier --check "packages/content/**/*.{ts,json}"` が `All matched files use Prettier code style!` を出す。
+- [x] `pnpm -r test` で `circuit-sim` / `board-model` / `schematic-core` / `content` の4パッケージがすべて通る。
+- [x] 内蔵課題8題（`b-001`〜`b-008`）が全件、自分の操作列で判定にかけて合格し、チャタリング0・危険操作0で、タイムチャートが空でなく始点・終点とも論理0である。
+- [x] 模範回路から1本外す／線色を変える／1端子に3本差す／禁則ワンショットを組む、のいずれでも判定が不合格になり、差分一覧または該当する静的チェックに理由が出る。
+- [x] `packages/content` は `React` / `Electron` / `three` に依存していない（`package.json` の `dependencies` が `@ojt/board-model` / `@ojt/circuit-sim` / `@ojt/schematic-core` / `zod` の4つだけ）。
+
+2026-09-14 完了（Task 1C-B 反映後）: `content` 14ソースファイル（`src` 7 + `src/schema` 6 + `src/builtin` 1）/17テストファイル/196テスト、カバレッジ Stmts 99.52 / Branches 97.01 / Funcs 100 / Lines 100。ルート全体594テスト（`circuit-sim` 178・`board-model` 154・`schematic-core` 64・`content` 196・`desktop` 2、5プロジェクト合計）。最終コミット `16dd933`。レビュー: 全六グループについて Sonnet による仕様レビュー ✅、Opus による品質レビュー A（Task 1〜10）・B（Task 11〜16 + 1C-A）を実施し、指摘は追加タスク 1C-A・1C-B として反映済み。
 
 ---
 
@@ -5298,3 +5341,4 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 | 2026-09-14 | Plan 1B 改訂（8ソケット等）に追随。`SocketRolesSchema` を S1〜S8 の `Partial`（`z.strictObject`）に変え、内蔵課題8題の `board.socketRoles` を課題1形式 `{S1..S4, S7:CHK}` ／課題2形式 `{S1,S2,S5:T1,S6:T2,S7:CHK}` に更新。固定配線が青・`locked` になったため `checkWireColorRule()` は `locked` を検査対象外にし、`checkUnusedParts()` は予備ソケットに対応して `socketPartId()` を使うようにした。`judge.ts` の危険操作集計は circuit-sim の `HAZARD_KINDS` を唯一の源にした。在庫の上限をソケット数に合わせて8にした。`ducts` / `routeWire` / `WireRoute` は content から参照していないため影響なし |
 | 2026-09-14 | 実装された `@ojt/board-model` の公開APIに合わせて整合を取った。①`SocketRolesSchema` の重複・`CHK` 判定を自前の `refine` から board-model の `validateSocketRoles()` 呼び出しに置き換え、**`CHK` は `S7` 固定**（`CHECK_SOCKET_ID`。チェック用回路の既設配線が S7 に結線されているため）という実装どおりの規則を課題JSONにも効かせた（テスト1件追加）。②`SocketRoleSchema` / `MountableKindSchema` を手書きの文字列列挙からエクスポート済みタプル `z.enum(SOCKET_ROLES)` / `z.enum(MOUNTABLE_KINDS)` に、在庫上限を `SOCKET_IDS.length` に変えて盤の語彙の二重定義を無くした。③zod の `S1?: SocketRole \| undefined` は `exactOptionalPropertyTypes` のもとで `SocketRoles` に直接渡せないため、変換関数 `toSocketRoles()` を `schema/common.ts` に足し（テスト1件追加）、`reference.ts` の `toRoles()` をそれ経由にした。④`SchematicCellSchema.presetMs` の範囲を実装の丸め規則に合わせ、`snapPresetToStep()` / `TIMER_RANGES` を使う `hasExactTimerRange()` で検証するようにした（0〜10秒は0.1秒刻み・下限100ms、**0〜60秒は0.5秒刻み・下限500ms**。テスト1件追加）。⑤`judgeAssemble()` に「訓練者セッションの盤が違う場合は `toNetlist()` が `SessionError` を投げる」ことを明記（board-model 側の設計。ここでは課題エラーに変換しない）。テスト総数 133 → 136 |
 | 2026-09-14 | 実装された `@ojt/schematic-core` の型（`AssignOptions` / `SchematicCell`）に合わせて、型レビュー（`exactOptionalPropertyTypes: true` 下の `tsc`）で見つかった2件を修正した。①`physicalOverride` は `z.record(z.string().min(1), z.array(TerminalIdSchema).length(2))` だと要素数がTS型に出ず `TerminalId[]` のままで、`toPhysicalOverride()` の戻り値が `AssignOptions.physicalOverride`（`Readonly<Record<string, readonly [TerminalId, TerminalId]>>`）に型として渡せなかった（TS2322）。`z.tuple([TerminalIdSchema, TerminalIdSchema])` に変え、`toPhysicalOverride()` の引数・戻り値を `readonly [TerminalId, TerminalId]` ベースに直した（差分表#6）。②模範回路は `physicalOverride` の誤りで、`assignToBoard()` の検査（1端子2本・接点組の不足など）をすべて通る＝構造上は組めても、実質動かないことがある（例: コイルの片方の端子を母線へ直結し、実機のコイル端子〈もう一方のピン〉を宙に浮かせる）。`judge.ts` の `judgeAssemble()` に、模範ログでランプ・コイル信号（`PLn` 本体／`CRn.coil`／`Tn.coil`）が1回も変化しなければ課題エラーを返す検査 `findDeadReferenceIssue()` を追加し、`judge.test.ts` に失敗するテストを1件足した（§13 #2 の表にも反映）。`SchematicCell.presetMs` の `number | undefined` への拡張（schematic-core 側 Task 13d）は既存コードのまま吸収できるため本プランの変更は無い。テスト総数 136 → 137 |
+| 2026-09-14 | 実装完了。内蔵課題 b-002/b-005/b-007/b-008 の JSON を出荷内容に更新、追加タスク 1C-A/1C-B を記録、完了条件を実績値に更新 |
