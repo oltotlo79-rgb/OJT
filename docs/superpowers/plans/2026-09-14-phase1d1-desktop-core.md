@@ -2097,7 +2097,18 @@ export interface AppState {
   selectedWire: string | undefined;
   selectedSocket: SocketId | undefined;
   camera: CameraPreset;
+  /**
+   * `setCamera()` を呼ぶたびに増える番号。§12.2
+   *
+   * プリセットは3つしかないので、盤をドラッグで回したあとに**いま選ばれているのと同じ**
+   * ボタン（例: 正面）を押し直しても `camera` の値は変わらず、`CameraPresets` の効果が
+   * 張り直されないため視点が戻らなかった。「押したこと」自体を状態として持たせ、
+   * 同じプリセットでも必ず再適用されるようにする。
+   */
+  cameraNonce: number;
   schematicVisible: boolean;
+  /** 判定を Worker へ送って結果待ちか（ツールバーの「判定」を二重に押させない）。§8.2 */
+  judging: boolean;
 
   snapshot: SimSnapshot;
   hazards: HazardEvent[];
@@ -2131,6 +2142,7 @@ export interface AppState {
   setSelectedSocket: (socketId: SocketId | undefined) => void;
   setCamera: (preset: CameraPreset) => void;
   toggleSchematic: () => void;
+  setJudging: (judging: boolean) => void;
   applySnapshot: (snapshot: SimSnapshot) => void;
   clearLive: () => void;
   addLog: (text: string) => void;
@@ -2189,7 +2201,9 @@ export const useStore = create<AppState>((set, get) => ({
   selectedWire: undefined,
   selectedSocket: undefined,
   camera: 'front',
+  cameraNonce: 0,
   schematicVisible: false,
+  judging: false,
 
   snapshot: EMPTY_SNAPSHOT,
   hazards: [],
@@ -2232,6 +2246,7 @@ export const useStore = create<AppState>((set, get) => ({
       liveTransitions: {},
       logLines: [],
       judge: undefined,
+      judging: false,
       fatalError: undefined,
       webglLost: false,
       reportedDroppedTicks: 0,
@@ -2272,10 +2287,14 @@ export const useStore = create<AppState>((set, get) => ({
     set({ selectedSocket });
   },
   setCamera: (camera) => {
-    set({ camera });
+    // プリセットが同じでも番号は必ず進める（同じボタンを押し直したら視点を組み直す）。§12.2
+    set({ camera, cameraNonce: get().cameraNonce + 1 });
   },
   toggleSchematic: () => {
     set({ schematicVisible: !get().schematicVisible });
+  },
+  setJudging: (judging) => {
+    set({ judging });
   },
   applySnapshot: (snapshot) => {
     const state = get();
@@ -2364,6 +2383,7 @@ export const useStore = create<AppState>((set, get) => ({
       fatalError: undefined,
       webglLost: false,
       judge: undefined,
+      judging: false,
       pendingTerminal: undefined,
       hoveredTerminal: undefined,
       selectedWire: undefined,
@@ -2816,6 +2836,8 @@ export const JA = {
   session: {
     back: '課題一覧へ戻る',
     judge: '判定',
+    /** 判定を Worker へ送って結果を待っているあいだのボタン文言。§8.2 */
+    judging: '判定中…',
     undo: '元に戻す',
     redo: 'やり直し',
     deleteMode: '削除モード',
@@ -3245,6 +3267,11 @@ button[aria-pressed='true'] {
   padding: 6px 12px;
 }
 
+/*
+ * 入れ物は画面いっぱいに敷かれるので、クリックを吸わないよう `pointer-events: none` にする
+ * （トースト1枚1枚だけがクリックを受ける）。これが無いと、トーストが出ている間は
+ * 右下の3D盤やボタンが押せなくなる。
+ */
 .toasts {
   position: fixed;
   right: 16px;
@@ -3253,6 +3280,7 @@ button[aria-pressed='true'] {
   flex-direction: column;
   gap: 6px;
   z-index: 50;
+  pointer-events: none;
 }
 
 .toast {
@@ -3262,6 +3290,7 @@ button[aria-pressed='true'] {
   border-radius: 4px;
   padding: 8px 12px;
   max-width: 420px;
+  pointer-events: auto;
 }
 
 .toastError {
@@ -3352,10 +3381,15 @@ button[aria-pressed='true'] {
   padding: 10px 14px;
 }
 
+/*
+ * 下部パネルの高さは**固定**にする。`auto` にすると操作ログが1行増えるたびに
+ * 3Dビューポートの高さが変わり、盤の見た目の大きさが配線中にじわじわ縮む
+ * （レビュー指摘: セッション中にキャンバスが伸縮する）。
+ */
 .sessionLayout {
   display: grid;
   grid-template-columns: 1fr 380px;
-  grid-template-rows: 1fr auto;
+  grid-template-rows: 1fr var(--bottom-panel-h, 200px);
   flex: 1;
   min-height: 0;
 }
@@ -3389,11 +3423,23 @@ button[aria-pressed='true'] {
   grid-template-columns: 1fr 1fr;
   gap: 8px;
   padding: 8px;
+  /* 行の高さは固定。中身が増えてもパネルの外へは広がらない（ログ側が自分でスクロールする） */
+  min-height: 0;
+  overflow: hidden;
 }
 
+.bottomPanel > * {
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/*
+ * 状態オーバーレイは**右上**に置く。左上は盤の DC24V 電源・端子台の名札と
+ * 視点ギズモが並ぶ場所で、三つ巴で重なって読めなかった（レビュー指摘）。
+ */
 .statusOverlay {
   position: absolute;
-  left: 12px;
+  right: 12px;
   top: 12px;
   background: rgba(20, 24, 32, 0.75);
   border: 1px solid var(--line);
@@ -4162,9 +4208,11 @@ import { describe, expect, it } from 'vitest';
 import {
   deleteKeyToAction,
   escapeToAction,
+  isTypingTarget,
   LOCKED_WIRE_MESSAGE,
   NOT_WIRABLE_MESSAGE,
   pickToAction,
+  shouldIgnoreShortcut,
   type InteractionState,
 } from '../src/renderer/session/interaction.js';
 
@@ -4353,6 +4401,41 @@ describe('キーボード', () => {
     expect(deleteKeyToAction(state({ selectedWire: 'w-002' }), [])).toEqual({ type: 'none' });
   });
 });
+
+describe('shouldIgnoreShortcut（入力中はショートカットを止める。§8.2）', () => {
+  /** タグ名だけを持つ最小の「宛先」（DOM が無くても検査できる）。 */
+  const tag = (tagName: string): unknown => ({ tagName });
+
+  it('入力欄・テキストエリア・セレクトに宛てたキーは無視する', () => {
+    for (const tagName of ['INPUT', 'TEXTAREA', 'SELECT', 'input', 'textarea', 'select']) {
+      expect(shouldIgnoreShortcut({ target: tag(tagName) }), tagName).toBe(true);
+    }
+  });
+
+  it('編集可能な要素に宛てたキーも無視する', () => {
+    expect(shouldIgnoreShortcut({ target: { tagName: 'DIV', isContentEditable: true } })).toBe(
+      true,
+    );
+  });
+
+  it('IME の変換中はどこに宛てられていても無視する', () => {
+    expect(shouldIgnoreShortcut({ target: tag('BODY'), isComposing: true })).toBe(true);
+    expect(shouldIgnoreShortcut({ target: null, isComposing: true })).toBe(true);
+  });
+
+  it('盤（キャンバス）や本文へのキーは通す', () => {
+    expect(shouldIgnoreShortcut({ target: tag('CANVAS') })).toBe(false);
+    expect(shouldIgnoreShortcut({ target: tag('BODY') })).toBe(false);
+    expect(shouldIgnoreShortcut({ target: tag('BUTTON') })).toBe(false);
+    expect(shouldIgnoreShortcut({ target: null })).toBe(false);
+  });
+
+  it('isTypingTarget は単体でも使える（宛先の判定だけ）', () => {
+    expect(isTypingTarget(tag('INPUT'))).toBe(true);
+    expect(isTypingTarget(tag('CANVAS'))).toBe(false);
+    expect(isTypingTarget(undefined)).toBe(false);
+  });
+});
 ```
 
 - [ ] **Step 2: テストが落ちることを確かめる**
@@ -4432,6 +4515,34 @@ export const NOT_WIRABLE_MESSAGE = 'この端子には配線できません（�
 /** 電線が選択されているか（空文字は「選択なし」の別表現）。 */
 function hasSelection(state: InteractionState): boolean {
   return state.selectedWire !== undefined && state.selectedWire.length > 0;
+}
+
+/** 文字を打ち込む要素のタグ名。 */
+const TYPING_TAGS: ReadonlySet<string> = new Set(['INPUT', 'TEXTAREA', 'SELECT']);
+
+/**
+ * そのイベントの宛先が「文字を打ち込む欄」か。§8.2
+ * DOM の型に依存させないためダックタイピングで見る（`interaction.ts` は純粋な層）。
+ */
+export function isTypingTarget(target: unknown): boolean {
+  if (target === null || typeof target !== 'object') return false;
+  const element = target as { tagName?: unknown; isContentEditable?: unknown };
+  if (element.isContentEditable === true) return true;
+  return typeof element.tagName === 'string' && TYPING_TAGS.has(element.tagName.toUpperCase());
+}
+
+/**
+ * 盤のショートカット（Esc / Delete / 1・2・3）を**無視すべき**キー入力か。§8.2
+ *
+ * タイマの設定秒を数値入力欄へ打ち込むと `3` で視点が「ソケット拡大」に飛び、
+ * `Delete` で電線が消える、という取り違えが起きていた（レビュー指摘）。
+ * 入力欄に宛てられたキーと、IME の変換中（`isComposing`）は盤へ通さない。
+ */
+export function shouldIgnoreShortcut(event: {
+  target: unknown;
+  isComposing?: boolean | undefined;
+}): boolean {
+  return event.isComposing === true || isTypingTarget(event.target);
 }
 
 /**
@@ -4999,6 +5110,58 @@ export const SOCKET_ROW_CENTER_MM = ((): number => {
   return top + first.bodyMm.length / 2;
 })();
 
+/** 「ソケット拡大」で必ず画角に入れる余白[mm]（機器の外形の外側）。§12.2 */
+export const SOCKET_VIEW_MARGIN_MM = 10;
+
+/**
+ * 「ソケット拡大」で使うビューポートの想定縦横比。
+ * 3D表示領域は「ウィンドウ幅 − 右パネル380px」×「ウィンドウ高 − ツールバー − 下部パネル200px」で、
+ * 1280×800 でも 1440×900 でも 1.6 程度になる。狭いほうに倒して 1.5 を想定にしておけば、
+ * 実際の縦横比がこれより横長な限り左右が切れない。
+ */
+export const SOCKET_VIEW_ASPECT = 1.5;
+
+/**
+ * 「ソケット拡大」が収める盤の矩形（盤モデル mm）。§12.2
+ *
+ * ソケット8個の本体に加え、**その手前のランプ用／押ボタン用端子台まで**を含める。
+ * 配線はソケットと端子台のあいだを往復するので、寄ったときに端子台が切れていると
+ * 「どこへ繋ぐか」が見えず拡大の意味が無い（レビュー指摘: S1/S8 と端子台が画面外）。
+ * 数値は盤定義（`sockets` と `footprints`）から求めるのでハードコードしない。
+ */
+export const SOCKET_VIEW_RECT = ((): { x: number; y: number; w: number; h: number } => {
+  const xs: number[] = [];
+  const ys: number[] = [];
+  for (const socket of JIPM_BOARD.sockets) {
+    xs.push(socket.origin.x, socket.origin.x + socket.bodyMm.width);
+    ys.push(socket.origin.y, socket.origin.y + socket.bodyMm.length);
+  }
+  for (const footprint of JIPM_BOARD.footprints) {
+    if (footprint.kind !== 'block') continue;
+    xs.push(footprint.x, footprint.x + footprint.w);
+    ys.push(footprint.y, footprint.y + footprint.h);
+  }
+  if (xs.length === 0 || ys.length === 0) {
+    return { x: 0, y: 0, w: BOARD_WIDTH_MM, h: BOARD_HEIGHT_MM };
+  }
+  const x = Math.min(...xs) - SOCKET_VIEW_MARGIN_MM;
+  const y = Math.min(...ys) - SOCKET_VIEW_MARGIN_MM;
+  return {
+    x,
+    y,
+    w: Math.max(...xs) + SOCKET_VIEW_MARGIN_MM - x,
+    h: Math.max(...ys) + SOCKET_VIEW_MARGIN_MM - y,
+  };
+})();
+
+/** 視野角の半分の tan（画角計算の共通項）。 */
+const HALF_FOV_TAN = Math.tan((CAMERA_FOV_DEG / 2) * (Math.PI / 180));
+
+/** 幅 `widthMm` × 高さ `heightMm` の矩形が視野 38° に収まる面直距離[mm]。 */
+export function fitDistanceMm(widthMm: number, heightMm: number, aspect: number): number {
+  return Math.max(widthMm / 2 / (HALF_FOV_TAN * aspect), heightMm / 2 / HALF_FOV_TAN);
+}
+
 /**
  * 盤グループの X 軸回転量[rad]。
  * 盤面ローカル（+Z が盤面の法線、+Y が盤の奥方向）を机の上に寝かせ、
@@ -5046,7 +5209,6 @@ export function cameraPose(preset: CameraPreset): CameraPose {
   // 視野角38°・横基準。盤の幅330mmが収まるには距離 ≥ 165/(tan(19°)×aspect) 必要で、
   // 16:10 のビューポート（aspect 1.6）なら 305mm。1割の余白を足した w × 1.05 を面直視の距離にする。
   const faceDistance = Math.max(w * 1.05, h * 1.55);
-  const socketY = h / 2 - SOCKET_ROW_CENTER_MM;
   switch (preset) {
     case 'front':
       return {
@@ -5060,12 +5222,21 @@ export function cameraPose(preset: CameraPreset): CameraPose {
         target: [0, 0, -h * 0.02],
         up: [0, 1, 0],
       };
-    case 'socket':
+    case 'socket': {
+      // ソケット段＋端子台の外接矩形がちょうど収まる距離まで寄る（固定倍率で寄せない）
+      const rect = SOCKET_VIEW_RECT;
+      const distance = fitDistanceMm(rect.w, rect.h, SOCKET_VIEW_ASPECT);
+      const center: [number, number, number] = [
+        rect.x + rect.w / 2 - w / 2,
+        h / 2 - (rect.y + rect.h / 2),
+        0,
+      ];
       return {
-        position: boardToWorld([0, socketY, faceDistance * 0.5]),
-        target: boardToWorld([0, socketY, 0]),
+        position: boardToWorld([center[0], center[1], distance]),
+        target: boardToWorld(center),
         up: boardUp(),
       };
+    }
   }
 }
 
@@ -5200,17 +5371,105 @@ export const PX_PER_MM = 16;
 
 /**
  * 端子番号の文字高さ[mm]。
- * 正面視（盤の高さ300mmがビューポート高の約8割）で画面上 10px 相当になるよう 4.6mm とした。
- * ピン間隔は 9mm（列）× 12mm（段）なので、番号＋役割の2行（合計 9.1mm）でも隣と当たらない。
+ * 正面視（盤の高さ245mmがビューポート高の約9割）で画面上 10px 相当になるよう 4.6mm とした。
  */
-const NUMBER_MM = 4.6;
-/** 役割文字の高さ[mm]。 */
-const ROLE_MM = 3;
+export const NUMBER_MM = 4.6;
+
+/**
+ * 役割文字の高さ[mm]。
+ *
+ * ソケットのネジ端子の**段ピッチは 8mm**（`SOCKET_TIER_ROW_PITCH_MM`）しかない。
+ * 以前は「列 9mm × 段 12mm」という誤ったコメントのもとで 3mm にしていたため、
+ * 番号（4.6mm）＋役割（3mm）＋行間で 9.1mm となり、`⑨ COM` の COM が
+ * 次の段の `⑬` に重なっていた（レビュー指摘）。
+ * 8mm に「番号 4.6 ＋ 行間 0.4 ＋ 役割 2.2 ＋ 段間 0.8」で収まる値にする。
+ */
+export const ROLE_MM = 2.2;
+
+/** 番号と役割のあいだの余白[mm]。 */
+export const ROW_GAP_MM = 0.4;
+/** 隣の段の印字とのあいだに必ず空ける余白[mm]。 */
+export const TIER_CLEARANCE_MM = 0.8;
+
+/**
+ * 端子の中心から番号の中心までの奥行方向のずれ[mm]（負＝盤の奥側）。
+ * ネジ頭（半径1.8mm）の上にできるだけ文字を載せないよう、8mm の段ピッチの中で
+ * 許される範囲いっぱいまで奥へ寄せてある。
+ */
+export const NUMBER_CENTER_MM = -2;
+/** 端子の中心から役割文字の中心までの奥行方向のずれ[mm]（正＝盤の手前側）。 */
+export const ROLE_CENTER_MM = NUMBER_CENTER_MM + NUMBER_MM / 2 + ROW_GAP_MM + ROLE_MM / 2;
+
+/**
+ * 印字の板をソケット本体より外へ広げる量[mm]（四方）。
+ * 外側の列の `COM` は端子の中心から左右に 2mm ほどはみ出すが、端子の中心は本体の端から
+ * 3mm しかない。板を本体ぴったりにすると端が切れるので、板だけ一回り大きくする。
+ */
+export const SOCKET_PLATE_MARGIN_MM = 4;
+
+/**
+ * 半角1文字の幅比（sans-serif 700 のおおよその値）。
+ * 実測ではなく「はみ出さないこと」を検査するための概算なので、やや大きめに取る。
+ */
+const HALF_WIDTH_RATIO = 0.62;
+
+/** 印字1つぶんの外接矩形（板の左上を原点とする mm）。 */
+export interface LabelBox {
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+}
+
+/** 文字列の描画幅[mm]の概算（全角は1文字ぶん、半角は `HALF_WIDTH_RATIO` ぶん）。 */
+export function labelWidthMm(text: string, fontMm: number): number {
+  let units = 0;
+  for (const char of text) {
+    const code = char.codePointAt(0) ?? 0;
+    units += code >= 0x2000 ? 1 : HALF_WIDTH_RATIO;
+  }
+  return units * fontMm;
+}
+
+/** `fillText`（中央揃え・中央ベースライン）の外接矩形。 */
+function textBox(centerX: number, centerY: number, text: string, fontMm: number): LabelBox {
+  const half = labelWidthMm(text, fontMm) / 2;
+  return {
+    x0: centerX - half,
+    x1: centerX + half,
+    y0: centerY - fontMm / 2,
+    y1: centerY + fontMm / 2,
+  };
+}
+
+/**
+ * ソケットの端子1個ぶんの印字の位置（板の左上を原点とする mm）。
+ * 描画（`socketFaceTexture`）と、段どうしが当たらないことを確かめる単体テストの両方がこれを使う。
+ */
+export function socketLabelBoxes(
+  terminal: BoardTerminal,
+  originX: number,
+  originY: number,
+): { number: LabelBox; role: LabelBox } {
+  const x = terminal.pos.x - originX;
+  const y = terminal.pos.y - originY;
+  return {
+    number: textBox(x, y + NUMBER_CENTER_MM, terminalNumber(terminal), NUMBER_MM),
+    role: textBox(x, y + ROLE_CENTER_MM, roleLabel(terminal.role), ROLE_MM),
+  };
+}
 
 /** 端子台の印字テクスチャの最小の幅・奥行[mm]（`TerminalBlock` の `MIN_BODY_MM` と合わせる）。 */
 const MIN_FACE_MM = 16;
 
-/** 役割ごとの印字色（極性は色でも区別する）。 */
+/**
+ * 端子台の印字（`PL1+` / `P1`）の文字高さ[mm]。
+ * 端子台のネジ端子は 9mm ピッチで1行しか印字しないので、ソケットの役割文字（2.2mm）より
+ * 大きくてよい。ソケット側を詰めた影響がここに及ばないよう、別の定数にしてある。
+ */
+const BLOCK_MARK_MM = 3;
+
+/** 役割ごとの印字色（極性は色でも区別する）。端子台の**明るい**台座（`#F1EFE9`）に載せる用。 */
 const ROLE_COLOR: Readonly<Record<TerminalRole, string>> = {
   'coil+': '#D14343',
   'coil-': '#2E6BD6',
@@ -5223,6 +5482,25 @@ const ROLE_COLOR: Readonly<Record<TerminalRole, string>> = {
   a: '#1B1E23',
   b: '#1B1E23',
   ac: '#1B1E23',
+};
+
+/**
+ * ソケットの役割印字の色。ソケット本体は黒（`SOCKET_BODY_COLOR` = `#23262B`）なので、
+ * 端子台と同じ濃色（`#1B1E23`）では**黒地に黒**でまったく読めなかった（レビュー指摘の
+ * 「`COM` が見えない」の主因）。番号と同じ明るい字にし、極性だけ明るい赤／青で区別する。
+ */
+export const SOCKET_ROLE_COLOR: Readonly<Record<TerminalRole, string>> = {
+  'coil+': '#FF8A8A',
+  'coil-': '#8FB8FF',
+  com: '#E4E7EC',
+  no: '#E4E7EC',
+  nc: '#E4E7EC',
+  '+': '#FF8A8A',
+  '-': '#8FB8FF',
+  c: '#E4E7EC',
+  a: '#E4E7EC',
+  b: '#E4E7EC',
+  ac: '#E4E7EC',
 };
 
 /** キャンバスを作って描き、テクスチャにする。キャンバスが使えない環境では undefined。 */
@@ -5265,16 +5543,19 @@ export function socketFaceTexture(
   if (terminals.length === 0) return undefined;
   return makeCanvasTexture(plateWidthMm, plateHeightMm, (ctx) => {
     for (const terminal of terminals) {
+      // 位置は `socketLabelBoxes()` が持つ（テストが検査するのと同じ値で描く）
+      const boxes = socketLabelBoxes(terminal, originX, originY);
       const x = (terminal.pos.x - originX) * PX_PER_MM;
-      const y = (terminal.pos.y - originY) * PX_PER_MM;
-      // 盤定義のラベルは `S1 ⑨ com` の形。丸数字だけを取り出し、役割は `roleLabel()` で記号にする
-      const number = terminal.label.split(' ').at(-2) ?? terminal.label;
       ctx.fillStyle = '#F2F2EE';
       ctx.font = `700 ${NUMBER_MM * PX_PER_MM}px sans-serif`;
-      ctx.fillText(number, x, y - NUMBER_MM * PX_PER_MM * 0.55);
-      ctx.fillStyle = ROLE_COLOR[terminal.role];
+      ctx.fillText(
+        terminalNumber(terminal),
+        x,
+        ((boxes.number.y0 + boxes.number.y1) / 2) * PX_PER_MM,
+      );
+      ctx.fillStyle = SOCKET_ROLE_COLOR[terminal.role];
       ctx.font = `700 ${ROLE_MM * PX_PER_MM}px sans-serif`;
-      ctx.fillText(roleLabel(terminal.role), x, y + NUMBER_MM * PX_PER_MM * 0.6);
+      ctx.fillText(roleLabel(terminal.role), x, ((boxes.role.y0 + boxes.role.y1) / 2) * PX_PER_MM);
     }
   });
 }
@@ -5311,12 +5592,12 @@ export function blockFaceTexture(
   const offsetX = (widthMm - (maxX - minX)) / 2;
   const offsetY = (heightMm - (maxY - minY)) / 2;
   return makeCanvasTexture(widthMm, heightMm, (ctx) => {
-    ctx.font = `700 ${ROLE_MM * PX_PER_MM}px sans-serif`;
+    ctx.font = `700 ${BLOCK_MARK_MM * PX_PER_MM}px sans-serif`;
     for (const terminal of terminals) {
       const x = (terminal.pos.x - minX + offsetX) * PX_PER_MM;
       const y = (terminal.pos.y - minY + offsetY) * PX_PER_MM;
       ctx.fillStyle = ROLE_COLOR[terminal.role];
-      ctx.fillText(blockTerminalMark(terminal), x, y + ROLE_MM * PX_PER_MM * 1.5);
+      ctx.fillText(blockTerminalMark(terminal), x, y + BLOCK_MARK_MM * PX_PER_MM * 1.5);
     }
   });
 }
@@ -5332,7 +5613,10 @@ import {
   BOARD_WIDTH_MM,
   JIPM_BOARD,
   roleLabel,
+  SOCKET_BODY_WIDTH_MM,
+  SOCKET_COL_PITCH_MM,
   SOCKET_PIN_GRID,
+  SOCKET_TIER_ROW_PITCH_MM,
   socketPinHoleOffsets,
   socketPinTerminal,
   socketRowExit,
@@ -5345,9 +5629,13 @@ import {
   BOARD_TILT_RAD,
   boardToWorld,
   boardUp,
+  CAMERA_FOV_DEG,
   cameraPose,
   interpolatePose,
   SOCKET_ROW_CENTER_MM,
+  SOCKET_VIEW_ASPECT,
+  SOCKET_VIEW_MARGIN_MM,
+  SOCKET_VIEW_RECT,
   type CameraPose,
 } from '../src/renderer/three/camera.js';
 import { socketTerminalLabel } from '../src/renderer/three/Socket.js';
@@ -5358,8 +5646,19 @@ import {
   GIZMO_COLORS,
   GIZMO_MARGIN,
   GIZMO_SIZE,
-  STATUS_OVERLAY_BOTTOM_PX,
+  GIZMO_TOP_MARGIN_PX,
 } from '../src/renderer/three/ViewGizmo.js';
+import {
+  labelWidthMm,
+  NUMBER_MM,
+  ROLE_MM,
+  socketLabelBoxes,
+  SOCKET_PLATE_MARGIN_MM,
+  SOCKET_ROLE_COLOR,
+  TIER_CLEARANCE_MM,
+  type LabelBox,
+} from '../src/renderer/three/labels.js';
+import { SOCKET_BODY_COLOR } from '../src/renderer/session/colors.js';
 
 describe('toScene', () => {
   it('盤の中心が原点になる', () => {
@@ -5434,7 +5733,116 @@ describe('cameraPose', () => {
       socket.position[2] - socket.target[2],
     );
     expect(socketDistance).toBeLessThan(frontDistance);
-    expect(socket.target).toEqual(boardToWorld([0, BOARD_HEIGHT_MM / 2 - SOCKET_ROW_CENTER_MM, 0]));
+    // 注視点はソケット段と端子台をあわせた矩形の中心（ソケット段の中心より手前に下がる）
+    expect(socket.target).toEqual(
+      boardToWorld([
+        SOCKET_VIEW_RECT.x + SOCKET_VIEW_RECT.w / 2 - BOARD_WIDTH_MM / 2,
+        BOARD_HEIGHT_MM / 2 - (SOCKET_VIEW_RECT.y + SOCKET_VIEW_RECT.h / 2),
+        0,
+      ]),
+    );
+    expect(SOCKET_VIEW_RECT.y + SOCKET_VIEW_RECT.h / 2).toBeGreaterThan(SOCKET_ROW_CENTER_MM);
+  });
+});
+
+describe('ソケット拡大の画角（§12.2）', () => {
+  it('画角の矩形はソケット8個と端子台をすべて余白つきで含む', () => {
+    for (const socket of JIPM_BOARD.sockets) {
+      expect(SOCKET_VIEW_RECT.x).toBeLessThanOrEqual(socket.origin.x - SOCKET_VIEW_MARGIN_MM);
+      expect(SOCKET_VIEW_RECT.x + SOCKET_VIEW_RECT.w).toBeGreaterThanOrEqual(
+        socket.origin.x + socket.bodyMm.width + SOCKET_VIEW_MARGIN_MM,
+      );
+      expect(SOCKET_VIEW_RECT.y).toBeLessThanOrEqual(socket.origin.y - SOCKET_VIEW_MARGIN_MM);
+      expect(SOCKET_VIEW_RECT.y + SOCKET_VIEW_RECT.h).toBeGreaterThanOrEqual(
+        socket.origin.y + socket.bodyMm.length + SOCKET_VIEW_MARGIN_MM,
+      );
+    }
+    const blocks = JIPM_BOARD.footprints.filter((f) => f.kind === 'block');
+    expect(blocks.length).toBeGreaterThan(0);
+    for (const block of blocks) {
+      expect(SOCKET_VIEW_RECT.x).toBeLessThanOrEqual(block.x);
+      expect(SOCKET_VIEW_RECT.x + SOCKET_VIEW_RECT.w).toBeGreaterThanOrEqual(block.x + block.w);
+      expect(SOCKET_VIEW_RECT.y + SOCKET_VIEW_RECT.h).toBeGreaterThanOrEqual(block.y + block.h);
+    }
+  });
+
+  it('1280×800（3D表示領域の縦横比 ≥ 1.5）でソケット8個も端子台も画面に入る', () => {
+    const pose = cameraPose('socket');
+    const distance = Math.hypot(
+      pose.position[0] - pose.target[0],
+      pose.position[1] - pose.target[1],
+      pose.position[2] - pose.target[2],
+    );
+    const halfHeight = distance * Math.tan((CAMERA_FOV_DEG / 2) * (Math.PI / 180));
+    const halfWidth = halfHeight * SOCKET_VIEW_ASPECT;
+    expect(halfWidth * 2).toBeGreaterThanOrEqual(SOCKET_VIEW_RECT.w - 1e-9);
+    expect(halfHeight * 2).toBeGreaterThanOrEqual(SOCKET_VIEW_RECT.h - 1e-9);
+  });
+});
+
+describe('ソケットの印字（§6.2 / §8.2）', () => {
+  /** ソケット1個ぶんの印字の箱（板の左上を原点とする mm）。 */
+  function boxesFor(socketIndex: number): Array<{ box: LabelBox; y: number; label: string }> {
+    const socket = JIPM_BOARD.sockets[socketIndex];
+    if (socket === undefined) throw new Error('ソケットが定義されていません');
+    const originX = socket.origin.x - SOCKET_PLATE_MARGIN_MM;
+    const originY = socket.origin.y - SOCKET_PLATE_MARGIN_MM;
+    const out: Array<{ box: LabelBox; y: number; label: string }> = [];
+    for (const terminal of JIPM_BOARD.terminals) {
+      if (!terminal.id.startsWith(`${socket.id}.`)) continue;
+      const boxes = socketLabelBoxes(terminal, originX, originY);
+      out.push({ box: boxes.number, y: terminal.pos.y, label: `${terminal.label} 番号` });
+      out.push({ box: boxes.role, y: terminal.pos.y, label: `${terminal.label} 役割` });
+    }
+    return out;
+  }
+
+  it('役割文字は段ピッチ 8mm に収まる大きさになっている', () => {
+    expect(NUMBER_MM + ROLE_MM + TIER_CLEARANCE_MM).toBeLessThanOrEqual(
+      SOCKET_TIER_ROW_PITCH_MM - 1e-9,
+    );
+  });
+
+  it('どの印字も隣の段の印字と重ならない（`⑨ COM` が `⑬` に被らない）', () => {
+    const boxes = boxesFor(0);
+    for (const a of boxes) {
+      for (const b of boxes) {
+        if (a.y === b.y) continue;
+        const overlapY = a.box.y0 < b.box.y1 && b.box.y0 < a.box.y1;
+        const overlapX = a.box.x0 < b.box.x1 && b.box.x0 < a.box.x1;
+        expect(overlapY && overlapX, `${a.label} と ${b.label} が重なっています`).toBe(false);
+      }
+    }
+  });
+
+  it('どの印字も板からはみ出さない（外側の列の COM が切れない）', () => {
+    const socket = JIPM_BOARD.sockets[0];
+    if (socket === undefined) throw new Error('ソケットが定義されていません');
+    const plateWidth = socket.bodyMm.width + SOCKET_PLATE_MARGIN_MM * 2;
+    const plateLength = socket.bodyMm.length + SOCKET_PLATE_MARGIN_MM * 2;
+    for (const { box, label } of boxesFor(0)) {
+      expect(box.x0, `${label} が板の左端を越えています`).toBeGreaterThanOrEqual(0);
+      expect(box.x1, `${label} が板の右端を越えています`).toBeLessThanOrEqual(plateWidth);
+      expect(box.y0, `${label} が板の奥端を越えています`).toBeGreaterThanOrEqual(0);
+      expect(box.y1, `${label} が板の手前端を越えています`).toBeLessThanOrEqual(plateLength);
+    }
+  });
+
+  it('役割の印字は `COM` のまま短くしない（§12.2 の `⑨ COM`）', () => {
+    expect(roleLabel('com')).toBe('COM');
+    // 3文字ぶんの幅が板の余白に収まっている（切れないことの根拠）
+    expect(labelWidthMm('COM', ROLE_MM) / 2).toBeLessThanOrEqual(
+      SOCKET_PLATE_MARGIN_MM + (SOCKET_BODY_WIDTH_MM - 3 * SOCKET_COL_PITCH_MM) / 2,
+    );
+  });
+
+  it('役割の印字色は黒いソケット本体の上で読める（コントラスト比 4.5 以上）', () => {
+    for (const [role, color] of Object.entries(SOCKET_ROLE_COLOR)) {
+      expect(contrastRatio(color, SOCKET_BODY_COLOR), role).toBeGreaterThanOrEqual(4.5);
+    }
+    // 極性は色でも区別する（§12.2）
+    expect(SOCKET_ROLE_COLOR['+']).not.toBe(SOCKET_ROLE_COLOR['-']);
+    expect(SOCKET_ROLE_COLOR['coil+']).not.toBe(SOCKET_ROLE_COLOR.com);
   });
 });
 
@@ -5577,10 +5985,10 @@ describe('secondsToMs', () => {
 });
 
 describe('視点ギズモの置き場所と色（§12.2）', () => {
-  it('キューブの上端は左上の状態オーバーレイの帯より下にある', () => {
+  it('キューブの上端はビューポートの上端から余白ぶん下にある', () => {
     // `margin` はキューブの中心位置なので、上端は 中心 − 半分
     const top = GIZMO_MARGIN[1] - GIZMO_SIZE / 2;
-    expect(top).toBeGreaterThanOrEqual(STATUS_OVERLAY_BOTTOM_PX);
+    expect(top).toBeGreaterThanOrEqual(GIZMO_TOP_MARGIN_PX);
   });
 
   it('面・稜線・ホバーの色が互いに違う（どの面を指しているか分かる）', () => {
@@ -5588,7 +5996,29 @@ describe('視点ギズモの置き場所と色（§12.2）', () => {
     expect(used.size).toBe(3);
     expect(GIZMO_COLORS.text).not.toBe(GIZMO_COLORS.face);
   });
+
+  it('面の色は明るい盤（#E6E4DE）の上でも文字が読める暗さで、文字とのコントラスト比が 4.5 以上', () => {
+    expect(contrastRatio(GIZMO_COLORS.face, GIZMO_COLORS.text)).toBeGreaterThanOrEqual(4.5);
+    // 盤の色に溶けない（正面視でキューブが盤に重なっても輪郭が分かる）
+    expect(contrastRatio(GIZMO_COLORS.face, '#E6E4DE')).toBeGreaterThanOrEqual(3);
+  });
 });
+
+/** `#RRGGBB` の相対輝度（WCAG 2.x）。 */
+function relativeLuminance(hex: string): number {
+  const channels = [1, 3, 5].map((offset) => {
+    const value = Number.parseInt(hex.slice(offset, offset + 2), 16) / 255;
+    return value <= 0.03928 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * (channels[0] ?? 0) + 0.7152 * (channels[1] ?? 0) + 0.0722 * (channels[2] ?? 0);
+}
+
+/** 2色のコントラスト比（WCAG 2.x）。 */
+function contrastRatio(a: string, b: string): number {
+  const la = relativeLuminance(a);
+  const lb = relativeLuminance(b);
+  return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
+}
 ```
 
 - [ ] **Step 6: コミットする**
@@ -5760,6 +6190,13 @@ const LABEL_STYLE = { pointerEvents: 'none' } as const;
  */
 const PICK_LIFT_MM = 3;
 
+/**
+ * ツールチップの位置（端子の中心からのずれ[mm]）。
+ * 盤の**手前**（−Y）へ降ろし、かつ手前へ浮かせる。奥へ出すとソケットのネジ端子ティアや
+ * 隣の段の印字に被って、いま指している端子の番号が読めなくなる（レビュー指摘）。
+ */
+const TOOLTIP_OFFSET_MM: [number, number, number] = [0, -8, 8];
+
 /** ツールチップのラベル文字列を作る（役割名は盤定義の `label` をそのまま使う）。§8.2 */
 export function terminalTooltip(terminal: BoardTerminal, roleLabel: string): string {
   return roleLabel.length > 0 ? roleLabel : terminal.label;
@@ -5812,7 +6249,13 @@ export function TerminalHit({
         }}
       />
       {hovered ? (
-        <Html center style={LABEL_STYLE} distanceFactor={260} position={[0, 6, 6]} zIndexRange={[20, 0]}>
+        <Html
+          center
+          style={LABEL_STYLE}
+          distanceFactor={260}
+          position={TOOLTIP_OFFSET_MM}
+          zIndexRange={[20, 0]}
+        >
           <span className="terminal-tooltip">{tooltip}</span>
         </Html>
       ) : null}
@@ -5837,7 +6280,7 @@ import { Html } from '@react-three/drei';
 import { useMemo, type JSX } from 'react';
 import type { ThreeEvent } from '@react-three/fiber';
 import { SOCKET_BODY_COLOR, SOCKET_LEVER_COLOR } from '../session/colors.js';
-import { socketFaceTexture } from './labels.js';
+import { socketFaceTexture, SOCKET_PLATE_MARGIN_MM } from './labels.js';
 import { sharedMaterial, UNIT_BOX } from './materials.js';
 import { toScene } from './coords.js';
 import { TerminalHit } from './TerminalHit.js';
@@ -5859,8 +6302,13 @@ const LABEL_STYLE = { pointerEvents: 'none' } as const;
 
 /** ネジ端子ティアの奥行[mm]（2段ぶん＋余白）。 */
 const TIER_DEPTH_MM = 20;
-/** ティアの高さ[mm]。 */
-const TIER_HEIGHT_MM = 11;
+/**
+ * ティアの高さ[mm]。
+ * ネジ端子は盤面から `SOCKET_TERMINAL_Z_MM`（10mm）にあり、ネジ頭の円柱は 9.2〜10.8mm を占める。
+ * 以前の 11mm はネジ頭をまるごと飲み込んでしまい、ホバー色（水色）も配線待ち色（橙）も
+ * 画面に出てこなかった（レビュー指摘）。ネジ頭が 1.8mm 突き出す 9mm にする。
+ */
+export const TIER_HEIGHT_MM = 9;
 /** 本体（差込領域）の高さ[mm]。 */
 const BODY_HEIGHT_MM = 9;
 /** 印字の板をネジの頭より上に浮かせる量[mm]（ネジに隠れないようにする）。 */
@@ -5911,9 +6359,19 @@ export function Socket({
   const centerX = originX + width / 2;
   const centerY = originY + length / 2;
 
+  // 印字の板は本体より四方に `SOCKET_PLATE_MARGIN_MM` だけ大きい（外側の列の `COM` が切れないため）
+  const plateWidth = width + SOCKET_PLATE_MARGIN_MM * 2;
+  const plateLength = length + SOCKET_PLATE_MARGIN_MM * 2;
   const faceTexture = useMemo(
-    () => socketFaceTexture(terminals, originX, originY, width, length),
-    [terminals, originX, originY, width, length],
+    () =>
+      socketFaceTexture(
+        terminals,
+        originX - SOCKET_PLATE_MARGIN_MM,
+        originY - SOCKET_PLATE_MARGIN_MM,
+        plateWidth,
+        plateLength,
+      ),
+    [terminals, originX, originY, plateWidth, plateLength],
   );
   const holes = useMemo(() => socketPinHoleOffsets(), []);
 
@@ -5937,7 +6395,11 @@ export function Socket({
         <mesh
           key={`hole-${index}`}
           raycast={noPick}
-          position={toScene({ x: originX + hole.dx, y: originY + hole.dy, z: BODY_HEIGHT_MM + 0.2 })}
+          position={toScene({
+            x: originX + hole.dx,
+            y: originY + hole.dy,
+            z: BODY_HEIGHT_MM + 0.2,
+          })}
           rotation={[Math.PI / 2, 0, 0]}
         >
           <cylinderGeometry args={[PIN_HOLE_RADIUS_MM, PIN_HOLE_RADIUS_MM, 0.5, 8]} />
@@ -5981,7 +6443,7 @@ export function Socket({
           raycast={noPick}
           position={[bodyCenter[0], bodyCenter[1], TIER_HEIGHT_MM + LABEL_LIFT_MM]}
         >
-          <planeGeometry args={[width, length]} />
+          <planeGeometry args={[plateWidth, plateLength]} />
           <meshBasicMaterial map={faceTexture} transparent depthWrite={false} />
         </mesh>
       )}
@@ -6058,6 +6520,7 @@ function noPick(): void {
 export function TerminalBlock({
   name,
   label,
+  labelOffsetMm,
   terminals,
   hoveredTerminal,
   pendingTerminal,
@@ -6066,6 +6529,12 @@ export function TerminalBlock({
 }: {
   name: string;
   label: string;
+  /**
+   * 名札を置く位置（端子の外接矩形の中心からの盤モデル mm。+x は右、+y は手前）。
+   * 省略すると台座の奥側に置く。P/N 供給端子台だけは奥に DC24V電源の名札と
+   * 左上の状態オーバーレイが居るので、右斜め下へずらして重なりを避ける（レビュー指摘）。
+   */
+  labelOffsetMm?: { x: number; y: number };
   terminals: readonly BoardTerminal[];
   hoveredTerminal: string | undefined;
   pendingTerminal: string | undefined;
@@ -6114,7 +6583,12 @@ export function TerminalBlock({
         center
         style={LABEL_STYLE}
         distanceFactor={320}
-        position={[center[0], center[1] + bodyDepth / 2 + 4, height]}
+        position={
+          labelOffsetMm === undefined
+            ? [center[0], center[1] + bodyDepth / 2 + 4, height]
+            : // `toScene()` は盤モデルの y を反転するので、手前（+y）はシーンの −Y になる
+              [center[0] + labelOffsetMm.x, center[1] - labelOffsetMm.y, height]
+        }
         zIndexRange={[10, 0]}
       >
         <span className="block-label">{label}</span>
@@ -6168,11 +6642,34 @@ const LABEL_STYLE = { pointerEvents: 'none' } as const;
 /** 機器の高さ[mm]。 */
 const FIXTURE_HEIGHT_MM = 22;
 
+/**
+ * DC24V電源（`supply`）の高さ[mm]。
+ *
+ * この機器の占有領域（`x12 y6 w26 h30`）は P/N 供給端子台（`P.1` / `N.1`、盤面から8mm）と
+ * 重なっている。22mm の箱にすると端子台ごと飲み込んでしまい、`P1` / `N1` の印字もネジも
+ * 見えなくなって「どこに +24V を取りに行くのか」が分からなかった（レビュー指摘）。
+ * 端子台（高さ8mm）より低い5mmの台に留め、端子台はその上に載る形にする。
+ * 占有領域（配線の経路が避ける矩形）は盤定義のままで変えない。
+ */
+const SUPPLY_HEIGHT_MM = 5;
+
 /** 端子印字の文字高さ[mm]。機器の名称のみで数値・記号が短いので、端子台の役割文字より少し大きくする。 */
 const MARK_MM = 4;
 
 /** 印字の板をネジの頭より上に浮かせる量[mm]。 */
 const LABEL_LIFT_MM = 1.4;
+
+/**
+ * 印字の板を機器の外形より外へ広げる量[mm]（四方）。
+ * `PS +24V` の端子は占有領域の左端（x=12）にあり、板を外形ぴったりにすると `+24V` が半分切れる。
+ */
+const PLATE_MARGIN_MM = 8;
+
+/** DC24V電源の印字の板の高さ[mm]（P/N 端子台の印字より上に出す）。 */
+const SUPPLY_LABEL_Z_MM = 11;
+
+/** 名札を機器の手前側へ降ろす量[mm]（外形の手前端からの距離）。 */
+const LABEL_OFFSET_MM = 6;
 
 /** 端子の印字色（極性は色でも区別する。§12.2「極性 +/− は色でも区別」）。CB/SW の `ac` は黒。 */
 const FIXTURE_MARK_COLOR: Readonly<Partial<Record<BoardTerminal['role'], string>>> = {
@@ -6203,21 +6700,29 @@ export function findFixtureFootprint(
   return footprints.find((footprint) => footprint.kind === kind);
 }
 
-/** 固定機器1個ぶんの端子印字テクスチャ。footprint の左上を板の原点にするので印字は端子の真上に来る。 */
+/**
+ * 固定機器1個ぶんの端子印字テクスチャ。
+ * footprint の左上から `PLATE_MARGIN_MM` だけ外へ広げた矩形を板にするので、
+ * 外形の端に載っている端子（`PS +24V` など）の印字も切れない。
+ */
 function fixtureFaceTexture(
   terminals: readonly BoardTerminal[],
   footprint: Footprint,
 ): Texture | undefined {
   if (terminals.length === 0) return undefined;
-  return makeCanvasTexture(footprint.w, footprint.h, (ctx) => {
-    ctx.font = `700 ${MARK_MM * PX_PER_MM}px sans-serif`;
-    for (const terminal of terminals) {
-      const x = (terminal.pos.x - footprint.x) * PX_PER_MM;
-      const y = (terminal.pos.y - footprint.y) * PX_PER_MM;
-      ctx.fillStyle = FIXTURE_MARK_COLOR[terminal.role] ?? '#1B1E23';
-      ctx.fillText(fixtureTerminalMark(terminal), x, y);
-    }
-  });
+  return makeCanvasTexture(
+    footprint.w + PLATE_MARGIN_MM * 2,
+    footprint.h + PLATE_MARGIN_MM * 2,
+    (ctx) => {
+      ctx.font = `700 ${MARK_MM * PX_PER_MM}px sans-serif`;
+      for (const terminal of terminals) {
+        const x = (terminal.pos.x - footprint.x + PLATE_MARGIN_MM) * PX_PER_MM;
+        const y = (terminal.pos.y - footprint.y + PLATE_MARGIN_MM) * PX_PER_MM;
+        ctx.fillStyle = FIXTURE_MARK_COLOR[terminal.role] ?? '#1B1E23';
+        ctx.fillText(fixtureTerminalMark(terminal), x, y);
+      }
+    },
+  );
 }
 
 /** 固定機器1台（外形は `board.footprints` から、端子印字は `terminals` から）。 */
@@ -6242,10 +6747,12 @@ export function Fixture({
     [terminals, footprint],
   );
   if (terminals.length === 0 || footprint === undefined) return null;
+  const heightMm = kind === 'supply' ? SUPPLY_HEIGHT_MM : FIXTURE_HEIGHT_MM;
+  const labelPlateZ = kind === 'supply' ? SUPPLY_LABEL_Z_MM : heightMm + LABEL_LIFT_MM;
   const center = toScene({
     x: footprint.x + footprint.w / 2,
     y: footprint.y + footprint.h / 2,
-    z: FIXTURE_HEIGHT_MM / 2,
+    z: heightMm / 2,
   });
   return (
     <group name={`fixture-${name}`}>
@@ -6254,20 +6761,27 @@ export function Fixture({
         material={sharedMaterial(color, { roughness: 0.6, metalness: 0.15 })}
         raycast={noPick}
         position={center}
-        scale={[footprint.w, footprint.h, FIXTURE_HEIGHT_MM]}
+        scale={[footprint.w, footprint.h, heightMm]}
       />
       {/* 端子の名前の印字（常時表示）。§12.2 */}
       {faceTexture === undefined ? null : (
-        <mesh raycast={noPick} position={[center[0], center[1], FIXTURE_HEIGHT_MM + LABEL_LIFT_MM]}>
-          <planeGeometry args={[footprint.w, footprint.h]} />
+        <mesh raycast={noPick} position={[center[0], center[1], labelPlateZ]}>
+          <planeGeometry
+            args={[footprint.w + PLATE_MARGIN_MM * 2, footprint.h + PLATE_MARGIN_MM * 2]}
+          />
           <meshBasicMaterial map={faceTexture} transparent depthWrite={false} />
         </mesh>
       )}
+      {/*
+        名札は機器の**手前側**に置く。以前は機器の真上に置いていたため、盤の上端に並ぶ
+        DC24V電源では左上の状態オーバーレイと、隣の DC24V端子台の名札と三つ巴で重なっていた
+        （レビュー指摘）。手前に降ろすと画面上でも下へずれてどちらとも離れる。
+      */}
       <Html
         center
         style={LABEL_STYLE}
         distanceFactor={320}
-        position={[center[0], center[1], FIXTURE_HEIGHT_MM + 1]}
+        position={[center[0], center[1] - footprint.h / 2 - LABEL_OFFSET_MM, labelPlateZ]}
         zIndexRange={[10, 0]}
       >
         <span className="block-label">{label}</span>
@@ -6421,7 +6935,7 @@ import type {
 } from '@ojt/board-model';
 import { Html } from '@react-three/drei';
 import { useMemo, type JSX } from 'react';
-import { MeshStandardMaterial } from 'three';
+import { BoxGeometry, EdgesGeometry, MeshStandardMaterial } from 'three';
 import { RELAY_BODY_COLOR, TIMER_BODY_COLOR } from '../session/colors.js';
 import { sharedMaterial, UNIT_BOX } from './materials.js';
 import { toScene } from './coords.js';
@@ -6432,8 +6946,12 @@ import { toScene } from './coords.js';
  *
  * 実機ではネジ端子はソケットのフランジ上にあり部品に隠れないが、本アプリの盤モデル（§6.2）は
  * 端子を4段4列のグリッドに置くため、本体を不透明に描くと端子が隠れて配線できなくなる。
- * そこで本体は**半透明**で描き、**レイキャストの対象から外す**（`raycast` を空実装にする）。
+ * そこで本体はネジ端子ティアを避けた大きさにしたうえで**やや透ける程度（0.85）**に描き、
+ * **レイキャストの対象から外す**（`raycast` を空実装にする）。
  * 装着部品の選択・取り外しはソケット台座のクリックで行う（台座は本体より一回り大きい）。
+ *
+ * ラベルは**本体の上面**に置く。以前は手前（`center - height/2 - 5`）に置いていたため、
+ * 手前ティアの `⑫` / `④` の印字に重なって番号が読めなかった（レビュー指摘）。
  */
 
 /**
@@ -6450,8 +6968,17 @@ const BODY_INSET_MM = 2;
 const SOCKET_TIER_MARGIN_MM = 18;
 /** ソケット本体の上面の高さ[mm]（`Socket.tsx` の `BODY_HEIGHT_MM` と合わせる）。 */
 const SOCKET_TOP_Z_MM = 9;
-/** 本体の不透明度（下のネジ端子が見える程度）。 */
-const BODY_OPACITY = 0.5;
+/**
+ * 本体の不透明度。
+ * 0.5 ＋ `depthWrite: false` では盤の暗い色に溶けて「装着したかどうか」が見分けられなかった
+ * （レビュー指摘: 装着したリレーがほとんど見えない）。本体は端子のティアを避けて置いてあるので、
+ * 0.85 まで上げて深度も書き、代わりに稜線を描いて箱として認識できるようにする。
+ */
+const BODY_OPACITY = 0.85;
+/** 稜線の色（暗い本体の輪郭を盤の上で見せる）。 */
+const EDGE_COLOR = '#C9D2DC';
+/** ラベルを本体の上面からさらに浮かせる量[mm]（⑫/④ の印字に被せないため）。 */
+const LABEL_LIFT_MM = 4;
 
 /** レイキャストを受けない（クリックを下の端子へ通す）。 */
 function noPick(): void {
@@ -6492,9 +7019,13 @@ export function MountedPart({
         opacity: BODY_OPACITY,
         roughness: 0.5,
         metalness: 0.2,
-        depthWrite: false,
       }),
     [bodyColor],
+  );
+  // 稜線は本体の大きさに合わせて作る（ソケットごとに寸法は同じなので実質1個で済む）
+  const edges = useMemo(
+    () => new EdgesGeometry(new BoxGeometry(width, height, BODY_HEIGHT_MM)),
+    [width, height],
   );
   return (
     <group name={`mounted-${socket.id}`}>
@@ -6505,6 +7036,10 @@ export function MountedPart({
         position={center}
         scale={[width, height, BODY_HEIGHT_MM]}
       />
+      {/* 箱の輪郭。半透明のままでも「そこに部品が載っている」ことが分かるようにする */}
+      <lineSegments geometry={edges} position={center} raycast={noPick}>
+        <lineBasicMaterial color={EDGE_COLOR} />
+      </lineSegments>
       {/* 動作表示灯（励磁中は赤く光る。MY4N の動作表示相当。§8.2） */}
       <mesh
         geometry={UNIT_BOX}
@@ -6525,7 +7060,7 @@ export function MountedPart({
         center
         style={LABEL_STYLE}
         distanceFactor={300}
-        position={[center[0], center[1] - height / 2 - 5, SOCKET_TOP_Z_MM + BODY_HEIGHT_MM]}
+        position={[center[0], center[1], SOCKET_TOP_Z_MM + BODY_HEIGHT_MM + LABEL_LIFT_MM]}
         zIndexRange={[12, 0]}
       >
         <span className={part.kind === 'relay-my4n' ? 'part-label' : 'part-label timer'}>
@@ -6574,7 +7109,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 
 **Files:**
 - Create: `apps/desktop/src/renderer/three/Wire.tsx`, `apps/desktop/src/renderer/three/FixedWires.tsx`
-- Test: `apps/desktop/test/routing.test.ts`
+- Test: `apps/desktop/test/routing.test.ts`, `apps/desktop/test/wire-geometry.test.ts`
 
 仕様 §6.6 は「電線は端子間を直角に走り、部品の占有矩形を跨がない」ことを求める。経路の生成は Plan 1B の `routeWire()` が担うので、この層は**返ってきた折れ線をそのまま描く**（勝手に曲線で丸め直さない）。「配線がリレーやタイマの上を通らない」ことは見た目の問題ではないので、純粋関数のテストで担保する。
 
@@ -6590,7 +7125,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 ```tsx
 import { WIRE_DIAMETER_MM, type WireRoute } from '@ojt/board-model';
 import type { WireColor } from '@ojt/circuit-sim';
-import { useMemo, type JSX } from 'react';
+import { useEffect, useMemo, useRef, type JSX } from 'react';
 import type { ThreeEvent } from '@react-three/fiber';
 import { CatmullRomCurve3, TubeGeometry, Vector3 } from 'three';
 import {
@@ -6600,7 +7135,7 @@ import {
   WIRE_LANE_OVERFLOW_COLOR,
   WIRE_SELECTED_COLOR,
 } from '../session/colors.js';
-import { LUG_GEOMETRY, sharedMaterial } from './materials.js';
+import { INVISIBLE_MATERIAL, LUG_GEOMETRY, sharedMaterial } from './materials.js';
 import { toScene } from './coords.js';
 
 /**
@@ -6619,10 +7154,21 @@ import { toScene } from './coords.js';
 
 /** チューブの半径[mm]（描画直径 1.6mm の半分。§6.6）。 */
 export const WIRE_RADIUS_MM = WIRE_DIAMETER_MM / 2;
+/**
+ * 当たり判定だけを受け持つ太いチューブの半径[mm]。
+ *
+ * 見た目の電線は直径 1.6mm しかなく、画面では正面視で 4px 程度にしかならない。
+ * 削除モードで経路の真上を狙って押しても 1% 程度しか当たらず「電線が選べない」状態だった
+ * （レビュー指摘）。端子の当たり判定（`pickRadiusMm` = 4mm の球）と同じ考え方で、
+ * 見えない太いチューブを重ねてそちらでクリックを受ける。
+ */
+export const WIRE_PICK_RADIUS_MM = 3.5;
 /** チューブの分割数（1セグメントあたり）。 */
 const SEGMENTS_PER_POINT = 4;
 /** 断面の分割数。 */
 const RADIAL_SEGMENTS = 6;
+/** 当たり判定チューブの断面分割数（見えないので粗くてよい）。 */
+const PICK_RADIAL_SEGMENTS = 4;
 
 /** レイキャストを受けない（配線モードで端子のクリックを奪わないため）。 */
 function noPick(): void {
@@ -6653,14 +7199,83 @@ export function wireBodyColor(
  * **点をそのまま通す**（`curveType: 'catmullrom'` の `tension: 0` ＝ 直線補間）。
  * 勝手に丸めると直角配線の「整列して見える」利点が失われるため。
  */
-export function buildTubeGeometry(route: WireRoute): TubeGeometry {
+export function buildTubeGeometry(
+  route: WireRoute,
+  radiusMm: number = WIRE_RADIUS_MM,
+  radialSegments: number = RADIAL_SEGMENTS,
+): TubeGeometry {
   const points = route.points.map((p) => {
     const [x, y, z] = toScene(p);
     return new Vector3(x, y, z);
   });
   const curve = new CatmullRomCurve3(points, false, 'catmullrom', 0);
   const segments = Math.max(8, points.length * SEGMENTS_PER_POINT);
-  return new TubeGeometry(curve, segments, WIRE_RADIUS_MM, RADIAL_SEGMENTS, false);
+  return new TubeGeometry(curve, segments, radiusMm, radialSegments, false);
+}
+
+/**
+ * 経路の同一性を表す文字列。§15
+ * `safeRoutes()` はセッションが変わるたびに**全部**の経路を作り直すので、`WireRoute` の
+ * オブジェクト同一性でメモ化すると1本足すだけで全電線のチューブが作り直される。
+ * 折れ点の座標が同じなら形も同じなので、それを鍵にする。
+ */
+export function routeSignature(route: WireRoute): string {
+  return `${route.wireId}|${route.points.map((p) => `${p.x},${p.y},${p.z}`).join(';')}`;
+}
+
+/**
+ * 経路からチューブ形状を作り、**作り直したときに前のものを解放する**フック。§15
+ * `TubeGeometry` は GPU バッファを持つので、解放しないと配線・元に戻すを繰り返すたびに
+ * 積み上がる（レビュー指摘: undo/redo 40往復でヒープ +33MB）。
+ */
+export function useTubeGeometry(
+  route: WireRoute,
+  radiusMm: number = WIRE_RADIUS_MM,
+  radialSegments: number = RADIAL_SEGMENTS,
+): TubeGeometry {
+  const signature = routeSignature(route);
+  // 署名が同じなら中身も同じなので、最新の `route` をそのまま使ってよい
+  const latest = useRef(route);
+  latest.current = route;
+  const geometry = useMemo(() => {
+    // 署名が同じ＝形も同じ。値そのものは使わないが、作り直しの引き金として依存に並べる
+    void signature;
+    return buildTubeGeometry(latest.current, radiusMm, radialSegments);
+  }, [signature, radiusMm, radialSegments]);
+  useEffect(
+    () => () => {
+      geometry.dispose();
+    },
+    [geometry],
+  );
+  return geometry;
+}
+
+/**
+ * 当たり判定だけの太いチューブ。削除モードのときだけ組み込まれる。
+ * 別のコンポーネントにしてあるのは、配線モードでは形を**作らない**ためで、
+ * 外れたときにフックの後始末がそのまま `dispose()` になる。
+ */
+function WirePickBody({
+  route,
+  locked,
+  onPick,
+}: {
+  route: WireRoute;
+  locked: boolean;
+  onPick: (wireId: string, locked: boolean) => void;
+}): JSX.Element {
+  const geometry = useTubeGeometry(route, WIRE_PICK_RADIUS_MM, PICK_RADIAL_SEGMENTS);
+  return (
+    <mesh
+      geometry={geometry}
+      material={INVISIBLE_MATERIAL}
+      onClick={(event: ThreeEvent<MouseEvent>) => {
+        event.stopPropagation();
+        onPick(route.wireId, locked);
+      }}
+    />
+  );
 }
 
 /** 電線1本。 */
@@ -6678,14 +7293,16 @@ export function Wire({
   selected: boolean;
   /** 削除モードのときだけ true。§8.2 */
   pickable: boolean;
-  onPick: (wireId: string) => void;
+  onPick: (wireId: string, locked: boolean) => void;
 }): JSX.Element | null {
-  const geometry = useMemo(() => buildTubeGeometry(route), [route]);
+  const geometry = useTubeGeometry(route);
+  const signature = routeSignature(route);
   const ends = useMemo(() => {
     const first = route.points[0];
     const last = route.points[route.points.length - 1];
     return first === undefined || last === undefined ? [] : [toScene(first), toScene(last)];
-  }, [route]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 折れ点が同じなら端点も同じ（署名で十分）
+  }, [signature]);
   if (route.points.length < 2) return null;
   const material = sharedMaterial(wireBodyColor(route, color, locked, selected), {
     roughness: locked ? 0.35 : 0.55,
@@ -6696,15 +7313,14 @@ export function Wire({
       name={`wire-${route.wireId}`}
       userData={{ kind: route.kind, laneOverflow: route.laneOverflow }}
     >
-      <mesh
-        geometry={geometry}
-        material={material}
-        {...(pickable ? {} : { raycast: noPick })}
-        onClick={(event: ThreeEvent<MouseEvent>) => {
-          event.stopPropagation();
-          onPick(route.wireId);
-        }}
-      />
+      {/* 見た目の電線。クリックは常に下の当たり判定チューブに任せる */}
+      <mesh geometry={geometry} material={material} raycast={noPick} />
+      {/*
+        当たり判定だけの太いチューブ。`visible={false}` にすると three の `Raycaster` が
+        たどらないので、`INVISIBLE_MATERIAL`（`opacity: 0` / `depthWrite: false`）で
+        「見えないが交差候補にはなる」状態にする（`TerminalHit` の当たり判定球と同じ手）。
+      */}
+      {pickable ? <WirePickBody route={route} locked={locked} onPick={onPick} /> : null}
       {ends.map((pos, index) => (
         <mesh
           key={`${route.wireId}-lug-${index}`}
@@ -7026,6 +7642,104 @@ describe('経路器の失敗と重なりの扱い（§6.6）', () => {
 });
 ```
 
+- [ ] **Step 3b: `apps/desktop/test/wire-geometry.test.ts` を書く（1D1-f で追加）**
+
+```ts
+import { createSession, JIPM_BOARD, routeSession, TASK2_SOCKET_ROLES } from '@ojt/board-model';
+import type { WireRoute } from '@ojt/board-model';
+import { cleanup, renderHook } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { routeSignature, useTubeGeometry, WIRE_RADIUS_MM } from '../src/renderer/three/Wire.js';
+
+/**
+ * 電線のチューブ形状の作り直しと解放（§15）。
+ *
+ * `safeRoutes()` はセッションが変わるたびに**全部**の経路を作り直すので、
+ * 経路オブジェクトの同一性でメモ化すると1本足すだけで全電線の `TubeGeometry` が作り直され、
+ * 古いものは GPU バッファを抱えたまま残る（レビュー計測: undo/redo 40往復でヒープ +33MB）。
+ */
+
+const ROUTES = routeSession(
+  JIPM_BOARD,
+  createSession(JIPM_BOARD, { roles: TASK2_SOCKET_ROLES, allowedColors: ['青'] }),
+);
+
+function routeAt(index: number): WireRoute {
+  const route = ROUTES[index];
+  if (route === undefined) throw new Error('経路がありません');
+  return route;
+}
+
+/** 同じ形の別オブジェクト（`safeRoutes()` が作り直したときと同じ状況）。 */
+function cloneRoute(route: WireRoute): WireRoute {
+  return { ...route, points: route.points.map((p) => ({ ...p })) };
+}
+
+afterEach(cleanup);
+
+describe('routeSignature', () => {
+  it('折れ点が同じなら別オブジェクトでも同じ署名になる', () => {
+    const route = routeAt(0);
+    expect(routeSignature(cloneRoute(route))).toBe(routeSignature(route));
+  });
+
+  it('電線IDか折れ点が違えば署名も違う', () => {
+    expect(routeSignature(routeAt(0))).not.toBe(routeSignature(routeAt(1)));
+    const moved = cloneRoute(routeAt(0));
+    const first = moved.points[0];
+    if (first === undefined) throw new Error('折れ点がありません');
+    moved.points = [{ ...first, x: first.x + 1 }, ...moved.points.slice(1)];
+    expect(routeSignature(moved)).not.toBe(routeSignature(routeAt(0)));
+  });
+});
+
+describe('useTubeGeometry', () => {
+  it('経路の中身が同じなら作り直さない（オブジェクトが差し替わっても解放しない）', () => {
+    const route = routeAt(0);
+    const view = renderHook(({ r }: { r: WireRoute }) => useTubeGeometry(r), {
+      initialProps: { r: route },
+    });
+    const first = view.result.current;
+    const dispose = vi.spyOn(first, 'dispose');
+
+    view.rerender({ r: cloneRoute(route) });
+
+    expect(view.result.current).toBe(first);
+    expect(dispose).not.toHaveBeenCalled();
+  });
+
+  it('経路が変わったら作り直し、前の形は解放する', () => {
+    const view = renderHook(({ r }: { r: WireRoute }) => useTubeGeometry(r), {
+      initialProps: { r: routeAt(0) },
+    });
+    const first = view.result.current;
+    const dispose = vi.spyOn(first, 'dispose');
+
+    view.rerender({ r: routeAt(1) });
+
+    expect(view.result.current).not.toBe(first);
+    expect(dispose).toHaveBeenCalledTimes(1);
+  });
+
+  it('外れたときも解放する', () => {
+    const view = renderHook(() => useTubeGeometry(routeAt(0)));
+    const dispose = vi.spyOn(view.result.current, 'dispose');
+    view.unmount();
+    expect(dispose).toHaveBeenCalledTimes(1);
+  });
+
+  it('半径を指定すると太さの違う形になる（当たり判定用の太いチューブ）', () => {
+    const thin = renderHook(() => useTubeGeometry(routeAt(0))).result.current;
+    const thick = renderHook(() => useTubeGeometry(routeAt(0), WIRE_RADIUS_MM * 4, 4)).result
+      .current;
+    expect(thick).not.toBe(thin);
+    thin.computeBoundingSphere();
+    thick.computeBoundingSphere();
+    expect(thick.boundingSphere?.radius ?? 0).toBeGreaterThan(thin.boundingSphere?.radius ?? 0);
+  });
+});
+```
+
 - [ ] **Step 4: テストを実行する**
 
 実行:
@@ -7063,8 +7777,9 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 
 **Files:**
 - Create: `apps/desktop/src/renderer/three/CameraPresets.tsx`, `apps/desktop/src/renderer/three/ViewGizmo.tsx`, `apps/desktop/src/renderer/three/BoardScene.tsx`
+- Test: `apps/desktop/test/camera-presets.test.tsx`, `apps/desktop/test/board-scene.test.ts`
 
-**性能方針（§15: 内蔵GPUで60fps）**: `frameloop="demand"` にして状態が変わったときだけ描く。盤の静的ジオメトリはマテリアルとジオメトリを共有し、電線の `TubeGeometry` は `WireRoute` 単位でメモ化する。`OrbitControls` のダンピングとビューキューブのアニメーション中もフレームが要るので、`ViewGizmo` が 30fps で `invalidate()` を回す。
+**性能方針（§15: 内蔵GPUで60fps）**: `frameloop="demand"` にして状態が変わったときだけ描く。盤の静的ジオメトリはマテリアルとジオメトリを共有し、電線の `TubeGeometry` は**経路の署名**（電線ID＋折れ点）単位でメモ化し、作り直すときに前の形を `dispose()` する。スナップショットの購読は「絵に効く値だけ」に絞り（`useShallow`）、3Dへ渡すハンドラは `useCallback` で安定させ、`BoardScene` は `memo` で包む（そうしないと毎秒約30枚のスナップショットで部分木が再描画され、`frameloop="demand"` が実質30fpsの常時描画になる）。ダンピングとビューキューブのアニメーション中のフレームは drei の `OrbitControls` / `GizmoHelper` が自分で `invalidate()` して要求するので、一定間隔で回してはいけない。
 
 
 - [ ] **Step 1: `apps/desktop/src/renderer/three/CameraPresets.tsx` を書く**
@@ -7108,12 +7823,20 @@ interface PoseAnimation {
   startMs: number;
 }
 
-/** プリセットが変わったらカメラと OrbitControls の注視点を ~300ms で補間して動かす。 */
+/**
+ * プリセットが変わったらカメラと OrbitControls の注視点を ~300ms で補間して動かす。
+ *
+ * `nonce` はストアの `cameraNonce`（`setCamera()` のたびに増える番号）。盤をドラッグで回したあと
+ * **いま選ばれているのと同じ**ボタン（例: 正面）を押し直しても `preset` の値は変わらないので、
+ * これを依存に並べないと効果が張り直されず視点が戻らない（§12.2「視点プリセット」）。
+ */
 export function CameraPresets({
   preset,
+  nonce,
   controls,
 }: {
   preset: CameraPreset;
+  nonce: number;
   controls: ControlsLike | null;
 }): JSX.Element | null {
   const camera = useThree((state) => state.camera);
@@ -7143,6 +7866,8 @@ export function CameraPresets({
   );
 
   useEffect(() => {
+    // 値そのものは使わない。「同じプリセットを押し直した」ことを効果に伝えるためだけの依存。
+    void nonce;
     const to = cameraPose(preset);
     if (currentPose.current === null) {
       // マウント直後・OrbitControls 接続前は補間せず即座に合わせる
@@ -7153,7 +7878,7 @@ export function CameraPresets({
       animation.current = { from: currentPose.current, to, startMs: performance.now() };
     }
     invalidate();
-  }, [preset, applyPose, invalidate]);
+  }, [preset, nonce, applyPose, invalidate]);
 
   useFrame(() => {
     const anim = animation.current;
@@ -7204,27 +7929,28 @@ export const GIZMO_FACES = {
 export const GIZMO_SIZE = 92;
 
 /**
- * 左上の状態オーバーレイ（`screens.module.css` の `.statusOverlay`）が占める帯の下端[px]。
- * `top: 12px` ＋ 高さ約22px ＋ 余白。
+ * ビューポートの上端からキューブの上端までに空ける余白[px]。
+ * 状態オーバーレイは右上へ移したので（`screens.module.css` の `.statusOverlay`）、
+ * 左上はキューブの場所として空いている。盤の上端の名札と重ならない高さに置く。
  */
-export const STATUS_OVERLAY_BOTTOM_PX = 44;
+export const GIZMO_TOP_MARGIN_PX = 20;
 
 /**
  * ビューポートの角からの**キューブ中心**の余白[px]。
  * `margin` は中心の位置なので、キューブの上端は `margin[1] - GIZMO_SIZE / 2`。
- * 状態オーバーレイと固定機器の名札の帯より下に降ろし、正面視点でも文字と重ならないようにする。
  */
-export const GIZMO_MARGIN: [number, number] = [72, 104];
+export const GIZMO_MARGIN: [number, number] = [72, 72];
 
 /**
- * キューブの色。暗い背景（`#141820`）の上で輪郭と面が読めるよう、
- * 面は明るい灰、稜線は水色、ホバーは面とも稜線とも違う琥珀色にする
- * （以前は稜線とホバーが同色で、どの面を指しているのか分からなかった）。
+ * キューブの色。暗い背景（`#141820`）の上で輪郭と面が読めること、かつ
+ * **正面視で明るい盤（`#E6E4DE`）に重なっても面と文字が読める**ことの両方を満たす必要がある。
+ * 以前は面が明るい灰（`#D8DDE6`）で盤の色とほとんど同じになり、`上` も側面も沈んで見えなかった
+ * （レビュー指摘）。面を中間の青灰に落とし、文字は白、稜線は濃紺にして対比を作る。
  */
 export const GIZMO_COLORS = {
-  face: '#D8DDE6',
-  text: '#141820',
-  stroke: '#39D0FF',
+  face: '#4A5563',
+  text: '#FFFFFF',
+  stroke: '#141820',
   hover: '#FFB400',
 } as const;
 
@@ -7268,11 +7994,12 @@ import {
   type SocketId,
   type WireRoute,
 } from '@ojt/board-model';
-import type { TerminalId } from '@ojt/circuit-sim';
+import type { LampLevel, TerminalId } from '@ojt/circuit-sim';
 import { OrbitControls } from '@react-three/drei';
 import { Canvas, useThree } from '@react-three/fiber';
 import { MOUSE } from 'three';
-import { useEffect, useMemo, useState, type JSX } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type JSX } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { useStore, type AppState } from '../app/store.js';
 import { JA, routeFailedLog } from '../i18n/ja.js';
 import type { PickHit } from '../session/interaction.js';
@@ -7312,10 +8039,17 @@ const MAX_POLAR_ANGLE = Math.PI * 0.48;
  * P/N 供給端子は `P.1` / `N.1` の各1点しかない（§6.1）ので、
  * 実物写真の DC24V 端子と同じく**2端子の小さな端子台1個**としてまとめて描く。
  */
-const BLOCK_PARTS: ReadonlyArray<{ key: string; ids: readonly string[]; label: string }> = [
+const BLOCK_PARTS: ReadonlyArray<{
+  key: string;
+  ids: readonly string[];
+  label: string;
+  /** 名札の位置（端子の外接矩形の中心からの盤モデル mm。省略すると台座の奥側）。 */
+  labelOffsetMm?: { x: number; y: number };
+}> = [
   { key: 'TB_PL', ids: ['TB_PL'], label: 'ランプ用端子台' },
   { key: 'TB_PB', ids: ['TB_PB'], label: '押ボタン用端子台' },
-  { key: 'PN', ids: ['P', 'N'], label: 'DC24V端子台' },
+  // 奥は盤の上端で、DC24V電源の名札と左上の状態オーバーレイが居る。右下へ逃がす（§8.1）
+  { key: 'PN', ids: ['P', 'N'], label: 'DC24V端子台', labelOffsetMm: { x: 46, y: 6 } },
 ];
 
 /** DINレールを敷く機器のまとまり（ソケット群と端子台群）。実物写真のとおり。§6.5 */
@@ -7371,7 +8105,7 @@ export function safeRoutes(
  * 実質 30fps の常時描画になり、ソフトウェアラスタライザの環境ではメインスレッドを占有して
  * クリックすら受け付けなくなる。そこで**描き分けに効く値だけ**から署名を作って比べる。
  */
-function visualSignature(state: AppState): string {
+export function visualSignature(state: AppState): string {
   const { snapshot, session } = state;
   const lamps = Object.entries(snapshot.lamps)
     .map(([id, lamp]) => `${id}:${lamp.level}`)
@@ -7399,6 +8133,8 @@ function visualSignature(state: AppState): string {
     state.selectedWire ?? '',
     state.mode,
     state.camera,
+    // 同じプリセットを押し直しても視点は動く（`cameraNonce`）ので、署名にも入れる
+    state.cameraNonce,
   ].join('|');
 }
 
@@ -7418,6 +8154,43 @@ function Invalidator(): null {
   return null;
 }
 
+/**
+ * ランプ・リレー・タイマ・押ボタンの「絵に効く値だけ」をスナップショットから抜き出す。§15
+ *
+ * `snapshot` をまるごと購読すると、電圧の小数点以下が動いただけの毎秒30枚のスナップショットで
+ * この部分木が再描画され、その都度 R3F が props を突き合わせて `invalidate()` するため
+ * `frameloop="demand"` が実質30fpsの常時描画になる（レビュー計測: アイドル中も約30fps）。
+ * `useShallow` で「値の集合が変わったときだけ」再描画されるようにする。
+ */
+function useLampLevels(): Record<string, LampLevel> {
+  return useStore(
+    useShallow((s: AppState) => {
+      const out: Record<string, LampLevel> = {};
+      for (const [id, lamp] of Object.entries(s.snapshot.lamps)) out[id] = lamp.level;
+      return out;
+    }),
+  );
+}
+
+/** 装着部品が励磁されているか（リレーのコイル／タイマの通電）。 */
+function useEnergized(): Record<string, boolean> {
+  return useStore(
+    useShallow((s: AppState) => {
+      const out: Record<string, boolean> = {};
+      for (const [id, relay] of Object.entries(s.snapshot.relays)) out[id] = relay.coilOn;
+      for (const [id, timer] of Object.entries(s.snapshot.timers)) {
+        out[id] = (out[id] ?? false) || timer.powered;
+      }
+      return out;
+    }),
+  );
+}
+
+/** 押ボタンが押されているか。 */
+function useButtons(): Record<string, boolean> {
+  return useStore(useShallow((s: AppState) => ({ ...s.snapshot.buttons })));
+}
+
 /** 盤のシーン本体（Canvas の中身）。 */
 function BoardContents({
   onPick,
@@ -7431,12 +8204,15 @@ function BoardContents({
   onRelease: (pbId: string) => void;
 }): JSX.Element {
   const session = useStore((s) => s.session);
-  const snapshot = useStore((s) => s.snapshot);
+  const lampLevels = useLampLevels();
+  const energized = useEnergized();
+  const buttons = useButtons();
   const hovered = useStore((s) => s.hoveredTerminal);
   const pending = useStore((s) => s.pendingTerminal);
   const selectedWire = useStore((s) => s.selectedWire);
   const mode = useStore((s) => s.mode);
   const camera = useStore((s) => s.camera);
+  const cameraNonce = useStore((s) => s.cameraNonce);
   const [controls, setControls] = useState<ControlsLike | null>(null);
 
   const board = JIPM_BOARD;
@@ -7444,18 +8220,33 @@ function BoardContents({
     () => safeRoutes(board, session),
     [board, session],
   );
-  // 経路が解けなかった電線は描けないので、理由をトーストとログに出す（盤は描き続ける）。§6.6
+  /*
+   * 経路が解けなかった電線は描けないので、理由をトーストとログに出す（盤は描き続ける）。§6.6
+   * `routeErrors` は `session` が変わるたびに新しい配列になるため、そのまま依存に並べると
+   * 無関係な操作のたびに同じトーストが出続ける。**どの電線が解けなかったか**が変わったときだけ
+   * 出すよう、電線IDの集合を鍵にする。
+   */
+  const routeErrorKey = useMemo(
+    () =>
+      routeErrors
+        .map((error) => error.wireId)
+        .sort((a, b) => a.localeCompare(b))
+        .join(','),
+    [routeErrors],
+  );
+  const latestRouteErrors = useRef(routeErrors);
+  latestRouteErrors.current = routeErrors;
   useEffect(() => {
-    if (routeErrors.length === 0) return;
+    if (routeErrorKey.length === 0) return;
     const store = useStore.getState();
-    for (const error of routeErrors) {
+    for (const error of latestRouteErrors.current) {
       store.toast(
         `${JA.session.routeFailed}（${error.wireId}: ${JA.routeReason[error.reason]}）`,
         'error',
       );
       store.addLog(routeFailedLog(error.wireId, JA.routeReason[error.reason]));
     }
-  }, [routeErrors]);
+  }, [routeErrorKey]);
   const blocks = useMemo(() => {
     const out = new Map<string, typeof board.terminals>();
     for (const group of BLOCK_PARTS) {
@@ -7508,14 +8299,36 @@ function BoardContents({
     return out;
   }, [board]);
 
-  const pickTerminal = (terminal: BoardTerminal): void => {
-    onPick({
-      kind: 'terminal',
-      id: terminal.id,
-      wirable: terminal.wirable,
-      label: terminal.label,
-    });
-  };
+  /*
+   * 3Dの子へ渡すハンドラは**必ず `useCallback` で安定させる**。§15
+   * 毎レンダーで新しい関数を作ると R3F が props の差分を検出して `invalidate()` を呼ぶため、
+   * 絵が1ピクセルも変わらないスナップショット更新でも描画が走ってしまう。
+   */
+  const pickTerminal = useCallback(
+    (terminal: BoardTerminal): void => {
+      onPick({
+        kind: 'terminal',
+        id: terminal.id,
+        wirable: terminal.wirable,
+        label: terminal.label,
+      });
+    },
+    [onPick],
+  );
+
+  const pickSocket = useCallback(
+    (socketId: SocketId, occupied: boolean): void => {
+      onPick({ kind: 'socket', id: socketId, occupied });
+    },
+    [onPick],
+  );
+
+  const pickWire = useCallback(
+    (wireId: string, locked: boolean): void => {
+      onPick({ kind: 'wire', id: wireId, locked });
+    },
+    [onPick],
+  );
 
   return (
     <>
@@ -7558,19 +8371,14 @@ function BoardContents({
                 pendingTerminal={pending}
                 onHoverTerminal={onHover}
                 onPickTerminal={pickTerminal}
-                onPickSocket={(socketId: SocketId, occupied: boolean) => {
-                  onPick({ kind: 'socket', id: socketId, occupied });
-                }}
+                onPickSocket={pickSocket}
               />
               {mounted === undefined || role === undefined ? null : (
                 <MountedPart
                   socket={socket}
                   role={role}
                   part={mounted}
-                  energized={
-                    snapshot.relays[role]?.coilOn === true ||
-                    snapshot.timers[role]?.powered === true
-                  }
+                  energized={energized[role] === true}
                 />
               )}
             </group>
@@ -7582,6 +8390,7 @@ function BoardContents({
             key={block.key}
             name={block.key}
             label={block.label}
+            {...(block.labelOffsetMm === undefined ? {} : { labelOffsetMm: block.labelOffsetMm })}
             terminals={blocks.get(block.key) ?? []}
             hoveredTerminal={hovered}
             pendingTerminal={pending}
@@ -7591,14 +8400,14 @@ function BoardContents({
         ))}
 
         {board.lamps.map((lamp) => (
-          <Lamp key={lamp.id} definition={lamp} level={snapshot.lamps[lamp.id]?.level ?? 'off'} />
+          <Lamp key={lamp.id} definition={lamp} level={lampLevels[lamp.id] ?? 'off'} />
         ))}
 
         {board.pushButtons.map((pb) => (
           <PushButton
             key={pb.id}
             definition={pb}
-            pressed={snapshot.buttons[pb.id] === true}
+            pressed={buttons[pb.id] === true}
             onPress={onPress}
             onRelease={onRelease}
           />
@@ -7615,9 +8424,7 @@ function BoardContents({
               locked={wire.locked}
               selected={selectedWire === route.wireId}
               pickable={mode === 'delete'}
-              onPick={(wireId: string) => {
-                onPick({ kind: 'wire', id: wireId, locked: wire.locked });
-              }}
+              onPick={pickWire}
             />
           );
         })}
@@ -7654,7 +8461,7 @@ function BoardContents({
           setControls(instance);
         }}
       />
-      <CameraPresets preset={camera} controls={controls} />
+      <CameraPresets preset={camera} nonce={cameraNonce} controls={controls} />
       <ViewGizmo />
     </>
   );
@@ -7664,8 +8471,12 @@ function BoardContents({
  * 3Dビューポート。§13 #4
  * `webglcontextlost` を捕まえたら `key` を変えて `Canvas` を丸ごと作り直す。
  * 盤の状態は Worker とストアが持っているので、シーンを捨てても失われない。
+ *
+ * `memo()` で包むのは §15 の性能目標のため。親（`Session`）は経過時間やライブチャートで
+ * 毎秒何度も再描画されるが、渡ってくる4つのハンドラはすべて `useCallback` で安定しているので、
+ * ここで止めれば `Canvas` の中身が巻き添えで再描画されることがなくなる。
  */
-export function BoardScene({
+function BoardSceneImpl({
   onPick,
   onHover,
   onPress,
@@ -7713,6 +8524,9 @@ export function BoardScene({
     </Canvas>
   );
 }
+
+/** 3Dビューポート（親の再描画で巻き添えにならないよう `memo` する）。§15 */
+export const BoardScene = memo(BoardSceneImpl);
 ```
 
 - [ ] **Step 4: 型チェックが通ることを確かめる**
@@ -7727,6 +8541,291 @@ pnpm --filter @ojt/desktop typecheck
 
 ```text
 （何も出力されない＝成功）
+```
+
+- [ ] **Step 4b: `apps/desktop/test/camera-presets.test.tsx` を書く（1D1-f で追加）**
+
+```tsx
+import { cleanup, render } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+/**
+ * 視点プリセットの適用テスト（§12.2）。
+ *
+ * `CameraPresets` は `useThree` / `useFrame` しか three に触らないので、`@react-three/fiber` を
+ * その2つだけ差し替えれば WebGL 無しで検証できる。見たいのは
+ * 「**同じプリセットを押し直しても**視点が組み直されるか」という1点で、これは
+ * `cameraNonce`（ストア）→ `nonce`（props）→ `useEffect` の依存、という鎖が繋がっているかの問題。
+ */
+
+interface FakeCamera {
+  up: { set: (x: number, y: number, z: number) => void };
+  position: { set: (x: number, y: number, z: number) => void; value: [number, number, number] };
+  lookAt: (x: number, y: number, z: number) => void;
+  updateProjectionMatrix: () => void;
+}
+
+const harness: {
+  camera: unknown;
+  invalidate: () => void;
+  /** 最後に `useFrame` へ渡されたコールバック（描画のたびに差し替わるので1つだけ持つ）。 */
+  frame: (() => void) | null;
+} = vi.hoisted(() => ({
+  camera: undefined,
+  invalidate: (): void => undefined,
+  frame: null,
+}));
+
+vi.mock('@react-three/fiber', () => ({
+  useThree: (selector: (state: { camera: unknown; invalidate: () => void }) => unknown) =>
+    selector({ camera: harness.camera, invalidate: harness.invalidate }),
+  useFrame: (callback: () => void) => {
+    harness.frame = callback;
+  },
+}));
+
+const { CameraPresets } = await import('../src/renderer/three/CameraPresets.js');
+const { cameraPose } = await import('../src/renderer/three/camera.js');
+const { useStore } = await import('../src/renderer/app/store.js');
+
+let positions: Array<[number, number, number]>;
+let targets: Array<[number, number, number]>;
+let controlsTargets: Array<[number, number, number]>;
+
+function makeCamera(): FakeCamera {
+  const value: [number, number, number] = [0, 0, 0];
+  return {
+    up: { set: () => undefined },
+    position: {
+      value,
+      set: (x, y, z) => {
+        value[0] = x;
+        value[1] = y;
+        value[2] = z;
+        positions.push([x, y, z]);
+      },
+    },
+    lookAt: (x, y, z) => {
+      targets.push([x, y, z]);
+    },
+    updateProjectionMatrix: () => undefined,
+  };
+}
+
+const controls = {
+  target: {
+    set: (x: number, y: number, z: number) => {
+      controlsTargets.push([x, y, z]);
+    },
+  },
+  update: () => undefined,
+};
+
+/** 補間の時計（`performance.now()` を差し替えて自由に進める）。 */
+let nowMs = 0;
+
+/** `useFrame` に登録されたコールバックを1回回す（`stepMs` だけ時計を進めてから）。 */
+function runFrame(stepMs = 0): void {
+  nowMs += stepMs;
+  harness.frame?.();
+}
+
+beforeEach(() => {
+  positions = [];
+  targets = [];
+  controlsTargets = [];
+  harness.frame = null;
+  harness.camera = makeCamera();
+  nowMs = 0;
+  vi.spyOn(performance, 'now').mockImplementation(() => nowMs);
+  useStore.setState({ camera: 'front', cameraNonce: 0 });
+});
+
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+});
+
+describe('CameraPresets', () => {
+  it('マウント直後はプリセットの視点を補間せずそのまま当てる', () => {
+    render(<CameraPresets preset="front" nonce={0} controls={controls} />);
+    const pose = cameraPose('front');
+    expect(positions.at(-1)).toEqual(pose.position);
+    expect(controlsTargets.at(-1)).toEqual(pose.target);
+  });
+
+  it('プリセットを変えると新しい視点へ補間して最後は目標に一致する', () => {
+    const view = render(<CameraPresets preset="front" nonce={0} controls={controls} />);
+    positions = [];
+    view.rerender(<CameraPresets preset="top" nonce={1} controls={controls} />);
+    // 途中のフレームはまだ目標に届いていない
+    runFrame(100);
+    expect(positions).toHaveLength(1);
+    expect(positions.at(-1)).not.toEqual(cameraPose('top').position);
+    // 遷移時間（300ms）を過ぎたら目標そのもの
+    runFrame(400);
+    expect(positions.at(-1)).toEqual(cameraPose('top').position);
+    // 到達したら補間は自己終結する（以後フレームを回しても動かない）
+    const settled = positions.length;
+    runFrame(100);
+    expect(positions).toHaveLength(settled);
+  });
+
+  it('同じプリセットのまま `nonce` だけ増やしても視点を組み直す（正面を押し直したら正面に戻る）', () => {
+    const view = render(<CameraPresets preset="socket" nonce={0} controls={controls} />);
+    positions = [];
+    controlsTargets = [];
+
+    // 同じ `preset` / 同じ `nonce` のまま再描画しても何も起こらない
+    view.rerender(<CameraPresets preset="socket" nonce={0} controls={controls} />);
+    runFrame(16);
+    expect(positions).toHaveLength(0);
+
+    // `nonce` が増えたら（＝同じボタンを押し直したら）補間が始まり、そのプリセットに戻る
+    view.rerender(<CameraPresets preset="socket" nonce={1} controls={controls} />);
+    runFrame(400);
+    expect(positions.length).toBeGreaterThan(0);
+    expect(positions.at(-1)).toEqual(cameraPose('socket').position);
+    expect(controlsTargets.at(-1)).toEqual(cameraPose('socket').target);
+  });
+});
+
+describe('store.setCamera（§12.2）', () => {
+  it('プリセットが変わらなくても番号は必ず増える', () => {
+    expect(useStore.getState().camera).toBe('front');
+    useStore.getState().setCamera('front');
+    expect(useStore.getState().cameraNonce).toBe(1);
+    useStore.getState().setCamera('front');
+    expect(useStore.getState().cameraNonce).toBe(2);
+    expect(useStore.getState().camera).toBe('front');
+  });
+
+  it('プリセットを変えたときも番号は増える', () => {
+    useStore.getState().setCamera('socket');
+    expect(useStore.getState().camera).toBe('socket');
+    expect(useStore.getState().cameraNonce).toBe(1);
+  });
+});
+```
+
+- [ ] **Step 4c: `apps/desktop/test/board-scene.test.ts` を書く（1D1-f で追加）**
+
+```ts
+import {
+  createSession,
+  JIPM_BOARD,
+  routeSession,
+  TASK2_SOCKET_ROLES,
+  type BoardSession,
+} from '@ojt/board-model';
+import { toTerminalId, wireId } from '@ojt/circuit-sim';
+import { describe, expect, it } from 'vitest';
+import { safeRoutes, visualSignature } from '../src/renderer/three/BoardScene.js';
+import { EMPTY_SNAPSHOT, useStore, type AppState } from '../src/renderer/app/store.js';
+import type { SimSnapshot } from '../src/worker/protocol.js';
+
+/**
+ * 3Dシーンの純粋な部分のテスト（§6.6 / §15）。
+ * `safeRoutes()` は「1本でも経路が解けなくても盤は描き続ける」ことの要。
+ * `visualSignature()` は「絵が変わったときだけ描く」判断そのもの。
+ */
+
+function freshSession(): BoardSession {
+  return createSession(JIPM_BOARD, { roles: TASK2_SOCKET_ROLES, allowedColors: ['青'] });
+}
+
+describe('safeRoutes（§6.6）', () => {
+  it('セッションが無ければ空を返す', () => {
+    expect(safeRoutes(JIPM_BOARD, undefined)).toEqual({ routes: [], errors: [] });
+  });
+
+  it('全部解ければ routeSession と同じ本数を返し、エラーは無い', () => {
+    const session = freshSession();
+    const { routes, errors } = safeRoutes(JIPM_BOARD, session);
+    expect(errors).toEqual([]);
+    expect(routes).toHaveLength(routeSession(JIPM_BOARD, session).length);
+  });
+
+  it('経路の作れない電線が1本混ざっても、他の電線は描けて理由だけが返る', () => {
+    const session = freshSession();
+    const before = safeRoutes(JIPM_BOARD, session).routes.length;
+    /*
+     * 経路の作れない電線を1本足す。盤に無い端子を指していれば経路器が
+     * `RoutingError('invalid-terminal')` で断る（保存した作業を新しい盤定義で開いたときに起きうる）。
+     */
+    session.wires.push({
+      id: wireId('w-broken'),
+      from: toTerminalId('S1.9'),
+      to: toTerminalId('NOPE.1'),
+      color: '青',
+      locked: false,
+      open: false,
+    });
+    const { routes, errors } = safeRoutes(JIPM_BOARD, session);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]?.wireId).toBe('w-broken');
+    expect(errors[0]?.reason).toBeTruthy();
+    // 解けた電線はそのまま描ける（盤が真っ黒にならない）
+    expect(routes).toHaveLength(before);
+    expect(routes.some((r) => r.wireId === 'w-broken')).toBe(false);
+  });
+});
+
+describe('visualSignature（§15 再描画の判断）', () => {
+  function stateWith(patch: Partial<AppState>): AppState {
+    return { ...useStore.getState(), ...patch };
+  }
+
+  it('時刻と電流だけが動いても署名は変わらない（毎秒30枚のスナップショットで描き直さない）', () => {
+    const base = stateWith({ snapshot: EMPTY_SNAPSHOT });
+    const moved = stateWith({
+      snapshot: { ...EMPTY_SNAPSHOT, tMs: 12_345, sourceAmps: 0.421 },
+    });
+    expect(visualSignature(moved)).toBe(visualSignature(base));
+  });
+
+  it('ランプ・リレー・タイマ・押ボタン・通電・遮断は署名を変える', () => {
+    const base = visualSignature(stateWith({ snapshot: EMPTY_SNAPSHOT }));
+    const changes: Array<Partial<SimSnapshot>> = [
+      { lamps: { PL1: { level: 'lit', volts: 24 } } },
+      { relays: { CR1: { coilOn: true, contactsOn: true, coilVolts: 24 } } },
+      { timers: { T1: { powered: true, timedOut: false, elapsedMs: 0, presetMs: 3000 } } },
+      { buttons: { PB1: true } },
+      { powered: true },
+      { tripped: true },
+    ];
+    for (const patch of changes) {
+      const next = visualSignature(stateWith({ snapshot: { ...EMPTY_SNAPSHOT, ...patch } }));
+      expect(next, JSON.stringify(patch)).not.toBe(base);
+    }
+  });
+
+  it('ホバー・配線待ち・電線の選択・モード・視点は署名を変える', () => {
+    const base = visualSignature(stateWith({}));
+    const changes: Array<Partial<AppState>> = [
+      { hoveredTerminal: toTerminalId('S1.9') },
+      { pendingTerminal: toTerminalId('S1.9') },
+      { selectedWire: 'w-001' },
+      { mode: 'delete' },
+      { camera: 'socket' },
+      // 同じプリセットを押し直しても視点は動くので、番号も署名に入っている
+      { cameraNonce: useStore.getState().cameraNonce + 1 },
+    ];
+    for (const patch of changes) {
+      expect(visualSignature(stateWith(patch)), JSON.stringify(patch)).not.toBe(base);
+    }
+  });
+
+  it('電線の本数と装着が変わると署名も変わる', () => {
+    const session = freshSession();
+    const base = visualSignature(stateWith({ session }));
+    const plugged: BoardSession = {
+      ...session,
+      mounted: { ...session.mounted, S1: { kind: 'relay-my4n' } },
+    };
+    expect(visualSignature(stateWith({ session: plugged }))).not.toBe(base);
+  });
+});
 ```
 
 - [ ] **Step 5: コミットする**
@@ -7888,10 +8987,14 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
   box-shadow: 0 0 8px var(--ng);
 }
 
+/*
+ * 高さは**固定**（`max-height` ではない）。行が増えるほど背が伸びると、
+ * 下部パネルごと膨らんで3Dビューポートが縮む（`screens.module.css` の `.sessionLayout` 参照）。
+ */
 .logList {
   font-size: 12px;
   line-height: 1.5;
-  max-height: 120px;
+  height: 120px;
   overflow-y: auto;
   margin: 0;
   padding-left: 16px;
@@ -8007,6 +9110,7 @@ export function Toolbar({
   camera,
   canUndo,
   canRedo,
+  judging,
   onMode,
   onWireColor,
   onCamera,
@@ -8022,6 +9126,8 @@ export function Toolbar({
   camera: CameraPreset;
   canUndo: boolean;
   canRedo: boolean;
+  /** 判定を Worker へ送って結果待ちか（押し直しを止める）。§8.2 */
+  judging: boolean;
   onMode: (mode: ToolMode) => void;
   onWireColor: (color: WireColor) => void;
   onCamera: (preset: CameraPreset) => void;
@@ -8086,8 +9192,14 @@ export function Toolbar({
       </div>
       {children}
       <span className={styles.spacer} />
-      <button type="button" className={styles.judgeButton} onClick={onJudge}>
-        {JA.session.judge}
+      <button
+        type="button"
+        className={styles.judgeButton}
+        data-testid="judge-button"
+        disabled={judging}
+        onClick={onJudge}
+      >
+        {judging ? JA.session.judging : JA.session.judge}
       </button>
     </div>
   );
@@ -8577,6 +9689,7 @@ export function LogPanel({
 ```tsx
 import type { TimeLimit } from '@ojt/content';
 import type { JSX } from 'react';
+import { useStore } from '../app/store.js';
 import { formatElapsed } from '../../worker/runtime.js';
 import { JA, minutesLabel } from '../i18n/ja.js';
 import styles from './panels.module.css';
@@ -8603,14 +9716,14 @@ export function elapsedScale(
   };
 }
 
-/** 経過時間の表示。 */
-export function ElapsedTimer({
-  elapsedMs,
-  limit,
-}: {
-  elapsedMs: number;
-  limit: TimeLimit;
-}): JSX.Element {
+/**
+ * 経過時間の表示。
+ *
+ * 経過時間は**この部品が自分でストアから受け取る**。0.2秒ごとに進む値をセッション画面が
+ * 受けると、3Dビューポートを含む画面全体が毎秒5回再描画されてしまうため（§15）。
+ */
+export function ElapsedTimer({ limit }: { limit: TimeLimit }): JSX.Element {
+  const elapsedMs = useStore((s) => s.elapsedMs);
   const scale = elapsedScale(elapsedMs, limit);
   return (
     <section className={styles.panel}>
@@ -8774,7 +9887,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 
 **Files:**
 - Create: `apps/desktop/src/renderer/session/spec-chart.ts`, `apps/desktop/src/renderer/screens/Session.tsx`
-- Test: `apps/desktop/test/spec-chart.test.ts`
+- Test: `apps/desktop/test/spec-chart.test.ts`, `apps/desktop/test/session.test.tsx`
 
 
 - [ ] **Step 1: `apps/desktop/src/renderer/session/spec-chart.ts` を書く**
@@ -8801,12 +9914,45 @@ import {
  */
 
 /** 仕様チャートの構築結果。模範回路が変換できなければ理由を返す（§13 #2）。 */
-export type SpecChartResult =
-  | { ok: true; chart: TimeChart }
-  | { ok: false; errors: string[] };
+export type SpecChartResult = { ok: true; chart: TimeChart } | { ok: false; errors: string[] };
 
-/** 課題の仕様タイムチャートを作る。 */
+/**
+ * 課題IDごとの結果のキャッシュ。
+ *
+ * 中身は模範回路を丸ごと1回シミュレートした結果で、内蔵課題でも 175〜260ms かかる
+ * （レビュー計測）。課題は開いている間ずっと同じものなので、セッション画面を開くたびに
+ * 作り直す必要はない。課題の中身が差し替わっても拾えるよう `formatVersion` も鍵に混ぜる。
+ * 結果は読み取り専用として扱う（呼び出し側は `chart` を書き換えない）。
+ */
+const CACHE = new Map<string, SpecChartResult>();
+
+/** キャッシュの鍵。 */
+function cacheKey(problem: AssembleProblem): string {
+  return `${problem.id}@${problem.formatVersion}`;
+}
+
+/** キャッシュを空にする（テスト用）。 */
+export function clearSpecChartCache(): void {
+  CACHE.clear();
+}
+
+/** その課題の仕様チャートがもうキャッシュにあるか（テスト用）。 */
+export function isSpecChartCached(problem: AssembleProblem): boolean {
+  return CACHE.has(cacheKey(problem));
+}
+
+/** 課題の仕様タイムチャートを作る（同じ課題の2度目以降はキャッシュを返す）。 */
 export function buildSpecChart(problem: AssembleProblem): SpecChartResult {
+  const key = cacheKey(problem);
+  const cached = CACHE.get(key);
+  if (cached !== undefined) return cached;
+  const result = computeSpecChart(problem);
+  CACHE.set(key, result);
+  return result;
+}
+
+/** 模範回路をその場で走らせて仕様チャートを作る（キャッシュの中身）。 */
+function computeSpecChart(problem: AssembleProblem): SpecChartResult {
   const reference = buildReferenceSession(problem, JIPM_BOARD);
   if (!reference.ok) {
     return { ok: false, errors: reference.errors.map((e) => `${e.path}: ${e.message}`) };
@@ -8819,7 +9965,12 @@ export function buildSpecChart(problem: AssembleProblem): SpecChartResult {
   );
   return {
     ok: true,
-    chart: buildTimeChart(run.log, specs, problem.durationMs, timerMarkers(reference.value.netlist)),
+    chart: buildTimeChart(
+      run.log,
+      specs,
+      problem.durationMs,
+      timerMarkers(reference.value.netlist),
+    ),
   };
 }
 ```
@@ -8865,6 +10016,7 @@ import {
   deleteKeyToAction,
   escapeToAction,
   pickToAction,
+  shouldIgnoreShortcut,
   type PickAction,
   type PickHit,
 } from '../session/interaction.js';
@@ -8885,6 +10037,27 @@ const ELAPSED_INTERVAL_MS = 200;
 /** ライブチャートの最小横軸長[ms]（開始直後に潰れないようにする）。 */
 const LIVE_MIN_DURATION_MS = 5000;
 
+/**
+ * ライブ記録のチャート。§8.2
+ * 毎秒約30回変わる `snapshot.tMs` をここで受けることで、`Session`（＝3Dビューポートを含む）を
+ * 巻き添えで再描画しない（§15）。
+ */
+function LivePanel(): JSX.Element {
+  const chartSpecs = useStore((s) => s.chartSpecs);
+  const liveTransitions = useStore((s) => s.liveTransitions);
+  const tMs = useStore((s) => s.snapshot.tMs);
+  const live = useMemo(
+    () => liveChart(chartSpecs, liveTransitions, Math.max(tMs, LIVE_MIN_DURATION_MS)),
+    [chartSpecs, liveTransitions, tMs],
+  );
+  return (
+    <section className={styles.panelLive}>
+      <h2 className={styles.liveTitle}>{JA.session.liveChart}</h2>
+      <TimeChartSvg chart={live} title={JA.session.liveChart} />
+    </section>
+  );
+}
+
 /** セッション画面。 */
 export function Session(): JSX.Element {
   const problem = useStore((s) => s.problem);
@@ -8896,13 +10069,19 @@ export function Session(): JSX.Element {
   const selectedWire = useStore((s) => s.selectedWire);
   const selectedSocket = useStore((s) => s.selectedSocket);
   const camera = useStore((s) => s.camera);
-  const snapshot = useStore((s) => s.snapshot);
+  /*
+   * スナップショットは毎秒約30枚届くが、この画面が見るのは電源まわりの真偽値だけ。
+   * `snapshot` をまるごと購読すると、この画面（＝3Dビューポートを含む部分木）が毎秒30回
+   * 再描画されてしまうので、**必要な値だけ**を個別に購読する。§15
+   */
+  const powered = useStore((s) => s.snapshot.powered);
+  const tripped = useStore((s) => s.snapshot.tripped);
+  const breakerOn = useStore((s) => s.snapshot.breakerOn);
+  const switchOn = useStore((s) => s.snapshot.switchOn);
   const hazards = useStore((s) => s.hazards);
   const chatters = useStore((s) => s.chatters);
   const logLines = useStore((s) => s.logLines);
-  const elapsedMs = useStore((s) => s.elapsedMs);
-  const chartSpecs = useStore((s) => s.chartSpecs);
-  const liveTransitions = useStore((s) => s.liveTransitions);
+  const judging = useStore((s) => s.judging);
   const webglLost = useStore((s) => s.webglLost);
   const problemId = problem?.id;
   const sessionEpoch = useStore((s) => s.sessionEpoch);
@@ -8924,6 +10103,7 @@ export function Session(): JSX.Element {
       },
       onJudge: (message) => {
         const state = useStore.getState();
+        state.setJudging(false);
         if (message.result.ok) {
           state.setJudge(message.result.value);
           state.setRoute('result');
@@ -8933,6 +10113,8 @@ export function Session(): JSX.Element {
       },
       onError: (text, fatal) => {
         const state = useStore.getState();
+        // 判定の往復中に落ちたら「判定中…」のまま固まるので、必ず戻す（§8.2）
+        state.setJudging(false);
         const line = `${JA.error.workerError}: ${text}`;
         // 追従ループが止まったら（§13 #6）トーストでは気づけない。バナーを出して立て直させる
         if (fatal) state.setFatalError(line);
@@ -9077,6 +10259,8 @@ export function Session(): JSX.Element {
   // キーボード操作（Esc で配線取消、Delete で電線削除、1/2/3 で視点。§8.2 / §12.2）
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
+      // 入力欄で打鍵中・IME変換中は盤のショートカットを動かさない（§8.2）
+      if (shouldIgnoreShortcut(event)) return;
       const store = useStore.getState();
       const current = store.session;
       if (current === undefined) return;
@@ -9107,11 +10291,6 @@ export function Session(): JSX.Element {
   const spec = useMemo(
     () => (problem === undefined ? undefined : buildSpecChart(problem)),
     [problem],
-  );
-
-  const live = useMemo(
-    () => liveChart(chartSpecs, liveTransitions, Math.max(snapshot.tMs, LIVE_MIN_DURATION_MS)),
-    [chartSpecs, liveTransitions, snapshot.tMs],
   );
 
   if (problem === undefined || session === undefined) {
@@ -9192,7 +10371,11 @@ export function Session(): JSX.Element {
         onRedo={() => {
           restore(redoHistory(history), JA.session.redo);
         }}
+        judging={judging}
         onJudge={() => {
+          // 往復中は押させない（結果が返るか Worker が落ちるまで `judging` が立つ）。§8.2
+          if (useStore.getState().judging) return;
+          useStore.getState().setJudging(true);
           bridge.send({
             type: 'judge',
             problem,
@@ -9205,10 +10388,10 @@ export function Session(): JSX.Element {
         }}
       >
         <PowerControls
-          breakerOn={snapshot.breakerOn}
-          switchOn={snapshot.switchOn}
-          powered={snapshot.powered}
-          tripped={snapshot.tripped}
+          breakerOn={breakerOn}
+          switchOn={switchOn}
+          powered={powered}
+          tripped={tripped}
           onBreaker={(on) => {
             bridge.send({ type: 'breaker', on });
             useStore.getState().addLog(powerLog(JA.session.breaker, on));
@@ -9228,13 +10411,13 @@ export function Session(): JSX.Element {
         <div className={styles.viewport} data-testid="viewport">
           <BoardScene onPick={onPick} onHover={onHover} onPress={onPress} onRelease={onRelease} />
           <div className={styles.statusOverlay} data-testid="status-overlay">
-            {snapshot.powered ? JA.session.powered : JA.session.unpowered} / {JA.session.wires}{' '}
+            {powered ? JA.session.powered : JA.session.unpowered} / {JA.session.wires}{' '}
             {session.wires.length} {JA.session.wiresUnit} /{' '}
             {pendingTerminal === undefined
               ? JA.session.noTerminal
               : `${JA.session.firstTerminal}: ${pendingTerminal}`}
             {selectedWire === undefined ? '' : ` / ${JA.session.selection}: ${selectedWire}`}
-            {snapshot.tripped ? ` / ${JA.session.tripped}` : ''}
+            {tripped ? ` / ${JA.session.tripped}` : ''}
             {webglLost ? ` / ${JA.error.webglLost}` : ''}
           </div>
         </div>
@@ -9245,10 +10428,7 @@ export function Session(): JSX.Element {
           {spec !== undefined && !spec.ok ? (
             <p data-testid="reference-error">{referenceErrorText(spec.errors)}</p>
           ) : null}
-          <section className={styles.panelLive}>
-            <h2 className={styles.liveTitle}>{JA.session.liveChart}</h2>
-            <TimeChartSvg chart={live} title={JA.session.liveChart} />
-          </section>
+          <LivePanel />
           <PartsPanel
             session={session}
             selectedSocket={selectedSocket}
@@ -9263,7 +10443,7 @@ export function Session(): JSX.Element {
 
         <div className={styles.bottomPanel}>
           <LogPanel lines={logLines} hazards={hazards} chatters={chatters} />
-          <ElapsedTimer elapsedMs={elapsedMs} limit={problem.timeLimit} />
+          <ElapsedTimer limit={problem.timeLimit} />
         </div>
       </div>
     </>
@@ -9276,10 +10456,19 @@ export function Session(): JSX.Element {
 ```ts
 import { JIPM_BOARD } from '@ojt/board-model';
 import { BUILTIN_PROBLEMS, buildReferenceSession, judgeAssemble } from '@ojt/content';
-import { describe, expect, it } from 'vitest';
-import { buildSpecChart } from '../src/renderer/session/spec-chart.js';
+import { beforeEach, describe, expect, it } from 'vitest';
+import {
+  buildSpecChart,
+  clearSpecChartCache,
+  isSpecChartCached,
+} from '../src/renderer/session/spec-chart.js';
 
 const SELF_HOLD = BUILTIN_PROBLEMS.find((p) => p.id === 'b-001');
+const TIMER = BUILTIN_PROBLEMS.find((p) => p.id === 'b-003');
+
+beforeEach(() => {
+  clearSpecChartCache();
+});
 
 describe('buildSpecChart', () => {
   it('内蔵課題「自己保持回路」の仕様チャートを作れる（§7.7）', () => {
@@ -9324,6 +10513,57 @@ describe('buildSpecChart', () => {
   });
 });
 
+describe('buildSpecChart のキャッシュ（§15）', () => {
+  it('同じ課題の2度目はキャッシュを返す（模範回路を走らせ直さない）', () => {
+    if (SELF_HOLD === undefined) return;
+    expect(isSpecChartCached(SELF_HOLD)).toBe(false);
+    const first = buildSpecChart(SELF_HOLD);
+    expect(isSpecChartCached(SELF_HOLD)).toBe(true);
+    const second = buildSpecChart(SELF_HOLD);
+    // 同じオブジェクトが返る＝作り直していない
+    expect(second).toBe(first);
+  });
+
+  it('キャッシュを捨てれば作り直す（課題が差し替わったときに古い結果を返さない）', () => {
+    if (SELF_HOLD === undefined) return;
+    const first = buildSpecChart(SELF_HOLD);
+    clearSpecChartCache();
+    const rebuilt = buildSpecChart(SELF_HOLD);
+    expect(rebuilt).not.toBe(first);
+    expect(rebuilt.ok).toBe(true);
+  });
+
+  it('課題ごとに別々に覚える', () => {
+    if (SELF_HOLD === undefined || TIMER === undefined) return;
+    expect(buildSpecChart(SELF_HOLD)).not.toBe(buildSpecChart(TIMER));
+    expect(isSpecChartCached(SELF_HOLD)).toBe(true);
+    expect(isSpecChartCached(TIMER)).toBe(true);
+  });
+});
+
+describe('タイマ課題（b-003）の仕様チャート（§7.7）', () => {
+  it('タイマの設定値（3000ms）の目印が立ち、PL1 は起動から 3000ms 後に立ち上がる', () => {
+    expect(TIMER).toBeDefined();
+    if (TIMER === undefined) return;
+    const result = buildSpecChart(TIMER);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    // 目印はタイマの設定値そのもの（`timerMarkers()`）
+    expect(result.chart.markers.map((m) => m.tMs)).toContain(3000);
+
+    // 起動は PB1 の押下。PL1 はその 3000ms 後（走査1回ぶんの遅れは許容）に点く
+    const start = TIMER.operations.find((op) => op.target === 'PB1' && op.action === 'press');
+    expect(start).toBeDefined();
+    if (start === undefined) return;
+    const pl1 = result.chart.signals.find((s) => s.name === 'PL1');
+    const rise = pl1?.segments.find((seg) => seg.value);
+    expect(rise).toBeDefined();
+    if (rise === undefined) return;
+    expect(rise.fromMs - start.t).toBeGreaterThanOrEqual(3000);
+    expect(rise.fromMs - start.t).toBeLessThanOrEqual(3050);
+  });
+});
+
 describe('判定（worker が呼ぶ経路と同じ）', () => {
   it('模範回路そのままなら合格する（§7.8 自己整合）', () => {
     expect(SELF_HOLD).toBeDefined();
@@ -9355,6 +10595,283 @@ describe('判定（worker が呼ぶ経路と同じ）', () => {
     if (!judged.ok) return;
     expect(judged.value.passed).toBe(false);
     expect(judged.value.mismatches.length).toBeGreaterThan(0);
+  });
+});
+```
+
+- [ ] **Step 3b: `apps/desktop/test/session.test.tsx` を書く（1D1-f で追加）**
+
+```tsx
+import { JIPM_BOARD, remainingInventory, mountedKinds } from '@ojt/board-model';
+import { toTerminalId } from '@ojt/circuit-sim';
+import { BUILTIN_PROBLEMS } from '@ojt/content';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { createElement } from 'react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { SimCommand } from '../src/worker/protocol.js';
+import type { PickHit } from '../src/renderer/session/interaction.js';
+import type * as BoardSceneModule from '../src/renderer/three/BoardScene.js';
+
+/**
+ * セッション画面の操作テスト（§8.2 / §14.2）。
+ *
+ * 3Dビューポートは happy-dom では描けないので `BoardScene` を差し替える。差し替えた部品は
+ * 受け取った `onPick` / `onHover` をそのまま外へ出すので、**端子をクリックした**という
+ * 出来事を本物と同じ経路（`pickToAction` → `commands` → `bridge.send`）に流せる。
+ * Worker ブリッジも差し替えて、送られたコマンドを配列に溜める。
+ */
+
+const scene = vi.hoisted(() => ({
+  pick: undefined as ((hit: PickHit) => void) | undefined,
+}));
+
+const workerMock = vi.hoisted(() => ({
+  sent: [] as unknown[],
+  handlers: undefined as
+    | {
+        onSnapshot: (snapshot: unknown) => void;
+        onJudge: (message: unknown) => void;
+        onError: (message: string, fatal: boolean) => void;
+      }
+    | undefined,
+}));
+
+vi.mock('../src/renderer/three/BoardScene.js', async () => {
+  const actual = await vi.importActual<typeof BoardSceneModule>(
+    '../src/renderer/three/BoardScene.js',
+  );
+  return {
+    safeRoutes: actual.safeRoutes,
+    visualSignature: actual.visualSignature,
+    BoardScene: ({ onPick }: { onPick: (hit: PickHit) => void }) => {
+      scene.pick = onPick;
+      return createElement('div', { 'data-testid': 'board-canvas-stub' });
+    },
+  };
+});
+
+vi.mock('../src/renderer/session/worker-bridge.js', () => ({
+  bridge: {
+    start: (handlers: NonNullable<typeof workerMock.handlers>) => {
+      workerMock.handlers = handlers;
+    },
+    send: (command: unknown) => {
+      workerMock.sent.push(command);
+    },
+    stop: () => {
+      workerMock.handlers = undefined;
+    },
+    running: true,
+  },
+}));
+
+const { Session } = await import('../src/renderer/screens/Session.js');
+const { useStore } = await import('../src/renderer/app/store.js');
+const { JA } = await import('../src/renderer/i18n/ja.js');
+
+const PROBLEM = BUILTIN_PROBLEMS.find((p) => p.id === 'b-001');
+
+/** 物理端子IDから `PickHit` を作る（3D盤が返すのと同じ形）。 */
+function terminalHit(id: string): PickHit {
+  const terminal = JIPM_BOARD.terminals.find((t) => t.id === id);
+  if (terminal === undefined) throw new Error(`端子が見つかりません: ${id}`);
+  return { kind: 'terminal', id: terminal.id, wirable: terminal.wirable, label: terminal.label };
+}
+
+/** 送ったコマンドのうち `type` が一致するもの。 */
+function sentOf(type: SimCommand['type']): unknown[] {
+  return workerMock.sent.filter((c) => (c as { type?: string }).type === type);
+}
+
+function openSession(): void {
+  if (PROBLEM === undefined) throw new Error('b-001 が見つかりません');
+  act(() => {
+    useStore.getState().openProblem(PROBLEM);
+  });
+  render(<Session />);
+}
+
+beforeEach(() => {
+  workerMock.sent = [];
+  workerMock.handlers = undefined;
+  scene.pick = undefined;
+  useStore.setState({ camera: 'front', cameraNonce: 0, judging: false });
+});
+
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+});
+
+describe('端子 → 端子の配線（§8.2）', () => {
+  it('2つめの端子で電線が1本増え、Worker へ addWire を1回だけ送り、履歴も1つだけ積む', () => {
+    openSession();
+    const before = useStore.getState().session?.wires.length ?? 0;
+
+    act(() => {
+      scene.pick?.(terminalHit('P.1'));
+      scene.pick?.(terminalHit('TB_PB.2c'));
+    });
+
+    const state = useStore.getState();
+    expect(state.session?.wires).toHaveLength(before + 1);
+    expect(sentOf('addWire')).toHaveLength(1);
+    expect(state.history.done).toHaveLength(1);
+    expect(state.pendingTerminal).toBeUndefined();
+  });
+
+  it('1本目を選んだだけでは何も送らない', () => {
+    openSession();
+    act(() => {
+      scene.pick?.(terminalHit('P.1'));
+    });
+    expect(useStore.getState().pendingTerminal).toBe(toTerminalId('P.1'));
+    expect(sentOf('addWire')).toHaveLength(0);
+    expect(useStore.getState().history.done).toHaveLength(0);
+  });
+
+  it('1端子3本目（terminal-overload）は盤には入れずに Worker へだけ送り、履歴は積まない', () => {
+    openSession();
+    // TB_PB.2c に2本繋いで上限に達してから3本目を試す
+    act(() => {
+      scene.pick?.(terminalHit('P.1'));
+      scene.pick?.(terminalHit('TB_PB.2c'));
+      scene.pick?.(terminalHit('TB_PB.2c'));
+      scene.pick?.(terminalHit('S1.10'));
+    });
+    const wiresAfterTwo = useStore.getState().session?.wires.length ?? 0;
+    const historyAfterTwo = useStore.getState().history.done.length;
+    const sentAfterTwo = sentOf('addWire').length;
+
+    act(() => {
+      scene.pick?.(terminalHit('TB_PB.2c'));
+      scene.pick?.(terminalHit('S1.9'));
+    });
+
+    const state = useStore.getState();
+    // 盤も履歴も増えないが、危険操作として数えるため Worker へは送る（§5.6 #5）
+    expect(state.session?.wires).toHaveLength(wiresAfterTwo);
+    expect(state.history.done).toHaveLength(historyAfterTwo);
+    expect(sentOf('addWire')).toHaveLength(sentAfterTwo + 1);
+    expect(state.toasts.at(-1)?.tone).toBe('error');
+  });
+});
+
+describe('元に戻す（§8.2）', () => {
+  /** いま使えるリレーの残数。 */
+  function relaysLeft(): number {
+    const session = useStore.getState().session;
+    if (session === undefined) return 0;
+    return (
+      remainingInventory(session.inventory, mountedKinds(session)).find(
+        (item) => item.kind === 'relay-my4n',
+      )?.count ?? 0
+    );
+  }
+
+  it('装着を元に戻すと在庫が戻る', () => {
+    openSession();
+    const stock = relaysLeft();
+    expect(stock).toBeGreaterThan(0);
+
+    act(() => {
+      scene.pick?.({ kind: 'socket', id: 'S1', occupied: false });
+    });
+    act(() => {
+      fireEvent.click(screen.getAllByRole('button', { name: JA.session.mount })[0] as HTMLElement);
+    });
+    expect(useStore.getState().session?.mounted['S1']).toBeDefined();
+    expect(relaysLeft()).toBe(stock - 1);
+
+    act(() => {
+      fireEvent.click(screen.getByRole('button', { name: JA.session.undo }));
+    });
+
+    expect(useStore.getState().session?.mounted['S1']).toBeUndefined();
+    expect(relaysLeft()).toBe(stock);
+    expect(useStore.getState().history.done).toHaveLength(0);
+    // 盤を組み直したので Worker にも load を送り直している（§13 #6）
+    expect(sentOf('load').length).toBeGreaterThanOrEqual(2);
+  });
+});
+
+describe('キーボードのショートカット（§8.2）', () => {
+  it('数値入力欄に打った数字では視点が変わらない', () => {
+    openSession();
+    const input = document.createElement('input');
+    input.type = 'number';
+    document.body.appendChild(input);
+    input.focus();
+
+    const before = useStore.getState().cameraNonce;
+    act(() => {
+      fireEvent.keyDown(input, { key: '3' });
+      fireEvent.keyDown(input, { key: 'Delete' });
+      fireEvent.keyDown(input, { key: 'Escape' });
+    });
+
+    expect(useStore.getState().camera).toBe('front');
+    expect(useStore.getState().cameraNonce).toBe(before);
+    input.remove();
+  });
+
+  it('IME 変換中のキーも盤へ通さない', () => {
+    openSession();
+    const before = useStore.getState().cameraNonce;
+    act(() => {
+      fireEvent.keyDown(document.body, { key: '2', isComposing: true });
+    });
+    expect(useStore.getState().cameraNonce).toBe(before);
+  });
+
+  it('入力欄の外なら 1 / 2 / 3 で視点が変わる', () => {
+    openSession();
+    act(() => {
+      fireEvent.keyDown(document.body, { key: '3' });
+    });
+    expect(useStore.getState().camera).toBe('socket');
+    act(() => {
+      fireEvent.keyDown(document.body, { key: '1' });
+    });
+    expect(useStore.getState().camera).toBe('front');
+  });
+});
+
+describe('判定（§8.2 / §13 #2）', () => {
+  it('判定中はボタンを押せず「判定中…」になる', () => {
+    openSession();
+    fireEvent.click(screen.getByTestId('judge-button'));
+    expect(useStore.getState().judging).toBe(true);
+    const button = screen.getByTestId('judge-button');
+    expect(button.textContent).toBe(JA.session.judging);
+    expect((button as HTMLButtonElement).disabled).toBe(true);
+    expect(sentOf('judge')).toHaveLength(1);
+  });
+
+  it('模範回路を作れなかったらセッション画面に留まり、トーストで理由を出す', () => {
+    openSession();
+    fireEvent.click(screen.getByTestId('judge-button'));
+    act(() => {
+      workerMock.handlers?.onJudge({
+        type: 'judgeResult',
+        result: { ok: false, errors: [{ path: 'judge', message: '模範回路が組めません' }] },
+      });
+    });
+    const state = useStore.getState();
+    expect(state.route).toBe('session');
+    expect(state.judge).toBeUndefined();
+    expect(state.judging).toBe(false);
+    expect(state.toasts.at(-1)?.text).toContain('模範回路が組めません');
+    expect(screen.getByTestId<HTMLButtonElement>('judge-button').disabled).toBe(false);
+  });
+
+  it('Worker が落ちても「判定中…」のまま固まらない', () => {
+    openSession();
+    fireEvent.click(screen.getByTestId('judge-button'));
+    act(() => {
+      workerMock.handlers?.onError('worker died', true);
+    });
+    expect(useStore.getState().judging).toBe(false);
   });
 });
 ```
@@ -9455,17 +10972,33 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
   gap: 16px;
 }
 
+.title {
+  font-size: 18px;
+  margin: 0;
+}
+
+/*
+ * カードの見出しは h2。h1（判定結果のタイトル）の次が h3 では見出しの階層が飛ぶ。
+ * 高さは頭打ちにして中身が多いカード（差分一覧）だけが自分でスクロールする
+ * （レビュー指摘: 差分が20件あるとカードが伸びて他の項目が画面外へ押し出される）。
+ */
 .card {
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 6px;
   padding: 10px 12px;
+  max-height: 420px;
+  overflow-y: auto;
 }
 
-.card h3 {
+.card h2 {
   color: var(--muted);
   font-size: 12px;
   margin: 0 0 8px;
+  position: sticky;
+  top: -10px;
+  background: var(--panel);
+  padding: 2px 0;
 }
 
 .table {
@@ -9543,12 +11076,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 import type { TimeChart } from '@ojt/content';
 import type { JSX } from 'react';
 import { JA } from '../i18n/ja.js';
-import {
-  LABEL_WIDTH,
-  PLOT_WIDTH,
-  ROW_HEIGHT,
-  waveformPoints,
-} from '../panels/TimeChartPanel.js';
+import { LABEL_WIDTH, PLOT_WIDTH, ROW_HEIGHT, waveformPoints } from '../panels/TimeChartPanel.js';
 import panels from '../panels/panels.module.css';
 import styles from './result.module.css';
 
@@ -9570,7 +11098,7 @@ export function ChartOverlay({
   const actualByName = new Map(actual.signals.map((s) => [s.name, s] as const));
   return (
     <div className={styles.card}>
-      <h3>{JA.result.chartOverlay}</h3>
+      <h2>{JA.result.chartOverlay}</h2>
       <svg
         viewBox={`0 0 ${width} ${height}`}
         role="img"
@@ -9652,9 +11180,9 @@ export function formatMs(ms: number): string {
 export function MismatchList({ mismatches }: { mismatches: readonly Mismatch[] }): JSX.Element {
   return (
     <div className={styles.card}>
-      <h3>
+      <h2>
         {JA.result.mismatches}（{mismatches.length}）
-      </h3>
+      </h2>
       {mismatches.length === 0 ? (
         <p data-testid="no-mismatch">{JA.result.noMismatch}</p>
       ) : (
@@ -9707,7 +11235,7 @@ import styles from './result.module.css';
 export function StaticCheckList({ checks }: { checks: readonly StaticCheckResult[] }): JSX.Element {
   return (
     <div className={styles.card}>
-      <h3>{JA.result.staticChecks}</h3>
+      <h2>{JA.result.staticChecks}</h2>
       <div data-testid="static-checks">
         {checks.map((check) => (
           <div key={check.id}>
@@ -9743,9 +11271,9 @@ export function HazardList({
   const rows = (Object.keys(counts) as HazardKind[]).filter((kind) => counts[kind] > 0);
   return (
     <div className={styles.card}>
-      <h3>
+      <h2>
         {JA.result.hazards}（{total}）
-      </h3>
+      </h2>
       {rows.length === 0 ? (
         <p>{JA.result.hazardNone}</p>
       ) : (
@@ -9804,13 +11332,16 @@ export function ResultView({
   return (
     <div className={styles.wrap}>
       <div className={styles.header}>
+        {/* 合否は画面を開いた瞬間に読み上げてほしい情報なので、支援技術にも伝える（§8.3） */}
         <span
           className={`${styles.verdict} ${result.passed ? styles.passed : styles.failed}`}
           data-testid="verdict"
+          role="status"
+          aria-live="polite"
         >
           {result.passed ? JA.result.passed : JA.result.failed}
         </span>
-        <h1 style={{ fontSize: 18, margin: 0 }}>
+        <h1 className={styles.title}>
           {JA.result.title}: {problem.title}
         </h1>
         <span data-testid="result-elapsed">
@@ -9901,9 +11432,16 @@ export function Result(): JSX.Element {
 
 ```tsx
 import { JIPM_BOARD } from '@ojt/board-model';
-import { BUILTIN_PROBLEMS, buildReferenceSession, judgeAssemble } from '@ojt/content';
+import { HAZARD_KINDS, type Mismatch, type MismatchReason } from '@ojt/circuit-sim';
+import {
+  BUILTIN_PROBLEMS,
+  buildReferenceSession,
+  judgeAssemble,
+  type JudgeResult,
+} from '@ojt/content';
 import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
+import { JA } from '../src/renderer/i18n/ja.js';
 import { ResultView } from '../src/renderer/result/ResultView.js';
 
 /**
@@ -9977,6 +11515,112 @@ describe('ResultView', () => {
     );
     expect(screen.getByTestId('result-elapsed').textContent).toContain('01:30.0');
     expect(screen.getByTestId('result-elapsed').textContent).toContain('標準時間');
+  });
+
+  it('合否は支援技術にも伝わる（role="status" / aria-live）', () => {
+    if (PROBLEM === undefined) return;
+    render(
+      <ResultView
+        problem={PROBLEM}
+        result={judgeWith()}
+        onRetry={() => undefined}
+        onBackToList={() => undefined}
+      />,
+    );
+    const verdict = screen.getByTestId('verdict');
+    expect(verdict.getAttribute('role')).toBe('status');
+    expect(verdict.getAttribute('aria-live')).toBe('polite');
+  });
+
+  it('見出しの階層が飛ばない（h1 の次は h2）', () => {
+    if (PROBLEM === undefined) return;
+    render(
+      <ResultView
+        problem={PROBLEM}
+        result={judgeWith()}
+        onRetry={() => undefined}
+        onBackToList={() => undefined}
+      />,
+    );
+    expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
+    expect(screen.getAllByRole('heading', { level: 2 }).length).toBeGreaterThan(0);
+    expect(screen.queryAllByRole('heading', { level: 3 })).toHaveLength(0);
+  });
+});
+
+describe('ResultView（差分・危険操作が多いとき。§8.3）', () => {
+  /** 3種類だけ回数が入った危険操作の集計。 */
+  const HAZARDS_SHOWN = [
+    'ohm-on-live',
+    'power-sequence-violation',
+    'over-wires-per-terminal',
+  ] as const;
+
+  /** 差分20件と3種類の危険操作を持つ判定結果を作る。 */
+  function crowdedResult(): JudgeResult {
+    const base = judgeWith();
+    const reasons: MismatchReason[] = ['value', 'timing', 'missing', 'extra'];
+    const mismatches: Mismatch[] = Array.from({ length: 20 }, (_value, index) => ({
+      signal: `PL${(index % 4) + 1}`,
+      tMs: 1000 + index * 250,
+      expected: index % 2 === 0,
+      actual: index % 2 !== 0,
+      reason: reasons[index % reasons.length] ?? 'value',
+      ...(index % 3 === 0 ? { actualTMs: 1000 + index * 250 + 40 } : {}),
+    }));
+    const counts = Object.fromEntries(
+      HAZARD_KINDS.map((kind) => [
+        kind,
+        kind === 'ohm-on-live'
+          ? 3
+          : kind === 'power-sequence-violation'
+            ? 2
+            : kind === 'over-wires-per-terminal'
+              ? 1
+              : 0,
+      ]),
+    ) as JudgeResult['hazardsByKind'];
+    return { ...base, passed: false, mismatches, hazardCount: 6, hazardsByKind: counts };
+  }
+
+  it('差分20件をすべて表に並べ、危険操作は種別ごとに数を出す', () => {
+    if (PROBLEM === undefined) return;
+    render(
+      <ResultView
+        problem={PROBLEM}
+        result={crowdedResult()}
+        onRetry={() => undefined}
+        onBackToList={() => undefined}
+      />,
+    );
+    const table = screen.getByTestId('mismatch-table');
+    expect(table.querySelectorAll('tbody tr')).toHaveLength(20);
+    // 件数は見出しにも出る（カードを開かずに規模が分かる）
+    expect(screen.getByText(`${JA.result.mismatches}（20）`)).toBeTruthy();
+
+    const hazards = screen.getByTestId('hazard-table');
+    for (const kind of HAZARDS_SHOWN) {
+      expect(hazards.textContent, kind).toContain(JA.hazard[kind]);
+    }
+    // 回数0の種別は並べない（見せる価値のある行だけ）
+    expect(hazards.querySelectorAll('tbody tr')).toHaveLength(HAZARDS_SHOWN.length);
+    expect(screen.getByText(`${JA.result.hazards}（6）`)).toBeTruthy();
+  });
+
+  it('差分一覧のカードは伸び続けず、自分でスクロールする（他の項目を押し出さない）', () => {
+    if (PROBLEM === undefined) return;
+    render(
+      <ResultView
+        problem={PROBLEM}
+        result={crowdedResult()}
+        onRetry={() => undefined}
+        onBackToList={() => undefined}
+      />,
+    );
+    // 差分が20件あってもチャート・静的チェック・危険操作の4枚がすべて描かれている
+    expect(screen.getByTestId('chart-overlay')).toBeTruthy();
+    expect(screen.getByTestId('static-checks')).toBeTruthy();
+    expect(screen.getByTestId('hazard-table')).toBeTruthy();
   });
 });
 ```
@@ -10497,7 +12141,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 
 - [ ] `pnpm --filter @ojt/desktop typecheck` が無出力で終わる
 - [ ] `pnpm lint` が無出力で終わる
-- [ ] `pnpm --filter @ojt/desktop test` が **13ファイル / 141テスト** すべて通る
+- [ ] `pnpm --filter @ojt/desktop test` が **17ファイル / 190テスト** すべて通る
 - [ ] `pnpm --filter @ojt/desktop build` が main / preload / renderer の3つを出力する
 - [ ] `pnpm --filter @ojt/desktop e2e` のスモーク1本が通る
 - [ ] `apps/desktop/screenshots/` に10枚のスクリーンショットが出て、`03-board-3d.png` に3D盤（傾斜コンソール・左右4個ずつのソケット・端子番号）が写っている
@@ -10519,3 +12163,4 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 | 2026-09-14 | Task 1D1-c: 仕様レビュー（Task 6〜8）の指摘を反映。Task 7: 電線選択を削除モード限定に、既設配線メッセージを青に、CommandResult 失敗時に wire を保持 |
 | 2026-09-14 | Task 1D1-d: 仕様レビュー（Task 9〜12）の指摘を反映。Task 9/10/12: ダンピング有効化、視点プリセットの補間、中ドラッグ平行移動、固定機器の端子印字と footprint 準拠の外形 |
 | 2026-09-14 | 1D1-e: ErrorBoundary、トースト期限、restartSession/sessionEpoch、Worker ループの例外処理と判定中の一時停止、formatElapsed、ojtApi()、setPreset を partId で、削除モードの選択解除、文言の ja.ts 集約、react-hooks lint |
+| 2026-09-14 | 1D1-f: 視点プリセット再適用、入力中のショートカット抑止、電線の当たり判定、固定高さの下部パネル、P/N 端子の可視化、ソケット印字の再配置、ネジ高さ、装着部品の見え方、ソケット拡大の画角、ラベル重なり、アイドル時の再描画停止、チューブ形状の解放、仕様チャートのキャッシュ |
