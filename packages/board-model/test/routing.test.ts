@@ -3,6 +3,9 @@ import type { TerminalId } from '@ojt/circuit-sim';
 import {
   addWire,
   boardTerminalPos,
+  CHANNEL_LANE_COUNT,
+  CHANNEL_LANE_DIRECTION,
+  CHANNEL_LANE_PITCH_MM,
   channelsClearOfFootprints,
   createSession,
   crossesFootprint,
@@ -12,7 +15,6 @@ import {
   findBoardTerminal,
   isManhattan,
   JIPM_BOARD,
-  MAX_WIRE_LANES,
   pickLane,
   plug,
   routeFixedLinks,
@@ -21,8 +23,8 @@ import {
   RoutingError,
   segmentIntersectsRect,
   vec3,
-  WIRE_LANE_PITCH_MM,
   WIRE_RUN_X_Z_MM,
+  type Footprint,
   type WireRoute,
 } from '../src/index.js';
 
@@ -115,7 +117,7 @@ describe('routing: 直角配線（§6.6 / 写真にダクトは無い）', () =>
     expect(second.channelIds).toEqual([]);
     expect(second.lane).toBe(1);
     const jogOf = (r: WireRoute): number => Math.min(...r.corners.map((c) => c.y));
-    expect(jogOf(jumper) - jogOf(second)).toBeCloseTo(WIRE_LANE_PITCH_MM, 6);
+    expect(jogOf(jumper) - jogOf(second)).toBeCloseTo(CHANNEL_LANE_PITCH_MM, 6);
     // ソケットの同じティア（⑬と⑭）も渡り線になる
     const coil = route('w-3', 'S1.13', 'S1.14');
     expect(coil.channelIds).toEqual([]);
@@ -139,18 +141,20 @@ describe('routing: 直角配線（§6.6 / 写真にダクトは無い）', () =>
       const p = r.corners.find((c) => Math.abs(c.y - 42) < 12 && c.z < 5);
       return p?.y ?? -1;
     };
-    expect(runY(second) - runY(first)).toBeCloseTo(WIRE_LANE_PITCH_MM, 6);
-    expect(runY(third) - runY(second)).toBeCloseTo(WIRE_LANE_PITCH_MM, 6);
+    expect(runY(second) - runY(first)).toBeCloseTo(CHANNEL_LANE_PITCH_MM, 6);
+    expect(runY(third) - runY(second)).toBeCloseTo(CHANNEL_LANE_PITCH_MM, 6);
   });
 
   it('レーンを使い切ると上のレイヤ（高さの段）へ逃げる', () => {
     const existing: WireRoute[] = [];
-    for (let i = 0; i < MAX_WIRE_LANES + 1; i += 1) {
+    for (let i = 0; i < CHANNEL_LANE_COUNT + 1; i += 1) {
       existing.push(route(`w-${i}`, 'P.1', 'S1.1', existing));
     }
-    expect(existing.slice(0, MAX_WIRE_LANES).map((r) => r.lane)).toEqual([0, 1, 2, 3, 4, 5, 6, 7]);
+    expect(existing.slice(0, CHANNEL_LANE_COUNT).map((r) => r.lane)).toEqual([
+      0, 1, 2, 3, 4, 5, 6, 7,
+    ]);
     for (const r of existing) expect(r.laneOverflow).toBe(false);
-    const ninth = existing[MAX_WIRE_LANES];
+    const ninth = existing[CHANNEL_LANE_COUNT];
     if (ninth === undefined) throw new Error('route');
     expect(ninth.lanes.map((l) => `${l.channelId}:${l.lane}:${l.layer}`)).toEqual(['ch-top:0:1']);
     expect(ninth.lane).toBe(0);
@@ -207,7 +211,7 @@ describe('routing: 直角配線（§6.6 / 写真にダクトは無い）', () =>
     for (const r of pl1) {
       expect(r.throughPanelAt?.y).toBe(lamp.panelHole.y);
       expect(Math.abs((r.throughPanelAt?.x ?? 0) - lamp.panelHole.x)).toBeLessThanOrEqual(
-        WIRE_LANE_PITCH_MM,
+        CHANNEL_LANE_PITCH_MM,
       );
       // 機器の中心（レンズの真上）を通らない
       for (let i = 1; i < r.corners.length; i += 1) {
@@ -370,6 +374,33 @@ describe('routing: 直角配線（§6.6 / 写真にダクトは無い）', () =>
       ],
     };
     expect(channelsClearOfFootprints(bad).length).toBeGreaterThan(0);
+  });
+
+  it('配線帯はレーン幅ぶんの帯全体が検査対象になる（中心線だけの判定だと見逃す回帰）', () => {
+    // ch-top は水平帯（axis: 'x'）。レーンは CHANNEL_LANE_DIRECTION の向き（+y）へ
+    // CHANNEL_LANE_COUNT × CHANNEL_LANE_PITCH_MM ぶん広がる。中心線（y = channel.at）には
+    // 触れないが、そのレーン帯の内側に入り込む部品を置く。帯を幅0の中心線に縮めてしまう
+    // ような実装では見逃してしまう組み合わせ。
+    const channel = board.wiringChannels.find((c) => c.id === 'ch-top');
+    if (channel === undefined) throw new Error('ch-top');
+    expect(channel.axis).toBe('x');
+    expect(CHANNEL_LANE_DIRECTION[channel.id] ?? 1).toBe(1);
+    const bandWidthMm = CHANNEL_LANE_COUNT * CHANNEL_LANE_PITCH_MM;
+    const nearEdge = channel.at + 10;
+    expect(nearEdge).toBeGreaterThan(channel.at); // 中心線には触れない
+    expect(nearEdge).toBeLessThan(channel.at + bandWidthMm); // レーン帯の内側ではある
+    const extra: Footprint = {
+      id: 'extra-in-band',
+      kind: 'block',
+      x: 100,
+      y: nearEdge,
+      w: 10,
+      h: 4,
+    };
+    const withExtra = { ...board, footprints: [...board.footprints, extra] };
+    const bad2 = channelsClearOfFootprints(withExtra);
+    expect(bad2.length).toBeGreaterThan(0);
+    expect(bad2.some((entry) => entry.includes('ch-top'))).toBe(true);
   });
 
   it('フィレット半径0では折れ点をそのまま返す', () => {

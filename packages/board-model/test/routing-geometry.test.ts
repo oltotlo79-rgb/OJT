@@ -3,6 +3,7 @@ import type { TerminalId } from '@ojt/circuit-sim';
 import {
   boardTerminalPos,
   channelBandRect,
+  CHANNEL_LANE_COUNT,
   CHANNEL_LANE_PITCH_MM,
   crossingFootprint,
   DIRECT_JOG_MM,
@@ -11,7 +12,6 @@ import {
   isManhattan,
   JIPM_BOARD,
   MAX_DIRECT_JOG_LEVELS,
-  MAX_WIRE_LANES,
   rectsOverlap,
   routeFixedLinks,
   routeWire,
@@ -131,7 +131,7 @@ describe('routing: 高さのはしごとレーンのスロット（Task 9b）', 
     // どのレーンも 0..7、レイヤは 0..1
     for (const lane of all) {
       expect(lane.lane).toBeGreaterThanOrEqual(0);
-      expect(lane.lane).toBeLessThan(MAX_WIRE_LANES);
+      expect(lane.lane).toBeLessThan(CHANNEL_LANE_COUNT);
       expect(lane.layer).toBeGreaterThanOrEqual(0);
       expect(lane.layer).toBeLessThan(WIRE_LAYER_COUNT);
     }
@@ -513,7 +513,7 @@ describe('routing: 高さのはしごとレーンのスロット（Task 9b）', 
 
   it('スロットを使い切っても投げず、laneOverflow を立てて最も空いたスロットを使う', () => {
     const routes: WireRoute[] = [];
-    for (let i = 0; i < MAX_WIRE_LANES * WIRE_LAYER_COUNT + 1; i += 1) {
+    for (let i = 0; i < CHANNEL_LANE_COUNT * WIRE_LAYER_COUNT + 1; i += 1) {
       routes.push(route(`w-${i}`, 'S1.13', 'S8.14', routes));
     }
     expect(routes).toHaveLength(17);

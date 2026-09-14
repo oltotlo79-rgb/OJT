@@ -152,7 +152,7 @@ export type TerminalRole =
 export interface BoardTerminal {
   /** 物理端子ID。ソケットは `S1.13` のように**物理**ソケットIDで持つ（役割IDへの変換は roles.ts）。 */
   id: TerminalId;
-  /** ツールチップ用の表示名（例: `S1 ⑨ com`）。§8.2 */
+  /** ツールチップ用の表示名（例: `⑨ COM`）。§8.2 */
   label: string;
   role: TerminalRole;
   pos: Vec3;
