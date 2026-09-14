@@ -1,0 +1,449 @@
+import {
+  JIPM_BOARD,
+  routeSession,
+  routeWire,
+  RoutingError,
+  toPhysicalTerminal,
+  type BoardDefinition,
+  type BoardSession,
+  type BoardTerminal,
+  type SocketId,
+  type WireRoute,
+} from '@ojt/board-model';
+import type { TerminalId } from '@ojt/circuit-sim';
+import { OrbitControls } from '@react-three/drei';
+import { Canvas, useThree } from '@react-three/fiber';
+import { MOUSE } from 'three';
+import { useEffect, useMemo, useState, type JSX } from 'react';
+import { useStore, type AppState } from '../app/store.js';
+import { JA } from '../i18n/ja.js';
+import type { PickHit } from '../session/interaction.js';
+import { BoardPlate } from './BoardPlate.js';
+import { BOARD_TILT_RAD, CAMERA_FOV_DEG } from './camera.js';
+import { CameraPresets, type ControlsLike } from './CameraPresets.js';
+import { DinRail } from './DinRail.js';
+import { FixedWires } from './FixedWires.js';
+import { Fixture, FIXTURES } from './Fixtures.js';
+import { Lamp } from './Lamp.js';
+import { MountedPart } from './MountedPart.js';
+import { PushButton } from './PushButton.js';
+import { Socket } from './Socket.js';
+import { TerminalBlock } from './TerminalBlock.js';
+import { ViewGizmo } from './ViewGizmo.js';
+import { Wire } from './Wire.js';
+
+/**
+ * 3D盤のシーン。設計仕様 §6.5 / §8.1 / §12.2 / §15。
+ *
+ * 性能方針（§15: 内蔵GPUで60fps）:
+ * - `frameloop="demand"` にして、状態が変わったときだけ描く。OrbitControls の操作中は
+ *   drei 側が `invalidate()` を呼ぶので、何もしていない間は 0fps になる。
+ * - 盤の静的ジオメトリ（板・ダクト・ソケット台座・端子）はマテリアルとジオメトリを共有し、
+ *   電線の `TubeGeometry` は経路オブジェクト単位でメモ化する。
+ */
+
+/** カメラが盤へ寄れる最短距離[mm]（端子の印字が読める程度まで）。§12.2 */
+const MIN_CAMERA_DISTANCE_MM = 90;
+/** カメラが離れられる最長距離[mm]。 */
+const MAX_CAMERA_DISTANCE_MM = 1200;
+/** 仰角の上限（盤の裏側へ回り込ませない）。§12.2 */
+const MAX_POLAR_ANGLE = Math.PI * 0.48;
+
+/**
+ * 端子台として描くまとまり。§6.4
+ * P/N 供給端子は `P.1` / `N.1` の各1点しかない（§6.1）ので、
+ * 実物写真の DC24V 端子と同じく**2端子の小さな端子台1個**としてまとめて描く。
+ */
+const BLOCK_PARTS: ReadonlyArray<{ key: string; ids: readonly string[]; label: string }> = [
+  { key: 'TB_PL', ids: ['TB_PL'], label: 'ランプ用端子台' },
+  { key: 'TB_PB', ids: ['TB_PB'], label: '押ボタン用端子台' },
+  { key: 'PN', ids: ['P', 'N'], label: 'DC24V端子台' },
+];
+
+/** DINレールを敷く機器のまとまり（ソケット群と端子台群）。実物写真のとおり。§6.5 */
+const RAIL_GROUPS: readonly string[][] = [['TB_PL'], ['TB_PB'], ['P', 'N']];
+
+/**
+ * セッションの全電線の経路（純粋関数。テストで固定する）。§6.6
+ *
+ * `routeSession()` は**全か無か**で、1本でも解けなければ `RoutingError` を投げる。
+ * React のレンダー中に投げるとシーンごと落ちて盤が消えてしまうので、ここで受け止めて
+ * ①解けた電線だけを描き、②解けなかった電線のIDと理由を返す（セッションの状態は変えない）。
+ * 出荷する盤（`JIPM_BOARD`）では起こらないはずだが、起こったときに黒い画面ではなく
+ * 「どの電線がなぜ描けないか」を出せるようにしておく。
+ */
+export function safeRoutes(
+  board: BoardDefinition,
+  session: BoardSession | undefined,
+): { routes: WireRoute[]; errors: RoutingError[] } {
+  if (session === undefined) return { routes: [], errors: [] };
+  try {
+    return { routes: routeSession(board, session), errors: [] };
+  } catch (error) {
+    if (!(error instanceof RoutingError)) throw error;
+  }
+  const routes: WireRoute[] = [];
+  const errors: RoutingError[] = [];
+  for (const wire of session.wires) {
+    try {
+      routes.push(
+        routeWire(
+          board,
+          {
+            id: wire.id,
+            from: toPhysicalTerminal(session.socketRoles, wire.from),
+            to: toPhysicalTerminal(session.socketRoles, wire.to),
+          },
+          routes,
+        ),
+      );
+    } catch (error) {
+      if (!(error instanceof RoutingError)) throw error;
+      errors.push(error);
+    }
+  }
+  return { routes, errors };
+}
+
+/**
+ * 見た目が変わったときだけ再描画を要求する。§15
+ *
+ * Worker のスナップショットは約30fpsで届くが、その大半は「電圧の小数点以下が動いただけ」で
+ * 3Dの絵は1ピクセルも変わらない。毎回 `invalidate()` すると `frameloop="demand"` が
+ * 実質 30fps の常時描画になり、ソフトウェアラスタライザの環境ではメインスレッドを占有して
+ * クリックすら受け付けなくなる。そこで**描き分けに効く値だけ**から署名を作って比べる。
+ */
+function visualSignature(state: AppState): string {
+  const { snapshot, session } = state;
+  const lamps = Object.entries(snapshot.lamps)
+    .map(([id, lamp]) => `${id}:${lamp.level}`)
+    .join(',');
+  const relays = Object.entries(snapshot.relays)
+    .map(([id, relay]) => `${id}:${relay.coilOn ? 1 : 0}`)
+    .join(',');
+  const timers = Object.entries(snapshot.timers)
+    .map(([id, t]) => `${id}:${t.powered ? 1 : 0}${t.timedOut ? 1 : 0}`)
+    .join(',');
+  const buttons = Object.entries(snapshot.buttons)
+    .map(([id, pressed]) => `${id}:${pressed ? 1 : 0}`)
+    .join(',');
+  return [
+    lamps,
+    relays,
+    timers,
+    buttons,
+    snapshot.powered ? 1 : 0,
+    snapshot.tripped ? 1 : 0,
+    session?.wires.length ?? 0,
+    Object.keys(session?.mounted ?? {}).join('/'),
+    state.hoveredTerminal ?? '',
+    state.pendingTerminal ?? '',
+    state.selectedWire ?? '',
+    state.mode,
+    state.camera,
+  ].join('|');
+}
+
+/** 見た目が変わったときだけ再描画を要求する。 */
+function Invalidator(): null {
+  const invalidate = useThree((state) => state.invalidate);
+  useEffect(() => {
+    let previous = visualSignature(useStore.getState());
+    invalidate();
+    return useStore.subscribe((state) => {
+      const next = visualSignature(state);
+      if (next === previous) return;
+      previous = next;
+      invalidate();
+    });
+  }, [invalidate]);
+  return null;
+}
+
+/** 盤のシーン本体（Canvas の中身）。 */
+function BoardContents({
+  onPick,
+  onHover,
+  onPress,
+  onRelease,
+}: {
+  onPick: (hit: PickHit) => void;
+  onHover: (id: TerminalId | undefined) => void;
+  onPress: (pbId: string) => void;
+  onRelease: (pbId: string) => void;
+}): JSX.Element {
+  const session = useStore((s) => s.session);
+  const snapshot = useStore((s) => s.snapshot);
+  const hovered = useStore((s) => s.hoveredTerminal);
+  const pending = useStore((s) => s.pendingTerminal);
+  const selectedWire = useStore((s) => s.selectedWire);
+  const mode = useStore((s) => s.mode);
+  const camera = useStore((s) => s.camera);
+  const [controls, setControls] = useState<ControlsLike | null>(null);
+  const invalidate = useThree((state) => state.invalidate);
+
+  const board = JIPM_BOARD;
+  const { routes, errors: routeErrors } = useMemo(
+    () => safeRoutes(board, session),
+    [board, session],
+  );
+  // 経路が解けなかった電線は描けないので、理由をトーストとログに出す（盤は描き続ける）。§6.6
+  useEffect(() => {
+    if (routeErrors.length === 0) return;
+    const store = useStore.getState();
+    for (const error of routeErrors) {
+      store.toast(
+        `${JA.session.routeFailed}（${error.wireId}: ${JA.routeReason[error.reason]}）`,
+        'error',
+      );
+      store.addLog(`${JA.session.routeFailed}: ${error.wireId} — ${JA.routeReason[error.reason]}`);
+    }
+  }, [routeErrors]);
+  const blocks = useMemo(() => {
+    const out = new Map<string, typeof board.terminals>();
+    for (const group of BLOCK_PARTS) {
+      out.set(
+        group.key,
+        board.terminals.filter((t) => group.ids.some((id) => t.id.startsWith(`${id}.`))),
+      );
+    }
+    return out;
+  }, [board]);
+
+  /**
+   * ソケットごとの端子配列は**必ずメモ化する**。ここで毎回 `filter()` すると配列の同一性が変わり、
+   * `Socket` の印字テクスチャ（`useMemo`）がスナップショットのたびに焼き直されて
+   * メインスレッドを食い尽くす（クリックが受け付けられなくなる）。§15
+   */
+  /** 固定機器の端子（同一性を保つためメモ化する）。 */
+  const fixtureTerminals = useMemo(
+    () =>
+      FIXTURES.map((fixture) => ({
+        ...fixture,
+        terminals: board.terminals.filter((t) => t.id.startsWith(`${fixture.id}.`)),
+      })),
+    [board],
+  );
+
+  /** DINレールを敷く端子のまとまり（これもメモ化して同一性を保つ）。 */
+  const railTerminals = useMemo(
+    () => [
+      ...RAIL_GROUPS.map((ids) => ({
+        key: ids.join('-'),
+        terminals: board.terminals.filter((t) => ids.some((id) => t.id.startsWith(`${id}.`))),
+      })),
+      ...board.sockets.map((socket) => ({
+        key: `rail-${socket.id}`,
+        terminals: board.terminals.filter((t) => t.id.startsWith(`${socket.id}.`)),
+      })),
+    ],
+    [board],
+  );
+
+  const socketTerminals = useMemo(() => {
+    const out = new Map<string, typeof board.terminals>();
+    for (const socket of board.sockets) {
+      out.set(
+        socket.id,
+        board.terminals.filter((t) => t.id.startsWith(`${socket.id}.`)),
+      );
+    }
+    return out;
+  }, [board]);
+
+  const pickTerminal = (terminal: BoardTerminal): void => {
+    onPick({
+      kind: 'terminal',
+      id: terminal.id,
+      wirable: terminal.wirable,
+      label: terminal.label,
+    });
+  };
+
+  return (
+    <>
+      <Invalidator />
+      <color attach="background" args={['#141820']} />
+      <ambientLight intensity={0.8} />
+      <directionalLight position={[220, 520, 420]} intensity={1.6} />
+      <directionalLight position={[-320, 180, 360]} intensity={0.6} />
+      {/* 盤は傾斜コンソール。盤ローカル（+Z が盤面の法線）を机の上に寝かせて手前に起こす。§6.5 */}
+      <group rotation={[BOARD_TILT_RAD, 0, 0]}>
+        <BoardPlate board={board} />
+        {railTerminals.map((rail) => (
+          <DinRail key={rail.key} terminals={rail.terminals} />
+        ))}
+        {fixtureTerminals.map((fixture) => (
+          <Fixture
+            key={fixture.id}
+            name={fixture.id}
+            label={fixture.label}
+            color={fixture.color}
+            terminals={fixture.terminals}
+          />
+        ))}
+        <FixedWires board={board} />
+
+        {board.sockets.map((socket) => {
+          const role = session?.socketRoles[socket.id];
+          const mounted = session?.mounted[socket.id];
+          const terminals = socketTerminals.get(socket.id) ?? [];
+          return (
+            <group key={socket.id}>
+              <Socket
+                socket={socket}
+                role={role}
+                occupied={mounted !== undefined}
+                terminals={terminals}
+                hoveredTerminal={hovered}
+                pendingTerminal={pending}
+                onHoverTerminal={onHover}
+                onPickTerminal={pickTerminal}
+                onPickSocket={(socketId: SocketId, occupied: boolean) => {
+                  onPick({ kind: 'socket', id: socketId, occupied });
+                }}
+              />
+              {mounted === undefined || role === undefined ? null : (
+                <MountedPart
+                  socket={socket}
+                  role={role}
+                  part={mounted}
+                  energized={
+                    snapshot.relays[role]?.coilOn === true ||
+                    snapshot.timers[role]?.powered === true
+                  }
+                />
+              )}
+            </group>
+          );
+        })}
+
+        {BLOCK_PARTS.map((block) => (
+          <TerminalBlock
+            key={block.key}
+            name={block.key}
+            label={block.label}
+            terminals={blocks.get(block.key) ?? []}
+            hoveredTerminal={hovered}
+            pendingTerminal={pending}
+            onHoverTerminal={onHover}
+            onPickTerminal={pickTerminal}
+          />
+        ))}
+
+        {board.lamps.map((lamp) => (
+          <Lamp key={lamp.id} definition={lamp} level={snapshot.lamps[lamp.id]?.level ?? 'off'} />
+        ))}
+
+        {board.pushButtons.map((pb) => (
+          <PushButton
+            key={pb.id}
+            definition={pb}
+            pressed={snapshot.buttons[pb.id] === true}
+            onPress={onPress}
+            onRelease={onRelease}
+          />
+        ))}
+
+        {routes.map((route) => {
+          const wire = session?.wires.find((w) => w.id === route.wireId);
+          if (wire === undefined) return null;
+          return (
+            <Wire
+              key={route.wireId}
+              route={route}
+              color={wire.color}
+              locked={wire.locked}
+              selected={selectedWire === route.wireId}
+              pickable={mode === 'delete'}
+              onPick={(wireId: string) => {
+                onPick({ kind: 'wire', id: wireId, locked: wire.locked });
+              }}
+            />
+          );
+        })}
+      </group>
+
+      {/*
+        操作は左ドラッグ回転・右ドラッグ平行移動・ホイールズーム（§12.2）。
+        `maxPolarAngle` で盤の裏側へ回り込まないようにし、注視点は盤の中心に固定する。
+        `frameloop="demand"` なので、カメラが動いたフレームだけ `onChange` で描画を要求する
+        （慣性を入れると常時再描画になり、§15 の性能方針と噛み合わないため damping は使わない）。
+      */}
+      <OrbitControls
+        makeDefault
+        enableDamping={false}
+        minDistance={MIN_CAMERA_DISTANCE_MM}
+        maxDistance={MAX_CAMERA_DISTANCE_MM}
+        maxPolarAngle={MAX_POLAR_ANGLE}
+        mouseButtons={{
+          LEFT: MOUSE.ROTATE,
+          MIDDLE: MOUSE.DOLLY,
+          RIGHT: MOUSE.PAN,
+        }}
+        onChange={() => {
+          invalidate();
+        }}
+        ref={(instance) => {
+          setControls(instance);
+        }}
+      />
+      <CameraPresets preset={camera} controls={controls} />
+      <ViewGizmo />
+    </>
+  );
+}
+
+/**
+ * 3Dビューポート。§13 #4
+ * `webglcontextlost` を捕まえたら `key` を変えて `Canvas` を丸ごと作り直す。
+ * 盤の状態は Worker とストアが持っているので、シーンを捨てても失われない。
+ */
+export function BoardScene({
+  onPick,
+  onHover,
+  onPress,
+  onRelease,
+}: {
+  onPick: (hit: PickHit) => void;
+  onHover: (id: TerminalId | undefined) => void;
+  onPress: (pbId: string) => void;
+  onRelease: (pbId: string) => void;
+}): JSX.Element {
+  const [generation, setGeneration] = useState(0);
+  const setWebglLost = useStore((s) => s.setWebglLost);
+  return (
+    <Canvas
+      key={generation}
+      frameloop="demand"
+      dpr={[1, 1.5]}
+      camera={{ fov: CAMERA_FOV_DEG, near: 1, far: 4000, position: [0, 0, 380] }}
+      data-testid="board-canvas"
+      onPointerMissed={() => {
+        onPick({ kind: 'empty' });
+      }}
+      onCreated={({ gl }) => {
+        const canvas = gl.domElement;
+        canvas.addEventListener(
+          'webglcontextlost',
+          (event) => {
+            event.preventDefault();
+            setWebglLost(true);
+            setGeneration((value) => value + 1);
+          },
+          { once: true },
+        );
+        canvas.addEventListener(
+          'webglcontextrestored',
+          () => {
+            setWebglLost(false);
+          },
+          { once: true },
+        );
+        setWebglLost(false);
+      }}
+    >
+      <BoardContents onPick={onPick} onHover={onHover} onPress={onPress} onRelease={onRelease} />
+    </Canvas>
+  );
+}
