@@ -67,7 +67,7 @@
 
 **重要（実機で確認済みの落とし穴）**: `import-x/no-cycle` は依存グラフを辿るときに、**今 lint している以外のファイル**を解析するためのパーサを `settings['import-x/parsers']` から引く。これが無いと `.ts` ファイルの依存を1段も辿れず、**循環があっても黙って通る**。`importX.flatConfigs.typescript` にその設定が入っているので、これを取り込んでから解決器だけ差し替える。
 
-- [ ] `package.json` の `devDependencies` に3つ追加する（アルファベット順に挿入する）。
+- [x] `package.json` の `devDependencies` に3つ追加する（アルファベット順に挿入する）。
 
 ```json
     "@typescript-eslint/parser": "^8.70.0",
@@ -93,7 +93,7 @@
   }
 ```
 
-- [ ] `eslint.config.js` を次の内容にする。
+- [x] `eslint.config.js` を次の内容にする。
 
 ```js
 import js from '@eslint/js';
@@ -133,7 +133,7 @@ export default tseslint.config(
 );
 ```
 
-- [ ] `pnpm-workspace.yaml` にネイティブ依存のビルド許可を追記する（`eslint-import-resolver-typescript` が使う `unrs-resolver` がネイティブバイナリを持つため。許可しないと `ERR_PNPM_IGNORED_BUILDS` で `pnpm install` が失敗する）。
+- [x] `pnpm-workspace.yaml` にネイティブ依存のビルド許可を追記する（`eslint-import-resolver-typescript` が使う `unrs-resolver` がネイティブバイナリを持つため。許可しないと `ERR_PNPM_IGNORED_BUILDS` で `pnpm install` が失敗する）。
 
 ```yaml
 packages:
@@ -144,7 +144,7 @@ allowBuilds:
   unrs-resolver: true
 ```
 
-- [ ] 依存を入れる。
+- [x] 依存を入れる。
 
 ```powershell
 pnpm install
@@ -158,7 +158,7 @@ pnpm install
 + eslint-plugin-import-x 4.17.1
 ```
 
-- [ ] 循環依存を**わざと作って**ルールが実際に発火することを確かめる。
+- [x] 循環依存を**わざと作って**ルールが実際に発火することを確かめる。
 
 ```powershell
 Set-Content packages\circuit-sim\src\cyclea.ts "import { B } from './cycleb.js';`nexport const A: number = B + 1;`n"
@@ -174,7 +174,7 @@ pnpm exec eslint packages/circuit-sim/src/cyclea.ts
 ✖ 1 problem (1 error, 0 warnings)
 ```
 
-- [ ] 確認用ファイルを消し、lint が通ることを確かめる。
+- [x] 確認用ファイルを消し、lint が通ることを確かめる。
 
 ```powershell
 Remove-Item packages\circuit-sim\src\cyclea.ts, packages\circuit-sim\src\cycleb.ts
@@ -183,7 +183,7 @@ pnpm exec eslint .
 
 期待出力: 何も表示されず終了（終了コード0）。
 
-- [ ] コミットする。
+- [x] コミットする。
 
 ```powershell
 git add package.json pnpm-workspace.yaml pnpm-lock.yaml eslint.config.js
@@ -205,7 +205,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 
 このタスクは「ダミーテスト1本が通ること」をもってスキャフォールド完了とする。
 
-- [ ] 失敗するテストを書く。`packages/board-model/test/scaffold.test.ts`:
+- [x] 失敗するテストを書く。`packages/board-model/test/scaffold.test.ts`:
 
 ```ts
 import { describe, expect, it } from 'vitest';
@@ -218,7 +218,7 @@ describe('scaffold', () => {
 });
 ```
 
-- [ ] `packages/board-model/package.json` を作る。
+- [x] `packages/board-model/package.json` を作る。
 
 ```json
 {
@@ -239,7 +239,7 @@ describe('scaffold', () => {
 }
 ```
 
-- [ ] `packages/board-model/tsconfig.json` を作る。
+- [x] `packages/board-model/tsconfig.json` を作る。
 
 ```json
 {
@@ -249,7 +249,7 @@ describe('scaffold', () => {
 }
 ```
 
-- [ ] `packages/board-model/vitest.config.ts` を作る。
+- [x] `packages/board-model/vitest.config.ts` を作る。
 
 ```ts
 import { defineConfig } from 'vitest/config';
@@ -267,7 +267,7 @@ export default defineConfig({
 });
 ```
 
-- [ ] テストが失敗することを確認する。
+- [x] テストが失敗することを確認する。
 
 ```powershell
 pnpm install
@@ -280,14 +280,14 @@ pnpm --filter @ojt/board-model test
 Error: Failed to load url ../src/index.js
 ```
 
-- [ ] `packages/board-model/src/index.ts` を作る（Task 10 で公開APIの再輸出に置き換える）。
+- [x] `packages/board-model/src/index.ts` を作る（Task 10 で公開APIの再輸出に置き換える）。
 
 ```ts
 /** パッケージ名。スキャフォールドの疎通確認用。 */
 export const PACKAGE_NAME = '@ojt/board-model';
 ```
 
-- [ ] テストが通ることを確認する。
+- [x] テストが通ることを確認する。
 
 ```powershell
 pnpm --filter @ojt/board-model test
@@ -300,7 +300,7 @@ pnpm --filter @ojt/board-model test
       Tests  1 passed (1)
 ```
 
-- [ ] コミットする。
+- [x] コミットする。
 
 ```powershell
 git add packages/board-model pnpm-lock.yaml
@@ -323,7 +323,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 
 座標系は仕様 §6.5 / §12.2 に従う（盤の左上手前が原点、mm単位）。`normalXY()` が方向ベクトルを辞書順で正規化してから回すのは、電線の並列オフセット（§6.6）の向きを「どちらの端子から辿ったか」に依存させないためである（決定論の要件、§5.2）。
 
-- [ ] 失敗するテストを書く。`packages/board-model/test/geometry.test.ts`:
+- [x] 失敗するテストを書く。`packages/board-model/test/geometry.test.ts`:
 
 ```ts
 import { describe, expect, it } from 'vitest';
@@ -374,7 +374,7 @@ describe('geometry: 幾何ユーティリティ', () => {
 });
 ```
 
-- [ ] テストが失敗することを確認する。
+- [x] テストが失敗することを確認する。
 
 ```powershell
 pnpm --filter @ojt/board-model test -- geometry.test.ts
@@ -382,7 +382,7 @@ pnpm --filter @ojt/board-model test -- geometry.test.ts
 
 期待出力の冒頭: `does not provide an export named 'vec3'`。
 
-- [ ] `packages/board-model/src/geometry.ts` を書く。
+- [x] `packages/board-model/src/geometry.ts` を書く。
 
 ```ts
 /**
@@ -599,7 +599,7 @@ export function segmentIntersectsRect(a: Vec3, b: Vec3, r: Rect, epsilon = 1e-9)
 }
 ```
 
-- [ ] `packages/board-model/src/index.ts` を次の内容に置き換える（`PACKAGE_NAME` は役目を終えたので消し、`test/scaffold.test.ts` も削除する）。
+- [x] `packages/board-model/src/index.ts` を次の内容に置き換える（`PACKAGE_NAME` は役目を終えたので消し、`test/scaffold.test.ts` も削除する）。
 
 ```ts
 export {
@@ -631,7 +631,7 @@ export {
 Remove-Item packages\board-model\test\scaffold.test.ts
 ```
 
-- [ ] テストが通ることを確認する。
+- [x] テストが通ることを確認する。
 
 ```powershell
 pnpm --filter @ojt/board-model test -- geometry.test.ts
@@ -644,7 +644,7 @@ pnpm --filter @ojt/board-model test -- geometry.test.ts
       Tests  3 passed (3)
 ```
 
-- [ ] コミットする。
+- [x] コミットする。
 
 ```powershell
 git add packages/board-model
@@ -709,7 +709,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 「① b」のように丸数字＋役割、端子台は `PL1+` / `PB1 c`、供給端子は `P1` / `N6`、本体端子は
 `PBS1 c` のように写真の銘板どおりにする。
 
-- [ ] 失敗するテストを書く。`packages/board-model/test/board.test.ts`:
+- [x] 失敗するテストを書く。`packages/board-model/test/board.test.ts`:
 
 ```ts
 import { describe, expect, it } from 'vitest';
@@ -1029,7 +1029,7 @@ describe('board-jipm: 盤定義の不変条件（写真 K96-CS3 に準拠）', (
 });
 ```
 
-- [ ] テストが失敗することを確認する。
+- [x] テストが失敗することを確認する。
 
 ```powershell
 pnpm --filter @ojt/board-model test -- board.test.ts
@@ -1037,7 +1037,7 @@ pnpm --filter @ojt/board-model test -- board.test.ts
 
 期待出力の冒頭: `does not provide an export named 'JIPM_BOARD'`。
 
-- [ ] `packages/board-model/src/board-jipm.ts` を書く。
+- [x] `packages/board-model/src/board-jipm.ts` を書く。
 
 ```ts
 import {
@@ -1820,7 +1820,7 @@ export function resolveEndpoint(endpoint: BoardEndpoint): TerminalId {
 }
 ```
 
-- [ ] `packages/board-model/src/index.ts` の末尾に次を追記する。
+- [x] `packages/board-model/src/index.ts` の末尾に次を追記する。
 
 ```ts
 export {
@@ -1880,7 +1880,7 @@ export {
 } from './board-jipm.js';
 ```
 
-- [ ] テストが通ることを確認する。
+- [x] テストが通ることを確認する。
 
 ```powershell
 pnpm --filter @ojt/board-model test -- board.test.ts
@@ -1893,7 +1893,7 @@ pnpm --filter @ojt/board-model test -- board.test.ts
       Tests  17 passed (17)
 ```
 
-- [ ] コミットする。
+- [x] コミットする。
 
 ```powershell
 git add packages/board-model
@@ -1928,7 +1928,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 | §6.1 の課題1形式・課題2形式 | `TASK1_SOCKET_ROLES` / `TASK2_SOCKET_ROLES` として残す。割り当てないソケットは予備になる | 検定の盤（ソケット5個）と同じ制約で練習したい課題のために残す |
 | 予備ソケット | 端子は存在し配線もできる。部品を挿すと**物理ソケットIDが部品ID**になる（`S8.14` など） | 「余りは役割なしの予備として定義し、端子だけ存在し配線可」という要件をそのまま満たす |
 
-- [ ] 失敗するテストを書く。`packages/board-model/test/roles.test.ts`:
+- [x] 失敗するテストを書く。`packages/board-model/test/roles.test.ts`:
 
 ```ts
 import { describe, expect, it } from 'vitest';
@@ -2040,7 +2040,7 @@ describe('roles: 役割割当と端子ID', () => {
 });
 ```
 
-- [ ] テストが失敗することを確認する。
+- [x] テストが失敗することを確認する。
 
 ```powershell
 pnpm --filter @ojt/board-model test -- roles.test.ts
@@ -2048,7 +2048,7 @@ pnpm --filter @ojt/board-model test -- roles.test.ts
 
 期待出力の冒頭: `does not provide an export named 'terminalIdFor'`。
 
-- [ ] `packages/board-model/src/roles.ts` を書く。
+- [x] `packages/board-model/src/roles.ts` を書く。
 
 ```ts
 import { parseTerminalId, terminalId, type TerminalId } from '@ojt/circuit-sim';
@@ -2210,7 +2210,7 @@ export function toPhysicalTerminal(roles: SocketRoles, id: TerminalId): Terminal
 }
 ```
 
-- [ ] `packages/board-model/src/index.ts` の末尾に次を追記する。
+- [x] `packages/board-model/src/index.ts` の末尾に次を追記する。
 
 ```ts
 export {
@@ -2234,7 +2234,7 @@ export {
 } from './roles.js';
 ```
 
-- [ ] テストが通ることを確認する。
+- [x] テストが通ることを確認する。
 
 ```powershell
 pnpm --filter @ojt/board-model test -- roles.test.ts
@@ -2247,7 +2247,7 @@ pnpm --filter @ojt/board-model test -- roles.test.ts
       Tests  5 passed (5)
 ```
 
-- [ ] コミットする。
+- [x] コミットする。
 
 ```powershell
 git add packages/board-model
@@ -2272,7 +2272,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 PB／PL／電源は装着対象ではないので、それらの定義は Task 4 の盤定義側にある。タイマのレンジは
 §5.3.2 / §17.2 #12 の2種（0〜10s 既定・0〜60s）。
 
-- [ ] 失敗するテストを書く。`packages/board-model/test/catalog.test.ts`:
+- [x] 失敗するテストを書く。`packages/board-model/test/catalog.test.ts`:
 
 ```ts
 import { describe, expect, it } from 'vitest';
@@ -2333,7 +2333,7 @@ describe('catalog: 部品カタログと在庫', () => {
 });
 ```
 
-- [ ] テストが失敗することを確認する。
+- [x] テストが失敗することを確認する。
 
 ```powershell
 pnpm --filter @ojt/board-model test -- catalog.test.ts
@@ -2341,7 +2341,7 @@ pnpm --filter @ojt/board-model test -- catalog.test.ts
 
 期待出力の冒頭: `does not provide an export named 'PART_CATALOG'`。
 
-- [ ] `packages/board-model/src/catalog.ts` を書く。
+- [x] `packages/board-model/src/catalog.ts` を書く。
 
 ```ts
 import { TIMER_RANGE_10S_MS, TIMER_RANGE_60S_MS, TIMER_MIN_PRESET_MS } from '@ojt/circuit-sim';
@@ -2470,7 +2470,7 @@ export function remainingInventory(
 }
 ```
 
-- [ ] `packages/board-model/src/index.ts` の末尾に次を追記する。
+- [x] `packages/board-model/src/index.ts` の末尾に次を追記する。
 
 ```ts
 export {
@@ -2493,7 +2493,7 @@ export {
 } from './catalog.js';
 ```
 
-- [ ] テストが通ることを確認する。
+- [x] テストが通ることを確認する。
 
 ```powershell
 pnpm --filter @ojt/board-model test -- catalog.test.ts
@@ -2506,7 +2506,7 @@ pnpm --filter @ojt/board-model test -- catalog.test.ts
       Tests  4 passed (4)
 ```
 
-- [ ] コミットする。
+- [x] コミットする。
 
 ```powershell
 git add packages/board-model
@@ -2534,7 +2534,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 3. **失敗は例外ではなく Result で返す**。UIがそのまま理由を表示でき、`terminal-overload` を §5.6 #5 の危険操作として計上できる。
 4. **PB／PL本体端子には配線させない**（§6.4）。盤定義の `wirable: false` を見て拒否する。
 
-- [ ] 失敗するテストを書く。`packages/board-model/test/session.test.ts`:
+- [x] 失敗するテストを書く。`packages/board-model/test/session.test.ts`:
 
 ```ts
 import { describe, expect, it } from 'vitest';
@@ -2728,7 +2728,7 @@ describe('session: 装着と配線', () => {
 });
 ```
 
-- [ ] テストが失敗することを確認する。
+- [x] テストが失敗することを確認する。
 
 ```powershell
 pnpm --filter @ojt/board-model test -- session.test.ts
@@ -2736,7 +2736,7 @@ pnpm --filter @ojt/board-model test -- session.test.ts
 
 期待出力の冒頭: `does not provide an export named 'createSession'`。
 
-- [ ] `packages/board-model/src/session.ts` を書く。
+- [x] `packages/board-model/src/session.ts` を書く。
 
 ```ts
 import {
@@ -3040,7 +3040,7 @@ export function removeWire(session: BoardSession, wireId: string): Result<Wire> 
 }
 ```
 
-- [ ] `packages/board-model/src/index.ts` の末尾に次を追記する。
+- [x] `packages/board-model/src/index.ts` の末尾に次を追記する。
 
 ```ts
 export {
@@ -3065,7 +3065,7 @@ export {
 } from './session.js';
 ```
 
-- [ ] テストが通ることを確認する。
+- [x] テストが通ることを確認する。
 
 ```powershell
 pnpm --filter @ojt/board-model test -- session.test.ts
@@ -3078,7 +3078,7 @@ pnpm --filter @ojt/board-model test -- session.test.ts
       Tests  10 passed (10)
 ```
 
-- [ ] コミットする。
+- [x] コミットする。
 
 ```powershell
 git add packages/board-model
@@ -3110,7 +3110,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 - 端子台（`TB_PB` / `TB_PL`）と供給端子（`P` / `N`）も同じ「端子だけの部品」で表す。これらの端子を circuit-sim の `Part.terminals` に載せておくと、未接続の端子でもテスター測定（`measureVoltage`）の対象にできる。
 - ブレーカ（`CB`）と電源スイッチ（`SW`）は**ネットリストに載せない**。AC一次側であり電気的には解かないため（§5.3.5）。開閉は `Simulation.setBreaker()` / `setSwitch()` が担う。
 
-- [ ] 失敗するテストを書く。`packages/board-model/test/to-netlist.test.ts`:
+- [x] 失敗するテストを書く。`packages/board-model/test/to-netlist.test.ts`:
 
 ```ts
 import { describe, expect, it } from 'vitest';
@@ -3272,7 +3272,7 @@ describe('to-netlist: 盤セッション → ネットリスト', () => {
 });
 ```
 
-- [ ] テストが失敗することを確認する。
+- [x] テストが失敗することを確認する。
 
 ```powershell
 pnpm --filter @ojt/board-model test -- to-netlist.test.ts
@@ -3280,7 +3280,7 @@ pnpm --filter @ojt/board-model test -- to-netlist.test.ts
 
 期待出力の冒頭: `does not provide an export named 'toNetlist'`。
 
-- [ ] `packages/board-model/src/to-netlist.ts` を書く。
+- [x] `packages/board-model/src/to-netlist.ts` を書く。
 
 ```ts
 import {
@@ -3417,7 +3417,7 @@ export function toNetlist(session: BoardSession, board: BoardDefinition): Netlis
 }
 ```
 
-- [ ] `packages/board-model/src/index.ts` の末尾に次を追記する。
+- [x] `packages/board-model/src/index.ts` の末尾に次を追記する。
 
 ```ts
 export {
@@ -3433,7 +3433,7 @@ export {
 } from './to-netlist.js';
 ```
 
-- [ ] テストが通ることを確認する。
+- [x] テストが通ることを確認する。
 
 ```powershell
 pnpm --filter @ojt/board-model test -- to-netlist.test.ts
@@ -3446,7 +3446,7 @@ pnpm --filter @ojt/board-model test -- to-netlist.test.ts
       Tests  6 passed (6)
 ```
 
-- [ ] コミットする。
+- [x] コミットする。
 
 ```powershell
 git add packages/board-model
@@ -3490,7 +3490,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 `routeWire()` の `from` / `to` は**物理**端子ID（`S1.13` / `TB_PB.1a`）である。役割ベースの端子ID
 （`CR1.13`）を持つセッションからは `routeSession()` を使う（内部で `toPhysicalTerminal()` を通す）。
 
-- [ ] 失敗するテストを書く。`packages/board-model/test/routing.test.ts`:
+- [x] 失敗するテストを書く。`packages/board-model/test/routing.test.ts`:
 
 ```ts
 import { describe, expect, it } from 'vitest';
@@ -3838,7 +3838,7 @@ describe('routing: 直角配線（§6.6 / 写真にダクトは無い）', () =>
 });
 ```
 
-- [ ] テストが失敗することを確認する。
+- [x] テストが失敗することを確認する。
 
 ```powershell
 pnpm --filter @ojt/board-model test -- routing.test.ts
@@ -3846,7 +3846,7 @@ pnpm --filter @ojt/board-model test -- routing.test.ts
 
 期待出力の冒頭: `does not provide an export named 'routeWire'`。
 
-- [ ] `packages/board-model/src/routing.ts` を書く。
+- [x] `packages/board-model/src/routing.ts` を書く。
 
 ```ts
 import type { TerminalId } from '@ojt/circuit-sim';
@@ -4522,7 +4522,7 @@ export function channelsClearOfFootprints(board: BoardDefinition): string[] {
 }
 ```
 
-- [ ] `packages/board-model/src/index.ts` の末尾に次を追記する。
+- [x] `packages/board-model/src/index.ts` の末尾に次を追記する。
 
 ```ts
 export {
@@ -4548,7 +4548,7 @@ export {
 } from './routing.js';
 ```
 
-- [ ] テストが通ることを確認する。
+- [x] テストが通ることを確認する。
 
 ```powershell
 pnpm --filter @ojt/board-model test -- routing.test.ts
@@ -4561,7 +4561,7 @@ pnpm --filter @ojt/board-model test -- routing.test.ts
       Tests  17 passed (17)
 ```
 
-- [ ] コミットする。
+- [x] コミットする。
 
 ```powershell
 git add packages/board-model
@@ -4582,7 +4582,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 
 Task 3〜9 で追記してきた再輸出を、次の最終形と一致しているか突き合わせる（並び順もこのとおりにする）。
 
-- [ ] `packages/board-model/src/index.ts` を次の内容にする。
+- [x] `packages/board-model/src/index.ts` を次の内容にする。
 
 ```ts
 export {
@@ -4760,7 +4760,7 @@ export {
 } from './routing.js';
 ```
 
-- [ ] board-model の全テスト・カバレッジ・型検査・lint を確認する。
+- [x] board-model の全テスト・カバレッジ・型検査・lint を確認する。
 
 ```powershell
 pnpm --filter @ojt/board-model exec vitest run --coverage
@@ -4770,7 +4770,7 @@ pnpm exec eslint .
 
 期待出力: `Tests  69 passed (69)`、カバレッジは全項目90%以上（実測: Statements 95.92% / Branches 90.18% / Functions 100% / Lines 97.87%）、`tsc` と `eslint` は何も出さず終了。
 
-- [ ] コミットする。
+- [x] コミットする。
 
 ```powershell
 git add packages/board-model
@@ -4790,7 +4790,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 - Create: `packages/schematic-core/package.json`, `packages/schematic-core/tsconfig.json`, `packages/schematic-core/vitest.config.ts`, `packages/schematic-core/src/index.ts`
 - Test: `packages/schematic-core/test/scaffold.test.ts`
 
-- [ ] 失敗するテストを書く。`packages/schematic-core/test/scaffold.test.ts`:
+- [x] 失敗するテストを書く。`packages/schematic-core/test/scaffold.test.ts`:
 
 ```ts
 import { describe, expect, it } from 'vitest';
@@ -4803,7 +4803,7 @@ describe('scaffold', () => {
 });
 ```
 
-- [ ] `packages/schematic-core/package.json` を作る。
+- [x] `packages/schematic-core/package.json` を作る。
 
 ```json
 {
@@ -4825,7 +4825,7 @@ describe('scaffold', () => {
 }
 ```
 
-- [ ] `packages/schematic-core/tsconfig.json` を作る。
+- [x] `packages/schematic-core/tsconfig.json` を作る。
 
 ```json
 {
@@ -4835,7 +4835,7 @@ describe('scaffold', () => {
 }
 ```
 
-- [ ] `packages/schematic-core/vitest.config.ts` を作る。
+- [x] `packages/schematic-core/vitest.config.ts` を作る。
 
 ```ts
 import { defineConfig } from 'vitest/config';
@@ -4853,7 +4853,7 @@ export default defineConfig({
 });
 ```
 
-- [ ] テストが失敗することを確認する。
+- [x] テストが失敗することを確認する。
 
 ```powershell
 pnpm install
@@ -4862,14 +4862,14 @@ pnpm --filter @ojt/schematic-core test
 
 期待出力: `Error: Failed to load url ../src/index.js`。
 
-- [ ] `packages/schematic-core/src/index.ts` を作る（Task 16 で公開APIの再輸出に置き換える）。
+- [x] `packages/schematic-core/src/index.ts` を作る（Task 16 で公開APIの再輸出に置き換える）。
 
 ```ts
 /** パッケージ名。スキャフォールドの疎通確認用。 */
 export const PACKAGE_NAME = '@ojt/schematic-core';
 ```
 
-- [ ] テストが通ることを確認する。
+- [x] テストが通ることを確認する。
 
 ```powershell
 pnpm --filter @ojt/schematic-core test
@@ -4882,7 +4882,7 @@ pnpm --filter @ojt/schematic-core test
       Tests  1 passed (1)
 ```
 
-- [ ] コミットする。
+- [x] コミットする。
 
 ```powershell
 git add packages/schematic-core pnpm-lock.yaml
@@ -4919,7 +4919,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 | 端点 | 参照先の段が存在し、節点番号が範囲内で、自分自身を参照しない |
 | 負荷の位置 | 右母線(N)に至る段は負荷1つで終わる。分岐段（右母線に至らない段）に負荷は置けない |
 
-- [ ] 失敗するテストを書く。`packages/schematic-core/test/document.test.ts`:
+- [x] 失敗するテストを書く。`packages/schematic-core/test/document.test.ts`:
 
 ```ts
 import { describe, expect, it } from 'vitest';
@@ -5078,7 +5078,7 @@ describe('document: 展開接続図の文書モデル（§11.1）', () => {
 
 このテストは Task 13 以降で使う回路図ヘルパを参照する。先に作る。
 
-- [ ] `packages/schematic-core/test/helpers/docs.ts` を作る。
+- [x] `packages/schematic-core/test/helpers/docs.ts` を作る。
 
 ```ts
 import {
@@ -5142,7 +5142,7 @@ export function flickerDoc(): SchematicDocument {
 }
 ```
 
-- [ ] テストが失敗することを確認する。
+- [x] テストが失敗することを確認する。
 
 ```powershell
 pnpm --filter @ojt/schematic-core test -- document.test.ts
@@ -5150,7 +5150,7 @@ pnpm --filter @ojt/schematic-core test -- document.test.ts
 
 期待出力の冒頭: `does not provide an export named 'createDocument'`。
 
-- [ ] `packages/schematic-core/src/document.ts` を書く。
+- [x] `packages/schematic-core/src/document.ts` を書く。
 
 ```ts
 /**
@@ -5422,7 +5422,7 @@ export function documentDevices(doc: SchematicDocument): string[] {
 }
 ```
 
-- [ ] `packages/schematic-core/src/index.ts` を次の内容に置き換える（`PACKAGE_NAME` は役目を終えたので消し、`test/scaffold.test.ts` も削除する）。
+- [x] `packages/schematic-core/src/index.ts` を次の内容に置き換える（`PACKAGE_NAME` は役目を終えたので消し、`test/scaffold.test.ts` も削除する）。
 
 ```ts
 export {
@@ -5461,7 +5461,7 @@ export {
 Remove-Item packages\schematic-core\test\scaffold.test.ts
 ```
 
-- [ ] テストが通ることを確認する。
+- [x] テストが通ることを確認する。
 
 ```powershell
 pnpm --filter @ojt/schematic-core test -- document.test.ts
@@ -5474,7 +5474,7 @@ pnpm --filter @ojt/schematic-core test -- document.test.ts
       Tests  9 passed (9)
 ```
 
-- [ ] コミットする。
+- [x] コミットする。
 
 ```powershell
 git add packages/schematic-core
@@ -5515,7 +5515,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 5個以上ならエラー」は、ソケット4個だった旧配置の制約なので無くなった）。明示的に
 `TASK1_SOCKET_ROLES` / `TASK2_SOCKET_ROLES` を渡して検定の盤と同じ制約で練習させることはできる。
 
-- [ ] 失敗するテストを書く。`packages/schematic-core/test/assign.test.ts`:
+- [x] 失敗するテストを書く。`packages/schematic-core/test/assign.test.ts`:
 
 ```ts
 import { describe, expect, it } from 'vitest';
@@ -5764,7 +5764,7 @@ describe('assign: 回路図 → 物理割当（§11.3）', () => {
 });
 ```
 
-- [ ] テストが失敗することを確認する。
+- [x] テストが失敗することを確認する。
 
 ```powershell
 pnpm --filter @ojt/schematic-core test -- assign.test.ts
@@ -5772,7 +5772,7 @@ pnpm --filter @ojt/schematic-core test -- assign.test.ts
 
 期待出力の冒頭: `does not provide an export named 'assignToBoard'`。
 
-- [ ] `packages/schematic-core/src/assign.ts` を書く。
+- [x] `packages/schematic-core/src/assign.ts` を書く。
 
 ```ts
 import {
@@ -6134,7 +6134,7 @@ export function assignToBoard(doc: SchematicDocument, options: AssignOptions = {
 }
 ```
 
-- [ ] `packages/schematic-core/src/index.ts` の末尾に次を追記する。
+- [x] `packages/schematic-core/src/index.ts` の末尾に次を追記する。
 
 ```ts
 export {
@@ -6150,7 +6150,7 @@ export {
 } from './assign.js';
 ```
 
-- [ ] テストが通ることを確認する。
+- [x] テストが通ることを確認する。
 
 ```powershell
 pnpm --filter @ojt/schematic-core test -- assign.test.ts
@@ -6163,7 +6163,7 @@ pnpm --filter @ojt/schematic-core test -- assign.test.ts
       Tests  12 passed (12)
 ```
 
-- [ ] コミットする。
+- [x] コミットする。
 
 ```powershell
 git add packages/schematic-core
@@ -6192,7 +6192,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 実際に走らせて、自己保持・インターロック・オンディレー・フリッカの4回路が期待どおり動くことを
 確かめる（§14.1 #5・#6・#8・#11 の回路図版）。
 
-- [ ] 失敗するテストを書く。`packages/schematic-core/test/to-session.test.ts`:
+- [x] 失敗するテストを書く。`packages/schematic-core/test/to-session.test.ts`:
 
 ```ts
 import { describe, expect, it } from 'vitest';
@@ -6336,7 +6336,7 @@ describe('to-session: 回路図 → 盤セッション → ネットリスト �
 });
 ```
 
-- [ ] テストが失敗することを確認する。
+- [x] テストが失敗することを確認する。
 
 ```powershell
 pnpm --filter @ojt/schematic-core test -- to-session.test.ts
@@ -6344,7 +6344,7 @@ pnpm --filter @ojt/schematic-core test -- to-session.test.ts
 
 期待出力の冒頭: `does not provide an export named 'toSession'`。
 
-- [ ] `packages/schematic-core/src/to-session.ts` を書く。
+- [x] `packages/schematic-core/src/to-session.ts` を書く。
 
 ```ts
 import {
@@ -6425,13 +6425,13 @@ export function toSession(
 }
 ```
 
-- [ ] `packages/schematic-core/src/index.ts` の末尾に次を追記する。
+- [x] `packages/schematic-core/src/index.ts` の末尾に次を追記する。
 
 ```ts
 export { toSession, type ToSessionOptions, type ToSessionResult } from './to-session.js';
 ```
 
-- [ ] テストが通ることを確認する。
+- [x] テストが通ることを確認する。
 
 ```powershell
 pnpm --filter @ojt/schematic-core test -- to-session.test.ts
@@ -6444,7 +6444,7 @@ pnpm --filter @ojt/schematic-core test -- to-session.test.ts
       Tests  9 passed (9)
 ```
 
-- [ ] コミットする。
+- [x] コミットする。
 
 ```powershell
 git add packages/schematic-core
@@ -6483,7 +6483,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 
 段の x 位置は「始点の x ＋ 列番号 × 列幅」で決まり、分岐段は親の段の節点 x を引き継ぐ。壊れた参照（存在しない段を指す）があっても図形は返す（レンダラを落とさない。§13 #2 の「開始させない」は課題一覧側の責務）。
 
-- [ ] 失敗するテストを書く。`packages/schematic-core/test/layout.test.ts`:
+- [x] 失敗するテストを書く。`packages/schematic-core/test/layout.test.ts`:
 
 ```ts
 import { describe, expect, it } from 'vitest';
@@ -6630,7 +6630,7 @@ describe('layout: 読取専用レンダラ用の図形データ（§11.2）', ()
 });
 ```
 
-- [ ] テストが失敗することを確認する。
+- [x] テストが失敗することを確認する。
 
 ```powershell
 pnpm --filter @ojt/schematic-core test -- layout.test.ts
@@ -6638,7 +6638,7 @@ pnpm --filter @ojt/schematic-core test -- layout.test.ts
 
 期待出力の冒頭: `does not provide an export named 'layout'`。
 
-- [ ] `packages/schematic-core/src/layout.ts` を書く。
+- [x] `packages/schematic-core/src/layout.ts` を書く。
 
 ```ts
 import type { CellKind, SchematicCell, SchematicDocument } from './document.js';
@@ -6914,7 +6914,7 @@ export function layout(doc: SchematicDocument, options: LayoutOptions = {}): Sch
 }
 ```
 
-- [ ] `packages/schematic-core/src/index.ts` の末尾に次を追記する。
+- [x] `packages/schematic-core/src/index.ts` の末尾に次を追記する。
 
 ```ts
 export {
@@ -6930,7 +6930,7 @@ export {
 } from './layout.js';
 ```
 
-- [ ] テストが通ることを確認する。
+- [x] テストが通ることを確認する。
 
 ```powershell
 pnpm --filter @ojt/schematic-core test -- layout.test.ts
@@ -6943,7 +6943,7 @@ pnpm --filter @ojt/schematic-core test -- layout.test.ts
       Tests  10 passed (10)
 ```
 
-- [ ] コミットする。
+- [x] コミットする。
 
 ```powershell
 git add packages/schematic-core
@@ -6964,7 +6964,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 
 Task 12〜15 で追記してきた再輸出を、次の最終形と一致しているか突き合わせる（並び順もこのとおりにする）。
 
-- [ ] `packages/schematic-core/src/index.ts` を次の内容にする。
+- [x] `packages/schematic-core/src/index.ts` を次の内容にする。
 
 ```ts
 export {
@@ -7025,7 +7025,7 @@ export {
 } from './layout.js';
 ```
 
-- [ ] 全パッケージのテスト・型検査・lint・整形を確認する。
+- [x] 全パッケージのテスト・型検査・lint・整形を確認する。
 
 ```powershell
 pnpm test
@@ -7036,7 +7036,7 @@ pnpm exec prettier --check .
 
 期待出力: `@ojt/circuit-sim` は Plan 1A のテスト、`@ojt/board-model` が `Tests  69 passed (69)`、`@ojt/schematic-core` が `Tests  40 passed (40)`。`tsc` と `eslint` は無出力、prettier は `All matched files use Prettier code style!`。
 
-- [ ] カバレッジがしきい値（行・分岐とも90%以上、§14.2）を満たすことを確認する。
+- [x] カバレッジがしきい値（行・分岐とも90%以上、§14.2）を満たすことを確認する。
 
 ```powershell
 pnpm --filter @ojt/board-model exec vitest run --coverage
@@ -7050,7 +7050,7 @@ board-model     Statements 95.92% / Branches 90.18% / Functions 100% / Lines 97.
 schematic-core  Statements 97.64% / Branches 93.53% / Functions 100% / Lines 98.37%
 ```
 
-- [ ] 循環依存が無いことを確認する（仕様 §4.2）。
+- [x] 循環依存が無いことを確認する（仕様 §4.2）。
 
 ```powershell
 pnpm exec eslint packages/board-model/src packages/schematic-core/src
@@ -7058,7 +7058,7 @@ pnpm exec eslint packages/board-model/src packages/schematic-core/src
 
 期待出力: 何も表示されず終了（終了コード0）。
 
-- [ ] コミットする。
+- [x] コミットする。
 
 ```powershell
 git add packages/schematic-core
@@ -7138,6 +7138,37 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 | 14 | §6.4 の `PB1`〜`PB4` | 部品IDは §6.4 のまま `PB1`〜`PB4`。写真の銘板表記 `PBS1`〜`PBS4` は `PushButtonDefinition.panelLabel` に持つ | 部品IDは端子ID（`PB1.c`）と信号ログ（§5.7）とゴールデンケースの全体で使われる規約なので変えない。3Dの銘板とツールチップだけ写真どおりに出せればよい |
 | 15 | §6.2 の4段配置（`[空]③②①` / `⑧⑦⑥⑤` / `⑫⑪⑩⑨` / `④⑭⑬[空]`） | 4段の並びはそのまま。ただし**段1・段2を本体の奥端、段3・段4を手前端**に寄せ、中央を差込穴の領域にした。ティア内の段ピッチは8mm | 実物のソケットは差込穴が本体中央にあり、ネジ端子は上下に段付きで2列ずつ寄っている。§6.2 の図は端子番号の並びを示すもので、等間隔の4段を要求してはいない。ティア内ピッチを写真の見た目（約7mm）ではなく8mmにしたのは、§6.5 の当たり判定半径4mmが重ならない最小値だから |
 
+### 実装で確定した公開API（計画本文との差分）
+
+- `WireRoute` は `kind`（`'direct' | 'channel' | 'harness'`）・`lanes: ChannelLane[]`・`laneOverflow: boolean` を持つ。計画が想定した `channelSpans` は `lanes[i].span` と重複するため廃止した。
+- 走行高さの唯一の情報源は `runZ(axis, layer)`。定数は `WIRE_Z_LADDER_MM = [2.4, 4.2, 6.0, 7.8]` と `WIRE_RUN_X_Z_MM` / `WIRE_RUN_Y_Z_MM`（軸ごとに段0・2／段1・3）、引き出しのずらしは `LEAD_OUT_STAGGER_MM = 0.6`。旧 `WIRE_RUN_Z_MM` は `@deprecated` として残るのみ。
+- `RoutingError` は `wireId` / `reason: RoutingErrorReason` を公開プロパティに持つ。
+- `validateBoard(board)` が配線帯の `zMm` と `runZ(axis, 0)` の不一致を検出する規則を追加で検証する。
+- 正本のレーン定数は `CHANNEL_LANE_COUNT`（8）/ `CHANNEL_LANE_PITCH_MM`（2mm）。`MAX_WIRE_LANES` / `WIRE_LANE_PITCH_MM` は `@deprecated` な別名としてのみ残る。
+- schematic-core の割当結果型は `Assignment` / `AssignResult`。
+- `AssignOptions.color: '青' | '白'`、`AssignOptions.physicalOverride: Readonly<Record<string, readonly [TerminalId, TerminalId]>>`。
+- `validateDocument()` は端点を解決してから判定し（`resolveNode`/`nodeKey`）、全段がP母線・N母線の両方に到達することも検証する（母線は通り抜けない）。
+- 固定配線の組を2つの節点に分ける割当は拒否する（`TB_PB.4c` はP母線側にしか置けない。COMピンはPB4のCOM側からのみ組番号を読む）。
+- タイマの `presetMs` は100〜60000msの整数。割当側が収まる最小レンジ（`TIMER_RANGE_10S`/`TIMER_RANGE_60S`）を自動選択する。`SchematicCell.presetMs?: number | undefined`（`coil()` は未指定ならキー自体を持たない）。
+- `Shape.cellId?` / `Shape.rungId?` で図形の出どころを追跡でき、`DEFAULT_LAYOUT_OPTIONS.rowHeight` は24。
+- セッションへ落とす電線IDは割当のID（`sw-NNN`形式）をそのまま使う。
+
+---
+
+## 追加タスク（レビュー指摘により追加）
+
+| タスク | 内容 | コミット |
+|---|---|---|
+| 3b | `geometry.ts` の境界判定（rect の包含・交差）を修正し、rect 専用テスト `geometry-rect.test.ts` とカバレッジ計測スクリプトを追加。tsx の lint 設定と no-unresolved 解決を修正。 | `3a42d43` |
+| 4b/6b | 本体端子の当たり判定半径・ソケット列ピッチ・配線帯高さ・ハーネス離隔を補正し、端子台を写真どおり同一DINレールへ配置。`validateBoard`/`CHECK_SOCKET_ID` を公開（A）。`SOCKET_ROLES` を単一の情報源にし `CHK`=S7固定を検証、`trySocketOf` を追加（B）。`MOUNTABLE_KINDS` とタイマレンジ定数を公開、非有限値を `CatalogError` で拒否（C）。`plug`/`setPreset` が非有限値を `invalid-preset` で返し、未割当端子・壊れた端子IDへの配線を `unknown-terminal` にする（D）。 | `87e2ba5` |
+| 8b | 電線の端子表記を正規化し、例外を投げない検査に統一。頑健な電線ID生成、`wire.open` の保持、電線受け渡しのオーバーロード対応。 | `f499579` |
+| 9b | 配線のレーンをレーン×レイヤの16スロットに層化し、高さのはしご `WIRE_Z_LADDER_MM` で直交区間を1.8mm以上離す。`WireRoute` に `kind`/`lanes`/`laneOverflow`、`RoutingError` に `wireId`/`reason` を追加。渡り線の張り出しと `P.1`↔`N.1` 直結の折り返し不具合を修正。 | `1552fee` |
+| 9c | 走行高さの唯一の情報源を `runZ(axis, layer)` に一本化し、`validateBoard` に帯のズレ検出を追加。端子引き出しをレーンごとにずらし、`routing-stress.test.ts` で実座標からレーン占有を再検査。レーン定数を `CHANNEL_LANE_COUNT`/`CHANNEL_LANE_PITCH_MM` に統一し `channelSpans` を削除。テスト143→153。 | `d2b13fd` |
+| 9d | 配線帯の幅に関するテストを追加し、ドキュメントの記述を修正。テスト内の参照をレーン定数の正本 `CHANNEL_LANE_COUNT`/`CHANNEL_LANE_PITCH_MM` に統一。 | `3ee591e` |
+| 13b | 文書検証は端点を解決してから判定（`resolveNode`/`nodeKey`）。タイマ `presetMs` を100〜60000msの整数に限り割当側が収まる最小レンジを自動選択。1端子が2節点に現れる回路をエラー化。渡り配線は既設配線の結線を1区間として扱う。`physicalOverride` はCOMピンから組番号を読み指定自体を検証。`options.roles` を `validateSocketRoles` に通す。`Assignment` 型を公開し `toSession` は割当の電線ID（`sw-NNN`）で配線する。 | `5801a21` |
+| 13c | 既設固定配線の組（例: `P.1`–`TB_PB.4c`）を割当が2つの節点に分けることを `checkFixedBonds` で拒否する。`TB_PB.4a` はどの節点にも置ける。母線に組の両端子がある場合の残り容量を試験で確認。公開APIの変更なし。 | `9ce37aa` |
+| 13d | `validateDocument` が解決後の節点網を辿り、全段がP母線・N母線の両方に到達することを要求（母線は通り抜けない）。`SchematicCell.presetMs` を `number \| undefined` に広げ `exactOptionalPropertyTypes` に対応。`layout` は分岐の親xを再帰解決し既定 `rowHeight` を24に、図形に `rungId`/`cellId` の出どころを付与。`toSession` の `addWire` 失敗メッセージに電線IDと端子を追記。 | `cf6945a` |
+
 ---
 
 ## 完了条件
@@ -7151,6 +7182,8 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 7. 盤定義が実物の写真（`docs/reference/K96-CS3-board-photo.png`）と食い違わない（ソケット8個・左右4個ずつ、ネジ端子は上下2ティア、上段左にDC24V供給端子・上段右にブレーカ、中段に端子台8P/12P、下段に PL4/PB4、ダクトなし）。
 8. `routeSession()` で解いた配線が、**どの部品の占有矩形の内側も通らない**（自己保持・フリッカ相当の配線と既設の青線ハーネスで検証済み）。経路は直角セグメントのみで構成され、同じ帯の同じ区間を走る電線はレーンが重ならない。
 9. `assignToBoard()` が生成する配線で、**どの端子も2本以内**に収まる（既設配線ぶんを含む）。`P.1` / `N.1` は既設1本＋鎖の先頭1本のちょうど2本。
+
+2026-09-14 完了（Task 13d 反映後）: `board-model` 8ソースファイル/13テストファイル/154テスト、カバレッジ Stmts 97.45 / Branches 91.68 / Funcs 100 / Lines 99.03。`schematic-core` 5ソースファイル/4テストファイル/64テスト、カバレッジ Stmts 100 / Branches 98.37 / Funcs 100 / Lines 100。全体396テスト（circuit-sim 178を含む）。最終コミット `cf6945a`。最終レビュー: 両パッケージとも Opus による最終レビューで「承認（軽微な指摘は9d/13dで解消）」。
 
 ---
 
@@ -7171,3 +7204,5 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
   - 同じ列（端子台の1列／ソケットの同じティア）の渡り線が配線帯を大回りしないよう、**列から5mm張り出す短い直角経路**を経路器に追加した（Task 9）。
 
 - **2026-09-14**: 固定配線の文言を青に再統一（P/N 改訂で戻っていた）。実装側は Task 4b/6b で `session.ts` の文言を修正済み。
+
+- **2026-09-14**: 実装完了。追加タスク 3b/4b/6b/8b/9b/9c/9d/13b/13c/13d を記録、完了条件を実績値に更新。
