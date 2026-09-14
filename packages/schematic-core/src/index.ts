@@ -42,3 +42,15 @@ export {
 } from './assign.js';
 
 export { toSession, type ToSessionOptions, type ToSessionResult } from './to-session.js';
+
+export {
+  contactShapes,
+  DEFAULT_LAYOUT_OPTIONS,
+  LAMP_FILL,
+  layout,
+  loadShapes,
+  type LayoutOptions,
+  type SchematicLayout,
+  type Shape,
+  type ShapeRole,
+} from './layout.js';
