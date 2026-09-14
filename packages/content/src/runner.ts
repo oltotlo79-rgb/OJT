@@ -44,8 +44,15 @@ export function powerUp(simulation: Simulation): void {
 
 /**
  * 操作列を再生する。§7.3
- * 各 tick の先頭で「その時刻の操作」を操作列の並び順に適用してから1tick進めるので、
- * `t` 時点の操作の効果は信号ログの `t` の記録に現れる。
+ * 各 tick の先頭で「まだ適用していない `t <= 現在時刻` の操作」を操作列の並び順に適用してから
+ * 1tick進めるので、`t` 時点の操作の効果は信号ログの `t` の記録に現れる。
+ *
+ * 時刻で引く表ではなく先頭からの走査にしてあるのは、tick に載らない `t`（`t: 5`、あるいは
+ * 既定と違う `tickMs`）の操作を黙って捨てないため。その操作は直後の tick で適用される。
+ *
+ * **注意**: `Simulation` は渡されたネットリストの実行時状態（接点の `energized` ／電源の
+ * `enabled`）をリセットし、以後も書き換える。同じネットリストを別の判定や表示に使い回すと
+ * 互いの状態を壊すので、模範回路と訓練者回路にはそれぞれ別のネットリストを渡すこと。
  */
 export function runOperations(
   netlist: Netlist,
@@ -59,18 +66,13 @@ export function runOperations(
   });
   powerUp(simulation);
 
-  const byTick = new Map<number, Operation[]>();
-  for (const op of operations) {
-    const bucket = byTick.get(op.t);
-    if (bucket === undefined) byTick.set(op.t, [op]);
-    else bucket.push(op);
-  }
-
+  let cursor = 0;
   let tMs = 0;
   for (; tMs < options.durationMs; tMs += tickMs) {
-    for (const op of byTick.get(tMs) ?? []) {
+    for (let op = operations[cursor]; op !== undefined && op.t <= tMs; op = operations[cursor]) {
       if (op.action === 'press') simulation.press(op.target);
       else simulation.release(op.target);
+      cursor += 1;
     }
     simulation.step(tickMs);
   }

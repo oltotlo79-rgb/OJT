@@ -1,4 +1,5 @@
 import {
+  SOCKET_ROLES,
   toNetlist,
   type BoardDefinition,
   type BoardSession,
@@ -56,6 +57,35 @@ function toExtraParts(problem: AssembleProblem): PartId[] {
   return (problem.board.extraParts ?? []).map((name) => partId(name));
 }
 
+/** 回路図の要素IDから、その要素の課題JSON上の位置（`schematic.rungs[i].cells[j]`）を引く。 */
+function cellPath(problem: AssembleProblem, cellId: string): string | undefined {
+  const rungs = problem.schematic.rungs;
+  for (let i = 0; i < rungs.length; i += 1) {
+    const cells = rungs[i]?.cells ?? [];
+    for (let j = 0; j < cells.length; j += 1) {
+      if (cells[j]?.id === cellId) return `schematic.rungs[${i}].cells[${j}]`;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * 割当エラーのパスを課題JSONのパスに直す。§13 #2
+ *
+ * `assignToBoard()` / `toSession()` が返すパスは盤と回路図の語彙（役割名 `roles`、回路図の要素ID
+ * `c05`、ソケットの役割 `CR1`、電線ID `sw-003`）なので、そのまま出すと課題JSONのどこを直せば
+ * よいのか分からない。課題一覧のエラー表示はスキーマ違反と同じ形にそろえる（§13 #1）。
+ */
+export function toProblemPath(problem: AssembleProblem, path: string): string {
+  if (path.startsWith('physicalOverride.')) return path;
+  if (path === 'roles') return 'board.socketRoles';
+  const cell = cellPath(problem, path);
+  if (cell !== undefined) return cell;
+  // 部品を挿せなかったときのパスはソケットの役割名。原因は在庫（`inventory`）の不足
+  if ((SOCKET_ROLES as readonly string[]).includes(path)) return 'inventory';
+  return `schematic.${path}`;
+}
+
 /**
  * 課題の模範回路を盤セッション＋ネットリストとして組み立てる。§7.2
  * 盤IDが課題と一致しない場合と、割当に失敗した場合はエラーを返す（課題一覧で「模範回路エラー」。§13 #2）。
@@ -84,7 +114,13 @@ export function buildReferenceSession(
     ...(override === undefined ? {} : { physicalOverride: override }),
   });
   if (!built.ok) {
-    return { ok: false, errors: built.errors.map((e) => ({ path: e.path, message: e.message })) };
+    return {
+      ok: false,
+      errors: built.errors.map((e) => ({
+        path: toProblemPath(problem, e.path),
+        message: e.message,
+      })),
+    };
   }
   return {
     ok: true,

@@ -63,6 +63,49 @@ describe('runOperations', () => {
     const run = runOperations(netlist, problem.operations, { durationMs: 1000, tickMs: 20 });
     expect(run.lastTickMs).toBe(980);
   });
+
+  it('applies an operation that falls between two ticks at the next tick', () => {
+    const { netlist } = referenceNetlist();
+    const run = runOperations(netlist, [{ t: 5, target: 'PB1', action: 'press' }], {
+      durationMs: 100,
+    });
+    expect(run.log.valueAt('PB1', 0)).toBe(false);
+    expect(run.log.valueAt('PB1', 10)).toBe(true);
+  });
+
+  it('applies an operation that no tick lands on with a custom tick length', () => {
+    const { netlist } = referenceNetlist();
+    const run = runOperations(netlist, [{ t: 500, target: 'PB1', action: 'press' }], {
+      durationMs: 1000,
+      tickMs: 15,
+    });
+    expect(run.log.valueAt('PB1', 495)).toBe(false);
+    expect(run.log.valueAt('PB1', 510)).toBe(true);
+  });
+
+  it('keeps the order of operations that share a tick (§7.3)', () => {
+    const pressThenRelease = referenceNetlist();
+    const released = runOperations(
+      pressThenRelease.netlist,
+      [
+        { t: 0, target: 'PB1', action: 'press' },
+        { t: 0, target: 'PB1', action: 'release' },
+      ],
+      { durationMs: 100 },
+    );
+    expect(released.log.valueAt('PB1', 0)).toBe(false);
+
+    const releaseThenPress = referenceNetlist();
+    const pressed = runOperations(
+      releaseThenPress.netlist,
+      [
+        { t: 0, target: 'PB1', action: 'release' },
+        { t: 0, target: 'PB1', action: 'press' },
+      ],
+      { durationMs: 100 },
+    );
+    expect(pressed.log.valueAt('PB1', 0)).toBe(true);
+  });
 });
 
 describe('powerUp', () => {
@@ -73,7 +116,7 @@ describe('powerUp', () => {
     expect(simulation.events.countOf('power-sequence-violation')).toBe(0);
   });
 
-  it('the reverse order does raise one (§5.3.5)', () => {
+  it('the reverse order does raise two (§5.3.5)', () => {
     const { netlist } = referenceNetlist();
     const simulation = new Simulation(netlist);
     simulation.setSwitch(true);

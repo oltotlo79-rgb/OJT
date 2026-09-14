@@ -1,7 +1,7 @@
 import { JIPM_BOARD } from '@ojt/board-model';
 import { describe, expect, it } from 'vitest';
 import { toTerminalId } from '@ojt/circuit-sim';
-import { buildReferenceSession, toPhysicalOverride } from '../src/reference.js';
+import { buildReferenceSession, toPhysicalOverride, toProblemPath } from '../src/reference.js';
 import { parseOrThrow, selfHoldProblemJson } from './helpers/problems.js';
 
 describe('buildReferenceSession', () => {
@@ -82,5 +82,86 @@ describe('buildReferenceSession', () => {
   it('converts a physicalOverride record into terminal ids', () => {
     expect(toPhysicalOverride(undefined)).toBeUndefined();
     expect(toPhysicalOverride({ c1: ['CR1.9', 'CR1.5'] })).toEqual({ c1: ['CR1.9', 'CR1.5'] });
+  });
+
+  it('adds the optional parts the problem asks for (§5.3.4)', () => {
+    const json = selfHoldProblemJson();
+    const board = json.board as Record<string, unknown>;
+    const problem = parseOrThrow({ ...json, board: { ...board, extraParts: ['BZ'] } });
+    const built = buildReferenceSession(problem, JIPM_BOARD);
+    expect(built.ok).toBe(true);
+    if (!built.ok) return;
+    expect(built.value.netlist.parts.some((p) => p.id === 'BZ')).toBe(true);
+  });
+});
+
+describe('buildReferenceSession — エラーのパス (§13 #2)', () => {
+  it('points at the cell of the schematic that could not be assigned', () => {
+    // CR1 の接点が5個ある回路図。5個目の要素 `c05` は rungs[1].cells[4]
+    const json = selfHoldProblemJson();
+    (json.schematic as { rungs: unknown[] }).rungs = [
+      {
+        id: 'r1',
+        from: { bus: 'P' },
+        to: { bus: 'N' },
+        cells: [{ kind: 'coil', id: 'c00', device: 'CR1' }],
+      },
+      {
+        id: 'r2',
+        from: { bus: 'P' },
+        to: { bus: 'N' },
+        cells: [
+          { kind: 'cr-a', id: 'c01', device: 'CR1' },
+          { kind: 'cr-a', id: 'c02', device: 'CR1' },
+          { kind: 'cr-a', id: 'c03', device: 'CR1' },
+          { kind: 'cr-a', id: 'c04', device: 'CR1' },
+          { kind: 'cr-a', id: 'c05', device: 'CR1' },
+          { kind: 'lamp', id: 'c06', device: 'PL1' },
+        ],
+      },
+    ];
+    const built = buildReferenceSession(parseOrThrow(json), JIPM_BOARD);
+    expect(built.ok).toBe(false);
+    if (built.ok) return;
+    expect(built.errors[0]?.path).toBe('schematic.rungs[1].cells[4]');
+  });
+
+  it('points at the socket roles when a role the schematic needs is missing', () => {
+    const json = selfHoldProblemJson();
+    const board = json.board as Record<string, unknown>;
+    const built = buildReferenceSession(
+      parseOrThrow({ ...json, board: { ...board, socketRoles: { S7: 'CHK' } } }),
+      JIPM_BOARD,
+    );
+    expect(built.ok).toBe(false);
+    if (built.ok) return;
+    expect(built.errors[0]?.path).toBe('board.socketRoles');
+  });
+
+  it('points at the inventory when a part cannot be plugged', () => {
+    const built = buildReferenceSession(
+      parseOrThrow({ ...selfHoldProblemJson(), inventory: [] }),
+      JIPM_BOARD,
+    );
+    expect(built.ok).toBe(false);
+    if (built.ok) return;
+    expect(built.errors[0]?.path).toBe('inventory');
+  });
+
+  it('keeps a physicalOverride path as it is', () => {
+    const built = buildReferenceSession(
+      parseOrThrow({
+        ...selfHoldProblemJson(),
+        physicalOverride: { c99: ['CR1.13', 'CR1.14'] },
+      }),
+      JIPM_BOARD,
+    );
+    expect(built.ok).toBe(false);
+    if (built.ok) return;
+    expect(built.errors[0]?.path).toBe('physicalOverride.c99');
+  });
+
+  it('falls back to the schematic for anything else', () => {
+    expect(toProblemPath(parseOrThrow(selfHoldProblemJson()), 'sw-003')).toBe('schematic.sw-003');
   });
 });

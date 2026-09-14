@@ -61,6 +61,43 @@ describe('loadProblemsFromDir', () => {
     expect(set.problems).toEqual([]);
     expect(set.errors[0]?.reason).toBe('read-error');
   });
+
+  it('loads a file saved with a UTF-8 BOM (§7.8)', () => {
+    write('bom.json', `\uFEFF${JSON.stringify({ ...selfHoldProblemJson(), id: 'b-106' })}`);
+    const set = loadProblemsFromDir(dir);
+    expect(set.errors).toEqual([]);
+    expect(set.problems.map((p) => p.id)).toEqual(['b-106']);
+  });
+
+  it('reports a non UTF-8 file instead of loading mojibake (§13 #1)', () => {
+    // Shift_JIS の「自」(0x8E 0xA9) を UTF-8 として読むと U+FFFD になる
+    const [head, tail] = JSON.stringify({
+      ...selfHoldProblemJson(),
+      id: 'b-107',
+      title: 'MOJIBAKE',
+    }).split('MOJIBAKE');
+    writeFileSync(
+      join(dir, 'sjis.json'),
+      Buffer.concat([
+        Buffer.from(head ?? '', 'utf8'),
+        Buffer.from([0x8e, 0xa9]),
+        Buffer.from(tail ?? '', 'utf8'),
+      ]),
+    );
+    const set = loadProblemsFromDir(dir);
+    expect(set.problems).toEqual([]);
+    expect(set.errors[0]?.reason).toBe('read-error');
+    expect(set.errors[0]?.message).toContain('UTF-8');
+  });
+
+  it('skips a subfolder entry that is a directory named like a problem file', () => {
+    mkdirSync(join(dir, 'assemble'));
+    mkdirSync(join(dir, 'assemble', 'x.json'));
+    write('assemble/a.json', { ...selfHoldProblemJson(), id: 'b-108' });
+    const set = loadProblemsFromDir(dir);
+    expect(set.problems.map((p) => p.id)).toEqual(['b-108']);
+    expect(set.errors).toEqual([]);
+  });
 });
 
 describe('mergeProblemSets', () => {
