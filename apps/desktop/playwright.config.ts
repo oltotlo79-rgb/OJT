@@ -11,6 +11,9 @@ export default defineConfig({
   expect: { timeout: 20_000 },
   fullyParallel: false,
   workers: 1,
+  // `capturePage()` の直後だとコンポジタがまだ準備できておらず `UnknownVizError` に
+  // なることがまれにある（既知のflake）。1回だけ自動再試行する。
+  retries: 1,
   reporter: [['list']],
   outputDir: './test-results',
 });
