@@ -151,13 +151,8 @@ AssertionError: expected false to be true // Object.is equality
 
 ```ts
 import { existsSync } from 'node:fs';
-import {
-  BUILTIN_PROBLEMS,
-  loadProblemsFromDir,
-  mergeProblemSets,
-  type AssembleProblem,
-  type ProblemSet,
-} from '@ojt/content';
+import { BUILTIN_PROBLEMS, type AssembleProblem } from '@ojt/content';
+import { loadProblemsFromDir, mergeProblemSets, type ProblemSet } from '@ojt/content/loader';
 import { toErrorRow, toSummary, type ProblemListPayload } from '../shared/ipc.js';
 
 /**
@@ -2567,3 +2562,4 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 |---|---|
 | 2026-09-14 | 初版 |
 | 2026-09-14 | 実装された `@ojt/schematic-core`（Task 11〜16 / 13b・13c・13d）と `@ojt/board-model` の経路器（Task 9b・9c）に合わせて整合を取った。①Task 4 の読取専用レンダラを実装どおりの `Shape`（`kind` / `role` に `line` / `circle` / `arc` / `text` の項目が付く直和。`fill` は `circle` だけ、`startDeg` / `endDeg` は `arc` だけ、`text` / `anchor` は `text` だけ）と `SchematicLayout`（`width` / `height` / `shapes`）に合わせ、`DEFAULT_LAYOUT_OPTIONS`（`colWidth: 24` / `rowHeight: 24` / `marginX: 12` / `marginY: 16` / `symbolWidth: 12`）を明記した。タイマコイルの銘板が `T1 (3.0秒)` と長く既定の列幅では隣と重なるので、`layout(doc, { colWidth: 40 })` を渡すようにした（Task 7 に検査を追加）。②Task 13d で `Shape` に付いた `rungId?` / `cellId?` は Phase 2 のホバー連動で使うものとして注記し、Phase 1 は配列の添字で `key` を振る方針を明示した。③Task 6 の `Session.tsx` から、`routeWire()` が `RoutingError` を投げるようになって死にコードになっていた `crossesFootprint()` の分岐を外し、`safeRoutes()`（Plan 1D1 Task 12）で受け止めて理由を出す形に揃えた。文言も `routeBlocked` → `routeFailed` / `laneOverflow` / `routeReason` に差し替えた。④`work-file.ts` の `toSession()` が `@ojt/schematic-core` の `toSession(doc, board, options)`（`{ ok, session, assignment } \| { ok: false, errors }`）と同名の別物であることを注記した。テスト総数 115 → 119（Plan 1D1 Task 11 の増加ぶん） |
+| 2026-09-14 | Plan 1D1 Task 1D1-b（renderer が `@ojt/content` バレル経由で `node:fs` を引き込み `pnpm --filter @ojt/desktop dev` が落ちる不具合の修正）で `loadProblemsFromDir` / `mergeProblemSets` / `ProblemSet` を `@ojt/content` のルートバレルから `@ojt/content/loader`（新設の subpath export）に移した。Step 3 の `content-loader.ts` の import を `import { BUILTIN_PROBLEMS, type AssembleProblem } from '@ojt/content'; import { loadProblemsFromDir, mergeProblemSets, type ProblemSet } from '@ojt/content/loader';` に更新（関数・型の挙動は無変更）。`BUILTIN_PROBLEMS` / `AssembleProblem` は引き続きルートバレルから取る |
