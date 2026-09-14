@@ -1836,7 +1836,7 @@ export const useStore = create<AppState>((set, get) => ({
     set({ history });
   },
   setMode: (mode) => {
-    set({ mode, pendingTerminal: undefined });
+    set({ mode, pendingTerminal: undefined, selectedWire: undefined });
   },
   setWireColor: (wireColor) => {
     set({ wireColor });
@@ -3115,11 +3115,20 @@ describe('pickToAction（配線モード）', () => {
     });
   });
 
-  it('電線をクリックすると選択する', () => {
+  it('電線をクリックしても何も起きない（配線モードは端子クリックを優先する。§8.2）', () => {
     expect(pickToAction(state(), { kind: 'wire', id: 'w-001', locked: false })).toEqual({
-      type: 'selectWire',
-      wireId: 'w-001',
+      type: 'none',
     });
+  });
+
+  it('配線中に電線をクリックしても配線待ちは取り消されない（キャンセルではない）', () => {
+    expect(
+      pickToAction(state({ pendingTerminal: CR1_13 }), {
+        kind: 'wire',
+        id: 'w-001',
+        locked: false,
+      }),
+    ).toEqual({ type: 'none' });
   });
 
   it('空きソケットは装着用に選択する', () => {
@@ -3156,10 +3165,10 @@ describe('pickToAction（配線モード）', () => {
 });
 
 describe('pickToAction（削除モード）', () => {
-  it('電線を削除する', () => {
+  it('電線をクリックすると選択する（実際の削除は Delete キーで行う。§8.2）', () => {
     expect(
       pickToAction(state({ mode: 'delete' }), { kind: 'wire', id: 'w-003', locked: false }),
-    ).toEqual({ type: 'removeWire', wireId: 'w-003' });
+    ).toEqual({ type: 'selectWire', wireId: 'w-003' });
   });
 
   it('固定配線は削除できない', () => {
@@ -3193,22 +3202,28 @@ describe('キーボード', () => {
     expect(escapeToAction(state())).toEqual({ type: 'none' });
   });
 
-  it('Delete は選択中の電線を削除する', () => {
-    expect(deleteKeyToAction(state({ selectedWire: 'w-002' }), [])).toEqual({
+  it('Delete は削除モードで選択中の電線を削除する', () => {
+    expect(deleteKeyToAction(state({ mode: 'delete', selectedWire: 'w-002' }), [])).toEqual({
       type: 'removeWire',
       wireId: 'w-002',
     });
   });
 
-  it('Delete は固定配線を拒否する', () => {
-    expect(deleteKeyToAction(state({ selectedWire: 'fw-chk-2' }), ['fw-chk-2'])).toEqual({
+  it('Delete は削除モードでも固定配線を拒否する', () => {
+    expect(
+      deleteKeyToAction(state({ mode: 'delete', selectedWire: 'fw-chk-2' }), ['fw-chk-2']),
+    ).toEqual({
       type: 'reject',
       message: LOCKED_WIRE_MESSAGE,
     });
   });
 
   it('Delete は未選択なら何もしない', () => {
-    expect(deleteKeyToAction(state(), [])).toEqual({ type: 'none' });
+    expect(deleteKeyToAction(state({ mode: 'delete' }), [])).toEqual({ type: 'none' });
+  });
+
+  it('Delete は配線モードでは無視される（電線が選択されていても）。§12.2', () => {
+    expect(deleteKeyToAction(state({ selectedWire: 'w-002' }), [])).toEqual({ type: 'none' });
   });
 });
 ```
@@ -3282,22 +3297,25 @@ export type PickAction =
   /** 押ボタンを押す。§8.2 */
   | { type: 'pressButton'; pbId: string };
 
-/** 固定配線を触ったときの文言。§6.3 */
-export const LOCKED_WIRE_MESSAGE = 'チェック用回路の黄色配線は変更できません';
+/** 固定配線を触ったときの文言（既設配線は本アプリでは全て青。§6.3・§6.6）。 */
+export const LOCKED_WIRE_MESSAGE = 'チェック用回路の既設配線（青）は変更できません';
 /** 配線できない端子を触ったときの文言。§6.4 */
 export const NOT_WIRABLE_MESSAGE = 'この端子には配線できません（本体側は既設配線済みです）';
 
 /**
  * ピック結果を操作に変換する。§12.2
- * - 削除モード: 電線を拾ったら削除、`locked` なら拒否、それ以外は何もしない
- * - 配線モード: 端子 → 端子 で配線、同じ端子を2度押したら取り消し、空間クリックで取り消し
+ * - 削除モード: 電線を拾ったら選択（実際の削除は Delete キー。§8.2）、`locked` なら拒否、
+ *   それ以外は何もしない
+ * - 配線モード: 端子 → 端子 で配線、同じ端子を2度押したら取り消し、空間クリックで取り消し。
+ *   電線のクリック選択は削除モード限定なので、配線モードでは電線を拾っても何もしない
+ *   （配線中でも取り消し扱いにはしない。§8.2「配線モードでは端子クリックを優先」）
  */
 export function pickToAction(state: InteractionState, hit: PickHit): PickAction {
   if (state.mode === 'delete') {
     if (hit.kind === 'wire') {
       return hit.locked
         ? { type: 'reject', message: LOCKED_WIRE_MESSAGE }
-        : { type: 'removeWire', wireId: hit.id };
+        : { type: 'selectWire', wireId: hit.id };
     }
     if (hit.kind === 'pushbutton') return { type: 'pressButton', pbId: hit.id };
     return { type: 'none' };
@@ -3312,9 +3330,7 @@ export function pickToAction(state: InteractionState, hit: PickHit): PickAction 
       return { type: 'completeWire', from: pending, to: hit.id, color: state.wireColor };
     }
     case 'wire':
-      return state.pendingTerminal === undefined
-        ? { type: 'selectWire', wireId: hit.id }
-        : { type: 'cancelWire' };
+      return { type: 'none' };
     case 'socket':
       if (state.pendingTerminal !== undefined) return { type: 'cancelWire' };
       return hit.occupied
@@ -3335,11 +3351,12 @@ export function escapeToAction(state: InteractionState): PickAction {
   return state.pendingTerminal === undefined ? { type: 'none' } : { type: 'cancelWire' };
 }
 
-/** Delete キーの扱い（電線を選んでいれば削除）。§8.2 */
+/** Delete キーの扱い（削除モードで電線を選んでいれば削除。電線選択は削除モード限定。§8.2 / §12.2） */
 export function deleteKeyToAction(
   state: InteractionState,
   lockedWireIds: readonly string[],
 ): PickAction {
+  if (state.mode !== 'delete') return { type: 'none' };
   const id = state.selectedWire;
   if (id === undefined || id.length === 0) return { type: 'none' };
   if (lockedWireIds.includes(id)) return { type: 'reject', message: LOCKED_WIRE_MESSAGE };
@@ -3359,7 +3376,7 @@ pnpm --filter @ojt/desktop test -- interaction
 
 ```text
  Test Files  1 passed (1)
-      Tests  19 passed (19)
+      Tests  21 passed (21)
 ```
 
 - [ ] **Step 5: コミットする**
@@ -3426,13 +3443,16 @@ describe('runAddWire', () => {
     if (!result.ok) expect(result.code).toBe('color-not-allowed');
   });
 
-  it('1端子3本目は拒否する（§6.6 / §5.6 #5）', () => {
+  it('1端子3本目は拒否する。失敗にも張ろうとした電線が残る（§6.6 / §5.6 #5）', () => {
     const s = session();
     runAddWire(s, toTerminalId('P.1'), toTerminalId('CR1.14'), '青');
     runAddWire(s, toTerminalId('P.1'), toTerminalId('CR2.14'), '青');
     const third = runAddWire(s, toTerminalId('P.1'), toTerminalId('CR3.14'), '青');
     expect(third.ok).toBe(false);
-    if (!third.ok) expect(third.code).toBe('terminal-overload');
+    if (!third.ok) {
+      expect(third.code).toBe('terminal-overload');
+      expect(third.wire).toBeDefined();
+    }
   });
 
   it('PB本体端子には配線できない（§6.4）', () => {
@@ -3452,7 +3472,7 @@ describe('runRemoveWire', () => {
     expect(removed.ok).toBe(true);
   });
 
-  it('チェック用回路の黄色配線は外せない（§6.3）', () => {
+  it('チェック用回路の既設配線（青）は外せない（§6.3）', () => {
     const s = session();
     const locked = s.wires.find((w) => w.locked);
     expect(locked).toBeDefined();
@@ -3662,10 +3682,15 @@ export function redo(
   };
 }
 
-/** 操作の実行結果（成功なら新しいセッションと履歴1手）。 */
+/**
+ * 操作の実行結果（成功なら新しいセッションと履歴1手）。
+ * 失敗にも `wire` が付くことがある（`board-model` の `terminal-overload` のとき、張ろうとした
+ * 電線そのもの）。呼び出し側はそれを `Simulation.addWire()` に渡して §5.6 #5 の危険操作として
+ * 計上させる（`packages/board-model/src/session.ts` の `Result` を参照）。
+ */
 export type CommandResult<T> =
   | { ok: true; value: T; command: SessionCommand }
-  | { ok: false; code: string; message: string };
+  | { ok: false; code: string; message: string; wire?: Wire };
 
 function wrap<T>(
   before: BoardSession,
@@ -3674,7 +3699,14 @@ function wrap<T>(
   kind: SessionCommand['kind'],
   label: string,
 ): CommandResult<T> {
-  if (!result.ok) return { ok: false, code: result.code, message: result.message };
+  if (!result.ok) {
+    return {
+      ok: false,
+      code: result.code,
+      message: result.message,
+      ...(result.wire !== undefined ? { wire: result.wire } : {}),
+    };
+  }
   return {
     ok: true,
     value: result.value,
@@ -9041,3 +9073,4 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 | 2026-09-14 | Task 1 の eslint.config.js に import-x（no-cycle / no-unresolved）を復元 |
 | 2026-09-14 | React を 19.2.x に固定（R3F 9.7 の peer 範囲） |
 | 2026-09-14 | Task 1D1-b: `pnpm --filter @ojt/desktop dev`（バンドルしない ESM）で renderer が `@ojt/content` から何か1つでも import すると、ESM の評価順で `src/index.ts` が再エクスポートしていた `src/loader.ts` の `node:fs` import まで評価され、`Module "node:fs" has been externalized … Cannot access "node:fs.readdirSync"` で renderer がマウントできなくなる不具合を修正した（`build` は tree-shaking で無症状だったため見つかっていなかった）。`loadProblemsFromDir` / `mergeProblemSets` を `@ojt/content` のルートバレルから外し、`package.json` の `exports["./loader"]` で `./src/loader.ts` を公開する専用の subpath にした。`ProblemLoadError` / `ProblemSet` 型は fs に触れないので新設の `src/problem-set.ts` に移し、ルートバレルと `loader.ts` の両方から再エクスポートする（`apps/desktop/src/shared/ipc.ts` の `import type { ProblemLoadError } from '@ojt/content'` は変更不要）。Step 3 の `sideEffects` によるツリーシェイクの説明は production build（`pnpm --filter @ojt/desktop build` → `Select-String ... 'loadProblemsFromDir','readdirSync'` が無出力）には今も当てはまるが、この修正後は renderer の依存グラフが `@ojt/content/loader` に一切届かなくなるため、dev サーバのログに「`node:fs` has been externalized」という警告自体が出なくなることを確認した。`apps/desktop` 側は今のところ `loadProblemsFromDir` / `mergeProblemSets` を呼ぶコードが無い（利用者フォルダの合流は Plan 1D2 Step 3 が足す。そちらの import 例を `@ojt/content/loader` に更新済み）ため、本プランのファイルには他の変更は無い |
+| 2026-09-14 | Task 1D1-c: 仕様レビュー（Task 6〜8）の指摘を反映。Task 7: 電線選択を削除モード限定に、既設配線メッセージを青に、CommandResult 失敗時に wire を保持 |
