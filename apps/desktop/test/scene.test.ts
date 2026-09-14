@@ -20,6 +20,7 @@ import {
 } from '../src/renderer/three/camera.js';
 import { socketTerminalLabel } from '../src/renderer/three/Socket.js';
 import { mountedLabel } from '../src/renderer/three/MountedPart.js';
+import { secondsToMs } from '../src/renderer/panels/TimerDial.js';
 
 describe('toScene', () => {
   it('盤の中心が原点になる', () => {
@@ -156,5 +157,12 @@ describe('盤の定義から描くこと', () => {
   it('ソケットのピン配置は4段・各段4列で ④ が段4に混ざる（§6.2）', () => {
     expect(SOCKET_PIN_GRID).toHaveLength(4);
     expect(SOCKET_PIN_GRID[3]?.[0]).toBe(4);
+  });
+});
+
+describe('secondsToMs', () => {
+  it('10ms単位に丸める', () => {
+    expect(secondsToMs(3.04)).toBe(3040);
+    expect(secondsToMs(0.1)).toBe(100);
   });
 });

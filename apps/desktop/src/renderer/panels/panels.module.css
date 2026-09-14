@@ -1,0 +1,219 @@
+/* 右パネル・下部パネル・ツールバー。設計仕様 §8.1。 */
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+  padding: 6px 10px;
+}
+
+.toolGroup {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding-right: 8px;
+  border-right: 1px solid var(--line);
+}
+
+.toolGroup:last-child {
+  border-right: none;
+}
+
+.toolLabel {
+  color: var(--muted);
+  font-size: 12px;
+  margin-right: 2px;
+}
+
+.spacer {
+  flex: 1;
+}
+
+.judgeButton {
+  background: var(--accent);
+  color: #10151c;
+  border-color: var(--accent);
+  font-weight: 700;
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  padding: 8px 10px;
+  margin-bottom: 8px;
+}
+
+.panelTitle {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  margin: 0 0 6px;
+}
+
+.problemTitle {
+  font-size: 15px;
+  font-weight: 700;
+  margin: 0 0 4px;
+}
+
+.problemText {
+  font-size: 13px;
+  line-height: 1.6;
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.partRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.partName {
+  flex: 1;
+  font-size: 13px;
+}
+
+.mountedRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-top: 1px solid var(--line);
+  padding-top: 6px;
+  margin-top: 6px;
+}
+
+.dial {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dial input[type='range'] {
+  flex: 1;
+}
+
+.dial input[type='number'] {
+  width: 72px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  color: var(--text);
+  padding: 3px 5px;
+}
+
+.power {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.led {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  background: #33383f;
+}
+
+.ledOn {
+  background: var(--ok);
+  box-shadow: 0 0 8px var(--ok);
+}
+
+.ledTrip {
+  background: var(--ng);
+  box-shadow: 0 0 8px var(--ng);
+}
+
+.logList {
+  font-size: 12px;
+  line-height: 1.5;
+  max-height: 120px;
+  overflow-y: auto;
+  margin: 0;
+  padding-left: 16px;
+}
+
+.warnList {
+  color: var(--warn);
+  font-size: 12px;
+  margin: 4px 0 0;
+  padding-left: 16px;
+}
+
+.elapsed {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.elapsedValue {
+  font-size: 18px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+
+.elapsedBar {
+  position: relative;
+  flex: 1;
+  height: 10px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  overflow: hidden;
+}
+
+.elapsedFill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--accent);
+  opacity: 0.6;
+}
+
+.elapsedMark {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+}
+
+.markStandard {
+  background: var(--ok);
+}
+
+.markCutoff {
+  background: var(--ng);
+}
+
+.chart {
+  width: 100%;
+  height: auto;
+}
+
+.chartRowLabel {
+  fill: var(--muted);
+  font-size: 9px;
+}
+
+.chartLine {
+  stroke: var(--accent);
+  stroke-width: 1.6;
+  fill: none;
+}
+
+.chartAxis {
+  stroke: var(--line);
+  stroke-width: 1;
+}
+
+.chartMarker {
+  stroke: var(--warn);
+  stroke-dasharray: 3 3;
+  stroke-width: 1;
+}
