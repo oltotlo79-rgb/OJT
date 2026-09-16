@@ -105,10 +105,7 @@ export {
   type PartTruth,
 } from './schema/inspect-parts.js';
 
-export {
-  InspectRepairProblemSchema,
-  type InspectRepairProblem,
-} from './schema/inspect-repair.js';
+export { InspectRepairProblemSchema, type InspectRepairProblem } from './schema/inspect-repair.js';
 
 export {
   isAssembleProblem,
