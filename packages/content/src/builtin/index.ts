@@ -95,8 +95,11 @@ export function parseBuiltinProblems(sources: readonly unknown[]): SupportedProb
   });
 }
 
-/** 期待したモードの課題だけを取り出す（違うモードが混ざっていたら例外）。 */
-function ofMode<T extends SupportedProblem>(
+/**
+ * 期待したモードの課題だけを取り出す（違うモードが混ざっていたら例外）。
+ * テストからも直接呼べるよう export する（誤って混ざったときに例外が飛ぶことを検証するため）。
+ */
+export function ofMode<T extends SupportedProblem>(
   problems: readonly SupportedProblem[],
   guard: (problem: SupportedProblem) => problem is T,
   label: string,

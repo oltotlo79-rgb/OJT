@@ -1,4 +1,4 @@
-import { JIPM_BOARD } from '@ojt/board-model';
+import { JIPM_BOARD, removeWire } from '@ojt/board-model';
 import { describe, expect, it } from 'vitest';
 import {
   buildHighlightIndex,
@@ -15,6 +15,18 @@ function index() {
   const built = buildReferenceSession(problem, JIPM_BOARD);
   if (!built.ok) throw new Error(JSON.stringify(built.errors));
   return buildHighlightIndex(built.value.cells, built.value.session);
+}
+
+/** 索引と、それを作った盤セッションの両方を返す（配線変更後の作り直しを試すため）。 */
+function indexAndSession() {
+  const problem = parseOrThrow(selfHoldProblemJson());
+  const built = buildReferenceSession(problem, JIPM_BOARD);
+  if (!built.ok) throw new Error(JSON.stringify(built.errors));
+  return {
+    session: built.value.session,
+    index: buildHighlightIndex(built.value.cells, built.value.session),
+    cells: built.value.cells,
+  };
 }
 
 describe('buildHighlightIndex', () => {
@@ -50,5 +62,18 @@ describe('cellIdsAtTerminal / cellIdsOfWire', () => {
   it('finds the schematic cells a wire belongs to', () => {
     expect(cellIdsOfWire(index(), 'sw-006')).toEqual(['c03', 'c04']);
     expect(cellIdsOfWire(index(), 'nope')).toEqual([]);
+  });
+});
+
+describe('index staleness after removing a wire', () => {
+  it('keeps returning the removed wire id from the old index, but not from a rebuilt one', () => {
+    const { session, index: before, cells } = indexAndSession();
+    expect(cellIdsOfWire(before, 'sw-006')).toEqual(['c03', 'c04']);
+    const removed = removeWire(session, 'sw-006');
+    expect(removed.ok).toBe(true);
+    // 古い索引は作った時点の写しなので、外した電線をまだ持っている（M-11 の注意どおり）。
+    expect(cellIdsOfWire(before, 'sw-006')).toEqual(['c03', 'c04']);
+    const after = buildHighlightIndex(cells, session);
+    expect(cellIdsOfWire(after, 'sw-006')).toEqual([]);
   });
 });

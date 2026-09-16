@@ -4,6 +4,7 @@ import {
   FaultSpecSchema,
   FaultsSchema,
   isPartFaultKind,
+  isRandomFaults,
   isWireFaultKind,
   LOAD_ELEMENT_INDEX,
   PART_FAULT_KINDS,
@@ -199,5 +200,12 @@ describe('FaultsSchema', () => {
 
   it('rejects an empty explicit list', () => {
     expect(FaultsSchema.safeParse([]).success).toBe(false);
+  });
+});
+
+describe('isRandomFaults', () => {
+  it('is true for the random form and false for the explicit list form', () => {
+    expect(isRandomFaults({ random: { count: 1, types: ['wire-open'], fallback: [] } })).toBe(true);
+    expect(isRandomFaults([{ target: { wireId: 'sw-001' }, kind: 'wire-open' }])).toBe(false);
   });
 });

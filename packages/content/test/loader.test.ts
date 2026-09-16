@@ -3,6 +3,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { loadProblemsFromDir, mergeProblemSets } from '../src/loader.js';
+import {
+  inspectPartsProblemJson,
+  inspectRepairProblemJson,
+  parseInspectPartsOrThrow,
+  parseInspectRepairOrThrow,
+} from './helpers/inspect.js';
 import { selfHoldProblemJson } from './helpers/problems.js';
 
 let dir: string;
@@ -137,5 +143,22 @@ describe('mergeProblemSets', () => {
     const set = loadProblemsFromDir(dir);
     const merged = mergeProblemSets(set, set);
     expect(merged.errors).toHaveLength(2);
+  });
+
+  it('lets a user C2 problem override a builtin C2 problem in place and appends a user C1', () => {
+    const builtinC2 = { ...inspectRepairProblemJson(), id: 'c2-x' };
+    const userC2 = { ...inspectRepairProblemJson(), id: 'c2-x', title: '差し替えC2' };
+    const userC1 = { ...inspectPartsProblemJson(), id: 'c1-x' };
+    const merged = mergeProblemSets(
+      { problems: [parseInspectRepairOrThrow(builtinC2)], errors: [] },
+      {
+        problems: [parseInspectRepairOrThrow(userC2), parseInspectPartsOrThrow(userC1)],
+        errors: [],
+      },
+    );
+    expect(merged.problems.map((p) => p.id)).toEqual(['c2-x', 'c1-x']);
+    expect(merged.problems[0]?.mode).toBe('inspect-repair');
+    expect((merged.problems[0] as { title: string }).title).toBe('差し替えC2');
+    expect(merged.problems[1]?.mode).toBe('inspect-parts');
   });
 });

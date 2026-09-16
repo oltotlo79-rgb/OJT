@@ -70,6 +70,38 @@ import {
   PB_LABELS,
   startsAndEndsLow,
   timerMarkers,
+  // schema/faults.js
+  FAULT_KINDS,
+  FaultSpecSchema,
+  socketContactElementIndex,
+  // schema/inspect-parts.js
+  InspectPartsProblemSchema,
+  PART_TRUTHS,
+  // schema/inspect-repair.js
+  InspectRepairProblemSchema,
+  // schema/index.js
+  isAssembleProblem,
+  isInspectPartsProblem,
+  isInspectRepairProblem,
+  // rng.js / faults.js / random-faults.js / forbidden.js
+  applyFaults,
+  findForbiddenPatterns,
+  mulberry32,
+  RANDOM_FAULT_KINDS,
+  resolveFaults,
+  // inspect-parts.js / inspect-repair.js / highlight.js
+  buildCheckCircuit,
+  buildHighlightIndex,
+  buildInspectRepairCircuit,
+  DIAGNOSIS_TABLE,
+  expectedCheckReading,
+  layerShortThresholdOhms,
+  PART_TRUTH_LABELS,
+  REPAIR_WIRE_COLOR,
+  // judge-inspect.js
+  judgeInspectParts,
+  judgeInspectRepair,
+  scoreReports,
   // static-checks.js
   checkCoilPolarity,
   checkForbiddenCircuit,
@@ -82,7 +114,10 @@ import {
   judgeAssemble,
   judgeReference,
   // builtin/index.js
+  BUILTIN_ALL_PROBLEMS,
   BUILTIN_ASSEMBLE_PROBLEMS,
+  BUILTIN_INSPECT_PARTS_PROBLEMS,
+  BUILTIN_INSPECT_REPAIR_PROBLEMS,
   BUILTIN_PROBLEMS,
   BuiltinProblemError,
   findBuiltinProblem,
@@ -96,6 +131,7 @@ import {
   type JudgeResult,
   type TimeChart,
 } from '../src/index.js';
+import { inspectPartsProblemJson, inspectRepairProblemJson } from './helpers/inspect.js';
 import {
   forbiddenOneShotProblemJson,
   selfHoldProblemJson,
@@ -425,5 +461,91 @@ describe('builtin/index.js exports', () => {
     expect(findBuiltinProblem('b-001')?.id).toBe('b-001');
     expect(findBuiltinProblem('nope')).toBeUndefined();
     expect(() => parseBuiltinProblems([{ mode: 'assemble' }])).toThrow(BuiltinProblemError);
+  });
+});
+
+describe('Phase 2A の公開API（バレル経由）', () => {
+  it('exposes the fault schema and the socket element helper', () => {
+    expect(FAULT_KINDS).toHaveLength(9);
+    expect(socketContactElementIndex(2, 'a')).toBe(4);
+    expect(
+      FaultSpecSchema.safeParse({ target: { wireId: 'sw-001' }, kind: 'wire-open' }).success,
+    ).toBe(true);
+  });
+
+  it('exposes the C1 and C2 schemas and their type guards', () => {
+    expect(PART_TRUTHS).toHaveLength(7);
+    const c1 = InspectPartsProblemSchema.safeParse(inspectPartsProblemJson());
+    expect(c1.success).toBe(true);
+    const c2 = InspectRepairProblemSchema.safeParse(inspectRepairProblemJson());
+    expect(c2.success).toBe(true);
+    if (!c1.success || !c2.success) return;
+    expect(isInspectPartsProblem(c1.data)).toBe(true);
+    expect(isInspectRepairProblem(c2.data)).toBe(true);
+    expect(isAssembleProblem(c1.data)).toBe(false);
+  });
+
+  it('exposes the built-in C1 and C2 problems (§7.9)', () => {
+    expect(BUILTIN_INSPECT_PARTS_PROBLEMS).toHaveLength(4);
+    expect(BUILTIN_INSPECT_REPAIR_PROBLEMS).toHaveLength(8);
+    expect(BUILTIN_ALL_PROBLEMS).toHaveLength(20);
+  });
+
+  it('exposes the C1 domain: check circuit, diagnosis table and thresholds (§9.1)', () => {
+    const problem = BUILTIN_INSPECT_PARTS_PROBLEMS[0];
+    expect(problem).toBeDefined();
+    if (problem === undefined) return;
+    const part = problem.parts[0];
+    if (part === undefined) return;
+    expect(buildCheckCircuit(problem, JIPM_BOARD, part.id).ok).toBe(true);
+    expect(expectedCheckReading(part).coilOhms).toBeCloseTo(650, 3);
+    expect(layerShortThresholdOhms()).toBeCloseTo(552.5, 3);
+    expect(DIAGNOSIS_TABLE).toHaveLength(7);
+    expect(PART_TRUTH_LABELS['coil-layer-short']).toBe('レアショート');
+  });
+
+  it('exposes the C2 domain: faulted board, highlight index and judging (§9.2)', () => {
+    const problem = BUILTIN_INSPECT_REPAIR_PROBLEMS[0];
+    expect(problem).toBeDefined();
+    if (problem === undefined) return;
+    expect(REPAIR_WIRE_COLOR).toBe('白');
+    const built = buildInspectRepairCircuit(problem, JIPM_BOARD);
+    expect(built.ok).toBe(true);
+    if (!built.ok) return;
+    const index = buildHighlightIndex(built.value.cells, built.value.session);
+    expect(index.size).toBeGreaterThan(0);
+    const scored = scoreReports(built.value.applied.sites, []);
+    expect(scored.missed).toHaveLength(2);
+    const judged = judgeInspectRepair(problem, JIPM_BOARD, built.value, []);
+    expect(judged.ok).toBe(true);
+    if (!judged.ok) return;
+    expect(judged.value.mode).toBe('inspect-repair');
+    expect(judged.value.passed).toBe(false);
+    expect(judged.value.hazardsByKind['range-exceeded']).toBe(0);
+  });
+
+  it('exposes the C1 judge and the deterministic helpers', () => {
+    const problem = BUILTIN_INSPECT_PARTS_PROBLEMS[0];
+    if (problem === undefined) return;
+    const result = judgeInspectParts(
+      problem,
+      problem.parts.map((p) => ({ partId: p.id, answer: p.truth })),
+    );
+    expect(result.passed).toBe(true);
+    const random = mulberry32(1);
+    expect(random()).toBe(mulberry32(1)());
+  });
+
+  it('exposes the fault application, random faults and forbidden circuit helpers', () => {
+    const problem = BUILTIN_INSPECT_REPAIR_PROBLEMS[0];
+    if (problem === undefined) return;
+    expect(RANDOM_FAULT_KINDS).not.toContain('lamp-open');
+    const resolved = resolveFaults(problem, JIPM_BOARD);
+    expect(resolved.ok).toBe(true);
+    const built = buildReferenceSession(problem, JIPM_BOARD);
+    expect(built.ok).toBe(true);
+    if (!built.ok) return;
+    expect(findForbiddenPatterns(built.value.netlist)).toEqual([]);
+    expect(applyFaults(built.value.session, []).ok).toBe(true);
   });
 });

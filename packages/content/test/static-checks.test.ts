@@ -107,6 +107,16 @@ describe('checkWireColorRule', () => {
     expect(result.ok).toBe(false);
     expect(result.details[0]).toContain(blue.id);
   });
+
+  it('treats an empty preexistingWireIds like omitting it entirely', () => {
+    const input = inputFor(selfHoldProblemJson());
+    const withoutField: StaticCheckInput = { ...input, allowedColors: [REPAIR_WIRE_COLOR] };
+    const withEmptySet: StaticCheckInput = {
+      ...withoutField,
+      preexistingWireIds: new Set<string>(),
+    };
+    expect(checkWireColorRule(withEmptySet)).toEqual(checkWireColorRule(withoutField));
+  });
 });
 
 describe('checkTerminalLimit', () => {

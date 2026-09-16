@@ -5,10 +5,13 @@ import {
   BUILTIN_ASSEMBLE_PROBLEMS,
   BUILTIN_PROBLEMS,
   findBuiltinProblem,
+  ofMode,
   parseBuiltinProblems,
 } from '../src/builtin/index.js';
 import { judgeReference } from '../src/judge.js';
+import { isAssembleProblem } from '../src/schema/index.js';
 import { startsAndEndsLow } from '../src/timechart.js';
+import { inspectPartsProblemJson } from './helpers/inspect.js';
 
 /**
  * 内蔵課題の自己整合テスト。設計仕様 §7.8 / §14.1 #30。
@@ -33,6 +36,12 @@ describe('builtin problems', () => {
       expect((error as BuiltinProblemError).message).toContain('b-999');
       expect((error as BuiltinProblemError).issues.length).toBeGreaterThan(0);
     }
+  });
+
+  it('rejects a problem whose mode does not match the expected guard', () => {
+    expect(() =>
+      ofMode(parseBuiltinProblems([inspectPartsProblemJson()]), isAssembleProblem, 'モードB課題'),
+    ).toThrow(BuiltinProblemError);
   });
 
   it('ships 8 assemble problems (§7.9)', () => {

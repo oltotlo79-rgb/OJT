@@ -87,6 +87,18 @@ describe('parseProblem', () => {
     expect(isInspectRepairProblem(result.problem)).toBe(true);
   });
 
+  it("reports exactly one issue naming the valid modes for a typo'd mode", () => {
+    const result = parseProblem({ ...selfHoldProblemJson(), mode: 'inspect-part' });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.reason).toBe('schema');
+    expect(result.issues).toHaveLength(1);
+    expect(result.issues[0]?.path).toBe('mode');
+    expect(result.issues[0]?.message).toContain('assemble');
+    expect(result.issues[0]?.message).toContain('inspect-parts');
+    expect(result.issues[0]?.message).toContain('inspect-repair');
+  });
+
   it('reports a C1 schema violation against the C1 schema, not the assemble one', () => {
     const json = inspectPartsProblemJson();
     json['parts'] = [
