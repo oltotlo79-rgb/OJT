@@ -83,3 +83,15 @@ content 32 files / 409、desktop 28 files / 469、circuit-sim 214、board-model 
 - 次の指示: Task 17 残作業 + 修正項目3〜5 を並行実施 →
   D2+E+F+修正+Task 17 をまとめて Opus レビュー1本 → Plan 2B Task 1→4。
 - 各バッチ後に `main` を push する。
+
+## 2026-09-17 追記（第3回中断・Plan 2A 完了）
+
+- Plan 2A 全17タスク着地、Opus レビュー確定（後半レビュー APPROVED WITH MINOR ISSUES →
+  修正 f487356 / fb09e13 / cbb288a / f16717b 着地）。
+- 検証: `pnpm -r test` 102 ファイル / 1345 テスト、typecheck・lint・prettier 合格、
+  coverage circuit-sim 98.91/93.80/100/99.89・content 98.52/96.44/100/99.75。
+- 次の作業: Plan 2B Tasks 1→4（Opus 直列、MERGE 注意を厳守、`store.ts` の
+  `sessionForProblem` を `SupportedProblem` に広げる、`judgeInspectRepair` は
+  0.2〜0.45秒なので Worker 内で実行）→ Batch 2〜6。
+- 各バッチ着地ごとに `main` を push する。
+- 詳細は `briefs/deferred.txt` 末尾を参照。
