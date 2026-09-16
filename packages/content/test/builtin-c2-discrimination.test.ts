@@ -2,7 +2,7 @@ import { addWire, JIPM_BOARD, removeWire } from '@ojt/board-model';
 import { toTerminalId } from '@ojt/circuit-sim';
 import { describe, expect, it } from 'vitest';
 import { BUILTIN_INSPECT_REPAIR_PROBLEMS } from '../src/builtin/index.js';
-import type { FaultReport } from '../src/faults.js';
+import type { FaultReport, FaultSite } from '../src/faults.js';
 import {
   buildInspectRepairCircuit,
   replacePart,
@@ -101,6 +101,27 @@ function applyRepairs(circuit: RepairCircuit, repairs: readonly Repair[]): Repai
   return current;
 }
 
+/**
+ * その故障箇所を直すのに要る修復手順の数。`REPAIRS[id]` の並びは `applied.sites`（＝
+ * 課題の `faults`）と同じ順で、断線・誤配線は「外して張り直す」の2手、未配線・部品不良は
+ * 1手で直る（`REPAIRS` の定義から数えて確認済み）。
+ */
+function repairOpCount(site: FaultSite): number {
+  return site.kind === 'wire-open' || site.kind === 'wire-misrouted' ? 2 : 1;
+}
+
+/** 課題の修復手順を、故障箇所（`sites`）ごとに順番どおり分割する。 */
+function repairsBySite(id: string, sites: readonly FaultSite[]): readonly Repair[][] {
+  const all = REPAIRS[id] ?? [];
+  let offset = 0;
+  return sites.map((site) => {
+    const count = repairOpCount(site);
+    const chunk = all.slice(offset, offset + count);
+    offset += count;
+    return chunk;
+  });
+}
+
 function circuitOf(id: string) {
   const problem = BUILTIN_INSPECT_REPAIR_PROBLEMS.find((p) => p.id === id);
   if (problem === undefined) throw new Error(`no problem ${id}`);
@@ -179,6 +200,28 @@ describe('内蔵C2課題8題（§7.9）', () => {
       if (!judged.ok) return;
       expect(judged.value.reports.missed.length, id).toBe(1);
       expect(judged.value.passed, id).toBe(false);
+    });
+  }
+});
+
+describe('内蔵C2課題：故障箇所を1つだけ残すと必ず不合格になる（§9.2 判定①②）', () => {
+  for (const id of Object.keys(REPAIRS)) {
+    it(`${id}: 各故障箇所を1つずつ直し忘れると不合格になる`, () => {
+      const { problem, circuit } = circuitOf(id);
+      const sites = circuit.applied.sites;
+      const bySite = repairsBySite(id, sites);
+      const reports = correctReports(circuit);
+      for (let i = 0; i < sites.length; i += 1) {
+        // 他の箇所は全部直すが、この箇所だけはわざと直さない。
+        const { circuit: fresh } = circuitOf(id);
+        const opsForOtherSites = bySite.flatMap((ops, j) => (j === i ? [] : ops));
+        const repaired = applyRepairs(fresh, opsForOtherSites);
+        const judged = judgeInspectRepair(problem, JIPM_BOARD, repaired, reports);
+        expect(judged.ok, `${id}[${String(i)}]`).toBe(true);
+        if (!judged.ok) continue;
+        expect(judged.value.passed, `${id}[${String(i)}]`).toBe(false);
+        expect(judged.value.mismatches.length, `${id}[${String(i)}]`).toBeGreaterThan(0);
+      }
     });
   }
 });

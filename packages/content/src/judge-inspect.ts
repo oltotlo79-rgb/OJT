@@ -98,6 +98,8 @@ export type JudgeInspectRepairOutcome =
  * マークシートを採点する。§9.1
  * 未回答は不正解として数え、`n/m 正解` の表示は `correctCount` / `total` から作る。
  * 危険操作はセッション中に記録したものだけを数える（C1の判定は何も再生しない。§5.6）。
+ * `answers` は `partId` で `Map` にまとめるため、同じ部品に複数の回答があれば
+ * **最後の回答を採用する**（先の回答は上書きされて消える）。
  */
 export function judgeInspectParts(
   problem: InspectPartsProblem,

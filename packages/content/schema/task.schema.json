@@ -975,7 +975,7 @@
                     "maximum": 1000000
                   },
                   "ratio": {
-                    "description": "`coil-layer-short` のコイル抵抗の低下率。省略すると 0.65。",
+                    "description": "`coil-layer-short` のコイル抵抗の低下率。省略すると 0.65。上限（0.85）に近い値は調整前のアナログテスタではほぼ正常に見えるため、課題作成者は余裕を持った値を選ぶこと。",
                     "type": "number",
                     "minimum": 0.4,
                     "maximum": 0.85
@@ -1090,7 +1090,7 @@
                             "maximum": 1000000
                           },
                           "ratio": {
-                            "description": "`coil-layer-short` のコイル抵抗の低下率。省略すると 0.65。",
+                            "description": "`coil-layer-short` のコイル抵抗の低下率。省略すると 0.65。上限（0.85）に近い値は調整前のアナログテスタではほぼ正常に見えるため、課題作成者は余裕を持った値を選ぶこと。",
                             "type": "number",
                             "minimum": 0.4,
                             "maximum": 0.85

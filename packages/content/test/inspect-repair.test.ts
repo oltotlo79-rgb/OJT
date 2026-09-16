@@ -1,6 +1,7 @@
 import { addWire, JIPM_BOARD, removeWire } from '@ojt/board-model';
 import { findPart, loadOhms, toTerminalId } from '@ojt/circuit-sim';
 import { describe, expect, it } from 'vitest';
+import { matchesSite, type FaultReport } from '../src/faults.js';
 import {
   addedWireIds,
   buildInspectRepairCircuit,
@@ -56,6 +57,48 @@ describe('buildInspectRepairCircuit', () => {
     expect(built.ok).toBe(false);
     if (built.ok) return;
     expect(built.errors[0]?.message).toContain('sw-999');
+  });
+
+  it('未配線の指摘は電線のもう片方の端子でも一致する（terminals[1]）', () => {
+    const { circuit: c } = circuit();
+    const missingSite = c.applied.sites.find((s) => s.kind === 'wire-missing');
+    expect(missingSite).toBeDefined();
+    if (missingSite === undefined) return;
+    const otherEnd = missingSite.terminals[1];
+    expect(otherEnd).toBeDefined();
+    if (otherEnd === undefined) return;
+    const report: FaultReport = { target: { terminalId: otherEnd }, kind: 'wire-missing' };
+    expect(matchesSite(missingSite, report)).toBe(true);
+  });
+
+  it('シード無しの乱数故障は、盤が同じでも毎回サイズと種別の整った解決結果になる（§7.5）', () => {
+    const problem = parseInspectRepairOrThrow({
+      ...inspectRepairProblemJson(),
+      faults: {
+        random: {
+          count: 2,
+          types: ['wire-open', 'contact-welded'],
+          fallback: [
+            { target: { wireId: 'sw-004' }, kind: 'wire-open' },
+            { target: { partId: 'CR1', elementIndex: 2 }, kind: 'contact-welded' },
+          ],
+        },
+      },
+    });
+    const first = buildInspectRepairCircuit(problem, JIPM_BOARD);
+    const second = buildInspectRepairCircuit(problem, JIPM_BOARD);
+    expect(first.ok).toBe(true);
+    expect(second.ok).toBe(true);
+    if (!first.ok || !second.ok) return;
+    // faults.random.seed が無いので Date.now() が種になり、2回の呼び出しが同じ故障になる
+    // 保証は無い（決定性は主張しない）。ここでは毎回サイズ・種別の整った結果になることだけを見る。
+    for (const value of [first.value, second.value]) {
+      expect(value.applied.sites).toHaveLength(2);
+      expect(value.applied.wireFaults.length + value.applied.partFaults.length).toBe(2);
+      for (const site of value.applied.sites) {
+        expect(['wire-open', 'contact-welded']).toContain(site.kind);
+      }
+    }
   });
 });
 

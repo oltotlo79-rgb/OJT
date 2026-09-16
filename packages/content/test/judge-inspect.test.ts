@@ -13,6 +13,8 @@ import {
   type InspectPartAnswer,
 } from '../src/judge-inspect.js';
 import type { FaultReport } from '../src/faults.js';
+import { findBuiltinProblem } from '../src/builtin/index.js';
+import { isInspectPartsProblem } from '../src/schema/index.js';
 import {
   inspectPartsProblemJson,
   inspectRepairProblemJson,
@@ -104,6 +106,24 @@ describe('judgeInspectParts', () => {
     expect(result.hazardsByKind['ohm-on-live']).toBe(1);
     expect(result.hazardsByKind['range-exceeded']).toBe(0);
     expect(result.elapsedMs).toBe(900_000);
+  });
+
+  it('同じ部品に複数の回答があれば最後の回答を採用する（重複回答の上書き）', () => {
+    const problem = findBuiltinProblem('c1-001');
+    if (problem === undefined || !isInspectPartsProblem(problem)) {
+      throw new Error('c1-001 が見つかりません');
+    }
+    const p1 = problem.parts.find((p) => p.id === 'p1');
+    expect(p1?.truth).toBe('normal');
+    const answers: InspectPartAnswer[] = [
+      ...problem.parts.map((p) => ({ partId: p.id, answer: p.truth })),
+      // p1 の本当の状態は 'normal' なので、この追加回答が採用されると不正解になる。
+      { partId: 'p1', answer: 'coil-open' },
+    ];
+    const result = judgeInspectParts(problem, answers);
+    expect(result.scores.find((s) => s.partId === 'p1')?.answer).toBe('coil-open');
+    expect(result.scores.find((s) => s.partId === 'p1')?.correct).toBe(false);
+    expect(result.passed).toBe(false);
   });
 });
 

@@ -112,7 +112,10 @@ export const FaultSpecSchema = z
       .min(MIN_LAYER_SHORT_RATIO)
       .max(MAX_LAYER_SHORT_RATIO)
       .optional()
-      .describe('`coil-layer-short` のコイル抵抗の低下率。省略すると 0.65。'),
+      .describe(
+        `\`coil-layer-short\` のコイル抵抗の低下率。省略すると 0.65。上限（${String(MAX_LAYER_SHORT_RATIO)}）` +
+          'に近い値は調整前のアナログテスタではほぼ正常に見えるため、課題作成者は余裕を持った値を選ぶこと。',
+      ),
     to: TerminalIdSchema.optional().describe('`wire-misrouted` で片端を付け替える先の端子ID。'),
   })
   .superRefine((spec, ctx) => {
