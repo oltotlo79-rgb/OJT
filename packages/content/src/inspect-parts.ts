@@ -73,28 +73,65 @@ export const PART_TRUTH_LABELS: Readonly<Record<PartTruth, string>> = {
   'b-weld': 'b接点 溶着',
 };
 
-/** 判定表の1行（ヘルプの折りたたみパネルに出す）。§9.1 */
+/**
+ * 判定表の1行（ヘルプの折りたたみパネルに出す）。§9.1
+ * `note` はその行だけに付く注意書き。表と注意書きを1つの配列にまとめてあるので、
+ * 2Bのヘルプパネルは行を回しながら `situation` / `cause` / あれば `note` を出すだけでよい。
+ */
 export interface DiagnosisRow {
   /** チェック状況。 */
   situation: string;
   /** その状況から導かれる原因。 */
   cause: PartTruth;
+  /** その行に併記する注意書き（見出し＋本文）。無い行もある。§9.1 なお書き／補足 */
+  note?: string;
 }
 
-/** §9.1 の判定表（調査資料 §6.3）。ヘルプ表示とテストの唯一の源。 */
+/** 溶着の優先規則の見出し。§9.1 なお書き（調査資料 §6.1） */
+const WELD_NOTE_TITLE = '【溶着が優先】';
+/** レアショートの補足の見出し。§9.1 補足（調査資料 §6.3） */
+const LAYER_SHORT_NOTE_TITLE = '【必ずコイル抵抗を測る】';
+
+/**
+ * §9.1 の判定表（調査資料 §6.3）。ヘルプ表示とテストの唯一の源。
+ * 行だけでは読値が一意に決まらない（a接点の溶着は同じ組のb接点を機械的に開くので
+ * 「OFF時に b接点 導通なし」の行にも当たる）ため、優先規則を `note` に併記し、
+ * 実装上の判定は `diagnoseCheckReading()` に持たせている。
+ */
 export const DIAGNOSIS_TABLE: readonly DiagnosisRow[] = [
   {
     situation: '赤PBを押してもコイルが吸引しない ＋ コイル抵抗が OL（測定不能）',
     cause: 'coil-open',
   },
-  { situation: 'ON時に a接点 導通なし', cause: 'a-open' },
-  { situation: 'OFF時に a接点 導通あり', cause: 'a-weld' },
-  { situation: 'ON時に b接点 導通あり', cause: 'b-weld' },
-  { situation: 'OFF時に b接点 導通なし', cause: 'b-open' },
-  { situation: '動作も接点も正常 ＋ コイル抵抗が約650Ω（正常の85%超）', cause: 'normal' },
+  {
+    situation: 'ON時に a接点 導通なし',
+    cause: 'a-open',
+    note: `${WELD_NOTE_TITLE}同じ組のb接点がON/OFFとも導通しているなら、a接点が開いているのは b接点の溶着によるもの。答えは「b接点 溶着」。`,
+  },
+  {
+    situation: 'OFF時に a接点 導通あり',
+    cause: 'a-weld',
+    note: `${WELD_NOTE_TITLE}溶着は同じ組のもう一方の接点を機械的に開くので、b接点はON/OFFとも導通しなくなる。「b接点 導通不良」に見えても答えは「a接点 溶着」。`,
+  },
+  {
+    situation: 'ON時に b接点 導通あり',
+    cause: 'b-weld',
+    note: `${WELD_NOTE_TITLE}溶着は同じ組のもう一方の接点を機械的に開くので、a接点はON/OFFとも導通しなくなる。「a接点 導通不良」に見えても答えは「b接点 溶着」。`,
+  },
+  {
+    situation: 'OFF時に b接点 導通なし',
+    cause: 'b-open',
+    note: `${WELD_NOTE_TITLE}OFF時に同じ組のa接点が導通しているなら、b接点が開いているのは a接点の溶着によるもの。答えは「a接点 溶着」。`,
+  },
+  {
+    situation: '動作も接点も正常 ＋ コイル抵抗が約650Ω（正常の85%超）',
+    cause: 'normal',
+    note: `${LAYER_SHORT_NOTE_TITLE}レアショートのコイルは通常どおり励磁・復帰し、接点も正常に開閉する。動作を見るだけでは正常品と区別できないので、正常に見えた部品も必ずコイル抵抗を測ること。`,
+  },
   {
     situation: '動作も接点も正常 ＋ コイル抵抗が正常の85%以下（本アプリの既定は約420Ω）',
     cause: 'coil-layer-short',
+    note: `${LAYER_SHORT_NOTE_TITLE}しきい値は正常値650Ωの85%（＝約552Ω）。これ以下をレアショートとする（本アプリの既定。§17 #7）。`,
   },
 ];
 
@@ -168,6 +205,30 @@ export function expectedCheckReading(part: InspectPartData): ExpectedCheckReadin
     case 'b-weld':
       return { ...NORMAL_READING, aClosedOff: false, aClosedOn: false, bClosedOn: true };
   }
+}
+
+/**
+ * 読値から原因を1つに決める。§9.1 判定表＋なお書き（調査資料 §6.1）
+ *
+ * 判定表の行をそのまま当てはめると読値が一意に決まらない（`expectedCheckReading()` のとおり、
+ * a接点の溶着は同じ組のb接点を機械的に開くので「OFF時に b接点 導通なし」の行にも当たり、
+ * b接点の溶着は「ON時に a接点 導通なし」の行にも当たる）。検定の解答規則どおり**溶着を優先**し、
+ * a溶着は b接点の導通不良より、b溶着は a接点の導通不良より先に判定する。
+ * 模範解答の生成とヘルプの整合テストがこの関数を唯一の源にする（2Bのヘルプ／採点もこれを使う）。
+ */
+export function diagnoseCheckReading(
+  reading: ExpectedCheckReading,
+  nominalOhms: number = COIL_OHMS,
+): PartTruth {
+  // コイル断線はOL（測定不能）で一目で分かる。接点はどちらもb側だけが導通する状態になる。
+  if (reading.coilOhms === null) return 'coil-open';
+  // 溶着が最優先（同じ組のもう一方の「導通不良」はその結果にすぎない）。
+  if (reading.aClosedOff) return 'a-weld';
+  if (reading.bClosedOn) return 'b-weld';
+  if (!reading.aClosedOn) return 'a-open';
+  if (!reading.bClosedOff) return 'b-open';
+  // 動作も接点も正常。ここで初めてコイル抵抗でレアショートを切り分ける。§9.1 補足
+  return reading.coilOhms <= layerShortThresholdOhms(nominalOhms) ? 'coil-layer-short' : 'normal';
 }
 
 /**

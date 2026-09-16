@@ -94,10 +94,12 @@ import {
   buildHighlightIndex,
   buildInspectRepairCircuit,
   DIAGNOSIS_TABLE,
+  diagnoseCheckReading,
   expectedCheckReading,
   layerShortThresholdOhms,
   PART_TRUTH_LABELS,
   REPAIR_WIRE_COLOR,
+  type RepairCircuitOptions,
   // judge-inspect.js
   judgeInspectParts,
   judgeInspectRepair,
@@ -502,6 +504,9 @@ describe('Phase 2A の公開API（バレル経由）', () => {
     expect(layerShortThresholdOhms()).toBeCloseTo(552.5, 3);
     expect(DIAGNOSIS_TABLE).toHaveLength(7);
     expect(PART_TRUTH_LABELS['coil-layer-short']).toBe('レアショート');
+    // 溶着の優先規則はヘルプの注意書きと `diagnoseCheckReading()` の両方で公開する。§9.1 なお書き
+    expect(DIAGNOSIS_TABLE.filter((row) => row.note !== undefined).length).toBe(6);
+    expect(diagnoseCheckReading(expectedCheckReading(part))).toBe(part.truth);
   });
 
   it('exposes the C2 domain: faulted board, highlight index and judging (§9.2)', () => {
@@ -509,7 +514,8 @@ describe('Phase 2A の公開API（バレル経由）', () => {
     expect(problem).toBeDefined();
     if (problem === undefined) return;
     expect(REPAIR_WIRE_COLOR).toBe('白');
-    const built = buildInspectRepairCircuit(problem, JIPM_BOARD);
+    const options: RepairCircuitOptions = {};
+    const built = buildInspectRepairCircuit(problem, JIPM_BOARD, options);
     expect(built.ok).toBe(true);
     if (!built.ok) return;
     const index = buildHighlightIndex(built.value.cells, built.value.session);

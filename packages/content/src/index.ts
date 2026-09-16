@@ -197,6 +197,7 @@ export {
   checkContactTerminals,
   checkSettleMs,
   DIAGNOSIS_TABLE,
+  diagnoseCheckReading,
   expectedCheckReading,
   faultGroupOf,
   LAYER_SHORT_JUDGE_RATIO,
@@ -218,6 +219,7 @@ export {
   replacePart,
   REPAIR_WIRE_COLOR,
   type RepairCircuit,
+  type RepairCircuitOptions,
   type RepairCircuitResult,
 } from './inspect-repair.js';
 

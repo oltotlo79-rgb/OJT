@@ -10,6 +10,7 @@ import {
   checkContactTerminals,
   checkSettleMs,
   DIAGNOSIS_TABLE,
+  diagnoseCheckReading,
   expectedCheckReading,
   faultGroupOf,
   LAYER_SHORT_JUDGE_RATIO,
@@ -17,6 +18,8 @@ import {
   PART_TRUTH_LABELS,
   truthFault,
 } from '../src/inspect-parts.js';
+import type { ExpectedCheckReading } from '../src/inspect-parts.js';
+import { BUILTIN_INSPECT_PARTS_PROBLEMS } from '../src/builtin/index.js';
 import type { InspectPartsProblem, PartTruth } from '../src/schema/inspect-parts.js';
 import { inspectPartsProblemJson, parseInspectPartsOrThrow } from './helpers/inspect.js';
 
@@ -33,6 +36,27 @@ function truthProblem(
       { id: 'p2', kind: 'relay-my4n', truth: 'normal' },
     ],
   });
+}
+
+/**
+ * 判定表の各行を「優先規則抜きで」当てはめ、当たる原因をすべて返す。
+ * `diagnoseCheckReading()` が溶着優先規則で1つに絞る前の状態を確かめるためのテスト専用実装。
+ */
+function tableCandidates(reading: ExpectedCheckReading): PartTruth[] {
+  const hits: PartTruth[] = [];
+  const normalContacts =
+    !reading.aClosedOff && reading.aClosedOn && reading.bClosedOff && !reading.bClosedOn;
+  if (!reading.picksUp && reading.coilOhms === null) hits.push('coil-open');
+  if (reading.coilOhms !== null) {
+    if (!reading.aClosedOn) hits.push('a-open');
+    if (reading.aClosedOff) hits.push('a-weld');
+    if (reading.bClosedOn) hits.push('b-weld');
+    if (!reading.bClosedOff) hits.push('b-open');
+    if (reading.picksUp && normalContacts) {
+      hits.push(reading.coilOhms > layerShortThresholdOhms() ? 'normal' : 'coil-layer-short');
+    }
+  }
+  return hits;
 }
 
 /** チェック用ソケットに挿して §9.1 の手順どおりに測る。 */
@@ -216,6 +240,28 @@ describe('§9.1 判定表どおりの読値', () => {
       else expect(actual.coilOhms ?? 0).toBeCloseTo(expected.coilOhms, 1);
     });
   }
+
+  it('内蔵のC1課題すべてで、読値から溶着優先規則どおり唯一の原因が導ける（レビュー I-2）', () => {
+    for (const problem of BUILTIN_INSPECT_PARTS_PROBLEMS) {
+      for (const part of problem.parts) {
+        const reading = measureCheck(problem, part.id);
+        // 判定表の行だけでは絞り切れないことがある（a溶着は「OFF時に b接点 導通なし」の行にも当たる）。
+        expect(tableCandidates(reading).length).toBeGreaterThanOrEqual(1);
+        // 溶着優先規則を当てはめると唯一に決まり、しかも課題の `truth` と一致する。
+        expect(diagnoseCheckReading(reading)).toBe(part.truth);
+      }
+    }
+  });
+
+  it('溶着は同じ組のもう一方の接点の導通不良より優先される（§9.1 なお書き）', () => {
+    const aWeld = expectedCheckReading({ id: 'x', kind: 'relay-my4n', truth: 'a-weld' });
+    // a溶着の読値は「a接点の溶着」と「b接点の導通不良」の2行に当たる。
+    expect(tableCandidates(aWeld).sort()).toEqual(['a-weld', 'b-open']);
+    expect(diagnoseCheckReading(aWeld)).toBe('a-weld');
+    const bWeld = expectedCheckReading({ id: 'x', kind: 'relay-my4n', truth: 'b-weld' });
+    expect(tableCandidates(bWeld).sort()).toEqual(['a-open', 'b-weld']);
+    expect(diagnoseCheckReading(bWeld)).toBe('b-weld');
+  });
 
   it('受入基準②: コイル断線は吸引せずコイル抵抗が OL になる', () => {
     const actual = measureCheck(truthProblem('coil-open'), 'p1');
