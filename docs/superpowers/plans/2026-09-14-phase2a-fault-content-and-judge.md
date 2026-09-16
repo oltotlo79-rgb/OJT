@@ -7718,7 +7718,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 
 **`apps/desktop` に触れる理由（1ファイル・2行）:** Task 8 で `parseProblem()` の成功時の型が `SupportedProblem` に広がり、`ProblemSet.problems` も広がった。`apps/desktop/src/main/content-loader.ts` はこれを `Map<string, AssembleProblem>` に入れているので型が合わなくなる。モードB以外を開始できる画面は Plan 2B で入るため、ここでは**一覧と `byId` をモードBに絞る**のが最小かつ正しい追随になる（利用者フォルダに置かれたC1/C2課題は、開ける画面ができるまで一覧に出さない）。`shared/ipc.ts` も renderer も変更不要である。
 
-- [ ] **Step 1: `src/index.ts` に Phase 2A の公開APIを足す**
+- [x] **Step 1: `src/index.ts` に Phase 2A の公開APIを足す**
 
 `packages/content/src/index.ts` の `export { … } from './schema/assemble.js';` の**直後**に次を挿入する:
 
@@ -7917,7 +7917,7 @@ export {
 } from './builtin/index.js';
 ```
 
-- [ ] **Step 2: `test/index.test.ts` にバレル経由の煙テストを足す**
+- [x] **Step 2: `test/index.test.ts` にバレル経由の煙テストを足す**
 
 `packages/content/test/index.test.ts` の import 一覧に次の名前を足す（既存のグループコメントに合わせて並べる）:
 
@@ -8058,7 +8058,7 @@ import { inspectPartsProblemJson, inspectRepairProblemJson } from './helpers/ins
 
 （`buildReferenceSession` と `JIPM_BOARD` は既に import 済み。無ければ足す。）
 
-- [ ] **Step 3: `apps/desktop` の型を追随させる**
+- [x] **Step 3: `apps/desktop` の型を追随させる**
 
 `apps/desktop/src/main/content-loader.ts` の4行目を次に置き換える:
 
@@ -8105,7 +8105,7 @@ import {
   };
 ```
 
-- [ ] **Step 4: パッケージ単位で確認する**
+- [x] **Step 4: パッケージ単位で確認する**
 
 ```powershell
 pnpm --filter @ojt/content exec vitest run
@@ -8113,7 +8113,7 @@ pnpm --filter @ojt/content exec vitest run
 
 Expected: 全テストファイルが通る（Phase 2A で新しく足したのは `schema-faults` / `faults` / `schema-inspect-parts` / `schema-inspect-repair` / `rng` / `random-faults` / `inspect-parts` / `inspect-repair` / `forbidden` / `judge-inspect` / `highlight` / `builtin-inspect-parts` / `builtin-inspect-repair` / `builtin-c2-discrimination` の14ファイル・約179件）。
 
-- [ ] **Step 5: カバレッジを確認する**
+- [x] **Step 5: カバレッジを確認する**
 
 ```powershell
 pnpm --filter @ojt/circuit-sim exec vitest run --coverage
@@ -8122,7 +8122,7 @@ pnpm --filter @ojt/content exec vitest run --coverage
 
 Expected: どちらも `All files` の lines / statements / functions / branches が 90% 以上（§14.2）。
 
-- [ ] **Step 6: 型・リントを確認する**
+- [x] **Step 6: 型・リントを確認する**
 
 ```powershell
 pnpm -r typecheck
@@ -8131,7 +8131,7 @@ pnpm lint
 
 Expected: `typecheck` は無出力で成功、`lint` は警告0（`import-x/no-cycle` 込み）。
 
-- [ ] **Step 6a: 整形を自動適用してから確認する (I-5)**
+- [x] **Step 6a: 整形を自動適用してから確認する (I-5)**
 
 このプランのコード例は手で書いているため、10箇所ほどで行幅100を超えている。`--check` だけでは落ちるので、先に `--write` で機械的に揃えてから確認する:
 
@@ -8143,7 +8143,7 @@ pnpm -r test
 
 Expected: `--write` が整形の崩れたファイルを書き換え、`--check` は `All matched files use Prettier code style!` を出す。`pnpm -r test` は5プロジェクト（`circuit-sim` / `board-model` / `schematic-core` / `content` / `desktop`）すべて通る。
 
-- [ ] **Step 7: JSON Schema が最新か確認する**
+- [x] **Step 7: JSON Schema が最新か確認する**
 
 ```powershell
 pnpm --filter @ojt/content schema:write
@@ -8152,7 +8152,7 @@ git diff --stat packages/content/schema/task.schema.json
 
 Expected: 差分なし（Task 8 で再生成済み。差分が出たらコミットに含める）。
 
-- [ ] **Step 8: コミットする**
+- [x] **Step 8: コミットする**
 
 ```powershell
 git add packages/content/src/index.ts packages/content/test/index.test.ts apps/desktop/src/main/content-loader.ts
@@ -8345,3 +8345,4 @@ Plan 2B（`apps/desktop` のUI）は下記だけを使う。これ以外の内�
 | 2026-09-14 | レビュー反映: B-1〜B-6、I-1〜I-5、M-1〜M-16（内容は本書の該当箇所を参照）。加えて Plan 2B 側レビュー由来の3件を反映: ① `readTester()` のΩ／導通測定に `Simulation` 単位のキャッシュを追加し、tick・プローブ・レンジ種別が同じ間はフルの回路解析をやり直さないようにした（Task 2）。② `ResolveFaultsOptions.maxAttempts` と `buildInspectRepairCircuit` の `resolvedFaults` オプションを2Bへの引き渡し表に明記し、作業ファイルには `seed` だけでなく解決済みの故障配列そのものを保存するよう指示した（Task 7・Task 10・2Bへの引き渡し）。③ アナログ針を目標角との差が0.05度未満で目標角へスナップするようにし、指数移動平均が理論上収束しきらず描画が再レンダーし続ける問題を解消した（Task 2） |
 | 2026-09-14 | Phase 1 受入確認の指摘を反映: モードBの判定（`judge.ts`）が `sessionHazards` と判定の再生で出た危険操作を足していたため、短絡したまま提出された盤では同じ1回の短絡が `short-circuit-power-on` として2件に数えられていた。結果画面に出す回数（`hazardCount` / `hazardsByKind`）はセッションの記録だけを数えるようにし（§5.6「セッションのカウンタを加算する」/ §8.3）、静的チェック（`powerSequence`）には従来どおり再生ぶんも渡して合否の根拠は変えない。同じ規則を Task 12 の `judgeInspectParts()` / `judgeInspectRepair()` にも適用し、回帰テストを `test/judge.test.ts` と `test/judge-inspect.test.ts` に1件ずつ追加した |
 | 2026-09-17 | C+D1 レビュー反映（`forbidden.ts` の負荷要素、誤配線先の検証、フォールバック検証、引き直し時間の上限）: ① 禁則回路の構造照合が負荷要素をリンクとしてだけ辿るようにし、モードB `b-005` の回帰テストと全464通りの盤の掃引を足した（715f915）。② `applyFaults()` の誤配線の付け替え先を `@ojt/board-model` の `checkWirableTerminal()` / `toSessionTerminal()` で `addWire()` と同じ規則で検証し、自己ループを拒否するようにした（8635cab）。③ `resolveFaults()` は模範セッションを1度だけ作って電線だけ複製して試行に使い、`random.fallback` は返す直前に検証して使えなければ `faults.random.fallback` の課題エラーにし、成功結果に `fellBack` を、オプションに `maxMillis`（既定5000ms）を足した（0257032）。④ 同じ電線への二重の故障指定を拒否し（M3）、空き端子の走査を `SOCKET_PIN_COUNT` に置き換え（M4）、`count` が装着部品数を超えると部品系を引ききれないことを注記した（M6・0b4c14a） |
+| 2026-09-17 | Task 17 完了: バレル公開 b12caed、スモーク/持ち越しテスト 4689d7c、全体検証合格（pnpm -r test 102 ファイル/1331 テスト、typecheck、lint、prettier、content coverage 98.5/96.35/100/99.75、schema:write 差分なし、desktop build）。circuit-sim coverage は今回未計測（2bb24d3 時点 98.9%） |
