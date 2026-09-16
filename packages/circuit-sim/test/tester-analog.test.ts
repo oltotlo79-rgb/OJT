@@ -257,6 +257,27 @@ describe('stepTester', () => {
     expect(sim.events.countOf('range-exceeded')).toBe(2);
   });
 
+  it('re-arms range-exceeded after Simulation.reset() even when the rerun reaches the same clock', () => {
+    const sim = relayBench();
+    powerOn(sim);
+    sim.run(50);
+    let state = applyTesterAction(analog('DCV', 'PS.-', 'PS.+'), {
+      type: 'set-volt-range',
+      range: 2.5,
+    });
+    for (let i = 0; i < 3; i += 1) state = stepTester(sim, state).state;
+    expect(sim.events.countOf('range-exceeded')).toBe(1);
+    // リセットはイベントも記録も消す。同じレンジ・同じプローブのまま測り直すと、
+    // 時刻が元の値まで戻っていても改めて1件発行される（つまみを動かさない訓練者でも警告が出る）。
+    sim.reset();
+    sim.setBreaker(true);
+    sim.setSwitch(true);
+    sim.run(50);
+    expect(sim.events.countOf('range-exceeded')).toBe(0);
+    for (let i = 0; i < 3; i += 1) state = stepTester(sim, state).state;
+    expect(sim.events.countOf('range-exceeded')).toBe(1);
+  });
+
   it('treats a 100 ms tick as 63.2% toward target and clamps non-finite or non-positive dtMs to no movement', () => {
     const sim = relayBench();
     powerOn(sim);

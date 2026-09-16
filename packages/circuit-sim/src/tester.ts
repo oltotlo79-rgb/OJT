@@ -8,6 +8,7 @@ import {
   type ContinuityReading,
   type OhmReading,
 } from './meter.js';
+import { getRangeExceeded, setRangeExceeded } from './meter-state.js';
 import type { Simulation } from './simulation.js';
 
 /**
@@ -377,40 +378,28 @@ export function readTester(sim: Simulation, state: TesterState): TesterReading {
 export const TESTER_TICK_MS = TICK_MS;
 
 /**
- * `range-exceeded` の重複発行記録。`ohm-on-live`（`meter-state.ts` / `isNewLiveExposure()`）と
- * 同じ考え方で、`Simulation` をキーにした `WeakMap` に持つ。呼び出し側が `stepTester()` の
- * 戻り値をスレッドせず毎回同じ `state` を渡しても（`TesterState.rangeExceededReported` は
- * 読まれないまま捨てられても）重複発行を防げるようにするため（コーディネータ指摘）。
- * `tMs` も記録し、直前より巻き戻っていたら（`Simulation.reset()` で0に戻る）古い記録として
- * 無視する。`meter-state.ts` のように `Simulation.reset()` から明示的に消す経路は無いが、
- * リセットで回路の電圧が変わればレンジ内に戻って `overRange` が偽になり、その分岐で自然に
- * `reported` が偽へ戻る。仮にリセット後も同じ振り切れ値が続く場合でも、この `tMs` 巻き戻り
- * チェックが保険になる。
+ * `range-exceeded` の重複発行記録は `ohm-on-live`（`meter-state.ts` / `isNewLiveExposure()`）と
+ * 同じ考え方で、`Simulation` をキーにした `WeakMap`（`meter-state.ts`）に持つ。呼び出し側が
+ * `stepTester()` の戻り値をスレッドせず毎回同じ `state` を渡しても（`TesterState.rangeExceededReported`
+ * が読まれないまま捨てられても）重複発行を防げるようにするため（コーディネータ指摘）。
+ * 記録は `Simulation.reset()` が `clearRangeExceeded()` で消すので、リセット後は同じつまみ・
+ * 同じプローブのままでも改めて1件発行される（レビュー I-1）。
  */
-interface RangeExceededRecord {
-  rangeKey: string;
-  black: TerminalId | undefined;
-  red: TerminalId | undefined;
-  tMs: number;
-  reported: boolean;
-}
-const rangeExceededRecords = new WeakMap<Simulation, RangeExceededRecord>();
 
-/** 今回の振り切れを新規発行すべきか。記録が無い・レンジ／プローブが変わった・時刻が
- *  巻き戻った・前回は範囲内だった、のいずれかで true。 */
+/** 今回の振り切れを新規発行すべきか。記録が無い・レンジ／プローブが変わった・
+ *  前回は範囲内だった、のいずれかで true。 */
 function isNewRangeExceeded(
   sim: Simulation,
   rangeKey: string,
   black: TerminalId | undefined,
   red: TerminalId | undefined,
 ): boolean {
-  const prior = rangeExceededRecords.get(sim);
+  const prior = getRangeExceeded(sim);
   return (
     prior === undefined ||
     prior.rangeKey !== rangeKey ||
     prior.black !== black ||
     prior.red !== red ||
-    prior.tMs > sim.tMs ||
     !prior.reported
   );
 }
@@ -432,8 +421,9 @@ function isNewRangeExceeded(
  * `meter.ts` 経由で `ohm-on-live` を発行し得る。§5.6 #1）。同じ振り切れが続いている間は再発行せず、
  * 読値がレンジ内に戻ったときに再発行できる状態へ戻す（つまみ・レンジ・プローブを動かしたときは
  * `applyTesterAction()` が記録を消す）。重複抑制の考え方は `ohm-on-live`（§5.6 #1）と同じ。
- * 発行済みの記録は `TesterState.rangeExceededReported` にも書き戻すが、判定の正は上の
- * `rangeExceededRecords`（`Simulation` 単位の `WeakMap`）が持つ。
+ * 発行済みの記録は `TesterState.rangeExceededReported` にも書き戻すが、判定の正は
+ * `meter-state.ts` の振り切れ記録（`Simulation` 単位の `WeakMap`）が持つ。
+ * `Simulation.reset()` はその記録も消すので、リセット後の測り直しは1件目として扱われる。
  */
 export function stepTester(
   sim: Simulation,
@@ -459,11 +449,10 @@ export function stepTester(
     });
   }
   const rangeExceededReported = reading.overRange;
-  rangeExceededRecords.set(sim, {
+  setRangeExceeded(sim, {
     rangeKey,
     black: state.black,
     red: state.red,
-    tMs: sim.tMs,
     reported: rangeExceededReported,
   });
   return { state: { ...state, needleDeg, rangeExceededReported }, reading };

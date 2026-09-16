@@ -6,7 +6,7 @@ import { CHATTER_MIN_TRANSITIONS, CHATTER_WINDOW_MS, EventBus } from './events.j
 import type { TerminalId, WireId } from './ids.js';
 import { SignalLog } from './log.js';
 import type { SignalValue } from './log.js';
-import { clearProbeState } from './meter-state.js';
+import { clearProbeState, clearRangeExceeded } from './meter-state.js';
 import {
   addWire as addWireToNetlist,
   buildNets,
@@ -163,6 +163,8 @@ export class Simulation {
     this.overWireReported.clear();
     // `ohm-on-live` の重複発行記録（`meter.ts` が持つプローブ配置）も消す。§5.6 #1
     clearProbeState(this);
+    // `range-exceeded` の重複発行記録（`tester.ts` が持つつまみ・レンジ・プローブ）も消す。§5.6 #2
+    clearRangeExceeded(this);
     this.switches = { breakerOn: false, switchOn: false };
     this.tripped = false;
     this.resetStep = 0;

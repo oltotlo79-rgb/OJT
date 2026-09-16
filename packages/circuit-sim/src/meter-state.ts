@@ -37,3 +37,38 @@ export function setProbeState(owner: object, range: ProbeRange, record: ProbeRec
 export function clearProbeState(owner: object): void {
   for (const map of Object.values(records)) map.delete(owner);
 }
+
+/**
+ * アナログ針の振り切れ（`range-exceeded`）を直前に発行したときのつまみ・レンジ・プローブ配置。
+ * `tester.ts` の `stepTester()` が読み書きする。§5.6 #2
+ * 判定そのものは `tester.ts` にあるが、記録を `Simulation.reset()` から消せるように
+ * （`tester.ts` ⇄ `simulation.ts` の循環参照を作らずに）このモジュールへ置いてある。
+ */
+export interface RangeExceededRecord {
+  /** つまみ（モード）とレンジの組を1本にした鍵。 */
+  rangeKey: string;
+  black: TerminalId | undefined;
+  red: TerminalId | undefined;
+  /** 直前の読値が振り切れていて、`range-exceeded` を発行済みか。 */
+  reported: boolean;
+}
+
+const rangeExceeded = new WeakMap<object, RangeExceededRecord>();
+
+/** 直近の振り切れ記録（まだ測っていなければ undefined）。 */
+export function getRangeExceeded(owner: object): RangeExceededRecord | undefined {
+  return rangeExceeded.get(owner);
+}
+
+/** 直近の振り切れ記録を更新する。 */
+export function setRangeExceeded(owner: object, record: RangeExceededRecord): void {
+  rangeExceeded.set(owner, record);
+}
+
+/**
+ * 振り切れ記録を消す。`Simulation.reset()` から呼ばれ、リセット後に同じつまみ・同じプローブで
+ * 測り直しても改めて1件発行される（＝危険操作の警告が再武装する）ようにする。
+ */
+export function clearRangeExceeded(owner: object): void {
+  rangeExceeded.delete(owner);
+}
