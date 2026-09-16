@@ -1,7 +1,12 @@
 import { stat } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { BUILTIN_PROBLEMS, type AssembleProblem, type ProblemLoadError } from '@ojt/content';
+import {
+  BUILTIN_PROBLEMS,
+  isAssembleProblem,
+  type AssembleProblem,
+  type ProblemLoadError,
+} from '@ojt/content';
 import { loadProblemsFromDir, mergeProblemSets, type ProblemSet } from '@ojt/content/loader';
 import { app } from 'electron';
 import { toErrorRow, toSummary, type ProblemListPayload } from '../shared/ipc.js';
@@ -149,14 +154,11 @@ function readContent(userDir: string, exists: boolean): LoadedContent {
   // Plan 2A で `ProblemSet.problems` がモードB／C1／C2の共用体に広がった。C1/C2を開始できる
   // 画面が入るのは Plan 2B なので、ここではモードBだけを一覧に載せる（利用者フォルダに
   // C1/C2 の課題を置いても、開ける画面ができるまでは一覧に出さない）。
-  // `@ojt/content` はこの判定関数（`isAssembleProblem`）をまだバレルに出していない
-  // （Task 17 の `packages/content` 側はこの取り込みと並行して別途進行中）ので、
-  // ここでは `mode` を直接見て判定する。バレルに出たら import に差し替えてよい。
-  const startable = merged.problems.filter((p): p is AssembleProblem => p.mode === 'assemble');
+  const startable: AssembleProblem[] = merged.problems.filter(isAssembleProblem);
   // 弾いた課題（読込自体は成功しているC1/C2）を無言で消さず、理由付きでエラー一覧に出す(M-10)。
   // 本物のファイルパスはここでは持てないので、`file` は課題IDで代える。
   const notStartable: ProblemLoadError[] = merged.problems
-    .filter((p) => p.mode !== 'assemble')
+    .filter((p) => !isAssembleProblem(p))
     .map((p) => ({
       file: p.id,
       reason: 'unsupported-mode',

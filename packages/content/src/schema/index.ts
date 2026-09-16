@@ -149,6 +149,16 @@ function peekId(value: unknown): string | undefined {
   return typeof raw === 'string' ? raw : undefined;
 }
 
+/**
+ * `mode` フィールドが存在するかだけを見る（`peekMode()` と違い、値の妥当性は問わない）。
+ * 誤字の `mode`（例: `'inspect-part'`）と、`mode` を丸ごと書き忘れた場合を区別するために使う。
+ */
+function peekRawMode(value: unknown): string | undefined {
+  if (typeof value !== 'object' || value === null) return undefined;
+  const raw = (value as Record<string, unknown>).mode;
+  return typeof raw === 'string' ? raw : undefined;
+}
+
 /** そのモードがまだ開始できないか。 */
 function isUnsupportedMode(mode: ProblemMode): boolean {
   return (UNSUPPORTED_MODES as readonly ProblemMode[]).includes(mode);
@@ -173,6 +183,26 @@ export function parseProblem(json: unknown): ParseProblemResult {
       ...(header.success ? { id: header.data.id } : id === undefined ? {} : { id }),
       mode,
     };
+  }
+  if (mode === undefined) {
+    const raw = peekRawMode(json);
+    // `mode` はあるが値が不正（誤字など）。何も分からずに assemble スキーマへ落とすと、
+    // 無関係な8件のスキーマ違反（他モードの課題に assemble の必須項目が無い等）が出て
+    // 「モード名が違う」という本当の理由が埋もれるので、ここで1件だけ返す。
+    if (raw !== undefined) {
+      return {
+        ok: false,
+        reason: 'schema',
+        message: `課題モードが不正です: ${raw}`,
+        issues: [
+          {
+            path: 'mode',
+            message: `次のいずれかにしてください: ${ProblemModeSchema.options.join(', ')}`,
+          },
+        ],
+        ...(id === undefined ? {} : { id }),
+      };
+    }
   }
   const parsed =
     mode === 'inspect-parts'

@@ -71,6 +71,49 @@ export {
 } from './schema/assemble.js';
 
 export {
+  FAULT_KINDS,
+  FaultKindSchema,
+  FaultSpecSchema,
+  FaultsSchema,
+  FaultTargetSchema,
+  isPartFaultKind,
+  isRandomFaults,
+  isWireFaultKind,
+  LOAD_ELEMENT_INDEX,
+  PART_FAULT_KINDS,
+  PartFaultTargetSchema,
+  RandomFaultsSchema,
+  SOCKET_COIL_ELEMENT_INDEX,
+  socketContactElementIndex,
+  WIRE_FAULT_KINDS,
+  WireFaultTargetSchema,
+  type FaultSpecData,
+  type FaultsData,
+  type FaultTargetData,
+  type RandomFaultsData,
+} from './schema/faults.js';
+
+export {
+  CONTACT_TRUTHS,
+  InspectPartSchema,
+  InspectPartsProblemSchema,
+  isContactTruth,
+  PART_TRUTHS,
+  PartTruthSchema,
+  type InspectPartData,
+  type InspectPartsProblem,
+  type PartTruth,
+} from './schema/inspect-parts.js';
+
+export {
+  InspectRepairProblemSchema,
+  type InspectRepairProblem,
+} from './schema/inspect-repair.js';
+
+export {
+  isAssembleProblem,
+  isInspectPartsProblem,
+  isInspectRepairProblem,
   parseProblem,
   problemJsonSchema,
   ProblemSchema,
@@ -80,6 +123,7 @@ export {
   type Problem,
   type ProblemFailureReason,
   type ProblemIssue,
+  type SupportedProblem,
   type UnsupportedProblem,
 } from './schema/index.js';
 
@@ -97,6 +141,7 @@ export {
   toProblemPath,
   type ReferenceCircuit,
   type ReferenceResult,
+  type SchematicProblem,
 } from './reference.js';
 
 export { powerUp, runOperations, type RunOptions, type RunResult } from './runner.js';
@@ -116,6 +161,78 @@ export {
   type TimeChartSignalSpec,
 } from './timechart.js';
 
+export { hashSeed, mulberry32, pickIndex, pickOne } from './rng.js';
+
+export {
+  applyFaults,
+  faultParam,
+  injectPartFaults,
+  matchesSite,
+  reportKindOf,
+  withoutPartFaults,
+  type AppliedFaults,
+  type ApplyFaultsResult,
+  type FaultReport,
+  type FaultReportKind,
+  type FaultSite,
+} from './faults.js';
+
+export {
+  MAX_RANDOM_FAULT_ATTEMPTS,
+  RANDOM_FAULT_KINDS,
+  resolveFaults,
+  type ResolveFaultsOptions,
+  type ResolveFaultsResult,
+} from './random-faults.js';
+
+export {
+  findForbiddenPatterns,
+  type ForbiddenPattern,
+  type ForbiddenPatternKind,
+} from './forbidden.js';
+
+export {
+  buildCheckCircuit,
+  CHECK_COIL_MINUS,
+  CHECK_COIL_PLUS,
+  CHECK_PART_ID,
+  CHECK_TIMER_PRESET_MS,
+  checkContactTerminals,
+  checkSettleMs,
+  DIAGNOSIS_TABLE,
+  expectedCheckReading,
+  faultGroupOf,
+  LAYER_SHORT_JUDGE_RATIO,
+  layerShortThresholdOhms,
+  PART_TRUTH_LABELS,
+  truthFault,
+  type CheckCircuit,
+  type CheckCircuitResult,
+  type DiagnosisRow,
+  type ExpectedCheckReading,
+} from './inspect-parts.js';
+
+export {
+  addedWireIds,
+  buildInspectRepairCircuit,
+  INITIAL_WIRE_COLOR,
+  modificationWireIds,
+  repairNetlist,
+  replacePart,
+  REPAIR_WIRE_COLOR,
+  type RepairCircuit,
+  type RepairCircuitResult,
+} from './inspect-repair.js';
+
+export {
+  buildHighlightIndex,
+  cellIdsAtTerminal,
+  cellIdsOfWire,
+  highlightFor,
+  type HighlightIndex,
+  type HighlightTarget,
+} from './highlight.js';
+
 export {
   checkCoilPolarity,
   checkForbiddenCircuit,
@@ -129,6 +246,7 @@ export {
 } from './static-checks.js';
 
 export {
+  countHazards,
   judgeAssemble,
   judgeReference,
   type HazardCounts,
@@ -138,7 +256,23 @@ export {
 } from './judge.js';
 
 export {
+  judgeInspectParts,
+  judgeInspectRepair,
+  scoreReports,
+  type InspectPartAnswer,
+  type InspectPartScore,
+  type InspectReportScore,
+  type JudgeInspectPartsResult,
+  type JudgeInspectRepairOutcome,
+  type JudgeInspectRepairResult,
+  type JudgeInspectResult,
+} from './judge-inspect.js';
+
+export {
+  BUILTIN_ALL_PROBLEMS,
   BUILTIN_ASSEMBLE_PROBLEMS,
+  BUILTIN_INSPECT_PARTS_PROBLEMS,
+  BUILTIN_INSPECT_REPAIR_PROBLEMS,
   BUILTIN_PROBLEMS,
   BuiltinProblemError,
   findBuiltinProblem,
