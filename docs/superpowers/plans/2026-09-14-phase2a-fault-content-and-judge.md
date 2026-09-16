@@ -8111,7 +8111,7 @@ import {
 pnpm --filter @ojt/content exec vitest run
 ```
 
-Expected: 全テストファイルが通る（Phase 2A で新しく足したのは `schema-faults` / `faults` / `schema-inspect-parts` / `schema-inspect-repair` / `rng` / `random-faults` / `inspect-parts` / `inspect-repair` / `forbidden` / `judge-inspect` / `highlight` / `builtin-inspect-parts` / `builtin-inspect-repair` / `builtin-c2-discrimination` の14ファイル・約179件）。
+Expected: 全テストファイルが通る（Phase 2A で新しく足したのは `schema-faults` / `faults` / `schema-inspect-parts` / `schema-inspect-repair` / `rng` / `random-faults` / `inspect-parts` / `inspect-repair` / `forbidden` / `judge-inspect` / `highlight` / `builtin-inspect-parts` / `builtin-inspect-repair` / `builtin-c2-discrimination` の14ファイル・221件（2A後半レビュー反映後。@ojt/content 全体では32ファイル・442件））。
 
 - [x] **Step 5: カバレッジを確認する**
 
@@ -8324,7 +8324,7 @@ Plan 2B（`apps/desktop` のUI）は下記だけを使う。これ以外の内�
 ## 完了条件
 
 - [ ] `pnpm --filter @ojt/circuit-sim exec vitest run` が全て通る（`test/tester.test.ts` 14件・`test/tester-analog.test.ts` 15件を含む）。
-- [ ] `pnpm --filter @ojt/content exec vitest run` が全て通る（Phase 2A で追加した14テストファイル・約179件を含む）。
+- [ ] `pnpm --filter @ojt/content exec vitest run` が全て通る（Phase 2A で追加した14テストファイル・221件（@ojt/content 全体では32ファイル・442件）を含む）。
 - [ ] `pnpm --filter @ojt/circuit-sim exec vitest run --coverage` と `pnpm --filter @ojt/content exec vitest run --coverage` が閾値90%（lines / statements / functions / branches）を満たす。
 - [ ] `pnpm -r typecheck` と `pnpm lint`（`import-x/no-cycle` 込み）が無警告で通る。
 - [ ] `npx prettier --check "packages/circuit-sim/**/*.ts" "packages/content/**/*.{ts,json}"` が `All matched files use Prettier code style!` を出す。
@@ -8346,3 +8346,4 @@ Plan 2B（`apps/desktop` のUI）は下記だけを使う。これ以外の内�
 | 2026-09-14 | Phase 1 受入確認の指摘を反映: モードBの判定（`judge.ts`）が `sessionHazards` と判定の再生で出た危険操作を足していたため、短絡したまま提出された盤では同じ1回の短絡が `short-circuit-power-on` として2件に数えられていた。結果画面に出す回数（`hazardCount` / `hazardsByKind`）はセッションの記録だけを数えるようにし（§5.6「セッションのカウンタを加算する」/ §8.3）、静的チェック（`powerSequence`）には従来どおり再生ぶんも渡して合否の根拠は変えない。同じ規則を Task 12 の `judgeInspectParts()` / `judgeInspectRepair()` にも適用し、回帰テストを `test/judge.test.ts` と `test/judge-inspect.test.ts` に1件ずつ追加した |
 | 2026-09-17 | C+D1 レビュー反映（`forbidden.ts` の負荷要素、誤配線先の検証、フォールバック検証、引き直し時間の上限）: ① 禁則回路の構造照合が負荷要素をリンクとしてだけ辿るようにし、モードB `b-005` の回帰テストと全464通りの盤の掃引を足した（715f915）。② `applyFaults()` の誤配線の付け替え先を `@ojt/board-model` の `checkWirableTerminal()` / `toSessionTerminal()` で `addWire()` と同じ規則で検証し、自己ループを拒否するようにした（8635cab）。③ `resolveFaults()` は模範セッションを1度だけ作って電線だけ複製して試行に使い、`random.fallback` は返す直前に検証して使えなければ `faults.random.fallback` の課題エラーにし、成功結果に `fellBack` を、オプションに `maxMillis`（既定5000ms）を足した（0257032）。④ 同じ電線への二重の故障指定を拒否し（M3）、空き端子の走査を `SOCKET_PIN_COUNT` に置き換え（M4）、`count` が装着部品数を超えると部品系を引ききれないことを注記した（M6・0b4c14a） |
 | 2026-09-17 | Task 17 完了: バレル公開 b12caed、スモーク/持ち越しテスト 4689d7c、全体検証合格（pnpm -r test 102 ファイル/1331 テスト、typecheck、lint、prettier、content coverage 98.5/96.35/100/99.75、schema:write 差分なし、desktop build）。circuit-sim coverage は今回未計測（2bb24d3 時点 98.9%） |
+| 2026-09-17 | 2A 後半レビュー反映（range-exceeded の reset 再アーム、溶着の優先規則、重複回答の扱い、RepairCircuitOptions 公開、弁別テスト拡充）: ① `range-exceeded` の重複発行記録を `meter-state.ts` へ移し、`Simulation.reset()` が `clearRangeExceeded()` で消すようにした（`prior.tMs > sim.tMs` の巻き戻りヒューリスティックは削除。リセット後に同じ時刻まで走らせても危険操作の警告が再武装する）。② `DiagnosisRow` に `note` を足して §9.1 なお書き（a接点溶着によるb接点の導通不良は「a接点の溶着」と答える）とレアショートの補足をヘルプ表に載せ、優先規則を適用して読値から原因を1つに決める `diagnoseCheckReading()` を追加・公開した（内蔵C1課題の全部品で `truth` と一致することをテスト）。③ `judgeInspectParts()` は同じ部品に複数の回答があれば最後の回答を採用する、と明記してテストで固定した。④ `RepairCircuitOptions` をバレルから公開。⑤ C2 の (課題, 故障箇所) 16通りで「その1箇所だけ未修復なら不合格」を確かめる表テストと、`wire-missing` を反対側端子で指摘した場合・シード無し乱数故障の同一盤ケースを追加。完了条件のテスト件数を実測値（14ファイル・221件／@ojt/content 全体 32ファイル・442件）に更新した |
