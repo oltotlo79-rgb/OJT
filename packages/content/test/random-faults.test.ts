@@ -1,10 +1,15 @@
 import { JIPM_BOARD } from '@ojt/board-model';
+import { compareLogs } from '@ojt/circuit-sim';
 import { describe, expect, it } from 'vitest';
+import { buildInspectRepairCircuit, repairNetlist } from '../src/inspect-repair.js';
 import {
   MAX_RANDOM_FAULT_ATTEMPTS,
+  MAX_RANDOM_FAULT_MILLIS,
   RANDOM_FAULT_KINDS,
   resolveFaults,
 } from '../src/random-faults.js';
+import { buildReferenceSession } from '../src/reference.js';
+import { runOperations } from '../src/runner.js';
 import { inspectRepairProblemJson, parseInspectRepairOrThrow } from './helpers/inspect.js';
 
 const FALLBACK = [{ target: { wireId: 'sw-004' }, kind: 'wire-open' }];
@@ -239,5 +244,99 @@ describe('resolveFaults', () => {
     expect(resolved.ok).toBe(true);
     if (!resolved.ok) return;
     expect(resolved.value).toEqual(fallback);
+  });
+});
+
+describe('resolveFaults fallback validation (レビュー I4)', () => {
+  it('rejects a fallback that cannot be applied to the board', () => {
+    const problem = problemWithRandom({
+      count: 1,
+      types: ['wire-open'],
+      seed: 5,
+      fallback: [{ target: { wireId: 'sw-999' }, kind: 'wire-open' }],
+    });
+    const resolved = resolveFaults(problem, JIPM_BOARD, { maxAttempts: 0 });
+    expect(resolved.ok).toBe(false);
+    if (resolved.ok) return;
+    expect(resolved.errors[0]?.path).toBe('faults.random.fallback');
+  });
+
+  it('reports fellBack when it has to use a usable fallback', () => {
+    const problem = problemWithRandom({
+      count: 1,
+      types: ['wire-open'],
+      seed: 5,
+      fallback: FALLBACK,
+    });
+    const resolved = resolveFaults(problem, JIPM_BOARD, { maxAttempts: 0 });
+    expect(resolved.ok).toBe(true);
+    if (!resolved.ok) return;
+    expect(resolved.value).toEqual(FALLBACK);
+    expect(resolved.fellBack).toBe(true);
+  });
+
+  it('reports fellBack false for a drawn set and for an explicit list', () => {
+    const drawn = resolveFaults(
+      problemWithRandom({ count: 1, types: ['wire-open'], seed: 12345, fallback: FALLBACK }),
+      JIPM_BOARD,
+    );
+    expect(drawn.ok).toBe(true);
+    if (!drawn.ok) return;
+    expect(drawn.fellBack).toBe(false);
+    const explicit = resolveFaults(
+      parseInspectRepairOrThrow(inspectRepairProblemJson()),
+      JIPM_BOARD,
+    );
+    expect(explicit.ok).toBe(true);
+    if (!explicit.ok) return;
+    expect(explicit.fellBack).toBe(false);
+  });
+
+  it('falls back when the time budget is exhausted (maxMillis)', () => {
+    expect(MAX_RANDOM_FAULT_MILLIS).toBe(5000);
+    const problem = problemWithRandom({
+      count: 1,
+      types: ['wire-open'],
+      seed: 12345,
+      fallback: FALLBACK,
+    });
+    const resolved = resolveFaults(problem, JIPM_BOARD, { maxMillis: 0 });
+    expect(resolved.ok).toBe(true);
+    if (!resolved.ok) return;
+    expect(resolved.value).toEqual(FALLBACK);
+    expect(resolved.fellBack).toBe(true);
+  });
+});
+
+describe('resolveFaults seed sweep (§7.5 の2条件)', () => {
+  it('draws an applicable, non shorting and detectable set for 20 seeds', () => {
+    const base = parseInspectRepairOrThrow(inspectRepairProblemJson());
+    const reference = buildReferenceSession(base, JIPM_BOARD);
+    if (!reference.ok) throw new Error(JSON.stringify(reference.errors));
+    const expected = runOperations(reference.value.netlist, base.operations, {
+      durationMs: base.durationMs,
+    });
+    for (let seed = 1; seed <= 20; seed += 1) {
+      const problem = problemWithRandom({
+        count: 1,
+        types: ['wire-open', 'wire-missing', 'coil-open', 'contact-welded'],
+        seed,
+        fallback: FALLBACK,
+      });
+      const resolved = resolveFaults(problem, JIPM_BOARD);
+      expect(resolved.ok).toBe(true);
+      if (!resolved.ok) return;
+      const built = buildInspectRepairCircuit(problem, JIPM_BOARD, {
+        resolvedFaults: resolved.value,
+      });
+      expect(built.ok).toBe(true);
+      if (!built.ok) return;
+      const { netlist, errors } = repairNetlist(built.value, JIPM_BOARD);
+      expect(errors).toEqual([]);
+      const run = runOperations(netlist, base.operations, { durationMs: base.durationMs });
+      expect(run.events.hazards('short-circuit-power-on')).toHaveLength(0);
+      const diff = compareLogs(expected.log, run.log, ['PL1'], base.judge.tolerance);
+      expect(diff.length).toBeGreaterThan(0);
+    }
   });
 });
