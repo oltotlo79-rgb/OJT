@@ -129,6 +129,9 @@ export function applyFaults(
   const sites: FaultSite[] = [];
   // 検証用の複製。実セッションが確定するまで、電線の変更はすべてこちらに対して行う。
   const draft: Wire[] = session.wires.map((w) => ({ ...w }));
+  // 同じ電線を2回指定させない（レビュー指摘 M3）。許すと `sites` に同じ電線が並び、訓練者が
+  // 1回指摘しただけでは合格できない／未配線と断線が同じ電線に同居する、といった課題になる。
+  const targeted = new Set<string>();
 
   faults.forEach((spec, index) => {
     const report = reportKindOf(spec.kind);
@@ -149,6 +152,14 @@ export function applyFaults(
     const target = spec.target;
     /* c8 ignore next -- 同上、スキーマが弾くため到達しない */
     if (!('wireId' in target)) return; // 同上
+    if (targeted.has(target.wireId)) {
+      errors.push({
+        path: `faults[${index}].target.wireId`,
+        message: `同じ電線に複数の故障は入れられません: ${target.wireId}`,
+      });
+      return;
+    }
+    targeted.add(target.wireId);
     const position = draft.findIndex((w) => w.id === target.wireId);
     const wire = position < 0 ? undefined : draft[position];
     if (wire === undefined) {

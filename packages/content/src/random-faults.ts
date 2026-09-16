@@ -1,4 +1,10 @@
-import { SOCKET_IDS, toNetlist, type BoardDefinition, type BoardSession } from '@ojt/board-model';
+import {
+  SOCKET_IDS,
+  SOCKET_PIN_COUNT,
+  toNetlist,
+  type BoardDefinition,
+  type BoardSession,
+} from '@ojt/board-model';
 import { compareLogs, type FaultKind, type SignalLog } from '@ojt/circuit-sim';
 import { applyFaults, injectPartFaults } from './faults.js';
 import { buildReferenceSession } from './reference.js';
@@ -100,7 +106,7 @@ function spareTerminals(session: BoardSession): string[] {
   }
   const out: string[] = [];
   for (const partId of faultablePartIds(session)) {
-    for (let pin = 1; pin <= 14; pin += 1) {
+    for (let pin = 1; pin <= SOCKET_PIN_COUNT; pin += 1) {
       const terminal = `${partId}.${String(pin)}`;
       if (!used.has(terminal)) out.push(terminal);
     }
@@ -238,6 +244,10 @@ export function resolveFaults(
         complete = false;
         break;
       }
+      // 同じ部品・同じ電線を2度引かない（`takenParts` / `takenWires`）。そのため部品の故障は
+      // 「装着されている故障可能な部品の数」より多くは引けず、`count` がそれを超える課題では
+      // 部品系の種別だけ引けずに試行が捨てられ続け、最後は `fallback` に落ちる（レビュー指摘 M6）。
+      // 例: 装着部品が CR1 だけの盤で `count: 2, types: ['coil-open']`。
       const drawn = drawFault(
         random,
         kind,

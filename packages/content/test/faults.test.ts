@@ -85,6 +85,28 @@ describe('applyFaults (wire faults)', () => {
     expect(applied.errors[0]?.message).toContain('sw-999');
   });
 
+  it('refuses two faults on the same wire even when the first removes it (M3)', () => {
+    const applied = applyFaults(session(), [
+      { target: { wireId: 'sw-009' }, kind: 'wire-missing' },
+      { target: { wireId: 'sw-009' }, kind: 'wire-open' },
+    ]);
+    expect(applied.ok).toBe(false);
+    if (applied.ok) return;
+    expect(applied.errors[0]?.path).toBe('faults[1].target.wireId');
+    expect(applied.errors[0]?.message).toBe('同じ電線に複数の故障は入れられません: sw-009');
+  });
+
+  it('refuses the same wire fault twice so that sites never repeats a wire (M3)', () => {
+    const applied = applyFaults(session(), [
+      { target: { wireId: 'sw-009' }, kind: 'wire-open' },
+      { target: { wireId: 'sw-009' }, kind: 'wire-open' },
+    ]);
+    expect(applied.ok).toBe(false);
+    if (applied.ok) return;
+    expect(applied.errors).toHaveLength(1);
+    expect(applied.errors[0]?.path).toBe('faults[1].target.wireId');
+  });
+
   it('refuses to fault the pre-installed check circuit wiring (§6.3)', () => {
     const applied = applyFaults(session(), [{ target: { wireId: 'fw-chk-2' }, kind: 'wire-open' }]);
     expect(applied.ok).toBe(false);
