@@ -70,3 +70,16 @@ content 32 files / 409、desktop 28 files / 469、circuit-sim 214、board-model 
 - 実装完了率は固定の重みで報告する: 1A 8 / 1B 5 / 1C 5 / 1D 12 / P2 15 / P3 20 / P4 15 / P5 15
   （前回報告: 約40%、レビュー確定分は約33%）
 - ビジュアルは適宜提示する（scratchpad `view-nav/` のスクリーンショットはユーザーに送付済み）
+
+## 2026-09-17 追記（第2回中断）
+
+- リモート `origin` を追加し `main` を push 済み。
+- Plan 2A Task 17 は b12caed として部分着地: バレルが Phase 2A の全面を re-export、
+  `mode` の typo に起因するスキーマ問題1件を修正、デスクトップ側
+  `content-loader.ts` が `isAssembleProblem` を import。
+- content の 409 テストおよび `pnpm -r typecheck` はグリーン。
+- Task 17 の残項目、および未着手の C+D1 修正項目3〜5は `briefs/deferred.txt` に記載。
+- Plan 2B の Task 1・4 はブロック解除済み。
+- 次の指示: Task 17 残作業 + 修正項目3〜5 を並行実施 →
+  D2+E+F+修正+Task 17 をまとめて Opus レビュー1本 → Plan 2B Task 1→4。
+- 各バッチ後に `main` を push する。
