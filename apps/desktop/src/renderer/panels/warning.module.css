@@ -1,7 +1,25 @@
-/* 危険操作の警告バナー（§5.6 / §13）。例外バナー（赤地）と区別できるよう琥珀の帯にする */
+/*
+ * 危険操作の警告バナー（§5.6 / §13）。例外バナー（赤地）と区別できるよう琥珀の帯にする。
+ *
+ * 通常フローに置くとツールバー・3Dビューポート・パネルを押し下げ、6秒後の消灯で
+ * また押し戻す（R3Fキャンバスが毎回リサイズされる。レビュー指摘）。position: fixed の
+ * オーバーレイにしてレイアウトから外し、ツールバー（`screens.module.css` の `.toolbar` 相当。
+ * padding 6px×2 + 行の高さ約32pxで48px）の直下・水平中央に固定表示する。
+ * z-index 45 はチャートモーダルの背景40より上、トースト50より下（§8.2）。
+ * 90vwキャップと中央寄せで、左上のビューキューブ（`ViewGizmo`）・右上のステータス
+ * オーバーレイ（`.statusOverlay`）のどちらとも重ならない。
+ */
 .warnBanner {
+  position: fixed;
+  top: 48px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 45;
+  max-width: min(720px, 90vw);
   background: rgba(232, 194, 42, 0.18);
-  border-bottom: 2px solid var(--warn);
+  border: 1px solid var(--warn);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
   color: var(--text);
   display: flex;
   align-items: center;
