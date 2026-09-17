@@ -153,7 +153,16 @@ export function Session(): JSX.Element {
     const store = useStore.getState();
     const current = store.problem;
     const currentSession = store.session;
-    if (current === undefined || currentSession === undefined) return;
+    /*
+     * ここで見る `store.problem` は3モードの共用体のまま（絞り込み済みの `problem` は
+     * 依存配列に載せた `problemId` としてしか使わない）。モードB以外が届いたときに
+     * そのまま `load` を送ると、画面は「課題が選ばれていません」なのに Worker だけが
+     * 動き出す（Plan 2B Batch 1 レビュー）。振り分けの `SessionRoute`（Task 10）が入るまでの
+     * 安全網として、この画面が描けない課題では Worker を起こさない。
+     */
+    if (current === undefined || currentSession === undefined || !isAssembleProblem(current)) {
+      return;
+    }
     bridge.start({
       onSnapshot: (next) => {
         useStore.getState().applySnapshot(next);
@@ -354,8 +363,25 @@ export function Session(): JSX.Element {
     [problem],
   );
 
+  /*
+   * モードB以外の課題（C1/C2）もここへ届きうる（課題一覧は20題すべてを開ける。Task 1）。
+   * 専用画面ができるまでは行き止まりにせず、課題を捨てて一覧へ戻る導線だけを出す
+   * （`Result` の「判定結果がありません」と同じ作り）。§12.1
+   */
   if (problem === undefined || session === undefined) {
-    return <div className={styles.center}>{JA.session.noProblem}</div>;
+    return (
+      <div className={styles.center}>
+        <p>{JA.session.noProblem}</p>
+        <button
+          type="button"
+          onClick={() => {
+            useStore.getState().abandonSession();
+          }}
+        >
+          {JA.result.toList}
+        </button>
+      </div>
+    );
   }
 
   /*

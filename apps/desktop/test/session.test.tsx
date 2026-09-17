@@ -1,6 +1,6 @@
 import { JIPM_BOARD, remainingInventory, mountedKinds } from '@ojt/board-model';
 import { toTerminalId } from '@ojt/circuit-sim';
-import { BUILTIN_PROBLEMS } from '@ojt/content';
+import { BUILTIN_INSPECT_PARTS_PROBLEMS, BUILTIN_PROBLEMS } from '@ojt/content';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { createElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -80,6 +80,8 @@ const { JA } = await import('../src/renderer/i18n/ja.js');
 const { sounds } = await import('../src/renderer/audio/sounds.js');
 
 const PROBLEM = BUILTIN_PROBLEMS.find((p) => p.id === 'b-001');
+/** モードC1課題（この画面はモードB専用なので「課題が選ばれていません」になる）。§12.1 */
+const C1_PROBLEM = BUILTIN_INSPECT_PARTS_PROBLEMS[0];
 /** 1級課題（回路図ヒントのトグル自体が出ない。§8.4）。 */
 const GRADE1_PROBLEM = BUILTIN_PROBLEMS.find((p) => p.grade === 1);
 /** 2級課題（回路図ヒントを開閉できる。初期は閉じている。§8.4）。 */
@@ -539,5 +541,33 @@ describe('効果音（§15）', () => {
     });
 
     expect(play).toHaveBeenCalledWith('warning');
+  });
+});
+
+describe('モードB以外の課題（§12.1 / Plan 2B Batch 1 レビュー）', () => {
+  /**
+   * `ProblemList` は20題すべてを開けるので、C1/C2 の課題もこの画面に届きうる（振り分けの
+   * `SessionRoute` は Task 10）。絞り込みから漏れた課題で行き止まりにならないこと、
+   * その間 Worker を起動しないことを固定する。
+   */
+  it('C1課題では一覧へ戻る導線を出し、Worker を起動しない', () => {
+    expect(C1_PROBLEM).toBeDefined();
+    if (C1_PROBLEM === undefined) return;
+    act(() => {
+      useStore.getState().openProblem(C1_PROBLEM);
+    });
+    render(<Session />);
+
+    // 追従ループを回す相手（モードBの盤）がいないので Worker は起こさない
+    expect(workerMock.handlers).toBeUndefined();
+    expect(workerMock.sent).toEqual([]);
+
+    const back = screen.getByRole('button', { name: JA.result.toList });
+    act(() => {
+      fireEvent.click(back);
+    });
+
+    expect(useStore.getState().route).toBe('list');
+    expect(useStore.getState().problem).toBeUndefined();
   });
 });
