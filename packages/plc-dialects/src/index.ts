@@ -1,3 +1,5 @@
+export { convert, type ConvertError, type ConvertResult } from './convert.js';
+
 export {
   DIALECT_IDS,
   IMPLEMENTED_DIALECT_IDS,
