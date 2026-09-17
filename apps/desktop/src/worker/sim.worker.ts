@@ -240,11 +240,22 @@ function loop(): void {
       const measurable =
         tester.mode !== 'off' && tester.black !== undefined && tester.red !== undefined;
       if (!measurable) {
+        /*
+         * 測れなくても**つまみの現在位置は出す**。直前の読値をそのまま写すと、実測を挟まずに
+         * 種別・レンジを回した間は古い `kind` / `mode` がスナップショットに残り、画面の
+         * テスターが実際のつまみと食い違う（Plan 2B Batch 1 レビュー）。
+         * 読値まわり（値・目標角・振り切れ・活線・導通）は測っていないので全部倒す。
+         * 針（`tester.needleDeg`）だけは直近の位置のまま止まる。
+         */
         testerReading = {
-          ...testerReading,
+          kind: tester.kind,
+          mode: tester.mode,
           value: Number.NaN,
           targetDeg: 0,
           display: tester.mode === 'off' ? TESTER_OFF_DISPLAY : TESTER_NO_PROBE_DISPLAY,
+          overRange: false,
+          live: false,
+          conductive: false,
         };
         // 測れない間は経過tickを積み増さない。再開後の最初の実測が古いdtで一気に収束しないように
         ticksSinceTesterMeasure = 0;

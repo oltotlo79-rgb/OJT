@@ -12,6 +12,27 @@ import type { SimCommand, SimMessage, SimSnapshot } from '../src/worker/protocol
 
 const clock = vi.hoisted(() => ({ nowMs: 0 }));
 
+/**
+ * 実測（`stepTester()` / `readTester()`）を呼んだ回数。前提Dの間引きを固定するために数える。
+ * 本物をそのまま呼ぶ薄い包みなので、他のテストの挙動は変わらない。
+ */
+const measured = vi.hoisted(() => ({ step: 0, read: 0 }));
+
+vi.mock('@ojt/circuit-sim', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@ojt/circuit-sim')>();
+  return {
+    ...actual,
+    stepTester: (...args: Parameters<typeof actual.stepTester>) => {
+      measured.step += 1;
+      return actual.stepTester(...args);
+    },
+    readTester: (...args: Parameters<typeof actual.readTester>) => {
+      measured.read += 1;
+      return actual.readTester(...args);
+    },
+  };
+});
+
 vi.setConfig({ testTimeout: 15_000 });
 
 const B001 = BUILTIN_PROBLEMS.find((p) => p.id === 'b-001');
@@ -45,6 +66,8 @@ async function boot(): Promise<Harness> {
     writable: true,
   });
   clock.nowMs = 0;
+  measured.step = 0;
+  measured.read = 0;
   vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
   vi.spyOn(performance, 'now').mockImplementation(() => clock.nowMs);
   vi.resetModules();
@@ -205,5 +228,102 @@ describe('テスターのスナップショット（§9.3）', () => {
     expect(h.snapshots.at(-1)?.tester.mode).toBe('DCV');
     expect(h.snapshots.at(-1)?.tester.display).toBe('----');
     expect(h.errors).toEqual([]);
+  });
+});
+
+describe('測れないときのスナップショット（Plan 2B Batch 1 レビュー）', () => {
+  it('プローブを置かずに種別とレンジを回すと、いまのつまみの位置がそのまま出る', async () => {
+    const h = await powered();
+    h.send({ type: 'tester', action: { type: 'set-kind', kind: 'analog' } });
+    h.send({ type: 'tester', action: { type: 'set-mode', mode: 'DCV' } });
+    h.advance(100);
+
+    const tester = h.snapshots.at(-1)?.tester;
+    expect(tester?.kind).toBe('analog');
+    expect(tester?.mode).toBe('DCV');
+    expect(tester?.display).toBe('----');
+  });
+
+  it('測ったあとにレンジを回してプローブを外すと、外したあとも新しいレンジが出る', async () => {
+    const h = await powered();
+    h.send({ type: 'tester', action: { type: 'set-mode', mode: 'DCV' } });
+    h.send({
+      type: 'tester',
+      action: { type: 'place-probe', probe: 'black', terminal: toTerminalId('N.1') },
+    });
+    h.send({
+      type: 'tester',
+      action: { type: 'place-probe', probe: 'red', terminal: toTerminalId('P.1') },
+    });
+    h.advance(100);
+    expect(h.snapshots.at(-1)?.tester.mode).toBe('DCV');
+
+    // 実測を挟まずにΩへ回し、赤プローブを離す（測れなくなる）
+    h.send({ type: 'tester', action: { type: 'set-mode', mode: 'OHM' } });
+    h.send({
+      type: 'tester',
+      action: { type: 'place-probe', probe: 'red', terminal: undefined },
+    });
+    h.advance(100);
+
+    expect(h.snapshots.at(-1)?.tester.mode).toBe('OHM');
+    expect(h.snapshots.at(-1)?.tester.display).toBe('----');
+  });
+});
+
+describe('実測の間引き（§9.3 前提D）', () => {
+  it('つまみOFFのままなら1秒回しても1度も測らない', async () => {
+    const h = await powered();
+    measured.step = 0;
+    measured.read = 0;
+    h.advance(1000);
+    expect(measured.step + measured.read).toBe(0);
+  });
+
+  it('プローブが片方だけなら1秒回しても1度も測らない', async () => {
+    const h = await powered();
+    h.send({ type: 'tester', action: { type: 'set-mode', mode: 'DCV' } });
+    h.send({
+      type: 'tester',
+      action: { type: 'place-probe', probe: 'black', terminal: toTerminalId('N.1') },
+    });
+    h.advance(100);
+    measured.step = 0;
+    measured.read = 0;
+    h.advance(1000);
+    expect(measured.step + measured.read).toBe(0);
+  });
+
+  it('両プローブ・アナログDCVでも1秒あたり30回までしか測らない', async () => {
+    const h = await powered();
+    h.send({ type: 'tester', action: { type: 'set-kind', kind: 'analog' } });
+    h.send({ type: 'tester', action: { type: 'set-mode', mode: 'DCV' } });
+    h.send({ type: 'tester', action: { type: 'set-volt-range', range: 250 } });
+    h.send({
+      type: 'tester',
+      action: { type: 'place-probe', probe: 'black', terminal: toTerminalId('N.1') },
+    });
+    h.send({
+      type: 'tester',
+      action: { type: 'place-probe', probe: 'red', terminal: toTerminalId('P.1') },
+    });
+    h.advance(100);
+    measured.step = 0;
+    measured.read = 0;
+    h.advance(1000);
+
+    // 毎tick（100回）ではなくスナップショット間隔（33ms）ごと
+    expect(measured.step).toBeGreaterThan(0);
+    expect(measured.step + measured.read).toBeLessThanOrEqual(30);
+  });
+
+  it('知らないテスター操作は無視してスナップショットを流し続ける', async () => {
+    const h = await powered();
+    const before = h.snapshots.length;
+    h.send({ type: 'tester', action: { type: 'set-bogus' } } as unknown as SimCommand);
+    h.advance(200);
+
+    expect(h.errors).toEqual([]);
+    expect(h.snapshots.length).toBeGreaterThan(before);
   });
 });
