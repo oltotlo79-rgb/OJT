@@ -1,0 +1,164 @@
+/*
+ * タイムチャートの補助線と拡大表示（Task CHART-UX）。設計仕様 §7.7 / §8.3。
+ * 小さいチャートと拡大モーダルで同じ色を使い、拡大しても「同じ図の大きい版」に見えるようにする。
+ */
+
+.frame {
+  position: relative;
+}
+
+/* チャート本体（クリック／Enter で拡大）。 */
+.opener {
+  cursor: zoom-in;
+  display: block;
+  border-radius: 4px;
+}
+
+.opener:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* 右上に小さく置く「拡大」ボタン（クリックできることの手がかり）。 */
+.enlargeButton {
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 1;
+  padding: 1px 6px;
+  font-size: 11px;
+  line-height: 1.4;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  color: var(--muted);
+}
+
+.enlargeButton:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+/* 目盛の縦線（薄いグリッド）。 */
+.tickLine {
+  stroke: var(--line);
+  stroke-width: 1;
+}
+
+.tickLabel {
+  fill: var(--muted);
+}
+
+/* 操作の変化点（押す・離す・タイマ設定）の破線。 */
+.edgeLine {
+  stroke: var(--muted);
+  stroke-dasharray: 4 4;
+  stroke-width: 1;
+  opacity: 0.55;
+}
+
+.markerLabel {
+  fill: var(--warn);
+}
+
+/* ポインタに追従するカーソル線と時刻チップ。 */
+.cursorLine {
+  stroke: var(--accent);
+  stroke-width: 1;
+  pointer-events: none;
+}
+
+.cursorChip {
+  fill: var(--panel-2);
+  stroke: var(--accent);
+  stroke-width: 1;
+  pointer-events: none;
+}
+
+.cursorText {
+  fill: var(--text);
+  pointer-events: none;
+}
+
+/* 差分のある区間（結果画面）。 */
+.mismatchBand {
+  fill: var(--ng);
+  opacity: 0.22;
+}
+
+/* 区切り（期待／実際の見出し行）。 */
+.groupLabel {
+  fill: var(--text);
+  font-weight: 700;
+}
+
+.groupRule {
+  stroke: var(--line);
+  stroke-width: 1;
+}
+
+/* ---- 拡大モーダル ---- */
+
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(8, 10, 14, 0.78);
+}
+
+.modal {
+  display: flex;
+  flex-direction: column;
+  width: 92vw;
+  height: 92vh;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.55);
+}
+
+.modalHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.modalTitle {
+  font-size: 16px;
+  margin: 0;
+}
+
+.closeButton {
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  color: var(--text);
+  font-size: 18px;
+  line-height: 1;
+  padding: 2px 10px;
+}
+
+.closeButton:hover {
+  border-color: var(--accent);
+}
+
+/* 拡大した図はモーダルの中央に置き、はみ出すときだけ縮める（縦長の積み上げ表示）。 */
+.modalBody {
+  flex: 1;
+  display: flex;
+  overflow: auto;
+  padding: 10px 14px 16px;
+}
+
+.modalChart {
+  margin: auto;
+  width: 100%;
+  height: auto;
+  max-height: 100%;
+}

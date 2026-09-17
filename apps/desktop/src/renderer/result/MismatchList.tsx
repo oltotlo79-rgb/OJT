@@ -1,6 +1,7 @@
 import type { Mismatch } from '@ojt/circuit-sim';
 import type { JSX } from 'react';
 import { JA, signalLabel } from '../i18n/ja.js';
+import { timeReadout } from '../panels/chart-scale.js';
 import styles from './result.module.css';
 
 /**
@@ -8,9 +9,9 @@ import styles from './result.module.css';
  * 許容差を超えた遷移だけが `compareLogs()` から返ってくるので、そのまま並べる。
  */
 
-/** ミリ秒を `1.23 s` の形にする。 */
+/** ミリ秒を `1.23 s` の形にする（チャートのカーソル読みと同じ形。§7.7）。 */
 export function formatMs(ms: number): string {
-  return `${(ms / 1000).toFixed(2)} s`;
+  return timeReadout(ms);
 }
 
 /** 差分一覧。 */

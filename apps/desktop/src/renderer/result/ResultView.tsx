@@ -66,7 +66,11 @@ export function ResultView({
       )}
 
       <div className={styles.grid}>
-        <ChartOverlay expected={result.charts.expected} actual={result.charts.actual} />
+        <ChartOverlay
+          expected={result.charts.expected}
+          actual={result.charts.actual}
+          mismatches={result.mismatches}
+        />
         <MismatchList mismatches={result.mismatches} />
         <StaticCheckList checks={result.staticChecks} />
         <HazardList

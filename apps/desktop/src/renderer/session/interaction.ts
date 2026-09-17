@@ -91,17 +91,45 @@ export function isTypingTarget(target: unknown): boolean {
 }
 
 /**
+ * 開いているモーダル（タイムチャートの拡大表示など）の重なり数。§8.2 / §7.7
+ * モーダルは `document.body` へポータルで出すので、キー入力は窓口まで上がってくる。
+ * 盤のショートカットへ通してしまうと、拡大表示を Esc で閉じたつもりが電線の選択も解除される、
+ * `3` で後ろの3Dビューが「ソケット拡大」へ飛ぶ、といった取り違えが起きる。
+ */
+let modalLayers = 0;
+
+/**
+ * モーダルを1枚積む。返り値を呼ぶと下ろす（`useEffect` の後始末から呼ぶ）。
+ * 数で持つのは、モーダルの上にモーダルが出ても取りこぼさないため。
+ */
+export function pushModalLayer(): () => void {
+  modalLayers += 1;
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    modalLayers = Math.max(0, modalLayers - 1);
+  };
+}
+
+/** モーダルが開いているか。§8.2 */
+export function isModalOpen(): boolean {
+  return modalLayers > 0;
+}
+
+/**
  * 盤のショートカット（Esc / Delete / 1・2・3）を**無視すべき**キー入力か。§8.2
  *
  * タイマの設定秒を数値入力欄へ打ち込むと `3` で視点が「ソケット拡大」に飛び、
  * `Delete` で電線が消える、という取り違えが起きていた（レビュー指摘）。
- * 入力欄に宛てられたキーと、IME の変換中（`isComposing`）は盤へ通さない。
+ * 入力欄に宛てられたキーと、IME の変換中（`isComposing`）、
+ * そしてモーダルが開いているあいだ（`isModalOpen()`）は盤へ通さない。
  */
 export function shouldIgnoreShortcut(event: {
   target: unknown;
   isComposing?: boolean | undefined;
 }): boolean {
-  return event.isComposing === true || isTypingTarget(event.target);
+  return isModalOpen() || event.isComposing === true || isTypingTarget(event.target);
 }
 
 /**

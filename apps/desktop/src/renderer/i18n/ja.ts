@@ -200,6 +200,16 @@ export const JA = {
     forbidden:
       'タイマの接点で自分のコイルを切る回路は実機では動作が不安定になります（リレーを介してください）。',
   },
+  /** タイムチャートの拡大表示と縦の補助線（Task CHART-UX）。§7.7 / §8.1 / §8.3 */
+  timeChart: {
+    enlarge: '拡大',
+    /** 拡大できることの案内（チャート本体の読み上げ名に添える）。 */
+    openHint: 'クリックまたはEnterで拡大表示',
+    close: '閉じる',
+    /** 拡大表示で積み上げる2段の見出し。 */
+    expected: '期待（模範）',
+    actual: '実際（訓練者）',
+  },
   hazard: {
     'ohm-on-live': '通電中のΩ／導通測定',
     'range-exceeded': 'レンジ超過',
@@ -348,6 +358,16 @@ export function elapsedSummaryText(
 export function droppedTicksLog(ticks: number, occurrences: number = 1): string {
   const base = `ウィンドウが隠れていた間の ${ticks} tick を省略しました`;
   return occurrences <= 1 ? base : `${base}（${occurrences} 回）`;
+}
+
+/** 拡大できるチャート本体の読み上げ名（`タイムチャート（仕様）: クリックまたはEnterで拡大表示`）。§7.7 */
+export function chartOpenerLabel(title: string): string {
+  return `${title}: ${JA.timeChart.openHint}`;
+}
+
+/** 「拡大」ボタンの読み上げ名（`タイムチャート（仕様）を拡大`）。§7.7 */
+export function chartEnlargeLabel(title: string): string {
+  return `${title}を${JA.timeChart.enlarge}`;
 }
 
 /** 作業ファイルの課題が課題一覧に無い。§12.3 */

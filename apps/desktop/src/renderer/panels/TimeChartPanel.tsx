@@ -1,42 +1,45 @@
 import type { TimeChart, TimeChartSegment, TimeChartSignalSpec } from '@ojt/content';
-import type { JSX } from 'react';
+import { useMemo, type JSX } from 'react';
 import { JA } from '../i18n/ja.js';
+import {
+  edgeTimes,
+  operationEdgeTimes,
+  SMALL_GEOMETRY,
+  type ChartGeometry,
+} from './chart-scale.js';
+import { EnlargeableChart, wavePoints, type ChartFigure } from './TimeChartView.js';
 import styles from './panels.module.css';
 
 /**
  * タイムチャート（仕様＋ライブ実測）。設計仕様 §7.7 / §8.1 / §8.2。
  * 上段に入力（PB）、下段に出力（PL／BZ）を並べる。SVGで描き、結果画面の重ね表示
  * （`ChartOverlay`）も同じ `waveformPoints()` を使う。
+ *
+ * 描画そのもの（縦の補助線・カーソル線・クリックで拡大）は `TimeChartView.tsx` が持つ。
+ * ここは「信号ログをチャートの材料にする」側の責務だけを残す。
  */
 
 /** 1信号ぶんの描画高さ[px]。 */
-export const ROW_HEIGHT = 22;
+export const ROW_HEIGHT = SMALL_GEOMETRY.rowHeight;
 /** 波形の振幅[px]。 */
-export const ROW_AMPLITUDE = 12;
+export const ROW_AMPLITUDE = SMALL_GEOMETRY.amplitude;
 /** 左のラベル幅[px]。 */
-export const LABEL_WIDTH = 92;
+export const LABEL_WIDTH = SMALL_GEOMETRY.labelWidth;
 /** 描画領域の幅[px]。 */
-export const PLOT_WIDTH = 300;
+export const PLOT_WIDTH = SMALL_GEOMETRY.plotWidth;
 
 /**
  * 区間列を SVG の `points` 文字列にする純粋関数。§7.7
  * `value` が真なら上（`baseY - ROW_AMPLITUDE`）、偽なら下（`baseY`）を通る矩形波。
+ * 寸法を渡さなければ小さいチャートの寸法で描く（従来どおり）。
  */
 export function waveformPoints(
   segments: readonly TimeChartSegment[],
   durationMs: number,
   baseY: number,
+  geom: ChartGeometry = SMALL_GEOMETRY,
 ): string {
-  if (durationMs <= 0) return '';
-  const x = (ms: number): number =>
-    LABEL_WIDTH + (Math.min(ms, durationMs) / durationMs) * PLOT_WIDTH;
-  const y = (value: boolean): number => (value ? baseY - ROW_AMPLITUDE : baseY);
-  const out: string[] = [];
-  for (const segment of segments) {
-    out.push(`${x(segment.fromMs).toFixed(1)},${y(segment.value).toFixed(1)}`);
-    out.push(`${x(segment.toMs).toFixed(1)},${y(segment.value).toFixed(1)}`);
-  }
-  return out.join(' ');
+  return wavePoints(segments, durationMs, baseY, geom);
 }
 
 /**
@@ -80,58 +83,41 @@ export function liveChart(
   };
 }
 
-/** タイムチャート1枚のSVG。 */
-export function TimeChartSvg({ chart, title }: { chart: TimeChart; title: string }): JSX.Element {
-  const height = chart.signals.length * ROW_HEIGHT + 14;
-  const width = LABEL_WIDTH + PLOT_WIDTH + 8;
+/** チャート1枚ぶんの描画材料にする（縦の補助線と吸い付き候補もここで決まる）。§7.7 */
+export function chartFigure(chart: TimeChart, waveClassName: string): ChartFigure {
+  return {
+    durationMs: chart.durationMs,
+    markers: chart.markers,
+    edges: operationEdgeTimes(chart),
+    snaps: edgeTimes(chart),
+    rows: chart.signals.map((signal) => ({
+      key: signal.name,
+      label: signal.label,
+      waves: [
+        {
+          key: 'value',
+          className: waveClassName,
+          segments: signal.segments,
+          durationMs: chart.durationMs,
+        },
+      ],
+    })),
+  };
+}
+
+/** タイムチャート1枚（クリックで拡大できる）。 */
+export function TimeChartSvg({
+  chart,
+  title,
+  testId,
+}: {
+  chart: TimeChart;
+  title: string;
+  testId?: string | undefined;
+}): JSX.Element {
+  const figure = useMemo(() => chartFigure(chart, styles.chartLine ?? ''), [chart]);
   return (
-    <svg
-      className={styles.chart}
-      viewBox={`0 0 ${width} ${height}`}
-      role="img"
-      aria-label={title}
-      preserveAspectRatio="xMinYMin meet"
-    >
-      {chart.signals.map((signal, index) => {
-        const baseY = (index + 1) * ROW_HEIGHT;
-        return (
-          <g key={signal.name}>
-            <text className={styles.chartRowLabel} x={0} y={baseY} dominantBaseline="middle">
-              {signal.label}
-            </text>
-            <line
-              className={styles.chartAxis}
-              x1={LABEL_WIDTH}
-              y1={baseY + 2}
-              x2={LABEL_WIDTH + PLOT_WIDTH}
-              y2={baseY + 2}
-            />
-            <polyline
-              className={styles.chartLine}
-              points={waveformPoints(signal.segments, chart.durationMs, baseY)}
-            />
-          </g>
-        );
-      })}
-      {chart.markers.map((marker) => (
-        <g key={`${marker.label}-${marker.tMs}`}>
-          <line
-            className={styles.chartMarker}
-            x1={LABEL_WIDTH + (marker.tMs / chart.durationMs) * PLOT_WIDTH}
-            y1={4}
-            x2={LABEL_WIDTH + (marker.tMs / chart.durationMs) * PLOT_WIDTH}
-            y2={height - 10}
-          />
-          <text
-            className={styles.chartRowLabel}
-            x={LABEL_WIDTH + (marker.tMs / chart.durationMs) * PLOT_WIDTH + 2}
-            y={height - 2}
-          >
-            {marker.label}
-          </text>
-        </g>
-      ))}
-    </svg>
+    <EnlargeableChart title={title} figure={figure} testId={testId} smallClassName={styles.chart} />
   );
 }
 
@@ -140,7 +126,7 @@ export function TimeChartPanel({ chart }: { chart: TimeChart }): JSX.Element {
   return (
     <section className={styles.panel}>
       <h2 className={styles.panelTitle}>{JA.session.chart}</h2>
-      <TimeChartSvg chart={chart} title={JA.session.chart} />
+      <TimeChartSvg chart={chart} title={JA.session.chart} testId="chart-spec" />
     </section>
   );
 }
