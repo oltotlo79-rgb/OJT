@@ -1,5 +1,6 @@
 import type { RoutingErrorReason } from '@ojt/board-model';
 import type { HazardKind, MismatchReason } from '@ojt/circuit-sim';
+import type { FaultReportKind } from '@ojt/content';
 import { MSG } from '../../shared/messages.js';
 import type { ProbeSide } from '../app/store-types.js';
 
@@ -245,6 +246,38 @@ export const JA = {
     /** 赤PBを押したままΩを当てると危険操作になる、の注意。§9.1 測定1 */
     ohmSafeNote: '赤PB（PB4）を離していれば、通電したままでもコイル抵抗を安全に測れます',
   },
+  /** モードC2（回路点検・修復）。§9.2 */
+  inspectRepair: {
+    reports: '指摘一覧',
+    reportCount: '指摘',
+    /** 指摘の登録を促す案内。§9.2 */
+    pickHint: '3D盤の電線・端子・部品をクリックして故障の種別を選びます',
+    /** 種別ポップオーバーの見出し。 */
+    chooseKind: '故障の種別を選ぶ',
+    cancel: '取消',
+    remove: '取消',
+    repair: '修復',
+    addedWires: '追加した白線',
+    removedWires: '外した青線',
+    /** 部品交換。§9.2 */
+    replace: '交換',
+    replaced: '交換しました',
+    parts: '装着部品',
+    none: 'なし',
+    /** ツールバーのモード。§8.1 */
+    toolMode: '指摘',
+    /** 指摘が重複したとき。 */
+    duplicate: '同じ指摘が既に登録されています',
+    /** 結果画面の見出し。§9.2 判定① */
+    matched: '言い当てた故障',
+    missed: '見逃し',
+    extra: '過剰指摘',
+    modifications: '改造（故障箇所でない青線の削除）',
+    noModification: '改造はありません。',
+    terminal: '端子',
+    site: '故障箇所',
+    reportKind: '指摘した種別',
+  },
   result: {
     title: '判定結果',
     passed: '合格',
@@ -310,6 +343,13 @@ export const JA = {
     extra: '余分な遷移',
     'unknown-signal': '比較対象の信号が模範回路に無い',
   } satisfies Record<MismatchReason, string>,
+  /** 指摘の種別（`FaultReportKind`）。§9.2 */
+  reportKind: {
+    'wire-open': '断線',
+    'wire-missing': '未配線',
+    'wire-misrouted': '誤配線',
+    'part-defect': '部品不良',
+  } satisfies Record<FaultReportKind, string>,
   /** 経路器の失敗理由（`RoutingError.reason`）。§6.6 */
   routeReason: {
     'invalid-terminal': '盤に無い端子です',
@@ -496,4 +536,13 @@ export function answeredText(answered: number, total: number): string {
 /** 部品トレイの1行（`p1（リレー）`）。§9.1 */
 export function trayPartLabel(partId: string, isTimer: boolean): string {
   return `${partId}（${isTimer ? JA.session.timer : JA.session.relay}）`;
+}
+
+/** 指摘の対象の表示（`電線 sw-003` / `端子 CR1.13` / `部品 CR2`）。§9.2 */
+export function reportTargetLabel(
+  target: { wireId: string } | { partId: string } | { terminalId: string },
+): string {
+  if ('wireId' in target) return `${JA.session.wires} ${target.wireId}`;
+  if ('terminalId' in target) return `${JA.inspectRepair.terminal} ${target.terminalId}`;
+  return `${JA.session.parts} ${target.partId}`;
 }

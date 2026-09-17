@@ -1,0 +1,60 @@
+import type { SocketId } from '@ojt/board-model';
+import type { JSX } from 'react';
+import { JA, mountedPartLabel } from '../i18n/ja.js';
+import styles from './tester.module.css';
+
+/** 装着済み部品1個（交換の対象）。 */
+export interface MountedPartRow {
+  socketId: SocketId;
+  /** 役割ID（`CR1` 等）。指摘と部品交換はこのIDで指す。§6.4 */
+  partId: string;
+  isTimer: boolean;
+}
+
+/**
+ * モードC2の修復パネル。設計仕様 §9.2。
+ *
+ * 追加した白線と外した青線を**事実として**並べるだけで、「その削除は改造か」は出さない。
+ * §9.2 が「削除の可否をその場で判定すると答えが漏れるため警告は出さず、判定時に
+ * 『故障箇所でない青線を削除した本数』を改造として結果に計上する」と定めているためである。
+ */
+export function RepairPanel({
+  addedWires,
+  removedWires,
+  mountedParts,
+  onReplacePart,
+}: {
+  addedWires: readonly string[];
+  removedWires: readonly string[];
+  mountedParts: readonly MountedPartRow[];
+  onReplacePart: (socketId: SocketId, partId: string) => void;
+}): JSX.Element {
+  return (
+    <section className={styles.panel} data-testid="repair-panel">
+      <h2 className={styles.title}>{JA.inspectRepair.repair}</h2>
+      <p className={styles.label}>{JA.inspectRepair.addedWires}</p>
+      <p className={styles.reportTarget} data-testid="added-wires">
+        {addedWires.length === 0 ? JA.inspectRepair.none : addedWires.join(' / ')}
+      </p>
+      <p className={styles.label}>{JA.inspectRepair.removedWires}</p>
+      <p className={styles.reportTarget} data-testid="removed-wires">
+        {removedWires.length === 0 ? JA.inspectRepair.none : removedWires.join(' / ')}
+      </p>
+      <p className={styles.label}>{JA.inspectRepair.parts}</p>
+      {mountedParts.map((part) => (
+        <div key={part.partId} className={styles.trayRow}>
+          <span className={styles.trayName}>{mountedPartLabel(part.partId, part.isTimer)}</span>
+          <button
+            type="button"
+            data-testid={`replace-${part.partId}`}
+            onClick={() => {
+              onReplacePart(part.socketId, part.partId);
+            }}
+          >
+            {JA.inspectRepair.replace}
+          </button>
+        </div>
+      ))}
+    </section>
+  );
+}
