@@ -10,6 +10,7 @@ import {
   SMALL_GEOMETRY,
   tickLabel,
   tickPositions,
+  timeReadout,
   xToMs,
 } from '../src/renderer/panels/chart-scale.js';
 
@@ -67,6 +68,28 @@ describe('niceTickStep', () => {
   it('長さが0以下でも刻みは正の値', () => {
     expect(niceTickStep(0, 12)).toBeGreaterThan(0);
   });
+
+  it('レビューア指定の対応表（区間長 → 刻み）', () => {
+    const table: ReadonlyArray<[number, number]> = [
+      [300, 50],
+      [1000, 100],
+      [5000, 500],
+      [12000, 2000],
+      [47000, 5000],
+      [600000, 100000],
+    ];
+    for (const [durationMs, expected] of table) {
+      expect(niceTickStep(durationMs)).toBe(expected);
+    }
+  });
+
+  it('広く区間長を振っても目盛は5〜12本に収まる', () => {
+    for (let d = 100; d <= 1_200_000; d = Math.round(d * 1.07) + 1) {
+      const count = tickPositions(d).length;
+      expect(count).toBeGreaterThanOrEqual(5);
+      expect(count).toBeLessThanOrEqual(12);
+    }
+  });
 });
 
 describe('tickPositions', () => {
@@ -93,6 +116,22 @@ describe('tickLabel', () => {
 
   it('刻みが0.1秒未満なら小数2桁にする', () => {
     expect(tickLabel(50, 10)).toBe('0.05 s');
+  });
+});
+
+describe('timeReadout', () => {
+  it('レビューア指定の対応表（ms → 表示）', () => {
+    const table: ReadonlyArray<[number, string]> = [
+      [0, '0.00 s'],
+      [5, '0.01 s'],
+      [995, '0.99 s'],
+      [1000, '1.00 s'],
+      [1234, '1.23 s'],
+      [61000, '61.00 s'],
+    ];
+    for (const [tMs, expected] of table) {
+      expect(timeReadout(tMs)).toBe(expected);
+    }
   });
 });
 
