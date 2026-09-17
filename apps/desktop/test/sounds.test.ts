@@ -22,6 +22,7 @@ function snapshot(partial: Partial<SoundSnapshot> = {}): SoundSnapshot {
     timers: {},
     lamps: {},
     hazardDelta: [],
+    tester: { conductive: false },
     ...partial,
   };
 }
@@ -58,6 +59,18 @@ describe('soundsForSnapshot', () => {
   it('BZ が既に lit なら鳴らし続けない', () => {
     const previous = snapshot({ lamps: { BZ: { level: 'lit' } } });
     const next = snapshot({ lamps: { BZ: { level: 'lit' } } });
+    expect(soundsForSnapshot(previous, next)).toEqual([]);
+  });
+
+  it('テスターの導通が始まったら buzzer を鳴らす（§5.5 / §15）', () => {
+    const previous = snapshot({ tester: { conductive: false } });
+    const next = snapshot({ tester: { conductive: true } });
+    expect(soundsForSnapshot(previous, next)).toEqual(['buzzer']);
+  });
+
+  it('導通が続いている間は鳴らし続けない', () => {
+    const previous = snapshot({ tester: { conductive: true } });
+    const next = snapshot({ tester: { conductive: true } });
     expect(soundsForSnapshot(previous, next)).toEqual([]);
   });
 

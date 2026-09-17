@@ -65,6 +65,15 @@ export const LOCKED_RING_COLOR = '#8A9099';
 /** 盤面の穴（既設配線が裏へ潜る所）の色。§6.5 */
 export const PANEL_HOLE_COLOR = '#14171B';
 
+/** テスターのプローブの色（黒／赤）。§9.3 */
+export const PROBE_COLORS: Readonly<Record<'black' | 'red', string>> = {
+  black: '#15181C',
+  red: '#D6262B',
+};
+
+/** 回路図と連動して光らせる端子の色（§9.2 の連動ハイライト）。 */
+export const HIGHLIGHT_COLOR = '#FFE066';
+
 /** ランプの発光強度（点灯／暗点灯／消灯）。§5.3.4 */
 export const LAMP_EMISSIVE: Readonly<Record<string, number>> = {
   lit: 1.6,

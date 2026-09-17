@@ -115,6 +115,8 @@ export interface SoundSnapshot {
   timers: Readonly<Record<string, { timedOut: boolean }>>;
   lamps: Readonly<Record<string, { level: string }>>;
   hazardDelta: readonly unknown[];
+  /** テスターの導通レンジがブザーを鳴らしているか。§5.5 / §15 */
+  tester: { conductive: boolean };
 }
 
 /**
@@ -139,6 +141,8 @@ export function soundsForSnapshot(
     if (previous.lamps['BZ']?.level !== 'lit' && next.lamps['BZ']?.level === 'lit') {
       out.push('buzzer');
     }
+    // テスターの導通ブザー（§15）。鳴り始めた tick だけ鳴らす（導通が続く間ずっと鳴らさない）
+    if (!previous.tester.conductive && next.tester.conductive) out.push('buzzer');
   }
   if (next.hazardDelta.length > 0) out.push('warning');
   return out;

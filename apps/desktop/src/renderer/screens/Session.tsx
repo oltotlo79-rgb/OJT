@@ -23,6 +23,7 @@ import { PowerControls } from '../panels/PowerControls.js';
 import { ProblemPanel } from '../panels/ProblemPanel.js';
 import { liveChart, TimeChartPanel, TimeChartSvg } from '../panels/TimeChartPanel.js';
 import { Toolbar } from '../panels/Toolbar.js';
+import { WarningBanner } from '../panels/WarningBanner.js';
 import { SchematicSvg } from '../schematic/SchematicSvg.js';
 import {
   cloneSession,
@@ -445,6 +446,7 @@ export function Session(): JSX.Element {
   return (
     <>
       <SoundEffects />
+      <WarningBanner />
       <Toolbar
         mode={mode}
         wireColor={wireColor}

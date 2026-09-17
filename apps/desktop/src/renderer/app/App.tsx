@@ -144,7 +144,10 @@ export function App(): JSX.Element {
    */
   useEffect(() => {
     const id = setInterval(() => {
-      useStore.getState().expireToasts();
+      const store = useStore.getState();
+      store.expireToasts();
+      // 危険操作の帯も同じ間引きで畳む（§5.6。期限が来ていなければ何もしない）
+      store.dismissHazard(Date.now());
     }, TOAST_SWEEP_MS);
     return () => {
       clearInterval(id);

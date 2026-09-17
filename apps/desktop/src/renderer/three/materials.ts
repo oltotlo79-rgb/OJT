@@ -42,9 +42,15 @@ export function sharedMaterial(
     roughness?: number;
     emissive?: string;
     emissiveIntensity?: number;
+    opacity?: number;
+    transparent?: boolean;
   } = {},
 ): MeshStandardMaterial {
-  const key = `${color}|${options.metalness ?? 0.1}|${options.roughness ?? 0.7}|${options.emissive ?? ''}|${options.emissiveIntensity ?? 0}`;
+  /*
+   * `opacity` / `transparent` もキャッシュ鍵に混ぜる（レビュー指摘 I5）。混ぜないと、同じ色で
+   * 不透明と半透明の両方を要求したときに、先に作られた方のマテリアルを使い回してしまう。
+   */
+  const key = `${color}|${options.metalness ?? 0.1}|${options.roughness ?? 0.7}|${options.emissive ?? ''}|${options.emissiveIntensity ?? 0}|${options.opacity ?? 1}|${options.transparent === true ? 1 : 0}`;
   const cached = materialCache.get(key);
   if (cached !== undefined) return cached;
   const material = new MeshStandardMaterial({
@@ -53,6 +59,8 @@ export function sharedMaterial(
     roughness: options.roughness ?? 0.7,
     ...(options.emissive === undefined ? {} : { emissive: options.emissive }),
     emissiveIntensity: options.emissiveIntensity ?? 0,
+    opacity: options.opacity ?? 1,
+    transparent: options.transparent ?? false,
   });
   materialCache.set(key, material);
   return material;

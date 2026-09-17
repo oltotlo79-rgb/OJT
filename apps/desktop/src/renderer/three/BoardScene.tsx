@@ -50,6 +50,7 @@ import { FixedWires } from './FixedWires.js';
 import { Fixture, FIXTURES } from './Fixtures.js';
 import { Lamp } from './Lamp.js';
 import { MountedPart } from './MountedPart.js';
+import { ProbeMarkers } from './ProbeMarkers.js';
 import { PushButton } from './PushButton.js';
 import { Socket } from './Socket.js';
 import { TerminalBlock } from './TerminalBlock.js';
@@ -191,6 +192,10 @@ export function visualSignature(state: AppState): string {
     state.hoveredTerminal ?? '',
     state.pendingTerminal ?? '',
     state.selectedWire ?? '',
+    // プローブの位置とハイライトは絵に効くので署名に入れる（§9.3 / §9.2）
+    `${state.tester.black ?? ''}>${state.tester.red ?? ''}`,
+    state.highlight.terminals.join(','),
+    state.highlight.wireIds.join(','),
     state.mode,
     state.camera,
     // 同じプリセットを押し直しても視点は動く（`cameraNonce`）ので、署名にも入れる
@@ -273,6 +278,10 @@ function BoardContents({
   const hovered = useStore((s) => s.hoveredTerminal);
   const pending = useStore((s) => s.pendingTerminal);
   const selectedWire = useStore((s) => s.selectedWire);
+  const probeBlack = useStore((s) => s.tester.black);
+  const probeRed = useStore((s) => s.tester.red);
+  const highlightTerminals = useStore((s) => s.highlight.terminals);
+  const highlightWires = useStore((s) => s.highlight.wireIds);
   const mode = useStore((s) => s.mode);
   const camera = useStore((s) => s.camera);
   const cameraNonce = useStore((s) => s.cameraNonce);
@@ -535,12 +544,25 @@ function BoardContents({
               route={route}
               color={wire.color}
               locked={wire.locked}
-              selected={selectedWire === route.wireId}
-              pickable={mode === 'delete'}
+              /*
+               * 連動ハイライト（§9.2）は電線の「選択中」表示を流用する。強調の描き方を
+               * 2つ持つと色の優先順位を `wireBodyColor()` の外で決めることになり、
+               * どちらが勝つかがファイルをまたいで散らばる。
+               */
+              selected={selectedWire === route.wireId || highlightWires.includes(route.wireId)}
+              pickable={mode === 'delete' || mode === 'report'}
               onPick={pickWire}
             />
           );
         })}
+
+        {session === undefined ? null : (
+          <ProbeMarkers
+            probes={{ black: probeBlack, red: probeRed }}
+            highlightTerminals={highlightTerminals}
+            roles={session.socketRoles}
+          />
+        )}
       </group>
 
       {/*
