@@ -74,9 +74,9 @@
 | `packages/content/src/schema/plc.ts` | モードD課題の本体スキーマ（`plc` / `io` / `referenceLadder` / `wiringRequired`）。§7.6 |
 | `packages/content/src/schema/judge.ts` | 静的チェックIDに `twoStage` / `plcPowerIndependent` / `ioAssignment` を足す（変更）。§7.4 |
 | `packages/content/src/schema/index.ts` | 判別共用体にモードDを足し `UNSUPPORTED_MODES` を空にする、JSON Schema 再生成（変更） |
+| `packages/content/src/plc-reference.ts` | 既定I/O割付、模範配線の生成（渡り配線）、模範セッションの構築。§7.6 / §10.2 / §11.3 |
 | `packages/content/src/plc-io.ts` | `Simulation` を `PlcIoPort` として見せる橋渡しと、1 tick ＝ 1 スキャンの結合。§10.4 |
 | `packages/content/src/runner.ts` | `RunOptions.beforeTick` を足す（変更）。§10.4 |
-| `packages/content/src/plc-reference.ts` | 既定I/O割付、模範配線の生成（渡り配線）、模範セッションの構築。§7.6 / §10.2 / §11.3 |
 | `packages/content/src/plc-static-checks.ts` | `twoStage` / `plcPowerIndependent` / `ioAssignment` と結線方式の判定。§7.4 / §10.2 / §10.8 |
 | `packages/content/src/static-checks.ts` | 上記3件を `runStaticChecks` に組み込む（変更） |
 | `packages/content/src/judge-plc.ts` | `judgePlc()` / `judgePlcReference()` と結果型。§10.8 |
@@ -99,7 +99,7 @@
 | C | 7 | `@ojt/board-model`（FX5U・コンセント・盤の派生） | Opus | B |
 | D | 8 → 9 → 10 | `@ojt/plc-dialects` | 8=Sonnet / 9=Opus / 10=Opus | A |
 | E | 11 → 12 → 13 | `@ojt/content`（スキーマ） | 11=Sonnet / 12=Opus / 13=Sonnet | A |
-| F | 14 → 15 → 16 → 17 | `@ojt/content`（結合・模範配線・静的チェック・判定） | すべて Opus | B・C・E |
+| F | 14 → 15 → 16 → 17 | `@ojt/content`（模範配線・スキャン結合・静的チェック・判定） | すべて Opus | B・C・E |
 | G | 18 → 19 | `@ojt/content`（内蔵課題8題） | どちらも Opus | F |
 | H | 20 | 全体（公開APIと検証） | Sonnet | A〜G すべて |
 
@@ -6073,313 +6073,7 @@ git commit --only -m "feat(content): accept mode D problems and retire the unsup
 Expected: `@ojt/content` は着手時のベースライン（前提#14。目安442件）＋新規ぶんが通り、desktop の `content-loader.test.ts` も通る。**`apps/desktop` の他のファイルをコミットに含めないこと**（Plan 2B が並行作業中。前提#2）。
 
 ---
-## Task 14: `plc-io.ts` — スキャンと tick の結合
-
-**Files:**
-- Create: `packages/content/src/plc-io.ts`
-- Modify: `packages/content/src/runner.ts`
-- Test: `packages/content/test/plc-io.test.ts`
-
-§10.4 の「1 tick ＝ 1 スキャン」を実装する（決定表#4）。`runner.ts` に `beforeTick` フックと「既にあるシミュレーションを走らせる」入口を足し、`plc-io.ts` が `Simulation` を `PlcIoPort` として見せる。
-
-| 決めること | 本タスクの実装 |
-|---|---|
-| 順序 | 1 tick の先頭で `runtime.scan()`（①`sim.plcInputs()` を読む ②ラダー実行 ③`sim.setPlcOutputs()`）→ そのあと `sim.step()` が回路を解く |
-| 入力の遅れ | `plcInputs()` が返すのは**直前の tick の解**に基づく値。実機のスキャンと同じ1スキャンぶんの遅れで、許容差200msに対して十分小さい |
-| 部品ID | 既定は `@ojt/board-model` の `PLC_PART_ID`（`'PLC'`）。テストのために差し替えられる |
-| 出力点数 | 既定はPLC本体の出力点数（`outputCount`）。ラダーが使う番号より多くても、使っていない点は常にOFFで書かれる |
-
-- [ ] **Step 1: 失敗するテストを書く**
-
-`packages/content/test/plc-io.test.ts`:
-
-```ts
-import { JIPM_BOARD, PLC_UNIT_FX5U, withPlcUnit } from '@ojt/board-model';
-import { Simulation, TICK_MS } from '@ojt/circuit-sim';
-import { compile, endNetwork, hline, IR_COLS, network, no, out, program, X, Y, type Cell } from '@ojt/ladder-core';
-import { describe, expect, it } from 'vitest';
-import { createPlcCoupling, createSimulationIoPort, runPlcOperations } from '../src/plc-io.js';
-import { buildPlcReferenceSession } from '../src/plc-reference.js';
-import { PlcProblemSchema } from '../src/schema/plc.js';
-import { plcProblemJson } from './helpers/plc.js';
-
-function rung(...cells: Cell[]): Cell[] {
-  const row = [...cells];
-  const output = row.pop();
-  if (output === undefined) throw new Error('出力セルが要ります');
-  while (row.length < IR_COLS - 1) row.push(hline());
-  row.push(output);
-  return row;
-}
-
-const BOARD = withPlcUnit(JIPM_BOARD, PLC_UNIT_FX5U);
-
-/** 模範配線（Task 15）で組んだ盤とネットリスト。 */
-function reference() {
-  const problem = PlcProblemSchema.parse(plcProblemJson());
-  const built = buildPlcReferenceSession(problem, JIPM_BOARD);
-  if (!built.ok) throw new Error(JSON.stringify(built.errors));
-  return { problem, circuit: built.value };
-}
-
-describe('createSimulationIoPort', () => {
-  it('reads the simulation inputs and writes its outputs (§10.4)', () => {
-    const { circuit } = reference();
-    const sim = new Simulation(circuit.netlist);
-    sim.setBreaker(true);
-    sim.setSwitch(true);
-    sim.step();
-    const port = createSimulationIoPort(sim);
-    expect(port.readInputs()[0]).toBe(false);
-    sim.press('PB1');
-    sim.step();
-    expect(port.readInputs()[0]).toBe(true);
-    port.writeOutputs([true]);
-    sim.step();
-    expect(sim.state().plcs['PLC']?.outputs[0]).toBe(true);
-  });
-});
-
-describe('createPlcCoupling', () => {
-  it('runs exactly one scan per tick (§10.4)', () => {
-    const { circuit } = reference();
-    const sim = new Simulation(circuit.netlist);
-    const coupling = createPlcCoupling(sim, circuit.program);
-    sim.setBreaker(true);
-    sim.setSwitch(true);
-    for (let i = 0; i < 5; i += 1) {
-      coupling.beforeTick(sim, sim.tMs);
-      sim.step();
-    }
-    expect(coupling.runtime.scanCount).toBe(5);
-    expect(coupling.runtime.tMs).toBe(5 * TICK_MS);
-  });
-});
-
-describe('runPlcOperations', () => {
-  it('lights the lamp through the PLC, the relay and the two-stage wiring (§10.2 / §16 Phase 3 ③)', () => {
-    const { problem, circuit } = reference();
-    const result = runPlcOperations(circuit.netlist, circuit.program, problem.operations, {
-      durationMs: problem.durationMs,
-    });
-    const transitions = result.log.transitions('PL1');
-    expect(transitions.some((e) => e.value === true)).toBe(true);
-    // PB1 を押してから 3tick 以内（入力1スキャン遅れ＋コイル1tick＋接点1tick）で点く
-    const litMs = transitions.find((e) => e.value === true)?.tMs ?? -1;
-    expect(litMs).toBeGreaterThan(0);
-    expect(litMs).toBeLessThanOrEqual(4 * TICK_MS);
-    expect(result.runtime.scanCount).toBe(problem.durationMs / TICK_MS);
-  });
-
-  it('is deterministic (§5.2)', () => {
-    const { problem, circuit } = reference();
-    const once = runPlcOperations(circuit.netlist, circuit.program, problem.operations, {
-      durationMs: problem.durationMs,
-    }).log.entries();
-    const second = reference();
-    const twice = runPlcOperations(second.circuit.netlist, second.circuit.program, problem.operations, {
-      durationMs: problem.durationMs,
-    }).log.entries();
-    expect(once).toEqual(twice);
-  });
-
-  it('leaves the lamp dark when the ladder never turns the output on', () => {
-    const { problem, circuit } = reference();
-    const idle = compile(program(network('n1', [rung(no(X(1)), out(Y(1)))]), endNetwork()));
-    if (!idle.ok) throw new Error('変換に失敗しました');
-    const result = runPlcOperations(circuit.netlist, idle.program, problem.operations, {
-      durationMs: problem.durationMs,
-    });
-    expect(result.log.transitions('PL1').some((e) => e.value === true)).toBe(false);
-  });
-});
-```
-
-**注意:** このテストは Task 15 の `buildPlcReferenceSession()` を使う。**Task 15 を先に実装してもよい**（Task 14 と 15 は互いに独立ではないので、バッチFの中では 14 → 15 の順に着手し、14 のテストは 15 の完了後に GREEN になる、という進め方でもよい）。順番を入れ替えたくない場合は、Task 14 のテストでは模範配線の代わりに `packages/circuit-sim/test/plc-simulation.test.ts` と同じ手組みのベンチ（`createPlcUnit` ＋ 手配線のネットリスト）を使うこと。
-
-- [ ] **Step 2: RED を確認する**
-
-```powershell
-pnpm --filter @ojt/content exec vitest run test/plc-io.test.ts
-```
-
-Expected: 失敗。`Error: Failed to load url ../src/plc-io.js`。
-
-- [ ] **Step 3: `src/runner.ts` に `beforeTick` を足す**
-
-`RunOptions` に足す:
-
-```ts
-  /**
-   * 各 tick の先頭（操作の適用の後、`step()` の前）に呼ばれる。§10.4
-   * モードDでは PLC のスキャン（入力読込 → ラダー実行 → 出力書込）をここで回す。
-   */
-  beforeTick?: (simulation: Simulation, tMs: number) => void;
-```
-
-`runOperations()` を「シミュレーションを作る入口」と「走らせる本体」に割る:
-
-```ts
-export function runOperations(
-  netlist: Netlist,
-  operations: readonly Operation[],
-  options: RunOptions,
-): RunResult {
-  const simulation = new Simulation(netlist, {
-    tickMs: options.tickMs ?? TICK_MS,
-    ...(options.watch === undefined ? {} : { watch: options.watch }),
-  });
-  return runOperationsOn(simulation, operations, options);
-}
-
-/**
- * 既に作ったシミュレーションで操作列を再生する。§7.3
- * PLCのスキャンのように「シミュレーションを先に作ってから結線したいもの」があるときに使う（§10.4）。
- * `options.watch` はシミュレーション生成時にしか効かないのでここでは無視する。
- */
-export function runOperationsOn(
-  simulation: Simulation,
-  operations: readonly Operation[],
-  options: RunOptions,
-): RunResult {
-  const tickMs = options.tickMs ?? TICK_MS;
-  powerUp(simulation);
-
-  let cursor = 0;
-  let tMs = 0;
-  for (; tMs < options.durationMs; tMs += tickMs) {
-    for (let op = operations[cursor]; op !== undefined && op.t <= tMs; op = operations[cursor]) {
-      if (op.action === 'press') simulation.press(op.target);
-      else simulation.release(op.target);
-      cursor += 1;
-    }
-    options.beforeTick?.(simulation, tMs);
-    simulation.step(tickMs);
-  }
-
-  return {
-    simulation,
-    log: simulation.log,
-    events: simulation.events,
-    lastTickMs: Math.max(0, tMs - tickMs),
-  };
-}
-```
-
-- [ ] **Step 4: `src/plc-io.ts` を書く**
-
-```ts
-import { PLC_PART_ID } from '@ojt/board-model';
-import { TICK_MS, type Netlist, type Simulation } from '@ojt/circuit-sim';
-import {
-  createPlcRuntime,
-  type CompiledProgram,
-  type PlcIoPort,
-  type PlcRuntime,
-} from '@ojt/ladder-core';
-import { runOperationsOn, type RunOptions, type RunResult } from './runner.js';
-import type { Operation } from './schema/operations.js';
-
-/**
- * PLCランタイムと回路エンジンの結合。設計仕様 §10.4 / §4.2 / 決定表#4。
- *
- * `@ojt/ladder-core` は回路エンジンを知らず、`@ojt/circuit-sim` はラダーを知らない。両方を知って
- * いるのはこのパッケージだけなので、結合点はここ1か所である。1 tick の順序は
- * 「①入力読込 ②ネットワーク実行 ③出力書込 → ④回路を解く」。入力は直前の tick の解に基づく値
- * なので、実機のスキャンと同じく1スキャンぶん遅れる。
- */
-
-/** `Simulation` を `PlcIoPort` として見せる。§4.2 */
-export function createSimulationIoPort(sim: Simulation, partId: string = PLC_PART_ID): PlcIoPort {
-  return {
-    readInputs: () => sim.plcInputs(partId),
-    writeOutputs: (values) => {
-      sim.setPlcOutputs(partId, values);
-    },
-  };
-}
-
-/** 結合オプション。 */
-export interface PlcCouplingOptions {
-  /** PLC本体の部品ID。既定 `PLC`。 */
-  partId?: string;
-  /** 出力配列の長さ。既定はラダーが使う最大番号＋1。 */
-  outputCount?: number;
-  /** スキャン周期[ms]。既定は `TICK_MS`（10）。§10.4 */
-  scanMs?: number;
-}
-
-/** スキャンと tick の結合。 */
-export interface PlcCoupling {
-  runtime: PlcRuntime;
-  /** `runOperations` の `beforeTick` にそのまま渡せる関数。 */
-  beforeTick: (simulation: Simulation, tMs: number) => void;
-}
-
-/** シミュレーションとラダーを結ぶ。§10.4 */
-export function createPlcCoupling(
-  sim: Simulation,
-  program: CompiledProgram,
-  options: PlcCouplingOptions = {},
-): PlcCoupling {
-  const runtime = createPlcRuntime(program, {
-    io: createSimulationIoPort(sim, options.partId ?? PLC_PART_ID),
-    scanMs: options.scanMs ?? TICK_MS,
-    ...(options.outputCount === undefined ? {} : { outputCount: options.outputCount }),
-  });
-  return {
-    runtime,
-    beforeTick: () => {
-      runtime.scan();
-    },
-  };
-}
-
-/** モードDの再生オプション。 */
-export interface PlcRunOptions extends RunOptions, PlcCouplingOptions {}
-
-/** 再生結果（ランタイムの最終状態つき）。 */
-export interface PlcRunResult extends RunResult {
-  runtime: PlcRuntime;
-}
-
-/**
- * ラダー＋配線を操作列で再生する。§10.4 / §7.3
- * `runOperations()` と同じ規則（`t=0` で通電済み・10ms tick・決定論）で走り、
- * 各 tick の先頭で1スキャンずつラダーを実行する。
- */
-export function runPlcOperations(
-  netlist: Netlist,
-  program: CompiledProgram,
-  operations: readonly Operation[],
-  options: PlcRunOptions,
-): PlcRunResult {
-  const simulation = new Simulation(netlist, {
-    tickMs: options.tickMs ?? TICK_MS,
-    ...(options.watch === undefined ? {} : { watch: options.watch }),
-  });
-  const coupling = createPlcCoupling(simulation, program, options);
-  const result = runOperationsOn(simulation, operations, {
-    ...options,
-    beforeTick: coupling.beforeTick,
-  });
-  return { ...result, runtime: coupling.runtime };
-}
-```
-
-- [ ] **Step 5: GREEN を確認してコミットする**
-
-```powershell
-pnpm --filter @ojt/content exec vitest run test/plc-io.test.ts test/runner.test.ts
-git add packages/content
-git commit -m "feat(content): couple the PLC scan to the engine tick"
-```
-
-Expected: `test/plc-io.test.ts` が `Tests  5 passed (5)`、既存の `test/runner.test.ts` もそのまま通る（`beforeTick` を渡さない呼び出しは挙動が変わらない）。
-
----
-
-## Task 15: `plc-reference.ts` — 既定I/O割付から模範配線を組む
+## Task 14: `plc-reference.ts` — 既定I/O割付から模範配線を組む
 
 **Files:**
 - Create: `packages/content/src/plc-reference.ts`
@@ -6772,12 +6466,318 @@ export function buildPlcReferenceSession(
 - [ ] **Step 4: GREEN を確認してコミットする**
 
 ```powershell
-pnpm --filter @ojt/content exec vitest run test/plc-reference.test.ts test/plc-io.test.ts
+pnpm --filter @ojt/content exec vitest run test/plc-reference.test.ts
 git add packages/content
 git commit -m "feat(content): generate the mode D reference wiring from the I/O map"
 ```
 
-Expected: 両ファイルとも通る（`plc-reference` 7件、`plc-io` 5件）。**電線が25本にならない場合**は、鎖の組み方（どの端子を何番目に渡すか）ではなく**端子の本数上限**を先に疑うこと。`addWire` が `terminal-overload` で落ちていれば、その端子に既に2本（うち1本は §6.3 の既設配線）が来ている。
+Expected: `Tests  7 passed (7)`。**電線が25本にならない場合**は、鎖の組み方（どの端子を何番目に渡すか）ではなく**端子の本数上限**を先に疑うこと。`addWire` が `terminal-overload` で落ちていれば、その端子に既に2本（うち1本は §6.3 の既設配線）が来ている。
+
+---
+
+## Task 15: `plc-io.ts` — スキャンと tick の結合
+
+**Files:**
+- Create: `packages/content/src/plc-io.ts`
+- Modify: `packages/content/src/runner.ts`
+- Test: `packages/content/test/plc-io.test.ts`
+
+§10.4 の「1 tick ＝ 1 スキャン」を実装する（決定表#4）。`runner.ts` に `beforeTick` フックと「既にあるシミュレーションを走らせる」入口を足し、`plc-io.ts` が `Simulation` を `PlcIoPort` として見せる。
+
+| 決めること | 本タスクの実装 |
+|---|---|
+| 順序 | 1 tick の先頭で `runtime.scan()`（①`sim.plcInputs()` を読む ②ラダー実行 ③`sim.setPlcOutputs()`）→ そのあと `sim.step()` が回路を解く |
+| 入力の遅れ | `plcInputs()` が返すのは**直前の tick の解**に基づく値。実機のスキャンと同じ1スキャンぶんの遅れで、許容差200msに対して十分小さい |
+| 部品ID | 既定は `@ojt/board-model` の `PLC_PART_ID`（`'PLC'`）。テストのために差し替えられる |
+| 出力点数 | 既定はPLC本体の出力点数（`outputCount`）。ラダーが使う番号より多くても、使っていない点は常にOFFで書かれる |
+
+- [ ] **Step 1: 失敗するテストを書く**
+
+`packages/content/test/plc-io.test.ts`:
+
+```ts
+import { JIPM_BOARD, PLC_UNIT_FX5U, withPlcUnit } from '@ojt/board-model';
+import { Simulation, TICK_MS } from '@ojt/circuit-sim';
+import { compile, endNetwork, hline, IR_COLS, network, no, out, program, X, Y, type Cell } from '@ojt/ladder-core';
+import { describe, expect, it } from 'vitest';
+import { createPlcCoupling, createSimulationIoPort, runPlcOperations } from '../src/plc-io.js';
+import { buildPlcReferenceSession } from '../src/plc-reference.js';
+import { PlcProblemSchema } from '../src/schema/plc.js';
+import { plcProblemJson } from './helpers/plc.js';
+
+function rung(...cells: Cell[]): Cell[] {
+  const row = [...cells];
+  const output = row.pop();
+  if (output === undefined) throw new Error('出力セルが要ります');
+  while (row.length < IR_COLS - 1) row.push(hline());
+  row.push(output);
+  return row;
+}
+
+const BOARD = withPlcUnit(JIPM_BOARD, PLC_UNIT_FX5U);
+
+/** 模範配線（Task 14）で組んだ盤とネットリスト。 */
+function reference() {
+  const problem = PlcProblemSchema.parse(plcProblemJson());
+  const built = buildPlcReferenceSession(problem, JIPM_BOARD);
+  if (!built.ok) throw new Error(JSON.stringify(built.errors));
+  return { problem, circuit: built.value };
+}
+
+describe('createSimulationIoPort', () => {
+  it('reads the simulation inputs and writes its outputs (§10.4)', () => {
+    const { circuit } = reference();
+    const sim = new Simulation(circuit.netlist);
+    sim.setBreaker(true);
+    sim.setSwitch(true);
+    sim.step();
+    const port = createSimulationIoPort(sim);
+    expect(port.readInputs()[0]).toBe(false);
+    sim.press('PB1');
+    sim.step();
+    expect(port.readInputs()[0]).toBe(true);
+    port.writeOutputs([true]);
+    sim.step();
+    expect(sim.state().plcs['PLC']?.outputs[0]).toBe(true);
+  });
+});
+
+describe('createPlcCoupling', () => {
+  it('runs exactly one scan per tick (§10.4)', () => {
+    const { circuit } = reference();
+    const sim = new Simulation(circuit.netlist);
+    const coupling = createPlcCoupling(sim, circuit.program);
+    sim.setBreaker(true);
+    sim.setSwitch(true);
+    for (let i = 0; i < 5; i += 1) {
+      coupling.beforeTick(sim, sim.tMs);
+      sim.step();
+    }
+    expect(coupling.runtime.scanCount).toBe(5);
+    expect(coupling.runtime.tMs).toBe(5 * TICK_MS);
+  });
+});
+
+describe('runPlcOperations', () => {
+  it('lights the lamp through the PLC, the relay and the two-stage wiring (§10.2 / §16 Phase 3 ③)', () => {
+    const { problem, circuit } = reference();
+    const result = runPlcOperations(circuit.netlist, circuit.program, problem.operations, {
+      durationMs: problem.durationMs,
+    });
+    const transitions = result.log.transitions('PL1');
+    expect(transitions.some((e) => e.value === true)).toBe(true);
+    // PB1 を押してから 3tick 以内（入力1スキャン遅れ＋コイル1tick＋接点1tick）で点く
+    const litMs = transitions.find((e) => e.value === true)?.tMs ?? -1;
+    expect(litMs).toBeGreaterThan(0);
+    expect(litMs).toBeLessThanOrEqual(4 * TICK_MS);
+    expect(result.runtime.scanCount).toBe(problem.durationMs / TICK_MS);
+  });
+
+  it('is deterministic (§5.2)', () => {
+    const { problem, circuit } = reference();
+    const once = runPlcOperations(circuit.netlist, circuit.program, problem.operations, {
+      durationMs: problem.durationMs,
+    }).log.entries();
+    const second = reference();
+    const twice = runPlcOperations(second.circuit.netlist, second.circuit.program, problem.operations, {
+      durationMs: problem.durationMs,
+    }).log.entries();
+    expect(once).toEqual(twice);
+  });
+
+  it('leaves the lamp dark when the ladder never turns the output on', () => {
+    const { problem, circuit } = reference();
+    const idle = compile(program(network('n1', [rung(no(X(1)), out(Y(1)))]), endNetwork()));
+    if (!idle.ok) throw new Error('変換に失敗しました');
+    const result = runPlcOperations(circuit.netlist, idle.program, problem.operations, {
+      durationMs: problem.durationMs,
+    });
+    expect(result.log.transitions('PL1').some((e) => e.value === true)).toBe(false);
+  });
+});
+```
+
+**注意:** このテストは Task 14 の `buildPlcReferenceSession()`（模範配線）を使う。Task 14 を先に済ませているので前方参照は無い。
+
+- [ ] **Step 2: RED を確認する**
+
+```powershell
+pnpm --filter @ojt/content exec vitest run test/plc-io.test.ts
+```
+
+Expected: 失敗。`Error: Failed to load url ../src/plc-io.js`。
+
+- [ ] **Step 3: `src/runner.ts` に `beforeTick` を足す**
+
+`RunOptions` に足す:
+
+```ts
+  /**
+   * 各 tick の先頭（操作の適用の後、`step()` の前）に呼ばれる。§10.4
+   * モードDでは PLC のスキャン（入力読込 → ラダー実行 → 出力書込）をここで回す。
+   */
+  beforeTick?: (simulation: Simulation, tMs: number) => void;
+```
+
+`runOperations()` を「シミュレーションを作る入口」と「走らせる本体」に割る:
+
+```ts
+export function runOperations(
+  netlist: Netlist,
+  operations: readonly Operation[],
+  options: RunOptions,
+): RunResult {
+  const simulation = new Simulation(netlist, {
+    tickMs: options.tickMs ?? TICK_MS,
+    ...(options.watch === undefined ? {} : { watch: options.watch }),
+  });
+  return runOperationsOn(simulation, operations, options);
+}
+
+/**
+ * 既に作ったシミュレーションで操作列を再生する。§7.3
+ * PLCのスキャンのように「シミュレーションを先に作ってから結線したいもの」があるときに使う（§10.4）。
+ * `options.watch` はシミュレーション生成時にしか効かないのでここでは無視する。
+ */
+export function runOperationsOn(
+  simulation: Simulation,
+  operations: readonly Operation[],
+  options: RunOptions,
+): RunResult {
+  const tickMs = options.tickMs ?? TICK_MS;
+  powerUp(simulation);
+
+  let cursor = 0;
+  let tMs = 0;
+  for (; tMs < options.durationMs; tMs += tickMs) {
+    for (let op = operations[cursor]; op !== undefined && op.t <= tMs; op = operations[cursor]) {
+      if (op.action === 'press') simulation.press(op.target);
+      else simulation.release(op.target);
+      cursor += 1;
+    }
+    options.beforeTick?.(simulation, tMs);
+    simulation.step(tickMs);
+  }
+
+  return {
+    simulation,
+    log: simulation.log,
+    events: simulation.events,
+    lastTickMs: Math.max(0, tMs - tickMs),
+  };
+}
+```
+
+- [ ] **Step 4: `src/plc-io.ts` を書く**
+
+```ts
+import { PLC_PART_ID } from '@ojt/board-model';
+import { TICK_MS, type Netlist, type Simulation } from '@ojt/circuit-sim';
+import {
+  createPlcRuntime,
+  type CompiledProgram,
+  type PlcIoPort,
+  type PlcRuntime,
+} from '@ojt/ladder-core';
+import { runOperationsOn, type RunOptions, type RunResult } from './runner.js';
+import type { Operation } from './schema/operations.js';
+
+/**
+ * PLCランタイムと回路エンジンの結合。設計仕様 §10.4 / §4.2 / 決定表#4。
+ *
+ * `@ojt/ladder-core` は回路エンジンを知らず、`@ojt/circuit-sim` はラダーを知らない。両方を知って
+ * いるのはこのパッケージだけなので、結合点はここ1か所である。1 tick の順序は
+ * 「①入力読込 ②ネットワーク実行 ③出力書込 → ④回路を解く」。入力は直前の tick の解に基づく値
+ * なので、実機のスキャンと同じく1スキャンぶん遅れる。
+ */
+
+/** `Simulation` を `PlcIoPort` として見せる。§4.2 */
+export function createSimulationIoPort(sim: Simulation, partId: string = PLC_PART_ID): PlcIoPort {
+  return {
+    readInputs: () => sim.plcInputs(partId),
+    writeOutputs: (values) => {
+      sim.setPlcOutputs(partId, values);
+    },
+  };
+}
+
+/** 結合オプション。 */
+export interface PlcCouplingOptions {
+  /** PLC本体の部品ID。既定 `PLC`。 */
+  partId?: string;
+  /** 出力配列の長さ。既定はラダーが使う最大番号＋1。 */
+  outputCount?: number;
+  /** スキャン周期[ms]。既定は `TICK_MS`（10）。§10.4 */
+  scanMs?: number;
+}
+
+/** スキャンと tick の結合。 */
+export interface PlcCoupling {
+  runtime: PlcRuntime;
+  /** `runOperations` の `beforeTick` にそのまま渡せる関数。 */
+  beforeTick: (simulation: Simulation, tMs: number) => void;
+}
+
+/** シミュレーションとラダーを結ぶ。§10.4 */
+export function createPlcCoupling(
+  sim: Simulation,
+  program: CompiledProgram,
+  options: PlcCouplingOptions = {},
+): PlcCoupling {
+  const runtime = createPlcRuntime(program, {
+    io: createSimulationIoPort(sim, options.partId ?? PLC_PART_ID),
+    scanMs: options.scanMs ?? TICK_MS,
+    ...(options.outputCount === undefined ? {} : { outputCount: options.outputCount }),
+  });
+  return {
+    runtime,
+    beforeTick: () => {
+      runtime.scan();
+    },
+  };
+}
+
+/** モードDの再生オプション。 */
+export interface PlcRunOptions extends RunOptions, PlcCouplingOptions {}
+
+/** 再生結果（ランタイムの最終状態つき）。 */
+export interface PlcRunResult extends RunResult {
+  runtime: PlcRuntime;
+}
+
+/**
+ * ラダー＋配線を操作列で再生する。§10.4 / §7.3
+ * `runOperations()` と同じ規則（`t=0` で通電済み・10ms tick・決定論）で走り、
+ * 各 tick の先頭で1スキャンずつラダーを実行する。
+ */
+export function runPlcOperations(
+  netlist: Netlist,
+  program: CompiledProgram,
+  operations: readonly Operation[],
+  options: PlcRunOptions,
+): PlcRunResult {
+  const simulation = new Simulation(netlist, {
+    tickMs: options.tickMs ?? TICK_MS,
+    ...(options.watch === undefined ? {} : { watch: options.watch }),
+  });
+  const coupling = createPlcCoupling(simulation, program, options);
+  const result = runOperationsOn(simulation, operations, {
+    ...options,
+    beforeTick: coupling.beforeTick,
+  });
+  return { ...result, runtime: coupling.runtime };
+}
+```
+
+- [ ] **Step 5: GREEN を確認してコミットする**
+
+```powershell
+pnpm --filter @ojt/content exec vitest run test/plc-io.test.ts test/runner.test.ts test/plc-reference.test.ts
+git add packages/content
+git commit -m "feat(content): couple the PLC scan to the engine tick"
+```
+
+Expected: `test/plc-io.test.ts` が `Tests  5 passed (5)`、既存の `test/runner.test.ts` もそのまま通る（`beforeTick` を渡さない呼び出しは挙動が変わらない）。
 
 ---
 
@@ -6955,8 +6955,7 @@ describe('runStaticChecks（PLCの3件を含む）', () => {
 
   it('reports the PLC checks as errors when the mode D context is missing', () => {
     const { problem, circuit } = reference();
-    const input = checkInput(circuit, context(circuit));
-    const withoutPlc = { ...input, plc: undefined };
+    const { plc: _drop, ...withoutPlc } = checkInput(circuit, context(circuit));
     const results = runStaticChecks(withoutPlc, problem.judge.staticChecks);
     expect(results.find((r) => r.id === 'twoStage')?.ok).toBe(false);
   });
@@ -7845,6 +7844,8 @@ describe('内蔵モードD課題（§7.9）', () => {
       durationMs: problem.durationMs,
     });
     const litMs = run.log.transitions('PL1').find((e) => e.value === true)?.tMs ?? -1;
+    // 500ms に押す → 入力が1スキャン遅れて 510ms に M0 が入り、3000ms 計時して 3500ms に T0、
+    // そこから盤のリレーの動作（1tick）とランプの点灯判定（1tick）で 3520ms に点く
     expect(litMs).toBeGreaterThanOrEqual(3500);
     expect(litMs).toBeLessThanOrEqual(3600);
   });
@@ -7861,8 +7862,10 @@ describe('内蔵モードD課題（§7.9）', () => {
     const rises = edges.filter((e) => e.value === true).map((e) => e.tMs);
     const falls = edges.filter((e) => e.value === false && e.tMs > 0).map((e) => e.tMs);
     expect(rises).toHaveLength(2);
-    expect((falls[0] ?? 0) - (rises[0] ?? 0)).toBeGreaterThanOrEqual(1000);
-    expect((falls[0] ?? 0) - (rises[0] ?? 0)).toBeLessThanOrEqual(1100);
+    // 入力は1スキャン遅れ、盤のリレーの動作・復帰に各1tick かかるので、点灯時間は
+    // 設定1000ms ちょうどではなく 990ms 前後になる（§10.4 のスキャン＋§5.3.1 の動作時間）
+    expect((falls[0] ?? 0) - (rises[0] ?? 0)).toBeGreaterThanOrEqual(950);
+    expect((falls[0] ?? 0) - (rises[0] ?? 0)).toBeLessThanOrEqual(1050);
   });
 });
 ```
@@ -7953,13 +7956,13 @@ git commit -m "feat(content): add the four 2級-form built-in PLC problems"
 | | 1 | `no(Y(0))` |
 | `n2`（警報のセット） | 0 | `no(X(2))`, `set(Y(3))` |
 | `n3`（警報の解除） | 0 | `no(X(1))`, `rst(Y(3))` |
-| `n4`（正常表示） | 0 | `nc(Y(3))`, `out(Y(2))` |
-| `n5`（運転正常表示） | 0 | `no(Y(0))`, `nc(Y(3))`, `out(Y(1))` |
+| `n4`（運転中・正常表示） | 0 | `no(Y(0))`, `nc(Y(3))`, `out(Y(2))` |
+| `n5`（運転中・警報表示） | 0 | `no(Y(0))`, `no(Y(3))`, `out(Y(1))` |
 | `end` | 0 | `end()` |
 
 操作列: `PB1` press 500 / release 800（運転）→ `PB3` press 2000 / release 2300（警報）→ `PB2` press 3500 / release 3800（停止＋警報解除）→ `PB1` press 5000・`PB2` press 5000（**同時押し**）/ 両方 release 5300（停止が優先し運転しない）。
 
-**注意（`compareSignals` と §7.3 の始点・終点）:** d-008 の `Y2`（正常表示）は `nc(Y(3))` なので**開始直後から点灯している**。§7.3 は「タイムチャートの始まりと終わりは論理0であること」を求めるので、内蔵課題ではそのままだと自己整合テスト（`startsAndEndsLow`）に落ちる。`n4` を `no(Y(0))`, `nc(Y(3))` の直列（運転中かつ正常なときだけ点灯）に変え、`n5` は `no(Y(0))`, `no(Y(3))`（運転中に警報が出ているときだけ点灯）にすること。この2つは Task 18/19 の GREEN 条件（`startsAndEndsLow`）で必ず確かめる。
+**注意（`compareSignals` と §7.3 の始点・終点）:** 表示灯の条件はすべて「運転中かつ…」にしてある。`nc(Y(3))` だけの回路にすると**開始直後から点灯している**ことになり、§7.3 の「タイムチャートの始まりと終わりは論理0」に反して自己整合テスト（`startsAndEndsLow`）で落ちる。内蔵課題を増やすときも、比較信号は判定区間の始点・終点で必ず消えている条件にすること。
 
 - [ ] **Step 1: 4題のJSONを書き、`builtin/index.ts` に登録する**
 
@@ -8253,8 +8256,8 @@ git commit -m "feat(content): finalise the Phase 3A public API"
 | Task 11 | §7.6（`referenceLadder`）、§10.3（IRの入力形式）、§4.5（zodが定義の源） |
 | Task 12 | §7.6（`plc` / `io` / `wiringRequired`）、§7.4（静的チェックの追加3件）、§13 #2 |
 | Task 13 | §7.1・§7.8（課題の判別と読込）、§16（開始できるモード）、§13 #1 |
-| Task 14 | §10.4（スキャンと tick の同期）、§7.3（操作列の再生）、§4.2（依存方向） |
-| Task 15 | §10.2（配線ルール）、§11.3（渡り配線）、§7.2（模範回路）、§6.3（既設配線との共存） |
+| Task 14 | §10.2（配線ルール）、§11.3（渡り配線）、§7.2（模範回路）、§6.3（既設配線との共存） |
+| Task 15 | §10.4（スキャンと tick の同期）、§7.3（操作列の再生）、§4.2（依存方向） |
 | Task 16 | §7.4（`twoStage` / `plcPowerIndependent` / `ioAssignment`）、§10.2、§10.8 |
 | Task 17 | §10.8（判定）、§7.4（合否の考え方）、§7.7（タイムチャート）、§8.3（結果画面の材料） |
 | Task 18 | §7.9（モードD 2級形式4題）、§7.6（既定割付）、§7.8（自己整合） |
