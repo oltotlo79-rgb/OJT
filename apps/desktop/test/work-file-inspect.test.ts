@@ -168,6 +168,18 @@ describe('restoreInspectState（§12.3 / §13 #8）', () => {
     expect(restoreInspectState(C2, { mode: 'inspect-repair', reports: [] })).toBe(false);
   });
 
+  /**
+   * Plan 2B レビュー M2: 利用者が作った課題は `faults: []`（故障なし）のC2があり得るので、
+   * `resolvedFaults` が空配列でも「欠けている」（`undefined` や配列でない）ことにはならない。
+   * 以前は空配列も `undefined` と同じ扱いで復元を断っていた。
+   */
+  it('C2は resolvedFaults が空配列でも復元する（利用者課題の faults: [] に対応。M2）', () => {
+    const ok = restoreInspectState(C2, { mode: 'inspect-repair', resolvedFaults: [] });
+    expect(ok).toBe(true);
+    expect(useStore.getState().circuit?.applied.partFaults).toEqual([]);
+    expect(useStore.getState().circuit?.applied.sites).toEqual([]);
+  });
+
   it('壊れた故障の並びでも落ちずに復元を断る（§13 #8）', () => {
     expect(
       restoreInspectState(C2, {
@@ -202,6 +214,25 @@ describe('restoreInspectState（§12.3 / §13 #8）', () => {
     expect(state.answers).toEqual([]);
     expect(state.checkPartId).toBeUndefined();
     expect(state.tester.mode).toBe('off');
+  });
+
+  /**
+   * Plan 2B レビュー M5: 壊れたつまみは既定のまま開く（読込そのものは断らない）が、
+   * 黙って戻さないと「保存したときのテスター状態のまま」と訓練者が誤解する。
+   */
+  it('壊れたテスターの塊はトーストで知らせる（読込そのものは断らない。M5）', () => {
+    const ok = restoreInspectState(C1, {
+      mode: 'inspect-parts',
+      tester: { kind: 'plasma', mode: 'XYZ' },
+    });
+    expect(ok).toBe(true);
+    expect(useStore.getState().toasts.at(-1)?.text).toBe(JA.session.badTesterBlock);
+  });
+
+  it('テスターの塊自体が無ければトーストを出さない', () => {
+    const ok = restoreInspectState(C1, { mode: 'inspect-parts' });
+    expect(ok).toBe(true);
+    expect(useStore.getState().toasts).toHaveLength(0);
   });
 });
 

@@ -244,6 +244,21 @@ describe('モードで絞る（Plan 2B Task 17。§12.1）', () => {
     expect(useStore.getState().listMode).toBe('inspect-repair');
     expect(screen.getByTestId('problem-table').textContent).toContain('回路点検・修復1');
   });
+
+  /**
+   * Plan 2B レビュー M4: 絞り込みに一致する行が無いのと、フォルダそのものが空なのは
+   * 別の状況なので別の文言にする（フォルダは空ではない。単に選んだモードの課題が無いだけ）。
+   */
+  it('絞り込みに一致しないときはフォルダが空のときと違う文言を出す（M4）', async () => {
+    setApi({ listProblems: () => Promise.resolve(PAYLOAD) }); // PAYLOAD は assemble のみ
+    useStore.setState({ listMode: 'inspect-parts' });
+    render(<ProblemList />);
+    await waitFor(() => {
+      expect(screen.getByText(JA.problemList.filterEmpty)).toBeTruthy();
+    });
+    expect(screen.queryByTestId('problem-table')).toBeNull();
+    expect(screen.queryByText(JA.problemList.empty)).toBeNull();
+  });
 });
 
 describe('ホームのモードカード（Plan 2B Task 17。§12.1）', () => {

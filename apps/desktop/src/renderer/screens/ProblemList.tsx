@@ -111,7 +111,7 @@ export function ProblemList(): JSX.Element {
             ))}
           </div>
           {rows.length === 0 ? (
-            <p className={styles.subtitle}>{JA.problemList.empty}</p>
+            <p className={styles.subtitle}>{JA.problemList.filterEmpty}</p>
           ) : (
             <table className={styles.problemTable} data-testid="problem-table">
               <thead>

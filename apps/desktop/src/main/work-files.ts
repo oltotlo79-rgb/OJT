@@ -106,7 +106,11 @@ export function parseWorkFile(
   }
   if (typeof source['checkPartId'] === 'string') optional.checkPartId = source['checkPartId'];
   if (typeof source['faultSeed'] === 'number') optional.faultSeed = source['faultSeed'];
-  if (typeof source['tester'] === 'object' && source['tester'] !== null) {
+  if (
+    typeof source['tester'] === 'object' &&
+    source['tester'] !== null &&
+    !Array.isArray(source['tester'])
+  ) {
     optional.tester = source['tester'];
   }
   for (const key of ['answers', 'reports', 'resolvedFaults', 'replacedPartIds'] as const) {

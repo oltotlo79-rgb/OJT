@@ -342,10 +342,16 @@ function isFaultSpec(value: unknown): value is FaultSpecData {
   return typeof target['partId'] === 'string' && typeof target['elementIndex'] === 'number';
 }
 
-/** 保存された故障の並びを読む（1件でも壊れていたら復元しない）。§13 #8 */
+/**
+ * 保存された故障の並びを読む（1件でも壊れていたら復元しない）。§13 #8
+ *
+ * 空配列は**そのまま受け入れる**（Plan 2B レビュー M2）: ユーザーが作った課題では
+ * `faults: []`（故障なし）のC2があり得るので、`resolvedFaults` が空でも「欠けている」
+ * ことにはならない。「欠けている」のは `undefined` や配列でない場合だけ。
+ */
 function toFaultSpecs(value: unknown): readonly FaultSpecData[] | undefined {
   if (!Array.isArray(value)) return undefined;
-  if (value.length === 0 || value.length > MAX_RESTORED_ENTRIES) return undefined;
+  if (value.length > MAX_RESTORED_ENTRIES) return undefined;
   return value.every(isFaultSpec) ? value : undefined;
 }
 
@@ -410,6 +416,8 @@ export function restoreInspectState(problem: SupportedProblem, state: InspectWor
 
   const tester = toSavedTester(state.tester);
   if (tester !== undefined) store.setTester(testerStateFrom(tester));
+  // 壊れたつまみは既定のまま開く（読込は断らない）が、黙って戻さないと誤解させる（M5）
+  else if (state.tester !== undefined) store.toast(JA.session.badTesterBlock, 'error');
 
   if (isInspectPartsProblem(problem)) {
     const partIds = new Set(problem.parts.map((part) => part.id));

@@ -204,6 +204,18 @@ describe('parseWorkFile のモード固有の項目（§12.3 / §13 #8）', () =
     expect(result.file.tester).toBeUndefined();
     expect(result.file.checkPartId).toBeUndefined();
   });
+
+  /**
+   * Plan 2B レビュー M6: 配列は `typeof === 'object'` かつ非 `null` なので、
+   * `!Array.isArray()` を見ないと配列がそのまま `tester`（`InspectWorkState.tester` は
+   * `unknown` なので配列でも型は通ってしまう）として renderer に渡ってしまっていた。
+   */
+  it('tester が配列なら落とす（オブジェクトと誤認しない）', () => {
+    const result = parseWorkFile(sampleFile({ tester: [1, 2, 3] }));
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.file.tester).toBeUndefined();
+  });
 });
 
 describe('saveWorkFile / loadWorkFile（一時保存。§12.3）', () => {
