@@ -23,7 +23,12 @@ import {
   type TesterReading,
   type TesterState,
 } from '@ojt/circuit-sim';
-import { judgeAssemble } from '@ojt/content';
+import {
+  injectPartFaults,
+  judgeAssemble,
+  judgeInspectParts,
+  type FaultSpecData,
+} from '@ojt/content';
 import { planTicks } from './runtime.js';
 import {
   SNAPSHOT_INTERVAL_MS,
@@ -77,10 +82,20 @@ function post(message: SimMessage): void {
   self.postMessage(message);
 }
 
-/** 課題を開く。ネットリストを作り直し、電源OFF・t=0 から回し始める。 */
-function load(next: BoardSession): void {
+/**
+ * 課題を開く。ネットリストを作り直し、電源OFF・t=0 から回し始める。
+ * 部品の故障（C1/C2）はここで注入する。以後 `addWire` などの差分コマンドはネットリストの
+ * 同じ実体に当たるので、故障は入れ直さなくてよい（`plug` だけは新しい部品を作る＝良品に
+ * 差し替えるのと同じで、それが §9.2 の「部品交換」そのものになる）。
+ */
+function load(next: BoardSession, partFaults: readonly FaultSpecData[] = []): void {
   session = next;
-  simulation = new Simulation(toNetlist(next, JIPM_BOARD), { tickMs: TICK_MS });
+  const netlist = toNetlist(next, JIPM_BOARD);
+  const issues = injectPartFaults(netlist, partFaults);
+  if (issues.length > 0) {
+    throw new Error(issues.map((i) => `${i.path}: ${i.message}`).join(' / '));
+  }
+  simulation = new Simulation(netlist, { tickMs: TICK_MS });
   logCursor = 0;
   hazardCursor = 0;
   chatterCursor = 0;
@@ -298,7 +313,7 @@ function start(): void {
 
 function handle(command: SimCommand): void {
   if (command.type === 'load') {
-    load(command.session);
+    load(command.session, command.partFaults ?? []);
     start();
     return;
   }
@@ -390,6 +405,18 @@ function handle(command: SimCommand): void {
       } finally {
         resumeLoop();
       }
+      break;
+    }
+    case 'judgeParts': {
+      /*
+       * C1の採点は解答の突き合わせだけなので速いが、危険操作の回数（§5.6）は
+       * `sim.events.hazards()` にしか無いので Worker で判定する（モードBと同じ流儀）。
+       */
+      const result = judgeInspectParts(command.problem, command.answers, {
+        elapsedMs: command.elapsedMs,
+        sessionHazards: sim.events.hazards(),
+      });
+      post({ type: 'inspectResult', result: { ok: true, value: result } });
       break;
     }
   }

@@ -34,7 +34,8 @@ export class WorkerBridge {
       const message = event.data;
       if (message.type === 'snapshot') handlers.onSnapshot(message.snapshot);
       else if (message.type === 'judgeResult') handlers.onJudge(message);
-      else handlers.onError(message.message, message.fatal);
+      // `inspectResult`（C1/C2の判定）は Task 10 以降の画面が受け取る。ここではまだ配らない
+      else if (message.type === 'error') handlers.onError(message.message, message.fatal);
     };
     worker.onerror = (event: ErrorEvent) => {
       // Worker そのものが落ちた。ループは確実に止まっているので致命扱い（§13 #6）

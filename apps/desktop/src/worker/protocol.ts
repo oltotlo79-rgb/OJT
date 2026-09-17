@@ -9,7 +9,15 @@ import type {
   TesterMode,
   Wire,
 } from '@ojt/circuit-sim';
-import type { AssembleProblem, JudgeAssembleResult } from '@ojt/content';
+import type {
+  AssembleProblem,
+  FaultSpecData,
+  InspectPartAnswer,
+  InspectPartsProblem,
+  JudgeAssembleResult,
+  JudgeInspectResult,
+  ProblemIssue,
+} from '@ojt/content';
 
 /**
  * renderer ⇄ Simulation Worker のプロトコル。設計仕様 §4.3。
@@ -32,8 +40,17 @@ export const MAX_CATCHUP_TICKS = 20;
 
 /** renderer → worker のコマンド。 */
 export type SimCommand =
-  /** 課題を開く。ネットリストを作り直し、電源OFF・t=0 から回し始める。 */
-  | { type: 'load'; problemId: string; session: BoardSession }
+  /**
+   * 課題を開く。ネットリストを作り直し、電源OFF・t=0 から回し始める。
+   * `partFaults` があれば `toNetlist()` の直後に注入する（C1/C2。§5.4）。部品の故障は
+   * `MountedPart` に持たせる場所が無いので、変換のたびに入れ直す必要がある。
+   */
+  | {
+      type: 'load';
+      problemId: string;
+      session: BoardSession;
+      partFaults?: readonly FaultSpecData[];
+    }
   /** 電線を1本張る（`Simulation` に差分適用するのでリレー／タイマの状態は保たれる）。 */
   | { type: 'addWire'; wire: Wire }
   /** 電線を1本外す。 */
@@ -72,7 +89,14 @@ export type SimCommand =
    * 画面のつまみの位置と worker が測っている状態がずれない（コマンドを種別ごとに分けると、
    * 片方だけ実装し忘れたときに静かにずれる）。
    */
-  | { type: 'tester'; action: TesterAction };
+  | { type: 'tester'; action: TesterAction }
+  /** モードC1を判定する（マークシートの採点）。§9.1 */
+  | {
+      type: 'judgeParts';
+      problem: InspectPartsProblem;
+      answers: readonly InspectPartAnswer[];
+      elapsedMs: number;
+    };
 
 /** ランプ1個の表示状態。 */
 export interface LampSnapshot {
@@ -142,10 +166,19 @@ export interface SimSnapshot {
   droppedTicks: number;
 }
 
+/**
+ * C1/C2 の判定結果。§9.1 / §9.2 / §13 #2
+ * `ok: false` は「課題データの誤りで判定できなかった」ことを表す（C1では起きないが、
+ * C2の模範回路が作れない場合があるので、結果画面へ行かず理由を出せるようにしておく）。
+ */
+export type InspectOutcome =
+  { ok: true; value: JudgeInspectResult } | { ok: false; errors: ProblemIssue[] };
+
 /** worker → renderer のメッセージ。 */
 export type SimMessage =
   | { type: 'snapshot'; snapshot: SimSnapshot }
   | { type: 'judgeResult'; result: JudgeAssembleResult }
+  | { type: 'inspectResult'; result: InspectOutcome }
   /**
    * エラー。§13 #6
    * `fatal: false` はコマンド1件が失敗しただけ（ループは回り続けるのでトーストで足りる）。
