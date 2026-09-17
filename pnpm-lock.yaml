@@ -128,6 +128,9 @@ importers:
       '@ojt/circuit-sim':
         specifier: workspace:*
         version: link:../circuit-sim
+      '@ojt/ladder-core':
+        specifier: workspace:*
+        version: link:../ladder-core
       '@ojt/schematic-core':
         specifier: workspace:*
         version: link:../schematic-core
