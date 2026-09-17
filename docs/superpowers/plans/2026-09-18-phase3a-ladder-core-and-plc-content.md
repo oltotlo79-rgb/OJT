@@ -2778,7 +2778,7 @@ export {
 } from './runtime.js';
 ```
 
-**注意（実装者向け）:** `solve()` の中で `net.cells as Cell[][]` とキャストしているのは、`CompiledNetwork.cells` が `readonly` で `cellAt()` が `Network` を取るためである。`Cell` 型を `./ir.js` から **type import** し、`cellAt()` に渡す一時オブジェクトを作る（読むだけで書き換えない）。ESLint の `@typescript-eslint/consistent-type-imports` に合わせて `import type { Cell, ... }` に含めること。
+**注意（実装者向け）:** `solve()` の中で `net.cells as Cell[][]` とキャストしているのは、`CompiledNetwork.cells` が `readonly` で `cellAt()` が `Network` を取るためである。`Cell` 型を `./ir.js` から **type import** し、`cellAt()` に渡す一時オブジェクトを作る（読むだけで書き換えない）。ESLint の `@typescript-eslint/consistent-type-imports` に合わせて、上の import の `type Cell` / `type Device` / `type Network` / `type OutputCell` の並びに入れてあること（Step 3 の import 一覧のとおり）。
 
 - [ ] **Step 4: GREEN を確認する**
 
@@ -9180,13 +9180,18 @@ Plan 3B が使う公開APIを固定し（下の「3B への引き渡し」表と
 ```ts
 export {
   CellSchema,
+  DeviceCommentsSchema,
   DeviceKindSchema,
   DeviceSchema,
   LADDER_COIL_COL,
   LadderNetworkSchema,
   LadderProgramSchema,
+  MAX_DEVICE_COMMENT_LENGTH,
+  MAX_DEVICE_COMMENTS,
   type CellData,
+  type DeviceCommentsData,
   type DeviceData,
+  type LadderProgramData,
 } from './schema/ladder.js';
 
 export {
@@ -9229,6 +9234,7 @@ export {
   PLC_WIRE_COLOR,
   plcBoardFor,
   plcWiringPlan,
+  plcWiringPlanIssues,
   type PlcReferenceCircuit,
   type PlcReferenceResult,
   type PlcWireSpec,
@@ -9240,8 +9246,11 @@ export {
   checkPlcPowerIndependent,
   checkTwoStage,
   detectPlcWiring,
-  type PlcCheckContext,
 } from './plc-static-checks.js';
+
+// `StaticCheckInput` / `StaticCheckResult` は既に `./static-checks.js` 経由で公開されている
+// （Task 16 でそこが `static-check-types.ts` の再エクスポートに変わるだけ）。重複させない
+export type { PlcCheckContext } from './static-check-types.js';
 
 export {
   judgePlc,
@@ -9514,7 +9523,7 @@ Plan 3B（`apps/desktop` のGX Works3風スキン・3D・モードD画面）は�
 | `plcTimerMarkers(program)` → `TimeChartMarker[]` | タイムチャートの印（`T0=3秒`） |
 | `checkTwoStage` / `checkPlcPowerIndependent` / `checkIoAssignment` / `PlcCheckContext` / `detectPlcWiring(nets, unit)` | セッション中の「いまの配線の診断」表示（判定前に警告を出したいとき） |
 | `LadderProgramSchema` / `CellSchema` / `DeviceSchema` / `DeviceCommentsSchema` / `LadderProgramData` | 作業ファイル（`.ojtw`）に保存したラダーの読み戻し（§12.3） |
-| `LadderProgram.comments`（任意。`Record<"X0"\|"M1"\|…, string>`、1件32文字・200件まで） | **デバイスコメント欄**（§10.7）。キーは `deviceLabel()` の形（方言の8進表記ではない）。表示は `profile.formatDevice()` で方言表記に直してから並べる。実行には影響しない。作業ファイルにもこの形のまま保存する |
+| `LadderProgramData.comments`（任意。`Record<"X0"\|"M1"\|…, string>`、1件32文字・200件まで。`LadderProgramData` は `LadderProgram` にこの1項目を足しただけなので `compile()` にそのまま渡せる） | **デバイスコメント欄**（§10.7）。キーは `deviceLabel()` の形（方言の8進表記ではない）。表示は `profile.formatDevice()` で方言表記に直してから並べる。実行には影響しない。作業ファイルにもこの形のまま保存する |
 | （ハンドオフ注記 H-5） | **`plcPowerIndependent` が落ちたときは結果画面で理由を明示すること。** シミュレートされるPLCは `PLC.L` / `PLC.N` が未配線でも動くので、訓練者からは「回路は正しく動いているのにチェックだけ赤い」ように見える。`staticChecks` の `details` には「盤から取っている」と「壁コンセントに配線されていない」の2種類が入るので、**文言を分けて**出す（前者は「PLCの電源は壁コンセントから取ります（§10.1）」、後者は「PLCの電源が未配線です。壁コンセントへ2本配線してください」） |
 | （ハンドオフ注記 H-1） | **訓練者のラダーは「変換」を通ったものだけを判定に出すこと。** `judgePlc()` は変換に落ちたラダーを受け取ると、シミュレートせずに `passed: false` と `ladderErrors` を返す（§10.6 の操作フローどおり） |
 | （ハンドオフ注記 H-2） | **セッション中のスキャンと判定のスキャンは別物である。** セッション中は `createPlcCoupling()` の `runtime` が動き続け、判定（`judgePlc()`）は別のシミュレーションを最初から走らせる。判定後にセッションを続ける場合、`runtime.reset()` を呼ぶかどうかは 3B が決める（実機の「RUN/STOP」に対応させるなら STOP→RUN で `reset()`） |
