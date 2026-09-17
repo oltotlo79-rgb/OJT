@@ -80,10 +80,13 @@ async function launch(): Promise<{ app: ElectronApplication; page: Page }> {
     window.show();
     window.focus();
   }, WINDOW);
-  await page.waitForTimeout(1500);
   const restore = page.getByTestId('restore-prompt');
+  const home = page.getByTestId('mode-assemble');
+  // 復元プロンプトが出るかどうかは前回の終わり方次第なので、どちらかが出るまで待つ（固定sleep禁止）
+  await expect(restore.or(home).first()).toBeVisible({ timeout: 15_000 });
   if ((await restore.count()) > 0) {
     await page.getByRole('button', { name: '復元しない' }).click();
+    await expect(home).toBeVisible();
   }
   return { app, page };
 }
@@ -247,12 +250,33 @@ test.describe.serial('モードC1 部品点検（§16 Phase 2 受入基準①②
   /** 内蔵C1②（レアショートを含む）。§16 Phase 2 受入基準② */
   const layer = requireProblem(BUILTIN_INSPECT_PARTS_PROBLEMS, 1, 'C1');
 
+  /**
+   * 読値が落ち着くまで待つ（アナログ針の励磁・減衰は物理時間で進むので、値が2回連続で
+   * 同じになるまでポーリングする。固定 `waitForTimeout` は速いマシンでは無駄に長く、
+   * 遅いマシンでは足りずに flake する）。
+   */
+  async function stableReadout(): Promise<string> {
+    const readout = page.getByTestId('tester-readout');
+    let previous: string | null = null;
+    await expect
+      .poll(
+        async () => {
+          const current = await readout.textContent();
+          const stable = current !== null && current === previous;
+          previous = current;
+          return stable;
+        },
+        { timeout: 5000, intervals: [SETTLE_MS / 6, 100] },
+      )
+      .toBe(true);
+    return previous ?? '';
+  }
+
   /** チェック用ソケットのコイル端子をΩレンジで測る（`probe-target-coil` で2本まとめて置く）。 */
   async function measureCoil(): Promise<string> {
     await page.getByRole('button', { name: 'Ω', exact: true }).click();
     await page.getByTestId('probe-target-coil').click();
-    await page.waitForTimeout(SETTLE_MS);
-    return (await page.getByTestId('tester-readout').textContent()) ?? '';
+    return stableReadout();
   }
 
   /** トレイの部品を挿し、通電して、コイル抵抗を読む。 */
@@ -566,5 +590,78 @@ test.describe.serial('モードC2 回路点検・修復（§16 Phase 2 受入基
     await stubFileDialogs(app, workFilePath);
     await page.getByRole('button', { name: '作業を読込', exact: true }).click();
     await expect(page.getByTestId('status-overlay')).toContainText(`電線 ${before + 1} 本`);
+  });
+
+  /**
+   * 修復（白線を張る）と指摘（マークシート的な申告）は別の行為（§9.2）: 直しても指摘していない
+   * 箇所は「見落とし」として不合格になる。両方を直しても片方しか指摘しなければ落ちることを
+   * 確かめる（I2。故障0件を修復・指摘する既存テストの否定形）。
+   */
+  test('片方しか指摘しないと、両方直しても不合格になり見落としに載る', async () => {
+    const { faulted, correct, sites } = build();
+    expect(sites).toHaveLength(2);
+    const first = sites[0];
+    const second = sites[1];
+    expect(first).toBeDefined();
+    expect(second).toBeDefined();
+    if (first === undefined || second === undefined) return;
+    const socketRoles = faulted.socketRoles;
+    const initialWires = faulted.wires.length;
+
+    await openProblem(page, 'mode-inspect-repair', problem.id);
+    await expect(page.getByTestId('report-panel')).toBeVisible();
+    await waitForBoard(page);
+    await expect(page.getByTestId('status-overlay')).toContainText(`電線 ${initialWires} 本`);
+
+    const box = await canvasBox(page);
+    const clickTerminal = async (terminal: string): Promise<void> => {
+      const point = roleTerminalPoint(socketRoles, terminal, box);
+      await page.mouse.click(point.x, point.y);
+      await page.waitForTimeout(120);
+    };
+
+    // ① `first` だけ指摘する（`second` は直すが指摘しない）
+    await page.getByTestId('tool-report').click();
+    const wirePoints = new Map<string, { x: number; y: number }>();
+    if (first.kind === 'wire-missing') {
+      const terminal = first.terminals[0];
+      expect(terminal).toBeDefined();
+      if (terminal !== undefined) {
+        await clickTerminal(String(terminal));
+        await page.getByTestId('report-kind-wire-missing').click();
+      }
+    } else {
+      const wireId = first.wireId;
+      expect(wireId).toBeDefined();
+      if (wireId !== undefined) {
+        wirePoints.set(wireId, await findWirePoint(page, box, faulted, wireId));
+        const kind = first.kind === 'wire-misrouted' ? 'wire-misrouted' : 'wire-open';
+        await page.getByTestId(`report-kind-${kind}`).click();
+      }
+    }
+    await expect(page.getByTestId('report-count')).toHaveText('1');
+
+    // ② 両方の箇所を白線で修復する（指摘とは無関係に直せる。§9.2）
+    for (const site of sites) {
+      const original = correct.wires.find((w) => w.id === site.wireId);
+      expect(original).toBeDefined();
+      if (original === undefined) continue;
+      if (site.kind !== 'wire-missing') {
+        const point = site.wireId === undefined ? undefined : wirePoints.get(site.wireId);
+        const removePoint = point ?? (await findWirePoint(page, box, faulted, site.wireId ?? ''));
+        await page.getByRole('button', { name: '削除モード', exact: true }).click();
+        await page.mouse.click(removePoint.x, removePoint.y);
+        await page.keyboard.press('Delete');
+      }
+      await page.getByRole('button', { name: '白', exact: true }).click();
+      await clickTerminal(String(original.from));
+      await clickTerminal(String(original.to));
+    }
+
+    // ③ 判定 → 不合格（第2箇所を指摘していないので見落としになる）
+    await page.getByTestId('judge-button').click();
+    await expect(page.getByTestId('verdict')).toBeVisible({ timeout: 60_000 });
+    await expect(page.getByTestId('verdict')).toHaveText('不合格');
+    await expect(page.getByTestId('missed-list')).not.toHaveText('なし');
   });
 });
