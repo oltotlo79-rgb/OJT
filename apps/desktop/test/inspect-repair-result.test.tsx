@@ -1,0 +1,149 @@
+import { BUILTIN_INSPECT_REPAIR_PROBLEMS, type JudgeInspectRepairResult } from '@ojt/content';
+import { cleanup, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { InspectRepairResult } from '../src/renderer/result/InspectRepairResult.js';
+
+/**
+ * モードC2の結果画面（Plan 2B Task 16）。設計仕様 §9.2 判定。
+ */
+
+const C2 = BUILTIN_INSPECT_REPAIR_PROBLEMS[0];
+
+const NO_HAZARDS = {
+  'ohm-on-live': 0,
+  'range-exceeded': 0,
+  'short-circuit-power-on': 0,
+  'power-sequence-violation': 0,
+  'over-wires-per-terminal': 0,
+  overcurrent: 0,
+} as const;
+
+const EMPTY_CHART: JudgeInspectRepairResult['charts']['expected'] = {
+  durationMs: 1000,
+  signals: [],
+  markers: [],
+};
+
+function result(overrides: Partial<JudgeInspectRepairResult> = {}): JudgeInspectRepairResult {
+  return {
+    mode: 'inspect-repair',
+    passed: true,
+    reports: { matched: [], missed: [], extra: [] },
+    mismatches: [],
+    staticChecks: [],
+    modifications: [],
+    addedWires: ['w-101'],
+    hazardCount: 0,
+    hazardsByKind: { ...NO_HAZARDS },
+    chatter: [],
+    elapsedMs: 600_000,
+    charts: {
+      expected: EMPTY_CHART,
+      actual: EMPTY_CHART,
+    },
+    compareSignals: ['PL1'],
+    ...overrides,
+  };
+}
+
+afterEach(() => {
+  cleanup();
+});
+
+describe('InspectRepairResult（§9.2 判定）', () => {
+  it('過不足なく指摘して修復すれば合格を出す', () => {
+    expect(C2).toBeDefined();
+    if (C2 === undefined) return;
+    render(
+      <InspectRepairResult
+        problem={C2}
+        result={result()}
+        restoredHazardCount={0}
+        onRetry={vi.fn()}
+        onBackToList={vi.fn()}
+      />,
+    );
+    expect(screen.getByTestId('verdict').textContent).toBe('合格');
+    expect(screen.getByTestId('missed-list').textContent).toContain('なし');
+    expect(screen.getByTestId('extra-list').textContent).toContain('なし');
+  });
+
+  it('見逃しと過剰指摘を並べる（§9.2 判定①）', () => {
+    expect(C2).toBeDefined();
+    if (C2 === undefined) return;
+    render(
+      <InspectRepairResult
+        problem={C2}
+        result={result({
+          passed: false,
+          reports: {
+            matched: [],
+            missed: [
+              {
+                kind: 'wire-open',
+                report: 'wire-open',
+                wireId: 'sw-004',
+                partId: undefined,
+                terminals: [],
+              },
+            ],
+            extra: [{ target: { wireId: 'sw-009' }, kind: 'wire-misrouted' }],
+          },
+        })}
+        restoredHazardCount={0}
+        onRetry={vi.fn()}
+        onBackToList={vi.fn()}
+      />,
+    );
+    expect(screen.getByTestId('verdict').textContent).toBe('不合格');
+    expect(screen.getByTestId('missed-list').textContent).toContain('sw-004');
+    expect(screen.getByTestId('extra-list').textContent).toContain('sw-009');
+  });
+
+  it('改造した電線を並べる（§9.2 判定③）', () => {
+    expect(C2).toBeDefined();
+    if (C2 === undefined) return;
+    render(
+      <InspectRepairResult
+        problem={C2}
+        result={result({ passed: false, modifications: ['sw-002', 'sw-006'] })}
+        restoredHazardCount={0}
+        onRetry={vi.fn()}
+        onBackToList={vi.fn()}
+      />,
+    );
+    const list = screen.getByTestId('modification-list');
+    expect(list.textContent).toContain('sw-002');
+    expect(list.textContent).toContain('sw-006');
+  });
+
+  it('危険操作の回数に復元分を足す（§5.6 / §12.3）', () => {
+    expect(C2).toBeDefined();
+    if (C2 === undefined) return;
+    render(
+      <InspectRepairResult
+        problem={C2}
+        result={result({ hazardCount: 1, hazardsByKind: { ...NO_HAZARDS, 'range-exceeded': 1 } })}
+        restoredHazardCount={2}
+        onRetry={vi.fn()}
+        onBackToList={vi.fn()}
+      />,
+    );
+    expect(screen.getByText(/危険操作（3）/)).toBeTruthy();
+  });
+
+  it('所要時間を出す（§9.2 判定⑤）', () => {
+    expect(C2).toBeDefined();
+    if (C2 === undefined) return;
+    render(
+      <InspectRepairResult
+        problem={C2}
+        result={result()}
+        restoredHazardCount={0}
+        onRetry={vi.fn()}
+        onBackToList={vi.fn()}
+      />,
+    );
+    expect(screen.getByTestId('result-elapsed').textContent).toContain('10:00.0');
+  });
+});

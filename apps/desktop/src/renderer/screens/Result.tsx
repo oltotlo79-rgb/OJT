@@ -1,9 +1,10 @@
-import { isAssembleProblem, isInspectPartsProblem } from '@ojt/content';
+import { isAssembleProblem, isInspectPartsProblem, isInspectRepairProblem } from '@ojt/content';
 import { useEffect, type JSX } from 'react';
 import { isInspectJudge, useStore } from '../app/store.js';
 import { tryOjtApi } from '../app/ojt-api.js';
 import { JA } from '../i18n/ja.js';
 import { InspectPartsResult } from '../result/InspectPartsResult.js';
+import { InspectRepairResult } from '../result/InspectRepairResult.js';
 import { ResultView } from '../result/ResultView.js';
 import styles from './screens.module.css';
 
@@ -58,6 +59,21 @@ export function Result(): JSX.Element {
     if (judge.mode === 'inspect-parts' && isInspectPartsProblem(problem)) {
       return (
         <InspectPartsResult
+          problem={problem}
+          result={judge}
+          restoredHazardCount={restoredHazardCount}
+          onRetry={() => {
+            resetSession();
+          }}
+          onBackToList={() => {
+            setRoute('list');
+          }}
+        />
+      );
+    }
+    if (judge.mode === 'inspect-repair' && isInspectRepairProblem(problem)) {
+      return (
+        <InspectRepairResult
           problem={problem}
           result={judge}
           restoredHazardCount={restoredHazardCount}
