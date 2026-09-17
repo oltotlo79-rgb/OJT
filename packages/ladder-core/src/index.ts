@@ -48,3 +48,13 @@ export {
   type NetworkOptions,
   type OutputCell,
 } from './ir.js';
+
+export {
+  clearCell,
+  deleteNetwork,
+  deleteRow,
+  insertNetwork,
+  insertRow,
+  setCell,
+  setVerticalLink,
+} from './edit.js';
