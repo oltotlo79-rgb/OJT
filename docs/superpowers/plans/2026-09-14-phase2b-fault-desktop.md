@@ -9842,7 +9842,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 | ③ C2で故障2箇所を指摘し白線で修復すると合格する | 指摘2件＋白線修復 → `合格` |
 | ④ 電源ONのままΩレンジを当てると警告が出て結果に回数が記録される | 赤PBを押したままΩ → 警告バナー → 結果画面の危険操作に回数 |
 
-- [ ] **Step 1: `e2e/projection.ts` に役割IDの射影を足す**
+- [x] **Step 1: `e2e/projection.ts` に役割IDの射影を足す**
 
 `apps/desktop/e2e/projection.ts` の**既存の import に追記する**（I-6: 「置き換える」と読んで先頭の import 節ごと差し替えると、既存の `import type { TerminalId } from '@ojt/circuit-sim';` を消してしまい、`terminalPoint()` の型が壊れる）。`import { boardTerminalPos, JIPM_BOARD } from '@ojt/board-model';` の1行だけを次に置き換え、`SocketRoles` の型 import を新たに1行足す。`import type { TerminalId } from '@ojt/circuit-sim';` は既存のまま変えない:
 
@@ -9867,7 +9867,7 @@ export function roleTerminalPoint(
 }
 ```
 
-- [ ] **Step 2: `e2e/inspect.spec.ts` を書く**
+- [x] **Step 2: `e2e/inspect.spec.ts` を書く**
 
 `apps/desktop/e2e/inspect.spec.ts`:
 
@@ -10329,7 +10329,7 @@ test.describe.serial('モードC2 回路点検・修復（§16 Phase 2 受入基
 });
 ```
 
-- [ ] **Step 3: ビルドして E2E を流す**
+- [x] **Step 3: ビルドして E2E を流す**
 
 ```powershell
 pnpm --filter @ojt/desktop build
@@ -10338,7 +10338,7 @@ pnpm --filter @ojt/desktop e2e
 
 Expected: `smoke.spec.ts` 1本・`polish.spec.ts` の既存本数・`inspect.spec.ts` 4本（C1の2本＋C2の2本）がすべて `passed`。`apps/desktop/screenshots/` に `10-c1-problem-list.png` 〜 `23-c2-result-pass.png` の12枚が増える。
 
-- [ ] **Step 4: 全体を検証する**
+- [x] **Step 4: 全体を検証する**
 
 ```powershell
 pnpm -r test
@@ -10349,7 +10349,7 @@ npx prettier --check "apps/desktop/**/*.{ts,tsx,css}"
 
 Expected: `pnpm -r test` は5プロジェクトすべて通る。`typecheck` と `lint` は無出力。`prettier` は `All matched files use Prettier code style!`。
 
-- [ ] **Step 5: コミットする**
+- [x] **Step 5: コミットする**
 
 ```powershell
 git add apps/desktop/e2e/inspect.spec.ts apps/desktop/e2e/projection.ts
@@ -10495,25 +10495,25 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 
 ## 完了条件
 
-- [ ] `pnpm --filter @ojt/desktop test --no-file-parallelism` が全て通る（Phase 1 の17ファイル ＋ 本プランで足した14ファイル）。
-- [ ] `pnpm -r test` で5プロジェクト（`circuit-sim` / `board-model` / `schematic-core` / `content` / `desktop`）がすべて通る。
-- [ ] `pnpm -r typecheck` と `pnpm lint`（`import-x/no-cycle` ＋ `react-hooks` 込み）が無警告で通る。
-- [ ] `npx prettier --check "apps/desktop/**/*.{ts,tsx,css}"` が `All matched files use Prettier code style!` を出す。
-- [ ] `pnpm --filter @ojt/desktop build` が main / preload / renderer の3つを出力する。
-- [ ] `pnpm --filter @ojt/desktop e2e` が `smoke.spec.ts` ＋ `polish.spec.ts` ＋ `inspect.spec.ts`（3本）すべて通る。
-- [ ] **§16 Phase 2 受入基準①**: C1課題を開いてチェック用ソケットに不良リレーを挿し、赤PBで励磁してテスターで測ると、正常品 `650.0 Ω` / コイル断線 `OL` / レアショート `422.5 Ω` と読める（`e2e/inspect.spec.ts`）。
-- [ ] **§16 Phase 2 受入基準②**: コイル断線のリレーは赤PBで吸引せずコイル抵抗が `OL`、レアショートのリレーは正常に吸引するのに約420Ω。マークシートでそれぞれ「コイル断線」「レアショート」を選ぶと正解になり、全問正解で `合格` が出る。
-- [ ] **§16 Phase 2 受入基準③**: C2課題で故障2箇所を指摘し、白線で修復すると `合格` が出て、見逃し・過剰指摘・改造がいずれも「なし」になる。
-- [ ] **§16 Phase 2 受入基準④**: 電源ONのまま（赤PBを押したまま）Ωレンジを当てると画面上部に警告バナーとミス回数が出て、結果画面の危険操作に「通電中のΩ／導通測定」の回数が載る。
-- [ ] ホームから3モード（回路組立／部品点検／回路点検・修復）を開ける。PLC は「準備中」で押せないまま。
-- [ ] 課題一覧に内蔵20題（モードB 8題・C1 4セット・C2 8題）が出て、モードで絞り込める。
-- [ ] 3D盤に黒／赤のプローブが載り、テスターのつまみ・レンジ・0Ω調整・針が §9.3 のとおり動く。
-- [ ] C2の2級課題で、回路図の要素をクリックすると3D盤の対応端子と電線が光り、3Dの端子にホバーすると回路図の対応要素が光る。
-- [ ] 作業ファイルにテスター状態・マークシートの解答・指摘・故障が載り、読み込むと同じ状態から続けられる。Phase 1 に保存した作業ファイル（追加項目が無いもの）も読める。
-- [ ] `apps/desktop/screenshots/` に C1/C2 のスクリーンショット12枚（`10-` 〜 `23-`）が出ている。
-- [ ] `apps/desktop/package.json` の依存が Phase 1 から増えていない。
-- [ ] IPCチャネルは6本のまま（`IPC_CHANNELS` が変わっていない）。
-- [ ] 画面の文言がすべて `src/renderer/i18n/ja.ts`（と `src/shared/messages.ts`）にある。
+- [x] `pnpm --filter @ojt/desktop test --no-file-parallelism` が全て通る（Phase 1 の17ファイル ＋ 本プランで足した14ファイル）。
+- [x] `pnpm -r test` で5プロジェクト（`circuit-sim` / `board-model` / `schematic-core` / `content` / `desktop`）がすべて通る。
+- [x] `pnpm -r typecheck` と `pnpm lint`（`import-x/no-cycle` ＋ `react-hooks` 込み）が無警告で通る。
+- [x] `npx prettier --check "apps/desktop/**/*.{ts,tsx,css}"` が `All matched files use Prettier code style!` を出す。
+- [x] `pnpm --filter @ojt/desktop build` が main / preload / renderer の3つを出力する。
+- [x] `pnpm --filter @ojt/desktop e2e` が `smoke.spec.ts` ＋ `polish.spec.ts` ＋ `inspect.spec.ts`（3本）すべて通る。
+- [x] **§16 Phase 2 受入基準①**: C1課題を開いてチェック用ソケットに不良リレーを挿し、赤PBで励磁してテスターで測ると、正常品 `650.0 Ω` / コイル断線 `OL` / レアショート `422.5 Ω` と読める（`e2e/inspect.spec.ts`）。
+- [x] **§16 Phase 2 受入基準②**: コイル断線のリレーは赤PBで吸引せずコイル抵抗が `OL`、レアショートのリレーは正常に吸引するのに約420Ω。マークシートでそれぞれ「コイル断線」「レアショート」を選ぶと正解になり、全問正解で `合格` が出る。
+- [x] **§16 Phase 2 受入基準③**: C2課題で故障2箇所を指摘し、白線で修復すると `合格` が出て、見逃し・過剰指摘・改造がいずれも「なし」になる。
+- [x] **§16 Phase 2 受入基準④**: 電源ONのまま（赤PBを押したまま）Ωレンジを当てると画面上部に警告バナーとミス回数が出て、結果画面の危険操作に「通電中のΩ／導通測定」の回数が載る。
+- [x] ホームから3モード（回路組立／部品点検／回路点検・修復）を開ける。PLC は「準備中」で押せないまま。
+- [x] 課題一覧に内蔵20題（モードB 8題・C1 4セット・C2 8題）が出て、モードで絞り込める。
+- [x] 3D盤に黒／赤のプローブが載り、テスターのつまみ・レンジ・0Ω調整・針が §9.3 のとおり動く。
+- [x] C2の2級課題で、回路図の要素をクリックすると3D盤の対応端子と電線が光り、3Dの端子にホバーすると回路図の対応要素が光る。
+- [x] 作業ファイルにテスター状態・マークシートの解答・指摘・故障が載り、読み込むと同じ状態から続けられる。Phase 1 に保存した作業ファイル（追加項目が無いもの）も読める。
+- [x] `apps/desktop/screenshots/` に C1/C2 のスクリーンショット12枚（`10-` 〜 `23-`）が出ている。
+- [x] `apps/desktop/package.json` の依存が Phase 1 から増えていない。
+- [x] IPCチャネルは6本のまま（`IPC_CHANNELS` が変わっていない）。
+- [x] 画面の文言がすべて `src/renderer/i18n/ja.ts`（と `src/shared/messages.ts`）にある。
 
 ---
 
@@ -10524,4 +10524,4 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 | 2026-09-14 | 初版。Plan 2（Phase 2）のうち `apps/desktop`（2B）を扱う。テスターの操作モデルを「ツールモード `tester` ＋ 黒→赤の順送り（明示選択つき）」に決定。Worker のテスターコマンドは `TesterAction` を運ぶ1本に統一。C1の部品挿抜は `load` の送り直し、C2の部品交換は `unplug`＋`plug`＋`replacePart()`。期待読値（正常 650.0 / レアショート 422.5 / コイル断線 OL / しきい値 552.5）はすべて Plan 2A の実測表から引いており、本プランでは新しい数値を作っていない |
 | 2026-09-14 | レビュー反映: B1〜B7、I1〜I16、M1〜M13、MERGE 注意、推奨バッチ。主な内容: `isInspectJudge` を `mode !== 'assemble'` 判別に修正（Plan 2A I-3 で3モードとも `mode` を持つようになったため）。C2の作業ファイルを `applied`/`cells`/`initialWireIds` の保存から `faultSeed`＋`resolvedFaults`（Plan 2A I-4 の `buildInspectRepairCircuit({ resolvedFaults })`）へ作り直し、復元時に再抽選しないようにした。C2に元に戻す／やり直し（白線・部品交換）を追加。C1/C2 のリストテストを3モードのモックで書き直し、内蔵20題の確認は `content-loader.test.ts` 側に寄せた。Worker のテスター実測を間引く設計を追加（つまみOFF・プローブ未配置ではスキップ、それ以外は33msごとかプローブ変更時だけ実測。前提D）。モードBにも警告バナーを追加。`sharedMaterial()` のキャッシュ鍵に `opacity`/`transparent` を追加。回路図の連動ハイライトの TDZ バグとホバーの間引きを修正。作業ファイルの保存→再起動→読込の E2E を追加。前提Cの「通電中のΩ測定」表示を `OL` から `----` に訂正し、`physicalOverride` / `FaultSpecData` の型を2A実装に合わせた |
 | 2026-09-18 | Batch 1 レビュー反映: 非モードB課題の戻り導線と Worker 起動抑止、テスター kind/mode の鮮度、0Ω調整の保持、再挑戦時の故障維持、テスト追加 |
-
+| 2026-09-18 | Task 18 完了。`e2e/inspect.spec.ts`（C1 3本・C2 2本）を追加し、§16 Phase 2 受入基準①〜⑤をビルド済みアプリ上で確認。E2E 16本を2回連続で全通過。実装との差分: ①C1は内蔵4題の `parts` が課題ごとに違うので、正常・コイル断線は `c1-001`、レアショート（422.5Ω）は `c1-002` で測る ②プローブは3Dの4mm端子ではなく `probe-target-coil` ショートカットで置く ③部品の挿し替えは Worker の `load` 送り直し＝新しい `Simulation` なので、挿したあとに通電し直す ④受入基準⑤の白線は `CR1.13`–`CR1.9` ではなく空き端子 `CR1.11`–`CR1.12`（前者は模範配線で既に2本使っており3本目を盤が断る） ⑤電線の指摘・削除は `routeSession()` の折れ線上を狙い、種別ポップオーバーの見出しで対象IDを確かめてから進む ⑥保存・読込ボタンの文言は「作業を保存」「作業を読込」。`chart.spec.ts` は結果画面から次のシナリオへ続いて `mode-assemble` を待ち続ける flake があったため、シナリオの先頭でホームへ戻すようにした |
