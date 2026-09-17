@@ -293,6 +293,16 @@ export const JA = {
     hazards: '危険操作',
     /** 危険操作の回数を訓練者向けに言い換えたもの（合否には影響しない。§17.2 #3）。 */
     mistakes: 'ミス',
+    /** モードC1の正解数（§9.1 判定の「n/m 正解」）。 */
+    correct: '正解',
+    /** 訓練者の解答。§9.1 */
+    yourAnswer: 'あなたの解答',
+    /** 本当の状態。§9.1 */
+    truth: '正解',
+    /** マークシートの採点表の見出し。§9.1 */
+    markSheet: 'マークシート採点',
+    /** 未解答。 */
+    unanswered: '—',
     hazardNone: '危険操作はありませんでした。',
     elapsed: '所要時間',
     standardMark: '標準時間',
@@ -531,6 +541,11 @@ export function contactProbeLabel(group: number, contact: 'a' | 'b'): string {
 /** 解答済みの件数（`3 / 6`）。§9.1 */
 export function answeredText(answered: number, total: number): string {
   return `${JA.inspectParts.answered} ${String(answered)} / ${String(total)}`;
+}
+
+/** モードC1の正解数（`2 / 6 正解`）。§9.1 判定 */
+export function correctCountText(correct: number, total: number): string {
+  return `${String(correct)} / ${String(total)} ${JA.result.correct}`;
 }
 
 /** 部品トレイの1行（`p1（リレー）`）。§9.1 */
