@@ -315,15 +315,21 @@ function testerStateFrom(saved: SavedTester): TesterState {
 /**
  * つまみの状態を Worker へ送り直す。§9.3 / Plan 2B I-3
  *
- * Worker 側の `tester` はストアとは別の複製（Task 3）で、`load` のたびにつまみOFF・レンジ既定へ
- * 戻る。**必ず `load` のあとに**既存の4つの操作を送り直して同じ状態に揃える（新しいコマンドは
- * 増やさない）。プローブは `load` のたびに外れる仕様なので送り直さない。
+ * Worker 側の `tester` はストアとは別の複製（Task 3）で、`load` のたびにつまみ・レンジ・
+ * 0Ω調整を保ったまま動き続ける（`sim.worker.ts` の `load()`）。それでも保存した作業ファイルは
+ * **常にストア側の値で読み直す**ので、`load` のあとに毎回この4操作を送り直して Worker 側を
+ * 同じ状態へ揃える。`set-kind` / `set-mode` / `set-volt-range` / `set-ohm-range` はどれも
+ * `applyTesterAction()` で校正（`zeroAdjusted`）を落とすため、保存時に 0Ω調整済みだった場合は
+ * 最後に `zero-adjust` を送って校正を復元する（Plan 2B レビュー B1）。
  */
 export function replayTesterToWorker(tester: TesterState): void {
   bridge.send({ type: 'tester', action: { type: 'set-kind', kind: tester.kind } });
   bridge.send({ type: 'tester', action: { type: 'set-mode', mode: tester.mode } });
   bridge.send({ type: 'tester', action: { type: 'set-volt-range', range: tester.voltRange } });
   bridge.send({ type: 'tester', action: { type: 'set-ohm-range', range: tester.ohmRange } });
+  if (tester.zeroAdjusted) {
+    bridge.send({ type: 'tester', action: { type: 'zero-adjust' } });
+  }
 }
 
 /** 故障1件として読めるか（`FaultSpecData` の形だけを見る）。§5.2 / §13 #8 */

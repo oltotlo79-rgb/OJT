@@ -28,7 +28,7 @@ import { checkLoadFor, probeTargets } from '../session/inspect-parts.js';
 import { shouldIgnoreShortcut, type PickHit } from '../session/interaction.js';
 import { testerPickToAction, testerShortcut } from '../session/tester.js';
 import { useViewportShortcuts } from '../session/viewport-keys.js';
-import { applyWorkFile, toWorkFile } from '../session/work-file.js';
+import { applyWorkFile, replayTesterToWorker, toWorkFile } from '../session/work-file.js';
 import { bridge } from '../session/worker-bridge.js';
 import { BoardScene } from '../three/BoardScene.js';
 import styles from './screens.module.css';
@@ -187,10 +187,21 @@ export function InspectPartsSession(): JSX.Element {
      * Ωレンジに回したまま次の部品を挿して測り続けられる（§9.1 の手順）。0Ω調整も残る。
      */
     store.clearProbes();
+    /*
+     * `load` は Worker 側のつまみ・レンジ・0Ω調整を保ったまま動くが、この画面が張り直された
+     * 直後（クラッシュ復帰など）は Worker がまだ起きておらず、`applyWorkFile()` の再送が
+     * `WorkerBridge.send()` の no-op で捨てられていることがある。触っていれば送り直す
+     * （Plan 2B レビュー B2）。
+     */
+    const tester = store.tester;
+    const resendTester = (): void => {
+      if (tester.mode !== 'off' || tester.zeroAdjusted) replayTesterToWorker(tester);
+    };
     if (checkPartId === undefined) {
       const empty = checkSessionFor(current);
       store.setSession(empty);
       bridge.send({ type: 'load', problemId: current.id, session: cloneSession(empty) });
+      resendTester();
       return;
     }
     const loaded = checkLoadFor(current, checkPartId);
@@ -206,6 +217,7 @@ export function InspectPartsSession(): JSX.Element {
       session: cloneSession(loaded.session),
       partFaults: loaded.partFaults,
     });
+    resendTester();
     store.addLog(`${JA.inspectParts.mounted}: ${checkPartId}`);
   }, [problemId, sessionEpoch, checkPartId]);
 

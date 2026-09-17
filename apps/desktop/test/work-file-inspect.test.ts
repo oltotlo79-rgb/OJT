@@ -231,6 +231,40 @@ describe('applyWorkFile（C1/C2。§12.3）', () => {
     );
   });
 
+  /**
+   * Plan 2B レビュー B1: `set-kind` / `set-mode` / `set-volt-range` / `set-ohm-range` は
+   * どれも `applyTesterAction()` で `zeroAdjusted` を落とすので、保存時に 0Ω調整済みだった
+   * 場合はこの4本を送り直すだけでは Worker 側が「未調整」に戻ってしまう（650.0 → 682.5 Ω）。
+   * `zero-adjust` を最後に送り直して校正を復元する。
+   */
+  it('0Ω調整済みで保存した C1 は、つまみの再送の最後に zero-adjust を送り直す', async () => {
+    useStore.getState().openProblem(C1);
+    useStore.getState().applyTester({ type: 'set-kind', kind: 'analog' });
+    useStore.getState().applyTester({ type: 'set-mode', mode: 'OHM' });
+    useStore.getState().applyTester({ type: 'set-ohm-range', range: 10 });
+    useStore.getState().applyTester({ type: 'zero-adjust' });
+    expect(useStore.getState().tester.zeroAdjusted).toBe(true);
+
+    const file = saved();
+    useStore.getState().abandonSession();
+    bridgeMock.sent = [];
+    apiState.readProblem.mockResolvedValue(C1);
+
+    expect(await applyWorkFile(file as never)).toBe(true);
+    expect(useStore.getState().tester.zeroAdjusted).toBe(true);
+
+    const testerActions = bridgeMock.sent
+      .filter((c) => c['type'] === 'tester')
+      .map((c) => (c['action'] as Record<string, unknown>)['type']);
+    expect(testerActions).toEqual([
+      'set-kind',
+      'set-mode',
+      'set-volt-range',
+      'set-ohm-range',
+      'zero-adjust',
+    ]);
+  });
+
   it('C2は白線と指摘と交換を戻し、故障入りの盤を load する', async () => {
     useStore.getState().openProblem(C2);
     const circuit = useStore.getState().circuit;

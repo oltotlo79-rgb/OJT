@@ -48,7 +48,7 @@ import {
 } from '../session/interaction.js';
 import { buildSpecChart } from '../session/spec-chart.js';
 import { useViewportShortcuts } from '../session/viewport-keys.js';
-import { applyWorkFile, toWorkFile } from '../session/work-file.js';
+import { applyWorkFile, replayTesterToWorker, toWorkFile } from '../session/work-file.js';
 import { bridge } from '../session/worker-bridge.js';
 import { BoardScene, safeRoutes } from '../three/BoardScene.js';
 import styles from './screens.module.css';
@@ -190,6 +190,14 @@ export function Session(): JSX.Element {
       },
     });
     bridge.send({ type: 'load', problemId: current.id, session: cloneSession(currentSession) });
+    /*
+     * Worker を起こし直した直後は、盤の `load` でつまみ・レンジ・0Ω調整が既定に戻っている
+     * （クラッシュ復帰など、この効果が張られる前に `applyWorkFile()` が送った再送が
+     * `WorkerBridge.send()` の no-op で捨てられている場合がある。Plan 2B レビュー B2）。
+     * つまみを触っていなければ既定のままでよいので、無駄な再送はしない。
+     */
+    const tester = store.tester;
+    if (tester.mode !== 'off' || tester.zeroAdjusted) replayTesterToWorker(tester);
     store.addLog(openedProblemLog(current.title));
     return () => {
       bridge.stop();

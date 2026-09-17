@@ -58,7 +58,7 @@ import {
 import { buildSpecChart } from '../session/spec-chart.js';
 import { testerPickToAction, testerShortcut } from '../session/tester.js';
 import { useViewportShortcuts } from '../session/viewport-keys.js';
-import { applyWorkFile, toWorkFile } from '../session/work-file.js';
+import { applyWorkFile, replayTesterToWorker, toWorkFile } from '../session/work-file.js';
 import { bridge } from '../session/worker-bridge.js';
 import { BoardScene, safeRoutes } from '../three/BoardScene.js';
 import styles from './screens.module.css';
@@ -178,6 +178,13 @@ export function InspectRepairSession(): JSX.Element {
       session: cloneSession(currentCircuit.session),
       partFaults: currentCircuit.applied.partFaults,
     });
+    /*
+     * Worker を起こし直した直後は、盤の `load` でつまみ・レンジ・0Ω調整が既定に戻っている
+     * （クラッシュ復帰など、この効果が張られる前に `applyWorkFile()` が送った再送が
+     * `WorkerBridge.send()` の no-op で捨てられている場合がある。Plan 2B レビュー B2）。
+     */
+    const tester = store.tester;
+    if (tester.mode !== 'off' || tester.zeroAdjusted) replayTesterToWorker(tester);
     store.addLog(openedProblemLog(current.title));
     return () => {
       bridge.stop();
