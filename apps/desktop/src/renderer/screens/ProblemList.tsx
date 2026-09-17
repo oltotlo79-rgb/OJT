@@ -1,7 +1,7 @@
 import { useEffect, useState, type JSX } from 'react';
 import { gradeLabel, JA, minutesLabel } from '../i18n/ja.js';
 import { ojtApi } from '../app/ojt-api.js';
-import { useStore } from '../app/store.js';
+import { useStore, type ListMode } from '../app/store.js';
 import styles from './screens.module.css';
 
 /**
@@ -19,6 +19,8 @@ function reasonOf(error: unknown): string {
 /** 課題一覧画面。 */
 export function ProblemList(): JSX.Element {
   const problems = useStore((s) => s.problems);
+  const listMode = useStore((s) => s.listMode);
+  const setListMode = useStore((s) => s.setListMode);
   const setProblems = useStore((s) => s.setProblems);
   const setRoute = useStore((s) => s.setRoute);
   const openProblem = useStore((s) => s.openProblem);
@@ -58,6 +60,11 @@ export function ProblemList(): JSX.Element {
     }
   };
 
+  /** ホームで選んだモードで絞った行（`undefined` は「すべて」）。§12.1 */
+  const rows = (problems?.problems ?? []).filter(
+    (problem) => listMode === undefined || problem.mode === listMode,
+  );
+
   return (
     <div className={styles.center}>
       <button
@@ -80,48 +87,78 @@ export function ProblemList(): JSX.Element {
       ) : problems.problems.length === 0 ? (
         <p className={styles.subtitle}>{JA.problemList.empty}</p>
       ) : (
-        <table className={styles.problemTable} data-testid="problem-table">
-          <thead>
-            <tr>
-              <th>{JA.problemList.columnId}</th>
-              <th>{JA.problemList.columnTitle}</th>
-              <th>{JA.problemList.grade}</th>
-              <th>
-                {JA.problemList.standard}/{JA.problemList.cutoff}
-              </th>
-              <th>{JA.problemList.columnSource}</th>
-              <th />
-            </tr>
-          </thead>
-          <tbody>
-            {problems.problems.map((problem) => (
-              <tr key={problem.id}>
-                <td>{problem.id}</td>
-                <td>{problem.title}</td>
-                <td>{gradeLabel(problem.grade)}</td>
-                <td>
-                  {problem.standardMin}/{minutesLabel(problem.cutoffMin)}
-                </td>
-                <td>
-                  <span className={styles.tag}>
-                    {problem.source === 'builtin' ? JA.problemList.builtin : JA.problemList.user}
-                  </span>
-                </td>
-                <td>
-                  <button
-                    type="button"
-                    data-testid={`open-${problem.id}`}
-                    onClick={() => {
-                      open(problem.id);
-                    }}
-                  >
-                    {JA.problemList.open}
-                  </button>
-                </td>
-              </tr>
+        <>
+          {/* モードの絞り込み（ホームで選んだモードが初期値）。§12.1 */}
+          <div className={styles.modeFilter} data-testid="mode-filter">
+            {(
+              [
+                [undefined, JA.problemList.allModes],
+                ['assemble', JA.home.assemble],
+                ['inspect-parts', JA.home.inspectParts],
+                ['inspect-repair', JA.home.inspectRepair],
+              ] as ReadonlyArray<readonly [ListMode, string]>
+            ).map(([mode, label]) => (
+              <button
+                key={label}
+                type="button"
+                aria-pressed={listMode === mode}
+                onClick={() => {
+                  setListMode(mode);
+                }}
+              >
+                {label}
+              </button>
             ))}
-          </tbody>
-        </table>
+          </div>
+          {rows.length === 0 ? (
+            <p className={styles.subtitle}>{JA.problemList.empty}</p>
+          ) : (
+            <table className={styles.problemTable} data-testid="problem-table">
+              <thead>
+                <tr>
+                  <th>{JA.problemList.columnId}</th>
+                  <th>{JA.problemList.columnTitle}</th>
+                  <th>{JA.problemList.grade}</th>
+                  <th>
+                    {JA.problemList.standard}/{JA.problemList.cutoff}
+                  </th>
+                  <th>{JA.problemList.columnSource}</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((problem) => (
+                  <tr key={problem.id}>
+                    <td>{problem.id}</td>
+                    <td>{problem.title}</td>
+                    <td>{gradeLabel(problem.grade)}</td>
+                    <td>
+                      {problem.standardMin}/{minutesLabel(problem.cutoffMin)}
+                    </td>
+                    <td>
+                      <span className={styles.tag}>
+                        {problem.source === 'builtin'
+                          ? JA.problemList.builtin
+                          : JA.problemList.user}
+                      </span>
+                    </td>
+                    <td>
+                      <button
+                        type="button"
+                        data-testid={`open-${problem.id}`}
+                        onClick={() => {
+                          open(problem.id);
+                        }}
+                      >
+                        {JA.problemList.open}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </>
       )}
 
       {listError !== undefined || problems === undefined || problems.userDirExists ? null : (

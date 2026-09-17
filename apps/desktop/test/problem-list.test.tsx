@@ -1,9 +1,10 @@
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { OjtApi, ProblemListPayload } from '../src/renderer/../shared/ipc.js';
 import { ojtApi } from '../src/renderer/app/ojt-api.js';
 import { useStore } from '../src/renderer/app/store.js';
 import { JA } from '../src/renderer/i18n/ja.js';
+import { Home } from '../src/renderer/screens/Home.js';
 import { ProblemList } from '../src/renderer/screens/ProblemList.js';
 
 /**
@@ -35,8 +36,47 @@ function setApi(api: Partial<OjtApi> | undefined): void {
   else window.ojt = api as OjtApi;
 }
 
+/** 3モードそれぞれ1件ずつのモックデータ（絞り込みの確認用）。§12.1 */
+const THREE_MODE_PAYLOAD: ProblemListPayload = {
+  problems: [
+    {
+      id: 'b-001',
+      title: '自己保持回路',
+      mode: 'assemble',
+      grade: 3,
+      description: '起動と停止',
+      standardMin: 30,
+      cutoffMin: 50,
+      source: 'builtin',
+    },
+    {
+      id: 'c1-001',
+      title: '部品点検セット1',
+      mode: 'inspect-parts',
+      grade: 2,
+      description: 'リレー・タイマの点検',
+      standardMin: 20,
+      cutoffMin: 30,
+      source: 'builtin',
+    },
+    {
+      id: 'c2-001',
+      title: '回路点検・修復1',
+      mode: 'inspect-repair',
+      grade: 2,
+      description: '故障の指摘と白線修復',
+      standardMin: 40,
+      cutoffMin: 60,
+      source: 'builtin',
+    },
+  ],
+  errors: [],
+  userDir: 'C:/dummy',
+  userDirExists: true,
+};
+
 beforeEach(() => {
-  useStore.setState({ problems: undefined, toasts: [], route: 'list' });
+  useStore.setState({ problems: undefined, toasts: [], route: 'list', listMode: undefined });
   setApi(undefined);
 });
 
@@ -163,5 +203,63 @@ describe('ProblemList', () => {
     render(<ProblemList />);
     await screen.findByTestId('problem-table');
     expect(screen.queryByTestId('problem-errors')).toBeNull();
+  });
+});
+
+/**
+ * 内蔵20題すべてが一覧行にできることは `test/content-loader.test.ts`（Task 1）の
+ * `BUILTIN_ALL_PROBLEMS` 直接テストで確かめ済みなので、ここでは3モードの絞り込みだけを見る
+ * （実際の20題を使うUIテストは `listMode` の組合せごとに遅く壊れやすい）。
+ */
+describe('モードで絞る（Plan 2B Task 17。§12.1）', () => {
+  it('「すべて」なら3モードの3行が並ぶ', async () => {
+    setApi({ listProblems: () => Promise.resolve(THREE_MODE_PAYLOAD) });
+    useStore.setState({ listMode: undefined });
+    render(<ProblemList />);
+    await screen.findByTestId('problem-table');
+    expect(screen.getByTestId('problem-table').querySelectorAll('tbody tr')).toHaveLength(3);
+  });
+
+  it('ホームで選んだモードだけに絞ると1行になる（3行 → 絞ると1行）', async () => {
+    setApi({ listProblems: () => Promise.resolve(THREE_MODE_PAYLOAD) });
+    useStore.setState({ listMode: 'inspect-parts' });
+    render(<ProblemList />);
+    await screen.findByTestId('problem-table');
+    const rows = screen.getByTestId('problem-table').querySelectorAll('tbody tr');
+    expect(rows).toHaveLength(1);
+    expect(screen.getByTestId('problem-table').textContent).not.toContain('自己保持回路');
+    expect(screen.getByTestId('problem-table').textContent).toContain('部品点検セット1');
+  });
+
+  it('絞り込みボタンを押すと一覧が切り替わる（§12.1）', async () => {
+    setApi({ listProblems: () => Promise.resolve(THREE_MODE_PAYLOAD) });
+    render(<ProblemList />);
+    await screen.findByTestId('problem-table');
+    const filter = screen.getByTestId('mode-filter');
+    const button = within(filter).getByRole('button', { name: JA.home.inspectRepair });
+    button.click();
+    await waitFor(() => {
+      expect(screen.getByTestId('problem-table').querySelectorAll('tbody tr')).toHaveLength(1);
+    });
+    expect(useStore.getState().listMode).toBe('inspect-repair');
+    expect(screen.getByTestId('problem-table').textContent).toContain('回路点検・修復1');
+  });
+});
+
+describe('ホームのモードカード（Plan 2B Task 17。§12.1）', () => {
+  it('3モードは押せて、押すと一覧の絞り込みが決まる（PLC は準備中のまま）', () => {
+    render(<Home />);
+    for (const [key, mode] of [
+      ['assemble', 'assemble'],
+      ['inspect-parts', 'inspect-parts'],
+      ['inspect-repair', 'inspect-repair'],
+    ] as const) {
+      const card = screen.getByTestId(`mode-${key}`);
+      expect(card.hasAttribute('disabled')).toBe(false);
+      card.click();
+      expect(useStore.getState().listMode).toBe(mode);
+      expect(useStore.getState().route).toBe('list');
+    }
+    expect(screen.getByTestId('mode-plc').hasAttribute('disabled')).toBe(true);
   });
 });

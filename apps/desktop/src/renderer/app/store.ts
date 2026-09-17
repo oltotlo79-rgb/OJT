@@ -48,6 +48,7 @@ import {
   type CameraPreset,
   type HazardBanner,
   type HighlightSelection,
+  type ListMode,
   type LogLine,
   type PendingReport,
   type ProbeSide,
@@ -72,6 +73,7 @@ export {
   type CameraPreset,
   type HazardBanner,
   type HighlightSelection,
+  type ListMode,
   type LogLine,
   type PendingReport,
   type ProbeSide,
@@ -181,6 +183,8 @@ export interface OpenProblemOptions {
 export interface AppState {
   route: Route;
   problems: ProblemListPayload | undefined;
+  /** 課題一覧の絞り込み（ホームで選んだモード。`undefined` は「すべて」）。§12.1 */
+  listMode: ListMode;
   problem: SupportedProblem | undefined;
   session: BoardSession | undefined;
   history: CommandHistory;
@@ -287,6 +291,8 @@ export interface AppState {
 
   setRoute: (route: Route) => void;
   setProblems: (payload: ProblemListPayload) => void;
+  /** 課題一覧の絞り込みを変える。§12.1 */
+  setListMode: (mode: ListMode) => void;
   /**
    * 課題を開く。盤を作れなかった（課題データの誤り）ときは `false` を返し、画面も状態も動かさない。
    * §13 #2
@@ -401,6 +407,7 @@ export function sessionForProblem(problem: SupportedProblem): BoardSession {
 export const useStore = create<AppState>((set, get) => ({
   route: 'home',
   problems: undefined,
+  listMode: undefined,
   problem: undefined,
   session: undefined,
   history: emptyHistory(),
@@ -451,6 +458,9 @@ export const useStore = create<AppState>((set, get) => ({
   },
   setProblems: (problems) => {
     set({ problems });
+  },
+  setListMode: (listMode) => {
+    set({ listMode });
   },
   openProblem: (problem, options = {}) => {
     /*

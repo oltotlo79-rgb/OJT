@@ -1,4 +1,5 @@
 import type { HazardKind } from '@ojt/circuit-sim';
+import type { SessionMode } from '../../shared/ipc.js';
 
 /**
  * ストアの値型のうち、React にも three にも依存しないもの。設計仕様 §12.1 / §12.2。
@@ -7,6 +8,13 @@ import type { HazardKind } from '@ojt/circuit-sim';
 
 /** 画面。§12.1 */
 export type Route = 'home' | 'list' | 'session' | 'result' | 'settings';
+
+/**
+ * 課題一覧の絞り込み（`undefined` は「すべて」）。§12.1
+ * モードの3値は `shared/ipc.ts` の `SessionMode`（`SupportedProblem['mode']` そのもの）を
+ * 借りる。同じユニオンを2箇所に書くと、モードが増えたときに片方だけ直してしまう。
+ */
+export type ListMode = SessionMode | undefined;
 
 /**
  * 視点プリセット。§12.2

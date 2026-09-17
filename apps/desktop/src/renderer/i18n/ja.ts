@@ -36,6 +36,10 @@ export const JA = {
     assembleDesc: '有接点回路を盤上で配線して組み立てる（モードB）',
     inspectParts: '部品点検',
     inspectRepair: '回路点検・修復',
+    /** モードC1のモードカードの説明。§9.1 */
+    inspectPartsDesc: '不良のリレー・タイマをチェック用ソケットで点検する（モードC1）',
+    /** モードC2のモードカードの説明。§9.2 */
+    inspectRepairDesc: '故障が入った盤を点検し、白線で修復する（モードC2）',
     plc: 'PLC',
     comingSoon: '準備中',
     settings: '設定',
@@ -53,6 +57,8 @@ export const JA = {
     errorsTitle: '読み込めなかった課題',
     userDirMissing: '利用者課題フォルダが見つかりません。内蔵課題のみで動作します。',
     empty: '課題がありません。',
+    /** 絞り込みの「すべて」。§12.1 */
+    allModes: 'すべて',
     loading: '読み込み中…',
     columnId: 'ID',
     columnTitle: '課題名',

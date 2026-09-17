@@ -228,3 +228,10 @@
   margin-top: 20px;
   padding: 10px 14px;
 }
+
+/* 課題一覧のモード絞り込み。§12.1 */
+.modeFilter {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 10px;
+}
