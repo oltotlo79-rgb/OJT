@@ -1,5 +1,7 @@
 import {
   ANALOG_OHM_RANGES,
+  TESTER_NO_PROBE_DISPLAY,
+  TESTER_OFF_DISPLAY,
   voltRangesFor,
   type TesterAction,
   type TesterKind,
@@ -46,16 +48,34 @@ export function dispatchTester(action: TesterAction): void {
 }
 
 /**
+ * 読値の単位。生値の `display`（Worker契約・E2Eが素の数値と比較する）は変えず、
+ * 別要素に添えて出す。`OL` / `----` / `OFF` は測れていないので単位を出さない（レビュー指摘）。
+ */
+function testerUnit(mode: TesterMode, display: string): string {
+  const blank =
+    display === 'OL' || display === TESTER_NO_PROBE_DISPLAY || display === TESTER_OFF_DISPLAY;
+  if (mode === 'OHM') return blank ? '' : 'Ω';
+  if (mode === 'DCV' || mode === 'ACV') return 'V';
+  return '';
+}
+
+/**
  * 表示器（読値）。`snapshot.tester` だけを購読する。§15
  * アナログの針は `AnalogMeter`（Task 6）が描く。ここは文字だけを出す。
  */
 export function TesterReadout(): JSX.Element {
   const reading = useStore((s) => s.snapshot.tester);
+  const unit = testerUnit(reading.mode, reading.display);
   return (
     <>
       <div className={styles.readout} data-testid="tester-readout" role="status" aria-live="off">
         {reading.display}
       </div>
+      {unit === '' ? null : (
+        <span className={styles.unit} data-testid="tester-unit">
+          {unit}
+        </span>
+      )}
       {reading.live ? (
         <p className={styles.note} data-testid="tester-live-note">
           {JA.tester.liveNote}

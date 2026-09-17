@@ -212,6 +212,73 @@ describe('表示器（§9.3）', () => {
   });
 });
 
+describe('読値の単位（レビュー指摘）', () => {
+  function setTester(
+    overrides: Partial<ReturnType<typeof useStore.getState>['snapshot']['tester']>,
+  ) {
+    useStore.setState({
+      snapshot: {
+        ...useStore.getState().snapshot,
+        tester: {
+          kind: 'digital',
+          mode: 'off',
+          value: Number.NaN,
+          display: 'OFF',
+          targetDeg: 0,
+          needleDeg: 0,
+          overRange: false,
+          live: false,
+          conductive: false,
+          ...overrides,
+        },
+      },
+    });
+  }
+
+  it('Ω測定は単位「Ω」を別要素に出す（生の display は変えない）', () => {
+    setTester({ mode: 'OHM', value: 650, display: '650.0' });
+    render(<TesterPanel />);
+    expect(screen.getByTestId('tester-readout').textContent).toBe('650.0');
+    expect(screen.getByTestId('tester-unit').textContent).toBe('Ω');
+  });
+
+  it('DCV測定は単位「V」を出す', () => {
+    setTester({ mode: 'DCV', value: 12, display: '12.0' });
+    render(<TesterPanel />);
+    expect(screen.getByTestId('tester-unit').textContent).toBe('V');
+  });
+
+  it('ACV測定は単位「V」を出す', () => {
+    setTester({ mode: 'ACV', value: 100, display: '100.0' });
+    render(<TesterPanel />);
+    expect(screen.getByTestId('tester-unit').textContent).toBe('V');
+  });
+
+  it('導通レンジは単位を出さない', () => {
+    setTester({ mode: 'CONT', value: 0, display: '導通', conductive: true });
+    render(<TesterPanel />);
+    expect(screen.queryByTestId('tester-unit')).toBeNull();
+  });
+
+  it('OL（振り切れ）のΩは単位を出さない', () => {
+    setTester({ mode: 'OHM', value: Number.NaN, display: 'OL', overRange: true });
+    render(<TesterPanel />);
+    expect(screen.queryByTestId('tester-unit')).toBeNull();
+  });
+
+  it('プローブ未配置（----）のΩは単位を出さない', () => {
+    setTester({ mode: 'OHM', value: Number.NaN, display: '----' });
+    render(<TesterPanel />);
+    expect(screen.queryByTestId('tester-unit')).toBeNull();
+  });
+
+  it('OFF は単位を出さない', () => {
+    setTester({ mode: 'off', display: 'OFF' });
+    render(<TesterPanel />);
+    expect(screen.queryByTestId('tester-unit')).toBeNull();
+  });
+});
+
 describe('a11y（種別・つまみ・レンジのグループ化）', () => {
   it('種別の行に role=group と aria-label が付く', () => {
     render(<TesterPanel />);

@@ -29,6 +29,13 @@
   text-align: right;
 }
 
+/* 読値の単位（Ω／V）。生値の `display` はそのまま保つので別要素に添える。 */
+.unit {
+  color: var(--muted);
+  font-size: 12px;
+  margin-left: 4px;
+}
+
 .row {
   display: flex;
   align-items: center;
