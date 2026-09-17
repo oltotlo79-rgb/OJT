@@ -1,6 +1,7 @@
 import type { FaultReport } from '@ojt/content';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { JA } from '../src/renderer/i18n/ja.js';
 import { RepairPanel } from '../src/renderer/panels/RepairPanel.js';
 import { ReportPanel } from '../src/renderer/panels/ReportPanel.js';
 
@@ -152,11 +153,25 @@ describe('RepairPanel（§9.2 修復）', () => {
       <RepairPanel
         addedWires={[]}
         removedWires={[]}
-        mountedParts={[{ socketId: 'S1', partId: 'CR1', isTimer: false }]}
+        mountedParts={[{ socketId: 'S1', partId: 'CR1', isTimer: false, replaced: false }]}
         onReplacePart={onReplacePart}
       />,
     );
     fireEvent.click(screen.getByTestId('replace-CR1'));
     expect(onReplacePart).toHaveBeenCalledWith('S1', 'CR1');
+  });
+
+  it('交換済みの部品はボタンを無効にして「交換しました」と出す', () => {
+    render(
+      <RepairPanel
+        addedWires={[]}
+        removedWires={[]}
+        mountedParts={[{ socketId: 'S1', partId: 'CR1', isTimer: false, replaced: true }]}
+        onReplacePart={vi.fn()}
+      />,
+    );
+    const button = screen.getByTestId<HTMLButtonElement>('replace-CR1');
+    expect(button.disabled).toBe(true);
+    expect(button.textContent).toBe(JA.inspectRepair.replaced);
   });
 });

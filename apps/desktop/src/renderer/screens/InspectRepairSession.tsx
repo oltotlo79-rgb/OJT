@@ -449,14 +449,26 @@ export function InspectRepairSession(): JSX.Element {
     for (const socketId of SOCKET_IDS) {
       const mounted = session.mounted[socketId];
       if (mounted === undefined) continue;
+      const partId = socketPartId(session.socketRoles, socketId);
       out.push({
         socketId,
-        partId: socketPartId(session.socketRoles, socketId),
+        partId,
         isTimer: mounted.kind === 'timer-h3y4',
+        /*
+         * 「交換済み」＝この部品を対象にした故障サイト（`sites`。交換しても残る）はあるのに、
+         * いまの `partFaults`（ネットリスト注入用）にはもう無い（§9.2）。
+         * 元から故障のない部品を誤って「交換済み」扱いしないよう、まず `sites` にあるかで絞る。
+         */
+        replaced:
+          circuit !== undefined &&
+          circuit.applied.sites.some((s) => s.partId === partId) &&
+          !circuit.applied.partFaults.some(
+            (f) => 'partId' in f.target && f.target.partId === partId,
+          ),
       });
     }
     return out;
-  }, [session]);
+  }, [session, circuit]);
 
   if (problem === undefined || session === undefined || circuit === undefined) {
     return (
@@ -494,6 +506,8 @@ export function InspectRepairSession(): JSX.Element {
     store.setPending(undefined);
     store.setSelectedWire(undefined);
     store.clearLive();
+    // `load` を送り直すと Worker 側もプローブを外す（`sim.worker.ts` の `load()`）ので合わせる
+    store.clearProbes();
     const nextCircuit = circuitFor(step.command) ?? store.circuit;
     if (nextCircuit !== undefined) store.setCircuit(nextCircuit);
     store.addLog(historyLog(verb, step.command.label));
@@ -515,6 +529,12 @@ export function InspectRepairSession(): JSX.Element {
    * 交換も1手として履歴に積む（I-11）。盤は変わらないので、前後の違いは `circuit` にだけ出る。
    */
   const onReplacePart = (socketId: SocketId, partId: string): void => {
+    // 交換済みの部品にもう一度押しても、undo が壊れる無意味な1手を積まない（§9.2）
+    if (
+      !circuit.applied.partFaults.some((f) => 'partId' in f.target && f.target.partId === partId)
+    ) {
+      return;
+    }
     const store = useStore.getState();
     const cloned = cloneSession(session);
     const nextCircuit = replacePart(circuit, partId);
@@ -710,6 +730,9 @@ export function InspectRepairSession(): JSX.Element {
             onReplacePart={onReplacePart}
           />
           {spec !== undefined && spec.ok ? <TimeChartPanel chart={spec.chart} /> : null}
+          {spec !== undefined && !spec.ok ? (
+            <p data-testid="reference-error">{referenceErrorText(spec.errors)}</p>
+          ) : null}
           {schematicVisible ? (
             <section className={styles.panelLive} data-testid="schematic-hint">
               <h2 className={styles.liveTitle}>{JA.session.schematicHint}</h2>

@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useStore } from '../src/renderer/app/store.js';
 import { JA } from '../src/renderer/i18n/ja.js';
 import { InspectRepairSession } from '../src/renderer/screens/InspectRepairSession.js';
+import type * as SpecChartModule from '../src/renderer/session/spec-chart.js';
 
 /**
  * モードC2のセッション画面（Plan 2B Task 14）。設計仕様 §9.2。
@@ -14,7 +15,17 @@ import { InspectRepairSession } from '../src/renderer/screens/InspectRepairSessi
 const mocks = vi.hoisted(() => ({
   sent: [] as Array<Record<string, unknown>>,
   picks: [] as Array<(hit: unknown) => void>,
+  forceSpecFail: false,
 }));
+
+vi.mock('../src/renderer/session/spec-chart.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof SpecChartModule>();
+  return {
+    ...actual,
+    buildSpecChart: (problem: Parameters<typeof actual.buildSpecChart>[0]) =>
+      mocks.forceSpecFail ? { ok: false, errors: ['boom'] } : actual.buildSpecChart(problem),
+  };
+});
 
 vi.mock('../src/renderer/session/worker-bridge.js', () => ({
   bridge: {
@@ -37,6 +48,8 @@ vi.mock('../src/renderer/three/BoardScene.js', () => ({
 const { sent, picks } = mocks;
 
 const C2 = BUILTIN_INSPECT_REPAIR_PROBLEMS.find((p) => p.grade === 2);
+/** CR1 に部品故障（`contact-resistive`）が入っている課題。部品交換のテスト用。 */
+const C2_PART = BUILTIN_INSPECT_REPAIR_PROBLEMS.find((p) => p.id === 'c2-002');
 
 /**
  * 白線を張る端子の組（`c2-001` の `wire-missing`（`sw-009`）をそのまま直す1本）。§9.2
@@ -178,8 +191,23 @@ describe('修復パネルの「外した青線」が答えを漏らす（§9.2�
   });
 });
 
+describe('回路図の参照エラー（§9.2。モードBと同じ流儀）', () => {
+  it('spec チャートの構築に失敗したら reference-error を出す', () => {
+    mocks.forceSpecFail = true;
+    try {
+      render(<InspectRepairSession />);
+      expect(screen.getByTestId('reference-error')).toBeTruthy();
+    } finally {
+      mocks.forceSpecFail = false;
+    }
+  });
+});
+
 describe('部品交換（§9.2）', () => {
   it('交換すると unplug と plug を送り、回路から部品の故障が消える', () => {
+    expect(C2_PART).toBeDefined();
+    if (C2_PART === undefined) return;
+    useStore.getState().openProblem(C2_PART);
     render(<InspectRepairSession />);
     const before = useStore.getState().circuit;
     expect(before).toBeDefined();
@@ -199,6 +227,25 @@ describe('部品交換（§9.2）', () => {
   });
 });
 
+describe('部品交換を2回押すと履歴が壊れる（§9.2）', () => {
+  it('交換済みの部品にもう一度押しても履歴に積まず、ボタンは無効表示になる', () => {
+    expect(C2_PART).toBeDefined();
+    if (C2_PART === undefined) return;
+    useStore.getState().openProblem(C2_PART);
+    render(<InspectRepairSession />);
+    const row = screen.getByTestId('replace-CR1');
+    fireEvent.click(row);
+    expect(useStore.getState().history.done).toHaveLength(1);
+    // 交換済みなのでボタンは無効になる（見た目でも二度押しを防ぐ）
+    expect(screen.getByTestId<HTMLButtonElement>('replace-CR1').disabled).toBe(true);
+    fireEvent.click(screen.getByTestId('replace-CR1'));
+    // 2回目は何もしない（disabled のクリックは onClick を呼ばないのでハンドラも防御する）
+    expect(useStore.getState().history.done).toHaveLength(1);
+    fireEvent.click(screen.getByRole('button', { name: JA.session.undo }));
+    expect(useStore.getState().circuit?.applied.partFaults.length).toBeGreaterThan(0);
+  });
+});
+
 describe('判定（§9.2）', () => {
   it('判定ボタンで judgeRepair を送る', () => {
     expect(C2).toBeDefined();
@@ -213,6 +260,42 @@ describe('判定（§9.2）', () => {
 });
 
 describe('元に戻す・やり直し（§8.2 / §9.2。I-11）', () => {
+  it('元に戻すと Worker へ load を送り直すのに合わせ、パネルのプローブも外す（Worker と揃える）', () => {
+    render(<InspectRepairSession />);
+    fireEvent.click(screen.getByTestId('tool-tester'));
+    const onPick = picks.at(-1);
+    if (onPick === undefined) return;
+    act(() => {
+      onPick({ kind: 'terminal', id: toTerminalId('S1.13'), wirable: true, label: 'a' });
+    });
+    act(() => {
+      onPick({ kind: 'terminal', id: toTerminalId('S1.14'), wirable: true, label: 'b' });
+    });
+    expect(useStore.getState().tester.black).toBeDefined();
+    expect(useStore.getState().tester.red).toBeDefined();
+
+    fireEvent.click(screen.getByRole('button', { name: '白' }));
+    const onPick2 = picks.at(-1);
+    if (onPick2 === undefined) return;
+    act(() => {
+      onPick2({ kind: 'terminal', id: REPAIR_FROM, wirable: true, label: 'a' });
+    });
+    act(() => {
+      onPick2({ kind: 'terminal', id: REPAIR_TO, wirable: true, label: 'b' });
+    });
+    sent.length = 0;
+    fireEvent.click(screen.getByRole('button', { name: JA.session.undo }));
+
+    expect(sent.some((c) => c['type'] === 'load')).toBe(true);
+    const tester = useStore.getState().tester;
+    expect(
+      { black: tester.black, red: tester.red },
+      'renderer probes should have been cleared to match the worker',
+    ).toEqual({ black: undefined, red: undefined });
+  });
+});
+
+describe('元に戻す・やり直し：配線と部品交換（§8.2 / §9.2。I-11）', () => {
   it('白線を張ってから元に戻すと配線前の本数に戻る', () => {
     render(<InspectRepairSession />);
     const before = useStore.getState().session?.wires.length ?? 0;
@@ -248,6 +331,9 @@ describe('元に戻す・やり直し（§8.2 / §9.2。I-11）', () => {
   });
 
   it('部品交換を元に戻すと故障が復活する（sites は変わらない。§9.2）', () => {
+    expect(C2_PART).toBeDefined();
+    if (C2_PART === undefined) return;
+    useStore.getState().openProblem(C2_PART);
     render(<InspectRepairSession />);
     const before = useStore.getState().circuit;
     if (before === undefined) return;

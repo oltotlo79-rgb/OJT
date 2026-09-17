@@ -9,6 +9,8 @@ export interface MountedPartRow {
   /** 役割ID（`CR1` 等）。指摘と部品交換はこのIDで指す。§6.4 */
   partId: string;
   isTimer: boolean;
+  /** すでに交換済みか（§9.2）。交換済みならボタンを無効にし、二度押しで履歴を壊さない。 */
+  replaced: boolean;
 }
 
 /**
@@ -47,11 +49,12 @@ export function RepairPanel({
           <button
             type="button"
             data-testid={`replace-${part.partId}`}
+            disabled={part.replaced}
             onClick={() => {
               onReplacePart(part.socketId, part.partId);
             }}
           >
-            {JA.inspectRepair.replace}
+            {part.replaced ? JA.inspectRepair.replaced : JA.inspectRepair.replace}
           </button>
         </div>
       ))}
