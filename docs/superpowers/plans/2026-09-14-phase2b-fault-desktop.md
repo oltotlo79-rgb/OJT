@@ -333,7 +333,7 @@ Plan 2A Task 17 は「C1/C2 を開始できる画面が無い」という理由�
 | `readProblem` の戻り | `SupportedProblem \| null` | C1/C2 の課題も renderer へ渡す |
 | モードの型 | `export type SessionMode = SupportedProblem['mode']` を `shared/ipc.ts` に置く | main も renderer も読める場所は `src/shared/` だけ（`ja.ts` は three を引くので main から読めない。1D1 の方針） |
 
-- [ ] **Step 1: 失敗するテストを書く**
+- [x] **Step 1: 失敗するテストを書く**
 
 `apps/desktop/test/problem-modes.test.ts`:
 
@@ -387,7 +387,7 @@ describe('toSummary（§12.1）', () => {
 });
 ```
 
-- [ ] **Step 2: RED を確認する**
+- [x] **Step 2: RED を確認する**
 
 ```powershell
 pnpm --filter @ojt/desktop exec vitest run test/problem-modes.test.ts
@@ -395,7 +395,7 @@ pnpm --filter @ojt/desktop exec vitest run test/problem-modes.test.ts
 
 Expected: 失敗。`error TS2339: Property 'mode' does not exist on type 'ProblemSummary'` と `Argument of type 'InspectPartsProblem' is not assignable to parameter of type 'AssembleProblem'` で `Test Files  1 failed (1)`。
 
-- [ ] **Step 3: `src/shared/ipc.ts` を広げる**
+- [x] **Step 3: `src/shared/ipc.ts` を広げる**
 
 `apps/desktop/src/shared/ipc.ts` の1行目を次に置き換える:
 
@@ -458,7 +458,7 @@ export function toSummary(problem: SupportedProblem, source: 'builtin' | 'user')
 }
 ```
 
-- [ ] **Step 4: `src/main/content-loader.ts` の絞り込みを外す**
+- [x] **Step 4: `src/main/content-loader.ts` の絞り込みを外す**
 
 `apps/desktop/src/main/content-loader.ts` の `import { BUILTIN_PROBLEMS, isAssembleProblem, type AssembleProblem } from '@ojt/content';` を次に置き換える:
 
@@ -502,7 +502,7 @@ export interface LoadedContent {
   };
 ```
 
-- [ ] **Step 5: 既存テストを20題に合わせる**
+- [x] **Step 5: 既存テストを20題に合わせる**
 
 `apps/desktop/test/content-loader.test.ts` の import 行 `import { BUILTIN_PROBLEMS } from '@ojt/content';` を次に置き換える:
 
@@ -529,7 +529,7 @@ import { BUILTIN_ALL_PROBLEMS } from '@ojt/content';
   });
 ```
 
-- [ ] **Step 5a: `test/problem-list.test.tsx` の既存リテラルに `mode` を足す**
+- [x] **Step 5a: `test/problem-list.test.tsx` の既存リテラルに `mode` を足す**
 
 `ProblemSummary` に `mode` が増えたので（Step 3）、この型で書かれた既存のテストのリテラルが `pnpm --filter @ojt/desktop typecheck`（Step 7）で型エラーになる。`apps/desktop/test/problem-list.test.tsx` の `PAYLOAD` の中の課題オブジェクトの `source: 'builtin',` の**直前**に次を挿入する:
 
@@ -543,7 +543,7 @@ import { BUILTIN_ALL_PROBLEMS } from '@ojt/content';
               mode: 'assemble',
 ```
 
-- [ ] **Step 6: GREEN を確認する**
+- [x] **Step 6: GREEN を確認する**
 
 ```powershell
 pnpm --filter @ojt/desktop exec vitest run test/problem-modes.test.ts test/content-loader.test.ts test/problem-list.test.tsx --no-file-parallelism
@@ -551,7 +551,7 @@ pnpm --filter @ojt/desktop exec vitest run test/problem-modes.test.ts test/conte
 
 Expected: `Test Files  3 passed (3)`。`problem-modes` 4件、`content-loader` は既存の件数＋1件、`problem-list` は既存の件数のまま全て通る。
 
-- [ ] **Step 6a: `ProblemList.tsx` に暫定のモード絞り込みを入れる**
+- [x] **Step 6a: `ProblemList.tsx` に暫定のモード絞り込みを入れる**
 
 `readProblem()` の戻りが `SupportedProblem` に広がったので、`openProblem(problem)`（引数は `AssembleProblem`）へそのまま渡すと型が合わなくなる。ストアを広げるのは Task 4 なので、ここでは**モードBだけ開く**暫定の絞り込みを入れる（Task 4 Step 10 で外す）。
 
@@ -566,7 +566,7 @@ Expected: `Test Files  3 passed (3)`。`problem-modes` 4件、`content-loader` �
             openProblem(problem);
 ```
 
-- [ ] **Step 7: 型検査を通す**
+- [x] **Step 7: 型検査を通す**
 
 ```powershell
 pnpm --filter @ojt/desktop typecheck
@@ -574,7 +574,7 @@ pnpm --filter @ojt/desktop typecheck
 
 Expected: 無出力。
 
-- [ ] **Step 8: コミットする**
+- [x] **Step 8: コミットする**
 
 ```powershell
 git add apps/desktop/src/shared/ipc.ts apps/desktop/src/main/content-loader.ts apps/desktop/src/renderer/screens/ProblemList.tsx apps/desktop/test/content-loader.test.ts apps/desktop/test/problem-modes.test.ts apps/desktop/test/problem-list.test.tsx
@@ -607,7 +607,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 | 電線・ソケット・押ボタン | テスターモードでは押ボタンだけ押せる（励磁して測るため）。電線とソケットは無視 | §9.1 の手順（赤PBを押しながら測る） |
 | 空クリック | 両方のプローブを外す | §8.2 の Esc と同じ「取り消し」の作法 |
 
-- [ ] **Step 1: 失敗するテストを書く**
+- [x] **Step 1: 失敗するテストを書く**
 
 `apps/desktop/test/tester-ui.test.ts`:
 
@@ -729,7 +729,7 @@ describe('testerPickToAction（§9.3）', () => {
 });
 ```
 
-- [ ] **Step 2: RED を確認する**
+- [x] **Step 2: RED を確認する**
 
 ```powershell
 pnpm --filter @ojt/desktop exec vitest run test/tester-ui.test.ts
@@ -737,7 +737,7 @@ pnpm --filter @ojt/desktop exec vitest run test/tester-ui.test.ts
 
 Expected: 失敗。`Failed to resolve import "../src/renderer/session/tester.js"` で `Test Files  1 failed (1)`。
 
-- [ ] **Step 3: `session/interaction.ts` を広げる**
+- [x] **Step 3: `session/interaction.ts` を広げる**
 
 `apps/desktop/src/renderer/session/interaction.ts` の `ToolMode` を次に置き換える:
 
@@ -784,7 +784,7 @@ export type ReportTarget = { wireId: string } | { partId: string } | { terminalI
 
 （`pickToAction()` は配線・削除の2モードだけを見る関数のままにし、新しい2モードは呼び出し側が別の関数へ振り分ける。`switch` の網羅性検査を壊さないため、ここで早期に返す。）
 
-- [ ] **Step 4: `session/tester.ts` を作る**
+- [x] **Step 4: `session/tester.ts` を作る**
 
 `apps/desktop/src/renderer/session/tester.ts`:
 
@@ -860,7 +860,7 @@ export function testerPickToAction(state: TesterPickState, hit: PickHit): PickAc
 }
 ```
 
-- [ ] **Step 5: `test/interaction.test.ts` に新モードの素通りを足す**
+- [x] **Step 5: `test/interaction.test.ts` に新モードの素通りを足す**
 
 `apps/desktop/test/interaction.test.ts` の末尾に次を足す:
 
@@ -887,7 +887,7 @@ describe('新しいツールモード（Plan 2B Task 2）', () => {
 
 （`describe` / `it` / `expect` / `pickToAction` / `PickHit` / `toTerminalId` は既存の import で揃っている。足りなければ既存の import 行に追記する。）
 
-- [ ] **Step 6: GREEN を確認する**
+- [x] **Step 6: GREEN を確認する**
 
 ```powershell
 pnpm --filter @ojt/desktop exec vitest run test/tester-ui.test.ts test/interaction.test.ts --no-file-parallelism
@@ -895,7 +895,7 @@ pnpm --filter @ojt/desktop exec vitest run test/tester-ui.test.ts test/interacti
 
 Expected: `Test Files  2 passed (2)`。`tester-ui` 13件、`interaction` は既存＋1件。
 
-- [ ] **Step 7: コミットする**
+- [x] **Step 7: コミットする**
 
 ```powershell
 git add apps/desktop/src/renderer/session/tester.ts apps/desktop/src/renderer/session/interaction.ts apps/desktop/test/tester-ui.test.ts apps/desktop/test/interaction.test.ts
@@ -929,7 +929,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 | 針の時定数の扱い | 実測を間引いても、`stepTester()` に渡す `dtMs` を「前回実測からの経過tick数 × TICK_MS」にすることで、指数移動平均の式そのものは経過時間どおりに進める | 一度にまとめて進めても、10msごとに3回進めるのと数学的に等価（指数減衰の合成則）。読値と針の再計算を1回にまとめ、余分な `readTester()` 呼び出しを避ける |
 | 2A側のキャッシュ | 上記に加えて `readTester()` 自身も `Simulation` 単位でキャッシュ済み（tick・プローブ・レンジ種別が同じ間はフルの回路解析をやり直さない） | 2A 側で実装済み（2A Task 2 のレビュー反映①）。本プランはそのAPIをそのまま呼ぶだけで、キャッシュの実装は持たない |
 
-- [ ] **Step 1: 失敗するテストを書く**
+- [x] **Step 1: 失敗するテストを書く**
 
 `apps/desktop/test/sim-worker-tester.test.ts`:
 
@@ -1145,7 +1145,7 @@ describe('テスターのスナップショット（§9.3）', () => {
 });
 ```
 
-- [ ] **Step 2: RED を確認する**
+- [x] **Step 2: RED を確認する**
 
 ```powershell
 pnpm --filter @ojt/desktop exec vitest run test/sim-worker-tester.test.ts
@@ -1153,7 +1153,7 @@ pnpm --filter @ojt/desktop exec vitest run test/sim-worker-tester.test.ts
 
 Expected: 失敗。`Object literal may only specify known properties, and 'tester' does not exist in type` と `Property 'tester' does not exist on type 'SimSnapshot'` で `Test Files  1 failed (1)`。
 
-- [ ] **Step 3: `src/worker/protocol.ts` を広げる**
+- [x] **Step 3: `src/worker/protocol.ts` を広げる**
 
 `apps/desktop/src/worker/protocol.ts` の import を次に置き換える:
 
@@ -1221,7 +1221,7 @@ export interface TesterSnapshot {
 }
 ```
 
-- [ ] **Step 4: `src/worker/sim.worker.ts` にテスターを組み込む**
+- [x] **Step 4: `src/worker/sim.worker.ts` にテスターを組み込む**
 
 `apps/desktop/src/worker/sim.worker.ts` の `@ojt/circuit-sim` の import を次に置き換える:
 
@@ -1384,7 +1384,7 @@ function testerSnapshot(): TesterSnapshot {
       break;
 ```
 
-- [ ] **Step 5: `EMPTY_SNAPSHOT` にテスターを足す**
+- [x] **Step 5: `EMPTY_SNAPSHOT` にテスターを足す**
 
 `apps/desktop/src/renderer/app/store.ts` の `EMPTY_SNAPSHOT` の `droppedTicks: 0,` の**直前**に次を挿入する:
 
@@ -1402,7 +1402,7 @@ function testerSnapshot(): TesterSnapshot {
   },
 ```
 
-- [ ] **Step 6: GREEN を確認する**
+- [x] **Step 6: GREEN を確認する**
 
 ```powershell
 pnpm --filter @ojt/desktop exec vitest run test/sim-worker-tester.test.ts test/sim-worker.test.ts --no-file-parallelism
@@ -1410,7 +1410,7 @@ pnpm --filter @ojt/desktop exec vitest run test/sim-worker-tester.test.ts test/s
 
 Expected: `Test Files  2 passed (2)` / `Tests  ... passed`。新規7件と既存の Worker テストが両方通る。
 
-- [ ] **Step 7: コミットする**
+- [x] **Step 7: コミットする**
 
 ```powershell
 git add apps/desktop/src/worker/protocol.ts apps/desktop/src/worker/sim.worker.ts apps/desktop/src/renderer/app/store.ts apps/desktop/test/sim-worker-tester.test.ts
@@ -1451,7 +1451,7 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 
 **C2の回路図ヒントについて:** モードBは級で決まる（`schematicPolicy()`。§8.4）が、C2は**課題の `hints.schematicVisible`** が決める（§9.2: 2級形式は回路図あり、1級形式はタイムチャートのみ）。Plan 2A のスキーマが `hints.schematicVisible === (grade === 2)` を強制しているので、級と食い違うことはない。
 
-- [ ] **Step 1: 失敗するテストを書く**
+- [x] **Step 1: 失敗するテストを書く**
 
 `apps/desktop/test/store-inspect.test.ts`:
 
@@ -1649,7 +1649,7 @@ describe('isInspectJudge', () => {
 });
 ```
 
-- [ ] **Step 2: RED を確認する**
+- [x] **Step 2: RED を確認する**
 
 ```powershell
 pnpm --filter @ojt/desktop exec vitest run test/store-inspect.test.ts
@@ -1657,7 +1657,7 @@ pnpm --filter @ojt/desktop exec vitest run test/store-inspect.test.ts
 
 Expected: 失敗。`Property 'applyTester' does not exist on type 'AppState'`（`setAnswer` / `addReport` / `setHighlight` / `dismissHazard` / `isInspectJudge` / `NO_HIGHLIGHT` も同様）で `Test Files  1 failed (1)`。
 
-- [ ] **Step 3: `store-types.ts` に値型を足す**
+- [x] **Step 3: `store-types.ts` に値型を足す**
 
 `apps/desktop/src/renderer/app/store-types.ts` の先頭に import を足す:
 
@@ -1705,7 +1705,7 @@ export const NO_HIGHLIGHT: HighlightSelection = { cellIds: [], terminals: [], wi
 export type { ProbeSide } from '../app/store-types.js';
 ```
 
-- [ ] **Step 4: `store.ts` の import を広げる**
+- [x] **Step 4: `store.ts` の import を広げる**
 
 `apps/desktop/src/renderer/app/store.ts` の先頭4ブロックの import を次に置き換える:
 
@@ -1781,7 +1781,7 @@ export {
 } from './store-types.js';
 ```
 
-- [ ] **Step 5: `store.ts` に定数・判別子・盤の作り分けを足す**
+- [x] **Step 5: `store.ts` に定数・判別子・盤の作り分けを足す**
 
 `schematicPolicy()` の**直後**に次を足す:
 
@@ -1816,7 +1816,7 @@ export function checkSessionFor(problem: InspectPartsProblem): BoardSession {
 }
 ```
 
-- [ ] **Step 6: `AppState` に新しい欄と操作を足す**
+- [x] **Step 6: `AppState` に新しい欄と操作を足す**
 
 `AppState` の `problem: AssembleProblem | undefined;` を次に置き換える:
 
@@ -1886,7 +1886,7 @@ export function checkSessionFor(problem: InspectPartsProblem): BoardSession {
   setHighlight: (selection: HighlightSelection) => void;
 ```
 
-- [ ] **Step 7: 初期値と `openProblem` を書き換える**
+- [x] **Step 7: 初期値と `openProblem` を書き換える**
 
 `useStore` の初期値のうち `pendingWorkFile: undefined,` の**直後**に次を挿入する:
 
@@ -1998,7 +1998,7 @@ export function checkSessionFor(problem: InspectPartsProblem): BoardSession {
 import { droppedTicksLog, JA, referenceErrorText } from '../i18n/ja.js';
 ```
 
-- [ ] **Step 8: `applySnapshot` に警告バナーを足し、新しい操作を実装する**
+- [x] **Step 8: `applySnapshot` に警告バナーを足し、新しい操作を実装する**
 
 `applySnapshot` の `set({ … })` を次に置き換える:
 
@@ -2119,7 +2119,7 @@ import { droppedTicksLog, JA, referenceErrorText } from '../i18n/ja.js';
 
 （`resetSession()` は「もう一度」（結果画面からの再挑戦・同じ課題を同じ盤で続ける）に使うので `circuit` は保つ。`restartSession()` と `abandonSession()` は課題を離れる／作り直す操作なので `circuit` も手放す。）
 
-- [ ] **Step 9: `Session.tsx` をモードBに絞る**
+- [x] **Step 9: `Session.tsx` をモードBに絞る**
 
 `apps/desktop/src/renderer/screens/Session.tsx` の `const problem = useStore((s) => s.problem);` を次に置き換える:
 
@@ -2140,11 +2140,11 @@ import { droppedTicksLog, JA, referenceErrorText } from '../i18n/ja.js';
 import { isAssembleProblem } from '@ojt/content';
 ```
 
-- [ ] **Step 10: `ProblemList.tsx` の暫定ガードを外す**
+- [x] **Step 10: `ProblemList.tsx` の暫定ガードを外す**
 
 `apps/desktop/src/renderer/screens/ProblemList.tsx` の Task 1 Step 7 で入れた暫定ガード（`if (problem.mode !== 'assemble') { … }` の4行）を削除し、`openProblem(problem);` だけに戻す。
 
-- [ ] **Step 11: GREEN を確認する**
+- [x] **Step 11: GREEN を確認する**
 
 ```powershell
 pnpm --filter @ojt/desktop exec vitest run test/store-inspect.test.ts test/store.test.ts test/session.test.tsx --no-file-parallelism
@@ -2152,7 +2152,7 @@ pnpm --filter @ojt/desktop exec vitest run test/store-inspect.test.ts test/store
 
 Expected: `Test Files  3 passed (3)`。`store-inspect` 14件と既存のストア・セッションのテストが通る。
 
-- [ ] **Step 12: 型検査を通す**
+- [x] **Step 12: 型検査を通す**
 
 ```powershell
 pnpm --filter @ojt/desktop typecheck
@@ -2160,7 +2160,7 @@ pnpm --filter @ojt/desktop typecheck
 
 Expected: 無出力。
 
-- [ ] **Step 13: コミットする**
+- [x] **Step 13: コミットする**
 
 ```powershell
 git add apps/desktop/src/renderer/app/store.ts apps/desktop/src/renderer/app/store-types.ts apps/desktop/src/renderer/screens/Session.tsx apps/desktop/src/renderer/screens/ProblemList.tsx apps/desktop/test/store-inspect.test.ts
@@ -5000,6 +5000,8 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 | 判定 | `judgeParts` を送り、`inspectResult` を受けて結果画面へ | §9.1 判定 |
 
 - [ ] **Step 1: 失敗するテストを書く**
+
+`Session.tsx` の非 assemble ガード（Batch 1 修正）は SessionRoute 導入後も安全網として残す。
 
 `apps/desktop/test/inspect-parts-screen.test.tsx`:
 
@@ -10521,4 +10523,5 @@ Claude-Session: https://claude.ai/code/session_01M5s66DcWF7uTvUejdMWTiC
 |---|---|
 | 2026-09-14 | 初版。Plan 2（Phase 2）のうち `apps/desktop`（2B）を扱う。テスターの操作モデルを「ツールモード `tester` ＋ 黒→赤の順送り（明示選択つき）」に決定。Worker のテスターコマンドは `TesterAction` を運ぶ1本に統一。C1の部品挿抜は `load` の送り直し、C2の部品交換は `unplug`＋`plug`＋`replacePart()`。期待読値（正常 650.0 / レアショート 422.5 / コイル断線 OL / しきい値 552.5）はすべて Plan 2A の実測表から引いており、本プランでは新しい数値を作っていない |
 | 2026-09-14 | レビュー反映: B1〜B7、I1〜I16、M1〜M13、MERGE 注意、推奨バッチ。主な内容: `isInspectJudge` を `mode !== 'assemble'` 判別に修正（Plan 2A I-3 で3モードとも `mode` を持つようになったため）。C2の作業ファイルを `applied`/`cells`/`initialWireIds` の保存から `faultSeed`＋`resolvedFaults`（Plan 2A I-4 の `buildInspectRepairCircuit({ resolvedFaults })`）へ作り直し、復元時に再抽選しないようにした。C2に元に戻す／やり直し（白線・部品交換）を追加。C1/C2 のリストテストを3モードのモックで書き直し、内蔵20題の確認は `content-loader.test.ts` 側に寄せた。Worker のテスター実測を間引く設計を追加（つまみOFF・プローブ未配置ではスキップ、それ以外は33msごとかプローブ変更時だけ実測。前提D）。モードBにも警告バナーを追加。`sharedMaterial()` のキャッシュ鍵に `opacity`/`transparent` を追加。回路図の連動ハイライトの TDZ バグとホバーの間引きを修正。作業ファイルの保存→再起動→読込の E2E を追加。前提Cの「通電中のΩ測定」表示を `OL` から `----` に訂正し、`physicalOverride` / `FaultSpecData` の型を2A実装に合わせた |
+| 2026-09-18 | Batch 1 レビュー反映: 非モードB課題の戻り導線と Worker 起動抑止、テスター kind/mode の鮮度、0Ω調整の保持、再挑戦時の故障維持、テスト追加 |
 
