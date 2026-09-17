@@ -9,6 +9,7 @@ import type { JSX } from 'react';
 import { useStore, type ProbeSide } from '../app/store.js';
 import { JA, ohmRangeLabel, probeLabel, voltRangeLabel } from '../i18n/ja.js';
 import { bridge } from '../session/worker-bridge.js';
+import { AnalogMeter } from './AnalogMeter.js';
 import styles from './tester.module.css';
 
 /**
@@ -121,6 +122,7 @@ export function TesterPanel({ children }: { children?: JSX.Element }): JSX.Eleme
     <section className={styles.panel} data-testid="tester-panel">
       <h2 className={styles.title}>{JA.tester.title}</h2>
       <TesterReadout />
+      {kind === 'analog' ? <AnalogMeter /> : null}
       {children}
       <div className={styles.row}>
         {KINDS.map((item) => (
