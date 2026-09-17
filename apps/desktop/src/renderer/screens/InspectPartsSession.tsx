@@ -262,10 +262,9 @@ export function InspectPartsSession(): JSX.Element {
           dispatchTester({ type: 'place-probe', probe: action.probe, terminal: undefined });
         }
         break;
-      case 'pressButton':
-        bridge.send({ type: 'press', pbId: action.pbId });
-        break;
       default:
+        // 押ボタンは `three/PushButton.tsx` のポインタイベント（`onPress`/`onRelease`）で
+        // 扱う。3Dの端子ピックが `pushbutton` を返すことはないのでここには来ない（M4）。
         break;
     }
   }, []);
@@ -434,6 +433,7 @@ export function InspectPartsSession(): JSX.Element {
           <TesterPanel>
             <ProbeShortcuts />
           </TesterPanel>
+          <DiagnosisHelp />
           <MarkSheetPanel
             problem={problem}
             answers={answers}
@@ -441,7 +441,6 @@ export function InspectPartsSession(): JSX.Element {
               useStore.getState().setAnswer(partId, answer);
             }}
           />
-          <DiagnosisHelp />
         </div>
 
         <div className={styles.bottomPanel}>

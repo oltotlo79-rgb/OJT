@@ -39,27 +39,31 @@ export function MarkSheetPanel({
           </tr>
         </thead>
         <tbody>
-          {rows.map((row) => (
-            <tr key={row.partId}>
-              <td>{trayPartLabel(row.partId, row.kind === 'timer-h3y4')}</td>
-              <td>
-                {PART_TRUTHS.map((truth) => (
-                  <label key={truth} style={{ display: 'block' }}>
-                    <input
-                      type="radio"
-                      name={`mark-${row.partId}`}
-                      data-testid={`answer-${row.partId}-${truth}`}
-                      checked={row.answer === truth}
-                      onChange={() => {
-                        onAnswer(row.partId, truth);
-                      }}
-                    />{' '}
-                    {PART_TRUTH_LABELS[truth]}
-                  </label>
-                ))}
-              </td>
-            </tr>
-          ))}
+          {rows.map((row) => {
+            const partLabel = trayPartLabel(row.partId, row.kind === 'timer-h3y4');
+            return (
+              <tr key={row.partId}>
+                <td>{partLabel}</td>
+                <td>
+                  {PART_TRUTHS.map((truth) => (
+                    <label key={truth} style={{ display: 'block' }}>
+                      <input
+                        type="radio"
+                        name={`mark-${row.partId}`}
+                        data-testid={`answer-${row.partId}-${truth}`}
+                        aria-label={`${partLabel} ${PART_TRUTH_LABELS[truth]}`}
+                        checked={row.answer === truth}
+                        onChange={() => {
+                          onAnswer(row.partId, truth);
+                        }}
+                      />{' '}
+                      {PART_TRUTH_LABELS[truth]}
+                    </label>
+                  ))}
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </section>

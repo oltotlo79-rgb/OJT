@@ -97,6 +97,17 @@ describe('MarkSheetPanel（§9.1 回答 / §17.2 #5）', () => {
     expect(checked.name).toBe(other.name);
   });
 
+  it('ラジオに部品名入りの aria-label が付く（読み上げが部品名を読める。レビュー指摘 M3）', () => {
+    expect(C1).toBeDefined();
+    if (C1 === undefined) return;
+    render(<MarkSheetPanel problem={C1} answers={[]} onAnswer={vi.fn()} />);
+    const first = C1.parts[0];
+    if (first === undefined) return;
+    const radio = screen.getByTestId(`answer-${first.id}-coil-open`);
+    expect(radio.getAttribute('aria-label')).toContain(first.id);
+    expect(radio.getAttribute('aria-label')).toContain('コイル断線');
+  });
+
   it('解答済みの件数を出す（§9.1 判定の n/m）', () => {
     expect(C1).toBeDefined();
     if (C1 === undefined) return;

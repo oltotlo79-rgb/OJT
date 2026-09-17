@@ -123,6 +123,25 @@ describe('InspectPartsResult（§9.1 判定）', () => {
     expect(screen.getByText(/危険操作（3）/)).toBeTruthy();
   });
 
+  it('problem.parts に無い partId は素の値のまま出す（種別を決め打ちしない。レビュー指摘 M5）', () => {
+    expect(C1).toBeDefined();
+    if (C1 === undefined) return;
+    render(
+      <InspectPartsResult
+        problem={C1}
+        result={result({
+          scores: [{ partId: 'phantom', truth: 'normal', answer: 'normal', correct: true }],
+        })}
+        restoredHazardCount={0}
+        onRetry={vi.fn()}
+        onBackToList={vi.fn()}
+      />,
+    );
+    const table = screen.getByTestId('mark-result-table');
+    expect(table.textContent).toContain('phantom');
+    expect(table.textContent).not.toContain('（リレー）');
+  });
+
   it('「もう一度」「課題一覧へ」が押せる', () => {
     expect(C1).toBeDefined();
     if (C1 === undefined) return;

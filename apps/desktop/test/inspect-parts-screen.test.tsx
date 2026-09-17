@@ -118,14 +118,6 @@ describe('プローブの配置（§9.3）', () => {
     expect(useStore.getState().tester.red).toBeUndefined();
   });
 
-  it('押ボタンは押せる（赤PBで励磁しながら測る。§9.1）', () => {
-    render(<InspectPartsSession />);
-    const onPick = picks.at(-1);
-    if (onPick === undefined) return;
-    onPick({ kind: 'pushbutton', id: 'PB4' });
-    expect(sent).toContainEqual({ type: 'press', pbId: 'PB4' });
-  });
-
   it('プローブのショートカットボタンで2本まとめて置ける', () => {
     render(<InspectPartsSession />);
     fireEvent.click(screen.getByTestId('probe-target-coil'));

@@ -78,7 +78,16 @@ export function InspectPartsResult({
                       {score.correct ? JA.result.ok : JA.result.ng}
                     </span>
                   </td>
-                  <td>{trayPartLabel(score.partId, kindOf.get(score.partId) === 'timer-h3y4')}</td>
+                  <td>
+                    {(() => {
+                      const kind = kindOf.get(score.partId);
+                      // `problem.parts` に無い部品は種別が分からないので、
+                      // （リレー）と決め打ちせず素の partId を出す（レビュー指摘 M5）。
+                      return kind === undefined
+                        ? score.partId
+                        : trayPartLabel(score.partId, kind === 'timer-h3y4');
+                    })()}
+                  </td>
                   <td data-testid={`answer-${score.partId}`}>
                     {score.answer === undefined
                       ? JA.result.unanswered
