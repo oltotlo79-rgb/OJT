@@ -73,3 +73,15 @@ export {
   type CompileWarning,
   type DeviceUsage,
 } from './compile.js';
+
+export {
+  CLOCK_PERIOD_MS,
+  createPlcRuntime,
+  SCAN_MS,
+  type PlcCounterState,
+  type PlcIoPort,
+  type PlcRuntime,
+  type PlcRuntimeOptions,
+  type PlcSnapshot,
+  type PlcTimerState,
+} from './runtime.js';
