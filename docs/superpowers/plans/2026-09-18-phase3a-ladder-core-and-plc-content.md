@@ -5117,3 +5117,2439 @@ git commit -m "feat(plc-dialects): validate FX5U programs and add the GX Works3-
 ```
 
 ---
+## Task 11: `schema/ladder.ts` — ラダーIRの zod
+
+**Files:**
+- Create: `packages/content/src/schema/ladder.ts`
+- Modify: `packages/content/package.json`（`@ojt/ladder-core` を依存に足す）
+- Test: `packages/content/test/schema-ladder.test.ts`
+
+課題JSONに模範ラダー（`referenceLadder`）を書けるようにする（§7.6）。定義の唯一の源は zod（§4.5）だが、**型は `@ojt/ladder-core` の `LadderProgram` と一致させる**（別々に持つと必ずずれる）。JSONを書きやすくするため、**行は16列まで書けば足りない列を空セルで詰める**（`network()` と同じ規則）。
+
+| 決めること | 本タスクの実装 |
+|---|---|
+| 出力型 | `LadderProgramSchema.parse()` の戻り値は `@ojt/ladder-core` の `LadderProgram` そのもの（`rows` / `cols` は transform が埋める） |
+| 列の省略 | 1行は1〜16セル。16未満は `{kind:'empty'}` で詰める |
+| デバイス | `{kind, index}`。`special` は 0〜2 のみ（§10.3） |
+| タイマ | `presetMs` は10msの倍数（`TIMER_STEP_MS`）。範囲は `compile()` と同じ |
+| 検証の重複 | 構造の検査（END・コイル列・MC対応）は `compile()` が持っているので**スキーマでは繰り返さない**。課題の読込時に `compile()` を呼ぶのは Task 12 の refinement |
+
+- [ ] **Step 1: 失敗するテストを書く**
+
+`packages/content/test/schema-ladder.test.ts`:
+
+```ts
+import { compile, IR_COLS } from '@ojt/ladder-core';
+import { describe, expect, it } from 'vitest';
+import { CellSchema, DeviceSchema, LadderProgramSchema } from '../src/schema/ladder.js';
+
+/** 自己保持のJSON（課題ファイルに書く形）。 */
+const SELF_HOLD = {
+  networks: [
+    {
+      id: 'n1',
+      comment: '自己保持',
+      cells: [
+        [
+          { kind: 'contact', type: 'NO', device: { kind: 'input', index: 0 } },
+          { kind: 'vline' },
+          { kind: 'contact', type: 'NC', device: { kind: 'input', index: 1 } },
+          ...Array.from({ length: IR_COLS - 4 }, () => ({ kind: 'hline' })),
+          { kind: 'coil', type: 'OUT', device: { kind: 'output', index: 0 } },
+        ],
+        [{ kind: 'contact', type: 'NO', device: { kind: 'output', index: 0 } }],
+      ],
+    },
+    { id: 'end', cells: [[{ kind: 'end' }]] },
+  ],
+};
+
+describe('LadderProgramSchema', () => {
+  it('parses a program into the ladder-core shape (§10.3)', () => {
+    const parsed = LadderProgramSchema.parse(SELF_HOLD);
+    expect(parsed.networks).toHaveLength(2);
+    const first = parsed.networks[0];
+    expect(first?.rows).toBe(2);
+    expect(first?.cols).toBe(IR_COLS);
+    expect(first?.comment).toBe('自己保持');
+    expect(first?.cells[1]).toHaveLength(IR_COLS);
+    expect(first?.cells[1]?.[1]).toEqual({ kind: 'empty' });
+  });
+
+  it('produces a program that compiles (§10.3 の構造検査はここではしない)', () => {
+    const result = compile(LadderProgramSchema.parse(SELF_HOLD));
+    expect(result.ok).toBe(true);
+  });
+
+  it('leaves the comment out when the JSON omits it (exactOptionalPropertyTypes)', () => {
+    const parsed = LadderProgramSchema.parse(SELF_HOLD);
+    expect(Object.hasOwn(parsed.networks[1] ?? {}, 'comment')).toBe(false);
+  });
+
+  it('rejects a row longer than the IR width and an empty network list', () => {
+    const wide = {
+      networks: [
+        { id: 'n1', cells: [Array.from({ length: IR_COLS + 1 }, () => ({ kind: 'hline' }))] },
+      ],
+    };
+    expect(LadderProgramSchema.safeParse(wide).success).toBe(false);
+    expect(LadderProgramSchema.safeParse({ networks: [] }).success).toBe(false);
+    expect(LadderProgramSchema.safeParse({ networks: [{ id: 'n1', cells: [] }] }).success).toBe(false);
+  });
+
+  it('rejects duplicated network ids', () => {
+    const duplicated = {
+      networks: [
+        { id: 'n1', cells: [[{ kind: 'end' }]] },
+        { id: 'n1', cells: [[{ kind: 'end' }]] },
+      ],
+    };
+    expect(LadderProgramSchema.safeParse(duplicated).success).toBe(false);
+  });
+});
+
+describe('DeviceSchema / CellSchema', () => {
+  it('accepts the six device kinds and rejects a negative index', () => {
+    expect(DeviceSchema.parse({ kind: 'timer', index: 0 })).toEqual({ kind: 'timer', index: 0 });
+    expect(DeviceSchema.safeParse({ kind: 'timer', index: -1 }).success).toBe(false);
+    expect(DeviceSchema.safeParse({ kind: 'relay', index: 0 }).success).toBe(false);
+  });
+
+  it('allows only SP0〜SP2 for special devices (§10.3)', () => {
+    expect(DeviceSchema.safeParse({ kind: 'special', index: 2 }).success).toBe(true);
+    expect(DeviceSchema.safeParse({ kind: 'special', index: 3 }).success).toBe(false);
+  });
+
+  it('requires the timer preset to be a multiple of the scan period (§10.4)', () => {
+    const cell = { kind: 'timer', type: 'TON', device: { kind: 'timer', index: 0 }, presetMs: 3000 };
+    expect(CellSchema.safeParse(cell).success).toBe(true);
+    expect(CellSchema.safeParse({ ...cell, presetMs: 15 }).success).toBe(false);
+    expect(CellSchema.safeParse({ ...cell, presetMs: 0 }).success).toBe(false);
+  });
+
+  it('requires a reset device on a counter and a preset of at least 1', () => {
+    const cell = {
+      kind: 'counter',
+      type: 'CTU',
+      device: { kind: 'counter', index: 0 },
+      preset: 3,
+      resetDevice: { kind: 'input', index: 1 },
+    };
+    expect(CellSchema.safeParse(cell).success).toBe(true);
+    expect(CellSchema.safeParse({ ...cell, preset: 0 }).success).toBe(false);
+    const { resetDevice: _drop, ...withoutReset } = cell;
+    expect(CellSchema.safeParse(withoutReset).success).toBe(false);
+  });
+
+  it('rejects unknown keys so typos surface as read errors (§13 #1)', () => {
+    expect(CellSchema.safeParse({ kind: 'hline', device: { kind: 'input', index: 0 } }).success).toBe(
+      false,
+    );
+  });
+});
+```
+
+- [ ] **Step 2: RED を確認する**
+
+```powershell
+pnpm --filter @ojt/content exec vitest run test/schema-ladder.test.ts
+```
+
+Expected: 失敗。`Error: Failed to load url ../src/schema/ladder.js`。`@ojt/ladder-core` を依存に足していない場合は `Cannot find module '@ojt/ladder-core'` になるので、先に `packages/content/package.json` の `dependencies` に `"@ojt/ladder-core": "workspace:*"` を足して `pnpm install` する。
+
+- [ ] **Step 3: `src/schema/ladder.ts` を書く**
+
+```ts
+import {
+  COIL_COL,
+  IR_COLS,
+  MAX_COUNTER_PRESET,
+  MAX_ROWS,
+  MAX_TIMER_PRESET_MS,
+  SPECIAL_INDEXES,
+  TIMER_STEP_MS,
+  type Cell,
+  type LadderProgram,
+  type Network,
+} from '@ojt/ladder-core';
+import { z } from 'zod';
+
+/**
+ * ラダーIRの zod スキーマ。設計仕様 §7.6 / §10.3。
+ *
+ * 型の源は `@ojt/ladder-core`（`Cell` / `Network` / `LadderProgram`）で、ここはその**入力形式**
+ * （課題JSONの書き方）だけを決める。JSONを短く書けるように、1行は使う列までを並べれば足りない
+ * ぶんを空セルで詰める（`network()` と同じ規則）。
+ *
+ * 構造の検査（END の有無・コイル列・MC/MCR の対応）は `compile()` が唯一の源なので**ここでは
+ * 繰り返さない**。課題読込時に `compile()` を通すのは `schema/plc.ts` の refinement である。
+ */
+
+/** デバイス種別。§10.3 */
+export const DeviceKindSchema = z.enum([
+  'input',
+  'output',
+  'internal',
+  'timer',
+  'counter',
+  'special',
+]);
+
+/** デバイス（種別＋0起点の通し番号）。8進表記は方言の担当なのでここは常に10進の整数。§10.3 */
+export const DeviceSchema = z
+  .strictObject({
+    kind: DeviceKindSchema,
+    index: z.int().min(0).max(65_535),
+  })
+  .refine((d) => d.kind !== 'special' || SPECIAL_INDEXES.includes(d.index), {
+    message: `特殊デバイスは ${SPECIAL_INDEXES.join('／')} のみです（常時ON／初期パルス／1秒クロック）`,
+    path: ['index'],
+  });
+
+/** デバイス。 */
+export type DeviceData = z.infer<typeof DeviceSchema>;
+
+/** セル。§10.3 */
+export const CellSchema = z.discriminatedUnion('kind', [
+  z.strictObject({
+    kind: z.literal('contact'),
+    type: z.enum(['NO', 'NC', 'P', 'F']),
+    device: DeviceSchema,
+  }),
+  z.strictObject({
+    kind: z.literal('coil'),
+    type: z.enum(['OUT', 'SET', 'RST']),
+    device: DeviceSchema,
+  }),
+  z.strictObject({
+    kind: z.literal('timer'),
+    type: z.literal('TON'),
+    device: DeviceSchema,
+    presetMs: z
+      .int()
+      .min(TIMER_STEP_MS)
+      .max(MAX_TIMER_PRESET_MS)
+      .refine((ms) => ms % TIMER_STEP_MS === 0, {
+        message: `タイマ設定値は ${TIMER_STEP_MS}ms の倍数にします`,
+      }),
+  }),
+  z.strictObject({
+    kind: z.literal('counter'),
+    type: z.literal('CTU'),
+    device: DeviceSchema,
+    preset: z.int().min(1).max(MAX_COUNTER_PRESET),
+    resetDevice: DeviceSchema,
+  }),
+  z.strictObject({ kind: z.literal('mc'), device: DeviceSchema }),
+  z.strictObject({ kind: z.literal('mcr'), device: DeviceSchema }),
+  z.strictObject({ kind: z.literal('end') }),
+  z.strictObject({ kind: z.literal('hline') }),
+  z.strictObject({ kind: z.literal('vline') }),
+  z.strictObject({ kind: z.literal('empty') }),
+]);
+
+/** セル。 */
+export type CellData = z.infer<typeof CellSchema>;
+
+/** 1行を16列に詰める。 */
+function padRow(cells: readonly CellData[]): Cell[] {
+  const row: Cell[] = [...cells];
+  while (row.length < IR_COLS) row.push({ kind: 'empty' });
+  return row;
+}
+
+/** ネットワーク。行は1〜`MAX_ROWS`、1行は1〜`IR_COLS` セル。§10.3 */
+export const LadderNetworkSchema = z
+  .strictObject({
+    id: z.string().min(1),
+    comment: z.string().optional(),
+    cells: z.array(z.array(CellSchema).min(1).max(IR_COLS)).min(1).max(MAX_ROWS),
+  })
+  .transform(
+    (net): Network => ({
+      id: net.id,
+      ...(net.comment === undefined ? {} : { comment: net.comment }),
+      rows: net.cells.length,
+      cols: IR_COLS,
+      cells: net.cells.map(padRow),
+    }),
+  );
+
+/** ラダープログラム。§10.3 */
+export const LadderProgramSchema = z
+  .strictObject({
+    networks: z.array(LadderNetworkSchema).min(1).max(64),
+  })
+  .superRefine((program, ctx) => {
+    const seen = new Set<string>();
+    program.networks.forEach((net, index) => {
+      if (seen.has(net.id)) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['networks', index, 'id'],
+          message: `ネットワークIDが重複しています: ${net.id}`,
+        });
+      }
+      seen.add(net.id);
+    });
+  })
+  .transform((program): LadderProgram => ({ networks: [...program.networks] }));
+
+/** コイル列の列番号（課題データの読み手向けに再公開する）。§10.3 */
+export const LADDER_COIL_COL = COIL_COL;
+```
+
+- [ ] **Step 4: GREEN を確認してコミットする**
+
+```powershell
+pnpm --filter @ojt/content exec vitest run test/schema-ladder.test.ts
+pnpm --filter @ojt/content typecheck
+git add packages/content pnpm-lock.yaml
+git commit -m "feat(content): add the zod schema for the ladder IR"
+```
+
+Expected: `Tests  10 passed (10)`。
+
+---
+
+## Task 12: `schema/plc.ts` — モードD課題のスキーマと3つの静的チェックID
+
+**Files:**
+- Create: `packages/content/src/schema/plc.ts`
+- Modify: `packages/content/src/schema/judge.ts`
+- Test: `packages/content/test/schema-plc.test.ts`
+- Test: `packages/content/test/helpers/plc.ts`（モードD課題JSONの骨組み）
+
+§7.6 のフィールド（`plc` / `io` / `referenceLadder` / `wiringRequired`）と、§7.4 の静的チェック3件（`twoStage` / `plcPowerIndependent` / `ioAssignment`）を足す。
+
+| 決めること | 本タスクの実装 |
+|---|---|
+| `plc` | `{vendor, model}`。`vendor` は4値、`model` は4値（§7.6）。組合せの整合（`mitsubishi` ↔ `FX5U`）も検査する。Phase 3 で**開始できる**のは `FX5U` だけなので、他機種は `PHASE3_MODELS` に無い旨のエラーにする |
+| `io` | `{mode, wiring, inputs?, outputs?}`。`inputs` は `{x, pb}`、`outputs` は `{y, cr, pl}` の配列。省略時は既定割付（§7.6 の表） |
+| `referenceLadder` | Task 11 の `LadderProgramSchema`。読込時に `compile()` を通し、変換エラーがあれば課題のスキーマ違反にする（§13 #2 を読込の段で拾う） |
+| `wiringRequired` | `true` 固定（決定事項#16） |
+| 静的チェック | `STATIC_CHECK_IDS` を9件にし、モードB/C の既定では新3件を `false`、モードDの既定（`PLC_DEFAULT_STATIC_CHECKS`）では9件すべて `true` |
+| 級 | モードDは1級・2級のみ（3級の課題1はPLCを使わない）。`grade: 3` はスキーマ違反 |
+
+- [ ] **Step 1: 失敗するテストを書く**
+
+`packages/content/test/helpers/plc.ts`:
+
+```ts
+import { IR_COLS } from '@ojt/ladder-core';
+
+/** 課題JSONに書くセル（`schema/ladder.ts` の入力形式）。 */
+export type CellJson = Record<string, unknown>;
+
+/** a接点。 */
+export const noJson = (kind: string, index: number): CellJson => ({
+  kind: 'contact',
+  type: 'NO',
+  device: { kind, index },
+});
+/** b接点。 */
+export const ncJson = (kind: string, index: number): CellJson => ({
+  kind: 'contact',
+  type: 'NC',
+  device: { kind, index },
+});
+/** OUTコイル。 */
+export const outJson = (index: number): CellJson => ({
+  kind: 'coil',
+  type: 'OUT',
+  device: { kind: 'output', index },
+});
+/** 最後のセルをコイル列に置き、手前を横線で埋めた1行。 */
+export function rungJson(...cells: CellJson[]): CellJson[] {
+  const row = [...cells];
+  const output = row.pop();
+  if (output === undefined) throw new Error('出力セルが要ります');
+  while (row.length < IR_COLS - 1) row.push({ kind: 'hline' });
+  row.push(output);
+  return row;
+}
+
+/** X0 が入ると Y0 が出るだけの最小ラダー。 */
+export function simpleLadderJson(): Record<string, unknown> {
+  return {
+    networks: [
+      { id: 'n1', cells: [rungJson(noJson('input', 0), outJson(0))] },
+      { id: 'end', cells: [[{ kind: 'end' }]] },
+    ],
+  };
+}
+
+/** モードD課題JSONの骨組み（値は上書きして使う）。§7.6 */
+export function plcProblemJson(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    formatVersion: 1,
+    id: 'd-test',
+    mode: 'plc',
+    title: 'テスト用PLC課題',
+    grade: 2,
+    description: 'X0 で Y0 を出す',
+    timeLimit: { standardMin: 50, cutoffMin: 60 },
+    board: {
+      boardId: 'board-jipm-std',
+      socketRoles: { S1: 'CR1', S2: 'CR2', S3: 'CR3', S4: 'CR4', S7: 'CHK' },
+    },
+    inventory: [{ kind: 'relay-my4n', count: 4 }],
+    plc: { vendor: 'mitsubishi', model: 'FX5U' },
+    io: { mode: 'fixed', inputs: [{ x: 0, pb: 'PB1' }], outputs: [{ y: 0, cr: 'CR1', pl: 'PL1' }] },
+    referenceLadder: simpleLadderJson(),
+    wiringRequired: true,
+    operations: [
+      { t: 0, target: 'PB1', action: 'press' },
+      { t: 300, target: 'PB1', action: 'release' },
+    ],
+    durationMs: 3000,
+    judge: { compareSignals: ['PL1'] },
+    ...overrides,
+  };
+}
+```
+
+`packages/content/test/schema-plc.test.ts`:
+
+```ts
+import { describe, expect, it } from 'vitest';
+import { DEFAULT_STATIC_CHECKS, STATIC_CHECK_IDS } from '../src/schema/judge.js';
+import {
+  DEFAULT_PLC_IO,
+  PHASE3_MODELS,
+  PLC_DEFAULT_STATIC_CHECKS,
+  PLC_MODELS,
+  PLC_VENDORS,
+  PlcProblemSchema,
+  resolvePlcIo,
+} from '../src/schema/plc.js';
+import { noJson, outJson, plcProblemJson, rungJson } from './helpers/plc.js';
+
+describe('PlcProblemSchema（§7.6）', () => {
+  it('parses a mode D problem', () => {
+    const parsed = PlcProblemSchema.parse(plcProblemJson());
+    expect(parsed.mode).toBe('plc');
+    expect(parsed.plc).toEqual({ vendor: 'mitsubishi', model: 'FX5U' });
+    expect(parsed.wiringRequired).toBe(true);
+    expect(parsed.referenceLadder.networks[0]?.cols).toBe(16);
+    expect(parsed.io.wiring).toBe('sink');
+  });
+
+  it('turns on the three PLC static checks by default (§7.4 の D 列)', () => {
+    const parsed = PlcProblemSchema.parse(plcProblemJson());
+    expect(parsed.judge.staticChecks.twoStage).toBe(true);
+    expect(parsed.judge.staticChecks.plcPowerIndependent).toBe(true);
+    expect(parsed.judge.staticChecks.ioAssignment).toBe(true);
+    expect(parsed.judge.staticChecks.coilPolarity).toBe(true);
+    expect(PLC_DEFAULT_STATIC_CHECKS.twoStage).toBe(true);
+    // モードB・C の既定では新しい3件は無効のまま（§7.4）
+    expect(DEFAULT_STATIC_CHECKS.twoStage).toBe(false);
+    expect(DEFAULT_STATIC_CHECKS.plcPowerIndependent).toBe(false);
+    expect(DEFAULT_STATIC_CHECKS.ioAssignment).toBe(false);
+    expect(STATIC_CHECK_IDS).toHaveLength(9);
+  });
+
+  it('knows the four vendors and models of 決定事項#14 and starts only FX5U (§16)', () => {
+    expect(PLC_VENDORS).toEqual(['mitsubishi', 'jtekt', 'omron', 'sharp']);
+    expect(PLC_MODELS).toEqual(['FX5U', 'PC10G-1SP', 'CP1E', 'JW-300']);
+    expect(PHASE3_MODELS).toEqual(['FX5U']);
+    const other = plcProblemJson({ plc: { vendor: 'omron', model: 'CP1E' } });
+    const parsed = PlcProblemSchema.safeParse(other);
+    expect(parsed.success).toBe(false);
+    if (parsed.success) return;
+    expect(JSON.stringify(parsed.error.issues)).toContain('Phase 4');
+  });
+
+  it('rejects a vendor and model that do not belong together', () => {
+    const mismatched = plcProblemJson({ plc: { vendor: 'omron', model: 'FX5U' } });
+    expect(PlcProblemSchema.safeParse(mismatched).success).toBe(false);
+  });
+
+  it('rejects grade 3 and a false wiringRequired (決定事項#16)', () => {
+    expect(PlcProblemSchema.safeParse(plcProblemJson({ grade: 3 })).success).toBe(false);
+    expect(PlcProblemSchema.safeParse(plcProblemJson({ wiringRequired: false })).success).toBe(false);
+  });
+
+  it('rejects a reference ladder that does not convert (§13 #2 を読込で拾う)', () => {
+    // END のネットワークを外すと `compile()` が `missing-end` を返す
+    const noEnd = {
+      networks: [{ id: 'n1', cells: [rungJson(noJson('input', 0), outJson(0))] }],
+    };
+    const broken = plcProblemJson({ referenceLadder: noEnd });
+    const parsed = PlcProblemSchema.safeParse(broken);
+    expect(parsed.success).toBe(false);
+    if (parsed.success) return;
+    expect(JSON.stringify(parsed.error.issues)).toContain('END');
+  });
+
+  it('rejects duplicated assignments in the I/O map', () => {
+    const duplicated = plcProblemJson({
+      io: {
+        mode: 'fixed',
+        inputs: [
+          { x: 0, pb: 'PB1' },
+          { x: 1, pb: 'PB1' },
+        ],
+        outputs: [{ y: 0, cr: 'CR1', pl: 'PL1' }],
+      },
+    });
+    expect(PlcProblemSchema.safeParse(duplicated).success).toBe(false);
+
+    const sameRelay = plcProblemJson({
+      io: {
+        mode: 'fixed',
+        inputs: [{ x: 0, pb: 'PB1' }],
+        outputs: [
+          { y: 0, cr: 'CR1', pl: 'PL1' },
+          { y: 1, cr: 'CR1', pl: 'PL2' },
+        ],
+      },
+    });
+    expect(PlcProblemSchema.safeParse(sameRelay).success).toBe(false);
+  });
+});
+
+describe('resolvePlcIo（§7.6 の既定割付）', () => {
+  it('falls back to the default assignment when the problem omits the map', () => {
+    const parsed = PlcProblemSchema.parse(plcProblemJson({ io: { mode: 'free' } }));
+    const io = resolvePlcIo(parsed.io);
+    expect(io.wiring).toBe('sink');
+    expect(io.inputs).toEqual(DEFAULT_PLC_IO.inputs);
+    expect(io.outputs).toEqual(DEFAULT_PLC_IO.outputs);
+    expect(DEFAULT_PLC_IO.inputs[0]).toEqual({ x: 0, pb: 'PB1' });
+    expect(DEFAULT_PLC_IO.outputs[3]).toEqual({ y: 3, cr: 'CR4', pl: 'PL4' });
+  });
+
+  it('keeps the problem assignment when it gives one', () => {
+    const parsed = PlcProblemSchema.parse(plcProblemJson());
+    const io = resolvePlcIo(parsed.io);
+    expect(io.inputs).toHaveLength(1);
+    expect(io.outputs).toEqual([{ y: 0, cr: 'CR1', pl: 'PL1' }]);
+  });
+
+  it('accepts source wiring as well (§10.2)', () => {
+    const parsed = PlcProblemSchema.parse(plcProblemJson({ io: { mode: 'free', wiring: 'source' } }));
+    expect(resolvePlcIo(parsed.io).wiring).toBe('source');
+  });
+});
+```
+
+- [ ] **Step 2: RED を確認する**
+
+```powershell
+pnpm --filter @ojt/content exec vitest run test/schema-plc.test.ts
+```
+
+Expected: 失敗。`Error: Failed to load url ../src/schema/plc.js`。
+
+- [ ] **Step 3: `src/schema/judge.ts` に3つのIDを足す**
+
+```ts
+/** 静的チェックのID。§7.4（PLC用の3件は Phase 3 で追加） */
+export const STATIC_CHECK_IDS = [
+  'wireColorRule',
+  'terminalLimit',
+  'unusedParts',
+  'forbiddenCircuit',
+  'coilPolarity',
+  'powerSequence',
+  'twoStage',
+  'plcPowerIndependent',
+  'ioAssignment',
+] as const;
+```
+
+`StaticChecksSchema` に3件を足す（既定は `false`。モードB・C では無効。§7.4 の表）:
+
+```ts
+export const StaticChecksSchema = z.strictObject({
+  wireColorRule: z.boolean().default(true),
+  terminalLimit: z.boolean().default(true),
+  unusedParts: z.boolean().default(true),
+  forbiddenCircuit: z.boolean().default(true),
+  coilPolarity: z.boolean().default(true),
+  powerSequence: z.boolean().default(true),
+  twoStage: z.boolean().default(false),
+  plcPowerIndependent: z.boolean().default(false),
+  ioAssignment: z.boolean().default(false),
+});
+
+/** モードB・C の既定（PLC用の3件は無効）。§7.4 */
+export const DEFAULT_STATIC_CHECKS: StaticChecksData = {
+  wireColorRule: true,
+  terminalLimit: true,
+  unusedParts: true,
+  forbiddenCircuit: true,
+  coilPolarity: true,
+  powerSequence: true,
+  twoStage: false,
+  plcPowerIndependent: false,
+  ioAssignment: false,
+};
+
+/** モードD の既定（9件すべて有効）。§7.4 の D 列 */
+export const PLC_DEFAULT_STATIC_CHECKS: StaticChecksData = {
+  ...DEFAULT_STATIC_CHECKS,
+  twoStage: true,
+  plcPowerIndependent: true,
+  ioAssignment: true,
+};
+```
+
+`JudgeSettingsSchema` を「既定を差し替えられる形」に分けて、モードD用を作れるようにする:
+
+```ts
+/** 判定設定のスキーマを、静的チェックの既定を差し替えて作る。§7.4 */
+function judgeSettings(staticDefaults: StaticChecksData) {
+  return z.strictObject({
+    compareSignals: z.array(z.string().min(1)).min(1).optional(),
+    tolerance: ToleranceSchema.default({
+      edgeMs: DEFAULT_TOLERANCE.edgeMs,
+      ratio: DEFAULT_TOLERANCE.ratio,
+    }),
+    staticChecks: StaticChecksSchema.default(staticDefaults),
+  });
+}
+
+/** 判定設定（モードB・C）。§7.4 */
+export const JudgeSettingsSchema = judgeSettings(DEFAULT_STATIC_CHECKS);
+
+/** 判定設定（モードD）。§7.4 の D 列 */
+export const PlcJudgeSettingsSchema = judgeSettings(PLC_DEFAULT_STATIC_CHECKS);
+```
+
+**既存テストの追随（このタスクで直す）:** `packages/content/test/index.test.ts` の `STATIC_CHECK_IDS` の期待値（6件の配列リテラル）に3件を足す。`DEFAULT_STATIC_CHECKS` と突き合わせている行は両方が同時に変わるのでそのままでよい。
+
+- [ ] **Step 4: `src/schema/plc.ts` を書く**
+
+```ts
+import { compile } from '@ojt/ladder-core';
+import { TICK_MS } from '@ojt/circuit-sim';
+import { z } from 'zod';
+import { ProblemHeaderShape } from './common.js';
+import { PlcJudgeSettingsSchema } from './judge.js';
+import { LadderProgramSchema } from './ladder.js';
+import { DurationMsSchema, lastOperationMs, OperationListSchema } from './operations.js';
+
+/**
+ * モードD（PLC）の課題本体。設計仕様 §7.6 / §10.2 / §10.8。
+ *
+ * 模範回路は展開接続図ではなく**I/O割付**で表す（PLC端子は §11.1 の回路図の語彙に無い）。
+ * 模範配線は `plc-reference.ts` が割付から生成する（決定表#10）。
+ */
+
+/** PLCメーカー。決定事項#14 */
+export const PLC_VENDORS = ['mitsubishi', 'jtekt', 'omron', 'sharp'] as const;
+/** PLC機種。§7.6 */
+export const PLC_MODELS = ['FX5U', 'PC10G-1SP', 'CP1E', 'JW-300'] as const;
+/** Phase 3 で開始できる機種。§16 */
+export const PHASE3_MODELS = ['FX5U'] as const;
+
+/** メーカー → 機種（§7.6 の対応）。 */
+const MODEL_OF_VENDOR: Readonly<Record<(typeof PLC_VENDORS)[number], (typeof PLC_MODELS)[number]>> =
+  {
+    mitsubishi: 'FX5U',
+    jtekt: 'PC10G-1SP',
+    omron: 'CP1E',
+    sharp: 'JW-300',
+  };
+
+/** 使用するPLC。§7.6 */
+export const PlcRefSchema = z
+  .strictObject({
+    vendor: z.enum(PLC_VENDORS).describe('PLCメーカー。'),
+    model: z.enum(PLC_MODELS).describe('PLC機種。Phase 3 で開始できるのは FX5U のみです。'),
+  })
+  .superRefine((plc, ctx) => {
+    if (MODEL_OF_VENDOR[plc.vendor] !== plc.model) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['model'],
+        message: `${plc.vendor} の機種は ${MODEL_OF_VENDOR[plc.vendor]} です`,
+      });
+    }
+    if (!(PHASE3_MODELS as readonly string[]).includes(plc.model)) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['model'],
+        message: `この機種はまだ開始できません（Phase 4 で追加します）: ${plc.model}`,
+      });
+    }
+  });
+
+/** I/O割付の指定方法。§7.6 */
+export const PlcIoModeSchema = z.enum(['fixed', 'free']);
+/** 入力コモンの結線。§10.2 */
+export const PlcWiringSchema = z.enum(['sink', 'source']);
+
+/** 入力1点の割付（`x` は入力番号、`pb` は押ボタン）。§7.6 */
+export const PlcInputMapSchema = z.strictObject({
+  x: z.int().min(0).max(15),
+  pb: z.enum(['PB1', 'PB2', 'PB3', 'PB4']),
+});
+
+/** 出力1点の割付（`y` は出力番号、`cr` は中継リレー、`pl` は表示灯）。§7.6 / §10.2 */
+export const PlcOutputMapSchema = z.strictObject({
+  y: z.int().min(0).max(15),
+  cr: z.enum(['CR1', 'CR2', 'CR3', 'CR4']),
+  pl: z.enum(['PL1', 'PL2', 'PL3', 'PL4']),
+});
+
+/** 入力割付。 */
+export type PlcInputMapData = z.infer<typeof PlcInputMapSchema>;
+/** 出力割付。 */
+export type PlcOutputMapData = z.infer<typeof PlcOutputMapSchema>;
+
+/** 既定のI/O割付（§7.6 の表。本アプリの既定）。 */
+export const DEFAULT_PLC_IO: {
+  inputs: readonly PlcInputMapData[];
+  outputs: readonly PlcOutputMapData[];
+} = {
+  inputs: [
+    { x: 0, pb: 'PB1' },
+    { x: 1, pb: 'PB2' },
+    { x: 2, pb: 'PB3' },
+    { x: 3, pb: 'PB4' },
+  ],
+  outputs: [
+    { y: 0, cr: 'CR1', pl: 'PL1' },
+    { y: 1, cr: 'CR2', pl: 'PL2' },
+    { y: 2, cr: 'CR3', pl: 'PL3' },
+    { y: 3, cr: 'CR4', pl: 'PL4' },
+  ],
+};
+
+/** 重複した割当を指摘する。 */
+function checkDuplicates(values: readonly (string | number)[], path: string, ctx: z.RefinementCtx) {
+  const seen = new Set<string | number>();
+  values.forEach((value, index) => {
+    if (seen.has(value)) {
+      ctx.addIssue({ code: 'custom', path: [path, index], message: `割当が重複しています: ${value}` });
+    }
+    seen.add(value);
+  });
+}
+
+/** I/O割付。§7.6 */
+export const PlcIoSchema = z
+  .strictObject({
+    mode: PlcIoModeSchema.describe('`fixed` は割付を課題が固定し静的チェックで検証します。'),
+    wiring: PlcWiringSchema.default('sink').describe('入力コモンの結線（シンク／ソース）。'),
+    inputs: z.array(PlcInputMapSchema).min(1).max(4).optional(),
+    outputs: z.array(PlcOutputMapSchema).min(1).max(4).optional(),
+  })
+  .superRefine((io, ctx) => {
+    checkDuplicates((io.inputs ?? []).map((i) => i.x), 'inputs', ctx);
+    checkDuplicates((io.inputs ?? []).map((i) => i.pb), 'inputs', ctx);
+    checkDuplicates((io.outputs ?? []).map((o) => o.y), 'outputs', ctx);
+    checkDuplicates((io.outputs ?? []).map((o) => o.cr), 'outputs', ctx);
+    checkDuplicates((io.outputs ?? []).map((o) => o.pl), 'outputs', ctx);
+  });
+
+/** I/O割付。 */
+export type PlcIoData = z.infer<typeof PlcIoSchema>;
+
+/** 解決済みのI/O割付（省略されたら §7.6 の既定割付を使う）。 */
+export interface ResolvedPlcIo {
+  mode: z.infer<typeof PlcIoModeSchema>;
+  wiring: z.infer<typeof PlcWiringSchema>;
+  inputs: readonly PlcInputMapData[];
+  outputs: readonly PlcOutputMapData[];
+}
+
+/** 課題のI/O割付を解決する。§7.6 */
+export function resolvePlcIo(io: PlcIoData): ResolvedPlcIo {
+  return {
+    mode: io.mode,
+    wiring: io.wiring,
+    inputs: io.inputs ?? DEFAULT_PLC_IO.inputs,
+    outputs: io.outputs ?? DEFAULT_PLC_IO.outputs,
+  };
+}
+
+/** モードD課題。§7.6 */
+export const PlcProblemSchema = z
+  .strictObject({
+    ...ProblemHeaderShape,
+    mode: z.literal('plc').describe('課題モード。PLCは `plc`。'),
+    plc: PlcRefSchema.describe('使用するPLCのメーカーと機種。'),
+    io: PlcIoSchema.describe('I/O割付（`fixed` なら静的チェックで検証します）。'),
+    referenceLadder: LadderProgramSchema.describe('模範ラダー（IR）。'),
+    wiringRequired: z
+      .literal(true)
+      .describe('盤とPLCの実配線を必須にします（決定事項#16。常に true）。'),
+    operations: OperationListSchema.describe('判定で再生する押ボタン操作列。'),
+    durationMs: DurationMsSchema.describe('判定区間の長さ[ms]。'),
+    judge: PlcJudgeSettingsSchema.describe('比較する信号・許容差・静的チェックの設定。'),
+  })
+  .superRefine((problem, ctx) => {
+    if (problem.grade === 3) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['grade'],
+        message: 'PLC課題は1級・2級のみです（3級の課題1はPLCを使いません）',
+      });
+    }
+    const last = lastOperationMs(problem.operations);
+    if (problem.durationMs < last + TICK_MS) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['durationMs'],
+        message: `判定区間長（${problem.durationMs}ms）は最後の操作（${last}ms）より少なくとも1tick（${TICK_MS}ms）長くする必要があります`,
+      });
+    }
+    const compiled = compile(problem.referenceLadder);
+    if (!compiled.ok) {
+      for (const error of compiled.errors) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['referenceLadder'],
+          message: `模範ラダーを変換できません（${error.code}）: ${error.message}`,
+        });
+      }
+    }
+  });
+
+/** モードD課題。 */
+export type PlcProblem = z.infer<typeof PlcProblemSchema>;
+```
+
+- [ ] **Step 5: GREEN を確認してコミットする**
+
+```powershell
+pnpm --filter @ojt/content exec vitest run test/schema-plc.test.ts test/index.test.ts test/schema-judge.test.ts
+git add packages/content
+git commit -m "feat(content): add the mode D problem schema and the three PLC static check ids"
+```
+
+Expected: `Tests  10 passed (10)`（`schema-plc.test.ts`）に加え、`index.test.ts` / `schema-judge.test.ts` も通る。
+
+---
+
+## Task 13: 判別共用体にモードDを足し「開始できないモード」を無くす
+
+**Files:**
+- Modify: `packages/content/src/schema/index.ts`
+- Modify: `packages/content/src/schema/common.ts`
+- Modify: `packages/content/src/index.ts`
+- Modify: `packages/content/schema/task.schema.json`（再生成）
+- Modify: `packages/content/test/index.test.ts` / `test/schema-common.test.ts` / `test/schema-index.test.ts` / `test/loader.test.ts`
+- Modify: `apps/desktop/test/content-loader.test.ts`（**このファイルのみ。UI は Plan 3B**）
+
+Phase 3 で4モードすべてが開始できるようになる（§16）。`UNSUPPORTED_MODES` を空にし、`UnsupportedProblemSchema` と `reason: 'unsupported-mode'` の分岐を落とす（決定表#13）。
+
+- [ ] **Step 1: 失敗するテストを書く（既存テストの更新）**
+
+```powershell
+git grep -n "unsupported-mode\|UNSUPPORTED_MODES\|UnsupportedProblem"
+```
+
+出てくるのは次の5ファイルである。上から順に直す。
+
+1. `packages/content/test/schema-common.test.ts`: `expect(UNSUPPORTED_MODES).toEqual(['plc'])` → `toEqual([])`。
+2. `packages/content/test/index.test.ts`: 同じ行を `toEqual([])` に、`UnsupportedProblemSchema` の import と使用（バレルの網羅テスト）を削除し、代わりに `isPlcProblem` と `PlcProblemSchema` がバレルから引けることを確かめる。
+3. `packages/content/test/schema-index.test.ts`: `unsupported-mode` を期待している3件を、**モードD課題が読める**ことと、**壊れたモードD課題が `reason: 'schema'` になる**ことの検証に置き換える。
+4. `packages/content/test/loader.test.ts`: `'unsupported-mode'` を期待している行を、そのJSONがヘッダだけのPLC課題である以上 `'schema'`（`plc` / `referenceLadder` などが無い）になるよう直す。
+5. `apps/desktop/test/content-loader.test.ts`: 「まだ開始できないモード」の describe を、**ヘッダだけのPLC課題は `reason: 'schema'` の読込エラーになる**という検証に書き換える（`payload.errors[0]?.reason` を `'schema'`、`message` を `'課題の形式が正しくありません'` に）。**このファイル以外の `apps/desktop` は触らない。**
+
+加えて `packages/content/test/schema-index.test.ts` に次を足す:
+
+```ts
+import { plcProblemJson } from './helpers/plc.js';
+
+describe('モードD課題の判別（§7.6 / §16）', () => {
+  it('parses a mode D problem and marks it as plc', () => {
+    const parsed = parseProblem(plcProblemJson());
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    expect(parsed.problem.mode).toBe('plc');
+    expect(isPlcProblem(parsed.problem)).toBe(true);
+    expect(isAssembleProblem(parsed.problem)).toBe(false);
+  });
+
+  it('reports a header-only PLC problem as a schema error, not as an unsupported mode', () => {
+    const { plc: _plc, io: _io, referenceLadder: _ladder, ...headerOnly } = plcProblemJson();
+    const parsed = parseProblem(headerOnly);
+    expect(parsed.ok).toBe(false);
+    if (parsed.ok) return;
+    expect(parsed.reason).toBe('schema');
+    expect(parsed.mode).toBe('plc');
+    expect(parsed.issues.map((i) => i.path)).toContain('plc');
+  });
+
+  it('has no unsupported mode left (§16 Phase 3)', () => {
+    expect(UNSUPPORTED_MODES).toEqual([]);
+  });
+});
+```
+
+- [ ] **Step 2: RED を確認する**
+
+```powershell
+pnpm --filter @ojt/content exec vitest run test/schema-index.test.ts
+```
+
+Expected: 失敗（`isPlcProblem` が無い／`UNSUPPORTED_MODES` が `['plc']` のまま）。
+
+- [ ] **Step 3: `src/schema/common.ts` と `src/schema/index.ts` を直す**
+
+`common.ts`:
+
+```ts
+/**
+ * まだ本体スキーマを定義していないモード。§13 #1
+ * Phase 3 で `plc` を実装したので**空**である（4モードすべてが開始できる。§16）。
+ * 空のままにしてあるのは、将来モードを増やしたときに同じ仕組みで段階公開できるようにするため。
+ */
+export const UNSUPPORTED_MODES = [] as const satisfies readonly ProblemMode[];
+```
+
+`schema/index.ts`:
+
+- `UnsupportedProblemSchema` と `UnsupportedProblem` 型、`isUnsupportedMode()`、`parseProblem()` の `unsupported-mode` 分岐を削除する。
+- `ProblemSchema` の共用体を `[AssembleProblemSchema, InspectPartsProblemSchema, InspectRepairProblemSchema, PlcProblemSchema]` にする。
+- `SupportedProblem` に `PlcProblem` を足し、`isPlcProblem()` を足す。
+- `parseProblem()` のモード分岐に `plc` を足す:
+
+```ts
+  const parsed =
+    mode === 'inspect-parts'
+      ? InspectPartsProblemSchema.safeParse(json)
+      : mode === 'inspect-repair'
+        ? InspectRepairProblemSchema.safeParse(json)
+        : mode === 'plc'
+          ? PlcProblemSchema.safeParse(json)
+          : AssembleProblemSchema.safeParse(json);
+```
+
+- `ProblemFailureReason` から `'unsupported-mode'` は**消さない**（Plan 2B の UI が分岐に使っている型なので、値が発行されなくなるだけ）。コメントで「Phase 3 以降は発行されない」と明記する。
+
+`src/index.ts`（バレル）から `UnsupportedProblemSchema` / `type UnsupportedProblem` を外し、`isPlcProblem` と `schema/plc.js` / `schema/ladder.js` の公開名を足す（公開APIの一覧は Task 20 で確定する）。
+
+- [ ] **Step 4: JSON Schema を再生成する**
+
+```powershell
+pnpm --filter @ojt/content schema:write
+git diff --stat packages/content/schema/task.schema.json
+```
+
+Expected: `oneOf` が4分岐（assemble / inspect-parts / inspect-repair / plc）になり、`plc` 分岐に `referenceLadder` が入る。生成物はコミットに含める。
+
+- [ ] **Step 5: GREEN を確認してコミットする**
+
+```powershell
+pnpm --filter @ojt/content exec vitest run
+pnpm --filter desktop exec vitest run test/content-loader.test.ts
+git add packages/content apps/desktop/test/content-loader.test.ts
+git commit --only -m "feat(content): accept mode D problems and retire the unsupported mode path" -- packages/content apps/desktop/test/content-loader.test.ts
+```
+
+Expected: `@ojt/content` は着手時のベースライン（前提#14。目安442件）＋新規ぶんが通り、desktop の `content-loader.test.ts` も通る。**`apps/desktop` の他のファイルをコミットに含めないこと**（Plan 2B が並行作業中。前提#2）。
+
+---
+## Task 14: `plc-io.ts` — スキャンと tick の結合
+
+**Files:**
+- Create: `packages/content/src/plc-io.ts`
+- Modify: `packages/content/src/runner.ts`
+- Test: `packages/content/test/plc-io.test.ts`
+
+§10.4 の「1 tick ＝ 1 スキャン」を実装する（決定表#4）。`runner.ts` に `beforeTick` フックと「既にあるシミュレーションを走らせる」入口を足し、`plc-io.ts` が `Simulation` を `PlcIoPort` として見せる。
+
+| 決めること | 本タスクの実装 |
+|---|---|
+| 順序 | 1 tick の先頭で `runtime.scan()`（①`sim.plcInputs()` を読む ②ラダー実行 ③`sim.setPlcOutputs()`）→ そのあと `sim.step()` が回路を解く |
+| 入力の遅れ | `plcInputs()` が返すのは**直前の tick の解**に基づく値。実機のスキャンと同じ1スキャンぶんの遅れで、許容差200msに対して十分小さい |
+| 部品ID | 既定は `@ojt/board-model` の `PLC_PART_ID`（`'PLC'`）。テストのために差し替えられる |
+| 出力点数 | 既定はPLC本体の出力点数（`outputCount`）。ラダーが使う番号より多くても、使っていない点は常にOFFで書かれる |
+
+- [ ] **Step 1: 失敗するテストを書く**
+
+`packages/content/test/plc-io.test.ts`:
+
+```ts
+import { JIPM_BOARD, PLC_UNIT_FX5U, withPlcUnit } from '@ojt/board-model';
+import { Simulation, TICK_MS } from '@ojt/circuit-sim';
+import { compile, endNetwork, hline, IR_COLS, network, no, out, program, X, Y, type Cell } from '@ojt/ladder-core';
+import { describe, expect, it } from 'vitest';
+import { createPlcCoupling, createSimulationIoPort, runPlcOperations } from '../src/plc-io.js';
+import { buildPlcReferenceSession } from '../src/plc-reference.js';
+import { PlcProblemSchema } from '../src/schema/plc.js';
+import { plcProblemJson } from './helpers/plc.js';
+
+function rung(...cells: Cell[]): Cell[] {
+  const row = [...cells];
+  const output = row.pop();
+  if (output === undefined) throw new Error('出力セルが要ります');
+  while (row.length < IR_COLS - 1) row.push(hline());
+  row.push(output);
+  return row;
+}
+
+const BOARD = withPlcUnit(JIPM_BOARD, PLC_UNIT_FX5U);
+
+/** 模範配線（Task 15）で組んだ盤とネットリスト。 */
+function reference() {
+  const problem = PlcProblemSchema.parse(plcProblemJson());
+  const built = buildPlcReferenceSession(problem, JIPM_BOARD);
+  if (!built.ok) throw new Error(JSON.stringify(built.errors));
+  return { problem, circuit: built.value };
+}
+
+describe('createSimulationIoPort', () => {
+  it('reads the simulation inputs and writes its outputs (§10.4)', () => {
+    const { circuit } = reference();
+    const sim = new Simulation(circuit.netlist);
+    sim.setBreaker(true);
+    sim.setSwitch(true);
+    sim.step();
+    const port = createSimulationIoPort(sim);
+    expect(port.readInputs()[0]).toBe(false);
+    sim.press('PB1');
+    sim.step();
+    expect(port.readInputs()[0]).toBe(true);
+    port.writeOutputs([true]);
+    sim.step();
+    expect(sim.state().plcs['PLC']?.outputs[0]).toBe(true);
+  });
+});
+
+describe('createPlcCoupling', () => {
+  it('runs exactly one scan per tick (§10.4)', () => {
+    const { circuit } = reference();
+    const sim = new Simulation(circuit.netlist);
+    const coupling = createPlcCoupling(sim, circuit.program);
+    sim.setBreaker(true);
+    sim.setSwitch(true);
+    for (let i = 0; i < 5; i += 1) {
+      coupling.beforeTick(sim, sim.tMs);
+      sim.step();
+    }
+    expect(coupling.runtime.scanCount).toBe(5);
+    expect(coupling.runtime.tMs).toBe(5 * TICK_MS);
+  });
+});
+
+describe('runPlcOperations', () => {
+  it('lights the lamp through the PLC, the relay and the two-stage wiring (§10.2 / §16 Phase 3 ③)', () => {
+    const { problem, circuit } = reference();
+    const result = runPlcOperations(circuit.netlist, circuit.program, problem.operations, {
+      durationMs: problem.durationMs,
+    });
+    const transitions = result.log.transitions('PL1');
+    expect(transitions.some((e) => e.value === true)).toBe(true);
+    // PB1 を押してから 3tick 以内（入力1スキャン遅れ＋コイル1tick＋接点1tick）で点く
+    const litMs = transitions.find((e) => e.value === true)?.tMs ?? -1;
+    expect(litMs).toBeGreaterThan(0);
+    expect(litMs).toBeLessThanOrEqual(4 * TICK_MS);
+    expect(result.runtime.scanCount).toBe(problem.durationMs / TICK_MS);
+  });
+
+  it('is deterministic (§5.2)', () => {
+    const { problem, circuit } = reference();
+    const once = runPlcOperations(circuit.netlist, circuit.program, problem.operations, {
+      durationMs: problem.durationMs,
+    }).log.entries();
+    const second = reference();
+    const twice = runPlcOperations(second.circuit.netlist, second.circuit.program, problem.operations, {
+      durationMs: problem.durationMs,
+    }).log.entries();
+    expect(once).toEqual(twice);
+  });
+
+  it('leaves the lamp dark when the ladder never turns the output on', () => {
+    const { problem, circuit } = reference();
+    const idle = compile(program(network('n1', [rung(no(X(1)), out(Y(1)))]), endNetwork()));
+    if (!idle.ok) throw new Error('変換に失敗しました');
+    const result = runPlcOperations(circuit.netlist, idle.program, problem.operations, {
+      durationMs: problem.durationMs,
+    });
+    expect(result.log.transitions('PL1').some((e) => e.value === true)).toBe(false);
+  });
+});
+```
+
+**注意:** このテストは Task 15 の `buildPlcReferenceSession()` を使う。**Task 15 を先に実装してもよい**（Task 14 と 15 は互いに独立ではないので、バッチFの中では 14 → 15 の順に着手し、14 のテストは 15 の完了後に GREEN になる、という進め方でもよい）。順番を入れ替えたくない場合は、Task 14 のテストでは模範配線の代わりに `packages/circuit-sim/test/plc-simulation.test.ts` と同じ手組みのベンチ（`createPlcUnit` ＋ 手配線のネットリスト）を使うこと。
+
+- [ ] **Step 2: RED を確認する**
+
+```powershell
+pnpm --filter @ojt/content exec vitest run test/plc-io.test.ts
+```
+
+Expected: 失敗。`Error: Failed to load url ../src/plc-io.js`。
+
+- [ ] **Step 3: `src/runner.ts` に `beforeTick` を足す**
+
+`RunOptions` に足す:
+
+```ts
+  /**
+   * 各 tick の先頭（操作の適用の後、`step()` の前）に呼ばれる。§10.4
+   * モードDでは PLC のスキャン（入力読込 → ラダー実行 → 出力書込）をここで回す。
+   */
+  beforeTick?: (simulation: Simulation, tMs: number) => void;
+```
+
+`runOperations()` を「シミュレーションを作る入口」と「走らせる本体」に割る:
+
+```ts
+export function runOperations(
+  netlist: Netlist,
+  operations: readonly Operation[],
+  options: RunOptions,
+): RunResult {
+  const simulation = new Simulation(netlist, {
+    tickMs: options.tickMs ?? TICK_MS,
+    ...(options.watch === undefined ? {} : { watch: options.watch }),
+  });
+  return runOperationsOn(simulation, operations, options);
+}
+
+/**
+ * 既に作ったシミュレーションで操作列を再生する。§7.3
+ * PLCのスキャンのように「シミュレーションを先に作ってから結線したいもの」があるときに使う（§10.4）。
+ * `options.watch` はシミュレーション生成時にしか効かないのでここでは無視する。
+ */
+export function runOperationsOn(
+  simulation: Simulation,
+  operations: readonly Operation[],
+  options: RunOptions,
+): RunResult {
+  const tickMs = options.tickMs ?? TICK_MS;
+  powerUp(simulation);
+
+  let cursor = 0;
+  let tMs = 0;
+  for (; tMs < options.durationMs; tMs += tickMs) {
+    for (let op = operations[cursor]; op !== undefined && op.t <= tMs; op = operations[cursor]) {
+      if (op.action === 'press') simulation.press(op.target);
+      else simulation.release(op.target);
+      cursor += 1;
+    }
+    options.beforeTick?.(simulation, tMs);
+    simulation.step(tickMs);
+  }
+
+  return {
+    simulation,
+    log: simulation.log,
+    events: simulation.events,
+    lastTickMs: Math.max(0, tMs - tickMs),
+  };
+}
+```
+
+- [ ] **Step 4: `src/plc-io.ts` を書く**
+
+```ts
+import { PLC_PART_ID } from '@ojt/board-model';
+import { TICK_MS, type Netlist, type Simulation } from '@ojt/circuit-sim';
+import {
+  createPlcRuntime,
+  type CompiledProgram,
+  type PlcIoPort,
+  type PlcRuntime,
+} from '@ojt/ladder-core';
+import { runOperationsOn, type RunOptions, type RunResult } from './runner.js';
+import type { Operation } from './schema/operations.js';
+
+/**
+ * PLCランタイムと回路エンジンの結合。設計仕様 §10.4 / §4.2 / 決定表#4。
+ *
+ * `@ojt/ladder-core` は回路エンジンを知らず、`@ojt/circuit-sim` はラダーを知らない。両方を知って
+ * いるのはこのパッケージだけなので、結合点はここ1か所である。1 tick の順序は
+ * 「①入力読込 ②ネットワーク実行 ③出力書込 → ④回路を解く」。入力は直前の tick の解に基づく値
+ * なので、実機のスキャンと同じく1スキャンぶん遅れる。
+ */
+
+/** `Simulation` を `PlcIoPort` として見せる。§4.2 */
+export function createSimulationIoPort(sim: Simulation, partId: string = PLC_PART_ID): PlcIoPort {
+  return {
+    readInputs: () => sim.plcInputs(partId),
+    writeOutputs: (values) => {
+      sim.setPlcOutputs(partId, values);
+    },
+  };
+}
+
+/** 結合オプション。 */
+export interface PlcCouplingOptions {
+  /** PLC本体の部品ID。既定 `PLC`。 */
+  partId?: string;
+  /** 出力配列の長さ。既定はラダーが使う最大番号＋1。 */
+  outputCount?: number;
+  /** スキャン周期[ms]。既定は `TICK_MS`（10）。§10.4 */
+  scanMs?: number;
+}
+
+/** スキャンと tick の結合。 */
+export interface PlcCoupling {
+  runtime: PlcRuntime;
+  /** `runOperations` の `beforeTick` にそのまま渡せる関数。 */
+  beforeTick: (simulation: Simulation, tMs: number) => void;
+}
+
+/** シミュレーションとラダーを結ぶ。§10.4 */
+export function createPlcCoupling(
+  sim: Simulation,
+  program: CompiledProgram,
+  options: PlcCouplingOptions = {},
+): PlcCoupling {
+  const runtime = createPlcRuntime(program, {
+    io: createSimulationIoPort(sim, options.partId ?? PLC_PART_ID),
+    scanMs: options.scanMs ?? TICK_MS,
+    ...(options.outputCount === undefined ? {} : { outputCount: options.outputCount }),
+  });
+  return {
+    runtime,
+    beforeTick: () => {
+      runtime.scan();
+    },
+  };
+}
+
+/** モードDの再生オプション。 */
+export interface PlcRunOptions extends RunOptions, PlcCouplingOptions {}
+
+/** 再生結果（ランタイムの最終状態つき）。 */
+export interface PlcRunResult extends RunResult {
+  runtime: PlcRuntime;
+}
+
+/**
+ * ラダー＋配線を操作列で再生する。§10.4 / §7.3
+ * `runOperations()` と同じ規則（`t=0` で通電済み・10ms tick・決定論）で走り、
+ * 各 tick の先頭で1スキャンずつラダーを実行する。
+ */
+export function runPlcOperations(
+  netlist: Netlist,
+  program: CompiledProgram,
+  operations: readonly Operation[],
+  options: PlcRunOptions,
+): PlcRunResult {
+  const simulation = new Simulation(netlist, {
+    tickMs: options.tickMs ?? TICK_MS,
+    ...(options.watch === undefined ? {} : { watch: options.watch }),
+  });
+  const coupling = createPlcCoupling(simulation, program, options);
+  const result = runOperationsOn(simulation, operations, {
+    ...options,
+    beforeTick: coupling.beforeTick,
+  });
+  return { ...result, runtime: coupling.runtime };
+}
+```
+
+- [ ] **Step 5: GREEN を確認してコミットする**
+
+```powershell
+pnpm --filter @ojt/content exec vitest run test/plc-io.test.ts test/runner.test.ts
+git add packages/content
+git commit -m "feat(content): couple the PLC scan to the engine tick"
+```
+
+Expected: `test/plc-io.test.ts` が `Tests  5 passed (5)`、既存の `test/runner.test.ts` もそのまま通る（`beforeTick` を渡さない呼び出しは挙動が変わらない）。
+
+---
+
+## Task 15: `plc-reference.ts` — 既定I/O割付から模範配線を組む
+
+**Files:**
+- Create: `packages/content/src/plc-reference.ts`
+- Test: `packages/content/test/plc-reference.test.ts`
+
+§10.2 の配線ルールと §11.3 の渡り配線で、**I/O割付から模範の盤セッションを生成する**（決定表#10・#11）。モードDの模範回路はこれと模範ラダーの組で表される。
+
+生成する配線（`io.wiring: 'sink'` の場合）:
+
+| 区分 | 電線 |
+|---|---|
+| 入力 | `TB_PB.{n}a → PLC.X{x}`（割付の数だけ） |
+| 出力 | `PLC.Y{y} → {cr}.14`（割付の数だけ） |
+| 2段目 | `{cr}.5 → TB_PL.{n}+`（割付の数だけ） |
+| P側の渡り配線 | `P.1 → PLC.SS → PLC.COM{g} → {cr1}.9 → {cr2}.9 → …` |
+| N側の渡り配線 | `N.1 → TB_PB.{n}c（各入力）→ {cr}.13（各出力）→ TB_PL.{n}-（各出力）` |
+| PLC電源 | `OUTLET.L → PLC.L`、`OUTLET.N → PLC.N` |
+
+`source` 結線では `PLC.SS` がN側の鎖に、押ボタンのコモン（`TB_PB.{n}c`）がP側の鎖に移る（§10.2）。どの端子も**2本以内**に収まる（`P.1` / `N.1` はチェック用回路の既設配線で各1本埋まっているので、鎖の起点として1本だけ使う。§6.3）。
+
+- [ ] **Step 1: 失敗するテストを書く**
+
+`packages/content/test/plc-reference.test.ts`:
+
+```ts
+import { JIPM_BOARD, wireCountAtTerminal } from '@ojt/board-model';
+import { MAX_WIRES_PER_TERMINAL } from '@ojt/circuit-sim';
+import { describe, expect, it } from 'vitest';
+import { buildPlcReferenceSession, plcBoardFor, plcWiringPlan, PLC_WIRE_COLOR } from '../src/plc-reference.js';
+import { PlcProblemSchema, resolvePlcIo } from '../src/schema/plc.js';
+import { plcProblemJson } from './helpers/plc.js';
+
+/** 2級形式（入力3・出力3）の課題。 */
+function grade2Json(): Record<string, unknown> {
+  return plcProblemJson({
+    io: {
+      mode: 'fixed',
+      inputs: [
+        { x: 0, pb: 'PB1' },
+        { x: 1, pb: 'PB2' },
+        { x: 2, pb: 'PB3' },
+      ],
+      outputs: [
+        { y: 0, cr: 'CR1', pl: 'PL1' },
+        { y: 1, cr: 'CR2', pl: 'PL2' },
+        { y: 2, cr: 'CR3', pl: 'PL3' },
+      ],
+    },
+    judge: { compareSignals: ['PL1', 'PL2', 'PL3'] },
+  });
+}
+
+describe('plcWiringPlan（§10.2 / §11.3）', () => {
+  const problem = PlcProblemSchema.parse(grade2Json());
+  const board = plcBoardFor(problem, JIPM_BOARD);
+  const io = resolvePlcIo(problem.io);
+
+  it('wires the push buttons to X, the Y outputs to the relay coils and the contacts to the lamps', () => {
+    const plan = plcWiringPlan(io, board?.plcUnit);
+    const pairs = plan.map((w) => `${w.from}→${w.to}`);
+    expect(pairs).toContain('TB_PB.1a→PLC.X0');
+    expect(pairs).toContain('TB_PB.3a→PLC.X2');
+    expect(pairs).toContain('PLC.Y0→CR1.14');
+    expect(pairs).toContain('PLC.Y2→CR3.14');
+    expect(pairs).toContain('CR1.5→TB_PL.1+');
+    expect(pairs).toContain('OUTLET.L→PLC.L');
+    expect(pairs).toContain('OUTLET.N→PLC.N');
+  });
+
+  it('daisy-chains the P and N rails so no terminal takes a third wire (§6.3 / §11.3)', () => {
+    const plan = plcWiringPlan(io, board?.plcUnit);
+    const pairs = plan.map((w) => `${w.from}→${w.to}`);
+    expect(pairs).toContain('P.1→PLC.SS');
+    expect(pairs).toContain('PLC.SS→PLC.COM0');
+    expect(pairs).toContain('PLC.COM0→CR1.9');
+    expect(pairs).toContain('CR1.9→CR2.9');
+    expect(pairs).toContain('N.1→TB_PB.1c');
+    expect(pairs).toContain('TB_PB.3c→CR1.13');
+    expect(pairs).toContain('CR3.13→TB_PL.1-');
+    expect(pairs).toContain('TB_PL.2-→TB_PL.3-');
+    expect(plan).toHaveLength(25);
+  });
+
+  it('moves S/S to the N rail and the button commons to the P rail for source wiring (§10.2)', () => {
+    const sourceIo = { ...io, wiring: 'source' as const };
+    const pairs = plcWiringPlan(sourceIo, board?.plcUnit).map((w) => `${w.from}→${w.to}`);
+    expect(pairs).toContain('N.1→PLC.SS');
+    expect(pairs).toContain('P.1→TB_PB.1c');
+    expect(pairs).not.toContain('P.1→PLC.SS');
+  });
+});
+
+describe('buildPlcReferenceSession（§7.2 / §10.2）', () => {
+  it('mounts one relay per output and wires the whole reference circuit in blue (§10.2 線色)', () => {
+    const problem = PlcProblemSchema.parse(grade2Json());
+    const built = buildPlcReferenceSession(problem, JIPM_BOARD);
+    expect(built.ok).toBe(true);
+    if (!built.ok) return;
+    const { session, netlist, unit, program } = built.value;
+    expect(unit.model).toBe('FX5U');
+    expect(Object.keys(session.mounted)).toEqual(['S1', 'S2', 'S3']);
+    expect(session.wires.filter((w) => !w.locked)).toHaveLength(25);
+    expect(session.wires.every((w) => w.color === PLC_WIRE_COLOR)).toBe(true);
+    expect(netlist.parts.some((p) => p.id === 'PLC')).toBe(true);
+    expect(program.networks.length).toBeGreaterThan(0);
+  });
+
+  it('never puts a third wire on a terminal (§6.6)', () => {
+    const problem = PlcProblemSchema.parse(grade2Json());
+    const built = buildPlcReferenceSession(problem, JIPM_BOARD);
+    if (!built.ok) throw new Error('模範回路を組めませんでした');
+    const seen = new Set<string>();
+    for (const wire of built.value.session.wires) {
+      for (const terminal of [wire.from, wire.to]) {
+        if (seen.has(terminal)) continue;
+        seen.add(terminal);
+        expect(wireCountAtTerminal(built.value.session, terminal)).toBeLessThanOrEqual(
+          MAX_WIRES_PER_TERMINAL,
+        );
+      }
+    }
+  });
+
+  it('builds the 1級 form with four outputs as well (§7.6)', () => {
+    const problem = PlcProblemSchema.parse(
+      plcProblemJson({
+        grade: 1,
+        io: { mode: 'free' },
+        judge: { compareSignals: ['PL1', 'PL2', 'PL3', 'PL4'] },
+      }),
+    );
+    const built = buildPlcReferenceSession(problem, JIPM_BOARD);
+    expect(built.ok).toBe(true);
+    if (!built.ok) return;
+    expect(Object.keys(built.value.session.mounted)).toEqual(['S1', 'S2', 'S3', 'S4']);
+  });
+
+  it('reports a problem error when the board does not match the problem (§13 #2)', () => {
+    const problem = PlcProblemSchema.parse(
+      plcProblemJson({ board: { boardId: 'other', socketRoles: { S7: 'CHK' } } }),
+    );
+    const built = buildPlcReferenceSession(problem, JIPM_BOARD);
+    expect(built.ok).toBe(false);
+    if (built.ok) return;
+    expect(built.errors[0]?.path).toBe('board.boardId');
+  });
+
+  it('reports a problem error when a mapped relay has no socket role (§13 #2)', () => {
+    const problem = PlcProblemSchema.parse(
+      plcProblemJson({
+        board: { boardId: 'board-jipm-std', socketRoles: { S1: 'CR1', S7: 'CHK' } },
+        io: { mode: 'fixed', inputs: [{ x: 0, pb: 'PB1' }], outputs: [{ y: 1, cr: 'CR2', pl: 'PL2' }] },
+      }),
+    );
+    const built = buildPlcReferenceSession(problem, JIPM_BOARD);
+    expect(built.ok).toBe(false);
+    if (built.ok) return;
+    expect(built.errors[0]?.path).toContain('io.outputs');
+  });
+});
+```
+
+- [ ] **Step 2: RED を確認する**
+
+```powershell
+pnpm --filter @ojt/content exec vitest run test/plc-reference.test.ts
+```
+
+Expected: 失敗。`Error: Failed to load url ../src/plc-reference.js`。
+
+- [ ] **Step 3: `src/plc-reference.ts` を書く**
+
+```ts
+import {
+  addWire,
+  createSession,
+  N_RAIL_ID,
+  P_RAIL_ID,
+  PB_BLOCK_ID,
+  PL_BLOCK_ID,
+  plcUnitFor,
+  plug,
+  toNetlist,
+  trySocketOf,
+  withPlcUnit,
+  type BoardDefinition,
+  type BoardSession,
+  type PlcUnitDefinition,
+} from '@ojt/board-model';
+import { terminalId, type Netlist, type TerminalId, type WireColor } from '@ojt/circuit-sim';
+import { compile, type CompiledProgram } from '@ojt/ladder-core';
+import { toSocketRoles } from './schema/common.js';
+import type { ProblemIssue } from './schema/index.js';
+import { resolvePlcIo, type PlcProblem, type ResolvedPlcIo } from './schema/plc.js';
+
+/**
+ * モードDの模範回路。設計仕様 §7.2 / §10.2 / §11.3 / 決定表#10。
+ *
+ * PLC端子は展開接続図（§11.1）の語彙に無いので、モードDの模範回路は回路図ではなく
+ * **I/O割付から生成する**。生成規則は §10.2 の配線ルールそのままで、母線は §11.3 の
+ * 渡り配線（鎖状）で分配する（`P.1` / `N.1` はチェック用回路の既設配線で各1本埋まっている。§6.3）。
+ */
+
+/** モードDの新規配線に使う線色（青）。§10.2 */
+export const PLC_WIRE_COLOR: WireColor = '青';
+
+/** 生成する電線1本。 */
+export interface PlcWireSpec {
+  from: TerminalId;
+  to: TerminalId;
+}
+
+/** 模範回路（盤セッション＋ネットリスト＋変換済みラダー）。 */
+export interface PlcReferenceCircuit {
+  session: BoardSession;
+  netlist: Netlist;
+  /** PLC本体を載せた派生盤（判定でもこれを使う）。 */
+  board: BoardDefinition;
+  unit: PlcUnitDefinition;
+  io: ResolvedPlcIo;
+  program: CompiledProgram;
+}
+
+/** 模範回路の構築結果。§13 #2 */
+export type PlcReferenceResult =
+  | { ok: true; value: PlcReferenceCircuit }
+  | { ok: false; errors: ProblemIssue[] };
+
+/** 課題の機種に対応するPLC本体を載せた盤。未対応の機種は undefined。§10.1 */
+export function plcBoardFor(
+  problem: PlcProblem,
+  board: BoardDefinition,
+): BoardDefinition | undefined {
+  const unit = plcUnitFor(problem.plc.model);
+  return unit === undefined ? undefined : withPlcUnit(board, unit);
+}
+
+/** 押ボタン端子台のc端子・a端子。§6.4 */
+function pbTerminal(pb: string, suffix: 'c' | 'a'): TerminalId {
+  return terminalId(PB_BLOCK_ID, `${pb.slice(2)}${suffix}`);
+}
+
+/** ランプ端子台の端子。§6.4 */
+function plTerminal(pl: string, sign: '+' | '-'): TerminalId {
+  return terminalId(PL_BLOCK_ID, `${pl.slice(2)}${sign}`);
+}
+
+/** 鎖状の渡り配線を作る（起点 → 対象1 → 対象2 …）。§11.3 */
+function chain(start: TerminalId, targets: readonly TerminalId[]): PlcWireSpec[] {
+  const wires: PlcWireSpec[] = [];
+  let previous = start;
+  for (const target of targets) {
+    wires.push({ from: previous, to: target });
+    previous = target;
+  }
+  return wires;
+}
+
+/**
+ * I/O割付から模範配線を生成する。§10.2
+ * 並びは「入力 → 出力 → 2段目 → P側の鎖 → N側の鎖 → PLC電源」で決定論的である。
+ */
+export function plcWiringPlan(io: ResolvedPlcIo, unit: PlcUnitDefinition | undefined): PlcWireSpec[] {
+  if (unit === undefined) return [];
+  const inputName = (x: number): string => unit.spec.inputs[x] ?? `X${x}`;
+  const outputName = (y: number): string => unit.spec.outputs[y]?.name ?? `Y${y}`;
+  const comName = (y: number): string => unit.spec.outputs[y]?.com ?? 'COM0';
+  const plcTerminal = (name: string): TerminalId => terminalId('PLC', name);
+
+  const wires: PlcWireSpec[] = [];
+  // 入力: 押ボタン端子台のa接点 → X
+  for (const input of io.inputs) {
+    wires.push({ from: pbTerminal(input.pb, 'a'), to: plcTerminal(inputName(input.x)) });
+  }
+  // 出力: Y → 盤のリレーコイル（2段結線の1段目）。§10.2
+  for (const output of io.outputs) {
+    wires.push({ from: plcTerminal(outputName(output.y)), to: terminalId(output.cr, '14') });
+  }
+  // 2段目: リレーのa接点（組1）→ ランプ端子台
+  for (const output of io.outputs) {
+    wires.push({ from: terminalId(output.cr, '5'), to: plTerminal(output.pl, '+') });
+  }
+  // P側の鎖: 入力コモン（シンクのみ）→ 出力COM → リレー接点のCOM
+  const usedCommons = [...new Set(io.outputs.map((output) => comName(output.y)))];
+  const pTargets: TerminalId[] = [
+    ...(io.wiring === 'sink' ? [plcTerminal(unit.spec.inputCommon)] : []),
+    ...usedCommons.map(plcTerminal),
+    ...io.outputs.map((output) => terminalId(output.cr, '9')),
+    ...(io.wiring === 'source' ? io.inputs.map((input) => pbTerminal(input.pb, 'c')) : []),
+  ];
+  wires.push(...chain(terminalId(P_RAIL_ID, '1'), pTargets));
+  // N側の鎖: 入力コモン（ソースのみ）→ 押ボタンのコモン（シンクのみ）→ コイル(−) → ランプ(−)
+  const nTargets: TerminalId[] = [
+    ...(io.wiring === 'source' ? [plcTerminal(unit.spec.inputCommon)] : []),
+    ...(io.wiring === 'sink' ? io.inputs.map((input) => pbTerminal(input.pb, 'c')) : []),
+    ...io.outputs.map((output) => terminalId(output.cr, '13')),
+    ...io.outputs.map((output) => plTerminal(output.pl, '-')),
+  ];
+  wires.push(...chain(terminalId(N_RAIL_ID, '1'), nTargets));
+  // PLC電源は壁コンセントから取る（盤から取ると `plcPowerIndependent` 違反。§10.1）
+  wires.push({ from: terminalId('OUTLET', 'L'), to: plcTerminal('L') });
+  wires.push({ from: terminalId('OUTLET', 'N'), to: plcTerminal('N') });
+  return wires;
+}
+
+/** 模範の盤セッションとネットリストを組む。§7.2 / §13 #2 */
+export function buildPlcReferenceSession(
+  problem: PlcProblem,
+  board: BoardDefinition,
+): PlcReferenceResult {
+  if (problem.board.boardId !== board.id) {
+    return {
+      ok: false,
+      errors: [
+        {
+          path: 'board.boardId',
+          message: `課題が要求する盤（${problem.board.boardId}）と渡された盤（${board.id}）が違います`,
+        },
+      ],
+    };
+  }
+  const plcBoard = plcBoardFor(problem, board);
+  const unit = plcBoard?.plcUnit;
+  if (plcBoard === undefined || unit === undefined) {
+    return {
+      ok: false,
+      errors: [{ path: 'plc.model', message: `対応していないPLC機種です: ${problem.plc.model}` }],
+    };
+  }
+  const compiled = compile(problem.referenceLadder);
+  if (!compiled.ok) {
+    return {
+      ok: false,
+      errors: compiled.errors.map((error) => ({
+        path: 'referenceLadder',
+        message: `模範ラダーを変換できません（${error.code}）: ${error.message}`,
+      })),
+    };
+  }
+
+  const roles = toSocketRoles(problem.board.socketRoles);
+  const io = resolvePlcIo(problem.io);
+  const session = createSession(plcBoard, {
+    roles,
+    allowedColors: [PLC_WIRE_COLOR],
+    inventory: problem.inventory,
+  });
+  const errors: ProblemIssue[] = [];
+  io.outputs.forEach((output, index) => {
+    const socket = trySocketOf(roles, output.cr);
+    if (socket === undefined) {
+      errors.push({
+        path: `io.outputs[${index}].cr`,
+        message: `${output.cr} が盤のソケットに割り当てられていません（board.socketRoles）`,
+      });
+      return;
+    }
+    const mounted = plug(session, socket, 'relay-my4n');
+    if (!mounted.ok) {
+      errors.push({ path: `io.outputs[${index}].cr`, message: mounted.message });
+    }
+  });
+  if (errors.length > 0) return { ok: false, errors };
+
+  for (const [index, spec] of plcWiringPlan(io, unit).entries()) {
+    const result = addWire(session, plcBoard, spec.from, spec.to, PLC_WIRE_COLOR);
+    if (!result.ok) {
+      errors.push({
+        path: `io`,
+        message: `模範配線を張れません（${index + 1}本目 ${spec.from} – ${spec.to}）: ${result.message}`,
+      });
+    }
+  }
+  if (errors.length > 0) return { ok: false, errors };
+
+  return {
+    ok: true,
+    value: {
+      session,
+      netlist: toNetlist(session, plcBoard),
+      board: plcBoard,
+      unit,
+      io,
+      program: compiled.program,
+    },
+  };
+}
+```
+
+- [ ] **Step 4: GREEN を確認してコミットする**
+
+```powershell
+pnpm --filter @ojt/content exec vitest run test/plc-reference.test.ts test/plc-io.test.ts
+git add packages/content
+git commit -m "feat(content): generate the mode D reference wiring from the I/O map"
+```
+
+Expected: 両ファイルとも通る（`plc-reference` 7件、`plc-io` 5件）。**電線が25本にならない場合**は、鎖の組み方（どの端子を何番目に渡すか）ではなく**端子の本数上限**を先に疑うこと。`addWire` が `terminal-overload` で落ちていれば、その端子に既に2本（うち1本は §6.3 の既設配線）が来ている。
+
+---
+
+## Task 16: `plc-static-checks.ts` — `twoStage` / `plcPowerIndependent` / `ioAssignment`
+
+**Files:**
+- Create: `packages/content/src/plc-static-checks.ts`
+- Modify: `packages/content/src/static-checks.ts`
+- Test: `packages/content/test/plc-static-checks.test.ts`
+
+§7.4 の3件と §10.2 の結線ルールを、**通電せずネットリストの節点だけ**で判定する（前提#7）。`buildNets()` が返す `Nets.terminalsOf(node)`（同じ節点に居る端子の一覧）だけを見る。
+
+| チェック | 合格の条件 | 主なエラー |
+|---|---|---|
+| `twoStage` | すべての Y が盤のリレーコイル（`CRn.14`）と同じ節点にあり、ランプ端子台（`TB_PL.*`）とは繋がっていない。各ランプはリレーの接点端子と繋がっている | `Y0 が PL1 に直結しています` / `Y0 がリレーのコイルに繋がっていません` |
+| `plcPowerIndependent` | `PLC.L` / `PLC.N` が盤の電源（`P.*` / `N.*` / `PS.*` / `CB.*` / `SW.*`）と繋がっておらず、壁コンセント（`OUTLET.*`）と繋がっている | `PLC の電源を盤から取っています` / `PLC の電源が壁コンセントに配線されていません` |
+| `ioAssignment` | `io.mode` が `fixed` のとき、割付どおりに配線され、入力コモンが `io.wiring` の側の母線に繋がっている | `X0 は PB1 に割り付けます` / `入力コモン（S/S）が P 側に配線されていません` |
+
+- [ ] **Step 1: 失敗するテストを書く**
+
+`packages/content/test/plc-static-checks.test.ts`:
+
+```ts
+import { addWire, JIPM_BOARD, removeWire, toNetlist } from '@ojt/board-model';
+import { buildNets, type TerminalId } from '@ojt/circuit-sim';
+import { describe, expect, it } from 'vitest';
+import {
+  checkIoAssignment,
+  checkPlcPowerIndependent,
+  checkTwoStage,
+  detectPlcWiring,
+  type PlcCheckContext,
+} from '../src/plc-static-checks.js';
+import { buildPlcReferenceSession } from '../src/plc-reference.js';
+import { runStaticChecks } from '../src/static-checks.js';
+import { PlcProblemSchema } from '../src/schema/plc.js';
+import { plcProblemJson } from './helpers/plc.js';
+
+function t(id: string): TerminalId {
+  return id as TerminalId;
+}
+
+/** 模範回路（＝正しく配線された盤）を作る。 */
+function reference() {
+  const problem = PlcProblemSchema.parse(plcProblemJson());
+  const built = buildPlcReferenceSession(problem, JIPM_BOARD);
+  if (!built.ok) throw new Error(JSON.stringify(built.errors));
+  return { problem, circuit: built.value };
+}
+
+/** チェックの入力を組む（ログ・イベントは静的チェックでは使わない）。 */
+function checkInput(circuit: ReturnType<typeof reference>['circuit'], plc: PlcCheckContext) {
+  const netlist = toNetlist(circuit.session, circuit.board);
+  return {
+    session: circuit.session,
+    netlist,
+    log: { transitions: () => [], signals: () => [] } as never,
+    hazards: [],
+    chatters: [],
+    allowedColors: ['青' as const],
+    plc,
+  };
+}
+
+function context(circuit: ReturnType<typeof reference>['circuit']): PlcCheckContext {
+  return { unit: circuit.unit, io: circuit.io, roles: circuit.session.socketRoles };
+}
+
+describe('twoStage（§10.2 / §7.4）', () => {
+  it('passes on the reference circuit', () => {
+    const { circuit } = reference();
+    expect(checkTwoStage(checkInput(circuit, context(circuit))).ok).toBe(true);
+  });
+
+  it('fails when Y is wired straight to the lamp (§16 Phase 3 受入基準④)', () => {
+    const { circuit } = reference();
+    // Y0 → CR1.14 を外し、Y0 → TB_PL.1+ に直結する
+    const direct = circuit.session.wires.find((w) => w.from === 'PLC.Y0' || w.to === 'PLC.Y0');
+    expect(removeWire(circuit.session, direct?.id ?? '').ok).toBe(true);
+    const lampWire = circuit.session.wires.find((w) => w.to === 'TB_PL.1+');
+    expect(removeWire(circuit.session, lampWire?.id ?? '').ok).toBe(true);
+    expect(addWire(circuit.session, circuit.board, t('PLC.Y0'), t('TB_PL.1+')).ok).toBe(true);
+    const result = checkTwoStage(checkInput(circuit, context(circuit)));
+    expect(result.ok).toBe(false);
+    expect(result.details.join('')).toContain('直結');
+  });
+
+  it('fails when Y drives nothing at all', () => {
+    const { circuit } = reference();
+    const wire = circuit.session.wires.find((w) => w.from === 'PLC.Y0' || w.to === 'PLC.Y0');
+    removeWire(circuit.session, wire?.id ?? '');
+    const result = checkTwoStage(checkInput(circuit, context(circuit)));
+    expect(result.ok).toBe(false);
+    expect(result.details.join('')).toContain('コイル');
+  });
+});
+
+describe('plcPowerIndependent（§10.1 / §7.4）', () => {
+  it('passes when the PLC takes its power from the wall outlet', () => {
+    const { circuit } = reference();
+    expect(checkPlcPowerIndependent(checkInput(circuit, context(circuit))).ok).toBe(true);
+  });
+
+  it('fails when the PLC power comes from the board (§16 Phase 3 受入基準⑤)', () => {
+    const { circuit } = reference();
+    const wire = circuit.session.wires.find((w) => w.to === 'PLC.L');
+    removeWire(circuit.session, wire?.id ?? '');
+    // 盤の P.1 は既設配線＋鎖の1本で埋まっているので、鎖の途中（PLC.COM0）から取る
+    expect(addWire(circuit.session, circuit.board, t('CR1.9'), t('PLC.L')).ok).toBe(true);
+    const result = checkPlcPowerIndependent(checkInput(circuit, context(circuit)));
+    expect(result.ok).toBe(false);
+    expect(result.details.join('')).toContain('盤');
+  });
+
+  it('fails when the PLC power is not wired at all', () => {
+    const { circuit } = reference();
+    for (const wire of [...circuit.session.wires]) {
+      if (wire.to === 'PLC.L' || wire.to === 'PLC.N') removeWire(circuit.session, wire.id);
+    }
+    expect(checkPlcPowerIndependent(checkInput(circuit, context(circuit))).ok).toBe(false);
+  });
+});
+
+describe('ioAssignment（§7.4 / §7.6）', () => {
+  it('passes on the reference circuit when the map is fixed', () => {
+    const { circuit } = reference();
+    expect(checkIoAssignment(checkInput(circuit, context(circuit))).ok).toBe(true);
+  });
+
+  it('is skipped (always OK) when the map is free', () => {
+    const { circuit } = reference();
+    const free = { ...context(circuit), io: { ...circuit.io, mode: 'free' as const } };
+    const result = checkIoAssignment(checkInput(circuit, free));
+    expect(result.ok).toBe(true);
+    expect(result.message).toContain('自由');
+  });
+
+  it('fails when an input is wired to the wrong push button', () => {
+    const { circuit } = reference();
+    const wire = circuit.session.wires.find((w) => w.to === 'PLC.X0');
+    removeWire(circuit.session, wire?.id ?? '');
+    expect(addWire(circuit.session, circuit.board, t('TB_PB.2a'), t('PLC.X0')).ok).toBe(true);
+    expect(checkIoAssignment(checkInput(circuit, context(circuit))).ok).toBe(false);
+  });
+});
+
+describe('detectPlcWiring（§10.2）', () => {
+  it('recognises sink wiring on the reference circuit', () => {
+    const { circuit } = reference();
+    const nets = buildNets(toNetlist(circuit.session, circuit.board));
+    expect(detectPlcWiring(nets, circuit.unit)).toBe('sink');
+  });
+});
+
+describe('runStaticChecks（PLCの3件を含む）', () => {
+  it('runs the nine checks in the fixed order when they are all enabled (§7.4)', () => {
+    const { problem, circuit } = reference();
+    const results = runStaticChecks(
+      checkInput(circuit, context(circuit)),
+      problem.judge.staticChecks,
+    );
+    expect(results.map((r) => r.id)).toEqual([
+      'wireColorRule',
+      'terminalLimit',
+      'unusedParts',
+      'forbiddenCircuit',
+      'coilPolarity',
+      'powerSequence',
+      'twoStage',
+      'plcPowerIndependent',
+      'ioAssignment',
+    ]);
+    expect(results.every((r) => r.ok)).toBe(true);
+  });
+
+  it('reports the PLC checks as errors when the mode D context is missing', () => {
+    const { problem, circuit } = reference();
+    const input = checkInput(circuit, context(circuit));
+    const withoutPlc = { ...input, plc: undefined };
+    const results = runStaticChecks(withoutPlc, problem.judge.staticChecks);
+    expect(results.find((r) => r.id === 'twoStage')?.ok).toBe(false);
+  });
+});
+```
+
+**注意:** `checkInput()` の `log` はダミーである（PLCの3件はログを読まない）。`runStaticChecks` の他の6件はログを読むので、上の「9件すべて OK」テストでは**実際に再生したログ**を使うこと（`runPlcOperations()` の結果の `log` と `events`）。ダミーのままだと `coilPolarity` が空のログで OK になり、検査として弱い。Step 1 を書くときに `runPlcOperations` を使う形へ直すこと。
+
+- [ ] **Step 2: RED を確認する**
+
+```powershell
+pnpm --filter @ojt/content exec vitest run test/plc-static-checks.test.ts
+```
+
+Expected: 失敗。`Error: Failed to load url ../src/plc-static-checks.js`。
+
+- [ ] **Step 3: `src/plc-static-checks.ts` を書く**
+
+```ts
+import { OUTLET_ID, PLC_PART_ID, PL_BLOCK_ID, PB_BLOCK_ID, type PlcUnitDefinition, type SocketRoles } from '@ojt/board-model';
+import { buildNets, terminalId, type Nets, type TerminalId } from '@ojt/circuit-sim';
+import type { ResolvedPlcIo } from './schema/plc.js';
+import type { StaticCheckInput, StaticCheckResult } from './static-checks.js';
+
+/**
+ * モードDの静的チェック。設計仕様 §7.4 / §10.2 / §10.8。
+ *
+ * 通電せずに構造だけで判定する（§2 用語「静的チェック」）ので、見るのは `buildNets()` が返す
+ * 「同じ節点に居る端子の一覧」だけである。電線・0Ωリンクで繋がっている端子は同じ節点になるため、
+ * 渡り配線を何段重ねても正しく追える。
+ */
+
+/** 盤の電源系端子の接頭辞（ここから PLC の電源を取ってはならない）。§10.1 */
+export const BOARD_POWER_PREFIXES: readonly string[] = ['P.', 'N.', 'PS.', 'CB.', 'SW.'];
+
+/** モードDの静的チェックに要る文脈。 */
+export interface PlcCheckContext {
+  unit: PlcUnitDefinition;
+  io: ResolvedPlcIo;
+  roles: SocketRoles;
+}
+
+function result(
+  id: StaticCheckResult['id'],
+  details: string[],
+  okMessage: string,
+  ngMessage: string,
+): StaticCheckResult {
+  return details.length === 0
+    ? { id, ok: true, message: okMessage, details }
+    : { id, ok: false, message: ngMessage, details };
+}
+
+/** モードDの文脈が無いまま有効にされたときの結果。 */
+function missingContext(id: StaticCheckResult['id']): StaticCheckResult {
+  return {
+    id,
+    ok: false,
+    message: 'PLC課題ではないためこの検査は実行できません',
+    details: ['この静的チェックはモードDの課題でのみ有効にできます（§7.4）'],
+  };
+}
+
+/** その端子と同じ節点にいる端子の一覧（端子が無ければ空）。 */
+function netTerminals(nets: Nets, terminal: TerminalId): readonly TerminalId[] {
+  if (!nets.hasTerminal(terminal)) return [];
+  return nets.terminalsOf(nets.nodeOf(terminal));
+}
+
+/** PLCの端子ID。 */
+function plcTerminal(name: string): TerminalId {
+  return terminalId(PLC_PART_ID, name);
+}
+
+/** 割付の出力番号 → PLCの出力端子。 */
+function outputTerminal(unit: PlcUnitDefinition, y: number): TerminalId {
+  return plcTerminal(unit.spec.outputs[y]?.name ?? `Y${y}`);
+}
+
+/** 割付の入力番号 → PLCの入力端子。 */
+function inputTerminal(unit: PlcUnitDefinition, x: number): TerminalId {
+  return plcTerminal(unit.spec.inputs[x] ?? `X${x}`);
+}
+
+/** 入力コモンの結線方式を判定する。§10.2 */
+export function detectPlcWiring(
+  nets: Nets,
+  unit: PlcUnitDefinition,
+): 'sink' | 'source' | undefined {
+  const terminals = netTerminals(nets, plcTerminal(unit.spec.inputCommon));
+  if (terminals.some((id) => id.startsWith('P.'))) return 'sink';
+  if (terminals.some((id) => id.startsWith('N.'))) return 'source';
+  return undefined;
+}
+
+/**
+ * 2段結線。§10.2 / §7.4
+ * Y出力は盤のリレーのコイルへ、リレーの接点がランプへ、という2段でなければならない。
+ * Y → ランプの直結（`twoStage` 違反）と、Y がどのコイルにも繋がっていない場合を検出する。
+ */
+export function checkTwoStage(input: StaticCheckInput): StaticCheckResult {
+  const plc = input.plc;
+  if (plc === undefined) return missingContext('twoStage');
+  const nets = buildNets(input.netlist);
+  const details: string[] = [];
+  for (const output of plc.io.outputs) {
+    const yTerminal = outputTerminal(plc.unit, output.y);
+    const yNet = netTerminals(nets, yTerminal);
+    if (yNet.some((id) => id.startsWith(`${PL_BLOCK_ID}.`))) {
+      details.push(`${yTerminal} が ${output.pl} に直結しています（盤のリレーを介します）`);
+      continue;
+    }
+    if (!yNet.includes(terminalId(output.cr, '14'))) {
+      details.push(`${yTerminal} がリレー ${output.cr} のコイル（${output.cr}.14）に繋がっていません`);
+      continue;
+    }
+    const lampNet = netTerminals(nets, terminalId(PL_BLOCK_ID, `${output.pl.slice(2)}+`));
+    const drivenByContact = lampNet.some((id) => {
+      if (!id.startsWith(`${output.cr}.`)) return false;
+      const pin = Number(id.slice(output.cr.length + 1));
+      return pin >= 1 && pin <= 12; // 接点（COM・a・b）のピン。コイル（13/14）は除く
+    });
+    if (!drivenByContact) {
+      details.push(`${output.pl} が ${output.cr} の接点から駆動されていません`);
+    }
+  }
+  return result(
+    'twoStage',
+    details,
+    'PLC出力 → 盤のリレー → 表示灯の2段結線になっています',
+    'PLCの出力を表示灯へ直結しています（盤のリレーを介してください）',
+  );
+}
+
+/**
+ * PLC電源の独立。§10.1 / §7.4
+ * 盤の AC100V / DC24V から PLC本体の電源を取ってはならない（調査資料 §1.5）。
+ * 入力回路（`S/S` と `Xn`）に盤のDC24Vを使うのは違反ではない（§10.2）。
+ */
+export function checkPlcPowerIndependent(input: StaticCheckInput): StaticCheckResult {
+  const plc = input.plc;
+  if (plc === undefined) return missingContext('plcPowerIndependent');
+  const nets = buildNets(input.netlist);
+  const details: string[] = [];
+  for (const name of ['L', 'N']) {
+    const terminal = plcTerminal(name);
+    const terminals = netTerminals(nets, terminal);
+    const fromBoard = terminals.filter((id) =>
+      BOARD_POWER_PREFIXES.some((prefix) => id.startsWith(prefix)),
+    );
+    if (fromBoard.length > 0) {
+      details.push(`${terminal} が盤の電源（${fromBoard.join('・')}）に繋がっています`);
+      continue;
+    }
+    if (!terminals.some((id) => id.startsWith(`${OUTLET_ID}.`))) {
+      details.push(`${terminal} が壁コンセントに配線されていません`);
+    }
+  }
+  return result(
+    'plcPowerIndependent',
+    details,
+    'PLCの電源は盤から独立しています',
+    'PLCの電源を盤から取っています（壁コンセントに配線してください）',
+  );
+}
+
+/** I/O割付の遵守。§7.4 / §7.6 */
+export function checkIoAssignment(input: StaticCheckInput): StaticCheckResult {
+  const plc = input.plc;
+  if (plc === undefined) return missingContext('ioAssignment');
+  if (plc.io.mode === 'free') {
+    return {
+      id: 'ioAssignment',
+      ok: true,
+      message: 'I/O割付は自由です（課題が固定していません）',
+      details: [],
+    };
+  }
+  const nets = buildNets(input.netlist);
+  const details: string[] = [];
+  for (const input_ of plc.io.inputs) {
+    const terminal = inputTerminal(plc.unit, input_.x);
+    const expected = terminalId(PB_BLOCK_ID, `${input_.pb.slice(2)}a`);
+    if (!netTerminals(nets, terminal).includes(expected)) {
+      details.push(`${terminal} は ${input_.pb} のa接点（${expected}）に割り付けます`);
+    }
+  }
+  for (const output of plc.io.outputs) {
+    const terminal = outputTerminal(plc.unit, output.y);
+    const expected = terminalId(output.cr, '14');
+    if (!netTerminals(nets, terminal).includes(expected)) {
+      details.push(`${terminal} は ${output.cr} のコイル（${expected}）に割り付けます`);
+    }
+  }
+  const wiring = detectPlcWiring(nets, plc.unit);
+  if (wiring === undefined) {
+    details.push('入力コモン（S/S）が盤のP側・N側のどちらにも配線されていません');
+  } else if (wiring !== plc.io.wiring) {
+    details.push(
+      `入力コモン（S/S）の結線が課題の指定（${plc.io.wiring}）と違います（${wiring} になっています）`,
+    );
+  }
+  return result(
+    'ioAssignment',
+    details,
+    'I/O割付どおりに配線されています',
+    'I/O割付と配線が食い違っています',
+  );
+}
+```
+
+- [ ] **Step 4: `src/static-checks.ts` に組み込む**
+
+`StaticCheckInput` に足す:
+
+```ts
+  /**
+   * モードDの文脈（PLC本体・I/O割付・ソケット役割）。§10.2
+   * `twoStage` / `plcPowerIndependent` / `ioAssignment` を有効にするときは必須である。
+   */
+  plc?: PlcCheckContext;
+```
+
+`CHECKS` に3件を足す:
+
+```ts
+const CHECKS: Readonly<Record<StaticCheckId, (input: StaticCheckInput) => StaticCheckResult>> = {
+  wireColorRule: checkWireColorRule,
+  terminalLimit: checkTerminalLimit,
+  unusedParts: checkUnusedParts,
+  forbiddenCircuit: checkForbiddenCircuit,
+  coilPolarity: checkCoilPolarity,
+  powerSequence: checkPowerSequence,
+  twoStage: checkTwoStage,
+  plcPowerIndependent: checkPlcPowerIndependent,
+  ioAssignment: checkIoAssignment,
+};
+```
+
+**循環依存に注意:** `plc-static-checks.ts` は `static-checks.ts` から**型だけ**を import し（`StaticCheckInput` / `StaticCheckResult`）、`static-checks.ts` は `plc-static-checks.ts` から関数を import する。`import-x/no-cycle` は型だけの往復も循環として検出するため、**`StaticCheckInput` / `StaticCheckResult` / `PlcCheckContext` の定義を `static-checks.ts` から `plc-static-checks.ts` 側に置かない**こと。型の置き場所は `static-checks.ts` のままで、`plc-static-checks.ts` の import は `import type { ... } from './static-checks.js'` にする。それでも `pnpm lint` が循環を報告する場合は、**型だけを `src/static-check-types.ts` に切り出して両者がそこを見る**形に直す（この場合 `static-checks.ts` は再エクスポートする）。
+
+- [ ] **Step 5: GREEN を確認してコミットする**
+
+```powershell
+pnpm --filter @ojt/content exec vitest run test/plc-static-checks.test.ts test/static-checks.test.ts
+pnpm lint
+git add packages/content
+git commit -m "feat(content): add the twoStage, plcPowerIndependent and ioAssignment checks"
+```
+
+Expected: 新ファイル11件と既存の `static-checks.test.ts` が通り、`pnpm lint`（`import-x/no-cycle` 込み）が無警告。
+
+---
+
+## Task 17: `judge-plc.ts` — モードDの判定
+
+**Files:**
+- Create: `packages/content/src/judge-plc.ts`
+- Test: `packages/content/test/judge-plc.test.ts`
+
+§10.8 の判定である。模範ラダー＋模範配線と、訓練者のラダー＋配線を、同じ操作列で並走させて出力波形を比べ（決定事項#8）、静的チェック9件と変換の結果を添える。
+
+| 決めること | 本タスクの実装 |
+|---|---|
+| 訓練者のラダー | 引数で受け取る（`LadderProgram`）。`compile()` に落ちたら**シミュレートせず不合格**にし、`ladderErrors` に理由を入れる |
+| 方言 | 見ない（決定表#7）。方言バリデータは Plan 3B が「変換」ボタンで走らせる |
+| 危険操作 | モードBと同じで**セッション中の記録だけ**を数える（§5.6 / 2A のレビュー結果） |
+| タイムチャート | 入力はPB4点、出力は比較信号。印はPLCタイマの設定値（`T0=3秒`）から作る（§7.7） |
+| 合否 | 動作一致 ＋ 有効な静的チェックにエラー無し ＋ 変換エラー無し（§7.4） |
+
+- [ ] **Step 1: 失敗するテストを書く**
+
+`packages/content/test/judge-plc.test.ts`:
+
+```ts
+import { addWire, JIPM_BOARD, removeWire } from '@ojt/board-model';
+import type { TerminalId } from '@ojt/circuit-sim';
+import { endNetwork, hline, IR_COLS, network, no, out, program, X, Y, type Cell } from '@ojt/ladder-core';
+import { describe, expect, it } from 'vitest';
+import { judgePlc, judgePlcReference } from '../src/judge-plc.js';
+import { buildPlcReferenceSession } from '../src/plc-reference.js';
+import { PlcProblemSchema } from '../src/schema/plc.js';
+import { plcProblemJson } from './helpers/plc.js';
+
+function rung(...cells: Cell[]): Cell[] {
+  const row = [...cells];
+  const output = row.pop();
+  if (output === undefined) throw new Error('出力セルが要ります');
+  while (row.length < IR_COLS - 1) row.push(hline());
+  row.push(output);
+  return row;
+}
+
+function t(id: string): TerminalId {
+  return id as TerminalId;
+}
+
+function problem() {
+  return PlcProblemSchema.parse(plcProblemJson());
+}
+
+/** 模範どおりに配線した訓練者の盤。 */
+function traineeSession() {
+  const built = buildPlcReferenceSession(problem(), JIPM_BOARD);
+  if (!built.ok) throw new Error(JSON.stringify(built.errors));
+  return built.value;
+}
+
+describe('judgePlcReference（自己整合。§7.8 / §14.1 #30）', () => {
+  it('passes the reference ladder against its own reference wiring', () => {
+    const judged = judgePlcReference(problem(), JIPM_BOARD);
+    expect(judged.ok).toBe(true);
+    if (!judged.ok) return;
+    expect(judged.value.passed).toBe(true);
+    expect(judged.value.mismatches).toEqual([]);
+    expect(judged.value.staticChecks.every((c) => c.ok)).toBe(true);
+    expect(judged.value.ladderErrors).toEqual([]);
+    expect(judged.value.mode).toBe('plc');
+  });
+});
+
+describe('judgePlc（§10.8）', () => {
+  it('fails when the trainee ladder drives the wrong output', () => {
+    const circuit = traineeSession();
+    const wrong = program(network('n1', [rung(no(X(0)), out(Y(1)))]), endNetwork());
+    const judged = judgePlc(problem(), JIPM_BOARD, circuit.session, wrong);
+    expect(judged.ok).toBe(true);
+    if (!judged.ok) return;
+    expect(judged.value.passed).toBe(false);
+    expect(judged.value.mismatches.length).toBeGreaterThan(0);
+    expect(judged.value.mismatches[0]?.signal).toBe('PL1');
+  });
+
+  it('fails without simulating when the trainee ladder does not convert (§10.6)', () => {
+    const circuit = traineeSession();
+    const broken = { networks: [network('n1', [rung(no(X(0)), out(Y(0)))])] };
+    const judged = judgePlc(problem(), JIPM_BOARD, circuit.session, broken);
+    expect(judged.ok).toBe(true);
+    if (!judged.ok) return;
+    expect(judged.value.passed).toBe(false);
+    expect(judged.value.ladderErrors.map((e) => e.code)).toContain('missing-end');
+    expect(judged.value.mismatches).toEqual([]);
+  });
+
+  it('keeps the double-coil warning on the result (§10.4)', () => {
+    const circuit = traineeSession();
+    const doubled = program(
+      network('n1', [rung(no(X(0)), out(Y(0)))]),
+      network('n2', [rung(no(X(1)), out(Y(0)))]),
+      endNetwork(),
+    );
+    const judged = judgePlc(problem(), JIPM_BOARD, circuit.session, doubled);
+    expect(judged.ok).toBe(true);
+    if (!judged.ok) return;
+    expect(judged.value.ladderWarnings.map((w) => w.code)).toEqual(['double-coil']);
+  });
+
+  it('fails the twoStage check when the lamp is wired straight to Y (§16 Phase 3 受入基準④)', () => {
+    const circuit = traineeSession();
+    const coil = circuit.session.wires.find((w) => w.from === 'PLC.Y0');
+    removeWire(circuit.session, coil?.id ?? '');
+    const lamp = circuit.session.wires.find((w) => w.to === 'TB_PL.1+');
+    removeWire(circuit.session, lamp?.id ?? '');
+    addWire(circuit.session, circuit.board, t('PLC.Y0'), t('TB_PL.1+'));
+    const judged = judgePlc(problem(), JIPM_BOARD, circuit.session, problem().referenceLadder);
+    expect(judged.ok).toBe(true);
+    if (!judged.ok) return;
+    expect(judged.value.staticChecks.find((c) => c.id === 'twoStage')?.ok).toBe(false);
+    expect(judged.value.passed).toBe(false);
+  });
+
+  it('fails the plcPowerIndependent check when the PLC is fed from the board (§16 Phase 3 受入基準⑤)', () => {
+    const circuit = traineeSession();
+    const wire = circuit.session.wires.find((w) => w.to === 'PLC.L');
+    removeWire(circuit.session, wire?.id ?? '');
+    addWire(circuit.session, circuit.board, t('CR1.9'), t('PLC.L'));
+    const judged = judgePlc(problem(), JIPM_BOARD, circuit.session, problem().referenceLadder);
+    expect(judged.ok).toBe(true);
+    if (!judged.ok) return;
+    expect(judged.value.staticChecks.find((c) => c.id === 'plcPowerIndependent')?.ok).toBe(false);
+  });
+
+  it('builds both charts with the PB inputs and the compared outputs (§7.7)', () => {
+    const circuit = traineeSession();
+    const judged = judgePlc(problem(), JIPM_BOARD, circuit.session, problem().referenceLadder);
+    expect(judged.ok).toBe(true);
+    if (!judged.ok) return;
+    expect(judged.value.charts.expected.signals.map((s) => s.name)).toEqual([
+      'PB1',
+      'PB2',
+      'PB3',
+      'PB4',
+      'PL1',
+    ]);
+    expect(judged.value.charts.actual.durationMs).toBe(problem().durationMs);
+  });
+
+  it('returns a problem error when the reference circuit cannot be built (§13 #2)', () => {
+    const broken = PlcProblemSchema.parse(
+      plcProblemJson({ board: { boardId: 'other', socketRoles: { S7: 'CHK' } } }),
+    );
+    const circuit = traineeSession();
+    const judged = judgePlc(broken, JIPM_BOARD, circuit.session, broken.referenceLadder);
+    expect(judged.ok).toBe(false);
+  });
+});
+```
+
+- [ ] **Step 2: RED を確認する**
+
+```powershell
+pnpm --filter @ojt/content exec vitest run test/judge-plc.test.ts
+```
+
+Expected: 失敗。`Error: Failed to load url ../src/judge-plc.js`。
+
+- [ ] **Step 3: `src/judge-plc.ts` を書く**
+
+```ts
+import { toNetlist, type BoardDefinition, type BoardSession } from '@ojt/board-model';
+import { compareLogs, type ChatterEvent, type Mismatch, type SignalLog } from '@ojt/circuit-sim';
+import {
+  compile,
+  type CompileError,
+  type CompiledProgram,
+  type CompileWarning,
+  type LadderProgram,
+} from '@ojt/ladder-core';
+import { countHazards, type HazardCounts, type JudgeOptions } from './judge.js';
+import { runPlcOperations } from './plc-io.js';
+import { buildPlcReferenceSession, PLC_WIRE_COLOR } from './plc-reference.js';
+import { resolveCompareSignals } from './schema/judge.js';
+import type { ProblemIssue } from './schema/index.js';
+import type { PlcProblem } from './schema/plc.js';
+import { runStaticChecks, type StaticCheckResult } from './static-checks.js';
+import { buildTimeChart, defaultChartSignals, type TimeChart, type TimeChartMarker } from './timechart.js';
+
+/**
+ * モードDの判定。設計仕様 §10.8 / §7.4。
+ * 模範（模範ラダー＋割付から生成した模範配線）と訓練者（自分のラダー＋自分の配線）を、
+ * 同じ操作列で並走させて出力波形を比べる（決定事項#8）。方言は見ない（決定表#7）。
+ */
+
+/** モードDの判定結果。 */
+export interface JudgePlcResult {
+  mode: 'plc';
+  passed: boolean;
+  mismatches: Mismatch[];
+  staticChecks: StaticCheckResult[];
+  hazardCount: number;
+  hazardsByKind: HazardCounts;
+  chatter: ChatterEvent[];
+  elapsedMs?: number;
+  charts: { expected: TimeChart; actual: TimeChart };
+  compareSignals: string[];
+  /** 訓練者のラダーの変換エラー（あればシミュレートせず不合格）。§10.6 */
+  ladderErrors: CompileError[];
+  /** 二重コイルなどの変換警告。§10.4 */
+  ladderWarnings: CompileWarning[];
+}
+
+/** 判定の実行結果（模範回路が作れなければ課題エラー）。§13 #2 */
+export type JudgePlcOutcome =
+  | { ok: true; value: JudgePlcResult }
+  | { ok: false; errors: ProblemIssue[] };
+
+/** ラダーのタイマ設定値からタイムチャートの印を作る。§7.7 */
+export function plcTimerMarkers(program: CompiledProgram): TimeChartMarker[] {
+  const markers: TimeChartMarker[] = [];
+  for (const net of program.networks) {
+    for (const output of net.outputs) {
+      if (output.cell.kind !== 'timer') continue;
+      const seconds = output.cell.presetMs / 1000;
+      markers.push({
+        tMs: output.cell.presetMs,
+        label: `T${output.cell.device.index}=${Number.isInteger(seconds) ? seconds : seconds.toFixed(1)}秒`,
+      });
+    }
+  }
+  return markers;
+}
+
+/** 比較信号が模範のログに無い（課題データの誤り）。§13 #2 */
+function unknownCompareSignals(compareSignals: readonly string[], log: SignalLog): ProblemIssue[] {
+  const recorded = new Set(log.signals());
+  const out: ProblemIssue[] = [];
+  compareSignals.forEach((signal, index) => {
+    if (recorded.has(signal)) return;
+    out.push({
+      path: `judge.compareSignals[${index}]`,
+      message: `比較信号 ${signal} は模範回路の記録にありません`,
+    });
+  });
+  return out;
+}
+
+/** モードDの判定を実行する。§10.8 */
+export function judgePlc(
+  problem: PlcProblem,
+  board: BoardDefinition,
+  traineeSession: BoardSession,
+  traineeLadder: LadderProgram,
+  options: JudgeOptions = {},
+): JudgePlcOutcome {
+  const reference = buildPlcReferenceSession(problem, board);
+  if (!reference.ok) return reference;
+  const { board: plcBoard, unit, io, program: referenceProgram } = reference.value;
+  const outputCount = unit.spec.outputs.length;
+
+  const expectedRun = runPlcOperations(
+    reference.value.netlist,
+    referenceProgram,
+    problem.operations,
+    { durationMs: problem.durationMs, outputCount },
+  );
+  const compareSignals = resolveCompareSignals(problem.judge, problem.board.extraParts ?? []);
+  const unknown = unknownCompareSignals(compareSignals, expectedRun.log);
+  if (unknown.length > 0) return { ok: false, errors: unknown };
+
+  const compiled = compile(traineeLadder);
+  const ladderWarnings = compiled.warnings;
+  const traineeNetlist = toNetlist(traineeSession, plcBoard);
+  const sessionHazards = options.sessionHazards ?? [];
+  const chartSignals = defaultChartSignals(compareSignals);
+  const markers = plcTimerMarkers(referenceProgram);
+  const expectedChart = buildTimeChart(
+    expectedRun.log,
+    chartSignals,
+    problem.durationMs,
+    markers,
+  );
+
+  if (!compiled.ok) {
+    // 変換に落ちたラダーは実機にも書き込めない。シミュレートせず不合格にする（§10.6）。
+    return {
+      ok: true,
+      value: {
+        mode: 'plc',
+        passed: false,
+        mismatches: [],
+        staticChecks: [],
+        hazardCount: sessionHazards.length,
+        hazardsByKind: countHazards(sessionHazards),
+        chatter: [],
+        ...(options.elapsedMs === undefined ? {} : { elapsedMs: options.elapsedMs }),
+        // 実測波形は無い（走らせていない）ので空のチャートを返す
+        charts: { expected: expectedChart, actual: { durationMs: problem.durationMs, signals: [], markers: [] } },
+        compareSignals,
+        ladderErrors: compiled.errors,
+        ladderWarnings,
+      },
+    };
+  }
+
+  const actualRun = runPlcOperations(traineeNetlist, compiled.program, problem.operations, {
+    durationMs: problem.durationMs,
+    outputCount,
+  });
+  const mismatches = compareLogs(
+    expectedRun.log,
+    actualRun.log,
+    compareSignals,
+    problem.judge.tolerance,
+  );
+  const chatter = actualRun.events.chatters();
+  const staticChecks = runStaticChecks(
+    {
+      session: traineeSession,
+      netlist: traineeNetlist,
+      log: actualRun.log,
+      hazards: [...sessionHazards, ...actualRun.events.hazards()],
+      chatters: chatter,
+      allowedColors: [PLC_WIRE_COLOR],
+      plc: { unit, io, roles: traineeSession.socketRoles },
+    },
+    problem.judge.staticChecks,
+  );
+
+  return {
+    ok: true,
+    value: {
+      mode: 'plc',
+      passed: mismatches.length === 0 && staticChecks.every((c) => c.ok),
+      mismatches,
+      staticChecks,
+      hazardCount: sessionHazards.length,
+      hazardsByKind: countHazards(sessionHazards),
+      chatter: [...chatter],
+      ...(options.elapsedMs === undefined ? {} : { elapsedMs: options.elapsedMs }),
+      charts: {
+        expected: expectedChart,
+        actual: buildTimeChart(actualRun.log, chartSignals, problem.durationMs, markers),
+      },
+      compareSignals,
+      ladderErrors: [],
+      ladderWarnings,
+    },
+  };
+}
+
+/**
+ * 課題の模範ラダー＋模範配線を、その課題自身の操作列で判定にかける（自己整合テスト）。§7.8 / §14.1 #30
+ * 内蔵課題はこれが全件合格することをCIで保証する。
+ */
+export function judgePlcReference(problem: PlcProblem, board: BoardDefinition): JudgePlcOutcome {
+  const reference = buildPlcReferenceSession(problem, board);
+  if (!reference.ok) return reference;
+  return judgePlc(problem, board, reference.value.session, problem.referenceLadder);
+}
+```
+
+- [ ] **Step 4: GREEN を確認してコミットする**
+
+```powershell
+pnpm --filter @ojt/content exec vitest run test/judge-plc.test.ts
+git add packages/content
+git commit -m "feat(content): judge mode D by racing the reference ladder against the trainee"
+```
+
+Expected: `Tests  8 passed (8)`。
+
+---
