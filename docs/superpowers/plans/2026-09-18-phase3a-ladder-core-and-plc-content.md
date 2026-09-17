@@ -53,6 +53,7 @@
 |---|---|
 | `packages/ladder-core/package.json` / `tsconfig.json` / `vitest.config.ts` | 新パッケージの雛形（`@ojt/circuit-sim` と同じ形。依存ゼロ） |
 | `packages/ladder-core/src/ir.ts` | ラダーIR（`LadderProgram` / `Network` / `Cell` / `Device`）と組み立てヘルパ。§10.3 |
+| `packages/ladder-core/src/edit.ts` | IRの編集API（`setCell` / `clearCell` / `insertRow` / `deleteRow` / `insertNetwork` / `deleteNetwork` / `setVerticalLink`）。すべて純粋関数。§10.3 / §10.7（3Bのエディタが使う） |
 | `packages/ladder-core/src/compile.ts` | `compile()`＝構造検査と実行形式への変換。変換エラー／警告。§10.3 / §10.4 |
 | `packages/ladder-core/src/runtime.ts` | `createPlcRuntime()`＝1スキャンの実行（接点・コイル・SET/RST・TON・CTU・MC/MCR・特殊デバイス）。`PlcIoPort`。§10.4 |
 | `packages/ladder-core/src/index.ts` | バレル |
@@ -77,6 +78,7 @@
 | `packages/content/src/plc-reference.ts` | 既定I/O割付、模範配線の生成（渡り配線）、模範セッションの構築。§7.6 / §10.2 / §11.3 |
 | `packages/content/src/plc-io.ts` | `Simulation` を `PlcIoPort` として見せる橋渡しと、1 tick ＝ 1 スキャンの結合。§10.4 |
 | `packages/content/src/runner.ts` | `RunOptions.beforeTick` を足す（変更）。§10.4 |
+| `packages/content/src/static-check-types.ts` | `StaticCheckInput` / `StaticCheckResult` / `PlcCheckContext`（`static-checks.ts` と `plc-static-checks.ts` の循環を断つための型置き場） |
 | `packages/content/src/plc-static-checks.ts` | `twoStage` / `plcPowerIndependent` / `ioAssignment` と結線方式の判定。§7.4 / §10.2 / §10.8 |
 | `packages/content/src/static-checks.ts` | 上記3件を `runStaticChecks` に組み込む（変更） |
 | `packages/content/src/judge-plc.ts` | `judgePlc()` / `judgePlcReference()` と結果型。§10.8 |
@@ -94,16 +96,18 @@
 
 | バッチ | タスク | 対象 | モデル | 依存 |
 |---|---|---|---|---|
-| A | 1 → 2 → 3 → 4 | `@ojt/ladder-core` | 1=Sonnet / 2=Opus / 3=Opus / 4=Sonnet | なし（最初に着手する） |
-| B | 5 → 6 | `@ojt/circuit-sim`（PLC部品とスキャン結合点） | 5=Sonnet / 6=Opus | なし（Aと並行可） |
-| C | 7 | `@ojt/board-model`（FX5U・コンセント・盤の派生） | Opus | B |
-| D | 8 → 9 → 10 | `@ojt/plc-dialects` | 8=Sonnet / 9=Opus / 10=Opus | A |
-| E | 11 → 12 → 13 | `@ojt/content`（スキーマ） | 11=Sonnet / 12=Opus / 13=Sonnet | A |
-| F | 14 → 15 → 16 → 17 | `@ojt/content`（模範配線・スキャン結合・静的チェック・判定） | すべて Opus | B・C・E |
-| G | 18 → 19 | `@ojt/content`（内蔵課題8題） | どちらも Opus | F |
+| A | 1 → 1b → 2 → 3 → 4 | `@ojt/ladder-core` | 1=Sonnet（そのまま写す） / 1b=Sonnet（そのまま写す） / 2=Sonnet（そのまま写す） / 3=**Opus** / 4=Sonnet（そのまま写す） | なし（最初に着手する） |
+| B | 5 → 6 | `@ojt/circuit-sim`（PLC部品とスキャン結合点） | 5=Sonnet（そのまま写す） / 6=**Opus** | なし（Aと並行可） |
+| C | 7 | `@ojt/board-model`（FX5U・コンセント・盤の派生） | Sonnet（そのまま写す。B8 の `String()` 比較を適用済みのため） | B |
+| D | 8 → 9 → 10 | `@ojt/plc-dialects` | 8=Sonnet / 9=Sonnet / 10=**Opus** | A |
+| E | 11 → 12 → 13 | `@ojt/content`（スキーマ） | 11=Sonnet / 12=**Opus** / 13=Sonnet | A |
+| F | 14 → 15 → 16 → 17 | `@ojt/content`（模範配線・スキャン結合・静的チェック・判定） | すべて **Opus** | B・C・E |
+| G | 18 → 19 | `@ojt/content`（内蔵課題8題） | どちらも **Opus** | F |
 | H | 20 | 全体（公開APIと検証） | Sonnet | A〜G すべて |
 
-並行の上限は「A＋B」「D＋E」の2組までにする（C は B の、F は C・E の成果物を import するため）。**どのタスクも、後のタスクが作るファイルを import しない**ことを各タスクの Files 欄で確認すること（Plan 2B で一度この順序を誤っている）。
+進め方: **A ∥ B** → **C** → **D ∥ E** → **F** → **G** → **H**。並行の上限は「A＋B」「D＋E」の2組までにする（C は B の、F は C・E の成果物を import するため）。
+
+「そのまま写す（Sonnet-verbatim）」と書いたタスクは、プランのコードとテストをそのまま書き写せば通る。判断（数値の整合・回路の意味・設計の分岐）が要るのは Opus と書いたタスクだけである。**どのタスクも、後のタスクが作るファイルを import しない**ことを各タスクの Files 欄で確認すること（Plan 2B で一度この順序を誤っている）。
 
 ---
 
@@ -727,6 +731,376 @@ Expected: いずれも無警告（`All matched files use Prettier code style!`�
 ```powershell
 git add packages/ladder-core
 git commit -m "feat(ladder-core): add the ladder IR types and builders"
+```
+
+---
+
+## Task 1b: `edit.ts` — ラダーIRの編集API
+
+**Files:**
+- Create: `packages/ladder-core/src/edit.ts`
+- Modify: `packages/ladder-core/src/index.ts`
+- Test: `packages/ladder-core/test/edit.test.ts`
+
+Plan 3B のラダーエディタ（§10.7）が要る「セルを置く・消す・行を足す・行を消す・ネットワークを足す・消す・罫線を引く」を、**純粋関数**として `ladder-core` 側に置く。UIがIRを直接書き換えると取り消し／やり直しが作れないので、**渡されたプログラムは一切書き換えず新しいプログラムを返す**のが唯一の約束である。
+
+| 決めること | 本タスクの実装 |
+|---|---|
+| 不変性 | 変更しなかったネットワークと行は**同じ参照のまま**新しい配列に入れる（浅いコピー）。3Bは戻り値をそのままスナップショットとして積める |
+| 範囲外 | 行・列・ネットワークIDが無ければ `LadderError` を投げる（黙って無視しない。§13 #1 と同じ方針） |
+| 罫線 | `setVerticalLink()` は**空セル・横線・縦線の上にだけ**引ける。接点やコイルを罫線で潰せないようにする。最終行の下には引けない |
+| 行数・列数 | 行の挿入は `MAX_ROWS` まで。列は `IR_COLS` 固定なので増減させる操作は作らない（§10.3） |
+| 空プログラム | 最後のネットワークも削除できる。空のままでは `compile()` が `empty-program` を返すので、UIはその結果を出力ウィンドウに出せばよい |
+
+- [ ] **Step 1: 失敗するテストを書く**
+
+`packages/ladder-core/test/edit.test.ts`:
+
+```ts
+import { describe, expect, it } from 'vitest';
+import {
+  cellAt,
+  clearCell,
+  deleteNetwork,
+  deleteRow,
+  empty,
+  endNetwork,
+  hline,
+  insertNetwork,
+  insertRow,
+  IR_COLS,
+  LadderError,
+  MAX_ROWS,
+  network,
+  no,
+  out,
+  program,
+  setCell,
+  setVerticalLink,
+  X,
+  Y,
+  type LadderProgram,
+  type Network,
+} from '../src/index.js';
+
+/** ネットワークを取り出す（`noUncheckedIndexedAccess` の undefined をここで潰す）。 */
+function netAt(source: LadderProgram, index: number): Network {
+  const found = source.networks[index];
+  if (found === undefined) throw new Error(`ネットワーク ${index} がありません`);
+  return found;
+}
+
+/** 2行のネットワーク1つと END。 */
+function base(): LadderProgram {
+  return program(
+    network('n1', [
+      [no(X(0)), hline(), out(Y(0))],
+      [no(X(1))],
+    ]),
+    endNetwork(),
+  );
+}
+
+describe('setCell / clearCell', () => {
+  it('replaces one cell and leaves the source program untouched', () => {
+    const before = base();
+    const after = setCell(before, 'n1', 0, 1, no(X(2)));
+    expect(cellAt(netAt(after, 0), 0, 1)).toEqual(no(X(2)));
+    // 元のプログラムは書き換わらない
+    expect(cellAt(netAt(before, 0), 0, 1)).toEqual(hline());
+    expect(after).not.toBe(before);
+  });
+
+  it('keeps the untouched networks and rows by reference', () => {
+    const before = base();
+    const after = setCell(before, 'n1', 0, 1, no(X(2)));
+    expect(after.networks[1]).toBe(before.networks[1]);
+    expect(after.networks[0]?.cells[1]).toBe(before.networks[0]?.cells[1]);
+  });
+
+  it('clears a cell back to empty', () => {
+    const after = clearCell(base(), 'n1', 0, 0);
+    expect(cellAt(netAt(after, 0), 0, 0)).toEqual(empty());
+  });
+
+  it('throws for an unknown network id', () => {
+    expect(() => setCell(base(), 'nope', 0, 0, hline())).toThrow(LadderError);
+  });
+
+  it('throws for a row or column outside the grid', () => {
+    expect(() => setCell(base(), 'n1', 2, 0, hline())).toThrow(LadderError);
+    expect(() => setCell(base(), 'n1', 0, IR_COLS, hline())).toThrow(LadderError);
+  });
+});
+
+describe('setVerticalLink（罫線）', () => {
+  it('draws a vertical link and removes it again', () => {
+    const drawn = setVerticalLink(base(), 'n1', 0, 1, true);
+    expect(cellAt(netAt(drawn, 0), 0, 1).kind).toBe('vline');
+    const erased = setVerticalLink(drawn, 'n1', 0, 1, false);
+    expect(cellAt(netAt(erased, 0), 0, 1)).toEqual(empty());
+  });
+
+  it('refuses to draw over a contact or a coil', () => {
+    expect(() => setVerticalLink(base(), 'n1', 0, 0, true)).toThrow(LadderError);
+    expect(() => setVerticalLink(base(), 'n1', 0, 2, true)).toThrow(LadderError);
+  });
+
+  it('refuses to draw below the last row', () => {
+    expect(() => setVerticalLink(base(), 'n1', 1, 1, true)).toThrow(LadderError);
+  });
+});
+
+describe('insertRow / deleteRow', () => {
+  it('inserts an empty row at the given index', () => {
+    const after = insertRow(base(), 'n1', 1);
+    expect(after.networks[0]?.rows).toBe(3);
+    expect(after.networks[0]?.cells[1]).toHaveLength(IR_COLS);
+    expect(cellAt(netAt(after, 0), 1, 0)).toEqual(empty());
+    // 元の2行目は3行目にずれる
+    expect(cellAt(netAt(after, 0), 2, 0)).toEqual(no(X(1)));
+  });
+
+  it('refuses to grow a network past MAX_ROWS', () => {
+    let grown = base();
+    while ((grown.networks[0]?.rows ?? 0) < MAX_ROWS) grown = insertRow(grown, 'n1', 1);
+    expect(grown.networks[0]?.rows).toBe(MAX_ROWS);
+    expect(() => insertRow(grown, 'n1', 1)).toThrow(LadderError);
+  });
+
+  it('deletes a row but never the last one', () => {
+    const after = deleteRow(base(), 'n1', 1);
+    expect(after.networks[0]?.rows).toBe(1);
+    expect(() => deleteRow(after, 'n1', 0)).toThrow(LadderError);
+  });
+});
+
+describe('insertNetwork / deleteNetwork', () => {
+  it('inserts a network at the given position', () => {
+    const added = insertNetwork(base(), 1, network('n2', [[no(X(3)), out(Y(1))]]));
+    expect(added.networks.map((net) => net.id)).toEqual(['n1', 'n2', 'end']);
+  });
+
+  it('refuses a duplicated network id and an impossible position', () => {
+    expect(() => insertNetwork(base(), 0, network('n1', [[hline()]]))).toThrow(LadderError);
+    expect(() => insertNetwork(base(), 9, network('n2', [[hline()]]))).toThrow(LadderError);
+  });
+
+  it('deletes a network and throws for an unknown id', () => {
+    const after = deleteNetwork(base(), 'n1');
+    expect(after.networks.map((net) => net.id)).toEqual(['end']);
+    expect(() => deleteNetwork(after, 'n1')).toThrow(LadderError);
+  });
+});
+
+describe('連続した編集', () => {
+  it('keeps every row rectangular（`rows` × `IR_COLS`）after a series of edits', () => {
+    let edited = insertRow(base(), 'n1', 1);
+    edited = setCell(edited, 'n1', 1, 0, no(Y(0)));
+    edited = setVerticalLink(edited, 'n1', 0, 1, true);
+    edited = deleteRow(edited, 'n1', 2);
+    for (const net of edited.networks) {
+      expect(net.cells).toHaveLength(net.rows);
+      for (const line of net.cells) expect(line).toHaveLength(IR_COLS);
+      expect(net.cols).toBe(IR_COLS);
+    }
+    expect(cellAt(netAt(edited, 0), 1, 0)).toEqual(no(Y(0)));
+  });
+});
+```
+
+- [ ] **Step 2: RED を確認する**
+
+```powershell
+pnpm --filter @ojt/ladder-core exec vitest run test/edit.test.ts
+```
+
+Expected: 失敗。`SyntaxError: The requested module '../src/index.js' does not provide an export named 'setCell'`。
+
+- [ ] **Step 3: `src/edit.ts` を書く**
+
+```ts
+import {
+  cellAt,
+  empty,
+  IR_COLS,
+  LadderError,
+  MAX_ROWS,
+  vline,
+  type Cell,
+  type LadderProgram,
+  type Network,
+} from './ir.js';
+
+/**
+ * ラダーIRの編集API。設計仕様 §10.3 / §10.7。
+ *
+ * すべて純粋関数である。渡されたプログラムは書き換えず、新しいプログラムを返す。
+ * 変更しなかったネットワークと行は同じ参照のまま新しい配列に入れるので、
+ * Plan 3B は戻り値をそのまま取り消し／やり直しのスナップショットに積める。
+ */
+
+/** ネットワークとその位置を探す（無ければ `LadderError`）。 */
+function locate(program: LadderProgram, networkId: string): { index: number; net: Network } {
+  const index = program.networks.findIndex((candidate) => candidate.id === networkId);
+  const net = program.networks[index];
+  if (index < 0 || net === undefined) {
+    throw new LadderError(`ネットワークがありません: ${networkId}`);
+  }
+  return { index, net };
+}
+
+/** ネットワークを差し替えた新しいプログラムを返す。 */
+function replaceNetwork(program: LadderProgram, index: number, next: Network): LadderProgram {
+  const networks = [...program.networks];
+  networks[index] = next;
+  return { networks };
+}
+
+/** 行・列が範囲内か。 */
+function assertCellAt(net: Network, row: number, col: number): void {
+  if (!Number.isInteger(row) || row < 0 || row >= net.rows) {
+    throw new LadderError(`ネットワーク ${net.id} に行 ${row} はありません`);
+  }
+  if (!Number.isInteger(col) || col < 0 || col >= net.cols) {
+    throw new LadderError(`ネットワーク ${net.id} に列 ${col} はありません`);
+  }
+}
+
+/** 空の1行。 */
+function emptyRow(): Cell[] {
+  return Array.from({ length: IR_COLS }, () => empty());
+}
+
+/** セルを置き換える。§10.3 */
+export function setCell(
+  program: LadderProgram,
+  networkId: string,
+  row: number,
+  col: number,
+  cell: Cell,
+): LadderProgram {
+  const { index, net } = locate(program, networkId);
+  assertCellAt(net, row, col);
+  const cells = net.cells.map((line, r) =>
+    r === row ? line.map((current, c) => (c === col ? cell : current)) : line,
+  );
+  return replaceNetwork(program, index, { ...net, cells });
+}
+
+/** セルを空にする。 */
+export function clearCell(
+  program: LadderProgram,
+  networkId: string,
+  row: number,
+  col: number,
+): LadderProgram {
+  return setCell(program, networkId, row, col, empty());
+}
+
+/**
+ * 罫線（縦線）を引く／消す。§10.3
+ * 縦線はセルそのものなので、接点やコイルの上には引けない（消すと回路が壊れるため）。
+ */
+export function setVerticalLink(
+  program: LadderProgram,
+  networkId: string,
+  row: number,
+  col: number,
+  on: boolean,
+): LadderProgram {
+  const { net } = locate(program, networkId);
+  assertCellAt(net, row, col);
+  const current = cellAt(net, row, col);
+  if (current.kind !== 'empty' && current.kind !== 'hline' && current.kind !== 'vline') {
+    throw new LadderError(
+      `罫線は空セル・横線・縦線の上にだけ引けます: ${net.id} (${row}, ${col}) は ${current.kind}`,
+    );
+  }
+  if (on && row + 1 >= net.rows) {
+    throw new LadderError(`ネットワーク ${net.id} の最終行（${row}）の下には罫線を引けません`);
+  }
+  return setCell(program, networkId, row, col, on ? vline() : empty());
+}
+
+/** 空の行を挿入する。 */
+export function insertRow(program: LadderProgram, networkId: string, atRow: number): LadderProgram {
+  const { index, net } = locate(program, networkId);
+  if (!Number.isInteger(atRow) || atRow < 0 || atRow > net.rows) {
+    throw new LadderError(`ネットワーク ${net.id} の行 ${atRow} には挿入できません`);
+  }
+  if (net.rows + 1 > MAX_ROWS) {
+    throw new LadderError(`ネットワーク ${net.id} の行数が上限（${MAX_ROWS}）を超えます`);
+  }
+  const cells = [...net.cells.slice(0, atRow), emptyRow(), ...net.cells.slice(atRow)];
+  return replaceNetwork(program, index, { ...net, rows: cells.length, cells });
+}
+
+/** 行を削除する（最後の1行は残す）。 */
+export function deleteRow(program: LadderProgram, networkId: string, atRow: number): LadderProgram {
+  const { index, net } = locate(program, networkId);
+  assertCellAt(net, atRow, 0);
+  if (net.rows <= 1) {
+    throw new LadderError(`ネットワーク ${net.id} の最後の行は削除できません`);
+  }
+  const cells = net.cells.filter((_line, r) => r !== atRow);
+  return replaceNetwork(program, index, { ...net, rows: cells.length, cells });
+}
+
+/** ネットワークを挿入する（IDの重複は不可）。 */
+export function insertNetwork(
+  program: LadderProgram,
+  atIndex: number,
+  net: Network,
+): LadderProgram {
+  if (!Number.isInteger(atIndex) || atIndex < 0 || atIndex > program.networks.length) {
+    throw new LadderError(`ネットワークを位置 ${atIndex} には挿入できません`);
+  }
+  if (program.networks.some((existing) => existing.id === net.id)) {
+    throw new LadderError(`ネットワークIDが重複しています: ${net.id}`);
+  }
+  return {
+    networks: [...program.networks.slice(0, atIndex), net, ...program.networks.slice(atIndex)],
+  };
+}
+
+/** ネットワークを削除する。 */
+export function deleteNetwork(program: LadderProgram, networkId: string): LadderProgram {
+  const { index } = locate(program, networkId);
+  return { networks: program.networks.filter((_net, i) => i !== index) };
+}
+```
+
+`packages/ladder-core/src/index.ts` に足す:
+
+```ts
+export {
+  clearCell,
+  deleteNetwork,
+  deleteRow,
+  insertNetwork,
+  insertRow,
+  setCell,
+  setVerticalLink,
+} from './edit.js';
+```
+
+- [ ] **Step 4: GREEN・型・書式を確認する**
+
+```powershell
+pnpm --filter @ojt/ladder-core exec vitest run test/edit.test.ts
+pnpm --filter @ojt/ladder-core typecheck
+pnpm exec prettier --write packages/ladder-core/src/edit.ts packages/ladder-core/test/edit.test.ts
+npx prettier --check "packages/ladder-core/**/*.{ts,json}"
+```
+
+Expected: `Test Files  1 passed (1)` / `Tests  14 passed (14)`、型と書式は無警告。
+
+- [ ] **Step 5: コミットする**
+
+```powershell
+git add packages/ladder-core
+git commit -m "feat(ladder-core): add the pure ladder IR editing API for the 3B editor"
 ```
 
 ---
@@ -1432,6 +1806,8 @@ git commit -m "feat(ladder-core): compile the IR and report conversion errors"
 | MC/MCR | 区間が非成立のとき、その区間の OUT コイルは OFF、TON は0にリセット、SET/RST とカウンタは保持する |
 | 特殊デバイス | `SP0`=常時ON、`SP1`=初期パルス（`reset()` 後の最初の1スキャンのみ）、`SP2`=1秒クロック（0.5s ON / 0.5s OFF。スキャン開始時刻で決める） |
 | 入力・特殊への書込 | 無視する（Xや特殊デバイスにコイルは置けない。実機同様の扱いで、書いても状態は変わらない） |
+| セル単位の通電 | union-find の結果をそのまま `PlcSnapshot.poweredCells`（キー `${networkId}:${row}:${col}`、値は**そのセルの左端**が左母線と繋がっているか）に毎スキャン書き出す。Plan 3B のラダーモニタが桟を色分けするのに使う（§10.7）。END ネットワークは実行しないので記録されない |
+| `reset()` | デバイス・時刻・通電状況を消したうえで `io.writeOutputs()` を**呼ぶ**。呼ばないと `Simulation` 側のY接点が閉じたまま残り、RUN停止でランプが消えない |
 
 - [ ] **Step 1: 失敗するテストを書く**
 
@@ -1638,6 +2014,7 @@ export function fallProgram(): LadderProgram {
 import { describe, expect, it } from 'vitest';
 import {
   C,
+  COIL_COL,
   compile,
   createPlcRuntime,
   endNetwork,
@@ -1888,17 +2265,51 @@ describe('createPlcRuntime（状態・決定論）', () => {
     expect(runtime.state().scanCount).toBe(3);
   });
 
-  it('clears every device on reset (§10.4 の RUN停止・リセット)', () => {
+  it('clears every device on reset and writes the cleared outputs out (§10.4 の RUN停止・リセット)', () => {
     const io = new TestIo();
     const runtime = boot(oneShotProgram(1000), io);
     io.press(0);
     scans(runtime, 5);
     expect(runtime.bit(M(0))).toBe(true);
+    expect(io.outputs[0]).toBe(true);
     runtime.reset();
     expect(runtime.bit(M(0))).toBe(false);
     expect(runtime.tMs).toBe(0);
     expect(runtime.scanCount).toBe(0);
     expect(runtime.state().timers[0]?.elapsedMs ?? 0).toBe(0);
+    expect(runtime.state().poweredCells).toEqual({});
+    // reset() は `writeOutputs()` も呼ぶので、外側（`Simulation`）のY接点も開く
+    expect(io.outputs[0]).toBe(false);
+  });
+
+  it('records which cells are energized so the 3B monitor can colour them (§10.7)', () => {
+    const io = new TestIo();
+    const runtime = boot(selfHoldProgram(), io);
+    runtime.scan();
+    // X0 を押していないので、通電しているのは 0列目（X0のa接点）の左だけ
+    expect(runtime.state().poweredCells['n1:0:0']).toBe(true);
+    expect(runtime.state().poweredCells['n1:0:1']).toBe(false);
+    io.press(0);
+    runtime.scan();
+    const cells = runtime.state().poweredCells;
+    // 導通したので X0 の右（縦線）から右のコイル列まで通電する
+    expect(cells['n1:0:1']).toBe(true);
+    expect(cells[`n1:0:${COIL_COL}`]).toBe(true);
+    // 自己保持の分岐（2行目）も縦線でつながる
+    expect(cells['n1:1:1']).toBe(true);
+  });
+
+  it('drops the cells behind an open contact and never records the END network', () => {
+    const io = new TestIo();
+    const runtime = boot(selfHoldProgram(), io);
+    io.press(0);
+    io.press(1); // 停止（b接点が開く）
+    runtime.scan();
+    const cells = runtime.state().poweredCells;
+    expect(cells['n1:0:1']).toBe(true); // X0 は導通している
+    expect(cells['n1:0:3']).toBe(false); // X1 の b接点で切れる
+    expect(cells[`n1:0:${COIL_COL}`]).toBe(false);
+    expect(Object.keys(cells).some((key) => key.startsWith('end:'))).toBe(false);
   });
 
   it('produces the same output series twice for the same input series (§5.2 の決定論)', () => {
@@ -1999,6 +2410,13 @@ export interface PlcSnapshot {
   internals: Record<number, boolean>;
   timers: Record<number, PlcTimerState>;
   counters: Record<number, PlcCounterState>;
+  /**
+   * 直前のスキャンで**そのセルの左端の節点が左母線と繋がっていたか**。
+   * キーは `${networkId}:${row}:${col}`（`col` は 0 起点。コイル列は `COIL_COL`）。
+   * Plan 3B のラダーモニタが「通電している桟」を色分けするために使う（§10.7）。
+   * END ネットワークは実行しないので記録されない。
+   */
+  poweredCells: Record<string, boolean>;
 }
 
 /** ランタイム生成オプション。 */
@@ -2019,7 +2437,10 @@ export interface PlcRuntime {
   readonly scanCount: number;
   /** 1スキャン実行する。 */
   scan(): void;
-  /** 全デバイスと時刻を初期化する（RUN停止・リセット相当）。§10.4 */
+  /**
+   * 全デバイスと時刻を初期化する（RUN停止・リセット相当）。§10.4
+   * 落とした出力は `io.writeOutputs()` で外側にも書き出すので、`Simulation` のY接点も開く。
+   */
   reset(): void;
   /** デバイスの現在値。 */
   bit(device: Device): boolean;
@@ -2076,6 +2497,8 @@ class Runtime implements PlcRuntime {
   private readonly edges = new Map<string, boolean>();
   /** カウンタ入力の前回値（キーはカウンタ番号）。 */
   private readonly countEdges = new Map<number, boolean>();
+  /** 直前のスキャンの通電状況（キーは `<ネットワークID>:<行>:<列>`）。Plan 3B のモニタ表示用。 */
+  private readonly poweredCells = new Map<string, boolean>();
   /** MC/MCR の入れ子（成立していれば true）。 */
   private mcStack: boolean[] = [];
   private firstScan = true;
@@ -2108,10 +2531,13 @@ class Runtime implements PlcRuntime {
     this.counters.clear();
     this.edges.clear();
     this.countEdges.clear();
+    this.poweredCells.clear();
     this.mcStack = [];
     this.firstScan = true;
     this.elapsedMs = 0;
     this.scans = 0;
+    // 出力を落としたことを外側（`Simulation`）にも伝える。§10.4
+    this.io.writeOutputs([...this.outputs]);
   }
 
   bit(device: Device): boolean {
@@ -2143,6 +2569,8 @@ class Runtime implements PlcRuntime {
     for (const [index, value] of this.timers) timers[index] = { ...value };
     const counters: Record<number, PlcCounterState> = {};
     for (const [index, value] of this.counters) counters[index] = { ...value };
+    const poweredCells: Record<string, boolean> = {};
+    for (const [key, value] of this.poweredCells) poweredCells[key] = value;
     return {
       scanCount: this.scans,
       tMs: this.elapsedMs,
@@ -2151,6 +2579,7 @@ class Runtime implements PlcRuntime {
       internals,
       timers,
       counters,
+      poweredCells,
     };
   }
 
@@ -2158,6 +2587,7 @@ class Runtime implements PlcRuntime {
     // ① 入力読込
     this.inputs = [...this.io.readInputs()];
     this.mcStack = [];
+    this.poweredCells.clear();
     // ② ネットワークを上から順に実行
     for (const net of this.program.networks) {
       if (net.isEnd) break;
@@ -2177,9 +2607,23 @@ class Runtime implements PlcRuntime {
 
   private runNetwork(net: CompiledNetwork): void {
     const rails = this.solve(net);
+    this.recordPoweredCells(net, rails);
     for (const output of net.outputs) {
       const powered = rails.poweredAt(output.row, COIL_COL);
       this.applyOutput(output.cell, powered);
+    }
+  }
+
+  /**
+   * 各セルの左端が左母線と繋がっているかを記録する（Plan 3B のモニタ表示用）。
+   * `poweredAt(row, col)` はセル `(row, col)` の**左側**の節点なので、コイル列
+   * （`COIL_COL`）の値がそのままコイルの通電状態になる。
+   */
+  private recordPoweredCells(net: CompiledNetwork, rails: Rails): void {
+    for (let row = 0; row < net.rows; row += 1) {
+      for (let col = 0; col < net.cols; col += 1) {
+        this.poweredCells.set(`${net.id}:${row}:${col}`, rails.poweredAt(row, col));
+      }
     }
   }
 
@@ -2339,7 +2783,7 @@ export {
 pnpm --filter @ojt/ladder-core exec vitest run test/runtime.test.ts
 ```
 
-Expected: `Test Files  1 passed (1)` / `Tests  16 passed (16)`。
+Expected: `Test Files  1 passed (1)` / `Tests  18 passed (18)`。
 
 - [ ] **Step 5: コミットする**
 
@@ -4003,10 +4447,29 @@ export function withPlcUnit(board: BoardDefinition, unit: PlcUnitDefinition): Bo
 
 - [ ] **Step 5: `src/to-netlist.ts` と `src/routing.ts` を直す**
 
-`to-netlist.ts` の import に足す:
+`to-netlist.ts` の import を差し替える（`createPlcUnit` を足し、`./board-jipm.js` から `OUTLET_ID` / `PLC_PART_ID` を足す。他の名前は現状のまま）:
 
 ```ts
-import { createPlcUnit, ... } from '@ojt/circuit-sim';
+import {
+  createBuzzer,
+  createLamp,
+  createNetlist,
+  createPlcUnit,
+  createPowerSupply,
+  createPushButton,
+  createRelay4c,
+  createTerminalBlockLink,
+  createTimer4c,
+  partId,
+  terminalId,
+  validateNetlist,
+  type LinkElement,
+  type Netlist,
+  type NetlistIssue,
+  type Part,
+  type TerminalId,
+  type Wire,
+} from '@ojt/circuit-sim';
 import { OUTLET_ID, PLC_PART_ID, SOCKET_IDS, type BoardDefinition } from './board-jipm.js';
 ```
 
