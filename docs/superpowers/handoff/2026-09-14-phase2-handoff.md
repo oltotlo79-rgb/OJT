@@ -108,3 +108,4 @@ content 32 files / 409、desktop 28 files / 469、circuit-sim 214、board-model 
   `apps/desktop/test/store-inspect.test.ts` から）→ Tasks 1–4 の Opus レビュー1本 →
   Batch 2。
 - 詳細は `briefs/deferred.txt` 末尾を参照。
+- 2026-09-18 00:38 追記: Task 1 着地後の検証（3c6a8db）— desktop build PASS、E2E 9/9 合格。
