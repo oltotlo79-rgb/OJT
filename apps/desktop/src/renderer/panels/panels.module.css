@@ -1,13 +1,28 @@
 /* 右パネル・下部パネル・ツールバー。設計仕様 §8.1。 */
 
+/*
+ * ツールバー本体は折り返さない（レビュー指摘: モードC2はテスター／指摘の道具が増え、
+ * 1280px 幅だと `.spacer` ごと2行目へ落ちて判定ボタンが迷子になる）。判定は常に右端に
+ * 固定し、それ以外の道具だけ `.toolbarScroll` の中で折り返す。
+ */
 .toolbar {
   display: flex;
+  flex-wrap: nowrap;
   align-items: center;
   gap: 8px;
-  flex-wrap: wrap;
   background: var(--panel);
   border-bottom: 1px solid var(--line);
   padding: 6px 10px;
+}
+
+/** 判定ボタン以外の道具。狭い幅ではここだけが複数行に折り返す。 */
+.toolbarScroll {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .toolGroup {
@@ -28,11 +43,9 @@
   margin-right: 2px;
 }
 
-.spacer {
-  flex: 1;
-}
-
 .judgeButton {
+  flex: 0 0 auto;
+  margin-left: auto;
   background: var(--accent);
   color: #10151c;
   border-color: var(--accent);

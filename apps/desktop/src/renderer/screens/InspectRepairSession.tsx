@@ -556,7 +556,6 @@ export function InspectRepairSession(): JSX.Element {
   return (
     <>
       <SoundEffects />
-      <WarningBanner />
       <Toolbar
         mode={mode}
         wireColor={wireColor}
@@ -685,6 +684,7 @@ export function InspectRepairSession(): JSX.Element {
 
       <div className={styles.sessionLayout}>
         <div className={styles.viewport} data-testid="viewport">
+          <WarningBanner />
           <BoardScene onPick={onPick} onHover={onHover} onPress={onPress} onRelease={onRelease} />
           <div className={styles.statusOverlay} data-testid="status-overlay">
             {powered ? JA.session.powered : JA.session.unpowered} / {JA.session.wires}{' '}

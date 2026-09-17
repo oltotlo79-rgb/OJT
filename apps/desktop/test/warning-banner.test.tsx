@@ -7,10 +7,12 @@ import { WarningBanner } from '../src/renderer/panels/WarningBanner.js';
 
 /**
  * Vitest はデフォルトで CSS Modules の内容を実際にDOMへ注入しない（クラス名の対応だけを
- * 解決する）ので `getComputedStyle()` では `position: fixed` を確認できない。
+ * 解決する）ので `getComputedStyle()` では `position: absolute` を確認できない。
  * かわりに CSS ソース自体を読み、`.warnBanner` がレイアウトに幅を取らないオーバーレイに
  * なっていることを直接検証する（レビュー指摘: 警告バナーがツールバー・3D・パネルを
  * 押し下げ、6秒後の消灯で押し戻す＝R3Fキャンバスの毎回リサイズ）。
+ * 親（`.viewport`）からの相対位置にしてあるのは、モードC2でツールバーの道具が増えて
+ * 2行に折り返しても、固定 `top` 値では追えないため（Plan 2B レビュー指摘）。
  */
 const warningCss = readFileSync(
   join(process.cwd(), 'src/renderer/panels/warning.module.css'),
@@ -68,7 +70,7 @@ describe('WarningBanner', () => {
     expect(screen.getByTestId('mistake-count').textContent).toContain('4');
   });
 
-  it('レイアウトに幅を取らないオーバーレイになっている（position: fixed。レビュー指摘）', () => {
+  it('レイアウトに幅を取らないオーバーレイになっている（position: absolute。レビュー指摘）', () => {
     useStore.setState({
       hazardBanner: { kind: 'ohm-on-live', detail: 'x', expiresAt: Date.now() + 1000 },
       hazards: [{ type: 'hazard', kind: 'ohm-on-live', tMs: 10, detail: 'x' }],
@@ -78,7 +80,7 @@ describe('WarningBanner', () => {
     // 出ていることは確かめられる（実スタイルの検証はCSSソースそのものを見る）。
     expect(screen.getByTestId('hazard-banner').className).toBeTruthy();
     const rule = /\.warnBanner\s*\{([^}]*)\}/.exec(warningCss)?.[1] ?? '';
-    expect(rule).toMatch(/position:\s*fixed/);
+    expect(rule).toMatch(/position:\s*absolute/);
     expect(rule).toMatch(/left:\s*50%/);
     expect(rule).toMatch(/transform:\s*translateX\(-50%\)/);
     // チャートモーダルの背景(40)より上、トースト(50)より下（§8.2）。

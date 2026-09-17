@@ -78,80 +78,86 @@ export function Toolbar({
 }): JSX.Element {
   return (
     <div className={styles.toolbar} role="toolbar">
-      <button type="button" data-testid="session-back" onClick={onBack}>
-        {JA.session.back}
-      </button>
-      {showWireTools ? (
-        <div className={styles.toolGroup}>
-          <span className={styles.toolLabel}>{JA.session.wireColor}</span>
-          {allowedColors.map((color) => (
+      {/*
+        判定ボタン以外の道具はすべてここに入れる。狭い幅ではこの枠の中だけが複数行に
+        折り返し、判定ボタンは `.judgeButton` の `margin-left: auto` で常に右端に留まる
+        （レビュー指摘: 1280px 幅で判定ボタンが2行目に迷子になっていた）。
+      */}
+      <div className={styles.toolbarScroll}>
+        <button type="button" data-testid="session-back" onClick={onBack}>
+          {JA.session.back}
+        </button>
+        {showWireTools ? (
+          <div className={styles.toolGroup}>
+            <span className={styles.toolLabel}>{JA.session.wireColor}</span>
+            {allowedColors.map((color) => (
+              <button
+                key={color}
+                type="button"
+                aria-pressed={mode === 'wire' && wireColor === color}
+                onClick={() => {
+                  onWireColor(color);
+                  onMode('wire');
+                }}
+              >
+                {color}
+              </button>
+            ))}
             <button
-              key={color}
               type="button"
-              aria-pressed={mode === 'wire' && wireColor === color}
+              aria-pressed={mode === 'delete'}
               onClick={() => {
-                onWireColor(color);
-                onMode('wire');
+                onMode(mode === 'delete' ? 'wire' : 'delete');
               }}
             >
-              {color}
+              {JA.session.deleteMode}
             </button>
-          ))}
-          <button
-            type="button"
-            aria-pressed={mode === 'delete'}
-            onClick={() => {
-              onMode(mode === 'delete' ? 'wire' : 'delete');
-            }}
-          >
-            {JA.session.deleteMode}
+          </div>
+        ) : null}
+        {extraTools === undefined ? null : <div className={styles.toolGroup}>{extraTools}</div>}
+        <div className={styles.toolGroup}>
+          <button type="button" disabled={!canUndo} onClick={onUndo}>
+            {JA.session.undo}
+          </button>
+          <button type="button" disabled={!canRedo} onClick={onRedo}>
+            {JA.session.redo}
           </button>
         </div>
-      ) : null}
-      {extraTools === undefined ? null : <div className={styles.toolGroup}>{extraTools}</div>}
-      <div className={styles.toolGroup}>
-        <button type="button" disabled={!canUndo} onClick={onUndo}>
-          {JA.session.undo}
-        </button>
-        <button type="button" disabled={!canRedo} onClick={onRedo}>
-          {JA.session.redo}
-        </button>
-      </div>
-      <div className={styles.toolGroup}>
-        {VIEWS.map((view) => (
-          <button
-            key={view.preset}
-            type="button"
-            aria-pressed={camera === view.preset}
-            title={`${view.label} (${view.key})`}
-            onClick={() => {
-              onCamera(view.preset);
-            }}
-          >
-            {view.label}
+        <div className={styles.toolGroup}>
+          {VIEWS.map((view) => (
+            <button
+              key={view.preset}
+              type="button"
+              aria-pressed={camera === view.preset}
+              title={`${view.label} (${view.key})`}
+              onClick={() => {
+                onCamera(view.preset);
+              }}
+            >
+              {view.label}
+            </button>
+          ))}
+        </div>
+        <div className={styles.toolGroup}>
+          <button type="button" onClick={onSave}>
+            {JA.session.save}
           </button>
-        ))}
-      </div>
-      <div className={styles.toolGroup}>
-        <button type="button" onClick={onSave}>
-          {JA.session.save}
-        </button>
-        <button type="button" onClick={onLoad}>
-          {JA.session.load}
-        </button>
-        {onToggleSchematic === undefined ? null : (
-          <button
-            type="button"
-            aria-pressed={schematicVisible}
-            data-testid="toggle-schematic"
-            onClick={onToggleSchematic}
-          >
-            {schematicVisible ? JA.session.hideSchematic : JA.session.showSchematic}
+          <button type="button" onClick={onLoad}>
+            {JA.session.load}
           </button>
-        )}
+          {onToggleSchematic === undefined ? null : (
+            <button
+              type="button"
+              aria-pressed={schematicVisible}
+              data-testid="toggle-schematic"
+              onClick={onToggleSchematic}
+            >
+              {schematicVisible ? JA.session.hideSchematic : JA.session.showSchematic}
+            </button>
+          )}
+        </div>
+        {children}
       </div>
-      {children}
-      <span className={styles.spacer} />
       <button
         type="button"
         className={styles.judgeButton}
