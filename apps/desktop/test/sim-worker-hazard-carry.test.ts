@@ -28,7 +28,11 @@ async function boot(): Promise<Harness> {
     },
     onmessage: undefined as unknown as (event: { data: SimCommand }) => void,
   };
-  Object.defineProperty(globalThis, 'self', { value: fakeSelf, configurable: true, writable: true });
+  Object.defineProperty(globalThis, 'self', {
+    value: fakeSelf,
+    configurable: true,
+    writable: true,
+  });
   clock.nowMs = 0;
   vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
   vi.spyOn(performance, 'now').mockImplementation(() => clock.nowMs);
@@ -86,7 +90,10 @@ describe('部品を挿し替えても危険操作の記録が消えない', () =
     h.send({ type: 'press', pbId: 'PB4' });
     h.advance(120);
     h.send({ type: 'tester', action: { type: 'set-mode', mode: 'OHM' } });
-    h.send({ type: 'tester', action: { type: 'place-probe', probe: 'black', terminal: coil.black } });
+    h.send({
+      type: 'tester',
+      action: { type: 'place-probe', probe: 'black', terminal: coil.black },
+    });
     h.send({ type: 'tester', action: { type: 'place-probe', probe: 'red', terminal: coil.red } });
     h.advance(120);
     const bannerCount = h.snapshots
