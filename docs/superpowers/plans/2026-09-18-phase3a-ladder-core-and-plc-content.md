@@ -810,7 +810,13 @@ function rung(...cells: Cell[]): Cell[] {
 function selfHold(): LadderProgram {
   return program(
     network('n1', [
-      [no(X(0)), vline(), nc(X(1)), ...Array.from({ length: IR_COLS - 4 }, () => hline()), out(Y(0))],
+      [
+        no(X(0)),
+        vline(),
+        nc(X(1)),
+        ...Array.from({ length: IR_COLS - 4 }, () => hline()),
+        out(Y(0)),
+      ],
       [no(Y(0))],
     ]),
     endNetwork(),
@@ -1504,7 +1510,13 @@ export class TestIo implements PlcIoPort {
 export function selfHoldProgram(): LadderProgram {
   return program(
     network('n1', [
-      [no(X(0)), vline(), nc(X(1)), ...Array.from({ length: IR_COLS - 4 }, () => hline()), out(Y(0))],
+      [
+        no(X(0)),
+        vline(),
+        nc(X(1)),
+        ...Array.from({ length: IR_COLS - 4 }, () => hline()),
+        out(Y(0)),
+      ],
       [no(Y(0))],
     ]),
     endNetwork(),
@@ -1535,7 +1547,13 @@ export function interlockProgram(): LadderProgram {
 export function onDelayProgram(presetMs = 3000): LadderProgram {
   return program(
     network('n1', [
-      [no(X(0)), vline(), nc(X(1)), ...Array.from({ length: IR_COLS - 4 }, () => hline()), out(M(0))],
+      [
+        no(X(0)),
+        vline(),
+        nc(X(1)),
+        ...Array.from({ length: IR_COLS - 4 }, () => hline()),
+        out(M(0)),
+      ],
       [no(M(0))],
     ]),
     network('n2', [rung(no(M(0)), ton(T(0), presetMs))]),
@@ -1582,7 +1600,13 @@ export function counterProgram(): LadderProgram {
 export function stopPriorityProgram(): LadderProgram {
   return program(
     network('n1', [
-      [no(X(0)), vline(), nc(X(1)), ...Array.from({ length: IR_COLS - 4 }, () => hline()), out(Y(0))],
+      [
+        no(X(0)),
+        vline(),
+        nc(X(1)),
+        ...Array.from({ length: IR_COLS - 4 }, () => hline()),
+        out(Y(0)),
+      ],
       [no(Y(0))],
     ]),
     network('n2', [rung(no(X(2)), out(Y(3)))]),
@@ -2315,7 +2339,7 @@ export {
 pnpm --filter @ojt/ladder-core exec vitest run test/runtime.test.ts
 ```
 
-Expected: `Test Files  1 passed (1)` / `Tests  15 passed (15)`。
+Expected: `Test Files  1 passed (1)` / `Tests  16 passed (16)`。
 
 - [ ] **Step 5: コミットする**
 
@@ -2343,13 +2367,17 @@ git commit -m "feat(ladder-core): execute one scan per tick with timers, counter
 ```ts
 import { describe, expect, it } from 'vitest';
 import {
+  C,
   compile,
   createPlcRuntime,
+  ctu,
   endNetwork,
   network,
   no,
   out,
   program,
+  rst,
+  set,
   SP,
   SPECIAL_ALWAYS_ON,
   SPECIAL_CLOCK_1S,
@@ -2359,6 +2387,7 @@ import {
   X,
   Y,
   type LadderProgram,
+  type PlcRuntime,
 } from '../src/index.js';
 import {
   counterProgram,
@@ -2520,6 +2549,94 @@ describe('ゴールデン: 内蔵モードD課題が使うラダー', () => {
     expect(spans(history, 0)).toEqual([[9, 40]]);
   });
 });
+
+describe('ゴールデン: タイマ・カウンタへの SET / RST（`setOrReset` の分岐）', () => {
+  /** 操作列を与えず1スキャンずつ手で回すランタイム。 */
+  function boot(source: LadderProgram): { io: TestIo; runtime: PlcRuntime } {
+    const io = new TestIo();
+    const compiled = compile(source);
+    if (!compiled.ok) throw new Error(compiled.errors[0]?.message ?? '変換に失敗しました');
+    return { io, runtime: createPlcRuntime(compiled.program, { io, outputCount: 4 }) };
+  }
+
+  it('SET T0 turns the timer contact on at once and holds it until RST (§10.4)', () => {
+    // n1: X0 で T0 を SET、n2: X1 で T0 を RST、n3: T0 で Y0
+    const { io, runtime } = boot(
+      program(
+        network('n1', [rung(no(X(0)), set(T(0)))]),
+        network('n2', [rung(no(X(1)), rst(T(0)))]),
+        network('n3', [rung(no(T(0)), out(Y(0)))]),
+        endNetwork(),
+      ),
+    );
+    io.press(0);
+    runtime.scan();
+    io.release(0);
+    // SET は接点だけを入れる（計時はしない）。同じスキャンの n3 が読むので Y0 も点く
+    expect(runtime.bit(T(0))).toBe(true);
+    expect(io.outputs[0]).toBe(true);
+    expect(runtime.state().timers[0]?.elapsedMs).toBe(0);
+    // 条件が落ちても SET なので保持される
+    runtime.scan();
+    expect(io.outputs[0]).toBe(true);
+    io.press(1);
+    runtime.scan();
+    io.release(1);
+    expect(runtime.bit(T(0))).toBe(false);
+    expect(io.outputs[0]).toBe(false);
+  });
+
+  it('RST T0 also clears the time the timer has already counted', () => {
+    // n1: X0 の間 T0 が計時（設定値1秒）、n2: X1 で T0 を RST
+    const { io, runtime } = boot(
+      program(
+        network('n1', [rung(no(X(0)), ton(T(0), 1000))]),
+        network('n2', [rung(no(X(1)), rst(T(0)))]),
+        network('n3', [rung(no(T(0)), out(Y(0)))]),
+        endNetwork(),
+      ),
+    );
+    io.press(0);
+    for (let i = 0; i < 20; i += 1) runtime.scan();
+    expect(runtime.state().timers[0]?.elapsedMs).toBe(200);
+    // X0 を押したまま X1 を押す。n1 が 10ms 足した後に n2 の RST が 0 に戻す
+    io.press(1);
+    runtime.scan();
+    expect(runtime.state().timers[0]?.elapsedMs).toBe(0);
+    expect(runtime.bit(T(0))).toBe(false);
+  });
+
+  it('RST C0 clears both the counted value and the contact', () => {
+    // n1: X0 の立上りで C0 を計数（設定値2・リセット入力は X2）、n2: X1 で C0 を RST、n3: C0 で Y0
+    const { io, runtime } = boot(
+      program(
+        network('n1', [rung(no(X(0)), ctu(C(0), 2, X(2)))]),
+        network('n2', [rung(no(X(1)), rst(C(0)))]),
+        network('n3', [rung(no(C(0)), out(Y(0)))]),
+        endNetwork(),
+      ),
+    );
+    const pulse = (): void => {
+      io.press(0);
+      runtime.scan();
+      io.release(0);
+      runtime.scan();
+    };
+    pulse();
+    expect(runtime.state().counters[0]?.value).toBe(1);
+    expect(io.outputs[0]).toBe(false);
+    pulse();
+    expect(runtime.state().counters[0]?.value).toBe(2);
+    expect(io.outputs[0]).toBe(true);
+    // RST は計数値も 0 に戻す（同じスキャンの n3 が読むので Y0 も落ちる）
+    io.press(1);
+    runtime.scan();
+    io.release(1);
+    expect(runtime.state().counters[0]?.value).toBe(0);
+    expect(runtime.bit(C(0))).toBe(false);
+    expect(io.outputs[0]).toBe(false);
+  });
+});
 ```
 
 - [ ] **Step 2: RED を確認する**
@@ -2531,8 +2648,8 @@ pnpm --filter @ojt/ladder-core exec vitest run test/golden-ladder.test.ts
 Expected: 実装は揃っているので、**期待値の食い違いだけが出る**（`spans()` の境界が1スキャンずれる等）。ずれた場合は **実装ではなく期待値を直す**のではなく、まず §10.4 の規定（「設定値到達で接点ON」＝到達したスキャンで ON、出力は同じスキャンの後段ネットワークに伝わる）と突き合わせ、実装が仕様どおりかを確かめること。上の期待値は次の理屈で決めてある。
 
 - タイマは `applyOutput()` で加算してから比較するので、`preset = 100ms`・`scanMs = 10ms` なら**10回目のスキャン**（添字9）で `elapsedMs = 100` になり接点が入る。同じスキャンの後段（`n2`）はその値を読むので、`Y0` も添字9の履歴から ON になる。
-- `onDelayProgram` は `n1` で M0 を作ってから `n2` で計時するので、X0 を押したスキャン（添字10）で M0 が入り、そこから300スキャン後の添字310で点く。
-- `oneShotProgram` は立上りで M0 を SET（添字10）→ 100スキャン後に T0 がタイムアップし、次のスキャンの `n3` で RST される（添字111で消える）。
+- `onDelayProgram` は `n1` で M0 を作ってから**同じスキャンの** `n2` で計時するので、X0 を押したスキャン（添字10）で M0 が入って計時も始まり、添字309（押したスキャンを1回目と数えて300スキャン目）で点く。
+- `oneShotProgram` は立上りで M0 を SET（添字10）→ 100スキャン目に T0 がタイムアップし、**同じスキャンの** `n3` が RST するので添字109で消える。
 
 - [ ] **Step 3: カバレッジを確認する**
 
@@ -2540,11 +2657,15 @@ Expected: 実装は揃っているので、**期待値の食い違いだけが�
 pnpm --filter @ojt/ladder-core exec vitest run --coverage
 ```
 
-Expected: `All files` の lines / statements / functions / branches がすべて 90% 以上（§14.2 は `ladder-core` を Phase 3 以降の対象と定めている）。届かない場合は、未到達の分岐（`compile()` のエラー枝・`bit()` の特殊デバイス・`reset()`）にテストを足す。**実装を削って閾値に合わせてはならない。**
+Expected: `All files` の lines / statements / functions / branches がすべて 90% 以上（§14.2 は `ladder-core` を Phase 3 以降の対象と定めている）。
+
+**branches が落ちやすい箇所（Step 1 で必ず書く）:** `runtime.ts` の `setOrReset()` は `timer` / `counter` / それ以外（`writeBit`）の3分岐を持つが、内蔵課題のラダーは `SET M0` / `RST M0` しか使わないため、上の「タイマ・カウンタへの SET / RST」の3件が無いと branches が 90% に届かない（レビュー時の実測で 90.74%）。この3件は**任意ではなく必須**である。それでも届かない場合は、未到達の分岐（`compile()` のエラー枝・`bit()` の特殊デバイス・`reset()`）にテストを足す。**実装を削って閾値に合わせてはならない。**
 
 - [ ] **Step 4: コミットする**
 
 ```powershell
+pnpm exec prettier --write packages/ladder-core/test/golden-ladder.test.ts
+pnpm exec prettier --check packages/ladder-core
 git add packages/ladder-core
 git commit -m "test(ladder-core): pin the PLC golden cases (#26, #27) and the built-in ladders"
 ```
@@ -2784,7 +2905,13 @@ export interface PlcOutputChannel {
 `packages/circuit-sim/src/plc.ts`:
 
 ```ts
-import { CLOSED_CONTACT_OHMS, PLC_INPUT_OHMS, type ContactElement, type Element, type LoadElement } from './elements.js';
+import {
+  CLOSED_CONTACT_OHMS,
+  PLC_INPUT_OHMS,
+  type ContactElement,
+  type Element,
+  type LoadElement,
+} from './elements.js';
 import { partId, terminalId, type PartId, type TerminalId } from './ids.js';
 import type { Part, PartMeta, PlcInputChannel, PlcOutputChannel } from './parts.js';
 
@@ -3318,7 +3445,7 @@ pnpm --filter @ojt/circuit-sim exec vitest run test/plc-simulation.test.ts
 pnpm --filter @ojt/circuit-sim exec vitest run
 ```
 
-Expected: 新しいファイルが `Tests  8 passed (8)`、パッケージ全体は着手時のベースライン（前提#14。目安214件）＋16件がすべて通る。**既存テストが1件でも落ちたら、`syncRuntimeMaps()` / `snapshot()` の変更が既存部品の挙動を変えていないか確認すること**（PLCを持たないネットリストでは、新しい分岐に一切入らないはずである）。
+Expected: 新しいファイル（`plc-simulation.test.ts`）が `Tests  9 passed (9)`、パッケージ全体は着手時のベースライン（前提#14。目安215件）＋17件（Task 5 の8件＋本タスクの9件）がすべて通る。**既存テストが1件でも落ちたら、`syncRuntimeMaps()` / `snapshot()` の変更が既存部品の挙動を変えていないか確認すること**（PLCを持たないネットリストでは、新しい分岐に一切入らないはずである）。
 
 - [ ] **Step 5: カバレッジとコミット**
 
@@ -3472,7 +3599,13 @@ describe('isOffBoardTerminal', () => {
 `packages/board-model/test/plc-netlist.test.ts`:
 
 ```ts
-import { buildNets, MAX_NODES, plcMetaOf, validateNetlist, type TerminalId } from '@ojt/circuit-sim';
+import {
+  buildNets,
+  MAX_NODES,
+  plcMetaOf,
+  validateNetlist,
+  type TerminalId,
+} from '@ojt/circuit-sim';
 import { describe, expect, it } from 'vitest';
 import {
   addWire,
@@ -3984,7 +4117,7 @@ pnpm --filter @ojt/board-model exec vitest run test/plc-unit.test.ts test/plc-ne
 pnpm --filter @ojt/board-model exec vitest run
 ```
 
-Expected: 新しい2ファイルが `Tests  17 passed (17)`、パッケージ全体は着手時のベースライン（前提#14。目安155件）＋17件が通る。**既存の経路テスト（`routing*.test.ts`）は1件も落ちないはずである**（PLCを載せない盤では `routeSession()` の新しい `continue` に一度も入らない）。
+Expected: 新しい2ファイルが `Tests  17 passed (17)`、パッケージ全体は着手時のベースライン（前提#14。目安158件）＋17件が通る。**既存の経路テスト（`routing*.test.ts`）は1件も落ちないはずである**（PLCを載せない盤では `routeSession()` の新しい `continue` に一度も入らない）。
 
 - [ ] **Step 8: カバレッジとコミット**
 
@@ -4266,7 +4399,12 @@ export {
   type TimerPresetText,
 } from './profile.js';
 
-import { DIALECT_IDS, UnknownDialectError, type DialectId, type DialectProfile } from './profile.js';
+import {
+  DIALECT_IDS,
+  UnknownDialectError,
+  type DialectId,
+  type DialectProfile,
+} from './profile.js';
 
 /**
  * 実装済みの方言プロファイル。Phase 4 で3つ増える（§16）。
@@ -5045,7 +5183,12 @@ function validate(source: LadderProgram): DialectError[] {
 - [ ] **Step 4: `src/convert.ts` を書く**
 
 ```ts
-import { compile, type CompileWarning, type CompiledProgram, type LadderProgram } from '@ojt/ladder-core';
+import {
+  compile,
+  type CompileWarning,
+  type CompiledProgram,
+  type LadderProgram,
+} from '@ojt/ladder-core';
 import type { DialectProfile } from './profile.js';
 
 /**
@@ -5776,13 +5919,7 @@ export const PlcJudgeSettingsSchema = judgeSettings(PLC_DEFAULT_STATIC_CHECKS);
 
 - [ ] **Step 4: `src/static-checks.ts` に仮の3件を足す（`tsc` を通すため）**
 
-`STATIC_CHECK_IDS` が9件になった瞬間、`src/static-checks.ts` の
-
-```ts
-const CHECKS: Readonly<Record<StaticCheckId, (input: StaticCheckInput) => StaticCheckResult>> = { … };
-```
-
-がキー不足で `tsc` に落ちる（`Property 'twoStage' is missing …`）。本実装は Task 16 なので、ここでは**「モードDの文脈が無い」ことを返す仮の3件**を置いて型を満たす。Task 16 Step 4 でこの3件を本物の関数にそのまま差し替える。
+`STATIC_CHECK_IDS` が9件になった瞬間、`src/static-checks.ts` の既存の `CHECKS`（型は `Readonly<Record<StaticCheckId, (input: StaticCheckInput) => StaticCheckResult>>`）がキー不足で `tsc` に落ちる（`Property 'twoStage' is missing in type …`）。本実装は Task 16 なので、ここでは**「モードDの文脈が無い」ことを返す仮の3件**を置いて型を満たす。Task 16 Step 4 でこの3件を本物の関数にそのまま差し替える。
 
 `src/static-checks.ts` の `CHECKS` の直前に足す:
 
@@ -6645,9 +6782,21 @@ Expected: `Tests  9 passed (9)`。**電線が25本にならない場合**は、�
 `packages/content/test/plc-io.test.ts`:
 
 ```ts
-import { JIPM_BOARD, PLC_UNIT_FX5U, withPlcUnit } from '@ojt/board-model';
+import { JIPM_BOARD } from '@ojt/board-model';
 import { Simulation, TICK_MS } from '@ojt/circuit-sim';
-import { compile, endNetwork, hline, IR_COLS, network, no, out, program, X, Y, type Cell } from '@ojt/ladder-core';
+import {
+  compile,
+  endNetwork,
+  hline,
+  IR_COLS,
+  network,
+  no,
+  out,
+  program,
+  X,
+  Y,
+  type Cell,
+} from '@ojt/ladder-core';
 import { describe, expect, it } from 'vitest';
 import { createPlcCoupling, createSimulationIoPort, runPlcOperations } from '../src/plc-io.js';
 import { buildPlcReferenceSession } from '../src/plc-reference.js';
@@ -6662,8 +6811,6 @@ function rung(...cells: Cell[]): Cell[] {
   row.push(output);
   return row;
 }
-
-const BOARD = withPlcUnit(JIPM_BOARD, PLC_UNIT_FX5U);
 
 /** 模範配線（Task 14）で組んだ盤とネットリスト。 */
 function reference() {
@@ -7487,7 +7634,18 @@ Expected: 新ファイル11件と既存の `static-checks.test.ts` が通り、`
 ```ts
 import { addWire, JIPM_BOARD, removeWire } from '@ojt/board-model';
 import type { TerminalId } from '@ojt/circuit-sim';
-import { endNetwork, hline, IR_COLS, network, no, out, program, X, Y, type Cell } from '@ojt/ladder-core';
+import {
+  endNetwork,
+  hline,
+  IR_COLS,
+  network,
+  no,
+  out,
+  program,
+  X,
+  Y,
+  type Cell,
+} from '@ojt/ladder-core';
 import { describe, expect, it } from 'vitest';
 import { judgePlc, judgePlcReference } from '../src/judge-plc.js';
 import { buildPlcReferenceSession } from '../src/plc-reference.js';
@@ -7647,7 +7805,12 @@ import { resolveCompareSignals } from './schema/judge.js';
 import type { ProblemIssue } from './schema/index.js';
 import type { PlcProblem } from './schema/plc.js';
 import { runStaticChecks, type StaticCheckResult } from './static-checks.js';
-import { buildTimeChart, defaultChartSignals, type TimeChart, type TimeChartMarker } from './timechart.js';
+import {
+  buildTimeChart,
+  defaultChartSignals,
+  type TimeChart,
+  type TimeChartMarker,
+} from './timechart.js';
 
 /**
  * モードDの判定。設計仕様 §10.8 / §7.4。
