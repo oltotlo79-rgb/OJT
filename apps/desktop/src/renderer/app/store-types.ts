@@ -1,3 +1,5 @@
+import type { HazardKind } from '@ojt/circuit-sim';
+
 /**
  * ストアの値型のうち、React にも three にも依存しないもの。設計仕様 §12.1 / §12.2。
  * `store.ts`（zustand）と、three を読み込めない場所（E2E の射影計算など）で共有する。
@@ -34,3 +36,33 @@ export interface LogLine {
   id: number;
   text: string;
 }
+
+/** テスターのプローブの側。§9.3 */
+export type ProbeSide = 'black' | 'red';
+
+/**
+ * 警告バナーに出す危険操作1件。§5.6 / §13
+ *
+ * トースト（§8.2）とは別に**画面上部の帯**で出す。危険操作は「やってしまったこと」であり、
+ * 右下に4秒出て消えるだけでは気づかないまま回数だけが増える（§16 Phase 2 受入基準④は
+ * 「警告が出て結果に回数が記録される」ことを求める）。
+ */
+export interface HazardBanner {
+  kind: HazardKind;
+  detail: string;
+  /** これを過ぎたら自動で畳む時刻（`Date.now()` と同じ基準の[ms]）。 */
+  expiresAt: number;
+}
+
+/** 回路図 ⇄ 3D盤の連動ハイライト。§9.2 / §11.4 */
+export interface HighlightSelection {
+  /** 光らせる回路図要素のID。 */
+  cellIds: readonly string[];
+  /** 光らせる盤の端子（役割ID）。 */
+  terminals: readonly string[];
+  /** 光らせる電線のID。 */
+  wireIds: readonly string[];
+}
+
+/** 何も光っていない状態。 */
+export const NO_HIGHLIGHT: HighlightSelection = { cellIds: [], terminals: [], wireIds: [] };

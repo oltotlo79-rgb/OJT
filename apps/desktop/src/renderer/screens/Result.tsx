@@ -1,5 +1,6 @@
+import { isAssembleProblem } from '@ojt/content';
 import { useEffect, type JSX } from 'react';
-import { useStore } from '../app/store.js';
+import { isInspectJudge, useStore } from '../app/store.js';
 import { tryOjtApi } from '../app/ojt-api.js';
 import { JA } from '../i18n/ja.js';
 import { ResultView } from '../result/ResultView.js';
@@ -31,6 +32,27 @@ export function Result(): JSX.Element {
   }, [hasJudge]);
 
   if (problem === undefined || judge === undefined) {
+    return (
+      <div className={styles.center}>
+        <p>{JA.result.noResult}</p>
+        <button
+          type="button"
+          onClick={() => {
+            setRoute('list');
+          }}
+        >
+          {JA.result.toList}
+        </button>
+      </div>
+    );
+  }
+
+  /*
+   * `ResultView` はモードB専用。C1/C2 の結果画面（`InspectPartsResult` / `InspectRepairResult`）は
+   * Plan 2B Task 11 / Task 15 で足すので、それまでは判定が無いのと同じ扱いにして一覧へ戻せるようにする。
+   * 課題と結果のモードが食い違っている（保存データの取り違え等）ときも同じ扱いでよい。
+   */
+  if (!isAssembleProblem(problem) || isInspectJudge(judge)) {
     return (
       <div className={styles.center}>
         <p>{JA.result.noResult}</p>

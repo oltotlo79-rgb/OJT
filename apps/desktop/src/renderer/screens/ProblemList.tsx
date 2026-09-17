@@ -47,11 +47,6 @@ export function ProblemList(): JSX.Element {
               toast(`${JA.problemList.loadFailed}: ${id}`, 'error');
               return;
             }
-            if (problem.mode !== 'assemble') {
-              // Task 4 でストアが `SupportedProblem` に広がるまでの暫定。C1/C2 はまだ開けない
-              toast(`${JA.problemList.loadFailed}: ${id}`, 'error');
-              return;
-            }
             openProblem(problem);
           },
           (error: unknown) => {

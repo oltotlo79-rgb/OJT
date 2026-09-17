@@ -1,23 +1,38 @@
 import { createSession, JIPM_BOARD, type BoardSession, type SocketId } from '@ojt/board-model';
 import {
+  applyTesterAction,
+  createTesterState,
   partId,
   type ChatterEvent,
   type HazardEvent,
   type TerminalId,
+  type TesterAction,
+  type TesterState,
   type WireColor,
 } from '@ojt/circuit-sim';
 import {
+  buildInspectRepairCircuit,
   defaultChartSignals,
+  isAssembleProblem,
+  isInspectPartsProblem,
+  isInspectRepairProblem,
+  REPAIR_WIRE_COLOR,
   resolveCompareSignals,
   toSocketRoles,
-  type AssembleProblem,
+  type FaultReport,
+  type InspectPartAnswer,
+  type InspectPartsProblem,
+  type JudgeInspectResult,
   type JudgeResult,
+  type PartTruth,
+  type RepairCircuit,
+  type SupportedProblem,
   type TimeChartSignalSpec,
 } from '@ojt/content';
 import { create } from 'zustand';
 import type { ProblemListPayload, WorkFile } from '../../shared/ipc.js';
 import type { SimSnapshot } from '../../worker/protocol.js';
-import { droppedTicksLog, JA } from '../i18n/ja.js';
+import { droppedTicksLog, JA, referenceErrorText } from '../i18n/ja.js';
 import {
   emptyHistory,
   pushCommand,
@@ -25,7 +40,17 @@ import {
   type SessionCommand,
 } from '../session/commands.js';
 import type { ToolMode } from '../session/interaction.js';
-import type { CameraPreset, LogLine, Route, Toast } from './store-types.js';
+import { nextProbeAfter } from '../session/tester.js';
+import {
+  NO_HIGHLIGHT,
+  type CameraPreset,
+  type HazardBanner,
+  type HighlightSelection,
+  type LogLine,
+  type ProbeSide,
+  type Route,
+  type Toast,
+} from './store-types.js';
 
 /**
  * 画面状態。設計仕様 §12.1。
@@ -39,7 +64,16 @@ import type { CameraPreset, LogLine, Route, Toast } from './store-types.js';
  * 依存は 3KB 程度で、§15 の性能目標（内蔵GPUで60fps）に対する影響が小さい。
  */
 
-export type { CameraPreset, LogLine, Route, Toast } from './store-types.js';
+export {
+  NO_HIGHLIGHT,
+  type CameraPreset,
+  type HazardBanner,
+  type HighlightSelection,
+  type LogLine,
+  type ProbeSide,
+  type Route,
+  type Toast,
+} from './store-types.js';
 
 /** 空のスナップショット（課題を開く前の表示用）。 */
 export const EMPTY_SNAPSHOT: SimSnapshot = {
@@ -98,11 +132,40 @@ export function schematicPolicy(grade: 1 | 2 | 3): { shown: boolean; toggleable:
   return { shown: false, toggleable: false };
 }
 
+/** 警告バナーを自動で畳むまでの時間[ms]。§5.6 */
+export const HAZARD_BANNER_TTL_MS = 6000;
+
+/** 判定結果（モードB／C1／C2）。§8.3 / §9.1 / §9.2 */
+export type AnyJudgeResult = JudgeResult | JudgeInspectResult;
+
+/**
+ * 点検系（C1/C2）の判定結果か。§9.1 / §9.2
+ * 3モードとも `mode` を持つ（Plan 2A I-3）ので、`'assemble'` かどうかで判別する。
+ */
+export function isInspectJudge(result: AnyJudgeResult): result is JudgeInspectResult {
+  return result.mode !== 'assemble';
+}
+
+/**
+ * モードC1の初期盤。§9.1
+ * チェック用ソケット（`S7` = `CHK`）の既設配線3本だけが載った盤で、部品はまだ挿さっていない。
+ * 訓練者は配線しないので線色パレットは空、在庫も空にする（トレイの中身は課題の `parts` が決める。
+ * Plan 2A 意図的な差分 #13）。
+ */
+export function checkSessionFor(problem: InspectPartsProblem): BoardSession {
+  return createSession(JIPM_BOARD, {
+    roles: toSocketRoles(problem.board.socketRoles),
+    allowedColors: [],
+    extraParts: [],
+    inventory: [],
+  });
+}
+
 /** ストアの形。 */
 export interface AppState {
   route: Route;
   problems: ProblemListPayload | undefined;
-  problem: AssembleProblem | undefined;
+  problem: SupportedProblem | undefined;
   session: BoardSession | undefined;
   history: CommandHistory;
   /**
@@ -122,6 +185,29 @@ export interface AppState {
    * `window.confirm()` は Electron ではメインスレッドを止めてしまうので、自前の小さな確認欄にする。
    */
   pendingWorkFile: WorkFile | undefined;
+  /** テスターの状態（つまみ・レンジ・プローブ・0Ω調整）。Worker と同じリデューサで動かす。§9.3 */
+  tester: TesterState;
+  /** 次に置くプローブ（黒 → 赤 の順に巡る）。§9.3 */
+  nextProbe: ProbeSide;
+  /** 画面上部に出している危険操作の警告（期限切れで畳む）。§5.6 / §13 */
+  hazardBanner: HazardBanner | undefined;
+  /** モードC1のマークシートの解答。§9.1 */
+  answers: InspectPartAnswer[];
+  /** モードC1でいまチェック用ソケットに挿している部品のID。§9.1 */
+  checkPartId: string | undefined;
+  /** モードC2の指摘一覧。§9.2 */
+  reports: FaultReport[];
+  /** モードC2の故障入り初期盤（判定にそのまま渡す）。§9.2 */
+  circuit: RepairCircuit | undefined;
+  /**
+   * モードC2の故障の種。§5.2
+   * 起動時に決め（課題が持たなければ `Date.now()`）、作業ファイルへ残す。復元は種からの
+   * 再抽選ではなく `resolvedFaults`（解決済みの故障そのもの）を使うので、判定には使わない
+   * デバッグ用の記録である（Plan 2A I-4）。
+   */
+  faultSeed: number | undefined;
+  /** 回路図 ⇄ 3D盤の連動ハイライト。§9.2 */
+  highlight: HighlightSelection;
 
   mode: ToolMode;
   wireColor: WireColor;
@@ -162,7 +248,7 @@ export interface AppState {
    * 「今回の分 ＋ ここに復元した分」とする（下部の警告一覧と結果画面の危険操作の見出し）。
    */
   restoredHazardCount: number;
-  judge: JudgeResult | undefined;
+  judge: AnyJudgeResult | undefined;
   fatalError: string | undefined;
   /** WebGL コンテキストが失われ再初期化中か。§13 #4 */
   webglLost: boolean;
@@ -176,7 +262,7 @@ export interface AppState {
 
   setRoute: (route: Route) => void;
   setProblems: (payload: ProblemListPayload) => void;
-  openProblem: (problem: AssembleProblem) => void;
+  openProblem: (problem: SupportedProblem) => void;
   setSession: (session: BoardSession) => void;
   pushHistory: (command: SessionCommand) => void;
   setHistory: (history: CommandHistory) => void;
@@ -206,6 +292,29 @@ export interface AppState {
   restoreProgress: (elapsedMs: number, hazardCount: number) => void;
   /** 確認待ちの作業ファイルを出し入れする。§12.3 */
   setPendingWorkFile: (file: WorkFile | undefined) => void;
+  /** テスターを操作する（Worker へ送るのは呼び出し側の責務）。§9.3 */
+  applyTester: (action: TesterAction) => void;
+  /** 次に置くプローブを選ぶ。§9.3 */
+  setNextProbe: (probe: ProbeSide) => void;
+  /**
+   * プローブを両方外して「次は黒」に戻す。§9.1 / §9.3
+   * 盤を作り直したとき（C1の部品の挿し替え）に、Worker 側の `load` と足並みを揃えるために使う。
+   */
+  clearProbes: () => void;
+  /** 警告バナーを畳む。§5.6 */
+  dismissHazard: (nowMs?: number) => void;
+  /** マークシートの解答を1件入れる（同じ部品は上書き）。§9.1 */
+  setAnswer: (partId: string, answer: PartTruth) => void;
+  /** チェック用ソケットに挿している部品を記録する。§9.1 */
+  setCheckPart: (partId: string | undefined) => void;
+  /** 指摘を1件足す。§9.2 */
+  addReport: (report: FaultReport) => void;
+  /** 指摘を1件取り消す。§9.2 */
+  removeReport: (index: number) => void;
+  /** モードC2の回路を差し替える（部品交換のとき）。§9.2 */
+  setCircuit: (circuit: RepairCircuit) => void;
+  /** 連動ハイライトを設定する。§9.2 */
+  setHighlight: (selection: HighlightSelection) => void;
   /** 画面を描けた（`ErrorBoundary` から）。連続リセットの数え直し。§13 #5 */
   noteRenderSuccess: () => void;
   /**
@@ -235,8 +344,16 @@ function nextId(): number {
   return sequence;
 }
 
-/** 課題から盤セッションを作る。§7.1 / §8.1（モードBの新規配線は青のみ） */
-export function sessionForProblem(problem: AssembleProblem): BoardSession {
+/**
+ * 課題から盤セッションを作る。§7.1 / §8.1（モードBの新規配線は青のみ）
+ *
+ * 3モードに共通のヘッダ（`board` / `inventory`）だけを見るので `SupportedProblem` を受ける。
+ * ただし作るのは**素の盤**（青の新規配線・故障なし）なので、C1は `checkSessionFor()`、
+ * C2は `buildInspectRepairCircuit()` が作る盤を使う（`openProblem()` の分岐）。ここへ C1/C2 が
+ * 来るのは `restartSession()` の最後の手段（盤そのものが描けないときの作り直し）だけで、
+ * そのときは故障入りの回路も一緒に手放している（§13 #5）。
+ */
+export function sessionForProblem(problem: SupportedProblem): BoardSession {
   return createSession(JIPM_BOARD, {
     roles: toSocketRoles(problem.board.socketRoles),
     allowedColors: ['青'],
@@ -255,6 +372,15 @@ export const useStore = create<AppState>((set, get) => ({
   sessionEpoch: 0,
   restartAttempts: 0,
   pendingWorkFile: undefined,
+  tester: createTesterState(),
+  nextProbe: 'black',
+  hazardBanner: undefined,
+  answers: [],
+  checkPartId: undefined,
+  reports: [],
+  circuit: undefined,
+  faultSeed: undefined,
+  highlight: NO_HIGHLIGHT,
 
   mode: 'wire',
   wireColor: '青',
@@ -290,13 +416,54 @@ export const useStore = create<AppState>((set, get) => ({
     set({ problems });
   },
   openProblem: (problem) => {
+    /*
+     * モードごとに違うのは「初期の盤」「線色パレット」「回路図ヒントの初期状態」の3つだけ。
+     * それ以外（ライブ記録・ログ・計時・履歴の初期化）は3モードで共通なので、
+     * 先に盤を作れるか確かめてから1回の `set()` でまとめて入れる。
+     *
+     * C2は故障を注入した盤を作る（`buildInspectRepairCircuit`。Plan 2A）。課題データの誤りで
+     * 作れないことがあるので、その場合は**画面を移らずに**理由を出す（§13 #2）。
+     */
+    let session: BoardSession;
+    let circuit: RepairCircuit | undefined;
+    let faultSeed: number | undefined;
+    let wireColor: WireColor = '青';
+    let schematicVisible = false;
+    if (isInspectRepairProblem(problem)) {
+      /*
+       * ランダム故障の課題は起動時に種を決め、あとで作業ファイルへ残す（§5.2）。
+       * 明示 `faults` 配列の課題（内蔵C2 8題）には使われない（`resolveFaults()` が無視する）。
+       */
+      faultSeed = Date.now();
+      const built = buildInspectRepairCircuit(problem, JIPM_BOARD, { seed: faultSeed });
+      if (!built.ok) {
+        get().toast(
+          referenceErrorText(built.errors.map((e) => `${e.path}: ${e.message}`)),
+          'error',
+        );
+        return;
+      }
+      circuit = built.value;
+      session = built.value.session;
+      wireColor = REPAIR_WIRE_COLOR;
+      // C2の回路図の出し方は課題の hints が決める（2級は出す・1級は出さない）。§9.2
+      schematicVisible = problem.hints.schematicVisible;
+    } else if (isInspectPartsProblem(problem)) {
+      // C1は配線しないので線色パレットは空（`checkSessionFor()` が決める）。§9.1
+      session = checkSessionFor(problem);
+    } else {
+      session = sessionForProblem(problem);
+      // 回路図ヒントの出し方は級だけで決まる（§8.4）
+      schematicVisible = schematicPolicy(problem.grade).shown;
+    }
     set({
       problem,
-      session: sessionForProblem(problem),
+      session,
+      circuit,
       history: emptyHistory(),
       route: 'session',
-      mode: 'wire',
-      wireColor: '青',
+      mode: isAssembleProblem(problem) ? 'wire' : 'tester',
+      wireColor,
       pendingTerminal: undefined,
       hoveredTerminal: undefined,
       selectedWire: undefined,
@@ -304,9 +471,10 @@ export const useStore = create<AppState>((set, get) => ({
       snapshot: EMPTY_SNAPSHOT,
       hazards: [],
       chatters: [],
-      chartSpecs: defaultChartSignals(
-        resolveCompareSignals(problem.judge, problem.board.extraParts ?? []),
-      ),
+      // C1は波形を比べないのでライブチャートも要らない。モードBとC2は同じ式で信号を決める
+      chartSpecs: isInspectPartsProblem(problem)
+        ? []
+        : defaultChartSignals(resolveCompareSignals(problem.judge, problem.board.extraParts ?? [])),
       liveTransitions: {},
       logLines: [],
       judge: undefined,
@@ -315,13 +483,20 @@ export const useStore = create<AppState>((set, get) => ({
       webglLost: false,
       reportedDroppedTicks: 0,
       droppedTicksNotice: undefined,
-      // 回路図ヒントの出し方は級だけで決まる（§8.4）。課題JSONの `hints` は Phase 2 の C2 用
-      schematicVisible: schematicPolicy(problem.grade).shown,
+      schematicVisible,
       startedAtMs: Date.now(),
       elapsedMs: 0,
       restoredHazardCount: 0,
       restartAttempts: 0,
       pendingWorkFile: undefined,
+      tester: createTesterState(get().tester.kind),
+      nextProbe: 'black',
+      hazardBanner: undefined,
+      answers: [],
+      checkPartId: undefined,
+      reports: [],
+      faultSeed,
+      highlight: NO_HIGHLIGHT,
     });
   },
   setSession: (session) => {
@@ -375,6 +550,7 @@ export const useStore = create<AppState>((set, get) => ({
       const points = liveTransitions[entry.signal] ?? [];
       liveTransitions[entry.signal] = [...points, { tMs: entry.tMs, value: entry.value }];
     }
+    const lastHazard = snapshot.hazardDelta.at(-1);
     set({
       snapshot,
       liveTransitions,
@@ -386,6 +562,16 @@ export const useStore = create<AppState>((set, get) => ({
         snapshot.chatterDelta.length === 0
           ? state.chatters
           : [...state.chatters, ...snapshot.chatterDelta],
+      // 危険操作は帯で知らせる（§5.6 / §13）。同じtickに複数出たら最後の1件を出す
+      ...(lastHazard === undefined
+        ? {}
+        : {
+            hazardBanner: {
+              kind: lastHazard.kind,
+              detail: lastHazard.detail,
+              expiresAt: Date.now() + HAZARD_BANNER_TTL_MS,
+            },
+          }),
     });
     if (snapshot.droppedTicks > 0) get().noteDroppedTicks(snapshot.droppedTicks);
   },
@@ -477,12 +663,76 @@ export const useStore = create<AppState>((set, get) => ({
   setPendingWorkFile: (pendingWorkFile) => {
     set({ pendingWorkFile });
   },
+  applyTester: (action) => {
+    // 状態の更新は Plan 2A のリデューサ1本に任せる（Worker 側も同じ関数を通る）
+    const tester = applyTesterAction(get().tester, action);
+    set({
+      tester,
+      // 置いたら次の側へ巡る（§9.3 黒 → 赤）。外したときはその側を次にする
+      ...(action.type === 'place-probe'
+        ? {
+            nextProbe: action.terminal === undefined ? action.probe : nextProbeAfter(action.probe),
+          }
+        : {}),
+    });
+  },
+  setNextProbe: (nextProbe) => {
+    set({ nextProbe });
+  },
+  clearProbes: () => {
+    const tester = get().tester;
+    // 0Ω調整はプローブを動かしたらやり直す（実機の作法。`applyTesterAction` と揃える）
+    set({
+      tester: { ...tester, black: undefined, red: undefined, zeroAdjusted: false },
+      nextProbe: 'black',
+    });
+  },
+  dismissHazard: (nowMs) => {
+    const banner = get().hazardBanner;
+    if (banner === undefined) return;
+    // 引数なしなら無条件に畳む。時刻を渡されたら期限切れのときだけ畳む（間引きタイマ用）
+    if (nowMs !== undefined && banner.expiresAt > nowMs) return;
+    set({ hazardBanner: undefined });
+  },
+  setAnswer: (partId, answer) => {
+    const answers = get().answers;
+    const index = answers.findIndex((a) => a.partId === partId);
+    // 排他選択なので同じ部品の行は上書きする（§17.2 #5）。並びは最初に答えた順のまま
+    set({
+      answers:
+        index < 0
+          ? [...answers, { partId, answer }]
+          : answers.map((a, i) => (i === index ? { partId, answer } : a)),
+    });
+  },
+  setCheckPart: (checkPartId) => {
+    set({ checkPartId });
+  },
+  addReport: (report) => {
+    set({ reports: [...get().reports, report] });
+  },
+  removeReport: (index) => {
+    set({ reports: get().reports.filter((_, i) => i !== index) });
+  },
+  setCircuit: (circuit) => {
+    set({ circuit });
+  },
+  setHighlight: (highlight) => {
+    set({ highlight });
+  },
   noteRenderSuccess: () => {
     if (get().restartAttempts !== 0) set({ restartAttempts: 0 });
   },
   resetSession: () => {
     const problem = get().problem;
     if (problem === undefined) return;
+    /*
+     * 盤も履歴もテスターもマークシートも `openProblem()` が作り直すので、C1/C2 の欄を
+     * ここで個別に消す必要はない（Plan 2B Task 4 Step 8 が求める「持ち越さない」を満たす）。
+     * C2の故障は、内蔵8題のように `faults` を明示した課題では作り直しても同じものになる
+     * （種は `resolveFaults()` に無視される）。ランダム故障の課題だけは種を引き直すので、
+     * 「もう一度」で別の故障になる。
+     */
     get().openProblem(problem);
     // 同じ課題なら `problemId` は変わらないので、世代番号で Worker の張り直しを促す
     set({ sessionEpoch: get().sessionEpoch + 1 });
@@ -501,6 +751,15 @@ export const useStore = create<AppState>((set, get) => ({
       pendingTerminal: undefined,
       hoveredTerminal: undefined,
       selectedWire: undefined,
+      // 課題を作り直す操作なので C1/C2 の状態も手放す（Plan 2B Task 4 Step 8）
+      circuit: undefined,
+      faultSeed: undefined,
+      answers: [],
+      reports: [],
+      checkPartId: undefined,
+      highlight: NO_HIGHLIGHT,
+      tester: createTesterState(get().tester.kind),
+      nextProbe: 'black',
     });
     // 1回目は作業保持を優先して盤を残す。2回目は盤そのものが描けないとみて作り直す（§13 #5）
     if (attempts < RESTART_FALLBACK_ATTEMPTS || problem === undefined) return;
@@ -529,6 +788,15 @@ export const useStore = create<AppState>((set, get) => ({
       startedAtMs: 0,
       elapsedMs: 0,
       restoredHazardCount: 0,
+      // 課題を離れるので C1/C2 の状態も手放す（Plan 2B Task 4 Step 8）
+      circuit: undefined,
+      faultSeed: undefined,
+      answers: [],
+      reports: [],
+      checkPartId: undefined,
+      highlight: NO_HIGHLIGHT,
+      tester: createTesterState(get().tester.kind),
+      nextProbe: 'black',
     });
   },
 }));

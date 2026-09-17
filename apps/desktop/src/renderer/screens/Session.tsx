@@ -1,4 +1,5 @@
 import { JIPM_BOARD, socketPartId } from '@ojt/board-model';
+import { isAssembleProblem } from '@ojt/content';
 import type { BoardSession, MountableKind, SocketId } from '@ojt/board-model';
 import type { TerminalId } from '@ojt/circuit-sim';
 import { useCallback, useEffect, useMemo, useRef, type JSX } from 'react';
@@ -107,7 +108,14 @@ function SoundEffects(): null {
 
 /** セッション画面。 */
 export function Session(): JSX.Element {
-  const problem = useStore((s) => s.problem);
+  /*
+   * この画面はモードB専用（C1/C2 は `InspectPartsSession` / `InspectRepairSession`）。
+   * ストアの `problem` は3モードの共用体なので、ここで絞り込んでから使う。
+   * 振り分けは `SessionRoute` が行うので、絞り込みに漏れたら「課題が選ばれていません」になる。
+   */
+  const problem = useStore((s) =>
+    s.problem !== undefined && isAssembleProblem(s.problem) ? s.problem : undefined,
+  );
   const session = useStore((s) => s.session);
   const history = useStore((s) => s.history);
   const mode = useStore((s) => s.mode);

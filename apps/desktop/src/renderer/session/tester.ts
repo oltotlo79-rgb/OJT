@@ -1,4 +1,5 @@
 import type { TerminalId } from '@ojt/circuit-sim';
+import type { ProbeSide } from '../app/store-types.js';
 import type { PickAction, PickHit } from './interaction.js';
 
 /**
@@ -14,8 +15,8 @@ import type { PickAction, PickHit } from './interaction.js';
  * 端子1個（当たり判定4mm）を掴んだまま別の端子へ運ぶ操作は内蔵GPUの画面では現実的でない。
  */
 
-/** プローブの側。 */
-export type ProbeSide = 'black' | 'red';
+/** プローブの側（定義は `store-types.ts` の1箇所だけ。Plan 2B Task 4 Step 3）。 */
+export type { ProbeSide };
 
 /** プローブ配置の判断に要る状態だけを抜き出したもの。 */
 export interface TesterPickState {

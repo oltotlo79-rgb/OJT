@@ -180,7 +180,13 @@ export async function applyWorkFile(
     return false;
   }
   if (problem.mode !== 'assemble') {
-    // Task 4 でストアが `SupportedProblem` に広がるまでの暫定。C1/C2 の作業ファイルはまだ戻せない
+    /*
+     * C1/C2 の作業ファイルは Task 17（`toInspectWorkFile()` / `applyInspectWorkFile()`）で扱う。
+     * ストアは Task 4 で `SupportedProblem` に広がったが、この関数は作業ファイルの `session` を
+     * そのまま盤に載せるので、C2 では `openProblem()` が作った故障入りの盤（`circuit`）と
+     * 食い違ったまま判定へ進んでしまう（C1 では点検中の部品も戻せない）。
+     * それまでは読めないことを理由付きで断る（§13 #8）。
+     */
     store.toast(workFileProblemMissingText(file.problemId), 'error');
     return false;
   }
