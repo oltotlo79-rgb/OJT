@@ -721,6 +721,7 @@ Expected: `Test Files  1 passed (1)` / `Tests  13 passed (13)`。
 
 ```powershell
 pnpm --filter @ojt/ladder-core typecheck
+npx prettier --write "packages/ladder-core/**/*.{ts,json}"
 npx prettier --check "packages/ladder-core/**/*.{ts,json}"
 ```
 
@@ -1091,6 +1092,7 @@ export {
 pnpm --filter @ojt/ladder-core exec vitest run test/edit.test.ts
 pnpm --filter @ojt/ladder-core typecheck
 pnpm exec prettier --write packages/ladder-core/src/edit.ts packages/ladder-core/test/edit.test.ts
+npx prettier --write "packages/ladder-core/**/*.{ts,json}"
 npx prettier --check "packages/ladder-core/**/*.{ts,json}"
 ```
 
@@ -1781,6 +1783,7 @@ Expected: `Test Files  1 passed (1)` / `Tests  11 passed (11)`。
 
 ```powershell
 pnpm --filter @ojt/ladder-core typecheck
+npx prettier --write "packages/ladder-core/**/*.ts"
 npx prettier --check "packages/ladder-core/**/*.ts"
 git add packages/ladder-core
 git commit -m "feat(ladder-core): compile the IR and report conversion errors"
@@ -2789,6 +2792,7 @@ Expected: `Test Files  1 passed (1)` / `Tests  18 passed (18)`。
 
 ```powershell
 pnpm --filter @ojt/ladder-core typecheck
+npx prettier --write "packages/ladder-core/**/*.ts"
 npx prettier --check "packages/ladder-core/**/*.ts"
 git add packages/ladder-core
 git commit -m "feat(ladder-core): execute one scan per tick with timers, counters and MC"
@@ -3535,6 +3539,7 @@ Expected: `Test Files  1 passed (1)` / `Tests  8 passed (8)`。
 
 ```powershell
 pnpm --filter @ojt/circuit-sim typecheck
+npx prettier --write "packages/circuit-sim/**/*.ts"
 npx prettier --check "packages/circuit-sim/**/*.ts"
 git add packages/circuit-sim
 git commit -m "feat(circuit-sim): add the PLC unit part with sensed inputs and driven outputs"
@@ -3896,6 +3901,7 @@ Expected: 新しいファイル（`plc-simulation.test.ts`）が `Tests  9 passe
 ```powershell
 pnpm --filter @ojt/circuit-sim exec vitest run --coverage
 pnpm --filter @ojt/circuit-sim typecheck
+npx prettier --write "packages/circuit-sim/**/*.ts"
 npx prettier --check "packages/circuit-sim/**/*.ts"
 git add packages/circuit-sim
 git commit -m "feat(circuit-sim): sense PLC inputs with hysteresis and drive Y contacts"
@@ -4587,6 +4593,7 @@ Expected: 新しい2ファイルが `Tests  17 passed (17)`、パッケージ全
 ```powershell
 pnpm --filter @ojt/board-model exec vitest run --coverage
 pnpm --filter @ojt/board-model typecheck
+npx prettier --write "packages/board-model/**/*.ts"
 npx prettier --check "packages/board-model/**/*.ts"
 git add packages/board-model
 git commit -m "feat(board-model): put the FX5U and the wall outlet on the desk beside the board"
@@ -4913,6 +4920,7 @@ Expected: `Tests  2 passed | 2 failed`（方言一覧と表示列数の2件が�
 
 ```powershell
 pnpm --filter @ojt/plc-dialects typecheck
+npx prettier --write "packages/plc-dialects/**/*.{ts,json}"
 npx prettier --check "packages/plc-dialects/**/*.{ts,json}"
 git add packages/plc-dialects
 git commit -m "feat(plc-dialects): define the dialect profile and skin interfaces"
@@ -5255,6 +5263,7 @@ Expected: `Tests  15 passed (15)`（Task 8 で保留していた `IMPLEMENTED_DI
 
 ```powershell
 pnpm --filter @ojt/plc-dialects typecheck
+npx prettier --write "packages/plc-dialects/**/*.ts"
 npx prettier --check "packages/plc-dialects/**/*.ts"
 git add packages/plc-dialects
 git commit -m "feat(plc-dialects): add the FX5U device notation and timer bands (golden #25)"
@@ -5802,6 +5811,7 @@ Expected: `Test Files  5 passed (5)` / `Tests  32 passed (32)`、カバレッジ
 
 ```powershell
 pnpm --filter @ojt/plc-dialects typecheck
+npx prettier --write "packages/plc-dialects/**/*.ts"
 npx prettier --check "packages/plc-dialects/**/*.ts"
 git add packages/plc-dialects
 git commit -m "feat(plc-dialects): validate FX5U programs and add the GX Works3-style skin"
@@ -7683,6 +7693,8 @@ export function runPlcOperations(
 
 ```powershell
 pnpm --filter @ojt/content exec vitest run test/plc-io.test.ts test/runner.test.ts test/plc-reference.test.ts
+pnpm exec prettier --write packages/content/src/plc-io.ts packages/content/src/runner.ts packages/content/test/plc-io.test.ts
+pnpm exec prettier --check packages/content
 git add packages/content
 git commit -m "feat(content): couple the PLC scan to the engine tick"
 ```
@@ -8604,6 +8616,8 @@ export function judgePlcReference(problem: PlcProblem, board: BoardDefinition): 
 
 ```powershell
 pnpm --filter @ojt/content exec vitest run test/judge-plc.test.ts
+pnpm exec prettier --write packages/content/src/judge-plc.ts packages/content/test/judge-plc.test.ts
+pnpm exec prettier --check packages/content
 git add packages/content
 git commit -m "feat(content): judge mode D by racing the reference ladder against the trainee"
 ```
@@ -8935,6 +8949,7 @@ Expected（GREEN）: `Tests  12 passed (12)`（`it.each` の4題ぶんを含む�
 - [ ] **Step 6: コミットする**
 
 ```powershell
+npx prettier --write "packages/content/src/builtin/plc/*.json"
 npx prettier --check "packages/content/src/builtin/plc/*.json"
 git add packages/content
 git commit -m "feat(content): add the four 2級-form built-in PLC problems"
@@ -9143,6 +9158,7 @@ Expected: `builtin-plc` は8題ぶんに増えて `Tests  20 passed (20)`、弁�
 - [ ] **Step 4: コミットする**
 
 ```powershell
+npx prettier --write "packages/content/src/builtin/plc/*.json"
 npx prettier --check "packages/content/src/builtin/plc/*.json"
 git add packages/content
 git commit -m "feat(content): add the four 1級-form built-in PLC problems and the discrimination tests"
@@ -9299,6 +9315,7 @@ git commit -m "feat(content): finalise the Phase 3A public API"
 | タスク | 主に実装する仕様節 |
 |---|---|
 | Task 1 | §10.3（ラダーIRの型とグリッド）、§4.1（`packages/ladder-core` の役割） |
+| Task 1b | §10.3（IRの編集規則）、§10.7（3Bのラダーエディタが使う編集API） |
 | Task 2 | §10.3（END・コイル列・MC/MCR）、§10.4（二重コイルの警告）、§10.6（「変換」の構造検査） |
 | Task 3 | §10.4（スキャン・タイマ・カウンタ・SET/RST・二重コイルの後勝ち・決定論）、§10.3（特殊デバイス）、§4.2（`PlcIoPort`） |
 | Task 4 | §14.1 #26・#27、§7.9（内蔵モードD課題が使うラダー）、§14.2（カバレッジ） |
@@ -9329,7 +9346,7 @@ git commit -m "feat(content): finalise the Phase 3A public API"
 | §4.1 | `packages/plc-dialects` は `getDialect(vendor)` / `DialectProfile` を公開する | `packages/plc-dialects/src/index.ts` | `test/profile.test.ts` |
 | §4.2 | `ladder-core` は `circuit-sim` と独立（接続は `PlcIoPort`） | `runtime.ts` の `PlcIoPort`、結合は `content/src/plc-io.ts` | Task 20 Step 4（`git grep` で依存ゼロを確認） |
 | §4.2 | `plc-dialects` → `ladder-core` の一方向 | `package.json` の依存と import | Task 20 Step 4 / `pnpm lint`（`import-x/no-cycle`） |
-| §4.4 | 入力 Xn は `PLC.SS`–`PLC.Xn` 間の抵抗、3mA以上でON・1.5mA以下でOFF・間はヒステリシス | `circuit-sim/src/plc.ts` ＋ `Simulation.updatePlcInputs()` | `test/plc-part.test.ts` / `test/plc-simulation.test.ts` |
+| §4.4 | 入力 Xn は `PLC.SS`–`PLC.Xn` 間の抵抗、3mA以上でON・1.5mA以下でOFF・間はヒステリシス（**FX5U は §5.1.3 の 3.5mA**。§4.4 の 3mA は機種非依存の既定値 `PLC_INPUT_ON_AMPS` で、機種値は `PlcUnitSpec.onAmps` が上書きする） | `circuit-sim/src/plc.ts` ＋ `Simulation.updatePlcInputs()` | `test/plc-part.test.ts` / `test/plc-simulation.test.ts` |
 | §4.4 | 出力 Yn は `PLC.Yn`–`PLC.COMg` 間の接点をランタイムが駆動 | `createPlcUnit()`（`driver: 'external'`）＋ `setPlcOutputs()` | `test/plc-simulation.test.ts` |
 | §4.4 | PLC電源 L/N は電気的に解かず接続の有無だけを見る | 要素を持たない端子 ＋ `checkPlcPowerIndependent()` | `test/plc-part.test.ts` / `test/plc-static-checks.test.ts` |
 | §5.1.3 | FX5U の入力は 4.5kΩ／ON 3.5mA以上／OFF 1.5mA以下 | `FX5U_SPEC`（board-model） | `test/plc-unit.test.ts` / `test/plc-simulation.test.ts`（実測 5.33mA） |
@@ -9377,6 +9394,12 @@ git commit -m "feat(content): finalise the Phase 3A public API"
 | §17 #11 | 端子の並び順は §10.1 の記載順 | `fx5uTerminals()` | `test/plc-unit.test.ts` |
 | §17.2 #8 | 1級の1題はカウンタで押した回数による順次動作 | `d-007-counter.json` | `test/builtin-plc.test.ts` |
 | §17.2 #9 | 既定I/O割付は本アプリの既定、`fixed` のときだけ強制 | `DEFAULT_PLC_IO` ＋ `checkIoAssignment()` | `test/schema-plc.test.ts` / `test/plc-static-checks.test.ts` |
+| §10.7 | ラダーエディタの編集操作（セル配置・行やネットワークの増減・罫線） | `ladder-core/src/edit.ts` の純粋関数7つ（UIは Plan 3B） | `test/edit.test.ts` |
+| §10.7 | モニタ中の通電表示（どの桟が通電しているか） | `PlcSnapshot.poweredCells` | `test/runtime.test.ts` |
+| §10.7 | デバイスコメント | `LadderProgramSchema` の `comments`（表示は Plan 3B） | `test/schema-ladder.test.ts` / `test/builtin-plc.test.ts` |
+| §10.7 | **表記切替とエクスポート → Phase 4**（本プランでは実装しない） | — | 意図的な差分 #18 |
+| §10.3 | **保持リレー → Phase 4**（保持は `SET` / `RST` で書く） | — | 意図的な差分 #19 |
+| §10.5 | **応用命令 → Phase 4**（`F8` は `enabled: false`） | `SHORTCUTS` の `application`（`enabled: false` / `note`） | 意図的な差分 #20 / `test/skin.test.ts` |
 
 ---
 
@@ -9401,6 +9424,10 @@ git commit -m "feat(content): finalise the Phase 3A public API"
 | 15 | §10.1 は FX5U に `24V` / `0V` のサービス電源端子があるとする | 端子は作るが**電気的には解かない** | 本アプリの課題は入力回路のDC24Vを盤から取る（§10.2 が明示的に認めている）。内蔵電源を解くと `S/S`–`24V` 短絡の扱いなど、教育目的に寄与しない分岐が増える |
 | 16 | §8.4 は級ごとの回路図ヒントを定める | モードD課題は `hints` フィールドを持たない（`grade` は1・2のみ） | モードDに展開接続図は無い。1級・2級ともタイムチャートから起こすので、ヒントの開閉という状態が存在しない |
 | 17 | §16 Phase 3 は「モードD（三菱のみ）が動くアプリ」 | 本プラン（3A）はライブラリまで。スキン画面・3D・モードDのセッション画面・E2Eは Plan 3B | 依頼による分割。3A の公開APIは下の「3B への引き渡し」に固定する |
+| 18 | §10.7 はラダーの**表記切替**（他社方言での表示）と**エクスポート**（他社形式への書き出し）を挙げている | **Phase 4 に送る。** Phase 3 では `DialectProfile` が三菱1つしか実装されないので切り替える先が無く、エクスポート形式も未調査である。IRと `formatDevice()` / `parseDevice()` の分離は済んでいるので、Phase 4 でプロファイルを足せば切替は実装できる | §16 が Phase 4 を「他社方言の追加」と定めている。Phase 3 の受入基準（§16 ①〜⑤）に表記切替もエクスポートも含まれない |
+| 19 | §10.3 の実機には**保持リレー**（ラッチリレー `L` / 停電保持の `M`）がある | **Phase 4 に送る。** `DeviceKind` に保持デバイスを足さず、保持は `SET` / `RST` で書く | 保持デバイスは「電源を切っても値が残る」という意味だが、本アプリのセッションは課題ごとに初期化されるので違いが現れない。内蔵課題8題はすべて `SET`/`RST` と自己保持で書ける |
+| 20 | §10.5 / §10.6 は**応用命令**（`MOV` / `CMP` などのファンクション）に触れている | **Phase 4 に送る。** IRに応用命令のセル種別を作らず、スキン表の `F8 応用命令` は `enabled: false` で出す | 応用命令は引数（デバイス・定数の組）を持つのでIR・変換・ランタイム・zodの4か所に波及する。1級・2級の課題（§7.9）はすべて基本命令だけで組めるため、Phase 3 では費用対効果が合わない |
+| 21 | 実機では MC 区間が非成立のあいだ、区間内の微分接点（P/F）は「止まっている」ように振る舞う | 本実装では**非成立の区間内でも P/F の前回値（`edges`）は毎スキャン更新される**（`conducts()` が `applyOutput()` より前に走るため） | 区間の成立・非成立を微分接点の記憶に波及させるには、`solve()` にMC区間の情報を持ち込む（＝導通計算と実行順の分離を崩す）必要がある。差が出るのは「MC区間が非成立のあいだに区間内の微分接点の条件が変化し、復帰した直後にその立上りを期待する」回路だけで、内蔵課題8題にも §14.1 のゴールデンケースにも該当が無い。Phase 4 で必要になったら `Rails` にMC情報を渡して直す |
 
 ---
 
@@ -9414,6 +9441,7 @@ Plan 3B（`apps/desktop` のGX Works3風スキン・3D・モードD画面）は�
 |---|---|
 | `IR_COLS`(16) / `COIL_COL`(15) / `MAX_ROWS`(12) | エディタのグリッド寸法（表示列数は `DialectProfile.gridCols`、IRは常に16列） |
 | `network(id, rows, options?)` / `program(...networks)` / `endNetwork(id?)` / `cellAt(net, row, col)` | エディタがIRを組み立て・読み出しする |
+| `setCell(p, netId, row, col, cell)` / `clearCell(p, netId, row, col)` / `setVerticalLink(p, netId, row, col, on)` / `insertRow(p, netId, atRow)` / `deleteRow(p, netId, atRow)` / `insertNetwork(p, atIndex, net)` / `deleteNetwork(p, netId)` | **エディタの編集操作の実体**（Task 1b）。すべて純粋関数で新しい `LadderProgram` を返すので、戻り値をそのまま取り消し／やり直しのスタックに積める。範囲外・ID重複・接点の上への罫線は `LadderError` を投げる |
 | `no(d)` / `nc(d)` / `rise(d)` / `fall(d)` / `out(d)` / `set(d)` / `rst(d)` / `ton(d, presetMs)` / `ctu(d, preset, resetDevice)` / `mc(d)` / `mcr(d)` / `end()` / `hline()` / `vline()` / `empty()` | F5/F6/F7 などのキー操作が置くセル |
 | `X(i)` / `Y(i)` / `M(i)` / `T(i)` / `C(i)` / `SP(i)` / `device(kind, index)` | デバイス入力欄 → IR |
 | `SPECIAL_ALWAYS_ON`(0) / `SPECIAL_FIRST_SCAN`(1) / `SPECIAL_CLOCK_1S`(2) / `SPECIAL_INDEXES` | 特殊デバイスの選択肢 |
@@ -9422,6 +9450,8 @@ Plan 3B（`apps/desktop` のGX Works3風スキン・3D・モードD画面）は�
 | `CompiledProgram.usage`（`reads` / `writes`）/ `inputCount` / `outputCount` | 出力ウィンドウの「使用デバイス一覧」（§10.8 の未使用デバイス表示） |
 | `createPlcRuntime(program, {io, scanMs?, outputCount?})` → `PlcRuntime` | モニタ（`F3`）で使う。`scan()` / `reset()` / `bit(device)` / `state()` / `tMs` / `scanCount` |
 | `PlcIoPort` / `PlcSnapshot` / `PlcTimerState` / `PlcCounterState` / `SCAN_MS`(10) | Worker プロトコルの型付けとモニタ表示 |
+| `PlcSnapshot.poweredCells`（`Record<"<networkId>:<row>:<col>", boolean>`） | **モニタ（F3）の通電表示**。値は「そのセルの左端が左母線と繋がっているか」なので、セルの左側の線を `monitorColors.powered` で塗る。コイルの通電は `col === COIL_COL` の値。END ネットワークのキーは入らない |
+| `runtime.reset()` は `io.writeOutputs()` も呼ぶ | RUN停止でPLCのY接点も開くので、3Dのランプが消える。`reset()` の後に `Simulation.step()` を1回呼べば盤に反映される |
 | `LadderError` / `CompileError` / `CompileWarning` / `CompileErrorCode` | エラー表示の型 |
 | 型: `Cell` / `Device` / `DeviceKind` / `ContactType` / `CoilType` / `Network` / `LadderProgram` / `OutputCell` | 全面的に使う |
 
@@ -9435,7 +9465,8 @@ Plan 3B（`apps/desktop` のGX Works3風スキン・3D・モードD画面）は�
 | `profile.timerPreset(ms, device)` / `parseTimerPreset(text, device)` / `timerBaseMs(device)` | タイマ設定欄（`K100` ⇄ ms）。`Error` が返ったら §10.5 の「100ms 刻みに丸めますか？」を出す |
 | `profile.deviceRanges` / `specialDevices` / `instructionNames` | 入力補助・命令語表示 |
 | `profile.gridCols`(11) / `MIN_GRID_COLS`(8) / `MAX_GRID_COLS`(15) / `monitorColors`(`powered: '#1E64FF'`) | 表示列数と通電色（設定画面で変更できる） |
-| `profile.shortcuts`（`{action, keys, label, confirmed}`） | キー割当表。`confirmed: false` の項目には §12.1 の注記を添える |
+| `profile.shortcuts`（`{action, keys, label, confirmed, enabled?, note?}`） | キー割当表。`confirmed: false` の項目には §12.1 の注記を添える。`enabled: false`（Phase 3 では `F8 応用命令` のみ）は表に出すが押せない項目で、`note` をそのまま注記に出す。`rule-line`（`Ctrl+←↑↓→`）は `setVerticalLink()` / `setCell()` に繋ぐ |
+| `roundTimerPreset(ms, timerBaseMs(device))` | §10.5 の「100ms 刻みに丸めますか？」に「はい」と答えられたときの丸め。`timerPreset()` が `Error` を返したときだけ使う |
 | `profile.symbols` / `panels` / `convertStep`(true) / `errorMessages` | 記号の線画・画面構成・「変換」ボタンの有無・エラー文言 |
 | `convert(program, profile)` → `ConvertResult` | **「変換」ボタンの実体**。`ok` なら `program`（実行形式）、`errors`（`source: 'structure' \| 'dialect'`）は出力ウィンドウにそのまま並べる。`warnings` は二重コイル |
 | `UnknownDialectError` | 未実装メーカーを選ばれたときの扱い |
@@ -9482,7 +9513,9 @@ Plan 3B（`apps/desktop` のGX Works3風スキン・3D・モードD画面）は�
 | `JudgePlcResult`（`mode: 'plc'` / `passed` / `mismatches` / `staticChecks` / `hazardCount` / `hazardsByKind` / `chatter` / `charts` / `compareSignals` / `ladderErrors` / `ladderWarnings`） | 結果画面。`mode` で C1/C2/B の結果型と判別できる |
 | `plcTimerMarkers(program)` → `TimeChartMarker[]` | タイムチャートの印（`T0=3秒`） |
 | `checkTwoStage` / `checkPlcPowerIndependent` / `checkIoAssignment` / `PlcCheckContext` / `detectPlcWiring(nets, unit)` | セッション中の「いまの配線の診断」表示（判定前に警告を出したいとき） |
-| `LadderProgramSchema` / `CellSchema` / `DeviceSchema` | 作業ファイル（`.ojtw`）に保存したラダーの読み戻し（§12.3） |
+| `LadderProgramSchema` / `CellSchema` / `DeviceSchema` / `DeviceCommentsSchema` / `LadderProgramData` | 作業ファイル（`.ojtw`）に保存したラダーの読み戻し（§12.3） |
+| `LadderProgram.comments`（任意。`Record<"X0"\|"M1"\|…, string>`、1件32文字・200件まで） | **デバイスコメント欄**（§10.7）。キーは `deviceLabel()` の形（方言の8進表記ではない）。表示は `profile.formatDevice()` で方言表記に直してから並べる。実行には影響しない。作業ファイルにもこの形のまま保存する |
+| （ハンドオフ注記 H-5） | **`plcPowerIndependent` が落ちたときは結果画面で理由を明示すること。** シミュレートされるPLCは `PLC.L` / `PLC.N` が未配線でも動くので、訓練者からは「回路は正しく動いているのにチェックだけ赤い」ように見える。`staticChecks` の `details` には「盤から取っている」と「壁コンセントに配線されていない」の2種類が入るので、**文言を分けて**出す（前者は「PLCの電源は壁コンセントから取ります（§10.1）」、後者は「PLCの電源が未配線です。壁コンセントへ2本配線してください」） |
 | （ハンドオフ注記 H-1） | **訓練者のラダーは「変換」を通ったものだけを判定に出すこと。** `judgePlc()` は変換に落ちたラダーを受け取ると、シミュレートせずに `passed: false` と `ladderErrors` を返す（§10.6 の操作フローどおり） |
 | （ハンドオフ注記 H-2） | **セッション中のスキャンと判定のスキャンは別物である。** セッション中は `createPlcCoupling()` の `runtime` が動き続け、判定（`judgePlc()`）は別のシミュレーションを最初から走らせる。判定後にセッションを続ける場合、`runtime.reset()` を呼ぶかどうかは 3B が決める（実機の「RUN/STOP」に対応させるなら STOP→RUN で `reset()`） |
 | （ハンドオフ注記 H-3） | **作業ファイルに残すもの**: 課題ID、盤セッション（配線・装着）、**ラダーIR**（`LadderProgram` をそのままJSONに）、選んでいる方言ID、変換済みかどうか、経過時間、危険操作カウンタ（§12.3） |
@@ -9507,6 +9540,9 @@ Plan 3B（`apps/desktop` のGX Works3風スキン・3D・モードD画面）は�
 - [ ] 三菱の `T0 K100` が 10s、`T200 K100` が 1s になる（§14.1 #25）。
 - [ ] 二重コイルが変換警告として出て、実行は後勝ちになる（§14.1 #26）。特殊デバイス3種が §10.3 のとおり動く（#27）。
 - [ ] `withPlcUnit(JIPM_BOARD, PLC_UNIT_FX5U)` が `validateBoard()` を空配列で通り、`toNetlist()` の節点数が `MAX_NODES`（400）未満である。
+- [ ] 三菱プロファイルの `SHORTCUTS` が F5/F6/F7/F4 を持ち、`convert()` が模範ラダー8題すべてで `ok: true` を返す（§16 Phase 3 ①の3A側）。
+- [ ] `ladder-core` の編集API7つ（`setCell` / `clearCell` / `insertRow` / `deleteRow` / `insertNetwork` / `deleteNetwork` / `setVerticalLink`）がバレルから公開され、どれも引数のプログラムを書き換えない（`test/edit.test.ts`）。
+- [ ] `PlcSnapshot.poweredCells` が毎スキャン更新され、END ネットワークのキーを含まない（`test/runtime.test.ts`）。
 - [ ] `apps/desktop` への変更が `test/content-loader.test.ts` の1ファイルだけである（`git show --stat` で確認する）。
 
 ---
@@ -9515,4 +9551,5 @@ Plan 3B（`apps/desktop` のGX Works3風スキン・3D・モードD画面）は�
 
 | 日付 | 内容 |
 |---|---|
+| 2026-09-18 | レビュー反映: B1〜B8、I1〜I11、Minor、Task 1b（IR編集API）、`poweredCells`、デバイスコメント、バッチ表の更新 |
 | 2026-09-18 | 初版。Phase 3（モードD＝PLC）をライブラリ（3A）と `apps/desktop`（3B）に分割し、本書は 3A を扱う。新パッケージ `@ojt/ladder-core` / `@ojt/plc-dialects` の構成、PLC本体の電気モデル（入力＝抵抗負荷・出力＝外部駆動接点・電源＝非電気端子）、スキャンと tick の結合点（`@ojt/content` の `beforeTick`）、IRの `Device.index` を0起点の通し番号とする決定、`vline` の意味、模範配線をI/O割付から生成する方式、`twoStage` / `plcPowerIndependent` / `ioAssignment` の判定方法、内蔵モードD課題8題の題材と操作列を確定した |
