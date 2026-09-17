@@ -2,7 +2,7 @@ import type { JSX } from 'react';
 import { Home } from '../screens/Home.js';
 import { ProblemList } from '../screens/ProblemList.js';
 import { Result } from '../screens/Result.js';
-import { Session } from '../screens/Session.js';
+import { SessionRoute } from '../screens/SessionRoute.js';
 import { Settings } from '../screens/Settings.js';
 import type { Route } from './store.js';
 
@@ -19,7 +19,7 @@ export function renderRoute(route: Route): JSX.Element {
     case 'list':
       return <ProblemList />;
     case 'session':
-      return <Session />;
+      return <SessionRoute />;
     case 'result':
       return <Result />;
     case 'settings':

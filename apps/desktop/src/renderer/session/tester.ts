@@ -68,3 +68,29 @@ export function testerPickToAction(state: TesterPickState, hit: PickHit): PickAc
       return { type: 'none' };
   }
 }
+
+/** キーボードでできるテスター操作。§8.2 / §9.3 */
+export type TesterShortcut =
+  { type: 'zero-adjust' } | { type: 'next-probe'; probe: ProbeSide } | { type: 'lift-both' };
+
+/**
+ * キー1つをテスター操作に直す（知らないキーは undefined）。§8.2 / §15 アクセシビリティ
+ *
+ * 割当: `b`＝次は黒プローブ、`r`＝次は赤プローブ、`0`＝0Ω調整、`Escape`＝両方外す。
+ * 視点（上段 1/2/3・テンキー・Home）は画面に依存しない `useViewportShortcuts()` の担当、
+ * 削除（`Delete`）は盤側の割当（Plan 1D1）なのでここでは扱わない。
+ */
+export function testerShortcut(key: string): TesterShortcut | undefined {
+  switch (key.toLowerCase()) {
+    case 'b':
+      return { type: 'next-probe', probe: 'black' };
+    case 'r':
+      return { type: 'next-probe', probe: 'red' };
+    case '0':
+      return { type: 'zero-adjust' };
+    case 'escape':
+      return { type: 'lift-both' };
+    default:
+      return undefined;
+  }
+}

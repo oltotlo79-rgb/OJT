@@ -309,7 +309,11 @@ export interface AppState {
   dismissToast: (id: number) => void;
   /** 期限の切れたトーストを落とす（`App` の間引きタイマから呼ぶ）。§8.2 */
   expireToasts: (nowMs?: number) => void;
-  setJudge: (result: JudgeResult | undefined) => void;
+  /**
+   * 判定結果を入れる。3モード共通（C1/C2 は `JudgeInspectResult`）。§8.3 / §9.1 / §9.2
+   * 保持する `judge` が `AnyJudgeResult` なので、入口も同じ広さにしておく（Plan 2B Task 10）。
+   */
+  setJudge: (result: AnyJudgeResult | undefined) => void;
   setFatalError: (message: string | undefined) => void;
   setWebglLost: (lost: boolean) => void;
   tickElapsed: () => void;

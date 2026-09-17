@@ -23,6 +23,8 @@ export function Toolbar({
   mode,
   wireColor,
   allowedColors,
+  showWireTools = true,
+  extraTools,
   camera,
   canUndo,
   canRedo,
@@ -43,6 +45,13 @@ export function Toolbar({
   mode: ToolMode;
   wireColor: WireColor;
   allowedColors: readonly WireColor[];
+  /**
+   * 配線の道具（線色・削除モード）を出すか。§8.1 / §9.1
+   * モードC1は盤に配線しないので出さない（既定は出す）。
+   */
+  showWireTools?: boolean;
+  /** モード固有の道具（テスター／指摘モードの切替など）を差し込む枠。§9.2 / §9.3 */
+  extraTools?: JSX.Element;
   camera: CameraPreset;
   canUndo: boolean;
   canRedo: boolean;
@@ -72,31 +81,34 @@ export function Toolbar({
       <button type="button" data-testid="session-back" onClick={onBack}>
         {JA.session.back}
       </button>
-      <div className={styles.toolGroup}>
-        <span className={styles.toolLabel}>{JA.session.wireColor}</span>
-        {allowedColors.map((color) => (
+      {showWireTools ? (
+        <div className={styles.toolGroup}>
+          <span className={styles.toolLabel}>{JA.session.wireColor}</span>
+          {allowedColors.map((color) => (
+            <button
+              key={color}
+              type="button"
+              aria-pressed={mode === 'wire' && wireColor === color}
+              onClick={() => {
+                onWireColor(color);
+                onMode('wire');
+              }}
+            >
+              {color}
+            </button>
+          ))}
           <button
-            key={color}
             type="button"
-            aria-pressed={mode === 'wire' && wireColor === color}
+            aria-pressed={mode === 'delete'}
             onClick={() => {
-              onWireColor(color);
-              onMode('wire');
+              onMode(mode === 'delete' ? 'wire' : 'delete');
             }}
           >
-            {color}
+            {JA.session.deleteMode}
           </button>
-        ))}
-        <button
-          type="button"
-          aria-pressed={mode === 'delete'}
-          onClick={() => {
-            onMode(mode === 'delete' ? 'wire' : 'delete');
-          }}
-        >
-          {JA.session.deleteMode}
-        </button>
-      </div>
+        </div>
+      ) : null}
+      {extraTools === undefined ? null : <div className={styles.toolGroup}>{extraTools}</div>}
       <div className={styles.toolGroup}>
         <button type="button" disabled={!canUndo} onClick={onUndo}>
           {JA.session.undo}

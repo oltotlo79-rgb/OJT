@@ -123,7 +123,6 @@ export function TesterPanel({ children }: { children?: JSX.Element }): JSX.Eleme
       <h2 className={styles.title}>{JA.tester.title}</h2>
       <TesterReadout />
       {kind === 'analog' ? <AnalogMeter /> : null}
-      {children}
       <div className={styles.row} role="group" aria-label={JA.tester.kindGroup}>
         {KINDS.map((item) => (
           <button
@@ -219,6 +218,8 @@ export function TesterPanel({ children }: { children?: JSX.Element }): JSX.Eleme
 
       <ProbeRow side="black" />
       <ProbeRow side="red" />
+      {/* プローブの置き場所ショートカット（モードC1）はプローブ欄の隣に出す。§9.1 */}
+      {children}
       <p className={styles.hint}>{JA.tester.placeHint}</p>
     </section>
   );

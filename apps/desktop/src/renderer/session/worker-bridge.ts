@@ -11,6 +11,15 @@ export interface BridgeHandlers {
   onSnapshot: (snapshot: SimSnapshot) => void;
   onJudge: (message: Extract<SimMessage, { type: 'judgeResult' }>) => void;
   /**
+   * モードC1/C2の判定結果。§9.1 / §9.2
+   *
+   * C1（`judgeParts`）もC2（`judgeRepair`）も**同じ `inspectResult`** で返る（`InspectOutcome`）。
+   * 判別は中身の `result.value.mode`（`'inspect-parts'` / `'inspect-repair'`）で行うので、
+   * 画面ごとにハンドラを増やす必要はない。モードBの画面は渡さないので任意にする
+   * （届いても何も起きない）。
+   */
+  onInspect?: (message: Extract<SimMessage, { type: 'inspectResult' }>) => void;
+  /**
    * エラー。`fatal` が真なら追従ループが止まっている（Worker の異常終了も含む）。
    * 呼び出し側は例外バナーを出して立て直せるようにする。§13 #6
    */
@@ -34,8 +43,8 @@ export class WorkerBridge {
       const message = event.data;
       if (message.type === 'snapshot') handlers.onSnapshot(message.snapshot);
       else if (message.type === 'judgeResult') handlers.onJudge(message);
-      // `inspectResult`（C1/C2の判定）は Task 10 以降の画面が受け取る。ここではまだ配らない
-      else if (message.type === 'error') handlers.onError(message.message, message.fatal);
+      else if (message.type === 'inspectResult') handlers.onInspect?.(message);
+      else handlers.onError(message.message, message.fatal);
     };
     worker.onerror = (event: ErrorEvent) => {
       // Worker そのものが落ちた。ループは確実に止まっているので致命扱い（§13 #6）
