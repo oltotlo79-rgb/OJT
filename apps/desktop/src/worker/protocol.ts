@@ -11,12 +11,15 @@ import type {
 } from '@ojt/circuit-sim';
 import type {
   AssembleProblem,
+  FaultReport,
   FaultSpecData,
   InspectPartAnswer,
   InspectPartsProblem,
+  InspectRepairProblem,
   JudgeAssembleResult,
   JudgeInspectResult,
   ProblemIssue,
+  RepairCircuit,
 } from '@ojt/content';
 
 /**
@@ -95,6 +98,19 @@ export type SimCommand =
       type: 'judgeParts';
       problem: InspectPartsProblem;
       answers: readonly InspectPartAnswer[];
+      elapsedMs: number;
+    }
+  /**
+   * モードC2を判定する。§9.2
+   * `circuit` は開始時の `RepairCircuit` の `session` を**提出時の盤**に差し替えたもの
+   * （`circuitForJudge()`）。素のJSONなので構造化複製でそのまま渡せる。
+   * 部品を交換していれば `replacePart()` を通した `applied` が載っている（§9.2 部品交換）。
+   */
+  | {
+      type: 'judgeRepair';
+      problem: InspectRepairProblem;
+      circuit: RepairCircuit;
+      reports: readonly FaultReport[];
       elapsedMs: number;
     };
 

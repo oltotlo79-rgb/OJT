@@ -27,6 +27,7 @@ import {
   injectPartFaults,
   judgeAssemble,
   judgeInspectParts,
+  judgeInspectRepair,
   type FaultSpecData,
 } from '@ojt/content';
 import { planTicks } from './runtime.js';
@@ -417,6 +418,32 @@ function handle(command: SimCommand): void {
         sessionHazards: sim.events.hazards(),
       });
       post({ type: 'inspectResult', result: { ok: true, value: result } });
+      break;
+    }
+    case 'judgeRepair': {
+      /*
+       * C2の判定は模範回路と訓練者の盤を並走させるので 240〜440ms かかる（§8.3）。
+       * モードBの `judge` と同じく、その間は追従ループを止めて「捨てた tick」を
+       * 誤って計上しないようにする（C1の `judgeParts` は突き合わせだけなので止めない）。
+       */
+      stopLoop();
+      try {
+        const outcome = judgeInspectRepair(
+          command.problem,
+          JIPM_BOARD,
+          command.circuit,
+          command.reports,
+          { elapsedMs: command.elapsedMs, sessionHazards: sim.events.hazards() },
+        );
+        post({
+          type: 'inspectResult',
+          result: outcome.ok
+            ? { ok: true, value: outcome.value }
+            : { ok: false, errors: outcome.errors },
+        });
+      } finally {
+        resumeLoop();
+      }
       break;
     }
   }
