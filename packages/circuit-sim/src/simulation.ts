@@ -21,6 +21,7 @@ import {
 import type { Nets, Netlist, Wire } from './netlist.js';
 import { clampPreset } from './parts.js';
 import type { Part } from './parts.js';
+import { plcMetaOf } from './plc.js';
 import { solve, voltageAt } from './solver.js';
 import type { SolveResult } from './solver.js';
 
@@ -56,6 +57,16 @@ export interface LampRuntime {
   level: LampLevel;
 }
 
+/** PLC本体の内部状態。§4.4 */
+export interface PlcUnitRuntime {
+  /** 入力点の論理値（入力番号順）。§5.1.3 */
+  inputs: boolean[];
+  /** 出力点の論理値（出力番号順）。ランタイムが `setPlcOutputs()` で書く。 */
+  outputs: boolean[];
+  /** 入力点の実測電流[A]（デバッグ・ログ用）。 */
+  inputAmps: number[];
+}
+
 /** シミュレーションの公開状態スナップショット。 */
 export interface SimulationState {
   tMs: number;
@@ -69,6 +80,8 @@ export interface SimulationState {
   relays: Record<string, RelayRuntime>;
   timers: Record<string, TimerRuntime>;
   lamps: Record<string, LampRuntime>;
+  /** PLC本体の状態（部品ID順不同）。§4.4 */
+  plcs: Record<string, PlcUnitRuntime>;
   nodeVoltages: readonly number[];
 }
 
@@ -108,6 +121,7 @@ export class Simulation {
   private readonly relays = new Map<string, RelayRuntime>();
   private readonly timers = new Map<string, TimerRuntime>();
   private readonly lamps = new Map<string, LampRuntime>();
+  private readonly plcs = new Map<string, PlcUnitRuntime>();
   private readonly buttons = new Map<string, boolean>();
   private readonly chatterTimes = new Map<string, number[]>();
   private readonly chatterReported = new Map<string, number>();
@@ -157,6 +171,7 @@ export class Simulation {
     this.relays.clear();
     this.timers.clear();
     this.lamps.clear();
+    this.plcs.clear();
     this.buttons.clear();
     this.chatterTimes.clear();
     this.chatterReported.clear();
@@ -207,6 +222,9 @@ export class Simulation {
     this.relays.delete(id);
     this.timers.delete(id);
     this.lamps.delete(id);
+    // PLCのランタイムも捨てる。`mountPart` はY接点の `energized` を false に戻すので、
+    // 出力の論理値を持ち越すとランタイム状態と要素の状態が食い違う。
+    this.plcs.delete(id);
     this.buttons.delete(id);
     this.syncRuntimeMaps();
     this.syncSources();
@@ -242,6 +260,7 @@ export class Simulation {
     const relayIds = new Set<string>();
     const timerIds = new Set<string>();
     const lampIds = new Set<string>();
+    const plcIds = new Set<string>();
     const buttonIds = new Set<string>();
     for (const part of this.netlist.parts) {
       const id: string = part.id;
@@ -269,11 +288,21 @@ export class Simulation {
       } else if (meta.kind === 'pushbutton') {
         buttonIds.add(id);
         if (!this.buttons.has(id)) this.buttons.set(id, false);
+      } else if (meta.kind === 'plc') {
+        plcIds.add(id);
+        if (!this.plcs.has(id)) {
+          this.plcs.set(id, {
+            inputs: meta.inputs.map(() => false),
+            outputs: meta.outputs.map(() => false),
+            inputAmps: meta.inputs.map(() => 0),
+          });
+        }
       }
     }
     pruneRuntime(this.relays, relayIds);
     pruneRuntime(this.timers, timerIds);
     pruneRuntime(this.lamps, lampIds);
+    pruneRuntime(this.plcs, plcIds);
     pruneRuntime(this.buttons, buttonIds);
   }
 
@@ -321,6 +350,43 @@ export class Simulation {
     part.meta.presetMs = clamped;
     const runtime = this.timers.get(timerId);
     if (runtime !== undefined) runtime.presetMs = clamped;
+  }
+
+  /** PLC本体のメタデータとランタイムを引く。PLCでなければ `SimulationError`。 */
+  private plcOf(partId: string): {
+    meta: NonNullable<ReturnType<typeof plcMetaOf>>;
+    runtime: PlcUnitRuntime;
+  } {
+    const part = findPart(this.netlist, partId);
+    const meta = part === undefined ? undefined : plcMetaOf(part);
+    const runtime = this.plcs.get(partId);
+    if (meta === undefined || runtime === undefined) {
+      throw new SimulationError(`PLC本体が見つかりません: ${partId}`);
+    }
+    return { meta, runtime };
+  }
+
+  /**
+   * PLC入力の論理値（入力番号順）。§10.4 の「①入力読込」で使う。
+   * 返すのはコピーなので、呼び出し側が書き換えてもエンジンの状態は変わらない。
+   */
+  plcInputs(partId: string): boolean[] {
+    return [...this.plcOf(partId).runtime.inputs];
+  }
+
+  /**
+   * PLC出力を書く。§10.4 の「③出力書込」。配列が短いぶんは OFF として扱う。
+   * 書いた値は次の `step()` の `solve()` から効く（Y接点は `driver: 'external'` なので
+   * `applyContacts()` は触らない）。
+   */
+  setPlcOutputs(partId: string, values: readonly boolean[]): void {
+    const { meta, runtime } = this.plcOf(partId);
+    meta.outputs.forEach((channel, index) => {
+      const on = values[index] ?? false;
+      runtime.outputs[index] = on;
+      const el = findElement(this.netlist, channel.elementId);
+      if (el !== undefined && el.kind === 'contact') el.energized = on;
+    });
   }
 
   /**
@@ -401,6 +467,7 @@ export class Simulation {
       this.updateLoads(solved);
       this.updateRelays(solved);
       this.updateTimers(solved, dtMs);
+      this.updatePlcInputs(solved);
       this.applyContacts();
       this.updateProtection(solved);
       const values = this.snapshot(solved, nets);
@@ -423,6 +490,10 @@ export class Simulation {
     for (const [id, st] of this.timers) timers[id] = { ...st };
     const lamps: Record<string, LampRuntime> = {};
     for (const [id, st] of this.lamps) lamps[id] = { ...st };
+    const plcs: Record<string, PlcUnitRuntime> = {};
+    for (const [id, st] of this.plcs) {
+      plcs[id] = { inputs: [...st.inputs], outputs: [...st.outputs], inputAmps: [...st.inputAmps] };
+    }
     const buttons: Record<string, boolean> = {};
     for (const [id, pressed] of this.buttons) buttons[id] = pressed;
     return {
@@ -436,6 +507,7 @@ export class Simulation {
       relays,
       timers,
       lamps,
+      plcs,
       // 内部配列を渡すと呼び出し側から書き換えられてしまうので、必ずコピーを返す。
       nodeVoltages: Array.from(this.lastSolve?.nodeVoltages ?? []),
     };
@@ -581,6 +653,28 @@ export class Simulation {
     }
   }
 
+  /**
+   * PLC入力の論理値を更新する。§5.1.3 / §4.4
+   * 入力要素の電流の**絶対値**で判定するので、シンク結線（`P`→`S/S`）でもソース結線
+   * （`N`→`S/S`）でも同じ結果になる（§10.2 はどちらも認めている）。
+   * しきい値の間（既定 1.5mA 超 3.5mA 未満）はヒステリシスで直前の状態を保つ。
+   */
+  private updatePlcInputs(solved: SolveResult): void {
+    for (const part of this.netlist.parts) {
+      const meta = plcMetaOf(part);
+      if (meta === undefined) continue;
+      const runtime = this.plcs.get(part.id);
+      /* c8 ignore next -- syncRuntimeMaps がPLC部品ぶんを必ず作るので未到達 */
+      if (runtime === undefined) continue;
+      meta.inputs.forEach((channel, index) => {
+        const amps = Math.abs(solved.elementAmps.get(channel.elementId) ?? 0);
+        runtime.inputAmps[index] = amps;
+        const prev = runtime.inputs[index] ?? false;
+        runtime.inputs[index] = amps >= meta.onAmps ? true : amps <= meta.offAmps ? false : prev;
+      });
+    }
+  }
+
   private applyContacts(): void {
     for (const part of this.netlist.parts) {
       const meta = part.meta;
@@ -656,6 +750,17 @@ export class Simulation {
           out.set(id, st.level === 'lit');
           out.set(`${id}.level`, LAMP_LEVEL_CODE[st.level]);
           out.set(`${id}.volts`, st.volts);
+        }
+      } else if (meta.kind === 'plc') {
+        const st = this.plcs.get(id);
+        if (st !== undefined) {
+          meta.inputs.forEach((channel, index) => {
+            out.set(`${id}.${channel.name}`, st.inputs[index] ?? false);
+            out.set(`${id}.${channel.name}.mA`, (st.inputAmps[index] ?? 0) * 1000);
+          });
+          meta.outputs.forEach((channel, index) => {
+            out.set(`${id}.${channel.name}`, st.outputs[index] ?? false);
+          });
         }
       }
       for (const el of part.elements) {

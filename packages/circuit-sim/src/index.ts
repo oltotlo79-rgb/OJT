@@ -143,6 +143,7 @@ export {
   SimulationError,
   type LampLevel,
   type LampRuntime,
+  type PlcUnitRuntime,
   type RelayRuntime,
   type SimulationOptions,
   type SimulationState,
