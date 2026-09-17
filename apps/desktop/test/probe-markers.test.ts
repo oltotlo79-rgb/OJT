@@ -2,7 +2,7 @@ import { DEFAULT_SOCKET_ROLES } from '@ojt/board-model';
 import type { SocketRoles } from '@ojt/board-model';
 import { toTerminalId } from '@ojt/circuit-sim';
 import { describe, expect, it } from 'vitest';
-import { probePositions } from '../src/renderer/three/ProbeMarkers.js';
+import { ProbeMarkers, probePositions } from '../src/renderer/three/ProbeMarkers.js';
 import { visualSignature } from '../src/renderer/three/BoardScene.js';
 import { useStore } from '../src/renderer/app/store.js';
 import { NO_HIGHLIGHT } from '../src/renderer/app/store-types.js';
@@ -40,6 +40,39 @@ describe('probePositions（§6.4 役割ID → 物理端子）', () => {
 
   it('盤に無い端子は黙って落とす（壊れた作業ファイルでも3Dが落ちない。§13 #8）', () => {
     expect(probePositions({ black: toTerminalId('NOPE.99'), red: undefined }, ROLES)).toEqual([]);
+  });
+
+  it('端子ブロック（TB_PB.1a、役割を介さない物理端子）でも座標を出す', () => {
+    const positions = probePositions({ black: toTerminalId('TB_PB.1a'), red: undefined }, ROLES);
+    expect(positions).toHaveLength(1);
+    expect(positions[0]?.side).toBe('black');
+  });
+
+  it('本体端子（CHK.13、役割IDから物理端子へ写す）でも座標を出す', () => {
+    const positions = probePositions({ black: undefined, red: toTerminalId('CHK.13') }, ROLES);
+    expect(positions).toHaveLength(1);
+    expect(positions[0]?.side).toBe('red');
+  });
+});
+
+describe('ProbeMarkers（§9.3: レイキャストを受けない）', () => {
+  it('プローブのメッシュは no-op の raycast を持つ（下の端子のクリックを奪わない）', () => {
+    const element = ProbeMarkers({
+      probes: { black: toTerminalId('TB_PB.1a'), red: toTerminalId('CHK.13') },
+      highlightTerminals: [],
+      roles: ROLES,
+    }) as unknown as { props: { children: unknown[] } };
+    const children = element.props.children.flat() as { props?: { name?: string } }[];
+    const probeMeshes = children.filter(
+      (child) => typeof child?.props?.name === 'string' && child.props.name.startsWith('probe-'),
+    );
+    expect(probeMeshes).toHaveLength(2);
+    for (const mesh of probeMeshes) {
+      const raycast = (mesh as { props: { raycast?: unknown } }).props.raycast;
+      expect(typeof raycast).toBe('function');
+      // no-op: 何も積まず、何も返さない
+      expect((raycast as () => unknown)()).toBeUndefined();
+    }
   });
 });
 

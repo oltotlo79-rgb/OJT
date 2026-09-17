@@ -1,5 +1,5 @@
 import { createSession, JIPM_BOARD, TASK2_SOCKET_ROLES } from '@ojt/board-model';
-import { toTerminalId } from '@ojt/circuit-sim';
+import { HAZARD_KINDS, toTerminalId } from '@ojt/circuit-sim';
 import { BUILTIN_PROBLEMS } from '@ojt/content';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { emptyHistory, HISTORY_LIMIT } from '../src/renderer/session/commands.js';
@@ -107,6 +107,33 @@ describe('applySnapshot', () => {
       ],
     });
     expect(useStore.getState().hazards).toHaveLength(1);
+  });
+});
+
+describe('JA.hazard（§5.6 網羅性）', () => {
+  it('HAZARD_KINDS の全種別に日本語名がある', () => {
+    const missing = HAZARD_KINDS.filter(
+      (k) => (JA.hazard as Record<string, string | undefined>)[k] === undefined,
+    );
+    expect(missing).toEqual([]);
+  });
+});
+
+describe('dismissHazard（間引きタイマの期限境界）', () => {
+  const expiresAt = 1_000_000;
+
+  beforeEach(() => {
+    useStore.setState({ hazardBanner: { kind: 'ohm-on-live', detail: 'x', expiresAt } });
+  });
+
+  it('期限の1ms手前ではまだ畳まない', () => {
+    useStore.getState().dismissHazard(expiresAt - 1);
+    expect(useStore.getState().hazardBanner).toBeDefined();
+  });
+
+  it('期限の1ms後で畳む', () => {
+    useStore.getState().dismissHazard(expiresAt + 1);
+    expect(useStore.getState().hazardBanner).toBeUndefined();
   });
 });
 
