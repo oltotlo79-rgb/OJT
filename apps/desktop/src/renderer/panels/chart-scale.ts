@@ -32,6 +32,11 @@ export interface ChartGeometry {
    * 小さいチャートは目盛線こそ全部立てるが、ラベルまで全部出すと数字が潰れるので間引く。§7.7
    */
   labelStride: number;
+  /**
+   * 操作の変化点の破線（`figure.edges`）を立てる本数の上限。指定しなければ無制限。
+   * 小さいチャートは幅が狭く、破線だらけの課題（b-007 など）だと読めなくなるので絞る。§7.7
+   */
+  maxEdgeLines?: number;
 }
 
 /** 右パネル・結果画面に埋め込む小さいチャート。従来の寸法をそのまま引き継ぐ。 */
@@ -41,23 +46,24 @@ export const SMALL_GEOMETRY: ChartGeometry = {
   rowHeight: 22,
   amplitude: 12,
   labelFont: 9,
-  tickFont: 8,
+  tickFont: 9,
   rightPad: 26,
   topPad: 6,
   axisHeight: 16,
   labelStride: 2,
+  maxEdgeLines: 10,
 };
 
 /** 拡大表示（1枚のチャート）。信号名は 17（拡大時の実寸で 14px 以上）。 */
 export const LARGE_GEOMETRY: ChartGeometry = {
   labelWidth: 210,
   plotWidth: 900,
-  rowHeight: 58,
-  amplitude: 28,
+  rowHeight: 74,
+  amplitude: 46,
   labelFont: 17,
   tickFont: 15,
   rightPad: 40,
-  topPad: 14,
+  topPad: 8,
   axisHeight: 34,
   labelStride: 1,
 };
@@ -65,8 +71,8 @@ export const LARGE_GEOMETRY: ChartGeometry = {
 /** 拡大表示（期待と実際を積む結果画面用）。行数が倍になるので行を詰める。 */
 export const LARGE_STACKED_GEOMETRY: ChartGeometry = {
   ...LARGE_GEOMETRY,
-  rowHeight: 32,
-  amplitude: 14,
+  rowHeight: 33,
+  amplitude: 16,
 };
 
 /** 目盛の刻み候補[ms]（1・2・5 × 10^n）。§7.7 */

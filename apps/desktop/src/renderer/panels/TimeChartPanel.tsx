@@ -98,7 +98,6 @@ export function chartFigure(chart: TimeChart, waveClassName: string): ChartFigur
           key: 'value',
           className: waveClassName,
           segments: signal.segments,
-          durationMs: chart.durationMs,
         },
       ],
     })),

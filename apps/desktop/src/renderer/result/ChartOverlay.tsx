@@ -64,7 +64,6 @@ function overlayFigure(
             key: 'expected',
             className: styles.overlayExpected ?? '',
             segments: signal.segments,
-            durationMs: expected.durationMs,
           },
           ...(mine === undefined
             ? []
@@ -73,7 +72,6 @@ function overlayFigure(
                   key: 'actual',
                   className: styles.overlayActual ?? '',
                   segments: mine.segments,
-                  durationMs: actual.durationMs,
                 },
               ]),
         ],
@@ -99,7 +97,6 @@ function stackedFigure(
           key: 'expected',
           className: panels.chartLine ?? '',
           segments: signal.segments,
-          durationMs: expected.durationMs,
         },
       ],
     })),
@@ -113,7 +110,6 @@ function stackedFigure(
           key: 'actual',
           className: panels.chartLine ?? '',
           segments: signal.segments,
-          durationMs: actual.durationMs,
         },
       ],
     })),

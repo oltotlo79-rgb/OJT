@@ -5,6 +5,8 @@
 
 .frame {
   position: relative;
+  /* 右上の「⤢ 拡大」ボタンがチャート右上の値と重ならないよう、その分だけ本体を下げる。 */
+  padding-top: 18px;
 }
 
 /* チャート本体（クリック／Enter で拡大）。 */
@@ -80,10 +82,26 @@
   pointer-events: none;
 }
 
-/* 差分のある区間（結果画面）。 */
+/* 変化点に吸い付いたときの見た目（§7.7）。色だけでなく形も変わるので色弱でも判別できる。 */
+.cursorChipSnapped {
+  fill: var(--accent);
+  stroke: var(--accent);
+  stroke-width: 1;
+  pointer-events: none;
+}
+
+.cursorTextSnapped {
+  fill: var(--panel);
+  font-weight: 700;
+  pointer-events: none;
+}
+
+/* 差分のある区間（結果画面）。塗りは薄いままだが、縁取りで境界のコントラストを確保する（3:1）。 */
 .mismatchBand {
   fill: var(--ng);
-  opacity: 0.22;
+  opacity: 0.3;
+  stroke: var(--ng);
+  stroke-width: 1;
 }
 
 /* 区切り（期待／実際の見出し行）。 */
@@ -102,7 +120,9 @@
 .backdrop {
   position: fixed;
   inset: 0;
-  z-index: 50;
+  /* app.module.css のトースト（z-index: 50）より下に置く。拡大表示は全画面に近いので、
+     裏で出たトーストが隠れっぱなしにならないように。 */
+  z-index: 40;
   display: flex;
   align-items: center;
   justify-content: center;

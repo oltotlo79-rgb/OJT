@@ -99,22 +99,34 @@ export function isTypingTarget(target: unknown): boolean {
 let modalLayers = 0;
 
 /**
- * モーダルを1枚積む。返り値を呼ぶと下ろす（`useEffect` の後始末から呼ぶ）。
- * 数で持つのは、モーダルの上にモーダルが出ても取りこぼさないため。
+ * モーダルを1枚積む。`depth` はこの1枚の重なり順（一番外側が1）、`release()` を呼ぶと下ろす
+ * （`useEffect` の後始末から呼ぶ）。数で持つのは、モーダルの上にモーダルが出ても取りこぼさないため。
+ *
+ * `depth` はモーダルが2枚重なったときに Esc が**上の1枚だけ**を閉じるために要る
+ * （`topModalLayer()` と比べて自分が最上段でなければキー入力を無視する）。
  */
-export function pushModalLayer(): () => void {
+export function pushModalLayer(): { depth: number; release: () => void } {
   modalLayers += 1;
+  const depth = modalLayers;
   let released = false;
-  return () => {
-    if (released) return;
-    released = true;
-    modalLayers = Math.max(0, modalLayers - 1);
+  return {
+    depth,
+    release: () => {
+      if (released) return;
+      released = true;
+      modalLayers = Math.max(0, modalLayers - 1);
+    },
   };
 }
 
 /** モーダルが開いているか。§8.2 */
 export function isModalOpen(): boolean {
   return modalLayers > 0;
+}
+
+/** 一番上に積まれているモーダルの重なり順（積んでいなければ0）。§8.2 */
+export function topModalLayer(): number {
+  return modalLayers;
 }
 
 /**

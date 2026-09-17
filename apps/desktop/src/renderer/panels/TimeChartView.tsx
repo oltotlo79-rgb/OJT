@@ -12,7 +12,7 @@ import {
 } from 'react';
 import { createPortal } from 'react-dom';
 import { chartEnlargeLabel, chartOpenerLabel, JA } from '../i18n/ja.js';
-import { pushModalLayer } from '../session/interaction.js';
+import { pushModalLayer, topModalLayer } from '../session/interaction.js';
 import {
   chartHeight,
   chartWidth,
@@ -56,7 +56,6 @@ export interface ChartWave {
   /** 線の見た目を決める CSS クラス（呼び手のモジュールのもの）。 */
   className: string;
   segments: readonly TimeChartSegment[];
-  durationMs: number;
 }
 
 /** チャートの1行。`waves` が空なら見出し行（期待／実際の区切り）。 */
@@ -124,6 +123,12 @@ function ChartCursor({
   bottomY: number;
 }): JSX.Element | null {
   const [tMs, setTMs] = useState<number | null>(null);
+  const [snapped, setSnapped] = useState(false);
+  // `figure` は生ライブ記録だとスナップショットのたびに新しいオブジェクトになる。エフェクトの
+  // 依存に入れると listener を毎回張り直すことになるので、最新値は ref に逃がして依存からは外す
+  // （`hostRef` と `geom` は安定しているので listener は初回だけ張ればよい）。
+  const figureRef = useRef(figure);
+  figureRef.current = figure;
 
   useEffect(() => {
     const host = hostRef.current;
@@ -136,16 +141,25 @@ function ChartCursor({
       const xView = (event.clientX - rect.left) / scale;
       if (xView < geom.labelWidth - 4 || xView > geom.labelWidth + geom.plotWidth + 4) {
         setTMs(null);
+        setSnapped(false);
         return;
       }
-      const raw = xToMs(xView, figure.durationMs, geom);
-      // 吸い付きの許容幅は「画面上の6px」。拡大すると時間換算では狭くなる（＝精密になる）
-      const toleranceMs =
-        (SNAP_TOLERANCE_PX / Math.max(scale * geom.plotWidth, 1)) * figure.durationMs;
-      setTMs(nearestSnap(raw, figure.snaps, toleranceMs) ?? raw);
+      const current = figureRef.current;
+      const raw = xToMs(xView, current.durationMs, geom);
+      // 吸い付きの許容幅は「画面上の6px」。拡大すると時間換算では狭くなる（＝精密になる）。
+      // 区間が短い（＝目盛の刻みが細かい）チャートでは画面上6pxが目盛の刻みの数分の1を超えて
+      // しまい、隣の目盛へ黙って飛ぶことがあるので、刻みの1/4も上限にして狭いほうを使う。§7.7
+      const pxBasedToleranceMs =
+        (SNAP_TOLERANCE_PX / Math.max(scale * geom.plotWidth, 1)) * current.durationMs;
+      const tickStep = niceTickStep(current.durationMs);
+      const toleranceMs = Math.min(pxBasedToleranceMs, tickStep / 4);
+      const snap = nearestSnap(raw, current.snaps, toleranceMs);
+      setTMs(snap ?? raw);
+      setSnapped(snap !== undefined);
     };
     const onLeave = (): void => {
       setTMs(null);
+      setSnapped(false);
     };
     host.addEventListener('pointermove', onMove);
     host.addEventListener('mousemove', onMove);
@@ -159,7 +173,7 @@ function ChartCursor({
       host.removeEventListener('mouseleave', onLeave);
       host.removeEventListener('pointercancel', onLeave);
     };
-  }, [hostRef, figure, geom]);
+  }, [hostRef, geom]);
 
   if (tMs === null) return null;
   const x = msToX(tMs, figure.durationMs, geom);
@@ -172,7 +186,8 @@ function ChartCursor({
     <g data-guide="cursor">
       <line className={styles.cursorLine} x1={x} y1={topY} x2={x} y2={bottomY} />
       <rect
-        className={styles.cursorChip}
+        className={snapped ? styles.cursorChipSnapped : styles.cursorChip}
+        data-snapped={snapped ? 'true' : 'false'}
         x={chipX}
         y={topY}
         width={chipWidth}
@@ -180,7 +195,7 @@ function ChartCursor({
         rx={3}
       />
       <text
-        className={styles.cursorText}
+        className={snapped ? styles.cursorTextSnapped : styles.cursorText}
         x={chipX + 4}
         y={topY + chipHeight * 0.72}
         style={{ fontSize: geom.tickFont }}
@@ -219,7 +234,7 @@ export function ChartCanvas({
       viewBox={`0 0 ${width} ${height}`}
       role="img"
       aria-label={title}
-      preserveAspectRatio="xMinYMin meet"
+      preserveAspectRatio="xMidYMid meet"
       {...(testId === undefined ? {} : { 'data-testid': testId })}
     >
       {/* ① 目盛線（薄いグリッド）と秒のラベル */}
@@ -252,8 +267,13 @@ export function ChartCanvas({
         );
       })}
 
-      {/* ② 操作の変化点（押す・離す・タイマ設定）の破線 */}
-      {figure.edges.map((edge) => {
+      {/* ② 操作の変化点（押す・離す・タイマ設定）の破線。
+          小さいチャートは幅が狭く、破線が多い課題（b-007 など）だと読めなくなるので、
+          `geom.maxEdgeLines` を超えるときは間引かずに丸ごと省く（拡大表示は常に全部出す）。§7.7 */}
+      {(geom.maxEdgeLines !== undefined && figure.edges.length > geom.maxEdgeLines
+        ? []
+        : figure.edges
+      ).map((edge) => {
         const x = msToX(edge, figure.durationMs, geom);
         return (
           <line
@@ -332,7 +352,7 @@ export function ChartCanvas({
               <polyline
                 key={wave.key}
                 className={wave.className}
-                points={wavePoints(wave.segments, wave.durationMs, baseY, geom)}
+                points={wavePoints(wave.segments, figure.durationMs, baseY, geom)}
               />
             ))}
           </g>
@@ -385,10 +405,22 @@ function trapFocus(panel: HTMLElement | null, event: KeyboardEvent): void {
 }
 
 /**
+ * 開いているモーダルの本文スクロール止めの重なり数。§8.1
+ * モーダルが2枚重なったとき、内側が先に閉じても外側がまだ `overflow: hidden` を要る。
+ * 個々のモーダルが「自分が開く前の値」を覚えて戻す方式だと、2枚目が先に片付くと
+ * 1枚目の分もろとも戻ってしまうので、開いている枚数で持って0枚になったときだけ戻す。
+ */
+let overflowLockCount = 0;
+
+/**
  * 拡大表示のモーダル。§8.1
  * ポータルで `document.body` に出すので、右パネルの `overflow` に切り取られない。
  * 開いているあいだは `pushModalLayer()` で盤のショートカット（Esc／Delete／視点の数字キー）を
  * 止め、本文のスクロールも止める。
+ *
+ * モーダルが2枚重なることがある（例: 結果画面のチャートを拡大したまま別のチャートも拡大）。
+ * Esc は一番上の1枚だけを閉じたいので、自分の重なり順（`depth`）が最上段と一致するときだけ
+ * 反応する（`pushModalLayer()` が返す `depth` と `topModalLayer()` を比べる）。
  */
 function ChartModal({
   title,
@@ -403,12 +435,13 @@ function ChartModal({
   const closeRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
-    const release = pushModalLayer();
-    const previousOverflow = document.body.style.overflow;
+    const { depth, release } = pushModalLayer();
+    overflowLockCount += 1;
     document.body.style.overflow = 'hidden';
     closeRef.current?.focus();
     const onKey = (event: KeyboardEvent): void => {
       if (event.key === 'Escape') {
+        if (depth !== topModalLayer()) return;
         event.preventDefault();
         onClose();
         return;
@@ -418,7 +451,8 @@ function ChartModal({
     window.addEventListener('keydown', onKey);
     return () => {
       window.removeEventListener('keydown', onKey);
-      document.body.style.overflow = previousOverflow;
+      overflowLockCount = Math.max(0, overflowLockCount - 1);
+      if (overflowLockCount === 0) document.body.style.overflow = '';
       release();
     };
   }, [onClose]);
