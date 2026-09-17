@@ -2548,3 +2548,2572 @@ git commit -m "test(ladder-core): pin the PLC golden cases (#26, #27) and the bu
 ```
 
 ---
+## Task 5: `@ojt/circuit-sim` に PLC本体の部品を足す
+
+**Files:**
+- Create: `packages/circuit-sim/src/plc.ts`
+- Modify: `packages/circuit-sim/src/parts.ts`
+- Modify: `packages/circuit-sim/src/index.ts`
+- Test: `packages/circuit-sim/test/plc-part.test.ts`
+
+§4.4 の表をそのまま実装する。PLC本体はネットリスト上の1部品で、入力 Xn は `PLC.SS`–`PLC.Xn` 間の**抵抗負荷**、出力 Yn は `PLC.Yn`–`PLC.COMg` 間の**接点**（`driver: 'external'`）、電源 L/N は**要素を持たない端子**である。機種ごとの値（端子名・抵抗値・COM分け）は引数の `PlcUnitSpec` で受け取り、このファイルには機種を書かない（機種定義は `@ojt/board-model`。Task 7）。
+
+| 決めること | 本タスクの実装 |
+|---|---|
+| 入力 | `LoadElement`（`load: 'plcInput'`、`polarized: false`）。抵抗は機種値（FX5U 4.5kΩ、既定 `PLC_INPUT_OHMS` 4.7kΩ） |
+| 出力 | `ContactElement`（a接点、`driver: 'external'`、`group` は出力番号）。開閉は Task 6 の `setPlcOutputs()` が書く |
+| 電源 | `L` / `N` / `PE` は端子だけ。要素は作らない（AC は解かない。§5.2） |
+| サービス電源 | `24V` / `0V` の端子は作るが要素は持たせない。本アプリの課題は入力電源を盤のDC24Vから取るため、内蔵電源は電気的に扱わない（§10.2） |
+| 端子の並び | `power` → `inputCommon` → `service` → `inputs` → `commons` → `outputs` の順（§10.1 の記載順。§17 #11） |
+
+- [ ] **Step 1: 失敗するテストを書く**
+
+`packages/circuit-sim/test/helpers/plc.ts`（Task 6 のテストからも使う）:
+
+```ts
+import type { PlcUnitSpec } from '../../src/index.js';
+
+/** 入力2点・出力2点の最小PLC（FX5U と同じ 4.5kΩ／3.5mA／1.5mA）。 */
+export function tinySpec(): PlcUnitSpec {
+  return {
+    model: 'TEST-2',
+    power: ['L', 'N', 'PE'],
+    inputCommon: 'SS',
+    service: ['24V', '0V'],
+    inputs: ['X0', 'X1'],
+    commons: ['COM0'],
+    outputs: [
+      { name: 'Y0', com: 'COM0' },
+      { name: 'Y1', com: 'COM0' },
+    ],
+    inputOhms: 4500,
+    onAmps: 0.0035,
+    offAmps: 0.0015,
+  };
+}
+```
+
+`packages/circuit-sim/test/plc-part.test.ts`:
+
+```ts
+import { describe, expect, it } from 'vitest';
+import {
+  createLamp,
+  createPlcUnit,
+  PLC_INPUT_OFF_AMPS,
+  PLC_INPUT_ON_AMPS,
+  PLC_INPUT_OHMS,
+  plcMetaOf,
+  type PlcUnitSpec,
+} from '../src/index.js';
+import { tinySpec } from './helpers/plc.js';
+
+describe('createPlcUnit', () => {
+  it('lays the terminals out in the order the spec lists them (§10.1 / §17 #11)', () => {
+    const part = createPlcUnit('PLC', tinySpec());
+    expect(part.kind).toBe('plc');
+    expect(part.terminals).toEqual([
+      'PLC.L',
+      'PLC.N',
+      'PLC.PE',
+      'PLC.SS',
+      'PLC.24V',
+      'PLC.0V',
+      'PLC.X0',
+      'PLC.X1',
+      'PLC.COM0',
+      'PLC.Y0',
+      'PLC.Y1',
+    ]);
+  });
+
+  it('models every input as a resistive load between S/S and Xn (§4.4)', () => {
+    const part = createPlcUnit('PLC', tinySpec());
+    const input = part.elements.find((el) => el.id === 'PLC:in0');
+    expect(input).toEqual({
+      kind: 'load',
+      id: 'PLC:in0',
+      from: 'PLC.SS',
+      to: 'PLC.X0',
+      load: 'plcInput',
+      nominalOhms: 4500,
+      polarized: false,
+    });
+  });
+
+  it('models every output as an externally driven a-contact to its COM (§4.4)', () => {
+    const part = createPlcUnit('PLC', tinySpec());
+    const output = part.elements.find((el) => el.id === 'PLC:out1');
+    expect(output).toEqual({
+      kind: 'contact',
+      id: 'PLC:out1',
+      from: 'PLC.Y1',
+      to: 'PLC.COM0',
+      contact: 'a',
+      driver: 'external',
+      driverId: 'PLC',
+      group: 1,
+      energized: false,
+      closedOhms: 0.001,
+    });
+  });
+
+  it('gives the power terminals no element at all (§5.2 は交流を扱わない)', () => {
+    const part = createPlcUnit('PLC', tinySpec());
+    const touching = part.elements.filter(
+      (el) => el.from.startsWith('PLC.L') || el.to.startsWith('PLC.N'),
+    );
+    expect(touching).toEqual([]);
+  });
+
+  it('records the channel map in the part meta', () => {
+    const part = createPlcUnit('PLC', tinySpec());
+    const meta = plcMetaOf(part);
+    expect(meta?.model).toBe('TEST-2');
+    expect(meta?.inputCommon).toBe('PLC.SS');
+    expect(meta?.inputs).toEqual([
+      { name: 'X0', terminal: 'PLC.X0', elementId: 'PLC:in0' },
+      { name: 'X1', terminal: 'PLC.X1', elementId: 'PLC:in1' },
+    ]);
+    expect(meta?.outputs[1]).toEqual({
+      name: 'Y1',
+      terminal: 'PLC.Y1',
+      com: 'PLC.COM0',
+      elementId: 'PLC:out1',
+    });
+    expect(meta?.power).toEqual(['PLC.L', 'PLC.N', 'PLC.PE']);
+    expect(meta?.onAmps).toBe(0.0035);
+    expect(meta?.offAmps).toBe(0.0015);
+  });
+
+  it('falls back to the spec defaults of §5.1.3 when the model does not give them', () => {
+    const spec: PlcUnitSpec = { ...tinySpec(), inputOhms: PLC_INPUT_OHMS };
+    delete (spec as { onAmps?: number }).onAmps;
+    delete (spec as { offAmps?: number }).offAmps;
+    const meta = plcMetaOf(createPlcUnit('PLC', spec));
+    expect(meta?.onAmps).toBe(PLC_INPUT_ON_AMPS);
+    expect(meta?.offAmps).toBe(PLC_INPUT_OFF_AMPS);
+    expect(PLC_INPUT_ON_AMPS).toBe(0.003);
+    expect(PLC_INPUT_OFF_AMPS).toBe(0.0015);
+  });
+
+  it('rejects an output whose COM is not in the commons list', () => {
+    const spec = tinySpec();
+    expect(() =>
+      createPlcUnit('PLC', { ...spec, outputs: [{ name: 'Y0', com: 'COM9' }] }),
+    ).toThrow();
+  });
+
+  it('returns undefined for a part that is not a PLC', () => {
+    expect(plcMetaOf(createLamp('PL1', '白'))).toBeUndefined();
+  });
+});
+```
+
+- [ ] **Step 2: RED を確認する**
+
+```powershell
+pnpm --filter @ojt/circuit-sim exec vitest run test/plc-part.test.ts
+```
+
+Expected: 失敗。`SyntaxError: The requested module '../src/index.js' does not provide an export named 'createPlcUnit'`。
+
+- [ ] **Step 3: `src/parts.ts` に PLC のメタデータを足す**
+
+`packages/circuit-sim/src/parts.ts` の `PartKind` に `'plc'` を足す:
+
+```ts
+/** 部品種別。 */
+export type PartKind =
+  | 'relay-my4n'
+  | 'timer-h3y4'
+  | 'pushbutton'
+  | 'lamp'
+  | 'buzzer'
+  | 'power-supply'
+  | 'terminal-block'
+  | 'plc';
+```
+
+同じファイルに、`PartMeta` の直前でチャネル型を定義する:
+
+```ts
+/** PLCの入力1点（端子とその抵抗負荷要素）。§4.4 */
+export interface PlcInputChannel {
+  /** 機種の端子表記（`X0` / `0.00` など）。 */
+  name: string;
+  terminal: TerminalId;
+  /** `PLC.SS` との間の抵抗負荷要素のID。 */
+  elementId: string;
+}
+
+/** PLCの出力1点（端子・所属COM・接点要素）。§4.4 */
+export interface PlcOutputChannel {
+  name: string;
+  terminal: TerminalId;
+  com: TerminalId;
+  /** 端子とCOMの間の接点要素のID。 */
+  elementId: string;
+}
+```
+
+`PartMeta` に枝を足す:
+
+```ts
+  | {
+      kind: 'plc';
+      /** 機種名（`FX5U` など。表示と課題データの照合に使う）。§7.6 */
+      model: string;
+      /** 入力コモン（S/S 相当）の端子。 */
+      inputCommon: TerminalId;
+      inputs: readonly PlcInputChannel[];
+      outputs: readonly PlcOutputChannel[];
+      /** 入力ON判定のしきい値[A]。§5.1.3 */
+      onAmps: number;
+      /** 入力OFF判定のしきい値[A]。§5.1.3 */
+      offAmps: number;
+      /** 電源端子（電気的には解かない）。§4.4 */
+      power: readonly TerminalId[];
+    };
+```
+
+- [ ] **Step 4: `src/plc.ts` を書く**
+
+`packages/circuit-sim/src/plc.ts`:
+
+```ts
+import { CLOSED_CONTACT_OHMS, PLC_INPUT_OHMS, type ContactElement, type Element, type LoadElement } from './elements.js';
+import { partId, terminalId, type PartId, type TerminalId } from './ids.js';
+import type { Part, PartMeta, PlcInputChannel, PlcOutputChannel } from './parts.js';
+
+/**
+ * PLC本体の部品。設計仕様 §4.4 の表をそのまま実装する。
+ *
+ * | PLC要素 | ネットリスト上の表現 |
+ * |---|---|
+ * | 入力 Xn | `PLC.SS` と `PLC.Xn` の間の抵抗負荷（機種別。既定 4.7kΩ） |
+ * | 出力 Yn | `PLC.Yn` と所属COMの間の接点（`driver: 'external'`。ランタイムが開閉する） |
+ * | 電源 L/N | 要素を持たない端子（AC は解かない。§5.2） |
+ *
+ * 機種ごとの値（端子名・抵抗値・COM分け・外形）は `@ojt/board-model` が持ち、ここには書かない
+ * （エンジンは特定の機種に依存しない。§4.2 と同じ考え方）。
+ */
+
+/** 入力ON判定の既定しきい値[A]（3mA）。§5.1.3 */
+export const PLC_INPUT_ON_AMPS = 0.003;
+/** 入力OFF判定の既定しきい値[A]（1.5mA）。§5.1.3 */
+export const PLC_INPUT_OFF_AMPS = 0.0015;
+
+/** 出力1点の仕様（端子名と所属COM）。 */
+export interface PlcOutputSpec {
+  name: string;
+  com: string;
+}
+
+/** PLC本体1機種の仕様。§10.1 */
+export interface PlcUnitSpec {
+  /** 機種名（`FX5U` など）。 */
+  model: string;
+  /** 電源端子名（`L` / `N` / `PE`）。電気的には解かない。 */
+  power: readonly string[];
+  /** 入力コモン端子名（`S/S` 相当。端子IDに使うので `/` は入れない）。 */
+  inputCommon: string;
+  /** 本体のサービス電源など、要素を持たない付随端子（`24V` / `0V`）。 */
+  service?: readonly string[];
+  /** 入力端子名（機種の表記どおり。並び順が入力番号）。 */
+  inputs: readonly string[];
+  /** 出力コモン端子名。 */
+  commons: readonly string[];
+  /** 出力端子（並び順が出力番号）。 */
+  outputs: readonly PlcOutputSpec[];
+  /** 入力回路の抵抗[Ω]。§5.1.3 */
+  inputOhms?: number;
+  /** ON判定のしきい値[A]。既定 `PLC_INPUT_ON_AMPS`。 */
+  onAmps?: number;
+  /** OFF判定のしきい値[A]。既定 `PLC_INPUT_OFF_AMPS`。 */
+  offAmps?: number;
+}
+
+/** PLC部品の組み立てに失敗したときに投げる。 */
+export class PlcUnitError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'PlcUnitError';
+  }
+}
+
+/** 部品がPLCならそのメタデータを返す。 */
+export function plcMetaOf(part: Part): Extract<PartMeta, { kind: 'plc' }> | undefined {
+  return part.meta.kind === 'plc' ? part.meta : undefined;
+}
+
+/** PLC本体の部品を作る。§4.4 */
+export function createPlcUnit(id: PartId | string, spec: PlcUnitSpec): Part {
+  const pid = partId(id);
+  const term = (name: string): TerminalId => terminalId(pid, name);
+  const commons = new Set(spec.commons);
+  for (const output of spec.outputs) {
+    if (!commons.has(output.com)) {
+      throw new PlcUnitError(`出力 ${output.name} のCOM端子が機種にありません: ${output.com}`);
+    }
+  }
+  const inputOhms = spec.inputOhms ?? PLC_INPUT_OHMS;
+  const onAmps = spec.onAmps ?? PLC_INPUT_ON_AMPS;
+  const offAmps = spec.offAmps ?? PLC_INPUT_OFF_AMPS;
+  if (!(onAmps > offAmps)) {
+    throw new PlcUnitError(`ON判定はOFF判定より大きい必要があります: ${onAmps} / ${offAmps}`);
+  }
+
+  const inputCommon = term(spec.inputCommon);
+  const elements: Element[] = [];
+  const inputs: PlcInputChannel[] = spec.inputs.map((name, index) => {
+    const terminal = term(name);
+    const elementId = `${pid}:in${index}`;
+    const load: LoadElement = {
+      kind: 'load',
+      id: elementId,
+      from: inputCommon,
+      to: terminal,
+      load: 'plcInput',
+      nominalOhms: inputOhms,
+      polarized: false,
+    };
+    elements.push(load);
+    return { name, terminal, elementId };
+  });
+  const outputs: PlcOutputChannel[] = spec.outputs.map((output, index) => {
+    const terminal = term(output.name);
+    const com = term(output.com);
+    const elementId = `${pid}:out${index}`;
+    const contact: ContactElement = {
+      kind: 'contact',
+      id: elementId,
+      from: terminal,
+      to: com,
+      contact: 'a',
+      driver: 'external',
+      driverId: pid,
+      group: index,
+      energized: false,
+      closedOhms: CLOSED_CONTACT_OHMS,
+    };
+    elements.push(contact);
+    return { name: output.name, terminal, com, elementId };
+  });
+
+  const terminals: TerminalId[] = [
+    ...spec.power.map(term),
+    inputCommon,
+    ...(spec.service ?? []).map(term),
+    ...inputs.map((channel) => channel.terminal),
+    ...spec.commons.map(term),
+    ...outputs.map((channel) => channel.terminal),
+  ];
+
+  return {
+    id: pid,
+    kind: 'plc',
+    terminals,
+    elements,
+    meta: {
+      kind: 'plc',
+      model: spec.model,
+      inputCommon,
+      inputs,
+      outputs,
+      onAmps,
+      offAmps,
+      power: spec.power.map(term),
+    },
+  };
+}
+```
+
+`packages/circuit-sim/src/index.ts` に追記する:
+
+```ts
+export {
+  createPlcUnit,
+  PLC_INPUT_OFF_AMPS,
+  PLC_INPUT_ON_AMPS,
+  plcMetaOf,
+  PlcUnitError,
+  type PlcOutputSpec,
+  type PlcUnitSpec,
+} from './plc.js';
+```
+
+`./parts.js` の再エクスポートに型を足す:
+
+```ts
+  type PlcInputChannel,
+  type PlcOutputChannel,
+```
+
+- [ ] **Step 5: GREEN を確認する**
+
+```powershell
+pnpm --filter @ojt/circuit-sim exec vitest run test/plc-part.test.ts
+```
+
+Expected: `Test Files  1 passed (1)` / `Tests  8 passed (8)`。
+
+- [ ] **Step 6: コミットする**
+
+```powershell
+pnpm --filter @ojt/circuit-sim typecheck
+npx prettier --check "packages/circuit-sim/**/*.ts"
+git add packages/circuit-sim
+git commit -m "feat(circuit-sim): add the PLC unit part with sensed inputs and driven outputs"
+```
+
+---
+
+## Task 6: `Simulation` の PLC入出力（ヒステリシスと外部駆動接点）
+
+**Files:**
+- Modify: `packages/circuit-sim/src/simulation.ts`
+- Modify: `packages/circuit-sim/src/index.ts`
+- Test: `packages/circuit-sim/test/plc-simulation.test.ts`
+
+入力の ON/OFF 判定（§5.1.3 のヒステリシス）と、Y接点の駆動、信号ログへの記録を `Simulation` に足す。スキャンそのもの（ラダーの実行）は `@ojt/content` が繋ぐ（決定表#4）ので、ここに `ladder-core` への依存は**入らない**。
+
+| 決めること | 本タスクの実装 |
+|---|---|
+| 判定 | `|要素電流| >= onAmps` で ON、`<= offAmps` で OFF、その間は直前を保持（§5.1.3）。**絶対値**なのでシンク／ソースのどちらの結線でも同じ（§10.2） |
+| 実行順 | `step()` の中で `updateTimers()` の後・`applyContacts()` の前に `updatePlcInputs(solved)` を呼ぶ |
+| 出力 | `setPlcOutputs(partId, values)` が接点要素の `energized` を書く。値の配列は出力番号順、足りないぶんは false 扱い |
+| 読み出し | `plcInputs(partId)` が入力番号順の配列（コピー）を返す。PLC以外のIDは `SimulationError` |
+| ログ | `snapshot()` に `PLC.X0` / `PLC.Y0`（boolean）と `PLC.X0.mA`（数値、mA）を記録する。タイムチャートとモニタ（3B）で使う |
+| リセット | `reset()` で入力・出力とも false に戻る（`resetNetlist()` が接点の `energized` を落とすのと揃える） |
+
+- [ ] **Step 1: 失敗するテストを書く**
+
+`packages/circuit-sim/test/plc-simulation.test.ts`:
+
+```ts
+import { describe, expect, it } from 'vitest';
+import {
+  createLamp,
+  createPlcUnit,
+  createPowerSupply,
+  createPushButton,
+  createRelay4c,
+  injectFault,
+  type Simulation,
+} from '../src/index.js';
+import { bench, powerOn, w } from './helpers/circuits.js';
+import { tinySpec } from './helpers/plc.js';
+
+/**
+ * 盤（DC24V・PB1・CR1・PL1）＋ PLC のシンク結線。§10.2
+ * - 入力: `PS.+ → PLC.SS`、`PLC.X0 → PB1.a`、`PB1.c → PS.-`
+ * - 出力: `PS.+ → PLC.COM0`、`PLC.Y0 → CR1.14`、`CR1.13 → PS.-`
+ * - 2段結線: `PS.+ → CR1.9`、`CR1.5 → PL1.+`、`PL1.- → PS.-`
+ */
+function plcBench(): Simulation {
+  return bench(
+    [
+      createPowerSupply('PS'),
+      createPushButton('PB1'),
+      createRelay4c('CR1'),
+      createLamp('PL1', '白'),
+      createPlcUnit('PLC', tinySpec()),
+    ],
+    [
+      w('w1', 'PS.+', 'PLC.SS'),
+      w('w2', 'PLC.X0', 'PB1.a'),
+      w('w3', 'PB1.c', 'PS.-'),
+      w('w4', 'PS.+', 'PLC.COM0'),
+      w('w5', 'PLC.Y0', 'CR1.14'),
+      w('w6', 'CR1.13', 'PS.-'),
+      w('w7', 'PS.+', 'CR1.9'),
+      w('w8', 'CR1.5', 'PL1.+'),
+      w('w9', 'PL1.-', 'PS.-'),
+    ],
+  );
+}
+
+describe('PLC入力の読み取り', () => {
+  it('reads OFF while the push button is released', () => {
+    const sim = plcBench();
+    powerOn(sim);
+    sim.step();
+    expect(sim.plcInputs('PLC')).toEqual([false, false]);
+  });
+
+  it('reads ON when the button closes the input loop (§4.4 / §5.1.3)', () => {
+    const sim = plcBench();
+    powerOn(sim);
+    sim.press('PB1');
+    sim.step();
+    expect(sim.plcInputs('PLC')).toEqual([true, false]);
+    const amps = sim.state().plcs['PLC']?.inputAmps[0] ?? 0;
+    // 24V ÷ (4500Ω + 電源0.1Ω + 接点1mΩ) ≒ 5.33mA（ON感度 3.5mA の 1.5 倍）
+    expect(amps).toBeCloseTo(0.00533, 5);
+  });
+
+  it('keeps the previous state inside the hysteresis band (§5.1.3)', () => {
+    const sim = plcBench();
+    powerOn(sim);
+    sim.press('PB1');
+    sim.step();
+    expect(sim.plcInputs('PLC')[0]).toBe(true);
+    // 接触不良で 6kΩ 直列 → 24V ÷ 10.5kΩ ≒ 2.29mA（1.5mA 超・3.5mA 未満）
+    injectFault(sim.netlist, { partId: 'PB1', elementIndex: 0 }, 'contact-resistive', 6000);
+    sim.step();
+    expect(sim.state().plcs['PLC']?.inputAmps[0]).toBeCloseTo(0.00229, 5);
+    expect(sim.plcInputs('PLC')[0]).toBe(true);
+    // 離せば 0mA になり OFF に落ちる
+    sim.release('PB1');
+    sim.step();
+    expect(sim.plcInputs('PLC')[0]).toBe(false);
+  });
+
+  it('reads the same ON state with source wiring (§10.2 はどちらでもよい)', () => {
+    const sim = bench(
+      [createPowerSupply('PS'), createPushButton('PB1'), createPlcUnit('PLC', tinySpec())],
+      [w('w1', 'PS.-', 'PLC.SS'), w('w2', 'PLC.X0', 'PB1.a'), w('w3', 'PB1.c', 'PS.+')],
+    );
+    powerOn(sim);
+    sim.press('PB1');
+    sim.step();
+    expect(sim.plcInputs('PLC')[0]).toBe(true);
+    expect(sim.state().plcs['PLC']?.inputAmps[0]).toBeCloseTo(0.00533, 5);
+  });
+});
+
+describe('PLC出力の駆動', () => {
+  it('closes the Y contact and lights the lamp through the board relay (§10.2 の2段結線)', () => {
+    const sim = plcBench();
+    powerOn(sim);
+    sim.step();
+    expect(sim.state().lamps['PL1']?.level).toBe('off');
+    sim.setPlcOutputs('PLC', [true, false]);
+    sim.step(); // コイルが励磁される
+    expect(sim.state().relays['CR1']?.coilOn).toBe(true);
+    sim.step(); // 接点が入る（動作時間1tick）
+    expect(sim.state().lamps['PL1']?.level).toBe('lit');
+    sim.setPlcOutputs('PLC', [false, false]);
+    sim.step();
+    sim.step();
+    expect(sim.state().lamps['PL1']?.level).toBe('off');
+  });
+
+  it('treats a short value array as all-off for the missing points', () => {
+    const sim = plcBench();
+    powerOn(sim);
+    sim.setPlcOutputs('PLC', [true]);
+    sim.step();
+    expect(sim.state().plcs['PLC']?.outputs).toEqual([true, false]);
+  });
+
+  it('records PLC signals in the log (§5.7)', () => {
+    const sim = plcBench();
+    powerOn(sim);
+    sim.press('PB1');
+    sim.setPlcOutputs('PLC', [true, false]);
+    sim.step();
+    expect(sim.log.transitions('PLC.X0').at(-1)?.value).toBe(true);
+    expect(sim.log.transitions('PLC.Y0').at(-1)?.value).toBe(true);
+    expect(Number(sim.log.transitions('PLC.X0.mA').at(-1)?.value)).toBeCloseTo(5.33, 1);
+  });
+
+  it('clears the inputs and outputs on reset', () => {
+    const sim = plcBench();
+    powerOn(sim);
+    sim.press('PB1');
+    sim.setPlcOutputs('PLC', [true, true]);
+    sim.step();
+    sim.reset();
+    expect(sim.plcInputs('PLC')).toEqual([false, false]);
+    expect(sim.state().plcs['PLC']?.outputs).toEqual([false, false]);
+  });
+
+  it('refuses to read or write a part that is not a PLC', () => {
+    const sim = plcBench();
+    expect(() => sim.plcInputs('CR1')).toThrow(/PLC/u);
+    expect(() => sim.setPlcOutputs('CR1', [true])).toThrow(/PLC/u);
+  });
+});
+```
+
+**注意:** `tinySpec()` は Task 5 で作った `test/helpers/plc.ts` のものをそのまま使う（テストファイルどうしの import はしない）。
+
+- [ ] **Step 2: RED を確認する**
+
+```powershell
+pnpm --filter @ojt/circuit-sim exec vitest run test/plc-simulation.test.ts
+```
+
+Expected: 失敗。`TypeError: sim.plcInputs is not a function`。
+
+- [ ] **Step 3: `src/simulation.ts` を直す**
+
+import に PLC のメタ取得を足す:
+
+```ts
+import { plcMetaOf } from './plc.js';
+```
+
+型と内部状態を足す（`LampRuntime` の定義の後ろ）:
+
+```ts
+/** PLC本体の内部状態。§4.4 */
+export interface PlcUnitRuntime {
+  /** 入力点の論理値（入力番号順）。§5.1.3 */
+  inputs: boolean[];
+  /** 出力点の論理値（出力番号順）。ランタイムが `setPlcOutputs()` で書く。 */
+  outputs: boolean[];
+  /** 入力点の実測電流[A]（デバッグ・ログ用）。 */
+  inputAmps: number[];
+}
+```
+
+`SimulationState` に足す:
+
+```ts
+  plcs: Record<string, PlcUnitRuntime>;
+```
+
+`Simulation` のフィールドに足す:
+
+```ts
+  private readonly plcs = new Map<string, PlcUnitRuntime>();
+```
+
+`resetInternal()` に `this.plcs.clear();`（`this.lamps.clear();` の隣）を足す。
+
+`syncRuntimeMaps()` の中の分岐に足す（`meta.kind === 'pushbutton'` の枝の後ろ）:
+
+```ts
+      } else if (meta.kind === 'plc') {
+        plcIds.add(id);
+        if (!this.plcs.has(id)) {
+          this.plcs.set(id, {
+            inputs: meta.inputs.map(() => false),
+            outputs: meta.outputs.map(() => false),
+            inputAmps: meta.inputs.map(() => 0),
+          });
+        }
+      }
+```
+
+（同関数の冒頭に `const plcIds = new Set<string>();`、末尾に `pruneRuntime(this.plcs, plcIds);` を足す。）
+
+`step()` の処理順に1行足す:
+
+```ts
+      this.updateTimers(solved, dtMs);
+      this.updatePlcInputs(solved);
+      this.applyContacts();
+```
+
+入力判定を実装する（`updateTimers()` の後ろ）:
+
+```ts
+  /**
+   * PLC入力の論理値を更新する。§5.1.3 / §4.4
+   * 入力要素の電流の**絶対値**で判定するので、シンク結線（`P`→`S/S`）でもソース結線
+   * （`N`→`S/S`）でも同じ結果になる（§10.2 はどちらも認めている）。
+   * しきい値の間（既定 1.5mA 超 3.5mA 未満）はヒステリシスで直前の状態を保つ。
+   */
+  private updatePlcInputs(solved: SolveResult): void {
+    for (const part of this.netlist.parts) {
+      const meta = plcMetaOf(part);
+      if (meta === undefined) continue;
+      const runtime = this.plcs.get(part.id);
+      if (runtime === undefined) continue;
+      meta.inputs.forEach((channel, index) => {
+        const amps = Math.abs(solved.elementAmps.get(channel.elementId) ?? 0);
+        runtime.inputAmps[index] = amps;
+        const prev = runtime.inputs[index] ?? false;
+        runtime.inputs[index] = amps >= meta.onAmps ? true : amps <= meta.offAmps ? false : prev;
+      });
+    }
+  }
+```
+
+読み書きの公開APIを足す（`setTimerPreset()` の後ろ）:
+
+```ts
+  /** PLC本体のメタデータとランタイムを引く。PLCでなければ `SimulationError`。 */
+  private plcOf(partId: string): {
+    meta: NonNullable<ReturnType<typeof plcMetaOf>>;
+    runtime: PlcUnitRuntime;
+  } {
+    const part = findPart(this.netlist, partId);
+    const meta = part === undefined ? undefined : plcMetaOf(part);
+    const runtime = this.plcs.get(partId);
+    if (meta === undefined || runtime === undefined) {
+      throw new SimulationError(`PLC本体が見つかりません: ${partId}`);
+    }
+    return { meta, runtime };
+  }
+
+  /**
+   * PLC入力の論理値（入力番号順）。§10.4 の「①入力読込」で使う。
+   * 返すのはコピーなので、呼び出し側が書き換えてもエンジンの状態は変わらない。
+   */
+  plcInputs(partId: string): boolean[] {
+    return [...this.plcOf(partId).runtime.inputs];
+  }
+
+  /**
+   * PLC出力を書く。§10.4 の「③出力書込」。配列が短いぶんは OFF として扱う。
+   * 書いた値は次の `step()` の `solve()` から効く（Y接点は `driver: 'external'` なので
+   * `applyContacts()` は触らない）。
+   */
+  setPlcOutputs(partId: string, values: readonly boolean[]): void {
+    const { meta, runtime } = this.plcOf(partId);
+    meta.outputs.forEach((channel, index) => {
+      const on = values[index] ?? false;
+      runtime.outputs[index] = on;
+      const el = findElement(this.netlist, channel.elementId);
+      if (el !== undefined && el.kind === 'contact') el.energized = on;
+    });
+  }
+```
+
+`state()` に足す:
+
+```ts
+    const plcs: Record<string, PlcUnitRuntime> = {};
+    for (const [id, st] of this.plcs) {
+      plcs[id] = { inputs: [...st.inputs], outputs: [...st.outputs], inputAmps: [...st.inputAmps] };
+    }
+```
+
+（戻り値のオブジェクトに `plcs,` を足す。）
+
+`snapshot()` の部品ごとの分岐に足す（`meta.kind === 'lamp' || meta.kind === 'buzzer'` の枝の後ろ）:
+
+```ts
+      } else if (meta.kind === 'plc') {
+        const st = this.plcs.get(id);
+        if (st !== undefined) {
+          meta.inputs.forEach((channel, index) => {
+            out.set(`${id}.${channel.name}`, st.inputs[index] ?? false);
+            out.set(`${id}.${channel.name}.mA`, (st.inputAmps[index] ?? 0) * 1000);
+          });
+          meta.outputs.forEach((channel, index) => {
+            out.set(`${id}.${channel.name}`, st.outputs[index] ?? false);
+          });
+        }
+      }
+```
+
+`packages/circuit-sim/src/index.ts` の `./simulation.js` の再エクスポートに `type PlcUnitRuntime` を足す。
+
+- [ ] **Step 4: GREEN を確認する**
+
+```powershell
+pnpm --filter @ojt/circuit-sim exec vitest run test/plc-simulation.test.ts
+pnpm --filter @ojt/circuit-sim exec vitest run
+```
+
+Expected: 新しいファイルが `Tests  8 passed (8)`、パッケージ全体は着手時のベースライン（前提#14。目安214件）＋16件がすべて通る。**既存テストが1件でも落ちたら、`syncRuntimeMaps()` / `snapshot()` の変更が既存部品の挙動を変えていないか確認すること**（PLCを持たないネットリストでは、新しい分岐に一切入らないはずである）。
+
+- [ ] **Step 5: カバレッジとコミット**
+
+```powershell
+pnpm --filter @ojt/circuit-sim exec vitest run --coverage
+pnpm --filter @ojt/circuit-sim typecheck
+npx prettier --check "packages/circuit-sim/**/*.ts"
+git add packages/circuit-sim
+git commit -m "feat(circuit-sim): sense PLC inputs with hysteresis and drive Y contacts"
+```
+
+Expected: カバレッジは 90% 以上を維持（PLC部品ぶんの分岐はすべて新テストが通る）。
+
+---
+## Task 7: `@ojt/board-model` に FX5U 本体と壁コンセントを足す
+
+**Files:**
+- Create: `packages/board-model/src/plc-unit.ts`
+- Modify: `packages/board-model/src/board-jipm.ts`
+- Modify: `packages/board-model/src/to-netlist.ts`
+- Modify: `packages/board-model/src/routing.ts`
+- Modify: `packages/board-model/src/index.ts`
+- Test: `packages/board-model/test/plc-unit.test.ts`
+- Test: `packages/board-model/test/plc-netlist.test.ts`
+
+§10.1 の FX5U と、§10.1 の「壁コンセント（AC100V）」オブジェクトを盤モデルに足す。PLCは**盤の上ではなく机上**に置くので（決定事項#16）、盤の占有矩形・配線帯・経路生成の枠外に置き、`withPlcUnit()` が「同じ `id` のまま PLC とコンセントの端子を足した派生盤」を返す（決定表#8）。
+
+| 決めること | 本タスクの実装 |
+|---|---|
+| 端子集合 | §10.1 の記載順をそのまま配列順にする（§17 #11）。入力側 `L` `⏚`(PE) `N` `S/S` `24V` `0V` `X0`〜`X17`（8進16点）／出力側 `COM0`〜`COM3` と `Y0`〜`Y17`（8進16点） |
+| COM分け | `COM0`→`Y0`〜`Y3`、`COM1`→`Y4`〜`Y7`、`COM2`→`Y10`〜`Y13`、`COM3`→`Y14`〜`Y17`（4点1コモン。§17.1 の前提値） |
+| 端子座標 | 千鳥2列（列ピッチ9mm・段間9mm・千鳥のずれ4.5mm）。当たり判定は盤と同じ半径4mmで、隣どうし9mm・斜め10.06mm なので重ならない（`validateBoard` が検査する） |
+| 机上判定 | `isOffBoardTerminal(id)`（部品IDが `PLC` か `OUTLET`）。`validateBoard()` の「盤の外に端子がある」検査と経路生成から外す |
+| 3D経路 | 机上へ渡る電線は `routeSession()` の結果に**含めない**。代わりに `deskWires()` が端子と座標を返し、Plan 3B が直線ケーブルとして描く（決定表#9） |
+| ネットリスト | `board.plcUnit` があるとき `toNetlist()` が `PLC`（`createPlcUnit`）と `OUTLET`（端子だけの部品）を**部品配列の末尾**に足す（既存の部品順テストを壊さないため） |
+
+- [ ] **Step 1: 失敗するテストを書く**
+
+`packages/board-model/test/plc-unit.test.ts`:
+
+```ts
+import { describe, expect, it } from 'vitest';
+import {
+  FX5U_SPEC,
+  isOffBoardTerminal,
+  JIPM_BOARD,
+  OUTLET_ID,
+  PLC_PART_ID,
+  PLC_UNIT_FX5U,
+  plcUnitFor,
+  validateBoard,
+  withPlcUnit,
+} from '../src/index.js';
+
+describe('PLC_UNIT_FX5U', () => {
+  it('describes the FX5U-32MR/ES body (§10.1)', () => {
+    expect(PLC_UNIT_FX5U.model).toBe('FX5U');
+    expect(PLC_UNIT_FX5U.vendor).toBe('mitsubishi');
+    expect(PLC_UNIT_FX5U.sizeMm).toEqual({ width: 150, height: 90, depth: 83 });
+    expect(PLC_UNIT_FX5U.leds).toContain('PWR');
+    expect(PLC_UNIT_FX5U.leds).toContain('P.RUN');
+  });
+
+  it('names the 16 inputs and 16 outputs in octal (§10.1)', () => {
+    expect(FX5U_SPEC.inputs).toEqual([
+      'X0', 'X1', 'X2', 'X3', 'X4', 'X5', 'X6', 'X7',
+      'X10', 'X11', 'X12', 'X13', 'X14', 'X15', 'X16', 'X17',
+    ]);
+    expect(FX5U_SPEC.outputs.map((o) => o.name)).toEqual([
+      'Y0', 'Y1', 'Y2', 'Y3', 'Y4', 'Y5', 'Y6', 'Y7',
+      'Y10', 'Y11', 'Y12', 'Y13', 'Y14', 'Y15', 'Y16', 'Y17',
+    ]);
+  });
+
+  it('splits the outputs into four commons of four points (§17.1 の前提値)', () => {
+    expect(FX5U_SPEC.commons).toEqual(['COM0', 'COM1', 'COM2', 'COM3']);
+    expect(FX5U_SPEC.outputs.slice(0, 4).every((o) => o.com === 'COM0')).toBe(true);
+    expect(FX5U_SPEC.outputs[4]?.com).toBe('COM1');
+    expect(FX5U_SPEC.outputs[8]?.com).toBe('COM2');
+    expect(FX5U_SPEC.outputs[12]?.com).toBe('COM3');
+  });
+
+  it('uses the FX5U input circuit values (§5.1.3)', () => {
+    expect(FX5U_SPEC.inputOhms).toBe(4500);
+    expect(FX5U_SPEC.onAmps).toBe(0.0035);
+    expect(FX5U_SPEC.offAmps).toBe(0.0015);
+  });
+
+  it('is found by its model name (§7.6 の `plc.model`)', () => {
+    expect(plcUnitFor('FX5U')).toBe(PLC_UNIT_FX5U);
+    expect(plcUnitFor('CP1E')).toBeUndefined();
+  });
+});
+
+describe('withPlcUnit', () => {
+  const board = withPlcUnit(JIPM_BOARD, PLC_UNIT_FX5U);
+
+  it('keeps the board id so sessions still match (§8.2)', () => {
+    expect(board.id).toBe(JIPM_BOARD.id);
+    expect(board.plcUnit).toBe(PLC_UNIT_FX5U);
+    expect(JIPM_BOARD.plcUnit).toBeUndefined();
+  });
+
+  it('adds the PLC and outlet terminals to the board terminal list', () => {
+    const ids = board.terminals.map((t) => t.id);
+    expect(ids).toContain('PLC.X0');
+    expect(ids).toContain('PLC.X17');
+    expect(ids).toContain('PLC.COM0');
+    expect(ids).toContain('PLC.SS');
+    expect(ids).toContain('PLC.L');
+    expect(ids).toContain('OUTLET.L');
+    expect(ids).toContain('OUTLET.N');
+    // PLC = 電源3 ＋ S/S 1 ＋ サービス2 ＋ 入力16 ＋ COM 4 ＋ 出力16 = 42、コンセント2
+    expect(board.terminals.length).toBe(JIPM_BOARD.terminals.length + 42 + 2);
+  });
+
+  it('keeps every PLC terminal wirable and labelled (§8.2)', () => {
+    const plc = board.terminals.filter((t) => t.id.startsWith('PLC.'));
+    expect(plc.every((t) => t.wirable)).toBe(true);
+    expect(plc.every((t) => t.label.trim().length > 0)).toBe(true);
+    expect(plc.find((t) => t.id === 'PLC.SS')?.label).toBe('S/S');
+    expect(plc.find((t) => t.id === 'PLC.PE')?.label).toBe('⏚');
+    expect(plc.find((t) => t.id === 'PLC.X10')?.role).toBe('x');
+    expect(plc.find((t) => t.id === 'PLC.COM1')?.role).toBe('plc-com');
+  });
+
+  it('passes validateBoard with the desk terminals excluded from the board rect (§6.5)', () => {
+    expect(validateBoard(board)).toEqual([]);
+    expect(validateBoard(JIPM_BOARD)).toEqual([]);
+  });
+
+  it('does not add footprints or channels for the desk devices (§6.6)', () => {
+    expect(board.footprints).toEqual(JIPM_BOARD.footprints);
+    expect(board.wiringChannels).toEqual(JIPM_BOARD.wiringChannels);
+  });
+});
+
+describe('isOffBoardTerminal', () => {
+  it('knows the two desk devices', () => {
+    expect(isOffBoardTerminal('PLC.X0')).toBe(true);
+    expect(isOffBoardTerminal('OUTLET.L')).toBe(true);
+    expect(isOffBoardTerminal('TB_PB.1a')).toBe(false);
+    expect(isOffBoardTerminal('S1.13')).toBe(false);
+    expect(PLC_PART_ID).toBe('PLC');
+    expect(OUTLET_ID).toBe('OUTLET');
+  });
+});
+```
+
+`packages/board-model/test/plc-netlist.test.ts`:
+
+```ts
+import { buildNets, MAX_NODES, plcMetaOf, validateNetlist, type TerminalId } from '@ojt/circuit-sim';
+import { describe, expect, it } from 'vitest';
+import {
+  addWire,
+  createSession,
+  deskWires,
+  JIPM_BOARD,
+  PLC_UNIT_FX5U,
+  routeSession,
+  TASK1_SOCKET_ROLES,
+  toNetlist,
+  withPlcUnit,
+  type BoardSession,
+} from '../src/index.js';
+
+const BOARD = withPlcUnit(JIPM_BOARD, PLC_UNIT_FX5U);
+
+function t(id: string): TerminalId {
+  return id as TerminalId;
+}
+
+/** 盤 → PLC のシンク結線を最小限だけ張ったセッション。§10.2 */
+function wired(): BoardSession {
+  const session = createSession(BOARD, { roles: TASK1_SOCKET_ROLES });
+  const link = (from: string, to: string): void => {
+    const result = addWire(session, BOARD, t(from), t(to));
+    if (!result.ok) throw new Error(`${from} → ${to}: ${result.message}`);
+  };
+  link('P.1', 'PLC.SS');
+  link('TB_PB.1a', 'PLC.X0');
+  link('TB_PB.1c', 'N.1');
+  link('PLC.SS', 'PLC.COM0');
+  link('PLC.Y0', 'CR1.14');
+  link('OUTLET.L', 'PLC.L');
+  link('OUTLET.N', 'PLC.N');
+  return session;
+}
+
+describe('PLCを載せた盤のセッション', () => {
+  it('lets the trainee wire board terminals to the PLC (§10.2)', () => {
+    const session = wired();
+    expect(session.wires.map((w) => w.id)).toContain('w-001');
+    expect(session.wires.filter((w) => !w.locked)).toHaveLength(7);
+  });
+
+  it('refuses a third wire on a PLC terminal as well (§6.6)', () => {
+    const session = wired();
+    const first = addWire(session, BOARD, t('PLC.SS'), t('CR2.14'));
+    expect(first.ok).toBe(false);
+    if (first.ok) return;
+    expect(first.code).toBe('terminal-overload');
+  });
+
+  it('refuses PLC wiring on a board without the unit', () => {
+    const session = createSession(JIPM_BOARD, { roles: TASK1_SOCKET_ROLES });
+    const result = addWire(session, JIPM_BOARD, t('P.1'), t('PLC.SS'));
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.code).toBe('unknown-terminal');
+  });
+});
+
+describe('toNetlist（PLCつき）', () => {
+  it('adds the PLC unit and the outlet at the end of the part list', () => {
+    const netlist = toNetlist(wired(), BOARD);
+    const ids = netlist.parts.map((p) => p.id);
+    expect(ids.at(-2)).toBe('PLC');
+    expect(ids.at(-1)).toBe('OUTLET');
+    const plc = netlist.parts.find((p) => p.id === 'PLC');
+    expect(plc === undefined ? undefined : plcMetaOf(plc)?.model).toBe('FX5U');
+    expect(validateNetlist(netlist)).toEqual([]);
+  });
+
+  it('leaves the netlist unchanged for a board without a PLC', () => {
+    const plain = toNetlist(createSession(JIPM_BOARD, { roles: TASK1_SOCKET_ROLES }), JIPM_BOARD);
+    expect(plain.parts.some((p) => p.id === 'PLC')).toBe(false);
+  });
+
+  it('stays under the solver node limit with the PLC on the board (§5.2)', () => {
+    const netlist = toNetlist(wired(), BOARD);
+    const nets = buildNets(netlist);
+    expect(nets.nodeCount).toBeLessThan(MAX_NODES);
+  });
+
+  it('puts the PLC input terminals and the board rails in the expected nets (§10.2)', () => {
+    const netlist = toNetlist(wired(), BOARD);
+    const nets = buildNets(netlist);
+    const ssNode = nets.nodeOf(t('PLC.SS'));
+    expect(nets.terminalsOf(ssNode)).toContain('P.1');
+    expect(nets.terminalsOf(ssNode)).toContain('PLC.COM0');
+  });
+});
+
+describe('机上配線の経路', () => {
+  it('keeps desk wires out of the board routing (§6.6 の不変条件を壊さない)', () => {
+    const session = wired();
+    const routes = routeSession(BOARD, session);
+    const routed = new Set(routes.map((r) => r.wireId));
+    const desk = deskWires(BOARD, session);
+    expect(desk.map((d) => d.id).sort()).toEqual(
+      session.wires
+        .filter((w) => w.from.startsWith('PLC.') || w.to.startsWith('PLC.') || w.from.startsWith('OUTLET.') || w.to.startsWith('OUTLET.'))
+        .map((w) => w.id)
+        .sort(),
+    );
+    for (const wire of desk) expect(routed.has(wire.id)).toBe(false);
+    // 盤の中だけで閉じた電線はこれまでどおり経路が出る
+    expect(routed.has('w-003')).toBe(true);
+  });
+
+  it('gives both endpoints of a desk wire a position for the 3D cable (Plan 3B)', () => {
+    const desk = deskWires(BOARD, wired());
+    const outlet = desk.find((d) => d.from === 'OUTLET.L' || d.to === 'OUTLET.L');
+    expect(outlet?.fromPos).toBeDefined();
+    expect(outlet?.toPos).toBeDefined();
+  });
+});
+```
+
+- [ ] **Step 2: RED を確認する**
+
+```powershell
+pnpm --filter @ojt/board-model exec vitest run test/plc-unit.test.ts test/plc-netlist.test.ts
+```
+
+Expected: 失敗。`SyntaxError: The requested module '../src/index.js' does not provide an export named 'withPlcUnit'`。
+
+- [ ] **Step 3: `src/board-jipm.ts` に机上デバイスの型と判定を足す**
+
+`TerminalRole` に §6.6 の PLC 用の役割を足す:
+
+```ts
+/** 端子の役割。§6.6 の `role`。 */
+export type TerminalRole =
+  | 'coil+'
+  | 'coil-'
+  | 'com'
+  | 'no'
+  | 'nc'
+  | '+'
+  | '-'
+  | 'c'
+  | 'a'
+  | 'b'
+  | 'ac'
+  | 'x'
+  | 'y'
+  | 'ss'
+  | 'plc-com'
+  | 'ac-l'
+  | 'ac-n';
+```
+
+`roleLabel()` に PLC 用の枝を足す（`case 'nc': return 'b';` の後ろ）:
+
+```ts
+    case 'ss':
+      return 'S/S';
+    case 'plc-com':
+      return 'COM';
+    case 'ac-l':
+      return 'L';
+    case 'ac-n':
+      return 'N';
+```
+
+机上デバイスの定数と判定、PLC本体の定義型を足す（`BoardDefinition` の定義の直前）:
+
+```ts
+/** PLC本体の部品ID。§6.4 */
+export const PLC_PART_ID = 'PLC';
+/** 壁コンセントの部品ID。§6.4 / §10.1 */
+export const OUTLET_ID = 'OUTLET';
+
+/**
+ * 机上に置く装置（PLC本体・壁コンセント）の端子か。§10.1
+ * 盤面の座標系・占有矩形・配線帯の外にあるので、`validateBoard()` の盤内判定と
+ * 経路生成（`routeSession()`）から外す。
+ */
+export function isOffBoardTerminal(id: TerminalId | string): boolean {
+  return id.startsWith(`${PLC_PART_ID}.`) || id.startsWith(`${OUTLET_ID}.`);
+}
+
+/**
+ * 机上に置くPLC本体1機種の定義。§10.1
+ * 電気的な仕様（`spec`）は circuit-sim の `createPlcUnit()` にそのまま渡す。
+ * 端子の物理的な並び順は一次資料が未確認のため §10.1 の表の記載順である（§17 #11）。
+ */
+export interface PlcUnitDefinition {
+  /** 機種キー（`fx5u`）。 */
+  id: string;
+  /** 課題JSONの `plc.model` と一致する機種名（`FX5U`）。§7.6 */
+  model: string;
+  /** メーカーキー（`mitsubishi`）。§7.6 */
+  vendor: string;
+  displayName: string;
+  sizeMm: { width: number; height: number; depth: number };
+  /** 机上の設置位置（盤座標の延長。盤の右）。3Dは Plan 3B が描く。 */
+  pos: Vec3;
+  spec: PlcUnitSpec;
+  terminals: readonly BoardTerminal[];
+  /** 本体のLED表示。§10.1 */
+  leds: readonly string[];
+}
+```
+
+`import` に `type PlcUnitSpec` を足す（`@ojt/circuit-sim` から）。`BoardDefinition` に足す:
+
+```ts
+  /** 机上に置くPLC本体（モードDの盤だけが持つ）。`withPlcUnit()` が付ける。§10.1 */
+  plcUnit?: PlcUnitDefinition;
+```
+
+`validateBoard()` の端子ループを1行直す:
+
+```ts
+    if (!isOffBoardTerminal(term.id) && !rectContains(boardRect, term.pos)) {
+      errors.push(`端子が盤の外にあります: ${term.id}`);
+    }
+```
+
+- [ ] **Step 4: `src/plc-unit.ts` を書く**
+
+`packages/board-model/src/plc-unit.ts`:
+
+```ts
+import { type PlcUnitSpec, type TerminalId } from '@ojt/circuit-sim';
+import {
+  OUTLET_ID,
+  PLC_PART_ID,
+  TERMINAL_PICK_RADIUS_MM,
+  type BoardDefinition,
+  type BoardTerminal,
+  type PlcUnitDefinition,
+  type TerminalRole,
+} from './board-jipm.js';
+import { vec3, type Vec3 } from './geometry.js';
+
+/**
+ * 机上に置くPLC本体と壁コンセント。設計仕様 §10.1 / §10.2。
+ *
+ * Phase 3 の対象は三菱 FX5U-32MR/ES のみである（§16）。Phase 4 で CP1E・PC10G-1SP・JW300 を
+ * 足すときは、この形の定義をもう3つ並べて `PLC_UNITS` に登録するだけでよい。
+ * 端子の**並び順**は一次資料が未確認のため §10.1 の表の記載順を採る（§17 #11）。
+ */
+
+/** PLC本体の端子の列ピッチ[mm]（当たり判定半径4mmが重ならない値）。 */
+export const PLC_TERMINAL_PITCH_MM = 9;
+/** 千鳥2列の段間[mm]。 */
+export const PLC_ROW_GAP_MM = 9;
+/** 千鳥のずらし量[mm]。 */
+export const PLC_STAGGER_MM = 4.5;
+/** 机上のPLC本体の左奥の角（盤座標の延長。盤の右）。§10.1 */
+export const PLC_ORIGIN_MM: Vec3 = vec3(390, 18, 0);
+/** 壁コンセントの位置[mm]。 */
+export const OUTLET_ORIGIN_MM: Vec3 = vec3(395, 190, 0);
+
+/** FX5U の入力回路の抵抗[Ω]。§5.1.3 */
+export const FX5U_INPUT_OHMS = 4500;
+/** FX5U の入力ON感度[A]（3.5mA）。§5.1.3 */
+export const FX5U_ON_AMPS = 0.0035;
+/** FX5U の入力OFF感度[A]（1.5mA）。§5.1.3 */
+export const FX5U_OFF_AMPS = 0.0015;
+/** 1コモンあたりの出力点数（本アプリの前提値。§17.1）。 */
+export const FX5U_POINTS_PER_COMMON = 4;
+
+/** 8進表記の端子名を作る（`X0`〜`X7`, `X10`〜`X17`）。§10.1 */
+export function octalNames(prefix: string, count: number): string[] {
+  return Array.from({ length: count }, (_unused, i) => `${prefix}${i.toString(8)}`);
+}
+
+/** FX5U-32MR/ES の電気的な仕様。§10.1 / §5.1.3 */
+export const FX5U_SPEC: PlcUnitSpec = {
+  model: 'FX5U',
+  power: ['L', 'PE', 'N'],
+  inputCommon: 'SS',
+  service: ['24V', '0V'],
+  inputs: octalNames('X', 16),
+  commons: ['COM0', 'COM1', 'COM2', 'COM3'],
+  outputs: octalNames('Y', 16).map((name, index) => ({
+    name,
+    com: `COM${Math.floor(index / FX5U_POINTS_PER_COMMON)}`,
+  })),
+  inputOhms: FX5U_INPUT_OHMS,
+  onAmps: FX5U_ON_AMPS,
+  offAmps: FX5U_OFF_AMPS,
+};
+
+/** 端子名 → 役割（§6.6 の `role`）。 */
+function plcRole(name: string): TerminalRole {
+  if (name === 'L') return 'ac-l';
+  if (name === 'N') return 'ac-n';
+  if (name === 'PE') return 'ac';
+  if (name === 'SS') return 'ss';
+  if (name === '24V') return '+';
+  if (name === '0V') return '-';
+  if (name.startsWith('COM')) return 'plc-com';
+  if (name.startsWith('X')) return 'x';
+  return 'y';
+}
+
+/** 端子名 → 銘板（実機の印字）。 */
+function plcLabel(name: string): string {
+  if (name === 'SS') return 'S/S';
+  if (name === 'PE') return '⏚';
+  return name;
+}
+
+/** 千鳥2列に並べた端子を作る。偶数番が奥列、奇数番が手前列。 */
+function staggeredTerminals(names: readonly string[], origin: Vec3): BoardTerminal[] {
+  return names.map((name, index) => ({
+    id: `${PLC_PART_ID}.${name}` as TerminalId,
+    label: plcLabel(name),
+    role: plcRole(name),
+    pos: vec3(
+      origin.x + Math.floor(index / 2) * PLC_TERMINAL_PITCH_MM + (index % 2) * PLC_STAGGER_MM,
+      origin.y + (index % 2) * PLC_ROW_GAP_MM,
+      origin.z,
+    ),
+    pickRadiusMm: TERMINAL_PICK_RADIUS_MM,
+    wirable: true,
+    optional: false,
+    exit: 'either',
+  }));
+}
+
+/** FX5U の端子（入力側の列 → 出力側の列）。§10.1 の記載順。 */
+function fx5uTerminals(): BoardTerminal[] {
+  const inputSide = [
+    ...FX5U_SPEC.power,
+    FX5U_SPEC.inputCommon,
+    ...(FX5U_SPEC.service ?? []),
+    ...FX5U_SPEC.inputs,
+  ];
+  const outputSide: string[] = [];
+  FX5U_SPEC.outputs.forEach((output, index) => {
+    if (index % FX5U_POINTS_PER_COMMON === 0) outputSide.push(output.com);
+    outputSide.push(output.name);
+  });
+  return [
+    ...staggeredTerminals(inputSide, vec3(PLC_ORIGIN_MM.x + 6, PLC_ORIGIN_MM.y + 6, 0)),
+    ...staggeredTerminals(outputSide, vec3(PLC_ORIGIN_MM.x + 6, PLC_ORIGIN_MM.y + 72, 0)),
+  ];
+}
+
+/** 三菱 FX5U-32MR/ES。§10.1 */
+export const PLC_UNIT_FX5U: PlcUnitDefinition = {
+  id: 'fx5u',
+  model: 'FX5U',
+  vendor: 'mitsubishi',
+  displayName: '三菱 MELSEC iQ-F FX5U-32MR/ES',
+  sizeMm: { width: 150, height: 90, depth: 83 },
+  pos: PLC_ORIGIN_MM,
+  spec: FX5U_SPEC,
+  terminals: fx5uTerminals(),
+  leds: ['PWR', 'ERR', 'P.RUN', 'BAT', 'CARD'],
+};
+
+/** 機種名（課題JSONの `plc.model`）→ 本体定義。Phase 4 で3機種増える。§7.6 */
+export const PLC_UNITS: Readonly<Record<string, PlcUnitDefinition>> = {
+  FX5U: PLC_UNIT_FX5U,
+};
+
+/** 機種名から本体定義を引く。未対応の機種は undefined（課題エラーにするのは content の責務）。 */
+export function plcUnitFor(model: string): PlcUnitDefinition | undefined {
+  return PLC_UNITS[model];
+}
+
+/** 壁コンセント（AC100V）の端子。§10.1 */
+export const OUTLET_TERMINALS: readonly BoardTerminal[] = (['L', 'N'] as const).map(
+  (name, index) => ({
+    id: `${OUTLET_ID}.${name}` as TerminalId,
+    label: name,
+    role: name === 'L' ? ('ac-l' as const) : ('ac-n' as const),
+    pos: vec3(OUTLET_ORIGIN_MM.x + index * PLC_TERMINAL_PITCH_MM, OUTLET_ORIGIN_MM.y, 0),
+    pickRadiusMm: TERMINAL_PICK_RADIUS_MM,
+    wirable: true,
+    optional: false,
+    exit: 'either' as const,
+  }),
+);
+
+/**
+ * 盤にPLC本体と壁コンセントを載せた**派生盤**を返す。§10.1 / 決定表#8
+ * `id` は変えない（セッションは `boardId` で盤と照合するため）。占有矩形・配線帯は
+ * 机上の装置を含まないので、盤の経路生成の不変条件（§6.6）はそのまま保たれる。
+ */
+export function withPlcUnit(board: BoardDefinition, unit: PlcUnitDefinition): BoardDefinition {
+  return {
+    ...board,
+    plcUnit: unit,
+    terminals: [...board.terminals, ...unit.terminals, ...OUTLET_TERMINALS],
+  };
+}
+```
+
+- [ ] **Step 5: `src/to-netlist.ts` と `src/routing.ts` を直す**
+
+`to-netlist.ts` の import に足す:
+
+```ts
+import { createPlcUnit, ... } from '@ojt/circuit-sim';
+import { OUTLET_ID, PLC_PART_ID, SOCKET_IDS, type BoardDefinition } from './board-jipm.js';
+```
+
+`toNetlist()` のソケットのループの後ろ（`const links = ...` の前）に足す:
+
+```ts
+  // 机上のPLC本体と壁コンセントは部品配列の末尾に置く（既存の部品順を変えないため）。§10.1
+  if (board.plcUnit !== undefined) {
+    parts.push(createPlcUnit(PLC_PART_ID, board.plcUnit.spec));
+    parts.push(
+      createTerminalOnlyPart(OUTLET_ID, [
+        terminalId(OUTLET_ID, 'L'),
+        terminalId(OUTLET_ID, 'N'),
+      ]),
+    );
+  }
+```
+
+`routing.ts` の `routeSession()` を直し、`deskWires()` を足す:
+
+```ts
+/** 机上へ渡る電線（盤の経路生成の対象外）。§10.1 / 決定表#9 */
+export interface DeskWire {
+  id: string;
+  from: TerminalId;
+  to: TerminalId;
+  fromPos: Vec3;
+  toPos: Vec3;
+}
+
+/**
+ * セッションの全電線の経路を、配列の並び順に求める。§6.6
+ * （中略：既存のコメント）
+ *
+ * **机上の装置（PLC本体・壁コンセント）に繋がる電線は含まない。** 盤面の配線帯は机上まで
+ * 伸びていないため、経路器にかけると帯・レーン・占有矩形の不変条件が壊れる。机上へ渡る
+ * 電線は {@link deskWires} で取り、3D側は直線のケーブルとして描く（Plan 3B）。
+ */
+export function routeSession(board: BoardDefinition, session: BoardSession): WireRoute[] {
+  const routes: WireRoute[] = [];
+  for (const wire of session.wires) {
+    if (isOffBoardTerminal(wire.from) || isOffBoardTerminal(wire.to)) continue;
+    routes.push(
+      routeWire(
+        board,
+        {
+          id: wire.id,
+          from: toPhysicalTerminal(session.socketRoles, wire.from),
+          to: toPhysicalTerminal(session.socketRoles, wire.to),
+        },
+        routes,
+      ),
+    );
+  }
+  return routes;
+}
+
+/**
+ * 机上へ渡る電線（PLC本体・壁コンセントに繋がるもの）。§10.1
+ * 盤側の端子は物理端子IDに解決してから座標を引く。盤に無い端子（未割当の役割など）は飛ばす。
+ */
+export function deskWires(board: BoardDefinition, session: BoardSession): DeskWire[] {
+  const out: DeskWire[] = [];
+  for (const wire of session.wires) {
+    if (!isOffBoardTerminal(wire.from) && !isOffBoardTerminal(wire.to)) continue;
+    const from = toPhysicalTerminal(session.socketRoles, wire.from);
+    const to = toPhysicalTerminal(session.socketRoles, wire.to);
+    const fromTerminal = findBoardTerminal(board, from);
+    const toTerminal = findBoardTerminal(board, to);
+    if (fromTerminal === undefined || toTerminal === undefined) continue;
+    out.push({ id: wire.id, from, to, fromPos: fromTerminal.pos, toPos: toTerminal.pos });
+  }
+  return out;
+}
+```
+
+（`routing.ts` の import に `findBoardTerminal` と `isOffBoardTerminal` を足す。）
+
+- [ ] **Step 6: `src/index.ts` に再エクスポートを足す**
+
+```ts
+export {
+  FX5U_INPUT_OHMS,
+  FX5U_OFF_AMPS,
+  FX5U_ON_AMPS,
+  FX5U_POINTS_PER_COMMON,
+  FX5U_SPEC,
+  octalNames,
+  OUTLET_ORIGIN_MM,
+  OUTLET_TERMINALS,
+  PLC_ORIGIN_MM,
+  PLC_ROW_GAP_MM,
+  PLC_STAGGER_MM,
+  PLC_TERMINAL_PITCH_MM,
+  PLC_UNIT_FX5U,
+  PLC_UNITS,
+  plcUnitFor,
+  withPlcUnit,
+} from './plc-unit.js';
+```
+
+`./board-jipm.js` の再エクスポートに `isOffBoardTerminal` / `OUTLET_ID` / `PLC_PART_ID` / `type PlcUnitDefinition`、`./routing.js` の再エクスポートに `deskWires` / `type DeskWire` を足す。
+
+- [ ] **Step 7: GREEN を確認する**
+
+```powershell
+pnpm --filter @ojt/board-model exec vitest run test/plc-unit.test.ts test/plc-netlist.test.ts
+pnpm --filter @ojt/board-model exec vitest run
+```
+
+Expected: 新しい2ファイルが `Tests  17 passed (17)`、パッケージ全体は着手時のベースライン（前提#14。目安155件）＋17件が通る。**既存の経路テスト（`routing*.test.ts`）は1件も落ちないはずである**（PLCを載せない盤では `routeSession()` の新しい `continue` に一度も入らない）。
+
+- [ ] **Step 8: カバレッジとコミット**
+
+```powershell
+pnpm --filter @ojt/board-model exec vitest run --coverage
+pnpm --filter @ojt/board-model typecheck
+npx prettier --check "packages/board-model/**/*.ts"
+git add packages/board-model
+git commit -m "feat(board-model): put the FX5U and the wall outlet on the desk beside the board"
+```
+
+---
+## Task 8: `@ojt/plc-dialects` の雛形と `DialectProfile`
+
+**Files:**
+- Create: `packages/plc-dialects/package.json`
+- Create: `packages/plc-dialects/tsconfig.json`
+- Create: `packages/plc-dialects/vitest.config.ts`
+- Create: `packages/plc-dialects/src/profile.ts`
+- Create: `packages/plc-dialects/src/index.ts`
+- Test: `packages/plc-dialects/test/profile.test.ts`
+
+§10.5 のインターフェースと §10.6 のスキン定義の**型**を置く。データ（三菱プロファイル）は Task 9・10 で足す。このパッケージは `@ojt/ladder-core` だけに依存し、逆向きの依存を持たない（§4.2）。
+
+- [ ] **Step 1: 失敗するテストを書く**
+
+`packages/plc-dialects/package.json`:
+
+```json
+{
+  "name": "@ojt/plc-dialects",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@ojt/ladder-core": "workspace:*"
+  }
+}
+```
+
+`packages/plc-dialects/tsconfig.json` と `vitest.config.ts` は `packages/ladder-core` のものと同じ内容にする（`rootDir: "."`、`include` は `src` / `test` / `vitest.config.ts`、カバレッジ閾値90%）。
+
+`packages/plc-dialects/test/profile.test.ts`:
+
+```ts
+import { describe, expect, it } from 'vitest';
+import {
+  DIALECT_IDS,
+  IMPLEMENTED_DIALECT_IDS,
+  MAX_GRID_COLS,
+  MIN_GRID_COLS,
+  UnknownDialectError,
+  availableDialects,
+  getDialect,
+  isDialectId,
+} from '../src/index.js';
+
+describe('方言の一覧', () => {
+  it('lists the four vendors of 決定事項#14 in release order', () => {
+    expect(DIALECT_IDS).toEqual(['mitsubishi', 'jtekt', 'omron', 'sharp']);
+    expect(isDialectId('mitsubishi')).toBe(true);
+    expect(isDialectId('siemens')).toBe(false);
+  });
+
+  it('implements only Mitsubishi in Phase 3 (§16)', () => {
+    expect(IMPLEMENTED_DIALECT_IDS).toEqual(['mitsubishi']);
+    expect(availableDialects().map((d) => d.id)).toEqual(['mitsubishi']);
+  });
+
+  it('throws a readable error for a dialect that Phase 4 will add', () => {
+    expect(() => getDialect('omron')).toThrow(UnknownDialectError);
+    expect(() => getDialect('omron')).toThrow(/Phase 4/u);
+  });
+
+  it('bounds the display grid the settings screen may choose (§10.6)', () => {
+    expect([MIN_GRID_COLS, MAX_GRID_COLS]).toEqual([8, 15]);
+  });
+});
+```
+
+- [ ] **Step 2: RED を確認する**
+
+```powershell
+pnpm install
+pnpm --filter @ojt/plc-dialects exec vitest run
+```
+
+Expected: 失敗。`Error: Failed to load url ../src/index.js`。
+
+- [ ] **Step 3: `src/profile.ts` を書く**
+
+`packages/plc-dialects/src/profile.ts`:
+
+```ts
+import type { Device, DeviceKind, LadderProgram } from '@ojt/ladder-core';
+
+/**
+ * 方言プロファイルのインターフェース。設計仕様 §10.5 / §10.6。
+ *
+ * 1メーカー1機種ぶんの「デバイス表記・タイマ単位・命令語・バリデータ・スキン定義」をまとめた
+ * 実装単位である（§2 用語）。IRとランタイムは方言を知らないので、Phase 4 でメーカーを足すときも
+ * 触るのはこのインターフェースの実装ファイルだけで済む（§17.1 の「修正箇所」の区分）。
+ */
+
+/** 方言ID（決定事項#14 の4メーカー）。 */
+export type DialectId = 'mitsubishi' | 'jtekt' | 'omron' | 'sharp';
+
+/** 方言IDの一覧（初回リリースの順）。 */
+export const DIALECT_IDS: readonly DialectId[] = ['mitsubishi', 'jtekt', 'omron', 'sharp'];
+
+/** Phase 3 で実装済みの方言。§16 */
+export const IMPLEMENTED_DIALECT_IDS: readonly DialectId[] = ['mitsubishi'];
+
+/** 表示グリッドの接点列数の下限・上限（利用者が設定画面で選べる範囲）。§10.6 */
+export const MIN_GRID_COLS = 8;
+/** IRが16列でコイル列に1列使うため上限は15。§10.6 */
+export const MAX_GRID_COLS = 15;
+
+/** 文字列が方言IDか。 */
+export function isDialectId(value: string): value is DialectId {
+  return (DIALECT_IDS as readonly string[]).includes(value);
+}
+
+/** デバイス1種別の番号体系。§10.5 */
+export interface DeviceRange {
+  radix: 8 | 10 | 16;
+  prefix: string;
+  min: number;
+  max: number;
+}
+
+/** 方言バリデータの指摘1件。§10.5 / §10.8 */
+export interface DialectError {
+  code: string;
+  message: string;
+  device?: Device;
+  networkId?: string;
+  row?: number;
+  col?: number;
+}
+
+/** 命令語の項目。§10.5 */
+export type InstructionKey =
+  | 'ld'
+  | 'ldi'
+  | 'and'
+  | 'ani'
+  | 'or'
+  | 'ori'
+  | 'out'
+  | 'set'
+  | 'rst'
+  | 'pulseUp'
+  | 'pulseDown'
+  | 'timer'
+  | 'counter';
+
+/**
+ * ショートカット1件。§10.6
+ * `confirmed` は「一次資料で確認済み（◎）」か「§17.1 の前提方針で採用した慣例（△）」かを表す。
+ * UIは △ の項目に注記を出せる（§12.1 の常設注記と対応する）。
+ */
+export interface ShortcutEntry {
+  action: string;
+  keys: string;
+  label: string;
+  confirmed: boolean;
+}
+
+/** ショートカット表。§10.6 */
+export type ShortcutTable = readonly ShortcutEntry[];
+
+/**
+ * 記号の描画定義。§10.6
+ * **各社のロゴ・アイコン・画面キャプチャ・図記号ビットマップは持たない**（§17 / PLC調査資料 §6）。
+ * ここにあるのは「どの線画を描くか」を指す自前の識別子だけで、描画は Plan 3B が行う。
+ */
+export interface SymbolDrawing {
+  no: string;
+  nc: string;
+  rise: string;
+  fall: string;
+  coil: string;
+  set: string;
+  rst: string;
+  timer: string;
+  counter: string;
+}
+
+/** モニタ中の通電表示色。§10.6 */
+export interface MonitorColors {
+  /** 通電している回路の色。 */
+  powered: string;
+  /** 非通電の色。 */
+  idle: string;
+}
+
+/** 画面構成（パネルの名称と並び）。§10.6 */
+export interface PanelLayout {
+  tree: string;
+  editor: string;
+  output: string;
+  toolbar: readonly string[];
+}
+
+/** タイマ設定値の方言表記。 */
+export interface TimerPresetText {
+  text: string;
+  device: Device;
+}
+
+/** 方言プロファイル。§10.5 */
+export interface DialectProfile {
+  id: DialectId;
+  displayName: string;
+  /** IRのデバイス → 方言表記（`X8` は三菱では `X10`）。 */
+  formatDevice(device: Device): string;
+  /** 方言表記 → IRのデバイス。読めない表記は `Error` を返す（投げない）。 */
+  parseDevice(text: string): Device | Error;
+  deviceRanges: Readonly<Record<DeviceKind, DeviceRange>>;
+  /** ms → 方言のタイマ設定表記。機種で表せない値は `Error`。§10.5 */
+  timerPreset(ms: number, device: Device): TimerPresetText | Error;
+  /** 方言のタイマ設定表記 → ms。 */
+  parseTimerPreset(text: string, device: Device): number | Error;
+  instructionNames: Readonly<Record<InstructionKey, string>>;
+  /** 特殊デバイス番号（`SP0`〜`SP2`）→ 実デバイス名。§10.3 / §10.5 */
+  specialDevices: Readonly<Record<number, string>>;
+  symbols: SymbolDrawing;
+  /** 表示グリッドの接点列数（コイル列を含まない）。§10.6 */
+  gridCols: number;
+  shortcuts: ShortcutTable;
+  /** 「変換」操作を要求するか。§10.6 */
+  convertStep: boolean;
+  monitorColors: MonitorColors;
+  panels: PanelLayout;
+  /** 方言に依る検査（デバイス範囲・タイマ単位・番号重複）。§10.8 */
+  validate(program: LadderProgram): DialectError[];
+  errorMessages: Readonly<Record<string, string>>;
+}
+
+/** まだ実装していない方言を要求されたときに投げる。 */
+export class UnknownDialectError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'UnknownDialectError';
+  }
+}
+```
+
+`packages/plc-dialects/src/index.ts`:
+
+```ts
+export {
+  DIALECT_IDS,
+  IMPLEMENTED_DIALECT_IDS,
+  isDialectId,
+  MAX_GRID_COLS,
+  MIN_GRID_COLS,
+  UnknownDialectError,
+  type DeviceRange,
+  type DialectError,
+  type DialectId,
+  type DialectProfile,
+  type InstructionKey,
+  type MonitorColors,
+  type PanelLayout,
+  type ShortcutEntry,
+  type ShortcutTable,
+  type SymbolDrawing,
+  type TimerPresetText,
+} from './profile.js';
+
+import { DIALECT_IDS, UnknownDialectError, type DialectId, type DialectProfile } from './profile.js';
+
+/**
+ * 実装済みの方言プロファイル。Phase 4 で3つ増える（§16）。
+ * Task 9・10 で `MITSUBISHI_FX5U` を足すまでは空にしておく。
+ */
+const PROFILES: Partial<Record<DialectId, DialectProfile>> = {};
+
+/** 実装済みの方言プロファイル一覧（`DIALECT_IDS` の順）。 */
+export function availableDialects(): DialectProfile[] {
+  return DIALECT_IDS.map((id) => PROFILES[id]).filter(
+    (profile): profile is DialectProfile => profile !== undefined,
+  );
+}
+
+/** 方言プロファイルを引く。未実装のメーカーは `UnknownDialectError`。 */
+export function getDialect(id: DialectId): DialectProfile {
+  const profile = PROFILES[id];
+  if (profile === undefined) {
+    throw new UnknownDialectError(`この方言はまだ実装されていません（Phase 4 で追加します）: ${id}`);
+  }
+  return profile;
+}
+```
+
+**注意:** この段階では `PROFILES` が空なので `IMPLEMENTED_DIALECT_IDS` と `availableDialects()` が食い違う。テストの `IMPLEMENTED_DIALECT_IDS` / `availableDialects()` の2件は **Task 9 で三菱を登録したあとに通る**。この2件は Task 8 の時点では `it.todo` にせず、**Task 9 の GREEN 条件**として扱う（Task 8 の Step 4 では残り2件が通ればよい）。
+
+- [ ] **Step 4: 部分 GREEN を確認する**
+
+```powershell
+pnpm --filter @ojt/plc-dialects exec vitest run
+```
+
+Expected: `Tests  2 passed | 2 failed`（方言一覧と表示列数の2件が通り、`IMPLEMENTED_DIALECT_IDS` と `availableDialects()` の2件が Task 9 待ちで落ちる）。
+
+- [ ] **Step 5: コミットする**
+
+```powershell
+pnpm --filter @ojt/plc-dialects typecheck
+npx prettier --check "packages/plc-dialects/**/*.{ts,json}"
+git add packages/plc-dialects
+git commit -m "feat(plc-dialects): define the dialect profile and skin interfaces"
+```
+
+---
+
+## Task 9: 三菱 FX5U のデバイス体系とタイマ単位
+
+**Files:**
+- Create: `packages/plc-dialects/src/mitsubishi.ts`
+- Modify: `packages/plc-dialects/src/index.ts`
+- Test: `packages/plc-dialects/test/mitsubishi-devices.test.ts`
+
+§10.5 の表の三菱の列を実装する。X/Y は**8進**、M/T/C は10進、特殊デバイスは `M8000`（常時ON）/ `M8002`（初期パルス）/ `M8013`（1秒クロック）。タイマ単位は「既定100ms／`T200`〜10ms／`T256`〜1ms」（§17 #20 の前提値）で、**ゴールデンケース #25**（`T0 K100`=10s、`T200 K100`=1s）をここで固定する。
+
+| 決めること | 本タスクの実装 |
+|---|---|
+| 8進表記 | `formatDevice(X(8))` → `'X10'`。`parseDevice('X8')` は `Error`（8進に8・9は無い。§10.5 の固有バリデーション） |
+| 特殊デバイス | `formatDevice(SP(0))` → `'M8000'`。`parseDevice('M8000')` は**特殊デバイス**として返す（内部リレーの `M8000` とは解釈しない） |
+| タイマ単位 | 番号で時間単位が変わる。`T0`〜`T199`=100ms、`T200`〜`T255`=10ms、`T256`以上=1ms |
+| 表せない値 | `timerPreset(15, T(0))` は `Error`（UIが §10.5 の「100ms 刻みに丸めますか？」を出す） |
+
+- [ ] **Step 1: 失敗するテストを書く**
+
+`packages/plc-dialects/test/mitsubishi-devices.test.ts`:
+
+```ts
+import { C, M, SP, T, X, Y } from '@ojt/ladder-core';
+import { describe, expect, it } from 'vitest';
+import { getDialect, MITSUBISHI_FX5U, TIMER_BASE_MS } from '../src/index.js';
+
+const profile = MITSUBISHI_FX5U;
+
+describe('三菱 FX5U のデバイス表記（§10.5）', () => {
+  it('is registered as the mitsubishi dialect', () => {
+    expect(getDialect('mitsubishi')).toBe(profile);
+    expect(profile.id).toBe('mitsubishi');
+    expect(profile.displayName).toContain('FX5U');
+  });
+
+  it('formats X and Y in octal and M/T/C in decimal', () => {
+    expect(profile.formatDevice(X(0))).toBe('X0');
+    expect(profile.formatDevice(X(7))).toBe('X7');
+    expect(profile.formatDevice(X(8))).toBe('X10');
+    expect(profile.formatDevice(Y(15))).toBe('Y17');
+    expect(profile.formatDevice(M(10))).toBe('M10');
+    expect(profile.formatDevice(T(200))).toBe('T200');
+    expect(profile.formatDevice(C(3))).toBe('C3');
+  });
+
+  it('maps the three special devices to the FX numbers (§10.5 / §17 #22)', () => {
+    expect(profile.formatDevice(SP(0))).toBe('M8000');
+    expect(profile.formatDevice(SP(1))).toBe('M8002');
+    expect(profile.formatDevice(SP(2))).toBe('M8013');
+    expect(profile.specialDevices).toEqual({ 0: 'M8000', 1: 'M8002', 2: 'M8013' });
+  });
+
+  it('parses the dialect notation back into IR devices', () => {
+    expect(profile.parseDevice('X10')).toEqual(X(8));
+    expect(profile.parseDevice('Y17')).toEqual(Y(15));
+    expect(profile.parseDevice('M100')).toEqual(M(100));
+    expect(profile.parseDevice('T7')).toEqual(T(7));
+    expect(profile.parseDevice('C0')).toEqual(C(0));
+    expect(profile.parseDevice('M8002')).toEqual(SP(1));
+  });
+
+  it('rejects octal digits 8 and 9 on X and Y (§10.5 の固有バリデーション)', () => {
+    expect(profile.parseDevice('X8')).toBeInstanceOf(Error);
+    expect(profile.parseDevice('Y9')).toBeInstanceOf(Error);
+    expect(String(profile.parseDevice('X8'))).toContain('8進');
+  });
+
+  it('rejects unknown prefixes and out-of-range numbers', () => {
+    expect(profile.parseDevice('Z0')).toBeInstanceOf(Error);
+    expect(profile.parseDevice('')).toBeInstanceOf(Error);
+    expect(profile.parseDevice('T9000')).toBeInstanceOf(Error);
+    expect(profile.parseDevice('X2000')).toBeInstanceOf(Error);
+  });
+
+  it('publishes the device ranges of §10.5', () => {
+    expect(profile.deviceRanges.input).toEqual({ radix: 8, prefix: 'X', min: 0, max: 1023 });
+    expect(profile.deviceRanges.internal).toEqual({ radix: 10, prefix: 'M', min: 0, max: 32767 });
+    expect(profile.deviceRanges.timer).toEqual({ radix: 10, prefix: 'T', min: 0, max: 7999 });
+    expect(profile.deviceRanges.counter.max).toBe(32767);
+  });
+});
+
+describe('三菱 FX5U のタイマ単位（ゴールデンケース #25 / §8.2 / §17 #20）', () => {
+  it('uses 100 ms up to T199, 10 ms from T200 and 1 ms from T256', () => {
+    expect(TIMER_BASE_MS(T(0))).toBe(100);
+    expect(TIMER_BASE_MS(T(199))).toBe(100);
+    expect(TIMER_BASE_MS(T(200))).toBe(10);
+    expect(TIMER_BASE_MS(T(255))).toBe(10);
+    expect(TIMER_BASE_MS(T(256))).toBe(1);
+  });
+
+  it('renders T0 K100 as 10 s and T200 K100 as 1 s (#25)', () => {
+    expect(profile.timerPreset(10_000, T(0))).toEqual({ text: 'K100', device: T(0) });
+    expect(profile.timerPreset(1_000, T(200))).toEqual({ text: 'K100', device: T(200) });
+    expect(profile.parseTimerPreset('K100', T(0))).toBe(10_000);
+    expect(profile.parseTimerPreset('K100', T(200))).toBe(1_000);
+    expect(profile.parseTimerPreset('K30', T(256))).toBe(30);
+  });
+
+  it('refuses a preset the numbering band cannot express (§10.5)', () => {
+    const error = profile.timerPreset(15, T(0));
+    expect(error).toBeInstanceOf(Error);
+    expect(String(error)).toContain('100ms');
+    expect(profile.timerPreset(0, T(0))).toBeInstanceOf(Error);
+    expect(profile.timerPreset(10_000_000, T(0))).toBeInstanceOf(Error);
+    expect(profile.timerPreset(15, T(200))).toBeInstanceOf(Error);
+    expect(profile.timerPreset(150, T(200))).toEqual({ text: 'K15', device: T(200) });
+  });
+
+  it('refuses a preset text that is not K<number>', () => {
+    expect(profile.parseTimerPreset('100', T(0))).toBeInstanceOf(Error);
+    expect(profile.parseTimerPreset('K', T(0))).toBeInstanceOf(Error);
+    expect(profile.parseTimerPreset('K0', T(0))).toBeInstanceOf(Error);
+    expect(profile.parseTimerPreset('K40000', T(0))).toBeInstanceOf(Error);
+  });
+});
+```
+
+- [ ] **Step 2: RED を確認する**
+
+```powershell
+pnpm --filter @ojt/plc-dialects exec vitest run test/mitsubishi-devices.test.ts
+```
+
+Expected: 失敗。`SyntaxError: The requested module '../src/index.js' does not provide an export named 'MITSUBISHI_FX5U'`。
+
+- [ ] **Step 3: `src/mitsubishi.ts` を書く（デバイスとタイマ部分）**
+
+`packages/plc-dialects/src/mitsubishi.ts`:
+
+```ts
+import {
+  device,
+  deviceLabel,
+  SPECIAL_ALWAYS_ON,
+  SPECIAL_CLOCK_1S,
+  SPECIAL_FIRST_SCAN,
+  type Device,
+  type DeviceKind,
+  type LadderProgram,
+} from '@ojt/ladder-core';
+import type {
+  DeviceRange,
+  DialectError,
+  DialectProfile,
+  InstructionKey,
+  MonitorColors,
+  PanelLayout,
+  ShortcutTable,
+  SymbolDrawing,
+  TimerPresetText,
+} from './profile.js';
+
+/**
+ * 三菱 MELSEC iQ-F FX5U ＋ GX Works3風スキンの方言プロファイル。設計仕様 §10.5 / §10.6。
+ *
+ * 命令語・タイマ単位・特殊リレー番号のうち一次資料で確認できていない項目は、§17.1 の前提方針に
+ * 従って「三菱系ツールで広く知られた値」を本アプリの表記として採用している（§17 #19・#20・#22）。
+ * 実機と異なると分かった場合の修正箇所は**このファイルだけ**で、IR・ランタイム・回路エンジンは
+ * 変更しなくてよい。
+ */
+
+/** タイマの番号帯ごとの時間単位[ms]。§8.2 / §17 #20 */
+export function TIMER_BASE_MS(timer: Device): number {
+  if (timer.index >= 256) return 1;
+  if (timer.index >= 200) return 10;
+  return 100;
+}
+
+/** タイマ設定値 `K` の範囲。 */
+const MIN_K = 1;
+const MAX_K = 32_767;
+
+/** デバイス種別ごとの番号体系。§10.5 */
+const DEVICE_RANGES: Readonly<Record<DeviceKind, DeviceRange>> = {
+  input: { radix: 8, prefix: 'X', min: 0, max: 1023 },
+  output: { radix: 8, prefix: 'Y', min: 0, max: 1023 },
+  internal: { radix: 10, prefix: 'M', min: 0, max: 32_767 },
+  timer: { radix: 10, prefix: 'T', min: 0, max: 7_999 },
+  counter: { radix: 10, prefix: 'C', min: 0, max: 32_767 },
+  special: { radix: 10, prefix: 'M', min: 0, max: 2 },
+};
+
+/** 特殊デバイス番号 → FX の実デバイス名。§10.5 / §17 #22 */
+const SPECIAL_DEVICES: Readonly<Record<number, string>> = {
+  [SPECIAL_ALWAYS_ON]: 'M8000',
+  [SPECIAL_FIRST_SCAN]: 'M8002',
+  [SPECIAL_CLOCK_1S]: 'M8013',
+};
+
+/** 実デバイス名 → 特殊デバイス番号（`parseDevice` 用の逆引き）。 */
+const SPECIAL_BY_NAME = new Map<string, number>(
+  Object.entries(SPECIAL_DEVICES).map(([index, name]) => [name, Number(index)]),
+);
+
+/** IRのデバイス → 方言表記。X/Y は8進。§10.5 */
+function formatDevice(target: Device): string {
+  if (target.kind === 'special') return SPECIAL_DEVICES[target.index] ?? deviceLabel(target);
+  const range = DEVICE_RANGES[target.kind];
+  return `${range.prefix}${target.index.toString(range.radix)}`;
+}
+
+/** 方言表記 → IRのデバイス。読めない表記は Error を返す（投げない）。§10.5 */
+function parseDevice(text: string): Device | Error {
+  const trimmed = text.trim().toUpperCase();
+  const special = SPECIAL_BY_NAME.get(trimmed);
+  if (special !== undefined) return device('special', special);
+  const matched = /^([XYMTC])([0-9]+)$/u.exec(trimmed);
+  if (matched === null) return new Error(`読めないデバイス表記です: ${text}`);
+  const prefix = matched[1] ?? '';
+  const digits = matched[2] ?? '';
+  const kind = (Object.keys(DEVICE_RANGES) as DeviceKind[]).find(
+    (k) => k !== 'special' && DEVICE_RANGES[k].prefix === prefix,
+  );
+  if (kind === undefined) return new Error(`読めないデバイス表記です: ${text}`);
+  const range = DEVICE_RANGES[kind];
+  if (range.radix === 8 && /[89]/u.test(digits)) {
+    return new Error(`${prefix} は8進で表記します（8・9は使えません）: ${text}`);
+  }
+  const index = parseInt(digits, range.radix);
+  if (!Number.isFinite(index) || index < range.min || index > range.max) {
+    return new Error(`デバイス番号が範囲外です（${range.prefix}${range.min}〜）: ${text}`);
+  }
+  return device(kind, index);
+}
+
+/** ms → `K` 表記。番号帯の単位で割り切れないと Error。§10.5 */
+function timerPreset(ms: number, timer: Device): TimerPresetText | Error {
+  const base = TIMER_BASE_MS(timer);
+  if (!Number.isInteger(ms) || ms <= 0 || ms % base !== 0) {
+    return new Error(
+      `${formatDevice(timer)} は ${base}ms 単位で指定します（${ms}ms は指定できません）`,
+    );
+  }
+  const k = ms / base;
+  if (k < MIN_K || k > MAX_K) {
+    return new Error(`${formatDevice(timer)} の設定値が範囲外です（K${MIN_K}〜K${MAX_K}）: K${k}`);
+  }
+  return { text: `K${k}`, device: timer };
+}
+
+/** `K` 表記 → ms。§10.5 */
+function parseTimerPreset(text: string, timer: Device): number | Error {
+  const matched = /^K([0-9]+)$/u.exec(text.trim().toUpperCase());
+  const digits = matched?.[1];
+  if (digits === undefined) return new Error(`タイマ設定値は K<数値> の形式です: ${text}`);
+  const k = Number(digits);
+  if (k < MIN_K || k > MAX_K) {
+    return new Error(`タイマ設定値が範囲外です（K${MIN_K}〜K${MAX_K}）: ${text}`);
+  }
+  return k * TIMER_BASE_MS(timer);
+}
+```
+
+（この続き――`validate()` とスキン定義、`MITSUBISHI_FX5U` の組み立て――は Task 10 で書く。Task 9 の時点では `MITSUBISHI_FX5U` を**先に空でない形で**作る必要があるため、下の暫定オブジェクトを置き、Task 10 で中身を差し替える。）
+
+```ts
+/** 三菱 FX5U ＋ GX Works3風スキン。スキン定義とバリデータは Task 10 で埋める。 */
+export const MITSUBISHI_FX5U: DialectProfile = {
+  id: 'mitsubishi',
+  displayName: '三菱電機 MELSEC iQ-F FX5U（GX Works3風）',
+  formatDevice,
+  parseDevice,
+  deviceRanges: DEVICE_RANGES,
+  timerPreset,
+  parseTimerPreset,
+  specialDevices: SPECIAL_DEVICES,
+  instructionNames: INSTRUCTION_NAMES,
+  symbols: SYMBOLS,
+  gridCols: 11,
+  shortcuts: SHORTCUTS,
+  convertStep: true,
+  monitorColors: MONITOR_COLORS,
+  panels: PANELS,
+  validate,
+  errorMessages: ERROR_MESSAGES,
+};
+```
+
+**Task 9 での最小実装:** `INSTRUCTION_NAMES` / `SYMBOLS` / `SHORTCUTS` / `MONITOR_COLORS` / `PANELS` / `ERROR_MESSAGES` / `validate` は Task 10 で本実装するが、Task 9 の時点でも**型が通る値**が必要である。Task 10 の Step 3 にある定義をそのまま先に書いてよい（そのほうが差分が小さい）。`validate` だけは Task 9 では `() => []` にしておき、Task 10 で中身を入れる。
+
+`packages/plc-dialects/src/index.ts` に足す（`PROFILES` の定義を差し替える）:
+
+```ts
+import { MITSUBISHI_FX5U } from './mitsubishi.js';
+
+const PROFILES: Partial<Record<DialectId, DialectProfile>> = { mitsubishi: MITSUBISHI_FX5U };
+```
+
+さらに再エクスポートを足す:
+
+```ts
+export { MITSUBISHI_FX5U, TIMER_BASE_MS } from './mitsubishi.js';
+```
+
+- [ ] **Step 4: GREEN を確認する**
+
+```powershell
+pnpm --filter @ojt/plc-dialects exec vitest run
+```
+
+Expected: `Tests  14 passed (14)`（Task 8 で保留していた `IMPLEMENTED_DIALECT_IDS` / `availableDialects()` の2件もここで通る）。
+
+- [ ] **Step 5: コミットする**
+
+```powershell
+pnpm --filter @ojt/plc-dialects typecheck
+npx prettier --check "packages/plc-dialects/**/*.ts"
+git add packages/plc-dialects
+git commit -m "feat(plc-dialects): add the FX5U device notation and timer bands (golden #25)"
+```
+
+---
+
+## Task 10: 方言バリデータ・GX Works3風スキン・「変換」
+
+**Files:**
+- Modify: `packages/plc-dialects/src/mitsubishi.ts`
+- Create: `packages/plc-dialects/src/convert.ts`
+- Modify: `packages/plc-dialects/src/index.ts`
+- Test: `packages/plc-dialects/test/mitsubishi-validate.test.ts`
+- Test: `packages/plc-dialects/test/convert.test.ts`
+- Test: `packages/plc-dialects/test/skin.test.ts`
+
+§10.5 の固有バリデーション、§10.6 の GX Works3風スキン定義、そして決定事項#15 の「変換」操作を実装する。「変換」＝ `compile()`（構造）＋ `profile.validate()`（方言）で、結果は §10.6 の出力ウィンドウに並ぶ1つの一覧になる。
+
+| 決めること | 本タスクの実装 |
+|---|---|
+| `validate()` | デバイス番号の範囲外（`device-range`）／タイマ設定値が番号帯で表せない（`timer-unit`）／カウンタ設定値が範囲外（`counter-range`）／未対応の特殊デバイス（`special-unsupported`） |
+| スキン | `gridCols: 11`、`monitorColors.powered: '#1E64FF'`、`convertStep: true`、ショートカット表は §10.6 の◎（一次資料）と△（慣例）を `confirmed` で区別する |
+| `convert()` | `compile()` のエラーと `validate()` の指摘を1つの配列にまとめ、両方空のときだけ `ok: true`。二重コイルの警告は `ok: true` でも返す |
+
+- [ ] **Step 1: 失敗するテストを書く**
+
+`packages/plc-dialects/test/mitsubishi-validate.test.ts`:
+
+```ts
+import {
+  C,
+  ctu,
+  endNetwork,
+  hline,
+  IR_COLS,
+  network,
+  no,
+  out,
+  program,
+  SP,
+  T,
+  ton,
+  X,
+  Y,
+  type Cell,
+} from '@ojt/ladder-core';
+import { describe, expect, it } from 'vitest';
+import { MITSUBISHI_FX5U } from '../src/index.js';
+
+function rung(...cells: Cell[]): Cell[] {
+  const row = [...cells];
+  const output = row.pop();
+  if (output === undefined) throw new Error('出力セルが要ります');
+  while (row.length < IR_COLS - 1) row.push(hline());
+  row.push(output);
+  return row;
+}
+
+const profile = MITSUBISHI_FX5U;
+
+describe('三菱バリデータ（§10.5 固有バリデーション / §10.8）', () => {
+  it('accepts a program that stays inside the device ranges', () => {
+    const p = program(network('n1', [rung(no(X(0)), out(Y(3)))]), endNetwork());
+    expect(profile.validate(p)).toEqual([]);
+  });
+
+  it('reports a device number outside the range', () => {
+    const p = program(network('n1', [rung(no(X(2000)), out(Y(0)))]), endNetwork());
+    const errors = profile.validate(p);
+    expect(errors.map((e) => e.code)).toEqual(['device-range']);
+    expect(errors[0]?.message).toContain('X');
+    expect(errors[0]?.networkId).toBe('n1');
+  });
+
+  it('reports a timer preset the numbering band cannot express (§10.5)', () => {
+    const p = program(network('n1', [rung(no(X(0)), ton(T(0), 150))]), endNetwork());
+    const errors = profile.validate(p);
+    expect(errors.map((e) => e.code)).toEqual(['timer-unit']);
+    expect(errors[0]?.message).toContain('100ms');
+    // T200 帯なら 10ms 単位なので 150ms は通る
+    const ok = program(network('n1', [rung(no(X(0)), ton(T(200), 150))]), endNetwork());
+    expect(profile.validate(ok)).toEqual([]);
+  });
+
+  it('reports a counter preset outside the range', () => {
+    const p = program(network('n1', [rung(no(X(0)), ctu(C(0), 40_000, X(1)))]), endNetwork());
+    expect(profile.validate(p).map((e) => e.code)).toEqual(['counter-range']);
+  });
+
+  it('accepts the three special devices the profile maps', () => {
+    const p = program(
+      network('n1', [rung(no(SP(0)), out(Y(0)))]),
+      network('n2', [rung(no(SP(2)), out(Y(1)))]),
+      endNetwork(),
+    );
+    expect(profile.validate(p)).toEqual([]);
+  });
+
+  it('has a Japanese message for every error code it can raise', () => {
+    for (const code of ['device-range', 'timer-unit', 'counter-range', 'special-unsupported']) {
+      expect(profile.errorMessages[code]).toBeDefined();
+    }
+  });
+});
+```
+
+`packages/plc-dialects/test/convert.test.ts`:
+
+```ts
+import {
+  endNetwork,
+  hline,
+  IR_COLS,
+  network,
+  no,
+  out,
+  program,
+  T,
+  ton,
+  X,
+  Y,
+  type Cell,
+} from '@ojt/ladder-core';
+import { describe, expect, it } from 'vitest';
+import { convert, MITSUBISHI_FX5U } from '../src/index.js';
+
+function rung(...cells: Cell[]): Cell[] {
+  const row = [...cells];
+  const output = row.pop();
+  if (output === undefined) throw new Error('出力セルが要ります');
+  while (row.length < IR_COLS - 1) row.push(hline());
+  row.push(output);
+  return row;
+}
+
+describe('convert（決定事項#15 の「変換」）', () => {
+  it('returns the compiled program when both checks pass', () => {
+    const result = convert(program(network('n1', [rung(no(X(0)), out(Y(0)))]), endNetwork()), MITSUBISHI_FX5U);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.program.networks).toHaveLength(2);
+    expect(result.errors).toEqual([]);
+    expect(result.warnings).toEqual([]);
+  });
+
+  it('reports structural errors with source "structure" (§10.3)', () => {
+    const result = convert(program(network('n1', [rung(no(X(0)), out(Y(0)))])), MITSUBISHI_FX5U);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.errors[0]?.source).toBe('structure');
+    expect(result.errors[0]?.code).toBe('missing-end');
+  });
+
+  it('reports dialect errors with source "dialect" (§10.5)', () => {
+    const result = convert(
+      program(network('n1', [rung(no(X(0)), ton(T(0), 150))]), endNetwork()),
+      MITSUBISHI_FX5U,
+    );
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.errors.map((e) => e.source)).toEqual(['dialect']);
+    expect(result.errors[0]?.code).toBe('timer-unit');
+  });
+
+  it('keeps the double-coil warning on a successful conversion (§10.4)', () => {
+    const result = convert(
+      program(
+        network('n1', [rung(no(X(0)), out(Y(0)))]),
+        network('n2', [rung(no(X(1)), out(Y(0)))]),
+        endNetwork(),
+      ),
+      MITSUBISHI_FX5U,
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.warnings.map((w) => w.code)).toEqual(['double-coil']);
+  });
+
+  it('runs the dialect checks even when the structure already failed', () => {
+    const result = convert(
+      program(network('n1', [rung(no(X(2000)), ton(T(0), 150))])),
+      MITSUBISHI_FX5U,
+    );
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(new Set(result.errors.map((e) => e.source))).toEqual(new Set(['structure', 'dialect']));
+  });
+});
+```
+
+`packages/plc-dialects/test/skin.test.ts`:
+
+```ts
+import { describe, expect, it } from 'vitest';
+import { MAX_GRID_COLS, MIN_GRID_COLS, MITSUBISHI_FX5U } from '../src/index.js';
+
+const skin = MITSUBISHI_FX5U;
+
+describe('GX Works3風スキン（§10.6）', () => {
+  it('requires the conversion step (§10.6 の操作フロー)', () => {
+    expect(skin.convertStep).toBe(true);
+  });
+
+  it('shows 11 contact columns and the Mitsubishi monitor colour (§10.6 の本アプリ既定)', () => {
+    expect(skin.gridCols).toBe(11);
+    expect(skin.gridCols).toBeGreaterThanOrEqual(MIN_GRID_COLS);
+    expect(skin.gridCols).toBeLessThanOrEqual(MAX_GRID_COLS);
+    expect(skin.monitorColors.powered).toBe('#1E64FF');
+  });
+
+  it('binds F5 / F7 / F4 as §16 Phase 3 の受入基準① requires', () => {
+    const keysOf = (action: string): string | undefined =>
+      skin.shortcuts.find((s) => s.action === action)?.keys;
+    expect(keysOf('contact-no')).toBe('F5');
+    expect(keysOf('coil')).toBe('F7');
+    expect(keysOf('convert')).toBe('F4');
+    expect(keysOf('contact-nc')).toBe('F6');
+    expect(keysOf('or-contact-no')).toBe('Shift+F5');
+    expect(keysOf('toggle-no-nc')).toBe('/');
+  });
+
+  it('marks which shortcuts come from a primary source and which are assumptions (§17.1)', () => {
+    const confirmed = skin.shortcuts.filter((s) => s.confirmed).map((s) => s.keys);
+    const assumed = skin.shortcuts.filter((s) => !s.confirmed).map((s) => s.keys);
+    expect(confirmed).toContain('F5');
+    expect(confirmed).toContain('F7');
+    expect(assumed).toContain('F4');
+    expect(assumed).toContain('F6');
+  });
+
+  it('names the instructions of §10.5 / §17 #21', () => {
+    expect(skin.instructionNames.ld).toBe('LD');
+    expect(skin.instructionNames.ldi).toBe('LDI');
+    expect(skin.instructionNames.out).toBe('OUT');
+    expect(skin.instructionNames.pulseUp).toBe('PLS');
+    expect(skin.instructionNames.pulseDown).toBe('PLF');
+    expect(skin.instructionNames.timer).toBe('OUT T');
+    expect(skin.instructionNames.counter).toBe('OUT C');
+  });
+
+  it('lists the three GX Works3 panels without borrowing any vendor artwork (§17 / PLC調査資料 §6)', () => {
+    expect(skin.panels.tree).toContain('ナビゲーション');
+    expect(skin.panels.editor).toContain('ラダー');
+    expect(skin.panels.output).toContain('出力');
+    expect(skin.panels.toolbar.length).toBeGreaterThan(0);
+    // 記号定義は自前の線画の識別子だけを持つ（画像ファイル名やロゴを含まない）
+    for (const value of Object.values(skin.symbols)) {
+      expect(value).toMatch(/^[a-z-]+$/u);
+    }
+  });
+});
+```
+
+- [ ] **Step 2: RED を確認する**
+
+```powershell
+pnpm --filter @ojt/plc-dialects exec vitest run
+```
+
+Expected: 失敗。`convert` が未実装（`does not provide an export named 'convert'`）で、`validate()` が空配列を返すため方言バリデータの4件も落ちる。
+
+- [ ] **Step 3: `src/mitsubishi.ts` に定義とバリデータを入れる**
+
+Task 9 で仮置きした定数を本実装にする:
+
+```ts
+/** 命令語。§10.5 / §17 #21（FX3系の体系を採用） */
+const INSTRUCTION_NAMES: Readonly<Record<InstructionKey, string>> = {
+  ld: 'LD',
+  ldi: 'LDI',
+  and: 'AND',
+  ani: 'ANI',
+  or: 'OR',
+  ori: 'ORI',
+  out: 'OUT',
+  set: 'SET',
+  rst: 'RST',
+  pulseUp: 'PLS',
+  pulseDown: 'PLF',
+  timer: 'OUT T',
+  counter: 'OUT C',
+};
+
+/** 記号の線画（自前の識別子。ベンダーの図記号ビットマップは持たない）。§10.6 / §17 */
+const SYMBOLS: SymbolDrawing = {
+  no: 'contact-no',
+  nc: 'contact-nc',
+  rise: 'contact-rise',
+  fall: 'contact-fall',
+  coil: 'coil-round',
+  set: 'coil-set',
+  rst: 'coil-reset',
+  timer: 'coil-timer',
+  counter: 'coil-counter',
+};
+
+/** モニタ中の通電表示色（本アプリ既定。§10.6 / §17 #19） */
+const MONITOR_COLORS: MonitorColors = { powered: '#1E64FF', idle: '#6B7280' };
+
+/** 画面構成。§10.6 */
+const PANELS: PanelLayout = {
+  tree: 'ナビゲーションウィンドウ（プロジェクトツリー）',
+  editor: 'ラダーエディタ',
+  output: '出力ウィンドウ',
+  toolbar: ['変換', '全変換', '書込みモード', '読出しモード', 'モニタ開始', 'モニタ停止'],
+};
+
+/**
+ * ショートカット表。§10.6
+ * `confirmed: true` は PLC調査資料 §1-D で確認済みの割当（◎）、`false` は §17.1 の前提方針で
+ * 採用した三菱系ツールの慣例（△）である。UIは △ に注記を出せる（§12.1）。
+ */
+const SHORTCUTS: ShortcutTable = [
+  { action: 'contact-no', keys: 'F5', label: 'a接点', confirmed: true },
+  { action: 'contact-nc', keys: 'F6', label: 'b接点', confirmed: false },
+  { action: 'or-contact-no', keys: 'Shift+F5', label: 'OR a接点', confirmed: false },
+  { action: 'or-contact-nc', keys: 'Shift+F6', label: 'OR b接点', confirmed: false },
+  { action: 'coil', keys: 'F7', label: 'コイル', confirmed: true },
+  { action: 'application', keys: 'F8', label: '応用命令', confirmed: true },
+  { action: 'hline', keys: 'F9', label: '横線', confirmed: false },
+  { action: 'vline', keys: 'Shift+F9', label: '縦線', confirmed: false },
+  { action: 'convert', keys: 'F4', label: '変換', confirmed: false },
+  { action: 'toggle-no-nc', keys: '/', label: 'a接点・b接点の切換', confirmed: true },
+  { action: 'toggle-pulse', keys: 'Alt+/', label: '微分・SET/RST の切換', confirmed: true },
+  { action: 'write-mode', keys: 'F2', label: '書込みモード', confirmed: true },
+  { action: 'read-mode', keys: 'Shift+F2', label: '読出しモード', confirmed: true },
+  { action: 'monitor', keys: 'F3', label: 'モニタ', confirmed: true },
+  { action: 'monitor-write', keys: 'Shift+F3', label: 'モニタ（書込み）', confirmed: true },
+  { action: 'insert-toggle', keys: 'Ins', label: '挿入・上書きの切換', confirmed: true },
+  { action: 'next-symbol', keys: 'Tab', label: '次の回路記号', confirmed: true },
+  { action: 'help', keys: 'F1', label: 'ヘルプ', confirmed: true },
+];
+
+/** 方言エラーの日本語文言。§10.5 の `errorMessages` */
+const ERROR_MESSAGES: Readonly<Record<string, string>> = {
+  'device-range': 'デバイス番号がこの機種の範囲を超えています',
+  'timer-unit': 'このタイマ番号の時間単位では指定できない設定値です',
+  'counter-range': 'カウンタ設定値がこの機種の範囲を超えています',
+  'special-unsupported': 'この機種に対応する特殊デバイスがありません',
+};
+
+/** セルが参照するデバイスを列挙する（設定値の検査もここで行う）。 */
+function checkCell(
+  networkId: string,
+  row: number,
+  col: number,
+  cell: Cell,
+  errors: DialectError[],
+): void {
+  const devices: Device[] = [];
+  if (cell.kind === 'contact' || cell.kind === 'coil' || cell.kind === 'mc' || cell.kind === 'mcr') {
+    devices.push(cell.device);
+  } else if (cell.kind === 'timer') {
+    devices.push(cell.device);
+    const preset = timerPreset(cell.presetMs, cell.device);
+    if (preset instanceof Error) {
+      errors.push({
+        code: 'timer-unit',
+        message: preset.message,
+        device: cell.device,
+        networkId,
+        row,
+        col,
+      });
+    }
+  } else if (cell.kind === 'counter') {
+    devices.push(cell.device, cell.resetDevice);
+    if (cell.preset < 1 || cell.preset > MAX_K) {
+      errors.push({
+        code: 'counter-range',
+        message: `カウンタ設定値が範囲外です（1〜${MAX_K}）: ${cell.preset}`,
+        device: cell.device,
+        networkId,
+        row,
+        col,
+      });
+    }
+  }
+  for (const target of devices) {
+    if (target.kind === 'special') {
+      if (SPECIAL_DEVICES[target.index] === undefined) {
+        errors.push({
+          code: 'special-unsupported',
+          message: `この機種にはない特殊デバイスです: SP${target.index}`,
+          device: target,
+          networkId,
+          row,
+          col,
+        });
+      }
+      continue;
+    }
+    const range = DEVICE_RANGES[target.kind];
+    if (target.index < range.min || target.index > range.max) {
+      errors.push({
+        code: 'device-range',
+        message: `${range.prefix} の番号が範囲外です（${range.prefix}${range.min}〜${range.prefix}${range.max.toString(range.radix)}）: ${formatDevice(target)}`,
+        device: target,
+        networkId,
+        row,
+        col,
+      });
+    }
+  }
+}
+
+/** 方言に依る検査。§10.5 / §10.8 */
+function validate(source: LadderProgram): DialectError[] {
+  const errors: DialectError[] = [];
+  for (const net of source.networks) {
+    net.cells.forEach((cells, row) => {
+      cells.forEach((cell, col) => {
+        if (cell.kind === 'empty') return;
+        checkCell(net.id, row, col, cell, errors);
+      });
+    });
+  }
+  return errors;
+}
+```
+
+（`import` に `type Cell` を足す。）
+
+- [ ] **Step 4: `src/convert.ts` を書く**
+
+```ts
+import { compile, type CompileWarning, type CompiledProgram, type LadderProgram } from '@ojt/ladder-core';
+import type { DialectProfile } from './profile.js';
+
+/**
+ * 「変換」操作。決定事項#15 / §10.6。
+ * 構造の検査（`@ojt/ladder-core` の `compile()`）と方言の検査（`DialectProfile.validate()`）を
+ * 両方走らせ、結果を1つの一覧にして返す。UIは出力ウィンドウにそのまま並べる。
+ */
+
+/** 変換の指摘1件。 */
+export interface ConvertError {
+  /** 構造（IRの誤り）か方言（機種の制約）か。 */
+  source: 'structure' | 'dialect';
+  code: string;
+  message: string;
+  networkId?: string;
+  row?: number;
+  col?: number;
+}
+
+/** 変換結果。 */
+export type ConvertResult =
+  | { ok: true; program: CompiledProgram; errors: readonly ConvertError[]; warnings: CompileWarning[] }
+  | { ok: false; errors: ConvertError[]; warnings: CompileWarning[] };
+
+/**
+ * ラダーを変換する。§10.6
+ * 構造の検査に落ちても方言の検査は走らせる（出力ウィンドウに一度で全部出すため）。
+ */
+export function convert(source: LadderProgram, profile: DialectProfile): ConvertResult {
+  const compiled = compile(source);
+  const errors: ConvertError[] = compiled.ok
+    ? []
+    : compiled.errors.map((e) => ({
+        source: 'structure' as const,
+        code: e.code,
+        message: e.message,
+        ...(e.networkId === '' ? {} : { networkId: e.networkId }),
+        ...(e.row === undefined ? {} : { row: e.row }),
+        ...(e.col === undefined ? {} : { col: e.col }),
+      }));
+  for (const issue of profile.validate(source)) {
+    errors.push({
+      source: 'dialect',
+      code: issue.code,
+      message: issue.message,
+      ...(issue.networkId === undefined ? {} : { networkId: issue.networkId }),
+      ...(issue.row === undefined ? {} : { row: issue.row }),
+      ...(issue.col === undefined ? {} : { col: issue.col }),
+    });
+  }
+  if (!compiled.ok || errors.length > 0) {
+    return { ok: false, errors, warnings: compiled.warnings };
+  }
+  return { ok: true, program: compiled.program, errors, warnings: compiled.warnings };
+}
+```
+
+`src/index.ts` に `export { convert, type ConvertError, type ConvertResult } from './convert.js';` を足す。
+
+- [ ] **Step 5: GREEN とカバレッジを確認する**
+
+```powershell
+pnpm --filter @ojt/plc-dialects exec vitest run
+pnpm --filter @ojt/plc-dialects exec vitest run --coverage
+```
+
+Expected: `Test Files  5 passed (5)` / `Tests  31 passed (31)`、カバレッジは lines / statements / functions / branches とも90%以上。
+
+- [ ] **Step 6: コミットする**
+
+```powershell
+pnpm --filter @ojt/plc-dialects typecheck
+npx prettier --check "packages/plc-dialects/**/*.ts"
+git add packages/plc-dialects
+git commit -m "feat(plc-dialects): validate FX5U programs and add the GX Works3-style skin"
+```
+
+---
