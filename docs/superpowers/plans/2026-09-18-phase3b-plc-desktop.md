@@ -534,4 +534,1390 @@ export function LogPanel(props); ElapsedTimer(props); PowerControls(props); Prob
 
 「そのまま写す（Sonnet-verbatim）」と書いたタスクは、本プランのコードとテストをそのまま書き写せば通る。**どのタスクも、後のタスクが作るファイルを import しない**ことを各タスクの Files 欄で確認すること。
 
+## Task 1: ラダー編集の純粋層（`session/ladder.ts`）
+
+**Files:**
+- Create: `apps/desktop/src/renderer/session/ladder.ts`
+- Test: `apps/desktop/test/ladder-model.test.ts`
+
+3D も React も使わない層に「セルカーソル」「キー入力 → 編集操作」「取り消し／やり直し」を閉じ込める（決定表#1・#2・#12）。編集の実体は `@ojt/ladder-core` の `edit.ts` だけで、ここが持つのは**呼び出し順**である。
+
+| 決めること | 本タスクの実装 |
+|---|---|
+| カーソル | `{ networkId, row, col }`。左右はネットワーク内で 0〜`COIL_COL` に丸め、上端でさらに上へ行くと前のネットワークの最終行、下端で下へ行くと次のネットワークの0行目へ移る |
+| キー照合 | `matchShortcut(profile.shortcuts, event)`。`keys` の文字列（`Shift+F5` / `Ctrl+←↑↓→` / `Alt+/`）を展開して照合する。**キー文字列をこのファイルに書かない** |
+| OR接点（`Shift+F5` / `Shift+F6`） | 1行下に接点を置き、右側は `setVerticalLink(row, col+1, true)`、左側は `col > 0` のとき `setVerticalLink(row, col-1, true)` ＋ 1行下の同じ列に `hline()`。`col === 0` は左母線が既に全行を繋いでいるので左側の罫線は要らない |
+| 取り消し | `LadderProgram` のスナップショットスタック。上限は盤と同じ `HISTORY_LIMIT`（50） |
+| 失敗 | `edit.ts` が投げる `LadderError` は**そのまま文言として返す**（ライブラリが日本語で持っている） |
+
+- [ ] **Step 1: 失敗するテストを書く**
+
+`apps/desktop/test/ladder-model.test.ts`:
+
+```ts
+import {
+  COIL_COL,
+  cellAt,
+  empty,
+  endNetwork,
+  hline,
+  IR_COLS,
+  network,
+  no,
+  out,
+  program,
+  X,
+  Y,
+  type LadderProgram,
+} from '@ojt/ladder-core';
+import type { ShortcutTable } from '@ojt/plc-dialects';
+import { describe, expect, it } from 'vitest';
+import {
+  applyLadderCell,
+  applyOrContact,
+  clearLadderCell,
+  emptyLadderHistory,
+  initialLadder,
+  keyChord,
+  ladderKeyToAction,
+  LADDER_HISTORY_LIMIT,
+  matchShortcut,
+  moveCursor,
+  nextNetworkId,
+  pushLadder,
+  redoLadder,
+  togglePulseAt,
+  toggleNoNcAt,
+  undoLadder,
+  type LadderCursor,
+} from '../src/renderer/session/ladder.js';
+
+/** 本物のプロファイルに依存しない最小のショートカット表（決定表#12 の入替可能性を見る）。 */
+const TABLE: ShortcutTable = [
+  { action: 'contact-no', keys: 'F5', label: 'a接点', confirmed: true },
+  { action: 'contact-nc', keys: 'F6', label: 'b接点', confirmed: false },
+  { action: 'or-contact-no', keys: 'Shift+F5', label: 'OR a接点', confirmed: false },
+  { action: 'coil', keys: 'F7', label: 'コイル', confirmed: true },
+  { action: 'application', keys: 'F8', label: '応用命令', confirmed: true, enabled: false, note: 'Phase 4' },
+  { action: 'hline', keys: 'F9', label: '横線', confirmed: false },
+  { action: 'rule-line', keys: 'Ctrl+←↑↓→', label: '罫線', confirmed: true },
+  { action: 'convert', keys: 'F4', label: '変換', confirmed: false },
+  { action: 'toggle-no-nc', keys: '/', label: '切換', confirmed: true },
+  { action: 'toggle-pulse', keys: 'Alt+/', label: '微分切換', confirmed: true },
+  { action: 'monitor', keys: 'F3', label: 'モニタ', confirmed: true },
+];
+
+function twoRungs(): LadderProgram {
+  return program(
+    network('n1', [[no(X(0)), hline(), out(Y(0))]]),
+    network('n2', [[no(X(1)), out(Y(1))]]),
+    endNetwork(),
+  );
+}
+
+const at = (networkId: string, row: number, col: number): LadderCursor => ({ networkId, row, col });
+
+describe('initialLadder（決定表#14: 模範ラダーは出さない）', () => {
+  it('starts from one empty network plus END', () => {
+    const p = initialLadder();
+    expect(p.networks.map((n) => n.id)).toEqual(['n1', 'end']);
+    expect(cellAt(p.networks[0]!, 0, 0)).toEqual(empty());
+    expect(p.networks[0]!.cols).toBe(IR_COLS);
+  });
+
+  it('numbers a new network above the highest existing one (決定表#15)', () => {
+    expect(nextNetworkId(twoRungs())).toBe('n3');
+    expect(nextNetworkId(initialLadder())).toBe('n2');
+  });
+});
+
+describe('keyChord / matchShortcut（決定表#12）', () => {
+  it('builds the chord text the shortcut table uses', () => {
+    expect(keyChord({ key: 'F5' })).toBe('F5');
+    expect(keyChord({ key: 'F5', shiftKey: true })).toBe('Shift+F5');
+    expect(keyChord({ key: '/', altKey: true })).toBe('Alt+/');
+    expect(keyChord({ key: 'ArrowLeft', ctrlKey: true })).toBe('Ctrl+ArrowLeft');
+  });
+
+  it('matches plain and modified function keys', () => {
+    expect(matchShortcut(TABLE, { key: 'F5' })?.action).toBe('contact-no');
+    expect(matchShortcut(TABLE, { key: 'F5', shiftKey: true })?.action).toBe('or-contact-no');
+    expect(matchShortcut(TABLE, { key: 'F5', ctrlKey: true })).toBeUndefined();
+  });
+
+  it('expands the arrow set of the rule-line entry', () => {
+    for (const key of ['ArrowLeft', 'ArrowUp', 'ArrowDown', 'ArrowRight']) {
+      expect(matchShortcut(TABLE, { key, ctrlKey: true })?.action).toBe('rule-line');
+    }
+  });
+
+  it('is driven by the table, not by hard-coded keys', () => {
+    const swapped: ShortcutTable = [{ action: 'coil', keys: 'F5', label: 'コイル', confirmed: false }];
+    expect(matchShortcut(swapped, { key: 'F5' })?.action).toBe('coil');
+  });
+});
+
+describe('ladderKeyToAction', () => {
+  const state = { cursor: at('n1', 0, 0), mode: 'write' as const };
+
+  it('turns the table entries into actions', () => {
+    expect(ladderKeyToAction(TABLE, { key: 'F5' }, state)).toEqual({
+      type: 'place',
+      kind: 'contact-no',
+    });
+    expect(ladderKeyToAction(TABLE, { key: 'F7' }, state)).toEqual({ type: 'place', kind: 'coil' });
+    expect(ladderKeyToAction(TABLE, { key: 'F4' }, state)).toEqual({ type: 'convert' });
+    expect(ladderKeyToAction(TABLE, { key: 'F3' }, state)).toEqual({
+      type: 'setMode',
+      mode: 'monitor',
+    });
+    expect(ladderKeyToAction(TABLE, { key: 'ArrowRight', ctrlKey: true }, state)).toEqual({
+      type: 'ruleLine',
+      direction: 'right',
+    });
+  });
+
+  it('reports a disabled entry instead of doing nothing silently (F8)', () => {
+    const action = ladderKeyToAction(TABLE, { key: 'F8' }, state);
+    expect(action.type).toBe('disabled');
+    if (action.type !== 'disabled') return;
+    expect(action.entry.note).toContain('Phase 4');
+  });
+
+  it('moves with the bare arrow keys and Tab', () => {
+    expect(ladderKeyToAction(TABLE, { key: 'ArrowRight' }, state)).toEqual({
+      type: 'move',
+      dRow: 0,
+      dCol: 1,
+    });
+    expect(ladderKeyToAction(TABLE, { key: 'Tab' }, state)).toEqual({ type: 'move', dRow: 0, dCol: 1 });
+    expect(ladderKeyToAction(TABLE, { key: 'Tab', shiftKey: true }, state)).toEqual({
+      type: 'move',
+      dRow: 0,
+      dCol: -1,
+    });
+  });
+
+  it('opens the device input on Enter and clears on Delete', () => {
+    expect(ladderKeyToAction(TABLE, { key: 'Enter' }, state)).toEqual({ type: 'edit' });
+    expect(ladderKeyToAction(TABLE, { key: 'Delete' }, state)).toEqual({ type: 'delete' });
+    expect(ladderKeyToAction(TABLE, { key: 'Backspace' }, state)).toEqual({ type: 'delete' });
+  });
+
+  it('routes Ctrl+Z / Ctrl+Y to the ladder history (決定表#3)', () => {
+    expect(ladderKeyToAction(TABLE, { key: 'z', ctrlKey: true }, state)).toEqual({ type: 'undo' });
+    expect(ladderKeyToAction(TABLE, { key: 'y', ctrlKey: true }, state)).toEqual({ type: 'redo' });
+    expect(ladderKeyToAction(TABLE, { key: 'Z', ctrlKey: true, shiftKey: true }, state)).toEqual({
+      type: 'redo',
+    });
+  });
+
+  it('refuses every edit while the editor is in read or monitor mode (決定表#11)', () => {
+    for (const mode of ['read', 'monitor'] as const) {
+      const readonlyState = { cursor: at('n1', 0, 0), mode };
+      expect(ladderKeyToAction(TABLE, { key: 'F5' }, readonlyState)).toEqual({ type: 'readOnly' });
+      expect(ladderKeyToAction(TABLE, { key: 'Delete' }, readonlyState)).toEqual({ type: 'readOnly' });
+      // 移動と変換とモード切替は読出し中でも通す
+      expect(ladderKeyToAction(TABLE, { key: 'ArrowDown' }, readonlyState)).toEqual({
+        type: 'move',
+        dRow: 1,
+        dCol: 0,
+      });
+      expect(ladderKeyToAction(TABLE, { key: 'F4' }, readonlyState)).toEqual({ type: 'convert' });
+    }
+  });
+});
+
+describe('moveCursor', () => {
+  const p = twoRungs();
+
+  it('clamps inside the row', () => {
+    expect(moveCursor(p, at('n1', 0, 0), 0, -1)).toEqual(at('n1', 0, 0));
+    expect(moveCursor(p, at('n1', 0, COIL_COL), 0, 1)).toEqual(at('n1', 0, COIL_COL));
+  });
+
+  it('walks to the neighbouring network at the top and bottom edges', () => {
+    expect(moveCursor(p, at('n2', 0, 3), -1, 0)).toEqual(at('n1', 0, 3));
+    expect(moveCursor(p, at('n1', 0, 3), 1, 0)).toEqual(at('n2', 0, 3));
+    // 先頭より上・末尾より下へは出ない（END ネットワークも行き先になる）
+    expect(moveCursor(p, at('n1', 0, 3), -1, 0)).toEqual(at('n1', 0, 3));
+    expect(moveCursor(p, at('end', 0, 0), 1, 0)).toEqual(at('end', 0, 0));
+  });
+
+  it('keeps the column inside the shorter network', () => {
+    expect(moveCursor(p, at('n1', 0, COIL_COL), 1, 0)).toEqual(at('n2', 0, COIL_COL));
+  });
+});
+
+describe('applyLadderCell / clearLadderCell', () => {
+  it('places a cell and leaves the original program untouched', () => {
+    const before = twoRungs();
+    const result = applyLadderCell(before, at('n1', 0, 1), no(X(2)));
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(cellAt(result.program.networks[0]!, 0, 1)).toEqual(no(X(2)));
+    expect(cellAt(before.networks[0]!, 0, 1)).toEqual(hline());
+  });
+
+  it('returns the LadderError message instead of throwing', () => {
+    const result = applyLadderCell(twoRungs(), at('n1', 9, 0), no(X(0)));
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.message).toContain('行 9');
+  });
+
+  it('clears a cell', () => {
+    const result = clearLadderCell(twoRungs(), at('n1', 0, 0));
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(cellAt(result.program.networks[0]!, 0, 0)).toEqual(empty());
+  });
+});
+
+describe('applyOrContact（並列分岐）', () => {
+  it('branches from the left rail when the contact is in column 0', () => {
+    const result = applyOrContact(twoRungs(), at('n1', 0, 0), no(Y(0)));
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const net = result.program.networks[0]!;
+    expect(net.rows).toBe(2);
+    expect(cellAt(net, 1, 0)).toEqual(no(Y(0)));
+    // 右側だけ罫線を引く（左は0列目の左母線が全行を繋いでいる）
+    expect(cellAt(net, 0, 1).kind).toBe('vline');
+  });
+
+  it('draws both rule lines when the contact is not in column 0', () => {
+    const base = program(network('n1', [[hline(), no(X(0)), hline(), out(Y(0))]]), endNetwork());
+    const result = applyOrContact(base, at('n1', 0, 1), no(Y(0)));
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const net = result.program.networks[0]!;
+    expect(cellAt(net, 0, 0).kind).toBe('vline');
+    expect(cellAt(net, 1, 0).kind).toBe('hline');
+    expect(cellAt(net, 1, 1)).toEqual(no(Y(0)));
+    expect(cellAt(net, 0, 2).kind).toBe('vline');
+  });
+
+  it('refuses to branch where the left neighbour is a contact', () => {
+    const base = program(network('n1', [[no(X(0)), no(X(1)), out(Y(0))]]), endNetwork());
+    const result = applyOrContact(base, at('n1', 0, 1), no(Y(0)));
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.message).toContain('罫線');
+  });
+
+  it('refuses to branch in the column just before the coil column', () => {
+    const result = applyOrContact(twoRungs(), at('n1', 0, COIL_COL - 1), no(Y(0)));
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.message).toContain('コイル列');
+  });
+});
+
+describe('toggleNoNcAt / togglePulseAt', () => {
+  it('swaps a and b contacts', () => {
+    const toggled = toggleNoNcAt(twoRungs(), at('n1', 0, 0));
+    expect(toggled.ok).toBe(true);
+    if (!toggled.ok) return;
+    expect(cellAt(toggled.program.networks[0]!, 0, 0)).toMatchObject({ type: 'NC' });
+  });
+
+  it('cycles the differential and SET/RST forms', () => {
+    let p = twoRungs();
+    const step = (cursor: LadderCursor): string => {
+      const result = togglePulseAt(p, cursor);
+      expect(result.ok).toBe(true);
+      if (!result.ok) throw new Error(result.message);
+      p = result.program;
+      const cell = cellAt(p.networks[0]!, cursor.row, cursor.col);
+      return 'type' in cell ? cell.type : cell.kind;
+    };
+    expect(step(at('n1', 0, 0))).toBe('P');
+    expect(step(at('n1', 0, 0))).toBe('NO');
+    expect(step(at('n1', 0, 2))).toBe('SET');
+    expect(step(at('n1', 0, 2))).toBe('RST');
+    expect(step(at('n1', 0, 2))).toBe('OUT');
+  });
+
+  it('says why nothing happens on a blank cell', () => {
+    const result = toggleNoNcAt(twoRungs(), at('n1', 0, 1));
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.message).toContain('接点');
+  });
+});
+
+describe('ラダーの取り消し／やり直し（決定表#2）', () => {
+  it('walks back and forward through the snapshots', () => {
+    const first = twoRungs();
+    const edited = applyLadderCell(first, at('n1', 0, 1), no(X(5)));
+    expect(edited.ok).toBe(true);
+    if (!edited.ok) return;
+    const history = pushLadder(emptyLadderHistory(), first);
+    const back = undoLadder(history, edited.program);
+    expect(back?.program).toBe(first);
+    const forward = redoLadder(back!.history, first);
+    expect(forward?.program).toBe(edited.program);
+  });
+
+  it('drops the oldest snapshot past the limit and clears the redo列', () => {
+    let history = emptyLadderHistory();
+    for (let i = 0; i < LADDER_HISTORY_LIMIT + 5; i += 1) history = pushLadder(history, twoRungs());
+    expect(history.done).toHaveLength(LADDER_HISTORY_LIMIT);
+    expect(history.undone).toEqual([]);
+  });
+
+  it('returns undefined when there is nothing to undo', () => {
+    expect(undoLadder(emptyLadderHistory(), twoRungs())).toBeUndefined();
+    expect(redoLadder(emptyLadderHistory(), twoRungs())).toBeUndefined();
+  });
+});
+```
+
+- [ ] **Step 2: RED を確認する**
+
+```powershell
+pnpm --filter @ojt/desktop exec vitest run test/ladder-model.test.ts
+```
+
+Expected: 失敗（`Failed to resolve import "../src/renderer/session/ladder.js"`）。
+
+- [ ] **Step 3: `src/renderer/session/ladder.ts` を書く**
+
+```ts
+import {
+  cellAt,
+  clearCell,
+  COIL_COL,
+  empty,
+  endNetwork,
+  hline,
+  insertRow,
+  LadderError,
+  nc,
+  no,
+  program as makeProgram,
+  network,
+  rst,
+  set,
+  setCell,
+  setVerticalLink,
+  type Cell,
+  type LadderProgram,
+  type Network,
+} from '@ojt/ladder-core';
+import type { ShortcutEntry, ShortcutTable } from '@ojt/plc-dialects';
+
+/**
+ * ラダー編集の純粋層。設計仕様 §10.3 / §10.6 / §10.7。
+ *
+ * React も three も `@ojt/plc-dialects` の実装（プロファイルの中身）も知らない。編集の実体は
+ * `@ojt/ladder-core` の `edit.ts`（純粋関数）で、このファイルが持つのは**呼び出し順**と
+ * 「キー入力 → 操作」の対応だけである。キーの文字列は1つも書かない（決定表#12）。
+ */
+
+/** ラダーの取り消しで遡れる手数の上限（盤の `HISTORY_LIMIT` と同じ）。§8.2 */
+export const LADDER_HISTORY_LIMIT = 50;
+
+/** セルカーソル。 */
+export interface LadderCursor {
+  networkId: string;
+  row: number;
+  col: number;
+}
+
+/** エディタのモード。§10.6（`F2` / `Shift+F2` / `F3`）。決定表#11 */
+export type LadderEditorMode = 'write' | 'read' | 'monitor';
+
+/** 取り消し／やり直しのスタック（`LadderProgram` のスナップショット）。決定表#2 */
+export interface LadderHistory {
+  done: LadderProgram[];
+  undone: LadderProgram[];
+}
+
+/** 編集の結果（失敗は理由つき。`LadderError` の文言をそのまま返す）。 */
+export type LadderEditResult =
+  | { ok: true; program: LadderProgram }
+  | { ok: false; message: string };
+
+/** デバイス入力欄を開くセルの種別（`ShortcutEntry.action` と同じ語彙）。§10.6 */
+export type PlaceKind =
+  | 'contact-no'
+  | 'contact-nc'
+  | 'or-contact-no'
+  | 'or-contact-nc'
+  | 'coil'
+  | 'hline'
+  | 'vline';
+
+/** キー入力から決まる操作。 */
+export type LadderAction =
+  | { type: 'none' }
+  /** カーソルを相対移動する。 */
+  | { type: 'move'; dRow: number; dCol: number }
+  /** セルを置く（デバイスが要る種別はデバイス入力欄を開く）。 */
+  | { type: 'place'; kind: PlaceKind }
+  /** 罫線（`Ctrl+←↑↓→`）。 */
+  | { type: 'ruleLine'; direction: 'left' | 'up' | 'down' | 'right' }
+  | { type: 'toggleNoNc' }
+  | { type: 'togglePulse' }
+  | { type: 'convert' }
+  | { type: 'setMode'; mode: LadderEditorMode }
+  | { type: 'toggleInsert' }
+  | { type: 'help' }
+  /** カーソル位置のセルを編集する（デバイス入力欄を開く）。 */
+  | { type: 'edit' }
+  | { type: 'delete' }
+  | { type: 'undo' }
+  | { type: 'redo' }
+  /** 表には載っているが Phase 3 では押せない項目（`enabled: false`）。 */
+  | { type: 'disabled'; entry: ShortcutEntry }
+  /** 読出し・モニタ中に編集操作を押した。 */
+  | { type: 'readOnly' };
+
+/** キー入力のうちこの層が見る部分（DOM の型に依存させない）。 */
+export interface LadderKeyEvent {
+  key?: string | undefined;
+  ctrlKey?: boolean | undefined;
+  shiftKey?: boolean | undefined;
+  altKey?: boolean | undefined;
+  metaKey?: boolean | undefined;
+}
+
+/** 矢印の記号 → `KeyboardEvent.key`。方言表（`Ctrl+←↑↓→`）の展開に使う。 */
+const ARROW_KEYS: Readonly<Record<string, string>> = {
+  '←': 'ArrowLeft',
+  '↑': 'ArrowUp',
+  '↓': 'ArrowDown',
+  '→': 'ArrowRight',
+};
+
+/** 矢印キー → 罫線の向き。 */
+const ARROW_DIRECTION: Readonly<Record<string, 'left' | 'up' | 'down' | 'right'>> = {
+  ArrowLeft: 'left',
+  ArrowUp: 'up',
+  ArrowDown: 'down',
+  ArrowRight: 'right',
+};
+
+/** 矢印キー → カーソルの相対移動。 */
+const ARROW_MOVE: Readonly<Record<string, { dRow: number; dCol: number }>> = {
+  ArrowLeft: { dRow: 0, dCol: -1 },
+  ArrowRight: { dRow: 0, dCol: 1 },
+  ArrowUp: { dRow: -1, dCol: 0 },
+  ArrowDown: { dRow: 1, dCol: 0 },
+};
+
+/** `action` → 置くセルの種別。表に無い `action` は `undefined`（押しても何もしない）。 */
+const PLACE_KINDS: Readonly<Record<string, PlaceKind>> = {
+  'contact-no': 'contact-no',
+  'contact-nc': 'contact-nc',
+  'or-contact-no': 'or-contact-no',
+  'or-contact-nc': 'or-contact-nc',
+  coil: 'coil',
+  hline: 'hline',
+  vline: 'vline',
+};
+
+/** `action` → エディタのモード。`monitor-write` は Phase 3 では `monitor` と同じ（決定表#11）。 */
+const MODE_ACTIONS: Readonly<Record<string, LadderEditorMode>> = {
+  'write-mode': 'write',
+  'read-mode': 'read',
+  monitor: 'monitor',
+  'monitor-write': 'monitor',
+};
+
+/** 押されたキーを、ショートカット表と同じ書式の文字列にする。 */
+export function keyChord(event: LadderKeyEvent): string {
+  const parts: string[] = [];
+  if (event.ctrlKey === true || event.metaKey === true) parts.push('Ctrl');
+  if (event.shiftKey === true) parts.push('Shift');
+  if (event.altKey === true) parts.push('Alt');
+  parts.push(event.key ?? '');
+  return parts.join('+');
+}
+
+/** `keys` の文字列を照合できる形の一覧に展開する（`Ctrl+←↑↓→` → 4件）。 */
+function expandKeys(keys: string): string[] {
+  const plus = keys.lastIndexOf('+');
+  const prefix = plus < 0 ? '' : keys.slice(0, plus + 1);
+  const tail = plus < 0 ? keys : keys.slice(plus + 1);
+  const arrows = [...tail].filter((char) => ARROW_KEYS[char] !== undefined);
+  if (arrows.length === 0) return [keys];
+  return arrows.map((char) => `${prefix}${ARROW_KEYS[char] ?? char}`);
+}
+
+/** キー入力に対応するショートカット表の行を探す。決定表#12 */
+export function matchShortcut(
+  table: ShortcutTable,
+  event: LadderKeyEvent,
+): ShortcutEntry | undefined {
+  const chord = keyChord(event);
+  return table.find((entry) => expandKeys(entry.keys).includes(chord));
+}
+
+/** `ladderKeyToAction` が見る画面状態。 */
+export interface LadderKeyState {
+  cursor: LadderCursor;
+  mode: LadderEditorMode;
+}
+
+/** 編集を伴う操作か（読出し・モニタ中に断るもの）。 */
+function isEditing(action: LadderAction): boolean {
+  return (
+    action.type === 'place' ||
+    action.type === 'ruleLine' ||
+    action.type === 'toggleNoNc' ||
+    action.type === 'togglePulse' ||
+    action.type === 'edit' ||
+    action.type === 'delete' ||
+    action.type === 'undo' ||
+    action.type === 'redo' ||
+    action.type === 'toggleInsert'
+  );
+}
+
+/** ショートカット表に無いキー（矢印・Tab・Enter・Delete・Ctrl+Z/Y）の扱い。 */
+function builtinAction(event: LadderKeyEvent): LadderAction {
+  const key = event.key ?? '';
+  const ctrl = event.ctrlKey === true || event.metaKey === true;
+  if (ctrl && (key === 'z' || key === 'Z')) {
+    return event.shiftKey === true ? { type: 'redo' } : { type: 'undo' };
+  }
+  if (ctrl && (key === 'y' || key === 'Y')) return { type: 'redo' };
+  if (ctrl) return { type: 'none' };
+  const move = ARROW_MOVE[key];
+  if (move !== undefined) return { type: 'move', ...move };
+  if (key === 'Tab') return { type: 'move', dRow: 0, dCol: event.shiftKey === true ? -1 : 1 };
+  if (key === 'Enter') return { type: 'edit' };
+  if (key === 'Delete' || key === 'Backspace') return { type: 'delete' };
+  return { type: 'none' };
+}
+
+/** キー入力 → 操作。§10.6 */
+export function ladderKeyToAction(
+  table: ShortcutTable,
+  event: LadderKeyEvent,
+  state: LadderKeyState,
+): LadderAction {
+  const entry = matchShortcut(table, event);
+  let action: LadderAction;
+  if (entry === undefined) {
+    action = builtinAction(event);
+  } else if (entry.enabled === false) {
+    return { type: 'disabled', entry };
+  } else {
+    const place = PLACE_KINDS[entry.action];
+    const mode = MODE_ACTIONS[entry.action];
+    if (place !== undefined) action = { type: 'place', kind: place };
+    else if (mode !== undefined) action = { type: 'setMode', mode };
+    else if (entry.action === 'rule-line') {
+      const direction = ARROW_DIRECTION[event.key ?? ''];
+      action = direction === undefined ? { type: 'none' } : { type: 'ruleLine', direction };
+    } else if (entry.action === 'toggle-no-nc') action = { type: 'toggleNoNc' };
+    else if (entry.action === 'toggle-pulse') action = { type: 'togglePulse' };
+    else if (entry.action === 'convert') action = { type: 'convert' };
+    else if (entry.action === 'insert-toggle') action = { type: 'toggleInsert' };
+    else if (entry.action === 'help') action = { type: 'help' };
+    else if (entry.action === 'next-symbol') action = { type: 'move', dRow: 0, dCol: 1 };
+    else action = { type: 'none' };
+  }
+  if (state.mode !== 'write' && isEditing(action)) return { type: 'readOnly' };
+  return action;
+}
+
+/** ネットワークを引く（無ければ undefined）。 */
+function findNetwork(program: LadderProgram, networkId: string): Network | undefined {
+  return program.networks.find((net) => net.id === networkId);
+}
+
+/** カーソルを動かす。上下の端では隣のネットワークへ移る。 */
+export function moveCursor(
+  program: LadderProgram,
+  cursor: LadderCursor,
+  dRow: number,
+  dCol: number,
+): LadderCursor {
+  const index = program.networks.findIndex((net) => net.id === cursor.networkId);
+  const net = program.networks[index];
+  if (net === undefined) return cursor;
+  const col = Math.min(COIL_COL, Math.max(0, cursor.col + dCol));
+  const row = cursor.row + dRow;
+  if (row >= 0 && row < net.rows) return { networkId: net.id, row, col };
+  const nextIndex = row < 0 ? index - 1 : index + 1;
+  const next = program.networks[nextIndex];
+  if (next === undefined) return { networkId: net.id, row: cursor.row, col };
+  return { networkId: next.id, row: row < 0 ? next.rows - 1 : 0, col };
+}
+
+/** `LadderError` を投げさせずに文言へ畳む。 */
+function guard(run: () => LadderProgram): LadderEditResult {
+  try {
+    return { ok: true, program: run() };
+  } catch (error) {
+    if (error instanceof LadderError) return { ok: false, message: error.message };
+    throw error;
+  }
+}
+
+/** セルを置く。 */
+export function applyLadderCell(
+  program: LadderProgram,
+  cursor: LadderCursor,
+  cell: Cell,
+): LadderEditResult {
+  return guard(() => setCell(program, cursor.networkId, cursor.row, cursor.col, cell));
+}
+
+/** セルを空にする。 */
+export function clearLadderCell(program: LadderProgram, cursor: LadderCursor): LadderEditResult {
+  return guard(() => clearCell(program, cursor.networkId, cursor.row, cursor.col));
+}
+
+/** 罫線を引く／消す（`Ctrl+↓` で下へ、`Ctrl+↑` で上の行から、左右は横線）。§10.3 */
+export function applyRuleLine(
+  program: LadderProgram,
+  cursor: LadderCursor,
+  direction: 'left' | 'up' | 'down' | 'right',
+): LadderEditResult {
+  if (direction === 'left' || direction === 'right') {
+    const col = direction === 'right' ? cursor.col : cursor.col - 1;
+    if (col < 0) return { ok: false, message: '左母線より左には横線を引けません' };
+    return guard(() => setCell(program, cursor.networkId, cursor.row, col, hline()));
+  }
+  const row = direction === 'down' ? cursor.row : cursor.row - 1;
+  if (row < 0) return { ok: false, message: '先頭行より上には縦線を引けません' };
+  return guard(() => setVerticalLink(program, cursor.networkId, row, cursor.col, true));
+}
+
+/**
+ * OR接点（並列分岐）を1行下に置く。§10.3
+ *
+ * 縦線（`vline`）はセルの**左辺**で下の行と繋ぐので、分岐の左側は「1つ左の列に縦線 ＋ 下の行の
+ * 同じ列に横線」、右側は「1つ右の列に縦線」で閉じる（`runtime.ts` の `solve()` の規則）。
+ * 0列目は左母線が全行を繋いでいるので左側の罫線が要らない。
+ */
+export function applyOrContact(
+  program: LadderProgram,
+  cursor: LadderCursor,
+  cell: Cell,
+): LadderEditResult {
+  const net = findNetwork(program, cursor.networkId);
+  if (net === undefined) return { ok: false, message: `ネットワークがありません: ${cursor.networkId}` };
+  if (cursor.col + 1 > COIL_COL - 1) {
+    return { ok: false, message: 'OR接点はコイル列の1つ手前より右には置けません' };
+  }
+  return guard(() => {
+    let next = program;
+    if (cursor.row + 1 >= net.rows) next = insertRow(next, net.id, cursor.row + 1);
+    next = setCell(next, net.id, cursor.row + 1, cursor.col, cell);
+    if (cursor.col > 0) {
+      next = setVerticalLink(next, net.id, cursor.row, cursor.col - 1, true);
+      const below = cellAt(findNetwork(next, net.id) ?? net, cursor.row + 1, cursor.col - 1);
+      if (below.kind === 'empty') next = setCell(next, net.id, cursor.row + 1, cursor.col - 1, hline());
+    }
+    next = setVerticalLink(next, net.id, cursor.row, cursor.col + 1, true);
+    return next;
+  });
+}
+
+/** a接点 ⇄ b接点（`/`）。§10.6 */
+export function toggleNoNcAt(program: LadderProgram, cursor: LadderCursor): LadderEditResult {
+  const net = findNetwork(program, cursor.networkId);
+  if (net === undefined) return { ok: false, message: `ネットワークがありません: ${cursor.networkId}` };
+  return guard(() => {
+    const cell = cellAt(net, cursor.row, cursor.col);
+    if (cell.kind !== 'contact') throw new LadderError('接点の上でだけ切り換えられます');
+    const flip: Record<string, Cell> = {
+      NO: nc(cell.device),
+      NC: no(cell.device),
+      P: { kind: 'contact', type: 'F', device: cell.device },
+      F: { kind: 'contact', type: 'P', device: cell.device },
+    };
+    return setCell(program, net.id, cursor.row, cursor.col, flip[cell.type] ?? cell);
+  });
+}
+
+/** 微分接点 ⇄ 通常接点、OUT → SET → RST → OUT（`Alt+/`）。§10.6 */
+export function togglePulseAt(program: LadderProgram, cursor: LadderCursor): LadderEditResult {
+  const net = findNetwork(program, cursor.networkId);
+  if (net === undefined) return { ok: false, message: `ネットワークがありません: ${cursor.networkId}` };
+  return guard(() => {
+    const cell = cellAt(net, cursor.row, cursor.col);
+    if (cell.kind === 'contact') {
+      const cycle: Record<string, Cell> = {
+        NO: { kind: 'contact', type: 'P', device: cell.device },
+        P: no(cell.device),
+        NC: { kind: 'contact', type: 'F', device: cell.device },
+        F: nc(cell.device),
+      };
+      return setCell(program, net.id, cursor.row, cursor.col, cycle[cell.type] ?? cell);
+    }
+    if (cell.kind === 'coil') {
+      const cycle: Record<string, Cell> = {
+        OUT: set(cell.device),
+        SET: rst(cell.device),
+        RST: { kind: 'coil', type: 'OUT', device: cell.device },
+      };
+      return setCell(program, net.id, cursor.row, cursor.col, cycle[cell.type] ?? cell);
+    }
+    throw new LadderError('接点またはコイルの上でだけ切り換えられます');
+  });
+}
+
+/** 空のラダー（セッションの開始点）。決定表#14 */
+export function initialLadder(): LadderProgram {
+  return makeProgram(network('n1', [[empty()]]), endNetwork());
+}
+
+/** 次に作るネットワークのID（既存の最大番号＋1）。決定表#15 */
+export function nextNetworkId(program: LadderProgram): string {
+  let max = 0;
+  for (const net of program.networks) {
+    const matched = /^n(\d+)$/u.exec(net.id);
+    const value = matched?.[1];
+    if (value !== undefined) max = Math.max(max, Number(value));
+  }
+  return `n${max + 1}`;
+}
+
+/** 空の履歴。 */
+export function emptyLadderHistory(): LadderHistory {
+  return { done: [], undone: [] };
+}
+
+/** 編集の**前**の状態を積む（やり直し列は捨てる）。 */
+export function pushLadder(history: LadderHistory, before: LadderProgram): LadderHistory {
+  const done = [...history.done, before];
+  return { done: done.slice(Math.max(0, done.length - LADDER_HISTORY_LIMIT)), undone: [] };
+}
+
+/** 1手戻す。 */
+export function undoLadder(
+  history: LadderHistory,
+  current: LadderProgram,
+): { history: LadderHistory; program: LadderProgram } | undefined {
+  const previous = history.done[history.done.length - 1];
+  if (previous === undefined) return undefined;
+  return {
+    history: { done: history.done.slice(0, -1), undone: [...history.undone, current] },
+    program: previous,
+  };
+}
+
+/** 1手やり直す。 */
+export function redoLadder(
+  history: LadderHistory,
+  current: LadderProgram,
+): { history: LadderHistory; program: LadderProgram } | undefined {
+  const next = history.undone[history.undone.length - 1];
+  if (next === undefined) return undefined;
+  return {
+    history: { done: [...history.done, current], undone: history.undone.slice(0, -1) },
+    program: next,
+  };
+}
+```
+
+- [ ] **Step 4: GREEN を確認する**
+
+```powershell
+pnpm --filter @ojt/desktop exec vitest run test/ladder-model.test.ts
+pnpm --filter @ojt/desktop typecheck
+```
+
+Expected: `Tests  29 passed (29)`。
+
+- [ ] **Step 5: コミットする**
+
+```powershell
+npx prettier --write "apps/desktop/src/renderer/session/ladder.ts" "apps/desktop/test/ladder-model.test.ts"
+npx prettier --check "apps/desktop/**/*.{ts,tsx,css}"
+git add apps/desktop/src/renderer/session/ladder.ts apps/desktop/test/ladder-model.test.ts
+git commit -m "feat(desktop): add the pure ladder editing model"
+```
+
+---
+
+## Task 2: ストアにモードDの状態を足す
+
+**Files:**
+- Modify: `apps/desktop/src/renderer/app/store-types.ts`
+- Modify: `apps/desktop/src/renderer/app/store.ts`
+- Create: `apps/desktop/src/renderer/session/plc-session.ts`
+- Test: `apps/desktop/test/store-plc.test.ts`
+
+モードDの画面が要る状態を1箇所に集める。**`openProblem()` の分岐**と**`resetSession()` / `restartSession()` / `abandonSession()` の後始末**が MERGE の要点である（Plan 2B Batch 1 レビュー B4 と同じ規則: 課題を離れるときはモード固有の状態を必ず手放す）。
+
+| 追加する状態 | 型 | 意味 |
+|---|---|---|
+| `ladder` | `LadderProgram \| undefined` | 訓練者のラダー。モードD以外は `undefined` |
+| `ladderComments` | `Record<string, string>` | デバイスコメント（キーは `deviceLabel()` の形）。§10.7 |
+| `ladderHistory` | `LadderHistory` | ラダー専用の取り消しスタック（決定表#2） |
+| `ladderCursor` | `LadderCursor` | セルカーソル |
+| `ladderMode` | `LadderEditorMode` | `write` / `read` / `monitor`（決定表#11） |
+| `ladderFocused` | `boolean` | エディタにフォーカスがあるか（決定表#3） |
+| `ladderView` | `'ladder' \| 'split' \| 'board'` | 画面の分割（決定表#10） |
+| `dialectId` | `DialectId` | いま使っている方言（Phase 3 は常に `'mitsubishi'`） |
+| `converted` | `boolean` | 最後の編集のあと「変換」を通したか（H-1） |
+| `convertIssues` | `ConvertIssues` | 出力ウィンドウに並べるもの（`errors` / `warnings` / `usage`） |
+| `plcMonitor` | `PlcMonitorSnapshot \| undefined` | モニタ中の通電状況（決定表#5） |
+| `plcRunning` | `boolean` | RUN/STOP |
+
+- [ ] **Step 1: 失敗するテストを書く**
+
+`apps/desktop/test/store-plc.test.ts`:
+
+```ts
+import { BUILTIN_PLC_PROBLEMS, isPlcProblem } from '@ojt/content';
+import { COIL_COL, no, out, X, Y } from '@ojt/ladder-core';
+import { beforeEach, describe, expect, it } from 'vitest';
+import { useStore } from '../src/renderer/app/store.js';
+import { applyLadderCell, initialLadder } from '../src/renderer/session/ladder.js';
+import { plcBoardOf } from '../src/renderer/session/plc-session.js';
+
+const problem = BUILTIN_PLC_PROBLEMS[0]!;
+
+beforeEach(() => {
+  useStore.getState().abandonSession();
+  useStore.setState({ route: 'home', problems: undefined });
+});
+
+describe('openProblem（モードD）', () => {
+  it('opens a PLC problem with an empty ladder and the board that carries the PLC unit', () => {
+    expect(isPlcProblem(problem)).toBe(true);
+    expect(useStore.getState().openProblem(problem)).toBe(true);
+    const state = useStore.getState();
+    expect(state.route).toBe('session');
+    expect(state.mode).toBe('wire');
+    expect(state.wireColor).toBe('青');
+    expect(state.session?.allowedColors).toEqual(['青']);
+    expect(state.ladder?.networks.map((n) => n.id)).toEqual(['n1', 'end']);
+    expect(state.ladderCursor).toEqual({ networkId: 'n1', row: 0, col: 0 });
+    expect(state.ladderMode).toBe('write');
+    expect(state.ladderView).toBe('split');
+    expect(state.dialectId).toBe('mitsubishi');
+    expect(state.converted).toBe(false);
+    expect(state.plcRunning).toBe(false);
+    expect(state.schematicVisible).toBe(false);
+  });
+
+  it('never seeds the trainee ladder from referenceLadder (決定表#14)', () => {
+    useStore.getState().openProblem(problem);
+    const ladder = useStore.getState().ladder;
+    expect(ladder).toBeDefined();
+    const cells = ladder!.networks.flatMap((net) => net.cells.flat());
+    expect(cells.filter((c) => c.kind === 'contact')).toHaveLength(0);
+    expect(cells.filter((c) => c.kind === 'coil')).toHaveLength(0);
+  });
+
+  it('derives the board with the PLC unit and the wall outlet', () => {
+    useStore.getState().openProblem(problem);
+    const board = plcBoardOf(useStore.getState().problem!);
+    expect(board?.plcUnit?.model).toBe('FX5U');
+    expect(board?.terminals.some((t) => t.id === 'PLC.X0')).toBe(true);
+    expect(board?.terminals.some((t) => t.id === 'OUTLET.L')).toBe(true);
+    expect(board?.id).toBe('board-jipm-std');
+  });
+});
+
+describe('ラダーの編集と履歴', () => {
+  beforeEach(() => {
+    useStore.getState().openProblem(problem);
+  });
+
+  it('records the previous program and clears the converted flag', () => {
+    const store = useStore.getState();
+    store.setConverted(true, { errors: [], warnings: [], usage: undefined });
+    const before = useStore.getState().ladder!;
+    const edited = applyLadderCell(before, { networkId: 'n1', row: 0, col: 0 }, no(X(0)));
+    expect(edited.ok).toBe(true);
+    if (!edited.ok) return;
+    store.setLadder(edited.program);
+    const state = useStore.getState();
+    expect(state.ladderHistory.done).toEqual([before]);
+    expect(state.converted).toBe(false);
+    expect(state.convertIssues.errors).toEqual([]);
+  });
+
+  it('undoes and redoes through the ladder stack only', () => {
+    const store = useStore.getState();
+    const before = useStore.getState().ladder!;
+    const edited = applyLadderCell(before, { networkId: 'n1', row: 0, col: COIL_COL }, out(Y(0)));
+    if (!edited.ok) throw new Error(edited.message);
+    store.setLadder(edited.program);
+    expect(useStore.getState().undoLadderEdit()).toBe(true);
+    expect(useStore.getState().ladder).toBe(before);
+    // 盤の履歴は動かない
+    expect(useStore.getState().history.done).toEqual([]);
+    expect(useStore.getState().redoLadderEdit()).toBe(true);
+    expect(useStore.getState().ladder).toBe(edited.program);
+    expect(useStore.getState().redoLadderEdit()).toBe(false);
+  });
+
+  it('keeps device comments inside the caps (§10.7)', () => {
+    const store = useStore.getState();
+    store.setDeviceComment('X0', '運転押ボタン');
+    expect(useStore.getState().ladderComments['X0']).toBe('運転押ボタン');
+    store.setDeviceComment('X0', '');
+    expect(useStore.getState().ladderComments['X0']).toBeUndefined();
+    store.setDeviceComment('Y0', 'あ'.repeat(40));
+    expect(useStore.getState().ladderComments['Y0']).toHaveLength(32);
+  });
+});
+
+describe('モードDの状態を持ち越さない（Plan 2B Batch 1 B4 と同じ規則）', () => {
+  it('drops the ladder when the session is abandoned', () => {
+    useStore.getState().openProblem(problem);
+    useStore.getState().setPlcRunning(true);
+    useStore.getState().abandonSession();
+    const state = useStore.getState();
+    expect(state.ladder).toBeUndefined();
+    expect(state.ladderHistory.done).toEqual([]);
+    expect(state.plcMonitor).toBeUndefined();
+    expect(state.plcRunning).toBe(false);
+    expect(state.converted).toBe(false);
+  });
+
+  it('starts a retry from an empty ladder again', () => {
+    useStore.getState().openProblem(problem);
+    const seeded = applyLadderCell(useStore.getState().ladder!, { networkId: 'n1', row: 0, col: 0 }, no(X(1)));
+    if (!seeded.ok) throw new Error(seeded.message);
+    useStore.getState().setLadder(seeded.program);
+    useStore.getState().resetSession();
+    expect(useStore.getState().ladder).toEqual(initialLadder());
+    expect(useStore.getState().ladderHistory.done).toEqual([]);
+  });
+
+  it('bumps the session epoch on a retry so the worker reloads', () => {
+    useStore.getState().openProblem(problem);
+    const epoch = useStore.getState().sessionEpoch;
+    useStore.getState().resetSession();
+    expect(useStore.getState().sessionEpoch).toBe(epoch + 1);
+  });
+});
+
+describe('画面の分割とフォーカス（決定表#3 / #10）', () => {
+  it('switches the split view', () => {
+    useStore.getState().openProblem(problem);
+    useStore.getState().setLadderView('board');
+    expect(useStore.getState().ladderView).toBe('board');
+  });
+
+  it('remembers which pane has the keyboard', () => {
+    useStore.getState().openProblem(problem);
+    useStore.getState().setLadderFocused(true);
+    expect(useStore.getState().ladderFocused).toBe(true);
+    useStore.getState().setLadderFocused(false);
+    expect(useStore.getState().ladderFocused).toBe(false);
+  });
+});
+```
+
+- [ ] **Step 2: RED を確認する**
+
+```powershell
+pnpm --filter @ojt/desktop exec vitest run test/store-plc.test.ts
+```
+
+Expected: 失敗（`plc-session.js` が無い、`setLadder` が無い）。
+
+- [ ] **Step 3: `src/renderer/session/plc-session.ts` を書く**
+
+```ts
+import { JIPM_BOARD, type BoardDefinition } from '@ojt/board-model';
+import { isPlcProblem, plcBoardFor, resolvePlcIo, type ResolvedPlcIo, type SupportedProblem } from '@ojt/content';
+
+/**
+ * モードD専用の小さな純関数。設計仕様 §7.6 / §10.1。
+ * 「この課題の盤（PLC本体つき）」と「この課題のI/O割付」を、画面のどこからでも同じ形で引けるようにする。
+ */
+
+/**
+ * 課題が使う盤。モードDは**必ず `withPlcUnit()` 済みの派生盤**を使う（3A 引渡し表）。
+ * モードD以外・未対応機種は `undefined`。
+ */
+export function plcBoardOf(problem: SupportedProblem): BoardDefinition | undefined {
+  if (!isPlcProblem(problem)) return undefined;
+  return plcBoardFor(problem, JIPM_BOARD);
+}
+
+/**
+ * 画面が使う盤。モードDなら派生盤、それ以外は素の `JIPM_BOARD`。
+ * 3Dシーン・経路生成・`addWire()` はすべてこの1本から盤を取る（Task 10 / 11）。
+ */
+export function boardForProblem(problem: SupportedProblem | undefined): BoardDefinition {
+  if (problem === undefined) return JIPM_BOARD;
+  return plcBoardOf(problem) ?? JIPM_BOARD;
+}
+
+/** 課題のI/O割付（既定割付の穴埋め済み）。モードD以外は `undefined`。§7.6 */
+export function plcIoOf(problem: SupportedProblem | undefined): ResolvedPlcIo | undefined {
+  if (problem === undefined || !isPlcProblem(problem)) return undefined;
+  return resolvePlcIo(problem.io);
+}
+```
+
+- [ ] **Step 4: `store-types.ts` に値型を足す**
+
+`CameraPreset` に `'plc'` を足し（決定表#6。Task 10 で `cameraPose()` が実装する）、モニタとコメントの値型を置く。**既存の型は消さない。**
+
+```ts
+/**
+ * 視点プリセット。§12.2
+ * …（既存のコメント）…
+ * `plc` は机上のPLC本体と壁コンセントを画角に収める視点で、**モードDだけ**ツールバーに出る
+ * （テンキーとビューキューブの割当は変えない。決定表#6）。
+ */
+export type CameraPreset =
+  | 'front'
+  | 'top'
+  | 'socket'
+  | 'back'
+  | 'left'
+  | 'right'
+  | 'bottom'
+  | 'plc';
+
+/**
+ * モニタ（`F3`）の通電状況。§10.7 / 決定表#5
+ *
+ * `PlcSnapshot.poweredCells` の `Record<string, boolean>` をそのまま運ぶと、33ms ごとに
+ * 千数百個の真偽値が新しいオブジェクトで届き、セレクタの比較も毎回その数だけ走る。
+ * ネットワーク1本＝行を連ねた `'0110…'` の**文字列1本**に畳むと、比較も購読も文字列1本で済む。
+ */
+export interface PlcMonitorSnapshot {
+  scanCount: number;
+  tMs: number;
+  /** ネットワークID → 「行 × 16列」を連ねた `'0'`/`'1'` の文字列。ENDネットワークは入らない。 */
+  powered: Record<string, string>;
+  inputs: boolean[];
+  outputs: boolean[];
+  internals: Record<number, boolean>;
+  timers: Record<number, { elapsedMs: number; on: boolean }>;
+  counters: Record<number, { value: number; on: boolean }>;
+}
+
+/** 出力ウィンドウに並べるもの。§10.6 */
+export interface ConvertIssues {
+  errors: ConvertErrorLine[];
+  warnings: ConvertWarningLine[];
+  /** 変換が通ったときの使用デバイス一覧（`CompiledProgram.usage`）。§10.8 */
+  usage: { reads: string[]; writes: string[] } | undefined;
+}
+
+/** 出力ウィンドウの1行（`ConvertError` を画面の語彙に直したもの）。 */
+export interface ConvertErrorLine {
+  source: 'structure' | 'dialect';
+  code: string;
+  message: string;
+  networkId?: string;
+  row?: number;
+  col?: number;
+}
+
+/** 変換警告の1行（二重コイル）。 */
+export interface ConvertWarningLine {
+  code: string;
+  message: string;
+  networkId: string;
+  row: number;
+  col: number;
+}
+
+/** 空の変換結果（課題を開いた直後・編集した直後）。 */
+export const NO_CONVERT_ISSUES: ConvertIssues = { errors: [], warnings: [], usage: undefined };
+```
+
+> **注意:** `ConvertErrorLine` / `ConvertWarningLine` は `@ojt/plc-dialects` の `ConvertError` / `@ojt/ladder-core` の `CompileWarning` を**構造的に写した**型である。`store-types.ts` は「React にも three にも依存しない値型」を置く場所で、`Device` のようなライブラリの型を持ち込むとストアの値が構造化複製できるかどうかが読めなくなる（Worker と作業ファイルの両方を通る）。写すのは3〜6個のプリミティブだけなので、写像は Task 6 の `session/ladder-errors.ts` が1箇所で持つ。
+
+- [ ] **Step 5: `store.ts` にモードDの状態を足す（**MERGE 注意 #2**）**
+
+`store.ts` への追記は**次の5箇所だけ**である。
+
+**(a) import の追加**（先頭のブロック）:
+
+```ts
+import { isPlcProblem, type SupportedProblem } from '@ojt/content';      // ← isPlcProblem を足す
+import type { LadderProgram } from '@ojt/ladder-core';
+import type { DialectId } from '@ojt/plc-dialects';
+import {
+  emptyLadderHistory,
+  initialLadder,
+  redoLadder,
+  undoLadder,
+  type LadderCursor,
+  type LadderEditorMode,
+  type LadderHistory,
+} from '../session/ladder.js';
+import {
+  NO_CONVERT_ISSUES,
+  type ConvertIssues,
+  type PlcMonitorSnapshot,
+} from './store-types.js';                                              // ← 既存の import に足す
+```
+
+**(b) 定数**（`HAZARD_BANNER_TTL_MS` の直後）:
+
+```ts
+/** デバイスコメント1件の長さの上限（`@ojt/content` の `MAX_DEVICE_COMMENT_LENGTH` と同じ値）。§10.7 */
+export const DEVICE_COMMENT_LIMIT = 32;
+
+/** デバイスコメントの件数の上限（`@ojt/content` の `MAX_DEVICE_COMMENTS` と同じ値）。§10.7 */
+export const DEVICE_COMMENT_COUNT_LIMIT = 200;
+
+/** 画面の分割。決定表#10 */
+export type LadderViewMode = 'ladder' | 'split' | 'board';
+
+/** モードDの判定結果も持てるようにする。§10.8 */
+export type AnyJudgeResult = JudgeResult | JudgeInspectResult | JudgePlcResult;
+
+/** 点検系（C1/C2）の判定結果か。§9.1 / §9.2 */
+export function isInspectJudge(result: AnyJudgeResult): result is JudgeInspectResult {
+  return result.mode === 'inspect-parts' || result.mode === 'inspect-repair';
+}
+
+/** モードDの判定結果か。§10.8 */
+export function isPlcJudge(result: AnyJudgeResult): result is JudgePlcResult {
+  return result.mode === 'plc';
+}
+```
+
+> `isInspectJudge()` は **`mode !== 'assemble'` から明示の2値判定へ変える**。モードDが増えた以上「組立でなければ点検」は成り立たない（`Result.tsx` が C1/C2 の画面にモードDの結果を流し込んでしまう）。`JudgeResult` / `JudgeInspectResult` / `JudgePlcResult` の3つとも `mode` を持つ（Plan 2A I-3 ＋ 3A）ので、判別は安全である。
+
+**(c) `AppState` のフィールド**（`highlight: HighlightSelection;` の直後）:
+
+```ts
+  /** 訓練者のラダー（モードDのみ）。§10.3 */
+  ladder: LadderProgram | undefined;
+  /** デバイスコメント（キーは `deviceLabel()` の形）。§10.7 */
+  ladderComments: Record<string, string>;
+  /** ラダー専用の取り消しスタック（盤の `history` とは別。決定表#2） */
+  ladderHistory: LadderHistory;
+  /** セルカーソル。§10.7 */
+  ladderCursor: LadderCursor;
+  /** 書込み／読出し／モニタ。§10.6 */
+  ladderMode: LadderEditorMode;
+  /** ラダーエディタにフォーカスがあるか（キーの宛先を決める。決定表#3） */
+  ladderFocused: boolean;
+  /** 画面の分割。決定表#10 */
+  ladderView: LadderViewMode;
+  /** いま使っている方言（Phase 3 は常に `mitsubishi`）。§10.5 */
+  dialectId: DialectId;
+  /** 最後の編集のあと「変換」を通したか。§10.6 / 3A H-1 */
+  converted: boolean;
+  /** 出力ウィンドウの中身。§10.6 */
+  convertIssues: ConvertIssues;
+  /** モニタ中の通電状況（モニタでないときは undefined）。決定表#5 */
+  plcMonitor: PlcMonitorSnapshot | undefined;
+  /** PLCが RUN 中か。§10.6 */
+  plcRunning: boolean;
+```
+
+**(d) アクションの宣言**（`setHighlight` の直後）:
+
+```ts
+  /** ラダーを差し替える（前の状態を履歴に積み、変換済みフラグを落とす）。§10.6 */
+  setLadder: (program: LadderProgram) => void;
+  /** ラダーを履歴を積まずに差し替える（作業ファイルからの復元）。§12.3 */
+  restoreLadder: (program: LadderProgram, comments?: Record<string, string>) => void;
+  /** セルカーソルを動かす。 */
+  setLadderCursor: (cursor: LadderCursor) => void;
+  /** 書込み／読出し／モニタを切り替える。§10.6 */
+  setLadderMode: (mode: LadderEditorMode) => void;
+  /** ラダーエディタのフォーカス。決定表#3 */
+  setLadderFocused: (focused: boolean) => void;
+  /** 画面の分割。決定表#10 */
+  setLadderView: (view: LadderViewMode) => void;
+  /** デバイスコメントを1件入れる（空文字で削除、32文字で切り詰め、200件まで）。§10.7 */
+  setDeviceComment: (device: string, text: string) => void;
+  /** 「変換」の結果を入れる。§10.6 */
+  setConverted: (converted: boolean, issues: ConvertIssues) => void;
+  /** モニタのスナップショット。決定表#5 */
+  setPlcMonitor: (monitor: PlcMonitorSnapshot | undefined) => void;
+  /** RUN/STOP。§10.6 */
+  setPlcRunning: (running: boolean) => void;
+  /** ラダーを1手戻す（戻せたら true）。決定表#2 */
+  undoLadderEdit: () => boolean;
+  /** ラダーを1手やり直す（やり直せたら true）。決定表#2 */
+  redoLadderEdit: () => boolean;
+```
+
+**(e) 実装**。初期値は既定値の並びへ、アクションは `setHighlight` の実装の直後へ入れる。そして **`openProblem()` / `resetSession()` / `restartSession()` / `abandonSession()` の `set()` に下の `plcFields()` を混ぜる**。
+
+```ts
+/** モードDの状態の初期値（課題を開く・離れるときに必ずここへ戻す）。 */
+function plcFields(problem?: SupportedProblem): Pick<
+  AppState,
+  | 'ladder'
+  | 'ladderComments'
+  | 'ladderHistory'
+  | 'ladderCursor'
+  | 'ladderMode'
+  | 'ladderFocused'
+  | 'ladderView'
+  | 'converted'
+  | 'convertIssues'
+  | 'plcMonitor'
+  | 'plcRunning'
+> {
+  const isPlc = problem !== undefined && isPlcProblem(problem);
+  return {
+    // モードD以外では `undefined`（3Dだけの画面がラダーを持たない）
+    ladder: isPlc ? initialLadder() : undefined,
+    ladderComments: {},
+    ladderHistory: emptyLadderHistory(),
+    ladderCursor: { networkId: 'n1', row: 0, col: 0 },
+    ladderMode: 'write',
+    ladderFocused: false,
+    ladderView: 'split',
+    converted: false,
+    convertIssues: NO_CONVERT_ISSUES,
+    plcMonitor: undefined,
+    plcRunning: false,
+  };
+}
+```
+
+初期値（`create<AppState>((set, get) => ({ … })` の中）:
+
+```ts
+  ...plcFields(),
+  dialectId: 'mitsubishi',
+```
+
+`openProblem()` の `set({ … })` の中（`highlight: NO_HIGHLIGHT,` の直後）:
+
+```ts
+      ...plcFields(problem),
+```
+
+`resetSession()` は `openProblem()` を呼び直すので**追加の後始末は要らない**（`plcFields(problem)` が走る）。`restartSession()` と `abandonSession()` の `set({ … })` にはそれぞれ:
+
+```ts
+      ...plcFields(),
+```
+
+を足す（課題を離れる／作り直すので空に戻す。Plan 2B Task 4 Step 8 と同じ規則）。
+
+アクションの実装:
+
+```ts
+  setLadder: (program) => {
+    const current = get().ladder;
+    set({
+      ladder: program,
+      // 編集したら変換済みではなくなる（H-1: 判定は変換を通ったものだけ）
+      converted: false,
+      convertIssues: NO_CONVERT_ISSUES,
+      ...(current === undefined ? {} : { ladderHistory: pushLadder(get().ladderHistory, current) }),
+    });
+  },
+  restoreLadder: (program, comments) => {
+    set({
+      ladder: program,
+      ladderHistory: emptyLadderHistory(),
+      converted: false,
+      convertIssues: NO_CONVERT_ISSUES,
+      ...(comments === undefined ? {} : { ladderComments: { ...comments } }),
+    });
+  },
+  setLadderCursor: (ladderCursor) => {
+    set({ ladderCursor });
+  },
+  setLadderMode: (ladderMode) => {
+    set({ ladderMode });
+  },
+  setLadderFocused: (ladderFocused) => {
+    set({ ladderFocused });
+  },
+  setLadderView: (ladderView) => {
+    set({ ladderView });
+  },
+  setDeviceComment: (device, text) => {
+    const comments = { ...get().ladderComments };
+    const trimmed = text.trim();
+    if (trimmed.length === 0) delete comments[device];
+    else if (Object.hasOwn(comments, device) || Object.keys(comments).length < DEVICE_COMMENT_COUNT_LIMIT) {
+      comments[device] = trimmed.slice(0, DEVICE_COMMENT_LIMIT);
+    }
+    set({ ladderComments: comments });
+  },
+  setConverted: (converted, convertIssues) => {
+    set({ converted, convertIssues });
+  },
+  setPlcMonitor: (plcMonitor) => {
+    set({ plcMonitor });
+  },
+  setPlcRunning: (plcRunning) => {
+    set({ plcRunning });
+  },
+  undoLadderEdit: () => {
+    const { ladder, ladderHistory } = get();
+    if (ladder === undefined) return false;
+    const step = undoLadder(ladderHistory, ladder);
+    if (step === undefined) return false;
+    set({
+      ladder: step.program,
+      ladderHistory: step.history,
+      converted: false,
+      convertIssues: NO_CONVERT_ISSUES,
+    });
+    return true;
+  },
+  redoLadderEdit: () => {
+    const { ladder, ladderHistory } = get();
+    if (ladder === undefined) return false;
+    const step = redoLadder(ladderHistory, ladder);
+    if (step === undefined) return false;
+    set({
+      ladder: step.program,
+      ladderHistory: step.history,
+      converted: false,
+      convertIssues: NO_CONVERT_ISSUES,
+    });
+    return true;
+  },
+```
+
+`pushLadder` を import に足すのを忘れないこと。
+
+**(f) `sessionForProblem()` の盤**: モードDは `withPlcUnit()` 済みの盤でセッションを作る。
+
+```ts
+export function sessionForProblem(problem: SupportedProblem): BoardSession {
+  // モードDは机上のPLC本体と壁コンセントを持つ派生盤で作る（3A 引渡し表）。`id` は同じなので
+  // `boardId` の照合も作業ファイルの読み戻しもそのまま通る
+  return createSession(boardForProblem(problem), {
+    roles: toSocketRoles(problem.board.socketRoles),
+    allowedColors: ['青'],
+    extraParts: (problem.board.extraParts ?? []).map((name) => partId(name)),
+    inventory: problem.inventory,
+  });
+}
+```
+
+`boardForProblem` は `../session/plc-session.js` から import する。**`createSession()` の第1引数を `JIPM_BOARD` から差し替えるだけ**で、モードB/C1/C2 では `boardForProblem()` が `JIPM_BOARD` を返すので挙動は変わらない。
+
+- [ ] **Step 6: GREEN を確認する**
+
+```powershell
+pnpm --filter @ojt/desktop exec vitest run test/store-plc.test.ts test/store.test.ts test/store-inspect.test.ts
+pnpm --filter @ojt/desktop typecheck
+```
+
+Expected: `store-plc` が `Tests  11 passed (11)`。既存の `store.test.ts` / `store-inspect.test.ts` も通る（`isInspectJudge()` の判定を変えたので、モードB/C1/C2 の分岐が変わっていないことをここで確認する）。
+
+- [ ] **Step 7: コミットする**
+
+```powershell
+npx prettier --write "apps/desktop/src/renderer/app/*.ts" "apps/desktop/src/renderer/session/plc-session.ts" "apps/desktop/test/store-plc.test.ts"
+npx prettier --check "apps/desktop/**/*.{ts,tsx,css}"
+git add apps/desktop/src/renderer/app apps/desktop/src/renderer/session/plc-session.ts apps/desktop/test/store-plc.test.ts
+git commit -m "feat(desktop): widen the store to mode D (ladder, dialect, monitor)"
+```
+
+---
+
 <!-- CHUNK -->
+
