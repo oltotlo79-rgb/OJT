@@ -58,3 +58,18 @@ export {
   setCell,
   setVerticalLink,
 } from './edit.js';
+
+export {
+  compile,
+  MAX_COUNTER_PRESET,
+  MAX_TIMER_PRESET_MS,
+  TIMER_STEP_MS,
+  type CompiledNetwork,
+  type CompiledOutput,
+  type CompiledProgram,
+  type CompileError,
+  type CompileErrorCode,
+  type CompileResult,
+  type CompileWarning,
+  type DeviceUsage,
+} from './compile.js';
