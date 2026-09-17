@@ -70,7 +70,32 @@ async function clickTerminal(page: Page, box: CanvasBox, terminal: string): Prom
   await page.mouse.click(point.x, point.y);
 }
 
-test.describe('タイムチャートの拡大表示', () => {
+/**
+ * どの画面からでもホームへ戻す（シナリオの切り分け）。
+ * 1本目のテストは結果画面で終わるので、そのまま2本目が `mode-assemble` を待つと
+ * 30秒でタイムアウトする（実際に b-007 のシナリオで起きた flake）。各シナリオの先頭で
+ * 「いまどこに居るか」に関係なくホームへ戻してから始める。
+ */
+async function goHome(page: Page): Promise<void> {
+  const home = page.getByTestId('mode-assemble');
+  if ((await home.count()) > 0) {
+    await expect(home).toBeVisible();
+    return;
+  }
+  const sessionBack = page.getByTestId('session-back');
+  if ((await sessionBack.count()) > 0) {
+    await sessionBack.click();
+  } else {
+    const toList = page.getByRole('button', { name: '課題一覧へ', exact: true });
+    if ((await toList.count()) > 0) await toList.first().click();
+  }
+  const listBack = page.getByRole('button', { name: 'ホームへ戻る', exact: true });
+  await expect(listBack).toBeVisible();
+  await listBack.click();
+  await expect(home).toBeVisible();
+}
+
+test.describe.serial('タイムチャートの拡大表示', () => {
   let app: ElectronApplication;
   let page: Page;
 
@@ -101,6 +126,7 @@ test.describe('タイムチャートの拡大表示', () => {
 
   test('仕様チャートをクリックで拡大し、Esc で閉じる（§7.7 / §8.1）', async () => {
     // ① 課題 b-001 を開く
+    await goHome(page);
     await page.getByTestId('mode-assemble').click();
     await page.getByTestId('open-b-001').click();
     await expect(page.getByTestId('viewport')).toBeVisible();
@@ -158,6 +184,8 @@ test.describe('タイムチャートの拡大表示', () => {
   });
 
   test('操作エッジの多い課題（b-007）は小さいチャートの破線を絞る（§7.7 レビュー Minor 2）', async () => {
+    // 1本目は結果画面で終わるので、必ずホームへ戻してから始める
+    await goHome(page);
     await page.getByTestId('mode-assemble').click();
     await page.getByTestId('open-b-007').click();
     await expect(page.getByTestId('viewport')).toBeVisible();
