@@ -305,3 +305,34 @@ describe('loadContent のモードB以外の扱い（Plan 2A Task 17: SupportedP
     expect(BUILTIN_ALL_PROBLEMS).toHaveLength(20);
   });
 });
+
+describe('まだ開始できないモード（§16 / §13 #1）', () => {
+  /** PLC課題（Phase 3）のヘッダだけの最小JSON。 */
+  function plcProblemJson(): Record<string, unknown> {
+    return {
+      formatVersion: 1,
+      id: 'x-plc',
+      mode: 'plc',
+      title: 'テスト用 PLCラダー',
+      grade: 2,
+      description: 'テスト用',
+      timeLimit: { standardMin: 30, cutoffMin: 50 },
+      board: { boardId: 'board-jipm-std', socketRoles: { S7: 'CHK' } },
+      inventory: [],
+    };
+  }
+
+  it('利用者フォルダの plc 課題は一覧に出さず、理由付きの読込エラーにする', async () => {
+    const dir = tempDir();
+    writeFileSync(join(dir, 'plc.json'), JSON.stringify(plcProblemJson()), 'utf8');
+
+    const { payload, byId } = await loadContent(dir);
+
+    expect(payload.problems).toHaveLength(BUILTIN_ALL_PROBLEMS.length);
+    expect(byId.get('x-plc')).toBeUndefined();
+    expect(payload.errors).toHaveLength(1);
+    expect(payload.errors[0]?.reason).toBe('unsupported-mode');
+    expect(payload.errors[0]?.message).toBe('このモードはまだ開始できません: plc');
+    expect(payload.errors[0]?.details).toEqual([]);
+  });
+});
