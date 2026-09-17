@@ -178,12 +178,18 @@ export const JA = {
     title: 'テスター',
     kindDigital: 'デジタル',
     kindAnalog: 'アナログ',
+    /** 種別切替の行のグループ名（a11y）。 */
+    kindGroup: 'テスターの種類',
     modeOff: 'OFF',
     modeDcv: 'DCV',
     modeAcv: 'ACV',
     modeOhm: 'Ω',
     modeCont: '導通',
+    /** つまみ（モード）の行のグループ名（a11y）。 */
+    modeGroup: '測定モード',
     range: 'レンジ',
+    /** レンジ行のグループ名（a11y）。 */
+    rangeGroup: 'レンジ',
     /** デジタルはレンジつまみを持たない（§9.3）。 */
     autoRange: 'オートレンジ',
     zeroAdjust: '0Ω ADJ',
@@ -203,8 +209,8 @@ export const JA = {
     liveNote: '通電中はΩ／導通を測れません（無通電にしてから測ります）',
     /** 振り切れ。§5.6 #2 */
     overRangeNote: 'レンジを超えています（上のレンジへ切り替えます）',
-    /** 導通ブザーが鳴っている。§5.5 */
-    buzzing: '導通',
+    /** 導通ブザーが鳴っている。§5.5。表示器の読値が既に「導通」を出すので、ここは重複しない文言にする */
+    buzzing: 'ブザー鳴動中',
     /** アナログ計器の読み上げ名。§15 */
     meterLabel: 'アナログテスターの目盛',
     /** テスターモードのツールバー表示。§8.1 */

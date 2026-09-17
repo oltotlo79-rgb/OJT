@@ -124,7 +124,7 @@ export function TesterPanel({ children }: { children?: JSX.Element }): JSX.Eleme
       <TesterReadout />
       {kind === 'analog' ? <AnalogMeter /> : null}
       {children}
-      <div className={styles.row}>
+      <div className={styles.row} role="group" aria-label={JA.tester.kindGroup}>
         {KINDS.map((item) => (
           <button
             key={item.kind}
@@ -138,7 +138,12 @@ export function TesterPanel({ children }: { children?: JSX.Element }): JSX.Eleme
           </button>
         ))}
       </div>
-      <div className={styles.row} data-testid="tester-modes">
+      <div
+        className={styles.row}
+        data-testid="tester-modes"
+        role="group"
+        aria-label={JA.tester.modeGroup}
+      >
         {MODES.map((item) => (
           <button
             key={item.mode}
@@ -158,8 +163,15 @@ export function TesterPanel({ children }: { children?: JSX.Element }): JSX.Eleme
           {JA.tester.autoRange}
         </p>
       ) : mode === 'off' ? null : (
-        <div className={styles.row} data-testid="tester-ranges">
-          <span className={styles.label}>{JA.tester.range}</span>
+        <div
+          className={styles.row}
+          data-testid="tester-ranges"
+          role="group"
+          aria-labelledby="tester-range-label"
+        >
+          <span className={styles.label} id="tester-range-label">
+            {JA.tester.range}
+          </span>
           {isOhmSide
             ? ANALOG_OHM_RANGES.map((range) => (
                 <button

@@ -1,7 +1,8 @@
-import { toTerminalId } from '@ojt/circuit-sim';
+import { toTerminalId, voltRangesFor } from '@ojt/circuit-sim';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useStore } from '../src/renderer/app/store.js';
+import { JA } from '../src/renderer/i18n/ja.js';
 import { TesterPanel } from '../src/renderer/panels/TesterPanel.js';
 
 /**
@@ -74,6 +75,22 @@ describe('種別とレンジ（§9.3）', () => {
     const ranges = screen.getByTestId('tester-ranges');
     expect(ranges.textContent).toContain('2.5');
     expect(ranges.textContent).toContain('250');
+  });
+
+  it('アナログのACVのレンジ一覧は voltRangesFor(ACV) と一致する', () => {
+    render(<TesterPanel />);
+    fireEvent.click(screen.getByRole('button', { name: 'アナログ' }));
+    fireEvent.click(screen.getByRole('button', { name: 'ACV' }));
+    const ranges = screen.getByTestId('tester-ranges');
+    for (const range of voltRangesFor('ACV')) {
+      expect(ranges.textContent).toContain(String(range));
+    }
+  });
+
+  it('アナログの OFF ではレンジ欄を出さない（M13）', () => {
+    useStore.setState({ tester: { ...useStore.getState().tester, kind: 'analog', mode: 'off' } });
+    render(<TesterPanel />);
+    expect(screen.queryByTestId('tester-ranges')).toBeNull();
   });
 
   it('アナログのΩは ×1 / ×10 / ×1k を出し、0Ω調整が押せる', () => {
@@ -150,6 +167,28 @@ describe('表示器（§9.3）', () => {
     expect(screen.getByTestId('tester-readout').textContent).toBe('650.0 Ω');
   });
 
+  it('導通ブザー鳴動中の文言は読値の「導通」と重複しない（レビュー指摘）', () => {
+    useStore.setState({
+      snapshot: {
+        ...useStore.getState().snapshot,
+        tester: {
+          kind: 'digital',
+          mode: 'CONT',
+          value: 0,
+          display: '導通',
+          targetDeg: 0,
+          needleDeg: 0,
+          overRange: false,
+          live: false,
+          conductive: true,
+        },
+      },
+    });
+    render(<TesterPanel />);
+    expect(screen.getByTestId('tester-readout').textContent).toBe('導通');
+    expect(screen.getByTestId('tester-buzz').textContent).toBe('ブザー鳴動中');
+  });
+
   it('通電中のΩ測定は測定不能の理由を添える（§5.6 #1）', () => {
     useStore.setState({
       snapshot: {
@@ -170,5 +209,24 @@ describe('表示器（§9.3）', () => {
     render(<TesterPanel />);
     expect(screen.getByTestId('tester-readout').textContent).toBe('----');
     expect(screen.getByTestId('tester-live-note')).toBeTruthy();
+  });
+});
+
+describe('a11y（種別・つまみ・レンジのグループ化）', () => {
+  it('種別の行に role=group と aria-label が付く', () => {
+    render(<TesterPanel />);
+    expect(screen.getByRole('group', { name: JA.tester.kindGroup })).toBeTruthy();
+  });
+
+  it('つまみの行に role=group と aria-label が付く', () => {
+    render(<TesterPanel />);
+    expect(screen.getByRole('group', { name: JA.tester.modeGroup })).toBeTruthy();
+  });
+
+  it('レンジの行に role=group が付き、レンジ見出しで名付けられる（アナログ選択時）', () => {
+    render(<TesterPanel />);
+    fireEvent.click(screen.getByRole('button', { name: 'アナログ' }));
+    fireEvent.click(screen.getByRole('button', { name: 'DCV' }));
+    expect(screen.getByRole('group', { name: JA.tester.range })).toBeTruthy();
   });
 });
