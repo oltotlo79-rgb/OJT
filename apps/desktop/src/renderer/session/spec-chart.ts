@@ -6,7 +6,7 @@ import {
   resolveCompareSignals,
   runOperations,
   timerMarkers,
-  type AssembleProblem,
+  type SchematicProblem,
   type TimeChart,
 } from '@ojt/content';
 
@@ -30,7 +30,7 @@ export type SpecChartResult = { ok: true; chart: TimeChart } | { ok: false; erro
 const CACHE = new Map<string, SpecChartResult>();
 
 /** キャッシュの鍵。 */
-function cacheKey(problem: AssembleProblem): string {
+function cacheKey(problem: SchematicProblem): string {
   return `${problem.id}@${problem.formatVersion}`;
 }
 
@@ -40,12 +40,12 @@ export function clearSpecChartCache(): void {
 }
 
 /** その課題の仕様チャートがもうキャッシュにあるか（テスト用）。 */
-export function isSpecChartCached(problem: AssembleProblem): boolean {
+export function isSpecChartCached(problem: SchematicProblem): boolean {
   return CACHE.has(cacheKey(problem));
 }
 
 /** 課題の仕様タイムチャートを作る（同じ課題の2度目以降はキャッシュを返す）。 */
-export function buildSpecChart(problem: AssembleProblem): SpecChartResult {
+export function buildSpecChart(problem: SchematicProblem): SpecChartResult {
   const key = cacheKey(problem);
   const cached = CACHE.get(key);
   if (cached !== undefined) return cached;
@@ -55,7 +55,7 @@ export function buildSpecChart(problem: AssembleProblem): SpecChartResult {
 }
 
 /** 模範回路をその場で走らせて仕様チャートを作る（キャッシュの中身）。 */
-function computeSpecChart(problem: AssembleProblem): SpecChartResult {
+function computeSpecChart(problem: SchematicProblem): SpecChartResult {
   const reference = buildReferenceSession(problem, JIPM_BOARD);
   if (!reference.ok) {
     return { ok: false, errors: reference.errors.map((e) => `${e.path}: ${e.message}`) };

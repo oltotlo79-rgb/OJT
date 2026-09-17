@@ -8,6 +8,7 @@ import {
 import { beforeEach, describe, expect, it } from 'vitest';
 import { isInspectJudge, useStore } from '../src/renderer/app/store.js';
 import { NO_HIGHLIGHT } from '../src/renderer/app/store-types.js';
+import { JA } from '../src/renderer/i18n/ja.js';
 
 /**
  * 3モードを開けるストア（Plan 2B Task 4）。設計仕様 §12.1 / §9.1 / §9.2。
@@ -267,4 +268,32 @@ describe('resetSession（「もう一度」。§8.3 / Plan 2B Task 4）', () => 
 
     expect(useStore.getState().circuit?.applied.sites).toEqual(sitesBefore);
   }, 30_000);
+});
+
+describe('restartSession の最後の手段（§13 #5 / Plan 2B Task 14）', () => {
+  it('モードBは素の盤を作り直して同じ課題に留まる', () => {
+    expect(B).toBeDefined();
+    if (B === undefined) return;
+    useStore.getState().openProblem(B);
+    useStore.getState().restartSession();
+    useStore.getState().restartSession();
+    const after = useStore.getState();
+    expect(after.route).toBe('session');
+    expect(after.problem?.id).toBe(B.id);
+    expect(after.session).toBeDefined();
+  });
+
+  it('点検系（C1/C2）は故障入りの盤を作り直せないので課題一覧へ戻す', () => {
+    expect(C2_GRADE2).toBeDefined();
+    if (C2_GRADE2 === undefined) return;
+    useStore.getState().openProblem(C2_GRADE2);
+    useStore.getState().restartSession();
+    useStore.getState().restartSession();
+    const after = useStore.getState();
+    expect(after.route).toBe('list');
+    expect(after.problem).toBeUndefined();
+    expect(after.session).toBeUndefined();
+    // 故障の無い青い盤で「再開しました」と言わない（盤を作り直せないことを知らせる）
+    expect(after.toasts.at(-1)?.text).toBe(JA.error.boardAbandoned);
+  });
 });

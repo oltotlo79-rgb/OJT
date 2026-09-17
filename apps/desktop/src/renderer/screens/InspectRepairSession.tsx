@@ -1,0 +1,677 @@
+import { JIPM_BOARD, socketPartId, SOCKET_IDS, toNetlistTerminal } from '@ojt/board-model';
+import type { BoardSession, SocketId } from '@ojt/board-model';
+import type { TerminalId } from '@ojt/circuit-sim';
+import {
+  addedWireIds,
+  isInspectRepairProblem,
+  modificationWireIds,
+  replacePart,
+  type RepairCircuit,
+} from '@ojt/content';
+import { useCallback, useEffect, useMemo, useRef, type JSX } from 'react';
+import { ojtApi } from '../app/ojt-api.js';
+import { useStore } from '../app/store.js';
+import { sounds, soundsForSnapshot } from '../audio/sounds.js';
+import {
+  failedLog,
+  historyLog,
+  JA,
+  openedProblemLog,
+  powerLog,
+  referenceErrorText,
+  routeFailedLog,
+  workFileSavedText,
+} from '../i18n/ja.js';
+import { ElapsedTimer } from '../panels/ElapsedTimer.js';
+import { LogPanel } from '../panels/LogPanel.js';
+import { PowerControls } from '../panels/PowerControls.js';
+import { ProblemPanel } from '../panels/ProblemPanel.js';
+import { RepairPanel, type MountedPartRow } from '../panels/RepairPanel.js';
+import { ReportPanel } from '../panels/ReportPanel.js';
+import { dispatchTester, TesterPanel } from '../panels/TesterPanel.js';
+import { TimeChartPanel } from '../panels/TimeChartPanel.js';
+import { Toolbar } from '../panels/Toolbar.js';
+import { WarningBanner } from '../panels/WarningBanner.js';
+import { SchematicSvg } from '../schematic/SchematicSvg.js';
+import {
+  cloneSession,
+  redo as redoHistory,
+  runAddWire,
+  runRemoveWire,
+  undo as undoHistory,
+  type CommandHistory,
+  type CommandResult,
+  type SessionCommand,
+} from '../session/commands.js';
+import { circuitForJudge, hasReportFor, reportPickToAction } from '../session/inspect-repair.js';
+import {
+  deleteKeyToAction,
+  escapeToAction,
+  pickToAction,
+  shouldIgnoreShortcut,
+  type PickAction,
+  type PickHit,
+} from '../session/interaction.js';
+import { buildSpecChart } from '../session/spec-chart.js';
+import { testerPickToAction, testerShortcut } from '../session/tester.js';
+import { useViewportShortcuts } from '../session/viewport-keys.js';
+import { applyWorkFile, toWorkFile } from '../session/work-file.js';
+import { bridge } from '../session/worker-bridge.js';
+import { BoardScene, safeRoutes } from '../three/BoardScene.js';
+import styles from './screens.module.css';
+
+/**
+ * モードC2（回路点検・修復）のセッション画面。設計仕様 §9.2 / §9.3 / §12.2。
+ *
+ * 盤は**故障が注入された状態で、見たまま**描かれる（断線した電線は見えるが導通しない、
+ * 未配線の電線は存在しない）。訓練者はテスターで測って故障を突き止め、指摘を登録し、
+ * 白線で修復し、必要なら部品を交換して判定する。
+ *
+ * 3Dのクリックの意味はツールモードで変わる: `wire`＝白線を張る、`delete`＝電線を外す、
+ * `tester`＝プローブを置く、`report`＝故障を指摘する。判断はそれぞれ純関数
+ * （`pickToAction` / `testerPickToAction` / `reportPickToAction`）が持つ。
+ */
+
+/** 経過時間の更新間隔[ms]。 */
+const ELAPSED_INTERVAL_MS = 200;
+
+/** 例外から画面に出す1行を作る。 */
+function reasonOf(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+/**
+ * スナップショットの差分から効果音を鳴らす。§15
+ * `Session` / `InspectPartsSession` と同じ理由で専用の小さなコンポーネントに切り出す
+ * （この画面で `snapshot` をまるごと購読すると3Dごと毎秒約30回描き直される）。
+ */
+function SoundEffects(): null {
+  const snapshot = useStore((s) => s.snapshot);
+  const previous = useRef<typeof snapshot | undefined>(undefined);
+  useEffect(() => {
+    for (const kind of soundsForSnapshot(previous.current, snapshot)) sounds.play(kind);
+    previous.current = snapshot;
+  }, [snapshot]);
+  return null;
+}
+
+/** モードC2のセッション画面。 */
+export function InspectRepairSession(): JSX.Element {
+  const problem = useStore((s) =>
+    s.problem !== undefined && isInspectRepairProblem(s.problem) ? s.problem : undefined,
+  );
+  const session = useStore((s) => s.session);
+  const circuit = useStore((s) => s.circuit);
+  const reports = useStore((s) => s.reports);
+  const pendingReport = useStore((s) => s.pendingReport);
+  const history = useStore((s) => s.history);
+  const mode = useStore((s) => s.mode);
+  const wireColor = useStore((s) => s.wireColor);
+  const camera = useStore((s) => s.camera);
+  /*
+   * スナップショットは毎秒約30枚届くが、この画面が見るのは電源まわりの真偽値だけ。
+   * `snapshot` をまるごと購読すると3Dビューポートごと巻き添えになる（§15）。
+   */
+  const powered = useStore((s) => s.snapshot.powered);
+  const tripped = useStore((s) => s.snapshot.tripped);
+  const breakerOn = useStore((s) => s.snapshot.breakerOn);
+  const switchOn = useStore((s) => s.snapshot.switchOn);
+  const hazards = useStore((s) => s.hazards);
+  const chatters = useStore((s) => s.chatters);
+  const logLines = useStore((s) => s.logLines);
+  const judging = useStore((s) => s.judging);
+  const schematicVisible = useStore((s) => s.schematicVisible);
+  const restoredHazardCount = useStore((s) => s.restoredHazardCount);
+  const problemId = problem?.id;
+  const sessionEpoch = useStore((s) => s.sessionEpoch);
+
+  // 視点のショートカットは Session / InspectPartsSession と共通のフックに任せる（§12.2）
+  useViewportShortcuts({ enabled: session !== undefined });
+
+  /*
+   * Worker を起こし、**故障入りの**盤を読ませる。§9.2 / §5.4
+   * 部品の故障はネットリスト変換のたびに入れ直す必要があるので、盤と一緒に `partFaults` を送る。
+   */
+  useEffect(() => {
+    const store = useStore.getState();
+    const current = store.problem;
+    const currentCircuit = store.circuit;
+    // この画面が描けない課題では Worker を起こさない（`SessionRoute` の振り分けの安全網）
+    if (current === undefined || !isInspectRepairProblem(current) || currentCircuit === undefined) {
+      return undefined;
+    }
+    bridge.start({
+      onSnapshot: (next) => {
+        useStore.getState().applySnapshot(next);
+      },
+      onJudge: () => {
+        // モードC2では届かない（モードBの判定結果）
+      },
+      onInspect: (message) => {
+        // C1（`judgeParts`）と同じ `inspectResult` で返る。判別は `result.value.mode`
+        const state = useStore.getState();
+        state.setJudging(false);
+        if (message.result.ok) {
+          state.setJudge(message.result.value);
+          state.setRoute('result');
+        } else {
+          state.toast(referenceErrorText(message.result.errors.map((e) => e.message)), 'error');
+        }
+      },
+      onError: (text, fatal) => {
+        const state = useStore.getState();
+        // 判定の往復中に落ちたら「判定中…」のまま固まるので、必ず戻す（§8.2）
+        state.setJudging(false);
+        const line = `${JA.error.workerError}: ${text}`;
+        if (fatal) state.setFatalError(line);
+        else state.toast(line, 'error');
+        state.addLog(line);
+      },
+    });
+    bridge.send({
+      type: 'load',
+      problemId: current.id,
+      session: cloneSession(currentCircuit.session),
+      partFaults: currentCircuit.applied.partFaults,
+    });
+    store.addLog(openedProblemLog(current.title));
+    return () => {
+      bridge.stop();
+    };
+  }, [problemId, sessionEpoch]);
+
+  // 経過時間を定期更新する（§8.1）
+  useEffect(() => {
+    const id = setInterval(() => {
+      useStore.getState().tickElapsed();
+    }, ELAPSED_INTERVAL_MS);
+    return () => {
+      clearInterval(id);
+    };
+  }, []);
+
+  /** 盤操作の結果を反映する（`Session` と同じ流儀）。§8.2 */
+  const apply = useCallback(<T,>(result: CommandResult<T>, after: () => void): void => {
+    const store = useStore.getState();
+    if (!result.ok) {
+      store.toast(result.message, 'error');
+      store.addLog(failedLog(result.message));
+      // 1端子3本目は盤としては断るが、実機ではやってしまえるので危険操作として数える（§5.6 #5）
+      if (result.code === 'terminal-overload' && result.wire !== undefined) {
+        bridge.send({ type: 'addWire', wire: result.wire });
+      }
+      return;
+    }
+    const current = store.session;
+    if (current !== undefined) store.setSession(cloneSession(current));
+    store.pushHistory(result.command);
+    store.addLog(result.command.label);
+    after();
+  }, []);
+
+  const runAction = useCallback(
+    (action: PickAction): void => {
+      const store = useStore.getState();
+      const current = store.session;
+      if (current === undefined) return;
+      switch (action.type) {
+        case 'beginWire':
+          store.setPending(action.from);
+          break;
+        case 'cancelWire':
+          store.setPending(undefined);
+          store.addLog(JA.session.cancelWire);
+          break;
+        case 'completeWire':
+          store.setPending(undefined);
+          apply(runAddWire(current, action.from, action.to, action.color), () => {
+            const next = useStore.getState();
+            const wire = next.session?.wires.at(-1);
+            const board = next.session;
+            if (wire === undefined || board === undefined) return;
+            bridge.send({ type: 'addWire', wire });
+            const failed = safeRoutes(JIPM_BOARD, board).errors.find((e) => e.wireId === wire.id);
+            if (failed !== undefined) {
+              next.toast(`${JA.session.routeFailed}（${JA.routeReason[failed.reason]}）`, 'error');
+              next.addLog(routeFailedLog(wire.id, JA.routeReason[failed.reason]));
+            }
+          });
+          break;
+        case 'selectWire':
+          store.setSelectedWire(action.wireId);
+          break;
+        case 'removeWire':
+          apply(runRemoveWire(current, action.wireId), () => {
+            useStore.getState().setSelectedWire(undefined);
+            bridge.send({ type: 'removeWire', wireId: action.wireId });
+          });
+          break;
+        case 'reject':
+          store.toast(action.message, 'error');
+          break;
+        case 'selectSocket':
+        case 'selectMounted':
+          store.setSelectedSocket(action.socketId);
+          break;
+        case 'pressButton':
+          bridge.send({ type: 'press', pbId: action.pbId });
+          break;
+        case 'placeProbe':
+          dispatchTester({ type: 'place-probe', probe: action.probe, terminal: action.terminal });
+          break;
+        case 'liftProbe':
+          if (action.probe === 'both') {
+            dispatchTester({ type: 'place-probe', probe: 'black', terminal: undefined });
+            dispatchTester({ type: 'place-probe', probe: 'red', terminal: undefined });
+            // 空クリックのあとは必ず「次は黒」に戻す（2回の place-probe の順序に依存しない。M-5）
+            store.setNextProbe('black');
+          } else {
+            dispatchTester({ type: 'place-probe', probe: action.probe, terminal: undefined });
+          }
+          break;
+        case 'openReport':
+          store.setPendingReport(action.target);
+          break;
+        case 'none':
+          break;
+      }
+    },
+    [apply],
+  );
+
+  /** 3Dへ渡すコールバックは安定させる。毎回作り直すとシーン全体が再構築される。§15 */
+  const onHover = useCallback((id: TerminalId | undefined) => {
+    useStore.getState().setHovered(id);
+  }, []);
+  const onPress = useCallback((pbId: string) => {
+    bridge.send({ type: 'press', pbId });
+  }, []);
+  const onRelease = useCallback((pbId: string) => {
+    bridge.send({ type: 'release', pbId });
+  }, []);
+
+  /**
+   * 3Dのピック → 操作。ツールモードで判断する純関数を選ぶ。§9.2 / §9.3
+   * 端子IDは3Dが物理ID（`S1.13`）を返すので、ネットリスト・指摘・プローブが使う役割ID
+   * （`CR1.13`）へ直してから渡す（§6.4）。
+   */
+  const onPick = useCallback(
+    (hit: PickHit): void => {
+      const store = useStore.getState();
+      const current = store.session;
+      if (current === undefined) return;
+      const mapped: PickHit =
+        hit.kind === 'terminal'
+          ? { ...hit, id: toNetlistTerminal(current.socketRoles, hit.id) }
+          : hit;
+      if (store.mode === 'tester') {
+        runAction(
+          testerPickToAction(
+            { black: store.tester.black, red: store.tester.red, next: store.nextProbe },
+            mapped,
+          ),
+        );
+        return;
+      }
+      if (store.mode === 'report') {
+        runAction(
+          reportPickToAction(mapped, (socketId) => socketPartId(current.socketRoles, socketId)),
+        );
+        return;
+      }
+      runAction(
+        pickToAction(
+          {
+            mode: store.mode,
+            pendingTerminal: store.pendingTerminal,
+            selectedWire: store.selectedWire,
+            wireColor: store.wireColor,
+          },
+          mapped,
+        ),
+      );
+    },
+    [runAction],
+  );
+
+  // キーボード操作（§8.2 / §9.3）
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent): void => {
+      // 入力欄で打鍵中・IME変換中は盤のショートカットを動かさない（§8.2）
+      if (shouldIgnoreShortcut(event)) return;
+      const store = useStore.getState();
+      const current = store.session;
+      if (current === undefined) return;
+      const state = {
+        mode: store.mode,
+        pendingTerminal: store.pendingTerminal,
+        selectedWire: store.selectedWire,
+        wireColor: store.wireColor,
+      };
+      if (event.key === 'Delete') {
+        runAction(
+          deleteKeyToAction(
+            state,
+            current.wires.filter((w) => w.locked).map((w) => w.id),
+          ),
+        );
+        return;
+      }
+      if (store.mode === 'tester' || store.mode === 'report') {
+        // 3種とも明示的に分岐する（`testerShortcut()` は未知のキーを既に上で弾いている）
+        const shortcut = testerShortcut(event.key);
+        if (shortcut === undefined) return;
+        if (shortcut.type === 'next-probe') store.setNextProbe(shortcut.probe);
+        else if (shortcut.type === 'zero-adjust') dispatchTester({ type: 'zero-adjust' });
+        else if (shortcut.type === 'lift-both') {
+          dispatchTester({ type: 'place-probe', probe: 'black', terminal: undefined });
+          dispatchTester({ type: 'place-probe', probe: 'red', terminal: undefined });
+          // 空クリックと同じく「次は黒」に戻す（§9.1 / §9.3。M-5）
+          store.setNextProbe('black');
+        }
+        return;
+      }
+      if (event.key === 'Escape') runAction(escapeToAction(state));
+    };
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [runAction]);
+
+  const spec = useMemo(
+    () => (problem === undefined ? undefined : buildSpecChart(problem)),
+    [problem],
+  );
+
+  /** 装着済みの部品（交換の対象）。 */
+  const mountedParts = useMemo<MountedPartRow[]>(() => {
+    if (session === undefined) return [];
+    const out: MountedPartRow[] = [];
+    for (const socketId of SOCKET_IDS) {
+      const mounted = session.mounted[socketId];
+      if (mounted === undefined) continue;
+      out.push({
+        socketId,
+        partId: socketPartId(session.socketRoles, socketId),
+        isTimer: mounted.kind === 'timer-h3y4',
+      });
+    }
+    return out;
+  }, [session]);
+
+  if (problem === undefined || session === undefined || circuit === undefined) {
+    return (
+      <div className={styles.center}>
+        <p>{JA.session.noProblem}</p>
+        <button
+          type="button"
+          onClick={() => {
+            useStore.getState().abandonSession();
+          }}
+        >
+          {JA.result.toList}
+        </button>
+      </div>
+    );
+  }
+
+  /**
+   * 元に戻す／やり直し。§8.2 / §9.2（I-11）
+   * 部品交換の取り消しは、Worker の `plug` がそのたびに新しい良品を作ってしまうため
+   * `unplug`/`plug` の送り直しでは元の故障を戻せない。**`load` をやり直す**ことで、
+   * コマンドが持つ交換前後の `circuit`（故障つき `applied`）を丸ごと当て直す。
+   * `applied.sites`（指摘すべき対象）は `replacePart()` で変わらないので、元に戻しても・
+   * やり直しても指摘の要不要には影響しない（`sites` の義務は不変）。
+   */
+  const restore = (
+    step: { history: CommandHistory; session: BoardSession; command: SessionCommand } | undefined,
+    verb: string,
+    circuitFor: (command: SessionCommand) => RepairCircuit | undefined,
+  ): void => {
+    if (step === undefined) return;
+    const store = useStore.getState();
+    store.setHistory(step.history);
+    store.setSession(step.session);
+    store.setPending(undefined);
+    store.setSelectedWire(undefined);
+    store.clearLive();
+    const nextCircuit = circuitFor(step.command) ?? store.circuit;
+    if (nextCircuit !== undefined) store.setCircuit(nextCircuit);
+    store.addLog(historyLog(verb, step.command.label));
+    bridge.send({
+      type: 'load',
+      problemId: problem.id,
+      session: cloneSession(step.session),
+      ...(nextCircuit === undefined ? {} : { partFaults: nextCircuit.applied.partFaults }),
+    });
+  };
+
+  /**
+   * 部品を良品に交換する。§9.2
+   * 盤の上ではソケットから抜いて挿し直すだけなので、Worker には `unplug` → `plug` を送る
+   * （`mountPart()` が新しい部品インスタンスを作るので、故障は入っていない）。判定側では
+   * `replacePart()` で `partFaults` からその部品を落とす。**`sites` は残る**ので、
+   * 交換しても指摘しなければ合格しない（Plan 2A 意図的な差分 #7）。
+   *
+   * 交換も1手として履歴に積む（I-11）。盤は変わらないので、前後の違いは `circuit` にだけ出る。
+   */
+  const onReplacePart = (socketId: SocketId, partId: string): void => {
+    const store = useStore.getState();
+    const cloned = cloneSession(session);
+    const nextCircuit = replacePart(circuit, partId);
+    const command: SessionCommand = {
+      kind: 'replacePart',
+      label: `${JA.inspectRepair.replaced}: ${partId}`,
+      before: cloned,
+      after: cloned,
+      circuitBefore: circuit,
+      circuitAfter: nextCircuit,
+    };
+    bridge.send({ type: 'unplug', partId, session: cloned });
+    bridge.send({ type: 'plug', socketId, session: cloned });
+    store.setCircuit(nextCircuit);
+    store.pushHistory(command);
+    store.addLog(command.label);
+  };
+
+  return (
+    <>
+      <SoundEffects />
+      <WarningBanner />
+      <Toolbar
+        mode={mode}
+        wireColor={wireColor}
+        allowedColors={session.allowedColors}
+        camera={camera}
+        canUndo={history.done.length > 0}
+        canRedo={history.undone.length > 0}
+        extraTools={
+          <>
+            <button
+              type="button"
+              data-testid="tool-tester"
+              aria-pressed={mode === 'tester'}
+              onClick={() => {
+                useStore.getState().setMode('tester');
+              }}
+            >
+              {JA.tester.toolMode}
+            </button>
+            <button
+              type="button"
+              data-testid="tool-report"
+              aria-pressed={mode === 'report'}
+              onClick={() => {
+                useStore.getState().setMode('report');
+              }}
+            >
+              {JA.inspectRepair.toolMode}
+            </button>
+          </>
+        }
+        onMode={(next) => {
+          useStore.getState().setMode(next);
+        }}
+        onWireColor={(color) => {
+          useStore.getState().setWireColor(color);
+        }}
+        onCamera={(preset) => {
+          useStore.getState().setCamera(preset);
+        }}
+        onUndo={() => {
+          restore(undoHistory(history), JA.session.undo, (c) => c.circuitBefore);
+        }}
+        onRedo={() => {
+          restore(redoHistory(history), JA.session.redo, (c) => c.circuitAfter);
+        }}
+        judging={judging}
+        onJudge={() => {
+          const store = useStore.getState();
+          // 往復中は押させない（結果が返るか Worker が落ちるまで `judging` が立つ）。§8.2
+          if (store.judging) return;
+          const board = store.session;
+          const current = store.circuit;
+          if (board === undefined || current === undefined) return;
+          store.setJudging(true);
+          bridge.send({
+            type: 'judgeRepair',
+            problem,
+            circuit: circuitForJudge(current, cloneSession(board)),
+            reports: store.reports,
+            elapsedMs: store.elapsedMs,
+          });
+        }}
+        onBack={() => {
+          useStore.getState().setRoute('list');
+        }}
+        onSave={() => {
+          const store = useStore.getState();
+          let api: ReturnType<typeof ojtApi>;
+          try {
+            api = ojtApi();
+          } catch (error) {
+            store.toast(reasonOf(error), 'error');
+            return;
+          }
+          void api
+            .saveWorkFile({
+              kind: 'manual',
+              file: toWorkFile(problem.id, session, store.elapsedMs, store.hazards.length),
+            })
+            .then((result) => {
+              store.toast(
+                result.ok ? workFileSavedText(result.path) : result.message,
+                result.ok ? 'info' : 'error',
+              );
+            });
+        }}
+        onLoad={() => {
+          let api: ReturnType<typeof ojtApi>;
+          try {
+            api = ojtApi();
+          } catch (error) {
+            useStore.getState().toast(reasonOf(error), 'error');
+            return;
+          }
+          void api.loadWorkFile({ kind: 'manual' }).then((result) => {
+            if (!result.ok) {
+              if (!result.canceled) useStore.getState().toast(result.message, 'error');
+              return;
+            }
+            void applyWorkFile(result.file);
+          });
+        }}
+        schematicVisible={schematicVisible}
+        onToggleSchematic={undefined}
+      >
+        <PowerControls
+          breakerOn={breakerOn}
+          switchOn={switchOn}
+          powered={powered}
+          tripped={tripped}
+          onBreaker={(on) => {
+            bridge.send({ type: 'breaker', on });
+            useStore.getState().addLog(powerLog(JA.session.breaker, on));
+          }}
+          onSwitch={(on) => {
+            bridge.send({ type: 'switch', on });
+            useStore.getState().addLog(powerLog(JA.session.switch, on));
+          }}
+          onResetTrip={() => {
+            bridge.send({ type: 'resetTrip' });
+            useStore.getState().addLog(JA.session.resetTripLog);
+          }}
+        />
+      </Toolbar>
+
+      <div className={styles.sessionLayout}>
+        <div className={styles.viewport} data-testid="viewport">
+          <BoardScene onPick={onPick} onHover={onHover} onPress={onPress} onRelease={onRelease} />
+          <div className={styles.statusOverlay} data-testid="status-overlay">
+            {powered ? JA.session.powered : JA.session.unpowered} / {JA.session.wires}{' '}
+            {session.wires.length} {JA.session.wiresUnit} / {JA.inspectRepair.reportCount}{' '}
+            {reports.length}
+            {tripped ? ` / ${JA.session.tripped}` : ''}
+          </div>
+          {/* 視点操作の早見表（Blender 風の割り当て）。§12.2 */}
+          <div className={styles.viewHint} data-testid="view-hint">
+            {JA.session.viewHint}
+          </div>
+        </div>
+
+        <div className={styles.rightPanel}>
+          <ProblemPanel problem={problem} />
+          <ReportPanel
+            reports={reports}
+            pending={pendingReport}
+            onPick={(kind) => {
+              const store = useStore.getState();
+              const target = store.pendingReport;
+              if (target === undefined) return;
+              store.setPendingReport(undefined);
+              if (hasReportFor(store.reports, target, kind)) {
+                store.toast(JA.inspectRepair.duplicate, 'error');
+                return;
+              }
+              store.addReport({ target, kind });
+              store.addLog(`${JA.inspectRepair.reportCount}: ${JA.reportKind[kind]}`);
+            }}
+            onCancel={() => {
+              useStore.getState().setPendingReport(undefined);
+            }}
+            onRemove={(index) => {
+              useStore.getState().removeReport(index);
+            }}
+          />
+          <TesterPanel />
+          <RepairPanel
+            addedWires={addedWireIds(circuit, session)}
+            removedWires={modificationWireIds(circuit, session)}
+            mountedParts={mountedParts}
+            onReplacePart={onReplacePart}
+          />
+          {spec !== undefined && spec.ok ? <TimeChartPanel chart={spec.chart} /> : null}
+          {schematicVisible ? (
+            <section className={styles.panelLive} data-testid="schematic-hint">
+              <h2 className={styles.liveTitle}>{JA.session.schematicHint}</h2>
+              <div className={styles.schematicBox}>
+                <SchematicSvg document={problem.schematic} />
+              </div>
+            </section>
+          ) : null}
+        </div>
+
+        <div className={styles.bottomPanel}>
+          <LogPanel
+            lines={logLines}
+            hazards={hazards}
+            chatters={chatters}
+            restoredHazardCount={restoredHazardCount}
+          />
+          <ElapsedTimer limit={problem.timeLimit} />
+        </div>
+      </div>
+    </>
+  );
+}

@@ -49,6 +49,7 @@ import {
   type HazardBanner,
   type HighlightSelection,
   type LogLine,
+  type PendingReport,
   type ProbeSide,
   type Route,
   type Toast,
@@ -72,6 +73,7 @@ export {
   type HazardBanner,
   type HighlightSelection,
   type LogLine,
+  type PendingReport,
   type ProbeSide,
   type Route,
   type Toast,
@@ -227,6 +229,8 @@ export interface AppState {
    * `Date.now()` を使うため、種からは再現できない（Plan 2A I-4）。
    */
   resolvedFaults: readonly FaultSpecData[] | undefined;
+  /** 3Dで選んだ直後の指摘の対象（種別を選ぶ前）。§9.2 */
+  pendingReport: PendingReport | undefined;
   /** 回路図 ⇄ 3D盤の連動ハイライト。§9.2 */
   highlight: HighlightSelection;
 
@@ -342,6 +346,8 @@ export interface AppState {
   removeReport: (index: number) => void;
   /** モードC2の回路を差し替える（部品交換のとき）。§9.2 */
   setCircuit: (circuit: RepairCircuit) => void;
+  /** 指摘の対象を選んだ（種別ポップオーバーを出す）。§9.2 */
+  setPendingReport: (target: PendingReport | undefined) => void;
   /** 連動ハイライトを設定する。§9.2 */
   setHighlight: (selection: HighlightSelection) => void;
   /** 画面を描けた（`ErrorBoundary` から）。連続リセットの数え直し。§13 #5 */
@@ -410,6 +416,7 @@ export const useStore = create<AppState>((set, get) => ({
   circuit: undefined,
   faultSeed: undefined,
   resolvedFaults: undefined,
+  pendingReport: undefined,
   highlight: NO_HIGHLIGHT,
 
   mode: 'wire',
@@ -545,6 +552,7 @@ export const useStore = create<AppState>((set, get) => ({
       reports: [],
       faultSeed,
       resolvedFaults,
+      pendingReport: undefined,
       highlight: NO_HIGHLIGHT,
     });
     return true;
@@ -771,6 +779,9 @@ export const useStore = create<AppState>((set, get) => ({
   setCircuit: (circuit) => {
     set({ circuit });
   },
+  setPendingReport: (pendingReport) => {
+    set({ pendingReport });
+  },
   setHighlight: (highlight) => {
     set({ highlight });
   },
@@ -819,12 +830,25 @@ export const useStore = create<AppState>((set, get) => ({
       answers: [],
       reports: [],
       checkPartId: undefined,
+      pendingReport: undefined,
       highlight: NO_HIGHLIGHT,
       tester: createTesterState(get().tester.kind),
       nextProbe: 'black',
     });
     // 1回目は作業保持を優先して盤を残す。2回目は盤そのものが描けないとみて作り直す（§13 #5）
     if (attempts < RESTART_FALLBACK_ATTEMPTS || problem === undefined) return;
+    /*
+     * 最後の手段は**モードBにしか効かない**。`sessionForProblem()` が作るのは素の盤
+     * （青の新規配線・故障なし・在庫つき）で、C1なら点検すべき部品が消え、C2なら故障の無い盤に
+     * なってしまう（＝課題として成立しないまま「再開しました」と言うことになる）。上の `set()` で
+     * 故障（`circuit` / `resolvedFaults`）は既に手放しているので、点検系は課題を捨てて一覧へ戻す。
+     * §13 #5 / Plan 2B Batch 1 レビューの Minor
+     */
+    if (!isAssembleProblem(problem)) {
+      get().abandonSession();
+      get().toast(JA.error.boardAbandoned, 'info');
+      return;
+    }
     set({ session: sessionForProblem(problem), history: emptyHistory(), restartAttempts: 0 });
     get().toast(JA.error.boardReset, 'info');
   },
@@ -857,6 +881,7 @@ export const useStore = create<AppState>((set, get) => ({
       answers: [],
       reports: [],
       checkPartId: undefined,
+      pendingReport: undefined,
       highlight: NO_HIGHLIGHT,
       tester: createTesterState(get().tester.kind),
       nextProbe: 'black',

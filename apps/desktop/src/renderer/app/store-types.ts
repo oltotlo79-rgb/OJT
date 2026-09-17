@@ -54,6 +54,13 @@ export interface HazardBanner {
   expiresAt: number;
 }
 
+/**
+ * 3Dで選んだ直後の指摘の対象（種別を選ぶ前）。§9.2
+ * `session/interaction.ts` の `ReportTarget` と同じ形だが、ストアの値型は three にも React にも
+ * 依存しないこのファイルに置く（`interaction.ts` からはこの型を再エクスポートする）。
+ */
+export type PendingReport = { wireId: string } | { partId: string } | { terminalId: string };
+
 /** 回路図 ⇄ 3D盤の連動ハイライト。§9.2 / §11.4 */
 export interface HighlightSelection {
   /** 光らせる回路図要素のID。 */

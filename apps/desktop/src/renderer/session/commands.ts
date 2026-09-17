@@ -12,6 +12,7 @@ import {
   type SocketId,
 } from '@ojt/board-model';
 import type { TerminalId, Wire, WireColor } from '@ojt/circuit-sim';
+import type { RepairCircuit } from '@ojt/content';
 
 /**
  * 盤操作のコマンド履歴（元に戻す／やり直し、上限50手）。設計仕様 §8.2。
@@ -27,11 +28,18 @@ export const HISTORY_LIMIT = 50;
 /** コマンド1件。 */
 export interface SessionCommand {
   /** 操作の種別（ログ表示用）。 */
-  kind: 'addWire' | 'removeWire' | 'plug' | 'unplug' | 'setPreset';
+  kind: 'addWire' | 'removeWire' | 'plug' | 'unplug' | 'setPreset' | 'replacePart';
   /** 操作の説明（操作ログに出す文）。§8.1 */
   label: string;
   before: BoardSession;
   after: BoardSession;
+  /**
+   * モードC2の部品交換のときだけ持つ、交換前後の回路（故障を含む）。undo/redo で使う。§9.2
+   * 交換は盤（`BoardSession`）を変えない（ソケットの中身は同じ種類の部品のまま）ので、
+   * 前後の違いは `RepairCircuit.applied.partFaults` にしか出ない。
+   */
+  circuitBefore?: RepairCircuit;
+  circuitAfter?: RepairCircuit;
 }
 
 /** 元に戻す／やり直しの履歴。 */

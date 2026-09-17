@@ -1,5 +1,6 @@
 import type { SocketId } from '@ojt/board-model';
 import type { TerminalId, WireColor } from '@ojt/circuit-sim';
+import type { PendingReport } from '../app/store-types.js';
 
 /**
  * 「ピック結果 → 実行する操作」の純粋関数。設計仕様 §12.2。
@@ -35,8 +36,12 @@ export interface InteractionState {
 /**
  * 故障の指摘先。§9.2 / Plan 2A の `FaultReport['target']` と同じ形にする。
  * 未配線は盤に電線が無いので端子で指す（Plan 2A 意図的な差分 #6）。
+ *
+ * 実体はストアの値型（`app/store-types.ts` の `PendingReport`）。ストアは「種別を選ぶ前の対象」を
+ * 持つ必要があり、その値型は three にも React にも依存しない層に置きたいので、定義をあちらに寄せて
+ * ここからは名前だけを通す（同じ形の型が2つできると片方だけ広げたときに静かにずれる）。
  */
-export type ReportTarget = { wireId: string } | { partId: string } | { terminalId: string };
+export type ReportTarget = PendingReport;
 
 /** ピックの結果として実行する操作。 */
 export type PickAction =
