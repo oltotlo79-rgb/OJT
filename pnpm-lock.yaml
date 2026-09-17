@@ -137,6 +137,12 @@ importers:
 
   packages/ladder-core: {}
 
+  packages/plc-dialects:
+    dependencies:
+      '@ojt/ladder-core':
+        specifier: workspace:*
+        version: link:../ladder-core
+
   packages/schematic-core:
     dependencies:
       '@ojt/board-model':
