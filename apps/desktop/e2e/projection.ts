@@ -1,4 +1,5 @@
-import { boardTerminalPos, JIPM_BOARD } from '@ojt/board-model';
+import { boardTerminalPos, JIPM_BOARD, toPhysicalTerminal } from '@ojt/board-model';
+import type { SocketRoles } from '@ojt/board-model';
 import type { TerminalId } from '@ojt/circuit-sim';
 import {
   boardToWorld,
@@ -66,6 +67,18 @@ export function projectToScreen(
 export function terminalPoint(terminal: TerminalId, box: CanvasBox): { x: number; y: number } {
   const world = boardToWorld(toScene(boardTerminalPos(JIPM_BOARD, terminal)));
   return projectToScreen(world, cameraPose('front'), box);
+}
+
+/**
+ * 盤の**役割**端子ID（`CHK.13` / `CR1.9`）が来るページ座標（正面視プリセット前提）。
+ * 3D盤は物理端子（`S7.13`）で描かれているので、割当表で直してから射影する（§6.4）。
+ */
+export function roleTerminalPoint(
+  roles: SocketRoles,
+  terminal: string,
+  box: CanvasBox,
+): { x: number; y: number } {
+  return terminalPoint(toPhysicalTerminal(roles, terminal as TerminalId), box);
 }
 
 /** 盤ローカル座標（mm）を指定してページ座標を得る（ソケット台座の縁など）。 */
