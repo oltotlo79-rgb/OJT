@@ -4757,6 +4757,13 @@ export interface ShortcutEntry {
   keys: string;
   label: string;
   confirmed: boolean;
+  /**
+   * Phase 3 のエディタで使えるか。既定は `true`。
+   * `false` の項目は表に載せるが押しても何も起きない（UIは淡色で出す。§12.1）。
+   */
+  enabled?: boolean;
+  /** `enabled: false` の理由や △ 割当の補足。UIが注記として出す。 */
+  note?: string;
 }
 
 /** ショートカット表。§10.6 */
@@ -4936,7 +4943,7 @@ git commit -m "feat(plc-dialects): define the dialect profile and skin interface
 ```ts
 import { C, M, SP, T, X, Y } from '@ojt/ladder-core';
 import { describe, expect, it } from 'vitest';
-import { getDialect, MITSUBISHI_FX5U, TIMER_BASE_MS } from '../src/index.js';
+import { getDialect, MITSUBISHI_FX5U, roundTimerPreset, timerBaseMs } from '../src/index.js';
 
 const profile = MITSUBISHI_FX5U;
 
@@ -4996,11 +5003,22 @@ describe('三菱 FX5U のデバイス表記（§10.5）', () => {
 
 describe('三菱 FX5U のタイマ単位（ゴールデンケース #25 / §8.2 / §17 #20）', () => {
   it('uses 100 ms up to T199, 10 ms from T200 and 1 ms from T256', () => {
-    expect(TIMER_BASE_MS(T(0))).toBe(100);
-    expect(TIMER_BASE_MS(T(199))).toBe(100);
-    expect(TIMER_BASE_MS(T(200))).toBe(10);
-    expect(TIMER_BASE_MS(T(255))).toBe(10);
-    expect(TIMER_BASE_MS(T(256))).toBe(1);
+    expect(timerBaseMs(T(0))).toBe(100);
+    expect(timerBaseMs(T(199))).toBe(100);
+    expect(timerBaseMs(T(200))).toBe(10);
+    expect(timerBaseMs(T(255))).toBe(10);
+    expect(timerBaseMs(T(256))).toBe(1);
+  });
+
+  it('rounds a preset to the base of its timer band (§10.5 の「100ms 刻みに丸めますか？」)', () => {
+    expect(roundTimerPreset(3040, timerBaseMs(T(0)))).toBe(3000);
+    // JavaScript の Math.round は .5 を上へ丸めるので 3050 は 3100 になる
+    expect(roundTimerPreset(3050, timerBaseMs(T(0)))).toBe(3100);
+    expect(roundTimerPreset(3055, timerBaseMs(T(200)))).toBe(3060);
+    expect(roundTimerPreset(1234, timerBaseMs(T(256)))).toBe(1234);
+    // 刻みより小さい値は 0 にせず1刻みへ切り上げる
+    expect(roundTimerPreset(1, timerBaseMs(T(0)))).toBe(100);
+    expect(() => roundTimerPreset(100, 0)).toThrow();
   });
 
   it('renders T0 K100 as 10 s and T200 K100 as 1 s (#25)', () => {
@@ -5075,10 +5093,25 @@ import type {
  */
 
 /** タイマの番号帯ごとの時間単位[ms]。§8.2 / §17 #20 */
-export function TIMER_BASE_MS(timer: Device): number {
+export function timerBaseMs(timer: Device): number {
   if (timer.index >= 256) return 1;
   if (timer.index >= 200) return 10;
   return 100;
+}
+
+/**
+ * タイマ設定値をその番号帯の時間単位に丸める。§10.5
+ *
+ * §10.5 の「`3050ms` は `T0` では指定できません。100ms 刻みに丸めますか？」に「はい」と
+ * 答えられたときに UI（Plan 3B）が使う。**四捨五入ではなく最も近い刻みへ丸め**、0 になる場合は
+ * 1刻みに切り上げる（設定値 0 のタイマは作れないため）。`baseMs` は `timerBaseMs()` の戻り値。
+ */
+export function roundTimerPreset(ms: number, baseMs: number): number {
+  if (!Number.isFinite(ms) || !Number.isInteger(baseMs) || baseMs <= 0) {
+    throw new Error(`丸められない引数です: ms=${ms} baseMs=${baseMs}`);
+  }
+  const rounded = Math.round(ms / baseMs) * baseMs;
+  return rounded < baseMs ? baseMs : rounded;
 }
 
 /** タイマ設定値 `K` の範囲。 */
@@ -5092,7 +5125,8 @@ const DEVICE_RANGES: Readonly<Record<DeviceKind, DeviceRange>> = {
   internal: { radix: 10, prefix: 'M', min: 0, max: 32_767 },
   timer: { radix: 10, prefix: 'T', min: 0, max: 7_999 },
   counter: { radix: 10, prefix: 'C', min: 0, max: 32_767 },
-  special: { radix: 10, prefix: 'M', min: 0, max: 2 },
+  // 特殊デバイスはIR側の通し番号（`SP0`〜`SP2`）の範囲。実デバイス名は `SPECIAL_DEVICES` が持つ
+  special: { radix: 10, prefix: 'SP', min: 0, max: 2 },
 };
 
 /** 特殊デバイス番号 → FX の実デバイス名。§10.5 / §17 #22 */
@@ -5133,14 +5167,16 @@ function parseDevice(text: string): Device | Error {
   }
   const index = parseInt(digits, range.radix);
   if (!Number.isFinite(index) || index < range.min || index > range.max) {
-    return new Error(`デバイス番号が範囲外です（${range.prefix}${range.min}〜）: ${text}`);
+    return new Error(
+      `デバイス番号が範囲外です（${range.prefix}${range.min.toString(range.radix)}〜${range.prefix}${range.max.toString(range.radix)}）: ${text}`,
+    );
   }
   return device(kind, index);
 }
 
 /** ms → `K` 表記。番号帯の単位で割り切れないと Error。§10.5 */
 function timerPreset(ms: number, timer: Device): TimerPresetText | Error {
-  const base = TIMER_BASE_MS(timer);
+  const base = timerBaseMs(timer);
   if (!Number.isInteger(ms) || ms <= 0 || ms % base !== 0) {
     return new Error(
       `${formatDevice(timer)} は ${base}ms 単位で指定します（${ms}ms は指定できません）`,
@@ -5162,7 +5198,7 @@ function parseTimerPreset(text: string, timer: Device): number | Error {
   if (k < MIN_K || k > MAX_K) {
     return new Error(`タイマ設定値が範囲外です（K${MIN_K}〜K${MAX_K}）: ${text}`);
   }
-  return k * TIMER_BASE_MS(timer);
+  return k * timerBaseMs(timer);
 }
 ```
 
@@ -5204,7 +5240,7 @@ const PROFILES: Partial<Record<DialectId, DialectProfile>> = { mitsubishi: MITSU
 さらに再エクスポートを足す:
 
 ```ts
-export { MITSUBISHI_FX5U, TIMER_BASE_MS } from './mitsubishi.js';
+export { MITSUBISHI_FX5U, roundTimerPreset, timerBaseMs } from './mitsubishi.js';
 ```
 
 - [ ] **Step 4: GREEN を確認する**
@@ -5213,7 +5249,7 @@ export { MITSUBISHI_FX5U, TIMER_BASE_MS } from './mitsubishi.js';
 pnpm --filter @ojt/plc-dialects exec vitest run
 ```
 
-Expected: `Tests  14 passed (14)`（Task 8 で保留していた `IMPLEMENTED_DIALECT_IDS` / `availableDialects()` の2件もここで通る）。
+Expected: `Tests  15 passed (15)`（Task 8 で保留していた `IMPLEMENTED_DIALECT_IDS` / `availableDialects()` の2件もここで通る）。
 
 - [ ] **Step 5: コミットする**
 
@@ -5414,7 +5450,12 @@ describe('convert（決定事項#15 の「変換」）', () => {
 
 ```ts
 import { describe, expect, it } from 'vitest';
-import { MAX_GRID_COLS, MIN_GRID_COLS, MITSUBISHI_FX5U } from '../src/index.js';
+import {
+  MAX_GRID_COLS,
+  MIN_GRID_COLS,
+  MITSUBISHI_FX5U,
+  type ShortcutEntry,
+} from '../src/index.js';
 
 const skin = MITSUBISHI_FX5U;
 
@@ -5441,6 +5482,17 @@ describe('GX Works3風スキン（§10.6）', () => {
     expect(keysOf('toggle-no-nc')).toBe('/');
   });
 
+  it('binds the rule-line keys and disables the one instruction Phase 3 cannot place (§10.7)', () => {
+    const entry = (action: string): ShortcutEntry | undefined =>
+      skin.shortcuts.find((s) => s.action === action);
+    expect(entry('rule-line')?.keys).toBe('Ctrl+←↑↓→');
+    // 応用命令は IR にセル種別が無いので表には出すが押せない
+    expect(entry('application')?.enabled).toBe(false);
+    expect(entry('application')?.note).toContain('Phase 4');
+    // それ以外は既定（`enabled` を書かない＝使える）
+    expect(skin.shortcuts.filter((s) => s.enabled === false)).toHaveLength(1);
+  });
+
   it('marks which shortcuts come from a primary source and which are assumptions (§17.1)', () => {
     const confirmed = skin.shortcuts.filter((s) => s.confirmed).map((s) => s.keys);
     const assumed = skin.shortcuts.filter((s) => !s.confirmed).map((s) => s.keys);
@@ -5464,6 +5516,8 @@ describe('GX Works3風スキン（§10.6）', () => {
     expect(skin.panels.tree).toContain('ナビゲーション');
     expect(skin.panels.editor).toContain('ラダー');
     expect(skin.panels.output).toContain('出力');
+    expect(skin.panels.toolbar).toContain('オンライン');
+    expect(skin.panels.toolbar).toContain('シーケンサへの書込み');
     expect(skin.panels.toolbar.length).toBeGreaterThan(0);
     // 記号定義は自前の線画の識別子だけを持つ（画像ファイル名やロゴを含まない）
     for (const value of Object.values(skin.symbols)) {
@@ -5524,7 +5578,16 @@ const PANELS: PanelLayout = {
   tree: 'ナビゲーションウィンドウ（プロジェクトツリー）',
   editor: 'ラダーエディタ',
   output: '出力ウィンドウ',
-  toolbar: ['変換', '全変換', '書込みモード', '読出しモード', 'モニタ開始', 'モニタ停止'],
+  toolbar: [
+    '変換',
+    '全変換',
+    '書込みモード',
+    '読出しモード',
+    'オンライン',
+    'シーケンサへの書込み',
+    'モニタ開始',
+    'モニタ停止',
+  ],
 };
 
 /**
@@ -5538,9 +5601,23 @@ const SHORTCUTS: ShortcutTable = [
   { action: 'or-contact-no', keys: 'Shift+F5', label: 'OR a接点', confirmed: false },
   { action: 'or-contact-nc', keys: 'Shift+F6', label: 'OR b接点', confirmed: false },
   { action: 'coil', keys: 'F7', label: 'コイル', confirmed: true },
-  { action: 'application', keys: 'F8', label: '応用命令', confirmed: true },
+  {
+    action: 'application',
+    keys: 'F8',
+    label: '応用命令',
+    confirmed: true,
+    enabled: false,
+    note: 'Phase 3 のIRには応用命令に対応するセル種別がありません（§10.3）。Phase 4 で追加します',
+  },
   { action: 'hline', keys: 'F9', label: '横線', confirmed: false },
   { action: 'vline', keys: 'Shift+F9', label: '縦線', confirmed: false },
+  {
+    action: 'rule-line',
+    keys: 'Ctrl+←↑↓→',
+    label: '罫線（縦線・横線の作図）',
+    confirmed: true,
+    note: '`setVerticalLink()` / `setCell()`（`ladder-core` の編集API。Task 1b）に対応する',
+  },
   { action: 'convert', keys: 'F4', label: '変換', confirmed: false },
   { action: 'toggle-no-nc', keys: '/', label: 'a接点・b接点の切換', confirmed: true },
   { action: 'toggle-pulse', keys: 'Alt+/', label: '微分・SET/RST の切換', confirmed: true },
@@ -5601,9 +5678,10 @@ function checkCell(
   for (const target of devices) {
     if (target.kind === 'special') {
       if (SPECIAL_DEVICES[target.index] === undefined) {
+        const sp = DEVICE_RANGES.special;
         errors.push({
           code: 'special-unsupported',
-          message: `この機種にはない特殊デバイスです: SP${target.index}`,
+          message: `この機種にはない特殊デバイスです（${sp.prefix}${sp.min}〜${sp.prefix}${sp.max}）: ${sp.prefix}${target.index}`,
           device: target,
           networkId,
           row,
@@ -5616,7 +5694,7 @@ function checkCell(
     if (target.index < range.min || target.index > range.max) {
       errors.push({
         code: 'device-range',
-        message: `${range.prefix} の番号が範囲外です（${range.prefix}${range.min}〜${range.prefix}${range.max.toString(range.radix)}）: ${formatDevice(target)}`,
+        message: `${range.prefix} の番号が範囲外です（${range.prefix}${range.min.toString(range.radix)}〜${range.prefix}${range.max.toString(range.radix)}）: ${formatDevice(target)}`,
         device: target,
         networkId,
         row,
@@ -5718,7 +5796,7 @@ pnpm --filter @ojt/plc-dialects exec vitest run
 pnpm --filter @ojt/plc-dialects exec vitest run --coverage
 ```
 
-Expected: `Test Files  5 passed (5)` / `Tests  31 passed (31)`、カバレッジは lines / statements / functions / branches とも90%以上。
+Expected: `Test Files  5 passed (5)` / `Tests  32 passed (32)`、カバレッジは lines / statements / functions / branches とも90%以上。
 
 - [ ] **Step 6: コミットする**
 
@@ -5746,6 +5824,7 @@ git commit -m "feat(plc-dialects): validate FX5U programs and add the GX Works3-
 | デバイス | `{kind, index}`。`special` は 0〜2 のみ（§10.3） |
 | タイマ | `presetMs` は10msの倍数（`TIMER_STEP_MS`）。範囲は `compile()` と同じ |
 | 検証の重複 | 構造の検査（END・コイル列・MC対応）は `compile()` が持っているので**スキーマでは繰り返さない**。課題の読込時に `compile()` を呼ぶのは Task 12 の refinement |
+| デバイスコメント | 任意の `comments?: Record<string, string>`（キーは `deviceLabel()` の形＝`X0` / `M1` / `T0` / `SP2`、値は32文字以内、200件まで）。実行には使わず、Plan 3B のデバイスコメント欄と作業ファイルが読む（§10.7）。`compile()` は余分なキーを見ないのでそのまま渡せる |
 
 - [ ] **Step 1: 失敗するテストを書く**
 
@@ -5754,7 +5833,13 @@ git commit -m "feat(plc-dialects): validate FX5U programs and add the GX Works3-
 ```ts
 import { compile, IR_COLS } from '@ojt/ladder-core';
 import { describe, expect, it } from 'vitest';
-import { CellSchema, DeviceSchema, LadderProgramSchema } from '../src/schema/ladder.js';
+import {
+  CellSchema,
+  DeviceSchema,
+  LadderProgramSchema,
+  MAX_DEVICE_COMMENT_LENGTH,
+  MAX_DEVICE_COMMENTS,
+} from '../src/schema/ladder.js';
 
 /** 自己保持のJSON（課題ファイルに書く形）。 */
 const SELF_HOLD = {
@@ -5831,6 +5916,32 @@ describe('LadderProgramSchema', () => {
       ],
     };
     expect(LadderProgramSchema.safeParse(duplicated).success).toBe(false);
+  });
+
+  it('keeps the device comments and leaves the key out when the JSON omits them (§10.7)', () => {
+    const withComments = {
+      ...SELF_HOLD,
+      comments: { X0: '運転押ボタン', X1: '停止押ボタン', Y0: '運転表示灯' },
+    };
+    const parsed = LadderProgramSchema.parse(withComments);
+    expect(parsed.comments?.X0).toBe('運転押ボタン');
+    // コメントは実行に影響しない（そのまま compile できる）
+    expect(compile(parsed).ok).toBe(true);
+    expect(Object.hasOwn(LadderProgramSchema.parse(SELF_HOLD), 'comments')).toBe(false);
+  });
+
+  it('rejects a comment that is too long, too many of them or a bad device name', () => {
+    const tooLong = { ...SELF_HOLD, comments: { X0: 'あ'.repeat(MAX_DEVICE_COMMENT_LENGTH + 1) } };
+    expect(LadderProgramSchema.safeParse(tooLong).success).toBe(false);
+    const badName = { ...SELF_HOLD, comments: { 'X 0': '運転' } };
+    expect(LadderProgramSchema.safeParse(badName).success).toBe(false);
+    const tooMany = {
+      ...SELF_HOLD,
+      comments: Object.fromEntries(
+        Array.from({ length: MAX_DEVICE_COMMENTS + 1 }, (_unused, i) => [`M${i}`, `補助${i}`]),
+      ),
+    };
+    expect(LadderProgramSchema.safeParse(tooMany).success).toBe(false);
   });
 });
 
@@ -6018,10 +6129,35 @@ export const LadderNetworkSchema = z
     }),
   );
 
+/** デバイスコメント1件の長さの上限（GX Works3 のデバイスコメントに合わせる）。§10.7 */
+export const MAX_DEVICE_COMMENT_LENGTH = 32;
+/** デバイスコメントの件数の上限。 */
+export const MAX_DEVICE_COMMENTS = 200;
+
+/**
+ * デバイスコメント（`X0` → `運転押ボタン` のような対応表）。§10.7
+ *
+ * キーはベンダー中立の表示名（`deviceLabel()` が返す `X0` / `M1` / `T0` / `SP2` の形）で、
+ * 方言の8進表記ではない。Plan 3B のデバイスコメント欄と作業ファイルがそのまま読む。
+ * 実行には一切影響しない（`compile()` も `createPlcRuntime()` も見ない）。
+ */
+export const DeviceCommentsSchema = z
+  .record(
+    z.string().regex(/^(X|Y|M|T|C|SP)\d+$/u, 'デバイス表示名は `X0` / `M1` / `T0` / `SP2` の形です'),
+    z.string().min(1).max(MAX_DEVICE_COMMENT_LENGTH),
+  )
+  .refine((comments) => Object.keys(comments).length <= MAX_DEVICE_COMMENTS, {
+    message: `デバイスコメントは ${MAX_DEVICE_COMMENTS} 件までです`,
+  });
+
+/** デバイスコメント。 */
+export type DeviceCommentsData = z.infer<typeof DeviceCommentsSchema>;
+
 /** ラダープログラム。§10.3 */
 export const LadderProgramSchema = z
   .strictObject({
     networks: z.array(LadderNetworkSchema).min(1).max(64),
+    comments: DeviceCommentsSchema.optional(),
   })
   .superRefine((program, ctx) => {
     const seen = new Set<string>();
@@ -6036,7 +6172,20 @@ export const LadderProgramSchema = z
       seen.add(net.id);
     });
   })
-  .transform((program): LadderProgram => ({ networks: [...program.networks] }));
+  .transform(
+    (program): LadderProgramData => ({
+      networks: [...program.networks],
+      ...(program.comments === undefined ? {} : { comments: { ...program.comments } }),
+    }),
+  );
+
+/**
+ * 課題JSONのラダー。`@ojt/ladder-core` の `LadderProgram` に**実行に関わらない**
+ * デバイスコメントを足しただけなので、`compile()` にもそのまま渡せる。
+ */
+export interface LadderProgramData extends LadderProgram {
+  comments?: DeviceCommentsData;
+}
 
 /** コイル列の列番号（課題データの読み手向けに再公開する）。§10.3 */
 export const LADDER_COIL_COL = COIL_COL;
@@ -6047,11 +6196,13 @@ export const LADDER_COIL_COL = COIL_COL;
 ```powershell
 pnpm --filter @ojt/content exec vitest run test/schema-ladder.test.ts
 pnpm --filter @ojt/content typecheck
+pnpm exec prettier --write packages/content/src/schema/ladder.ts packages/content/test/schema-ladder.test.ts
+pnpm exec prettier --check packages/content
 git add packages/content pnpm-lock.yaml
 git commit -m "feat(content): add the zod schema for the ladder IR"
 ```
 
-Expected: `Tests  11 passed (11)`。
+Expected: `Tests  13 passed (13)`。
 
 ---
 
@@ -8087,7 +8238,7 @@ Expected: 新ファイル11件と既存の `static-checks.test.ts` が通り、`
 | 訓練者のラダー | 引数で受け取る（`LadderProgram`）。`compile()` に落ちたら**シミュレートせず不合格**にし、`ladderErrors` に理由を入れる |
 | 方言 | 見ない（決定表#7）。方言バリデータは Plan 3B が「変換」ボタンで走らせる |
 | 危険操作 | モードBと同じで**セッション中の記録だけ**を数える（§5.6 / 2A のレビュー結果） |
-| タイムチャート | 入力はPB4点、出力は比較信号。印はPLCタイマの設定値（`T0=3秒`）から作る（§7.7） |
+| タイムチャート | 入力は盤の押ボタン4点（`PB1`〜`PB4`。`PB4` はPLC入力には割り付けられないが、盤の操作としては記録するのでモードBと同じ4本を出す）、出力は比較信号。印はPLCタイマの設定値（`T0=3秒`）から作る（§7.7） |
 | 合否 | 動作一致 ＋ 有効な静的チェックにエラー無し ＋ 変換エラー無し（§7.4） |
 
 - [ ] **Step 1: 失敗するテストを書く**
@@ -8489,6 +8640,8 @@ Expected: `Tests  8 passed (8)`。
 
 行の最後が出力セルなら**コイル列への送りと横線の穴埋めはスキーマが行う**（Task 11）。分岐（自己保持）は「上の行の分岐点に `vline`、下の行に分岐接点」と書く。
 
+**デバイスコメント（`referenceLadder.comments`）:** 使っているデバイスの意味が題名だけでは伝わらない課題に**だけ**書く。d-001（自己保持）は下のように X0〜X2 / Y0〜Y2 の6件を入れ、`M` や `T` を使う d-003（オンディレー）・d-004（ワンショット）・後半のカウンタ課題にも `M0` / `T0` / `C0` の1〜2件を足す。d-002（インターロック）のように接点の並びだけで読める課題には書かない（無くても Plan 3B のコメント欄が空になるだけである）。
+
 - [ ] **Step 1: d-001 を書く**
 
 `packages/content/src/builtin/plc/d-001-self-hold.json`:
@@ -8558,7 +8711,15 @@ Expected: `Tests  8 passed (8)`。
         ]
       },
       { "id": "end", "cells": [[{ "kind": "end" }]] }
-    ]
+    ],
+    "comments": {
+      "X0": "運転押ボタン（黒）",
+      "X1": "停止押ボタン（黄）",
+      "X2": "点検押ボタン（緑）",
+      "Y0": "運転表示灯 PL1",
+      "Y1": "停止表示灯 PL2",
+      "Y2": "点検表示灯 PL3"
+    }
   },
   "wiringRequired": true,
   "operations": [
@@ -8673,7 +8834,16 @@ describe('内蔵モードD課題（§7.9）', () => {
     for (const problem of BUILTIN_PLC_PROBLEMS.filter((p) => p.grade === 2)) {
       expect(problem.io.inputs).toHaveLength(3);
       expect(problem.io.outputs).toHaveLength(3);
+      // PB4 はチェック用回路の押ボタンなので入力には使わない（§6.3）
+      expect(problem.io.inputs?.some((input) => String(input.pb) === 'PB4')).toBe(false);
     }
+  });
+
+  it('labels the devices of d-001 so the 3B comment pane has something to show (§10.7)', () => {
+    const problem = BUILTIN_PLC_PROBLEMS.find((p) => p.id === 'd-001');
+    if (problem === undefined) throw new Error('d-001 がありません');
+    expect(problem.referenceLadder.comments?.X0).toBe('運転押ボタン（黒）');
+    expect(problem.referenceLadder.comments?.Y0).toBe('運転表示灯 PL1');
   });
 
   it.each(BUILTIN_PLC_PROBLEMS.map((p) => [p.id, p] as const))(
@@ -8760,7 +8930,7 @@ pnpm --filter @ojt/content exec vitest run test/builtin-plc.test.ts
 
 Expected（RED）: 課題JSONが無い／登録していない段で `BuiltinProblemError` か import エラー。
 
-Expected（GREEN）: `Tests  11 passed (11)`（`it.each` の4題ぶんを含む）。**自己整合（3番目のテスト）が落ちる場合は課題データの誤り**である。よくある原因は、①ラダーの分岐で `vline` を下の行に置いた（上の行に置く。Task 1）②`io` の割付と `referenceLadder` のデバイス番号が食い違っている ③`durationMs` が最後の操作＋1tickより短い、の3つ。
+Expected（GREEN）: `Tests  12 passed (12)`（`it.each` の4題ぶんを含む）。**自己整合（`it.each` の1つ目）が落ちる場合は課題データの誤り**である。よくある原因は、①ラダーの分岐で `vline` を下の行に置いた（上の行に置く。Task 1）②`io` の割付と `referenceLadder` のデバイス番号が食い違っている ③`durationMs` が最後の操作＋1tickより短い、の3つ。
 
 - [ ] **Step 6: コミットする**
 
@@ -8966,7 +9136,7 @@ describe('内蔵モードD課題の弁別（§16 Phase 3 の受入基準）', ()
 pnpm --filter @ojt/content exec vitest run test/builtin-plc.test.ts test/builtin-plc-discrimination.test.ts
 ```
 
-Expected: `builtin-plc` は8題ぶんに増えて `Tests  19 passed (19)`、弁別テストは `Tests  33 passed (33)`（`it.each` 8題 × 4件 ＋ 1件）。
+Expected: `builtin-plc` は8題ぶんに増えて `Tests  20 passed (20)`、弁別テストは `Tests  33 passed (33)`（`it.each` 8題 × 4件 ＋ 1件）。
 
 **実行時間の注意:** 1件の判定は模範と訓練者の2回ぶんを10ms tick で最後まで回すので、`durationMs: 8000` の課題では1件あたり数百msかかる。弁別テストは 33 件あるので合計で数十秒になる。`packages/content/vitest.config.ts` の `testTimeout` は既に 180 秒なので設定変更は不要だが、**カバレッジ計測込みだとさらに数倍になる**ことを見込むこと（Plan 2A の C2 弁別テストと同じ事情）。
 
@@ -9185,7 +9355,7 @@ git commit -m "feat(content): finalise the Phase 3A public API"
 | §10.4 | スキャン周期10ms・実行順・タイマ・カウンタ・SET/RST・二重コイル後勝ち・決定論 | `runtime.ts` ＋ `plc-io.ts` | `test/runtime.test.ts` / `test/golden-ladder.test.ts` / `test/plc-io.test.ts` |
 | §10.5 | `DialectProfile` の全項目 | `profile.ts` ＋ `mitsubishi.ts` | `test/profile.test.ts` / `test/mitsubishi-*.test.ts` / `test/skin.test.ts` |
 | §10.5 | 三菱のデバイス体系（X/Y 8進、M/T/C 10進、特殊リレー） | `MITSUBISHI_FX5U.formatDevice` / `parseDevice` | `test/mitsubishi-devices.test.ts` |
-| §10.5 | タイマ単位（既定100ms／T200〜10ms／T256〜1ms） | `TIMER_BASE_MS()` / `timerPreset()` | `test/mitsubishi-devices.test.ts`（#25） |
+| §10.5 | タイマ単位（既定100ms／T200〜10ms／T256〜1ms） | `timerBaseMs()` / `timerPreset()` | `test/mitsubishi-devices.test.ts`（#25） |
 | §10.6 | GX Works3風スキン（F5/F7/F4・11列・青・`convertStep: true`） | `SHORTCUTS` / `gridCols` / `monitorColors` / `convertStep` | `test/skin.test.ts` |
 | §10.6 | 「変換」＝構造検査＋方言検査 | `convert()` | `test/convert.test.ts` |
 | §10.8 | 訓練者と模範を並走比較し静的チェックを添える | `judgePlc()` | `test/judge-plc.test.ts` / `test/builtin-plc-discrimination.test.ts` |
@@ -9262,7 +9432,7 @@ Plan 3B（`apps/desktop` のGX Works3風スキン・3D・モードD画面）は�
 | `getDialect('mitsubishi')` → `DialectProfile` / `availableDialects()` / `DIALECT_IDS` / `IMPLEMENTED_DIALECT_IDS` / `isDialectId(s)` | 設定画面のメーカー選択（Phase 3 は三菱のみ実装） |
 | `MITSUBISHI_FX5U` | 既定のプロファイル（`getDialect()` 経由でも同じ実体） |
 | `profile.formatDevice(d)` / `parseDevice(text)` | セルのデバイス表示とデバイス入力欄 |
-| `profile.timerPreset(ms, device)` / `parseTimerPreset(text, device)` / `TIMER_BASE_MS(device)` | タイマ設定欄（`K100` ⇄ ms）。`Error` が返ったら §10.5 の「100ms 刻みに丸めますか？」を出す |
+| `profile.timerPreset(ms, device)` / `parseTimerPreset(text, device)` / `timerBaseMs(device)` | タイマ設定欄（`K100` ⇄ ms）。`Error` が返ったら §10.5 の「100ms 刻みに丸めますか？」を出す |
 | `profile.deviceRanges` / `specialDevices` / `instructionNames` | 入力補助・命令語表示 |
 | `profile.gridCols`(11) / `MIN_GRID_COLS`(8) / `MAX_GRID_COLS`(15) / `monitorColors`(`powered: '#1E64FF'`) | 表示列数と通電色（設定画面で変更できる） |
 | `profile.shortcuts`（`{action, keys, label, confirmed}`） | キー割当表。`confirmed: false` の項目には §12.1 の注記を添える |
