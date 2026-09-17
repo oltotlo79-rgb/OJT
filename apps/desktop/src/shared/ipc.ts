@@ -1,4 +1,4 @@
-import type { AssembleProblem, ProblemLoadError } from '@ojt/content';
+import type { ProblemLoadError, SupportedProblem } from '@ojt/content';
 
 /**
  * main ⇄ renderer の IPC 契約。設計仕様 §4.3。
@@ -16,10 +16,20 @@ export const IPC_CHANNELS = {
   settingsSet: 'settings:set',
 } as const;
 
+/**
+ * 開始できる課題のモード。§7.1 / §12.1
+ * `@ojt/content` の `SupportedProblem` から引くので、モードが増えたら画面側が `tsc` で落ちる。
+ * main も renderer も読める `src/shared/` に置く（`i18n/ja.ts` は three 由来の型を引くため
+ * main から読み込めない。1D1 の方針）。
+ */
+export type SessionMode = SupportedProblem['mode'];
+
 /** 課題一覧の1行（一覧画面がそのまま描ける形）。§12.1 */
 export interface ProblemSummary {
   id: string;
   title: string;
+  /** 課題のモード（一覧をモード別に分けるのに使う）。§12.1 */
+  mode: SessionMode;
   grade: 1 | 2 | 3;
   /** 課題文の先頭（一覧の説明）。 */
   description: string;
@@ -117,7 +127,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
 /** preload が `window.ojt` に公開する型付きAPI。§4.3 */
 export interface OjtApi {
   listProblems: () => Promise<ProblemListPayload>;
-  readProblem: (id: string) => Promise<AssembleProblem | null>;
+  readProblem: (id: string) => Promise<SupportedProblem | null>;
   saveWorkFile: (request: WorkFileSaveRequest) => Promise<WorkFileSaveResult>;
   loadWorkFile: (request: WorkFileLoadRequest) => Promise<WorkFileLoadResult>;
   getSettings: () => Promise<AppSettingsResponse>;
@@ -135,10 +145,11 @@ export function toErrorRow(error: ProblemLoadError): ProblemErrorRow {
 }
 
 /** 課題を一覧行に直す。 */
-export function toSummary(problem: AssembleProblem, source: 'builtin' | 'user'): ProblemSummary {
+export function toSummary(problem: SupportedProblem, source: 'builtin' | 'user'): ProblemSummary {
   return {
     id: problem.id,
     title: problem.title,
+    mode: problem.mode,
     grade: problem.grade,
     description: problem.description,
     standardMin: problem.timeLimit.standardMin,

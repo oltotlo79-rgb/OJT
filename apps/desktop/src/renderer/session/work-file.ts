@@ -179,6 +179,11 @@ export async function applyWorkFile(
     store.toast(workFileProblemMissingText(file.problemId), 'error');
     return false;
   }
+  if (problem.mode !== 'assemble') {
+    // Task 4 でストアが `SupportedProblem` に広がるまでの暫定。C1/C2 の作業ファイルはまだ戻せない
+    store.toast(workFileProblemMissingText(file.problemId), 'error');
+    return false;
+  }
   const session = toSession(file.session);
   if (session === undefined) {
     store.toast(JA.session.badSession, 'error');

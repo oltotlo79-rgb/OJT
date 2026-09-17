@@ -1,12 +1,7 @@
 import { stat } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import {
-  BUILTIN_PROBLEMS,
-  isAssembleProblem,
-  type AssembleProblem,
-  type ProblemLoadError,
-} from '@ojt/content';
+import { BUILTIN_ALL_PROBLEMS, type SupportedProblem } from '@ojt/content';
 import { loadProblemsFromDir, mergeProblemSets, type ProblemSet } from '@ojt/content/loader';
 import { app } from 'electron';
 import { toErrorRow, toSummary, type ProblemListPayload } from '../shared/ipc.js';
@@ -29,7 +24,7 @@ import { toErrorRow, toSummary, type ProblemListPayload } from '../shared/ipc.js
 /** 合流済みの課題（IDで引けるようにした一覧）。 */
 export interface LoadedContent {
   payload: ProblemListPayload;
-  byId: Map<string, AssembleProblem>;
+  byId: Map<string, SupportedProblem>;
 }
 
 /** 利用者フォルダの有無を調べるのに待てる時間[ms]（超えたら「無い」とみなす）。§13 #9 */
@@ -69,12 +64,13 @@ export function builtinContentDir(): string {
  * 「同梱課題も `resources/content/<mode>/<id>.json` を読む」と定めており、そこを差し替えれば
  * 内蔵課題そのものを入れ替えられることが利用者向けの約束になっているため。
  * フォルダが無い・1題も読めない（丸ごと消された／壊された）ときは、パッケージに焼き込んだ
- * `BUILTIN_PROBLEMS` に落として起動は続け、理由を一覧の読込エラー欄に出す（§13 #1）。
+ * `BUILTIN_ALL_PROBLEMS` に落として起動は続け、理由を一覧の読込エラー欄に出す（§13 #1）。
  *
  * 開発中（`!app.isPackaged`）は `resources/` がビルド成果物ではないので焼き込みをそのまま使う。
  */
 export function builtinSet(): ProblemSet {
-  const bundled: ProblemSet = { problems: [...BUILTIN_PROBLEMS], errors: [] };
+  // Plan 2B: モードB 8題 ＋ C1 4セット ＋ C2 8題 の計20題すべてを一覧に載せる（§7.9）
+  const bundled: ProblemSet = { problems: [...BUILTIN_ALL_PROBLEMS], errors: [] };
   if (!app.isPackaged) return bundled;
   const dir = builtinContentDir();
   if (!existsSync(dir)) return withFallbackNotice(bundled, dir, '同梱課題フォルダがありません');
@@ -151,29 +147,14 @@ function readContent(userDir: string, exists: boolean): LoadedContent {
   const builtinIds = new Set(builtin.problems.map((p) => p.id));
   const user: ProblemSet = exists ? loadProblemsFromDir(userDir) : { problems: [], errors: [] };
   const merged = mergeProblemSets(builtin, user);
-  // Plan 2A で `ProblemSet.problems` がモードB／C1／C2の共用体に広がった。C1/C2を開始できる
-  // 画面が入るのは Plan 2B なので、ここではモードBだけを一覧に載せる（利用者フォルダに
-  // C1/C2 の課題を置いても、開ける画面ができるまでは一覧に出さない）。
-  const startable: AssembleProblem[] = merged.problems.filter(isAssembleProblem);
-  // 弾いた課題（読込自体は成功しているC1/C2）を無言で消さず、理由付きでエラー一覧に出す(M-10)。
-  // 本物のファイルパスはここでは持てないので、`file` は課題IDで代える。
-  const notStartable: ProblemLoadError[] = merged.problems
-    .filter((p) => !isAssembleProblem(p))
-    .map((p) => ({
-      file: p.id,
-      reason: 'unsupported-mode',
-      message: `このアプリのこのバージョンではまだ開けないモードです（${p.mode}）: ${p.id}`,
-      issues: [],
-      id: p.id,
-    }));
   const userIds = new Set(user.problems.map((p) => p.id));
-  const byId = new Map(startable.map((p) => [p.id, p] as const));
+  const byId = new Map(merged.problems.map((p) => [p.id, p] as const));
   return {
     payload: {
-      problems: startable.map((p) =>
+      problems: merged.problems.map((p) =>
         toSummary(p, userIds.has(p.id) || !builtinIds.has(p.id) ? 'user' : 'builtin'),
       ),
-      errors: [...merged.errors, ...notStartable].map(toErrorRow),
+      errors: merged.errors.map(toErrorRow),
       userDir,
       userDirExists: exists,
     },

@@ -1,7 +1,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { BUILTIN_PROBLEMS, parseProblem } from '@ojt/content';
+import { BUILTIN_ALL_PROBLEMS, parseProblem } from '@ojt/content';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 /**
@@ -9,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
  * §13 #9（フォルダ無し）。Plan 1D1 の内蔵課題だけのテストを置き換える（Plan 1D2 Task 1）。
  *
  * `app.isPackaged` と `process.resourcesPath` を差し替えて、配布版の分岐（resources/content から
- * 同梱課題を読む）と開発時の分岐（焼き込みの `BUILTIN_PROBLEMS`）の両方を固定する。
+ * 同梱課題を読む）と開発時の分岐（焼き込みの `BUILTIN_ALL_PROBLEMS`）の両方を固定する。
  */
 
 const electron = vi.hoisted(() => ({ packaged: false }));
@@ -60,8 +60,8 @@ afterEach(() => {
 });
 
 describe('builtinSet', () => {
-  it('開発時は焼き込みの内蔵課題8題を返す（§7.9）', () => {
-    expect(builtinSet().problems).toHaveLength(BUILTIN_PROBLEMS.length);
+  it('開発時は焼き込みの内蔵課題20題を返す（§7.9）', () => {
+    expect(builtinSet().problems).toHaveLength(BUILTIN_ALL_PROBLEMS.length);
     expect(builtinSet().errors).toHaveLength(0);
   });
 
@@ -69,7 +69,7 @@ describe('builtinSet', () => {
     const resources = tempDir('ojt-resources-');
     const assemble = join(resources, 'content', 'assemble');
     mkdirSync(assemble, { recursive: true });
-    for (const problem of BUILTIN_PROBLEMS) {
+    for (const problem of BUILTIN_ALL_PROBLEMS) {
       writeFileSync(
         join(assemble, `${problem.id}.json`),
         JSON.stringify({ ...problem, title: `差し替え版 ${problem.title}` }),
@@ -81,7 +81,7 @@ describe('builtinSet', () => {
 
     const set = builtinSet();
     expect(set.errors).toEqual([]);
-    expect(set.problems).toHaveLength(BUILTIN_PROBLEMS.length);
+    expect(set.problems).toHaveLength(BUILTIN_ALL_PROBLEMS.length);
     // ディスク側の内容がそのまま同梱課題になる（差し替えが効く）
     expect(set.problems.every((p) => p.title.startsWith('差し替え版'))).toBe(true);
   });
@@ -93,7 +93,7 @@ describe('builtinSet', () => {
     setResourcesPath(resources);
 
     const set = builtinSet();
-    expect(set.problems).toHaveLength(BUILTIN_PROBLEMS.length);
+    expect(set.problems).toHaveLength(BUILTIN_ALL_PROBLEMS.length);
     expect(set.errors).toHaveLength(1);
     expect(set.errors[0]?.message).toContain('内蔵した課題で起動します');
   });
@@ -103,7 +103,7 @@ describe('builtinSet', () => {
     setResourcesPath(join(tmpdir(), 'ojt-no-such-resources'));
 
     const set = builtinSet();
-    expect(set.problems).toHaveLength(BUILTIN_PROBLEMS.length);
+    expect(set.problems).toHaveLength(BUILTIN_ALL_PROBLEMS.length);
     expect(set.errors[0]?.message).toContain('同梱課題フォルダがありません');
   });
 });
@@ -112,7 +112,7 @@ describe('loadContent', () => {
   it('利用者フォルダが無ければ内蔵課題だけで動く（§13 #9）', async () => {
     const { payload } = await loadContent(join(tmpdir(), 'ojt-does-not-exist'));
     expect(payload.userDirExists).toBe(false);
-    expect(payload.problems).toHaveLength(BUILTIN_PROBLEMS.length);
+    expect(payload.problems).toHaveLength(BUILTIN_ALL_PROBLEMS.length);
     expect(payload.problems.every((p) => p.source === 'builtin')).toBe(true);
   });
 
@@ -122,12 +122,12 @@ describe('loadContent', () => {
     writeFileSync(file, '{}', 'utf8');
     const { payload } = await loadContent(file);
     expect(payload.userDirExists).toBe(false);
-    expect(payload.problems).toHaveLength(BUILTIN_PROBLEMS.length);
+    expect(payload.problems).toHaveLength(BUILTIN_ALL_PROBLEMS.length);
   });
 
   it('利用者フォルダの課題を合流し、同一IDは利用者側を優先する（§7.8）', async () => {
     const dir = tempDir();
-    const builtin = BUILTIN_PROBLEMS[0];
+    const builtin = BUILTIN_ALL_PROBLEMS[0];
     expect(builtin).toBeDefined();
     if (builtin === undefined) return;
     writeFileSync(
@@ -149,12 +149,12 @@ describe('loadContent', () => {
     const { payload } = await loadContent(dir);
     expect(payload.errors).toHaveLength(1);
     expect(payload.errors[0]?.reason).toBe('invalid-json');
-    expect(payload.problems).toHaveLength(BUILTIN_PROBLEMS.length);
+    expect(payload.problems).toHaveLength(BUILTIN_ALL_PROBLEMS.length);
   });
 
   it('スキーマ違反はzodのパス付きで理由を出す（§13 #1）', async () => {
     const dir = tempDir();
-    const builtin = BUILTIN_PROBLEMS[0];
+    const builtin = BUILTIN_ALL_PROBLEMS[0];
     if (builtin === undefined) return;
     writeFileSync(
       join(dir, 'bad-grade.json'),
@@ -178,7 +178,7 @@ describe('loadContent の再利用（1D2-a: content:read のたびに読み直�
   it('有効期限を過ぎたら読み直し、足された課題が見える', async () => {
     const dir = tempDir();
     const before = await loadContent(dir);
-    const builtin = BUILTIN_PROBLEMS[0];
+    const builtin = BUILTIN_ALL_PROBLEMS[0];
     if (builtin === undefined) return;
     writeFileSync(
       join(dir, 'added.json'),
@@ -233,7 +233,7 @@ describe('probeUserDir（1D2-a: 到達できないフォルダで main を止め
 describe('loadContent の所要時間（1D2-a: 大きなフォルダでも一覧が返る）', () => {
   it('1000ファイルの利用者フォルダでも 20 秒以内に読み終える', async () => {
     const dir = tempDir();
-    const builtin = BUILTIN_PROBLEMS[0];
+    const builtin = BUILTIN_ALL_PROBLEMS[0];
     if (builtin === undefined) return;
     for (let i = 0; i < 1000; i += 1) {
       writeFileSync(
@@ -245,7 +245,7 @@ describe('loadContent の所要時間（1D2-a: 大きなフォルダでも一覧
     const started = Date.now();
     const { payload } = await loadContent(dir);
     const tookMs = Date.now() - started;
-    expect(payload.problems).toHaveLength(BUILTIN_PROBLEMS.length + 1000);
+    expect(payload.problems).toHaveLength(BUILTIN_ALL_PROBLEMS.length + 1000);
     // 実測は数秒。極端に遅くなったら気づけるだけの緩い上限にする
     expect(tookMs).toBeLessThan(20_000);
   }, 60_000);
@@ -279,7 +279,7 @@ describe('loadContent のモードB以外の扱い（Plan 2A Task 17: SupportedP
     };
   }
 
-  it('利用者フォルダのinspect-parts課題は一覧に出さず、unsupported-modeの行にする（M-10）', async () => {
+  it('利用者フォルダのinspect-parts課題も一覧に出す（Plan 2B Task 1）', async () => {
     const dir = tempDir();
     const json = inspectPartsProblemJson();
     // 課題としては有効な形であることを確かめてから使う（壊れた前提のテストにしない）
@@ -289,15 +289,19 @@ describe('loadContent のモードB以外の扱い（Plan 2A Task 17: SupportedP
 
     const { payload, byId } = await loadContent(dir);
 
-    // 内蔵8題（モードB）はそのまま一覧に残り、C1課題は一覧にもbyIdにも出ない
-    expect(payload.problems).toHaveLength(BUILTIN_PROBLEMS.length);
-    expect(byId.size).toBe(BUILTIN_PROBLEMS.length);
-    expect(byId.get('x-c1')).toBeUndefined();
+    // 内蔵20題に利用者フォルダのC1課題が足され、byId からも引ける
+    expect(payload.problems).toHaveLength(BUILTIN_ALL_PROBLEMS.length + 1);
+    expect(byId.size).toBe(BUILTIN_ALL_PROBLEMS.length + 1);
+    expect(byId.get('x-c1')?.mode).toBe('inspect-parts');
 
-    // 無言で消さず、理由付きの行が1つ出る
-    expect(payload.errors).toHaveLength(1);
-    expect(payload.errors[0]?.file).toBe('x-c1');
-    expect(payload.errors[0]?.reason).toBe('unsupported-mode');
-    expect(payload.errors[0]?.message).toContain('inspect-parts');
+    // 弾かれた課題が無いので読込エラーの行も出ない
+    expect(payload.errors).toHaveLength(0);
+    const row = payload.problems.find((p) => p.id === 'x-c1');
+    expect(row?.mode).toBe('inspect-parts');
+    expect(row?.source).toBe('user');
+  });
+
+  it('内蔵課題は20題（モードB 8 / C1 4 / C2 8）', () => {
+    expect(BUILTIN_ALL_PROBLEMS).toHaveLength(20);
   });
 });
