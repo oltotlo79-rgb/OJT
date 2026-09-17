@@ -5129,7 +5129,7 @@ git commit -m "feat(plc-dialects): validate FX5U programs and add the GX Works3-
 | 決めること | 本タスクの実装 |
 |---|---|
 | 出力型 | `LadderProgramSchema.parse()` の戻り値は `@ojt/ladder-core` の `LadderProgram` そのもの（`rows` / `cols` は transform が埋める） |
-| 列の省略 | 1行は1〜16セル。16未満は `{kind:'empty'}` で詰める |
+| 列の省略 | 1行は1〜16セル。**行の最後が出力セルならコイル列（15列目）へ送り手前を横線で埋める**、そうでなければ空セルで詰める |
 | デバイス | `{kind, index}`。`special` は 0〜2 のみ（§10.3） |
 | タイマ | `presetMs` は10msの倍数（`TIMER_STEP_MS`）。範囲は `compile()` と同じ |
 | 検証の重複 | 構造の検査（END・コイル列・MC対応）は `compile()` が持っているので**スキーマでは繰り返さない**。課題の読込時に `compile()` を呼ぶのは Task 12 の refinement |
@@ -5154,7 +5154,6 @@ const SELF_HOLD = {
           { kind: 'contact', type: 'NO', device: { kind: 'input', index: 0 } },
           { kind: 'vline' },
           { kind: 'contact', type: 'NC', device: { kind: 'input', index: 1 } },
-          ...Array.from({ length: IR_COLS - 4 }, () => ({ kind: 'hline' })),
           { kind: 'coil', type: 'OUT', device: { kind: 'output', index: 0 } },
         ],
         [{ kind: 'contact', type: 'NO', device: { kind: 'output', index: 0 } }],
@@ -5174,6 +5173,20 @@ describe('LadderProgramSchema', () => {
     expect(first?.comment).toBe('自己保持');
     expect(first?.cells[1]).toHaveLength(IR_COLS);
     expect(first?.cells[1]?.[1]).toEqual({ kind: 'empty' });
+  });
+
+  it('sends a trailing output cell to the coil column and fills the gap with hlines', () => {
+    const parsed = LadderProgramSchema.parse(SELF_HOLD);
+    const row = parsed.networks[0]?.cells[0] ?? [];
+    expect(row[3]).toEqual({ kind: 'hline' });
+    expect(row[14]).toEqual({ kind: 'hline' });
+    expect(row[15]).toEqual({
+      kind: 'coil',
+      type: 'OUT',
+      device: { kind: 'output', index: 0 },
+    });
+    // 出力セルで終わらない行は空セルで詰める
+    expect(parsed.networks[0]?.cells[1]?.[1]).toEqual({ kind: 'empty' });
   });
 
   it('produces a program that compiles (§10.3 の構造検査はここではしない)', () => {
@@ -5351,9 +5364,26 @@ export const CellSchema = z.discriminatedUnion('kind', [
 /** セル。 */
 export type CellData = z.infer<typeof CellSchema>;
 
-/** 1行を16列に詰める。 */
+/** 出力位置に置くセル（コイル列に置くもの）。 */
+function isOutputCellData(cell: CellData): boolean {
+  return ['coil', 'timer', 'counter', 'mc', 'mcr'].includes(cell.kind);
+}
+
+/**
+ * 1行を16列に詰める。
+ * **行の最後が出力セル（コイル・タイマ・カウンタ・MC/MCR）なら、それをコイル列（15列目）へ送り、
+ * 手前を横線で埋める。** 実機のラダーでもコイルは必ず右母線に付くので、課題JSONに横線を12個も
+ * 並べずに済む。出力セルで終わらない行は、足りないぶんを空セルで詰める。
+ */
 function padRow(cells: readonly CellData[]): Cell[] {
   const row: Cell[] = [...cells];
+  const last = row[row.length - 1];
+  if (last !== undefined && isOutputCellData(last) && row.length < IR_COLS) {
+    row.pop();
+    while (row.length < COIL_COL) row.push({ kind: 'hline' });
+    row.push(last);
+    return row;
+  }
   while (row.length < IR_COLS) row.push({ kind: 'empty' });
   return row;
 }
@@ -5408,7 +5438,7 @@ git add packages/content pnpm-lock.yaml
 git commit -m "feat(content): add the zod schema for the ladder IR"
 ```
 
-Expected: `Tests  10 passed (10)`。
+Expected: `Tests  11 passed (11)`。
 
 ---
 
@@ -5436,8 +5466,6 @@ Expected: `Tests  10 passed (10)`。
 `packages/content/test/helpers/plc.ts`:
 
 ```ts
-import { IR_COLS } from '@ojt/ladder-core';
-
 /** 課題JSONに書くセル（`schema/ladder.ts` の入力形式）。 */
 export type CellJson = Record<string, unknown>;
 
@@ -5459,14 +5487,12 @@ export const outJson = (index: number): CellJson => ({
   type: 'OUT',
   device: { kind: 'output', index },
 });
-/** 最後のセルをコイル列に置き、手前を横線で埋めた1行。 */
+/**
+ * 1行ぶんのセル。コイル列への送りと横線の穴埋めは `LadderProgramSchema` が行うので、
+ * ここでは使うセルを並べるだけでよい（§10.3 / Task 11 の詰め方の規則）。
+ */
 export function rungJson(...cells: CellJson[]): CellJson[] {
-  const row = [...cells];
-  const output = row.pop();
-  if (output === undefined) throw new Error('出力セルが要ります');
-  while (row.length < IR_COLS - 1) row.push({ kind: 'hline' });
-  row.push(output);
-  return row;
+  return [...cells];
 }
 
 /** X0 が入ると Y0 が出るだけの最小ラダー。 */
@@ -7553,3 +7579,882 @@ git commit -m "feat(content): judge mode D by racing the reference ladder agains
 Expected: `Tests  8 passed (8)`。
 
 ---
+## Task 18: 内蔵モードD課題 前半4題（2級形式・入力3点／出力3点）
+
+**Files:**
+- Create: `packages/content/src/builtin/plc/d-001-self-hold.json`
+- Create: `packages/content/src/builtin/plc/d-002-interlock.json`
+- Create: `packages/content/src/builtin/plc/d-003-on-delay.json`
+- Create: `packages/content/src/builtin/plc/d-004-one-shot.json`
+- Modify: `packages/content/src/builtin/index.ts`
+- Test: `packages/content/test/builtin-plc.test.ts`
+
+§7.9 の「D（PLC）＝1級形式4題＋2級形式4題」の前半である。2級形式は**入力3点・出力3点**（調査資料 §1.1）で、`X0`=PB1（黒）・`X1`=PB2（黄）・`X2`=PB3（緑）、`Y0`→CR1→PL1（白）・`Y1`→CR2→PL2（黄）・`Y2`→CR3→PL3（緑）に固定する（§7.6 の既定割付）。題材は有接点のモードB課題（§7.9）と対応させ、同じ回路をPLCで組み直す構成にする。
+
+**課題JSONの書き方（4題共通）:** ヘッダ・`plc`・`io`・`wiringRequired` は下の d-001 と同じで、変えるのは `id` / `title` / `description` / `referenceLadder` / `operations` / `durationMs` / `judge.compareSignals` だけである。セルのJSONと組み立てヘルパの対応は次のとおり:
+
+| ラダーの部品 | JSON |
+|---|---|
+| `no(X(0))` | `{"kind":"contact","type":"NO","device":{"kind":"input","index":0}}` |
+| `nc(X(1))` | `{"kind":"contact","type":"NC","device":{"kind":"input","index":1}}` |
+| `rise(X(0))` | `{"kind":"contact","type":"P","device":{"kind":"input","index":0}}` |
+| `no(M(0))` / `no(T(0))` / `no(C(0))` / `no(SP(2))` | `device.kind` を `internal` / `timer` / `counter` / `special` にする |
+| `out(Y(0))` | `{"kind":"coil","type":"OUT","device":{"kind":"output","index":0}}` |
+| `set(M(0))` / `rst(M(0))` | `"type"` を `SET` / `RST` にする |
+| `ton(T(0), 3000)` | `{"kind":"timer","type":"TON","device":{"kind":"timer","index":0},"presetMs":3000}` |
+| `ctu(C(0), 1, X(1))` | `{"kind":"counter","type":"CTU","device":{"kind":"counter","index":0},"preset":1,"resetDevice":{"kind":"input","index":1}}` |
+| `vline()` / `hline()` | `{"kind":"vline"}` / `{"kind":"hline"}` |
+| `end()` | `{"kind":"end"}`（`{"id":"end","cells":[[{"kind":"end"}]]}` のネットワークで置く） |
+
+行の最後が出力セルなら**コイル列への送りと横線の穴埋めはスキーマが行う**（Task 11）。分岐（自己保持）は「上の行の分岐点に `vline`、下の行に分岐接点」と書く。
+
+- [ ] **Step 1: d-001 を書く**
+
+`packages/content/src/builtin/plc/d-001-self-hold.json`:
+
+```json
+{
+  "formatVersion": 1,
+  "id": "d-001",
+  "mode": "plc",
+  "title": "PLC 自己保持回路（2級形式）",
+  "grade": 2,
+  "description": "黒（X0）で運転を開始し、黄（X1）で停止する自己保持回路をPLCで組みます。運転中は白ランプ（PL1）が点灯し、停止中は黄ランプ（PL2）が点灯します。緑（X2）を押している間だけ緑ランプ（PL3）が点灯します。PLCの出力は必ず盤のリレーを介し、PLCの電源は壁コンセントから取ってください。",
+  "timeLimit": { "standardMin": 50, "cutoffMin": 60 },
+  "board": {
+    "boardId": "board-jipm-std",
+    "socketRoles": { "S1": "CR1", "S2": "CR2", "S3": "CR3", "S4": "CR4", "S7": "CHK" }
+  },
+  "inventory": [{ "kind": "relay-my4n", "count": 4 }],
+  "plc": { "vendor": "mitsubishi", "model": "FX5U" },
+  "io": {
+    "mode": "fixed",
+    "wiring": "sink",
+    "inputs": [
+      { "x": 0, "pb": "PB1" },
+      { "x": 1, "pb": "PB2" },
+      { "x": 2, "pb": "PB3" }
+    ],
+    "outputs": [
+      { "y": 0, "cr": "CR1", "pl": "PL1" },
+      { "y": 1, "cr": "CR2", "pl": "PL2" },
+      { "y": 2, "cr": "CR3", "pl": "PL3" }
+    ]
+  },
+  "referenceLadder": {
+    "networks": [
+      {
+        "id": "n1",
+        "comment": "自己保持（X0で入り、X1で切れる）",
+        "cells": [
+          [
+            { "kind": "contact", "type": "NO", "device": { "kind": "input", "index": 0 } },
+            { "kind": "vline" },
+            { "kind": "contact", "type": "NC", "device": { "kind": "input", "index": 1 } },
+            { "kind": "coil", "type": "OUT", "device": { "kind": "output", "index": 0 } }
+          ],
+          [{ "kind": "contact", "type": "NO", "device": { "kind": "output", "index": 0 } }]
+        ]
+      },
+      {
+        "id": "n2",
+        "comment": "停止中表示",
+        "cells": [
+          [
+            { "kind": "contact", "type": "NC", "device": { "kind": "output", "index": 0 } },
+            { "kind": "coil", "type": "OUT", "device": { "kind": "output", "index": 1 } }
+          ]
+        ]
+      },
+      {
+        "id": "n3",
+        "comment": "点検灯（押している間だけ）",
+        "cells": [
+          [
+            { "kind": "contact", "type": "NO", "device": { "kind": "input", "index": 2 } },
+            { "kind": "coil", "type": "OUT", "device": { "kind": "output", "index": 2 } }
+          ]
+        ]
+      },
+      { "id": "end", "cells": [[{ "kind": "end" }]] }
+    ]
+  },
+  "wiringRequired": true,
+  "operations": [
+    { "t": 500, "target": "PB1", "action": "press" },
+    { "t": 800, "target": "PB1", "action": "release" },
+    { "t": 2000, "target": "PB3", "action": "press" },
+    { "t": 2300, "target": "PB3", "action": "release" },
+    { "t": 4000, "target": "PB2", "action": "press" },
+    { "t": 4300, "target": "PB2", "action": "release" }
+  ],
+  "durationMs": 6000,
+  "judge": { "compareSignals": ["PL1", "PL2", "PL3"] }
+}
+```
+
+- [ ] **Step 2: d-002〜d-004 を書く**
+
+ヘッダは d-001 と同じ（`id` / `title` / `description` だけ変える）。`referenceLadder` と操作列は下表のとおり。
+
+**d-002 `d-002-interlock.json`「PLC インターロック（2級形式）」（grade 2, durationMs 8000, compareSignals `PL1` `PL2` `PL3`）**
+
+| ネットワーク | 行 | セル（左から） |
+|---|---|---|
+| `n1`（正転） | 0 | `no(X(0))`, `vline()`, `nc(X(2))`, `nc(Y(1))`, `out(Y(0))` |
+| | 1 | `no(Y(0))` |
+| `n2`（逆転） | 0 | `no(X(1))`, `vline()`, `nc(X(2))`, `nc(Y(0))`, `out(Y(1))` |
+| | 1 | `no(Y(1))` |
+| `n3`（停止中表示） | 0 | `nc(Y(0))`, `nc(Y(1))`, `out(Y(2))` |
+| `end` | 0 | `end()` |
+
+操作列: `PB1` press 500 / release 800（正転が入る）→ `PB2` press 2000 / release 2300（**入らない**＝インターロック）→ `PB3` press 4000 / release 4300（停止）→ `PB2` press 5500 / release 5800（今度は逆転が入る）。
+
+**d-003 `d-003-on-delay.json`「PLC オンディレー点灯（2級形式）」（grade 2, durationMs 8000, compareSignals `PL1` `PL2` `PL3`）**
+
+| ネットワーク | 行 | セル（左から） |
+|---|---|---|
+| `n1`（起動の自己保持） | 0 | `no(X(0))`, `vline()`, `nc(X(1))`, `out(M(0))` |
+| | 1 | `no(M(0))` |
+| `n2`（計時） | 0 | `no(M(0))`, `ton(T(0), 3000)` |
+| `n3`（3秒後に点灯） | 0 | `no(T(0))`, `out(Y(0))` |
+| `n4`（計時中表示） | 0 | `no(M(0))`, `nc(T(0))`, `out(Y(1))` |
+| `n5`（点検灯） | 0 | `no(X(2))`, `out(Y(2))` |
+| `end` | 0 | `end()` |
+
+操作列: `PB1` press 500 / release 800 → `PB2` press 6000 / release 6300。期待: `PL2` が 500ms 付近で点いて 3500ms 付近で消え、同じ時刻に `PL1` が点く。
+
+**d-004 `d-004-one-shot.json`「PLC ワンショット回路（2級形式）」（grade 2, durationMs 7000, compareSignals `PL1` `PL2` `PL3`）**
+
+| ネットワーク | 行 | セル（左から） |
+|---|---|---|
+| `n1`（立上りで起動） | 0 | `rise(X(0))`, `set(M(0))` |
+| `n2`（1秒計時） | 0 | `no(M(0))`, `ton(T(0), 1000)` |
+| `n3`（タイムアップか停止で解除） | 0 | `no(T(0))`, `vline()`, `rst(M(0))` |
+| | 1 | `no(X(1))` |
+| `n4`（出力） | 0 | `no(M(0))`, `out(Y(0))` |
+| `n5`（点検灯） | 0 | `no(X(2))`, `out(Y(1))` |
+| `n6`（電源表示＝常時ON） | 0 | `no(SP(0))`, `out(Y(2))` |
+| `end` | 0 | `end()` |
+
+操作列: `PB1` press 500 / release 600（短押し）→ `PB1` press 3000 / release 5000（**長押ししても1秒で切れる**）→ `PB3` press 5500 / release 6000。
+
+- [ ] **Step 3: 内蔵課題に登録する**
+
+`packages/content/src/builtin/index.ts`:
+
+```ts
+import type { PlcProblem } from '../schema/plc.js';
+import d001 from './plc/d-001-self-hold.json' with { type: 'json' };
+import d002 from './plc/d-002-interlock.json' with { type: 'json' };
+import d003 from './plc/d-003-on-delay.json' with { type: 'json' };
+import d004 from './plc/d-004-one-shot.json' with { type: 'json' };
+```
+
+（Task 19 で d-005〜d-008 を足す。）
+
+```ts
+/** 内蔵のモードD課題のJSON。 */
+const BUILTIN_PLC_JSON: readonly unknown[] = [d001, d002, d003, d004];
+
+/** 内蔵のモードD課題（8題）。§7.9 */
+export const BUILTIN_PLC_PROBLEMS: readonly PlcProblem[] = ofMode(
+  parseBuiltinProblems(BUILTIN_PLC_JSON),
+  isPlcProblem,
+  'モードD課題',
+);
+```
+
+`BUILTIN_ALL_PROBLEMS` に `...BUILTIN_PLC_PROBLEMS` を足す（並びは B → C1 → C2 → D）。
+
+- [ ] **Step 4: 失敗するテストを書く**
+
+`packages/content/test/builtin-plc.test.ts`:
+
+```ts
+import { JIPM_BOARD } from '@ojt/board-model';
+import { describe, expect, it } from 'vitest';
+import { BUILTIN_PLC_PROBLEMS } from '../src/builtin/index.js';
+import { judgePlcReference } from '../src/judge-plc.js';
+import { buildPlcReferenceSession } from '../src/plc-reference.js';
+import { runPlcOperations } from '../src/plc-io.js';
+import { buildTimeChart, defaultChartSignals, startsAndEndsLow } from '../src/timechart.js';
+import { resolveCompareSignals } from '../src/schema/judge.js';
+
+describe('内蔵モードD課題（§7.9）', () => {
+  it('has the 2級 problems of Task 18', () => {
+    expect(BUILTIN_PLC_PROBLEMS.map((p) => p.id)).toEqual(['d-001', 'd-002', 'd-003', 'd-004']);
+    expect(BUILTIN_PLC_PROBLEMS.every((p) => p.plc.model === 'FX5U')).toBe(true);
+    expect(BUILTIN_PLC_PROBLEMS.every((p) => p.wiringRequired)).toBe(true);
+  });
+
+  it('uses three inputs and three outputs in the 2級 form (調査資料 §1.1)', () => {
+    for (const problem of BUILTIN_PLC_PROBLEMS.filter((p) => p.grade === 2)) {
+      expect(problem.io.inputs).toHaveLength(3);
+      expect(problem.io.outputs).toHaveLength(3);
+    }
+  });
+
+  it.each(BUILTIN_PLC_PROBLEMS.map((p) => [p.id, p] as const))(
+    '%s passes its own reference judgement (§7.8 / §14.1 #30)',
+    (_id, problem) => {
+      const judged = judgePlcReference(problem, JIPM_BOARD);
+      expect(judged.ok).toBe(true);
+      if (!judged.ok) return;
+      expect(judged.value.mismatches).toEqual([]);
+      expect(judged.value.staticChecks.filter((c) => !c.ok)).toEqual([]);
+      expect(judged.value.passed).toBe(true);
+    },
+  );
+
+  it.each(BUILTIN_PLC_PROBLEMS.map((p) => [p.id, p] as const))(
+    '%s starts and ends low on every compared signal (§7.3)',
+    (_id, problem) => {
+      const built = buildPlcReferenceSession(problem, JIPM_BOARD);
+      expect(built.ok).toBe(true);
+      if (!built.ok) return;
+      const run = runPlcOperations(built.value.netlist, built.value.program, problem.operations, {
+        durationMs: problem.durationMs,
+      });
+      const signals = resolveCompareSignals(problem.judge, []);
+      const chart = buildTimeChart(run.log, defaultChartSignals(signals), problem.durationMs, []);
+      expect(startsAndEndsLow(chart)).toBe(true);
+    },
+  );
+
+  it('actually drives every compared lamp at some point (課題として意味があること)', () => {
+    for (const problem of BUILTIN_PLC_PROBLEMS) {
+      const built = buildPlcReferenceSession(problem, JIPM_BOARD);
+      if (!built.ok) throw new Error(`${problem.id}: ${JSON.stringify(built.errors)}`);
+      const run = runPlcOperations(built.value.netlist, built.value.program, problem.operations, {
+        durationMs: problem.durationMs,
+      });
+      for (const signal of resolveCompareSignals(problem.judge, [])) {
+        const lit = run.log.transitions(signal).some((e) => e.value === true);
+        expect(lit, `${problem.id} の ${signal} が一度も点灯しません`).toBe(true);
+      }
+    }
+  });
+
+  it('turns the on-delay lamp on 3 seconds after the start button (§10.4)', () => {
+    const problem = BUILTIN_PLC_PROBLEMS.find((p) => p.id === 'd-003');
+    if (problem === undefined) throw new Error('d-003 がありません');
+    const built = buildPlcReferenceSession(problem, JIPM_BOARD);
+    if (!built.ok) throw new Error('模範回路を組めません');
+    const run = runPlcOperations(built.value.netlist, built.value.program, problem.operations, {
+      durationMs: problem.durationMs,
+    });
+    const litMs = run.log.transitions('PL1').find((e) => e.value === true)?.tMs ?? -1;
+    expect(litMs).toBeGreaterThanOrEqual(3500);
+    expect(litMs).toBeLessThanOrEqual(3600);
+  });
+
+  it('keeps the one-shot output on for exactly 1 second even on a long press (d-004)', () => {
+    const problem = BUILTIN_PLC_PROBLEMS.find((p) => p.id === 'd-004');
+    if (problem === undefined) throw new Error('d-004 がありません');
+    const built = buildPlcReferenceSession(problem, JIPM_BOARD);
+    if (!built.ok) throw new Error('模範回路を組めません');
+    const run = runPlcOperations(built.value.netlist, built.value.program, problem.operations, {
+      durationMs: problem.durationMs,
+    });
+    const edges = run.log.transitions('PL1');
+    const rises = edges.filter((e) => e.value === true).map((e) => e.tMs);
+    const falls = edges.filter((e) => e.value === false && e.tMs > 0).map((e) => e.tMs);
+    expect(rises).toHaveLength(2);
+    expect((falls[0] ?? 0) - (rises[0] ?? 0)).toBeGreaterThanOrEqual(1000);
+    expect((falls[0] ?? 0) - (rises[0] ?? 0)).toBeLessThanOrEqual(1100);
+  });
+});
+```
+
+- [ ] **Step 5: RED → GREEN**
+
+```powershell
+pnpm --filter @ojt/content exec vitest run test/builtin-plc.test.ts
+```
+
+Expected（RED）: 課題JSONが無い／登録していない段で `BuiltinProblemError` か import エラー。
+
+Expected（GREEN）: `Tests  11 passed (11)`（`it.each` の4題ぶんを含む）。**自己整合（3番目のテスト）が落ちる場合は課題データの誤り**である。よくある原因は、①ラダーの分岐で `vline` を下の行に置いた（上の行に置く。Task 1）②`io` の割付と `referenceLadder` のデバイス番号が食い違っている ③`durationMs` が最後の操作＋1tickより短い、の3つ。
+
+- [ ] **Step 6: コミットする**
+
+```powershell
+npx prettier --check "packages/content/src/builtin/plc/*.json"
+git add packages/content
+git commit -m "feat(content): add the four 2級-form built-in PLC problems"
+```
+
+---
+
+## Task 19: 内蔵モードD課題 後半4題（1級形式・入力3点／出力4点）と弁別テスト
+
+**Files:**
+- Create: `packages/content/src/builtin/plc/d-005-sequential.json`
+- Create: `packages/content/src/builtin/plc/d-006-flicker.json`
+- Create: `packages/content/src/builtin/plc/d-007-counter.json`
+- Create: `packages/content/src/builtin/plc/d-008-stop-priority.json`
+- Modify: `packages/content/src/builtin/index.ts`
+- Test: `packages/content/test/builtin-plc-discrimination.test.ts`
+
+1級形式は**入力3点・出力4点**（調査資料 §1.1）で、`Y3`→CR4→PL4（赤）が増える。`grade: 1`、`timeLimit` は `{standardMin: 50, cutoffMin: 60}`。§17.2 #8 のとおり**1題（d-007）はカウンタで「押した回数による順次動作」**にする。
+
+**d-005 `d-005-sequential.json`「PLC 順次点灯（1級形式）」（durationMs 8000, compareSignals `PL1`〜`PL4`）**
+
+| ネットワーク | 行 | セル（左から） |
+|---|---|---|
+| `n1`（起動の自己保持） | 0 | `no(X(0))`, `vline()`, `nc(X(1))`, `nc(X(2))`, `out(M(0))` |
+| | 1 | `no(M(0))` |
+| `n2` | 0 | `no(M(0))`, `ton(T(0), 1000)` |
+| `n3` | 0 | `no(T(0))`, `ton(T(1), 1000)` |
+| `n4` | 0 | `no(T(1))`, `ton(T(2), 1000)` |
+| `n5` | 0 | `no(M(0))`, `out(Y(0))` |
+| `n6` | 0 | `no(T(0))`, `out(Y(1))` |
+| `n7` | 0 | `no(T(1))`, `out(Y(2))` |
+| `n8` | 0 | `no(T(2))`, `out(Y(3))` |
+| `end` | 0 | `end()` |
+
+操作列: `PB1` press 500 / release 800 → `PB2` press 6000 / release 6300。期待: 500 / 1500 / 2500 / 3500ms 付近で順に点灯し、6000ms で全消灯。
+
+**d-006 `d-006-flicker.json`「PLC フリッカ回路（1級形式）」（durationMs 7000, compareSignals `PL1`〜`PL4`）**
+
+| ネットワーク | 行 | セル（左から） |
+|---|---|---|
+| `n1`（起動の自己保持） | 0 | `no(X(0))`, `vline()`, `nc(X(1))`, `out(M(0))` |
+| | 1 | `no(M(0))` |
+| `n2`（0.5秒） | 0 | `no(M(0))`, `nc(T(1))`, `ton(T(0), 500)` |
+| `n3`（0.5秒） | 0 | `no(T(0))`, `ton(T(1), 500)` |
+| `n4`（点滅） | 0 | `no(M(0))`, `no(T(0))`, `out(Y(0))` |
+| `n5`（運転中表示） | 0 | `no(M(0))`, `out(Y(1))` |
+| `n6`（1秒クロックの点滅） | 0 | `no(M(0))`, `no(SP(2))`, `out(Y(2))` |
+| `n7`（停止中表示） | 0 | `nc(M(0))`, `no(X(2))`, `out(Y(3))` |
+| `end` | 0 | `end()` |
+
+操作列: `PB1` press 500 / release 800 → `PB2` press 5000 / release 5300 → `PB3` press 5600 / release 5900。**`SP2`（1秒クロック）はスキャン経過時刻で決まるので、模範と訓練者で必ず同じ波形になる**（§5.2 の決定論）。
+
+**d-007 `d-007-counter.json`「PLC カウンタによる順次点灯（1級形式）」（durationMs 6000, compareSignals `PL1`〜`PL4`。§17.2 #8）**
+
+| ネットワーク | 行 | セル（左から） |
+|---|---|---|
+| `n1` | 0 | `no(X(0))`, `ctu(C(0), 1, X(1))` |
+| `n2` | 0 | `no(X(0))`, `ctu(C(1), 2, X(1))` |
+| `n3` | 0 | `no(X(0))`, `ctu(C(2), 3, X(1))` |
+| `n4` | 0 | `no(X(0))`, `ctu(C(3), 4, X(1))` |
+| `n5`〜`n8` | 0 | `no(C(0))`→`out(Y(0))`／`no(C(1))`→`out(Y(1))`／`no(C(2))`→`out(Y(2))`／`no(C(3))`→`out(Y(3))` |
+| `end` | 0 | `end()` |
+
+操作列: `PB1` を 500 / 1200 / 1900 / 2600ms に press（各 200ms 後 release）→ `PB2` press 4500 / release 4800（リセット）。期待: 押すたびに点灯数が1つずつ増え、4回目で4点すべて点灯し、リセットで全消灯。
+
+**d-008 `d-008-stop-priority.json`「PLC 停止優先と警報表示（1級形式）」（durationMs 8000, compareSignals `PL1`〜`PL4`）**
+
+| ネットワーク | 行 | セル（左から） |
+|---|---|---|
+| `n1`（停止優先の自己保持） | 0 | `no(X(0))`, `vline()`, `nc(X(1))`, `out(Y(0))` |
+| | 1 | `no(Y(0))` |
+| `n2`（警報のセット） | 0 | `no(X(2))`, `set(Y(3))` |
+| `n3`（警報の解除） | 0 | `no(X(1))`, `rst(Y(3))` |
+| `n4`（正常表示） | 0 | `nc(Y(3))`, `out(Y(2))` |
+| `n5`（運転正常表示） | 0 | `no(Y(0))`, `nc(Y(3))`, `out(Y(1))` |
+| `end` | 0 | `end()` |
+
+操作列: `PB1` press 500 / release 800（運転）→ `PB3` press 2000 / release 2300（警報）→ `PB2` press 3500 / release 3800（停止＋警報解除）→ `PB1` press 5000・`PB2` press 5000（**同時押し**）/ 両方 release 5300（停止が優先し運転しない）。
+
+**注意（`compareSignals` と §7.3 の始点・終点）:** d-008 の `Y2`（正常表示）は `nc(Y(3))` なので**開始直後から点灯している**。§7.3 は「タイムチャートの始まりと終わりは論理0であること」を求めるので、内蔵課題ではそのままだと自己整合テスト（`startsAndEndsLow`）に落ちる。`n4` を `no(Y(0))`, `nc(Y(3))` の直列（運転中かつ正常なときだけ点灯）に変え、`n5` は `no(Y(0))`, `no(Y(3))`（運転中に警報が出ているときだけ点灯）にすること。この2つは Task 18/19 の GREEN 条件（`startsAndEndsLow`）で必ず確かめる。
+
+- [ ] **Step 1: 4題のJSONを書き、`builtin/index.ts` に登録する**
+
+`BUILTIN_PLC_JSON` を8件にし、テストの期待値を `['d-001' … 'd-008']` に伸ばす。`BUILTIN_ALL_PROBLEMS` は 20 + 8 = **28題**になる。
+
+- [ ] **Step 2: 弁別テストを書く**
+
+`packages/content/test/builtin-plc-discrimination.test.ts`:
+
+```ts
+import { addWire, JIPM_BOARD, removeWire } from '@ojt/board-model';
+import type { TerminalId } from '@ojt/circuit-sim';
+import type { LadderProgram } from '@ojt/ladder-core';
+import { describe, expect, it } from 'vitest';
+import { BUILTIN_PLC_PROBLEMS } from '../src/builtin/index.js';
+import { judgePlc } from '../src/judge-plc.js';
+import { buildPlcReferenceSession } from '../src/plc-reference.js';
+
+function t(id: string): TerminalId {
+  return id as TerminalId;
+}
+
+/** 模範ラダーの最初の接点をa接点⇔b接点に入れ替えた「惜しい」ラダーを作る。 */
+function flipFirstContact(ladder: LadderProgram): LadderProgram {
+  const copy = structuredClone(ladder);
+  for (const net of copy.networks) {
+    for (const row of net.cells) {
+      for (const cell of row) {
+        if (cell.kind !== 'contact') continue;
+        cell.type = cell.type === 'NO' ? 'NC' : 'NO';
+        return copy;
+      }
+    }
+  }
+  throw new Error('接点が1つもありません');
+}
+
+const CASES = BUILTIN_PLC_PROBLEMS.map((problem) => [problem.id, problem] as const);
+
+describe('内蔵モードD課題の弁別（§16 Phase 3 の受入基準）', () => {
+  it.each(CASES)('%s: 正しいラダーと正しい配線なら合格する', (_id, problem) => {
+    const built = buildPlcReferenceSession(problem, JIPM_BOARD);
+    expect(built.ok).toBe(true);
+    if (!built.ok) return;
+    const judged = judgePlc(problem, JIPM_BOARD, built.value.session, problem.referenceLadder);
+    expect(judged.ok).toBe(true);
+    if (!judged.ok) return;
+    expect(judged.value.passed).toBe(true);
+  });
+
+  it.each(CASES)('%s: 接点を1つ裏返したラダーでは不合格になる', (_id, problem) => {
+    const built = buildPlcReferenceSession(problem, JIPM_BOARD);
+    if (!built.ok) throw new Error('模範回路を組めません');
+    const judged = judgePlc(
+      problem,
+      JIPM_BOARD,
+      built.value.session,
+      flipFirstContact(problem.referenceLadder),
+    );
+    expect(judged.ok).toBe(true);
+    if (!judged.ok) return;
+    expect(judged.value.passed).toBe(false);
+    expect(judged.value.mismatches.length).toBeGreaterThan(0);
+  });
+
+  it.each(CASES)('%s: Y0 をランプへ直結すると twoStage で落ちる（受入基準④）', (_id, problem) => {
+    const built = buildPlcReferenceSession(problem, JIPM_BOARD);
+    if (!built.ok) throw new Error('模範回路を組めません');
+    const { session, board } = built.value;
+    const coil = session.wires.find((w) => w.from === 'PLC.Y0');
+    expect(removeWire(session, coil?.id ?? '').ok).toBe(true);
+    const lamp = session.wires.find((w) => w.to === 'TB_PL.1+');
+    expect(removeWire(session, lamp?.id ?? '').ok).toBe(true);
+    expect(addWire(session, board, t('PLC.Y0'), t('TB_PL.1+')).ok).toBe(true);
+    const judged = judgePlc(problem, JIPM_BOARD, session, problem.referenceLadder);
+    expect(judged.ok).toBe(true);
+    if (!judged.ok) return;
+    expect(judged.value.staticChecks.find((c) => c.id === 'twoStage')?.ok).toBe(false);
+    expect(judged.value.passed).toBe(false);
+  });
+
+  it.each(CASES)('%s: PLC電源を盤から取ると plcPowerIndependent で落ちる（受入基準⑤）', (_id, problem) => {
+    const built = buildPlcReferenceSession(problem, JIPM_BOARD);
+    if (!built.ok) throw new Error('模範回路を組めません');
+    const { session, board } = built.value;
+    const wire = session.wires.find((w) => w.to === 'PLC.L');
+    expect(removeWire(session, wire?.id ?? '').ok).toBe(true);
+    expect(addWire(session, board, t('CR1.9'), t('PLC.L')).ok).toBe(true);
+    const judged = judgePlc(problem, JIPM_BOARD, session, problem.referenceLadder);
+    expect(judged.ok).toBe(true);
+    if (!judged.ok) return;
+    expect(judged.value.staticChecks.find((c) => c.id === 'plcPowerIndependent')?.ok).toBe(false);
+  });
+
+  it('入力を別の押ボタンへ配線すると ioAssignment で落ちる（§7.4）', () => {
+    const problem = BUILTIN_PLC_PROBLEMS[0];
+    if (problem === undefined) throw new Error('課題がありません');
+    const built = buildPlcReferenceSession(problem, JIPM_BOARD);
+    if (!built.ok) throw new Error('模範回路を組めません');
+    const { session, board } = built.value;
+    const wire = session.wires.find((w) => w.to === 'PLC.X0');
+    expect(removeWire(session, wire?.id ?? '').ok).toBe(true);
+    // PB1 のa接点ではなく PB4（赤）のa接点へ繋ぐ
+    expect(addWire(session, board, t('TB_PB.4a'), t('PLC.X0')).ok).toBe(true);
+    const judged = judgePlc(problem, JIPM_BOARD, session, problem.referenceLadder);
+    expect(judged.ok).toBe(true);
+    if (!judged.ok) return;
+    expect(judged.value.staticChecks.find((c) => c.id === 'ioAssignment')?.ok).toBe(false);
+  });
+});
+```
+
+- [ ] **Step 3: RED → GREEN**
+
+```powershell
+pnpm --filter @ojt/content exec vitest run test/builtin-plc.test.ts test/builtin-plc-discrimination.test.ts
+```
+
+Expected: `builtin-plc` は8題ぶんに増えて `Tests  19 passed (19)`、弁別テストは `Tests  33 passed (33)`（`it.each` 8題 × 4件 ＋ 1件）。
+
+**実行時間の注意:** 1件の判定は模範と訓練者の2回ぶんを10ms tick で最後まで回すので、`durationMs: 8000` の課題では1件あたり数百msかかる。弁別テストは 33 件あるので合計で数十秒になる。`packages/content/vitest.config.ts` の `testTimeout` は既に 180 秒なので設定変更は不要だが、**カバレッジ計測込みだとさらに数倍になる**ことを見込むこと（Plan 2A の C2 弁別テストと同じ事情）。
+
+- [ ] **Step 4: コミットする**
+
+```powershell
+npx prettier --check "packages/content/src/builtin/plc/*.json"
+git add packages/content
+git commit -m "feat(content): add the four 1級-form built-in PLC problems and the discrimination tests"
+```
+
+---
+
+## Task 20: 公開APIの確定と全体検証
+
+**Files:**
+- Modify: `packages/content/src/index.ts`
+- Modify: `packages/ladder-core/src/index.ts` / `packages/plc-dialects/src/index.ts`（漏れの補完）
+- Test: `packages/content/test/index.test.ts`（バレルの網羅）
+
+Plan 3B が使う公開APIを固定し（下の「3B への引き渡し」表と一致させる）、全体検証を行う。
+
+- [ ] **Step 1: `@ojt/content` のバレルに Phase 3 の公開名を足す**
+
+```ts
+export {
+  CellSchema,
+  DeviceKindSchema,
+  DeviceSchema,
+  LADDER_COIL_COL,
+  LadderNetworkSchema,
+  LadderProgramSchema,
+  type CellData,
+  type DeviceData,
+} from './schema/ladder.js';
+
+export {
+  DEFAULT_PLC_IO,
+  PHASE3_MODELS,
+  PLC_MODELS,
+  PLC_VENDORS,
+  PlcInputMapSchema,
+  PlcIoModeSchema,
+  PlcIoSchema,
+  PlcOutputMapSchema,
+  PlcProblemSchema,
+  PlcRefSchema,
+  PlcWiringSchema,
+  resolvePlcIo,
+  type PlcInputMapData,
+  type PlcIoData,
+  type PlcOutputMapData,
+  type PlcProblem,
+  type ResolvedPlcIo,
+} from './schema/plc.js';
+
+export {
+  PLC_DEFAULT_STATIC_CHECKS,
+  PlcJudgeSettingsSchema,
+} from './schema/judge.js';
+
+export {
+  createPlcCoupling,
+  createSimulationIoPort,
+  runPlcOperations,
+  type PlcCoupling,
+  type PlcCouplingOptions,
+  type PlcRunOptions,
+  type PlcRunResult,
+} from './plc-io.js';
+
+export {
+  buildPlcReferenceSession,
+  PLC_WIRE_COLOR,
+  plcBoardFor,
+  plcWiringPlan,
+  type PlcReferenceCircuit,
+  type PlcReferenceResult,
+  type PlcWireSpec,
+} from './plc-reference.js';
+
+export {
+  BOARD_POWER_PREFIXES,
+  checkIoAssignment,
+  checkPlcPowerIndependent,
+  checkTwoStage,
+  detectPlcWiring,
+  type PlcCheckContext,
+} from './plc-static-checks.js';
+
+export {
+  judgePlc,
+  judgePlcReference,
+  plcTimerMarkers,
+  type JudgePlcOutcome,
+  type JudgePlcResult,
+} from './judge-plc.js';
+
+export { runOperationsOn } from './runner.js';
+
+export { BUILTIN_PLC_PROBLEMS } from './builtin/index.js';
+
+export { isPlcProblem } from './schema/index.js';
+```
+
+- [ ] **Step 2: バレルの網羅テストを更新する**
+
+`packages/content/test/index.test.ts` に、上で足した名前が `undefined` でないことを確かめる節を足す（既存のテストと同じ書き方に合わせる）。加えて:
+
+```ts
+it('内蔵課題は28題（モードB 8 / C1 4 / C2 8 / D 8）', () => {
+  expect(BUILTIN_ALL_PROBLEMS).toHaveLength(28);
+  expect(BUILTIN_PLC_PROBLEMS).toHaveLength(8);
+});
+```
+
+- [ ] **Step 3: 全体検証を走らせる**
+
+```powershell
+pnpm -r test
+pnpm -r typecheck
+pnpm lint
+npx prettier --check "packages/**/*.{ts,json}" "docs/superpowers/plans/*.md"
+pnpm --filter @ojt/ladder-core exec vitest run --coverage
+pnpm --filter @ojt/plc-dialects exec vitest run --coverage
+pnpm --filter @ojt/circuit-sim exec vitest run --coverage
+pnpm --filter @ojt/content exec vitest run --coverage
+pnpm --filter @ojt/content schema:write
+git diff --stat packages/content/schema/task.schema.json
+```
+
+Expected:
+- `pnpm -r test` が7プロジェクト（`circuit-sim` / `board-model` / `schematic-core` / `content` / `ladder-core` / `plc-dialects` / `desktop`）すべて通る。
+- `pnpm -r typecheck` と `pnpm lint`（`import-x/no-cycle` 込み）が無警告。
+- カバレッジは4パッケージとも lines / statements / functions / branches 90%以上（§14.2）。
+- `schema:write` を流しても差分が出ない（Task 13 で生成済み）。
+
+- [ ] **Step 4: 依存関係が §4.2 のとおりであることを確かめる**
+
+```powershell
+git grep -n "@ojt/" packages/ladder-core/src packages/plc-dialects/src packages/circuit-sim/src
+```
+
+Expected:
+- `packages/ladder-core/src` には `@ojt/` の import が**1件も無い**（依存ゼロ）。
+- `packages/plc-dialects/src` は `@ojt/ladder-core` のみ。
+- `packages/circuit-sim/src` には `@ojt/` の import が**1件も無い**（`board-model` も `ladder-core` も知らない）。
+- `packages/content/src` は `@ojt/board-model` / `@ojt/circuit-sim` / `@ojt/schematic-core` / `@ojt/ladder-core`（**`@ojt/plc-dialects` は無い**。決定表#7）。
+
+- [ ] **Step 5: コミットする**
+
+```powershell
+git add packages
+git commit -m "feat(content): finalise the Phase 3A public API"
+```
+
+---
+## タスクと仕様節の対応
+
+| タスク | 主に実装する仕様節 |
+|---|---|
+| Task 1 | §10.3（ラダーIRの型とグリッド）、§4.1（`packages/ladder-core` の役割） |
+| Task 2 | §10.3（END・コイル列・MC/MCR）、§10.4（二重コイルの警告）、§10.6（「変換」の構造検査） |
+| Task 3 | §10.4（スキャン・タイマ・カウンタ・SET/RST・二重コイルの後勝ち・決定論）、§10.3（特殊デバイス）、§4.2（`PlcIoPort`） |
+| Task 4 | §14.1 #26・#27、§7.9（内蔵モードD課題が使うラダー）、§14.2（カバレッジ） |
+| Task 5 | §4.4（PLC要素のネットリスト表現）、§5.1.3（PLC入力の抵抗）、§10.1（端子集合） |
+| Task 6 | §5.1.3（ON/OFF判定とヒステリシス）、§10.2（シンク・ソース両対応）、§5.7（信号ログ） |
+| Task 7 | §10.1（FX5U の3D構成・端子・壁コンセント）、§6.4（端子ID）、§6.6（経路生成の不変条件）、§17 #11 |
+| Task 8 | §10.5（`DialectProfile`）、§10.6（スキン定義の型）、§17.1（前提の区分） |
+| Task 9 | §10.5（デバイス体系とタイマ単位）、§14.1 #25、§17 #20・#22 |
+| Task 10 | §10.5（固有バリデーション）、§10.6（GX Works3風スキン・変換）、§17.1・§17 #19 |
+| Task 11 | §7.6（`referenceLadder`）、§10.3（IRの入力形式）、§4.5（zodが定義の源） |
+| Task 12 | §7.6（`plc` / `io` / `wiringRequired`）、§7.4（静的チェックの追加3件）、§13 #2 |
+| Task 13 | §7.1・§7.8（課題の判別と読込）、§16（開始できるモード）、§13 #1 |
+| Task 14 | §10.4（スキャンと tick の同期）、§7.3（操作列の再生）、§4.2（依存方向） |
+| Task 15 | §10.2（配線ルール）、§11.3（渡り配線）、§7.2（模範回路）、§6.3（既設配線との共存） |
+| Task 16 | §7.4（`twoStage` / `plcPowerIndependent` / `ioAssignment`）、§10.2、§10.8 |
+| Task 17 | §10.8（判定）、§7.4（合否の考え方）、§7.7（タイムチャート）、§8.3（結果画面の材料） |
+| Task 18 | §7.9（モードD 2級形式4題）、§7.6（既定割付）、§7.8（自己整合） |
+| Task 19 | §7.9（モードD 1級形式4題）、§17.2 #8（カウンタ課題）、§16（受入基準④⑤） |
+| Task 20 | §4.1（公開API）、§4.2（依存方向）、§14.2（カバレッジ）、§14.3（CI） |
+
+---
+
+## 仕様との対応表（完了判定に使う）
+
+| 仕様 | 要件 | 実装 | 検証 |
+|---|---|---|---|
+| §4.1 | `packages/ladder-core` は `LadderProgram` / `compile()` / `createPlcRuntime()` を公開する | `packages/ladder-core/src/index.ts` | `test/ir.test.ts` / `test/compile.test.ts` / `test/runtime.test.ts` |
+| §4.1 | `packages/plc-dialects` は `getDialect(vendor)` / `DialectProfile` を公開する | `packages/plc-dialects/src/index.ts` | `test/profile.test.ts` |
+| §4.2 | `ladder-core` は `circuit-sim` と独立（接続は `PlcIoPort`） | `runtime.ts` の `PlcIoPort`、結合は `content/src/plc-io.ts` | Task 20 Step 4（`git grep` で依存ゼロを確認） |
+| §4.2 | `plc-dialects` → `ladder-core` の一方向 | `package.json` の依存と import | Task 20 Step 4 / `pnpm lint`（`import-x/no-cycle`） |
+| §4.4 | 入力 Xn は `PLC.SS`–`PLC.Xn` 間の抵抗、3mA以上でON・1.5mA以下でOFF・間はヒステリシス | `circuit-sim/src/plc.ts` ＋ `Simulation.updatePlcInputs()` | `test/plc-part.test.ts` / `test/plc-simulation.test.ts` |
+| §4.4 | 出力 Yn は `PLC.Yn`–`PLC.COMg` 間の接点をランタイムが駆動 | `createPlcUnit()`（`driver: 'external'`）＋ `setPlcOutputs()` | `test/plc-simulation.test.ts` |
+| §4.4 | PLC電源 L/N は電気的に解かず接続の有無だけを見る | 要素を持たない端子 ＋ `checkPlcPowerIndependent()` | `test/plc-part.test.ts` / `test/plc-static-checks.test.ts` |
+| §5.1.3 | FX5U の入力は 4.5kΩ／ON 3.5mA以上／OFF 1.5mA以下 | `FX5U_SPEC`（board-model） | `test/plc-unit.test.ts` / `test/plc-simulation.test.ts`（実測 5.33mA） |
+| §5.2 | 決定論（同じ入力列から同じ結果） | 乱数を使わないランタイムと結合 | `test/runtime.test.ts` / `test/plc-io.test.ts` |
+| §5.7 | PLC入出力端子の状態を信号ログに残す | `Simulation.snapshot()` の `PLC.X0` / `PLC.Y0` / `PLC.X0.mA` | `test/plc-simulation.test.ts` |
+| §7.4 | `twoStage`（2段結線） | `checkTwoStage()` | `test/plc-static-checks.test.ts` / `test/builtin-plc-discrimination.test.ts` |
+| §7.4 | `plcPowerIndependent`（PLC電源の独立） | `checkPlcPowerIndependent()` | 同上 |
+| §7.4 | `ioAssignment`（`fixed` のとき割付どおり） | `checkIoAssignment()` | 同上 |
+| §7.4 | 合格＝動作一致かつ有効な静的チェックにエラー無し | `judgePlc()` の `passed` | `test/judge-plc.test.ts` |
+| §7.6 | `plc` / `io` / `referenceLadder` / `wiringRequired` | `schema/plc.ts` | `test/schema-plc.test.ts` |
+| §7.6 | 既定I/O割付（X0=PB1 … Y3=CR4→PL4） | `DEFAULT_PLC_IO` / `resolvePlcIo()` | `test/schema-plc.test.ts` |
+| §7.6 | 1級は入力3・出力4、2級は入力3・出力3 | 内蔵課題8題の `io` | `test/builtin-plc.test.ts` |
+| §7.7 | タイムチャートは模範のシミュレーション結果から生成、印はタイマ設定値から | `judgePlc()` の `charts` ＋ `plcTimerMarkers()` | `test/judge-plc.test.ts` |
+| §7.8 | zod検証・内蔵課題の自己整合 | `parseProblem()` の4分岐、`judgePlcReference()` | `test/schema-index.test.ts` / `test/builtin-plc.test.ts` |
+| §7.9 | モードD 8題（1級形式4＋2級形式4） | `src/builtin/plc/d-001`〜`d-008` | `test/builtin-plc.test.ts` |
+| §10.1 | FX5U の端子集合（電源・S/S・24V/0V・X0〜X17・COM・Y0〜Y17）と外形 | `PLC_UNIT_FX5U` / `FX5U_SPEC` | `test/plc-unit.test.ts` |
+| §10.1 | 壁コンセント（AC100V）オブジェクト | `OUTLET_TERMINALS` ＋ `toNetlist()` | `test/plc-unit.test.ts` / `test/plc-netlist.test.ts` |
+| §10.1 | 盤の `P/N/CB/SW/PS` から PLC電源へ配線すると違反 | `checkPlcPowerIndependent()` | `test/plc-static-checks.test.ts` |
+| §10.2 | 入力はPB端子台 → X、コモンはシンク／ソースどちらでもよい | `plcWiringPlan()` ＋ 電流の絶対値判定 | `test/plc-reference.test.ts` / `test/plc-simulation.test.ts` |
+| §10.2 | 出力は Y → CRコイル → CRのa接点 → ランプ端子台の2段結線 | `plcWiringPlan()` ＋ `checkTwoStage()` | `test/plc-reference.test.ts` / `test/plc-static-checks.test.ts` |
+| §10.2 | 線色は青 | `PLC_WIRE_COLOR` ＋ `session.allowedColors` | `test/plc-reference.test.ts` |
+| §10.3 | IRの形（ネットワーク・16列・接点4種・コイル3種・TON・CTU・MC/MCR・END・特殊デバイス3種） | `ir.ts` | `test/ir.test.ts` |
+| §10.4 | スキャン周期10ms・実行順・タイマ・カウンタ・SET/RST・二重コイル後勝ち・決定論 | `runtime.ts` ＋ `plc-io.ts` | `test/runtime.test.ts` / `test/golden-ladder.test.ts` / `test/plc-io.test.ts` |
+| §10.5 | `DialectProfile` の全項目 | `profile.ts` ＋ `mitsubishi.ts` | `test/profile.test.ts` / `test/mitsubishi-*.test.ts` / `test/skin.test.ts` |
+| §10.5 | 三菱のデバイス体系（X/Y 8進、M/T/C 10進、特殊リレー） | `MITSUBISHI_FX5U.formatDevice` / `parseDevice` | `test/mitsubishi-devices.test.ts` |
+| §10.5 | タイマ単位（既定100ms／T200〜10ms／T256〜1ms） | `TIMER_BASE_MS()` / `timerPreset()` | `test/mitsubishi-devices.test.ts`（#25） |
+| §10.6 | GX Works3風スキン（F5/F7/F4・11列・青・`convertStep: true`） | `SHORTCUTS` / `gridCols` / `monitorColors` / `convertStep` | `test/skin.test.ts` |
+| §10.6 | 「変換」＝構造検査＋方言検査 | `convert()` | `test/convert.test.ts` |
+| §10.8 | 訓練者と模範を並走比較し静的チェックを添える | `judgePlc()` | `test/judge-plc.test.ts` / `test/builtin-plc-discrimination.test.ts` |
+| §11.3 | 母線は渡り配線で分配（1端子2本以内） | `plcWiringPlan()` の `chain()` | `test/plc-reference.test.ts` |
+| §13 #1 | 読込エラーは理由（zodのパスと日本語メッセージ）付き | `parseProblem()`（モードDを含む4分岐） | `test/schema-index.test.ts` |
+| §13 #2 | 課題データの誤りは「模範回路エラー」として返しアプリを落とさない | `buildPlcReferenceSession()` / `judgePlc()` の `ok: false` | `test/plc-reference.test.ts` / `test/judge-plc.test.ts` |
+| §14.1 #25 | 三菱 `T0 K100`=10s、`T200 K100`=1s | `timerPreset()` / `parseTimerPreset()` | `test/mitsubishi-devices.test.ts` |
+| §14.1 #26 | 二重コイルは警告が出て後勝ちで実行される | `compile()` の警告 ＋ ランタイムの上書き | `test/golden-ladder.test.ts` |
+| §14.1 #27 | 特殊デバイス（常時ON・初期パルス・1秒クロック） | `Runtime.bit()` | `test/golden-ladder.test.ts` |
+| §14.1 #28 | 方言バリデータ（三菱の8進拒否・範囲外・タイマ単位） | `MITSUBISHI_FX5U.validate()` / `parseDevice()` | `test/mitsubishi-validate.test.ts` / `test/mitsubishi-devices.test.ts`（TOYOPUC の重複禁止は Phase 4） |
+| §14.1 #30 | 内蔵課題を模範回路で判定して合格する | `judgePlcReference()` | `test/builtin-plc.test.ts` |
+| §14.2 | `ladder-core` は Phase 3 以降カバレッジ90% | `vitest.config.ts` の閾値 | Task 20 Step 3 |
+| §16 Phase 3 ① | GX Works3風スキンで F5/F7 を使いラダーを組み「変換」が通る | `SHORTCUTS`（F5/F7/F4）＋ `convert()`（UIは Plan 3B） | `test/skin.test.ts` / `test/convert.test.ts` |
+| §16 Phase 3 ② | PB端子台→X0、Y0→CR1コイル、CR1のa接点→PL1、PLC電源→壁コンセント | `plcWiringPlan()`（模範）＋ `addWire()`（訓練者。3Dは 3B） | `test/plc-reference.test.ts` / `test/plc-netlist.test.ts` |
+| §16 Phase 3 ③ | 判定で合格する | `judgePlc()` | `test/builtin-plc-discrimination.test.ts`（8題） |
+| §16 Phase 3 ④ | Y0→PL1 直結は `twoStage` エラー | `checkTwoStage()` | `test/builtin-plc-discrimination.test.ts`（8題） |
+| §16 Phase 3 ⑤ | PLC電源を盤から取ると `plcPowerIndependent` エラー | `checkPlcPowerIndependent()` | `test/builtin-plc-discrimination.test.ts`（8題） |
+| §17.1 | 未確認の命令名・キー割当は前提として実装し、修正箇所は方言プロファイル／スキン定義に閉じる | `mitsubishi.ts` の1ファイル ＋ `ShortcutEntry.confirmed` | `test/skin.test.ts` |
+| §17 #11 | 端子の並び順は §10.1 の記載順 | `fx5uTerminals()` | `test/plc-unit.test.ts` |
+| §17.2 #8 | 1級の1題はカウンタで押した回数による順次動作 | `d-007-counter.json` | `test/builtin-plc.test.ts` |
+| §17.2 #9 | 既定I/O割付は本アプリの既定、`fixed` のときだけ強制 | `DEFAULT_PLC_IO` ＋ `checkIoAssignment()` | `test/schema-plc.test.ts` / `test/plc-static-checks.test.ts` |
+
+---
+
+## 仕様からの意図的な差分（レビュー時に確認する）
+
+| # | 仕様の記述 | 本プランの実装 | 理由 |
+|---|---|---|---|
+| 1 | §10.5 の `timerPreset(ms: number)` は ms だけを取る | `timerPreset(ms, device)` と `parseTimerPreset(text, device)` にデバイスを渡す | 三菱は**番号帯で時間単位が変わる**（`T0`=100ms／`T200`=10ms）。デバイスが無いと `K` 値を決められない。§14.1 #25 の期待値（`T200 K100`=1s）はこの引数が無いと表現できない |
+| 2 | §10.3 は `Device = {kind, index}` としか書いていない | `index` は**0起点の通し番号**と定め、8進・16進はすべて方言の表示上の話にした | §10.5 が「方言＝デバイス表記の差分」と定義している。IRに8進の桁を入れると Phase 4 の16進（TOYOPUC `1X000`）でIRを触ることになり §17.1 の「修正箇所は方言プロファイルのみ」が崩れる |
+| 3 | §10.3 は `vline` の意味を定義していない | `vline` は「セルの左辺で下の行と繋ぐ渡り」で、**横線としても導通する**と定めた | 分岐（自己保持・OR）を1つの規則で書けるようにするため。分岐は「上の行の分岐点に `vline`、下の行に分岐接点」と書く。3B のエディタもこの規則で縦線を置く |
+| 4 | §10.3 はIRを16列と定めるだけ | 課題JSONでは**行の最後が出力セルならコイル列へ送り、手前を横線で埋める** | 課題JSONに横線を12個並べさせないため。実機のラダーでもコイルは必ず右母線に付くので、意味は変わらない |
+| 5 | §7.2 の模範回路は「回路図（SchematicDoc）」 | モードDの模範回路は**I/O割付から生成**する（`plc-reference.ts`）。回路図は持たない | PLCの端子は §11.1 の回路図の要素一覧に無い。§7.6 もモードDには `referenceLadder` しか要求していない |
+| 6 | §10.2 は「シンク結線／ソース結線のどちらでもよい」 | 課題データに `io.wiring`（既定 `sink`）を足し、`ioAssignment` で指定どおりかを見る | 模範配線を生成するには「どちらで組むか」を決める必要がある。自由にしたい課題は `io.mode: 'free'` にすれば `ioAssignment` は常にOKになる |
+| 7 | §10.1 の違反検出は「盤からPLC電源を取ったらエラー」だけ | `plcPowerIndependent` は**壁コンセントに繋がっていない場合もエラー**にした | §16 Phase 3 の受入基準②が「PLC電源を壁コンセントへ配線する」ことを求めている。未配線を合格にすると、配線しないほうが有利になってしまう |
+| 8 | §10.8 は判定項目に「方言バリデータ」を挙げている | 判定（`judgePlc`）は方言を見ない。方言バリデータは「変換」（`convert()`、Plan 3B のボタン）で走らせる | §4.2 の依存グラフに `content → plc-dialects` の辺が無い。同じIRはどの方言でも同じ動作をするので、判定に方言は要らない。変換を通っていないラダーは書き込めない＝判定に出せない、という実機の手順とも合う |
+| 9 | §10.8 は判定項目に「未使用デバイス」を挙げている | `CompiledProgram.usage`（読んだ／書いたデバイスの一覧）として公開し、**合否には使わない** | IRには「デバイスの宣言」という概念が無いので、「宣言したが使っていない」を判定できない。3B の出力ウィンドウが `usage` を使って表示する |
+| 10 | §10.4 の二重コイルは「変換時に警告」 | 警告は `compile()` の戻り値に載せ、静的チェックの項目にはしない（合否に影響しない） | §7.4 の静的チェック一覧に二重コイルは無い。実行は後勝ちで通るので、警告として結果画面に出すのが仕様どおり |
+| 11 | §13 #1 の読込エラーに `unsupported-mode` がある | `UNSUPPORTED_MODES` を空にし、この理由は**発行されなくなる**（型からは消さない） | Phase 3 で4モードすべてが開始できる（§16）。型を消すと Plan 2B の UI 分岐が壊れるので値だけを使わなくする |
+| 12 | §6.6 の経路生成は「盤上の全電線」 | 机上（PLC・壁コンセント）に繋がる電線は `routeSession()` から外し、`deskWires()` で別に返す | 盤面の配線帯は机上まで伸びていない。経路器にかけると帯・レーン・占有矩形の不変条件（Plan 1B のテスト）が壊れる。3D は直線ケーブルとして描く（Plan 3B） |
+| 13 | §10.1 は FX5U の COM を「`COM0`, `COM1`, … を仕切り線で区切る」とだけ書く | **4点1コモン**（`COM0`→`Y0`〜`Y3` …）を本アプリの前提とした | 一次資料が未確認のため §17.1 の前提方針で決めた。修正箇所は盤モデル（`FX5U_SPEC`）のみ。内蔵課題は `Y0`〜`Y3` しか使わないので、分け方が変わっても課題データは無変更 |
+| 14 | 実機のラダーは「逆流」（右から左への通電）を認めない | union-find で連結性だけを見るので、縦線の組み方によっては逆流する回路も通る | 逆流の検出には有向グラフとブロック解析が要り、教材としての価値に対して実装が重い。GX Works3 は変換時に弾くので、実機と差が出る場面は「わざと逆流する回路を書いたとき」に限られる。Phase 4 以降で必要になったら `compile()` に検査を足す（IRもランタイムも変えずに済む） |
+| 15 | §10.1 は FX5U に `24V` / `0V` のサービス電源端子があるとする | 端子は作るが**電気的には解かない** | 本アプリの課題は入力回路のDC24Vを盤から取る（§10.2 が明示的に認めている）。内蔵電源を解くと `S/S`–`24V` 短絡の扱いなど、教育目的に寄与しない分岐が増える |
+| 16 | §8.4 は級ごとの回路図ヒントを定める | モードD課題は `hints` フィールドを持たない（`grade` は1・2のみ） | モードDに展開接続図は無い。1級・2級ともタイムチャートから起こすので、ヒントの開閉という状態が存在しない |
+| 17 | §16 Phase 3 は「モードD（三菱のみ）が動くアプリ」 | 本プラン（3A）はライブラリまで。スキン画面・3D・モードDのセッション画面・E2Eは Plan 3B | 依頼による分割。3A の公開APIは下の「3B への引き渡し」に固定する |
+
+---
+
+## 3B への引き渡し（Plan 3B が使う公開API）
+
+Plan 3B（`apps/desktop` のGX Works3風スキン・3D・モードD画面）は下記だけを使う。これ以外の内部関数に依存してはならない。
+
+**`@ojt/ladder-core`（IR・変換・ランタイム）:**
+
+| API | 用途 |
+|---|---|
+| `IR_COLS`(16) / `COIL_COL`(15) / `MAX_ROWS`(12) | エディタのグリッド寸法（表示列数は `DialectProfile.gridCols`、IRは常に16列） |
+| `network(id, rows, options?)` / `program(...networks)` / `endNetwork(id?)` / `cellAt(net, row, col)` | エディタがIRを組み立て・読み出しする |
+| `no(d)` / `nc(d)` / `rise(d)` / `fall(d)` / `out(d)` / `set(d)` / `rst(d)` / `ton(d, presetMs)` / `ctu(d, preset, resetDevice)` / `mc(d)` / `mcr(d)` / `end()` / `hline()` / `vline()` / `empty()` | F5/F6/F7 などのキー操作が置くセル |
+| `X(i)` / `Y(i)` / `M(i)` / `T(i)` / `C(i)` / `SP(i)` / `device(kind, index)` | デバイス入力欄 → IR |
+| `SPECIAL_ALWAYS_ON`(0) / `SPECIAL_FIRST_SCAN`(1) / `SPECIAL_CLOCK_1S`(2) / `SPECIAL_INDEXES` | 特殊デバイスの選択肢 |
+| `deviceLabel(d)` / `deviceKey(d)` / `sameDevice(a, b)` / `isOutputCell(cell)` | 表示・比較・配置の可否 |
+| `compile(program)` → `CompileResult` | 「変換」の構造検査（`ok` / `errors` / `warnings` / `program`） |
+| `CompiledProgram.usage`（`reads` / `writes`）/ `inputCount` / `outputCount` | 出力ウィンドウの「使用デバイス一覧」（§10.8 の未使用デバイス表示） |
+| `createPlcRuntime(program, {io, scanMs?, outputCount?})` → `PlcRuntime` | モニタ（`F3`）で使う。`scan()` / `reset()` / `bit(device)` / `state()` / `tMs` / `scanCount` |
+| `PlcIoPort` / `PlcSnapshot` / `PlcTimerState` / `PlcCounterState` / `SCAN_MS`(10) | Worker プロトコルの型付けとモニタ表示 |
+| `LadderError` / `CompileError` / `CompileWarning` / `CompileErrorCode` | エラー表示の型 |
+| 型: `Cell` / `Device` / `DeviceKind` / `ContactType` / `CoilType` / `Network` / `LadderProgram` / `OutputCell` | 全面的に使う |
+
+**`@ojt/plc-dialects`（方言とスキン）:**
+
+| API | 用途 |
+|---|---|
+| `getDialect('mitsubishi')` → `DialectProfile` / `availableDialects()` / `DIALECT_IDS` / `IMPLEMENTED_DIALECT_IDS` / `isDialectId(s)` | 設定画面のメーカー選択（Phase 3 は三菱のみ実装） |
+| `MITSUBISHI_FX5U` | 既定のプロファイル（`getDialect()` 経由でも同じ実体） |
+| `profile.formatDevice(d)` / `parseDevice(text)` | セルのデバイス表示とデバイス入力欄 |
+| `profile.timerPreset(ms, device)` / `parseTimerPreset(text, device)` / `TIMER_BASE_MS(device)` | タイマ設定欄（`K100` ⇄ ms）。`Error` が返ったら §10.5 の「100ms 刻みに丸めますか？」を出す |
+| `profile.deviceRanges` / `specialDevices` / `instructionNames` | 入力補助・命令語表示 |
+| `profile.gridCols`(11) / `MIN_GRID_COLS`(8) / `MAX_GRID_COLS`(15) / `monitorColors`(`powered: '#1E64FF'`) | 表示列数と通電色（設定画面で変更できる） |
+| `profile.shortcuts`（`{action, keys, label, confirmed}`） | キー割当表。`confirmed: false` の項目には §12.1 の注記を添える |
+| `profile.symbols` / `panels` / `convertStep`(true) / `errorMessages` | 記号の線画・画面構成・「変換」ボタンの有無・エラー文言 |
+| `convert(program, profile)` → `ConvertResult` | **「変換」ボタンの実体**。`ok` なら `program`（実行形式）、`errors`（`source: 'structure' \| 'dialect'`）は出力ウィンドウにそのまま並べる。`warnings` は二重コイル |
+| `UnknownDialectError` | 未実装メーカーを選ばれたときの扱い |
+
+**`@ojt/circuit-sim`（PLC本体）:**
+
+| API | 用途 |
+|---|---|
+| `createPlcUnit(id, spec)` / `PlcUnitSpec` / `PlcOutputSpec` / `plcMetaOf(part)` | 通常は `toNetlist()` が呼ぶ。デバッグUIで直接組むときに使う |
+| `Simulation.plcInputs(partId)` / `setPlcOutputs(partId, values)` | Worker がスキャンを回すとき（通常は `runPlcOperations()` 経由） |
+| `SimulationState.plcs`（`{inputs, outputs, inputAmps}`） / `PlcUnitRuntime` | 3Dの入出力表示LEDとモニタ |
+| `PLC_INPUT_ON_AMPS`(0.003) / `PLC_INPUT_OFF_AMPS`(0.0015) / `PLC_INPUT_OHMS`(4700) | デバッグ表示（機種値は `FX5U_SPEC` にある） |
+| 信号ログの `PLC.X0` / `PLC.Y0`（boolean）/ `PLC.X0.mA`（数値） | タイムチャートとモニタ |
+
+**`@ojt/board-model`（FX5U と壁コンセント）:**
+
+| API | 用途 |
+|---|---|
+| `withPlcUnit(board, unit)` → `BoardDefinition` | **モードDのセッションは必ずこの派生盤で作る**（`JIPM_BOARD` のままだと `PLC.*` が「盤に無い端子」になる） |
+| `PLC_UNIT_FX5U` / `PLC_UNITS` / `plcUnitFor(model)` / `PlcUnitDefinition` | 機種の3Dモデル（`sizeMm` / `pos` / `terminals` / `leds`）と電気仕様 |
+| `FX5U_SPEC` / `octalNames(prefix, count)` / `FX5U_POINTS_PER_COMMON`(4) | 端子名・COM分け |
+| `PLC_PART_ID`(`'PLC'`) / `OUTLET_ID`(`'OUTLET'`) / `OUTLET_TERMINALS` / `isOffBoardTerminal(id)` | 3Dのピック処理と机上判定 |
+| `deskWires(board, session)` → `DeskWire[]`（`{id, from, to, fromPos, toPos}`） | 机上へ渡るケーブルの描画（`routeSession()` には**含まれない**） |
+| `PLC_ORIGIN_MM` / `OUTLET_ORIGIN_MM` / `PLC_TERMINAL_PITCH_MM` / `PLC_ROW_GAP_MM` / `PLC_STAGGER_MM` | 3Dの配置（実機の並び順が判明したら `terminals[].pos` だけ差し替える。§17 #11） |
+
+**`@ojt/content`（モードD課題・結合・判定）:**
+
+| API | 用途 |
+|---|---|
+| `BUILTIN_PLC_PROBLEMS`（8題）/ `BUILTIN_ALL_PROBLEMS`（28題）/ `findBuiltinProblem(id)` | 課題一覧（モードDを一覧に出す） |
+| `isPlcProblem(problem)` / `PlcProblem` / `SupportedProblem` | モード判別と型付け |
+| `PlcProblemSchema` / `parseProblem(json)` | 利用者フォルダのモードD課題の読込 |
+| `resolvePlcIo(problem.io)` → `ResolvedPlcIo`（`{mode, wiring, inputs, outputs}`）/ `DEFAULT_PLC_IO` | 割付の表示（「X0 = PB1（黒）」等）と3Dの配線ガイド |
+| `plcBoardFor(problem, board)` → `BoardDefinition \| undefined` | セッションを作る盤（＝`withPlcUnit` 済み）を得る |
+| `buildPlcReferenceSession(problem, board)` → `PlcReferenceResult` | 模範回路（`session` / `netlist` / `board` / `unit` / `io` / `program`）。デバッグ表示と自己整合に使う |
+| `plcWiringPlan(io, unit)` → `PlcWireSpec[]` | 「模範の配線を見る」ヒント表示（判定には使わない） |
+| `PLC_WIRE_COLOR`(`'青'`) | 線色パレット（モードDは青のみ。§8.1） |
+| `createPlcCoupling(sim, program, options?)` → `{runtime, beforeTick}` | **Worker がセッション中にスキャンを回す実体**。`loadLadder` で `compile()` 済みのプログラムを受け取り、毎tick `beforeTick()` を呼ぶ |
+| `createSimulationIoPort(sim, partId?)` | 上の内部で使う。自前でランタイムを持ちたいときだけ |
+| `runPlcOperations(netlist, program, operations, options)` → `PlcRunResult` | 判定の並走（Worker 内で実行する。UIスレッドでは呼ばない） |
+| `runOperationsOn(simulation, operations, options)` / `RunOptions.beforeTick` | 既存のシミュレーションで操作列を再生する |
+| `judgePlc(problem, board, traineeSession, traineeLadder, options?)` → `JudgePlcOutcome` | **モードDの判定**。`board` は素の `JIPM_BOARD` を渡してよい（内部で `withPlcUnit` する）。`options` は `{elapsedMs?, sessionHazards?}` |
+| `judgePlcReference(problem, board)` | 自己整合（デバッグUI・CI） |
+| `JudgePlcResult`（`mode: 'plc'` / `passed` / `mismatches` / `staticChecks` / `hazardCount` / `hazardsByKind` / `chatter` / `charts` / `compareSignals` / `ladderErrors` / `ladderWarnings`） | 結果画面。`mode` で C1/C2/B の結果型と判別できる |
+| `plcTimerMarkers(program)` → `TimeChartMarker[]` | タイムチャートの印（`T0=3秒`） |
+| `checkTwoStage` / `checkPlcPowerIndependent` / `checkIoAssignment` / `PlcCheckContext` / `detectPlcWiring(nets, unit)` | セッション中の「いまの配線の診断」表示（判定前に警告を出したいとき） |
+| `LadderProgramSchema` / `CellSchema` / `DeviceSchema` | 作業ファイル（`.ojtw`）に保存したラダーの読み戻し（§12.3） |
+| （ハンドオフ注記 H-1） | **訓練者のラダーは「変換」を通ったものだけを判定に出すこと。** `judgePlc()` は変換に落ちたラダーを受け取ると、シミュレートせずに `passed: false` と `ladderErrors` を返す（§10.6 の操作フローどおり） |
+| （ハンドオフ注記 H-2） | **セッション中のスキャンと判定のスキャンは別物である。** セッション中は `createPlcCoupling()` の `runtime` が動き続け、判定（`judgePlc()`）は別のシミュレーションを最初から走らせる。判定後にセッションを続ける場合、`runtime.reset()` を呼ぶかどうかは 3B が決める（実機の「RUN/STOP」に対応させるなら STOP→RUN で `reset()`） |
+| （ハンドオフ注記 H-3） | **作業ファイルに残すもの**: 課題ID、盤セッション（配線・装着）、**ラダーIR**（`LadderProgram` をそのままJSONに）、選んでいる方言ID、変換済みかどうか、経過時間、危険操作カウンタ（§12.3） |
+| （ハンドオフ注記 H-4） | `judgePlc()` は模範と訓練者の2回ぶんを10ms tick で最後まで回す。内蔵課題（`durationMs` 6000〜8000ms）で1件あたり 0.3〜1 秒かかるので、**Worker 内で実行**すること（Plan 2B の `judgeInspectRepair` と同じ扱い） |
+
+**Plan 3B が自分で作るもの（3A では作らない）:** GX Works3風スキンの画面（プロジェクトツリー・ラダーエディタ・出力ウィンドウ）、F5/F7/F4 のキー操作とセル編集、「変換」ボタンとモニタ表示、FX5U と壁コンセントの3Dモデル・机上配線ケーブル、モードDのセッション画面と結果画面、Worker プロトコルの新コマンド（`loadLadder` / `convert` / `monitor` など）、モードD課題の一覧表示、E2E（§14.2 の③）。
+
+---
+
+## 完了条件
+
+- [ ] `pnpm -r test` が7プロジェクト（`circuit-sim` / `board-model` / `schematic-core` / `content` / `ladder-core` / `plc-dialects` / `desktop`）すべて通る。
+- [ ] `pnpm --filter @ojt/ladder-core exec vitest run --coverage` と `pnpm --filter @ojt/plc-dialects exec vitest run --coverage` が閾値90%（lines / statements / functions / branches）を満たす（§14.2）。
+- [ ] `pnpm --filter @ojt/circuit-sim exec vitest run --coverage` と `pnpm --filter @ojt/content exec vitest run --coverage` が着手前と同じく90%以上を維持する。
+- [ ] `pnpm -r typecheck` と `pnpm lint`（`import-x/no-cycle` 込み）が無警告で通る。
+- [ ] `npx prettier --check "packages/**/*.{ts,json}"` が `All matched files use Prettier code style!` を出す。
+- [ ] `pnpm --filter @ojt/content schema:write` を流しても `packages/content/schema/task.schema.json` に差分が出ない（`oneOf` が4分岐で、`plc` 分岐が `referenceLadder` を持つ）。
+- [ ] 内蔵モードD課題8題が、①自分の模範ラダー＋模範配線で合格し ②接点を1つ裏返したラダーで不合格になり ③`Y0` をランプへ直結すると `twoStage` で落ち ④PLC電源を盤から取ると `plcPowerIndependent` で落ちる。
+- [ ] 内蔵モードD課題8題の比較信号が、すべて判定区間の始点・終点で論理0である（`startsAndEndsLow`。§7.3）。
+- [ ] `packages/ladder-core/src` に `@ojt/` の import が1件も無く、`packages/plc-dialects/src` は `@ojt/ladder-core` のみ、`packages/circuit-sim/src` は `@ojt/` を1件も import していない（§4.2）。
+- [ ] `packages/content/src` が `@ojt/plc-dialects` を import していない（決定表#7）。
+- [ ] 三菱の `T0 K100` が 10s、`T200 K100` が 1s になる（§14.1 #25）。
+- [ ] 二重コイルが変換警告として出て、実行は後勝ちになる（§14.1 #26）。特殊デバイス3種が §10.3 のとおり動く（#27）。
+- [ ] `withPlcUnit(JIPM_BOARD, PLC_UNIT_FX5U)` が `validateBoard()` を空配列で通り、`toNetlist()` の節点数が `MAX_NODES`（400）未満である。
+- [ ] `apps/desktop` への変更が `test/content-loader.test.ts` の1ファイルだけである（`git show --stat` で確認する）。
+
+---
+
+## 改訂履歴
+
+| 日付 | 内容 |
+|---|---|
+| 2026-09-18 | 初版。Phase 3（モードD＝PLC）をライブラリ（3A）と `apps/desktop`（3B）に分割し、本書は 3A を扱う。新パッケージ `@ojt/ladder-core` / `@ojt/plc-dialects` の構成、PLC本体の電気モデル（入力＝抵抗負荷・出力＝外部駆動接点・電源＝非電気端子）、スキャンと tick の結合点（`@ojt/content` の `beforeTick`）、IRの `Device.index` を0起点の通し番号とする決定、`vline` の意味、模範配線をI/O割付から生成する方式、`twoStage` / `plcPowerIndependent` / `ioAssignment` の判定方法、内蔵モードD課題8題の題材と操作列を確定した |
