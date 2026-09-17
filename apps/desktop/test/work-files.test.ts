@@ -7,6 +7,7 @@ import {
   clearAutosave,
   loadWorkFile,
   MAX_WORK_FILE_BYTES,
+  MAX_WORK_FILE_ENTRIES,
   MAX_WORK_FILE_WIRES,
   parseWorkFile,
   saveWorkFile,
@@ -135,6 +136,73 @@ describe('parseWorkFile（§13 #8: 未知のバージョンは読み込まない
   it('上限ちょうどの本数は読める', () => {
     const wires = Array.from({ length: MAX_WORK_FILE_WIRES }, (_, i) => ({ id: `w-${i}` }));
     expect(parseWorkFile(sampleFile({ session: { wires, socketRoles: {} } })).ok).toBe(true);
+  });
+});
+
+/**
+ * C1/C2 の任意項目（Plan 2B Task 17）。main は盤も課題も知らないので、
+ * 見るのは「知っているモードか」と「並びの長さが桁違いでないか」だけ（中身は renderer が確かめる）。
+ */
+describe('parseWorkFile のモード固有の項目（§12.3 / §13 #8）', () => {
+  it('C1/C2 の項目をそのまま写す', () => {
+    const result = parseWorkFile(
+      sampleFile({
+        mode: 'inspect-repair',
+        tester: { kind: 'analog', mode: 'OHM', voltRange: 50, ohmRange: 10, zeroAdjusted: true },
+        reports: [{ target: { wireId: 'sw-001' }, kind: 'wire-open' }],
+        faultSeed: 42,
+        resolvedFaults: [{ target: { wireId: 'sw-001' }, kind: 'wire-open' }],
+        replacedPartIds: ['CR1'],
+      }),
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.file.mode).toBe('inspect-repair');
+    expect(result.file.faultSeed).toBe(42);
+    expect(result.file.reports).toHaveLength(1);
+    expect(result.file.replacedPartIds).toEqual(['CR1']);
+    expect((result.file.tester as { mode: string }).mode).toBe('OHM');
+  });
+
+  it('Phase 1 の作業ファイル（任意項目なし）はそのまま読める（§13 の作業保持の原則）', () => {
+    const result = parseWorkFile(sampleFile());
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.file.mode).toBeUndefined();
+    expect(result.file.answers).toBeUndefined();
+  });
+
+  it('知らないモードは拒否する（将来のモードを assemble として開かない）', () => {
+    const result = parseWorkFile(sampleFile({ mode: 'plc' } as unknown as Partial<WorkFile>));
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.message).toBe(MSG.workFile.unknownMode);
+  });
+
+  it.each(['answers', 'reports', 'resolvedFaults', 'replacedPartIds'] as const)(
+    '%s が上限を超えたら拒否する',
+    (key) => {
+      const long = Array.from({ length: MAX_WORK_FILE_ENTRIES + 1 }, () => ({}));
+      const result = parseWorkFile(sampleFile({ [key]: long }));
+      expect(result.ok).toBe(false);
+      if (result.ok) return;
+      expect(result.message).toBe(MSG.workFile.tooManyEntries);
+    },
+  );
+
+  it('並びでない任意項目は落とす（読めない形のまま renderer へ渡さない）', () => {
+    const result = parseWorkFile(
+      sampleFile({
+        answers: 'x',
+        tester: 'x',
+        checkPartId: 42,
+      } as unknown as Partial<WorkFile>),
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.file.answers).toBeUndefined();
+    expect(result.file.tester).toBeUndefined();
+    expect(result.file.checkPartId).toBeUndefined();
   });
 });
 

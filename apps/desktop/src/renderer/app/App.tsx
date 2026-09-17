@@ -2,7 +2,7 @@ import { useEffect, useState, type JSX } from 'react';
 import type { OjtApi, WorkFile } from '../../shared/ipc.js';
 import { sounds } from '../audio/sounds.js';
 import { JA } from '../i18n/ja.js';
-import { applyWorkFile, toWorkFile } from '../session/work-file.js';
+import { applyWorkFile, toInspectWorkFile } from '../session/work-file.js';
 import { ErrorBoundary } from './ErrorBoundary.js';
 import { tryOjtApi } from './ojt-api.js';
 import { renderRoute } from './routes.js';
@@ -103,16 +103,10 @@ export function App(): JSX.Element {
     const id = setInterval(() => {
       const api = tryApi();
       if (api === undefined) return;
-      const state = useStore.getState();
-      if (state.route !== 'session' || state.problem === undefined || state.session === undefined) {
-        return;
-      }
-      const file = toWorkFile(
-        state.problem.id,
-        state.session,
-        state.elapsedMs,
-        state.hazards.length,
-      );
+      if (useStore.getState().route !== 'session') return;
+      // モードC1/C2はテスター・解答・指摘・故障も一緒に残す（§12.3。Plan 2B Task 17）
+      const file = toInspectWorkFile();
+      if (file === undefined) return;
       void api.saveWorkFile({ kind: 'autosave', file });
     }, AUTOSAVE_INTERVAL_MS);
     return () => {

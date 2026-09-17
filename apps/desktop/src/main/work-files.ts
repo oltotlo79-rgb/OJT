@@ -36,6 +36,15 @@ export const MAX_WORK_FILE_BYTES = 5 * 1024 * 1024;
 /** 読み込める電線の本数の上限（renderer の `toSession()` と同じ値）。§13 #8 */
 export const MAX_WORK_FILE_WIRES = 200;
 
+/**
+ * C1/C2 の並び（解答・指摘・故障・交換した部品）に載せられる要素数の上限。§13 #8
+ *
+ * 内蔵課題の実際の上限は解答12件・故障3件ほどなので、桁で余裕を持たせた値にする。
+ * ここで断るのは「そもそも桁が違う」ファイルだけで、中身の妥当性（その部品が課題にあるか等）は
+ * 課題を知っている renderer が確かめる。
+ */
+export const MAX_WORK_FILE_ENTRIES = 200;
+
 /** 一時保存のパス。§12.3 */
 export function autosavePath(): string {
   return join(app.getPath('userData'), 'autosave.json');
@@ -80,6 +89,35 @@ export function parseWorkFile(
   if (Array.isArray(wires) && wires.length > MAX_WORK_FILE_WIRES) {
     return { ok: false, message: MSG.workFile.tooManyWires };
   }
+  /*
+   * C1/C2 の項目（Plan 2B Task 17）は**任意**なので、あれば写し、無ければ付けない
+   * （`exactOptionalPropertyTypes` の下では `undefined` を代入できない）。
+   * main は盤も課題も知らないので、ここで見るのは「モードが知っている3つか」と
+   * 「並びの長さが桁違いでないか」だけにする。中身は renderer が課題と突き合わせて確かめる。
+   */
+  const optional: Partial<WorkFile> = {};
+  const mode = source['mode'];
+  if (mode !== undefined) {
+    if (mode !== 'assemble' && mode !== 'inspect-parts' && mode !== 'inspect-repair') {
+      // 知らないモードは「読める形に見えて中身が別物」なので、黙って落とさず断る（§13 #8）
+      return { ok: false, message: MSG.workFile.unknownMode };
+    }
+    optional.mode = mode;
+  }
+  if (typeof source['checkPartId'] === 'string') optional.checkPartId = source['checkPartId'];
+  if (typeof source['faultSeed'] === 'number') optional.faultSeed = source['faultSeed'];
+  if (typeof source['tester'] === 'object' && source['tester'] !== null) {
+    optional.tester = source['tester'];
+  }
+  for (const key of ['answers', 'reports', 'resolvedFaults', 'replacedPartIds'] as const) {
+    const value = source[key];
+    if (value === undefined) continue;
+    if (!Array.isArray(value)) continue;
+    if (value.length > MAX_WORK_FILE_ENTRIES) {
+      return { ok: false, message: MSG.workFile.tooManyEntries };
+    }
+    optional[key] = value;
+  }
   return {
     ok: true,
     file: {
@@ -89,6 +127,7 @@ export function parseWorkFile(
       elapsedMs: typeof source['elapsedMs'] === 'number' ? source['elapsedMs'] : 0,
       hazardCount: typeof source['hazardCount'] === 'number' ? source['hazardCount'] : 0,
       savedAt: typeof source['savedAt'] === 'string' ? source['savedAt'] : '',
+      ...optional,
     },
   };
 }

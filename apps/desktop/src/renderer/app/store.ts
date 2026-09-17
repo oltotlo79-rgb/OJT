@@ -333,6 +333,12 @@ export interface AppState {
   setPendingWorkFile: (file: WorkFile | undefined) => void;
   /** テスターを操作する（Worker へ送るのは呼び出し側の責務）。§9.3 */
   applyTester: (action: TesterAction) => void;
+  /**
+   * テスターの状態をまるごと差し替える（作業ファイルからの復元）。§12.3
+   * Worker 側のテスターは別の複製なので、送り直すのは呼び出し側の責務
+   * （`session/work-file.ts` が `load` の**あと**に4つの操作を送る）。
+   */
+  setTester: (tester: TesterState) => void;
   /** 次に置くプローブを選ぶ。§9.3 */
   setNextProbe: (probe: ProbeSide) => void;
   /**
@@ -743,6 +749,9 @@ export const useStore = create<AppState>((set, get) => ({
           }
         : {}),
     });
+  },
+  setTester: (tester) => {
+    set({ tester });
   },
   setNextProbe: (nextProbe) => {
     set({ nextProbe });

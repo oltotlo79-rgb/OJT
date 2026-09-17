@@ -60,7 +60,14 @@ export interface ProblemListPayload {
 /** 作業ファイルの形式バージョン。未知のバージョンは読み込まない。§13 #8 */
 export const WORK_FILE_FORMAT_VERSION = 1;
 
-/** 作業ファイルの中身。§12.3 */
+/**
+ * 作業ファイルの中身。§12.3
+ *
+ * `formatVersion` は **1 のまま**にし、C1/C2 の項目はすべて**任意**にする。上げてしまうと
+ * Phase 1 に保存した作業ファイルが「新しいバージョン」扱いで読めなくなり（§13 #8）、
+ * §13 の「作業保持の原則」に反するためである。読み手（`applyWorkFile()`）は欠けていたら
+ * 課題を最初から開く。
+ */
 export interface WorkFile {
   formatVersion: number;
   problemId: string;
@@ -69,6 +76,40 @@ export interface WorkFile {
   elapsedMs: number;
   hazardCount: number;
   savedAt: string;
+  /** 課題のモード（無ければ `assemble` とみなす）。§12.1 */
+  mode?: SessionMode;
+  /**
+   * テスターのつまみの状態（`{ kind, mode, voltRange, ohmRange, zeroAdjusted }`）。§9.3 / §12.3
+   * プローブの位置は**載せない**。盤を読み直すたびに両方のプローブは外れる仕様（Plan 2B Task 3）
+   * なので、戻しても画面と Worker が食い違うだけである。
+   */
+  tester?: unknown;
+  /** モードC1のマークシートの解答（`InspectPartAnswer[]`）。§9.1 */
+  answers?: unknown;
+  /** モードC1で点検中の部品ID。§9.1 */
+  checkPartId?: string;
+  /** モードC2の指摘（`FaultReport[]`）。§9.2 */
+  reports?: unknown;
+  /**
+   * モードC2の故障の種（起動時に決めた・課題が持たない場合は生成した値）。§5.2
+   * `resolvedFaults` と対にして残す。デバッグ用の記録であり、復元には使わない
+   * （`seed` だけから `resolveFaults()` を呼び直すと、`random.seed` の無い課題は内部で
+   * `Date.now()` を使うため初回と別の故障になってしまう）。
+   */
+  faultSeed?: number;
+  /**
+   * モードC2の解決済みの故障（`FaultSpecData[]`）。§5.2 / Plan 2A I-4
+   * 復元時は `openProblem(problem, { resolvedFaults })` へそのまま渡し、`resolveFaults()` を
+   * 呼び直させない。`initialWireIds` / `cells` は同じ入力（課題・盤・この配列）から毎回同じ値に
+   * なるので、別項目としては保存しない。
+   */
+  resolvedFaults?: unknown;
+  /**
+   * モードC2で良品に交換した部品のID（`string[]`）。§9.2
+   * 交換は盤（`BoardSession`）を変えず `applied.partFaults` からその部品を落とすだけなので、
+   * 盤の状態からは復元できない。復元時は `replacePart()` を同じ順で当て直す。
+   */
+  replacedPartIds?: unknown;
 }
 
 /** 保存要求。`kind: 'autosave'` は既定の一時保存先へ黙って書く（§12.3）。 */
