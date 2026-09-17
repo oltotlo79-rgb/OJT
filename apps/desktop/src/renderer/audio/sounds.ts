@@ -141,8 +141,11 @@ export function soundsForSnapshot(
     if (previous.lamps['BZ']?.level !== 'lit' && next.lamps['BZ']?.level === 'lit') {
       out.push('buzzer');
     }
-    // テスターの導通ブザー（§15）。鳴り始めた tick だけ鳴らす（導通が続く間ずっと鳴らさない）
-    if (!previous.tester.conductive && next.tester.conductive) out.push('buzzer');
+    // テスターの導通ブザー（§15）。鳴り始めた tick だけ鳴らす（導通が続く間ずっと鳴らさない）。
+    // BZランプ点灯と導通開始が同一tickで重なっても、二重に鳴らさない（レビュー指摘）。
+    if (!previous.tester.conductive && next.tester.conductive && !out.includes('buzzer')) {
+      out.push('buzzer');
+    }
   }
   if (next.hazardDelta.length > 0) out.push('warning');
   return out;

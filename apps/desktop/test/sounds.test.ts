@@ -74,6 +74,20 @@ describe('soundsForSnapshot', () => {
     expect(soundsForSnapshot(previous, next)).toEqual([]);
   });
 
+  it('BZ点灯とテスター導通開始が同一tickで重なっても buzzer は1回だけ（二重ブザーのレビュー指摘）', () => {
+    const previous = snapshot({
+      lamps: { BZ: { level: 'off' } },
+      tester: { conductive: false },
+    });
+    const next = snapshot({
+      lamps: { BZ: { level: 'lit' } },
+      tester: { conductive: true },
+    });
+    const result = soundsForSnapshot(previous, next);
+    expect(result.filter((k) => k === 'buzzer')).toHaveLength(1);
+    expect(result).toEqual(['buzzer']);
+  });
+
   it('危険操作が出たら previous の有無に関わらず warning を鳴らす（§5.6）', () => {
     expect(soundsForSnapshot(undefined, snapshot({ hazardDelta: [{}] }))).toEqual(['warning']);
   });
