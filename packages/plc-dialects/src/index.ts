@@ -18,6 +18,9 @@ export {
   type TimerPresetText,
 } from './profile.js';
 
+export { MITSUBISHI_FX5U, roundTimerPreset, timerBaseMs } from './mitsubishi.js';
+
+import { MITSUBISHI_FX5U } from './mitsubishi.js';
 import {
   DIALECT_IDS,
   UnknownDialectError,
@@ -27,9 +30,8 @@ import {
 
 /**
  * 実装済みの方言プロファイル。Phase 4 で3つ増える（§16）。
- * Task 9・10 で `MITSUBISHI_FX5U` を足すまでは空にしておく。
  */
-const PROFILES: Partial<Record<DialectId, DialectProfile>> = {};
+const PROFILES: Partial<Record<DialectId, DialectProfile>> = { mitsubishi: MITSUBISHI_FX5U };
 
 /** 実装済みの方言プロファイル一覧（`DIALECT_IDS` の順）。 */
 export function availableDialects(): DialectProfile[] {
