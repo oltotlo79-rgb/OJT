@@ -2,12 +2,13 @@ import { WIRE_DIAMETER_MM, type WireRoute } from '@ojt/board-model';
 import type { WireColor } from '@ojt/circuit-sim';
 import { useEffect, useMemo, useRef, type JSX } from 'react';
 import type { ThreeEvent } from '@react-three/fiber';
-import { CatmullRomCurve3, TubeGeometry, Vector3 } from 'three';
+import { BackSide, CatmullRomCurve3, TubeGeometry, Vector3 } from 'three';
 import {
   LOCKED_RING_COLOR,
   LUG_COLOR,
   WIRE_COLORS,
   WIRE_LANE_OVERFLOW_COLOR,
+  WIRE_OUTLINE_COLOR,
   WIRE_SELECTED_COLOR,
 } from '../session/colors.js';
 import { INVISIBLE_MATERIAL, LUG_GEOMETRY, sharedMaterial } from './materials.js';
@@ -127,6 +128,39 @@ export function useTubeGeometry(
 }
 
 /**
+ * 胴体色が白線の物理色そのものかどうか（純粋関数。テストで固定する）。§6.6
+ * 盤面が明るいベージュなので、白線は縁取りが無いとほぼ同化して見えなくなる
+ * （レビュー指摘）。選択中／既設／レーン重なりで胴体色が変わっているときは
+ * すでに目立つ色になっているのでアウトラインは付けない。
+ */
+export function shouldOutlineWireBody(bodyColor: string): boolean {
+  return bodyColor === WIRE_COLORS['白'];
+}
+
+/**
+ * 白線だけに付ける、内側から見た暗い輪郭。§6.6
+ * 本体の1.5倍の太さのチューブを `BackSide`（裏面）で描き、本体からわずかにはみ出た分だけが
+ * 縁取りとして見える定番のテクニック。別コンポーネントにしてあるのは、白線以外では
+ * ジオメトリを**作らない**ためで、外れたときの後始末がそのまま `dispose()` になる
+ * （`WirePickBody` と同じ理由）。
+ */
+function WireOutline({ route }: { route: WireRoute }): JSX.Element {
+  const geometry = useTubeGeometry(route, WIRE_RADIUS_MM * 1.5, RADIAL_SEGMENTS);
+  return (
+    <mesh
+      geometry={geometry}
+      raycast={noPick}
+      renderOrder={-1}
+      material={sharedMaterial(WIRE_OUTLINE_COLOR, {
+        roughness: 0.9,
+        metalness: 0,
+        side: BackSide,
+      })}
+    />
+  );
+}
+
+/**
  * 当たり判定だけの太いチューブ。削除モードのときだけ組み込まれる。
  * 別のコンポーネントにしてあるのは、配線モードでは形を**作らない**ためで、
  * 外れたときにフックの後始末がそのまま `dispose()` になる。
@@ -179,7 +213,8 @@ export function Wire({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- 折れ点が同じなら端点も同じ（署名で十分）
   }, [signature]);
   if (route.points.length < 2) return null;
-  const material = sharedMaterial(wireBodyColor(route, color, locked, selected), {
+  const bodyColor = wireBodyColor(route, color, locked, selected);
+  const material = sharedMaterial(bodyColor, {
     roughness: locked ? 0.35 : 0.55,
     metalness: 0.05,
   });
@@ -188,6 +223,8 @@ export function Wire({
       name={`wire-${route.wireId}`}
       userData={{ kind: route.kind, laneOverflow: route.laneOverflow }}
     >
+      {/* 白線は盤面に同化して見えなくなるので、内側から暗い輪郭を付ける（§6.6） */}
+      {shouldOutlineWireBody(bodyColor) ? <WireOutline route={route} /> : null}
       {/* 見た目の電線。クリックは常に下の当たり判定チューブに任せる */}
       <mesh geometry={geometry} material={material} raycast={noPick} />
       {/*

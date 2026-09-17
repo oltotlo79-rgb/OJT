@@ -15,6 +15,13 @@ export const WIRE_COLORS: Readonly<Record<WireColor, string>> = {
 /** Y型圧着端子の金属色。§6.6 */
 export const LUG_COLOR = '#B9A46A';
 
+/**
+ * 白線のアウトライン色。§6.6
+ * 盤面（`BOARD_PLATE_COLOR` 系の明るいベージュ）に白線がほぼ同化して見えなくなるため、
+ * 白線だけ内側から暗い輪郭を描いて縁取る（`three/Wire.tsx` の `WireOutline`）。
+ */
+export const WIRE_OUTLINE_COLOR = '#23272E';
+
 /** 表示灯の色（`schematic-core` の `LAMP_FILL` と同値）。§5.3.4 */
 export const LAMP_COLORS: Readonly<Record<string, string>> = {
   PL1: '#FFFFFF',

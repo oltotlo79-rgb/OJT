@@ -2,9 +2,11 @@ import { useMemo } from 'react';
 import {
   BoxGeometry,
   CylinderGeometry,
+  FrontSide,
   MeshStandardMaterial,
   SphereGeometry,
   type Material,
+  type Side,
 } from 'three';
 
 /**
@@ -44,13 +46,16 @@ export function sharedMaterial(
     emissiveIntensity?: number;
     opacity?: number;
     transparent?: boolean;
+    /** 面の向き（既定 `FrontSide`）。白線のアウトラインだけ `BackSide` で内側から描く。 */
+    side?: Side;
   } = {},
 ): MeshStandardMaterial {
   /*
-   * `opacity` / `transparent` もキャッシュ鍵に混ぜる（レビュー指摘 I5）。混ぜないと、同じ色で
-   * 不透明と半透明の両方を要求したときに、先に作られた方のマテリアルを使い回してしまう。
+   * `opacity` / `transparent` / `side` もキャッシュ鍵に混ぜる（レビュー指摘 I5）。混ぜないと、
+   * 同じ色で違う設定（不透明と半透明、FrontSide と BackSide）の両方を要求したときに、
+   * 先に作られた方のマテリアルを使い回してしまう。
    */
-  const key = `${color}|${options.metalness ?? 0.1}|${options.roughness ?? 0.7}|${options.emissive ?? ''}|${options.emissiveIntensity ?? 0}|${options.opacity ?? 1}|${options.transparent === true ? 1 : 0}`;
+  const key = `${color}|${options.metalness ?? 0.1}|${options.roughness ?? 0.7}|${options.emissive ?? ''}|${options.emissiveIntensity ?? 0}|${options.opacity ?? 1}|${options.transparent === true ? 1 : 0}|${options.side ?? FrontSide}`;
   const cached = materialCache.get(key);
   if (cached !== undefined) return cached;
   const material = new MeshStandardMaterial({
@@ -61,6 +66,7 @@ export function sharedMaterial(
     emissiveIntensity: options.emissiveIntensity ?? 0,
     opacity: options.opacity ?? 1,
     transparent: options.transparent ?? false,
+    side: options.side ?? FrontSide,
   });
   materialCache.set(key, material);
   return material;
