@@ -327,3 +327,45 @@ describe('実測の間引き（§9.3 前提D）', () => {
     expect(h.snapshots.length).toBeGreaterThan(before);
   });
 });
+
+describe('0Ω調整の保持（§9.3 / Plan 2B Batch 1 レビュー）', () => {
+  /** コイル（CR1.13 − CR1.14）にプローブを当てる。 */
+  function probeCoil(h: Harness): void {
+    h.send({
+      type: 'tester',
+      action: { type: 'place-probe', probe: 'black', terminal: toTerminalId('CR1.13') },
+    });
+    h.send({
+      type: 'tester',
+      action: { type: 'place-probe', probe: 'red', terminal: toTerminalId('CR1.14') },
+    });
+  }
+
+  it('課題を読み込み直しても0Ω調整はやり直さなくてよい（§9.1 部品の挿し替え）', async () => {
+    const h = await boot();
+    h.send({ type: 'load', problemId: 'b-001', session: referenceSession() });
+    h.advance(100);
+    // 0Ω調整の誤差（+5%）が読値に乗るのはアナログのΩレンジ（§9.3）
+    h.send({ type: 'tester', action: { type: 'set-kind', kind: 'analog' } });
+    h.send({ type: 'tester', action: { type: 'set-mode', mode: 'OHM' } });
+    probeCoil(h);
+    h.advance(100);
+    const raw = h.snapshots.at(-1)?.tester.value ?? 0;
+    expect(raw).toBeGreaterThan(0);
+
+    // 0Ω調整をすると +5% の誤差が消える（§9.3）
+    h.send({ type: 'tester', action: { type: 'zero-adjust' } });
+    h.advance(100);
+    const adjusted = h.snapshots.at(-1)?.tester.value ?? 0;
+    expect(adjusted).toBeLessThan(raw);
+
+    // 盤を作り直す（C1は部品を挿し替えるたびに `load` が飛ぶ）。プローブは外れるが校正は残る
+    h.send({ type: 'load', problemId: 'b-001', session: referenceSession() });
+    h.advance(100);
+    probeCoil(h);
+    h.advance(100);
+
+    expect(h.snapshots.at(-1)?.tester.value).toBeCloseTo(adjusted, 6);
+    expect(h.errors).toEqual([]);
+  });
+});

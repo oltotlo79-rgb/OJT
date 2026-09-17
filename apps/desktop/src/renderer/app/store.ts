@@ -681,9 +681,13 @@ export const useStore = create<AppState>((set, get) => ({
   },
   clearProbes: () => {
     const tester = get().tester;
-    // 0Ω調整はプローブを動かしたらやり直す（実機の作法。`applyTesterAction` と揃える）
+    /*
+     * 外すのはプローブだけ。**0Ω調整は残す**（`applyTesterAction` の `place-probe` と揃える）。
+     * 校正はレンジに対して行うものでプローブ位置とは独立なので、盤を作り直すたびに
+     * Ω調整をやり直させると実機の手順と食い違う（§9.3 / Plan 2A）。Worker 側の `load` も同じ。
+     */
     set({
-      tester: { ...tester, black: undefined, red: undefined, zeroAdjusted: false },
+      tester: { ...tester, black: undefined, red: undefined },
       nextProbe: 'black',
     });
   },

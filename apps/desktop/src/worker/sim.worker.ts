@@ -88,7 +88,8 @@ function load(next: BoardSession): void {
    * 盤を作り直したらプローブは外す（前の盤の端子IDは新しいネットリストに無いかもしれない）。
    * **つまみとレンジは残す。** テスターは盤ではなく計器であり、C1では部品を挿し替えるたびに
    * `load` を送り直すので、そのたびにΩレンジへ回し直させるのは実機の手順と食い違う（§9.1）。
-   * 0Ω調整はプローブを動かしたらやり直す実機の作法に合わせて落ちる（`applyTesterAction`）。
+   * **0Ω調整も残る**（`applyTesterAction` の `place-probe` は校正を落とさない）。校正はレンジに
+   * 対して行うものでプローブ位置とは独立なため。renderer 側の `clearProbes()` も同じ。
    */
   tester = applyTesterAction(
     applyTesterAction(tester, { type: 'place-probe', probe: 'red', terminal: undefined }),

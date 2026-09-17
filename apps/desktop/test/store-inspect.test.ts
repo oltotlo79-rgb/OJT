@@ -98,17 +98,19 @@ describe('テスターの状態（§9.3）', () => {
     expect(useStore.getState().nextProbe).toBe('red');
   });
 
-  it('clearProbes はプローブだけ外し、つまみは残す（§9.1 部品の挿し替え）', () => {
+  it('clearProbes はプローブだけ外し、つまみと0Ω調整は残す（§9.1 部品の挿し替え）', () => {
     const store = useStore.getState();
     store.applyTester({ type: 'set-mode', mode: 'OHM' });
     useStore
       .getState()
       .applyTester({ type: 'place-probe', probe: 'black', terminal: toTerminalId('CHK.13') });
+    useStore.getState().applyTester({ type: 'zero-adjust' });
     useStore.getState().clearProbes();
     const after = useStore.getState();
     expect(after.tester.black).toBeUndefined();
     expect(after.tester.red).toBeUndefined();
-    expect(after.tester.zeroAdjusted).toBe(false);
+    // 0Ω調整はレンジに対する校正なので、プローブを動かしても落とさない（`applyTesterAction` と同じ）
+    expect(after.tester.zeroAdjusted).toBe(true);
     expect(after.nextProbe).toBe('black');
     expect(after.tester.mode).toBe('OHM');
   });
