@@ -109,3 +109,22 @@ content 32 files / 409、desktop 28 files / 469、circuit-sim 214、board-model 
   Batch 2。
 - 詳細は `briefs/deferred.txt` 末尾を参照。
 - 2026-09-18 00:38 追記: Task 1 着地後の検証（3c6a8db）— desktop build PASS、E2E 9/9 合格。
+
+## 2026-09-18 追記（第5回中断・Plan 2B Batch 1 レビュー確定、CHART-UX 完了）
+- Plan 2B Tasks 1〜4 着地: 3c6a8db / f8905a2 / 28283e8 / b00f512。
+- Opus レビュー → CHANGES REQUIRED → 修正 098d10e / ad21b19 / 63c9321 / 4bbf54f /
+  b78dd54 / 840e85f でレビュー確定。
+- Task CHART-UX（タイムチャートのクリック拡大と縦の補助線）: 2aea5d3 / 53d378a。
+- Opus レビュー → APPROVED WITH MINOR ISSUES → 修正 ec0aae7 / 4fd6e1c / 572f943 で
+  レビュー確定。
+- desktop 541 単体テスト、typecheck・lint 合格。最終 E2E（HEAD 572f943）: build
+  PASS、11/11 合格（chart.spec.ts の b-007 テストが1回 TimeoutError で flaky、
+  Playwright 自動リトライで合格）。
+- 次の作業: Plan 2B Batch 2 = Tasks 5+6（テスターパネル デジタル/アナログ）/ 9
+  （C1 マークシート）/ 13（C2 指摘パネル）を Sonnet 並列 + Task 7（3D プローブ・
+  警告バナー・導通ブザー）を Opus → Opus レビュー1本。
+- Task 17（作業ファイル）ではストアの `resolvedFaults` を保存すること。
+- フォローアップ: 拡大チャートのキーボード操作（←/→ でスナップ点移動）と背景
+  inert、chart E2E のシナリオ分離。
+- 完了率: 生点 = 30 + 15×完了タスク/35 …、表示 = 生点 ÷ 0.95（現在 39.0 →
+  約41%、レビュー確定分も約41%）。
