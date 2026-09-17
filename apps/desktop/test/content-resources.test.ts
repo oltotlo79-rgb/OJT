@@ -27,6 +27,25 @@ function parsed(dir: string, file: string): unknown {
   return JSON.parse(readFileSync(join(dir, file), 'utf8'));
 }
 
+/**
+ * `it.each` の対象は `packages/content/src/builtin/index.ts` が実際に import している
+ * ファイル名の固定リスト（正本のうち「配線済み」のものだけ）。`readdirSync(SOURCE)` を直接
+ * 使うと、他の作業でこのディレクトリにファイルを追加してから `index.ts` に import 文を
+ * 足すまでの一瞬だけテスト件数が変わってしまう（収集時点のディスク状態に依存するため）。
+ * 一覧を静的にしておけば、そうした一時的な状態でもテスト件数は変わらない。
+ * ここを増やすときは `index.ts` の import と `MODES` 複写結果に合わせて追記すること。
+ */
+const WIRED_ASSEMBLE_FILES = [
+  'b-001-self-hold.json',
+  'b-002-interlock.json',
+  'b-003-on-delay.json',
+  'b-004-sequential.json',
+  'b-005-one-shot.json',
+  'b-006-flicker.json',
+  'b-007-first-press.json',
+  'b-008-stop-priority.json',
+] as const;
+
 describe('resources/content/assemble の複写（§7.8）', () => {
   it('正本と同じファイルが揃っている', () => {
     expect(jsonFilesIn(SHIPPED)).toEqual(jsonFilesIn(SOURCE));
@@ -36,7 +55,7 @@ describe('resources/content/assemble の複写（§7.8）', () => {
     expect(jsonFilesIn(SHIPPED)).toHaveLength(BUILTIN_PROBLEMS.length);
   });
 
-  it.each(jsonFilesIn(SOURCE))('%s の中身が正本と一致する', (file) => {
+  it.each(WIRED_ASSEMBLE_FILES)('%s の中身が正本と一致する', (file) => {
     expect(parsed(SHIPPED, file)).toEqual(parsed(SOURCE, file));
   });
 
