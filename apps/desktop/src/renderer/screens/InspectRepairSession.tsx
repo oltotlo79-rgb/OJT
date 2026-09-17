@@ -7,7 +7,6 @@ import {
   cellIdsAtTerminal,
   highlightFor,
   isInspectRepairProblem,
-  modificationWireIds,
   replacePart,
   type RepairCircuit,
 } from '@ojt/content';
@@ -429,6 +428,20 @@ export function InspectRepairSession(): JSX.Element {
     [problem],
   );
 
+  /**
+   * 外した青線（**事実**）。§9.2
+   * `modificationWireIds()` は故障箇所を除いた「改造」を返す判定用の集計なので、
+   * これをそのままパネルに出すと「出ない＝故障箇所」が漏れてしまう（Blocking fix）。
+   * ここでは初期配線から**いま無い**ものを機械的に挙げるだけで、故障箇所かどうかは判断しない。
+   */
+  const removedWires = useMemo(
+    () =>
+      circuit === undefined || session === undefined
+        ? []
+        : circuit.initialWireIds.filter((id) => !session.wires.some((w) => w.id === id)),
+    [circuit, session],
+  );
+
   /** 装着済みの部品（交換の対象）。 */
   const mountedParts = useMemo<MountedPartRow[]>(() => {
     if (session === undefined) return [];
@@ -692,7 +705,7 @@ export function InspectRepairSession(): JSX.Element {
           <TesterPanel />
           <RepairPanel
             addedWires={addedWireIds(circuit, session)}
-            removedWires={modificationWireIds(circuit, session)}
+            removedWires={removedWires}
             mountedParts={mountedParts}
             onReplacePart={onReplacePart}
           />

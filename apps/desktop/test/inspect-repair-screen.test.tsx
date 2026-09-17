@@ -138,6 +138,46 @@ describe('指摘（§9.2）', () => {
   });
 });
 
+describe('修復パネルの「外した青線」が答えを漏らす（§9.2）', () => {
+  it('故障箇所の青線を外しても一覧に出る（事実として並べる。判定側だけが改造を判断する）', () => {
+    expect(C2).toBeDefined();
+    if (C2 === undefined) return;
+    render(<InspectRepairSession />);
+    const store = useStore.getState();
+    const circuit = store.circuit;
+    const session = store.session;
+    expect(circuit && session).toBeTruthy();
+    if (circuit === undefined || session === undefined) return;
+    const faultedId = circuit.applied.sites.find((s) => s.kind === 'wire-open')?.wireId;
+    expect(faultedId).toBeDefined();
+    if (faultedId === undefined) return;
+    const healthy = session.wires.find((w) => !w.locked && w.id !== faultedId);
+    expect(healthy).toBeDefined();
+    if (healthy === undefined) return;
+
+    // 削除モードで故障箇所の青線を外す
+    fireEvent.click(screen.getByRole('button', { name: JA.session.deleteMode }));
+    const onPick = picks.at(-1);
+    if (onPick === undefined) return;
+    act(() => {
+      onPick({ kind: 'wire', id: faultedId, locked: false });
+    });
+    fireEvent.keyDown(window, { key: 'Delete' });
+    expect(useStore.getState().session?.wires.some((w) => w.id === faultedId)).toBe(false);
+    // 故障箇所でも外した事実は出す（判定を漏らさない。Blocking fix）
+    expect(screen.getByTestId('removed-wires').textContent).toContain(faultedId);
+
+    // 健全な青線を外しても同様に出る
+    const onPick2 = picks.at(-1);
+    if (onPick2 === undefined) return;
+    act(() => {
+      onPick2({ kind: 'wire', id: healthy.id, locked: false });
+    });
+    fireEvent.keyDown(window, { key: 'Delete' });
+    expect(screen.getByTestId('removed-wires').textContent).toContain(healthy.id);
+  });
+});
+
 describe('部品交換（§9.2）', () => {
   it('交換すると unplug と plug を送り、回路から部品の故障が消える', () => {
     render(<InspectRepairSession />);
