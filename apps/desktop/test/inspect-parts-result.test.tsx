@@ -123,6 +123,54 @@ describe('InspectPartsResult（§9.1 判定）', () => {
     expect(screen.getByText(/危険操作（3）/)).toBeTruthy();
   });
 
+  it('標準時間内なら「標準時間内」を出す（C1-001は標準30分・打切50分）', () => {
+    expect(C1).toBeDefined();
+    if (C1 === undefined) return;
+    render(
+      <InspectPartsResult
+        problem={C1}
+        result={result({ elapsedMs: 10 * 60_000 })}
+        restoredHazardCount={0}
+        onRetry={vi.fn()}
+        onBackToList={vi.fn()}
+      />,
+    );
+    expect(screen.getByTestId('result-elapsed').textContent).toContain('標準時間');
+    expect(screen.getByTestId('result-elapsed').textContent).toContain('内');
+  });
+
+  it('標準時間を超えたが打切前なら「標準時間を超過」を出す', () => {
+    expect(C1).toBeDefined();
+    if (C1 === undefined) return;
+    render(
+      <InspectPartsResult
+        problem={C1}
+        result={result({ elapsedMs: 40 * 60_000 })}
+        restoredHazardCount={0}
+        onRetry={vi.fn()}
+        onBackToList={vi.fn()}
+      />,
+    );
+    expect(screen.getByTestId('result-elapsed').textContent).toContain('標準時間');
+    expect(screen.getByTestId('result-elapsed').textContent).toContain('超過');
+  });
+
+  it('打切時間を超えたら「打切り時間を超過」を出す', () => {
+    expect(C1).toBeDefined();
+    if (C1 === undefined) return;
+    render(
+      <InspectPartsResult
+        problem={C1}
+        result={result({ elapsedMs: 60 * 60_000 })}
+        restoredHazardCount={0}
+        onRetry={vi.fn()}
+        onBackToList={vi.fn()}
+      />,
+    );
+    expect(screen.getByTestId('result-elapsed').textContent).toContain('打切り時間');
+    expect(screen.getByTestId('result-elapsed').textContent).toContain('超過');
+  });
+
   it('problem.parts に無い partId は素の値のまま出す（種別を決め打ちしない。レビュー指摘 M5）', () => {
     expect(C1).toBeDefined();
     if (C1 === undefined) return;
