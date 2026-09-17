@@ -1,0 +1,175 @@
+/* テスター・マークシート・指摘パネル。設計仕様 §9.1 / §9.2 / §9.3。 */
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  padding: 8px 10px;
+  margin-bottom: 8px;
+}
+
+.title {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  margin: 0 0 6px;
+}
+
+/* 表示器は等幅・右詰めの数字（実機の液晶に合わせる） */
+.readout {
+  background: #101c14;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  color: #7dffb2;
+  font-family: 'Consolas', 'Courier New', monospace;
+  font-size: 22px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 1px;
+  padding: 6px 10px;
+  text-align: right;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+}
+
+.label {
+  color: var(--muted);
+  font-size: 11px;
+  min-width: 56px;
+}
+
+.note {
+  color: var(--warn);
+  font-size: 11px;
+  margin: 4px 0 0;
+}
+
+.probeRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+/* プローブのボタンは実物の色（黒／赤）で見分ける */
+.probeBlack {
+  border-left: 6px solid #1a1a1a;
+  flex: 1;
+  text-align: left;
+}
+
+.probeRed {
+  border-left: 6px solid #d64545;
+  flex: 1;
+  text-align: left;
+}
+
+.hint {
+  color: var(--muted);
+  font-size: 11px;
+  margin: 6px 0 0;
+}
+
+/* アナログ計器の枠 */
+.meter {
+  background: #f4f1e6;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  width: 100%;
+  height: auto;
+}
+
+/* マークシート（§9.1） */
+.markTable {
+  border-collapse: collapse;
+  font-size: 12px;
+  width: 100%;
+}
+
+.markTable th,
+.markTable td {
+  border-bottom: 1px solid var(--line);
+  padding: 3px 4px;
+  text-align: left;
+}
+
+.markTable th {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.trayRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border-bottom: 1px solid var(--line);
+  padding: 4px 0;
+}
+
+.trayName {
+  flex: 1;
+  font-size: 13px;
+}
+
+/* いまチェック用ソケットに挿している部品 */
+.trayActive {
+  background: rgba(57, 208, 255, 0.12);
+}
+
+/* 指摘一覧（§9.2） */
+.reportRow {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  border-bottom: 1px solid var(--line);
+  font-size: 12px;
+  padding: 3px 0;
+}
+
+.reportTarget {
+  flex: 1;
+  font-family: 'Consolas', 'Courier New', monospace;
+}
+
+/* 種別ポップオーバー（3D上のクリック直後に出す） */
+.popover {
+  background: var(--panel-2);
+  border: 1px solid var(--accent);
+  border-radius: 5px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
+}
+
+.popoverTitle {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+/* 折りたたみヘルプ（判定表。§9.1） */
+.help summary {
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.helpTable {
+  border-collapse: collapse;
+  font-size: 11px;
+  margin-top: 6px;
+  width: 100%;
+}
+
+.helpTable th,
+.helpTable td {
+  border-bottom: 1px solid var(--line);
+  padding: 3px 4px;
+  text-align: left;
+  vertical-align: top;
+}

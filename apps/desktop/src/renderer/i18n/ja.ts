@@ -1,6 +1,7 @@
 import type { RoutingErrorReason } from '@ojt/board-model';
 import type { HazardKind, MismatchReason } from '@ojt/circuit-sim';
 import { MSG } from '../../shared/messages.js';
+import type { ProbeSide } from '../app/store-types.js';
 
 /**
  * 日本語文言。設計仕様 §15「全文言を1箇所に集約しハードコードしない」。
@@ -117,6 +118,8 @@ export const JA = {
     elapsed: '経過時間',
     log: '操作ログ',
     warnings: '警告',
+    /** 警告バナーを畳む。§5.6 */
+    warnDismiss: '閉じる',
     problem: '課題',
     chart: 'タイムチャート（仕様）',
     pickSocket: 'ソケットを選んでください',
@@ -170,6 +173,41 @@ export const JA = {
     slider: 'スライダ',
     numberInput: '数値',
   },
+  /** テスターUI。§9.3 */
+  tester: {
+    title: 'テスター',
+    kindDigital: 'デジタル',
+    kindAnalog: 'アナログ',
+    modeOff: 'OFF',
+    modeDcv: 'DCV',
+    modeAcv: 'ACV',
+    modeOhm: 'Ω',
+    modeCont: '導通',
+    range: 'レンジ',
+    /** デジタルはレンジつまみを持たない（§9.3）。 */
+    autoRange: 'オートレンジ',
+    zeroAdjust: '0Ω ADJ',
+    /** 0Ω調整が済んでいるか。§9.3 */
+    zeroDone: '調整済',
+    zeroTodo: '未調整（+5%）',
+    probeBlack: '黒プローブ',
+    probeRed: '赤プローブ',
+    probeNone: '未配置',
+    /** プローブを外す。 */
+    lift: '外す',
+    /** 次に置くプローブ。§9.3 */
+    next: '次に置く',
+    /** 3D盤の端子をクリックして置くことの案内。§9.3 */
+    placeHint: '3D盤の端子をクリックするとプローブを置きます（黒 → 赤 の順）',
+    /** 通電中にΩ／導通を当てたので測れない。§5.6 #1 */
+    liveNote: '通電中はΩ／導通を測れません（無通電にしてから測ります）',
+    /** 振り切れ。§5.6 #2 */
+    overRangeNote: 'レンジを超えています（上のレンジへ切り替えます）',
+    /** 導通ブザーが鳴っている。§5.5 */
+    buzzing: '導通',
+    /** テスターモードのツールバー表示。§8.1 */
+    toolMode: 'テスター',
+  },
   result: {
     title: '判定結果',
     passed: '合格',
@@ -183,6 +221,8 @@ export const JA = {
     reason: '理由',
     staticChecks: '静的チェック',
     hazards: '危険操作',
+    /** 危険操作の回数を訓練者向けに言い換えたもの（合否には影響しない。§17.2 #3）。 */
+    mistakes: 'ミス',
     hazardNone: '危険操作はありませんでした。',
     elapsed: '所要時間',
     standardMark: '標準時間',
@@ -257,6 +297,22 @@ export const JA = {
     rootMissing: '#root が見つかりません',
   },
 } as const;
+
+/** アナログのΩレンジの表示（`×1` / `×10` / `×1k`）。§9.3 */
+export function ohmRangeLabel(range: number): string {
+  return range >= 1000 ? `×${String(range / 1000)}k` : `×${String(range)}`;
+}
+
+/** アナログの電圧レンジの表示（`2.5V` / `250V`）。§9.3 */
+export function voltRangeLabel(range: number): string {
+  return `${String(range)}V`;
+}
+
+/** プローブの配置状況（`黒プローブ: CHK.13`）。§9.3。M1: `side` は `ProbeSide` で受け取る。 */
+export function probeLabel(side: ProbeSide, terminal: string | undefined): string {
+  const name = side === 'black' ? JA.tester.probeBlack : JA.tester.probeRed;
+  return `${name}: ${terminal ?? JA.tester.probeNone}`;
+}
 
 /** 級の表示（`3級` など）。 */
 export function gradeLabel(grade: number): string {
@@ -383,4 +439,9 @@ export function workFileRestoredLog(savedAt: string): string {
 /** 復元した危険操作の回数（操作ログ・警告一覧の1行）。§8.3 */
 export function restoredHazardsText(count: number): string {
   return `${JA.session.restoredHazards}: ${count} ${JA.result.times}`;
+}
+
+/** 警告バナーのミス回数（`ミス 3 回`）。§5.6 / 利用者の決定「警告表示＋ミス回数記録」 */
+export function mistakeCountText(count: number): string {
+  return `${JA.result.mistakes} ${count} ${JA.result.times}`;
 }
