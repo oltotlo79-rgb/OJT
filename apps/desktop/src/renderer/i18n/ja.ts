@@ -216,6 +216,35 @@ export const JA = {
     /** テスターモードのツールバー表示。§8.1 */
     toolMode: 'テスター',
   },
+  /** モードC1（部品点検）。§9.1 */
+  inspectParts: {
+    tray: '部品トレイ',
+    plug: 'チェック用ソケットに挿す',
+    eject: '外す',
+    /** いま挿している部品。 */
+    mounted: '点検中',
+    markSheet: 'マークシート（不良原因を選ぶ）',
+    part: '部品',
+    cause: '不良原因',
+    answered: '解答済み',
+    /** 判定表ヘルプの見出し。§9.1 */
+    help: '判定表（切り分けの手順）',
+    situation: 'チェック状況',
+    /** 判定表の補足（レアショートは動作では見分けられない）。§9.1 補足 */
+    layerShortNote:
+      'レアショートのコイルは通常どおり励磁・復帰し、接点も正常に開閉します。動作を見るだけでは' +
+      '正常品と区別できないため、正常に見えた部品も必ずコイル抵抗を測ります。' +
+      '判定のしきい値は正常値 650Ω の85%（＝552.5Ω）で、これ以下をレアショートとします。',
+    /** 測定手順の要約（パネル上部に出す）。§9.1 切り分け手順 */
+    steps:
+      '①赤PB（PB4）を押して吸引するか見る ②励磁ON/OFFで a接点・b接点の導通を測る ' +
+      '③正常に見えてもコイル抵抗（CHK.13–CHK.14）を必ず測る',
+    /** プローブの置き場所ショートカットの見出し。§9.1 */
+    probeShortcut: 'プローブを当てる',
+    coil: 'コイル',
+    /** 赤PBを押したままΩを当てると危険操作になる、の注意。§9.1 測定1 */
+    ohmSafeNote: '赤PB（PB4）を離していれば、通電したままでもコイル抵抗を安全に測れます',
+  },
   result: {
     title: '判定結果',
     passed: '合格',
@@ -452,4 +481,19 @@ export function restoredHazardsText(count: number): string {
 /** 警告バナーのミス回数（`ミス 3 回`）。§5.6 / 利用者の決定「警告表示＋ミス回数記録」 */
 export function mistakeCountText(count: number): string {
   return `${JA.result.mistakes} ${count} ${JA.result.times}`;
+}
+
+/** 接点の組のプローブ位置の表示（`1組 a接点`）。§9.1 */
+export function contactProbeLabel(group: number, contact: 'a' | 'b'): string {
+  return `${String(group)}組 ${contact}接点`;
+}
+
+/** 解答済みの件数（`3 / 6`）。§9.1 */
+export function answeredText(answered: number, total: number): string {
+  return `${JA.inspectParts.answered} ${String(answered)} / ${String(total)}`;
+}
+
+/** 部品トレイの1行（`p1（リレー）`）。§9.1 */
+export function trayPartLabel(partId: string, isTimer: boolean): string {
+  return `${partId}（${isTimer ? JA.session.timer : JA.session.relay}）`;
 }
