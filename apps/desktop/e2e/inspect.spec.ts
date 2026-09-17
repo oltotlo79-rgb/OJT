@@ -264,14 +264,20 @@ test.describe.serial('モードC1 部品点検（§16 Phase 2 受入基準①②
     return measureCoil();
   }
 
-  /** マークシートに全問正解を入れて判定する。 */
-  async function answerAllAndJudge(problem: InspectPartsProblem): Promise<void> {
+  /** マークシートに全問正解を入れて判定する（`shotName` を渡すと解答後に1枚撮る）。 */
+  async function answerAllAndJudge(problem: InspectPartsProblem, shotName?: string): Promise<void> {
     for (const part of problem.parts) {
       await page.getByTestId(`answer-${part.id}-${part.truth}`).click();
     }
     await expect(page.getByTestId('answered-count')).toContainText(
       `${String(problem.parts.length)} / ${String(problem.parts.length)}`,
     );
+    if (shotName !== undefined) {
+      // マークシートは右パネルの一番下にあるので、撮る前に見えるところまで送る
+      await page.getByTestId('mark-sheet').scrollIntoViewIfNeeded();
+      await page.waitForTimeout(400);
+      await shot(app, shotName);
+    }
     await page.getByTestId('judge-button').click();
     await expect(page.getByTestId('verdict')).toHaveText('合格');
     await expect(page.getByTestId('correct-count')).toContainText(
@@ -325,8 +331,7 @@ test.describe.serial('モードC1 部品点検（§16 Phase 2 受入基準①②
     }
 
     // ⑤ マークシートに正解を入れて判定 → 合格（§9.1 判定）
-    await shot(app, '14-c1-mark-sheet');
-    await answerAllAndJudge(basic);
+    await answerAllAndJudge(basic, '14-c1-mark-sheet');
     await shot(app, '15-c1-result-pass');
   });
 
