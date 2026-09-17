@@ -131,9 +131,9 @@ export function createPlcRuntime(program: CompiledProgram, options: PlcRuntimeOp
 - `vline()` は**そのセル自身も横線として導通する**（`runtime.ts` の `solve()`）。エディタの描画も「縦線＋横線」で描く。
 - `PlcSnapshot.poweredCells` の `col` は **0〜15**（`IR_COLS` ぶん全部）。コイルの通電は `col === COIL_COL` の値。
 
-### 前提B: `@ojt/plc-dialects`（`profile.ts` は landed、`mitsubishi.ts` / `convert.ts` は **Plan 3A Task 9・10 のプラン本文から引用**）
+### 前提B: `@ojt/plc-dialects`（**landed**。`profile.ts` / `mitsubishi.ts` / `convert.ts` の実装を確認済み）
 
-`packages/plc-dialects/src/profile.ts` と `index.ts` は `1966785` で `main` に入っている（下記の型は実ソースから引いた）。`mitsubishi.ts` と `convert.ts` は**まだ無い**ので、下記は Plan 3A Task 9（L5050〜）/ Task 10（L5274〜）の本文からの引用である。着手時に実ソースと突き合わせること。
+Plan 3A Task 8 / 9 / 10 は `main` にある（`1966785` / `a650bfa` / `0d114af`）。パッケージのテストは **37件**（`profile` / `mitsubishi-devices` / `mitsubishi-validate` / `convert` / `skin` の5ファイル）。`@ojt/ladder-core` は **68件**（`ir` / `edit` / `compile` / `runtime` / `golden-ladder` の5ファイル）。下記は実ソースから引いた署名である。
 
 ```ts
 // profile.ts（landed）
@@ -176,12 +176,13 @@ export class UnknownDialectError extends Error {}
 export function availableDialects(): DialectProfile[];
 export function getDialect(id: DialectId): DialectProfile;  // 未実装は UnknownDialectError を投げる
 
-// mitsubishi.ts（Plan 3A Task 9・10。まだ landed していない）
+// mitsubishi.ts（landed）
 export const MITSUBISHI_FX5U: DialectProfile;   // id 'mitsubishi' / displayName '三菱電機 MELSEC iQ-F FX5U（GX Works3風）'
 export function timerBaseMs(timer: Device): number;          // index>=256→1 / >=200→10 / それ以外→100
 export function roundTimerPreset(ms: number, baseMs: number): number;
+// validate() のコード: 'device-range' / 'timer-unit' / 'counter-range' / 'special-unsupported'
 
-// convert.ts（Plan 3A Task 10。まだ landed していない）
+// convert.ts（landed）
 export interface ConvertError { source: 'structure' | 'dialect'; code: string; message: string; networkId?: string; row?: number; col?: number }
 export type ConvertResult =
   | { ok: true; program: CompiledProgram; errors: readonly ConvertError[]; warnings: CompileWarning[] }
@@ -212,6 +213,8 @@ export function convert(source: LadderProgram, profile: DialectProfile): Convert
 | `insert-toggle` | `Ins` | 挿入・上書きの切換 | ◎ true | — | |
 | `next-symbol` | `Tab` | 次の回路記号 | ◎ true | — | |
 | `help` | `F1` | ヘルプ | ◎ true | — | |
+
+表は **19行**で、`enabled: false` は `application`（`F8`）**1件だけ**である（`skin.test.ts` が本数を固定している）。
 
 `MONITOR_COLORS = { powered: '#1E64FF', idle: '#6B7280' }`、`gridCols = 11`、`convertStep = true`、`PANELS = { tree: 'ナビゲーションウィンドウ（プロジェクトツリー）', editor: 'ラダーエディタ', output: '出力ウィンドウ', toolbar: ['変換','全変換','書込みモード','読出しモード','オンライン','シーケンサへの書込み','モニタ開始','モニタ停止'] }`、`SYMBOLS = { no:'contact-no', nc:'contact-nc', rise:'contact-rise', fall:'contact-fall', coil:'coil-round', set:'coil-set', rst:'coil-reset', timer:'coil-timer', counter:'coil-counter' }`。
 
@@ -277,6 +280,7 @@ export function deskWires(board: BoardDefinition, session: BoardSession): DeskWi
 - `withPlcUnit(JIPM_BOARD, PLC_UNIT_FX5U)` の戻りは **`id` が `'board-jipm-std'` のまま**。`BoardSession.boardId` の照合はそのまま通る。
 - `PLC_UNIT_FX5U.terminals` は入力側（`L` `PE` `N` `SS` `24V` `0V` `X0`〜`X17`）が `PLC_ORIGIN_MM + (6, 6)` から、出力側（`COM0` `Y0`〜`Y3` `COM1` `Y4`〜…）が `PLC_ORIGIN_MM + (6, 72)` から、いずれも**千鳥2列**（偶数番が奥列、奇数番が手前列、列ピッチ9mm、段間9mm、ずらし4.5mm）で並ぶ。3Dはこの `pos` をそのまま `toScene()` に通す。
 - `OUTLET_TERMINALS` は `OUTLET_ORIGIN_MM` と `+9mm` の2点。
+- **端子の印字色は既に揃っている。** `apps/desktop/src/renderer/three/labels.ts` の役割色表は `x` / `y` / `ss` / `plc-com` / `ac-l` / `ac-n` を**既に持っている**（`ac-l` は赤 `#D14343`、`ac-n` は青 `#2E6BD6`）。Task 10 はこの表をそのまま使い、色を足さない。
 - **盤の座標系の外に出る。** `toScene()` は `x - BOARD_WIDTH_MM/2`（330/2 = 165）なので、PLC本体は x ≈ +231〜+381、コンセントは y ≈ −(190 − 110) = −80 の位置に描かれる。既存の視点プリセットでは画角に入らないので、Task 10 で `'plc'` プリセットを足す。
 
 ### 前提D: `@ojt/content` のモードD API（**Plan 3A のプラン本文からの引用**。着手時に実ソースで検算する）
@@ -499,7 +503,7 @@ export function LogPanel(props); ElapsedTimer(props); PowerControls(props); Prob
 
 | # | 決めたこと | 採用した設計 | 理由・却下した案 |
 |---|---|---|---|
-| 1 | **ラダーエディタの描画方式** | **SVG のセルグリッド1枚**（`<svg>` の中に `<g data-testid="cell-n1-0-0">` を敷き詰める）。1セル = 48×36 px、接点列は `profile.gridCols`（11）＋コイル列1の計12列を表示し、IR の16列のうち表示しない列は**横スクロール**で出す | ①キーボード先行の操作（カーソル・選択・F5/F7）は DOM のフォーカスが1つで済む SVG が最も素直で、`<svg tabIndex={0}>` 1つにキーを張れば済む。②セルの罫線・分岐の縦線・微分接点の斜線は**線画**なので、`<table>` では CSS の border を使った擬似表現になり、`vline` が「そのセル自身も導通する」という意味（前提A）を描き分けられない。③canvas は速いが DOM が無く、Testing Library からセルを引けない（本リポジトリの UI テストはすべて `getByTestId` で書かれている）。④既に `TimeChartView.tsx` が SVG ＋ ポータルの流儀で書かれており、拡大表示・カーソル線の実装を流用できる |
+| 1 | **ラダーエディタの描画方式** | **SVG のセルグリッド1枚**（`<svg>` の中に `<g data-testid="cell-n1:0:0">` を敷き詰める）。1セル = 48×36 px、接点列は `profile.gridCols`（11）＋コイル列1の計12列を表示する。IR の中間列（11〜14）は**描かない**。そこに中身がある場合は見出しに警告を出し、設定画面の「ラダーの表示列数」（§10.6 が定める 8〜15）で広げてもらう | ①キーボード先行の操作（カーソル・選択・F5/F7）は DOM のフォーカスが1つで済む SVG が最も素直で、`<svg tabIndex={0}>` 1つにキーを張れば済む。②セルの罫線・分岐の縦線・微分接点の斜線は**線画**なので、`<table>` では CSS の border を使った擬似表現になり、`vline` が「そのセル自身も導通する」という意味（前提A）を描き分けられない。③canvas は速いが DOM が無く、Testing Library からセルを引けない（本リポジトリの UI テストはすべて `getByTestId` で書かれている）。④既に `TimeChartView.tsx` が SVG ＋ ポータルの流儀で書かれており、拡大表示・カーソル線の実装を流用できる |
 | 2 | **編集操作の実体と取り消し** | 編集は `@ojt/ladder-core` の `edit.ts` の7関数だけ。取り消し／やり直しは **`LadderProgram` のスナップショットを積む**（`LadderHistory = { done: LadderProgram[]; undone: LadderProgram[] }`、上限 `HISTORY_LIMIT`（50）と同じ）。**盤の `CommandHistory` とは別スタック** | `edit.ts` は純粋関数で、戻り値がそのままスナップショットになる（3A の引渡し表がそう明記している）。逆操作を自前で組むと `insertRow` → `deleteRow` の往復で行の中身が失われる。盤と同じスタックに混ぜない理由は、盤の取り消しは Worker へ `load` を送り直す重い操作で、ラダーの取り消しは `loadLadder` だけで済むため。**どちらを取り消すかはフォーカスで決める**（下の#3） |
 | 3 | **`Ctrl+Z` の宛先** | ラダーエディタにフォーカスがある間（`ladderFocused`）は**ラダー**、それ以外は**盤**。`ladderFocused` はストアが持ち、`LadderEditor` の `onFocus` / `onBlur` で切り替える。視点のショートカット（テンキー・`1`/`2`/`3`）と `Delete`／`Esc` も `ladderFocused` の間は盤へ通さない | 1画面に取り消しの対象が2つある以上、どちらかを選ぶ規則が要る。「最後に触ったほう」は状態が見えず説明できない。フォーカスなら枠線で見えるので、訓練者が「いまどちらを編集しているか」を目で確認できる。`useViewportShortcuts({ enabled: !ladderFocused })` の1行で済み、既存のフックを壊さない |
 | 4 | **変換エラー → セルの写像** | `CompileError` / `ConvertError` の `networkId` / `row` / `col` をそのまま使う。`col` が無い（`no-output` など）ものは**そのネットワークの見出し行**、`networkId` が空文字（`missing-end` / `mc-unmatched` のプログラム全体版）のものは**出力ウィンドウの先頭**に置き、クリックしてもカーソルは動かさない。行をクリックするとカーソルが該当セルへ飛び、そのセルが赤枠になる | `compile()` が既に位置を持っている（前提A）ので、UI 側で位置を推定しない。推定すると `grid-shape` のようにセルに紐づかない誤りで嘘の場所を指す |
@@ -513,6 +517,8 @@ export function LogPanel(props); ElapsedTimer(props); PowerControls(props); Prob
 | 12 | **キー割当表は誰のものか** | 画面は `profile.shortcuts` を**表として描くだけ**で、キーの文字列を1つもハードコードしない。「キー文字列 → `action`」の照合は `session/ladder.ts` の `matchShortcut()` が行い、`action` 文字列に対して振る舞いを決める | Phase 4 で `getDialect('omron')` に差し替えるだけでキー割当が変わる（§17.1 の「修正箇所は方言プロファイルのみ」）。`event.key === 'F5'` と書いた瞬間にこの性質が壊れる。テストは「`MITSUBISHI_FX5U.shortcuts` から作った表で `F5` が `contact-no` になる」ことと「架空のプロファイルで `F5` を別の action に割り当てたら振る舞いも変わる」ことの両方を見る |
 | 13 | **設定画面のメーカー選択** | `AppSettings.defaultVendor: DialectId`（既定 `'mitsubishi'`）。選択肢は `availableDialects()` が返すものだけ（Phase 3 は三菱1件）。未実装の3社は**淡色で並べて押せない**ようにし、「Phase 4 で追加します」の注記を添える | §16 Phase 4 の受入基準①が「設定で既定メーカーをOMRONにすると…」なので、Phase 3 で入れ物を作っておくと Phase 4 は選択肢を増やすだけになる。並べずに隠すと「4社対応」という約束（§10.5）が画面から消える |
 | 14 | **セッション開始時のラダー** | **空のラダー**（`program(network('n1', [[empty()]]), endNetwork())`）から始める。課題の `referenceLadder` は**絶対に出さない** | 模範ラダーは答えそのものである。§8.4 のヒント方針（回路図は級で出し分け）はモードDには適用しない（§7.6 が `referenceLadder` をヒントとして挙げていない） |
+| 15b | **未使用デバイスの扱い**（§10.8） | `CompiledProgram.usage`（`reads` / `writes`）から「宣言・配置したが使われていないデバイス」を出力ウィンドウに**表示するだけ**にし、**合否には一切効かせない**（2026-09-18 の利用者決定） | 未使用デバイスは実機でも警告どまりで、動作が正しければ検定の減点にはならない。判定は `judgePlc()`（3A）が持っており、そこに未使用デバイスの項目は無い。UI 側で勝手に不合格要素を足すと、3A の判定と画面の合否が食い違う |
+| 15c | **PLC電源が壁コンセントへ未配線のとき** | **エラー**（`plcPowerIndependent` の不合格）とし、盤から取っているときとは**別の文言**を出す。さらに「シミュレートされるPLCは `PLC.L` / `PLC.N` が未配線でも動きます」という説明を**常に**添える（2026-09-18 の利用者決定 ＋ 3A H-5） | §10.1 は「PLC電源は壁コンセント（AC100V）へ配線する」と定めており、未配線は手順の欠落である。ただし本アプリのPLCは電気的に解かない端子（3A 決定表#3）なので未配線でも動いてしまい、訓練者からは「動いているのにチェックだけ赤い」ように見える。理由を書かない限り不親切な不合格になる |
 | 15 | **新規ネットワークの ID** | `n1` / `n2` / … の通し番号を、**既存の最大番号＋1**で採る（`deleteNetwork` のあとに番号が飛んでもよい）。END ネットワークの ID は `'end'` 固定 | `program()` と `insertNetwork()` が ID 重複で投げる（前提A）ので、一意さが要る。番号を詰め直すと、変換エラーの `networkId` と出力ウィンドウの行が編集のたびにずれる |
 
 ---
@@ -2621,6 +2627,725 @@ git commit -m "feat(desktop): run the PLC scan and the mode D judge inside the w
 
 ---
 
+## Task 4: ラダーのセルグリッド（SVG）
+
+**Files:**
+- Create: `apps/desktop/src/renderer/ladder/symbols.ts`
+- Create: `apps/desktop/src/renderer/ladder/LadderGrid.tsx`
+- Create: `apps/desktop/src/renderer/ladder/ladder.module.css`
+- Modify: `apps/desktop/src/renderer/i18n/ja.ts`（**MERGE 注意 #1**）
+- Test: `apps/desktop/test/ladder-symbols.test.ts`
+- Test: `apps/desktop/test/ladder-grid.test.tsx`
+
+決定表#1 のとおり **SVG 1枚**でセルグリッドを描く。記号の線画は `DialectProfile.symbols` の識別子から自前の `<path>` を引く（**ベンダーの画像・図記号ビットマップは持たない**。§17 / PLC調査資料 §6）。
+
+| 決めること | 本タスクの実装 |
+|---|---|
+| セル寸法 | 48 × 36 px、桟（導線）は上下中央 `y = 18`。左母線は幅4pxの縦帯 |
+| 表示列 | 接点列 `profile.gridCols`（三菱は11）＋**コイル列1**の計12列。IR の 11〜14 列目は**描かない**。そこに中身がある場合はネットワーク見出しに警告を出し、設定画面の「ラダーの表示列数」（§10.6。8〜15）で広げてもらう |
+| 通電表示 | セルの左リードは `powered[networkId][row * IR_COLS + col]`、右リードは `…[col + 1]` の色。記号の本体は「右リードと同じ色」（＝導通している接点だけ光る）。色は `profile.monitorColors` |
+| デバイス表示 | 記号の上に `profile.formatDevice(cell.device)`、下にデバイスコメント（`ladderComments`）。タイマ・カウンタは設定値（`profile.timerPreset()` の `text`。`Error` が返ったら ms をそのまま出す） |
+| 変換エラー | `errorCells`（`Set<"net:row:col">`）に入っているセルを赤枠にする |
+| カーソル | `cursor` のセルに青い枠（`aria-selected`）。クリックでも動く |
+
+- [ ] **Step 1: 失敗するテストを書く**
+
+`apps/desktop/test/ladder-symbols.test.ts`:
+
+```ts
+import { MITSUBISHI_FX5U } from '@ojt/plc-dialects';
+import { describe, expect, it } from 'vitest';
+import { CELL_H, CELL_W, symbolShape, WIRE_Y } from '../src/renderer/ladder/symbols.js';
+
+describe('記号の線画（§10.6 / §17: ベンダーの画像は持たない）', () => {
+  it('draws every symbol the Mitsubishi profile names', () => {
+    for (const id of Object.values(MITSUBISHI_FX5U.symbols)) {
+      const shape = symbolShape(id);
+      expect(shape.paths.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('keeps the drawings local (no urls, no image references)', () => {
+    for (const id of Object.values(MITSUBISHI_FX5U.symbols)) {
+      for (const path of symbolShape(id).paths) {
+        expect(path).not.toMatch(/https?:|url\(|\.png|\.svg/iu);
+        expect(path).toMatch(/^[MLAmlazZ0-9\s,.-]+$/u);
+      }
+    }
+  });
+
+  it('falls back to a question mark for an unknown identifier', () => {
+    const shape = symbolShape('contact-quantum');
+    expect(shape.text).toBe('?');
+    expect(shape.paths.length).toBeGreaterThan(0);
+  });
+
+  it('keeps the rung on the vertical middle of the cell', () => {
+    expect(WIRE_Y).toBe(CELL_H / 2);
+    expect(CELL_W).toBeGreaterThan(CELL_H);
+  });
+});
+```
+
+`apps/desktop/test/ladder-grid.test.tsx`:
+
+```tsx
+import {
+  COIL_COL,
+  endNetwork,
+  hline,
+  IR_COLS,
+  nc,
+  network,
+  no,
+  out,
+  program,
+  ton,
+  T,
+  X,
+  Y,
+  type LadderProgram,
+} from '@ojt/ladder-core';
+import { MITSUBISHI_FX5U } from '@ojt/plc-dialects';
+import { fireEvent, render, screen } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
+import { LadderGrid } from '../src/renderer/ladder/LadderGrid.js';
+
+function sample(): LadderProgram {
+  return program(
+    network('n1', [[no(X(0)), hline(), ...Array.from({ length: 13 }, () => hline()), out(Y(0))]], {
+      comment: '運転',
+    }),
+    network('n2', [[nc(X(1)), ton(T(0), 3000)]]),
+    endNetwork(),
+  );
+}
+
+/** 1ネットワークぶんの通電文字列（全セル非通電）。 */
+function offBits(rows: number): string {
+  return '0'.repeat(rows * IR_COLS);
+}
+
+const base = {
+  profile: MITSUBISHI_FX5U,
+  cursor: { networkId: 'n1', row: 0, col: 0 },
+  mode: 'write' as const,
+  powered: undefined,
+  comments: {},
+  errorCells: new Set<string>(),
+  gridCols: MITSUBISHI_FX5U.gridCols,
+  onPickCell: () => undefined,
+};
+
+describe('LadderGrid（§10.7）', () => {
+  it('draws every network with its id, comment and END', () => {
+    render(<LadderGrid program={sample()} {...base} />);
+    expect(screen.getByTestId('network-n1')).toHaveTextContent('n1');
+    expect(screen.getByTestId('network-n1')).toHaveTextContent('運転');
+    expect(screen.getByTestId('network-end')).toBeInTheDocument();
+    expect(screen.getByTestId('cell-end:0:0')).toBeInTheDocument();
+  });
+
+  it('shows the contact columns of the skin plus one coil column (§10.6)', () => {
+    render(<LadderGrid program={sample()} {...base} />);
+    expect(screen.getByTestId(`cell-n1:0:${String(MITSUBISHI_FX5U.gridCols - 1)}`)).toBeInTheDocument();
+    // 表示しない中間列（11〜14）は描かない
+    expect(screen.queryByTestId(`cell-n1:0:${String(MITSUBISHI_FX5U.gridCols)}`)).toBeNull();
+    // コイル列は必ず最後に出る
+    expect(screen.getByTestId(`cell-n1:0:${String(COIL_COL)}`)).toBeInTheDocument();
+  });
+
+  it('warns when a cell sits in a column the skin does not show', () => {
+    const wide = program(
+      network('n1', [
+        [no(X(0)), ...Array.from({ length: 11 }, () => hline()), no(X(1)), hline(), hline(), out(Y(0))],
+      ]),
+      endNetwork(),
+    );
+    render(<LadderGrid program={wide} {...base} />);
+    expect(screen.getByTestId('hidden-cells-n1')).toHaveTextContent('表示列数');
+  });
+
+  it('writes the dialect device name and the preset', () => {
+    render(<LadderGrid program={sample()} {...base} />);
+    expect(screen.getByTestId('cell-n1:0:0')).toHaveTextContent('X0');
+    expect(screen.getByTestId(`cell-n2:0:${String(COIL_COL)}`)).toHaveTextContent('T0');
+    // 三菱の T0 帯は 100ms 単位なので 3000ms は K30
+    expect(screen.getByTestId(`cell-n2:0:${String(COIL_COL)}`)).toHaveTextContent('K30');
+  });
+
+  it('writes the device comment under the symbol (§10.7)', () => {
+    render(<LadderGrid program={sample()} {...base} comments={{ X0: '運転押ボタン' }} />);
+    expect(screen.getByTestId('cell-n1:0:0')).toHaveTextContent('運転押ボタン');
+  });
+
+  it('marks the cursor cell and moves it on click', () => {
+    const onPickCell = vi.fn();
+    render(<LadderGrid program={sample()} {...base} onPickCell={onPickCell} />);
+    expect(screen.getByTestId('cell-n1:0:0')).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByTestId('cell-n1:0:1')).toHaveAttribute('aria-selected', 'false');
+    fireEvent.click(screen.getByTestId('cell-n1:0:1'));
+    expect(onPickCell).toHaveBeenCalledWith({ networkId: 'n1', row: 0, col: 1 });
+  });
+
+  it('outlines the cells a conversion error points at', () => {
+    render(<LadderGrid program={sample()} {...base} errorCells={new Set(['n1:0:0'])} />);
+    expect(screen.getByTestId('cell-n1:0:0')).toHaveAttribute('data-error', 'true');
+    expect(screen.getByTestId('cell-n1:0:1')).toHaveAttribute('data-error', 'false');
+  });
+
+  it('paints the energised leads while monitoring (決定表#5)', () => {
+    const bits = offBits(1).split('');
+    bits[0] = '1'; // X0 の左（左母線）は常に通電
+    bits[1] = '1'; // X0 が閉じているので右も通電
+    render(
+      <LadderGrid
+        program={sample()}
+        {...base}
+        mode="monitor"
+        powered={{ n1: bits.join(''), n2: offBits(1) }}
+      />,
+    );
+    expect(screen.getByTestId('cell-n1:0:0')).toHaveAttribute('data-powered', 'true');
+    expect(screen.getByTestId('cell-n1:0:1')).toHaveAttribute('data-powered', 'true');
+    expect(screen.getByTestId('cell-n2:0:0')).toHaveAttribute('data-powered', 'false');
+  });
+
+  it('does not paint anything while not monitoring', () => {
+    render(<LadderGrid program={sample()} {...base} powered={{ n1: '1'.repeat(IR_COLS) }} />);
+    expect(screen.getByTestId('cell-n1:0:0')).toHaveAttribute('data-powered', 'false');
+  });
+});
+```
+
+- [ ] **Step 2: RED を確認する**
+
+```powershell
+pnpm --filter @ojt/desktop exec vitest run test/ladder-symbols.test.ts test/ladder-grid.test.tsx
+```
+
+Expected: 解決できない import で失敗。
+
+- [ ] **Step 3: `src/renderer/ladder/symbols.ts` を書く**
+
+```ts
+/**
+ * ラダー記号の線画。設計仕様 §10.6 / §17。
+ *
+ * `DialectProfile.symbols` が持つのは**識別子だけ**（`'contact-no'` など）で、実際の絵はここが
+ * 自前の SVG パスとして持つ。**各社のロゴ・アイコン・画面キャプチャ・図記号ビットマップは
+ * 一切複製しない**（§17 / PLC調査資料 §6）。JIS C 0617 のシーケンス図記号に沿った、
+ * 直線と円弧だけの一般的な描き方である。
+ */
+
+/** セル1つの幅[px]。 */
+export const CELL_W = 48;
+/** セル1つの高さ[px]。 */
+export const CELL_H = 36;
+/** 桟（導線）の縦位置[px]。 */
+export const WIRE_Y = CELL_H / 2;
+/** 記号の左端・右端[px]（左右はリード線）。 */
+const LEFT = 15;
+const RIGHT = 33;
+/** 接点の縦棒の上端・下端[px]。 */
+const TOP = 8;
+const BOTTOM = 28;
+
+/** 記号1つの線画。 */
+export interface SymbolShape {
+  /** `<path d>` にそのまま入る文字列。 */
+  paths: readonly string[];
+  /** 記号の中に描く1文字（`S` / `R` / `T` / `C` / `↑` / `↓`）。 */
+  text?: string;
+}
+
+/** 接点の2本の縦棒。 */
+const CONTACT_BARS = [
+  `M ${LEFT} ${TOP} L ${LEFT} ${BOTTOM}`,
+  `M ${RIGHT} ${TOP} L ${RIGHT} ${BOTTOM}`,
+];
+
+/** コイルの丸括弧（左右の半円）。 */
+const COIL_ARCS = [
+  `M ${LEFT + 2} ${TOP} A 9 10 0 0 0 ${LEFT + 2} ${BOTTOM}`,
+  `M ${RIGHT - 2} ${TOP} A 9 10 0 0 1 ${RIGHT - 2} ${BOTTOM}`,
+];
+
+/** 識別子 → 線画。`DialectProfile.symbols` の値をキーにする。 */
+const SHAPES: Readonly<Record<string, SymbolShape>> = {
+  'contact-no': { paths: CONTACT_BARS },
+  'contact-nc': { paths: [...CONTACT_BARS, `M ${LEFT} ${BOTTOM} L ${RIGHT} ${TOP}`] },
+  'contact-rise': { paths: CONTACT_BARS, text: '↑' },
+  'contact-fall': { paths: CONTACT_BARS, text: '↓' },
+  'coil-round': { paths: COIL_ARCS },
+  'coil-set': { paths: COIL_ARCS, text: 'S' },
+  'coil-reset': { paths: COIL_ARCS, text: 'R' },
+  'coil-timer': { paths: COIL_ARCS, text: 'T' },
+  'coil-counter': { paths: COIL_ARCS, text: 'C' },
+};
+
+/** 未知の識別子（Phase 4 で足された記号など）に出す暫定の絵。 */
+const UNKNOWN: SymbolShape = { paths: CONTACT_BARS, text: '?' };
+
+/** 識別子から線画を引く。知らない識別子は「?」付きの接点で描く。 */
+export function symbolShape(id: string): SymbolShape {
+  return SHAPES[id] ?? UNKNOWN;
+}
+
+/** 左のリード線（セルの左端から記号の左端まで）。 */
+export const LEAD_LEFT = `M 0 ${WIRE_Y} L ${LEFT} ${WIRE_Y}`;
+/** 右のリード線（記号の右端からセルの右端まで）。 */
+export const LEAD_RIGHT = `M ${RIGHT} ${WIRE_Y} L ${CELL_W} ${WIRE_Y}`;
+/** セルを丸ごと横断する導線（`hline` / `vline`）。 */
+export const LEAD_FULL = `M 0 ${WIRE_Y} L ${CELL_W} ${WIRE_Y}`;
+/** 縦線（セルの左辺で下の行と繋ぐ渡り）。§10.3 */
+export const LINK_DOWN = `M 0 ${WIRE_Y} L 0 ${CELL_H}`;
+/** END の記号（二重線）。 */
+export const END_MARK = [`M 12 ${TOP} L 12 ${BOTTOM}`, `M 18 ${TOP} L 18 ${BOTTOM}`];
+```
+
+- [ ] **Step 4: `src/renderer/ladder/LadderGrid.tsx` を書く**
+
+```tsx
+import {
+  cellAt,
+  COIL_COL,
+  deviceLabel,
+  IR_COLS,
+  type Cell,
+  type LadderProgram,
+  type Network,
+} from '@ojt/ladder-core';
+import type { DialectProfile } from '@ojt/plc-dialects';
+import { memo, type JSX } from 'react';
+import { JA } from '../i18n/ja.js';
+import type { LadderCursor, LadderEditorMode } from '../session/ladder.js';
+import {
+  CELL_H,
+  CELL_W,
+  END_MARK,
+  LEAD_FULL,
+  LEAD_LEFT,
+  LEAD_RIGHT,
+  LINK_DOWN,
+  symbolShape,
+  WIRE_Y,
+} from './symbols.js';
+import styles from './ladder.module.css';
+
+/**
+ * ラダーのセルグリッド（SVG）。設計仕様 §10.3 / §10.6 / §10.7。決定表#1
+ *
+ * 表示するのは「スキンの接点列数（`profile.gridCols`）＋ コイル列1」だけで、IR の中間列
+ * （11〜14）は描かない。そこに中身がある場合は見出しに警告を出し、設定画面の
+ * 「ラダーの表示列数」で広げてもらう（§10.6 が 8〜15 の範囲で変更できると定めている）。
+ *
+ * この部品は**描くだけ**で、キー入力も編集も持たない（`LadderEditor` の役目）。
+ */
+
+/** 左母線の幅[px]。 */
+const RAIL_W = 6;
+/** ネットワーク見出しの高さ[px]。 */
+const HEADER_H = 22;
+
+/** 表示する列（IRの列番号）の並び。最後は必ずコイル列。 */
+export function displayColumns(gridCols: number): number[] {
+  const contacts = Math.min(Math.max(gridCols, 1), COIL_COL);
+  return [...Array.from({ length: contacts }, (_unused, i) => i), COIL_COL];
+}
+
+/** 表示しない列に中身があるか（`empty` 以外が置かれているか）。 */
+export function hasHiddenCells(net: Network, gridCols: number): boolean {
+  for (let row = 0; row < net.rows; row += 1) {
+    for (let col = gridCols; col < COIL_COL; col += 1) {
+      if (cellAt(net, row, col).kind !== 'empty') return true;
+    }
+  }
+  return false;
+}
+
+/** セルの見出し文字（デバイス名）と副文字（設定値）。 */
+function cellText(cell: Cell, profile: DialectProfile): { top: string; bottom: string } {
+  if (cell.kind === 'contact' || cell.kind === 'coil' || cell.kind === 'mc' || cell.kind === 'mcr') {
+    return { top: profile.formatDevice(cell.device), bottom: '' };
+  }
+  if (cell.kind === 'timer') {
+    const preset = profile.timerPreset(cell.presetMs, cell.device);
+    return {
+      top: profile.formatDevice(cell.device),
+      bottom: preset instanceof Error ? `${String(cell.presetMs)}ms` : preset.text,
+    };
+  }
+  if (cell.kind === 'counter') {
+    return { top: profile.formatDevice(cell.device), bottom: `K${String(cell.preset)}` };
+  }
+  return { top: '', bottom: '' };
+}
+
+/** セルの記号（`SymbolDrawing` の識別子）。線画を持たないセルは `undefined`。 */
+function symbolIdOf(cell: Cell, profile: DialectProfile): string | undefined {
+  const symbols = profile.symbols;
+  switch (cell.kind) {
+    case 'contact':
+      return cell.type === 'NO'
+        ? symbols.no
+        : cell.type === 'NC'
+          ? symbols.nc
+          : cell.type === 'P'
+            ? symbols.rise
+            : symbols.fall;
+    case 'coil':
+      return cell.type === 'OUT' ? symbols.coil : cell.type === 'SET' ? symbols.set : symbols.rst;
+    case 'timer':
+      return symbols.timer;
+    case 'counter':
+      return symbols.counter;
+    default:
+      return undefined;
+  }
+}
+
+/** 1セルぶんの描画。 */
+function GridCell({
+  cell,
+  cursorKey,
+  cellKey,
+  cell9,
+  profile,
+  comment,
+  leftOn,
+  rightOn,
+  colors,
+  error,
+  hasLinkBelow,
+  onPick,
+}: {
+  cell: Cell;
+  cellKey: string;
+  cursorKey: string;
+  cell9: { row: number; col: number; networkId: string };
+  profile: DialectProfile;
+  comment: string | undefined;
+  leftOn: boolean;
+  rightOn: boolean;
+  colors: { powered: string; idle: string };
+  error: boolean;
+  hasLinkBelow: boolean;
+  onPick: (cursor: LadderCursor) => void;
+}): JSX.Element {
+  const selected = cellKey === cursorKey;
+  const leftColor = leftOn ? colors.powered : colors.idle;
+  const rightColor = rightOn ? colors.powered : colors.idle;
+  const symbolId = symbolIdOf(cell, profile);
+  const shape = symbolId === undefined ? undefined : symbolShape(symbolId);
+  const text = cellText(cell, profile);
+  const conducting = cell.kind === 'hline' || cell.kind === 'vline';
+  return (
+    <g
+      data-testid={`cell-${cellKey}`}
+      role="gridcell"
+      aria-selected={selected}
+      data-error={error}
+      data-powered={leftOn}
+      className={styles.cell}
+      transform={`translate(${String(cell9.col * CELL_W)} ${String(cell9.row * CELL_H)})`}
+      onClick={() => {
+        onPick({ networkId: cell9.networkId, row: cell9.row, col: cell9.col });
+      }}
+    >
+      {/* 当たり判定（透明の矩形。線だけだとクリックしづらい） */}
+      <rect width={CELL_W} height={CELL_H} className={styles.cellHit} />
+      {conducting ? (
+        <path d={LEAD_FULL} stroke={leftColor} className={styles.wire} />
+      ) : shape === undefined ? null : (
+        <>
+          <path d={LEAD_LEFT} stroke={leftColor} className={styles.wire} />
+          <path d={LEAD_RIGHT} stroke={rightColor} className={styles.wire} />
+        </>
+      )}
+      {cell.kind === 'vline' && hasLinkBelow ? (
+        <path d={LINK_DOWN} stroke={leftColor} className={styles.wire} />
+      ) : null}
+      {cell.kind === 'end'
+        ? END_MARK.map((d) => <path key={d} d={d} stroke={colors.idle} className={styles.wire} />)
+        : null}
+      {shape?.paths.map((d) => (
+        <path key={d} d={d} stroke={rightColor} className={styles.symbol} />
+      ))}
+      {shape?.text === undefined ? null : (
+        <text x={CELL_W / 2} y={WIRE_Y + 4} className={styles.symbolText}>
+          {shape.text}
+        </text>
+      )}
+      {text.top === '' ? null : (
+        <text x={CELL_W / 2} y={9} className={styles.deviceText}>
+          {text.top}
+        </text>
+      )}
+      {text.bottom === '' ? null : (
+        <text x={CELL_W / 2} y={CELL_H - 9} className={styles.presetText}>
+          {text.bottom}
+        </text>
+      )}
+      {comment === undefined ? null : (
+        <text x={CELL_W / 2} y={CELL_H - 1} className={styles.commentText}>
+          {comment}
+        </text>
+      )}
+      {selected ? <rect width={CELL_W} height={CELL_H} className={styles.cursor} /> : null}
+      {error ? <rect width={CELL_W} height={CELL_H} className={styles.errorCell} /> : null}
+    </g>
+  );
+}
+
+/** ラダーのセルグリッド。 */
+function LadderGridImpl({
+  program,
+  profile,
+  cursor,
+  mode,
+  powered,
+  comments,
+  errorCells,
+  gridCols,
+  onPickCell,
+}: {
+  program: LadderProgram;
+  profile: DialectProfile;
+  cursor: LadderCursor;
+  mode: LadderEditorMode;
+  /** ネットワークID → 「行 × 16列」を連ねた通電文字列。モニタ中だけ渡す。決定表#5 */
+  powered: Record<string, string> | undefined;
+  /** デバイスコメント（キーは `deviceLabel()` の形）。§10.7 */
+  comments: Record<string, string>;
+  /** 変換エラーが指すセル（`"net:row:col"`）。 */
+  errorCells: ReadonlySet<string>;
+  /** 表示する接点列数（設定で変えられる。§10.6） */
+  gridCols: number;
+  onPickCell: (cursor: LadderCursor) => void;
+}): JSX.Element {
+  const columns = displayColumns(gridCols);
+  const width = RAIL_W + columns.length * CELL_W;
+  const cursorKey = `${cursor.networkId}:${String(cursor.row)}:${String(cursor.col)}`;
+  const monitoring = mode === 'monitor' && powered !== undefined;
+  return (
+    <div className={styles.gridScroll} data-testid="ladder-grid">
+      {program.networks.map((net) => {
+        const bits = monitoring ? (powered[net.id] ?? '') : '';
+        const on = (row: number, col: number): boolean =>
+          bits.charAt(row * IR_COLS + col) === '1';
+        return (
+          <section key={net.id} className={styles.network} data-testid={`network-${net.id}`}>
+            <header className={styles.networkHeader}>
+              <span className={styles.networkId}>{net.id}</span>
+              {net.comment === undefined ? null : (
+                <span className={styles.networkComment}>{net.comment}</span>
+              )}
+              {hasHiddenCells(net, gridCols) ? (
+                <span className={styles.hiddenWarn} data-testid={`hidden-cells-${net.id}`}>
+                  {JA.ladder.hiddenCells}
+                </span>
+              ) : null}
+            </header>
+            <svg
+              className={styles.grid}
+              width={width}
+              height={net.rows * CELL_H}
+              viewBox={`0 0 ${String(width)} ${String(net.rows * CELL_H)}`}
+              role="grid"
+              aria-label={`${JA.ladder.network} ${net.id}`}
+            >
+              {/* 左母線（全行を繋ぐ。§10.3） */}
+              <rect
+                width={RAIL_W}
+                height={net.rows * CELL_H}
+                className={styles.rail}
+                data-testid={`rail-${net.id}`}
+              />
+              <g transform={`translate(${String(RAIL_W)} 0)`}>
+                {Array.from({ length: net.rows }, (_unused, row) =>
+                  columns.map((col, index) => {
+                    const cell = cellAt(net, row, col);
+                    const key = `${net.id}:${String(row)}:${String(col)}`;
+                    const deviceComment =
+                      'device' in cell ? comments[deviceLabel(cell.device)] : undefined;
+                    return (
+                      <GridCell
+                        key={key}
+                        cellKey={key}
+                        cursorKey={cursorKey}
+                        cell={cell}
+                        cell9={{ networkId: net.id, row, col: index }}
+                        profile={profile}
+                        comment={deviceComment}
+                        leftOn={on(row, col)}
+                        rightOn={col < COIL_COL ? on(row, col + 1) : on(row, col)}
+                        colors={profile.monitorColors}
+                        error={errorCells.has(key)}
+                        hasLinkBelow={row + 1 < net.rows}
+                        onPick={(picked) => {
+                          onPickCell({ ...picked, col });
+                        }}
+                      />
+                    );
+                  }),
+                )}
+              </g>
+            </svg>
+          </section>
+        );
+      })}
+    </div>
+  );
+}
+
+/**
+ * ラダーのセルグリッド。親（`LadderEditor`）はキー入力のたびに再描画されるので `memo` する。§15
+ */
+export const LadderGrid = memo(LadderGridImpl);
+```
+
+> **`cell9` の意味:** `GridCell` は **表示上の列番号**で位置を決め、`onPick` で **IR の列番号**を返す。その2つを混ぜないために、`GridCell` へ渡す `cell9.col` は表示上の番号（`index`）にし、`onPickCell` の直前で IR の番号（`col`）に差し替える。テストは `cell-n1:0:15`（IR の番号）で引けることを確かめている。
+
+- [ ] **Step 5: `ladder.module.css` を書く**
+
+```css
+/* ラダーエディタの見た目。設計仕様 §10.6（GX Works3“風”。ベンダーの画面の複製ではない）。 */
+
+.gridScroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  background: #f7f8fa;
+  padding: 6px 8px 24px;
+}
+
+.network {
+  margin-bottom: 10px;
+}
+
+.networkHeader {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  font-size: 11px;
+  color: #444;
+  border-bottom: 1px solid #d5d8de;
+  padding: 2px 4px;
+}
+
+.networkId {
+  font-weight: 700;
+}
+
+.networkComment {
+  color: #1b6ac9;
+}
+
+.hiddenWarn {
+  color: #b34700;
+}
+
+.grid {
+  display: block;
+}
+
+.rail {
+  fill: #3a3f47;
+}
+
+.cell {
+  cursor: pointer;
+}
+
+.cellHit {
+  fill: transparent;
+}
+
+.wire,
+.symbol {
+  fill: none;
+  stroke-width: 1.6;
+  stroke-linecap: square;
+}
+
+.symbolText,
+.deviceText,
+.presetText,
+.commentText {
+  text-anchor: middle;
+  fill: #1b1e23;
+  font-family: inherit;
+}
+
+.symbolText {
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.deviceText {
+  font-size: 10px;
+}
+
+.presetText {
+  font-size: 9px;
+  fill: #555;
+}
+
+.commentText {
+  font-size: 8px;
+  fill: #1b6ac9;
+}
+
+.cursor {
+  fill: none;
+  stroke: #1e64ff;
+  stroke-width: 2;
+}
+
+.errorCell {
+  fill: none;
+  stroke: #d14343;
+  stroke-width: 2;
+  stroke-dasharray: 3 2;
+}
+```
+
+- [ ] **Step 6: `ja.ts` に `ladder` ブロックを足す（**MERGE 注意 #1**）**
+
+`JA.timeChart` の**直後**に足す（挿入のたびにファイルを読み直すこと）:
+
+```ts
+  /** ラダーエディタ（GX Works3風スキン）。§10.6 / §10.7 */
+  ladder: {
+    title: 'ラダーエディタ',
+    network: '回路ブロック',
+    /** 表示列数を超えた位置にセルがある。§10.6 */
+    hiddenCells: '表示列数の外にセルがあります（設定でラダーの表示列数を増やしてください）',
+  },
+```
+
+- [ ] **Step 7: GREEN を確認する**
+
+```powershell
+pnpm --filter @ojt/desktop exec vitest run test/ladder-symbols.test.ts test/ladder-grid.test.tsx
+pnpm --filter @ojt/desktop typecheck
+```
+
+Expected: `Tests  13 passed (13)`（記号4件＋グリッド9件）。
+
+- [ ] **Step 8: コミットする**
+
+```powershell
+npx prettier --write "apps/desktop/src/renderer/ladder/**/*.{ts,tsx,css}" "apps/desktop/src/renderer/i18n/ja.ts" "apps/desktop/test/ladder-*.test.*"
+npx prettier --check "apps/desktop/**/*.{ts,tsx,css}"
+git add apps/desktop/src/renderer/ladder apps/desktop/src/renderer/i18n/ja.ts apps/desktop/test
+git commit -m "feat(desktop): draw the ladder grid with our own symbol line art"
+```
+
+---
+
 <!-- CHUNK -->
+
 
 
