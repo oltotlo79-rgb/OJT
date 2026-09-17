@@ -7,6 +7,7 @@ import {
   findBoardTerminal,
   HARNESS_APPROACH_MM,
   HARNESS_PITCH_MM,
+  isOffBoardTerminal,
   runZ,
   WIRE_LAYER_COUNT,
   WIRE_RUN_X_Z_MM,
@@ -874,16 +875,30 @@ export interface RouteOptions {
   exitOverride?: Readonly<Record<string, 'rear' | 'front'>>;
 }
 
+/** 机上へ渡る電線（盤の経路生成の対象外）。§10.1 / 決定表#9 */
+export interface DeskWire {
+  id: string;
+  from: TerminalId;
+  to: TerminalId;
+  fromPos: Vec3;
+  toPos: Vec3;
+}
+
 /**
  * セッションの全電線の経路を、配列の並び順に求める。§6.6
  * 役割端子ID（`CR1.13`）は物理端子ID（`S1.13`）に解決してから経路にする。
  *
  * 既設の0Ωリンク（端子台 → PB／PL本体の青線ハーネス）は `session.wires` に入っていないので、
  * ここには**含まれない**。3D側はこの結果と {@link routeFixedLinks} の両方を描くこと。
+ *
+ * **机上の装置（PLC本体・壁コンセント）に繋がる電線は含まない。** 盤面の配線帯は机上まで
+ * 伸びていないため、経路器にかけると帯・レーン・占有矩形の不変条件が壊れる。机上へ渡る
+ * 電線は {@link deskWires} で取り、3D側は直線のケーブルとして描く（Plan 3B）。
  */
 export function routeSession(board: BoardDefinition, session: BoardSession): WireRoute[] {
   const routes: WireRoute[] = [];
   for (const wire of session.wires) {
+    if (isOffBoardTerminal(wire.from) || isOffBoardTerminal(wire.to)) continue;
     routes.push(
       routeWire(
         board,
@@ -897,6 +912,24 @@ export function routeSession(board: BoardDefinition, session: BoardSession): Wir
     );
   }
   return routes;
+}
+
+/**
+ * 机上へ渡る電線（PLC本体・壁コンセントに繋がるもの）。§10.1
+ * 盤側の端子は物理端子IDに解決してから座標を引く。盤に無い端子（未割当の役割など）は飛ばす。
+ */
+export function deskWires(board: BoardDefinition, session: BoardSession): DeskWire[] {
+  const out: DeskWire[] = [];
+  for (const wire of session.wires) {
+    if (!isOffBoardTerminal(wire.from) && !isOffBoardTerminal(wire.to)) continue;
+    const from = toPhysicalTerminal(session.socketRoles, wire.from);
+    const to = toPhysicalTerminal(session.socketRoles, wire.to);
+    const fromTerminal = findBoardTerminal(board, from);
+    const toTerminal = findBoardTerminal(board, to);
+    if (fromTerminal === undefined || toTerminal === undefined) continue;
+    out.push({ id: wire.id, from, to, fromPos: fromTerminal.pos, toPos: toTerminal.pos });
+  }
+  return out;
 }
 
 /**

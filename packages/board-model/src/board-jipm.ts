@@ -3,6 +3,7 @@ import {
   terminalId,
   type LampColor,
   type PartId,
+  type PlcUnitSpec,
   type TerminalId,
   type WireColor,
 } from '@ojt/circuit-sim';
@@ -144,9 +145,25 @@ export const SOCKET_IDS: readonly SocketId[] = ['S1', 'S2', 'S3', 'S4', 'S5', 'S
 /** 押ボタンの色。§5.3.3 */
 export type PushButtonColor = '黒' | '黄' | '緑' | '赤';
 
-/** 端子の役割。§6.6 の `role` のうち Phase 1 の盤で使うもの。 */
+/** 端子の役割。§6.6 の `role`。 */
 export type TerminalRole =
-  'coil+' | 'coil-' | 'com' | 'no' | 'nc' | '+' | '-' | 'c' | 'a' | 'b' | 'ac';
+  | 'coil+'
+  | 'coil-'
+  | 'com'
+  | 'no'
+  | 'nc'
+  | '+'
+  | '-'
+  | 'c'
+  | 'a'
+  | 'b'
+  | 'ac'
+  | 'x'
+  | 'y'
+  | 'ss'
+  | 'plc-com'
+  | 'ac-l'
+  | 'ac-n';
 
 /** 盤上の1端子。 */
 export interface BoardTerminal {
@@ -257,6 +274,42 @@ export interface Footprint extends Rect {
   kind: 'socket' | 'block' | 'lamp' | 'button' | 'breaker' | 'switch' | 'supply';
 }
 
+/** PLC本体の部品ID。§6.4 */
+export const PLC_PART_ID = 'PLC';
+/** 壁コンセントの部品ID。§6.4 / §10.1 */
+export const OUTLET_ID = 'OUTLET';
+
+/**
+ * 机上に置く装置（PLC本体・壁コンセント）の端子か。§10.1
+ * 盤面の座標系・占有矩形・配線帯の外にあるので、`validateBoard()` の盤内判定と
+ * 経路生成（`routeSession()`）から外す。
+ */
+export function isOffBoardTerminal(id: TerminalId | string): boolean {
+  return id.startsWith(`${PLC_PART_ID}.`) || id.startsWith(`${OUTLET_ID}.`);
+}
+
+/**
+ * 机上に置くPLC本体1機種の定義。§10.1
+ * 電気的な仕様（`spec`）は circuit-sim の `createPlcUnit()` にそのまま渡す。
+ * 端子の物理的な並び順は一次資料が未確認のため §10.1 の表の記載順である（§17 #11）。
+ */
+export interface PlcUnitDefinition {
+  /** 機種キー（`fx5u`）。 */
+  id: string;
+  /** 課題JSONの `plc.model` と一致する機種名（`FX5U`）。§7.6 */
+  model: string;
+  /** メーカーキー（`mitsubishi`）。§7.6 */
+  vendor: string;
+  displayName: string;
+  sizeMm: { width: number; height: number; depth: number };
+  /** 机上の設置位置（盤座標の延長。盤の右）。3Dは Plan 3B が描く。 */
+  pos: Vec3;
+  spec: PlcUnitSpec;
+  terminals: readonly BoardTerminal[];
+  /** 本体のLED表示。§10.1 */
+  leds: readonly string[];
+}
+
 /** 盤の定義データ。 */
 export interface BoardDefinition {
   id: string;
@@ -275,6 +328,8 @@ export interface BoardDefinition {
   wiringChannels: readonly WiringChannel[];
   fixedWires: readonly FixedWire[];
   fixedLinks: readonly FixedLink[];
+  /** 机上に置くPLC本体（モードDの盤だけが持つ）。`withPlcUnit()` が付ける。§10.1 */
+  plcUnit?: PlcUnitDefinition;
 }
 
 /** 盤定義の参照に失敗したときに投げる。 */
@@ -340,6 +395,14 @@ export function roleLabel(role: TerminalRole): string {
       return 'a';
     case 'nc':
       return 'b';
+    case 'ss':
+      return 'S/S';
+    case 'plc-com':
+      return 'COM';
+    case 'ac-l':
+      return 'L';
+    case 'ac-n':
+      return 'N';
     default:
       return role;
   }
@@ -942,7 +1005,9 @@ export function validateBoard(board: BoardDefinition): string[] {
     if (seen.has(term.id)) errors.push(`端子IDが重複しています: ${term.id}`);
     seen.add(term.id);
     if (term.label.trim().length === 0) errors.push(`端子の銘板が空です: ${term.id}`);
-    if (!rectContains(boardRect, term.pos)) errors.push(`端子が盤の外にあります: ${term.id}`);
+    if (!isOffBoardTerminal(term.id) && !rectContains(boardRect, term.pos)) {
+      errors.push(`端子が盤の外にあります: ${term.id}`);
+    }
     const dot = term.id.indexOf('.');
     const footprintId = dot > 0 ? footprintIdOfPart(term.id.slice(0, dot)) : undefined;
     if (footprintId === undefined) continue;

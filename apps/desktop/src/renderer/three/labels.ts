@@ -132,6 +132,12 @@ const ROLE_COLOR: Readonly<Record<TerminalRole, string>> = {
   a: '#1B1E23',
   b: '#1B1E23',
   ac: '#1B1E23',
+  x: '#1B1E23',
+  y: '#1B1E23',
+  ss: '#1B1E23',
+  'plc-com': '#1B1E23',
+  'ac-l': '#D14343',
+  'ac-n': '#2E6BD6',
 };
 
 /**
@@ -151,6 +157,12 @@ export const SOCKET_ROLE_COLOR: Readonly<Record<TerminalRole, string>> = {
   a: '#E4E7EC',
   b: '#E4E7EC',
   ac: '#E4E7EC',
+  x: '#E4E7EC',
+  y: '#E4E7EC',
+  ss: '#E4E7EC',
+  'plc-com': '#E4E7EC',
+  'ac-l': '#FF8A8A',
+  'ac-n': '#8FB8FF',
 };
 
 /** キャンバスを作って描き、テクスチャにする。キャンバスが使えない環境では undefined。 */

@@ -2,6 +2,7 @@ import {
   createBuzzer,
   createLamp,
   createNetlist,
+  createPlcUnit,
   createPowerSupply,
   createPushButton,
   createRelay4c,
@@ -17,7 +18,7 @@ import {
   type TerminalId,
   type Wire,
 } from '@ojt/circuit-sim';
-import { SOCKET_IDS, type BoardDefinition } from './board-jipm.js';
+import { OUTLET_ID, PLC_PART_ID, SOCKET_IDS, type BoardDefinition } from './board-jipm.js';
 import { socketPartId, type SocketRoles } from './roles.js';
 import { SessionError, type BoardSession } from './session.js';
 
@@ -127,6 +128,14 @@ export function toNetlist(session: BoardSession, board: BoardDefinition): Netlis
     } else {
       parts.push(createTimer4c(id, mounted.presetMs, mounted.rangeMaxMs));
     }
+  }
+
+  // 机上のPLC本体と壁コンセントは部品配列の末尾に置く（既存の部品順を変えないため）。§10.1
+  if (board.plcUnit !== undefined) {
+    parts.push(createPlcUnit(PLC_PART_ID, board.plcUnit.spec));
+    parts.push(
+      createTerminalOnlyPart(OUTLET_ID, [terminalId(OUTLET_ID, 'L'), terminalId(OUTLET_ID, 'N')]),
+    );
   }
 
   const links: LinkElement[] = board.fixedLinks.map((l) =>
