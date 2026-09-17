@@ -29,7 +29,7 @@
 | 11 | `@ojt/content` が `parseProblem` / `ProblemSchema` / `UNSUPPORTED_MODES`（現在 `['plc']`）/ `ProblemHeaderShape` / `JudgeSettingsSchema` / `STATIC_CHECK_IDS`（現在6種）/ `OperationListSchema` / `DurationMsSchema` / `runOperations` / `runStaticChecks` / `buildTimeChart` / `defaultChartSignals` / `countHazards` / `judgeAssemble` / `BUILTIN_ALL_PROBLEMS`（20題）を公開している | `packages/content/src/index.ts` |
 | 12 | 内蔵課題JSONの import は必ず **import attributes**（`with { type: 'json' }`）を付ける（素の Node ESM が `ERR_IMPORT_ATTRIBUTE_MISSING` で落ちるため。`test/builtin-node-esm.test.ts` が見張っている） | `packages/content/src/builtin/index.ts` L38-41 |
 | 13 | 新パッケージは `pnpm-workspace.yaml` の `packages/*` と `vitest.workspace.ts` の `['packages/*','apps/*']` に**自動で載る**。ルートの `tsconfig.json` はパッケージを参照していない（`pnpm -r typecheck` が各パッケージの `tsconfig.json` を使う）。ESLint の解決器も `packages/*/tsconfig.json` を見ている。したがって新パッケージに要るのは `package.json` / `tsconfig.json` / `vitest.config.ts` の3つだけである | `pnpm-workspace.yaml` / `vitest.workspace.ts` / `eslint.config.js` |
-| 14 | テスト件数のベースライン（handoff 2026-09-18 時点）: `circuit-sim` 214・`board-model` 155・`content` 32ファイル442・`desktop` 541・E2E 11。本プランの完了条件では**着手時に測り直した値**を基準にすること | `pnpm -r test` |
+| 14 | テスト件数のベースライン（handoff 2026-09-18 時点）: `circuit-sim` 215・`board-model` 158・`content` 32ファイル442・`desktop` 541・E2E 11。本プランの完了条件では**着手時に測り直した値**を基準にすること | `pnpm -r test` |
 
 **この計画が前提として置いた設計値（仕様に無い、または本プランで確定させた値）:**
 
@@ -1715,7 +1715,8 @@ describe('createPlcRuntime（タイマ・カウンタ）', () => {
     const io = new TestIo();
     const runtime = boot(onDelayProgram(3000), io);
     io.press(0);
-    scans(runtime, 300);
+    // n1 で M0 を書き、同じスキャンの n2 のタイマがそれを読む。よって 300スキャン目で 3000ms に届く
+    scans(runtime, 299);
     expect(io.outputs[0]).toBe(false);
     runtime.scan();
     expect(io.outputs[0]).toBe(true);
@@ -1832,9 +1833,10 @@ describe('createPlcRuntime（微分・SET/RST・特殊デバイス・MC）', () 
     expect([io.outputs[0], io.outputs[1], io.outputs[2]]).toEqual([true, true, true]);
     runtime.scan();
     expect([io.outputs[0], io.outputs[1], io.outputs[2]]).toEqual([true, false, true]);
-    scans(runtime, 48); // 合計50スキャン = 500ms
+    // bit() はスキャン開始時点の elapsedMs を読むので、500ms に達した次のスキャンで反転する
+    scans(runtime, 49); // 合計51スキャン（開始時 500ms）
     expect(io.outputs[2]).toBe(false);
-    scans(runtime, 50); // 合計100スキャン = 1000ms
+    scans(runtime, 50); // 合計101スキャン（開始時 1000ms）
     expect(io.outputs[2]).toBe(true);
   });
 
@@ -3093,10 +3095,14 @@ describe('PLC出力の駆動', () => {
     sim.step(); // コイルが励磁される
     expect(sim.state().relays['CR1']?.coilOn).toBe(true);
     sim.step(); // 接点が入る（動作時間1tick）
+    // step() は updateLoads → updateRelays → applyContacts の順なので、
+    // 接点が入った回の負荷更新は既に終わっている。ランプに反映されるのは次の step
+    sim.step();
     expect(sim.state().lamps['PL1']?.level).toBe('lit');
     sim.setPlcOutputs('PLC', [false, false]);
     sim.step();
     sim.step();
+    sim.step(); // 復帰も同じ理由で3step必要
     expect(sim.state().lamps['PL1']?.level).toBe('off');
   });
 
@@ -3433,10 +3439,11 @@ describe('withPlcUnit', () => {
     const plc = board.terminals.filter((t) => t.id.startsWith('PLC.'));
     expect(plc.every((t) => t.wirable)).toBe(true);
     expect(plc.every((t) => t.label.trim().length > 0)).toBe(true);
-    expect(plc.find((t) => t.id === 'PLC.SS')?.label).toBe('S/S');
-    expect(plc.find((t) => t.id === 'PLC.PE')?.label).toBe('⏚');
-    expect(plc.find((t) => t.id === 'PLC.X10')?.role).toBe('x');
-    expect(plc.find((t) => t.id === 'PLC.COM1')?.role).toBe('plc-com');
+    // TerminalId は branded type なのでリテラルと `===` すると TS2367。String() で比較する
+    expect(plc.find((t) => String(t.id) === 'PLC.SS')?.label).toBe('S/S');
+    expect(plc.find((t) => String(t.id) === 'PLC.PE')?.label).toBe('⏚');
+    expect(plc.find((t) => String(t.id) === 'PLC.X10')?.role).toBe('x');
+    expect(plc.find((t) => String(t.id) === 'PLC.COM1')?.role).toBe('plc-com');
   });
 
   it('passes validateBoard with the desk terminals excluded from the board rect (§6.5)', () => {
@@ -3577,7 +3584,7 @@ describe('机上配線の経路', () => {
 
   it('gives both endpoints of a desk wire a position for the 3D cable (Plan 3B)', () => {
     const desk = deskWires(BOARD, wired());
-    const outlet = desk.find((d) => d.from === 'OUTLET.L' || d.to === 'OUTLET.L');
+    const outlet = desk.find((d) => String(d.from) === 'OUTLET.L' || String(d.to) === 'OUTLET.L');
     expect(outlet?.fromPos).toBeDefined();
     expect(outlet?.toPos).toBeDefined();
   });
@@ -5447,6 +5454,7 @@ Expected: `Tests  11 passed (11)`。
 **Files:**
 - Create: `packages/content/src/schema/plc.ts`
 - Modify: `packages/content/src/schema/judge.ts`
+- Modify: `packages/content/src/static-checks.ts`（`CHECKS` に仮の3件。Task 16 で本実装に差し替える）
 - Test: `packages/content/test/schema-plc.test.ts`
 - Test: `packages/content/test/helpers/plc.ts`（モードD課題JSONの骨組み）
 
@@ -5455,7 +5463,7 @@ Expected: `Tests  11 passed (11)`。
 | 決めること | 本タスクの実装 |
 |---|---|
 | `plc` | `{vendor, model}`。`vendor` は4値、`model` は4値（§7.6）。組合せの整合（`mitsubishi` ↔ `FX5U`）も検査する。Phase 3 で**開始できる**のは `FX5U` だけなので、他機種は `PHASE3_MODELS` に無い旨のエラーにする |
-| `io` | `{mode, wiring, inputs?, outputs?}`。`inputs` は `{x, pb}`、`outputs` は `{y, cr, pl}` の配列。省略時は既定割付（§7.6 の表） |
+| `io` | `{mode, wiring, inputs?, outputs?}`。`inputs` は `{x, pb}`（`pb` は `PB1`〜`PB3` の**3点まで**。`PB4` は §6.3 の既設配線 `P.1 → TB_PB.4c` が塞いでいるチェック用回路の押ボタンなので使えない）、`outputs` は `{y, cr, pl}` の**4点まで**の配列。省略時は既定割付（§7.6 の表。入力3点・出力4点） |
 | `referenceLadder` | Task 11 の `LadderProgramSchema`。読込時に `compile()` を通し、変換エラーがあれば課題のスキーマ違反にする（§13 #2 を読込の段で拾う） |
 | `wiringRequired` | `true` 固定（決定事項#16） |
 | 静的チェック | `STATIC_CHECK_IDS` を9件にし、モードB/C の既定では新3件を `false`、モードDの既定（`PLC_DEFAULT_STATIC_CHECKS`）では9件すべて `true` |
@@ -5546,6 +5554,7 @@ import {
   PLC_DEFAULT_STATIC_CHECKS,
   PLC_MODELS,
   PLC_VENDORS,
+  PlcInputMapSchema,
   PlcProblemSchema,
   resolvePlcIo,
 } from '../src/schema/plc.js';
@@ -5633,6 +5642,22 @@ describe('PlcProblemSchema（§7.6）', () => {
     });
     expect(PlcProblemSchema.safeParse(sameRelay).success).toBe(false);
   });
+
+  it('refuses PB4 because the check circuit already occupies TB_PB.4c (§6.3)', () => {
+    const withPb4 = plcProblemJson({
+      io: {
+        mode: 'fixed',
+        inputs: [
+          { x: 0, pb: 'PB1' },
+          { x: 3, pb: 'PB4' },
+        ],
+        outputs: [{ y: 0, cr: 'CR1', pl: 'PL1' }],
+      },
+    });
+    expect(PlcProblemSchema.safeParse(withPb4).success).toBe(false);
+    // 入力は3点までしか無い（PB1〜PB3）
+    expect(PlcInputMapSchema.shape.pb.options).toEqual(['PB1', 'PB2', 'PB3']);
+  });
 });
 
 describe('resolvePlcIo（§7.6 の既定割付）', () => {
@@ -5642,7 +5667,10 @@ describe('resolvePlcIo（§7.6 の既定割付）', () => {
     expect(io.wiring).toBe('sink');
     expect(io.inputs).toEqual(DEFAULT_PLC_IO.inputs);
     expect(io.outputs).toEqual(DEFAULT_PLC_IO.outputs);
+    // 入力3点（PB4はチェック用）・出力4点が既定。1級形式もこの形である
+    expect(DEFAULT_PLC_IO.inputs).toHaveLength(3);
     expect(DEFAULT_PLC_IO.inputs[0]).toEqual({ x: 0, pb: 'PB1' });
+    expect(DEFAULT_PLC_IO.outputs).toHaveLength(4);
     expect(DEFAULT_PLC_IO.outputs[3]).toEqual({ y: 3, cr: 'CR4', pl: 'PL4' });
   });
 
@@ -5746,7 +5774,53 @@ export const PlcJudgeSettingsSchema = judgeSettings(PLC_DEFAULT_STATIC_CHECKS);
 
 **既存テストの追随（このタスクで直す）:** `packages/content/test/index.test.ts` の `STATIC_CHECK_IDS` の期待値（6件の配列リテラル）に3件を足す。`DEFAULT_STATIC_CHECKS` と突き合わせている行は両方が同時に変わるのでそのままでよい。
 
-- [ ] **Step 4: `src/schema/plc.ts` を書く**
+- [ ] **Step 4: `src/static-checks.ts` に仮の3件を足す（`tsc` を通すため）**
+
+`STATIC_CHECK_IDS` が9件になった瞬間、`src/static-checks.ts` の
+
+```ts
+const CHECKS: Readonly<Record<StaticCheckId, (input: StaticCheckInput) => StaticCheckResult>> = { … };
+```
+
+がキー不足で `tsc` に落ちる（`Property 'twoStage' is missing …`）。本実装は Task 16 なので、ここでは**「モードDの文脈が無い」ことを返す仮の3件**を置いて型を満たす。Task 16 Step 4 でこの3件を本物の関数にそのまま差し替える。
+
+`src/static-checks.ts` の `CHECKS` の直前に足す:
+
+```ts
+/**
+ * モードDの静的チェックの仮実装。本実装は Task 16 の `plc-static-checks.ts` で入れる。
+ * それまでは「モードDの文脈が無いので実行できない」を返し、`STATIC_CHECK_IDS` の9件を型として満たす。
+ */
+function plcCheckNotReady(id: StaticCheckId): StaticCheckResult {
+  return {
+    id,
+    ok: false,
+    message: 'PLC課題ではないためこの検査は実行できません',
+    details: ['この静的チェックはモードDの課題でのみ有効にできます（§7.4）'],
+  };
+}
+```
+
+`CHECKS` を9件にする:
+
+```ts
+const CHECKS: Readonly<Record<StaticCheckId, (input: StaticCheckInput) => StaticCheckResult>> = {
+  wireColorRule: checkWireColorRule,
+  terminalLimit: checkTerminalLimit,
+  unusedParts: checkUnusedParts,
+  forbiddenCircuit: checkForbiddenCircuit,
+  coilPolarity: checkCoilPolarity,
+  powerSequence: checkPowerSequence,
+  // Task 16 で本実装（`checkTwoStage` / `checkPlcPowerIndependent` / `checkIoAssignment`）に差し替える
+  twoStage: () => plcCheckNotReady('twoStage'),
+  plcPowerIndependent: () => plcCheckNotReady('plcPowerIndependent'),
+  ioAssignment: () => plcCheckNotReady('ioAssignment'),
+};
+```
+
+`DEFAULT_STATIC_CHECKS`（`src/schema/judge.ts`）の3キーは Step 3 で既に足してある。モードB・C の既定では3件とも `false` なので、`runStaticChecks` がこの仮実装を呼ぶことは無い。
+
+- [ ] **Step 5: `src/schema/plc.ts` を書く**
 
 ```ts
 import { compile } from '@ojt/ladder-core';
@@ -5808,10 +5882,17 @@ export const PlcIoModeSchema = z.enum(['fixed', 'free']);
 /** 入力コモンの結線。§10.2 */
 export const PlcWiringSchema = z.enum(['sink', 'source']);
 
-/** 入力1点の割付（`x` は入力番号、`pb` は押ボタン）。§7.6 */
+/**
+ * 入力1点の割付（`x` は入力番号、`pb` は押ボタン）。§7.6
+ *
+ * `PB4` は**チェック用回路の押ボタン**である。盤には §6.3 の既設固定配線
+ * `fw-chk-1: P.1 → TB_PB.4c` があり、`TB_PB.4c` は既に1本埋まっている。ここへ模範配線の
+ * N側（または `source` ならP側）の鎖を通すと端子が2本を超えるか、P と N を短絡してしまうため、
+ * PLC入力に使えるのは `PB1` / `PB2` / `PB3` の3点だけである（1級形式でも入力3点・出力4点）。
+ */
 export const PlcInputMapSchema = z.strictObject({
   x: z.int().min(0).max(15),
-  pb: z.enum(['PB1', 'PB2', 'PB3', 'PB4']),
+  pb: z.enum(['PB1', 'PB2', 'PB3']),
 });
 
 /** 出力1点の割付（`y` は出力番号、`cr` は中継リレー、`pl` は表示灯）。§7.6 / §10.2 */
@@ -5831,11 +5912,11 @@ export const DEFAULT_PLC_IO: {
   inputs: readonly PlcInputMapData[];
   outputs: readonly PlcOutputMapData[];
 } = {
+  // PB4 はチェック用回路の押ボタンなので入力に使わない（`PlcInputMapSchema` の注記）
   inputs: [
     { x: 0, pb: 'PB1' },
     { x: 1, pb: 'PB2' },
     { x: 2, pb: 'PB3' },
-    { x: 3, pb: 'PB4' },
   ],
   outputs: [
     { y: 0, cr: 'CR1', pl: 'PL1' },
@@ -5861,7 +5942,7 @@ export const PlcIoSchema = z
   .strictObject({
     mode: PlcIoModeSchema.describe('`fixed` は割付を課題が固定し静的チェックで検証します。'),
     wiring: PlcWiringSchema.default('sink').describe('入力コモンの結線（シンク／ソース）。'),
-    inputs: z.array(PlcInputMapSchema).min(1).max(4).optional(),
+    inputs: z.array(PlcInputMapSchema).min(1).max(3).optional(),
     outputs: z.array(PlcOutputMapSchema).min(1).max(4).optional(),
   })
   .superRefine((io, ctx) => {
@@ -5940,15 +6021,18 @@ export const PlcProblemSchema = z
 export type PlcProblem = z.infer<typeof PlcProblemSchema>;
 ```
 
-- [ ] **Step 5: GREEN を確認してコミットする**
+- [ ] **Step 6: GREEN を確認してコミットする**
 
 ```powershell
 pnpm --filter @ojt/content exec vitest run test/schema-plc.test.ts test/index.test.ts test/schema-judge.test.ts
+pnpm --filter @ojt/content typecheck
+pnpm exec prettier --write packages/content/src/schema/plc.ts packages/content/src/schema/judge.ts packages/content/src/static-checks.ts packages/content/test/schema-plc.test.ts packages/content/test/helpers/plc.ts
+pnpm exec prettier --check packages/content
 git add packages/content
 git commit -m "feat(content): add the mode D problem schema and the three PLC static check ids"
 ```
 
-Expected: `Tests  10 passed (10)`（`schema-plc.test.ts`）に加え、`index.test.ts` / `schema-judge.test.ts` も通る。
+Expected: `Tests  11 passed (11)`（`schema-plc.test.ts`）に加え、`index.test.ts` / `schema-judge.test.ts` も通り、`typecheck` が無エラー（Step 4 の仮実装が無いとここで `CHECKS` のキー不足で落ちる）。
 
 ---
 
@@ -6092,7 +6176,9 @@ Expected: `@ojt/content` は着手時のベースライン（前提#14。目安4
 | N側の渡り配線 | `N.1 → TB_PB.{n}c（各入力）→ {cr}.13（各出力）→ TB_PL.{n}-（各出力）` |
 | PLC電源 | `OUTLET.L → PLC.L`、`OUTLET.N → PLC.N` |
 
-`source` 結線では `PLC.SS` がN側の鎖に、押ボタンのコモン（`TB_PB.{n}c`）がP側の鎖に移る（§10.2）。どの端子も**2本以内**に収まる（`P.1` / `N.1` はチェック用回路の既設配線で各1本埋まっているので、鎖の起点として1本だけ使う。§6.3）。
+`source` 結線では `PLC.SS` がN側の鎖に、押ボタンのコモン（`TB_PB.{n}c`）がP側の鎖に移る（§10.2）。どちらの結線でも**入力側の端子が鎖の先頭**（シンクは `P.1 → PLC.SS`、ソースは `P.1 → TB_PB.1c`）に来るように並べる。どの端子も**2本以内**に収まる（`P.1` / `N.1` はチェック用回路の既設配線で各1本埋まっているので、鎖の起点として1本だけ使う。§6.3）。
+
+**PB4 は使えない:** §6.3 の既設配線 `fw-chk-1: P.1 → TB_PB.4c` が `TB_PB.4c` を1本埋めているため、そこへ母線の鎖を通すと本数上限を超えるか P と N を短絡する。PLC入力に使えるのは `PB1` / `PB2` / `PB3` の3点だけで、`PlcInputMapSchema`（Task 12）と `plcWiringPlanIssues()`（本タスク）の二重で弾く。1級形式も**入力3点・出力4点**である。
 
 - [ ] **Step 1: 失敗するテストを書く**
 
@@ -6102,8 +6188,19 @@ Expected: `@ojt/content` は着手時のベースライン（前提#14。目安4
 import { JIPM_BOARD, wireCountAtTerminal } from '@ojt/board-model';
 import { MAX_WIRES_PER_TERMINAL } from '@ojt/circuit-sim';
 import { describe, expect, it } from 'vitest';
-import { buildPlcReferenceSession, plcBoardFor, plcWiringPlan, PLC_WIRE_COLOR } from '../src/plc-reference.js';
-import { PlcProblemSchema, resolvePlcIo } from '../src/schema/plc.js';
+import {
+  buildPlcReferenceSession,
+  plcBoardFor,
+  plcWiringPlan,
+  plcWiringPlanIssues,
+  PLC_WIRE_COLOR,
+} from '../src/plc-reference.js';
+import {
+  PlcProblemSchema,
+  resolvePlcIo,
+  type PlcInputMapData,
+  type ResolvedPlcIo,
+} from '../src/schema/plc.js';
 import { plcProblemJson } from './helpers/plc.js';
 
 /** 2級形式（入力3・出力3）の課題。 */
@@ -6161,8 +6258,27 @@ describe('plcWiringPlan（§10.2 / §11.3）', () => {
     const sourceIo = { ...io, wiring: 'source' as const };
     const pairs = plcWiringPlan(sourceIo, board?.plcUnit).map((w) => `${w.from}→${w.to}`);
     expect(pairs).toContain('N.1→PLC.SS');
+    // ソースでは押ボタンのコモンが P側の鎖の先頭に来る（シンクの `P.1→PLC.SS` と対称）
     expect(pairs).toContain('P.1→TB_PB.1c');
     expect(pairs).not.toContain('P.1→PLC.SS');
+    // 本数は結線の向きを変えても同じ
+    expect(plcWiringPlan(sourceIo, board?.plcUnit)).toHaveLength(25);
+  });
+
+  it('refuses a push button whose common already carries a locked wire (§6.3)', () => {
+    const built = buildPlcReferenceSession(problem, JIPM_BOARD);
+    if (!built.ok) throw new Error('模範回路を組めませんでした');
+    // `PlcInputMapSchema` は PB4 を受け付けないので、見張りの動作確認はキャストで直に渡す
+    const withPb4: ResolvedPlcIo = {
+      ...io,
+      inputs: [{ x: 3, pb: 'PB4' as PlcInputMapData['pb'] }],
+    };
+    const issues = plcWiringPlanIssues(withPb4, built.value.session);
+    expect(issues).toHaveLength(1);
+    expect(issues[0]?.path).toBe('io.inputs[0].pb');
+    expect(issues[0]?.message).toContain('TB_PB.4c');
+    // 既定の PB1〜PB3 では何も出ない
+    expect(plcWiringPlanIssues(io, built.value.session)).toEqual([]);
   });
 });
 
@@ -6358,11 +6474,13 @@ export function plcWiringPlan(io: ResolvedPlcIo, unit: PlcUnitDefinition | undef
   }
   // P側の鎖: 入力コモン（シンクのみ）→ 出力COM → リレー接点のCOM
   const usedCommons = [...new Set(io.outputs.map((output) => comName(output.y)))];
+  // 入力側の端子が必ず鎖の先頭に来る（シンクなら S/S、ソースなら押ボタンのコモン）。
+  // N側の鎖と同じ並び方にしておくと、どちらの結線でも「起点 → 入力側 → 出力側」で読める
   const pTargets: TerminalId[] = [
     ...(io.wiring === 'sink' ? [plcTerminal(unit.spec.inputCommon)] : []),
+    ...(io.wiring === 'source' ? io.inputs.map((input) => pbTerminal(input.pb, 'c')) : []),
     ...usedCommons.map(plcTerminal),
     ...io.outputs.map((output) => terminalId(output.cr, '9')),
-    ...(io.wiring === 'source' ? io.inputs.map((input) => pbTerminal(input.pb, 'c')) : []),
   ];
   wires.push(...chain(terminalId(P_RAIL_ID, '1'), pTargets));
   // N側の鎖: 入力コモン（ソースのみ）→ 押ボタンのコモン（シンクのみ）→ コイル(−) → ランプ(−)
@@ -6377,6 +6495,32 @@ export function plcWiringPlan(io: ResolvedPlcIo, unit: PlcUnitDefinition | undef
   wires.push({ from: terminalId('OUTLET', 'L'), to: plcTerminal('L') });
   wires.push({ from: terminalId('OUTLET', 'N'), to: plcTerminal('N') });
   return wires;
+}
+
+/**
+ * 模範配線を張る前の見張り。§6.3 / §6.6
+ *
+ * 押ボタンのコモン（`TB_PB.{n}c`）に**既設の固定配線**が来ている押ボタンは、母線の鎖を通すと
+ * 端子が2本を超えるか、P と N を短絡してしまうため PLC入力に使えない。既定の盤では
+ * `fw-chk-1: P.1 → TB_PB.4c`（チェック用回路）がこれに当たるので `PB4` が弾かれる。
+ * `PlcInputMapSchema` も `PB4` を受け付けないが、盤の既設配線が変わってもここで必ず捕まる。
+ */
+export function plcWiringPlanIssues(io: ResolvedPlcIo, session: BoardSession): ProblemIssue[] {
+  const locked = new Set<string>();
+  for (const wire of session.wires) {
+    if (!wire.locked) continue;
+    for (const terminal of [wire.from, wire.to]) locked.add(String(terminal));
+  }
+  const issues: ProblemIssue[] = [];
+  io.inputs.forEach((input, index) => {
+    const common = String(pbTerminal(input.pb, 'c'));
+    if (!locked.has(common)) return;
+    issues.push({
+      path: `io.inputs[${index}].pb`,
+      message: `${input.pb} は既設の固定配線（${common}）が来ているためPLC入力に使えません（§6.3）`,
+    });
+  });
+  return issues;
 }
 
 /** 模範の盤セッションとネットリストを組む。§7.2 / §13 #2 */
@@ -6421,6 +6565,9 @@ export function buildPlcReferenceSession(
     allowedColors: [PLC_WIRE_COLOR],
     inventory: problem.inventory,
   });
+  const pbIssues = plcWiringPlanIssues(io, session);
+  if (pbIssues.length > 0) return { ok: false, errors: pbIssues };
+
   const errors: ProblemIssue[] = [];
   io.outputs.forEach((output, index) => {
     const socket = trySocketOf(roles, output.cr);
@@ -6467,11 +6614,13 @@ export function buildPlcReferenceSession(
 
 ```powershell
 pnpm --filter @ojt/content exec vitest run test/plc-reference.test.ts
+pnpm exec prettier --write packages/content/src/plc-reference.ts packages/content/test/plc-reference.test.ts
+pnpm exec prettier --check packages/content
 git add packages/content
 git commit -m "feat(content): generate the mode D reference wiring from the I/O map"
 ```
 
-Expected: `Tests  7 passed (7)`。**電線が25本にならない場合**は、鎖の組み方（どの端子を何番目に渡すか）ではなく**端子の本数上限**を先に疑うこと。`addWire` が `terminal-overload` で落ちていれば、その端子に既に2本（うち1本は §6.3 の既設配線）が来ている。
+Expected: `Tests  9 passed (9)`。**電線が25本にならない場合**は、鎖の組み方（どの端子を何番目に渡すか）ではなく**端子の本数上限**を先に疑うこと。`addWire` が `terminal-overload` で落ちていれば、その端子に既に2本（うち1本は §6.3 の既設配線）が来ている。
 
 ---
 
@@ -6784,6 +6933,7 @@ Expected: `test/plc-io.test.ts` が `Tests  5 passed (5)`、既存の `test/runn
 ## Task 16: `plc-static-checks.ts` — `twoStage` / `plcPowerIndependent` / `ioAssignment`
 
 **Files:**
+- Create: `packages/content/src/static-check-types.ts`（`StaticCheckInput` / `StaticCheckResult` / `PlcCheckContext` の置き場）
 - Create: `packages/content/src/plc-static-checks.ts`
 - Modify: `packages/content/src/static-checks.ts`
 - Test: `packages/content/test/plc-static-checks.test.ts`
@@ -6811,8 +6961,10 @@ import {
   detectPlcWiring,
   type PlcCheckContext,
 } from '../src/plc-static-checks.js';
+import { runPlcOperations } from '../src/plc-io.js';
 import { buildPlcReferenceSession } from '../src/plc-reference.js';
 import { runStaticChecks } from '../src/static-checks.js';
+import type { StaticCheckInput } from '../src/static-check-types.js';
 import { PlcProblemSchema } from '../src/schema/plc.js';
 import { plcProblemJson } from './helpers/plc.js';
 
@@ -6820,23 +6972,44 @@ function t(id: string): TerminalId {
   return id as TerminalId;
 }
 
-/** 模範回路（＝正しく配線された盤）を作る。 */
-function reference() {
-  const problem = PlcProblemSchema.parse(plcProblemJson());
-  const built = buildPlcReferenceSession(problem, JIPM_BOARD);
-  if (!built.ok) throw new Error(JSON.stringify(built.errors));
-  return { problem, circuit: built.value };
+/**
+ * その電線がこの端子に繋がっているか。
+ * `TerminalId` はブランド付きのテンプレートリテラル型なので、リテラルと `===` で比べると
+ * `TS2367`（型に重なりが無い）になる。比較は必ず `String()` を挟む。
+ */
+function at(wire: { from: TerminalId; to: TerminalId }, id: string): boolean {
+  return String(wire.from) === id || String(wire.to) === id;
 }
 
-/** チェックの入力を組む（ログ・イベントは静的チェックでは使わない）。 */
-function checkInput(circuit: ReturnType<typeof reference>['circuit'], plc: PlcCheckContext) {
+const PROBLEM = PlcProblemSchema.parse(plcProblemJson());
+
+/** 模範回路（＝正しく配線された盤）を作る。 */
+function reference() {
+  const built = buildPlcReferenceSession(PROBLEM, JIPM_BOARD);
+  if (!built.ok) throw new Error(JSON.stringify(built.errors));
+  return { problem: PROBLEM, circuit: built.value };
+}
+
+/**
+ * チェックの入力を組む。
+ * PLCの3件はログを読まないが、`runStaticChecks` の他の6件（`coilPolarity` / `forbiddenCircuit` /
+ * `powerSequence`）はログとイベントを読む。ダミーの空ログを渡すと検査が素通りしてしまうので、
+ * **実際に操作列を再生した結果**を渡す。
+ */
+function checkInput(
+  circuit: ReturnType<typeof reference>['circuit'],
+  plc: PlcCheckContext,
+): StaticCheckInput {
   const netlist = toNetlist(circuit.session, circuit.board);
+  const result = runPlcOperations(netlist, circuit.program, PROBLEM.operations, {
+    durationMs: PROBLEM.durationMs,
+  });
   return {
     session: circuit.session,
     netlist,
-    log: { transitions: () => [], signals: () => [] } as never,
-    hazards: [],
-    chatters: [],
+    log: result.log,
+    hazards: result.events.hazards(),
+    chatters: result.events.chatters(),
     allowedColors: ['青' as const],
     plc,
   };
@@ -6855,9 +7028,9 @@ describe('twoStage（§10.2 / §7.4）', () => {
   it('fails when Y is wired straight to the lamp (§16 Phase 3 受入基準④)', () => {
     const { circuit } = reference();
     // Y0 → CR1.14 を外し、Y0 → TB_PL.1+ に直結する
-    const direct = circuit.session.wires.find((w) => w.from === 'PLC.Y0' || w.to === 'PLC.Y0');
+    const direct = circuit.session.wires.find((w) => at(w, 'PLC.Y0'));
     expect(removeWire(circuit.session, direct?.id ?? '').ok).toBe(true);
-    const lampWire = circuit.session.wires.find((w) => w.to === 'TB_PL.1+');
+    const lampWire = circuit.session.wires.find((w) => String(w.to) === 'TB_PL.1+');
     expect(removeWire(circuit.session, lampWire?.id ?? '').ok).toBe(true);
     expect(addWire(circuit.session, circuit.board, t('PLC.Y0'), t('TB_PL.1+')).ok).toBe(true);
     const result = checkTwoStage(checkInput(circuit, context(circuit)));
@@ -6867,7 +7040,7 @@ describe('twoStage（§10.2 / §7.4）', () => {
 
   it('fails when Y drives nothing at all', () => {
     const { circuit } = reference();
-    const wire = circuit.session.wires.find((w) => w.from === 'PLC.Y0' || w.to === 'PLC.Y0');
+    const wire = circuit.session.wires.find((w) => at(w, 'PLC.Y0'));
     removeWire(circuit.session, wire?.id ?? '');
     const result = checkTwoStage(checkInput(circuit, context(circuit)));
     expect(result.ok).toBe(false);
@@ -6883,10 +7056,12 @@ describe('plcPowerIndependent（§10.1 / §7.4）', () => {
 
   it('fails when the PLC power comes from the board (§16 Phase 3 受入基準⑤)', () => {
     const { circuit } = reference();
-    const wire = circuit.session.wires.find((w) => w.to === 'PLC.L');
+    const wire = circuit.session.wires.find((w) => String(w.to) === 'PLC.L');
     removeWire(circuit.session, wire?.id ?? '');
-    // 盤の P.1 は既設配線＋鎖の1本で埋まっているので、鎖の途中（PLC.COM0）から取る
-    expect(addWire(circuit.session, circuit.board, t('CR1.9'), t('PLC.L')).ok).toBe(true);
+    // 盤の P.1 は既設配線＋鎖の1本で埋まっている。鎖の途中の端子も2本埋まっているので、
+    // 空きがあるのは鎖の**末端**（最後の出力リレーの 9番ピン）だけである（§6.6）
+    const lastRelay = circuit.io.outputs.at(-1)?.cr ?? 'CR3';
+    expect(addWire(circuit.session, circuit.board, t(`${lastRelay}.9`), t('PLC.L')).ok).toBe(true);
     const result = checkPlcPowerIndependent(checkInput(circuit, context(circuit)));
     expect(result.ok).toBe(false);
     expect(result.details.join('')).toContain('盤');
@@ -6895,7 +7070,7 @@ describe('plcPowerIndependent（§10.1 / §7.4）', () => {
   it('fails when the PLC power is not wired at all', () => {
     const { circuit } = reference();
     for (const wire of [...circuit.session.wires]) {
-      if (wire.to === 'PLC.L' || wire.to === 'PLC.N') removeWire(circuit.session, wire.id);
+      if (at(wire, 'PLC.L') || at(wire, 'PLC.N')) removeWire(circuit.session, wire.id);
     }
     expect(checkPlcPowerIndependent(checkInput(circuit, context(circuit))).ok).toBe(false);
   });
@@ -6917,7 +7092,7 @@ describe('ioAssignment（§7.4 / §7.6）', () => {
 
   it('fails when an input is wired to the wrong push button', () => {
     const { circuit } = reference();
-    const wire = circuit.session.wires.find((w) => w.to === 'PLC.X0');
+    const wire = circuit.session.wires.find((w) => String(w.to) === 'PLC.X0');
     removeWire(circuit.session, wire?.id ?? '');
     expect(addWire(circuit.session, circuit.board, t('TB_PB.2a'), t('PLC.X0')).ok).toBe(true);
     expect(checkIoAssignment(checkInput(circuit, context(circuit))).ok).toBe(false);
@@ -6962,8 +7137,6 @@ describe('runStaticChecks（PLCの3件を含む）', () => {
 });
 ```
 
-**注意:** `checkInput()` の `log` はダミーである（PLCの3件はログを読まない）。`runStaticChecks` の他の6件はログを読むので、上の「9件すべて OK」テストでは**実際に再生したログ**を使うこと（`runPlcOperations()` の結果の `log` と `events`）。ダミーのままだと `coilPolarity` が空のログで OK になり、検査として弱い。Step 1 を書くときに `runPlcOperations` を使う形へ直すこと。
-
 - [ ] **Step 2: RED を確認する**
 
 ```powershell
@@ -6972,13 +7145,99 @@ pnpm --filter @ojt/content exec vitest run test/plc-static-checks.test.ts
 
 Expected: 失敗。`Error: Failed to load url ../src/plc-static-checks.js`。
 
-- [ ] **Step 3: `src/plc-static-checks.ts` を書く**
+- [ ] **Step 3a: `src/static-check-types.ts` を作って型を切り出す**
+
+`plc-static-checks.ts` は `static-checks.ts` の型（`StaticCheckInput` / `StaticCheckResult`）が要り、`static-checks.ts` は `plc-static-checks.ts` の関数が要る。`import-x/no-cycle` はこのリポジトリでは `maxDepth: Infinity` で走り、**型だけの辺も循環として数える**ので、型は最初から第三のファイルに置く（後から直すのではなく、この順で作る）。
+
+`packages/content/src/static-check-types.ts`（新規）:
 
 ```ts
-import { OUTLET_ID, PLC_PART_ID, PL_BLOCK_ID, PB_BLOCK_ID, type PlcUnitDefinition, type SocketRoles } from '@ojt/board-model';
-import { buildNets, terminalId, type Nets, type TerminalId } from '@ojt/circuit-sim';
+import type { BoardSession, PlcUnitDefinition, SocketRoles } from '@ojt/board-model';
+import type {
+  ChatterEvent,
+  HazardEvent,
+  Netlist,
+  SignalLog,
+  WireColor,
+} from '@ojt/circuit-sim';
 import type { ResolvedPlcIo } from './schema/plc.js';
-import type { StaticCheckInput, StaticCheckResult } from './static-checks.js';
+import type { StaticCheckId } from './schema/judge.js';
+
+/**
+ * 静的チェックの型だけを置くファイル。設計仕様 §7.4。
+ *
+ * `static-checks.ts`（汎用6件）と `plc-static-checks.ts`（モードD3件）が互いを必要とするため、
+ * 型はどちらにも属さないここに置く。`import-x/no-cycle` は型だけの往復も循環と見なすので、
+ * この切り出しは必須である。
+ */
+
+export type { StaticCheckId };
+
+/** チェック1件の結果。§7.4 */
+export interface StaticCheckResult {
+  id: StaticCheckId;
+  ok: boolean;
+  message: string;
+  details: string[];
+}
+
+/** モードDの静的チェックに要る文脈。§10.2 */
+export interface PlcCheckContext {
+  unit: PlcUnitDefinition;
+  io: ResolvedPlcIo;
+  roles: SocketRoles;
+}
+
+/** チェックの入力（訓練者側の盤・ネットリスト・再生結果）。 */
+export interface StaticCheckInput {
+  session: BoardSession;
+  netlist: Netlist;
+  log: SignalLog;
+  hazards: readonly HazardEvent[];
+  chatters: readonly ChatterEvent[];
+  /** 新規配線に使ってよい線色。モードB・Dは青のみ、モードC2は白のみ。§8.1 */
+  allowedColors: readonly WireColor[];
+  /**
+   * 課題の開始時点で既に盤にあった電線のID。線色の検査から外す。§9.2
+   * モードC2は「初期配線は青のまま・修復だけ白」なので、残っている青線を違反にしない。
+   * モードBでは渡さない（訓練者が引いた電線しか無いため）。
+   */
+  preexistingWireIds?: ReadonlySet<string>;
+  /**
+   * モードDの文脈（PLC本体・I/O割付・ソケット役割）。§10.2
+   * `twoStage` / `plcPowerIndependent` / `ioAssignment` を有効にするときは必須である。
+   */
+  plc?: PlcCheckContext;
+}
+```
+
+`src/static-checks.ts` からは `StaticCheckResult` / `StaticCheckInput` の**定義を消して**このファイルから import し、APIの互換のために再エクスポートする:
+
+```ts
+import type { PlcCheckContext, StaticCheckInput, StaticCheckResult } from './static-check-types.js';
+
+export type { PlcCheckContext, StaticCheckInput, StaticCheckResult };
+```
+
+- [ ] **Step 3b: `src/plc-static-checks.ts` を書く**
+
+```ts
+import {
+  OUTLET_ID,
+  PLC_PART_ID,
+  PL_BLOCK_ID,
+  PB_BLOCK_ID,
+  type PlcUnitDefinition,
+} from '@ojt/board-model';
+import { buildNets, terminalId, type Nets, type TerminalId } from '@ojt/circuit-sim';
+import type {
+  PlcCheckContext,
+  StaticCheckInput,
+  StaticCheckResult,
+} from './static-check-types.js';
+
+// 型は `static-check-types.ts` に置いてある（Step 3a）。テストの import 先を変えないため再エクスポートする
+export type { PlcCheckContext };
 
 /**
  * モードDの静的チェック。設計仕様 §7.4 / §10.2 / §10.8。
@@ -6990,13 +7249,6 @@ import type { StaticCheckInput, StaticCheckResult } from './static-checks.js';
 
 /** 盤の電源系端子の接頭辞（ここから PLC の電源を取ってはならない）。§10.1 */
 export const BOARD_POWER_PREFIXES: readonly string[] = ['P.', 'N.', 'PS.', 'CB.', 'SW.'];
-
-/** モードDの静的チェックに要る文脈。 */
-export interface PlcCheckContext {
-  unit: PlcUnitDefinition;
-  io: ResolvedPlcIo;
-  roles: SocketRoles;
-}
 
 function result(
   id: StaticCheckResult['id'],
@@ -7167,19 +7419,18 @@ export function checkIoAssignment(input: StaticCheckInput): StaticCheckResult {
 }
 ```
 
-- [ ] **Step 4: `src/static-checks.ts` に組み込む**
+- [ ] **Step 4: `src/static-checks.ts` の仮実装を本実装に差し替える**
 
-`StaticCheckInput` に足す:
+Task 12 Step 4 で置いた仮実装（`plcCheckNotReady` と `CHECKS` の3件）を**そのまま消して**、本物の関数に差し替える。
+
+1. `function plcCheckNotReady(...)` の定義ごと削除する。
+2. import を足す:
 
 ```ts
-  /**
-   * モードDの文脈（PLC本体・I/O割付・ソケット役割）。§10.2
-   * `twoStage` / `plcPowerIndependent` / `ioAssignment` を有効にするときは必須である。
-   */
-  plc?: PlcCheckContext;
+import { checkIoAssignment, checkPlcPowerIndependent, checkTwoStage } from './plc-static-checks.js';
 ```
 
-`CHECKS` に3件を足す:
+3. `CHECKS` の3件を差し替える:
 
 ```ts
 const CHECKS: Readonly<Record<StaticCheckId, (input: StaticCheckInput) => StaticCheckResult>> = {
@@ -7195,13 +7446,16 @@ const CHECKS: Readonly<Record<StaticCheckId, (input: StaticCheckInput) => Static
 };
 ```
 
-**循環依存に注意:** `plc-static-checks.ts` は `static-checks.ts` から**型だけ**を import し（`StaticCheckInput` / `StaticCheckResult`）、`static-checks.ts` は `plc-static-checks.ts` から関数を import する。`import-x/no-cycle` は型だけの往復も循環として検出するため、**`StaticCheckInput` / `StaticCheckResult` / `PlcCheckContext` の定義を `static-checks.ts` から `plc-static-checks.ts` 側に置かない**こと。型の置き場所は `static-checks.ts` のままで、`plc-static-checks.ts` の import は `import type { ... } from './static-checks.js'` にする。それでも `pnpm lint` が循環を報告する場合は、**型だけを `src/static-check-types.ts` に切り出して両者がそこを見る**形に直す（この場合 `static-checks.ts` は再エクスポートする）。
+`StaticCheckInput` への `plc?: PlcCheckContext` の追加は Step 3a で `static-check-types.ts` に入っているので、ここでは何もしなくてよい。依存の向きは `static-check-types.ts` ← `plc-static-checks.ts` ← `static-checks.ts` の一方向だけになり、`import-x/no-cycle`（`maxDepth: Infinity`・型だけの辺も対象）は無警告になる。
 
 - [ ] **Step 5: GREEN を確認してコミットする**
 
 ```powershell
 pnpm --filter @ojt/content exec vitest run test/plc-static-checks.test.ts test/static-checks.test.ts
+pnpm --filter @ojt/content typecheck
 pnpm lint
+pnpm exec prettier --write packages/content/src/static-check-types.ts packages/content/src/plc-static-checks.ts packages/content/src/static-checks.ts packages/content/test/plc-static-checks.test.ts
+pnpm exec prettier --check packages/content
 git add packages/content
 git commit -m "feat(content): add the twoStage, plcPowerIndependent and ioAssignment checks"
 ```
@@ -7315,9 +7569,9 @@ describe('judgePlc（§10.8）', () => {
 
   it('fails the twoStage check when the lamp is wired straight to Y (§16 Phase 3 受入基準④)', () => {
     const circuit = traineeSession();
-    const coil = circuit.session.wires.find((w) => w.from === 'PLC.Y0');
+    const coil = circuit.session.wires.find((w) => String(w.from) === 'PLC.Y0');
     removeWire(circuit.session, coil?.id ?? '');
-    const lamp = circuit.session.wires.find((w) => w.to === 'TB_PL.1+');
+    const lamp = circuit.session.wires.find((w) => String(w.to) === 'TB_PL.1+');
     removeWire(circuit.session, lamp?.id ?? '');
     addWire(circuit.session, circuit.board, t('PLC.Y0'), t('TB_PL.1+'));
     const judged = judgePlc(problem(), JIPM_BOARD, circuit.session, problem().referenceLadder);
@@ -7329,9 +7583,11 @@ describe('judgePlc（§10.8）', () => {
 
   it('fails the plcPowerIndependent check when the PLC is fed from the board (§16 Phase 3 受入基準⑤)', () => {
     const circuit = traineeSession();
-    const wire = circuit.session.wires.find((w) => w.to === 'PLC.L');
+    const wire = circuit.session.wires.find((w) => String(w.to) === 'PLC.L');
     removeWire(circuit.session, wire?.id ?? '');
-    addWire(circuit.session, circuit.board, t('CR1.9'), t('PLC.L'));
+    // 鎖の末端（最後の出力リレーの 9番ピン）だけが1本空いている（§6.6）
+    const lastRelay = circuit.io.outputs.at(-1)?.cr ?? 'CR3';
+    expect(addWire(circuit.session, circuit.board, t(`${lastRelay}.9`), t('PLC.L')).ok).toBe(true);
     const judged = judgePlc(problem(), JIPM_BOARD, circuit.session, problem().referenceLadder);
     expect(judged.ok).toBe(true);
     if (!judged.ok) return;
@@ -8032,9 +8288,9 @@ describe('内蔵モードD課題の弁別（§16 Phase 3 の受入基準）', ()
     const built = buildPlcReferenceSession(problem, JIPM_BOARD);
     if (!built.ok) throw new Error('模範回路を組めません');
     const { session, board } = built.value;
-    const coil = session.wires.find((w) => w.from === 'PLC.Y0');
+    const coil = session.wires.find((w) => String(w.from) === 'PLC.Y0');
     expect(removeWire(session, coil?.id ?? '').ok).toBe(true);
-    const lamp = session.wires.find((w) => w.to === 'TB_PL.1+');
+    const lamp = session.wires.find((w) => String(w.to) === 'TB_PL.1+');
     expect(removeWire(session, lamp?.id ?? '').ok).toBe(true);
     expect(addWire(session, board, t('PLC.Y0'), t('TB_PL.1+')).ok).toBe(true);
     const judged = judgePlc(problem, JIPM_BOARD, session, problem.referenceLadder);
@@ -8047,10 +8303,13 @@ describe('内蔵モードD課題の弁別（§16 Phase 3 の受入基準）', ()
   it.each(CASES)('%s: PLC電源を盤から取ると plcPowerIndependent で落ちる（受入基準⑤）', (_id, problem) => {
     const built = buildPlcReferenceSession(problem, JIPM_BOARD);
     if (!built.ok) throw new Error('模範回路を組めません');
-    const { session, board } = built.value;
-    const wire = session.wires.find((w) => w.to === 'PLC.L');
+    const { session, board, io } = built.value;
+    const wire = session.wires.find((w) => String(w.to) === 'PLC.L');
     expect(removeWire(session, wire?.id ?? '').ok).toBe(true);
-    expect(addWire(session, board, t('CR1.9'), t('PLC.L')).ok).toBe(true);
+    // 鎖の末端（3点課題なら CR3.9、1級の4点課題なら CR4.9）だけが1本空いている（§6.6）
+    expect(addWire(session, board, t(`${io.outputs.at(-1)?.cr ?? 'CR3'}.9`), t('PLC.L')).ok).toBe(
+      true,
+    );
     const judged = judgePlc(problem, JIPM_BOARD, session, problem.referenceLadder);
     expect(judged.ok).toBe(true);
     if (!judged.ok) return;
@@ -8063,9 +8322,9 @@ describe('内蔵モードD課題の弁別（§16 Phase 3 の受入基準）', ()
     const built = buildPlcReferenceSession(problem, JIPM_BOARD);
     if (!built.ok) throw new Error('模範回路を組めません');
     const { session, board } = built.value;
-    const wire = session.wires.find((w) => w.to === 'PLC.X0');
+    const wire = session.wires.find((w) => String(w.to) === 'PLC.X0');
     expect(removeWire(session, wire?.id ?? '').ok).toBe(true);
-    // PB1 のa接点ではなく PB4（赤）のa接点へ繋ぐ
+    // PB1 のa接点ではなく PB4（チェック用回路の押ボタン。§6.3）のa接点へ繋ぐ
     expect(addWire(session, board, t('TB_PB.4a'), t('PLC.X0')).ok).toBe(true);
     const judged = judgePlc(problem, JIPM_BOARD, session, problem.referenceLadder);
     expect(judged.ok).toBe(true);
