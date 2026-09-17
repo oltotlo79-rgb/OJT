@@ -156,4 +156,19 @@ test.describe('タイムチャートの拡大表示', () => {
     await page.getByRole('button', { name: '閉じる' }).click();
     await expect(page.getByTestId('chart-modal')).toHaveCount(0);
   });
+
+  test('操作エッジの多い課題（b-007）は小さいチャートの破線を絞る（§7.7 レビュー Minor 2）', async () => {
+    await page.getByTestId('mode-assemble').click();
+    await page.getByTestId('open-b-007').click();
+    await expect(page.getByTestId('viewport')).toBeVisible();
+    await expect
+      .poll(async () => page.locator('[data-testid="viewport"] canvas').count(), {
+        timeout: 30_000,
+      })
+      .toBe(1);
+    await page.waitForTimeout(1500);
+    const spec = page.getByTestId('chart-spec');
+    await expect(spec).toBeVisible();
+    await shot(app, 'after-05-b007-small');
+  });
 });
