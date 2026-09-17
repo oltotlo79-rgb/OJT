@@ -3,6 +3,9 @@ import type { BoardSession, SocketId } from '@ojt/board-model';
 import type { TerminalId } from '@ojt/circuit-sim';
 import {
   addedWireIds,
+  buildHighlightIndex,
+  cellIdsAtTerminal,
+  highlightFor,
   isInspectRepairProblem,
   modificationWireIds,
   replacePart,
@@ -11,6 +14,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, type JSX } from 'react';
 import { ojtApi } from '../app/ojt-api.js';
 import { useStore } from '../app/store.js';
+import { NO_HIGHLIGHT } from '../app/store-types.js';
 import { sounds, soundsForSnapshot } from '../audio/sounds.js';
 import {
   failedLog,
@@ -121,6 +125,7 @@ export function InspectRepairSession(): JSX.Element {
   const logLines = useStore((s) => s.logLines);
   const judging = useStore((s) => s.judging);
   const schematicVisible = useStore((s) => s.schematicVisible);
+  const highlightCells = useStore((s) => s.highlight.cellIds);
   const restoredHazardCount = useStore((s) => s.restoredHazardCount);
   const problemId = problem?.id;
   const sessionEpoch = useStore((s) => s.sessionEpoch);
@@ -279,9 +284,49 @@ export function InspectRepairSession(): JSX.Element {
     [apply],
   );
 
-  /** 3Dへ渡すコールバックは安定させる。毎回作り直すとシーン全体が再構築される。§15 */
+  /**
+   * 回路図要素 ⇄ 盤の索引。§9.2
+   * 電線は**いまの盤**から引くので、故障で取り除かれた電線（未配線）は出てこない
+   * （Plan 2A `buildHighlightIndex()`）。盤が変わるたびに組み直す。
+   */
+  const highlightIndex = useMemo(
+    () =>
+      circuit === undefined || session === undefined
+        ? undefined
+        : buildHighlightIndex(circuit.cells, session),
+    [circuit, session],
+  );
+  /** 最新の索引（`onHover` は `useCallback([])` なので ref 経由で読む。§15） */
+  const latestIndex = useRef(highlightIndex);
+  latestIndex.current = highlightIndex;
+
+  /**
+   * 端子のホバー。§9.2
+   * 盤の端子から回路図の要素を逆引きして光らせる（連動ハイライトの「およびその逆」）。
+   * 3Dが返すのは物理端子IDなので、索引が持つ役割IDへ直してから引く（§6.4）。
+   *
+   * 2点ガードする（I-8）: ①1級（`schematicVisible === false`）は回路図を出さないので
+   * 逆引きしても無駄な `set` になるだけで、毎フレームのホバーのたびにストアを揺らさない。
+   * ②同じ結果（`cellIds` の並びが同じ）なら `setHighlight()` を呼ばない。ホバーは
+   * マウス移動のたびに飛んでくるので、同一端子の上に留まっている間の再描画を防ぐ。
+   */
   const onHover = useCallback((id: TerminalId | undefined) => {
-    useStore.getState().setHovered(id);
+    const store = useStore.getState();
+    store.setHovered(id);
+    if (!store.schematicVisible) return;
+    const current = store.session;
+    const index = latestIndex.current;
+    if (index === undefined || current === undefined || id === undefined) {
+      if (store.highlight.cellIds.length > 0) store.setHighlight(NO_HIGHLIGHT);
+      return;
+    }
+    const role = toNetlistTerminal(current.socketRoles, id);
+    const cellIds = cellIdsAtTerminal(index, role);
+    const next = cellIds.join(',');
+    if (next === store.highlight.cellIds.join(',')) return;
+    store.setHighlight(
+      cellIds.length === 0 ? NO_HIGHLIGHT : { cellIds, terminals: [role], wireIds: [] },
+    );
   }, []);
   const onPress = useCallback((pbId: string) => {
     bridge.send({ type: 'press', pbId });
@@ -656,7 +701,28 @@ export function InspectRepairSession(): JSX.Element {
             <section className={styles.panelLive} data-testid="schematic-hint">
               <h2 className={styles.liveTitle}>{JA.session.schematicHint}</h2>
               <div className={styles.schematicBox}>
-                <SchematicSvg document={problem.schematic} />
+                <SchematicSvg
+                  document={problem.schematic}
+                  highlightCellIds={highlightCells}
+                  onPickCell={(cellId) => {
+                    const store = useStore.getState();
+                    const index = latestIndex.current;
+                    if (cellId === undefined || index === undefined) {
+                      store.setHighlight(NO_HIGHLIGHT);
+                      return;
+                    }
+                    const target = highlightFor(index, cellId);
+                    store.setHighlight(
+                      target === undefined
+                        ? NO_HIGHLIGHT
+                        : {
+                            cellIds: [cellId],
+                            terminals: target.terminals.map((t) => String(t)),
+                            wireIds: [...target.wireIds],
+                          },
+                    );
+                  }}
+                />
               </div>
             </section>
           ) : null}

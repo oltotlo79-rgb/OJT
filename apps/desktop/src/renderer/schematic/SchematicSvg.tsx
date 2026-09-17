@@ -31,6 +31,10 @@ const STROKE: Readonly<Record<ShapeRole, { color: string; width: number }>> = {
 /** 銘板の文字の大きさ（論理単位）。 */
 const LABEL_FONT_SIZE = 6;
 
+/** 連動ハイライトの線色と線幅の倍率。§9.2 */
+const HIGHLIGHT_STROKE = '#C2410C';
+const HIGHLIGHT_WIDTH_SCALE = 1.8;
+
 /**
  * 寸法設定。`DEFAULT_LAYOUT_OPTIONS` の `colWidth: 24` だと、タイマコイルの銘板
  * （`layout()` が `T1 (3.0秒)` の形で作る）が隣の要素の銘板と重なる。
@@ -45,14 +49,28 @@ function arcPoint(cx: number, cy: number, r: number, deg: number): [number, numb
   return [cx + r * Math.cos(rad), cy + r * Math.sin(rad)];
 }
 
-/** 図形プリミティブ1つを SVG 要素にする。 */
-function renderShape(shape: Shape, index: number): JSX.Element | null {
-  const style = STROKE[shape.role];
+/**
+ * 図形プリミティブ1つを SVG 要素にする。
+ * `highlighted` は §9.2 の連動ハイライト。白地の回路図では琥珀が読めないので、
+ * 3D側（`HIGHLIGHT_COLOR`）とは別に濃い橙を使い、線幅も太らせて見分けられるようにする。
+ * `data-cell` は「どの要素の図形か」を DOM に残すもので、クリックの受け口にもテストの
+ * 手がかりにもなる（`Shape.cellId`。Plan 1B）。
+ */
+function renderShape(shape: Shape, index: number, highlighted: boolean): JSX.Element | null {
+  const base = STROKE[shape.role];
+  const style = highlighted
+    ? { color: HIGHLIGHT_STROKE, width: base.width * HIGHLIGHT_WIDTH_SCALE }
+    : base;
+  const common = {
+    ...(shape.cellId === undefined ? {} : { 'data-cell': shape.cellId }),
+    ...(highlighted ? { 'data-highlight': 'true' } : {}),
+  };
   switch (shape.kind) {
     case 'line':
       return (
         <line
           key={index}
+          {...common}
           x1={shape.x1}
           y1={shape.y1}
           x2={shape.x2}
@@ -66,6 +84,7 @@ function renderShape(shape: Shape, index: number): JSX.Element | null {
       return (
         <circle
           key={index}
+          {...common}
           cx={shape.cx}
           cy={shape.cy}
           r={shape.r}
@@ -81,6 +100,7 @@ function renderShape(shape: Shape, index: number): JSX.Element | null {
       return (
         <path
           key={index}
+          {...common}
           d={`M ${x1} ${y1} A ${shape.r} ${shape.r} 0 ${large} 1 ${x2} ${y2}`}
           fill="none"
           stroke={style.color}
@@ -92,6 +112,7 @@ function renderShape(shape: Shape, index: number): JSX.Element | null {
       return (
         <text
           key={index}
+          {...common}
           x={shape.x}
           y={shape.y}
           fill={style.color}
@@ -105,9 +126,22 @@ function renderShape(shape: Shape, index: number): JSX.Element | null {
   }
 }
 
-/** 回路図の SVG。 */
-export function SchematicSvg({ document: doc }: { document: SchematicDocument }): JSX.Element {
+/**
+ * 回路図の SVG。§11.2
+ * `highlightCellIds` と `onPickCell` はモードC2の連動ハイライト（§9.2）で使う。省略すると
+ * 従来どおりの読取専用レンダラとして動く（モードBの回路図ヒント）。
+ */
+export function SchematicSvg({
+  document: doc,
+  highlightCellIds,
+  onPickCell,
+}: {
+  document: SchematicDocument;
+  highlightCellIds?: readonly string[];
+  onPickCell?: (cellId: string | undefined) => void;
+}): JSX.Element {
   const result = useMemo(() => layout(doc, LAYOUT), [doc]);
+  const highlighted = useMemo(() => new Set(highlightCellIds ?? []), [highlightCellIds]);
   return (
     <svg
       viewBox={`0 0 ${result.width} ${result.height}`}
@@ -115,8 +149,17 @@ export function SchematicSvg({ document: doc }: { document: SchematicDocument })
       aria-label={doc.title}
       data-testid="schematic-svg"
       style={{ width: '100%', background: '#F7F7F4', borderRadius: 4 }}
+      onClick={(event) => {
+        if (onPickCell === undefined) return;
+        // クリックされた図形の `data-cell` を読む。母線やラベルには無いので解除になる
+        const target = event.target as { getAttribute?: (name: string) => string | null };
+        const cellId = target.getAttribute?.('data-cell') ?? undefined;
+        onPickCell(cellId);
+      }}
     >
-      {result.shapes.map((shape, index) => renderShape(shape, index))}
+      {result.shapes.map((shape, index) =>
+        renderShape(shape, index, shape.cellId !== undefined && highlighted.has(shape.cellId)),
+      )}
     </svg>
   );
 }
