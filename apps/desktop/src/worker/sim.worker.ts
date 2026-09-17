@@ -53,6 +53,13 @@ import {
  */
 
 let simulation: Simulation | undefined;
+/**
+ * `load()` で盤を作り直す前に持ち越す危険操作。C1の手順は部品を1つずつ挿し替えて
+ * 最後にまとめて判定するため、`new Simulation()` が作り直されるたびに前の部品で
+ * 起きた `hazards()` を捨ててはいけない（§5.6 / §8.3。C2のUndo/Redoの再読込も同様）。
+ * 新しいセッション（`sessionEpoch` ごとに新しい Worker）や `reset` コマンドでは空に戻す。
+ */
+let carriedHazards: HazardEvent[] = [];
 let session: BoardSession | undefined;
 let baselineMs = 0;
 let lastSnapshotMs = 0;
@@ -96,6 +103,8 @@ function load(next: BoardSession, partFaults: readonly FaultSpecData[] = []): vo
   if (issues.length > 0) {
     throw new Error(issues.map((i) => `${i.path}: ${i.message}`).join(' / '));
   }
+  carriedHazards =
+    simulation === undefined ? [] : [...carriedHazards, ...simulation.events.hazards()];
   simulation = new Simulation(netlist, { tickMs: TICK_MS });
   logCursor = 0;
   hazardCursor = 0;
@@ -370,6 +379,7 @@ function handle(command: SimCommand): void {
       logCursor = 0;
       hazardCursor = 0;
       chatterCursor = 0;
+      carriedHazards = [];
       start();
       break;
     case 'resetTrip':
@@ -400,7 +410,7 @@ function handle(command: SimCommand): void {
       try {
         const result = judgeAssemble(command.problem, JIPM_BOARD, command.session, {
           elapsedMs: command.elapsedMs,
-          sessionHazards: sim.events.hazards(),
+          sessionHazards: [...carriedHazards, ...sim.events.hazards()],
         });
         post({ type: 'judgeResult', result });
       } finally {
@@ -415,7 +425,7 @@ function handle(command: SimCommand): void {
        */
       const result = judgeInspectParts(command.problem, command.answers, {
         elapsedMs: command.elapsedMs,
-        sessionHazards: sim.events.hazards(),
+        sessionHazards: [...carriedHazards, ...sim.events.hazards()],
       });
       post({ type: 'inspectResult', result: { ok: true, value: result } });
       break;
@@ -433,7 +443,10 @@ function handle(command: SimCommand): void {
           JIPM_BOARD,
           command.circuit,
           command.reports,
-          { elapsedMs: command.elapsedMs, sessionHazards: sim.events.hazards() },
+          {
+            elapsedMs: command.elapsedMs,
+            sessionHazards: [...carriedHazards, ...sim.events.hazards()],
+          },
         );
         post({
           type: 'inspectResult',
