@@ -95,3 +95,16 @@ content 32 files / 409、desktop 28 files / 469、circuit-sim 214、board-model 
   0.2〜0.45秒なので Worker 内で実行）→ Batch 2〜6。
 - 各バッチ着地ごとに `main` を push する。
 - 詳細は `briefs/deferred.txt` 末尾を参照。
+
+## 2026-09-18 追記（第4回中断・Plan 2B Task 1 着地）
+
+- Plan 2B Task 1 着地 3c6a8db（課題一覧に内蔵20題をモード付きで表示、`SessionMode`・
+  `ProblemSummary.mode`・`readProblem → SupportedProblem | null`、C1/C2 は一覧に出るが
+  開始は未対応トーストで保護）。
+- 暫定ガードは `ProblemList.tsx` と `session/work-file.ts` の2か所にあり、
+  Task 4 Step 10 で両方外す。
+- desktop 29 ファイル / 474 テスト、typecheck・lint・prettier 合格、E2E とビルドは未実行。
+- 次の作業: Task 4「ストアを3モードへ広げる」（計画 L1427–2176、Step 1 の
+  `apps/desktop/test/store-inspect.test.ts` から）→ Tasks 1–4 の Opus レビュー1本 →
+  Batch 2。
+- 詳細は `briefs/deferred.txt` 末尾を参照。
