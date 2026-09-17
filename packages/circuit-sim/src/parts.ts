@@ -38,7 +38,26 @@ export type PartKind =
   | 'lamp'
   | 'buzzer'
   | 'power-supply'
-  | 'terminal-block';
+  | 'terminal-block'
+  | 'plc';
+
+/** PLCの入力1点（端子とその抵抗負荷要素）。§4.4 */
+export interface PlcInputChannel {
+  /** 機種の端子表記（`X0` / `0.00` など）。 */
+  name: string;
+  terminal: TerminalId;
+  /** `PLC.SS` との間の抵抗負荷要素のID。 */
+  elementId: string;
+}
+
+/** PLCの出力1点（端子・所属COM・接点要素）。§4.4 */
+export interface PlcOutputChannel {
+  name: string;
+  terminal: TerminalId;
+  com: TerminalId;
+  /** 端子とCOMの間の接点要素のID。 */
+  elementId: string;
+}
 
 /** 部品ごとの動作モデル用メタデータ。 */
 export type PartMeta =
@@ -63,7 +82,22 @@ export type PartMeta =
   | { kind: 'lamp'; color: LampColor; loadElementId: string; litVolts: number; dimVolts: number }
   | { kind: 'buzzer'; loadElementId: string; litVolts: number; dimVolts: number }
   | { kind: 'power-supply'; sourceElementId: string }
-  | { kind: 'terminal-block' };
+  | { kind: 'terminal-block' }
+  | {
+      kind: 'plc';
+      /** 機種名（`FX5U` など。表示と課題データの照合に使う）。§7.6 */
+      model: string;
+      /** 入力コモン（S/S 相当）の端子。 */
+      inputCommon: TerminalId;
+      inputs: readonly PlcInputChannel[];
+      outputs: readonly PlcOutputChannel[];
+      /** 入力ON判定のしきい値[A]。§5.1.3 */
+      onAmps: number;
+      /** 入力OFF判定のしきい値[A]。§5.1.3 */
+      offAmps: number;
+      /** 電源端子（電気的には解かない）。§4.4 */
+      power: readonly TerminalId[];
+    };
 
 /** 部品インスタンス。端子集合と電気的実体（要素集合）からなる。§5.1 */
 export interface Part {

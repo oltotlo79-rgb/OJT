@@ -64,7 +64,19 @@ export {
   type Part,
   type PartKind,
   type PartMeta,
+  type PlcInputChannel,
+  type PlcOutputChannel,
 } from './parts.js';
+
+export {
+  createPlcUnit,
+  PLC_INPUT_OFF_AMPS,
+  PLC_INPUT_ON_AMPS,
+  plcMetaOf,
+  PlcUnitError,
+  type PlcOutputSpec,
+  type PlcUnitSpec,
+} from './plc.js';
 
 export {
   addWire,
