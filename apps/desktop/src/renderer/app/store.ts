@@ -18,8 +18,10 @@ import {
   isInspectRepairProblem,
   REPAIR_WIRE_COLOR,
   resolveCompareSignals,
+  resolveFaults,
   toSocketRoles,
   type FaultReport,
+  type FaultSpecData,
   type InspectPartAnswer,
   type InspectPartsProblem,
   type JudgeInspectResult,
@@ -161,6 +163,18 @@ export function checkSessionFor(problem: InspectPartsProblem): BoardSession {
   });
 }
 
+/**
+ * 課題を開くときの上書き。§8.3
+ * 「もう一度」（{@link AppState.resetSession}）が**同じ故障のまま**盤を作り直すときだけ使う。
+ * 省略すると C2 の故障は毎回引き直される（＝新しい課題として開く）。
+ */
+export interface OpenProblemOptions {
+  /** モードC2の故障（解決済み）。渡すと `resolveFaults()` を呼び直さない（Plan 2A I-4）。 */
+  resolvedFaults?: readonly FaultSpecData[] | undefined;
+  /** モードC2の故障の種（記録用）。渡すと `Date.now()` を引き直さない。§5.2 */
+  faultSeed?: number | undefined;
+}
+
 /** ストアの形。 */
 export interface AppState {
   route: Route;
@@ -206,6 +220,13 @@ export interface AppState {
    * デバッグ用の記録である（Plan 2A I-4）。
    */
   faultSeed: number | undefined;
+  /**
+   * いま盤に入っているモードC2の故障（解決済みの明示リスト）。§5.2 / §9.2
+   * `resolveFaults()` を通したあとの**そのもの**で、「もう一度」（{@link AppState.resetSession}）が
+   * 同じ故障のまま盤を作り直すのに使う。種を持たない課題は `resolveFaults()` が内部で
+   * `Date.now()` を使うため、種からは再現できない（Plan 2A I-4）。
+   */
+  resolvedFaults: readonly FaultSpecData[] | undefined;
   /** 回路図 ⇄ 3D盤の連動ハイライト。§9.2 */
   highlight: HighlightSelection;
 
@@ -262,7 +283,11 @@ export interface AppState {
 
   setRoute: (route: Route) => void;
   setProblems: (payload: ProblemListPayload) => void;
-  openProblem: (problem: SupportedProblem) => void;
+  /**
+   * 課題を開く。盤を作れなかった（課題データの誤り）ときは `false` を返し、画面も状態も動かさない。
+   * §13 #2
+   */
+  openProblem: (problem: SupportedProblem, options?: OpenProblemOptions) => boolean;
   setSession: (session: BoardSession) => void;
   pushHistory: (command: SessionCommand) => void;
   setHistory: (history: CommandHistory) => void;
@@ -380,6 +405,7 @@ export const useStore = create<AppState>((set, get) => ({
   reports: [],
   circuit: undefined,
   faultSeed: undefined,
+  resolvedFaults: undefined,
   highlight: NO_HIGHLIGHT,
 
   mode: 'wire',
@@ -415,7 +441,7 @@ export const useStore = create<AppState>((set, get) => ({
   setProblems: (problems) => {
     set({ problems });
   },
-  openProblem: (problem) => {
+  openProblem: (problem, options = {}) => {
     /*
      * モードごとに違うのは「初期の盤」「線色パレット」「回路図ヒントの初期状態」の3つだけ。
      * それ以外（ライブ記録・ログ・計時・履歴の初期化）は3モードで共通なので、
@@ -427,22 +453,40 @@ export const useStore = create<AppState>((set, get) => ({
     let session: BoardSession;
     let circuit: RepairCircuit | undefined;
     let faultSeed: number | undefined;
+    let resolvedFaults: readonly FaultSpecData[] | undefined;
     let wireColor: WireColor = '青';
     let schematicVisible = false;
     if (isInspectRepairProblem(problem)) {
       /*
        * ランダム故障の課題は起動時に種を決め、あとで作業ファイルへ残す（§5.2）。
        * 明示 `faults` 配列の課題（内蔵C2 8題）には使われない（`resolveFaults()` が無視する）。
+       *
+       * 故障は**ここで一度だけ**解決し、解決済みリストをストアへ残す（`resolvedFaults`）。
+       * 「もう一度」は種ではなくこのリストから盤を作り直すので、種を持たない課題
+       * （`resolveFaults()` が内部で `Date.now()` を使う）でも同じ故障で再挑戦できる（2A I-4）。
        */
-      faultSeed = Date.now();
-      const built = buildInspectRepairCircuit(problem, JIPM_BOARD, { seed: faultSeed });
+      faultSeed = options.faultSeed ?? Date.now();
+      let faults = options.resolvedFaults;
+      if (faults === undefined) {
+        const drawn = resolveFaults(problem, JIPM_BOARD, { seed: faultSeed });
+        if (!drawn.ok) {
+          get().toast(
+            referenceErrorText(drawn.errors.map((e) => `${e.path}: ${e.message}`)),
+            'error',
+          );
+          return false;
+        }
+        faults = drawn.value;
+      }
+      const built = buildInspectRepairCircuit(problem, JIPM_BOARD, { resolvedFaults: faults });
       if (!built.ok) {
         get().toast(
           referenceErrorText(built.errors.map((e) => `${e.path}: ${e.message}`)),
           'error',
         );
-        return;
+        return false;
       }
+      resolvedFaults = faults;
       circuit = built.value;
       session = built.value.session;
       wireColor = REPAIR_WIRE_COLOR;
@@ -496,8 +540,10 @@ export const useStore = create<AppState>((set, get) => ({
       checkPartId: undefined,
       reports: [],
       faultSeed,
+      resolvedFaults,
       highlight: NO_HIGHLIGHT,
     });
+    return true;
   },
   setSession: (session) => {
     set({ session });
@@ -728,16 +774,23 @@ export const useStore = create<AppState>((set, get) => ({
     if (get().restartAttempts !== 0) set({ restartAttempts: 0 });
   },
   resetSession: () => {
-    const problem = get().problem;
+    const state = get();
+    const problem = state.problem;
     if (problem === undefined) return;
     /*
      * 盤も履歴もテスターもマークシートも `openProblem()` が作り直すので、C1/C2 の欄を
      * ここで個別に消す必要はない（Plan 2B Task 4 Step 8 が求める「持ち越さない」を満たす）。
-     * C2の故障は、内蔵8題のように `faults` を明示した課題では作り直しても同じものになる
-     * （種は `resolveFaults()` に無視される）。ランダム故障の課題だけは種を引き直すので、
-     * 「もう一度」で別の故障になる。
+     *
+     * C2は**同じ故障のまま**新品の故障入り盤で再挑戦する（Plan 2B Task 4 Step 8）。そのため
+     * 種も故障も引き直さず、いま入っている解決済みリストから作り直す。いまの `circuit.session`
+     * は訓練者の修復で書き換わっている（2A ハンドオフ注記 M-12）ので使い回さない。
      */
-    get().openProblem(problem);
+    const reopened = get().openProblem(problem, {
+      resolvedFaults: state.resolvedFaults,
+      faultSeed: state.faultSeed,
+    });
+    // 作り直せなかったら理由はトーストに出ている。画面も世代番号も動かさない（§13 #2）
+    if (!reopened) return;
     // 同じ課題なら `problemId` は変わらないので、世代番号で Worker の張り直しを促す
     set({ sessionEpoch: get().sessionEpoch + 1 });
   },
@@ -758,6 +811,7 @@ export const useStore = create<AppState>((set, get) => ({
       // 課題を作り直す操作なので C1/C2 の状態も手放す（Plan 2B Task 4 Step 8）
       circuit: undefined,
       faultSeed: undefined,
+      resolvedFaults: undefined,
       answers: [],
       reports: [],
       checkPartId: undefined,
@@ -795,6 +849,7 @@ export const useStore = create<AppState>((set, get) => ({
       // 課題を離れるので C1/C2 の状態も手放す（Plan 2B Task 4 Step 8）
       circuit: undefined,
       faultSeed: undefined,
+      resolvedFaults: undefined,
       answers: [],
       reports: [],
       checkPartId: undefined,

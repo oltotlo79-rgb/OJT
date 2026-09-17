@@ -3,6 +3,7 @@ import type { BoardSession } from '@ojt/board-model';
 import { toTerminalId } from '@ojt/circuit-sim';
 import { BUILTIN_PROBLEMS, buildReferenceSession } from '@ojt/content';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import type * as CircuitSimModule from '@ojt/circuit-sim';
 import type { SimCommand, SimMessage, SimSnapshot } from '../src/worker/protocol.js';
 
 /**
@@ -19,7 +20,7 @@ const clock = vi.hoisted(() => ({ nowMs: 0 }));
 const measured = vi.hoisted(() => ({ step: 0, read: 0 }));
 
 vi.mock('@ojt/circuit-sim', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@ojt/circuit-sim')>();
+  const actual = await importOriginal<typeof CircuitSimModule>();
   return {
     ...actual,
     stepTester: (...args: Parameters<typeof actual.stepTester>) => {

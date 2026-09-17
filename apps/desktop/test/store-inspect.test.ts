@@ -1,8 +1,9 @@
-import { toTerminalId } from '@ojt/circuit-sim';
+import { toTerminalId, wireId } from '@ojt/circuit-sim';
 import {
   BUILTIN_ASSEMBLE_PROBLEMS,
   BUILTIN_INSPECT_PARTS_PROBLEMS,
   BUILTIN_INSPECT_REPAIR_PROBLEMS,
+  type InspectRepairProblem,
 } from '@ojt/content';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { isInspectJudge, useStore } from '../src/renderer/app/store.js';
@@ -195,4 +196,75 @@ describe('isInspectJudge', () => {
       }),
     ).toBe(true);
   });
+});
+
+describe('resetSession（「もう一度」。§8.3 / Plan 2B Task 4）', () => {
+  /** 訓練者が引いた白線1本（修復の途中を表す）。 */
+  const WHITE_WIRE = {
+    id: wireId('user-white-1'),
+    from: toTerminalId('CR1.5'),
+    to: toTerminalId('CR1.6'),
+    color: '白' as const,
+    locked: false,
+    open: false,
+  };
+
+  it('C2は同じ故障のまま、修復前の盤に戻す（plan L2107）', () => {
+    expect(C2_GRADE2).toBeDefined();
+    if (C2_GRADE2 === undefined) return;
+    useStore.getState().openProblem(C2_GRADE2);
+    const opened = useStore.getState();
+    const seedBefore = opened.faultSeed;
+    const sitesBefore = structuredClone(opened.circuit?.applied.sites);
+    const wiresBefore = structuredClone(opened.session?.wires);
+    expect(sitesBefore).toBeDefined();
+    expect(wiresBefore).toBeDefined();
+
+    /*
+     * 訓練者の修復は `circuit.session`（＝開いた直後は `session` と同じオブジェクト）を
+     * 書き換える（2A ハンドオフ注記 M-12）。作り直しでこの盤を使い回していないことを見るため、
+     * 共有しているオブジェクトの方へ白線を足す。
+     */
+    const session = opened.session;
+    if (session === undefined) return;
+    session.wires.push({ ...WHITE_WIRE });
+    useStore.getState().setSession({ ...session, wires: [...session.wires] });
+    expect(useStore.getState().session?.wires.some((w) => w.id === WHITE_WIRE.id)).toBe(true);
+
+    useStore.getState().resetSession();
+
+    const after = useStore.getState();
+    // 種も故障の在処もそのまま（別の故障を引き直さない）
+    expect(after.faultSeed).toBe(seedBefore);
+    expect(after.circuit?.applied.sites).toEqual(sitesBefore);
+    // 盤は修復前に戻る（白線は消え、故障入りの電線が戻っている）
+    expect(after.session?.wires).toEqual(wiresBefore);
+    expect(after.session?.wires.some((w) => w.id === WHITE_WIRE.id)).toBe(false);
+    expect(after.session?.wires.find((w) => w.id === 'sw-005')?.open).toBe(true);
+    expect(after.sessionEpoch).toBe(opened.sessionEpoch + 1);
+  });
+
+  it('ランダム故障で種を持たない課題でも、同じ故障のまま再挑戦できる（2A I-4）', () => {
+    expect(C2_GRADE2).toBeDefined();
+    if (C2_GRADE2 === undefined) return;
+    // 利用者フォルダに置かれうる形（`faults.random` ＋ seed 無し）を内蔵課題から作る
+    const random: InspectRepairProblem = {
+      ...C2_GRADE2,
+      id: 'u-c2-random',
+      faults: {
+        random: {
+          count: 2,
+          types: ['wire-open', 'wire-missing'],
+          fallback: [...(Array.isArray(C2_GRADE2.faults) ? C2_GRADE2.faults : [])],
+        },
+      },
+    };
+    useStore.getState().openProblem(random);
+    const sitesBefore = structuredClone(useStore.getState().circuit?.applied.sites);
+    expect(sitesBefore).toBeDefined();
+
+    useStore.getState().resetSession();
+
+    expect(useStore.getState().circuit?.applied.sites).toEqual(sitesBefore);
+  }, 30_000);
 });
