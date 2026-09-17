@@ -84,6 +84,15 @@ describe('画面の骨格（§9.2）', () => {
     expect(screen.getByTestId('schematic-hint')).toBeTruthy();
   });
 
+  it('回路図ヒントはテスターより上に出す（M4）', () => {
+    render(<InspectRepairSession />);
+    const schematic = screen.getByTestId('schematic-hint');
+    const tester = screen.getByTestId('tester-panel');
+    expect(schematic.compareDocumentPosition(tester) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+  });
+
   it('開始時に故障入りの盤を load する', () => {
     render(<InspectRepairSession />);
     const load = sent.filter((c) => c['type'] === 'load').at(-1);

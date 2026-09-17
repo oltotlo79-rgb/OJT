@@ -287,8 +287,6 @@ export const JA = {
     modifications: '改造（故障箇所でない青線の削除）',
     noModification: '改造はありません。',
     terminal: '端子',
-    site: '故障箇所',
-    reportKind: '指摘した種別',
   },
   result: {
     title: '判定結果',

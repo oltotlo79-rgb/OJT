@@ -63,6 +63,15 @@ describe('openProblem（§12.1）', () => {
     expect(state.reports).toEqual([]);
   });
 
+  it('C2の盤は circuit.session と別オブジェクト（M8。盤の操作で circuit.session を書き換えない）', () => {
+    expect(C2_GRADE2).toBeDefined();
+    if (C2_GRADE2 === undefined) return;
+    useStore.getState().openProblem(C2_GRADE2);
+    const state = useStore.getState();
+    expect(state.session).not.toBe(state.circuit?.session);
+    expect(state.session).toEqual(state.circuit?.session);
+  });
+
   it('C2の回路図ヒントは課題の hints が決める（2級は出す・1級は出さない。§9.2）', () => {
     expect(C2_GRADE2).toBeDefined();
     expect(C2_GRADE1).toBeDefined();
@@ -222,14 +231,12 @@ describe('resetSession（「もう一度」。§8.3 / Plan 2B Task 4）', () => 
     expect(wiresBefore).toBeDefined();
 
     /*
-     * 訓練者の修復は `circuit.session`（＝開いた直後は `session` と同じオブジェクト）を
-     * 書き換える（2A ハンドオフ注記 M-12）。作り直しでこの盤を使い回していないことを見るため、
-     * 共有しているオブジェクトの方へ白線を足す。
+     * `session`（訓練者が触る盤）へ白線を足す。`circuit.session` はもう別オブジェクト
+     * （レビュー指摘 M8）なので `setSession()` を通して反映する。
      */
     const session = opened.session;
     if (session === undefined) return;
-    session.wires.push({ ...WHITE_WIRE });
-    useStore.getState().setSession({ ...session, wires: [...session.wires] });
+    useStore.getState().setSession({ ...session, wires: [...session.wires, { ...WHITE_WIRE }] });
     expect(useStore.getState().session?.wires.some((w) => w.id === WHITE_WIRE.id)).toBe(true);
 
     useStore.getState().resetSession();

@@ -722,17 +722,10 @@ export function InspectRepairSession(): JSX.Element {
               useStore.getState().removeReport(index);
             }}
           />
-          <TesterPanel />
-          <RepairPanel
-            addedWires={addedWireIds(circuit, session)}
-            removedWires={removedWires}
-            mountedParts={mountedParts}
-            onReplacePart={onReplacePart}
-          />
-          {spec !== undefined && spec.ok ? <TimeChartPanel chart={spec.chart} /> : null}
-          {spec !== undefined && !spec.ok ? (
-            <p data-testid="reference-error">{referenceErrorText(spec.errors)}</p>
-          ) : null}
+          {/*
+            回路図ヒントは**テスターより前**に置く（M4。`Session.tsx` が部品パネルより後に
+            置くのと同じ理由の裏返しで、C2はテスターで測る前に回路図を見る流れが多い）。
+          */}
           {schematicVisible ? (
             <section className={styles.panelLive} data-testid="schematic-hint">
               <h2 className={styles.liveTitle}>{JA.session.schematicHint}</h2>
@@ -761,6 +754,17 @@ export function InspectRepairSession(): JSX.Element {
                 />
               </div>
             </section>
+          ) : null}
+          <TesterPanel />
+          <RepairPanel
+            addedWires={addedWireIds(circuit, session)}
+            removedWires={removedWires}
+            mountedParts={mountedParts}
+            onReplacePart={onReplacePart}
+          />
+          {spec !== undefined && spec.ok ? <TimeChartPanel chart={spec.chart} /> : null}
+          {spec !== undefined && !spec.ok ? (
+            <p data-testid="reference-error">{referenceErrorText(spec.errors)}</p>
           ) : null}
         </div>
 

@@ -36,6 +36,7 @@ import type { ProblemListPayload, WorkFile } from '../../shared/ipc.js';
 import type { SimSnapshot } from '../../worker/protocol.js';
 import { droppedTicksLog, JA, referenceErrorText } from '../i18n/ja.js';
 import {
+  cloneSession,
   emptyHistory,
   pushCommand,
   type CommandHistory,
@@ -515,7 +516,12 @@ export const useStore = create<AppState>((set, get) => ({
       }
       resolvedFaults = faults;
       circuit = built.value;
-      session = built.value.session;
+      /*
+       * `session`（訓練者が触る盤）を `circuit.session` と同じオブジェクトのまま渡すと、
+       * 盤の操作が `circuit.session` も書き換えてしまう（レビュー指摘 M8。2A ハンドオフ
+       * 注記 M-12 が「書き換わる」前提で回避していた挙動そのもの）。複製して切り離す。
+       */
+      session = cloneSession(built.value.session);
       wireColor = REPAIR_WIRE_COLOR;
       // C2の回路図の出し方は課題の hints が決める（2級は出す・1級は出さない）。§9.2
       schematicVisible = problem.hints.schematicVisible;
@@ -816,8 +822,7 @@ export const useStore = create<AppState>((set, get) => ({
      * ここで個別に消す必要はない（Plan 2B Task 4 Step 8 が求める「持ち越さない」を満たす）。
      *
      * C2は**同じ故障のまま**新品の故障入り盤で再挑戦する（Plan 2B Task 4 Step 8）。そのため
-     * 種も故障も引き直さず、いま入っている解決済みリストから作り直す。いまの `circuit.session`
-     * は訓練者の修復で書き換わっている（2A ハンドオフ注記 M-12）ので使い回さない。
+     * 種も故障も引き直さず、いま入っている解決済みリストから作り直す。
      */
     const reopened = get().openProblem(problem, {
       resolvedFaults: state.resolvedFaults,

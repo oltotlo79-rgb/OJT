@@ -13,10 +13,15 @@ import styles from './result.module.css';
  * いずれも0」。危険操作の回数と所要時間は**参考表示**で合否には影響しない（§17.2 #3）。
  */
 
-/** 故障の在処を1行の文字列にする（見逃しの一覧に出す）。 */
+/**
+ * 故障の在処を1行の文字列にする（見逃しの一覧に出す）。
+ * `wire-missing`（未配線）は取り除かれた電線の `wireId` を持つが、訓練者は盤の上で
+ * その電線を一度も見ていない（そもそも配線されていない）ので、`wireId` ではなく
+ * 見えている端子（`terminals`）で示す（レビュー指摘 M1）。
+ */
 function siteLabel(site: FaultSite): string {
   const where =
-    site.wireId !== undefined
+    site.kind !== 'wire-missing' && site.wireId !== undefined
       ? `${JA.session.wires} ${site.wireId}`
       : site.partId !== undefined
         ? `${JA.session.parts} ${site.partId}`

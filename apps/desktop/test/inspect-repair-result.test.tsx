@@ -100,6 +100,38 @@ describe('InspectRepairResult（§9.2 判定）', () => {
     expect(screen.getByTestId('extra-list').textContent).toContain('sw-009');
   });
 
+  it('未配線の見逃しは訓練者が見ていない wireId ではなく端子で示す（M1）', () => {
+    expect(C2).toBeDefined();
+    if (C2 === undefined) return;
+    render(
+      <InspectRepairResult
+        problem={C2}
+        result={result({
+          passed: false,
+          reports: {
+            matched: [],
+            missed: [
+              {
+                kind: 'wire-missing',
+                report: 'wire-missing',
+                wireId: 'sw-999',
+                partId: undefined,
+                terminals: ['CR1.6' as never],
+              },
+            ],
+            extra: [],
+          },
+        })}
+        restoredHazardCount={0}
+        onRetry={vi.fn()}
+        onBackToList={vi.fn()}
+      />,
+    );
+    const text = screen.getByTestId('missed-list').textContent ?? '';
+    expect(text).toContain('CR1.6');
+    expect(text).not.toContain('sw-999');
+  });
+
   it('改造した電線を並べる（§9.2 判定③）', () => {
     expect(C2).toBeDefined();
     if (C2 === undefined) return;
