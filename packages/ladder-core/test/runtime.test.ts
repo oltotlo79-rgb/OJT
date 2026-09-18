@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import {
-  C,
   COIL_COL,
   compile,
   createPlcRuntime,
@@ -315,11 +314,10 @@ describe('createPlcRuntime（状態・決定論）', () => {
     expect(run()).toEqual(run());
   });
 
-  it('ignores a write to an input device', () => {
-    const io = new TestIo();
-    const runtime = boot(program(network('n1', [rung(no(SP(0)), out(X(0)))]), endNetwork()), io);
-    runtime.scan();
-    expect(runtime.bit(X(0))).toBe(false);
-    expect(runtime.bit(C(0))).toBe(false);
+  it('rejects a coil that writes an input device at compile time (coil-on-read-only-device)', () => {
+    const result = compile(program(network('n1', [rung(no(SP(0)), out(X(0)))]), endNetwork()));
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.errors.map((e) => e.code)).toContain('coil-on-read-only-device');
   });
 });

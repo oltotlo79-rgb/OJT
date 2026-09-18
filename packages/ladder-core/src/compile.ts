@@ -5,6 +5,7 @@ import {
   deviceLabel,
   IR_COLS,
   isOutputCell,
+  sameDevice,
   type Cell,
   type Device,
   type LadderProgram,
@@ -38,7 +39,8 @@ export type CompileErrorCode =
   | 'dangling-vline'
   | 'timer-preset'
   | 'counter-preset'
-  | 'mc-unmatched';
+  | 'mc-unmatched'
+  | 'coil-on-read-only-device';
 
 /** 変換エラー1件。UIは「出力ウィンドウ」に並べる（§10.6）。 */
 export interface CompileError {
@@ -201,6 +203,42 @@ function checkOutputCell(
   }
 }
 
+/**
+ * 書き込み先デバイスが読み取り専用（入力・特殊）か、あるいは OUT の書き込み先が
+ * タイマ／カウンタ（TON/CTU 命令だけが書ける）かを検査する。実機（GX Works3 等）は
+ * `OUT X0` や `OUT T0` を変換時に拒否する。
+ */
+function checkCoilTarget(
+  net: Network,
+  row: number,
+  col: number,
+  cell: Extract<Cell, { kind: 'coil' }>,
+  errors: CompileError[],
+): boolean {
+  const kind = cell.device.kind;
+  if (kind === 'input' || kind === 'special') {
+    errors.push({
+      code: 'coil-on-read-only-device',
+      networkId: net.id,
+      row,
+      col,
+      message: `${deviceLabel(cell.device)} は読み取り専用のデバイスなのでコイルを書き込めません（${cell.type} ${deviceLabel(cell.device)}）`,
+    });
+    return false;
+  }
+  if (cell.type === 'OUT' && (kind === 'timer' || kind === 'counter')) {
+    errors.push({
+      code: 'coil-on-read-only-device',
+      networkId: net.id,
+      row,
+      col,
+      message: `${deviceLabel(cell.device)} は TON／CTU 命令でのみ書き込めます（OUT ${deviceLabel(cell.device)} は使えません）`,
+    });
+    return false;
+  }
+  return true;
+}
+
 /** 二重コイル（同じデバイスへの OUT／タイマ／カウンタ）を警告する。§10.4 */
 function checkDoubleCoil(
   net: Network,
@@ -295,19 +333,31 @@ export function compile(source: LadderProgram): CompileResult {
             });
             continue;
           }
+          if (cell.kind === 'coil' && !checkCoilTarget(net, row, col, cell, errors)) {
+            continue;
+          }
           outputs.push({ row, col, cell });
           collectReads(cell, reads);
           checkOutputCell(net, row, cell, errors);
           checkDoubleCoil(net, row, cell, written, warnings);
           if (cell.kind === 'mc') mcStack.push(cell.device);
           else if (cell.kind === 'mcr') {
-            if (mcStack.pop() === undefined) {
+            const opened = mcStack.pop();
+            if (opened === undefined) {
               errors.push({
                 code: 'mc-unmatched',
                 networkId: net.id,
                 row,
                 col,
                 message: `対応する MC がありません: ${deviceLabel(cell.device)}`,
+              });
+            } else if (!sameDevice(opened, cell.device)) {
+              errors.push({
+                code: 'mc-unmatched',
+                networkId: net.id,
+                row,
+                col,
+                message: `MC ${deviceLabel(opened)} に対応する MCR が ${deviceLabel(cell.device)} になっています`,
               });
             }
           } else writes.add(cell.device);

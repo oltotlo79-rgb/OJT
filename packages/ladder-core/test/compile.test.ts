@@ -163,6 +163,43 @@ describe('compile', () => {
     expect(codes(b.errors)).toEqual(['mc-unmatched']);
   });
 
+  it('rejects a coil that writes an input or special device (coil-on-read-only-device)', () => {
+    const onInput = program(network('n1', [rung(no(X(0)), out(X(1)))]), endNetwork());
+    const a = compile(onInput);
+    expect(a.ok).toBe(false);
+    if (a.ok) return;
+    expect(codes(a.errors)).toContain('coil-on-read-only-device');
+
+    const onInternal = program(network('n1', [rung(no(X(0)), set(M(0)))]), endNetwork());
+    expect(compile(onInternal).ok).toBe(true); // internal device is writable — sanity check
+  });
+
+  it('rejects an OUT coil that writes a timer or counter device (only TON/CTU may write them)', () => {
+    const onTimer = program(network('n1', [rung(no(X(0)), out(T(0)))]), endNetwork());
+    const a = compile(onTimer);
+    expect(a.ok).toBe(false);
+    if (a.ok) return;
+    expect(codes(a.errors)).toContain('coil-on-read-only-device');
+
+    const onCounter = program(network('n1', [rung(no(X(0)), out(C(0)))]), endNetwork());
+    const b = compile(onCounter);
+    expect(b.ok).toBe(false);
+    if (b.ok) return;
+    expect(codes(b.errors)).toContain('coil-on-read-only-device');
+  });
+
+  it('rejects MC/MCR pairs whose devices differ even though depth matches (MC M9 ... MCR M3)', () => {
+    const p = program(
+      network('n1', [rung(no(X(0)), mc(M(9)))]),
+      network('n2', [rung(no(X(1)), mcr(M(3)))]),
+      endNetwork(),
+    );
+    const r = compile(p);
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(codes(r.errors)).toEqual(['mc-unmatched']);
+  });
+
   it('accepts a matched MC/MCR pair', () => {
     const p = program(
       network('n1', [rung(no(X(0)), mc(M(0)))]),
