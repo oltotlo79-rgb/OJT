@@ -35,6 +35,10 @@ import d001 from './plc/d-001-self-hold.json' with { type: 'json' };
 import d002 from './plc/d-002-interlock.json' with { type: 'json' };
 import d003 from './plc/d-003-on-delay.json' with { type: 'json' };
 import d004 from './plc/d-004-one-shot.json' with { type: 'json' };
+import d005 from './plc/d-005-sequential.json' with { type: 'json' };
+import d006 from './plc/d-006-flicker.json' with { type: 'json' };
+import d007 from './plc/d-007-counter.json' with { type: 'json' };
+import d008 from './plc/d-008-stop-priority.json' with { type: 'json' };
 
 /**
  * 内蔵課題。設計仕様 §7.8 / §7.9（モードB 8題・モードC1 4セット・モードC2 8題）。
@@ -79,7 +83,7 @@ const BUILTIN_INSPECT_REPAIR_JSON: readonly unknown[] = [
 ];
 
 /** 内蔵のモードD課題のJSON。 */
-const BUILTIN_PLC_JSON: readonly unknown[] = [d001, d002, d003, d004];
+const BUILTIN_PLC_JSON: readonly unknown[] = [d001, d002, d003, d004, d005, d006, d007, d008];
 
 /** 内蔵課題の検証に失敗したときに投げる。 */
 export class BuiltinProblemError extends Error {

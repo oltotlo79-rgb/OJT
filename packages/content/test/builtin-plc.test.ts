@@ -8,8 +8,17 @@ import { resolveCompareSignals } from '../src/schema/judge.js';
 import { buildTimeChart, defaultChartSignals, startsAndEndsLow } from '../src/timechart.js';
 
 describe('内蔵モードD課題（§7.9）', () => {
-  it('has the 2級 problems of Task 18', () => {
-    expect(BUILTIN_PLC_PROBLEMS.map((p) => p.id)).toEqual(['d-001', 'd-002', 'd-003', 'd-004']);
+  it('has the eight built-in mode D problems (2級形式4題＋1級形式4題)', () => {
+    expect(BUILTIN_PLC_PROBLEMS.map((p) => p.id)).toEqual([
+      'd-001',
+      'd-002',
+      'd-003',
+      'd-004',
+      'd-005',
+      'd-006',
+      'd-007',
+      'd-008',
+    ]);
     expect(BUILTIN_PLC_PROBLEMS.every((p) => p.plc.model === 'FX5U')).toBe(true);
     expect(BUILTIN_PLC_PROBLEMS.every((p) => p.wiringRequired)).toBe(true);
   });
@@ -20,6 +29,16 @@ describe('内蔵モードD課題（§7.9）', () => {
       expect(problem.io.outputs).toHaveLength(3);
       // PB4 はチェック用回路の押ボタンなので入力には使わない（§6.3）
       expect(problem.io.inputs?.some((input) => String(input.pb) === 'PB4')).toBe(false);
+    }
+  });
+
+  it('uses three inputs and four outputs in the 1級 form (調査資料 §1.1)', () => {
+    const grade1 = BUILTIN_PLC_PROBLEMS.filter((p) => p.grade === 1);
+    expect(grade1).toHaveLength(4);
+    for (const problem of grade1) {
+      expect(problem.io.inputs).toHaveLength(3);
+      expect(problem.io.outputs).toHaveLength(4);
+      expect(problem.io.outputs?.at(-1)?.cr).toBe('CR4');
     }
   });
 
