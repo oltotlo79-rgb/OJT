@@ -6801,7 +6801,942 @@ Expected: `plc-camera` が `Tests  4 passed (4)`、`plc-scene` が `Tests  3 pas
 
 ---
 
+## Task 11: モードDの配線操作（机上端子への配線）
+
+**Files:**
+- Modify: `apps/desktop/src/renderer/session/commands.ts`（**MERGE 注意 #7。1箇所のみ**）
+- Modify: `apps/desktop/src/renderer/screens/Session.tsx` と `InspectRepairSession.tsx`（`runAddWire` の呼び出しに盤を渡す）
+- Modify: `apps/desktop/src/renderer/session/plc-session.ts`
+- Test: `apps/desktop/test/plc-wiring.test.ts`
+
+`runAddWire()` が盤を `JIPM_BOARD` で決め打ちしているので、モードDでは `PLC.X0` が「盤に無い端子」として断られる。**盤を引数で受ける**ように広げる（既定は `JIPM_BOARD` なので既存の2画面は呼び方を変えなくてもよいが、明示的に渡して読み手を迷わせない）。
+
+| 決めること | 本タスクの実装 |
+|---|---|
+| 盤の受け渡し | `runAddWire(session, from, to, color, board = JIPM_BOARD)`。モードDの画面は `boardForProblem(problem)`（Task 2）を渡す |
+| UI が断るもの | 盤のルールだけ（1端子2本・盤に無い端子・既設配線・線色パレット）。`twoStage` / `plcPowerIndependent` / `ioAssignment` は**判定時のみ**（決定表#7） |
+| 判定できるか | `canJudgePlc()`（`plc-session.ts`）が「ラダーが変換済みか」だけを見る（H-1）。**配線の中身は見ない** |
+| 経路 | 盤どうしの電線は `safeRoutes(board, session)`、机上へ渡る電線は `DeskWires`（Task 10）。どちらも盤を引数で受けるので画面側の分岐は要らない |
+
+- [ ] **Step 1: 失敗するテストを書く**
+
+`apps/desktop/test/plc-wiring.test.ts`:
+
+```ts
+import { createSession, JIPM_BOARD, PLC_UNIT_FX5U, withPlcUnit } from '@ojt/board-model';
+import type { TerminalId } from '@ojt/circuit-sim';
+import { BUILTIN_PLC_PROBLEMS } from '@ojt/content';
+import { describe, expect, it } from 'vitest';
+import { runAddWire, runRemoveWire } from '../src/renderer/session/commands.js';
+import { boardForProblem, canJudgePlc, plcBoardOf } from '../src/renderer/session/plc-session.js';
+
+const problem = BUILTIN_PLC_PROBLEMS[0]!;
+const board = withPlcUnit(JIPM_BOARD, PLC_UNIT_FX5U);
+
+function fresh() {
+  return createSession(board, {
+    roles: { S1: 'CR1', S7: 'CHK' },
+    allowedColors: ['青'],
+    extraParts: [],
+    inventory: [],
+  });
+}
+
+describe('モードDの配線（§10.2）', () => {
+  it('wires a board terminal to a PLC input', () => {
+    const session = fresh();
+    const result = runAddWire(session, 'TB_PB.1a' as TerminalId, 'PLC.X0' as TerminalId, '青', board);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(session.wires).toHaveLength(1);
+    expect(result.command.label).toContain('PLC.X0');
+  });
+
+  it('wires the PLC power to the wall outlet', () => {
+    const session = fresh();
+    expect(runAddWire(session, 'OUTLET.L' as TerminalId, 'PLC.L' as TerminalId, '青', board).ok).toBe(true);
+    expect(runAddWire(session, 'OUTLET.N' as TerminalId, 'PLC.N' as TerminalId, '青', board).ok).toBe(true);
+  });
+
+  it('still refuses a terminal the board does not have', () => {
+    const session = fresh();
+    const result = runAddWire(session, 'PLC.X99' as TerminalId, 'PLC.SS' as TerminalId, '青', board);
+    expect(result.ok).toBe(false);
+  });
+
+  it('keeps the two-wires-per-terminal rule on PLC terminals (§5.6 #5)', () => {
+    const session = fresh();
+    runAddWire(session, 'TB_PB.1a' as TerminalId, 'PLC.X0' as TerminalId, '青', board);
+    runAddWire(session, 'TB_PB.2a' as TerminalId, 'PLC.X0' as TerminalId, '青', board);
+    const third = runAddWire(session, 'TB_PB.3a' as TerminalId, 'PLC.X0' as TerminalId, '青', board);
+    expect(third.ok).toBe(false);
+    if (third.ok) return;
+    expect(third.code).toBe('terminal-overload');
+    // 危険操作として数えるために、断った電線そのものが返る（Plan 2B と同じ規則）
+    expect(third.wire).toBeDefined();
+  });
+
+  it('removes a desk wire like any other', () => {
+    const session = fresh();
+    const added = runAddWire(session, 'OUTLET.L' as TerminalId, 'PLC.L' as TerminalId, '青', board);
+    expect(added.ok).toBe(true);
+    if (!added.ok) return;
+    expect(runRemoveWire(session, added.value.id).ok).toBe(true);
+    expect(session.wires).toHaveLength(0);
+  });
+
+  it('defaults to JIPM_BOARD so the other modes keep working', () => {
+    const session = createSession(JIPM_BOARD, {
+      roles: { S1: 'CR1', S7: 'CHK' },
+      allowedColors: ['青'],
+      extraParts: [],
+      inventory: [],
+    });
+    expect(runAddWire(session, 'P.1' as TerminalId, 'TB_PB.2c' as TerminalId, '青').ok).toBe(true);
+  });
+});
+
+describe('boardForProblem / canJudgePlc', () => {
+  it('gives the derived board for mode D and the plain board otherwise', () => {
+    expect(boardForProblem(problem).plcUnit?.model).toBe('FX5U');
+    expect(plcBoardOf(problem)?.terminals.length).toBeGreaterThan(JIPM_BOARD.terminals.length);
+  });
+
+  it('only asks whether the ladder was converted (H-1 / 決定表#7)', () => {
+    expect(canJudgePlc({ converted: false, ladder: undefined })).toEqual({
+      ok: false,
+      reason: 'no-ladder',
+    });
+    expect(canJudgePlc({ converted: false, ladder: problem.referenceLadder })).toEqual({
+      ok: false,
+      reason: 'not-converted',
+    });
+    expect(canJudgePlc({ converted: true, ladder: problem.referenceLadder })).toEqual({ ok: true });
+  });
+});
+```
+
+- [ ] **Step 2: RED を確認し、Step 3 で `commands.ts` を直す（**MERGE 注意 #7**）**
+
+```ts
+/**
+ * 電線を張る。§8.2（失敗理由はそのままトーストに出す）
+ *
+ * 3D盤から渡ってくる端子IDは**物理ID**（`S1.10`。盤定義 `BoardTerminal.id`）だが、
+ * `BoardSession.wires` と `toNetlist()` は**役割ID**（`CR1.10`。§6.4）で持つ。
+ * その変換をここ1箇所で行う（`toNetlistTerminal()` は端子台・P/N・机上の `PLC.*` / `OUTLET.*`
+ * はそのまま返す）。
+ *
+ * `board` はモードDが**PLC本体と壁コンセントを載せた派生盤**（`withPlcUnit()`）を渡すための
+ * 引数である（§10.1）。既定は `JIPM_BOARD` なので、モードB/C1/C2 の呼び出しは変わらない。
+ */
+export function runAddWire(
+  session: BoardSession,
+  from: TerminalId,
+  to: TerminalId,
+  color: WireColor,
+  board: BoardDefinition = JIPM_BOARD,
+): CommandResult<Wire> {
+  const before = cloneSession(session);
+  const netFrom = toNetlistTerminal(session.socketRoles, from);
+  const netTo = toNetlistTerminal(session.socketRoles, to);
+  const result = addWire(session, board, netFrom, netTo, color);
+  return wrap(before, session, result, 'addWire', `配線 ${netFrom} — ${netTo}（${color}）`);
+}
+```
+
+`import type { BoardDefinition }` を足す。`Session.tsx` と `InspectRepairSession.tsx` の呼び出しは**そのままでも通る**（既定引数）が、読み手のために `JIPM_BOARD` を明示的に渡す（1行ずつ）。
+
+- [ ] **Step 4: `plc-session.ts` に `canJudgePlc()` を足す**
+
+```ts
+/** 判定を送れるか（H-1: 変換を通ったラダーだけを判定に出す）。 */
+export type JudgeReadiness = { ok: true } | { ok: false; reason: 'no-ladder' | 'not-converted' };
+
+/**
+ * 判定ボタンを押せるか。§10.6 / 3A H-1
+ *
+ * 見るのは**ラダーが変換済みか**だけである。配線の中身（2段結線・PLC電源・割付）は
+ * 判定時の静的チェックが見るので、ここでは触らない（決定表#7: セッション中に合否を漏らさない）。
+ */
+export function canJudgePlc(state: {
+  converted: boolean;
+  ladder: LadderProgram | undefined;
+}): JudgeReadiness {
+  if (state.ladder === undefined) return { ok: false, reason: 'no-ladder' };
+  if (!state.converted) return { ok: false, reason: 'not-converted' };
+  return { ok: true };
+}
+```
+
+- [ ] **Step 5: GREEN とコミット**
+
+```powershell
+pnpm --filter @ojt/desktop exec vitest run test/plc-wiring.test.ts test/commands.test.ts test/session.test.tsx test/inspect-repair-screen.test.tsx
+npx prettier --write "apps/desktop/src/renderer/session/*.ts" "apps/desktop/src/renderer/screens/*.tsx" "apps/desktop/test/plc-wiring.test.ts"
+git add apps/desktop/src apps/desktop/test
+git commit -m "feat(desktop): let the wiring commands take the board that carries the PLC"
+```
+
+Expected: `plc-wiring` が `Tests  8 passed (8)`。既存の `commands.test.ts` も通る（既定引数のため）。
+
+---
+
+## Task 12: モードDのセッション画面
+
+**Files:**
+- Create: `apps/desktop/src/renderer/screens/PlcSession.tsx`
+- Modify: `apps/desktop/src/renderer/screens/SessionRoute.tsx`（**MERGE 注意 #8。1箇所のみ**）
+- Modify: `apps/desktop/src/renderer/screens/screens.module.css`
+- Modify: `apps/desktop/src/renderer/i18n/ja.ts`（**MERGE 注意 #1**）
+- Test: `apps/desktop/test/plc-session-screen.test.tsx`
+
+ラダーワークスペースと3D盤を1画面に置く（決定表#10）。Worker の起動・`load`・判定の送出もここが持つ。`InspectRepairSession.tsx` の構造をそのまま踏襲する。
+
+| 決めること | 本タスクの実装 |
+|---|---|
+| 分割 | `ladderView`（`ladder` / `split` / `board`）。ツールバーの `extraTools` に3ボタン。既定は `split` |
+| キーの宛先 | `useViewportShortcuts({ enabled: session !== undefined && !ladderFocused })`（決定表#3）。`Delete` / `Esc` の盤ショートカットも `ladderFocused` の間は張らない |
+| Worker | `bridge.start({ onSnapshot, onJudge: noop, onInspect: noop, onPlc, onError })` → `bridge.send({ type:'load', problemId, session, plcModel: problem.plc.model })` |
+| モニタ | `onSnapshot` で `applySnapshot(next)` のあとに `setPlcMonitor(next.plc)`。**`plc` が無く、いまも `undefined` なら `set()` を呼ばない**（毎フレーム無駄に通知しないため） |
+| 判定 | `canJudgePlc()`（Task 11）が偽なら判定ボタンを `disabled` にし、理由を `title` に出す。押したら `judgePlc` を送り、`plcResult` で結果画面へ移る |
+| 電源 | `PowerControls` はそのまま（盤のDC24Vはリレーとランプに要る）。PLC本体の電源は壁コンセント側なのでここには出さない |
+
+- [ ] **Step 1: 失敗するテストを書く**
+
+`apps/desktop/test/plc-session-screen.test.tsx`:
+
+```tsx
+import { BUILTIN_PLC_PROBLEMS } from '@ojt/content';
+import { render, screen, fireEvent } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { useStore } from '../src/renderer/app/store.js';
+import { SessionRoute } from '../src/renderer/screens/SessionRoute.js';
+import { bridge } from '../src/renderer/session/worker-bridge.js';
+
+/** 3D は jsdom で描けないので `BoardScene` を差し替える（既存の画面テストと同じ流儀）。 */
+vi.mock('../src/renderer/three/BoardScene.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../src/renderer/three/BoardScene.js')>();
+  return { ...actual, BoardScene: () => <div data-testid="board-canvas" /> };
+});
+
+const problem = BUILTIN_PLC_PROBLEMS[0]!;
+const sent: unknown[] = [];
+
+beforeEach(() => {
+  sent.length = 0;
+  vi.spyOn(bridge, 'start').mockImplementation(() => undefined);
+  vi.spyOn(bridge, 'stop').mockImplementation(() => undefined);
+  vi.spyOn(bridge, 'send').mockImplementation((command) => {
+    sent.push(command);
+  });
+  useStore.getState().abandonSession();
+  useStore.getState().openProblem(problem);
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
+describe('モードDのセッション画面（§10.1 / §12.1）', () => {
+  it('routes a PLC problem to its own screen', () => {
+    render(<SessionRoute />);
+    expect(screen.getByTestId('plc-session')).toBeInTheDocument();
+    expect(screen.getByTestId('ladder-workspace')).toBeInTheDocument();
+    expect(screen.getByTestId('board-canvas')).toBeInTheDocument();
+  });
+
+  it('loads the derived board into the worker', () => {
+    render(<SessionRoute />);
+    expect(sent[0]).toMatchObject({ type: 'load', problemId: problem.id, plcModel: 'FX5U' });
+  });
+
+  it('switches between ladder, split and board (決定表#10)', () => {
+    render(<SessionRoute />);
+    expect(useStore.getState().ladderView).toBe('split');
+    fireEvent.click(screen.getByTestId('view-board'));
+    expect(useStore.getState().ladderView).toBe('board');
+    expect(screen.queryByTestId('ladder-workspace')).toBeNull();
+    fireEvent.click(screen.getByTestId('view-ladder'));
+    expect(screen.queryByTestId('viewport')).toBeNull();
+  });
+
+  it('offers the PLC camera preset', () => {
+    render(<SessionRoute />);
+    fireEvent.click(screen.getByTestId('view-plc'));
+    expect(useStore.getState().camera).toBe('plc');
+  });
+
+  it('refuses to judge an unconverted ladder and says why (H-1)', () => {
+    render(<SessionRoute />);
+    const judge = screen.getByTestId('judge-button');
+    expect(judge).toBeDisabled();
+    expect(judge).toHaveAttribute('title', expect.stringContaining('変換'));
+    expect(sent.filter((c) => (c as { type: string }).type === 'judgePlc')).toHaveLength(0);
+  });
+
+  it('sends the judge command once the ladder is converted', () => {
+    render(<SessionRoute />);
+    useStore.getState().setConverted(true, { errors: [], warnings: [], usage: undefined });
+    fireEvent.click(screen.getByTestId('judge-button'));
+    const judged = sent.find((c) => (c as { type: string }).type === 'judgePlc');
+    expect(judged).toMatchObject({ type: 'judgePlc', problem: { id: problem.id } });
+    expect(useStore.getState().judging).toBe(true);
+  });
+
+  it('never leaks the static checks while the session is running (決定表#7)', () => {
+    const { container } = render(<SessionRoute />);
+    const text = container.textContent ?? '';
+    for (const forbidden of ['2段結線', '直結', 'PLCの電源が未配線', '割付どおりに配線されて']) {
+      expect(text).not.toContain(forbidden);
+    }
+  });
+
+  it('hands the keyboard to the ladder while the editor is focused (決定表#3)', () => {
+    render(<SessionRoute />);
+    useStore.getState().setCamera('front');
+    useStore.getState().setLadderFocused(true);
+    fireEvent.keyDown(window, { key: '2' });
+    expect(useStore.getState().camera).toBe('front');
+    useStore.getState().setLadderFocused(false);
+    fireEvent.keyDown(window, { key: '2' });
+    expect(useStore.getState().camera).toBe('top');
+  });
+
+  it('shows the problem statement and the elapsed timer', () => {
+    render(<SessionRoute />);
+    expect(screen.getByText(problem.title)).toBeInTheDocument();
+    expect(screen.getByTestId('elapsed')).toBeInTheDocument();
+  });
+});
+```
+
+- [ ] **Step 2: RED を確認し、Step 3 で `PlcSession.tsx` を書く**
+
+```tsx
+import { socketPartId, toNetlistTerminal } from '@ojt/board-model';
+import { isPlcProblem } from '@ojt/content';
+import { getDialect } from '@ojt/plc-dialects';
+import { useCallback, useEffect, useMemo, useRef, type JSX } from 'react';
+import { ojtApi } from '../app/ojt-api.js';
+import { useStore } from '../app/store.js';
+import { sounds, soundsForSnapshot } from '../audio/sounds.js';
+import { LadderWorkspace } from '../ladder/LadderWorkspace.js';
+import {
+  failedLog,
+  historyLog,
+  JA,
+  openedProblemLog,
+  powerLog,
+  referenceErrorText,
+  routeFailedLog,
+  workFileSavedText,
+} from '../i18n/ja.js';
+import { ElapsedTimer } from '../panels/ElapsedTimer.js';
+import { LogPanel } from '../panels/LogPanel.js';
+import { PowerControls } from '../panels/PowerControls.js';
+import { ProblemPanel } from '../panels/ProblemPanel.js';
+import { Toolbar } from '../panels/Toolbar.js';
+import { WarningBanner } from '../panels/WarningBanner.js';
+import {
+  cloneSession,
+  redo as redoHistory,
+  runAddWire,
+  runRemoveWire,
+  undo as undoHistory,
+  type CommandResult,
+} from '../session/commands.js';
+import {
+  deleteKeyToAction,
+  escapeToAction,
+  pickToAction,
+  shouldIgnoreShortcut,
+  type PickAction,
+  type PickHit,
+} from '../session/interaction.js';
+import { boardForProblem, canJudgePlc } from '../session/plc-session.js';
+import { useViewportShortcuts } from '../session/viewport-keys.js';
+import { applyWorkFile, toWorkFile } from '../session/work-file.js';
+import { bridge } from '../session/worker-bridge.js';
+import { BoardScene, safeRoutes } from '../three/BoardScene.js';
+import type { PlcCommandAction } from '../../worker/protocol.js';
+import styles from './screens.module.css';
+
+/**
+ * モードD（PLC）のセッション画面。設計仕様 §10.1 / §10.6 / §12.1。決定表#10
+ *
+ * 左にGX Works3風のラダーワークスペース、右に3D盤（PLC本体と壁コンセントを含む）を置く。
+ * キーの宛先はフォーカスで決まる（決定表#3）: エディタにフォーカスがある間は視点のショートカットも
+ * 盤の `Delete` / `Esc` も動かさない。
+ */
+
+/** 経過時間の更新間隔[ms]。 */
+const ELAPSED_INTERVAL_MS = 200;
+
+/** 例外から画面に出す1行を作る。 */
+function reasonOf(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+/** スナップショットの差分から効果音を鳴らす（他の画面と同じ理由で切り出す）。§15 */
+function SoundEffects(): null {
+  const snapshot = useStore((s) => s.snapshot);
+  const previous = useRef<typeof snapshot | undefined>(undefined);
+  useEffect(() => {
+    for (const kind of soundsForSnapshot(previous.current, snapshot)) sounds.play(kind);
+    previous.current = snapshot;
+  }, [snapshot]);
+  return null;
+}
+
+/** モードDのセッション画面。 */
+export function PlcSession(): JSX.Element {
+  const problem = useStore((s) =>
+    s.problem !== undefined && isPlcProblem(s.problem) ? s.problem : undefined,
+  );
+  const session = useStore((s) => s.session);
+  const history = useStore((s) => s.history);
+  const mode = useStore((s) => s.mode);
+  const wireColor = useStore((s) => s.wireColor);
+  const camera = useStore((s) => s.camera);
+  const view = useStore((s) => s.ladderView);
+  const ladderFocused = useStore((s) => s.ladderFocused);
+  const converted = useStore((s) => s.converted);
+  const ladder = useStore((s) => s.ladder);
+  const powered = useStore((s) => s.snapshot.powered);
+  const tripped = useStore((s) => s.snapshot.tripped);
+  const breakerOn = useStore((s) => s.snapshot.breakerOn);
+  const switchOn = useStore((s) => s.snapshot.switchOn);
+  const hazards = useStore((s) => s.hazards);
+  const chatters = useStore((s) => s.chatters);
+  const logLines = useStore((s) => s.logLines);
+  const judging = useStore((s) => s.judging);
+  const restoredHazardCount = useStore((s) => s.restoredHazardCount);
+  const dialectId = useStore((s) => s.dialectId);
+  const problemId = problem?.id;
+  const sessionEpoch = useStore((s) => s.sessionEpoch);
+
+  const profile = useMemo(() => getDialect(dialectId), [dialectId]);
+  /*
+   * 表示列数はスキンの既定（三菱は11）。**Task 16** が設定画面の値（8〜15）で上書きする。
+   * このタスクでは設定に依存させない（バッチ4がバッチ5より先に動くため）。§10.6
+   */
+  const gridCols = profile.gridCols;
+  const board = useMemo(() => boardForProblem(problem), [problem]);
+
+  // 視点のショートカットはラダーにフォーカスが無いときだけ効かせる（決定表#3）
+  useViewportShortcuts({ enabled: session !== undefined && !ladderFocused });
+
+  /** Worker への `plc` コマンド。 */
+  const onPlc = useCallback((action: PlcCommandAction): void => {
+    bridge.send({ type: 'plc', action });
+  }, []);
+
+  /** Worker を起こし、PLC本体つきの盤を読ませる。§10.1 */
+  useEffect(() => {
+    const store = useStore.getState();
+    const current = store.problem;
+    const currentSession = store.session;
+    if (current === undefined || !isPlcProblem(current) || currentSession === undefined) {
+      return undefined;
+    }
+    bridge.start({
+      onSnapshot: (next) => {
+        const state = useStore.getState();
+        state.applySnapshot(next);
+        // モニタ中でないときは毎フレーム `undefined` を入れ直さない（§15）
+        if (next.plc !== undefined || state.plcMonitor !== undefined) state.setPlcMonitor(next.plc);
+      },
+      onJudge: () => {
+        // モードDでは届かない（モードBの判定結果）
+      },
+      onPlc: (message) => {
+        const state = useStore.getState();
+        state.setJudging(false);
+        if (message.result.ok) {
+          state.setJudge(message.result.value);
+          state.setRoute('result');
+        } else {
+          state.toast(referenceErrorText(message.result.errors.map((e) => e.message)), 'error');
+        }
+      },
+      onError: (text, fatal) => {
+        const state = useStore.getState();
+        state.setJudging(false);
+        const line = `${JA.error.workerError}: ${text}`;
+        if (fatal) state.setFatalError(line);
+        else state.toast(line, 'error');
+        state.addLog(line);
+      },
+    });
+    bridge.send({
+      type: 'load',
+      problemId: current.id,
+      session: cloneSession(currentSession),
+      plcModel: current.plc.model,
+    });
+    store.addLog(openedProblemLog(current.title));
+    return () => {
+      bridge.stop();
+    };
+  }, [problemId, sessionEpoch]);
+
+  // 経過時間（§8.1）
+  useEffect(() => {
+    const id = setInterval(() => {
+      useStore.getState().tickElapsed();
+    }, ELAPSED_INTERVAL_MS);
+    return () => {
+      clearInterval(id);
+    };
+  }, []);
+
+  /** 盤操作の結果を反映する（`InspectRepairSession` と同じ流儀）。§8.2 */
+  const apply = useCallback(<T,>(result: CommandResult<T>, after: () => void): void => {
+    const store = useStore.getState();
+    if (!result.ok) {
+      store.toast(result.message, 'error');
+      store.addLog(failedLog(result.message));
+      if (result.code === 'terminal-overload' && result.wire !== undefined) {
+        bridge.send({ type: 'addWire', wire: result.wire });
+      }
+      return;
+    }
+    const current = store.session;
+    if (current !== undefined) store.setSession(cloneSession(current));
+    store.pushHistory(result.command);
+    store.addLog(result.command.label);
+    after();
+  }, []);
+
+  const runAction = useCallback(
+    (action: PickAction): void => {
+      const store = useStore.getState();
+      const current = store.session;
+      if (current === undefined) return;
+      switch (action.type) {
+        case 'beginWire':
+          store.setPending(action.from);
+          break;
+        case 'cancelWire':
+          store.setPending(undefined);
+          store.addLog(JA.session.cancelWire);
+          break;
+        case 'completeWire':
+          store.setPending(undefined);
+          apply(runAddWire(current, action.from, action.to, action.color, board), () => {
+            const next = useStore.getState();
+            const wire = next.session?.wires.at(-1);
+            const boardNow = next.session;
+            if (wire === undefined || boardNow === undefined) return;
+            bridge.send({ type: 'addWire', wire });
+            const failed = safeRoutes(board, boardNow).errors.find((e) => e.wireId === wire.id);
+            if (failed !== undefined) {
+              next.toast(`${JA.session.routeFailed}（${JA.routeReason[failed.reason]}）`, 'error');
+              next.addLog(routeFailedLog(wire.id, JA.routeReason[failed.reason]));
+            }
+          });
+          break;
+        case 'selectWire':
+          store.setSelectedWire(action.wireId);
+          break;
+        case 'removeWire':
+          apply(runRemoveWire(current, action.wireId), () => {
+            useStore.getState().setSelectedWire(undefined);
+            bridge.send({ type: 'removeWire', wireId: action.wireId });
+          });
+          break;
+        case 'reject':
+          store.toast(action.message, 'error');
+          break;
+        case 'selectSocket':
+        case 'selectMounted':
+          store.setSelectedSocket(action.socketId);
+          break;
+        case 'pressButton':
+          bridge.send({ type: 'press', pbId: action.pbId });
+          break;
+        default:
+          break;
+      }
+    },
+    [apply, board],
+  );
+
+  const onHover = useCallback((id: Parameters<typeof useStore.getState>[0] extends never ? never : Parameters<typeof runAction>[0] extends never ? never : import('@ojt/circuit-sim').TerminalId | undefined) => {
+    useStore.getState().setHovered(id);
+  }, []);
+  const onPress = useCallback((pbId: string) => {
+    bridge.send({ type: 'press', pbId });
+  }, []);
+  const onRelease = useCallback((pbId: string) => {
+    bridge.send({ type: 'release', pbId });
+  }, []);
+
+  const onPick = useCallback(
+    (hit: PickHit): void => {
+      const store = useStore.getState();
+      const current = store.session;
+      if (current === undefined) return;
+      const mapped: PickHit =
+        hit.kind === 'terminal'
+          ? { ...hit, id: toNetlistTerminal(current.socketRoles, hit.id) }
+          : hit;
+      runAction(
+        pickToAction(
+          {
+            mode: store.mode,
+            pendingTerminal: store.pendingTerminal,
+            selectedWire: store.selectedWire,
+            wireColor: store.wireColor,
+          },
+          mapped,
+        ),
+      );
+    },
+    [runAction],
+  );
+
+  // 盤のキーボード操作（ラダーにフォーカスがある間は動かさない。決定表#3）
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent): void => {
+      if (shouldIgnoreShortcut(event)) return;
+      const store = useStore.getState();
+      if (store.ladderFocused) return;
+      const current = store.session;
+      if (current === undefined) return;
+      const state = {
+        mode: store.mode,
+        pendingTerminal: store.pendingTerminal,
+        selectedWire: store.selectedWire,
+        wireColor: store.wireColor,
+      };
+      if (event.key === 'Delete') {
+        runAction(
+          deleteKeyToAction(
+            state,
+            current.wires.filter((w) => w.locked).map((w) => w.id),
+          ),
+        );
+        return;
+      }
+      if (event.key === 'Escape') runAction(escapeToAction(state));
+    };
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [runAction]);
+
+  if (problem === undefined || session === undefined) {
+    return (
+      <div className={styles.center}>
+        <p>{JA.session.noProblem}</p>
+        <button
+          type="button"
+          onClick={() => {
+            useStore.getState().abandonSession();
+          }}
+        >
+          {JA.result.toList}
+        </button>
+      </div>
+    );
+  }
+
+  const readiness = canJudgePlc({ converted, ladder });
+  const judgeTitle = readiness.ok
+    ? JA.session.judge
+    : readiness.reason === 'no-ladder'
+      ? JA.plc.judgeNoLadder
+      : JA.plc.judgeNotConverted;
+
+  /** 元に戻す／やり直し（盤のみ。ラダーは `Ctrl+Z` がエディタで処理する。決定表#3） */
+  const restore = (
+    step: ReturnType<typeof undoHistory>,
+    verb: string,
+  ): void => {
+    if (step === undefined) return;
+    const store = useStore.getState();
+    store.setHistory(step.history);
+    store.setSession(step.session);
+    store.setPending(undefined);
+    store.setSelectedWire(undefined);
+    store.clearLive();
+    store.addLog(historyLog(verb, step.command.label));
+    bridge.send({
+      type: 'load',
+      problemId: problem.id,
+      session: cloneSession(step.session),
+      plcModel: problem.plc.model,
+    });
+    // 盤を読み直すとスキャン結合も捨てられるので、変換済みのラダーを載せ直す（§10.4）
+    if (useStore.getState().converted && ladder !== undefined) {
+      bridge.send({ type: 'plc', action: { kind: 'load', program: ladder } });
+    }
+  };
+
+  return (
+    <>
+      <SoundEffects />
+      <Toolbar
+        mode={mode}
+        wireColor={wireColor}
+        allowedColors={session.allowedColors}
+        camera={camera}
+        showPlcView
+        canUndo={history.done.length > 0}
+        canRedo={history.undone.length > 0}
+        judging={judging}
+        judgeDisabled={!readiness.ok}
+        judgeTitle={judgeTitle}
+        extraTools={
+          <>
+            {(
+              [
+                ['ladder', JA.plc.viewLadder],
+                ['split', JA.plc.viewSplit],
+                ['board', JA.plc.viewBoard],
+              ] as const
+            ).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                data-testid={`view-${value}`}
+                aria-pressed={view === value}
+                onClick={() => {
+                  useStore.getState().setLadderView(value);
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </>
+        }
+        onMode={(next) => {
+          useStore.getState().setMode(next);
+        }}
+        onWireColor={(color) => {
+          useStore.getState().setWireColor(color);
+        }}
+        onCamera={(preset) => {
+          useStore.getState().setCamera(preset);
+        }}
+        onUndo={() => {
+          restore(undoHistory(history), JA.session.undo);
+        }}
+        onRedo={() => {
+          restore(redoHistory(history), JA.session.redo);
+        }}
+        onJudge={() => {
+          const store = useStore.getState();
+          if (store.judging) return;
+          const boardSession = store.session;
+          const currentLadder = store.ladder;
+          if (boardSession === undefined || currentLadder === undefined) return;
+          if (!canJudgePlc({ converted: store.converted, ladder: currentLadder }).ok) return;
+          store.setJudging(true);
+          bridge.send({
+            type: 'judgePlc',
+            problem,
+            session: cloneSession(boardSession),
+            ladder: currentLadder,
+            elapsedMs: store.elapsedMs,
+          });
+        }}
+        onBack={() => {
+          useStore.getState().setRoute('list');
+        }}
+        onSave={() => {
+          const store = useStore.getState();
+          let api: ReturnType<typeof ojtApi>;
+          try {
+            api = ojtApi();
+          } catch (error) {
+            store.toast(reasonOf(error), 'error');
+            return;
+          }
+          void api
+            .saveWorkFile({
+              kind: 'manual',
+              file: toWorkFile(problem.id, session, store.elapsedMs, store.hazards.length),
+            })
+            .then((result) => {
+              store.toast(
+                result.ok ? workFileSavedText(result.path) : result.message,
+                result.ok ? 'info' : 'error',
+              );
+            });
+        }}
+        onLoad={() => {
+          let api: ReturnType<typeof ojtApi>;
+          try {
+            api = ojtApi();
+          } catch (error) {
+            useStore.getState().toast(reasonOf(error), 'error');
+            return;
+          }
+          void api.loadWorkFile({ kind: 'manual' }).then((result) => {
+            if (!result.ok) {
+              if (!result.canceled) useStore.getState().toast(result.message, 'error');
+              return;
+            }
+            void applyWorkFile(result.file);
+          });
+        }}
+        schematicVisible={false}
+        onToggleSchematic={undefined}
+      >
+        <PowerControls
+          breakerOn={breakerOn}
+          switchOn={switchOn}
+          powered={powered}
+          tripped={tripped}
+          onBreaker={(on) => {
+            bridge.send({ type: 'breaker', on });
+            useStore.getState().addLog(powerLog(JA.session.breaker, on));
+          }}
+          onSwitch={(on) => {
+            bridge.send({ type: 'switch', on });
+            useStore.getState().addLog(powerLog(JA.session.switch, on));
+          }}
+          onResetTrip={() => {
+            bridge.send({ type: 'resetTrip' });
+            useStore.getState().addLog(JA.session.resetTripLog);
+          }}
+        />
+      </Toolbar>
+
+      <div className={styles.plcLayout} data-testid="plc-session" data-view={view}>
+        {view === 'board' ? null : (
+          <LadderWorkspace problem={problem} profile={profile} gridCols={gridCols} onPlc={onPlc} />
+        )}
+        {view === 'ladder' ? null : (
+          <div className={styles.viewport} data-testid="viewport">
+            <WarningBanner />
+            <BoardScene
+              board={board}
+              onPick={onPick}
+              onHover={onHover}
+              onPress={onPress}
+              onRelease={onRelease}
+            />
+            <div className={styles.statusOverlay} data-testid="status-overlay">
+              {powered ? JA.session.powered : JA.session.unpowered} / {JA.session.wires}{' '}
+              {session.wires.length} {JA.session.wiresUnit}
+              {tripped ? ` / ${JA.session.tripped}` : ''}
+            </div>
+            <div className={styles.viewHint} data-testid="view-hint">
+              {JA.session.viewHint}
+            </div>
+          </div>
+        )}
+        <div className={styles.plcRight}>
+          <ProblemPanel problem={problem} />
+          <ElapsedTimer limit={problem.timeLimit} />
+          <LogPanel
+            lines={logLines}
+            hazards={hazards}
+            chatters={chatters}
+            restoredHazardCount={restoredHazardCount}
+          />
+        </div>
+      </div>
+    </>
+  );
+}
+```
+
+> **`onHover` の型:** 上の見本は読みにくいので、実装では素直に `import type { TerminalId } from '@ojt/circuit-sim';` を足して
+> `const onHover = useCallback((id: TerminalId | undefined) => { useStore.getState().setHovered(id); }, []);` と書くこと。
+
+- [ ] **Step 4: `Toolbar.tsx` に `judgeDisabled` / `judgeTitle` / `showPlcView` を足す（**MERGE 注意 #6**）**
+
+```tsx
+  /** 判定ボタンを押させない理由がある（モードD: 未変換のラダー。H-1）。 */
+  judgeDisabled?: boolean;
+  /** 判定ボタンの `title`（押せない理由）。 */
+  judgeTitle?: string;
+  /** 机上のPLCへ寄る視点ボタンを出すか（モードDのみ）。§12.2 / 決定表#6 */
+  showPlcView?: boolean;
+```
+
+```tsx
+      <button
+        type="button"
+        className={styles.judgeButton}
+        data-testid="judge-button"
+        disabled={judging || judgeDisabled === true}
+        {...(judgeTitle === undefined ? {} : { title: judgeTitle })}
+        onClick={onJudge}
+      >
+```
+
+- [ ] **Step 5: `SessionRoute.tsx` に1分岐（**MERGE 注意 #8**）**
+
+```tsx
+    case 'plc':
+      return <PlcSession />;
+```
+
+- [ ] **Step 6: CSS と `ja.ts`**
+
+`screens.module.css` に追記:
+
+```css
+/* モードDのセッション画面。決定表#10（ラダー ⇄ 3D の分割） */
+.plcLayout {
+  display: grid;
+  grid-template-columns: minmax(520px, 1fr) minmax(420px, 1fr) 300px;
+  gap: 8px;
+  padding: 8px;
+  min-height: 0;
+  flex: 1 1 auto;
+}
+
+.plcLayout[data-view='ladder'] {
+  grid-template-columns: minmax(0, 1fr) 300px;
+}
+
+.plcLayout[data-view='board'] {
+  grid-template-columns: minmax(0, 1fr) 300px;
+}
+
+.plcRight {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow: auto;
+  min-height: 0;
+}
+```
+
+`ja.ts` の `plc` ブロックへ追記:
+
+```ts
+    viewLadder: 'ラダー',
+    viewSplit: '分割',
+    viewBoard: '盤',
+    /** 判定ボタンを押せない理由。3A H-1 */
+    judgeNoLadder: 'ラダーがありません',
+    judgeNotConverted: '変換（F4）を通してから判定します',
+```
+
+- [ ] **Step 7: GREEN とコミット**
+
+```powershell
+pnpm --filter @ojt/desktop exec vitest run test/plc-session-screen.test.tsx test/toolbar.test.tsx test/session.test.tsx
+npx prettier --write "apps/desktop/src/renderer/**/*.{ts,tsx,css}" "apps/desktop/test/plc-session-screen.test.tsx"
+git add apps/desktop/src apps/desktop/test
+git commit -m "feat(desktop): add the mode D session screen"
+```
+
+Expected: `plc-session-screen` が `Tests  9 passed (9)`。
+
+---
+
 <!-- CHUNK -->
+
 
 
 
