@@ -5912,7 +5912,897 @@ Expected: `ladder-workspace` が `Tests  11 passed (11)`、`ladder-editor` も�
 
 ---
 
+## Task 9: モニタ（F3）とRUN/STOP
+
+**Files:**
+- Create: `apps/desktop/src/renderer/ladder/MonitorPanel.tsx`
+- Modify: `apps/desktop/src/renderer/ladder/LadderWorkspace.tsx`（RUN/STOP と `MonitorPanel` の差し込み）
+- Modify: `apps/desktop/src/renderer/ladder/ladder.module.css`
+- Modify: `apps/desktop/src/renderer/i18n/ja.ts`（**MERGE 注意 #1**）
+- Test: `apps/desktop/test/monitor-panel.test.tsx`
+
+モニタ中のデバイス値を一覧で出し、RUN/STOP を操作する。**通電表示そのものは Task 4 の `LadderGrid` が描く**ので、ここは数値の一覧と RUN/STOP だけを持つ。
+
+| 決めること | 本タスクの実装 |
+|---|---|
+| 再描画の範囲 | `plcMonitor` を購読するのは **`MonitorPanel` と `LadderGrid` だけ**。`LadderGrid` は `powered[net.id]` の**文字列1本**を見る（決定表#5）ので、値が変わらないネットワークは再描画されない。セッション画面本体・3D・右パネルは `plcMonitor` を購読しない |
+| 一覧の中身 | 入力（`X` ＋ **PLCの端子名**）／出力（`Y` ＋ 端子名）／内部リレー／タイマ（経過 ms と設定値）／カウンタ（現在値）。デバイス名は `profile.formatDevice()`、端子名は `unit.spec`（決定表#16） |
+| 入力仕様の注記 | FX5U の値（4.5kΩ／ON 3.5mA／OFF 1.5mA）を `@ojt/board-model` の `FX5U_INPUT_OHMS` / `FX5U_ON_AMPS` / `FX5U_OFF_AMPS` から出す（`circuit-sim` の既定値ではない） |
+| RUN/STOP | ツールバーの外に独立したボタンを置く。`plcRunning` はストアが持ち、押すと `plc { kind:'run', on }` を送る。STOP 中はモニタの値を出したまま「停止中」を添える |
+| モニタとRUNの関係 | RUN していないときにモニタを開始したら、「RUN にすると動きます」と注記を出す（止まったまま光らない理由が分からないため） |
+
+- [ ] **Step 1: 失敗するテストを書く**
+
+`apps/desktop/test/monitor-panel.test.tsx`:
+
+```tsx
+import { PLC_UNIT_FX5U } from '@ojt/board-model';
+import { MITSUBISHI_FX5U } from '@ojt/plc-dialects';
+import { fireEvent, render, screen } from '@testing-library/react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { useStore } from '../src/renderer/app/store.js';
+import type { PlcMonitorSnapshot } from '../src/renderer/app/store-types.js';
+import { MonitorPanel } from '../src/renderer/ladder/MonitorPanel.js';
+
+function snapshot(overrides: Partial<PlcMonitorSnapshot> = {}): PlcMonitorSnapshot {
+  return {
+    scanCount: 12,
+    tMs: 120,
+    powered: {},
+    inputs: [true, false, false],
+    outputs: [false, true],
+    internals: { 0: true },
+    timers: { 0: { elapsedMs: 1200, on: false } },
+    counters: { 0: { value: 2, on: false } },
+    ...overrides,
+  };
+}
+
+function panel(onPlc = vi.fn()) {
+  render(<MonitorPanel profile={MITSUBISHI_FX5U} unit={PLC_UNIT_FX5U} onPlc={onPlc} />);
+  return onPlc;
+}
+
+beforeEach(() => {
+  useStore.setState({ plcMonitor: undefined, plcRunning: false, ladderMode: 'write' });
+});
+
+describe('モニタ一覧（§10.7）', () => {
+  it('asks to start monitoring while it is off', () => {
+    panel();
+    expect(screen.getByTestId('monitor-off')).toHaveTextContent('F3');
+  });
+
+  it('lists the devices with the dialect name and the unit terminal name (決定表#16)', () => {
+    useStore.setState({ plcMonitor: snapshot(), ladderMode: 'monitor', plcRunning: true });
+    panel();
+    expect(screen.getByTestId('monitor-input-0')).toHaveTextContent('X0');
+    expect(screen.getByTestId('monitor-input-0')).toHaveTextContent('PLC.X0');
+    expect(screen.getByTestId('monitor-input-0')).toHaveTextContent('ON');
+    expect(screen.getByTestId('monitor-output-1')).toHaveTextContent('Y1');
+    expect(screen.getByTestId('monitor-output-1')).toHaveTextContent('ON');
+    expect(screen.getByTestId('monitor-internal-0')).toHaveTextContent('M0');
+    expect(screen.getByTestId('monitor-timer-0')).toHaveTextContent('1.2');
+    expect(screen.getByTestId('monitor-counter-0')).toHaveTextContent('2');
+    expect(screen.getByTestId('monitor-scan')).toHaveTextContent('12');
+  });
+
+  it('names the FX5U input spec, not the engine defaults (3A レビュー指摘)', () => {
+    useStore.setState({ plcMonitor: snapshot(), ladderMode: 'monitor' });
+    panel();
+    const note = screen.getByTestId('monitor-spec');
+    expect(note).toHaveTextContent('4.5');
+    expect(note).toHaveTextContent('3.5');
+    expect(note).not.toHaveTextContent('4.7');
+  });
+
+  it('runs and stops the PLC through the worker', () => {
+    const onPlc = panel();
+    fireEvent.click(screen.getByTestId('plc-run'));
+    expect(onPlc).toHaveBeenCalledWith({ kind: 'run', on: true });
+    expect(useStore.getState().plcRunning).toBe(true);
+    fireEvent.click(screen.getByTestId('plc-run'));
+    expect(onPlc).toHaveBeenCalledWith({ kind: 'run', on: false });
+    expect(useStore.getState().plcRunning).toBe(false);
+  });
+
+  it('explains why nothing moves while the PLC is stopped', () => {
+    useStore.setState({ plcMonitor: snapshot(), ladderMode: 'monitor', plcRunning: false });
+    panel();
+    expect(screen.getByTestId('monitor-stopped')).toHaveTextContent('RUN');
+  });
+
+  it('resets the devices from the panel', () => {
+    const onPlc = panel();
+    fireEvent.click(screen.getByTestId('plc-reset'));
+    expect(onPlc).toHaveBeenCalledWith({ kind: 'reset' });
+  });
+});
+```
+
+- [ ] **Step 2: RED を確認し、Step 3 で `MonitorPanel.tsx` を書く**
+
+```tsx
+import {
+  FX5U_INPUT_OHMS,
+  FX5U_OFF_AMPS,
+  FX5U_ON_AMPS,
+  type PlcUnitDefinition,
+} from '@ojt/board-model';
+import { C, M, T, X, Y } from '@ojt/ladder-core';
+import type { DialectProfile } from '@ojt/plc-dialects';
+import type { JSX } from 'react';
+import { useStore } from '../app/store.js';
+import { JA, onOffLabel, plcInputSpecText, secondsLabel } from '../i18n/ja.js';
+import type { PlcCommandAction } from '../../worker/protocol.js';
+import styles from './ladder.module.css';
+
+/**
+ * モニタのデバイス一覧と RUN/STOP。設計仕様 §10.6 / §10.7。
+ *
+ * **`plcMonitor` を購読するのはこの部品と `LadderGrid` だけ**にする（決定表#5）。セッション画面の
+ * 本体や3Dがこれを購読すると、毎秒30枚のスナップショットで盤ごと再描画されてしまう（§15）。
+ */
+export function MonitorPanel({
+  profile,
+  unit,
+  onPlc,
+}: {
+  profile: DialectProfile;
+  unit: PlcUnitDefinition;
+  onPlc: (action: PlcCommandAction) => void;
+}): JSX.Element {
+  const monitor = useStore((s) => s.plcMonitor);
+  const running = useStore((s) => s.plcRunning);
+  const mode = useStore((s) => s.ladderMode);
+  const terminal = (name: string | undefined): string => `PLC.${name ?? ''}`;
+  return (
+    <section className={styles.side} aria-label={JA.ladder.monitor} data-testid="monitor-panel">
+      <h2 className={styles.sideTitle}>{JA.ladder.monitor}</h2>
+      <div className={styles.monitorButtons}>
+        <button
+          type="button"
+          data-testid="plc-run"
+          aria-pressed={running}
+          onClick={() => {
+            const next = !useStore.getState().plcRunning;
+            useStore.getState().setPlcRunning(next);
+            onPlc({ kind: 'run', on: next });
+          }}
+        >
+          {running ? JA.ladder.stop : JA.ladder.run}
+        </button>
+        <button
+          type="button"
+          data-testid="plc-reset"
+          onClick={() => {
+            onPlc({ kind: 'reset' });
+          }}
+        >
+          {JA.ladder.plcReset}
+        </button>
+      </div>
+      {mode !== 'monitor' || monitor === undefined ? (
+        <p className={styles.sideNote} data-testid="monitor-off">
+          {JA.ladder.monitorOff}
+        </p>
+      ) : (
+        <>
+          <p className={styles.sideNote} data-testid="monitor-scan">
+            {JA.ladder.scanCount}: {monitor.scanCount}（{secondsLabel(monitor.tMs)}）
+          </p>
+          {running ? null : (
+            <p className={styles.sideNote} data-testid="monitor-stopped">
+              {JA.ladder.monitorStopped}
+            </p>
+          )}
+          <table className={styles.ioTable}>
+            <tbody>
+              {monitor.inputs.map((value, index) => (
+                <tr key={`x-${String(index)}`} data-testid={`monitor-input-${String(index)}`}>
+                  <td>{profile.formatDevice(X(index))}</td>
+                  <td>{terminal(unit.spec.inputs[index])}</td>
+                  <td>{onOffLabel(value)}</td>
+                </tr>
+              ))}
+              {monitor.outputs.map((value, index) => (
+                <tr key={`y-${String(index)}`} data-testid={`monitor-output-${String(index)}`}>
+                  <td>{profile.formatDevice(Y(index))}</td>
+                  <td>{terminal(unit.spec.outputs[index]?.name)}</td>
+                  <td>{onOffLabel(value)}</td>
+                </tr>
+              ))}
+              {Object.entries(monitor.internals).map(([index, value]) => (
+                <tr key={`m-${index}`} data-testid={`monitor-internal-${index}`}>
+                  <td>{profile.formatDevice(M(Number(index)))}</td>
+                  <td />
+                  <td>{onOffLabel(value)}</td>
+                </tr>
+              ))}
+              {Object.entries(monitor.timers).map(([index, state]) => (
+                <tr key={`t-${index}`} data-testid={`monitor-timer-${index}`}>
+                  <td>{profile.formatDevice(T(Number(index)))}</td>
+                  <td>{secondsLabel(state.elapsedMs)}</td>
+                  <td>{onOffLabel(state.on)}</td>
+                </tr>
+              ))}
+              {Object.entries(monitor.counters).map(([index, state]) => (
+                <tr key={`c-${index}`} data-testid={`monitor-counter-${index}`}>
+                  <td>{profile.formatDevice(C(Number(index)))}</td>
+                  <td>{state.value}</td>
+                  <td>{onOffLabel(state.on)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p className={styles.sideNote} data-testid="monitor-spec">
+            {plcInputSpecText(FX5U_INPUT_OHMS, FX5U_ON_AMPS, FX5U_OFF_AMPS)}
+          </p>
+        </>
+      )}
+    </section>
+  );
+}
+```
+
+`ja.ts` の `ladder` へ追記と関数:
+
+```ts
+    monitor: 'モニタ',
+    monitorOff: 'モニタ（F3）を開始すると通電状態が表示されます。',
+    monitorStopped: 'PLCが停止中です。RUN にすると動きます。',
+    scanCount: 'スキャン回数',
+    run: 'RUN',
+    stop: 'STOP',
+    plcReset: 'デバイス初期化',
+```
+
+```ts
+/** ミリ秒を秒表示にする（`1.2 秒`）。§10.7 */
+export function secondsLabel(ms: number): string {
+  return `${(ms / 1000).toFixed(1)} ${JA.session.seconds}`;
+}
+
+/**
+ * PLC入力回路の仕様の注記。§5.1.3
+ * 値は**機種（FX5U）側**から渡す（`circuit-sim` の既定値 4.7kΩ/3mA ではない）。
+ */
+export function plcInputSpecText(ohms: number, onAmps: number, offAmps: number): string {
+  const mA = (amps: number): string => (amps * 1000).toFixed(1);
+  return `入力回路 ${(ohms / 1000).toFixed(1)}kΩ／ON ${mA(onAmps)}mA 以上／OFF ${mA(offAmps)}mA 以下`;
+}
+```
+
+CSS（追記）:
+
+```css
+.monitorButtons {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+```
+
+- [ ] **Step 4: `LadderWorkspace.tsx` に差し込む**
+
+`workspaceSide` の先頭（`IoTable` の前）に `<MonitorPanel profile={profile} unit={unit} onPlc={onPlc} />` を足す。
+
+- [ ] **Step 5: GREEN とコミット**
+
+```powershell
+pnpm --filter @ojt/desktop exec vitest run test/monitor-panel.test.tsx test/ladder-workspace.test.tsx
+npx prettier --write "apps/desktop/src/renderer/**/*.{ts,tsx,css}" "apps/desktop/test/monitor-panel.test.tsx"
+git add apps/desktop/src apps/desktop/test
+git commit -m "feat(desktop): show the monitored devices and run/stop the PLC"
+```
+
+Expected: `monitor-panel` が `Tests  6 passed (6)`。
+
+---
+
+## Task 10: 3DのPLC本体・壁コンセント・机上配線と `plc` 視点
+
+**Files:**
+- Create: `apps/desktop/src/renderer/three/PlcUnit.tsx`
+- Create: `apps/desktop/src/renderer/three/Outlet.tsx`
+- Create: `apps/desktop/src/renderer/three/DeskWires.tsx`
+- Modify: `apps/desktop/src/renderer/three/camera.ts`
+- Modify: `apps/desktop/src/renderer/three/BoardScene.tsx`（**MERGE 注意 #5。4箇所のみ**）
+- Modify: `apps/desktop/src/renderer/panels/Toolbar.tsx`（**MERGE 注意 #6。1箇所のみ**）
+- Modify: `apps/desktop/src/renderer/i18n/ja.ts`（**MERGE 注意 #1**）
+- Test: `apps/desktop/test/plc-scene.test.ts`
+- Test: `apps/desktop/test/plc-camera.test.ts`
+
+§10.1 の3D構成を描く。**盤の座標系の延長**として描くので、`toScene()` / `boardToWorld()` / `safeRoutes()` / E2E の射影計算がそのまま使える（意図的な差分 #1）。
+
+| 決めること | 本タスクの実装 |
+|---|---|
+| 置き場所 | PLC本体・壁コンセント・机上配線はすべて**盤と同じ傾斜グループの中**に描く。`PLC_UNIT_FX5U.pos`（盤モデル座標 `(390, 18, 0)`）と `OUTLET_ORIGIN_MM`（`(395, 190, 0)`）をそのまま `toScene()` に通す |
+| 端子 | `board.terminals` のうち `isOffBoardTerminal()` が真のものを `TerminalHit` で描く。当たり判定・ホバー・ピックは盤の端子と同じ仕組み（`pickRadiusMm` は 4mm） |
+| 筐体 | `sizeMm`（150×90×83）の箱。入力側・出力側の端子列の背景に薄いプレートを敷き、`leds`（PWR/ERR/P.RUN/BAT/CARD）を小さな丸で並べる。**ベンダーのロゴ・銘板画像は描かない**（§17）。銘板は `displayName` の文字だけ |
+| 机上配線 | `deskWires(board, session)` の `fromPos` / `toPos` を結ぶ**たるんだケーブル**（3点の `CatmullRomCurve3`。中間点を手前へ 12mm 垂らす）。色は `session.wires` の `color`（モードDは青のみ） |
+| 視点 | `CameraPreset` に `'plc'`。`PLC_VIEW_RECT`（PLC本体とコンセントの外接矩形＋余白20mm）を `fitDistanceMm()` で収める。ツールバーには**モードDのときだけ**4つ目のボタンとして出す |
+
+- [ ] **Step 1: 失敗するテストを書く**
+
+`apps/desktop/test/plc-camera.test.ts`:
+
+```ts
+import { JIPM_BOARD, OUTLET_ORIGIN_MM, PLC_UNIT_FX5U, withPlcUnit } from '@ojt/board-model';
+import { describe, expect, it } from 'vitest';
+import {
+  boardToWorld,
+  cameraPose,
+  fitDistanceMm,
+  MAX_CAMERA_DISTANCE_MM,
+  MIN_CAMERA_DISTANCE_MM,
+  PLC_VIEW_RECT,
+} from '../src/renderer/three/camera.js';
+import { projectToScreen } from '../e2e/projection.js';
+import { toScene } from '../src/renderer/three/coords.js';
+
+const BOX = { x: 0, y: 0, width: 900, height: 600 };
+
+describe('plc 視点プリセット（§12.2 / 決定表#6）', () => {
+  it('covers the PLC unit and the wall outlet', () => {
+    expect(PLC_VIEW_RECT.x).toBeLessThanOrEqual(PLC_UNIT_FX5U.pos.x);
+    expect(PLC_VIEW_RECT.x + PLC_VIEW_RECT.w).toBeGreaterThanOrEqual(
+      PLC_UNIT_FX5U.pos.x + PLC_UNIT_FX5U.sizeMm.width,
+    );
+    expect(PLC_VIEW_RECT.y).toBeLessThanOrEqual(PLC_UNIT_FX5U.pos.y);
+    expect(PLC_VIEW_RECT.y + PLC_VIEW_RECT.h).toBeGreaterThanOrEqual(OUTLET_ORIGIN_MM.y);
+  });
+
+  it('stays inside the distance limits', () => {
+    const pose = cameraPose('plc');
+    const distance = Math.hypot(
+      pose.position[0] - pose.target[0],
+      pose.position[1] - pose.target[1],
+      pose.position[2] - pose.target[2],
+    );
+    expect(distance).toBeGreaterThanOrEqual(MIN_CAMERA_DISTANCE_MM);
+    expect(distance).toBeLessThanOrEqual(MAX_CAMERA_DISTANCE_MM);
+    expect(distance).toBeCloseTo(fitDistanceMm(PLC_VIEW_RECT.w, PLC_VIEW_RECT.h, 1.5), 3);
+  });
+
+  it('puts every PLC and outlet terminal inside the viewport', () => {
+    const board = withPlcUnit(JIPM_BOARD, PLC_UNIT_FX5U);
+    const pose = cameraPose('plc');
+    const offBoard = board.terminals.filter((t) => t.id.startsWith('PLC.') || t.id.startsWith('OUTLET.'));
+    expect(offBoard.length).toBeGreaterThan(30);
+    for (const terminal of offBoard) {
+      const point = projectToScreen(boardToWorld(toScene(terminal.pos)), pose, BOX);
+      expect(point.x).toBeGreaterThan(BOX.x);
+      expect(point.x).toBeLessThan(BOX.x + BOX.width);
+      expect(point.y).toBeGreaterThan(BOX.y);
+      expect(point.y).toBeLessThan(BOX.y + BOX.height);
+    }
+  });
+
+  it('does not change the other presets', () => {
+    expect(cameraPose('front').position[2]).toBeGreaterThan(0);
+    expect(cameraPose('socket').target[0]).toBeLessThan(0);
+  });
+});
+```
+
+`apps/desktop/test/plc-scene.test.ts`:
+
+```ts
+import {
+  addWire,
+  createSession,
+  JIPM_BOARD,
+  PLC_UNIT_FX5U,
+  toNetlistTerminal,
+  withPlcUnit,
+  deskWires,
+  routeSession,
+} from '@ojt/board-model';
+import type { TerminalId } from '@ojt/circuit-sim';
+import { describe, expect, it } from 'vitest';
+import { deskCablePoints, offBoardTerminals } from '../src/renderer/three/DeskWires.js';
+import { safeRoutes } from '../src/renderer/three/BoardScene.js';
+
+const board = withPlcUnit(JIPM_BOARD, PLC_UNIT_FX5U);
+
+function sessionWithDeskWire() {
+  const session = createSession(board, {
+    roles: { S1: 'CR1', S7: 'CHK' },
+    allowedColors: ['青'],
+    extraParts: [],
+    inventory: [],
+  });
+  const added = addWire(session, board, 'TB_PB.1a' as TerminalId, 'PLC.X0' as TerminalId, '青');
+  expect(added.ok).toBe(true);
+  const power = addWire(session, board, 'OUTLET.L' as TerminalId, 'PLC.L' as TerminalId, '青');
+  expect(power.ok).toBe(true);
+  return session;
+}
+
+describe('机上の3D（§10.1 / 決定表#9）', () => {
+  it('splits the wires between the board router and the desk cables', () => {
+    const session = sessionWithDeskWire();
+    expect(routeSession(board, session)).toHaveLength(0);
+    expect(deskWires(board, session)).toHaveLength(2);
+    // 盤側の経路器は机上の電線で例外を出さない
+    expect(safeRoutes(board, session).errors).toEqual([]);
+  });
+
+  it('lists the terminals that belong to the desk', () => {
+    const ids = offBoardTerminals(board).map((t) => String(t.id));
+    expect(ids).toContain('PLC.X0');
+    expect(ids).toContain('PLC.COM0');
+    expect(ids).toContain('OUTLET.L');
+    expect(ids).not.toContain('TB_PB.1a');
+    // FX5U は電源3・S/S・サービス2・入力16・COM4・出力16 = 42 端子 ＋ コンセント2
+    expect(ids).toHaveLength(44);
+  });
+
+  it('draws a sagging cable between the two ends', () => {
+    const points = deskCablePoints({ x: 0, y: 0, z: 0 }, { x: 100, y: 0, z: 0 });
+    expect(points).toHaveLength(3);
+    expect(points[0]).toEqual([0 - 165, 110, 0]);
+    // 中間点は手前（盤モデルの y が増える方向＝シーンの −Y）へ垂れる
+    expect(points[1]?.[1]).toBeLessThan(points[0]?.[1] ?? 0);
+    expect(points[2]?.[0]).toBeCloseTo(100 - 165, 6);
+  });
+});
+```
+
+- [ ] **Step 2: RED を確認し、Step 3 で `camera.ts` を足す**
+
+```ts
+import {
+  BOARD_HEIGHT_MM,
+  BOARD_WIDTH_MM,
+  JIPM_BOARD,
+  OUTLET_ORIGIN_MM,
+  PLC_TERMINAL_PITCH_MM,
+  PLC_UNIT_FX5U,
+} from '@ojt/board-model';
+```
+
+```ts
+/** 「PLC」視点で必ず画角に入れる余白[mm]。 */
+export const PLC_VIEW_MARGIN_MM = 20;
+
+/**
+ * 「PLC」視点が収める矩形（盤モデル mm）。§10.1 / 決定表#6
+ * 机上のPLC本体と壁コンセントの外接矩形。数値は盤モデルの定義から求めるのでハードコードしない。
+ */
+export const PLC_VIEW_RECT = ((): { x: number; y: number; w: number; h: number } => {
+  const unit = PLC_UNIT_FX5U;
+  const xs = [
+    unit.pos.x,
+    unit.pos.x + unit.sizeMm.width,
+    OUTLET_ORIGIN_MM.x,
+    OUTLET_ORIGIN_MM.x + PLC_TERMINAL_PITCH_MM * 2,
+  ];
+  const ys = [
+    unit.pos.y,
+    unit.pos.y + unit.sizeMm.height,
+    OUTLET_ORIGIN_MM.y - PLC_TERMINAL_PITCH_MM,
+    OUTLET_ORIGIN_MM.y + PLC_TERMINAL_PITCH_MM,
+  ];
+  const x = Math.min(...xs) - PLC_VIEW_MARGIN_MM;
+  const y = Math.min(...ys) - PLC_VIEW_MARGIN_MM;
+  return {
+    x,
+    y,
+    w: Math.max(...xs) + PLC_VIEW_MARGIN_MM - x,
+    h: Math.max(...ys) + PLC_VIEW_MARGIN_MM - y,
+  };
+})();
+```
+
+`cameraPose()` の `switch` に1件足す（**`socket` と同じ形**。ほかの分岐は触らない）:
+
+```ts
+    case 'plc': {
+      // 机上のPLC本体と壁コンセントが収まるまで寄る（盤面の延長なので面直で見る）。§10.1
+      const rect = PLC_VIEW_RECT;
+      const distance = fitDistanceMm(rect.w, rect.h, SOCKET_VIEW_ASPECT);
+      const center: [number, number, number] = [
+        rect.x + rect.w / 2 - w / 2,
+        h / 2 - (rect.y + rect.h / 2),
+        0,
+      ];
+      return {
+        position: boardToWorld([center[0], center[1], distance]),
+        target: boardToWorld(center),
+        up: boardUp(),
+      };
+    }
+```
+
+- [ ] **Step 4: `three/PlcUnit.tsx` / `Outlet.tsx` / `DeskWires.tsx` を書く**
+
+```tsx
+// PlcUnit.tsx
+import type { BoardTerminal, PlcUnitDefinition } from '@ojt/board-model';
+import type { TerminalId } from '@ojt/circuit-sim';
+import { Html } from '@react-three/drei';
+import type { JSX } from 'react';
+import { roleColor } from './labels.js';
+import { sharedMaterial, UNIT_BOX } from './materials.js';
+import { TerminalHit, terminalTooltip } from './TerminalHit.js';
+import { toScene } from './coords.js';
+
+/**
+ * 机上のPLC本体（FX5U）。設計仕様 §10.1 / §17。
+ *
+ * 外形・端子・LEDの並びはすべて `PlcUnitDefinition`（`@ojt/board-model`）から引く。
+ * **各社のロゴ・銘板画像・画面キャプチャは描かない**（§17 / PLC調査資料 §6）。銘板は
+ * `displayName` の文字だけで、機種が増えても3Dのコードは変わらない。
+ */
+
+/** 筐体の色（灰）。 */
+const BODY_COLOR = '#D8DBE0';
+/** LEDの直径[mm]。 */
+const LED_D_MM = 3;
+/** LEDの並びの左端[mm]（筐体の左から）。 */
+const LED_LEFT_MM = 10;
+/** LEDの縦位置[mm]（筐体の上から）。 */
+const LED_TOP_MM = 6;
+
+/** レイキャストを受けない（筐体が端子のクリックを奪わないように）。 */
+function noPick(): void {
+  // 交差候補を積まない
+}
+
+/** PLC本体。 */
+export function PlcUnit({
+  unit,
+  terminals,
+  hoveredTerminal,
+  pendingTerminal,
+  onHoverTerminal,
+  onPickTerminal,
+}: {
+  unit: PlcUnitDefinition;
+  terminals: readonly BoardTerminal[];
+  hoveredTerminal: TerminalId | undefined;
+  pendingTerminal: TerminalId | undefined;
+  onHoverTerminal: (id: TerminalId | undefined) => void;
+  onPickTerminal: (terminal: BoardTerminal) => void;
+}): JSX.Element {
+  const { width, height } = unit.sizeMm;
+  // 筐体は薄い台（厚み6mm）として描く。机上の実寸の奥行（83mm）まで出すと端子が谷底になって
+  // クリックしづらく、正面視でも端子列が見えなくなる（意図的な差分 #1）
+  const bodyZ = 6;
+  const center = toScene({ x: unit.pos.x + width / 2, y: unit.pos.y + height / 2, z: bodyZ / 2 });
+  return (
+    <group name="plc-unit">
+      <mesh
+        geometry={UNIT_BOX}
+        material={sharedMaterial(BODY_COLOR, { roughness: 0.65, metalness: 0.1 })}
+        raycast={noPick}
+        position={center}
+        scale={[width, height, bodyZ]}
+      />
+      {unit.leds.map((led, index) => (
+        <mesh
+          key={led}
+          raycast={noPick}
+          position={toScene({
+            x: unit.pos.x + LED_LEFT_MM + index * (LED_D_MM * 2),
+            y: unit.pos.y + LED_TOP_MM,
+            z: bodyZ + 0.4,
+          })}
+        >
+          <circleGeometry args={[LED_D_MM / 2, 12]} />
+          <meshBasicMaterial color="#5A6070" />
+        </mesh>
+      ))}
+      {terminals.map((terminal) => (
+        <TerminalHit
+          key={terminal.id}
+          terminal={terminal}
+          tooltip={terminalTooltip(terminal, terminal.label)}
+          hovered={hoveredTerminal === terminal.id}
+          pending={pendingTerminal === terminal.id}
+          onHover={onHoverTerminal}
+          onPick={onPickTerminal}
+        />
+      ))}
+      {/* 端子の印字（常時表示）。色は役割ごとの既存の表から引く（§12.2） */}
+      {terminals.map((terminal) => (
+        <Html
+          key={`label-${terminal.id}`}
+          center
+          style={{ pointerEvents: 'none', color: roleColor(terminal.role) }}
+          distanceFactor={300}
+          position={toScene({ x: terminal.pos.x, y: terminal.pos.y - 5, z: bodyZ + 0.5 })}
+          zIndexRange={[10, 0]}
+        >
+          <span className="terminal-mark">{terminal.label}</span>
+        </Html>
+      ))}
+      <Html
+        center
+        style={{ pointerEvents: 'none' }}
+        distanceFactor={420}
+        position={toScene({ x: unit.pos.x + width / 2, y: unit.pos.y + height + 8, z: bodyZ })}
+        zIndexRange={[10, 0]}
+      >
+        <span className="block-label">{unit.displayName}</span>
+      </Html>
+    </group>
+  );
+}
+```
+
+> `roleColor(role)` は `three/labels.ts` に**既にある**役割色の引き手（`x` / `y` / `ss` / `plc-com` / `ac-l` / `ac-n` を含む）。無ければ既存の色表から同じ形の関数を切り出すこと（色の値は足さない）。
+
+```tsx
+// Outlet.tsx
+import type { BoardTerminal } from '@ojt/board-model';
+import { OUTLET_ORIGIN_MM, PLC_TERMINAL_PITCH_MM } from '@ojt/board-model';
+import type { TerminalId } from '@ojt/circuit-sim';
+import { Html } from '@react-three/drei';
+import type { JSX } from 'react';
+import { JA } from '../i18n/ja.js';
+import { sharedMaterial, UNIT_BOX } from './materials.js';
+import { TerminalHit, terminalTooltip } from './TerminalHit.js';
+import { toScene } from './coords.js';
+
+/** 壁コンセント（AC100V）。設計仕様 §10.1。 */
+const PLATE_W_MM = 34;
+const PLATE_H_MM = 24;
+const PLATE_Z_MM = 4;
+
+function noPick(): void {
+  // 交差候補を積まない
+}
+
+/** 壁コンセント。 */
+export function Outlet({
+  terminals,
+  hoveredTerminal,
+  pendingTerminal,
+  onHoverTerminal,
+  onPickTerminal,
+}: {
+  terminals: readonly BoardTerminal[];
+  hoveredTerminal: TerminalId | undefined;
+  pendingTerminal: TerminalId | undefined;
+  onHoverTerminal: (id: TerminalId | undefined) => void;
+  onPickTerminal: (terminal: BoardTerminal) => void;
+}): JSX.Element {
+  const center = toScene({
+    x: OUTLET_ORIGIN_MM.x + PLC_TERMINAL_PITCH_MM / 2,
+    y: OUTLET_ORIGIN_MM.y,
+    z: PLATE_Z_MM / 2,
+  });
+  return (
+    <group name="outlet">
+      <mesh
+        geometry={UNIT_BOX}
+        material={sharedMaterial('#F0F1F3', { roughness: 0.8, metalness: 0 })}
+        raycast={noPick}
+        position={center}
+        scale={[PLATE_W_MM, PLATE_H_MM, PLATE_Z_MM]}
+      />
+      {terminals.map((terminal) => (
+        <TerminalHit
+          key={terminal.id}
+          terminal={terminal}
+          tooltip={terminalTooltip(terminal, terminal.label)}
+          hovered={hoveredTerminal === terminal.id}
+          pending={pendingTerminal === terminal.id}
+          onHover={onHoverTerminal}
+          onPick={onPickTerminal}
+        />
+      ))}
+      <Html
+        center
+        style={{ pointerEvents: 'none' }}
+        distanceFactor={360}
+        position={toScene({
+          x: OUTLET_ORIGIN_MM.x + PLC_TERMINAL_PITCH_MM / 2,
+          y: OUTLET_ORIGIN_MM.y + PLATE_H_MM / 2 + 6,
+          z: PLATE_Z_MM,
+        })}
+        zIndexRange={[10, 0]}
+      >
+        <span className="block-label">{JA.plc.outlet}</span>
+      </Html>
+    </group>
+  );
+}
+```
+
+```tsx
+// DeskWires.tsx
+import {
+  deskWires,
+  isOffBoardTerminal,
+  type BoardDefinition,
+  type BoardSession,
+  type BoardTerminal,
+  type Vec3,
+} from '@ojt/board-model';
+import type { WireColor } from '@ojt/circuit-sim';
+import { useMemo, type JSX } from 'react';
+import { CatmullRomCurve3, Vector3 } from 'three';
+import { wireBodyColor } from '../session/colors.js';
+import { sharedMaterial } from './materials.js';
+import { toScene } from './coords.js';
+
+/**
+ * 机上へ渡るケーブル。設計仕様 §10.1 / 3A 決定表#9。
+ *
+ * 盤の配線帯（§6.6）は机上まで伸びていないので、これらの電線は `routeSession()` の対象外で
+ * ある（`deskWires()` が別に返す）。ここでは**たるんだ直線ケーブル**として描く。
+ */
+
+/** ケーブルの半径[mm]。 */
+const CABLE_R_MM = 1.6;
+/** ケーブルの垂れ下がり量[mm]（手前へ）。 */
+const SAG_MM = 12;
+
+/** 机上に属する端子（PLC本体と壁コンセント）。 */
+export function offBoardTerminals(board: BoardDefinition): BoardTerminal[] {
+  return board.terminals.filter((terminal) => isOffBoardTerminal(terminal.id));
+}
+
+/** ケーブルの制御点（始点・たるみ・終点）をシーン座標で返す。 */
+export function deskCablePoints(from: Vec3, to: Vec3): Array<[number, number, number]> {
+  const a = toScene(from);
+  const b = toScene(to);
+  const middle = toScene({
+    x: (from.x + to.x) / 2,
+    y: (from.y + to.y) / 2 + SAG_MM,
+    z: (from.z + to.z) / 2 + 2,
+  });
+  return [a, middle, b];
+}
+
+/** 机上へ渡るケーブルをまとめて描く。 */
+export function DeskWires({
+  board,
+  session,
+}: {
+  board: BoardDefinition;
+  session: BoardSession;
+}): JSX.Element | null {
+  const cables = useMemo(() => {
+    const colors = new Map<string, WireColor>(session.wires.map((wire) => [wire.id, wire.color]));
+    return deskWires(board, session).map((wire) => ({
+      id: wire.id,
+      color: colors.get(wire.id) ?? '青',
+      points: deskCablePoints(wire.fromPos, wire.toPos),
+    }));
+  }, [board, session]);
+  if (cables.length === 0) return null;
+  return (
+    <group name="desk-wires">
+      {cables.map((cable) => (
+        <mesh
+          key={cable.id}
+          material={sharedMaterial(wireBodyColor(cable.color, false, false), {
+            roughness: 0.5,
+            metalness: 0.1,
+          })}
+        >
+          <tubeGeometry
+            args={[
+              new CatmullRomCurve3(cable.points.map((p) => new Vector3(p[0], p[1], p[2]))),
+              16,
+              CABLE_R_MM,
+              8,
+              false,
+            ]}
+          />
+        </mesh>
+      ))}
+    </group>
+  );
+}
+```
+
+> `wireBodyColor(color, selected, locked)` は `session/colors.ts` の既存の関数。引数の形が違えば既存の署名に合わせること（線色 → 色の変換を新しく書かない）。
+
+- [ ] **Step 5: `BoardScene.tsx` に足す（**MERGE 注意 #5。編集は4箇所のみ**）**
+
+1. **import**: `PlcUnit` / `Outlet` / `DeskWires` / `offBoardTerminals` を足す。
+2. **`BoardContents` の `board`**: `const board = JIPM_BOARD;` を **props で受け取る**（`board: BoardDefinition`）ように変える。`BoardSceneImpl` にも `board` props を足し、既定値を `JIPM_BOARD` にする（モードB/C1/C2 の呼び出し側は変えなくてよい）。
+3. **`visualSignature()`**: 机上の配線と盤が変わったことを署名に入れる（下の2行を配列の末尾に足す）。
+
+```ts
+    // 机上のPLC・コンセントと机上配線が絵に効く（§10.1）
+    session?.boardId ?? '',
+    state.problem !== undefined && state.problem.mode === 'plc' ? 'plc' : '',
+```
+
+4. **`<group rotation={[BOARD_TILT_RAD, 0, 0]}>` の中**（`ProbeMarkers` の**直前**）に机上の3つを足す:
+
+```tsx
+        {/* 机上のPLC本体・壁コンセント・渡りケーブル（モードDの盤だけが持つ）。§10.1 */}
+        {board.plcUnit === undefined ? null : (
+          <>
+            <PlcUnit
+              unit={board.plcUnit}
+              terminals={plcTerminals}
+              hoveredTerminal={hovered}
+              pendingTerminal={pending}
+              onHoverTerminal={onHover}
+              onPickTerminal={pickTerminal}
+            />
+            <Outlet
+              terminals={outletTerminals}
+              hoveredTerminal={hovered}
+              pendingTerminal={pending}
+              onHoverTerminal={onHover}
+              onPickTerminal={pickTerminal}
+            />
+            {session === undefined ? null : <DeskWires board={board} session={session} />}
+          </>
+        )}
+```
+
+端子の振り分けは既存の `useMemo` 群の隣に置く（**同一性を保つためメモ化する**。§15）:
+
+```tsx
+  /** 机上の端子（PLC本体・壁コンセント）。同一性を保つためメモ化する。§15 */
+  const deskTerminals = useMemo(() => offBoardTerminals(board), [board]);
+  const plcTerminals = useMemo(
+    () => deskTerminals.filter((t) => t.id.startsWith(`${PLC_PART_ID}.`)),
+    [deskTerminals],
+  );
+  const outletTerminals = useMemo(
+    () => deskTerminals.filter((t) => t.id.startsWith(`${OUTLET_ID}.`)),
+    [deskTerminals],
+  );
+```
+
+- [ ] **Step 6: `Toolbar.tsx` に4つ目の視点ボタン（**MERGE 注意 #6。1箇所のみ**）**
+
+`VIEWS` はそのままにし、`showPlcView?: boolean` の props を足して視点グループの末尾に条件つきで1つ描く:
+
+```tsx
+          {showPlcView === true ? (
+            <button
+              type="button"
+              data-testid="view-plc"
+              aria-pressed={camera === 'plc'}
+              title={JA.plc.viewPlc}
+              onClick={() => {
+                onCamera('plc');
+              }}
+            >
+              {JA.plc.viewPlc}
+            </button>
+          ) : null}
+```
+
+`ja.ts` に `plc` ブロックを新設（`ladder` の直後）:
+
+```ts
+  /** モードD（PLC）の画面。§10.1 / §10.2 / §12.1 */
+  plc: {
+    outlet: '壁コンセント（AC100V）',
+    viewPlc: 'PLC',
+    unit: 'PLC本体',
+  },
+```
+
+- [ ] **Step 7: GREEN とコミット**
+
+```powershell
+pnpm --filter @ojt/desktop exec vitest run test/plc-camera.test.ts test/plc-scene.test.ts test/scene.test.ts test/camera-presets.test.tsx test/board-scene.test.ts test/toolbar.test.tsx
+npx prettier --write "apps/desktop/src/renderer/three/*.{ts,tsx}" "apps/desktop/src/renderer/panels/Toolbar.tsx" "apps/desktop/test/plc-*.test.ts"
+git add apps/desktop/src apps/desktop/test
+git commit -m "feat(desktop): draw the FX5U, the wall outlet and the desk cables"
+```
+
+Expected: `plc-camera` が `Tests  4 passed (4)`、`plc-scene` が `Tests  3 passed (3)`。既存の3Dテスト（`scene` / `camera-presets` / `board-scene` / `toolbar`）も通る。
+
+---
+
 <!-- CHUNK -->
+
 
 
 
