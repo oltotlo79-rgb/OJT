@@ -5,6 +5,7 @@ import { BUILTIN_ALL_PROBLEMS, type SupportedProblem } from '@ojt/content';
 import { loadProblemsFromDir, mergeProblemSets, type ProblemSet } from '@ojt/content/loader';
 import { app } from 'electron';
 import { toErrorRow, toSummary, type ProblemListPayload } from '../shared/ipc.js';
+import { MSG } from '../shared/messages.js';
 
 /**
  * 課題の供給。設計仕様 §7.8 / §13 #1 / §13 #9。
@@ -77,6 +78,17 @@ export function builtinSet(): ProblemSet {
   const fromDisk = loadProblemsFromDir(dir);
   if (fromDisk.problems.length === 0) {
     return withFallbackNotice(bundled, dir, '同梱課題フォルダから1題も読めませんでした');
+  }
+  // BLOCKER: `predist` の複写漏れ（例: `MODES` に一部モードしか無い）や配布後の手作業による
+  // 破損で、フォルダから読めた件数がアプリに焼き込んだ件数と食い違うことがある。
+  // 無警告のまま一部の課題だけを一覧に出すと利用者が気付けないため、焼き込みへ確実に落とし、
+  // 理由を読込エラー欄に出す（黙って欠けた一覧を出さない）。
+  if (fromDisk.problems.length !== bundled.problems.length) {
+    return withFallbackNotice(
+      bundled,
+      dir,
+      MSG.content.countMismatch(fromDisk.problems.length, bundled.problems.length),
+    );
   }
   return fromDisk;
 }

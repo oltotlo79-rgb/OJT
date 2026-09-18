@@ -98,6 +98,28 @@ describe('builtinSet', () => {
     expect(set.errors[0]?.message).toContain('内蔵した課題で起動します');
   });
 
+  it('配布版で件数が焼き込みと食い違えば焼き込みへ落とし、件数を理由に出す（Phase 2 acceptance BLOCKER）', () => {
+    // `predist` の複写漏れ（例: 一部モードフォルダしか複写されない）を模して、
+    // 一部の課題しか置かれていない resources/content を用意する
+    const resources = tempDir('ojt-resources-');
+    const assemble = join(resources, 'content', 'assemble');
+    mkdirSync(assemble, { recursive: true });
+    const partial = BUILTIN_ALL_PROBLEMS.slice(0, 8); // モードBの8題だけ（C1/C2が欠落）
+    for (const problem of partial) {
+      writeFileSync(join(assemble, `${problem.id}.json`), JSON.stringify(problem), 'utf8');
+    }
+    electron.packaged = true;
+    setResourcesPath(resources);
+
+    const set = builtinSet();
+    // 一覧が欠けたまま出ず、確実に焼き込みの20題へ落ちる
+    expect(set.problems).toHaveLength(BUILTIN_ALL_PROBLEMS.length);
+    expect(set.errors).toHaveLength(1);
+    expect(set.errors[0]?.message).toContain('8件');
+    expect(set.errors[0]?.message).toContain('20件');
+    expect(set.errors[0]?.message).toContain('内蔵した課題で起動します');
+  });
+
   it('配布版でフォルダごと無くても起動できる（§13 #1）', () => {
     electron.packaged = true;
     setResourcesPath(join(tmpdir(), 'ojt-no-such-resources'));

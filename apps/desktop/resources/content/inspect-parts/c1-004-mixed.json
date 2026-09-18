@@ -1,0 +1,20 @@
+{
+  "formatVersion": 1,
+  "id": "c1-004",
+  "mode": "inspect-parts",
+  "title": "リレー・タイマの混合点検",
+  "grade": 1,
+  "description": "トレイのリレー4個とタイマ2個を点検しなさい。良否の判定は部品ごとに独立している。接点の不良は4組のうちどれか1組にだけ入っているので、4組すべてを順に測ること。解答は組を問わず「a接点 溶着」のように原因だけを答える。",
+  "timeLimit": { "standardMin": 30, "cutoffMin": 50 },
+  "board": { "boardId": "board-jipm-std", "socketRoles": { "S7": "CHK" } },
+  "inventory": [],
+  "parts": [
+    { "id": "p1", "kind": "relay-my4n", "truth": "coil-layer-short", "ratio": 0.5 },
+    { "id": "p2", "kind": "timer-h3y4", "truth": "a-weld", "group": 4 },
+    { "id": "p3", "kind": "relay-my4n", "truth": "b-weld", "group": 2 },
+    { "id": "p4", "kind": "relay-my4n", "truth": "normal" },
+    { "id": "p5", "kind": "timer-h3y4", "truth": "normal" },
+    { "id": "p6", "kind": "relay-my4n", "truth": "coil-open" }
+  ],
+  "seed": 20260104
+}

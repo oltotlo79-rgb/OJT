@@ -31,6 +31,14 @@ export const MSG = {
     loadCanceled: '読込を取り消しました',
     autosaveCleared: '一時保存を削除しました',
   },
+  content: {
+    /**
+     * 配布物に置いた同梱課題フォルダから読めた件数が、アプリに焼き込んだ内蔵課題の件数と
+     * 食い違う（configure/複写漏れ・破損）。§13 #1 / Phase 2 acceptance BLOCKER。
+     */
+    countMismatch: (diskCount: number, builtinCount: number): string =>
+      `同梱課題フォルダから読めた課題数（${String(diskCount)}件）が想定（${String(builtinCount)}件）と一致しません`,
+  },
   settings: {
     /** 設定ファイルが読めなかった（既定値で動く）。§12.1 */
     corrupt: '設定ファイルを読めませんでした。既定値で起動し、壊れた設定は控えを残しました',

@@ -17,8 +17,16 @@ const APP_ROOT = resolve(HERE, '..');
 const SOURCE = resolve(APP_ROOT, '../../packages/content/src/builtin');
 const TARGET = join(APP_ROOT, 'resources', 'content');
 
-/** 複写するモード別フォルダ（Phase 1 は回路組立だけ）。 */
-const MODES = ['assemble'];
+/**
+ * 複写するモード別フォルダ。正本（`packages/content/src/builtin/`）配下のディレクトリを
+ * そのまま拾うため、Phase 3 で `plc` 等のモードフォルダが増えても本ファイルの変更なしに
+ * 複写される（BLOCKER: 以前は `['assemble']` に固定されており、モードC1/C2が
+ * 配布物から欠落していた）。
+ */
+const MODES = readdirSync(SOURCE, { withFileTypes: true })
+  .filter((entry) => entry.isDirectory())
+  .map((entry) => entry.name)
+  .sort();
 
 for (const mode of MODES) {
   const from = join(SOURCE, mode);

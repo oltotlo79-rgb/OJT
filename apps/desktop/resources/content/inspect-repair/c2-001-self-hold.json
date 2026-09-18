@@ -1,0 +1,73 @@
+{
+  "formatVersion": 1,
+  "id": "c2-001",
+  "mode": "inspect-repair",
+  "title": "自己保持回路の点検・修復①",
+  "grade": 2,
+  "description": "黒押ボタン（PB1）で白ランプ（PL1）が点灯し自己保持、黄押ボタン（PB2）で消灯する回路である。現在は正しく動作しない。回路図とタイムチャートを手がかりに故障箇所を2つ指摘し、白線で修復しなさい。故障箇所でない青線を外してはならない。",
+  "timeLimit": { "standardMin": 30, "cutoffMin": 50 },
+  "board": {
+    "boardId": "board-jipm-std",
+    "socketRoles": { "S1": "CR1", "S2": "CR2", "S5": "T1", "S6": "T2", "S7": "CHK" }
+  },
+  "inventory": [
+    { "kind": "relay-my4n", "count": 2 },
+    { "kind": "timer-h3y4", "count": 2 }
+  ],
+  "schematic": {
+    "formatVersion": 1,
+    "id": "sch-c2-001",
+    "title": "自己保持回路",
+    "orientation": "horizontal",
+    "rungs": [
+      {
+        "id": "r1",
+        "from": { "bus": "P" },
+        "to": { "bus": "N" },
+        "cells": [
+          { "kind": "pb-b", "id": "c01", "device": "PB2" },
+          { "kind": "pb-a", "id": "c02", "device": "PB1" },
+          { "kind": "coil", "id": "c03", "device": "CR1" }
+        ]
+      },
+      {
+        "id": "r1h",
+        "from": { "rung": "r1", "node": 1 },
+        "to": { "rung": "r1", "node": 2 },
+        "cells": [{ "kind": "cr-a", "id": "c04", "device": "CR1" }]
+      },
+      {
+        "id": "r2",
+        "from": { "bus": "P" },
+        "to": { "bus": "N" },
+        "cells": [
+          { "kind": "cr-a", "id": "c05", "device": "CR1" },
+          { "kind": "lamp", "id": "c06", "device": "PL1" }
+        ]
+      }
+    ]
+  },
+  "faults": [
+    { "target": { "wireId": "sw-005" }, "kind": "wire-open" },
+    { "target": { "wireId": "sw-009" }, "kind": "wire-missing" }
+  ],
+  "operations": [
+    { "t": 500, "target": "PB1", "action": "press" },
+    { "t": 800, "target": "PB1", "action": "release" },
+    { "t": 3000, "target": "PB2", "action": "press" },
+    { "t": 3300, "target": "PB2", "action": "release" }
+  ],
+  "durationMs": 5000,
+  "judge": {
+    "tolerance": { "edgeMs": 200, "ratio": 0.1 },
+    "staticChecks": {
+      "wireColorRule": true,
+      "terminalLimit": true,
+      "unusedParts": true,
+      "forbiddenCircuit": true,
+      "coilPolarity": true,
+      "powerSequence": true
+    }
+  },
+  "hints": { "schematicVisible": true }
+}
