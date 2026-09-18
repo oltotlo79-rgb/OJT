@@ -51,6 +51,12 @@ export const MAX_WORK_FILE_ENTRIES = 200;
  */
 export const MAX_SCHEMATIC_OPEN_COUNT = 10_000;
 
+/**
+ * プローブの端子IDとして受け入れる文字数の上限（renderer の `toProbeTerminal()` と同じ値）。
+ * §12.3
+ */
+export const MAX_PROBE_TERMINAL_ID_LENGTH = 32;
+
 /** 一時保存のパス。§12.3 */
 export function autosavePath(): string {
   return join(app.getPath('userData'), 'autosave.json');
@@ -62,6 +68,26 @@ function writeFileAtomic(target: string, content: string): void {
   const temp = `${target}.tmp`;
   writeFileSync(temp, content, 'utf8');
   renameSync(temp, target);
+}
+
+/**
+ * `tester.black` / `tester.red`（探針を挿した端子ID）を、壊れた／作為的な値から守る。§12.3 / §13 #8
+ *
+ * main は盤の定義を知らないので「その端子が盤に実在するか」までは確かめない（renderer の
+ * `toSession()` / `ProbeMarkers.scenePosOf()` が黙って落とす）。ここで見るのは形だけ:
+ * 文字列で、空でなく、上限文字数以内であること。それ以外（他の型・空文字・長すぎる文字列）は
+ * その項目だけ落とす（`tester` オブジェクト自体は残す。壊れているのは探針の位置だけなので、
+ * つまみ・レンジ・0Ω調整まで道連れにして読込を断る理由はない）。
+ */
+function sanitizedTester(tester: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...tester };
+  for (const key of ['black', 'red'] as const) {
+    const value = tester[key];
+    const ok =
+      typeof value === 'string' && value.length > 0 && value.length <= MAX_PROBE_TERMINAL_ID_LENGTH;
+    if (!ok) delete out[key];
+  }
+  return out;
 }
 
 /** 作業ファイルの検証。未知の `formatVersion` は読み込まない。§13 #8 */
@@ -129,7 +155,7 @@ export function parseWorkFile(
     source['tester'] !== null &&
     !Array.isArray(source['tester'])
   ) {
-    optional.tester = source['tester'];
+    optional.tester = sanitizedTester(source['tester'] as Record<string, unknown>);
   }
   for (const key of ['answers', 'reports', 'resolvedFaults', 'replacedPartIds'] as const) {
     const value = source[key];

@@ -165,6 +165,78 @@ describe('parseWorkFile のモード固有の項目（§12.3 / §13 #8）', () =
     expect((result.file.tester as { mode: string }).mode).toBe('OHM');
   });
 
+  /** 探針の端子ID（§12.3 のギャップ修正）。main は盤を知らないので形だけ見る。 */
+  describe('tester.black / tester.red', () => {
+    it('妥当な端子IDはそのまま写す', () => {
+      const result = parseWorkFile(
+        sampleFile({
+          tester: {
+            kind: 'analog',
+            mode: 'OHM',
+            voltRange: 50,
+            ohmRange: 10,
+            zeroAdjusted: false,
+            black: 'CHK.13',
+            red: 'CHK.14',
+          },
+        }),
+      );
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.file.tester).toMatchObject({ black: 'CHK.13', red: 'CHK.14' });
+    });
+
+    it('上限文字数（32文字）ちょうどは読める', () => {
+      const id = `CHK.${'1'.repeat(28)}`;
+      expect(id.length).toBe(32);
+      const result = parseWorkFile(
+        sampleFile({
+          tester: { kind: 'digital', mode: 'OHM', voltRange: 50, ohmRange: 10, black: id },
+        }),
+      );
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect((result.file.tester as { black?: string }).black).toBe(id);
+    });
+
+    it('上限を超える端子IDはその項目だけ落とす（tester 全体は残す）', () => {
+      const tooLong = `CHK.${'1'.repeat(29)}`;
+      expect(tooLong.length).toBe(33);
+      const result = parseWorkFile(
+        sampleFile({
+          tester: {
+            kind: 'digital',
+            mode: 'OHM',
+            voltRange: 50,
+            ohmRange: 10,
+            black: tooLong,
+            red: 'CHK.14',
+          },
+        }),
+      );
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      const tester = result.file.tester as { black?: string; red?: string; mode: string };
+      expect(tester.black).toBeUndefined();
+      expect(tester.red).toBe('CHK.14');
+      expect(tester.mode).toBe('OHM');
+    });
+
+    it.each<unknown>(['', 42, { id: 'CHK.13' }, ['CHK.13']])(
+      '文字列でない・空文字の端子IDは落とす（%p）',
+      (value) => {
+        const result = parseWorkFile(
+          sampleFile({
+            tester: { kind: 'digital', mode: 'OHM', voltRange: 50, ohmRange: 10, black: value },
+          }),
+        );
+        expect(result.ok).toBe(true);
+        if (!result.ok) return;
+        expect((result.file.tester as { black?: unknown }).black).toBeUndefined();
+      },
+    );
+  });
+
   it('Phase 1 の作業ファイル（任意項目なし）はそのまま読める（§13 の作業保持の原則）', () => {
     const result = parseWorkFile(sampleFile());
     expect(result.ok).toBe(true);

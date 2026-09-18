@@ -79,9 +79,14 @@ export interface WorkFile {
   /** 課題のモード（無ければ `assemble` とみなす）。§12.1 */
   mode?: SessionMode;
   /**
-   * テスターのつまみの状態（`{ kind, mode, voltRange, ohmRange, zeroAdjusted }`）。§9.3 / §12.3
-   * プローブの位置は**載せない**。盤を読み直すたびに両方のプローブは外れる仕様（Plan 2B Task 3）
-   * なので、戻しても画面と Worker が食い違うだけである。
+   * テスターのつまみとプローブの状態
+   * （`{ kind, mode, voltRange, ohmRange, zeroAdjusted, black?, red? }`）。§9.3 / §12.3
+   *
+   * `black` / `red` は探針を挿した端子ID（役割ベース、例: `CHK.13`）で、**任意**。
+   * 復元直後は `place-probe` を送り直すまで読み値が `----` のままになる不具合
+   * （§12.3 のギャップ）を避けるため、つまみ・レンジ・0Ω調整を Worker に送り直した**あと**に
+   * 探針を挿し直す（`replayTesterToWorker()`）。盤に無い端子（課題や盤の変更で消えた端子）を
+   * 指していたら、その探針は外れたまま扱う（黙って無視する）。
    */
   tester?: unknown;
   /** モードC1のマークシートの解答（`InspectPartAnswer[]`）。§9.1 */

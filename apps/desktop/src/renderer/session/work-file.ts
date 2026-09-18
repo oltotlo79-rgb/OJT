@@ -85,10 +85,16 @@ export function toInspectWorkFile(): WorkFile | undefined {
   return toWorkFile(problem.id, session, elapsedMs, hazards.length);
 }
 
+/** プローブの端子IDとして受け入れる文字数の上限（main の検証と同じ値）。§12.3 */
+export const MAX_PROBE_TERMINAL_ID_LENGTH = 32;
+
 /**
- * 作業ファイルに載せるテスターのつまみ。§9.3 / §12.3
- * プローブ（`black` / `red`）と針の角度は載せない。盤を読み直すたびにプローブは外れる仕様
- * （Plan 2B Task 3）なので、戻しても画面と Worker が食い違うだけである。
+ * 作業ファイルに載せるテスターのつまみとプローブ。§9.3 / §12.3
+ *
+ * `black` / `red` は探針を挿した端子ID（役割ベース、例: `CHK.13`）で、**任意**。以前は
+ * 針の角度と一緒に「載せない」扱いにしていたが、復元直後に読み値が `----` のままになる
+ * （§12.3 のギャップ）ため、いまは載せる。針の角度（`needleDeg`）は載せない
+ * （`replayTesterToWorker()` が `place-probe` を送り直すと Worker 側が自然に追従するため）。
  */
 interface SavedTester {
   kind: TesterState['kind'];
@@ -96,6 +102,8 @@ interface SavedTester {
   voltRange: number;
   ohmRange: TesterState['ohmRange'];
   zeroAdjusted: boolean;
+  black?: string;
+  red?: string;
 }
 
 function savedTester(tester: TesterState): SavedTester {
@@ -105,6 +113,8 @@ function savedTester(tester: TesterState): SavedTester {
     voltRange: tester.voltRange,
     ohmRange: tester.ohmRange,
     zeroAdjusted: tester.zeroAdjusted,
+    ...(tester.black === undefined ? {} : { black: tester.black }),
+    ...(tester.red === undefined ? {} : { red: tester.red }),
   };
 }
 
@@ -276,6 +286,20 @@ export interface InspectWorkState {
 /** 復元できる並びの長さの上限（main の `MAX_WORK_FILE_ENTRIES` と同じ値）。§13 #8 */
 export const MAX_RESTORED_ENTRIES = 200;
 
+/**
+ * プローブの端子IDとして読めるか（読めなければ「外れている」ものとして黙って無視する。§13 #8）。
+ * 形式だけを見る（空でない・上限文字数以内の文字列）。**その端子がいまの盤に実在するか**は
+ * ここでは見ない（保存後に課題や交換で端子が消えていることがあるため）。
+ * `ProbeMarkers.scenePosOf()` と `readTester()`（`nets.hasTerminal()`）は、盤に無い端子IDを
+ * 渡されても例外を投げずに「描かない」「測れない（OL/`----`）」へ落ちる作りなので、存在確認は
+ * そちら側に任せ、ここでは壊れた／作為的な値（極端に長い文字列など）だけを弾く。
+ */
+function toProbeTerminal(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  if (value.length === 0 || value.length > MAX_PROBE_TERMINAL_ID_LENGTH) return undefined;
+  return value;
+}
+
 /** 保存されたテスターのつまみとして読めるか（読めなければ既定のまま使う）。§13 #8 */
 function toSavedTester(value: unknown): SavedTester | undefined {
   if (!isRecord(value)) return undefined;
@@ -296,16 +320,20 @@ function toSavedTester(value: unknown): SavedTester | undefined {
   ) {
     return undefined;
   }
+  const black = toProbeTerminal(value['black']);
+  const red = toProbeTerminal(value['red']);
   return {
     kind,
     mode,
     voltRange,
     ohmRange: ohmRange as SavedTester['ohmRange'],
     zeroAdjusted: value['zeroAdjusted'] === true,
+    ...(black === undefined ? {} : { black }),
+    ...(red === undefined ? {} : { red }),
   };
 }
 
-/** 保存されたつまみを `TesterState` に戻す（プローブは外れたまま）。§9.3 */
+/** 保存されたつまみとプローブを `TesterState` に戻す。§9.3 / §12.3 */
 function testerStateFrom(saved: SavedTester): TesterState {
   return {
     ...createTesterState(saved.kind),
@@ -313,11 +341,13 @@ function testerStateFrom(saved: SavedTester): TesterState {
     voltRange: saved.voltRange,
     ohmRange: saved.ohmRange,
     zeroAdjusted: saved.zeroAdjusted,
+    black: saved.black as TerminalId | undefined,
+    red: saved.red as TerminalId | undefined,
   };
 }
 
 /**
- * つまみの状態を Worker へ送り直す。§9.3 / Plan 2B I-3
+ * つまみとプローブの状態を Worker へ送り直す。§9.3 / §12.3 / Plan 2B I-3
  *
  * Worker 側の `tester` はストアとは別の複製（Task 3）で、`load` のたびにつまみ・レンジ・
  * 0Ω調整を保ったまま動き続ける（`sim.worker.ts` の `load()`）。それでも保存した作業ファイルは
@@ -325,6 +355,13 @@ function testerStateFrom(saved: SavedTester): TesterState {
  * 同じ状態へ揃える。`set-kind` / `set-mode` / `set-volt-range` / `set-ohm-range` はどれも
  * `applyTesterAction()` で校正（`zeroAdjusted`）を落とすため、保存時に 0Ω調整済みだった場合は
  * 最後に `zero-adjust` を送って校正を復元する（Plan 2B レビュー B1）。
+ *
+ * プローブ（`place-probe`）は**必ずこの後**に送る（§12.3 のギャップ修正）。`set-*` はどれも
+ * `applyTesterAction()` の `reset` でレンジ超過の発行済み記録を落とす副作用を持つだけでプローブ
+ * 位置には触れないが、送る順序を「つまみ → プローブ」に固定しておけば、将来 `set-*` 側の実装が
+ * 変わってプローブを外すようになっても、この関数を直すだけで済む。盤に無い端子を指していても
+ * Worker は例外を投げず「測れない」状態になるだけなので、存在確認はせずにそのまま送る
+ * （`toProbeTerminal()` / `ProbeMarkers.scenePosOf()` が黙って無視する側を担う）。
  */
 export function replayTesterToWorker(tester: TesterState): void {
   bridge.send({ type: 'tester', action: { type: 'set-kind', kind: tester.kind } });
@@ -333,6 +370,18 @@ export function replayTesterToWorker(tester: TesterState): void {
   bridge.send({ type: 'tester', action: { type: 'set-ohm-range', range: tester.ohmRange } });
   if (tester.zeroAdjusted) {
     bridge.send({ type: 'tester', action: { type: 'zero-adjust' } });
+  }
+  if (tester.black !== undefined) {
+    bridge.send({
+      type: 'tester',
+      action: { type: 'place-probe', probe: 'black', terminal: tester.black },
+    });
+  }
+  if (tester.red !== undefined) {
+    bridge.send({
+      type: 'tester',
+      action: { type: 'place-probe', probe: 'red', terminal: tester.red },
+    });
   }
 }
 

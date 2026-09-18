@@ -1,4 +1,4 @@
-import { wireId } from '@ojt/circuit-sim';
+import { toTerminalId, wireId } from '@ojt/circuit-sim';
 import {
   BUILTIN_INSPECT_PARTS_PROBLEMS,
   BUILTIN_INSPECT_REPAIR_PROBLEMS,
@@ -76,8 +76,30 @@ describe('toInspectWorkFile（§12.3）', () => {
     expect(file['checkPartId']).toBe(FIRST_PART.id);
     expect(file['answers']).toEqual([{ partId: FIRST_PART.id, answer: 'coil-open' }]);
     expect((file['tester'] as { mode: string }).mode).toBe('OHM');
-    // プローブの位置は載せない（`load` のたびに外れる仕様なので戻しても嘘になる）。§9.3
+  });
+
+  it('C1はプローブの位置（black/red）も載せる（§12.3 のギャップ修正）', () => {
+    useStore.getState().openProblem(C1);
+    useStore.getState().setCheckPart(FIRST_PART.id);
+    useStore.getState().applyTester({ type: 'set-mode', mode: 'CONT' });
+    useStore
+      .getState()
+      .applyTester({ type: 'place-probe', probe: 'black', terminal: toTerminalId('CHK.13') });
+    useStore
+      .getState()
+      .applyTester({ type: 'place-probe', probe: 'red', terminal: toTerminalId('CHK.14') });
+
+    const file = saved();
+    expect(file['tester']).toMatchObject({ black: 'CHK.13', red: 'CHK.14' });
+  });
+
+  it('プローブを置いていなければ black/red は載らない', () => {
+    useStore.getState().openProblem(C1);
+    useStore.getState().setCheckPart(FIRST_PART.id);
+
+    const file = saved();
     expect(file['tester']).not.toHaveProperty('black');
+    expect(file['tester']).not.toHaveProperty('red');
   });
 
   it('C2は指摘・故障の種・解決済みの故障・交換した部品を載せる（§5.2 / Plan 2A I-4）', () => {
@@ -131,6 +153,26 @@ describe('restoreInspectState（§12.3 / §13 #8）', () => {
     expect(state.tester.kind).toBe('analog');
     expect(state.tester.zeroAdjusted).toBe(true);
     expect(state.checkPartId).toBe(FIRST_PART.id);
+  });
+
+  it('C1のプローブ位置（black/red）もストアへ戻す（§12.3 のギャップ修正）', () => {
+    const ok = restoreInspectState(C1, {
+      mode: 'inspect-parts',
+      checkPartId: FIRST_PART.id,
+      tester: {
+        kind: 'digital',
+        mode: 'CONT',
+        voltRange: 50,
+        ohmRange: 10,
+        zeroAdjusted: false,
+        black: 'CHK.13',
+        red: 'CHK.14',
+      },
+    });
+    expect(ok).toBe(true);
+    const state = useStore.getState();
+    expect(state.tester.black).toBe('CHK.13');
+    expect(state.tester.red).toBe('CHK.14');
   });
 
   it('C2は保存した解決済みの故障で同じ盤を組み直す（§5.2 / Plan 2A I-4）', () => {
@@ -320,6 +362,67 @@ describe('applyWorkFile（C1/C2。§12.3）', () => {
       'set-ohm-range',
       'zero-adjust',
     ]);
+  });
+
+  /**
+   * §12.3 のギャップ修正: 復元直後は探針を挿し直すまで読み値が `----` のままだった。
+   * つまみ・レンジ・0Ω調整の再送（`replayTesterToWorker()`）の**あとに** `place-probe` を
+   * 送ることを確かめ、ストア側の `tester.black/red` も戻っていることを確かめる。
+   */
+  it('C1は保存したプローブ位置をストアへ戻し、Workerへはつまみの再送の最後に送る（§12.3）', async () => {
+    useStore.getState().openProblem(C1);
+    useStore.getState().setCheckPart(FIRST_PART.id);
+    useStore.getState().applyTester({ type: 'set-mode', mode: 'CONT' });
+    useStore
+      .getState()
+      .applyTester({ type: 'place-probe', probe: 'black', terminal: toTerminalId('CHK.13') });
+    useStore
+      .getState()
+      .applyTester({ type: 'place-probe', probe: 'red', terminal: toTerminalId('CHK.14') });
+    const file = saved();
+    useStore.getState().abandonSession();
+    bridgeMock.sent = [];
+    apiState.readProblem.mockResolvedValue(C1);
+
+    expect(await applyWorkFile(file as never)).toBe(true);
+
+    // ストア側にも戻っている（3Dのプローブ表示・追加操作が続けられる）
+    const state = useStore.getState();
+    expect(state.tester.black).toBe('CHK.13');
+    expect(state.tester.red).toBe('CHK.14');
+
+    // Worker へは「つまみ（4本）→ place-probe（黒→赤）」の順で送る
+    const testerActions = bridgeMock.sent
+      .filter((c) => c['type'] === 'tester')
+      .map((c) => c['action'] as Record<string, unknown>);
+    expect(testerActions.map((a) => a['type'])).toEqual([
+      'set-kind',
+      'set-mode',
+      'set-volt-range',
+      'set-ohm-range',
+      'place-probe',
+      'place-probe',
+    ]);
+    expect(testerActions.at(-2)).toMatchObject({ probe: 'black', terminal: 'CHK.13' });
+    expect(testerActions.at(-1)).toMatchObject({ probe: 'red', terminal: 'CHK.14' });
+  });
+
+  it('プローブを置かずに保存した C1 は place-probe を送り直さない', async () => {
+    useStore.getState().openProblem(C1);
+    useStore.getState().setCheckPart(FIRST_PART.id);
+    useStore.getState().applyTester({ type: 'set-mode', mode: 'CONT' });
+    const file = saved();
+    useStore.getState().abandonSession();
+    bridgeMock.sent = [];
+    apiState.readProblem.mockResolvedValue(C1);
+
+    expect(await applyWorkFile(file as never)).toBe(true);
+    expect(useStore.getState().tester.black).toBeUndefined();
+    expect(useStore.getState().tester.red).toBeUndefined();
+    const testerActions = bridgeMock.sent
+      .filter((c) => c['type'] === 'tester')
+      .map((c) => (c['action'] as Record<string, unknown>)['type']);
+    expect(testerActions).not.toContain('place-probe');
   });
 
   it('C2は白線と指摘と交換を戻し、故障入りの盤を load する', async () => {
