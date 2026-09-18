@@ -7735,7 +7735,1114 @@ Expected: `plc-session-screen` が `Tests  9 passed (9)`。
 
 ---
 
+## Task 13: モードDの結果画面
+
+**Files:**
+- Create: `apps/desktop/src/renderer/session/plc-explain.ts`
+- Create: `apps/desktop/src/renderer/result/LadderIssueList.tsx`
+- Create: `apps/desktop/src/renderer/result/PlcResult.tsx`
+- Modify: `apps/desktop/src/renderer/screens/Result.tsx`（**MERGE 注意 #9。1箇所のみ**）
+- Modify: `apps/desktop/src/renderer/i18n/ja.ts`（**MERGE 注意 #1**。`JA.staticCheck` に3件）
+- Test: `apps/desktop/test/plc-explain.test.ts`
+- Test: `apps/desktop/test/plc-result.test.tsx`
+
+§10.8 の判定結果を出す。**`plcPowerIndependent` は2つの文言に分け、さらに「シミュレートされるPLCは L/N が未配線でも動く」旨の説明を必ず添える**（3A H-5 ＋ 決定表#15c）。
+
+| 決めること | 本タスクの実装 |
+|---|---|
+| 静的チェックの見出し | `JA.staticCheck` に `twoStage` / `plcPowerIndependent` / `ioAssignment` を足し、**`satisfies Record<StaticCheckId, string>`** を付けて網羅を型で守る |
+| H-5 の文言分け | `details` の中身を `explainPowerCheck()` が見て「盤から取っている（`P.` / `N.` / `CB.` / `SW.` / `PS.` の端子が出てくる）」と「壁コンセントへ未配線」に振り分ける。**文言に依存せず端子IDの形で判定**するので、3A 側の文言が変わっても壊れない |
+| 説明文 | どちらの場合も「本アプリのPLCは `PLC.L` / `PLC.N` が未配線でも動作します。動いていてもこのチェックは不合格になります」を添える |
+| 変換エラー | `ladderErrors` があれば**最上段**に出す（シミュレートされずに不合格になった理由）。`ladderWarnings`（二重コイル）はその下に参考表示 |
+| 共通部分 | `ChartOverlay` / `MismatchList` / `StaticCheckList` / `HazardList` は既存のものをそのまま使う（`JudgePlcResult` は必要なフィールドをすべて持っている） |
+
+- [ ] **Step 1: 失敗するテストを書く**
+
+`apps/desktop/test/plc-explain.test.ts`:
+
+```ts
+import { describe, expect, it } from 'vitest';
+import { explainPowerCheck } from '../src/renderer/session/plc-explain.js';
+
+describe('explainPowerCheck（3A H-5 / 決定表#15c）', () => {
+  it('says nothing extra when the check passed', () => {
+    expect(explainPowerCheck({ id: 'plcPowerIndependent', ok: true, message: 'OK', details: [] })).toEqual(
+      [],
+    );
+  });
+
+  it('recognises power taken from the board by the terminal id, not by the wording', () => {
+    const lines = explainPowerCheck({
+      id: 'plcPowerIndependent',
+      ok: false,
+      message: '',
+      details: ['PLC.L が P.1 と同じ節点にあります'],
+    });
+    expect(lines[0]).toContain('壁コンセント');
+    expect(lines[0]).toContain('盤');
+    expect(lines.at(-1)).toContain('未配線でも動作します');
+  });
+
+  it('recognises the unwired case', () => {
+    const lines = explainPowerCheck({
+      id: 'plcPowerIndependent',
+      ok: false,
+      message: '',
+      details: ['PLC.L がどこにも繋がっていません'],
+    });
+    expect(lines[0]).toContain('2本配線');
+    expect(lines[0]).not.toContain('盤から');
+    expect(lines.at(-1)).toContain('未配線でも動作します');
+  });
+
+  it('can say both when both happen', () => {
+    const lines = explainPowerCheck({
+      id: 'plcPowerIndependent',
+      ok: false,
+      message: '',
+      details: ['PLC.L が SW.2 と同じ節点にあります', 'PLC.N がどこにも繋がっていません'],
+    });
+    expect(lines).toHaveLength(3);
+  });
+
+  it('ignores every other check', () => {
+    expect(explainPowerCheck({ id: 'twoStage', ok: false, message: '', details: ['x'] })).toEqual([]);
+  });
+});
+```
+
+`apps/desktop/test/plc-result.test.tsx`:
+
+```tsx
+import { BUILTIN_PLC_PROBLEMS, type JudgePlcResult } from '@ojt/content';
+import { render, screen } from '@testing-library/react';
+import { describe, expect, it } from 'vitest';
+import { PlcResult } from '../src/renderer/result/PlcResult.js';
+
+const problem = BUILTIN_PLC_PROBLEMS[0]!;
+
+function result(overrides: Partial<JudgePlcResult> = {}): JudgePlcResult {
+  return {
+    mode: 'plc',
+    passed: true,
+    mismatches: [],
+    staticChecks: [
+      { id: 'twoStage', ok: true, message: '2段結線です', details: [] },
+      { id: 'plcPowerIndependent', ok: true, message: '壁コンセントから取っています', details: [] },
+      { id: 'ioAssignment', ok: true, message: '割付どおりです', details: [] },
+    ],
+    hazardCount: 0,
+    hazardsByKind: {
+      'ohm-on-live': 0,
+      'range-exceeded': 0,
+      'short-circuit-power-on': 0,
+      'power-sequence-violation': 0,
+      'over-wires-per-terminal': 0,
+      overcurrent: 0,
+    },
+    chatter: [],
+    elapsedMs: 600_000,
+    charts: { expected: { signals: [], durationMs: 6000, markers: [] }, actual: { signals: [], durationMs: 6000, markers: [] } },
+    compareSignals: ['PL1'],
+    ladderErrors: [],
+    ladderWarnings: [],
+    ...overrides,
+  } as JudgePlcResult;
+}
+
+describe('モードDの結果画面（§10.8）', () => {
+  it('shows the verdict, the elapsed time and the three PLC checks', () => {
+    render(<PlcResult problem={problem} result={result()} onRetry={() => undefined} onBackToList={() => undefined} />);
+    expect(screen.getByTestId('verdict')).toHaveTextContent('合格');
+    expect(screen.getByTestId('static-checks')).toHaveTextContent('2段結線');
+    expect(screen.getByTestId('static-checks')).toHaveTextContent('PLC電源の独立');
+    expect(screen.getByTestId('static-checks')).toHaveTextContent('I/O割付');
+  });
+
+  it('explains the two ways plcPowerIndependent can fail (H-5)', () => {
+    render(
+      <PlcResult
+        problem={problem}
+        result={result({
+          passed: false,
+          staticChecks: [
+            {
+              id: 'plcPowerIndependent',
+              ok: false,
+              message: 'PLCの電源が盤から取られています',
+              details: ['PLC.L が P.1 と同じ節点にあります'],
+            },
+          ],
+        })}
+        onRetry={() => undefined}
+        onBackToList={() => undefined}
+      />,
+    );
+    const panel = screen.getByTestId('plc-power-help');
+    expect(panel).toHaveTextContent('壁コンセント');
+    expect(panel).toHaveTextContent('未配線でも動作します');
+  });
+
+  it('puts the conversion errors above everything else (H-1)', () => {
+    render(
+      <PlcResult
+        problem={problem}
+        result={result({
+          passed: false,
+          ladderErrors: [{ code: 'missing-end', networkId: '', message: 'END がありません' }],
+        })}
+        onRetry={() => undefined}
+        onBackToList={() => undefined}
+      />,
+    );
+    expect(screen.getByTestId('ladder-errors')).toHaveTextContent('END がありません');
+    expect(screen.getByTestId('ladder-errors')).toHaveTextContent('シミュレートされていません');
+  });
+
+  it('shows the double-coil warning as a note, never as a failure', () => {
+    render(
+      <PlcResult
+        problem={problem}
+        result={result({
+          ladderWarnings: [
+            { code: 'double-coil', networkId: 'n2', row: 0, col: 15, device: { kind: 'output', index: 0 }, message: 'Y0 のコイルが2回以上あります' },
+          ],
+        })}
+        onRetry={() => undefined}
+        onBackToList={() => undefined}
+      />,
+    );
+    expect(screen.getByTestId('verdict')).toHaveTextContent('合格');
+    expect(screen.getByTestId('ladder-warnings')).toHaveTextContent('二重コイル');
+  });
+
+  it('shows the hazards and the compared signals', () => {
+    render(
+      <PlcResult
+        problem={problem}
+        result={result({ hazardCount: 2, hazardsByKind: { ...result().hazardsByKind, 'over-wires-per-terminal': 2 } })}
+        restoredHazardCount={1}
+        onRetry={() => undefined}
+        onBackToList={() => undefined}
+      />,
+    );
+    expect(screen.getByRole('heading', { name: /危険操作（3）/u })).toBeInTheDocument();
+  });
+});
+```
+
+- [ ] **Step 2: RED を確認し、Step 3 で `session/plc-explain.ts` を書く**
+
+```ts
+import type { StaticCheckResult } from '@ojt/content';
+import { JA } from '../i18n/ja.js';
+
+/**
+ * `plcPowerIndependent` が落ちた理由を訓練者の言葉にする。3A ハンドオフ注記 H-5 / 決定表#15c。
+ *
+ * 落ち方は2種類ある: ①PLCの電源を**盤から**取っている（§10.1 の違反）②壁コンセントへ
+ * **配線していない**（手順の欠落）。どちらなのかは `details` に出てくる**端子IDの形**で見分ける。
+ * 文言そのもので判定すると `@ojt/content` 側の言い回しが変わった瞬間に静かに壊れる。
+ *
+ * さらに、どちらの場合も「本アプリのPLCは `PLC.L` / `PLC.N` が未配線でも動く」ことを必ず添える。
+ * 添えないと「回路は正しく動いているのにチェックだけ赤い」と見え、理由が分からないまま終わる。
+ */
+
+/** 盤側の電源にあたる端子の接頭辞（§10.1 の違反検出の対象）。 */
+const BOARD_POWER_PREFIXES = ['P.', 'N.', 'CB.', 'SW.', 'PS.'];
+
+/** その指摘が「盤から取っている」ものか。 */
+export function isBoardFedDetail(detail: string): boolean {
+  return BOARD_POWER_PREFIXES.some((prefix) => detail.includes(prefix));
+}
+
+/** `plcPowerIndependent` の説明行（合格なら空配列）。 */
+export function explainPowerCheck(check: StaticCheckResult): string[] {
+  if (check.id !== 'plcPowerIndependent' || check.ok) return [];
+  const lines: string[] = [];
+  if (check.details.some((detail) => isBoardFedDetail(detail))) lines.push(JA.plc.powerFromBoard);
+  if (check.details.some((detail) => !isBoardFedDetail(detail))) lines.push(JA.plc.powerUnwired);
+  // 指摘の中身が読めなくても、少なくとも1行は出す
+  if (lines.length === 0) lines.push(JA.plc.powerUnwired);
+  lines.push(JA.plc.powerSimNote);
+  return lines;
+}
+```
+
+`ja.ts` の `plc` ブロックへ追記:
+
+```ts
+    /** H-5: PLCの電源を盤から取っている。§10.1 */
+    powerFromBoard:
+      'PLCの電源は壁コンセント（AC100V）から取ります。試験用盤のAC100V・DC24VをPLCの電源に使うことはできません（§10.1）。',
+    /** H-5: 壁コンセントへ未配線。決定表#15c */
+    powerUnwired: 'PLCの電源が未配線です。壁コンセントの L と N へ2本配線してください。',
+    /** H-5: どちらの場合も添える説明。 */
+    powerSimNote:
+      '本アプリのPLCは PLC.L / PLC.N が未配線でも動作します（AC電源は電気的に解かないため）。ラダーどおりに動いていても、このチェックは不合格になります。',
+    /** 変換に落ちたラダーの説明。H-1 */
+    ladderNotSimulated:
+      '変換に失敗したため、このラダーはシミュレートされていません。出力ウィンドウの指摘を直してから判定してください。',
+    ladderErrors: 'ラダーの変換エラー',
+    ladderWarnings: 'ラダーの警告',
+```
+
+`JA.staticCheck` に3件足して網羅検査を付ける（**MERGE 注意 #1**）:
+
+```ts
+  staticCheck: {
+    wireColorRule: '線色ルール',
+    terminalLimit: '1端子の本数',
+    unusedParts: '未使用部品',
+    forbiddenCircuit: '禁則回路',
+    coilPolarity: 'コイル極性',
+    powerSequence: '電源操作手順',
+    /** §10.2 / §7.4（Phase 3 で追加） */
+    twoStage: '2段結線（Y出力 → リレー → ランプ）',
+    plcPowerIndependent: 'PLC電源の独立（壁コンセントから）',
+    ioAssignment: 'I/O割付',
+  } satisfies Record<StaticCheckId, string>,
+```
+
+`import type { StaticCheckId } from '@ojt/content';` を `ja.ts` の先頭に足す（型だけなので main からは読まれない）。
+
+- [ ] **Step 4: `result/LadderIssueList.tsx` と `result/PlcResult.tsx` を書く**
+
+```tsx
+// LadderIssueList.tsx
+import type { CompileError, CompileWarning } from '@ojt/ladder-core';
+import type { JSX } from 'react';
+import { JA, ladderIssuePlace } from '../i18n/ja.js';
+import styles from './result.module.css';
+
+/**
+ * 変換エラーと警告の一覧（結果画面）。設計仕様 §10.6 / §10.8。
+ * エラーがあるということは**シミュレートされずに不合格になった**ということなので、その旨を添える。
+ */
+export function LadderIssueList({
+  errors,
+  warnings,
+}: {
+  errors: readonly CompileError[];
+  warnings: readonly CompileWarning[];
+}): JSX.Element | null {
+  if (errors.length === 0 && warnings.length === 0) return null;
+  return (
+    <>
+      {errors.length === 0 ? null : (
+        <div className={styles.card} data-testid="ladder-errors">
+          <h2>{JA.plc.ladderErrors}</h2>
+          <p className={styles.detail}>{JA.plc.ladderNotSimulated}</p>
+          <ul>
+            {errors.map((error, index) => (
+              <li key={`e-${String(index)}`}>
+                {ladderIssuePlace(error.networkId, error.row, error.col)} {error.message}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {warnings.length === 0 ? null : (
+        <div className={styles.card} data-testid="ladder-warnings">
+          <h2>{JA.plc.ladderWarnings}</h2>
+          <ul>
+            {warnings.map((warning, index) => (
+              <li key={`w-${String(index)}`}>
+                {JA.ladder.doubleCoil}: {ladderIssuePlace(warning.networkId, warning.row, warning.col)}{' '}
+                {warning.message}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </>
+  );
+}
+```
+
+```tsx
+// PlcResult.tsx
+import type { JudgePlcResult, PlcProblem } from '@ojt/content';
+import type { JSX } from 'react';
+import { formatElapsed } from '../../worker/runtime.js';
+import { elapsedSummaryText, JA } from '../i18n/ja.js';
+import { explainPowerCheck } from '../session/plc-explain.js';
+import { ChartOverlay } from './ChartOverlay.js';
+import { LadderIssueList } from './LadderIssueList.js';
+import { MismatchList } from './MismatchList.js';
+import { HazardList, StaticCheckList } from './StaticCheckList.js';
+import styles from './result.module.css';
+
+/**
+ * モードDの結果画面。設計仕様 §10.8 / §8.3。
+ * 合否・変換エラー・波形の重ね・差分・静的チェック（`twoStage` / `plcPowerIndependent` /
+ * `ioAssignment` を含む）・危険操作・所要時間を並べる。
+ */
+export function PlcResult({
+  problem,
+  result,
+  restoredHazardCount = 0,
+  onRetry,
+  onBackToList,
+}: {
+  problem: PlcProblem;
+  result: JudgePlcResult;
+  restoredHazardCount?: number;
+  onRetry: () => void;
+  onBackToList: () => void;
+}): JSX.Element {
+  const elapsedMs = result.elapsedMs ?? 0;
+  const powerHelp = result.staticChecks.flatMap((check) => explainPowerCheck(check));
+  return (
+    <div className={styles.wrap}>
+      <div className={styles.header}>
+        <span
+          className={`${styles.verdict} ${result.passed ? styles.passed : styles.failed}`}
+          data-testid="verdict"
+          role="status"
+          aria-live="polite"
+        >
+          {result.passed ? JA.result.passed : JA.result.failed}
+        </span>
+        <h1 className={styles.title}>
+          {JA.result.title}: {problem.title}
+        </h1>
+        <span data-testid="result-elapsed">
+          {JA.result.elapsed} {formatElapsed(elapsedMs)}（
+          {elapsedSummaryText(elapsedMs, problem.timeLimit.standardMin, problem.timeLimit.cutoffMin)}
+          ）
+        </span>
+      </div>
+
+      {result.chatter.length === 0 ? null : (
+        <p className={styles.forbidden} data-testid="forbidden-warning">
+          {JA.result.forbidden}
+        </p>
+      )}
+
+      <div className={styles.grid}>
+        <LadderIssueList errors={result.ladderErrors} warnings={result.ladderWarnings} />
+        <ChartOverlay
+          expected={result.charts.expected}
+          actual={result.charts.actual}
+          mismatches={result.mismatches}
+        />
+        <MismatchList mismatches={result.mismatches} />
+        <StaticCheckList checks={result.staticChecks} />
+        {powerHelp.length === 0 ? null : (
+          <div className={styles.card} data-testid="plc-power-help">
+            <h2>{JA.staticCheck.plcPowerIndependent}</h2>
+            <ul>
+              {powerHelp.map((line) => (
+                <li key={line}>{line}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+        <HazardList counts={result.hazardsByKind} total={result.hazardCount + restoredHazardCount} />
+      </div>
+
+      <div className={styles.actions}>
+        <button type="button" onClick={onRetry}>
+          {JA.result.retry}
+        </button>
+        <button type="button" onClick={onBackToList}>
+          {JA.result.toList}
+        </button>
+      </div>
+    </div>
+  );
+}
+```
+
+- [ ] **Step 5: `Result.tsx` に分岐（**MERGE 注意 #9**）**
+
+`isInspectJudge()` の分岐の**前**に1ブロック足す（Task 2 で `isPlcJudge()` を作ってある）:
+
+```tsx
+  if (isPlcJudge(judge)) {
+    if (!isPlcProblem(problem)) return <NoResult onBack={() => { setRoute('list'); }} />;
+    return (
+      <PlcResult
+        problem={problem}
+        result={judge}
+        restoredHazardCount={restoredHazardCount}
+        onRetry={() => {
+          resetSession();
+        }}
+        onBackToList={() => {
+          setRoute('list');
+        }}
+      />
+    );
+  }
+```
+
+> `NoResult` は `Result.tsx` に3回書かれている「判定結果がありません」の枠を関数に切り出したもの。4回目を書かずに**既存の3箇所もこれに置き換える**（同じ JSX が4つ並ぶのを避ける）。
+
+- [ ] **Step 6: GREEN とコミット**
+
+```powershell
+pnpm --filter @ojt/desktop exec vitest run test/plc-explain.test.ts test/plc-result.test.tsx test/result-view.test.tsx
+npx prettier --write "apps/desktop/src/renderer/**/*.{ts,tsx,css}" "apps/desktop/test/plc-*.test.*"
+git add apps/desktop/src apps/desktop/test
+git commit -m "feat(desktop): add the mode D result screen with the power-check explanation"
+```
+
+Expected: `plc-explain` が `Tests  5 passed (5)`、`plc-result` が `Tests  5 passed (5)`。
+
+---
+
+## Task 14: モードDの作業ファイル
+
+**Files:**
+- Modify: `apps/desktop/src/shared/ipc.ts`
+- Modify: `apps/desktop/src/main/work-files.ts`
+- Modify: `apps/desktop/src/renderer/session/work-file.ts`
+- Modify: `apps/desktop/src/renderer/i18n/ja.ts` / `src/shared/messages.ts`
+- Test: `apps/desktop/test/work-file-plc.test.ts`
+- Test: `apps/desktop/test/work-files.test.ts`（既存に追記）
+
+§12.3 と 3A H-3 のとおり「課題ID・盤セッション・**ラダーIR**・方言ID・変換済みか・経過時間・危険操作」を残す。`formatVersion` は **1 のまま**で、モードDの項目はすべて任意にする（Plan 2B Task 17 と同じ方針）。
+
+| 決めること | 本タスクの実装 |
+|---|---|
+| 形 | `mode: 'plc'` / `ladder`（`LadderProgramData` の JSON。`comments` を含む）/ `dialectId` / `converted` |
+| main の検証 | `mode` の許容値に `'plc'` を足す。`ladder` は「オブジェクトで `networks` が配列、64要素以下」だけ見る（中身は renderer が盤と課題を知ったうえで確かめる） |
+| renderer の検証 | `toLadderProgram(raw)` が `toSession()` と同じ流儀で要素ひとつひとつを確かめる。ネットワーク64・行12・列16・セルの `kind` がIRの語彙・コメント200件×32文字 |
+| 復元 | `restoreInspectState()` のモードD分岐で `restoreLadder(program, comments)` を呼ぶ。`converted` は**必ず `false` に落とす**（Worker には何も載っていないので、読み込んだ直後に判定させない） |
+| `load` | `applyWorkFile()` が `plcModel` を付けて送る |
+
+- [ ] **Step 1: 失敗するテストを書く**
+
+`apps/desktop/test/work-file-plc.test.ts`:
+
+```ts
+import { BUILTIN_PLC_PROBLEMS } from '@ojt/content';
+import { COIL_COL, IR_COLS, no, out, X, Y } from '@ojt/ladder-core';
+import { beforeEach, describe, expect, it } from 'vitest';
+import { useStore } from '../src/renderer/app/store.js';
+import { applyLadderCell } from '../src/renderer/session/ladder.js';
+import { toLadderProgram, toWorkFile } from '../src/renderer/session/work-file.js';
+
+const problem = BUILTIN_PLC_PROBLEMS[0]!;
+
+beforeEach(() => {
+  useStore.getState().abandonSession();
+  useStore.getState().openProblem(problem);
+});
+
+describe('モードDの作業ファイル（§12.3 / 3A H-3）', () => {
+  it('carries the ladder, the comments, the dialect and the converted flag', () => {
+    const store = useStore.getState();
+    const edited = applyLadderCell(store.ladder!, { networkId: 'n1', row: 0, col: 0 }, no(X(0)));
+    if (!edited.ok) throw new Error(edited.message);
+    store.setLadder(edited.program);
+    store.setDeviceComment('X0', '運転押ボタン');
+    store.setConverted(true, { errors: [], warnings: [], usage: undefined });
+    const file = toWorkFile(problem.id, useStore.getState().session!, 1000, 0);
+    expect(file.mode).toBe('plc');
+    expect(file.dialectId).toBe('mitsubishi');
+    expect(file.converted).toBe(true);
+    const ladder = file.ladder as { networks: unknown[]; comments: Record<string, string> };
+    expect(ladder.networks).toHaveLength(2);
+    expect(ladder.comments['X0']).toBe('運転押ボタン');
+  });
+
+  it('round-trips through toLadderProgram', () => {
+    const store = useStore.getState();
+    const edited = applyLadderCell(store.ladder!, { networkId: 'n1', row: 0, col: COIL_COL }, out(Y(0)));
+    if (!edited.ok) throw new Error(edited.message);
+    store.setLadder(edited.program);
+    const file = toWorkFile(problem.id, useStore.getState().session!, 0, 0);
+    const parsed = toLadderProgram(file.ladder);
+    expect(parsed?.program.networks).toHaveLength(2);
+    expect(parsed?.program.networks[0]?.cols).toBe(IR_COLS);
+  });
+
+  it('refuses a ladder that is not shaped like the IR', () => {
+    expect(toLadderProgram(undefined)).toBeUndefined();
+    expect(toLadderProgram({ networks: 'x' })).toBeUndefined();
+    expect(toLadderProgram({ networks: [] })).toBeUndefined();
+    expect(toLadderProgram({ networks: [{ id: '', rows: 1, cols: 16, cells: [[]] }] })).toBeUndefined();
+    expect(
+      toLadderProgram({ networks: [{ id: 'n1', rows: 1, cols: 16, cells: [[{ kind: 'quantum' }]] }] }),
+    ).toBeUndefined();
+    // 行数・列数・本数の上限
+    const wide = { id: 'n1', rows: 1, cols: 16, cells: [Array.from({ length: 17 }, () => ({ kind: 'empty' }))] };
+    expect(toLadderProgram({ networks: [wide] })).toBeUndefined();
+    expect(
+      toLadderProgram({ networks: Array.from({ length: 65 }, (_u, i) => ({ id: `n${String(i)}`, rows: 1, cols: 16, cells: [[{ kind: 'empty' }]] })) }),
+    ).toBeUndefined();
+  });
+
+  it('refuses comments that break the caps (§10.7)', () => {
+    const net = { id: 'n1', rows: 1, cols: 16, cells: [[{ kind: 'empty' }]] };
+    expect(toLadderProgram({ networks: [net], comments: { 'X0': 'あ'.repeat(33) } })).toBeUndefined();
+    expect(toLadderProgram({ networks: [net], comments: { '三': 'あ' } })).toBeUndefined();
+    const many: Record<string, string> = {};
+    for (let i = 0; i < 201; i += 1) many[`M${String(i)}`] = 'x';
+    expect(toLadderProgram({ networks: [net], comments: many })).toBeUndefined();
+  });
+
+  it('restores a saved ladder with an empty history and an unconverted flag', () => {
+    const store = useStore.getState();
+    const edited = applyLadderCell(store.ladder!, { networkId: 'n1', row: 0, col: 0 }, no(X(1)));
+    if (!edited.ok) throw new Error(edited.message);
+    store.setLadder(edited.program);
+    store.setConverted(true, { errors: [], warnings: [], usage: undefined });
+    const file = toWorkFile(problem.id, useStore.getState().session!, 0, 0);
+
+    useStore.getState().abandonSession();
+    useStore.getState().openProblem(problem);
+    const parsed = toLadderProgram(file.ladder);
+    expect(parsed).toBeDefined();
+    if (parsed === undefined) return;
+    useStore.getState().restoreLadder(parsed.program, parsed.comments);
+    const state = useStore.getState();
+    expect(state.ladder?.networks[0]?.cells[0]?.[0]).toMatchObject({ kind: 'contact' });
+    expect(state.ladderHistory.done).toEqual([]);
+    expect(state.converted).toBe(false);
+  });
+});
+```
+
+`apps/desktop/test/work-files.test.ts` に追記:
+
+```ts
+  it('accepts the mode D work file and its caps (§13 #8)', () => {
+    const base = {
+      formatVersion: 1,
+      problemId: 'd-001',
+      session: { socketRoles: {}, wires: [] },
+      mode: 'plc',
+      dialectId: 'mitsubishi',
+      converted: true,
+      ladder: { networks: [{ id: 'n1', rows: 1, cols: 16, cells: [[{ kind: 'empty' }]] }] },
+    };
+    const ok = parseWorkFile(base);
+    expect(ok.ok).toBe(true);
+    if (!ok.ok) return;
+    expect(ok.file.mode).toBe('plc');
+    expect(ok.file.converted).toBe(true);
+
+    const tooMany = {
+      ...base,
+      ladder: { networks: Array.from({ length: 65 }, () => ({ id: 'n', rows: 1, cols: 16, cells: [] })) },
+    };
+    expect(parseWorkFile(tooMany).ok).toBe(false);
+    expect(parseWorkFile({ ...base, ladder: 'x' }).ok).toBe(false);
+    expect(parseWorkFile({ ...base, mode: 'quantum' }).ok).toBe(false);
+  });
+```
+
+- [ ] **Step 2: RED を確認し、Step 3 で `shared/ipc.ts` を広げる**
+
+```ts
+  /**
+   * モードDのラダーIR（`LadderProgramData` をそのまま JSON にしたもの）。§12.3 / 3A H-3
+   * `comments`（デバイスコメント）を含む。読み手は `toLadderProgram()` が形を確かめる。
+   */
+  ladder?: unknown;
+  /** モードDで使っている方言ID（Phase 3 は常に `mitsubishi`）。§10.5 */
+  dialectId?: string;
+  /**
+   * 保存時点でラダーが変換を通っていたか。§10.6
+   * **復元時は必ず未変換として開く**（Worker には何も載っていないため）。記録としてだけ残す。
+   */
+  converted?: boolean;
+```
+
+`AppSettings` はこのタスクでは触らない（Task 16）。
+
+- [ ] **Step 4: `main/work-files.ts` を広げる**
+
+```ts
+/** 作業ファイルに載せられるネットワーク数の上限（`LadderProgramSchema` と同じ値）。§10.3 */
+export const MAX_WORK_FILE_NETWORKS = 64;
+```
+
+`parseWorkFile()` のモード判定に `'plc'` を足し、ラダーの桁だけ見る:
+
+```ts
+  if (mode !== undefined) {
+    if (mode !== 'assemble' && mode !== 'inspect-parts' && mode !== 'inspect-repair' && mode !== 'plc') {
+      return { ok: false, message: MSG.workFile.unknownMode };
+    }
+    optional.mode = mode;
+  }
+  if (typeof source['dialectId'] === 'string') optional.dialectId = source['dialectId'];
+  if (typeof source['converted'] === 'boolean') optional.converted = source['converted'];
+  /*
+   * ラダーは「オブジェクトで `networks` が配列、64本以下」だけ見る。中身（セルの語彙・行数）は
+   * IR を知っている renderer の `toLadderProgram()` が確かめる（`session` と同じ分担）。§13 #8
+   */
+  const ladder = source['ladder'];
+  if (ladder !== undefined) {
+    if (typeof ladder !== 'object' || ladder === null) {
+      return { ok: false, message: MSG.workFile.badLadder };
+    }
+    const networks = (ladder as Record<string, unknown>)['networks'];
+    if (!Array.isArray(networks)) return { ok: false, message: MSG.workFile.badLadder };
+    if (networks.length > MAX_WORK_FILE_NETWORKS) {
+      return { ok: false, message: MSG.workFile.tooManyNetworks };
+    }
+    optional.ladder = ladder;
+  }
+```
+
+`src/shared/messages.ts` の `workFile` に2件足す:
+
+```ts
+    badLadder: '作業ファイルのラダーが読めません',
+    tooManyNetworks: '作業ファイルの回路ブロックが多すぎます',
+```
+
+- [ ] **Step 5: `renderer/session/work-file.ts` を広げる**
+
+```ts
+/** 作業ファイルに載せられるネットワーク数の上限（main の `MAX_WORK_FILE_NETWORKS` と同じ値）。 */
+export const MAX_RESTORED_NETWORKS = 64;
+
+/** IR のセル種別（この語彙以外は読み込まない）。§10.3 */
+const CELL_KINDS = new Set([
+  'contact',
+  'coil',
+  'timer',
+  'counter',
+  'mc',
+  'mcr',
+  'end',
+  'hline',
+  'vline',
+  'empty',
+]);
+
+/** デバイスとして読めるか。 */
+function isDeviceLike(value: unknown): boolean {
+  if (!isRecord(value)) return false;
+  const kind = value['kind'];
+  const index = value['index'];
+  const kinds = ['input', 'output', 'internal', 'timer', 'counter', 'special'];
+  if (typeof kind !== 'string' || !kinds.includes(kind)) return false;
+  return typeof index === 'number' && Number.isInteger(index) && index >= 0;
+}
+
+/** セルとして読めるか（`kind` ごとに要る項目だけ見る）。 */
+function isCellLike(value: unknown): boolean {
+  if (!isRecord(value)) return false;
+  const kind = value['kind'];
+  if (typeof kind !== 'string' || !CELL_KINDS.has(kind)) return false;
+  if (kind === 'end' || kind === 'hline' || kind === 'vline' || kind === 'empty') return true;
+  if (!isDeviceLike(value['device'])) return false;
+  if (kind === 'timer') {
+    const preset = value['presetMs'];
+    return typeof preset === 'number' && Number.isInteger(preset) && preset > 0;
+  }
+  if (kind === 'counter') {
+    const preset = value['preset'];
+    if (!(typeof preset === 'number' && Number.isInteger(preset) && preset > 0)) return false;
+    return isDeviceLike(value['resetDevice']);
+  }
+  if (kind === 'contact') return ['NO', 'NC', 'P', 'F'].includes(String(value['type']));
+  if (kind === 'coil') return ['OUT', 'SET', 'RST'].includes(String(value['type']));
+  return true;
+}
+
+/** デバイスコメントとして読めるか（§10.7 の上限を守る）。 */
+function isCommentsLike(value: unknown): value is Record<string, string> {
+  if (!isRecord(value)) return false;
+  const entries = Object.entries(value);
+  if (entries.length > MAX_DEVICE_COMMENTS) return false;
+  return entries.every(
+    ([key, text]) =>
+      /^(X|Y|M|T|C|SP)\d+$/u.test(key) &&
+      typeof text === 'string' &&
+      text.length > 0 &&
+      text.length <= MAX_DEVICE_COMMENT_LENGTH,
+  );
+}
+
+/**
+ * 作業ファイルの `ladder` を IR として読む（形が違えば undefined）。§13 #8 / 3A H-3
+ *
+ * `toSession()` と同じ流儀で**要素ひとつひとつ**を確かめる。壊れたセルが1つ混ざっているだけで
+ * ラダーエディタも `compile()` も描画中に落ち、例外バナーからも戻れなくなるため。
+ */
+export function toLadderProgram(
+  raw: unknown,
+): { program: LadderProgram; comments: Record<string, string> } | undefined {
+  if (!isRecord(raw)) return undefined;
+  const networks = raw['networks'];
+  if (!Array.isArray(networks)) return undefined;
+  if (networks.length === 0 || networks.length > MAX_RESTORED_NETWORKS) return undefined;
+  const seen = new Set<string>();
+  for (const net of networks) {
+    if (!isRecord(net)) return undefined;
+    const id = net['id'];
+    if (typeof id !== 'string' || id.length === 0 || seen.has(id)) return undefined;
+    seen.add(id);
+    const cells = net['cells'];
+    if (!Array.isArray(cells)) return undefined;
+    if (cells.length === 0 || cells.length > MAX_ROWS) return undefined;
+    if (net['rows'] !== cells.length) return undefined;
+    if (net['cols'] !== IR_COLS) return undefined;
+    for (const row of cells) {
+      if (!Array.isArray(row) || row.length !== IR_COLS) return undefined;
+      if (!row.every(isCellLike)) return undefined;
+    }
+    const comment = net['comment'];
+    if (comment !== undefined && typeof comment !== 'string') return undefined;
+  }
+  const comments = raw['comments'];
+  if (comments !== undefined && !isCommentsLike(comments)) return undefined;
+  return {
+    program: { networks: networks as LadderProgram['networks'] },
+    comments: comments === undefined ? {} : { ...(comments as Record<string, string>) },
+  };
+}
+```
+
+`inspectFieldsFor()` に分岐を足す（`isInspectRepairProblem` の分岐の後、`return { mode: 'assemble' }` の前）:
+
+```ts
+  if (isPlcProblem(problem)) {
+    return {
+      mode: 'plc',
+      dialectId: state.dialectId,
+      converted: state.converted,
+      // ラダーとデバイスコメントは `LadderProgramData` と同じ形で残す（3A H-3）
+      ladder: {
+        networks: state.ladder?.networks ?? [],
+        ...(Object.keys(state.ladderComments).length === 0
+          ? {}
+          : { comments: { ...state.ladderComments } }),
+      },
+    };
+  }
+```
+
+`restoreInspectState()` に分岐を足す（`isInspectPartsProblem` の分岐の前後どちらでもよい。`openProblem()` のあと）:
+
+```ts
+  if (isPlcProblem(problem)) {
+    const parsed = toLadderProgram(state.ladder);
+    // ラダーが読めない作業ファイルは**開かない**（黙って空のラダーで開くと作業を失う）。§13 #8
+    if (state.ladder !== undefined && parsed === undefined) return false;
+    if (parsed !== undefined) store.restoreLadder(parsed.program, parsed.comments);
+    return true;
+  }
+```
+
+`InspectWorkState` に `ladder?: unknown; dialectId?: string; converted?: boolean;` を足す。
+
+`loadPayloadFor()` に分岐を足して `plcModel` を返す:
+
+```ts
+function loadPayloadFor(
+  problem: SupportedProblem,
+  saved: BoardSession,
+): { session: BoardSession; partFaults?: readonly FaultSpecData[]; plcModel?: string } {
+  /* …（既存の C1 / C2 の分岐はそのまま）… */
+  if (isPlcProblem(problem)) return { session: saved, plcModel: problem.plc.model };
+  return { session: saved };
+}
+```
+
+`applyWorkFile()` の `bridge.send({ type: 'load', … })` に1行:
+
+```ts
+    ...(payload.plcModel === undefined ? {} : { plcModel: payload.plcModel }),
+```
+
+- [ ] **Step 6: GREEN とコミット**
+
+```powershell
+pnpm --filter @ojt/desktop exec vitest run test/work-file-plc.test.ts test/work-files.test.ts test/work-file.test.ts test/work-file-inspect.test.ts
+npx prettier --write "apps/desktop/src/**/*.ts" "apps/desktop/test/work-file*.test.ts"
+git add apps/desktop/src apps/desktop/test
+git commit -m "feat(desktop): save and restore the mode D work file"
+```
+
+Expected: `work-file-plc` が `Tests  5 passed (5)`。既存の作業ファイルのテスト3本も通る（Phase 1・2 に保存したファイルが読めることの確認を兼ねる）。
+
+---
+
+## Task 15: ホームと課題一覧のモードD
+
+**Files:**
+- Modify: `apps/desktop/src/renderer/screens/Home.tsx`
+- Modify: `apps/desktop/src/renderer/screens/ProblemList.tsx`
+- Modify: `apps/desktop/src/renderer/i18n/ja.ts`（**MERGE 注意 #1**）
+- Test: `apps/desktop/test/problem-modes.test.ts`（既存に追記）
+- Test: `apps/desktop/test/problem-list.test.tsx`（既存に追記）
+
+ホームの「PLC」カードを押せるようにし、課題一覧の絞り込みに PLC を足す。
+
+| 決めること | 本タスクの実装 |
+|---|---|
+| ホーム | `MODES` の `plc` 行を `{ mode: 'plc', desc: JA.home.plcDesc, enabled: true }` にする。`comingSoon` の文言は**残す**（Phase 4 で機種切替を足すまで使わないが、文言表から消すと他の画面が壊れる） |
+| 一覧 | 絞り込みの配列に `['plc', JA.home.plc]` を足す。内蔵は28題になる |
+| 説明文 | 「PLCでラダーを組み、盤と配線して動かす（モードD）」 |
+
+- [ ] **Step 1: 失敗するテストを書く（既存ファイルへ追記）**
+
+`apps/desktop/test/problem-modes.test.ts`:
+
+```ts
+  it('lists all four modes and lets PLC start (§16 Phase 3)', () => {
+    render(<Home />);
+    expect(screen.getByTestId('mode-plc')).toBeEnabled();
+    fireEvent.click(screen.getByTestId('mode-plc'));
+    expect(useStore.getState().listMode).toBe('plc');
+    expect(useStore.getState().route).toBe('list');
+  });
+```
+
+`apps/desktop/test/problem-list.test.tsx`:
+
+```tsx
+  it('filters the list down to the PLC problems', async () => {
+    renderList([
+      summary({ id: 'b-001', mode: 'assemble' }),
+      summary({ id: 'd-001', mode: 'plc' }),
+    ]);
+    await screen.findByTestId('problem-table');
+    fireEvent.click(screen.getByRole('button', { name: 'PLC' }));
+    expect(screen.getByTestId('open-d-001')).toBeInTheDocument();
+    expect(screen.queryByTestId('open-b-001')).toBeNull();
+  });
+```
+
+- [ ] **Step 2〜4: 実装・GREEN・コミット**
+
+`Home.tsx`:
+
+```ts
+  {
+    key: 'plc',
+    mode: 'plc',
+    name: JA.home.plc,
+    desc: JA.home.plcDesc,
+    enabled: true,
+  },
+```
+
+`ProblemList.tsx` の絞り込み配列に `['plc', JA.home.plc]` を足す。
+
+`ja.ts` の `home` に1件:
+
+```ts
+    /** モードDのモードカードの説明。§10 */
+    plcDesc: 'PLCでラダーを組み、盤と配線して動かす（モードD）',
+```
+
+```powershell
+pnpm --filter @ojt/desktop exec vitest run test/problem-modes.test.ts test/problem-list.test.tsx test/content-loader.test.ts
+npx prettier --write "apps/desktop/src/renderer/screens/*.tsx" "apps/desktop/src/renderer/i18n/ja.ts"
+git add apps/desktop/src apps/desktop/test
+git commit -m "feat(desktop): open mode D from the home screen and the problem list"
+```
+
+---
+
+## Task 16: 設定画面（既定メーカー・ラダーの表示列数・通電色）
+
+**Files:**
+- Modify: `apps/desktop/src/shared/ipc.ts`
+- Modify: `apps/desktop/src/main/settings.ts`
+- Modify: `apps/desktop/src/renderer/app/store.ts` / `store-types.ts`
+- Modify: `apps/desktop/src/renderer/app/App.tsx`（設定の反映。**MERGE 注意 #10**）
+- Modify: `apps/desktop/src/renderer/screens/Settings.tsx`
+- Modify: `apps/desktop/src/renderer/screens/PlcSession.tsx`（`gridCols` を設定から取る）
+- Modify: `apps/desktop/src/renderer/ladder/LadderGrid.tsx`（通電色を設定から取る）
+- Modify: `apps/desktop/src/renderer/i18n/ja.ts`（**MERGE 注意 #1**）
+- Test: `apps/desktop/test/settings-plc.test.tsx`
+- Test: `apps/desktop/test/settings.test.ts`（既存に追記）
+
+§12.1 の設定項目のうち、Phase 3 に関わる3つ（既定メーカー・ラダーの表示列数・通電色）を足す。
+
+| 決めること | 本タスクの実装 |
+|---|---|
+| 既定メーカー | `AppSettings.defaultVendor: DialectId`（既定 `'mitsubishi'`）。選択肢は `DIALECT_IDS` の4件を**すべて並べる**が、`IMPLEMENTED_DIALECT_IDS` に無いものは `disabled` にして「Phase 4 で追加します」を添える（決定表#13） |
+| 表示列数 | `AppSettings.ladderGridCols: number`（既定 11）。`MIN_GRID_COLS`(8) 〜 `MAX_GRID_COLS`(15) に丸める（§10.6） |
+| 通電色 | `AppSettings.monitorColor: string`（既定 `'#1E64FF'`）。`#rrggbb` 以外は既定へ倒す |
+| 反映 | `App.tsx` が設定を読んだところで `useStore.getState().applyLadderSettings(...)` を呼ぶ。`PlcSession` は `s.ladderGridCols`、`LadderGrid` は `colors={{ powered: monitorColor, idle: profile.monitorColors.idle }}` を使う |
+| 注記 | `ASSUMPTION_NOTICE`（「一部の命令名・キー割当は実機マニュアル未確認のため本アプリの表記です」）は**既にある**。メーカー選択の直下にも同じ文言を出す（§17.1 / §12.1） |
+
+- [ ] **Step 1: 失敗するテストを書く**
+
+`apps/desktop/test/settings-plc.test.tsx`:
+
+```tsx
+import { DIALECT_IDS, IMPLEMENTED_DIALECT_IDS, MAX_GRID_COLS, MIN_GRID_COLS } from '@ojt/plc-dialects';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { DEFAULT_SETTINGS } from '../src/shared/ipc.js';
+import { useStore } from '../src/renderer/app/store.js';
+import { Settings } from '../src/renderer/screens/Settings.js';
+
+const saved: Array<Record<string, unknown>> = [];
+
+beforeEach(() => {
+  saved.length = 0;
+  Object.defineProperty(window, 'ojt', {
+    configurable: true,
+    value: {
+      getSettings: () => Promise.resolve({ ...DEFAULT_SETTINGS }),
+      setSettings: (patch: Record<string, unknown>) => {
+        saved.push(patch);
+        return Promise.resolve({ ...DEFAULT_SETTINGS, ...patch });
+      },
+    },
+  });
+});
+
+describe('設定画面のPLC項目（§12.1 / §10.6 / 決定表#13）', () => {
+  it('lists every vendor but only lets the implemented one be chosen', async () => {
+    render(<Settings />);
+    const select = await screen.findByTestId('setting-vendor');
+    expect(select.querySelectorAll('option')).toHaveLength(DIALECT_IDS.length);
+    for (const id of DIALECT_IDS) {
+      const option = screen.getByTestId(`vendor-option-${id}`);
+      expect(option).toHaveProperty('disabled', !IMPLEMENTED_DIALECT_IDS.includes(id));
+    }
+    expect(screen.getByTestId('vendor-note')).toHaveTextContent('Phase 4');
+  });
+
+  it('repeats the assumption notice next to the vendor choice (§17.1)', async () => {
+    render(<Settings />);
+    await screen.findByTestId('setting-vendor');
+    expect(screen.getByTestId('vendor-assumption')).toHaveTextContent('未確認');
+  });
+
+  it('clamps the grid column count to 8..15 (§10.6)', async () => {
+    render(<Settings />);
+    const input = await screen.findByTestId('setting-grid-cols');
+    expect(input).toHaveAttribute('min', String(MIN_GRID_COLS));
+    expect(input).toHaveAttribute('max', String(MAX_GRID_COLS));
+    fireEvent.change(input, { target: { value: '20' } });
+    fireEvent.blur(input);
+    await waitFor(() => {
+      expect(saved.at(-1)).toEqual({ ladderGridCols: MAX_GRID_COLS });
+    });
+  });
+
+  it('saves the monitor colour', async () => {
+    render(<Settings />);
+    const input = await screen.findByTestId('setting-monitor-color');
+    fireEvent.change(input, { target: { value: '#2fa02c' } });
+    fireEvent.blur(input);
+    await waitFor(() => {
+      expect(saved.at(-1)).toEqual({ monitorColor: '#2fa02c' });
+    });
+  });
+
+  it('pushes the values into the store so the ladder follows', () => {
+    useStore.getState().applyLadderSettings({ gridCols: 9, monitorColor: '#2fa02c', vendor: 'mitsubishi' });
+    expect(useStore.getState().ladderGridCols).toBe(9);
+    expect(useStore.getState().monitorColor).toBe('#2fa02c');
+    expect(useStore.getState().dialectId).toBe('mitsubishi');
+  });
+});
+```
+
+`apps/desktop/test/settings.test.ts` に追記:
+
+```ts
+  it('defaults and clamps the PLC settings (§10.6)', () => {
+    expect(DEFAULT_SETTINGS.defaultVendor).toBe('mitsubishi');
+    expect(DEFAULT_SETTINGS.ladderGridCols).toBe(11);
+    expect(DEFAULT_SETTINGS.monitorColor).toBe('#1E64FF');
+    expect(normalizeSettings({ ladderGridCols: 2 }).ladderGridCols).toBe(8);
+    expect(normalizeSettings({ ladderGridCols: 99 }).ladderGridCols).toBe(15);
+    expect(normalizeSettings({ monitorColor: 'red' }).monitorColor).toBe('#1E64FF');
+    expect(normalizeSettings({ defaultVendor: 'omron' }).defaultVendor).toBe('mitsubishi');
+  });
+```
+
+> `normalizeSettings()` は `main/settings.ts` の既存の正規化関数。名前が違えば既存の関数名に合わせること（新しい関数を作らない）。
+
+- [ ] **Step 2〜4: 実装・GREEN・コミット**
+
+`shared/ipc.ts`:
+
+```ts
+  /** モードDの既定メーカー（Phase 3 は `mitsubishi` のみ実装）。§10.5 / §12.1 */
+  defaultVendor: string;
+  /** ラダーの表示列数（接点列。8〜15）。§10.6 */
+  ladderGridCols: number;
+  /** モニタ中の通電表示色（`#rrggbb`）。§10.6 */
+  monitorColor: string;
+```
+
+```ts
+export const DEFAULT_SETTINGS: AppSettings = {
+  userContentDir: '',
+  soundEnabled: true,
+  soundVolume: 0.5,
+  restorePrompt: true,
+  defaultVendor: 'mitsubishi',
+  ladderGridCols: 11,
+  monitorColor: '#1E64FF',
+};
+```
+
+`main/settings.ts` の正規化に3件足す（`@ojt/plc-dialects` は main から読める素の TypeScript なので import してよい。`IMPLEMENTED_DIALECT_IDS` / `MIN_GRID_COLS` / `MAX_GRID_COLS` を使い、数値は丸め、未実装のメーカーと読めない色は既定へ倒す）。
+
+`store.ts`（**MERGE 注意 #2 の続き**）:
+
+```ts
+  /** ラダーの表示列数（設定画面。§10.6） */
+  ladderGridCols: number;
+  /** モニタ中の通電色（設定画面。§10.6） */
+  monitorColor: string;
+  /** 設定画面の値をラダーへ反映する。§12.1 */
+  applyLadderSettings: (settings: {
+    gridCols: number;
+    monitorColor: string;
+    vendor: string;
+  }) => void;
+```
+
+```ts
+  applyLadderSettings: ({ gridCols, monitorColor, vendor }) => {
+    set({
+      ladderGridCols: Math.min(MAX_GRID_COLS, Math.max(MIN_GRID_COLS, Math.round(gridCols))),
+      monitorColor,
+      // 未実装のメーカーが設定に残っていても落とさない（Phase 4 で実装されたら効く）
+      ...(isDialectId(vendor) && IMPLEMENTED_DIALECT_IDS.includes(vendor)
+        ? { dialectId: vendor }
+        : {}),
+    });
+  },
+```
+
+`App.tsx` の設定読込の `then` に1行（**MERGE 注意 #10**。`sounds.configure(...)` の隣）:
+
+```ts
+        useStore.getState().applyLadderSettings({
+          gridCols: settings.ladderGridCols,
+          monitorColor: settings.monitorColor,
+          vendor: settings.defaultVendor,
+        });
+```
+
+`Settings.tsx` に3つの欄（`setting-vendor` / `setting-grid-cols` / `setting-monitor-color`）と2つの注記（`vendor-note` / `vendor-assumption`）を足す。`PlcSession.tsx` の `const gridCols = profile.gridCols;` を `const gridCols = useStore((s) => s.ladderGridCols);` に差し替える。`LadderGrid` は `colors` を props で受け、`LadderEditor` が `{ powered: monitorColor, idle: profile.monitorColors.idle }` を渡す。
+
+```powershell
+pnpm --filter @ojt/desktop exec vitest run test/settings-plc.test.tsx test/settings.test.ts test/settings-screen.test.tsx test/ladder-grid.test.tsx
+npx prettier --write "apps/desktop/src/**/*.{ts,tsx}"
+git add apps/desktop/src apps/desktop/test
+git commit -m "feat(desktop): add the vendor, grid width and monitor colour settings"
+```
+
+Expected: `settings-plc` が `Tests  5 passed (5)`。
+
+---
+
 <!-- CHUNK -->
+
 
 
 
