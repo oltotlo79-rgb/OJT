@@ -45,6 +45,12 @@ export const MAX_WORK_FILE_WIRES = 200;
  */
 export const MAX_WORK_FILE_ENTRIES = 200;
 
+/**
+ * 回路図ヒントを開いた回数の上限（§8.4）。実際に何百回も開くことは無いが、
+ * 壊れた／悪意ある作業ファイルの数値をそのまま結果画面に出さないよう桁で断る。
+ */
+export const MAX_SCHEMATIC_OPEN_COUNT = 10_000;
+
 /** 一時保存のパス。§12.3 */
 export function autosavePath(): string {
   return join(app.getPath('userData'), 'autosave.json');
@@ -106,6 +112,18 @@ export function parseWorkFile(
   }
   if (typeof source['checkPartId'] === 'string') optional.checkPartId = source['checkPartId'];
   if (typeof source['faultSeed'] === 'number') optional.faultSeed = source['faultSeed'];
+  /*
+   * 回路図を開いた回数（§8.4）。負数・NaN・小数・桁違いは「無かった」ことにして戻す
+   * （読込そのものは断らない。0以上の整数だけを、上限で切り詰めて受け入れる）。
+   */
+  const schematicOpenCount = source['schematicOpenCount'];
+  if (
+    typeof schematicOpenCount === 'number' &&
+    Number.isInteger(schematicOpenCount) &&
+    schematicOpenCount >= 0
+  ) {
+    optional.schematicOpenCount = Math.min(schematicOpenCount, MAX_SCHEMATIC_OPEN_COUNT);
+  }
   if (
     typeof source['tester'] === 'object' &&
     source['tester'] !== null &&

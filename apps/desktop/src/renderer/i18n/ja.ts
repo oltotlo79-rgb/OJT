@@ -271,6 +271,10 @@ export const JA = {
     reportCount: '指摘',
     /** 指摘の登録を促す案内。§9.2 */
     pickHint: '3D盤の電線・端子・部品をクリックして故障の種別を選びます',
+    /** 接点の不良の見分け方のヒント（2026-09-18 利用者の決定）。§9.2 */
+    contactDiagnosisHint: '接点の不良は通電した状態でボタンを操作しながら電圧を測ると判別できます',
+    /** 回路図ヒントを開いた回数（結果画面。§8.4）。 */
+    schematicOpenCount: '回路図を開いた回数',
     /** 種別ポップオーバーの見出し。 */
     chooseKind: '故障の種別を選ぶ',
     cancel: '取消',
@@ -552,6 +556,11 @@ export function workFileRestoredLog(savedAt: string): string {
 /** 復元した危険操作の回数（操作ログ・警告一覧の1行）。§8.3 */
 export function restoredHazardsText(count: number): string {
   return `${JA.session.restoredHazards}: ${count} ${JA.result.times}`;
+}
+
+/** 回路図ヒントを開いた回数（結果画面の1行。`回路図を開いた回数: 3`）。§8.4 */
+export function schematicOpenCountText(count: number): string {
+  return `${JA.inspectRepair.schematicOpenCount}: ${count}`;
 }
 
 /** 警告バナーのミス回数（`ミス 3 回`）。§5.6 / 利用者の決定「警告表示＋ミス回数記録」 */

@@ -152,6 +152,8 @@ function inspectFieldsFor(problemId: string): Partial<WorkFile> {
         state.circuit === undefined
           ? []
           : replacedPartIds(resolved, state.circuit.applied.partFaults),
+      // 回路図ヒントを開いた回数（§8.4）。2級以外は常に0だが、そのまま載せても害はない
+      schematicOpenCount: state.schematicOpenCount,
     };
   }
   return { mode: 'assemble' };
@@ -267,6 +269,8 @@ export interface InspectWorkState {
   faultSeed?: number;
   resolvedFaults?: unknown;
   replacedPartIds?: unknown;
+  /** 回路図ヒントを開いた回数（モードC2の2級形式。§8.4）。 */
+  schematicOpenCount?: number;
 }
 
 /** 復元できる並びの長さの上限（main の `MAX_WORK_FILE_ENTRIES` と同じ値）。§13 #8 */
@@ -449,6 +453,18 @@ export function restoreInspectState(problem: SupportedProblem, state: InspectWor
       for (const report of state.reports.slice(0, MAX_RESTORED_ENTRIES)) {
         if (isFaultReport(report)) store.addReport(report);
       }
+    }
+    /*
+     * 回路図ヒントを開いた回数を戻す（§8.4）。保存データの数値は信用せず、
+     * 0以上の有限な数だけを整数へ切り詰めて受け入れる（`restoreProgress()` と同じ流儀）。
+     */
+    const schematicOpenCount = state.schematicOpenCount;
+    if (
+      typeof schematicOpenCount === 'number' &&
+      Number.isFinite(schematicOpenCount) &&
+      schematicOpenCount >= 0
+    ) {
+      store.setSchematicOpenCount(Math.floor(schematicOpenCount));
     }
     return true;
   }

@@ -100,6 +100,17 @@ describe('toInspectWorkFile（§12.3）', () => {
     expect(file['replacedPartIds']).toEqual([partFault.target.partId]);
   });
 
+  it('C2は回路図ヒントを開いた回数を載せる（§8.4）', () => {
+    useStore.getState().openProblem(C2);
+    useStore.getState().toggleSchematic();
+    useStore.getState().toggleSchematic();
+    useStore.getState().toggleSchematic();
+    expect(useStore.getState().schematicOpenCount).toBe(2);
+
+    const file = saved();
+    expect(file['schematicOpenCount']).toBe(2);
+  });
+
   it('課題を開いていなければ保存する状態が無い（undefined）', () => {
     expect(toInspectWorkFile()).toBeUndefined();
   });
@@ -162,6 +173,21 @@ describe('restoreInspectState（§12.3 / §13 #8）', () => {
     expect(useStore.getState().circuit?.applied.partFaults).toHaveLength(0);
     // 指摘すべき故障（`sites`）は交換しても残る（Plan 2A 意図的な差分 #7）
     expect(useStore.getState().circuit?.applied.sites.length).toBeGreaterThan(0);
+  });
+
+  it('C2は回路図ヒントを開いた回数を戻す（§8.4）', () => {
+    useStore.getState().openProblem(C2);
+    const faults = useStore.getState().resolvedFaults;
+    expect(faults).toBeDefined();
+    if (faults === undefined) return;
+
+    const ok = restoreInspectState(C2, {
+      mode: 'inspect-repair',
+      resolvedFaults: faults,
+      schematicOpenCount: 4,
+    });
+    expect(ok).toBe(true);
+    expect(useStore.getState().schematicOpenCount).toBe(4);
   });
 
   it('C2で故障が欠けていたら復元しない（§13 #8）', () => {
@@ -332,6 +358,22 @@ describe('applyWorkFile（C1/C2。§12.3）', () => {
     const load = bridgeMock.sent.find((c) => c['type'] === 'load');
     expect(load).toBeDefined();
     expect(load?.['partFaults']).toEqual([]);
+  });
+
+  it('C2は保存・読込の往復で回路図ヒントを開いた回数を保つ（§8.4）', async () => {
+    useStore.getState().openProblem(C2);
+    useStore.getState().toggleSchematic();
+    useStore.getState().toggleSchematic();
+    useStore.getState().toggleSchematic();
+    expect(useStore.getState().schematicOpenCount).toBe(2);
+
+    const file = saved();
+    useStore.getState().abandonSession();
+    bridgeMock.sent = [];
+    apiState.readProblem.mockResolvedValue(C2);
+
+    expect(await applyWorkFile(file as never)).toBe(true);
+    expect(useStore.getState().schematicOpenCount).toBe(2);
   });
 
   it('課題とモードが食い違う作業ファイルは日本語の理由を出して断る（§13 #8）', async () => {

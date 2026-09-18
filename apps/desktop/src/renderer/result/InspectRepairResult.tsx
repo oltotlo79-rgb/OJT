@@ -1,7 +1,7 @@
 import type { FaultSite, InspectRepairProblem, JudgeInspectRepairResult } from '@ojt/content';
 import type { JSX } from 'react';
 import { formatElapsed } from '../../worker/runtime.js';
-import { elapsedSummaryText, JA, reportTargetLabel } from '../i18n/ja.js';
+import { elapsedSummaryText, JA, reportTargetLabel, schematicOpenCountText } from '../i18n/ja.js';
 import { ChartOverlay } from './ChartOverlay.js';
 import { MismatchList } from './MismatchList.js';
 import { HazardList, StaticCheckList } from './StaticCheckList.js';
@@ -34,12 +34,15 @@ export function InspectRepairResult({
   problem,
   result,
   restoredHazardCount = 0,
+  schematicOpenCount = 0,
   onRetry,
   onBackToList,
 }: {
   problem: InspectRepairProblem;
   result: JudgeInspectRepairResult;
   restoredHazardCount?: number;
+  /** 回路図ヒントを開いた回数（2級形式のみ意味を持つ。§8.4）。 */
+  schematicOpenCount?: number;
   onRetry: () => void;
   onBackToList: () => void;
 }): JSX.Element {
@@ -67,6 +70,11 @@ export function InspectRepairResult({
           )}
           ）
         </span>
+        {problem.grade === 2 ? (
+          <span data-testid="schematic-open-count">
+            {schematicOpenCountText(schematicOpenCount)}
+          </span>
+        ) : null}
       </div>
 
       {result.chatter.length === 0 ? null : (

@@ -15,6 +15,7 @@ import type * as SpecChartModule from '../src/renderer/session/spec-chart.js';
 const mocks = vi.hoisted(() => ({
   sent: [] as Array<Record<string, unknown>>,
   picks: [] as Array<(hit: unknown) => void>,
+  hovers: [] as Array<(id: unknown) => void>,
   forceSpecFail: false,
 }));
 
@@ -38,16 +39,24 @@ vi.mock('../src/renderer/session/worker-bridge.js', () => ({
 }));
 
 vi.mock('../src/renderer/three/BoardScene.js', () => ({
-  BoardScene: ({ onPick }: { onPick: (hit: unknown) => void }) => {
+  BoardScene: ({
+    onPick,
+    onHover,
+  }: {
+    onPick: (hit: unknown) => void;
+    onHover: (id: unknown) => void;
+  }) => {
     mocks.picks.push(onPick);
+    mocks.hovers.push(onHover);
     return <div data-testid="board-canvas" />;
   },
   safeRoutes: () => ({ routes: [], errors: [] }),
 }));
 
-const { sent, picks } = mocks;
+const { sent, picks, hovers } = mocks;
 
 const C2 = BUILTIN_INSPECT_REPAIR_PROBLEMS.find((p) => p.grade === 2);
+const C2_GRADE1 = BUILTIN_INSPECT_REPAIR_PROBLEMS.find((p) => p.grade === 1);
 /** CR1 に部品故障（`contact-resistive`）が入っている課題。部品交換のテスト用。 */
 const C2_PART = BUILTIN_INSPECT_REPAIR_PROBLEMS.find((p) => p.id === 'c2-002');
 
@@ -62,6 +71,7 @@ const REPAIR_TO = toTerminalId('TB_PL.1+');
 beforeEach(() => {
   sent.length = 0;
   picks.length = 0;
+  hovers.length = 0;
   if (C2 !== undefined) useStore.getState().openProblem(C2);
 });
 
@@ -79,13 +89,62 @@ describe('画面の骨格（§9.2）', () => {
     expect(screen.queryByRole('button', { name: '青' })).toBeNull();
   });
 
-  it('2級形式は回路図を出す（§9.2 提示情報）', () => {
+  it('2級形式は回路図ヒントを開閉できる。既定は閉じている（§8.4 2026-09-18の決定）', () => {
     render(<InspectRepairSession />);
+    expect(screen.queryByTestId('schematic-hint')).toBeNull();
+    const toggle = screen.getByTestId('toggle-schematic');
+    expect(toggle.getAttribute('aria-pressed')).toBe('false');
+    fireEvent.click(toggle);
     expect(screen.getByTestId('schematic-hint')).toBeTruthy();
+    expect(toggle.getAttribute('aria-pressed')).toBe('true');
+  });
+
+  it('回路図ヒントを開くたびにストアの開いた回数が増える（§8.4）', () => {
+    render(<InspectRepairSession />);
+    expect(useStore.getState().schematicOpenCount).toBe(0);
+    const toggle = screen.getByTestId('toggle-schematic');
+    fireEvent.click(toggle); // 開く: 1
+    expect(useStore.getState().schematicOpenCount).toBe(1);
+    fireEvent.click(toggle); // 閉じる: 増えない
+    expect(useStore.getState().schematicOpenCount).toBe(1);
+    fireEvent.click(toggle); // 開く: 2
+    expect(useStore.getState().schematicOpenCount).toBe(2);
+  });
+
+  it('1級形式は開閉ボタンを出さない（回路図ヒントも常に無い。§8.4）', () => {
+    expect(C2_GRADE1).toBeDefined();
+    if (C2_GRADE1 === undefined) return;
+    useStore.getState().openProblem(C2_GRADE1);
+    render(<InspectRepairSession />);
+    expect(screen.queryByTestId('toggle-schematic')).toBeNull();
+    expect(screen.queryByTestId('schematic-hint')).toBeNull();
+  });
+
+  it('閉じている間は端子ホバーで連動ハイライトを引かない（§9.2 I-8）', () => {
+    render(<InspectRepairSession />);
+    expect(screen.queryByTestId('schematic-hint')).toBeNull();
+    // 開く前に何か光らせておき、閉じたままのホバーでは動かないことを確かめる
+    useStore.getState().setHighlight({ cellIds: ['c1'], terminals: ['CR1.13'], wireIds: [] });
+    const onHover = hovers.at(-1);
+    expect(onHover).toBeDefined();
+    if (onHover === undefined) return;
+    act(() => {
+      onHover(toTerminalId('S1.13'));
+    });
+    // 閉じているので逆引きは走らず、ハイライトは直前のまま変わらない
+    expect(useStore.getState().highlight.cellIds).toEqual(['c1']);
+
+    fireEvent.click(screen.getByTestId('toggle-schematic'));
+    act(() => {
+      onHover(undefined);
+    });
+    // 開いていれば「端子から外れた」ときに逆引きが走り、光っていたものを消す
+    expect(useStore.getState().highlight).toEqual({ cellIds: [], terminals: [], wireIds: [] });
   });
 
   it('回路図ヒントはテスターより上に出す（M4）', () => {
     render(<InspectRepairSession />);
+    fireEvent.click(screen.getByTestId('toggle-schematic'));
     const schematic = screen.getByTestId('schematic-hint');
     const tester = screen.getByTestId('tester-panel');
     expect(schematic.compareDocumentPosition(tester) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(

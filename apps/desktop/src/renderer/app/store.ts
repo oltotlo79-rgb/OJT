@@ -256,6 +256,13 @@ export interface AppState {
    */
   cameraNonce: number;
   schematicVisible: boolean;
+  /**
+   * 回路図ヒントを開いた回数（モードB／C2の2級形式で共用。§8.4 2026-09-18の決定）。
+   * `toggleSchematic()` が**閉→開**の遷移だけを数える（開いたまま連打しても増えない）。
+   * 3級（常時表示・開閉不可）や1級（非表示）は `toggleSchematic()` を呼べる導線が無いので
+   * 常に 0 のまま。結果画面に出し、C2の作業ファイルへ持たせる。
+   */
+  schematicOpenCount: number;
   /** 判定を Worker へ送って結果待ちか（ツールバーの「判定」を二重に押させない）。§8.2 */
   judging: boolean;
 
@@ -310,6 +317,8 @@ export interface AppState {
   setSelectedSocket: (socketId: SocketId | undefined) => void;
   setCamera: (preset: CameraPreset) => void;
   toggleSchematic: () => void;
+  /** 回路図ヒントを開いた回数をまるごと差し替える（作業ファイルからの復元。§12.3）。 */
+  setSchematicOpenCount: (count: number) => void;
   setJudging: (judging: boolean) => void;
   applySnapshot: (snapshot: SimSnapshot) => void;
   clearLive: () => void;
@@ -442,6 +451,7 @@ export const useStore = create<AppState>((set, get) => ({
   camera: 'front',
   cameraNonce: 0,
   schematicVisible: false,
+  schematicOpenCount: 0,
   judging: false,
 
   snapshot: EMPTY_SNAPSHOT,
@@ -523,8 +533,13 @@ export const useStore = create<AppState>((set, get) => ({
        */
       session = cloneSession(built.value.session);
       wireColor = REPAIR_WIRE_COLOR;
-      // C2の回路図の出し方は課題の hints が決める（2級は出す・1級は出さない）。§9.2
-      schematicVisible = problem.hints.schematicVisible;
+      /*
+       * C2の回路図ヒントは級で決まる（§9.2 / §8.4 2026-09-18の決定）。`hints.schematicVisible`
+       * は「2級形式か」を表すだけの旗（バリデーションで grade===2 と常に一致する）で、
+       * 初期表示は決めない。2級は**開閉できて初期は閉じる**、1級はそもそも出さない
+       * （`schematicPolicy()` はモードBと同じ規則。C2に3級は無いので shown は常に false）。
+       */
+      schematicVisible = schematicPolicy(problem.grade).shown;
     } else if (isInspectPartsProblem(problem)) {
       // C1は配線しないので線色パレットは空（`checkSessionFor()` が決める）。§9.1
       session = checkSessionFor(problem);
@@ -561,6 +576,7 @@ export const useStore = create<AppState>((set, get) => ({
       reportedDroppedTicks: 0,
       droppedTicksNotice: undefined,
       schematicVisible,
+      schematicOpenCount: 0,
       startedAtMs: Date.now(),
       elapsedMs: 0,
       restoredHazardCount: 0,
@@ -615,7 +631,15 @@ export const useStore = create<AppState>((set, get) => ({
     set({ camera, cameraNonce: get().cameraNonce + 1 });
   },
   toggleSchematic: () => {
-    set({ schematicVisible: !get().schematicVisible });
+    const opening = !get().schematicVisible;
+    // 開いた回数は**閉→開**の遷移だけを数える（閉じる操作や既に開いた状態は増やさない）。§8.4
+    set({
+      schematicVisible: opening,
+      ...(opening ? { schematicOpenCount: get().schematicOpenCount + 1 } : {}),
+    });
+  },
+  setSchematicOpenCount: (schematicOpenCount) => {
+    set({ schematicOpenCount });
   },
   setJudging: (judging) => {
     set({ judging });
@@ -858,6 +882,8 @@ export const useStore = create<AppState>((set, get) => ({
       highlight: NO_HIGHLIGHT,
       tester: createTesterState(get().tester.kind),
       nextProbe: 'black',
+      // 課題を作り直す操作なので回路図ヒントを開いた回数も数え直す（§8.4）
+      schematicOpenCount: 0,
     });
     // 1回目は作業保持を優先して盤を残す。2回目は盤そのものが描けないとみて作り直す（§13 #5）
     if (attempts < RESTART_FALLBACK_ATTEMPTS || problem === undefined) return;
@@ -909,6 +935,8 @@ export const useStore = create<AppState>((set, get) => ({
       highlight: NO_HIGHLIGHT,
       tester: createTesterState(get().tester.kind),
       nextProbe: 'black',
+      // 課題を離れるので回路図ヒントを開いた回数も手放す（§8.4）
+      schematicOpenCount: 0,
     });
   },
 }));

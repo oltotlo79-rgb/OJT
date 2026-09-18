@@ -72,14 +72,60 @@ describe('openProblem（§12.1）', () => {
     expect(state.session).toEqual(state.circuit?.session);
   });
 
-  it('C2の回路図ヒントは課題の hints が決める（2級は出す・1級は出さない。§9.2）', () => {
+  it(
+    'C2の回路図ヒントは既定で閉じる。2級は開閉でき、1級はそもそも出さない' +
+      '（§9.2 / §8.4 2026-09-18の決定）',
+    () => {
+      expect(C2_GRADE2).toBeDefined();
+      expect(C2_GRADE1).toBeDefined();
+      if (C2_GRADE2 === undefined || C2_GRADE1 === undefined) return;
+      useStore.getState().openProblem(C2_GRADE2);
+      // 2級も初期は閉じている（Session.tsx の `showSchematic` が `policy.toggleable` を見て
+      // 開閉を決める。ストアの `schematicVisible` はどちらの級でも false から始まる）
+      expect(useStore.getState().schematicVisible).toBe(false);
+      expect(useStore.getState().schematicOpenCount).toBe(0);
+      useStore.getState().openProblem(C2_GRADE1);
+      expect(useStore.getState().schematicVisible).toBe(false);
+    },
+  );
+});
+
+describe('回路図ヒントを開いた回数（モードB/C2共用。§8.4 2026-09-18の決定）', () => {
+  it('toggleSchematic は閉→開のときだけ数え、開→閉では増えない', () => {
     expect(C2_GRADE2).toBeDefined();
-    expect(C2_GRADE1).toBeDefined();
-    if (C2_GRADE2 === undefined || C2_GRADE1 === undefined) return;
+    if (C2_GRADE2 === undefined) return;
     useStore.getState().openProblem(C2_GRADE2);
+    expect(useStore.getState().schematicOpenCount).toBe(0);
+    useStore.getState().toggleSchematic(); // 開く
     expect(useStore.getState().schematicVisible).toBe(true);
-    useStore.getState().openProblem(C2_GRADE1);
-    expect(useStore.getState().schematicVisible).toBe(false);
+    expect(useStore.getState().schematicOpenCount).toBe(1);
+    useStore.getState().toggleSchematic(); // 閉じる
+    expect(useStore.getState().schematicOpenCount).toBe(1);
+    useStore.getState().toggleSchematic(); // また開く
+    expect(useStore.getState().schematicOpenCount).toBe(2);
+  });
+
+  it('課題を開き直す・「セッションをリセット」・一覧へ戻ると 0 に戻る', () => {
+    expect(C2_GRADE2).toBeDefined();
+    if (C2_GRADE2 === undefined) return;
+    useStore.getState().openProblem(C2_GRADE2);
+    useStore.getState().toggleSchematic();
+    expect(useStore.getState().schematicOpenCount).toBe(1);
+    useStore.getState().openProblem(C2_GRADE2);
+    expect(useStore.getState().schematicOpenCount).toBe(0);
+
+    useStore.getState().toggleSchematic();
+    useStore.getState().restartSession();
+    expect(useStore.getState().schematicOpenCount).toBe(0);
+
+    useStore.getState().toggleSchematic();
+    useStore.getState().abandonSession();
+    expect(useStore.getState().schematicOpenCount).toBe(0);
+  });
+
+  it('setSchematicOpenCount は作業ファイルからの復元用にまるごと差し替える', () => {
+    useStore.getState().setSchematicOpenCount(5);
+    expect(useStore.getState().schematicOpenCount).toBe(5);
   });
 });
 

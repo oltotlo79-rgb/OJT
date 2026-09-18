@@ -12,7 +12,7 @@ import {
 } from '@ojt/content';
 import { useCallback, useEffect, useMemo, useRef, type JSX } from 'react';
 import { ojtApi } from '../app/ojt-api.js';
-import { useStore } from '../app/store.js';
+import { schematicPolicy, useStore } from '../app/store.js';
 import { NO_HIGHLIGHT } from '../app/store-types.js';
 import { sounds, soundsForSnapshot } from '../audio/sounds.js';
 import {
@@ -493,6 +493,14 @@ export function InspectRepairSession(): JSX.Element {
     );
   }
 
+  /*
+   * 回路図ヒントの出し方は級で決まる（§9.2 / §8.4 2026-09-18の決定）。2級は開閉できて
+   * 初期は閉じる、1級は出さない（開閉できない級ではストアの値を見ずに規則そのものを見るので、
+   * 何かの拍子に `schematicVisible` が立っても1級の表示は出ない。`Session.tsx` と同じ理由）。
+   */
+  const policy = schematicPolicy(problem.grade);
+  const showSchematic = policy.toggleable ? schematicVisible : policy.shown;
+
   /**
    * 元に戻す／やり直し。§8.2 / §9.2（I-11）
    * 部品交換の取り消しは、Worker の `plug` がそのたびに新しい良品を作ってしまうため
@@ -666,8 +674,14 @@ export function InspectRepairSession(): JSX.Element {
             void applyWorkFile(result.file);
           });
         }}
-        schematicVisible={schematicVisible}
-        onToggleSchematic={undefined}
+        schematicVisible={showSchematic}
+        onToggleSchematic={
+          policy.toggleable
+            ? () => {
+                useStore.getState().toggleSchematic();
+              }
+            : undefined
+        }
       >
         <PowerControls
           breakerOn={breakerOn}
@@ -733,7 +747,7 @@ export function InspectRepairSession(): JSX.Element {
             回路図ヒントは**テスターより前**に置く（M4。`Session.tsx` が部品パネルより後に
             置くのと同じ理由の裏返しで、C2はテスターで測る前に回路図を見る流れが多い）。
           */}
-          {schematicVisible ? (
+          {showSchematic ? (
             <section className={styles.panelLive} data-testid="schematic-hint">
               <h2 className={styles.liveTitle}>{JA.session.schematicHint}</h2>
               <div className={styles.schematicBox}>

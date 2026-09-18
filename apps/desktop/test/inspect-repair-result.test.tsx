@@ -178,4 +178,38 @@ describe('InspectRepairResult（§9.2 判定）', () => {
     );
     expect(screen.getByTestId('result-elapsed').textContent).toContain('10:00.0');
   });
+
+  it('2級形式は回路図を開いた回数を出す（§8.4 2026-09-18の決定）', () => {
+    const grade2 = BUILTIN_INSPECT_REPAIR_PROBLEMS.find((p) => p.grade === 2);
+    expect(grade2).toBeDefined();
+    if (grade2 === undefined) return;
+    render(
+      <InspectRepairResult
+        problem={grade2}
+        result={result()}
+        restoredHazardCount={0}
+        schematicOpenCount={3}
+        onRetry={vi.fn()}
+        onBackToList={vi.fn()}
+      />,
+    );
+    expect(screen.getByTestId('schematic-open-count').textContent).toContain('3');
+  });
+
+  it('1級形式は回路図を開いた回数を出さない（§8.4）', () => {
+    const grade1 = BUILTIN_INSPECT_REPAIR_PROBLEMS.find((p) => p.grade === 1);
+    expect(grade1).toBeDefined();
+    if (grade1 === undefined) return;
+    render(
+      <InspectRepairResult
+        problem={grade1}
+        result={result()}
+        restoredHazardCount={0}
+        schematicOpenCount={0}
+        onRetry={vi.fn()}
+        onBackToList={vi.fn()}
+      />,
+    );
+    expect(screen.queryByTestId('schematic-open-count')).toBeNull();
+  });
 });

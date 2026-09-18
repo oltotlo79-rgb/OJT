@@ -58,7 +58,12 @@ export function ReportPanel({
       )}
       <div data-testid="report-list">
         {reports.length === 0 ? (
-          <p className={styles.hint}>{JA.inspectRepair.pickHint}</p>
+          <>
+            <p className={styles.hint}>{JA.inspectRepair.pickHint}</p>
+            <p className={styles.hint} data-testid="contact-diagnosis-hint">
+              {JA.inspectRepair.contactDiagnosisHint}
+            </p>
+          </>
         ) : (
           reports.map((report, index) => (
             <div key={`${String(index)}-${report.kind}`} className={styles.reportRow}>

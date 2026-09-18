@@ -18,6 +18,7 @@ export function Result(): JSX.Element {
   const problem = useStore((s) => s.problem);
   const judge = useStore((s) => s.judge);
   const restoredHazardCount = useStore((s) => s.restoredHazardCount);
+  const schematicOpenCount = useStore((s) => s.schematicOpenCount);
   const setRoute = useStore((s) => s.setRoute);
   const resetSession = useStore((s) => s.resetSession);
   const hasJudge = judge !== undefined;
@@ -77,6 +78,7 @@ export function Result(): JSX.Element {
           problem={problem}
           result={judge}
           restoredHazardCount={restoredHazardCount}
+          schematicOpenCount={schematicOpenCount}
           onRetry={() => {
             resetSession();
           }}

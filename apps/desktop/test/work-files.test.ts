@@ -6,6 +6,7 @@ import {
   autosavePath,
   clearAutosave,
   loadWorkFile,
+  MAX_SCHEMATIC_OPEN_COUNT,
   MAX_WORK_FILE_BYTES,
   MAX_WORK_FILE_ENTRIES,
   MAX_WORK_FILE_WIRES,
@@ -215,6 +216,34 @@ describe('parseWorkFile のモード固有の項目（§12.3 / §13 #8）', () =
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.file.tester).toBeUndefined();
+  });
+
+  /** 回路図ヒントを開いた回数（§8.4 2026-09-18の決定）。 */
+  describe('schematicOpenCount', () => {
+    it('0以上の整数はそのまま写す', () => {
+      const result = parseWorkFile(sampleFile({ schematicOpenCount: 3 }));
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.file.schematicOpenCount).toBe(3);
+    });
+
+    it('上限を超えたら切り詰める（読込そのものは断らない）', () => {
+      const result = parseWorkFile(
+        sampleFile({ schematicOpenCount: MAX_SCHEMATIC_OPEN_COUNT + 1000 }),
+      );
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.file.schematicOpenCount).toBe(MAX_SCHEMATIC_OPEN_COUNT);
+    });
+
+    it.each([-1, 1.5, Number.NaN, '3'])('壊れた値（%s）は無かったことにする', (bad) => {
+      const result = parseWorkFile(
+        sampleFile({ schematicOpenCount: bad } as unknown as Partial<WorkFile>),
+      );
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.file.schematicOpenCount).toBeUndefined();
+    });
   });
 });
 
