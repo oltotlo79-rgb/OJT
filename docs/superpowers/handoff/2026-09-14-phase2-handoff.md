@@ -128,3 +128,65 @@ content 32 files / 409、desktop 28 files / 469、circuit-sim 214、board-model 
   inert、chart E2E のシナリオ分離。
 - 完了率: 生点 = 30 + 15×完了タスク/35 …、表示 = 生点 ÷ 0.95（現在 39.0 →
   約41%、レビュー確定分も約41%）。
+
+---
+
+## Phase 2 受入（2026-09-18）
+
+受入担当（別エージェント）が §14.3 / §16 の手順で実施した。対象 HEAD は `a81b8ac`
+（機能の最終は `5099709`）。
+
+### 判定: **REJECTED**（ブロッカー1件。受入基準そのものはビルド成果物では全て成立）
+
+**ブロッカー**: `apps/desktop/scripts/copy-content.mjs:23` の `MODES` が Phase 1 のまま
+`['assemble']` なので、`predist` が C1（4題）と C2（8題）を `resources/content/` へ複写しない。
+配布版の `builtinSet()`（`src/main/content-loader.ts:71-82`）は `app.isPackaged` のとき
+`resources/content` を読み、**1題でも読めれば焼き込み `BUILTIN_ALL_PROBLEMS` に落とさない**ため、
+パッケージ版の課題一覧は **8題（モードBのみ）** になる。読込エラー欄にも何も出ない（無言の欠落）。
+
+再現: `pnpm --filter @ojt/desktop dist` → `release/win-unpacked/OJT電気保全トレーナー.exe` を起動 →
+ホームの「部品点検」/「回路点検・修復」を押すと「絞り込みに一致する課題がありません。」。
+`window.ojt.listProblems()` は `{assemble: 8}` を返す。
+→ §16 Phase 2 受入基準 ①②③ が配布版では実行できない。
+
+修正: `MODES` に `'inspect-parts'` / `'inspect-repair'` を足す（1行）。あわせて
+`apps/desktop/test/content-resources.test.ts`（assemble しか見ていない）を3モードに広げ、
+`builtinSet()` に「読めた数が `BUILTIN_ALL_PROBLEMS` より少なければ警告を出す」防御を入れる。
+
+### 実施した検証
+
+| 項目 | 結果 |
+|---|---|
+| `pnpm --filter @ojt/desktop test` | 60ファイル / 825テスト 合格 |
+| `pnpm -r test` | 全プロジェクト合格（**1964テスト**: circuit-sim 244 / ladder-core 109 / plc-dialects 37 / board-model 180 / schematic-core 64 / content 505 / desktop 825）。受入の開始時点では content の `test/plc-reference.test.ts`（当時は未追跡の Phase 3A 作業中ファイル）だけが赤だったが、Phase 3A 側が `src` を着地させて解消した |
+| `pnpm typecheck` | 全プロジェクト合格 |
+| `pnpm --filter @ojt/desktop dist` | NSIS 106.8MB / zip 146.8MB / `win-unpacked` 371.5MB。`app.asar` 4.09MB、中身は `out/**` と `package.json` のみで `node_modules` 0件（Phase 1 と同じ） |
+| リポジトリ E2E（ビルド成果物） | **17/17 合格**（約1.4分） |
+| §16 ①〜⑤（受入側の独自スクリプト、ビルド成果物） | **全て合格**。①赤PB（PB4）を押しっぱなしで導通レンジを見ると正常品は `OL`→`導通` に反転（吸引）、コイル断線は押しても `OL` のまま、レアショートは正常に吸引。コイル抵抗 650.0 / `OL` / 422.5。②マークシートで「コイル断線」「レアショート」を選ぶと合格。③c2-001 で2箇所を指摘し白線で修復 → 合格。④通電のままΩ → 警告バナー＋結果に「1 回」。⑤保存 → アプリを閉じる → 再起動 → 読込で指摘2件と白線が復元 |
+| 2級C2の回路図トグル | 既定で閉、開ける、結果画面に「回路図を開いた回数: 1」、作業ファイルにも保存される |
+| クラッシュ復帰（C1/C2） | 一時保存 → SIGKILL → 再起動で「復元する」が出て復元。「復元しない」で `autosave.json` が消え次回は出ない。確認に答えず課題を開くと確認が引っ込む |
+| 設定の往復 | 音 ON/OFF・音量・復元確認 OFF（次回起動で確認が出ない）・利用者フォルダ変更で一覧が読み直される |
+| 利用者フォルダ | 無いときはパス付きの案内。壊れた `.json` はファイル名と理由付きで読込エラー欄に出て、内蔵20題はそのまま。利用者が書いた C1・C2 の JSON が読まれ、モード絞り込みから開ける（計22題） |
+| 壊れた `.ojtw` | `formatVersion: 2` →「このファイルは新しいバージョンで作成されています」、`mode: "plc"` →「作業ファイルのモードが読めません」、`reports` 201件 →「作業ファイルの項目が多すぎます」、途中で切れた JSON →「ファイルを読めませんでした: …」、5MB超 →「作業ファイルが大きすぎます」。いずれも落ちない |
+| 絞り込み・ホーム | 「すべて」「回路組立」「部品点検」「回路点検・修復」が効き、PLC カードは無効。`listMode` は 一覧→ホーム→一覧 で保たれる |
+| オフライン | 配布版でモードB b-001 を最後まで（合格）実行するあいだ http(s) 要求は 0 件。`index.html` の CSP は `default-src 'self'`、`electron-builder.yml` は `publish: null` |
+| 性能 | C2 判定 **295ms**（10分連用後でも **270ms**。目安の1秒以内）。何も動かさない待機時の CPU は全プロセス合計 **0.8%**。C2 を10分間連続で操作（回路図開閉・中ドラッグ回転・指摘の出し入れを約180周）してもメモリは 803MB → 927MB で、途中で何度も下がる（暴走はしない）。数値は E2E と同じ `--use-gl=swiftshader`（ソフトウェア描画）での測定なので、GPU のある実機より重く出る。60fps／三角形20万以下の達成は Phase 5 の受入事項 |
+
+**実物のOSダイアログ（保存／読込）は自動化できない**ため、`dialog.showSaveDialog` /
+`showOpenDialog` を固定パスへ差し替えて IPC の往復だけを確かめた（リポジトリ E2E と同じ流儀）。
+
+### Phase 3 で拾う所見（ブロッカー以外）
+
+1. **テスターのプローブ位置が作業ファイルに入らない**。`session/work-file.ts:101` の
+   `savedTester()` は `kind` / `mode` / `voltRange` / `ohmRange` / `zeroAdjusted` だけを保存する。
+   §12.3 は「テスター状態」を保存すると書いており、§9.3 のプローブ配置もその一部。復元直後の
+   読値が `----` になり、訓練者はプローブを置き直す必要がある（つまみと 0Ω調整は正しく戻る。
+   置き直せば 650.0Ω で、未調整の 682.5Ω にはならない）。
+2. `builtinSet()` が配布版の同梱課題を「1題でも読めたら採用」する設計なので、今回のような欠落が
+   無言で通る。件数の食い違いを §13 #1 の読込エラー欄に出すこと。
+3. 受入は `apps/desktop` に一切手を入れずに行った。§16 の文言を**パッケージ版へ**当てる
+   受入スクリプト（`_electron.launch({ executablePath })` で `win-unpacked` の exe を起こす）は
+   受入担当の作業フォルダにしか無い。ブロッカーを直したら、赤PBの吸引（①）と2級C2の回路図
+   トグルは `apps/desktop/e2e/` 側にも取り込むとよい（いまのリポジトリE2Eは赤PBを押していない）。
+4. スクリーンショット（1280×800、DPI 2倍で 2534×1530）は受入担当の作業フォルダ
+   `scratchpad/phase2-acceptance/shots/` に15枚。
