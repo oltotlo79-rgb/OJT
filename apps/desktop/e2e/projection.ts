@@ -90,6 +90,17 @@ export function boardPoint(
 }
 
 /**
+ * 押ボタン（PB1〜PB4）の頭が来るページ座標（正面視プリセット前提）。
+ * `PushButton.tsx` は `definition.pos`（盤ローカル、z=0）に `group` を置き、押されていない
+ * 頭（CAP）はその `group` の中で z=4.5mm に沈める。ここでも同じ高さを使う。
+ */
+export function pushButtonPoint(pbId: string, box: CanvasBox): { x: number; y: number } {
+  const definition = JIPM_BOARD.pushButtons.find((pb) => pb.id === pbId);
+  if (definition === undefined) throw new Error(`押ボタン ${pbId} が見つかりません`);
+  return boardPoint({ x: definition.pos.x, y: definition.pos.y, z: 4.5 }, box);
+}
+
+/**
  * 内蔵課題 b-001「自己保持回路」の模範配線（9本）。
  * `buildReferenceSession()` が生成する配線と同じ組み合わせを、**物理**端子IDで書き下したもの。
  *

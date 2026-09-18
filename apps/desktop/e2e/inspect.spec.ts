@@ -19,7 +19,7 @@ import {
   type ElectronApplication,
   type Page,
 } from '@playwright/test';
-import { boardPoint, roleTerminalPoint, type CanvasBox } from './projection.js';
+import { boardPoint, pushButtonPoint, roleTerminalPoint, type CanvasBox } from './projection.js';
 
 /**
  * モードC1/C2 のE2E（§14.2 / §16 Phase 2 受入基準①〜⑤）。
@@ -417,6 +417,62 @@ test.describe.serial('モードC1 部品点検（§16 Phase 2 受入基準①②
     await expect(page.getByTestId('hazard-table')).toContainText('1 回');
     await shot(app, '17-c1-result-hazard');
   });
+
+  /**
+   * §16 ①「赤押ボタン（PB4）で励磁して」。C1の課題文（c1-001）そのままの手順を追う:
+   * 導通レンジで組1のa接点（`probe-target-a1`）を当て、PB4を**押している間だけ**励磁する。
+   * 正常品はPB4を押すと導通し離すとOLに戻る。コイル断線品（p2）は励磁できないのでOLのまま。
+   * 押下は `three/PushButton.tsx` の `onPointerDown`/`onPointerUp`（押しっぱなしで保持）を
+   * 実際のポインタ操作で通す。3Dのボタン座標は `projection.ts` の `pushButtonPoint()` で求める
+   * （モードBのE2Eが端子を `roleTerminalPoint()`/`boardPoint()` で求めるのと同じ流儀）。
+   */
+  test('赤押ボタン（PB4）を押している間だけa接点が導通する（§16 受入基準①）', async () => {
+    await openProblem(page, 'mode-inspect-parts', basic.id);
+    await expect(page.getByTestId('check-tray')).toBeVisible();
+    await waitForBoard(page);
+    const box = await canvasBox(page);
+    const pb4 = pushButtonPoint('PB4', box);
+
+    const measureA1 = async (): Promise<void> => {
+      await page.getByRole('button', { name: '導通', exact: true }).click();
+      await page.getByTestId('probe-target-a1').click();
+    };
+
+    // 正常品（p1）: 離れているとOL、PB4を押している間だけ導通し、離すとOLへ戻る
+    const normalId = partWith(basic, 'normal');
+    expect(normalId).toBeDefined();
+    if (normalId !== undefined) {
+      await page.getByTestId(`plug-${normalId}`).click();
+      await powerOn(page);
+      await measureA1();
+      expect(await stableReadout()).toContain('OL');
+
+      await page.mouse.move(pb4.x, pb4.y);
+      await page.mouse.down();
+      expect(await stableReadout()).toContain('導通');
+      await shot(app, '18-c1-pb4-continuity');
+
+      await page.mouse.up();
+      expect(await stableReadout()).toContain('OL');
+      await page.getByTestId(`eject-${normalId}`).click();
+    }
+
+    // コイル断線品（p2）: PB4を押しても励磁できないのでa接点はOLのまま
+    const openId = partWith(basic, 'coil-open');
+    expect(openId).toBeDefined();
+    if (openId !== undefined) {
+      await page.getByTestId(`plug-${openId}`).click();
+      await powerOn(page);
+      await measureA1();
+      expect(await stableReadout()).toContain('OL');
+
+      await page.mouse.move(pb4.x, pb4.y);
+      await page.mouse.down();
+      expect(await stableReadout()).toContain('OL');
+      await page.mouse.up();
+      await page.getByTestId(`eject-${openId}`).click();
+    }
+  });
 });
 
 test.describe.serial('モードC2 回路点検・修復（§16 Phase 2 受入基準③⑤）', () => {
@@ -663,5 +719,30 @@ test.describe.serial('モードC2 回路点検・修復（§16 Phase 2 受入基
     await expect(page.getByTestId('verdict')).toBeVisible({ timeout: 60_000 });
     await expect(page.getByTestId('verdict')).toHaveText('不合格');
     await expect(page.getByTestId('missed-list')).not.toHaveText('なし');
+  });
+
+  /**
+   * 2級の回路図ヒントは既定で閉じている（`schematicPolicy(2) = { shown: false, toggleable: true }`）。
+   * トグルで開くと `schematic-svg` が現れ、開いた回数（§8.4）が結果画面の
+   * `schematic-open-count` に載る。内蔵C2の1問目（`problem` = c2-001）はgrade 2。
+   */
+  test('grade2のC2は回路図ヒントが既定で閉じており、開くと1回とカウントされる（§16 / §8.4）', async () => {
+    expect(problem.grade).toBe(2);
+
+    await openProblem(page, 'mode-inspect-repair', problem.id);
+    await expect(page.getByTestId('report-panel')).toBeVisible();
+    await waitForBoard(page);
+
+    // 既定は閉じている（DOMに無い。`showSchematic ? <section>...` の分岐）
+    await expect(page.getByTestId('schematic-svg')).toHaveCount(0);
+
+    await page.getByTestId('toggle-schematic').click();
+    await expect(page.getByTestId('schematic-svg')).toBeVisible();
+    await shot(app, '24-c2-schematic-open');
+
+    // 合否は問わない（ここでは開いた回数だけを確かめる）。判定すると結果画面へ進む
+    await page.getByTestId('judge-button').click();
+    await expect(page.getByTestId('verdict')).toBeVisible({ timeout: 60_000 });
+    await expect(page.getByTestId('schematic-open-count')).toContainText('回路図を開いた回数: 1');
   });
 });
