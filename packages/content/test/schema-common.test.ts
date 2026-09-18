@@ -125,7 +125,7 @@ describe('ProblemHeaderSchema', () => {
 
   it('rejects an unknown mode', () => {
     expect(ProblemHeaderSchema.safeParse({ ...HEADER, mode: 'debug' }).success).toBe(false);
-    expect(UNSUPPORTED_MODES).toEqual(['plc']);
+    expect(UNSUPPORTED_MODES).toEqual([]);
   });
 
   it('accepts an inventory count up to the socket count (8) and rejects more', () => {

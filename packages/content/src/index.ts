@@ -115,13 +115,13 @@ export {
   problemJsonSchema,
   ProblemSchema,
   toProblemIssues,
-  UnsupportedProblemSchema,
   type ParseProblemResult,
   type Problem,
   type ProblemFailureReason,
   type ProblemIssue,
   type SupportedProblem,
-  type UnsupportedProblem,
+  // `isPlcProblem` / `PlcProblemSchema` / モードD関連の型はまだこのバレルに乗せない
+  // （公開APIの一覧は Task 20 で確定する）。
 } from './schema/index.js';
 
 // `loadProblemsFromDir` / `mergeProblemSets`（`node:fs` を使う）はこのバレルに載せない。

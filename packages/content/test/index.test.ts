@@ -54,7 +54,6 @@ import {
   problemJsonSchema,
   ProblemSchema,
   toProblemIssues,
-  UnsupportedProblemSchema,
   // reference.js
   ASSEMBLE_WIRE_COLOR,
   buildReferenceSession,
@@ -133,7 +132,12 @@ import {
   type JudgeResult,
   type TimeChart,
 } from '../src/index.js';
+// `isPlcProblem` / `PlcProblemSchema` は Task 20 でバレルの公開APIが確定するまで
+// バレル (`../src/index.js`) には乗らない。ここでは直接 import して疎通だけ確かめる。
+import { isPlcProblem } from '../src/schema/index.js';
+import { PlcProblemSchema } from '../src/schema/plc.js';
 import { inspectPartsProblemJson, inspectRepairProblemJson } from './helpers/inspect.js';
+import { plcProblemJson } from './helpers/plc.js';
 import {
   forbiddenOneShotProblemJson,
   selfHoldProblemJson,
@@ -188,7 +192,7 @@ describe('schema/common.js exports', () => {
     expect(ProblemIdSchema.safeParse('b-001').success).toBe(true);
     expect(GradeSchema.safeParse(3).success).toBe(true);
     expect(ProblemModeSchema.safeParse('assemble').success).toBe(true);
-    expect(UNSUPPORTED_MODES).toEqual(['plc']);
+    expect(UNSUPPORTED_MODES).toEqual([]);
     expect(TimeLimitSchema.safeParse({ standardMin: 30, cutoffMin: 50 }).success).toBe(true);
     expect(SocketRoleSchema.safeParse('CR1').success).toBe(true);
     expect(SocketRolesSchema.safeParse(task2Roles()).success).toBe(true);
@@ -309,19 +313,13 @@ describe('schema/index.js exports', () => {
     const problem: AssembleProblem = ok.problem;
     expect(problem.id).toBe('x-001');
     expect(ProblemSchema.safeParse(selfHoldProblemJson()).success).toBe(true);
-    expect(
-      UnsupportedProblemSchema.safeParse({
-        formatVersion: 1,
-        id: 'p-001',
-        title: 't',
-        grade: 3,
-        mode: 'plc',
-        description: 'd',
-        timeLimit: { standardMin: 30, cutoffMin: 50 },
-        board: { boardId: 'board-jipm-std', socketRoles: task2Roles() },
-        inventory: [],
-      }).success,
-    ).toBe(true);
+
+    const plcResult = parseProblem(plcProblemJson());
+    expect(plcResult.ok).toBe(true);
+    if (plcResult.ok) {
+      expect(isPlcProblem(plcResult.problem)).toBe(true);
+      expect(PlcProblemSchema.safeParse(plcProblemJson()).success).toBe(true);
+    }
 
     const broken = parseProblem({ mode: 'assemble' });
     expect(broken.ok).toBe(false);

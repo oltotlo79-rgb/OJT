@@ -1,14 +1,17 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { UNSUPPORTED_MODES } from '../src/schema/common.js';
 import {
   isAssembleProblem,
   isInspectPartsProblem,
   isInspectRepairProblem,
+  isPlcProblem,
   parseProblem,
   problemJsonSchema,
 } from '../src/schema/index.js';
 import { inspectPartsProblemJson, inspectRepairProblemJson } from './helpers/inspect.js';
+import { plcProblemJson } from './helpers/plc.js';
 import { selfHoldProblemJson } from './helpers/problems.js';
 
 describe('parseProblem', () => {
@@ -27,37 +30,6 @@ describe('parseProblem', () => {
     expect(result.issues.some((i) => i.path === 'id')).toBe(true);
     expect(result.id).toBe('B_001');
     expect(result.mode).toBe('assemble');
-  });
-
-  it('reports an unsupported mode instead of a schema error (§16)', () => {
-    const result = parseProblem({
-      ...selfHoldProblemJson(),
-      id: 'd-001',
-      mode: 'plc',
-    });
-    expect(result.ok).toBe(false);
-    if (result.ok) return;
-    expect(result.reason).toBe('unsupported-mode');
-    expect(result.mode).toBe('plc');
-    expect(result.id).toBe('d-001');
-    expect(result.issues).toEqual([]);
-  });
-
-  it('still reports header issues of an unsupported mode', () => {
-    const result = parseProblem({ id: 'c 002', mode: 'plc' });
-    expect(result.ok).toBe(false);
-    if (result.ok) return;
-    expect(result.reason).toBe('unsupported-mode');
-    expect(result.issues.length).toBeGreaterThan(0);
-    expect(result.id).toBe('c 002');
-  });
-
-  it('leaves the id out when an unsupported mode problem has none', () => {
-    const result = parseProblem({ mode: 'plc' });
-    expect(result.ok).toBe(false);
-    if (result.ok) return;
-    expect(result.reason).toBe('unsupported-mode');
-    expect(result.id).toBeUndefined();
   });
 
   it('reports a non object as a schema error at the root', () => {
@@ -111,6 +83,32 @@ describe('parseProblem', () => {
     expect(result.reason).toBe('schema');
     expect(result.mode).toBe('inspect-parts');
     expect(result.issues.some((i) => i.path === 'parts[0].truth')).toBe(true);
+  });
+});
+
+describe('モードD課題の判別（§7.6 / §16）', () => {
+  it('parses a mode D problem and marks it as plc', () => {
+    const parsed = parseProblem(plcProblemJson());
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    expect(parsed.problem.mode).toBe('plc');
+    expect(isPlcProblem(parsed.problem)).toBe(true);
+    expect(isAssembleProblem(parsed.problem)).toBe(false);
+  });
+
+  it('reports a header-only PLC problem as a schema error, not as an unsupported mode', () => {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- 本体フィールドを落とすためだけの分割代入
+    const { plc: _plc, io: _io, referenceLadder: _ladder, ...headerOnly } = plcProblemJson();
+    const parsed = parseProblem(headerOnly);
+    expect(parsed.ok).toBe(false);
+    if (parsed.ok) return;
+    expect(parsed.reason).toBe('schema');
+    expect(parsed.mode).toBe('plc');
+    expect(parsed.issues.map((i) => i.path)).toContain('plc');
+  });
+
+  it('has no unsupported mode left (§16 Phase 3)', () => {
+    expect(UNSUPPORTED_MODES).toEqual([]);
   });
 });
 

@@ -1,18 +1,14 @@
 import { z } from 'zod';
 import { AssembleProblemSchema, type AssembleProblem } from './assemble.js';
-import {
-  ProblemHeaderShape,
-  ProblemModeSchema,
-  UNSUPPORTED_MODES,
-  type ProblemMode,
-} from './common.js';
+import { ProblemModeSchema, type ProblemMode } from './common.js';
 import { InspectPartsProblemSchema, type InspectPartsProblem } from './inspect-parts.js';
 import { InspectRepairProblemSchema, type InspectRepairProblem } from './inspect-repair.js';
+import { PlcProblemSchema, type PlcProblem } from './plc.js';
 
 /**
  * 課題スキーマの入口。設計仕様 §7 / §13 #1。
- * Phase 1 が本体まで定義するのは `assemble` だけで、他の3モードは**ヘッダだけを読み**、
- * `unsupported-mode` として課題一覧に理由付きで出す（プレースホルダのスキーマは置かない）。
+ * Phase 3 で4モードすべて（`assemble` / `inspect-parts` / `inspect-repair` / `plc`）の本体スキーマが
+ * 揃い、すべて開始できる（§16）。
  */
 
 /**
@@ -28,28 +24,20 @@ import { InspectRepairProblemSchema, type InspectRepairProblem } from './inspect
  */
 z.config(z.locales.ja());
 
-/** まだ本体を定義していないモードのヘッダ。本体フィールドはそのまま保持する。 */
-export const UnsupportedProblemSchema = z.looseObject({
-  ...ProblemHeaderShape,
-  mode: z.enum(UNSUPPORTED_MODES).describe('課題モード。まだ開始できないモード（PLCは Phase 3）。'),
-});
-
-/** 未対応モードの課題（ヘッダのみ）。 */
-export type UnsupportedProblem = z.infer<typeof UnsupportedProblemSchema>;
-
 /** 課題（モードで判別する）。§7.1 */
 export const ProblemSchema = z.discriminatedUnion('mode', [
   AssembleProblemSchema,
   InspectPartsProblemSchema,
   InspectRepairProblemSchema,
-  UnsupportedProblemSchema,
+  PlcProblemSchema,
 ]);
 
 /** 課題。 */
 export type Problem = z.infer<typeof ProblemSchema>;
 
-/** いま開始できる課題（モードB／モードC1／モードC2）。§16 */
-export type SupportedProblem = AssembleProblem | InspectPartsProblem | InspectRepairProblem;
+/** いま開始できる課題（モードB／モードC1／モードC2／モードD）。§16 */
+export type SupportedProblem =
+  AssembleProblem | InspectPartsProblem | InspectRepairProblem | PlcProblem;
 
 /** モードB課題か。 */
 export function isAssembleProblem(problem: SupportedProblem): problem is AssembleProblem {
@@ -66,13 +54,22 @@ export function isInspectRepairProblem(problem: SupportedProblem): problem is In
   return problem.mode === 'inspect-repair';
 }
 
+/** モードD課題か。 */
+export function isPlcProblem(problem: SupportedProblem): problem is PlcProblem {
+  return problem.mode === 'plc';
+}
+
 /** スキーマ違反1件（zodのパスとメッセージ）。§13 #1 */
 export interface ProblemIssue {
   path: string;
   message: string;
 }
 
-/** 読込に失敗した理由。§13 #1 / §13 #2 */
+/**
+ * 読込に失敗した理由。§13 #1 / §13 #2
+ * `'unsupported-mode'` は Phase 3 で4モードすべてが開始できるようになったため
+ * `parseProblem()` はもう発行しない（Plan 2B の UI 分岐が使う型なので、値だけを落とし型には残す）。
+ */
 export type ProblemFailureReason = 'invalid-json' | 'schema' | 'unsupported-mode' | 'reference';
 
 /** `parseProblem()` の結果。 */
@@ -159,31 +156,14 @@ function peekRawMode(value: unknown): string | undefined {
   return typeof raw === 'string' ? raw : undefined;
 }
 
-/** そのモードがまだ開始できないか。 */
-function isUnsupportedMode(mode: ProblemMode): boolean {
-  return (UNSUPPORTED_MODES as readonly ProblemMode[]).includes(mode);
-}
-
 /**
  * 課題JSON（パース済みの値）を検証する。§7.8 / §13 #1
- * Phase 2 で開始できるのは `assemble` / `inspect-parts` / `inspect-repair` の3モードで、
- * `plc` はヘッダだけを読んで `unsupported-mode` として課題一覧に出す（§16）。
+ * Phase 3 で開始できるのは `assemble` / `inspect-parts` / `inspect-repair` / `plc` の4モードすべて（§16）。
  * `mode` を読めなかった場合はモードB課題として検証し、スキーマ違反として理由を返す。
  */
 export function parseProblem(json: unknown): ParseProblemResult {
   const mode = peekMode(json);
   const id = peekId(json);
-  if (mode !== undefined && isUnsupportedMode(mode)) {
-    const header = UnsupportedProblemSchema.safeParse(json);
-    return {
-      ok: false,
-      reason: 'unsupported-mode',
-      message: `このモードはまだ開始できません: ${mode}`,
-      issues: header.success ? [] : toProblemIssues(header.error),
-      ...(header.success ? { id: header.data.id } : id === undefined ? {} : { id }),
-      mode,
-    };
-  }
   if (mode === undefined) {
     const raw = peekRawMode(json);
     // `mode` はあるが値が不正（誤字など）。何も分からずに assemble スキーマへ落とすと、
@@ -209,7 +189,9 @@ export function parseProblem(json: unknown): ParseProblemResult {
       ? InspectPartsProblemSchema.safeParse(json)
       : mode === 'inspect-repair'
         ? InspectRepairProblemSchema.safeParse(json)
-        : AssembleProblemSchema.safeParse(json);
+        : mode === 'plc'
+          ? PlcProblemSchema.safeParse(json)
+          : AssembleProblemSchema.safeParse(json);
   if (parsed.success) return { ok: true, problem: parsed.data };
   return {
     ok: false,

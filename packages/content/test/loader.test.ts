@@ -44,11 +44,9 @@ describe('loadProblemsFromDir', () => {
     write('other-mode.json', { ...selfHoldProblemJson(), id: 'd-001', mode: 'plc' });
     const set = loadProblemsFromDir(dir);
     expect(set.problems.map((p) => p.id)).toEqual(['b-103']);
-    expect(set.errors.map((e) => e.reason).sort()).toEqual([
-      'invalid-json',
-      'schema',
-      'unsupported-mode',
-    ]);
+    // `other-mode.json` はモードBの本体を持ったまま mode だけ `plc` に差し替えたJSONなので、
+    // `plc` / `io` / `referenceLadder` などが無く schema エラーになる（`unsupported-mode` はもう出ない。§16）
+    expect(set.errors.map((e) => e.reason).sort()).toEqual(['invalid-json', 'schema', 'schema']);
     const schemaError = set.errors.find((e) => e.reason === 'schema');
     expect(schemaError?.issues.length).toBeGreaterThan(0);
   });

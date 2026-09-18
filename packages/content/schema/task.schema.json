@@ -1406,8 +1406,566 @@
         },
         "mode": {
           "type": "string",
-          "enum": ["plc"],
-          "description": "課題モード。まだ開始できないモード（PLCは Phase 3）。"
+          "const": "plc",
+          "description": "課題モード。PLCは `plc`。"
+        },
+        "plc": {
+          "type": "object",
+          "properties": {
+            "vendor": {
+              "type": "string",
+              "enum": ["mitsubishi", "jtekt", "omron", "sharp"],
+              "description": "PLCメーカー。"
+            },
+            "model": {
+              "type": "string",
+              "enum": ["FX5U", "PC10G-1SP", "CP1E", "JW-300"],
+              "description": "PLC機種。Phase 3 で開始できるのは FX5U のみです。"
+            }
+          },
+          "required": ["vendor", "model"],
+          "additionalProperties": false,
+          "description": "使用するPLCのメーカーと機種。"
+        },
+        "io": {
+          "type": "object",
+          "properties": {
+            "mode": {
+              "type": "string",
+              "enum": ["fixed", "free"],
+              "description": "`fixed` は割付を課題が固定し静的チェックで検証します。"
+            },
+            "wiring": {
+              "default": "sink",
+              "description": "入力コモンの結線（シンク／ソース）。",
+              "type": "string",
+              "enum": ["sink", "source"]
+            },
+            "inputs": {
+              "minItems": 1,
+              "maxItems": 3,
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "x": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 15
+                  },
+                  "pb": {
+                    "type": "string",
+                    "enum": ["PB1", "PB2", "PB3"]
+                  }
+                },
+                "required": ["x", "pb"],
+                "additionalProperties": false
+              }
+            },
+            "outputs": {
+              "minItems": 1,
+              "maxItems": 4,
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "y": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 15
+                  },
+                  "cr": {
+                    "type": "string",
+                    "enum": ["CR1", "CR2", "CR3", "CR4"]
+                  },
+                  "pl": {
+                    "type": "string",
+                    "enum": ["PL1", "PL2", "PL3", "PL4"]
+                  }
+                },
+                "required": ["y", "cr", "pl"],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": ["mode"],
+          "additionalProperties": false,
+          "description": "I/O割付（`fixed` なら静的チェックで検証します）。"
+        },
+        "referenceLadder": {
+          "description": "模範ラダー（IR）。",
+          "type": "object",
+          "properties": {
+            "networks": {
+              "minItems": 1,
+              "maxItems": 64,
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "comment": {
+                    "type": "string"
+                  },
+                  "cells": {
+                    "minItems": 1,
+                    "maxItems": 12,
+                    "type": "array",
+                    "items": {
+                      "minItems": 1,
+                      "maxItems": 16,
+                      "type": "array",
+                      "items": {
+                        "oneOf": [
+                          {
+                            "type": "object",
+                            "properties": {
+                              "kind": {
+                                "type": "string",
+                                "const": "contact"
+                              },
+                              "type": {
+                                "type": "string",
+                                "enum": ["NO", "NC", "P", "F"]
+                              },
+                              "device": {
+                                "type": "object",
+                                "properties": {
+                                  "kind": {
+                                    "type": "string",
+                                    "enum": [
+                                      "input",
+                                      "output",
+                                      "internal",
+                                      "timer",
+                                      "counter",
+                                      "special"
+                                    ]
+                                  },
+                                  "index": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 65535
+                                  }
+                                },
+                                "required": ["kind", "index"],
+                                "additionalProperties": false
+                              }
+                            },
+                            "required": ["kind", "type", "device"],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "kind": {
+                                "type": "string",
+                                "const": "coil"
+                              },
+                              "type": {
+                                "type": "string",
+                                "enum": ["OUT", "SET", "RST"]
+                              },
+                              "device": {
+                                "type": "object",
+                                "properties": {
+                                  "kind": {
+                                    "type": "string",
+                                    "enum": [
+                                      "input",
+                                      "output",
+                                      "internal",
+                                      "timer",
+                                      "counter",
+                                      "special"
+                                    ]
+                                  },
+                                  "index": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 65535
+                                  }
+                                },
+                                "required": ["kind", "index"],
+                                "additionalProperties": false
+                              }
+                            },
+                            "required": ["kind", "type", "device"],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "kind": {
+                                "type": "string",
+                                "const": "timer"
+                              },
+                              "type": {
+                                "type": "string",
+                                "const": "TON"
+                              },
+                              "device": {
+                                "type": "object",
+                                "properties": {
+                                  "kind": {
+                                    "type": "string",
+                                    "enum": [
+                                      "input",
+                                      "output",
+                                      "internal",
+                                      "timer",
+                                      "counter",
+                                      "special"
+                                    ]
+                                  },
+                                  "index": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 65535
+                                  }
+                                },
+                                "required": ["kind", "index"],
+                                "additionalProperties": false
+                              },
+                              "presetMs": {
+                                "type": "integer",
+                                "minimum": 10,
+                                "maximum": 3600000
+                              }
+                            },
+                            "required": ["kind", "type", "device", "presetMs"],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "kind": {
+                                "type": "string",
+                                "const": "counter"
+                              },
+                              "type": {
+                                "type": "string",
+                                "const": "CTU"
+                              },
+                              "device": {
+                                "type": "object",
+                                "properties": {
+                                  "kind": {
+                                    "type": "string",
+                                    "enum": [
+                                      "input",
+                                      "output",
+                                      "internal",
+                                      "timer",
+                                      "counter",
+                                      "special"
+                                    ]
+                                  },
+                                  "index": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 65535
+                                  }
+                                },
+                                "required": ["kind", "index"],
+                                "additionalProperties": false
+                              },
+                              "preset": {
+                                "type": "integer",
+                                "minimum": 1,
+                                "maximum": 32767
+                              },
+                              "resetDevice": {
+                                "type": "object",
+                                "properties": {
+                                  "kind": {
+                                    "type": "string",
+                                    "enum": [
+                                      "input",
+                                      "output",
+                                      "internal",
+                                      "timer",
+                                      "counter",
+                                      "special"
+                                    ]
+                                  },
+                                  "index": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 65535
+                                  }
+                                },
+                                "required": ["kind", "index"],
+                                "additionalProperties": false
+                              }
+                            },
+                            "required": ["kind", "type", "device", "preset", "resetDevice"],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "kind": {
+                                "type": "string",
+                                "const": "mc"
+                              },
+                              "device": {
+                                "type": "object",
+                                "properties": {
+                                  "kind": {
+                                    "type": "string",
+                                    "enum": [
+                                      "input",
+                                      "output",
+                                      "internal",
+                                      "timer",
+                                      "counter",
+                                      "special"
+                                    ]
+                                  },
+                                  "index": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 65535
+                                  }
+                                },
+                                "required": ["kind", "index"],
+                                "additionalProperties": false
+                              }
+                            },
+                            "required": ["kind", "device"],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "kind": {
+                                "type": "string",
+                                "const": "mcr"
+                              },
+                              "device": {
+                                "type": "object",
+                                "properties": {
+                                  "kind": {
+                                    "type": "string",
+                                    "enum": [
+                                      "input",
+                                      "output",
+                                      "internal",
+                                      "timer",
+                                      "counter",
+                                      "special"
+                                    ]
+                                  },
+                                  "index": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 65535
+                                  }
+                                },
+                                "required": ["kind", "index"],
+                                "additionalProperties": false
+                              }
+                            },
+                            "required": ["kind", "device"],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "kind": {
+                                "type": "string",
+                                "const": "end"
+                              }
+                            },
+                            "required": ["kind"],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "kind": {
+                                "type": "string",
+                                "const": "hline"
+                              }
+                            },
+                            "required": ["kind"],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "kind": {
+                                "type": "string",
+                                "const": "vline"
+                              }
+                            },
+                            "required": ["kind"],
+                            "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "kind": {
+                                "type": "string",
+                                "const": "empty"
+                              }
+                            },
+                            "required": ["kind"],
+                            "additionalProperties": false
+                          }
+                        ]
+                      }
+                    }
+                  }
+                },
+                "required": ["id", "cells"],
+                "additionalProperties": false
+              }
+            },
+            "comments": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string",
+                "pattern": "^(X|Y|M|T|C|SP)\\d+$"
+              },
+              "additionalProperties": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 32
+              }
+            }
+          },
+          "required": ["networks"],
+          "additionalProperties": false
+        },
+        "wiringRequired": {
+          "type": "boolean",
+          "const": true,
+          "description": "盤とPLCの実配線を必須にします（決定事項#16。常に true）。"
+        },
+        "operations": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "t": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "target": {
+                "type": "string",
+                "enum": ["PB1", "PB2", "PB3", "PB4"]
+              },
+              "action": {
+                "type": "string",
+                "enum": ["press", "release"]
+              }
+            },
+            "required": ["t", "target", "action"],
+            "additionalProperties": false
+          },
+          "description": "判定で再生する押ボタン操作列。"
+        },
+        "durationMs": {
+          "type": "integer",
+          "minimum": 10,
+          "maximum": 600000,
+          "description": "判定区間の長さ[ms]。"
+        },
+        "judge": {
+          "type": "object",
+          "properties": {
+            "compareSignals": {
+              "minItems": 1,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "tolerance": {
+              "default": {
+                "edgeMs": 200,
+                "ratio": 0.1
+              },
+              "type": "object",
+              "properties": {
+                "edgeMs": {
+                  "default": 200,
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 10000
+                },
+                "ratio": {
+                  "default": 0.1,
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                }
+              },
+              "additionalProperties": false
+            },
+            "staticChecks": {
+              "default": {
+                "wireColorRule": true,
+                "terminalLimit": true,
+                "unusedParts": true,
+                "forbiddenCircuit": true,
+                "coilPolarity": true,
+                "powerSequence": true,
+                "twoStage": true,
+                "plcPowerIndependent": true,
+                "ioAssignment": true
+              },
+              "type": "object",
+              "properties": {
+                "wireColorRule": {
+                  "default": true,
+                  "type": "boolean"
+                },
+                "terminalLimit": {
+                  "default": true,
+                  "type": "boolean"
+                },
+                "unusedParts": {
+                  "default": true,
+                  "type": "boolean"
+                },
+                "forbiddenCircuit": {
+                  "default": true,
+                  "type": "boolean"
+                },
+                "coilPolarity": {
+                  "default": true,
+                  "type": "boolean"
+                },
+                "powerSequence": {
+                  "default": true,
+                  "type": "boolean"
+                },
+                "twoStage": {
+                  "default": false,
+                  "type": "boolean"
+                },
+                "plcPowerIndependent": {
+                  "default": false,
+                  "type": "boolean"
+                },
+                "ioAssignment": {
+                  "default": false,
+                  "type": "boolean"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false,
+          "description": "比較する信号・許容差・静的チェックの設定。"
         }
       },
       "required": [
@@ -1419,9 +1977,16 @@
         "timeLimit",
         "board",
         "inventory",
-        "mode"
+        "mode",
+        "plc",
+        "io",
+        "referenceLadder",
+        "wiringRequired",
+        "operations",
+        "durationMs",
+        "judge"
       ],
-      "additionalProperties": {}
+      "additionalProperties": false
     }
   ]
 }

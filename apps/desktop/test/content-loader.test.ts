@@ -306,8 +306,8 @@ describe('loadContent のモードB以外の扱い（Plan 2A Task 17: SupportedP
   });
 });
 
-describe('まだ開始できないモード（§16 / §13 #1）', () => {
-  /** PLC課題（Phase 3）のヘッダだけの最小JSON。 */
+describe('ヘッダだけのPLC課題（§16 / §13 #1）', () => {
+  /** PLC課題（Phase 3）のヘッダだけの最小JSON（`plc` / `io` / `referenceLadder` などの本体を持たない）。 */
   function plcProblemJson(): Record<string, unknown> {
     return {
       formatVersion: 1,
@@ -322,7 +322,7 @@ describe('まだ開始できないモード（§16 / §13 #1）', () => {
     };
   }
 
-  it('利用者フォルダの plc 課題は一覧に出さず、理由付きの読込エラーにする', async () => {
+  it('利用者フォルダのヘッダだけのPLC課題は一覧に出さず、読込エラー（reason: schema）にする', async () => {
     const dir = tempDir();
     writeFileSync(join(dir, 'plc.json'), JSON.stringify(plcProblemJson()), 'utf8');
 
@@ -331,8 +331,8 @@ describe('まだ開始できないモード（§16 / §13 #1）', () => {
     expect(payload.problems).toHaveLength(BUILTIN_ALL_PROBLEMS.length);
     expect(byId.get('x-plc')).toBeUndefined();
     expect(payload.errors).toHaveLength(1);
-    expect(payload.errors[0]?.reason).toBe('unsupported-mode');
-    expect(payload.errors[0]?.message).toBe('このモードはまだ開始できません: plc');
-    expect(payload.errors[0]?.details).toEqual([]);
+    expect(payload.errors[0]?.reason).toBe('schema');
+    expect(payload.errors[0]?.message).toBe('課題の形式が正しくありません');
+    expect(payload.errors[0]?.details.length).toBeGreaterThan(0);
   });
 });
