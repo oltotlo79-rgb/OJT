@@ -52,7 +52,8 @@ describe('三菱 FX5U のデバイス表記（§10.5）', () => {
 
   it('publishes the device ranges of §10.5', () => {
     expect(profile.deviceRanges.input).toEqual({ radix: 8, prefix: 'X', min: 0, max: 1023 });
-    expect(profile.deviceRanges.internal).toEqual({ radix: 10, prefix: 'M', min: 0, max: 32767 });
+    // M8000 以降は特殊リレー帯と重なるため internal.max は 7999（レビュー #M1）
+    expect(profile.deviceRanges.internal).toEqual({ radix: 10, prefix: 'M', min: 0, max: 7999 });
     expect(profile.deviceRanges.timer).toEqual({ radix: 10, prefix: 'T', min: 0, max: 7999 });
     expect(profile.deviceRanges.counter.max).toBe(32767);
   });
@@ -76,6 +77,13 @@ describe('三菱 FX5U のタイマ単位（ゴールデンケース #25 / §8.2 
     // 刻みより小さい値は 0 にせず1刻みへ切り上げる
     expect(roundTimerPreset(1, timerBaseMs(T(0)))).toBe(100);
     expect(() => roundTimerPreset(100, 0)).toThrow();
+  });
+
+  it('clamps a rounded preset to K32767 (MAX_K) of its band so it never overshoots (レビュー #M1)', () => {
+    // 3,276,750ms は T0（100ms単位）だと32767.5刻み目 → 四捨五入で32768刻みへ丸まってしまうが、
+    // K32768 は存在しないので MAX_K(32767) × 100ms = 3,276,700 へ切り下げる
+    expect(roundTimerPreset(3_276_750, timerBaseMs(T(0)))).toBe(3_276_700);
+    expect(profile.timerPreset(3_276_700, T(0))).toEqual({ text: 'K32767', device: T(0) });
   });
 
   it('renders T0 K100 as 10 s and T200 K100 as 1 s (#25)', () => {

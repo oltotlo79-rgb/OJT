@@ -49,18 +49,25 @@ export function roundTimerPreset(ms: number, baseMs: number): number {
     throw new Error(`丸められない引数です: ms=${ms} baseMs=${baseMs}`);
   }
   const rounded = Math.round(ms / baseMs) * baseMs;
-  return rounded < baseMs ? baseMs : rounded;
+  const clamped = rounded < baseMs ? baseMs : rounded;
+  const max = MAX_K * baseMs;
+  return clamped > max ? max : clamped;
 }
 
 /** タイマ設定値 `K` の範囲。 */
 const MIN_K = 1;
 const MAX_K = 32_767;
 
-/** デバイス種別ごとの番号体系。§10.5 */
+/**
+ * デバイス種別ごとの番号体系。§10.5
+ * `internal.max` は `M7999` まで。`M8000` 以降は特殊リレー帯（`SPECIAL_DEVICES` の
+ * `M8000`/`M8002`/`M8013` を含む）と番号が重なるため、通常の内部リレーとしては使わせない
+ * （レビュー #M1）。
+ */
 const DEVICE_RANGES: Readonly<Record<DeviceKind, DeviceRange>> = {
   input: { radix: 8, prefix: 'X', min: 0, max: 1023 },
   output: { radix: 8, prefix: 'Y', min: 0, max: 1023 },
-  internal: { radix: 10, prefix: 'M', min: 0, max: 32_767 },
+  internal: { radix: 10, prefix: 'M', min: 0, max: 7_999 },
   timer: { radix: 10, prefix: 'T', min: 0, max: 7_999 },
   counter: { radix: 10, prefix: 'C', min: 0, max: 32_767 },
   // 特殊デバイスはIR側の通し番号（`SP0`〜`SP2`）の範囲。実デバイス名は `SPECIAL_DEVICES` が持つ
@@ -233,9 +240,20 @@ const SHORTCUTS: ShortcutTable = [
 const ERROR_MESSAGES: Readonly<Record<string, string>> = {
   'device-range': 'デバイス番号がこの機種の範囲を超えています',
   'timer-unit': 'このタイマ番号の時間単位では指定できない設定値です',
+  'timer-range': 'タイマ設定値（K値）がこの機種の範囲を超えています',
   'counter-range': 'カウンタ設定値がこの機種の範囲を超えています',
   'special-unsupported': 'この機種に対応する特殊デバイスがありません',
 };
+
+/**
+ * タイマ設定値のエラー種別を判定する。`timerPreset()` は失敗理由（単位に合わない／K値が
+ * 範囲外）ごとに文言を変えるが `code` までは持たないので、`checkCell` はここで再判定する。
+ */
+function timerErrorCode(ms: number, timer: Device): 'timer-unit' | 'timer-range' {
+  const base = timerBaseMs(timer);
+  if (!Number.isInteger(ms) || ms <= 0 || ms % base !== 0) return 'timer-unit';
+  return 'timer-range';
+}
 
 /** セルが参照するデバイスを列挙する（設定値の検査もここで行う）。 */
 function checkCell(
@@ -258,7 +276,7 @@ function checkCell(
     const preset = timerPreset(cell.presetMs, cell.device);
     if (preset instanceof Error) {
       errors.push({
-        code: 'timer-unit',
+        code: timerErrorCode(cell.presetMs, cell.device),
         message: preset.message,
         device: cell.device,
         networkId,

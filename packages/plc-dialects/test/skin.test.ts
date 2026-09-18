@@ -56,6 +56,24 @@ describe('GX Works3風スキン（§10.6）', () => {
     expect(skin.instructionNames.counter).toBe('OUT C');
   });
 
+  it('shortcut table invariants: unique actions/keys, exactly one enabled:false, no vendor strings outside displayName', () => {
+    const actions = skin.shortcuts.map((s) => s.action);
+    expect(new Set(actions).size).toBe(actions.length);
+    const keys = skin.shortcuts.map((s) => s.keys);
+    expect(new Set(keys).size).toBe(keys.length);
+    expect(skin.shortcuts.filter((s) => s.enabled === false)).toHaveLength(1);
+    const skinText = [
+      skin.panels.tree,
+      skin.panels.editor,
+      skin.panels.output,
+      ...skin.panels.toolbar,
+      ...skin.shortcuts.map((s) => s.label),
+      ...Object.values(skin.errorMessages),
+    ].join('|');
+    expect(skinText).not.toMatch(/GX|MELSEC|三菱|Mitsubishi/iu);
+    expect(skin.displayName).toContain('風');
+  });
+
   it('lists the three GX Works3 panels without borrowing any vendor artwork (§17 / PLC調査資料 §6)', () => {
     expect(skin.panels.tree).toContain('ナビゲーション');
     expect(skin.panels.editor).toContain('ラダー');

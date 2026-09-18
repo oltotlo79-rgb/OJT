@@ -22,6 +22,10 @@ describe('方言の一覧', () => {
     expect(availableDialects().map((d) => d.id)).toEqual(['mitsubishi']);
   });
 
+  it('keeps availableDialects() consistent with IMPLEMENTED_DIALECT_IDS (レビュー #M6)', () => {
+    expect(availableDialects().map((d) => d.id)).toEqual([...IMPLEMENTED_DIALECT_IDS]);
+  });
+
   it('throws a readable error for a dialect that Phase 4 will add', () => {
     expect(() => getDialect('omron')).toThrow(UnknownDialectError);
     expect(() => getDialect('omron')).toThrow(/Phase 4/u);

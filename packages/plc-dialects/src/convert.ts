@@ -31,7 +31,7 @@ export type ConvertResult =
       errors: readonly ConvertError[];
       warnings: CompileWarning[];
     }
-  | { ok: false; errors: ConvertError[]; warnings: CompileWarning[] };
+  | { ok: false; errors: readonly ConvertError[]; warnings: CompileWarning[] };
 
 /**
  * ラダーを変換する。§10.6
