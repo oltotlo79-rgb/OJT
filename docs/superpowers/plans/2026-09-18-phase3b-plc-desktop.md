@@ -130,6 +130,11 @@ export function createPlcRuntime(program: CompiledProgram, options: PlcRuntimeOp
 - `deleteRow()` は最後の1行を消せない。`deleteNetwork()` は最後のネットワークでも消せる（＝プログラムが空になりうる）。空になると `compile()` が `empty-program` を返すので、変換で気づける。
 - `vline()` は**そのセル自身も横線として導通する**（`runtime.ts` の `solve()`）。エディタの描画も「縦線＋横線」で描く。
 - `PlcSnapshot.poweredCells` の `col` は **0〜15**（`IR_COLS` ぶん全部）。コイルの通電は `col === COIL_COL` の値。
+- **`poweredCells` は「どの行でも0列目は必ず `true`」になる**（`Rails` の構築時に全行の0列目を左母線へ union するため。3A レビュー指摘）。空セルの0列目まで青く塗ると、何も書いていない行が光って見える。**モニタは `empty` のセルを塗らない**こと（Task 4）。3A 側でランタイムが「空セルの0列目は `false`」を返すよう直る可能性があるので、**どちらでも正しく見えるように**書く（＝UI 側で `empty` を弾く）。
+- **`deleteNetwork()` は END ネットワークも消せる**（仕様どおり）。消すと `compile()` が `missing-end` を返すので、出力ウィンドウで気づける。エディタは END の削除を止めない。
+- **今後 3A 側で増える検査**: `setVerticalLink()` がコイル列を拒否するようになる／`compile()` が「X・SP への OUT/SET/RST」「T・C への OUT」を新しい構造エラーコードで拒否するようになる。したがって **`CompileErrorCode` を画面側で網羅しない**こと（`ConvertErrorLine.code` は `string` のまま扱い、`message` をそのまま出す）。`buildCell()`（Task 5）の許可表がこれらを先に弾くので、通常は出ない。
+- **3B が使ってよい追加の公開名**: `PlcRuntimeOptions` / `CLOCK_PERIOD_MS` / `TIMER_STEP_MS` / `MAX_TIMER_PRESET_MS` / `MAX_COUNTER_PRESET` / `DEVICE_PREFIX` / `NetworkOptions` / `CompiledNetwork` / `CompiledOutput` / `DeviceUsage` / `PlcRuntime`。
+- **性能（3A 実測）**: 1スキャン **0.06ms**、`judgePlc()` は 6 秒の課題で **約 72ms**。H-4 の「0.3〜1 秒」は見積もりで、実測はこれより軽い。それでも `judgeRepair` と同じく追従ループを止める（1級の 8 秒課題や将来の長い課題で `MAX_CATCHUP_TICKS`（200ms相当）に近づくため。余白を残す）。
 
 ### 前提B: `@ojt/plc-dialects`（**landed**。`profile.ts` / `mitsubishi.ts` / `convert.ts` の実装を確認済み）
 
@@ -280,6 +285,8 @@ export function deskWires(board: BoardDefinition, session: BoardSession): DeskWi
 - `withPlcUnit(JIPM_BOARD, PLC_UNIT_FX5U)` の戻りは **`id` が `'board-jipm-std'` のまま**。`BoardSession.boardId` の照合はそのまま通る。
 - `PLC_UNIT_FX5U.terminals` は入力側（`L` `PE` `N` `SS` `24V` `0V` `X0`〜`X17`）が `PLC_ORIGIN_MM + (6, 6)` から、出力側（`COM0` `Y0`〜`Y3` `COM1` `Y4`〜…）が `PLC_ORIGIN_MM + (6, 72)` から、いずれも**千鳥2列**（偶数番が奥列、奇数番が手前列、列ピッチ9mm、段間9mm、ずらし4.5mm）で並ぶ。3Dはこの `pos` をそのまま `toScene()` に通す。
 - `OUTLET_TERMINALS` は `OUTLET_ORIGIN_MM` と `+9mm` の2点。
+- **画面に出す入力仕様は `@ojt/board-model` の FX5U の値を使う**（3A レビュー指摘）。`FX5U_INPUT_OHMS`(4500) / `FX5U_ON_AMPS`(0.0035) / `FX5U_OFF_AMPS`(0.0015)。`@ojt/circuit-sim` の `PLC_INPUT_OHMS`(4700) / `PLC_INPUT_ON_AMPS`(0.003) / `PLC_INPUT_OFF_AMPS`(0.0015) は**機種を指定しなかったときの既定値**であり、画面に出すと実機と違う数字になる。`FX5U_SPEC` から引くか `plcMetaOf(part)` の `onAmps` / `offAmps` を使うこと（Task 9 のモニタ表示）。
+- **IR のデバイス番号は10進、FX5U の端子名は8進。** `Y(8)` の端子は **`PLC.Y10`**、`X(10)` の端子は **`PLC.X12`** である。`deviceLabel()`（`Y8`）を端子名として使ってはならない。端子名は必ず `unit.spec.outputs[y].name` / `unit.spec.inputs[x]`（または `plcMetaOf(part).outputs[i].name`）から引く。三菱のスキンでは `profile.formatDevice(Y(8))` も `'Y10'` を返すので**画面上は一致する**が、根拠が違う（片方は方言の表示規則、片方は機種の端子名）ので、**端子を指すときは必ず機種側**から取る（決定表#16）。
 - **端子の印字色は既に揃っている。** `apps/desktop/src/renderer/three/labels.ts` の役割色表は `x` / `y` / `ss` / `plc-com` / `ac-l` / `ac-n` を**既に持っている**（`ac-l` は赤 `#D14343`、`ac-n` は青 `#2E6BD6`）。Task 10 はこの表をそのまま使い、色を足さない。
 - **盤の座標系の外に出る。** `toScene()` は `x - BOARD_WIDTH_MM/2`（330/2 = 165）なので、PLC本体は x ≈ +231〜+381、コンセントは y ≈ −(190 − 110) = −80 の位置に描かれる。既存の視点プリセットでは画角に入らないので、Task 10 で `'plc'` プリセットを足す。
 
@@ -517,6 +524,7 @@ export function LogPanel(props); ElapsedTimer(props); PowerControls(props); Prob
 | 12 | **キー割当表は誰のものか** | 画面は `profile.shortcuts` を**表として描くだけ**で、キーの文字列を1つもハードコードしない。「キー文字列 → `action`」の照合は `session/ladder.ts` の `matchShortcut()` が行い、`action` 文字列に対して振る舞いを決める | Phase 4 で `getDialect('omron')` に差し替えるだけでキー割当が変わる（§17.1 の「修正箇所は方言プロファイルのみ」）。`event.key === 'F5'` と書いた瞬間にこの性質が壊れる。テストは「`MITSUBISHI_FX5U.shortcuts` から作った表で `F5` が `contact-no` になる」ことと「架空のプロファイルで `F5` を別の action に割り当てたら振る舞いも変わる」ことの両方を見る |
 | 13 | **設定画面のメーカー選択** | `AppSettings.defaultVendor: DialectId`（既定 `'mitsubishi'`）。選択肢は `availableDialects()` が返すものだけ（Phase 3 は三菱1件）。未実装の3社は**淡色で並べて押せない**ようにし、「Phase 4 で追加します」の注記を添える | §16 Phase 4 の受入基準①が「設定で既定メーカーをOMRONにすると…」なので、Phase 3 で入れ物を作っておくと Phase 4 は選択肢を増やすだけになる。並べずに隠すと「4社対応」という約束（§10.5）が画面から消える |
 | 14 | **セッション開始時のラダー** | **空のラダー**（`program(network('n1', [[empty()]]), endNetwork())`）から始める。課題の `referenceLadder` は**絶対に出さない** | 模範ラダーは答えそのものである。§8.4 のヒント方針（回路図は級で出し分け）はモードDには適用しない（§7.6 が `referenceLadder` をヒントとして挙げていない） |
+| 16 | **端子名（8進）とIRのデバイス番号（10進）を混ぜない** | **端子を指す文字列は必ず機種側から取る**（`unit.spec.inputs[x]` / `unit.spec.outputs[y].name` / `plcMetaOf(part)`）。**ラダーの中に出るデバイス名は必ず方言側から取る**（`profile.formatDevice(device)`）。`deviceLabel()`（ベンダー中立の10進表記）は**デバイスコメントの鍵**にだけ使う | IR の `Device.index` は0起点の通し番号（3A 決定表#5）で、FX5U の端子名は8進なので `Y(8)` の端子は `PLC.Y10` である。三菱スキンでは `formatDevice()` も8進なので画面上は一致するが、Phase 4 の OMRON は端子名 `100.00`・デバイス表記 `100.00`、TOYOPUC は16進で、**根拠の違う2つの文字列**になる。ここを混ぜると Phase 4 で「3Dの端子は見つかるのにラダーの表示が合わない」類の不具合が出る |
 | 15b | **未使用デバイスの扱い**（§10.8） | `CompiledProgram.usage`（`reads` / `writes`）から「宣言・配置したが使われていないデバイス」を出力ウィンドウに**表示するだけ**にし、**合否には一切効かせない**（2026-09-18 の利用者決定） | 未使用デバイスは実機でも警告どまりで、動作が正しければ検定の減点にはならない。判定は `judgePlc()`（3A）が持っており、そこに未使用デバイスの項目は無い。UI 側で勝手に不合格要素を足すと、3A の判定と画面の合否が食い違う |
 | 15c | **PLC電源が壁コンセントへ未配線のとき** | **エラー**（`plcPowerIndependent` の不合格）とし、盤から取っているときとは**別の文言**を出す。さらに「シミュレートされるPLCは `PLC.L` / `PLC.N` が未配線でも動きます」という説明を**常に**添える（2026-09-18 の利用者決定 ＋ 3A H-5） | §10.1 は「PLC電源は壁コンセント（AC100V）へ配線する」と定めており、未配線は手順の欠落である。ただし本アプリのPLCは電気的に解かない端子（3A 決定表#3）なので未配線でも動いてしまい、訓練者からは「動いているのにチェックだけ赤い」ように見える。理由を書かない限り不親切な不合格になる |
 | 15 | **新規ネットワークの ID** | `n1` / `n2` / … の通し番号を、**既存の最大番号＋1**で採る（`deleteNetwork` のあとに番号が飛んでもよい）。END ネットワークの ID は `'end'` 固定 | `program()` と `insertNetwork()` が ID 重複で投げる（前提A）ので、一意さが要る。番号を詰め直すと、変換エラーの `networkId` と出力ウィンドウの行が編集のたびにずれる |
@@ -2811,6 +2819,25 @@ describe('LadderGrid（§10.7）', () => {
     expect(screen.getByTestId('cell-n2:0:0')).toHaveAttribute('data-powered', 'false');
   });
 
+  it('never paints an empty cell even though column 0 reports powered (3A レビュー指摘)', () => {
+    const blank = program(network('n1', [[no(X(0))]]), endNetwork());
+    // すべてのセルが通電しているという最悪の入力を渡す
+    render(
+      <LadderGrid
+        program={blank}
+        {...base}
+        mode="monitor"
+        powered={{ n1: '1'.repeat(IR_COLS) }}
+      />,
+    );
+    expect(screen.getByTestId('cell-n1:0:0')).toHaveAttribute('data-powered', 'true');
+    expect(screen.getByTestId('cell-n1:0:1')).toHaveAttribute('data-powered', 'false');
+    expect(screen.getByTestId(`cell-n1:0:${String(COIL_COL)}`)).toHaveAttribute(
+      'data-powered',
+      'false',
+    );
+  });
+
   it('does not paint anything while not monitoring', () => {
     render(<LadderGrid program={sample()} {...base} powered={{ n1: '1'.repeat(IR_COLS) }} />);
     expect(screen.getByTestId('cell-n1:0:0')).toHaveAttribute('data-powered', 'false');
@@ -3178,8 +3205,17 @@ function LadderGridImpl({
                         cell9={{ networkId: net.id, row, col: index }}
                         profile={profile}
                         comment={deviceComment}
-                        leftOn={on(row, col)}
-                        rightOn={col < COIL_COL ? on(row, col + 1) : on(row, col)}
+                        /*
+                         * 空セルは塗らない。`poweredCells` は「どの行でも0列目は左母線と
+                         * 繋がっている」ので真になり（3A `Rails` の構築）、何も書いていない
+                         * 行の先頭まで青く光ってしまう。3A 側で `false` を返すよう直っても
+                         * この判定はそのまま正しい。
+                         */
+                        leftOn={cell.kind !== 'empty' && on(row, col)}
+                        rightOn={
+                          cell.kind !== 'empty' &&
+                          (col < COIL_COL ? on(row, col + 1) : on(row, col))
+                        }
                         colors={profile.monitorColors}
                         error={errorCells.has(key)}
                         hasLinkBelow={row + 1 < net.rows}
@@ -3332,7 +3368,7 @@ pnpm --filter @ojt/desktop exec vitest run test/ladder-symbols.test.ts test/ladd
 pnpm --filter @ojt/desktop typecheck
 ```
 
-Expected: `Tests  13 passed (13)`（記号4件＋グリッド9件）。
+Expected: `Tests  14 passed (14)`（記号4件＋グリッド10件）。
 
 - [ ] **Step 8: コミットする**
 
@@ -4393,7 +4429,1491 @@ git commit -m "feat(desktop): wire F5/F6/F7/F9 and the device input to the ladde
 
 ---
 
+## Task 6: 「変換」（F4）と出力ウィンドウ
+
+**Files:**
+- Create: `apps/desktop/src/renderer/session/ladder-errors.ts`
+- Create: `apps/desktop/src/renderer/ladder/OutputWindow.tsx`
+- Modify: `apps/desktop/src/renderer/ladder/ladder.module.css`
+- Modify: `apps/desktop/src/renderer/i18n/ja.ts`（**MERGE 注意 #1**）
+- Test: `apps/desktop/test/ladder-errors.test.ts`
+- Test: `apps/desktop/test/output-window.test.tsx`
+
+`convert(program, profile)`（3A）を走らせ、結果を §10.6 の出力ウィンドウに並べる。**決定表#4** のとおりエラーの位置はライブラリが持っているものをそのまま使う。
+
+| 決めること | 本タスクの実装 |
+|---|---|
+| 変換の実体 | `runConvert(program, profile)` が `convert()` を呼び、`ConvertIssues`（ストアの値型）に畳む。**成功したときだけ** `converted: true` にして Worker へ `plc { kind:'load' }` を送る（H-1） |
+| 行の並び | ①構造エラー → ②方言エラー → ③警告（二重コイル）→ ④使用デバイス一覧。各行に `ネットワーク / 行 / 列` を出す |
+| クリック | `row` / `col` を持つ行はカーソルをそのセルへ飛ばす。持たない行は何もしない（決定表#4） |
+| 使用デバイス | `CompiledProgram.usage` の `reads` / `writes` を方言表記で並べ、**片方にしか出てこないデバイス**を「未使用」として淡色で注記する。**合否には効かせない**（決定表#15b） |
+
+- [ ] **Step 1: 失敗するテストを書く**
+
+`apps/desktop/test/ladder-errors.test.ts`:
+
+```ts
+import {
+  endNetwork,
+  hline,
+  IR_COLS,
+  network,
+  no,
+  out,
+  program,
+  T,
+  ton,
+  X,
+  Y,
+  type Cell,
+} from '@ojt/ladder-core';
+import { MITSUBISHI_FX5U } from '@ojt/plc-dialects';
+import { describe, expect, it } from 'vitest';
+import { errorCellKeys, runConvert, unusedDevices } from '../src/renderer/session/ladder-errors.js';
+
+function rung(...cells: Cell[]): Cell[] {
+  const row = [...cells];
+  const output = row.pop();
+  if (output === undefined) throw new Error('出力セルが要ります');
+  while (row.length < IR_COLS - 1) row.push(hline());
+  row.push(output);
+  return row;
+}
+
+const profile = MITSUBISHI_FX5U;
+
+describe('runConvert（§10.6）', () => {
+  it('reports success with the device usage', () => {
+    const result = runConvert(program(network('n1', [rung(no(X(0)), out(Y(0)))]), endNetwork()), profile);
+    expect(result.ok).toBe(true);
+    expect(result.issues.errors).toEqual([]);
+    expect(result.issues.usage).toEqual({ reads: ['X0'], writes: ['Y0'] });
+    expect(result.program).toBeDefined();
+  });
+
+  it('separates structural errors from dialect errors', () => {
+    const result = runConvert(program(network('n1', [rung(no(X(0)), ton(T(0), 150))])), profile);
+    expect(result.ok).toBe(false);
+    expect(result.issues.errors.map((e) => e.source)).toContain('structure');
+    expect(result.issues.errors.map((e) => e.source)).toContain('dialect');
+    expect(result.issues.usage).toBeUndefined();
+  });
+
+  it('keeps the double-coil warning on a successful conversion (§10.4)', () => {
+    const result = runConvert(
+      program(
+        network('n1', [rung(no(X(0)), out(Y(0)))]),
+        network('n2', [rung(no(X(1)), out(Y(0)))]),
+        endNetwork(),
+      ),
+      profile,
+    );
+    expect(result.ok).toBe(true);
+    expect(result.issues.warnings.map((w) => w.code)).toEqual(['double-coil']);
+    expect(result.issues.warnings[0]?.networkId).toBe('n2');
+  });
+
+  it('formats the devices with the dialect (X10 = index 8)', () => {
+    const result = runConvert(
+      program(network('n1', [rung(no({ kind: 'input', index: 8 }), out(Y(0)))]), endNetwork()),
+      profile,
+    );
+    expect(result.issues.usage?.reads).toEqual(['X10']);
+  });
+});
+
+describe('errorCellKeys', () => {
+  it('collects only the issues that point at a cell (決定表#4)', () => {
+    const keys = errorCellKeys([
+      { source: 'structure', code: 'coil-column', message: '', networkId: 'n1', row: 0, col: 2 },
+      { source: 'structure', code: 'missing-end', message: '' },
+      { source: 'dialect', code: 'device-range', message: '', networkId: 'n2', row: 1, col: 0 },
+      { source: 'structure', code: 'no-output', message: '', networkId: 'n3' },
+    ]);
+    expect([...keys].sort()).toEqual(['n1:0:2', 'n2:1:0']);
+  });
+});
+
+describe('unusedDevices（§10.8。表示のみ。決定表#15b）', () => {
+  it('lists devices that are written but never read, and the other way round', () => {
+    expect(unusedDevices({ reads: ['X0', 'M1'], writes: ['Y0', 'M2'] })).toEqual({
+      neverRead: ['Y0', 'M2'],
+      neverWritten: ['X0', 'M1'],
+    });
+  });
+});
+```
+
+`apps/desktop/test/output-window.test.tsx`:
+
+```tsx
+import { render, screen, fireEvent } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
+import { OutputWindow } from '../src/renderer/ladder/OutputWindow.js';
+
+const issues = {
+  errors: [
+    { source: 'structure' as const, code: 'coil-column', message: 'コイルは最終列に置きます', networkId: 'n1', row: 0, col: 2 },
+    { source: 'dialect' as const, code: 'device-range', message: 'X の番号が範囲外です', networkId: 'n1', row: 0, col: 0 },
+    { source: 'structure' as const, code: 'missing-end', message: 'END がありません' },
+  ],
+  warnings: [
+    { code: 'double-coil', message: 'Y0 のコイルが2回以上あります', networkId: 'n2', row: 0, col: 15 },
+  ],
+  usage: { reads: ['X0'], writes: ['Y0', 'M1'] },
+};
+
+describe('出力ウィンドウ（§10.6）', () => {
+  it('lists structural errors first, then dialect errors, then warnings', () => {
+    render(<OutputWindow issues={issues} converted={false} onJump={() => undefined} />);
+    const rows = screen.getAllByTestId(/^output-row-/u);
+    expect(rows).toHaveLength(4);
+    expect(rows[0]).toHaveTextContent('コイルは最終列');
+    expect(rows[2]).toHaveTextContent('END がありません');
+    expect(rows[3]).toHaveTextContent('二重コイル');
+  });
+
+  it('shows where each issue is', () => {
+    render(<OutputWindow issues={issues} converted={false} onJump={() => undefined} />);
+    expect(screen.getByTestId('output-row-0')).toHaveTextContent('n1');
+    expect(screen.getByTestId('output-row-0')).toHaveTextContent('1 行');
+    expect(screen.getByTestId('output-row-0')).toHaveTextContent('3 列');
+  });
+
+  it('jumps to the cell an issue points at, and does nothing for the rest', () => {
+    const onJump = vi.fn();
+    render(<OutputWindow issues={issues} converted={false} onJump={onJump} />);
+    fireEvent.click(screen.getByTestId('output-row-0'));
+    expect(onJump).toHaveBeenCalledWith({ networkId: 'n1', row: 0, col: 2 });
+    fireEvent.click(screen.getByTestId('output-row-2'));
+    expect(onJump).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows the used devices and marks the unused ones (決定表#15b)', () => {
+    render(
+      <OutputWindow
+        issues={{ errors: [], warnings: [], usage: issues.usage }}
+        converted
+        onJump={() => undefined}
+      />,
+    );
+    expect(screen.getByTestId('usage-reads')).toHaveTextContent('X0');
+    expect(screen.getByTestId('usage-writes')).toHaveTextContent('Y0');
+    expect(screen.getByTestId('usage-unused')).toHaveTextContent('M1');
+    expect(screen.getByTestId('convert-state')).toHaveTextContent('変換に成功');
+  });
+
+  it('says the ladder still needs converting when it does', () => {
+    render(<OutputWindow issues={{ errors: [], warnings: [], usage: undefined }} converted={false} onJump={() => undefined} />);
+    expect(screen.getByTestId('convert-state')).toHaveTextContent('未変換');
+  });
+});
+```
+
+- [ ] **Step 2: RED を確認し、Step 3 で `session/ladder-errors.ts` を書く**
+
+```ts
+import { deviceLabel, type CompiledProgram, type LadderProgram } from '@ojt/ladder-core';
+import { convert, type DialectProfile } from '@ojt/plc-dialects';
+import type { ConvertIssues, ConvertErrorLine } from '../app/store-types.js';
+
+/**
+ * 「変換」（F4）と出力ウィンドウの材料。設計仕様 §10.6 / §10.8。決定表#4
+ *
+ * `@ojt/plc-dialects` の `convert()` を呼び、結果をストアの値型（`ConvertIssues`）に畳む。
+ * 位置（ネットワーク・行・列）は**ライブラリが持っているものをそのまま**使い、UI 側で推定しない。
+ */
+
+/** 変換の結果（成功なら実行形式も返す）。 */
+export interface ConvertRun {
+  ok: boolean;
+  issues: ConvertIssues;
+  program: CompiledProgram | undefined;
+}
+
+/** 変換を走らせる。 */
+export function runConvert(source: LadderProgram, profile: DialectProfile): ConvertRun {
+  const result = convert(source, profile);
+  const errors: ConvertErrorLine[] = result.errors.map((error) => ({
+    source: error.source,
+    code: error.code,
+    message: error.message,
+    ...(error.networkId === undefined ? {} : { networkId: error.networkId }),
+    ...(error.row === undefined ? {} : { row: error.row }),
+    ...(error.col === undefined ? {} : { col: error.col }),
+  }));
+  const warnings = result.warnings.map((warning) => ({
+    code: warning.code,
+    message: warning.message,
+    networkId: warning.networkId,
+    row: warning.row,
+    col: warning.col,
+  }));
+  if (!result.ok) {
+    return { ok: false, issues: { errors, warnings, usage: undefined }, program: undefined };
+  }
+  return {
+    ok: true,
+    issues: {
+      errors,
+      warnings,
+      usage: {
+        // 出力ウィンドウは方言表記で出す（IRの通し番号ではない）。§10.5
+        reads: result.program.usage.reads.map((device) => profile.formatDevice(device)),
+        writes: result.program.usage.writes.map((device) => profile.formatDevice(device)),
+      },
+    },
+    program: result.program,
+  };
+}
+
+/** 変換エラーのうち、セルを指しているものの鍵（`"net:row:col"`）。 */
+export function errorCellKeys(errors: readonly ConvertErrorLine[]): Set<string> {
+  const keys = new Set<string>();
+  for (const error of errors) {
+    if (error.networkId === undefined || error.row === undefined || error.col === undefined) continue;
+    keys.add(`${error.networkId}:${String(error.row)}:${String(error.col)}`);
+  }
+  return keys;
+}
+
+/**
+ * 使われていないデバイス。§10.8
+ * **表示のみ**で合否には効かせない（決定表#15b）。
+ */
+export function unusedDevices(usage: { reads: readonly string[]; writes: readonly string[] }): {
+  neverRead: string[];
+  neverWritten: string[];
+} {
+  const reads = new Set(usage.reads);
+  const writes = new Set(usage.writes);
+  return {
+    neverRead: usage.writes.filter((device) => !reads.has(device)),
+    neverWritten: usage.reads.filter((device) => !writes.has(device)),
+  };
+}
+
+/** IR の `deviceLabel()` をそのまま使いたいとき（デバイスコメントの鍵）。§10.7 */
+export { deviceLabel };
+```
+
+- [ ] **Step 4: `ladder/OutputWindow.tsx` を書く**
+
+```tsx
+import type { JSX } from 'react';
+import { JA, ladderIssuePlace } from '../i18n/ja.js';
+import type { ConvertIssues } from '../app/store-types.js';
+import type { LadderCursor } from '../session/ladder.js';
+import { unusedDevices } from '../session/ladder-errors.js';
+import styles from './ladder.module.css';
+
+/**
+ * 出力ウィンドウ。設計仕様 §10.6 / §10.8。
+ * 変換エラー（構造 → 方言）・警告・使用デバイスをこの順で1つの一覧に並べる。
+ */
+
+/** 1行の形（エラーも警告も同じ形に畳んでから描く）。 */
+interface Row {
+  key: string;
+  severity: 'error' | 'warning';
+  label: string;
+  message: string;
+  cursor: LadderCursor | undefined;
+  place: string;
+}
+
+/** 出力ウィンドウ。 */
+export function OutputWindow({
+  issues,
+  converted,
+  onJump,
+}: {
+  issues: ConvertIssues;
+  converted: boolean;
+  onJump: (cursor: LadderCursor) => void;
+}): JSX.Element {
+  const rows: Row[] = [
+    ...issues.errors
+      .filter((issue) => issue.source === 'structure')
+      .map((issue, index) => toRow(issue, 'structure', index)),
+    ...issues.errors
+      .filter((issue) => issue.source === 'dialect')
+      .map((issue, index) => toRow(issue, 'dialect', index)),
+    ...issues.warnings.map((warning, index) => ({
+      key: `w-${String(index)}`,
+      severity: 'warning' as const,
+      label: JA.ladder.doubleCoil,
+      message: warning.message,
+      cursor: { networkId: warning.networkId, row: warning.row, col: warning.col },
+      place: ladderIssuePlace(warning.networkId, warning.row, warning.col),
+    })),
+  ];
+  const unused =
+    issues.usage === undefined
+      ? undefined
+      : unusedDevices(issues.usage);
+  return (
+    <section className={styles.output} data-testid="output-window" aria-label={JA.ladder.output}>
+      <header className={styles.outputHeader}>
+        <h2>{JA.ladder.output}</h2>
+        <span data-testid="convert-state" className={converted ? styles.okTag : styles.ngTag}>
+          {converted ? JA.ladder.convertOk : JA.ladder.notConverted}
+        </span>
+      </header>
+      <ul className={styles.outputList}>
+        {rows.length === 0 ? <li className={styles.outputEmpty}>{JA.ladder.noIssues}</li> : null}
+        {rows.map((row, index) => (
+          <li
+            key={row.key}
+            data-testid={`output-row-${String(index)}`}
+            data-severity={row.severity}
+            className={row.severity === 'error' ? styles.outputError : styles.outputWarning}
+            onClick={() => {
+              if (row.cursor !== undefined) onJump(row.cursor);
+            }}
+          >
+            <span className={styles.outputLabel}>{row.label}</span>
+            <span className={styles.outputPlace}>{row.place}</span>
+            <span>{row.message}</span>
+          </li>
+        ))}
+      </ul>
+      {issues.usage === undefined || unused === undefined ? null : (
+        <div className={styles.usage}>
+          <p data-testid="usage-reads">
+            {JA.ladder.usageReads}: {issues.usage.reads.join(' ') || JA.inspectRepair.none}
+          </p>
+          <p data-testid="usage-writes">
+            {JA.ladder.usageWrites}: {issues.usage.writes.join(' ') || JA.inspectRepair.none}
+          </p>
+          <p data-testid="usage-unused" className={styles.usageUnused}>
+            {JA.ladder.usageUnused}:{' '}
+            {[...unused.neverRead, ...unused.neverWritten].join(' ') || JA.inspectRepair.none}
+          </p>
+        </div>
+      )}
+    </section>
+  );
+}
+
+/** 変換エラー1件を行に畳む。 */
+function toRow(
+  issue: ConvertIssues['errors'][number],
+  source: 'structure' | 'dialect',
+  index: number,
+): Row {
+  return {
+    key: `${source}-${String(index)}`,
+    severity: 'error',
+    label: source === 'structure' ? JA.ladder.structureError : JA.ladder.dialectError,
+    message: issue.message,
+    cursor:
+      issue.networkId === undefined || issue.row === undefined || issue.col === undefined
+        ? undefined
+        : { networkId: issue.networkId, row: issue.row, col: issue.col },
+    place: ladderIssuePlace(issue.networkId, issue.row, issue.col),
+  };
+}
+```
+
+`ja.ts` の `ladder` へ追記と、末尾の関数:
+
+```ts
+    output: '出力ウィンドウ',
+    structureError: '構造エラー',
+    dialectError: '機種エラー',
+    doubleCoil: '二重コイル',
+    noIssues: '指摘はありません。',
+    convertOk: '変換に成功しました',
+    notConverted: '未変換（F4 で変換します）',
+    usageReads: '読み出しているデバイス',
+    usageWrites: '書き込んでいるデバイス',
+    usageUnused: '使われていないデバイス（表示のみ・合否には影響しません）',
+```
+
+```ts
+/** 変換エラーの場所（`n1 / 1 行 / 3 列`）。位置を持たない指摘は空文字。§10.6 */
+export function ladderIssuePlace(networkId?: string, row?: number, col?: number): string {
+  if (networkId === undefined) return '';
+  if (row === undefined || col === undefined) return networkId;
+  return `${networkId} / ${String(row + 1)} 行 / ${String(col + 1)} 列`;
+}
+```
+
+CSS（`ladder.module.css` へ追記）:
+
+```css
+.output {
+  border-top: 1px solid #d5d8de;
+  background: #fff;
+  max-height: 168px;
+  overflow: auto;
+  font-size: 12px;
+}
+
+.outputHeader {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 4px 8px;
+  position: sticky;
+  top: 0;
+  background: #eef0f4;
+}
+
+.outputHeader h2 {
+  font-size: 12px;
+  margin: 0;
+}
+
+.okTag {
+  color: #1c7c3c;
+}
+
+.ngTag {
+  color: #b34700;
+}
+
+.outputList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.outputList li {
+  display: grid;
+  grid-template-columns: 76px 128px 1fr;
+  gap: 6px;
+  padding: 2px 8px;
+  cursor: pointer;
+}
+
+.outputError {
+  color: #b3261e;
+}
+
+.outputWarning {
+  color: #b34700;
+}
+
+.outputEmpty {
+  color: #666;
+  cursor: default;
+}
+
+.outputLabel {
+  font-weight: 700;
+}
+
+.outputPlace {
+  color: #555;
+}
+
+.usage {
+  padding: 4px 8px 8px;
+  border-top: 1px dashed #d5d8de;
+}
+
+.usage p {
+  margin: 2px 0;
+}
+
+.usageUnused {
+  color: #777;
+}
+```
+
+- [ ] **Step 5: GREEN とコミット**
+
+```powershell
+pnpm --filter @ojt/desktop exec vitest run test/ladder-errors.test.ts test/output-window.test.tsx
+npx prettier --write "apps/desktop/src/renderer/**/*.{ts,tsx,css}" "apps/desktop/test/*.test.*"
+npx prettier --check "apps/desktop/**/*.{ts,tsx,css}"
+git add apps/desktop/src apps/desktop/test
+git commit -m "feat(desktop): run the conversion and list the result in the output window"
+```
+
+Expected: `ladder-errors` が `Tests  6 passed (6)`、`output-window` が `Tests  5 passed (5)`。
+
+---
+
+## Task 7: デバイスコメント欄と I/O テーブル
+
+**Files:**
+- Create: `apps/desktop/src/renderer/ladder/CommentPanel.tsx`
+- Create: `apps/desktop/src/renderer/ladder/IoTable.tsx`
+- Modify: `apps/desktop/src/renderer/ladder/ladder.module.css`
+- Modify: `apps/desktop/src/renderer/i18n/ja.ts`（**MERGE 注意 #1**）
+- Test: `apps/desktop/test/ladder-panels.test.tsx`
+
+§10.7 のデバイスコメントと、§7.6 の I/O割付表。**I/Oテーブルは「課題が与えた割付」だけを出し、配線できているかどうかは出さない**（決定表#7）。
+
+| 決めること | 本タスクの実装 |
+|---|---|
+| コメントの並び | いまのラダーが使っているデバイス（`compile()` を通さず IR を走査）を方言表記の昇順で並べ、各行に入力欄を出す。キーは `deviceLabel()`（ベンダー中立）で、表示だけ `profile.formatDevice()` |
+| 上限 | 1件32文字・200件（ストアの `setDeviceComment` が守る）。件数が上限のときは新しいデバイスの欄を淡色にして注記を出す |
+| I/Oテーブル | `resolvePlcIo(problem.io)` の `inputs` / `outputs` をそのまま表にする。`mode: 'fixed'` なら「この割付どおりに配線します」、`'free'` なら「推奨の割付です（変更できます）」を添える（§7.6） |
+| 結線方式 | `io.wiring`（`sink` / `source`）を §10.2 の言葉で出す（「シンク結線（P → S/S）」） |
+
+- [ ] **Step 1: 失敗するテストを書く**
+
+`apps/desktop/test/ladder-panels.test.tsx`:
+
+```tsx
+import { PLC_UNIT_FX5U } from '@ojt/board-model';
+import { BUILTIN_PLC_PROBLEMS, resolvePlcIo } from '@ojt/content';
+import { endNetwork, hline, IR_COLS, network, no, out, program, T, ton, X, Y, type Cell } from '@ojt/ladder-core';
+import { MITSUBISHI_FX5U } from '@ojt/plc-dialects';
+import { fireEvent, render, screen } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
+import { CommentPanel } from '../src/renderer/ladder/CommentPanel.js';
+import { IoTable } from '../src/renderer/ladder/IoTable.js';
+
+function rung(...cells: Cell[]): Cell[] {
+  const row = [...cells];
+  const output = row.pop();
+  if (output === undefined) throw new Error('出力セルが要ります');
+  while (row.length < IR_COLS - 1) row.push(hline());
+  row.push(output);
+  return row;
+}
+
+const ladder = program(
+  network('n1', [rung(no(X(0)), out(Y(0)))]),
+  network('n2', [rung(no({ kind: 'input', index: 8 }), ton(T(0), 3000))]),
+  endNetwork(),
+);
+
+describe('デバイスコメント欄（§10.7）', () => {
+  it('lists every device the ladder uses in the dialect notation', () => {
+    render(
+      <CommentPanel program={ladder} profile={MITSUBISHI_FX5U} comments={{}} onChange={() => undefined} />,
+    );
+    // X8 は三菱表記で X10
+    expect(screen.getByTestId('comment-X0')).toBeInTheDocument();
+    expect(screen.getByTestId('comment-X8')).toHaveTextContent('X10');
+    expect(screen.getByTestId('comment-Y0')).toBeInTheDocument();
+    expect(screen.getByTestId('comment-T0')).toBeInTheDocument();
+  });
+
+  it('keys the comment on the vendor-neutral label (§10.7)', () => {
+    const onChange = vi.fn();
+    render(
+      <CommentPanel program={ladder} profile={MITSUBISHI_FX5U} comments={{}} onChange={onChange} />,
+    );
+    fireEvent.change(screen.getByTestId('comment-input-X8'), { target: { value: '停止' } });
+    expect(onChange).toHaveBeenCalledWith('X8', '停止');
+  });
+
+  it('shows the comment that is already stored', () => {
+    render(
+      <CommentPanel
+        program={ladder}
+        profile={MITSUBISHI_FX5U}
+        comments={{ X0: '運転押ボタン' }}
+        onChange={() => undefined}
+      />,
+    );
+    expect(screen.getByTestId('comment-input-X0')).toHaveValue('運転押ボタン');
+  });
+
+  it('warns when the comment cap is reached', () => {
+    const many: Record<string, string> = {};
+    for (let i = 0; i < 200; i += 1) many[`M${String(i)}`] = 'x';
+    render(
+      <CommentPanel program={ladder} profile={MITSUBISHI_FX5U} comments={many} onChange={() => undefined} />,
+    );
+    expect(screen.getByTestId('comment-cap')).toHaveTextContent('200');
+  });
+});
+
+describe('I/Oテーブル（§7.6 / 決定表#7 / #16）', () => {
+  const problem = BUILTIN_PLC_PROBLEMS[0]!;
+  const io = resolvePlcIo(problem.io);
+  const unit = PLC_UNIT_FX5U;
+
+  it('lists the assignment the problem gives', () => {
+    render(<IoTable io={io} profile={MITSUBISHI_FX5U} unit={unit} />);
+    expect(screen.getByTestId('io-input-0')).toHaveTextContent('X0');
+    expect(screen.getByTestId('io-input-0')).toHaveTextContent('PB1');
+    expect(screen.getByTestId('io-output-0')).toHaveTextContent('Y0');
+    expect(screen.getByTestId('io-output-0')).toHaveTextContent('CR1');
+    expect(screen.getByTestId('io-output-0')).toHaveTextContent('PL1');
+  });
+
+  it('takes the terminal name from the unit spec, not from the decimal index (決定表#16)', () => {
+    const wide = {
+      ...io,
+      inputs: [{ x: 10, pb: 'PB1' as const }],
+      outputs: [{ y: 8, cr: 'CR1' as const, pl: 'PL1' as const }],
+    };
+    render(<IoTable io={wide} profile={MITSUBISHI_FX5U} unit={unit} />);
+    // IR の 10 番目の入力は FX5U の端子 X12、8 番目の出力は Y10（どちらも8進）
+    expect(screen.getByTestId('io-input-0')).toHaveTextContent('PLC.X12');
+    expect(screen.getByTestId('io-output-0')).toHaveTextContent('PLC.Y10');
+  });
+
+  it('says whether the assignment is fixed or a suggestion', () => {
+    render(<IoTable io={{ ...io, mode: 'fixed' }} profile={MITSUBISHI_FX5U} unit={unit} />);
+    expect(screen.getByTestId('io-mode')).toHaveTextContent('この割付どおり');
+  });
+
+  it('names the common wiring style (§10.2)', () => {
+    render(<IoTable io={{ ...io, wiring: 'sink' }} profile={MITSUBISHI_FX5U} unit={unit} />);
+    expect(screen.getByTestId('io-wiring')).toHaveTextContent('シンク');
+  });
+
+  it('never says whether the trainee has wired it (決定表#7)', () => {
+    const { container } = render(<IoTable io={io} profile={MITSUBISHI_FX5U} unit={unit} />);
+    for (const forbidden of ['未配線', '配線済', '直結', '2段']) {
+      expect(container.textContent ?? '').not.toContain(forbidden);
+    }
+  });
+});
+```
+
+- [ ] **Step 2: RED を確認し、Step 3 で `CommentPanel.tsx` を書く**
+
+```tsx
+import { deviceLabel, type Cell, type Device, type LadderProgram } from '@ojt/ladder-core';
+import type { DialectProfile } from '@ojt/plc-dialects';
+import { useMemo, type JSX } from 'react';
+import { DEVICE_COMMENT_COUNT_LIMIT, DEVICE_COMMENT_LIMIT } from '../app/store.js';
+import { commentCapText, JA } from '../i18n/ja.js';
+import styles from './ladder.module.css';
+
+/**
+ * デバイスコメント欄。設計仕様 §10.7。
+ * キーは**ベンダー中立の表示名**（`deviceLabel()` が返す `X0` / `M1`）で、画面に出すときだけ
+ * 方言表記（`profile.formatDevice()`）に直す。作業ファイルにもこの形のまま入る（3A 引渡し表）。
+ */
+
+/** セルが参照するデバイスを集める。 */
+function devicesOf(program: LadderProgram): Device[] {
+  const seen = new Map<string, Device>();
+  const add = (device: Device): void => {
+    const key = deviceLabel(device);
+    if (!seen.has(key)) seen.set(key, device);
+  };
+  const visit = (cell: Cell): void => {
+    if ('device' in cell) add(cell.device);
+    if (cell.kind === 'counter') add(cell.resetDevice);
+  };
+  for (const net of program.networks) for (const row of net.cells) for (const cell of row) visit(cell);
+  return [...seen.values()];
+}
+
+/** デバイスコメント欄。 */
+export function CommentPanel({
+  program,
+  profile,
+  comments,
+  onChange,
+}: {
+  program: LadderProgram;
+  profile: DialectProfile;
+  comments: Record<string, string>;
+  onChange: (device: string, text: string) => void;
+}): JSX.Element {
+  const rows = useMemo(
+    () =>
+      devicesOf(program)
+        .map((device) => ({ key: deviceLabel(device), text: profile.formatDevice(device) }))
+        .sort((a, b) => a.text.localeCompare(b.text, 'ja')),
+    [program, profile],
+  );
+  const full = Object.keys(comments).length >= DEVICE_COMMENT_COUNT_LIMIT;
+  return (
+    <section className={styles.side} aria-label={JA.ladder.comments} data-testid="comment-panel">
+      <h2 className={styles.sideTitle}>{JA.ladder.comments}</h2>
+      {full ? (
+        <p className={styles.sideNote} data-testid="comment-cap">
+          {commentCapText(DEVICE_COMMENT_COUNT_LIMIT)}
+        </p>
+      ) : null}
+      {rows.length === 0 ? <p className={styles.sideNote}>{JA.ladder.noDevices}</p> : null}
+      <ul className={styles.commentList}>
+        {rows.map((row) => (
+          <li key={row.key} data-testid={`comment-${row.key}`}>
+            <span className={styles.commentDevice}>{row.text}</span>
+            <input
+              data-testid={`comment-input-${row.key}`}
+              aria-label={`${row.text} ${JA.ladder.comment}`}
+              maxLength={DEVICE_COMMENT_LIMIT}
+              value={comments[row.key] ?? ''}
+              disabled={full && comments[row.key] === undefined}
+              onChange={(event) => {
+                onChange(row.key, event.target.value);
+              }}
+            />
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+```
+
+- [ ] **Step 4: `IoTable.tsx` を書く**
+
+```tsx
+import type { PlcUnitDefinition } from '@ojt/board-model';
+import type { ResolvedPlcIo } from '@ojt/content';
+import { X, Y } from '@ojt/ladder-core';
+import type { DialectProfile } from '@ojt/plc-dialects';
+import type { JSX } from 'react';
+import { JA } from '../i18n/ja.js';
+import styles from './ladder.module.css';
+
+/**
+ * I/O割付表。設計仕様 §7.6 / §10.2。
+ *
+ * **課題が与えた割付だけ**を出す。いまの配線がその割付どおりかどうかは**出さない**
+ * （`ioAssignment` / `twoStage` は判定時の静的チェックで、セッション中に漏らすと
+ *  §16 Phase 3 の受入基準④⑤が体験として成立しない。決定表#7）。
+ *
+ * 「ラダーのデバイス名」は方言（`profile.formatDevice`）から、「PLC本体の端子名」は機種
+ * （`unit.spec`）から引く。三菱では両方とも8進で一致するが、根拠が違う（決定表#16）。
+ */
+export function IoTable({
+  io,
+  profile,
+  unit,
+}: {
+  io: ResolvedPlcIo;
+  profile: DialectProfile;
+  unit: PlcUnitDefinition;
+}): JSX.Element {
+  return (
+    <section className={styles.side} aria-label={JA.ladder.ioTable} data-testid="io-table">
+      <h2 className={styles.sideTitle}>{JA.ladder.ioTable}</h2>
+      <p className={styles.sideNote} data-testid="io-mode">
+        {io.mode === 'fixed' ? JA.ladder.ioFixed : JA.ladder.ioFree}
+      </p>
+      <p className={styles.sideNote} data-testid="io-wiring">
+        {io.wiring === 'sink' ? JA.ladder.wiringSink : JA.ladder.wiringSource}
+      </p>
+      <table className={styles.ioTable}>
+        <thead>
+          <tr>
+            <th>{JA.ladder.ioDevice}</th>
+            <th>{JA.ladder.ioTerminal}</th>
+            <th>{JA.ladder.ioTarget}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {io.inputs.map((input, index) => (
+            <tr key={`in-${String(index)}`} data-testid={`io-input-${String(index)}`}>
+              <td>{profile.formatDevice(X(input.x))}</td>
+              <td>{`PLC.${unit.spec.inputs[input.x] ?? ''}`}</td>
+              <td>{input.pb}</td>
+            </tr>
+          ))}
+          {io.outputs.map((output, index) => (
+            <tr key={`out-${String(index)}`} data-testid={`io-output-${String(index)}`}>
+              <td>{profile.formatDevice(Y(output.y))}</td>
+              <td>{`PLC.${unit.spec.outputs[output.y]?.name ?? ''}`}</td>
+              <td>
+                {output.cr} → {output.pl}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </section>
+  );
+}
+```
+
+`ja.ts` の `ladder` へ追記:
+
+```ts
+    comments: 'デバイスコメント',
+    comment: 'コメント',
+    noDevices: 'まだデバイスを置いていません。',
+    ioTable: 'I/O割付',
+    ioDevice: 'デバイス',
+    /** PLC本体の端子名（機種の8進表記）。決定表#16 */
+    ioTerminal: 'PLC端子',
+    ioTarget: '割当',
+    /** §7.6 `io.mode` */
+    ioFixed: 'この割付どおりに配線します。',
+    ioFree: '推奨の割付です（変更できます）。',
+    /** §10.2 入力コモンの結線 */
+    wiringSink: 'シンク結線（P → S/S、PBのa接点 → X、PBのc端子 → N）',
+    wiringSource: 'ソース結線（N → S/S、PBのa接点 → X、PBのc端子 → P）',
+```
+
+```ts
+/** デバイスコメントの上限に達した注記。§10.7 */
+export function commentCapText(limit: number): string {
+  return `デバイスコメントは ${String(limit)} 件までです（新しい欄は入力できません）`;
+}
+```
+
+CSS（追記）:
+
+```css
+.side {
+  border-top: 1px solid #d5d8de;
+  padding: 6px 8px;
+  font-size: 12px;
+  max-height: 200px;
+  overflow: auto;
+}
+
+.sideTitle {
+  font-size: 12px;
+  margin: 0 0 4px;
+}
+
+.sideNote {
+  margin: 2px 0;
+  color: #555;
+}
+
+.commentList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.commentList li {
+  display: grid;
+  grid-template-columns: 52px 1fr;
+  gap: 6px;
+  align-items: center;
+  margin-bottom: 2px;
+}
+
+.commentDevice {
+  font-weight: 700;
+}
+
+.ioTable {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.ioTable th,
+.ioTable td {
+  border-bottom: 1px solid #e4e7ec;
+  text-align: left;
+  padding: 2px 4px;
+}
+```
+
+- [ ] **Step 5: GREEN とコミット**
+
+```powershell
+pnpm --filter @ojt/desktop exec vitest run test/ladder-panels.test.tsx
+npx prettier --write "apps/desktop/src/renderer/**/*.{ts,tsx,css}" "apps/desktop/test/ladder-panels.test.tsx"
+git add apps/desktop/src apps/desktop/test
+git commit -m "feat(desktop): add the device comment panel and the I/O table"
+```
+
+Expected: `Tests  9 passed (9)`。
+
+---
+
+## Task 8: GX Works3風の枠（プロジェクトツリー・ツールバー・キー割当表）
+
+**Files:**
+- Create: `apps/desktop/src/renderer/ladder/ProjectTree.tsx`
+- Create: `apps/desktop/src/renderer/ladder/ShortcutHelp.tsx`
+- Create: `apps/desktop/src/renderer/ladder/LadderWorkspace.tsx`
+- Modify: `apps/desktop/src/renderer/ladder/LadderEditor.tsx`（`errorCells` を props で受ける）
+- Modify: `apps/desktop/src/renderer/ladder/ladder.module.css`
+- Modify: `apps/desktop/src/renderer/i18n/ja.ts`（**MERGE 注意 #1**）
+- Test: `apps/desktop/test/ladder-workspace.test.tsx`
+
+§10.6 の「ナビゲーションウィンドウ ＋ ラダーエディタ ＋ 出力ウィンドウ」を1つの枠に組む。名称は `profile.panels` から引く（**ベンダーのロゴ・アイコン・画面キャプチャは使わない**。§17）。
+
+| 決めること | 本タスクの実装 |
+|---|---|
+| ツールバー | `profile.panels.toolbar` の8項目を**そのまま並べる**。Phase 3 で実体があるのは「変換」「全変換」（同じ動作）「書込みモード」「読出しモード」「モニタ開始」「モニタ停止」の6つで、「オンライン」「シーケンサへの書込み」は**押すと `loadLadder` を送る**（本アプリでは変換＝書込み相当なので、押しても変換済みのラダーを送り直すだけ）。それぞれに注記を出す |
+| 回路ブロックの操作 | `SHORTCUTS` に無いので**ボタンで出す**（決定表#12。キーを勝手に足さない）: 「回路ブロック挿入」「回路ブロック削除」「行挿入」「行削除」 |
+| プロジェクトツリー | `profile.panels.tree` の名前で、`プログラム > MAIN > <ネットワークID>` の木を出す。クリックでカーソルがそのネットワークへ飛ぶ |
+| キー割当表 | `profile.shortcuts` を表にし、`confirmed: false` に §12.1 の注記（「実機マニュアル未確認のため本アプリの表記です」）、`enabled: false` に `note` を添える |
+
+- [ ] **Step 1: 失敗するテストを書く**
+
+`apps/desktop/test/ladder-workspace.test.tsx`:
+
+```tsx
+import { BUILTIN_PLC_PROBLEMS } from '@ojt/content';
+import { MITSUBISHI_FX5U } from '@ojt/plc-dialects';
+import { fireEvent, render, screen } from '@testing-library/react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { useStore } from '../src/renderer/app/store.js';
+import { LadderWorkspace } from '../src/renderer/ladder/LadderWorkspace.js';
+import { ShortcutHelp } from '../src/renderer/ladder/ShortcutHelp.js';
+
+const problem = BUILTIN_PLC_PROBLEMS[0]!;
+
+beforeEach(() => {
+  useStore.getState().abandonSession();
+  useStore.getState().openProblem(problem);
+});
+
+function workspace(onPlc = vi.fn()) {
+  render(<LadderWorkspace problem={problem} profile={MITSUBISHI_FX5U} gridCols={11} onPlc={onPlc} />);
+  return onPlc;
+}
+
+describe('GX Works3風の枠（§10.6 / §17）', () => {
+  it('names the three panels from the profile', () => {
+    workspace();
+    expect(screen.getByTestId('project-tree')).toHaveAccessibleName(MITSUBISHI_FX5U.panels.tree);
+    expect(screen.getByTestId('ladder-editor')).toHaveAccessibleName(MITSUBISHI_FX5U.panels.editor);
+    expect(screen.getByTestId('output-window')).toHaveAccessibleName(MITSUBISHI_FX5U.panels.output);
+  });
+
+  it('lists the toolbar items the skin names', () => {
+    workspace();
+    for (const label of MITSUBISHI_FX5U.panels.toolbar) {
+      expect(screen.getByRole('button', { name: new RegExp(label, 'u') })).toBeInTheDocument();
+    }
+  });
+
+  it('converts and sends the ladder to the worker when it succeeds (H-1)', () => {
+    const onPlc = workspace();
+    // 空のラダーは END しか無いので変換に落ちる（コイルが無い）
+    fireEvent.click(screen.getByTestId('toolbar-convert'));
+    expect(useStore.getState().converted).toBe(false);
+    expect(onPlc).not.toHaveBeenCalled();
+    expect(screen.getAllByTestId(/^output-row-/u).length).toBeGreaterThan(0);
+  });
+
+  it('adds and removes networks with buttons, not invented keys (決定表#12)', () => {
+    workspace();
+    fireEvent.click(screen.getByTestId('toolbar-insert-network'));
+    expect(useStore.getState().ladder?.networks.map((n) => n.id)).toEqual(['n1', 'n2', 'end']);
+    useStore.getState().setLadderCursor({ networkId: 'n2', row: 0, col: 0 });
+    fireEvent.click(screen.getByTestId('toolbar-delete-network'));
+    expect(useStore.getState().ladder?.networks.map((n) => n.id)).toEqual(['n1', 'end']);
+  });
+
+  it('inserts and deletes rows inside a network', () => {
+    workspace();
+    fireEvent.click(screen.getByTestId('toolbar-insert-row'));
+    expect(useStore.getState().ladder?.networks[0]?.rows).toBe(2);
+    fireEvent.click(screen.getByTestId('toolbar-delete-row'));
+    expect(useStore.getState().ladder?.networks[0]?.rows).toBe(1);
+  });
+
+  it('jumps the cursor from the project tree', () => {
+    workspace();
+    fireEvent.click(screen.getByTestId('toolbar-insert-network'));
+    fireEvent.click(screen.getByTestId('tree-network-n2'));
+    expect(useStore.getState().ladderCursor).toEqual({ networkId: 'n2', row: 0, col: 0 });
+  });
+
+  it('starts and stops monitoring through the worker', () => {
+    const onPlc = workspace();
+    fireEvent.click(screen.getByTestId('toolbar-monitor-start'));
+    expect(useStore.getState().ladderMode).toBe('monitor');
+    expect(onPlc).toHaveBeenCalledWith({ kind: 'monitor', on: true });
+    fireEvent.click(screen.getByTestId('toolbar-monitor-stop'));
+    expect(useStore.getState().ladderMode).toBe('read');
+    expect(onPlc).toHaveBeenCalledWith({ kind: 'monitor', on: false });
+  });
+});
+
+describe('キー割当表（§12.1 / §17.1）', () => {
+  it('shows every shortcut the profile declares', () => {
+    render(<ShortcutHelp profile={MITSUBISHI_FX5U} />);
+    expect(screen.getAllByTestId(/^shortcut-/u)).toHaveLength(MITSUBISHI_FX5U.shortcuts.length);
+    expect(screen.getByTestId('shortcut-contact-no')).toHaveTextContent('F5');
+  });
+
+  it('marks the assumed bindings with the §12.1 notice', () => {
+    render(<ShortcutHelp profile={MITSUBISHI_FX5U} />);
+    expect(screen.getByTestId('shortcut-convert')).toHaveTextContent('本アプリの表記');
+    expect(screen.getByTestId('shortcut-contact-no')).not.toHaveTextContent('本アプリの表記');
+  });
+
+  it('greys out and explains the entry Phase 3 cannot place', () => {
+    render(<ShortcutHelp profile={MITSUBISHI_FX5U} />);
+    expect(screen.getByTestId('shortcut-application')).toHaveAttribute('data-enabled', 'false');
+    expect(screen.getByTestId('shortcut-application')).toHaveTextContent('Phase 4');
+  });
+
+  it('says the table is swapped with the vendor (Phase 4)', () => {
+    render(<ShortcutHelp profile={MITSUBISHI_FX5U} />);
+    expect(screen.getByTestId('shortcut-note')).toHaveTextContent('メーカー');
+  });
+});
+```
+
+- [ ] **Step 2: RED を確認し、Step 3 で `ProjectTree.tsx` / `ShortcutHelp.tsx` を書く**
+
+```tsx
+// ProjectTree.tsx
+import type { LadderProgram } from '@ojt/ladder-core';
+import type { DialectProfile } from '@ojt/plc-dialects';
+import type { JSX } from 'react';
+import { JA } from '../i18n/ja.js';
+import styles from './ladder.module.css';
+
+/**
+ * ナビゲーションウィンドウ（プロジェクトツリー）。設計仕様 §10.6。
+ * 名称はスキン（`profile.panels.tree`）から引く。**ベンダーのアイコンは使わない**（§17）。
+ */
+export function ProjectTree({
+  program,
+  profile,
+  currentNetworkId,
+  onPick,
+}: {
+  program: LadderProgram;
+  profile: DialectProfile;
+  currentNetworkId: string;
+  onPick: (networkId: string) => void;
+}): JSX.Element {
+  return (
+    <nav className={styles.tree} data-testid="project-tree" aria-label={profile.panels.tree}>
+      <p className={styles.treeRoot}>{JA.ladder.treeProgram}</p>
+      <ul className={styles.treeList}>
+        <li>
+          {JA.ladder.treeMain}
+          <ul>
+            {program.networks.map((net) => (
+              <li key={net.id}>
+                <button
+                  type="button"
+                  data-testid={`tree-network-${net.id}`}
+                  aria-current={net.id === currentNetworkId}
+                  onClick={() => {
+                    onPick(net.id);
+                  }}
+                >
+                  {net.id}
+                  {net.comment === undefined ? '' : `（${net.comment}）`}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </li>
+      </ul>
+    </nav>
+  );
+}
+```
+
+```tsx
+// ShortcutHelp.tsx
+import type { DialectProfile } from '@ojt/plc-dialects';
+import type { JSX } from 'react';
+import { JA } from '../i18n/ja.js';
+import styles from './ladder.module.css';
+
+/**
+ * キー割当表。設計仕様 §10.6 / §12.1 / §17.1。
+ *
+ * 表の中身は `DialectProfile.shortcuts` がすべて持っている（決定表#12）。`confirmed: false` は
+ * 一次資料が未確認のまま §17.1 の前提方針で採用した割当なので、§12.1 の注記を添える。
+ * Phase 4 でメーカーを足すと、この画面は**プロファイルを差し替えるだけ**で追随する。
+ */
+export function ShortcutHelp({ profile }: { profile: DialectProfile }): JSX.Element {
+  return (
+    <section className={styles.side} aria-label={JA.ladder.shortcuts} data-testid="shortcut-help">
+      <h2 className={styles.sideTitle}>
+        {JA.ladder.shortcuts}（{profile.displayName}）
+      </h2>
+      <p className={styles.sideNote} data-testid="shortcut-note">
+        {JA.ladder.shortcutNote}
+      </p>
+      <table className={styles.ioTable}>
+        <tbody>
+          {profile.shortcuts.map((entry) => (
+            <tr
+              key={entry.action}
+              data-testid={`shortcut-${entry.action}`}
+              data-enabled={entry.enabled !== false}
+              className={entry.enabled === false ? styles.shortcutOff : undefined}
+            >
+              <td>{entry.keys}</td>
+              <td>{entry.label}</td>
+              <td className={styles.sideNote}>
+                {entry.confirmed ? '' : JA.settings.assumptionNotice}
+                {entry.note === undefined ? '' : ` ${entry.note}`}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </section>
+  );
+}
+```
+
+- [ ] **Step 4: `LadderWorkspace.tsx` を書く**
+
+```tsx
+import { PLC_UNIT_FX5U, plcUnitFor } from '@ojt/board-model';
+import { isPlcProblem, resolvePlcIo, type PlcProblem } from '@ojt/content';
+import { deleteNetwork, deleteRow, empty, insertNetwork, insertRow, network } from '@ojt/ladder-core';
+import type { DialectProfile } from '@ojt/plc-dialects';
+import { useCallback, useMemo, type JSX } from 'react';
+import { useStore } from '../app/store.js';
+import { JA } from '../i18n/ja.js';
+import { nextNetworkId, type LadderEditorMode } from '../session/ladder.js';
+import { errorCellKeys, runConvert } from '../session/ladder-errors.js';
+import type { PlcCommandAction } from '../../worker/protocol.js';
+import { CommentPanel } from './CommentPanel.js';
+import { IoTable } from './IoTable.js';
+import { LadderEditor } from './LadderEditor.js';
+import { OutputWindow } from './OutputWindow.js';
+import { ProjectTree } from './ProjectTree.js';
+import { ShortcutHelp } from './ShortcutHelp.js';
+import styles from './ladder.module.css';
+
+/**
+ * GX Works3“風”のワークスペース。設計仕様 §10.6。
+ *
+ * 画面の構成（ナビゲーションウィンドウ・ラダーエディタ・出力ウィンドウ）とツールバーの項目名は
+ * すべて `DialectProfile.panels` から引く。**各社のロゴ・アイコン・画面キャプチャ・図記号
+ * ビットマップは一切使わない**（§17 / PLC調査資料 §6）。
+ */
+
+/** ツールバーの項目 → 押したときの意味。`profile.panels.toolbar` の並び順で引く。 */
+type ToolbarAction =
+  | 'convert'
+  | 'convert-all'
+  | 'write-mode'
+  | 'read-mode'
+  | 'online'
+  | 'download'
+  | 'monitor-start'
+  | 'monitor-stop';
+
+/** `panels.toolbar` の並び（§10.6 のスキン定義と同じ順）に対応させる。 */
+const TOOLBAR_ACTIONS: readonly ToolbarAction[] = [
+  'convert',
+  'convert-all',
+  'write-mode',
+  'read-mode',
+  'online',
+  'download',
+  'monitor-start',
+  'monitor-stop',
+];
+
+/** ラダーのワークスペース。 */
+export function LadderWorkspace({
+  problem,
+  profile,
+  gridCols,
+  onPlc,
+}: {
+  problem: PlcProblem;
+  profile: DialectProfile;
+  gridCols: number;
+  /** Worker への `plc` コマンド（親がブリッジへ流す）。§10.4 */
+  onPlc: (action: PlcCommandAction) => void;
+}): JSX.Element {
+  const program = useStore((s) => s.ladder);
+  const cursor = useStore((s) => s.ladderCursor);
+  const comments = useStore((s) => s.ladderComments);
+  const issues = useStore((s) => s.convertIssues);
+  const converted = useStore((s) => s.converted);
+  const io = useMemo(() => resolvePlcIo(problem.io), [problem]);
+  /** 機種の端子名はここから引く（決定表#16）。課題の機種が未対応なら FX5U に倒す。 */
+  const unit = useMemo(() => plcUnitFor(problem.plc.model) ?? PLC_UNIT_FX5U, [problem]);
+  const errorCells = useMemo(() => errorCellKeys(issues.errors), [issues]);
+
+  /** 「変換」。成功したときだけ Worker へ載せる（H-1）。§10.6 */
+  const convert = useCallback((): void => {
+    const store = useStore.getState();
+    const current = store.ladder;
+    if (current === undefined) return;
+    const run = runConvert(current, profile);
+    store.setConverted(run.ok, run.issues);
+    if (!run.ok) {
+      store.toast(JA.ladder.convertFailed, 'error');
+      return;
+    }
+    onPlc({ kind: 'load', program: current });
+    store.toast(JA.ladder.convertOk);
+  }, [onPlc, profile]);
+
+  /** 書込み／読出し／モニタ。モニタの開始停止は Worker にも伝える（決定表#5）。 */
+  const changeMode = useCallback(
+    (mode: LadderEditorMode): void => {
+      useStore.getState().setLadderMode(mode);
+      onPlc({ kind: 'monitor', on: mode === 'monitor' });
+    },
+    [onPlc],
+  );
+
+  const edit = useCallback((next: ReturnType<typeof insertRow>): void => {
+    useStore.getState().setLadder(next);
+  }, []);
+
+  if (program === undefined || !isPlcProblem(problem)) {
+    return <div className={styles.workspace} data-testid="ladder-workspace" />;
+  }
+
+  const onToolbar = (action: ToolbarAction): void => {
+    const store = useStore.getState();
+    switch (action) {
+      case 'convert':
+      case 'convert-all':
+        convert();
+        break;
+      case 'write-mode':
+        changeMode('write');
+        break;
+      case 'read-mode':
+        changeMode('read');
+        break;
+      case 'online':
+      case 'download':
+        // 本アプリでは「変換」がそのまま書込みに当たる（意図的な差分 #2）
+        if (!store.converted) {
+          store.toast(JA.ladder.notConverted, 'error');
+          break;
+        }
+        onPlc({ kind: 'load', program });
+        store.toast(JA.ladder.downloaded);
+        break;
+      case 'monitor-start':
+        changeMode('monitor');
+        break;
+      case 'monitor-stop':
+        changeMode('read');
+        break;
+    }
+  };
+
+  return (
+    <div className={styles.workspace} data-testid="ladder-workspace">
+      <div className={styles.toolbar} role="toolbar" aria-label={JA.ladder.title}>
+        {profile.panels.toolbar.map((label, index) => {
+          const action = TOOLBAR_ACTIONS[index] ?? 'convert';
+          return (
+            <button
+              key={label}
+              type="button"
+              data-testid={`toolbar-${action}`}
+              onClick={() => {
+                onToolbar(action);
+              }}
+            >
+              {label}
+            </button>
+          );
+        })}
+        <span className={styles.toolbarGap} />
+        {/* 回路ブロック・行の操作はショートカット表に無いのでボタンで出す（決定表#12） */}
+        <button
+          type="button"
+          data-testid="toolbar-insert-network"
+          onClick={() => {
+            const id = nextNetworkId(program);
+            const index = program.networks.findIndex((net) => net.id === cursor.networkId);
+            edit(insertNetwork(program, index < 0 ? 0 : index + 1, network(id, [[empty()]])));
+            useStore.getState().setLadderCursor({ networkId: id, row: 0, col: 0 });
+          }}
+        >
+          {JA.ladder.insertNetwork}
+        </button>
+        <button
+          type="button"
+          data-testid="toolbar-delete-network"
+          disabled={program.networks.length <= 2}
+          onClick={() => {
+            edit(deleteNetwork(program, cursor.networkId));
+            const first = program.networks[0];
+            if (first !== undefined) {
+              useStore.getState().setLadderCursor({ networkId: first.id, row: 0, col: 0 });
+            }
+          }}
+        >
+          {JA.ladder.deleteNetwork}
+        </button>
+        <button
+          type="button"
+          data-testid="toolbar-insert-row"
+          onClick={() => {
+            edit(insertRow(program, cursor.networkId, cursor.row + 1));
+          }}
+        >
+          {JA.ladder.insertRow}
+        </button>
+        <button
+          type="button"
+          data-testid="toolbar-delete-row"
+          onClick={() => {
+            edit(deleteRow(program, cursor.networkId, cursor.row));
+            useStore.getState().setLadderCursor({ ...cursor, row: Math.max(0, cursor.row - 1) });
+          }}
+        >
+          {JA.ladder.deleteRow}
+        </button>
+      </div>
+
+      <div className={styles.workspaceBody}>
+        <ProjectTree
+          program={program}
+          profile={profile}
+          currentNetworkId={cursor.networkId}
+          onPick={(networkId) => {
+            useStore.getState().setLadderCursor({ networkId, row: 0, col: 0 });
+          }}
+        />
+        <div className={styles.workspaceMain}>
+          <LadderEditor
+            profile={profile}
+            gridCols={gridCols}
+            errorCells={errorCells}
+            onConvert={convert}
+            onModeChange={changeMode}
+          />
+          <OutputWindow
+            issues={issues}
+            converted={converted}
+            onJump={(next) => {
+              useStore.getState().setLadderCursor(next);
+            }}
+          />
+        </div>
+        <div className={styles.workspaceSide}>
+          <IoTable io={io} profile={profile} unit={unit} />
+          <CommentPanel
+            program={program}
+            profile={profile}
+            comments={comments}
+            onChange={(device, text) => {
+              useStore.getState().setDeviceComment(device, text);
+            }}
+          />
+          <ShortcutHelp profile={profile} />
+        </div>
+      </div>
+    </div>
+  );
+}
+```
+
+- [ ] **Step 5: `LadderEditor.tsx` の `errorCells` を props にする（Task 5 の積み残し）**
+
+`LadderEditor` の props に `errorCells: ReadonlySet<string>` を足し、`useStore((s) => s.convertIssues.errors)` の購読と `new Set(...)` の組み立てを**消して** `errorCells` をそのまま `LadderGrid` へ渡す。`LadderGrid` の `memo` を効かせるため、`Set` は `LadderWorkspace` の `useMemo` が持つ。
+
+- [ ] **Step 6: CSS と `ja.ts`、GREEN とコミット**
+
+CSS（追記）:
+
+```css
+.workspace {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  background: #eef0f4;
+  border-right: 1px solid #d5d8de;
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 4px 6px;
+  background: #e4e7ec;
+  border-bottom: 1px solid #d5d8de;
+}
+
+.toolbarGap {
+  flex: 1 1 auto;
+}
+
+.workspaceBody {
+  display: grid;
+  grid-template-columns: 148px minmax(0, 1fr) 210px;
+  min-height: 0;
+  flex: 1 1 auto;
+}
+
+.workspaceMain {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.workspaceSide {
+  border-left: 1px solid #d5d8de;
+  overflow: auto;
+  background: #fff;
+}
+
+.tree {
+  border-right: 1px solid #d5d8de;
+  padding: 6px;
+  font-size: 12px;
+  background: #fff;
+  overflow: auto;
+}
+
+.treeRoot {
+  font-weight: 700;
+  margin: 0 0 4px;
+}
+
+.treeList,
+.treeList ul {
+  list-style: none;
+  margin: 0;
+  padding-left: 10px;
+}
+
+.treeList button {
+  background: none;
+  border: none;
+  padding: 1px 2px;
+  cursor: pointer;
+  font: inherit;
+}
+
+.treeList button[aria-current='true'] {
+  font-weight: 700;
+  color: #1e64ff;
+}
+
+.shortcutOff {
+  color: #999;
+}
+```
+
+`ja.ts` の `ladder` へ追記:
+
+```ts
+    treeProgram: 'プログラム',
+    treeMain: 'MAIN',
+    shortcuts: 'キー割当',
+    shortcutNote: 'キー割当はメーカー（方言プロファイル）ごとに切り替わります。',
+    insertNetwork: '回路ブロック挿入',
+    deleteNetwork: '回路ブロック削除',
+    insertRow: '行挿入',
+    deleteRow: '行削除',
+    convertFailed: '変換できませんでした（出力ウィンドウを確認してください）',
+    downloaded: 'シーケンサへ書き込みました（変換済みのラダーを反映）',
+```
+
+```powershell
+pnpm --filter @ojt/desktop exec vitest run test/ladder-workspace.test.tsx test/ladder-editor.test.tsx
+npx prettier --write "apps/desktop/src/renderer/**/*.{ts,tsx,css}" "apps/desktop/test/ladder-*.test.*"
+git add apps/desktop/src apps/desktop/test
+git commit -m "feat(desktop): compose the GX Works3-style workspace"
+```
+
+Expected: `ladder-workspace` が `Tests  11 passed (11)`、`ladder-editor` も引き続き通る。
+
+---
+
 <!-- CHUNK -->
+
 
 
 
