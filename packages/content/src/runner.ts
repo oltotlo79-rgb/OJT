@@ -22,6 +22,11 @@ export interface RunOptions {
   tickMs?: number;
   /** 電位をログに残す端子（信号名は `V:<端子ID>`）。§5.7 */
   watch?: readonly TerminalId[];
+  /**
+   * 各 tick の先頭（操作の適用の後、`step()` の前）に呼ばれる。§10.4
+   * モードDでは PLC のスキャン（入力読込 → ラダー実行 → 出力書込）をここで回す。
+   */
+  beforeTick?: (simulation: Simulation, tMs: number) => void;
 }
 
 /** 再生結果。 */
@@ -59,11 +64,24 @@ export function runOperations(
   operations: readonly Operation[],
   options: RunOptions,
 ): RunResult {
-  const tickMs = options.tickMs ?? TICK_MS;
   const simulation = new Simulation(netlist, {
-    tickMs,
+    tickMs: options.tickMs ?? TICK_MS,
     ...(options.watch === undefined ? {} : { watch: options.watch }),
   });
+  return runOperationsOn(simulation, operations, options);
+}
+
+/**
+ * 既に作ったシミュレーションで操作列を再生する。§7.3
+ * PLCのスキャンのように「シミュレーションを先に作ってから結線したいもの」があるときに使う（§10.4）。
+ * `options.watch` はシミュレーション生成時にしか効かないのでここでは無視する。
+ */
+export function runOperationsOn(
+  simulation: Simulation,
+  operations: readonly Operation[],
+  options: RunOptions,
+): RunResult {
+  const tickMs = options.tickMs ?? TICK_MS;
   powerUp(simulation);
 
   let cursor = 0;
@@ -74,6 +92,7 @@ export function runOperations(
       else simulation.release(op.target);
       cursor += 1;
     }
+    options.beforeTick?.(simulation, tMs);
     simulation.step(tickMs);
   }
 
