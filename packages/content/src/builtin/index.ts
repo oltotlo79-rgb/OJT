@@ -3,12 +3,14 @@ import {
   isAssembleProblem,
   isInspectPartsProblem,
   isInspectRepairProblem,
+  isPlcProblem,
   parseProblem,
   type ProblemIssue,
   type SupportedProblem,
 } from '../schema/index.js';
 import type { InspectPartsProblem } from '../schema/inspect-parts.js';
 import type { InspectRepairProblem } from '../schema/inspect-repair.js';
+import type { PlcProblem } from '../schema/plc.js';
 import selfHold from './assemble/b-001-self-hold.json' with { type: 'json' };
 import interlock from './assemble/b-002-interlock.json' with { type: 'json' };
 import onDelay from './assemble/b-003-on-delay.json' with { type: 'json' };
@@ -29,6 +31,10 @@ import c2Interlock from './inspect-repair/c2-005-interlock.json' with { type: 'j
 import c2Sequential from './inspect-repair/c2-006-sequential.json' with { type: 'json' };
 import c2Flicker from './inspect-repair/c2-007-flicker.json' with { type: 'json' };
 import c2StopPriority from './inspect-repair/c2-008-stop-priority.json' with { type: 'json' };
+import d001 from './plc/d-001-self-hold.json' with { type: 'json' };
+import d002 from './plc/d-002-interlock.json' with { type: 'json' };
+import d003 from './plc/d-003-on-delay.json' with { type: 'json' };
+import d004 from './plc/d-004-one-shot.json' with { type: 'json' };
 
 /**
  * 内蔵課題。設計仕様 §7.8 / §7.9（モードB 8題・モードC1 4セット・モードC2 8題）。
@@ -71,6 +77,9 @@ const BUILTIN_INSPECT_REPAIR_JSON: readonly unknown[] = [
   c2Flicker,
   c2StopPriority,
 ];
+
+/** 内蔵のモードD課題のJSON。 */
+const BUILTIN_PLC_JSON: readonly unknown[] = [d001, d002, d003, d004];
 
 /** 内蔵課題の検証に失敗したときに投げる。 */
 export class BuiltinProblemError extends Error {
@@ -134,6 +143,13 @@ export const BUILTIN_INSPECT_REPAIR_PROBLEMS: readonly InspectRepairProblem[] = 
   'モードC2課題',
 );
 
+/** 内蔵のモードD課題（8題）。§7.9 */
+export const BUILTIN_PLC_PROBLEMS: readonly PlcProblem[] = ofMode(
+  parseBuiltinProblems(BUILTIN_PLC_JSON),
+  isPlcProblem,
+  'モードD課題',
+);
+
 /**
  * 課題一覧に載せる内蔵課題。
  * **Plan 2A ではモードBのままにしてある**（C1/C2を開始できる画面が入るのは Plan 2B のため）。
@@ -141,11 +157,12 @@ export const BUILTIN_INSPECT_REPAIR_PROBLEMS: readonly InspectRepairProblem[] = 
  */
 export const BUILTIN_PROBLEMS: readonly AssembleProblem[] = BUILTIN_ASSEMBLE_PROBLEMS;
 
-/** 内蔵課題すべて（モードB＋C1＋C2）。§7.9 */
+/** 内蔵課題すべて（モードB＋C1＋C2＋D）。§7.9 */
 export const BUILTIN_ALL_PROBLEMS: readonly SupportedProblem[] = [
   ...BUILTIN_ASSEMBLE_PROBLEMS,
   ...BUILTIN_INSPECT_PARTS_PROBLEMS,
   ...BUILTIN_INSPECT_REPAIR_PROBLEMS,
+  ...BUILTIN_PLC_PROBLEMS,
 ];
 
 /** 内蔵課題をIDで引く（全モードから探す）。 */

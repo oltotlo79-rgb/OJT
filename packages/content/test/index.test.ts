@@ -491,7 +491,8 @@ describe('Phase 2A の公開API（バレル経由）', () => {
   it('exposes the built-in C1 and C2 problems (§7.9)', () => {
     expect(BUILTIN_INSPECT_PARTS_PROBLEMS).toHaveLength(4);
     expect(BUILTIN_INSPECT_REPAIR_PROBLEMS).toHaveLength(8);
-    expect(BUILTIN_ALL_PROBLEMS).toHaveLength(20);
+    // モードB 8 ＋ C1 4 ＋ C2 8 ＋ D 4（Task 19 で D が8題になり 28 になる）
+    expect(BUILTIN_ALL_PROBLEMS).toHaveLength(24);
   });
 
   it('exposes the C1 domain: check circuit, diagnosis table and thresholds (§9.1)', () => {
