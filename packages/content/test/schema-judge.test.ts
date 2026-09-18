@@ -73,7 +73,7 @@ describe('compare signal defaults', () => {
 });
 
 describe('STATIC_CHECK_IDS', () => {
-  it('lists the Phase 1 checks in display order (§7.4)', () => {
+  it('lists the checks in display order (§7.4。末尾3件は Phase 3 の PLC 用)', () => {
     expect(STATIC_CHECK_IDS).toEqual([
       'wireColorRule',
       'terminalLimit',
@@ -81,6 +81,9 @@ describe('STATIC_CHECK_IDS', () => {
       'forbiddenCircuit',
       'coilPolarity',
       'powerSequence',
+      'twoStage',
+      'plcPowerIndependent',
+      'ioAssignment',
     ]);
   });
 });

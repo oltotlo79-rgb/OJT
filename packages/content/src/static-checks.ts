@@ -205,6 +205,21 @@ export function checkPowerSequence(input: StaticCheckInput): StaticCheckResult {
   );
 }
 
+/**
+ * モードDの静的チェックの仮実装。本実装は Task 16 の `plc-static-checks.ts` で入れる。
+ * それまでは「モードDの文脈が無いので実行できない」を返し、`STATIC_CHECK_IDS` の9件を型として満たす。
+ */
+/* c8 ignore start -- モードB・C の既定では無効なので呼ばれない。Task 16 で本実装に差し替える */
+function plcCheckNotReady(id: StaticCheckId): StaticCheckResult {
+  return {
+    id,
+    ok: false,
+    message: 'PLC課題ではないためこの検査は実行できません',
+    details: ['この静的チェックはモードDの課題でのみ有効にできます（§7.4）'],
+  };
+}
+/* c8 ignore stop */
+
 /** IDごとのチェック関数。 */
 const CHECKS: Readonly<Record<StaticCheckId, (input: StaticCheckInput) => StaticCheckResult>> = {
   wireColorRule: checkWireColorRule,
@@ -213,6 +228,12 @@ const CHECKS: Readonly<Record<StaticCheckId, (input: StaticCheckInput) => Static
   forbiddenCircuit: checkForbiddenCircuit,
   coilPolarity: checkCoilPolarity,
   powerSequence: checkPowerSequence,
+  // Task 16 で本実装（`checkTwoStage` / `checkPlcPowerIndependent` / `checkIoAssignment`）に差し替える
+  /* c8 ignore start -- 同上（仮実装。モードB・C の既定では無効なので呼ばれない） */
+  twoStage: () => plcCheckNotReady('twoStage'),
+  plcPowerIndependent: () => plcCheckNotReady('plcPowerIndependent'),
+  ioAssignment: () => plcCheckNotReady('ioAssignment'),
+  /* c8 ignore stop */
 };
 
 /** 有効にした静的チェックだけを `STATIC_CHECK_IDS` の順に実行する。§7.4 */

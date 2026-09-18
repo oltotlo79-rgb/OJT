@@ -362,6 +362,10 @@ export const JA = {
     forbiddenCircuit: '禁則回路',
     coilPolarity: 'コイル極性',
     powerSequence: '電源操作手順',
+    // モードD（PLC）の3件。§7.4 の D 列
+    twoStage: '二段構成（PLC出力→中継リレー→表示灯）',
+    plcPowerIndependent: 'PLC電源の独立',
+    ioAssignment: 'I/O割付',
   },
   mismatchReason: {
     timing: '時刻ずれ',

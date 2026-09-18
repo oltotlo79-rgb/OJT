@@ -24,7 +24,7 @@ export const ToleranceSchema = z.strictObject({
 /** 許容差。 */
 export type ToleranceData = z.infer<typeof ToleranceSchema>;
 
-/** Phase 1 で実装する静的チェックのID。§7.4 */
+/** 静的チェックのID。§7.4（PLC用の3件は Phase 3 で追加） */
 export const STATIC_CHECK_IDS = [
   'wireColorRule',
   'terminalLimit',
@@ -32,12 +32,15 @@ export const STATIC_CHECK_IDS = [
   'forbiddenCircuit',
   'coilPolarity',
   'powerSequence',
+  'twoStage',
+  'plcPowerIndependent',
+  'ioAssignment',
 ] as const;
 
 /** 静的チェックのID。 */
 export type StaticCheckId = (typeof STATIC_CHECK_IDS)[number];
 
-/** 静的チェックの有効/無効。モードB（`assemble`）では全項目が既定で有効。§7.4 */
+/** 静的チェックの有効/無効。モードB（`assemble`）では Phase 1 の6件が既定で有効。§7.4 */
 export const StaticChecksSchema = z.strictObject({
   wireColorRule: z.boolean().default(true),
   terminalLimit: z.boolean().default(true),
@@ -45,12 +48,15 @@ export const StaticChecksSchema = z.strictObject({
   forbiddenCircuit: z.boolean().default(true),
   coilPolarity: z.boolean().default(true),
   powerSequence: z.boolean().default(true),
+  twoStage: z.boolean().default(false),
+  plcPowerIndependent: z.boolean().default(false),
+  ioAssignment: z.boolean().default(false),
 });
 
 /** 静的チェックの有効/無効。 */
 export type StaticChecksData = z.infer<typeof StaticChecksSchema>;
 
-/** 全項目を有効にした既定値。§7.4 */
+/** モードB・C の既定（PLC用の3件は無効）。§7.4 */
 export const DEFAULT_STATIC_CHECKS: StaticChecksData = {
   wireColorRule: true,
   terminalLimit: true,
@@ -58,17 +64,36 @@ export const DEFAULT_STATIC_CHECKS: StaticChecksData = {
   forbiddenCircuit: true,
   coilPolarity: true,
   powerSequence: true,
+  twoStage: false,
+  plcPowerIndependent: false,
+  ioAssignment: false,
 };
 
-/** 判定設定。§7.4 */
-export const JudgeSettingsSchema = z.strictObject({
-  compareSignals: z.array(z.string().min(1)).min(1).optional(),
-  tolerance: ToleranceSchema.default({
-    edgeMs: DEFAULT_TOLERANCE.edgeMs,
-    ratio: DEFAULT_TOLERANCE.ratio,
-  }),
-  staticChecks: StaticChecksSchema.default(DEFAULT_STATIC_CHECKS),
-});
+/** モードD の既定（9件すべて有効）。§7.4 の D 列 */
+export const PLC_DEFAULT_STATIC_CHECKS: StaticChecksData = {
+  ...DEFAULT_STATIC_CHECKS,
+  twoStage: true,
+  plcPowerIndependent: true,
+  ioAssignment: true,
+};
+
+/** 判定設定のスキーマを、静的チェックの既定を差し替えて作る。§7.4 */
+function judgeSettings(staticDefaults: StaticChecksData) {
+  return z.strictObject({
+    compareSignals: z.array(z.string().min(1)).min(1).optional(),
+    tolerance: ToleranceSchema.default({
+      edgeMs: DEFAULT_TOLERANCE.edgeMs,
+      ratio: DEFAULT_TOLERANCE.ratio,
+    }),
+    staticChecks: StaticChecksSchema.default(staticDefaults),
+  });
+}
+
+/** 判定設定（モードB・C）。§7.4 */
+export const JudgeSettingsSchema = judgeSettings(DEFAULT_STATIC_CHECKS);
+
+/** 判定設定（モードD）。§7.4 の D 列 */
+export const PlcJudgeSettingsSchema = judgeSettings(PLC_DEFAULT_STATIC_CHECKS);
 
 /** 判定設定。 */
 export type JudgeSettings = z.infer<typeof JudgeSettingsSchema>;

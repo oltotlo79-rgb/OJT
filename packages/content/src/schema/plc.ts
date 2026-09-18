@@ -1,0 +1,233 @@
+import { TICK_MS } from '@ojt/circuit-sim';
+import { compile } from '@ojt/ladder-core';
+import { z } from 'zod';
+import { ProblemHeaderShape } from './common.js';
+import { PlcJudgeSettingsSchema } from './judge.js';
+import { LadderProgramSchema } from './ladder.js';
+import { DurationMsSchema, lastOperationMs, OperationListSchema } from './operations.js';
+
+/**
+ * モードD（PLC）の課題本体。設計仕様 §7.6 / §10.2 / §10.8。
+ *
+ * 模範回路は展開接続図ではなく**I/O割付**で表す（PLC端子は §11.1 の回路図の語彙に無い）。
+ * 模範配線は `plc-reference.ts` が割付から生成する（決定表#10）。
+ */
+
+/**
+ * モードD の静的チェックの既定（9件すべて有効）。§7.4 の D 列
+ * 定義の源は `schema/judge.ts`（`judgeSettings()` がそこで使う）で、ここはモードDの読み手向けに
+ * 再公開するだけである。
+ */
+export { PLC_DEFAULT_STATIC_CHECKS } from './judge.js';
+
+/** PLCメーカー。決定事項#14 */
+export const PLC_VENDORS = ['mitsubishi', 'jtekt', 'omron', 'sharp'] as const;
+/** PLC機種。§7.6 */
+export const PLC_MODELS = ['FX5U', 'PC10G-1SP', 'CP1E', 'JW-300'] as const;
+/** Phase 3 で開始できる機種。§16 */
+export const PHASE3_MODELS = ['FX5U'] as const;
+
+/** メーカー → 機種（§7.6 の対応）。 */
+const MODEL_OF_VENDOR: Readonly<Record<(typeof PLC_VENDORS)[number], (typeof PLC_MODELS)[number]>> =
+  {
+    mitsubishi: 'FX5U',
+    jtekt: 'PC10G-1SP',
+    omron: 'CP1E',
+    sharp: 'JW-300',
+  };
+
+/** 使用するPLC。§7.6 */
+export const PlcRefSchema = z
+  .strictObject({
+    vendor: z.enum(PLC_VENDORS).describe('PLCメーカー。'),
+    model: z.enum(PLC_MODELS).describe('PLC機種。Phase 3 で開始できるのは FX5U のみです。'),
+  })
+  .superRefine((plc, ctx) => {
+    if (MODEL_OF_VENDOR[plc.vendor] !== plc.model) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['model'],
+        message: `${plc.vendor} の機種は ${MODEL_OF_VENDOR[plc.vendor]} です`,
+      });
+    }
+    if (!(PHASE3_MODELS as readonly string[]).includes(plc.model)) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['model'],
+        message: `この機種はまだ開始できません（Phase 4 で追加します）: ${plc.model}`,
+      });
+    }
+  });
+
+/** I/O割付の指定方法。§7.6 */
+export const PlcIoModeSchema = z.enum(['fixed', 'free']);
+/** 入力コモンの結線。§10.2 */
+export const PlcWiringSchema = z.enum(['sink', 'source']);
+
+/**
+ * 入力1点の割付（`x` は入力番号、`pb` は押ボタン）。§7.6
+ *
+ * `PB4` は**チェック用回路の押ボタン**である。盤には §6.3 の既設固定配線
+ * `fw-chk-1: P.1 → TB_PB.4c` があり、`TB_PB.4c` は既に1本埋まっている。ここへ模範配線の
+ * N側（または `source` ならP側）の鎖を通すと端子が2本を超えるか、P と N を短絡してしまうため、
+ * PLC入力に使えるのは `PB1` / `PB2` / `PB3` の3点だけである（1級形式でも入力3点・出力4点）。
+ */
+export const PlcInputMapSchema = z.strictObject({
+  x: z.int().min(0).max(15),
+  pb: z.enum(['PB1', 'PB2', 'PB3']),
+});
+
+/** 出力1点の割付（`y` は出力番号、`cr` は中継リレー、`pl` は表示灯）。§7.6 / §10.2 */
+export const PlcOutputMapSchema = z.strictObject({
+  y: z.int().min(0).max(15),
+  cr: z.enum(['CR1', 'CR2', 'CR3', 'CR4']),
+  pl: z.enum(['PL1', 'PL2', 'PL3', 'PL4']),
+});
+
+/** 入力割付。 */
+export type PlcInputMapData = z.infer<typeof PlcInputMapSchema>;
+/** 出力割付。 */
+export type PlcOutputMapData = z.infer<typeof PlcOutputMapSchema>;
+
+/** 既定のI/O割付（§7.6 の表。本アプリの既定）。 */
+export const DEFAULT_PLC_IO: {
+  inputs: readonly PlcInputMapData[];
+  outputs: readonly PlcOutputMapData[];
+} = {
+  // PB4 はチェック用回路の押ボタンなので入力に使わない（`PlcInputMapSchema` の注記）
+  inputs: [
+    { x: 0, pb: 'PB1' },
+    { x: 1, pb: 'PB2' },
+    { x: 2, pb: 'PB3' },
+  ],
+  outputs: [
+    { y: 0, cr: 'CR1', pl: 'PL1' },
+    { y: 1, cr: 'CR2', pl: 'PL2' },
+    { y: 2, cr: 'CR3', pl: 'PL3' },
+    { y: 3, cr: 'CR4', pl: 'PL4' },
+  ],
+};
+
+/** 重複した割当を指摘する。 */
+function checkDuplicates(
+  values: readonly (string | number)[],
+  path: string,
+  ctx: z.RefinementCtx,
+): void {
+  const seen = new Set<string | number>();
+  values.forEach((value, index) => {
+    if (seen.has(value)) {
+      ctx.addIssue({
+        code: 'custom',
+        path: [path, index],
+        message: `割当が重複しています: ${value}`,
+      });
+    }
+    seen.add(value);
+  });
+}
+
+/** I/O割付。§7.6 */
+export const PlcIoSchema = z
+  .strictObject({
+    mode: PlcIoModeSchema.describe('`fixed` は割付を課題が固定し静的チェックで検証します。'),
+    wiring: PlcWiringSchema.default('sink').describe('入力コモンの結線（シンク／ソース）。'),
+    inputs: z.array(PlcInputMapSchema).min(1).max(3).optional(),
+    outputs: z.array(PlcOutputMapSchema).min(1).max(4).optional(),
+  })
+  .superRefine((io, ctx) => {
+    const inputs = io.inputs ?? [];
+    const outputs = io.outputs ?? [];
+    checkDuplicates(
+      inputs.map((i) => i.x),
+      'inputs',
+      ctx,
+    );
+    checkDuplicates(
+      inputs.map((i) => i.pb),
+      'inputs',
+      ctx,
+    );
+    checkDuplicates(
+      outputs.map((o) => o.y),
+      'outputs',
+      ctx,
+    );
+    checkDuplicates(
+      outputs.map((o) => o.cr),
+      'outputs',
+      ctx,
+    );
+    checkDuplicates(
+      outputs.map((o) => o.pl),
+      'outputs',
+      ctx,
+    );
+  });
+
+/** I/O割付。 */
+export type PlcIoData = z.infer<typeof PlcIoSchema>;
+
+/** 解決済みのI/O割付（省略されたら §7.6 の既定割付を使う）。 */
+export interface ResolvedPlcIo {
+  mode: z.infer<typeof PlcIoModeSchema>;
+  wiring: z.infer<typeof PlcWiringSchema>;
+  inputs: readonly PlcInputMapData[];
+  outputs: readonly PlcOutputMapData[];
+}
+
+/** 課題のI/O割付を解決する。§7.6 */
+export function resolvePlcIo(io: PlcIoData): ResolvedPlcIo {
+  return {
+    mode: io.mode,
+    wiring: io.wiring,
+    inputs: io.inputs ?? DEFAULT_PLC_IO.inputs,
+    outputs: io.outputs ?? DEFAULT_PLC_IO.outputs,
+  };
+}
+
+/** モードD課題。§7.6 */
+export const PlcProblemSchema = z
+  .strictObject({
+    ...ProblemHeaderShape,
+    mode: z.literal('plc').describe('課題モード。PLCは `plc`。'),
+    plc: PlcRefSchema.describe('使用するPLCのメーカーと機種。'),
+    io: PlcIoSchema.describe('I/O割付（`fixed` なら静的チェックで検証します）。'),
+    referenceLadder: LadderProgramSchema.describe('模範ラダー（IR）。'),
+    wiringRequired: z
+      .literal(true)
+      .describe('盤とPLCの実配線を必須にします（決定事項#16。常に true）。'),
+    operations: OperationListSchema.describe('判定で再生する押ボタン操作列。'),
+    durationMs: DurationMsSchema.describe('判定区間の長さ[ms]。'),
+    judge: PlcJudgeSettingsSchema.describe('比較する信号・許容差・静的チェックの設定。'),
+  })
+  .superRefine((problem, ctx) => {
+    if (problem.grade === 3) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['grade'],
+        message: 'PLC課題は1級・2級のみです（3級の課題1はPLCを使いません）',
+      });
+    }
+    const last = lastOperationMs(problem.operations);
+    if (problem.durationMs < last + TICK_MS) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['durationMs'],
+        message: `判定区間長（${problem.durationMs}ms）は最後の操作（${last}ms）より少なくとも1tick（${TICK_MS}ms）長くする必要があります`,
+      });
+    }
+    const compiled = compile(problem.referenceLadder);
+    if (!compiled.ok) {
+      for (const error of compiled.errors) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['referenceLadder'],
+          message: `模範ラダーを変換できません（${error.code}）: ${error.message}`,
+        });
+      }
+    }
+  });
+
+/** モードD課題。 */
+export type PlcProblem = z.infer<typeof PlcProblemSchema>;

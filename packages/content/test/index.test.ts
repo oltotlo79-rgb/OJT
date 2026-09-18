@@ -283,6 +283,9 @@ describe('schema/judge.js exports', () => {
       'forbiddenCircuit',
       'coilPolarity',
       'powerSequence',
+      'twoStage',
+      'plcPowerIndependent',
+      'ioAssignment',
     ]);
     expect(StaticChecksSchema.parse({})).toEqual(DEFAULT_STATIC_CHECKS);
     const settings: JudgeSettings = JudgeSettingsSchema.parse({});

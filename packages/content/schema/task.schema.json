@@ -360,7 +360,10 @@
                 "unusedParts": true,
                 "forbiddenCircuit": true,
                 "coilPolarity": true,
-                "powerSequence": true
+                "powerSequence": true,
+                "twoStage": false,
+                "plcPowerIndependent": false,
+                "ioAssignment": false
               },
               "type": "object",
               "properties": {
@@ -386,6 +389,18 @@
                 },
                 "powerSequence": {
                   "default": true,
+                  "type": "boolean"
+                },
+                "twoStage": {
+                  "default": false,
+                  "type": "boolean"
+                },
+                "plcPowerIndependent": {
+                  "default": false,
+                  "type": "boolean"
+                },
+                "ioAssignment": {
+                  "default": false,
                   "type": "boolean"
                 }
               },
@@ -1187,7 +1202,10 @@
                 "unusedParts": true,
                 "forbiddenCircuit": true,
                 "coilPolarity": true,
-                "powerSequence": true
+                "powerSequence": true,
+                "twoStage": false,
+                "plcPowerIndependent": false,
+                "ioAssignment": false
               },
               "type": "object",
               "properties": {
@@ -1213,6 +1231,18 @@
                 },
                 "powerSequence": {
                   "default": true,
+                  "type": "boolean"
+                },
+                "twoStage": {
+                  "default": false,
+                  "type": "boolean"
+                },
+                "plcPowerIndependent": {
+                  "default": false,
+                  "type": "boolean"
+                },
+                "ioAssignment": {
+                  "default": false,
                   "type": "boolean"
                 }
               },
