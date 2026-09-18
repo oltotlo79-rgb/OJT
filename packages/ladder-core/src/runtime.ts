@@ -68,7 +68,12 @@ export interface PlcRuntimeOptions {
   io: PlcIoPort;
   /** スキャン周期[ms]。既定は `SCAN_MS`（10）。 */
   scanMs?: number;
-  /** 出力配列の長さ（PLC本体の出力点数）。既定はプログラムが使う最大番号＋1。 */
+  /**
+   * 出力配列の長さの下限（PLC本体の出力点数）。実際の長さはこの値と
+   * プログラムが使う最大番号＋1（`program.outputCount`）の大きい方になる
+   * （`Math.max(options.outputCount ?? 0, program.outputCount)`）。指定しても
+   * プログラムがそれより大きい番号を書けば配列はその分まで伸びる。
+   */
   outputCount?: number;
 }
 
@@ -266,11 +271,18 @@ class Runtime implements PlcRuntime {
    * 各セルの左端が左母線と繋がっているかを記録する（Plan 3B のモニタ表示用）。
    * `poweredAt(row, col)` はセル `(row, col)` の**左側**の節点なので、コイル列
    * （`COIL_COL`）の値がそのままコイルの通電状態になる。
+   *
+   * `solve()` は各行の0列目を無条件に左母線と結線する（実配線どおり）が、
+   * 何も置かれていない空行（分岐の飾りのない行）の0列目まで通電と表示すると、
+   * モニタに繋がっていない青い節が浮いて見える（KNOWN QUIRK）。そこで表示上だけ、
+   * 0列目が空セルのときは `false` を記録する。導通計算（`solve()`）自体は変えない。
    */
   private recordPoweredCells(net: CompiledNetwork, rails: Rails): void {
     for (let row = 0; row < net.rows; row += 1) {
       for (let col = 0; col < net.cols; col += 1) {
-        this.poweredCells.set(`${net.id}:${row}:${col}`, rails.poweredAt(row, col));
+        const cell = net.cells[row]?.[col];
+        const powered = col === 0 && cell?.kind === 'empty' ? false : rails.poweredAt(row, col);
+        this.poweredCells.set(`${net.id}:${row}:${col}`, powered);
       }
     }
   }

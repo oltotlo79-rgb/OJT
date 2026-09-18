@@ -84,6 +84,14 @@ describe('setVerticalLink（罫線）', () => {
   it('refuses to draw below the last row', () => {
     expect(() => setVerticalLink(base(), 'n1', 1, 1, true)).toThrow(LadderError);
   });
+
+  it('refuses the coil column even when the cell there is empty (M5)', () => {
+    // n1 row1 のコイル列は空セル（out(Y(0)) は row0 にしかない）なので
+    // 「空セル・横線・縦線の上にだけ引ける」規則は満たすが、コイル列には
+    // 罫線を引けないという別の規則で弾かれる。
+    expect(() => setVerticalLink(base(), 'n1', 1, IR_COLS - 1, true)).toThrow(LadderError);
+    expect(() => setVerticalLink(base(), 'n1', 1, IR_COLS - 1, false)).toThrow(LadderError);
+  });
 });
 
 describe('insertRow / deleteRow', () => {

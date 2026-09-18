@@ -1,5 +1,6 @@
 import {
   cellAt,
+  COIL_COL,
   empty,
   IR_COLS,
   LadderError,
@@ -89,6 +90,11 @@ export function setVerticalLink(
 ): LadderProgram {
   const { net } = locate(program, networkId);
   assertCellAt(net, row, col);
+  if (col === COIL_COL) {
+    throw new LadderError(
+      `罫線はコイル列（${COIL_COL}）には引けません: ${net.id} (${row}, ${col})`,
+    );
+  }
   const current = cellAt(net, row, col);
   if (current.kind !== 'empty' && current.kind !== 'hline' && current.kind !== 'vline') {
     throw new LadderError(

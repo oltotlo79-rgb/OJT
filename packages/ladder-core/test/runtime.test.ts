@@ -3,7 +3,10 @@ import {
   COIL_COL,
   compile,
   createPlcRuntime,
+  empty,
   endNetwork,
+  hline,
+  IR_COLS,
   M,
   network,
   no,
@@ -296,6 +299,25 @@ describe('createPlcRuntime（状態・決定論）', () => {
     expect(cells['n1:0:3']).toBe(false); // X1 の b接点で切れる
     expect(cells[`n1:0:${COIL_COL}`]).toBe(false);
     expect(Object.keys(cells).some((key) => key.startsWith('end:'))).toBe(false);
+  });
+
+  it('KNOWN QUIRK: an empty column-0 cell on a blank row is never reported as powered (M4)', () => {
+    const io = new TestIo();
+    const p = program(
+      network('n1', [
+        [...Array.from({ length: IR_COLS - 1 }, () => hline()), out(Y(0))],
+        Array.from({ length: IR_COLS }, () => empty()),
+      ]),
+      endNetwork(),
+    );
+    const runtime = boot(p, io);
+    runtime.scan();
+    const cells = runtime.state().poweredCells;
+    // 行0は無条件導通（横線だけ）なので通電するが、行1は何も置かれていない
+    // 空行で、左母線には実配線どおり繋がる（solve() は変えない）が、モニタ表示では
+    // 浮いた青い節に見えないよう false を報告する。
+    expect(cells['n1:0:0']).toBe(true);
+    expect(cells['n1:1:0']).toBe(false);
   });
 
   it('produces the same output series twice for the same input series (§5.2 の決定論)', () => {
