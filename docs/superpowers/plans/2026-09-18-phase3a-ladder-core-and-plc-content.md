@@ -1096,7 +1096,7 @@ npx prettier --write "packages/ladder-core/**/*.{ts,json}"
 npx prettier --check "packages/ladder-core/**/*.{ts,json}"
 ```
 
-Expected: `Test Files  1 passed (1)` / `Tests  14 passed (14)`、型と書式は無警告。
+Expected: `Test Files  1 passed (1)` / `Tests  16 passed (16)`（レビュー反映で M5 のテストが1件追加された。当初は14件だった）、型と書式は無警告。
 
 - [ ] **Step 5: コミットする**
 
@@ -9437,6 +9437,7 @@ git commit -m "feat(content): finalise the Phase 3A public API"
 | 19 | §10.3 の実機には**保持リレー**（ラッチリレー `L` / 停電保持の `M`）がある | **Phase 4 に送る。** `DeviceKind` に保持デバイスを足さず、保持は `SET` / `RST` で書く | 保持デバイスは「電源を切っても値が残る」という意味だが、本アプリのセッションは課題ごとに初期化されるので違いが現れない。内蔵課題8題はすべて `SET`/`RST` と自己保持で書ける |
 | 20 | §10.5 / §10.6 は**応用命令**（`MOV` / `CMP` などのファンクション）に触れている | **Phase 4 に送る。** IRに応用命令のセル種別を作らず、スキン表の `F8 応用命令` は `enabled: false` で出す | 応用命令は引数（デバイス・定数の組）を持つのでIR・変換・ランタイム・zodの4か所に波及する。1級・2級の課題（§7.9）はすべて基本命令だけで組めるため、Phase 3 では費用対効果が合わない |
 | 21 | 実機では MC 区間が非成立のあいだ、区間内の微分接点（P/F）は「止まっている」ように振る舞う | 本実装では**非成立の区間内でも P/F の前回値（`edges`）は毎スキャン更新される**（`conducts()` が `applyOutput()` より前に走るため） | 区間の成立・非成立を微分接点の記憶に波及させるには、`solve()` にMC区間の情報を持ち込む（＝導通計算と実行順の分離を崩す）必要がある。差が出るのは「MC区間が非成立のあいだに区間内の微分接点の条件が変化し、復帰した直後にその立上りを期待する」回路だけで、内蔵課題8題にも §14.1 のゴールデンケースにも該当が無い。Phase 4 で必要になったら `Rails` にMC情報を渡して直す |
+| 22（I1） | `apps/desktop` は 3A 着手時点で `TerminalRole` を11種と定めていた | レビュー反映で `TerminalRole` が **17種**に増えた（`x` / `y` / `plc-com` / `ss` / `ac-l` / `ac-n` / `ac` / `+` / `-` などPLC・壁コンセント端子の役割を追加）。網羅的な色分けの `Record<TerminalRole, …>` を持つ `apps/desktop/src/renderer/three/labels.ts` がこの追加に追随する必要があり、`tsc` の網羅性検査（`exhaustive`な `Record`）に従って書き換えた | `withPlcUnit()` が盤に足すPLC・壁コンセント端子（§8.2）を3Dでも役割ごとに色分けするため。§4.2 の依存では触ってはならない `apps/desktop` の非テストファイルだが、`Record<TerminalRole, T>` は型でキー網羅を強制するため、ロールを追加した時点で機械的に追随しないと `tsc` が落ちる（実装ロジックの変更ではない） |
 
 ---
 
@@ -9456,10 +9457,13 @@ Plan 3B（`apps/desktop` のGX Works3風スキン・3D・モードD画面）は�
 | `SPECIAL_ALWAYS_ON`(0) / `SPECIAL_FIRST_SCAN`(1) / `SPECIAL_CLOCK_1S`(2) / `SPECIAL_INDEXES` | 特殊デバイスの選択肢 |
 | `deviceLabel(d)` / `deviceKey(d)` / `sameDevice(a, b)` / `isOutputCell(cell)` | 表示・比較・配置の可否 |
 | `compile(program)` → `CompileResult` | 「変換」の構造検査（`ok` / `errors` / `warnings` / `program`） |
+| `CompileErrorCode` の `coil-on-read-only-device`（レビュー反映 M2） | `OUT`/`SET`/`RST` の書き込み先が `input`/`special` デバイス、または `OUT` の書き込み先が `timer`/`counter` デバイスのときに変換エラーになる（実機は `OUT X0` を変換時に拒否する）。`networkId`/`row`/`col` を持つ |
+| MC/MCR のペアリングはデバイスも見る（レビュー反映 M3） | `mc-unmatched` は深さだけでなく、対応する `MC`/`MCR` の**デバイス番号が一致するか**も見る（`MC M9 … MCR M3` は不一致でエラーになる） |
+| カウンタの `RST` はMC区間が非成立でもリセットされる | `MC` 区間が非成立（`mcActive === false`）の間でも、区間内のカウンタに対する `RST` は効く（実機のFXシリーズの挙動どおり。リセットの判定は `mcActive` より前に評価される）。差が出るのは区間内のカウンタをRSTで初期化する回路だが、実機と同じ振る舞いなので3Bは特別扱いしなくてよい |
 | `CompiledProgram.usage`（`reads` / `writes`）/ `inputCount` / `outputCount` | 出力ウィンドウの「使用デバイス一覧」（§10.8 の未使用デバイス表示） |
 | `createPlcRuntime(program, {io, scanMs?, outputCount?})` → `PlcRuntime` | モニタ（`F3`）で使う。`scan()` / `reset()` / `bit(device)` / `state()` / `tMs` / `scanCount` |
 | `PlcIoPort` / `PlcSnapshot` / `PlcTimerState` / `PlcCounterState` / `SCAN_MS`(10) | Worker プロトコルの型付けとモニタ表示 |
-| `PlcSnapshot.poweredCells`（`Record<"<networkId>:<row>:<col>", boolean>`） | **モニタ（F3）の通電表示**。値は「そのセルの左端が左母線と繋がっているか」なので、セルの左側の線を `monitorColors.powered` で塗る。コイルの通電は `col === COIL_COL` の値。END ネットワークのキーは入らない |
+| `PlcSnapshot.poweredCells`（`Record<"<networkId>:<row>:<col>", boolean>`） | **モニタ（F3）の通電表示**。値は「そのセルの左端が左母線と繋がっているか」なので、セルの左側の線を `monitorColors.powered` で塗る。コイルの通電は `col === COIL_COL` の値。END ネットワークのキーは入らない。**（レビュー反映 M4）** 各行の0列目が**空セル（`kind: 'empty'`）のときは常に `false`** を返す。導通計算（`solve()` の union-find）自体は変わらないので `runtime.bit()` やコイルの通電には影響しない。何も置かれていない空行・空欄の左端に浮いた通電色を塗らないための表示専用の補正である |
 | `runtime.reset()` は `io.writeOutputs()` も呼ぶ | RUN停止でPLCのY接点も開くので、3Dのランプが消える。`reset()` の後に `Simulation.step()` を1回呼べば盤に反映される |
 | `LadderError` / `CompileError` / `CompileWarning` / `CompileErrorCode` | エラー表示の型 |
 | 型: `Cell` / `Device` / `DeviceKind` / `ContactType` / `CoilType` / `Network` / `LadderProgram` / `OutputCell` | 全面的に使う |
@@ -9487,7 +9491,7 @@ Plan 3B（`apps/desktop` のGX Works3風スキン・3D・モードD画面）は�
 | `createPlcUnit(id, spec)` / `PlcUnitSpec` / `PlcOutputSpec` / `plcMetaOf(part)` | 通常は `toNetlist()` が呼ぶ。デバッグUIで直接組むときに使う |
 | `Simulation.plcInputs(partId)` / `setPlcOutputs(partId, values)` | Worker がスキャンを回すとき（通常は `runPlcOperations()` 経由） |
 | `SimulationState.plcs`（`{inputs, outputs, inputAmps}`） / `PlcUnitRuntime` | 3Dの入出力表示LEDとモニタ |
-| `PLC_INPUT_ON_AMPS`(0.003) / `PLC_INPUT_OFF_AMPS`(0.0015) / `PLC_INPUT_OHMS`(4700) | デバッグ表示（機種値は `FX5U_SPEC` にある） |
+| `PLC_INPUT_ON_AMPS`(0.003) / `PLC_INPUT_OFF_AMPS`(0.0015) / `PLC_INPUT_OHMS`(4700) | **`circuit-sim` の汎用既定値**（`createPlcUnit()` が `spec` に値を書かなかったときのフォールバック）であり、FX5U実機の値ではない。FX5U実機の値は `board-model` の `FX5U_INPUT_OHMS`(4500) / `FX5U_ON_AMPS`(0.0035) / `FX5U_OFF_AMPS`(0.0015) を使うこと（`FX5U_SPEC` はこの3つを積んで `spec.inputOhms` / `onAmps` / `offAmps` に渡している） |
 | 信号ログの `PLC.X0` / `PLC.Y0`（boolean）/ `PLC.X0.mA`（数値） | タイムチャートとモニタ |
 
 **`@ojt/board-model`（FX5U と壁コンセント）:**
@@ -9497,6 +9501,8 @@ Plan 3B（`apps/desktop` のGX Works3風スキン・3D・モードD画面）は�
 | `withPlcUnit(board, unit)` → `BoardDefinition` | **モードDのセッションは必ずこの派生盤で作る**（`JIPM_BOARD` のままだと `PLC.*` が「盤に無い端子」になる） |
 | `PLC_UNIT_FX5U` / `PLC_UNITS` / `plcUnitFor(model)` / `PlcUnitDefinition` | 機種の3Dモデル（`sizeMm` / `pos` / `terminals` / `leds`）と電気仕様 |
 | `FX5U_SPEC` / `octalNames(prefix, count)` / `FX5U_POINTS_PER_COMMON`(4) | 端子名・COM分け |
+| `FX5U_INPUT_OHMS`(4500) / `FX5U_ON_AMPS`(0.0035) / `FX5U_OFF_AMPS`(0.0015) | FX5U実機の入力回路値。`circuit-sim` の `PLC_INPUT_OHMS`(4700) 等は**汎用の既定値**であり実機値ではないので、盤の電気特性はこちらを使う |
+| ラダーIRのデバイス番号は10進、端子名は8進 | ladder-core の `Device.index` は §10.3 のとおり**0起点の10進の通し番号**だが、FX5U実機の端子名は §10.1 のとおり**8進表記**（`X8`/`X9` は存在せず `X7` の次が `X10`）。したがって `Y(8)` は `outputs[8]`（10進の配列添字）に対応するが、その端子に印字されている名前は `"Y10"`（8進）である。3Bが端子名を表示・受け取るときは `plcMetaOf(part).outputs[i].name` / `.inputs[i].name` で名前を引くこと。IRの10進インデックスから8進の文字列を自分で組み立てない |
 | `PLC_PART_ID`(`'PLC'`) / `OUTLET_ID`(`'OUTLET'`) / `OUTLET_TERMINALS` / `isOffBoardTerminal(id)` | 3Dのピック処理と机上判定 |
 | `deskWires(board, session)` → `DeskWire[]`（`{id, from, to, fromPos, toPos}`） | 机上へ渡るケーブルの描画（`routeSession()` には**含まれない**） |
 | `PLC_ORIGIN_MM` / `OUTLET_ORIGIN_MM` / `PLC_TERMINAL_PITCH_MM` / `PLC_ROW_GAP_MM` / `PLC_STAGGER_MM` | 3Dの配置（実機の並び順が判明したら `terminals[].pos` だけ差し替える。§17 #11） |
@@ -9532,6 +9538,8 @@ Plan 3B（`apps/desktop` のGX Works3風スキン・3D・モードD画面）は�
 
 **Plan 3B が自分で作るもの（3A では作らない）:** GX Works3風スキンの画面（プロジェクトツリー・ラダーエディタ・出力ウィンドウ）、F5/F7/F4 のキー操作とセル編集、「変換」ボタンとモニタ表示、FX5U と壁コンセントの3Dモデル・机上配線ケーブル、モードDのセッション画面と結果画面、Worker プロトコルの新コマンド（`loadLadder` / `convert` / `monitor` など）、モードD課題の一覧表示、E2E（§14.2 の③）。
 
+**追加で公開されている型・定数（レビュー反映。上の表に個別の用途を書いていないが、3Bが使ってよいもの）:** `PlcRuntimeOptions`、`CLOCK_PERIOD_MS`、`TIMER_STEP_MS`、`MAX_TIMER_PRESET_MS`、`MAX_COUNTER_PRESET`、`DEVICE_PREFIX`、`NetworkOptions`、`CompiledNetwork`、`CompiledOutput`、`DeviceUsage`、`PlcRuntime`（`@ojt/ladder-core`）／`DeskWire`、`TERMINAL_PICK_RADIUS_MM`（`@ojt/board-model`）／`PlcInputChannel`、`PlcOutputChannel`、`PlcUnitError`（`@ojt/circuit-sim`）。
+
 ---
 
 ## 完了条件
@@ -9552,7 +9560,7 @@ Plan 3B（`apps/desktop` のGX Works3風スキン・3D・モードD画面）は�
 - [ ] 三菱プロファイルの `SHORTCUTS` が F5/F6/F7/F4 を持ち、`convert()` が模範ラダー8題すべてで `ok: true` を返す（§16 Phase 3 ①の3A側）。
 - [ ] `ladder-core` の編集API7つ（`setCell` / `clearCell` / `insertRow` / `deleteRow` / `insertNetwork` / `deleteNetwork` / `setVerticalLink`）がバレルから公開され、どれも引数のプログラムを書き換えない（`test/edit.test.ts`）。
 - [ ] `PlcSnapshot.poweredCells` が毎スキャン更新され、END ネットワークのキーを含まない（`test/runtime.test.ts`）。
-- [ ] `apps/desktop` への変更が `test/content-loader.test.ts` の1ファイルだけである（`git show --stat` で確認する）。
+- [ ] `apps/desktop` への変更が `test/content-loader.test.ts` と `src/renderer/three/labels.ts` の2ファイルだけである（`git show --stat` で確認する。後者はレビュー反映 I1: `TerminalRole` が11種→17種に増えたことに追随する変更）。
 
 ---
 
@@ -9560,5 +9568,6 @@ Plan 3B（`apps/desktop` のGX Works3風スキン・3D・モードD画面）は�
 
 | 日付 | 内容 |
 |---|---|
+| 2026-09-18 | A〜C レビュー反映: `coil-on-read-only-device`（M2）と MC/MCR のデバイス不一致検査（M3）、`setVerticalLink()` のコイル列拒否（M5）、`poweredCells` の空セル列0を `false` に（M4）、`outputCount` JSDoc修正（M6）、レビュー probe の移植テスト、`apps/desktop/src/renderer/three/labels.ts` の `TerminalRole` 追随（I1）、3Bへの引き渡し表の追記（FX5U実機値・8進/10進の対応・追加公開API） |
 | 2026-09-18 | レビュー反映: B1〜B8、I1〜I11、Minor、Task 1b（IR編集API）、`poweredCells`、デバイスコメント、バッチ表の更新 |
 | 2026-09-18 | 初版。Phase 3（モードD＝PLC）をライブラリ（3A）と `apps/desktop`（3B）に分割し、本書は 3A を扱う。新パッケージ `@ojt/ladder-core` / `@ojt/plc-dialects` の構成、PLC本体の電気モデル（入力＝抵抗負荷・出力＝外部駆動接点・電源＝非電気端子）、スキャンと tick の結合点（`@ojt/content` の `beforeTick`）、IRの `Device.index` を0起点の通し番号とする決定、`vline` の意味、模範配線をI/O割付から生成する方式、`twoStage` / `plcPowerIndependent` / `ioAssignment` の判定方法、内蔵モードD課題8題の題材と操作列を確定した |
