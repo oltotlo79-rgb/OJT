@@ -515,7 +515,7 @@ export function LogPanel(props); ElapsedTimer(props); PowerControls(props); Prob
 | 3 | **`Ctrl+Z` の宛先** | ラダーエディタにフォーカスがある間（`ladderFocused`）は**ラダー**、それ以外は**盤**。`ladderFocused` はストアが持ち、`LadderEditor` の `onFocus` / `onBlur` で切り替える。視点のショートカット（テンキー・`1`/`2`/`3`）と `Delete`／`Esc` も `ladderFocused` の間は盤へ通さない | 1画面に取り消しの対象が2つある以上、どちらかを選ぶ規則が要る。「最後に触ったほう」は状態が見えず説明できない。フォーカスなら枠線で見えるので、訓練者が「いまどちらを編集しているか」を目で確認できる。`useViewportShortcuts({ enabled: !ladderFocused })` の1行で済み、既存のフックを壊さない |
 | 4 | **変換エラー → セルの写像** | `CompileError` / `ConvertError` の `networkId` / `row` / `col` をそのまま使う。`col` が無い（`no-output` など）ものは**そのネットワークの見出し行**、`networkId` が空文字（`missing-end` / `mc-unmatched` のプログラム全体版）のものは**出力ウィンドウの先頭**に置き、クリックしてもカーソルは動かさない。行をクリックするとカーソルが該当セルへ飛び、そのセルが赤枠になる | `compile()` が既に位置を持っている（前提A）ので、UI 側で位置を推定しない。推定すると `grid-shape` のようにセルに紐づかない誤りで嘘の場所を指す |
 | 5 | **モニタの更新頻度と再描画** | Worker が**モニタ中だけ** `SimSnapshot.plc` を載せる。`poweredCells`（最大 16×12×64 個の boolean）は**そのまま渡さず**、ネットワークごとに `'0110…'` の行文字列へ畳んだ `powered: Record<string, string>` にする。グリッドは `useStore((s) => s.plcMonitor?.powered[net.id] ?? '')` という**ネットワーク1本ぶんの文字列**を購読し、文字列が同じなら React が再描画しない | テスター読値（Plan 2B 前提D）と同じ考え方。boolean の `Record` をそのまま渡すと、33ms ごとに 1,536 個の比較と新しいオブジェクトが生まれ、`useShallow` でも毎回「変わった」と判定される（キーの数が同じでも参照が違う）。行文字列なら比較は文字列1本で、ネットワークを跨いだ再描画も起きない。**送出は 33ms のスナップショットに相乗り**させ、コマンドもメッセージも増やさない |
-| 6 | **3Dの視点** | `CameraPreset` に **`'plc'`** を足す（ツールバー4つ目のボタン、`data-testid="view-plc"`）。画角は `PLC_ORIGIN_MM` / `sizeMm` / `OUTLET_ORIGIN_MM` から求めた `PLC_VIEW_RECT` を `fitDistanceMm()` で収める。**テンキーとビューキューブの割当は変えない**（盤の6面のまま） | 机上のPLCは盤座標の外（x ≈ 390mm）にあり、既存の7プリセットではどれも画角に入らない。テンキーに足すと Blender の 1/3/7 の意味（面直視）が崩れる（§12.2 の割当表がそのまま使えなくなる）。ツールバーのボタンなら §12.2 の「ツールバーは前の3種」に1つ足すだけで、既存のキー表を触らない |
+| 6 | **3Dの視点** | `CameraPreset` に **`'plc'`（盤＋PLC＋壁コンセントの全体）** を1つだけ足す（ツールバー4つ目のボタン、`data-testid="view-plc"`、モードDのときだけ出す）。画角は `PLC_VIEW_RECT`（盤の矩形と `PLC_ORIGIN_MM` / `sizeMm` / `OUTLET_ORIGIN_MM` の外接＋余白20mm）を `fitDistanceMm()` で収める。**モードDを開いたときの既定の視点もこれにする**。**テンキーとビューキューブの割当は変えない**（盤の6面のまま） | 机上のPLCは盤座標の外（x ≈ 390mm）にあり、既存の7プリセットではどれも画角に入らない。かつモードDの配線は「盤の端子 ⇄ PLCの端子」を往復するので、**1本の電線の両端が同じ画角に入っている**必要がある（片方ずつしか見えないと2点目を選ぶために視点を切り替えることになる）。テンキーに足すと Blender の 1/3/7 の意味（面直視）が崩れる（§12.2 の割当表がそのまま使えなくなる）。ツールバーのボタンなら §12.2 の「ツールバーは前の3種」に1つ足すだけで、既存のキー表を触らない。寄って見たいときはホイールのズームで足りる |
 | 7 | **配線ルールの UI と判定の切り分け** | UI が断るのは**盤のルールだけ**（1端子2本・盤に無い端子・既設配線・線色パレット＝青のみ）。`twoStage` / `plcPowerIndependent` / `ioAssignment` は**判定時のみ**。セッション中に「いまの配線の診断」は**出さない** | Plan 2B の C2 で「外した青線」を判定用の集計で出したら故障箇所が漏れた（`removedWires` の修正）のと同じ構図。`Y0` をランプへ直結した瞬間に「2段結線になっていません」と出すと、受入基準④（`twoStage` エラー）が体験として成立しない。I/Oテーブル（Task 7）が出すのは**課題が与えた割付**（＝課題文）だけで、配線できているかどうかは出さない |
 | 8 | **作業ファイルの形** | `formatVersion` は **1 のまま**。モードDの項目はすべて任意: `mode: 'plc'` / `ladder`（`LadderProgramData` の JSON。`comments` を含む）/ `dialectId` / `converted`（boolean）。読み手は `toLadderProgram()`（`toSession()` と同じ流儀の自前検証）で断る。上限はネットワーク64・行12・列16・コメント200件×32文字 | §13 #8 の「バージョンを上げると古いファイルが読めなくなる」を Plan 2B が既に決めている。`@ojt/content` の `LadderProgramSchema` を renderer から呼べば zod で検証できるが、**呼ばない**: 保存データの検証は「盤に載せる前に断る」ためのもので、課題スキーマの読込パス（zod の ja locale・`ProblemIssue`）とは目的が違い、`toSession()` と同じ層に揃えたほうが読み手が1箇所になる |
 | 9 | **Worker の `load` がモードDで要るもの** | `load` に **`plcModel?: string`** を足すだけにする。Worker は `plcUnitFor(model)` → `withPlcUnit(JIPM_BOARD, unit)` で盤を派生させ、`toNetlist()` に渡す。ラダーは**別コマンド** `loadLadder { program }`、RUN/STOP は `plcRun { on }` | 盤とラダーは寿命が違う。ラダーは変換のたびに送り直すが盤はそのままで、盤は配線のたびに差分コマンド（`addWire`）で当たるがラダーは丸ごと入れ替わる。1つの `load` にまとめると、ラダーを1文字直すたびに `new Simulation()` が走って `tMs`・信号ログ・危険操作が切れる（Plan 2B が `plug` で避けたのと同じ失敗） |
@@ -6244,12 +6244,12 @@ import { toScene } from '../src/renderer/three/coords.js';
 const BOX = { x: 0, y: 0, width: 900, height: 600 };
 
 describe('plc 視点プリセット（§12.2 / 決定表#6）', () => {
-  it('covers the PLC unit and the wall outlet', () => {
-    expect(PLC_VIEW_RECT.x).toBeLessThanOrEqual(PLC_UNIT_FX5U.pos.x);
+  it('covers the board, the PLC unit and the wall outlet', () => {
+    expect(PLC_VIEW_RECT.x).toBeLessThanOrEqual(0);
     expect(PLC_VIEW_RECT.x + PLC_VIEW_RECT.w).toBeGreaterThanOrEqual(
       PLC_UNIT_FX5U.pos.x + PLC_UNIT_FX5U.sizeMm.width,
     );
-    expect(PLC_VIEW_RECT.y).toBeLessThanOrEqual(PLC_UNIT_FX5U.pos.y);
+    expect(PLC_VIEW_RECT.y).toBeLessThanOrEqual(0);
     expect(PLC_VIEW_RECT.y + PLC_VIEW_RECT.h).toBeGreaterThanOrEqual(OUTLET_ORIGIN_MM.y);
   });
 
@@ -6265,12 +6265,12 @@ describe('plc 視点プリセット（§12.2 / 決定表#6）', () => {
     expect(distance).toBeCloseTo(fitDistanceMm(PLC_VIEW_RECT.w, PLC_VIEW_RECT.h, 1.5), 3);
   });
 
-  it('puts every PLC and outlet terminal inside the viewport', () => {
+  it('puts every terminal — board and desk — inside the viewport', () => {
     const board = withPlcUnit(JIPM_BOARD, PLC_UNIT_FX5U);
     const pose = cameraPose('plc');
     const offBoard = board.terminals.filter((t) => t.id.startsWith('PLC.') || t.id.startsWith('OUTLET.'));
     expect(offBoard.length).toBeGreaterThan(30);
-    for (const terminal of offBoard) {
+    for (const terminal of board.terminals) {
       const point = projectToScreen(boardToWorld(toScene(terminal.pos)), pose, BOX);
       expect(point.x).toBeGreaterThan(BOX.x);
       expect(point.x).toBeLessThan(BOX.x + BOX.width);
@@ -6368,18 +6368,25 @@ import {
 export const PLC_VIEW_MARGIN_MM = 20;
 
 /**
- * 「PLC」視点が収める矩形（盤モデル mm）。§10.1 / 決定表#6
- * 机上のPLC本体と壁コンセントの外接矩形。数値は盤モデルの定義から求めるのでハードコードしない。
+ * 「盤＋PLC」視点が収める矩形（盤モデル mm）。§10.1 / 決定表#6
+ *
+ * **盤・机上のPLC本体・壁コンセントを全部**入れる。モードDの配線は「盤の端子 ⇄ PLCの端子」を
+ * 往復するので、片方しか見えない視点だと1本の電線を張るのに視点を切り替えることになる
+ * （＝2点目のクリックのたびに画角が変わる）。数値は盤モデルの定義から求めるのでハードコードしない。
  */
 export const PLC_VIEW_RECT = ((): { x: number; y: number; w: number; h: number } => {
   const unit = PLC_UNIT_FX5U;
   const xs = [
+    0,
+    BOARD_WIDTH_MM,
     unit.pos.x,
     unit.pos.x + unit.sizeMm.width,
     OUTLET_ORIGIN_MM.x,
     OUTLET_ORIGIN_MM.x + PLC_TERMINAL_PITCH_MM * 2,
   ];
   const ys = [
+    0,
+    BOARD_HEIGHT_MM,
     unit.pos.y,
     unit.pos.y + unit.sizeMm.height,
     OUTLET_ORIGIN_MM.y - PLC_TERMINAL_PITCH_MM,
@@ -6783,9 +6790,18 @@ export function DeskWires({
   /** モードD（PLC）の画面。§10.1 / §10.2 / §12.1 */
   plc: {
     outlet: '壁コンセント（AC100V）',
-    viewPlc: 'PLC',
+    /** 盤・PLC本体・壁コンセントを全部入れる視点。決定表#6 */
+    viewPlc: '盤＋PLC',
     unit: 'PLC本体',
   },
+```
+
+さらに `store.ts` の `openProblem()` の `set({ … })` に1行足し、**モードDは `plc` 視点で開く**ようにする（決定表#6。`cameraNonce` も進めて必ず適用させる）:
+
+```ts
+      ...(isPlcProblem(problem)
+        ? { camera: 'plc' as const, cameraNonce: get().cameraNonce + 1 }
+        : {}),
 ```
 
 - [ ] **Step 7: GREEN とコミット**
@@ -7001,6 +7017,7 @@ Expected: `plc-wiring` が `Tests  8 passed (8)`。既存の `commands.test.ts` 
 | モニタ | `onSnapshot` で `applySnapshot(next)` のあとに `setPlcMonitor(next.plc)`。**`plc` が無く、いまも `undefined` なら `set()` を呼ばない**（毎フレーム無駄に通知しないため） |
 | 判定 | `canJudgePlc()`（Task 11）が偽なら判定ボタンを `disabled` にし、理由を `title` に出す。押したら `judgePlc` を送り、`plcResult` で結果画面へ移る |
 | 電源 | `PowerControls` はそのまま（盤のDC24Vはリレーとランプに要る）。PLC本体の電源は壁コンセント側なのでここには出さない |
+| 部品 | **`PartsPanel` を出す**（モードDもリレーをソケットへ装着してから `CRn.14` に配線する）。`onPlug` / `onUnplug` / `onPreset` は `Session.tsx` の3つの関数を**そのまま写す**（`runPlug` / `runUnplug` / `runSetPreset` ＋ Worker への `plug` / `unplug` / `setPreset`）。`pickToAction` の `selectSocket` / `selectMounted` も既に `runAction` で拾っている |
 
 - [ ] **Step 1: 失敗するテストを書く**
 
@@ -7114,7 +7131,8 @@ describe('モードDのセッション画面（§10.1 / §12.1）', () => {
 - [ ] **Step 2: RED を確認し、Step 3 で `PlcSession.tsx` を書く**
 
 ```tsx
-import { socketPartId, toNetlistTerminal } from '@ojt/board-model';
+import { socketPartId, toNetlistTerminal, type MountableKind, type SocketId } from '@ojt/board-model';
+import type { TerminalId } from '@ojt/circuit-sim';
 import { isPlcProblem } from '@ojt/content';
 import { getDialect } from '@ojt/plc-dialects';
 import { useCallback, useEffect, useMemo, useRef, type JSX } from 'react';
@@ -7134,6 +7152,7 @@ import {
 } from '../i18n/ja.js';
 import { ElapsedTimer } from '../panels/ElapsedTimer.js';
 import { LogPanel } from '../panels/LogPanel.js';
+import { PartsPanel } from '../panels/PartsPanel.js';
 import { PowerControls } from '../panels/PowerControls.js';
 import { ProblemPanel } from '../panels/ProblemPanel.js';
 import { Toolbar } from '../panels/Toolbar.js';
@@ -7142,7 +7161,10 @@ import {
   cloneSession,
   redo as redoHistory,
   runAddWire,
+  runPlug,
   runRemoveWire,
+  runSetPreset,
+  runUnplug,
   undo as undoHistory,
   type CommandResult,
 } from '../session/commands.js';
@@ -7363,7 +7385,7 @@ export function PlcSession(): JSX.Element {
     [apply, board],
   );
 
-  const onHover = useCallback((id: Parameters<typeof useStore.getState>[0] extends never ? never : Parameters<typeof runAction>[0] extends never ? never : import('@ojt/circuit-sim').TerminalId | undefined) => {
+  const onHover = useCallback((id: TerminalId | undefined) => {
     useStore.getState().setHovered(id);
   }, []);
   const onPress = useCallback((pbId: string) => {
@@ -7443,6 +7465,40 @@ export function PlcSession(): JSX.Element {
       </div>
     );
   }
+
+  /**
+   * 部品の装着・取り外し・タイマ設定。§8.2
+   * `Session.tsx` の3つの関数と同じ（盤の操作はモードDでも変わらない）。
+   */
+  const onPlug = (socketId: SocketId, kind: MountableKind): void => {
+    apply(runPlug(session, socketId, kind), () => {
+      const next = useStore.getState().session;
+      if (next !== undefined) bridge.send({ type: 'plug', socketId, session: cloneSession(next) });
+    });
+  };
+
+  const onUnplug = (socketId: SocketId): void => {
+    apply(runUnplug(session, socketId), () => {
+      const next = useStore.getState().session;
+      const partId = socketPartId(session.socketRoles, socketId);
+      if (next !== undefined) bridge.send({ type: 'unplug', partId, session: cloneSession(next) });
+    });
+  };
+
+  const onPreset = (socketId: SocketId, presetMs: number): void => {
+    apply(runSetPreset(session, socketId, presetMs), () => {
+      const next = useStore.getState().session;
+      if (next === undefined) return;
+      const mounted = next.mounted[socketId];
+      if (mounted === undefined || mounted.kind !== 'timer-h3y4') return;
+      bridge.send({
+        type: 'setPreset',
+        partId: socketPartId(next.socketRoles, socketId),
+        presetMs: mounted.presetMs,
+        session: cloneSession(next),
+      });
+    });
+  };
 
   const readiness = canJudgePlc({ converted, ladder });
   const judgeTitle = readiness.ok
@@ -7633,6 +7689,20 @@ export function PlcSession(): JSX.Element {
         )}
         <div className={styles.plcRight}>
           <ProblemPanel problem={problem} />
+          {/*
+            モードDもリレーはソケットへ装着してから `CRn.14` へ配線する（§10.2 の2段結線）。
+            `onPlug` / `onUnplug` / `onPreset` は `Session.tsx` の3つをそのまま写す。
+          */}
+          <PartsPanel
+            session={session}
+            selectedSocket={selectedSocket}
+            onSelectSocket={(socketId) => {
+              useStore.getState().setSelectedSocket(socketId);
+            }}
+            onPlug={onPlug}
+            onUnplug={onUnplug}
+            onPreset={onPreset}
+          />
           <ElapsedTimer limit={problem.timeLimit} />
           <LogPanel
             lines={logLines}
@@ -7647,8 +7717,7 @@ export function PlcSession(): JSX.Element {
 }
 ```
 
-> **`onHover` の型:** 上の見本は読みにくいので、実装では素直に `import type { TerminalId } from '@ojt/circuit-sim';` を足して
-> `const onHover = useCallback((id: TerminalId | undefined) => { useStore.getState().setHovered(id); }, []);` と書くこと。
+`selectedSocket` も購読に足すこと（`const selectedSocket = useStore((s) => s.selectedSocket);`）。
 
 - [ ] **Step 4: `Toolbar.tsx` に `judgeDisabled` / `judgeTitle` / `showPlcView` を足す（**MERGE 注意 #6**）**
 
@@ -8841,7 +8910,535 @@ Expected: `settings-plc` が `Tests  5 passed (5)`。
 
 ---
 
-<!-- CHUNK -->
+## Task 17: E2E（§16 Phase 3 受入基準①〜⑤）とスクリーンショット
+
+**Files:**
+- Create: `apps/desktop/e2e/plc.spec.ts`
+- Modify: `apps/desktop/e2e/projection.ts`（**追記のみ**。既存の import と関数を消さない。**MERGE 注意 #11**）
+- Test: E2E そのもの
+
+§16 Phase 3 の受入基準（**原文**）:
+
+> ①PLC課題を開き、GX Works3風スキンでF5/F7を使ってラダーを組み「変換」が通る
+> ②3D上でPB端子台→X0、Y0→CR1コイル、CR1のa接点→PL1 と配線し、PLC電源を壁コンセントへ配線する
+> ③判定で合格する
+> ④Y0→PL1 を直結すると `twoStage` エラーになる
+> ⑤PLC電源を盤のP/Nから取ると `plcPowerIndependent` エラーになる
+
+| 決めること | 本タスクの実装 |
+|---|---|
+| シナリオ | **4本**。A: ①＋②＋③（模範どおりに組んで合格）／ B: ④（`Y0` → `PL1` の直結）／ C: ⑤（PLC電源を `P.1` / `N.1` から）／ D: 変換に落ちるラダーで判定ボタンが押せないこと（H-1） |
+| 配線の座標 | `plcWiringPlan(resolvePlcIo(problem.io), PLC_UNIT_FX5U)` が返す**模範配線そのもの**を `e2e` から呼び、役割端子IDを物理端子IDに直して `cameraPose('plc')` で射影する。**期待値をE2Eで作らない**（Plan 2B の流儀） |
+| 視点 | モードDは `plc` 視点で開く（決定表#6）ので、盤の端子も机上の端子も同じ画角にある。E2E は視点を切り替えない |
+| ラダーの組み立て | キーボードだけで行う（受入基準①が F5/F7 を名指ししている）。`F5` → `X0` → 確定、カーソルをコイル列へ → `F7` → `Y0` → 確定、`F4` |
+| 部品 | 模範配線が `CR1.14` などを使うので、先に `PartsPanel` からリレーを4個装着する |
+| スクリーンショット | `screenshots/30-plc-ladder.png`（ラダーを組んだところ）／`31-plc-wired.png`（配線後の3D）／`32-plc-monitor.png`（モニタで通電）／`33-plc-result.png`（合格）／`34-plc-twostage.png`（④の結果）／`35-plc-power.png`（⑤の結果） |
+
+- [ ] **Step 1: `e2e/projection.ts` に追記する（**MERGE 注意 #11**）**
+
+```ts
+import { PLC_UNIT_FX5U, withPlcUnit } from '@ojt/board-model';
+```
+
+```ts
+/** PLC本体と壁コンセントを載せた盤（モードDのE2Eが使う）。§10.1 */
+export const PLC_BOARD = withPlcUnit(JIPM_BOARD, PLC_UNIT_FX5U);
+
+/**
+ * モードDの端子（盤・PLC・壁コンセントのどれでも）が来るページ座標。
+ * モードDは `plc` 視点（盤＋PLC＋コンセント全体）で開くので、1つの画角で全部射影できる（決定表#6）。
+ */
+export function plcTerminalPoint(
+  roles: SocketRoles,
+  terminal: string,
+  box: CanvasBox,
+): { x: number; y: number } {
+  const physical = toPhysicalTerminal(roles, terminal as TerminalId);
+  const found = PLC_BOARD.terminals.find((t) => t.id === physical);
+  if (found === undefined) throw new Error(`端子が盤にありません: ${terminal}`);
+  return projectToScreen(boardToWorld(toScene(found.pos)), cameraPose('plc'), box);
+}
+```
+
+> `boardTerminalPos()` は `JIPM_BOARD` を見るので机上の端子を知らない。`PLC_BOARD.terminals` から直接引く。
+
+- [ ] **Step 2: `e2e/plc.spec.ts` を書く**
+
+```ts
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { JIPM_BOARD, PLC_UNIT_FX5U, SOCKET_IDS, withPlcUnit } from '@ojt/board-model';
+import type { BoardSession } from '@ojt/board-model';
+import {
+  BUILTIN_PLC_PROBLEMS,
+  plcWiringPlan,
+  resolvePlcIo,
+  toSocketRoles,
+  type PlcProblem,
+} from '@ojt/content';
+import {
+  _electron as electron,
+  expect,
+  test,
+  type ElectronApplication,
+  type Page,
+} from '@playwright/test';
+import { plcTerminalPoint, type CanvasBox } from './projection.js';
+
+/**
+ * モードDのE2E（§14.2 ③ / §16 Phase 3 受入基準①〜⑤）。
+ * `inspect.spec.ts` と同じ流儀で、ビルド済みの Electron を起こして自動操作する。
+ * 文言は `src/renderer/i18n/ja.ts` と同じものを書き写している（E2E は成果物を外から触る）。
+ */
+
+const APP_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const SHOT_DIR = process.env['OJT_SHOT_DIR'] ?? join(APP_ROOT, 'screenshots');
+const CHROMIUM_FLAGS = [
+  '--use-gl=swiftshader',
+  '--use-angle=swiftshader',
+  '--enable-unsafe-swiftshader',
+];
+const WINDOW = { width: 1440, height: 900 } as const;
+
+const PROBLEM: PlcProblem = (() => {
+  const found = BUILTIN_PLC_PROBLEMS[0];
+  if (found === undefined) throw new Error('内蔵モードD課題がありません');
+  return found;
+})();
+
+const BOARD = withPlcUnit(JIPM_BOARD, PLC_UNIT_FX5U);
+
+/** 課題の役割割当（3Dの物理端子へ直すのに使う）。 */
+const ROLES = toSocketRoles(PROBLEM.board.socketRoles);
+
+/** 模範配線（役割端子IDの組）。**期待値をE2Eで作らず 3A の生成器から引く**。§10.2 */
+const REFERENCE_WIRES = plcWiringPlan(resolvePlcIo(PROBLEM.io), PLC_UNIT_FX5U).map(
+  (wire) => [String(wire.from), String(wire.to)] as const,
+);
+
+async function shot(app: ElectronApplication, name: string): Promise<void> {
+  mkdirSync(SHOT_DIR, { recursive: true });
+  const base64 = await app.evaluate(async ({ BrowserWindow }) => {
+    const window = BrowserWindow.getAllWindows()[0];
+    if (window === undefined) throw new Error('ウィンドウがありません');
+    const image = await window.capturePage();
+    return image.toPNG().toString('base64');
+  });
+  writeFileSync(join(SHOT_DIR, `${name}.png`), Buffer.from(base64, 'base64'));
+}
+
+async function launch(): Promise<{ app: ElectronApplication; page: Page }> {
+  const app = await electron.launch({
+    args: [join(APP_ROOT, 'out', 'main', 'index.js'), ...CHROMIUM_FLAGS],
+    env: { ...process.env, NODE_ENV: 'production' },
+  });
+  const page = await app.firstWindow();
+  await page.waitForLoadState('domcontentloaded');
+  await app.evaluate(({ BrowserWindow }, size) => {
+    const window = BrowserWindow.getAllWindows()[0];
+    if (window === undefined) throw new Error('ウィンドウがありません');
+    window.setBounds({ x: 0, y: 0, width: size.width, height: size.height });
+    window.show();
+    window.focus();
+  }, WINDOW);
+  await page.waitForTimeout(1500);
+  const restore = page.getByTestId('restore-prompt');
+  if ((await restore.count()) > 0) {
+    await page.getByRole('button', { name: '復元しない' }).click();
+  }
+  return { app, page };
+}
+
+async function canvasBox(page: Page): Promise<CanvasBox> {
+  const canvas = page.locator('[data-testid="viewport"] canvas');
+  await expect(canvas).toBeVisible();
+  const box = await canvas.boundingBox();
+  if (box === null) throw new Error('キャンバスの矩形を取得できませんでした');
+  return box;
+}
+
+/** ホーム → PLC → 課題を開く。 */
+async function openPlcProblem(page: Page): Promise<void> {
+  await page.getByTestId('mode-plc').click();
+  await expect(page.getByTestId('problem-table')).toBeVisible();
+  await page.getByTestId(`open-${PROBLEM.id}`).click();
+  await expect(page.getByTestId('plc-session')).toBeVisible();
+}
+
+/** リレーを4個装着する（模範配線が `CRn.14` などを使う）。 */
+async function mountRelays(page: Page): Promise<void> {
+  for (const socketId of SOCKET_IDS.slice(0, 4)) {
+    await page.getByTestId(`socket-${socketId}`).click();
+    await page.getByRole('button', { name: 'リレー' }).first().click();
+  }
+}
+
+/** ラダーのセルにカーソルを置く。 */
+async function focusCell(page: Page, key: string): Promise<void> {
+  await page.getByTestId(`cell-${key}`).click();
+}
+
+/** デバイス入力欄に入れて確定する。 */
+async function commitDevice(page: Page, text: string): Promise<void> {
+  await expect(page.getByTestId('device-input')).toBeVisible();
+  await page.getByTestId('device-text').fill(text);
+  await page.getByTestId('device-commit').click();
+  await expect(page.getByTestId('device-input')).toHaveCount(0);
+}
+
+/** 受入基準①: F5 と F7 でラダーを組み、F4 で変換する。 */
+async function buildLadder(page: Page, coilDevice = 'Y0'): Promise<void> {
+  const editor = page.getByTestId('ladder-editor');
+  await focusCell(page, 'n1:0:0');
+  await editor.press('F5');
+  await commitDevice(page, 'X0');
+  await focusCell(page, 'n1:0:15');
+  await editor.press('F7');
+  await commitDevice(page, coilDevice);
+  await editor.press('F4');
+  await expect(page.getByTestId('convert-state')).toHaveText(/変換に成功/u);
+}
+
+/** 電線を1本張る（端子 → 端子）。 */
+async function wire(page: Page, box: CanvasBox, from: string, to: string): Promise<void> {
+  const a = plcTerminalPoint(ROLES, from, box);
+  const b = plcTerminalPoint(ROLES, to, box);
+  await page.mouse.click(a.x, a.y);
+  await page.mouse.click(b.x, b.y);
+}
+
+/** 受入基準②: 模範どおりに配線する。 */
+async function wireReference(page: Page, box: CanvasBox, skip: readonly string[] = []): Promise<void> {
+  for (const [from, to] of REFERENCE_WIRES) {
+    if (skip.includes(from) || skip.includes(to)) continue;
+    await wire(page, box, from, to);
+  }
+}
+
+test.describe('モードD（PLC）', () => {
+  test('①②③ ラダーを組んで配線すると合格する', async () => {
+    const { app, page } = await launch();
+    try {
+      await openPlcProblem(page);
+      await buildLadder(page);
+      await shot(app, '30-plc-ladder');
+
+      await mountRelays(page);
+      const box = await canvasBox(page);
+      await wireReference(page, box);
+      await expect(page.getByTestId('status-overlay')).toContainText(
+        `電線 ${String(REFERENCE_WIRES.length)} 本`,
+      );
+      await shot(app, '31-plc-wired');
+
+      // モニタ（F3）で通電が見えることも確かめる（§10.7）
+      await page.getByTestId('toolbar-monitor-start').click();
+      await page.getByTestId('plc-run').click();
+      await page.getByRole('button', { name: 'ブレーカ' }).click();
+      await page.getByRole('button', { name: '電源スイッチ' }).click();
+      await page.waitForTimeout(400);
+      await shot(app, '32-plc-monitor');
+
+      await page.getByTestId('judge-button').click();
+      await expect(page.getByTestId('verdict')).toHaveText('合格', { timeout: 15_000 });
+      await expect(page.getByTestId('static-checks')).toContainText('2段結線');
+      await shot(app, '33-plc-result');
+    } finally {
+      await app.close();
+    }
+  });
+
+  test('④ Y0 をランプへ直結すると twoStage エラーになる', async () => {
+    const { app, page } = await launch();
+    try {
+      await openPlcProblem(page);
+      await buildLadder(page);
+      await mountRelays(page);
+      const box = await canvasBox(page);
+      // 2段目（Y0 → CR1.14 と CR1.5 → PL1+）を張らずに、Y0 を PL1+ へ直結する
+      await wireReference(page, box, ['CR1.14', 'CR1.5']);
+      await wire(page, box, 'PLC.Y0', 'TB_PL.1+');
+
+      await page.getByTestId('judge-button').click();
+      await expect(page.getByTestId('verdict')).toHaveText('不合格', { timeout: 15_000 });
+      const checks = page.getByTestId('static-checks');
+      await expect(checks).toContainText('2段結線');
+      await expect(checks.getByText('エラー').first()).toBeVisible();
+      await shot(app, '34-plc-twostage');
+    } finally {
+      await app.close();
+    }
+  });
+
+  test('⑤ PLC電源を盤から取ると plcPowerIndependent エラーになる', async () => {
+    const { app, page } = await launch();
+    try {
+      await openPlcProblem(page);
+      await buildLadder(page);
+      await mountRelays(page);
+      const box = await canvasBox(page);
+      // 壁コンセントへの2本を張らず、盤の P.1 / N.1 から取る
+      await wireReference(page, box, ['OUTLET.L', 'OUTLET.N']);
+      await wire(page, box, 'P.1', 'PLC.L');
+      await wire(page, box, 'N.1', 'PLC.N');
+
+      await page.getByTestId('judge-button').click();
+      await expect(page.getByTestId('verdict')).toHaveText('不合格', { timeout: 15_000 });
+      await expect(page.getByTestId('static-checks')).toContainText('PLC電源の独立');
+      // H-5: 2つの文言の出し分けと「未配線でも動く」説明が出る
+      const help = page.getByTestId('plc-power-help');
+      await expect(help).toContainText('壁コンセント');
+      await expect(help).toContainText('未配線でも動作します');
+      await shot(app, '35-plc-power');
+    } finally {
+      await app.close();
+    }
+  });
+
+  test('変換を通していないラダーでは判定できない（H-1）', async () => {
+    const { app, page } = await launch();
+    try {
+      await openPlcProblem(page);
+      const judge = page.getByTestId('judge-button');
+      await expect(judge).toBeDisabled();
+      // END しか無い（コイルが無い）ので変換に落ちる
+      await page.getByTestId('ladder-editor').press('F4');
+      await expect(page.getByTestId('convert-state')).toHaveText(/未変換/u);
+      await expect(page.getByTestId('output-row-0')).toBeVisible();
+      await expect(judge).toBeDisabled();
+
+      await buildLadder(page);
+      await expect(judge).toBeEnabled();
+      // 1文字でも編集したらまた未変換に戻る（H-1）
+      await page.getByTestId('ladder-editor').press('F9');
+      await expect(judge).toBeDisabled();
+    } finally {
+      await app.close();
+    }
+  });
+});
+```
+
+- [ ] **Step 3: 通るまで直す**
+
+```powershell
+pnpm --filter @ojt/desktop build
+pnpm --filter @ojt/desktop e2e
+```
+
+Expected: E2E **15本**（既存11 ＋ 本プランの4）がすべて通る。**2回連続で流して flake が無いことを確かめる**（Plan 2B Task 18 で `chart.spec.ts` が1度 flake している）。
+
+実装との差分が出たら、**プランではなく E2E を実装に合わせて直し、その差分を Task 18 の改訂履歴に書く**（Plan 2B Task 18 と同じ扱い）。よくある調整点:
+
+- `socket-S1` のような `data-testid` が無ければ、3Dのソケット台座を `boardPoint()` で射影してクリックするか、`PartsPanel` 側のソケット選択UIを使う。
+- 端子の当たり判定は 4mm（`plc` 視点では約6px）なので、`page.mouse.click()` の座標がずれると隣を拾う。拾えないときは `viewport` を大きく（`WINDOW` を 1600×1000 に）してから試す。
+- 模範配線の本数（`REFERENCE_WIRES.length`）は課題の割付で変わる。`status-overlay` の本数の期待値は**必ず配列の長さから作る**（数値を書かない）。
+
+- [ ] **Step 4: コミットする**
+
+```powershell
+npx prettier --write "apps/desktop/e2e/*.ts"
+git add apps/desktop/e2e apps/desktop/screenshots
+git commit -m "test(desktop): cover the Phase 3 acceptance criteria end to end"
+```
+
+---
+
+## Task 18: 全体検証と仕上げ
+
+**Files:**
+- Modify: `docs/superpowers/plans/2026-09-18-phase3b-plc-desktop.md`（チェックボックスと改訂履歴）
+- Modify: `docs/superpowers/specs/2026-09-13-ojt-electrical-trainer-design.md`（実装と食い違った箇所があれば）
+
+- [ ] **Step 1: 全体検証**
+
+```powershell
+pnpm -r test
+pnpm -r typecheck
+pnpm lint
+npx prettier --check "apps/desktop/**/*.{ts,tsx,css}"
+npx prettier --check "packages/**/*.{ts,json}"
+pnpm --filter @ojt/desktop build
+pnpm --filter @ojt/desktop e2e
+```
+
+Expected:
+
+- `pnpm -r test` が7プロジェクト（`circuit-sim` / `board-model` / `schematic-core` / `content` / `ladder-core` / `plc-dialects` / `desktop`）すべて通る。`desktop` は **32ファイル/541テスト → 約48ファイル/約660テスト**に増える（着手時の実測を基準にすること）。
+- `pnpm -r typecheck` と `pnpm lint`（`import-x/no-cycle` ＋ `react-hooks`）が無警告。
+- E2E 15本。
+
+- [ ] **Step 2: 依存とチャネルの確認**
+
+```powershell
+git diff --stat main -- apps/desktop/package.json
+Select-String -Path apps/desktop/src/shared/ipc.ts -Pattern "IPC_CHANNELS" -Context 0,10
+```
+
+Expected: `apps/desktop/package.json` の依存が**1つも増えていない**。`IPC_CHANNELS` が**6本のまま**。
+
+- [ ] **Step 3: 文言の集約を確認**
+
+```powershell
+Select-String -Path "apps/desktop/src/renderer/**/*.tsx" -Pattern "[ぁ-んァ-ン一-龥]" |
+  Where-Object { $_.Line -notmatch "^\s*(\*|//|/\*)" } |
+  Where-Object { $_.Path -notmatch "i18n" }
+```
+
+Expected: コメント以外に日本語のリテラルが無い（§15「全文言を1箇所に集約」）。`ladder/` の新しい部品も `JA` 経由になっていること。
+
+- [ ] **Step 4: ベンダー資産を持ち込んでいないことを確認（§17）**
+
+```powershell
+Select-String -Path "apps/desktop/src/renderer/ladder/*.ts*" -Pattern "\.png|\.jpg|\.gif|base64|url\("
+Get-ChildItem apps/desktop/src/renderer -Recurse -Include *.png,*.jpg,*.gif,*.ico
+```
+
+Expected: どちらも**空**（記号はすべて `symbols.ts` の SVG パス）。
+
+- [ ] **Step 5: プランのチェックボックスと改訂履歴を埋めてコミットする**
+
+```powershell
+git add docs/superpowers/plans/2026-09-18-phase3b-plc-desktop.md
+git commit -m "docs(plan-3b): tick the tasks and record the implementation deltas"
+```
+
+---
+
+## タスクと仕様節の対応
+
+| タスク | 主に実装する仕様節 |
+|---|---|
+| Task 1 | §10.3（IRの編集規則）、§10.6（キー割当）、§10.7（セルカーソル） |
+| Task 2 | §12.1（画面状態）、§10.5（方言の選択）、§13 #5（作業保持） |
+| Task 3 | §4.3（Worker プロトコル）、§10.4（スキャンと tick）、§10.8（判定の実行場所） |
+| Task 4 | §10.3（グリッド）、§10.6（スキンの列数・通電色）、§10.7（モニタ表示）、§17（自前の線画） |
+| Task 5 | §10.6（F5/F6/F7/F9・`/`・`Alt+/`）、§10.5（デバイス表記・タイマ単位と丸め） |
+| Task 6 | §10.6（「変換」と出力ウィンドウ）、§10.8（未使用デバイス） |
+| Task 7 | §10.7（デバイスコメント）、§7.6（I/O割付）、§10.2（結線方式） |
+| Task 8 | §10.6（画面構成・ツールバー）、§12.1（キー割当の注記）、§17.1（前提の明示） |
+| Task 9 | §10.7（モニタ）、§10.6（RUN/STOP）、§5.1.3（入力仕様の表示）、§15（再描画の範囲） |
+| Task 10 | §10.1（3D構成）、§6.4（端子ID）、§6.6（経路生成の不変条件）、§12.2（視点）、§17 #11 |
+| Task 11 | §10.2（配線ルール）、§6.6（1端子2本）、§5.6 #5（危険操作） |
+| Task 12 | §12.1（画面遷移）、§10.6（操作フロー）、§8.2（操作とショートカット） |
+| Task 13 | §10.8（判定結果）、§8.3（結果画面）、§7.4（静的チェック）、§13 #2 |
+| Task 14 | §12.3（作業ファイル）、§13 #8（バージョンと上限） |
+| Task 15 | §12.1（ホーム・課題一覧）、§16（モードDが開始できる） |
+| Task 16 | §12.1（設定画面）、§10.5（既定メーカー）、§10.6（表示列数・通電色）、§17.1（注記） |
+| Task 17 | §14.2（E2E ③）、§16 Phase 3 受入基準①〜⑤ |
+| Task 18 | §14.2（カバレッジと検証）、§14.3（CI）、§15（文言の集約）、§17（ベンダー資産） |
+
+---
+
+## 仕様との対応表（完了判定に使う）
+
+| 仕様 | 要件 | 実装 | 検証 |
+|---|---|---|---|
+| §10.1 | PLC本体を盤の右側の机上に置く。盤上には置かない | `three/PlcUnit.tsx`（`PLC_UNIT_FX5U.pos`） | `test/plc-scene.test.ts` / `e2e/plc.spec.ts` |
+| §10.1 | PLC電源は壁コンセント（`OUTLET`）へ配線する | `three/Outlet.tsx` / `three/DeskWires.tsx` | `e2e/plc.spec.ts`（①②③） |
+| §10.1 | 盤の `P.*` / `N.*` から PLC電源を取ると警告 | `result/PlcResult.tsx` ＋ `session/plc-explain.ts` | `test/plc-explain.test.ts` / `e2e/plc.spec.ts`（⑤） |
+| §10.1 | 端子列・LED・電源端子・S/S・COMグループを描く | `three/PlcUnit.tsx`（`unit.terminals` / `unit.leds`） | `test/plc-scene.test.ts`（端子44点） |
+| §10.2 | 入力側: PB端子台 → X入力 | 3Dの配線操作（Task 11） | `e2e/plc.spec.ts`（②） |
+| §10.2 | 出力側: Y → CRコイル → CR接点 → ランプの2段結線 | 同上（判定は `twoStage`） | `e2e/plc.spec.ts`（②④） |
+| §10.2 | 線色は青 | `openProblem()` の `allowedColors: ['青']` | `test/store-plc.test.ts` |
+| §10.3 | IRは16列固定、最終列がコイル列 | `LadderGrid`（`displayColumns()`） | `test/ladder-grid.test.tsx` |
+| §10.3 | 接点4種・コイル3種・TON・CTU・MC/MCR・END・罫線 | `session/ladder-cell.ts`（`buildCell()`） | `test/ladder-cell.test.ts` |
+| §10.4 | スキャン周期10ms、回路エンジンと同期 | `sim.worker.ts` の `beforeTick` | `test/sim-worker-plc.test.ts` |
+| §10.4 | 二重コイルは警告、実行は後勝ち | `OutputWindow` / `PlcResult`（警告表示） | `test/output-window.test.tsx` / `test/plc-result.test.tsx` |
+| §10.5 | デバイス表記（X/Yは8進）を方言が決める | `profile.formatDevice()` / `parseDevice()` を全面的に使う | `test/ladder-cell.test.ts`（`X10` = index 8） |
+| §10.5 | 表せないms値は「100ms 刻みに丸めますか？」 | `DeviceInput` ＋ `roundSuggestionFor()` | `test/ladder-editor.test.tsx` |
+| §10.6 | GX Works3風: ツリー＋エディタ＋出力ウィンドウ | `LadderWorkspace` | `test/ladder-workspace.test.tsx` |
+| §10.6 | `F5` a接点 / `F7` コイル / `F4` 変換 / `F3` モニタ | `ladderKeyToAction()`（表から引く） | `test/ladder-model.test.ts` / `e2e/plc.spec.ts`（①） |
+| §10.6 | 変換 → 書込み → RUN/STOP → モニタ開始 | ツールバー8項目 ＋ `MonitorPanel` | `test/ladder-workspace.test.tsx` / `test/monitor-panel.test.tsx` |
+| §10.6 | 表示列数 8〜15、通電色は設定で変えられる | `AppSettings.ladderGridCols` / `monitorColor` | `test/settings-plc.test.tsx` |
+| §10.7 | デバイスコメント | `CommentPanel` ＋ 作業ファイル | `test/ladder-panels.test.tsx` / `test/work-file-plc.test.ts` |
+| §10.8 | `twoStage` / `plcPowerIndependent` / `ioAssignment` を結果に出す | `JA.staticCheck` ＋ `StaticCheckList` | `test/plc-result.test.tsx` / `e2e/plc.spec.ts`（④⑤） |
+| §10.8 | 未使用デバイスを出す（合否には効かせない） | `unusedDevices()` ＋ 出力ウィンドウ | `test/ladder-errors.test.ts` / `test/output-window.test.tsx` |
+| §7.6 | I/O割付（`fixed` / `free`）を表示する | `IoTable` | `test/ladder-panels.test.tsx` |
+| §12.1 | ホームに4モード、設定に既定メーカー | `Home.tsx` / `Settings.tsx` | `test/problem-modes.test.ts` / `test/settings-plc.test.tsx` |
+| §12.2 | 视点プリセット（`plc` を追加）、テンキーは不変 | `camera.ts` / `Toolbar.tsx` | `test/plc-camera.test.ts` / `test/view-navigation.test.ts` |
+| §12.3 | 作業ファイルにラダーIRを残す | `work-file.ts` ＋ `main/work-files.ts` | `test/work-file-plc.test.ts` / `test/work-files.test.ts` |
+| §13 #2 | 課題データの誤りは画面を移らずに理由を出す | `onPlc` の `ok: false` 分岐 | `test/plc-session-screen.test.tsx` |
+| §13 #8 | 未知の作業ファイルは読み込まない | `toLadderProgram()` ＋ `parseWorkFile()` | `test/work-file-plc.test.ts` |
+| §14.2 | E2E ③「PLCでラダーを組んで配線して合格」 | `e2e/plc.spec.ts` | 同左 |
+| §15 | 全文言を `i18n/ja.ts` に集約 | 全画面 | Task 18 Step 3 |
+| §17 | ベンダーのロゴ・アイコン・画面キャプチャ・図記号を複製しない | `ladder/symbols.ts`（自前の SVG パス） | `test/ladder-symbols.test.ts` / Task 18 Step 4 |
+| §17.1 | 未確認の割当に注記を出す | `ShortcutHelp` ＋ 設定画面 | `test/ladder-workspace.test.tsx` / `test/settings-plc.test.tsx` |
+
+---
+
+## 仕様からの意図的な差分（レビュー時に確認する）
+
+| # | 仕様 | 差分 | 理由 |
+|---|---|---|---|
+| 1 | §10.1「PLC本体を盤の右側の**机上**に配置する」 | 3Dでは**盤と同じ傾斜グループの中**に、盤面の延長として描く。筐体の厚みも実寸（奥行83mm）ではなく6mmの薄い台にする | 別の（傾いていない）グループに置くと、`toScene()` / `boardToWorld()` / `safeRoutes()` / E2E の射影計算がすべて2系統になる。端子の当たり判定・ピック・視点プリセットもそれぞれ別に作ることになり、得られるのは「机の高さが正しい」ことだけである。厚みを寝かせるのは、正面視で端子列が筐体の陰にならないようにするため（Plan 1D2 の `SUPPLY_HEIGHT_MM` と同じ判断） |
+| 2 | §10.6「［オンライン］→［シーケンサへの書込み］」 | ツールバーには**項目として出す**が、押すと「変換済みのラダーを Worker へ送り直す」だけにする（実体は「変換」と同じ） | 本アプリには「シーケンサ」という別の実体が無く、`plc { kind:'load' }` が届いた瞬間に反映される。項目を消すと `profile.panels.toolbar` の8項目と画面が食い違い、スキン定義が画面の唯一の情報源でなくなる |
+| 3 | §10.6「`Shift+F3` モニタ（書込み）」 | Phase 3 では `F3`（モニタ）と同じ動作にし、キー割当表に注記を出す | 「モニタ中のプログラム変更」に対応する実体（オンライン編集）が無い。`enabled: false` にするには `plc-dialects` の `SHORTCUTS` を書き換えることになるが、方言プロファイルは Plan 3A の所有物で本プランは触らない |
+| 4 | §10.6「`Ins` 挿入・上書きの切換」 | Phase 3 は**常に上書き**。押すとその旨をトーストで出す | IRの編集APIに「挿入して右へずらす」操作が無い（`edit.ts` は `setCell` / `insertRow` だけ）。行の挿入はツールバーのボタンで行える |
+| 5 | §10.7「表記切替」「命令語リストのエクスポート」 | **実装しない**（Phase 4） | §16 Phase 3 の「含まない」に明記されている |
+| 6 | §10.3「IRの列数は16固定」 | 画面は `profile.gridCols`（11）＋コイル列の12列だけを描き、中間列（11〜14）は描かない。中身があれば見出しに警告を出す | §10.6 が「表示列数を変えてもIRは16列のまま保持される」と定めているので、表示しない列があること自体は仕様どおり。到達手段は横スクロールではなく**設定画面の表示列数**（§10.6 が 8〜15 で変更できると定めている）にする |
+| 7 | §12.2「プリセットは7種」 | **8種**（`plc` を追加）。ただしツールバーに出すのは**モードDのときだけ**で、テンキーとビューキューブの割当は変えない | 机上のPLCは既存の7プリセットのどれにも入らない。詳しくは決定表#6 |
+| 8 | §8.2「元に戻す／やり直し（上限50手）」 | **盤とラダーで別々のスタック**を持つ（どちらも上限50）。宛先はフォーカスで決まる | 詳しくは決定表#2・#3 |
+| 9 | §10.8「未使用デバイス」 | 出力ウィンドウに**表示するだけ**で合否に効かせない | 2026-09-18 の利用者決定。詳しくは決定表#15b |
+| 10 | §12.3「作業ファイル ＝ … ラダーIR、テスター状態 …」 | モードDの作業ファイルに**テスター状態は入れない** | モードDの画面にテスターが無い（§10 にテスターの記述が無く、`ToolMode` も `wire` / `delete` しか使わない）。入れても復元先が無い |
+
+---
+
+## 実装者への MERGE 注意
+
+複数のタスクが同じファイルへ別々の箇所から手を入れる。「推奨バッチ」で並行させるときは次の11点を守ること。
+
+1. **`i18n/ja.ts` への挿入は、挿入のたびにファイルを読み直してから行う。** Task 4・5・6・7・8・9・10・12・13・14・15・16 がそれぞれ別の位置へ追記する。本プランは「`JA.timeChart` の直後に `ladder`、その直後に `plc`」とだけ決めており、以降は**その2つのブロックの中**に足す。`JA.staticCheck` への3件（Task 13）と `JA.home.plcDesc`（Task 15）だけがブロックの外である。
+2. **`store.ts` は Task 2 の5箇所 ＋ Task 16 の3箇所だけ。** Task 2 は「import」「定数と `AnyJudgeResult`」「`AppState` のフィールド」「アクションの宣言」「実装と `plcFields()` の差し込み」。Task 16 は「`ladderGridCols` / `monitorColor` のフィールド」「`applyLadderSettings` の宣言」「その実装」。Task 10 が `openProblem()` に足す `camera: 'plc'` の1行もここに含める（Task 2 と同じバッチなら一緒に入れる）。
+3. **`worker/protocol.ts` は Task 3 の4箇所だけ**（`load` の `plcModel`、`plc` / `judgePlc` コマンドと `PlcCommandAction`、`SimSnapshot.plc`、`PlcOutcome` と `plcResult`）。
+4. **`worker/sim.worker.ts` は Task 3 の6箇所だけ。** とくに `load()` は Plan 2B Task 3 と Task 8 で既に2回触られている。**プローブ解除の5行を消さずに新しい `load()` の中へ持っていくこと。**
+5. **`three/BoardScene.tsx` は Task 10 の4箇所だけ**（import、`board` を props にする、`visualSignature()` への2行、傾斜グループの中への3部品と端子のメモ化）。
+6. **`panels/Toolbar.tsx` は Task 10 の1箇所（`showPlcView` と視点ボタン）と Task 12 の1箇所（`judgeDisabled` / `judgeTitle`）だけ。** どちらも既存の props と JSX を消さずに足す。
+7. **`session/commands.ts` は Task 11 の1箇所だけ**（`runAddWire` の `board` 引数）。`runPlug` / `runUnplug` / `runSetPreset` は**触らない**（`plug()` などは盤を取らない）。
+8. **`screens/SessionRoute.tsx` は Task 12 の1箇所（`case 'plc'`）だけ。** 既定の分岐（`default`）は残す。
+9. **`screens/Result.tsx` は Task 13 の1箇所（`isPlcJudge` の分岐）＋ `NoResult` の切り出しだけ。** 既存の C1/C2/B の分岐の**前**に置く（`isInspectJudge()` は Task 2 で明示の2値判定に変えてあるので順序に依存しないが、読み手のために前に置く）。
+10. **`app/App.tsx` の設定読込の `then` は1箇所だけ触る**（Task 16 の `applyLadderSettings`）。`setInterval` は Plan 2B で決めた2つのままにし、増やさない。
+11. **`e2e/projection.ts` は追記のみ**（Task 17）。既存の `import type { TerminalId } from '@ojt/circuit-sim';` と `SELF_HOLD_WIRES` を消さないこと（Plan 2B I-6 と同じ指摘）。
+
+---
+
+## 完了条件
+
+- [ ] `pnpm --filter @ojt/desktop test --no-file-parallelism` が全て通る（Phase 1・2 の32ファイル ＋ 本プランで足した約16ファイル）。
+- [ ] `pnpm -r test` で7プロジェクト（`circuit-sim` / `board-model` / `schematic-core` / `content` / `ladder-core` / `plc-dialects` / `desktop`）がすべて通る。
+- [ ] `pnpm -r typecheck` と `pnpm lint`（`import-x/no-cycle` ＋ `react-hooks` 込み）が無警告で通る。
+- [ ] `npx prettier --check "apps/desktop/**/*.{ts,tsx,css}"` が `All matched files use Prettier code style!` を出す。
+- [ ] `pnpm --filter @ojt/desktop build` が main / preload / renderer の3つを出力する。
+- [ ] `pnpm --filter @ojt/desktop e2e` が15本（既存11 ＋ `plc.spec.ts` 4本）すべて通る。**2回連続で通ること。**
+- [ ] **§16 Phase 3 受入基準①**: PLC課題を開き、GX Works3風スキンで `F5` / `F7` を使ってラダーを組み、`F4`（変換）で「変換に成功しました」が出る（`e2e/plc.spec.ts`）。
+- [ ] **§16 Phase 3 受入基準②**: 3D上で PB端子台 → `PLC.X0`、`PLC.Y0` → `CR1.14`、`CR1.5` → `TB_PL.1+` と配線し、`OUTLET.L` / `OUTLET.N` → `PLC.L` / `PLC.N` を配線できる。
+- [ ] **§16 Phase 3 受入基準③**: 判定で `合格` が表示され、`twoStage` / `plcPowerIndependent` / `ioAssignment` の3チェックがすべて `OK` になる。
+- [ ] **§16 Phase 3 受入基準④**: `PLC.Y0` を `TB_PL.1+` へ直結すると `不合格` になり、静的チェックの「2段結線」が `エラー` になる。
+- [ ] **§16 Phase 3 受入基準⑤**: PLC電源を盤の `P.1` / `N.1` から取ると `不合格` になり、「PLC電源の独立」が `エラー` になる。結果画面に**盤から取っている旨の文言**と「シミュレートされるPLCは未配線でも動作します」の説明が出る。
+- [ ] ホームから4モード（回路組立／部品点検／回路点検・修復／**PLC**）すべてを開ける。
+- [ ] 課題一覧に内蔵28題（B 8・C1 4・C2 8・**D 8**）が出て、モードで絞り込める。
+- [ ] ラダーエディタで `F5` / `F6` / `Shift+F5` / `F7` / `F9` / `Shift+F9` / `Ctrl+←↑↓→` / `/` / `Alt+/` / `F2` / `Shift+F2` / `F3` / `F4` / `Tab` / `Ins` / `F1` が §10.6 の表どおりに働き、`F8` は押すと理由が出る。
+- [ ] 出力ウィンドウに構造エラー・機種エラー・二重コイル警告・使用デバイス一覧が並び、行をクリックすると該当セルへカーソルが飛ぶ。
+- [ ] モニタ（`F3`）で通電しているセルが `#1E64FF`（設定で変更可）に塗られ、**空セルは塗られない**。
+- [ ] デバイスコメントを入れて保存し、読み込むと同じコメントが戻る。Phase 1・2 に保存した作業ファイル（モードDの項目が無いもの）も読める。
+- [ ] 設定画面でメーカー（三菱のみ選択可・他3社は淡色）・ラダーの表示列数（8〜15）・通電色を変えられ、ラダーエディタに反映される。
+- [ ] `apps/desktop/screenshots/` にモードDのスクリーンショット6枚（`30-` 〜 `35-`）が出ている。
+- [ ] `apps/desktop/package.json` の依存が Phase 2 から増えていない。
+- [ ] IPCチャネルは6本のまま（`IPC_CHANNELS` が変わっていない）。
+- [ ] 画面の文言がすべて `src/renderer/i18n/ja.ts`（と `src/shared/messages.ts`）にある。
+- [ ] `apps/desktop/src/renderer/ladder/` に画像ファイルが1つも無く、`symbols.ts` のパス文字列に URL も `base64` も含まれない（§17）。
+- [ ] `packages/` への変更が**1行も無い**（`git diff --stat main -- packages/` が空）。
+
+---
+
+## 改訂履歴
+
+| 日付 | 内容 |
+|---|---|
+| 2026-09-18 | 初版。Phase 3（モードD＝PLC）のうち `apps/desktop`（3B）を扱う。ラダーエディタを **SVG のセルグリッド**とし、編集の実体は `@ojt/ladder-core` の `edit.ts` 純関数、取り消しは `LadderProgram` のスナップショットスタック（盤とは別）と決めた。キーの意味は `DialectProfile.shortcuts` から引き、キー文字列を画面に書かない（Phase 4 はプロファイルの差し替えだけで済む）。モニタは `PlcSnapshot.poweredCells` を**ネットワーク1本＝行を連ねた文字列**に畳んで 33ms のスナップショットへ相乗りさせる。Worker のコマンドは `plc`（ラダー載せ替え・RUN/STOP・モニタ・リセット）と `judgePlc` の2本だけ足し、盤は既存の `load` に `plcModel` を添えて派生させる。3Dは盤と同じ傾斜グループの延長として描き、視点プリセット `plc`（盤＋PLC＋コンセント全体）を1つ足した。セッション中は `twoStage` / `plcPowerIndependent` / `ioAssignment` を一切漏らさない。`plcPowerIndependent` は端子IDの形で2つの理由に振り分け、どちらにも「シミュレートされるPLCは未配線でも動く」説明を添える |
+| 2026-09-18 | 3A の landed 実装（`ladder-core` 68テスト・`plc-dialects` 37テスト）と 3A レビューの指摘を反映: ①画面に出す入力仕様は `@ojt/board-model` の FX5U の値（4.5kΩ / 3.5mA / 1.5mA）で、`circuit-sim` の既定値（4.7kΩ / 3mA）ではない ②IRのデバイス番号は10進・FX5U の端子名は8進なので、端子を指す文字列は必ず機種側（`unit.spec`）から取る（決定表#16）③`poweredCells` は全行の0列目が真になるので**空セルは塗らない** ④`CompileErrorCode` を画面側で網羅しない（3A 側で構造エラーが増える予定）⑤`judgePlc` の実測は6秒課題で約72ms |
+
 
 
 
