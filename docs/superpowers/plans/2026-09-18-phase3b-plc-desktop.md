@@ -3345,7 +3345,1056 @@ git commit -m "feat(desktop): draw the ladder grid with our own symbol line art"
 
 ---
 
+## Task 5: キー操作とデバイス入力欄（F5/F6/F7/F9 と `Shift+F5` / `Alt+/`）
+
+**Files:**
+- Create: `apps/desktop/src/renderer/session/ladder-cell.ts`
+- Create: `apps/desktop/src/renderer/ladder/DeviceInput.tsx`
+- Create: `apps/desktop/src/renderer/ladder/LadderEditor.tsx`
+- Modify: `apps/desktop/src/renderer/ladder/ladder.module.css`
+- Modify: `apps/desktop/src/renderer/i18n/ja.ts`（**MERGE 注意 #1**）
+- Test: `apps/desktop/test/ladder-cell.test.ts`
+- Test: `apps/desktop/test/ladder-editor.test.tsx`
+
+`session/ladder.ts`（Task 1）が返す `LadderAction` を、ストアと `LadderGrid` に繋ぐ。デバイスが要るセル（接点・コイル・タイマ・カウンタ・MC/MCR）は**入力欄を開いてから**置く。
+
+| 決めること | 本タスクの実装 |
+|---|---|
+| 入力欄の中身 | 接点は「種別（a/b/立上り/立下り）＋デバイス」、出力は「種別（OUT/SET/RST/TON/CTU/MC/MCR）＋デバイス＋設定値（＋CTUのリセットデバイス）」。`IR` が持つセル種別を**過不足なく**覆う |
+| デバイスの読み | `profile.parseDevice(text)`。`Error` が返ったらその文言を欄の下に出して確定させない |
+| タイマ設定値 | `K30` の方言表記（`profile.parseTimerPreset`）と、素の ms 値（`3000`）の両方を受ける。ms がその番号帯で表せないときは §10.5 の文言（「`3050ms` は `T0` では指定できません。100ms 刻みに丸めますか？」）を出し、「はい」で `roundTimerPreset()` を当てる |
+| 罫線と横線 | `F9`（横線）と `Shift+F9`（縦線）、`Ctrl+←↑↓→`（罫線）は**入力欄を開かずに**その場で置く |
+| 読出し・モニタ中 | `readOnly` アクションが返るので、トーストで理由を出して何もしない（決定表#11） |
+| `F8`（応用命令） | `disabled` アクション。`entry.note` をそのままトーストに出す（§17.1 の注記） |
+
+- [ ] **Step 1: 失敗するテストを書く**
+
+`apps/desktop/test/ladder-cell.test.ts`:
+
+```ts
+import { C, M, T, X, Y, type Cell } from '@ojt/ladder-core';
+import { MITSUBISHI_FX5U } from '@ojt/plc-dialects';
+import { describe, expect, it } from 'vitest';
+import {
+  buildCell,
+  emptyCellForm,
+  formForCell,
+  roundSuggestionFor,
+  timerPresetMs,
+  type CellForm,
+} from '../src/renderer/session/ladder-cell.js';
+
+const profile = MITSUBISHI_FX5U;
+
+function form(overrides: Partial<CellForm>): CellForm {
+  return { ...emptyCellForm('contact'), ...overrides };
+}
+
+describe('buildCell（入力欄 → セル）', () => {
+  it('builds the four contact types', () => {
+    for (const [contact, type] of [
+      ['NO', 'NO'],
+      ['NC', 'NC'],
+      ['P', 'P'],
+      ['F', 'F'],
+    ] as const) {
+      const cell = buildCell(form({ contact, deviceText: 'X0' }), profile);
+      expect(cell).toMatchObject({ kind: 'contact', type, device: X(0) });
+    }
+  });
+
+  it('reads the Mitsubishi octal notation (X10 = index 8)', () => {
+    expect(buildCell(form({ deviceText: 'X10' }), profile)).toMatchObject({ device: X(8) });
+    const bad = buildCell(form({ deviceText: 'X8' }), profile);
+    expect(bad).toBeInstanceOf(Error);
+    if (!(bad instanceof Error)) return;
+    expect(bad.message).toContain('8進');
+  });
+
+  it('builds the output cells the IR supports', () => {
+    const output = (overrides: Partial<CellForm>): Cell | Error =>
+      buildCell({ ...emptyCellForm('output'), ...overrides }, profile);
+    expect(output({ output: 'OUT', deviceText: 'Y0' })).toMatchObject({ kind: 'coil', type: 'OUT' });
+    expect(output({ output: 'SET', deviceText: 'M1' })).toMatchObject({ kind: 'coil', type: 'SET' });
+    expect(output({ output: 'RST', deviceText: 'M1' })).toMatchObject({ kind: 'coil', type: 'RST' });
+    expect(output({ output: 'TON', deviceText: 'T0', presetText: 'K30' })).toMatchObject({
+      kind: 'timer',
+      presetMs: 3000,
+    });
+    expect(
+      output({ output: 'CTU', deviceText: 'C0', presetText: '5', resetText: 'X2' }),
+    ).toMatchObject({ kind: 'counter', preset: 5, resetDevice: X(2) });
+    expect(output({ output: 'MC', deviceText: 'M0' })).toMatchObject({ kind: 'mc' });
+    expect(output({ output: 'MCR', deviceText: 'M0' })).toMatchObject({ kind: 'mcr' });
+  });
+
+  it('refuses a device of the wrong kind', () => {
+    const cell = buildCell({ ...emptyCellForm('output'), output: 'TON', deviceText: 'Y0', presetText: 'K30' }, profile);
+    expect(cell).toBeInstanceOf(Error);
+    if (!(cell instanceof Error)) return;
+    expect(cell.message).toContain('タイマ');
+  });
+
+  it('round-trips an existing cell into the form', () => {
+    expect(formForCell({ kind: 'contact', type: 'NC', device: X(1) }, profile)).toMatchObject({
+      target: 'contact',
+      contact: 'NC',
+      deviceText: 'X1',
+    });
+    expect(
+      formForCell({ kind: 'timer', type: 'TON', device: T(0), presetMs: 3000 }, profile),
+    ).toMatchObject({ target: 'output', output: 'TON', deviceText: 'T0', presetText: 'K30' });
+    expect(
+      formForCell({ kind: 'counter', type: 'CTU', device: C(0), preset: 5, resetDevice: M(3) }, profile),
+    ).toMatchObject({ output: 'CTU', presetText: '5', resetText: 'M3' });
+  });
+});
+
+describe('timerPresetMs / roundSuggestionFor（§10.5）', () => {
+  it('accepts the dialect notation and plain milliseconds', () => {
+    expect(timerPresetMs('K30', T(0), profile)).toBe(3000);
+    expect(timerPresetMs('3000', T(0), profile)).toBe(3000);
+    expect(timerPresetMs('K30', T(200), profile)).toBe(300);
+  });
+
+  it('refuses text that is neither', () => {
+    expect(timerPresetMs('三十', T(0), profile)).toBeInstanceOf(Error);
+    expect(timerPresetMs('', T(0), profile)).toBeInstanceOf(Error);
+    expect(timerPresetMs('-100', T(0), profile)).toBeInstanceOf(Error);
+  });
+
+  it('offers the 100ms rounding the spec asks for', () => {
+    const suggestion = roundSuggestionFor(3050, T(0), profile);
+    expect(suggestion).toEqual({ ms: 3050, baseMs: 100, rounded: 3000 });
+    // T200 帯は 10ms 単位なので 3050ms はそのまま置ける
+    expect(roundSuggestionFor(3050, T(200), profile)).toBeUndefined();
+  });
+
+  it('never rounds down to zero', () => {
+    expect(roundSuggestionFor(30, T(0), profile)?.rounded).toBe(100);
+  });
+});
+```
+
+`apps/desktop/test/ladder-editor.test.tsx`:
+
+```tsx
+import { BUILTIN_PLC_PROBLEMS } from '@ojt/content';
+import { cellAt, COIL_COL, X, Y } from '@ojt/ladder-core';
+import { MITSUBISHI_FX5U } from '@ojt/plc-dialects';
+import { fireEvent, render, screen } from '@testing-library/react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { useStore } from '../src/renderer/app/store.js';
+import { LadderEditor } from '../src/renderer/ladder/LadderEditor.js';
+
+const problem = BUILTIN_PLC_PROBLEMS[0]!;
+
+function editor(props: Partial<Parameters<typeof LadderEditor>[0]> = {}) {
+  return render(
+    <LadderEditor
+      profile={MITSUBISHI_FX5U}
+      gridCols={MITSUBISHI_FX5U.gridCols}
+      onConvert={props.onConvert ?? (() => undefined)}
+      onModeChange={props.onModeChange ?? (() => undefined)}
+    />,
+  );
+}
+
+function grid(): HTMLElement {
+  return screen.getByTestId('ladder-editor');
+}
+
+function net1(): ReturnType<typeof cellAt> {
+  const program = useStore.getState().ladder!;
+  const net = program.networks.find((n) => n.id === 'n1')!;
+  return cellAt(net, 0, 0);
+}
+
+beforeEach(() => {
+  useStore.getState().abandonSession();
+  useStore.getState().openProblem(problem);
+});
+
+describe('キー操作（§10.6 の割当表から引く）', () => {
+  it('opens the device input on F5 and places an a-contact', () => {
+    editor();
+    fireEvent.keyDown(grid(), { key: 'F5' });
+    expect(screen.getByTestId('device-input')).toBeInTheDocument();
+    fireEvent.change(screen.getByTestId('device-text'), { target: { value: 'X0' } });
+    fireEvent.click(screen.getByTestId('device-commit'));
+    expect(net1()).toMatchObject({ kind: 'contact', type: 'NO', device: X(0) });
+    expect(screen.queryByTestId('device-input')).toBeNull();
+  });
+
+  it('places a coil on F7 at the coil column', () => {
+    editor();
+    useStore.getState().setLadderCursor({ networkId: 'n1', row: 0, col: COIL_COL });
+    fireEvent.keyDown(grid(), { key: 'F7' });
+    fireEvent.change(screen.getByTestId('device-text'), { target: { value: 'Y0' } });
+    fireEvent.click(screen.getByTestId('device-commit'));
+    const net = useStore.getState().ladder!.networks[0]!;
+    expect(cellAt(net, 0, COIL_COL)).toMatchObject({ kind: 'coil', type: 'OUT', device: Y(0) });
+  });
+
+  it('places a horizontal line on F9 without opening the input', () => {
+    editor();
+    fireEvent.keyDown(grid(), { key: 'F9' });
+    expect(screen.queryByTestId('device-input')).toBeNull();
+    expect(net1().kind).toBe('hline');
+  });
+
+  it('refuses a device the dialect cannot read and keeps the input open', () => {
+    editor();
+    fireEvent.keyDown(grid(), { key: 'F5' });
+    fireEvent.change(screen.getByTestId('device-text'), { target: { value: 'X9' } });
+    fireEvent.click(screen.getByTestId('device-commit'));
+    expect(screen.getByTestId('device-error')).toHaveTextContent('8進');
+    expect(screen.getByTestId('device-input')).toBeInTheDocument();
+  });
+
+  it('offers the 100ms rounding for a timer preset the band cannot express (§10.5)', () => {
+    editor();
+    useStore.getState().setLadderCursor({ networkId: 'n1', row: 0, col: COIL_COL });
+    fireEvent.keyDown(grid(), { key: 'F7' });
+    fireEvent.change(screen.getByTestId('output-kind'), { target: { value: 'TON' } });
+    fireEvent.change(screen.getByTestId('device-text'), { target: { value: 'T0' } });
+    fireEvent.change(screen.getByTestId('preset-text'), { target: { value: '3050' } });
+    fireEvent.click(screen.getByTestId('device-commit'));
+    expect(screen.getByTestId('round-prompt')).toHaveTextContent('100ms');
+    fireEvent.click(screen.getByTestId('round-yes'));
+    const net = useStore.getState().ladder!.networks[0]!;
+    expect(cellAt(net, 0, COIL_COL)).toMatchObject({ kind: 'timer', presetMs: 3000 });
+  });
+
+  it('toggles a/b with / and the pulse form with Alt+/', () => {
+    editor();
+    fireEvent.keyDown(grid(), { key: 'F5' });
+    fireEvent.change(screen.getByTestId('device-text'), { target: { value: 'X0' } });
+    fireEvent.click(screen.getByTestId('device-commit'));
+    fireEvent.keyDown(grid(), { key: '/' });
+    expect(net1()).toMatchObject({ type: 'NC' });
+    fireEvent.keyDown(grid(), { key: '/', altKey: true });
+    expect(net1()).toMatchObject({ type: 'F' });
+  });
+
+  it('branches with Shift+F5 (OR contact)', () => {
+    editor();
+    fireEvent.keyDown(grid(), { key: 'F5' });
+    fireEvent.change(screen.getByTestId('device-text'), { target: { value: 'X0' } });
+    fireEvent.click(screen.getByTestId('device-commit'));
+    fireEvent.keyDown(grid(), { key: 'F5', shiftKey: true });
+    fireEvent.change(screen.getByTestId('device-text'), { target: { value: 'Y0' } });
+    fireEvent.click(screen.getByTestId('device-commit'));
+    const net = useStore.getState().ladder!.networks[0]!;
+    expect(net.rows).toBe(2);
+    expect(cellAt(net, 1, 0)).toMatchObject({ device: Y(0) });
+    expect(cellAt(net, 0, 1).kind).toBe('vline');
+  });
+
+  it('clears the cell on Delete and walks the history with Ctrl+Z / Ctrl+Y', () => {
+    editor();
+    fireEvent.keyDown(grid(), { key: 'F9' });
+    expect(net1().kind).toBe('hline');
+    fireEvent.keyDown(grid(), { key: 'Delete' });
+    expect(net1().kind).toBe('empty');
+    fireEvent.keyDown(grid(), { key: 'z', ctrlKey: true });
+    expect(net1().kind).toBe('hline');
+    fireEvent.keyDown(grid(), { key: 'y', ctrlKey: true });
+    expect(net1().kind).toBe('empty');
+  });
+
+  it('asks the parent to convert on F4', () => {
+    const onConvert = vi.fn();
+    editor({ onConvert });
+    fireEvent.keyDown(grid(), { key: 'F4' });
+    expect(onConvert).toHaveBeenCalledTimes(1);
+  });
+
+  it('switches to monitor on F3 and tells the parent (決定表#11)', () => {
+    const onModeChange = vi.fn();
+    editor({ onModeChange });
+    fireEvent.keyDown(grid(), { key: 'F3' });
+    expect(useStore.getState().ladderMode).toBe('monitor');
+    expect(onModeChange).toHaveBeenCalledWith('monitor');
+    // モニタ中は編集できない
+    fireEvent.keyDown(grid(), { key: 'F9' });
+    expect(net1().kind).toBe('empty');
+    expect(useStore.getState().toasts.at(-1)?.text).toContain('書込みモード');
+  });
+
+  it('explains why F8 does nothing (§17.1)', () => {
+    editor();
+    fireEvent.keyDown(grid(), { key: 'F8' });
+    expect(useStore.getState().toasts.at(-1)?.text).toContain('Phase 4');
+  });
+
+  it('owns the keyboard only while focused (決定表#3)', () => {
+    editor();
+    expect(useStore.getState().ladderFocused).toBe(false);
+    fireEvent.focus(grid());
+    expect(useStore.getState().ladderFocused).toBe(true);
+    fireEvent.blur(grid());
+    expect(useStore.getState().ladderFocused).toBe(false);
+  });
+});
+```
+
+- [ ] **Step 2: RED を確認する**
+
+```powershell
+pnpm --filter @ojt/desktop exec vitest run test/ladder-cell.test.ts test/ladder-editor.test.tsx
+```
+
+- [ ] **Step 3: `src/renderer/session/ladder-cell.ts` を書く**
+
+```ts
+import {
+  ctu,
+  mc,
+  mcr,
+  nc,
+  no,
+  out,
+  rst,
+  set,
+  ton,
+  type Cell,
+  type Device,
+  type DeviceKind,
+} from '@ojt/ladder-core';
+import { roundTimerPreset, timerBaseMs, type DialectProfile } from '@ojt/plc-dialects';
+
+/**
+ * デバイス入力欄の中身 ⇄ セル。設計仕様 §10.3 / §10.5。
+ * React を知らない純粋層で、方言の読み書き（`parseDevice` / `parseTimerPreset`）は
+ * すべて `DialectProfile` に任せる（Phase 4 でメーカーが増えてもここは変わらない）。
+ */
+
+/** 接点の種別。 */
+export type ContactForm = 'NO' | 'NC' | 'P' | 'F';
+
+/** 出力（コイル列）に置けるものの種別。IR のセル種別を過不足なく覆う。§10.3 */
+export type OutputForm = 'OUT' | 'SET' | 'RST' | 'TON' | 'CTU' | 'MC' | 'MCR';
+
+/** 入力欄の中身。 */
+export interface CellForm {
+  target: 'contact' | 'output';
+  contact: ContactForm;
+  output: OutputForm;
+  deviceText: string;
+  presetText: string;
+  /** CTU のリセットデバイス。 */
+  resetText: string;
+}
+
+/** 空の入力欄。 */
+export function emptyCellForm(target: CellForm['target']): CellForm {
+  return { target, contact: 'NO', output: 'OUT', deviceText: '', presetText: '', resetText: '' };
+}
+
+/** 種別ごとに許すデバイス種別（`kind`）。 */
+const ALLOWED: Readonly<Record<OutputForm, readonly DeviceKind[]>> = {
+  OUT: ['output', 'internal'],
+  SET: ['output', 'internal', 'timer', 'counter'],
+  RST: ['output', 'internal', 'timer', 'counter'],
+  TON: ['timer'],
+  CTU: ['counter'],
+  MC: ['internal'],
+  MCR: ['internal'],
+};
+
+/** デバイス種別の日本語名（エラー文言に使う）。 */
+const KIND_LABEL: Readonly<Record<DeviceKind, string>> = {
+  input: '入力',
+  output: '出力',
+  internal: '内部リレー',
+  timer: 'タイマ',
+  counter: 'カウンタ',
+  special: '特殊デバイス',
+};
+
+/** デバイス欄を読む。 */
+function readDevice(text: string, profile: DialectProfile): Device | Error {
+  if (text.trim().length === 0) return new Error('デバイスを入力してください');
+  return profile.parseDevice(text);
+}
+
+/**
+ * タイマ設定値を ms にする。§10.5
+ * 方言表記（`K30`）と素のミリ秒（`3000`）の両方を受ける。
+ */
+export function timerPresetMs(
+  text: string,
+  device: Device,
+  profile: DialectProfile,
+): number | Error {
+  const trimmed = text.trim();
+  if (trimmed.length === 0) return new Error('設定値を入力してください');
+  if (/^[0-9]+$/u.test(trimmed)) {
+    const ms = Number(trimmed);
+    if (ms <= 0) return new Error('設定値は1以上にしてください');
+    return ms;
+  }
+  return profile.parseTimerPreset(trimmed, device);
+}
+
+/** 丸めの提案（§10.5 の「100ms 刻みに丸めますか？」）。丸めが要らなければ undefined。 */
+export interface RoundSuggestion {
+  ms: number;
+  baseMs: number;
+  rounded: number;
+}
+
+/** その番号帯で表せない ms に対して、丸め先を提案する。 */
+export function roundSuggestionFor(
+  ms: number,
+  device: Device,
+  profile: DialectProfile,
+): RoundSuggestion | undefined {
+  if (!(profile.timerPreset(ms, device) instanceof Error)) return undefined;
+  const baseMs = timerBaseMs(device);
+  return { ms, baseMs, rounded: roundTimerPreset(ms, baseMs) };
+}
+
+/** 入力欄からセルを作る。読めない値は `Error`（投げない）。 */
+export function buildCell(form: CellForm, profile: DialectProfile): Cell | Error {
+  const device = readDevice(form.deviceText, profile);
+  if (device instanceof Error) return device;
+  if (form.target === 'contact') {
+    if (form.contact === 'NO') return no(device);
+    if (form.contact === 'NC') return nc(device);
+    return { kind: 'contact', type: form.contact, device };
+  }
+  const allowed = ALLOWED[form.output];
+  if (!allowed.includes(device.kind)) {
+    return new Error(
+      `${form.output} には ${allowed.map((kind) => KIND_LABEL[kind]).join('・')}のデバイスを指定します`,
+    );
+  }
+  if (form.output === 'OUT') return out(device);
+  if (form.output === 'SET') return set(device);
+  if (form.output === 'RST') return rst(device);
+  if (form.output === 'MC') return mc(device);
+  if (form.output === 'MCR') return mcr(device);
+  if (form.output === 'TON') {
+    const ms = timerPresetMs(form.presetText, device, profile);
+    if (ms instanceof Error) return ms;
+    const preset = profile.timerPreset(ms, device);
+    if (preset instanceof Error) return preset;
+    return ton(device, ms);
+  }
+  const preset = Number(form.presetText.trim().replace(/^K/iu, ''));
+  if (!Number.isInteger(preset) || preset < 1) {
+    return new Error('カウンタの設定値は1以上の整数にします');
+  }
+  const reset = readDevice(form.resetText, profile);
+  if (reset instanceof Error) return reset;
+  return ctu(device, preset, reset);
+}
+
+/** 既存のセルを入力欄の形にする（`Enter` での編集）。 */
+export function formForCell(cell: Cell, profile: DialectProfile): CellForm {
+  if (cell.kind === 'contact') {
+    return {
+      ...emptyCellForm('contact'),
+      contact: cell.type,
+      deviceText: profile.formatDevice(cell.device),
+    };
+  }
+  const base = emptyCellForm('output');
+  if (cell.kind === 'coil') {
+    return { ...base, output: cell.type, deviceText: profile.formatDevice(cell.device) };
+  }
+  if (cell.kind === 'timer') {
+    const preset = profile.timerPreset(cell.presetMs, cell.device);
+    return {
+      ...base,
+      output: 'TON',
+      deviceText: profile.formatDevice(cell.device),
+      presetText: preset instanceof Error ? String(cell.presetMs) : preset.text,
+    };
+  }
+  if (cell.kind === 'counter') {
+    return {
+      ...base,
+      output: 'CTU',
+      deviceText: profile.formatDevice(cell.device),
+      presetText: String(cell.preset),
+      resetText: profile.formatDevice(cell.resetDevice),
+    };
+  }
+  if (cell.kind === 'mc' || cell.kind === 'mcr') {
+    return {
+      ...base,
+      output: cell.kind === 'mc' ? 'MC' : 'MCR',
+      deviceText: profile.formatDevice(cell.device),
+    };
+  }
+  return base;
+}
+```
+
+- [ ] **Step 4: `src/renderer/ladder/DeviceInput.tsx` を書く**
+
+```tsx
+import type { DialectProfile } from '@ojt/plc-dialects';
+import { useEffect, useRef, useState, type JSX } from 'react';
+import { JA, timerRoundPrompt } from '../i18n/ja.js';
+import {
+  buildCell,
+  roundSuggestionFor,
+  timerPresetMs,
+  type CellForm,
+  type ContactForm,
+  type OutputForm,
+} from '../session/ladder-cell.js';
+import styles from './ladder.module.css';
+
+/**
+ * デバイス入力欄。設計仕様 §10.5 / §10.7。
+ * 方言の読み書きは `DialectProfile` に任せるので、Phase 4 でメーカーが増えてもここは変わらない。
+ */
+
+const CONTACTS: ReadonlyArray<{ value: ContactForm; label: string }> = [
+  { value: 'NO', label: JA.ladder.contactNo },
+  { value: 'NC', label: JA.ladder.contactNc },
+  { value: 'P', label: JA.ladder.contactRise },
+  { value: 'F', label: JA.ladder.contactFall },
+];
+
+const OUTPUTS: ReadonlyArray<{ value: OutputForm; label: string }> = [
+  { value: 'OUT', label: JA.ladder.coilOut },
+  { value: 'SET', label: JA.ladder.coilSet },
+  { value: 'RST', label: JA.ladder.coilRst },
+  { value: 'TON', label: JA.ladder.timer },
+  { value: 'CTU', label: JA.ladder.counter },
+  { value: 'MC', label: JA.ladder.mc },
+  { value: 'MCR', label: JA.ladder.mcr },
+];
+
+/** デバイス入力欄。確定できたら `onCommit(cell)`。 */
+export function DeviceInput({
+  initial,
+  profile,
+  onCommit,
+  onCancel,
+}: {
+  initial: CellForm;
+  profile: DialectProfile;
+  onCommit: (cell: ReturnType<typeof buildCell>) => void;
+  onCancel: () => void;
+}): JSX.Element {
+  const [form, setForm] = useState<CellForm>(initial);
+  const [error, setError] = useState<string | undefined>(undefined);
+  const [round, setRound] = useState<{ rounded: number; baseMs: number } | undefined>(undefined);
+  const firstRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    firstRef.current?.focus();
+  }, []);
+
+  const commit = (presetOverrideMs?: number): void => {
+    const next =
+      presetOverrideMs === undefined ? form : { ...form, presetText: String(presetOverrideMs) };
+    /*
+     * タイマは「この機種では表せない ms」のときだけ §10.5 の丸め確認を出す。
+     * 丸めに「はい」と答えられたら `roundTimerPreset()` の結果で作り直す。
+     */
+    if (next.target === 'output' && next.output === 'TON' && presetOverrideMs === undefined) {
+      const device = profile.parseDevice(next.deviceText);
+      if (!(device instanceof Error)) {
+        const ms = timerPresetMs(next.presetText, device, profile);
+        if (!(ms instanceof Error)) {
+          const suggestion = roundSuggestionFor(ms, device, profile);
+          if (suggestion !== undefined) {
+            setRound({ rounded: suggestion.rounded, baseMs: suggestion.baseMs });
+            setError(timerRoundPrompt(suggestion.ms, profile.formatDevice(device), suggestion.baseMs));
+            return;
+          }
+        }
+      }
+    }
+    const cell = buildCell(next, profile);
+    if (cell instanceof Error) {
+      setError(cell.message);
+      setRound(undefined);
+      return;
+    }
+    onCommit(cell);
+  };
+
+  return (
+    <div className={styles.inputBox} data-testid="device-input" role="dialog" aria-label={JA.ladder.inputTitle}>
+      <div className={styles.inputRow}>
+        {form.target === 'contact' ? (
+          <select
+            data-testid="contact-kind"
+            aria-label={JA.ladder.contactKind}
+            value={form.contact}
+            onChange={(event) => {
+              setForm({ ...form, contact: event.target.value as ContactForm });
+            }}
+          >
+            {CONTACTS.map((item) => (
+              <option key={item.value} value={item.value}>
+                {item.label}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <select
+            data-testid="output-kind"
+            aria-label={JA.ladder.outputKind}
+            value={form.output}
+            onChange={(event) => {
+              setForm({ ...form, output: event.target.value as OutputForm });
+            }}
+          >
+            {OUTPUTS.map((item) => (
+              <option key={item.value} value={item.value}>
+                {item.label}
+              </option>
+            ))}
+          </select>
+        )}
+        <input
+          ref={firstRef}
+          data-testid="device-text"
+          aria-label={JA.ladder.device}
+          value={form.deviceText}
+          placeholder={profile.deviceRanges.input.prefix + '0'}
+          onChange={(event) => {
+            setForm({ ...form, deviceText: event.target.value });
+          }}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') commit();
+            if (event.key === 'Escape') onCancel();
+          }}
+        />
+        {form.target === 'output' && (form.output === 'TON' || form.output === 'CTU') ? (
+          <input
+            data-testid="preset-text"
+            aria-label={JA.ladder.preset}
+            value={form.presetText}
+            placeholder={form.output === 'TON' ? 'K30' : '5'}
+            onChange={(event) => {
+              setForm({ ...form, presetText: event.target.value });
+            }}
+          />
+        ) : null}
+        {form.target === 'output' && form.output === 'CTU' ? (
+          <input
+            data-testid="reset-text"
+            aria-label={JA.ladder.resetDevice}
+            value={form.resetText}
+            placeholder="X2"
+            onChange={(event) => {
+              setForm({ ...form, resetText: event.target.value });
+            }}
+          />
+        ) : null}
+        <button type="button" data-testid="device-commit" onClick={() => { commit(); }}>
+          {JA.ladder.commit}
+        </button>
+        <button type="button" data-testid="device-cancel" onClick={onCancel}>
+          {JA.inspectRepair.cancel}
+        </button>
+      </div>
+      {error === undefined ? null : (
+        <p className={styles.inputError} data-testid="device-error">
+          {error}
+        </p>
+      )}
+      {round === undefined ? null : (
+        <p className={styles.inputRound} data-testid="round-prompt">
+          {error}
+          <button
+            type="button"
+            data-testid="round-yes"
+            onClick={() => {
+              const rounded = round.rounded;
+              setRound(undefined);
+              setError(undefined);
+              setForm({ ...form, presetText: String(rounded) });
+              commit(rounded);
+            }}
+          >
+            {JA.ladder.roundYes}
+          </button>
+          <button
+            type="button"
+            data-testid="round-no"
+            onClick={() => {
+              setRound(undefined);
+            }}
+          >
+            {JA.ladder.roundNo}
+          </button>
+        </p>
+      )}
+    </div>
+  );
+}
+```
+
+- [ ] **Step 5: `src/renderer/ladder/LadderEditor.tsx` を書く**
+
+```tsx
+import { cellAt, hline, vline, type Cell } from '@ojt/ladder-core';
+import type { DialectProfile } from '@ojt/plc-dialects';
+import { useCallback, useState, type JSX } from 'react';
+import { useStore } from '../app/store.js';
+import { JA } from '../i18n/ja.js';
+import { isTypingTarget } from '../session/interaction.js';
+import {
+  applyLadderCell,
+  applyOrContact,
+  applyRuleLine,
+  clearLadderCell,
+  ladderKeyToAction,
+  moveCursor,
+  toggleNoNcAt,
+  togglePulseAt,
+  type LadderEditResult,
+  type LadderEditorMode,
+  type PlaceKind,
+} from '../session/ladder.js';
+import { emptyCellForm, formForCell, type CellForm } from '../session/ladder-cell.js';
+import { DeviceInput } from './DeviceInput.js';
+import { LadderGrid } from './LadderGrid.js';
+import styles from './ladder.module.css';
+
+/**
+ * ラダーエディタ。設計仕様 §10.6 / §10.7。
+ *
+ * キーの意味は `DialectProfile.shortcuts` が決める（決定表#12）。この部品はキーの文字列を
+ * 1つも持たず、`ladderKeyToAction()` が返した `action` に対して振る舞いを選ぶだけである。
+ */
+
+/** デバイス入力欄を開く必要があるセル種別。 */
+const NEEDS_DEVICE: Readonly<Record<PlaceKind, boolean>> = {
+  'contact-no': true,
+  'contact-nc': true,
+  'or-contact-no': true,
+  'or-contact-nc': true,
+  coil: true,
+  hline: false,
+  vline: false,
+};
+
+/** 入力欄を開いたときに待っている置き場所。 */
+interface Pending {
+  kind: PlaceKind;
+  form: CellForm;
+}
+
+/** ラダーエディタ。 */
+export function LadderEditor({
+  profile,
+  gridCols,
+  onConvert,
+  onModeChange,
+}: {
+  profile: DialectProfile;
+  gridCols: number;
+  /** `F4`（変換）。実体は `LadderWorkspace` が持つ。§10.6 */
+  onConvert: () => void;
+  /** 書込み／読出し／モニタが変わった（Worker へモニタの開始停止を伝える）。§10.6 */
+  onModeChange: (mode: LadderEditorMode) => void;
+}): JSX.Element {
+  const program = useStore((s) => s.ladder);
+  const cursor = useStore((s) => s.ladderCursor);
+  const mode = useStore((s) => s.ladderMode);
+  const comments = useStore((s) => s.ladderComments);
+  const errorCells = useStore((s) => s.convertIssues.errors);
+  /** モニタ中だけ通電文字列を購読する（決定表#5）。 */
+  const powered = useStore((s) => s.plcMonitor?.powered);
+  const [pending, setPending] = useState<Pending | undefined>(undefined);
+
+  /** 編集結果をストアへ入れる（失敗は理由をトーストに出す）。 */
+  const commit = useCallback((result: LadderEditResult): void => {
+    const store = useStore.getState();
+    if (!result.ok) {
+      store.toast(result.message, 'error');
+      return;
+    }
+    store.setLadder(result.program);
+  }, []);
+
+  const onKeyDown = useCallback(
+    (event: React.KeyboardEvent<HTMLDivElement>): void => {
+      // 入力欄に打ち込んでいる間は盤・ラダーのショートカットを動かさない（§8.2 と同じ規則）
+      if (isTypingTarget(event.target) || event.nativeEvent.isComposing) return;
+      const store = useStore.getState();
+      const current = store.ladder;
+      if (current === undefined) return;
+      const action = ladderKeyToAction(profile.shortcuts, event, {
+        cursor: store.ladderCursor,
+        mode: store.ladderMode,
+      });
+      if (action.type === 'none') return;
+      event.preventDefault();
+      switch (action.type) {
+        case 'move':
+          store.setLadderCursor(moveCursor(current, store.ladderCursor, action.dRow, action.dCol));
+          break;
+        case 'place': {
+          if (!NEEDS_DEVICE[action.kind]) {
+            const cell: Cell = action.kind === 'hline' ? hline() : vline();
+            commit(applyLadderCell(current, store.ladderCursor, cell));
+            break;
+          }
+          const target = action.kind === 'coil' ? 'output' : 'contact';
+          const form = emptyCellForm(target);
+          setPending({
+            kind: action.kind,
+            form:
+              action.kind === 'contact-nc' || action.kind === 'or-contact-nc'
+                ? { ...form, contact: 'NC' }
+                : form,
+          });
+          break;
+        }
+        case 'edit': {
+          const net = current.networks.find((n) => n.id === store.ladderCursor.networkId);
+          if (net === undefined) break;
+          const cell = cellAt(net, store.ladderCursor.row, store.ladderCursor.col);
+          if (cell.kind === 'empty' || cell.kind === 'hline' || cell.kind === 'vline') break;
+          setPending({ kind: 'contact-no', form: formForCell(cell, profile) });
+          break;
+        }
+        case 'ruleLine':
+          commit(applyRuleLine(current, store.ladderCursor, action.direction));
+          break;
+        case 'toggleNoNc':
+          commit(toggleNoNcAt(current, store.ladderCursor));
+          break;
+        case 'togglePulse':
+          commit(togglePulseAt(current, store.ladderCursor));
+          break;
+        case 'delete':
+          commit(clearLadderCell(current, store.ladderCursor));
+          break;
+        case 'undo':
+          if (!store.undoLadderEdit()) store.toast(JA.ladder.nothingToUndo);
+          break;
+        case 'redo':
+          if (!store.redoLadderEdit()) store.toast(JA.ladder.nothingToRedo);
+          break;
+        case 'convert':
+          onConvert();
+          break;
+        case 'setMode':
+          store.setLadderMode(action.mode);
+          onModeChange(action.mode);
+          break;
+        case 'toggleInsert':
+          // 挿入・上書きの切換は Phase 3 では常に上書き（意図的な差分 #4）
+          store.toast(JA.ladder.overwriteOnly);
+          break;
+        case 'help':
+          store.toast(JA.ladder.helpHint);
+          break;
+        case 'disabled':
+          store.toast(action.entry.note ?? action.entry.label, 'error');
+          break;
+        case 'readOnly':
+          store.toast(JA.ladder.readOnly, 'error');
+          break;
+        default:
+          break;
+      }
+    },
+    [commit, onConvert, onModeChange, profile],
+  );
+
+  if (program === undefined) return <div className={styles.editor} data-testid="ladder-editor" />;
+
+  return (
+    <div
+      className={styles.editor}
+      data-testid="ladder-editor"
+      data-mode={mode}
+      role="application"
+      aria-label={profile.panels.editor}
+      tabIndex={0}
+      onKeyDown={onKeyDown}
+      onFocus={() => {
+        useStore.getState().setLadderFocused(true);
+      }}
+      onBlur={(event) => {
+        // 入力欄（子要素）へフォーカスが移っただけならエディタは手放さない
+        if (event.currentTarget.contains(event.relatedTarget)) return;
+        useStore.getState().setLadderFocused(false);
+      }}
+    >
+      <LadderGrid
+        program={program}
+        profile={profile}
+        cursor={cursor}
+        mode={mode}
+        powered={powered}
+        comments={comments}
+        errorCells={
+          new Set(
+            errorCells.flatMap((issue) =>
+              issue.networkId === undefined || issue.row === undefined || issue.col === undefined
+                ? []
+                : [`${issue.networkId}:${String(issue.row)}:${String(issue.col)}`],
+            ),
+          )
+        }
+        gridCols={gridCols}
+        onPickCell={(next) => {
+          useStore.getState().setLadderCursor(next);
+        }}
+      />
+      {pending === undefined ? null : (
+        <DeviceInput
+          initial={pending.form}
+          profile={profile}
+          onCancel={() => {
+            setPending(undefined);
+          }}
+          onCommit={(cell) => {
+            if (cell instanceof Error) return;
+            const store = useStore.getState();
+            const current = store.ladder;
+            if (current === undefined) return;
+            const isBranch =
+              pending.kind === 'or-contact-no' || pending.kind === 'or-contact-nc';
+            commit(
+              isBranch
+                ? applyOrContact(current, store.ladderCursor, cell)
+                : applyLadderCell(current, store.ladderCursor, cell),
+            );
+            setPending(undefined);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+```
+
+> **`errorCells` の作り直し:** `new Set(...)` を毎レンダーで作ると `LadderGrid` の `memo` が効かない。Task 8 で `LadderWorkspace` が `useMemo` した `Set` を props で流し込む形に直す（このタスクでは動作を先に確かめる）。**Task 8 Step 5 でここを直すこと。**
+
+- [ ] **Step 6: CSS と `ja.ts` を足す**
+
+`ladder.module.css` に追記:
+
+```css
+.editor {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1 1 auto;
+  outline: none;
+  border: 2px solid transparent;
+}
+
+.editor:focus-within {
+  border-color: #1e64ff;
+}
+
+.inputBox {
+  border-top: 1px solid #d5d8de;
+  background: #fff;
+  padding: 6px 8px;
+}
+
+.inputRow {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.inputRow input {
+  width: 92px;
+}
+
+.inputError {
+  margin: 4px 0 0;
+  color: #b3261e;
+  font-size: 12px;
+}
+
+.inputRound {
+  margin: 4px 0 0;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  font-size: 12px;
+}
+```
+
+`ja.ts` の `ladder` ブロックへ追記（**MERGE 注意 #1**）:
+
+```ts
+    inputTitle: 'デバイスの入力',
+    contactKind: '接点の種別',
+    outputKind: '出力の種別',
+    contactNo: 'a接点',
+    contactNc: 'b接点',
+    contactRise: '立上り',
+    contactFall: '立下り',
+    coilOut: 'コイル（OUT）',
+    coilSet: 'セット（SET）',
+    coilRst: 'リセット（RST）',
+    timer: 'タイマ（TON）',
+    counter: 'カウンタ（CTU）',
+    mc: 'マスタコントロール（MC）',
+    mcr: 'マスタコントロール解除（MCR）',
+    device: 'デバイス',
+    preset: '設定値',
+    resetDevice: 'リセットデバイス',
+    commit: '確定',
+    roundYes: 'はい',
+    roundNo: 'いいえ',
+    /** 読出し・モニタ中に編集しようとした。§10.6 */
+    readOnly: '書込みモード（F2）に切り替えると編集できます',
+    /** 挿入・上書きの切換（Phase 3 は常に上書き）。意図的な差分 #4 */
+    overwriteOnly: 'Phase 3 のラダーエディタは常に上書きです',
+    helpHint: 'キー割当はツールバーの「キー割当」から見られます',
+    nothingToUndo: 'これ以上は元に戻せません',
+    nothingToRedo: 'これ以上はやり直せません',
+```
+
+そして `ja.ts` の末尾（関数群）に足す:
+
+```ts
+/**
+ * タイマ設定値をその番号帯で表せないときの確認文。§10.5
+ * 例: 「3050ms は T0 では指定できません。100ms 刻みに丸めますか？」
+ */
+export function timerRoundPrompt(ms: number, device: string, baseMs: number): string {
+  return `${String(ms)}ms は ${device} では指定できません。${String(baseMs)}ms 刻みに丸めますか？`;
+}
+```
+
+- [ ] **Step 7: GREEN を確認する**
+
+```powershell
+pnpm --filter @ojt/desktop exec vitest run test/ladder-cell.test.ts test/ladder-editor.test.tsx
+pnpm --filter @ojt/desktop typecheck
+```
+
+Expected: `ladder-cell` が `Tests  9 passed (9)`、`ladder-editor` が `Tests  11 passed (11)`。
+
+- [ ] **Step 8: コミットする**
+
+```powershell
+npx prettier --write "apps/desktop/src/renderer/ladder/**/*.{ts,tsx,css}" "apps/desktop/src/renderer/session/ladder-cell.ts" "apps/desktop/src/renderer/i18n/ja.ts" "apps/desktop/test/ladder-*.test.*"
+npx prettier --check "apps/desktop/**/*.{ts,tsx,css}"
+git add apps/desktop/src apps/desktop/test
+git commit -m "feat(desktop): wire F5/F6/F7/F9 and the device input to the ladder"
+```
+
+---
+
 <!-- CHUNK -->
+
 
 
 
