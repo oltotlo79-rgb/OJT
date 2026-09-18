@@ -524,10 +524,10 @@ export function LogPanel(props); ElapsedTimer(props); PowerControls(props); Prob
 | 12 | **キー割当表は誰のものか** | 画面は `profile.shortcuts` を**表として描くだけ**で、キーの文字列を1つもハードコードしない。「キー文字列 → `action`」の照合は `session/ladder.ts` の `matchShortcut()` が行い、`action` 文字列に対して振る舞いを決める | Phase 4 で `getDialect('omron')` に差し替えるだけでキー割当が変わる（§17.1 の「修正箇所は方言プロファイルのみ」）。`event.key === 'F5'` と書いた瞬間にこの性質が壊れる。テストは「`MITSUBISHI_FX5U.shortcuts` から作った表で `F5` が `contact-no` になる」ことと「架空のプロファイルで `F5` を別の action に割り当てたら振る舞いも変わる」ことの両方を見る |
 | 13 | **設定画面のメーカー選択** | `AppSettings.defaultVendor: DialectId`（既定 `'mitsubishi'`）。選択肢は `availableDialects()` が返すものだけ（Phase 3 は三菱1件）。未実装の3社は**淡色で並べて押せない**ようにし、「Phase 4 で追加します」の注記を添える | §16 Phase 4 の受入基準①が「設定で既定メーカーをOMRONにすると…」なので、Phase 3 で入れ物を作っておくと Phase 4 は選択肢を増やすだけになる。並べずに隠すと「4社対応」という約束（§10.5）が画面から消える |
 | 14 | **セッション開始時のラダー** | **空のラダー**（`program(network('n1', [[empty()]]), endNetwork())`）から始める。課題の `referenceLadder` は**絶対に出さない** | 模範ラダーは答えそのものである。§8.4 のヒント方針（回路図は級で出し分け）はモードDには適用しない（§7.6 が `referenceLadder` をヒントとして挙げていない） |
-| 16 | **端子名（8進）とIRのデバイス番号（10進）を混ぜない** | **端子を指す文字列は必ず機種側から取る**（`unit.spec.inputs[x]` / `unit.spec.outputs[y].name` / `plcMetaOf(part)`）。**ラダーの中に出るデバイス名は必ず方言側から取る**（`profile.formatDevice(device)`）。`deviceLabel()`（ベンダー中立の10進表記）は**デバイスコメントの鍵**にだけ使う | IR の `Device.index` は0起点の通し番号（3A 決定表#5）で、FX5U の端子名は8進なので `Y(8)` の端子は `PLC.Y10` である。三菱スキンでは `formatDevice()` も8進なので画面上は一致するが、Phase 4 の OMRON は端子名 `100.00`・デバイス表記 `100.00`、TOYOPUC は16進で、**根拠の違う2つの文字列**になる。ここを混ぜると Phase 4 で「3Dの端子は見つかるのにラダーの表示が合わない」類の不具合が出る |
+| 15 | **新規ネットワークの ID** | `n1` / `n2` / … の通し番号を、**既存の最大番号＋1**で採る（`deleteNetwork` のあとに番号が飛んでもよい）。END ネットワークの ID は `'end'` 固定 | `program()` と `insertNetwork()` が ID 重複で投げる（前提A）ので、一意さが要る。番号を詰め直すと、変換エラーの `networkId` と出力ウィンドウの行が編集のたびにずれる |
 | 15b | **未使用デバイスの扱い**（§10.8） | `CompiledProgram.usage`（`reads` / `writes`）から「宣言・配置したが使われていないデバイス」を出力ウィンドウに**表示するだけ**にし、**合否には一切効かせない**（2026-09-18 の利用者決定） | 未使用デバイスは実機でも警告どまりで、動作が正しければ検定の減点にはならない。判定は `judgePlc()`（3A）が持っており、そこに未使用デバイスの項目は無い。UI 側で勝手に不合格要素を足すと、3A の判定と画面の合否が食い違う |
 | 15c | **PLC電源が壁コンセントへ未配線のとき** | **エラー**（`plcPowerIndependent` の不合格）とし、盤から取っているときとは**別の文言**を出す。さらに「シミュレートされるPLCは `PLC.L` / `PLC.N` が未配線でも動きます」という説明を**常に**添える（2026-09-18 の利用者決定 ＋ 3A H-5） | §10.1 は「PLC電源は壁コンセント（AC100V）へ配線する」と定めており、未配線は手順の欠落である。ただし本アプリのPLCは電気的に解かない端子（3A 決定表#3）なので未配線でも動いてしまい、訓練者からは「動いているのにチェックだけ赤い」ように見える。理由を書かない限り不親切な不合格になる |
-| 15 | **新規ネットワークの ID** | `n1` / `n2` / … の通し番号を、**既存の最大番号＋1**で採る（`deleteNetwork` のあとに番号が飛んでもよい）。END ネットワークの ID は `'end'` 固定 | `program()` と `insertNetwork()` が ID 重複で投げる（前提A）ので、一意さが要る。番号を詰め直すと、変換エラーの `networkId` と出力ウィンドウの行が編集のたびにずれる |
+| 16 | **端子名（8進）とIRのデバイス番号（10進）を混ぜない** | **端子を指す文字列は必ず機種側から取る**（`unit.spec.inputs[x]` / `unit.spec.outputs[y].name` / `plcMetaOf(part)`）。**ラダーの中に出るデバイス名は必ず方言側から取る**（`profile.formatDevice(device)`）。`deviceLabel()`（ベンダー中立の10進表記）は**デバイスコメントの鍵**にだけ使う | IR の `Device.index` は0起点の通し番号（3A 決定表#5）で、FX5U の端子名は8進なので `Y(8)` の端子は `PLC.Y10` である。三菱スキンでは `formatDevice()` も8進なので画面上は一致するが、Phase 4 の OMRON は端子名 `100.00`・デバイス表記 `100.00`、TOYOPUC は16進で、**根拠の違う2つの文字列**になる。ここを混ぜると Phase 4 で「3Dの端子は見つかるのにラダーの表示が合わない」類の不具合が出る |
 
 ---
 
@@ -539,12 +539,12 @@ export function LogPanel(props); ElapsedTimer(props); PowerControls(props); Prob
 |---|---|---|---|---|
 | 1 | 1 → 2 → 3 | 純粋層・ストア・Worker プロトコル | 1=Sonnet（そのまま写す） / 2=**Opus**（`store.ts` MERGE） / 3=**Opus**（`sim.worker.ts` MERGE） | なし |
 | 2 | 4 → 5 → 6 ／ 7 ／ 10 | ラダーエディタ本体 ／ コメント欄・I/O表 ／ 3D | 4=**Opus** / 5=**Opus** / 6=Sonnet ／ 7=Sonnet ／ 10=**Opus**（`BoardScene.tsx` MERGE） | 1・2（10 は 2 のみ） |
-| 3 | 8 ／ 9 ／ 11 | GX Works3風の枠 ／ モニタ ／ 配線操作 | 8=Sonnet / 9=**Opus** / 11=**Opus** | 2（4〜7・10 が揃っていること） |
+| 3 | 8 → 9 ／ 11 | GX Works3風の枠 → モニタ ／ 配線操作 | 8=Sonnet / 9=**Opus** / 11=**Opus** | 2（4〜7・10 が揃っていること）。**8 と 9 は直列**（9 が `LadderWorkspace.tsx` に差し込むため） |
 | 4 | 12 → 13 | セッション画面 → 結果画面 | どちらも **Opus** | 1〜3 すべて |
 | 5 | 14 ／ 15 ／ 16 | 作業ファイル ／ ホーム・一覧 ／ 設定 | すべて Sonnet | 12 |
 | 6 | 17 → 18 | E2E・スクリーンショット → 全体検証 | 17=**Opus** / 18=Sonnet | 1〜5 すべて |
 
-進め方: **1** → **2（3系統を並行）** → **3（3系統を並行）** → **4** → **5（3系統を並行）** → **6**。並行の上限は3系統までにする（`ja.ts` の追記が衝突するため。MERGE 注意 #1）。
+進め方: **1** → **2（3系統を並行）** → **3（2系統を並行）** → **4** → **5（3系統を並行）** → **6**。並行の上限は3系統までにする（`ja.ts` の追記が衝突するため。MERGE 注意 #1）。
 
 「そのまま写す（Sonnet-verbatim）」と書いたタスクは、本プランのコードとテストをそのまま書き写せば通る。**どのタスクも、後のタスクが作るファイルを import しない**ことを各タスクの Files 欄で確認すること。
 
@@ -4416,7 +4416,7 @@ pnpm --filter @ojt/desktop exec vitest run test/ladder-cell.test.ts test/ladder-
 pnpm --filter @ojt/desktop typecheck
 ```
 
-Expected: `ladder-cell` が `Tests  9 passed (9)`、`ladder-editor` が `Tests  11 passed (11)`。
+Expected: `ladder-cell` が `Tests  9 passed (9)`、`ladder-editor` が `Tests  12 passed (12)`。
 
 - [ ] **Step 8: コミットする**
 
@@ -5342,12 +5342,14 @@ Expected: `Tests  9 passed (9)`。
 
 ```tsx
 import { BUILTIN_PLC_PROBLEMS } from '@ojt/content';
+import { out, Y } from '@ojt/ladder-core';
 import { MITSUBISHI_FX5U } from '@ojt/plc-dialects';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useStore } from '../src/renderer/app/store.js';
 import { LadderWorkspace } from '../src/renderer/ladder/LadderWorkspace.js';
 import { ShortcutHelp } from '../src/renderer/ladder/ShortcutHelp.js';
+import { applyLadderCell } from '../src/renderer/session/ladder.js';
 
 const problem = BUILTIN_PLC_PROBLEMS[0]!;
 
@@ -5372,17 +5374,28 @@ describe('GX Works3風の枠（§10.6 / §17）', () => {
   it('lists the toolbar items the skin names', () => {
     workspace();
     for (const label of MITSUBISHI_FX5U.panels.toolbar) {
-      expect(screen.getByRole('button', { name: new RegExp(label, 'u') })).toBeInTheDocument();
+      // `name` に文字列を渡すと完全一致なので「変換」と「全変換」を取り違えない
+      expect(screen.getByRole('button', { name: label })).toBeInTheDocument();
     }
   });
 
   it('converts and sends the ladder to the worker when it succeeds (H-1)', () => {
     const onPlc = workspace();
-    // 空のラダーは END しか無いので変換に落ちる（コイルが無い）
+    fireEvent.click(screen.getByTestId('toolbar-convert'));
+    expect(useStore.getState().converted).toBe(true);
+    expect(onPlc).toHaveBeenCalledWith({ kind: 'load', program: useStore.getState().ladder });
+  });
+
+  it('keeps the ladder unconverted and lists the reason when it fails', () => {
+    const onPlc = workspace();
+    // コイルを接点列に置くと `coil-column` で落ちる（空のラダーそのものは変換を通る）
+    const placed = applyLadderCell(useStore.getState().ladder!, { networkId: 'n1', row: 0, col: 0 }, out(Y(0)));
+    if (!placed.ok) throw new Error(placed.message);
+    useStore.getState().setLadder(placed.program);
     fireEvent.click(screen.getByTestId('toolbar-convert'));
     expect(useStore.getState().converted).toBe(false);
     expect(onPlc).not.toHaveBeenCalled();
-    expect(screen.getAllByTestId(/^output-row-/u).length).toBeGreaterThan(0);
+    expect(screen.getByTestId('output-row-0')).toHaveTextContent('最終列');
   });
 
   it('adds and removes networks with buttons, not invented keys (決定表#12)', () => {
@@ -5801,6 +5814,10 @@ export function LadderWorkspace({
 
 `LadderEditor` の props に `errorCells: ReadonlySet<string>` を足し、`useStore((s) => s.convertIssues.errors)` の購読と `new Set(...)` の組み立てを**消して** `errorCells` をそのまま `LadderGrid` へ渡す。`LadderGrid` の `memo` を効かせるため、`Set` は `LadderWorkspace` の `useMemo` が持つ。
 
+**Task 5 のテストも直す:** `test/ladder-editor.test.tsx` の `editor()` ヘルパに `errorCells={props.errorCells ?? new Set<string>()}` を足す（props が増えたので型が落ちる）。
+
+**`OutputWindow` の読み上げ名:** `aria-label` は `JA.ladder.output`（`'出力ウィンドウ'`）で、`MITSUBISHI_FX5U.panels.output` と**同じ文字列**なのでテストが通る。将来スキンの名称が変わって食い違ったら、`OutputWindow` に `title` props を足して `LadderWorkspace` が `profile.panels.output` を渡すこと。
+
 - [ ] **Step 6: CSS と `ja.ts`、GREEN とコミット**
 
 CSS（追記）:
@@ -5908,7 +5925,7 @@ git add apps/desktop/src apps/desktop/test
 git commit -m "feat(desktop): compose the GX Works3-style workspace"
 ```
 
-Expected: `ladder-workspace` が `Tests  11 passed (11)`、`ladder-editor` も引き続き通る。
+Expected: `ladder-workspace` が `Tests  11 passed (11)`（枠7件＋キー割当表4件）、`ladder-editor` も引き続き通る。
 
 ---
 
@@ -7120,10 +7137,10 @@ describe('モードDのセッション画面（§10.1 / §12.1）', () => {
     expect(useStore.getState().camera).toBe('top');
   });
 
-  it('shows the problem statement and the elapsed timer', () => {
+  it('shows the problem statement and the parts panel（リレーを装着する）', () => {
     render(<SessionRoute />);
     expect(screen.getByText(problem.title)).toBeInTheDocument();
-    expect(screen.getByTestId('elapsed')).toBeInTheDocument();
+    expect(screen.getByTestId('parts-panel')).toBeInTheDocument();
   });
 });
 ```
@@ -9200,18 +9217,29 @@ test.describe('モードD（PLC）', () => {
     const { app, page } = await launch();
     try {
       await openPlcProblem(page);
+      const editor = page.getByTestId('ladder-editor');
       const judge = page.getByTestId('judge-button');
       await expect(judge).toBeDisabled();
-      // END しか無い（コイルが無い）ので変換に落ちる
-      await page.getByTestId('ladder-editor').press('F4');
+
+      // コイルを接点列（0列目）に置くと `coil-column` で変換に落ちる
+      await focusCell(page, 'n1:0:0');
+      await editor.press('F7');
+      await commitDevice(page, 'Y0');
+      await editor.press('F4');
       await expect(page.getByTestId('convert-state')).toHaveText(/未変換/u);
-      await expect(page.getByTestId('output-row-0')).toBeVisible();
+      await expect(page.getByTestId('output-row-0')).toContainText('最終列');
       await expect(judge).toBeDisabled();
 
+      // 直せば変換が通り、判定できるようになる
+      await focusCell(page, 'n1:0:0');
+      await editor.press('Delete');
       await buildLadder(page);
       await expect(judge).toBeEnabled();
-      // 1文字でも編集したらまた未変換に戻る（H-1）
-      await page.getByTestId('ladder-editor').press('F9');
+
+      // 1セルでも編集したらまた未変換に戻る（H-1）
+      await focusCell(page, 'n1:0:1');
+      await editor.press('F9');
+      await expect(page.getByTestId('convert-state')).toHaveText(/未変換/u);
       await expect(judge).toBeDisabled();
     } finally {
       await app.close();
@@ -9387,7 +9415,7 @@ git commit -m "docs(plan-3b): tick the tasks and record the implementation delta
 
 ## 実装者への MERGE 注意
 
-複数のタスクが同じファイルへ別々の箇所から手を入れる。「推奨バッチ」で並行させるときは次の11点を守ること。
+複数のタスクが同じファイルへ別々の箇所から手を入れる。「推奨バッチ」で並行させるときは次の12点を守ること。
 
 1. **`i18n/ja.ts` への挿入は、挿入のたびにファイルを読み直してから行う。** Task 4・5・6・7・8・9・10・12・13・14・15・16 がそれぞれ別の位置へ追記する。本プランは「`JA.timeChart` の直後に `ladder`、その直後に `plc`」とだけ決めており、以降は**その2つのブロックの中**に足す。`JA.staticCheck` への3件（Task 13）と `JA.home.plcDesc`（Task 15）だけがブロックの外である。
 2. **`store.ts` は Task 2 の5箇所 ＋ Task 16 の3箇所だけ。** Task 2 は「import」「定数と `AnyJudgeResult`」「`AppState` のフィールド」「アクションの宣言」「実装と `plcFields()` の差し込み」。Task 16 は「`ladderGridCols` / `monitorColor` のフィールド」「`applyLadderSettings` の宣言」「その実装」。Task 10 が `openProblem()` に足す `camera: 'plc'` の1行もここに含める（Task 2 と同じバッチなら一緒に入れる）。
@@ -9400,6 +9428,7 @@ git commit -m "docs(plan-3b): tick the tasks and record the implementation delta
 9. **`screens/Result.tsx` は Task 13 の1箇所（`isPlcJudge` の分岐）＋ `NoResult` の切り出しだけ。** 既存の C1/C2/B の分岐の**前**に置く（`isInspectJudge()` は Task 2 で明示の2値判定に変えてあるので順序に依存しないが、読み手のために前に置く）。
 10. **`app/App.tsx` の設定読込の `then` は1箇所だけ触る**（Task 16 の `applyLadderSettings`）。`setInterval` は Plan 2B で決めた2つのままにし、増やさない。
 11. **`e2e/projection.ts` は追記のみ**（Task 17）。既存の `import type { TerminalId } from '@ojt/circuit-sim';` と `SELF_HOLD_WIRES` を消さないこと（Plan 2B I-6 と同じ指摘）。
+12. **`ladder/LadderWorkspace.tsx` は Task 8 が作り、Task 9 が `workspaceSide` の先頭に `<MonitorPanel …/>` の1行を差し込む。この2つは同じバッチで直列に実行する**（並行させると片方の書き込みが失われる）。`ladder/LadderEditor.tsx` は Task 5 が作り、Task 8 が `errorCells` props を、Task 16 が `colors` props を足す（いずれも別バッチなので衝突しない）。
 
 ---
 
