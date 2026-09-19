@@ -5598,7 +5598,7 @@ git add apps/desktop && git commit -m "feat(desktop): add the keyboard wiring te
 
 決定表#16: `frameloop="demand"` では `useFrame` が**描いたフレームだけ**走るので、これが「無操作で描いていない」ことの証明にもなる。
 
-- [ ] **Step 1: 失敗するテストを書く**
+- [x] **Step 1: 失敗するテストを書く**
 
 `apps/desktop/test/perf-probe.test.ts`（純関数だけを検査する。`useFrame` は E2E が確かめる）:
 
@@ -5651,7 +5651,7 @@ describe('PERF_INTERVAL_MS', () => {
 });
 ```
 
-- [ ] **Step 2: `three/PerfProbe.tsx` を実装する**
+- [x] **Step 2: `three/PerfProbe.tsx` を実装する**
 
 ```tsx
 import { useFrame, useThree } from '@react-three/fiber';
@@ -5768,7 +5768,7 @@ export function PerfProbe({ nodeRef }: { nodeRef: RefObject<HTMLDivElement | nul
 }
 ```
 
-- [ ] **Step 3: `BoardScene.tsx` に差し込む**
+- [x] **Step 3: `BoardScene.tsx` に差し込む**
 
 `BoardContents` の props に `perfRef: RefObject<HTMLDivElement | null>` を足し、`<Invalidator />` の隣に `<PerfProbe nodeRef={perfRef} />` を置く。`BoardSceneImpl` では `const perfRef = useRef<HTMLDivElement | null>(null);` を作り、`camera-readout` の隣に隠し要素を置く:
 
@@ -5777,7 +5777,7 @@ export function PerfProbe({ nodeRef }: { nodeRef: RefObject<HTMLDivElement | nul
       <div data-testid="perf-readout" hidden ref={perfRef} />
 ```
 
-- [ ] **Step 4: テストを走らせてコミットする**
+- [x] **Step 4: テストを走らせてコミットする**
 
 ```
 pnpm --filter @ojt/desktop test perf-probe board-scene

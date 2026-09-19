@@ -51,6 +51,7 @@ import { DeskWires, offBoardTerminals } from './DeskWires.js';
 import { DinRail } from './DinRail.js';
 import { FixedWires } from './FixedWires.js';
 import { Outlet } from './Outlet.js';
+import { PerfProbe } from './PerfProbe.js';
 import { PlcRack } from './PlcRack.js';
 import { PlcUnit } from './PlcUnit.js';
 import { Fixture, FIXTURES } from './Fixtures.js';
@@ -297,6 +298,7 @@ function BoardContents({
   onPress,
   onRelease,
   readoutRef,
+  perfRef,
 }: {
   /**
    * 描く盤。モードDだけ `withPlcUnit()` 済みの派生盤が来る（§10.1 / Task 10）。
@@ -309,6 +311,8 @@ function BoardContents({
   onRelease: (pbId: string) => void;
   /** E2E 用のカメラ状態の書き出し先（`Canvas` の外の隠し要素）。§14.2 */
   readoutRef: RefObject<HTMLDivElement | null>;
+  /** 性能の計測窓の書き出し先（`Canvas` の外の隠し要素）。§15 / 決定表#16 */
+  perfRef: RefObject<HTMLDivElement | null>;
 }): JSX.Element {
   const session = useStore((s) => s.session);
   const lampLevels = useLampLevels();
@@ -515,6 +519,7 @@ function BoardContents({
   return (
     <>
       <Invalidator />
+      <PerfProbe nodeRef={perfRef} />
       <color attach="background" args={['#141820']} />
       <ambientLight intensity={0.8} />
       <directionalLight position={[220, 520, 420]} intensity={1.6} />
@@ -732,6 +737,7 @@ function BoardSceneImpl({
   const [generation, setGeneration] = useState(0);
   const setWebglLost = useStore((s) => s.setWebglLost);
   const readoutRef = useRef<HTMLDivElement | null>(null);
+  const perfRef = useRef<HTMLDivElement | null>(null);
 
   /*
    * 視点を回したあとのクリックで盤を拾わないようにする（§12.2 / 2026-09-14 の利用者要望）。
@@ -803,10 +809,13 @@ function BoardSceneImpl({
           onPress={onPress}
           onRelease={onRelease}
           readoutRef={readoutRef}
+          perfRef={perfRef}
         />
       </Canvas>
       {/* E2E からカメラの向き・距離・注視点を読むための隠し要素（画面には出ない）。§14.2 */}
       <div data-testid="camera-readout" hidden ref={readoutRef} />
+      {/* 性能の計測窓（§15 / Plan 5 決定表#16）。画面には出ない */}
+      <div data-testid="perf-readout" hidden ref={perfRef} />
     </>
   );
 }
