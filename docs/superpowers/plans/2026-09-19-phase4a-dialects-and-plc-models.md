@@ -6,7 +6,7 @@
 
 **Architecture:** Phase 3 で作った4層（IR → 方言 → 電気的実体 → 課題と判定）はそのまま使い、**層を増やさず各層に機種を足す**。①`@ojt/ladder-core` は**一切変更しない**（IRはベンダー中立。§17.1 の「修正箇所は方言プロファイル／スキン定義／盤モデルの3区分のみ」を実地で検証する回でもある）。②`@ojt/plc-dialects` は `mitsubishi.ts` と同じ形のファイルを3つ増やし、4プロファイルで共通する「デバイス範囲・タイマ単位・カウンタ範囲の検査」を `device-rules.ts` に、GX Works3風のキー割当の流用（§17 #19）を `shortcuts.ts` に括り出す。表記切替と命令語リストは**プロファイルを引数に取る純関数**で、方言ごとの分岐を持たない。③`@ojt/circuit-sim` の `PlcUnitSpec` は入力1点ぶんを `PlcInputSpec { name, com, ohms? }` に格上げする（TOYOPUC・JW300 は8点1コモン、CP1E は `0.00`〜`0.07` が 3.3kΩ・`0.08` 以降が 4.8kΩ。§5.1.3）。④`@ojt/board-model` に `PlcModuleDefinition` を足し、ラック形は「ベース＋モジュール」の入れ物として描ける形にする（3Dは 4B）。⑤`@ojt/content` は機種名の白紙リストを外し、機種にない入出力点を課題スキーマで弾き、静的チェックから三菱固有の正規表現（`/^PLC\.X\d+$/`）を取り除く。
 
-**4A が触らないもの:** `packages/ladder-core/**`（IR・compile・runtime）、`apps/desktop/**`（4B）、`packages/schematic-core/**`。
+**4A が触らないもの:** `packages/ladder-core/**`（IR・compile・runtime）、`packages/schematic-core/**`、そして `apps/desktop/**` — ただし Task 8 の型変更に追随する2行（`IoTable.tsx` L32 と `MonitorPanel.tsx` L94）だけは例外で、これを直さないと `pnpm -r typecheck` が通らない（B1）。画面・3D・設定・E2E はすべて 4B の担当である。
 
 **Tech Stack:** TypeScript（`strict` ＋ `noUncheckedIndexedAccess` ＋ `exactOptionalPropertyTypes` ＋ `verbatimModuleSyntax`、`.js` 拡張子つき相対 import）、zod 4.6.0、Vitest 5（カバレッジ v8・閾値90%）、pnpm workspace、Prettier（printWidth 100）。**新しい外部依存は追加しない。新しいパッケージも作らない。**
 
@@ -26,8 +26,8 @@
 | 6 | `test/skin.test.ts` はショートカット表の不変条件（action・keys が一意、`enabled: false` はちょうど1件、`panels`/`shortcuts`/`errorMessages` にベンダー名を含まない、`displayName` に「風」を含む）を見張っている。`application` の `note` に `'Phase 4'` を含むことも見ている（**Task 1 で文言を変えるので同時に更新する**） | `packages/plc-dialects/test/skin.test.ts` |
 | 7 | IRの `Device.index` は**0起点の通し番号**で、8進・10進・16進はすべて方言の表示上の話である（3A 決定表#5）。`DeviceKind` は `input`/`output`/`internal`/`timer`/`counter`/`special` の6種、特殊デバイスは `SP0`〜`SP2` の3つだけ | `packages/ladder-core/src/ir.ts` |
 | 8 | `TerminalId` は `<部品ID>.<端子名>` で、**端子名側に `.` を含んでよい**（`parseTerminalId` は最初の `.` で割る。型コメントに `PLC.0.00` の例がある）。部品IDは `.` と `:` を拒否するが、端子名は空でなければ何でもよい | `packages/circuit-sim/src/ids.ts` L11・L37-48 |
-| 9 | `PlcUnitSpec` は現在 `inputCommon: string`（**単数**）と `inputs: readonly string[]`（端子名の配列。添字がIRの `device.index`）と `outputs: readonly PlcOutputSpec[]`（`{name, com}`）と `inputOhms?` / `onAmps?` / `offAmps?`（**機種で1つ**）を持つ。8点1コモンの機種と、点ごとに抵抗が違う CP1E はこの形では表せない | `packages/circuit-sim/src/plc.ts` L36-64 |
-| 10 | `createPlcUnit()` は入力を `PLC.<inputCommon>`–`PLC.<入力端子>` 間の `load`（`plcInput`）、出力を `PLC.<出力端子>`–`PLC.<COM>` 間の `contact`（`driver: 'external'`）にする。電源端子（`spec.power`）は要素を持たない | `packages/circuit-sim/src/plc.ts` L76-150 |
+| 9 | `PlcUnitSpec` は現在 `inputCommon: string`（**単数**）と `inputs: readonly string[]`（端子名の配列。添字がIRの `device.index`）と `outputs: readonly PlcOutputSpec[]`（`{name, com}`）と `inputOhms?` / `onAmps?` / `offAmps?`（**機種で1つ**）を持つ。8点1コモンの機種と、点ごとに抵抗が違う CP1E はこの形では表せない | `packages/circuit-sim/src/plc.ts` L36-57 |
+| 10 | `createPlcUnit()` は入力を `PLC.<inputCommon>`–`PLC.<入力端子>` 間の `load`（`plcInput`）、出力を `PLC.<出力端子>`–`PLC.<COM>` 間の `contact`（`driver: 'external'`）にする。電源端子（`spec.power`）は要素を持たない | `packages/circuit-sim/src/plc.ts` L73-151 |
 | 11 | `PartMeta`（`kind: 'plc'`）は `inputCommon: TerminalId` を持ち、`test/plc-part.test.ts` が `expect(meta?.inputCommon).toBe('PLC.SS')` を見ている。`simulation.ts` は `inputCommon` を**参照していない**（grep 済み） | `packages/circuit-sim/src/parts.ts` L91、`test/plc-part.test.ts` L75 |
 | 12 | `PlcUnitDefinition`（`board-jipm.ts` L296-311）は `id` / `model` / `vendor` / `displayName` / `sizeMm` / `pos` / `spec` / `terminals` / `leds` を持つ。ラック形（ベース＋モジュール）を表す項目が無い | `packages/board-model/src/board-jipm.ts` |
 | 13 | `withPlcUnit(board, unit)` は `id` を変えずに `plcUnit` と `unit.terminals` ＋ `OUTLET_TERMINALS` を足した派生盤を返す。**機種に依存しない**ので Phase 4 で変更は要らない | `packages/board-model/src/plc-unit.ts` 末尾 |
@@ -38,7 +38,7 @@
 | 18 | `PHASE3_MODELS` を参照しているのは `content/src/index.ts` L144・`content/test/index.test.ts` L141,652・`content/test/schema-plc.test.ts` L5,42 の**4ファイルだけ**で、`apps/desktop` は参照していない（grep 済み） | `grep -rn PHASE3_MODELS` |
 | 19 | `plc-static-checks.ts` の `checkIoAssignment()` は `/^PLC\.X\d+$/` と `/^PLC\.Y\d+$/` という**三菱の端子名を前提にした正規表現**を持つ。CP1E の `PLC.0.00` / `PLC.100.00`、JW300 の `PLC.A0` では一致しない | `packages/content/src/plc-static-checks.ts` の `isPlcX` / `isPlcY` |
 | 20 | `checkPlcPowerIndependent()` は端子名 `'L'` / `'N'` を**直書き**している。CP1E の電源端子は `L1` / `L2/N` なので機種仕様から引く必要がある | 同上 |
-| 21 | `plcWiringPlan()` は `unit.spec.inputs[x]` / `unit.spec.outputs[y]` / `unit.spec.inputCommon` / `terminalId('OUTLET','L')→plcTerminal('L')` を使う。入力コモンが複数ある機種と、電源端子名が `L`/`N` でない機種に対応が要る | `packages/content/src/plc-reference.ts` L86-140 |
+| 21 | `plcWiringPlan()` は `unit.spec.inputs[x]` / `unit.spec.outputs[y]` / `unit.spec.inputCommon` / `terminalId('OUTLET','L')→plcTerminal('L')` を使う。入力コモンが複数ある機種と、電源端子名が `L`/`N` でない機種に対応が要る | `packages/content/src/plc-reference.ts` L93-139 |
 | 22 | 内蔵モードD課題8題は `plc.model: 'FX5U'` で、使う点は 2級形式が X0〜X2 / Y0〜Y2、1級形式が X0〜X2 / Y0〜Y3 である。IR側に三菱固有の要素は無い（`device.index` は通し番号） | `packages/content/src/builtin/plc/d-00*.json`、`test/builtin-plc.test.ts` |
 | 23 | `PlcInputMapSchema` は `x: 0〜15`、`PlcOutputMapSchema` は `y: 0〜15` を許す。CP1E は出力が12点しかないので `y: 12` 以降は機種にない点になる | `packages/content/src/schema/plc.ts` |
 | 24 | `@ojt/content` は `@ojt/board-model` に依存している（`plc-reference.ts` が import 済み）。`schema/plc.ts` から `plcUnitFor()` を呼んでも循環は起きない（`board-model` は `content` を知らない） | `packages/content/package.json`、`src/plc-reference.ts` L1-15 |
@@ -51,7 +51,9 @@
 | OMRON のデバイス番号体系 | 入力は CP1E-N30DR-A の実装点の並び（`0.00`〜`0.11`・`1.00`〜`1.05` の18点）、出力は `100.00`〜`100.07`・`101.00`〜`101.03` の12点。IRの `index` はこの並びの通し番号 | 一次資料（§10.1 の点数）＋本アプリの写像 | `packages/plc-dialects/src/omron.ts` |
 | OMRON のタイマ表記 | `TIM`（BCD）系の `#0000`〜`#9999`、0.1s単位。`parseTimerPreset` は `&`（BIN・`TIMX`）も受ける | 一次資料（§10.5） | `omron.ts` |
 | OMRON のカウンタ設定値 | `#0001`〜`#9999` | 二次資料（BCD 4桁） | `omron.ts` |
-| JTEKT のプログラム番号 | **1 固定**（`1X000` 形式）。`2`/`3` を入力するとエラー | §10.5（先頭の1/2/3はプログラム番号） | `packages/plc-dialects/src/jtekt.ts` |
+| OMRON の接点形微分の命令名 | `LD UP` / `LD DOWN` / `AND UP` / `AND DOWN` / `OR UP` / `OR DOWN` | **本アプリの表記**（§10.5 は接点形を「`UP` / `DOWN`」とだけ書き、`LD`/`AND`/`OR` との綴り方を示していない。§17.1 の前提方針） | `omron.ts` の `INSTRUCTION_NAMES` |
+| JTEKT のプログラム番号 | **1 固定**（`1X000` 形式）。`2`/`3` を入力するとエラー | 本アプリ独自（§10.5 の固有バリデーション欄は「プログラム番号の**1〜3**」で、2・3 も認めている。本アプリのIRが1プログラムしか持たないため1に絞った。意図的な差分#9） | `packages/plc-dialects/src/jtekt.ts` |
+| TOYOPUC の入出力アドレス割付 | `X(i)` → `1X000` から連番（`IN-12` の16点は `1X000`〜`1X00F`）、`Y(i)` → **次の16点境界** `1Y010` から連番（`OUT-12` の16点は `1Y010`〜`1Y01F`）。出力の先頭アドレス `0x010` は定数 `OUTPUT_BASE` | 本アプリ独自（§10.5 は X・Y とも `000`〜`7FF` としか書かない。§10.5 の固有バリデーション「X と Y の同一番号の重複使用禁止」と既定の割付を両立させるために置いた。意図的な差分#14） | `jtekt.ts` の `OUTPUT_BASE` と `plc-unit.ts` の `PC10G_SPEC.outputs` |
 | JTEKT のタイマ表記 | 設定値レジスタ `H` ＋ 16進4桁（`H001E` = 3.0s）、0.1s単位 | 本アプリ独自（§17 #20） | `jtekt.ts` |
 | JTEKT の命令ニーモニック | 三菱系の `LD`/`LDI`/`AND`/`ANI`/`OR`/`ORI`/`OUT`/`SET`/`RST`/`PLS`/`PLF`/`ANB`/`ORB`/`MC`/`MCR`/`END`。タイマ・カウンタは `OUT` | 本アプリ独自（§17 #10） | `jtekt.ts` の `INSTRUCTION_NAMES` |
 | シャープのリレー番号割付 | 入力ユニット（スロット1）= `000000`〜`000017`、出力ユニット（スロット2）= `000020`〜`000037`、内部リレー = `001000`〜`001777`（いずれも8進6桁） | 本アプリ独自（§10.5 は「割付はユニット装着位置による」とのみ規定） | `packages/plc-dialects/src/sharp.ts` |
@@ -61,10 +63,11 @@
 | PCwin風・JW-300SP風のキー割当 | GX Works3風と同一（`shortcuts.ts` の `GX_STYLE_SHORTCUTS` を流用）。PCwin風は `convertStep: false` なので「変換」の行だけ落とす | 本アプリ独自（§17 #19） | `packages/plc-dialects/src/shortcuts.ts` |
 | CP1E の出力COM分け | `COM0`〜`COM4` に 3/3/2/2/2 点（`100.00`〜`100.02` / `100.03`〜`100.05` / `100.06`〜`100.07` / `101.00`〜`101.01` / `101.02`〜`101.03`） | 本アプリ独自（§17.1・COM端子が5個であることは一次資料） | `packages/board-model/src/plc-unit.ts` |
 | CP1E の電源端子名 | `L1` / `L2N`（銘板は `L2/N`。端子IDに `/` を使わないため）。入力端子台側に同居 | 一次資料（§10.1）＋端子ID規則 | `plc-unit.ts` |
-| TOYOPUC の入出力コモン分け | `IN-12` は8点1コモンで `ICOM0`（`X0`〜`X7`）/ `ICOM1`（`X8`〜`XF`）、`OUT-12` は 5A/COM・2A/点 から8点1コモンとして `COM0`（`Y0`〜`Y7`）/ `COM1`（`Y8`〜`YF`） | 入力側は一次資料（§10.1 の「8点/COM」）、出力側は本アプリ独自 | `plc-unit.ts` |
+| TOYOPUC の入出力の8点1コモン | `IN-12`（DC24V 16点）は**8点1コモン**。`OUT-12` も 5A/COM・2A/点 の記載から同じく8点1コモンとする | 入力側は一次資料（§10.1 の `IN-12` 欄「**8点/COM**」）、出力側は本アプリ独自 | `plc-unit.ts` |
+| TOYOPUC のコモン端子名 | 入力 `ICOM0`（`X0`〜`X7`）/ `ICOM1`（`X8`〜`XF`）、出力 `COM0`（`Y10`〜`Y17`）/ `COM1`（`Y18`〜`Y1F`） | 本アプリ独自（§10.1 はコモンの**点数**だけを書き、端子名を示していない。端子名は部品ID `PLC` の下で一意である必要がある） | `plc-unit.ts` |
 | JW300 の端子名 | 入力 `A0`〜`A7` ＋ `COM.A`、`B0`〜`B7` ＋ `COM.B`（§10.1 で確定）。出力は同じ様式で `C0`〜`C7` ＋ `COM.C`、`D0`〜`D7` ＋ `COM.D` | 入力は一次資料、出力は本アプリ独自 | `plc-unit.ts` |
 | ラック形モジュールの外形・端子配置 | 1モジュール 幅35 × 高さ130 mm、奥行は TOYOPUC 120 / JW300 109.4（CUは99.8）。ベース外形 = モジュール幅合計＋左右各10mm、高さ140。端子は1モジュールにつき**2列×最大9段**（列間17mm・段間13mm）に並べる（当たり判定半径4mmが重ならない最小構成） | 本アプリ独自（§10.1・§17 #11・§17.1 の TOYOPUC 外形前提） | `plc-unit.ts` |
-| 各機種のPLC入力しきい値 | FX5U のみ ON 3.5mA（§5.1.3）。CP1E・TOYOPUC・JW300 は `circuit-sim` の既定（ON 3mA / OFF 1.5mA）を使う。24V印加時の入力電流は CP1E 5.0mA（4.8kΩの点）・JW300 7.3mA・TOYOPUC 10.0mA でいずれもON判定を超える | 本アプリ独自（各社の感度はPLC調査資料に無い） | `plc-unit.ts` の `*_SPEC` |
+| 各機種のPLC入力しきい値 | FX5U のみ ON 3.5mA（§5.1.3）。CP1E・TOYOPUC・JW300 は `circuit-sim` の既定（ON 3mA / OFF 1.5mA）を使う。24V印加時の入力電流は CP1E 5.0mA（4.8kΩの点）・JW300 **約7.3mA**（24V ÷ 3.3kΩ = 7.27mA。§5.1.3 の 7.5mA は丸めた値）・TOYOPUC 10.0mA でいずれもON判定を超える | 本アプリ独自（各社の感度はPLC調査資料に無い） | `plc-unit.ts` の `*_SPEC` |
 | 機種の**外観**（筐体色・端子カバー・LED位置・正面の造作） | 外形寸法はカタログ値（§10.1）。色と面上の配置は一般に知られた見え方を再現した本アプリの記述: FX5U＝濃灰の筐体＋明灰のヒンジ式端子カバー、CP1E＝明灰（アイボリー）の筐体＋黒の端子台、TOYOPUC・JW300＝明灰のモジュール＋黒の端子台。LED列・RUN/STOPスイッチ・Ethernet／SD／USB・スロットラッチは §10.1 の記載と一般的な前面構成から置く | 寸法は一次資料（カタログ）、色と配置は本アプリ独自（実機写真・純正画像は使わない。§17.1 / PLC調査資料 §6・§7） | `packages/board-model/src/plc-unit.ts` の `*_APPEARANCE` |
 | 銘板の表記 | **型式の文字列だけ**（`FX5U-32MR/ES` / `CP1E-N30DR-A` / `PC10G-1SP` / `JW-212NA` …）。ロゴ・商標図形・ブランド名（`MELSEC` / `TOYOPUC` 等）は3Dに描かない。商標の帰属は設定画面の `trademarkNotice`（§15、Phase 1D で実装済み）に載せる | 本アプリ独自 | 同上（`nameplate`） |
 
@@ -94,6 +97,8 @@
 | `packages/content/src/plc-reference.ts` | **変更**: 複数入力コモン・機種別AC端子に対応した模範配線。§10.2 |
 | `packages/content/src/plc-static-checks.ts` | **変更**: 三菱固有の正規表現を撤去し機種仕様から端子集合を引く。§10.8 |
 | `packages/content/src/index.ts` | **変更**: 公開APIの確定 |
+| `apps/desktop/src/renderer/ladder/IoTable.tsx` | **変更**: L32 の1行だけ（`unit.spec.inputs[x]` → `?.name`）。Task 8 の型追随（B1） |
+| `apps/desktop/src/renderer/ladder/MonitorPanel.tsx` | **変更**: L94 の1行だけ（同上） |
 | `packages/plc-dialects/test/*.test.ts` | 新規5ファイル＋既存2ファイルの追随 |
 | `packages/circuit-sim/test/*`・`packages/board-model/test/*`・`packages/content/test/*` | 既存テストの追随と新規テスト |
 
@@ -119,7 +124,7 @@
 | # | 決めたこと | 採用した設計 | 理由・却下した案 |
 |---|---|---|---|
 | 1 | 方言ごとのデバイス番号の意味 | IRの `index` は**その機種で実際に使える点の通し番号**。OMRON は `X(12)` → `1.00`（ch0は12点しかないため）、シャープは `X(8)` → `000010`（8進） | 端子名（`spec.inputs[i].name`）とデバイス表記（`formatDevice(X(i))`）が同じ添字で引けるようにするため。CIOの16ビット/chをそのまま使うと `X(12)`=`0.12` が CP1E に無い点を指してしまい、`plc-reference` / `plc-static-checks` が使う「添字 → 端子」の対応に穴があく |
-| 2 | 端子名とデバイス表記の関係 | **一致させない**。TOYOPUC は端子が `X0`〜`XF`・デバイスが `1X000`〜`1X00F`、シャープは端子が `A0`〜`B7`・デバイスが `000000`〜`000017` | 実機でも端子台の印字とプログラムのアドレスは別物である。3A の `plcWiringPlan()` も「割付の `x`/`y` は通し番号、端子名は機種仕様から引く」と書いてあり、その規約をそのまま守る |
+| 2 | 端子名とデバイス表記の関係 | **一致させない**。TOYOPUC は端子が `X0`〜`XF` / `Y10`〜`Y1F`・デバイスが `1X000`〜`1X00F` / `1Y010`〜`1Y01F`、シャープは端子が `A0`〜`B7`・デバイスが `000000`〜`000017` | 実機でも端子台の印字とプログラムのアドレスは別物である。3A の `plcWiringPlan()` も「割付の `x`/`y` は通し番号、端子名は機種仕様から引く」と書いてあり、その規約をそのまま守る |
 | 3 | 共通のデバイス検査 | `device-rules.ts` の `collectDeviceIssues(program, rules)` に括り出し、**新しい3方言だけが使う**。`mitsubishi.ts` の `validate()` は現状のまま | 三菱の `errorMessages` のキー集合とメッセージ文言は既存テストが完全一致で見張っている（前提#5）。共通化のために三菱の文言を動かすと Phase 3 のテストを機能上の利得なしに書き換えることになる。重複は約50行で、範囲外メッセージの組み立て方は共通ヘルパ側が方言の `formatDevice` から導出する |
 | 4 | 方言固有のバリデーション | `validate()` = 共通検査 ＋ 方言固有検査。固有検査は TOYOPUC が「X と Y、T と C の同一番号の併用禁止」（`device-conflict`）、シャープが8進桁（`parseDevice` 側）、OMRON が `ch.bit` のビット部00〜15（`parseDevice` 側） | §10.5 の「固有バリデーション」行そのまま。表記の誤り（8進に8、ビット部16）は**入力時**に `parseDevice` が弾くのが自然で、IRになった後には現れない。IRに残りうる誤りだけを `validate()` が見る |
 | 5 | 「変換」不要スキンのショートカット | `convertStep: false` のスキン（CX-Programmer風・PCwin風）は**ショートカット表から「変換」の行を落とす** | 押しても何も起きないキーを表に出すと §12.1 のキー一覧が実機と食い違う。`withoutConvert()` の1行で落とせるようにした |
@@ -133,6 +138,8 @@
 | 13 | 機種にない入出力点 | `PlcRefSchema` ではなく `PlcProblemSchema` の `superRefine` で「`io.inputs[].x` / `io.outputs[].y` が機種の点数の範囲内か」を検査する（`plcUnitFor(model)` を使う） | `PlcRefSchema` は `{vendor, model}` しか見えないので割付を検査できない。`plcUnitFor()` が未対応機種に `undefined` を返したときは既存の「対応していないPLC機種です」の経路に任せる |
 | 14 | 内蔵課題8題の扱い | JSONは**1文字も変えない**。4機種すべてで通ることを `plc-cross-validation.test.ts` が「`plc` だけ差し替えて再検証し、`judgePlcReference()` が合格する」形で確かめる | §16 Phase 4 の「4方言が切替できるアプリ」は同じ課題が機種を跨いで成立することを意味する。課題を機種別に増やすと §7.9 の題数（モードD 8題）と食い違う |
 | 15 | 3Dの外観をどこに持つか | `PlcUnitDefinition.appearance` / `PlcModuleDefinition.appearance`（`PlcAppearance`）に**データとして**持ち、4B はそれを読んで描くだけにする。色はhex、寸法・矩形はmm、座標系は「正面の左上が原点・x右・y下」 | 利用者の要求は「各メーカーのシーケンサーの外観を忠実に再現する」ことだが、実機写真・純正画像は入手できない（§17.1 / PLC調査資料 §7）。カタログの外形寸法と一般に知られた見え方から**自前で作図**し、値を1ファイルに集める。4B に色や座標を直書きすると、実機と違うと分かったときの修正箇所が3Dコンポーネントに散る（§17.1 の「修正箇所は盤モデル」を守れない） |
+| 16 | TOYOPUC の X と Y のアドレス | **同じアドレス空間に置き、出力を次の16点境界からにずらす**。`X(i)` → `1X000`＋i、`Y(i)` → `1Y010`＋i（`OUTPUT_BASE = 0x010`）。同番号検査（`checkNumberConflicts`）は IRの `index` ではなく**この写像を通したアドレス**どうしを比べる | §10.5 の固有バリデーションは「X と Y、T と C の同一番号の重複使用禁止」である（実機では同じ番号のXとYが同じI/Oメモリを指す）。IRの `index` をそのまま X・Y 両方のアドレスにすると、内蔵8題がすべて `X(0)`＋`Y(0)` を使うため `convert()` が全題 `device-conflict` になり、Task 14 が通らない。実機のラックでも入力モジュールと出力モジュールは別のアドレスに実装されるので、既定の割付を「`IN-12` が `1X000`〜`1X00F`、`OUT-12` が `1Y010`〜`1Y01F`」とすれば衝突は起きず、検査は**利用者が明示的に同じ番号を書いたとき**（`1X010` と `1Y010`）にだけ働く。却下案: ①検査を落とす → §10.5 の固有バリデーションを実装しないことになる ②`index` を比べたまま内蔵課題のJSONを書き換える → 決定表#14（JSONは1文字も変えない）に反する |
+| 17 | TOYOPUC の T と C のアドレス | **ずらさない**（`1T000` と `1C000` は併用できないまま）。内蔵8題はタイマを使う題（d-003〜d-006）とカウンタを使う題（d-007）が分かれており、同じ題でTとCを併用していないので衝突しない（実コードで確認済み） | X/Y と違い、TとCを同じ課題で使う要求が今のところ無い。必要になった時点で #16 と同じ要領で `COUNTER_BASE` を置けばよく、そのときの修正箇所は `jtekt.ts` の1ファイルである |
 
 ---
 
@@ -1110,6 +1117,27 @@ function inRange(kind: DeviceKind, index: number, text: string): Device | Error 
   return device(kind, index);
 }
 
+/**
+ * チャネル内のビットを検査してからIRの通し番号に直す。§10.1 / 決定表#1
+ * CP1E が実装しているのは ch0 が12点・ch1 が6点・ch100 が8点・ch101 が4点で、
+ * `0.12` や `100.08` は「隣のチャネルの先頭」ではなく**この機種に無い点**である。
+ * `inRange` にそのまま渡すと `0.12` が `1.00` と同じ通し番号（12）になってしまうので、
+ * 通し番号に直す**前に**チャネル内の点数で弾く。
+ */
+function inChannel(
+  kind: DeviceKind,
+  ch: number,
+  bit: number,
+  points: number,
+  base: number,
+  text: string,
+): Device | Error {
+  if (bit >= points) {
+    return new Error(`この機種にはないデバイスです（${ch}.00〜${ch}.${bit2(points - 1)}）: ${text}`);
+  }
+  return inRange(kind, base + bit, text);
+}
+
 /** 方言表記 → IRのデバイス。読めない表記は Error を返す（投げない）。§10.5 */
 function parseDevice(text: string): Device | Error {
   const trimmed = text.trim();
@@ -1128,10 +1156,18 @@ function parseDevice(text: string): Device | Error {
   }
   const parsed = parseChannelBit(upper);
   if (parsed instanceof Error) return parsed;
-  if (parsed.ch === 0) return inRange('input', parsed.bit, trimmed);
-  if (parsed.ch === 1) return inRange('input', INPUT_CH0_POINTS + parsed.bit, trimmed);
-  if (parsed.ch === 100) return inRange('output', parsed.bit, trimmed);
-  if (parsed.ch === 101) return inRange('output', OUTPUT_CH100_POINTS + parsed.bit, trimmed);
+  if (parsed.ch === 0) return inChannel('input', 0, parsed.bit, INPUT_CH0_POINTS, 0, trimmed);
+  if (parsed.ch === 1) {
+    const points = INPUT_POINTS - INPUT_CH0_POINTS;
+    return inChannel('input', 1, parsed.bit, points, INPUT_CH0_POINTS, trimmed);
+  }
+  if (parsed.ch === 100) {
+    return inChannel('output', 100, parsed.bit, OUTPUT_CH100_POINTS, 0, trimmed);
+  }
+  if (parsed.ch === 101) {
+    const points = OUTPUT_POINTS - OUTPUT_CH100_POINTS;
+    return inChannel('output', 101, parsed.bit, points, OUTPUT_CH100_POINTS, trimmed);
+  }
   return new Error(`この機種にはないチャネルです（0／1／100／101）: ${trimmed}`);
 }
 
@@ -1285,7 +1321,7 @@ pnpm --filter @ojt/plc-dialects exec vitest run test/omron.test.ts
 pnpm --filter @ojt/plc-dialects exec vitest run
 ```
 
-Expected: `omron.test.ts` は全ケース通過。パッケージ全体では `test/profile.test.ts` の2ケース（`implements only Mitsubishi in Phase 3` と `throws a readable error for a dialect that Phase 4 will add`）が**一時的に落ちる**。これは Task 5 で直すので、落ちるのがこの2ケースだけであることを確認して先へ進む。
+Expected: `omron.test.ts` は全ケース通過。パッケージ全体では `test/profile.test.ts` の**3ケース**（`implements only Mitsubishi in Phase 3` / `keeps availableDialects() consistent with IMPLEMENTED_DIALECT_IDS` / `throws a readable error for a dialect that Phase 4 will add`）が**一時的に落ちる**。これは Task 5 で直すので、落ちるのがこの3ケースだけであることを確認して先へ進む。
 
 - [ ] **Step 6: コミットする**
 
@@ -1305,14 +1341,15 @@ git commit -m "feat(plc-dialects): add the OMRON CP1E profile"
 - Modify: `packages/plc-dialects/src/index.ts`
 - Test: `packages/plc-dialects/test/jtekt.test.ts`
 
-§10.5 の JTEKT 列（16進デバイス、先頭の `1` はプログラム番号）と §10.6 の PCwin風の行を実装する。命令ニーモニックは §17 #10 の前提（三菱系の流用）、タイマ単位は §17 #20 の前提（0.1秒）、特殊デバイスは §17 #22 の前提割当（`1V00` / `1V01` / `V072`）である。**この機種だけが持つ検査**が「X と Y、T と C の同一番号の併用禁止」（§10.5 固有バリデーション・調査資料 §8.1）である。
+§10.5 の JTEKT 列（16進デバイス、先頭の `1` はプログラム番号）と §10.6 の PCwin風の行を実装する。命令ニーモニックは §17 #10 の前提（三菱系の流用）、タイマ単位は §17 #20 の前提（0.1秒）、特殊デバイスは §17 #22 の前提割当（`1V00` / `1V01` / `V072`）である。**この機種だけが持つ検査**が「X と Y、T と C の同一番号の併用禁止」（§10.5 固有バリデーション・調査資料 §8.1）である。この検査を素直に実装すると内蔵8題（`X(0)`＋`Y(0)` を使う）が全題エラーになるため、**出力のアドレスを入力の次の16点境界からにずらす**（`OUTPUT_BASE = 0x010`）。検査は IRの通し番号ではなく**ずらした後のアドレス**どうしを比べる（決定表#16・意図的な差分#14）。
 
 | 決めること | 本タスクの実装 |
 |---|---|
-| デバイス表記 | `1X000`〜`1X7FF`（16進3桁・大文字）。`1Y` / `1M` は同じ形、`1T` / `1C` は `000`〜`1FF` |
+| デバイス表記 | `1X000`〜`1X7FF`（16進3桁・大文字）。`1M` は同じ形、`1T` / `1C` は `000`〜`1FF` |
+| 入出力アドレス | `X(i)` → `1X000`＋i（`IN-12` の16点は `1X000`〜`1X00F`）、`Y(i)` → `1Y010`＋i（`OUT-12` の16点は `1Y010`〜`1Y01F`）。出力の上限は `1Y7FF` なので `deviceRanges.output.max` は 2031（決定表#16） |
 | プログラム番号 | **1 固定**。`parseDevice('2X000')` は「プログラム番号は1です」のエラー（前提表） |
 | タイマ設定値 | 設定値レジスタ `H` ＋ 16進4桁。`H001E` = 30カウント = 3.0s（前提表） |
-| 同番号重複 | `1X000` と `1Y000` を同じプログラムで使うと `device-conflict`。`1T000` と `1C000` も同様（§16 Phase 4 受入基準③の3A側） |
+| 同番号重複 | **アドレス**どうしを比べる。`1X010`（＝`X(16)`）と `1Y010`（＝`Y(0)`）を同じプログラムで使うと `device-conflict`。`1T000` と `1C000` も同様。既定の割付（`X(0)`＋`Y(0)`）では衝突しない（§16 Phase 4 受入基準③の3A側・決定表#16） |
 | 変換 | **不要**（`convertStep: false`。スクリーンエディタ方式。§10.6）。ショートカットは GX Works3風から「変換」を落として流用（§17 #19） |
 
 - [ ] **Step 1: 失敗するテストを書く**
@@ -1364,10 +1401,18 @@ describe('JTEKT TOYOPUC PC10G-1SP のデバイス表記（§10.5 / PLC調査資�
     expect(profile.formatDevice(X(0))).toBe('1X000');
     expect(profile.formatDevice(X(15))).toBe('1X00F');
     expect(profile.formatDevice(X(2047))).toBe('1X7FF');
-    expect(profile.formatDevice(Y(16))).toBe('1Y010');
     expect(profile.formatDevice(M(255))).toBe('1M0FF');
     expect(profile.formatDevice(T(511))).toBe('1T1FF');
     expect(profile.formatDevice(C(0))).toBe('1C000');
+  });
+
+  it('starts the outputs at the next 16-point boundary (決定表#16)', () => {
+    // `IN-12` の16点が `1X000`〜`1X00F`、`OUT-12` の16点が `1Y010`〜`1Y01F` になる。
+    // 既定の割付（`X(0)` と `Y(0)`）で X と Y のアドレスが衝突しないようにするため
+    expect(profile.formatDevice(Y(0))).toBe('1Y010');
+    expect(profile.formatDevice(Y(15))).toBe('1Y01F');
+    expect(profile.formatDevice(Y(16))).toBe('1Y020');
+    expect(profile.formatDevice(Y(2031))).toBe('1Y7FF');
   });
 
   it('maps the three special devices (§17 #22 の前提割当)', () => {
@@ -1380,7 +1425,8 @@ describe('JTEKT TOYOPUC PC10G-1SP のデバイス表記（§10.5 / PLC調査資�
   it('parses the dialect notation back into IR devices', () => {
     expect(profile.parseDevice('1X00F')).toEqual(X(15));
     expect(profile.parseDevice('1x00f')).toEqual(X(15));
-    expect(profile.parseDevice('1Y010')).toEqual(Y(16));
+    expect(profile.parseDevice('1Y010')).toEqual(Y(0));
+    expect(profile.parseDevice('1Y01F')).toEqual(Y(15));
     expect(profile.parseDevice('1M0FF')).toEqual(M(255));
     expect(profile.parseDevice('1T1FF')).toEqual(T(511));
     expect(profile.parseDevice('V072')).toEqual(SP(2));
@@ -1393,6 +1439,9 @@ describe('JTEKT TOYOPUC PC10G-1SP のデバイス表記（§10.5 / PLC調査資�
 
   it('rejects out-of-range and unreadable notations', () => {
     expect(profile.parseDevice('1X800')).toBeInstanceOf(Error);
+    // 出力は `1Y010` から始まるので `1Y000`〜`1Y00F` はこの機種に無い（決定表#16）
+    expect(profile.parseDevice('1Y000')).toBeInstanceOf(Error);
+    expect(profile.parseDevice('1Y800')).toBeInstanceOf(Error);
     expect(profile.parseDevice('1T200')).toBeInstanceOf(Error);
     expect(profile.parseDevice('1G000')).toBeInstanceOf(Error);
     expect(profile.parseDevice('1XGGG')).toBeInstanceOf(Error);
@@ -1401,6 +1450,8 @@ describe('JTEKT TOYOPUC PC10G-1SP のデバイス表記（§10.5 / PLC調査資�
 
   it('publishes the device ranges of PLC調査資料 §3-B', () => {
     expect(profile.deviceRanges.input).toEqual({ radix: 16, prefix: '1X', min: 0, max: 2047 });
+    // 出力は `OUTPUT_BASE`（0x010）ぶん後ろにずれるので、上限 `1Y7FF` は通し番号 2031
+    expect(profile.deviceRanges.output).toEqual({ radix: 16, prefix: '1Y', min: 0, max: 2031 });
     expect(profile.deviceRanges.internal.max).toBe(2047);
     expect(profile.deviceRanges.timer.max).toBe(511);
     expect(profile.deviceRanges.counter.max).toBe(511);
@@ -1426,12 +1477,13 @@ describe('JTEKT のタイマ（§17 #20 の前提: 0.1秒単位・設定値レ�
 });
 
 describe('JTEKT 固有のバリデーション（§10.5 / 調査資料 §8.1 / 受入基準③）', () => {
-  it('rejects the same number used on both X and Y', () => {
-    const p = program(network('n1', [rung(no(X(0)), out(Y(0)))]), endNetwork());
+  it('rejects the same address used on both X and Y', () => {
+    // `X(16)` は `1X010`、`Y(0)` は `1Y010` で**同じアドレス 0x010**（利用者が明示的に重ねた場合）
+    const p = program(network('n1', [rung(no(X(16)), out(Y(0)))]), endNetwork());
     const errors = profile.validate(p);
     expect(errors.map((e) => e.code)).toEqual(['device-conflict']);
-    expect(errors[0]?.message).toContain('1X000');
-    expect(errors[0]?.message).toContain('1Y000');
+    expect(errors[0]?.message).toContain('1X010');
+    expect(errors[0]?.message).toContain('1Y010');
     expect(errors[0]?.networkId).toBe('n1');
   });
 
@@ -1444,8 +1496,9 @@ describe('JTEKT 固有のバリデーション（§10.5 / 調査資料 §8.1 / �
     expect(profile.validate(p).map((e) => e.code)).toEqual(['device-conflict']);
   });
 
-  it('accepts different numbers on X and Y', () => {
-    const p = program(network('n1', [rung(no(X(0)), out(Y(16)))]), endNetwork());
+  it('accepts the default assignment where X and Y never collide (決定表#16)', () => {
+    // 内蔵8題はすべて `X(0)`〜`X(2)` と `Y(0)`〜`Y(3)` を使う。出力が `1Y010` から始まるので通る
+    const p = program(network('n1', [rung(no(X(0)), out(Y(0)))]), endNetwork());
     expect(profile.validate(p)).toEqual([]);
   });
 
@@ -1546,15 +1599,25 @@ import type {
  * 本アプリは**プログラム1のみ**を使う（§17 #21 のとおり PC10G-1SP にそのまま対応する）。
  * 命令ニーモニック・タイマ時間単位・特殊リレー番号は一次資料が未入手のため §17 #10 / #20 / #22 の
  * 前提値である。実機と異なると分かった場合の修正箇所はこのファイルだけである（§17.1）。
+ *
+ * **入出力のアドレス割付**（決定表#16 / 意図的な差分#14）: §10.5 は X と Y を同じ番号帯
+ * （`000`〜`7FF`）と書きつつ「X と Y の同一番号の重複使用禁止」も定めている。両方をそのまま
+ * 実装すると `X(0)` と `Y(0)` を使う内蔵8題が全題エラーになるので、本アプリは実機のラック構成に
+ * 合わせて **`IN-12` を `1X000`〜`1X00F`、`OUT-12` をその次の16点境界 `1Y010`〜`1Y01F`** に置く。
+ * 同番号検査はIRの通し番号ではなく、この写像を通した**アドレス**どうしを比べる。
  */
 
 /** 本アプリが使うプログラム番号。§10.5（先頭の 1/2/3 はプログラム番号） */
 const PROGRAM_NUMBER = 1;
 
+/** 出力の先頭アドレス（`IN-12` の16点の次の16点境界）。決定表#16 */
+const OUTPUT_BASE = 0x010;
+
 /** デバイス種別ごとの番号体系。PLC調査資料 §3-B */
 const DEVICE_RANGES: Readonly<Record<DeviceKind, DeviceRange>> = {
   input: { radix: 16, prefix: '1X', min: 0, max: 0x7ff },
-  output: { radix: 16, prefix: '1Y', min: 0, max: 0x7ff },
+  // 出力は `OUTPUT_BASE` ぶん後ろにずれるので、上限は `1Y7FF` に当たる通し番号（0x7ff - 0x010）
+  output: { radix: 16, prefix: '1Y', min: 0, max: 0x7ff - OUTPUT_BASE },
   internal: { radix: 16, prefix: '1M', min: 0, max: 0x7ff },
   timer: { radix: 16, prefix: '1T', min: 0, max: 0x1ff },
   counter: { radix: 16, prefix: '1C', min: 0, max: 0x1ff },
@@ -1582,11 +1645,16 @@ const SPECIAL_BY_NAME = new Map<string, number>(
   Object.entries(SPECIAL_DEVICES).map(([index, name]) => [name.toUpperCase(), Number(index)]),
 );
 
+/** IRの通し番号 → この機種のアドレス（出力だけ `OUTPUT_BASE` ぶんずらす）。決定表#16 */
+function addressOf(target: Device): number {
+  return target.kind === 'output' ? target.index + OUTPUT_BASE : target.index;
+}
+
 /** IRのデバイス → 方言表記（16進3桁・大文字）。§10.5 */
 function formatDevice(target: Device): string {
   if (target.kind === 'special') return SPECIAL_DEVICES[target.index] ?? `SP${target.index}`;
   const range = DEVICE_RANGES[target.kind];
-  return `${range.prefix}${target.index.toString(16).toUpperCase().padStart(3, '0')}`;
+  return `${range.prefix}${addressOf(target).toString(16).toUpperCase().padStart(3, '0')}`;
 }
 
 /** 方言表記 → IRのデバイス。読めない表記は Error を返す（投げない）。§10.5 */
@@ -1604,7 +1672,9 @@ function parseDevice(text: string): Device | Error {
   }
   const kind = KIND_LETTER[matched[2] ?? ''];
   if (kind === undefined) return new Error(`読めないデバイス種別です: ${trimmed}`);
-  const index = parseInt(matched[3] ?? '', 16);
+  // アドレス → IRの通し番号。出力は `1Y010` が `Y(0)` なので `OUTPUT_BASE` を引く（決定表#16）
+  const address = parseInt(matched[3] ?? '', 16);
+  const index = kind === 'output' ? address - OUTPUT_BASE : address;
   const range = DEVICE_RANGES[kind];
   if (index < range.min || index > range.max) {
     return new Error(
@@ -1642,6 +1712,9 @@ const RULES: DeviceRuleSet = {
 /**
  * この機種だけの検査: **X と Y、T と C に同じ番号を使ってはならない**。§10.5 / 調査資料 §8.1
  * 同じ番号のX/Yは実機では同じメモリ領域を指すため、入力を読んだつもりで出力を読んでしまう。
+ * 比べるのはIRの通し番号ではなく `addressOf()` を通した**アドレス**である（決定表#16）。
+ * 既定の割付では `IN-12` が `0x000`〜`0x00F`、`OUT-12` が `0x010`〜`0x01F` で重ならないので、
+ * ここが鳴るのは利用者が `1X010` と `1Y010` のように**明示的に同じ番号を書いたとき**だけである。
  * 指摘位置は「後から現れたほう」にする（先に書いた側を消させないため）。
  */
 function checkNumberConflicts(source: LadderProgram): DialectError[] {
@@ -1654,15 +1727,15 @@ function checkNumberConflicts(source: LadderProgram): DialectError[] {
   for (const [first, second] of pairs) {
     const seen = new Map<number, DeviceUse>();
     for (const use of uses) {
-      if (use.device.kind === first) seen.set(use.device.index, use);
+      if (use.device.kind === first) seen.set(addressOf(use.device), use);
     }
     for (const use of uses) {
       if (use.device.kind !== second) continue;
-      const other = seen.get(use.device.index);
+      const other = seen.get(addressOf(use.device));
       if (other === undefined) continue;
       errors.push({
         code: 'device-conflict',
-        message: `${formatDevice(other.device)} と ${formatDevice(use.device)} は同じ番号です（この機種では併用できません）`,
+        message: `${formatDevice(other.device)} と ${formatDevice(use.device)} は同じアドレスです（この機種では併用できません）`,
         device: use.device,
         ...use.place,
       });
@@ -1771,6 +1844,8 @@ pnpm --filter @ojt/plc-dialects exec vitest run test/jtekt.test.ts
 ```
 
 Expected: 全ケース通過。
+
+> `test/profile.test.ts` の3ケース（Task 2 Step 5 の注記と同じもの）は `IMPLEMENTED_DIALECT_IDS` を直す **Task 5 まで赤のまま**である。ここでは `test/jtekt.test.ts` だけを走らせ、パッケージ全体を走らせたときに落ちるのがその3ケースだけであることを確認する。
 
 - [ ] **Step 6: コミットする**
 
@@ -2259,6 +2334,8 @@ pnpm --filter @ojt/plc-dialects exec vitest run test/sharp.test.ts
 
 Expected: 全ケース通過。
 
+> `test/profile.test.ts` の3ケース（Task 2 Step 5 の注記と同じもの）は `IMPLEMENTED_DIALECT_IDS` を直す **Task 5 まで赤のまま**である。ここでは `test/sharp.test.ts` だけを走らせ、パッケージ全体を走らせたときに落ちるのがその3ケースだけであることを確認する。
+
 - [ ] **Step 6: コミットする**
 
 ```powershell
@@ -2305,7 +2382,8 @@ describe('4方言が揃っている（§16 Phase 4）', () => {
     expect(profiles.map((p) => p.id)).toEqual([...DIALECT_IDS]);
   });
 
-  it('has exactly one skin without a conversion step per §10.6', () => {
+  it('requires the conversion step in the Mitsubishi and Sharp skins only (§10.6)', () => {
+    // 変換ありは GX Works3風 と JW-300SP風 の2つ。CX-Programmer風・PCwin風は画面編集で完結する
     const withConvert = profiles.filter((p) => p.convertStep).map((p) => p.id);
     expect(withConvert.sort()).toEqual(['mitsubishi', 'sharp']);
   });
@@ -2441,7 +2519,7 @@ pnpm --filter @ojt/plc-dialects exec vitest run
 pnpm --filter @ojt/plc-dialects exec vitest run --coverage
 ```
 
-Expected: `Test Files  9 passed`（`convert` / `device-rules` / `dialects` / `jtekt` / `mitsubishi-devices` / `mitsubishi-validate` / `omron` / `profile` / `sharp` / `skin` の10ファイル。`skin.test.ts` を含めて10）。カバレッジは lines / statements / functions / branches すべて90%以上。
+Expected: `Test Files  10 passed`（`convert` / `device-rules` / `dialects` / `jtekt` / `mitsubishi-devices` / `mitsubishi-validate` / `omron` / `profile` / `sharp` / `skin` の10ファイル。`notation` と `instruction-list` は Task 6・7 で増える）。カバレッジは lines / statements / functions / branches すべて90%以上。
 
 - [ ] **Step 7: バッチAのレビューとコミット**
 
@@ -2527,6 +2605,8 @@ describe('switchNotation（§10.7 表記切替 / §16 Phase 4 受入基準②）
   it('spells the same program in the other two dialects', () => {
     const jtekt = switchNotation(selfHold, MITSUBISHI_FX5U, JTEKT_PC10G);
     expect(jtekt.changes[0]).toEqual({ device: X(8), from: 'X10', to: '1X008' });
+    // 出力は `OUTPUT_BASE`（0x010）ぶんずれる（決定表#16）
+    expect(jtekt.changes.find((c) => c.device.kind === 'output')?.to).toBe('1Y011');
     const sharp = switchNotation(selfHold, MITSUBISHI_FX5U, SHARP_JW300);
     expect(sharp.changes[0]).toEqual({ device: X(8), from: 'X10', to: '000010' });
     expect(sharp.changes.find((c) => c.device.kind === 'output')?.to).toBe('000021');
@@ -2753,9 +2833,9 @@ describe('instructionList（§10.7 / §16 Phase 4 受入基準⑥）', () => {
     ]);
     expect(mnemonics(JTEKT_PC10G, selfHold)).toEqual([
       'LD 1X000',
-      'OR 1Y000',
+      'OR 1Y010',
       'ANI 1X001',
-      'OUT 1Y000',
+      'OUT 1Y010',
       'END',
     ]);
     expect(mnemonics(SHARP_JW300, selfHold)).toEqual([
@@ -2771,6 +2851,15 @@ describe('instructionList（§10.7 / §16 Phase 4 受入基準⑥）', () => {
     const p = program(network('n1', [rung(rise(X(0)), set(M(0)))]), endNetwork());
     expect(mnemonics(MITSUBISHI_FX5U, p)).toEqual(['LDP X0', 'SET M0', 'END']);
     expect(mnemonics(SHARP_JW300, p)).toEqual(['STR POS 000000', 'SET 001000', 'F-40']);
+  });
+
+  it('loads the always-on device as a b-contact where the dialect needs one (H-4)', () => {
+    // 接点の無い行は「常時ON」を読む。シャープの `007366` は**b接点**で常時ONなので
+    // `STR NOT` で読む（`specialInverted`。§10.5 / §17 #22 / 4B 引き渡し H-4）
+    const p = program(network('n1', [rung(hline(), out(Y(0)))]), endNetwork());
+    expect(mnemonics(MITSUBISHI_FX5U, p)).toEqual(['LD M8000', 'OUT Y0', 'END']);
+    expect(mnemonics(OMRON_CP1E, p)).toEqual(['LD P_On', 'OUT 100.00', 'END']);
+    expect(mnemonics(SHARP_JW300, p)).toEqual(['STR NOT 007366', 'OUT 000020', 'F-40']);
   });
 
   it('merges the timer mnemonic with its device when the dialect spells it that way', () => {
@@ -3164,11 +3253,16 @@ function contactEmit(cell: ContactCell, at: 'ld' | 'and' | 'or', profile: Dialec
   return { mnemonic: profile.instructionNames[key], operand: profile.formatDevice(cell.device) };
 }
 
-/** 式を1つのブロックとして展開する（先頭は必ず `ld` 系）。 */
+/**
+ * 式を1つのブロックとして展開する（先頭は必ず `ld` 系）。
+ * 接点の無い枝（`wire`）は「常時ON」を読む。`specialInverted` に常時ONが載っている方言
+ * （シャープの `007366`）は実機で**b接点**として書くので `ldi` 側を使う（4B 引き渡し H-4）。
+ */
 function emitBlock(expr: Expr, profile: DialectProfile, out: Emit[]): void {
   if (expr.kind === 'wire') {
+    const inverted = profile.specialInverted?.includes(SPECIAL_ALWAYS_ON) ?? false;
     out.push({
-      mnemonic: profile.instructionNames.ld,
+      mnemonic: inverted ? profile.instructionNames.ldi : profile.instructionNames.ld,
       operand: profile.formatDevice({ kind: 'special', index: SPECIAL_ALWAYS_ON }),
     });
     return;
@@ -3195,6 +3289,10 @@ function emitBlock(expr: Expr, profile: DialectProfile, out: Emit[]): void {
 /**
  * ニーモニックがデバイス接頭辞で終わる方言では番号だけを続ける。
  * 三菱の `OUT T` ＋ `T0` は `OUT T0`、OMRON の `TIM` ＋ `T0` は `TIM T0` になる。
+ *
+ * 実機の CX-Programmer はタイマ・カウンタを `CNT 0 #0005` のように**種別の文字を落とした番号だけ**
+ * で書くが、本アプリは `parseDevice()` が文字列だけから一意に読める `CNT C0 #0005` に統一する
+ * （**本アプリの表記**。§17.1 の前提方針。シャープの接頭辞つきタイマと同じ理由。意図的な差分#2）。
  */
 function presetEmit(
   profile: DialectProfile,
@@ -3377,10 +3475,15 @@ git commit -m "feat(plc-dialects): export the instruction list in each dialect"
 - Modify: `packages/circuit-sim/src/plc.ts`・`src/parts.ts`・`src/index.ts`
 - Modify: `packages/board-model/src/plc-unit.ts`（FX5U の追随と `plcRole` の一般化）
 - Modify: `packages/content/src/plc-reference.ts`・`src/plc-static-checks.ts`（呼び出し側の追随）
+- Modify: `apps/desktop/src/renderer/ladder/IoTable.tsx`（L32 の1行。型追随）
+- Modify: `apps/desktop/src/renderer/ladder/MonitorPanel.tsx`（L94 の1行。型追随）
 - Test: `packages/circuit-sim/test/helpers/plc.ts`・`test/plc-part.test.ts`・`test/plc-physics-review.test.ts`
 - Test: `packages/board-model/test/plc-unit.test.ts`
+- Test: `apps/desktop/test/monitor-panel.test.tsx`（L60 の期待値は不変。注記だけ足す）
 
 **振る舞いは変えない**。FX5U のネットリスト・端子・判定はこのタスクの前後で同一でなければならない（既存テストがそのまま通ることで確かめる）。変えるのは「機種を足せる形」にするための型だけである（決定表#9・#10）。
+
+`inputs` の要素が `string` から `PlcInputSpec` になるため、**`apps/desktop` の2箇所も一緒に直す**（`IoTable.tsx` L32 と `MonitorPanel.tsx` L94。どちらも `unit.spec.inputs[i]` を端子名の文字列として使っている）。直さないと `pnpm -r typecheck` が落ちるので、4B を待てない。Step 7 で扱う。
 
 | 変更 | 前 | 後 |
 |---|---|---|
@@ -3658,21 +3761,50 @@ export function detectPlcWiring(
 
 （`checkIoAssignment()` の三菱固有の正規表現は Task 13 で直す。）
 
-- [ ] **Step 7: GREEN を確認する**
+- [ ] **Step 7: `apps/desktop` の2行を追随させる（型追随の最小変更）**
+
+`unit.spec.inputs[x]` の型が `string | undefined` から `PlcInputSpec | undefined` になるので、端子名を
+そのまま使っている2箇所が `pnpm -r typecheck` で落ちる。**この2行だけ**を直す（4B の担当ではない）。
+
+`apps/desktop/src/renderer/ladder/IoTable.tsx` L32:
+
+```ts
+  const inputTerminal = (x: number): string | undefined => unit.spec.inputs[x]?.name;
+```
+
+`apps/desktop/src/renderer/ladder/MonitorPanel.tsx` L94（L34 のヘルパ `terminal` は
+`(name: string | undefined): string` で端子名を受けるので、渡すものを端子名に戻す）:
+
+```tsx
+                  <td>{terminal(unit.spec.inputs[index]?.name)}</td>
+```
+
+`apps/desktop/test/monitor-panel.test.tsx` L60 の期待値（`'PLC.X0'`）は**そのまま通る**（FX5U の入力0の
+端子名は `X0` のままだから）。取り違えを防ぐため、その行の上に1行の注記だけ足す:
+
+```ts
+    // 端子名は機種仕様（`unit.spec.inputs[i].name`）から引く。FX5U の入力0は `X0`（Task 8 で型だけ変えた）
+    expect(screen.getByTestId('monitor-input-0')).toHaveTextContent('PLC.X0');
+```
+
+出力側（`unit.spec.outputs[y]?.name`）は Phase 3 から `PlcOutputSpec` なので変更は要らない。
+
+- [ ] **Step 8: GREEN を確認する**
 
 ```powershell
 pnpm --filter @ojt/circuit-sim exec vitest run
 pnpm --filter @ojt/board-model exec vitest run
 pnpm --filter @ojt/content exec vitest run
+pnpm --filter @ojt/desktop exec vitest run test/monitor-panel.test.tsx
 pnpm -r typecheck
 ```
 
-Expected: 3パッケージとも着手前と**同じ件数**が通る（振る舞いを変えていないため）。特に `board-model/test/plc-netlist.test.ts` と `content/test/builtin-plc.test.ts` が無変更で通ること。
+Expected: 4プロジェクトとも着手前と**同じ件数**が通る（振る舞いを変えていないため）。特に `board-model/test/plc-netlist.test.ts` と `content/test/builtin-plc.test.ts` と `desktop/test/monitor-panel.test.tsx` が期待値を1つも変えずに通ること。
 
-- [ ] **Step 8: コミットする**
+- [ ] **Step 9: コミットする**
 
 ```powershell
-git add packages/circuit-sim packages/board-model packages/content
+git add packages/circuit-sim packages/board-model packages/content apps/desktop
 git commit -m "refactor(circuit-sim): let a PLC spec describe per-point commons, resistance and AC terminals"
 ```
 
@@ -3711,7 +3843,8 @@ const faces: [string, PlcAppearance][] = Object.values(PLC_UNITS).flatMap((unit)
 
 describe('PlcAppearance（3Dが外観を描くための記述）', () => {
   it('exists for every catalogue unit and every rack module', () => {
-    expect(faces.length).toBe(4 + 4 + 4); // 本体4 ＋ TOYOPUC 4枚 ＋ JW300 4枚
+    // Task 9 の時点は FX5U と CP1E の2機種だけ。Task 10 で `2 + 4`、Task 11 で `4 + 4 + 4` に上げる
+    expect(faces.length).toBe(2);
     for (const [name, face] of faces) {
       expect(face.faceMm.width, name).toBeGreaterThan(0);
       expect(face.faceMm.height, name).toBeGreaterThan(0);
@@ -4245,6 +4378,9 @@ describe('PLC_UNIT_PC10G（§10.1 / §17 #21）', () => {
     expect(PC10G_SPEC.inputs.slice(8).every((i) => i.com === 'ICOM1')).toBe(true);
     expect(PC10G_SPEC.inputs.every((i) => i.ohms === 2400)).toBe(true);
     expect(PC10G_SPEC.commons).toEqual(['COM0', 'COM1']);
+    // 出力端子の印字は `OUT-12` のアドレス（方言の `1Y010`〜`1Y01F` と同じ番号）。決定表#16
+    expect(PC10G_SPEC.outputs.map((o) => o.name).slice(0, 3)).toEqual(['Y10', 'Y11', 'Y12']);
+    expect(PC10G_SPEC.outputs.map((o) => o.name).slice(14)).toEqual(['Y1E', 'Y1F']);
     expect(PC10G_SPEC.outputs.map((o) => o.com).slice(7, 9)).toEqual(['COM0', 'COM1']);
     expect(PC10G_SPEC.acPower).toEqual(['L', 'N']);
   });
@@ -4364,10 +4500,20 @@ function rackTerminals(spec: PlcUnitSpec, names: readonly string[], slot: number
   }));
 }
 
-/** 16進表記の端子名を作る（`X0`〜`XF`）。§10.1 */
-export function hexNames(prefix: string, count: number): string[] {
-  return Array.from({ length: count }, (_unused, i) => `${prefix}${i.toString(16).toUpperCase()}`);
+/** 16進表記の端子名を作る（`X0`〜`XF`、`start` を与えると `Y10`〜`Y1F`）。§10.1 */
+export function hexNames(prefix: string, count: number, start = 0): string[] {
+  return Array.from(
+    { length: count },
+    (_unused, i) => `${prefix}${(start + i).toString(16).toUpperCase()}`,
+  );
 }
+
+/**
+ * `OUT-12` の先頭アドレス。`@ojt/plc-dialects` の `jtekt.ts` の `OUTPUT_BASE` と同じ値で、
+ * 端子の印字（`Y10`）と方言表記（`1Y010`）を揃えるためにある（決定表#16）。
+ * 片方だけ変えると `plcWiringPlan()` が引く端子名とラダーの表記がずれるので、必ず両方直す。
+ */
+export const PC10G_OUTPUT_BASE = 0x010;
 
 /** TOYOPUC `IN-12` の入力抵抗[Ω]（10mA/点）。§5.1.3 */
 export const PC10G_INPUT_OHMS = 2400;
@@ -4386,7 +4532,7 @@ export const PC10G_SPEC: PlcUnitSpec = {
     ohms: PC10G_INPUT_OHMS,
   })),
   commons: ['COM0', 'COM1'],
-  outputs: hexNames('Y', 16).map((name, index) => ({
+  outputs: hexNames('Y', 16, PC10G_OUTPUT_BASE).map((name, index) => ({
     name,
     com: `COM${Math.floor(index / RACK_POINTS_PER_COMMON)}`,
   })),
@@ -4591,7 +4737,7 @@ export const PLC_UNIT_PC10G: PlcUnitDefinition = {
         bodyColor: PC10G_BODY_COLOR,
         terminalColor: PC10G_TERMINAL_COLOR,
         cover: { x: 0, y: 12, w: 35, h: 110 },
-        pointLeds: { names: hexNames('Y', 16), group: 'output', perRow: 8 },
+        pointLeds: { names: hexNames('Y', 16, PC10G_OUTPUT_BASE), group: 'output', perRow: 8 },
         assumed: RACK_ASSUMED,
       }),
     },
@@ -4601,7 +4747,7 @@ export const PLC_UNIT_PC10G: PlcUnitDefinition = {
 };
 ```
 
-`PLC_UNITS` に `'PC10G-1SP': PLC_UNIT_PC10G,` を足す。`src/index.ts` にラックの定数・`hexNames` / `rackModulePos` / `rackSizeMm` / `PC10G_SPEC` / `PC10G_INPUT_OHMS` / `RACK_POINTS_PER_COMMON` / `PLC_UNIT_PC10G` / `type PlcModuleDefinition` を足す。`test/plc-appearance.test.ts` の `faces.length` の期待値を `2 + 4` にする。
+`PLC_UNITS` に `'PC10G-1SP': PLC_UNIT_PC10G,` を足す。`src/index.ts` にラックの定数・`hexNames` / `rackModulePos` / `rackSizeMm` / `PC10G_SPEC` / `PC10G_INPUT_OHMS` / `PC10G_OUTPUT_BASE` / `RACK_POINTS_PER_COMMON` / `PLC_UNIT_PC10G` / `type PlcModuleDefinition` を足す。`test/plc-appearance.test.ts` の `faces.length` の期待値を `2 + 4` にする。
 
 - [ ] **Step 4: GREEN を確認してコミットする**
 
@@ -4964,6 +5110,8 @@ git commit -m "feat(board-model): add the Sharp JW300 rack and check the desk ge
 
 `PHASE3_MODELS`（前提#17）を外し、4機種すべてを開始できるようにする。ただし**機種にない入出力点**は弾く: `PlcInputMapSchema` は `x: 0〜15`、`PlcOutputMapSchema` は `y: 0〜15` を許すが、CP1E の出力は12点しかない（前提#23）。判定は `plcUnitFor()` が返す機種仕様で行う（決定表#13）。
 
+`io.inputs[].x` / `io.outputs[].y` は**IRの通し番号（0起点）のまま**で、`resolvePlcIo()` は機種を知らない。TOYOPUC で出力アドレスを `1Y010` からにずらした（決定表#16）のは**方言の表記と端子の印字だけ**の話で、割付の番号・`plcWiringPlan()`・`plc-static-checks` は4機種とも通し番号で引き続き動く（決定表#2「端子名とデバイス表記は一致させない」）。文言に `X`/`Y` の文字を出さないのも同じ理由である（引き渡し注記 H-1）。
+
 - [ ] **Step 1: 失敗するテストを書く**
 
 `packages/content/test/schema-plc.test.ts` の `expect(PHASE3_MODELS).toEqual(['FX5U']);` を含むケースを次で置き換え、`import` の `PHASE3_MODELS` を `SUPPORTED_PLC_MODELS` に直す:
@@ -5061,7 +5209,7 @@ import { plcUnitFor } from '@ojt/board-model';
         ctx.addIssue({
           code: 'custom',
           path: ['io', 'inputs', index, 'x'],
-          message: `${problem.plc.model} の入力は ${unit.spec.inputs.length} 点です（X${input.x} はありません）`,
+          message: `${problem.plc.model} の入力は ${unit.spec.inputs.length} 点です（割付 x: ${input.x} はありません）`,
         });
       });
       io.outputs.forEach((output, index) => {
@@ -5069,7 +5217,7 @@ import { plcUnitFor } from '@ojt/board-model';
         ctx.addIssue({
           code: 'custom',
           path: ['io', 'outputs', index, 'y'],
-          message: `${problem.plc.model} の出力は ${unit.spec.outputs.length} 点です（Y${output.y} はありません）`,
+          message: `${problem.plc.model} の出力は ${unit.spec.outputs.length} 点です（割付 y: ${output.y} はありません）`,
         });
       });
     }
@@ -5108,39 +5256,108 @@ git commit -m "feat(content): let mode D problems start on all four PLC models"
 
 - [ ] **Step 1: 失敗するテストを書く**
 
-`packages/content/test/plc-static-checks.test.ts` に足す:
+`packages/content/test/plc-static-checks.test.ts` の既存ヘルパ `checkInput()`（L46）に課題を差し替えられる
+第3引数を足す（既定値を `PROBLEM` にするので、既存の呼び出し約20箇所は書き換え不要）:
+
+```ts
+function checkInput(
+  circuit: PlcReferenceCircuit,
+  plc: PlcCheckContext,
+  problem: typeof PROBLEM = PROBLEM,
+): StaticCheckInput {
+  const netlist = toNetlist(circuit.session, circuit.board);
+  const result = runPlcOperations(netlist, circuit.program, problem.operations, {
+    durationMs: problem.durationMs,
+  });
+```
+
+（以降の `return { … }` は変えない。`PROBLEM.operations` / `PROBLEM.durationMs` の2箇所だけを
+`problem.` にする。）続けて、既存の `reference()` / `context()` の下に機種引数つきのヘルパを足す:
+
+```ts
+/** メーカーと機種の対応（§7.6）。 */
+const VENDOR_OF: Readonly<Record<string, string>> = {
+  FX5U: 'mitsubishi',
+  'PC10G-1SP': 'jtekt',
+  CP1E: 'omron',
+  'JW-300': 'sharp',
+};
+
+/**
+ * 機種だけを差し替えた模範回路を組む（課題JSONの `plc` 以外は `plcProblemJson()` の既定のまま）。
+ * 返した `circuit.session` を書き換えてから `inputOf()` を呼べば「配線を崩した場合」を作れる。
+ */
+function buildFor(model: string): { problem: typeof PROBLEM; circuit: PlcReferenceCircuit } {
+  const problem = PlcProblemSchema.parse({
+    ...plcProblemJson(),
+    plc: { vendor: VENDOR_OF[model] ?? 'mitsubishi', model },
+  });
+  const built = buildPlcReferenceSession(problem, JIPM_BOARD);
+  if (!built.ok) throw new Error(`${model}: ${JSON.stringify(built.errors)}`);
+  return { problem, circuit: built.value };
+}
+
+/** 組んだ回路を静的チェックの入力にする（操作列はその課題のものを再生する）。 */
+function inputOf(built: ReturnType<typeof buildFor>): StaticCheckInput {
+  return checkInput(built.circuit, context(built.circuit), built.problem);
+}
+
+/** 2つの端子を1本の電線でつないで短絡を作る。 */
+function shortTogether(built: ReturnType<typeof buildFor>, a: string, b: string): StaticCheckInput {
+  expect(addWire(built.circuit.session, built.circuit.board, t(a), t(b)).ok).toBe(true);
+  return inputOf(built);
+}
+
+/**
+ * その端子**だけ**を浮かせる。来ている電線を外し、相手どうしを1本で結び直す。
+ * 単に外すと母線の鎖（`chain()` が作る P側・N側の直列）がそこで切れて後続の端子まで浮き、
+ * 何を検出したのか分からなくなる。
+ */
+function withoutWire(built: ReturnType<typeof buildFor>, id: string): StaticCheckInput {
+  const { session, board } = built.circuit;
+  const touching = session.wires.filter((wire) => at(wire, id));
+  const others = touching.map((wire) => (String(wire.from) === id ? wire.to : wire.from));
+  for (const wire of [...touching]) expect(removeWire(session, wire.id).ok).toBe(true);
+  const [first, second] = others;
+  if (first !== undefined && second !== undefined) {
+    expect(addWire(session, board, first, second).ok).toBe(true);
+  }
+  return inputOf(built);
+}
+```
+
+そのうえで、このファイルの末尾に足す:
 
 ```ts
 describe('ioAssignment は機種の端子名で判定する（Phase 4）', () => {
   it('detects a short between two inputs on a model whose terminals are not Xn', () => {
     // CP1E の入力端子は `PLC.0.00` / `PLC.0.01`。三菱の正規表現では拾えなかった（前提#19）
-    const built = buildFor('CP1E');
-    const nets = shortTogether(built, 'PLC.0.00', 'PLC.0.01');
-    const result = checkIoAssignment(nets);
+    const result = checkIoAssignment(shortTogether(buildFor('CP1E'), 'PLC.0.00', 'PLC.0.01'));
     expect(result.ok).toBe(false);
     expect(result.details.join('|')).toContain('短絡');
   });
 
   it('reports an unwired common on an 8-point-per-common model (受入基準③⑤)', () => {
-    const built = buildFor('JW-300');
-    const nets = withoutWire(built, 'PLC.COM.A');
-    const result = checkIoAssignment(nets);
+    // JW300 の入力コモンは `PLC.COM.A` / `PLC.COM.B`。使う点のコモンが浮いていたら落とす
+    const result = checkIoAssignment(withoutWire(buildFor('JW-300'), 'PLC.COM.A'));
     expect(result.ok).toBe(false);
     expect(result.details.join('|')).toContain('COM.A');
   });
 
   it('passes on the reference wiring of every model', () => {
     for (const model of ['FX5U', 'CP1E', 'PC10G-1SP', 'JW-300']) {
-      const built = buildFor(model);
-      expect(checkIoAssignment(built).ok, model).toBe(true);
-      expect(checkTwoStage(built).ok, model).toBe(true);
-      expect(checkPlcPowerIndependent(built).ok, model).toBe(true);
+      const input = inputOf(buildFor(model));
+      expect(checkIoAssignment(input).ok, model).toBe(true);
+      expect(checkTwoStage(input).ok, model).toBe(true);
+      expect(checkPlcPowerIndependent(input).ok, model).toBe(true);
     }
   });
 });
 ```
 
-> `buildFor(model)` / `shortTogether()` / `withoutWire()` は、このファイルに既にある「模範セッションを組んで `StaticCheckInput` にする」ヘルパを機種引数つきに一般化したものである（内蔵課題 d-001 の `plc` を差し替えて `buildPlcReferenceSession()` に渡し、`netlist` を取り出す）。既存ヘルパの名前が違う場合はそれに合わせる。
+（`t()` / `at()` / `PROBLEM` / `reference()` / `checkInput()` / `context()` はこのファイルに既にある
+ヘルパで、`addWire` / `removeWire` / `JIPM_BOARD` / `toNetlist` も既に import 済みである。
+追加で要る import は無い。）
 
 - [ ] **Step 2: RED を確認する**
 
@@ -5257,6 +5474,9 @@ describe('内蔵モードD課題8題は4機種すべてで成立する（§16 Ph
   );
 
   it('模範ラダーはベンダー中立で、4方言すべてで変換が通る（受入基準②）', () => {
+    // TOYOPUC の「X と Y の同番号禁止」は **アドレス**で判定する（決定表#16）。8題はすべて
+    // `X(0)`〜`X(2)` と `Y(0)`〜`Y(3)` を使うので、出力が `1Y010` から始まる限り衝突しない。
+    // ここが `device-conflict` で落ちたら `jtekt.ts` の `OUTPUT_BASE` を疑う
     for (const profile of availableDialects()) {
       for (const problem of BUILTIN_PLC_PROBLEMS) {
         const result = convert(problem.referenceLadder, profile);
@@ -5393,6 +5613,9 @@ git commit -m "test(content): cross-validate the eight built-in mode D problems 
 | 11 | §10.5 の `PlcUnitSpec` 相当は「入力端子名の配列」 | `{name, com, ohms?}` の配列に格上げし、`inputCommon` を `inputCommons`（複数）にし、`acPower` を足した | §5.1.3 が CP1E の入力抵抗を点で分け、§10.1 が TOYOPUC・JW300 を8点1コモンと定め、CP1E の電源端子は `L1`/`L2/N` である。いずれも旧い型では表せない（決定表#9・#10） |
 | 13 | §10.1 は機種の外形寸法・端子集合・LEDの種類までしか定めない | 筐体色・端子カバー・LED/スイッチ/コネクタの面上の位置まで `PlcAppearance` に記述する | 利用者の要求（2026-09-19）が「各メーカーのシーケンサーの外観を忠実に再現すること」である。実機写真・純正画像は入手できない（§17.1 / PLC調査資料 §7）ので、カタログ寸法と一般に知られた見え方から**自前で作図**し、値を1ファイルに集めて `assumed` で前提であることを明示した（決定表#15） |
 | 12 | §16 Phase 4 は「4方言が切替できるアプリ」 | 内蔵課題8題のJSONは無改変のまま、テストで機種を差し替えて4機種の成立を確かめる | §7.9 のモードD題数は8題である。機種別に課題を増やすと題数が32になり仕様と食い違う（決定表#14） |
+| 14 | §10.5 は TOYOPUC の入力を `1X000`〜`1X7FF`、出力を `1Y000`〜`1Y7FF` と書く（同じ番号帯） | 出力のIR通し番号を **`1Y010` から**始める（`OUTPUT_BASE = 0x010`）。`deviceRanges.output.max` は `1Y7FF` を超えないよう 2031 にする | 同じ §10.5 が「X と Y の同一番号の重複使用禁止」も定めており、両方をそのまま実装すると `X(0)` と `Y(0)` を使う内蔵8題が全題エラーになる。実機のラックでも入出力モジュールは別アドレスに実装される（決定表#16） |
+| 15 | §10.5 の `DialectProfile` は命令語を13キー（`ld`〜`counter`）で示す | `InstructionKey` を **24キー**に拡張する（`ldp`/`ldf`/`andp`/`andf`/`orp`/`orf`・`andBlock`/`orBlock`・`mc`/`mcr`・`end` を追加） | §10.7 の命令語リストは `ANB`/`ORB`・`MC`/`MCR`・`END`・接点形の微分（`LDP` 等）を書き出す必要があり、13キーでは方言ごとの綴り（OMRON `AND LD`、シャープ `AND STR` / `F-40`）を表に持てない。§10.5 の表自体はこれらの綴りを4社ぶん載せており、キーが足りないだけである（前提#4） |
+| 16 | §10.5 の命令語の行は JTEKT 列を「同上（前提）」と書く（表の並びでは直前の **OMRON 列**と同じに読める） | JTEKT は**三菱系**の綴り（`SET`/`RST`・`ANB`/`ORB`・`MC`/`MCR`・`END`）にする | §17.2 #10 が「JTEKT TOYOPUC の命令名のみ未入手のため、**三菱系**の `LD`/`OUT`/`SET`/`RST`/`PLS`/`PLF` を前提表記とする」と明記しており、§10.5 の同じ表の微分の行も JTEKT に `PLS` / `PLF`（三菱系）を割り当てている。表の「同上」は直前列ではなく §17.1 の前提方針を指すと読んだ（§17 #10） |
 
 ---
 
@@ -5440,13 +5663,15 @@ Plan 4B（`apps/desktop` の3スキン・ラックの3D・設定画面・表記�
 - **H-4** シャープの常時ONは**b接点**で描く（`specialInverted`）。IRの `SP0` はあくまで「常時ON」であり、a接点で描くと実機の見た目と食い違う。
 - **H-5** 設定画面には §17.1 の常設注記「一部の命令名・キー割当は実機マニュアル未確認のため本アプリの表記です」を出す。どの項目が前提かは `shortcuts[].confirmed === false` で分かる。
 - **H-6** ラックは4スロットぶんの箱を描くが、**ネットリスト上は1部品（`PLC`）**である。端子IDにモジュール名は入っていない（決定表#11）。
+- **H-7** `apps/desktop/src/renderer/three/PlcUnit.tsx` が持つ FX5U 決め打ちの定数は `unit.appearance`（`PlcAppearance`）で置き換える。対象は `BODY_COLOR`（L22 `'#D8DBE0'`）・`LED_LEFT_MM`（L26）と `LED_TOP_MM`（L33、L27-32 のコメント込み）・`PLC_LABEL_PAD_MM`（L47）である。`plcFaceRect()`（L62）は**そのまま残す**（端子座標から面の矩形を導いているだけで機種に依存しない）。`FX5U_APPEARANCE.bodyColor` は `'#3A3D42'`（濃灰）なので、置き換えると**机上のPLCの見た目が変わる**（現行の `'#D8DBE0'` は明灰）。4B の受入確認にスクリーンショットを1枚入れること。
+- **H-8** `apps/desktop/src/renderer/three/labels.ts:267`（`blockTerminalMark()`）は `terminal.id.split('.')` の**2番目の断片**を端子名として使っている。端子名に `.` を含む機種ではこれが壊れる（CP1E の `PLC.0.00` が `'0'`、JW300 の `PLC.COM.A` が `'COM'` になる）。4B は `parseTerminalId()`（`@ojt/circuit-sim` から公開。`packages/circuit-sim/src/ids.ts` L44）の `.name` に差し替えること。直さないと §16 Phase 4 受入基準⑤（`PLC.COM.A` へ配線できる）の3D側が満たせない。前提#8 のとおり端子名側に `.` を含むのは仕様どおりである。
 
 ---
 
 ## 実装者への MERGE 注意
 
 - 作業ツリーは他のエージェントと共有している。**着手前に必ず `git fetch && git pull --rebase origin main`**、コミットは `git add <このプランが挙げたパスだけ>` で行う。`git stash` / `git reset` / `git clean` は使わない。
-- Task 8 は `circuit-sim` / `board-model` / `content` の3パッケージに跨る型変更である。**1つのコミットにまとめる**（途中の状態では `pnpm -r typecheck` が通らない）。
+- Task 8 は `circuit-sim` / `board-model` / `content` の3パッケージ**と `apps/desktop` の2行**に跨る型変更である。**1つのコミットにまとめる**（途中の状態では `pnpm -r typecheck` が通らない）。`apps/desktop` に触るのはこの2行だけで、他は 4B の担当である（B1）。
 - Task 12 は `PHASE3_MODELS` を **`SUPPORTED_PLC_MODELS` に改名**する。`apps/desktop` は現在この定数を参照していない（前提#18）が、4B が参照を足していたら同じコミットで直す。
 - Task 14 で `packages/content/package.json` に devDependency を足したら `pnpm install` を走らせ、`pnpm-lock.yaml` の差分もコミットに含める。
 - 内蔵課題JSON（`packages/content/src/builtin/plc/*.json`）と `apps/desktop/resources/content/plc/*.json` は**このプランでは1文字も変えない**（決定表#14）。
@@ -5462,7 +5687,7 @@ Plan 4B（`apps/desktop` の3スキン・ラックの3D・設定画面・表記�
 - [ ] `availableDialects()` が4件を返し、`getDialect('omron' | 'jtekt' | 'sharp')` が投げない。
 - [ ] OMRON の `convertStep` が `false`、三菱・シャープが `true`、JTEKT が `false` である（受入基準①）。
 - [ ] `switchNotation(p, MITSUBISHI_FX5U, OMRON_CP1E)` が `X10 → 0.08` / `Y1 → 100.01` を返す（受入基準②）。
-- [ ] `PLC_UNIT_PC10G.modules` が `POWER1` / `PC10G-1SP` / `IN-12` / `OUT-12` の4枚で、`PLC.ICOM0` が配線可能端子である。`1X000` と `1Y000` を同時に使うラダーが `device-conflict` になる（受入基準③）。
+- [ ] `PLC_UNIT_PC10G.modules` が `POWER1` / `PC10G-1SP` / `IN-12` / `OUT-12` の4枚で、`PLC.ICOM0` が配線可能端子である。`1X010` と `1Y010`（＝ `X(16)` と `Y(0)`。同じアドレス `0x010`）を同時に使うラダーが `device-conflict` になり、既定の `X(0)`＋`Y(0)` では**ならない**（受入基準③・決定表#16）。
 - [ ] シャープで `parseDevice('000008')` が `8進` を含む `Error` を返す（受入基準④）。
 - [ ] `PLC_UNIT_JW300.modules` が `JW-301PU` / `JW-312CU` / `JW-212NA` / `JW-214SA` の4枚で、`PLC.COM.A` が配線可能端子である（受入基準⑤）。
 - [ ] `instructionList()` が4方言で内蔵8題すべてを書き出し、`text` が CRLF で終わる（受入基準⑥）。
@@ -5471,7 +5696,7 @@ Plan 4B（`apps/desktop` の3スキン・ラックの3D・設定画面・表記�
 - [ ] `PLC_UNITS` の4機種すべてと、ラック2機種の各4モジュールに `appearance` があり、矩形が面からはみ出さず、銘板がロゴ・ブランド名を含まない（`test/plc-appearance.test.ts`）。
 - [ ] `packages/ladder-core` に**一切の変更が無い**（`git diff --stat packages/ladder-core` が空。§17.1 の「IR・ランタイムの変更は不要」の実地検証）。
 - [ ] `packages/content/src` が `@ojt/plc-dialects` を import していない（テストのみ可。3A 決定表#7）。
-- [ ] `apps/desktop` への変更が無い（`git diff --stat apps/desktop` が空。4B の担当）。
+- [ ] `apps/desktop` の変更は `src/renderer/ladder/IoTable.tsx` と `src/renderer/ladder/MonitorPanel.tsx` の**各1行**（と `test/monitor-panel.test.tsx` の期待値1行）**だけ**である（Task 8 の型変更に追随させる最小変更。それ以外は 4B の担当）。
 
 ---
 
@@ -5479,5 +5704,6 @@ Plan 4B（`apps/desktop` の3スキン・ラックの3D・設定画面・表記�
 
 | 日付 | 内容 |
 |---|---|
+| 2026-09-19 | レビュー反映: B1〜B3、I1〜I8、M1〜M7、行番号修正 |
 | 2026-09-19 | 利用者要求（3Dのシーケンサーを各メーカーの外観どおりに再現する）を反映: `PlcAppearance`（筐体色・端子カバー・LED・銘板・前面の造作を正面座標で持つ記述）を `board-model` に追加し、FX5U・CP1E・TOYOPUC 4モジュール・JW300 4モジュールぶんを定義。ラックの端子開始位置を上端8mm→14mmに変えて入出力表示灯の帯を確保。決定表#15・意図的な差分#13・4B引き渡しの行・`test/plc-appearance.test.ts` を追加 |
 | 2026-09-19 | 初版。Phase 4 をライブラリ（4A）と `apps/desktop`（4B）に分割し、本書は 4A を扱う。OMRON・JTEKT・シャープの3プロファイル、GX Works3風キー割当の共有、共通デバイス検査、表記切替（IRを書き換えない）、命令語リスト（直並列簡約）、`PlcUnitSpec` の点別コモン・点別抵抗・AC端子への格上げ、CP1E（一体形）と TOYOPUC・JW300（ラック形）の本体定義、ラック端子の2列配置、4機種でのモードD課題の開始、静的チェックの機種非依存化、内蔵8題の4機種クロス検証を確定した |
