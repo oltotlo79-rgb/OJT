@@ -6,16 +6,17 @@ import {
   type WorkFileSaveRequest,
 } from '../shared/ipc.js';
 import { loadContent } from './content-loader.js';
+import { openManual } from './manual.js';
 import { readSettings, readSettingsResponse, writeSettings } from './settings.js';
 import { saveTextFile } from './text-files.js';
 import { loadWorkFile, saveWorkFile } from './work-files.js';
 
 /**
- * IPC ハンドラ。設計仕様 §4.3 の7チャネルだけを登録する。
+ * IPC ハンドラ。設計仕様 §4.3 の8チャネルだけを登録する。
  * renderer からの入力は信用せず、この層で型を確かめてから使う。
  */
 
-/** §4.3 の7チャネルを登録する。 */
+/** §4.3 の8チャネルを登録する。 */
 export function registerIpc(): void {
   /*
    * 課題一覧と課題1件。`loadContent()` は結果を1件だけ覚えているので、
@@ -55,4 +56,9 @@ export function registerIpc(): void {
     return saveTextFile(window, request);
   });
   // --- /Plan 4B Task 9 ---
+
+  // --- Plan 6 Task 7 ---
+  // 取扱説明書（PDF）を OS の既定ビューアで開く（取扱説明書 設計 §8）。引数は取らない
+  ipcMain.handle(IPC_CHANNELS.manualOpen, () => openManual());
+  // --- /Plan 6 Task 7 ---
 }

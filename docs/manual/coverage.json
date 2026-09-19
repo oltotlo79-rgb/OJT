@@ -2363,6 +2363,14 @@
     {
       "key": "MSG.textFile.tooLarge",
       "section": "troubleshooting/こう表示されたら"
+    },
+    {
+      "key": "MSG.manual.missing",
+      "section": "troubleshooting/こう表示されたら"
+    },
+    {
+      "key": "MSG.manual.openFailed",
+      "section": "troubleshooting/こう表示されたら"
     }
   ]
 }

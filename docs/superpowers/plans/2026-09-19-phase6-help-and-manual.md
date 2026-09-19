@@ -3038,7 +3038,7 @@ git show --stat HEAD
 
 本設計 §7・§8、決定表#4〜#8・#26・#27。
 
-- [ ] **Step 1: 失敗するテストを書く（8本目のチャネル）**
+- [x] **Step 1: 失敗するテストを書く（8本目のチャネル）**
 
 `apps/desktop/test/manual-ipc.test.ts`:
 
@@ -3157,7 +3157,7 @@ describe('チャネル（§4.3 からの意図的な差分）', () => {
 
 期待（Step 4 のあと）: **7件通る**。
 
-- [ ] **Step 2: 失敗するテストを書く（同梱と工程）**
+- [x] **Step 2: 失敗するテストを書く（同梱と工程）**
 
 `apps/desktop/test/release-manual.test.ts`:
 
@@ -3222,7 +3222,7 @@ describe('依存（設計 §12 の差分#6）', () => {
 
 期待（Step 6 のあと）: **5件通る**。
 
-- [ ] **Step 3: `shared/ipc.ts` を8本にする**
+- [x] **Step 3: `shared/ipc.ts` を8本にする**
 
 先頭のコメントを直す（**「7本」を全部「8本」にする**。3箇所）:
 
@@ -3274,7 +3274,7 @@ export type OpenManualResult = { ok: true; path: string } | { ok: false; message
 // --- /Plan 6 Task 7 ---
 ```
 
-- [ ] **Step 4: main 側を作る**
+- [x] **Step 4: main 側を作る**
 
 `apps/desktop/src/shared/messages.ts` の `MSG` に足す:
 
@@ -3351,7 +3351,7 @@ pnpm --filter @ojt/desktop test manual-ipc
 # 期待: Test Files 1 passed / Tests 7 passed
 ```
 
-- [ ] **Step 5: PDF を焼くスクリプトを作る**
+- [x] **Step 5: PDF を焼くスクリプトを作る**
 
 `apps/desktop/scripts/print-manual.mjs`:
 
@@ -3427,7 +3427,7 @@ cd apps/desktop && node scripts/build-manual.mjs && npx electron scripts/print-m
 # 期待: 取扱説明書を書き出しました: …/resources/manual/manual.pdf（数百 KB）
 ```
 
-- [ ] **Step 6: 配布の工程に差し込む**
+- [x] **Step 6: 配布の工程に差し込む**
 
 `apps/desktop/package.json` の `dist`（Plan 5 Task 14 が書いたものに**2工程だけ**足す）:
 
@@ -3484,7 +3484,7 @@ extraResources:
 
 `12-troubleshooting.md` の「説明書（PDF）が開かない」に `MSG.manual.missing` の文言をそのまま書く（`manual-coverage.test.ts` が照合する）。
 
-- [ ] **Step 7: テストを通す**
+- [x] **Step 7: テストを通す**
 
 ```
 cd apps/desktop && node scripts/build-manual.mjs
@@ -3494,7 +3494,7 @@ pnpm --filter @ojt/desktop typecheck && pnpm lint
 # 期待: どちらも無警告
 ```
 
-- [ ] **Step 8: commit**
+- [x] **Step 8: commit**
 
 ```
 git add apps/desktop/scripts/print-manual.mjs apps/desktop/src/main/manual.ts apps/desktop/src/main/ipc.ts apps/desktop/src/preload/index.ts apps/desktop/src/shared/ipc.ts apps/desktop/src/shared/messages.ts apps/desktop/package.json apps/desktop/electron-builder.yml apps/desktop/scripts/check-dist.mjs apps/desktop/test/manual-ipc.test.ts apps/desktop/test/release-manual.test.ts docs/releases/v1.0.0.md docs/manual/coverage.json docs/manual/12-troubleshooting.md apps/desktop/src/renderer/help/manual-content.ts

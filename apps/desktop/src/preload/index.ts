@@ -4,6 +4,7 @@ import {
   type AppSettings,
   type AppSettingsResponse,
   type OjtApi,
+  type OpenManualResult,
   type ProblemListPayload,
   type SaveTextRequest,
   type SaveTextResult,
@@ -15,7 +16,7 @@ import {
 
 /**
  * preload。設計仕様 §4.3。
- * `contextBridge` で §4.3 の7チャネルだけを `window.ojt` として公開する。
+ * `contextBridge` で §4.3 の8チャネルだけを `window.ojt` として公開する。
  * `ipcRenderer` そのものは決して露出しない。
  */
 
@@ -33,6 +34,9 @@ const api: OjtApi = {
   saveTextFile: (request: SaveTextRequest) =>
     ipcRenderer.invoke(IPC_CHANNELS.textfileSave, request) as Promise<SaveTextResult>,
   // --- /Plan 4B Task 9 ---
+  // --- Plan 6 Task 7 ---
+  openManual: () => ipcRenderer.invoke(IPC_CHANNELS.manualOpen) as Promise<OpenManualResult>,
+  // --- /Plan 6 Task 7 ---
 };
 
 contextBridge.exposeInMainWorld('ojt', api);

@@ -5,15 +5,18 @@ import { problemIssueText } from './messages.js';
 /**
  * main ⇄ renderer の IPC 契約。設計仕様 §4.3。
  * チャネルは `content:list` / `content:read` / `workfile:save` / `workfile:load` /
- * `settings:get` / `settings:set` / `file:saveText` の **7本のみ**。
- * preload はこの7本だけを `window.ojt` に出す。
+ * `settings:get` / `settings:set` / `file:saveText` / `manual:open` の **8本のみ**。
+ * preload はこの8本だけを `window.ojt` に出す。
  */
 
 /**
- * IPCチャネル名（この7本以外を足さない。§4.3）。
- * Phase 4 で `file:saveText` を足して**7本**になった（Plan 4B 意図的な差分 #1）。
+ * IPCチャネル名（この8本以外を足さない。§4.3）。
+ * Phase 4 で `file:saveText` を足して7本になった（Plan 4B 意図的な差分 #1）。
  * 命令語リストの保存（§10.7「ファイル出力先は利用者が選ぶ」）には保存ダイアログが要り、
  * renderer からはダイアログを開けないためである。
+ * Phase 6 で `manual:open` を足して**8本**になった（取扱説明書 設計 §8）。
+ * `manual:open` は**引数を1つも取らない**——開く対象は main が組み立てた固定の1ファイルだけで、
+ * renderer から任意のパスを開かせる余地を型の上で持たない。
  */
 export const IPC_CHANNELS = {
   contentList: 'content:list',
@@ -23,6 +26,9 @@ export const IPC_CHANNELS = {
   settingsGet: 'settings:get',
   settingsSet: 'settings:set',
   textfileSave: 'file:saveText',
+  // --- Plan 6 Task 7 ---
+  manualOpen: 'manual:open',
+  // --- /Plan 6 Task 7 ---
 } as const;
 
 /**
@@ -248,6 +254,10 @@ export interface OjtApi {
   /** テキストファイルを保存する（命令語リスト）。§10.7 */
   saveTextFile: (request: SaveTextRequest) => Promise<SaveTextResult>;
   // --- /Plan 4B Task 9 ---
+  // --- Plan 6 Task 7 ---
+  /** 同梱の取扱説明書（PDF）を OS の既定ビューアで開く。取扱説明書 設計 §8 */
+  openManual: () => Promise<OpenManualResult>;
+  // --- /Plan 6 Task 7 ---
 }
 
 // --- Plan 4B Task 9 ---
@@ -263,6 +273,11 @@ export interface SaveTextRequest {
 export type SaveTextResult =
   { ok: true; path: string } | { ok: false; canceled: boolean; message: string };
 // --- /Plan 4B Task 9 ---
+
+// --- Plan 6 Task 7 ---
+/** 説明書（PDF）を開いた結果。取扱説明書 設計 §8 / §9 */
+export type OpenManualResult = { ok: true; path: string } | { ok: false; message: string };
+// --- /Plan 6 Task 7 ---
 
 /**
  * `ProblemLoadError` を一覧行に直す。§13 #1

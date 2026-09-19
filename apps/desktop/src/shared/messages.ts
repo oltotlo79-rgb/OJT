@@ -57,6 +57,13 @@ export const MSG = {
     tooLarge: '書き出す内容が大きすぎます',
   },
   // --- /Plan 4B Task 9 ---
+  // --- Plan 6 Task 7 ---
+  /** 同梱の取扱説明書（PDF）。取扱説明書 設計 §9 */
+  manual: {
+    missing: '説明書（PDF）が見つかりません。この画面のもくじから同じ内容を読めます。',
+    openFailed: (detail: string): string => `説明書（PDF）を開けませんでした: ${detail}`,
+  },
+  // --- /Plan 6 Task 7 ---
 } as const;
 
 // --- UX pass 2026-09-19 (#6d): 課題データの読込エラーを日本語で要約する ---

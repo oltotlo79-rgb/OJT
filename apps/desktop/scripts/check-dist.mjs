@@ -18,6 +18,7 @@ import { fileURLToPath } from 'node:url';
  * ①NSISインストーラとポータブル版の2つが出ていること
  * ②`win-unpacked/resources/content/<mode>/*.json` が正本と同じ件数あること（§7.8）
  * ③`resources/app.asar` があること
+ * ④`resources/manual.pdf` があって空でないこと（取扱説明書 設計 §7.3 / 決定表#27）
  * を確かめ、`release/artifacts.md`（ファイル名・バイト数・SHA256）を書き出す。
  *
  * **公開はしない**（タグ付けも GitHub Release もこのスクリプトの仕事ではない。決定表#22）。
@@ -85,6 +86,19 @@ if (!existsSync(RELEASE)) {
 
   if (!existsSync(join(UNPACKED, 'resources', 'app.asar'))) {
     fail('resources/app.asar がありません（asar: true のはずです）');
+  }
+
+  // 取扱説明書（PDF）。取扱説明書 設計 §7.3 / 決定表#27
+  const manual = join(UNPACKED, 'resources', 'manual.pdf');
+  if (!existsSync(manual)) {
+    fail('resources/manual.pdf がありません（extraResources に入っていません）');
+  } else {
+    const bytes = statSync(manual).size;
+    if (bytes === 0) fail('resources/manual.pdf が空です');
+    else {
+      rows.push({ name: 'resources/manual.pdf', size: bytes, sha256: await sha256Of(manual) });
+      out.write(`取扱説明書 OK: ${bytes.toLocaleString('en-US')} バイト\n`);
+    }
   }
 
   const table = [

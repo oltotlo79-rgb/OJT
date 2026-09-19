@@ -29,6 +29,10 @@ asar: true
 extraResources:
   - from: resources/content
     to: content
+  # 取扱説明書（PDF）。asar の中に入れると OS のビューアが読めないので、実体で置く。
+  # NSIS とポータブルは `extraResources` を共有するので、この1項目で両方に入る。
+  - from: resources/manual/manual.pdf
+    to: manual.pdf
 
 win:
   target:
