@@ -4449,6 +4449,8 @@ export function LadderEditor({
     }
     store.setLadder(result.program);
   }, []);
+  // `commit()` の `store.toast(result.message, 'error')` が `applyOrContact` の失敗（例:
+  // 「罫線は空セル・横線・縦線の上にだけ引けます」）もそのまま拾ってトーストに出す（レビュー指摘 M3）。
 
   const onKeyDown = useCallback(
     (event: React.KeyboardEvent<HTMLDivElement>): void => {
@@ -4465,7 +4467,10 @@ export function LadderEditor({
       event.preventDefault();
       switch (action.type) {
         case 'move':
-          store.setLadderCursor(moveCursor(current, store.ladderCursor, action.dRow, action.dCol));
+          // `profile.gridCols` を第4引数に渡す（Batch 1 レビュー I1）。渡さないと非表示の列（11〜14）を右キーが素通りしてしまう。
+          store.setLadderCursor(
+            moveCursor(current, store.ladderCursor, action.dRow, action.dCol, profile.gridCols),
+          );
           break;
         case 'place': {
           if (!NEEDS_DEVICE[action.kind]) {
@@ -6172,6 +6177,11 @@ export function LadderWorkspace({
               useStore.getState().setDeviceComment(device, text);
             }}
           />
+          {/*
+            `setDeviceComment` は上限（`DEVICE_COMMENT_COUNT_LIMIT` = 200件）で新規デバイスの
+            コメントを弾くと `false` を返す（レビュー指摘 M4）。`onChange` はこの戻り値を見て、
+            弾かれたときは `store.toast(...)` でトーストを出すこと（このコード片では未実装）。
+          */}
           <ShortcutHelp profile={profile} />
         </div>
       </div>
@@ -10028,3 +10038,4 @@ git commit -m "docs(plan-3b): tick the tasks and record the implementation delta
 | 2026-09-18 | 初版。Phase 3（モードD＝PLC）のうち `apps/desktop`（3B）を扱う。ラダーエディタを **SVG のセルグリッド**とし、編集の実体は `@ojt/ladder-core` の `edit.ts` 純関数、取り消しは `LadderProgram` のスナップショットスタック（盤とは別）と決めた。キーの意味は `DialectProfile.shortcuts` から引き、キー文字列を画面に書かない（Phase 4 はプロファイルの差し替えだけで済む）。モニタは `PlcSnapshot.poweredCells` を**ネットワーク1本＝行を連ねた文字列**に畳んで 33ms のスナップショットへ相乗りさせる。Worker のコマンドは `plc`（ラダー載せ替え・RUN/STOP・モニタ・リセット）と `judgePlc` の2本だけ足し、盤は既存の `load` に `plcModel` を添えて派生させる。3Dは盤と同じ傾斜グループの延長として描き、視点プリセット `plc`（盤＋PLC＋コンセント全体）を1つ足した。セッション中は `twoStage` / `plcPowerIndependent` / `ioAssignment` を一切漏らさない。`plcPowerIndependent` は端子IDの形で2つの理由に振り分け、どちらにも「シミュレートされるPLCは未配線でも動く」説明を添える |
 | 2026-09-18 | 3A の landed 実装（`ladder-core` 68テスト・`plc-dialects` 37テスト）と 3A レビューの指摘を反映: ①画面に出す入力仕様は `@ojt/board-model` の FX5U の値（4.5kΩ / 3.5mA / 1.5mA）で、`circuit-sim` の既定値（4.7kΩ / 3mA）ではない ②IRのデバイス番号は10進・FX5U の端子名は8進なので、端子を指す文字列は必ず機種側（`unit.spec`）から取る（決定表#16）③`poweredCells` は全行の0列目が真になるので**空セルは塗らない** ④`CompileErrorCode` を画面側で網羅しない（3A 側で構造エラーが増える予定）⑤`judgePlc` の実測は6秒課題で約72ms |
 | 2026-09-19 | Plan 3B の Opus レビューを反映: **B1〜B12**（`@ojt/ladder-core` / `@ojt/plc-dialects` をワークスペース依存として Task 1 Step 0 で足す・`@testing-library/jest-dom` と `test/setup.ts`（`environment` は `happy-dom`）・`restartSession()` は `plcFields()` を混ぜずラダーを残す・`restore()` が RUN とモニタを送り直す・RUN/STOP をツールバーの `extraTools` へ・`KEY_ALIASES` と `insertMode` / `toggleInsert`・`JA.staticCheck` の既存3件に `satisfies`・前提#2 のバレル掲載一覧・自己矛盾していた固定値と行番号・E2E の `装着` とソケット・受入基準⑤の給電元 `CR1.9` / `CR1.13`・`e2e` のコミット対象）、**I1〜I16**（ベースラインを 60ファイル/825テスト・E2E 17本に直す・各タスクの Expected 件数・Files の欠け・MERGE 注意 #13〜#15・`blockFaceTexture()` の1枚板・机上ケーブルのメモ化・`hasHiddenCells()` / `unusedDevices()` の除外・エラー行をボタンに・確定後のカーソル送り・E2E の待ち方と受入基準③・`BOARD_POWER_PREFIXES` の import・不足していた import 行・再帰する `Get-ChildItem`）、**Minor**（no-op の `visualSignature` を落とす・`MonitorPanel` の細い購読・`PLC_PART_ID` / `PLC_WIRE_COLOR`・`Outlet.tsx` の重複 import・ツリーの色と入力例を方言から引く・`ShortcutHelp` の商標注記・MC/MCR の記号）、**利用者決定4件**（①PLC本体と壁コンセントは盤と同じ傾斜グループの延長＝傾きは意図した簡略化 ②`Shift+F3` は `F3` と同じ動作＋キー割当表の注記＋初回1回だけのトースト ③分割比は固定で 1180px 未満は1面フォールバック ④セッション中のライブ配線診断は出さず「PLC電源は壁コンセント（AC100V）から取ります」の静的な1行だけ出す。PLC電源の未配線はエラーで盤給電とは別文言、未使用デバイスは表示のみ）、および**バッチ表の見直し**（4→5→6→7 と 14→16 を直列化、並行は2系統まで、モデル割当を更新）。前提A〜Eを 3A の landed 実装に合わせて更新（`coil-on-read-only-device` と MC/MCR 対応検査・`timer-range`・`internal.max` 7999・内蔵D課題8題で `BUILTIN_ALL_PROBLEMS` は28題） |
+| 2026-09-19 | Batch 1 レビュー反映: I1〜I3、M1〜M6 |
