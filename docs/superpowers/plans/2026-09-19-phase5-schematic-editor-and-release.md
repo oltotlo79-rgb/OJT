@@ -1,0 +1,2307 @@
+# Plan 5: 回路図エディタ・検算・配線ガイド・性能最適化・配布パッケージ（v1.0.0）
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** 設計仕様 §16 Phase 5 の行（回路図エディタの編集機能／検算／配線ガイドのハイライト／electron-builder による NSIS＋ポータブルの配布パッケージ／性能最適化）を実装し、受入基準①〜④を動作で示す。あわせて 2026-09-19 のUXレビューの残り2件（#28 結果画面が「疑わしい配線」を示し 3D で見せる、#29 3D配線のキーボード代替）を取り込む。
+
+**受入基準（§16 Phase 5）:**
+
+| # | 文 | 本プランでの担保 |
+|---|---|---|
+| ① | 回路図エディタで自己保持回路を描き「検算」で合格する | Task 1〜7（エディタ＋`verifySchematic()`）／E2E `schematic.spec.ts`（Task 15） |
+| ② | 回路図の要素をクリックすると3D盤の対応端子が光る | Task 8（配線ガイド）／E2E 同上 |
+| ③ | NSISインストーラでインストールし、オフラインのWindows 11で起動して課題を1つ完了できる | Task 14（配布物の固め＋`check-dist.mjs`＋リリース手順チェックリスト）／E2E のオフライン計測（Task 15） |
+| ④ | 内蔵GPU・FHDで60fpsを維持する | Task 11〜13（計測窓・インスタンス化・テクスチャ共有・`frameloop` 監査）／E2E `perf.spec.ts`（Task 15） |
+
+**利用者要求（2026-09-19、全タスク共通）:** 「**分かりやすく直感的に操作できるUI、UXにしてね**」／「**各画面のクオリティも可能な限り向上すること**」／「最小のトークンで品質を落とさず、できるだけ早く公開したい」。本プランはこれを、①エディタの操作をマウスでもキーボードでも完結させる（パレット＋クリック、矢印＋Enter）、②「いま何をすればよいか」を常に1行で出す（既存の手順帯 `session/step-guide.ts` を回路図エディタにも広げる）、③結果画面を「不合格でした」で終わらせず**疑わしい端子を盤で見せる**（#28）、④3D操作をマウス必須にしない（#29）、⑤画面の品質（はみ出し・フォーカス枠・8px 格子・文字切れ）を `## 完了条件` の「画面の品質」で縛る、という形で満たす。
+
+**公開について（利用者の明示の決定）:** 本プランは**配布物と手順書を用意するところまで**を行う。`git tag` の作成・GitHub Release の公開・配布ファイルの共有は**利用者の明示の指示があるまで一切行わない**（Task 14 の最後に理由付きで明記する）。
+
+**Architecture:** 既に landed している層をそのまま使い、**新しい概念を増やさない**。
+
+| 既にあるもの | Phase 5 での使い方 |
+|---|---|
+| `@ojt/schematic-core` の `SchematicDocument` / `validateDocument()` / `layout()` / `assignToBoard()` / `toSession()` | 文書モデルと §11.3 の変換（渡り配線の母線分配＝§17.2 #33 を含む）は**完成している**。Phase 5 は「文書を**編集する**純関数」（`edit.ts`）と「編集UIが必要とする当たり矩形」（`slotRects()`）だけを足す |
+| `@ojt/content` の `judgeAssemble()` / `buildReferenceSession()` / `buildHighlightIndex()` | 検算は「文書 → `toSession()` → `judgeAssemble()`」で済む。判定器もエンジンも1行も変えない |
+| `@ojt/circuit-sim` の `buildNets()`（union-find） | #28 の「疑わしい配線」は、模範回路と訓練者回路の**節点分割の差**として求める。新しいソルバも新しい判定も要らない |
+| ストアの `highlight`（`HighlightSelection`）と `BoardScene` の `highlight.terminals` / `ProbeMarkers` | 配線ガイド（②）は C2 で landed した連動ハイライトの**同じ道**を通す。3D側に新しい仕組みを足さない |
+| `screens/PlcSession.tsx` の `ladderView`（`'ladder' \| 'split' \| 'board'`）と `ladder/**` のグリッド編集 | モードBに `assembleView`（`'board' \| 'split' \| 'schematic'`）を同じ形で足す。§11.2 の「ラダーと同じグリッド編集エンジン」を**操作の流儀の一致**として実現する |
+| `worker/protocol.ts` の `judge` 往復 | 検算は `verify` 往復を1本足すだけ。シミュレーションは Worker のまま（§15「renderer のフレーム処理をブロックしない」） |
+| `apps/desktop/electron-builder.yml` ＋ `scripts/copy-content.mjs` ＋ `dist` スクリプト | v0.2.0 で**既に動いている**。Phase 5 は新規構築ではなく**固め**（版の 1.0.0 化・同梱課題の検査・成果物の検査とチェックサム・README とインストーラ説明画面・リリース手順） |
+
+**Plan 5 が触らないもの:** `packages/circuit-sim`（1行も変えない）、`packages/ladder-core`、`packages/plc-dialects`、`packages/board-model`、`apps/desktop/src/renderer/ladder/**`（Plan 4B の担当）、`src/worker/runtime.ts` の追従ループ、判定アルゴリズムそのもの（`judge.ts` / `judge-inspect.ts` / `judge-plc.ts`）。
+
+---
+
+## 前提（このプランを始める前に満たしていること）
+
+### 前提A: Phase 4（Plan 4A / 4B）が landed していること
+
+本プラン作成時点（2026-09-19、`HEAD` = `5c883ec`）では **4A が進行中**（`packages/board-model` に4機種のラック定義が入り、`packages/plc-dialects` に命令語リストが入った）で、**4B は未着手**（`apps/desktop/src/renderer/ladder/skins/` も `session/plc-skin.ts` も無い）。
+
+Phase 5 は `ladder/**` を1行も触らないので**機能としては独立**だが、次の3ファイルを 4B と**同じファイルの別の場所で**編集する。バッチを走らせる前に `git pull --rebase origin main` して 4B が landed していることを確かめ、landed していなければ MERGE 注意 #1〜#4 の順序を守ること。
+
+| ファイル | 4B が触る箇所 | Phase 5 が触る箇所 |
+|---|---|---|
+| `apps/desktop/src/renderer/i18n/ja.ts` | `JA.ladder` / `JA.plc` / `JA.settings` の末尾 | `JA.session` の末尾＋新ブロック `JA.schematic` / `JA.terminalList` |
+| `apps/desktop/src/renderer/app/store.ts` | `defaultVendor` / `openProblem` / `switchDialect` | 回路図エディタの欄（Task 6）と `assembleView`（Task 7）と `boardFocus`（Task 9） |
+| `apps/desktop/src/renderer/three/BoardScene.tsx` | `PlcUnit` / `PlcRack` の分岐（4B Task 11） | `TerminalField` の差し込みと `PerfProbe`（Task 11・12） |
+
+`apps/desktop/e2e/projection.ts` は Phase 5 では**追記しない**（既存の `terminalPoint()` / `boardPoint()` / `SELF_HOLD_WIRES` をそのまま使う）ので、4B Task 12 と衝突しない。
+
+### 前提B: `packages/` の既存API（本プランが使う分だけ。実ソースで署名を確認済み）
+
+| モジュール | 署名（実ソースのまま） |
+|---|---|
+| `@ojt/schematic-core` | `interface SchematicCell { kind: CellKind; id: string; device: string; presetMs?: number \| undefined }` |
+| 〃 | `type CellKind = 'pb-a' \| 'pb-b' \| 'cr-a' \| 'cr-b' \| 't-a' \| 't-b' \| 'coil' \| 'lamp' \| 'buzzer'` |
+| 〃 | `type RungEnd = { bus: 'P' } \| { bus: 'N' } \| { rung: string; node: number }` |
+| 〃 | `interface Rung { id: string; from: RungEnd; to: RungEnd; cells: SchematicCell[] }` |
+| 〃 | `interface SchematicDocument { formatVersion: number; id: string; title: string; orientation: 'horizontal'; rungs: Rung[] }` |
+| 〃 | `function validateDocument(doc): DocumentError[]`（空配列なら妥当。`DocumentError = { path: string; message: string }`） |
+| 〃 | `function createDocument(id, title, rungs)` / `function rung(id, from, to, cells)` / `BUS_P` / `BUS_N` / `function at(rungId, node)` |
+| 〃 | `function isLoadCell(cell): boolean` / `function isContactCell(cell): boolean` / `function documentDevices(doc): string[]` |
+| 〃 | `function layout(doc, options?: LayoutOptions): SchematicLayout`（`{ width, height, shapes }`。`Shape` は `rungId?` / `cellId?` を持つ） |
+| 〃 | `const DEFAULT_LAYOUT_OPTIONS: Required<LayoutOptions> = { colWidth: 24, rowHeight: 24, marginX: 12, marginY: 16, symbolWidth: 12 }` |
+| 〃 | `function assignToBoard(doc, options?: AssignOptions): AssignResult`（`Assignment = { ok: true; roles; parts; cells; wires }`、失敗は `{ ok: false; errors: AssignError[] }`。`AssignError = { path: string; message: string }`） |
+| 〃 | `interface CellAssignment { cellId: string; device: string; group: number; left: TerminalId; right: TerminalId }` |
+| 〃 | `function toSession(doc, board, options?: ToSessionOptions): ToSessionResult`（`{ ok: true; session; assignment }` / `{ ok: false; errors }`。**§11.3 の渡り配線＝§17.2 #33 はここが既に実装している**） |
+| `@ojt/content` | `function judgeAssemble(problem: AssembleProblem, board, traineeSession, options?: JudgeOptions): JudgeAssembleResult` |
+| 〃 | `function buildReferenceSession(problem: SchematicProblem, board): ReferenceResult`（`ReferenceCircuit = { session; netlist; roles; cells }`） |
+| 〃 | `const ASSEMBLE_WIRE_COLOR = '青'` / `function toSocketRoles(raw)` / `function toProblemPath(problem, path)` |
+| 〃 | `function buildHighlightIndex(cells: readonly CellAssignment[], session: BoardSession): HighlightIndex` |
+| 〃 | `function highlightFor(index, cellId): HighlightTarget \| undefined`（`HighlightTarget = { cellId; device; terminals; wireIds }`） |
+| 〃 | `function cellIdsAtTerminal(index, terminal): string[]` / `function cellIdsOfWire(index, wireId): string[]` |
+| 〃 | `function plcBoardFor(problem: PlcProblem, board): BoardDefinition \| undefined` / `function resolvePlcIo(io): ResolvedPlcIo` |
+| 〃 | `const PLC_VENDORS = ['mitsubishi','jtekt','omron','sharp']` / `const PLC_MODELS = ['FX5U','PC10G-1SP','CP1E','JW-300']` / `SUPPORTED_PLC_MODELS`（4A が `PHASE3_MODELS` から改名して4機種へ広げた） |
+| 〃 | `BUILTIN_PLC_PROBLEMS` / `BUILTIN_ALL_PROBLEMS` / `BUILTIN_ASSEMBLE_PROBLEMS` / `BUILTIN_PROBLEMS` |
+| `@ojt/circuit-sim` | `function buildNets(netlist: Netlist): Nets`（`Nets` は `nodeCount` / `terminals` / `hasTerminal(t)` / `nodeOf(t)` / `terminalsOf(n)`。`wire.open` は併合しない） |
+| 〃 | `const MAX_WIRES_PER_TERMINAL = 2` / `function toTerminalId(raw): TerminalId` / `function parseTerminalId(id): { part; name }` |
+| `@ojt/board-model` | `function toNetlist(session, board): Netlist` / `const JIPM_BOARD` / `function toPhysicalTerminal(roles, id)` / `function isOffBoardTerminal(id): boolean` |
+| 〃 | `interface BoardTerminal { id; label; role; pos; pickRadiusMm; wirable; exit? }` / `function roleLabel(role): string` / `SOCKET_ROLES` |
+
+### 前提C: `apps/desktop` の既存API（本プランが触る分だけ。実ソースで確認済み）
+
+| 場所 | 事実 |
+|---|---|
+| `renderer/schematic/SchematicSvg.tsx` | `SchematicSvg({ document, highlightCellIds?, onPickCell? })`。図形に `data-cell` を出し、クリックで `data-cell` を読んで `onPickCell` を呼ぶ。ハイライトは `#C2410C`・線幅1.8倍。寸法は `const LAYOUT: LayoutOptions = { colWidth: 40 }` |
+| `renderer/app/store-types.ts` | `interface HighlightSelection { cellIds; terminals; wireIds }` と `const NO_HIGHLIGHT` が**既にある**（§11.4 のコメント付き） |
+| `renderer/app/store.ts` | `highlight` / `setHighlight()` が**既にある**（C2 が使用）。`ladderView: LadderViewMode` / `setLadderView()` がモードDのビュー切替の先例。`schematicPolicy(grade)` がヒントの出し方（§8.4） |
+| `renderer/screens/InspectRepairSession.tsx` L297〜L340・L800〜L812 | 連動ハイライトの glue（`buildHighlightIndex` → `setHighlight` → `SchematicSvg`）が landed。**同じ処理をモードBにも要る**ので Task 8 で共通モジュールへ寄せる |
+| `renderer/three/BoardScene.tsx` | `visualSignature(state)` が `highlight.terminals` / `highlight.wireIds` を既に見ている。`frameloop="demand"`・`dpr={[1,1.5]}`・`<Invalidator/>`・`memo(BoardSceneImpl)`・`data-testid="camera-readout"` の隠し要素 |
+| `renderer/three/TerminalHit.tsx` | 端子1個＝`<group>` ＋ ネジの `mesh`（`SCREW_GEOMETRY`）＋ **不可視だがイベントを拾う** `mesh`（`PICK_GEOMETRY`、`visible={false}`）＋ ホバー時の `Html`。`Socket` / `TerminalBlock` / `PlcUnit` / `Outlet` の4箇所から使われている |
+| `renderer/three/labels.ts` | `socketFaceTexture(terminals, originX, originY, plateW, plateH)` / `blockFaceTexture(terminals, padMm)` / `makeCanvasTexture()` / `PX_PER_MM = 16` / `terminalNumber()` / `faceRect()`。**機器1個につきキャンバス1枚**を焼く方針 |
+| `renderer/three/DeskWires.tsx` | `useMemo(..., [board, session])`。`session` は配線のたびに `cloneSession()` で**新しい参照**になるので、机上ケーブルは毎回作り直されている |
+| `renderer/session/interaction.ts` | `pickToAction(state, hit): PickAction` / `escapeToAction` / `deleteKeyToAction` / `shouldIgnoreShortcut` / `PickHit`（`{ kind:'terminal'; id; wirable; label }` ほか） |
+| `renderer/session/step-guide.ts` | `sequentialSteps()` / `assembleSteps()` / `assembleStepHint()` / `GuideStep<K>` / `StepState`（2026-09-19 のUXレビュー #3 で landed） |
+| `renderer/session/commands.ts` | `CommandHistory` / `HISTORY_LIMIT = 50` / `cloneSession()`。`session/ladder.ts` に `LadderHistory` / `pushLadder` / `undoLadder` / `redoLadder` の**同じ形**がある（回路図の履歴はこれに揃える） |
+| `renderer/session/spec-chart.ts` | `buildSpecChart(problem)` が**renderer で模範回路を1回シミュレートして**キャッシュする（175〜260ms）。検算を Worker に置く判断の比較対象 |
+| `renderer/result/*` | `ResultView({ problem, result, restoredHazardCount?, onRetry, onBackToList })` / `MismatchList({ mismatches })` / `StaticCheckList` / `HazardList` / `ChartOverlay({ expected, actual, mismatches })` |
+| `worker/protocol.ts` | `SimCommand` に `judge` / `judgeParts` / `judgeRepair` / `judgePlc`、`SimMessage` に `judgeResult` / `inspectResult` / `plcResult` / `error` |
+| `renderer/session/worker-bridge.ts` | `BridgeHandlers` は `onSnapshot` / `onJudge` / `onInspect?` / `onPlc?` / `onError`。`worker.onmessage` が `type` で振り分ける |
+| `shared/ipc.ts` | `WORK_FILE_FORMAT_VERSION = 1`。`WorkFile` は**素のインターフェース**で `mode?` / `tester?` / `ladder?` などの**任意項目を足して版を上げない**流儀 |
+| `apps/desktop/package.json` | `"version": "0.2.0"`、`"dist": "node scripts/copy-content.mjs && node scripts/build.mjs && electron-builder --config electron-builder.yml"` |
+| `apps/desktop/electron-builder.yml` | `productName: 電気教育ツール` / `win.target: [nsis, zip]` / `artifactName: ${productName}-${version}-${arch}.${ext}` / `extraResources: resources/content → content` / `publish: null` / `directories: { output: release, buildResources: build }` |
+| `apps/desktop/test/content-resources.test.ts` | 同梱課題の複写と正本の一致を検査済み（モード別フォルダを `readdirSync` で拾う） |
+| `apps/desktop/e2e/*` | `smoke` / `navigation` / `chart` / `inspect` / `plc` / `polish` の6本。すべて `--use-gl=swiftshader --use-angle=swiftshader --enable-unsafe-swiftshader` で Electron を起動し、`BrowserWindow.capturePage()` でスクリーンショットを撮る |
+| リポジトリ直下 | **`README.md` が無い**。`docs/releases/v0.2.0.md` と §15 は「SmartScreen の手順を README とインストーラの説明画面に書く」と定めているのに、どちらも存在しない |
+
+### 前提D: 実コードで確認した「Phase 5 が直さなければならない箇所」
+
+| # | 事象（実ソース） | Phase 5 での扱い |
+|---|---|---|
+| 1 | `SchematicSvg` は**読取専用**で、クリックは `data-cell` を読むだけ。空いている桁（要素を置ける位置）に当たり判定が無い | Task 1 で `slotRects()` を `schematic-core` に足し、Task 5 で透明な `<rect data-slot>` を敷く |
+| 2 | `validateDocument()` は「段に要素がありません」「段が1つもありません」をエラーにする。**作りかけの文書は必ず不正**である | 決定表#3: エディタは不正な下書きを**許し**、`validateDocument()` の結果を指摘欄に出す。検算だけが妥当性を要求する |
+| 3 | `assignToBoard()` の `AssignError.path` は回路図の要素ID（`c05`）・役割名（`CR1`）・電線ID（`sw-003`）が混ざる | Task 2 の `verifySchematic()` が `cellId` を**別項目**として返す（`toProblemPath()` は課題JSONのパスへ直すもので、エディタには使えない） |
+| 4 | モードBの `Session.tsx` は `highlight` を1度も読み書きしていない（C2 だけが使っている） | Task 8 でモードBにも配線ガイドを入れる。ストアの欄・3D側は既存のまま |
+| 5 | 端子は `TerminalHit` が1個につき `<group>`＋2メッシュ。盤の端子は 8ソケット×14 ＝112 ＋ 端子台 22 ＋ P/N 2 ＋ 固定機器 6 で **142 個 → 284 メッシュ** | Task 12 で `TerminalField`（`instancedMesh` 2本）に置き換え、端子ぶんのドローコールを 2 にする |
+| 6 | `socketFaceTexture()` は Socket ごとに `useMemo` で焼く。**8枚のキャンバスの中身は完全に同一**（相対位置も印字も同じ） | Task 13 でモジュール内キャッシュを入れ、8枚 → 1枚にする |
+| 7 | `DeskWires` の `useMemo` の鍵が `session`（配線のたびに新しい参照）。机上ケーブルの `TubeGeometry` が毎回作り直される | Task 13 で署名文字列を鍵にし、`memo()` で包む |
+| 8 | 性能を測る窓が無い（`camera-readout` はカメラだけ）。「60fps」「三角形20万以下」を確かめる手段がリポジトリに無い | Task 11 で `PerfProbe` と `data-testid="perf-readout"` を足す |
+| 9 | 結果画面は「不合格」「差分一覧」で終わり、**どこを直せばよいか**を示さない（UXレビュー #28） | Task 3・9（`wiringSuspects()` ＋ 疑い一覧 ＋「盤で見る」） |
+| 10 | 3Dの配線はマウス必須。§15 のアクセシビリティは「課題選択・判定・結果確認まで」しか求めていないが、UXレビュー #29 が配線のキーボード代替を求めた | Task 10（端子リストパネル。Tab で移動・Enter で選択） |
+| 11 | `apps/desktop/package.json` の版が `0.2.0` のまま。`artifactName` が版を使うので、このままだと v1.0.0 の配布物が `0.2.0` の名前で出る | Task 14 で `1.0.0` にする |
+| 12 | `README.md` も `build/license.txt`（NSIS の説明画面）も無い（§15 の要求が未実装） | Task 14 で両方作る |
+
+---
+
+## ファイル構成
+
+| ファイル | 責務 |
+|---|---|
+| `packages/schematic-core/src/edit.ts` | **新規**: 文書の編集操作（`SchematicEdit` と `applyEdit()`）・ID採番・空の文書。§11.4（Task 1） |
+| `packages/schematic-core/src/layout.ts` | **変更（追記のみ）**: `slotRects()`。既存の `layout()` / `contactShapes()` / `loadShapes()` / `DEFAULT_LAYOUT_OPTIONS` は署名も値も変えない（Task 1） |
+| `packages/schematic-core/src/index.ts` | **変更（追記のみ）**: `edit.ts` と `slotRects` の再輸出（Task 1） |
+| `packages/content/src/verify.ts` | **新規**: `verifySchematic()`＝検算（`toSession()` → `judgeAssemble()`）。§11.4（Task 2） |
+| `packages/content/src/wiring-diff.ts` | **新規**: `wiringSuspects()`＝模範回路と訓練者回路の節点分割の差。UXレビュー #28（Task 3） |
+| `packages/content/src/index.ts` | **変更（追記のみ）**: 上2つの再輸出（Task 2・3） |
+| `apps/desktop/src/renderer/session/schematic-edit.ts` | **新規**: エディタのカーソル・パレット・履歴・キー割当の純関数層（Task 4） |
+| `apps/desktop/src/renderer/session/step-guide.ts` | **変更（追記のみ）**: `schematicSteps()` / `schematicStepHint()`（Task 4） |
+| `apps/desktop/src/renderer/schematic/SchematicSvg.tsx` | **変更**: 編集モード（スロット矩形・カーソル枠・`onPickSlot`）。読取専用の呼び出しは**そのまま動く**（Task 5） |
+| `apps/desktop/src/renderer/schematic/SchematicEditor.tsx` | **新規**: エディタ本体（図＋パレット＋指摘欄＋手順の1行案内）（Task 5） |
+| `apps/desktop/src/renderer/schematic/SchematicPalette.tsx` | **新規**: 置ける要素のパレット（Task 5） |
+| `apps/desktop/src/renderer/schematic/VerifyPanel.tsx` | **新規**: 検算の結果（合否・指摘・差分一覧・波形の重ね）（Task 6） |
+| `apps/desktop/src/renderer/schematic/schematic.module.css` | **新規**: エディタ・パレット・検算パネルの CSS（Task 5・6） |
+| `apps/desktop/src/worker/protocol.ts` | **変更（追記のみ）**: `verify` コマンドと `verifyResult` メッセージ（Task 6） |
+| `apps/desktop/src/worker/sim.worker.ts` | **変更（追記のみ）**: `case 'verify'`（Task 6） |
+| `apps/desktop/src/renderer/session/worker-bridge.ts` | **変更**: `onVerify?` ハンドラ（Task 6） |
+| `apps/desktop/src/renderer/app/store.ts` | **変更**: 回路図エディタの欄と操作（Task 6）、`assembleView`（Task 7）、`boardFocus`（Task 9） |
+| `apps/desktop/src/shared/ipc.ts` | **変更（追記のみ）**: `WorkFile.schematic?`（Task 6） |
+| `apps/desktop/src/renderer/session/work-file.ts` | **変更**: 下書きの保存・復元（Task 6） |
+| `apps/desktop/src/renderer/screens/Session.tsx` | **変更**: ビュー切替とエディタの差し込み（Task 7）、配線ガイド（Task 8）、結果からの注目（Task 9）、端子リスト（Task 10） |
+| `apps/desktop/src/renderer/panels/Toolbar.tsx` | **変更（追記のみ）**: `viewSwitch` の差し込み口（Task 7） |
+| `apps/desktop/src/renderer/session/wiring-guide.ts` | **新規**: 回路図要素 ⇄ 盤の選択を作る純関数（Task 8） |
+| `apps/desktop/src/renderer/screens/InspectRepairSession.tsx` | **変更**: 連動ハイライトの glue を `wiring-guide.ts` へ寄せる（Task 8） |
+| `apps/desktop/src/renderer/result/SuspectList.tsx` | **新規**: #28 の疑い一覧と「盤で見る」（Task 9） |
+| `apps/desktop/src/renderer/result/ResultView.tsx` | **変更**: `SuspectList` の差し込み（Task 9） |
+| `apps/desktop/src/renderer/session/terminal-list.ts` | **新規**: 端子リストの行を作る純関数（Task 10） |
+| `apps/desktop/src/renderer/panels/TerminalListPanel.tsx` | **新規**: #29 のキーボード配線パネル（Task 10） |
+| `apps/desktop/src/renderer/three/PerfProbe.tsx` | **新規**: 描画枚数・三角形数・ドローコールの窓（Task 11） |
+| `apps/desktop/src/renderer/three/TerminalField.tsx` | **新規**: 端子をまとめて描く `instancedMesh` 2本（Task 12） |
+| `apps/desktop/src/renderer/three/Socket.tsx` / `TerminalBlock.tsx` | **変更**: `TerminalHit` のループを外す（端子は `TerminalField` が描く）（Task 12） |
+| `apps/desktop/src/renderer/three/labels.ts` | **変更（追記のみ）**: テクスチャの共有キャッシュ（Task 13） |
+| `apps/desktop/src/renderer/three/DeskWires.tsx` | **変更**: メモ化の鍵を署名にし `memo()` で包む（Task 13） |
+| `apps/desktop/scripts/check-dist.mjs` | **新規**: 配布物の検査とチェックサム表の生成（Task 14） |
+| `apps/desktop/build/license.txt` | **新規**: NSIS の説明画面（SmartScreen の手順・商標注記）（Task 14） |
+| `README.md` | **新規**: 導入手順・動作環境・SmartScreen・オフライン（§15）（Task 14） |
+| `docs/releases/v1.0.0.md` | **新規**: リリースノートとリリース手順チェックリスト（Task 14） |
+| `apps/desktop/e2e/schematic.spec.ts` / `perf.spec.ts` | **新規**: 受入基準①②④ ＋ #28/#29 ＋ オフライン計測（Task 15） |
+
+---
+
+## 設計判断（レビューで確認する決定表）
+
+| # | 決めたこと | 採用した設計 | 理由・却下した案 |
+|---|---|---|---|
+| 1 | **エディタはどこに住むか** | モードBのセッション画面に**ビュー切替**（`assembleView: 'board' \| 'split' \| 'schematic'`）を足す。モードDの `ladderView` と同じ形・同じ語彙 | 受入基準①の「検算で合格する」は課題の操作列と判定設定を要るので、エディタは**課題の中**に居なければならない。独立画面にすると課題を選び直す導線が要り、§12.1 の画面遷移（5画面）も増える。`split` を持つのは受入基準②（クリック → 3D の端子が光る）を**1画面で**見せるため |
+| 2 | **エディタの初期文書** | 段1本（`P → N`）・要素0個の空文書。**課題の模範回路は絶対に入れない** | 模範回路を入れると答えを配ることになる（§8.4 は級ごとにヒントの出し方を決めている）。空の段を1本置くのは、0段だと最初にクリックする場所が無いため |
+| 3 | **作りかけの文書を許すか** | 許す。`applyEdit()` は「表せない編集」（存在しない段・範囲外の桁・種別に使えない機器名）だけを断り、**妥当性は `validateDocument()` が別に出す**。指摘欄に出し続け、**検算だけ**が妥当性を要求する | `validateDocument()` は「段に要素がありません」「右母線に至る段は負荷で終わる」を要求するので、編集の途中は必ず不正になる。編集を拒むと1要素も置けない。モードDの出力ウィンドウ（変換の指摘を出し続ける）と同じ流儀 |
+| 4 | **検算はどこで走るか** | **Worker**（`verify` コマンドを1本足す）。renderer は `verifying` を立ててボタンを止め、`verifyResult` で受ける | §15「シミュレーションは Web Worker。renderer のフレーム処理をブロックしない」。検算は模範＋訓練者の2回ぶん（判定と同じ 0.3〜0.6 秒）で、`buildSpecChart()` の 175〜260ms より重い。renderer で回すとエディタの入力が固まる |
+| 5 | **検算の結果から盤へ自動配線するか** | **しない**。検算パネルに「盤に写す」は置かない | §8.2 の配線操作そのものが訓練である。自動配線を置くと「エディタで描いて写すだけ」で課題が終わり、盤の練習（§16 Phase 1 受入基準①）が空洞になる。代わりに**配線ガイド**（決定表#7）で「どの端子へ張ればよいか」だけを示す |
+| 6 | **検算の合否と判定の合否の関係** | **同じ判定器（`judgeAssemble()`）を同じ操作列で通す**ので基準は一致する。ただし検算は `sessionHazards` を渡さない（机上に危険操作は無い）。画面には「机上の検算です。盤の配線は別に判定します」と1行出す | 基準が違うと「検算は合格したのに判定は不合格」が説明できなくなる。危険操作は盤の操作の記録なので、机上の検算に混ぜると回数が二重になる |
+| 7 | **配線ガイドの索引の出どころ** | 画面に出ている回路図によって切り替える。**エディタ**＝`assignToBoard(doc)` の `cells`、**回路図ヒント**（§8.4）＝`buildReferenceSession(problem)` の `cells`。どちらも `buildHighlightIndex(cells, session)` に通してストアの `highlight` に入れる | `buildHighlightIndex()` は `CellAssignment[]` しか要求しない（C2 が landed 済み）。出どころを1つに固定すると、エディタの文書を編集しても光る端子が模範回路のままになる |
+| 8 | **配線ガイドの逆引き（3D → 回路図）** | **入れる**。盤の端子にホバーすると回路図側の要素が光る（`cellIdsAtTerminal()`）。C2 で landed している向きと同じ | 利用者要求「分かりやすく直感的に」。片方向だけだと「この端子は回路図のどれか」が分からず、配線の確認に使えない。関数は既にある（`cellIdsAtTerminal` / `cellIdsOfWire`） |
+| 9 | **#28 の「疑い」の求め方** | 模範回路と訓練者回路の**節点分割の差**（`buildNets()` の union-find）。比較対象は**回路図の要素が使う端子 ＋ `P.1` / `N.1`** に限る。`missing`（つながっていない）を先に、`extra`（余計につながっている）を後に、最大5件 | 電線の1対1照合だと、渡り配線の鎖の順が違うだけで全部「違う」になる（§11.3 の母線分配は順序を決めない）。節点分割なら「電気的に同じか」だけを見るので、鎖の順が違っても正しくは正しいと言える。盤の全端子で比べると未使用端子が大量に出るので回路図の端子に絞る |
+| 10 | **#28 をどこで計算するか** | **renderer の結果画面**で `useMemo`。`JudgeResult` に項目を足さない | 節点分割はソルバを回さないグラフ処理（数百端子の union-find ＝1ms未満）なので Worker へ往復させる必要が無い。`JudgeResult` に足すと `@ojt/content` の公開型が変わり、C1/C2/D の3判定と作業ファイルにも波及する |
+| 11 | **「盤で見る」の遷移** | `setHighlight(選択)` → `setBoardFocus({ from: 'result', text })` → `setRoute('session')`。セッション画面の上部に「結果から: <説明>」の帯と「結果へ戻る」ボタンを出す | 結果画面から盤へ跳ぶと「どうやって戻るのか」が分からなくなる（利用者要求「分かりやすく」）。ストアは判定後も `problem` / `session` を保持しているので、盤はそのままの配線で開く |
+| 12 | **#29 の配線UIの作り** | `panels/TerminalListPanel.tsx` が配線可能な端子を機器ごとに並べ、各行を `<button>` にする。**Tab で移動・Enter で選択**。選択は `PickHit`（`kind: 'terminal'`）に直して**既存の `pickToAction()` に通す** | 3Dのピックと別の配線経路を作ると、1端子2本の上限・固定配線の拒否・`beginWire`/`completeWire` の状態遷移が2箇所に割れる。`pickToAction()` に通せば規則は1箇所のまま（§12.2 の「純粋関数化」の趣旨そのもの） |
+| 13 | **端子の描き方（性能）** | `TerminalField`（`instancedMesh` 2本＝ネジ頭と当たり判定球）を **`BoardScene` が1回だけ**描く。`Socket` / `TerminalBlock` は端子を描かなくなる。**`PlcUnit` / `Outlet` は `TerminalHit` のまま** | 端子142個で 284 メッシュ＝ドローコールも同数。`instancedMesh` なら2本。`PlcUnit` を外すのは Plan 4B Task 10・11 が同じファイルを作り替えるため（MERGE 注意 #5）。机上の端子は十数個なので性能上の効果も小さい |
+| 14 | **インスタンスの色分け** | `instanceColor` に3状態（平常・ホバー・配線待ち）だけを載せる。**連動ハイライトは `ProbeMarkers` の輪のまま** | 輪（`ProbeMarkers`）は遠景でも見えるので既に役目を果たしている。同じ意味を2つの描き方で出すと優先順位を2箇所で決めることになる（`Wire.tsx` の `wireBodyColor()` で確立した流儀） |
+| 15 | **印字テクスチャの共有** | `labels.ts` にモジュール内キャッシュを持ち、**鍵は「板の左上からの相対位置＋印字＋役割＋板の寸法」**。8ソケットは鍵が一致するので1枚を共有する | 8枚の中身は完全に同一（相対配置も印字も同じ）。1枚 1440×1280px ＝ 約7.4MB を8枚持っていた。`Socket` 側の `useMemo` の鍵（`originX` / `originY`）は**絶対座標**なので共有できず、キャッシュは `labels.ts` に置くしかない |
+| 16 | **性能の測り方** | `PerfProbe`（`useFrame`）が 250ms ごとに `data-testid="perf-readout"` へ `{frames, fps, triangles, calls, geometries, textures}` を JSON で書く。**常時有効**（開発時も配布版も） | `frameloop="demand"` では `useFrame` は**描いたフレームだけ**走るので、これがそのまま「無操作で描いていないこと」の証明になる（§15 の方針の監査）。旗で切り替えると E2E が配布版と違う道を通る |
+| 17 | **受入基準④（60fps）の確かめ方** | E2E（swiftshader）は**GPU非依存の予算**（三角形 ≤ 200,000／ドローコール ≤ 120／無操作3秒で描画枚数が増えない）を自動で縛り、測った fps を `perf-report.json` に残す。**60fps そのものは実機（内蔵GPU・FHD）で同じ E2E を走らせて確認**し、Task 14 のリリース手順チェックリストに記録する | CI・リモートデスクトップにはGPUが無く、既存E2Eは `--use-gl=swiftshader` で動いている（`smoke.spec.ts` の注記）。ソフトウェアラスタライザの fps は実機の指標にならない（v0.2.0 リリースノートの「既知の制限」にも同じ注意がある）。三角形数とドローコールは描画経路に依らないので自動で縛れる |
+| 18 | **配布は新規構築ではなく固め** | `electron-builder.yml` / `copy-content.mjs` は**触らない**（`dist` スクリプトに `check-dist.mjs` を1つ足すだけ）。版を 1.0.0 にし、同梱課題の検査・成果物の検査とチェックサム・README・インストーラ説明画面・手順書を足す | v0.2.0 で NSIS とポータブルの両方が実際に出ており（106.9MB / 146.8MB）、受入基準③はそのビルドで確かめられている。作り直すと退行の危険だけが増える |
+| 19 | **4メーカー分の同梱** | 課題JSONは1組のまま（内蔵PLC課題は `mitsubishi`/`FX5U`）。検査は「**4機種すべてで `plcBoardFor()` が `plcUnit` を持つ盤を返し、その端子集合が課題の I/O 割付を満たす**」を単体テストで縛る | 方言プロファイルとスキンは**コード**なので electron-vite が asar にバンドルする（`files: out/**/*`）。課題を4組持つと 4A 決定表#14（JSONは変えず `plc` だけ差し替える）と矛盾する。端子集合の検査なら 4B の有無に関係なく今日のAPIだけで書ける |
+| 20 | **版と成果物の名前** | `apps/desktop/package.json` を `1.0.0` にする。`artifactName` は既存のまま（`電気教育ツール-1.0.0-x64.exe` / `.zip`）。ルートの `package.json` は版を持たない | `artifactName: ${productName}-${version}-${arch}.${ext}` は `apps/desktop/package.json` の `version` を読む。v0.2.0 の配布物と名前で区別できる |
+| 21 | **SHA256 と成果物一覧** | `check-dist.mjs` が `release/artifacts.md`（ファイル名・バイト数・SHA256 の表）を**生成**し、リリースノートはそれを参照する | リリースノートに数値を直書きすると、ビルドし直すたびに人が書き換えることになり、ずれる。v0.2.0 はそれを手で書いていた |
+| 22 | **公開の線引き** | 本プランは `release/` の成果物と `docs/releases/v1.0.0.md`（GitHub Release 本文の貼り付け用ブロックを含む）までを作る。**`git tag` も `gh release create` も実行しない** | 利用者の明示の決定（2026-09-19）。手順書には「利用者の指示を受けてから実行する」と書き、コマンド自体は載せる（指示が出たら迷わない） |
+| 23 | **作業ファイルにエディタの下書きを残すか** | 残す。`WorkFile.schematic?: unknown`（任意項目）を足し、`formatVersion` は **1 のまま**。古い作業ファイルは下書き無しで開く | `mode?` / `tester?` / `ladder?` と同じ流儀（前提C）。下書きが消えると「保存して続きから」で机上作業だけが失われる |
+| 24 | **回路図エディタの手順の見える化** | `session/step-guide.ts` に `schematicSteps()` / `schematicStepHint()` を足し、既存の `.stepGuide` 帯にそのまま流す | 2026-09-19 のUXレビュー #3 で landed した仕組み。エディタにだけ別の案内を作ると、同じ画面に2つの流儀が並ぶ |
+| 25 | **エディタのキー割当** | 矢印＝カーソル移動、`Enter`＝パレットの選択中の要素を置く、`Delete`/`Backspace`＝要素を消す、`Insert`＝段を足す、`Ctrl+Delete`＝段を消す、`Ctrl+Z`/`Ctrl+Y`＝元に戻す／やり直し。**`shouldIgnoreShortcut()` を必ず通す** | `ladder/LadderGrid.tsx` の流儀（矢印＋機能キー）に合わせる。`shouldIgnoreShortcut()` を通さないと、タイマ設定の数値入力中に `Delete` で要素が消える（Phase 1D で踏んだ不具合） |
+| 26 | **パレットに出す機器** | 盤に実在するものだけ（`CR1`〜`CR4` / `T1`・`T2` / `PB1`〜`PB4` / `PL1`〜`PL4`、`BZ` は**課題の `board.extraParts` にあるときだけ**）。ソケットの役割は課題の `board.socketRoles` に従う | §17.2 #15「BZ は既定では盤に置かない」。置けない機器を並べると、描けたのに検算で「盤に無い」と言われる |
+| 27 | **疑い一覧の上限** | 5件（`MAX_WIRING_SUSPECTS`）。超えたときは「ほかに N 件」と出す | 未配線の盤で判定すると全端子が `missing` になる。全部並べると読めない。5件は結果画面のカードに収まる行数 |
+
+---
+
+## 実装バッチ（推奨）
+
+依存関係にもとづく5バッチ。バッチ内の `/` は並行可、`→` は直列。**並行の上限は2系統**（`i18n/ja.ts` と `store.ts` の追記が衝突するため。MERGE 注意 #1・#2）。
+
+| バッチ | タスク | 対象 | モデル | 依存 |
+|---|---|---|---|---|
+| A | 1 → 2 ／ 3 | `schematic-core`（編集とスロット）→ `content`（検算） ／ `content`（疑い一覧） | 1=**Opus** / 2=Sonnet-verbatim ／ 3=**Opus** | Phase 4 landed |
+| B | 4 → 5 → 6 → 7 | エディタの純関数層 → 画面 → 検算の往復 → モードBへの組み込み | 4=**Opus** / 5=**Opus** / 6=**Opus** / 7=**Opus** | A |
+| C | 8 → 9 ／ 10 | 配線ガイド → 結果の疑い一覧 ／ 端子リスト | 8=**Opus** / 9=**Opus** ／ 10=Sonnet | B |
+| D | 11 → 12 → 13 | 計測窓 → 端子のインスタンス化 → テクスチャ共有と `frameloop` 監査 | 11=Sonnet-verbatim / 12=**Opus** / 13=**Opus** | B（`BoardScene` を C と同時に触らない） |
+| E | 14 ／ 15 → 16 | 配布の固め ／ E2E → 全体検証 | 14=**Opus** ／ 15=**Opus** / 16=Sonnet | A〜D すべて |
+
+進め方: **A（2系統を並行）** → **B** → **C と D を並行** → **E**。各バッチの終わりに **Opus レビューを1回**かける（レビュー方針: グループごとに1回、細かい指摘はまとめて修正）。
+
+「Sonnet-verbatim」と書いたタスクは、本書のコードとテストをそのまま書き写せば通る。**Opus** は判断の要るタスク（編集操作の設計、節点分割の差の出し方、SVG の当たり判定、`store.ts` / `BoardScene.tsx` の MERGE、インスタンス化、E2E の待ち方、配布物の検査）である。**どのタスクも、後のタスクが作るファイルを import しない。**
+
+---
+
+## Task 1: 回路図文書の編集操作とスロット矩形（`@ojt/schematic-core`）
+
+**モデル: Opus**（編集操作の粒度と、作りかけの文書を許す境界の設計）
+
+**Files:**
+- Create: `packages/schematic-core/src/edit.ts`
+- Modify: `packages/schematic-core/src/layout.ts`（末尾に `slotRects()` を追記。既存の export は署名も値も変えない）
+- Modify: `packages/schematic-core/src/index.ts`（再輸出）
+- Test: `packages/schematic-core/test/edit.test.ts`（新規）
+- Test: `packages/schematic-core/test/slot-rects.test.ts`（新規）
+
+§11.4「ラダーと同じグリッド編集エンジンで編集可能にする」の**文書側**。UI は持たない。決定表#3 のとおり、`applyEdit()` は「**その編集が文書として表せるか**」だけを見て、妥当性（`validateDocument()`）は別に出す。
+
+- [ ] **Step 1: 失敗するテストを書く（編集操作）**
+
+`packages/schematic-core/test/edit.test.ts`:
+
+```ts
+import { describe, expect, it } from 'vitest';
+import {
+  applyEdit,
+  crA,
+  coil,
+  emptySchematic,
+  lamp,
+  MAX_CELLS_PER_RUNG,
+  MAX_RUNGS,
+  nextCellId,
+  nextRungId,
+  pbA,
+  rung,
+  BUS_N,
+  BUS_P,
+  createDocument,
+  validateDocument,
+  type SchematicDocument,
+} from '../src/index.js';
+
+/** 自己保持回路（§16 Phase 5 受入基準①）を素で組んだ文書。 */
+function selfHold(): SchematicDocument {
+  return createDocument('d1', '自己保持', [
+    rung('r1', BUS_P, BUS_N, [pbA('c1', 'PB1'), coil('c2', 'CR1')]),
+    rung('r2', BUS_P, { rung: 'r1', node: 1 }, [crA('c3', 'CR1')]),
+    rung('r3', BUS_P, BUS_N, [crA('c4', 'CR1'), lamp('c5', 'PL1')]),
+  ]);
+}
+
+describe('emptySchematic（決定表#2）', () => {
+  it('starts with one empty rung between the two buses', () => {
+    const doc = emptySchematic('draft-b-001', '下書き');
+    expect(doc.formatVersion).toBe(1);
+    expect(doc.orientation).toBe('horizontal');
+    expect(doc.rungs).toHaveLength(1);
+    expect(doc.rungs[0]).toMatchObject({ id: 'r1', from: { bus: 'P' }, to: { bus: 'N' }, cells: [] });
+  });
+
+  it('is not valid yet (the editor shows the reason instead of refusing edits)', () => {
+    expect(validateDocument(emptySchematic('d', 't')).map((e) => e.message)).toContain(
+      '段に要素がありません: r1',
+    );
+  });
+});
+
+describe('nextCellId / nextRungId', () => {
+  it('numbers from the highest existing id', () => {
+    expect(nextCellId(selfHold())).toBe('c6');
+    expect(nextRungId(selfHold())).toBe('r4');
+  });
+
+  it('starts at 1 for an id-less document', () => {
+    const doc = createDocument('d', 't', []);
+    expect(nextCellId(doc)).toBe('c1');
+    expect(nextRungId(doc)).toBe('r1');
+  });
+
+  it('ignores ids that do not follow the pattern', () => {
+    const doc = createDocument('d', 't', [rung('自己保持', BUS_P, BUS_N, [coil('コイル', 'CR1')])]);
+    expect(nextCellId(doc)).toBe('c1');
+    expect(nextRungId(doc)).toBe('r1');
+  });
+});
+
+describe('applyEdit: insertCell', () => {
+  it('inserts at the cursor and gives the new cell a fresh id', () => {
+    const doc = emptySchematic('d', 't');
+    const out = applyEdit(doc, {
+      kind: 'insertCell',
+      rungId: 'r1',
+      index: 0,
+      draft: { kind: 'pb-a', device: 'PB1' },
+    });
+    expect(out.ok).toBe(true);
+    if (!out.ok) return;
+    expect(out.doc.rungs[0]?.cells).toEqual([{ kind: 'pb-a', id: 'c1', device: 'PB1' }]);
+    // 入力の文書は変えない（履歴がスナップショットを持つため）
+    expect(doc.rungs[0]?.cells).toHaveLength(0);
+  });
+
+  it('carries presetMs for a timer coil', () => {
+    const doc = emptySchematic('d', 't');
+    const out = applyEdit(doc, {
+      kind: 'insertCell',
+      rungId: 'r1',
+      index: 0,
+      draft: { kind: 'coil', device: 'T1', presetMs: 3000 },
+    });
+    expect(out.ok && out.doc.rungs[0]?.cells[0]).toEqual({
+      kind: 'coil',
+      id: 'c1',
+      device: 'T1',
+      presetMs: 3000,
+    });
+  });
+
+  it('refuses a device that the kind cannot use', () => {
+    const out = applyEdit(emptySchematic('d', 't'), {
+      kind: 'insertCell',
+      rungId: 'r1',
+      index: 0,
+      draft: { kind: 'lamp', device: 'CR1' },
+    });
+    expect(out).toEqual({ ok: false, message: 'lamp に使えない機器名です: CR1' });
+  });
+
+  it('refuses an index outside the rung', () => {
+    const out = applyEdit(emptySchematic('d', 't'), {
+      kind: 'insertCell',
+      rungId: 'r1',
+      index: 2,
+      draft: { kind: 'pb-a', device: 'PB1' },
+    });
+    expect(out).toEqual({ ok: false, message: '段 r1 に桁 2 はありません（0〜0）' });
+  });
+
+  it('refuses an unknown rung', () => {
+    const out = applyEdit(emptySchematic('d', 't'), {
+      kind: 'insertCell',
+      rungId: 'r9',
+      index: 0,
+      draft: { kind: 'pb-a', device: 'PB1' },
+    });
+    expect(out).toEqual({ ok: false, message: '段がありません: r9' });
+  });
+
+  it('refuses more than MAX_CELLS_PER_RUNG in one rung', () => {
+    let doc = emptySchematic('d', 't');
+    for (let i = 0; i < MAX_CELLS_PER_RUNG; i += 1) {
+      const step = applyEdit(doc, {
+        kind: 'insertCell',
+        rungId: 'r1',
+        index: i,
+        draft: { kind: 'cr-a', device: 'CR1' },
+      });
+      expect(step.ok).toBe(true);
+      if (step.ok) doc = step.doc;
+    }
+    const out = applyEdit(doc, {
+      kind: 'insertCell',
+      rungId: 'r1',
+      index: MAX_CELLS_PER_RUNG,
+      draft: { kind: 'cr-a', device: 'CR1' },
+    });
+    expect(out).toEqual({
+      ok: false,
+      message: `1つの段に置ける要素は${MAX_CELLS_PER_RUNG}個までです`,
+    });
+  });
+});
+
+describe('applyEdit: replaceCell / setDevice / setPreset / removeCell / moveCell', () => {
+  it('replaces a cell keeping its id (so physicalOverride and highlights survive)', () => {
+    const out = applyEdit(selfHold(), {
+      kind: 'replaceCell',
+      cellId: 'c1',
+      draft: { kind: 'pb-b', device: 'PB2' },
+    });
+    expect(out.ok && out.doc.rungs[0]?.cells[0]).toEqual({ kind: 'pb-b', id: 'c1', device: 'PB2' });
+  });
+
+  it('drops presetMs when a timer coil becomes a relay coil', () => {
+    const doc = createDocument('d', 't', [
+      rung('r1', BUS_P, BUS_N, [coil('c1', 'T1', 3000)]),
+    ]);
+    const out = applyEdit(doc, { kind: 'setDevice', cellId: 'c1', device: 'CR1' });
+    expect(out.ok && out.doc.rungs[0]?.cells[0]).toEqual({ kind: 'coil', id: 'c1', device: 'CR1' });
+  });
+
+  it('gives a relay coil the default preset when it becomes a timer coil', () => {
+    const doc = createDocument('d', 't', [rung('r1', BUS_P, BUS_N, [coil('c1', 'CR1')])]);
+    const out = applyEdit(doc, { kind: 'setDevice', cellId: 'c1', device: 'T1' });
+    expect(out.ok && out.doc.rungs[0]?.cells[0]).toMatchObject({ device: 'T1', presetMs: 3000 });
+  });
+
+  it('sets a timer preset', () => {
+    const doc = createDocument('d', 't', [rung('r1', BUS_P, BUS_N, [coil('c1', 'T1', 3000)])]);
+    const out = applyEdit(doc, { kind: 'setPreset', cellId: 'c1', presetMs: 5000 });
+    expect(out.ok && out.doc.rungs[0]?.cells[0]?.presetMs).toBe(5000);
+  });
+
+  it('refuses a preset on a cell that cannot hold one', () => {
+    const out = applyEdit(selfHold(), { kind: 'setPreset', cellId: 'c2', presetMs: 5000 });
+    expect(out).toEqual({ ok: false, message: '設定時間を持てるのはタイマコイルだけです: c2' });
+  });
+
+  it('removes a cell', () => {
+    const out = applyEdit(selfHold(), { kind: 'removeCell', cellId: 'c3' });
+    expect(out.ok && out.doc.rungs[1]?.cells).toEqual([]);
+  });
+
+  it('moves a cell inside its rung', () => {
+    const out = applyEdit(selfHold(), { kind: 'moveCell', cellId: 'c5', toIndex: 0 });
+    expect(out.ok && out.doc.rungs[2]?.cells.map((c) => c.id)).toEqual(['c5', 'c4']);
+  });
+
+  it('refuses an unknown cell', () => {
+    expect(applyEdit(selfHold(), { kind: 'removeCell', cellId: 'c9' })).toEqual({
+      ok: false,
+      message: '要素がありません: c9',
+    });
+  });
+});
+
+describe('applyEdit: addRung / removeRung / setEnds', () => {
+  it('adds a rung right after the given one', () => {
+    const out = applyEdit(selfHold(), { kind: 'addRung', after: 'r1' });
+    expect(out.ok && out.doc.rungs.map((r) => r.id)).toEqual(['r1', 'r4', 'r2', 'r3']);
+    expect(out.ok && out.doc.rungs[1]).toMatchObject({ from: { bus: 'P' }, to: { bus: 'N' }, cells: [] });
+  });
+
+  it('appends when `after` is omitted', () => {
+    const out = applyEdit(selfHold(), { kind: 'addRung' });
+    expect(out.ok && out.doc.rungs.map((r) => r.id)).toEqual(['r1', 'r2', 'r3', 'r4']);
+  });
+
+  it('refuses more than MAX_RUNGS', () => {
+    let doc = emptySchematic('d', 't');
+    for (let i = 1; i < MAX_RUNGS; i += 1) {
+      const step = applyEdit(doc, { kind: 'addRung' });
+      if (step.ok) doc = step.doc;
+    }
+    expect(applyEdit(doc, { kind: 'addRung' })).toEqual({
+      ok: false,
+      message: `段は${MAX_RUNGS}本までです`,
+    });
+  });
+
+  it('removes a rung and repoints the rungs that branched off it', () => {
+    const out = applyEdit(selfHold(), { kind: 'removeRung', rungId: 'r1' });
+    expect(out.ok).toBe(true);
+    if (!out.ok) return;
+    expect(out.doc.rungs.map((r) => r.id)).toEqual(['r2', 'r3']);
+    // r2 は r1 の節点へ合流していた。行き先が消えたので右母線へ付け替える
+    expect(out.doc.rungs[0]?.to).toEqual({ bus: 'N' });
+  });
+
+  it('refuses removing the last rung', () => {
+    expect(applyEdit(emptySchematic('d', 't'), { kind: 'removeRung', rungId: 'r1' })).toEqual({
+      ok: false,
+      message: '最後の1段は消せません',
+    });
+  });
+
+  it('sets the ends of a rung (branch)', () => {
+    const out = applyEdit(selfHold(), {
+      kind: 'setEnds',
+      rungId: 'r3',
+      from: { rung: 'r1', node: 1 },
+      to: BUS_N,
+    });
+    expect(out.ok && out.doc.rungs[2]?.from).toEqual({ rung: 'r1', node: 1 });
+  });
+
+  it('refuses an end that points at a rung that is not there', () => {
+    const out = applyEdit(selfHold(), {
+      kind: 'setEnds',
+      rungId: 'r3',
+      from: { rung: 'r9', node: 0 },
+      to: BUS_N,
+    });
+    expect(out).toEqual({ ok: false, message: '段がありません: r9' });
+  });
+
+  it('refuses a rung that points at itself', () => {
+    const out = applyEdit(selfHold(), {
+      kind: 'setEnds',
+      rungId: 'r3',
+      from: { rung: 'r3', node: 0 },
+      to: BUS_N,
+    });
+    expect(out).toEqual({ ok: false, message: '段が自分自身を参照しています: r3' });
+  });
+});
+
+describe('editLabel（操作ログ）', () => {
+  it('describes every edit kind in Japanese', () => {
+    const labels = [
+      { kind: 'addRung' } as const,
+      { kind: 'removeRung', rungId: 'r1' } as const,
+      { kind: 'insertCell', rungId: 'r1', index: 0, draft: { kind: 'pb-a', device: 'PB1' } } as const,
+      { kind: 'replaceCell', cellId: 'c1', draft: { kind: 'pb-b', device: 'PB1' } } as const,
+      { kind: 'removeCell', cellId: 'c1' } as const,
+      { kind: 'setDevice', cellId: 'c1', device: 'PB2' } as const,
+      { kind: 'setPreset', cellId: 'c1', presetMs: 3000 } as const,
+      { kind: 'setEnds', rungId: 'r1', from: BUS_P, to: BUS_N } as const,
+      { kind: 'moveCell', cellId: 'c1', toIndex: 1 } as const,
+    ];
+    for (const edit of labels) {
+      const text = editLabel(edit);
+      expect(text.length).toBeGreaterThan(0);
+      expect(text).not.toMatch(/[A-Za-z]{6,}/u); // 英単語の羅列にしない（日本語の操作ログ）
+    }
+  });
+});
+```
+
+`editLabel` の import を先頭の import 文に足すこと（`editLabel` も `../src/index.js` から）。
+
+- [ ] **Step 2: テストを走らせて失敗を確かめる**
+
+```
+pnpm --filter @ojt/schematic-core test
+```
+
+`Cannot find module` か `edit.ts is not exported` で落ちる（まだ作っていない）。
+
+- [ ] **Step 3: `packages/schematic-core/src/edit.ts` を実装する**
+
+```ts
+import { TIMER_RANGE_60S } from '@ojt/board-model';
+import { TIMER_MIN_PRESET_MS } from '@ojt/circuit-sim';
+import {
+  createDocument,
+  isLoadCell,
+  rung as makeRung,
+  BUS_N,
+  BUS_P,
+  SCHEMATIC_FORMAT_VERSION,
+  type CellKind,
+  type Rung,
+  type RungEnd,
+  type SchematicCell,
+  type SchematicDocument,
+} from './document.js';
+
+/**
+ * 展開接続図の編集操作。設計仕様 §11.4（Phase 5 のエディタ機能）。
+ *
+ * ここが受け持つのは「**その編集が文書として表せるか**」だけである（Plan 5 決定表#3）。
+ * 回路として妥当かどうか（段に要素があるか、右母線に至る段が負荷で終わるか、両母線に
+ * つながっているか）は `validateDocument()` が別に返す。作りかけの文書は必ず不正なので、
+ * ここで妥当性を要求すると訓練者は1要素も置けない。
+ *
+ * すべての関数は**入力の文書を変えず**、新しい文書を返す（元に戻す／やり直しがスナップショットで
+ * 済むようにするため。`apps/desktop` の `LadderHistory` と同じ流儀）。
+ */
+
+/** 1つの段に置ける要素の数（回路図の横幅の上限）。 */
+export const MAX_CELLS_PER_RUNG = 8;
+/** 文書が持てる段の数。 */
+export const MAX_RUNGS = 12;
+/** タイマコイルを新しく置いたときの既定の設定時間[ms]（§5.3.2 のレンジ `0〜10s` の中央付近）。 */
+export const DEFAULT_EDIT_PRESET_MS = 3000;
+
+/** まだIDの付いていない要素（置く前の指定）。 */
+export interface CellDraft {
+  kind: CellKind;
+  device: string;
+  /** タイマコイルのときの設定時間[ms]。 */
+  presetMs?: number;
+}
+
+/** 編集操作1件。 */
+export type SchematicEdit =
+  /** 段を足す（`after` の直後。省略すると末尾）。 */
+  | { kind: 'addRung'; after?: string }
+  /** 段を消す（その段へ合流していた段は右母線へ付け替える）。 */
+  | { kind: 'removeRung'; rungId: string }
+  /** 要素を桁 `index` に差し込む。 */
+  | { kind: 'insertCell'; rungId: string; index: number; draft: CellDraft }
+  /** 要素を置き換える（**IDは保つ**）。 */
+  | { kind: 'replaceCell'; cellId: string; draft: CellDraft }
+  /** 要素を消す。 */
+  | { kind: 'removeCell'; cellId: string }
+  /** 機器名だけを変える（種別はそのまま）。 */
+  | { kind: 'setDevice'; cellId: string; device: string }
+  /** タイマコイルの設定時間を変える。 */
+  | { kind: 'setPreset'; cellId: string; presetMs: number }
+  /** 段の始点・終点を変える（分岐を作る／外す）。 */
+  | { kind: 'setEnds'; rungId: string; from: RungEnd; to: RungEnd }
+  /** 段の中で要素を動かす。 */
+  | { kind: 'moveCell'; cellId: string; toIndex: number };
+
+/** 編集の結果。失敗は理由つき（画面はトーストに出す）。 */
+export type EditOutcome = { ok: true; doc: SchematicDocument } | { ok: false; message: string };
+
+/** 種別ごとに使える機器名（`document.ts` の `DEVICE_PATTERNS` と同じ規則）。 */
+const DEVICE_PATTERNS: Readonly<Record<CellKind, RegExp>> = {
+  'pb-a': /^PB[1-4]$/,
+  'pb-b': /^PB[1-4]$/,
+  'cr-a': /^CR[1-4]$/,
+  'cr-b': /^CR[1-4]$/,
+  't-a': /^T[12]$/,
+  't-b': /^T[12]$/,
+  coil: /^(CR[1-4]|T[12])$/,
+  lamp: /^PL[1-4]$/,
+  buzzer: /^BZ$/,
+};
+
+function fail(message: string): EditOutcome {
+  return { ok: false, message };
+}
+
+/** 文書を浅く作り直す（段と要素の配列は新しくする）。 */
+function withRungs(doc: SchematicDocument, rungs: Rung[]): SchematicDocument {
+  return { ...doc, rungs };
+}
+
+/** 段を1本だけ差し替えた段配列。 */
+function replaceRung(doc: SchematicDocument, rungId: string, next: Rung): Rung[] {
+  return doc.rungs.map((r) => (r.id === rungId ? next : r));
+}
+
+/** 空の文書（段1本・要素0個）。決定表#2 */
+export function emptySchematic(id: string, title: string): SchematicDocument {
+  return createDocument(id, title, [makeRung('r1', BUS_P, BUS_N, [])]);
+}
+
+/** `prefix` + 連番のIDのうち、まだ使われていない最小の番号。 */
+function nextId(prefix: string, used: readonly string[]): string {
+  const pattern = new RegExp(`^${prefix}(\\d+)$`, 'u');
+  let max = 0;
+  for (const id of used) {
+    const found = pattern.exec(id);
+    if (found === null) continue;
+    const n = Number(found[1]);
+    if (Number.isFinite(n) && n > max) max = n;
+  }
+  return `${prefix}${max + 1}`;
+}
+
+/** 次の要素ID（`c1`, `c2`, …）。 */
+export function nextCellId(doc: SchematicDocument): string {
+  return nextId(
+    'c',
+    doc.rungs.flatMap((r) => r.cells.map((c) => c.id)),
+  );
+}
+
+/** 次の段ID（`r1`, `r2`, …）。 */
+export function nextRungId(doc: SchematicDocument): string {
+  return nextId(
+    'r',
+    doc.rungs.map((r) => r.id),
+  );
+}
+
+/** 要素とその居場所を探す。 */
+function locate(
+  doc: SchematicDocument,
+  cellId: string,
+): { rung: Rung; index: number; cell: SchematicCell } | undefined {
+  for (const r of doc.rungs) {
+    const index = r.cells.findIndex((c) => c.id === cellId);
+    const cell = r.cells[index];
+    if (cell !== undefined) return { rung: r, index, cell };
+  }
+  return undefined;
+}
+
+/** その種別がその機器名を使えるか。 */
+function deviceProblem(kind: CellKind, device: string): string | undefined {
+  const pattern = DEVICE_PATTERNS[kind];
+  if (pattern === undefined) return `未知の要素種別です: ${String(kind)}`;
+  return pattern.test(device) ? undefined : `${kind} に使えない機器名です: ${device}`;
+}
+
+/** タイマコイル（設定時間を持つ要素）か。 */
+function isTimerCoil(kind: CellKind, device: string): boolean {
+  return kind === 'coil' && device.startsWith('T');
+}
+
+/** 下書きから要素を作る（タイマコイルには必ず設定時間を付ける）。 */
+function buildCell(id: string, draft: CellDraft, fallbackPresetMs: number): SchematicCell {
+  if (!isTimerCoil(draft.kind, draft.device)) {
+    return { kind: draft.kind, id, device: draft.device };
+  }
+  return {
+    kind: draft.kind,
+    id,
+    device: draft.device,
+    presetMs: draft.presetMs ?? fallbackPresetMs,
+  };
+}
+
+/** 設定時間がレンジに収まるか（`validateDocument()` と同じ範囲）。§5.3.2 */
+function presetProblem(presetMs: number): string | undefined {
+  if (
+    !Number.isInteger(presetMs) ||
+    presetMs < TIMER_MIN_PRESET_MS ||
+    presetMs > TIMER_RANGE_60S.maxMs
+  ) {
+    return `タイマの設定時間は ${TIMER_MIN_PRESET_MS}〜${TIMER_RANGE_60S.maxMs}ms の整数です: ${presetMs}`;
+  }
+  return undefined;
+}
+
+/** 端点が指す段が実在するか（自分自身への参照も断る）。 */
+function endProblem(doc: SchematicDocument, ownerId: string, end: RungEnd): string | undefined {
+  if ('bus' in end) return undefined;
+  if (end.rung === ownerId) return `段が自分自身を参照しています: ${ownerId}`;
+  const target = doc.rungs.find((r) => r.id === end.rung);
+  if (target === undefined) return `段がありません: ${end.rung}`;
+  if (!Number.isInteger(end.node) || end.node < 0 || end.node > target.cells.length) {
+    return `参照先の節点番号が範囲外です: ${end.rung}#${end.node}（0〜${target.cells.length}）`;
+  }
+  return undefined;
+}
+
+/** 消した段を指していた端点を右母線（終点）／左母線（始点）へ逃がす。 */
+function detachEnd(end: RungEnd, removedId: string, side: 'from' | 'to'): RungEnd {
+  if ('bus' in end || end.rung !== removedId) return end;
+  return side === 'from' ? BUS_P : BUS_N;
+}
+
+function editAddRung(doc: SchematicDocument, after: string | undefined): EditOutcome {
+  if (doc.rungs.length >= MAX_RUNGS) return fail(`段は${MAX_RUNGS}本までです`);
+  const created = makeRung(nextRungId(doc), BUS_P, BUS_N, []);
+  if (after === undefined) return { ok: true, doc: withRungs(doc, [...doc.rungs, created]) };
+  const at = doc.rungs.findIndex((r) => r.id === after);
+  if (at < 0) return fail(`段がありません: ${after}`);
+  const rungs = [...doc.rungs];
+  rungs.splice(at + 1, 0, created);
+  return { ok: true, doc: withRungs(doc, rungs) };
+}
+
+function editRemoveRung(doc: SchematicDocument, rungId: string): EditOutcome {
+  if (doc.rungs.length <= 1) return fail('最後の1段は消せません');
+  if (!doc.rungs.some((r) => r.id === rungId)) return fail(`段がありません: ${rungId}`);
+  const rungs = doc.rungs
+    .filter((r) => r.id !== rungId)
+    .map((r) => ({
+      ...r,
+      from: detachEnd(r.from, rungId, 'from'),
+      to: detachEnd(r.to, rungId, 'to'),
+      cells: [...r.cells],
+    }));
+  return { ok: true, doc: withRungs(doc, rungs) };
+}
+
+function editInsertCell(
+  doc: SchematicDocument,
+  rungId: string,
+  index: number,
+  draft: CellDraft,
+): EditOutcome {
+  const target = doc.rungs.find((r) => r.id === rungId);
+  if (target === undefined) return fail(`段がありません: ${rungId}`);
+  if (target.cells.length >= MAX_CELLS_PER_RUNG) {
+    return fail(`1つの段に置ける要素は${MAX_CELLS_PER_RUNG}個までです`);
+  }
+  if (!Number.isInteger(index) || index < 0 || index > target.cells.length) {
+    return fail(`段 ${rungId} に桁 ${index} はありません（0〜${target.cells.length}）`);
+  }
+  const problem = deviceProblem(draft.kind, draft.device);
+  if (problem !== undefined) return fail(problem);
+  if (draft.presetMs !== undefined) {
+    const bad = presetProblem(draft.presetMs);
+    if (bad !== undefined) return fail(bad);
+  }
+  const cells = [...target.cells];
+  cells.splice(index, 0, buildCell(nextCellId(doc), draft, DEFAULT_EDIT_PRESET_MS));
+  return { ok: true, doc: withRungs(doc, replaceRung(doc, rungId, { ...target, cells })) };
+}
+
+/** 要素1個を作り替える（IDは保つ）。`replaceCell` / `setDevice` / `setPreset` の共通部分。 */
+function updateCell(
+  doc: SchematicDocument,
+  cellId: string,
+  make: (cell: SchematicCell) => SchematicCell | string,
+): EditOutcome {
+  const found = locate(doc, cellId);
+  if (found === undefined) return fail(`要素がありません: ${cellId}`);
+  const next = make(found.cell);
+  if (typeof next === 'string') return fail(next);
+  const cells = [...found.rung.cells];
+  cells[found.index] = next;
+  return { ok: true, doc: withRungs(doc, replaceRung(doc, found.rung.id, { ...found.rung, cells })) };
+}
+
+function editRemoveCell(doc: SchematicDocument, cellId: string): EditOutcome {
+  const found = locate(doc, cellId);
+  if (found === undefined) return fail(`要素がありません: ${cellId}`);
+  const cells = found.rung.cells.filter((c) => c.id !== cellId);
+  return { ok: true, doc: withRungs(doc, replaceRung(doc, found.rung.id, { ...found.rung, cells })) };
+}
+
+function editMoveCell(doc: SchematicDocument, cellId: string, toIndex: number): EditOutcome {
+  const found = locate(doc, cellId);
+  if (found === undefined) return fail(`要素がありません: ${cellId}`);
+  const last = found.rung.cells.length - 1;
+  if (!Number.isInteger(toIndex) || toIndex < 0 || toIndex > last) {
+    return fail(`段 ${found.rung.id} に桁 ${toIndex} はありません（0〜${last}）`);
+  }
+  const cells = [...found.rung.cells];
+  const [moved] = cells.splice(found.index, 1);
+  /* c8 ignore next -- `locate` が見つけた要素なので必ず取れる */
+  if (moved === undefined) return fail(`要素がありません: ${cellId}`);
+  cells.splice(toIndex, 0, moved);
+  return { ok: true, doc: withRungs(doc, replaceRung(doc, found.rung.id, { ...found.rung, cells })) };
+}
+
+function editSetEnds(
+  doc: SchematicDocument,
+  rungId: string,
+  from: RungEnd,
+  to: RungEnd,
+): EditOutcome {
+  const target = doc.rungs.find((r) => r.id === rungId);
+  if (target === undefined) return fail(`段がありません: ${rungId}`);
+  for (const end of [from, to]) {
+    const problem = endProblem(doc, rungId, end);
+    if (problem !== undefined) return fail(problem);
+  }
+  return { ok: true, doc: withRungs(doc, replaceRung(doc, rungId, { ...target, from, to })) };
+}
+
+/** 編集を1つ当てる。入力の文書は変えない。決定表#3 */
+export function applyEdit(doc: SchematicDocument, edit: SchematicEdit): EditOutcome {
+  switch (edit.kind) {
+    case 'addRung':
+      return editAddRung(doc, edit.after);
+    case 'removeRung':
+      return editRemoveRung(doc, edit.rungId);
+    case 'insertCell':
+      return editInsertCell(doc, edit.rungId, edit.index, edit.draft);
+    case 'replaceCell':
+      return updateCell(doc, edit.cellId, (cell) => {
+        const problem = deviceProblem(edit.draft.kind, edit.draft.device);
+        if (problem !== undefined) return problem;
+        if (edit.draft.presetMs !== undefined) {
+          const bad = presetProblem(edit.draft.presetMs);
+          if (bad !== undefined) return bad;
+        }
+        return buildCell(cell.id, edit.draft, cell.presetMs ?? DEFAULT_EDIT_PRESET_MS);
+      });
+    case 'removeCell':
+      return editRemoveCell(doc, edit.cellId);
+    case 'setDevice':
+      return updateCell(doc, edit.cellId, (cell) => {
+        const problem = deviceProblem(cell.kind, edit.device);
+        if (problem !== undefined) return problem;
+        return buildCell(
+          cell.id,
+          { kind: cell.kind, device: edit.device, ...(cell.presetMs === undefined ? {} : { presetMs: cell.presetMs }) },
+          DEFAULT_EDIT_PRESET_MS,
+        );
+      });
+    case 'setPreset':
+      return updateCell(doc, edit.cellId, (cell) => {
+        if (!isTimerCoil(cell.kind, cell.device)) {
+          return `設定時間を持てるのはタイマコイルだけです: ${cell.id}`;
+        }
+        const bad = presetProblem(edit.presetMs);
+        if (bad !== undefined) return bad;
+        return { kind: cell.kind, id: cell.id, device: cell.device, presetMs: edit.presetMs };
+      });
+    case 'setEnds':
+      return editSetEnds(doc, edit.rungId, edit.from, edit.to);
+    case 'moveCell':
+      return editMoveCell(doc, edit.cellId, edit.toIndex);
+  }
+}
+
+/** 種別の日本語名（パレットと操作ログで使う）。§11.1 */
+export const CELL_KIND_LABELS: Readonly<Record<CellKind, string>> = {
+  'pb-a': '押ボタン a接点',
+  'pb-b': '押ボタン b接点',
+  'cr-a': 'リレー a接点',
+  'cr-b': 'リレー b接点',
+  't-a': 'タイマ a接点（限時）',
+  't-b': 'タイマ b接点（限時）',
+  coil: 'コイル',
+  lamp: '表示灯',
+  buzzer: 'ブザー',
+};
+
+/** 端点の日本語表現（`P母線` / `N母線` / `r1 の3番目`）。 */
+function endLabel(end: RungEnd): string {
+  return 'bus' in end ? `${end.bus}母線` : `${end.rung} の節点${end.node}`;
+}
+
+/** 編集1件の説明（操作ログに出す1行）。§8.1 */
+export function editLabel(edit: SchematicEdit): string {
+  switch (edit.kind) {
+    case 'addRung':
+      return '段を追加';
+    case 'removeRung':
+      return `段を削除（${edit.rungId}）`;
+    case 'insertCell':
+      return `${CELL_KIND_LABELS[edit.draft.kind]} ${edit.draft.device} を配置`;
+    case 'replaceCell':
+      return `${CELL_KIND_LABELS[edit.draft.kind]} ${edit.draft.device} に置き換え`;
+    case 'removeCell':
+      return '要素を削除';
+    case 'setDevice':
+      return `機器名を ${edit.device} に変更`;
+    case 'setPreset':
+      return `設定時間を ${(edit.presetMs / 1000).toFixed(1)}秒 に変更`;
+    case 'setEnds':
+      return `段の両端を ${endLabel(edit.from)} → ${endLabel(edit.to)} に変更`;
+    case 'moveCell':
+      return '要素を移動';
+  }
+}
+
+/** 文書の版（`emptySchematic()` が入れる値の確認用）。 */
+export const EDIT_FORMAT_VERSION = SCHEMATIC_FORMAT_VERSION;
+
+/** 負荷の要素を持つ段か（パレットの「この段にはもう負荷を置けません」の判定）。§11.1 */
+export function rungHasLoad(r: Rung): boolean {
+  return r.cells.some((cell) => isLoadCell(cell));
+}
+```
+
+- [ ] **Step 4: 失敗するテストを書く（スロット矩形）**
+
+`packages/schematic-core/test/slot-rects.test.ts`:
+
+```ts
+import { describe, expect, it } from 'vitest';
+import {
+  BUS_N,
+  BUS_P,
+  coil,
+  createDocument,
+  DEFAULT_LAYOUT_OPTIONS,
+  emptySchematic,
+  layout,
+  pbA,
+  rung,
+  slotRects,
+} from '../src/index.js';
+
+const doc = createDocument('d', 't', [
+  rung('r1', BUS_P, BUS_N, [pbA('c1', 'PB1'), coil('c2', 'CR1')]),
+  rung('r2', BUS_P, { rung: 'r1', node: 1 }, []),
+]);
+
+describe('slotRects（§11.4 のエディタの当たり判定）', () => {
+  it('returns one rect per cell plus one empty tail slot per rung', () => {
+    const rects = slotRects(doc);
+    expect(rects.filter((s) => s.rungId === 'r1').map((s) => s.index)).toEqual([0, 1, 2]);
+    expect(rects.filter((s) => s.rungId === 'r1').map((s) => s.cellId)).toEqual(['c1', 'c2', undefined]);
+    // 要素0個の段でも「置ける場所」が1つある
+    expect(rects.filter((s) => s.rungId === 'r2')).toEqual([
+      expect.objectContaining({ rungId: 'r2', index: 0, cellId: undefined }),
+    ]);
+  });
+
+  it('lines the rects up with the shapes that layout() emits', () => {
+    const o = DEFAULT_LAYOUT_OPTIONS;
+    const rects = slotRects(doc);
+    const first = rects[0];
+    expect(first).toBeDefined();
+    if (first === undefined) return;
+    expect(first.w).toBe(o.colWidth);
+    expect(first.h).toBe(o.rowHeight);
+    // 段1は左母線から始まるので、最初の桁の左端は marginX
+    expect(first.x).toBe(o.marginX);
+    expect(first.y).toBe(o.marginY - o.rowHeight / 2);
+  });
+
+  it('follows the same colWidth override that the renderer uses', () => {
+    const rects = slotRects(doc, { colWidth: 40 });
+    expect(rects[1]?.x).toBe(DEFAULT_LAYOUT_OPTIONS.marginX + 40);
+    expect(rects[1]?.w).toBe(40);
+  });
+
+  it('starts a branch rung at its parent node', () => {
+    const branch = slotRects(doc).find((s) => s.rungId === 'r2');
+    expect(branch?.x).toBe(DEFAULT_LAYOUT_OPTIONS.marginX + DEFAULT_LAYOUT_OPTIONS.colWidth);
+  });
+
+  it('never runs past the layout width', () => {
+    const size = layout(doc);
+    for (const rect of slotRects(doc)) {
+      expect(rect.x + rect.w).toBeLessThanOrEqual(size.width);
+      expect(rect.y + rect.h).toBeLessThanOrEqual(size.height);
+    }
+  });
+
+  it('gives an empty document one slot', () => {
+    expect(slotRects(emptySchematic('d', 't'))).toHaveLength(1);
+  });
+});
+```
+
+- [ ] **Step 5: `layout.ts` の末尾に `slotRects()` を追記する**
+
+既存の `layout()` は段の左端 x を `startOf()`（モジュール内のクロージャ）で求めている。同じ計算を2度書かないよう、**`startOf` の中身を `rungStartX()` という export された純関数へ切り出し**、`layout()` はそれを呼ぶ形にする（`layout()` の戻り値は1ビットも変わらない）。
+
+```ts
+/** 段の左端x（`layout()` と `slotRects()` が同じ値を使う）。分岐段は親の節点に合わせる。 */
+export function rungStartX(doc: SchematicDocument, options: LayoutOptions = {}): Map<string, number> {
+  const o = { ...DEFAULT_LAYOUT_OPTIONS, ...options };
+  const busPX = o.marginX;
+  const rungById = new Map(doc.rungs.map((r) => [r.id, r]));
+  const startX = new Map<string, number>();
+  const resolving = new Set<string>();
+  function startOf(r: Rung): number {
+    const memo = startX.get(r.id);
+    if (memo !== undefined) return memo;
+    if (resolving.has(r.id)) return busPX; // 循環参照（validateDocument が別に弾く）
+    resolving.add(r.id);
+    const x = 'bus' in r.from ? busPX : branchX(r.from);
+    resolving.delete(r.id);
+    startX.set(r.id, x);
+    return x;
+  }
+  function branchX(end: Extract<RungEnd, { rung: string }>): number {
+    const parent = rungById.get(end.rung);
+    if (parent === undefined) return busPX;
+    return startOf(parent) + clampNode(end.node, parent.cells.length) * o.colWidth;
+  }
+  for (const r of doc.rungs) startOf(r);
+  return startX;
+}
+
+/** 編集UIの当たり判定1つぶん（論理単位。`layout()` と同じ座標系）。§11.4 */
+export interface SlotRect {
+  rungId: string;
+  /** 段の中の桁（0〜要素数）。要素数と同じ値は「末尾の空き桁」。 */
+  index: number;
+  /** その桁に要素があればそのID。空き桁は undefined。 */
+  cellId: string | undefined;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+/**
+ * 段 × 桁の当たり矩形。`layout()` と同じ寸法設定を渡すこと。§11.4
+ * 各段について「要素の数 ＋ 1」個（末尾に空き桁を1つ）返す。
+ */
+export function slotRects(doc: SchematicDocument, options: LayoutOptions = {}): SlotRect[] {
+  const o = { ...DEFAULT_LAYOUT_OPTIONS, ...options };
+  const startX = rungStartX(doc, options);
+  const out: SlotRect[] = [];
+  doc.rungs.forEach((r, rowIndex) => {
+    const x0 = startX.get(r.id) ?? o.marginX;
+    const y = o.marginY + rowIndex * o.rowHeight - o.rowHeight / 2;
+    for (let index = 0; index <= r.cells.length; index += 1) {
+      out.push({
+        rungId: r.id,
+        index,
+        cellId: r.cells[index]?.id,
+        x: x0 + index * o.colWidth,
+        y,
+        w: o.colWidth,
+        h: o.rowHeight,
+      });
+    }
+  });
+  return out;
+}
+```
+
+`layout()` の中の `startOf` / `branchX` は `rungStartX()` を呼ぶ形に置き換える（`const startX = rungStartX(doc, options);` を作り、`startOf(r)` を `startX.get(r.id) ?? busPX` に、`branchX(end)` を `(startX.get(end.rung) ?? busPX) + clampNode(end.node, rungById.get(end.rung)?.cells.length ?? 0) * o.colWidth` に差し替える）。`clampNode()` は既にモジュール内にあるのでそのまま使う。
+
+**注意**: `slotRects()` の `y` は「段の行の中心 − 行高の半分」である（`layout()` は要素の記号を `y = marginY + i * rowHeight` に置く）。末尾の空き桁が右母線に重なる段があるが、透明な矩形なので描画には影響しない（Task 5 は母線より手前に敷かない）。
+
+- [ ] **Step 6: `index.ts` に再輸出を足す**
+
+```ts
+export {
+  applyEdit,
+  CELL_KIND_LABELS,
+  DEFAULT_EDIT_PRESET_MS,
+  EDIT_FORMAT_VERSION,
+  editLabel,
+  emptySchematic,
+  MAX_CELLS_PER_RUNG,
+  MAX_RUNGS,
+  nextCellId,
+  nextRungId,
+  rungHasLoad,
+  type CellDraft,
+  type EditOutcome,
+  type SchematicEdit,
+} from './edit.js';
+```
+
+`layout.js` の export 群に `rungStartX` / `slotRects` / `type SlotRect` を足す。
+
+- [ ] **Step 7: テストを走らせる**
+
+```
+pnpm --filter @ojt/schematic-core test
+```
+
+**期待**: 既存の `document` / `assign` / `layout` / `to-session` のテストが全て通ったうえで、`edit.test.ts` の **28件**と `slot-rects.test.ts` の **6件**が増える。
+
+- [ ] **Step 8: カバレッジと型を確かめてコミットする**
+
+```
+pnpm --filter @ojt/schematic-core test:coverage
+pnpm -r typecheck
+pnpm lint
+git add packages/schematic-core && git commit -m "feat(schematic-core): add document edit operations and editor slot rects"
+```
+
+`schematic-core` は行・分岐 90% 以上が §16 Phase 1 受入基準④の条件である。`edit.ts` の分岐はすべて上のテストが通る。
+
+---
+
+## Task 2: 検算（`verifySchematic()`、`@ojt/content`）
+
+**モデル: Sonnet-verbatim**（既存の `toSession()` と `judgeAssemble()` をつなぐだけ。判断は Task 1 と決定表で済んでいる）
+
+**Files:**
+- Create: `packages/content/src/verify.ts`
+- Modify: `packages/content/src/index.ts`（再輸出）
+- Test: `packages/content/test/verify.test.ts`（新規）
+
+§11.4「検算: 訓練者が描いた回路図をネットリスト化し、課題の操作列で判定にかける。3D盤に配線する前に机上で確かめられる」。**判定器は `judgeAssemble()` をそのまま使う**（決定表#6）。
+
+- [ ] **Step 1: 失敗するテストを書く**
+
+`packages/content/test/verify.test.ts`:
+
+```ts
+import { JIPM_BOARD } from '@ojt/board-model';
+import {
+  BUS_N,
+  BUS_P,
+  coil,
+  crA,
+  createDocument,
+  emptySchematic,
+  lamp,
+  pbA,
+  rung,
+} from '@ojt/schematic-core';
+import { describe, expect, it } from 'vitest';
+import { BUILTIN_ASSEMBLE_PROBLEMS } from '../src/builtin/index.js';
+import { verifySchematic } from '../src/verify.js';
+
+/** 内蔵課題 b-001（自己保持回路。§16 Phase 5 受入基準①と同じ題材）。 */
+const problem = BUILTIN_ASSEMBLE_PROBLEMS.find((p) => p.id === 'b-001');
+if (problem === undefined) throw new Error('b-001 が見つかりません');
+
+describe('verifySchematic（§11.4 検算）', () => {
+  it('passes when the drawing is the problem own reference circuit', () => {
+    const result = verifySchematic(problem, JIPM_BOARD, problem.schematic);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.passed).toBe(true);
+    expect(result.judge.mismatches).toEqual([]);
+    expect(result.judge.mode).toBe('assemble');
+  });
+
+  it('runs the same operations as the real judge (charts come back)', () => {
+    const result = verifySchematic(problem, JIPM_BOARD, problem.schematic);
+    expect(result.ok && result.judge.charts.expected.signals.length).toBeGreaterThan(0);
+    expect(result.ok && result.judge.charts.actual.signals.length).toBeGreaterThan(0);
+  });
+
+  it('never counts hazards (a desk check has no board operations)', () => {
+    const result = verifySchematic(problem, JIPM_BOARD, problem.schematic);
+    expect(result.ok && result.judge.hazardCount).toBe(0);
+  });
+
+  it('reports the structural errors of a half-finished drawing without judging', () => {
+    const result = verifySchematic(problem, JIPM_BOARD, emptySchematic('draft', '下書き'));
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.errors.map((e) => e.message)).toContain('段に要素がありません: r1');
+    expect(result.errors[0]?.source).toBe('document');
+  });
+
+  it('points at the cell when the physical assignment fails', () => {
+    // CR1 の接点を5個使う（§11.3: 1部品につき4組まで）
+    const doc = createDocument('draft', '下書き', [
+      rung('r1', BUS_P, BUS_N, [
+        crA('c1', 'CR1'),
+        crA('c2', 'CR1'),
+        crA('c3', 'CR1'),
+        crA('c4', 'CR1'),
+        crA('c5', 'CR1'),
+        lamp('c6', 'PL1'),
+      ]),
+      rung('r2', BUS_P, BUS_N, [pbA('c7', 'PB1'), coil('c8', 'CR1')]),
+    ]);
+    const result = verifySchematic(problem, JIPM_BOARD, doc);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    const issue = result.errors.find((e) => e.cellId === 'c5');
+    expect(issue?.message).toContain('5個目');
+    expect(issue?.source).toBe('assign');
+  });
+
+  it('fails the check when the drawing does not reproduce the timing', () => {
+    // 自己保持の帰還接点（CR1 の a接点）を落とすと、PBを離した瞬間に消える
+    const doc = createDocument('draft', '下書き', [
+      rung('r1', BUS_P, BUS_N, [pbA('c1', 'PB1'), coil('c2', 'CR1')]),
+      rung('r2', BUS_P, BUS_N, [crA('c3', 'CR1'), lamp('c4', 'PL1')]),
+    ]);
+    const result = verifySchematic(problem, JIPM_BOARD, doc);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.passed).toBe(false);
+    expect(result.judge.mismatches.length).toBeGreaterThan(0);
+  });
+
+  it('carries the elapsed time when the caller gives one', () => {
+    const result = verifySchematic(problem, JIPM_BOARD, problem.schematic, { elapsedMs: 12_000 });
+    expect(result.ok && result.judge.elapsedMs).toBe(12_000);
+  });
+
+  it('refuses a board that is not the one the problem asks for', () => {
+    const other = { ...JIPM_BOARD, id: 'other-board' };
+    const result = verifySchematic(problem, other, problem.schematic);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.errors[0]?.message).toContain('渡された盤');
+  });
+});
+
+describe('verifySchematic: 全内蔵モードB課題の模範回路が検算に通る（§7.8 の自己整合）', () => {
+  it.each(BUILTIN_ASSEMBLE_PROBLEMS.map((p) => [p.id, p] as const))('%s', (_id, p) => {
+    const result = verifySchematic(p, JIPM_BOARD, p.schematic);
+    expect(result.ok).toBe(true);
+    expect(result.ok && result.passed).toBe(true);
+  });
+});
+```
+
+- [ ] **Step 2: テストを走らせて失敗を確かめる**
+
+```
+pnpm --filter @ojt/content test verify
+```
+
+`Cannot find module '../src/verify.js'` で落ちる。
+
+- [ ] **Step 3: `packages/content/src/verify.ts` を実装する**
+
+```ts
+import { toSession, validateDocument, type SchematicDocument } from '@ojt/schematic-core';
+import type { BoardDefinition } from '@ojt/board-model';
+import { judgeAssemble, type JudgeResult } from './judge.js';
+import { ASSEMBLE_WIRE_COLOR, toPhysicalOverride } from './reference.js';
+import { toSocketRoles } from './schema/common.js';
+import type { AssembleProblem } from './schema/assemble.js';
+import { partId, type PartId } from '@ojt/circuit-sim';
+
+/**
+ * 検算。設計仕様 §11.4。
+ *
+ * 訓練者が**回路図エディタで描いた文書**をネットリストにし、課題の操作列で `judgeAssemble()` に
+ * かける。3D盤へ配線する前に机上で確かめるための機能であり、**判定そのものと同じ判定器・同じ
+ * 操作列・同じ許容差**を使う（Plan 5 決定表#6）。違うのは次の2点だけである。
+ *
+ * - 盤のセッションは**回路図から自動生成**する（`toSession()`）。訓練者が3Dで張った電線は見ない。
+ * - 危険操作（`sessionHazards`）は渡さない。机上の作業に危険操作は無い。
+ *
+ * 文書が構造的に不正（作りかけ）か、物理割当に失敗した場合は判定へ進まず理由を返す。
+ * 理由には**回路図の要素ID**（`cellId`）を添えるので、エディタはその要素を光らせられる
+ * （課題JSONのパスへ直す `toProblemPath()` はここでは使わない。エディタが編集しているのは
+ * 課題データではなく訓練者の下書きである）。
+ */
+
+/** 検算の指摘1件。 */
+export interface VerifyIssue {
+  /** どの検査が出したか。 */
+  source: 'document' | 'assign';
+  /** 出どころのパス（`rungs[0].cells[2]` / 要素ID / 電線ID）。 */
+  path: string;
+  message: string;
+  /** その指摘が回路図の要素を指しているときの要素ID（エディタのハイライト用）。 */
+  cellId?: string;
+}
+
+/** 検算のオプション。 */
+export interface VerifyOptions {
+  /** 経過時間[ms]（結果の参考表示。合否には影響しない）。§17.2 #3 */
+  elapsedMs?: number;
+}
+
+/** 検算の結果。 */
+export type VerifyResult =
+  | { ok: true; passed: boolean; judge: JudgeResult }
+  | { ok: false; errors: readonly VerifyIssue[] };
+
+/** 文書に現れる要素IDの集合（指摘に `cellId` を添えられるか判定する）。 */
+function cellIds(doc: SchematicDocument): Set<string> {
+  const out = new Set<string>();
+  for (const r of doc.rungs) for (const cell of r.cells) out.add(cell.id);
+  return out;
+}
+
+/** 課題の任意追加部品（§5.3.4）。 */
+function extraParts(problem: AssembleProblem): PartId[] {
+  return (problem.board.extraParts ?? []).map((name) => partId(name));
+}
+
+/**
+ * 訓練者の回路図を検算する。§11.4
+ * 1. 構造検査（`validateDocument()`）
+ * 2. 物理割当と盤セッションの生成（`toSession()`。§11.3 の渡り配線を含む）
+ * 3. 課題の操作列で判定（`judgeAssemble()`）
+ */
+export function verifySchematic(
+  problem: AssembleProblem,
+  board: BoardDefinition,
+  doc: SchematicDocument,
+  options: VerifyOptions = {},
+): VerifyResult {
+  if (problem.board.boardId !== board.id) {
+    return {
+      ok: false,
+      errors: [
+        {
+          source: 'document',
+          path: 'board.boardId',
+          message: `課題が要求する盤（${problem.board.boardId}）と渡された盤（${board.id}）が違います`,
+        },
+      ],
+    };
+  }
+
+  const structural = validateDocument(doc);
+  if (structural.length > 0) {
+    return {
+      ok: false,
+      errors: structural.map((e) => ({ source: 'document' as const, path: e.path, message: e.message })),
+    };
+  }
+
+  const override = toPhysicalOverride(problem.physicalOverride);
+  const built = toSession(doc, board, {
+    roles: toSocketRoles(problem.board.socketRoles),
+    color: ASSEMBLE_WIRE_COLOR,
+    extraParts: extraParts(problem),
+    inventory: problem.inventory,
+    ...(override === undefined ? {} : { physicalOverride: override }),
+  });
+  if (!built.ok) {
+    const known = cellIds(doc);
+    return {
+      ok: false,
+      errors: built.errors.map((e) => ({
+        source: 'assign' as const,
+        path: e.path,
+        message: e.message,
+        ...(known.has(e.path) ? { cellId: e.path } : {}),
+      })),
+    };
+  }
+
+  const judged = judgeAssemble(problem, board, built.session, {
+    ...(options.elapsedMs === undefined ? {} : { elapsedMs: options.elapsedMs }),
+  });
+  if (!judged.ok) {
+    return {
+      ok: false,
+      errors: judged.errors.map((e) => ({
+        source: 'document' as const,
+        path: e.path,
+        message: e.message,
+      })),
+    };
+  }
+  return { ok: true, passed: judged.value.passed, judge: judged.value };
+}
+```
+
+**注意**: `problem.physicalOverride` は**課題の模範回路の要素ID**を鍵に持つ。訓練者の下書きの要素IDが偶然一致しない限り `checkOverride()` が「要素IDが見つかりません」を返す。内蔵8題のうち `physicalOverride` を持つ課題でこれが起きるので、`toSession()` へ渡す前に**下書きに実在する要素IDだけへ絞る**こと。上のコードの `override` を次の形にする:
+
+```ts
+  const known = cellIds(doc);
+  const raw = toPhysicalOverride(problem.physicalOverride);
+  const override =
+    raw === undefined
+      ? undefined
+      : Object.fromEntries(Object.entries(raw).filter(([cellId]) => known.has(cellId)));
+```
+
+（`Object.keys(override).length === 0` のときは渡さない。`toSession()` の既定と同じになる。）
+
+- [ ] **Step 4: `index.ts` に再輸出を足す**
+
+```ts
+export {
+  verifySchematic,
+  type VerifyIssue,
+  type VerifyOptions,
+  type VerifyResult,
+} from './verify.js';
+```
+
+- [ ] **Step 5: テストを走らせる**
+
+```
+pnpm --filter @ojt/content test
+```
+
+**期待**: `verify.test.ts` の **8件 ＋ 内蔵モードB課題の件数（8件）= 16件**が増え、既存のテストはすべて通る。
+
+- [ ] **Step 6: コミットする**
+
+```
+pnpm -r typecheck && pnpm lint
+git add packages/content && git commit -m "feat(content): add verifySchematic for the desk check of a drawn circuit"
+```
+
+---
+
+## Task 3: 疑わしい配線（`wiringSuspects()`、`@ojt/content`）— UXレビュー #28
+
+**モデル: Opus**（節点分割の差の出し方と、出す件数の絞り方）
+
+**Files:**
+- Create: `packages/content/src/wiring-diff.ts`
+- Modify: `packages/content/src/index.ts`（再輸出）
+- Test: `packages/content/test/wiring-diff.test.ts`（新規）
+
+UXレビュー #28「結果画面が、判定のネットリスト差分から**どの電線・端子を疑えばよいか**を示す」。決定表#9 のとおり **節点分割の差**で求め、盤の全端子ではなく**回路図の要素が使う端子と母線**に絞る。
+
+- [ ] **Step 1: 失敗するテストを書く**
+
+`packages/content/test/wiring-diff.test.ts`:
+
+```ts
+import { addWire, createSession, JIPM_BOARD, plug, removeWire } from '@ojt/board-model';
+import { toTerminalId } from '@ojt/circuit-sim';
+import { describe, expect, it } from 'vitest';
+import { BUILTIN_ASSEMBLE_PROBLEMS } from '../src/builtin/index.js';
+import { buildReferenceSession } from '../src/reference.js';
+import { MAX_WIRING_SUSPECTS, wiringSuspects } from '../src/wiring-diff.js';
+
+const problem = BUILTIN_ASSEMBLE_PROBLEMS.find((p) => p.id === 'b-001');
+if (problem === undefined) throw new Error('b-001 が見つかりません');
+
+/** 模範回路そのままの盤。 */
+function referenceSession() {
+  const built = buildReferenceSession(problem, JIPM_BOARD);
+  if (!built.ok) throw new Error(built.errors.map((e) => e.message).join(' / '));
+  return built.value;
+}
+
+describe('wiringSuspects（UXレビュー #28）', () => {
+  it('finds nothing when the board matches the reference circuit', () => {
+    expect(wiringSuspects(problem, JIPM_BOARD, referenceSession().session)).toEqual([]);
+  });
+
+  it('reports the pair that a removed wire used to join', () => {
+    const { session } = referenceSession();
+    const victim = session.wires.find((w) => !w.locked);
+    expect(victim).toBeDefined();
+    if (victim === undefined) return;
+    const removed = removeWire(session, victim.id);
+    expect(removed.ok).toBe(true);
+    const suspects = wiringSuspects(problem, JIPM_BOARD, session);
+    expect(suspects.length).toBeGreaterThan(0);
+    const first = suspects[0];
+    expect(first?.kind).toBe('missing');
+    expect(first?.terminals).toHaveLength(2);
+    expect(first?.message).toContain('つながっていません');
+    // ハイライトに使える情報が揃っている
+    expect(first?.cellIds.length).toBeGreaterThan(0);
+  });
+
+  it('reports an extra connection that the reference circuit does not have', () => {
+    const { session } = referenceSession();
+    // CR1 のコイル + 端子（CR1.14）と PL1 の + 端子（TB_PL.1+）を勝手に繋ぐ
+    const added = addWire(
+      session,
+      JIPM_BOARD,
+      toTerminalId('CR1.12'),
+      toTerminalId('TB_PL.1-'),
+      '青',
+      { id: 'extra-1' },
+    );
+    expect(added.ok).toBe(true);
+    const suspects = wiringSuspects(problem, JIPM_BOARD, session);
+    const extra = suspects.find((s) => s.kind === 'extra');
+    expect(extra).toBeDefined();
+    expect(extra?.message).toContain('余計につながっています');
+    expect(extra?.wireIds).toContain('extra-1');
+  });
+
+  it('is blind to the order of the bus chain (§11.3 の渡り配線)', () => {
+    // 母線の鎖を組み替えても電気的に同じなら疑いは出ない
+    const { session, roles } = referenceSession();
+    const chain = session.wires.filter((w) => !w.locked && (w.from === 'P.1' || w.to === 'P.1'));
+    expect(chain.length).toBeGreaterThan(0);
+    // 同じ節点のまま別の端子へ付け替えるのは盤の規則が許さないので、ここでは
+    // 「鎖の向きを逆にした電線」を張り直して同じ節点になることを確かめる
+    const target = chain[0];
+    expect(target).toBeDefined();
+    if (target === undefined) return;
+    expect(removeWire(session, target.id).ok).toBe(true);
+    expect(
+      addWire(session, JIPM_BOARD, target.to, target.from, target.color, { id: target.id }).ok,
+    ).toBe(true);
+    expect(roles).toBeDefined();
+    expect(wiringSuspects(problem, JIPM_BOARD, session)).toEqual([]);
+  });
+
+  it('caps the list at MAX_WIRING_SUSPECTS on an unwired board', () => {
+    const bare = createSession(JIPM_BOARD, { roles: referenceSession().roles });
+    expect(plug(bare, 'S1', 'relay-my4n').ok).toBe(true);
+    const suspects = wiringSuspects(problem, JIPM_BOARD, bare);
+    expect(suspects.length).toBeLessThanOrEqual(MAX_WIRING_SUSPECTS);
+    expect(suspects.every((s) => s.kind === 'missing')).toBe(true);
+  });
+
+  it('names the devices so the message reads like the schematic', () => {
+    const { session } = referenceSession();
+    const victim = session.wires.find((w) => !w.locked);
+    if (victim === undefined) return;
+    removeWire(session, victim.id);
+    const suspects = wiringSuspects(problem, JIPM_BOARD, session);
+    for (const suspect of suspects) {
+      expect(suspect.devices.length).toBeGreaterThan(0);
+      for (const device of suspect.devices) {
+        expect(device).toMatch(/^(CR[1-4]|T[12]|PB[1-4]|PL[1-4]|BZ|P|N)$/u);
+      }
+    }
+  });
+
+  it('returns nothing when the problem reference circuit cannot be built', () => {
+    const broken = { ...problem, board: { ...problem.board, boardId: 'nope' } };
+    expect(wiringSuspects(broken, JIPM_BOARD, referenceSession().session)).toEqual([]);
+  });
+});
+```
+
+- [ ] **Step 2: テストを走らせて失敗を確かめる**
+
+```
+pnpm --filter @ojt/content test wiring-diff
+```
+
+- [ ] **Step 3: `packages/content/src/wiring-diff.ts` を実装する**
+
+```ts
+import { toNetlist, type BoardDefinition, type BoardSession } from '@ojt/board-model';
+import { buildNets, terminalId, type Nets, type TerminalId } from '@ojt/circuit-sim';
+import type { CellAssignment } from '@ojt/schematic-core';
+import { buildReferenceSession, type SchematicProblem } from './reference.js';
+
+/**
+ * 「疑わしい配線」の割り出し。UXレビュー #28（2026-09-19）。
+ *
+ * 判定（`judgeAssemble()`）は波形の食い違いしか返さないので、訓練者は「PL1 が点かない」までは
+ * 分かっても**どの電線を見ればよいか**が分からない。ここでは模範回路と訓練者回路の
+ * **節点分割**（`buildNets()` の union-find）を比べ、「本来つながるはずの2端子がつながっていない」
+ * （`missing`）と「本来別のはずの2端子がつながっている」（`extra`）を挙げる。
+ *
+ * 電線を1本ずつ突き合わせないのは、§11.3 の母線分配が**渡り配線**（鎖）であり、鎖の順序に
+ * 自由度があるためである（`P.1 → A → B` と `P.1 → B → A` は電気的に同じ）。節点分割なら
+ * 「電気的に同じかどうか」だけを見るので、正しい配線を誤りと呼ばずに済む。
+ *
+ * 比べる端子は**回路図の要素が使う端子と母線の供給端子**に限る。盤の全端子で比べると、
+ * その課題で使わないソケットの端子が大量に `missing` として出てくる。
+ */
+
+/** 疑いの種別。 */
+export type SuspectKind = 'missing' | 'extra';
+
+/** 疑い1件。 */
+export interface WiringSuspect {
+  kind: SuspectKind;
+  /** 関わる2端子（模範回路の出現順）。 */
+  terminals: readonly [TerminalId, TerminalId];
+  /** その端子を使う回路図上の機器名（重複を除いた出現順）。 */
+  devices: readonly string[];
+  /** その端子を使う回路図の要素ID（`buildHighlightIndex()` の鍵）。 */
+  cellIds: readonly string[];
+  /** その2端子のどちらかに繋がっている訓練者の電線ID（3Dで光らせる先）。 */
+  wireIds: readonly string[];
+  /** 画面にそのまま出せる1行。 */
+  message: string;
+}
+
+/** 結果画面に出す上限（決定表#27）。 */
+export const MAX_WIRING_SUSPECTS = 5;
+
+/** 母線の供給端子（§6.1: P/N は各1点）。 */
+const BUS_TERMINALS: readonly TerminalId[] = [terminalId('P', '1'), terminalId('N', '1')];
+
+/** 端子 → 回路図の機器名（母線は `P` / `N`）。 */
+function deviceIndex(cells: readonly CellAssignment[]): Map<TerminalId, string> {
+  const out = new Map<TerminalId, string>();
+  for (const cell of cells) {
+    for (const id of [cell.left, cell.right]) if (!out.has(id)) out.set(id, cell.device);
+  }
+  out.set(BUS_TERMINALS[0] as TerminalId, 'P');
+  out.set(BUS_TERMINALS[1] as TerminalId, 'N');
+  return out;
+}
+
+/** 端子 → その端子を使う回路図要素ID（出現順）。 */
+function cellIndex(cells: readonly CellAssignment[]): Map<TerminalId, string[]> {
+  const out = new Map<TerminalId, string[]>();
+  for (const cell of cells) {
+    for (const id of [cell.left, cell.right]) {
+      out.set(id, [...(out.get(id) ?? []), cell.cellId]);
+    }
+  }
+  return out;
+}
+
+/** 見張る端子（回路図の要素が使う端子 ＋ 母線の供給端子。模範回路の出現順）。 */
+function watchedTerminals(cells: readonly CellAssignment[]): TerminalId[] {
+  const out: TerminalId[] = [];
+  for (const cell of cells) {
+    for (const id of [cell.left, cell.right]) if (!out.includes(id)) out.push(id);
+  }
+  for (const bus of BUS_TERMINALS) if (!out.includes(bus)) out.push(bus);
+  return out;
+}
+
+/**
+ * 端子の節点番号。そのネットリストに無い端子は `undefined`。
+ * 盤に無い端子（課題が使わないソケットの役割）でも落ちないようにする。
+ */
+function nodeOf(nets: Nets, id: TerminalId): number | undefined {
+  return nets.hasTerminal(id) ? nets.nodeOf(id) : undefined;
+}
+
+/** 節点番号ごとに端子をまとめる（`undefined` の端子は除く）。 */
+function groupByNode(
+  nets: Nets,
+  terminals: readonly TerminalId[],
+): Map<number, TerminalId[]> {
+  const out = new Map<number, TerminalId[]>();
+  for (const id of terminals) {
+    const node = nodeOf(nets, id);
+    if (node === undefined) continue;
+    out.set(node, [...(out.get(node) ?? []), id]);
+  }
+  return out;
+}
+
+/** その2端子のどちらかに繋がっている訓練者の電線（既設配線も含む。3Dで光らせる）。 */
+function wiresTouching(session: BoardSession, pair: readonly TerminalId[]): string[] {
+  return session.wires
+    .filter((w) => pair.includes(w.from) || pair.includes(w.to))
+    .map((w) => w.id);
+}
+
+/** 疑い1件を組み立てる。 */
+function makeSuspect(
+  kind: SuspectKind,
+  a: TerminalId,
+  b: TerminalId,
+  devices: ReadonlyMap<TerminalId, string>,
+  cells: ReadonlyMap<TerminalId, string[]>,
+  session: BoardSession,
+): WiringSuspect {
+  const deviceA = devices.get(a) ?? a;
+  const deviceB = devices.get(b) ?? b;
+  const names = [...new Set([deviceA, deviceB])];
+  const message =
+    kind === 'missing'
+      ? `${a}（${deviceA}）と ${b}（${deviceB}）がつながっていません`
+      : `${a}（${deviceA}）と ${b}（${deviceB}）が余計につながっています`;
+  return {
+    kind,
+    terminals: [a, b],
+    devices: names,
+    cellIds: [...new Set([...(cells.get(a) ?? []), ...(cells.get(b) ?? [])])],
+    wireIds: wiresTouching(session, [a, b]),
+    message,
+  };
+}
+
+/**
+ * ある分割（`from`）のまとまりが、別の分割（`to`）で割れている箇所を挙げる。
+ * まとまりの先頭（模範回路の出現順の1つ目）を基準にし、別の節点にいる端子を1つずつ挙げる。
+ * 同じ節点に落ちた端子はまとめて1件にするので、4端子が2対2に割れても2件ではなく1件になる。
+ */
+function splits(
+  groups: ReadonlyMap<number, TerminalId[]>,
+  other: Nets,
+): Array<[TerminalId, TerminalId]> {
+  const out: Array<[TerminalId, TerminalId]> = [];
+  for (const members of groups.values()) {
+    const anchor = members[0];
+    if (anchor === undefined || members.length < 2) continue;
+    const anchorNode = nodeOf(other, anchor);
+    const seen = new Set<number | undefined>([anchorNode]);
+    for (const id of members.slice(1)) {
+      const node = nodeOf(other, id);
+      if (seen.has(node)) continue;
+      seen.add(node);
+      out.push([anchor, id]);
+    }
+  }
+  return out;
+}
+
+/**
+ * 模範回路と訓練者回路の節点分割の差を「疑わしい配線」として返す。UXレビュー #28
+ * 模範回路が作れない課題（課題データの誤り。§13 #2）では空配列を返す——判定そのものが
+ * 先に課題エラーで止まるので、結果画面に出すものは無い。
+ */
+export function wiringSuspects(
+  problem: SchematicProblem,
+  board: BoardDefinition,
+  traineeSession: BoardSession,
+): readonly WiringSuspect[] {
+  const reference = buildReferenceSession(problem, board);
+  if (!reference.ok) return [];
+
+  const cells = reference.value.cells;
+  const watched = watchedTerminals(cells);
+  const devices = deviceIndex(cells);
+  const cellsAt = cellIndex(cells);
+
+  const referenceNets = buildNets(reference.value.netlist);
+  const traineeNets = buildNets(toNetlist(traineeSession, board));
+
+  const missing = splits(groupByNode(referenceNets, watched), traineeNets).map(([a, b]) =>
+    makeSuspect('missing', a, b, devices, cellsAt, traineeSession),
+  );
+  const extra = splits(groupByNode(traineeNets, watched), referenceNets).map(([a, b]) =>
+    makeSuspect('extra', a, b, devices, cellsAt, traineeSession),
+  );
+
+  return [...missing, ...extra].slice(0, MAX_WIRING_SUSPECTS);
+}
+```
+
+**設計上の注記（レビューで見る点）:**
+
+- `splits()` は**非対称**に呼ぶ。`missing` は「模範で1つの節点 → 訓練者で複数」、`extra` は「訓練者で1つの節点 → 模範で複数」。どちらも `MAX_WIRING_SUSPECTS` の前に `missing` を並べるので、未配線の盤では `missing` だけが出る（決定表#27）。
+- `wiresTouching()` は既設配線（`locked`）も返す。**3Dで光らせるだけ**なので、削除できない電線が光っても害は無く、むしろ「ここは既設だから触らなくてよい」が分かる。
+- 母線の供給端子を `watched` に入れているので、「`P.1` に何もつながっていない」（＝母線から電気が来ていない）も `missing` として出る。訓練者がいちばん踏む誤りである。
+
+- [ ] **Step 4: `index.ts` に再輸出を足す**
+
+```ts
+export {
+  MAX_WIRING_SUSPECTS,
+  wiringSuspects,
+  type SuspectKind,
+  type WiringSuspect,
+} from './wiring-diff.js';
+```
+
+- [ ] **Step 5: テストを走らせてコミットする**
+
+```
+pnpm --filter @ojt/content test
+pnpm -r typecheck && pnpm lint
+git add packages/content && git commit -m "feat(content): point at the suspect terminals from the net partition diff"
+```
+
+**期待**: `wiring-diff.test.ts` の **7件**が増える。
+
+---
+
+## Task 4: エディタの純関数層（`session/schematic-edit.ts` ＋ 手順帯）
+
+**モデル: Opus**（カーソル移動・キー割当・パレットの絞り込みの設計）
+
+**Files:**
+- Create: `apps/desktop/src/renderer/session/schematic-edit.ts`
+- Modify: `apps/desktop/src/renderer/session/step-guide.ts`（末尾に追記）
+- Modify: `apps/desktop/src/renderer/i18n/ja.ts`（`JA.schematic` ブロックを新設、`JA.stepGuide` に追記）
+- Test: `apps/desktop/test/schematic-edit.test.ts`（新規）
+
+3D も React も使わない層。`session/ladder.ts`（履歴）と `session/interaction.ts`（キー → 操作）の流儀に合わせる。
+
+- [ ] **Step 1: 失敗するテストを書く**
+
+`apps/desktop/test/schematic-edit.test.ts`:
+
+```ts
+import { JIPM_BOARD } from '@ojt/board-model';
+import { BUILTIN_ASSEMBLE_PROBLEMS } from '@ojt/content';
+import { applyEdit, emptySchematic, type SchematicDocument } from '@ojt/schematic-core';
+import { describe, expect, it } from 'vitest';
+import {
+  clampCursor,
+  emptySchematicHistory,
+  keyToEdit,
+  moveCursor,
+  paletteFor,
+  pushSchematic,
+  redoSchematic,
+  SCHEMATIC_HISTORY_LIMIT,
+  undoSchematic,
+  type EditorCursor,
+} from '../src/renderer/session/schematic-edit.js';
+import { schematicStepHint, schematicSteps } from '../src/renderer/session/step-guide.js';
+
+const problem = BUILTIN_ASSEMBLE_PROBLEMS.find((p) => p.id === 'b-001');
+if (problem === undefined) throw new Error('b-001 が見つかりません');
+
+/** PB1 a接点 → CR1 コイル の1段だけ置いた文書。 */
+function oneRung(): SchematicDocument {
+  let doc = emptySchematic('draft', '下書き');
+  for (const draft of [
+    { kind: 'pb-a' as const, device: 'PB1' },
+    { kind: 'coil' as const, device: 'CR1' },
+  ]) {
+    const step = applyEdit(doc, { kind: 'insertCell', rungId: 'r1', index: doc.rungs[0]?.cells.length ?? 0, draft });
+    if (step.ok) doc = step.doc;
+  }
+  return doc;
+}
+
+describe('paletteFor（決定表#26）', () => {
+  it('offers only the devices that the board of this problem has', () => {
+    const items = paletteFor(problem, JIPM_BOARD);
+    const devices = [...new Set(items.map((i) => i.device))];
+    expect(devices).toContain('PB1');
+    expect(devices).toContain('CR1');
+    expect(devices).toContain('PL1');
+    // BZ は課題が extraParts で足したときだけ
+    expect(devices).not.toContain('BZ');
+  });
+
+  it('offers BZ when the problem adds it', () => {
+    const withBuzzer = { ...problem, board: { ...problem.board, extraParts: ['BZ'] as const } };
+    expect(paletteFor(withBuzzer, JIPM_BOARD).some((i) => i.device === 'BZ')).toBe(true);
+  });
+
+  it('offers only the socket roles that the problem assigns', () => {
+    const twoSockets = {
+      ...problem,
+      board: { ...problem.board, socketRoles: { S1: 'CR1' as const, S2: 'T1' as const } },
+    };
+    const devices = [...new Set(paletteFor(twoSockets, JIPM_BOARD).map((i) => i.device))];
+    expect(devices).toContain('CR1');
+    expect(devices).toContain('T1');
+    expect(devices).not.toContain('CR2');
+  });
+
+  it('labels every item in Japanese and keeps a stable order', () => {
+    const items = paletteFor(problem, JIPM_BOARD);
+    expect(items.length).toBeGreaterThan(0);
+    for (const item of items) {
+      expect(item.label.length).toBeGreaterThan(0);
+      expect(item.id).toBe(`${item.kind}:${item.device}`);
+    }
+    expect(paletteFor(problem, JIPM_BOARD).map((i) => i.id)).toEqual(items.map((i) => i.id));
+  });
+});
+
+describe('moveCursor / clampCursor', () => {
+  const doc = oneRung();
+  const start: EditorCursor = { rungId: 'r1', index: 0 };
+
+  it('moves right up to the empty tail slot', () => {
+    expect(moveCursor(doc, start, 'ArrowRight')).toEqual({ rungId: 'r1', index: 1 });
+    expect(moveCursor(doc, { rungId: 'r1', index: 2 }, 'ArrowRight')).toEqual({ rungId: 'r1', index: 2 });
+  });
+
+  it('moves left down to zero', () => {
+    expect(moveCursor(doc, start, 'ArrowLeft')).toEqual(start);
+    expect(moveCursor(doc, { rungId: 'r1', index: 2 }, 'ArrowLeft')).toEqual({ rungId: 'r1', index: 1 });
+  });
+
+  it('moves between rungs and clamps the column', () => {
+    const two = applyEdit(doc, { kind: 'addRung' });
+    expect(two.ok).toBe(true);
+    if (!two.ok) return;
+    expect(moveCursor(two.doc, { rungId: 'r1', index: 2 }, 'ArrowDown')).toEqual({ rungId: 'r2', index: 0 });
+    expect(moveCursor(two.doc, { rungId: 'r2', index: 0 }, 'ArrowUp')).toEqual({ rungId: 'r1', index: 0 });
+  });
+
+  it('clamps a cursor that points outside the document', () => {
+    expect(clampCursor(doc, { rungId: 'r9', index: 7 })).toEqual({ rungId: 'r1', index: 0 });
+    expect(clampCursor(doc, { rungId: 'r1', index: 9 })).toEqual({ rungId: 'r1', index: 2 });
+  });
+});
+
+describe('keyToEdit（決定表#25）', () => {
+  const doc = oneRung();
+  const palette = paletteFor(problem, JIPM_BOARD);
+  const selected = palette.find((i) => i.kind === 'lamp');
+  if (selected === undefined) throw new Error('パレットに表示灯がありません');
+
+  it('places the selected palette item on Enter', () => {
+    const edit = keyToEdit(doc, { rungId: 'r1', index: 2 }, 'Enter', selected);
+    expect(edit).toEqual({
+      kind: 'insertCell',
+      rungId: 'r1',
+      index: 2,
+      draft: { kind: 'lamp', device: selected.device },
+    });
+  });
+
+  it('does nothing on Enter when no palette item is selected', () => {
+    expect(keyToEdit(doc, { rungId: 'r1', index: 2 }, 'Enter', undefined)).toBeUndefined();
+  });
+
+  it('removes the cell under the cursor on Delete and Backspace', () => {
+    for (const key of ['Delete', 'Backspace']) {
+      expect(keyToEdit(doc, { rungId: 'r1', index: 0 }, key, selected)).toEqual({
+        kind: 'removeCell',
+        cellId: 'c1',
+      });
+    }
+  });
+
+  it('does nothing on Delete over the empty tail slot', () => {
+    expect(keyToEdit(doc, { rungId: 'r1', index: 2 }, 'Delete', selected)).toBeUndefined();
+  });
+
+  it('adds a rung on Insert and removes it on Ctrl+Delete', () => {
+    expect(keyToEdit(doc, { rungId: 'r1', index: 0 }, 'Insert', selected)).toEqual({
+      kind: 'addRung',
+      after: 'r1',
+    });
+    expect(keyToEdit(doc, { rungId: 'r1', index: 0 }, 'Delete', selected, { ctrl: true })).toEqual({
+      kind: 'removeRung',
+      rungId: 'r1',
+    });
+  });
+
+  it('ignores keys that are not bound', () => {
+    expect(keyToEdit(doc, { rungId: 'r1', index: 0 }, 'F5', selected)).toBeUndefined();
+  });
+});
+
+describe('SchematicHistory', () => {
+  it('pushes, undoes and redoes like the ladder history', () => {
+    const before = emptySchematic('draft', '下書き');
+    const after = oneRung();
+    const history = pushSchematic(emptySchematicHistory(), before);
+    const back = undoSchematic(history, after);
+    expect(back?.doc).toBe(before);
+    expect(back?.history.undone).toEqual([after]);
+    const forward = back === undefined ? undefined : redoSchematic(back.history, back.doc);
+    expect(forward?.doc).toBe(after);
+  });
+
+  it('drops the oldest step past the limit', () => {
+    let history = emptySchematicHistory();
+    for (let i = 0; i <= SCHEMATIC_HISTORY_LIMIT + 3; i += 1) {
+      history = pushSchematic(history, emptySchematic(`d${i}`, '下書き'));
+    }
+    expect(history.done).toHaveLength(SCHEMATIC_HISTORY_LIMIT);
+    expect(history.done[0]?.id).toBe('d4');
+  });
+
+  it('returns undefined when there is nothing to undo or redo', () => {
+    expect(undoSchematic(emptySchematicHistory(), oneRung())).toBeUndefined();
+    expect(redoSchematic(emptySchematicHistory(), oneRung())).toBeUndefined();
+  });
+});
+
+describe('schematicSteps（決定表#24）', () => {
+  it('walks 描く → 検算 → 盤に配線', () => {
+    const empty = schematicSteps({ cellCount: 0, verified: false, boardWired: false });
+    expect(empty.map((s) => s.state)).toEqual(['current', 'todo', 'todo']);
+    const drawn = schematicSteps({ cellCount: 3, verified: false, boardWired: false });
+    expect(drawn[0]?.state).toBe('done');
+    expect(drawn[1]?.state).toBe('current');
+    const verified = schematicSteps({ cellCount: 3, verified: true, boardWired: false });
+    expect(verified[2]?.state).toBe('current');
+  });
+
+  it('gives a one-line hint for every step', () => {
+    for (const key of ['draw', 'verify', 'wire'] as const) {
+      expect(schematicStepHint(key)?.length ?? 0).toBeGreaterThan(0);
+    }
+    expect(schematicStepHint(undefined)).toBeUndefined();
+  });
+});
+```
+
+- [ ] **Step 2: テストを走らせて失敗を確かめる**
+
+```
+pnpm --filter @ojt/desktop test schematic-edit
+```
+
+- [ ] **Step 3: `apps/desktop/src/renderer/session/schematic-edit.ts` を実装する**
+
+```ts
+import { SOCKET_ROLES, type BoardDefinition, type SocketRole } from '@ojt/board-model';
+import type { AssembleProblem } from '@ojt/content';
+import {
+  CELL_KIND_LABELS,
+  type CellKind,
+  type SchematicDocument,
+  type SchematicEdit,
+} from '@ojt/schematic-core';
+
+/**
+ * 回路図エディタの純関数層。設計仕様 §11.4 / Plan 5 決定表#25・#26。
+ * React も three も SVG も使わないので Vitest だけで全分岐を検証できる（§14.2）。
+ * 履歴の形は `session/ladder.ts` の `LadderHistory` と同じ（スナップショット方式）。
+ */
+
+/** 元に戻せる手数の上限（ラダーと同じ）。 */
+export const SCHEMATIC_HISTORY_LIMIT = 50;
+
+/** カーソル（どの段のどの桁を指しているか）。桁は 0〜要素数（要素数＝末尾の空き桁）。 */
+export interface EditorCursor {
+  rungId: string;
+  index: number;
+}
+
+/** パレットの1項目。 */
+export interface PaletteItem {
+  /** `kind:device`（React の `key` と選択の同一性に使う）。 */
+  id: string;
+  kind: CellKind;
+  device: string;
+  /** 画面に出す名前（`リレー a接点 CR1`）。 */
+  label: string;
+  /** まとまりの見出し（`押ボタン` / `リレー` / `タイマ` / `出力`）。 */
+  group: string;
+}
+
+/** 元に戻す／やり直しの履歴。 */
+export interface SchematicHistory {
+  done: SchematicDocument[];
+  undone: SchematicDocument[];
+}
+
+/** 空の履歴。 */
+export function emptySchematicHistory(): SchematicHistory {
+  return { done: [], undone: [] };
+}
+
+/** 編集の**前**の文書を積む（やり直し列は捨てる）。 */
+export function pushSchematic(
+  history: SchematicHistory,
+  before: SchematicDocument,
+): SchematicHistory {
+  const done = [...history.done, before];
+  return { done: done.slice(Math.max(0, done.length - SCHEMATIC_HISTORY_LIMIT)), undone: [] };
+}
+
+/** 1手戻す。 */
+export function undoSchematic(
+  history: SchematicHistory,
+  current: SchematicDocument,
+): { history: SchematicHistory; doc: SchematicDocument } | undefined {
+  const previous = history.done[history.done.length - 1];
+  if (previous === undefined) return undefined;
+  return {
+    history: { done: history.done.slice(0, -1), undone: [...history.undone, current] },
+    doc: previous,
+  };
+}
+
+/** 1手やり直す。 */
+export function redoSchematic(
+  history: SchematicHistory,
+  current: SchematicDocument,
+): { history: SchematicHistory; doc: SchematicDocument } | undefined {
+  const next = history.undone[history.undone.length - 1];
+  if (next === undefined) return undefined;
+  return {
+    history: { done: [...history.done, current], undone: history.undone.slice(0, -1) },
+    doc: next,
+  };
+}
+
+/** パレットのまとまりの見出し。 */
+const GROUP_PB = '押ボタン';
+const GROUP_CR = 'リレー';
+const GROUP_T = 'タイマ';
+const GROUP_OUT = '出力';
+
+function item(kind: CellKind, device: string, group: string): PaletteItem {
+  return { id: `${kind}:${device}`, kind, device, label: `${CELL_KIND_LABELS[kind]} ${device}`, group };
+}
+
+/** 課題が盤に割り当てている役割（`board.socketRoles` が無ければ盤の全役割）。§6.1 */
+function assignedRoles(problem: AssembleProblem): SocketRole[] {
+  const raw = problem.board.socketRoles;
+  const assignable = SOCKET_ROLES.filter((role) => role !== 'CHK');
+  if (raw === undefined) return [...assignable];
+  const used = new Set(Object.values(raw).filter((role): role is SocketRole => role !== undefined));
+  return assignable.filter((role) => used.has(role));
+}
+
+/**
+ * その課題で置ける要素の一覧。決定表#26
+ * ソケットの役割は課題の `board.socketRoles`、押ボタン・表示灯は盤の定義、
+ * ブザーは課題の `board.extraParts` にあるときだけ。
+ */
+export function paletteFor(problem: AssembleProblem, board: BoardDefinition): PaletteItem[] {
+  const out: PaletteItem[] = [];
+  for (const pb of board.pushButtons) {
+    out.push(item('pb-a', pb.id, GROUP_PB), item('pb-b', pb.id, GROUP_PB));
+  }
+  for (const role of assignedRoles(problem)) {
+    if (role.startsWith('CR')) {
+      out.push(item('cr-a', role, GROUP_CR), item('cr-b', role, GROUP_CR), item('coil', role, GROUP_CR));
+    } else {
+      out.push(item('t-a', role, GROUP_T), item('t-b', role, GROUP_T), item('coil', role, GROUP_T));
+    }
+  }
+  for (const lamp of board.lamps) out.push(item('lamp', lamp.id, GROUP_OUT));
+  if ((problem.board.extraParts ?? []).includes('BZ')) out.push(item('buzzer', 'BZ', GROUP_OUT));
+  return out;
+}
+
+/** その段の桁の上限（末尾の空き桁を含む）。 */
+function lastIndexOf(doc: SchematicDocument, rungId: string): number {
+  return doc.rungs.find((r) => r.id === rungId)?.cells.length ?? 0;
+}
+
+/** 文書の中に収まるカーソルへ直す（段が消えたら先頭の段の先頭へ）。 */
+export function clampCursor(doc: SchematicDocument, cursor: EditorCursor): EditorCursor {
+  const found = doc.rungs.find((r) => r.id === cursor.rungId);
+  const target = found ?? doc.rungs[0];
+  if (target === undefined) return { rungId: '', index: 0 };
+  if (found === undefined) return { rungId: target.id, index: 0 };
+  return { rungId: target.id, index: Math.min(Math.max(0, cursor.index), target.cells.length) };
+}
+
+/** 矢印キーでカーソルを動かす（範囲外へは出ない）。 */
+export function moveCursor(
+  doc: SchematicDocument,
+  cursor: EditorCursor,
+  key: string,
+): EditorCursor {
+  const current = clampCursor(doc, cursor);
+  const row = doc.rungs.findIndex((r) => r.id === current.rungId);
+  switch (key) {
+    case 'ArrowLeft':
+      return { ...current, index: Math.max(0, current.index - 1) };
+    case 'ArrowRight':
+      return { ...current, index: Math.min(lastIndexOf(doc, current.rungId), current.index + 1) };
+    case 'ArrowUp': {
+      const next = doc.rungs[Math.max(0, row - 1)];
+      return next === undefined ? current : clampCursor(doc, { rungId: next.id, index: current.index });
+    }
+    case 'ArrowDown': {
+      const next = doc.rungs[Math.min(doc.rungs.length - 1, row + 1)];
+      return next === undefined ? current : clampCursor(doc, { rungId: next.id, index: current.index });
+    }
+    default:
+      return current;
+  }
+}
+
+/** カーソルの下にある要素のID（末尾の空き桁なら undefined）。 */
+export function cellUnder(doc: SchematicDocument, cursor: EditorCursor): string | undefined {
+  return doc.rungs.find((r) => r.id === cursor.rungId)?.cells[cursor.index]?.id;
+}
+
+/**
+ * キー入力を編集操作に直す。決定表#25
+ * 割り当てが無いキーは `undefined`（画面は何もしない）。`Ctrl+Z` / `Ctrl+Y` は履歴の操作で
+ * 編集操作ではないので、ここでは扱わない（画面が直接 `undoSchematic()` を呼ぶ）。
+ */
+export function keyToEdit(
+  doc: SchematicDocument,
+  cursor: EditorCursor,
+  key: string,
+  selected: PaletteItem | undefined,
+  modifiers: { ctrl?: boolean } = {},
+): SchematicEdit | undefined {
+  const current = clampCursor(doc, cursor);
+  if (key === 'Insert') return { kind: 'addRung', after: current.rungId };
+  if (key === 'Delete' && modifiers.ctrl === true) {
+    return { kind: 'removeRung', rungId: current.rungId };
+  }
+  if (key === 'Delete' || key === 'Backspace') {
+    const cellId = cellUnder(doc, current);
+    return cellId === undefined ? undefined : { kind: 'removeCell', cellId };
+  }
+  if (key === 'Enter') {
+    if (selected === undefined) return undefined;
+    return {
+      kind: 'insertCell',
+      rungId: current.rungId,
+      index: current.index,
+      draft: { kind: selected.kind, device: selected.device },
+    };
+  }
+  return undefined;
+}
+
+/** 文書に置かれている要素の総数（手順帯の「描いた」の判定に使う）。 */
+export function cellCount(doc: SchematicDocument): number {
+  return doc.rungs.reduce((sum, r) => sum + r.cells.length, 0);
+}
+```
+
+- [ ] **Step 4: `session/step-guide.ts` の末尾に追記する**
+
+```ts
+/** 回路図エディタの手順キー（描く → 検算 → 盤に配線）。Plan 5 決定表#24 */
+export type SchematicStepKey = 'draw' | 'verify' | 'wire';
+
+/** 回路図エディタの手順帯。 */
+export function schematicSteps(input: {
+  /** 回路図に置かれている要素の数。 */
+  cellCount: number;
+  /** 検算に合格したか。 */
+  verified: boolean;
+  /** 盤に電線を1本でも張ったか（固定配線は数えない）。 */
+  boardWired: boolean;
+}): ReadonlyArray<GuideStep<SchematicStepKey>> {
+  const drawDone = input.cellCount > 0;
+  const verifyDone = drawDone && input.verified;
+  const wireDone = verifyDone && input.boardWired;
+  return sequentialSteps([
+    { key: 'draw', label: JA.stepGuide.schematicDraw, done: drawDone },
+    { key: 'verify', label: JA.stepGuide.schematicVerify, done: verifyDone },
+    { key: 'wire', label: JA.stepGuide.schematicWire, done: wireDone },
+  ]);
+}
+
+/** いまの手順にだけ効く1行の案内（回路図エディタ）。 */
+export function schematicStepHint(key: SchematicStepKey | undefined): string | undefined {
+  if (key === 'draw') return JA.stepGuide.schematicDrawHint;
+  if (key === 'verify') return JA.stepGuide.schematicVerifyHint;
+  if (key === 'wire') return JA.stepGuide.schematicWireHint;
+  return undefined;
+}
+```
+
+- [ ] **Step 5: `i18n/ja.ts` に文言を足す**
+
+`JA.stepGuide` ブロックの末尾に（`// --- Plan 5 Task 4 ---` で挟む）:
+
+```ts
+    schematicDraw: '回路図を描く',
+    schematicVerify: '検算する',
+    schematicWire: '盤に配線する',
+    schematicDrawHint: 'パレットで要素を選び、図の桁をクリック（またはカーソルを合わせて Enter）で置きます。',
+    schematicVerifyHint: '「検算」を押すと、描いた回路を課題の操作列で確かめます。盤の配線はまだ見ません。',
+    schematicWireHint: '検算に通りました。回路図の要素をクリックすると、3D盤の対応端子が光ります。',
+```
+
+`JA` の末尾（`JA.session` の後ろ）に新しいブロックを足す:
+
+```ts
+  /** 回路図エディタ（§11.4 / Plan 5）。 */
+  schematic: {
+    title: '回路図エディタ',
+    palette: '置ける要素',
+    verify: '検算',
+    verifying: '検算中…',
+    verifyPassed: '検算 合格',
+    verifyFailed: '検算 不合格',
+    verifyNote: '机上の検算です。盤の配線は「判定」で別に確かめます。',
+    issues: '回路図の指摘',
+    noIssues: '指摘はありません。検算できます。',
+    addRung: '段を追加',
+    removeRung: '段を削除',
+    clear: '全部消す',
+    clearConfirm: '描いた回路図をすべて消します。よろしいですか？',
+    undo: '元に戻す',
+    redo: 'やり直し',
+    cursor: 'カーソル',
+    keyHint: '矢印＝移動　Enter＝置く　Delete＝消す　Insert＝段を追加　Ctrl+Delete＝段を削除　Ctrl+Z／Ctrl+Y＝元に戻す／やり直し',
+    viewBoard: '盤',
+    viewSplit: '並べて',
+    viewSchematic: '回路図',
+    guide: '配線ガイド',
+    guideOff: '要素をクリックすると3D盤の端子が光ります',
+  },
+```
+
+- [ ] **Step 6: テストを走らせてコミットする**
+
+```
+pnpm --filter @ojt/desktop test schematic-edit step-guide
+pnpm -r typecheck && pnpm lint
+git add apps/desktop && git commit -m "feat(desktop): add the pure layer of the schematic editor (cursor, palette, history)"
+```
+
+**期待**: `schematic-edit.test.ts` の **18件**が増え、既存の `step-guide.test.ts` はそのまま通る。
+
+---
