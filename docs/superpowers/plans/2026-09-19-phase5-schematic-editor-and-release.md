@@ -114,7 +114,7 @@ Phase 5 は `ladder/**` を1行も触らないので**機能としては独立**
 | 2 | `validateDocument()` は「段に要素がありません」「段が1つもありません」をエラーにする。**作りかけの文書は必ず不正**である | 決定表#3: エディタは不正な下書きを**許し**、`validateDocument()` の結果を指摘欄に出す。検算だけが妥当性を要求する |
 | 3 | `assignToBoard()` の `AssignError.path` は回路図の要素ID（`c05`）・役割名（`CR1`）・電線ID（`sw-003`）が混ざる | Task 2 の `verifySchematic()` が `cellId` を**別項目**として返す（`toProblemPath()` は課題JSONのパスへ直すもので、エディタには使えない） |
 | 4 | モードBの `Session.tsx` は `highlight` を1度も読み書きしていない（C2 だけが使っている） | Task 8 でモードBにも配線ガイドを入れる。ストアの欄・3D側は既存のまま |
-| 5 | 端子は `TerminalHit` が1個につき `<group>`＋2メッシュ。盤の端子は 8ソケット×14 ＝112 ＋ 端子台 22 ＋ P/N 2 ＋ 固定機器 6 で **142 個 → 284 メッシュ** | Task 12 で `TerminalField`（`instancedMesh` 2本）に置き換え、端子ぶんのドローコールを 2 にする |
+| 5 | 端子は `TerminalHit` が1個につき `<group>`＋2メッシュ。**`TerminalHit` を持つのは `Socket` と `TerminalBlock` が描く端子だけ**で、8ソケット×14 ＝112 ＋ ランプ用端子台 8 ＋ 押ボタン用端子台 12 ＋ P/N 各1 ＝ 2 の **134 個 → 268 メッシュ**（`Fixture` は端子の印字しか描かず `TerminalHit` を使わないので、CB/SW/PS・PB/PL 本体の `wirable: false` な端子は最初から3Dに出ていない。BZ は課題が `extraParts` で足したときだけ ＋2 で 136 個） | Task 12 で `TerminalField`（`instancedMesh` 2本）に置き換え、端子ぶんのドローコールを 2 にする |
 | 6 | `socketFaceTexture()` は Socket ごとに `useMemo` で焼く。**8枚のキャンバスの中身は完全に同一**（相対位置も印字も同じ） | Task 13 でモジュール内キャッシュを入れ、8枚 → 1枚にする |
 | 7 | `DeskWires` の `useMemo` の鍵が `session`（配線のたびに新しい参照）。机上ケーブルの `TubeGeometry` が毎回作り直される | Task 13 で署名文字列を鍵にし、`memo()` で包む |
 | 8 | 性能を測る窓が無い（`camera-readout` はカメラだけ）。「60fps」「三角形20万以下」を確かめる手段がリポジトリに無い | Task 11 で `PerfProbe` と `data-testid="perf-readout"` を足す |
@@ -130,9 +130,11 @@ Phase 5 は `ladder/**` を1行も触らないので**機能としては独立**
 | ファイル | 責務 |
 |---|---|
 | `packages/schematic-core/src/edit.ts` | **新規**: 文書の編集操作（`SchematicEdit` と `applyEdit()`）・ID採番・空の文書。§11.4（Task 1） |
-| `packages/schematic-core/src/layout.ts` | **変更（追記のみ）**: `slotRects()`。既存の `layout()` / `contactShapes()` / `loadShapes()` / `DEFAULT_LAYOUT_OPTIONS` は署名も値も変えない（Task 1） |
-| `packages/schematic-core/src/index.ts` | **変更（追記のみ）**: `edit.ts` と `slotRects` の再輸出（Task 1） |
-| `packages/content/src/verify.ts` | **新規**: `verifySchematic()`＝検算（`toSession()` → `judgeAssemble()`）。§11.4（Task 2） |
+| `packages/schematic-core/src/document.ts` | **変更（追記のみ）**: `DEVICE_PATTERNS` を `export` するだけ（規則の表を `edit.ts` に写さないため）。既存の関数は1行も変えない（Task 1） |
+| `packages/schematic-core/src/layout.ts` | **変更（追記のみ）**: `rungStartX()` / `slotRects()`。既存の `layout()` / `contactShapes()` / `loadShapes()` / `DEFAULT_LAYOUT_OPTIONS` は署名も値も変えない（Task 1） |
+| `packages/schematic-core/src/index.ts` | **変更（追記のみ）**: `edit.ts` と `slotRects` と `DEVICE_PATTERNS` の再輸出（Task 1） |
+| `packages/content/src/verify.ts` | **新規**: `verifySchematic()`＝検算（`buildSchematicSession()` → `judgeAssemble()`）。§11.4（Task 2） |
+| `packages/content/src/reference.ts` | **変更**: `buildSchematicSession(problem, board, doc)` を切り出し、`buildReferenceSession()` と `verifySchematic()` の両方から使う（Task 2） |
 | `packages/content/src/wiring-diff.ts` | **新規**: `wiringSuspects()`＝模範回路と訓練者回路の節点分割の差。UXレビュー #28（Task 3） |
 | `packages/content/src/index.ts` | **変更（追記のみ）**: 上2つの再輸出（Task 2・3） |
 | `apps/desktop/src/renderer/session/schematic-edit.ts` | **新規**: エディタのカーソル・パレット・履歴・キー割当の純関数層（Task 4） |
@@ -159,6 +161,8 @@ Phase 5 は `ladder/**` を1行も触らないので**機能としては独立**
 | `apps/desktop/src/renderer/three/PerfProbe.tsx` | **新規**: 描画枚数・三角形数・ドローコールの窓（Task 11） |
 | `apps/desktop/src/renderer/three/TerminalField.tsx` | **新規**: 端子をまとめて描く `instancedMesh` 2本（Task 12） |
 | `apps/desktop/src/renderer/three/Socket.tsx` / `TerminalBlock.tsx` | **変更**: `TerminalHit` のループを外す（端子は `TerminalField` が描く）（Task 12） |
+| `apps/desktop/src/renderer/three/materials.ts` | **変更（追記のみ）**: `noPick` を `Socket` / `TerminalBlock` / `TerminalField` の共有に出す（Task 12） |
+| `apps/desktop/src/renderer/app/store-types.ts` | **変更（追記のみ）**: `BoardFocus`（結果画面からの注目）（Task 9） |
 | `apps/desktop/src/renderer/three/labels.ts` | **変更（追記のみ）**: テクスチャの共有キャッシュ（Task 13） |
 | `apps/desktop/src/renderer/three/DeskWires.tsx` | **変更**: メモ化の鍵を署名にし `memo()` で包む（Task 13） |
 | `apps/desktop/scripts/check-dist.mjs` | **新規**: 配布物の検査とチェックサム表の生成（Task 14） |
@@ -182,12 +186,13 @@ Phase 5 は `ladder/**` を1行も触らないので**機能としては独立**
 | 7 | **配線ガイドの索引の出どころ** | 画面に出ている回路図によって切り替える。**エディタ**＝`assignToBoard(doc)` の `cells`、**回路図ヒント**（§8.4）＝`buildReferenceSession(problem)` の `cells`。どちらも `buildHighlightIndex(cells, session)` に通してストアの `highlight` に入れる | `buildHighlightIndex()` は `CellAssignment[]` しか要求しない（C2 が landed 済み）。出どころを1つに固定すると、エディタの文書を編集しても光る端子が模範回路のままになる |
 | 8 | **配線ガイドの逆引き（3D → 回路図）** | **入れる**。盤の端子にホバーすると回路図側の要素が光る（`cellIdsAtTerminal()`）。C2 で landed している向きと同じ | 利用者要求「分かりやすく直感的に」。片方向だけだと「この端子は回路図のどれか」が分からず、配線の確認に使えない。関数は既にある（`cellIdsAtTerminal` / `cellIdsOfWire`） |
 | 9 | **#28 の「疑い」の求め方** | 模範回路と訓練者回路の**節点分割の差**（`buildNets()` の union-find）。比較対象は**回路図の要素が使う端子 ＋ `P.1` / `N.1`** に限る。`missing`（つながっていない）を先に、`extra`（余計につながっている）を後に、最大5件 | 電線の1対1照合だと、渡り配線の鎖の順が違うだけで全部「違う」になる（§11.3 の母線分配は順序を決めない）。節点分割なら「電気的に同じか」だけを見るので、鎖の順が違っても正しくは正しいと言える。盤の全端子で比べると未使用端子が大量に出るので回路図の端子に絞る |
+| 9b | **接点の組の選び方の違いをどう扱うか** | **正規化しない。画面の文言で断る**（`JA.result.suspectNote`＝「接点の組（`CR1` の ⑨⑤／⑩⑥／⑪⑦／⑫⑧）はどれを使っても回路は成立します。組が違うだけのときも、ここに『不足』『余分』として出ます」を疑い一覧の下に常に出す） | `assignToBoard()` は模範回路の要素の**出現順に**接点の組を割り当てる（`CellAssignment.group`）。訓練者が別の組へ張ると電気的には正しくても節点分割は違うので、`missing`/`extra` が出る。正規化するには機器ごとに「模範の組 ⇄ 訓練者の組」の最良対応を解く（二部マッチング）ことになり、①訓練者に見えない解が疑いの並びを決める、②`com` を `nc` 側に張った本物の誤りを「組の違い」に吸収して隠す、の2つの害がある。1行で断るほうが安く正直である（利用者要求「最小のトークンで品質を落とさず」） |
 | 10 | **#28 をどこで計算するか** | **renderer の結果画面**で `useMemo`。`JudgeResult` に項目を足さない | 節点分割はソルバを回さないグラフ処理（数百端子の union-find ＝1ms未満）なので Worker へ往復させる必要が無い。`JudgeResult` に足すと `@ojt/content` の公開型が変わり、C1/C2/D の3判定と作業ファイルにも波及する |
 | 11 | **「盤で見る」の遷移** | `setHighlight(選択)` → `setBoardFocus({ from: 'result', text })` → `setRoute('session')`。セッション画面の上部に「結果から: <説明>」の帯と「結果へ戻る」ボタンを出す | 結果画面から盤へ跳ぶと「どうやって戻るのか」が分からなくなる（利用者要求「分かりやすく」）。ストアは判定後も `problem` / `session` を保持しているので、盤はそのままの配線で開く |
 | 12 | **#29 の配線UIの作り** | `panels/TerminalListPanel.tsx` が配線可能な端子を機器ごとに並べ、各行を `<button>` にする。**Tab で移動・Enter で選択**。選択は `PickHit`（`kind: 'terminal'`）に直して**既存の `pickToAction()` に通す** | 3Dのピックと別の配線経路を作ると、1端子2本の上限・固定配線の拒否・`beginWire`/`completeWire` の状態遷移が2箇所に割れる。`pickToAction()` に通せば規則は1箇所のまま（§12.2 の「純粋関数化」の趣旨そのもの） |
-| 13 | **端子の描き方（性能）** | `TerminalField`（`instancedMesh` 2本＝ネジ頭と当たり判定球）を **`BoardScene` が1回だけ**描く。`Socket` / `TerminalBlock` は端子を描かなくなる。**`PlcUnit` / `Outlet` は `TerminalHit` のまま** | 端子142個で 284 メッシュ＝ドローコールも同数。`instancedMesh` なら2本。`PlcUnit` を外すのは Plan 4B Task 10・11 が同じファイルを作り替えるため（MERGE 注意 #5）。机上の端子は十数個なので性能上の効果も小さい |
+| 13 | **端子の描き方（性能）** | `TerminalField`（`instancedMesh` 2本＝ネジ頭と当たり判定球）を **`BoardScene` が1回だけ**描く。`Socket` / `TerminalBlock` は端子を描かなくなる。**`PlcUnit` / `Outlet` は `TerminalHit` のまま**。描く端子は「いま `Socket` / `TerminalBlock` が描いているもの」と**1個も違わない**（＝`wirable === true` かつ机上でない端子。任意部品 BZ の2端子は `session.extraParts` に入っているときだけ） | 端子134個で 268 メッシュ＝ドローコールも同数。`instancedMesh` なら2本。`PlcUnit` を外すのは Plan 4B Task 10・11 が同じファイルを作り替えるため（MERGE 注意 #5）。机上の端子は十数個なので性能上の効果も小さい。`wirable: false` の端子（CB/SW/PS・PB/PL 本体）を入れると、いま触れない端子が急に触れるようになってしまう |
 | 14 | **インスタンスの色分け** | `instanceColor` に3状態（平常・ホバー・配線待ち）だけを載せる。**連動ハイライトは `ProbeMarkers` の輪のまま** | 輪（`ProbeMarkers`）は遠景でも見えるので既に役目を果たしている。同じ意味を2つの描き方で出すと優先順位を2箇所で決めることになる（`Wire.tsx` の `wireBodyColor()` で確立した流儀） |
-| 15 | **印字テクスチャの共有** | `labels.ts` にモジュール内キャッシュを持ち、**鍵は「板の左上からの相対位置＋印字＋役割＋板の寸法」**。8ソケットは鍵が一致するので1枚を共有する | 8枚の中身は完全に同一（相対配置も印字も同じ）。1枚 1440×1280px ＝ 約7.4MB を8枚持っていた。`Socket` 側の `useMemo` の鍵（`originX` / `originY`）は**絶対座標**なので共有できず、キャッシュは `labels.ts` に置くしかない |
+| 15 | **印字テクスチャの共有** | `labels.ts` にモジュール内キャッシュを持ち、**鍵は「板の左上からの相対位置＋印字＋役割＋板の寸法」**（`faceKey()`）。8ソケットは鍵が一致するので1枚を共有する | 8枚の中身は完全に同一（相対配置も印字も同じ）。ソケットの板は 38mm × 84mm（本体 30×76 ＋ `SOCKET_PLATE_MARGIN_MM` 4 の四方）で、`PX_PER_MM = 16` なので **608 × 1344px ＝ 約3.3MB**。これを8枚（約26MB）持っていた。`Socket` 側の `useMemo` の鍵（`originX` / `originY`）は**絶対座標**なので共有できず、キャッシュは `labels.ts` に置くしかない |
 | 16 | **性能の測り方** | `PerfProbe`（`useFrame`）が 250ms ごとに `data-testid="perf-readout"` へ `{frames, fps, triangles, calls, geometries, textures}` を JSON で書く。**常時有効**（開発時も配布版も） | `frameloop="demand"` では `useFrame` は**描いたフレームだけ**走るので、これがそのまま「無操作で描いていないこと」の証明になる（§15 の方針の監査）。旗で切り替えると E2E が配布版と違う道を通る |
 | 17 | **受入基準④（60fps）の確かめ方** | E2E（swiftshader）は**GPU非依存の予算**（三角形 ≤ 200,000／ドローコール ≤ 120／無操作3秒で描画枚数が増えない）を自動で縛り、測った fps を `perf-report.json` に残す。**60fps そのものは実機（内蔵GPU・FHD）で同じ E2E を走らせて確認**し、Task 14 のリリース手順チェックリストに記録する | CI・リモートデスクトップにはGPUが無く、既存E2Eは `--use-gl=swiftshader` で動いている（`smoke.spec.ts` の注記）。ソフトウェアラスタライザの fps は実機の指標にならない（v0.2.0 リリースノートの「既知の制限」にも同じ注意がある）。三角形数とドローコールは描画経路に依らないので自動で縛れる |
 | 18 | **配布は新規構築ではなく固め** | `electron-builder.yml` / `copy-content.mjs` は**触らない**（`dist` スクリプトに `check-dist.mjs` を1つ足すだけ）。版を 1.0.0 にし、同梱課題の検査・成果物の検査とチェックサム・README・インストーラ説明画面・手順書を足す | v0.2.0 で NSIS とポータブルの両方が実際に出ており（106.9MB / 146.8MB）、受入基準③はそのビルドで確かめられている。作り直すと退行の危険だけが増える |
@@ -205,13 +210,15 @@ Phase 5 は `ladder/**` を1行も触らないので**機能としては独立**
 
 ## 実装バッチ（推奨）
 
-依存関係にもとづく5バッチ。バッチ内の `/` は並行可、`→` は直列。**並行の上限は2系統**（`i18n/ja.ts` と `store.ts` の追記が衝突するため。MERGE 注意 #1・#2）。
+依存関係にもとづく5バッチ。バッチ内の `／` は並行可、`→` は直列。**並行の上限は2系統**（`i18n/ja.ts` と `store.ts` の追記が衝突するため。MERGE 注意 #1・#2）。
+
+**バッチCの中は並行させない。** Task 9 は `JA.result` と `Session.tsx`（「結果から」の帯）を、Task 10 は `JA.terminalList` と `Session.tsx`（右パネル）を触る。同じ2ファイルの別々の場所を同時に書き換えることになるので、**8 → 9 → 10 の直列**にする（MERGE 注意 #1・#3）。並行させるのは **C（`Session.tsx` 系）と D（`BoardScene.tsx` 系）の2系統だけ**で、この2つは触るファイルが重ならない。
 
 | バッチ | タスク | 対象 | モデル | 依存 |
 |---|---|---|---|---|
 | A | 1 → 2 ／ 3 | `schematic-core`（編集とスロット）→ `content`（検算） ／ `content`（疑い一覧） | 1=**Opus** / 2=Sonnet-verbatim ／ 3=**Opus** | Phase 4 landed |
 | B | 4 → 5 → 6 → 7 | エディタの純関数層 → 画面 → 検算の往復 → モードBへの組み込み | 4=**Opus** / 5=**Opus** / 6=**Opus** / 7=**Opus** | A |
-| C | 8 → 9 ／ 10 | 配線ガイド → 結果の疑い一覧 ／ 端子リスト | 8=**Opus** / 9=**Opus** ／ 10=Sonnet | B |
+| C | 8 → 9 → 10 | 配線ガイド → 結果の疑い一覧 → 端子リスト | 8=**Opus** / 9=**Opus** / 10=Sonnet | B |
 | D | 11 → 12 → 13 | 計測窓 → 端子のインスタンス化 → テクスチャ共有と `frameloop` 監査 | 11=Sonnet-verbatim / 12=**Opus** / 13=**Opus** | B（`BoardScene` を C と同時に触らない） |
 | E | 14 ／ 15 → 16 | 配布の固め ／ E2E → 全体検証 | 14=**Opus** ／ 15=**Opus** / 16=Sonnet | A〜D すべて |
 
@@ -227,7 +234,8 @@ Phase 5 は `ladder/**` を1行も触らないので**機能としては独立**
 
 **Files:**
 - Create: `packages/schematic-core/src/edit.ts`
-- Modify: `packages/schematic-core/src/layout.ts`（末尾に `slotRects()` を追記。既存の export は署名も値も変えない）
+- Modify: `packages/schematic-core/src/document.ts`（`DEVICE_PATTERNS` に `export` を付けるだけ）
+- Modify: `packages/schematic-core/src/layout.ts`（末尾に `rungStartX()` / `slotRects()` を追記。既存の export は署名も値も変えない）
 - Modify: `packages/schematic-core/src/index.ts`（再輸出）
 - Test: `packages/schematic-core/test/edit.test.ts`（新規）
 - Test: `packages/schematic-core/test/slot-rects.test.ts`（新規）
@@ -244,6 +252,7 @@ import {
   applyEdit,
   crA,
   coil,
+  editLabel,
   emptySchematic,
   lamp,
   MAX_CELLS_PER_RUNG,
@@ -251,6 +260,7 @@ import {
   nextCellId,
   nextRungId,
   pbA,
+  pbB,
   rung,
   BUS_N,
   BUS_P,
@@ -512,6 +522,41 @@ describe('applyEdit: addRung / removeRung / setEnds', () => {
     });
     expect(out).toEqual({ ok: false, message: '段が自分自身を参照しています: r3' });
   });
+
+  it('refuses ends that would make the rungs reference each other in a ring', () => {
+    // r2 の始点は r1 の節点0（＝r1 の始点）を指している。ここで r1 の始点を r2 の節点0へ
+    // 向けると `r1#0 → r2#0 → r1#0` の輪になり、`layout()` も `toSession()` も
+    // 節点を解決できない（`resolveNode()` が undefined を返す）
+    const doc = createDocument('d', 't', [
+      rung('r1', BUS_P, BUS_N, [pbA('c1', 'PB1'), coil('c2', 'CR1')]),
+      rung('r2', { rung: 'r1', node: 0 }, { rung: 'r1', node: 1 }, [crA('c3', 'CR1')]),
+    ]);
+    const out = applyEdit(doc, {
+      kind: 'setEnds',
+      rungId: 'r1',
+      from: { rung: 'r2', node: 0 },
+      to: BUS_N,
+    });
+    expect(out).toEqual({ ok: false, message: '段の端点が循環します: r1' });
+  });
+
+  it('draws b-001 self-hold branch (受入基準①と同じ形)', () => {
+    // 段1 = PB2 b接点 → PB1 a接点 → CR1 コイル、段2 = CR1 a接点（節点1 → 節点2 の分岐）
+    const doc = createDocument('d', '自己保持', [
+      rung('r1', BUS_P, BUS_N, [pbB('c1', 'PB2'), pbA('c2', 'PB1'), coil('c3', 'CR1')]),
+      rung('r2', BUS_P, BUS_N, [crA('c4', 'CR1')]),
+      rung('r3', BUS_P, BUS_N, [crA('c5', 'CR1'), lamp('c6', 'PL1')]),
+    ]);
+    const out = applyEdit(doc, {
+      kind: 'setEnds',
+      rungId: 'r2',
+      from: { rung: 'r1', node: 1 },
+      to: { rung: 'r1', node: 2 },
+    });
+    expect(out.ok).toBe(true);
+    if (!out.ok) return;
+    expect(validateDocument(out.doc)).toEqual([]);
+  });
 });
 
 describe('editLabel（操作ログ）', () => {
@@ -531,8 +576,6 @@ describe('editLabel（操作ログ）', () => {
 });
 ```
 
-`editLabel` の import を先頭の import 文に足すこと（`editLabel` も `../src/index.js` から）。
-
 - [ ] **Step 2: テストを走らせて失敗を確かめる**
 
 ```
@@ -541,6 +584,15 @@ pnpm --filter @ojt/schematic-core test
 
 `Cannot find module` か `edit.ts is not exported` で落ちる（まだ作っていない）。
 
+- [ ] **Step 3a: `document.ts` の `DEVICE_PATTERNS` に `export` を付ける**
+
+`document.ts` の `const DEVICE_PATTERNS: Readonly<Record<CellKind, RegExp>> = {` を
+`export const DEVICE_PATTERNS: Readonly<Record<CellKind, RegExp>> = {` にする。**表の中身は1文字も変えない。**
+`checkCell()` はそのまま同じ定数を使う。
+
+理由: 機器名の規則（`pb-a` は `PB1`〜`PB4`、`coil` は `CR1`〜`CR4` か `T1`・`T2` …）を `edit.ts` に
+写すと、規則が2箇所になる。`§6.4` の機器名が増えたときに片方だけ直す事故を避ける。
+
 - [ ] **Step 3: `packages/schematic-core/src/edit.ts` を実装する**
 
 ```ts
@@ -548,8 +600,10 @@ import { TIMER_RANGE_60S } from '@ojt/board-model';
 import { TIMER_MIN_PRESET_MS } from '@ojt/circuit-sim';
 import {
   createDocument,
+  DEVICE_PATTERNS,
   isLoadCell,
   rung as makeRung,
+  resolveNode,
   BUS_N,
   BUS_P,
   SCHEMATIC_FORMAT_VERSION,
@@ -610,19 +664,6 @@ export type SchematicEdit =
 
 /** 編集の結果。失敗は理由つき（画面はトーストに出す）。 */
 export type EditOutcome = { ok: true; doc: SchematicDocument } | { ok: false; message: string };
-
-/** 種別ごとに使える機器名（`document.ts` の `DEVICE_PATTERNS` と同じ規則）。 */
-const DEVICE_PATTERNS: Readonly<Record<CellKind, RegExp>> = {
-  'pb-a': /^PB[1-4]$/,
-  'pb-b': /^PB[1-4]$/,
-  'cr-a': /^CR[1-4]$/,
-  'cr-b': /^CR[1-4]$/,
-  't-a': /^T[12]$/,
-  't-b': /^T[12]$/,
-  coil: /^(CR[1-4]|T[12])$/,
-  lamp: /^PL[1-4]$/,
-  buzzer: /^BZ$/,
-};
 
 function fail(message: string): EditOutcome {
   return { ok: false, message };
@@ -827,6 +868,15 @@ function editMoveCell(doc: SchematicDocument, cellId: string, toIndex: number): 
   return { ok: true, doc: withRungs(doc, replaceRung(doc, found.rung.id, { ...found.rung, cells })) };
 }
 
+/**
+ * 段の両端を決め直す（分岐を作る／外す）。
+ *
+ * 「表せるか」だけを見る（決定表#3）が、**参照の循環だけは表せない**。`layout()` も
+ * `toSession()` も端点を `resolveNode()` でたどり切って初めて節点が決まるので、輪になった
+ * 参照は「どの節点か」が存在しない（`resolveNode()` が `undefined` を返し、`layout()` は
+ * 段を左母線に寄せ、`toSession()` は割当に失敗する）。作りかけの文書として許してよい
+ * 「まだ回路になっていない」とは違い、**図にすら描けない**ので、ここで断る。
+ */
 function editSetEnds(
   doc: SchematicDocument,
   rungId: string,
@@ -839,7 +889,16 @@ function editSetEnds(
     const problem = endProblem(doc, rungId, end);
     if (problem !== undefined) return fail(problem);
   }
-  return { ok: true, doc: withRungs(doc, replaceRung(doc, rungId, { ...target, from, to })) };
+  const next = withRungs(doc, replaceRung(doc, rungId, { ...target, from, to }));
+  for (const r of next.rungs) {
+    if (
+      resolveNode(next, r, 0) === undefined ||
+      resolveNode(next, r, r.cells.length) === undefined
+    ) {
+      return fail(`段の端点が循環します: ${rungId}`);
+    }
+  }
+  return { ok: true, doc: next };
 }
 
 /** 編集を1つ当てる。入力の文書は変えない。決定表#3 */
@@ -959,9 +1018,11 @@ import {
   slotRects,
 } from '../src/index.js';
 
+// r2 は**始点**が r1 の節点1（＝分岐段）。始点が母線だと段の左端は左母線のままで、
+// 「分岐段は親の節点から始まる」を確かめられない
 const doc = createDocument('d', 't', [
   rung('r1', BUS_P, BUS_N, [pbA('c1', 'PB1'), coil('c2', 'CR1')]),
-  rung('r2', BUS_P, { rung: 'r1', node: 1 }, []),
+  rung('r2', { rung: 'r1', node: 1 }, BUS_N, []),
 ]);
 
 describe('slotRects（§11.4 のエディタの当たり判定）', () => {
@@ -1109,7 +1170,7 @@ export {
 } from './edit.js';
 ```
 
-`layout.js` の export 群に `rungStartX` / `slotRects` / `type SlotRect` を足す。
+`layout.js` の export 群に `rungStartX` / `slotRects` / `type SlotRect` を足し、`document.js` の export 群に `DEVICE_PATTERNS` を足す。
 
 - [ ] **Step 7: テストを走らせる**
 
@@ -1117,7 +1178,7 @@ export {
 pnpm --filter @ojt/schematic-core test
 ```
 
-**期待**: 既存の `document` / `assign` / `layout` / `to-session` のテストが全て通ったうえで、`edit.test.ts` の **28件**と `slot-rects.test.ts` の **6件**が増える。
+**期待**: 既存の `document` / `assign` / `layout` / `to-session` のテストが全て通ったうえで、`edit.test.ts` の **30件**と `slot-rects.test.ts` の **6件**が増える。
 
 - [ ] **Step 8: カバレッジと型を確かめてコミットする**
 
@@ -1138,6 +1199,7 @@ git add packages/schematic-core && git commit -m "feat(schematic-core): add docu
 
 **Files:**
 - Create: `packages/content/src/verify.ts`
+- Modify: `packages/content/src/reference.ts`（`buildSchematicSession()` を切り出す）
 - Modify: `packages/content/src/index.ts`（再輸出）
 - Test: `packages/content/test/verify.test.ts`（新規）
 
@@ -1262,16 +1324,54 @@ pnpm --filter @ojt/content test verify
 
 `Cannot find module '../src/verify.js'` で落ちる。
 
+- [ ] **Step 3a: `reference.ts` から `buildSchematicSession()` を切り出す**
+
+`buildReferenceSession()` の中にある「課題の設定で `toSession()` を呼ぶ」部分を、そのまま公開関数に出す。
+`verifySchematic()` が同じ設定を**書き写さない**ようにするための1箇所である（設定がずれると、
+「模範は割り当てられるのに下書きは割り当てられない」が設定の違いなのか回路の違いなのか分からなくなる）。
+
+```ts
+/**
+ * 回路図1枚を、その課題の盤の設定（役割割当・任意部品・在庫・線色）で盤セッションに落とす。§7.2 / §11.3
+ *
+ * `physicalOverride`（§7.2）の鍵は**課題の模範回路の要素ID**である。だから渡すのは
+ * `doc === problem.schematic` のとき——つまり課題自身の回路図を落とすときだけにする。
+ * 訓練者の下書きは自分のID（`c1`, `c2`, …）を持つので、そのまま渡すと `toSession()` の
+ * `checkOverride()` が「要素IDが見つかりません」を返し、回路とは無関係な指摘がエディタに出る。
+ */
+export function buildSchematicSession(
+  problem: SchematicProblem,
+  board: BoardDefinition,
+  doc: SchematicDocument,
+): ToSessionResult {
+  const override =
+    doc === problem.schematic ? toPhysicalOverride(problem.physicalOverride) : undefined;
+  return toSession(doc, board, {
+    roles: toRoles(problem),
+    color: ASSEMBLE_WIRE_COLOR,
+    extraParts: toExtraParts(problem),
+    inventory: problem.inventory,
+    ...(override === undefined ? {} : { physicalOverride: override }),
+  });
+}
+```
+
+`reference.ts` の import に `type SchematicDocument` と `type ToSessionResult`（どちらも
+`@ojt/schematic-core`）を足す。`buildReferenceSession()` の中の `const override = …` から
+`const built = toSession(…)` までを **`const built = buildSchematicSession(problem, board, problem.schematic);`
+の1行に置き換える**（`toRoles()` / `toExtraParts()` / `toPhysicalOverride()` はそのまま残る）。
+`buildReferenceSession()` の戻り値・エラーのパス変換（`toProblemPath()`）は1文字も変えない。
+
+`packages/content/src/index.ts` の `reference.js` の export 群に `buildSchematicSession` を足す。
+
 - [ ] **Step 3: `packages/content/src/verify.ts` を実装する**
 
 ```ts
-import { toSession, validateDocument, type SchematicDocument } from '@ojt/schematic-core';
+import { validateDocument, type SchematicDocument } from '@ojt/schematic-core';
 import type { BoardDefinition } from '@ojt/board-model';
 import { judgeAssemble, type JudgeResult } from './judge.js';
-import { ASSEMBLE_WIRE_COLOR, toPhysicalOverride } from './reference.js';
-import { toSocketRoles } from './schema/common.js';
+import { buildSchematicSession } from './reference.js';
 import type { AssembleProblem } from './schema/assemble.js';
-import { partId, type PartId } from '@ojt/circuit-sim';
 
 /**
  * 検算。設計仕様 §11.4。
@@ -1318,11 +1418,6 @@ function cellIds(doc: SchematicDocument): Set<string> {
   return out;
 }
 
-/** 課題の任意追加部品（§5.3.4）。 */
-function extraParts(problem: AssembleProblem): PartId[] {
-  return (problem.board.extraParts ?? []).map((name) => partId(name));
-}
-
 /**
  * 訓練者の回路図を検算する。§11.4
  * 1. 構造検査（`validateDocument()`）
@@ -1356,14 +1451,9 @@ export function verifySchematic(
     };
   }
 
-  const override = toPhysicalOverride(problem.physicalOverride);
-  const built = toSession(doc, board, {
-    roles: toSocketRoles(problem.board.socketRoles),
-    color: ASSEMBLE_WIRE_COLOR,
-    extraParts: extraParts(problem),
-    inventory: problem.inventory,
-    ...(override === undefined ? {} : { physicalOverride: override }),
-  });
+  // 盤への落とし込みは模範回路と同じ関数を通す（Step 3a）。`physicalOverride` の扱いも
+  // そこが決めるので、ここには課題データの読み方が1行も残らない
+  const built = buildSchematicSession(problem, board, doc);
   if (!built.ok) {
     const known = cellIds(doc);
     return {
@@ -1393,19 +1483,6 @@ export function verifySchematic(
   return { ok: true, passed: judged.value.passed, judge: judged.value };
 }
 ```
-
-**注意**: `problem.physicalOverride` は**課題の模範回路の要素ID**を鍵に持つ。訓練者の下書きの要素IDが偶然一致しない限り `checkOverride()` が「要素IDが見つかりません」を返す。内蔵8題のうち `physicalOverride` を持つ課題でこれが起きるので、`toSession()` へ渡す前に**下書きに実在する要素IDだけへ絞る**こと。上のコードの `override` を次の形にする:
-
-```ts
-  const known = cellIds(doc);
-  const raw = toPhysicalOverride(problem.physicalOverride);
-  const override =
-    raw === undefined
-      ? undefined
-      : Object.fromEntries(Object.entries(raw).filter(([cellId]) => known.has(cellId)));
-```
-
-（`Object.keys(override).length === 0` のときは渡さない。`toSession()` の既定と同じになる。）
 
 - [ ] **Step 4: `index.ts` に再輸出を足す**
 
@@ -1468,9 +1545,12 @@ function referenceSession() {
   return built.value;
 }
 
+/** 何も疑うところが無いときの戻り。 */
+const CLEAN = { suspects: [], total: 0, omitted: 0 };
+
 describe('wiringSuspects（UXレビュー #28）', () => {
   it('finds nothing when the board matches the reference circuit', () => {
-    expect(wiringSuspects(problem, JIPM_BOARD, referenceSession().session)).toEqual([]);
+    expect(wiringSuspects(problem, JIPM_BOARD, referenceSession().session)).toEqual(CLEAN);
   });
 
   it('reports the pair that a removed wire used to join', () => {
@@ -1480,7 +1560,7 @@ describe('wiringSuspects（UXレビュー #28）', () => {
     if (victim === undefined) return;
     const removed = removeWire(session, victim.id);
     expect(removed.ok).toBe(true);
-    const suspects = wiringSuspects(problem, JIPM_BOARD, session);
+    const { suspects } = wiringSuspects(problem, JIPM_BOARD, session);
     expect(suspects.length).toBeGreaterThan(0);
     const first = suspects[0];
     expect(first?.kind).toBe('missing');
@@ -1492,7 +1572,7 @@ describe('wiringSuspects（UXレビュー #28）', () => {
 
   it('reports an extra connection that the reference circuit does not have', () => {
     const { session } = referenceSession();
-    // CR1 のコイル + 端子（CR1.14）と PL1 の + 端子（TB_PL.1+）を勝手に繋ぐ
+    // CR1 の接点端子（CR1.12）と PL1 の − 端子（TB_PL.1-）を勝手に繋ぐ
     const added = addWire(
       session,
       JIPM_BOARD,
@@ -1502,7 +1582,7 @@ describe('wiringSuspects（UXレビュー #28）', () => {
       { id: 'extra-1' },
     );
     expect(added.ok).toBe(true);
-    const suspects = wiringSuspects(problem, JIPM_BOARD, session);
+    const { suspects } = wiringSuspects(problem, JIPM_BOARD, session);
     const extra = suspects.find((s) => s.kind === 'extra');
     expect(extra).toBeDefined();
     expect(extra?.message).toContain('余計につながっています');
@@ -1524,15 +1604,28 @@ describe('wiringSuspects（UXレビュー #28）', () => {
       addWire(session, JIPM_BOARD, target.to, target.from, target.color, { id: target.id }).ok,
     ).toBe(true);
     expect(roles).toBeDefined();
-    expect(wiringSuspects(problem, JIPM_BOARD, session)).toEqual([]);
+    expect(wiringSuspects(problem, JIPM_BOARD, session)).toEqual(CLEAN);
   });
 
   it('caps the list at MAX_WIRING_SUSPECTS on an unwired board', () => {
     const bare = createSession(JIPM_BOARD, { roles: referenceSession().roles });
     expect(plug(bare, 'S1', 'relay-my4n').ok).toBe(true);
-    const suspects = wiringSuspects(problem, JIPM_BOARD, bare);
-    expect(suspects.length).toBeLessThanOrEqual(MAX_WIRING_SUSPECTS);
-    expect(suspects.every((s) => s.kind === 'missing')).toBe(true);
+    const report = wiringSuspects(problem, JIPM_BOARD, bare);
+    expect(report.suspects.length).toBe(MAX_WIRING_SUSPECTS);
+    expect(report.suspects.every((s) => s.kind === 'missing')).toBe(true);
+    // 「ほかに N 件」を出すための数（決定表#27）
+    expect(report.total).toBeGreaterThan(MAX_WIRING_SUSPECTS);
+    expect(report.omitted).toBe(report.total - report.suspects.length);
+  });
+
+  it('omits nothing when the list fits', () => {
+    const { session } = referenceSession();
+    const victim = session.wires.find((w) => !w.locked);
+    if (victim === undefined) return;
+    removeWire(session, victim.id);
+    const report = wiringSuspects(problem, JIPM_BOARD, session);
+    expect(report.total).toBe(report.suspects.length);
+    expect(report.omitted).toBe(0);
   });
 
   it('names the devices so the message reads like the schematic', () => {
@@ -1540,7 +1633,7 @@ describe('wiringSuspects（UXレビュー #28）', () => {
     const victim = session.wires.find((w) => !w.locked);
     if (victim === undefined) return;
     removeWire(session, victim.id);
-    const suspects = wiringSuspects(problem, JIPM_BOARD, session);
+    const { suspects } = wiringSuspects(problem, JIPM_BOARD, session);
     for (const suspect of suspects) {
       expect(suspect.devices.length).toBeGreaterThan(0);
       for (const device of suspect.devices) {
@@ -1551,7 +1644,7 @@ describe('wiringSuspects（UXレビュー #28）', () => {
 
   it('returns nothing when the problem reference circuit cannot be built', () => {
     const broken = { ...problem, board: { ...problem.board, boardId: 'nope' } };
-    expect(wiringSuspects(broken, JIPM_BOARD, referenceSession().session)).toEqual([]);
+    expect(wiringSuspects(broken, JIPM_BOARD, referenceSession().session)).toEqual(CLEAN);
   });
 });
 ```
@@ -1602,6 +1695,20 @@ export interface WiringSuspect {
   wireIds: readonly string[];
   /** 画面にそのまま出せる1行。 */
   message: string;
+}
+
+/**
+ * 疑いの一覧と、上限で切り捨てた件数。決定表#27
+ * 「ほかに N 件」を結果画面が出せるように、**切り捨てた件数まで**返す（一覧の長さだけでは
+ * 「5件しか無かった」のか「5件しか出していない」のかが呼び出し側から分からない）。
+ */
+export interface WiringSuspectReport {
+  /** 画面に出す疑い（最大 `MAX_WIRING_SUSPECTS` 件）。 */
+  suspects: readonly WiringSuspect[];
+  /** 見つかった疑いの総数。 */
+  total: number;
+  /** 上限で切り捨てた件数（`total - suspects.length`）。 */
+  omitted: number;
 }
 
 /** 結果画面に出す上限（決定表#27）。 */
@@ -1722,18 +1829,25 @@ function splits(
   return out;
 }
 
+/** 何も疑うところが無いときの戻り。 */
+const NO_SUSPECTS: WiringSuspectReport = { suspects: [], total: 0, omitted: 0 };
+
 /**
  * 模範回路と訓練者回路の節点分割の差を「疑わしい配線」として返す。UXレビュー #28
- * 模範回路が作れない課題（課題データの誤り。§13 #2）では空配列を返す——判定そのものが
+ * 模範回路が作れない課題（課題データの誤り。§13 #2）では空の報告を返す——判定そのものが
  * 先に課題エラーで止まるので、結果画面に出すものは無い。
+ *
+ * **接点の組の違いも出る**（決定表#9b）。`assignToBoard()` は模範回路の要素の出現順に
+ * `CR1` の4組（⑨⑤／⑩⑥／⑪⑦／⑫⑧）を割り当てるので、訓練者が別の組へ張ると、
+ * 電気的には正しくても節点分割は違う。正規化はせず、画面（`JA.result.suspectNote`）で断る。
  */
 export function wiringSuspects(
   problem: SchematicProblem,
   board: BoardDefinition,
   traineeSession: BoardSession,
-): readonly WiringSuspect[] {
+): WiringSuspectReport {
   const reference = buildReferenceSession(problem, board);
-  if (!reference.ok) return [];
+  if (!reference.ok) return NO_SUSPECTS;
 
   const cells = reference.value.cells;
   const watched = watchedTerminals(cells);
@@ -1750,7 +1864,9 @@ export function wiringSuspects(
     makeSuspect('extra', a, b, devices, cellsAt, traineeSession),
   );
 
-  return [...missing, ...extra].slice(0, MAX_WIRING_SUSPECTS);
+  const all = [...missing, ...extra];
+  const suspects = all.slice(0, MAX_WIRING_SUSPECTS);
+  return { suspects, total: all.length, omitted: all.length - suspects.length };
 }
 ```
 
@@ -1759,6 +1875,7 @@ export function wiringSuspects(
 - `splits()` は**非対称**に呼ぶ。`missing` は「模範で1つの節点 → 訓練者で複数」、`extra` は「訓練者で1つの節点 → 模範で複数」。どちらも `MAX_WIRING_SUSPECTS` の前に `missing` を並べるので、未配線の盤では `missing` だけが出る（決定表#27）。
 - `wiresTouching()` は既設配線（`locked`）も返す。**3Dで光らせるだけ**なので、削除できない電線が光っても害は無く、むしろ「ここは既設だから触らなくてよい」が分かる。
 - 母線の供給端子を `watched` に入れているので、「`P.1` に何もつながっていない」（＝母線から電気が来ていない）も `missing` として出る。訓練者がいちばん踏む誤りである。
+- 戻り値は配列ではなく `WiringSuspectReport`（`suspects` / `total` / `omitted`）。`slice()` した配列だけを返すと、結果画面は「5件で全部なのか、切り捨てたのか」を判定できず「ほかに N 件」（決定表#27）を出せない。
 
 - [ ] **Step 4: `index.ts` に再輸出を足す**
 
@@ -1768,6 +1885,7 @@ export {
   wiringSuspects,
   type SuspectKind,
   type WiringSuspect,
+  type WiringSuspectReport,
 } from './wiring-diff.js';
 ```
 
@@ -1779,7 +1897,7 @@ pnpm -r typecheck && pnpm lint
 git add packages/content && git commit -m "feat(content): point at the suspect terminals from the net partition diff"
 ```
 
-**期待**: `wiring-diff.test.ts` の **7件**が増える。
+**期待**: `wiring-diff.test.ts` の **8件**が増える。
 
 ---
 
@@ -1802,18 +1920,28 @@ git add packages/content && git commit -m "feat(content): point at the suspect t
 ```ts
 import { JIPM_BOARD } from '@ojt/board-model';
 import { BUILTIN_ASSEMBLE_PROBLEMS } from '@ojt/content';
-import { applyEdit, emptySchematic, type SchematicDocument } from '@ojt/schematic-core';
-import { describe, expect, it } from 'vitest';
 import {
+  applyEdit,
+  emptySchematic,
+  type CellDraft,
+  type SchematicDocument,
+} from '@ojt/schematic-core';
+import { describe, expect, it } from 'vitest';
+import { JA } from '../src/renderer/i18n/ja.js';
+import {
+  branchDisabledReason,
+  branchStepHint,
   clampCursor,
   emptySchematicHistory,
   keyToEdit,
   moveCursor,
   paletteFor,
+  pickBranchNode,
   pushSchematic,
   redoSchematic,
   SCHEMATIC_HISTORY_LIMIT,
   undoSchematic,
+  type BranchDraft,
   type EditorCursor,
 } from '../src/renderer/session/schematic-edit.js';
 import { schematicStepHint, schematicSteps } from '../src/renderer/session/step-guide.js';
@@ -1949,6 +2077,118 @@ describe('keyToEdit（決定表#25）', () => {
   });
 });
 
+describe('分岐（受入基準① の自己保持段）', () => {
+  /** 段1 ＝ PB2 b接点 → PB1 a接点 → CR1 コイル、段2 ＝ CR1 a接点（まだ P→N の普通の段）。 */
+  function twoRungs(): SchematicDocument {
+    let doc = emptySchematic('draft', '下書き');
+    const place = (rungId: string, draft: CellDraft): void => {
+      const target = doc.rungs.find((r) => r.id === rungId);
+      const step = applyEdit(doc, {
+        kind: 'insertCell',
+        rungId,
+        index: target?.cells.length ?? 0,
+        draft,
+      });
+      expect(step.ok).toBe(true);
+      if (step.ok) doc = step.doc;
+    };
+    place('r1', { kind: 'pb-b', device: 'PB2' });
+    place('r1', { kind: 'pb-a', device: 'PB1' });
+    place('r1', { kind: 'coil', device: 'CR1' });
+    const added = applyEdit(doc, { kind: 'addRung' });
+    expect(added.ok).toBe(true);
+    if (added.ok) doc = added.doc;
+    place('r2', { kind: 'cr-a', device: 'CR1' });
+    return doc;
+  }
+
+  it('offers 分岐 only for a rung that can become one, and says why when it cannot', () => {
+    const doc = twoRungs();
+    expect(branchDisabledReason(doc, 'r2')).toBeUndefined();
+    // 負荷（コイル）のある段は分岐にできない（分岐段に負荷は置けない）
+    expect(branchDisabledReason(doc, 'r1')).toBe(JA.schematic.branchHasLoad);
+    // 段が1本しか無ければ分岐先の節点が無い
+    expect(branchDisabledReason(emptySchematic('d', 't'), 'r1')).toBe(
+      JA.schematic.branchNeedsAnotherRung,
+    );
+  });
+
+  it('takes the start node first and turns the second pick into a setEnds edit', () => {
+    const doc = twoRungs();
+    const first = pickBranchNode(doc, { rungId: 'r2' }, { rungId: 'r1', node: 1 });
+    expect(first).toEqual({
+      kind: 'draft',
+      branch: { rungId: 'r2', from: { rung: 'r1', node: 1 } },
+    });
+    if (first.kind !== 'draft') return;
+    const second = pickBranchNode(doc, first.branch, { rungId: 'r1', node: 2 });
+    expect(second).toEqual({
+      kind: 'edit',
+      edit: {
+        kind: 'setEnds',
+        rungId: 'r2',
+        from: { rung: 'r1', node: 1 },
+        to: { rung: 'r1', node: 2 },
+      },
+    });
+    if (second.kind !== 'edit') return;
+    // この編集を当てると b-001 と同じ自己保持段になる（受入基準①）
+    const out = applyEdit(doc, second.edit);
+    expect(out.ok && out.doc.rungs[1]).toMatchObject({
+      from: { rung: 'r1', node: 1 },
+      to: { rung: 'r1', node: 2 },
+    });
+  });
+
+  it('refuses a node of the rung that is being branched', () => {
+    expect(pickBranchNode(twoRungs(), { rungId: 'r2' }, { rungId: 'r2', node: 0 })).toEqual({
+      kind: 'refused',
+      message: JA.schematic.branchSelfRefused,
+    });
+  });
+
+  it('refuses a node that the target rung does not have', () => {
+    expect(pickBranchNode(twoRungs(), { rungId: 'r2' }, { rungId: 'r1', node: 9 })).toEqual({
+      kind: 'refused',
+      message: JA.schematic.branchNoNode,
+    });
+  });
+
+  it('refuses the same node for both ends', () => {
+    const branch: BranchDraft = { rungId: 'r2', from: { rung: 'r1', node: 1 } };
+    expect(pickBranchNode(twoRungs(), branch, { rungId: 'r1', node: 1 })).toEqual({
+      kind: 'refused',
+      message: JA.schematic.branchSameNode,
+    });
+  });
+
+  it('guides the trainee one line at a time', () => {
+    expect(branchStepHint(undefined)).toBeUndefined();
+    expect(branchStepHint({ rungId: 'r2' })).toBe(JA.schematic.branchPickFrom);
+    expect(branchStepHint({ rungId: 'r2', from: { rung: 'r1', node: 1 } })).toBe(
+      JA.schematic.branchPickTo,
+    );
+  });
+
+  it('lets keyToEdit finish the branch on Enter and swallows every other key', () => {
+    const doc = twoRungs();
+    const branch: BranchDraft = { rungId: 'r2', from: { rung: 'r1', node: 1 } };
+    expect(keyToEdit(doc, { rungId: 'r1', index: 2 }, 'Enter', undefined, {}, branch)).toEqual({
+      kind: 'setEnds',
+      rungId: 'r2',
+      from: { rung: 'r1', node: 1 },
+      to: { rung: 'r1', node: 2 },
+    });
+    // 分岐の節点を選んでいる最中に Delete / Insert で文書が変わらない（決定表#25）
+    expect(
+      keyToEdit(doc, { rungId: 'r1', index: 0 }, 'Delete', undefined, {}, branch),
+    ).toBeUndefined();
+    expect(
+      keyToEdit(doc, { rungId: 'r1', index: 0 }, 'Insert', undefined, {}, branch),
+    ).toBeUndefined();
+  });
+});
+
 describe('SchematicHistory', () => {
   it('pushes, undoes and redoes like the ladder history', () => {
     const before = emptySchematic('draft', '下書き');
@@ -2009,10 +2249,13 @@ import { SOCKET_ROLES, type BoardDefinition, type SocketRole } from '@ojt/board-
 import type { AssembleProblem } from '@ojt/content';
 import {
   CELL_KIND_LABELS,
+  rungHasLoad,
   type CellKind,
+  type RungEnd,
   type SchematicDocument,
   type SchematicEdit,
 } from '@ojt/schematic-core';
+import { JA } from '../i18n/ja.js';
 
 /**
  * 回路図エディタの純関数層。設計仕様 §11.4 / Plan 5 決定表#25・#26。
@@ -2097,13 +2340,18 @@ function item(kind: CellKind, device: string, group: string): PaletteItem {
   return { id: `${kind}:${device}`, kind, device, label: `${CELL_KIND_LABELS[kind]} ${device}`, group };
 }
 
-/** 課題が盤に割り当てている役割（`board.socketRoles` が無ければ盤の全役割）。§6.1 */
+/**
+ * 課題が盤に割り当てている役割（チェック用の `CHK` は除く）。§6.1
+ * `board.socketRoles` は課題スキーマ（`BoardRefSchema`）の**必須項目**なので、
+ * 「割当が無いときは全役割」という分岐は存在しない。
+ */
 function assignedRoles(problem: AssembleProblem): SocketRole[] {
-  const raw = problem.board.socketRoles;
-  const assignable = SOCKET_ROLES.filter((role) => role !== 'CHK');
-  if (raw === undefined) return [...assignable];
-  const used = new Set(Object.values(raw).filter((role): role is SocketRole => role !== undefined));
-  return assignable.filter((role) => used.has(role));
+  const used = new Set(
+    Object.values(problem.board.socketRoles).filter(
+      (role): role is SocketRole => role !== undefined,
+    ),
+  );
+  return SOCKET_ROLES.filter((role) => role !== 'CHK' && used.has(role));
 }
 
 /**
@@ -2173,6 +2421,93 @@ export function cellUnder(doc: SchematicDocument, cursor: EditorCursor): string 
   return doc.rungs.find((r) => r.id === cursor.rungId)?.cells[cursor.index]?.id;
 }
 
+/*
+ * ここから「分岐」（§11.1 の分岐点）。受入基準①の自己保持回路は、**両端が別の段の節点**にある
+ * 段（b-001 の `r1h`: `{rung:'r1',node:1}` → `{rung:'r1',node:2}`）を1本引かないと描けない。
+ * `addRung` は必ず `P → N` の段を作るので、それだけでは永久に描けない（B1）。
+ *
+ * 操作は2クリック（またはカーソル＋Enter 2回）で完結させる:
+ *   ①「分岐にする」を押す → ②始点の節点を選ぶ → ③終点の節点を選ぶ → `setEnds` を1回当てる。
+ * 節点 k は「桁 k の左端」なので、当たり判定は `slotRects()`（Task 1）をそのまま使える。
+ * 新しい当たり矩形も新しい図形も足さない。
+ */
+
+/** 分岐の下書き（どの段を分岐にするか、始点は決まったか）。§11.4 */
+export interface BranchDraft {
+  /** 分岐にする段。 */
+  rungId: string;
+  /** 決まった始点。未定なら undefined（次に選ぶ節点が始点になる）。 */
+  from?: RungEnd;
+}
+
+/** 分岐の節点を1つ選んだ結果。 */
+export type BranchOutcome =
+  /** 始点が決まった（次は終点）。画面は下書きを差し替える。 */
+  | { kind: 'draft'; branch: BranchDraft }
+  /** 両端が決まった。画面はこの編集を `onEdit` に投げ、分岐モードを抜ける。 */
+  | { kind: 'edit'; edit: Extract<SchematicEdit, { kind: 'setEnds' }> }
+  /** 選べない節点。画面は理由をトーストに出し、分岐モードは続ける。 */
+  | { kind: 'refused'; message: string };
+
+/** 2つの端点が同じ節点を指しているか。 */
+function sameEnd(a: RungEnd, b: RungEnd): boolean {
+  if ('bus' in a || 'bus' in b) return 'bus' in a && 'bus' in b && a.bus === b.bus;
+  return a.rung === b.rung && a.node === b.node;
+}
+
+/**
+ * その段を分岐にできるか。できないときは**理由**（「分岐にする」ボタンの `title` に出す）。
+ * 利用者要求「分かりやすく直感的に」: 押せないボタンには必ず理由を添える（完了条件の「画面の品質」）。
+ */
+export function branchDisabledReason(doc: SchematicDocument, rungId: string): string | undefined {
+  const target = doc.rungs.find((r) => r.id === rungId);
+  if (target === undefined) return JA.schematic.branchNoRung;
+  if (doc.rungs.length < 2) return JA.schematic.branchNeedsAnotherRung;
+  // 分岐段（右母線に至らない段）に負荷は置けない（`validateDocument()` の規則。§11.1）
+  if (rungHasLoad(target)) return JA.schematic.branchHasLoad;
+  return undefined;
+}
+
+/**
+ * 分岐の節点を1つ選ぶ。**クリックでもカーソル＋Enterでもこの関数を通す**（規則を1箇所に保つ）。
+ * ここが見るのは「その節点を選べるか」だけで、文書を書き換えるのは `applyEdit()` の `setEnds`。
+ * 参照の循環（`layout()` が解けない形）はそちらが断る（`schematic-core/src/edit.ts`）。
+ */
+export function pickBranchNode(
+  doc: SchematicDocument,
+  branch: BranchDraft,
+  target: { rungId: string; node: number },
+): BranchOutcome {
+  if (target.rungId === branch.rungId) {
+    return { kind: 'refused', message: JA.schematic.branchSelfRefused };
+  }
+  const owner = doc.rungs.find((r) => r.id === branch.rungId);
+  const parent = doc.rungs.find((r) => r.id === target.rungId);
+  if (owner === undefined || parent === undefined) {
+    return { kind: 'refused', message: JA.schematic.branchNoRung };
+  }
+  if (!Number.isInteger(target.node) || target.node < 0 || target.node > parent.cells.length) {
+    return { kind: 'refused', message: JA.schematic.branchNoNode };
+  }
+  const end: RungEnd = { rung: target.rungId, node: target.node };
+  if (branch.from === undefined) {
+    return { kind: 'draft', branch: { rungId: branch.rungId, from: end } };
+  }
+  if (sameEnd(branch.from, end)) {
+    return { kind: 'refused', message: JA.schematic.branchSameNode };
+  }
+  return {
+    kind: 'edit',
+    edit: { kind: 'setEnds', rungId: branch.rungId, from: branch.from, to: end },
+  };
+}
+
+/** 分岐中の1行の案内（手順帯の案内を一時的に置き換える）。決定表#24 */
+export function branchStepHint(branch: BranchDraft | undefined): string | undefined {
+  if (branch === undefined) return undefined;
+  return branch.from === undefined ? JA.schematic.branchPickFrom : JA.schematic.branchPickTo;
+}
+
 /**
  * キー入力を編集操作に直す。決定表#25
  * 割り当てが無いキーは `undefined`（画面は何もしない）。`Ctrl+Z` / `Ctrl+Y` は履歴の操作で
@@ -2184,8 +2519,21 @@ export function keyToEdit(
   key: string,
   selected: PaletteItem | undefined,
   modifiers: { ctrl?: boolean } = {},
+  /** 分岐の節点を選んでいる最中なら、その下書き。 */
+  branch?: BranchDraft,
 ): SchematicEdit | undefined {
   const current = clampCursor(doc, cursor);
+  /*
+   * 分岐の節点を選んでいるあいだは `Enter` だけを受ける。`Delete` や `Insert` を通すと
+   * 「終点を選ぼうとして押した Delete」で要素が消える（Phase 1D で踏んだのと同じ形の事故）。
+   * 始点しか決まっていない段階では `pickBranchNode()` が `kind: 'draft'` を返すので、
+   * ここは編集を返さない（下書きの更新は画面の仕事）。
+   */
+  if (branch !== undefined) {
+    if (key !== 'Enter') return undefined;
+    const picked = pickBranchNode(doc, branch, { rungId: current.rungId, node: current.index });
+    return picked.kind === 'edit' ? picked.edit : undefined;
+  }
   if (key === 'Insert') return { kind: 'addRung', after: current.rungId };
   if (key === 'Delete' && modifiers.ctrl === true) {
     return { kind: 'removeRung', rungId: current.rungId };
@@ -2280,12 +2628,25 @@ export function schematicStepHint(key: SchematicStepKey | undefined): string | u
     undo: '元に戻す',
     redo: 'やり直し',
     cursor: 'カーソル',
-    keyHint: '矢印＝移動　Enter＝置く　Delete＝消す　Insert＝段を追加　Ctrl+Delete＝段を削除　Ctrl+Z／Ctrl+Y＝元に戻す／やり直し',
+    keyHint: '矢印＝移動　Enter＝置く　Delete＝消す　Insert＝段を追加　Ctrl+Delete＝段を削除　Ctrl+Z／Ctrl+Y＝元に戻す／やり直し　Esc＝分岐をやめる',
     viewBoard: '盤',
     viewSplit: '並べて',
     viewSchematic: '回路図',
     guide: '配線ガイド',
     guideOff: '要素をクリックすると3D盤の端子が光ります',
+    // 分岐（§11.1 の分岐点。自己保持回路に要る）
+    branch: 'この段を分岐にする',
+    branchCancel: '分岐をやめる',
+    branchHint: 'いま選んでいる段を、ほかの段の節点どうしをつなぐ「分岐」にします。自己保持回路に使います。',
+    branchPickFrom: '分岐の始点をクリックしてください（ほかの段の、要素と要素のあいだを選びます）。Esc でやめられます。',
+    branchPickTo: '分岐の終点をクリックしてください。始点から右側の節点を選ぶと、そのあいだの要素と並列になります。Esc でやめられます。',
+    branchSelfRefused: '分岐の始点・終点には、ほかの段の節点を選んでください。',
+    branchSameNode: '始点と同じ節点は終点にできません。別の節点を選んでください。',
+    branchNoRung: 'その段がありません。',
+    branchNoNode: 'その節点がありません。',
+    branchNeedsAnotherRung: '分岐先になる段がありません。先に「段を追加」で段を増やしてください。',
+    branchHasLoad: 'コイル・表示灯・ブザーのある段は分岐にできません（分岐段に負荷は置けません）。',
+    branchDone: 'この段を分岐にしました。',
   },
 ```
 
@@ -2294,10 +2655,10 @@ export function schematicStepHint(key: SchematicStepKey | undefined): string | u
 ```
 pnpm --filter @ojt/desktop test schematic-edit step-guide
 pnpm -r typecheck && pnpm lint
-git add apps/desktop && git commit -m "feat(desktop): add the pure layer of the schematic editor (cursor, palette, history)"
+git add apps/desktop && git commit -m "feat(desktop): add the pure layer of the schematic editor (cursor, palette, history, branch)"
 ```
 
-**期待**: `schematic-edit.test.ts` の **19件**が増え、既存の `step-guide.test.ts` はそのまま通る。
+**期待**: `schematic-edit.test.ts` の **26件**が増え、既存の `step-guide.test.ts` はそのまま通る。
 
 ---
 
@@ -2321,7 +2682,12 @@ git add apps/desktop && git commit -m "feat(desktop): add the pure layer of the 
 ```tsx
 import { JIPM_BOARD } from '@ojt/board-model';
 import { BUILTIN_ASSEMBLE_PROBLEMS } from '@ojt/content';
-import { emptySchematic } from '@ojt/schematic-core';
+import {
+  applyEdit,
+  emptySchematic,
+  type CellDraft,
+  type SchematicDocument,
+} from '@ojt/schematic-core';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { SchematicEditor } from '../src/renderer/schematic/SchematicEditor.js';
@@ -2352,28 +2718,48 @@ describe('SchematicSvg: 読取専用のふるまいは変わらない', () => {
 });
 
 describe('SchematicSvg: 編集モード', () => {
-  it('draws one transparent rect per slot and reports the picked slot', () => {
+  it('draws one rect per slot and reports the rung, the column and the cell that is there', () => {
     const onPickSlot = vi.fn();
     render(
       <SchematicSvg
         document={problem.schematic}
-        cursor={{ rungId: problem.schematic.rungs[0]?.id ?? 'r1', index: 0 }}
+        cursor={{ rungId: 'r1', index: 0 }}
         onPickSlot={onPickSlot}
       />,
     );
     const slots = screen.getByTestId('schematic-svg').querySelectorAll('[data-slot]');
-    expect(slots.length).toBeGreaterThan(0);
+    // 段ごとに「要素数 ＋ 1」個（b-001 は 4 ＋ 2 ＋ 3 ＝ 9）
+    expect(slots).toHaveLength(
+      problem.schematic.rungs.reduce((n, r) => n + r.cells.length + 1, 0),
+    );
     const first = slots[0];
     if (first === undefined) return;
     fireEvent.click(first);
-    expect(onPickSlot).toHaveBeenCalledWith(problem.schematic.rungs[0]?.id, 0);
+    // b-001 の段 r1 の桁0 は PB2 の b接点（要素ID `c01`）
+    expect(onPickSlot).toHaveBeenCalledWith('r1', 0, 'c01');
+  });
+
+  it('reports undefined for the empty tail slot', () => {
+    const onPickSlot = vi.fn();
+    render(
+      <SchematicSvg
+        document={problem.schematic}
+        cursor={{ rungId: 'r1', index: 0 }}
+        onPickSlot={onPickSlot}
+      />,
+    );
+    const tail = screen.getByTestId('schematic-svg').querySelector('[data-slot="r1#3"]');
+    expect(tail).not.toBeNull();
+    if (tail === null) return;
+    fireEvent.click(tail);
+    expect(onPickSlot).toHaveBeenCalledWith('r1', 3, undefined);
   });
 
   it('marks the cursor slot so the trainee can see where the next element goes', () => {
     render(
       <SchematicSvg
         document={problem.schematic}
-        cursor={{ rungId: problem.schematic.rungs[0]?.id ?? 'r1', index: 1 }}
+        cursor={{ rungId: 'r1', index: 1 }}
         onPickSlot={vi.fn()}
       />,
     );
@@ -2397,6 +2783,7 @@ describe('SchematicEditor', () => {
       onRedo: vi.fn(),
       onVerify: vi.fn(),
       onPickCell: vi.fn(),
+      onRefuse: vi.fn(),
       ...overrides,
     };
     render(<SchematicEditor {...props} />);
@@ -2461,6 +2848,156 @@ describe('SchematicEditor', () => {
     const ids = [...screen.getByTestId('schematic-svg').querySelectorAll('[data-cell]')];
     expect(ids).toHaveLength(0);
   });
+
+  it('lights the element instead of editing when no palette item is selected (B2)', () => {
+    const props = renderEditor({ document: problem.schematic });
+    const slot = screen.getByTestId('schematic-svg').querySelector('[data-slot="r1#0"]');
+    if (slot === null) return;
+    fireEvent.click(slot);
+    expect(props.onPickCell).toHaveBeenCalledWith('c01');
+    expect(props.onEdit).not.toHaveBeenCalled();
+  });
+
+  it('replaces the element under an occupied slot when a palette item is selected (B2)', () => {
+    const props = renderEditor({ document: problem.schematic });
+    fireEvent.click(screen.getByRole('button', { name: /表示灯 PL1/u }));
+    const slot = screen.getByTestId('schematic-svg').querySelector('[data-slot="r1#0"]');
+    if (slot === null) return;
+    fireEvent.click(slot);
+    expect(props.onEdit).toHaveBeenCalledWith({
+      kind: 'replaceCell',
+      cellId: 'c01',
+      draft: { kind: 'lamp', device: 'PL1' },
+    });
+  });
+});
+
+describe('SchematicEditor: 分岐（受入基準①）', () => {
+  /** 段1 ＝ PB2 b接点 → PB1 a接点 → CR1 コイル、段2 ＝ CR1 a接点（まだ P→N）。 */
+  function twoRungs(): SchematicDocument {
+    let doc = emptySchematic('draft-b-001', '下書き');
+    const place = (rungId: string, draft: CellDraft): void => {
+      const target = doc.rungs.find((r) => r.id === rungId);
+      const step = applyEdit(doc, {
+        kind: 'insertCell',
+        rungId,
+        index: target?.cells.length ?? 0,
+        draft,
+      });
+      if (step.ok) doc = step.doc;
+    };
+    place('r1', { kind: 'pb-b', device: 'PB2' });
+    place('r1', { kind: 'pb-a', device: 'PB1' });
+    place('r1', { kind: 'coil', device: 'CR1' });
+    const added = applyEdit(doc, { kind: 'addRung' });
+    if (added.ok) doc = added.doc;
+    place('r2', { kind: 'cr-a', device: 'CR1' });
+    return doc;
+  }
+
+  function renderBranchEditor(cursor = { rungId: 'r2', index: 0 }) {
+    const props = {
+      problem,
+      board: JIPM_BOARD,
+      document: twoRungs(),
+      cursor,
+      history: { done: [], undone: [] },
+      verifying: false,
+      onEdit: vi.fn(),
+      onCursor: vi.fn(),
+      onUndo: vi.fn(),
+      onRedo: vi.fn(),
+      onVerify: vi.fn(),
+      onPickCell: vi.fn(),
+      onRefuse: vi.fn(),
+    };
+    render(<SchematicEditor {...props} />);
+    return props;
+  }
+
+  it('says why 分岐 is not available on a rung that carries a load', () => {
+    renderBranchEditor({ rungId: 'r1', index: 0 });
+    const button = screen.getByTestId('branch-button');
+    expect(button).toBeDisabled();
+    expect(button).toHaveAttribute('title', expect.stringContaining('分岐にできません'));
+  });
+
+  it('guides the trainee through the two picks and emits one setEnds edit', () => {
+    const props = renderBranchEditor();
+    fireEvent.click(screen.getByTestId('branch-button'));
+    expect(screen.getByTestId('branch-hint')).toHaveTextContent('分岐の始点');
+    const svg = screen.getByTestId('schematic-svg');
+    const from = svg.querySelector('[data-slot="r1#1"]');
+    const to = svg.querySelector('[data-slot="r1#2"]');
+    if (from === null || to === null) return;
+    fireEvent.click(from);
+    expect(screen.getByTestId('branch-hint')).toHaveTextContent('分岐の終点');
+    expect(props.onEdit).not.toHaveBeenCalled();
+    fireEvent.click(to);
+    expect(props.onEdit).toHaveBeenCalledWith({
+      kind: 'setEnds',
+      rungId: 'r2',
+      from: { rung: 'r1', node: 1 },
+      to: { rung: 'r1', node: 2 },
+    });
+    // 分岐が終わったら案内は手順帯に戻る
+    expect(screen.queryByTestId('branch-hint')).toBeNull();
+  });
+
+  it('refuses a node of the rung being branched and stays in branch mode', () => {
+    const props = renderBranchEditor();
+    fireEvent.click(screen.getByTestId('branch-button'));
+    const own = screen.getByTestId('schematic-svg').querySelector('[data-slot="r2#0"]');
+    if (own === null) return;
+    fireEvent.click(own);
+    expect(props.onRefuse).toHaveBeenCalledWith(expect.stringContaining('ほかの段の節点'));
+    expect(props.onEdit).not.toHaveBeenCalled();
+    expect(screen.getByTestId('branch-hint')).toHaveTextContent('分岐の始点');
+  });
+
+  it('cancels the branch with Escape and with the button', () => {
+    renderBranchEditor();
+    fireEvent.click(screen.getByTestId('branch-button'));
+    fireEvent.keyDown(screen.getByTestId('schematic-grid'), { key: 'Escape' });
+    expect(screen.queryByTestId('branch-hint')).toBeNull();
+    fireEvent.click(screen.getByTestId('branch-button'));
+    fireEvent.click(screen.getByTestId('branch-button'));
+    expect(screen.queryByTestId('branch-hint')).toBeNull();
+  });
+
+  it('finishes the branch from the keyboard alone (§15 のアクセシビリティ)', () => {
+    const onEdit = vi.fn();
+    const base = {
+      problem,
+      board: JIPM_BOARD,
+      document: twoRungs(),
+      history: { done: [], undone: [] },
+      verifying: false,
+      onEdit,
+      onCursor: vi.fn(),
+      onUndo: vi.fn(),
+      onRedo: vi.fn(),
+      onVerify: vi.fn(),
+      onPickCell: vi.fn(),
+      onRefuse: vi.fn(),
+    };
+    const { rerender } = render(<SchematicEditor {...base} cursor={{ rungId: 'r2', index: 0 }} />);
+    // 分岐にする段は、ボタンを押したときにカーソルがある段（r2）
+    fireEvent.click(screen.getByTestId('branch-button'));
+    // 親が矢印キーでカーソルを段1の節点1へ動かす（カーソルはストアが持つ）
+    rerender(<SchematicEditor {...base} cursor={{ rungId: 'r1', index: 1 }} />);
+    fireEvent.keyDown(screen.getByTestId('schematic-grid'), { key: 'Enter' });
+    expect(screen.getByTestId('branch-hint')).toHaveTextContent('分岐の終点');
+    expect(onEdit).not.toHaveBeenCalled();
+    rerender(<SchematicEditor {...base} cursor={{ rungId: 'r1', index: 2 }} />);
+    fireEvent.keyDown(screen.getByTestId('schematic-grid'), { key: 'Enter' });
+    expect(onEdit).toHaveBeenCalledWith({
+      kind: 'setEnds',
+      rungId: 'r2',
+      from: { rung: 'r1', node: 1 },
+      to: { rung: 'r1', node: 2 },
+    });
+  });
 });
 ```
 
@@ -2494,8 +3031,13 @@ export function SchematicSvg({
   onPickCell?: (cellId: string | undefined) => void;
   /** 編集中のカーソル（段ID＋桁）。渡すと当たり矩形を敷く。§11.4 */
   cursor?: { rungId: string; index: number };
-  /** 桁をクリックしたときに呼ぶ。`cursor` と対で渡す。§11.4 */
-  onPickSlot?: (rungId: string, index: number) => void;
+  /**
+   * 桁をクリックしたときに呼ぶ。`cursor` と対で渡す。§11.4
+   * `cellId` はその桁にある要素のID（空き桁なら `undefined`）。**編集モードでは矩形が
+   * 記号より手前に来るので、記号のクリックもここに来る**。だから「要素を選んだ」のか
+   * 「要素を置く」のかは呼び出し側（`SchematicEditor`）が決める（B2）。
+   */
+  onPickSlot?: (rungId: string, index: number, cellId?: string) => void;
 }): JSX.Element {
   const result = useMemo(() => layout(doc, LAYOUT), [doc]);
   const highlighted = useMemo(() => new Set(highlightCellIds ?? []), [highlightCellIds]);
@@ -2521,10 +3063,15 @@ export function SchematicSvg({
         renderShape(shape, index, shape.cellId !== undefined && highlighted.has(shape.cellId)),
       )}
       {/*
-        編集の当たり矩形。**図形より後ろに描く**ので、記号のクリック（`data-cell` を読む
-        `onPickCell`）より手前に来る。要素の上を押しても桁を押しても同じ「その桁を選ぶ」に
-        なるのが素直なので、`onPickSlot` を先に呼び、`onPickCell` は `data-cell` を持つ
-        図形にだけ効く（矩形は `data-cell` を持たないので、編集中は解除にならない）。
+        編集の当たり矩形。**図形より後ろに描く＝画面では記号より手前に来る**。
+        本物のブラウザ（Playwright の E2E）は最前面の要素をクリック先に選ぶので、
+        記号を押したつもりのクリックも**必ずこの矩形に当たる**。`onPickCell` は
+        もう呼ばれない（矩形は `data-cell` を持たない）。
+        だから矩形は「どの桁か」に加えて **その桁にある要素ID** も渡し、
+        「要素を光らせる」のか「要素を置き換える」のかは `SchematicEditor` が決める（B2）。
+        JSDOM/happy-dom の `fireEvent.click(symbol)` は記号に直接イベントを投げるので
+        この重なりを再現しない。だから**単体テストは矩形を直接クリックし**、
+        「記号を押したら矩形が受ける」ことは E2E（受入基準②）で確かめる。
       */}
       {slots.map((slot) => {
         const isCursor = cursor?.rungId === slot.rungId && cursor.index === slot.index;
@@ -2540,9 +3087,11 @@ export function SchematicSvg({
             fill={isCursor ? CURSOR_FILL : 'transparent'}
             stroke={isCursor ? CURSOR_STROKE : 'none'}
             strokeWidth={isCursor ? 1.2 : 0}
+            /* `fill="transparent"` でも当たり判定は残るが、意図を明示しておく */
+            style={SLOT_STYLE}
             onClick={(event) => {
               event.stopPropagation();
-              onPickSlot?.(slot.rungId, slot.index);
+              onPickSlot?.(slot.rungId, slot.index, slot.cellId);
             }}
           />
         );
@@ -2558,6 +3107,8 @@ export function SchematicSvg({
 /** 編集カーソルの枠と薄い塗り（白地の図で目立ち、記号を隠さない濃さ）。§11.4 */
 const CURSOR_STROKE = '#1D4ED8';
 const CURSOR_FILL = 'rgba(29, 78, 216, 0.10)';
+/** 当たり矩形は透明でもクリックを受ける（記号より手前にあるため）。 */
+const SLOT_STYLE = { pointerEvents: 'all' } as const;
 ```
 
 - [ ] **Step 4: `SchematicPalette.tsx` を作る**
@@ -2632,10 +3183,15 @@ import { validateDocument, type SchematicDocument, type SchematicEdit } from '@o
 import { useMemo, useState, type JSX, type KeyboardEvent } from 'react';
 import { JA } from '../i18n/ja.js';
 import {
+  branchDisabledReason,
+  branchStepHint,
   cellCount,
   keyToEdit,
   moveCursor,
   paletteFor,
+  pickBranchNode,
+  type BranchDraft,
+  type BranchOutcome,
   type EditorCursor,
   type PaletteItem,
   type SchematicHistory,
@@ -2670,6 +3226,7 @@ export function SchematicEditor({
   onRedo,
   onVerify,
   onPickCell,
+  onRefuse,
 }: {
   problem: AssembleProblem;
   board: BoardDefinition;
@@ -2690,6 +3247,8 @@ export function SchematicEditor({
   onRedo: () => void;
   onVerify: () => void;
   onPickCell: (cellId: string | undefined) => void;
+  /** 断られた操作の理由（画面はトーストに出す）。 */
+  onRefuse: (message: string) => void;
 }): JSX.Element {
   const palette = useMemo(() => paletteFor(problem, board), [problem, board]);
   const [selectedId, setSelectedId] = useState<string | undefined>(undefined);
@@ -2697,6 +3256,28 @@ export function SchematicEditor({
   const issues = useMemo(() => validateDocument(doc), [doc]);
   const steps = schematicSteps({ cellCount: cellCount(doc), verified, boardWired });
   const currentStep = steps.find((s) => s.state === 'current')?.key;
+
+  /**
+   * 分岐の下書き。**ここだけが編集中の一時状態**で、確定した形は `setEnds` として親へ渡る。
+   * 文書やカーソルと違って「途中でやめられる」ものなので、ストアには置かない。§11.4 / B1
+   */
+  const [branch, setBranch] = useState<BranchDraft | undefined>(undefined);
+  const branchReason = branchDisabledReason(doc, cursor.rungId);
+  const branchHint = branchStepHint(branch);
+
+  /** 分岐の節点を1つ選んだ結果を反映する（クリックでもキーでも同じ道を通る）。 */
+  const applyBranchPick = (picked: BranchOutcome): void => {
+    if (picked.kind === 'refused') {
+      onRefuse(picked.message);
+      return;
+    }
+    if (picked.kind === 'draft') {
+      setBranch(picked.branch);
+      return;
+    }
+    setBranch(undefined);
+    onEdit(picked.edit);
+  };
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>): void => {
     if (event.key.startsWith('Arrow')) {
@@ -2710,7 +3291,18 @@ export function SchematicEditor({
       else onRedo();
       return;
     }
-    const edit = keyToEdit(doc, cursor, event.key, selected, { ctrl: event.ctrlKey });
+    if (branch !== undefined && event.key === 'Escape') {
+      event.preventDefault();
+      setBranch(undefined);
+      return;
+    }
+    if (branch !== undefined && event.key === 'Enter') {
+      event.preventDefault();
+      applyBranchPick(pickBranchNode(doc, branch, { rungId: cursor.rungId, node: cursor.index }));
+      return;
+    }
+    // 分岐中は `keyToEdit()` が（Enter 以外を）必ず `undefined` にするので、誤って要素が消えない
+    const edit = keyToEdit(doc, cursor, event.key, selected, { ctrl: event.ctrlKey }, branch);
     if (edit === undefined) return;
     event.preventDefault();
     onEdit(edit);
@@ -2718,6 +3310,29 @@ export function SchematicEditor({
 
   const pickPalette = (item: PaletteItem): void => {
     setSelectedId(item.id === selectedId ? undefined : item.id);
+  };
+
+  /**
+   * 桁をクリックしたとき。**順に3通り**（B2）:
+   * ①分岐中なら節点を選ぶ、②パレットを選んでいなければその要素を光らせる（配線ガイド）、
+   * ③パレットを選んでいれば置く（空き桁）か置き換える（要素のある桁）。
+   */
+  const onPickSlot = (rungId: string, index: number, cellId?: string): void => {
+    if (branch !== undefined) {
+      applyBranchPick(pickBranchNode(doc, branch, { rungId, node: index }));
+      return;
+    }
+    onCursor({ rungId, index });
+    if (selected === undefined) {
+      onPickCell(cellId);
+      return;
+    }
+    const draft = { kind: selected.kind, device: selected.device };
+    onEdit(
+      cellId === undefined
+        ? { kind: 'insertCell', rungId, index, draft }
+        : { kind: 'replaceCell', cellId, draft },
+    );
   };
 
   return (
@@ -2747,6 +3362,23 @@ export function SchematicEditor({
           >
             {JA.schematic.removeRung}
           </button>
+          {/*
+            分岐（§11.1 の分岐点）。自己保持回路は「両端が別の段の節点にある段」を1本引かないと
+            描けない（受入基準①）。押せないときは `title` に理由を出す（完了条件の「画面の品質」）。
+            分岐中は「やめる」になるので、`branchReason` があっても**押せるままにする**。
+          */}
+          <button
+            type="button"
+            data-testid="branch-button"
+            aria-pressed={branch !== undefined}
+            disabled={branch === undefined && branchReason !== undefined}
+            title={branch === undefined ? (branchReason ?? JA.schematic.branchHint) : JA.schematic.branchCancel}
+            onClick={() => {
+              setBranch(branch === undefined ? { rungId: cursor.rungId } : undefined);
+            }}
+          >
+            {branch === undefined ? JA.schematic.branch : JA.schematic.branchCancel}
+          </button>
           <button
             type="button"
             className={styles.verifyButton}
@@ -2774,7 +3406,14 @@ export function SchematicEditor({
             </li>
           ))}
         </ol>
-        <p className={styles.stepHint}>{schematicStepHint(currentStep)}</p>
+        {/* 分岐のあいだは「いま何をすればよいか」を分岐の案内に差し替える（決定表#24） */}
+        {branchHint === undefined ? (
+          <p className={styles.stepHint}>{schematicStepHint(currentStep)}</p>
+        ) : (
+          <p className={styles.branchHint} data-testid="branch-hint" role="status" aria-live="polite">
+            {branchHint}
+          </p>
+        )}
       </div>
 
       <div className={styles.editorBody}>
@@ -2791,21 +3430,16 @@ export function SchematicEditor({
           aria-label={`${JA.schematic.title}: ${JA.schematic.keyHint}`}
           onKeyDown={onKeyDown}
         >
+          {/*
+            `onPickCell` も渡す: 母線・銘板など**当たり矩形の外**を押したときの「選択解除」を
+            従来どおり効かせるため（矩形に当たったクリックは `onPickSlot` が受ける。B2）。
+          */}
           <SchematicSvg
             document={doc}
             cursor={cursor}
             {...(highlightCellIds === undefined ? {} : { highlightCellIds })}
             onPickCell={onPickCell}
-            onPickSlot={(rungId, index) => {
-              onCursor({ rungId, index });
-              if (selected === undefined) return;
-              onEdit({
-                kind: 'insertCell',
-                rungId,
-                index,
-                draft: { kind: selected.kind, device: selected.device },
-              });
-            }}
+            onPickSlot={onPickSlot}
           />
           <p className={styles.keyHint}>{JA.schematic.keyHint}</p>
         </div>
@@ -2939,6 +3573,17 @@ export function SchematicEditor({
   color: #c9d2dc;
 }
 
+/* 分岐の案内（手順帯の1行を一時的に置き換える）。Task 5 / B1 */
+.branchHint {
+  margin: 0;
+  padding: 4px 8px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #0f1216;
+  background: #6aa3ff;
+  border-radius: 4px;
+}
+
 .editorBody {
   display: flex;
   gap: 8px;
@@ -3057,7 +3702,7 @@ npx prettier --check "apps/desktop/src/renderer/schematic/**/*.{ts,tsx,css}"
 git add apps/desktop && git commit -m "feat(desktop): make the schematic renderer editable and add the editor screen"
 ```
 
-**期待**: `schematic-editor.test.tsx` の **11件**が増え、既存の `polish.test.ts` / `session.test.tsx`（`SchematicSvg` を読取専用で使う）はそのまま通る。
+**期待**: `schematic-editor.test.tsx` の **19件**が増え、既存の `polish.test.ts` / `session.test.tsx`（`SchematicSvg` を読取専用で使う）はそのまま通る。
 
 ---
 
@@ -3662,6 +4307,20 @@ Worker の購読（`bridge.start({...})`）に検算のハンドラを足す:
       },
 ```
 
+既存の `onError` にも**1行足す**。判定（`setJudging(false)`）と同じ理由で、検算の往復中に Worker が
+落ちると「検算中…」のままボタンが戻らなくなる（`setVerifyResult()` は届かないので `verifying` が
+下りない）:
+
+```tsx
+      onError: (text, fatal) => {
+        const state = useStore.getState();
+        state.setJudging(false);
+        // 検算の往復中に落ちたら「検算中…」のまま固まるので、必ず戻す（§11.4）
+        state.setVerifying(false);
+        // …以降は既存のまま…
+      },
+```
+
 ツールバーに切替を渡す（`<Toolbar ... />` の props に）:
 
 ```tsx
@@ -3735,10 +4394,13 @@ Worker の購読（`bridge.start({...})`）に検算のハンドラを足す:
                   elapsedMs: store.elapsedMs,
                 });
               }}
-              onPickCell={onPickSchematicCell}
+              onPickCell={onPickDraftCell}
+              onRefuse={(message) => {
+                useStore.getState().toast(message, 'error');
+              }}
             />
             {verifyResult === undefined ? null : (
-              <VerifyPanel problem={problem} result={verifyResult} onPickCell={onPickSchematicCell} />
+              <VerifyPanel problem={problem} result={verifyResult} onPickCell={onPickDraftCell} />
             )}
           </div>
         )}
@@ -3746,12 +4408,17 @@ Worker の購読（`bridge.start({...})`）に検算のハンドラを足す:
       </div>
 ```
 
-`highlightCells` と `onPickSchematicCell` は **Task 8 が定義する**。Task 7 の時点では次の暫定を置き、Task 8 で中身を差し替える（未定義の識別子を残さない）:
+`highlightCells` / `onPickDraftCell` / `onPickHintCell` は **Task 8 が定義する**。Task 7 の時点では次の暫定を置き、Task 8 で中身を差し替える（未定義の識別子を残さない）:
 
 ```tsx
   // 配線ガイドは Task 8 が実装する。ここでは「何も光らない・クリックは無視」で動かす
   const highlightCells = useStore((s) => s.highlight.cellIds);
-  const onPickSchematicCell = useCallback((_cellId: string | undefined): void => {
+  /** 回路図エディタ（訓練者の下書き）の要素をクリックしたとき。Task 8 で中身が入る */
+  const onPickDraftCell = useCallback((_cellId: string | undefined): void => {
+    // Task 8 でストアの `highlight` を更新する
+  }, []);
+  /** 回路図ヒント（課題の模範回路）の要素をクリックしたとき。Task 8 で中身が入る */
+  const onPickHintCell = useCallback((_cellId: string | undefined): void => {
     // Task 8 でストアの `highlight` を更新する
   }, []);
 ```
@@ -4007,53 +4674,71 @@ export function sameSelection(a: HighlightSelection, b: HighlightSelection): boo
 
 - [ ] **Step 3: `Session.tsx` の暫定を差し替える（モードBの配線ガイド）**
 
-Task 7 で置いた暫定の2行を次に替える:
+Task 7 で置いた暫定を次に替える。**索引は2つ持つ**（I4）。「並べて」ビューでは
+**訓練者の下書き（エディタ）と課題の模範回路（右パネルの回路図ヒント）が同時に画面に出る**ので、
+1つの索引を画面の状態で切り替えると、ヒントの要素を押したときに下書きの端子が光る（またはその逆）。
+どちらの図を押したかは**クリックの出どころ**が知っているので、索引も出どころごとに持つ:
 
 ```tsx
   /**
-   * 配線ガイドの索引。§11.4 / 決定表#7
-   * 「いま画面に出ている回路図」から作る: 回路図エディタを開いていれば訓練者の下書き、
-   * 開いていなければ回路図ヒント（課題の模範回路）。盤の配線が変わったら電線IDが古くなるので、
-   * `session` も依存に並べる（`buildHighlightIndex()` の注記のとおり）。
+   * 配線ガイドの索引（訓練者の下書き用）。§11.4 / 決定表#7
+   * 盤の配線が変わったら電線IDが古くなるので `session` も依存に並べる
+   * （`buildHighlightIndex()` の注記のとおり）。下書きが無い／割り当てられないときは undefined。
    */
-  const guideIndex = useMemo(
-    () =>
-      guideIndexFor({
-        doc: assembleView === 'board' ? undefined : schematicDoc,
-        problem,
-        board: JIPM_BOARD,
-        session,
-      }),
-    [assembleView, schematicDoc, problem, session],
+  const draftGuideIndex = useMemo(
+    () => guideIndexFor({ doc: schematicDoc, problem, board: JIPM_BOARD, session }),
+    [schematicDoc, problem, session],
+  );
+  /** 配線ガイドの索引（課題の模範回路＝回路図ヒント用）。`doc: undefined` で模範回路に落ちる。 */
+  const hintGuideIndex = useMemo(
+    () => guideIndexFor({ doc: undefined, problem, board: JIPM_BOARD, session }),
+    [problem, session],
   );
   const highlightCells = useStore((s) => s.highlight.cellIds);
 
-  /** 回路図の要素をクリックしたら盤の端子を光らせる（受入基準②）。 */
-  const onPickSchematicCell = useCallback(
+  /** 回路図エディタ（下書き）の要素をクリックしたら盤の端子を光らせる（受入基準②）。 */
+  const onPickDraftCell = useCallback(
     (cellId: string | undefined): void => {
-      useStore.getState().setHighlight(selectionFor(guideIndex, cellId));
+      useStore.getState().setHighlight(selectionFor(draftGuideIndex, cellId));
     },
-    [guideIndex],
+    [draftGuideIndex],
+  );
+  /** 回路図ヒント（模範回路）の要素をクリックしたときも同じ道を通す。 */
+  const onPickHintCell = useCallback(
+    (cellId: string | undefined): void => {
+      useStore.getState().setHighlight(selectionFor(hintGuideIndex, cellId));
+    },
+    [hintGuideIndex],
   );
 ```
 
-3D側の逆引きは、既存の `onHover` を包む形で足す（`setHovered()` はそのまま残す）:
+3D側の逆引き（盤 → 回路図）は**1つしか選べない**ので、「いま大きく出ている回路図」の索引を使う。
+エディタが出ているとき（`assembleView !== 'board'`）は下書き、盤だけのときは模範回路:
 
 ```tsx
-  const latestIndex = useRef(guideIndex);
-  latestIndex.current = guideIndex;
+  const latestIndex = useRef(hintGuideIndex);
+  latestIndex.current = assembleView === 'board' ? hintGuideIndex : (draftGuideIndex ?? hintGuideIndex);
   /**
    * 盤の端子にホバーしたら回路図の要素を光らせる（決定表#8）。
    * ホバーは毎秒何度も走るので、**同じ選択なら書かない**（`sameSelection`）。
+   *
+   * 結果画面から跳んできた注目（`boardFocus`）が立っているあいだは**書かない**（I3）。
+   * 盤にマウスを載せただけで「疑わしい端子」のハイライトが消えると、
+   * 「盤で見る」で見に来たものが見られない（UXレビュー #28）。
    */
   const onHover = useCallback((id: TerminalId | undefined) => {
     const store = useStore.getState();
     store.setHovered(id);
+    if (store.boardFocus !== undefined) return;
     const next = selectionForHover(latestIndex.current, { terminal: id });
     if (sameSelection(next, store.highlight)) return;
     store.setHighlight(next);
   }, []);
 ```
+
+**注意**: `boardFocus` はストアの欄なので Task 9 が足す。バッチCは **8 → 9 → 10 の直列**なので、
+Task 8 の時点ではまだ無い。`onHover` のこの2行は **Task 9 Step 1（`boardFocus` の追加）と同じ
+コミットで入れる**こと（Task 8 では `latestIndex` の2索引だけを入れる）。
 
 回路図ヒント（`schematic-hint` の `SchematicSvg`）にも `highlightCellIds` と `onPickCell` を渡す:
 
@@ -4061,7 +4746,7 @@ Task 7 で置いた暫定の2行を次に替える:
                 <SchematicSvg
                   document={problem.schematic}
                   highlightCellIds={highlightCells}
-                  onPickCell={onPickSchematicCell}
+                  onPickCell={onPickHintCell}
                 />
 ```
 
@@ -4071,17 +4756,35 @@ L297〜L340 の `highlightIndex` / `latestIndex` / ホバー処理を `wiring-gu
 
 - [ ] **Step 5: 画面のテストを書いて走らせる**
 
-`apps/desktop/test/wiring-guide-screen.test.tsx`:
+`apps/desktop/test/wiring-guide-screen.test.tsx`。**`BoardScene` のモックは `session.test.tsx` の
+形をそのまま写す**（`onPick` に加えて `onHover` も捕まえる。3Dの逆引きを検証するため）:
 
 ```tsx
 import { BUILTIN_ASSEMBLE_PROBLEMS } from '@ojt/content';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useStore } from '../src/renderer/app/store.js';
 import { Session } from '../src/renderer/screens/Session.js';
 
 const problem = BUILTIN_ASSEMBLE_PROBLEMS.find((p) => p.id === 'b-001');
 if (problem === undefined) throw new Error('b-001 が見つかりません');
+
+/** `BoardScene` が受け取ったハンドラ（`session.test.tsx` と同じ捕まえ方）。 */
+const scene = vi.hoisted(() => ({ hover: undefined as ((id: string | undefined) => void) | undefined }));
+
+vi.mock('../src/renderer/three/BoardScene.js', async () => {
+  const actual = await vi.importActual<Record<string, unknown>>(
+    '../src/renderer/three/BoardScene.js',
+  );
+  return {
+    safeRoutes: actual['safeRoutes'],
+    visualSignature: actual['visualSignature'],
+    BoardScene: ({ onHover }: { onHover: (id: string | undefined) => void }) => {
+      scene.hover = onHover;
+      return <div data-testid="board-canvas-stub" />;
+    },
+  };
+});
 
 beforeEach(() => {
   useStore.getState().abandonSession();
@@ -4140,6 +4843,41 @@ describe('配線ガイド（§16 Phase 5 受入基準②）', () => {
     fireEvent.click(svg);
     expect(useStore.getState().highlight).toEqual({ cellIds: [], terminals: [], wireIds: [] });
   });
+
+  it('keeps the hint on the reference circuit while the editor shows the draft (I4)', () => {
+    render(<Session />);
+    // 「並べて」は**下書きと模範回路が同時に画面に出る**唯一のビュー
+    fireEvent.click(screen.getByTestId('assemble-view-split'));
+    act(() => {
+      const store = useStore.getState();
+      store.applySchematicEdit({ kind: 'insertCell', rungId: 'r1', index: 0, draft: { kind: 'pb-a', device: 'PB1' } });
+      store.applySchematicEdit({ kind: 'insertCell', rungId: 'r1', index: 1, draft: { kind: 'coil', device: 'CR1' } });
+    });
+    // ヒント側の要素IDは課題JSONのID（`c01`〜）。下書きのID（`c1`〜）とは別物なので、
+    // 索引が1つだと引けずに何も光らない
+    const hint = screen.getByTestId('schematic-hint').querySelector('[data-cell]');
+    expect(hint).not.toBeNull();
+    if (hint === null) return;
+    fireEvent.click(hint);
+    expect(useStore.getState().highlight.cellIds).toEqual([hint.getAttribute('data-cell')]);
+    expect(useStore.getState().highlight.terminals).toHaveLength(2);
+  });
+
+  it('does not wipe the result focus when the pointer passes over the board (I3)', () => {
+    render(<Session />);
+    const focus = { cellIds: ['c01'], terminals: ['CR1.14', 'P.1'], wireIds: [] };
+    act(() => {
+      const store = useStore.getState();
+      store.setHighlight(focus as never);
+      store.setBoardFocus({ from: 'result', text: 'CR1.14（CR1）と P.1（P）がつながっていません' });
+    });
+    expect(scene.hover).toBeDefined();
+    act(() => {
+      scene.hover?.('CR1.9');
+      scene.hover?.(undefined);
+    });
+    expect(useStore.getState().highlight).toEqual(focus);
+  });
 });
 ```
 
@@ -4149,7 +4887,7 @@ pnpm -r typecheck && pnpm lint
 git add apps/desktop && git commit -m "feat(desktop): light the board terminals from the schematic (wiring guide)"
 ```
 
-**期待**: `wiring-guide.test.ts` の **9件**と `wiring-guide-screen.test.tsx` の **4件**が増え、既存の `highlight-link.test.tsx`（C2）はそのまま通る。
+**期待**: `wiring-guide.test.ts` の **9件**と `wiring-guide-screen.test.tsx` の **6件**が増え、既存の `highlight-link.test.tsx`（C2）はそのまま通る。`boardFocus` を使う1件は Task 9 と同じコミットになる。
 
 ---
 
@@ -4161,10 +4899,12 @@ git add apps/desktop && git commit -m "feat(desktop): light the board terminals 
 - Create: `apps/desktop/src/renderer/result/SuspectList.tsx`
 - Modify: `apps/desktop/src/renderer/result/ResultView.tsx` / `result.module.css`
 - Modify: `apps/desktop/src/renderer/screens/Result.tsx`（`SuspectList` へ渡す盤と遷移）
-- Modify: `apps/desktop/src/renderer/app/store.ts`（`boardFocus`）
-- Modify: `apps/desktop/src/renderer/screens/Session.tsx`（「結果から」の帯）
+- Modify: `apps/desktop/src/renderer/app/store-types.ts`（`BoardFocus` 型）
+- Modify: `apps/desktop/src/renderer/app/store.ts`（`boardFocus` / `setBoardFocus`）
+- Modify: `apps/desktop/src/renderer/screens/Session.tsx`（「結果から」の帯と `onHover` の `boardFocus` ガード）
 - Modify: `apps/desktop/src/renderer/i18n/ja.ts`
 - Test: `apps/desktop/test/suspect-list.test.tsx`（新規）
+- Test: `apps/desktop/test/wiring-guide-screen.test.tsx`（Task 8 が作ったファイルに `boardFocus` の1件を足す）
 
 決定表#10・#11・#27。
 
@@ -4214,7 +4954,7 @@ afterEach(() => {
 
 describe('SuspectList（UXレビュー #28）', () => {
   it('lists the suspects with a 盤で見る button each', () => {
-    const suspects = wiringSuspects(problem, JIPM_BOARD, brokenSession());
+    const { suspects } = wiringSuspects(problem, JIPM_BOARD, brokenSession());
     expect(suspects.length).toBeGreaterThan(0);
     render(<SuspectList suspects={suspects} onShowOnBoard={vi.fn()} />);
     expect(screen.getAllByRole('button', { name: '盤で見る' })).toHaveLength(suspects.length);
@@ -4222,7 +4962,7 @@ describe('SuspectList（UXレビュー #28）', () => {
   });
 
   it('hands the terminals, wires and cells to the caller', () => {
-    const suspects = wiringSuspects(problem, JIPM_BOARD, brokenSession());
+    const { suspects } = wiringSuspects(problem, JIPM_BOARD, brokenSession());
     const onShowOnBoard = vi.fn();
     render(<SuspectList suspects={suspects} onShowOnBoard={onShowOnBoard} />);
     fireEvent.click(screen.getAllByRole('button', { name: '盤で見る' })[0] as HTMLElement);
@@ -4246,6 +4986,12 @@ describe('SuspectList（UXレビュー #28）', () => {
     }));
     render(<SuspectList suspects={many} onShowOnBoard={vi.fn()} truncated={3} />);
     expect(screen.getByTestId('suspect-more')).toHaveTextContent('3');
+  });
+
+  it('warns that a different contact pair also shows up here (決定表#9b)', () => {
+    const { suspects } = wiringSuspects(problem, JIPM_BOARD, brokenSession());
+    render(<SuspectList suspects={suspects} onShowOnBoard={vi.fn()} />);
+    expect(screen.getByTestId('suspect-note')).toHaveTextContent('接点の組');
   });
 });
 ```
@@ -4308,6 +5054,15 @@ export function SuspectList({
           {suspectMoreText(truncated)}
         </p>
       ) : null}
+      {/*
+        接点の組の違いも「不足」「余分」として出る（決定表#9b）。正規化しないと決めたので、
+        **一覧が出ているあいだは必ず**この1行を添えて、訓練者が誤りだと思い込まないようにする。
+      */}
+      {suspects.length === 0 ? null : (
+        <p className={styles.suspectNote} data-testid="suspect-note">
+          {JA.result.suspectNote}
+        </p>
+      )}
     </div>
   );
 }
@@ -4320,6 +5075,8 @@ export function SuspectList({
     noSuspect: '模範回路との配線の違いは見つかりませんでした。部品の設定や操作の順序を見直してください。',
     suspectMissing: '不足',
     suspectExtra: '余分',
+    suspectNote:
+      '同じ機器の接点の組（CR1 の ⑨⑤／⑩⑥／⑪⑦／⑫⑧）は、どれを使っても回路は成立します。組が違うだけのときも、ここに「不足」「余分」として出ます。',
     showOnBoard: '盤で見る',
     backToResult: '結果へ戻る',
     fromResult: '結果から',
@@ -4363,16 +5120,29 @@ export function suspectMoreText(count: number): string {
         )}
 ```
 
-`screens/Result.tsx` で計算して渡す（決定表#10: renderer で `useMemo`）:
+`screens/Result.tsx` で計算して渡す（決定表#10: renderer で `useMemo`）。`wiringSuspects()` は
+**一覧と切り捨て件数の両方**を返すので、そのまま2つの props に分けて渡す（I6）:
 
 ```tsx
-  const suspects = useMemo(() => {
-    if (problem === undefined || session === undefined || !isAssembleProblem(problem)) return [];
+  /** 疑わしい配線（モードBのみ・合格時は出さない）。UXレビュー #28 */
+  const report = useMemo((): WiringSuspectReport => {
+    const empty = { suspects: [], total: 0, omitted: 0 };
+    if (problem === undefined || session === undefined || !isAssembleProblem(problem)) return empty;
     // 合格したときは出さない（見るところが無い）
-    if (result?.mode === 'assemble' && result.passed) return [];
+    if (result?.mode === 'assemble' && result.passed) return empty;
     return wiringSuspects(problem, JIPM_BOARD, session);
   }, [problem, session, result]);
 ```
+
+`<ResultView …>` に渡す:
+
+```tsx
+      suspects={report.suspects}
+      suspectsTruncated={report.omitted}
+      onShowOnBoard={showOnBoard}
+```
+
+import に `type WiringSuspectReport`（`@ojt/content`）を足す。
 
 「盤で見る」の実体（決定表#11）:
 
@@ -4416,7 +5186,13 @@ export function suspectMoreText(count: number): string {
       )}
 ```
 
-`result.module.css` と `screens.module.css` に `.suspectList` / `.suspect` / `.suspectMissing` / `.suspectExtra` / `.suspectText` / `.suspectButton` / `.suspectMore` / `.boardFocus` を足す（余白は4の倍数、ボタンに `:focus-visible` の枠）。
+`result.module.css` と `screens.module.css` に `.suspectList` / `.suspect` / `.suspectMissing` / `.suspectExtra` / `.suspectText` / `.suspectButton` / `.suspectMore` / `.suspectNote` / `.boardFocus` を足す（余白は4の倍数、ボタンに `:focus-visible` の枠）。
+
+**あわせて Task 8 の `onHover` の2行を入れる**（`boardFocus` はここで初めて存在するため）:
+
+```tsx
+    if (store.boardFocus !== undefined) return;
+```
 
 - [ ] **Step 6: テストを走らせてコミットする**
 
@@ -4426,7 +5202,7 @@ pnpm -r typecheck && pnpm lint
 git add apps/desktop && git commit -m "feat(desktop): suggest the suspect wiring on the result screen and show it on the board"
 ```
 
-**期待**: `suspect-list.test.tsx` の **4件**が増え、既存の `result-view.test.tsx` / `plc-result.test.tsx` / `inspect-*-result.test.tsx` はそのまま通る（新しい props は任意）。
+**期待**: `suspect-list.test.tsx` の **5件**が増え、既存の `result-view.test.tsx` / `plc-result.test.tsx` / `inspect-*-result.test.tsx` はそのまま通る（新しい props は任意）。
 
 ---
 
@@ -4471,23 +5247,49 @@ describe('terminalRows', () => {
     const rows = terminalRows(JIPM_BOARD, session);
     expect(rows.length).toBeGreaterThan(0);
     expect(rows.every((r) => r.id.includes('.'))).toBe(true);
-    // AC一次側（CB / SW / PS）は配線できないので出ない（§6.4）
-    expect(rows.some((r) => r.id.startsWith('CB.') || r.id.startsWith('SW.') || r.id.startsWith('PS.'))).toBe(false);
+    // AC一次側（CB / SW / PS）と PB／PL 本体端子は配線できないので出ない（§6.4）
+    expect(
+      rows.some((r) => ['CB', 'SW', 'PS', 'PB1', 'PL1'].includes(r.group)),
+    ).toBe(false);
     expect([...new Set(rows.map((r) => r.group))]).toContain('CR1');
   });
 
-  it('uses the role id for socket terminals (CR1 ⑨ COM, not S1)', () => {
+  it('uses the role id for socket terminals (CR1 ⑨ COM, not S1 ⑨ COM)', () => {
     const rows = terminalRows(JIPM_BOARD, session);
     const com = rows.find((r) => r.id === 'CR1.9');
+    expect(com).toBeDefined();
+    expect(com?.group).toBe('CR1');
     expect(com?.label).toContain('CR1');
     expect(com?.label).toContain('COM');
+    // 物理ソケットIDは1つも残っていない（`session.wires` は役割ベースなので混ぜられない）
+    expect(rows.some((r) => /^S[1-8]\./u.test(r.id))).toBe(false);
+  });
+
+  it('leaves out the spare sockets and the buzzer the problem did not add (B3)', () => {
+    const rows = terminalRows(JIPM_BOARD, session);
+    // b-001 が役割を割り当てるのは S1(CR1) / S2(CR2) / S5(T1) / S6(T2) / S7(CHK) の5つ
+    expect([...new Set(rows.map((r) => r.group))].sort()).toEqual([
+      'CHK',
+      'CR1',
+      'CR2',
+      'N',
+      'P',
+      'T1',
+      'T2',
+      'TB_PB',
+      'TB_PL',
+    ]);
+    // 5ソケット×14 ＋ TB_PL 8 ＋ TB_PB 12 ＋ P 1 ＋ N 1 ＝ 92
+    expect(rows).toHaveLength(92);
   });
 
   it('counts the wires at each terminal and marks the full ones', () => {
     const rows = terminalRows(JIPM_BOARD, session);
-    // チェック用回路の既設配線が P.1 を1本使っている（§6.3）
+    // チェック用回路の既設配線（`P.1 → TB_PB.4c`）が P.1 を1本使っている（§6.3）
     expect(rows.find((r) => r.id === 'P.1')?.wireCount).toBe(1);
     expect(rows.find((r) => r.id === 'P.1')?.full).toBe(false);
+    // 既設配線は役割ベースの端子IDで張られているので、CHK 側も数えられている
+    expect(rows.find((r) => r.id === 'CHK.14')?.wireCount).toBe(1);
   });
 
   it('filters by the search text over both the id and the label', () => {
@@ -4549,7 +5351,8 @@ describe('TerminalListPanel（UXレビュー #29）', () => {
 ```ts
 import {
   isOffBoardTerminal,
-  roleLabel,
+  isSocketId,
+  toSessionTerminal,
   type BoardDefinition,
   type BoardSession,
   type BoardTerminal,
@@ -4561,30 +5364,26 @@ import { MAX_WIRES_PER_TERMINAL, parseTerminalId, type TerminalId } from '@ojt/c
  * §15 のアクセシビリティは「課題選択・判定・結果確認まで」しか求めていないが、
  * 利用者要求「分かりやすく直感的に」に応えて**配線もキーボードで完結**させる。
  * React も three も使わないので Vitest だけで検証できる（§14.2）。
+ *
+ * **端子IDは役割ベースに正規化する。** `board.terminals[].id` はソケットを**物理ID**
+ * （`S1.9`）で持つのに対し、`session.wires` は**役割ID**（`CR1.9`）で張られている
+ * （`board-model/src/session.ts` の `toSessionTerminal()` の注記: 「電線と突き合わせる前に
+ * 必ずこれを通すこと」）。混ぜると①電線の本数が常に0本に見え、②見出しが `S1` になり、
+ * ③`pickToAction()` → `addWire()` が入口で別のIDに正規化するので画面の表示とずれる。
  */
 
 /** 一覧の1行。 */
 export interface TerminalRow {
+  /** **役割ベース**の端子ID（`CR1.9` / `TB_PL.1+` / `P.1`）。`session.wires` と同じ語彙。 */
   id: TerminalId;
-  /** 画面に出す名前（`CR1 ⑨ COM` / `PL1+` / `P1`）。 */
+  /** 画面に出す名前（`CR1 ⑨ COM` / `PL1 +` / `P1`）。 */
   label: string;
-  /** まとまりの見出し（`CR1` / `TB_PL` / `P` のような部品ID。ソケットは役割ID）。 */
+  /** まとまりの見出し（`CR1` / `TB_PL` / `P` のような部品ID。ソケットは**役割ID**）。 */
   group: string;
   /** いまその端子に繋がっている電線の本数。 */
   wireCount: number;
   /** 上限（2本）に達していて、これ以上繋げないか。§6.6 */
   full: boolean;
-}
-
-/**
- * 画面に出す名前。端子IDは**役割ベース**（`toSessionTerminal()` を通った `CR1.9`）なので、
- * 盤定義のラベル（物理ID入りの `S1 ⑨ com`）から番号と役割だけを取り、部品IDはIDの側から取る。§6.4
- */
-function labelOf(terminal: BoardTerminal): string {
-  const { part } = parseTerminalId(terminal.id);
-  const number = terminal.label.split(' ').at(-2);
-  if (number === undefined) return terminal.label;
-  return `${part} ${number} ${roleLabel(terminal.role)}`;
 }
 
 /** その端子に繋がっている電線の本数（既設配線も数える）。§6.6 */
@@ -4593,7 +5392,34 @@ function wireCountAt(session: BoardSession, id: TerminalId): number {
 }
 
 /**
- * 配線できる盤の端子の一覧。`query` を渡すと端子IDと名前の両方で絞り込む。
+ * 盤定義の端子1つを、いまのセッションの語彙の1行にする。出せない端子は undefined。
+ *
+ * 出さないのは次の3種類:
+ * - `wirable: false`（AC一次側 `CB`/`SW`/`PS`、PB／PL 本体端子）。§6.4
+ * - 課題が足していない任意部品の端子（`BZ`）。§5.3.4
+ * - 役割の割り当てが無い予備ソケットの端子（`toSessionTerminal()` が物理IDのまま返す）。§6.1
+ */
+function toRow(session: BoardSession, terminal: BoardTerminal): TerminalRow | undefined {
+  if (!terminal.wirable) return undefined;
+  const physical = parseTerminalId(terminal.id);
+  if (terminal.optional && !session.extraParts.includes(physical.part)) return undefined;
+  const id = toSessionTerminal(session, terminal.id);
+  const { part } = parseTerminalId(id);
+  const socket = isSocketId(physical.part);
+  if (socket && isSocketId(part)) return undefined;
+  const count = wireCountAt(session, id);
+  return {
+    id,
+    // 盤定義の印字はソケットだけ部品IDを持たない（`⑨ COM`）ので、役割IDを前に足す。§8.2
+    label: socket ? `${part} ${terminal.label}` : terminal.label,
+    group: part,
+    wireCount: count,
+    full: count >= MAX_WIRES_PER_TERMINAL,
+  };
+}
+
+/**
+ * 配線できる盤の端子の一覧（盤定義の並び順）。`query` を渡すと端子IDと名前の両方で絞り込む。
  * 机上の端子（PLC本体・壁コンセント）も**盤の一部として出す**（モードDで使う）。
  */
 export function terminalRows(
@@ -4602,19 +5428,14 @@ export function terminalRows(
   query = '',
 ): TerminalRow[] {
   const needle = query.trim();
-  return board.terminals
-    .filter((terminal) => terminal.wirable)
-    .map((terminal) => {
-      const count = wireCountAt(session, terminal.id);
-      return {
-        id: terminal.id,
-        label: labelOf(terminal),
-        group: parseTerminalId(terminal.id).part,
-        wireCount: count,
-        full: count >= MAX_WIRES_PER_TERMINAL,
-      };
-    })
-    .filter((row) => needle.length === 0 || `${row.id}${row.label}`.includes(needle));
+  const out: TerminalRow[] = [];
+  for (const terminal of board.terminals) {
+    const row = toRow(session, terminal);
+    if (row === undefined) continue;
+    if (needle.length > 0 && !`${row.id}${row.label}`.includes(needle)) continue;
+    out.push(row);
+  }
+  return out;
 }
 
 /** 机上の端子か（見出しに「机上」を付ける）。§10.1 */
@@ -4762,7 +5583,7 @@ pnpm -r typecheck && pnpm lint
 git add apps/desktop && git commit -m "feat(desktop): add the keyboard wiring terminal list"
 ```
 
-**期待**: `terminal-list.test.tsx` の **9件**が増える。
+**期待**: `terminal-list.test.tsx` の **10件**が増える。
 
 ---
 
@@ -4973,7 +5794,8 @@ git add apps/desktop && git commit -m "feat(desktop): add the render performance
 
 **Files:**
 - Create: `apps/desktop/src/renderer/three/TerminalField.tsx`
-- Modify: `apps/desktop/src/renderer/three/Socket.tsx` / `TerminalBlock.tsx`（`TerminalHit` のループを外す）
+- Modify: `apps/desktop/src/renderer/three/materials.ts`（`noPick` を1つに寄せて export）
+- Modify: `apps/desktop/src/renderer/three/Socket.tsx` / `TerminalBlock.tsx`（`TerminalHit` のループを外す、`noPick` を import に）
 - Modify: `apps/desktop/src/renderer/three/BoardScene.tsx`（1本の `TerminalField` を置く）
 - Test: `apps/desktop/test/terminal-field.test.ts`（新規）
 
@@ -4985,9 +5807,9 @@ git add apps/desktop && git commit -m "feat(desktop): add the render performance
 
 ```ts
 import { JIPM_BOARD, isOffBoardTerminal } from '@ojt/board-model';
+import { BUILTIN_ASSEMBLE_PROBLEMS } from '@ojt/content';
 import { describe, expect, it } from 'vitest';
 import { sessionForProblem } from '../src/renderer/app/store.js';
-import { BUILTIN_ASSEMBLE_PROBLEMS } from '@ojt/content';
 import {
   boardFieldTerminals,
   terminalColorOf,
@@ -4995,19 +5817,33 @@ import {
   TERMINAL_STATE_COLORS,
 } from '../src/renderer/three/TerminalField.js';
 
-const problem = BUILTIN_ASSEMBLE_PROBLEMS[0];
-if (problem === undefined) throw new Error('内蔵課題がありません');
+const problem = BUILTIN_ASSEMBLE_PROBLEMS.find((p) => p.id === 'b-001');
+if (problem === undefined) throw new Error('b-001 が見つかりません');
+/** `BoardScene` が渡すのと同じ値（b-001 は任意部品を足さないので空）。 */
+const extraParts = sessionForProblem(problem).extraParts;
 
 describe('boardFieldTerminals', () => {
-  it('takes every board terminal and leaves the desk ones to PlcUnit / Outlet (決定表#13)', () => {
-    const field = boardFieldTerminals(JIPM_BOARD);
-    expect(field.length).toBeGreaterThan(100);
+  it('draws exactly what Socket and TerminalBlock draw today (決定表#13)', () => {
+    const field = boardFieldTerminals(JIPM_BOARD, extraParts);
+    // 8ソケット×14 ＝112 ＋ TB_PL 8 ＋ TB_PB 12 ＋ P 1 ＋ N 1 ＝ 134
+    expect(field).toHaveLength(134);
+    expect(field.every((t) => t.wirable)).toBe(true);
     expect(field.some((t) => isOffBoardTerminal(t.id))).toBe(false);
+    // `wirable: false` の端子（CB / SW / PS・PB／PL 本体）は `TerminalHit` を持っていなかった
+    expect(field.some((t) => ['CB', 'SW', 'PS', 'PB1', 'PL1'].includes(t.id.split('.')[0] ?? ''))).toBe(
+      false,
+    );
+    // ソケットは**物理ID**のまま（この場は盤定義の座標を描くだけ。役割IDは端子リストの語彙）
+    expect(field.filter((t) => /^S[1-8]\./u.test(t.id))).toHaveLength(112);
+  });
+
+  it('adds the buzzer only when the problem put one on the board (§5.3.4)', () => {
+    expect(boardFieldTerminals(JIPM_BOARD, ['BZ'] as never)).toHaveLength(136);
   });
 
   it('keeps the order stable so the instance ids do not shuffle between renders', () => {
-    expect(boardFieldTerminals(JIPM_BOARD).map((t) => t.id)).toEqual(
-      boardFieldTerminals(JIPM_BOARD).map((t) => t.id),
+    expect(boardFieldTerminals(JIPM_BOARD, extraParts).map((t) => t.id)).toEqual(
+      boardFieldTerminals(JIPM_BOARD, extraParts).map((t) => t.id),
     );
   });
 });
@@ -5032,18 +5868,18 @@ describe('terminalStateOf（決定表#14）', () => {
 
 ```tsx
 import { isOffBoardTerminal, type BoardDefinition, type BoardTerminal } from '@ojt/board-model';
-import type { TerminalId } from '@ojt/circuit-sim';
+import { parseTerminalId, type PartId, type TerminalId } from '@ojt/circuit-sim';
 import { Html } from '@react-three/drei';
 import type { ThreeEvent } from '@react-three/fiber';
 import { useEffect, useMemo, useRef, type JSX } from 'react';
-import { Color, InstancedMesh, Matrix4, Quaternion, Vector3 } from 'three';
+import { Color, InstancedMesh, Matrix4, MeshStandardMaterial, Quaternion, Vector3 } from 'three';
 import {
   TERMINAL_HOVER_COLOR,
   TERMINAL_PENDING_COLOR,
   TERMINAL_SCREW_COLOR,
 } from '../session/colors.js';
 import { toScene } from './coords.js';
-import { INVISIBLE_MATERIAL, PICK_GEOMETRY, SCREW_GEOMETRY, sharedMaterial } from './materials.js';
+import { INVISIBLE_MATERIAL, noPick, PICK_GEOMETRY, SCREW_GEOMETRY } from './materials.js';
 
 /**
  * 盤の端子をまとめて描く。設計仕様 §6.5 / §15 / Plan 5 決定表#13・#14。
@@ -5080,9 +5916,44 @@ const LABEL_STYLE = { pointerEvents: 'none' } as const;
 /** ネジ頭の円柱は横倒しに置く（`TerminalHit` と同じ姿勢）。 */
 const SCREW_ROTATION = new Quaternion().setFromAxisAngle(new Vector3(1, 0, 0), Math.PI / 2);
 
-/** この場が描く端子（机上の端子は `PlcUnit` / `Outlet` が描く。決定表#13）。 */
-export function boardFieldTerminals(board: BoardDefinition): BoardTerminal[] {
-  return board.terminals.filter((terminal) => !isOffBoardTerminal(terminal.id));
+/**
+ * ネジ頭のマテリアル。**`sharedMaterial()` のキャッシュは使わない**（I7）。
+ * `instancedMesh` に `instanceColor` を載せると three はそのマテリアルに `USE_INSTANCING_COLOR`
+ * を定義した別のシェーダを割り当てる。キャッシュ越しに同じインスタンスを `TerminalHit` や
+ * `MountedPart` と共有すると、色付きインスタンス用にコンパイルされた版が普通のメッシュにも回り、
+ * プログラムの再コンパイルを誘発する（あるいは白いはずの部品がインスタンス色に染まる）。
+ * ここは**この場だけの1個**を持つ。白にするのは `instanceColor` を素直に乗せるため。
+ */
+const SCREW_MATERIAL = new MeshStandardMaterial({
+  color: '#FFFFFF',
+  metalness: 0.7,
+  roughness: 0.3,
+});
+
+/**
+ * この場が描く端子。決定表#13
+ *
+ * **いま `Socket` / `TerminalBlock` が `TerminalHit` で描いている端子と1個も違わないこと**が
+ * この関数の唯一の要件である。盤定義の `board.terminals` には、3Dに出ていない端子が混ざっている:
+ * - `wirable: false`（AC一次側 `CB`/`SW`/`PS`、PB／PL 本体端子）。`Fixture` は印字しか描かず
+ *   `TerminalHit` を使わないので、これらは**もともと触れない**。入れると急に触れるようになる。
+ * - 机上の端子（PLC本体・壁コンセント）。`PlcUnit` / `Outlet` が従来どおり描く。
+ * - 任意部品 `BZ` の2端子（`optional: true`）。課題が盤に足したときだけ。§5.3.4
+ *
+ * `JIPM_BOARD` では **134 個**（8ソケット×14 ＝112 ＋ `TB_PL` 8 ＋ `TB_PB` 12 ＋ `P` 1 ＋ `N` 1）、
+ * BZ 付きで 136 個になる。
+ */
+export function boardFieldTerminals(
+  board: BoardDefinition,
+  /** 盤に足した任意部品（`session.extraParts`）。 */
+  extraParts: readonly PartId[],
+): BoardTerminal[] {
+  return board.terminals.filter(
+    (terminal) =>
+      terminal.wirable &&
+      !isOffBoardTerminal(terminal.id) &&
+      (!terminal.optional || extraParts.includes(parseTerminalId(terminal.id).part)),
+  );
 }
 
 /** その端子の状態（配線待ち > ホバー > 平常）。 */
@@ -5168,9 +6039,9 @@ export function TerminalField({
     <group name="terminal-field">
       <instancedMesh
         ref={screws}
-        args={[SCREW_GEOMETRY, sharedMaterial('#FFFFFF', { metalness: 0.7, roughness: 0.3 }), count]}
-        // 見えるだけ。クリックは下の不可視メッシュが受ける（電線より手前に出さない）
-        raycast={() => undefined}
+        args={[SCREW_GEOMETRY, SCREW_MATERIAL, count]}
+        // 見えるだけ。クリックは下の不可視メッシュが受ける（`Socket` / `TerminalBlock` と同じ `noPick`）
+        raycast={noPick}
       />
       <instancedMesh
         ref={picks}
@@ -5181,7 +6052,16 @@ export function TerminalField({
           const terminal = terminals[event.instanceId ?? -1];
           onHover(terminal?.id);
         }}
-        onPointerOut={() => {
+        onPointerOut={(event: ThreeEvent<PointerEvent>) => {
+          /*
+           * 端子142個が**1つのメッシュ**になったので、`pointerout` は「端子Aから端子Bへ
+           * 移った」ときにも飛ぶ。無条件に `onHover(undefined)` を呼ぶと、B の
+           * `pointerover` を打ち消して**ホバーが消えたり点滅したりする**（`TerminalHit` は
+           * 端子ごとに別メッシュだったのでこの問題が無かった）。
+           * 出ていく先がいまホバー中の端子のときだけ消す。
+           */
+          const terminal = terminals[event.instanceId ?? -1];
+          if (terminal !== undefined && terminal.id !== hovered) return;
           onHover(undefined);
         }}
         onClick={(event: ThreeEvent<MouseEvent>) => {
@@ -5210,11 +6090,16 @@ export function TerminalField({
 }
 ```
 
-**注意（レビューで見る点）:** `instancedMesh` の `instanceColor` は最初の `setColorAt()` で確保される。three r160 以降は `mesh.instanceColor` が `null` のままだと `setColorAt()` が自分で作るので、上の順（`setColorAt` → `instanceColor !== null` の確認）で正しい。ネジのマテリアルは**白**にしてインスタンス色を素直に乗せる（`sharedMaterial('#FFFFFF', ...)`）。
+**注意（レビューで見る点）:** `instancedMesh` の `instanceColor` は最初の `setColorAt()` で確保される。three r160 以降は `mesh.instanceColor` が `null` のままだと `setColorAt()` が自分で作るので、上の順（`setColorAt` → `instanceColor !== null` の確認）で正しい。ネジのマテリアルは**この場専用の白1個**（`SCREW_MATERIAL`）で、`sharedMaterial()` のキャッシュには入れない（I7 の理由）。
 
-- [ ] **Step 3: `Socket.tsx` / `TerminalBlock.tsx` から端子のループを外す**
+- [ ] **Step 3: `Socket.tsx` / `TerminalBlock.tsx` から端子のループを外し、`noPick` を1つにする**
 
 両方から `terminals.map((terminal) => <TerminalHit ... />)` のブロックと、`hoveredTerminal` / `pendingTerminal` / `onHoverTerminal` / `onPickTerminal` の4 props を削る。`terminals` は**残す**（印字テクスチャと台座の外接矩形に要る）。`Socket.tsx` の `socketTerminalLabel()` は **export したまま**（`BoardScene` がツールチップに使う）。
+
+あわせて、両ファイルが**それぞれ持っている**`function noPick(): void {}` を `three/materials.ts` へ移し
+（`export function noPick(): void { /* 交差候補を積まない */ }`）、`Socket.tsx` / `TerminalBlock.tsx` /
+`TerminalField.tsx` の3つが同じものを import する。同じ1行の関数を3箇所に置かないため（I7）。
+既存の `raycast={noPick}` の使い方は1つも変えない。
 
 - [ ] **Step 4: `BoardScene.tsx` に1本置く**
 
@@ -5239,19 +6124,38 @@ export function TerminalField({
 `BoardContents` の中で:
 
 ```tsx
-  const fieldTerminals = useMemo(() => boardFieldTerminals(board), [board]);
-  /** ソケットの端子は役割IDで、それ以外は盤定義の印字で見せる（従来の2通りをここへ寄せる）。§8.2 */
+  const extraParts = session?.extraParts ?? [];
+  const fieldTerminals = useMemo(
+    () => boardFieldTerminals(board, extraParts),
+    // 盤に足した任意部品の**中身**が変われば作り直す（配列の同一性は配線のたびに変わる）
+    [board, extraParts.join(',')],
+  );
+  /**
+   * ソケットの端子は役割IDで、それ以外は盤定義の印字で見せる（従来の2通りをここへ寄せる）。§8.2
+   * 文言の組み立ては既存の `terminalTooltip()`（`TerminalHit.tsx`）に通す。`PlcUnit` /
+   * `Outlet` が使っているのと同じ関数なので、盤と机上でツールチップの作り方が割れない（M6）。
+   */
   const terminalTooltipOf = useCallback(
     (terminal: BoardTerminal): string => {
       const socket = board.sockets.find((s) => terminal.id.startsWith(`${s.id}.`));
-      if (socket === undefined) return terminal.label;
-      return socketTerminalLabel(session?.socketRoles[socket.id], terminal);
+      return terminalTooltip(
+        terminal,
+        socket === undefined ? '' : socketTerminalLabel(session?.socketRoles[socket.id], terminal),
+      );
     },
     [board, session],
   );
 ```
 
-**注意**: 端子IDは `toSessionTerminal()` を通った**役割ベース**（`CR1.9`）ではなく盤定義の物理ID（`S1.9`）である。`Socket` が従来 `socketTerminalLabel(role, terminal)` に渡していたのと同じ `role` を `session.socketRoles[socket.id]` から引けば、文言は1文字も変わらない。
+`BoardScene.tsx` の import に `terminalTooltip`（`./TerminalHit.js`、既に export されている）と
+`boardFieldTerminals` / `TerminalField`（`./TerminalField.js`）を足す。
+
+**注意（端子IDの語彙）**: `TerminalField` が扱う端子IDは盤定義の**物理ID**（`S1.9`）である。
+`Socket` が従来 `socketTerminalLabel(role, terminal)` に渡していたのと同じ `role` を
+`session.socketRoles[socket.id]` から引けば、文言は1文字も変わらない。ピックは
+`pickTerminal()` → `pickToAction()` → `addWire()` が入口で役割IDへ正規化するので、
+ここで正規化してはいけない（二重に変換すると `CR1.9` を役割IDとして解釈し直すことになる）。
+**役割ベースで持つのは `session.wires` と Task 10 の端子リストだけ**という分担を崩さないこと。
 
 - [ ] **Step 5: テストを走らせてコミットする**
 
@@ -5261,7 +6165,7 @@ pnpm -r typecheck && pnpm lint
 git add apps/desktop && git commit -m "perf(desktop): draw the board terminals with two instanced meshes"
 ```
 
-**期待**: `terminal-field.test.ts` の **4件**が増える。`scene.test.ts` は `socketTerminalLabel` を import しているだけなので通る。`Socket` / `TerminalBlock` を**描画して**端子の数を数えているテストがあれば、端子が `TerminalField` へ移ったことに合わせて直す（MERGE 注意 #6）。
+**期待**: `terminal-field.test.ts` の **5件**が増える。`scene.test.ts` は `socketTerminalLabel` を import しているだけなので通る。`Socket` / `TerminalBlock` を**描画して**端子の数を数えているテストがあれば、端子が `TerminalField` へ移ったことに合わせて直す（MERGE 注意 #6）。
 
 ---
 
@@ -5279,18 +6183,37 @@ git add apps/desktop && git commit -m "perf(desktop): draw the board terminals w
 
 - [ ] **Step 1: 失敗するテストを書く**
 
+**`apps/desktop/vitest.config.ts` は `environment: 'happy-dom'` で、2Dキャンバスを持たない**
+（`canvas.getContext('2d')` が `null` を返し、`makeCanvasTexture()` は `undefined` を返す）。
+だから「焼いたテクスチャが1枚になったか」を**焼かせて**確かめることはできない（`node-canvas` を
+足すのは「依存を1つも増やさない」という完了条件に反する）。そこで検査するものを2つに割る:
+
+1. **共有の鍵**（`faceKey()`）が8ソケットで一致し、寸法や端子台の違いで割れること。
+2. **キャッシュ**（`cachedFaceTexture()`）が鍵ごとに1回だけ焼くこと——焼く関数を**差し込んで**確かめる。
+
+2048px の上限は焼かずに `PX_PER_MM × 板の寸法` の計算で確かめる（そもそも `makeCanvasTexture()` が
+その式でキャンバスを作っている）。
+
 `apps/desktop/test/label-cache.test.ts`:
 
 ```ts
 import { JIPM_BOARD } from '@ojt/board-model';
+import { Texture } from 'three';
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
   blockFaceTexture,
+  cachedFaceTexture,
   clearFaceTextureCache,
+  faceKey,
+  faceRect,
   faceTextureCacheSize,
+  PX_PER_MM,
   socketFaceTexture,
   SOCKET_PLATE_MARGIN_MM,
 } from '../src/renderer/three/labels.js';
+
+/** §15 の上限。 */
+const MAX_TEXTURE_PX = 2048;
 
 /** ソケット1個ぶんの引数（`Socket.tsx` と同じ作り方）。 */
 function socketArgs(index: number) {
@@ -5306,55 +6229,96 @@ function socketArgs(index: number) {
   };
 }
 
+function socketKey(index: number): string {
+  const a = socketArgs(index);
+  return faceKey('socket', a.terminals, a.originX, a.originY, a.w, a.h);
+}
+
+/** 端子台1個ぶんの板（`blockFaceTexture()` と同じ作り方）。 */
+function blockPlate(prefix: string) {
+  const terminals = JIPM_BOARD.terminals.filter((t) => t.id.startsWith(`${prefix}.`));
+  const rect = faceRect(terminals, 6);
+  if (rect === undefined) throw new Error(`端子台 ${prefix} がありません`);
+  return { terminals, rect };
+}
+
 beforeEach(() => {
   clearFaceTextureCache();
 });
 
-describe('socketFaceTexture のキャッシュ（決定表#15）', () => {
-  it('bakes one canvas and shares it across every socket', () => {
-    const first = socketArgs(0);
-    const second = socketArgs(1);
-    const a = socketFaceTexture(first.terminals, first.originX, first.originY, first.w, first.h);
-    const b = socketFaceTexture(second.terminals, second.originX, second.originY, second.w, second.h);
-    expect(a).toBeDefined();
-    expect(b).toBe(a);
-    expect(faceTextureCacheSize()).toBe(1);
+describe('faceKey（決定表#15 の共有の鍵）', () => {
+  it('gives every socket of the board the same key', () => {
+    expect(new Set(JIPM_BOARD.sockets.map((_, i) => socketKey(i))).size).toBe(1);
   });
 
-  it('bakes every socket of the board into the same one texture', () => {
-    for (let i = 0; i < JIPM_BOARD.sockets.length; i += 1) {
-      const args = socketArgs(i);
-      socketFaceTexture(args.terminals, args.originX, args.originY, args.w, args.h);
-    }
-    expect(faceTextureCacheSize()).toBe(1);
-  });
-
-  it('bakes a second texture when the plate size differs', () => {
-    const args = socketArgs(0);
-    socketFaceTexture(args.terminals, args.originX, args.originY, args.w, args.h);
-    socketFaceTexture(args.terminals, args.originX, args.originY, args.w + 10, args.h);
-    expect(faceTextureCacheSize()).toBe(2);
+  it('separates two plates of different size', () => {
+    const a = socketArgs(0);
+    expect(faceKey('socket', a.terminals, a.originX, a.originY, a.w, a.h)).not.toBe(
+      faceKey('socket', a.terminals, a.originX, a.originY, a.w + 10, a.h),
+    );
   });
 
   it('keeps the three terminal blocks apart (their prints differ)', () => {
-    for (const prefix of ['TB_PL', 'TB_PB', 'P']) {
-      blockFaceTexture(JIPM_BOARD.terminals.filter((t) => t.id.startsWith(`${prefix}.`)), 6);
-    }
-    expect(faceTextureCacheSize()).toBe(3);
+    const keys = ['TB_PL', 'TB_PB', 'P'].map((prefix) => {
+      const { terminals, rect } = blockPlate(prefix);
+      return faceKey('block', terminals, rect.minX, rect.minY, rect.w, rect.h);
+    });
+    expect(new Set(keys).size).toBe(3);
   });
 
+  it('never mixes a socket plate with a block plate of the same size', () => {
+    const a = socketArgs(0);
+    expect(faceKey('socket', a.terminals, a.originX, a.originY, a.w, a.h)).not.toBe(
+      faceKey('block', a.terminals, a.originX, a.originY, a.w, a.h),
+    );
+  });
+});
+
+describe('cachedFaceTexture（8枚 → 1枚）', () => {
+  it('bakes once and hands the same texture to every socket', () => {
+    let bakes = 0;
+    const bake = (): Texture => {
+      bakes += 1;
+      return new Texture();
+    };
+    const first = cachedFaceTexture(socketKey(0), bake);
+    const rest = JIPM_BOARD.sockets.map((_, i) => cachedFaceTexture(socketKey(i), bake));
+    expect(bakes).toBe(1);
+    expect(rest.every((texture) => texture === first)).toBe(true);
+    expect(faceTextureCacheSize()).toBe(1);
+  });
+
+  it('stores nothing when the canvas is not available', () => {
+    expect(cachedFaceTexture(socketKey(0), () => undefined)).toBeUndefined();
+    expect(faceTextureCacheSize()).toBe(0);
+  });
+});
+
+describe('印字の焼き関数（キャンバスが無い環境でも落ちない）', () => {
   it('returns undefined for an empty terminal list without touching the cache', () => {
     expect(socketFaceTexture([], 0, 0, 10, 10)).toBeUndefined();
     expect(blockFaceTexture([], 6)).toBeUndefined();
     expect(faceTextureCacheSize()).toBe(0);
   });
+});
 
-  it('keeps the texture resolution under the 2048px cap of §15', () => {
-    const args = socketArgs(0);
-    const texture = socketFaceTexture(args.terminals, args.originX, args.originY, args.w, args.h);
-    const image = texture?.image as { width: number; height: number } | undefined;
-    expect(image?.width ?? 0).toBeLessThanOrEqual(2048);
-    expect(image?.height ?? 0).toBeLessThanOrEqual(2048);
+describe('印字テクスチャの解像度（§15: 2048px 以下）', () => {
+  it('keeps every plate of the board under the cap (計算だけで確かめる)', () => {
+    const plates = [
+      ...JIPM_BOARD.sockets.map((socket) => ({
+        w: socket.bodyMm.width + SOCKET_PLATE_MARGIN_MM * 2,
+        h: socket.bodyMm.length + SOCKET_PLATE_MARGIN_MM * 2,
+      })),
+      ...['TB_PL', 'TB_PB', 'P'].map((prefix) => blockPlate(prefix).rect),
+    ];
+    for (const plate of plates) {
+      expect(Math.round(plate.w * PX_PER_MM)).toBeLessThanOrEqual(MAX_TEXTURE_PX);
+      expect(Math.round(plate.h * PX_PER_MM)).toBeLessThanOrEqual(MAX_TEXTURE_PX);
+    }
+    // ソケットの板は 38mm × 84mm ＝ 608 × 1344px（決定表#15）
+    const first = socketArgs(0);
+    expect(Math.round(first.w * PX_PER_MM)).toBe(608);
+    expect(Math.round(first.h * PX_PER_MM)).toBe(1344);
   });
 });
 ```
@@ -5387,8 +6351,12 @@ export function clearFaceTextureCache(): void {
   faceTextureCache.clear();
 }
 
-/** 端子群の「相対位置＋印字＋役割」からキャッシュの鍵を作る。 */
-function faceKey(
+/**
+ * 端子群の「相対位置＋印字＋役割」からキャッシュの鍵を作る。
+ * **export する**のは、焼いた絵そのものを比べられない環境（`happy-dom` には2Dキャンバスが無い）
+ * でも「8枚が1枚に共有されること」を鍵の一致として検査できるようにするため。
+ */
+export function faceKey(
   prefix: string,
   terminals: readonly BoardTerminal[],
   originX: number,
@@ -5403,8 +6371,15 @@ function faceKey(
   return `${prefix}|${widthMm.toFixed(2)}x${heightMm.toFixed(2)}|${parts.join('|')}`;
 }
 
-/** キャッシュ越しに焼く。 */
-function cachedTexture(key: string, bake: () => Texture | undefined): Texture | undefined {
+/**
+ * キャッシュ越しに焼く。**焼く関数を受け取る**ので、テストは本物のキャンバスが無くても
+ * 「鍵ごとに1回しか焼かない」を確かめられる。焼けなかった（`undefined`）ときは**覚えない**ので、
+ * キャンバスが後から使える環境になれば次の呼び出しで焼き直す。
+ */
+export function cachedFaceTexture(
+  key: string,
+  bake: () => Texture | undefined,
+): Texture | undefined {
   const found = faceTextureCache.get(key);
   if (found !== undefined) return found;
   const made = bake();
@@ -5425,7 +6400,7 @@ export function socketFaceTexture(
 ): Texture | undefined {
   if (terminals.length === 0) return undefined;
   const key = faceKey('socket', terminals, originX, originY, plateWidthMm, plateHeightMm);
-  return cachedTexture(key, () =>
+  return cachedFaceTexture(key, () =>
     makeCanvasTexture(plateWidthMm, plateHeightMm, (ctx) => {
       /* …既存の描画そのまま… */
     }),
@@ -5460,6 +6435,13 @@ export function deskWireSignature(board: BoardDefinition, session: BoardSession)
 
 ```tsx
   const signature = deskWireSignature(board, session);
+  /*
+   * 署名が同じなら形も色も同じなので、最新の `board` / `session` をそのまま使ってよい。
+   * `useRef` 越しに読むのは **`react-hooks/exhaustive-deps` を黙らせるためではなく**、
+   * 「依存は署名1本」という意図をコードの形で表すためである。ref は規則が「安定」と見なす値で、
+   * `.current` の読み出しは依存に数えられない。だから `eslint-disable` は要らない——
+   * `Wire.tsx` の `useTokeGeometry()` が同じ形で無警告に通っているのが先例である（I8）。
+   */
   const latest = useRef({ board, session });
   latest.current = { board, session };
   const cables = useMemo(() => {
@@ -5470,7 +6452,19 @@ export function deskWireSignature(board: BoardDefinition, session: BoardSession)
   }, [signature]);
 ```
 
+（`useTokeGeometry` は `useTubeGeometry` の誤記ではなく `Wire.tsx` の `useTubeGeometry()` を指す。
+実装時はその関数を読んで同じ形にすること。）
+
+既存の「古いチューブを捨てる」`useEffect(..., [cables])` は**そのまま**。`cables` の同一性は
+署名が変わったときだけ変わるので、盤の電線を1本足しても机上のジオメトリは破棄も再生成もされない。
+
 末尾を `export const DeskWires = memo(DeskWiresImpl);` にし、関数名を `DeskWiresImpl` に変える（`BoardScene` の import は変えない）。
+
+**Step 4 の前に `pnpm lint` を1回走らせ、`react-hooks/exhaustive-deps` の警告が0件であることを確かめる。**
+もし警告が出たら、依存を足して意味を壊すのではなく、理由を書いた
+`// eslint-disable-next-line react-hooks/exhaustive-deps -- 署名が同じなら形も色も同じ（deskWireSignature）`
+を `}, [signature]);` の直前の行に置く（`Wire.tsx` L213 と同じ書き方。ルールは `warn` だが、
+完了条件は「無警告」なので放置しない）。
 
 - [ ] **Step 4: `frameloop` の監査を単体テストに足す**
 
@@ -5514,7 +6508,7 @@ pnpm -r typecheck && pnpm lint
 git add apps/desktop && git commit -m "perf(desktop): share the printed label textures and memoise the desk cables"
 ```
 
-**期待**: `label-cache.test.ts` の **6件**と `board-scene.test.ts` の **2件**が増える。
+**期待**: `label-cache.test.ts` の **8件**と `board-scene.test.ts` の **2件**が増える。
 
 ---
 
@@ -5589,25 +6583,33 @@ describe('同梱課題が4メーカーで成立する（決定表#19）', () => 
   });
 
   it.each(PLC_VENDORS.map((vendor, i) => [vendor, PLC_MODELS[i]] as const))(
-    '%s (%s) has a board with every X/Y terminal that the builtin problems need',
+    '%s (%s) gives every builtin problem a desk unit with enough I/O terminals',
     (vendor, model) => {
       expect(model).toBeDefined();
       if (model === undefined) return;
       for (const problem of BUILTIN_PLC_PROBLEMS) {
         const swapped = { ...problem, plc: { vendor, model } };
-        const board = plcBoardFor(swapped, JIPM_BOARD);
-        expect(board?.plcUnit).toBeDefined();
-        const names = new Set((board?.plcUnit?.terminals ?? []).map((t) => t.id.split('.').slice(1).join('.')));
+        const unit = plcBoardFor(swapped, JIPM_BOARD)?.plcUnit;
+        expect(unit).toBeDefined();
+        // 差し替えた機種そのものが返る（`plcUnitFor()` が既定へ落ちていない）
+        expect(unit?.model).toBe(model);
+        expect(unit?.vendor).toBe(vendor);
+        const terminals = unit?.terminals ?? [];
+        // 端子はすべて机上のPLC本体のもの（`PLC.<端子名>`）。§10.1
+        expect(terminals.length).toBeGreaterThan(0);
+        expect(terminals.every((t) => t.id.startsWith(`${PLC_PART_ID}.`))).toBe(true);
+        // 課題が使う入出力の点数ぶんは必ずある（COM・電源を含む総数なので下限として見る）
         const io = resolvePlcIo(problem.io);
-        for (const input of io.inputs) expect(names.has(input.device) || names.size > 0).toBe(true);
-        for (const output of io.outputs) expect(names.has(output.device) || names.size > 0).toBe(true);
+        expect(terminals.length).toBeGreaterThanOrEqual(io.inputs.length + io.outputs.length);
       }
     },
   );
 });
 ```
 
-**注記**: 方言ごとにデバイス名の綴りが変わる（`X0` / `0.00` / `A0` / `000000`）ので、端子名の一致は「その機種の端子集合が空でないこと」と「盤に `plcUnit` があること」で縛る。綴りの写像は 4A の `plc-dialects` が持ち、その正しさは 4A のテストが縛っている（二重に縛らない）。
+`import { JIPM_BOARD, PLC_PART_ID } from '@ojt/board-model';` にすること。
+
+**注記**: 方言ごとにデバイス名の綴りが変わる（`X0` / `0.00` / `A0` / `000000`）ので、**端子名そのものの一致はここでは見ない**。綴りの写像は 4A の `plc-dialects` が持ち、その正しさは 4A のテストが縛っている（二重に縛らない）。ここが縛るのは「4機種すべてで**机上の本体が実際に差し替わり**、課題のI/O点数に足りる端子を持つこと」——つまり**同梱物として4メーカーが成立していること**だけである。
 
 - [ ] **Step 2: `package.json` を直す**
 
@@ -5623,8 +6625,9 @@ describe('同梱課題が4メーカーで成立する（決定表#19）', () => 
 
 ```js
 import { createHash } from 'node:crypto';
-import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { createReadStream, existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
+import { pipeline } from 'node:stream/promises';
 import { fileURLToPath } from 'node:url';
 
 /**
@@ -5651,6 +6654,18 @@ const fail = (message) => {
   globalThis.process.exitCode = 1;
 };
 
+/**
+ * ファイルの SHA256。**読み切らずに流す**。
+ * NSIS インストーラは約107MB、ポータブルの zip は約147MB ある。`readFileSync()` で
+ * 丸ごと Buffer に載せると、この検査のためだけに数百MBのヒープを掴む（`dist` は
+ * electron-builder の直後に走るので、いちばんメモリが厳しい瞬間である）。
+ */
+async function sha256Of(path) {
+  const hash = createHash('sha256');
+  await pipeline(createReadStream(path), hash);
+  return hash.digest('hex').toUpperCase();
+}
+
 if (!existsSync(RELEASE)) {
   fail(`${RELEASE} がありません（先に electron-builder を走らせてください）`);
 } else {
@@ -5663,12 +6678,7 @@ if (!existsSync(RELEASE)) {
       fail(`成果物がありません: ${name}`);
       continue;
     }
-    const bytes = readFileSync(path);
-    rows.push({
-      name,
-      size: statSync(path).size,
-      sha256: createHash('sha256').update(bytes).digest('hex').toUpperCase(),
-    });
+    rows.push({ name, size: statSync(path).size, sha256: await sha256Of(path) });
   }
 
   // 同梱課題（asar の外）。§7.8
@@ -5709,6 +6719,10 @@ if (!existsSync(RELEASE)) {
   out.write(`成果物一覧を書き出しました: ${join(RELEASE, 'artifacts.md')}\n`);
 }
 ```
+
+**注意**: `sha256Of()` を `await` するので、`if (!existsSync(RELEASE)) { … } else { … }` の `else` 側は
+**モジュールのトップレベル**に置いたままでよい（`.mjs` はトップレベル `await` が使える）。
+`for (const name of expected)` の中で `await` するだけなので、関数で包み直す必要は無い。
 
 - [ ] **Step 4: `apps/desktop/build/license.txt`（NSIS の説明画面）を作る**
 
@@ -5782,8 +6796,10 @@ pnpm --filter @ojt/desktop dist
 - [ ] 4. `pnpm --filter @ojt/desktop build` と `pnpm --filter @ojt/desktop e2e` が全て通ること（2回連続）
 - [ ] 5. `pnpm --filter @ojt/desktop dist` が成功し、`release/artifacts.md` が生成されること
 - [ ] 6. **実機（内蔵GPU・FHD 1920×1080）** で `release/win-unpacked/電気教育ツール.exe` を起動し、
-      `OJT_PERF_TARGET=1 pnpm --filter @ojt/desktop e2e perf` の測定値が **60fps 以上**であること
-      （§16 Phase 5 受入基準④。測定値をこのチェックリストの下に転記する）
+      PowerShell で `$env:OJT_PERF_TARGET='1'; pnpm --filter @ojt/desktop e2e perf` を走らせて
+      測定値が **60fps 以上**であること（§16 Phase 5 受入基準④。測定値をこのチェックリストの下に転記する）。
+      本プロジェクトの開発環境は Windows + PowerShell なので、`VAR=value cmd` の形は使えない
+      （`$env:` で立ててから `;` で続ける）
 - [ ] 7. **オフラインのWindows 11** でNSISインストーラからインストールし、課題を1つ最後まで
       完了できること（§16 Phase 5 受入基準③）。ネットワークアダプタを無効にして確認する
 - [ ] 8. ポータブル版（zip）を展開して起動できること
@@ -5800,7 +6816,7 @@ npx prettier --check "README.md" "docs/releases/v1.0.0.md"
 git add apps/desktop README.md docs/releases/v1.0.0.md && git commit -m "chore(release): harden the v1.0.0 distribution (version, artefact check, README, installer page)"
 ```
 
-**期待**: `release-content.test.ts` の **4件 ＋ メーカー4件 = 8件**が増える。
+**期待**: `release-content.test.ts` の **9件**（版と設定の4件 ＋ 同梱課題の1件 ＋ メーカー4件）が増える。
 
 ---
 
@@ -5821,6 +6837,14 @@ git add apps/desktop README.md docs/releases/v1.0.0.md && git commit -m "chore(r
 test.describe('回路図エディタ（§16 Phase 5 受入基準①②）', () => {
   // beforeAll: polish.spec.ts と同じ起動＋復元プロンプトの片付け。1440×900
 
+  /*
+   * 描く回路は **b-001 の模範回路（`packages/content/src/builtin/assemble/b-001-self-hold.json`）
+   * と同じ形**にする。段1が `pb-b PB2 → pb-a PB1 → coil CR1`、段2（`r1h`）が
+   * `{rung:'r1',node:1} → {rung:'r1',node:2}` の **cr-a CR1**（＝PB1 の a接点と並列）、
+   * 段3が `cr-a CR1 → lamp PL1`。節点1〜2 のあいだにあるのは PB1 の a接点なので、
+   * ここを並列にすると「押している間だけ入る PB1」を CR1 の接点が肩代わりする＝自己保持になる。
+   * 節点を1つずらして PB2 の b接点を並列にすると、消灯できない回路になって検算に落ちる。
+   */
   test('受入基準①: 自己保持回路を描いて検算で合格する', async () => {
     await page.getByTestId('mode-assemble').click();
     await page.getByTestId('open-b-001').click();
@@ -5828,22 +6852,36 @@ test.describe('回路図エディタ（§16 Phase 5 受入基準①②）', () =
     await page.getByTestId('assemble-view-schematic').click();
     await expect(page.getByTestId('schematic-editor')).toBeVisible();
 
-    // 1段目: PB1 a接点 → CR1 コイル
-    await page.getByTestId('palette-pb-a:PB1').click();
+    // 段1: PB2 b接点 → PB1 a接点 → CR1 コイル
+    await page.getByTestId('palette-pb-b:PB2').click();
     await page.locator('[data-slot="r1#0"]').click();
-    await page.getByTestId('palette-coil:CR1').click();
+    await page.getByTestId('palette-pb-a:PB1').click();
     await page.locator('[data-slot="r1#1"]').click();
-    // 2段目（分岐の自己保持）: CR1 a接点
+    await page.getByTestId('palette-coil:CR1').click();
+    await page.locator('[data-slot="r1#2"]').click();
+
+    // 段2: CR1 a接点を置き、「分岐にする」で両端を段1の節点1 → 節点2 へ向ける
     await page.getByRole('button', { name: '段を追加' }).click();
     await page.getByTestId('palette-cr-a:CR1').click();
     await page.locator('[data-slot="r2#0"]').click();
-    // 3段目: CR1 a接点 → PL1
+    await page.getByTestId('branch-button').click();
+    await expect(page.getByTestId('branch-hint')).toContainText('始点');
+    await page.locator('[data-slot="r1#1"]').click();
+    await expect(page.getByTestId('branch-hint')).toContainText('終点');
+    await page.locator('[data-slot="r1#2"]').click();
+    // 両端が決まると分岐モードを抜ける（案内が手順帯に戻る）
+    await expect(page.getByTestId('branch-hint')).toHaveCount(0);
+
+    // 段3: CR1 a接点 → PL1。パレットは `cr-a:CR1` を選んだままなので押し直さない
+    // （押すと `aria-pressed` が外れて「置く」ではなく「選択解除」になる）
     await page.getByRole('button', { name: '段を追加' }).click();
-    await page.getByTestId('palette-cr-a:CR1').click();
+    await expect(page.getByTestId('palette-cr-a:CR1')).toHaveAttribute('aria-pressed', 'true');
     await page.locator('[data-slot="r3#0"]').click();
     await page.getByTestId('palette-lamp:PL1').click();
     await page.locator('[data-slot="r3#1"]').click();
 
+    // 指摘欄が空＝文書として妥当（決定表#3。ここまでは `validateDocument()` だけの判断）
+    await expect(page.getByTestId('schematic-issues')).toContainText('指摘はありません');
     await shot(app, '50-schematic-editor');
     await expect(page.getByTestId('verify-button')).toBeEnabled();
     await page.getByTestId('verify-button').click();
@@ -5854,6 +6892,14 @@ test.describe('回路図エディタ（§16 Phase 5 受入基準①②）', () =
   test('受入基準②: 回路図の要素をクリックすると3D盤の端子が光る', async () => {
     await page.getByTestId('assemble-view-split').click();
     await expect(page.getByTestId('viewport')).toBeVisible();
+    // パレットの選択を外す。選んだままだと、桁を押したときに「置き換え」になる（B2）
+    await page.getByTestId('palette-lamp:PL1').click();
+    await expect(page.getByTestId('palette-lamp:PL1')).toHaveAttribute('aria-pressed', 'false');
+    /*
+     * **記号そのもの**を押す。本物のブラウザは最前面の要素をクリック先に選ぶので、
+     * 記号の上に敷いた当たり矩形（`data-slot`）が受け取り、その桁の要素IDが
+     * `onPickCell` に回る。この重なりは JSDOM では再現できないので、ここでしか確かめられない（B2）。
+     */
     await page.locator('[data-testid="schematic-editor"] [data-cell]').first().click();
     // ハイライトはストアに出る（3Dの発光はスクリーンショットで見る）
     const terminals = await page.evaluate(() =>
@@ -5955,10 +7001,18 @@ test.describe('性能（§16 Phase 5 受入基準④）', () => {
     page.on('request', (request) => {
       if (/^https?:/u.test(request.url())) requests.push(request.url());
     });
+    /*
+     * ここで「検算」は押さない（B7）。この spec は課題を開いたばかりで下書きが空なので、
+     * 「検算」ボタンは `disabled`（指摘が残っている）である。Playwright の `click()` は
+     * 要素が操作可能になるまで待つので、押そうとすると時間切れで落ちるだけで、
+     * しかも**通信の件数を数えるのに検算は1件も寄与しない**（検算は Worker の中で完結する）。
+     * 画面を一通り動かして、その間に外向きの要求が1件も出ないことだけを見る。
+     */
     await page.getByTestId('assemble-view-schematic').click();
-    await page.getByTestId('verify-button').click();
-    await page.waitForTimeout(3000);
+    await expect(page.getByTestId('schematic-editor')).toBeVisible();
+    await page.getByTestId('assemble-view-split').click();
     await page.getByTestId('assemble-view-board').click();
+    await page.waitForTimeout(3000);
     await page.getByTestId('session-back').click();
     expect(requests).toEqual([]);
   });
@@ -6059,9 +7113,7 @@ git add -A && git commit -m "chore(phase5): verify the Phase 5 acceptance criter
 | §11.4 | 3D盤に配線する前に机上で確かめられる | `assembleView` ＋ `VerifyPanel`（盤への自動配線はしない。決定表#5） | `assemble-view.test.tsx`、E2E ① |
 | §11.4 | 回路図の要素をクリックすると3D盤の対応端子をハイライトする | `wiring-guide.ts` ＋ ストアの `highlight` ＋ `ProbeMarkers` | `wiring-guide*.test.*`、E2E ② |
 | §11.3 | 母線は渡り配線（§17.2 #33）で分配する | **既存の `assignToBoard()` をそのまま使う**（Phase 1B で landed） | `verify.test.ts`（模範回路8題が検算に通る） |
-| §11.1 | 要素はPB a/b・CR a/b・T a/b・コイル・PL・BZ・結線・分岐点 | `SchematicEdit` ＋ `paletteFor()` | `edit.test.ts` / `schematic-edit.test.ts` |
 | §11.2 | `layout()` は純粋関数、描画は `apps/desktop` | `slotRects()` も `schematic-core` 側に置く | `slot-rects.test.ts` |
-| §11.2 | 縦書きは表示だけの切替で、文書モデルは常に横書き | `emptySchematic()` は `orientation: 'horizontal'` 固定。エディタは向きを変えない | `edit.test.ts` |
 | §7.4 | 合否は動作一致 ＋ 有効な静的チェックにエラー無し | `judgeAssemble()` をそのまま使う（検算も同じ） | `verify.test.ts` |
 | §8.3 | 差分一覧に該当信号が出る／結果から次の一手が分かる | `MismatchList` ＋ `SuspectList`（#28） | `suspect-list.test.tsx`、E2E #28 |
 | §12.3 | 作業ファイルに机上の下書きも残る | `WorkFile.schematic?`（任意項目・版は1のまま） | `verify-flow.test.ts` |
@@ -6095,6 +7147,8 @@ git add -A && git commit -m "chore(phase5): verify the Phase 5 acceptance criter
 | 9 | §6.5 / §6.2 は端子を1個ずつの部品として描くことを前提に書かれている | 盤の端子は **`instancedMesh` 2本**でまとめて描く（机上の端子は従来どおり） | §15 の「60fps・三角形20万以下」。端子142個で284メッシュはドローコールの最大の出どころである。見た目・当たり判定の半径・ツールチップの文言は1つも変えない（決定表#13） |
 | 10 | §16 Phase 5 の「含む」に配布パッケージの構築が挙がっている | **新規構築ではなく固め**（版の 1.0.0 化・同梱物の検査・成果物の検査とチェックサム・README・インストーラ説明画面・手順書） | v0.2.0 の事前リリースで NSIS とポータブルの両方が実際に出ており、受入基準③はそのビルドで確かめられている。作り直すと退行の危険だけが増える（決定表#18） |
 | 11 | §16 は「配布可能なインストーラ」を成果物とする | **公開（タグ付け・GitHub Release・配布）は行わない**。成果物と手順書までを用意する | 利用者の明示の決定（2026-09-19）。手順はチェックリストの 9・10 としてコマンドごと書いてあるので、指示が出たらそのまま実行できる（決定表#22） |
+| 12 | §11.1「要素はPB a/b・CR a/b・T a/b・コイル・PL・BZ・**結線・分岐点**」 | **分岐点は作れる**（Task 5 の「分岐にする」＝`setEnds`。受入基準①の自己保持回路はこれで描く）が、**「結線」を独立した要素としてはパレットに置かない** | 文書モデル（`SchematicDocument`）では、段の中の直列線は**要素の並びが暗黙に作る**もので、置ける対象ではない（`Rung.cells` に「結線」という種別は無い）。置けるようにするには文書モデルに要素種別を足すことになり、`validateDocument()` / `assignToBoard()` / `toSession()` / `layout()` の4つが「電気的に何もしない要素」を扱う分岐を持つ。訓練者にとっての「結線を引く」は**要素を隣に置く**か**分岐を作る**のどちらかで、どちらも用意してある |
+| 13 | §11.2「縦書きは表示だけの切替で、文書モデルは常に横書き」 | **縦書き表示の切替は作らない**。文書モデルも表示も横書き（左P・右N）のみ | 「表示だけの切替」なので回路の正しさにも検算の結果にも影響しない。`layout()` に向きの引数を足し、`SchematicSvg` / `slotRects()` / カーソル移動（矢印キーの意味）/ 分岐の当たり判定の4つを両方の向きで保つ必要があり、v1.0.0 を早く出すという利用者要求（2026-09-19）に対して割に合わない。`orientation: 'horizontal'` は文書に残してあるので、後から表示側だけを足せる |
 
 ---
 
@@ -6104,10 +7158,10 @@ git add -A && git commit -m "chore(phase5): verify the Phase 5 acceptance criter
 
 1. **`i18n/ja.ts` への挿入は、挿入のたびにファイルを読み直してから行う。** Phase 5 が触るのは **Task 4（`JA.stepGuide` の末尾＋新ブロック `JA.schematic`）・Task 9（`JA.result` の末尾＋関数 `suspectMoreText()`）・Task 10（新ブロック `JA.terminalList`）**の3箇所だけ。いずれも `// --- Plan 5 Task N ---` で挟む。**Plan 4B は `JA.ladder` / `JA.plc` / `JA.settings` を触る**ので、4B が landed していない状態で並行させない。
 2. **`app/store.ts` は Task 6（回路図の欄と6つの操作）・Task 7（`assembleView` と `setAssembleView`）・Task 9（`boardFocus` と `setBoardFocus`、`setHighlight()` の中の `__ojtHighlight` の1行）だけ。** どれも `openProblem()` / `resetSession()` / `restartSession()` / `abandonSession()` の `set({...})` に**同じ初期値を4箇所とも**入れる必要がある（入れ忘れると課題をまたいで下書きが残る）。`plcFields()` の中身は触らない。
-3. **`screens/Session.tsx` は Task 7 → 8 → 9 → 10 の順に直列で触る。** 7 がビューの骨組みと暫定の `highlightCells` / `onPickSchematicCell` を置き、8 がその2つを本物に差し替え、9 が「結果から」の帯を足し、10 が右パネルに端子リストを足す。**同じ `return` の JSX に4回手を入れる**ので、並行させない。Hooks はすべて早期 return より前に置く既存の並びを守る。
+3. **`screens/Session.tsx` は Task 7 → 8 → 9 → 10 の順に直列で触る。** 7 がビューの骨組みと暫定の `highlightCells` / `onPickDraftCell` / `onPickHintCell` を置き、8 がその3つを本物（2本の索引 `draftGuideIndex` / `hintGuideIndex`）に差し替え、9 が「結果から」の帯と `onHover` の `boardFocus` ガードを足し、10 が右パネルに端子リストを足す。**同じ `return` の JSX に4回手を入れる**ので、並行させない。Hooks はすべて早期 return より前に置く既存の並びを守る。
 4. **`worker/protocol.ts` と `sim.worker.ts` と `worker-bridge.ts` は Task 6 だけ。** `judge` の実装をひな型にし、追従ループを止める・再開する手順を変えない。`SimMessage` に足すのは `verifyResult` の1つだけ（8本目のコマンドは作らない）。
 5. **`three/BoardScene.tsx` は Task 11（`PerfProbe` と隠し要素）と Task 12（`TerminalField` と `fieldTerminals` / `terminalTooltipOf`）だけ。** `visualSignature()` の中身と傾斜グループの構造は触らない。**Plan 4B Task 11 も同じファイルの `PlcUnit` / `PlcRack` の分岐を触る**ので、4B が landed してから入ること。
-6. **`three/Socket.tsx` / `TerminalBlock.tsx` から props を4つ外すと、それを渡している `BoardScene` の呼び出しも直す必要がある。** `socketTerminalLabel()` は **export したまま**（`BoardScene` と `scene.test.ts` が使う）。両ファイルを描画して端子の数を数えているテストがあれば、端子が `TerminalField` へ移ったことに合わせて直す。
+6. **`three/Socket.tsx` / `TerminalBlock.tsx` から props を4つ外すと、それを渡している `BoardScene` の呼び出しも直す必要がある。** `socketTerminalLabel()` は **export したまま**（`BoardScene` と `scene.test.ts` が使う）。両ファイルが別々に持っている `noPick` は `three/materials.ts` へ1つに寄せ、3ファイルから import する。両ファイルを描画して端子の数を数えているテストがあれば、端子が `TerminalField` へ移ったことに合わせて直す。
 7. **`three/TerminalHit.tsx` は消さない。** `PlcUnit.tsx` / `Outlet.tsx` が使い続ける（決定表#13）。`terminalTooltip()` の export もそのまま。
 8. **`three/labels.ts` は Task 13 の3箇所（キャッシュの追加・`socketFaceTexture()` の包み・`blockFaceTexture()` の包み）だけ。** `socketLabelBoxes()` / `faceRect()` / `ROLE_COLOR` / `SOCKET_ROLE_COLOR` / `PX_PER_MM` は触らない（Plan 4B Task 10 が `blockTerminalMark()` を触るので、そこは読み直してから）。
 9. **`result/ResultView.tsx` に足す3つの props はすべて任意にする。** C1/C2/D の結果画面（`InspectPartsResult` / `InspectRepairResult` / `PlcResult`）は `ResultView` を使わないが、`MismatchList` / `StaticCheckList` / `ChartOverlay` は共有しているので**それらの署名は変えない**（`VerifyPanel` も同じ部品をそのまま使う）。
@@ -6119,11 +7173,11 @@ git add -A && git commit -m "chore(phase5): verify the Phase 5 acceptance criter
 
 **機能:**
 
-- [ ] `pnpm -r test` が7プロジェクトすべて通る（Phase 5 で足した単体テストは **packages 57件 ＋ desktop 100件**）。
+- [ ] `pnpm -r test` が7プロジェクトすべて通る（Phase 5 で足した単体テストは **packages 60件 ＋ desktop 123件**）。内訳は各タスクの「期待」のとおり: packages ＝ Task 1 の 36（`edit` 30 ＋ `slot-rects` 6）／Task 2 の 16／Task 3 の 8。desktop ＝ Task 4 の 26／Task 5 の 19／Task 6 の 11（`verify-flow` 7 ＋ `sim-worker-verify` 4）／Task 7 の 7／Task 8 の 15（`wiring-guide` 9 ＋ 画面 6）／Task 9 の 5／Task 10 の 10／Task 11 の 6／Task 12 の 5／Task 13 の 10（`label-cache` 8 ＋ `board-scene` 2）／Task 14 の 9。
 - [ ] `pnpm -r typecheck` と `pnpm lint`（`import-x/no-cycle` ＋ `react-hooks` 込み）が無警告で通る。
 - [ ] `npx prettier --check "apps/desktop/**/*.{ts,tsx,css}" "packages/**/*.ts" "README.md" "docs/**/*.md"` が `All matched files use Prettier code style!` を出す。
 - [ ] `pnpm --filter @ojt/desktop e2e` が **31本**すべて通る。**2回連続で通ること。**
-- [ ] **§16 Phase 5 受入基準①**: モードB課題 `b-001` を開き、ビューを「回路図」にして PB1 a接点 → CR1 コイル、CR1 a接点の自己保持段、CR1 a接点 → PL1 を置き、「検算」で **合格**が出る。
+- [ ] **§16 Phase 5 受入基準①**: モードB課題 `b-001` を開き、ビューを「回路図」にして段1に `PB2 b接点 → PB1 a接点 → CR1 コイル`、段2を「分岐にする」で `段1の節点1 → 節点2` に向けて `CR1 a接点`（＝PB1 の a接点と並列）、段3に `CR1 a接点 → PL1` を置き、「検算」で **合格**が出る（b-001 の模範回路と同じ形）。
 - [ ] **§16 Phase 5 受入基準②**: 回路図（エディタでも回路図ヒントでも）の要素をクリックすると、3D盤の対応端子が光る（`highlight.terminals` に2端子が入り、`ProbeMarkers` の輪が出る）。盤の端子にホバーすると逆に回路図の要素が光る。
 - [ ] **§16 Phase 5 受入基準③**: `pnpm --filter @ojt/desktop dist` が NSIS とポータブルの2つを出し、`release/artifacts.md` にサイズと SHA256 が書かれる。オフラインのWindows 11でインストールして課題を1つ完了できる（チェックリスト 7）。
 - [ ] **§16 Phase 5 受入基準④**: 三角形数 ≤ 200,000・ドローコール ≤ 120・無操作3秒で描画枚数が増えない。**実機（内蔵GPU・FHD）で3つの視点プリセットすべて 60fps 以上**（チェックリスト 6）。
@@ -6139,7 +7193,9 @@ git add -A && git commit -m "chore(phase5): verify the Phase 5 acceptance criter
 - [ ] 回路図エディタのパレット・ツール・指摘欄の**日本語が切れていない**（`scrollWidth <= clientWidth + 1`）。
 - [ ] 本プランで足した CSS の `padding` / `gap` / `margin` がすべて **4の倍数**（8px 格子）。
 - [ ] エディタ・パレット・検算パネル・疑い一覧・端子リストの**すべての操作要素**が `:focus-visible` で見える枠を持つ。
-- [ ] 回路図のグリッド（`schematic-grid`）に Tab で入れ、そこから矢印と Enter だけで回路を描ける。
+- [ ] 回路図のグリッド（`schematic-grid`）に Tab で入れ、そこから矢印と Enter だけで回路を描ける。**分岐も**キーボードだけで作れる（「分岐にする」→ 矢印＋Enter で始点 → 矢印＋Enter で終点、Esc で取り消し）。
+- [ ] 「分岐にする」が押せないとき、その理由が `title` に出る（負荷のある段／段が1本しかない）。分岐中は「分岐の始点をクリック」→「分岐の終点をクリック」が1行で出る。
+- [ ] 疑い一覧が出ているあいだ、「接点の組が違うだけでもここに出る」という断り書き（`suspect-note`）が必ず添う（決定表#9b）。
 - [ ] スクリーンショット（`50-schematic-editor` / `51-verify-passed` / `52-wiring-guide` / `53-result-suspects` / `54-suspect-on-board` / `55-keyboard-wiring`）で、記号・銘板・カーソル枠・疑い一覧の文字が読める。
 - [ ] 「検算」ボタンが押せないとき、その理由が `title` に出る（作りかけの指摘の1件目、または検算中）。
 
@@ -6168,4 +7224,5 @@ git add -A && git commit -m "chore(phase5): verify the Phase 5 acceptance criter
 
 | 日付 | 内容 |
 |---|---|
+| 2026-09-19 | レビュー反映: B1〜B7、I1〜I12、M1〜M7（分岐UIの追加設計を含む）。**B1**: `addRung` が必ず `P→N` の段を作るため受入基準①の自己保持回路がUIから描けなかった。Task 4 に `BranchDraft` / `pickBranchNode()` / `branchDisabledReason()` / `branchStepHint()`、Task 5 に「分岐にする」ボタン・1行案内・`Esc` 取り消しを足し、`applyEdit` の `setEnds` に**参照の循環**の検査を入れた。E2E ① は b-001 の模範回路（段1 `PB2 b → PB1 a → CR1 コイル`、分岐段が節点1→2）をそのまま描く形に書き直した。**B2**: 当たり矩形が記号より手前に来るので `onPickSlot(rungId, index, cellId?)` にし、パレット未選択なら `onPickCell`、選択中なら挿入／置き換えに振り分けた。**B3**: 端子リストを `toSessionTerminal()` で役割IDへ正規化し、役割の無い予備ソケットと未追加の BZ を外した（b-001 で92行）。**B4**: `boardFieldTerminals()` を `wirable` かつ机上でない端子に限り、件数を 134（BZ 付き 136）で固定した。**B5**: バッチCを `8 → 9 → 10` の直列にした。**B6**: `label-cache.test.ts` は happy-dom に2Dキャンバスが無いので、`faceKey()` の一致と `cachedFaceTexture()` の焼き回数（焼く関数を差し込む）で検査し、2048px は `PX_PER_MM × 板寸法` の計算に替えた。**B7**: `perf.spec.ts` のオフライン計測から無効な「検算」クリックを外した。**I1・I2**: `verifySchematic()` は `buildSchematicSession()`（`reference.ts` に新設）を通し、`physicalOverride` は課題自身の回路図のときだけ渡す。`DEVICE_PATTERNS` は `document.ts` から輸出して1箇所にした。**I6**: `wiringSuspects()` が `{ suspects, total, omitted }` を返し「ほかに N 件」が出せるようにした。**I9**: 接点の組の違いは正規化せず画面の1行（`suspectNote`）で断る（決定表#9b）。**M7**: §11.1 の「結線」と §11.2 の縦書き切替を「仕様からの意図的な差分」#12・#13 へ移した |
 | 2026-09-19 | 初版。§16 Phase 5 の5項目（回路図エディタの編集機能・検算・配線ガイドのハイライト・配布パッケージ・性能最適化）と、2026-09-19 のUXレビューの残り2件（#28 疑わしい配線、#29 キーボード配線）を16タスクに分けた。文書の編集は `schematic-core/src/edit.ts` の純関数に置き、**作りかけの文書を許して妥当性は `validateDocument()` が別に出す**方針にした（編集を拒むと1要素も置けないため）。検算は既存の `toSession()` ＋ `judgeAssemble()` を Worker で回すだけにし、判定と基準を完全に一致させた。配線ガイドは C2 で landed した連動ハイライトを `session/wiring-guide.ts` に寄せてモードBと共有する。#28 は電線の1対1照合ではなく**節点分割の差**（`buildNets()`）で求め、§11.3 の渡り配線の順序自由度を誤りと呼ばないようにした。性能は「計測窓（`PerfProbe`）→ 端子のインスタンス化 → 印字テクスチャの共有と机上ケーブルのメモ化」の順に進め、受入基準④のうち GPU非依存の予算だけを E2E で自動化し、60fps は実機測定としてリリース手順チェックリストに残した。配布は v0.2.0 で動いている構成を**固める**方針（版の 1.0.0 化・同梱物と成果物の検査・README・NSIS の説明画面・手順書）とし、**タグ付けと公開は利用者の明示の指示を待つ**ことを決定表#22 と完了条件に明記した |
