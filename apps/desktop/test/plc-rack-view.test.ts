@@ -5,8 +5,17 @@ import {
   type PlcUnitDefinition,
 } from '@ojt/board-model';
 import { describe, expect, it } from 'vitest';
-import { litLedKeys, RACK_BODY_Z_MM, type PlcLedState } from '../src/renderer/three/appearance.js';
-import { rackModuleBoxes, rackTerminalsOf } from '../src/renderer/three/PlcRack.js';
+import {
+  litLedKeys,
+  nameplateRectMm,
+  RACK_BODY_Z_MM,
+  type PlcLedState,
+} from '../src/renderer/three/appearance.js';
+import {
+  rackBaseNameplateRect,
+  rackModuleBoxes,
+  rackTerminalsOf,
+} from '../src/renderer/three/PlcRack.js';
 
 /**
  * ラック形の3D（設計仕様 §10.1 / §17 #21 / §16 Phase 4 受入基準③⑤）。決定表#17
@@ -144,5 +153,27 @@ describe('ラックの外観の記述（4B レビュー M12）', () => {
       'DC入力16点（18P着脱式端子台）',
       'リレー出力16点',
     ]);
+  });
+
+  /**
+   * ベースの銘板（`PC10G-1SP` / `JW-300`）とモジュールの銘板が重ならないこと（項目2）。
+   * 今日のスクリーンショット確認 04/06: ベース下端の `PC10G-1SP` が先頭モジュールの `POWER1` に
+   * 重なって読めなかった。
+   */
+  it('keeps the base nameplate clear of every module nameplate (項目2)', () => {
+    function overlaps(
+      a: { x0: number; y0: number; x1: number; y1: number },
+      b: { x0: number; y0: number; x1: number; y1: number },
+    ): boolean {
+      return a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1;
+    }
+
+    for (const unit of [PLC_UNIT_PC10G, PLC_UNIT_JW300]) {
+      const base = rackBaseNameplateRect(unit);
+      for (const box of rackModuleBoxes(unit)) {
+        const moduleRect = nameplateRectMm(box.origin, box.appearance.nameplateRect);
+        expect(overlaps(base, moduleRect), `${unit.model}/${box.model}`).toBe(false);
+      }
+    }
   });
 });

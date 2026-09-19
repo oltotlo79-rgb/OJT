@@ -58,6 +58,33 @@ export function faceRectToBoard(origin: Vec3, rect: AppearanceRect, zMm: number)
   };
 }
 
+/** 銘板の既定位置からのずらし量[mm]（盤モデル座標）。既定は動かさない。 */
+export interface NameplateOffsetMm {
+  x: number;
+  y: number;
+}
+/** ずらさない（既定値）。 */
+export const NO_NAMEPLATE_OFFSET: NameplateOffsetMm = { x: 0, y: 0 };
+
+/**
+ * 銘板の外接矩形（盤モデル mm・絶対座標）。`faceRectToBoard()` と同じ左上原点の式に `offset` を
+ * 足しただけだが、中心ではなく矩形そのもの（x0/y0/x1/y1）を返す。
+ *
+ * ラック形（`PlcRack.tsx`）はベースの銘板（`PC10G-1SP` / `JW-300`）を既定位置から下へずらして
+ * 描く（先頭モジュールの銘板 `POWER1` / `JW-301PU` と重なっていた。レビュー指摘・項目2）。
+ * 単体テストが「ずらした後の2枚が重ならない」ことを数値で確かめられるよう、位置決めの式を
+ * ここへ1つにまとめて公開する。
+ */
+export function nameplateRectMm(
+  origin: Vec3,
+  rect: AppearanceRect,
+  offset: NameplateOffsetMm = NO_NAMEPLATE_OFFSET,
+): { x0: number; y0: number; x1: number; y1: number } {
+  const x0 = origin.x + rect.x + offset.x;
+  const y0 = origin.y + rect.y + offset.y;
+  return { x0, y0, x1: x0 + rect.w, y1: y0 + rect.h };
+}
+
 /**
  * LEDが映す状態。決定表#20
  * **配線の情報は持たない**（`plcPowerIndependent` の判定結果を3Dから漏らさないため。

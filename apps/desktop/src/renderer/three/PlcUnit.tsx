@@ -14,11 +14,13 @@ import {
   coverOpenPose,
   faceRectToBoard,
   litLedKeys,
+  nameplateRectMm,
   COVER_THICKNESS_MM,
   FACE_LABEL_LIFT_MM,
   FACE_LED_LIFT_MM,
   FACE_LIFT_MM,
   PLC_BODY_Z_MM,
+  type NameplateOffsetMm,
   type PlcLedState,
 } from './appearance.js';
 // `plcFaceRect()` は landed のまま `labels.ts` の `faceRect()` を包む（4A H-7 の「残す2つ」）
@@ -99,6 +101,7 @@ export function PlcFace({
   depthMm,
   ledState,
   faceZMm = 0,
+  nameplateOffsetMm,
 }: {
   /** 左奥の角（`unit.pos` / `module.pos`）。 */
   origin: Vec3;
@@ -111,9 +114,15 @@ export function PlcFace({
    * ラックのベースだけモジュールより奥へ下げるので、そのぶんをここで渡す（4B レビュー I3）。
    */
   faceZMm?: number;
+  /**
+   * 銘板だけを既定位置からずらす量[mm]（既定は動かさない）。
+   * `PlcRack.tsx` がベースの銘板を先頭モジュールの銘板と重ならない位置へ渡す（項目2）。
+   */
+  nameplateOffsetMm?: NameplateOffsetMm;
 }): JSX.Element {
   const lit = useMemo(() => litLedKeys(appearance, ledState), [appearance, ledState]);
   const { width, height } = appearance.faceMm;
+  const nameplate = nameplateRectMm(origin, appearance.nameplateRect, nameplateOffsetMm);
   return (
     <group name="plc-face">
       {/* 筐体。端子（z = 0）の**下**へ沈める（台の上に乗せると端子が埋まる） */}
@@ -215,8 +224,8 @@ export function PlcFace({
         style={LABEL_STYLE}
         distanceFactor={420}
         position={toScene({
-          x: origin.x + appearance.nameplateRect.x + appearance.nameplateRect.w / 2,
-          y: origin.y + appearance.nameplateRect.y + appearance.nameplateRect.h / 2,
+          x: (nameplate.x0 + nameplate.x1) / 2,
+          y: (nameplate.y0 + nameplate.y1) / 2,
           z: faceZMm + FACE_LED_LIFT_MM,
         })}
         zIndexRange={[10, 0]}

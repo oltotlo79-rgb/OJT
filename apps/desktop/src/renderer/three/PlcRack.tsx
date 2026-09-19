@@ -2,7 +2,13 @@ import type { BoardTerminal, PlcAppearance, PlcUnitDefinition, Vec3 } from '@ojt
 import type { TerminalId } from '@ojt/circuit-sim';
 import { Html } from '@react-three/drei';
 import { useEffect, useMemo, type JSX } from 'react';
-import { FACE_LABEL_LIFT_MM, PLC_BODY_Z_MM, RACK_BODY_Z_MM } from './appearance.js';
+import {
+  FACE_LABEL_LIFT_MM,
+  PLC_BODY_Z_MM,
+  RACK_BODY_Z_MM,
+  nameplateRectMm,
+  type NameplateOffsetMm,
+} from './appearance.js';
 import { blockFaceTexture, faceRect, roleColorsFor } from './labels.js';
 import { PlcFace, useLedState } from './PlcUnit.js';
 import { TerminalHit, terminalTooltip } from './TerminalHit.js';
@@ -29,8 +35,32 @@ const RACK_LABEL_PAD_MM = 6;
  */
 const RACK_BASE_FACE_Z_MM = -RACK_BODY_Z_MM / 2;
 
+/**
+ * ベースの銘板（`PC10G-1SP` / `JW-300`）を既定位置から下へ逃がす量[mm]。
+ *
+ * ベースの `nameplateRect` と、先頭モジュール（`POWER1` / `JW-301PU`）の `nameplateRect`
+ * （全モジュール共通の `RACK_NAMEPLATE_RECT`）はどちらも下段レール付近の近い y にあり、
+ * 素のままだと重なって読めなかった（今日のスクリーンショット確認 04/06・レビュー指摘・項目2）。
+ * y だけ下げれば、どのモジュールの銘板とも（x に関わらず）重ならなくなる。
+ */
+const RACK_BASE_NAMEPLATE_OFFSET: NameplateOffsetMm = { x: 0, y: 6 };
+
 function noPick(): void {
   // 交差候補を積まない
+}
+
+/**
+ * ベースの銘板の外接矩形（盤モデル mm）。3Dが実際に描く位置（`RACK_BASE_NAMEPLATE_OFFSET` 込み）
+ * と同じ式を使う。単体テストが「先頭モジュールの銘板と重ならない」ことを数値で確かめられるよう
+ * 公開する（項目2）。
+ */
+export function rackBaseNameplateRect(unit: PlcUnitDefinition): {
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+} {
+  return nameplateRectMm(unit.pos, unit.appearance.nameplateRect, RACK_BASE_NAMEPLATE_OFFSET);
 }
 
 /** 3Dが描くモジュール1枚ぶんの箱。 */
@@ -113,6 +143,7 @@ export function PlcRack({
         depthMm={PLC_BODY_Z_MM}
         ledState={ledState}
         faceZMm={RACK_BASE_FACE_Z_MM}
+        nameplateOffsetMm={RACK_BASE_NAMEPLATE_OFFSET}
       />
       {modules.map((module) => (
         <group key={module.model} name={`rack-module-${module.model}`}>

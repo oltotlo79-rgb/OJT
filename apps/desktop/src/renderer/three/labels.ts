@@ -160,6 +160,30 @@ export function faceRect(terminals: readonly BoardTerminal[], padMm: number): Fa
  */
 const BLOCK_MARK_MM = 3;
 
+/**
+ * 5文字以上の端子名（CP1E の出力 `100.00`〜`101.03` など6文字）に使う縮めた印字の高さ[mm]。
+ *
+ * 机上のPLC本体は端子を千鳥2列（`PLC_TERMINAL_PITCH_MM` = 9mm ピッチ）に並べるため、同じ段の
+ * 隣どうしは 9mm しか離れていない。`BLOCK_MARK_MM`（3mm）のまま6文字を描くと概算の印字幅が
+ * 11mm を超え、隣の名前と重なって読めなかった（今日のスクリーンショット確認 03:
+ * `COM0100.01COM1100.04…` が続けて潰れていた）。4文字以下（`COM0` / `0.00` など）は
+ * 今までどおり `BLOCK_MARK_MM` のままでよい（`labelWidthMm()` の概算で 9mm ピッチに収まる）。
+ */
+export const BLOCK_MARK_LONG_MM = 2;
+/** これを超える文字数の名前だけ `BLOCK_MARK_LONG_MM` を使う。 */
+const BLOCK_MARK_LONG_THRESHOLD_CHARS = 4;
+
+/** 端子1個の印字に使う文字高さ[mm]（名前の長さで `BLOCK_MARK_MM` / `BLOCK_MARK_LONG_MM` を選ぶ）。 */
+export function blockMarkFontMm(mark: string): number {
+  return mark.length > BLOCK_MARK_LONG_THRESHOLD_CHARS ? BLOCK_MARK_LONG_MM : BLOCK_MARK_MM;
+}
+
+/**
+ * 端子の中心から名前の中心までの奥行方向のずれ[mm]（正＝盤の手前側）。
+ * `blockFaceTexture()` が実際に描く位置と一致させる（名前の文字高さでは動かさない）。
+ */
+export const BLOCK_MARK_OFFSET_MM = BLOCK_MARK_MM * 1.5;
+
 /** 役割ごとの印字色（極性は色でも区別する）。端子台の**明るい**台座（`#F1EFE9`）に載せる用。 */
 const ROLE_COLOR: Readonly<Record<TerminalRole, string>> = {
   'coil+': '#D14343',
@@ -327,12 +351,27 @@ export function blockFaceTexture(
   const offsetX = (rect.w - (rect.maxX - rect.minX)) / 2;
   const offsetY = (rect.h - (rect.maxY - rect.minY)) / 2;
   return makeCanvasTexture(rect.w, rect.h, (ctx) => {
-    ctx.font = `700 ${BLOCK_MARK_MM * PX_PER_MM}px sans-serif`;
     for (const terminal of terminals) {
+      const mark = blockTerminalMark(terminal);
+      // 名前が長いときは `blockMarkFontMm()` で縮める（項目1: 9mmピッチの隣と重ならない幅にする）
+      const fontMm = blockMarkFontMm(mark);
       const x = (terminal.pos.x - rect.minX + offsetX) * PX_PER_MM;
       const y = (terminal.pos.y - rect.minY + offsetY) * PX_PER_MM;
+      ctx.font = `700 ${fontMm * PX_PER_MM}px sans-serif`;
       ctx.fillStyle = colors[terminal.role];
-      ctx.fillText(blockTerminalMark(terminal), x, y + BLOCK_MARK_MM * PX_PER_MM * 1.5);
+      ctx.fillText(mark, x, y + BLOCK_MARK_OFFSET_MM * PX_PER_MM);
     }
   });
+}
+
+/**
+ * 端子台1個ぶんの印字のうち、端子1個の外接矩形（盤モデル mm・平行移動不変）。
+ * `blockFaceTexture()` が実際に描く位置・文字高さと同じ式を使う。板の原点（`rect.minX/minY`）は
+ * 全端子に共通のオフセットなので、**同じ機種内での重なり**を調べる分にはここへ含めなくてよい
+ * （単体テストが機種ごとに数値で「隣と重ならない」ことを確かめるために公開する。項目1）。
+ */
+export function blockLabelBox(terminal: BoardTerminal): LabelBox {
+  const mark = blockTerminalMark(terminal);
+  const fontMm = blockMarkFontMm(mark);
+  return textBox(terminal.pos.x, terminal.pos.y + BLOCK_MARK_OFFSET_MM, mark, fontMm);
 }

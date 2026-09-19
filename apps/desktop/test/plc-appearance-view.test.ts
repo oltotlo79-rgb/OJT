@@ -23,10 +23,13 @@ import {
   type PlcLedState,
 } from '../src/renderer/three/appearance.js';
 import {
+  blockLabelBox,
+  blockMarkFontMm,
   blockTerminalMark,
   plateLuminance,
   roleColorsFor,
   SOCKET_ROLE_COLOR,
+  type LabelBox,
 } from '../src/renderer/three/labels.js';
 
 /**
@@ -269,5 +272,53 @@ describe('消灯色は board-model が持つ（4B レビュー M7）', () => {
   it('exports PLC_LED_OFF next to the lit colours', () => {
     expect(PLC_LED_OFF).toMatch(/^#[0-9A-Fa-f]{6}$/);
     for (const led of PLC_UNIT_FX5U.appearance.leds) expect(led.color).not.toBe(PLC_LED_OFF);
+  });
+});
+
+/**
+ * 端子名の印字は隣どうしと1mm以上離れていること（項目1: CP1E の出力端子名 `100.00`〜`101.03`
+ * が9mmピッチの隣と重なって `COM0100.01…` のように潰れて見えた。今日のスクリーンショット確認 03）。
+ */
+describe('端子名の印字は隣と重ならない（項目1）', () => {
+  /** 2つの矩形の間に `clearanceMm` 以上の隙間があること（どちらか1軸で離れていればよい）。 */
+  function hasClearance(a: LabelBox, b: LabelBox, clearanceMm: number): boolean {
+    return (
+      a.x1 + clearanceMm <= b.x0 ||
+      b.x1 + clearanceMm <= a.x0 ||
+      a.y1 + clearanceMm <= b.y0 ||
+      b.y1 + clearanceMm <= a.y0
+    );
+  }
+
+  it('never overlaps two name boxes on any of the 4 PLC units (≥1mm clearance)', () => {
+    const units = [PLC_UNIT_CP1E, PLC_UNIT_FX5U, PLC_UNIT_PC10G, PLC_UNIT_JW300];
+    for (const unit of units) {
+      const entries = unit.terminals.map((terminal) => ({
+        id: String(terminal.id),
+        box: blockLabelBox(terminal),
+      }));
+      for (let i = 0; i < entries.length; i += 1) {
+        for (let j = i + 1; j < entries.length; j += 1) {
+          const a = entries[i]!;
+          const b = entries[j]!;
+          expect(hasClearance(a.box, b.box, 1), `${unit.model}: ${a.id} vs ${b.id}`).toBe(true);
+        }
+      }
+    }
+  });
+
+  it('keeps the normal font for names up to 4 characters and shrinks past that', () => {
+    expect(blockMarkFontMm('COM0')).toBe(blockMarkFontMm('0.00')); // 4文字はどちらも既定のまま
+    expect(blockMarkFontMm('100.00')).toBeLessThan(blockMarkFontMm('COM0')); // 6文字は縮める
+  });
+
+  it('shrinks the box for the CP1E output names that used to overlap (100.00–101.03)', () => {
+    const cp1e = withPlcUnit(JIPM_BOARD, PLC_UNIT_CP1E).terminals.find(
+      (t) => String(t.id) === 'PLC.100.00',
+    );
+    expect(blockTerminalMark(cp1e!)).toBe('100.00');
+    const box = blockLabelBox(cp1e!);
+    // `PLC_TERMINAL_PITCH_MM`（9mm）の同じ段の隣とのあいだに1mm以上の余地が残る幅まで縮めてある
+    expect(box.x1 - box.x0).toBeLessThan(9 - 1);
   });
 });
