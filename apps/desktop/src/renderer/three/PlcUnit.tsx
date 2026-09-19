@@ -2,7 +2,7 @@ import type { BoardTerminal, PlcUnitDefinition } from '@ojt/board-model';
 import type { TerminalId } from '@ojt/circuit-sim';
 import { Html } from '@react-three/drei';
 import { useMemo, type JSX } from 'react';
-import { blockFaceTexture } from './labels.js';
+import { blockFaceTexture, faceRect } from './labels.js';
 import { sharedMaterial, UNIT_BOX } from './materials.js';
 import { TerminalHit, terminalTooltip } from './TerminalHit.js';
 import { toScene } from './coords.js';
@@ -45,8 +45,6 @@ const BODY_Z_MM = 6;
  * 6mm 以上いる（`TerminalBlock.tsx` の `PAD_MM` と同じ値）。
  */
 const PLC_LABEL_PAD_MM = 6;
-/** 印字の板の最小寸法[mm]（`labels.ts` の `MIN_FACE_MM` と同じ値。あちらは非公開）。 */
-const MIN_FACE_MM = 16;
 /** 印字の板を筐体から浮かせる高さ[mm]（Zファイティング避け）。 */
 const LABEL_LIFT_MM = 0.5;
 
@@ -65,19 +63,9 @@ export function plcFaceRect(
   terminals: readonly BoardTerminal[],
   padMm: number = PLC_LABEL_PAD_MM,
 ): { cx: number; cy: number; w: number; h: number } | undefined {
-  if (terminals.length === 0) return undefined;
-  const xs = terminals.map((t) => t.pos.x);
-  const ys = terminals.map((t) => t.pos.y);
-  const minX = Math.min(...xs);
-  const maxX = Math.max(...xs);
-  const minY = Math.min(...ys);
-  const maxY = Math.max(...ys);
-  return {
-    cx: (minX + maxX) / 2,
-    cy: (minY + maxY) / 2,
-    w: Math.max(MIN_FACE_MM, maxX - minX + padMm * 2),
-    h: Math.max(MIN_FACE_MM, maxY - minY + padMm * 2),
-  };
+  // 外接矩形と最小サイズの計算は `labels.ts` の `faceRect()` に一本化した
+  // （以前は `blockFaceTexture()` と同じ式をここへ複製していた。レビュー MERGE #15）
+  return faceRect(terminals, padMm);
 }
 
 /** PLC本体。 */

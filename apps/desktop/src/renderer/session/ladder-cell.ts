@@ -1,10 +1,12 @@
 import {
   ctu,
+  fall,
   mc,
   mcr,
   nc,
   no,
   out,
+  rise,
   rst,
   set,
   ton,
@@ -36,6 +38,12 @@ export interface CellForm {
   /** CTU のリセットデバイス。 */
   resetText: string;
 }
+
+/**
+ * カウンタの設定値の頭字（三菱の `K30` の `K`）。Phase 4 でメーカーが増えたら `DialectProfile`
+ * 側の値にすること（レビュー Minor）。
+ */
+const COUNTER_PRESET_PREFIX = /^K/iu;
 
 /** 空の入力欄。 */
 export function emptyCellForm(target: CellForm['target']): CellForm {
@@ -113,7 +121,9 @@ export function buildCell(form: CellForm, profile: DialectProfile): Cell | Error
   if (form.target === 'contact') {
     if (form.contact === 'NO') return no(device);
     if (form.contact === 'NC') return nc(device);
-    return { kind: 'contact', type: form.contact, device };
+    // P/F は `rise()` / `fall()` を通す（オブジェクトリテラルのままだと`@ojt/ladder-core`の
+    // デバイス検査を経ないままセルになってしまう。レビュー Minor）
+    return form.contact === 'P' ? rise(device) : fall(device);
   }
   const allowed = ALLOWED[form.output];
   if (!allowed.includes(device.kind)) {
@@ -133,7 +143,9 @@ export function buildCell(form: CellForm, profile: DialectProfile): Cell | Error
     if (preset instanceof Error) return preset;
     return ton(device, ms);
   }
-  const preset = Number(form.presetText.trim().replace(/^K/iu, ''));
+  // Phase 4: プロファイルへ。カウンタの設定値の頭字（三菱の `K`）は `DialectProfile` が
+  // 今のところ持っていないので、ここへ孤立させておく（レビュー Minor）
+  const preset = Number(form.presetText.trim().replace(COUNTER_PRESET_PREFIX, ''));
   if (!Number.isInteger(preset) || preset < 1) {
     return new Error('カウンタの設定値は1以上の整数にします');
   }

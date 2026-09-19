@@ -119,6 +119,40 @@ export function socketLabelBoxes(
 const MIN_FACE_MM = 16;
 
 /**
+ * 端子群の外接矩形から印字の板の位置・大きさを求める（盤モデル mm）。
+ *
+ * `blockFaceTexture()`（端子台）と `PlcUnit.tsx` の `plcFaceRect()`（机上のPLC本体）が
+ * どちらも同じ外接矩形の計算＋ `MIN_FACE_MM` の下限をコピーして持っていた
+ * （レビュー MERGE #15）。ここへ1つにまとめ、両方から呼ぶ。
+ */
+export interface FaceRect {
+  /** 端子群の外接矩形の左上・右下（盤モデル mm）。 */
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
+  /** 板の中心（盤モデル mm）。3Dでメッシュを置くときはこれを使う。 */
+  cx: number;
+  cy: number;
+  /** 板の幅・奥行[mm]（`MIN_FACE_MM` の下限つき）。 */
+  w: number;
+  h: number;
+}
+
+export function faceRect(terminals: readonly BoardTerminal[], padMm: number): FaceRect | undefined {
+  if (terminals.length === 0) return undefined;
+  const xs = terminals.map((t) => t.pos.x);
+  const ys = terminals.map((t) => t.pos.y);
+  const minX = Math.min(...xs);
+  const maxX = Math.max(...xs);
+  const minY = Math.min(...ys);
+  const maxY = Math.max(...ys);
+  const w = Math.max(MIN_FACE_MM, maxX - minX + padMm * 2);
+  const h = Math.max(MIN_FACE_MM, maxY - minY + padMm * 2);
+  return { minX, minY, maxX, maxY, cx: (minX + maxX) / 2, cy: (minY + maxY) / 2, w, h };
+}
+
+/**
  * 端子台の印字（`PL1+` / `P1`）の文字高さ[mm]。
  * 端子台のネジ端子は 9mm ピッチで1行しか印字しないので、ソケットの役割文字（2.2mm）より
  * 大きくてよい。ソケット側を詰めた影響がここに及ばないよう、別の定数にしてある。
@@ -249,23 +283,17 @@ export function blockFaceTexture(
   terminals: readonly BoardTerminal[],
   padMm: number,
 ): Texture | undefined {
-  if (terminals.length === 0) return undefined;
-  const xs = terminals.map((t) => t.pos.x);
-  const ys = terminals.map((t) => t.pos.y);
-  const minX = Math.min(...xs);
-  const maxX = Math.max(...xs);
-  const minY = Math.min(...ys);
-  const maxY = Math.max(...ys);
-  // 端子が1〜2点しかない端子台でもテクスチャが潰れないよう最小サイズを持たせる
-  const widthMm = Math.max(MIN_FACE_MM, maxX - minX + padMm * 2);
-  const heightMm = Math.max(MIN_FACE_MM, maxY - minY + padMm * 2);
-  const offsetX = (widthMm - (maxX - minX)) / 2;
-  const offsetY = (heightMm - (maxY - minY)) / 2;
-  return makeCanvasTexture(widthMm, heightMm, (ctx) => {
+  // 端子が1〜2点しかない端子台でもテクスチャが潰れないよう、外接矩形と最小サイズは
+  // `faceRect()` が持つ（`PlcUnit.tsx` の `plcFaceRect()` と共通。レビュー MERGE #15）
+  const rect = faceRect(terminals, padMm);
+  if (rect === undefined) return undefined;
+  const offsetX = (rect.w - (rect.maxX - rect.minX)) / 2;
+  const offsetY = (rect.h - (rect.maxY - rect.minY)) / 2;
+  return makeCanvasTexture(rect.w, rect.h, (ctx) => {
     ctx.font = `700 ${BLOCK_MARK_MM * PX_PER_MM}px sans-serif`;
     for (const terminal of terminals) {
-      const x = (terminal.pos.x - minX + offsetX) * PX_PER_MM;
-      const y = (terminal.pos.y - minY + offsetY) * PX_PER_MM;
+      const x = (terminal.pos.x - rect.minX + offsetX) * PX_PER_MM;
+      const y = (terminal.pos.y - rect.minY + offsetY) * PX_PER_MM;
       ctx.fillStyle = ROLE_COLOR[terminal.role];
       ctx.fillText(blockTerminalMark(terminal), x, y + BLOCK_MARK_MM * PX_PER_MM * 1.5);
     }

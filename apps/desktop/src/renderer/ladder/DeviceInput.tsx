@@ -48,7 +48,14 @@ export function DeviceInput({
 }): JSX.Element {
   const [form, setForm] = useState<CellForm>(initial);
   const [error, setError] = useState<string | undefined>(undefined);
-  const [round, setRound] = useState<{ rounded: number; baseMs: number } | undefined>(undefined);
+  /*
+   * §10.5 の丸め確認の文面は `error` とは別の状態に持つ（レビュー Minor）。以前は `setError()`
+   * で入れていたため、`round` が立っているあいだ `device-error` と `round-prompt` の両方に
+   * 同じ文が出てしまい、かつ「いいえ」が `round` しか消さないので `error` の方が残っていた。
+   */
+  const [round, setRound] = useState<
+    { rounded: number; baseMs: number; prompt: string } | undefined
+  >(undefined);
   const firstRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
@@ -83,10 +90,16 @@ export function DeviceInput({
         if (!(ms instanceof Error)) {
           const suggestion = roundSuggestionFor(ms, device, profile);
           if (suggestion !== undefined) {
-            setRound({ rounded: suggestion.rounded, baseMs: suggestion.baseMs });
-            setError(
-              timerRoundPrompt(suggestion.ms, profile.formatDevice(device), suggestion.baseMs),
-            );
+            setRound({
+              rounded: suggestion.rounded,
+              baseMs: suggestion.baseMs,
+              prompt: timerRoundPrompt(
+                suggestion.ms,
+                profile.formatDevice(device),
+                suggestion.baseMs,
+              ),
+            });
+            setError(undefined);
             return;
           }
         }
@@ -196,7 +209,7 @@ export function DeviceInput({
       )}
       {round === undefined ? null : (
         <p className={styles.inputRound} data-testid="round-prompt">
-          {error}
+          {round.prompt}
           <button
             type="button"
             data-testid="round-yes"
@@ -214,7 +227,9 @@ export function DeviceInput({
             type="button"
             data-testid="round-no"
             onClick={() => {
+              // §10.5: 「いいえ」は確認そのものを引っ込める。`error` も残さない（レビュー Minor）
               setRound(undefined);
+              setError(undefined);
             }}
           >
             {JA.ladder.roundNo}
