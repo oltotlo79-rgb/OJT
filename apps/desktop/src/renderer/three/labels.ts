@@ -5,6 +5,7 @@ import {
   type BoardTerminal,
   type TerminalRole,
 } from '@ojt/board-model';
+import { parseTerminalId } from '@ojt/circuit-sim';
 import { CanvasTexture, LinearFilter, SRGBColorSpace, type Texture } from 'three';
 
 /**
@@ -264,11 +265,15 @@ export function socketFaceTexture(
 
 /** 端子台の印字に使う短い名前（`PL1+` / `PB1c` / `P1` / `N1`）。§6.4 */
 export function blockTerminalMark(terminal: BoardTerminal): string {
-  const [part, name] = terminal.id.split('.');
-  if (part === undefined || name === undefined) return terminal.id;
+  /*
+   * 端子名側は `.` を含んでよい（`PLC.0.00` / `PLC.COM.A`。§6.4 / 4A 前提#8）。
+   * `split('.')` の2番目だけを取ると CP1E が `0`、JW300 が `COM` になり、機種を替えた
+   * 瞬間に印字が壊れる（4A H-8）。**最初の `.` で割る `parseTerminalId()`** を使う。
+   */
+  const { part, name } = parseTerminalId(terminal.id);
   if (part === 'TB_PL') return `PL${name}`;
   if (part === 'TB_PB') return `PB${name}`;
-  // 机上のPLC本体と壁コンセントは端子名そのものが印字（`X0` / `Y10` / `L` / `N`）。§10.1
+  // 机上のPLC本体と壁コンセントは端子名そのものが印字（`X0` / `0.00` / `COM.A` / `L`）。§10.1
   if (part === PLC_PART_ID || part === OUTLET_ID) return name;
   return `${part}${name}`;
 }
