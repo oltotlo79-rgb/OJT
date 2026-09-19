@@ -30,6 +30,8 @@ export function Toolbar({
   canUndo,
   canRedo,
   judging,
+  judgeDisabled = false,
+  judgeTitle,
   onMode,
   onWireColor,
   onCamera,
@@ -64,6 +66,10 @@ export function Toolbar({
   canRedo: boolean;
   /** 判定を Worker へ送って結果待ちか（押し直しを止める）。§8.2 */
   judging: boolean;
+  /** 判定ボタンを押させない理由がある（モードD: 未変換のラダー。3A H-1）。 */
+  judgeDisabled?: boolean;
+  /** 判定ボタンの `title`（押せない理由）。 */
+  judgeTitle?: string;
   onMode: (mode: ToolMode) => void;
   onWireColor: (color: WireColor) => void;
   onCamera: (preset: CameraPreset) => void;
@@ -182,7 +188,8 @@ export function Toolbar({
         type="button"
         className={styles.judgeButton}
         data-testid="judge-button"
-        disabled={judging}
+        disabled={judging || judgeDisabled}
+        {...(judgeTitle === undefined ? {} : { title: judgeTitle })}
         onClick={onJudge}
       >
         {judging ? JA.session.judging : JA.session.judge}

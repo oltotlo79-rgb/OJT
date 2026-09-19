@@ -455,6 +455,15 @@ export const JA = {
     /** 盤・PLC本体・壁コンセントを全部入れる視点。決定表#6 */
     viewPlc: '盤＋PLC',
     unit: 'PLC本体',
+    // --- Plan 3B Task 12 ---
+    /** 画面の分割（ツールバーの3ボタン）。決定表#10 */
+    viewLadder: 'ラダー',
+    viewSplit: '分割',
+    viewBoard: '盤',
+    /** 判定ボタンを押せない理由。3A H-1 */
+    judgeNoLadder: 'ラダーがありません',
+    judgeNotConverted: '変換（F4）を通してから判定します',
+    // --- /Plan 3B Task 12 ---
   },
   // --- /Plan 3B Task 10 ---
   hazard: {

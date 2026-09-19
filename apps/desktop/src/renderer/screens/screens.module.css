@@ -235,3 +235,49 @@
   gap: 6px;
   margin-bottom: 10px;
 }
+
+/* モードDのセッション画面。決定表#10（ラダー ⇄ 3D の分割） */
+.plcLayout {
+  display: grid;
+  grid-template-columns: minmax(520px, 1fr) minmax(420px, 1fr) 300px;
+  gap: 8px;
+  padding: 8px;
+  min-height: 0;
+  flex: 1 1 auto;
+}
+
+.plcLayout[data-view='ladder'] {
+  grid-template-columns: minmax(0, 1fr) 300px;
+}
+
+.plcLayout[data-view='board'] {
+  grid-template-columns: minmax(0, 1fr) 300px;
+}
+
+.plcRight {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow: auto;
+  min-height: 0;
+}
+
+/*
+ * 狭い画面では分割をやめて1面に落とす（2026-09-18 の利用者決定。決定表#10）。
+ * 520 + 420 + 300 に余白を足すと 1180px を切ったところで3列とも潰れるので、そこを境にする。
+ * 状態は増やさない: `split` のときは `ladder` と同じ1面として描き、盤を見たいときは
+ * ツールバーの既存の3ボタンで `board` に切り替えてもらう。
+ */
+@media (max-width: 1179px) {
+  .plcLayout,
+  .plcLayout[data-view='ladder'],
+  .plcLayout[data-view='board'] {
+    /* 1列に積む（上がラダーか盤、その下に課題・部品・ログの縦列） */
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* `split` のときは**ラダーだけ**を見せる。盤はツールバーの「盤」で切り替えて見てもらう */
+  .plcLayout[data-view='split'] > .viewport {
+    display: none;
+  }
+}

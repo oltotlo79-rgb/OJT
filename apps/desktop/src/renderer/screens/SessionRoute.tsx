@@ -3,6 +3,7 @@ import { useStore } from '../app/store.js';
 import { JA } from '../i18n/ja.js';
 import { InspectPartsSession } from './InspectPartsSession.js';
 import { InspectRepairSession } from './InspectRepairSession.js';
+import { PlcSession } from './PlcSession.js';
 import { Session } from './Session.js';
 import styles from './screens.module.css';
 
@@ -23,6 +24,8 @@ export function SessionRoute(): JSX.Element {
       return <InspectPartsSession />;
     case 'inspect-repair':
       return <InspectRepairSession />;
+    case 'plc':
+      return <PlcSession />;
     default:
       return (
         <div className={styles.center}>
