@@ -13,6 +13,8 @@ export {
 
 export { GX_STYLE_SHORTCUTS, withoutConvert } from './shortcuts.js';
 
+export { switchNotation, type NotationChange, type NotationSwitchResult } from './notation.js';
+
 export {
   DIALECT_IDS,
   IMPLEMENTED_DIALECT_IDS,
