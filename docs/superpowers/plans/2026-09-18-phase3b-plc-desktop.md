@@ -575,7 +575,7 @@ export function LogPanel(props); ElapsedTimer(props); PowerControls(props); Prob
 | 取り消し | `LadderProgram` のスナップショットスタック。上限は盤と同じ `HISTORY_LIMIT`（50） |
 | 失敗 | `edit.ts` が投げる `LadderError` は**そのまま文言として返す**（ライブラリが日本語で持っている） |
 
-- [ ] **Step 0: `apps/desktop` から 3A の2パッケージを参照できるようにする（本プランで唯一の依存追加）**
+- [x] **Step 0: `apps/desktop` から 3A の2パッケージを参照できるようにする（本プランで唯一の依存追加）**
 
 `apps/desktop/package.json` の `dependencies` は現在 `@ojt/board-model` / `@ojt/circuit-sim` / `@ojt/content` / `@ojt/schematic-core` の4本で、**`@ojt/ladder-core` と `@ojt/plc-dialects` が入っていない**。この2本を入れないと Task 1 の import が解決しない（pnpm のワークスペースは `package.json` に書かれた依存しかリンクしない）。アルファベット順を保って2行足す:
 
@@ -597,7 +597,7 @@ pnpm --filter @ojt/desktop exec node -e "console.log(require.resolve('@ojt/ladde
 
 Expected: `pnpm install` が `Done` で終わり、`node_modules/@ojt/ladder-core` と `node_modules/@ojt/plc-dialects` がシンボリックリンクとして張られる。**外部（npm レジストリ）の依存は1つも増えない**（ワークスペース内の2本だけ）。
 
-- [ ] **Step 1: 失敗するテストを書く**
+- [x] **Step 1: 失敗するテストを書く**
 
 `apps/desktop/test/ladder-model.test.ts`:
 
@@ -932,7 +932,7 @@ describe('ラダーの取り消し／やり直し（決定表#2）', () => {
 });
 ```
 
-- [ ] **Step 2: RED を確認する**
+- [x] **Step 2: RED を確認する**
 
 ```powershell
 pnpm --filter @ojt/desktop exec vitest run test/ladder-model.test.ts
@@ -940,7 +940,7 @@ pnpm --filter @ojt/desktop exec vitest run test/ladder-model.test.ts
 
 Expected: 失敗（`Failed to resolve import "../src/renderer/session/ladder.js"`）。
 
-- [ ] **Step 3: `src/renderer/session/ladder.ts` を書く**
+- [x] **Step 3: `src/renderer/session/ladder.ts` を書く**
 
 ```ts
 import {
@@ -1417,16 +1417,16 @@ export function redoLadder(
 }
 ```
 
-- [ ] **Step 4: GREEN を確認する**
+- [x] **Step 4: GREEN を確認する**
 
 ```powershell
 pnpm --filter @ojt/desktop exec vitest run test/ladder-model.test.ts
 pnpm --filter @ojt/desktop typecheck
 ```
 
-Expected: `Tests  30 passed (30)`（レビューがスクラッチで実測した28件 ＋ B6 で足した2件）。
+Expected: `Tests  30 passed (30)`（レビューがスクラッチで実測した28件 ＋ B6 で足した2件）。**実測（2026-09-19、Task 18時点）: 44件**（Batch 1〜5 のレビュー修正で `insertMode` / OR接点 / カーソル送りのテストが積み増された）。
 
-- [ ] **Step 5: コミットする**
+- [x] **Step 5: コミットする**
 
 ```powershell
 npx prettier --write "apps/desktop/src/renderer/session/ladder.ts" "apps/desktop/test/ladder-model.test.ts"
@@ -1462,7 +1462,7 @@ git commit -m "feat(desktop): add the pure ladder editing model"
 | `plcMonitor` | `PlcMonitorSnapshot \| undefined` | モニタ中の通電状況（決定表#5） |
 | `plcRunning` | `boolean` | RUN/STOP |
 
-- [ ] **Step 1: 失敗するテストを書く**
+- [x] **Step 1: 失敗するテストを書く**
 
 `apps/desktop/test/store-plc.test.ts`:
 
@@ -1631,7 +1631,7 @@ describe('画面の分割とフォーカス（決定表#3 / #10）', () => {
 });
 ```
 
-- [ ] **Step 2: RED を確認する**
+- [x] **Step 2: RED を確認する**
 
 ```powershell
 pnpm --filter @ojt/desktop exec vitest run test/store-plc.test.ts
@@ -1639,7 +1639,7 @@ pnpm --filter @ojt/desktop exec vitest run test/store-plc.test.ts
 
 Expected: 失敗（`plc-session.js` が無い、`setLadder` が無い）。
 
-- [ ] **Step 3: `src/renderer/session/plc-session.ts` を書く**
+- [x] **Step 3: `src/renderer/session/plc-session.ts` を書く**
 
 ```ts
 import { JIPM_BOARD, type BoardDefinition } from '@ojt/board-model';
@@ -1675,7 +1675,7 @@ export function plcIoOf(problem: SupportedProblem | undefined): ResolvedPlcIo | 
 }
 ```
 
-- [ ] **Step 4: `store-types.ts` に値型を足す**
+- [x] **Step 4: `store-types.ts` に値型を足す**
 
 `CameraPreset` に `'plc'` を足し（決定表#6。Task 10 で `cameraPose()` が実装する）、モニタとコメントの値型を置く。**既存の型は消さない。**
 
@@ -1748,7 +1748,7 @@ export const NO_CONVERT_ISSUES: ConvertIssues = { errors: [], warnings: [], usag
 
 > **注意:** `ConvertErrorLine` / `ConvertWarningLine` は `@ojt/plc-dialects` の `ConvertError` / `@ojt/ladder-core` の `CompileWarning` を**構造的に写した**型である。`store-types.ts` は「React にも three にも依存しない値型」を置く場所で、`Device` のようなライブラリの型を持ち込むとストアの値が構造化複製できるかどうかが読めなくなる（Worker と作業ファイルの両方を通る）。写すのは3〜6個のプリミティブだけなので、写像は Task 6 の `session/ladder-errors.ts` が1箇所で持つ。
 
-- [ ] **Step 5: `store.ts` にモードDの状態を足す（**MERGE 注意 #2**）**
+- [x] **Step 5: `store.ts` にモードDの状態を足す（**MERGE 注意 #2**）**
 
 `store.ts` への追記は**次の5箇所だけ**である。
 
@@ -2055,16 +2055,16 @@ export function sessionForProblem(problem: SupportedProblem): BoardSession {
 
 `boardForProblem` は `../session/plc-session.js` から import する。**`createSession()` の第1引数を `JIPM_BOARD` から差し替えるだけ**で、モードB/C1/C2 では `boardForProblem()` が `JIPM_BOARD` を返すので挙動は変わらない。
 
-- [ ] **Step 6: GREEN を確認する**
+- [x] **Step 6: GREEN を確認する**
 
 ```powershell
 pnpm --filter @ojt/desktop exec vitest run test/store-plc.test.ts test/store.test.ts test/store-inspect.test.ts
 pnpm --filter @ojt/desktop typecheck
 ```
 
-Expected: `store-plc` が `Tests  12 passed (12)`（B3 の `restartSession` 保持テストを含む）。既存の `store.test.ts` / `store-inspect.test.ts` も通る（`isInspectJudge()` の判定を変えたので、モードB/C1/C2 の分岐が変わっていないことをここで確認する）。
+Expected: `store-plc` が `Tests  12 passed (12)`（B3 の `restartSession` 保持テストを含む）。既存の `store.test.ts` / `store-inspect.test.ts` も通る（`isInspectJudge()` の判定を変えたので、モードB/C1/C2 の分岐が変わっていないことをここで確認する）。**実測（2026-09-19、Task 18時点）: `store-plc` 21件**（レビュー修正で `restore()` の RUN/モニタ再送などが積み増された）。
 
-- [ ] **Step 7: コミットする**
+- [x] **Step 7: コミットする**
 
 ```powershell
 npx prettier --write "apps/desktop/src/renderer/app/*.ts" "apps/desktop/src/renderer/session/plc-session.ts" "apps/desktop/test/store-plc.test.ts"
@@ -2093,7 +2093,7 @@ git commit -m "feat(desktop): widen the store to mode D (ladder, dialect, monito
 | モニタ | `plc { action: { kind:'monitor', on } }`。`on` のときだけスナップショットに `plc` を載せる（決定表#5） |
 | 判定 | `judgePlc`。`judgeRepair` と同じく**追従ループを止めて**から実行し、`finally` で再開する（H-4） |
 
-- [ ] **Step 1: 失敗するテストを書く**
+- [x] **Step 1: 失敗するテストを書く**
 
 `apps/desktop/test/sim-worker-plc.test.ts`:
 
@@ -2408,7 +2408,7 @@ describe('モードDの判定（§10.8 / H-4）', () => {
 });
 ```
 
-- [ ] **Step 2: RED を確認する**
+- [x] **Step 2: RED を確認する**
 
 ```powershell
 pnpm --filter @ojt/desktop exec vitest run test/sim-worker-plc.test.ts
@@ -2416,7 +2416,7 @@ pnpm --filter @ojt/desktop exec vitest run test/sim-worker-plc.test.ts
 
 Expected: 型エラー（`plcModel` / `plc` / `judgePlc` が `SimCommand` に無い）で失敗する。
 
-- [ ] **Step 3: `src/worker/protocol.ts` に足す（**MERGE 注意 #3**）**
+- [x] **Step 3: `src/worker/protocol.ts` に足す（**MERGE 注意 #3**）**
 
 import に足す:
 
@@ -2503,7 +2503,7 @@ export type PlcOutcome =
   | { type: 'plcResult'; result: PlcOutcome }
 ```
 
-- [ ] **Step 4: `src/worker/sim.worker.ts` を書き換える（**MERGE 注意 #4**）**
+- [x] **Step 4: `src/worker/sim.worker.ts` を書き換える（**MERGE 注意 #4**）**
 
 追記は**次の6箇所だけ**である。
 
@@ -2740,7 +2740,7 @@ function plcSnapshot(coupling: PlcCoupling): PlcMonitorSnapshot {
 
 > `judgePlc()` に渡すのは**素の `JIPM_BOARD`**である（3A 引渡し表: 「`board` は素の `JIPM_BOARD` を渡してよい（内部で `withPlcUnit` する）」）。Worker が持っている派生盤 `board` を渡しても同じ結果になるが、3A の署名が想定している呼び方に合わせておくと、機種が増えたときに `judgePlc()` 側の1箇所で切り替わる。
 
-- [ ] **Step 5: `session/worker-bridge.ts` に受け口を足す**
+- [x] **Step 5: `session/worker-bridge.ts` に受け口を足す**
 
 ```ts
   /**
@@ -2756,7 +2756,7 @@ function plcSnapshot(coupling: PlcCoupling): PlcMonitorSnapshot {
       else if (message.type === 'plcResult') handlers.onPlc?.(message);
 ```
 
-- [ ] **Step 6: GREEN を確認する**
+- [x] **Step 6: GREEN を確認する**
 
 ```powershell
 pnpm --filter @ojt/desktop exec vitest run test/sim-worker-plc.test.ts
@@ -2764,9 +2764,9 @@ pnpm --filter @ojt/desktop exec vitest run --no-file-parallelism
 pnpm --filter @ojt/desktop typecheck
 ```
 
-Expected: `sim-worker-plc` が `Tests  11 passed (11)`。既存の Worker テスト8本（`sim-worker*.test.ts`）もすべて通る（`load()` の差し替えで盤が `JIPM_BOARD` のままであることを確認する）。
+Expected: `sim-worker-plc` が `Tests  11 passed (11)`。既存の Worker テスト8本（`sim-worker*.test.ts`）もすべて通る（`load()` の差し替えで盤が `JIPM_BOARD` のままであることを確認する）。**実測（2026-09-19、Task 18時点）: `sim-worker-plc` 13件**。
 
-- [ ] **Step 7: コミットする**
+- [x] **Step 7: コミットする**
 
 ```powershell
 npx prettier --write "apps/desktop/src/worker/*.ts" "apps/desktop/src/renderer/session/worker-bridge.ts" "apps/desktop/test/sim-worker-plc.test.ts"
@@ -2790,7 +2790,7 @@ git commit -m "feat(desktop): run the PLC scan and the mode D judge inside the w
 - Test: `apps/desktop/test/ladder-symbols.test.ts`
 - Test: `apps/desktop/test/ladder-grid.test.tsx`
 
-- [ ] **Step 0: `@testing-library/jest-dom` のマッチャを使えるようにする（本プランで唯一の外部依存の追加）**
+- [x] **Step 0: `@testing-library/jest-dom` のマッチャを使えるようにする（本プランで唯一の外部依存の追加）**
 
 本プランの UI テストは `toBeInTheDocument()` / `toHaveTextContent()` / `toHaveAttribute()` / `toBeDisabled()` / `toHaveValue()` を**約100箇所**で使う。ところが**このリポジトリには jest-dom が入っていない**（既存の UI テストは `expect(el).toBeTruthy()` / `el.textContent` / `el.getAttribute()` という素の書き方で通している）。入れずに書くと `TypeError: expect(...).toBeInTheDocument is not a function` で全滅するので、**Task 4 の最初に1回だけ**入れる。
 
@@ -2845,7 +2845,7 @@ Expected: `pnpm install` が `Done`。既存の 60ファイル / 825テストが
 | 変換エラー | `errorCells`（`Set<"net:row:col">`）に入っているセルを赤枠にする |
 | カーソル | `cursor` のセルに青い枠（`aria-selected`）。クリックでも動く |
 
-- [ ] **Step 1: 失敗するテストを書く**
+- [x] **Step 1: 失敗するテストを書く**
 
 `apps/desktop/test/ladder-symbols.test.ts`:
 
@@ -3053,7 +3053,7 @@ describe('LadderGrid（§10.7）', () => {
 });
 ```
 
-- [ ] **Step 2: RED を確認する**
+- [x] **Step 2: RED を確認する**
 
 ```powershell
 pnpm --filter @ojt/desktop exec vitest run test/ladder-symbols.test.ts test/ladder-grid.test.tsx
@@ -3061,7 +3061,7 @@ pnpm --filter @ojt/desktop exec vitest run test/ladder-symbols.test.ts test/ladd
 
 Expected: 解決できない import で失敗。
 
-- [ ] **Step 3: `src/renderer/ladder/symbols.ts` を書く**
+- [x] **Step 3: `src/renderer/ladder/symbols.ts` を書く**
 
 ```ts
 /**
@@ -3150,7 +3150,7 @@ export const LINK_DOWN = `M 0 ${WIRE_Y} L 0 ${CELL_H}`;
 export const END_MARK = [`M 12 ${TOP} L 12 ${BOTTOM}`, `M 18 ${TOP} L 18 ${BOTTOM}`];
 ```
 
-- [ ] **Step 4: `src/renderer/ladder/LadderGrid.tsx` を書く**
+- [x] **Step 4: `src/renderer/ladder/LadderGrid.tsx` を書く**
 
 ```tsx
 import {
@@ -3478,7 +3478,7 @@ export const LadderGrid = memo(LadderGridImpl);
 
 > **`cell9` の意味:** `GridCell` は **表示上の列番号**で位置を決め、`onPick` で **IR の列番号**を返す。その2つを混ぜないために、`GridCell` へ渡す `cell9.col` は表示上の番号（`index`）にし、`onPickCell` の直前で IR の番号（`col`）に差し替える。テストは `cell-n1:0:15`（IR の番号）で引けることを確かめている。
 
-- [ ] **Step 5: `ladder.module.css` を書く**
+- [x] **Step 5: `ladder.module.css` を書く**
 
 ```css
 /* ラダーエディタの見た目。設計仕様 §10.6（GX Works3“風”。ベンダーの画面の複製ではない）。 */
@@ -3582,7 +3582,7 @@ export const LadderGrid = memo(LadderGridImpl);
 }
 ```
 
-- [ ] **Step 6: `ja.ts` に `ladder` ブロックを足す（**MERGE 注意 #1**）**
+- [x] **Step 6: `ja.ts` に `ladder` ブロックを足す（**MERGE 注意 #1**）**
 
 `JA.timeChart` の**直後**に足す（挿入のたびにファイルを読み直すこと）:
 
@@ -3596,16 +3596,16 @@ export const LadderGrid = memo(LadderGridImpl);
   },
 ```
 
-- [ ] **Step 7: GREEN を確認する**
+- [x] **Step 7: GREEN を確認する**
 
 ```powershell
 pnpm --filter @ojt/desktop exec vitest run test/ladder-symbols.test.ts test/ladder-grid.test.tsx
 pnpm --filter @ojt/desktop typecheck
 ```
 
-Expected: `Tests  15 passed (15)`（記号5件＋グリッド10件。記号は MC / MCR の1件を含む）。
+Expected: `Tests  15 passed (15)`（記号5件＋グリッド10件。記号は MC / MCR の1件を含む）。**実測（2026-09-19、Task 18時点）: `ladder-symbols` 5件（一致）＋ `ladder-grid` 17件**（Task 5〜16 と隠れ列の自動横線 d02f842 でグリッド側が積み増された）。
 
-- [ ] **Step 8: コミットする**
+- [x] **Step 8: コミットする**
 
 ```powershell
 npx prettier --write "apps/desktop/src/renderer/ladder/**/*.{ts,tsx,css}" "apps/desktop/src/renderer/i18n/ja.ts" "apps/desktop/test/ladder-*.test.*"
@@ -3638,7 +3638,7 @@ git commit -m "feat(desktop): draw the ladder grid with our own symbol line art"
 | 読出し・モニタ中 | `readOnly` アクションが返るので、トーストで理由を出して何もしない（決定表#11） |
 | `F8`（応用命令） | `disabled` アクション。`entry.note` をそのままトーストに出す（§17.1 の注記） |
 
-- [ ] **Step 1: 失敗するテストを書く**
+- [x] **Step 1: 失敗するテストを書く**
 
 `apps/desktop/test/ladder-cell.test.ts`:
 
@@ -3953,13 +3953,13 @@ describe('キー操作（§10.6 の割当表から引く）', () => {
 });
 ```
 
-- [ ] **Step 2: RED を確認する**
+- [x] **Step 2: RED を確認する**
 
 ```powershell
 pnpm --filter @ojt/desktop exec vitest run test/ladder-cell.test.ts test/ladder-editor.test.tsx
 ```
 
-- [ ] **Step 3: `src/renderer/session/ladder-cell.ts` を書く**
+- [x] **Step 3: `src/renderer/session/ladder-cell.ts` を書く**
 
 ```ts
 import {
@@ -4148,7 +4148,7 @@ export function formForCell(cell: Cell, profile: DialectProfile): CellForm {
 }
 ```
 
-- [ ] **Step 4: `src/renderer/ladder/DeviceInput.tsx` を書く**
+- [x] **Step 4: `src/renderer/ladder/DeviceInput.tsx` を書く**
 
 ```tsx
 import { T } from '@ojt/ladder-core';
@@ -4366,7 +4366,7 @@ export function DeviceInput({
 }
 ```
 
-- [ ] **Step 5: `src/renderer/ladder/LadderEditor.tsx` を書く**
+- [x] **Step 5: `src/renderer/ladder/LadderEditor.tsx` を書く**
 
 ```tsx
 import { cellAt, hline, vline, type Cell } from '@ojt/ladder-core';
@@ -4632,7 +4632,7 @@ export function LadderEditor({
 
 > **`errorCells` の作り直し:** `new Set(...)` を毎レンダーで作ると `LadderGrid` の `memo` が効かない。Task 8 で `LadderWorkspace` が `useMemo` した `Set` を props で流し込む形に直す（このタスクでは動作を先に確かめる）。**Task 8 Step 5 でここを直すこと。**
 
-- [ ] **Step 6: CSS と `ja.ts` を足す**
+- [x] **Step 6: CSS と `ja.ts` を足す**
 
 `ladder.module.css` に追記:
 
@@ -4729,16 +4729,16 @@ export function timerRoundPrompt(ms: number, device: string, baseMs: number): st
 }
 ```
 
-- [ ] **Step 7: GREEN を確認する**
+- [x] **Step 7: GREEN を確認する**
 
 ```powershell
 pnpm --filter @ojt/desktop exec vitest run test/ladder-cell.test.ts test/ladder-editor.test.tsx
 pnpm --filter @ojt/desktop typecheck
 ```
 
-Expected: `ladder-cell` が `Tests  9 passed (9)`、`ladder-editor` が `Tests  15 passed (15)`（I12 のカーソル送り・決定表#12b の挿入モード・決定表#11 の初回注記を足した3件を含む）。
+Expected: `ladder-cell` が `Tests  9 passed (9)`、`ladder-editor` が `Tests  15 passed (15)`（I12 のカーソル送り・決定表#12b の挿入モード・決定表#11 の初回注記を足した3件を含む）。**実測（2026-09-19、Task 18時点）: `ladder-cell` 9件（一致）、`ladder-editor` 16件**。
 
-- [ ] **Step 8: コミットする**
+- [x] **Step 8: コミットする**
 
 ```powershell
 npx prettier --write "apps/desktop/src/renderer/ladder/**/*.{ts,tsx,css}" "apps/desktop/src/renderer/session/ladder-cell.ts" "apps/desktop/src/renderer/i18n/ja.ts" "apps/desktop/test/ladder-*.test.*"
@@ -4768,7 +4768,7 @@ git commit -m "feat(desktop): wire F5/F6/F7/F9 and the device input to the ladde
 | クリック | `row` / `col` を持つ行はカーソルをそのセルへ飛ばす。持たない行は何もしない（決定表#4） |
 | 使用デバイス | `CompiledProgram.usage` の `reads` / `writes` を方言表記で並べ、**片方にしか出てこないデバイス**を「未使用」として淡色で注記する。**合否には効かせない**（決定表#15b） |
 
-- [ ] **Step 1: 失敗するテストを書く**
+- [x] **Step 1: 失敗するテストを書く**
 
 `apps/desktop/test/ladder-errors.test.ts`:
 
@@ -4935,7 +4935,7 @@ describe('出力ウィンドウ（§10.6）', () => {
 });
 ```
 
-- [ ] **Step 2: RED を確認し、Step 3 で `session/ladder-errors.ts` を書く**
+- [x] **Step 2: RED を確認し、Step 3 で `session/ladder-errors.ts` を書く**
 
 ```ts
 import { deviceLabel, type CompiledProgram, type LadderProgram } from '@ojt/ladder-core';
@@ -5038,7 +5038,7 @@ export function unusedDevices(usage: { reads: readonly string[]; writes: readonl
 export { deviceLabel };
 ```
 
-- [ ] **Step 4: `ladder/OutputWindow.tsx` を書く**
+- [x] **Step 4: `ladder/OutputWindow.tsx` を書く**
 
 ```tsx
 import type { JSX } from 'react';
@@ -5284,7 +5284,7 @@ CSS（`ladder.module.css` へ追記）:
 }
 ```
 
-- [ ] **Step 5: GREEN とコミット**
+- [x] **Step 5: GREEN とコミット**
 
 ```powershell
 pnpm --filter @ojt/desktop exec vitest run test/ladder-errors.test.ts test/output-window.test.tsx
@@ -5294,7 +5294,7 @@ git add apps/desktop/src apps/desktop/test
 git commit -m "feat(desktop): run the conversion and list the result in the output window"
 ```
 
-Expected: `ladder-errors` が `Tests  6 passed (6)`、`output-window` が `Tests  5 passed (5)`。
+Expected: `ladder-errors` が `Tests  6 passed (6)`、`output-window` が `Tests  5 passed (5)`。**実測（2026-09-19、Task 18時点）: `ladder-errors` 7件、`output-window` 5件（一致）**。
 
 ---
 
@@ -5316,7 +5316,7 @@ Expected: `ladder-errors` が `Tests  6 passed (6)`、`output-window` が `Tests
 | I/Oテーブル | `resolvePlcIo(problem.io)` の `inputs` / `outputs` をそのまま表にする。`mode: 'fixed'` なら「この割付どおりに配線します」、`'free'` なら「推奨の割付です（変更できます）」を添える（§7.6） |
 | 結線方式 | `io.wiring`（`sink` / `source`）を §10.2 の言葉で出す（「シンク結線（P → S/S）」） |
 
-- [ ] **Step 1: 失敗するテストを書く**
+- [x] **Step 1: 失敗するテストを書く**
 
 `apps/desktop/test/ladder-panels.test.tsx`:
 
@@ -5433,7 +5433,7 @@ describe('I/Oテーブル（§7.6 / 決定表#7 / #16）', () => {
 });
 ```
 
-- [ ] **Step 2: RED を確認し、Step 3 で `CommentPanel.tsx` を書く**
+- [x] **Step 2: RED を確認し、Step 3 で `CommentPanel.tsx` を書く**
 
 ```tsx
 import { deviceLabel, type Cell, type Device, type LadderProgram } from '@ojt/ladder-core';
@@ -5515,7 +5515,7 @@ export function CommentPanel({
 }
 ```
 
-- [ ] **Step 4: `IoTable.tsx` を書く**
+- [x] **Step 4: `IoTable.tsx` を書く**
 
 ```tsx
 import type { PlcUnitDefinition } from '@ojt/board-model';
@@ -5664,7 +5664,7 @@ CSS（追記）:
 }
 ```
 
-- [ ] **Step 5: GREEN とコミット**
+- [x] **Step 5: GREEN とコミット**
 
 ```powershell
 pnpm --filter @ojt/desktop exec vitest run test/ladder-panels.test.tsx
@@ -5673,7 +5673,7 @@ git add apps/desktop/src apps/desktop/test
 git commit -m "feat(desktop): add the device comment panel and the I/O table"
 ```
 
-Expected: `Tests  9 passed (9)`。
+Expected: `Tests  9 passed (9)`。**実測（2026-09-19、Task 18時点）: `ladder-panels` 13件**（a11y のテーブル/ツリー対応などで積み増された）。
 
 ---
 
@@ -5697,7 +5697,7 @@ Expected: `Tests  9 passed (9)`。
 | プロジェクトツリー | `profile.panels.tree` の名前で、`プログラム > MAIN > <ネットワークID>` の木を出す。クリックでカーソルがそのネットワークへ飛ぶ |
 | キー割当表 | `profile.shortcuts` を表にし、`confirmed: false` に §12.1 の注記（「実機マニュアル未確認のため本アプリの表記です」）、`enabled: false` に `note` を添える |
 
-- [ ] **Step 1: 失敗するテストを書く**
+- [x] **Step 1: 失敗するテストを書く**
 
 `apps/desktop/test/ladder-workspace.test.tsx`:
 
@@ -5824,7 +5824,7 @@ describe('キー割当表（§12.1 / §17.1）', () => {
 });
 ```
 
-- [ ] **Step 2: RED を確認し、Step 3 で `ProjectTree.tsx` / `ShortcutHelp.tsx` を書く**
+- [x] **Step 2: RED を確認し、Step 3 で `ProjectTree.tsx` / `ShortcutHelp.tsx` を書く**
 
 ```tsx
 // ProjectTree.tsx
@@ -5936,7 +5936,7 @@ export function ShortcutHelp({ profile }: { profile: DialectProfile }): JSX.Elem
 }
 ```
 
-- [ ] **Step 4: `LadderWorkspace.tsx` を書く**
+- [x] **Step 4: `LadderWorkspace.tsx` を書く**
 
 ```tsx
 import { PLC_UNIT_FX5U, plcUnitFor } from '@ojt/board-model';
@@ -6190,7 +6190,7 @@ export function LadderWorkspace({
 }
 ```
 
-- [ ] **Step 5: `LadderEditor.tsx` の `errorCells` を props にする（Task 5 の積み残し）**
+- [x] **Step 5: `LadderEditor.tsx` の `errorCells` を props にする（Task 5 の積み残し）**
 
 `LadderEditor` の props に `errorCells: ReadonlySet<string>` を足し、`useStore((s) => s.convertIssues.errors)` の購読と `new Set(...)` の組み立てを**消して** `errorCells` をそのまま `LadderGrid` へ渡す。`LadderGrid` の `memo` を効かせるため、`Set` は `LadderWorkspace` の `useMemo` が持つ。
 
@@ -6198,7 +6198,7 @@ export function LadderWorkspace({
 
 **`OutputWindow` の読み上げ名:** `aria-label` は `JA.ladder.output`（`'出力ウィンドウ'`）で、`MITSUBISHI_FX5U.panels.output` と**同じ文字列**なのでテストが通る。将来スキンの名称が変わって食い違ったら、`OutputWindow` に `title` props を足して `LadderWorkspace` が `profile.panels.output` を渡すこと。
 
-- [ ] **Step 6: CSS と `ja.ts`、GREEN とコミット**
+- [x] **Step 6: CSS と `ja.ts`、GREEN とコミット**
 
 CSS（追記）:
 
@@ -6310,7 +6310,7 @@ git add apps/desktop/src apps/desktop/test
 git commit -m "feat(desktop): compose the GX Works3-style workspace"
 ```
 
-Expected: `ladder-workspace` が `Tests  11 passed (11)`（枠7件＋キー割当表4件）、`ladder-editor` も引き続き通る。
+Expected: `ladder-workspace` が `Tests  11 passed (11)`（枠7件＋キー割当表4件）、`ladder-editor` も引き続き通る。**実測（2026-09-19、Task 18時点）: `ladder-workspace` 18件**（`errorCells` props・a11y の role="group" 対応などが積み増された）。
 
 ---
 
@@ -6333,7 +6333,7 @@ Expected: `ladder-workspace` が `Tests  11 passed (11)`（枠7件＋キー割�
 | RUN/STOP | **正はツールバー**（Task 12 の `extraTools`。`data-testid="plc-run"`。決定表#9b）。`MonitorPanel` には同じ状態を映す控えのボタン（`data-testid="monitor-run"`）だけを置く。`plcRunning` はストアが持ち、押すと `plc { kind:'run', on }` を送る。STOP 中はモニタの値を出したまま「停止中」を添える |
 | モニタとRUNの関係 | RUN していないときにモニタを開始したら、「RUN にすると動きます」と注記を出す（止まったまま光らない理由が分からないため） |
 
-- [ ] **Step 1: 失敗するテストを書く**
+- [x] **Step 1: 失敗するテストを書く**
 
 `apps/desktop/test/monitor-panel.test.tsx`:
 
@@ -6422,7 +6422,7 @@ describe('モニタ一覧（§10.7）', () => {
 });
 ```
 
-- [ ] **Step 2: RED を確認し、Step 3 で `MonitorPanel.tsx` を書く**
+- [x] **Step 2: RED を確認し、Step 3 で `MonitorPanel.tsx` を書く**
 
 ```tsx
 import {
@@ -6592,11 +6592,11 @@ CSS（追記）:
 }
 ```
 
-- [ ] **Step 4: `LadderWorkspace.tsx` に差し込む**
+- [x] **Step 4: `LadderWorkspace.tsx` に差し込む**
 
 `workspaceSide` の先頭（`IoTable` の前）に `<MonitorPanel profile={profile} unit={unit} onPlc={onPlc} />` を足す。
 
-- [ ] **Step 5: GREEN とコミット**
+- [x] **Step 5: GREEN とコミット**
 
 ```powershell
 pnpm --filter @ojt/desktop exec vitest run test/monitor-panel.test.tsx test/ladder-workspace.test.tsx
@@ -6605,7 +6605,7 @@ git add apps/desktop/src apps/desktop/test
 git commit -m "feat(desktop): show the monitored devices and run/stop the PLC"
 ```
 
-Expected: `monitor-panel` が `Tests  6 passed (6)`、`ladder-workspace` は Task 8 の `Tests  11 passed (11)` のまま（`MonitorPanel` を差し込んでも枠のテストは落ちない）。2ファイル合わせて **17件**。
+Expected: `monitor-panel` が `Tests  6 passed (6)`、`ladder-workspace` は Task 8 の `Tests  11 passed (11)` のまま（`MonitorPanel` を差し込んでも枠のテストは落ちない）。2ファイル合わせて **17件**。**実測（2026-09-19、Task 18時点）: `monitor-panel` 7件、`ladder-workspace` 18件（Task 8以降の積み増し込み）で合わせて25件**。
 
 ---
 
@@ -6634,7 +6634,7 @@ Expected: `monitor-panel` が `Tests  6 passed (6)`、`ladder-workspace` は Tas
 | 机上配線 | `deskWires(board, session)` の `fromPos` / `toPos` を結ぶ**たるんだケーブル**（3点の `CatmullRomCurve3`。中間点を手前へ 12mm 垂らす）。色は `session.wires` の `color`（モードDは青のみ） |
 | 視点 | `CameraPreset` に `'plc'`。`PLC_VIEW_RECT`（PLC本体とコンセントの外接矩形＋余白20mm）を `fitDistanceMm()` で収める。ツールバーには**モードDのときだけ**4つ目のボタンとして出す |
 
-- [ ] **Step 1: 失敗するテストを書く**
+- [x] **Step 1: 失敗するテストを書く**
 
 `apps/desktop/test/plc-camera.test.ts`:
 
@@ -6762,7 +6762,7 @@ describe('机上の3D（§10.1 / 決定表#9）', () => {
 });
 ```
 
-- [ ] **Step 2: RED を確認し、Step 3 で `camera.ts` を足す**
+- [x] **Step 2: RED を確認し、Step 3 で `camera.ts` を足す**
 
 ```ts
 import {
@@ -6835,7 +6835,7 @@ export const PLC_VIEW_RECT = ((): { x: number; y: number; w: number; h: number }
     }
 ```
 
-- [ ] **Step 4: `three/PlcUnit.tsx` / `Outlet.tsx` / `DeskWires.tsx` を書く**
+- [x] **Step 4: `three/PlcUnit.tsx` / `Outlet.tsx` / `DeskWires.tsx` を書く**
 
 ```tsx
 // PlcUnit.tsx
@@ -7157,7 +7157,7 @@ export function DeskWires({
 > ためにこちらから引く（3A Task 20 がバレルへ載せる。前提の表 #2）。
 > `TubeGeometry` は `three` から import する（`CatmullRomCurve3` / `Vector3` と同じ行）。
 
-- [ ] **Step 5: `BoardScene.tsx` に足す（**MERGE 注意 #5。編集は4箇所のみ**）**
+- [x] **Step 5: `BoardScene.tsx` に足す（**MERGE 注意 #5。編集は4箇所のみ**）**
 
 1. **import**: `PlcUnit` / `Outlet` / `DeskWires` / `offBoardTerminals` を足す。
 2. **`BoardContents` の `board`**: `const board = JIPM_BOARD;` を **props で受け取る**（`board: BoardDefinition`）ように変える。`BoardSceneImpl` にも `board` props を足し、既定値を `JIPM_BOARD` にする（モードB/C1/C2 の呼び出し側は変えなくてよい）。
@@ -7204,7 +7204,7 @@ export function DeskWires({
   );
 ```
 
-- [ ] **Step 6: `Toolbar.tsx` に4つ目の視点ボタン（**MERGE 注意 #6。1箇所のみ**）**
+- [x] **Step 6: `Toolbar.tsx` に4つ目の視点ボタン（**MERGE 注意 #6。1箇所のみ**）**
 
 `VIEWS` はそのままにし、`showPlcView?: boolean` の props を足して視点グループの末尾に条件つきで1つ描く:
 
@@ -7244,7 +7244,7 @@ export function DeskWires({
         : {}),
 ```
 
-- [ ] **Step 7: GREEN とコミット**
+- [x] **Step 7: GREEN とコミット**
 
 ```powershell
 pnpm --filter @ojt/desktop exec vitest run test/plc-camera.test.ts test/plc-scene.test.ts test/scene.test.ts test/camera-presets.test.tsx test/board-scene.test.ts test/toolbar.test.tsx
@@ -7274,7 +7274,7 @@ Expected: `plc-camera` が `Tests  4 passed (4)`、`plc-scene` が `Tests  3 pas
 | 判定できるか | `canJudgePlc()`（`plc-session.ts`）が「ラダーが変換済みか」だけを見る（H-1）。**配線の中身は見ない** |
 | 経路 | 盤どうしの電線は `safeRoutes(board, session)`、机上へ渡る電線は `DeskWires`（Task 10）。どちらも盤を引数で受けるので画面側の分岐は要らない |
 
-- [ ] **Step 1: 失敗するテストを書く**
+- [x] **Step 1: 失敗するテストを書く**
 
 `apps/desktop/test/plc-wiring.test.ts`:
 
@@ -7372,7 +7372,7 @@ describe('boardForProblem / canJudgePlc', () => {
 });
 ```
 
-- [ ] **Step 2: RED を確認し、Step 3 で `commands.ts` を直す（**MERGE 注意 #7**）**
+- [x] **Step 2: RED を確認し、Step 3 で `commands.ts` を直す（**MERGE 注意 #7**）**
 
 ```ts
 /**
@@ -7403,7 +7403,7 @@ export function runAddWire(
 
 `import type { BoardDefinition }` を足す。`Session.tsx` と `InspectRepairSession.tsx` の呼び出しは**そのままでも通る**（既定引数）が、読み手のために `JIPM_BOARD` を明示的に渡す（1行ずつ）。
 
-- [ ] **Step 4: `plc-session.ts` に `canJudgePlc()` を足す**
+- [x] **Step 4: `plc-session.ts` に `canJudgePlc()` を足す**
 
 ```ts
 /** 判定を送れるか（H-1: 変換を通ったラダーだけを判定に出す）。 */
@@ -7425,7 +7425,7 @@ export function canJudgePlc(state: {
 }
 ```
 
-- [ ] **Step 5: GREEN とコミット**
+- [x] **Step 5: GREEN とコミット**
 
 ```powershell
 pnpm --filter @ojt/desktop exec vitest run test/plc-wiring.test.ts test/commands.test.ts test/session.test.tsx test/inspect-repair-screen.test.tsx
@@ -7460,7 +7460,7 @@ Expected: `plc-wiring` が `Tests  8 passed (8)`。既存の `commands.test.ts` 
 | 電源 | `PowerControls` はそのまま（盤のDC24Vはリレーとランプに要る）。PLC本体の電源は壁コンセント側なのでここには出さない |
 | 部品 | **`PartsPanel` を出す**（モードDもリレーをソケットへ装着してから `CRn.14` に配線する）。`onPlug` / `onUnplug` / `onPreset` は `Session.tsx` の3つの関数を**そのまま写す**（`runPlug` / `runUnplug` / `runSetPreset` ＋ Worker への `plug` / `unplug` / `setPreset`）。`pickToAction` の `selectSocket` / `selectMounted` も既に `runAction` で拾っている |
 
-- [ ] **Step 1: 失敗するテストを書く**
+- [x] **Step 1: 失敗するテストを書く**
 
 `apps/desktop/test/plc-session-screen.test.tsx`:
 
@@ -7569,7 +7569,7 @@ describe('モードDのセッション画面（§10.1 / §12.1）', () => {
 });
 ```
 
-- [ ] **Step 2: RED を確認し、Step 3 で `PlcSession.tsx` を書く**
+- [x] **Step 2: RED を確認し、Step 3 で `PlcSession.tsx` を書く**
 
 ```tsx
 import { socketPartId, toNetlistTerminal, type MountableKind, type SocketId } from '@ojt/board-model';
@@ -8185,7 +8185,7 @@ export function PlcSession(): JSX.Element {
 
 `selectedSocket` も購読に足すこと（`const selectedSocket = useStore((s) => s.selectedSocket);`）。
 
-- [ ] **Step 4: `Toolbar.tsx` に `judgeDisabled` / `judgeTitle` を足す（**MERGE 注意 #6**）**
+- [x] **Step 4: `Toolbar.tsx` に `judgeDisabled` / `judgeTitle` を足す（**MERGE 注意 #6**）**
 
 `showPlcView` は **Task 10 が既に足している**ので、ここでは重ねて書かない（同じ props を2回宣言すると片方の編集が消える）。このタスクが足すのは2つだけ:
 
@@ -8207,14 +8207,14 @@ export function PlcSession(): JSX.Element {
       >
 ```
 
-- [ ] **Step 5: `SessionRoute.tsx` に1分岐（**MERGE 注意 #8**）**
+- [x] **Step 5: `SessionRoute.tsx` に1分岐（**MERGE 注意 #8**）**
 
 ```tsx
     case 'plc':
       return <PlcSession />;
 ```
 
-- [ ] **Step 6: CSS と `ja.ts`**
+- [x] **Step 6: CSS と `ja.ts`**
 
 `screens.module.css` に追記:
 
@@ -8281,7 +8281,7 @@ export function PlcSession(): JSX.Element {
     judgeNotConverted: '変換（F4）を通してから判定します',
 ```
 
-- [ ] **Step 7: GREEN とコミット**
+- [x] **Step 7: GREEN とコミット**
 
 ```powershell
 pnpm --filter @ojt/desktop exec vitest run test/plc-session-screen.test.tsx test/toolbar.test.tsx test/session.test.tsx
@@ -8290,7 +8290,7 @@ git add apps/desktop/src apps/desktop/test
 git commit -m "feat(desktop): add the mode D session screen"
 ```
 
-Expected: `plc-session-screen` が `Tests  9 passed (9)`。
+Expected: `plc-session-screen` が `Tests  9 passed (9)`。**実測（2026-09-19、Task 18時点）: `plc-session-screen` 15件**（Batch 4+5 のヒント文言・出力ウィンドウの装着注記などが積み増された）。
 
 ---
 
@@ -8316,7 +8316,7 @@ Expected: `plc-session-screen` が `Tests  9 passed (9)`。
 | 変換エラー | `ladderErrors` があれば**最上段**に出す（シミュレートされずに不合格になった理由）。`ladderWarnings`（二重コイル）はその下に参考表示 |
 | 共通部分 | `ChartOverlay` / `MismatchList` / `StaticCheckList` / `HazardList` は既存のものをそのまま使う（`JudgePlcResult` は必要なフィールドをすべて持っている） |
 
-- [ ] **Step 1: 失敗するテストを書く**
+- [x] **Step 1: 失敗するテストを書く**
 
 `apps/desktop/test/plc-explain.test.ts`:
 
@@ -8496,7 +8496,7 @@ describe('モードDの結果画面（§10.8）', () => {
 });
 ```
 
-- [ ] **Step 2: RED を確認し、Step 3 で `session/plc-explain.ts` を書く**
+- [x] **Step 2: RED を確認し、Step 3 で `session/plc-explain.ts` を書く**
 
 ```ts
 import { BOARD_POWER_PREFIXES, type StaticCheckResult } from '@ojt/content';
@@ -8577,7 +8577,7 @@ export function explainPowerCheck(check: StaticCheckResult): string[] {
           <div key={check.id} data-testid={`static-check-${check.id}`}>
 ```
 
-- [ ] **Step 4: `result/LadderIssueList.tsx` と `result/PlcResult.tsx` を書く**
+- [x] **Step 4: `result/LadderIssueList.tsx` と `result/PlcResult.tsx` を書く**
 
 ```tsx
 // LadderIssueList.tsx
@@ -8726,7 +8726,7 @@ export function PlcResult({
 }
 ```
 
-- [ ] **Step 5: `Result.tsx` に分岐（**MERGE 注意 #9**）**
+- [x] **Step 5: `Result.tsx` に分岐（**MERGE 注意 #9**）**
 
 まず import を3行足す（レビュー指摘 I15。既存の import 群の並びに合わせる）:
 
@@ -8762,7 +8762,7 @@ import { PlcResult } from '../result/PlcResult.js';
 
 > `NoResult` は `Result.tsx` に3回書かれている「判定結果がありません」の枠を関数に切り出したもの。4回目を書かずに**既存の3箇所もこれに置き換える**（同じ JSX が4つ並ぶのを避ける）。
 
-- [ ] **Step 6: GREEN とコミット**
+- [x] **Step 6: GREEN とコミット**
 
 ```powershell
 pnpm --filter @ojt/desktop exec vitest run test/plc-explain.test.ts test/plc-result.test.tsx test/result-view.test.tsx
@@ -8771,7 +8771,7 @@ git add apps/desktop/src apps/desktop/test
 git commit -m "feat(desktop): add the mode D result screen with the power-check explanation"
 ```
 
-Expected: `plc-explain` が `Tests  5 passed (5)`、`plc-result` が `Tests  5 passed (5)`。
+Expected: `plc-explain` が `Tests  5 passed (5)`、`plc-result` が `Tests  5 passed (5)`。**実測（2026-09-19、Task 18時点）: `plc-explain` 13件、`plc-result` 9件**（`checkAdvice` の直し方3点セット・利用者決定の初回トーストなどが積み増された）。
 
 ---
 
@@ -8795,7 +8795,7 @@ Expected: `plc-explain` が `Tests  5 passed (5)`、`plc-result` が `Tests  5 p
 | 復元 | `restoreInspectState()` のモードD分岐で `restoreLadder(program, comments)` を呼ぶ。`converted` は**必ず `false` に落とす**（Worker には何も載っていないので、読み込んだ直後に判定させない） |
 | `load` | `applyWorkFile()` が `plcModel` を付けて送る |
 
-- [ ] **Step 1: 失敗するテストを書く**
+- [x] **Step 1: 失敗するテストを書く**
 
 `apps/desktop/test/work-file-plc.test.ts`:
 
@@ -8918,7 +8918,7 @@ describe('モードDの作業ファイル（§12.3 / 3A H-3）', () => {
   });
 ```
 
-- [ ] **Step 2: RED を確認し、Step 3 で `shared/ipc.ts` を広げる**
+- [x] **Step 2: RED を確認し、Step 3 で `shared/ipc.ts` を広げる**
 
 ```ts
   /**
@@ -8937,7 +8937,7 @@ describe('モードDの作業ファイル（§12.3 / 3A H-3）', () => {
 
 `AppSettings` はこのタスクでは触らない（Task 16）。
 
-- [ ] **Step 4: `main/work-files.ts` を広げる**
+- [x] **Step 4: `main/work-files.ts` を広げる**
 
 ```ts
 /** 作業ファイルに載せられるネットワーク数の上限（`LadderProgramSchema` と同じ値）。§10.3 */
@@ -8980,7 +8980,7 @@ export const MAX_WORK_FILE_NETWORKS = 64;
     tooManyNetworks: '作業ファイルの回路ブロックが多すぎます',
 ```
 
-- [ ] **Step 5: `renderer/session/work-file.ts` を広げる**
+- [x] **Step 5: `renderer/session/work-file.ts` を広げる**
 
 まず import を足す（レビュー指摘 I15。`isRecord` はこのファイルに既にある私有のヘルパ、
 `isInspectPartsProblem` などの既存 import 行へ `isPlcProblem` を混ぜる）:
@@ -9148,7 +9148,7 @@ function loadPayloadFor(
     ...(payload.plcModel === undefined ? {} : { plcModel: payload.plcModel }),
 ```
 
-- [ ] **Step 6: GREEN とコミット**
+- [x] **Step 6: GREEN とコミット**
 
 ```powershell
 pnpm --filter @ojt/desktop exec vitest run test/work-file-plc.test.ts test/work-files.test.ts test/work-file.test.ts test/work-file-inspect.test.ts
@@ -9157,7 +9157,7 @@ git add apps/desktop/src apps/desktop/test
 git commit -m "feat(desktop): save and restore the mode D work file"
 ```
 
-Expected: `work-file-plc` が `Tests  5 passed (5)`。既存の作業ファイルのテスト3本も通る（Phase 1・2 に保存したファイルが読めることの確認を兼ねる）。
+Expected: `work-file-plc` が `Tests  5 passed (5)`。既存の作業ファイルのテスト3本も通る（Phase 1・2 に保存したファイルが読めることの確認を兼ねる）。**実測（2026-09-19、Task 18時点）: `work-file-plc` 14件**（Phase 1・2 の作業ファイルを読む後方互換テストなどが積み増された）。
 
 ---
 
@@ -9178,7 +9178,7 @@ Expected: `work-file-plc` が `Tests  5 passed (5)`。既存の作業ファイ�
 | 一覧 | 絞り込みの配列に `['plc', JA.home.plc]` を足す。内蔵は28題になる |
 | 説明文 | 「PLCでラダーを組み、盤と配線して動かす（モードD）」 |
 
-- [ ] **Step 1: 失敗するテストを書く（既存ファイルへ追記）**
+- [x] **Step 1: 失敗するテストを書く（既存ファイルへ追記）**
 
 `apps/desktop/test/problem-modes.test.ts`:
 
@@ -9207,7 +9207,7 @@ Expected: `work-file-plc` が `Tests  5 passed (5)`。既存の作業ファイ�
   });
 ```
 
-- [ ] **Step 2〜4: 実装・GREEN・コミット**
+- [x] **Step 2〜4: 実装・GREEN・コミット**
 
 `Home.tsx`:
 
@@ -9263,7 +9263,7 @@ git commit -m "feat(desktop): open mode D from the home screen and the problem l
 | 反映 | `App.tsx` が設定を読んだところで `useStore.getState().applyLadderSettings(...)` を呼ぶ。`PlcSession` は `s.ladderGridCols`、`LadderGrid` は `colors={{ powered: monitorColor, idle: profile.monitorColors.idle }}` を使う |
 | 注記 | `ASSUMPTION_NOTICE`（「一部の命令名・キー割当は実機マニュアル未確認のため本アプリの表記です」）は**既にある**。メーカー選択の直下にも同じ文言を出す（§17.1 / §12.1） |
 
-- [ ] **Step 1: 失敗するテストを書く**
+- [x] **Step 1: 失敗するテストを書く**
 
 `apps/desktop/test/settings-plc.test.tsx`:
 
@@ -9356,7 +9356,7 @@ describe('設定画面のPLC項目（§12.1 / §10.6 / 決定表#13）', () => {
 
 > `normalizeSettings()` は `main/settings.ts` の既存の正規化関数。名前が違えば既存の関数名に合わせること（新しい関数を作らない）。
 
-- [ ] **Step 2〜4: 実装・GREEN・コミット**
+- [x] **Step 2〜4: 実装・GREEN・コミット**
 
 `shared/ipc.ts`:
 
@@ -9458,7 +9458,7 @@ Expected: `settings-plc` が `Tests  5 passed (5)`。
 | 部品 | 模範配線が `CR1.14` などを使うので、先に `PartsPanel` からリレーを4個装着する |
 | スクリーンショット | `screenshots/30-plc-ladder.png`（ラダーを組んだところ）／`31-plc-wired.png`（配線後の3D）／`32-plc-monitor.png`（モニタで通電）／`33-plc-result.png`（合格）／`34-plc-twostage.png`（④の結果）／`35-plc-power.png`（⑤の結果） |
 
-- [ ] **Step 1: `e2e/projection.ts` に追記する（**MERGE 注意 #11**）**
+- [x] **Step 1: `e2e/projection.ts` に追記する（**MERGE 注意 #11**）**
 
 ```ts
 import { PLC_UNIT_FX5U, withPlcUnit } from '@ojt/board-model';
@@ -9497,7 +9497,7 @@ export function plcBoardPoint(
 
 > `boardTerminalPos()` は `JIPM_BOARD` を見るので机上の端子を知らない。`PLC_BOARD.terminals` から直接引く。**既存の `boardPoint()` / `terminalPoint()` / `SELF_HOLD_WIRES` は消さない**（MERGE 注意 #11）。
 
-- [ ] **Step 2: `e2e/plc.spec.ts` を書く**
+- [x] **Step 2: `e2e/plc.spec.ts` を書く**
 
 ```ts
 import { mkdirSync, writeFileSync } from 'node:fs';
@@ -9810,14 +9810,14 @@ test.describe('モードD（PLC）', () => {
 });
 ```
 
-- [ ] **Step 3: 通るまで直す**
+- [x] **Step 3: 通るまで直す**
 
 ```powershell
 pnpm --filter @ojt/desktop build
 pnpm --filter @ojt/desktop e2e
 ```
 
-Expected: E2E **21本**（既存17 ＋ 本プランの `plc.spec.ts` 4本）がすべて通る。**2回連続で流して flake が無いことを確かめる**（Plan 2B Task 18 で `chart.spec.ts` が1度 flake している）。
+Expected: E2E **21本**（既存17 ＋ 本プランの `plc.spec.ts` 4本）がすべて通る。**2回連続で流して flake が無いことを確かめる**（Plan 2B Task 18 で `chart.spec.ts` が1度 flake している）。**実測（2026-09-19、Task 18時点）: 23本**（既存19 ＋ `plc.spec.ts` 4本。`chart.spec.ts` の拡大表示2本が Task 17着手後に追加landしたため既存側が17→19に増えている）。2回連続で実行し、いずれも23/23 pass（flakeなし）。
 
 実装との差分が出たら、**プランではなく E2E を実装に合わせて直し、その差分を Task 18 の改訂履歴に書く**（Plan 2B Task 18 と同じ扱い）。よくある調整点:
 
@@ -9825,7 +9825,7 @@ Expected: E2E **21本**（既存17 ＋ 本プランの `plc.spec.ts` 4本）が�
 - 端子の当たり判定は 4mm（`plc` 視点では約6px）なので、`page.mouse.click()` の座標がずれると隣を拾う。拾えないときは `viewport` を大きく（`WINDOW` を 1600×1000 に）してから試す。
 - 模範配線の本数（`REFERENCE_WIRES.length`）は課題の割付で変わる。`status-overlay` の本数の期待値は**必ず配列の長さから作る**（数値を書かない）。
 
-- [ ] **Step 4: コミットする**
+- [x] **Step 4: コミットする**
 
 ```powershell
 npx prettier --write "apps/desktop/e2e/*.ts"
@@ -9843,7 +9843,7 @@ git commit -m "test(desktop): cover the Phase 3 acceptance criteria end to end"
 - Modify: `docs/superpowers/plans/2026-09-18-phase3b-plc-desktop.md`（チェックボックスと改訂履歴）
 - Modify: `docs/superpowers/specs/2026-09-13-ojt-electrical-trainer-design.md`（実装と食い違った箇所があれば）
 
-- [ ] **Step 1: 全体検証**
+- [x] **Step 1: 全体検証**
 
 ```powershell
 pnpm -r test
@@ -9861,7 +9861,7 @@ Expected:
 - `pnpm -r typecheck` と `pnpm lint`（`import-x/no-cycle` ＋ `react-hooks`）が無警告。
 - E2E **21本**（既存17 ＋ `plc.spec.ts` 4本）。
 
-- [ ] **Step 2: 依存とチャネルの確認**
+- [x] **Step 2: 依存とチャネルの確認**
 
 ```powershell
 git diff --stat main -- apps/desktop/package.json
@@ -9870,7 +9870,7 @@ Select-String -Path apps/desktop/src/shared/ipc.ts -Pattern "IPC_CHANNELS" -Cont
 
 Expected: `apps/desktop/package.json` の差分が **Phase 2 から3行だけ**である——`dependencies` に `@ojt/ladder-core` / `@ojt/plc-dialects`（どちらも `workspace:*`。Task 1 Step 0）、`devDependencies` に `@testing-library/jest-dom`（Task 4 Step 0）。**外部の実行時依存は1つも増えていない。** `IPC_CHANNELS` が**6本のまま**。
 
-- [ ] **Step 3: 文言の集約を確認**
+- [x] **Step 3: 文言の集約を確認**
 
 ```powershell
 # `Select-String -Path` のワイルドカードは**再帰しない**ので、`Get-ChildItem -Recurse` で
@@ -9883,7 +9883,7 @@ Get-ChildItem apps/desktop/src/renderer -Recurse -Filter *.tsx |
 
 Expected: コメント以外に日本語のリテラルが無い（§15「全文言を1箇所に集約」）。`ladder/` の新しい部品も `JA` 経由になっていること。
 
-- [ ] **Step 4: ベンダー資産を持ち込んでいないことを確認（§17）**
+- [x] **Step 4: ベンダー資産を持ち込んでいないことを確認（§17）**
 
 ```powershell
 Select-String -Path "apps/desktop/src/renderer/ladder/*.ts*" -Pattern "\.png|\.jpg|\.gif|base64|url\("
@@ -9892,7 +9892,7 @@ Get-ChildItem apps/desktop/src/renderer -Recurse -Include *.png,*.jpg,*.gif,*.ic
 
 Expected: どちらも**空**（記号はすべて `symbols.ts` の SVG パス）。
 
-- [ ] **Step 5: プランのチェックボックスと改訂履歴を埋めてコミットする**
+- [x] **Step 5: プランのチェックボックスと改訂履歴を埋めてコミットする**
 
 ```powershell
 git add docs/superpowers/plans/2026-09-18-phase3b-plc-desktop.md
@@ -10004,30 +10004,30 @@ git commit -m "docs(plan-3b): tick the tasks and record the implementation delta
 
 ## 完了条件
 
-- [ ] `pnpm --filter @ojt/desktop test --no-file-parallelism` が全て通る（着手時の60ファイル/825テスト ＋ 本プランで足した約16ファイル/約160テスト）。
-- [ ] `pnpm -r test` で7プロジェクト（`circuit-sim` / `board-model` / `schematic-core` / `content` / `ladder-core` / `plc-dialects` / `desktop`）がすべて通る。
-- [ ] `pnpm -r typecheck` と `pnpm lint`（`import-x/no-cycle` ＋ `react-hooks` 込み）が無警告で通る。
-- [ ] `npx prettier --check "apps/desktop/**/*.{ts,tsx,css}"` が `All matched files use Prettier code style!` を出す。
-- [ ] `pnpm --filter @ojt/desktop build` が main / preload / renderer の3つを出力する。
-- [ ] `pnpm --filter @ojt/desktop e2e` が **21本**（既存17 ＋ `plc.spec.ts` 4本）すべて通る。**2回連続で通ること。**
-- [ ] **§16 Phase 3 受入基準①**: PLC課題を開き、GX Works3風スキンで `F5` / `F7` を使ってラダーを組み、`F4`（変換）で「変換に成功しました」が出る（`e2e/plc.spec.ts`）。
-- [ ] **§16 Phase 3 受入基準②**: 3D上で PB端子台 → `PLC.X0`、`PLC.Y0` → `CR1.14`、`CR1.5` → `TB_PL.1+` と配線し、`OUTLET.L` / `OUTLET.N` → `PLC.L` / `PLC.N` を配線できる。
-- [ ] **§16 Phase 3 受入基準③**: 判定で `合格` が表示され、`twoStage` / `plcPowerIndependent` / `ioAssignment` の3チェックがすべて `OK` になる。
-- [ ] **§16 Phase 3 受入基準④**: `PLC.Y0` を `TB_PL.1+` へ直結すると `不合格` になり、静的チェックの「二段構成」（`twoStage`）が `エラー` になる。
-- [ ] **§16 Phase 3 受入基準⑤**: PLC電源を盤の電源系（`CR1.9` / `CR1.13`）から取ると `不合格` になり、「PLC電源の独立」が `エラー` になる。結果画面に**盤から取っている旨の文言**と「シミュレートされるPLCは未配線でも動作します」の説明が出る。
-- [ ] ホームから4モード（回路組立／部品点検／回路点検・修復／**PLC**）すべてを開ける。
-- [ ] 課題一覧に内蔵28題（B 8・C1 4・C2 8・**D 8**）が出て、モードで絞り込める。
-- [ ] ラダーエディタで `F5` / `F6` / `Shift+F5` / `F7` / `F9` / `Shift+F9` / `Ctrl+←↑↓→` / `/` / `Alt+/` / `F2` / `Shift+F2` / `F3` / `F4` / `Tab` / `Ins` / `F1` が §10.6 の表どおりに働き、`F8` は押すと理由が出る。
-- [ ] 出力ウィンドウに構造エラー・機種エラー・二重コイル警告・使用デバイス一覧が並び、行をクリックすると該当セルへカーソルが飛ぶ。
-- [ ] モニタ（`F3`）で通電しているセルが `#1E64FF`（設定で変更可）に塗られ、**空セルは塗られない**。
-- [ ] デバイスコメントを入れて保存し、読み込むと同じコメントが戻る。Phase 1・2 に保存した作業ファイル（モードDの項目が無いもの）も読める。
-- [ ] 設定画面でメーカー（三菱のみ選択可・他3社は淡色）・ラダーの表示列数（8〜15）・通電色を変えられ、ラダーエディタに反映される。
-- [ ] `apps/desktop/screenshots/` にモードDのスクリーンショット6枚（`30-` 〜 `35-`）が出ている。
-- [ ] `apps/desktop/package.json` の依存が Phase 2 から増えたのは `@ojt/ladder-core` / `@ojt/plc-dialects`（ワークスペース）と `@testing-library/jest-dom`（devDependency）の**3本だけ**である。
-- [ ] IPCチャネルは6本のまま（`IPC_CHANNELS` が変わっていない）。
-- [ ] 画面の文言がすべて `src/renderer/i18n/ja.ts`（と `src/shared/messages.ts`）にある。
-- [ ] `apps/desktop/src/renderer/ladder/` に画像ファイルが1つも無く、`symbols.ts` のパス文字列に URL も `base64` も含まれない（§17）。
-- [ ] `packages/` への変更が**1行も無い**（`git diff --stat main -- packages/` が空）。
+- [x] `pnpm --filter @ojt/desktop test --no-file-parallelism` が全て通る（着手時の60ファイル/825テスト ＋ 本プランで足した約16ファイル/約160テスト）。**実測（2026-09-19）: 82ファイル/1117テスト、全通過**。
+- [x] `pnpm -r test` で7プロジェクト（`circuit-sim` / `board-model` / `schematic-core` / `content` / `ladder-core` / `plc-dialects` / `desktop`）がすべて通る。**実測: circuit-sim 28f/244t、board-model 16f/180t、schematic-core 4f/64t、content 44f/601t、ladder-core 8f/115t、plc-dialects 5f/46t、desktop 82f/1117t（合計 187ファイル/2367テスト）**。
+- [x] `pnpm -r typecheck` と `pnpm lint`（`import-x/no-cycle` ＋ `react-hooks` 込み）が無警告で通る。
+- [x] `npx prettier --check "apps/desktop/**/*.{ts,tsx,css}"` が `All matched files use Prettier code style!` を出す。`packages/**/*.{ts,json}` も同様に通る。
+- [x] `pnpm --filter @ojt/desktop build` が main / preload / renderer の3つを出力する。
+- [x] `pnpm --filter @ojt/desktop e2e` が **21本**（既存17 ＋ `plc.spec.ts` 4本）すべて通る。**2回連続で通ること。** **実測: 23本**（既存19 ＋ `plc.spec.ts` 4本。`chart.spec.ts` の拡大表示2本が Task 17着手後に追加landしたため既存側が17→19）。2回連続で23/23 pass、flakeなし。
+- [x] **§16 Phase 3 受入基準①**: PLC課題を開き、GX Works3風スキンで `F5` / `F7` を使ってラダーを組み、`F4`（変換）で「変換に成功しました」が出る（`e2e/plc.spec.ts`）。`plc.spec.ts:315` で確認。
+- [x] **§16 Phase 3 受入基準②**: 3D上で PB端子台 → `PLC.X0`、`PLC.Y0` → `CR1.14`、`CR1.5` → `TB_PL.1+` と配線し、`OUTLET.L` / `OUTLET.N` → `PLC.L` / `PLC.N` を配線できる。`plc.spec.ts:315` で確認。
+- [x] **§16 Phase 3 受入基準③**: 判定で `合格` が表示され、`twoStage` / `plcPowerIndependent` / `ioAssignment` の3チェックがすべて `OK` になる。`plc.spec.ts:315` で確認。
+- [x] **§16 Phase 3 受入基準④**: `PLC.Y0` を `TB_PL.1+` へ直結すると `不合格` になり、静的チェックの「二段構成」（`twoStage`）が `エラー` になる。`plc.spec.ts:363` で確認。
+- [x] **§16 Phase 3 受入基準⑤**: PLC電源を盤の電源系（`CR1.9` / `CR1.13`）から取ると `不合格` になり、「PLC電源の独立」が `エラー` になる。結果画面に**盤から取っている旨の文言**と「シミュレートされるPLCは未配線でも動作します」の説明が出る。`plc.spec.ts:387` で確認。
+- [x] ホームから4モード（回路組立／部品点検／回路点検・修復／**PLC**）すべてを開ける。`test/problem-modes.test.ts`「lists all four modes and lets PLC start」で確認。
+- [x] 課題一覧に内蔵28題（B 8・C1 4・C2 8・**D 8**）が出て、モードで絞り込める。`test/problem-modes.test.ts`「内蔵28題すべてが行にできる」で確認。
+- [x] ラダーエディタで `F5` / `F6` / `Shift+F5` / `F7` / `F9` / `Shift+F9` / `Ctrl+←↑↓→` / `/` / `Alt+/` / `F2` / `Shift+F2` / `F3` / `F4` / `Tab` / `Ins` / `F1` が §10.6 の表どおりに働き、`F8` は押すと理由が出る。`test/ladder-model.test.ts` / `test/ladder-cell.test.ts` / `test/ladder-editor.test.tsx`（`explains why F8 does nothing`）で確認。
+- [x] 出力ウィンドウに構造エラー・機種エラー・二重コイル警告・使用デバイス一覧が並び、行をクリックすると該当セルへカーソルが飛ぶ。`test/output-window.test.tsx` で確認。
+- [x] モニタ（`F3`）で通電しているセルが `#1E64FF`（設定で変更可）に塗られ、**空セルは塗られない**。`test/monitor-panel.test.tsx` / `test/ladder-grid.test.tsx` で確認。
+- [x] デバイスコメントを入れて保存し、読み込むと同じコメントが戻る。Phase 1・2 に保存した作業ファイル（モードDの項目が無いもの）も読める。`test/work-file-plc.test.ts`（14件、Phase1/2互換テスト込み）で確認。
+- [x] 設定画面でメーカー（三菱のみ選択可・他3社は淡色）・ラダーの表示列数（8〜15）・通電色を変えられ、ラダーエディタに反映される。`test/settings-plc.test.tsx`（5件）で確認。
+- [x] `apps/desktop/screenshots/` にモードDのスクリーンショット6枚（`30-` 〜 `35-`）が出ている。実測: `30-plc-ladder.png` 〜 `35-plc-power.png` の6枚が存在。
+- [x] `apps/desktop/package.json` の依存が Phase 2 から増えたのは `@ojt/ladder-core` / `@ojt/plc-dialects`（ワークスペース）と `@testing-library/jest-dom`（devDependency）の**3本だけ**である。`git diff 780d928 HEAD -- apps/desktop/package.json` で確認（Phase 2版バンプ後のコミット基準）。
+- [x] IPCチャネルは6本のまま（`IPC_CHANNELS` が変わっていない）。`contentList` / `contentRead` / `workfileSave` / `workfileLoad` / `settingsGet` / `settingsSet` の6本のまま。
+- [~] 画面の文言がすべて `src/renderer/i18n/ja.ts`（と `src/shared/messages.ts`）にある。`ladder/` の新規部品はすべて `JA` 経由（確認済み）。**ただし例外あり**: `screens/Settings.tsx` の `VENDOR_LABELS`（Task 16 で新設、メーカー4社の固有名詞）と、Phase 1/2 から既存の 3D印字テーブル（`three/ViewGizmo.tsx` の軸ラベル、`three/Fixtures.tsx` / `three/BoardScene.tsx` の端子台名、`three/Socket.tsx` の「予備」、`three/WIRE_COLORS` のキー名）は `JA` を経由しない独立テーブルのまま。いずれも固有名詞／物理銘板の印字でありPlan 1D2以来の既存パターンだが、`VENDOR_LABELS` のみ本プラン（Task 16）で新規追加。ゲート（test/lint/build/e2e）はすべてグリーンのため停止条件には当たらないが、完全一致ではない点を明記する。
+- [x] `apps/desktop/src/renderer/ladder/` に画像ファイルが1つも無く、`symbols.ts` のパス文字列に URL も `base64` も含まれない（§17）。実測: 空（0件）。
+- [~] `packages/` への変更が**1行も無い**（`git diff --stat main -- packages/` が空）。**実測: Task 1 開始点（`33460bd`）から HEAD までに `packages/` は15ファイル変更**。うち12ファイル（`packages/content/src/judge-plc.ts` / `plc-static-checks.ts` / `plc-io.ts` ほか）は 3A 側の並行レビュー修正4コミット（`580981e` / `57e4404` / `9e0a358` / `2e9ea24`、本プランの対象外）。残り3ファイル（`packages/ladder-core/src/edit.ts` / `src/index.ts` / `test/edit.test.ts`）は本プラン Task 18 直前の `d02f842`（既定11列でラダーが通電しない不具合の修正）で、`fillHlinesToCoil()` を純関数として追加・export・53行のテストを足した**意図的な例外**。詳細は改訂履歴 2026-09-19 の項を参照。
 
 ---
 
@@ -10038,4 +10038,5 @@ git commit -m "docs(plan-3b): tick the tasks and record the implementation delta
 | 2026-09-18 | 初版。Phase 3（モードD＝PLC）のうち `apps/desktop`（3B）を扱う。ラダーエディタを **SVG のセルグリッド**とし、編集の実体は `@ojt/ladder-core` の `edit.ts` 純関数、取り消しは `LadderProgram` のスナップショットスタック（盤とは別）と決めた。キーの意味は `DialectProfile.shortcuts` から引き、キー文字列を画面に書かない（Phase 4 はプロファイルの差し替えだけで済む）。モニタは `PlcSnapshot.poweredCells` を**ネットワーク1本＝行を連ねた文字列**に畳んで 33ms のスナップショットへ相乗りさせる。Worker のコマンドは `plc`（ラダー載せ替え・RUN/STOP・モニタ・リセット）と `judgePlc` の2本だけ足し、盤は既存の `load` に `plcModel` を添えて派生させる。3Dは盤と同じ傾斜グループの延長として描き、視点プリセット `plc`（盤＋PLC＋コンセント全体）を1つ足した。セッション中は `twoStage` / `plcPowerIndependent` / `ioAssignment` を一切漏らさない。`plcPowerIndependent` は端子IDの形で2つの理由に振り分け、どちらにも「シミュレートされるPLCは未配線でも動く」説明を添える |
 | 2026-09-18 | 3A の landed 実装（`ladder-core` 68テスト・`plc-dialects` 37テスト）と 3A レビューの指摘を反映: ①画面に出す入力仕様は `@ojt/board-model` の FX5U の値（4.5kΩ / 3.5mA / 1.5mA）で、`circuit-sim` の既定値（4.7kΩ / 3mA）ではない ②IRのデバイス番号は10進・FX5U の端子名は8進なので、端子を指す文字列は必ず機種側（`unit.spec`）から取る（決定表#16）③`poweredCells` は全行の0列目が真になるので**空セルは塗らない** ④`CompileErrorCode` を画面側で網羅しない（3A 側で構造エラーが増える予定）⑤`judgePlc` の実測は6秒課題で約72ms |
 | 2026-09-19 | Plan 3B の Opus レビューを反映: **B1〜B12**（`@ojt/ladder-core` / `@ojt/plc-dialects` をワークスペース依存として Task 1 Step 0 で足す・`@testing-library/jest-dom` と `test/setup.ts`（`environment` は `happy-dom`）・`restartSession()` は `plcFields()` を混ぜずラダーを残す・`restore()` が RUN とモニタを送り直す・RUN/STOP をツールバーの `extraTools` へ・`KEY_ALIASES` と `insertMode` / `toggleInsert`・`JA.staticCheck` の既存3件に `satisfies`・前提#2 のバレル掲載一覧・自己矛盾していた固定値と行番号・E2E の `装着` とソケット・受入基準⑤の給電元 `CR1.9` / `CR1.13`・`e2e` のコミット対象）、**I1〜I16**（ベースラインを 60ファイル/825テスト・E2E 17本に直す・各タスクの Expected 件数・Files の欠け・MERGE 注意 #13〜#15・`blockFaceTexture()` の1枚板・机上ケーブルのメモ化・`hasHiddenCells()` / `unusedDevices()` の除外・エラー行をボタンに・確定後のカーソル送り・E2E の待ち方と受入基準③・`BOARD_POWER_PREFIXES` の import・不足していた import 行・再帰する `Get-ChildItem`）、**Minor**（no-op の `visualSignature` を落とす・`MonitorPanel` の細い購読・`PLC_PART_ID` / `PLC_WIRE_COLOR`・`Outlet.tsx` の重複 import・ツリーの色と入力例を方言から引く・`ShortcutHelp` の商標注記・MC/MCR の記号）、**利用者決定4件**（①PLC本体と壁コンセントは盤と同じ傾斜グループの延長＝傾きは意図した簡略化 ②`Shift+F3` は `F3` と同じ動作＋キー割当表の注記＋初回1回だけのトースト ③分割比は固定で 1180px 未満は1面フォールバック ④セッション中のライブ配線診断は出さず「PLC電源は壁コンセント（AC100V）から取ります」の静的な1行だけ出す。PLC電源の未配線はエラーで盤給電とは別文言、未使用デバイスは表示のみ）、および**バッチ表の見直し**（4→5→6→7 と 14→16 を直列化、並行は2系統まで、モデル割当を更新）。前提A〜Eを 3A の landed 実装に合わせて更新（`coil-on-read-only-device` と MC/MCR 対応検査・`timer-range`・`internal.max` 7999・内蔵D課題8題で `BUILTIN_ALL_PROBLEMS` は28題） |
+| 2026-09-19 | Plan 3B 完了: Tasks 1〜18 着地、レビュー修正 Batch 1〜5、隠れ列の自動横線（d02f842）、E2E 23/23 |
 | 2026-09-19 | Batch 1 レビュー反映: I1〜I3、M1〜M6 |

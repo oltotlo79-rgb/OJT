@@ -261,3 +261,73 @@ content 32 files / 409、desktop 28 files / 469、circuit-sim 214、board-model 
 `p02-home-modes.png` / `p03-problem-list-all.png`（モードDの8行が見える） /
 `p04-mode-d-opened.png`（行き止まりの画面） / `p05-b-001.png` / `p06-c1-001.png` /
 `p07-c2-001.png` の7枚。
+
+## Phase 3 完了（2026-09-19）
+
+Plan 3B「PLC (モードD) デスクトップUI」の Task 1〜18 が全て `main` に着地し、Task 18「全体検証と仕上げ」を完了した。バージョンは**上げていない**（`0.2.0` のまま）。タグも `dist` も実施していない。
+
+### 対象 HEAD
+
+`6304577`（Task 18 のプラン／本ハンドオフ追記コミット直前。着地済みの主なコミット: `ebd87d0` E2E受入基準カバレッジ・`d02f842` 既定11列でラダーが通電しない不具合の修正・`fbe802b` Plan 3B の E2E 追加。この後に `docs(plan-4a)` / `docs(plan-4b)` のドキュメント専用コミットが積まれているが本作業は未変更）。
+
+### per-package テスト件数（`pnpm -r test`、2026-09-19 実測）
+
+| パッケージ | ファイル数 | テスト数 |
+|---|---|---|
+| `@ojt/circuit-sim` | 28 | 244 |
+| `@ojt/board-model` | 16 | 180 |
+| `@ojt/schematic-core` | 4 | 64 |
+| `@ojt/content` | 44 | 601 |
+| `@ojt/ladder-core` | 8 | 115 |
+| `@ojt/plc-dialects` | 5 | 46 |
+| `@ojt/desktop` | 82 | 1117 |
+| **合計** | **187** | **2367** |
+
+`@ojt/desktop` は `--no-file-parallelism` でも同じ 82ファイル/1117テストが全通過。`pnpm -r typecheck` と `pnpm lint`（`import-x/no-cycle` ＋ `react-hooks`）は無警告。Prettier チェック（`apps/desktop/**/*.{ts,tsx,css}` と `packages/**/*.{ts,json}`）も両方 `All matched files use Prettier code style!`。
+
+### カバレッジ（`pnpm -r test:coverage`、v8、2026-09-19 実測。しきい値は各 `vitest.config.ts` で lines/statements/functions/branches とも90%）
+
+| パッケージ | Statements | Branches | Functions | Lines |
+|---|---|---|---|---|
+| `@ojt/circuit-sim` | 99.07% | 93.25% | 100% | 99.9% |
+| `@ojt/ladder-core` | 99.56% | 94.77% | 100% | 100% |
+| `@ojt/plc-dialects` | 99.15% | 95.19% | 100% | 100% |
+| `@ojt/board-model` | 97.19% | 91.36% | 100% | 98.69% |
+| `@ojt/schematic-core` | 100% | 98.37% | 100% | 100% |
+| `@ojt/content` | 97.67% | 93.64% | 99.23% | 98.87% |
+
+6パッケージすべてが90%しきい値を超過（vitestのcoverageゲートはエラーなしで完走）。**`@ojt/desktop` は `vitest.config.ts` に `coverage` 設定が無く、`test:coverage` スクリプトも定義されていない**ため計測対象外（Phase 1〜2から変わっていない既存の状態。Task 18の完了条件・Plan 3B本文にもdesktopのカバレッジしきい値の記載は無い）。
+
+### ビルドとE2E
+
+- `pnpm --filter @ojt/desktop build`: `out/main` / `out/preload` / `out/renderer` の3つを出力（成功）。
+- `pnpm --filter @ojt/desktop e2e`: **1回目 23/23 pass（2.0分）／2回目 23/23 pass（2.2分）**。flakeなし。内訳: `chart.spec.ts` 2・`inspect.spec.ts` 8・`navigation.spec.ts` 5・`plc.spec.ts` 4・`polish.spec.ts` 3・`smoke.spec.ts` 1 = 23本（プラン本文の見積り「既存17＋4」は「既存19＋4＝23」に実測で訂正。`chart.spec.ts` の拡大表示2本が Task 17着手後に追加landしたぶん）。
+
+### PLCスクリーンショット（`apps/desktop/screenshots/`。E2E実行のたびに再生成される生成物。`.gitignore`済みでリポジトリには入れない）
+
+| ファイル | 内容 |
+|---|---|
+| `30-plc-ladder.png` | ラダーを組んだところ（`F5`/`F7`でX0・Y0を配置） |
+| `31-plc-wired.png` | 配線後の3D（PB端子台→X0、Y0→CR1.14など） |
+| `32-plc-monitor.png` | モニタ（`F3`）で通電しているセルの表示 |
+| `33-plc-result.png` | 合格の結果画面 |
+| `34-plc-twostage.png` | ④ `twoStage` エラーの結果画面 |
+| `35-plc-power.png` | ⑤ `plcPowerIndependent` エラーの結果画面 |
+
+### 既知の逸脱（プラン記載どおりに`packages/`が無変更ではない）
+
+Task 1開始点（`33460bd`）からHEADまでに `packages/` へ15ファイルの変更がある。うち12ファイルは Plan 3A側の並行レビュー修正4コミット（`580981e` / `57e4404` / `9e0a358` / `2e9ea24`。本プランの対象外）。残り3ファイル（`packages/ladder-core/src/edit.ts` / `src/index.ts` / `test/edit.test.ts`）は本プランのバグ修正コミット `d02f842`（既定表示列数11でラダーが決して通電しない不具合。`fillHlinesToCoil()` を純関数として追加し、コイルを置いた時点で左の論理と自動的につなぐ）。詳細はプラン本文の完了条件・改訂履歴を参照。
+
+### 画面文言の集約（§15）に関する既知の例外
+
+`apps/desktop/src/renderer/ladder/` の新規部品はすべて `JA`（`i18n/ja.ts`）経由であることを確認した。一方で次は `JA` を経由しない独立テーブルのまま: `screens/Settings.tsx` の `VENDOR_LABELS`（Task 16で新設、メーカー4社の固有名詞）、および Phase 1/2から既存の3D印字テーブル（`three/ViewGizmo.tsx` の軸ラベル、`three/Fixtures.tsx`/`three/BoardScene.tsx` の端子台名、`three/Socket.tsx` の「予備」、`WIRE_COLORS` のキー名）。いずれもテスト・lint・buildには影響しない（ゲートは全グリーン）。
+
+### 既知のフォローアップ
+
+- Plan 3B/4Aの改訂履歴に記載済みの差分・意図的な仕様逸脱（本プラン「仕様からの意図的な差分」表の10件。§10.1のPLC設置角度、§10.6のオンライン書込み・`Shift+F3`・`Ins`挿入モード、§10.7の表記切替・命令語エクスポート未実装、§10.3の表示列数、§12.2のプリセット8種、§8.2の元に戻すスタック分割、§10.8の未使用デバイス表示のみ、§12.3のテスター状態省略）。
+- **UXパス（利用者の必須要望、未着手）**: リレー・タイマの通電を示す可視インジケータ、取り外し/差し替えの発見しやすさ、split-pane幅1280px、課題一覧の「入出力点数」列、M9サイドバーのネストしたスクロール領域の解消。
+- 画面文言の集約の既知の例外（上記）を`JA`へ寄せるかどうかの判断（固有名詞・物理銘板の印字は対象外という前例を踏襲するか、`VENDOR_LABELS`だけでも寄せるか）。
+
+### 次のステップ
+
+Plan 4A（`docs/superpowers/plans/2026-09-19-phase4a-dialects-and-plc-models.md`）と Plan 4B（`docs/superpowers/plans/2026-09-19-phase4b-vendor-skins-and-3d.md`）がドキュメント専用セッションで起票済み（他社方言・PLCユニット/ラック機種・ベンダースキン・3D外観）。次のセッションはこの2本のプランのレビュー確定後、実装タスクの着手から始める。
