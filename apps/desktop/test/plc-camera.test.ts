@@ -12,8 +12,8 @@ import {
   fitDistanceMm,
   MAX_CAMERA_DISTANCE_MM,
   MIN_CAMERA_DISTANCE_MM,
+  PLC_VIEW_ASPECT,
   PLC_VIEW_RECT,
-  SOCKET_VIEW_ASPECT,
   SOCKET_VIEW_RECT,
 } from '../src/renderer/three/camera.js';
 import { projectToScreen } from '../e2e/projection.js';
@@ -25,7 +25,12 @@ import { toScene } from '../src/renderer/three/coords.js';
  * ことが操作の前提になる。ここではそれを射影計算（E2E と同じ `projectToScreen`）で確かめる。
  */
 
-const BOX = { x: 0, y: 0, width: 900, height: 600 };
+/*
+ * `900×600`（aspect 1.5）は分割画面の3Dペインの実際の形を再現しておらず、I2 のバグ
+ * （盤面延長の PLC が画角の外に落ちる）を隠していた（レビュー指摘）。分割画面の右ペイン
+ * は `PLC_VIEW_ASPECT`（0.6）ぶんだけ縦長になるので、ここでもその比のボックスで検査する。
+ */
+const BOX = { x: 0, y: 0, width: 420, height: 420 / PLC_VIEW_ASPECT };
 
 describe('plc 視点プリセット（§12.2 / 決定表#6）', () => {
   it('covers the board, the PLC unit and the wall outlet', () => {
@@ -47,7 +52,7 @@ describe('plc 視点プリセット（§12.2 / 決定表#6）', () => {
     expect(distance).toBeGreaterThanOrEqual(MIN_CAMERA_DISTANCE_MM);
     expect(distance).toBeLessThanOrEqual(MAX_CAMERA_DISTANCE_MM);
     expect(distance).toBeCloseTo(
-      fitDistanceMm(PLC_VIEW_RECT.w, PLC_VIEW_RECT.h, SOCKET_VIEW_ASPECT),
+      fitDistanceMm(PLC_VIEW_RECT.w, PLC_VIEW_RECT.h, PLC_VIEW_ASPECT),
       3,
     );
   });

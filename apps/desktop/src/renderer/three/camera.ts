@@ -84,6 +84,27 @@ export const SOCKET_VIEW_RECT = ((): { x: number; y: number; w: number; h: numbe
   };
 })();
 
+/**
+ * 「盤＋PLC」視点で使うビューポートの想定縦横比。
+ *
+ * `plc` はモードDの分割画面（決定表#10）の**右ペイン**（`grid-template-columns:
+ * minmax(520px, 1fr) minmax(420px, 1fr) 300px`）に描く。`SOCKET_VIEW_ASPECT`（1.5）は
+ * 「3D が画面の主役」の想定なので、分割画面の細い右ペインではまるで足りず、
+ * PLC本体が画角の外に落ちる（レビュー指摘 I2）。
+ *
+ * 幅はペインの最小値そのもの＝ **420px**（`minmax(420px, 1fr)`。ウィンドウが広がっても `1fr`
+ * が両ペインへ等分に伸びるだけで、右ペインがこれより狭くなることはない）。
+ *
+ * 高さは「ウィンドウの最小高さ（`BrowserWindow.minHeight` = 720px）からツールバーと
+ * `.plcLayout` の余白を引いた分」を素直に使うと 640px 前後になり縦横比が 0.6 を切るが、
+ * その比だと `fitDistanceMm()` が `MAX_CAMERA_DISTANCE_MM`（1200mm）を超えてしまい、
+ * `OrbitControls` の上限で毎回引き戻される視点になる。**この視点が実際に収められる下限**は
+ * 逆算すると 560px 相当（420 / 0.75）なので、余白の見積りが多少ぶれても壊れない値として
+ * **0.75** を使う（`SOCKET_VIEW_ASPECT` の半分。参考: 420×560px は 900px 高のウィンドウで
+ * ツールバー・課題文・分割パディングに 340px 使った場合に相当する）。
+ */
+export const PLC_VIEW_ASPECT = 0.75;
+
 /** 「PLC」視点で必ず画角に入れる余白[mm]。 */
 export const PLC_VIEW_MARGIN_MM = 20;
 
@@ -220,7 +241,7 @@ export function cameraPose(preset: CameraPreset): CameraPose {
     case 'plc': {
       // 机上のPLC本体と壁コンセントが収まるまで寄る（盤面の延長なので面直で見る）。§10.1
       const rect = PLC_VIEW_RECT;
-      const distance = fitDistanceMm(rect.w, rect.h, SOCKET_VIEW_ASPECT);
+      const distance = fitDistanceMm(rect.w, rect.h, PLC_VIEW_ASPECT);
       const center: [number, number, number] = [
         rect.x + rect.w / 2 - w / 2,
         h / 2 - (rect.y + rect.h / 2),
