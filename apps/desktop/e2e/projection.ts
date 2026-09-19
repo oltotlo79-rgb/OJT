@@ -1,4 +1,10 @@
-import { boardTerminalPos, JIPM_BOARD, toPhysicalTerminal } from '@ojt/board-model';
+import {
+  boardTerminalPos,
+  JIPM_BOARD,
+  PLC_UNIT_FX5U,
+  toPhysicalTerminal,
+  withPlcUnit,
+} from '@ojt/board-model';
 import type { SocketRoles } from '@ojt/board-model';
 import type { TerminalId } from '@ojt/circuit-sim';
 import {
@@ -119,3 +125,36 @@ export const SELF_HOLD_WIRES: ReadonlyArray<readonly [string, string]> = [
   ['S1.13', 'TB_PL.1-'],
   ['S1.6', 'TB_PL.1+'],
 ];
+
+/**
+ * PLC本体と壁コンセントを載せた盤（モードDのE2Eが使う）。§10.1
+ * `boardTerminalPos()` は `JIPM_BOARD` しか知らず机上の端子を引けないので、モードDの端子は
+ * この派生盤の `terminals` から直接探す。
+ */
+export const PLC_BOARD = withPlcUnit(JIPM_BOARD, PLC_UNIT_FX5U);
+
+/**
+ * 盤ローカル座標（mm）を `plc` 視点で射影する（ソケット本体の中央など）。
+ * `boardPoint()` は `front` 視点固定なので、モードDでは使えない（レビュー指摘 B10）。
+ */
+export function plcBoardPoint(
+  point: { x: number; y: number; z: number },
+  box: CanvasBox,
+): { x: number; y: number } {
+  return projectToScreen(boardToWorld(toScene(point)), cameraPose('plc'), box);
+}
+
+/**
+ * モードDの端子（盤・PLC本体・壁コンセントのどれでも）が来るページ座標。
+ * モードDは `plc` 視点（盤＋PLC＋コンセント全体）で開くので、1つの画角で全部射影できる（決定表#6）。
+ */
+export function plcTerminalPoint(
+  roles: SocketRoles,
+  terminal: string,
+  box: CanvasBox,
+): { x: number; y: number } {
+  const physical = toPhysicalTerminal(roles, terminal as TerminalId);
+  const found = PLC_BOARD.terminals.find((t) => t.id === physical);
+  if (found === undefined) throw new Error(`端子が盤にありません: ${terminal}（${physical}）`);
+  return plcBoardPoint(found.pos, box);
+}
