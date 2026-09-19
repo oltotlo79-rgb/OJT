@@ -190,3 +190,74 @@ content 32 files / 409、desktop 28 files / 469、circuit-sim 214、board-model 
    トグルは `apps/desktop/e2e/` 側にも取り込むとよい（いまのリポジトリE2Eは赤PBを押していない）。
 4. スクリーンショット（1280×800、DPI 2倍で 2534×1530）は受入担当の作業フォルダ
    `scratchpad/phase2-acceptance/shots/` に15枚。
+
+---
+
+## Phase 2 再受入と v0.2.0 リリース検証（2026-09-19）
+
+別エージェントが `packages/content` を編集中だったため、受入は専用ワークツリー
+`C:\Users\oltot\Documents\git-projects\OJT-wt-release`（ブランチ `release/v0.2.0`）で実施した。
+
+### 判定: **ACCEPTED**
+
+2026-09-18 のブロッカー（`copy-content.mjs` の `MODES` 固定）は解消済みで、配布版の課題一覧は
+**28題すべて**（B8 / C1 4 / C2 8 / D8）を読込エラー0件で読む。§16 Phase 2 受入基準 ①〜⑤ は
+**パッケージ版（`win-unpacked` の exe）に対して**全て成立した。
+
+### 対象 HEAD
+
+`3fb0724`。内訳は main の `b2c292c` に以下を積んだもの:
+
+| コミット | 内容 |
+|---|---|
+| `780d928` | `chore(desktop): bump version to 0.2.0`（受入担当が作成） |
+| `268b3f6` | main の `63c89ec` を取り込み（内蔵課題数 20→28、`resources/content/plc/` 8件を追跡）。予め `predist` が同内容のファイルを生成していたため cherry-pick ではなくパス指定で適用した（生成物と commit の8ファイルはバイト一致を確認済み） |
+| `3fb0724` | main の `33460bd` を cherry-pick（`LadderNetworkSchema` が派生キー `rows`/`cols` を許容し、PLC課題がJSON往復で壊れなくなる） |
+
+### 実施した検証
+
+| 項目 | 結果 |
+|---|---|
+| `pnpm -r test` | **2082テスト 全合格**（circuit-sim 244 / ladder-core 109 / plc-dialects 46 / board-model 180 / schematic-core 64 / content 584 / desktop 855） |
+| `pnpm -r typecheck` | 全プロジェクト合格 |
+| `pnpm lint` | 合格（指摘0件） |
+| リポジトリ E2E（`out/` のビルド成果物）×2回 | 1回目 19/19（1件 flaky＝`capturePage()` の既知 `UnknownVizError`、再試行で合格）／2回目 19/19 一発合格。各 約1.5分 |
+| `pnpm --filter @ojt/desktop dist` | 成功。NSIS `電気教育ツール-0.2.0-x64.exe` 112,098,745バイト（約106.9MB）、ポータブル `電気教育ツール-0.2.0-x64.zip` 153,960,503バイト（約146.8MB）、`win-unpacked` 372MB |
+| `win-unpacked/電気教育ツール.exe` | 存在する（246,070,272バイト） |
+| `resources/content/` | `assemble` 8 / `inspect-parts` 4 / `inspect-repair` 8 / `plc` 8 = **28件**（`predist` が正本のフォルダを走査して複写） |
+| `app.asar` | 4,348,582バイト。中身は `out/**`（main・preload・renderer）と `package.json` の**12エントリのみ**で `node_modules` は**0件** |
+| **配布版に対する §16 ①〜⑤** | **全て合格**（`e2e/*.spec.ts` を `executablePath` だけ差し替えて `win-unpacked` の exe に当てた）。19/19（1件 flaky＝同じ `UnknownVizError`、再試行で合格）。①赤PB（PB4）押下中だけa接点が導通、正常品 650.0Ω／コイル断線 `OL` ②レアショート 422.5Ω＋マークシートで「レアショート」を選んで正解 ③C2 故障2箇所を指摘し白線で修復して合格 ④通電中のΩで警告バナー＋結果に「1 回」 ⑤白線を張って保存→閉じて起動し直して読込むと復元 |
+| 配布版スモーク（受入担当の独自スクリプト） | 5/5 合格。ウィンドウ題名・ホームとも **電気教育ツール**。`window.ojt.listProblems()` は `{assemble:8, inspect-parts:4, inspect-repair:8, plc:8}` で **`errors: []`**。利用者フォルダの既定は `C:\Users\oltot\AppData\Roaming\電気教育ツール\content`。b-001 / c1-001 / c2-001 はいずれも3D盤を描画 |
+| console エラー | **0件**（起動〜一覧〜3課題の描画まで） |
+| オフライン | http(s) 要求 **0件** |
+| プローブ位置の復元 | `01c4dea` で実装済み。`work-file-inspect.test.ts` / `work-files.test.ts` の単体テストで往復を確認（855テストに含まれる） |
+
+### v0.2.0 の既知の制限
+
+1. **モードD（PLC）にデスクトップUIがない**（Plan 3B で実装予定）。配布版での見え方は次のとおりで、
+   **クラッシュも真っ白も起きない**:
+   - ホームの「PLC」カードは**無効（押せない）**まま。
+   - ただし課題一覧の絞り込みを「**すべて**」にすると **d-001〜d-008 の8行が出て、「開く」ボタンが
+     押せてしまう**。押すと「**課題が選ばれていません。**」と「**課題一覧へ**」ボタンだけの画面に
+     行き止まる（`readProblem` は返るが、セッション画面がモードDを描けないため）。戻る導線はある。
+   - 本受入ではこれを**許容できる行き止まり**として扱い、v0.2.0 の既知の制限として記録する。
+     Plan 3B でモードDのUIを入れるか、それまで一覧からモードDを隠すかのどちらかで解消すること。
+2. 実物のOSダイアログ（保存／読込）は自動化できないため、`dialog.showSaveDialog` /
+   `showOpenDialog` を固定パスへ差し替えてIPCの往復だけを確かめた（前回の受入と同じ流儀）。
+3. コード署名はしていない（§15 の方針どおり）。SmartScreen の回避手順は配布時に案内すること。
+
+### 配布成果物
+
+| ファイル | サイズ（バイト） | SHA256 |
+|---|---|---|
+| `電気教育ツール-0.2.0-x64.exe`（NSIS） | 112,098,745 | `EBE4B3F28ECA0B64D7CF89B9C9F704473AF25784EFC8483154A99D79A91B388F` |
+| `電気教育ツール-0.2.0-x64.zip`（ポータブル） | 153,960,503 | `67E11E364427DFFCF66EE0EA63425D424116E0C8787615F693898B0168553E4C` |
+
+複写先: `C:\Users\oltot\Documents\git-projects\OJT-release\v0.2.0\`
+（複写元 `apps/desktop/release/` とSHA256一致を確認済み）
+
+スクリーンショット（1280×800、DPI2倍で 2534×1530）は受入担当の作業フォルダ
+`%TEMP%\p2-reaccept\shots\` に50枚。配布版スモークのぶんは `p01-home.png` /
+`p02-home-modes.png` / `p03-problem-list-all.png`（モードDの8行が見える） /
+`p04-mode-d-opened.png`（行き止まりの画面） / `p05-b-001.png` / `p06-c1-001.png` /
+`p07-c2-001.png` の7枚。
