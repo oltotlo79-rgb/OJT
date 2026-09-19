@@ -1,6 +1,11 @@
-import { PLC_UNIT_JW300, PLC_UNIT_PC10G, type PlcUnitDefinition } from '@ojt/board-model';
+import {
+  PC10G_SPEC,
+  PLC_UNIT_JW300,
+  PLC_UNIT_PC10G,
+  type PlcUnitDefinition,
+} from '@ojt/board-model';
 import { describe, expect, it } from 'vitest';
-import { RACK_BODY_Z_MM } from '../src/renderer/three/appearance.js';
+import { litLedKeys, RACK_BODY_Z_MM, type PlcLedState } from '../src/renderer/three/appearance.js';
 import { rackModuleBoxes, rackTerminalsOf } from '../src/renderer/three/PlcRack.js';
 
 /**
@@ -57,5 +62,87 @@ describe('ラックの3D（§10.1 / §16 Phase 4 受入基準③⑤）', () => {
     expect(rackModuleBoxes(onePiece)).toEqual([]);
     // ラックのままなら4枚出る（`form` だけで分けていることの裏返し）
     expect(rackModuleBoxes(PLC_UNIT_PC10G)).toHaveLength(4);
+  });
+});
+
+describe('ラックの外観の記述（4B レビュー M12）', () => {
+  const OFF: PlcLedState = {
+    running: false,
+    convertFailed: false,
+    inputs: undefined,
+    outputs: undefined,
+  };
+
+  it('keeps every drawn rect inside the face, base and modules alike (面からはみ出さない)', () => {
+    for (const unit of [PLC_UNIT_PC10G, PLC_UNIT_JW300]) {
+      const faces = [unit.appearance, ...(unit.modules ?? []).map((m) => m.appearance)];
+      for (const face of faces) {
+        const rects = [
+          ...face.covers.map((cover) => cover.rect),
+          ...face.features.map((feature) => feature.rect),
+          ...face.leds.map((led) => led.rect),
+          face.nameplateRect,
+        ];
+        for (const rect of rects) {
+          const where = `${unit.model}/${face.nameplate}`;
+          expect(rect.x, where).toBeGreaterThanOrEqual(0);
+          expect(rect.y, where).toBeGreaterThanOrEqual(0);
+          expect(rect.x + rect.w, where).toBeLessThanOrEqual(face.faceMm.width);
+          expect(rect.y + rect.h, where).toBeLessThanOrEqual(face.faceMm.height);
+        }
+      }
+    }
+  });
+
+  it('keeps the CPU fault lamps dark while the session is idle', () => {
+    for (const unit of [PLC_UNIT_PC10G, PLC_UNIT_JW300]) {
+      for (const module of unit.modules ?? []) {
+        const lit = litLedKeys(module.appearance, OFF);
+        expect(lit.has('status:ERR'), module.model).toBe(false);
+        expect(lit.has('status:FLT'), module.model).toBe(false);
+        expect(lit.has('status:RUN'), module.model).toBe(false);
+      }
+    }
+    // 電源モジュールの POWER だけは常時点灯（本アプリはAC電源を解かない。決定表#20）
+    const power = (PLC_UNIT_PC10G.modules ?? [])[0];
+    expect([...litLedKeys(power!.appearance, OFF)]).toEqual(['status:POWER']);
+  });
+
+  it('orders the point lamps the way the monitor snapshot is indexed', () => {
+    const input = (PLC_UNIT_PC10G.modules ?? []).find((m) => m.model === 'IN-12');
+    const output = (PLC_UNIT_PC10G.modules ?? []).find((m) => m.model === 'OUT-12');
+    expect(input?.appearance.leds.map((led) => led.name)).toEqual(
+      PC10G_SPEC.inputs.map((i) => i.name),
+    );
+    expect(output?.appearance.leds.map((led) => led.name)).toEqual(
+      PC10G_SPEC.outputs.map((o) => o.name),
+    );
+    // `spec.inputs` の3番目が ON なら、3番目のLEDが光る（`litLedKeys` は群ごとに数える）
+    const inputs = PC10G_SPEC.inputs.map((_unused, index) => index === 3);
+    expect([...litLedKeys(input!.appearance, { ...OFF, inputs })]).toEqual([
+      `input:${PC10G_SPEC.inputs[3]?.name ?? ''}`,
+    ]);
+    const outputs = PC10G_SPEC.outputs.map((_unused, index) => index === 9);
+    expect([...litLedKeys(output!.appearance, { ...OFF, outputs })]).toEqual([
+      `output:${PC10G_SPEC.outputs[9]?.name ?? ''}`,
+    ]);
+  });
+
+  it('pins the nameplates the 3D prints (型式の文字列だけ。§17)', () => {
+    expect(PLC_UNIT_PC10G.appearance.nameplate).toBe('PC10G-1SP');
+    expect(PLC_UNIT_JW300.appearance.nameplate).toBe('JW-300');
+    for (const unit of [PLC_UNIT_PC10G, PLC_UNIT_JW300]) {
+      // モジュールの銘板＝形式名（3Dの名札もこれを出す。4B レビュー I4）
+      for (const box of rackModuleBoxes(unit)) {
+        expect(box.appearance.nameplate).toBe(box.model);
+        expect(box.displayName).not.toBe(box.model);
+      }
+    }
+    expect(rackModuleBoxes(PLC_UNIT_JW300).map((box) => box.displayName)).toEqual([
+      '電源ユニット',
+      'コントロールユニット',
+      'DC入力16点（18P着脱式端子台）',
+      'リレー出力16点',
+    ]);
   });
 });

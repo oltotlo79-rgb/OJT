@@ -1,16 +1,9 @@
 import type { BoardTerminal, PlcAppearance, PlcUnitDefinition, Vec3 } from '@ojt/board-model';
 import type { TerminalId } from '@ojt/circuit-sim';
 import { Html } from '@react-three/drei';
-import { useMemo, type JSX } from 'react';
-import {
-  FACE_LABEL_LIFT_MM,
-  FACE_LIFT_MM,
-  faceRectToBoard,
-  PLC_BODY_Z_MM,
-  RACK_BODY_Z_MM,
-} from './appearance.js';
-import { blockFaceTexture, faceRect } from './labels.js';
-import { sharedMaterial, UNIT_BOX } from './materials.js';
+import { useEffect, useMemo, type JSX } from 'react';
+import { FACE_LABEL_LIFT_MM, PLC_BODY_Z_MM, RACK_BODY_Z_MM } from './appearance.js';
+import { blockFaceTexture, faceRect, roleColorsFor } from './labels.js';
 import { PlcFace, useLedState } from './PlcUnit.js';
 import { TerminalHit, terminalTooltip } from './TerminalHit.js';
 import { toScene } from './coords.js';
@@ -29,6 +22,12 @@ const LABEL_STYLE = { pointerEvents: 'none' } as const;
 
 /** ラックの端子の印字板の余白[mm]（`PlcUnit` と同じ理由で下端の列を切らない）。 */
 const RACK_LABEL_PAD_MM = 6;
+
+/**
+ * ベースの**前面**の高さ[mm]。
+ * モジュール（前面 z = 0・厚み `RACK_BODY_Z_MM`）の奥に置く。
+ */
+const RACK_BASE_FACE_Z_MM = -RACK_BODY_Z_MM / 2;
 
 function noPick(): void {
   // 交差候補を積まない
@@ -80,42 +79,41 @@ export function PlcRack({
 }): JSX.Element {
   const modules = useMemo(() => rackModuleBoxes(unit), [unit]);
   const ledState = useLedState();
-  const faceTexture = useMemo(() => blockFaceTexture(terminals, RACK_LABEL_PAD_MM), [terminals]);
+  /*
+   * 印字の色は**端子台（背板）の明るさ**で選ぶ（4B レビュー B1）。ラックのモジュールの
+   * 端子台は黒（`#22262B` / `#2B2B2B`）なので、盤の端子台と同じ濃い字では `X0` も `ICOM0` も
+   * 読めなかった。ベースとモジュールは同じ端子台色なので、ベース側の色で1枚ぶん決める。
+   */
+  const faceColors = useMemo(
+    () => roleColorsFor(unit.appearance.terminalBlockColor),
+    [unit.appearance.terminalBlockColor],
+  );
+  const faceTexture = useMemo(
+    () => blockFaceTexture(terminals, RACK_LABEL_PAD_MM, faceColors),
+    [terminals, faceColors],
+  );
+  // 機種を替えるとラックごと作り直される（Plan 4B Task 6）。古いテクスチャは解放する（M10）
+  useEffect(() => {
+    return () => {
+      faceTexture?.dispose();
+    };
+  }, [faceTexture]);
   const labelFace = useMemo(() => faceRect(terminals, RACK_LABEL_PAD_MM), [terminals]);
   const { width, height } = unit.sizeMm;
   return (
     <group name="plc-rack">
-      {/* 基本ベース（モジュールより奥。`unit.appearance` が持つ色とスロットのレール） */}
-      <mesh
-        geometry={UNIT_BOX}
-        material={sharedMaterial(unit.appearance.bodyColor, { roughness: 0.75, metalness: 0.05 })}
-        raycast={noPick}
-        position={toScene({
-          x: unit.pos.x + width / 2,
-          y: unit.pos.y + height / 2,
-          z: -(RACK_BODY_Z_MM + PLC_BODY_Z_MM) / 2,
-        })}
-        scale={[width, height, PLC_BODY_Z_MM]}
-      />
       {/*
-        ベースの造作（モジュールを載せる上下のレール。4A M1）。ベースの前面（`z = -RACK_BODY_Z_MM/2`）
-        から少しだけ浮かせる＝モジュールの前面（`z = 0`）より奥なので、モジュールに隠れない帯
-        （上下の縁と左右の余白）にだけ見える。
+        基本ベース（モジュールより奥）。筐体・スロットのレール・銘板（`PC10G-1SP` / `JW-300`）は
+        `PlcFace` が `unit.appearance` から描く。以前はここで筐体と造作を手で描き直していて、
+        ベースの銘板が出ていなかった（4B レビュー I3）。
       */}
-      {unit.appearance.features.map((feature) => {
-        const box = faceRectToBoard(unit.pos, feature.rect, -RACK_BODY_Z_MM / 2 + FACE_LIFT_MM);
-        return (
-          <mesh
-            key={feature.id}
-            geometry={UNIT_BOX}
-            material={sharedMaterial(feature.color, { roughness: 0.75, metalness: 0.05 })}
-            raycast={noPick}
-            name={`rack-base-${feature.id}`}
-            position={toScene({ x: box.cx, y: box.cy, z: box.z })}
-            scale={[box.w, box.h, 1]}
-          />
-        );
-      })}
+      <PlcFace
+        origin={unit.pos}
+        appearance={unit.appearance}
+        depthMm={PLC_BODY_Z_MM}
+        ledState={ledState}
+        faceZMm={RACK_BASE_FACE_Z_MM}
+      />
       {modules.map((module) => (
         <group key={module.model} name={`rack-module-${module.model}`}>
           <PlcFace
@@ -124,7 +122,11 @@ export function PlcRack({
             depthMm={module.depthMm}
             ledState={ledState}
           />
-          {/* モジュール名はツールチップ代わりの名札（`displayName`。4A 引き渡し表） */}
+          {/*
+            モジュールの名札は**形式名だけ**（`IN-12` / `JW-212NA`）をモジュールの上端に出す。
+            長い `displayName`（`DC入力16点（THK-2750）`）は35mmピッチの列に並べると隣と重なって
+            読めなかったので、マウスオーバーの `title` に回す（4B レビュー I4）。
+          */}
           <Html
             center
             style={LABEL_STYLE}
@@ -136,7 +138,9 @@ export function PlcRack({
             })}
             zIndexRange={[10, 0]}
           >
-            <span className="block-label">{module.displayName}</span>
+            <span className="block-label" title={module.displayName}>
+              {module.model}
+            </span>
           </Html>
         </group>
       ))}
