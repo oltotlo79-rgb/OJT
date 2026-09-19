@@ -358,6 +358,38 @@ export const JA = {
     network: '回路ブロック',
     /** 表示列数を超えた位置にセルがある。§10.6 */
     hiddenCells: '表示列数の外にセルがあります（設定でラダーの表示列数を増やしてください）',
+    // --- Plan 3B Task 5 ---
+    inputTitle: 'デバイスの入力',
+    contactKind: '接点の種別',
+    outputKind: '出力の種別',
+    contactNo: 'a接点',
+    contactNc: 'b接点',
+    contactRise: '立上り',
+    contactFall: '立下り',
+    coilOut: 'コイル（OUT）',
+    coilSet: 'セット（SET）',
+    coilRst: 'リセット（RST）',
+    timer: 'タイマ（TON）',
+    counter: 'カウンタ（CTU）',
+    mc: 'マスタコントロール（MC）',
+    mcr: 'マスタコントロール解除（MCR）',
+    device: 'デバイス',
+    preset: '設定値',
+    resetDevice: 'リセットデバイス',
+    commit: '確定',
+    roundYes: 'はい',
+    roundNo: 'いいえ',
+    /** 読出し・モニタ中に編集しようとした。§10.6 */
+    readOnly: '書込みモード（F2）に切り替えると編集できます',
+    /** 挿入・上書きの切換（`Ins`）。決定表#12b */
+    insertOn: '挿入モードです（入力すると右のセルがずれます）',
+    insertOff: '上書きモードです',
+    /** `Shift+F3`（モニタ書込み）の注記。セッションで1回だけ出す。決定表#11 */
+    monitorWriteSame: 'Phase 3 ではモニタと同じ動作です',
+    helpHint: 'キー割当はツールバーの「キー割当」から見られます',
+    nothingToUndo: 'これ以上は元に戻せません',
+    nothingToRedo: 'これ以上はやり直せません',
+    // --- /Plan 3B Task 5 ---
   },
   // --- /Plan 3B Task 4 ---
   // --- Plan 3B Task 10 ---
@@ -614,3 +646,13 @@ export function reportTargetLabel(
   if ('terminalId' in target) return `${JA.inspectRepair.terminal} ${target.terminalId}`;
   return `${JA.session.parts} ${target.partId}`;
 }
+
+// --- Plan 3B Task 5 ---
+/**
+ * タイマ設定値をその番号帯で表せないときの確認文。§10.5
+ * 例: 「3050ms は T0 では指定できません。100ms 刻みに丸めますか？」
+ */
+export function timerRoundPrompt(ms: number, device: string, baseMs: number): string {
+  return `${String(ms)}ms は ${device} では指定できません。${String(baseMs)}ms 刻みに丸めますか？`;
+}
+// --- /Plan 3B Task 5 ---
