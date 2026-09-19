@@ -3,155 +3,114 @@
  *
  * `DialectProfile.symbols` が持つのは**識別子だけ**（`'contact-no'` など）で、実際の絵はここが
  * 自前の SVG パスとして持つ。**各社のロゴ・アイコン・画面キャプチャ・図記号ビットマップは
- * 一切複製しない**（§17 / PLC調査資料 §6）。JIS C 0617 のシーケンス図記号に沿った、
- * 直線と円弧だけの一般的な描き方である。
+ * 一切複製しない**（§17 / PLC調査資料 §6）。直線・円・角括弧・矩形だけの一般的な描き方である。
+ *
+ * --- 2026-09-20 の作り直し（利用者指摘） ---
+ * 利用者（電気系保全の指導員）の指摘は2点。
+ *   1.「出力が四角や `()` で表されていて丸でないのはおかしい」
+ *      → **OUT コイル（タイマ・カウンタの OUT を含む）は丸 `-○-`** で描く。丸括弧も矩形も使わない。
+ *        矩形は各社のソフトで**本当に箱で出る命令**（GX Works3風の `[SET Y0]`、CX-Programmer風・
+ *        PCwin風・JW-300SP風の TIM / CNT / 命令ボックス）だけに残す。
+ *   2.「すべてのシンボルのA接点やB接点の縦棒の間隔がやや広い」
+ *      → 縦棒の間隔を**セル幅の 15〜20%**（`SkinCell.contactGapPx`）に詰める。
+ * あわせて Plan 4B 決定表#6 の「形は4スキン共通・数だけスキン別」を利用者判断で解いた。
+ * 形（丸・角括弧・箱）は**スキンが選ぶ**ようになり、選ぶ値は `ladder/skins/*.ts` にだけ置く。
  */
 
 import type { SkinCell } from './skins/index.js';
 
-/** セル1つの幅[px]。 */
+/** セル1つの幅[px]（GX Works3風の既定）。 */
 export const CELL_W = 48;
-/** セル1つの高さ[px]。 */
-export const CELL_H = 36;
+/** セル1つの高さ[px]（GX Works3風の既定）。 */
+export const CELL_H = 46;
 /** 桟（導線）の縦位置[px]。 */
 export const WIRE_Y = CELL_H / 2;
-/** 記号の左端・右端[px]（左右はリード線）。 */
-const LEFT = 15;
-const RIGHT = 33;
-/** 接点の縦棒の上端・下端[px]。 */
-const TOP = 8;
-const BOTTOM = 28;
+
+/**
+ * MC / MCR / END の識別子。**`DialectProfile.symbols`（`SymbolDrawing`）には無い**ので、
+ * ここだけは本アプリ側の固定の識別子を使う（`plc-dialects` は Plan 3A の所有物なので広げない）。
+ */
+export const MC_SYMBOL_ID = 'coil-mc';
+export const MCR_SYMBOL_ID = 'coil-mcr';
+export const END_SYMBOL_ID = 'rung-end';
+
+/**
+ * 記号の**文字と導線の置き方**。`LadderGrid` はこれを見て、デバイス名を記号の上に出すのか
+ * （接点・丸コイル）、記号の中に1行で出すのか（角括弧）、3行で出すのか（箱）を決める。
+ */
+export type SymbolLayout =
+  /** 接点。縦棒2本の間に微分の矢印。デバイス名は上、コメントは下。 */
+  | 'contact'
+  /** 丸コイル（利用者要求 2026-09-20）。デバイス名は上、設定値は同じ行の右。 */
+  | 'coil'
+  /** 角括弧（GX Works3風の `[SET Y0]`）。命令語とデバイスを括弧の中に1行で置く。 */
+  | 'bracket'
+  /** 命令ボックス（CX-Programmer風などの TIM / CNT）。命令語・デバイス・設定値を3行で置く。 */
+  | 'box';
 
 /** 記号1つの線画。 */
 export interface SymbolShape {
   /** `<path d>` にそのまま入る文字列。 */
   paths: readonly string[];
-  /** 記号の中に描く短い文字（`S` / `R` / `T` / `C` / `↑` / `↓` / `MC` / `MCR`）。 */
+  /** 記号の中に描く短い文字（微分接点の `↑` / `↓`、未知の識別子の `?`）。 */
   text?: string;
+  /** 文字と導線の置き方。 */
+  layout: SymbolLayout;
+  /** 丸コイル（`layout: 'coil'`）の円。`<circle>` としてそのまま描く。 */
+  circle?: { cx: number; cy: number; r: number };
+  /** この記号の左のリード線（空文字なら引かない）。 */
+  leadLeft: string;
+  /** この記号の右のリード線（空文字なら引かない。角括弧と箱は右に繋がない）。 */
+  leadRight: string;
 }
-
-/** 接点の2本の縦棒。 */
-const CONTACT_BARS = [
-  `M ${LEFT} ${TOP} L ${LEFT} ${BOTTOM}`,
-  `M ${RIGHT} ${TOP} L ${RIGHT} ${BOTTOM}`,
-];
-
-/** コイルの丸括弧（左右の半円）。 */
-const COIL_ARCS = [
-  `M ${LEFT + 2} ${TOP} A 9 10 0 0 0 ${LEFT + 2} ${BOTTOM}`,
-  `M ${RIGHT - 2} ${TOP} A 9 10 0 0 1 ${RIGHT - 2} ${BOTTOM}`,
-];
-
-/**
- * MC / MCR の識別子。**`DialectProfile.symbols`（`SymbolDrawing`）には MC / MCR が無い**ので、
- * ここだけは本アプリ側の固定の識別子を使う（`plc-dialects` は Plan 3A の所有物なので広げない）。
- * Phase 4 でプロファイルが MC / MCR を持つようになったら `symbolIdOf()` がそちらを優先すればよい。
- */
-export const MC_SYMBOL_ID = 'coil-mc';
-export const MCR_SYMBOL_ID = 'coil-mcr';
-
-/** 識別子 → 線画。`DialectProfile.symbols` の値（＋ MC / MCR の固定ID）をキーにする。 */
-const SHAPES: Readonly<Record<string, SymbolShape>> = {
-  'contact-no': { paths: CONTACT_BARS },
-  'contact-nc': { paths: [...CONTACT_BARS, `M ${LEFT} ${BOTTOM} L ${RIGHT} ${TOP}`] },
-  'contact-rise': { paths: CONTACT_BARS, text: '↑' },
-  'contact-fall': { paths: CONTACT_BARS, text: '↓' },
-  'coil-round': { paths: COIL_ARCS },
-  'coil-set': { paths: COIL_ARCS, text: 'S' },
-  'coil-reset': { paths: COIL_ARCS, text: 'R' },
-  'coil-timer': { paths: COIL_ARCS, text: 'T' },
-  'coil-counter': { paths: COIL_ARCS, text: 'C' },
-  // マスタコントロール。コイルと同じ括弧に `MC` / `MCR` の文字を入れて区別する（§10.3）
-  [MC_SYMBOL_ID]: { paths: COIL_ARCS, text: 'MC' },
-  [MCR_SYMBOL_ID]: { paths: COIL_ARCS, text: 'MCR' },
-};
-
-/** 未知の識別子（Phase 4 で足された記号など）に出す暫定の絵。 */
-const UNKNOWN: SymbolShape = { paths: CONTACT_BARS, text: '?' };
-
-/** 識別子から線画を引く。知らない識別子は「?」付きの接点で描く。 */
-export function symbolShape(id: string): SymbolShape {
-  return SHAPES[id] ?? UNKNOWN;
-}
-
-/** 左のリード線（セルの左端から記号の左端まで）。 */
-export const LEAD_LEFT = `M 0 ${WIRE_Y} L ${LEFT} ${WIRE_Y}`;
-/** 右のリード線（記号の右端からセルの右端まで）。 */
-export const LEAD_RIGHT = `M ${RIGHT} ${WIRE_Y} L ${CELL_W} ${WIRE_Y}`;
-/** セルを丸ごと横断する導線（`hline` / `vline`）。 */
-export const LEAD_FULL = `M 0 ${WIRE_Y} L ${CELL_W} ${WIRE_Y}`;
-/**
- * 縦線（セルの左辺で下の行と繋ぐ渡り）。§10.3
- *
- * 下端は `CELL_H` ではなく `CELL_H + WIRE_Y` にする。`vline` が繋ぐのは (row,col) → (row+1,col)
- * で、次の行の桟は `WIRE_Y` だけ下にあるため、`CELL_H` で止めると桟の手前で線が切れて見える
- * （レビュー指摘 B1。`<g>` は子を clip しないので、セルの外まで伸ばしてよい）。
- */
-export const LINK_DOWN = `M 0 ${WIRE_Y} L 0 ${CELL_H + WIRE_Y}`;
-/** END の記号（二重線）。 */
-export const END_MARK = [`M 12 ${TOP} L 12 ${BOTTOM}`, `M 18 ${TOP} L 18 ${BOTTOM}`];
-
-/**
- * 省略された接点列をまたいでコイルへ繋ぐ導線。§10.6
- *
- * 表示列数がコイル列より狭いとき（既定は 11 列）、11〜14 列目は描かれないので、最後の接点列と
- * コイル列は画面上では隣り合う。`applyLadderCell()` が自動で引いた横線でそこが繋がっている行は、
- * **最後の接点列の桟からコイルの記号まで1本の線**を重ねて、回路が切れていないことを見せる。
- * `lastContactIndex` は最後の接点列の**表示位置**（0起点。コイル列はその1つ右）、`row` は行番号
- * （セルと違って行の `<g>` には移動が掛かっていないので、縦位置はこの線自身が持つ）。
- */
-export function leadAcrossHidden(lastContactIndex: number, row: number): string {
-  const y = row * CELL_H + WIRE_Y;
-  const coilX = (lastContactIndex + 1) * CELL_W;
-  // 始点は「コイル列の左端」（`coilX`）にする。`lastContactIndex * CELL_W` にすると最後の
-  // 接点セルの左端から引くことになり、そのセルの絵の上をオーバーレイが横切ってしまう
-  // （レビュー指摘 #1）。最後の接点セル自体は自分のリード線で右端まで繋がっている。
-  return `M ${coilX} ${y} L ${coilX + LEFT} ${y}`;
-}
-
-/* --- Plan 4B Task 4: スキン別の寸法（決定表#6） --- */
-
-/**
- * GX Works3風の寸法（既定）。上の `CELL_W` / `CELL_H` / `TOP` と同じ値で、
- * `symbolMetrics(GX_CELL)` はこのファイルのモジュール定数と同じ絵を返す。
- */
-export const GX_CELL: SkinCell = {
-  widthPx: CELL_W,
-  heightPx: CELL_H,
-  strokeWidth: 1.6,
-  barInsetPx: TOP,
-  coilRxPx: 9,
-};
 
 /**
  * そのスキンの寸法で描いた記号と導線一式。
  *
- * **型と規則は上のモジュール定数と1対1で揃える**（レビュー B2）。`endMark` は `END_MARK` と
+ * **型と規則は下のモジュール定数と1対1で揃える**（レビュー B2）。`endMark` は `END_MARK` と
  * 同じく**配列**、`linkDown` は `LINK_DOWN` と同じく**セルの左辺**、`leadAcrossHidden` は
  * 同じ**2引数**、`shape()` は `symbolShape()` と同じく**`undefined` を返さない**（知らない
- * 識別子は `?` 付きの接点に倒す）。`LadderGrid` の置き換えは名前を差し替えるだけで済む。
+ * 識別子は `?` 付きの接点に倒す）。
  */
 export interface SymbolMetrics {
   /** セルの幅・高さ[px]と桟の縦位置。 */
   w: number;
   h: number;
   wireY: number;
+  /** 接点の縦棒の上端・下端[px]（丸コイルの直径と角括弧・箱の高さの基準でもある）。 */
+  barTop: number;
+  barBottom: number;
+  /** 接点の縦棒の間隔[px]（利用者要求 2026-09-20: セル幅の 15〜20%）。 */
+  contactGap: number;
   /** 左半分・右半分・全幅の導線。 */
   leadLeft: string;
   leadRight: string;
   leadFull: string;
   /** 下の行へ降りる縦リンク（`LINK_DOWN` と同じくセルの**左辺**）。 */
   linkDown: string;
-  /** END の印（`END_MARK` と同じく**2本の縦棒**）。 */
+  /** 分岐の接合点（T字）に打つ点の半径[px]。 */
+  junctionR: number;
+  /** END の印（`END_MARK` と同じく**2本の縦棒**。互換のために残す）。 */
   endMark: readonly string[];
+  /** デバイス名のベースライン[px]（記号の上）。 */
+  labelY: number;
+  /** デバイスコメント1行の高さ[px]・最終行のベースライン[px]・1行の文字数。 */
+  commentLineH: number;
+  commentY: number;
+  commentChars: number;
+  /** 角括弧の中の1行のベースライン[px]。 */
+  bracketTextY: number;
+  /** 箱の中の3行（命令語・デバイス・設定値）のベースライン[px]。 */
+  boxTextY: readonly [number, number, number];
+  /** 左の行番号欄の幅[px]。 */
+  stepGutter: number;
+  /** モニタ中の通電を塗りで見せる帯（GX Works3風。`monitorStyle: 'block'`）。 */
+  poweredBlock: { x: number; y: number; w: number; h: number };
   /** 省略された接点列をまたいでコイルへ繋ぐ導線（`leadAcrossHidden()` と同じ2引数）。 */
   leadAcrossHidden: (lastContactIndex: number, row: number) => string;
   /** 識別子 → 線画（`symbolShape()` と同じく、知らない識別子は `?` 付きの接点）。 */
   shape: (id: string) => SymbolShape;
 }
-
-/** 記号そのものの横幅[px]（セルの中央に置き、左右の余りがリード線になる）。 */
-const SYMBOL_W = RIGHT - LEFT;
 
 /**
  * `SkinCell` は `ladder/skins/*.ts` のモジュール定数なので**同一性が保たれる**。
@@ -159,10 +118,16 @@ const SYMBOL_W = RIGHT - LEFT;
  */
 const METRICS_CACHE = new WeakMap<SkinCell, SymbolMetrics>();
 
+/** 角括弧の「かぎ」の長さ[px]。 */
+const BRACKET_HOOK = 3;
+/** 角括弧・箱の左右の余白[px]（ここまでリード線を引く）。 */
+const FRAME_INSET = 4;
+
 /**
- * スキンの寸法で記号を作り直す。決定表#6
- * 変えるのは**寸法と接点の縦棒の余白**だけで、形（縦棒2本・丸括弧・斜線）は4スキン共通である
- * （JIS C 0617 に沿った自前の作図。各社の図記号ビットマップは複製しない。§17）。
+ * スキンの寸法で記号を作り直す。決定表#6（2026-09-20 の利用者判断で「形もスキン別」に緩めた）
+ *
+ * スキンが選ぶのは `SkinCell` の数と2つの列挙（`instructionStyle` / `timerStyle`）だけで、
+ * 各社の図記号ビットマップは一切複製しない（§17）。
  */
 export function symbolMetrics(cell: SkinCell): SymbolMetrics {
   const cached = METRICS_CACHE.get(cell);
@@ -170,61 +135,191 @@ export function symbolMetrics(cell: SkinCell): SymbolMetrics {
   const w = cell.widthPx;
   const h = cell.heightPx;
   const wireY = h / 2;
-  const left = Math.round((w - SYMBOL_W) / 2);
-  const right = left + SYMBOL_W;
-  const top = cell.barInsetPx;
-  const bottom = h - cell.barInsetPx;
-  const bars = [`M ${left} ${top} L ${left} ${bottom}`, `M ${right} ${top} L ${right} ${bottom}`];
-  // 横の膨らみはスキンが決める（CX-Programmer風の「やや扁平」＝ 7）。「実物との対応」表 / 決定表#6
-  const arcRx = cell.coilRxPx;
-  const arcRy = (bottom - top) / 2;
-  const arcs = [
-    `M ${left + 2} ${top} A ${arcRx} ${arcRy} 0 0 0 ${left + 2} ${bottom}`,
-    `M ${right - 2} ${top} A ${arcRx} ${arcRy} 0 0 1 ${right - 2} ${bottom}`,
+  /* 接点の縦棒は桟を中心に上下対称（桟が接点の真ん中を通る）。 */
+  const barTop = cell.barInsetPx;
+  const barBottom = h - cell.barInsetPx;
+  /* 縦棒の間隔はセル幅の 15〜20%（利用者要求 2026-09-20）。 */
+  const gap = cell.contactGapPx;
+  const barLeft = Math.round((w - gap) / 2);
+  const barRight = barLeft + gap;
+  const bars = [
+    `M ${barLeft} ${barTop} L ${barLeft} ${barBottom}`,
+    `M ${barRight} ${barTop} L ${barRight} ${barBottom}`,
   ];
-  const shapes: Readonly<Record<string, SymbolShape>> = {
-    'contact-no': { paths: bars },
-    'contact-nc': { paths: [...bars, `M ${left} ${bottom} L ${right} ${top}`] },
-    'contact-rise': { paths: bars, text: '↑' },
-    'contact-fall': { paths: bars, text: '↓' },
-    'coil-round': { paths: arcs },
-    'coil-set': { paths: arcs, text: 'S' },
-    'coil-reset': { paths: arcs, text: 'R' },
-    'coil-timer': { paths: arcs, text: 'T' },
-    'coil-counter': { paths: arcs, text: 'C' },
-    [MC_SYMBOL_ID]: { paths: arcs, text: 'MC' },
-    [MCR_SYMBOL_ID]: { paths: arcs, text: 'MCR' },
+  const contactLead = {
+    leadLeft: `M 0 ${wireY} L ${barLeft} ${wireY}`,
+    leadRight: `M ${barRight} ${wireY} L ${w} ${wireY}`,
   };
-  // 知らない識別子の倒し先（上の `UNKNOWN` と同じ扱い。`undefined` は返さない）
-  const unknown: SymbolShape = { paths: bars, text: '?' };
+
+  /* --- 丸コイル（利用者要求 2026-09-20: 出力は丸） --- */
+  const coilCx = Math.round(w / 2);
+  const coilR = cell.coilRxPx;
+  const coil: SymbolShape = {
+    paths: [],
+    layout: 'coil',
+    circle: { cx: coilCx, cy: wireY, r: coilR },
+    leadLeft: `M 0 ${wireY} L ${coilCx - coilR} ${wireY}`,
+    leadRight: `M ${coilCx + coilR} ${wireY} L ${w} ${wireY}`,
+  };
+
+  /* --- 角括弧 `[ SET Y0 ]`（GX Works3風の命令） --- */
+  const frameL = FRAME_INSET;
+  const frameR = w - FRAME_INSET;
+  const bracket: SymbolShape = {
+    paths: [
+      `M ${frameL + BRACKET_HOOK} ${barTop} L ${frameL} ${barTop} L ${frameL} ${barBottom} L ${frameL + BRACKET_HOOK} ${barBottom}`,
+      `M ${frameR - BRACKET_HOOK} ${barTop} L ${frameR} ${barTop} L ${frameR} ${barBottom} L ${frameR - BRACKET_HOOK} ${barBottom}`,
+    ],
+    layout: 'bracket',
+    leadLeft: `M 0 ${wireY} L ${frameL} ${wireY}`,
+    leadRight: '',
+  };
+
+  /* --- 命令ボックス（CX-Programmer風などの TIM / CNT） --- */
+  const boxH = Math.min(h - 6, barBottom - barTop + 14);
+  const boxTop = Math.round(wireY - boxH / 2);
+  const boxBottom = boxTop + boxH;
+  const box: SymbolShape = {
+    paths: [
+      `M ${frameL} ${boxTop} L ${frameR} ${boxTop} L ${frameR} ${boxBottom} L ${frameL} ${boxBottom} Z`,
+    ],
+    layout: 'box',
+    leadLeft: `M 0 ${wireY} L ${frameL} ${wireY}`,
+    leadRight: '',
+  };
+
+  const contact = (text?: string): SymbolShape => ({
+    paths: bars,
+    layout: 'contact',
+    ...contactLead,
+    ...(text === undefined ? {} : { text }),
+  });
+  /** 出力命令（SET / RST / MC / MCR / END）の形はスキンが選ぶ。 */
+  const instruction = cell.instructionStyle === 'bracket' ? bracket : box;
+  /** タイマ・カウンタは GX Works3風だけ**丸コイル**（`OUT T0 K30`）、他社は命令ボックス。 */
+  const timerShape = cell.timerStyle === 'coil' ? coil : box;
+
+  const shapes: Readonly<Record<string, SymbolShape>> = {
+    'contact-no': contact(),
+    'contact-nc': {
+      paths: [...bars, `M ${barLeft} ${barBottom} L ${barRight} ${barTop}`],
+      layout: 'contact',
+      ...contactLead,
+    },
+    'contact-rise': contact('↑'),
+    'contact-fall': contact('↓'),
+    'coil-round': coil,
+    'coil-set': instruction,
+    'coil-reset': instruction,
+    'coil-timer': timerShape,
+    'coil-counter': timerShape,
+    [MC_SYMBOL_ID]: instruction,
+    [MCR_SYMBOL_ID]: instruction,
+    [END_SYMBOL_ID]: instruction,
+  };
+  // 知らない識別子の倒し先（`undefined` は返さない）
+  const unknown = contact('?');
+
   const metrics: SymbolMetrics = {
     w,
     h,
     wireY,
-    leadLeft: `M 0 ${wireY} L ${left} ${wireY}`,
-    leadRight: `M ${right} ${wireY} L ${w} ${wireY}`,
+    barTop,
+    barBottom,
+    contactGap: gap,
+    ...contactLead,
     leadFull: `M 0 ${wireY} L ${w} ${wireY}`,
     // `LINK_DOWN` と同じ: セルの**左辺**を、次の行の桟（`h + wireY`）まで伸ばす
     linkDown: `M 0 ${wireY} L 0 ${h + wireY}`,
+    junctionR: Math.max(1.5, cell.strokeWidth * 1.2),
     /*
-     * `END_MARK` と同じ二重線。GX Works3風（`left` = 15）では landed と同じ 12 / 18 になる
-     * ように、記号の左端を挟む形（`left ± 3`）で置く。
+     * `END_MARK` と同じ二重線。END そのものは `END_SYMBOL_ID` の角括弧・箱で描くようになった
+     * （どの社のソフトも END を裸の二重線では出さない）が、署名の互換のために残す。
      */
     endMark: [
-      `M ${left - 3} ${top} L ${left - 3} ${bottom}`,
-      `M ${left + 3} ${top} L ${left + 3} ${bottom}`,
+      `M ${barLeft - 3} ${barTop} L ${barLeft - 3} ${barBottom}`,
+      `M ${barLeft + 3} ${barTop} L ${barLeft + 3} ${barBottom}`,
     ],
+    labelY: barTop - 3,
+    commentLineH: 8,
+    commentY: h - 2,
+    // コメントは 8px なので、全角1文字あたり約 8px。セル幅からはみ出さない文字数に丸める
+    commentChars: Math.max(3, Math.floor(w / 9)),
+    bracketTextY: Math.round(wireY + 3),
+    boxTextY: [
+      Math.round(boxTop + boxH * 0.28) + 3,
+      Math.round(boxTop + boxH * 0.55) + 3,
+      Math.round(boxTop + boxH * 0.82) + 3,
+    ],
+    stepGutter: cell.stepGutterPx,
+    poweredBlock: { x: 0, y: barTop, w, h: barBottom - barTop },
     /*
      * `leadAcrossHidden()` と同じ規則。始点は「コイル列の左端」で、最後の接点セルの絵の上を
-     * オーバーレイが横切らないようにする（3B 最終修正）。
+     * オーバーレイが横切らないようにする（3B 最終修正）。終点は**記号の枠の手前**
+     * （`FRAME_INSET`）で止める。接点の縦棒の位置（`barLeft`）まで伸ばすと、コイル列が角括弧
+     * （`[SET Y0]`）や命令ボックスのとき、括弧と中の文字の上を線が横切ってしまう（2026-09-20）。
      */
     leadAcrossHidden: (lastContactIndex: number, row: number): string => {
       const y = row * h + wireY;
       const coilX = (lastContactIndex + 1) * w;
-      return `M ${coilX} ${y} L ${coilX + left} ${y}`;
+      return `M ${coilX} ${y} L ${coilX + FRAME_INSET} ${y}`;
     },
     shape: (id: string): SymbolShape => shapes[id] ?? unknown,
   };
   METRICS_CACHE.set(cell, metrics);
   return metrics;
+}
+
+/* --- GX Works3風の既定（このファイルのモジュール定数の出どころ） --- */
+
+/**
+ * GX Works3風の寸法（既定）。`CELL_W` / `CELL_H` と同じ値で、`symbolMetrics(GX_CELL)` は
+ * 下のモジュール定数と同じ絵を返す。
+ */
+export const GX_CELL: SkinCell = {
+  widthPx: CELL_W,
+  heightPx: CELL_H,
+  strokeWidth: 1.6,
+  barInsetPx: 12,
+  contactGapPx: 8,
+  coilRxPx: 11,
+  instructionStyle: 'bracket',
+  timerStyle: 'coil',
+  stepGutterPx: 26,
+};
+
+/** GX Works3風の寸法で組んだ一式。下の互換 export はすべてここから引く。 */
+const GX = symbolMetrics(GX_CELL);
+
+/** 左のリード線（セルの左端から記号の左端まで）。 */
+export const LEAD_LEFT = GX.leadLeft;
+/** 右のリード線（記号の右端からセルの右端まで）。 */
+export const LEAD_RIGHT = GX.leadRight;
+/** セルを丸ごと横断する導線（`hline` / `vline`）。 */
+export const LEAD_FULL = GX.leadFull;
+/**
+ * 縦線（セルの左辺で下の行と繋ぐ渡り）。§10.3
+ *
+ * 下端は `CELL_H` ではなく `CELL_H + WIRE_Y` にする。`vline` が繋ぐのは (row,col) → (row+1,col)
+ * で、次の行の桟は `WIRE_Y` だけ下にあるため、`CELL_H` で止めると桟の手前で線が切れて見える
+ * （レビュー指摘 B1。`<g>` は子を clip しないので、セルの外まで伸ばしてよい）。
+ */
+export const LINK_DOWN = GX.linkDown;
+/** END の印（二重線）。END 自体は角括弧 `[END]` で描くようになったが、署名の互換で残す。 */
+export const END_MARK = GX.endMark;
+
+/** 識別子から線画を引く。知らない識別子は「?」付きの接点で描く。 */
+export function symbolShape(id: string): SymbolShape {
+  return GX.shape(id);
+}
+
+/**
+ * 省略された接点列をまたいでコイルへ繋ぐ導線。§10.6
+ *
+ * 表示列数がコイル列より狭いとき（既定は 11 列）、11〜14 列目は描かれないので、最後の接点列と
+ * コイル列は画面上では隣り合う。`applyLadderCell()` が自動で引いた横線でそこが繋がっている行は、
+ * **最後の接点列の桟からコイルの記号まで1本の線**を重ねて、回路が切れていないことを見せる。
+ */
+export function leadAcrossHidden(lastContactIndex: number, row: number): string {
+  return GX.leadAcrossHidden(lastContactIndex, row);
 }

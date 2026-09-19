@@ -60,8 +60,33 @@ export interface SkinColors {
 }
 
 /**
- * セルの寸法と線の太さ[px]。**スキンで変わる値はこの5つだけ**で、記号の「種別」は持たない
- * （決定表#6。`'gx' | 'cx' | …` のような列挙を作らないのは、値が2箇所に割れるため）。
+ * 出力命令（SET / RST / MC / MCR / END）の描き方。
+ * `bracket` は GX Works3風の `[SET Y0]`、`box` は CX-Programmer風などの命令ボックス。
+ */
+export type SkinInstructionStyle = 'bracket' | 'box';
+
+/**
+ * タイマ・カウンタの描き方。
+ * `coil` は GX Works3風の `OUT T0 K30`（**丸コイル**に設定値を添える）、`box` は
+ * CX-Programmer風・PCwin風・JW-300SP風の命令ボックス（命令語＋オペランドを3行で出す）。
+ */
+export type SkinTimerStyle = 'coil' | 'box';
+
+/**
+ * モニタ中の通電の見せ方。
+ * `block` は GX Works3風（通電している記号の裏に色の帯を敷く）、`flow` は CX-Programmer風
+ * などの「パワーフロー」（通電している線と記号だけを太く色づける）。
+ */
+export type SkinMonitorStyle = 'block' | 'flow';
+
+/**
+ * セルの寸法・線の太さ[px]と記号の形。
+ *
+ * Plan 4B 決定表#6 は「形は4スキン共通、数だけスキン別」と決めていたが、利用者
+ * （電気系保全の指導員）の 2026-09-20 の指摘「PLCは各メーカのソフトの画面表示と仕様に忠実に」
+ * 「出力が四角や `()` で表されていて丸でないのはおかしい」でその判断を解いた。
+ * **形を選ぶ値（`instructionStyle` / `timerStyle`）もここに置く**ので、実機と違うと分かった
+ * ときに直すのは `ladder/skins/<メーカー>.ts` の1ファイルのままである（§17.1）。
  */
 export interface SkinCell {
   widthPx: number;
@@ -71,10 +96,22 @@ export interface SkinCell {
   /** 接点の縦棒の上下の余白[px]（小さいほど縦長の接点になる）。 */
   barInsetPx: number;
   /**
-   * コイルの半円の横の膨らみ（SVG 楕円弧の `rx`）[px]。
-   * 小さいほど扁平に見える（CX-Programmer風の「やや扁平」＝ 7。ほかは 9）。「実物との対応」表
+   * 接点の縦棒の**間隔**[px]。利用者要求 2026-09-20「縦棒の間隔がやや広い」により、
+   * どのスキンも**セル幅の 15〜20%**に収める（`skin-grid.test.tsx` が比で縛る）。
+   */
+  contactGapPx: number;
+  /**
+   * **丸コイルの半径**[px]。利用者要求 2026-09-20「出力は丸」により、OUT コイルは丸括弧では
+   * なく直径 `2 × coilRxPx` の円で描く。接点の縦棒の高さ（`heightPx - 2 × barInsetPx`）と
+   * 同じ直径にすると、接点と出力の大きさが揃う。「実物との対応」表
    */
   coilRxPx: number;
+  /** 出力命令（SET / RST / MC / MCR / END）の形。 */
+  instructionStyle: SkinInstructionStyle;
+  /** タイマ・カウンタの形。 */
+  timerStyle: SkinTimerStyle;
+  /** 左の行番号（ステップ番号）欄の幅[px]。 */
+  stepGutterPx: number;
 }
 
 /**
@@ -108,7 +145,13 @@ export interface SkinTheme {
   statusItems: readonly SkinStatusItem[];
   colors: SkinColors;
   cell: SkinCell;
-  /** デバイスコメントを記号の下に何行で出すか。 */
+  /** モニタ中の通電の見せ方。 */
+  monitorStyle: SkinMonitorStyle;
+  /**
+   * デバイスコメントを記号の下に何行で出すか。
+   * **命令ボックス（`timerStyle: 'box'` のタイマ・カウンタなど）のセルは常に0行**である
+   * （箱がセルの高さをほぼ使い切るため。`LadderGrid` が判断する）。
+   */
   commentLines: 0 | 1 | 2;
   /** この見た目のうち §17.1 の前提である項目（設定画面とツールチップに出す）。 */
   assumed: readonly string[];
@@ -127,4 +170,6 @@ export const SKIN_ASSUMED: readonly string[] = [
   '画面の配色・セル寸法・記号の線の太さ（一般に知られた見え方から作図。純正の画面キャプチャ・配色データは使っていない）',
   'ペインの幅・出力ウィンドウの高さ・ステータスバーの項目（公知の画面構成から）',
   'タイトルバーの文字は「風」を付けた本アプリの表記（各社のロゴ・製品画像は持たない）',
+  '記号の形（接点は縦棒2本・出力は丸・命令は角括弧か箱）と縦棒の間隔・丸の半径（一般に知られた見え方から作図。2026-09-20 の利用者指摘で丸と間隔を決めた）',
+  '左の行番号欄は回路ブロックの通し行数（実機のステップ番号は命令の数で進むが、本アプリは中間表現に命令の並びを持たない）',
 ];

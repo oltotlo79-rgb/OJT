@@ -15,7 +15,14 @@ import { counterPresetText } from '../session/ladder-cell.js';
 import type { LadderCursor, LadderEditorMode } from '../session/ladder.js';
 import { skinMonitorColor } from '../session/plc-skin.js';
 import type { SkinTheme } from './skins/index.js';
-import { MC_SYMBOL_ID, MCR_SYMBOL_ID, symbolMetrics, type SymbolMetrics } from './symbols.js';
+import {
+  END_SYMBOL_ID,
+  MC_SYMBOL_ID,
+  MCR_SYMBOL_ID,
+  symbolMetrics,
+  type SymbolMetrics,
+  type SymbolShape,
+} from './symbols.js';
 import styles from './ladder.module.css';
 
 /**
@@ -30,11 +37,6 @@ import styles from './ladder.module.css';
 
 /** 左母線の幅[px]。 */
 const RAIL_W = 6;
-
-/** デバイスコメント1行の文字数（セル幅に収まる目安）。 */
-const COMMENT_CHARS = 6;
-/** デバイスコメントの行間[px]。 */
-const COMMENT_LINE_H = 8;
 
 /** コメントを `lines` 行に折り返す（入りきらない分は最後の行の末尾を `…` にする）。 */
 export function commentLines(text: string, lines: number, perLine: number): string[] {
@@ -95,31 +97,53 @@ function hiddenSpanIsWire(net: Network, gridCols: number, row: number): boolean 
   return wires > 0;
 }
 
-/** セルの見出し文字（デバイス名）と副文字（設定値）。 */
-function cellText(cell: Cell, profile: DialectProfile): { top: string; bottom: string } {
-  if (
-    cell.kind === 'contact' ||
-    cell.kind === 'coil' ||
-    cell.kind === 'mc' ||
-    cell.kind === 'mcr'
-  ) {
-    return { top: profile.formatDevice(cell.device), bottom: '' };
+/**
+ * セルに書く文字。**綴りはすべて方言（`DialectProfile`）から引く**ので、命令語も設定値も
+ * この部品には1つも直書きしない（§10.5 / 決定表#1）。
+ *
+ * - `device`: 方言表記のデバイス名（`X10` / `0.00` / `1X000` / `007366`）
+ * - `preset`: タイマ・カウンタの設定値（`K30` / `#0030` / `H0005` / `0005`）。レビュー I3
+ * - `mnemonic`: 命令語（`SET` / `TIM` / `TMR` / `F-40`）。角括弧と命令ボックスが使う
+ */
+function cellLabels(
+  cell: Cell,
+  profile: DialectProfile,
+): { device: string; preset: string; mnemonic: string } {
+  const names = profile.instructionNames;
+  if (cell.kind === 'contact') {
+    return { device: profile.formatDevice(cell.device), preset: '', mnemonic: '' };
+  }
+  if (cell.kind === 'coil') {
+    return {
+      device: profile.formatDevice(cell.device),
+      preset: '',
+      mnemonic: cell.type === 'OUT' ? '' : cell.type === 'SET' ? names.set : names.rst,
+    };
   }
   if (cell.kind === 'timer') {
     const preset = profile.timerPreset(cell.presetMs, cell.device);
     return {
-      top: profile.formatDevice(cell.device),
-      bottom: preset instanceof Error ? `${String(cell.presetMs)}ms` : preset.text,
+      device: profile.formatDevice(cell.device),
+      preset: preset instanceof Error ? `${String(cell.presetMs)}ms` : preset.text,
+      mnemonic: names.timer,
     };
   }
   if (cell.kind === 'counter') {
-    // 方言のカウンタ設定値の綴り（`K5` / `#0005` / `H0005` / `0005`）。レビュー I3
     return {
-      top: profile.formatDevice(cell.device),
-      bottom: counterPresetText(cell.preset, profile),
+      device: profile.formatDevice(cell.device),
+      preset: counterPresetText(cell.preset, profile),
+      mnemonic: names.counter,
     };
   }
-  return { top: '', bottom: '' };
+  if (cell.kind === 'mc' || cell.kind === 'mcr') {
+    return {
+      device: profile.formatDevice(cell.device),
+      preset: '',
+      mnemonic: cell.kind === 'mc' ? names.mc : names.mcr,
+    };
+  }
+  if (cell.kind === 'end') return { device: '', preset: '', mnemonic: names.end };
+  return { device: '', preset: '', mnemonic: '' };
 }
 
 /** セルの記号（`SymbolDrawing` の識別子）。線画を持たないセルは `undefined`。 */
@@ -146,14 +170,87 @@ function symbolIdOf(cell: Cell, profile: DialectProfile): string | undefined {
       return symbols.timer;
     case 'counter':
       return symbols.counter;
-    // MC / MCR は `SymbolDrawing` に無いので本アプリ側の固定IDを使う（`symbols.ts`）
+    // MC / MCR / END は `SymbolDrawing` に無いので本アプリ側の固定IDを使う（`symbols.ts`）
     case 'mc':
       return MC_SYMBOL_ID;
     case 'mcr':
       return MCR_SYMBOL_ID;
+    case 'end':
+      return END_SYMBOL_ID;
     default:
       return undefined;
   }
+}
+
+/**
+ * 記号の中・脇に置く文字。`SymbolShape.layout` が置き方を決める（`symbols.ts`）。
+ *
+ * - `contact` / `coil`: デバイス名は記号の**上**。丸コイルに設定値があるときは同じ行に
+ *   「デバイス名 設定値」と左右に分けて並べる（GX Works3風の `OUT T0 K30`）
+ * - `bracket`: `[SET Y0]` のように命令語とデバイスを括弧の中に1行で
+ * - `box`: 命令語・デバイス・設定値を箱の中に3行で（CX-Programmer風の命令ボックス）
+ */
+function SymbolLabels({
+  shape,
+  labels,
+  metrics,
+}: {
+  shape: SymbolShape;
+  labels: { device: string; preset: string; mnemonic: string };
+  metrics: SymbolMetrics;
+}): JSX.Element | null {
+  const mid = metrics.w / 2;
+  if (shape.layout === 'bracket') {
+    const line = [labels.mnemonic, labels.device].filter((part) => part !== '').join(' ');
+    return line === '' ? null : (
+      <text x={mid} y={metrics.bracketTextY} className={styles.frameText} data-testid="frame-text">
+        {line}
+      </text>
+    );
+  }
+  if (shape.layout === 'box') {
+    return (
+      <>
+        {[labels.mnemonic, labels.device, labels.preset].map((line, index) =>
+          line === '' ? null : (
+            <text
+              key={`${String(index)}:${line}`}
+              x={mid}
+              y={metrics.boxTextY[index] ?? metrics.bracketTextY}
+              className={index === 0 ? styles.frameText : styles.boxOperandText}
+              data-testid={index === 2 ? 'preset-text' : `box-line-${String(index)}`}
+            >
+              {line}
+            </text>
+          ),
+        )}
+      </>
+    );
+  }
+  if (labels.device === '') return null;
+  // 設定値があるときだけ、デバイス名と設定値を桟の中心で左右に分けて同じ行に置く
+  const paired = labels.preset !== '';
+  return (
+    <>
+      <text
+        x={paired ? mid - 2 : mid}
+        y={metrics.labelY}
+        className={paired ? `${styles.deviceText} ${styles.deviceTextEnd}` : styles.deviceText}
+      >
+        {labels.device}
+      </text>
+      {paired ? (
+        <text
+          x={mid + 2}
+          y={metrics.labelY}
+          className={`${styles.presetText} ${styles.presetTextStart}`}
+          data-testid="preset-text"
+        >
+          {labels.preset}
+        </text>
+      ) : null}
+    </>
+  );
 }
 
 /** 1セルぶんの描画。 */
@@ -193,8 +290,21 @@ function GridCell({
   const rightColor = rightOn ? colors.powered : colors.idle;
   const symbolId = symbolIdOf(cell, profile);
   const shape = symbolId === undefined ? undefined : metrics.shape(symbolId);
-  const text = cellText(cell, profile);
+  const labels = cellLabels(cell, profile);
   const conducting = cell.kind === 'hline' || cell.kind === 'vline';
+  /*
+   * その記号が「通っている」か（左右とも通電）。GX Works3風は裏に帯を敷き（`block`）、
+   * ほかのスキンは線を太くする「パワーフロー」（`flow`）。「実物との対応」表
+   */
+  const energised = leftOn && rightOn;
+  const flowing = energised && theme.monitorStyle === 'flow';
+  const wireClass = flowing ? `${styles.wire} ${styles.powered}` : styles.wire;
+  const symbolClass = flowing ? `${styles.symbol} ${styles.powered}` : styles.symbol;
+  /*
+   * 命令ボックスは箱がセルの高さをほぼ使い切るので、デバイスコメントを置く場所が無い
+   * （`SkinTheme.commentLines` の注記）。接点・丸コイル・角括弧の下にだけ出す。
+   */
+  const commentRows = shape?.layout === 'box' ? 0 : theme.commentLines;
   return (
     <g
       data-testid={`cell-${cellKey}`}
@@ -210,47 +320,69 @@ function GridCell({
     >
       {/* 当たり判定（透明の矩形。線だけだとクリックしづらい） */}
       <rect width={metrics.w} height={metrics.h} className={styles.cellHit} />
+      {/*
+        GX Works3風の通電表示: 通っている記号の**裏**に色の帯を敷く（`monitorStyle: 'block'`）。
+        線より先に描いて、記号と文字がその上に乗るようにする。「実物との対応」表
+      */}
+      {energised && theme.monitorStyle === 'block' ? (
+        <rect
+          data-testid="powered-block"
+          x={metrics.poweredBlock.x}
+          y={metrics.poweredBlock.y}
+          width={metrics.poweredBlock.w}
+          height={metrics.poweredBlock.h}
+          fill={colors.powered}
+          className={styles.poweredBlock}
+        />
+      ) : null}
       {conducting ? (
-        <path d={metrics.leadFull} stroke={leftColor} className={styles.wire} />
+        <path d={metrics.leadFull} stroke={leftColor} className={wireClass} />
       ) : shape === undefined ? null : (
         <>
-          <path d={metrics.leadLeft} stroke={leftColor} className={styles.wire} />
-          <path d={metrics.leadRight} stroke={rightColor} className={styles.wire} />
+          {shape.leadLeft === '' ? null : (
+            <path d={shape.leadLeft} stroke={leftColor} className={wireClass} />
+          )}
+          {shape.leadRight === '' ? null : (
+            <path d={shape.leadRight} stroke={rightColor} className={wireClass} />
+          )}
         </>
       )}
       {cell.kind === 'vline' && hasLinkBelow ? (
-        <path d={metrics.linkDown} stroke={leftColor} className={styles.wire} />
+        <>
+          <path d={metrics.linkDown} stroke={leftColor} className={wireClass} />
+          {/* 分岐の接合点（T字）。縦線が桟から降りる場所にだけ打つ */}
+          <circle
+            data-testid="junction"
+            cx={0}
+            cy={metrics.wireY}
+            r={metrics.junctionR}
+            fill={leftColor}
+            className={styles.junction}
+          />
+        </>
       ) : null}
-      {cell.kind === 'end'
-        ? metrics.endMark.map((d) => (
-            <path key={d} d={d} stroke={colors.idle} className={styles.wire} />
-          ))
-        : null}
       {shape?.paths.map((d) => (
         // `data-symbol` は「どの記号で描いたか」をテストから引くための印（Plan 4B Task 4）
-        <path key={d} d={d} data-symbol={symbolId} stroke={rightColor} className={styles.symbol} />
+        <path key={d} d={d} data-symbol={symbolId} stroke={rightColor} className={symbolClass} />
       ))}
+      {shape?.circle === undefined ? null : (
+        // 出力は**丸**（利用者要求 2026-09-20）
+        <circle
+          data-symbol={symbolId}
+          cx={shape.circle.cx}
+          cy={shape.circle.cy}
+          r={shape.circle.r}
+          stroke={rightColor}
+          className={symbolClass}
+        />
+      )}
       {shape?.text === undefined ? null : (
         <text x={metrics.w / 2} y={metrics.wireY + 4} className={styles.symbolText}>
           {shape.text}
         </text>
       )}
-      {text.top === '' ? null : (
-        <text x={metrics.w / 2} y={9} className={styles.deviceText}>
-          {text.top}
-        </text>
-      )}
-      {text.bottom === '' ? null : (
-        <text
-          x={metrics.w / 2}
-          // コメントが2行のスキン（OMRON）では、下の行のぶんだけ設定値を押し上げて重ならないよう
-          // にする（レビュー I5。1行のスキンは従来どおり `h - 9`）
-          y={metrics.h - 9 - Math.max(0, theme.commentLines - 1) * COMMENT_LINE_H}
-          className={styles.presetText}
-          data-testid="preset-text"
-        >
-          {text.bottom}
-        </text>
+      {shape === undefined ? null : (
+        <SymbolLabels shape={shape} labels={labels} metrics={metrics} />
       )}
       {/*
         デバイスコメントは記号の**下**に `theme.commentLines` 行で出す
@@ -258,13 +390,13 @@ function GridCell({
       */}
       {comment === undefined
         ? null
-        : commentLines(comment, theme.commentLines, COMMENT_CHARS).map((line, index) => (
+        : commentLines(comment, commentRows, metrics.commentChars).map((line, index) => (
             <text
               key={line + String(index)}
               className={styles.commentText}
               data-testid={`comment-line-${String(index)}`}
               x={metrics.w / 2}
-              y={metrics.h - 2 - (theme.commentLines - 1 - index) * COMMENT_LINE_H}
+              y={metrics.commentY - (commentRows - 1 - index) * metrics.commentLineH}
             >
               {line}
             </text>
@@ -311,6 +443,7 @@ function NetworkView({
   gridCols,
   columns,
   width,
+  startStep,
   cursorKey,
   onPickCell,
 }: {
@@ -324,6 +457,8 @@ function NetworkView({
   gridCols: number;
   columns: number[];
   width: number;
+  /** この回路ブロックの先頭行の番号（左の行番号欄に出す。§10.6 の画面構成） */
+  startStep: number;
   cursorKey: string;
   onPickCell: (cursor: LadderCursor) => void;
 }): JSX.Element {
@@ -367,14 +502,31 @@ function NetworkView({
         role="grid"
         aria-label={`${JA.ladder.network} ${net.id}`}
       >
+        {/*
+          左の行番号欄（4社とも回路の左に番号が並ぶ。§10.6 の画面構成）。
+          実機のステップ番号は命令の数で進むが、本アプリの中間表現は命令の並びを持たないので
+          **回路ブロックの通し行数**を出す（`SKIN_ASSUMED` の △）。
+        */}
+        {Array.from({ length: net.rows }, (_unused, row) => (
+          <text
+            key={`step-${net.id}:${String(row)}`}
+            data-testid={`step-${net.id}:${String(row)}`}
+            className={styles.stepText}
+            x={metrics.stepGutter - 5}
+            y={row * metrics.h + metrics.wireY + 3}
+          >
+            {startStep + row}
+          </text>
+        ))}
         {/* 左母線（全行を繋ぐ。§10.3） */}
         <rect
+          x={metrics.stepGutter}
           width={RAIL_W}
           height={net.rows * metrics.h}
           className={styles.rail}
           data-testid={`rail-${net.id}`}
         />
-        <g transform={`translate(${String(RAIL_W)} 0)`}>
+        <g transform={`translate(${String(metrics.stepGutter + RAIL_W)} 0)`}>
           {Array.from({ length: net.rows }, (_unused, row) => (
             // `role="grid"` の直下は `role="row"` を挟んでから `gridcell` にする（レビュー指摘 I4）
             <g role="row" key={`${net.id}:${String(row)}`}>
@@ -459,27 +611,34 @@ function LadderGridImpl({
 }): JSX.Element {
   const metrics = symbolMetrics(theme.cell);
   const columns = displayColumns(gridCols);
-  const width = RAIL_W + columns.length * metrics.w;
+  const width = metrics.stepGutter + RAIL_W + columns.length * metrics.w;
   const cursorKey = `${cursor.networkId}:${String(cursor.row)}:${String(cursor.col)}`;
+  // 行番号は回路ブロックをまたいで通しで数える（実機のステップ番号の見え方に寄せる）
+  let step = 0;
   return (
     <div className={styles.gridScroll} data-testid="ladder-grid">
-      {program.networks.map((net) => (
-        <NetworkView
-          key={net.id}
-          net={net}
-          profile={profile}
-          theme={theme}
-          metrics={metrics}
-          mode={mode}
-          comments={comments}
-          errorCells={errorCells}
-          gridCols={gridCols}
-          columns={columns}
-          width={width}
-          cursorKey={cursorKey}
-          onPickCell={onPickCell}
-        />
-      ))}
+      {program.networks.map((net) => {
+        const startStep = step;
+        step += net.rows;
+        return (
+          <NetworkView
+            key={net.id}
+            net={net}
+            profile={profile}
+            theme={theme}
+            metrics={metrics}
+            mode={mode}
+            comments={comments}
+            errorCells={errorCells}
+            gridCols={gridCols}
+            columns={columns}
+            width={width}
+            startStep={startStep}
+            cursorKey={cursorKey}
+            onPickCell={onPickCell}
+          />
+        );
+      })}
     </div>
   );
 }

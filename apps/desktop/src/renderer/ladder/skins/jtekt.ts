@@ -27,7 +27,24 @@ export const JTEKT_SKIN: SkinTheme = {
     statusBar: '#D8DCE2',
     output: '#F6F7F9',
   },
-  cell: { widthPx: 46, heightPx: 34, strokeWidth: 1.8, barInsetPx: 7, coilRxPx: 9 },
+  /*
+   * 接点＝縦棒2本（間隔 8px＝セル幅の 17.4%・線は4スキンでいちばん太い）、出力＝**丸**
+   * （半径 11px）、TIM / CNT / SET / RST / MC / MCR / END＝**命令ボックス**。
+   * △（一般に知られた PCwin の見え方から作図。§17.1）
+   */
+  cell: {
+    widthPx: 46,
+    heightPx: 46,
+    strokeWidth: 1.8,
+    barInsetPx: 12,
+    contactGapPx: 8,
+    coilRxPx: 11,
+    instructionStyle: 'box',
+    timerStyle: 'box',
+    stepGutterPx: 24,
+  },
+  // 通電は橙のパワーフロー。△
+  monitorStyle: 'flow',
   commentLines: 1,
   assumed: SKIN_ASSUMED,
   // キー割当表は GX Works3風の表を流用している（`packages/plc-dialects/src/jtekt.ts`）。レビュー I7

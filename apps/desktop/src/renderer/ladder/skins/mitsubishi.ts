@@ -24,7 +24,25 @@ export const MITSUBISHI_SKIN: SkinTheme = {
     statusBar: '#E6E9EE',
     output: '#FFFFFF',
   },
-  cell: { widthPx: 48, heightPx: 36, strokeWidth: 1.6, barInsetPx: 8, coilRxPx: 9 },
+  /*
+   * 接点＝縦棒2本（間隔 8px＝セル幅の 16.7%）、出力＝**丸**（半径 11px＝縦棒の高さの半分）、
+   * SET / RST / MC / MCR / END＝**角括弧**（`[SET Y0]`）、タイマ・カウンタ＝丸コイルに
+   * 設定値を添える（`OUT T0 K30`）。△（一般に知られた GX Works3 の見え方から作図。
+   * 純正の画面キャプチャ・図記号ビットマップは使っていない。§17.1）
+   */
+  cell: {
+    widthPx: 48,
+    heightPx: 46,
+    strokeWidth: 1.6,
+    barInsetPx: 12,
+    contactGapPx: 8,
+    coilRxPx: 11,
+    instructionStyle: 'bracket',
+    timerStyle: 'coil',
+    stepGutterPx: 26,
+  },
+  // 通電中の記号の裏に青い帯を敷く（GX Works3 のモニタの見え方）。△
+  monitorStyle: 'block',
   commentLines: 1,
   assumed: SKIN_ASSUMED,
 };

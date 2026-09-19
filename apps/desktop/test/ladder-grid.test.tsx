@@ -24,7 +24,7 @@ import { useStore } from '../src/renderer/app/store.js';
 import type { PlcMonitorSnapshot } from '../src/renderer/app/store-types.js';
 import { LadderGrid } from '../src/renderer/ladder/LadderGrid.js';
 import { skinThemeOf } from '../src/renderer/ladder/skins/index.js';
-import { CELL_H, CELL_W, WIRE_Y } from '../src/renderer/ladder/symbols.js';
+import { CELL_H, CELL_W, symbolMetrics, WIRE_Y } from '../src/renderer/ladder/symbols.js';
 import { applyOrContact } from '../src/renderer/session/ladder.js';
 
 // このリポジトリの UI テストの流儀（`globals: false` なので自動クリーンアップは効かない）。
@@ -90,9 +90,9 @@ describe('スキンの寸法（利用者要求: 実物に近い画面）', () =>
       />,
     );
     const svg = screen.getByRole('grid', { name: /n1/u });
-    // OMRON は 52×40。接点11列＋コイル列1＋母線6px
-    expect(svg.getAttribute('height')).toBe('40');
-    expect(Number(svg.getAttribute('width'))).toBe(12 * 52 + 6);
+    // OMRON は 52×60（I/Oコメント2行ぶん背が高い）。接点11列＋コイル列1＋母線6px＋行番号欄26px
+    expect(svg.getAttribute('height')).toBe('60');
+    expect(Number(svg.getAttribute('width'))).toBe(26 + 6 + 12 * 52);
   });
 
   it('shows two comment lines in the CX-Programmer style and one elsewhere', () => {
@@ -135,8 +135,11 @@ describe('スキンの寸法（利用者要求: 実物に近い画面）', () =>
     expect(screen.getByTestId(`cell-n1:0:${String(COIL_COL)}`)).toHaveTextContent('#0005');
   });
 
-  /** レビュー I5: OMRON（2行コメント）で設定値がコメントの1行目と重なっていた。 */
-  it('keeps the timer preset clear of the two-line OMRON comment (I5)', () => {
+  /**
+   * レビュー I5 の書き直し（2026-09-20）。OMRON のタイマは**命令ボックス**になったので、
+   * 設定値は箱の中の3行目に入り、コメントとぶつかりようがない（箱のセルはコメントを出さない）。
+   */
+  it('puts the OMRON timer preset inside the instruction box, with no comment to collide with', () => {
     render(
       <LadderGrid
         program={sample()}
@@ -148,9 +151,14 @@ describe('スキンの寸法（利用者要求: 実物に近い画面）', () =>
       />,
     );
     const cell = screen.getByTestId(`cell-n2:0:${String(COIL_COL)}`);
+    // 1行目＝命令語（`TIM`）、2行目＝デバイス、3行目＝設定値
+    expect(within(cell).getByTestId('box-line-0')).toHaveTextContent(
+      OMRON_CP1E.instructionNames.timer,
+    );
+    const boxTop = Number(within(cell).getByTestId('box-line-0').getAttribute('y'));
     const presetY = Number(within(cell).getByTestId('preset-text').getAttribute('y'));
-    const commentY = Number(within(cell).getByTestId('comment-line-0').getAttribute('y'));
-    expect(presetY).toBeLessThan(commentY);
+    expect(presetY).toBeGreaterThan(boxTop);
+    expect(within(cell).queryByTestId('comment-line-0')).toBeNull();
   });
 });
 
@@ -201,8 +209,24 @@ describe('LadderGrid（§10.7）', () => {
   });
 
   it('writes the device comment under the symbol (§10.7)', () => {
+    render(<LadderGrid program={sample()} {...base} comments={{ X0: '運転' }} />);
+    const cell = screen.getByTestId('cell-n1:0:0');
+    expect(cell).toHaveTextContent('運転');
+    // コメントは記号（縦棒の下端）より下に出る
+    const metrics = symbolMetrics(skinThemeOf(MITSUBISHI_FX5U).cell);
+    expect(Number(within(cell).getByTestId('comment-line-0').getAttribute('y'))).toBeGreaterThan(
+      metrics.barBottom,
+    );
+  });
+
+  /** セル幅に入りきらないコメントは末尾を `…` にして、隣のセルへはみ出さない。 */
+  it('truncates a comment that does not fit the cell width', () => {
     render(<LadderGrid program={sample()} {...base} comments={{ X0: '運転押ボタン' }} />);
-    expect(screen.getByTestId('cell-n1:0:0')).toHaveTextContent('運転押ボタン');
+    const line = within(screen.getByTestId('cell-n1:0:0')).getByTestId('comment-line-0');
+    expect(line.textContent).toHaveLength(
+      symbolMetrics(skinThemeOf(MITSUBISHI_FX5U).cell).commentChars,
+    );
+    expect(line.textContent?.endsWith('…')).toBe(true);
   });
 
   it('marks the cursor cell and moves it on click', () => {

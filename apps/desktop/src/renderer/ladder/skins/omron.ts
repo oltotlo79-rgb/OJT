@@ -24,8 +24,25 @@ export const OMRON_SKIN: SkinTheme = {
     statusBar: '#EAEEF2',
     output: '#FBFCFD',
   },
-  // コイルは「やや扁平」（「実物との対応」表）＝ `coilRxPx` を 9 より小さくする
-  cell: { widthPx: 52, heightPx: 40, strokeWidth: 1.4, barInsetPx: 10, coilRxPx: 7 },
+  /*
+   * 接点＝縦棒2本（間隔 9px＝セル幅の 17.3%）、出力＝**丸**（半径 14px）、
+   * TIM / CNT / SET / RSET / IL / ILC / END＝**命令ボックス**（命令語を1行目、オペランドを
+   * 続く行に出す CX-Programmer の見え方）。I/Oコメントを記号の下に2行出すぶん、セルは
+   * 4スキンでいちばん背が高い。△（一般に知られた見え方から作図。§17.1）
+   */
+  cell: {
+    widthPx: 52,
+    heightPx: 60,
+    strokeWidth: 1.4,
+    barInsetPx: 16,
+    contactGapPx: 9,
+    coilRxPx: 14,
+    instructionStyle: 'box',
+    timerStyle: 'box',
+    stepGutterPx: 26,
+  },
+  // 通電は緑の「パワーフロー」（線と記号を太く色づける）。△
+  monitorStyle: 'flow',
   commentLines: 2,
   assumed: SKIN_ASSUMED,
 };

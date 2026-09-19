@@ -85,9 +85,12 @@
   background-image:
     linear-gradient(to right, var(--skin-grid, transparent) 1px, transparent 1px),
     linear-gradient(to bottom, var(--skin-grid, transparent) 1px, transparent 1px);
-  background-size: var(--skin-cell-w, 48px) var(--skin-cell-h, 36px);
-  /* 左母線の幅ぶん右へ（`RAIL_W`。`LadderGrid.tsx` と値を合わせておくこと） */
-  background-position: 6px 0;
+  background-size: var(--skin-cell-w, 48px) var(--skin-cell-h, 46px);
+  /*
+   * 左の行番号欄（`--skin-step-gutter`）と左母線の幅（`RAIL_W`。`LadderGrid.tsx` と値を
+   * 合わせておくこと）のぶん右へずらすと、格子がセルの境界にぴったり合う。
+   */
+  background-position: calc(var(--skin-step-gutter, 26px) + 6px) 0;
 }
 
 .rail {
@@ -109,10 +112,32 @@
   stroke-linecap: square;
 }
 
+/*
+ * 通電中の線と記号（`monitorStyle: 'flow'` のスキン）。CX-Programmer風・PCwin風・JW-300SP風は
+ * 通っている経路を**太い色の線**で見せる（「パワーフロー」）。線の色は `stroke` 属性が持つ。
+ */
+.powered {
+  stroke-width: calc(var(--skin-stroke, 1.6) * 2);
+  stroke-linecap: round;
+}
+
+/* 通電中の記号の裏に敷く帯（`monitorStyle: 'block'` の GX Works3風）。 */
+.poweredBlock {
+  opacity: 0.2;
+}
+
+/* 分岐の接合点（T字の黒丸）。 */
+.junction {
+  stroke: none;
+}
+
 .symbolText,
 .deviceText,
 .presetText,
-.commentText {
+.commentText,
+.frameText,
+.boxOperandText,
+.stepText {
   text-anchor: middle;
   fill: var(--skin-device, #1b1e23);
   font-family: inherit;
@@ -123,11 +148,49 @@
   font-weight: 700;
 }
 
+/*
+ * デバイス名（アドレス）は画面でいちばん読む文字なので 11px を下限にする（UX 品質の基準）。
+ * 設定値・命令語・コメントはその補助なので1〜3px 小さい。
+ */
 .deviceText {
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .presetText {
+  font-size: 9px;
+  fill: var(--skin-preset, #555);
+}
+
+/*
+ * 丸コイルに設定値があるとき（GX Works3風の `OUT T0 K30`）、デバイス名と設定値を桟の中心で
+ * 左右に分けて同じ行に並べる。`text-anchor` は上の共通宣言（`middle`）に負けるので、
+ * 要素の属性ではなくクラスで上書きする。
+ */
+.deviceTextEnd {
+  text-anchor: end;
+}
+
+.presetTextStart {
+  text-anchor: start;
+}
+
+/* 角括弧 `[SET Y0]` と命令ボックスの1行目（命令語）。 */
+.frameText {
+  font-size: 10px;
+  font-weight: 700;
+}
+
+/*
+ * 命令ボックスの2・3行目（デバイスと設定値）。シャープの `TMR00000` のように8文字になる
+ * 方言があるので、箱の内寸（セル幅 − 8px）に収まる 8px にする。
+ */
+.boxOperandText {
+  font-size: 8px;
+}
+
+/* 左の行番号欄（右詰め）。 */
+.stepText {
+  text-anchor: end;
   font-size: 9px;
   fill: var(--skin-preset, #555);
 }
@@ -734,7 +797,7 @@ details[open] > .sideSummary::before {
 
 .notationPickLabel {
   font-weight: 700;
-  margin: 8px 0 6px;
+  margin: 8px 0;
 }
 
 .notationPicker {
@@ -747,7 +810,7 @@ details[open] > .sideSummary::before {
 .notationChoice {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 4px;
 }
 
 /* 選択肢・確定・取消のボタンはどれも 32px 以上（利用者要求「直感的に操作できるUI」） */
@@ -781,7 +844,7 @@ details[open] > .sideSummary::before {
   color: #7a3000;
   font-size: 12px;
   margin: 0 0 8px;
-  padding: 6px 8px;
+  padding: 8px;
 }
 
 .notationErrors {
@@ -817,6 +880,6 @@ details[open] > .sideSummary::before {
 
 .outputTools button {
   /* レビュー #4: 28px は 32px の押しやすさの基準（global.css）を割っていたので外した */
-  padding: 2px 10px;
+  padding: 4px 8px;
 }
 /* --- /Plan 4B Task 9 --- */

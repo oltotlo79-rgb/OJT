@@ -24,7 +24,24 @@ export const SHARP_SKIN: SkinTheme = {
     statusBar: '#DCE3E7',
     output: '#FAFCFD',
   },
-  cell: { widthPx: 50, heightPx: 38, strokeWidth: 1.6, barInsetPx: 8, coilRxPx: 9 },
+  /*
+   * 接点＝縦棒2本（間隔 9px＝セル幅の 18%）、出力＝**丸**（半径 11px）、
+   * TMR / CNT / SET / RST / F-47 / F-48 / F-40＝**命令ボックス**（`TMR 000 …`）。
+   * △（一般に知られた JW-300SP の見え方から作図。§17.1）
+   */
+  cell: {
+    widthPx: 50,
+    heightPx: 48,
+    strokeWidth: 1.6,
+    barInsetPx: 13,
+    contactGapPx: 9,
+    coilRxPx: 11,
+    instructionStyle: 'box',
+    timerStyle: 'box',
+    stepGutterPx: 24,
+  },
+  // 通電は水色のパワーフロー。△
+  monitorStyle: 'flow',
   commentLines: 1,
   assumed: SKIN_ASSUMED,
   // キー割当表は GX Works3風の表を流用している（`packages/plc-dialects/src/sharp.ts`）。レビュー I7
