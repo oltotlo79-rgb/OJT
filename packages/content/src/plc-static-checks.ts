@@ -81,18 +81,31 @@ export function detectPlcWiring(
   return undefined;
 }
 
+/** 端子が中継リレーの接点ピン（COM・a・b。13/14のコイルは除く）か。§6.4 */
+function isRelayContactId(id: string): boolean {
+  const match = /^(CR\d+)\.(\d+)$/.exec(id);
+  if (match === null) return false;
+  const pin = Number(match[2]);
+  return pin >= 1 && pin <= CONTACT_PIN_MAX;
+}
+
+/** 端子が中継リレーのコイル（`CRn.14`）か。§6.4 */
+function isRelayCoilId(id: string): boolean {
+  return /^CR\d+\.14$/.test(id);
+}
+
 /**
- * 2段結線。§10.2 / §7.4
- * Y出力は盤のリレーのコイルへ、リレーの接点がランプへ、という2段でなければならない。
+ * 2段結線（`io.mode: 'fixed'`）。割付どおりの Y/CR/PL の組で検査する。
  * Y → ランプの直結（`twoStage` 違反）と、Y がどのコイルにも繋がっていない場合を検出する。
  */
-export function checkTwoStage(input: StaticCheckInput): StaticCheckResult {
-  const plc = input.plc;
-  if (plc === undefined) return missingContext('twoStage');
-  const nets = buildNets(input.netlist);
+function checkTwoStageFixed(
+  nets: Nets,
+  unit: PlcUnitDefinition,
+  outputs: PlcCheckContext['io']['outputs'],
+): string[] {
   const details: string[] = [];
-  for (const output of plc.io.outputs) {
-    const yTerminal = outputTerminal(plc.unit, output.y);
+  for (const output of outputs) {
+    const yTerminal = outputTerminal(unit, output.y);
     const yNet = netTerminals(nets, yTerminal);
     if (yNet.some((id) => id.startsWith(`${PL_BLOCK_ID}.`))) {
       details.push(`${yTerminal} が ${output.pl} に直結しています（盤のリレーを介します）`);
@@ -105,15 +118,63 @@ export function checkTwoStage(input: StaticCheckInput): StaticCheckResult {
       continue;
     }
     const lampNet = netTerminals(nets, terminalId(PL_BLOCK_ID, `${output.pl.slice(2)}+`));
-    const drivenByContact = lampNet.some((id) => {
-      if (!id.startsWith(`${output.cr}.`)) return false;
-      const pin = Number(id.slice(output.cr.length + 1));
-      return pin >= 1 && pin <= CONTACT_PIN_MAX; // 接点（COM・a・b）のピン。コイル（13/14）は除く
-    });
+    const drivenByContact = lampNet.some(
+      (id) => id.startsWith(`${output.cr}.`) && isRelayContactId(id),
+    );
     if (!drivenByContact) {
       details.push(`${output.pl} が ${output.cr} の接点から駆動されていません`);
     }
   }
+  return details;
+}
+
+/**
+ * 2段結線（`io.mode: 'free'`）。割付を強制しないので、機種仕様の全Y端子・全PL端子について
+ * 「配線されているなら正しく2段になっているか」を見る（未配線の端子は課題が使っていないので無視）。
+ * 割付表（`plc.io.outputs`）は既定割付のままのことがあるため使わない（§17.2 #9 / 差分 #6）。
+ */
+function checkTwoStageFree(nets: Nets, unit: PlcUnitDefinition): string[] {
+  const details: string[] = [];
+  for (const output of unit.spec.outputs) {
+    const yTerminal = plcTerminal(output.name);
+    const yNet = netTerminals(nets, yTerminal);
+    if (yNet.length <= 1) continue; // 未配線（自分自身しかいない節点）
+    const directLamp = yNet.find((id) => id.startsWith(`${PL_BLOCK_ID}.`));
+    if (directLamp !== undefined) {
+      const plName = `PL${directLamp.slice(PL_BLOCK_ID.length + 1, -1)}`;
+      details.push(`${yTerminal} が ${plName} に直結しています（盤のリレーを介します）`);
+      continue;
+    }
+    if (!yNet.some(isRelayCoilId)) {
+      details.push(`${yTerminal} がリレーのコイル（CRn.14）に繋がっていません`);
+    }
+  }
+  for (let n = 1; n <= 4; n += 1) {
+    const lampTerminal = terminalId(PL_BLOCK_ID, `${n}+`);
+    const lampNet = netTerminals(nets, lampTerminal);
+    // 端子台とランプ本体は固定ハーネスで常時リンク済みなので、未配線でも節点には2端子いる（§6.4）。
+    // それを超えて何か（リレー接点など）が繋がっていなければ、この課題では使っていないランプ。
+    if (lampNet.length <= 2) continue;
+    if (!lampNet.some(isRelayContactId)) {
+      details.push(`PL${n} がリレーの接点から駆動されていません`);
+    }
+  }
+  return details;
+}
+
+/**
+ * 2段結線。§10.2 / §7.4
+ * Y出力は盤のリレーのコイルへ、リレーの接点がランプへ、という2段でなければならない。
+ * `io.mode: 'fixed'` は割付どおりの組で検査し、`'free'` は配線そのものから検査する（差分 #6）。
+ */
+export function checkTwoStage(input: StaticCheckInput): StaticCheckResult {
+  const plc = input.plc;
+  if (plc === undefined) return missingContext('twoStage');
+  const nets = buildNets(input.netlist);
+  const details =
+    plc.io.mode === 'free'
+      ? checkTwoStageFree(nets, plc.unit)
+      : checkTwoStageFixed(nets, plc.unit, plc.io.outputs);
   return result(
     'twoStage',
     details,
@@ -168,18 +229,37 @@ export function checkIoAssignment(input: StaticCheckInput): StaticCheckResult {
   }
   const nets = buildNets(input.netlist);
   const details: string[] = [];
+  const isPbA = (id: string): boolean => /^TB_PB\.\d+a$/.test(id);
+  const isPlcX = (id: string): boolean => /^PLC\.X\d+$/.test(id);
+  const isPlcY = (id: string): boolean => /^PLC\.Y\d+$/.test(id);
   for (const assigned of plc.io.inputs) {
     const terminal = inputTerminal(plc.unit, assigned.x);
     const expected = terminalId(PB_BLOCK_ID, `${assigned.pb.slice(2)}a`);
-    if (!netTerminals(nets, terminal).includes(expected)) {
+    const net = netTerminals(nets, terminal);
+    if (!net.includes(expected)) {
       details.push(`${terminal} は ${assigned.pb} のa接点（${expected}）に割り付けます`);
+      continue;
+    }
+    // 他の押ボタンのa接点・他のPLC入力端子が同じ節点に短絡していないか（例: X0とX1の短絡）
+    const pbCount = net.filter((id) => isPbA(String(id))).length;
+    const xCount = net.filter((id) => isPlcX(String(id))).length;
+    if (pbCount !== 1 || xCount !== 1) {
+      details.push(`${terminal} が別の押ボタンまたはPLC入力端子と短絡しています`);
     }
   }
   for (const output of plc.io.outputs) {
     const terminal = outputTerminal(plc.unit, output.y);
     const expected = terminalId(output.cr, '14');
-    if (!netTerminals(nets, terminal).includes(expected)) {
+    const net = netTerminals(nets, terminal);
+    if (!net.includes(expected)) {
       details.push(`${terminal} は ${output.cr} のコイル（${expected}）に割り付けます`);
+      continue;
+    }
+    // 他の出力リレーのコイル・他のPLC出力端子が同じ節点に短絡していないか
+    const coilCount = net.filter((id) => isRelayCoilId(String(id))).length;
+    const yCount = net.filter((id) => isPlcY(String(id))).length;
+    if (coilCount !== 1 || yCount !== 1) {
+      details.push(`${terminal} が別のリレーコイルまたはPLC出力端子と短絡しています`);
     }
   }
   const wiring = detectPlcWiring(nets, plc.unit);

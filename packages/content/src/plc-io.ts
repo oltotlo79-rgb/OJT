@@ -34,8 +34,15 @@ export interface PlcCouplingOptions {
   partId?: string;
   /** 出力配列の長さ。既定はラダーが使う最大番号＋1。 */
   outputCount?: number;
-  /** スキャン周期[ms]。既定は `TICK_MS`（10）。§10.4 */
+  /**
+   * スキャン周期[ms]。既定は `tickMs`（未指定なら `TICK_MS`＝10）。§10.4
+   * `runPlcOperations()` を `tickMs` を変えて呼ぶときは、明示しない限りスキャンも同じ周期で
+   * 回るべきである（tick ごとに1スキャンが実機の前提）。ここが `TICK_MS` 固定だと、
+   * `tickMs` を伸ばしたぶんだけタイマが実時間に対して遅く進んでしまう。
+   */
   scanMs?: number;
+  /** シミュレーションの tick 周期[ms]。`scanMs` の既定値として使う。既定 `TICK_MS`（10）。 */
+  tickMs?: number;
 }
 
 /** スキャンと tick の結合。 */
@@ -53,7 +60,7 @@ export function createPlcCoupling(
 ): PlcCoupling {
   const runtime = createPlcRuntime(program, {
     io: createSimulationIoPort(sim, options.partId ?? PLC_PART_ID),
-    scanMs: options.scanMs ?? TICK_MS,
+    scanMs: options.scanMs ?? options.tickMs ?? TICK_MS,
     ...(options.outputCount === undefined ? {} : { outputCount: options.outputCount }),
   });
   return {

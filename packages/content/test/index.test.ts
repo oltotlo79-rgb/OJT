@@ -739,7 +739,6 @@ describe('Phase 3 の公開API（バレル経由。Task 20）', () => {
     const context: PlcCheckContext = {
       unit: built.value.unit,
       io: built.value.io,
-      roles: built.value.session.socketRoles,
     };
     const input: StaticCheckInput = {
       session: built.value.session,

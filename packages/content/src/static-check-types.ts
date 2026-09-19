@@ -21,11 +21,15 @@ export interface StaticCheckResult {
   details: string[];
 }
 
-/** モードDの静的チェックに要る文脈。§10.2 */
+/**
+ * モードDの静的チェックに要る文脈。§10.2
+ * `roles` はどの静的チェックも読まない（配線の判定は `unit` / `io` とネットリストだけで足りる）。
+ * Plan 3B が使う可能性があるためフィールドごと削除はせず、任意化だけしておく（レビュー反映）。
+ */
 export interface PlcCheckContext {
   unit: PlcUnitDefinition;
   io: ResolvedPlcIo;
-  roles: SocketRoles;
+  roles?: SocketRoles;
 }
 
 /** チェックの入力（訓練者側の盤・ネットリスト・再生結果）。 */

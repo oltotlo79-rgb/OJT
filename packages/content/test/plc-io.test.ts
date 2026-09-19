@@ -9,6 +9,8 @@ import {
   no,
   out,
   program,
+  T,
+  ton,
   X,
   Y,
   type Cell,
@@ -108,5 +110,28 @@ describe('runPlcOperations', () => {
       durationMs: problem.durationMs,
     });
     expect(result.log.transitions('PL1').some((e) => e.value === true)).toBe(false);
+  });
+
+  it('scans at the tick period so a TON preset elapses at the right wall time (§10.4)', () => {
+    // Task 3のバグ: `scanMs` が `tickMs` を見ないと 1tick=20ms でも1スキャン=10ms(既定)のまま進み、
+    // タイマの体感経過が実時間の半分の速さになる（1000msのTONが2000msかかる）。
+    const { problem, circuit } = reference();
+    const timed = compile(
+      program(
+        network('n1', [rung(no(X(0)), ton(T(0), 1000))]),
+        network('n2', [rung(no(T(0)), out(Y(0)))]),
+        endNetwork(),
+      ),
+    );
+    if (!timed.ok) throw new Error('変換に失敗しました');
+    const operations = [{ t: 0, target: 'PB1', action: 'press' as const }];
+    const result = runPlcOperations(circuit.netlist, timed.program, operations, {
+      durationMs: problem.durationMs,
+      tickMs: 20,
+    });
+    const litMs = result.log.transitions('PL1').find((e) => e.value === true)?.tMs ?? -1;
+    // 入力の1スキャン遅れぶんの余裕を見て、1000ms±1tick(20ms)に点灯する
+    expect(litMs).toBeGreaterThanOrEqual(1000);
+    expect(litMs).toBeLessThanOrEqual(1000 + 2 * 20);
   });
 });

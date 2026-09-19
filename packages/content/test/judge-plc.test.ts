@@ -1,6 +1,7 @@
 import { addWire, JIPM_BOARD, removeWire } from '@ojt/board-model';
 import type { TerminalId } from '@ojt/circuit-sim';
 import {
+  compile,
   endNetwork,
   hline,
   IR_COLS,
@@ -8,12 +9,14 @@ import {
   no,
   out,
   program,
+  T,
+  ton,
   X,
   Y,
   type Cell,
 } from '@ojt/ladder-core';
 import { describe, expect, it } from 'vitest';
-import { judgePlc, judgePlcReference } from '../src/judge-plc.js';
+import { judgePlc, judgePlcReference, plcTimerMarkers } from '../src/judge-plc.js';
 import { buildPlcReferenceSession, type PlcReferenceCircuit } from '../src/plc-reference.js';
 import { PlcProblemSchema, type PlcProblem } from '../src/schema/plc.js';
 import { plcProblemJson } from './helpers/plc.js';
@@ -140,5 +143,27 @@ describe('judgePlc（§10.8）', () => {
     const circuit = traineeSession();
     const judged = judgePlc(broken, JIPM_BOARD, circuit.session, broken.referenceLadder);
     expect(judged.ok).toBe(false);
+  });
+});
+
+describe('plcTimerMarkers（§7.7 / レビュー反映: formatSeconds/deviceLabel の再利用と重複除去）', () => {
+  it('dedupes a timer device that appears as an output in two networks (§10.4 の二重コイル)', () => {
+    const compiled = compile(
+      program(
+        network('n1', [rung(no(X(0)), ton(T(0), 3000))]),
+        // 同じ T0 がもう一つのネットワークにも出力として現れる（実行は後勝ちだが印は1個でよい）
+        network('n2', [rung(no(X(1)), ton(T(0), 3000))]),
+        endNetwork(),
+      ),
+    );
+    if (!compiled.ok) throw new Error('変換に失敗しました');
+    const markers = plcTimerMarkers(compiled.program);
+    expect(markers).toEqual([{ tMs: 3000, label: 'T0=3秒' }]);
+  });
+
+  it('formats a non-integer preset like timerMarkers() (§7.7)', () => {
+    const compiled = compile(program(network('n1', [rung(no(X(0)), ton(T(1), 800))]), endNetwork()));
+    if (!compiled.ok) throw new Error('変換に失敗しました');
+    expect(plcTimerMarkers(compiled.program)).toEqual([{ tMs: 800, label: 'T1=0.8秒' }]);
   });
 });

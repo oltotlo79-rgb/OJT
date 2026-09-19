@@ -25,6 +25,37 @@ function flipFirstContact(ladder: LadderProgram): LadderProgram {
   throw new Error('接点が1つもありません');
 }
 
+/** 最初に見つかったタイマの設定値を書き換えた「惜しい」ラダーを作る（tolerance の弁別確認用）。 */
+function retimeFirstTimer(ladder: LadderProgram, from: number, to: number): LadderProgram {
+  const copy = structuredClone(ladder);
+  for (const net of copy.networks) {
+    for (const row of net.cells) {
+      for (const cell of row) {
+        if (cell.kind === 'timer' && cell.presetMs === from) {
+          cell.presetMs = to;
+          return copy;
+        }
+      }
+    }
+  }
+  throw new Error(`presetMs=${from} のタイマが見つかりません`);
+}
+
+/** 出力コイルの2点（`Y{a}` と `Y{b}`）を入れ替えた「惜しい」ラダーを作る。 */
+function swapOutputs(ladder: LadderProgram, a: number, b: number): LadderProgram {
+  const copy = structuredClone(ladder);
+  for (const net of copy.networks) {
+    for (const row of net.cells) {
+      for (const cell of row) {
+        if (cell.kind !== 'coil' || cell.device.kind !== 'output') continue;
+        if (cell.device.index === a) cell.device.index = b;
+        else if (cell.device.index === b) cell.device.index = a;
+      }
+    }
+  }
+  return copy;
+}
+
 const CASES = BUILTIN_PLC_PROBLEMS.map((problem) => [problem.id, problem] as const);
 
 describe('内蔵モードD課題の弁別（§16 Phase 3 の受入基準）', () => {
@@ -87,6 +118,40 @@ describe('内蔵モードD課題の弁別（§16 Phase 3 の受入基準）', ()
       expect(judged.value.staticChecks.find((c) => c.id === 'plcPowerIndependent')?.ok).toBe(false);
     },
   );
+
+  it('d-003: TONの設定値を3000→5000にずらすと tolerance で不合格になる（§7.4 の弁別）', () => {
+    const problem = BUILTIN_PLC_PROBLEMS.find((p) => p.id === 'd-003');
+    if (problem === undefined) throw new Error('d-003 が見つかりません');
+    const built = buildPlcReferenceSession(problem, JIPM_BOARD);
+    if (!built.ok) throw new Error('模範回路を組めません');
+    const judged = judgePlc(
+      problem,
+      JIPM_BOARD,
+      built.value.session,
+      retimeFirstTimer(problem.referenceLadder, 3000, 5000),
+    );
+    expect(judged.ok).toBe(true);
+    if (!judged.ok) return;
+    expect(judged.value.passed).toBe(false);
+    expect(judged.value.mismatches.length).toBeGreaterThan(0);
+  });
+
+  it('出力を入れ替えたラダー（Y0⇔Y1）では不合格になる', () => {
+    const problem = BUILTIN_PLC_PROBLEMS[0];
+    if (problem === undefined) throw new Error('課題がありません');
+    const built = buildPlcReferenceSession(problem, JIPM_BOARD);
+    if (!built.ok) throw new Error('模範回路を組めません');
+    const judged = judgePlc(
+      problem,
+      JIPM_BOARD,
+      built.value.session,
+      swapOutputs(problem.referenceLadder, 0, 1),
+    );
+    expect(judged.ok).toBe(true);
+    if (!judged.ok) return;
+    expect(judged.value.passed).toBe(false);
+    expect(judged.value.mismatches.length).toBeGreaterThan(0);
+  });
 
   it('入力を別の押ボタンへ配線すると ioAssignment で落ちる（§7.4）', () => {
     const problem = BUILTIN_PLC_PROBLEMS[0];

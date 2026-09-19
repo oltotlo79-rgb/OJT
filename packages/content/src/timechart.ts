@@ -77,7 +77,7 @@ export function defaultChartSignals(compareSignals: readonly string[]): TimeChar
 }
 
 /** 秒数を「3秒」「0.8秒」の形に整える。 */
-function formatSeconds(ms: number): string {
+export function formatSeconds(ms: number): string {
   const seconds = ms / 1000;
   return Number.isInteger(seconds) ? `${seconds}秒` : `${seconds.toFixed(1)}秒`;
 }

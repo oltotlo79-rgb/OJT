@@ -60,7 +60,7 @@ function checkInput(circuit: PlcReferenceCircuit, plc: PlcCheckContext): StaticC
 }
 
 function context(circuit: PlcReferenceCircuit): PlcCheckContext {
-  return { unit: circuit.unit, io: circuit.io, roles: circuit.session.socketRoles };
+  return { unit: circuit.unit, io: circuit.io };
 }
 
 describe('twoStage（§10.2 / §7.4）', () => {
@@ -89,6 +89,50 @@ describe('twoStage（§10.2 / §7.4）', () => {
     const result = checkTwoStage(checkInput(circuit, context(circuit)));
     expect(result.ok).toBe(false);
     expect(result.details.join('')).toContain('コイル');
+  });
+
+  it('fails when the lamp is not driven by the relay contact (fixed)', () => {
+    const { circuit } = reference();
+    // CR1の接点（5番）→ ランプ の配線を外し、代わりに未使用のCR2の接点へ繋ぐ（CR1の接点ではない）
+    const lampWire = circuit.session.wires.find((w) => String(w.to) === 'TB_PL.1+');
+    expect(removeWire(circuit.session, lampWire?.id ?? '').ok).toBe(true);
+    expect(addWire(circuit.session, circuit.board, t('CR2.1'), t('TB_PL.1+')).ok).toBe(true);
+    const result = checkTwoStage(checkInput(circuit, context(circuit)));
+    expect(result.ok).toBe(false);
+    expect(result.details.join('')).toContain('接点から駆動されていません');
+  });
+
+  describe('io.mode: free（差分 #6）', () => {
+    const problem = PlcProblemSchema.parse(
+      plcProblemJson({
+        io: { mode: 'free', outputs: [{ y: 0, cr: 'CR2', pl: 'PL3' }] },
+        judge: { compareSignals: ['PL3'] },
+      }),
+    );
+
+    function freeReference(): PlcReferenceCircuit {
+      const built = buildPlcReferenceSession(problem, JIPM_BOARD);
+      if (!built.ok) throw new Error(JSON.stringify(built.errors));
+      return built.value;
+    }
+
+    it('passes a legal non-default assignment (Y0→CR2→PL3)', () => {
+      const circuit = freeReference();
+      const result = checkTwoStage(checkInput(circuit, context(circuit)));
+      expect(result.ok).toBe(true);
+    });
+
+    it('fails when a lamp is driven straight from a Y terminal', () => {
+      const circuit = freeReference();
+      const coil = circuit.session.wires.find((w) => at(w, 'PLC.Y0'));
+      expect(removeWire(circuit.session, coil?.id ?? '').ok).toBe(true);
+      const lampWire = circuit.session.wires.find((w) => String(w.to) === 'TB_PL.3+');
+      expect(removeWire(circuit.session, lampWire?.id ?? '').ok).toBe(true);
+      expect(addWire(circuit.session, circuit.board, t('PLC.Y0'), t('TB_PL.3+')).ok).toBe(true);
+      const result = checkTwoStage(checkInput(circuit, context(circuit)));
+      expect(result.ok).toBe(false);
+      expect(result.details.join('')).toContain('直結');
+    });
   });
 });
 
@@ -141,6 +185,14 @@ describe('ioAssignment（§7.4 / §7.6）', () => {
     expect(addWire(circuit.session, circuit.board, t('TB_PB.2a'), t('PLC.X0')).ok).toBe(true);
     expect(checkIoAssignment(checkInput(circuit, context(circuit))).ok).toBe(false);
   });
+
+  it('fails when X0 and X1 are shorted together (§10.2)', () => {
+    const { circuit } = reference();
+    expect(addWire(circuit.session, circuit.board, t('PLC.X0'), t('PLC.X1')).ok).toBe(true);
+    const result = checkIoAssignment(checkInput(circuit, context(circuit)));
+    expect(result.ok).toBe(false);
+    expect(result.details.join('')).toContain('短絡');
+  });
 });
 
 describe('detectPlcWiring（§10.2）', () => {
@@ -148,6 +200,22 @@ describe('detectPlcWiring（§10.2）', () => {
     const { circuit } = reference();
     const nets = buildNets(toNetlist(circuit.session, circuit.board));
     expect(detectPlcWiring(nets, circuit.unit)).toBe('sink');
+  });
+
+  it('recognises source wiring', () => {
+    const problem = PlcProblemSchema.parse(plcProblemJson({ io: { mode: 'fixed', wiring: 'source' } }));
+    const built = buildPlcReferenceSession(problem, JIPM_BOARD);
+    if (!built.ok) throw new Error(JSON.stringify(built.errors));
+    const nets = buildNets(toNetlist(built.value.session, built.value.board));
+    expect(detectPlcWiring(nets, built.value.unit)).toBe('source');
+  });
+
+  it('returns undefined when S/S is wired to neither the P side nor the N side', () => {
+    const { circuit } = reference();
+    const wire = circuit.session.wires.find((w) => at(w, 'PLC.SS'));
+    expect(removeWire(circuit.session, wire?.id ?? '').ok).toBe(true);
+    const nets = buildNets(toNetlist(circuit.session, circuit.board));
+    expect(detectPlcWiring(nets, circuit.unit)).toBeUndefined();
   });
 });
 

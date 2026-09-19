@@ -2,6 +2,7 @@ import { toNetlist, type BoardDefinition, type BoardSession } from '@ojt/board-m
 import { compareLogs, type ChatterEvent, type Mismatch, type SignalLog } from '@ojt/circuit-sim';
 import {
   compile,
+  deviceLabel,
   type CompiledProgram,
   type CompileError,
   type CompileWarning,
@@ -18,6 +19,7 @@ import { runStaticChecks } from './static-checks.js';
 import {
   buildTimeChart,
   defaultChartSignals,
+  formatSeconds,
   type TimeChart,
   type TimeChartMarker,
 } from './timechart.js';
@@ -50,16 +52,24 @@ export interface JudgePlcResult {
 export type JudgePlcOutcome =
   { ok: true; value: JudgePlcResult } | { ok: false; errors: ProblemIssue[] };
 
-/** ラダーのタイマ設定値からタイムチャートの印を作る。§7.7 */
+/**
+ * ラダーのタイマ設定値からタイムチャートの印を作る。§7.7
+ * `deviceLabel()`（`T0` 等の表示名）と `formatSeconds()`（`timechart.ts`。「3秒」の整形）を
+ * `timerMarkers()` と共有する。同じタイマデバイスが複数ネットワークの出力に現れても
+ * （§10.4 の二重コイル。実行は後勝ちだが印は1個でよい）印は重複させない。
+ */
 export function plcTimerMarkers(compiled: CompiledProgram): TimeChartMarker[] {
   const markers: TimeChartMarker[] = [];
+  const seen = new Set<string>();
   for (const net of compiled.networks) {
     for (const output of net.outputs) {
       if (output.cell.kind !== 'timer') continue;
-      const seconds = output.cell.presetMs / 1000;
+      const key = deviceLabel(output.cell.device);
+      if (seen.has(key)) continue;
+      seen.add(key);
       markers.push({
         tMs: output.cell.presetMs,
-        label: `T${output.cell.device.index}=${Number.isInteger(seconds) ? seconds : seconds.toFixed(1)}秒`,
+        label: `${key}=${formatSeconds(output.cell.presetMs)}`,
       });
     }
   }
@@ -155,7 +165,7 @@ export function judgePlc(
       hazards: [...sessionHazards, ...actualRun.events.hazards()],
       chatters: chatter,
       allowedColors: [PLC_WIRE_COLOR],
-      plc: { unit, io, roles: traineeSession.socketRoles },
+      plc: { unit, io },
     },
     problem.judge.staticChecks,
   );
