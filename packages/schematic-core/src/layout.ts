@@ -197,28 +197,13 @@ export function layout(doc: SchematicDocument, options: LayoutOptions = {}): Sch
   doc.rungs.forEach((r, i) => rowY.set(r.id, o.marginY + i * o.rowHeight));
   const rowOf = (rungId: string): number => rowY.get(rungId) ?? o.marginY;
 
-  const startX = new Map<string, number>();
-  const resolving = new Set<string>();
-  /**
-   * 段の左端x。親を**再帰で**先に解く（文書順に足していくと、親が後ろに書かれた分岐段だけ
-   * 親のxが未知になり、左母線に描かれてしまう）。壊れた文書でも止まるよう解決中の段を覚えておく。
-   */
-  function startOf(r: Rung): number {
-    const memo = startX.get(r.id);
-    if (memo !== undefined) return memo;
-    if (resolving.has(r.id)) return busPX; // 循環参照（validateDocument が別に弾く）
-    resolving.add(r.id);
-    const x = 'bus' in r.from ? busPX : branchX(r.from);
-    resolving.delete(r.id);
-    startX.set(r.id, x);
-    return x;
-  }
+  // 段の左端xは `rungStartX()` が決める（編集UIの当たり判定 `slotRects()` と同じ値を使うため）
+  const startX = rungStartX(doc, options);
+  const startOf = (r: Rung): number => startX.get(r.id) ?? busPX;
   /** 分岐参照の指す点のx。参照先の段が無ければ左母線に寄せる。 */
-  function branchX(end: Extract<RungEnd, { rung: string }>): number {
-    const parent = rungById.get(end.rung);
-    if (parent === undefined) return busPX;
-    return startOf(parent) + clampNode(end.node, parent.cells.length) * o.colWidth;
-  }
+  const branchX = (end: Extract<RungEnd, { rung: string }>): number =>
+    (startX.get(end.rung) ?? busPX) +
+    clampNode(end.node, rungById.get(end.rung)?.cells.length ?? 0) * o.colWidth;
 
   let maxRight = busPX;
   for (const r of doc.rungs) {
@@ -323,4 +308,77 @@ export function layout(doc: SchematicDocument, options: LayoutOptions = {}): Sch
   }
 
   return { width: busNX + o.marginX, height: bottomY + o.marginY, shapes };
+}
+
+/** 段の左端x（`layout()` と `slotRects()` が同じ値を使う）。分岐段は親の節点に合わせる。 */
+export function rungStartX(
+  doc: SchematicDocument,
+  options: LayoutOptions = {},
+): Map<string, number> {
+  const o = { ...DEFAULT_LAYOUT_OPTIONS, ...options };
+  const busPX = o.marginX;
+  const rungById = new Map(doc.rungs.map((r) => [r.id, r]));
+  const startX = new Map<string, number>();
+  const resolving = new Set<string>();
+  /**
+   * 段の左端x。親を**再帰で**先に解く（文書順に足していくと、親が後ろに書かれた分岐段だけ
+   * 親のxが未知になり、左母線に描かれてしまう）。壊れた文書でも止まるよう解決中の段を覚えておく。
+   */
+  function startOf(r: Rung): number {
+    const memo = startX.get(r.id);
+    if (memo !== undefined) return memo;
+    if (resolving.has(r.id)) return busPX; // 循環参照（validateDocument が別に弾く）
+    resolving.add(r.id);
+    const x = 'bus' in r.from ? busPX : branchX(r.from);
+    resolving.delete(r.id);
+    startX.set(r.id, x);
+    return x;
+  }
+  /** 分岐参照の指す点のx。参照先の段が無ければ左母線に寄せる。 */
+  function branchX(end: Extract<RungEnd, { rung: string }>): number {
+    const parent = rungById.get(end.rung);
+    if (parent === undefined) return busPX;
+    return startOf(parent) + clampNode(end.node, parent.cells.length) * o.colWidth;
+  }
+  for (const r of doc.rungs) startOf(r);
+  return startX;
+}
+
+/** 編集UIの当たり判定1つぶん（論理単位。`layout()` と同じ座標系）。§11.4 */
+export interface SlotRect {
+  rungId: string;
+  /** 段の中の桁（0〜要素数）。要素数と同じ値は「末尾の空き桁」。 */
+  index: number;
+  /** その桁に要素があればそのID。空き桁は undefined。 */
+  cellId: string | undefined;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+/**
+ * 段 × 桁の当たり矩形。`layout()` と同じ寸法設定を渡すこと。§11.4
+ * 各段について「要素の数 ＋ 1」個（末尾に空き桁を1つ）返す。
+ */
+export function slotRects(doc: SchematicDocument, options: LayoutOptions = {}): SlotRect[] {
+  const o = { ...DEFAULT_LAYOUT_OPTIONS, ...options };
+  const startX = rungStartX(doc, options);
+  const out: SlotRect[] = [];
+  doc.rungs.forEach((r, rowIndex) => {
+    const x0 = startX.get(r.id) ?? o.marginX;
+    const y = o.marginY + rowIndex * o.rowHeight - o.rowHeight / 2;
+    for (let index = 0; index <= r.cells.length; index += 1) {
+      out.push({
+        rungId: r.id,
+        index,
+        cellId: r.cells[index]?.id,
+        x: x0 + index * o.colWidth,
+        y,
+        w: o.colWidth,
+        h: o.rowHeight,
+      });
+    }
+  });
+  return out;
 }

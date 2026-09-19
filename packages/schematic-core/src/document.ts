@@ -66,7 +66,7 @@ export interface DocumentError {
   message: string;
 }
 
-const DEVICE_PATTERNS: Readonly<Record<CellKind, RegExp>> = {
+export const DEVICE_PATTERNS: Readonly<Record<CellKind, RegExp>> = {
   'pb-a': /^PB[1-4]$/,
   'pb-b': /^PB[1-4]$/,
   'cr-a': /^CR[1-4]$/,
