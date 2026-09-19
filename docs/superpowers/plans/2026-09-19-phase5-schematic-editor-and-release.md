@@ -4479,7 +4479,7 @@ git add apps/desktop && git commit -m "feat(desktop): put the schematic editor i
 
 §11.4「配線ガイド: 回路図の要素をクリックすると3D盤の対応端子をハイライトする」＝**受入基準②**。決定表#7・#8。
 
-- [ ] **Step 1: 失敗するテストを書く（純関数）**
+- [x] **Step 1: 失敗するテストを書く（純関数）**
 
 `apps/desktop/test/wiring-guide.test.ts`:
 
@@ -4573,7 +4573,7 @@ describe('sameSelection', () => {
 });
 ```
 
-- [ ] **Step 2: `session/wiring-guide.ts` を実装する**
+- [x] **Step 2: `session/wiring-guide.ts` を実装する**
 
 ```ts
 import { type BoardDefinition, type BoardSession } from '@ojt/board-model';
@@ -4672,7 +4672,7 @@ export function sameSelection(a: HighlightSelection, b: HighlightSelection): boo
 }
 ```
 
-- [ ] **Step 3: `Session.tsx` の暫定を差し替える（モードBの配線ガイド）**
+- [x] **Step 3: `Session.tsx` の暫定を差し替える（モードBの配線ガイド）**
 
 Task 7 で置いた暫定を次に替える。**索引は2つ持つ**（I4）。「並べて」ビューでは
 **訓練者の下書き（エディタ）と課題の模範回路（右パネルの回路図ヒント）が同時に画面に出る**ので、
@@ -4750,11 +4750,11 @@ Task 8 の時点ではまだ無い。`onHover` のこの2行は **Task 9 Step 1�
                 />
 ```
 
-- [ ] **Step 4: `InspectRepairSession.tsx` の glue を寄せる**
+- [x] **Step 4: `InspectRepairSession.tsx` の glue を寄せる**
 
 L297〜L340 の `highlightIndex` / `latestIndex` / ホバー処理を `wiring-guide.ts` の関数で書き直す。**挙動は変えない**（`buildHighlightIndex(circuit.cells, session)` はそのまま、`setHighlight` を呼ぶ条件も `sameSelection()` で同じになる）。L800〜L812 の `onPickCell` は `selectionFor(index, cellId)` の1行にする。
 
-- [ ] **Step 5: 画面のテストを書いて走らせる**
+- [x] **Step 5: 画面のテストを書いて走らせる**
 
 `apps/desktop/test/wiring-guide-screen.test.tsx`。**`BoardScene` のモックは `session.test.tsx` の
 形をそのまま写す**（`onPick` に加えて `onHover` も捕まえる。3Dの逆引きを検証するため）:

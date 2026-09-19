@@ -1,4 +1,10 @@
-import { JIPM_BOARD, mountedKinds, remainingInventory, socketPartId } from '@ojt/board-model';
+import {
+  JIPM_BOARD,
+  mountedKinds,
+  remainingInventory,
+  socketPartId,
+  toSessionTerminal,
+} from '@ojt/board-model';
 import { isAssembleProblem } from '@ojt/content';
 import type { BoardSession, MountableKind, SocketId } from '@ojt/board-model';
 import type { TerminalId } from '@ojt/circuit-sim';
@@ -6,6 +12,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type JSX } from 'rea
 import { ojtApi } from '../app/ojt-api.js';
 import { nextAssembleView, schematicPolicy, useStore } from '../app/store.js';
 import type { AssembleViewMode } from '../app/store.js';
+import { NO_HIGHLIGHT } from '../app/store-types.js';
 import { sounds, soundsForSnapshot } from '../audio/sounds.js';
 import {
   failedLog,
@@ -55,6 +62,12 @@ import {
 import { buildSpecChart } from '../session/spec-chart.js';
 import { assembleStepHint, assembleSteps } from '../session/step-guide.js';
 import { useViewportShortcuts } from '../session/viewport-keys.js';
+import {
+  guideIndexFor,
+  sameSelection,
+  selectionFor,
+  selectionForHover,
+} from '../session/wiring-guide.js';
 import { applyWorkFile, replayTesterToWorker, toWorkFile } from '../session/work-file.js';
 import { bridge } from '../session/worker-bridge.js';
 import { BoardScene, safeRoutes } from '../three/BoardScene.js';
@@ -191,10 +204,7 @@ export function Session(): JSX.Element {
   const schematicHistory = useStore((s) => s.schematicHistory);
   const verifying = useStore((s) => s.verifying);
   const verifyResult = useStore((s) => s.verifyResult);
-  /*
-   * 配線ガイドは Task 8 が実装する。ここでは「何も光らない・クリックは効かない」で動かす。
-   * 未定義の識別子を残さないために、ストアの `highlight` をそのまま読むところまで置いておく。
-   */
+  /** 配線ガイドで光っている回路図の要素。§11.4 / 決定表#7・#8 */
   const highlightCells = useStore((s) => s.highlight.cellIds);
   const restoredHazardCount = useStore((s) => s.restoredHazardCount);
   const problemId = problem?.id;
@@ -367,9 +377,54 @@ export function Session(): JSX.Element {
     [apply],
   );
 
-  /** 3Dへ渡すコールバックは安定させる。毎回作り直すとシーン全体が再構築される。§15 */
+  /**
+   * 配線ガイドの索引（訓練者の下書き用）。§11.4 / 決定表#7
+   * 盤の配線が変わったら電線IDが古くなるので `session` も依存に並べる
+   * （`buildHighlightIndex()` の注記のとおり）。下書きが無い／割り当てられないときは undefined。
+   */
+  const draftGuideIndex = useMemo(
+    () =>
+      problem === undefined || session === undefined
+        ? undefined
+        : guideIndexFor({ doc: schematicDoc, problem, board: JIPM_BOARD, session }),
+    [schematicDoc, problem, session],
+  );
+  /** 配線ガイドの索引（課題の模範回路＝回路図ヒント用）。`doc: undefined` で模範回路に落ちる。 */
+  const hintGuideIndex = useMemo(
+    () =>
+      problem === undefined || session === undefined
+        ? undefined
+        : guideIndexFor({ doc: undefined, problem, board: JIPM_BOARD, session }),
+    [problem, session],
+  );
+
+  /**
+   * 3D側の逆引き（盤 → 回路図）は**1つしか選べない**ので、「いま大きく出ている回路図」の
+   * 索引を使う。エディタが出ているとき（`assembleView !== 'board'`）は下書き、盤だけのときは
+   * 模範回路（下書きが割り当てられないあいだも模範回路に落ちる）。I4
+   * `onHover` は `useCallback([])` で安定させるので、最新の索引は ref 経由で読む（§15）。
+   */
+  const latestIndex = useRef(hintGuideIndex);
+  latestIndex.current =
+    assembleView === 'board' ? hintGuideIndex : (draftGuideIndex ?? hintGuideIndex);
+
+  /**
+   * 3Dへ渡すコールバックは安定させる。毎回作り直すとシーン全体が再構築される。§15
+   *
+   * 盤の端子にホバーしたら回路図の要素を光らせる（決定表#8）。3Dが返すのは物理端子ID
+   * （`S1.13`）なので、索引が持つ役割ID（`CR1.13`）へ直してから引く（§6.4）。
+   * ホバーは毎秒何度も走るので、**同じ選択なら書かない**（`sameSelection`）。
+   */
   const onHover = useCallback((id: TerminalId | undefined) => {
-    useStore.getState().setHovered(id);
+    const store = useStore.getState();
+    store.setHovered(id);
+    const current = store.session;
+    const next =
+      current === undefined || id === undefined
+        ? NO_HIGHLIGHT
+        : selectionForHover(latestIndex.current, { terminal: toSessionTerminal(current, id) });
+    if (sameSelection(next, store.highlight)) return;
+    store.setHighlight(next);
   }, []);
   const onPress = useCallback((pbId: string) => {
     bridge.send({ type: 'press', pbId });
@@ -379,13 +434,23 @@ export function Session(): JSX.Element {
   }, []);
 
   /**
-   * 回路図エディタ（訓練者の下書き）の要素をクリックしたとき。§11.4 / 決定表#7
-   * 配線ガイド（3D盤の端子を光らせる）は **Task 8** が入れる。いまは何もしない
-   * （受け口の署名は `(cellId: string | undefined) => void`。Task 8 が引数を使い始める）。
+   * 回路図エディタ（下書き）の要素をクリックしたら盤の端子を光らせる（受入基準②）。§11.4
+   * 索引は**出どころごとに持つ**（I4）。「並べて」では下書きと模範回路が同時に画面へ出るので、
+   * 1つの索引を画面の状態で切り替えると、押した図と光る端子が食い違う。
    */
-  const onPickDraftCell = useCallback((): void => {
-    // Task 8 で `buildHighlightIndex()` を通してストアの `highlight` を更新する
-  }, []);
+  const onPickDraftCell = useCallback(
+    (cellId: string | undefined): void => {
+      useStore.getState().setHighlight(selectionFor(draftGuideIndex, cellId));
+    },
+    [draftGuideIndex],
+  );
+  /** 回路図ヒント（模範回路）の要素をクリックしたときも同じ道を通す。決定表#7 */
+  const onPickHintCell = useCallback(
+    (cellId: string | undefined): void => {
+      useStore.getState().setHighlight(selectionFor(hintGuideIndex, cellId));
+    },
+    [hintGuideIndex],
+  );
 
   const onPick = useCallback(
     (hit: PickHit): void => {
@@ -841,7 +906,12 @@ export function Session(): JSX.Element {
             <section className={styles.panelLive} data-testid="schematic-hint">
               <h2 className={styles.liveTitle}>{JA.session.schematicHint}</h2>
               <div className={styles.schematicBox}>
-                <SchematicView document={problem.schematic} title={JA.session.schematicHint} />
+                <SchematicView
+                  document={problem.schematic}
+                  title={JA.session.schematicHint}
+                  highlightCellIds={highlightCells}
+                  onPickCell={onPickHintCell}
+                />
               </div>
             </section>
           ) : null}

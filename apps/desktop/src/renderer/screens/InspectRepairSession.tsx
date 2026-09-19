@@ -1,11 +1,15 @@
-import { JIPM_BOARD, socketPartId, SOCKET_IDS, toNetlistTerminal } from '@ojt/board-model';
+import {
+  JIPM_BOARD,
+  socketPartId,
+  SOCKET_IDS,
+  toNetlistTerminal,
+  toSessionTerminal,
+} from '@ojt/board-model';
 import type { BoardSession, SocketId } from '@ojt/board-model';
 import type { TerminalId } from '@ojt/circuit-sim';
 import {
   addedWireIds,
   buildHighlightIndex,
-  cellIdsAtTerminal,
-  highlightFor,
   isInspectRepairProblem,
   replacePart,
   type RepairCircuit,
@@ -61,6 +65,7 @@ import { buildSpecChart } from '../session/spec-chart.js';
 import { inspectRepairStepHint, inspectRepairSteps } from '../session/step-guide.js';
 import { testerPickToAction, testerShortcut } from '../session/tester.js';
 import { useViewportShortcuts } from '../session/viewport-keys.js';
+import { sameSelection, selectionFor, selectionForHover } from '../session/wiring-guide.js';
 import { applyWorkFile, replayTesterToWorker, toWorkFile } from '../session/work-file.js';
 import { bridge } from '../session/worker-bridge.js';
 import { BoardScene, safeRoutes } from '../three/BoardScene.js';
@@ -310,13 +315,14 @@ export function InspectRepairSession(): JSX.Element {
   latestIndex.current = highlightIndex;
 
   /**
-   * 端子のホバー。§9.2
+   * 端子のホバー。§9.2 / 決定表#8
    * 盤の端子から回路図の要素を逆引きして光らせる（連動ハイライトの「およびその逆」）。
    * 3Dが返すのは物理端子IDなので、索引が持つ役割IDへ直してから引く（§6.4）。
+   * 引き方はモードBの配線ガイドと**同じ関数**（`session/wiring-guide.ts`。Plan 5 Task 8）。
    *
    * 2点ガードする（I-8）: ①1級（`schematicVisible === false`）は回路図を出さないので
    * 逆引きしても無駄な `set` になるだけで、毎フレームのホバーのたびにストアを揺らさない。
-   * ②同じ結果（`cellIds` の並びが同じ）なら `setHighlight()` を呼ばない。ホバーは
+   * ②同じ選択なら `setHighlight()` を呼ばない（`sameSelection`）。ホバーは
    * マウス移動のたびに飛んでくるので、同一端子の上に留まっている間の再描画を防ぐ。
    */
   const onHover = useCallback((id: TerminalId | undefined) => {
@@ -324,18 +330,12 @@ export function InspectRepairSession(): JSX.Element {
     store.setHovered(id);
     if (!store.schematicVisible) return;
     const current = store.session;
-    const index = latestIndex.current;
-    if (index === undefined || current === undefined || id === undefined) {
-      if (store.highlight.cellIds.length > 0) store.setHighlight(NO_HIGHLIGHT);
-      return;
-    }
-    const role = toNetlistTerminal(current.socketRoles, id);
-    const cellIds = cellIdsAtTerminal(index, role);
-    const next = cellIds.join(',');
-    if (next === store.highlight.cellIds.join(',')) return;
-    store.setHighlight(
-      cellIds.length === 0 ? NO_HIGHLIGHT : { cellIds, terminals: [role], wireIds: [] },
-    );
+    const next =
+      current === undefined || id === undefined
+        ? NO_HIGHLIGHT
+        : selectionForHover(latestIndex.current, { terminal: toSessionTerminal(current, id) });
+    if (sameSelection(next, store.highlight)) return;
+    store.setHighlight(next);
   }, []);
   const onPress = useCallback((pbId: string) => {
     bridge.send({ type: 'press', pbId });
@@ -803,22 +803,7 @@ export function InspectRepairSession(): JSX.Element {
                   title={JA.session.schematicHint}
                   highlightCellIds={highlightCells}
                   onPickCell={(cellId) => {
-                    const store = useStore.getState();
-                    const index = latestIndex.current;
-                    if (cellId === undefined || index === undefined) {
-                      store.setHighlight(NO_HIGHLIGHT);
-                      return;
-                    }
-                    const target = highlightFor(index, cellId);
-                    store.setHighlight(
-                      target === undefined
-                        ? NO_HIGHLIGHT
-                        : {
-                            cellIds: [cellId],
-                            terminals: target.terminals.map((t) => String(t)),
-                            wireIds: [...target.wireIds],
-                          },
-                    );
+                    useStore.getState().setHighlight(selectionFor(latestIndex.current, cellId));
                   }}
                 />
               </div>
