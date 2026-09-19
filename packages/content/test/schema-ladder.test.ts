@@ -1,5 +1,7 @@
 import { compile, IR_COLS } from '@ojt/ladder-core';
 import { describe, expect, it } from 'vitest';
+import { BUILTIN_PLC_PROBLEMS } from '../src/builtin/index.js';
+import { PlcProblemSchema } from '../src/schema/plc.js';
 import {
   CellSchema,
   DeviceSchema,
@@ -157,5 +159,49 @@ describe('DeviceSchema / CellSchema', () => {
     expect(
       CellSchema.safeParse({ kind: 'hline', device: { kind: 'input', index: 0 } }).success,
     ).toBe(false);
+  });
+});
+
+describe('LadderNetworkSchema の rows/cols 往復（derived keys）', () => {
+  it('parses a network JSON without rows/cols (既存の挙動)', () => {
+    const parsed = LadderProgramSchema.parse(SELF_HOLD);
+    expect(parsed.networks[0]?.rows).toBe(2);
+    expect(parsed.networks[0]?.cols).toBe(IR_COLS);
+  });
+
+  it('accepts rows/cols that match the derived values', () => {
+    const withMatching = {
+      networks: [{ ...SELF_HOLD.networks[0], rows: 2, cols: IR_COLS }, SELF_HOLD.networks[1]],
+    };
+    expect(LadderProgramSchema.safeParse(withMatching).success).toBe(true);
+  });
+
+  it('reports exactly one issue on `rows` when it disagrees with cells.length', () => {
+    const badRows = {
+      networks: [{ ...SELF_HOLD.networks[0], rows: 99 }, SELF_HOLD.networks[1]],
+    };
+    const result = LadderProgramSchema.safeParse(badRows);
+    expect(result.success).toBe(false);
+    const issues = result.success ? [] : result.error.issues;
+    expect(issues).toHaveLength(1);
+    expect(issues[0]?.path.at(-1)).toBe('rows');
+  });
+
+  it('reports exactly one issue on `cols` when it disagrees with IR_COLS', () => {
+    const badCols = {
+      networks: [{ ...SELF_HOLD.networks[0], cols: IR_COLS + 1 }, SELF_HOLD.networks[1]],
+    };
+    const result = LadderProgramSchema.safeParse(badCols);
+    expect(result.success).toBe(false);
+    const issues = result.success ? [] : result.error.issues;
+    expect(issues).toHaveLength(1);
+    expect(issues[0]?.path.at(-1)).toBe('cols');
+  });
+
+  it('every builtin PLC problem round-trips through JSON (JSON.stringify → JSON.parse → PlcProblemSchema)', () => {
+    for (const problem of BUILTIN_PLC_PROBLEMS) {
+      const roundTripped = PlcProblemSchema.parse(JSON.parse(JSON.stringify(problem)));
+      expect(roundTripped).toEqual(problem);
+    }
   });
 });

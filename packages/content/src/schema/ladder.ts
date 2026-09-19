@@ -113,12 +113,37 @@ function padRow(cells: readonly CellData[]): Cell[] {
   return row;
 }
 
-/** ネットワーク。行は1〜`MAX_ROWS`、1行は1〜`IR_COLS` セル。§10.3 */
+/**
+ * ネットワーク。行は1〜`MAX_ROWS`、1行は1〜`IR_COLS` セル。§10.3
+ *
+ * `rows` / `cols` は `network()`（`@ojt/ladder-core`）が付ける派生キーで、入力では省略できる。
+ * 書いてある場合は無視して作り直すのではなく、実際の行数・列数と一致するか検査する
+ * （一致しなければ課題JSONを再シリアライズしたときに元と食い違うのを防ぐ）。これにより
+ * `PlcProblemSchema.parse(JSON.parse(JSON.stringify(parsedProblem)))` が往復できる。
+ */
 export const LadderNetworkSchema = z
   .strictObject({
     id: z.string().min(1),
     comment: z.string().optional(),
     cells: z.array(z.array(CellSchema).min(1).max(IR_COLS)).min(1).max(MAX_ROWS),
+    rows: z.int().positive().optional(),
+    cols: z.int().positive().optional(),
+  })
+  .superRefine((net, ctx) => {
+    if (net.rows !== undefined && net.rows !== net.cells.length) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['rows'],
+        message: `rows は行数 ${net.cells.length} と一致していません`,
+      });
+    }
+    if (net.cols !== undefined && net.cols !== IR_COLS) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['cols'],
+        message: `cols は列数 ${IR_COLS} と一致していません`,
+      });
+    }
   })
   .transform((net): Network => ({
     id: net.id,
