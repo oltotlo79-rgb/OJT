@@ -70,14 +70,32 @@ function inputTerminal(unit: PlcUnitDefinition, x: number): TerminalId {
   return plcTerminal(unit.spec.inputs[x]?.name ?? `X${x}`);
 }
 
-/** 入力コモンの結線方式を判定する。§10.2（8点1コモンの機種はどれか1本でも判定できる） */
+/**
+ * 入力コモンの結線方式。`mismatch` は見たコモンの間でP側とN側が混ざっている。§10.2
+ */
+export type PlcInputWiring = 'sink' | 'source' | 'mismatch';
+
+/**
+ * 入力コモンの結線方式を判定する。§10.2
+ * 8点1コモンの機種はコモンが複数あるので、**見るべきコモンがすべて同じ側に揃っているか**を見る。
+ * 最初に見つかった1本で打ち切ると、`ICOM0`→P・`ICOM1`→N のような誤配線を `sink` と報告してしまう。
+ * `commons` を省くと機種の入力コモンをすべて見る（未配線のコモンはどちらにも数えない）。
+ */
 export function detectPlcWiring(
   nets: Nets,
   unit: PlcUnitDefinition,
-): 'sink' | 'source' | undefined {
-  const terminals = unit.spec.inputCommons.flatMap((name) => netTerminals(nets, plcTerminal(name)));
-  if (terminals.some((id) => id.startsWith('P.'))) return 'sink';
-  if (terminals.some((id) => id.startsWith('N.'))) return 'source';
+  commons: readonly string[] = unit.spec.inputCommons,
+): PlcInputWiring | undefined {
+  let sink = false;
+  let source = false;
+  for (const name of commons) {
+    const terminals = netTerminals(nets, plcTerminal(name));
+    if (terminals.some((id) => id.startsWith('P.'))) sink = true;
+    if (terminals.some((id) => id.startsWith('N.'))) source = true;
+  }
+  if (sink && source) return 'mismatch';
+  if (sink) return 'sink';
+  if (source) return 'source';
   return undefined;
 }
 
@@ -230,8 +248,14 @@ export function checkIoAssignment(input: StaticCheckInput): StaticCheckResult {
   const nets = buildNets(input.netlist);
   const details: string[] = [];
   const isPbA = (id: string): boolean => /^TB_PB\.\d+a$/.test(id);
-  const isPlcX = (id: string): boolean => /^PLC\.X\d+$/.test(id);
-  const isPlcY = (id: string): boolean => /^PLC\.Y\d+$/.test(id);
+  // 端子名は機種で違う（三菱 `X0` / CP1E `0.00` / JW300 `A0` / TOYOPUC `Y1A`）ので、正規表現ではなく
+  // 機種仕様の端子集合で判定する（前提#19）
+  const inputIds = new Set(plc.unit.spec.inputs.map((input) => String(plcTerminal(input.name))));
+  const outputIds = new Set(
+    plc.unit.spec.outputs.map((output) => String(plcTerminal(output.name))),
+  );
+  const isPlcX = (id: string): boolean => inputIds.has(id);
+  const isPlcY = (id: string): boolean => outputIds.has(id);
   for (const assigned of plc.io.inputs) {
     const terminal = inputTerminal(plc.unit, assigned.x);
     const expected = terminalId(PB_BLOCK_ID, `${assigned.pb.slice(2)}a`);
@@ -245,6 +269,11 @@ export function checkIoAssignment(input: StaticCheckInput): StaticCheckResult {
     const xCount = net.filter((id) => isPlcX(String(id))).length;
     if (pbCount !== 1 || xCount !== 1) {
       details.push(`${terminal} が別の押ボタンまたはPLC入力端子と短絡しています`);
+    }
+    // 8点1コモンの機種は、使う点のコモンを配線しないとその群だけが入らない（受入基準③⑤）
+    const inputCom = plc.unit.spec.inputs[assigned.x]?.com;
+    if (inputCom !== undefined && netTerminals(nets, plcTerminal(inputCom)).length <= 1) {
+      details.push(`${terminal} の入力コモン（${plcTerminal(inputCom)}）が配線されていません`);
     }
   }
   for (const output of plc.io.outputs) {
@@ -261,13 +290,34 @@ export function checkIoAssignment(input: StaticCheckInput): StaticCheckResult {
     if (coilCount !== 1 || yCount !== 1) {
       details.push(`${terminal} が別のリレーコイルまたはPLC出力端子と短絡しています`);
     }
+    const outputCom = plc.unit.spec.outputs[output.y]?.com;
+    if (outputCom !== undefined && netTerminals(nets, plcTerminal(outputCom)).length <= 1) {
+      details.push(`${terminal} の出力コモン（${plcTerminal(outputCom)}）が配線されていません`);
+    }
   }
-  const wiring = detectPlcWiring(nets, plc.unit);
+  // 結線方式は**使う点のコモン**だけで見る。課題が使わない群のコモン（`ICOM1` など）は
+  // 模範配線でも浮いているので、数えると未配線と見分けがつかない
+  const usedCommons = [
+    ...new Set(
+      plc.io.inputs.flatMap((assigned) => {
+        const com = plc.unit.spec.inputs[assigned.x]?.com;
+        return com === undefined ? [] : [com];
+      }),
+    ),
+  ];
+  const commons = usedCommons.length > 0 ? usedCommons : plc.unit.spec.inputCommons;
+  // 端子名は機種で違う（`S/S` / `COM` / `ICOM0` / `COM.A`）ので文言に直書きしない（引き渡し注記 H-1）
+  const commonLabel = commons.map((name) => String(plcTerminal(name))).join('・');
+  const wiring = detectPlcWiring(nets, plc.unit, commons);
   if (wiring === undefined) {
-    details.push('入力コモン（S/S）が盤のP側・N側のどちらにも配線されていません');
+    details.push(`入力コモン（${commonLabel}）が盤のP側・N側のどちらにも配線されていません`);
+  } else if (wiring === 'mismatch') {
+    details.push(
+      `入力コモン（${commonLabel}）のP側・N側が食い違っています（すべて同じ側に揃えます）`,
+    );
   } else if (wiring !== plc.io.wiring) {
     details.push(
-      `入力コモン（S/S）の結線が課題の指定（${plc.io.wiring}）と違います（${wiring} になっています）`,
+      `入力コモン（${commonLabel}）の結線が課題の指定（${plc.io.wiring}）と違います（${wiring} になっています）`,
     );
   }
   return result(

@@ -13,7 +13,7 @@ import {
 import { PlcProblemSchema } from '../src/schema/plc.js';
 import type { StaticCheckInput } from '../src/static-check-types.js';
 import { runStaticChecks } from '../src/static-checks.js';
-import { plcProblemJson } from './helpers/plc.js';
+import { noJson, outJson, plcProblemJson, rungJson } from './helpers/plc.js';
 
 function t(id: string): TerminalId {
   return id as TerminalId;
@@ -43,10 +43,14 @@ function reference(): { problem: typeof PROBLEM; circuit: PlcReferenceCircuit } 
  * `powerSequence`）はログとイベントを読む。ダミーの空ログを渡すと検査が素通りしてしまうので、
  * **実際に操作列を再生した結果**を渡す。
  */
-function checkInput(circuit: PlcReferenceCircuit, plc: PlcCheckContext): StaticCheckInput {
+function checkInput(
+  circuit: PlcReferenceCircuit,
+  plc: PlcCheckContext,
+  problem: typeof PROBLEM = PROBLEM,
+): StaticCheckInput {
   const netlist = toNetlist(circuit.session, circuit.board);
-  const result = runPlcOperations(netlist, circuit.program, PROBLEM.operations, {
-    durationMs: PROBLEM.durationMs,
+  const result = runPlcOperations(netlist, circuit.program, problem.operations, {
+    durationMs: problem.durationMs,
   });
   return {
     session: circuit.session,
@@ -61,6 +65,70 @@ function checkInput(circuit: PlcReferenceCircuit, plc: PlcCheckContext): StaticC
 
 function context(circuit: PlcReferenceCircuit): PlcCheckContext {
   return { unit: circuit.unit, io: circuit.io };
+}
+
+/** メーカーと機種の対応（§7.6）。 */
+const VENDOR_OF: Readonly<Record<string, string>> = {
+  FX5U: 'mitsubishi',
+  'PC10G-1SP': 'jtekt',
+  CP1E: 'omron',
+  'JW-300': 'sharp',
+};
+
+/** 課題から模範回路を組む（組めなければその場で落とす）。 */
+function buildOf(problem: typeof PROBLEM): {
+  problem: typeof PROBLEM;
+  circuit: PlcReferenceCircuit;
+} {
+  const built = buildPlcReferenceSession(problem, JIPM_BOARD);
+  if (!built.ok) throw new Error(`${problem.plc.model}: ${JSON.stringify(built.errors)}`);
+  return { problem, circuit: built.value };
+}
+
+/**
+ * 機種だけを差し替えた模範回路を組む（課題JSON の `plc` 以外は `plcProblemJson()` の既定のまま）。
+ * 返した `circuit.session` を書き換えてから `inputOf()` を呼べば「配線を崩した場合」を作れる。
+ */
+function buildFor(model: string): { problem: typeof PROBLEM; circuit: PlcReferenceCircuit } {
+  return buildOf(
+    PlcProblemSchema.parse({
+      ...plcProblemJson(),
+      plc: { vendor: VENDOR_OF[model] ?? 'mitsubishi', model },
+    }),
+  );
+}
+
+/** 組んだ回路を静的チェックの入力にする（操作列はその課題のものを再生する）。 */
+function inputOf(built: ReturnType<typeof buildFor>): StaticCheckInput {
+  return checkInput(built.circuit, context(built.circuit), built.problem);
+}
+
+/** 2つの端子を1本の電線でつないで短絡を作る。 */
+function shortTogether(built: ReturnType<typeof buildFor>, a: string, b: string): StaticCheckInput {
+  expect(addWire(built.circuit.session, built.circuit.board, t(a), t(b)).ok).toBe(true);
+  return inputOf(built);
+}
+
+/**
+ * その端子**だけ**を浮かせる。来ている電線を外し、相手どうしを1本で結び直す。
+ * 単に外すと母線の鎖（`chain()` が作る P側・N側の直列）がそこで切れて後続の端子まで浮き、
+ * 何を検出したのか分からなくなる。
+ */
+function unchain(built: ReturnType<typeof buildFor>, id: string): void {
+  const { session, board } = built.circuit;
+  const touching = session.wires.filter((wire) => at(wire, id));
+  const others = touching.map((wire) => (String(wire.from) === id ? wire.to : wire.from));
+  for (const wire of [...touching]) expect(removeWire(session, wire.id).ok).toBe(true);
+  const [first, second] = others;
+  if (first !== undefined && second !== undefined) {
+    expect(addWire(session, board, first, second).ok).toBe(true);
+  }
+}
+
+/** その端子だけを浮かせた盤を静的チェックの入力にする。 */
+function withoutWire(built: ReturnType<typeof buildFor>, id: string): StaticCheckInput {
+  unchain(built, id);
+  return inputOf(built);
 }
 
 describe('twoStage（§10.2 / §7.4）', () => {
@@ -248,5 +316,75 @@ describe('runStaticChecks（PLCの3件を含む）', () => {
     delete withoutPlc.plc;
     const results = runStaticChecks(withoutPlc, problem.judge.staticChecks);
     expect(results.find((r) => r.id === 'twoStage')?.ok).toBe(false);
+  });
+});
+
+describe('ioAssignment は機種の端子名で判定する（Phase 4）', () => {
+  it('detects a short between two inputs on a model whose terminals are not Xn', () => {
+    // CP1E の入力端子は `PLC.0.00` / `PLC.0.01`。三菱の正規表現では拾えなかった（前提#19）
+    const result = checkIoAssignment(shortTogether(buildFor('CP1E'), 'PLC.0.00', 'PLC.0.01'));
+    expect(result.ok).toBe(false);
+    expect(result.details.join('|')).toContain('短絡');
+  });
+
+  it('detects a short between two outputs whose names are not decimal (PC10G の `Y1A`)', () => {
+    // TOYOPUC の出力端子は `Y10`〜`Y1F`。`/^PLC\.Y\d+$/` は `Y1A` を拾えない
+    const result = checkIoAssignment(shortTogether(buildFor('PC10G-1SP'), 'PLC.Y10', 'PLC.Y1A'));
+    expect(result.ok).toBe(false);
+    expect(result.details.join('|')).toContain('短絡');
+  });
+
+  it('reports an unwired common on an 8-point-per-common model (受入基準③⑤)', () => {
+    // JW300 の入力コモンは `PLC.COM.A` / `PLC.COM.B`。使う点のコモンが浮いていたら落とす
+    const result = checkIoAssignment(withoutWire(buildFor('JW-300'), 'PLC.COM.A'));
+    expect(result.ok).toBe(false);
+    expect(result.details.join('|')).toContain('COM.A');
+  });
+
+  it('reports an unwired output common as well', () => {
+    const result = checkIoAssignment(withoutWire(buildFor('JW-300'), 'PLC.COM.C'));
+    expect(result.ok).toBe(false);
+    expect(result.details.join('|')).toContain('出力コモン');
+  });
+
+  it('reports a mismatch when two used input commons sit on opposite rails', () => {
+    // `detectPlcWiring()` は最初に見つかったコモンで打ち切っていたので、
+    // `ICOM0`→P・`ICOM1`→N が `sink` と報告されていた（レビュー指摘）
+    const built = buildOf(
+      PlcProblemSchema.parse({
+        ...plcProblemJson(),
+        plc: { vendor: 'jtekt', model: 'PC10G-1SP' },
+        io: {
+          mode: 'fixed',
+          inputs: [
+            { x: 0, pb: 'PB1' },
+            { x: 8, pb: 'PB2' },
+          ],
+          outputs: [{ y: 0, cr: 'CR1', pl: 'PL1' }],
+        },
+        referenceLadder: {
+          networks: [
+            { id: 'n1', cells: [rungJson(noJson('input', 0), noJson('input', 8), outJson(0))] },
+            { id: 'end', cells: [[{ kind: 'end' }]] },
+          ],
+        },
+      }),
+    );
+    unchain(built, 'PLC.ICOM1');
+    expect(
+      addWire(built.circuit.session, built.circuit.board, t('PLC.ICOM1'), t('TB_PL.1-')).ok,
+    ).toBe(true);
+    const result = checkIoAssignment(inputOf(built));
+    expect(result.ok).toBe(false);
+    expect(result.details.join('|')).toContain('食い違');
+  });
+
+  it('passes on the reference wiring of every model', () => {
+    for (const model of ['FX5U', 'CP1E', 'PC10G-1SP', 'JW-300']) {
+      const input = inputOf(buildFor(model));
+      expect(checkIoAssignment(input).ok, model).toBe(true);
+      expect(checkTwoStage(input).ok, model).toBe(true);
+      expect(checkPlcPowerIndependent(input).ok, model).toBe(true);
+    }
   });
 });

@@ -93,6 +93,31 @@ describe('plcWiringPlan（§10.2 / §11.3）', () => {
   });
 });
 
+describe('plcWiringPlan（ラック形の入力コモン）', () => {
+  /** 機種だけを差し替えた既定課題の模範配線。 */
+  function pairsFor(vendor: string, model: string): string[] {
+    const problem = PlcProblemSchema.parse({ ...plcProblemJson(), plc: { vendor, model } });
+    const board = plcBoardFor(problem, JIPM_BOARD);
+    return plcWiringPlan(resolvePlcIo(problem.io), board?.plcUnit).map((w) => `${w.from}→${w.to}`);
+  }
+
+  it('chains only the input commons that serve a used point (8点1コモンの機種)', () => {
+    // 既定課題は X(0) だけを使うので、下位8点のコモンだけが鎖に入る。
+    // 使わない群のコモンまで繋ぐと、模範配線に意味の無い1本が増える（レビュー指摘）
+    const jw300 = pairsFor('sharp', 'JW-300');
+    expect(jw300).toContain('P.1→PLC.COM.A');
+    expect(jw300.some((pair) => pair.includes('PLC.COM.B'))).toBe(false);
+    const pc10g = pairsFor('jtekt', 'PC10G-1SP');
+    expect(pc10g).toContain('P.1→PLC.ICOM0');
+    expect(pc10g.some((pair) => pair.includes('PLC.ICOM1'))).toBe(false);
+  });
+
+  it('keeps the single common of the one-piece models in the chain', () => {
+    expect(pairsFor('mitsubishi', 'FX5U')).toContain('P.1→PLC.SS');
+    expect(pairsFor('omron', 'CP1E')).toContain('P.1→PLC.COM');
+  });
+});
+
 describe('buildPlcReferenceSession（§7.2 / §10.2）', () => {
   it('mounts one relay per output and wires the whole reference circuit in blue (§10.2 線色)', () => {
     const problem = PlcProblemSchema.parse(grade2Json());

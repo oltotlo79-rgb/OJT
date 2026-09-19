@@ -115,10 +115,17 @@ export function plcWiringPlan(
   }
   // P側の鎖: 入力コモン（シンクのみ）→ 出力COM → リレー接点のCOM
   const usedCommons = [...new Set(io.outputs.map((output) => comName(output.y)))];
+  // 入力コモンは**使う点がぶら下がっているものだけ**を鎖に入れる。ラック形は8点1コモンなので、
+  // 課題が使わない群のコモン（`ICOM1` / `COM.B`）まで繋ぐと、模範配線に意味の無い1本が増える
+  const inputComs = new Set(io.inputs.map((input) => unit.spec.inputs[input.x]?.com));
+  const usedInputCommons = unit.spec.inputCommons.filter((name) => inputComs.has(name));
+  const inputCommonTargets = (
+    usedInputCommons.length > 0 ? usedInputCommons : unit.spec.inputCommons
+  ).map(plcTerminal);
   // 入力側の端子が必ず鎖の先頭に来る（シンクなら S/S、ソースなら押ボタンのコモン）。
   // N側の鎖と同じ並び方にしておくと、どちらの結線でも「起点 → 入力側 → 出力側」で読める
   const pTargets: TerminalId[] = [
-    ...(io.wiring === 'sink' ? unit.spec.inputCommons.map(plcTerminal) : []),
+    ...(io.wiring === 'sink' ? inputCommonTargets : []),
     ...(io.wiring === 'source' ? io.inputs.map((input) => pbTerminal(input.pb, 'c')) : []),
     ...usedCommons.map(plcTerminal),
     ...io.outputs.map((output) => terminalId(output.cr, '9')),
@@ -126,7 +133,7 @@ export function plcWiringPlan(
   wires.push(...chain(terminalId(P_RAIL_ID, '1'), pTargets));
   // N側の鎖: 入力コモン（ソースのみ）→ 押ボタンのコモン（シンクのみ）→ コイル(−) → ランプ(−)
   const nTargets: TerminalId[] = [
-    ...(io.wiring === 'source' ? unit.spec.inputCommons.map(plcTerminal) : []),
+    ...(io.wiring === 'source' ? inputCommonTargets : []),
     ...(io.wiring === 'sink' ? io.inputs.map((input) => pbTerminal(input.pb, 'c')) : []),
     ...io.outputs.map((output) => terminalId(output.cr, '13')),
     ...io.outputs.map((output) => plTerminal(output.pl, '-')),
