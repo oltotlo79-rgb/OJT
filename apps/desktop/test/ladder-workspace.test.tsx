@@ -1,10 +1,10 @@
 import { BUILTIN_PLC_PROBLEMS } from '@ojt/content';
 import { out, Y } from '@ojt/ladder-core';
 import { MITSUBISHI_FX5U } from '@ojt/plc-dialects';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useStore } from '../src/renderer/app/store.js';
-import { LadderWorkspace } from '../src/renderer/ladder/LadderWorkspace.js';
+import { LadderWorkspace, TOOLBAR_ACTIONS } from '../src/renderer/ladder/LadderWorkspace.js';
 import { ShortcutHelp } from '../src/renderer/ladder/ShortcutHelp.js';
 import { applyLadderCell } from '../src/renderer/session/ladder.js';
 
@@ -41,6 +41,12 @@ describe('GX Works3風の枠（§10.6 / §17）', () => {
       // `name` に文字列を渡すと完全一致なので「変換」と「全変換」を取り違えない
       expect(screen.getByRole('button', { name: label })).toBeInTheDocument();
     }
+  });
+
+  it('has one action per toolbar label, so the position mapping never falls through (Batch 3 レビュー M2)', () => {
+    // `TOOLBAR_ACTIONS[index] ?? 'convert'` は並びがズレても黙って通ってしまうので、
+    // 少なくとも長さが一致していることをテストで縛る
+    expect(MITSUBISHI_FX5U.panels.toolbar.length).toBe(TOOLBAR_ACTIONS.length);
   });
 
   it('converts and sends the ladder to the worker when it succeeds (H-1)', () => {
@@ -83,11 +89,61 @@ describe('GX Works3風の枠（§10.6 / §17）', () => {
     expect(useStore.getState().ladder?.networks[0]?.rows).toBe(1);
   });
 
+  it('disables the block/row toolbar buttons outside write mode (Batch 3 レビュー I1)', () => {
+    useStore.getState().setLadderMode('monitor');
+    workspace();
+    for (const testId of [
+      'toolbar-insert-network',
+      'toolbar-delete-network',
+      'toolbar-insert-row',
+      'toolbar-delete-row',
+    ]) {
+      expect(screen.getByTestId(testId)).toBeDisabled();
+    }
+  });
+
+  it('bails and toasts when the toolbar edit runs outside write mode, exactly as the keyboard readOnly gate does (I1)', () => {
+    workspace();
+    const button = screen.getByTestId('toolbar-delete-row');
+    expect(button).not.toBeDisabled();
+    const before = useStore.getState().ladder;
+    const count = useStore.getState().toasts.length;
+    /*
+     * ボタンが `disabled` だと React はクリックのハンドラそのものを呼ばない（disabled は
+     * `fiber` に保持された直前レンダーの props を見るので、DOM を直接書き換えても効かない）。
+     * それでも `edit()` 自身がモードを見て断ることを確かめるため、モード変更とクリックを
+     * 同じ `act()` の中で行い、まだ再描画（disabled の反映）が終わっていない state を使って
+     * クリックを通す。`edit()` はクリックの瞬間の最新ストアを読むので、モードは正しく
+     * `monitor` として断られる。
+     */
+    act(() => {
+      useStore.getState().setLadderMode('monitor');
+      fireEvent.click(button);
+    });
+    expect(useStore.getState().ladder).toBe(before);
+    expect(useStore.getState().toasts.length).toBeGreaterThan(count);
+    expect(useStore.getState().toasts.at(-1)?.text).toContain('書込みモード');
+  });
+
   it('jumps the cursor from the project tree', () => {
     workspace();
     fireEvent.click(screen.getByTestId('toolbar-insert-network'));
     fireEvent.click(screen.getByTestId('tree-network-n2'));
     expect(useStore.getState().ladderCursor).toEqual({ networkId: 'n2', row: 0, col: 0 });
+  });
+
+  it('reads as a tree, not a bare list (Batch 3 レビュー M8)', () => {
+    workspace();
+    expect(screen.getByTestId('project-tree').querySelector('ul[role="tree"]')).not.toBeNull();
+    expect(
+      screen.getByTestId('project-tree').querySelectorAll('[role="treeitem"]').length,
+    ).toBeGreaterThan(0);
+  });
+
+  it('groups the toolbar without claiming roving focus (Batch 3 レビュー M8)', () => {
+    workspace();
+    const toolbar = screen.getByRole('group', { name: MITSUBISHI_FX5U.panels.editor });
+    expect(toolbar).toBeInTheDocument();
   });
 
   it('starts and stops monitoring through the worker', () => {
@@ -127,5 +183,11 @@ describe('キー割当表（§12.1 / §17.1）', () => {
     expect(screen.getByTestId('shortcuts-note')).toHaveTextContent('メーカー');
     // 商標の注記も同じ場所に出す（§17.1）
     expect(screen.getByTestId('shortcuts')).toHaveTextContent('商標');
+  });
+
+  it('names its columns with a <thead> and scope="col" (Batch 3 レビュー M8)', () => {
+    render(<ShortcutHelp profile={MITSUBISHI_FX5U} />);
+    const headers = screen.getByTestId('shortcuts').querySelectorAll('thead th[scope="col"]');
+    expect(headers.length).toBe(3);
   });
 });

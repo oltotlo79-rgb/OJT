@@ -100,7 +100,11 @@ export interface PlcMonitorSnapshot {
   inputs: boolean[];
   outputs: boolean[];
   internals: Record<number, boolean>;
-  timers: Record<number, { elapsedMs: number; on: boolean }>;
+  /**
+   * `presetMs` はコンパイル済みラダーのタイマセルから取る（Batch 3 レビュー M4）。
+   * ランタイムの `PlcTimerState` 自体は設定値を持たないので、Worker 側で合成する。
+   */
+  timers: Record<number, { elapsedMs: number; on: boolean; presetMs: number }>;
   counters: Record<number, { value: number; on: boolean }>;
 }
 

@@ -46,8 +46,11 @@ type ToolbarAction =
   | 'monitor-start'
   | 'monitor-stop';
 
-/** `panels.toolbar` の並び（§10.6 のスキン定義と同じ順）に対応させる。 */
-const TOOLBAR_ACTIONS: readonly ToolbarAction[] = [
+/**
+ * `panels.toolbar` の並び（§10.6 のスキン定義と同じ順）に対応させる。
+ * `export` するのは、プロファイルの項目数とここのズレをテストで縛るため（Batch 3 レビュー M2）。
+ */
+export const TOOLBAR_ACTIONS: readonly ToolbarAction[] = [
   'convert',
   'convert-all',
   'write-mode',
@@ -93,6 +96,7 @@ export function LadderWorkspace({
   const comments = useStore((s) => s.ladderComments);
   const issues = useStore((s) => s.convertIssues);
   const converted = useStore((s) => s.converted);
+  const ladderMode = useStore((s) => s.ladderMode);
   const io = useMemo(() => resolvePlcIo(problem.io), [problem]);
   /** 機種の端子名はここから引く（決定表#16）。課題の機種が未対応なら FX5U に倒す。 */
   const unit = useMemo(() => plcUnitFor(problem.plc.model) ?? PLC_UNIT_FX5U, [problem]);
@@ -128,6 +132,11 @@ export function LadderWorkspace({
    */
   const edit = useCallback((run: () => LadderProgram): boolean => {
     const store = useStore.getState();
+    // キー操作の編集と同じ規則で、書込みモード（`write`）以外は断る（決定表#11 / Batch 3 レビュー I1）
+    if (store.ladderMode !== 'write') {
+      store.toast(JA.ladder.readOnly, 'error');
+      return false;
+    }
     try {
       store.setLadder(run());
       return true;
@@ -178,12 +187,17 @@ export function LadderWorkspace({
 
   return (
     <div className={styles.workspace} data-testid="ladder-workspace">
-      <div className={styles.toolbar} role="toolbar" aria-label={JA.ladder.title}>
+      {/*
+        ロービングフォーカスは実装していないので `role="toolbar"` を名乗らない
+        （Batch 3 レビュー M8。ただの押しボタンの集まりとして `role="group"` にする）
+      */}
+      <div className={styles.toolbar} role="group" aria-label={JA.ladder.title}>
         {profile.panels.toolbar.map((label, index) => {
+          // 位置ではなく `action` をキーにする（プロファイルの並びが変わっても取り違えない。M2）
           const action = TOOLBAR_ACTIONS[index] ?? 'convert';
           return (
             <button
-              key={label}
+              key={action}
               type="button"
               data-testid={`toolbar-${action}`}
               onClick={() => {
@@ -195,10 +209,14 @@ export function LadderWorkspace({
           );
         })}
         <span className={styles.toolbarGap} />
-        {/* 回路ブロック・行の操作はショートカット表に無いのでボタンで出す（決定表#12） */}
+        {/*
+          回路ブロック・行の操作はショートカット表に無いのでボタンで出す（決定表#12）。
+          キー入力の編集と同じく、書込みモード（F2）以外は押させない（Batch 3 レビュー I1）
+        */}
         <button
           type="button"
           data-testid="toolbar-insert-network"
+          disabled={ladderMode !== 'write'}
           onClick={() => {
             const id = nextNetworkId(program);
             const index = insertIndexFor(program, cursor.networkId);
@@ -214,6 +232,7 @@ export function LadderWorkspace({
           data-testid="toolbar-delete-network"
           // END は消させない（消すと `missing-end` になり、画面から戻す手段が無い）
           disabled={
+            ladderMode !== 'write' ||
             program.networks.length <= 2 ||
             currentNetwork === undefined ||
             isEndNetwork(currentNetwork)
@@ -231,6 +250,7 @@ export function LadderWorkspace({
         <button
           type="button"
           data-testid="toolbar-insert-row"
+          disabled={ladderMode !== 'write'}
           onClick={() => {
             edit(() => insertRow(program, cursor.networkId, cursor.row + 1));
           }}
@@ -240,6 +260,7 @@ export function LadderWorkspace({
         <button
           type="button"
           data-testid="toolbar-delete-row"
+          disabled={ladderMode !== 'write'}
           onClick={() => {
             if (!edit(() => deleteRow(program, cursor.networkId, cursor.row))) return;
             useStore.getState().setLadderCursor({ ...cursor, row: Math.max(0, cursor.row - 1) });

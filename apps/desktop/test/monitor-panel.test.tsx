@@ -14,7 +14,7 @@ function snapshot(overrides: Partial<PlcMonitorSnapshot> = {}): PlcMonitorSnapsh
     inputs: [true, false, false],
     outputs: [false, true],
     internals: { 0: true },
-    timers: { 0: { elapsedMs: 1200, on: false } },
+    timers: { 0: { elapsedMs: 1200, on: false, presetMs: 3000 } },
     counters: { 0: { value: 2, on: false } },
     ...overrides,
   };
@@ -26,19 +26,35 @@ function panel(onPlc = vi.fn()): ReturnType<typeof vi.fn> {
 }
 
 beforeEach(() => {
-  useStore.setState({ plcMonitor: undefined, plcRunning: false, ladderMode: 'write' });
+  useStore.setState({
+    plcMonitor: undefined,
+    plcRunning: false,
+    ladderMode: 'write',
+    converted: false,
+  });
 });
 
 afterEach(cleanup);
 
 describe('モニタ一覧（§10.7）', () => {
-  it('asks to start monitoring while it is off', () => {
+  it('asks to convert first while the ladder is not converted (I3)', () => {
     panel();
-    expect(screen.getByTestId('monitor-off')).toHaveTextContent('F3');
+    expect(screen.getByTestId('monitor-not-converted')).toHaveTextContent('F4');
+  });
+
+  it('asks to RUN once converted but before the first snapshot arrives (I3)', () => {
+    useStore.setState({ converted: true });
+    panel();
+    expect(screen.getByTestId('monitor-no-snapshot')).toHaveTextContent('RUN');
   });
 
   it('lists the devices with the dialect name and the unit terminal name (決定表#16)', () => {
-    useStore.setState({ plcMonitor: snapshot(), ladderMode: 'monitor', plcRunning: true });
+    useStore.setState({
+      plcMonitor: snapshot(),
+      ladderMode: 'monitor',
+      plcRunning: true,
+      converted: true,
+    });
     panel();
     expect(screen.getByTestId('monitor-input-0')).toHaveTextContent('X0');
     expect(screen.getByTestId('monitor-input-0')).toHaveTextContent('PLC.X0');
@@ -46,13 +62,15 @@ describe('モニタ一覧（§10.7）', () => {
     expect(screen.getByTestId('monitor-output-1')).toHaveTextContent('Y1');
     expect(screen.getByTestId('monitor-output-1')).toHaveTextContent('ON');
     expect(screen.getByTestId('monitor-internal-0')).toHaveTextContent('M0');
+    // 経過 / 設定（Batch 3 レビュー M4）
     expect(screen.getByTestId('monitor-timer-0')).toHaveTextContent('1.2');
+    expect(screen.getByTestId('monitor-timer-0')).toHaveTextContent('3.0');
     expect(screen.getByTestId('monitor-counter-0')).toHaveTextContent('2');
     expect(screen.getByTestId('monitor-scan')).toHaveTextContent('12');
   });
 
   it('names the FX5U input spec, not the engine defaults (3A レビュー指摘)', () => {
-    useStore.setState({ plcMonitor: snapshot(), ladderMode: 'monitor' });
+    useStore.setState({ plcMonitor: snapshot(), ladderMode: 'monitor', converted: true });
     panel();
     const note = screen.getByTestId('monitor-spec');
     expect(note).toHaveTextContent('4.5');
@@ -71,7 +89,12 @@ describe('モニタ一覧（§10.7）', () => {
   });
 
   it('explains why nothing moves while the PLC is stopped', () => {
-    useStore.setState({ plcMonitor: snapshot(), ladderMode: 'monitor', plcRunning: false });
+    useStore.setState({
+      plcMonitor: snapshot(),
+      ladderMode: 'monitor',
+      plcRunning: false,
+      converted: true,
+    });
     panel();
     expect(screen.getByTestId('monitor-stopped')).toHaveTextContent('RUN');
   });

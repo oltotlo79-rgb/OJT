@@ -34,9 +34,15 @@ import {
   type TimeChartSignalSpec,
 } from '@ojt/content';
 import type { LadderProgram } from '@ojt/ladder-core';
-import type { DialectId } from '@ojt/plc-dialects';
+import {
+  IMPLEMENTED_DIALECT_IDS,
+  MAX_GRID_COLS,
+  MIN_GRID_COLS,
+  isDialectId,
+  type DialectId,
+} from '@ojt/plc-dialects';
 import { create } from 'zustand';
-import type { ProblemListPayload, WorkFile } from '../../shared/ipc.js';
+import { DEFAULT_SETTINGS, type ProblemListPayload, type WorkFile } from '../../shared/ipc.js';
 import type { SimSnapshot } from '../../worker/protocol.js';
 import { droppedTicksLog, JA, referenceErrorText } from '../i18n/ja.js';
 import {
@@ -299,6 +305,10 @@ export interface AppState {
   monitorWriteNoticeShown: boolean;
   /** いま使っている方言（Phase 3 は常に `mitsubishi`）。§10.5 */
   dialectId: DialectId;
+  /** ラダーの表示列数（設定画面。§10.6） */
+  ladderGridCols: number;
+  /** モニタ中の通電色（設定画面。§10.6） */
+  monitorColor: string;
   /** 最後の編集のあと「変換」を通したか。§10.6 / 3A H-1 */
   converted: boolean;
   /** 出力ウィンドウの中身。§10.6 */
@@ -469,6 +479,12 @@ export interface AppState {
   setPlcMonitor: (monitor: PlcMonitorSnapshot | undefined) => void;
   /** RUN/STOP。§10.6 */
   setPlcRunning: (running: boolean) => void;
+  /** 設定画面の値をラダーへ反映する。§12.1 */
+  applyLadderSettings: (settings: {
+    gridCols: number;
+    monitorColor: string;
+    vendor: string;
+  }) => void;
   /** ラダーを1手戻す（戻せたら true）。決定表#2 */
   undoLadderEdit: () => boolean;
   /** ラダーを1手やり直す（やり直せたら true）。決定表#2 */
@@ -588,6 +604,8 @@ export const useStore = create<AppState>((set, get) => ({
 
   ...plcFields(),
   dialectId: 'mitsubishi',
+  ladderGridCols: DEFAULT_SETTINGS.ladderGridCols,
+  monitorColor: DEFAULT_SETTINGS.monitorColor,
 
   mode: 'wire',
   wireColor: '青',
@@ -1035,8 +1053,10 @@ export const useStore = create<AppState>((set, get) => ({
   },
   setDeviceComment: (device, text) => {
     const comments = { ...get().ladderComments };
-    const trimmed = text.trim();
-    if (trimmed.length === 0) {
+    // 空白だけの入力を消去とみなすかどうかは `trim()` で判定するが、保存する文字列そのものは
+    // 打鍵どおり（先頭・末尾の空白も含む）に残す。そうしないと「運転 押ボタン」のような
+    // デバイス名に含まれる空白が入力のたびに消えてしまう（Batch 3 レビュー I2）
+    if (text.trim().length === 0) {
       delete comments[device];
       set({ ladderComments: comments });
       return true;
@@ -1047,7 +1067,7 @@ export const useStore = create<AppState>((set, get) => ({
     ) {
       return false;
     }
-    comments[device] = trimmed.slice(0, DEVICE_COMMENT_LIMIT);
+    comments[device] = text.slice(0, DEVICE_COMMENT_LIMIT);
     set({ ladderComments: comments });
     return true;
   },
@@ -1059,6 +1079,16 @@ export const useStore = create<AppState>((set, get) => ({
   },
   setPlcRunning: (plcRunning) => {
     set({ plcRunning });
+  },
+  applyLadderSettings: ({ gridCols, monitorColor, vendor }) => {
+    set({
+      ladderGridCols: Math.min(MAX_GRID_COLS, Math.max(MIN_GRID_COLS, Math.round(gridCols))),
+      monitorColor,
+      // 未実装のメーカーが設定に残っていても落とさない（Phase 4 で実装されたら効く）
+      ...(isDialectId(vendor) && IMPLEMENTED_DIALECT_IDS.includes(vendor)
+        ? { dialectId: vendor }
+        : {}),
+    });
   },
   undoLadderEdit: () => {
     const { ladder, ladderHistory } = get();

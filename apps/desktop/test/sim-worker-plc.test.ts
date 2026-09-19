@@ -17,6 +17,8 @@ import {
   no,
   out,
   program,
+  T,
+  ton,
   X,
   Y,
   type Cell,
@@ -237,6 +239,18 @@ describe('モニタのスナップショット（決定表#5）', () => {
     expect(after?.outputs[0]).toBe(true);
     expect(after?.inputs[0]).toBe(true);
     expect(after?.scanCount).toBeGreaterThan(0);
+  });
+
+  it('carries the timer preset alongside the elapsed time (Batch 3 レビュー M4)', async () => {
+    const timerLadder = program(
+      network('n1', [rung(no(X(0)), ton(T(0), 3_000))]),
+      endNetwork(),
+    );
+    const h = await running(timerLadder);
+    h.send({ type: 'plc', action: { kind: 'monitor', on: true } });
+    h.advance(100);
+    const snapshot = h.snapshots.at(-1)?.plc;
+    expect(snapshot?.timers[0]?.presetMs).toBe(3_000);
   });
 
   it('sizes outputs to the PLC unit output count instead of the default full length (レビュー指摘 I3)', async () => {

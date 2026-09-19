@@ -36,7 +36,7 @@ import {
   type FaultSpecData,
   type PlcCoupling,
 } from '@ojt/content';
-import { compile, IR_COLS, type LadderProgram } from '@ojt/ladder-core';
+import { compile, IR_COLS, type CompiledProgram, type LadderProgram } from '@ojt/ladder-core';
 import type { PlcMonitorSnapshot } from '../renderer/app/store-types.js';
 import { planTicks } from './runtime.js';
 import {
@@ -240,6 +240,22 @@ function loadLadder(sim: Simulation, source: LadderProgram): void {
  * 「行 × 16列」を連ねた `'0110…'` の**文字列1本**へ畳む。renderer はこの文字列を
  * ネットワーク単位で購読するので、比較も再描画の判定も文字列1本で済む。
  */
+/**
+ * タイマの設定値（`presetMs`）。ランタイムの `PlcTimerState` は経過だけを持つので、
+ * コンパイル済みラダーのタイマセルから読む（決定表#5 / Batch 3 レビュー M4）。
+ */
+function timerPresetsOf(program: CompiledProgram): Record<number, number> {
+  const presets: Record<number, number> = {};
+  for (const net of program.networks) {
+    for (const row of net.cells) {
+      for (const cell of row) {
+        if (cell.kind === 'timer') presets[cell.device.index] = cell.presetMs;
+      }
+    }
+  }
+  return presets;
+}
+
 function plcSnapshot(coupling: PlcCoupling): PlcMonitorSnapshot {
   const state = coupling.runtime.state();
   const powered: Record<string, string> = {};
@@ -253,6 +269,7 @@ function plcSnapshot(coupling: PlcCoupling): PlcMonitorSnapshot {
     }
     powered[net.id] = bits;
   }
+  const presets = timerPresetsOf(coupling.runtime.program);
   return {
     scanCount: state.scanCount,
     tMs: state.tMs,
@@ -261,7 +278,10 @@ function plcSnapshot(coupling: PlcCoupling): PlcMonitorSnapshot {
     outputs: [...state.outputs],
     internals: { ...state.internals },
     timers: Object.fromEntries(
-      Object.entries(state.timers).map(([index, value]) => [index, { ...value }]),
+      Object.entries(state.timers).map(([index, value]) => [
+        index,
+        { ...value, presetMs: presets[Number(index)] ?? 0 },
+      ]),
     ),
     counters: Object.fromEntries(
       Object.entries(state.counters).map(([index, value]) => [index, { ...value }]),

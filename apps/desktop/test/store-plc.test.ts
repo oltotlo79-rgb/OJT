@@ -134,6 +134,15 @@ describe('ラダーの編集と履歴', () => {
     expect(useStore.getState().ladderComments['Y0']).toHaveLength(32);
   });
 
+  it('keeps spaces typed in the middle of a comment verbatim (Batch 3 レビュー I2)', () => {
+    const store = useStore.getState();
+    expect(store.setDeviceComment('X1', '運転 押ボタン')).toBe(true);
+    expect(useStore.getState().ladderComments['X1']).toBe('運転 押ボタン');
+    // 空白だけの入力は削除として扱う（従来どおり）
+    expect(store.setDeviceComment('X1', '   ')).toBe(true);
+    expect(useStore.getState().ladderComments['X1']).toBeUndefined();
+  });
+
   it('returns false and drops a new comment beyond DEVICE_COMMENT_COUNT_LIMIT (レビュー指摘 M4)', () => {
     const store = useStore.getState();
     for (let i = 0; i < DEVICE_COMMENT_COUNT_LIMIT; i += 1) {

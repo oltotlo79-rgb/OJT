@@ -29,7 +29,7 @@ export function MonitorPanel({
 }): JSX.Element {
   const monitor = useStore((s) => s.plcMonitor);
   const running = useStore((s) => s.plcRunning);
-  const mode = useStore((s) => s.ladderMode);
+  const converted = useStore((s) => s.converted);
   const terminal = (name: string | undefined): string => `PLC.${name ?? ''}`;
   return (
     <section className={styles.side} aria-label={JA.ladder.monitor} data-testid="monitor-panel">
@@ -43,7 +43,7 @@ export function MonitorPanel({
         <button
           type="button"
           data-testid="monitor-run"
-          aria-pressed={running}
+          // ラベルが RUN⇄STOP に切り替わるので `aria-pressed` は不要（Batch 3 レビュー M5）
           onClick={() => {
             const next = !useStore.getState().plcRunning;
             useStore.getState().setPlcRunning(next);
@@ -62,9 +62,18 @@ export function MonitorPanel({
           {JA.ladder.plcReset}
         </button>
       </div>
-      {mode !== 'monitor' || monitor === undefined ? (
-        <p className={styles.sideNote} data-testid="monitor-off">
-          {JA.ladder.monitorOff}
+      {/*
+        「モニタが動いていない」理由を2通りに分ける（Batch 3 レビュー I3）。
+        変換前はいつまで待っても Worker から `snapshot.plc` が来ないので、未変換のときは
+        その旨を、変換済みでまだ1枚も届いていないときは RUN 待ちである旨を出す。
+      */}
+      {!converted ? (
+        <p className={styles.sideNote} data-testid="monitor-not-converted">
+          {JA.ladder.monitorNotConverted}
+        </p>
+      ) : monitor === undefined ? (
+        <p className={styles.sideNote} data-testid="monitor-no-snapshot">
+          {JA.ladder.monitorNoSnapshot}
         </p>
       ) : (
         <>
@@ -102,7 +111,10 @@ export function MonitorPanel({
               {Object.entries(monitor.timers).map(([index, state]) => (
                 <tr key={`t-${index}`} data-testid={`monitor-timer-${index}`}>
                   <td>{profile.formatDevice(T(Number(index)))}</td>
-                  <td>{secondsLabel(state.elapsedMs)}</td>
+                  {/* 経過 / 設定（Batch 3 レビュー M4） */}
+                  <td>
+                    {secondsLabel(state.elapsedMs)} / {secondsLabel(state.presetMs)}
+                  </td>
                   <td>{onOffLabel(state.on)}</td>
                 </tr>
               ))}
