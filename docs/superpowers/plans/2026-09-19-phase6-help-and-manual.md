@@ -3518,7 +3518,7 @@ git show --stat HEAD
 
 本設計 §5.3・§5.4、決定表#14・#15・#28、本プラン 決定表 P8。
 
-- [ ] **Step 1: 失敗するテストを書く**
+- [x] **Step 1: 失敗するテストを書く**
 
 `apps/desktop/test/help-drawer.test.tsx`:
 
@@ -3731,7 +3731,7 @@ describe('文言（決定表#28）', () => {
 
 期待（Step 4 のあと）: **17件通る**。
 
-- [ ] **Step 2: 文言を足す**
+- [x] **Step 2: 文言を足す**
 
 `apps/desktop/src/renderer/i18n/ja.ts` の `JA` の末尾（`schematicView` の後ろ）に足す:
 
@@ -3771,7 +3771,7 @@ export function helpHitCountText(count: number): string {
 // --- /Plan 6 Task 8 ---
 ```
 
-- [ ] **Step 3: ストアを作る**
+- [x] **Step 3: ストアを作る**
 
 `apps/desktop/src/renderer/help/help-store.ts`:
 
@@ -3827,7 +3827,7 @@ export const useHelpStore = create<HelpState>((set, get) => ({
 }));
 ```
 
-- [ ] **Step 4: 引き出しを作る**
+- [x] **Step 4: 引き出しを作る**
 
 `apps/desktop/src/renderer/help/HelpDrawer.tsx`:
 
@@ -4427,7 +4427,7 @@ function FigureOverlay({ name, onClose }: { name: string; onClose: () => void })
 }
 ```
 
-- [ ] **Step 5: 機能一覧表に引き出しの操作要素を足す**
+- [x] **Step 5: 機能一覧表に引き出しの操作要素を足す**
 
 引き出しを作ると `data-testid` が11個増えるので、`docs/manual/coverage.json` の `controls` に足す。足さないと Task 1 の `feature-inventory.test.ts` が「機能一覧表に無い」と言って落ちる（それが狙いの仕組みである）。
 
@@ -4450,7 +4450,7 @@ function FigureOverlay({ name, onClose }: { name: string; onClose: () => void })
 
 `screens/画面の上の帯` の本文に、これらの言葉（「取扱説明書」「もくじ」「言葉で探す」「説明書（PDF）を開く」「閉じる」「件見つかりました」「図を大きく見る」「図を閉じる」）が出るように書き足す。あわせて「**ヘルプの中の図を押すか `Enter` を押すと大きく出せます。`Esc` でもとに戻ります。**」の1文を入れる（利用者の決定 2026-09-20）。
 
-- [ ] **Step 6: テストを通す**
+- [x] **Step 6: テストを通す**
 
 ```
 pnpm --filter @ojt/desktop test help-drawer feature-inventory manual-coverage
@@ -4459,7 +4459,7 @@ pnpm --filter @ojt/desktop typecheck && pnpm lint
 # 期待: どちらも無警告
 ```
 
-- [ ] **Step 7: commit**
+- [x] **Step 7: commit**
 
 ```
 git add apps/desktop/src/renderer/help/help-store.ts apps/desktop/src/renderer/help/HelpDrawer.tsx apps/desktop/src/renderer/help/help.module.css apps/desktop/test/help-drawer.test.tsx docs/manual/coverage.json docs/manual/02-screens.md apps/desktop/src/renderer/help/manual-content.ts

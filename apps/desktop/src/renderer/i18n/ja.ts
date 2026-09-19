@@ -1030,7 +1030,36 @@ export const JA = {
     full: 'この端子には既に2本つながっています',
   },
   // --- /Plan 5 Task 10 ---
+  // --- Plan 6 Task 8 ---
+  /**
+   * ヘルプの引き出し。**本文はここに書かない**（正本は `docs/manual/*.md`）。
+   * ここに置いてよいのは画面の部品の名前だけで、値は40文字以下にする
+   * （取扱説明書 設計 決定表#28。`help-drawer.test.tsx` が検査する）。
+   */
+  help: {
+    open: 'ヘルプ',
+    title: '取扱説明書',
+    close: '閉じる',
+    contents: 'もくじ',
+    searchLabel: '言葉で探す',
+    searchPlaceholder: '例: 自己保持',
+    searchEmpty: '見つかりませんでした。別の言葉で探してください。',
+    openPdf: '説明書（PDF）を開く',
+    pdfMissing: '説明書（PDF）が見つかりません。もくじから同じ内容を読めます。',
+    shortcutHint: 'F1 でいつでも開けます',
+    // 図（利用者の決定 2026-09-20）
+    enlarge: '図を大きく見る',
+    figureClose: '図を閉じる',
+  },
+  // --- /Plan 6 Task 8 ---
 } as const;
+
+// --- Plan 6 Task 8 ---
+/** 検索で当たった件数。 */
+export function helpHitCountText(count: number): string {
+  return `${String(count)} 件見つかりました`;
+}
+// --- /Plan 6 Task 8 ---
 
 /** アナログのΩレンジの表示（`×1` / `×10` / `×1k`）。§9.3 */
 export function ohmRangeLabel(range: number): string {
