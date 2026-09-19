@@ -16,10 +16,10 @@ import type {
   InstructionKey,
   MonitorColors,
   PanelLayout,
-  ShortcutTable,
   SymbolDrawing,
   TimerPresetText,
 } from './profile.js';
+import { GX_STYLE_SHORTCUTS } from './shortcuts.js';
 
 /**
  * 三菱 MELSEC iQ-F FX5U ＋ GX Works3風スキンの方言プロファイル。設計仕様 §10.5 / §10.6。
@@ -154,6 +154,14 @@ const INSTRUCTION_NAMES: Readonly<Record<InstructionKey, string>> = {
   ani: 'ANI',
   or: 'OR',
   ori: 'ORI',
+  ldp: 'LDP',
+  ldf: 'LDF',
+  andp: 'ANDP',
+  andf: 'ANDF',
+  orp: 'ORP',
+  orf: 'ORF',
+  andBlock: 'ANB',
+  orBlock: 'ORB',
   out: 'OUT',
   set: 'SET',
   rst: 'RST',
@@ -161,6 +169,9 @@ const INSTRUCTION_NAMES: Readonly<Record<InstructionKey, string>> = {
   pulseDown: 'PLF',
   timer: 'OUT T',
   counter: 'OUT C',
+  mc: 'MC',
+  mcr: 'MCR',
+  end: 'END',
 };
 
 /** 記号の線画（自前の識別子。ベンダーの図記号ビットマップは持たない）。§10.6 / §17 */
@@ -195,46 +206,6 @@ const PANELS: PanelLayout = {
     'モニタ停止',
   ],
 };
-
-/**
- * ショートカット表。§10.6
- * `confirmed: true` は PLC調査資料 §1-D で確認済みの割当（◎）、`false` は §17.1 の前提方針で
- * 採用した三菱系ツールの慣例（△）である。UIは △ に注記を出せる（§12.1）。
- */
-const SHORTCUTS: ShortcutTable = [
-  { action: 'contact-no', keys: 'F5', label: 'a接点', confirmed: true },
-  { action: 'contact-nc', keys: 'F6', label: 'b接点', confirmed: false },
-  { action: 'or-contact-no', keys: 'Shift+F5', label: 'OR a接点', confirmed: false },
-  { action: 'or-contact-nc', keys: 'Shift+F6', label: 'OR b接点', confirmed: false },
-  { action: 'coil', keys: 'F7', label: 'コイル', confirmed: true },
-  {
-    action: 'application',
-    keys: 'F8',
-    label: '応用命令',
-    confirmed: true,
-    enabled: false,
-    note: 'Phase 3 のIRには応用命令に対応するセル種別がありません（§10.3）。Phase 4 で追加します',
-  },
-  { action: 'hline', keys: 'F9', label: '横線', confirmed: false },
-  { action: 'vline', keys: 'Shift+F9', label: '縦線', confirmed: false },
-  {
-    action: 'rule-line',
-    keys: 'Ctrl+←↑↓→',
-    label: '罫線（縦線・横線の作図）',
-    confirmed: true,
-    note: '`setVerticalLink()` / `setCell()`（`ladder-core` の編集API。Task 1b）に対応する',
-  },
-  { action: 'convert', keys: 'F4', label: '変換', confirmed: false },
-  { action: 'toggle-no-nc', keys: '/', label: 'a接点・b接点の切換', confirmed: true },
-  { action: 'toggle-pulse', keys: 'Alt+/', label: '微分・SET/RST の切換', confirmed: true },
-  { action: 'write-mode', keys: 'F2', label: '書込みモード', confirmed: true },
-  { action: 'read-mode', keys: 'Shift+F2', label: '読出しモード', confirmed: true },
-  { action: 'monitor', keys: 'F3', label: 'モニタ', confirmed: true },
-  { action: 'monitor-write', keys: 'Shift+F3', label: 'モニタ（書込み）', confirmed: true },
-  { action: 'insert-toggle', keys: 'Ins', label: '挿入・上書きの切換', confirmed: true },
-  { action: 'next-symbol', keys: 'Tab', label: '次の回路記号', confirmed: true },
-  { action: 'help', keys: 'F1', label: 'ヘルプ', confirmed: true },
-];
 
 /** 方言エラーの日本語文言。§10.5 の `errorMessages` */
 const ERROR_MESSAGES: Readonly<Record<string, string>> = {
@@ -353,7 +324,7 @@ export const MITSUBISHI_FX5U: DialectProfile = {
   instructionNames: INSTRUCTION_NAMES,
   symbols: SYMBOLS,
   gridCols: 11,
-  shortcuts: SHORTCUTS,
+  shortcuts: GX_STYLE_SHORTCUTS,
   convertStep: true,
   monitorColors: MONITOR_COLORS,
   panels: PANELS,

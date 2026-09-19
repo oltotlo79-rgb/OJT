@@ -32,7 +32,7 @@ describe('GX Works3風スキン（§10.6）', () => {
     expect(entry('rule-line')?.keys).toBe('Ctrl+←↑↓→');
     // 応用命令は IR にセル種別が無いので表には出すが押せない
     expect(entry('application')?.enabled).toBe(false);
-    expect(entry('application')?.note).toContain('Phase 4');
+    expect(entry('application')?.note).toContain('応用命令');
     // それ以外は既定（`enabled` を書かない＝使える）
     expect(skin.shortcuts.filter((s) => s.enabled === false)).toHaveLength(1);
   });

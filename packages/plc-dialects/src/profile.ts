@@ -45,7 +45,12 @@ export interface DialectError {
   col?: number;
 }
 
-/** 命令語の項目。§10.5 */
+/**
+ * 命令語の項目。§10.5
+ * 接点（`ld`〜`ori`）・接点形の微分（`ldp`〜`orf`）・ブロック接続（`andBlock` / `orBlock`）・
+ * 出力（`out` / `set` / `rst`）・出力形の微分（`pulseUp` / `pulseDown`）・タイマ／カウンタ・
+ * 区間制御（`mc` / `mcr`）・終端（`end`）の24項目。命令語リスト（§10.7）はこの表だけを使う。
+ */
 export type InstructionKey =
   | 'ld'
   | 'ldi'
@@ -53,13 +58,24 @@ export type InstructionKey =
   | 'ani'
   | 'or'
   | 'ori'
+  | 'ldp'
+  | 'ldf'
+  | 'andp'
+  | 'andf'
+  | 'orp'
+  | 'orf'
+  | 'andBlock'
+  | 'orBlock'
   | 'out'
   | 'set'
   | 'rst'
   | 'pulseUp'
   | 'pulseDown'
   | 'timer'
-  | 'counter';
+  | 'counter'
+  | 'mc'
+  | 'mcr'
+  | 'end';
 
 /**
  * ショートカット1件。§10.6
@@ -138,6 +154,12 @@ export interface DialectProfile {
   instructionNames: Readonly<Record<InstructionKey, string>>;
   /** 特殊デバイス番号（`SP0`〜`SP2`）→ 実デバイス名。§10.3 / §10.5 */
   specialDevices: Readonly<Record<number, string>>;
+  /**
+   * 実機ではb接点で使う特殊デバイスの番号（シャープの `007366`＝常時ON。§10.5 / §17 #22）。
+   * 4B のエディタはここに載っている番号の接点をb接点として描く。IRとランタイムは関知しない
+   * （IRの `SP0` は常時ONという意味そのもので、表示だけが方言に依る）。
+   */
+  specialInverted?: readonly number[];
   symbols: SymbolDrawing;
   /** 表示グリッドの接点列数（コイル列を含まない）。§10.6 */
   gridCols: number;

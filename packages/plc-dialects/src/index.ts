@@ -1,6 +1,19 @@
 export { convert, type ConvertError, type ConvertResult } from './convert.js';
 
 export {
+  collectDeviceIssues,
+  collectDevices,
+  makeParseTimerPreset,
+  makeTimerPreset,
+  type DevicePlace,
+  type DeviceRuleSet,
+  type DeviceUse,
+  type TimerRule,
+} from './device-rules.js';
+
+export { GX_STYLE_SHORTCUTS, withoutConvert } from './shortcuts.js';
+
+export {
   DIALECT_IDS,
   IMPLEMENTED_DIALECT_IDS,
   isDialectId,
