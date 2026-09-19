@@ -65,6 +65,8 @@
 | JW300 の端子名 | 入力 `A0`〜`A7` ＋ `COM.A`、`B0`〜`B7` ＋ `COM.B`（§10.1 で確定）。出力は同じ様式で `C0`〜`C7` ＋ `COM.C`、`D0`〜`D7` ＋ `COM.D` | 入力は一次資料、出力は本アプリ独自 | `plc-unit.ts` |
 | ラック形モジュールの外形・端子配置 | 1モジュール 幅35 × 高さ130 mm、奥行は TOYOPUC 120 / JW300 109.4（CUは99.8）。ベース外形 = モジュール幅合計＋左右各10mm、高さ140。端子は1モジュールにつき**2列×最大9段**（列間17mm・段間13mm）に並べる（当たり判定半径4mmが重ならない最小構成） | 本アプリ独自（§10.1・§17 #11・§17.1 の TOYOPUC 外形前提） | `plc-unit.ts` |
 | 各機種のPLC入力しきい値 | FX5U のみ ON 3.5mA（§5.1.3）。CP1E・TOYOPUC・JW300 は `circuit-sim` の既定（ON 3mA / OFF 1.5mA）を使う。24V印加時の入力電流は CP1E 5.0mA（4.8kΩの点）・JW300 7.3mA・TOYOPUC 10.0mA でいずれもON判定を超える | 本アプリ独自（各社の感度はPLC調査資料に無い） | `plc-unit.ts` の `*_SPEC` |
+| 機種の**外観**（筐体色・端子カバー・LED位置・正面の造作） | 外形寸法はカタログ値（§10.1）。色と面上の配置は一般に知られた見え方を再現した本アプリの記述: FX5U＝濃灰の筐体＋明灰のヒンジ式端子カバー、CP1E＝明灰（アイボリー）の筐体＋黒の端子台、TOYOPUC・JW300＝明灰のモジュール＋黒の端子台。LED列・RUN/STOPスイッチ・Ethernet／SD／USB・スロットラッチは §10.1 の記載と一般的な前面構成から置く | 寸法は一次資料（カタログ）、色と配置は本アプリ独自（実機写真・純正画像は使わない。§17.1 / PLC調査資料 §6・§7） | `packages/board-model/src/plc-unit.ts` の `*_APPEARANCE` |
+| 銘板の表記 | **型式の文字列だけ**（`FX5U-32MR/ES` / `CP1E-N30DR-A` / `PC10G-1SP` / `JW-212NA` …）。ロゴ・商標図形・ブランド名（`MELSEC` / `TOYOPUC` 等）は3Dに描かない。商標の帰属は設定画面の `trademarkNotice`（§15、Phase 1D で実装済み）に載せる | 本アプリ独自 | 同上（`nameplate`） |
 
 ---
 
@@ -86,7 +88,7 @@
 | `packages/circuit-sim/src/parts.ts` | **変更**: `PartMeta.plc.inputCommons` |
 | `packages/circuit-sim/src/index.ts` | **変更**: 再エクスポート |
 | `packages/board-model/src/board-jipm.ts` | **変更**: `PlcModuleDefinition` と `PlcUnitDefinition.form` / `modules?`。§10.1 |
-| `packages/board-model/src/plc-unit.ts` | **変更**: FX5U を新しい `PlcUnitSpec` に追随、CP1E・TOYOPUC ラック・JW300 ラックを追加、`PLC_UNITS` に4機種登録。§10.1 / §5.1.3 / §17 #11 |
+| `packages/board-model/src/plc-unit.ts` | **変更**: FX5U を新しい `PlcUnitSpec` に追随、CP1E・TOYOPUC ラック・JW300 ラックを追加、`PLC_UNITS` に4機種登録、**各機種・各モジュールの外観記述（`PlcAppearance`）**。§10.1 / §5.1.3 / §17 #11 |
 | `packages/board-model/src/index.ts` | **変更**: 再エクスポート |
 | `packages/content/src/schema/plc.ts` | **変更**: `SUPPORTED_PLC_MODELS`（4機種）、機種にない入出力点の検証。§7.6 |
 | `packages/content/src/plc-reference.ts` | **変更**: 複数入力コモン・機種別AC端子に対応した模範配線。§10.2 |
@@ -127,9 +129,10 @@
 | 9 | 入力1点ぶんの仕様 | `PlcUnitSpec.inputs` を `readonly string[]` から `readonly PlcInputSpec[]`（`{name, com, ohms?}`）へ格上げし、`inputCommon: string` を `inputCommons: readonly string[]` に替える | §5.1.3 が CP1E の入力抵抗を点によって 3.3kΩ / 4.8kΩ と分けており、§10.1 が TOYOPUC・JW300 を「8点/COM」と定めている。どちらも機種で1つの値では表せない。出力（`PlcOutputSpec`）と同じ形になるので読み手の負担も減る |
 | 10 | 壁コンセントへ繋ぐ端子 | `PlcUnitSpec.acPower: readonly [string, string]`（活線側・中性線側）を足し、`plc-reference` と `plcPowerIndependent` はここから引く | CP1E の電源端子は `L1` / `L2/N` で `L`/`N` ではない（§10.1）。`power` の先頭2つを使う規約は `PE` の位置（FX5U は `L`/`PE`/`N` の順）で破れる |
 | 11 | ラック形の表現 | `PlcUnitDefinition.form: 'unit' \| 'rack'` と `modules?: readonly PlcModuleDefinition[]`（`{id, model, displayName, sizeMm, pos}`）。端子は従来どおり `unit.terminals` に**平らに**並べ、どのモジュールの端子かは `id` の接頭辞ではなく `modules[].pos` との包含で分かる | ネットリスト上はラックでも1部品（`PLC`）である（`to-netlist.ts` は `board.plcUnit.spec` だけを見る）。端子IDにモジュール名を入れると `PLC.IN-12.X0` となり、`plcWiringPlan()` の端子名の引き方が機種ごとに変わってしまう。3Dの箱を4つ描くのは 4B の仕事なので、寸法と位置だけを渡せばよい |
-| 12 | ラックの端子配置 | 1モジュールにつき**2列 × 最大9段**（列オフセット +9mm / +26mm、段ピッチ13mm、上端から8mm）。実機の着脱式端子台は1列だが、当たり判定半径4mm（＝8mm離す必要）が高さ130mmに18点は入らない | §17 #11 が「並び順は前提・修正箇所は `terminals[].pos` のみ」としている。ピック可能であることは §8.2 の操作要件で、2列にすれば段間13mm・列間17mmで確実に満たせる |
+| 12 | ラックの端子配置 | 1モジュールにつき**2列 × 最大9段**（列オフセット +9mm / +26mm、段ピッチ13mm、上端から14mm）。上の14mmは入出力表示灯の帯に空ける。実機の着脱式端子台は1列だが、当たり判定半径4mm（＝8mm離す必要）が高さ130mmに18点は入らない | §17 #11 が「並び順は前提・修正箇所は `terminals[].pos` のみ」としている。ピック可能であることは §8.2 の操作要件で、2列にすれば段間13mm・列間17mmで確実に満たせる |
 | 13 | 機種にない入出力点 | `PlcRefSchema` ではなく `PlcProblemSchema` の `superRefine` で「`io.inputs[].x` / `io.outputs[].y` が機種の点数の範囲内か」を検査する（`plcUnitFor(model)` を使う） | `PlcRefSchema` は `{vendor, model}` しか見えないので割付を検査できない。`plcUnitFor()` が未対応機種に `undefined` を返したときは既存の「対応していないPLC機種です」の経路に任せる |
 | 14 | 内蔵課題8題の扱い | JSONは**1文字も変えない**。4機種すべてで通ることを `plc-cross-validation.test.ts` が「`plc` だけ差し替えて再検証し、`judgePlcReference()` が合格する」形で確かめる | §16 Phase 4 の「4方言が切替できるアプリ」は同じ課題が機種を跨いで成立することを意味する。課題を機種別に増やすと §7.9 の題数（モードD 8題）と食い違う |
+| 15 | 3Dの外観をどこに持つか | `PlcUnitDefinition.appearance` / `PlcModuleDefinition.appearance`（`PlcAppearance`）に**データとして**持ち、4B はそれを読んで描くだけにする。色はhex、寸法・矩形はmm、座標系は「正面の左上が原点・x右・y下」 | 利用者の要求は「各メーカーのシーケンサーの外観を忠実に再現する」ことだが、実機写真・純正画像は入手できない（§17.1 / PLC調査資料 §7）。カタログの外形寸法と一般に知られた見え方から**自前で作図**し、値を1ファイルに集める。4B に色や座標を直書きすると、実機と違うと分かったときの修正箇所が3Dコンポーネントに散る（§17.1 の「修正箇所は盤モデル」を守れない） |
 
 ---
 
@@ -2678,6 +2681,7 @@ git commit -m "feat(plc-dialects): add the notation switch preview"
 import {
   C,
   ctu,
+  empty,
   endNetwork,
   hline,
   IR_COLS,
@@ -2801,10 +2805,17 @@ describe('instructionList（§10.7 / §16 Phase 4 受入基準⑥）', () => {
   });
 
   it('emits a block instruction when a branch is itself a series', () => {
-    // X0 と（X1 AND X2）の並列 → LD X0 / LD X1 / AND X2 / ORB / OUT Y0
+    // X0 と（X1 AND X2）の並列 → LD X0 / LD X1 / AND X2 / ORB / OUT Y0。
+    // 分岐は2列ぶん伸びるので、合流の縦線は 2列目に置く（下の行の X2 の右側）
     const p = program(
       network('n1', [
-        [no(X(0)), vline(), ...Array.from({ length: IR_COLS - 3 }, () => hline()), out(Y(0))],
+        [
+          no(X(0)),
+          hline(),
+          vline(),
+          ...Array.from({ length: IR_COLS - 4 }, () => hline()),
+          out(Y(0)),
+        ],
         [no(X(1)), no(X(2))],
       ]),
       endNetwork(),
@@ -2820,10 +2831,12 @@ describe('instructionList（§10.7 / §16 Phase 4 受入基準⑥）', () => {
   });
 
   it('does not repeat the condition when two outputs share a rung', () => {
+    // 出力の分岐はコイル列の手前で縦線に落とす。下の行の0列目を横線にすると左母線と
+    // 直結してしまい、実機どおり「常時ON」の回路になってしまう（ランタイムの `solve()` と同じ）
     const p = program(
       network('n1', [
-        [no(X(0)), vline(), ...Array.from({ length: IR_COLS - 3 }, () => hline()), out(Y(0))],
-        [hline(), ...Array.from({ length: IR_COLS - 2 }, () => hline()), out(Y(1))],
+        [no(X(0)), ...Array.from({ length: IR_COLS - 3 }, () => hline()), vline(), out(Y(0))],
+        [...Array.from({ length: IR_COLS - 2 }, () => empty()), hline(), out(Y(1))],
       ]),
       endNetwork(),
     );
@@ -2953,14 +2966,31 @@ export const INSTRUCTION_LIST_MESSAGES: Readonly<Record<string, string>> = {
 /** 接点セル。 */
 type ContactCell = Extract<Cell, { kind: 'contact' }>;
 
-/** 直並列に分解した回路。 */
+/** 直並列に分解した回路。接点はグリッド上の位置を持つ（並べ替えを決定論にするため）。 */
 type Expr =
   | { kind: 'wire' }
-  | { kind: 'contact'; cell: ContactCell }
+  | { kind: 'contact'; cell: ContactCell; row: number; col: number }
   | { kind: 'and'; parts: readonly Expr[] }
   | { kind: 'or'; parts: readonly Expr[] };
 
-/** 直列に繋ぐ（渡り＝`wire` は直列では消える）。 */
+/** 式が含む接点のうち、いちばん上・いちばん左の位置。 */
+function span(expr: Expr): { row: number; col: number } {
+  if (expr.kind === 'contact') return { row: expr.row, col: expr.col };
+  if (expr.kind === 'wire') return { row: Number.MAX_SAFE_INTEGER, col: Number.MAX_SAFE_INTEGER };
+  let row = Number.MAX_SAFE_INTEGER;
+  let col = Number.MAX_SAFE_INTEGER;
+  for (const part of expr.parts) {
+    const at = span(part);
+    row = Math.min(row, at.row);
+    col = Math.min(col, at.col);
+  }
+  return { row, col };
+}
+
+/**
+ * 直列に繋ぐ（渡り＝`wire` は直列では消える）。
+ * **列（左→右）の順に並べ替える**ので、簡約が枝をどちら向きに辿っても同じ並びになる。
+ */
 function andOf(parts: readonly Expr[]): Expr {
   const flat: Expr[] = [];
   for (const part of parts) {
@@ -2969,10 +2999,15 @@ function andOf(parts: readonly Expr[]): Expr {
     else flat.push(part);
   }
   if (flat.length === 0) return { kind: 'wire' };
+  flat.sort((a, b) => {
+    const left = span(a);
+    const right = span(b);
+    return left.col - right.col || left.row - right.row;
+  });
   return flat.length === 1 ? (flat[0] ?? { kind: 'wire' }) : { kind: 'and', parts: flat };
 }
 
-/** 並列に繋ぐ（渡りが1本でもあれば常時成立）。 */
+/** 並列に繋ぐ（渡りが1本でもあれば常時成立）。**行（上→下）の順に並べ替える**。 */
 function orOf(parts: readonly Expr[]): Expr {
   const flat: Expr[] = [];
   for (const part of parts) {
@@ -2981,14 +3016,12 @@ function orOf(parts: readonly Expr[]): Expr {
     else flat.push(part);
   }
   if (flat.length === 0) return { kind: 'wire' };
+  flat.sort((a, b) => {
+    const left = span(a);
+    const right = span(b);
+    return left.row - right.row || left.col - right.col;
+  });
   return flat.length === 1 ? (flat[0] ?? { kind: 'wire' }) : { kind: 'or', parts: flat };
-}
-
-/** 枝の向きを逆にする（直列の並びだけが向きを持つ）。 */
-function reverse(expr: Expr): Expr {
-  if (expr.kind === 'and') return { kind: 'and', parts: [...expr.parts].reverse().map(reverse) };
-  if (expr.kind === 'or') return { kind: 'or', parts: expr.parts.map(reverse) };
-  return expr;
 }
 
 /** 式の同一性を見るためのキー（同じ条件の複数出力をまとめるのに使う）。 */
@@ -3023,7 +3056,11 @@ function buildEdges(net: CompiledNetwork): Edge[] {
       const cell = net.cells[row]?.[col];
       if (cell === undefined) continue;
       if (cell.kind === 'contact') {
-        edges.push({ a: nodeId(row, col), b: nodeId(row, col + 1), expr: { kind: 'contact', cell } });
+        edges.push({
+          a: nodeId(row, col),
+          b: nodeId(row, col + 1),
+          expr: { kind: 'contact', cell, row, col },
+        });
       } else if (cell.kind === 'hline' || cell.kind === 'vline') {
         edges.push({ a: nodeId(row, col), b: nodeId(row, col + 1), expr: { kind: 'wire' } });
       }
@@ -3054,8 +3091,8 @@ function reduceParallel(edges: Edge[]): { edges: Edge[]; changed: boolean } {
       continue;
     }
     changed = true;
-    const parts = list.map((edge) => (edge.a === head.a ? edge.expr : reverse(edge.expr)));
-    next.push({ a: head.a, b: head.b, expr: orOf(parts) });
+    // `orOf()` が行順に並べ替えるので、枝をどちら向きに辿っても同じ並びになる
+    next.push({ a: head.a, b: head.b, expr: orOf(list.map((edge) => edge.expr)) });
   }
   return { edges: next, changed };
 }
@@ -3080,12 +3117,11 @@ function reduceSeries(edges: Edge[], sink: number): { edges: Edge[]; changed: bo
     }
     const second = list[1];
     if (list.length !== 2 || second === undefined || first === second) continue;
-    const left = first.b === node ? first.expr : reverse(first.expr);
-    const leftEnd = first.b === node ? first.a : first.b;
-    const right = second.a === node ? second.expr : reverse(second.expr);
+    // `andOf()` が列順に並べ替えるので、枝の向きは端点の付け替えだけ気にすればよい
+    const leftEnd = first.a === node ? first.b : first.a;
     const rightEnd = second.a === node ? second.b : second.a;
     const rest = edges.filter((edge) => edge !== first && edge !== second);
-    rest.push({ a: leftEnd, b: rightEnd, expr: andOf([left, right]) });
+    rest.push({ a: leftEnd, b: rightEnd, expr: andOf([first.expr, second.expr]) });
     return { edges: rest, changed: true };
   }
   return { edges, changed: false };
@@ -3103,9 +3139,9 @@ function reduceToExpr(source: readonly Edge[], sink: number): Expr | undefined {
   }
   const only = edges[0];
   if (edges.length !== 1 || only === undefined) return undefined;
-  if (only.a === LEFT_RAIL && only.b === sink) return only.expr;
-  if (only.b === LEFT_RAIL && only.a === sink) return reverse(only.expr);
-  return undefined;
+  const ends = [only.a, only.b];
+  if (!ends.includes(LEFT_RAIL) || !ends.includes(sink)) return undefined;
+  return only.expr;
 }
 
 /** 接点の置かれた位置 → 命令語キー。§10.5 */
@@ -3642,18 +3678,116 @@ git commit -m "refactor(circuit-sim): let a PLC spec describe per-point commons,
 
 ---
 
-## Task 9: OMRON CP1E-N30DR-A（一体形）の本体定義
+## Task 9: 外観記述（`PlcAppearance`）と OMRON CP1E-N30DR-A（一体形）の本体定義
 
-**モデル: Sonnet**
+**モデル: Opus**（面上の配置を決める判断があるため）
 
 **Files:**
+- Modify: `packages/board-model/src/board-jipm.ts`（`PlcUnitDefinition.form` / `appearance`）
 - Modify: `packages/board-model/src/plc-unit.ts`
 - Modify: `packages/board-model/src/index.ts`
-- Test: `packages/board-model/test/plc-cp1e.test.ts`
+- Test: `packages/board-model/test/plc-appearance.test.ts`（新規）
+- Test: `packages/board-model/test/plc-cp1e.test.ts`（新規）
 
-§10.1 の CP1E 行を実装する。一体形なので端子の並べ方は FX5U と同じ千鳥2列でよい（前提#16 の定数をそのまま使う）。COM分けは §17.1 の前提値 3/3/2/2/2、入力抵抗は §5.1.3 の 3.3kΩ（`0.00`〜`0.07`）と 4.8kΩ（`0.08` 以降）。
+§10.1 の CP1E 行を実装し、あわせて**3Dが忠実な外観を描くためのデータ構造**を入れる（決定表#15。利用者の要求「各メーカーのシーケンサーの外観を忠実に再現すること」に対応する）。一体形なので端子の並べ方は FX5U と同じ千鳥2列でよい（前提#16 の定数をそのまま使う）。COM分けは §17.1 の前提値 3/3/2/2/2、入力抵抗は §5.1.3 の 3.3kΩ（`0.00`〜`0.07`）と 4.8kΩ（`0.08` 以降）。
 
-- [ ] **Step 1: 失敗するテストを書く**
+**外観の座標系**: 正面（訓練者から見える面）の**左上を原点**、x が右、y が下、単位はmm。`faceMm` は本体（ラックはモジュール1枚）の正面の大きさで、矩形はすべてこの中に収まる。3Dは 4B がこの記述だけを読んで描く（色や座標を直書きしない）。
+
+**素材の出どころ**: 外形寸法はカタログ値（§10.1）、色と面上の配置は一般に知られた見え方から自前で作図した**本アプリの記述**である。実機写真・純正画像・ロゴは使わない（§17.1 / PLC調査資料 §6・§7）。銘板は**型式の文字列だけ**を描き、商標の帰属は設定画面の `trademarkNotice`（§15、Phase 1D で実装済み）に載せる。
+
+- [ ] **Step 1: 失敗するテストを書く（外観）**
+
+`packages/board-model/test/plc-appearance.test.ts`:
+
+```ts
+import { describe, expect, it } from 'vitest';
+import { PLC_UNITS, type PlcAppearance } from '../src/index.js';
+
+/** 外観記述1件（本体またはモジュール）とその名前。 */
+const faces: [string, PlcAppearance][] = Object.values(PLC_UNITS).flatMap((unit) => [
+  [unit.model, unit.appearance] as [string, PlcAppearance],
+  ...(unit.modules ?? []).map((m) => [`${unit.model}/${m.model}`, m.appearance] as [string, PlcAppearance]),
+]);
+
+describe('PlcAppearance（3Dが外観を描くための記述）', () => {
+  it('exists for every catalogue unit and every rack module', () => {
+    expect(faces.length).toBe(4 + 4 + 4); // 本体4 ＋ TOYOPUC 4枚 ＋ JW300 4枚
+    for (const [name, face] of faces) {
+      expect(face.faceMm.width, name).toBeGreaterThan(0);
+      expect(face.faceMm.height, name).toBeGreaterThan(0);
+      expect(face.bodyColor, name).toMatch(/^#[0-9A-F]{6}$/u);
+      expect(face.terminalBlockColor, name).toMatch(/^#[0-9A-F]{6}$/u);
+      expect(face.nameplate.trim().length, name).toBeGreaterThan(0);
+    }
+  });
+
+  it('keeps every rect inside the face', () => {
+    for (const [name, face] of faces) {
+      const rects = [
+        face.nameplateRect,
+        ...face.covers.map((c) => c.rect),
+        ...face.leds.map((l) => l.rect),
+        ...face.features.map((f) => f.rect),
+      ];
+      for (const rect of rects) {
+        expect(rect.x, name).toBeGreaterThanOrEqual(0);
+        expect(rect.y, name).toBeGreaterThanOrEqual(0);
+        expect(rect.x + rect.w, name).toBeLessThanOrEqual(face.faceMm.width);
+        expect(rect.y + rect.h, name).toBeLessThanOrEqual(face.faceMm.height);
+      }
+    }
+  });
+
+  it('matches the unit face to the unit size (§10.1 のカタログ寸法)', () => {
+    for (const unit of Object.values(PLC_UNITS)) {
+      expect(unit.appearance.faceMm, unit.model).toEqual({
+        width: unit.sizeMm.width,
+        height: unit.sizeMm.height,
+      });
+      for (const module of unit.modules ?? []) {
+        expect(module.appearance.faceMm, module.model).toEqual({
+          width: module.sizeMm.width,
+          height: module.sizeMm.height,
+        });
+      }
+    }
+  });
+
+  it('puts only the model string on the nameplate — no logo, no brand (§17 / PLC調査資料 §6)', () => {
+    for (const [name, face] of faces) {
+      expect(face.nameplate, name).not.toMatch(
+        /三菱|MITSUBISHI|MELSEC|OMRON|オムロン|JTEKT|ジェイテクト|TOYOPUC|SHARP|シャープ/iu,
+      );
+      expect(face.nameplate, name).toMatch(/^[0-9A-Z][0-9A-Z./-]*$/u);
+    }
+  });
+
+  it('marks which appearance values are assumptions (§17.1)', () => {
+    for (const [name, face] of faces) {
+      expect(face.assumed.length, name).toBeGreaterThan(0);
+      for (const item of face.assumed) expect(item.trim().length).toBeGreaterThan(0);
+    }
+  });
+
+  it('gives FX5U its status LEDs, hinged covers and front features (§10.1)', () => {
+    const fx5u = PLC_UNITS['FX5U']?.appearance;
+    expect(fx5u?.nameplate).toBe('FX5U-32MR/ES');
+    expect(fx5u?.leds.filter((l) => l.group === 'status').map((l) => l.name)).toEqual([
+      'PWR',
+      'ERR',
+      'P.RUN',
+      'BAT',
+      'CARD',
+    ]);
+    expect(fx5u?.leds.filter((l) => l.group === 'input')).toHaveLength(16);
+    expect(fx5u?.leds.filter((l) => l.group === 'output')).toHaveLength(16);
+    expect(fx5u?.covers.map((c) => c.hinge)).toEqual(['top', 'bottom']);
+    expect(fx5u?.features.map((f) => f.id)).toEqual(['run-stop', 'ethernet', 'sd-card']);
+  });
+});
+```
+
+- [ ] **Step 2: 失敗するテストを書く（CP1E）**
 
 `packages/board-model/test/plc-cp1e.test.ts`:
 
@@ -3727,26 +3861,187 @@ describe('PLC_UNIT_CP1E（§10.1 / §17.1 の前提値）', () => {
 });
 ```
 
-- [ ] **Step 2: RED を確認する**
+- [ ] **Step 3: RED を確認する**
 
 ```powershell
-pnpm --filter @ojt/board-model exec vitest run test/plc-cp1e.test.ts
+pnpm --filter @ojt/board-model exec vitest run test/plc-appearance.test.ts test/plc-cp1e.test.ts
 ```
 
-Expected: 失敗。`does not provide an export named 'CP1E_SPEC'`。
+Expected: 失敗。`does not provide an export named 'CP1E_SPEC'` / `PlcAppearance`。
 
-- [ ] **Step 3: `src/board-jipm.ts` に `form` を足す**
+- [ ] **Step 4: `src/board-jipm.ts` に外観の型と `form` を足す**
 
-`PlcUnitDefinition` の `displayName` の直後に足す（ラック形は Task 10 で使う）:
+`PlcUnitDefinition` の直前に足す:
+
+```ts
+/** 正面の矩形[mm]。**正面の左上が原点**、x が右、y が下。§10.1 */
+export interface FaceRect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+/** LED 1個。`name` は実機の印字（`PWR` / `X0`）。§10.1 */
+export interface PlcLedMark {
+  name: string;
+  /** 本体表示（`status`）か入出力表示（`input` / `output`）か。 */
+  group: 'status' | 'input' | 'output';
+  rect: FaceRect;
+  /** 点灯時の色。 */
+  color: string;
+}
+
+/** ヒンジ式の端子カバー。§10.1（FX5U は着脱式端子台のカバー、ラックは端子台カバー） */
+export interface PlcCoverMark {
+  id: string;
+  rect: FaceRect;
+  color: string;
+  /** 蝶番の辺（開く向き）。 */
+  hinge: 'top' | 'bottom' | 'left' | 'right';
+}
+
+/** 正面の造作（スイッチ・コネクタ・スロット・ラッチ）。§10.1 */
+export interface PlcFeatureMark {
+  id: string;
+  kind: 'switch' | 'port' | 'slot' | 'latch';
+  /** 3Dのツールチップに出す名前。 */
+  label: string;
+  rect: FaceRect;
+  color: string;
+}
+
+/**
+ * 1機種（ラックはモジュール1枚）の外観。§10.1 / §17.1 / 決定表#15
+ *
+ * 外形寸法はカタログ値、色と面上の配置は一般に知られた見え方から作図した**本アプリの記述**で、
+ * 実機写真・純正画像・各社のロゴは一切持たない（PLC調査資料 §6・§7）。銘板は**型式の文字列だけ**
+ * を描き、商標の帰属は設定画面の `trademarkNotice`（§15）に載せる。
+ * 実機と異なると分かった場合の修正箇所は `plc-unit.ts` の `*_APPEARANCE` だけである。
+ */
+export interface PlcAppearance {
+  /** 正面の大きさ[mm]（本体は `sizeMm` の W×H、モジュールはモジュールの W×H）。 */
+  faceMm: { width: number; height: number };
+  /** 筐体の色。 */
+  bodyColor: string;
+  /** 端子台（ネジ端子ブロック）の色。 */
+  terminalBlockColor: string;
+  /** 銘板の文字（型式のみ）。 */
+  nameplate: string;
+  nameplateRect: FaceRect;
+  covers: readonly PlcCoverMark[];
+  leds: readonly PlcLedMark[];
+  features: readonly PlcFeatureMark[];
+  /** この外観のうち §17.1 の前提値である項目（4B が注記に使う）。 */
+  assumed: readonly string[];
+}
+```
+
+同じ位置に、ラック形のモジュール1枚を表す型も置く（実体を作るのは Task 10・11 だが、
+`PlcUnitDefinition.modules?` を先に生やしておかないと外観のテストが型検査を通らない）:
+
+```ts
+/**
+ * ラック形PLCのモジュール1枚。§10.1 / §17 #21
+ * 端子は `PlcUnitDefinition.terminals` に平らに載っている（ネットリスト上はラックでも1部品。
+ * 決定表#11）。ここにあるのは 4B が箱を描くための寸法・位置・外観だけである。
+ */
+export interface PlcModuleDefinition {
+  /** ベース内のスロット番号（0起点）。 */
+  slot: number;
+  /** 形式名（`IN-12` / `JW-212NA`）。 */
+  model: string;
+  displayName: string;
+  sizeMm: { width: number; height: number; depth: number };
+  /** 机上の設置位置（モジュールの左奥の角）。 */
+  pos: Vec3;
+  /** このモジュールの外観。§10.1 / 決定表#15 */
+  appearance: PlcAppearance;
+}
+```
+
+`PlcUnitDefinition` の `displayName` の直後に足す:
 
 ```ts
   /** 一体形（`unit`）かラック形（`rack`）か。§10.1 */
   form: 'unit' | 'rack';
+  /** 本体（ラックはベース）の外観。§10.1 / 決定表#15 */
+  appearance: PlcAppearance;
 ```
 
-`PLC_UNIT_FX5U` に `form: 'unit',` を足す。
+`leds` の直前に足す:
 
-- [ ] **Step 4: `src/plc-unit.ts` に CP1E を足す**
+```ts
+  /** ラック形のときのモジュール一覧（一体形は持たない）。§10.1 */
+  modules?: readonly PlcModuleDefinition[];
+```
+
+- [ ] **Step 5: `src/plc-unit.ts` に外観の道具と FX5U の外観を足す**
+
+`./board-jipm.js` からの型 import に `FaceRect` / `PlcAppearance` / `PlcCoverMark` / `PlcLedMark` / `PlcFeatureMark` / `PlcModuleDefinition` を足したうえで:
+
+```ts
+/** LEDの点灯色（本アプリ既定）。 */
+export const PLC_LED_GREEN = '#35C759';
+export const PLC_LED_RED = '#FF3B30';
+export const PLC_LED_AMBER = '#FFB020';
+
+/** LEDを横1列に並べる。`pitch` は中心間隔[mm]。 */
+export function ledRow(
+  names: readonly string[],
+  group: PlcLedMark['group'],
+  at: { x: number; y: number; w: number; h: number; pitch: number },
+  color: string,
+): PlcLedMark[] {
+  return names.map((name, index) => ({
+    name,
+    group,
+    rect: { x: at.x + index * at.pitch, y: at.y, w: at.w, h: at.h },
+    color,
+  }));
+}
+
+/** 濃灰の筐体（FX5U）。 */
+const FX5U_BODY_COLOR = '#3A3D42';
+/** 明灰のヒンジ式端子カバー（FX5U）。 */
+const FX5U_COVER_COLOR = '#C8CBD0';
+
+/**
+ * FX5U-32MR/ES の外観。§10.1 / 決定表#15
+ * 濃灰の筐体に明灰のヒンジ式端子カバーが上下2枚、中央の帯に本体表示LED・銘板・入出力表示LED・
+ * RUN/STOPスイッチ・Ethernetポート・SDカードスロットが並ぶ。色と配置は本アプリの記述である。
+ */
+export const FX5U_APPEARANCE: PlcAppearance = {
+  faceMm: { width: 150, height: 90 },
+  bodyColor: FX5U_BODY_COLOR,
+  terminalBlockColor: '#1F2226',
+  nameplate: 'FX5U-32MR/ES',
+  nameplateRect: { x: 54, y: 28, w: 60, h: 6 },
+  covers: [
+    { id: 'input-cover', rect: { x: 0, y: 0, w: 150, h: 26 }, color: FX5U_COVER_COLOR, hinge: 'top' },
+    { id: 'output-cover', rect: { x: 0, y: 64, w: 150, h: 26 }, color: FX5U_COVER_COLOR, hinge: 'bottom' },
+  ],
+  leds: [
+    ...ledRow(['PWR', 'ERR', 'P.RUN', 'BAT', 'CARD'], 'status', { x: 6, y: 28, w: 4, h: 3, pitch: 9 }, PLC_LED_GREEN),
+    ...ledRow(octalNames('X', 16), 'input', { x: 6, y: 36, w: 3, h: 3, pitch: 8.5 }, PLC_LED_AMBER),
+    ...ledRow(octalNames('Y', 16), 'output', { x: 6, y: 42, w: 3, h: 3, pitch: 8.5 }, PLC_LED_AMBER),
+  ],
+  features: [
+    { id: 'run-stop', kind: 'switch', label: 'RUN/STOP/RESET スイッチ', rect: { x: 6, y: 50, w: 24, h: 8 }, color: '#8A8F96' },
+    { id: 'ethernet', kind: 'port', label: 'Ethernetポート', rect: { x: 36, y: 49, w: 16, h: 11 }, color: '#1F2226' },
+    { id: 'sd-card', kind: 'slot', label: 'SDカードスロット', rect: { x: 58, y: 49, w: 14, h: 11 }, color: '#1F2226' },
+  ],
+  assumed: [
+    '筐体色・端子カバー色（一般に知られた見え方。実機写真は使っていない）',
+    'LED・スイッチ・コネクタの面上の位置（カタログ寸法と一般的な前面構成から作図）',
+    '銘板は型式の文字列のみ（ロゴ・ブランド名は描かない）',
+  ],
+};
+```
+
+`PLC_UNIT_FX5U` に `form: 'unit',` と `appearance: FX5U_APPEARANCE,` を足す（`leds` は既存のまま残す。名前の一覧として他のテストが使っている）。
+
+- [ ] **Step 6: `src/plc-unit.ts` に CP1E を足す**
 
 ```ts
 /** CP1E の入力抵抗[Ω]（`0.00`〜`0.07`）。§5.1.3 */
@@ -3811,6 +4106,51 @@ function cp1eTerminals(): BoardTerminal[] {
   ];
 }
 
+/** 明灰（アイボリー）の筐体（CP1E）。 */
+const CP1E_BODY_COLOR = '#D8D5CC';
+
+/**
+ * CP1E-N30DR-A の外観。§10.1 / 決定表#15
+ * 明灰の筐体に黒の端子台が上下2段、上段（入力側）に電源端子 `L1` / `L2/N` が同居する。
+ * 中央の帯に本体表示LED・銘板・入出力表示LED・周辺USBポート・オプションボードスロット。
+ */
+export const CP1E_APPEARANCE: PlcAppearance = {
+  faceMm: { width: 130, height: 90 },
+  bodyColor: CP1E_BODY_COLOR,
+  terminalBlockColor: '#2A2A2A',
+  nameplate: 'CP1E-N30DR-A',
+  nameplateRect: { x: 46, y: 27, w: 56, h: 6 },
+  covers: [
+    { id: 'input-cover', rect: { x: 0, y: 0, w: 130, h: 24 }, color: '#C0BEB6', hinge: 'top' },
+    { id: 'output-cover', rect: { x: 0, y: 66, w: 130, h: 24 }, color: '#C0BEB6', hinge: 'bottom' },
+  ],
+  leds: [
+    ...ledRow(['POWER', 'RUN', 'ERR', 'ALM'], 'status', { x: 6, y: 27, w: 4, h: 3, pitch: 9 }, PLC_LED_GREEN),
+    ...ledRow(
+      CP1E_SPEC.inputs.map((input) => input.name),
+      'input',
+      { x: 5, y: 35, w: 3, h: 3, pitch: 6.8 },
+      PLC_LED_AMBER,
+    ),
+    ...ledRow(
+      CP1E_SPEC.outputs.map((output) => output.name),
+      'output',
+      { x: 5, y: 41, w: 3, h: 3, pitch: 6.8 },
+      PLC_LED_AMBER,
+    ),
+  ],
+  features: [
+    { id: 'usb', kind: 'port', label: '周辺USBポート', rect: { x: 6, y: 48, w: 14, h: 10 }, color: '#2A2A2A' },
+    { id: 'option-slot', kind: 'slot', label: 'オプションボードスロット', rect: { x: 26, y: 47, w: 26, h: 12 }, color: '#B3B0A8' },
+  ],
+  assumed: [
+    '筐体色・端子台色（一般に知られた見え方。実機写真は使っていない）',
+    'LED・USBポート・オプションボードスロットの面上の位置',
+    '本体表示LEDの種類は §10.1 の【本アプリの前提】（PLC調査資料 O-3 が未確認）',
+    '銘板は型式の文字列のみ（ロゴ・ブランド名は描かない）',
+  ],
+};
+
 /** OMRON CP1E-N30DR-A（一体形）。§10.1 */
 export const PLC_UNIT_CP1E: PlcUnitDefinition = {
   id: 'cp1e',
@@ -3822,20 +4162,23 @@ export const PLC_UNIT_CP1E: PlcUnitDefinition = {
   pos: PLC_ORIGIN_MM,
   spec: CP1E_SPEC,
   terminals: cp1eTerminals(),
+  appearance: CP1E_APPEARANCE,
   // 【本アプリの前提】PLC調査資料 O-3 が未確認のため §10.1 の記載どおり
   leds: ['POWER', 'RUN', 'ERR', 'ALM'],
 };
 ```
 
-`PLC_UNITS` に `CP1E: PLC_UNIT_CP1E,` を足す。`src/index.ts` に `CP1E_SPEC` / `PLC_UNIT_CP1E` / `CP1E_INPUT_OHMS_LOW` / `CP1E_INPUT_OHMS_HIGH` / `CP1E_COMMON_SIZES` / `channelNames` を足す。
+`PLC_UNITS` に `CP1E: PLC_UNIT_CP1E,` を足す。`src/index.ts` に `CP1E_SPEC` / `CP1E_APPEARANCE` / `FX5U_APPEARANCE` / `PLC_UNIT_CP1E` / `CP1E_INPUT_OHMS_LOW` / `CP1E_INPUT_OHMS_HIGH` / `CP1E_COMMON_SIZES` / `channelNames` / `ledRow` / `PLC_LED_GREEN` / `PLC_LED_RED` / `PLC_LED_AMBER` / 型 `PlcAppearance` / `FaceRect` / `PlcLedMark` / `PlcCoverMark` / `PlcFeatureMark` を足す。
 
-- [ ] **Step 5: GREEN を確認してコミットする**
+- [ ] **Step 7: GREEN を確認してコミットする**
 
 ```powershell
 pnpm --filter @ojt/board-model exec vitest run
 git add packages/board-model
-git commit -m "feat(board-model): add the OMRON CP1E body"
+git commit -m "feat(board-model): describe the PLC appearance and add the OMRON CP1E body"
 ```
+
+> `plc-appearance.test.ts` の「本体4 ＋ モジュール8」を数える1ケースは、Task 11 で全機種が揃うまで落ちたままになる。Task 9 の時点では `faces.length` の期待値を `2` とし（FX5U と CP1E）、Task 10 で `2 + 4`、Task 11 で `4 + 4 + 4` に更新する。
 
 ---
 
@@ -3844,10 +4187,10 @@ git commit -m "feat(board-model): add the OMRON CP1E body"
 **モデル: Opus**（端子座標の不変条件（前提#15）を満たす配置を決める判断があるため）
 
 **Files:**
-- Modify: `packages/board-model/src/board-jipm.ts`（`PlcModuleDefinition` / `PlcUnitDefinition.modules?`）
 - Modify: `packages/board-model/src/plc-unit.ts`
 - Modify: `packages/board-model/src/index.ts`
 - Test: `packages/board-model/test/plc-rack.test.ts`
+- Test: `packages/board-model/test/plc-appearance.test.ts`（`faces.length` の期待値）
 
 §10.1 の JTEKT 行と §17 #21 を実装する。ラックは「ベース＋モジュール」で、ネットリスト上は従来どおり1部品（`PLC`）である（決定表#11）。3Dで箱を4つ描くのは 4B の仕事なので、ここで渡すのは**寸法と位置**だけである。
 
@@ -3906,6 +4249,20 @@ describe('PLC_UNIT_PC10G（§10.1 / §17 #21）', () => {
     expect(PC10G_SPEC.acPower).toEqual(['L', 'N']);
   });
 
+  it('describes each module front so 4B can draw it (決定表#15)', () => {
+    const modules = PLC_UNIT_PC10G.modules ?? [];
+    const byModel = new Map(modules.map((m) => [m.model, m.appearance]));
+    expect(byModel.get('IN-12')?.leds.filter((l) => l.group === 'input')).toHaveLength(16);
+    expect(byModel.get('IN-12')?.covers.map((c) => c.id)).toEqual(['terminal-cover']);
+    expect(byModel.get('PC10G-1SP')?.features.map((f) => f.id)).toEqual([
+      'run-stop',
+      'peripheral',
+      'latch',
+    ]);
+    expect(byModel.get('POWER1')?.leds.map((l) => l.name)).toEqual(['POWER']);
+    for (const module of modules) expect(module.appearance.nameplate).toBe(module.model);
+  });
+
   it('keeps every terminal inside its module box and 8 mm apart (前提#15)', () => {
     const board = withPlcUnit(JIPM_BOARD, PLC_UNIT_PC10G);
     const plc = board.terminals.filter((t) => String(t.id).startsWith('PLC.'));
@@ -3935,36 +4292,9 @@ pnpm --filter @ojt/board-model exec vitest run test/plc-rack.test.ts
 
 Expected: 失敗。`does not provide an export named 'PLC_UNIT_PC10G'`。
 
-- [ ] **Step 3: `src/board-jipm.ts` に `PlcModuleDefinition` を足す**
+- [ ] **Step 3: `src/plc-unit.ts` にラックの枠組みと TOYOPUC を足す**
 
-`PlcUnitDefinition` の直前に足す:
-
-```ts
-/**
- * ラック形PLCのモジュール1枚。§10.1 / §17 #21
- * 端子は `PlcUnitDefinition.terminals` に平らに載っている（ネットリスト上はラックでも1部品。
- * 決定表#11）。ここにあるのは 4B が箱を描くための寸法と位置だけである。
- */
-export interface PlcModuleDefinition {
-  /** ベース内のスロット番号（0起点）。 */
-  slot: number;
-  /** 形式名（`IN-12` / `JW-212NA`）。 */
-  model: string;
-  displayName: string;
-  sizeMm: { width: number; height: number; depth: number };
-  /** 机上の設置位置（モジュールの左奥の角）。 */
-  pos: Vec3;
-}
-```
-
-`PlcUnitDefinition` の `leds` の直前に足す:
-
-```ts
-  /** ラック形のときのモジュール一覧（一体形は持たない）。§10.1 */
-  modules?: readonly PlcModuleDefinition[];
-```
-
-- [ ] **Step 4: `src/plc-unit.ts` にラックの枠組みと TOYOPUC を足す**
+（`PlcModuleDefinition` と `PlcUnitDefinition.modules?` は Task 9 Step 4 で入れてある。）
 
 ```ts
 /** ラック形モジュール1枚の幅[mm]。§10.1 / §17.1 の前提値 */
@@ -3979,8 +4309,8 @@ export const RACK_BASE_HEIGHT_MM = 140;
 export const RACK_TERMINAL_COLS_MM: readonly [number, number] = [9, 26];
 /** モジュール内の端子の段ピッチ[mm]。 */
 export const RACK_TERMINAL_ROW_PITCH_MM = 13;
-/** モジュール上端から最初の段までの距離[mm]。 */
-export const RACK_TERMINAL_TOP_MM = 8;
+/** モジュール上端から最初の段までの距離[mm]（上の帯は入出力表示灯に空ける）。 */
+export const RACK_TERMINAL_TOP_MM = 14;
 /** 1モジュールに並べられる端子数の上限（2列×9段）。 */
 export const RACK_TERMINALS_PER_MODULE = 18;
 
@@ -4073,9 +4403,88 @@ function pc10gTerminals(): BoardTerminal[] {
   ];
 }
 
+/**
+ * ラックのモジュール1枚ぶんの外観を組み立てる。§10.1 / 決定表#15
+ * 上端の帯（y 0〜12mm）が入出力表示灯、その下が端子台カバー、最下段が銘板と固定ラッチである。
+ * 色と配置は一般に知られた見え方から作図した本アプリの記述で、実機写真は使っていない（§17.1）。
+ */
+function rackFace(options: {
+  model: string;
+  bodyColor: string;
+  terminalColor: string;
+  /** 端子台カバーの矩形（端子を持たないモジュールは省略）。 */
+  cover?: FaceRect;
+  /** 本体表示LED（列の上端 y）。 */
+  statusLeds?: { names: readonly string[]; y: number };
+  /** 入出力表示灯。上端の帯に `perRow` 点ずつ並べる（`JW-212NA` は A/B 各8点2段）。 */
+  pointLeds?: { names: readonly string[]; group: 'input' | 'output'; perRow: number };
+  features?: readonly PlcFeatureMark[];
+  assumed: readonly string[];
+}): PlcAppearance {
+  const leds: PlcLedMark[] = [];
+  if (options.statusLeds !== undefined) {
+    leds.push(
+      ...ledRow(
+        options.statusLeds.names,
+        'status',
+        { x: 4, y: options.statusLeds.y, w: 4, h: 3, pitch: 9 },
+        PLC_LED_GREEN,
+      ),
+    );
+  }
+  const points = options.pointLeds;
+  if (points !== undefined) {
+    for (let row = 0; row * points.perRow < points.names.length; row += 1) {
+      leds.push(
+        ...ledRow(
+          points.names.slice(row * points.perRow, (row + 1) * points.perRow),
+          points.group,
+          { x: 3, y: 3 + row * 5, w: 2.5, h: 2.5, pitch: 3.8 },
+          PLC_LED_AMBER,
+        ),
+      );
+    }
+  }
+  return {
+    faceMm: { width: RACK_MODULE_WIDTH_MM, height: RACK_MODULE_HEIGHT_MM },
+    bodyColor: options.bodyColor,
+    terminalBlockColor: options.terminalColor,
+    nameplate: options.model,
+    nameplateRect: { x: 2, y: 123, w: 22, h: 5 },
+    covers:
+      options.cover === undefined
+        ? []
+        : [
+            {
+              id: 'terminal-cover',
+              rect: options.cover,
+              color: options.terminalColor,
+              hinge: 'top' as const,
+            },
+          ],
+    leds,
+    features: [
+      ...(options.features ?? []),
+      {
+        id: 'latch',
+        kind: 'latch',
+        label: 'モジュール固定ラッチ',
+        rect: { x: 27, y: 123, w: 6, h: 5 },
+        color: '#7A7F86',
+      },
+    ],
+    assumed: options.assumed,
+  };
+}
+
 /** ラックのモジュール一覧を作る。 */
 function rackModules(
-  entries: readonly { model: string; displayName: string; depthMm: number }[],
+  entries: readonly {
+    model: string;
+    displayName: string;
+    depthMm: number;
+    appearance: PlcAppearance;
+  }[],
 ): PlcModuleDefinition[] {
   return entries.map((entry, slot) => ({
     slot,
@@ -4083,8 +4492,21 @@ function rackModules(
     displayName: entry.displayName,
     sizeMm: { width: RACK_MODULE_WIDTH_MM, height: RACK_MODULE_HEIGHT_MM, depth: entry.depthMm },
     pos: rackModulePos(slot),
+    appearance: entry.appearance,
   }));
 }
+
+/** TOYOPUC モジュールの筐体色（明灰）。 */
+const PC10G_BODY_COLOR = '#B9BCC1';
+/** TOYOPUC の端子台色（黒）。 */
+const PC10G_TERMINAL_COLOR = '#22262B';
+/** ラック形の外観が前提値である旨（4スロット共通）。§17.1 */
+const RACK_ASSUMED: readonly string[] = [
+  'モジュールの筐体色・端子台色（一般に知られた見え方。実機写真は使っていない）',
+  '表示灯・スイッチ・コネクタ・固定ラッチの面上の位置（カタログ寸法から作図）',
+  '端子台カバーの範囲（端子を2列に並べた本アプリの配置に合わせてある。決定表#12）',
+  '銘板は型式の文字列のみ（ロゴ・ブランド名は描かない）',
+];
 
 /** JTEKT TOYOPUC PC10G-1SP（ラック形）。§10.1 / §17 #21 */
 export const PLC_UNIT_PC10G: PlcUnitDefinition = {
@@ -4097,20 +4519,91 @@ export const PLC_UNIT_PC10G: PlcUnitDefinition = {
   pos: PLC_ORIGIN_MM,
   spec: PC10G_SPEC,
   terminals: pc10gTerminals(),
+  appearance: {
+    faceMm: { width: rackSizeMm(4, 120).width, height: RACK_BASE_HEIGHT_MM },
+    bodyColor: '#9AA0A6',
+    terminalBlockColor: PC10G_TERMINAL_COLOR,
+    nameplate: 'PC10G-1SP',
+    nameplateRect: { x: 4, y: 132, w: 40, h: 6 },
+    covers: [],
+    leds: [],
+    // ベース側の造作はモジュールを並べるスロットのレールだけ（モジュールはこの上に載る）
+    features: [
+      {
+        id: 'slot-rail',
+        kind: 'slot',
+        label: '基本ベース（電源部＋3スロット）',
+        rect: { x: 0, y: 0, w: rackSizeMm(4, 120).width, h: RACK_BASE_HEIGHT_MM },
+        color: '#7E848B',
+      },
+    ],
+    assumed: RACK_ASSUMED,
+  },
   modules: rackModules([
-    { model: 'POWER1', displayName: '電源モジュール', depthMm: 120 },
-    { model: 'PC10G-1SP', displayName: 'CPUモジュール', depthMm: 120 },
-    { model: 'IN-12', displayName: 'DC入力16点（THK-2750）', depthMm: 120 },
-    { model: 'OUT-12', displayName: 'リレー出力16点（THK-2752）', depthMm: 120 },
+    {
+      model: 'POWER1',
+      displayName: '電源モジュール',
+      depthMm: 120,
+      appearance: rackFace({
+        model: 'POWER1',
+        bodyColor: PC10G_BODY_COLOR,
+        terminalColor: PC10G_TERMINAL_COLOR,
+        cover: { x: 0, y: 12, w: 35, h: 28 },
+        statusLeds: { names: ['POWER'], y: 46 },
+        assumed: RACK_ASSUMED,
+      }),
+    },
+    {
+      model: 'PC10G-1SP',
+      displayName: 'CPUモジュール',
+      depthMm: 120,
+      appearance: rackFace({
+        model: 'PC10G-1SP',
+        bodyColor: PC10G_BODY_COLOR,
+        terminalColor: PC10G_TERMINAL_COLOR,
+        statusLeds: { names: ['RUN', 'ERR'], y: 20 },
+        features: [
+          { id: 'run-stop', kind: 'switch', label: 'RUN/STOPスイッチ', rect: { x: 6, y: 34, w: 23, h: 8 }, color: '#8A8F96' },
+          { id: 'peripheral', kind: 'port', label: 'ツールポート', rect: { x: 8, y: 50, w: 19, h: 12 }, color: PC10G_TERMINAL_COLOR },
+        ],
+        assumed: RACK_ASSUMED,
+      }),
+    },
+    {
+      model: 'IN-12',
+      displayName: 'DC入力16点（THK-2750）',
+      depthMm: 120,
+      appearance: rackFace({
+        model: 'IN-12',
+        bodyColor: PC10G_BODY_COLOR,
+        terminalColor: PC10G_TERMINAL_COLOR,
+        cover: { x: 0, y: 12, w: 35, h: 110 },
+        pointLeds: { names: hexNames('X', 16), group: 'input', perRow: 8 },
+        assumed: RACK_ASSUMED,
+      }),
+    },
+    {
+      model: 'OUT-12',
+      displayName: 'リレー出力16点（THK-2752）',
+      depthMm: 120,
+      appearance: rackFace({
+        model: 'OUT-12',
+        bodyColor: PC10G_BODY_COLOR,
+        terminalColor: PC10G_TERMINAL_COLOR,
+        cover: { x: 0, y: 12, w: 35, h: 110 },
+        pointLeds: { names: hexNames('Y', 16), group: 'output', perRow: 8 },
+        assumed: RACK_ASSUMED,
+      }),
+    },
   ]),
   // 【本アプリの前提】PLC調査資料 J-3 が未確認のため §10.1 の記載どおり
   leds: ['POWER', 'RUN', 'ERR', 'IN'],
 };
 ```
 
-`PLC_UNITS` に `'PC10G-1SP': PLC_UNIT_PC10G,` を足す。`src/index.ts` にラックの定数・`hexNames` / `rackModulePos` / `rackSizeMm` / `PC10G_SPEC` / `PC10G_INPUT_OHMS` / `RACK_POINTS_PER_COMMON` / `PLC_UNIT_PC10G` / `type PlcModuleDefinition` を足す。
+`PLC_UNITS` に `'PC10G-1SP': PLC_UNIT_PC10G,` を足す。`src/index.ts` にラックの定数・`hexNames` / `rackModulePos` / `rackSizeMm` / `PC10G_SPEC` / `PC10G_INPUT_OHMS` / `RACK_POINTS_PER_COMMON` / `PLC_UNIT_PC10G` / `type PlcModuleDefinition` を足す。`test/plc-appearance.test.ts` の `faces.length` の期待値を `2 + 4` にする。
 
-- [ ] **Step 5: GREEN を確認してコミットする**
+- [ ] **Step 4: GREEN を確認してコミットする**
 
 ```powershell
 pnpm --filter @ojt/board-model exec vitest run
@@ -4120,7 +4613,7 @@ git commit -m "feat(board-model): add the rack form and the JTEKT TOYOPUC PC10G-
 
 ---
 
-## Task 11: シャープ JW300 ラックと机上ジオメトリの機種横断検査
+## Task 11: シャープ JW300 ラックと机上ジオメトリ・外観の機種横断検査
 
 **モデル: Opus**
 
@@ -4156,6 +4649,16 @@ describe('PLC_UNIT_JW300（§10.1 / 受入基準⑤）', () => {
     expect(JW300_SPEC.inputs.every((i) => i.ohms === 3300)).toBe(true);
     expect(JW300_SPEC.commons).toEqual(['COM.C', 'COM.D']);
     expect(JW300_SPEC.outputs.map((o) => o.name).slice(0, 2)).toEqual(['C0', 'C1']);
+  });
+
+  it('shows the A / B input lamps in two rows of eight (§10.1)', () => {
+    const na = PLC_UNIT_JW300.modules?.find((m) => m.model === 'JW-212NA')?.appearance;
+    const lamps = na?.leds.filter((l) => l.group === 'input') ?? [];
+    expect(lamps.map((l) => l.name)).toEqual(JW300_SPEC.inputs.map((i) => i.name));
+    expect(new Set(lamps.map((l) => l.rect.y)).size).toBe(2);
+    expect(PLC_UNIT_JW300.modules?.find((m) => m.model === 'JW-312CU')?.appearance.leds.map((l) => l.name)).toEqual(
+      ['RUN', 'FLT', 'MW'],
+    );
   });
 
   it('exposes COM.A as a wirable terminal (受入基準⑤)', () => {
@@ -4315,14 +4818,103 @@ export const PLC_UNIT_JW300: PlcUnitDefinition = {
   pos: PLC_ORIGIN_MM,
   spec: JW300_SPEC,
   terminals: jw300Terminals(),
+  appearance: {
+    faceMm: { width: rackSizeMm(4, 109.4).width, height: RACK_BASE_HEIGHT_MM },
+    bodyColor: '#A9A8A2',
+    terminalBlockColor: JW300_TERMINAL_COLOR,
+    nameplate: 'JW-300',
+    nameplateRect: { x: 4, y: 132, w: 40, h: 6 },
+    covers: [],
+    leds: [],
+    features: [
+      {
+        id: 'slot-rail',
+        kind: 'slot',
+        label: '基本ベース（電源＋CU＋2スロット）',
+        rect: { x: 0, y: 0, w: rackSizeMm(4, 109.4).width, h: RACK_BASE_HEIGHT_MM },
+        color: '#8C8B85',
+      },
+    ],
+    assumed: RACK_ASSUMED,
+  },
   modules: rackModules([
-    { model: 'JW-301PU', displayName: '電源ユニット', depthMm: 109.4 },
-    { model: 'JW-312CU', displayName: 'コントロールユニット', depthMm: 99.8 },
-    { model: 'JW-212NA', displayName: 'DC入力16点', depthMm: 109.4 },
-    { model: 'JW-214SA', displayName: 'リレー出力16点', depthMm: 109.4 },
+    {
+      model: 'JW-301PU',
+      displayName: '電源ユニット',
+      depthMm: 109.4,
+      appearance: rackFace({
+        model: 'JW-301PU',
+        bodyColor: JW300_BODY_COLOR,
+        terminalColor: JW300_TERMINAL_COLOR,
+        cover: { x: 0, y: 12, w: 35, h: 28 },
+        statusLeds: { names: ['POWER'], y: 46 },
+        assumed: RACK_ASSUMED,
+      }),
+    },
+    {
+      model: 'JW-312CU',
+      displayName: 'コントロールユニット',
+      depthMm: 99.8,
+      appearance: rackFace({
+        model: 'JW-312CU',
+        bodyColor: JW300_BODY_COLOR,
+        terminalColor: JW300_TERMINAL_COLOR,
+        // RUN / FLT / MW は §10.1 で確定している本体表示
+        statusLeds: { names: ['RUN', 'FLT', 'MW'], y: 20 },
+        features: [
+          { id: 'run-stop', kind: 'switch', label: 'RUN/STOPスイッチ', rect: { x: 6, y: 34, w: 23, h: 8 }, color: '#8A8F96' },
+          { id: 'peripheral', kind: 'port', label: 'ツールポート', rect: { x: 8, y: 50, w: 19, h: 12 }, color: JW300_TERMINAL_COLOR },
+        ],
+        assumed: RACK_ASSUMED,
+      }),
+    },
+    {
+      model: 'JW-212NA',
+      displayName: 'DC入力16点（18P着脱式端子台）',
+      depthMm: 109.4,
+      appearance: rackFace({
+        model: 'JW-212NA',
+        bodyColor: JW300_BODY_COLOR,
+        terminalColor: JW300_TERMINAL_COLOR,
+        cover: { x: 0, y: 12, w: 35, h: 110 },
+        // §10.1 の「入力表示灯 A/B 各8点2段」をそのまま2段で並べる
+        pointLeds: {
+          names: JW300_SPEC.inputs.map((input) => input.name),
+          group: 'input',
+          perRow: 8,
+        },
+        assumed: RACK_ASSUMED,
+      }),
+    },
+    {
+      model: 'JW-214SA',
+      displayName: 'リレー出力16点',
+      depthMm: 109.4,
+      appearance: rackFace({
+        model: 'JW-214SA',
+        bodyColor: JW300_BODY_COLOR,
+        terminalColor: JW300_TERMINAL_COLOR,
+        cover: { x: 0, y: 12, w: 35, h: 110 },
+        pointLeds: {
+          names: JW300_SPEC.outputs.map((output) => output.name),
+          group: 'output',
+          perRow: 8,
+        },
+        assumed: RACK_ASSUMED,
+      }),
+    },
   ]),
   leds: ['RUN', 'FLT', 'MW'],
 };
+```
+
+`JW300_SPEC` の直前に色の定数を足す:
+
+```ts
+/** JW300 ユニットの筐体色（明灰）。 */
+const JW300_BODY_COLOR = '#C9C7C0';
+/** JW300 の端子台色（黒）。 */
+const JW300_TERMINAL_COLOR = '#2B2B2B';
 ```
 
 `PLC_UNITS` を4機種にする:
@@ -4337,7 +4929,7 @@ export const PLC_UNITS: Readonly<Record<string, PlcUnitDefinition>> = {
 };
 ```
 
-`src/index.ts` に `JW300_SPEC` / `JW300_INPUT_OHMS` / `groupNames` / `PLC_UNIT_JW300` を足す。
+`src/index.ts` に `JW300_SPEC` / `JW300_INPUT_OHMS` / `groupNames` / `PLC_UNIT_JW300` を足す。`test/plc-appearance.test.ts` の `faces.length` の期待値を `4 + 4 + 4` にする（本体4＋TOYOPUC 4枚＋JW300 4枚）。
 
 - [ ] **Step 4: GREEN を確認する**
 
@@ -4357,6 +4949,535 @@ git add packages/board-model packages/circuit-sim
 git commit -m "feat(board-model): add the Sharp JW300 rack and check the desk geometry for all four models"
 ```
 
-ここで**バッチC のレビュー（Opus 1回）**をかける。見どころ: ①`createPlcUnit()` の検証（入力コモン・AC端子）が全機種で通ること ②端子の総数が §10.1 の点数と一致すること ③ラックの端子がモジュールの箱に収まり8mm以上離れていること ④CP1E の点別抵抗が §5.1.3 のとおりで、24V印加時の入力電流がON判定を超えること（`24 / 4800 = 5.0mA > 3mA`）。
+ここで**バッチC のレビュー（Opus 1回）**をかける。見どころ: ①`createPlcUnit()` の検証（入力コモン・AC端子）が全機種で通ること ②端子の総数が §10.1 の点数と一致すること ③ラックの端子がモジュールの箱に収まり8mm以上離れていること ④CP1E の点別抵抗が §5.1.3 のとおりで、24V印加時の入力電流がON判定を超えること（`24 / 4800 = 5.0mA > 3mA`）⑤外観記述の矩形が面からはみ出さず、重なって読めなくなる箇所が無いこと（LED帯・端子カバー・銘板・ラッチ）、銘板にロゴ・ブランド名が入っていないこと。
 
 ---
+
+## Task 12: モードD課題を4機種で開始できるようにする
+
+**モデル: Opus**（機種にない入出力点の扱いを決めるため）
+
+**Files:**
+- Modify: `packages/content/src/schema/plc.ts`
+- Modify: `packages/content/src/index.ts`
+- Test: `packages/content/test/schema-plc.test.ts`・`test/index.test.ts`（既存の `PHASE3_MODELS` の2箇所）
+
+`PHASE3_MODELS`（前提#17）を外し、4機種すべてを開始できるようにする。ただし**機種にない入出力点**は弾く: `PlcInputMapSchema` は `x: 0〜15`、`PlcOutputMapSchema` は `y: 0〜15` を許すが、CP1E の出力は12点しかない（前提#23）。判定は `plcUnitFor()` が返す機種仕様で行う（決定表#13）。
+
+- [ ] **Step 1: 失敗するテストを書く**
+
+`packages/content/test/schema-plc.test.ts` の `expect(PHASE3_MODELS).toEqual(['FX5U']);` を含むケースを次で置き換え、`import` の `PHASE3_MODELS` を `SUPPORTED_PLC_MODELS` に直す:
+
+```ts
+  it('starts every vendor of 決定事項#14 in Phase 4 (§16)', () => {
+    expect(SUPPORTED_PLC_MODELS).toEqual(['FX5U', 'PC10G-1SP', 'CP1E', 'JW-300']);
+    for (const [vendor, model] of [
+      ['mitsubishi', 'FX5U'],
+      ['jtekt', 'PC10G-1SP'],
+      ['omron', 'CP1E'],
+      ['sharp', 'JW-300'],
+    ] as const) {
+      expect(PlcRefSchema.safeParse({ vendor, model }).success).toBe(true);
+    }
+    // メーカーと機種の組み合わせ違いは引き続き拒否する（§7.6）
+    expect(PlcRefSchema.safeParse({ vendor: 'omron', model: 'FX5U' }).success).toBe(false);
+  });
+
+  it('rejects an I/O point the model does not have (前提#23 / 決定表#13)', () => {
+    const cp1e = { vendor: 'omron', model: 'CP1E' } as const;
+    const ok = PlcProblemSchema.safeParse(
+      plcProblemJson({
+        plc: cp1e,
+        io: { mode: 'fixed', inputs: [{ x: 0, pb: 'PB1' }], outputs: [{ y: 11, cr: 'CR1', pl: 'PL1' }] },
+        referenceLadder: ladderWith(11, 0),
+      }),
+    );
+    expect(ok.success).toBe(true);
+    const ng = PlcProblemSchema.safeParse(
+      plcProblemJson({
+        plc: cp1e,
+        io: { mode: 'fixed', inputs: [{ x: 0, pb: 'PB1' }], outputs: [{ y: 12, cr: 'CR1', pl: 'PL1' }] },
+        referenceLadder: ladderWith(12, 0),
+      }),
+    );
+    expect(ng.success).toBe(false);
+    if (ng.success) return;
+    expect(JSON.stringify(ng.error.issues)).toContain('CP1E');
+  });
+```
+
+（`ladderWith()` は `test/plc-cross-validation.test.ts` にある同名のヘルパと同じもの。`test/helpers/plc.ts` へ移して両方から使う。）
+
+`packages/content/test/index.test.ts` の `expect(PHASE3_MODELS).toEqual(['FX5U']);` を次にし、import も直す:
+
+```ts
+    expect(SUPPORTED_PLC_MODELS).toEqual([...PLC_MODELS]);
+```
+
+- [ ] **Step 2: RED を確認する**
+
+```powershell
+pnpm --filter @ojt/content exec vitest run test/schema-plc.test.ts
+```
+
+Expected: 失敗。`SUPPORTED_PLC_MODELS` が無い。
+
+- [ ] **Step 3: `src/schema/plc.ts` を直す**
+
+`PHASE3_MODELS` の定義を次で置き換える:
+
+```ts
+/** Phase 4 で4機種すべてを開始できるようにした。§16 */
+export const SUPPORTED_PLC_MODELS = PLC_MODELS;
+```
+
+`PlcRefSchema` の `superRefine` の「まだ開始できません」の分岐を次で置き換える（機種名と本体定義の対応が切れていないかの見張りに変える）:
+
+```ts
+    if (plcUnitFor(plc.model) === undefined) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['model'],
+        message: `この機種の本体定義がありません（board-model の PLC_UNITS）: ${plc.model}`,
+      });
+    }
+```
+
+ファイル先頭の import に足す:
+
+```ts
+import { plcUnitFor } from '@ojt/board-model';
+```
+
+`PlcProblemSchema` の `superRefine` に、割付の点が機種にあるかの検査を足す（`const io = resolvePlcIo(problem.io);` の直後）:
+
+```ts
+    // 機種にない入出力点を割り付けると、模範配線を張る段になって初めて崩れる。
+    // 端子は機種仕様（`unit.spec`）だけが知っているのでここで前もって拾う（決定表#13）
+    const unit = plcUnitFor(problem.plc.model);
+    if (unit !== undefined) {
+      io.inputs.forEach((input, index) => {
+        if (input.x < unit.spec.inputs.length) return;
+        ctx.addIssue({
+          code: 'custom',
+          path: ['io', 'inputs', index, 'x'],
+          message: `${problem.plc.model} の入力は ${unit.spec.inputs.length} 点です（X${input.x} はありません）`,
+        });
+      });
+      io.outputs.forEach((output, index) => {
+        if (output.y < unit.spec.outputs.length) return;
+        ctx.addIssue({
+          code: 'custom',
+          path: ['io', 'outputs', index, 'y'],
+          message: `${problem.plc.model} の出力は ${unit.spec.outputs.length} 点です（Y${output.y} はありません）`,
+        });
+      });
+    }
+```
+
+- [ ] **Step 4: `src/index.ts` の再エクスポートを直す**
+
+`PHASE3_MODELS,` を `SUPPORTED_PLC_MODELS,` に変える。
+
+- [ ] **Step 5: GREEN を確認してコミットする**
+
+```powershell
+pnpm --filter @ojt/content exec vitest run
+pnpm --filter @ojt/content exec pnpm schema:write
+git diff --stat packages/content/schema/task.schema.json
+```
+
+Expected: 全ケース通過。JSON Schema は `plc.model` の `description` が変わるだけ（`enum` は元から4機種）。差分が出たらコミットに含める。
+
+```powershell
+git add packages/content
+git commit -m "feat(content): let mode D problems start on all four PLC models"
+```
+
+---
+
+## Task 13: 静的チェックから三菱固有の端子名を取り除く
+
+**モデル: Opus**
+
+**Files:**
+- Modify: `packages/content/src/plc-static-checks.ts`
+- Test: `packages/content/test/plc-static-checks.test.ts`
+
+前提#19 のとおり `checkIoAssignment()` は `/^PLC\.X\d+$/` と `/^PLC\.Y\d+$/` を持っており、CP1E の `PLC.0.00` や JW300 の `PLC.A0` では一致しない（短絡の検出がすり抜ける）。機種仕様から端子集合を作って判定する形に変える。あわせて、8点1コモンの機種で**使うコモンが配線されていない**場合を拾う（§16 Phase 4 受入基準③・⑤の「`IN-12` の COM端子へ配線でき」「`COM.A` へ配線でき」に対応する検査）。
+
+- [ ] **Step 1: 失敗するテストを書く**
+
+`packages/content/test/plc-static-checks.test.ts` に足す:
+
+```ts
+describe('ioAssignment は機種の端子名で判定する（Phase 4）', () => {
+  it('detects a short between two inputs on a model whose terminals are not Xn', () => {
+    // CP1E の入力端子は `PLC.0.00` / `PLC.0.01`。三菱の正規表現では拾えなかった（前提#19）
+    const built = buildFor('CP1E');
+    const nets = shortTogether(built, 'PLC.0.00', 'PLC.0.01');
+    const result = checkIoAssignment(nets);
+    expect(result.ok).toBe(false);
+    expect(result.details.join('|')).toContain('短絡');
+  });
+
+  it('reports an unwired common on an 8-point-per-common model (受入基準③⑤)', () => {
+    const built = buildFor('JW-300');
+    const nets = withoutWire(built, 'PLC.COM.A');
+    const result = checkIoAssignment(nets);
+    expect(result.ok).toBe(false);
+    expect(result.details.join('|')).toContain('COM.A');
+  });
+
+  it('passes on the reference wiring of every model', () => {
+    for (const model of ['FX5U', 'CP1E', 'PC10G-1SP', 'JW-300']) {
+      const built = buildFor(model);
+      expect(checkIoAssignment(built).ok, model).toBe(true);
+      expect(checkTwoStage(built).ok, model).toBe(true);
+      expect(checkPlcPowerIndependent(built).ok, model).toBe(true);
+    }
+  });
+});
+```
+
+> `buildFor(model)` / `shortTogether()` / `withoutWire()` は、このファイルに既にある「模範セッションを組んで `StaticCheckInput` にする」ヘルパを機種引数つきに一般化したものである（内蔵課題 d-001 の `plc` を差し替えて `buildPlcReferenceSession()` に渡し、`netlist` を取り出す）。既存ヘルパの名前が違う場合はそれに合わせる。
+
+- [ ] **Step 2: RED を確認する**
+
+```powershell
+pnpm --filter @ojt/content exec vitest run test/plc-static-checks.test.ts
+```
+
+Expected: 失敗（CP1E の短絡が検出されない／`COM.A` 未配線が通ってしまう）。
+
+- [ ] **Step 3: `src/plc-static-checks.ts` を直す**
+
+`checkIoAssignment()` の中の `isPlcX` / `isPlcY` の2行を削除し、機種仕様から作った集合に置き換える:
+
+```ts
+  // 端子名は機種で違う（三菱 `X0` / CP1E `0.00` / JW300 `A0`）ので、正規表現ではなく
+  // 機種仕様の端子集合で判定する（前提#19）
+  const inputIds = new Set(plc.unit.spec.inputs.map((input) => String(plcTerminal(input.name))));
+  const outputIds = new Set(plc.unit.spec.outputs.map((output) => String(plcTerminal(output.name))));
+  const isPlcX = (id: string): boolean => inputIds.has(id);
+  const isPlcY = (id: string): boolean => outputIds.has(id);
+```
+
+入力側のループの末尾（短絡の判定の後）に、その点のコモンが配線されているかの検査を足す:
+
+```ts
+    const inputCom = plc.unit.spec.inputs[assigned.x]?.com;
+    if (inputCom !== undefined && netTerminals(nets, plcTerminal(inputCom)).length <= 1) {
+      details.push(`${terminal} の入力コモン（${plcTerminal(inputCom)}）が配線されていません`);
+    }
+```
+
+出力側のループの末尾にも同じ形で足す:
+
+```ts
+    const outputCom = plc.unit.spec.outputs[output.y]?.com;
+    if (outputCom !== undefined && netTerminals(nets, plcTerminal(outputCom)).length <= 1) {
+      details.push(`${terminal} の出力コモン（${plcTerminal(outputCom)}）が配線されていません`);
+    }
+```
+
+- [ ] **Step 4: GREEN を確認してコミットする**
+
+```powershell
+pnpm --filter @ojt/content exec vitest run
+git add packages/content
+git commit -m "fix(content): judge the I/O assignment from the model spec instead of Mitsubishi terminal names"
+```
+
+---
+
+## Task 14: 4機種のクロス検証と公開APIの確定
+
+**モデル: Opus**
+
+**Files:**
+- Modify: `packages/content/package.json`（devDependencies に `@ojt/plc-dialects`）
+- Modify: `packages/content/src/index.ts`・`packages/plc-dialects/src/index.ts`（最終確認）
+- Test: `packages/content/test/plc-cross-validation.test.ts`
+- Test: `packages/content/test/builtin-plc.test.ts`（ベンダー中立であることの明示）
+
+内蔵モードD課題8題は `plc.model: 'FX5U'` のままだが（決定表#14）、**同じIRが4機種すべてで成立する**ことをここで固定する。§16 Phase 4 の受入基準②③④⑥はすべて 4B のUI操作だが、その土台がライブラリ側で揃っていることをこのテストが示す。
+
+| 確かめること | 方法 |
+|---|---|
+| 課題が4機種で読める | 各課題の `plc` を差し替えて `PlcProblemSchema.parse()` |
+| 模範が4機種で合格する | 差し替えた課題で `judgePlcReference()`（配線・静的チェック・並走比較） |
+| 模範ラダーがベンダー中立 | 8題の `referenceLadder` が4方言すべてで `convert()` に通る |
+| 命令語リストが4方言で出る | 8題を `instructionList()` にかけ、`not-series-parallel` が出ないこと |
+
+- [ ] **Step 1: `@ojt/plc-dialects` をテスト用の依存に足す**
+
+`packages/content/package.json` の `devDependencies` に足す（**`dependencies` ではない**。`src` からの import は 3A 決定表#7 で禁じたまま）:
+
+```json
+    "@ojt/plc-dialects": "workspace:*",
+```
+
+```powershell
+pnpm install
+```
+
+- [ ] **Step 2: 失敗するテストを書く**
+
+`packages/content/test/plc-cross-validation.test.ts` に足す:
+
+```ts
+import { JIPM_BOARD } from '@ojt/board-model';
+import { availableDialects, convert, instructionList } from '@ojt/plc-dialects';
+import { BUILTIN_PLC_PROBLEMS } from '../src/builtin/index.js';
+import { judgePlcReference } from '../src/judge-plc.js';
+
+/** 4メーカーと機種の対応（§7.6）。 */
+const MODELS = [
+  { vendor: 'mitsubishi', model: 'FX5U' },
+  { vendor: 'jtekt', model: 'PC10G-1SP' },
+  { vendor: 'omron', model: 'CP1E' },
+  { vendor: 'sharp', model: 'JW-300' },
+] as const;
+
+describe('内蔵モードD課題8題は4機種すべてで成立する（§16 Phase 4）', () => {
+  it.each(MODELS.map((m) => [m.model, m] as const))(
+    '%s で8題すべてが読めて模範が合格する',
+    (_model, plc) => {
+      for (const problem of BUILTIN_PLC_PROBLEMS) {
+        const swapped = PlcProblemSchema.parse({ ...problem, plc });
+        const judged = judgePlcReference(swapped, JIPM_BOARD);
+        expect(judged.ok, `${problem.id} / ${plc.model}`).toBe(true);
+        if (!judged.ok) continue;
+        expect(judged.value.mismatches, `${problem.id} / ${plc.model}`).toEqual([]);
+        expect(judged.value.staticChecks.filter((c) => !c.ok)).toEqual([]);
+        expect(judged.value.passed).toBe(true);
+      }
+    },
+  );
+
+  it('模範ラダーはベンダー中立で、4方言すべてで変換が通る（受入基準②）', () => {
+    for (const profile of availableDialects()) {
+      for (const problem of BUILTIN_PLC_PROBLEMS) {
+        const result = convert(problem.referenceLadder, profile);
+        expect(result.errors, `${problem.id} / ${profile.id}`).toEqual([]);
+        expect(result.ok).toBe(true);
+      }
+    }
+  });
+
+  it('命令語リストが4方言すべてで書き出せる（受入基準⑥）', () => {
+    for (const profile of availableDialects()) {
+      for (const problem of BUILTIN_PLC_PROBLEMS) {
+        const list = instructionList(problem.referenceLadder, profile);
+        expect(list.errors, `${problem.id} / ${profile.id}`).toEqual([]);
+        expect(list.lines.length).toBeGreaterThan(0);
+        expect(list.text.endsWith('\r\n')).toBe(true);
+      }
+    }
+  });
+});
+```
+
+`packages/content/test/builtin-plc.test.ts` の `expect(BUILTIN_PLC_PROBLEMS.every((p) => p.plc.model === 'FX5U')).toBe(true);` に注記を足す（JSONは変えない。決定表#14）:
+
+```ts
+    // 同梱の8題は三菱で出題するが、IRはベンダー中立で4機種すべてで成立する
+    // （`plc-cross-validation.test.ts` が機種を差し替えて確かめている）
+    expect(BUILTIN_PLC_PROBLEMS.every((p) => p.plc.model === 'FX5U')).toBe(true);
+```
+
+- [ ] **Step 3: RED を確認する**
+
+```powershell
+pnpm --filter @ojt/content exec vitest run test/plc-cross-validation.test.ts
+```
+
+Expected: 失敗。`Failed to resolve import "@ojt/plc-dialects"`（Step 1 の `pnpm install` を忘れた場合）か、機種差し替えで模範配線が張れない場合の `judged.ok === false`。後者が出たら原因は Task 8〜11 のどれかなので**そこを直す**（このタスクでテストを緩めない）。
+
+- [ ] **Step 4: 公開APIを確定する**
+
+`packages/plc-dialects/src/index.ts` が次をすべて公開していることを確認する（不足があれば足す）: `MITSUBISHI_FX5U` / `OMRON_CP1E` / `JTEKT_PC10G` / `SHARP_JW300` / `getDialect` / `availableDialects` / `DIALECT_IDS` / `IMPLEMENTED_DIALECT_IDS` / `isDialectId` / `MIN_GRID_COLS` / `MAX_GRID_COLS` / `UnknownDialectError` / `convert` / `switchNotation` / `instructionList` / `INSTRUCTION_LIST_MESSAGES` / `GX_STYLE_SHORTCUTS` / `withoutConvert` / `collectDevices` / `collectDeviceIssues` / `makeTimerPreset` / `makeParseTimerPreset` / `roundTimerPreset` / `timerBaseMs` と、型 `DialectProfile` / `DialectId` / `DialectError` / `DeviceRange` / `InstructionKey` / `MonitorColors` / `PanelLayout` / `ShortcutEntry` / `ShortcutTable` / `SymbolDrawing` / `TimerPresetText` / `TimerRule` / `DeviceRuleSet` / `DeviceUse` / `DevicePlace` / `NotationChange` / `NotationSwitchResult` / `InstructionLine` / `InstructionListResult` / `ConvertError` / `ConvertResult`。
+
+`packages/board-model/src/index.ts` が `PLC_UNITS` / `plcUnitFor` / `PLC_UNIT_FX5U` / `PLC_UNIT_CP1E` / `PLC_UNIT_PC10G` / `PLC_UNIT_JW300` / 各 `*_SPEC` / ラック定数 / `type PlcModuleDefinition` を公開していることを確認する。
+
+- [ ] **Step 5: 全体検証**
+
+```powershell
+pnpm -r test
+pnpm -r typecheck
+pnpm lint
+npx prettier --check "packages/**/*.{ts,json}"
+pnpm --filter @ojt/plc-dialects exec vitest run --coverage
+pnpm --filter @ojt/board-model exec vitest run --coverage
+pnpm --filter @ojt/circuit-sim exec vitest run --coverage
+pnpm --filter @ojt/content exec vitest run --coverage
+```
+
+Expected: 7プロジェクトすべて通過、型検査とリントが無警告、Prettier が `All matched files use Prettier code style!`、4パッケージのカバレッジが90%以上。
+
+- [ ] **Step 6: バッチDのレビューとコミット**
+
+```powershell
+git add packages
+git commit -m "test(content): cross-validate the eight built-in mode D problems on all four PLC models"
+```
+
+ここで**バッチD のレビュー（Opus 1回）**をかける。見どころ: ①機種を差し替えた模範配線が1端子2本の制限を破っていないか（8点1コモンの機種はコモンが2本ぶん鎖に入る）②`ioAssignment` の新しいコモン検査が `io.mode: 'free'` の課題で誤検出しないか ③`content/src` が `@ojt/plc-dialects` を import していないこと。
+
+---
+
+## タスクと仕様節の対応
+
+| タスク | 主に実装する仕様節 |
+|---|---|
+| Task 1 | §10.5（`DialectProfile`）、§10.6（スキン定義）、§17.1・§17 #19（前提の区分と流用） |
+| Task 2 | §10.5（OMRON 列）、§10.6（CX-Programmer風）、§17 #22 |
+| Task 3 | §10.5（JTEKT 列・固有バリデーション）、§10.6（PCwin風）、§17 #10・#20・#21・#22 |
+| Task 4 | §10.5（シャープ列）、§10.6（JW-300SP風）、§17 #10・#22 |
+| Task 5 | §10.5（4方言の一覧）、§10.6（列数・通電色）、§16 Phase 4 |
+| Task 6 | §10.7（表記切替）、§16 Phase 4 受入基準② |
+| Task 7 | §10.7（命令語リストのエクスポート）、§16 Phase 4 受入基準⑥ |
+| Task 8 | §5.1.3（機種別の入力抵抗）、§10.1（端子集合とCOM分け）、§10.2（入力コモン） |
+| Task 9 | §10.1（CP1E 一体形・外観）、§5.1.3、§17.1（COM分け 3/3/2/2/2・外観の前提）、利用者要求（外観の忠実な再現） |
+| Task 10 | §10.1（TOYOPUC ラックと前面構成）、§17 #11・#21、§6.4（端子ID） |
+| Task 11 | §10.1（JW300 ラック・入力表示灯 A/B 各8点2段）、§17 #11、§8.2（端子のピック）、§16 Phase 4 受入基準⑤ |
+| Task 12 | §7.6（`plc` / `io`）、§16 Phase 4（4機種が開始できる） |
+| Task 13 | §7.4・§10.8（`ioAssignment`）、§10.2（入力コモン）、§16 Phase 4 受入基準③⑤ |
+| Task 14 | §7.9（内蔵課題8題）、§14.1（ゴールデンケース）、§16 Phase 4（受入基準の3A側） |
+
+---
+
+## 仕様との対応表（完了判定に使う）
+
+| 仕様 | 要件 | 実装 | 検証 |
+|---|---|---|---|
+| §10.5 | 4方言の `DialectProfile` が揃う | `mitsubishi/omron/jtekt/sharp.ts` | `test/dialects.test.ts` |
+| §10.5 | OMRON は `0.00` / `100.00` 形式、特殊は `P_On`/`A200.11`/`P_1s` | `omron.ts` | `test/omron.test.ts` |
+| §10.5 | JTEKT は16進、特殊は `1V00`/`1V01`/`V072`、0.1s タイマ | `jtekt.ts` | `test/jtekt.test.ts` |
+| §10.5 | JTEKT は X/Y・T/C の同番号を拒否する | `checkNumberConflicts()` | `test/jtekt.test.ts` |
+| §10.5 | シャープは8進、`8` を入れるとエラー、特殊は `007366`/`007362`/`007364` | `sharp.ts` | `test/sharp.test.ts` |
+| §10.5 | シャープの命令は `STR/AND/OR POS·NEG`・`OUT POS/NEG`・`AND STR`/`OR STR`・`F-40`/`F-47`/`F-48` | `INSTRUCTION_NAMES` | `test/sharp.test.ts` |
+| §10.6 | `convertStep` は CX-Programmer風・PCwin風が `false` | 各プロファイル | `test/dialects.test.ts` |
+| §10.6 | 接点11列、通電色は青／緑／オレンジ／水色 | 各プロファイル | `test/dialects.test.ts` |
+| §10.6 | PCwin風・JW-300SP風は GX Works3風のキーを流用 | `shortcuts.ts` | `test/jtekt.test.ts` / `test/sharp.test.ts` |
+| §10.7 | 表記切替は対象方言のバリデータを走らせ表せない項目を示す | `switchNotation()` | `test/notation.test.ts` |
+| §10.7 | 命令語リストは UTF-8・CRLF のテキスト | `instructionList()` | `test/instruction-list.test.ts` |
+| §10.1 | CP1E は18入力・12出力・COM5個（3/3/2/2/2） | `CP1E_SPEC` | `test/plc-cp1e.test.ts` |
+| §10.1 | TOYOPUC は `POWER1`＋CPU＋`IN-12`＋`OUT-12` のラック | `PLC_UNIT_PC10G` | `test/plc-rack.test.ts` |
+| §10.1 | JW300 は電源＋CU＋`JW-212NA`＋`JW-214SA`、`COM.A` に配線できる | `PLC_UNIT_JW300` | `test/plc-rack.test.ts` |
+| §5.1.3 | 機種別の入力抵抗（CP1E 3.3k/4.8k、JW300 3.3k、TOYOPUC 2.4k） | 各 `*_SPEC` | `test/plc-cp1e.test.ts` / `test/plc-rack.test.ts` |
+| §7.6 | 4機種のモードD課題が開始できる | `SUPPORTED_PLC_MODELS` | `test/schema-plc.test.ts` |
+| §10.8 | `ioAssignment` が機種の端子名で判定する | `plc-static-checks.ts` | `test/plc-static-checks.test.ts` |
+| §17 #11 | 端子の並び順は §10.1 の記載順、修正箇所は `terminals[].pos` のみ | `plc-unit.ts` | `test/plc-geometry-review.test.ts` |
+| 利用者要求 | 4機種の外観（外形・色・端子カバー・LED・銘板・前面の造作）を機種ごとに記述し、3Dがそれを読んで描ける | `PlcAppearance` と `*_APPEARANCE` | `test/plc-appearance.test.ts` |
+| §15・§17.1 | 銘板は型式の文字列のみでロゴ・ブランド名を持たない（商標注記は設定画面） | `appearance.nameplate` | `test/plc-appearance.test.ts` |
+| §16 | 内蔵8題が4機種すべてで合格する | 変更なし（JSONは無改変） | `test/plc-cross-validation.test.ts` |
+
+---
+
+## 仕様からの意図的な差分（レビュー時に確認する）
+
+| # | 仕様の記述 | 本プランの実装 | 理由 |
+|---|---|---|---|
+| 1 | §10.5 は OMRON の入力を「`CIO 0`〜`99CH` のビット」と書く | IRの通し番号は **CP1E-N30DR-A が実装している点の並び**に写す（`X(12)` → `1.00`）。`0.12`〜`0.15` は「この機種にはない」エラー | `spec.inputs[i]` と `formatDevice(X(i))` が同じ添字で引けないと、模範配線・静的チェックが使う「割付の番号 → 端子」の対応に穴があく（決定表#1）。1チャネル16ビットという規則自体は `parseDevice` のビット部検査（00〜15）で守っている |
+| 2 | §10.5 はシャープのタイマを番号だけで書く（`DTMR(BCD) 00001 / 0100`） | `TMR00000` / `CNT00011` のように接頭辞を付ける | 実機は命令語の文脈で種別が決まるが、本アプリの `parseDevice()` は文字列だけから一意に読める必要がある。接頭辞が無いと8進6桁のリレー番号と区別できない |
+| 3 | §10.5 の `errorMessages` は「変換エラー文言」 | **バリデータが返すコードの文言表**と定義し直し、命令語リスト固有の文言は `INSTRUCTION_LIST_MESSAGES` に別置きする | `MITSUBISHI_FX5U.errorMessages` のキー集合は Phase 3 のテストが完全一致で見張っている（前提#5）。命令語リストのコードを足すとそのテストを機能上の利得なしに壊す |
+| 4 | — | 三菱の `validate()` は共通の `collectDeviceIssues()` に載せ替えず現状のまま | 同上。三菱のエラー文言は Phase 3 のテストで固定されており、共通化は重複50行を消すだけで振る舞いを何も良くしない（決定表#3） |
+| 5 | §10.1 は TOYOPUC・JW300 の端子台を1列の着脱式と書く | 1モジュールにつき**2列×最大9段**に並べる | 当たり判定半径4mm（8mm離す必要。前提#15）で18点を高さ130mmの1列に入れると4mm間隔になり、3Dでどの端子を掴んだか決まらない。§17 #11 は「並び順は前提・修正箇所は `terminals[].pos` のみ」としている（決定表#12） |
+| 6 | §10.1 は `JW-214SA` を「リレー16点」としか書かない／TOYOPUC `OUT-12` のCOM分けを書かない | JW300 の出力を `C0`〜`C7`＋`COM.C` / `D0`〜`D7`＋`COM.D`、TOYOPUC の出力を8点1コモン（`COM0`/`COM1`）とする | 入力側と同じ様式に揃えた本アプリの前提（前提表）。端子名は部品ID `PLC` の下で一意でなければならないので、入力の `A`/`B` と衝突しない文字を選んだ |
+| 7 | §10.5 は OMRON の固有バリデーションに「BCD/BINの指定整合」を挙げる | **実装しない** | IRはタイマ設定値を常にmsで持ち（§10.3）、BCD（`TIM`）とBIN（`TIMX`）の別を持たない。書き出しは `TIM` の `#` 表記に固定し、読み込みだけ `&` も受ける。BCD/BINを選ばせるにはIRに命令の別を持たせる必要があり、§17.1 の「IRは変更不要」に反する |
+| 8 | §10.5 の表は各社の**保持リレー**（三菱 `L` / OMRON `H` / TOYOPUC `1K` / シャープ キープリレー）を挙げる | 実装しない（`DeviceKind` は6種のまま） | IRに保持リレーの種別が無い（§10.3）。足すとIR・ランタイム・課題スキーマ・作業ファイルがすべて動く。SET/RST で保持は表現できており、内蔵課題も保持リレーを要求していない |
+| 9 | §10.5 は TOYOPUC の先頭を「プログラム番号 1/2/3」とする | **1 固定**とし、`2X000` は表記エラーにする | 本アプリのIRは1プログラムしか持たない（§10.3 はネットワークの列のみ）。2・3 を受けると「読めるが実行されないデバイス」ができてしまう |
+| 10 | §10.7 は「命令語リストのエクスポート」とだけ書く | 直並列に分解できないグリッド（ブリッジ回路）は `not-series-parallel` を返して行を作らない | 命令語リストは本質的に直並列の表現である。ブリッジ回路は実機の純正ツールでも命令語に落ちない。IRとしては実行できるので、変換（`convert()`）は通したままにする（決定表#7） |
+| 11 | §10.5 の `PlcUnitSpec` 相当は「入力端子名の配列」 | `{name, com, ohms?}` の配列に格上げし、`inputCommon` を `inputCommons`（複数）にし、`acPower` を足した | §5.1.3 が CP1E の入力抵抗を点で分け、§10.1 が TOYOPUC・JW300 を8点1コモンと定め、CP1E の電源端子は `L1`/`L2/N` である。いずれも旧い型では表せない（決定表#9・#10） |
+| 13 | §10.1 は機種の外形寸法・端子集合・LEDの種類までしか定めない | 筐体色・端子カバー・LED/スイッチ/コネクタの面上の位置まで `PlcAppearance` に記述する | 利用者の要求（2026-09-19）が「各メーカーのシーケンサーの外観を忠実に再現すること」である。実機写真・純正画像は入手できない（§17.1 / PLC調査資料 §7）ので、カタログ寸法と一般に知られた見え方から**自前で作図**し、値を1ファイルに集めて `assumed` で前提であることを明示した（決定表#15） |
+| 12 | §16 Phase 4 は「4方言が切替できるアプリ」 | 内蔵課題8題のJSONは無改変のまま、テストで機種を差し替えて4機種の成立を確かめる | §7.9 のモードD題数は8題である。機種別に課題を増やすと題数が32になり仕様と食い違う（決定表#14） |
+
+---
+
+## 4B への引き渡し（Plan 4B が使う公開API）
+
+Plan 4B（`apps/desktop` の3スキン・ラックの3D・設定画面・表記切替UI・命令語リストの保存・E2E）は下記だけを使う。
+
+**`@ojt/plc-dialects`:**
+
+| API | 用途 |
+|---|---|
+| `availableDialects()` → `DialectProfile[]` | 設定画面の既定メーカー一覧（4件、`DIALECT_IDS` の順） |
+| `getDialect(id)` / `isDialectId(text)` | 作業ファイル・設定から読んだ方言IDの解決（未知IDは `UnknownDialectError`） |
+| `profile.convertStep` | ツールバーに「変換」ボタンを出すか（**受入基準①**: OMRON では出ない） |
+| `profile.shortcuts` | キー割当表と §12.1 の注記（`confirmed: false` に「本アプリの表記です」を付ける） |
+| `profile.gridCols` / `profile.monitorColors` | ラダーの表示列数とモニタ通電色。設定画面は 8〜15（`MIN_GRID_COLS`/`MAX_GRID_COLS`）と色を上書きできる |
+| `profile.panels` | パネル名称とツールバーのボタン名（スキンごとに変える） |
+| `profile.formatDevice` / `parseDevice` | デバイス入力欄と表示（**受入基準④**: シャープで `8` を入れると `Error` が返る。その文言をそのまま出す） |
+| `profile.timerPreset(ms, device)` / `parseTimerPreset(text, device)` / `formatCounterPreset?(n)` | タイマ・カウンタの設定値欄。`Error` のときは §10.5 の「丸めますか？」を出す（三菱は `roundTimerPreset(ms, timerBaseMs(device))`） |
+| `profile.specialDevices` / `specialInverted` | 特殊デバイスの選択肢。**`specialInverted` に載っている番号はb接点で描く**（シャープの `007366`＝常時ON） |
+| `profile.validate(program)` / `convert(program, profile)` | 「変換」操作と出力ウィンドウ |
+| `switchNotation(program, from, to)` → `{ok, changes, errors}` | **表記切替ダイアログ**（受入基準②）。`changes` は `X10 → 0.08` の一覧、`errors` は切替先で表せない項目。IRは書き換えないので、切り替えても取り消しスタックは無傷 |
+| `instructionList(program, profile)` → `{lines, text, errors}` | **命令語リストの保存**（受入基準⑥）。`text` は CRLF 済みなので、UTF-8 でそのまま書けばよい。印刷用レイアウトは `lines`（`step` / `mnemonic` / `operand` / `networkId`）から組む |
+| `INSTRUCTION_LIST_MESSAGES` | 上の `errors[].code` の日本語文言 |
+| `GX_STYLE_SHORTCUTS` / `withoutConvert(table)` | 設定画面でキー割当を上書きするときの元表 |
+
+**`@ojt/board-model`:**
+
+| API | 用途 |
+|---|---|
+| `PLC_UNITS` / `plcUnitFor(model)` | 機種 → 本体定義（4機種） |
+| `unit.form`（`'unit'` / `'rack'`）/ `unit.modules` | **3Dの描き分け**。`rack` はベース1枚＋`modules[]` の箱を `pos` / `sizeMm` に置く（受入基準③⑤）。`modules[].displayName` をツールチップに使う |
+| `unit.appearance` / `module.appearance`（`PlcAppearance`） | **3Dの外観をここから描く**。`faceMm`（正面の大きさ）・`bodyColor`・`terminalBlockColor`・`nameplate`＋`nameplateRect`（型式の文字だけ。ロゴは描かない）・`covers`（ヒンジ式端子カバー）・`leds`（`status` / `input` / `output` と点灯色）・`features`（RUN/STOPスイッチ・Ethernet／SD／USB・オプションスロット・モジュール固定ラッチ）。座標は**正面の左上が原点・x右・y下・mm**。色や座標を 4B に直書きしない（決定表#15）。`assumed` に前提項目が入っているので、設定画面の注記に並べてよい |
+| `unit.terminals` / `unit.spec` / `unit.leds` | 端子のピックとラベル、LED表示。端子は機種で名前が違う（`0.00` / `A0` / `COM.A`）ので**名前を決め打ちしない** |
+| `withPlcUnit(board, unit)` / `deskWires(board, session)` | 機種を差し替えた派生盤と机上配線（Phase 3 から変更なし） |
+| ラック定数（`RACK_MODULE_WIDTH_MM` ほか） | 3Dの寸法合わせ |
+
+**`@ojt/content`:** `SUPPORTED_PLC_MODELS`（4機種）。課題読込・判定・静的チェックのAPIは Phase 3 から変わらない。
+
+**引き渡し注記:**
+
+- **H-1** 機種を変えると端子名が変わる。3Dの端子ラベル・配線ガイド・結果画面の文言は `unit.spec` / `unit.terminals` から引くこと。`PLC.X0` のような文字列を書かない（Task 13 で静的チェック側の決め打ちを外した理由と同じ）。
+- **H-2** 表記切替は**IRを書き換えない**。切替前後で `LadderProgram` は同一オブジェクトのままでよく、保存する作業ファイルにも方言IDだけを持たせる（§12.3）。
+- **H-3** `convertStep: false` のスキンでは「変換」を経ずに書込みへ進む。ただし判定に出す前に `convert()` は必ず走らせる（3A ハンドオフ注記 H-1 は変わらない）。画面に変換ボタンが無いだけである。
+- **H-4** シャープの常時ONは**b接点**で描く（`specialInverted`）。IRの `SP0` はあくまで「常時ON」であり、a接点で描くと実機の見た目と食い違う。
+- **H-5** 設定画面には §17.1 の常設注記「一部の命令名・キー割当は実機マニュアル未確認のため本アプリの表記です」を出す。どの項目が前提かは `shortcuts[].confirmed === false` で分かる。
+- **H-6** ラックは4スロットぶんの箱を描くが、**ネットリスト上は1部品（`PLC`）**である。端子IDにモジュール名は入っていない（決定表#11）。
+
+---
+
+## 実装者への MERGE 注意
+
+- 作業ツリーは他のエージェントと共有している。**着手前に必ず `git fetch && git pull --rebase origin main`**、コミットは `git add <このプランが挙げたパスだけ>` で行う。`git stash` / `git reset` / `git clean` は使わない。
+- Task 8 は `circuit-sim` / `board-model` / `content` の3パッケージに跨る型変更である。**1つのコミットにまとめる**（途中の状態では `pnpm -r typecheck` が通らない）。
+- Task 12 は `PHASE3_MODELS` を **`SUPPORTED_PLC_MODELS` に改名**する。`apps/desktop` は現在この定数を参照していない（前提#18）が、4B が参照を足していたら同じコミットで直す。
+- Task 14 で `packages/content/package.json` に devDependency を足したら `pnpm install` を走らせ、`pnpm-lock.yaml` の差分もコミットに含める。
+- 内蔵課題JSON（`packages/content/src/builtin/plc/*.json`）と `apps/desktop/resources/content/plc/*.json` は**このプランでは1文字も変えない**（決定表#14）。
+
+---
+
+## 完了条件
+
+- [ ] `pnpm -r test` が7プロジェクトすべて通る。
+- [ ] `pnpm --filter @ojt/plc-dialects exec vitest run --coverage` と `@ojt/board-model` / `@ojt/circuit-sim` / `@ojt/content` の4つが閾値90%（lines / statements / functions / branches）を満たす。
+- [ ] `pnpm -r typecheck` と `pnpm lint`（`import-x/no-cycle` 込み）が無警告で通る。
+- [ ] `npx prettier --check "packages/**/*.{ts,json}"` が `All matched files use Prettier code style!` を出す。
+- [ ] `availableDialects()` が4件を返し、`getDialect('omron' | 'jtekt' | 'sharp')` が投げない。
+- [ ] OMRON の `convertStep` が `false`、三菱・シャープが `true`、JTEKT が `false` である（受入基準①）。
+- [ ] `switchNotation(p, MITSUBISHI_FX5U, OMRON_CP1E)` が `X10 → 0.08` / `Y1 → 100.01` を返す（受入基準②）。
+- [ ] `PLC_UNIT_PC10G.modules` が `POWER1` / `PC10G-1SP` / `IN-12` / `OUT-12` の4枚で、`PLC.ICOM0` が配線可能端子である。`1X000` と `1Y000` を同時に使うラダーが `device-conflict` になる（受入基準③）。
+- [ ] シャープで `parseDevice('000008')` が `8進` を含む `Error` を返す（受入基準④）。
+- [ ] `PLC_UNIT_JW300.modules` が `JW-301PU` / `JW-312CU` / `JW-212NA` / `JW-214SA` の4枚で、`PLC.COM.A` が配線可能端子である（受入基準⑤）。
+- [ ] `instructionList()` が4方言で内蔵8題すべてを書き出し、`text` が CRLF で終わる（受入基準⑥）。
+- [ ] 内蔵モードD課題8題が4機種すべてで `PlcProblemSchema.parse()` を通り、`judgePlcReference()` が合格する。
+- [ ] 4機種すべてで `withPlcUnit(JIPM_BOARD, unit)` が `validateBoard()` を空配列で通り、机上端子が8mm以上離れ、PLC端子が本体（ラックはモジュール）の箱に収まる。
+- [ ] `PLC_UNITS` の4機種すべてと、ラック2機種の各4モジュールに `appearance` があり、矩形が面からはみ出さず、銘板がロゴ・ブランド名を含まない（`test/plc-appearance.test.ts`）。
+- [ ] `packages/ladder-core` に**一切の変更が無い**（`git diff --stat packages/ladder-core` が空。§17.1 の「IR・ランタイムの変更は不要」の実地検証）。
+- [ ] `packages/content/src` が `@ojt/plc-dialects` を import していない（テストのみ可。3A 決定表#7）。
+- [ ] `apps/desktop` への変更が無い（`git diff --stat apps/desktop` が空。4B の担当）。
+
+---
+
+## 改訂履歴
+
+| 日付 | 内容 |
+|---|---|
+| 2026-09-19 | 利用者要求（3Dのシーケンサーを各メーカーの外観どおりに再現する）を反映: `PlcAppearance`（筐体色・端子カバー・LED・銘板・前面の造作を正面座標で持つ記述）を `board-model` に追加し、FX5U・CP1E・TOYOPUC 4モジュール・JW300 4モジュールぶんを定義。ラックの端子開始位置を上端8mm→14mmに変えて入出力表示灯の帯を確保。決定表#15・意図的な差分#13・4B引き渡しの行・`test/plc-appearance.test.ts` を追加 |
+| 2026-09-19 | 初版。Phase 4 をライブラリ（4A）と `apps/desktop`（4B）に分割し、本書は 4A を扱う。OMRON・JTEKT・シャープの3プロファイル、GX Works3風キー割当の共有、共通デバイス検査、表記切替（IRを書き換えない）、命令語リスト（直並列簡約）、`PlcUnitSpec` の点別コモン・点別抵抗・AC端子への格上げ、CP1E（一体形）と TOYOPUC・JW300（ラック形）の本体定義、ラック端子の2列配置、4機種でのモードD課題の開始、静的チェックの機種非依存化、内蔵8題の4機種クロス検証を確定した |
