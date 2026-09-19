@@ -5096,7 +5096,7 @@ grep -c "TODO\|TBD\|FIXME\|適宜" docs/manual/*.md docs/superpowers/plans/2026-
 
 **この見直しで見つけて直したもの**: キー割当表の注記 `JA.ladder.shortcutNote` が「キー割当はメーカー（**方言プロファイル**）ごとに切り替わります。」と、訓練者に通じない社内の言葉を出していた。「キー割当はメーカーごとに切り替わります。一部は実機マニュアル未確認のため本アプリの表記です。」に言い直し（前提で決めた割当があるという断りは残す。§17.1）、`docs/manual/06-mode-d.md` の引用と生成物 `manual-content.ts` も合わせた。
 
-- [ ] **Step 4: commit**
+- [x] **Step 4: commit**
 
 ```
 git add apps/desktop/e2e/help.spec.ts
