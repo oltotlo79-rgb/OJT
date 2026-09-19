@@ -102,20 +102,28 @@ function splitChapter(fileName, source) {
   const title = first.slice(2).trim();
   const sections = [];
   let current;
-  for (const line of lines.slice(1)) {
-    if (line.startsWith('## ')) {
+  // コードフェンス（```）の中の行は見出し扱いしない（Minor#3）。「## 」で始まる例示行が
+  // 説明中に出ても、そこで節が割れてしまわないようにする。
+  let inFence = false;
+  lines.forEach((line, index) => {
+    if (index === 0) return;
+    const lineNo = index + 1;
+    if (/^```/u.test(line.trimStart())) {
+      inFence = !inFence;
+    } else if (!inFence && line.startsWith('## ')) {
       if (current !== undefined) sections.push(current);
-      current = { title: line.slice(3).trim(), body: [] };
-      continue;
+      current = { title: line.slice(3).trim(), body: [], lines: [] };
+      return;
     }
     if (current === undefined) {
       if (line.trim() !== '') {
         throw new Error(`章題と最初の見出しの間に本文があります: ${fileName}`);
       }
-      continue;
+      return;
     }
     current.body.push(line);
-  }
+    current.lines.push(lineNo);
+  });
   if (current !== undefined) sections.push(current);
   if (sections.length === 0) throw new Error(`節がありません: ${fileName}`);
   return { title, sections };
@@ -320,6 +328,20 @@ export function buildManual(files, builtAt = '', availableImages = undefined) {
       seen.add(raw.title);
       const rendered = md.render(raw.body.join('\n'));
       const helpHtml = toHelpHtml(rendered);
+      /*
+       * IM-10: 図は必ず「段落に図が1つだけ」の形でなければならない（`FIGURE_PARAGRAPH`）。
+       * 文中・箇条書き・表の中に書かれた図はその正規表現に当たらず、`src="images/…"` が
+       * `helpHtml` にそのまま残る。Vite が解決しない生の相対パスなので、アプリ内ヘルプでは
+       * 画像が割れる。黙って通さず、原稿のファイル名と行番号を添えて止める。
+       */
+      if (helpHtml.includes('src="images/')) {
+        const badIndex = raw.body.findIndex((line) => /!\[[^\]]*\]\(images\/[^)]*\)/u.test(line));
+        const lineNo = badIndex >= 0 ? raw.lines[badIndex] : undefined;
+        throw new Error(
+          `図が段落の外にあります（図はその段落に1つだけにしてください）: ` +
+            `${file.name}${lineNo === undefined ? '' : `:${String(lineNo)}`} / ${raw.title}`,
+        );
+      }
       const id = `${chapterId}/${raw.title}`;
       sections.push({
         id,

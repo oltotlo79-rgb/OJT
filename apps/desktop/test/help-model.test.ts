@@ -12,11 +12,7 @@ import { MANUAL_SECTIONS, type ManualSection } from '../src/renderer/help/manual
 /**
  * ヘルプの引き出しが使う純関数。取扱説明書 設計 §5.2 / 決定表#18・#19。
  *
- * 原稿（Plan 6 Task 3・4）はこのテストと並行して育つ（実装バッチB）。
- * このファイルを書いた時点では `docs/manual/` に `00-intro.md` しかなく、
- * `MANUAL_SECTIONS` はまだ「はじめに」章の2節しか持たない。そのため、検索と
- * 画面対応のテストは特定の章・語を決め打ちにせず、**そのとき実在する節**から
- * 動かして確かめる（実装者への MERGE 注意「節の一覧は作業中に増えうる」）。
+ * 原稿（Plan 6 Task 3・4）は全13章そろっている（Minor#10）。
  */
 
 function firstSection(): ManualSection {
@@ -57,12 +53,8 @@ describe('いまの画面（決定表#18）', () => {
 });
 
 describe('画面と節の対応', () => {
-  it('points every screen whose chapter has already landed at a section that exists', () => {
-    // 章はまだ全部そろっていない（Task 3・4 と並行）。生成物に来ている章だけを検査する。
-    const landedChapterIds = new Set(MANUAL_SECTIONS.map((section) => section.chapterId));
+  it('points every screen at a section that actually exists (Minor#10: 全章そろったので決め打ちで検査する)', () => {
     for (const [screen, id] of Object.entries(HELP_SECTION_BY_SCREEN)) {
-      const chapterId = id.split('/')[0] ?? '';
-      if (!landedChapterIds.has(chapterId)) continue;
       expect(sectionById(id), `${screen} の節 ${id} がありません`).toBeDefined();
     }
   });
@@ -74,13 +66,12 @@ describe('画面と節の対応', () => {
 });
 
 describe('検索（決定表#19）', () => {
+  // Minor#10: 章がそろったので、電気の実在の言葉（自己保持）へ決め打ちに戻せる
   it('finds a section by a word in its body', () => {
-    const sample = firstSection();
-    const word = sample.text.slice(0, Math.min(6, sample.text.length));
-    const hits = searchManual(word);
+    const hits = searchManual('自己保持');
     expect(hits.length).toBeGreaterThan(0);
     expect(sectionById(hits[0]?.sectionId ?? '')).toBeDefined();
-    expect(hits[0]?.excerpt).toContain(word);
+    expect(hits[0]?.excerpt).toContain('自己保持');
   });
 
   it('finds a section by its heading', () => {
@@ -102,11 +93,10 @@ describe('検索（決定表#19）', () => {
   });
 
   it('never returns more hits than the cap', () => {
+    // 全13章そろって93節あるので（Minor#10）、上限より節数が多いことを確かめてから頭打ちを見る
+    expect(MANUAL_SECTIONS.length).toBeGreaterThan(MAX_HELP_HITS);
+    // 「の」はほとんどの節に出る
     expect(searchManual('の').length).toBeLessThanOrEqual(MAX_HELP_HITS);
-    // 「の」はほとんどの節に出るので、節が2つ以上あれば小さい上限で頭打ちを確かめられる
-    // （`MANUAL_SECTIONS.length` が `MAX_HELP_HITS` を超えるのは全章がそろってから）。
-    if (MANUAL_SECTIONS.length >= 2) {
-      expect(searchManual('の', 1).length).toBe(1);
-    }
+    expect(searchManual('の', 1).length).toBe(1);
   });
 });

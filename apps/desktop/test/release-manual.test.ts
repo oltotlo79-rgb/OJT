@@ -48,7 +48,21 @@ describe('同梱（設計 §7.3 / 決定表#6）', () => {
   });
 
   it('checks the pdf in the packaged build', () => {
-    expect(checkDist).toContain('manual.pdf');
+    /*
+     * Minor#1: `manual.pdf` という文字だけを探すと、ヘッダのコメントに1回書いてあるだけで
+     * 検査の本体を消しても通ってしまう。実際に「無い」「空」を弾く分岐そのものがあることを見る。
+     */
+    expect(checkDist).toContain('!existsSync(manual)');
+    expect(checkDist).toContain('resources/manual.pdf がありません');
+    expect(checkDist).toContain('bytes === 0');
+    expect(checkDist).toContain('resources/manual.pdf が空です');
+  });
+
+  it('records a sha256 for the pdf in artifacts.md, not just its byte count', () => {
+    // Minor#1: `artifacts.md` の SHA256 列は未検査だった。ハッシュを計算して表に積む行があることを見る
+    expect(checkDist).toContain('sha256Of(manual)');
+    expect(checkDist).toContain('SHA256');
+    expect(checkDist).toContain('r.sha256');
   });
 });
 

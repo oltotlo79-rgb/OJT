@@ -2,7 +2,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { buildManual } from '../scripts/manual-build.mjs';
+import { buildManual, plainText } from '../scripts/manual-build.mjs';
 import {
   MANUAL_CHAPTERS,
   MANUAL_SECTIONS,
@@ -45,6 +45,13 @@ function availableImages(): string[] | undefined {
     .sort();
 }
 
+/**
+ * `manual-build.mjs` の `plainText()` を再利用する（IM-9 に添えて Minor#5 も直す）。
+ * 前は同じ規則をここへ手写ししていたので、`plainText()` 側だけ直した抜け漏れが
+ * 両辺に同時に乗り、テストが独立に落ちなかった。
+ */
+const plainOf = plainText;
+
 /** 印刷用 HTML から節ID・見出し・素の文を取り出す（生成物と同じ3つ）。 */
 function sectionsOfPrintHtml(html: string): Array<{ id: string; title: string; text: string }> {
   const out: Array<{ id: string; title: string; text: string }> = [];
@@ -61,18 +68,23 @@ function sectionsOfPrintHtml(html: string): Array<{ id: string; title: string; t
   return out;
 }
 
-/** `manual-build.mjs` の `plainText()` と同じ規則（図を落としてタグを剥がす）。 */
-function plainOf(html: string): string {
-  return html
-    .replace(/<figure[\s\S]*?<\/figure>/gu, ' ')
-    .replace(/<[^>]+>/gu, ' ')
-    .replace(/&lt;/gu, '<')
-    .replace(/&gt;/gu, '>')
-    .replace(/&quot;/gu, '"')
-    .replace(/&#39;/gu, "'")
-    .replace(/&amp;/gu, '&')
-    .replace(/\s+/gu, ' ')
-    .trim();
+/** 印刷用 HTML から、節ごとに出てくる図の名前を出てくる順に取り出す。IM-9。 */
+function imageNamesOfPrintHtml(html: string): Array<{ id: string; images: string[] }> {
+  const out: Array<{ id: string; images: string[] }> = [];
+  const pattern =
+    /<section class="manual-section" data-section-id="([^"]+)">\s*<h2>[\s\S]*?<\/h2>([\s\S]*?)<\/section>/gu;
+  let match = pattern.exec(html);
+  while (match !== null) {
+    const [, id, body] = match;
+    if (id !== undefined && body !== undefined) {
+      const images = [...body.matchAll(/<img src="images\/([^."]+)\.png"/gu)].map(
+        (imageMatch) => imageMatch[1] ?? '',
+      );
+      out.push({ id, images });
+    }
+    match = pattern.exec(html);
+  }
+  return out;
 }
 
 describe('正本と生成物', () => {
@@ -104,6 +116,18 @@ describe('正本と生成物', () => {
       images: [...section.imageNames],
     }));
     expect(inApp).toEqual(printed);
+    /*
+     * IM-9: 上の2つはどちらも同じ `buildManual()` の戻り値（`built.sections` と、それを
+     * 書き出しただけの `MANUAL_SECTIONS`）から来ており、検査1（バイト一致）が既に
+     * 保証している範囲なので独立に落ちない。ここでは `built.printHtml` という**別の出力**を
+     * 正規表現で読み直し、そちらとも突き合わせる（`toPrintHtml()` が図を落としても緑のままに
+     * ならないようにする）。
+     */
+    const fromPrintHtml = imageNamesOfPrintHtml(built.printHtml).map((section) => ({
+      id: section.id,
+      images: section.images,
+    }));
+    expect(fromPrintHtml).toEqual(printed);
   });
 
   it('gives every section a unique id', () => {

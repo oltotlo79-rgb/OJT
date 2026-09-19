@@ -38,7 +38,8 @@
   box-shadow: -8px 0 24px rgb(20 24 31 / 16%);
 }
 
-@media (max-width: 1100px) {
+/* Minor#8: 1100px ちょうどは「広い」側の見た目のまま（1099px 以下だけを狭い扱いにする） */
+@media (max-width: 1099px) {
   .drawer {
     width: 100vw;
     border-left: none;

@@ -1046,7 +1046,8 @@ export const JA = {
     searchPlaceholder: '例: 自己保持',
     searchEmpty: '見つかりませんでした。別の言葉で探してください。',
     openPdf: '説明書（PDF）を開く',
-    pdfMissing: '説明書（PDF）が見つかりません。もくじから同じ内容を読めます。',
+    // IM-8: 正本は `MSG.manual.missing`（main が返す文言と1語1句そろえる。§9 決定表）
+    pdfMissing: MSG.manual.missing,
     shortcutHint: 'F1 でいつでも開けます',
     // 図（利用者の決定 2026-09-20）
     enlarge: '図を大きく見る',
@@ -1056,9 +1057,13 @@ export const JA = {
 } as const;
 
 // --- Plan 6 Task 8 ---
-/** 検索で当たった件数。 */
-export function helpHitCountText(count: number): string {
-  return `${String(count)} 件見つかりました`;
+/**
+ * 検索で当たった件数。
+ * IM-12: `searchManual()` は `MAX_HELP_HITS`（20件）で打ち切るので、それより先にも
+ * 当たりがあったとき（`capped`）は実際の件数のふりをせず「20件以上」と出す。
+ */
+export function helpHitCountText(count: number, capped: boolean = false): string {
+  return capped ? `${String(count)} 件以上見つかりました` : `${String(count)} 件見つかりました`;
 }
 // --- /Plan 6 Task 8 ---
 

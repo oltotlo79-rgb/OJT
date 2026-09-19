@@ -14,8 +14,17 @@ import { app, BrowserWindow } from 'electron';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const APP_ROOT = resolve(HERE, '..');
-const HTML = join(APP_ROOT, 'resources', 'manual', 'manual.html');
-const PDF = join(APP_ROOT, 'resources', 'manual', 'manual.pdf');
+/*
+ * テスト専用の差し替え口（既定は本番と同じ場所）。BL-1 の回帰検査は、実在の
+ * `resources/manual/manual.html` を壊さずに「HTML が無い」経路を再現するため、
+ * ここだけを一時フォルダに向ける（`print-manual.test.ts`）。
+ */
+const HTML =
+  globalThis.process.env['OJT_PRINT_MANUAL_HTML'] ??
+  join(APP_ROOT, 'resources', 'manual', 'manual.html');
+const PDF =
+  globalThis.process.env['OJT_PRINT_MANUAL_PDF'] ??
+  join(APP_ROOT, 'resources', 'manual', 'manual.pdf');
 
 /** A4・上下18mm・左右16mm（`printToPDF` の単位はインチ）。決定表#26 */
 const MARGINS = { marginType: 'custom', top: 0.71, bottom: 0.71, left: 0.63, right: 0.63 };
@@ -32,8 +41,12 @@ async function main() {
     globalThis.process.stderr.write(
       `印刷用HTMLがありません: ${HTML}（先に node scripts/build-manual.mjs を走らせてください）\n`,
     );
-    globalThis.process.exitCode = 1;
-    app.quit();
+    /*
+     * BL-1: `app.quit()` は Electron 44.3.0 で `process.exitCode` を無視する（実測: 0 で
+     * 終わる）。`dist` は `&&` 連結（`package.json`）なので、これでは印刷の失敗が次工程へ
+     * そのまま通ってしまう。`app.exit(1)` は指定した終了コードで**確実に**プロセスを終える。
+     */
+    app.exit(1);
     return;
   }
   const window = new BrowserWindow({
@@ -72,6 +85,6 @@ app.whenReady().then(main).catch(onFailure);
 
 function onFailure(error) {
   globalThis.process.stderr.write(`PDFの生成に失敗しました: ${String(error)}\n`);
-  globalThis.process.exitCode = 1;
-  app.quit();
+  // BL-1: 上と同じ理由で `app.exit(1)` を使う（`app.quit()` は終了コードを無視する）。
+  app.exit(1);
 }

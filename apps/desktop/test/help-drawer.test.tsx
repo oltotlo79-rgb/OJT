@@ -6,13 +6,14 @@ import { act, type JSX } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useStore } from '../src/renderer/app/store.js';
 import { HelpDrawer } from '../src/renderer/help/HelpDrawer.js';
-import { defaultSectionId, searchManual } from '../src/renderer/help/help-model.js';
+import { defaultSectionId, MAX_HELP_HITS, searchManual } from '../src/renderer/help/help-model.js';
 import { useHelpStore } from '../src/renderer/help/help-store.js';
 import { MANUAL_SECTIONS } from '../src/renderer/help/manual-content.js';
 import { useHelpHotkey } from '../src/renderer/help/use-help-hotkey.js';
 import { JA } from '../src/renderer/i18n/ja.js';
 import { isModalOpen } from '../src/renderer/session/interaction.js';
 import type { OjtApi } from '../src/shared/ipc.js';
+import { MSG } from '../src/shared/messages.js';
 import type * as ManualContent from '../src/renderer/help/manual-content.js';
 
 /** 引き出しの CSS（`:focus-visible` の輪郭が残っていることを見るために本文を読む）。 */
@@ -109,6 +110,35 @@ describe('中身（設計 §5.3）', () => {
       'true',
     );
   });
+
+  it('re-opens a chapter the reader folded by hand when a new section in it becomes current (Minor#6)', () => {
+    // SHOT_SECTION と UNSHOT_SECTION はどちらも「screens」章の節
+    render(<HelpDrawer onClose={() => undefined} />);
+    fireEvent.click(screen.getByTestId(`help-section-${SHOT_SECTION}`));
+    const details = screen.getByTestId(`help-section-${SHOT_SECTION}`).closest('details');
+    expect(details).not.toBeNull();
+    // 読者が手で畳む（ブラウザのネイティブ開閉と同じ、React を経ない DOM の直接変化）
+    if (details !== null) details.open = false;
+    expect(details?.open).toBe(false);
+    // 同じ章の別の節へ跳ぶ
+    fireEvent.click(screen.getByTestId(`help-section-${UNSHOT_SECTION}`));
+    const reopened = screen.getByTestId(`help-section-${UNSHOT_SECTION}`).closest('details');
+    expect(reopened?.open).toBe(true);
+    expect(screen.getByTestId(`help-section-${UNSHOT_SECTION}`)).toHaveAttribute(
+      'aria-current',
+      'true',
+    );
+  });
+
+  it('falls back to the first section of the manual when the id does not resolve (Minor#7)', () => {
+    act(() => {
+      useHelpStore.setState({ sectionId: 'ありません/ありません' });
+    });
+    render(<HelpDrawer onClose={() => undefined} />);
+    const first = MANUAL_SECTIONS[0];
+    expect(first).toBeDefined();
+    expect(screen.getByTestId('help-section-title')).toHaveTextContent(first?.title ?? '');
+  });
 });
 
 describe('検索（設計 §5.3）', () => {
@@ -136,6 +166,39 @@ describe('検索（設計 §5.3）', () => {
     });
     expect(screen.getByText(JA.help.searchEmpty)).toBeInTheDocument();
   });
+
+  it('says "20件以上" instead of pretending the cap is the real count (IM-12)', () => {
+    // 「の」はほとんどの節に出る。93節ある本文では上限（20件）より先にも当たりがある
+    expect(MANUAL_SECTIONS.length).toBeGreaterThan(MAX_HELP_HITS);
+    render(<HelpDrawer onClose={() => undefined} />);
+    fireEvent.change(screen.getByTestId('help-search'), { target: { value: 'の' } });
+    expect(screen.getAllByTestId('help-hit')).toHaveLength(MAX_HELP_HITS);
+    expect(screen.getByText(`${String(MAX_HELP_HITS)} 件以上見つかりました`)).toBeInTheDocument();
+  });
+
+  it('shows the exact count when the hits do not reach the cap', () => {
+    render(<HelpDrawer onClose={() => undefined} />);
+    fireEvent.change(screen.getByTestId('help-search'), { target: { value: '自己保持' } });
+    const count = searchManual('自己保持').length;
+    expect(count).toBeLessThan(MAX_HELP_HITS);
+    expect(screen.getByText(`${String(count)} 件見つかりました`)).toBeInTheDocument();
+  });
+
+  it("resets the article's scroll position when the section or the search word changes (IM-12)", () => {
+    render(<HelpDrawer onClose={() => undefined} />);
+    // `.article`（スクロールする囲み）は `help-section-title` の親。React はこの枠を
+    // 作り直さないので、テストは既存の testid から辿るだけで済み、新しい testid を
+    // 機能一覧表（`docs/manual/coverage.json`）に足す必要が無い。
+    const article = screen.getByTestId('help-section-title').parentElement;
+    expect(article).not.toBeNull();
+    if (article === null) return;
+    article.scrollTop = 120;
+    fireEvent.click(screen.getByTestId(`help-section-${SHOT_SECTION}`));
+    expect(article.scrollTop).toBe(0);
+    article.scrollTop = 80;
+    fireEvent.change(screen.getByTestId('help-search'), { target: { value: '自己保持' } });
+    expect(article.scrollTop).toBe(0);
+  });
 });
 
 describe('閉じ方とキーボード（設計 §5.4）', () => {
@@ -146,6 +209,26 @@ describe('閉じ方とキーボード（設計 §5.4）', () => {
     fireEvent.keyDown(window, { key: 'Escape' });
     fireEvent.click(screen.getByTestId('help-backdrop'));
     expect(onClose).toHaveBeenCalledTimes(3);
+  });
+
+  it('leaves the drawer open when Escape is pressed while composing (IM-11)', () => {
+    const onClose = vi.fn();
+    render(<HelpDrawer onClose={onClose} />);
+    fireEvent.keyDown(window, { key: 'Escape', isComposing: true });
+    expect(onClose).not.toHaveBeenCalled();
+    // 通常の `Esc` はいつもどおり効く（番人のせいで壊れていないこと）
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not steal focus back to the close button when the caller hands in a fresh onClose every render (Minor#13)', () => {
+    const { rerender } = render(<HelpDrawer onClose={() => undefined} />);
+    const search = screen.getByTestId('help-search');
+    search.focus();
+    expect(document.activeElement).toBe(search);
+    // 呼び出し側が毎回新しい関数を渡してくる状況を再現する（`onClose` の参照が変わる）
+    rerender(<HelpDrawer onClose={() => undefined} />);
+    expect(document.activeElement).toBe(search);
   });
 
   it('counts as one modal layer while it is open', () => {
@@ -178,15 +261,31 @@ describe('閉じ方とキーボード（設計 §5.4）', () => {
     expect(panel.contains(document.activeElement)).toBe(true);
   });
 
-  it('gives every control a visible focus ring', () => {
+  it('gives every control a visible focus ring (Minor#9: the rule must actually draw one)', () => {
     render(<HelpDrawer onClose={() => undefined} />);
-    // `:focus-visible` の輪郭は CSS モジュールが持つ。ここでは輪郭を書いた行が残っていることを見る
-    expect(helpCss).toContain('.header button:focus-visible');
-    expect(helpCss).toContain('.contents button:focus-visible');
-    expect(helpCss).toContain('.hits button:focus-visible');
-    expect(helpCss).toContain('.searchRow input:focus-visible');
-    expect(helpCss).toContain('.manual-figure button:focus-visible');
-    expect(helpCss).toContain('.figurePanel button:focus-visible');
+    /*
+     * 輪郭を書いた行が残っているだけでは、その中身を `outline: none` に変えても緑のままになる。
+     * セレクタから次の `}` までの本体を切り出して、`none` ではない `outline` があることを見る。
+     */
+    const selectors = [
+      '.header button:focus-visible',
+      '.contents button:focus-visible',
+      '.hits button:focus-visible',
+      '.searchRow input:focus-visible',
+      '.manual-figure button:focus-visible',
+      '.figurePanel button:focus-visible',
+    ];
+    for (const selector of selectors) {
+      const at = helpCss.indexOf(selector);
+      expect(at, `${selector} が help.module.css に無い`).toBeGreaterThanOrEqual(0);
+      const body = helpCss.slice(at, helpCss.indexOf('}', at));
+      expect(body, `${selector} に目に見える outline が無い`).toMatch(/outline:\s*(?!none\b)\S/u);
+    }
+  });
+
+  it('treats only narrower than 1100px as the small-screen layout (Minor#8)', () => {
+    expect(helpCss).toContain('@media (max-width: 1099px)');
+    expect(helpCss).not.toContain('@media (max-width: 1100px)');
   });
 });
 
@@ -263,6 +362,14 @@ describe('図（利用者の決定 2026-09-20）', () => {
     expect(document.activeElement).toBe(button);
   });
 
+  it('leaves the figure overlay open when Escape is pressed while composing (IM-11)', () => {
+    render(<HelpDrawer onClose={() => undefined} />);
+    const button = figureButton('home');
+    fireEvent.click(button as HTMLButtonElement);
+    fireEvent.keyDown(window, { key: 'Escape', isComposing: true });
+    expect(screen.getByTestId('help-figure-modal')).toBeInTheDocument();
+  });
+
   it('draws nothing for a figure that has not been taken yet', () => {
     act(() => {
       useHelpStore.getState().showSection(UNSHOT_SECTION);
@@ -325,5 +432,10 @@ describe('文言（決定表#28）', () => {
       expect(typeof value, `${key} は文字列であること`).toBe('string');
       expect((value as string).length, `JA.help.${key} が長すぎます`).toBeLessThanOrEqual(40);
     }
+  });
+
+  it('says the same thing as main when the PDF is missing (IM-8: one source of truth)', () => {
+    // main（`src/main/manual.ts`）が返す文言と、preload の無い環境で出す文言を1つにそろえる
+    expect(JA.help.pdfMissing).toBe(MSG.manual.missing);
   });
 });

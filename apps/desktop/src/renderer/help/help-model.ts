@@ -100,6 +100,14 @@ export interface HelpHit {
   excerpt: string;
 }
 
+/*
+ * Minor#11: `MANUAL_SECTIONS` は生成物で、実行中に変わらない。正規化した本文（検索対象）を
+ * 打鍵のたびに93節ぶん作り直すと無駄なので、モジュール読み込み時に1回だけ作って使い回す。
+ */
+const NORMALIZED_HAYSTACK = new Map<string, string>(
+  MANUAL_SECTIONS.map((section) => [section.id, normalize(`${section.title} ${section.text}`)]),
+);
+
 /**
  * 見出しと本文の素の文に対する部分一致。
  * 当たった位置の前後を切り出して一覧に出す。
@@ -110,7 +118,7 @@ export function searchManual(query: string, limit: number = MAX_HELP_HITS): Help
   const hits: HelpHit[] = [];
   for (const section of MANUAL_SECTIONS) {
     if (hits.length >= limit) break;
-    const haystack = normalize(`${section.title} ${section.text}`);
+    const haystack = NORMALIZED_HAYSTACK.get(section.id) ?? '';
     if (!haystack.includes(needle)) continue;
     hits.push({
       sectionId: section.id,

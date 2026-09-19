@@ -76,6 +76,26 @@ describe('節の切り出し', () => {
       '節がありません',
     );
   });
+
+  it('does not split on a heading-looking line inside a code fence (Minor#3)', () => {
+    const text = [
+      '# はじめに',
+      '',
+      '## 図',
+      '',
+      '説明の前',
+      '',
+      '```',
+      '## これは見出しではない',
+      '```',
+      '',
+      '説明の後',
+      '',
+    ].join('\n');
+    const built = buildManual([{ name: '00-intro.md', text }]);
+    expect(built.chapters).toEqual([{ id: 'intro', title: 'はじめに', sectionIds: ['intro/図'] }]);
+    expect(built.sections[0]?.html).toContain('これは見出しではない');
+  });
 });
 
 describe('図の扱い（決定表#9。利用者の決定 2026-09-20）', () => {
@@ -111,6 +131,26 @@ describe('図の扱い（決定表#9。利用者の決定 2026-09-20）', () => 
     expect(() => buildManual([{ name: '00-intro.md', text }])).toThrow(
       '図の名前が規則に合いません',
     );
+  });
+
+  it('refuses a figure written in the middle of a paragraph (IM-10)', () => {
+    // 5行目: 文中に書かれた図。`FIGURE_PARAGRAPH`（段落に図が1つだけ）に当たらないので
+    // 黙って `src="images/…"` が生成物に残って壊れる前に、ファイル名と行番号を添えて止める
+    const text = [
+      '# はじめに',
+      '',
+      '## 図',
+      '',
+      '文の途中に ![説明](images/home.png) 図です。',
+    ].join('\n');
+    expect(() => buildManual([{ name: '00-intro.md', text }])).toThrow(
+      /図が段落の外にあります.*00-intro\.md:5/u,
+    );
+  });
+
+  it('refuses a figure written inside a list item', () => {
+    const text = ['# はじめに', '', '## 図', '', '- ![説明](images/home.png)'].join('\n');
+    expect(() => buildManual([{ name: '00-intro.md', text }])).toThrow('図が段落の外にあります');
   });
 
   it('keeps the figure out of the plain text', () => {

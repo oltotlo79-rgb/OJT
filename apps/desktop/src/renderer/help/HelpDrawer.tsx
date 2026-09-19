@@ -12,9 +12,9 @@ import { tryOjtApi } from '../app/ojt-api.js';
 import { useStore } from '../app/store.js';
 import { helpHitCountText, JA } from '../i18n/ja.js';
 import { pushModalLayer, topModalLayer } from '../session/interaction.js';
-import { searchManual, sectionById } from './help-model.js';
+import { MAX_HELP_HITS, searchManual, sectionById } from './help-model.js';
 import { useHelpStore } from './help-store.js';
-import { MANUAL_CHAPTERS, MANUAL_IMAGES } from './manual-content.js';
+import { MANUAL_CHAPTERS, MANUAL_IMAGES, MANUAL_SECTIONS } from './manual-content.js';
 import styles from './help.module.css';
 
 /**
@@ -61,11 +61,26 @@ export function HelpDrawer({ onClose }: { onClose: () => void }): JSX.Element {
   const panelRef = useRef<HTMLDivElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
   const proseRef = useRef<HTMLDivElement>(null);
+  const articleRef = useRef<HTMLDivElement>(null);
 
-  const section = sectionById(sectionId);
-  const hits = useMemo(() => searchManual(query), [query]);
+  // Minor#7: 節IDが目次と噛み合わないとき（§9 のフォールバック）は目次の最初の節を出す
+  const section = sectionById(sectionId) ?? MANUAL_SECTIONS[0];
+  /*
+   * IM-12: 上限（`MAX_HELP_HITS`）ちょうどで打ち切られたのか、まだ先に当たりが
+   * あったのに丸められたのかを見分けるため、上限より1件多く取ってから切り詰める。
+   */
+  const searchResult = useMemo(() => searchManual(query, MAX_HELP_HITS + 1), [query]);
+  const hitsCapped = searchResult.length > MAX_HELP_HITS;
+  const hits = hitsCapped ? searchResult.slice(0, MAX_HELP_HITS) : searchResult;
   /** 覆いで開いている図（利用者の決定 2026-09-20）。 */
   const [enlarged, setEnlarged] = useState<EnlargedFigure | undefined>(undefined);
+
+  // IM-12: 節や検索語を切り替えたら、前の節でどこまで読んでいたかに関係なく本文の先頭を見せる
+  useEffect(() => {
+    const article = articleRef.current;
+    if (article === null) return;
+    article.scrollTop = 0;
+  }, [sectionId, query]);
 
   /*
    * 本文を差し込んだあとに図の `src` を入れる（決定表 P16）。
@@ -134,6 +149,14 @@ export function HelpDrawer({ onClose }: { onClose: () => void }): JSX.Element {
   );
 
   /*
+   * Minor#13: 呼び出し側が毎回新しい関数を渡してくると（不安定な `onClose`）、依存に
+   * 書いたままでは打鍵のたびに effect が張り直され、そのたびに閉じるボタンへ焦点が
+   * 奪われる。最新の関数は ref に控えておき、effect 自体はマウント時に1回だけ張る。
+   */
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
+  /*
    * モーダル1枚として積む。積んでおかないと、盤やラダーのショートカット
    * （`Delete` で電線が消える、`3` で視点が飛ぶ）が引き出しの上から効いてしまう。
    */
@@ -144,9 +167,11 @@ export function HelpDrawer({ onClose }: { onClose: () => void }): JSX.Element {
     closeRef.current?.focus();
     const onKeyDown = (event: KeyboardEvent): void => {
       if (layer.depth !== topModalLayer()) return;
+      // IM-11: IME 変換の取り消しの `Esc` は検索欄の中だけで効かせ、引き出しを閉じない
+      if (event.isComposing) return;
       if (event.key === 'Escape') {
         event.preventDefault();
-        onClose();
+        onCloseRef.current();
         return;
       }
       if (event.key === 'Tab') trapFocus(panelRef.current, event);
@@ -157,7 +182,8 @@ export function HelpDrawer({ onClose }: { onClose: () => void }): JSX.Element {
       layer.release();
       openedFrom?.focus();
     };
-  }, [onClose]);
+    // `onCloseRef` で最新値を読むので、マウント時に1回だけ張ればよい（Minor#13）
+  }, []);
 
   /**
    * 同梱の PDF を OS の既定ビューアで開く（§9）。
@@ -232,7 +258,13 @@ export function HelpDrawer({ onClose }: { onClose: () => void }): JSX.Element {
             aria-label={JA.help.contents}
           >
             {MANUAL_CHAPTERS.map((chapter) => (
-              <details key={chapter.id} open={chapter.sectionIds.includes(sectionId)}>
+              // Minor#6: 章を手で畳んだあと、同じ章の別の節へ跳んでも `open` の計算結果が
+              // 変わらないと React は DOM をそのままにする（畳んだままで aria-current が隠れる）。
+              // 節が変わるたびに key を変えて作り直し、毎回いまの節に合わせて開閉し直す。
+              <details
+                key={`${chapter.id}::${sectionId}`}
+                open={chapter.sectionIds.includes(sectionId)}
+              >
                 <summary>{chapter.title}</summary>
                 <ul>
                   {chapter.sectionIds.map((id) => (
@@ -253,7 +285,7 @@ export function HelpDrawer({ onClose }: { onClose: () => void }): JSX.Element {
               </details>
             ))}
           </nav>
-          <div className={styles.article}>
+          <div className={styles.article} ref={articleRef}>
             {query.trim() === '' ? (
               <>
                 <h2 className={styles.sectionTitle} data-testid="help-section-title">
@@ -265,7 +297,7 @@ export function HelpDrawer({ onClose }: { onClose: () => void }): JSX.Element {
               <p className={styles.empty}>{JA.help.searchEmpty}</p>
             ) : (
               <>
-                <p className={styles.hitCount}>{helpHitCountText(hits.length)}</p>
+                <p className={styles.hitCount}>{helpHitCountText(hits.length, hitsCapped)}</p>
                 <ul className={styles.hits}>
                   {hits.map((hit) => (
                     <li key={hit.sectionId}>
@@ -317,6 +349,9 @@ function FigureOverlay({
   const closeRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const full = MANUAL_IMAGES[figure.name]?.full ?? '';
+  // Minor#13: 呼び出し元（`HelpDrawer`）は毎回新しい関数を渡してくる。ref で最新値を読む。
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
   useEffect(() => {
     const layer = pushModalLayer();
@@ -325,10 +360,12 @@ function FigureOverlay({
     closeRef.current?.focus();
     const onKeyDown = (event: KeyboardEvent): void => {
       if (layer.depth !== topModalLayer()) return;
+      // IM-11: 同上（この覆いには入力欄は無いが、引き出しの検索欄と同じ番人をそろえる）
+      if (event.isComposing) return;
       if (event.key === 'Escape') {
         event.preventDefault();
         event.stopPropagation();
-        onClose();
+        onCloseRef.current();
         return;
       }
       if (event.key === 'Tab') trapFocus(panelRef.current, event);
@@ -340,7 +377,8 @@ function FigureOverlay({
       layer.release();
       openedFrom?.focus();
     };
-  }, [onClose]);
+    // `onCloseRef` で最新値を読むので、マウント時に1回だけ張ればよい（Minor#13）
+  }, []);
 
   return (
     <div
