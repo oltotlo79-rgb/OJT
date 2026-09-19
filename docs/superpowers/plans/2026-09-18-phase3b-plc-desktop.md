@@ -8377,7 +8377,12 @@ function result(overrides: Partial<JudgePlcResult> = {}): JudgePlcResult {
     passed: true,
     mismatches: [],
     staticChecks: [
-      { id: 'twoStage', ok: true, message: '2段結線です', details: [] },
+      {
+        id: 'twoStage',
+        ok: true,
+        message: 'PLC出力 → 盤のリレー → 表示灯の2段結線になっています',
+        details: [],
+      },
       { id: 'plcPowerIndependent', ok: true, message: '壁コンセントから取っています', details: [] },
       { id: 'ioAssignment', ok: true, message: '割付どおりです', details: [] },
     ],
@@ -9981,7 +9986,7 @@ git commit -m "docs(plan-3b): tick the tasks and record the implementation delta
 10. **`app/App.tsx` の設定読込の `then` は1箇所だけ触る**（Task 16 の `applyLadderSettings`）。`setInterval` は Plan 2B で決めた2つのままにし、増やさない。
 11. **`e2e/projection.ts` は追記のみ**（Task 17）。既存の `import type { TerminalId } from '@ojt/circuit-sim';` と `SELF_HOLD_WIRES` を消さないこと（Plan 2B I-6 と同じ指摘）。
 12. **`ladder/LadderWorkspace.tsx` は Task 8 が作り、Task 9 が `workspaceSide` の先頭に `<MonitorPanel …/>` の1行を差し込む。この2つは同じバッチで直列に実行する**（並行させると片方の書き込みが失われる）。`ladder/LadderEditor.tsx` は Task 5 が作り、Task 8 が `errorCells` props を、Task 16 が `colors` props を足す（いずれも別バッチなので衝突しない）。
-13. **`ladder/ladder.module.css` は Task 4 が作り、Task 5・6・7・8・9 が**それぞれ末尾へ追記する**（レビュー指摘 I6）。クラス名は重ならない（`.grid*` = Task 4、`.input*` = Task 5、`.comment*` = Task 6、`.io*` = Task 7、`.output*` / `.tree*` / `.shortcut*` = Task 8、`.monitor*` / `.side*` = Task 9）が、**同じファイルの末尾へ同時に書くと片方が消える**。バッチ2の 4 → 5 → 6 → 7 は直列、バッチ3の 8 → 9 も直列なので、この順を崩さないこと。追記のたびにファイルを読み直す。
+13. **`ladder/ladder.module.css` は Task 4 が作り、Task 5・6・7・8・9 がそれぞれ末尾へ追記する**（レビュー指摘 I6）。クラス名は重ならない（`.grid*` = Task 4、`.input*` = Task 5、`.comment*` = Task 6、`.io*` = Task 7、`.output*` / `.tree*` / `.shortcut*` = Task 8、`.monitor*` / `.side*` = Task 9）が、**同じファイルの末尾へ同時に書くと片方が消える**。バッチ2の 4 → 5 → 6 → 7 は直列、バッチ3の 8 → 9 も直列なので、この順を崩さないこと。追記のたびにファイルを読み直す。
 14. **`shared/ipc.ts` は Task 14 の1箇所（`WorkFile` にモードDの項目）と Task 16 の1箇所（`AppSettings` に `defaultVendor` / `ladderGridCols` / `monitorColor`）だけ**（レビュー指摘 I6）。どちらも**同じバッチ5**なので、**14 → 16 の順に直列**で実行する（15 は別ファイルなので並行してよい）。`IPC_CHANNELS` は**6本のまま**で、どちらのタスクも増やさない（前提#5）。
 15. **`three/labels.ts` は Task 10 の1箇所だけ**（`blockTerminalMark()` が `PLC` / `OUTLET` の端子IDをそのまま名札にする分岐）。`blockFaceTexture()` の本体と `ROLE_COLOR` は**触らない**（新しい色も新しい引き手も足さない。§15）。
 
