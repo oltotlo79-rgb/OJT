@@ -1,0 +1,141 @@
+{
+  "formatVersion": 1,
+  "id": "d-006",
+  "mode": "plc",
+  "title": "PLC フリッカ回路（1級形式）",
+  "grade": 1,
+  "description": "黒（X0）で起動すると白ランプ（PL1）が0.5秒周期で点滅し、運転中は黄ランプ（PL2）が点灯します。緑ランプ（PL3）は運転中に1秒クロック（SP2）で点滅します。黄（X1）で停止し、停止中に緑（X2）を押している間は赤ランプ（PL4）が点灯します。PLCの出力は必ず盤のリレーを介し、PLCの電源は壁コンセントから取ってください。",
+  "timeLimit": { "standardMin": 50, "cutoffMin": 60 },
+  "board": {
+    "boardId": "board-jipm-std",
+    "socketRoles": { "S1": "CR1", "S2": "CR2", "S3": "CR3", "S4": "CR4", "S7": "CHK" }
+  },
+  "inventory": [{ "kind": "relay-my4n", "count": 4 }],
+  "plc": { "vendor": "mitsubishi", "model": "FX5U" },
+  "io": {
+    "mode": "fixed",
+    "wiring": "sink",
+    "inputs": [
+      { "x": 0, "pb": "PB1" },
+      { "x": 1, "pb": "PB2" },
+      { "x": 2, "pb": "PB3" }
+    ],
+    "outputs": [
+      { "y": 0, "cr": "CR1", "pl": "PL1" },
+      { "y": 1, "cr": "CR2", "pl": "PL2" },
+      { "y": 2, "cr": "CR3", "pl": "PL3" },
+      { "y": 3, "cr": "CR4", "pl": "PL4" }
+    ]
+  },
+  "referenceLadder": {
+    "networks": [
+      {
+        "id": "n1",
+        "comment": "起動の自己保持",
+        "cells": [
+          [
+            { "kind": "contact", "type": "NO", "device": { "kind": "input", "index": 0 } },
+            { "kind": "vline" },
+            { "kind": "contact", "type": "NC", "device": { "kind": "input", "index": 1 } },
+            { "kind": "coil", "type": "OUT", "device": { "kind": "internal", "index": 0 } }
+          ],
+          [{ "kind": "contact", "type": "NO", "device": { "kind": "internal", "index": 0 } }]
+        ]
+      },
+      {
+        "id": "n2",
+        "comment": "消灯時間 0.5秒",
+        "cells": [
+          [
+            { "kind": "contact", "type": "NO", "device": { "kind": "internal", "index": 0 } },
+            { "kind": "contact", "type": "NC", "device": { "kind": "timer", "index": 1 } },
+            {
+              "kind": "timer",
+              "type": "TON",
+              "device": { "kind": "timer", "index": 0 },
+              "presetMs": 500
+            }
+          ]
+        ]
+      },
+      {
+        "id": "n3",
+        "comment": "点灯時間 0.5秒",
+        "cells": [
+          [
+            { "kind": "contact", "type": "NO", "device": { "kind": "timer", "index": 0 } },
+            {
+              "kind": "timer",
+              "type": "TON",
+              "device": { "kind": "timer", "index": 1 },
+              "presetMs": 500
+            }
+          ]
+        ]
+      },
+      {
+        "id": "n4",
+        "comment": "点滅出力",
+        "cells": [
+          [
+            { "kind": "contact", "type": "NO", "device": { "kind": "internal", "index": 0 } },
+            { "kind": "contact", "type": "NO", "device": { "kind": "timer", "index": 0 } },
+            { "kind": "coil", "type": "OUT", "device": { "kind": "output", "index": 0 } }
+          ]
+        ]
+      },
+      {
+        "id": "n5",
+        "comment": "運転中表示",
+        "cells": [
+          [
+            { "kind": "contact", "type": "NO", "device": { "kind": "internal", "index": 0 } },
+            { "kind": "coil", "type": "OUT", "device": { "kind": "output", "index": 1 } }
+          ]
+        ]
+      },
+      {
+        "id": "n6",
+        "comment": "1秒クロックの点滅",
+        "cells": [
+          [
+            { "kind": "contact", "type": "NO", "device": { "kind": "internal", "index": 0 } },
+            { "kind": "contact", "type": "NO", "device": { "kind": "special", "index": 2 } },
+            { "kind": "coil", "type": "OUT", "device": { "kind": "output", "index": 2 } }
+          ]
+        ]
+      },
+      {
+        "id": "n7",
+        "comment": "停止中の確認表示",
+        "cells": [
+          [
+            { "kind": "contact", "type": "NC", "device": { "kind": "internal", "index": 0 } },
+            { "kind": "contact", "type": "NO", "device": { "kind": "input", "index": 2 } },
+            { "kind": "coil", "type": "OUT", "device": { "kind": "output", "index": 3 } }
+          ]
+        ]
+      },
+      { "id": "end", "cells": [[{ "kind": "end" }]] }
+    ],
+    "comments": {
+      "X0": "起動押ボタン（黒）",
+      "X1": "停止押ボタン（黄）",
+      "M0": "起動の自己保持",
+      "T0": "消灯 0.5秒",
+      "T1": "点灯 0.5秒",
+      "SP2": "1秒クロック"
+    }
+  },
+  "wiringRequired": true,
+  "operations": [
+    { "t": 500, "target": "PB1", "action": "press" },
+    { "t": 800, "target": "PB1", "action": "release" },
+    { "t": 5000, "target": "PB2", "action": "press" },
+    { "t": 5300, "target": "PB2", "action": "release" },
+    { "t": 5600, "target": "PB3", "action": "press" },
+    { "t": 5900, "target": "PB3", "action": "release" }
+  ],
+  "durationMs": 7000,
+  "judge": { "compareSignals": ["PL1", "PL2", "PL3", "PL4"] }
+}

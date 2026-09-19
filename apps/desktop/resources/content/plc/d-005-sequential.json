@@ -1,0 +1,151 @@
+{
+  "formatVersion": 1,
+  "id": "d-005",
+  "mode": "plc",
+  "title": "PLC 順次点灯（1級形式）",
+  "grade": 1,
+  "description": "黒（X0）で起動すると白ランプ（PL1）が点灯し、1秒ごとに黄（PL2）・緑（PL3）・赤（PL4）が順に点灯します。黄（X1）または緑（X2）で全消灯します。PLCの出力は必ず盤のリレーを介し、PLCの電源は壁コンセントから取ってください。",
+  "timeLimit": { "standardMin": 50, "cutoffMin": 60 },
+  "board": {
+    "boardId": "board-jipm-std",
+    "socketRoles": { "S1": "CR1", "S2": "CR2", "S3": "CR3", "S4": "CR4", "S7": "CHK" }
+  },
+  "inventory": [{ "kind": "relay-my4n", "count": 4 }],
+  "plc": { "vendor": "mitsubishi", "model": "FX5U" },
+  "io": {
+    "mode": "fixed",
+    "wiring": "sink",
+    "inputs": [
+      { "x": 0, "pb": "PB1" },
+      { "x": 1, "pb": "PB2" },
+      { "x": 2, "pb": "PB3" }
+    ],
+    "outputs": [
+      { "y": 0, "cr": "CR1", "pl": "PL1" },
+      { "y": 1, "cr": "CR2", "pl": "PL2" },
+      { "y": 2, "cr": "CR3", "pl": "PL3" },
+      { "y": 3, "cr": "CR4", "pl": "PL4" }
+    ]
+  },
+  "referenceLadder": {
+    "networks": [
+      {
+        "id": "n1",
+        "comment": "起動の自己保持",
+        "cells": [
+          [
+            { "kind": "contact", "type": "NO", "device": { "kind": "input", "index": 0 } },
+            { "kind": "vline" },
+            { "kind": "contact", "type": "NC", "device": { "kind": "input", "index": 1 } },
+            { "kind": "contact", "type": "NC", "device": { "kind": "input", "index": 2 } },
+            { "kind": "coil", "type": "OUT", "device": { "kind": "internal", "index": 0 } }
+          ],
+          [{ "kind": "contact", "type": "NO", "device": { "kind": "internal", "index": 0 } }]
+        ]
+      },
+      {
+        "id": "n2",
+        "comment": "1段目の計時",
+        "cells": [
+          [
+            { "kind": "contact", "type": "NO", "device": { "kind": "internal", "index": 0 } },
+            {
+              "kind": "timer",
+              "type": "TON",
+              "device": { "kind": "timer", "index": 0 },
+              "presetMs": 1000
+            }
+          ]
+        ]
+      },
+      {
+        "id": "n3",
+        "comment": "2段目の計時",
+        "cells": [
+          [
+            { "kind": "contact", "type": "NO", "device": { "kind": "timer", "index": 0 } },
+            {
+              "kind": "timer",
+              "type": "TON",
+              "device": { "kind": "timer", "index": 1 },
+              "presetMs": 1000
+            }
+          ]
+        ]
+      },
+      {
+        "id": "n4",
+        "comment": "3段目の計時",
+        "cells": [
+          [
+            { "kind": "contact", "type": "NO", "device": { "kind": "timer", "index": 1 } },
+            {
+              "kind": "timer",
+              "type": "TON",
+              "device": { "kind": "timer", "index": 2 },
+              "presetMs": 1000
+            }
+          ]
+        ]
+      },
+      {
+        "id": "n5",
+        "comment": "1灯目（起動と同時）",
+        "cells": [
+          [
+            { "kind": "contact", "type": "NO", "device": { "kind": "internal", "index": 0 } },
+            { "kind": "coil", "type": "OUT", "device": { "kind": "output", "index": 0 } }
+          ]
+        ]
+      },
+      {
+        "id": "n6",
+        "comment": "2灯目（1秒後）",
+        "cells": [
+          [
+            { "kind": "contact", "type": "NO", "device": { "kind": "timer", "index": 0 } },
+            { "kind": "coil", "type": "OUT", "device": { "kind": "output", "index": 1 } }
+          ]
+        ]
+      },
+      {
+        "id": "n7",
+        "comment": "3灯目（2秒後）",
+        "cells": [
+          [
+            { "kind": "contact", "type": "NO", "device": { "kind": "timer", "index": 1 } },
+            { "kind": "coil", "type": "OUT", "device": { "kind": "output", "index": 2 } }
+          ]
+        ]
+      },
+      {
+        "id": "n8",
+        "comment": "4灯目（3秒後）",
+        "cells": [
+          [
+            { "kind": "contact", "type": "NO", "device": { "kind": "timer", "index": 2 } },
+            { "kind": "coil", "type": "OUT", "device": { "kind": "output", "index": 3 } }
+          ]
+        ]
+      },
+      { "id": "end", "cells": [[{ "kind": "end" }]] }
+    ],
+    "comments": {
+      "X0": "起動押ボタン（黒）",
+      "X1": "停止押ボタン（黄）",
+      "M0": "起動の自己保持",
+      "T0": "1段目 1秒",
+      "T1": "2段目 1秒",
+      "T2": "3段目 1秒"
+    }
+  },
+  "wiringRequired": true,
+  "operations": [
+    { "t": 500, "target": "PB1", "action": "press" },
+    { "t": 800, "target": "PB1", "action": "release" },
+    { "t": 6000, "target": "PB2", "action": "press" },
+    { "t": 6300, "target": "PB2", "action": "release" }
+  ],
+  "durationMs": 8000,
+  "judge": { "compareSignals": ["PL1", "PL2", "PL3", "PL4"] }
+}

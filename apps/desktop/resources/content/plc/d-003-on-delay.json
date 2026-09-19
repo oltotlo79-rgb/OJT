@@ -1,0 +1,110 @@
+{
+  "formatVersion": 1,
+  "id": "d-003",
+  "mode": "plc",
+  "title": "PLC オンディレー点灯（2級形式）",
+  "grade": 2,
+  "description": "黒（X0）で起動し、3秒後に白ランプ（PL1）が点灯する回路をPLCで組みます。計時中は黄ランプ（PL2）が点灯し、黄（X1）で停止します。緑（X2）を押している間だけ緑ランプ（PL3）が点灯します。PLCの出力は必ず盤のリレーを介し、PLCの電源は壁コンセントから取ってください。",
+  "timeLimit": { "standardMin": 50, "cutoffMin": 60 },
+  "board": {
+    "boardId": "board-jipm-std",
+    "socketRoles": { "S1": "CR1", "S2": "CR2", "S3": "CR3", "S4": "CR4", "S7": "CHK" }
+  },
+  "inventory": [{ "kind": "relay-my4n", "count": 4 }],
+  "plc": { "vendor": "mitsubishi", "model": "FX5U" },
+  "io": {
+    "mode": "fixed",
+    "wiring": "sink",
+    "inputs": [
+      { "x": 0, "pb": "PB1" },
+      { "x": 1, "pb": "PB2" },
+      { "x": 2, "pb": "PB3" }
+    ],
+    "outputs": [
+      { "y": 0, "cr": "CR1", "pl": "PL1" },
+      { "y": 1, "cr": "CR2", "pl": "PL2" },
+      { "y": 2, "cr": "CR3", "pl": "PL3" }
+    ]
+  },
+  "referenceLadder": {
+    "networks": [
+      {
+        "id": "n1",
+        "comment": "起動の自己保持",
+        "cells": [
+          [
+            { "kind": "contact", "type": "NO", "device": { "kind": "input", "index": 0 } },
+            { "kind": "vline" },
+            { "kind": "contact", "type": "NC", "device": { "kind": "input", "index": 1 } },
+            { "kind": "coil", "type": "OUT", "device": { "kind": "internal", "index": 0 } }
+          ],
+          [{ "kind": "contact", "type": "NO", "device": { "kind": "internal", "index": 0 } }]
+        ]
+      },
+      {
+        "id": "n2",
+        "comment": "計時",
+        "cells": [
+          [
+            { "kind": "contact", "type": "NO", "device": { "kind": "internal", "index": 0 } },
+            {
+              "kind": "timer",
+              "type": "TON",
+              "device": { "kind": "timer", "index": 0 },
+              "presetMs": 3000
+            }
+          ]
+        ]
+      },
+      {
+        "id": "n3",
+        "comment": "3秒後に点灯",
+        "cells": [
+          [
+            { "kind": "contact", "type": "NO", "device": { "kind": "timer", "index": 0 } },
+            { "kind": "coil", "type": "OUT", "device": { "kind": "output", "index": 0 } }
+          ]
+        ]
+      },
+      {
+        "id": "n4",
+        "comment": "計時中表示",
+        "cells": [
+          [
+            { "kind": "contact", "type": "NO", "device": { "kind": "internal", "index": 0 } },
+            { "kind": "contact", "type": "NC", "device": { "kind": "timer", "index": 0 } },
+            { "kind": "coil", "type": "OUT", "device": { "kind": "output", "index": 1 } }
+          ]
+        ]
+      },
+      {
+        "id": "n5",
+        "comment": "点検灯（押している間だけ）",
+        "cells": [
+          [
+            { "kind": "contact", "type": "NO", "device": { "kind": "input", "index": 2 } },
+            { "kind": "coil", "type": "OUT", "device": { "kind": "output", "index": 2 } }
+          ]
+        ]
+      },
+      { "id": "end", "cells": [[{ "kind": "end" }]] }
+    ],
+    "comments": {
+      "X0": "起動押ボタン（黒）",
+      "X1": "停止押ボタン（黄）",
+      "M0": "起動の自己保持",
+      "T0": "オンディレー 3秒"
+    }
+  },
+  "wiringRequired": true,
+  "operations": [
+    { "t": 500, "target": "PB1", "action": "press" },
+    { "t": 800, "target": "PB1", "action": "release" },
+    { "t": 6000, "target": "PB2", "action": "press" },
+    { "t": 6300, "target": "PB2", "action": "release" },
+    { "t": 7000, "target": "PB3", "action": "press" },
+    { "t": 7300, "target": "PB3", "action": "release" }
+  ],
+  "durationMs": 8000,
+  "judge": { "compareSignals": ["PL1", "PL2", "PL3"] }
+}
