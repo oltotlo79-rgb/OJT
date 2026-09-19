@@ -48,6 +48,8 @@ describe('出力ウィンドウ（§10.6）', () => {
         convertKey="F4"
         open
         onJump={() => undefined}
+        onExport={() => undefined}
+        exportIssues={[]}
       />,
     );
     const rows = screen.getAllByTestId(/^output-row-/u);
@@ -67,6 +69,8 @@ describe('出力ウィンドウ（§10.6）', () => {
         convertKey="F4"
         open
         onJump={() => undefined}
+        onExport={() => undefined}
+        exportIssues={[]}
       />,
     );
     expect(screen.getByTestId('output-row-0')).toHaveTextContent('n1');
@@ -76,7 +80,17 @@ describe('出力ウィンドウ（§10.6）', () => {
 
   it('jumps to the cell an issue points at, and does nothing for the rest', () => {
     const onJump = vi.fn();
-    render(<OutputWindow issues={issues} converted={false} convertKey="F4" open onJump={onJump} />);
+    render(
+      <OutputWindow
+        issues={issues}
+        converted={false}
+        convertKey="F4"
+        open
+        onJump={onJump}
+        onExport={() => undefined}
+        exportIssues={[]}
+      />,
+    );
     fireEvent.click(screen.getByTestId('output-row-0'));
     expect(onJump).toHaveBeenCalledWith({ networkId: 'n1', row: 0, col: 2 });
     // `missing-end` はセルを指していないので押しても動かない（決定表#4）
@@ -93,6 +107,8 @@ describe('出力ウィンドウ（§10.6）', () => {
         convertKey="F4"
         open
         onJump={() => undefined}
+        onExport={() => undefined}
+        exportIssues={[]}
       />,
     );
     expect(screen.getByTestId('usage-reads')).toHaveTextContent('X0');
@@ -109,6 +125,8 @@ describe('出力ウィンドウ（§10.6）', () => {
         convertKey="F4"
         open
         onJump={() => undefined}
+        onExport={() => undefined}
+        exportIssues={[]}
       />,
     );
     expect(screen.getByTestId('convert-state')).toHaveTextContent('未変換');
@@ -123,6 +141,8 @@ describe('出力ウィンドウ（§10.6）', () => {
         convertKey="F4"
         open={false}
         onJump={() => undefined}
+        onExport={() => undefined}
+        exportIssues={[]}
       />,
     );
     expect(screen.getByTestId('output-details')).not.toHaveAttribute('open');
@@ -134,8 +154,48 @@ describe('出力ウィンドウ（§10.6）', () => {
         convertKey="F4"
         open
         onJump={() => undefined}
+        onExport={() => undefined}
+        exportIssues={[]}
       />,
     );
     expect(screen.getByTestId('output-details')).toHaveAttribute('open');
   });
 });
+
+// --- Plan 4B Task 9 ---
+describe('命令語リストの書き出し（§10.7 / Task 9）', () => {
+  it('calls back without folding the output window away', () => {
+    const onExport = vi.fn();
+    render(
+      <OutputWindow
+        issues={{ errors: [], warnings: [], usage: undefined, unused: undefined }}
+        converted
+        convertKey="F4"
+        open
+        onJump={() => undefined}
+        onExport={onExport}
+        exportIssues={[]}
+      />,
+    );
+    fireEvent.click(screen.getByTestId('export-il'));
+    expect(onExport).toHaveBeenCalledTimes(1);
+    // `<summary>` の中の押しボタンなので、畳まれないことまで確かめる
+    expect(screen.getByTestId('output-details')).toHaveAttribute('open');
+  });
+
+  it('lists why the instruction list could not be written', () => {
+    render(
+      <OutputWindow
+        issues={{ errors: [], warnings: [], usage: undefined, unused: undefined }}
+        converted
+        convertKey="F4"
+        open
+        onJump={() => undefined}
+        onExport={() => undefined}
+        exportIssues={['左母線につながっていない出力があります。']}
+      />,
+    );
+    expect(screen.getByTestId('il-issues')).toHaveTextContent('左母線');
+  });
+});
+// --- /Plan 4B Task 9 ---

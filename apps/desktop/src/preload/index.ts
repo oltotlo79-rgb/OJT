@@ -5,6 +5,8 @@ import {
   type AppSettingsResponse,
   type OjtApi,
   type ProblemListPayload,
+  type SaveTextRequest,
+  type SaveTextResult,
   type WorkFileLoadRequest,
   type WorkFileLoadResult,
   type WorkFileSaveRequest,
@@ -13,7 +15,7 @@ import {
 
 /**
  * preload。設計仕様 §4.3。
- * `contextBridge` で §4.3 の6チャネルだけを `window.ojt` として公開する。
+ * `contextBridge` で §4.3 の7チャネルだけを `window.ojt` として公開する。
  * `ipcRenderer` そのものは決して露出しない。
  */
 
@@ -27,6 +29,10 @@ const api: OjtApi = {
   getSettings: () => ipcRenderer.invoke(IPC_CHANNELS.settingsGet) as Promise<AppSettingsResponse>,
   setSettings: (patch: Partial<AppSettings>) =>
     ipcRenderer.invoke(IPC_CHANNELS.settingsSet, patch) as Promise<AppSettings>,
+  // --- Plan 4B Task 9 ---
+  saveTextFile: (request: SaveTextRequest) =>
+    ipcRenderer.invoke(IPC_CHANNELS.textfileSave, request) as Promise<SaveTextResult>,
+  // --- /Plan 4B Task 9 ---
 };
 
 contextBridge.exposeInMainWorld('ojt', api);

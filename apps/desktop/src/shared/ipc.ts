@@ -5,10 +5,16 @@ import { problemIssueText } from './messages.js';
 /**
  * main ⇄ renderer の IPC 契約。設計仕様 §4.3。
  * チャネルは `content:list` / `content:read` / `workfile:save` / `workfile:load` /
- * `settings:get` / `settings:set` の **6本のみ**。preload はこの6本だけを `window.ojt` に出す。
+ * `settings:get` / `settings:set` / `file:saveText` の **7本のみ**。
+ * preload はこの7本だけを `window.ojt` に出す。
  */
 
-/** IPCチャネル名（この6本以外を足さない。§4.3）。 */
+/**
+ * IPCチャネル名（この7本以外を足さない。§4.3）。
+ * Phase 4 で `file:saveText` を足して**7本**になった（Plan 4B 意図的な差分 #1）。
+ * 命令語リストの保存（§10.7「ファイル出力先は利用者が選ぶ」）には保存ダイアログが要り、
+ * renderer からはダイアログを開けないためである。
+ */
 export const IPC_CHANNELS = {
   contentList: 'content:list',
   contentRead: 'content:read',
@@ -16,6 +22,7 @@ export const IPC_CHANNELS = {
   workfileLoad: 'workfile:load',
   settingsGet: 'settings:get',
   settingsSet: 'settings:set',
+  textfileSave: 'file:saveText',
 } as const;
 
 /**
@@ -237,7 +244,25 @@ export interface OjtApi {
   loadWorkFile: (request: WorkFileLoadRequest) => Promise<WorkFileLoadResult>;
   getSettings: () => Promise<AppSettingsResponse>;
   setSettings: (patch: Partial<AppSettings>) => Promise<AppSettings>;
+  // --- Plan 4B Task 9 ---
+  /** テキストファイルを保存する（命令語リスト）。§10.7 */
+  saveTextFile: (request: SaveTextRequest) => Promise<SaveTextResult>;
+  // --- /Plan 4B Task 9 ---
 }
+
+// --- Plan 4B Task 9 ---
+/** テキストファイルの保存要求（命令語リスト）。§10.7 */
+export interface SaveTextRequest {
+  /** 保存ダイアログに出す既定のファイル名（パス区切りは main 側で落とす）。 */
+  defaultFileName: string;
+  /** 中身。改行は呼び出し側が整えてから渡す（`instructionList()` は CRLF 済み）。 */
+  text: string;
+}
+
+/** 保存結果（`WorkFileSaveResult` と同じ形）。§13 #7 */
+export type SaveTextResult =
+  { ok: true; path: string } | { ok: false; canceled: boolean; message: string };
+// --- /Plan 4B Task 9 ---
 
 /**
  * `ProblemLoadError` を一覧行に直す。§13 #1

@@ -11,9 +11,10 @@ import {
   type LadderProgram,
   type Network,
 } from '@ojt/ladder-core';
-import type { DialectProfile } from '@ojt/plc-dialects';
+import { instructionList, INSTRUCTION_LIST_MESSAGES, type DialectProfile } from '@ojt/plc-dialects';
 import { useCallback, useEffect, useMemo, useRef, useState, type JSX } from 'react';
 import type { PlcCommandAction } from '../../worker/protocol.js';
+import { ojtApi } from '../app/ojt-api.js';
 import { useStore } from '../app/store.js';
 import { JA } from '../i18n/ja.js';
 import { errorCellKeys, runConvert } from '../session/ladder-errors.js';
@@ -87,6 +88,8 @@ export function LadderWorkspace({
   const closeNotation = useCallback((): void => {
     setNotationOpen(false);
   }, []);
+  /** 命令語リストにできなかった理由（§10.7 / Task 9）。出力ウィンドウに出す。 */
+  const [exportIssues, setExportIssues] = useState<readonly string[]>([]);
   /** 見た目（配色・セル寸法・枠の並び）はスキンが決める。決定表#5 */
   const theme = useMemo(() => skinThemeOf(profile), [profile]);
   const cssVars = useMemo(
@@ -143,6 +146,48 @@ export function LadderWorkspace({
     if (!auto || program === undefined) return;
     convert({ silent: true });
   }, [auto, program, convert]);
+
+  /**
+   * 命令語リストを書き出す。§10.7 / 受入基準⑥
+   * 文言は 4A の `INSTRUCTION_LIST_MESSAGES` を使い、訓練者が直せない言い回し
+   * （`coil-unconnected` / `not-series-parallel`）だけ**平易な直し方**に置き換える。
+   * `instructionList()` の生の `message` は回路ブロックの内部ID（`n1`）を含むので画面には出さない。
+   */
+  const exportIl = useCallback((): void => {
+    const store = useStore.getState();
+    const current = store.ladder;
+    if (current === undefined) return;
+    const list = instructionList(current, profile);
+    if (list.errors.length > 0) {
+      /*
+       * `INSTRUCTION_LIST_MESSAGES` は `Readonly<Record<string, string>>` で4キーしか入って
+       * いない（landed `instruction-list.ts` L45-50）。`issue.code` はただの `string` なので、
+       * **必ず `??` で受ける**（`noUncheckedIndexedAccess` の下で `string | undefined` に
+       * なる。無い鍵を引いたら `issue.message` に倒す。レビュー I9）。
+       * 同じ理由の指摘が出力の数だけ並ぶので、同じ文は1つに畳む。
+       */
+      const texts = list.errors.map(
+        (issue) =>
+          JA.ladder.ilIssueAdvice[issue.code] ??
+          INSTRUCTION_LIST_MESSAGES[issue.code] ??
+          issue.message,
+      );
+      setExportIssues([...new Set(texts)]);
+      return;
+    }
+    setExportIssues([]);
+    try {
+      void ojtApi()
+        .saveTextFile({ defaultFileName: `${problem.id}_命令語リスト.txt`, text: list.text })
+        .then((result) => {
+          const next = useStore.getState();
+          if (result.ok) next.toast(JA.ladder.ilSaved(result.path));
+          else if (!result.canceled) next.toast(result.message, 'error');
+        });
+    } catch (error) {
+      store.toast(error instanceof Error ? error.message : String(error), 'error');
+    }
+  }, [problem, profile]);
 
   /** 書込み／読出し／モニタ。モニタの開始停止は Worker にも伝える（決定表#5）。 */
   const changeMode = useCallback(
@@ -389,6 +434,8 @@ export function LadderWorkspace({
               onJump={(next) => {
                 useStore.getState().setLadderCursor(next);
               }}
+              onExport={exportIl}
+              exportIssues={exportIssues}
             />
           </div>
         </div>

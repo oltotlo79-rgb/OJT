@@ -799,3 +799,22 @@ details[open] > .sideSummary::before {
   font-weight: 700;
 }
 /* --- /Plan 4B Task 8 --- */
+
+/* --- Plan 4B Task 9: 命令語リストの書き出し（§10.7） --- */
+/*
+ * 出力ウィンドウの操作の並び。`<summary>`（見出し）の中に押しボタンを置くと、押すたびに
+ * 畳まれてしまう（click が `<details>` の開閉に食われる）ので、見出しの上に独立して置く。
+ * 畳んでいるスキン（PCwin風）でも押せる位置である。
+ */
+.outputTools {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 4px 8px 0;
+}
+
+.outputTools button {
+  min-height: 28px;
+  padding: 2px 10px;
+}
+/* --- /Plan 4B Task 9 --- */

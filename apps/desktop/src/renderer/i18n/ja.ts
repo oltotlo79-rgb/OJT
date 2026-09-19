@@ -581,6 +581,26 @@ export const JA = {
     notationNotFit: (model: string): string =>
       `この課題の入出力の割付が ${model} に収まらないため、このメーカーには切り替えられません`,
     // --- /Plan 4B Task 8 ---
+    // --- Plan 4B Task 9 ---
+    /** 命令語リストの書き出し（§10.7 / 受入基準⑥）。 */
+    exportIl: '命令語リスト',
+    ilSaved: (path: string): string => `命令語リストを保存しました: ${path}`,
+    /**
+     * 命令語リストにできなかった指摘のうち、`INSTRUCTION_LIST_MESSAGES` の文言のままでは
+     * 直し方が分からないものの言い換え。§10.7
+     *
+     * 4A の `reduceToExpr()` が分解に失敗するのは「左母線から出力まで辿れる道が無い」ときと
+     * 「直並列に分解できない渡り方をしている」ときの2つ。どちらも**どこをどう直すか**まで書く
+     * （申し送り F-1 が前者と同じ診断を `compile()` 側へ頼んでいる）。生の `message` は
+     * 回路ブロックの内部ID（`n1`）を含むので画面には出さない。
+     */
+    ilIssueAdvice: {
+      'coil-unconnected':
+        '左母線につながっていない出力があります。出力の左に接点か横線を置いて、左母線までつないでください。',
+      'not-series-parallel':
+        'この回路は命令語リストに変換できません（直列と並列の組み合わせに分けられません）。縦線の渡りを減らして組み直してください。',
+    } as Readonly<Record<string, string>>,
+    // --- /Plan 4B Task 9 ---
   },
   // --- /Plan 3B Task 4 ---
   // --- Plan 3B Task 10 ---
@@ -932,6 +952,27 @@ export const JA = {
     branchNeedsAnotherRung: '分岐先になる段がありません。先に「段を追加」で段を増やしてください。',
     branchHasLoad: 'コイル・表示灯・ブザーのある段は分岐にできません（分岐段に負荷は置けません）。',
     branchDone: 'この段を分岐にしました。',
+    branchOf: 'を分岐にしています：',
+    branchAborted: '分岐の指定をやめました（画面を切り替えたため）。',
+    // --- Plan 5 レビュー B1: タイマコイルの設定時間（§5.3.2 / §17.2 #12） ---
+    preset: '設定時間',
+    presetHint: '0.1〜10.0秒を0.1秒刻みで指定できます（実機のH3Y-4と同じ）。',
+    presetUp: '設定時間を0.1秒ふやす',
+    presetDown: '設定時間を0.1秒へらす',
+    presetAtMax: 'これ以上は長くできません（10.0秒まで）。',
+    presetAtMin: 'これ以上は短くできません（0.1秒から）。',
+    // --- Plan 5 レビュー Minor: 押せない理由・「全部消す」・検算パネルの見出し ---
+    addRungHint: 'いま選んでいる段のすぐ下に、新しい段を足します。',
+    addRungFull: '段はこれ以上ふやせません。',
+    removeRungHint: 'いま選んでいる段を消します。',
+    removeRungLast: '最後の1段は消せません。',
+    clearNothing: 'まだ何も描いていません。',
+    clearYes: 'はい、全部消す',
+    clearNo: 'やめる',
+    cleared: '回路図をすべて消しました。',
+    verifiedProblem: '検算した課題',
+    draftUnreadable:
+      '作業ファイルの回路図の下書きは読めませんでした（盤の配線だけを開きます）。',
     // --- Plan 5 Task 7: ビュー切替（盤／並べて／回路図） ---
     /** ツールバーの切替の見出し。「何を見るか」を選ぶ道具であることを先に言う。 */
     viewLabel: '表示',

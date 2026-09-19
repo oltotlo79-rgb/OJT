@@ -26,6 +26,8 @@ export function OutputWindow({
   convertKey,
   open,
   onJump,
+  onExport,
+  exportIssues,
 }: {
   issues: ConvertIssues;
   converted: boolean;
@@ -38,6 +40,12 @@ export function OutputWindow({
    */
   open: boolean;
   onJump: (cursor: LadderCursor) => void;
+  // --- Plan 4B Task 9 ---
+  /** 命令語リストの書き出し（§10.7 / 決定表#14）。 */
+  onExport: () => void;
+  /** 書き出せなかった理由（`INSTRUCTION_LIST_MESSAGES` の文言＋平易な説明）。 */
+  exportIssues: readonly string[];
+  // --- /Plan 4B Task 9 ---
 }): JSX.Element {
   const rows: Row[] = [
     ...issues.errors
@@ -58,6 +66,16 @@ export function OutputWindow({
   const unused = issues.unused;
   return (
     <section className={styles.output} data-testid="output-window" aria-label={JA.ladder.output}>
+      {/*
+        命令語リストの書き出し（§10.7 / Task 9）。`<summary>` の中に置くと押すたびに出力
+        ウィンドウが畳まれる（押しボタンの click が `<details>` の開閉に食われる）ので、
+        畳んでいるあいだも押せるよう**見出しの上**に独立した並びとして置く。
+      */}
+      <div className={styles.outputTools}>
+        <button type="button" data-testid="export-il" onClick={onExport}>
+          {JA.ladder.exportIl}
+        </button>
+      </div>
       {/*
         畳めるようにする（2026-09-19 UXレビュー #27）。既定の開閉はスキンが持つ `open` に従う
         （`window` のスキンは開いたまま。変換の結果はいちばん見せたい情報。PCwin風だけは
@@ -81,6 +99,14 @@ export function OutputWindow({
           </span>
         </summary>
         <div className={styles.outputBody}>
+          {/* 命令語リストにできなかった理由（§10.7 / Task 9）。直し方まで書く */}
+          {exportIssues.length === 0 ? null : (
+            <ul className={styles.notationErrors} data-testid="il-issues">
+              {exportIssues.map((text) => (
+                <li key={text}>{text}</li>
+              ))}
+            </ul>
+          )}
           <ul className={styles.outputList}>
             {rows.length === 0 ? (
               <li className={styles.outputEmpty}>{JA.ladder.noIssues}</li>
