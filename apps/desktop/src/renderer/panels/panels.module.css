@@ -83,6 +83,8 @@
 .partRow {
   display: flex;
   align-items: center;
+  /* 押せない理由（`.partReason`）は行の下へ折り返して全文を読ませる（利用者要望 2026-09-19） */
+  flex-wrap: wrap;
   gap: 8px;
   margin-bottom: 4px;
 }
@@ -234,3 +236,50 @@
   stroke-dasharray: 3 3;
   stroke-width: 1;
 }
+
+/* --- parts swap 2026-09-19 --- */
+/*
+ * ソケットの部品カード（装着・取り外し・交換）。§8.2
+ * 利用者要望 2026-09-19。押せないボタンの理由は行の下に折り返して全文を出す。
+ */
+.partsHint {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+  margin: 0;
+}
+
+.socketCard {
+  background: var(--panel-2);
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  padding: 6px 8px;
+  margin-bottom: 8px;
+}
+
+.socketCardTitle {
+  font-size: 13px;
+  font-weight: 700;
+  margin: 0 0 2px;
+}
+
+.socketCardStatus {
+  color: var(--muted);
+  font-size: 11px;
+  margin: 0 0 6px;
+}
+
+.cardActions {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.partReason {
+  color: var(--muted);
+  flex-basis: 100%;
+  font-size: 11px;
+  line-height: 1.5;
+  margin: 2px 0 0;
+}
+/* --- /parts swap 2026-09-19 --- */

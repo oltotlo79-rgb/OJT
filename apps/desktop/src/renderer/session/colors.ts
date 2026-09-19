@@ -87,3 +87,10 @@ export const LAMP_EMISSIVE: Readonly<Record<string, number>> = {
   dim: 0.35,
   off: 0,
 };
+
+/**
+ * 選択中のソケット（部品パネルのカードが指しているソケット）の目印の色。§8.2
+ * 利用者要望 2026-09-19「分かりやすく直感的に操作できるUI、UXにしてね」。
+ * 端子のホバー色と同系にして「いま触っている所」の意味を揃える。
+ */
+export const SOCKET_SELECTED_COLOR = '#39D0FF';

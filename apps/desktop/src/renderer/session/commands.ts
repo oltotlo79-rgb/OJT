@@ -196,3 +196,40 @@ export function runSetPreset(
     `${socketId} のタイマを ${(presetMs / 1000).toFixed(1)} 秒に設定`,
   );
 }
+
+/**
+ * 部品を入れ替える（外して別の部品を挿し直す）。**1手**として履歴に積む。§8.2
+ * 利用者要望 2026-09-19「リレーやタイマはソケットから外して入れ替えたりできるようにすること」。
+ *
+ * 履歴は操作の前後のスナップショットで持つ（このファイル冒頭の方針）ので、`unplug` → `plug` を
+ * 続けて実行しても**前後の差だけ**を1件に畳める。取り外しと装着で2手積むと「元に戻す」を
+ * 2回押さないと元の部品に戻らず、利用者から見て1回の操作と食い違う。
+ *
+ * 挿す側が失敗したら（在庫切れ・未知のレンジ）、抜いた部品をその場に戻して何もしなかったことに
+ * する。`session` は呼び出し側（ストア）が持っている実体そのものなので、途中の状態を残して
+ * 帰ってはいけない。
+ */
+export function runSwapPart(
+  session: BoardSession,
+  socketId: SocketId,
+  kind: MountableKind,
+): CommandResult<unknown> {
+  const before = cloneSession(session);
+  const removed = unplug(session, socketId);
+  if (!removed.ok) return { ok: false, code: removed.code, message: removed.message };
+  const result = plug(session, socketId, kind);
+  if (!result.ok) {
+    session.mounted[socketId] = removed.value;
+    return { ok: false, code: result.code, message: result.message };
+  }
+  return {
+    ok: true,
+    value: result.value,
+    command: {
+      kind: 'replacePart',
+      label: `${socketId} の部品を ${kind} に交換`,
+      before,
+      after: cloneSession(session),
+    },
+  };
+}

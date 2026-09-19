@@ -993,3 +993,59 @@ export const JA_3D = {
   timerOut: 'UP',
 } as const;
 // --- /3D fidelity 2026-09-19 ---
+
+// --- parts swap 2026-09-19 ---
+/**
+ * ソケットの部品カード（装着・取り外し・交換）の文言。§8.2
+ * 利用者要望 2026-09-19「リレーやタイマはソケットから外して入れ替えたりできるようにすること」
+ * 「分かりやすく直感的に操作できるUI、UXにしてね」に対応する。
+ *
+ * 押せないボタンには**必ず理由を日本語で添える**（UXレビュー指摘: 装着ボタンが理由も無く
+ * 押せなかった）。`partsPanel.*Reason` がその文面で、ボタンの `aria-describedby` から指す。
+ */
+export const JA_PARTS = {
+  /** 何も選んでいないときの案内（パネルの空状態）。 */
+  hint: '3D 盤のソケット（または装着済みの部品）をクリックすると、装着・取り外し・交換ができます',
+  /** カード見出しの接頭辞。 */
+  socket: 'ソケット',
+  /** 空きソケットの見出し。 */
+  empty: '空',
+  /** 装着部品の呼び名（見出し用。型番まで出して実機と結び付けやすくする）。 */
+  relayName: 'リレー MY4N',
+  timerName: 'タイマ H3Y-4',
+  /** 交換を始めるボタン。 */
+  swap: '交換…',
+  /** 交換をやめるボタン。 */
+  swapCancel: '交換をやめる',
+  /** 交換する部品を選ばせる見出し。 */
+  swapPrompt: '入れ替える部品を選んでください',
+  /** 交換先を決めるボタン。 */
+  swapTo: 'これに交換',
+  /** 在庫切れで装着できない理由。 */
+  noStockReason: 'この部品の在庫がありません。他のソケットから取り外すと戻ります',
+  /** 交換できる部品が1つも無い理由。 */
+  noSwapReason: '交換できる部品が在庫にありません。他のソケットから取り外すと戻ります',
+  /**
+   * 通電中の抜き差しについての注意。
+   * エンジン（`board-model` の `unplug()` / `circuit-sim` の `unmountPart()`）は通電中の
+   * 取り外しを**禁止しておらず、危険操作としても数えない**（`HAZARD_KINDS` に該当種別が無い）。
+   * 仕様どおり操作は通すが、実機の手順（§5.3.5）を思い出せるよう注意書きだけ出す。
+   */
+  liveNote: '通電中です。実機ではブレーカを切ってから部品を抜き差しします',
+  /** タイマを入れ替えると設定時間が初期値に戻ること。 */
+  timerResetNote: 'タイマを入れ替えると設定時間は初期値に戻ります',
+} as const;
+
+/** 部品カードの見出し（`ソケット S3: リレー MY4N（CR1）` / `ソケット S3: 空`）。§8.2 */
+export function socketCardTitle(
+  socketId: string,
+  role: string | undefined,
+  kind: 'relay-my4n' | 'timer-h3y4' | undefined,
+): string {
+  if (kind === undefined) return `${JA_PARTS.socket} ${socketId}: ${JA_PARTS.empty}`;
+  const name = kind === 'relay-my4n' ? JA_PARTS.relayName : JA_PARTS.timerName;
+  return role === undefined
+    ? `${JA_PARTS.socket} ${socketId}: ${name}`
+    : `${JA_PARTS.socket} ${socketId}: ${name}（${role}）`;
+}
+// --- /parts swap 2026-09-19 ---
