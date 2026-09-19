@@ -18,6 +18,8 @@
     "@ojt/board-model": "workspace:*",
     "@ojt/circuit-sim": "workspace:*",
     "@ojt/content": "workspace:*",
+    "@ojt/ladder-core": "workspace:*",
+    "@ojt/plc-dialects": "workspace:*",
     "@ojt/schematic-core": "workspace:*"
   },
   "devDependencies": {

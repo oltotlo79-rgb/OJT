@@ -56,6 +56,12 @@ importers:
       '@ojt/content':
         specifier: workspace:*
         version: link:../../packages/content
+      '@ojt/ladder-core':
+        specifier: workspace:*
+        version: link:../../packages/ladder-core
+      '@ojt/plc-dialects':
+        specifier: workspace:*
+        version: link:../../packages/plc-dialects
       '@ojt/schematic-core':
         specifier: workspace:*
         version: link:../../packages/schematic-core
