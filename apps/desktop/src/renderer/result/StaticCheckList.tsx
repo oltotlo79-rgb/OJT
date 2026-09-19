@@ -16,7 +16,7 @@ export function StaticCheckList({ checks }: { checks: readonly StaticCheckResult
       <h2>{JA.result.staticChecks}</h2>
       <div data-testid="static-checks">
         {checks.map((check) => (
-          <div key={check.id}>
+          <div key={check.id} data-testid={`static-check-${check.id}`}>
             <div className={styles.checkRow}>
               <span className={check.ok ? styles.badgeOk : styles.badgeNg}>
                 {check.ok ? JA.result.ok : JA.result.ng}

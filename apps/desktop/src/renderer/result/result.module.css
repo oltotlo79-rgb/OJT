@@ -132,3 +132,41 @@
   gap: 10px;
   margin-top: 16px;
 }
+
+/* --- Plan 3B Task 13: モードDの結果画面 --- */
+
+/*
+ * 合否は「まず目に入る」大きさにする（2026-09-19 の利用者決定）。
+ * 既存の `.verdict` に重ねて字だけ大きくするので、色と角丸は共通のまま。
+ */
+.verdictBig {
+  font-size: 32px;
+  padding: 8px 28px;
+}
+
+/* 「なぜこの判定になったか」。合否のすぐ下、波形より前に置く。 */
+.why {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--accent);
+  border-radius: 6px;
+  margin-bottom: 16px;
+  padding: 10px 14px;
+}
+
+.why h2 {
+  color: var(--muted);
+  font-size: 12px;
+  margin: 0 0 6px;
+}
+
+.reasons {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.reasons li {
+  line-height: 1.6;
+  margin: 4px 0;
+}
+/* --- /Plan 3B Task 13 --- */

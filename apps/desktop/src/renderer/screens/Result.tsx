@@ -1,10 +1,16 @@
-import { isAssembleProblem, isInspectPartsProblem, isInspectRepairProblem } from '@ojt/content';
+import {
+  isAssembleProblem,
+  isInspectPartsProblem,
+  isInspectRepairProblem,
+  isPlcProblem,
+} from '@ojt/content';
 import { useEffect, type JSX } from 'react';
 import { isInspectJudge, isPlcJudge, useStore } from '../app/store.js';
 import { tryOjtApi } from '../app/ojt-api.js';
 import { JA } from '../i18n/ja.js';
 import { InspectPartsResult } from '../result/InspectPartsResult.js';
 import { InspectRepairResult } from '../result/InspectRepairResult.js';
+import { PlcResult } from '../result/PlcResult.js';
 import { ResultView } from '../result/ResultView.js';
 import styles from './screens.module.css';
 
@@ -12,6 +18,21 @@ import styles from './screens.module.css';
  * 結果画面のルート。設計仕様 §8.3 / §12.1 / §12.3。
  * 判定結果が無いのに開かれた場合は課題一覧へ戻す導線だけを出す。
  */
+
+/**
+ * 判定結果が無い（または課題と判定結果のモードが食い違っている）ときの枠。§12.1
+ * 同じ枠を4箇所に書かないための切り出し（Plan 3B Task 13）。
+ */
+function NoResult({ onBack }: { onBack: () => void }): JSX.Element {
+  return (
+    <div className={styles.center}>
+      <p>{JA.result.noResult}</p>
+      <button type="button" onClick={onBack}>
+        {JA.result.toList}
+      </button>
+    </div>
+  );
+}
 
 /** 結果画面。 */
 export function Result(): JSX.Element {
@@ -22,6 +43,9 @@ export function Result(): JSX.Element {
   const setRoute = useStore((s) => s.setRoute);
   const resetSession = useStore((s) => s.resetSession);
   const hasJudge = judge !== undefined;
+  const backToList = (): void => {
+    setRoute('list');
+  };
 
   /*
    * 判定まで終わった作業の一時保存は消す（1D2-a のレビュー指摘）。§12.3
@@ -35,19 +59,7 @@ export function Result(): JSX.Element {
   }, [hasJudge]);
 
   if (problem === undefined || judge === undefined) {
-    return (
-      <div className={styles.center}>
-        <p>{JA.result.noResult}</p>
-        <button
-          type="button"
-          onClick={() => {
-            setRoute('list');
-          }}
-        >
-          {JA.result.toList}
-        </button>
-      </div>
-    );
+    return <NoResult onBack={backToList} />;
   }
 
   /*
@@ -56,6 +68,21 @@ export function Result(): JSX.Element {
    * 課題と結果のモードが食い違っている（保存データの取り違え等）ときは、判定が無いのと
    * 同じ扱いにして一覧へ戻せるようにする。
    */
+  if (isPlcJudge(judge)) {
+    if (!isPlcProblem(problem)) return <NoResult onBack={backToList} />;
+    return (
+      <PlcResult
+        problem={problem}
+        result={judge}
+        restoredHazardCount={restoredHazardCount}
+        onRetry={() => {
+          resetSession();
+        }}
+        onBackToList={backToList}
+      />
+    );
+  }
+
   if (isInspectJudge(judge)) {
     if (judge.mode === 'inspect-parts' && isInspectPartsProblem(problem)) {
       return (
@@ -66,9 +93,7 @@ export function Result(): JSX.Element {
           onRetry={() => {
             resetSession();
           }}
-          onBackToList={() => {
-            setRoute('list');
-          }}
+          onBackToList={backToList}
         />
       );
     }
@@ -82,45 +107,15 @@ export function Result(): JSX.Element {
           onRetry={() => {
             resetSession();
           }}
-          onBackToList={() => {
-            setRoute('list');
-          }}
+          onBackToList={backToList}
         />
       );
     }
-    return (
-      <div className={styles.center}>
-        <p>{JA.result.noResult}</p>
-        <button
-          type="button"
-          onClick={() => {
-            setRoute('list');
-          }}
-        >
-          {JA.result.toList}
-        </button>
-      </div>
-    );
+    return <NoResult onBack={backToList} />;
   }
 
-  /*
-   * モードDの結果画面は Plan 3B Task 13 が足す。それまでは判定が無いのと同じ扱いにして
-   * 一覧へ戻せるようにする（`ResultView` はモードBの `JudgeResult` しか受けない）。
-   */
-  if (!isAssembleProblem(problem) || isPlcJudge(judge)) {
-    return (
-      <div className={styles.center}>
-        <p>{JA.result.noResult}</p>
-        <button
-          type="button"
-          onClick={() => {
-            setRoute('list');
-          }}
-        >
-          {JA.result.toList}
-        </button>
-      </div>
-    );
+  if (!isAssembleProblem(problem)) {
+    return <NoResult onBack={backToList} />;
   }
 
   return (
@@ -131,9 +126,7 @@ export function Result(): JSX.Element {
       onRetry={() => {
         resetSession();
       }}
-      onBackToList={() => {
-        setRoute('list');
-      }}
+      onBackToList={backToList}
     />
   );
 }

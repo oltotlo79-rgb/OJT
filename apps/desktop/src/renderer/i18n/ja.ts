@@ -1,5 +1,5 @@
 import type { RoutingErrorReason } from '@ojt/board-model';
-import type { HazardKind, Mismatch, MismatchReason } from '@ojt/circuit-sim';
+import type { HazardKind, MismatchReason } from '@ojt/circuit-sim';
 import type { FaultReportKind, StaticCheckId } from '@ojt/content';
 import { MSG } from '../../shared/messages.js';
 import type { ProbeSide } from '../app/store-types.js';
@@ -507,6 +507,32 @@ export const JA = {
     /** 押せないボタンの理由を画面にも出す（`title` だけに頼らない）。 */
     judgeBlocked: '判定できません',
     // --- /Plan 3B Task 12 ---
+    // --- Plan 3B Task 13 ---
+    /** 結果画面で最初に読ませる「なぜそうなったか」。2026-09-19 の利用者決定 */
+    why: 'この判定になった理由',
+    whyPassed: '模範回路と同じ動作で、配線の検査もすべて通りました。',
+    /** 見比べた信号の見出し（`見比べた信号: PL1・PL2`）。§10.8 */
+    compared: '見比べた信号',
+    /** H-5: PLCの電源を盤から取っている。§10.1 */
+    powerFromBoard:
+      'PLCの電源は壁コンセント（AC100V）から取ります。試験用盤のAC100V・DC24VをPLCの電源に使うことはできません（§10.1）。',
+    /** H-5: 壁コンセントへ未配線。決定表#15c */
+    powerUnwired: 'PLCの電源が未配線です。壁コンセントの L と N へ2本配線してください。',
+    /** H-5: どちらの場合も添える説明。 */
+    powerSimNote:
+      '本アプリのPLCは PLC.L / PLC.N が未配線でも動作します（AC電源は電気的に解かないため）。ラダーどおりに動いていても、このチェックは不合格になります。',
+    /** 二段構成（`twoStage`）の直し方。§10.2 */
+    adviceTwoStage:
+      'PLCの出力はリレーのコイル（13・14番）へ、そのリレーの接点から表示灯へ、の2段で配線してください。',
+    /** I/O割付（`ioAssignment`）の直し方。§7.6 */
+    adviceIoAssignment:
+      'I/O割付表のとおりに、押ボタンのa接点をPLCの入力へ、PLCの出力をリレーのコイルへ配線し直してください。',
+    /** 変換に落ちたラダーの説明。H-1 */
+    ladderNotSimulated:
+      '変換に失敗したため、このラダーはシミュレートされていません。出力ウィンドウの指摘を直してから判定してください。',
+    ladderErrors: 'ラダーの変換エラー',
+    ladderWarnings: 'ラダーの警告',
+    // --- /Plan 3B Task 13 ---
   },
   // --- /Plan 3B Task 10 ---
   hazard: {
@@ -796,3 +822,40 @@ export function plcInputSpecText(ohms: number, onAmps: number, offAmps: number):
   return `入力回路 ${(ohms / 1000).toFixed(1)}kΩ／ON ${mA(onAmps)}mA 以上／OFF ${mA(offAmps)}mA 以下`;
 }
 // --- /Plan 3B Task 9 ---
+
+// --- Plan 3B Task 13 ---
+/**
+ * 差分1件を1文にする（`PL1 が 1.20 s で ON のはずが OFF でした（値違い）`）。§10.8
+ * 時刻と値の整形は呼び出し側（`plc-explain.ts`）が済ませて渡す。i18n から描画側の
+ * 整形関数（`timeReadout`）へ依存を伸ばさないため。
+ */
+export function mismatchSentence(
+  signal: string,
+  time: string,
+  expected: string,
+  actual: string,
+  reason: string,
+): string {
+  return `${signal} が ${time} で ${expected} のはずが ${actual} でした（${reason}）`;
+}
+
+/** 変換エラーで判定が落ちたことの1文。§10.6 / 3A H-1 */
+export function ladderErrorSummary(count: number): string {
+  return `ラダーの変換に失敗しています（${String(count)} 件）。まず変換の指摘を直してください。`;
+}
+
+/** 落ちた静的チェック1件の理由（`二段構成: … → …`）。§10.8 */
+export function checkReasonText(title: string, detail: string, advice?: string): string {
+  return advice === undefined ? `${title}: ${detail}` : `${title}: ${detail} → ${advice}`;
+}
+
+/** 理由欄に並べきらなかった差分の件数。§10.8 */
+export function moreMismatchesText(count: number): string {
+  return `ほか ${String(count)} 件の差分があります（下の差分一覧を見てください）`;
+}
+
+/** 見比べた信号（`見比べた信号: PL1・PL2`）。§10.8 */
+export function comparedSignalsText(signals: readonly string[]): string {
+  return `${JA.plc.compared}: ${signals.join('・')}`;
+}
+// --- /Plan 3B Task 13 ---
