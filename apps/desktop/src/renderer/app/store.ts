@@ -85,7 +85,9 @@ import { plcForVendor, plcUnitForVendor } from '../session/plc-skin.js';
 // --- Plan 5 Task 6 ---
 import {
   clampCursor,
+  cursorAfterEdit,
   emptySchematicHistory,
+  issueText,
   pushSchematic,
   redoSchematic,
   undoSchematic,
@@ -355,6 +357,15 @@ export interface AppState {
   verifying: boolean;
   /** 直近の検算の結果（課題を開き直すと消える）。§11.4 */
   verifyResult: VerifyResult | undefined;
+  /**
+   * いま走っている検算が見ている文書（走っていなければ undefined）。§11.4 / レビュー I2
+   *
+   * 検算は Worker との往復なので、待っているあいだにも図は直せる。何も目印を持たないと
+   * 「直したあとの図」に「直す前の図の結果」が出てしまうので、依頼のときの文書そのものを
+   * 控えておき、結果が届いたときに**いまの文書と同じものか**を見る（編集は必ず新しい
+   * 文書を作るので、参照の同一性でそのまま判別できる）。
+   */
+  verifyingDoc: SchematicDocument | undefined;
   // --- /Plan 5 Task 6 ---
 
   /** 訓練者のラダー（モードDのみ）。§10.3 */
@@ -550,8 +561,10 @@ export interface AppState {
   redoSchematicEdit: () => boolean;
   /** 検算の往復を始める・終える。§11.4 */
   setVerifying: (verifying: boolean) => void;
-  /** 検算の結果を入れる（往復も終わる）。§11.4 */
+  /** 検算の結果を入れる（往復も終わる）。古い文書あての結果は捨てる。§11.4 / レビュー I2 */
   setVerifyResult: (result: VerifyResult | undefined) => void;
+  /** 描いた回路図をすべて消す（空の1段に戻す。確認は画面側）。§11.4 */
+  clearSchematic: () => boolean;
   // --- /Plan 5 Task 6 ---
   /** ラダーを差し替える（前の状態を履歴に積み、変換済みフラグを落とす）。§10.6 */
   setLadder: (program: LadderProgram) => void;
@@ -713,7 +726,12 @@ function schematicFields(
   problem?: SupportedProblem,
 ): Pick<
   AppState,
-  'schematicDoc' | 'schematicHistory' | 'schematicCursor' | 'verifying' | 'verifyResult'
+  | 'schematicDoc'
+  | 'schematicHistory'
+  | 'schematicCursor'
+  | 'verifying'
+  | 'verifyResult'
+  | 'verifyingDoc'
 > {
   return {
     schematicDoc:
@@ -724,7 +742,24 @@ function schematicFields(
     schematicCursor: { rungId: 'r1', index: 0 },
     verifying: false,
     verifyResult: undefined,
+    verifyingDoc: undefined,
   };
+}
+
+/**
+ * 図が変わったときの検算まわりの巻き戻し。§11.4 / 決定表#6 / レビュー I2
+ *
+ * 前の結果を捨て、「検算中…」を下ろす。**依頼の宛先（`verifyingDoc`）は残す**：走っている
+ * 検算の結果が後から届いたときに、`setVerifyResult()` が「いまの図と違う＝古い」と見抜くのに
+ * 要る（直したあとの図に、直す前の図の判定を出さない）。
+ */
+function staleVerify(): Pick<AppState, 'verifying' | 'verifyResult'> {
+  return { verifying: false, verifyResult: undefined };
+}
+
+/** 検算の往復だけを下ろす（前の結果は残す）。Worker が落ちたときと、古い結果を捨てるとき。 */
+function staleVerifying(): Pick<AppState, 'verifying' | 'verifyingDoc'> {
+  return { verifying: false, verifyingDoc: undefined };
 }
 // --- /Plan 5 Task 6 ---
 
@@ -1206,7 +1241,11 @@ export const useStore = create<AppState>((set, get) => ({
   },
   // --- Plan 5 Task 6 ---
   setSchematicDoc: (schematicDoc) => {
-    set({ schematicDoc, schematicCursor: clampCursor(schematicDoc, get().schematicCursor) });
+    set({
+      schematicDoc,
+      schematicCursor: clampCursor(schematicDoc, get().schematicCursor),
+      ...staleVerify(),
+    });
   },
   /**
    * 編集を1つ当てる。断られたらトーストに理由を出して `false` を返す（盤のコマンドと同じ流儀）。
@@ -1217,17 +1256,20 @@ export const useStore = create<AppState>((set, get) => ({
     if (doc === undefined) return false;
     const outcome = applyEdit(doc, edit);
     if (!outcome.ok) {
-      get().toast(outcome.message, 'error');
+      // 断りの文面にも内部ID（`r3` / `c01`）は出さない（レビュー I3）
+      get().toast(issueText(doc, outcome.message), 'error');
       return false;
     }
     set({
       schematicDoc: outcome.doc,
       schematicHistory: pushSchematic(get().schematicHistory, doc),
-      schematicCursor: clampCursor(outcome.doc, get().schematicCursor),
-      // 文書が変わったら前回の検算結果は古い（決定表#6）
-      verifyResult: undefined,
+      // 置いたら次の桁へ進める（Enter を3回で PB1 → PB2 → CR1 の順に並ぶ）。レビュー I1
+      schematicCursor: cursorAfterEdit(outcome.doc, get().schematicCursor, edit),
+      // 文書が変わったら前回の検算結果は古い（決定表#6 / レビュー I2）
+      ...staleVerify(),
     });
-    get().addLog(editLabel(edit));
+    // 操作ログにも内部IDは出さない（レビュー I3）
+    get().addLog(issueText(doc, editLabel(edit)));
     return true;
   },
   setSchematicCursor: (schematicCursor) => {
@@ -1245,7 +1287,7 @@ export const useStore = create<AppState>((set, get) => ({
       schematicDoc: step.doc,
       schematicHistory: step.history,
       schematicCursor: clampCursor(step.doc, get().schematicCursor),
-      verifyResult: undefined,
+      ...staleVerify(),
     });
     return true;
   },
@@ -1258,15 +1300,41 @@ export const useStore = create<AppState>((set, get) => ({
       schematicDoc: step.doc,
       schematicHistory: step.history,
       schematicCursor: clampCursor(step.doc, get().schematicCursor),
-      verifyResult: undefined,
+      ...staleVerify(),
     });
     return true;
   },
+  /** 描いた回路図をすべて消す（1手で元に戻せる）。確認は画面側が取る。§11.4 */
+  clearSchematic: () => {
+    const doc = get().schematicDoc;
+    if (doc === undefined) return false;
+    const empty = emptySchematic(doc.id, doc.title);
+    set({
+      schematicDoc: empty,
+      schematicHistory: pushSchematic(get().schematicHistory, doc),
+      schematicCursor: clampCursor(empty, get().schematicCursor),
+      ...staleVerify(),
+    });
+    get().addLog(JA.schematic.cleared);
+    get().toast(JA.schematic.cleared, 'info');
+    return true;
+  },
   setVerifying: (verifying) => {
-    set({ verifying });
+    // 依頼の宛先（いまの文書）を控える。結果が届いたときに古いかどうかを見る（レビュー I2）
+    set(verifying ? { verifying: true, verifyingDoc: get().schematicDoc } : staleVerifying());
   },
   setVerifyResult: (verifyResult) => {
-    set({ verifyResult, verifying: false });
+    const asked = get().verifyingDoc;
+    /*
+     * 依頼したときの図といまの図が違えば、この結果は**古い図の答え**なので捨てる
+     * （レビュー I2）。依頼を控えていない場合（作業ファイルの復元や試験の直接投入）は
+     * 比べようが無いのでそのまま受ける。
+     */
+    if (asked !== undefined && asked !== get().schematicDoc) {
+      set(staleVerifying());
+      return;
+    }
+    set({ verifyResult, verifying: false, verifyingDoc: undefined });
   },
   // --- /Plan 5 Task 6 ---
   setLadder: (program) => {
@@ -1498,6 +1566,7 @@ export const useStore = create<AppState>((set, get) => ({
        */
       verifying: false,
       verifyResult: undefined,
+      verifyingDoc: undefined,
       // 盤を描き直すので盤のビューへ戻す（Plan 5 Task 7 / 決定表#1）
       assembleView: 'board' as const,
       tester: createTesterState(get().tester.kind),

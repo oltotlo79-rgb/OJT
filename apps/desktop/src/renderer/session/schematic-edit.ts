@@ -1,10 +1,17 @@
-import { SOCKET_ROLES, type BoardDefinition, type SocketRole } from '@ojt/board-model';
+import {
+  SOCKET_ROLES,
+  TIMER_RANGE_10S,
+  type BoardDefinition,
+  type SocketRole,
+} from '@ojt/board-model';
+import { TIMER_MIN_PRESET_MS } from '@ojt/circuit-sim';
 import type { AssembleProblem } from '@ojt/content';
 import {
   CELL_KIND_LABELS,
   rungHasLoad,
   type CellKind,
   type RungEnd,
+  type SchematicCell,
   type SchematicDocument,
   type SchematicEdit,
 } from '@ojt/schematic-core';
@@ -183,6 +190,29 @@ export function moveCursor(
   }
 }
 
+/**
+ * 編集のあとにカーソルが行く先。§11.4 / レビュー I1
+ *
+ * 置いたら**その次の桁**を指す（`Enter` を3回打てば打った順に並ぶ。指さないと `CR1, PB1, PB2`
+ * のように逆順に積み上がる）。置き換えたらその桁のまま。ほかの編集は文書の中へ収め直すだけ。
+ */
+export function cursorAfterEdit(
+  doc: SchematicDocument,
+  cursor: EditorCursor,
+  edit: SchematicEdit,
+): EditorCursor {
+  if (edit.kind === 'insertCell') {
+    return clampCursor(doc, { rungId: edit.rungId, index: edit.index + 1 });
+  }
+  if (edit.kind === 'replaceCell') {
+    for (const r of doc.rungs) {
+      const index = r.cells.findIndex((c) => c.id === edit.cellId);
+      if (index >= 0) return clampCursor(doc, { rungId: r.id, index });
+    }
+  }
+  return clampCursor(doc, cursor);
+}
+
 /** カーソルの下にある要素のID（末尾の空き桁なら undefined）。 */
 export function cellUnder(doc: SchematicDocument, cursor: EditorCursor): string | undefined {
   return doc.rungs.find((r) => r.id === cursor.rungId)?.cells[cursor.index]?.id;
@@ -269,10 +299,18 @@ export function pickBranchNode(
   };
 }
 
-/** 分岐中の1行の案内（手順帯の案内を一時的に置き換える）。決定表#24 */
-export function branchStepHint(branch: BranchDraft | undefined): string | undefined {
+/**
+ * 分岐中の1行の案内（手順帯の案内を一時的に置き換える）。決定表#24
+ * **どの段を分岐にしているか**を先に言う（レビュー Minor: 段を選び直したつもりの取り違え防止）。
+ * 画面に内部IDは出さない約束なので、段は `rungLabel()` の「1段目」で呼ぶ。
+ */
+export function branchStepHint(
+  doc: SchematicDocument,
+  branch: BranchDraft | undefined,
+): string | undefined {
   if (branch === undefined) return undefined;
-  return branch.from === undefined ? JA.schematic.branchPickFrom : JA.schematic.branchPickTo;
+  const step = branch.from === undefined ? JA.schematic.branchPickFrom : JA.schematic.branchPickTo;
+  return `${rungLabel(doc, branch.rungId)}${JA.schematic.branchOf}${step}`;
 }
 
 /**
@@ -324,4 +362,107 @@ export function keyToEdit(
 /** 文書に置かれている要素の総数（手順帯の「描いた」の判定に使う）。 */
 export function cellCount(doc: SchematicDocument): number {
   return doc.rungs.reduce((sum, r) => sum + r.cells.length, 0);
+}
+
+/* ここから「画面に出す文面」（レビュー I3・I4 / Minor）。内部IDは1文字も外へ出さない。 */
+
+/** 段の呼び名（`r1` → 「1段目」）。知らない段は「その段」。 */
+export function rungLabel(doc: SchematicDocument, rungId: string): string {
+  const row = doc.rungs.findIndex((r) => r.id === rungId);
+  return row < 0 ? 'その段' : `${row + 1}段目`;
+}
+
+/**
+ * 内部IDを含む文面を画面の言葉に直す（レビュー I3・I4）。
+ *
+ * `validateDocument()` / `applyEdit()` / `verifySchematic()` の文面は内部ID（`r1` / `c01`）と
+ * 内部の経路（`rungs[0].cells[1]`）を含むが、**画面に内部IDは出さない**約束なので
+ * 「1段目」「1段目の2番目」に読み替える（利用者要求「分かりやすく直感的に」）。
+ * エディタの指摘欄・検算パネル・トースト・操作ログは**すべてこの関数を通す**。
+ */
+export function issueText(doc: SchematicDocument, message: string): string {
+  const names: Array<{ id: string; text: string }> = [];
+  doc.rungs.forEach((r, ri) => {
+    names.push({ id: r.id, text: `${ri + 1}段目` });
+    r.cells.forEach((cell, ci) => {
+      names.push({ id: cell.id, text: `${ri + 1}段目の${ci + 1}番目` });
+    });
+  });
+  // 長いIDから先に置き換える（`r1` が `r1h` の一部に当たらないようにする）
+  names.sort((a, b) => b.id.length - a.id.length);
+  let out = message.replace(
+    /rungs\[(\d+)\](?:\.cells\[(\d+)\])?(\.from|\.to)?/gu,
+    (_match, ri: string, ci: string | undefined, end: string | undefined) =>
+      `${Number(ri) + 1}段目` +
+      (ci === undefined ? '' : `の${Number(ci) + 1}番目`) +
+      (end === '.from' ? 'の始点' : end === '.to' ? 'の終点' : ''),
+  );
+  for (const { id, text } of names) {
+    // `r1#2`（節点の指し方）を先に処理してから、ID単体を置き換える
+    out = out.split(`${id}#`).join(`${text}の節点`).split(id).join(text);
+  }
+  return out;
+}
+
+/** いまカーソルがある場所の言い方（「1段目の2番目」／末尾の空き桁は「1段目の末尾」）。 */
+export function cursorText(doc: SchematicDocument, cursor: EditorCursor): string {
+  const current = clampCursor(doc, cursor);
+  const rung = doc.rungs.find((r) => r.id === current.rungId);
+  const name = rungLabel(doc, current.rungId);
+  if (rung === undefined) return name;
+  return current.index >= rung.cells.length
+    ? `${name}の末尾（空き）`
+    : `${name}の${current.index + 1}番目`;
+}
+
+/*
+ * ここから「設定時間」（タイマコイルの presetMs）。§5.3.2 / §17.2 #12 / レビュー B1
+ * パレットは `コイル T1` を置けるが、置いた直後の値は `DEFAULT_EDIT_PRESET_MS`（3.0秒）で、
+ * 変える手段が画面に無かった。0.8秒のフリッカ回路（b-006）はどう描いても検算に通らない。
+ * 刻みは実機（H3Y-4 の 0〜10秒レンジ）と同じ 0.1 秒。
+ */
+
+/** 設定時間の下限[ms]（0〜10秒レンジで取れる最小値）。 */
+export const PRESET_MIN_MS = Math.max(TIMER_MIN_PRESET_MS, TIMER_RANGE_10S.stepMs);
+/** 設定時間の上限[ms]。 */
+export const PRESET_MAX_MS = TIMER_RANGE_10S.maxMs;
+/** 設定時間の刻み[ms]（0.1秒）。 */
+export const PRESET_STEP_MS = TIMER_RANGE_10S.stepMs;
+
+/** カーソルの下にあるタイマコイル（設定時間を変えられる要素）。無ければ undefined。 */
+export function timerCoilUnder(
+  doc: SchematicDocument,
+  cursor: EditorCursor,
+): SchematicCell | undefined {
+  const current = clampCursor(doc, cursor);
+  const cell = doc.rungs.find((r) => r.id === current.rungId)?.cells[current.index];
+  if (cell === undefined) return undefined;
+  // `schematic-core` の `isTimerCoil()` と同じ見分け方（コイルで機器名が `T` で始まる）
+  return cell.kind === 'coil' && cell.device.startsWith('T') ? cell : undefined;
+}
+
+/**
+ * 数値欄に打ち込まれた秒を設定時間[ms]に直す。読めない・範囲外なら `undefined`。
+ * 打ち込みの途中（`0.` や空欄）は毎回 `undefined` になるので、画面は**何も送らない**
+ * （打鍵のたびに断られて赤いトーストが出る、という事故を防ぐ）。
+ */
+export function presetFromText(text: string): number | undefined {
+  if (text.trim() === '') return undefined;
+  const seconds = Number(text);
+  if (!Number.isFinite(seconds)) return undefined;
+  const ms = Math.round((seconds * 1000) / PRESET_STEP_MS) * PRESET_STEP_MS;
+  if (ms < PRESET_MIN_MS || ms > PRESET_MAX_MS) return undefined;
+  return ms;
+}
+
+/** ＋／− を押したときの設定時間[ms]（範囲の外へは出ない）。 */
+export function stepPreset(presetMs: number, direction: 1 | -1): number {
+  const snapped = Math.round(presetMs / PRESET_STEP_MS) * PRESET_STEP_MS;
+  const next = snapped + direction * PRESET_STEP_MS;
+  return Math.min(Math.max(next, PRESET_MIN_MS), PRESET_MAX_MS);
+}
+
+/** 数値欄に出す秒（`3` ではなく `3.0`）。 */
+export function presetSecondsText(presetMs: number): string {
+  return (presetMs / 1000).toFixed(1);
 }

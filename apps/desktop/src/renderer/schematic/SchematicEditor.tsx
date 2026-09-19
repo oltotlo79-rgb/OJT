@@ -1,16 +1,41 @@
 import type { BoardDefinition } from '@ojt/board-model';
 import type { AssembleProblem } from '@ojt/content';
-import { validateDocument, type SchematicDocument, type SchematicEdit } from '@ojt/schematic-core';
-import { useMemo, useState, type JSX, type KeyboardEvent } from 'react';
-import { JA } from '../i18n/ja.js';
+import {
+  DEFAULT_EDIT_PRESET_MS,
+  MAX_RUNGS,
+  validateDocument,
+  type SchematicDocument,
+  type SchematicEdit,
+} from '@ojt/schematic-core';
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  type JSX,
+  type KeyboardEvent,
+} from 'react';
+import { JA, secondsLabel } from '../i18n/ja.js';
+import { shouldIgnoreShortcut } from '../session/interaction.js';
 import {
   branchDisabledReason,
   branchStepHint,
   cellCount,
+  cursorText,
+  issueText,
   keyToEdit,
   moveCursor,
   paletteFor,
   pickBranchNode,
+  presetFromText,
+  presetSecondsText,
+  stepPreset,
+  timerCoilUnder,
+  PRESET_MAX_MS,
+  PRESET_MIN_MS,
+  PRESET_STEP_MS,
   type BranchDraft,
   type BranchOutcome,
   type EditorCursor,
@@ -28,35 +53,101 @@ import styles from './schematic.module.css';
  * 状態（文書・カーソル・履歴）は**すべて親（ストア）が持つ**（`LadderEditor` と同じ流儀）。
  * ここは「描く・選ぶ・キーを編集操作に直す」だけで、編集そのものは `onEdit` に投げる。
  * 作りかけの文書は許し（決定表#3）、`validateDocument()` の指摘は下の欄に出し続ける。
+ *
+ * 画面に出す文面（指摘・案内・カーソル位置）は `session/schematic-edit.ts` の `issueText()` /
+ * `cursorText()` を通す。**内部ID（`r1` / `c01`）は1文字も画面に出さない**（レビュー I3）。
  */
 
 /**
- * 指摘の1行。`validateDocument()` の文面は内部ID（`r1` / `c01`）と内部の経路
- * （`rungs[0].cells[1]`）を含むが、**画面に内部IDは出さない**約束なので
- * 「1段目」「1段目の2番目」に読み替える（利用者要求「分かりやすく直感的に」）。
+ * 設定時間の欄（タイマコイルにカーソルがあるときだけ出る）。§5.3.2 / §17.2 #12 / レビュー B1
+ *
+ * 打ち込みの途中（`0.` や空欄）は `presetFromText()` が `undefined` を返すので**送らない**。
+ * 打ち込んでいるあいだは外からの値で書き戻さない（値が飛んでカーソルが跳ねるのを防ぐ）。
+ * ＋／− は実機（H3Y-4 の0〜10秒レンジ）と同じ 0.1 秒刻みで、押し代は32px以上。
  */
-function issueText(doc: SchematicDocument, message: string): string {
-  const names: Array<{ id: string; text: string }> = [];
-  doc.rungs.forEach((r, ri) => {
-    names.push({ id: r.id, text: `${ri + 1}段目` });
-    r.cells.forEach((cell, ci) => {
-      names.push({ id: cell.id, text: `${ri + 1}段目の${ci + 1}番目` });
-    });
-  });
-  // 長いIDから先に置き換える（`r1` が `r1h` の一部に当たらないようにする）
-  names.sort((a, b) => b.id.length - a.id.length);
-  let out = message.replace(
-    /rungs\[(\d+)\](?:\.cells\[(\d+)\])?(\.from|\.to)?/gu,
-    (_match, ri: string, ci: string | undefined, end: string | undefined) =>
-      `${Number(ri) + 1}段目` +
-      (ci === undefined ? '' : `の${Number(ci) + 1}番目`) +
-      (end === '.from' ? 'の始点' : end === '.to' ? 'の終点' : ''),
+function PresetField({
+  cellId,
+  device,
+  presetMs,
+  onChange,
+}: {
+  /** どの要素の設定時間か（要素が変わったら欄を作り直す）。 */
+  cellId: string;
+  device: string;
+  presetMs: number;
+  onChange: (presetMs: number) => void;
+}): JSX.Element {
+  const inputId = useId();
+  const [text, setText] = useState(() => presetSecondsText(presetMs));
+  /** 打ち込んでいる最中か（外からの値で書き戻してよいかの判断）。 */
+  const typing = useRef(false);
+  useEffect(() => {
+    if (!typing.current) setText(presetSecondsText(presetMs));
+  }, [cellId, presetMs]);
+
+  const atMin = presetMs <= PRESET_MIN_MS;
+  const atMax = presetMs >= PRESET_MAX_MS;
+  return (
+    <div className={styles.presetBar} data-testid="schematic-preset">
+      <label className={styles.presetLabel} htmlFor={inputId}>
+        {`${JA.schematic.preset}（${device}）`}
+      </label>
+      <button
+        type="button"
+        className={styles.presetStep}
+        data-testid="preset-down"
+        disabled={atMin}
+        aria-label={JA.schematic.presetDown}
+        title={atMin ? JA.schematic.presetAtMin : JA.schematic.presetDown}
+        onClick={() => {
+          onChange(stepPreset(presetMs, -1));
+        }}
+      >
+        −
+      </button>
+      <input
+        id={inputId}
+        className={styles.presetInput}
+        data-testid="preset-input"
+        type="number"
+        inputMode="decimal"
+        min={PRESET_MIN_MS / 1000}
+        max={PRESET_MAX_MS / 1000}
+        step={PRESET_STEP_MS / 1000}
+        value={text}
+        onFocus={() => {
+          typing.current = true;
+        }}
+        onBlur={() => {
+          typing.current = false;
+          setText(presetSecondsText(presetMs));
+        }}
+        onChange={(event) => {
+          const next = event.target.value;
+          setText(next);
+          const ms = presetFromText(next);
+          if (ms !== undefined && ms !== presetMs) onChange(ms);
+        }}
+      />
+      <button
+        type="button"
+        className={styles.presetStep}
+        data-testid="preset-up"
+        disabled={atMax}
+        aria-label={JA.schematic.presetUp}
+        title={atMax ? JA.schematic.presetAtMax : JA.schematic.presetUp}
+        onClick={() => {
+          onChange(stepPreset(presetMs, 1));
+        }}
+      >
+        ＋
+      </button>
+      <span className={styles.presetValue} data-testid="preset-value">
+        {secondsLabel(presetMs)}
+      </span>
+      <span className={styles.presetHint}>{JA.schematic.presetHint}</span>
+    </div>
   );
-  for (const { id, text } of names) {
-    // `r1#2`（節点の指し方）を先に処理してから、ID単体を置き換える
-    out = out.split(`${id}#`).join(`${text}の節点`).split(id).join(text);
-  }
-  return out;
 }
 
 /** エディタ。 */
@@ -75,8 +166,10 @@ export function SchematicEditor({
   onUndo,
   onRedo,
   onVerify,
+  onClear,
   onPickCell,
   onRefuse,
+  onNotice,
 }: {
   problem: AssembleProblem;
   board: BoardDefinition;
@@ -91,14 +184,19 @@ export function SchematicEditor({
   boardWired?: boolean;
   /** 配線ガイドで光らせる要素（Task 8 が渡す）。 */
   highlightCellIds?: readonly string[];
-  onEdit: (edit: SchematicEdit) => void;
+  /** 編集を1つ当てる。**受け入れられたら `true`**（断られたら分岐の指定は続ける）。 */
+  onEdit: (edit: SchematicEdit) => boolean;
   onCursor: (cursor: EditorCursor) => void;
   onUndo: () => void;
   onRedo: () => void;
   onVerify: () => void;
+  /** 「全部消す」（確認のうえで空の1段に戻す）。省略するとボタンを出さない。 */
+  onClear?: () => void;
   onPickCell: (cellId: string | undefined) => void;
   /** 断られた操作の理由（画面はトーストに出す）。 */
   onRefuse: (message: string) => void;
+  /** 済んだことの知らせ（画面はトーストに出す）。 */
+  onNotice?: (message: string) => void;
 }): JSX.Element {
   const palette = useMemo(() => paletteFor(problem, board), [problem, board]);
   const [selectedId, setSelectedId] = useState<string | undefined>(undefined);
@@ -106,30 +204,77 @@ export function SchematicEditor({
   const issues = useMemo(() => validateDocument(doc), [doc]);
   const steps = schematicSteps({ cellCount: cellCount(doc), verified, boardWired });
   const currentStep = steps.find((s) => s.state === 'current')?.key;
+  const timerCoil = timerCoilUnder(doc, cursor);
 
   /**
    * 分岐の下書き。**ここだけが編集中の一時状態**で、確定した形は `setEnds` として親へ渡る。
    * 文書やカーソルと違って「途中でやめられる」ものなので、ストアには置かない。§11.4 / B1
    */
   const [branch, setBranch] = useState<BranchDraft | undefined>(undefined);
+  /** 「全部消す」の確認待ち（Electron では `window.confirm()` を使わない。§12.3 と同じ流儀）。 */
+  const [clearAsk, setClearAsk] = useState(false);
   const branchReason = branchDisabledReason(doc, cursor.rungId);
-  const branchHint = branchStepHint(branch);
+  const branchHint = branchStepHint(doc, branch);
+
+  /**
+   * 親から渡される関数は**描き直すたびに別物**になる（`Session.tsx` はその場で作った関数を渡す）。
+   * `useCallback` の依存に入れると `onPickSlot` も毎回作り直され、`SchematicSvg` の当たり矩形の
+   * `useMemo`（`slotRects()`）が毎回捨てられる（レビュー I7）。呼ぶときに最新のものを読めば
+   * 足りるので、ref に置いて依存から外す。
+   */
+  const handlers = useRef({ onCursor, onEdit, onPickCell, onRefuse, onNotice });
+  useEffect(() => {
+    handlers.current = { onCursor, onEdit, onPickCell, onRefuse, onNotice };
+  });
+
+  /*
+   * 画面を切り替える（F2）とこの部品ごと消えるので、指定しかけの分岐は残せない。
+   * 黙って消えると「始点を選んだのに効かない」と見えるので、**やめたことを必ず知らせる**。
+   * 後始末の中では最新の state を読めないので ref に写しておく。
+   */
+  const branchRef = useRef<BranchDraft | undefined>(undefined);
+  useEffect(() => {
+    branchRef.current = branch;
+  }, [branch]);
+  useEffect(
+    () => () => {
+      if (branchRef.current !== undefined) handlers.current.onNotice?.(JA.schematic.branchAborted);
+    },
+    [],
+  );
 
   /** 分岐の節点を1つ選んだ結果を反映する（クリックでもキーでも同じ道を通る）。 */
-  const applyBranchPick = (picked: BranchOutcome): void => {
+  const applyBranchPick = useCallback((picked: BranchOutcome): void => {
     if (picked.kind === 'refused') {
-      onRefuse(picked.message);
+      handlers.current.onRefuse(picked.message);
       return;
     }
     if (picked.kind === 'draft') {
       setBranch(picked.branch);
       return;
     }
-    setBranch(undefined);
-    onEdit(picked.edit);
-  };
+    /*
+     * 断られる形（参照の循環など）もあるので、**受け入れられたときだけ**分岐モードを抜ける。
+     * 断られたときは始点から選び直せるようにする（理由はストアがトーストに出す）。
+     */
+    if (handlers.current.onEdit(picked.edit)) {
+      setBranch(undefined);
+      handlers.current.onNotice?.(JA.schematic.branchDone);
+      return;
+    }
+    setBranch({ rungId: picked.edit.rungId });
+  }, []);
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>): void => {
+    /*
+     * 設定時間の数値欄に打ち込んだキーは格子へ通さない（決定表#25）。
+     * 通すと `3` の打鍵で要素が置かれ、`Delete` で要素が消える（盤と同じ取り違え。§8.2）。
+     */
+    const ignore = shouldIgnoreShortcut({
+      target: event.target,
+      isComposing: event.nativeEvent.isComposing,
+    });
+    if (ignore) return;
     if (event.key.startsWith('Arrow')) {
       event.preventDefault();
       onCursor(moveCursor(doc, cursor, event.key));
@@ -166,24 +311,31 @@ export function SchematicEditor({
    * 桁をクリックしたとき。**順に3通り**（B2）:
    * ①分岐中なら節点を選ぶ、②パレットを選んでいなければその要素を光らせる（配線ガイド）、
    * ③パレットを選んでいれば置く（空き桁）か置き換える（要素のある桁）。
+   *
+   * `useCallback` で包むのは `SchematicSvg` の当たり矩形（`slotRects()`）の `useMemo` を
+   * 毎回捨てさせないため（レビュー I7）。③ではカーソルを別に送らない：置いた／置き換えた
+   * 結果からストアが決めるので、書き込みは1回で済む（レビュー I1 / Minor）。
    */
-  const onPickSlot = (rungId: string, index: number, cellId?: string): void => {
-    if (branch !== undefined) {
-      applyBranchPick(pickBranchNode(doc, branch, { rungId, node: index }));
-      return;
-    }
-    onCursor({ rungId, index });
-    if (selected === undefined) {
-      onPickCell(cellId);
-      return;
-    }
-    const draft = { kind: selected.kind, device: selected.device };
-    onEdit(
-      cellId === undefined
-        ? { kind: 'insertCell', rungId, index, draft }
-        : { kind: 'replaceCell', cellId, draft },
-    );
-  };
+  const onPickSlot = useCallback(
+    (rungId: string, index: number, cellId?: string): void => {
+      if (branch !== undefined) {
+        applyBranchPick(pickBranchNode(doc, branch, { rungId, node: index }));
+        return;
+      }
+      if (selected === undefined) {
+        handlers.current.onCursor({ rungId, index });
+        handlers.current.onPickCell(cellId);
+        return;
+      }
+      const draft = { kind: selected.kind, device: selected.device };
+      handlers.current.onEdit(
+        cellId === undefined
+          ? { kind: 'insertCell', rungId, index, draft }
+          : { kind: 'replaceCell', cellId, draft },
+      );
+    },
+    [applyBranchPick, branch, doc, selected],
+  );
 
   /** 「検算」を押せない理由（押せるときは検算の但し書き）。完了条件の「画面の品質」 */
   const verifyTitle = verifying
@@ -191,6 +343,9 @@ export function SchematicEditor({
     : issues.length === 0
       ? JA.schematic.verifyNote
       : issueText(doc, issues[0]?.message ?? '');
+  const rungFull = doc.rungs.length >= MAX_RUNGS;
+  const lastRung = doc.rungs.length <= 1;
+  const nothingDrawn = cellCount(doc) === 0 && lastRung;
 
   return (
     <div className={styles.editor} data-testid="schematic-editor">
@@ -213,8 +368,12 @@ export function SchematicEditor({
           >
             {JA.schematic.redo}
           </button>
+          {/* 押せない理由は必ず `title` に出す（完了条件の「画面の品質」。レビュー Minor） */}
           <button
             type="button"
+            data-testid="add-rung-button"
+            disabled={rungFull}
+            title={rungFull ? JA.schematic.addRungFull : JA.schematic.addRungHint}
             onClick={() => {
               onEdit({ kind: 'addRung', after: cursor.rungId });
             }}
@@ -223,6 +382,9 @@ export function SchematicEditor({
           </button>
           <button
             type="button"
+            data-testid="remove-rung-button"
+            disabled={lastRung}
+            title={lastRung ? JA.schematic.removeRungLast : JA.schematic.removeRungHint}
             onClick={() => {
               onEdit({ kind: 'removeRung', rungId: cursor.rungId });
             }}
@@ -250,6 +412,20 @@ export function SchematicEditor({
           >
             {branch === undefined ? JA.schematic.branch : JA.schematic.branchCancel}
           </button>
+          {onClear === undefined ? null : (
+            <button
+              type="button"
+              data-testid="clear-button"
+              aria-pressed={clearAsk}
+              disabled={nothingDrawn}
+              title={nothingDrawn ? JA.schematic.clearNothing : JA.schematic.clearConfirm}
+              onClick={() => {
+                setClearAsk(!clearAsk);
+              }}
+            >
+              {JA.schematic.clear}
+            </button>
+          )}
           <button
             type="button"
             className={styles.verifyButton}
@@ -292,6 +468,34 @@ export function SchematicEditor({
         )}
       </div>
 
+      {/* 「全部消す」の確認（取り返しのつかない操作は必ず一度尋ねる）。§8.2 */}
+      {clearAsk && onClear !== undefined ? (
+        <p className={styles.clearAsk} data-testid="clear-confirm" role="status" aria-live="polite">
+          {JA.schematic.clearConfirm}
+          <button
+            type="button"
+            className={styles.clearYes}
+            data-testid="clear-yes"
+            onClick={() => {
+              setClearAsk(false);
+              onClear();
+            }}
+          >
+            {JA.schematic.clearYes}
+          </button>
+          <button
+            type="button"
+            className={styles.clearNo}
+            data-testid="clear-no"
+            onClick={() => {
+              setClearAsk(false);
+            }}
+          >
+            {JA.schematic.clearNo}
+          </button>
+        </p>
+      ) : null}
+
       <div className={styles.editorBody}>
         <SchematicPalette items={palette} selectedId={selectedId} onSelect={pickPalette} />
         {/*
@@ -317,6 +521,21 @@ export function SchematicEditor({
             onPickCell={onPickCell}
             onPickSlot={onPickSlot}
           />
+          {/* タイマコイルの上にカーソルがあるときだけ出す（無関係な課題に欄を出さない）。B1 */}
+          {timerCoil === undefined ? null : (
+            <PresetField
+              key={timerCoil.id}
+              cellId={timerCoil.id}
+              device={timerCoil.device}
+              presetMs={timerCoil.presetMs ?? DEFAULT_EDIT_PRESET_MS}
+              onChange={(presetMs) => {
+                onEdit({ kind: 'setPreset', cellId: timerCoil.id, presetMs });
+              }}
+            />
+          )}
+          <p className={styles.cursorLine} data-testid="schematic-cursor">
+            {`${JA.schematic.cursor}: ${cursorText(doc, cursor)}`}
+          </p>
           <p className={styles.keyHint}>{JA.schematic.keyHint}</p>
         </div>
       </div>

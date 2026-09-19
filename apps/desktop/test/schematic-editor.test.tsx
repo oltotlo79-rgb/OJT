@@ -8,8 +8,10 @@ import {
 } from '@ojt/schematic-core';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { JA } from '../src/renderer/i18n/ja.js';
 import { SchematicEditor } from '../src/renderer/schematic/SchematicEditor.js';
 import { SchematicSvg } from '../src/renderer/schematic/SchematicSvg.js';
+import type { EditorCursor } from '../src/renderer/session/schematic-edit.js';
 
 const found = BUILTIN_ASSEMBLE_PROBLEMS.find((p) => p.id === 'b-001');
 if (found === undefined) throw new Error('b-001 が見つかりません');
@@ -95,7 +97,7 @@ describe('SchematicEditor', () => {
       cursor: { rungId: 'r1', index: 0 },
       history: { done: [], undone: [] },
       verifying: false,
-      onEdit: vi.fn(),
+      onEdit: vi.fn(() => true),
       onCursor: vi.fn(),
       onUndo: vi.fn(),
       onRedo: vi.fn(),
@@ -224,13 +226,14 @@ describe('SchematicEditor: 分岐（受入基準①）', () => {
       cursor,
       history: { done: [], undone: [] },
       verifying: false,
-      onEdit: vi.fn(),
+      onEdit: vi.fn(() => true),
       onCursor: vi.fn(),
       onUndo: vi.fn(),
       onRedo: vi.fn(),
       onVerify: vi.fn(),
       onPickCell: vi.fn(),
       onRefuse: vi.fn(),
+      onNotice: vi.fn(),
     };
     render(<SchematicEditor {...props} />);
     return props;
@@ -287,7 +290,7 @@ describe('SchematicEditor: 分岐（受入基準①）', () => {
   });
 
   it('finishes the branch from the keyboard alone (§15 のアクセシビリティ)', () => {
-    const onEdit = vi.fn();
+    const onEdit = vi.fn(() => true);
     const base = {
       problem,
       board: JIPM_BOARD,
@@ -318,5 +321,288 @@ describe('SchematicEditor: 分岐（受入基準①）', () => {
       from: { rung: 'r1', node: 1 },
       to: { rung: 'r1', node: 2 },
     });
+  });
+});
+
+describe('SchematicEditor: 設定時間（レビュー B1）', () => {
+  const flicker = BUILTIN_ASSEMBLE_PROBLEMS.find((p) => p.id === 'b-006');
+  if (flicker === undefined) throw new Error('b-006 が見つかりません');
+  const timerProblem = flicker;
+
+  /** タイマコイル1個だけの下書き（桁0がコイル、桁1が末尾の空き）。 */
+  function timerDoc(presetMs?: number): SchematicDocument {
+    const step = applyEdit(emptySchematic('draft-b-006', '下書き'), {
+      kind: 'insertCell',
+      rungId: 'r1',
+      index: 0,
+      draft: {
+        kind: 'coil',
+        device: 'T1',
+        ...(presetMs === undefined ? {} : { presetMs }),
+      },
+    });
+    if (!step.ok) throw new Error(step.message);
+    return step.doc;
+  }
+
+  function renderTimer(overrides: { document?: SchematicDocument; cursor?: EditorCursor } = {}) {
+    const props = {
+      problem: timerProblem,
+      board: JIPM_BOARD,
+      document: overrides.document ?? timerDoc(),
+      cursor: overrides.cursor ?? { rungId: 'r1', index: 0 },
+      history: { done: [], undone: [] },
+      verifying: false,
+      onEdit: vi.fn(() => true),
+      onCursor: vi.fn(),
+      onUndo: vi.fn(),
+      onRedo: vi.fn(),
+      onVerify: vi.fn(),
+      onPickCell: vi.fn(),
+      onRefuse: vi.fn(),
+    };
+    render(<SchematicEditor {...props} />);
+    return props;
+  }
+
+  /** その下書きの最初の要素のID。 */
+  function firstCellId(doc: SchematicDocument): string {
+    const id = doc.rungs[0]?.cells[0]?.id;
+    if (id === undefined) throw new Error('要素がありません');
+    return id;
+  }
+
+  it('offers the field only while the cursor is on a timer coil', () => {
+    renderTimer();
+    expect(screen.getByTestId('schematic-preset')).toBeInTheDocument();
+    // 置いた直後は既定の 3.0 秒。これを変えられないと b-006（0.8秒）は描けない
+    expect(screen.getByTestId('preset-value')).toHaveTextContent('3.0 秒');
+    cleanup();
+    // 末尾の空き桁にはタイマコイルが無いので欄も出ない
+    renderTimer({ cursor: { rungId: 'r1', index: 1 } });
+    expect(screen.queryByTestId('schematic-preset')).toBeNull();
+  });
+
+  it('sends setPreset when the seconds are typed in', () => {
+    const doc = timerDoc();
+    const props = renderTimer({ document: doc });
+    fireEvent.change(screen.getByTestId('preset-input'), { target: { value: '0.8' } });
+    expect(props.onEdit).toHaveBeenCalledWith({
+      kind: 'setPreset',
+      cellId: firstCellId(doc),
+      presetMs: 800,
+    });
+  });
+
+  it('sends nothing while the number is half typed', () => {
+    const props = renderTimer();
+    fireEvent.change(screen.getByTestId('preset-input'), { target: { value: '0.' } });
+    fireEvent.change(screen.getByTestId('preset-input'), { target: { value: '' } });
+    expect(props.onEdit).not.toHaveBeenCalled();
+  });
+
+  it('steps by 0.1 s and says why it cannot go further', () => {
+    const doc = timerDoc();
+    const props = renderTimer({ document: doc });
+    fireEvent.click(screen.getByTestId('preset-up'));
+    expect(props.onEdit).toHaveBeenCalledWith({
+      kind: 'setPreset',
+      cellId: firstCellId(doc),
+      presetMs: 3100,
+    });
+    cleanup();
+    renderTimer({ document: timerDoc(10_000) });
+    const up = screen.getByTestId('preset-up');
+    expect(up).toBeDisabled();
+    expect(up).toHaveAttribute('title', JA.schematic.presetAtMax);
+    cleanup();
+    renderTimer({ document: timerDoc(100) });
+    const down = screen.getByTestId('preset-down');
+    expect(down).toBeDisabled();
+    expect(down).toHaveAttribute('title', JA.schematic.presetAtMin);
+  });
+
+  it('never lets a key typed in the field edit the drawing (決定表#25)', () => {
+    const doc = timerDoc();
+    const props = renderTimer({ document: doc });
+    const field = screen.getByTestId('preset-input');
+    for (const key of ['Delete', 'Backspace', 'Insert', 'ArrowRight', 'Enter']) {
+      fireEvent.keyDown(field, { key });
+    }
+    expect(props.onEdit).not.toHaveBeenCalled();
+    expect(props.onCursor).not.toHaveBeenCalled();
+    // 止めているのは入力欄からのぶんだけ（図の上では今までどおり効く）
+    fireEvent.keyDown(screen.getByTestId('schematic-grid'), { key: 'Delete' });
+    expect(props.onEdit).toHaveBeenCalledWith({ kind: 'removeCell', cellId: firstCellId(doc) });
+  });
+});
+
+describe('SchematicEditor: 押せない理由と「全部消す」（レビュー Minor）', () => {
+  function renderEditor(overrides: Partial<Parameters<typeof SchematicEditor>[0]> = {}) {
+    const props = {
+      problem,
+      board: JIPM_BOARD,
+      document: emptySchematic('draft-b-001', '下書き'),
+      cursor: { rungId: 'r1', index: 0 },
+      history: { done: [], undone: [] },
+      verifying: false,
+      onEdit: vi.fn(() => true),
+      onCursor: vi.fn(),
+      onUndo: vi.fn(),
+      onRedo: vi.fn(),
+      onVerify: vi.fn(),
+      onPickCell: vi.fn(),
+      onRefuse: vi.fn(),
+      ...overrides,
+    };
+    render(<SchematicEditor {...props} />);
+    return props;
+  }
+
+  it('says in Japanese why 段を削除 cannot be pressed on the last rung', () => {
+    renderEditor();
+    const remove = screen.getByTestId('remove-rung-button');
+    expect(remove).toBeDisabled();
+    expect(remove).toHaveAttribute('title', JA.schematic.removeRungLast);
+    const add = screen.getByTestId('add-rung-button');
+    expect(add).toBeEnabled();
+    expect(add).toHaveAttribute('title', JA.schematic.addRungHint);
+  });
+
+  it('asks before it throws the whole drawing away', () => {
+    const onClear = vi.fn();
+    renderEditor({ document: problem.schematic, onClear });
+    fireEvent.click(screen.getByTestId('clear-button'));
+    expect(screen.getByTestId('clear-confirm')).toHaveTextContent(JA.schematic.clearConfirm);
+    fireEvent.click(screen.getByTestId('clear-no'));
+    expect(onClear).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('clear-confirm')).toBeNull();
+    fireEvent.click(screen.getByTestId('clear-button'));
+    fireEvent.click(screen.getByTestId('clear-yes'));
+    expect(onClear).toHaveBeenCalledTimes(1);
+  });
+
+  it('cannot clear a drawing that is still empty', () => {
+    renderEditor({ onClear: vi.fn() });
+    const clear = screen.getByTestId('clear-button');
+    expect(clear).toBeDisabled();
+    expect(clear).toHaveAttribute('title', JA.schematic.clearNothing);
+  });
+
+  it('names the cursor position without internal ids', () => {
+    const second = problem.schematic.rungs[1];
+    if (second === undefined) throw new Error('2段目がありません');
+    renderEditor({ document: problem.schematic, cursor: { rungId: second.id, index: 0 } });
+    const line = screen.getByTestId('schematic-cursor');
+    expect(line).toHaveTextContent(`${JA.schematic.cursor}: 2段目の1番目`);
+    expect(line.textContent ?? '').not.toMatch(/\b[rc]\d/u);
+  });
+});
+
+describe('SchematicEditor: 分岐の分岐と循環（レビュー Minor）', () => {
+  /** 段1 ＝ PB2b → PB1a → CR1コイル、段2・段3 ＝ 接点1個ずつ（まだ P→N）。 */
+  function threeRungs(): SchematicDocument {
+    let doc = emptySchematic('draft-b-001', '下書き');
+    const step = (edit: Parameters<typeof applyEdit>[1]): void => {
+      const out = applyEdit(doc, edit);
+      if (!out.ok) throw new Error(out.message);
+      doc = out.doc;
+    };
+    for (const draft of [
+      { kind: 'pb-b', device: 'PB2' },
+      { kind: 'pb-a', device: 'PB1' },
+      { kind: 'coil', device: 'CR1' },
+    ] as CellDraft[]) {
+      step({ kind: 'insertCell', rungId: 'r1', index: doc.rungs[0]?.cells.length ?? 0, draft });
+    }
+    step({ kind: 'addRung' });
+    step({ kind: 'insertCell', rungId: 'r2', index: 0, draft: { kind: 'cr-a', device: 'CR1' } });
+    step({ kind: 'addRung' });
+    step({ kind: 'insertCell', rungId: 'r3', index: 0, draft: { kind: 'cr-b', device: 'CR1' } });
+    return doc;
+  }
+
+  function clickSlot(slot: string): void {
+    const target = screen.getByTestId('schematic-svg').querySelector(`[data-slot="${slot}"]`);
+    if (target === null) throw new Error(`桁がありません: ${slot}`);
+    fireEvent.click(target);
+  }
+
+  it('draws a branch of a branch and refuses the loop that would close the circle', () => {
+    let doc = threeRungs();
+    // 本物の編集規則で受け答えする（断りは `applyEdit()` が出す）
+    const onEdit = vi.fn((edit: Parameters<typeof applyEdit>[1]) => {
+      const out = applyEdit(doc, edit);
+      if (out.ok) doc = out.doc;
+      return out.ok;
+    });
+    const onNotice = vi.fn();
+    const base = {
+      problem,
+      board: JIPM_BOARD,
+      history: { done: [], undone: [] },
+      verifying: false,
+      onEdit,
+      onCursor: vi.fn(),
+      onUndo: vi.fn(),
+      onRedo: vi.fn(),
+      onVerify: vi.fn(),
+      onPickCell: vi.fn(),
+      onRefuse: vi.fn(),
+      onNotice,
+    };
+    const { rerender } = render(
+      <SchematicEditor {...base} document={doc} cursor={{ rungId: 'r2', index: 0 }} />,
+    );
+    // ①段2を段1の分岐にする
+    fireEvent.click(screen.getByTestId('branch-button'));
+    clickSlot('r1#1');
+    clickSlot('r1#2');
+    expect(onNotice).toHaveBeenCalledWith(JA.schematic.branchDone);
+    expect(screen.queryByTestId('branch-hint')).toBeNull();
+
+    // ②段3を「分岐である段2」の分岐にする（分岐の分岐は描ける）
+    rerender(<SchematicEditor {...base} document={doc} cursor={{ rungId: 'r3', index: 0 }} />);
+    fireEvent.click(screen.getByTestId('branch-button'));
+    clickSlot('r2#0');
+    clickSlot('r2#1');
+    expect(onNotice).toHaveBeenCalledTimes(2);
+    expect(doc.rungs[2]?.from).toEqual({ rung: 'r2', node: 0 });
+
+    // ③段2を段3の分岐にすると輪になる。断られ、分岐の指定は始点から続く
+    rerender(<SchematicEditor {...base} document={doc} cursor={{ rungId: 'r2', index: 0 }} />);
+    fireEvent.click(screen.getByTestId('branch-button'));
+    clickSlot('r3#0');
+    clickSlot('r3#1');
+    expect(onNotice).toHaveBeenCalledTimes(2);
+    expect(doc.rungs[1]?.from).toEqual({ rung: 'r1', node: 1 });
+    expect(screen.getByTestId('branch-hint')).toHaveTextContent('分岐の始点');
+  });
+
+  it('says the branch was dropped when the editor goes away (F2)', () => {
+    const onNotice = vi.fn();
+    render(
+      <SchematicEditor
+        problem={problem}
+        board={JIPM_BOARD}
+        document={threeRungs()}
+        cursor={{ rungId: 'r2', index: 0 }}
+        history={{ done: [], undone: [] }}
+        verifying={false}
+        onEdit={vi.fn(() => true)}
+        onCursor={vi.fn()}
+        onUndo={vi.fn()}
+        onRedo={vi.fn()}
+        onVerify={vi.fn()}
+        onPickCell={vi.fn()}
+        onRefuse={vi.fn()}
+        onNotice={onNotice}
+      />,
+    );
+    fireEvent.click(screen.getByTestId('branch-button'));
+    expect(screen.getByTestId('branch-hint')).toBeInTheDocument();
+    // 画面を切り替える（F2）とこの部品は消える。指定しかけの分岐は黙って消さない
+    cleanup();
+    expect(onNotice).toHaveBeenCalledWith(JA.schematic.branchAborted);
   });
 });

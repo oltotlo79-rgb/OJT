@@ -772,9 +772,7 @@ export function Session(): JSX.Element {
               verified={verifyResult?.ok === true && verifyResult.passed}
               boardWired={session.wires.some((w) => !w.locked)}
               highlightCellIds={highlightCells}
-              onEdit={(edit) => {
-                useStore.getState().applySchematicEdit(edit);
-              }}
+              onEdit={(edit) => useStore.getState().applySchematicEdit(edit)}
               onCursor={(next) => {
                 useStore.getState().setSchematicCursor(next);
               }}
@@ -796,13 +794,24 @@ export function Session(): JSX.Element {
                   elapsedMs: store.elapsedMs,
                 });
               }}
+              onClear={() => {
+                useStore.getState().clearSchematic();
+              }}
               onPickCell={onPickDraftCell}
               onRefuse={(message) => {
                 useStore.getState().toast(message, 'error');
               }}
+              onNotice={(message) => {
+                useStore.getState().toast(message, 'info');
+              }}
             />
             {verifyResult === undefined ? null : (
-              <VerifyPanel problem={problem} result={verifyResult} onPickCell={onPickDraftCell} />
+              <VerifyPanel
+                problem={problem}
+                document={schematicDoc}
+                result={verifyResult}
+                onPickCell={onPickDraftCell}
+              />
             )}
           </div>
         )}

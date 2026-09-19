@@ -259,12 +259,17 @@ describe('分岐（受入基準① の自己保持段）', () => {
     });
   });
 
-  it('guides the trainee one line at a time', () => {
-    expect(branchStepHint(undefined)).toBeUndefined();
-    expect(branchStepHint({ rungId: 'r2' })).toBe(JA.schematic.branchPickFrom);
-    expect(branchStepHint({ rungId: 'r2', from: { rung: 'r1', node: 1 } })).toBe(
-      JA.schematic.branchPickTo,
+  it('guides the trainee one line at a time and says which rung is being branched', () => {
+    const doc = twoRungs();
+    expect(branchStepHint(doc, undefined)).toBeUndefined();
+    // どの段を分岐にしているかを先に言う（内部IDは出さない。レビュー Minor）
+    expect(branchStepHint(doc, { rungId: 'r2' })).toBe(
+      `2段目${JA.schematic.branchOf}${JA.schematic.branchPickFrom}`,
     );
+    expect(branchStepHint(doc, { rungId: 'r2', from: { rung: 'r1', node: 1 } })).toBe(
+      `2段目${JA.schematic.branchOf}${JA.schematic.branchPickTo}`,
+    );
+    expect(branchStepHint(doc, { rungId: 'r2' })).not.toMatch(/r\d/u);
   });
 
   it('lets keyToEdit finish the branch on Enter and swallows every other key', () => {
