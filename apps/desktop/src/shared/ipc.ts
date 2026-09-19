@@ -135,6 +135,11 @@ export interface WorkFile {
    * **復元時は必ず未変換として開く**（Worker には何も載っていないため）。記録としてだけ残す。
    */
   converted?: boolean;
+  /**
+   * モードBの回路図エディタの下書き（`SchematicDocument` をそのまま JSON にしたもの）。§11.4 / §12.3
+   * 任意項目なので、Phase 1〜4 に保存した作業ファイルは下書き無しで開く（`formatVersion` は 1 のまま）。
+   */
+  schematic?: unknown;
 }
 
 /** 保存要求。`kind: 'autosave'` は既定の一時保存先へ黙って書く（§12.3）。 */

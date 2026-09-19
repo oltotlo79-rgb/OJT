@@ -27,6 +27,7 @@ import {
 } from '@ojt/content';
 import { IR_COLS, MAX_ROWS, type LadderProgram } from '@ojt/ladder-core';
 import { IMPLEMENTED_DIALECT_IDS, isDialectId } from '@ojt/plc-dialects';
+import { SCHEMATIC_FORMAT_VERSION, type SchematicDocument } from '@ojt/schematic-core';
 import { WORK_FILE_FORMAT_VERSION, type WorkFile } from '../../shared/ipc.js';
 import { ojtApi } from '../app/ojt-api.js';
 import { DEVICE_COMMENT_COUNT_LIMIT, DEVICE_COMMENT_LIMIT, useStore } from '../app/store.js';
@@ -193,8 +194,45 @@ function inspectFieldsFor(problemId: string): Partial<WorkFile> {
           }),
     };
   }
-  return { mode: 'assemble' };
+  /*
+   * モードB（組立）。回路図エディタの下書きは**あるときだけ**載せる（決定表#23）。
+   * 作りかけでも載せる（妥当性は検算だけが要求する。決定表#3）。§11.4 / Plan 5 Task 6
+   */
+  return {
+    mode: 'assemble',
+    ...(state.schematicDoc === undefined ? {} : { schematic: state.schematicDoc }),
+  };
 }
+
+// --- Plan 5 Task 6 ---
+/** 下書きとして受け入れる段の本数の上限（盤に載る回路図は十数段。桁違いなら壊れている）。 */
+export const MAX_RESTORED_RUNGS = 64;
+
+/**
+ * 作業ファイルの下書きを文書として読む。形が違えば `undefined`（下書き無しで開く）。§13 #8
+ * 中身の妥当性は見ない（作りかけの下書きも復元する。決定表#3）。段と要素の形だけを確かめ、
+ * 壊れていれば黙って下書き無しで開く（読込そのものは断らない）。
+ */
+export function toSchematicDoc(raw: unknown): SchematicDocument | undefined {
+  if (!isRecord(raw)) return undefined;
+  if (raw['formatVersion'] !== SCHEMATIC_FORMAT_VERSION) return undefined;
+  if (raw['orientation'] !== 'horizontal') return undefined;
+  if (typeof raw['id'] !== 'string' || typeof raw['title'] !== 'string') return undefined;
+  const rungs = raw['rungs'];
+  if (!Array.isArray(rungs) || rungs.length > MAX_RESTORED_RUNGS) return undefined;
+  for (const rung of rungs as readonly unknown[]) {
+    if (!isRecord(rung) || typeof rung['id'] !== 'string') return undefined;
+    const cells = rung['cells'];
+    if (!Array.isArray(cells)) return undefined;
+    for (const cell of cells as readonly unknown[]) {
+      if (!isRecord(cell) || typeof cell['id'] !== 'string' || typeof cell['device'] !== 'string') {
+        return undefined;
+      }
+    }
+  }
+  return raw as unknown as SchematicDocument;
+}
+// --- /Plan 5 Task 6 ---
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -423,6 +461,8 @@ export interface InspectWorkState {
   dialectId?: string;
   /** 保存時点でラダーが変換を通っていたか。§10.6 */
   converted?: boolean;
+  /** モードBの回路図エディタの下書き（`SchematicDocument` の形）。§11.4 / 決定表#23 */
+  schematic?: unknown;
 }
 
 /** 復元できる並びの長さの上限（main の `MAX_WORK_FILE_ENTRIES` と同じ値）。§13 #8 */
@@ -689,6 +729,14 @@ export function restoreInspectState(problem: SupportedProblem, state: InspectWor
     }
     return true;
   }
+
+  /*
+   * モードB: 回路図エディタの下書きを戻す（決定表#23）。形が違えば下書き無し（`openProblem()`
+   * が入れた空の文書のまま）で開く。読込そのものは断らない（机上の下書きが読めないことを
+   * 理由に盤の配線まで捨てさせない）。§11.4 / §13 #8
+   */
+  const draft = toSchematicDoc(state.schematic);
+  if (draft !== undefined) store.setSchematicDoc(draft);
   return true;
 }
 
