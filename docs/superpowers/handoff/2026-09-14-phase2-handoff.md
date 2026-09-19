@@ -331,3 +331,141 @@ Task 1開始点（`33460bd`）からHEADまでに `packages/` へ15ファイル�
 ### 次のステップ
 
 Plan 4A（`docs/superpowers/plans/2026-09-19-phase4a-dialects-and-plc-models.md`）と Plan 4B（`docs/superpowers/plans/2026-09-19-phase4b-vendor-skins-and-3d.md`）がドキュメント専用セッションで起票済み（他社方言・PLCユニット/ラック機種・ベンダースキン・3D外観）。次のセッションはこの2本のプランのレビュー確定後、実装タスクの着手から始める。
+
+---
+
+## Phase 4〜6 の記録（2026-09-19〜20）
+
+### 1. 概要
+
+Phase 3 完了（`6304577`）から続けて、Phase 4〜6 を無停止で実施した。
+
+- **Plan 4A**（`packages` のみ、14タスク）: OMRON CP1E・JTEKT TOYOPUC PC10G-1SP・シャープ JW300 の3方言プロファイル、表記切替（IR無改変）、命令語リストのエクスポート、`PlcUnitSpec` の点別コモン化、4機種の `PlcAppearance`（外観記述）、ラック形3D の土台、4機種でのモードD開始、静的チェックの機種非依存化。全14タスク**確定**。
+- **Plan 4B**（`apps/desktop` のみ、14タスク）: 4社スキン（見た目・操作フロー）、設定でのメーカー選択、表記切替ダイアログ、命令語リスト保存（IPC 7本目）、`PlcAppearance` からの3D描画、ラックの3D、機種追随カメラ、4機種 E2E。**Task 1–12 確定**、Task 13–14 は Plan 5 Batch E レビューにぶら下がり修正中。
+- **Plan 5**（回路図エディタ・検算・配線ガイド・性能・配布 v1.0.0、16タスク）: 編集可能な回路図（純関数層＋SVG編集）、`verifySchematic()` による机上検算、疑わしい配線、配線ガイドの相互ハイライト、端子リストによるキーボード配線、性能計測窓・端子インスタンス化・テクスチャ共有、配布パッケージの v1.0.0 化（**タグ付け・公開はしていない**、利用者の明示指示待ち）。**Task 1–13 確定**、Task 14–16（＋ Plan 4B Task 13–14）は合同レビューで CHANGES REQUIRED、修正中。
+- **Phase 6**（取扱説明書とアプリ内ヘルプ、12タスク）: 正本を `docs/manual/*.md` の1つにし、`buildManual()` がアプリ内ヘルプ（`manual-content.ts`）と印刷用 HTML/PDF を同じ呼び出しから生成、一致検査をバイト一致で機械的に保証。ヘルプ引き出し（もくじ・検索・`F1`）、PDF 同梱（IPC 8本目 `manual:open`）、文体・用語・機能網羅の検査。**Task 1–8 landed**（A+Bレビューで CHANGES REQUIRED、修正中）、**Task 9 実行中**、Task 10–12 未着手（Task 12 = スクリーンショット撮影は全UX直し後・最新ビルドから最後に行う）。
+
+### 2. 着地一覧
+
+#### Plan 4A（`packages` のみ、全14タスク）
+
+| Task | 主な SHA | レビュー状況 |
+|---|---|---|
+| 1–2 方言共通土台／OMRON CP1E | `b15a7a8` / `5cf0030` / `780d21f` | 確定（Batch A+B） |
+| 3–5 JTEKT／シャープ／4方言登録・横断不変条件 | `77ec4bd` / `1e594ea` / `81c701a` | 確定（Batch A+B） |
+| 6 表記切替 | `231cc89` | 確定（Batch A+B） |
+| 7 命令語リストのエクスポート | `d721b23` | 確定（Batch A+B） |
+| 8–9 `PlcUnitSpec` 点別コモン化／`PlcAppearance`・CP1E本体 | `a43da95`（9は共有ツリー競合で `38d9fe6` に混入） | 確定（Batch C） |
+| 10 TOYOPUC ラック | `11e102e` | 確定（Batch C） |
+| 11 JW300 ラック・機種横断検査 | `5aac828` | 確定（Batch C） |
+| 12 4機種でモードD開始 | `388cef9` | 確定（Batch D） |
+| 13 静的チェックの機種非依存化 | `c7d8582` | 確定（Batch D） |
+| 14 クロス検証・公開API確定 | `5384a68` | 確定（Batch D） |
+
+レビュー修正: `172253c`/`293bc1d`/`15d1603`（Batch A+B）、`f3855be`（Batch C）、`e6cbdc1`/`964cbc0`（Batch D）。21:02 に「PLAN 4A ALL 14 CONFIRMED」。
+
+#### Plan 4B（`apps/desktop` のみ、全14タスク）
+
+| Task | 主な SHA | レビュー状況 |
+|---|---|---|
+| 1–5 スキン層・見た目・`LadderWorkspace`・回路入力・方言別欄 | `933ad71`/`d8c61f9`/`399c1e7`/`c624c90`/`51e3b67` | 確定（スキン系、fix `ccc919e`/`9f2ab4b`/`9650fc4`/`96cb8c9`） |
+| 6–7 設定で4社選択／既定機種で開く | `50e3a19`/`456d6d9` | 確定（Batch B、fix `31e57dc`/`be2652c`） |
+| 8–9 表記切替ダイアログ／命令語リスト保存 | `740b593`/`cc12977` | 確定（Batch C、fix `63f8e35`/`53d948f`＝「Tasks 1-12 all confirmed」） |
+| 10–12 `PlcUnit` 描画／`PlcRack`／カメラ機種追随 | `238a47f`/`28af3be`/`46eb5d7`/`7c0e9d7` | 確定（3D系、fix `555796d`/`98a7574`/`5b8368e`） |
+| 13 4機種 E2E | `a585055` | Plan 5 Batch E レビュー対象、修正中 |
+| 14 全体検証・仕上げ | `fb2e11a` → 再検証 `ed02b86` | 同上。完了条件に但し書き数件（§6参照） |
+
+#### Plan 5（回路図エディタ・検算・配線ガイド・性能・配布 v1.0.0、全16タスク）
+
+| Task | 主な SHA | レビュー状況 |
+|---|---|---|
+| 1–3 編集操作・スロット矩形／検算／疑わしい配線 | `f6c40ec`/`fbe4251`/`eb57bae` | 確定（Batch A、fix `973c662`/`19bd5e6`） |
+| 4–7 純関数層＋手順帯／編集できる回路図／検算往復／モードB組込 | `1edd04c`/`1e714c9`/`be4b284`→`36a0034`（復元）/`5662cb7` | 確定（Batch B、fix `450f907`/`16f328e`/`0710853`） |
+| 8–10 配線ガイド／結果の疑わしい配線／端子リスト配線 | `4821098`/`9abc0a8`/`63ae00a` | 確定（Batch C+D、fix `57519f7`/`c975d75`） |
+| 11–13 `PerfProbe`／端子インスタンス化／印字テクスチャ・机上ケーブル共有 | `5fac4a5`/`6127870`/`34a785f` | 確定（Batch C+D、同上） |
+| 14 配布パッケージ固め（v1.0.0） | `9dcfb8c` | Batch E: CHANGES REQUIRED、修正中 |
+| 15 E2E（受入基準①〜④＋#28/#29＋オフライン） | `4ca3726`/`40de7d9` | 同上 |
+| 16 全体検証 | `ed02b86` | 同上 |
+
+Batch E（Task 14–16 ＋ Plan 4B Task 13–14 合同）レビュー: **CHANGES REQUIRED**（Blocking 3・Important 5・Minor 8）。修正エージェント（Opus、`OJT-wt-e2e` の唯一のビルド担当）が対応中。
+
+#### Phase 6（取扱説明書とアプリ内ヘルプ、全12タスク）
+
+| Task | 主な SHA | レビュー状況 |
+|---|---|---|
+| 1 機能一覧の抽出 | `e8bb4b6` | landed、A+Bレビュー対象 |
+| 2 Markdown変換・生成物 | `de5676b` | 同上 |
+| 3 説明書 前半6章 | `7d20da5` | 同上（文言はIM項目、Task5で修正済み） |
+| 4 説明書 後半7章 | `1f93421`（`80f0750` は amend事故で混入。§5参照） | 同上 |
+| 5 文体・用語・機能網羅の検査 | `491a483` + `cfcf506` | 確定（`cfcf506` で A+Bレビュー IM-1〜7 反映） |
+| 6 ヘルプの純関数層 | `cc02ba3` | 確定 |
+| 7 PDF生成・8本目のIPC・配布同梱 | `c0a47ea` | landed、BL-1（`print-manual.mjs` 終了コード）修正待ち |
+| 8 ヘルプの引き出し | `2e15052` | landed、IM-11/IM-12（IME・スクロール）修正待ち |
+| 9 全画面からの導線と `F1` | （作業中。git status に未コミット差分あり） | **実行中** |
+| 10 コードの表と説明書の一致 | 未着手 | 未着手 |
+| 11 E2E と全体検証 | 未着手 | 未着手 |
+| 12 スクリーンショット撮影・吹き出し（**プラン最後**） | 未着手 | 未着手 |
+
+Phase 6 A+B 統合レビュー（Task 1–4・6–8 対象）: **CHANGES REQUIRED**（Blocking 1・Important 12・Minor 14）。文言系の指摘は Task 5（`cfcf506`）へ反映済み。コード系の指摘（BL-1・IM-9〜12・Minor）は修正エージェントが対応中（未コミット、`git status` の `HelpDrawer.tsx` / `help-model.ts` / `ja.ts` / `print-manual.mjs` / `manual-build.mjs` 等がこれ）。
+
+### 3. 利用者の決定と規則（2026-09-19/20）
+
+- 製品名は**電気教育ツール**（Phase 3 で改名済み、継続）。
+- **タグ付け・`gh release create` は利用者の明示の指示があるまで実行しない**（v0.2.0 は誤読で公開してしまったため pre-release のまま維持。v1.0.0 は成果物とリリース手順チェックリストまでを用意し、公開はしていない）。
+- **トークン節約で週次上限までに完了させる**方針を継続（モデル選択: 機械的作業= Haiku、逐語プラン実行・指定済み修正= Sonnet、レビュー・計画・判断= Opus）。
+- **画面の品質は受入基準そのもの**: 装飾的・冗長な要素を作らない、要素どうしの重なりを作らない、平易な日本語（専門用語なし）、デザイン品質そのものを完了条件に含める（Plan 4B/5 の「画面の品質」節、UI監査の5点満点評価）。
+- **図記号の参照元**: 三菱は e-sysnet「PLC入門」第6回（利用者指定、`https://e-sysnet.com/plc-6/`）ほか計7件を `docs/reference/ladder-skin-sources.md` に一覧化（画像・図記号ビットマップは複製せず、記述だけを取った）。§17 により**ベンダー画像は1つも持たない**（renderer に画像ファイル・base64・外部URLが無いことをgrepで確認）。
+- **説明書とアプリ内ヘルプは同一の正本から生成**（`buildManual()` が両方を書き出し、`manual-sync.test.ts` がバイト一致で保証）。**画像は実際の画面を撮った実写のみ**で、**全実装・全UX直しが終わったあとに最新ビルドから最後に撮影**する（Phase 6 Task 12、決定表 P13）。2026-09-20 追記でヘルプ本文にも図（幅400px縮小版→押すと原寸）を出すことに決定。
+- **完了率の計算式を改訂**: 従来の raw 重み合計95（1A8/1B5/1C5/1D12/P2 15/P3 20/P4 15/P5 15）÷0.95 に、**Phase 6 の重み8を追加し合計103、÷1.03** に変更。個別タスクの分母は Phase4=28（4A14+4B14）・Phase5=16・Phase6=12。本記録時点の確定タスク数は本節の着地一覧のとおりで、最終的な表示%の算出は次回セッションの担当に委ねる（**前回報告した数値を下回らないこと**が既存ルール）。
+
+### 4. UI 監査
+
+`apps/desktop/e2e/ui-quality.spec.ts` が窓 1280×800 / 1440×900 / 1920×1080 の3サイズで **68状態 × 3 = 204枚**を撮り、機械点検（重なり・小さすぎる文字/当たり判定・変な改行・3D上の重なり・同名操作の重複）と目視を行った（対象 `origin/main` = `e13195b`）。
+
+- **1424件検出、うち致命133件**。overlap 521・small-text 268・small-target 234・wrap 220・hud-overlap 103・duplicate 78。clip/page-overflow/focus/canvas は0件。overlap・wrap・small-text の約8割がモードDに集中。デザイン評価は**総合2.8/5**（モードD 1280×800 は1点＝格子が潰れて編集不能）。
+- 4本の修正バッチに分割し並行実施:
+  - **バッチA（3Dビューポート）**: `76a71af`。ビューキューブとラベルの重なり解消。
+  - **バッチB（回路図エディタ）**: 本来は独立コミットの予定だったが、Phase 6 Task 4 の amend事故で **`80f0750`**（表面上は「docs(manual): write chapters 7-13」）に混入して着地（§5参照）。
+  - **バッチC（パネル・結果・一覧・設定）**: `46b4972`。
+  - **バッチD（モードD＋日本語改行）**: `340b2d9`。`plc-run`/`monitor-run`/`plc-auto-convert` の testid を削除したため、参照していた E2E 3本が赤くなった（Plan 5 Batch E レビュー B2、§6参照）。
+- **再ベースライン（`BASELINE`/`BLOCKING_BASELINE=133`の再測定）は未実施**。4バッチ後の実測が `ui-quality.spec.ts` の基準値に書き戻されておらず、Plan 5 Batch E の修正エージェントが再実行・書き戻しを担当する。
+
+### 5. 共有ツリーの事故と規則
+
+Phase 4〜6 は作業ツリーを複数エージェントで共有しており、次の3件の事故が起きた。
+
+1. **`git commit --amend` が他エージェントの staged 内容を飲み込んだ**: Phase 6 Task 4（`docs(manual): write chapters 7-13`）のエージェントが amend した際、並行していた UI監査バッチBの回路図エディタ修正がその commit に混入した。結果として `80f0750` は**マニュアル原稿だけでなくスキーマ/コード修正も含む誤ラベルのコミット**になっている（内容自体は失われていない）。以後の `git log` 読み取りではこの点に注意。
+2. **`git commit -- <paths>` が working tree の内容を巻き込む**: パスを指定した `git commit` は、指定パスに**未ステージの他エージェントの変更**が乗っていると、それも一緒に取り込んでしまう（"foreign hunks" を sweep する）。
+3. **autostash 付き rebase が着地済みの変更を消した**: Plan 4B Batch B の修正エージェントが `git pull --rebase`（autostash）を実行した際、直前に着地していた Plan 5 Task 6（`be4b284`「回路図の机上検算を Worker で実行」）が古い内容に巻き戻され、`be2652c` として着地してしまった。`36a0034`「回路図の机上検算を復元」で復旧を確認済み（Git reconciler エージェントが origin 上の両バッチの無事を再確認済み）。
+
+**現在の規律**:
+- `git stash` / `git commit --amend` / autostash 付き rebase / 他人の変更の unstage は使わない。
+- index に自分以外のパスが混じっているときは `git commit --only -- <paths>` を使う（`--only` を落とすと事故2と同じことが起きる）。
+- ステージ前に `origin/main` と比較し、自分の差分だけかを確認する（`git diff --cached --stat`）。
+- 作業ツリーが fast-forward できない（他エージェントが同じファイルを大きく書き換え中）ときは、`git format-patch` でパッチ化 → 使い捨ての worktree で `origin/main` を checkout → 適用 → commit → push する。
+- ビルド・E2E・dist は汚染されていない専用 worktree（`OJT-wt-shots` / `OJT-wt-release` / `OJT-wt-e2e`）でのみ行う。共有ツリー（main tree）では `pnpm -r test` 等の再実行結果が他エージェントの未コミット編集で時々刻々変わるため、正としない。
+
+### 6. 未了・申し送り
+
+- **Plan 5 Batch E レビュー**（Blocking 3・Important 5・Minor 8）: B1 性能予算が「俯瞰」1視点でしか測られていない（正面・ソケット拡大も回す）／B2 消えた testid 3箇所（`plc-vendors.spec.ts:244` の `plc-auto-convert`→`plc-hint`、`plc.spec.ts:357-358` と `ui-quality.spec.ts:1502` の `plc-run`→`toolbar-plc-run`）／B3 `ui-quality.spec.ts` の `BASELINE` 未再測定（§4の再ベースラインと同一）。Important: `docs/releases/v1.0.0.md` が Phase 6 の同梱（ヘルプ/PDF）と food違う（I1）、README にヘルプ/PDFの言及が無い（I2）、オフライン検査が renderer のリクエストしか見ていない（I3）、同梱課題数が下限のみで等号縛りでない（I4）、`plc-vendors.spec.ts` の `finally` が例外を握り潰す（I5）。現在 `OJT-wt-e2e` で修正中（唯一のビルド許可エージェント）。
+- **Plan 4B Task 14 の完了条件の未チェック**: `apps/desktop/package.json` の依存が「1つも増えていない」の文字どおり未達（`markdown-it` 1件、Phase 6 Task 2 由来。意図的な追加）／画面文言の網羅監査が未実施／`packages/` 無変更の確認は監査当時のみ有効（直後に他エージェントが `schematic-core` を編集開始）。
+- **Plan 5 Task 16 の未チェック箱**: typecheck/lint は worktree 再確認で緑（`i18n/ja.ts` が未コミット `socket-pins.ts` を import していたのが原因、Phase 5 側で解消済み）だが、**`dist`・実機60fps・実機オフライン確認は未実施**（ハードウェアが必要で委任範囲外、リリース手順チェックリスト 5〜8 待ち）。8px格子から外れたCSS 7宣言（`schematic/**` / `panels/view-hint.module.css`）と、JSDoc内のURL参照7件（`ladder/skins/*.ts`）は `docs/reference/ladder-skin-sources.md` へ移設済みなので後者は解消済みのはず（要再grep）。
+- **Phase 6 Task 10（コードの表と説明書の一致）で踏みそうな既知の食い違い**: `apps/desktop/src/renderer/i18n/ja.ts` の `JA.ladder.shortcutNote`「キー割当はメーカー（**方言プロファイル**）ごとに切り替わります。」が内部設計語（`DialectProfile`）を利用者向け文言に露出させている。Task 5 の禁止語検査は原稿側しか見ないため、Task 10 の `manual-appdata.test.ts` で初めて表面化する可能性が高い。
+- **`80f0750` は誤ラベルのコミット**（§5事故1）。表題は「docs(manual): write chapters 7-13」だが、実際には UI監査バッチBの回路図エディタのコード修正も含む。`git log --stat` で中身を確認してから扱うこと。
+- **`docs/スクリーンショット*.png` は `.gitignore`（ルート `.gitignore:14`）済み**。Phase 6 Task 12 が撮る `docs/manual/images/` はこのパターンに当たらない別ディレクトリなので、gitignoreの対象外であることを撮影前に確認する（`apps/desktop/screenshots/` は別途 `apps/desktop/.gitignore:3` で無視）。
+- その他、`deferred.txt` 末尾（2026-09-18 16:00 以降の項目）に残る細目: instruction-list.ts の印刷用レイアウト未実装（§10.7）、3D分割ビューでのボード縮小、SwiftShader初回フレーム遅延、47-instruction-listショットのグリッドずれ、suspect-noteが5件表示時に折り返し外、いずれも致命ではなく次の画面品質パスで拾う。
+
+### 7. 再開手順
+
+1. 共有ツリー（main tree）は現在 `origin/main`（`46b4972`）と同じだが、**未コミットの Phase 6 差分**（Task 9 の導線工事、A+Bレビューのコード修正）が乗っている。これらを完成・commit してから次に進む。
+2. ビルド・E2E・dist は専用 worktree で行う: `OJT-wt-shots`（スクリーンショット用）／`OJT-wt-release`（配布検証用）／`OJT-wt-e2e`（Plan 5 Batch E の唯一のビルド担当が使用中）。新規に worktree を切るときは `git worktree add ../OJT-wt-<用途> origin/main --detach` を基本形にする。
+3. 基本コマンド: `pnpm --filter @ojt/desktop build`（main/preload/renderer）、`pnpm --filter @ojt/desktop e2e`（Playwright、2回連続グリーンを確認）、`pnpm --filter @ojt/desktop dist`（NSIS＋ポータブル、`release/artifacts.md` を確認）。
+4. レビュー・監査の記録は `%TEMP%\plan5-cd-review\REVIEW.md`／`%TEMP%\plan5-e-review\REVIEW.md`／`%TEMP%\phase6-ab-review\REVIEW.md`／`%TEMP%\ui-audit\REPORT.md`（+ `findings.json`/`summary.json`）にある。コーディネータの監視メモは `scratchpad\monitor\agents.txt`（全エージェントの結果表）と `deferred.txt`（積み残し）。
+5. **次の着手順序**（本記録時点）:
+   1. Phase 6 Task 9（全画面導線＋`F1`）を完了させる（実行中）。
+   2. Phase 6 A+Bレビューのコード修正（BL-1・IM-9〜12・Minor）を完了させる（実行中）。
+   3. Plan 5 Batch E の修正（B1〜B3・I1〜I5）を完了させ、`ui-quality.spec.ts` の `BASELINE` を書き戻す。
+   4. Phase 6 Task 10（コードの表と説明書の一致）→ Task 11（E2E・全体検証）。
+   5. Plan 5 Batch E ＋ Phase 6 A+B の**合同再レビュー**（C/Dレビューと同じ1本化方針）。
+   6. 全画面のUX直しが揃った状態で Phase 6 Task 12（スクリーンショット撮影・吹き出し。**最新ビルドから最後に**）。
+   7. Phase 4〜6 全体の受入（§14.3 相当）→ 実装完了率の再計算・報告。
