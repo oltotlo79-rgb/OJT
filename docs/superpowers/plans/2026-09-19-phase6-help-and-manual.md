@@ -14,7 +14,8 @@
 | ④ | NSIS とポータブルの両方に `manual.pdf` が含まれ、`check-dist.mjs` が検査する | Task 7（`electron-builder.yml` ＋ `check-dist.mjs` ＋ `release-manual.test.ts`） |
 | ⑤ | 説明書の見出しが機能一覧表を覆い、禁止語0件 | Task 1・5 |
 | ⑥ | アプリ内ヘルプの見出しと本文が同梱 PDF のそれと一字一句一致する | Task 2（1つの正本から2つの生成物）／`manual-sync.test.ts`（Task 2） |
-| ⑦ | 図がすべて本アプリの実画面で、丸数字の吹き出しが操作要素を指し、本文がその番号で場所を指す | Task 5（意味の定義と原稿との照合）／Task 12（撮影・吹き出しの描き込み・画像の検査） |
+| ⑦ | 図がすべて本アプリの実画面で、丸数字の吹き出しが操作要素を指し、本文がその番号で場所を指す | Task 5（意味の定義と原稿との照合）／Task 12（撮影・吹き出しの描き込み・縮小版・画像の検査） |
+| ⑧ | アプリ内ヘルプに PDF と同じ図が縮小版で出て、押すか `Enter` で原寸が覆いで開く | Task 2（図の参照を生成物に載せる）／Task 8（図の描画と拡大の覆い）／Task 12（縮小版の生成） |
 
 **利用者要求（2026-09-19、全タスク共通）:**
 
@@ -178,10 +179,12 @@
 | P6 | **生成物を整形・検査の対象から外す** | `src/renderer/help/manual-content.ts` を `.prettierignore` と `eslint.config.js` の `ignores` に足す | 生成物を人の規則で整形すると、次の生成でまた差分が出て `manual-sync.test.ts` が落ちる。中身の正しさはバイト一致検査が保証している |
 | P7 | **生成物の改行コード** | 変換は入力を `\r\n` → `\n` に正規化し、出力も `\n` で綴じる。検査も両辺を正規化してから比べる | Windows で作業しているので、git の改行変換や編集器の設定でバイト一致が壊れる。正規化を両端に置けば OS に依らない |
 | P8 | **ヘルプの本文を差し込む方法** | `dangerouslySetInnerHTML` を使う。差し込む文字列は**ビルド時にこのリポジトリの Markdown から作ったもの**だけで、課題JSONも利用者入力も混ざらない。`markdown-it` は `html: false` で走らせるので原稿の生 HTML も escape 済み | React の要素に組み直すには HTML パーサをもう1つ持つことになり、実行時依存が増える（§15）。差し込む値の出どころが1つに固定されていることを、`manual-sync.test.ts`（正本から作り直して照合）が毎回証明する |
+| P16 | **図の URL を誰が決めるか**（利用者の決定 2026-09-20） | 生成物の HTML には `src` を**書かない**。`<img data-manual-image="<名前>">` とだけ書き、`manual-content.ts` が `@manual-images` の別名で読み込んだ `MANUAL_IMAGES` を、引き出しが差し込んだあとの DOM を走査して `src` に入れる | 束ねた図の URL（内容ハッシュ付き）は Vite が決めるので、変換スクリプト（素の Node）には分からない。差し込みを画面側に1箇所だけ置けば、生成物は束ね方を知らないままでよく、`manual-sync.test.ts` のバイト一致も壊れない |
+| P17 | **原寸をいつ読み込むか**（同上） | 本文には**縮小版**（幅400px）を `loading="lazy"` で出し、**原寸は押されたときだけ**覆いで出す | 引き出しは幅420pxなので、本文で原寸（1280px）を出しても縮まって読めないうえ、節を開くたびに数MBを読むことになる。縮小版だけなら1節あたり 80KB 以下で済み、細かい字を読みたいときだけ原寸を開けばよい |
 | P9 | **E2E で PDF のボタンを押さない** | `e2e/help.spec.ts` はボタンが出ていて押せることと、`resources/manual/manual.pdf` が実在することまでを確かめる。`shell.openPath()` の3分岐は `test/manual-ipc.test.ts`（`electron` を差し替え）が縛る | 押すと OS の既定 PDF ビューアが本当に起動し、CI でもレビュー中でも閉じられない。受入基準③の「実際に開くこと」は Plan 5 のリリース手順チェックリストに1項目足して人が確かめる（意図的な差分#3） |
 | P10 | **図の撮影を E2E にするか単体にするか** | Playwright（`e2e/manual-shots.spec.ts`）。`pnpm --filter @ojt/desktop e2e manual-shots` で撮り直す | 3D盤は WebGL なので happy-dom では描けない。既存6本の E2E と同じ `capturePage()` の作法をそのまま使う |
 | P11 | **図の撮り直しを CI の必須にするか** | しない。`manual-shots.spec.ts` は他の E2E と同じく `pnpm e2e` で走るが、**失敗するのは撮れなかったときだけ**で、中身の比較はしない。画像の寸法・大きさ・参照の実在は `manual-images.test.ts`（Vitest）が git にある PNG を見て縛る | 画面の見た目を1pxでも変えるたびに E2E が落ちると、誰も画面を直さなくなる。守りたいのは「図が実在し、規格どおりで、本アプリのものである」ことだけである |
-| P12 | **テストの本数** | packages への変更は**0**。desktop に **116件**足す（Task 1 の 6／2 の 20／5 の 24／6 の 12／7 の 12／8 の 14／9 の 9／10 の 7／12 の 12。Task 3・4・11 は単体テストを足さない） | 各タスクの「期待」に内訳を書く。`pnpm -r test` の総数が合わないときは足し忘れか二重登録である |
+| P12 | **テストの本数** | packages への変更は**0**。desktop に **123件**足す（Task 1 の 6／2 の 22／5 の 24／6 の 12／7 の 12／8 の 17／9 の 9／10 の 7／12 の 14。Task 3・4・11 は単体テストを足さない） | 各タスクの「期待」に内訳を書く。`pnpm -r test` の総数が合わないときは足し忘れか二重登録である |
 | P13 | **図を最後にまわす** | 撮影と吹き出し（Task 12）を**最後のバッチF**にし、それまでは図の実在も寸法も見ない。原稿（Task 3・4）は図を参照してよく、図の**意味**（`shots.json`）は Task 5 で決める | 利用者の決定（2026-09-19）。画面を直すたびに17枚を撮り直すのは無駄で、撮り直しを忘れた図が残るほうが害が大きい。全機能が landed し、全画面のUX直しが終わった状態で1回だけ撮れば、載る図が必ず最新になる |
 | P14 | **図の定義を2つのファイルに分ける** | `shots.json`（意味＝説明文・吹き出しの番号とラベル）は Task 5、`shot-geometry.json`（場所＝矩形と切り出し）は Task 12 | 「何を指すか」は原稿と同時に決められるが、「どこを指すか」は撮ってみないと決まらない。1つのファイルにすると、Task 5 の時点で画素の位置を当てずっぽうで書くことになる。分けておけば、どちらのファイルもそれを書く時点で**完全**である |
 | P15 | **吹き出しの描き方に新しい依存を足さない** | `scripts/annotate-shots.mjs` の `overlayHtml()` が HTML を組み、**Playwright の Chromium**がそれを開いて撮り直す。`overlayHtml()` は純関数なので Vitest で単体検査できる | 純 JS で PNG に丸数字と日本語ラベルを描くにはフォントのラスタライザが要り、重い依存になる。Chromium は既に devDependency にあり、OS のフォントでアプリと同じ字が出る。描画の正しさは「HTML が正しいか」と「撮れたか」に分けて確かめられる |
@@ -528,6 +531,7 @@ git show --stat HEAD
 - Create: `docs/manual/00-intro.md`（この段階では「はじめに」の1章だけ。本文は Task 3 が書き足す）
 - Create: `apps/desktop/src/renderer/help/manual-content.ts`（**生成物**）
 - Modify: `.prettierignore` / `eslint.config.js` / `.gitignore`
+- Modify: `apps/desktop/electron.vite.config.ts`（`@manual-images` の別名と `server.fs.allow`。取扱説明書 設計 §7.2b）
 - Test: `apps/desktop/test/manual-build.test.ts`（新規）
 - Test: `apps/desktop/test/manual-sync.test.ts`（新規）
 
@@ -548,7 +552,7 @@ git diff --stat -- apps/desktop/package.json pnpm-lock.yaml
 
 ```ts
 import { describe, expect, it } from 'vitest';
-import { buildManual, chapterIdOf, FIGURE_NOTE, plainText } from '../scripts/manual-build.mjs';
+import { buildManual, chapterIdOf, plainText } from '../scripts/manual-build.mjs';
 
 /**
  * 正本（Markdown）の変換。取扱説明書 設計 §4.2。
@@ -627,12 +631,17 @@ describe('節の切り出し', () => {
   });
 });
 
-describe('図の扱い（決定表#9）', () => {
-  it('turns a figure into a note for the in-app help', () => {
+describe('図の扱い（決定表#9。利用者の決定 2026-09-20）', () => {
+  it('gives the in-app help a figure it can fill in later', () => {
     const section = build().sections[0];
     expect(section?.hasFigure).toBe(true);
-    expect(section?.html).toContain(FIGURE_NOTE);
-    expect(section?.html).not.toContain('<img');
+    expect(section?.imageNames).toEqual(['home']);
+    // 束ねた図の URL は Vite が決めるので、生成物には `src` を書かない（決定表 P16）
+    expect(section?.html).toContain('data-manual-image="home"');
+    expect(section?.html).toContain('loading="lazy"');
+    expect(section?.html).toContain('width="400"');
+    expect(section?.html).toContain('<button type="button"');
+    expect(section?.html).not.toContain('src=');
   });
 
   it('keeps the figure for the printed manual', () => {
@@ -641,10 +650,17 @@ describe('図の扱い（決定表#9）', () => {
     expect(section?.printHtml).toContain('<figcaption>');
   });
 
+  it('shows the same figures in the same order on both sides', () => {
+    const section = build().sections[0];
+    const printed = [...(section?.printHtml ?? '').matchAll(/<img src="images\/([^."]+)\.png"/gu)].map(
+      (match) => match[1],
+    );
+    expect(printed).toEqual(section?.imageNames);
+  });
+
   it('keeps the figure out of the plain text', () => {
     const section = build().sections[0];
     expect(section?.text).not.toContain('ホームの画面');
-    expect(section?.text).not.toContain(FIGURE_NOTE);
     expect(section?.text).toContain('練習盤をパソコンの画面の中で動かせる');
   });
 });
@@ -661,6 +677,10 @@ describe('生成物', () => {
     expect(helpModule).toContain('export const MANUAL_SECTIONS');
     expect(helpModule).toContain('export const MANUAL_CHAPTERS');
     expect(helpModule).toContain('export const MANUAL_SOURCES');
+    expect(helpModule).toContain('export const MANUAL_IMAGES');
+    // 図は Vite の別名で読み込む（取扱説明書 設計 §7.2b）
+    expect(helpModule).toContain("from '@manual-images/small/home.png'");
+    expect(helpModule).toContain("from '@manual-images/home.png'");
     expect(helpModule).toContain('"00-intro.md"');
     // 生成物にはアプリ用の本文だけを入れる（印刷用の本文は PDF 側にしかない）
     expect(helpModule).not.toContain('printHtml');
@@ -678,7 +698,7 @@ describe('生成物', () => {
 });
 ```
 
-期待（Step 3 のあと）: **15件通る**。
+期待（Step 3 のあと）: **16件通る**。
 
 `apps/desktop/test/manual-sync.test.ts`:
 
@@ -731,7 +751,6 @@ function sectionsOfPrintHtml(html: string): Array<{ id: string; title: string; t
 function plainOf(html: string): string {
   return html
     .replace(/<figure[\s\S]*?<\/figure>/gu, ' ')
-    .replace(/<p class="figure-note">[\s\S]*?<\/p>/gu, ' ')
     .replace(/<[^>]+>/gu, ' ')
     .replace(/&lt;/gu, '<')
     .replace(/&gt;/gu, '>')
@@ -760,6 +779,13 @@ describe('正本と生成物', () => {
     expect(printed).toEqual(inApp);
   });
 
+  it('shows the same figures, in the same order, in the help and in the pdf', () => {
+    // 利用者の決定（2026-09-20）: 図もヘルプに出すので、図の一致も検査する（決定表#12 ③）
+    const printed = built.sections.map((section) => ({ id: section.id, images: section.imageNames }));
+    const inApp = MANUAL_SECTIONS.map((section) => ({ id: section.id, images: [...section.imageNames] }));
+    expect(inApp).toEqual(printed);
+  });
+
   it('gives every section a unique id', () => {
     const ids = MANUAL_SECTIONS.map((s) => s.id);
     expect(new Set(ids).size).toBe(ids.length);
@@ -772,7 +798,7 @@ describe('正本と生成物', () => {
 });
 ```
 
-期待（Step 5 のあと）: **5件通る**。
+期待（Step 5 のあと）: **6件通る**。
 
 ```
 pnpm --filter @ojt/desktop test manual-
@@ -794,8 +820,8 @@ import MarkdownIt from 'markdown-it';
  * 「片方だけ古い」が起こりえない（利用者要求: 説明書とヘルプの内容は一致していること）。
  */
 
-/** アプリ内ヘルプで図の代わりに出す1行。決定表#9 */
-export const FIGURE_NOTE = 'この節の図は「説明書（PDF）を開く」で見られます。';
+/** アプリ内ヘルプが出す縮小版の幅[px]。決定表#9（利用者の決定 2026-09-20） */
+export const HELP_IMAGE_WIDTH = 400;
 
 /** 製品名。`i18n/ja.ts` の `APP_NAME` と同じ値だが、素の JS からは読めないのでここにも置く。 */
 export const PRODUCT_NAME = '電気教育ツール';
@@ -833,16 +859,40 @@ function toPrintHtml(html) {
   );
 }
 
-/** アプリ内ヘルプ用: 図を1行の案内にする。 */
+/**
+ * アプリ内ヘルプ用: 図を「押すと原寸が開くボタン」にする。
+ * **`src` は書かない**——束ねた図の URL は Vite が決めるので、画面側が `MANUAL_IMAGES` から
+ * 差し込む（取扱説明書 設計 §4.2 の規則5／本プラン 決定表 P16）。
+ */
 function toHelpHtml(html) {
-  return html.replace(FIGURE_PARAGRAPH, () => `<p class="figure-note">${FIGURE_NOTE}</p>`);
+  return html.replace(FIGURE_PARAGRAPH, (_all, src, alt) => {
+    const name = imageNameOf(src);
+    return (
+      `<figure class="manual-figure">` +
+      `<button type="button" data-manual-image="${name}">` +
+      `<img data-manual-image="${name}" alt="${alt}" loading="lazy" width="${String(HELP_IMAGE_WIDTH)}">` +
+      `</button><figcaption>${alt}</figcaption></figure>`
+    );
+  });
+}
+
+/** `images/home.png` → `home`。 */
+function imageNameOf(src) {
+  const match = /^images\/([A-Za-z0-9-]+)\.png$/u.exec(src);
+  const name = match?.[1];
+  if (name === undefined) throw new Error(`図の名前が規則に合いません: ${src}`);
+  return name;
+}
+
+/** その節に出る図の名前を、出てくる順に並べる。 */
+function imageNamesOf(html) {
+  return [...html.matchAll(/<img src="images\/([A-Za-z0-9-]+)\.png"/gu)].map((match) => match[1]);
 }
 
 /** HTML から素の文を作る（図は落とす）。検索と一致検査はこれを見る。 */
 export function plainText(html) {
   return html
     .replace(/<figure[\s\S]*?<\/figure>/gu, ' ')
-    .replace(/<p class="figure-note">[\s\S]*?<\/p>/gu, ' ')
     .replace(/<[^>]+>/gu, ' ')
     .replace(/&lt;/gu, '<')
     .replace(/&gt;/gu, '>')
@@ -883,8 +933,21 @@ function splitChapter(fileName, source) {
 }
 
 /** アプリ内ヘルプ用の TypeScript を組む。 */
-function helpModuleOf(chapters, sections, files) {
+function helpModuleOf(chapters, sections, files, availableImages) {
   const s = (value) => JSON.stringify(value);
+  // その説明書に出る図を、名前の順に1回ずつ（決定表 P16）
+  const imageNames = [...new Set(sections.flatMap((section) => section.imageNames))].sort();
+  /*
+   * まだ撮っていない図は読み込まない（決定表 P13）。`availableImages` を渡さなければ
+   * 全部あるものとして扱う（単体テスト用）。撮るまでは `{ small: '', full: '' }` が入り、
+   * 引き出しは `src` が空の図を描かない。
+   */
+  const has = (name) => availableImages === undefined || availableImages.includes(name);
+  const loaded = imageNames.filter((name) => has(name));
+  const imports = loaded.flatMap((name) => [
+    `import full_${name.replace(/-/gu, '_')} from '@manual-images/${name}.png';`,
+    `import small_${name.replace(/-/gu, '_')} from '@manual-images/small/${name}.png';`,
+  ]);
   const lines = [
     '/**',
     ' * 取扱説明書の本文。**このファイルは生成物である。手で直さない。**',
@@ -909,10 +972,27 @@ function helpModuleOf(chapters, sections, files) {
     '  html: string;',
     '  text: string;',
     '  hasFigure: boolean;',
+    '  /** この節に出る図の名前（出てくる順）。 */',
+    '  imageNames: readonly string[];',
     '}',
     '',
     '/** 元にした正本のファイル名（並び順）。 */',
     `export const MANUAL_SOURCES: readonly string[] = [${files.map((f) => s(f.name)).join(', ')}];`,
+    '',
+    '/** 図の置き場所。`small` は幅400pxの縮小版、`full` は原寸。取扱説明書 設計 §7.2b */',
+    'export interface ManualImage {',
+    '  small: string;',
+    '  full: string;',
+    '}',
+    '',
+    '/** 図の名前 → 置き場所。 */',
+    'export const MANUAL_IMAGES: Readonly<Record<string, ManualImage>> = {',
+    ...imageNames.map((name) =>
+      has(name)
+        ? `  ${s(name)}: { small: small_${name.replace(/-/gu, '_')}, full: full_${name.replace(/-/gu, '_')} },`
+        : `  ${s(name)}: { small: '', full: '' },`,
+    ),
+    '};',
     '',
     '/** 章の並び。 */',
     'export const MANUAL_CHAPTERS: readonly ManualChapter[] = [',
@@ -934,10 +1014,18 @@ function helpModuleOf(chapters, sections, files) {
     lines.push(`    html: ${s(section.html)},`);
     lines.push(`    text: ${s(section.text)},`);
     lines.push(`    hasFigure: ${section.hasFigure ? 'true' : 'false'},`);
+    lines.push(`    imageNames: [${section.imageNames.map((name) => s(name)).join(', ')}],`);
     lines.push('  },');
   }
   lines.push('];', '');
-  return lines.join('\n');
+  // 図の読み込みは冒頭（説明の囲みの直後）に置く
+  const head = lines.indexOf('') + 1;
+  return [
+    ...lines.slice(0, head),
+    ...imports,
+    ...(imports.length > 0 ? [''] : []),
+    ...lines.slice(head),
+  ].join('\n');
 }
 
 /** 印刷用の CSS（PDF の見た目）。決定表#26 */
@@ -1023,7 +1111,7 @@ function printHtmlOf(chapters, sections, builtAt) {
  * 正本ぜんぶを変換する。
  * `files` は `{ name, text }` をファイル名の昇順に並べたもの。
  */
-export function buildManual(files, builtAt = '') {
+export function buildManual(files, builtAt = '', availableImages = undefined) {
   const chapters = [];
   const sections = [];
   for (const file of files) {
@@ -1048,6 +1136,7 @@ export function buildManual(files, builtAt = '') {
         printHtml: toPrintHtml(rendered),
         text: plainText(rendered),
         hasFigure: helpHtml !== rendered,
+        imageNames: imageNamesOf(rendered),
       });
       sectionIds.push(id);
     }
@@ -1056,7 +1145,7 @@ export function buildManual(files, builtAt = '') {
   return {
     chapters,
     sections,
-    helpModule: helpModuleOf(chapters, sections, files),
+    helpModule: helpModuleOf(chapters, sections, files, availableImages),
     printHtml: printHtmlOf(chapters, sections, builtAt),
   };
 }
@@ -1085,6 +1174,7 @@ export interface BuiltSection {
   printHtml: string;
   text: string;
   hasFigure: boolean;
+  imageNames: string[];
 }
 
 export interface BuiltManual {
@@ -1094,11 +1184,15 @@ export interface BuiltManual {
   printHtml: string;
 }
 
-export declare const FIGURE_NOTE: string;
+export declare const HELP_IMAGE_WIDTH: number;
 export declare const PRODUCT_NAME: string;
 export declare function chapterIdOf(fileName: string): string;
 export declare function plainText(html: string): string;
-export declare function buildManual(files: readonly ManualFile[], builtAt?: string): BuiltManual;
+export declare function buildManual(
+  files: readonly ManualFile[],
+  builtAt?: string,
+  availableImages?: readonly string[],
+): BuiltManual;
 ```
 
 - [ ] **Step 4: 生成を走らせるスクリプトを作る**
@@ -1152,7 +1246,14 @@ if (files.length === 0) {
    * 走らせるたびに違うバイト列になり、配布物のチェックサムが毎回変わる。
    */
   const builtAt = new Date().toISOString().slice(0, 10);
-  const built = buildManual(files, builtAt);
+  // 撮り終わっている図だけを生成物に読み込ませる（決定表 P13）
+  const available = existsSync(IMAGE_DIR)
+    ? readdirSync(IMAGE_DIR)
+        .filter((name) => name.endsWith('.png'))
+        .map((name) => name.replace(/\.png$/u, ''))
+        .sort()
+    : [];
+  const built = buildManual(files, builtAt, available);
 
   mkdirSync(dirname(HELP_FILE), { recursive: true });
   writeFileSync(HELP_FILE, built.helpModule, 'utf8');
@@ -1162,9 +1263,9 @@ if (files.length === 0) {
   mkdirSync(OUT_DIR, { recursive: true });
   writeFileSync(join(OUT_DIR, 'manual.html'), built.printHtml, 'utf8');
   if (existsSync(IMAGE_DIR)) {
+    // PDF は原寸を使う。縮小版（`small/`）も一緒に来るが、PDF 側は参照しないので害はない
     cpSync(IMAGE_DIR, join(OUT_DIR, 'images'), { recursive: true });
-    const count = readdirSync(IMAGE_DIR).filter((name) => name.endsWith('.png')).length;
-    out.write(`図を複写しました: ${String(count)} 枚\n`);
+    out.write(`図を複写しました: ${String(available.length)} 枚\n`);
   } else {
     out.write('図はまだありません（Plan 6 Task 12 が撮ります）\n');
   }
@@ -1196,6 +1297,8 @@ cd apps/desktop && node scripts/build-manual.mjs
 #   印刷用HTMLを書き出しました: …/resources/manual/manual.html
 ```
 
+**注記（図がまだ無いあいだ）**: 生成物は**実在する図の読み込みだけ**を書く（`buildManual()` の第3引数 `availableImages`）。原稿が図を参照していても、その PNG がまだ無ければ `MANUAL_IMAGES` にはその名前で `{ small: '', full: '' }` が入る。こうしておくと、**Task 12 で図を撮るまで `pnpm build` も `pnpm -r test` も通り続ける**（利用者の決定「画像撮影は最後でよい」。決定表 P13）。図が揃ったら Task 12 が生成物を作り直し、読み込みが出そろう。引き出しは `src` が空の図を**描かない**（Task 8）。
+
 - [ ] **Step 6: 生成物を整形・検査・追跡の対象から外す**
 
 `.prettierignore` の末尾に足す:
@@ -1216,7 +1319,35 @@ apps/desktop/resources/manual/
     'apps/desktop/src/renderer/help/manual-content.ts',
 ```
 
-`apps/desktop/package.json` の `scripts` を直す（`dist` は Task 10 が直す）:
+`apps/desktop/electron.vite.config.ts` の `renderer` に、図を読むための別名と読み取り許可を足す（取扱説明書 設計 §7.2b）。既存の `@shared` の別名と `worker` / `build` は1文字も変えない。
+
+```ts
+  renderer: {
+    root: resolve(import.meta.dirname, 'src/renderer'),
+    plugins: [react()],
+    resolve: {
+      alias: {
+        '@shared': resolve(import.meta.dirname, 'src/shared'),
+        // 取扱説明書の図（生成物 `manual-content.ts` が読み込む）。取扱説明書 設計 §7.2b
+        '@manual-images': resolve(import.meta.dirname, '../../docs/manual/images'),
+      },
+    },
+    // `docs/` は `apps/desktop` の外にあるので、開発サーバに読んでよい根を明示する
+    server: { fs: { allow: [resolve(import.meta.dirname, '../..')] } },
+    worker: { format: 'es' },
+    …
+  },
+```
+
+TypeScript にも同じ別名を教える。`apps/desktop/tsconfig.json` の `compilerOptions` に足す:
+
+```json
+    "paths": { "@manual-images/*": ["../../docs/manual/images/*"] },
+```
+
+図の `*.png` を読み込める型は `vite/client`（`types` に入っている）が持っているので、宣言ファイルは要らない。
+
+`apps/desktop/package.json` の `scripts` を直す（`dist` は Task 7 が直す）:
 
 ```json
     "dev": "node scripts/build-manual.mjs && node scripts/dev.mjs",
@@ -1227,7 +1358,7 @@ apps/desktop/resources/manual/
 
 ```
 pnpm --filter @ojt/desktop test manual-
-# 期待: Test Files 2 passed / Tests 20 passed（manual-build 15 ＋ manual-sync 5）
+# 期待: Test Files 2 passed / Tests 22 passed（manual-build 16 ＋ manual-sync 6）
 pnpm --filter @ojt/desktop typecheck && pnpm lint
 # 期待: どちらも無警告
 pnpm --filter @ojt/desktop build
@@ -1676,7 +1807,7 @@ Windows 10 または Windows 11 の 64ビット版が動くパソコンなら使
 cd apps/desktop && node scripts/build-manual.mjs
 # 期待: アプリ内ヘルプを書き出しました: …（38節）
 pnpm --filter @ojt/desktop test manual-
-# 期待: Test Files 2 passed / Tests 20 passed
+# 期待: Test Files 2 passed / Tests 22 passed
 ```
 
 - [ ] **Step 8: commit**
@@ -2081,7 +2212,7 @@ PLC の一部の命令の名前とキーの割り当ては、実際の機器の�
 cd apps/desktop && node scripts/build-manual.mjs
 # 期待: アプリ内ヘルプを書き出しました: …（78節）
 pnpm --filter @ojt/desktop test manual-
-# 期待: Test Files 2 passed / Tests 20 passed
+# 期待: Test Files 2 passed / Tests 22 passed
 ```
 
 - [ ] **Step 9: commit**
@@ -2571,7 +2702,7 @@ describe('原稿と図の対応（設計 §6.2 の規則9・10）', () => {
 });
 ```
 
-期待（Step 5 のあと）: **5件通る**。
+期待（Step 5 のあと）: **6件通る**。
 
 - [ ] **Step 4: テストが指したところを直す**
 
@@ -3399,7 +3530,7 @@ import { HelpDrawer } from '../src/renderer/help/HelpDrawer.js';
 import { useHelpStore } from '../src/renderer/help/help-store.js';
 import { isModalOpen } from '../src/renderer/session/interaction.js';
 import { JA } from '../src/renderer/i18n/ja.js';
-import { MANUAL_SECTIONS } from '../src/renderer/help/manual-content.js';
+import { MANUAL_IMAGES, MANUAL_SECTIONS } from '../src/renderer/help/manual-content.js';
 import type { OjtApi } from '../src/shared/ipc.js';
 
 /** ヘルプの引き出し。取扱説明書 設計 §5.3 / §5.4。 */
@@ -3542,6 +3673,50 @@ describe('説明書（PDF）を開く（設計 §9）', () => {
   });
 });
 
+describe('図（利用者の決定 2026-09-20）', () => {
+  it('fills in the reduced copy of every figure in the section', () => {
+    act(() => {
+      useHelpStore.getState().showSection('screens/ホームの画面');
+    });
+    render(<HelpDrawer onClose={() => undefined} />);
+    const image = screen.getByTestId('help-prose').querySelector('img[data-manual-image="home"]');
+    expect(image).not.toBeNull();
+    expect(image?.getAttribute('loading')).toBe('lazy');
+    expect(image?.getAttribute('width')).toBe('400');
+    expect(image?.getAttribute('src')).toBe(MANUAL_IMAGES['home']?.small);
+  });
+
+  it('opens the full size in an overlay when the figure is pressed', () => {
+    act(() => {
+      useHelpStore.getState().showSection('screens/ホームの画面');
+    });
+    render(<HelpDrawer onClose={() => undefined} />);
+    const button = screen
+      .getByTestId('help-prose')
+      .querySelector<HTMLButtonElement>('button[data-manual-image="home"]');
+    expect(button).not.toBeNull();
+    fireEvent.click(button as HTMLButtonElement);
+    expect(screen.getByTestId('help-figure-modal')).toBeInTheDocument();
+    expect(screen.getByTestId('help-figure-full')).toHaveAttribute('src', MANUAL_IMAGES['home']?.full);
+  });
+
+  it('closes the overlay with Escape and gives the focus back to the figure', () => {
+    act(() => {
+      useHelpStore.getState().showSection('screens/ホームの画面');
+    });
+    render(<HelpDrawer onClose={() => undefined} />);
+    const button = screen
+      .getByTestId('help-prose')
+      .querySelector<HTMLButtonElement>('button[data-manual-image="home"]');
+    button?.focus();
+    fireEvent.click(button as HTMLButtonElement);
+    expect(document.activeElement).toBe(screen.getByTestId('help-figure-close'));
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(screen.queryByTestId('help-figure-modal')).toBeNull();
+    expect(document.activeElement).toBe(button);
+  });
+});
+
 describe('文言（決定表#28）', () => {
   it('keeps every help string short enough to be chrome, never prose', () => {
     for (const [key, value] of Object.entries(JA.help)) {
@@ -3554,7 +3729,7 @@ describe('文言（決定表#28）', () => {
 
 **注記**: 最後の2つのテストはトーストを `screen.findByText` で探す。トーストは `App.tsx` が描くので、この結合テストでは `HelpDrawer` がトーストを積んだことを**ストア経由で**確かめる形に読み替えてよい（`useStore.getState().toasts` に文言が入ったことを見る）。どちらでもよいが、**片方に決めて両方のテストで同じにする**こと。
 
-期待（Step 4 のあと）: **14件通る**。
+期待（Step 4 のあと）: **17件通る**。
 
 - [ ] **Step 2: 文言を足す**
 
@@ -3578,6 +3753,9 @@ describe('文言（決定表#28）', () => {
     openPdf: '説明書（PDF）を開く',
     pdfMissing: '説明書（PDF）が見つかりません。もくじから同じ内容を読めます。',
     shortcutHint: 'F1 でいつでも開けます',
+    // 図（利用者の決定 2026-09-20）
+    enlarge: '図を大きく見る',
+    figureClose: '図を閉じる',
   },
   // --- /Plan 6 Task 8 ---
 ```
@@ -3654,7 +3832,8 @@ export const useHelpStore = create<HelpState>((set, get) => ({
 `apps/desktop/src/renderer/help/HelpDrawer.tsx`:
 
 ```tsx
-import { useEffect, useMemo, useRef, type JSX } from 'react';
+import { useEffect, useMemo, useRef, useState, type JSX } from 'react';
+import type React from 'react';
 import { createPortal } from 'react-dom';
 import { tryOjtApi } from '../app/ojt-api.js';
 import { useStore } from '../app/store.js';
@@ -3662,7 +3841,7 @@ import { helpHitCountText, JA } from '../i18n/ja.js';
 import { pushModalLayer, topModalLayer } from '../session/interaction.js';
 import { searchManual, sectionById } from './help-model.js';
 import { useHelpStore } from './help-store.js';
-import { MANUAL_CHAPTERS } from './manual-content.js';
+import { MANUAL_CHAPTERS, MANUAL_IMAGES } from './manual-content.js';
 import styles from './help.module.css';
 
 /**
@@ -3705,6 +3884,45 @@ export function HelpDrawer({ onClose }: { onClose: () => void }): JSX.Element {
 
   const section = sectionById(sectionId);
   const hits = useMemo(() => searchManual(query), [query]);
+  const proseRef = useRef<HTMLDivElement>(null);
+  /** 覆いで開いている図の名前（利用者の決定 2026-09-20）。 */
+  const [enlarged, setEnlarged] = useState<string | undefined>(undefined);
+
+  /*
+   * 本文を差し込んだあとに図の `src` を入れる（決定表 P16）。
+   * 束ねた図の URL（内容ハッシュ付き）は Vite が決めるので、生成物には書けない。
+   * まだ撮っていない図は `MANUAL_IMAGES` の項目が空文字なので、`src` を入れず CSS が隠す。
+   */
+  useEffect(() => {
+    const root = proseRef.current;
+    if (root === null) return;
+    for (const image of root.querySelectorAll<HTMLImageElement>('img[data-manual-image]')) {
+      const name = image.dataset['manualImage'] ?? '';
+      const small = MANUAL_IMAGES[name]?.small ?? '';
+      if (small === '') image.removeAttribute('src');
+      else image.src = small;
+    }
+    for (const button of root.querySelectorAll<HTMLButtonElement>('button[data-manual-image]')) {
+      const name = button.dataset['manualImage'] ?? '';
+      const full = MANUAL_IMAGES[name]?.full ?? '';
+      // 撮っていない図のボタンは押させない（押しても何も出ないボタンを残さない）
+      button.disabled = full === '';
+      button.title = full === '' ? '' : JA.help.enlarge;
+    }
+  }, [sectionId, query]);
+
+  /*
+   * 図のボタンは生成物の HTML の中にあるので React の `onClick` を付けられない。
+   * 本文の囲みで1回だけ受けて、押された図の名前を拾う（`Enter` / `Space` も
+   * `<button>` なのでブラウザが `click` に直してくれる）。
+   */
+  const onProseClick = (event: React.MouseEvent<HTMLDivElement>): void => {
+    const button = (event.target as HTMLElement).closest<HTMLElement>('button[data-manual-image]');
+    const name = button?.dataset['manualImage'];
+    if (name === undefined) return;
+    if ((MANUAL_IMAGES[name]?.full ?? '') === '') return;
+    setEnlarged(name);
+  };
 
   /*
    * モーダル1枚として積む。積んでおかないと、盤やラダーのショートカット
@@ -3816,9 +4034,12 @@ export function HelpDrawer({ onClose }: { onClose: () => void }): JSX.Element {
                 <h2 className={styles.sectionTitle} data-testid="help-section-title">
                   {section?.title ?? ''}
                 </h2>
+                {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions -- 図のボタンは生成物の中にある */}
                 <div
+                  ref={proseRef}
                   className={styles.prose}
                   data-testid="help-prose"
+                  onClick={onProseClick}
                   dangerouslySetInnerHTML={{ __html: section?.html ?? '' }}
                 />
               </>
@@ -3849,9 +4070,77 @@ export function HelpDrawer({ onClose }: { onClose: () => void }): JSX.Element {
           </div>
         </div>
         <p className={styles.footer}>{JA.help.shortcutHint}</p>
+        {enlarged === undefined ? null : (
+          <FigureOverlay
+            name={enlarged}
+            onClose={() => {
+              setEnlarged(undefined);
+            }}
+          />
+        )}
       </div>
     </div>,
     document.body,
+  );
+}
+
+/**
+ * 図の原寸を覆いで出す（利用者の決定 2026-09-20）。
+ * 引き出しの上にもう1枚積むので、`Esc` は**この覆いだけ**を閉じる（`topModalLayer()` で見分ける）。
+ * 閉じると、開くのに押した図のボタンへ焦点が戻る。
+ */
+function FigureOverlay({ name, onClose }: { name: string; onClose: () => void }): JSX.Element {
+  const closeRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const caption = MANUAL_IMAGES[name]?.full ?? '';
+
+  useEffect(() => {
+    const layer = pushModalLayer();
+    const openedFrom = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    closeRef.current?.focus();
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (layer.depth !== topModalLayer()) return;
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
+        onClose();
+        return;
+      }
+      if (event.key === 'Tab') trapFocus(panelRef.current, event);
+    };
+    // 引き出し側の listener より先に受けるため、捕まえ段階で登録する
+    window.addEventListener('keydown', onKeyDown, true);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown, true);
+      layer.release();
+      openedFrom?.focus();
+    };
+  }, [onClose]);
+
+  return (
+    <div
+      className={styles.figureBackdrop}
+      role="presentation"
+      data-testid="help-figure-backdrop"
+      onClick={onClose}
+    >
+      <div
+        ref={panelRef}
+        className={styles.figurePanel}
+        role="dialog"
+        aria-modal="true"
+        aria-label={JA.help.enlarge}
+        data-testid="help-figure-modal"
+        onClick={(event) => {
+          event.stopPropagation();
+        }}
+      >
+        <img src={caption} alt={name} data-testid="help-figure-full" />
+        <button type="button" ref={closeRef} data-testid="help-figure-close" onClick={onClose}>
+          {JA.help.figureClose}
+        </button>
+      </div>
+    </div>
   );
 }
 ```
@@ -4004,12 +4293,79 @@ export function HelpDrawer({ onClose }: { onClose: () => void }): JSX.Element {
   padding: 0 4px;
 }
 
-.prose :global(.figure-note) {
+/* 図（利用者の決定 2026-09-20）。本文には幅400pxの縮小版を出し、押すと原寸が覆いで開く。 */
+.prose :global(.manual-figure) {
+  margin: 12px 0;
+}
+
+.prose :global(.manual-figure button) {
+  display: block;
+  padding: 0;
+  border: 1px solid #9aa5b4;
+  background: none;
+  cursor: zoom-in;
+  max-width: 100%;
+}
+
+.prose :global(.manual-figure button:focus-visible) {
+  outline: 2px solid #1e64ff;
+  outline-offset: 2px;
+}
+
+.prose :global(.manual-figure img) {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+/* `src` が空の図（まだ撮っていない）は枠ごと出さない */
+.prose :global(.manual-figure img:not([src])),
+.prose :global(.manual-figure img[src='']) {
+  display: none;
+}
+
+.prose :global(.manual-figure figcaption) {
+  font-size: 11px;
   color: #3c4654;
-  background: #f6f8fb;
-  border-left: 4px solid #9aa5b4;
-  padding: 8px 12px;
-  margin: 8px 0;
+  margin-top: 4px;
+}
+
+.figureBackdrop {
+  position: fixed;
+  inset: 0;
+  background: rgb(20 24 31 / 72%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  z-index: 60;
+}
+
+.figurePanel {
+  max-width: 96vw;
+  max-height: 88vh;
+  background: #ffffff;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.figurePanel img {
+  max-width: 100%;
+  max-height: 76vh;
+  object-fit: contain;
+}
+
+.figurePanel figcaption {
+  font-size: 12px;
+  color: #3c4654;
+}
+
+.figurePanel button:focus-visible {
+  outline: 2px solid #1e64ff;
+  outline-offset: 2px;
 }
 
 .hits {
@@ -4085,16 +4441,20 @@ export function HelpDrawer({ onClose }: { onClose: () => void }): JSX.Element {
   { "testid": "help-section-{}", "internal": "もくじの1行ずつの目印。もくじそのものを説明済み" },
   { "testid": "help-section-title", "internal": "本文の見出しの目印。画面に別の操作は無い" },
   { "testid": "help-prose", "internal": "本文そのものの目印。画面に別の操作は無い" },
-  { "testid": "help-backdrop", "internal": "引き出しの外側。押すと閉じることは「閉じる」で説明済み" }
+  { "testid": "help-backdrop", "internal": "引き出しの外側。押すと閉じることは「閉じる」で説明済み" },
+  { "testid": "help-figure-modal", "screen": "全画面", "label": "図を大きく見る", "section": "screens/画面の上の帯" },
+  { "testid": "help-figure-close", "screen": "全画面", "label": "図を閉じる", "section": "screens/画面の上の帯" },
+  { "testid": "help-figure-full", "internal": "大きくした図そのもの。押す操作は無い" },
+  { "testid": "help-figure-backdrop", "internal": "大きくした図の外側。「図を閉じる」で説明済み" }
 ```
 
-`screens/画面の上の帯` の本文に、これらの言葉（「取扱説明書」「もくじ」「言葉で探す」「説明書（PDF）を開く」「閉じる」「件見つかりました」）が出るように書き足す。
+`screens/画面の上の帯` の本文に、これらの言葉（「取扱説明書」「もくじ」「言葉で探す」「説明書（PDF）を開く」「閉じる」「件見つかりました」「図を大きく見る」「図を閉じる」）が出るように書き足す。あわせて「**ヘルプの中の図を押すか `Enter` を押すと大きく出せます。`Esc` でもとに戻ります。**」の1文を入れる（利用者の決定 2026-09-20）。
 
 - [ ] **Step 6: テストを通す**
 
 ```
 pnpm --filter @ojt/desktop test help-drawer feature-inventory manual-coverage
-# 期待: Test Files 3 passed / Tests 14 + 6 + 8 passed
+# 期待: Test Files 3 passed / Tests 17 + 6 + 8 passed
 pnpm --filter @ojt/desktop typecheck && pnpm lint
 # 期待: どちらも無警告
 ```
@@ -4746,7 +5106,8 @@ git show --stat HEAD
 - Create: `apps/desktop/scripts/annotate-shots.d.mts`
 - Create: `apps/desktop/e2e/manual-shots.spec.ts`
 - Create: `docs/manual/shot-geometry.json`
-- Create: `docs/manual/images/*.png`（17枚）
+- Create: `docs/manual/images/*.png`（原寸17枚）
+- Create: `docs/manual/images/small/*.png`（幅400pxの縮小版17枚。利用者の決定 2026-09-20）
 - Modify: `.gitignore`（`apps/desktop/.manual-raw/`）
 - Test: `apps/desktop/test/annotate-shots.test.ts`（新規）
 - Test: `apps/desktop/test/manual-images.test.ts`（新規）
@@ -4966,6 +5327,7 @@ import { pathToFileURL } from 'node:url';
 import { fileURLToPath } from 'node:url';
 import { _electron as electron, expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import { finishedSize, overlayHtml } from '../scripts/annotate-shots.mjs';
+import { HELP_IMAGE_WIDTH } from '../scripts/manual-build.mjs';
 
 /**
  * 取扱説明書の図を撮る。取扱説明書 設計 §6.4 / 決定表#24・#24c。
@@ -5027,6 +5389,24 @@ async function annotate(page: Page, name: string): Promise<void> {
   await page.setViewportSize(size);
   mkdirSync(OUT_DIR, { recursive: true });
   await page.locator('.frame').screenshot({ path: join(OUT_DIR, `${name}.png`), type: 'png' });
+
+  /*
+   * 縮小版（幅400px）。アプリ内ヘルプが本文に出すのはこちらで、原寸は押されたときだけ開く
+   * （利用者の決定 2026-09-20／取扱説明書 設計 決定表#9）。
+   * 同じ覆いをそのまま幅400pxの窓で撮り直すだけなので、別の道具は要らない。
+   */
+  const ratio = HELP_IMAGE_WIDTH / size.width;
+  const small = { width: HELP_IMAGE_WIDTH, height: Math.ceil(size.height * ratio) };
+  await page.setViewportSize(small);
+  await page.evaluate((scale) => {
+    const frame = document.querySelector('.frame');
+    if (frame instanceof HTMLElement) {
+      frame.style.transformOrigin = 'top left';
+      frame.style.transform = `scale(${String(scale)})`;
+    }
+  }, ratio);
+  mkdirSync(join(OUT_DIR, 'small'), { recursive: true });
+  await page.screenshot({ path: join(OUT_DIR, 'small', `${name}.png`), type: 'png' });
 }
 
 test.describe('取扱説明書の図', () => {
@@ -5134,10 +5514,16 @@ const GEOMETRY = JSON.parse(readFileSync(join(MANUAL_DIR, 'shot-geometry.json'),
   { crop?: { x: number; y: number; w: number; h: number }; callouts: Record<string, unknown> }
 >;
 
-/** 1枚あたりの上限。決定表#25 */
+/** 原寸1枚あたりの上限。決定表#25 */
 const MAX_BYTES = 300 * 1024;
-/** フォルダ合計の上限。 */
+/** 縮小版1枚あたりの上限（利用者の決定 2026-09-20）。 */
+const MAX_SMALL_BYTES = 80 * 1024;
+/** 原寸フォルダ合計の上限。 */
 const MAX_TOTAL_BYTES = 6 * 1024 * 1024;
+/** 縮小版フォルダ合計の上限。 */
+const MAX_SMALL_TOTAL_BYTES = 1.5 * 1024 * 1024;
+/** アプリ内ヘルプが本文に出す幅。 */
+const HELP_IMAGE_WIDTH = 400;
 /** 撮った大きさ。 */
 const SHOT_SIZE = { width: 1280, height: 800 };
 
@@ -5151,6 +5537,8 @@ function pngSize(path: string): { width: number; height: number } {
 }
 
 const files = readdirSync(IMAGE_DIR).filter((name) => name.endsWith('.png')).sort();
+const SMALL_DIR = join(IMAGE_DIR, 'small');
+const smallFiles = readdirSync(SMALL_DIR).filter((name) => name.endsWith('.png')).sort();
 
 describe('図はすべて本アプリの実画面（決定表#24b）', () => {
   it('has exactly the files the manual defines', () => {
@@ -5184,9 +5572,32 @@ describe('大きさと寸法（決定表#25）', () => {
     expect(total).toBeLessThanOrEqual(MAX_TOTAL_BYTES);
   });
 });
+
+describe('縮小版（利用者の決定 2026-09-20）', () => {
+  it('has one reduced copy for every figure, under the same name', () => {
+    expect(smallFiles).toEqual(files);
+  });
+
+  it.each(smallFiles)('%s is 400px wide and light enough for the drawer', (name) => {
+    const size = pngSize(join(SMALL_DIR, name));
+    expect(size.width, `${name} の縮小版の幅が違います`).toBe(HELP_IMAGE_WIDTH);
+    const full = pngSize(join(IMAGE_DIR, name));
+    // 縦横の比は原寸と同じ（切り上げの1pxまで）
+    expect(Math.abs(size.height - (full.height * HELP_IMAGE_WIDTH) / full.width)).toBeLessThanOrEqual(1);
+    expect(
+      statSync(join(SMALL_DIR, name)).size,
+      `${name} の縮小版が ${String(MAX_SMALL_BYTES)} バイトを超えています`,
+    ).toBeLessThanOrEqual(MAX_SMALL_BYTES);
+  });
+
+  it('keeps the reduced copies under their own budget', () => {
+    const total = smallFiles.reduce((sum, name) => sum + statSync(join(SMALL_DIR, name)).size, 0);
+    expect(total).toBeLessThanOrEqual(MAX_SMALL_TOTAL_BYTES);
+  });
+});
 ```
 
-期待: **6つの検査項目**（`it.each` を含めると17×2＋3）。
+期待: **8つの検査項目**（`it.each` を含めると17×3＋5）。
 
 - [ ] **Step 6: 300KB を超えた図を直す**
 
@@ -5194,7 +5605,7 @@ describe('大きさと寸法（決定表#25）', () => {
 pnpm --filter @ojt/desktop test manual-images
 ```
 
-超えた図は `shot-geometry.json` の `crop` を狭めて撮り直す。**縮小はしない**（端子の番号が読めなくなって図の意味が消える。決定表#25）。3D盤の写る図は、盤のうち説明に要る部分だけを切り出せばよい。
+超えた図は `shot-geometry.json` の `crop` を狭めて撮り直す。**原寸は縮小しない**（端子の番号が読めなくなって図の意味が消える。決定表#25）。3D盤の写る図は、盤のうち説明に要る部分だけを切り出せばよい。縮小版（幅400px）が 80KB を超えるのも同じ直し方で、`crop` を狭めれば縮小版も軽くなる。
 
 ```
 pnpm --filter @ojt/desktop e2e manual-shots
@@ -5212,7 +5623,9 @@ apps/desktop/.manual-raw/
 
 ```
 cd apps/desktop && node scripts/build-manual.mjs
-# 期待: 図を複写しました: 17 枚
+# 期待: 図を複写しました: 17 枚（生成物に `@manual-images` の読み込みが17×2本出る）
+pnpm --filter @ojt/desktop build
+# 期待: Vite が図を束ねて通る（`@manual-images` の別名は Task 2 Step 6 で入れてある）
 npx electron scripts/print-manual.mjs
 # 期待: 図の入った PDF ができる
 pnpm -r test
@@ -5225,6 +5638,7 @@ pnpm --filter @ojt/desktop e2e
 
 ```
 git add apps/desktop/scripts/annotate-shots.mjs apps/desktop/scripts/annotate-shots.d.mts apps/desktop/e2e/manual-shots.spec.ts apps/desktop/test/annotate-shots.test.ts apps/desktop/test/manual-images.test.ts docs/manual/shot-geometry.json docs/manual/images .gitignore apps/desktop/src/renderer/help/manual-content.ts
+# `docs/manual/images` には原寸17枚と `small/` の縮小版17枚の両方が入る
 git diff --cached --stat
 git commit -m "docs(manual): photograph every screen and mark the controls the text talks about (Plan 6 Task 12)"
 git show --stat HEAD
@@ -5286,7 +5700,7 @@ git show --stat HEAD
 
 **機能:**
 
-- [ ] `pnpm -r test` が7プロジェクトすべて通る（Phase 6 で足した単体テストは **packages 0件 ＋ desktop 116件**）。内訳は各タスクの「期待」のとおり: Task 1 の 6／Task 2 の 20（`manual-build` 15 ＋ `manual-sync` 5）／Task 5 の 24（`manual-style` 10 ＋ `manual-coverage` 9 ＋ `manual-shots` 5）／Task 6 の 12／Task 7 の 12（`manual-ipc` 7 ＋ `release-manual` 5）／Task 8 の 14／Task 9 の 9／Task 10 の 7／Task 12 の 12（`annotate-shots` 6 ＋ `manual-images` 6）。
+- [ ] `pnpm -r test` が7プロジェクトすべて通る（Phase 6 で足した単体テストは **packages 0件 ＋ desktop 123件**）。内訳は各タスクの「期待」のとおり: Task 1 の 6／Task 2 の 22（`manual-build` 16 ＋ `manual-sync` 6）／Task 5 の 24（`manual-style` 10 ＋ `manual-coverage` 9 ＋ `manual-shots` 5）／Task 6 の 12／Task 7 の 12（`manual-ipc` 7 ＋ `release-manual` 5）／Task 8 の 17／Task 9 の 9／Task 10 の 7／Task 12 の 14（`annotate-shots` 6 ＋ `manual-images` 8）。
 - [ ] `pnpm -r typecheck` と `pnpm lint`（`import-x/no-cycle` ＋ `react-hooks` 込み）が無警告で通る。
 - [ ] `npx prettier --check "apps/desktop/**/*.{ts,tsx,css}" "packages/**/*.ts" "README.md"` が `All matched files use Prettier code style!` を出す（`docs/` と生成物 `manual-content.ts` は `.prettierignore` の対象）。
 - [ ] `pnpm --filter @ojt/desktop e2e` が既存＋新規のすべて通る。**2回連続で通ること。**
@@ -5296,14 +5710,16 @@ git show --stat HEAD
 - [ ] **受入基準④**: `pnpm --filter @ojt/desktop dist` が NSIS とポータブルを出し、両方の `resources/manual.pdf` が 0 バイトでなく、`release/artifacts.md` に PDF の行（バイト数と SHA256）が載る。
 - [ ] **受入基準⑤**: `manual-coverage.test.ts` が通る（機能一覧表の `controls` が画面の目印と完全一致し、すべての行が節か内部用の理由を持ち、`keys` / `gestures` / `messages` が本文に出ている）。`manual-style.test.ts` の禁止語が **0件**。
 - [ ] **受入基準⑥**: `manual-sync.test.ts` が通る（正本から作り直した `manual-content.ts` がいまのファイルとバイト一致し、印刷用 HTML から取り出した節ID・見出し・素の文がアプリ内ヘルプのそれと完全一致）。
-- [ ] **受入基準⑦**: `docs/manual/images/` のファイル名の集合が `shots.json` の鍵と完全一致（作り絵が1枚も紛れていない）。すべて **300KB 以下**、寸法が `shot-geometry.json` の指定どおり、フォルダ合計 6MB 以下。図を載せた節の本文が吹き出しの番号（①②③）と `label` を指している。
+- [ ] **受入基準⑦**: `docs/manual/images/` のファイル名の集合が `shots.json` の鍵と完全一致（作り絵が1枚も紛れていない）。原寸は **300KB 以下**で寸法が `shot-geometry.json` の指定どおり、フォルダ合計 6MB 以下。`images/small/` に同じ名前の縮小版が揃い、**幅400px・80KB 以下**、合計 1.5MB 以下。図を載せた節の本文が吹き出しの番号（①②③）と `label` を指している。
+- [ ] **受入基準⑧**: アプリ内ヘルプの本文に**同梱 PDF と同じ図**が縮小版で出る（`manual-sync.test.ts` が節ごとに図の名前の並びを照合）。図を押すか `Enter` で原寸が覆いで開き、`Esc`・「図を閉じる」・背面で戻って**元の図のボタンに焦点が返る**。まだ撮っていない図は描かれず、そのボタンも押せない。
 
 **利用者要求（2026-09-19）:**
 
-- [ ] **内容の一致**: 説明書の本文が `i18n/ja.ts` に1文字も無い（`JA.help` の値はすべて40文字以下で、キーは決めた10個だけ）。C1の判定表・モードDのキー割当・設定の説明文・商標注記が、コード側の実体と**1行ずつ一致**している（`manual-appdata.test.ts`）。
+- [ ] **内容の一致**: 説明書の本文が `i18n/ja.ts` に1文字も無い（`JA.help` の値はすべて40文字以下で、キーは決めた12個だけ）。C1の判定表・モードDのキー割当・設定の説明文・商標注記が、コード側の実体と**1行ずつ一致**している（`manual-appdata.test.ts`）。
 - [ ] **全機能の解説**: 画面の `data-testid` を1つでも足すと `feature-inventory.test.ts` が落ち、説明書に書くか内部用の理由を書くまで通らない。
 - [ ] **専門用語なし**: `style.json` の禁止語が本文に0件。`terms.json` の専門用語はすべて初出が `**用語**（15文字以上の説明）` の形で、用語集に20文字以上の説明がある。
 - [ ] **実画面の図**: 図はすべてアプリを動かして撮ったもので、説明する操作要素の上に丸数字と枠がある。
+- [ ] **図もヘルプに出る**（利用者の決定 2026-09-20）: 説明書とヘルプの一致が本文だけでなく**図**にも及ぶ（どの節にどの図が何番目に出るかまで一致）。asar の増加が **3MB 以下**（`release/artifacts.md` のバイト数で前の版と比べる）。
 - [ ] **図は最後**: Task 12 より前のどの commit でも `pnpm -r test` が通る（`manual-images.test.ts` が Task 12 で初めて入るため、図が無いあいだも赤にならない）。
 
 **画面の品質:**
@@ -5311,7 +5727,8 @@ git show --stat HEAD
 - [ ] 引き出しが **1280×800 と 1920×1080** のどちらでも横スクロールを出さない（`scrollWidth <= clientWidth`）。1100px 未満では全幅になる。
 - [ ] 引き出しの日本語が切れていない（もくじ・検索欄・本文・脚注）。
 - [ ] Task 8 で足した CSS の `padding` / `gap` / `margin` がすべて **4の倍数**（8px 格子）。
-- [ ] 引き出しのすべての操作要素（閉じる・PDF・検索欄・もくじの節・検索結果）が `:focus-visible` で見える枠を持つ。
+- [ ] 引き出しのすべての操作要素（閉じる・PDF・検索欄・もくじの節・検索結果・**図のボタン**・**図を閉じる**）が `:focus-visible` で見える枠を持つ。
+- [ ] 図の覆いが開いているあいだ、`Esc` は**覆いだけ**を閉じる（引き出しは開いたまま）。
 - [ ] `Tab` が引き出しの中だけを回り、`Esc` で閉じ、閉じたあと**開く前の要素に焦点が戻る**。
 - [ ] ヘルプが開いているあいだ、盤のショートカット（`Delete` / `1` / `2` / `3`）もラダーのキーも効かない（`pushModalLayer()` が積まれている）。
 - [ ] 「ヘルプ」ボタンが9画面すべてで同じ言葉・同じ見た目で出る（部品は `HelpButton` 1つだけ）。
@@ -5334,5 +5751,6 @@ git show --stat HEAD
 
 | 日付 | 内容 |
 |---|---|
+| 2026-09-20 | 利用者の決定により**アプリ内ヘルプにも図を出す**ことにした（決定表#9 を「出さない」から「幅400pxの縮小版を出し、押すと原寸を覆いで開く」へ）。Task 2（生成物が図の参照と `MANUAL_IMAGES` を持ち、まだ撮っていない図は読み込まない）、Task 8（図の差し込みと拡大の覆い・キーボード操作・遅延読み込み）、Task 12（縮小版の生成と検査）を直し、決定表に P16・P17 を足した。一致検査に「図のファイル名の並び」を加え、受入基準⑧と asar の増加（実測 2〜3MB）を完了条件に入れた。**バッチの順序（F が最後）は変えていない。タスク数も12のまま。** |
 | 2026-09-19 | 初版。§16 Phase 6（取扱説明書とアプリ内ヘルプ）を12タスクに分けた。**正本は `docs/manual/*.md` の1つだけ**とし、`buildManual()` が同じ呼び出しからアプリ用の `manual-content.ts` と PDF 用の `manual.html` を書き出す設計にして、利用者要求「説明書とヘルプの内容は一致していること」を `manual-sync.test.ts` のバイト一致検査で機械的に保証した。利用者要求「すべての機能を使用者目線で専門用語なく詳細に解説すること」は、①画面の `data-testid` を全部拾って `coverage.json` と完全一致を求める検査、②禁止語リスト0件と専門用語の初出の形を縛る検査、③アプリが出すメッセージの全キーが「こう表示されたら」に出ていることの検査、の3本に落とした。コードが持つ表（C1の判定表・モードDのキー割当・設定の説明文・商標注記）は**実体をコード側に残し**、説明書が写した内容を `manual-appdata.test.ts` が1行ずつ照らす。PDF は Electron 自身の `printToPDF` で焼き、`extraResources` の1項目で NSIS とポータブルの両方に入れ、開くための IPC を**8本目**（`manual:open`、引数なし）として足した。利用者要求「画像は実際の画面で分かりやすく」に対しては、Playwright が撮った素のPNGに `overlayHtml()` が組んだ吹き出し（丸数字と枠）を Chromium で描き込む工程を置き、`shots.json`（意味）と `shot-geometry.json`（場所）を分けて、新しい依存を1つも足さずに再現できるようにした。利用者の決定「画像撮影は他のすべての実装が終わってからでよい」に従い、撮影と画像の検査を**最後のバッチF（Task 12）**に隔離し、それまでは図が無くても `pnpm -r test` が通るようにした |
 
