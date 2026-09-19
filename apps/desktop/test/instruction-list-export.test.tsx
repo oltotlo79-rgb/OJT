@@ -198,6 +198,61 @@ describe('命令語リストの書き出し（§10.7 / §16 Phase 4 受入基準
     expect(saveTextFile).not.toHaveBeenCalled();
   });
   // --- /レビュー #3 ---
+
+  // --- レビュー #5: ラダーが変わったら古い説明を消す ---
+  it('clears the previous explanation once the ladder changes', async () => {
+    act(() => {
+      useStore.getState().setLadder(unreachableOutputProgram());
+    });
+    render(
+      <LadderWorkspace problem={problem} profile={MITSUBISHI_FX5U} gridCols={11} onPlc={vi.fn()} />,
+    );
+    act(() => {
+      fireEvent.click(screen.getByTestId('export-il'));
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId('il-issues')).toHaveTextContent('左母線');
+    });
+    act(() => {
+      useStore.getState().setLadder(simple);
+    });
+    expect(screen.queryByTestId('il-issues')).toBeNull();
+  });
+  // --- /レビュー #5 ---
+
+  // --- レビュー #10: キャンセル・保存失敗のトースト ---
+  it('says nothing when the trainee cancels the save dialog', async () => {
+    saveTextFile.mockResolvedValueOnce({
+      ok: false,
+      canceled: true,
+      message: 'キャンセルしました',
+    });
+    const before = useStore.getState().toasts.length;
+    render(
+      <LadderWorkspace problem={problem} profile={MITSUBISHI_FX5U} gridCols={11} onPlc={vi.fn()} />,
+    );
+    act(() => {
+      fireEvent.click(screen.getByTestId('export-il'));
+    });
+    await waitFor(() => {
+      expect(saveTextFile).toHaveBeenCalledTimes(1);
+    });
+    expect(useStore.getState().toasts.length).toBe(before);
+  });
+
+  it('toasts when the save itself fails after leaving the renderer (レビュー #8)', async () => {
+    saveTextFile.mockRejectedValueOnce(new Error('ディスクの空き容量が足りません'));
+    render(
+      <LadderWorkspace problem={problem} profile={MITSUBISHI_FX5U} gridCols={11} onPlc={vi.fn()} />,
+    );
+    act(() => {
+      fireEvent.click(screen.getByTestId('export-il'));
+    });
+    await waitFor(() => {
+      expect(useStore.getState().toasts.at(-1)?.text).toContain('ディスクの空き容量が足りません');
+    });
+  });
+  // --- /レビュー #10 ---
 });
 
 /**

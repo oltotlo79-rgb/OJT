@@ -9,6 +9,8 @@ import {
   no,
   out,
   program,
+  T,
+  ton,
   X,
   Y,
   type Cell,
@@ -33,6 +35,13 @@ const selfHold = program(network('n1', [coilRow([no(X(8))], out(Y(1)))]), endNet
 
 /** カウンタ設定値の綴り（三菱 `K5` → OMRON `#0005`）を見るためのラダー。 */
 const withCounter = program(network('n1', [coilRow([no(X(0))], ctu(C(0), 5, X(1)))]), endNetwork());
+
+/**
+ * 三菱の高速タイマ（`T200`〜。10ms刻み）を使うラダー。§10.7 レビュー #9
+ * シャープは 0.1 秒（100ms）刻み固定なので、`10ms` は割り切れず表せない
+ * （`device-rules.ts` の `makeTimerPreset()`）。三菱では有効な値なので、切替前は指摘が出ない。
+ */
+const withFastTimer = program(network('n1', [coilRow([no(X(0))], ton(T(200), 10))]), endNetwork());
 
 afterEach(() => {
   cleanup();
@@ -117,17 +126,16 @@ describe('表記切替（§10.7 / §16 Phase 4 受入基準②）', () => {
     expect(useStore.getState().undoLadderEdit()).toBe(true);
   });
 
-  it('shows what the target dialect cannot spell', () => {
-    // 内部リレーを機種の範囲外へ置いたラダー（OMRON の W は 0..W-1）
+  it('shows what the target dialect cannot spell (レビュー #9)', () => {
+    // 三菱の高速タイマ（T200、10ms）はシャープ（0.1秒刻み固定）では表せない
     act(() => {
-      useStore.getState().setLadder(selfHold);
+      useStore.getState().setLadder(withFastTimer);
     });
     dialog();
     act(() => {
       fireEvent.click(screen.getByTestId('notation-to-sharp'));
     });
-    // 表せない項目が無ければ一覧は空でよい（`errors` の欄そのものは必ずある）
-    expect(screen.getByTestId('notation-errors')).toBeInTheDocument();
+    expect(screen.getByTestId('notation-errors')).toHaveTextContent('0.1秒');
   });
 
   it('says why a maker cannot be chosen instead of failing after the fact (決定表#10)', () => {
@@ -143,4 +151,34 @@ describe('表記切替（§10.7 / §16 Phase 4 受入基準②）', () => {
     expect(screen.getByTestId('notation-reason-omron')).toHaveTextContent('割付');
     expect(screen.getByTestId('notation-to-jtekt')).toBeEnabled();
   });
+
+  // --- レビュー #7: 閉じたときにフォーカスを戻す／パネル内のフォーカストラップ ---
+  it('returns focus to the button that opened it once it closes', () => {
+    render(<button data-testid="toolbar-notation">{'表記切替'}</button>);
+    const opener = screen.getByTestId('toolbar-notation');
+    opener.focus();
+    expect(document.activeElement).toBe(opener);
+    const { unmount } = render(<NotationDialog profile={MITSUBISHI_FX5U} onClose={vi.fn()} />);
+    expect(document.activeElement).toBe(screen.getByTestId('notation-dialog'));
+    // 親が条件付きレンダーで畳むのと同じ状況（閉じる＝アンマウント）
+    unmount();
+    expect(document.activeElement).toBe(opener);
+  });
+
+  it('cycles Tab inside the panel instead of letting it escape to the background', () => {
+    dialog();
+    const panel = screen.getByTestId('notation-dialog');
+    const focusables = panel.querySelectorAll<HTMLElement>('button');
+    const first = focusables[0];
+    const last = focusables[focusables.length - 1];
+    expect(first).toBeDefined();
+    expect(last).toBeDefined();
+    last?.focus();
+    expect(document.activeElement).toBe(last);
+    fireEvent.keyDown(window, { key: 'Tab' });
+    expect(document.activeElement).toBe(first);
+    fireEvent.keyDown(window, { key: 'Tab', shiftKey: true });
+    expect(document.activeElement).toBe(last);
+  });
+  // --- /レビュー #7 ---
 });

@@ -143,6 +143,8 @@ export function LadderWorkspace({
    */
   const auto = autoConvert(profile);
   useEffect(() => {
+    // ラダーが変わったら、古い命令語リストの説明は意味を失うので消す（レビュー #5）
+    setExportIssues([]);
     if (!auto || program === undefined) return;
     convert({ silent: true });
   }, [auto, program, convert]);
@@ -191,6 +193,12 @@ export function LadderWorkspace({
           const next = useStore.getState();
           if (result.ok) next.toast(JA.ladder.ilSaved(result.path));
           else if (!result.canceled) next.toast(result.message, 'error');
+        })
+        .catch((error: unknown) => {
+          // main への IPC 自体が失敗したとき（`.then` の中は main が正常に応答した場合だけ通る）
+          useStore
+            .getState()
+            .toast(error instanceof Error ? error.message : String(error), 'error');
         });
     } catch (error) {
       store.toast(error instanceof Error ? error.message : String(error), 'error');

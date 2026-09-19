@@ -79,20 +79,49 @@ export function NotationDialog({
   /**
    * 開いているあいだはモーダルを1枚積む（盤やエディタのショートカットへ Esc を通さない。§8.2）。
    * Esc で閉じられるようにし、開いた直後の読み上げ位置をダイアログの先頭へ移す。
+   *
+   * レビュー #7: 閉じたら**開く前に押していたボタン**（＝ツールバーの「表記切替」）へ
+   * フォーカスを戻す（開いた瞬間の `document.activeElement` を覚えておいて戻すだけなので、
+   * 呼び出し側のIDを知らなくてよい）。Tab がダイアログの外（背後のツールバー・盤）へ
+   * 抜けないよう、パネル内だけで簡単なフォーカストラップも張る。
    */
   useEffect(() => {
     const { depth, release } = pushModalLayer();
+    const openedFrom =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
     panelRef.current?.focus();
     const onKey = (event: KeyboardEvent): void => {
       // 上に別のモーダルが乗っているときは、そちらに任せる
-      if (event.key !== 'Escape' || depth !== topModalLayer()) return;
-      event.preventDefault();
-      onClose();
+      if (depth !== topModalLayer()) return;
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        onClose();
+        return;
+      }
+      if (event.key !== 'Tab') return;
+      const panel = panelRef.current;
+      if (panel === null) return;
+      const focusables = Array.from(
+        panel.querySelectorAll<HTMLElement>(
+          'button:not(:disabled), a[href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+        ),
+      );
+      const first = focusables[0];
+      const last = focusables.at(-1);
+      if (first === undefined || last === undefined) return;
+      if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      } else if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      }
     };
     window.addEventListener('keydown', onKey);
     return () => {
       window.removeEventListener('keydown', onKey);
       release();
+      openedFrom?.focus();
     };
   }, [onClose]);
 

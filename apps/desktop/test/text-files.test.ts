@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -58,4 +58,27 @@ describe('saveTextFile（§10.7 / §13 #7）', () => {
     expect(options?.defaultPath).not.toContain('..');
     expect(options?.defaultPath).toContain('name.txt');
   });
+
+  // --- レビュー #8: `defaultFileName` も renderer からの生入力として信用しない ---
+  it('falls back to a default name when defaultFileName is not a string', async () => {
+    showSaveDialog.mockResolvedValue({ canceled: true, filePath: undefined });
+    await saveTextFile(undefined, {
+      // IPC は実行時に型を強制しない。壊れた／悪意ある入力を想定する
+      defaultFileName: 123 as unknown as string,
+      text: 'x',
+    });
+    const options = showSaveDialog.mock.calls[0]?.[0] as { defaultPath?: string } | undefined;
+    expect(options?.defaultPath).toContain('export.txt');
+  });
+
+  it('leaves no leftover temp file after an atomic write (like work-files.ts)', async () => {
+    const target = join(dir, 'il.txt');
+    showSaveDialog.mockResolvedValue({ canceled: false, filePath: target });
+    const result = await saveTextFile(undefined, { defaultFileName: 'il.txt', text: 'atomic' });
+    expect(result).toEqual({ ok: true, path: target });
+    expect(readFileSync(target, 'utf8')).toBe('atomic');
+    // 一時ファイル（`<target>.tmp`）へ書いてから rename しているので、書き終われば残らない
+    expect(existsSync(`${target}.tmp`)).toBe(false);
+  });
+  // --- /レビュー #8 ---
 });

@@ -1,4 +1,4 @@
-import { writeFileSync } from 'node:fs';
+import { renameSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { app, dialog, type BrowserWindow } from 'electron';
 import type { SaveTextRequest, SaveTextResult } from '../shared/ipc.js';
@@ -46,6 +46,17 @@ function withoutControlChars(text: string): string {
   return Array.from(text, (ch) => (ch.charCodeAt(0) < 0x20 ? '_' : ch)).join('');
 }
 
+/**
+ * 一時ファイル→rename でアトミックに書く（`work-files.ts` の `writeFileAtomic` と同じ流儀。
+ * §13 #8「黙って壊れた状態で開かない」——書き込みの途中で落ちても、利用者が Documents に
+ * 見るのは書き切れた旧ファイルか書き切れた新ファイルのどちらかで、半端な中身は残らない）。
+ */
+function writeTextAtomic(target: string, content: string): void {
+  const temp = `${target}.tmp`;
+  writeFileSync(temp, content, 'utf8');
+  renameSync(temp, target);
+}
+
 /** テキストを保存する。 */
 export async function saveTextFile(
   window: BrowserWindow | undefined,
@@ -57,7 +68,15 @@ export async function saveTextFile(
   ) {
     return { ok: false, canceled: false, message: MSG.textFile.tooLarge };
   }
-  const defaultPath = join(app.getPath('documents'), safeFileName(request.defaultFileName));
+  /*
+   * `request.defaultFileName` も型（`SaveTextRequest.defaultFileName: string`）は信用しない
+   * （renderer からの生入力。IPC は実行時に型を強制しない。レビュー #8）。`.text` と同じ流儀で
+   * ここで確かめ、文字列でなければ既定名に倒す（`safeFileName()` に非文字列を渡すと
+   * `basename()` が例外を投げる）。
+   */
+  const defaultFileName =
+    typeof request.defaultFileName === 'string' ? request.defaultFileName : 'export.txt';
+  const defaultPath = join(app.getPath('documents'), safeFileName(defaultFileName));
   const options = {
     title: MSG.textFile.saveTitle,
     defaultPath,
@@ -75,7 +94,7 @@ export async function saveTextFile(
     return { ok: false, canceled: true, message: MSG.textFile.saveCanceled };
   }
   try {
-    writeFileSync(picked.filePath, request.text, 'utf8');
+    writeTextAtomic(picked.filePath, request.text);
     return { ok: true, path: picked.filePath };
   } catch (error) {
     return {
