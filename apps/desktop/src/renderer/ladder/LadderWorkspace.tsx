@@ -312,7 +312,16 @@ export function LadderWorkspace({
         changeMode('monitor');
         break;
       case 'monitor-stop':
-        changeMode('read');
+        /*
+         * モニタ停止のあとは書込みモードへ戻す（UI監査 2026-09-20:
+         * `modeD-jtekt/sharp-output-error` に到達できない）。以前は `read` へ落としていたが、
+         * PCwin風（JTEKT）・JW-300SP風（SHARP）のツールバーには `write-mode` 行が無い
+         * （`TOOLBAR_ACTIONS_BY_DIALECT`）ため、モニタを一度でも開始すると編集へ戻す手段が
+         * 画面から消えていた（`edit()` は `ladderMode !== 'write'` を読出し専用として断る）。
+         * 三菱・OMRONは `write-mode` ボタンで手動でも戻せたが、4スキンとも自動で戻すほうが
+         * 実機の「モニタ終了で編集状態に戻る」動きに近く、一貫する。
+         */
+        changeMode('write');
         break;
       case 'plc-run':
         onPlc({ kind: 'run', on: !store.plcRunning });

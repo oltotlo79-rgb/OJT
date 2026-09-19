@@ -516,6 +516,18 @@ details[open] > .sideSummary::before {
   color: var(--ladder-fg-muted);
 }
 
+/*
+ * UI監査バッチF (overlap 27件): `io-outlet-note` と `io-common` は `<caption>` の中で
+ * インライン（`<span>`）のまま地続きに並べていた。狭い側パネル（1920×1080でも `--ladder-side-w`
+ * の列は数百pxしか無い）では `io-outlet-note` の文が2行に折り返し、`getBoundingClientRect()`
+ * が折り返した2行をまとめた矩形を返すため、次に続く `io-common`（1行目の続きの高さに来る）と
+ * 見かけ上の矩形が重なって監査が「重なり」として拾っていた（実際に文字が重なって見えるわけ
+ * ではない）。各行を独立した行（`display: block`）にして、矩形どうしが重ならないようにする。
+ */
+.ioCaptionLine {
+  display: block;
+}
+
 .commentList {
   list-style: none;
   margin: 0;
@@ -666,8 +678,13 @@ details[open] > .sideSummary::before {
    * （「高さ30px/行送り14px」＝2行）。回路ブロック名は短い識別子なので折り返す意味が無い。
    */
   white-space: nowrap;
-  /* UI監査 2026-09-20: クリック対象は24px以上（デザイン規則）。密なツリーでも最低限確保する */
+  /*
+   * UI監査 2026-09-20: クリック対象は24×24px以上（デザイン規則）。密なツリーでも最低限確保する。
+   * `n1` のような短い名前は高さだけ24pxにしても幅が16pxしか無かった（UI監査バッチF /
+   * `small-target` 71件のほぼ全部がこの1行）ので、幅にも `min-width` を足す。
+   */
   min-height: 24px;
+  min-width: 24px;
   display: flex;
   align-items: center;
 }

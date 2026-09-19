@@ -162,13 +162,15 @@ describe('GX Works3風の枠（§10.6 / §17）', () => {
     expect(toolbar).toBeInTheDocument();
   });
 
-  it('starts and stops monitoring through the worker', () => {
+  it('starts monitoring, then restores write mode on stop (UI batch F: モニタ停止後も編集に戻れる)', () => {
     const onPlc = workspace();
     fireEvent.click(screen.getByTestId('toolbar-monitor-start'));
     expect(useStore.getState().ladderMode).toBe('monitor');
     expect(onPlc).toHaveBeenCalledWith({ kind: 'monitor', on: true });
     fireEvent.click(screen.getByTestId('toolbar-monitor-stop'));
-    expect(useStore.getState().ladderMode).toBe('read');
+    // 以前は `read` に落ち、write-mode ボタンの無いスキン（PCwin風／JW-300SP風）では
+    // 二度と編集へ戻せなかった（UI監査 2026-09-20 `modeD-jtekt/sharp-output-error`）。
+    expect(useStore.getState().ladderMode).toBe('write');
     expect(onPlc).toHaveBeenCalledWith({ kind: 'monitor', on: false });
   });
 });

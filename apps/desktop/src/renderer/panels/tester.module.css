@@ -142,6 +142,14 @@
 
 .markOption input[type='radio'] {
   accent-color: var(--accent);
+  /*
+   * UI監査バッチF (small-target 55件): `data-testid` はこの `<input>` 自身に付いていて、
+   * 既定サイズ（約13px四方）のまま監査に引っかかっていた。チップ（`.markOption`）は
+   * 既に `min-height: 24px` ＋テキスト分の幅で当たり判定として十分な大きさがあるが、
+   * 監査は testid の要素そのものの矩形を見るので、ラジオ自体も24×24pxへ広げる。
+   */
+  width: 24px;
+  height: 24px;
 }
 
 .trayRow {
