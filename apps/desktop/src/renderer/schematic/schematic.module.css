@@ -166,16 +166,37 @@
   font-weight: 700;
 }
 
+/*
+ * 縦に並べる（図 → 設定時間の欄 → カーソル → 操作早見表）。B1 / 2026-09-20 追加報告
+ * 図（`.gridSvgHost`）だけが残り高さを取り、他は内容ぶんの高さで固定する
+ * （`flex-shrink: 0`）。箱に収まりきらない大きな回路図だけ `overflow: auto` でスクロールする。
+ */
 .grid {
   flex: 1;
   min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
   overflow: auto;
   padding: 8px;
   background: #f7f7f4;
   border-radius: 4px;
 }
 
+/*
+ * 図の置き場。`fit` を渡した `SchematicSvg` が幅・高さとも100%で埋め、
+ * `preserveAspectRatio` が縦横比を保ったまま中に収める（B1）。
+ * `min-height` は「空の下書きでも紙だと分かる」下限（`schematic-view.module.css` の
+ * `.paper` と同じ値で揃える）。
+ */
+.gridSvgHost {
+  flex: 1 1 auto;
+  min-height: 160px;
+  min-width: 0;
+}
+
 .keyHint {
+  flex-shrink: 0;
   margin: 8px 0 0;
   font-size: 11px;
   color: #4a515b;
@@ -185,6 +206,7 @@
 .presetBar {
   display: flex;
   flex-wrap: wrap;
+  flex-shrink: 0;
   align-items: center;
   gap: 8px;
   margin-top: 8px;
@@ -247,6 +269,7 @@
 
 /** いまカーソルがある場所（内部IDではなく「1段目の2番目」で言う）。 */
 .cursorLine {
+  flex-shrink: 0;
   margin: 8px 0 0;
   font-size: 12px;
   font-weight: 700;
@@ -305,6 +328,18 @@
   padding-left: 16px;
   font-size: 12px;
   color: #ffb4b4;
+}
+
+/*
+ * 開いた直後（まだ1つも編集していない）下書きの指摘。決定表#3どおり指摘は出し続けるが、
+ * 何もしていないうちから赤で驚かせない（I8 / 利用者要求 2026-09-20「回路図のクオリティ」：
+ * 未編集の回路図に赤い指摘が出ている）。編集を1つでもすれば `.issueList`（赤）に変わる。
+ */
+.issueListNeutral {
+  margin: 4px 0 0;
+  padding-left: 16px;
+  font-size: 12px;
+  color: #98a1ac;
 }
 
 .issuesOk {

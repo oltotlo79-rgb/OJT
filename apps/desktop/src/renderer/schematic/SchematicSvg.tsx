@@ -110,6 +110,27 @@ const SLOT_STYLE = { pointerEvents: 'all' } as const;
 /** 図の外接矩形にこれだけ余白（紙の白縁）を足す（論理単位）。 */
 const VIEW_PAD = 10;
 
+/**
+ * 空・ほぼ空の下書きでも紙が極端に小さくならない最小の大きさ（論理単位）。B1 / 2026-09-20
+ *
+ * これが無いと、段が1つも埋まっていない下書きの小さな外接矩形が編集グリッドの幅いっぱいへ
+ * 引き伸ばされ、母線見出し（`P(+24V)` / `N(0V)`）が桁違いに拡大される
+ * （利用者要求 2026-09-20「回路図のクオリティ」B1）。最小でも「6桁 × 3段」ぶんは確保する。
+ *
+ * **編集モード（`onPickSlot` を渡したとき）だけに適用する。** `viewBoxOf` は読取専用のヒント
+ * （`SchematicView` の紙・拡大表示）とも共有しており、そちらは紙の幅がヒント欄の実寸
+ * （約430px）に合わせて縮尺を作り込んである。ここで無条件に床を敷くと、内蔵課題のように
+ * 元の外接矩形が床（284×190）より小さい文書の縮尺まで下がり、記号が既定の25px幅を割る
+ * （スキーマティックコア担当からの指摘・`test/schematic-symbols.test.tsx` で検出）。
+ */
+const MIN_VIEW_WIDTH = (SCHEMATIC_LAYOUT.colWidth ?? 0) * 6 + (SCHEMATIC_LAYOUT.marginX ?? 0) * 2;
+const MIN_VIEW_HEIGHT = (SCHEMATIC_LAYOUT.rowHeight ?? 0) * 3 + (SCHEMATIC_LAYOUT.marginY ?? 0) * 2;
+
+/** 母線見出しどうしの重なりを防ぐときに、中央線からさらに内側へ空ける余白（論理単位）。 */
+const BUS_LABEL_PAD = 2;
+/** これ未満は文字として読めないので、母線見出しはそれより縮めない。 */
+const BUS_LABEL_MIN_SIZE = 2;
+
 /** 機械的連結（押ボタンの操作子の軸）の破線。IEC 60617 の作法。 */
 const DASH_PATTERN = '2.2 1.6';
 
@@ -152,8 +173,17 @@ function boundsOf(shape: Shape): [number, number, number, number] {
 /**
  * 図形すべてを含む viewBox。`layout()` は母線の見出しを負のyに、段番号を負のxに置くので、
  * `0 0 width height` のままだとそれらが**切り落とされる**（2026-09-19 の指摘の一因）。
+ *
+ * `minSize` は編集モードだけが渡す（`SchematicSvg` を見よ）。読取専用のヒント・拡大表示は
+ * 省略し、これまでどおり内容ぴったりの紙のまま（ヒント欄の実寸に合わせて調整済みの縮尺を
+ * 崩さない）。
  */
-export function viewBoxOf(shapes: readonly Shape[], width: number, height: number): string {
+export function viewBoxOf(
+  shapes: readonly Shape[],
+  width: number,
+  height: number,
+  minSize?: { width: number; height: number },
+): string {
   const first = shapes[0];
   if (first === undefined) return `0 0 ${width} ${height}`;
   let [x1, y1, x2, y2] = boundsOf(first);
@@ -166,7 +196,47 @@ export function viewBoxOf(shapes: readonly Shape[], width: number, height: numbe
   }
   // 余白は上下左右そろえる（`layout()` の `marginY` に任せると下だけ間延びする）
   const round = (v: number): number => Math.round(v * 100) / 100;
-  return `${round(x1 - VIEW_PAD)} ${round(y1 - VIEW_PAD)} ${round(x2 - x1 + VIEW_PAD * 2)} ${round(y2 - y1 + VIEW_PAD * 2)}`;
+  const contentW = x2 - x1 + VIEW_PAD * 2;
+  const contentH = y2 - y1 + VIEW_PAD * 2;
+  // 内容が最小寸法に満たなければ、紙そのものを最小寸法まで広げ、内容は中央に置く（B1）
+  const w = Math.max(contentW, minSize?.width ?? 0);
+  const h = Math.max(contentH, minSize?.height ?? 0);
+  const extraX = (w - contentW) / 2;
+  const extraY = (h - contentH) / 2;
+  return `${round(x1 - VIEW_PAD - extraX)} ${round(y1 - VIEW_PAD - extraY)} ${round(w)} ${round(h)}`;
+}
+
+/**
+ * 母線見出し（`P(+24V)` / `N(0V)`）が重ならない文字サイズを決める。B1 / 2026-09-20
+ *
+ * 空・ほぼ空の下書きは段に要素が無く、`layout()` は母線どうしを詰めるので間隔が狭い
+ * （利用者要求 2026-09-20「回路図のクオリティ」）。既定の文字サイズのままだと2つの見出しが
+ * 重なって読めないので、間隔に収まる大きさへその場で縮める。段が育って間隔が十分あれば
+ * 既定のまま変えない（`naturalWidth <= available` で早期に抜ける）。
+ * 図形の並び順に依らないよう、判定は「母線の線」と「段にも要素にも属さないラベル」だけを見る
+ * （`symbols.ts` の `ShapeSource` の約束：母線見出しは `rungId` も `cellId` も持たない）。
+ *
+ * 戻り値は図形の添字 → 文字サイズ（論理単位）。縮める必要が無いものは含まない。
+ */
+function busLabelSizes(shapes: readonly Shape[]): ReadonlyMap<number, number> {
+  const busXs: number[] = [];
+  for (const shape of shapes) {
+    if (shape.kind === 'line' && shape.role === 'bus') busXs.push(shape.x1);
+  }
+  const overrides = new Map<number, number>();
+  if (busXs.length < 2) return overrides;
+  const gap = Math.max(...busXs) - Math.min(...busXs);
+  const available = Math.max(0, gap / 2 - BUS_LABEL_PAD);
+  const natural = TEXT_STYLE.label?.size ?? LABEL_FONT_SIZE;
+  shapes.forEach((shape, index) => {
+    if (shape.kind !== 'text' || shape.role !== 'label') return;
+    if (shape.rungId !== undefined || shape.cellId !== undefined) return;
+    const naturalWidth = shape.text.length * natural * 0.62;
+    if (naturalWidth <= available) return;
+    const scaled = available <= 0 ? BUS_LABEL_MIN_SIZE : (available / naturalWidth) * natural;
+    overrides.set(index, Math.max(BUS_LABEL_MIN_SIZE, scaled));
+  });
+  return overrides;
 }
 
 /** 直交する線・長方形は格子に乗せる（にじまない）。斜めと円は滑らかに。 */
@@ -205,6 +275,7 @@ function drawShape(
   color: string,
   width: number,
   common: Record<string, string>,
+  fontSizeOverride?: number,
 ): JSX.Element | null {
   const style = paint(shape, color, width);
   switch (shape.kind) {
@@ -275,7 +346,7 @@ function drawShape(
           y={shape.y}
           fill={color}
           fontFamily={text.family}
-          fontSize={text.size}
+          fontSize={fontSizeOverride ?? text.size}
           fontWeight={text.weight}
           textAnchor={shape.anchor}
           dominantBaseline="middle"
@@ -293,7 +364,12 @@ function drawShape(
  * 図形1つ（ハイライト中なら暈しを1枚下に敷いてから）。
  * 色を変えるだけだと白地では見落とすので、**まわりを光らせて**目立たせる。§9.2
  */
-function renderShape(shape: Shape, index: number, highlighted: boolean): JSX.Element[] {
+function renderShape(
+  shape: Shape,
+  index: number,
+  highlighted: boolean,
+  fontSizeOverride?: number,
+): JSX.Element[] {
   const base = STROKE[shape.role];
   const color = highlighted ? HIGHLIGHT_STROKE : base.color;
   const common = {
@@ -311,7 +387,7 @@ function renderShape(shape: Shape, index: number, highlighted: boolean): JSX.Ele
     );
     if (halo !== null) out.push(halo);
   }
-  const main = drawShape(shape, `s-${index}`, color, base.width, common);
+  const main = drawShape(shape, `s-${index}`, color, base.width, common, fontSizeOverride);
   if (main !== null) out.push(main);
   return out;
 }
@@ -330,6 +406,7 @@ export function SchematicSvg({
   cursor,
   onPickSlot,
   testId = 'schematic-svg',
+  fit = false,
 }: {
   document: SchematicDocument;
   highlightCellIds?: readonly string[];
@@ -345,12 +422,29 @@ export function SchematicSvg({
   onPickSlot?: (rungId: string, index: number, cellId?: string) => void;
   /** 同じ図を2枚出す画面（拡大表示）で取り違えないための識別子。 */
   testId?: string;
+  /**
+   * 箱（親要素）の高さいっぱいに収める。B1 / 2026-09-20 追加報告
+   *
+   * 既定（`false`）は幅基準で高さ自動（読取専用のヒント・検算・結果画面はこのまま）。
+   * `true` は幅・高さとも親の100%にし、`preserveAspectRatio` が縦横比を保ったまま箱の中に
+   * 収める（編集グリッド専用。段が増えて縦に長い文書も、親が縦横とも定寸なら全体が見える）。
+   */
+  fit?: boolean;
 }): JSX.Element {
   const result = useMemo(() => layout(doc, SCHEMATIC_LAYOUT), [doc]);
+  // 最小寸法の床は編集モード（`onPickSlot` を渡したとき）だけに敷く。読取専用のヒント・
+  // 拡大表示はヒント欄の実寸に合わせた縮尺のまま変えない（B1・スキーマティックコア担当の指摘）。
   const view = useMemo(
-    () => viewBoxOf(result.shapes, result.width, result.height),
-    [result.shapes, result.width, result.height],
+    () =>
+      viewBoxOf(
+        result.shapes,
+        result.width,
+        result.height,
+        onPickSlot === undefined ? undefined : { width: MIN_VIEW_WIDTH, height: MIN_VIEW_HEIGHT },
+      ),
+    [result.shapes, result.width, result.height, onPickSlot],
   );
+  const busLabelSizeByIndex = useMemo(() => busLabelSizes(result.shapes), [result.shapes]);
   const highlighted = useMemo(() => new Set(highlightCellIds ?? []), [highlightCellIds]);
   const slots = useMemo(
     () => (onPickSlot === undefined ? [] : slotRects(doc, SCHEMATIC_LAYOUT)),
@@ -364,7 +458,7 @@ export function SchematicSvg({
       aria-label={doc.title}
       data-testid={testId}
       preserveAspectRatio="xMidYMid meet"
-      style={{ width: '100%', height: 'auto', display: 'block' }}
+      style={{ width: '100%', height: fit ? '100%' : 'auto', display: 'block' }}
       onClick={(event) => {
         if (onPickCell === undefined) return;
         // クリックされた図形の `data-cell` を読む。用紙や母線には無いので解除になる
@@ -387,7 +481,12 @@ export function SchematicSvg({
         shapeRendering="crispEdges"
       />
       {result.shapes.flatMap((shape, index) =>
-        renderShape(shape, index, shape.cellId !== undefined && highlighted.has(shape.cellId)),
+        renderShape(
+          shape,
+          index,
+          shape.cellId !== undefined && highlighted.has(shape.cellId),
+          busLabelSizeByIndex.get(index),
+        ),
       )}
       {/*
         編集の当たり矩形。**図形より後ろに描く＝画面では記号より手前に来る**。

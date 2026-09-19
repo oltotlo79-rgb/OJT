@@ -346,6 +346,13 @@ export function SchematicEditor({
   const rungFull = doc.rungs.length >= MAX_RUNGS;
   const lastRung = doc.rungs.length <= 1;
   const nothingDrawn = cellCount(doc) === 0 && lastRung;
+  /**
+   * まだ何も編集していない（開いた直後の下書き）か。§11.4 / I8 / 2026-09-20
+   * 決定表#3どおり指摘は出し続けるが、**編集を1つもしていないうちは赤で驚かせない**
+   * （利用者要求 2026-09-20「回路図のクオリティ」：未編集の回路図に赤い指摘が出ている）。
+   * 1つでも編集すれば（取り消して元に戻っても）以降は通常の赤で示す。
+   */
+  const touched = history.done.length > 0;
 
   return (
     <div className={styles.editor} data-testid="schematic-editor">
@@ -513,14 +520,21 @@ export function SchematicEditor({
           {/*
             `onPickCell` も渡す: 母線・銘板など**当たり矩形の外**を押したときの「選択解除」を
             従来どおり効かせるため（矩形に当たったクリックは `onPickSlot` が受ける。B2）。
+
+            図は `gridSvgHost`（残り高さいっぱいの箱）に入れ、`fit` で箱の中に収める
+            （B1 / 2026-09-20 追加報告：空の下書きで極端に拡大しない。段が増えても
+            既定では全体が見えるよう縮む。読めないほど縮む場合だけ `.grid` のスクロールに任せる）。
           */}
-          <SchematicSvg
-            document={doc}
-            cursor={cursor}
-            {...(highlightCellIds === undefined ? {} : { highlightCellIds })}
-            onPickCell={onPickCell}
-            onPickSlot={onPickSlot}
-          />
+          <div className={styles.gridSvgHost}>
+            <SchematicSvg
+              document={doc}
+              cursor={cursor}
+              {...(highlightCellIds === undefined ? {} : { highlightCellIds })}
+              onPickCell={onPickCell}
+              onPickSlot={onPickSlot}
+              fit
+            />
+          </div>
           {/* タイマコイルの上にカーソルがあるときだけ出す（無関係な課題に欄を出さない）。B1 */}
           {timerCoil === undefined ? null : (
             <PresetField
@@ -545,7 +559,10 @@ export function SchematicEditor({
         {issues.length === 0 ? (
           <p className={styles.issuesOk}>{JA.schematic.noIssues}</p>
         ) : (
-          <ul className={styles.issueList}>
+          <ul
+            className={touched ? styles.issueList : styles.issueListNeutral}
+            data-touched={touched}
+          >
             {issues.map((issue) => (
               <li key={`${issue.path}:${issue.message}`}>{issueText(doc, issue.message)}</li>
             ))}

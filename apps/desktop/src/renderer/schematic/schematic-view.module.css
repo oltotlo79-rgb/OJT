@@ -38,14 +38,22 @@
   height: auto;
 }
 
-/* 「⤢ 拡大」。タイムチャートと同じ位置・同じ見た目にそろえる。 */
+/*
+ * 「⤢ 拡大」。タイムチャートと同じ位置・同じ見た目にそろえる。
+ * `white-space: nowrap` ＋固定 `height` で、狭い箱でも二行に折れて図に被らない
+ * （UI監査バッチB：絶対配置＋`right` だけの指定は、幅の狭い親では「縮めてでも収める」向きに
+ * 働き、そのままだと折り返しうる）。
+ */
 .enlargeButton {
   position: absolute;
   top: -28px;
   right: 0;
-  min-height: 24px;
-  padding: 2px 8px;
+  display: inline-flex;
+  align-items: center;
+  height: 28px;
+  padding: 0 8px;
   font-size: 11px;
+  white-space: nowrap;
   color: #c9d2dc;
   background: #2a2f36;
   border: 1px solid #3a4049;

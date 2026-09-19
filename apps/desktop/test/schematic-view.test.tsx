@@ -1,5 +1,5 @@
 import { BUILTIN_ASSEMBLE_PROBLEMS, BUILTIN_INSPECT_REPAIR_PROBLEMS } from '@ojt/content';
-import { layout, type SchematicDocument } from '@ojt/schematic-core';
+import { emptySchematic, layout, type SchematicDocument } from '@ojt/schematic-core';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -209,7 +209,7 @@ describe('連動ハイライト（§9.2）は拡大表示でも効く', () => {
 });
 
 describe('どの画面でも同じ図が出る', () => {
-  it('読取専用（ヒント）と編集モード（エディタ）で同じ寸法設定を使う', () => {
+  it('編集モードは最小寸法の床（B1）を敷きうるが、当たり矩形はいつでも同じ座標系（カーソルが記号からずれない）', () => {
     const doc = docOf(B);
     const { container, unmount } = render(<SchematicSvg document={doc} />);
     const readOnly = container.querySelector('svg')?.getAttribute('viewBox');
@@ -217,8 +217,12 @@ describe('どの画面でも同じ図が出る', () => {
     const editing = render(
       <SchematicSvg document={doc} cursor={{ rungId: 'r1', index: 0 }} onPickSlot={vi.fn()} />,
     );
-    expect(editing.container.querySelector('svg')?.getAttribute('viewBox')).toBe(readOnly);
-    // 当たり矩形も同じ寸法設定から来る（カーソルが記号からずれない）
+    // 編集モードだけ最小寸法の床を敷く（B1）。内蔵課題 b-001 は床未満なので紙が広がり、
+    // 読取専用（ヒント欄向けの縮尺のまま）とは一致しなくなる——これは意図した挙動
+    const editingView = editing.container.querySelector('svg')?.getAttribute('viewBox');
+    expect(editingView).not.toBe(readOnly);
+    // それでも `layout()` の論理座標そのものは動かない。当たり矩形は常に `SCHEMATIC_LAYOUT`
+    // の寸法のまま（床は紙を広げて中央に置くだけで、記号や当たり矩形の座標は動かさない）
     const slot = editing.container.querySelector('[data-slot="r1#0"]');
     expect(Number(slot?.getAttribute('width'))).toBe(SCHEMATIC_LAYOUT.colWidth);
     expect(Number(slot?.getAttribute('height'))).toBe(SCHEMATIC_LAYOUT.rowHeight);
@@ -232,5 +236,54 @@ describe('どの画面でも同じ図が出る', () => {
     const c2Paper = c2.container.querySelector('[data-testid="schematic-paper"]');
     expect(bPaper?.getAttribute('fill')).toBe(c2Paper?.getAttribute('fill'));
     expect(c2.container.querySelector('[data-testid="schematic-frame"]')).toBeTruthy();
+  });
+});
+
+describe('空の下書きが極端に拡大されない（UI監査バッチB・B1・2026-09-20）', () => {
+  it('編集モードは空の下書きでも紙を最小寸法まで広げる（極端な拡大を防ぐ）', () => {
+    const draft = emptySchematic('draft-probe', '下書き');
+    // 読取専用は内容ぴったりの、とても小さい紙のまま
+    const { container: readOnlyContainer, unmount } = render(<SchematicSvg document={draft} />);
+    const [, , readOnlyW, readOnlyH] = viewBoxNumbers(
+      readOnlyContainer.querySelector('svg') as Element,
+    );
+    unmount();
+    // 編集モードは床（`SCHEMATIC_LAYOUT.colWidth * 6` 相当）まで広がる
+    const { container } = render(
+      <SchematicSvg document={draft} cursor={{ rungId: 'r1', index: 0 }} onPickSlot={vi.fn()} />,
+    );
+    const [, , w, h] = viewBoxNumbers(container.querySelector('svg') as Element);
+    expect(w).toBeGreaterThan(readOnlyW);
+    expect(h).toBeGreaterThan(readOnlyH);
+    expect(w).toBeGreaterThanOrEqual((SCHEMATIC_LAYOUT.colWidth ?? 0) * 6);
+    expect(h).toBeGreaterThanOrEqual((SCHEMATIC_LAYOUT.rowHeight ?? 0) * 3);
+  });
+
+  it('母線見出し（P(+24V) / N(0V)）は間隔が狭い下書きでも重ならない大きさへ自動で縮む', () => {
+    const draft = emptySchematic('draft-probe', '下書き');
+    const { container } = render(<SchematicSvg document={draft} />);
+    const texts = [...container.querySelectorAll('text')];
+    const p = texts.find((t) => t.textContent === 'P(+24V)');
+    const n = texts.find((t) => t.textContent === 'N(0V)');
+    expect(p).toBeDefined();
+    expect(n).toBeDefined();
+    if (p === undefined || n === undefined) return;
+    // 既定の8論理単位のままでは重なるので、両方とも縮んでいるはず
+    expect(Number(p.getAttribute('font-size'))).toBeLessThan(8);
+    expect(Number(n.getAttribute('font-size'))).toBeLessThan(8);
+    // 実際に重ならないことを、文字の見積り幅（描画側と同じ 0.62em）で確かめる
+    const width = (t: Element): number =>
+      (t.textContent ?? '').length * Number(t.getAttribute('font-size')) * 0.62;
+    const pRight = Number(p.getAttribute('x')) + width(p); // P は anchor=start（右へ伸びる）
+    const nLeft = Number(n.getAttribute('x')) - width(n); // N は anchor=end（左へ伸びる）
+    expect(pRight).toBeLessThanOrEqual(nLeft);
+  });
+
+  it('段が育って間隔が十分あれば母線見出しは縮めない（内蔵課題 b-001）', () => {
+    const { container } = render(<SchematicSvg document={docOf(B)} />);
+    const texts = [...container.querySelectorAll('text')];
+    const p = texts.find((t) => t.textContent === 'P(+24V)');
+    expect(p).toBeDefined();
+    expect(Number(p?.getAttribute('font-size'))).toBe(8);
   });
 });

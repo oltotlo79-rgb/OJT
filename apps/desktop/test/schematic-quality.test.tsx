@@ -176,6 +176,7 @@ function block(css: string, selector: string): string {
 
 const SCREENS_CSS = declarations(read('src/renderer/screens/screens.module.css'));
 const VIEW_CSS = declarations(read('src/renderer/schematic/schematic-view.module.css'));
+const EDITOR_CSS = declarations(read('src/renderer/schematic/schematic.module.css'));
 
 describe('回路図ヒントの箱（レビュー I5: 「⤢ 拡大」が切り落とされない）', () => {
   it('leaves room above the drawing for the enlarge button', () => {
@@ -189,8 +190,12 @@ describe('回路図ヒントの箱（レビュー I5: 「⤢ 拡大」が切り�
     const padding = /padding:\s*(\d+)px/u.exec(box)?.[1];
     expect(padding).toBeDefined();
     expect(Number(padding)).toBeGreaterThanOrEqual(needed);
-    // 高さの頭打ち（右パネルが回路図で埋まらないようにする）はそのまま
-    expect(box).toContain('max-height: 320px');
+    // 高さの頭打ち（右パネルが回路図で埋まらないようにする）は画面の高さに追随させる。
+    // 固定px だと縦長の図（JIS b-006 430×700 等）を窓を大きくしても常に切り詰めてしまう
+    // （UI監査 batch C）ので、viewport 相対（vh）で頭打ちにすること。
+    const maxHeight = /max-height:\s*([\d.]+)vh/u.exec(box)?.[1];
+    expect(maxHeight, box).toBeDefined();
+    expect(Number(maxHeight)).toBeGreaterThanOrEqual(60);
   });
 });
 
@@ -204,5 +209,32 @@ describe('「並べて」の折り返し（レビュー I6: 1280×800 で回路�
     // 1280px は3列（360 + 360 + 380）が入らないので、積み替える側に入っていること
     expect(breakpoint).toBeGreaterThanOrEqual(1439);
     expect(breakpoint).toBeGreaterThanOrEqual(1280);
+  });
+});
+
+describe('「⤢ 拡大」は1行のまま図に被らない（UI監査バッチB）', () => {
+  it('never wraps to two lines regardless of the box width', () => {
+    const button = block(VIEW_CSS, '.enlargeButton');
+    expect(button).toContain('white-space: nowrap');
+    // 28px の単一行の押し代（利用者要求：拡大ボタンは1行28px）
+    expect(button).toContain('height: 28px');
+  });
+});
+
+describe('回路図エディタの格子は箱に収める（UI監査バッチB・B1・2026-09-20 追加報告）', () => {
+  it('lays the grid out as a column so the drawing can shrink to fit while siblings keep their size', () => {
+    const grid = block(EDITOR_CSS, '.grid');
+    expect(grid).toContain('display: flex');
+    expect(grid).toContain('flex-direction: column');
+    // 残り高さが無くなった最後の手段としてだけスクロールする
+    expect(grid).toContain('overflow: auto');
+  });
+
+  it('gives the drawing (not its siblings) the flexible remaining height', () => {
+    const host = block(EDITOR_CSS, '.gridSvgHost');
+    expect(host).toContain('flex: 1 1 auto');
+    for (const sibling of ['.presetBar', '.cursorLine', '.keyHint']) {
+      expect(block(EDITOR_CSS, sibling), sibling).toContain('flex-shrink: 0');
+    }
   });
 });

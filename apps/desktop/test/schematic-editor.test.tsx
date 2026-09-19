@@ -117,6 +117,15 @@ describe('SchematicEditor', () => {
     expect(screen.getByRole('button', { name: /コイル CR1/u })).toBeInTheDocument();
   });
 
+  it('fits the drawing to the grid box instead of stretching to width only (B1 / 2026-09-20 追加報告)', () => {
+    renderEditor();
+    const svg = screen.getByTestId('schematic-svg');
+    // 幅だけでなく高さも親の100%（`preserveAspectRatio` が縦横比を保ったまま箱に収める）。
+    // 読取専用の回路図ヒント（`SchematicView`）は高さ自動のまま（`height: auto`）で、
+    // ここだけが違う（編集グリッド専用の挙動）
+    expect(svg.getAttribute('style')).toContain('height: 100%');
+  });
+
   it('places the selected palette item when a slot is clicked', () => {
     const props = renderEditor();
     fireEvent.click(screen.getByRole('button', { name: /押ボタン a接点 PB1/u }));
@@ -134,6 +143,29 @@ describe('SchematicEditor', () => {
   it('shows the structural issues of a half-finished drawing (決定表#3)', () => {
     renderEditor();
     expect(screen.getByTestId('schematic-issues')).toHaveTextContent('段に要素がありません');
+  });
+
+  it('shows an untouched draft’s issues in a neutral (non-red) style, and in the alerting style once edited (I8)', () => {
+    // `<ul>` に新しい data-testid は足さない（機能一覧表の網羅テストの対象を増やさないため）。
+    // 既存の `schematic-issues` から辿る
+    const listIn = (): Element => {
+      const el = screen.getByTestId('schematic-issues').querySelector('ul');
+      if (el === null) throw new Error('ul が見つかりません');
+      return el;
+    };
+    // 開いた直後（history.done が空＝何も編集していない）は「未編集」の中立な見え方
+    const untouched = renderEditor();
+    const list = listIn();
+    expect(list).toHaveAttribute('data-touched', 'false');
+    const neutralClass = list.className;
+    cleanup();
+    // 1つでも編集すれば（`history.done` が空でなくなれば）赤の警告表示に変わる
+    renderEditor({ history: { done: [untouched.document], undone: [] } });
+    const touchedList = listIn();
+    expect(touchedList).toHaveAttribute('data-touched', 'true');
+    expect(touchedList.className).not.toBe(neutralClass);
+    // 文言そのもの（決定表#3）は変わらない
+    expect(touchedList).toHaveTextContent('段に要素がありません');
   });
 
   it('disables 検算 while the drawing is not valid and while verifying', () => {
