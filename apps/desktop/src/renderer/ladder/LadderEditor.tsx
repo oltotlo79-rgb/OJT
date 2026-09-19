@@ -14,6 +14,7 @@ import {
   moveCursor,
   toggleNoNcAt,
   togglePulseAt,
+  type LadderCursor,
   type LadderEditResult,
   type LadderEditorMode,
   type PlaceKind,
@@ -50,11 +51,17 @@ interface Pending {
 export function LadderEditor({
   profile,
   gridCols,
+  errorCells,
   onConvert,
   onModeChange,
 }: {
   profile: DialectProfile;
   gridCols: number;
+  /**
+   * 変換エラーが指しているセルの鍵（`"net:row:col"`）。`LadderGrid` の `memo` を効かせるため、
+   * `Set` は `LadderWorkspace` の `useMemo` が持つ（毎レンダーで作り直さない）。§10.6
+   */
+  errorCells: ReadonlySet<string>;
   /** `F4`（変換）。実体は `LadderWorkspace` が持つ。§10.6 */
   onConvert: () => void;
   /** 書込み／読出し／モニタが変わった（Worker へモニタの開始停止を伝える）。§10.6 */
@@ -64,10 +71,17 @@ export function LadderEditor({
   const cursor = useStore((s) => s.ladderCursor);
   const mode = useStore((s) => s.ladderMode);
   const comments = useStore((s) => s.ladderComments);
-  const errorCells = useStore((s) => s.convertIssues.errors);
   /** モニタ中だけ通電文字列を購読する（決定表#5）。 */
   const powered = useStore((s) => s.plcMonitor?.powered);
   const [pending, setPending] = useState<Pending | undefined>(undefined);
+
+  /**
+   * セルをクリックしてカーソルを動かす。`memo(LadderGrid)` を効かせるため、毎レンダーで
+   * 新しい関数を渡さない（Batch 2 レビュー）。
+   */
+  const onPickCell = useCallback((next: LadderCursor): void => {
+    useStore.getState().setLadderCursor(next);
+  }, []);
 
   /** 編集結果をストアへ入れる（失敗は理由をトーストに出す）。 */
   const commit = useCallback((result: LadderEditResult): void => {
@@ -203,19 +217,9 @@ export function LadderEditor({
         mode={mode}
         powered={powered}
         comments={comments}
-        errorCells={
-          new Set(
-            errorCells.flatMap((issue) =>
-              issue.networkId === undefined || issue.row === undefined || issue.col === undefined
-                ? []
-                : [`${issue.networkId}:${String(issue.row)}:${String(issue.col)}`],
-            ),
-          )
-        }
+        errorCells={errorCells}
         gridCols={gridCols}
-        onPickCell={(next) => {
-          useStore.getState().setLadderCursor(next);
-        }}
+        onPickCell={onPickCell}
       />
       {pending === undefined ? null : (
         <DeviceInput

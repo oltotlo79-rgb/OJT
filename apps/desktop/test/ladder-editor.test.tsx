@@ -13,6 +13,7 @@ function editor(props: Partial<Parameters<typeof LadderEditor>[0]> = {}): void {
     <LadderEditor
       profile={MITSUBISHI_FX5U}
       gridCols={MITSUBISHI_FX5U.gridCols}
+      errorCells={props.errorCells ?? new Set<string>()}
       onConvert={props.onConvert ?? ((): void => undefined)}
       onModeChange={props.onModeChange ?? ((): void => undefined)}
     />,

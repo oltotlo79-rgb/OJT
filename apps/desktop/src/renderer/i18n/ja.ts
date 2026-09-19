@@ -419,6 +419,21 @@ export const JA = {
     wiringSink: 'シンク結線（P → S/S、PBのa接点 → X、PBのc端子 → N）',
     wiringSource: 'ソース結線（N → S/S、PBのa接点 → X、PBのc端子 → P）',
     // --- /Plan 3B Task 7 ---
+    // --- Plan 3B Task 8 ---
+    /** ナビゲーションウィンドウ（プロジェクトツリー）。§10.6 */
+    treeProgram: 'プログラム',
+    treeMain: 'MAIN',
+    /** キー割当表。§12.1 / §17.1 */
+    shortcuts: 'キー割当',
+    shortcutNote: 'キー割当はメーカー（方言プロファイル）ごとに切り替わります。',
+    /** ショートカットに無い操作はボタンで出す（決定表#12）。 */
+    insertNetwork: '回路ブロック挿入',
+    deleteNetwork: '回路ブロック削除',
+    insertRow: '行挿入',
+    deleteRow: '行削除',
+    convertFailed: '変換できませんでした（出力ウィンドウを確認してください）',
+    downloaded: 'シーケンサへ書き込みました（変換済みのラダーを反映）',
+    // --- /Plan 3B Task 8 ---
   },
   // --- /Plan 3B Task 4 ---
   // --- Plan 3B Task 10 ---

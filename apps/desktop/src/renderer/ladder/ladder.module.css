@@ -289,3 +289,89 @@
   padding: 2px 4px;
 }
 /* --- /Plan 3B Task 7 --- */
+
+/* --- Plan 3B Task 8 --- */
+.workspace {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  background: #eef0f4;
+  border-right: 1px solid #d5d8de;
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 4px 6px;
+  background: #e4e7ec;
+  border-bottom: 1px solid #d5d8de;
+}
+
+.toolbarGap {
+  flex: 1 1 auto;
+}
+
+.workspaceBody {
+  display: grid;
+  grid-template-columns: 148px minmax(0, 1fr) 210px;
+  min-height: 0;
+  flex: 1 1 auto;
+}
+
+.workspaceMain {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.workspaceSide {
+  border-left: 1px solid #d5d8de;
+  overflow: auto;
+  background: #fff;
+}
+
+.tree {
+  border-right: 1px solid #d5d8de;
+  padding: 6px;
+  font-size: 12px;
+  background: #fff;
+  overflow: auto;
+}
+
+.treeRoot {
+  font-weight: 700;
+  margin: 0 0 4px;
+}
+
+.treeList,
+.treeList ul {
+  list-style: none;
+  margin: 0;
+  padding-left: 10px;
+}
+
+.treeList button {
+  background: none;
+  border: none;
+  padding: 1px 2px;
+  cursor: pointer;
+  font: inherit;
+}
+
+.treeList button[aria-current='true'] {
+  font-weight: 700;
+  /*
+   * 色は `ProjectTree` が `profile.monitorColors.powered` から `--tree-current` に流し込む
+   * （レビュー Minor）。CSS に `#1e64ff` を直書きすると、方言プロファイルの色を変えたときに
+   * ここだけ取り残される。プロファイルが読めないときのための予備値だけ残す。
+   */
+  color: var(--tree-current, #1e64ff);
+}
+
+.shortcutOff {
+  color: #999;
+}
+/* --- /Plan 3B Task 8 --- */
