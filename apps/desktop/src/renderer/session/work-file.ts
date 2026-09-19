@@ -16,6 +16,7 @@ import {
 import {
   isInspectPartsProblem,
   isInspectRepairProblem,
+  isPlcProblem,
   PART_TRUTHS,
   replacePart,
   type FaultReport,
@@ -24,9 +25,10 @@ import {
   type InspectPartAnswer,
   type SupportedProblem,
 } from '@ojt/content';
+import { IR_COLS, MAX_ROWS, type LadderProgram } from '@ojt/ladder-core';
 import { WORK_FILE_FORMAT_VERSION, type WorkFile } from '../../shared/ipc.js';
 import { ojtApi } from '../app/ojt-api.js';
-import { useStore } from '../app/store.js';
+import { DEVICE_COMMENT_COUNT_LIMIT, DEVICE_COMMENT_LIMIT, useStore } from '../app/store.js';
 import { JA, workFileProblemMissingText, workFileRestoredLog } from '../i18n/ja.js';
 import { cloneSession } from './commands.js';
 import { checkLoadFor } from './inspect-parts.js';
@@ -166,6 +168,20 @@ function inspectFieldsFor(problemId: string): Partial<WorkFile> {
       schematicOpenCount: state.schematicOpenCount,
     };
   }
+  if (isPlcProblem(problem)) {
+    return {
+      mode: 'plc',
+      dialectId: state.dialectId,
+      converted: state.converted,
+      // ラダーとデバイスコメントは `LadderProgramData` と同じ形で残す（3A H-3）
+      ladder: {
+        networks: state.ladder?.networks ?? [],
+        ...(Object.keys(state.ladderComments).length === 0
+          ? {}
+          : { comments: { ...state.ladderComments } }),
+      },
+    };
+  }
   return { mode: 'assemble' };
 }
 
@@ -252,6 +268,107 @@ export function toSession(raw: unknown): BoardSession | undefined {
   return source as unknown as BoardSession;
 }
 
+/** 作業ファイルに載せられるネットワーク数の上限（main の `MAX_WORK_FILE_NETWORKS` と同じ値）。 */
+export const MAX_RESTORED_NETWORKS = 64;
+
+/** IR のセル種別（この語彙以外は読み込まない）。§10.3 */
+const CELL_KINDS = new Set([
+  'contact',
+  'coil',
+  'timer',
+  'counter',
+  'mc',
+  'mcr',
+  'end',
+  'hline',
+  'vline',
+  'empty',
+]);
+
+/** デバイスとして読めるか。 */
+function isDeviceLike(value: unknown): boolean {
+  if (!isRecord(value)) return false;
+  const kind = value['kind'];
+  const index = value['index'];
+  const kinds = ['input', 'output', 'internal', 'timer', 'counter', 'special'];
+  if (typeof kind !== 'string' || !kinds.includes(kind)) return false;
+  return typeof index === 'number' && Number.isInteger(index) && index >= 0;
+}
+
+/** セルとして読めるか（`kind` ごとに要る項目だけ見る）。 */
+function isCellLike(value: unknown): boolean {
+  if (!isRecord(value)) return false;
+  const kind = value['kind'];
+  if (typeof kind !== 'string' || !CELL_KINDS.has(kind)) return false;
+  if (kind === 'end' || kind === 'hline' || kind === 'vline' || kind === 'empty') return true;
+  if (!isDeviceLike(value['device'])) return false;
+  if (kind === 'timer') {
+    const preset = value['presetMs'];
+    return typeof preset === 'number' && Number.isInteger(preset) && preset > 0;
+  }
+  if (kind === 'counter') {
+    const preset = value['preset'];
+    if (!(typeof preset === 'number' && Number.isInteger(preset) && preset > 0)) return false;
+    return isDeviceLike(value['resetDevice']);
+  }
+  if (kind === 'contact') return ['NO', 'NC', 'P', 'F'].includes(String(value['type']));
+  if (kind === 'coil') return ['OUT', 'SET', 'RST'].includes(String(value['type']));
+  return true;
+}
+
+/** デバイスコメントとして読めるか（§10.7 の上限を守る）。 */
+function isCommentsLike(value: unknown): value is Record<string, string> {
+  if (!isRecord(value)) return false;
+  const entries = Object.entries(value);
+  if (entries.length > DEVICE_COMMENT_COUNT_LIMIT) return false;
+  return entries.every(
+    ([key, text]) =>
+      /^(X|Y|M|T|C|SP)\d+$/u.test(key) &&
+      typeof text === 'string' &&
+      text.length > 0 &&
+      text.length <= DEVICE_COMMENT_LIMIT,
+  );
+}
+
+/**
+ * 作業ファイルの `ladder` を IR として読む（形が違えば undefined）。§13 #8 / 3A H-3
+ *
+ * `toSession()` と同じ流儀で**要素ひとつひとつ**を確かめる。壊れたセルが1つ混ざっているだけで
+ * ラダーエディタも `compile()` も描画中に落ち、例外バナーからも戻れなくなるため。
+ */
+export function toLadderProgram(
+  raw: unknown,
+): { program: LadderProgram; comments: Record<string, string> } | undefined {
+  if (!isRecord(raw)) return undefined;
+  const networks = raw['networks'];
+  if (!Array.isArray(networks)) return undefined;
+  if (networks.length === 0 || networks.length > MAX_RESTORED_NETWORKS) return undefined;
+  const seen = new Set<string>();
+  for (const net of networks) {
+    if (!isRecord(net)) return undefined;
+    const id = net['id'];
+    if (typeof id !== 'string' || id.length === 0 || seen.has(id)) return undefined;
+    seen.add(id);
+    const cells = net['cells'];
+    if (!Array.isArray(cells)) return undefined;
+    if (cells.length === 0 || cells.length > MAX_ROWS) return undefined;
+    if (net['rows'] !== cells.length) return undefined;
+    if (net['cols'] !== IR_COLS) return undefined;
+    for (const row of cells) {
+      if (!Array.isArray(row) || row.length !== IR_COLS) return undefined;
+      if (!row.every(isCellLike)) return undefined;
+    }
+    const comment = net['comment'];
+    if (comment !== undefined && typeof comment !== 'string') return undefined;
+  }
+  const comments = raw['comments'];
+  if (comments !== undefined && !isCommentsLike(comments)) return undefined;
+  return {
+    program: { networks: networks as LadderProgram['networks'] },
+    comments: comments === undefined ? {} : { ...comments },
+  };
+}
+
 /** 例外から画面に出す1行を作る。 */
 function reasonOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -281,6 +398,12 @@ export interface InspectWorkState {
   replacedPartIds?: unknown;
   /** 回路図ヒントを開いた回数（モードC2の2級形式。§8.4）。 */
   schematicOpenCount?: number;
+  /** モードDのラダーIR（`comments` を含む）。§12.3 / 3A H-3 */
+  ladder?: unknown;
+  /** モードDで使っている方言ID。§10.5 */
+  dialectId?: string;
+  /** 保存時点でラダーが変換を通っていたか。§10.6 */
+  converted?: boolean;
 }
 
 /** 復元できる並びの長さの上限（main の `MAX_WORK_FILE_ENTRIES` と同じ値）。§13 #8 */
@@ -453,6 +576,15 @@ export function restoreInspectState(problem: SupportedProblem, state: InspectWor
   const store = useStore.getState();
   if (state.mode !== undefined && state.mode !== problem.mode) return false;
 
+  if (isPlcProblem(problem)) {
+    const parsed = toLadderProgram(state.ladder);
+    // ラダーが読めない作業ファイルは**開かない**（黙って空のラダーで開くと作業を失う）。§13 #8
+    if (state.ladder !== undefined && parsed === undefined) return false;
+    if (!store.openProblem(problem)) return false;
+    if (parsed !== undefined) store.restoreLadder(parsed.program, parsed.comments);
+    return true;
+  }
+
   if (isInspectRepairProblem(problem)) {
     const resolvedFaults = toFaultSpecs(state.resolvedFaults);
     if (resolvedFaults === undefined) return false;
@@ -530,7 +662,7 @@ export function restoreInspectState(problem: SupportedProblem, state: InspectWor
 function loadPayloadFor(
   problem: SupportedProblem,
   saved: BoardSession,
-): { session: BoardSession; partFaults?: readonly FaultSpecData[] } {
+): { session: BoardSession; partFaults?: readonly FaultSpecData[]; plcModel?: string } {
   const state = useStore.getState();
   if (isInspectPartsProblem(problem)) {
     const partId = state.checkPartId;
@@ -546,6 +678,7 @@ function loadPayloadFor(
     if (circuit === undefined) return { session: saved };
     return { session: saved, partFaults: circuit.applied.partFaults };
   }
+  if (isPlcProblem(problem)) return { session: saved, plcModel: problem.plc.model };
   return { session: saved };
 }
 
@@ -611,6 +744,7 @@ export async function applyWorkFile(
     problemId: problem.id,
     session: cloneSession(payload.session),
     ...(payload.partFaults === undefined ? {} : { partFaults: payload.partFaults }),
+    ...(payload.plcModel === undefined ? {} : { plcModel: payload.plcModel }),
   });
   // つまみは `load` のあとに送り直す（`load` が Worker 側のテスターを既定へ戻すため）。I-3
   if (file.tester !== undefined) replayTesterToWorker(useStore.getState().tester);

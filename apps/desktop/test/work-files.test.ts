@@ -246,7 +246,7 @@ describe('parseWorkFile のモード固有の項目（§12.3 / §13 #8）', () =
   });
 
   it('知らないモードは拒否する（将来のモードを assemble として開かない）', () => {
-    const result = parseWorkFile(sampleFile({ mode: 'plc' } as unknown as Partial<WorkFile>));
+    const result = parseWorkFile(sampleFile({ mode: 'quantum' } as unknown as Partial<WorkFile>));
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.message).toBe(MSG.workFile.unknownMode);
@@ -316,6 +316,33 @@ describe('parseWorkFile のモード固有の項目（§12.3 / §13 #8）', () =
       if (!result.ok) return;
       expect(result.file.schematicOpenCount).toBeUndefined();
     });
+  });
+
+  it('accepts the mode D work file and its caps (§13 #8)', () => {
+    const base = {
+      formatVersion: 1,
+      problemId: 'd-001',
+      session: { socketRoles: {}, wires: [] },
+      mode: 'plc',
+      dialectId: 'mitsubishi',
+      converted: true,
+      ladder: { networks: [{ id: 'n1', rows: 1, cols: 16, cells: [[{ kind: 'empty' }]] }] },
+    };
+    const ok = parseWorkFile(base);
+    expect(ok.ok).toBe(true);
+    if (!ok.ok) return;
+    expect(ok.file.mode).toBe('plc');
+    expect(ok.file.converted).toBe(true);
+
+    const tooMany = {
+      ...base,
+      ladder: {
+        networks: Array.from({ length: 65 }, () => ({ id: 'n', rows: 1, cols: 16, cells: [] })),
+      },
+    };
+    expect(parseWorkFile(tooMany).ok).toBe(false);
+    expect(parseWorkFile({ ...base, ladder: 'x' }).ok).toBe(false);
+    expect(parseWorkFile({ ...base, mode: 'quantum' }).ok).toBe(false);
   });
 });
 

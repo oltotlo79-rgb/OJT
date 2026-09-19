@@ -121,6 +121,18 @@ export interface WorkFile {
    * 1級（回路図を出さない）や旧バージョンの作業ファイルには無いので任意項目にする。
    */
   schematicOpenCount?: number;
+  /**
+   * モードDのラダーIR（`LadderProgramData` をそのまま JSON にしたもの）。§12.3 / 3A H-3
+   * `comments`（デバイスコメント）を含む。読み手は `toLadderProgram()` が形を確かめる。
+   */
+  ladder?: unknown;
+  /** モードDで使っている方言ID（Phase 3 は常に `mitsubishi`）。§10.5 */
+  dialectId?: string;
+  /**
+   * 保存時点でラダーが変換を通っていたか。§10.6
+   * **復元時は必ず未変換として開く**（Worker には何も載っていないため）。記録としてだけ残す。
+   */
+  converted?: boolean;
 }
 
 /** 保存要求。`kind: 'autosave'` は既定の一時保存先へ黙って書く（§12.3）。 */

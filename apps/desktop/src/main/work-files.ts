@@ -57,6 +57,9 @@ export const MAX_SCHEMATIC_OPEN_COUNT = 10_000;
  */
 export const MAX_PROBE_TERMINAL_ID_LENGTH = 32;
 
+/** 作業ファイルに載せられるネットワーク数の上限（`LadderProgramSchema` と同じ値）。§10.3 */
+export const MAX_WORK_FILE_NETWORKS = 64;
+
 /** 一時保存のパス。§12.3 */
 export function autosavePath(): string {
   return join(app.getPath('userData'), 'autosave.json');
@@ -130,11 +133,34 @@ export function parseWorkFile(
   const optional: Partial<WorkFile> = {};
   const mode = source['mode'];
   if (mode !== undefined) {
-    if (mode !== 'assemble' && mode !== 'inspect-parts' && mode !== 'inspect-repair') {
+    if (
+      mode !== 'assemble' &&
+      mode !== 'inspect-parts' &&
+      mode !== 'inspect-repair' &&
+      mode !== 'plc'
+    ) {
       // 知らないモードは「読める形に見えて中身が別物」なので、黙って落とさず断る（§13 #8）
       return { ok: false, message: MSG.workFile.unknownMode };
     }
     optional.mode = mode;
+  }
+  if (typeof source['dialectId'] === 'string') optional.dialectId = source['dialectId'];
+  if (typeof source['converted'] === 'boolean') optional.converted = source['converted'];
+  /*
+   * ラダーは「オブジェクトで `networks` が配列、64本以下」だけ見る。中身（セルの語彙・行数）は
+   * IR を知っている renderer の `toLadderProgram()` が確かめる（`session` と同じ分担）。§13 #8
+   */
+  const ladder = source['ladder'];
+  if (ladder !== undefined) {
+    if (typeof ladder !== 'object' || ladder === null) {
+      return { ok: false, message: MSG.workFile.badLadder };
+    }
+    const networks = (ladder as Record<string, unknown>)['networks'];
+    if (!Array.isArray(networks)) return { ok: false, message: MSG.workFile.badLadder };
+    if (networks.length > MAX_WORK_FILE_NETWORKS) {
+      return { ok: false, message: MSG.workFile.tooManyNetworks };
+    }
+    optional.ladder = ladder;
   }
   if (typeof source['checkPartId'] === 'string') optional.checkPartId = source['checkPartId'];
   if (typeof source['faultSeed'] === 'number') optional.faultSeed = source['faultSeed'];
