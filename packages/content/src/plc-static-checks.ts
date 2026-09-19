@@ -60,14 +60,53 @@ function plcTerminal(name: string): TerminalId {
 /**
  * 割付の出力番号 → PLCの出力端子。
  * 割付の `y` は10進の装置番号なので、端子名（三菱なら8進）は必ず機種仕様から引く。§10.1
+ * `y` は `PlcProblemSchema` が機種仕様の点数内に収まっていることを既に検証済みなので、
+ * ここでは三菱形（`Yn`）のフォールバックは持たない — 他機種の課題にまで三菱の表記が
+ * 紛れ込む方が、存在しない番号でここに来て例外になるより見つけにくい事故になる（レビュー M3）。
  */
 function outputTerminal(unit: PlcUnitDefinition, y: number): TerminalId {
-  return plcTerminal(unit.spec.outputs[y]?.name ?? `Y${y}`);
+  const output = unit.spec.outputs[y];
+  /* c8 ignore next 3 -- PlcProblemSchema が y を機種の出力点数内に検証済みのため到達しない */
+  if (output === undefined) {
+    throw new RangeError(`${unit.model} に出力 y=${y} がありません（割付は検証済みのはずです）`);
+  }
+  return plcTerminal(output.name);
 }
 
-/** 割付の入力番号 → PLCの入力端子。 */
+/** 割付の入力番号 → PLCの入力端子（フォールバックを持たない理由は `outputTerminal` と同じ）。 */
 function inputTerminal(unit: PlcUnitDefinition, x: number): TerminalId {
-  return plcTerminal(unit.spec.inputs[x]?.name ?? `X${x}`);
+  const input = unit.spec.inputs[x];
+  /* c8 ignore next 3 -- PlcProblemSchema が x を機種の入力点数内に検証済みのため到達しない */
+  if (input === undefined) {
+    throw new RangeError(`${unit.model} に入力 x=${x} がありません（割付は検証済みのはずです）`);
+  }
+  return plcTerminal(input.name);
+}
+
+/**
+ * 課題が使う入力点がぶら下がっている入力コモンの一覧（機種仕様の並び順）。§10.2
+ *
+ * 8点1コモンの機種（ラック形）はコモンが複数あるので、模範配線（`plc-reference.ts`）も
+ * 結線方式の判定（`checkIoAssignment` の末尾）も **使う点のコモンだけ** を見る。課題が
+ * 使わない群のコモン（`ICOM1` / `COM.B` など）は模範配線でも浮いたままなので、そこまで
+ * 数えると「未配線」と見分けがつかない（決定表: 使う点のコモン。plc-reference.ts と
+ * plc-static-checks.ts の重複を1箇所にまとめた。レビュー M4）。
+ *
+ * `io.inputs` は `fixed` / `free` のどちらでも最低1点あるので（`PlcIoSchema.inputs.min(1)` と
+ * `resolvePlcIo()` の既定割付）、返り値が空になることはない — 呼び出し側の「空なら機種の全コモン」
+ * というフォールバックは到達しないので持たない（レビュー M4）。
+ */
+export function usedInputCommons(
+  unit: PlcUnitDefinition,
+  io: Pick<PlcCheckContext['io'], 'inputs'>,
+): readonly string[] {
+  const used = new Set(
+    io.inputs.flatMap((assigned) => {
+      const com = unit.spec.inputs[assigned.x]?.com;
+      return com === undefined ? [] : [com];
+    }),
+  );
+  return unit.spec.inputCommons.filter((name) => used.has(name));
 }
 
 /**
@@ -270,10 +309,13 @@ export function checkIoAssignment(input: StaticCheckInput): StaticCheckResult {
     if (pbCount !== 1 || xCount !== 1) {
       details.push(`${terminal} が別の押ボタンまたはPLC入力端子と短絡しています`);
     }
-    // 8点1コモンの機種は、使う点のコモンを配線しないとその群だけが入らない（受入基準③⑤）
-    const inputCom = plc.unit.spec.inputs[assigned.x]?.com;
-    if (inputCom !== undefined && netTerminals(nets, plcTerminal(inputCom)).length <= 1) {
-      details.push(`${terminal} の入力コモン（${plcTerminal(inputCom)}）が配線されていません`);
+  }
+  // 入力コモンの配線漏れは**コモンごと**に1件で報告する。8点1コモンの機種は同じコモンに複数の
+  // 使用点がぶら下がるので、点ごとのループの中で数えると同じコモンの指摘が点の数だけ繰り返し出る
+  // （FX5U はコモンが1つしかないので、3点使えば3行同じ指摘が出ていた。レビュー M7）
+  for (const com of usedInputCommons(plc.unit, plc.io)) {
+    if (netTerminals(nets, plcTerminal(com)).length <= 1) {
+      details.push(`入力コモン（${plcTerminal(com)}）が配線されていません（受入基準③⑤）`);
     }
   }
   for (const output of plc.io.outputs) {
@@ -297,23 +339,20 @@ export function checkIoAssignment(input: StaticCheckInput): StaticCheckResult {
   }
   // 結線方式は**使う点のコモン**だけで見る。課題が使わない群のコモン（`ICOM1` など）は
   // 模範配線でも浮いているので、数えると未配線と見分けがつかない
-  const usedCommons = [
-    ...new Set(
-      plc.io.inputs.flatMap((assigned) => {
-        const com = plc.unit.spec.inputs[assigned.x]?.com;
-        return com === undefined ? [] : [com];
-      }),
-    ),
-  ];
-  const commons = usedCommons.length > 0 ? usedCommons : plc.unit.spec.inputCommons;
+  const commons = usedInputCommons(plc.unit, plc.io);
   // 端子名は機種で違う（`S/S` / `COM` / `ICOM0` / `COM.A`）ので文言に直書きしない（引き渡し注記 H-1）
   const commonLabel = commons.map((name) => String(plcTerminal(name))).join('・');
   const wiring = detectPlcWiring(nets, plc.unit, commons);
   if (wiring === undefined) {
     details.push(`入力コモン（${commonLabel}）が盤のP側・N側のどちらにも配線されていません`);
   } else if (wiring === 'mismatch') {
+    // コモンが1つだけの機種（FX5U の S/S、CP1E の COM）で mismatch になるのは、その1本自体が
+    // P側とN側を短絡しているということなので「すべて同じ側に揃えます」は意味を成さない。
+    // コモンが複数（ラック形）のときだけ、コモン同士の食い違いとして揃えるよう促す（レビュー M7）
     details.push(
-      `入力コモン（${commonLabel}）のP側・N側が食い違っています（すべて同じ側に揃えます）`,
+      commons.length === 1
+        ? `入力コモン（${commonLabel}）でP側とN側を短絡しています`
+        : `入力コモン（${commonLabel}）のP側・N側が食い違っています（すべて同じ側に揃えます）`,
     );
   } else if (wiring !== plc.io.wiring) {
     details.push(

@@ -28,14 +28,20 @@ export const PLC_MODELS = ['FX5U', 'PC10G-1SP', 'CP1E', 'JW-300'] as const;
 /** Phase 4 で4機種すべてを開始できるようにした。§16 */
 export const SUPPORTED_PLC_MODELS = PLC_MODELS;
 
-/** メーカー → 機種（§7.6 の対応）。 */
-const MODEL_OF_VENDOR: Readonly<Record<(typeof PLC_VENDORS)[number], (typeof PLC_MODELS)[number]>> =
-  {
-    mitsubishi: 'FX5U',
-    jtekt: 'PC10G-1SP',
-    omron: 'CP1E',
-    sharp: 'JW-300',
-  };
+/**
+ * メーカー → 機種（§7.6 の対応）。
+ * バレル（`index.ts`）から公開し、テストや呼び出し側が機種一覧を書き写さずに済むようにする
+ * （レビュー M9。`apps/desktop/src/renderer/session/plc-skin.ts` も同種のマップを持っているが、
+ * それは別チームの担当ファイルなのでここでは触らない）。
+ */
+export const MODEL_OF_VENDOR: Readonly<
+  Record<(typeof PLC_VENDORS)[number], (typeof PLC_MODELS)[number]>
+> = {
+  mitsubishi: 'FX5U',
+  jtekt: 'PC10G-1SP',
+  omron: 'CP1E',
+  sharp: 'JW-300',
+};
 
 /** 使用するPLC。§7.6 */
 export const PlcRefSchema = z
@@ -51,6 +57,11 @@ export const PlcRefSchema = z
         message: `${plc.vendor} の機種は ${MODEL_OF_VENDOR[plc.vendor]} です`,
       });
     }
+    // `PLC_MODELS`（このファイル）と `PLC_UNITS`（board-model）は別ファイルの別リストなので、
+    // 機種を1つ追加してどちらかへの登録を忘れると符牒がずれる。今日の4機種はどちらにも
+    // 揃って登録されているためこの枝には到達しない — 将来の機種追加で登録漏れが起きたときに
+    // 課題JSONの読込段階で拾うための防御である。
+    /* c8 ignore next 7 -- 今日の4機種はすべて PLC_UNITS にもあるため到達しない（防御的チェック） */
     if (plcUnitFor(plc.model) === undefined) {
       ctx.addIssue({
         code: 'custom',
@@ -85,7 +96,16 @@ export const PlcInputMapSchema = z.strictObject({
 
 /** 出力1点の割付（`y` は出力番号、`cr` は中継リレー、`pl` は表示灯）。§7.6 / §10.2 */
 export const PlcOutputMapSchema = z.strictObject({
-  y: z.int().min(0).max(15),
+  y: z
+    .int()
+    .min(0)
+    .max(15)
+    .describe(
+      '出力番号（10進の装置番号）。上限は機種で違う（CP1E は12点までなので `y` は0〜11。' +
+        'それより機種の出力点数が多い場合は機種の出力点数までが上限。§10.1 / 決定表#13）。' +
+        'ここでは全機種共通の緩い上限だけを課し、機種ごとの実際の点数チェックは ' +
+        '`PlcProblemSchema` の superRefine が機種仕様（`unit.spec.outputs.length`）から行う。',
+    ),
   cr: z.enum(['CR1', 'CR2', 'CR3', 'CR4']),
   pl: z.enum(['PL1', 'PL2', 'PL3', 'PL4']),
 });
@@ -249,6 +269,10 @@ export const PlcProblemSchema = z
     // 端子は機種仕様（`unit.spec`）だけが知っているのでここで前もって拾う（決定表#13）
     const unit = plcUnitFor(problem.plc.model);
     if (unit !== undefined) {
+      // `PlcInputMapSchema.x` の上限は0〜15（§10.1 の8進表記に合わせた全機種共通の緩い上限）だが、
+      // 今日の4機種はどれも入力16点以上（FX5U 16 / CP1E 18 / PC10G-1SP 16 / JW-300 16）なので、
+      // `x` がこの上限内である限り `x < unit.spec.inputs.length` は必ず真になり、このチェックは
+      // 今日は発火しない。将来、入力が16点未満の機種を足したときに効く保険として残す（決定表#13）。
       io.inputs.forEach((input, index) => {
         if (input.x < unit.spec.inputs.length) return;
         ctx.addIssue({

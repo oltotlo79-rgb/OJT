@@ -2,9 +2,11 @@ import {
   addWire,
   createSession,
   N_RAIL_ID,
+  OUTLET_ID,
   P_RAIL_ID,
   PB_BLOCK_ID,
   PL_BLOCK_ID,
+  PLC_PART_ID,
   plcUnitFor,
   plug,
   toNetlist,
@@ -16,6 +18,7 @@ import {
 } from '@ojt/board-model';
 import { terminalId, type Netlist, type TerminalId, type WireColor } from '@ojt/circuit-sim';
 import { compile, type CompiledProgram } from '@ojt/ladder-core';
+import { usedInputCommons } from './plc-static-checks.js';
 import { toSocketRoles } from './schema/common.js';
 import type { ProblemIssue } from './schema/index.js';
 import { resolvePlcIo, type PlcProblem, type ResolvedPlcIo } from './schema/plc.js';
@@ -95,10 +98,28 @@ export function plcWiringPlan(
   unit: PlcUnitDefinition | undefined,
 ): PlcWireSpec[] {
   if (unit === undefined) return [];
-  const inputName = (x: number): string => unit.spec.inputs[x]?.name ?? `X${x}`;
-  const outputName = (y: number): string => unit.spec.outputs[y]?.name ?? `Y${y}`;
-  const comName = (y: number): string => unit.spec.outputs[y]?.com ?? 'COM0';
-  const plcTerminal = (name: string): TerminalId => terminalId('PLC', name);
+  // `x` / `y` は `PlcProblemSchema` が機種仕様の点数内に収まっていることを既に検証済みなので、
+  // ここでは三菱形（`Xn` / `Yn` / `COM0`）のフォールバックは持たない（レビュー M3）。
+  const inputAt = (x: number): PlcUnitDefinition['spec']['inputs'][number] => {
+    const input = unit.spec.inputs[x];
+    /* c8 ignore next 3 -- PlcProblemSchema が x を機種の入力点数内に検証済みのため到達しない */
+    if (input === undefined) {
+      throw new RangeError(`${unit.model} に入力 x=${x} がありません（割付は検証済みのはずです）`);
+    }
+    return input;
+  };
+  const outputAt = (y: number): PlcUnitDefinition['spec']['outputs'][number] => {
+    const output = unit.spec.outputs[y];
+    /* c8 ignore next 3 -- PlcProblemSchema が y を機種の出力点数内に検証済みのため到達しない */
+    if (output === undefined) {
+      throw new RangeError(`${unit.model} に出力 y=${y} がありません（割付は検証済みのはずです）`);
+    }
+    return output;
+  };
+  const inputName = (x: number): string => inputAt(x).name;
+  const outputName = (y: number): string => outputAt(y).name;
+  const comName = (y: number): string => outputAt(y).com;
+  const plcTerminal = (name: string): TerminalId => terminalId(PLC_PART_ID, name);
 
   const wires: PlcWireSpec[] = [];
   // 入力: 押ボタン端子台のa接点 → X
@@ -114,20 +135,17 @@ export function plcWiringPlan(
     wires.push({ from: terminalId(output.cr, '5'), to: plTerminal(output.pl, '+') });
   }
   // P側の鎖: 入力コモン（シンクのみ）→ 出力COM → リレー接点のCOM
-  const usedCommons = [...new Set(io.outputs.map((output) => comName(output.y)))];
-  // 入力コモンは**使う点がぶら下がっているものだけ**を鎖に入れる。ラック形は8点1コモンなので、
+  const usedOutputCommons = [...new Set(io.outputs.map((output) => comName(output.y)))];
+  // 入力コモンは**使う点がぶら下がっているものだけ**を鎖に入れる（`usedInputCommons()` を
+  // `checkIoAssignment` と共有する。plc-static-checks.ts。レビュー M4）。ラック形は8点1コモンなので、
   // 課題が使わない群のコモン（`ICOM1` / `COM.B`）まで繋ぐと、模範配線に意味の無い1本が増える
-  const inputComs = new Set(io.inputs.map((input) => unit.spec.inputs[input.x]?.com));
-  const usedInputCommons = unit.spec.inputCommons.filter((name) => inputComs.has(name));
-  const inputCommonTargets = (
-    usedInputCommons.length > 0 ? usedInputCommons : unit.spec.inputCommons
-  ).map(plcTerminal);
+  const inputCommonTargets = usedInputCommons(unit, io).map(plcTerminal);
   // 入力側の端子が必ず鎖の先頭に来る（シンクなら S/S、ソースなら押ボタンのコモン）。
   // N側の鎖と同じ並び方にしておくと、どちらの結線でも「起点 → 入力側 → 出力側」で読める
   const pTargets: TerminalId[] = [
     ...(io.wiring === 'sink' ? inputCommonTargets : []),
     ...(io.wiring === 'source' ? io.inputs.map((input) => pbTerminal(input.pb, 'c')) : []),
-    ...usedCommons.map(plcTerminal),
+    ...usedOutputCommons.map(plcTerminal),
     ...io.outputs.map((output) => terminalId(output.cr, '9')),
   ];
   wires.push(...chain(terminalId(P_RAIL_ID, '1'), pTargets));
@@ -140,8 +158,8 @@ export function plcWiringPlan(
   ];
   wires.push(...chain(terminalId(N_RAIL_ID, '1'), nTargets));
   // PLC電源は壁コンセントから取る（盤から取ると `plcPowerIndependent` 違反。§10.1）
-  wires.push({ from: terminalId('OUTLET', 'L'), to: plcTerminal(unit.spec.acPower[0]) });
-  wires.push({ from: terminalId('OUTLET', 'N'), to: plcTerminal(unit.spec.acPower[1]) });
+  wires.push({ from: terminalId(OUTLET_ID, 'L'), to: plcTerminal(unit.spec.acPower[0]) });
+  wires.push({ from: terminalId(OUTLET_ID, 'N'), to: plcTerminal(unit.spec.acPower[1]) });
   return wires;
 }
 

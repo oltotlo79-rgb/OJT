@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest';
 import { BUILTIN_PLC_PROBLEMS } from '../src/builtin/index.js';
 import { judgePlcReference } from '../src/judge-plc.js';
 import { DeviceCommentsSchema } from '../src/schema/ladder.js';
-import { PlcProblemSchema } from '../src/schema/plc.js';
+import { MODEL_OF_VENDOR, PlcProblemSchema } from '../src/schema/plc.js';
 import { ladderWith, plcProblemJson } from './helpers/plc.js';
 
 /**
@@ -136,13 +136,11 @@ describe('DeviceCommentsSchema のキー範囲（レビュー #M5）', () => {
 /** 命令語リストの改行（§10.7。純正ツールに合わせて CRLF）。 */
 const CRLF = '\r\n';
 
-/** 4メーカーと機種の対応（§7.6）。 */
-const MODELS = [
-  { vendor: 'mitsubishi', model: 'FX5U' },
-  { vendor: 'jtekt', model: 'PC10G-1SP' },
-  { vendor: 'omron', model: 'CP1E' },
-  { vendor: 'sharp', model: 'JW-300' },
-] as const;
+/**
+ * 4メーカーと機種の対応（§7.6）。`MODEL_OF_VENDOR`（schema/plc.ts。バレルからも公開）を
+ * そのまま使う — 表を書き写すと2箇所が食い違う余地ができるため（レビュー M9）。
+ */
+const MODELS = Object.entries(MODEL_OF_VENDOR).map(([vendor, model]) => ({ vendor, model }));
 
 describe('内蔵モーD課題8題は4機種すべてで成立する（§16 Phase 4）', () => {
   it.each(MODELS.map((m) => [m.model, m] as const))(

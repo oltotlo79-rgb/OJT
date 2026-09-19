@@ -138,6 +138,7 @@ import {
   MAX_DEVICE_COMMENTS,
   // schema/plc.js
   DEFAULT_PLC_IO,
+  MODEL_OF_VENDOR,
   PLC_MODELS,
   PLC_VENDORS,
   PlcInputMapSchema,
@@ -168,6 +169,8 @@ import {
   checkPlcPowerIndependent,
   checkTwoStage,
   detectPlcWiring,
+  usedInputCommons,
+  type PlcInputWiring,
   // judge-plc.js
   judgePlc,
   judgePlcReference,
@@ -650,6 +653,8 @@ describe('Phase 3 の公開API（バレル経由。Task 20）', () => {
     expect(PLC_VENDORS).toContain('mitsubishi');
     expect(PLC_MODELS).toContain('FX5U');
     expect(SUPPORTED_PLC_MODELS).toEqual([...PLC_MODELS]);
+    expect(MODEL_OF_VENDOR.mitsubishi).toBe('FX5U');
+    expect(MODEL_OF_VENDOR.omron).toBe('CP1E');
     expect(PlcRefSchema.safeParse({ vendor: 'mitsubishi', model: 'FX5U' }).success).toBe(true);
     expect(PlcIoModeSchema.safeParse('fixed').success).toBe(true);
     expect(PlcWiringSchema.safeParse('sink').success).toBe(true);
@@ -752,7 +757,12 @@ describe('Phase 3 の公開API（バレル経由。Task 20）', () => {
     expect(checkTwoStage(input).ok).toBe(true);
     expect(checkPlcPowerIndependent(input).ok).toBe(true);
     expect(checkIoAssignment(input).ok).toBe(true);
-    expect(detectPlcWiring(buildNets(built.value.netlist), built.value.unit)).toBeDefined();
+    const wiring: PlcInputWiring | undefined = detectPlcWiring(
+      buildNets(built.value.netlist),
+      built.value.unit,
+    );
+    expect(wiring).toBe('sink');
+    expect(usedInputCommons(built.value.unit, built.value.io)).toEqual(['SS']);
   });
 });
 

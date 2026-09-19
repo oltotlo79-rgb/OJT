@@ -133,18 +133,31 @@ describe('buildPlcReferenceSession（§7.2 / §10.2）', () => {
     expect(program.networks.length).toBeGreaterThan(0);
   });
 
-  it('never puts a third wire on a terminal (§6.6)', () => {
-    const problem = PlcProblemSchema.parse(grade2Json());
-    const built = buildPlcReferenceSession(problem, JIPM_BOARD);
-    if (!built.ok) throw new Error('模範回路を組めませんでした');
-    const seen = new Set<string>();
-    for (const wire of built.value.session.wires) {
-      for (const terminal of [wire.from, wire.to]) {
-        if (seen.has(terminal)) continue;
-        seen.add(terminal);
-        expect(wireCountAtTerminal(built.value.session, terminal)).toBeLessThanOrEqual(
-          MAX_WIRES_PER_TERMINAL,
+  it('never puts a third wire on a terminal, on every model (§6.6 / レビュー M8)', () => {
+    const grade2 = grade2Json();
+    const models = [
+      { vendor: 'mitsubishi', model: 'FX5U' },
+      { vendor: 'jtekt', model: 'PC10G-1SP' },
+      { vendor: 'omron', model: 'CP1E' },
+      { vendor: 'sharp', model: 'JW-300' },
+    ] as const;
+    for (const plc of models) {
+      const problem = PlcProblemSchema.parse({ ...grade2, plc });
+      const built = buildPlcReferenceSession(problem, JIPM_BOARD);
+      if (!built.ok)
+        throw new Error(
+          `${plc.model}: 模範回路を組めませんでした（${JSON.stringify(built.errors)}）`,
         );
+      const seen = new Set<string>();
+      for (const wire of built.value.session.wires) {
+        for (const terminal of [wire.from, wire.to]) {
+          if (seen.has(terminal)) continue;
+          seen.add(terminal);
+          expect(
+            wireCountAtTerminal(built.value.session, terminal),
+            `${plc.model} / ${terminal}`,
+          ).toBeLessThanOrEqual(MAX_WIRES_PER_TERMINAL);
+        }
       }
     }
   });

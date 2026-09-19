@@ -1472,7 +1472,8 @@
                   "y": {
                     "type": "integer",
                     "minimum": 0,
-                    "maximum": 15
+                    "maximum": 15,
+                    "description": "出力番号（10進の装置番号）。上限は機種で違う（CP1E は12点までなので `y` は0〜11。それより機種の出力点数が多い場合は機種の出力点数までが上限。§10.1 / 決定表#13）。ここでは全機種共通の緩い上限だけを課し、機種ごとの実際の点数チェックは `PlcProblemSchema` の superRefine が機種仕様（`unit.spec.outputs.length`）から行う。"
                   },
                   "cr": {
                     "type": "string",

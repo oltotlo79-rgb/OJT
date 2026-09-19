@@ -1,4 +1,4 @@
-import { addWire, JIPM_BOARD, removeWire, toNetlist } from '@ojt/board-model';
+import { addWire, JIPM_BOARD, plcUnitFor, removeWire, toNetlist } from '@ojt/board-model';
 import { buildNets, type TerminalId } from '@ojt/circuit-sim';
 import { describe, expect, it } from 'vitest';
 import { runPlcOperations } from '../src/plc-io.js';
@@ -8,9 +8,10 @@ import {
   checkPlcPowerIndependent,
   checkTwoStage,
   detectPlcWiring,
+  usedInputCommons,
   type PlcCheckContext,
 } from '../src/plc-static-checks.js';
-import { PlcProblemSchema } from '../src/schema/plc.js';
+import { MODEL_OF_VENDOR, PlcProblemSchema } from '../src/schema/plc.js';
 import type { StaticCheckInput } from '../src/static-check-types.js';
 import { runStaticChecks } from '../src/static-checks.js';
 import { noJson, outJson, plcProblemJson, rungJson } from './helpers/plc.js';
@@ -67,13 +68,14 @@ function context(circuit: PlcReferenceCircuit): PlcCheckContext {
   return { unit: circuit.unit, io: circuit.io };
 }
 
-/** メーカーと機種の対応（§7.6）。 */
-const VENDOR_OF: Readonly<Record<string, string>> = {
-  FX5U: 'mitsubishi',
-  'PC10G-1SP': 'jtekt',
-  CP1E: 'omron',
-  'JW-300': 'sharp',
-};
+/**
+ * 機種 → メーカーの対応（§7.6）。`MODEL_OF_VENDOR`（メーカー → 機種。schema/plc.ts）を
+ * 反転して使う。表を書き写すと2箇所が食い違う余地ができるため、バレルの公開シンボルを
+ * 1箇所から引く（レビュー M9）。
+ */
+const VENDOR_OF: Readonly<Record<string, string>> = Object.fromEntries(
+  Object.entries(MODEL_OF_VENDOR).map(([vendor, model]) => [model, vendor]),
+);
 
 /** 課題から模範回路を組む（組めなければその場で落とす）。 */
 function buildOf(problem: typeof PROBLEM): {
@@ -261,6 +263,60 @@ describe('ioAssignment（§7.4 / §7.6）', () => {
     expect(result.ok).toBe(false);
     expect(result.details.join('')).toContain('短絡');
   });
+
+  it('fails when the problem declares source wiring but the session is wired sink (§10.2)', () => {
+    // `reference()` は既定の sink 結線で組む。課題側だけ source と偽って渡すと、
+    // 「結線が課題の指定（sink/source）と違います」の枝（レビュー I2）を通る
+    const { circuit } = reference();
+    const mismatched: PlcCheckContext = {
+      ...context(circuit),
+      io: { ...circuit.io, wiring: 'source' },
+    };
+    const result = checkIoAssignment(checkInput(circuit, mismatched));
+    expect(result.ok).toBe(false);
+    expect(result.details.join('|')).toContain(
+      '結線が課題の指定（source）と違います（sink になっています）',
+    );
+  });
+
+  it('reports one line per common, not one per point, when several points share it (FX5U レビュー M7)', () => {
+    const threeInputs = PlcProblemSchema.parse(
+      plcProblemJson({
+        io: {
+          mode: 'fixed',
+          inputs: [
+            { x: 0, pb: 'PB1' },
+            { x: 1, pb: 'PB2' },
+            { x: 2, pb: 'PB3' },
+          ],
+          outputs: [{ y: 0, cr: 'CR1', pl: 'PL1' }],
+        },
+      }),
+    );
+    const built = buildOf(threeInputs);
+    const result = checkIoAssignment(withoutWire(built, 'PLC.SS'));
+    expect(result.ok).toBe(false);
+    // 「が配線されていません（受入基準③⑤）」はコモンごとの検査（点ごとなら3点で3行出ていた）。
+    // 末尾の結線方式の判定（P側・N側のどちらにも無い、という別の検査）も「入力コモン」を含む
+    // 文言なので、そちらと混ざらないようメッセージの末尾側で絞る
+    const commonLines = result.details.filter((d) => d.includes('が配線されていません'));
+    expect(commonLines).toHaveLength(1);
+    expect(commonLines[0]).toContain('PLC.SS');
+  });
+
+  it('reads naturally when a single common shorts P and N together (commons.length === 1, レビュー M7)', () => {
+    const { circuit } = reference();
+    // SS→COM0 のP側の鎖を切り、代わりにSS自身をN側の鎖（TB_PL.1-）へ繋いで
+    // SS一本がP側とN側を短絡している状態を作る
+    const bridge = circuit.session.wires.find((w) => at(w, 'PLC.SS') && at(w, 'PLC.COM0'));
+    expect(bridge).toBeDefined();
+    expect(removeWire(circuit.session, bridge?.id ?? '').ok).toBe(true);
+    expect(addWire(circuit.session, circuit.board, t('PLC.SS'), t('TB_PL.1-')).ok).toBe(true);
+    const result = checkIoAssignment(checkInput(circuit, context(circuit)));
+    expect(result.ok).toBe(false);
+    expect(result.details.join('|')).toContain('でP側とN側を短絡しています');
+    expect(result.details.join('|')).not.toContain('すべて同じ側に揃えます');
+  });
 });
 
 describe('detectPlcWiring（§10.2）', () => {
@@ -286,6 +342,37 @@ describe('detectPlcWiring（§10.2）', () => {
     expect(removeWire(circuit.session, wire?.id ?? '').ok).toBe(true);
     const nets = buildNets(toNetlist(circuit.session, circuit.board));
     expect(detectPlcWiring(nets, circuit.unit)).toBeUndefined();
+  });
+});
+
+describe('usedInputCommons（§10.2 決定表: 使う点のコモン。レビュー M4）', () => {
+  it('FX5U: 一体形（コモンは S/S 1つだけ）はどの点を使っても同じ1件を返す', () => {
+    const unit = plcUnitFor('FX5U');
+    if (unit === undefined) throw new Error('FX5U が見つかりません');
+    expect(usedInputCommons(unit, { inputs: [{ x: 0, pb: 'PB1' }] })).toEqual(['SS']);
+    expect(usedInputCommons(unit, { inputs: [{ x: 3, pb: 'PB1' }] })).toEqual(['SS']);
+  });
+
+  it('CP1E: 一体形（コモンは COM 1つだけ）も同じ形になる', () => {
+    const unit = plcUnitFor('CP1E');
+    if (unit === undefined) throw new Error('CP1E が見つかりません');
+    expect(usedInputCommons(unit, { inputs: [{ x: 0, pb: 'PB1' }] })).toEqual(['COM']);
+  });
+
+  it('ラック形（PC10G-1SP）: 使う点のコモンだけを機種仕様の並び順で返す', () => {
+    const unit = plcUnitFor('PC10G-1SP');
+    if (unit === undefined) throw new Error('PC10G-1SP が見つかりません');
+    expect(usedInputCommons(unit, { inputs: [{ x: 0, pb: 'PB1' }] })).toEqual(['ICOM0']);
+    expect(usedInputCommons(unit, { inputs: [{ x: 8, pb: 'PB1' }] })).toEqual(['ICOM1']);
+    // 並び順は io.inputs の指定順（x:8 が先）ではなく機種仕様（unit.spec.inputCommons）の順になる
+    expect(
+      usedInputCommons(unit, {
+        inputs: [
+          { x: 8, pb: 'PB2' },
+          { x: 0, pb: 'PB1' },
+        ],
+      }),
+    ).toEqual(['ICOM0', 'ICOM1']);
   });
 });
 
@@ -377,6 +464,8 @@ describe('ioAssignment は機種の端子名で判定する（Phase 4）', () =>
     const result = checkIoAssignment(inputOf(built));
     expect(result.ok).toBe(false);
     expect(result.details.join('|')).toContain('食い違');
+    // 端子名は機種の実表記（PLC.ICOM0）で出す。三菱の `Xn` 表記を文言に書かないため（引き渡し注記 H-1）
+    expect(result.details.join('|')).toContain('PLC.ICOM0');
   });
 
   it('passes on the reference wiring of every model', () => {

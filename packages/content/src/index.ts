@@ -141,6 +141,7 @@ export {
 
 export {
   DEFAULT_PLC_IO,
+  MODEL_OF_VENDOR,
   PLC_MODELS,
   PLC_VENDORS,
   PlcInputMapSchema,
@@ -188,6 +189,8 @@ export {
   checkPlcPowerIndependent,
   checkTwoStage,
   detectPlcWiring,
+  usedInputCommons,
+  type PlcInputWiring,
 } from './plc-static-checks.js';
 
 // `StaticCheckInput` / `StaticCheckResult` は既に `./static-checks.js` 経由で公開されている。
@@ -214,6 +217,7 @@ export { type ProblemLoadError, type ProblemSet } from './problem-set.js';
 export {
   ASSEMBLE_WIRE_COLOR,
   buildReferenceSession,
+  buildSchematicSession,
   toPhysicalOverride,
   toProblemPath,
   type ReferenceCircuit,
@@ -363,3 +367,10 @@ export {
   findBuiltinProblem,
   parseBuiltinProblems,
 } from './builtin/index.js';
+
+export {
+  verifySchematic,
+  type VerifyIssue,
+  type VerifyOptions,
+  type VerifyResult,
+} from './verify.js';
