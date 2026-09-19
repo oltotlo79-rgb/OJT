@@ -172,22 +172,23 @@ describe('モードDのセッション画面（§10.1 / §12.1）', () => {
   });
 
   /**
-   * Batch 4+5 レビュー M13: `PLC_UNITS`（board-model）は FX5U だけを持つ。Phase 4 の
-   * 機種（`CP1E` 等）はスキーマ上は許されるが本体定義が無いので「未対応」になる。
+   * Batch 4+5 レビュー M13: 本体定義（`PLC_UNITS`）が無い機種は「未対応」になる。
+   * Plan 4A Task 9 以降、機種表（`PLC_MODELS`）の機種には順に本体定義が付くので、この経路は
+   * 「機種表に無い名前が課題データに入っていたとき」に残る。型の穴を通すため `as` で作る。
    */
   it('blocks judging and toasts once for an unsupported PLC model (§13 #2)', () => {
     useStore.getState().abandonSession();
     useStore.getState().openProblem({
       ...problem,
-      plc: { vendor: 'omron', model: 'CP1E' },
+      plc: { vendor: 'omron', model: 'CP1E-UNKNOWN' } as unknown as (typeof problem)['plc'],
     });
     render(<SessionRoute />);
     expect(screen.getByTestId('judge-button')).toBeDisabled();
     expect(screen.getByTestId('judge-button')).toHaveAttribute(
       'title',
-      expect.stringContaining('CP1E'),
+      expect.stringContaining('CP1E-UNKNOWN'),
     );
-    const toasts = useStore.getState().toasts.filter((t) => t.text.includes('CP1E'));
+    const toasts = useStore.getState().toasts.filter((t) => t.text.includes('CP1E-UNKNOWN'));
     expect(toasts).toHaveLength(1);
   });
 });

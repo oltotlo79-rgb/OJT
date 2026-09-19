@@ -7,7 +7,9 @@ import { Html } from '@react-three/drei';
 import { useMemo, type JSX } from 'react';
 import { BoxGeometry, EdgesGeometry, MeshStandardMaterial } from 'three';
 import { RELAY_BODY_COLOR, TIMER_BODY_COLOR } from '../session/colors.js';
-import { sharedMaterial, UNIT_BOX } from './materials.js';
+import { JA_3D } from '../i18n/ja.js';
+import { UNIT_BOX } from './materials.js';
+import { PartIndicator, type MountedBodyBox } from './PartIndicator.js';
 import { toScene } from './coords.js';
 
 /**
@@ -22,6 +24,9 @@ import { toScene } from './coords.js';
  *
  * ラベルは**本体の上面**に置く。以前は手前（`center - height/2 - 5`）に置いていたため、
  * 手前ティアの `⑫` / `④` の印字に重なって番号が読めなかった（レビュー指摘）。
+ *
+ * 動作表示は `PartIndicator`（リレー＝MY4N相当の動作表示窓、タイマ＝H3Y-4相当の
+ * POWER / UP の2灯＋設定ダイヤル）に分けてある。利用者要望 2026-09-19。
  */
 
 /**
@@ -29,6 +34,13 @@ import { toScene } from './coords.js';
  * ここで無効化しないと盤の上のラベルがツールバーのクリックまで飲み込んでしまう。
  */
 const LABEL_STYLE = { pointerEvents: 'none' } as const;
+
+/** 「動作中」の札（CSSを増やさずに `part-label` を琥珀色に着色する）。 */
+const RUNNING_STYLE = {
+  background: 'rgba(255, 138, 30, 0.92)',
+  color: '#1B1207',
+  marginLeft: '3px',
+} as const;
 
 /** 本体の高さ[mm]（ソケット面からの突き出し）。 */
 const BODY_HEIGHT_MM = 34;
@@ -60,19 +72,11 @@ export function mountedLabel(role: SocketRole, part: MountedPartData): string {
   return part.kind === 'relay-my4n' ? role : `${role} ${(part.presetMs / 1000).toFixed(1)}s`;
 }
 
-/** 装着部品1個。 */
-export function MountedPart({
-  socket,
-  role,
-  part,
-  energized,
-}: {
-  socket: SocketDefinition;
-  role: SocketRole;
-  part: MountedPartData;
-  energized: boolean;
-}): JSX.Element {
-  // 部品の外形はソケット本体（`bodyMm`）から作る。ソケットの差込領域に載る大きさ。
+/**
+ * 装着部品の本体の箱（中心・幅・奥行・天面）。盤定義のソケット本体から作る純粋関数。
+ * 動作表示（`PartIndicator`）の位置もこの箱から決まるので、テストから同じ値を引ける。
+ */
+export function mountedBodyBox(socket: SocketDefinition): MountedBodyBox {
   const width = socket.bodyMm.width - BODY_INSET_MM * 2;
   const height = socket.bodyMm.length - BODY_INSET_MM * 2 - SOCKET_TIER_MARGIN_MM * 2;
   const center = toScene({
@@ -80,6 +84,60 @@ export function MountedPart({
     y: socket.origin.y + socket.bodyMm.length / 2,
     z: SOCKET_TOP_Z_MM + BODY_HEIGHT_MM / 2,
   });
+  return { center, width, height, topZ: SOCKET_TOP_Z_MM + BODY_HEIGHT_MM };
+}
+
+/**
+ * 本体の上に浮かべる札の中身（`Html` の中に入れる部分）。
+ * `Html` は `Canvas` の中でしか使えないので、**中身だけ**を別の部品に分けてある
+ * （こうしておくと単体テストから札の文字とツールチップを読める）。
+ */
+export function MountedLabelContent({
+  role,
+  part,
+  energized,
+}: {
+  role: SocketRole;
+  part: MountedPartData;
+  energized: boolean;
+}): JSX.Element {
+  return (
+    <>
+      <span
+        className={part.kind === 'relay-my4n' ? 'part-label' : 'part-label timer'}
+        title={energized ? JA_3D.running : undefined}
+      >
+        {mountedLabel(role, part)}
+      </span>
+      {/* 励磁中だけ出す札。ランプの点灯と同じ情報を文字でも読めるようにする（§8.2） */}
+      {energized ? (
+        <span className="part-label" style={RUNNING_STYLE}>
+          {JA_3D.running}
+        </span>
+      ) : null}
+    </>
+  );
+}
+
+/** 装着部品1個。 */
+export function MountedPart({
+  socket,
+  role,
+  part,
+  energized,
+  timedOut,
+}: {
+  socket: SocketDefinition;
+  role: SocketRole;
+  part: MountedPartData;
+  /** リレーのコイル励磁／タイマの通電（`SimSnapshot` の `relays[].coilOn` / `timers[].powered`）。 */
+  energized: boolean;
+  /** タイマの限時接点が動作したか（`SimSnapshot` の `timers[].timedOut`）。リレーでは常に false。 */
+  timedOut: boolean;
+}): JSX.Element {
+  // 部品の外形はソケット本体（`bodyMm`）から作る。ソケットの差込領域に載る大きさ
+  const box = mountedBodyBox(socket);
+  const { center, width, height } = box;
   const bodyColor = part.kind === 'relay-my4n' ? RELAY_BODY_COLOR : TIMER_BODY_COLOR;
   const bodyMaterial = useMemo(
     () =>
@@ -110,21 +168,14 @@ export function MountedPart({
       <lineSegments geometry={edges} position={center} raycast={noPick}>
         <lineBasicMaterial color={EDGE_COLOR} />
       </lineSegments>
-      {/* 動作表示灯（励磁中は赤く光る。MY4N の動作表示相当。§8.2） */}
-      <mesh
-        geometry={UNIT_BOX}
-        raycast={noPick}
-        material={
-          energized
-            ? sharedMaterial('#FF3B30', { emissive: '#FF3B30', emissiveIntensity: 2.2 })
-            : sharedMaterial('#5B2020', { roughness: 0.6 })
-        }
-        position={[
-          center[0] + width / 2 - 5,
-          center[1] + height / 2 - 5,
-          SOCKET_TOP_Z_MM + BODY_HEIGHT_MM + 0.4,
-        ]}
-        scale={[6, 4, 1.2]}
+      {/* 動作表示（リレー＝動作表示窓、タイマ＝POWER/UP の2灯＋ダイヤル）。§5.3.1 / §5.3.2 */}
+      <PartIndicator
+        kind={part.kind}
+        box={box}
+        energized={energized}
+        timedOut={timedOut}
+        presetMs={part.kind === 'timer-h3y4' ? part.presetMs : 0}
+        rangeMaxMs={part.kind === 'timer-h3y4' ? part.rangeMaxMs : 0}
       />
       <Html
         center
@@ -133,9 +184,7 @@ export function MountedPart({
         position={[center[0], center[1], SOCKET_TOP_Z_MM + BODY_HEIGHT_MM + LABEL_LIFT_MM]}
         zIndexRange={[12, 0]}
       >
-        <span className={part.kind === 'relay-my4n' ? 'part-label' : 'part-label timer'}>
-          {mountedLabel(role, part)}
-        </span>
+        <MountedLabelContent role={role} part={part} energized={energized} />
       </Html>
     </group>
   );

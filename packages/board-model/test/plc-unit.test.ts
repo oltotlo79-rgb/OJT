@@ -81,7 +81,8 @@ describe('PLC_UNIT_FX5U', () => {
 
   it('is found by its model name (§7.6 の `plc.model`)', () => {
     expect(plcUnitFor('FX5U')).toBe(PLC_UNIT_FX5U);
-    expect(plcUnitFor('CP1E')).toBeUndefined();
+    // Task 9 で CP1E に本体定義が付いたので、`undefined` になるのは機種表に無い名前だけである
+    expect(plcUnitFor('NOT-A-PLC')).toBeUndefined();
   });
 });
 

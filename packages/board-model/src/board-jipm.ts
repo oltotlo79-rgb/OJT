@@ -288,6 +288,86 @@ export function isOffBoardTerminal(id: TerminalId | string): boolean {
   return id.startsWith(`${PLC_PART_ID}.`) || id.startsWith(`${OUTLET_ID}.`);
 }
 
+/** 正面の矩形[mm]。**正面の左上が原点**、x が右、y が下。§10.1 */
+export interface FaceRect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+/** LED 1個。`name` は実機の印字（`PWR` / `X0`）。§10.1 */
+export interface PlcLedMark {
+  name: string;
+  /** 本体表示（`status`）か入出力表示（`input` / `output`）か。 */
+  group: 'status' | 'input' | 'output';
+  rect: FaceRect;
+  /** 点灯時の色。 */
+  color: string;
+}
+
+/** ヒンジ式の端子カバー。§10.1（FX5U は着脱式端子台のカバー、ラックは端子台カバー） */
+export interface PlcCoverMark {
+  id: string;
+  rect: FaceRect;
+  color: string;
+  /** 蝶番の辺（開く向き）。 */
+  hinge: 'top' | 'bottom' | 'left' | 'right';
+}
+
+/** 正面の造作（スイッチ・コネクタ・スロット・ラッチ）。§10.1 */
+export interface PlcFeatureMark {
+  id: string;
+  kind: 'switch' | 'port' | 'slot' | 'latch';
+  /** 3Dのツールチップに出す名前。 */
+  label: string;
+  rect: FaceRect;
+  color: string;
+}
+
+/**
+ * 1機種（ラックはモジュール1枚）の外観。§10.1 / §17.1 / 決定表#15
+ *
+ * 外形寸法はカタログ値、色と面上の配置は一般に知られた見え方から作図した**本アプリの記述**で、
+ * 実機写真・純正画像・各社のロゴは一切持たない（PLC調査資料 §6・§7）。銘板は**型式の文字列だけ**
+ * を描き、商標の帰属は設定画面の `trademarkNotice`（§15）に載せる。
+ * 実機と異なると分かった場合の修正箇所は `plc-unit.ts` の `*_APPEARANCE` だけである。
+ */
+export interface PlcAppearance {
+  /** 正面の大きさ[mm]（本体は `sizeMm` の W×H、モジュールはモジュールの W×H）。 */
+  faceMm: { width: number; height: number };
+  /** 筐体の色。 */
+  bodyColor: string;
+  /** 端子台（ネジ端子ブロック）の色。 */
+  terminalBlockColor: string;
+  /** 銘板の文字（型式のみ）。 */
+  nameplate: string;
+  nameplateRect: FaceRect;
+  covers: readonly PlcCoverMark[];
+  leds: readonly PlcLedMark[];
+  features: readonly PlcFeatureMark[];
+  /** この外観のうち §17.1 の前提値である項目（4B が注記に使う）。 */
+  assumed: readonly string[];
+}
+
+/**
+ * ラック形PLCのモジュール1枚。§10.1 / §17 #21
+ * 端子は `PlcUnitDefinition.terminals` に平らに載っている（ネットリスト上はラックでも1部品。
+ * 決定表#11）。ここにあるのは 4B が箱を描くための寸法・位置・外観だけである。
+ */
+export interface PlcModuleDefinition {
+  /** ベース内のスロット番号（0起点）。 */
+  slot: number;
+  /** 形式名（`IN-12` / `JW-212NA`）。 */
+  model: string;
+  displayName: string;
+  sizeMm: { width: number; height: number; depth: number };
+  /** 机上の設置位置（モジュールの左奥の角）。 */
+  pos: Vec3;
+  /** このモジュールの外観。§10.1 / 決定表#15 */
+  appearance: PlcAppearance;
+}
+
 /**
  * 机上に置くPLC本体1機種の定義。§10.1
  * 電気的な仕様（`spec`）は circuit-sim の `createPlcUnit()` にそのまま渡す。
@@ -301,11 +381,17 @@ export interface PlcUnitDefinition {
   /** メーカーキー（`mitsubishi`）。§7.6 */
   vendor: string;
   displayName: string;
+  /** 一体形（`unit`）かラック形（`rack`）か。§10.1 */
+  form: 'unit' | 'rack';
+  /** 本体（ラックはベース）の外観。§10.1 / 決定表#15 */
+  appearance: PlcAppearance;
   sizeMm: { width: number; height: number; depth: number };
   /** 机上の設置位置（盤座標の延長。盤の右）。3Dは Plan 3B が描く。 */
   pos: Vec3;
   spec: PlcUnitSpec;
   terminals: readonly BoardTerminal[];
+  /** ラック形のときのモジュール一覧（一体形は持たない）。§10.1 */
+  modules?: readonly PlcModuleDefinition[];
   /** 本体のLED表示。§10.1 */
   leds: readonly string[];
 }

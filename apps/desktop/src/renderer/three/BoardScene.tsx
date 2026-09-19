@@ -263,6 +263,17 @@ function useEnergized(): Record<string, boolean> {
   );
 }
 
+/** タイマの限時接点が動作したか（タイムアップ）。リレーは持たないので false のまま。§5.3.2 */
+function useTimedOut(): Record<string, boolean> {
+  return useStore(
+    useShallow((s: AppState) => {
+      const out: Record<string, boolean> = {};
+      for (const [id, timer] of Object.entries(s.snapshot.timers)) out[id] = timer.timedOut;
+      return out;
+    }),
+  );
+}
+
 /** 押ボタンが押されているか。 */
 function useButtons(): Record<string, boolean> {
   return useStore(useShallow((s: AppState) => ({ ...s.snapshot.buttons })));
@@ -292,6 +303,7 @@ function BoardContents({
   const session = useStore((s) => s.session);
   const lampLevels = useLampLevels();
   const energized = useEnergized();
+  const timedOut = useTimedOut();
   const buttons = useButtons();
   // ブレーカ・電源スイッチのハンドルの向き（3Dの見た目にだけ効く）。§6.1
   const breakerOn = useStore((s) => s.snapshot.breakerOn);
@@ -533,6 +545,7 @@ function BoardContents({
                   role={role}
                   part={mounted}
                   energized={energized[role] === true}
+                  timedOut={timedOut[role] === true}
                 />
               )}
             </group>
