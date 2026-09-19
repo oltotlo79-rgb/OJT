@@ -25,6 +25,15 @@ export function IoTable({
   profile: DialectProfile;
   unit: PlcUnitDefinition;
 }): JSX.Element {
+  /**
+   * PLC本体の端子名。割付が機種の点数を超えて `unit.spec` に無いときは `undefined` を返し、
+   * 呼び出し側が「—」＋注記行を出す（`?? ''` で `PLC.` だけを出していたのを直す。M3）。
+   */
+  const inputTerminal = (x: number): string | undefined => unit.spec.inputs[x];
+  const outputTerminal = (y: number): string | undefined => unit.spec.outputs[y]?.name;
+  const unknown =
+    io.inputs.some((input) => inputTerminal(input.x) === undefined) ||
+    io.outputs.some((output) => outputTerminal(output.y) === undefined);
   return (
     <section className={styles.side} aria-label={JA.ladder.ioTable} data-testid="io-table">
       <h2 className={styles.sideTitle}>{JA.ladder.ioTable}</h2>
@@ -37,30 +46,41 @@ export function IoTable({
       <table className={styles.ioTable}>
         <thead>
           <tr>
-            <th>{JA.ladder.ioDevice}</th>
-            <th>{JA.ladder.ioTerminal}</th>
-            <th>{JA.ladder.ioTarget}</th>
+            <th scope="col">{JA.ladder.ioDevice}</th>
+            <th scope="col">{JA.ladder.ioTerminal}</th>
+            <th scope="col">{JA.ladder.ioTarget}</th>
           </tr>
         </thead>
         <tbody>
-          {io.inputs.map((input, index) => (
-            <tr key={`in-${String(index)}`} data-testid={`io-input-${String(index)}`}>
-              <td>{profile.formatDevice(X(input.x))}</td>
-              <td>{`PLC.${unit.spec.inputs[input.x] ?? ''}`}</td>
-              <td>{input.pb}</td>
-            </tr>
-          ))}
-          {io.outputs.map((output, index) => (
-            <tr key={`out-${String(index)}`} data-testid={`io-output-${String(index)}`}>
-              <td>{profile.formatDevice(Y(output.y))}</td>
-              <td>{`PLC.${unit.spec.outputs[output.y]?.name ?? ''}`}</td>
-              <td>
-                {output.cr} → {output.pl}
-              </td>
-            </tr>
-          ))}
+          {io.inputs.map((input, index) => {
+            const terminal = inputTerminal(input.x);
+            return (
+              <tr key={`in-${String(index)}`} data-testid={`io-input-${String(index)}`}>
+                <td>{profile.formatDevice(X(input.x))}</td>
+                <td>{terminal === undefined ? JA.ladder.ioTerminalUnknown : `PLC.${terminal}`}</td>
+                <td>{input.pb}</td>
+              </tr>
+            );
+          })}
+          {io.outputs.map((output, index) => {
+            const terminal = outputTerminal(output.y);
+            return (
+              <tr key={`out-${String(index)}`} data-testid={`io-output-${String(index)}`}>
+                <td>{profile.formatDevice(Y(output.y))}</td>
+                <td>{terminal === undefined ? JA.ladder.ioTerminalUnknown : `PLC.${terminal}`}</td>
+                <td>
+                  {output.cr} → {output.pl}
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
+      {unknown ? (
+        <p className={styles.sideNote} data-testid="io-terminal-note">
+          {JA.ladder.ioTerminalNote}
+        </p>
+      ) : null}
     </section>
   );
 }

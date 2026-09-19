@@ -17,7 +17,6 @@ import {
 import { MITSUBISHI_FX5U } from '@ojt/plc-dialects';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { useStore } from '../src/renderer/app/store.js';
 import { CommentPanel } from '../src/renderer/ladder/CommentPanel.js';
 import { IoTable } from '../src/renderer/ladder/IoTable.js';
 
@@ -90,20 +89,20 @@ describe('デバイスコメント欄（§10.7）', () => {
     expect(screen.getByTestId('comment-cap')).toHaveTextContent('200');
   });
 
-  it('toasts when onChange reports the cap dropped the comment (Batch 1 review M4)', () => {
-    const count = useStore.getState().toasts.length;
+  it('disables the input and describes it with the cap note instead of toasting (Batch 3 レビュー M1/M8)', () => {
+    const many: Record<string, string> = {};
+    for (let i = 0; i < 200; i += 1) many[`M${String(i)}`] = 'x';
     render(
       <CommentPanel
         program={ladder}
         profile={MITSUBISHI_FX5U}
-        comments={{}}
+        comments={many}
         onChange={() => false}
       />,
     );
-    fireEvent.change(screen.getByTestId('comment-input-X0'), { target: { value: '運転' } });
-    expect(useStore.getState().toasts).toHaveLength(count + 1);
-    expect(useStore.getState().toasts.at(-1)?.text).toContain('200');
-    expect(useStore.getState().toasts.at(-1)?.tone).toBe('error');
+    const input = screen.getByTestId('comment-input-X0');
+    expect(input).toBeDisabled();
+    expect(input).toHaveAccessibleDescription(screen.getByTestId('comment-cap').textContent ?? '');
   });
 });
 
@@ -148,5 +147,19 @@ describe('I/Oテーブル（§7.6 / 決定表#7 / #16）', () => {
     for (const forbidden of ['未配線', '配線済', '直結', '2段']) {
       expect(container.textContent ?? '').not.toContain(forbidden);
     }
+  });
+
+  it('names its columns with scope="col" (Batch 3 レビュー M8)', () => {
+    render(<IoTable io={io} profile={MITSUBISHI_FX5U} unit={unit} />);
+    const headers = screen.getByTestId('io-table').querySelectorAll('thead th[scope="col"]');
+    expect(headers.length).toBe(3);
+  });
+
+  it('shows a dash and a note instead of a bare "PLC." when the assignment indexes past the unit (M3)', () => {
+    const outOfRange = { ...io, inputs: [{ x: 999, pb: 'PB1' as const }] };
+    render(<IoTable io={outOfRange} profile={MITSUBISHI_FX5U} unit={unit} />);
+    expect(screen.getByTestId('io-input-0')).toHaveTextContent('—');
+    expect(screen.getByTestId('io-input-0')).not.toHaveTextContent('PLC.');
+    expect(screen.getByTestId('io-terminal-note')).toBeInTheDocument();
   });
 });

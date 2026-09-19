@@ -34,6 +34,13 @@ export function ShortcutHelp({ profile }: { profile: DialectProfile }): JSX.Elem
         {JA.ladder.shortcutNote}
       </p>
       <table className={styles.ioTable}>
+        <thead>
+          <tr>
+            <th scope="col">{JA.ladder.shortcutKeyHeader}</th>
+            <th scope="col">{JA.ladder.shortcutLabelHeader}</th>
+            <th scope="col">{JA.ladder.shortcutNoteHeader}</th>
+          </tr>
+        </thead>
         <tbody>
           {profile.shortcuts.map((entry) => {
             const notes = [

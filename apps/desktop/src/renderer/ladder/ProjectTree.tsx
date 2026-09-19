@@ -28,12 +28,13 @@ export function ProjectTree({
       style={{ '--tree-current': profile.monitorColors.powered } as CSSProperties}
     >
       <p className={styles.treeRoot}>{JA.ladder.treeProgram}</p>
-      <ul className={styles.treeList}>
-        <li>
+      {/* a11y: ネットワーク一覧は木構造として読み上げる（Batch 3 レビュー M8） */}
+      <ul className={styles.treeList} role="tree" aria-label={JA.ladder.treeProgram}>
+        <li role="treeitem" aria-expanded="true">
           {JA.ladder.treeMain}
-          <ul>
+          <ul role="group">
             {program.networks.map((net) => (
-              <li key={net.id}>
+              <li key={net.id} role="treeitem">
                 <button
                   type="button"
                   data-testid={`tree-network-${net.id}`}

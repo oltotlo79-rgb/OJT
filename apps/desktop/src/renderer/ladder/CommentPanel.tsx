@@ -1,7 +1,7 @@
 import { deviceLabel, type Cell, type Device, type LadderProgram } from '@ojt/ladder-core';
 import type { DialectProfile } from '@ojt/plc-dialects';
 import { useMemo, type JSX } from 'react';
-import { DEVICE_COMMENT_COUNT_LIMIT, DEVICE_COMMENT_LIMIT, useStore } from '../app/store.js';
+import { DEVICE_COMMENT_COUNT_LIMIT, DEVICE_COMMENT_LIMIT } from '../app/store.js';
 import { commentCapText, JA } from '../i18n/ja.js';
 import styles from './ladder.module.css';
 
@@ -43,6 +43,7 @@ export function CommentPanel({
    */
   onChange: (device: string, text: string) => boolean | void;
 }): JSX.Element {
+  const capId = 'comment-cap';
   const rows = useMemo(
     () =>
       devicesOf(program)
@@ -55,30 +56,34 @@ export function CommentPanel({
     <section className={styles.side} aria-label={JA.ladder.comments} data-testid="comment-panel">
       <h2 className={styles.sideTitle}>{JA.ladder.comments}</h2>
       {full ? (
-        <p className={styles.sideNote} data-testid="comment-cap">
+        <p className={styles.sideNote} id={capId} data-testid="comment-cap">
           {commentCapText(DEVICE_COMMENT_COUNT_LIMIT)}
         </p>
       ) : null}
       {rows.length === 0 ? <p className={styles.sideNote}>{JA.ladder.noDevices}</p> : null}
       <ul className={styles.commentList}>
-        {rows.map((row) => (
-          <li key={row.key} data-testid={`comment-${row.key}`}>
-            <span className={styles.commentDevice}>{row.text}</span>
-            <input
-              data-testid={`comment-input-${row.key}`}
-              aria-label={`${row.text} ${JA.ladder.comment}`}
-              maxLength={DEVICE_COMMENT_LIMIT}
-              value={comments[row.key] ?? ''}
-              disabled={full && comments[row.key] === undefined}
-              onChange={(event) => {
-                const ok = onChange(row.key, event.target.value);
-                if (ok === false) {
-                  useStore.getState().toast(commentCapText(DEVICE_COMMENT_COUNT_LIMIT), 'error');
-                }
-              }}
-            />
-          </li>
-        ))}
+        {rows.map((row) => {
+          const disabled = full && comments[row.key] === undefined;
+          return (
+            <li key={row.key} data-testid={`comment-${row.key}`}>
+              <span className={styles.commentDevice}>{row.text}</span>
+              <input
+                data-testid={`comment-input-${row.key}`}
+                aria-label={`${row.text} ${JA.ladder.comment}`}
+                // 上限に達して入力欄を disabled にしているときだけ、理由（`comment-cap`）を
+                // 読み上げに繋ぐ（M8）。上限のトーストは `full`/`disabled` と同じ判定を重ねても
+                // 押せない入力欄には決して届かないので出さない（Batch 3 レビュー M1）
+                aria-describedby={disabled ? capId : undefined}
+                maxLength={DEVICE_COMMENT_LIMIT}
+                value={comments[row.key] ?? ''}
+                disabled={disabled}
+                onChange={(event) => {
+                  onChange(row.key, event.target.value);
+                }}
+              />
+            </li>
+          );
+        })}
       </ul>
     </section>
   );
