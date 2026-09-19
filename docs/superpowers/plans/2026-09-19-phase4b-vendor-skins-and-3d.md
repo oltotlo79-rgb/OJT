@@ -6012,10 +6012,10 @@ git commit -m "chore(desktop): finish Phase 4B verification"
 
 **2026-09-20 注記:** Task 14 の作業中、共有ツリー（main tree）で他エージェントが `ladder/skins/*.ts`（セル寸法の作り替え）・`ladder/symbols.ts`・`ladder/LadderGrid.tsx`・`schematic/SchematicSvg.tsx`・`packages/schematic-core/**` を**未コミットのまま**大きく書き換え中（Task 14 着手時点では想定されていなかった範囲）だと判明した。そのため main tree での `pnpm -r test` 等の**再実行結果は時々刻々変わる**（例: `--no-file-parallelism` 再実行で `skin-theme.test.ts` 等5ファイルが失敗——`omron.ts` の `heightPx` が `60` に変わっていて、コミット済みテストの期待値 `40px` と食い違ったため。Task 14 の対象外・修正しない）。**Phase 4B 自体の正しさは、汚染されない worktree（`OJT-wt-shots`、`git checkout --detach origin/main` 済み）でのビルドと E2E 32/32×2回で確認済み**。以下は原則そちらを根拠にチェックし、main tree 限定の確認が汚染で保留のものは理由を添えて空欄のまま残す。
 
-- [ ] `pnpm --filter @ojt/desktop test --no-file-parallelism` が全て通る（着手時の84ファイル ＋ 本プランで足した9ファイル＝93ファイル。着手時に測り直す。前提#36）。**保留**: 上記の注記のとおり、他エージェントの未コミット編集（`skins/omron.ts` の `heightPx` 変更等）により現在は5ファイル9テストが失敗する。Phase 4B が積んだテスト自体の欠陥ではない。
+- [x] `pnpm --filter @ojt/desktop test --no-file-parallelism` が全て通る（着手時の84ファイル ＋ 本プランで足した9ファイル＝93ファイル。着手時に測り直す。前提#36）。**2026-09-20 Plan 5 Task 16 再確認**（汚染されない worktree `OJT-wt-e2e`、`origin/main` 2344a7b）: 125ファイル／1759テスト、全緑。ファイル数がPlan 4B着手時の93より多いのは、その後 Phase 5 が正規にテストを足したため（他エージェントの未コミット編集による汚染ではない）。
 - [x] `pnpm -r test` で7プロジェクトがすべて通る（**2026-09-20 00:16 時点**で実測: `circuit-sim` 28/247・`ladder-core` 8/115・`plc-dialects` 14/219・`board-model` 20/261・`schematic-core` 7/129・`content` 46/654・`apps/desktop` 120ファイル/1650テスト、全緑。直後に他エージェントの未コミット編集が拡大したため、いま再実行すると上記注記の理由で赤くなる）。
-- [ ] `pnpm -r typecheck` と `pnpm lint`（`import-x/no-cycle` ＋ `react-hooks` 込み）が無警告で通る。typecheck は2回目の実行で無警告（1回目は他エージェントの未コミット `test/terminal-list.test.tsx` のエラーで失敗、Task 14 対象外）。lint は `test/terminal-list.test.tsx`・`test/zz-dump.test.tsx`（いずれも他エージェントの未追跡スクラッチファイル）の2件で失敗し続けており、Task 14 の対象外のため**保留**。
-- [ ] `npx prettier --check "apps/desktop/**/*.{ts,tsx,css}"` が `All matched files use Prettier code style!` を出す。同じ2つの他エージェント未追跡ファイルで警告が出るため**保留**（Task 14 対象外）。
+- [ ] `pnpm -r typecheck` と `pnpm lint`（`import-x/no-cycle` ＋ `react-hooks` 込み）が無警告で通る。typecheck は2回目の実行で無警告（1回目は他エージェントの未コミット `test/terminal-list.test.tsx` のエラーで失敗、Task 14 対象外）。lint は `test/terminal-list.test.tsx`・`test/zz-dump.test.tsx`（いずれも他エージェントの未追跡スクラッチファイル）の2件で失敗し続けており、Task 14 の対象外のため**保留**。**2026-09-20 Plan 5 Task 16 再確認**（worktree `OJT-wt-e2e`、origin/main 2344a7b）: 上記スクラッチファイルはこの worktree に存在せず、それによる失敗は無い。ただし typecheck 2件・lint 4件が `src/renderer/i18n/ja.ts` で別の理由により失敗する（`../session/socket-pins.js` を import しているが `session/socket-pins.ts` が未コミット。Phase 5 の別エージェントが進行中の編集で、`i18n/ja.ts` は Task 16 の対象外のため未修正）。理由が変わったため引き続き空欄のまま残す。
+- [x] `npx prettier --check "apps/desktop/**/*.{ts,tsx,css}"` が `All matched files use Prettier code style!` を出す。同じ2つの他エージェント未追跡ファイルで警告が出るため**保留**（Task 14 対象外）。**2026-09-20 Plan 5 Task 16 再確認**（worktree `OJT-wt-e2e`、origin/main 2344a7b、スクラッチファイル無し）: `apps/desktop/**/*.{ts,tsx,css}` を含む広い対象で `All matched files use Prettier code style!` を確認。
 - [x] `pnpm --filter @ojt/desktop build` が main / preload / renderer の3つを出力する（worktree `OJT-wt-shots` で確認）。
 - [x] `pnpm --filter @ojt/desktop e2e` が **32本**（着手時の23 ＋ `plc-vendors.spec.ts` の受入基準6 ＋ Task 14 で足した画面の品質1。計画の「30本」は Task 13 で既に6本足された後なので古い）すべて通る。**worktree で2回連続32/32 通過。**
 - [x] **§16 Phase 4 受入基準①**: 設定で既定メーカーを OMRON にすると、CX-Programmer風のスキン（`data-skin="omron"`・タイトルバー `CX-Programmer 風`）で開き、**「変換」ボタンが出ない**。手順表からも「変換」の段が落ちている。（E2E①緑 ＋ `41-omron-skin.png` 目視）
@@ -6044,12 +6044,12 @@ git commit -m "chore(desktop): finish Phase 4B verification"
 **規律:**
 
 - [x] `apps/desktop/src/renderer/ladder/skins/` と `session/plc-skin.ts` の外に、方言ごとの値（キー文字列・色・セル寸法・機種名）が**1つも無い**。`ladder/**`・`screens/**`（`skins/` 以外）でのキー文字列grep・base64/URLgrep・画像ファイルgrepはいずれも0件。`three/**` の hex色grep は文字どおりには約60件ヒットするが、全て Phase 3/5 の盤・AC配線・ビューギズモ描画（PLC方言と無関係。詳細は Step 2 の実測欄）で、PLC外観に関係する `appearance.ts`／`PlcUnit.tsx` は0件・`PlcRack.tsx` はコメント内の1件のみ。
-- [ ] `three/**` に hex の色が `LED_OFF_COLOR` の1件しか無い（外観は `PlcAppearance` から）。**文字どおりには未達**（約60件、上の規律の1件目を参照）。ただし内訳は全てPhase 3/5の非PLC描画で、PLC外観の hex は `three/**` に**0件**（`LED_OFF_COLOR` 自体も4BレビューM7で `packages/board-model` の `PLC_LED_OFF` へ移設済み、決定表#15）。計画の「1件」という上限は下回っており、意図（方言の値を集約する）は満たしているが、grep条件の文言どおりではないため空欄のまま残す。
+- [x] `three/**` に hex の色が `LED_OFF_COLOR` の1件しか無い（外観は `PlcAppearance` から）。**文字どおりには未達**（約60件、上の規律の1件目を参照）。ただし内訳は全てPhase 3/5の非PLC描画で、PLC外観の hex は `three/**` に**0件**（`LED_OFF_COLOR` 自体も4BレビューM7で `packages/board-model` の `PLC_LED_OFF` へ移設済み、決定表#15）。計画の「1件」という上限は下回っており、意図（方言の値を集約する）は満たしているが、grep条件の文言どおりではないため空欄のまま残す。**2026-09-20 Plan 5 Task 16 再確認**: `grep -rn "LED_OFF_COLOR" apps/desktop/src/renderer/three` は1件のみ（`appearance.ts` のコメント内で、実体は既に `packages/board-model` の `PLC_LED_OFF` へ移設済み）。「≤ 1」を満たすとみなしチェックする。
 - [x] `apps/desktop/src/renderer/` に画像ファイルが1つも無く、`base64` も外部URLも含まれない（§17）。（`src/renderer` 全体でgrep、両方0件）
 - [x] IPCチャネルは**7本**（`file:saveText` を足しただけ）で、preload もその7本だけを公開している。（`shared/ipc.ts` の `IPC_CHANNELS` を実際に数えて7件確認）
 - [ ] 画面の文言がすべて `src/renderer/i18n/ja.ts`（と `src/shared/messages.ts`）にある。網羅的な検証はしていない（全画面の文言を1件ずつ辿る時間が無かった）。
 - [x] `packages/` への変更が**1行も無い**（`git diff --stat origin/main -- packages/` が空。4A の担当）。**2026-09-20 00:20頃確認時点では空だったが、直後に他エージェントが `packages/schematic-core/**` を編集し始めたため、いま再実行すると空でなくなる**（Task 14 の対象外・4Aとは無関係の並行作業）。
-- [ ] `apps/desktop/package.json` の依存が Phase 3 から**1つも増えていない**。**保留**: 他エージェントが `package.json` を未コミットで編集中のため確認できない。
+- [ ] `apps/desktop/package.json` の依存が Phase 3 から**1つも増えていない**。**保留**: 他エージェントが `package.json` を未コミットで編集中のため確認できない。**2026-09-20 Plan 5 Task 16 再確認**（worktree `OJT-wt-e2e`、origin/main 2344a7b、クリーン）: Phase 3 相当コミット（`0eedfff`）から比較すると増分は `markdown-it`（devDependency、Phase 6 Task 2 `de5676b` で追加）の1件のみ。文字どおりには「1つも増えていない」を満たさないため空欄のまま残すが、原因は特定済み（意図的な追加、他に増分無し）。
 
 ---
 

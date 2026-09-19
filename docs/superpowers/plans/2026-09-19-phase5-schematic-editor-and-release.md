@@ -7052,6 +7052,8 @@ pnpm --filter @ojt/circuit-sim test:coverage
 
 `schematic-core` / `content` / `circuit-sim` の行・分岐カバレッジが **90%以上**であること（§16 Phase 1 受入基準④は Phase 5 でも維持する）。
 
+**2026-09-20 Plan 5 Task 16 実測**（worktree `OJT-wt-e2e`、`git checkout --detach origin/main` 2344a7b、`pnpm install --frozen-lockfile --offline` 実施）: `pnpm -r test` は7プロジェクト全緑（circuit-sim 28/247・ladder-core 8/115・board-model 20/261・plc-dialects 14/219・schematic-core 7/138・content 46/654・desktop 125/1759）。カバレッジは3つとも90%超（schematic-core 行99.86%/分岐96.63%、circuit-sim 行99.9%/分岐93.31%、content 行99.14%/分岐93.99%）。`pnpm lint` と `npx prettier --check` はどちらも対象globに`docs/**/*.md`を含むが `docs/` は `.prettierignore` により丸ごと除外されているため `docs/manual/**` は素通りする（意図どおり）。prettier は `All matched files use Prettier code style!`。一方 **`pnpm -r typecheck` と `pnpm lint` は失敗**: `src/renderer/i18n/ja.ts` が `../session/socket-pins.js` を import しているが `session/socket-pins.ts` が未コミット（別エージェントの `SocketPinout` 機能が進行中）で、typecheck 2件・lint 4件が出る。`i18n/ja.ts` は Task 16 の対象外（他エージェント編集中）のため未修正。**このため本ステップは全体としては空欄のまま残す**（test・coverage・prettier は緑、typecheck・lintのみ委任外の理由で赤）。
+
 - [ ] **Step 2: 規律の grep（0件であること）**
 
 ```
@@ -7064,6 +7066,8 @@ git diff --stat origin/main -- packages/circuit-sim packages/ladder-core package
 
 期待: 1つ目〜4つ目は**0件**、5つ目は**空**（Phase 5 は `circuit-sim` / `ladder-core` / `plc-dialects` / `board-model` を1行も変えない）。
 
+**2026-09-20 Plan 5 Task 16 実測**（worktree `OJT-wt-e2e`、origin/main 2344a7b）: 1つ目は5件ヒットするが、いずれも「**前後で**」という語の部分一致（`後で` を含むだけ）で、実際の先送りマーカーは無い（`packages/circuit-sim` の2件は保護パッケージで無変更・pre-existing、`packages/schematic-core` の2件と `session/commands.ts` の1件も同種の false positive）。実質0件とみなせる。2つ目は**7件**ヒット——`apps/desktop/src/renderer/ladder/skins/{jtekt,mitsubishi,omron,sharp}.ts` のJSDocコメント内にある参照元URL（実行時文字列ではない）。`b358145`（2026-09-20 01:24、Task 16着手より後）で追加されたもので、`ladder/**` は Task 16 の対象外（他エージェント編集中）のため未修正。3つ目・4つ目は0件。5つ目は空（保護4パッケージは無変更）。2つ目に実ヒットが残るため、本ステップは空欄のまま残す。
+
 - [ ] **Step 3: 配布物を作り、実機で確かめる**
 
 ```
@@ -7072,13 +7076,17 @@ pnpm --filter @ojt/desktop dist
 
 `release/artifacts.md` が生成され、`release/` に NSIS（`.exe`）とポータブル（`.zip`）の2つが出ること。`docs/releases/v1.0.0.md` の「リリース手順チェックリスト」の 1〜8 を順に埋め、**6 の実機 fps の測定値をチェックリストの下に転記**する。
 
-- [ ] **Step 4: コミットする（公開はしない）**
+**2026-09-20 Plan 5 Task 16 実測**: 本ステップは今回の委任範囲外として `dist` を実行していない（Task 14 が別途カバー、実機・オフライン確認も要ハードウェアのため対象外）。`docs/releases/v1.0.0.md` のチェックリストは main tree で他エージェントが編集中（`git status` で modified）のため未編集。空欄のまま残す。
+
+- [x] **Step 4: コミットする（公開はしない）**
 
 ```
 git add -A && git commit -m "chore(phase5): verify the Phase 5 acceptance criteria and record the release checks"
 ```
 
 **タグ付けと GitHub Release は行わない**（決定表#22。利用者の明示の指示を待つ）。
+
+**2026-09-20 Plan 5 Task 16 実測**: 本回の委任元の指示により、上記のリテラルな `git add -A` ではなく明示パス（`.gitignore` と本ドキュメント2つ、他エージェント編集中のファイルを一切巻き込まない）でコミットした。メッセージも委任元指定の `chore(desktop): finish the Phase 5 verification and re-verify Phase 4B (Plan 5 Task 16)` を使用。タグ付け・GitHub Release は実行していない。
 
 ---
 
@@ -7173,50 +7181,50 @@ git add -A && git commit -m "chore(phase5): verify the Phase 5 acceptance criter
 
 **機能:**
 
-- [ ] `pnpm -r test` が7プロジェクトすべて通る（Phase 5 で足した単体テストは **packages 60件 ＋ desktop 123件**）。内訳は各タスクの「期待」のとおり: packages ＝ Task 1 の 36（`edit` 30 ＋ `slot-rects` 6）／Task 2 の 16／Task 3 の 8。desktop ＝ Task 4 の 26／Task 5 の 19／Task 6 の 11（`verify-flow` 7 ＋ `sim-worker-verify` 4）／Task 7 の 7／Task 8 の 15（`wiring-guide` 9 ＋ 画面 6）／Task 9 の 5／Task 10 の 10／Task 11 の 6／Task 12 の 5／Task 13 の 10（`label-cache` 8 ＋ `board-scene` 2）／Task 14 の 9。
-- [ ] `pnpm -r typecheck` と `pnpm lint`（`import-x/no-cycle` ＋ `react-hooks` 込み）が無警告で通る。
-- [ ] `npx prettier --check "apps/desktop/**/*.{ts,tsx,css}" "packages/**/*.ts" "README.md" "docs/**/*.md"` が `All matched files use Prettier code style!` を出す。
-- [ ] `pnpm --filter @ojt/desktop e2e` が **40本**（うち 60fps の1本は `OJT_PERF_TARGET` 未設定なら skip）すべて通る。**2回連続で通ること。**
-- [ ] **§16 Phase 5 受入基準①**: モードB課題 `b-001` を開き、ビューを「回路図」にして段1に `PB2 b接点 → PB1 a接点 → CR1 コイル`、段2を「分岐にする」で `段1の節点1 → 節点2` に向けて `CR1 a接点`（＝PB1 の a接点と並列）、段3に `CR1 a接点 → PL1` を置き、「検算」で **合格**が出る（b-001 の模範回路と同じ形）。
-- [ ] **§16 Phase 5 受入基準②**: 回路図（エディタでも回路図ヒントでも）の要素をクリックすると、3D盤の対応端子が光る（`highlight.terminals` に2端子が入り、`ProbeMarkers` の輪が出る）。盤の端子にホバーすると逆に回路図の要素が光る。
-- [ ] **§16 Phase 5 受入基準③**: `pnpm --filter @ojt/desktop dist` が NSIS とポータブルの2つを出し、`release/artifacts.md` にサイズと SHA256 が書かれる。オフラインのWindows 11でインストールして課題を1つ完了できる（チェックリスト 7）。
-- [ ] **§16 Phase 5 受入基準④**: 三角形数 ≤ 200,000・ドローコール ≤ 120・無操作3秒で描画枚数が増えない。**実機（内蔵GPU・FHD）で3つの視点プリセットすべて 60fps 以上**（チェックリスト 6）。
-- [ ] **UXレビュー #28**: 不合格の結果画面に「疑わしい配線」が最大5件出て、「盤で見る」でその端子と電線が3Dで光り、「結果へ戻る」で結果画面に戻れる。合格時は出ない。
-- [ ] **UXレビュー #29**: 端子リストから Tab と Enter だけで電線を1本張れる。2本埋まった端子は押せず、理由が `title` に出る。
-- [ ] 検算と判定の合否が一致する（同じ課題・同じ回路図なら、検算の `passed` と判定の `passed` が同じ）。
-- [ ] 作業ファイルを保存して読み直すと、回路図の下書きも戻る。Phase 1〜4 に保存した作業ファイルも読める。
-- [ ] 課題を開き直す・「もう一度」・課題一覧へ戻る、のいずれでも下書き・検算結果・注目・ビューが初期化される。
+- [x] `pnpm -r test` が7プロジェクトすべて通る（Phase 5 で足した単体テストは **packages 60件 ＋ desktop 123件**）。内訳は各タスクの「期待」のとおり: packages ＝ Task 1 の 36（`edit` 30 ＋ `slot-rects` 6）／Task 2 の 16／Task 3 の 8。desktop ＝ Task 4 の 26／Task 5 の 19／Task 6 の 11（`verify-flow` 7 ＋ `sim-worker-verify` 4）／Task 7 の 7／Task 8 の 15（`wiring-guide` 9 ＋ 画面 6）／Task 9 の 5／Task 10 の 10／Task 11 の 6／Task 12 の 5／Task 13 の 10（`label-cache` 8 ＋ `board-scene` 2）／Task 14 の 9。**2026-09-20 Plan 5 Task 16 実測**（worktree `OJT-wt-e2e`、origin/main 2344a7b）: 7プロジェクト全緑（circuit-sim 28/247・ladder-core 8/115・board-model 20/261・plc-dialects 14/219・schematic-core 7/138・content 46/654・desktop 125/1759）。個別内訳の突合せはしていないが、後続タスク（Task 15・Task 14再検証等）の追加を含め全体件数はこの表記時点より増えており矛盾は無い。
+- [ ] `pnpm -r typecheck` と `pnpm lint`（`import-x/no-cycle` ＋ `react-hooks` 込み）が無警告で通る。**2026-09-20 Plan 5 Task 16 実測**: `src/renderer/i18n/ja.ts` が未コミットの `session/socket-pins.ts` を import しており typecheck 2件・lint 4件が失敗する（他エージェントの `SocketPinout` 機能が進行中、`i18n/ja.ts` はTask16対象外）。空欄のまま残す。
+- [x] `npx prettier --check "apps/desktop/**/*.{ts,tsx,css}" "packages/**/*.ts" "README.md" "docs/**/*.md"` が `All matched files use Prettier code style!` を出す。**2026-09-20 Plan 5 Task 16 実測**: worktree で実行し `All matched files use Prettier code style!` を確認（`docs/**/*.md` は `.prettierignore` の `docs/` により丸ごと除外、`docs/manual/**` も含め対象外であることを確認）。
+- [ ] `pnpm --filter @ojt/desktop e2e` が **40本**（うち 60fps の1本は `OJT_PERF_TARGET` 未設定なら skip）すべて通る。**2回連続で通ること。** **2026-09-20 Plan 5 Task 16 実測**（worktree `OJT-wt-e2e`、origin/main 2344a7b、`pnpm --filter @ojt/desktop exec playwright test`）: 実際のテスト総数は現時点で**51本**（49 passed + 1 skipped + **1 failed**、計画記載の40本より後続タスクの追加で増えている）。**1回目は非flakyな失敗が1件**: `ui-quality.spec.ts` の「集計」テストが、初回・リトライ1回目とも同じ値で失敗（`blocking` 137>133、`clip` 3>0、`hud-overlap` 104>103、`wrap` 221>220）。特に `clip` が基準0に対し3件——うち1件は `terminal-full-reason-P.1`（`panels/TerminalListPanel.tsx`、Task16対象外）の `scrollWidth 205 / clientWidth 1` で、日本語が切れていない完了条件に抵触する実際の回帰。`panels/**`・`three/**` は他エージェント編集中のため未修正。空欄のまま残す。
+- [x] **§16 Phase 5 受入基準①**: モードB課題 `b-001` を開き、ビューを「回路図」にして段1に `PB2 b接点 → PB1 a接点 → CR1 コイル`、段2を「分岐にする」で `段1の節点1 → 節点2` に向けて `CR1 a接点`（＝PB1 の a接点と並列）、段3に `CR1 a接点 → PL1` を置き、「検算」で **合格**が出る（b-001 の模範回路と同じ形）。**2026-09-20 Plan 5 Task 16 実測**: `e2e/schematic.spec.ts` の `受入基準①: 自己保持回路を描いて検算で合格する` が run1（worktree、origin/main 2344a7b）で緑。
+- [x] **§16 Phase 5 受入基準②**: 回路図（エディタでも回路図ヒントでも）の要素をクリックすると、3D盤の対応端子が光る（`highlight.terminals` に2端子が入り、`ProbeMarkers` の輪が出る）。盤の端子にホバーすると逆に回路図の要素が光る。**2026-09-20 Plan 5 Task 16 実測**: `e2e/schematic.spec.ts` の `受入基準②: 回路図の要素をクリックすると3D盤の端子が光る` が run1で緑。
+- [ ] **§16 Phase 5 受入基準③**: `pnpm --filter @ojt/desktop dist` が NSIS とポータブルの2つを出し、`release/artifacts.md` にサイズと SHA256 が書かれる。オフラインのWindows 11でインストールして課題を1つ完了できる（チェックリスト 7）。**2026-09-20 Plan 5 Task 16**: `dist`・実機・オフライン確認は今回の委任範囲外のため未実施。空欄のまま残す。
+- [ ] **§16 Phase 5 受入基準④**: 三角形数 ≤ 200,000・ドローコール ≤ 120・無操作3秒で描画枚数が増えない。**実機（内蔵GPU・FHD）で3つの視点プリセットすべて 60fps 以上**（チェックリスト 6）。**2026-09-20 Plan 5 Task 16 実測**: `perf.spec.ts` はrun1で全緑（60fps実機測定の1本は `OJT_PERF_TARGET` 未設定でskip）。三角形数・ドローコール・無操作3秒の自動判定分は確認できたが、**実機60fpsの実測は未実施**（ハードウェア要・委任範囲外）のため、基準④全体としては空欄のまま残す。
+- [x] **UXレビュー #28**: 不合格の結果画面に「疑わしい配線」が最大5件出て、「盤で見る」でその端子と電線が3Dで光り、「結果へ戻る」で結果画面に戻れる。合格時は出ない。**2026-09-20 Plan 5 Task 16 実測**: `e2e/schematic.spec.ts` の `#28: 不合格の結果から疑わしい端子を盤で見られる` が run1で緑。
+- [x] **UXレビュー #29**: 端子リストから Tab と Enter だけで電線を1本張れる。2本埋まった端子は押せず、理由が `title` に出る。**2026-09-20 Plan 5 Task 16 実測**: `e2e/schematic.spec.ts` の `#29: 端子リストから Tab と Enter だけで電線を1本張れる` が run1で緑。
+- [x] 検算と判定の合否が一致する（同じ課題・同じ回路図なら、検算の `passed` と判定の `passed` が同じ）。**2026-09-20 Plan 5 Task 16 実測**: `pnpm -r test` の `verify-flow` 系ユニットテストがworktreeで全緑。
+- [x] 作業ファイルを保存して読み直すと、回路図の下書きも戻る。Phase 1〜4 に保存した作業ファイルも読める。**2026-09-20 Plan 5 Task 16 実測**: `work-file` 系ユニットテストがworktreeで全緑。
+- [x] 課題を開き直す・「もう一度」・課題一覧へ戻る、のいずれでも下書き・検算結果・注目・ビューが初期化される。**2026-09-20 Plan 5 Task 16 実測**: 関連ユニット・E2Eがworktreeで全緑（`ui-quality.spec.ts` の失敗は集計テストのみで、この項目の個別シナリオは緑）。
 
 **画面の品質（利用者要求 2026-09-19）:**
 
-- [ ] 3つのビュー（盤／並べて／回路図）すべてで、**1280×800 と 1920×1080** のどちらでも横スクロールが出ない（`scrollWidth <= clientWidth`）。
-- [ ] 回路図エディタのパレット・ツール・指摘欄の**日本語が切れていない**（`scrollWidth <= clientWidth + 1`）。
-- [ ] 本プランで足した CSS の `padding` / `gap` / `margin` がすべて **4の倍数**（8px 格子）。
-- [ ] エディタ・パレット・検算パネル・疑い一覧・端子リストの**すべての操作要素**が `:focus-visible` で見える枠を持つ。
-- [ ] 回路図のグリッド（`schematic-grid`）に Tab で入れ、そこから矢印と Enter だけで回路を描ける。**分岐も**キーボードだけで作れる（「分岐にする」→ 矢印＋Enter で始点 → 矢印＋Enter で終点、Esc で取り消し）。
-- [ ] 「分岐にする」が押せないとき、その理由が `title` に出る（負荷のある段／段が1本しかない）。分岐中は「分岐の始点をクリック」→「分岐の終点をクリック」が1行で出る。
-- [ ] 疑い一覧が出ているあいだ、「接点の組が違うだけでもここに出る」という断り書き（`suspect-note`）が必ず添う（決定表#9b）。
-- [ ] スクリーンショット（`50-schematic-editor` / `51-verify-passed` / `52-wiring-guide` / `53-result-suspects` / `54-suspect-on-board` / `55-keyboard-wiring`）で、記号・銘板・カーソル枠・疑い一覧の文字が読める。
-- [ ] 「検算」ボタンが押せないとき、その理由が `title` に出る（作りかけの指摘の1件目、または検算中）。
+- [ ] 3つのビュー（盤／並べて／回路図）すべてで、**1280×800 と 1920×1080** のどちらでも横スクロールが出ない（`scrollWidth <= clientWidth`）。**2026-09-20 Plan 5 Task 16 実測**: `ui-quality.spec.ts`「集計」が非flakyで失敗（詳細は機能節の e2e 40本の項を参照）。空欄のまま残す。
+- [ ] 回路図エディタのパレット・ツール・指摘欄の**日本語が切れていない**（`scrollWidth <= clientWidth + 1`）。**2026-09-20 Plan 5 Task 16 実測**: 同上の「集計」失敗の内訳に `clip`（基準0→実測3、うち `terminal-full-reason-P.1` は `panels/**` でTask16対象外）が含まれる。回路図エディタ自体（`schematic/**`）のこの観点の個別テストは無印（今回の51本には失敗が無かった）が、集計全体としては空欄のまま残す。
+- [ ] 本プランで足した CSS の `padding` / `gap` / `margin` がすべて **4の倍数**（8px 格子）。**2026-09-20 Plan 5 Task 16 実測**: `schematic/schematic.module.css`・`schematic/schematic-view.module.css`・`panels/view-hint.module.css` を実測すると非4の倍数の値が残る（例: `schematic.module.css` L38 `padding: 6px 12px`／L191・L263 `padding: 6px 8px`／L223 `padding: 4px 6px`、`schematic-view.module.css` L47 `padding: 2px 8px`／L136 `padding: 4px 10px`、`view-hint.module.css` L33 `padding: 3px 8px`）。これらは `schematic/**`・`panels/**` にあり他エージェント編集中で Task 16 の対象外のため未修正。空欄のまま残す。
+- [x] エディタ・パレット・検算パネル・疑い一覧・端子リストの**すべての操作要素**が `:focus-visible` で見える枠を持つ。**2026-09-20 Plan 5 Task 16 実測**: `ui-quality.spec.ts`「集計」の内訳で `focus` は基準0どおり0件（この観点はrun1の失敗に含まれない）。
+- [x] 回路図のグリッド（`schematic-grid`）に Tab で入れ、そこから矢印と Enter だけで回路を描ける。**分岐も**キーボードだけで作れる（「分岐にする」→ 矢印＋Enter で始点 → 矢印＋Enter で終点、Esc で取り消し）。**2026-09-20 Plan 5 Task 16 実測**: `schematic-core`/`desktop` のユニットテスト（`schematic-grid` への keyDown 一式）と `e2e/schematic.spec.ts` の受入基準①がworktreeで緑。
+- [x] 「分岐にする」が押せないとき、その理由が `title` に出る（負荷のある段／段が1本しかない）。分岐中は「分岐の始点をクリック」→「分岐の終点をクリック」が1行で出る。**2026-09-20 Plan 5 Task 16 実測**: 該当ユニットテストがworktreeで緑。
+- [x] 疑い一覧が出ているあいだ、「接点の組が違うだけでもここに出る」という断り書き（`suspect-note`）が必ず添う（決定表#9b）。**2026-09-20 Plan 5 Task 16 実測**: `suspect-note` のユニットテストと `53-result-suspects.png` の目視で確認（断り書きの文言表示を確認）。
+- [x] スクリーンショット（`50-schematic-editor` / `51-verify-passed` / `52-wiring-guide` / `53-result-suspects` / `54-suspect-on-board` / `55-keyboard-wiring`）で、記号・銘板・カーソル枠・疑い一覧の文字が読める。**2026-09-20 Plan 5 Task 16 実測**: worktree run1が生成した6枚を目視確認。回路図記号・端子番号・銘板（CR1/CR2/T1/T2/CHK等）・疑い一覧・端子リストの文字はいずれも明瞭に読める。
+- [x] 「検算」ボタンが押せないとき、その理由が `title` に出る（作りかけの指摘の1件目、または検算中）。**2026-09-20 Plan 5 Task 16 実測**: 該当ユニットテストがworktreeで緑。
 
 **性能（§15）:**
 
-- [ ] `perf-readout` の `triangles` が **200,000 以下**（正面・俯瞰・ソケット拡大のどの視点でも）。
-- [ ] `perf-readout` の `calls` が **120 以下**（端子のインスタンス化前は 280 超だった）。
-- [ ] ソケットの印字テクスチャが **1枚**に共有されている（`faceTextureCacheSize()` が 1）。テクスチャの1辺が **2048px 以下**。
-- [ ] 盤に電線を1本足しても、机上ケーブルの `TubeGeometry` が作り直されない（`deskWireSignature()` が変わらない）。
-- [ ] 無操作3秒で描画枚数が **1枚以下**しか増えない（`frameloop="demand"` が効いている）。
+- [x] `perf-readout` の `triangles` が **200,000 以下**（正面・俯瞰・ソケット拡大のどの視点でも）。**2026-09-20 Plan 5 Task 16 実測**: `e2e/perf.spec.ts` の `三角形数とドローコールが予算に収まる` がrun1で緑。
+- [x] `perf-readout` の `calls` が **120 以下**（端子のインスタンス化前は 280 超だった）。**2026-09-20 Plan 5 Task 16 実測**: 同上のテストで緑。
+- [x] ソケットの印字テクスチャが **1枚**に共有されている（`faceTextureCacheSize()` が 1）。テクスチャの1辺が **2048px 以下**。**2026-09-20 Plan 5 Task 16 実測**: `pnpm -r test` の該当ユニットテスト（`label-cache`）がworktreeで緑。
+- [x] 盤に電線を1本足しても、机上ケーブルの `TubeGeometry` が作り直されない（`deskWireSignature()` が変わらない）。**2026-09-20 Plan 5 Task 16 実測**: `pnpm -r test` の該当ユニットテスト（`board-scene`）がworktreeで緑。
+- [x] 無操作3秒で描画枚数が **1枚以下**しか増えない（`frameloop="demand"` が効いている）。**2026-09-20 Plan 5 Task 16 実測**: `e2e/perf.spec.ts` の `無操作では1枚も描かない（frameloop="demand" の監査）` がrun1で緑。
 
 **規律:**
 
-- [ ] `packages/circuit-sim` / `packages/ladder-core` / `packages/plc-dialects` / `packages/board-model` への変更が**1行も無い**（`git diff --stat origin/main -- …` が空）。
-- [ ] `apps/desktop/src/renderer/ladder/**` への変更が**1行も無い**（Plan 4B の担当）。
-- [ ] `TODO` / `TBD` / `FIXME` / `後で` / `適宜` が本プランで足したコードとドキュメントに**1つも無い**。
-- [ ] `apps/desktop/src/renderer` に `http://` / `https://` の文字列も画像ファイルも `base64` も無い（§15 のオフラインと商標）。
-- [ ] 画面の文言がすべて `src/renderer/i18n/ja.ts`（と `src/shared/messages.ts`）にある。
-- [ ] IPCチャネルの本数が Phase 4 から**増えていない**（検算は Worker の往復であって IPC ではない）。
-- [ ] `apps/desktop/package.json` の依存が Phase 4 から**1つも増えていない**。
-- [ ] `git tag` も `gh release create` も**実行していない**（決定表#22）。
+- [x] `packages/circuit-sim` / `packages/ladder-core` / `packages/plc-dialects` / `packages/board-model` への変更が**1行も無い**（`git diff --stat origin/main -- …` が空）。**2026-09-20 Plan 5 Task 16 実測**: worktree `OJT-wt-e2e`（origin/main 2344a7b）で空を確認。
+- [ ] `apps/desktop/src/renderer/ladder/**` への変更が**1行も無い**（Plan 4B の担当）。**2026-09-20 Plan 5 Task 16 実測**: Plan 4B の各タスクが継続的に `ladder/**` を編集しており（例: `b358145` は Task 16 着手後の 01:24 にも landed）、どのコミットが「Plan 5 起因」かを commit ごとに切り分ける手段が無い。実測では手をつけていない（別エージェントの担当のまま）ことは確認できるが、本チェックの形では判定できないため空欄のまま残す。
+- [x] `TODO` / `TBD` / `FIXME` / `後で` / `適宜` が本プランで足したコードとドキュメントに**1つも無い**。**2026-09-20 Plan 5 Task 16 実測**: grep 5件はすべて「前後で」の部分一致で実際の先送りマーカーは無い（Step 2 実測欄を参照）。
+- [ ] `apps/desktop/src/renderer` に `http://` / `https://` の文字列も画像ファイルも `base64` も無い（§15 のオフラインと商標）。**2026-09-20 Plan 5 Task 16 実測**: 画像ファイル・base64は0件だが、`ladder/skins/{jtekt,mitsubishi,omron,sharp}.ts` のコメント内に参照URLが計7件残る（`b358145` で追加、Plan 4B担当・Task16対象外）。文字どおりには未達のため空欄のまま残す。
+- [ ] 画面の文言がすべて `src/renderer/i18n/ja.ts`（と `src/shared/messages.ts`）にある。**2026-09-20 Plan 5 Task 16 実測**: 全画面を1件ずつ辿る網羅監査は今回のTask16の委任範囲では実施していない。空欄のまま残す。
+- [x] IPCチャネルの本数が Phase 4 から**増えていない**（検算は Worker の往復であって IPC ではない）。**2026-09-20 Plan 5 Task 16 実測**: `shared/ipc.ts` の `IPC_CHANNELS` は7本のまま（コメントに「Phase 4 で file:saveText を足して7本になった」とあり、以降増えていない）。`preload/index.ts` もその7本のみ公開。
+- [ ] `apps/desktop/package.json` の依存が Phase 4 から**1つも増えていない**。**2026-09-20 Plan 5 Task 16 実測**: Phase 3相当コミット（`0eedfff`）以降の増分は `markdown-it`（devDependency、Phase 6 Task 2 `de5676b`）の1件のみ。文字どおりには未達のため空欄のまま残す（内容は Plan 4B 完了条件の同種項目と同じ）。
+- [x] `git tag` も `gh release create` も**実行していない**（決定表#22）。本セッションはタグ付け・GitHub Release のいずれも実行していない。
 
 ---
 
