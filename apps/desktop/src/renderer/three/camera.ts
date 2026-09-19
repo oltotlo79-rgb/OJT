@@ -6,6 +6,7 @@ import {
   PLC_TERMINAL_PITCH_MM,
   PLC_UNIT_FX5U,
 } from '@ojt/board-model';
+import type { PlcUnitDefinition } from '@ojt/board-model';
 import type { CameraPreset } from '../app/store-types.js';
 
 /**
@@ -109,14 +110,18 @@ export const PLC_VIEW_ASPECT = 0.75;
 export const PLC_VIEW_MARGIN_MM = 20;
 
 /**
- * 「盤＋PLC」視点が収める矩形（盤モデル mm）。§10.1 / 決定表#6
+ * 「盤＋PLC」視点が収める矩形（盤モデル mm）。§10.1 / 3B 決定表#6 / 4B 決定表#18
  *
- * **盤・机上のPLC本体・壁コンセントを全部**入れる。モードDの配線は「盤の端子 ⇄ PLCの端子」を
- * 往復するので、片方しか見えない視点だと1本の電線を張るのに視点を切り替えることになる
- * （＝2点目のクリックのたびに画角が変わる）。数値は盤モデルの定義から求めるのでハードコードしない。
+ * **盤・机上のPLC本体・壁コンセントを全部**入れる。機種によって本体の外形が違う
+ * （FX5U 150×90 / CP1E 130×90 / ラック 160×140）ので、機種を引数に取る。
+ * 数値は盤モデルの定義から求めるのでハードコードしない。
  */
-export const PLC_VIEW_RECT = ((): { x: number; y: number; w: number; h: number } => {
-  const unit = PLC_UNIT_FX5U;
+export function plcViewRect(unit: PlcUnitDefinition): {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+} {
   const xs = [
     0,
     BOARD_WIDTH_MM,
@@ -141,7 +146,10 @@ export const PLC_VIEW_RECT = ((): { x: number; y: number; w: number; h: number }
     w: Math.max(...xs) + PLC_VIEW_MARGIN_MM - x,
     h: Math.max(...ys) + PLC_VIEW_MARGIN_MM - y,
   };
-})();
+}
+
+/** 既定（FX5U）の矩形。既存の呼び出しと landed テストのために残す。 */
+export const PLC_VIEW_RECT = plcViewRect(PLC_UNIT_FX5U);
 
 /** 視野角の半分の tan（画角計算の共通項）。 */
 const HALF_FOV_TAN = Math.tan((CAMERA_FOV_DEG / 2) * (Math.PI / 180));
@@ -186,6 +194,12 @@ export function boardUp(): [number, number, number] {
   return boardToWorld([0, 1, 0]);
 }
 
+/** 視点の付帯条件（いまは機種だけ）。 */
+export interface CameraPoseOptions {
+  /** モードDで机上に置いている本体。省くと FX5U（決定表#18）。 */
+  plcUnit?: PlcUnitDefinition;
+}
+
 /**
  * プリセット → 視点。§12.2
  * - `front`（正面）: 盤面の法線方向から見る。面直なので端子が重ならずいちばん操作しやすい
@@ -197,7 +211,7 @@ export function boardUp(): [number, number, number] {
  * - `bottom`（下）: 盤を下から見上げる。ただし `MAX_POLAR_ANGLE` より下へは回り込めないので
  *   「許される範囲でいちばん低い位置から見上げる」視点になる（2026-09-14 の利用者要望の注記）
  */
-export function cameraPose(preset: CameraPreset): CameraPose {
+export function cameraPose(preset: CameraPreset, options: CameraPoseOptions = {}): CameraPose {
   const w = BOARD_WIDTH_MM;
   const h = BOARD_HEIGHT_MM;
   // 視野角38°・横基準。盤の幅330mmが収まるには距離 ≥ 165/(tan(19°)×aspect) 必要で、
@@ -240,7 +254,7 @@ export function cameraPose(preset: CameraPreset): CameraPose {
       };
     case 'plc': {
       // 机上のPLC本体と壁コンセントが収まるまで寄る（盤面の延長なので面直で見る）。§10.1
-      const rect = PLC_VIEW_RECT;
+      const rect = plcViewRect(options.plcUnit ?? PLC_UNIT_FX5U);
       const distance = fitDistanceMm(rect.w, rect.h, PLC_VIEW_ASPECT);
       const center: [number, number, number] = [
         rect.x + rect.w / 2 - w / 2,

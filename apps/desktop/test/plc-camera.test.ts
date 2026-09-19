@@ -3,6 +3,9 @@ import {
   JIPM_BOARD,
   OUTLET_ORIGIN_MM,
   PLC_UNIT_FX5U,
+  PLC_UNIT_JW300,
+  PLC_UNIT_PC10G,
+  PLC_UNITS,
   withPlcUnit,
 } from '@ojt/board-model';
 import { describe, expect, it } from 'vitest';
@@ -14,6 +17,7 @@ import {
   MIN_CAMERA_DISTANCE_MM,
   PLC_VIEW_ASPECT,
   PLC_VIEW_RECT,
+  plcViewRect,
   SOCKET_VIEW_RECT,
 } from '../src/renderer/three/camera.js';
 import { projectToScreen } from '../e2e/projection.js';
@@ -85,5 +89,39 @@ describe('plc 視点プリセット（§12.2 / 決定表#6）', () => {
       6,
     );
     expect(cameraPose('socket').target).not.toEqual(cameraPose('plc').target);
+  });
+});
+
+describe('機種ごとの「盤＋PLC」視点（決定表#18）', () => {
+  it('keeps the FX5U rect as the default', () => {
+    expect(plcViewRect(PLC_UNIT_FX5U)).toEqual(PLC_VIEW_RECT);
+    expect(cameraPose('plc')).toEqual(cameraPose('plc', { plcUnit: PLC_UNIT_FX5U }));
+  });
+
+  it('widens the rect so a rack fits', () => {
+    const rack = plcViewRect(PLC_UNIT_PC10G);
+    expect(rack.w).toBeGreaterThanOrEqual(PLC_VIEW_RECT.w);
+    expect(rack.h).toBeGreaterThanOrEqual(PLC_VIEW_RECT.h);
+    // ラックの下端まで入る
+    expect(rack.y + rack.h).toBeGreaterThanOrEqual(
+      PLC_UNIT_PC10G.pos.y + PLC_UNIT_PC10G.sizeMm.height,
+    );
+  });
+
+  it('stays inside the orbit distance limits for every model', () => {
+    for (const unit of Object.values(PLC_UNITS)) {
+      const rect = plcViewRect(unit);
+      const distance = fitDistanceMm(rect.w, rect.h, PLC_VIEW_ASPECT);
+      expect(distance, unit.model).toBeLessThanOrEqual(MAX_CAMERA_DISTANCE_MM);
+      expect(distance, unit.model).toBeGreaterThanOrEqual(MIN_CAMERA_DISTANCE_MM);
+    }
+  });
+
+  it('moves the target when the model changes', () => {
+    expect(cameraPose('plc', { plcUnit: PLC_UNIT_JW300 }).target).not.toEqual(
+      cameraPose('plc', { plcUnit: PLC_UNIT_FX5U }).target,
+    );
+    // 他のプリセットは機種で変わらない
+    expect(cameraPose('front', { plcUnit: PLC_UNIT_JW300 })).toEqual(cameraPose('front'));
   });
 });

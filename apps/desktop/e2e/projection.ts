@@ -5,7 +5,7 @@ import {
   toPhysicalTerminal,
   withPlcUnit,
 } from '@ojt/board-model';
-import type { SocketRoles } from '@ojt/board-model';
+import type { BoardDefinition, PlcUnitDefinition, SocketRoles } from '@ojt/board-model';
 import type { TerminalId } from '@ojt/circuit-sim';
 import {
   boardToWorld,
@@ -157,4 +157,35 @@ export function plcTerminalPoint(
   const found = PLC_BOARD.terminals.find((t) => t.id === physical);
   if (found === undefined) throw new Error(`端子が盤にありません: ${terminal}（${physical}）`);
   return plcBoardPoint(found.pos, box);
+}
+
+/**
+ * 機種を指定した机上の盤（Phase 4）。§10.1
+ * 既定メーカーを変えると机上の本体が変わるので、E2Eも同じ機種で射影する必要がある。
+ */
+export function plcBoardFor(unit: PlcUnitDefinition): BoardDefinition {
+  return withPlcUnit(JIPM_BOARD, unit);
+}
+
+/** 機種を指定した `plc` 視点の射影。 */
+export function plcBoardPointFor(
+  unit: PlcUnitDefinition,
+  point: { x: number; y: number; z: number },
+  box: CanvasBox,
+): { x: number; y: number } {
+  return projectToScreen(boardToWorld(toScene(point)), cameraPose('plc', { plcUnit: unit }), box);
+}
+
+/** 機種を指定した端子の射影（盤・PLC本体・壁コンセントのどれでも）。 */
+export function plcTerminalPointFor(
+  unit: PlcUnitDefinition,
+  roles: SocketRoles,
+  terminal: string,
+  box: CanvasBox,
+): { x: number; y: number } {
+  const board = plcBoardFor(unit);
+  const physical = toPhysicalTerminal(roles, terminal as TerminalId);
+  const found = board.terminals.find((t) => t.id === physical);
+  if (found === undefined) throw new Error(`端子が盤にありません: ${terminal}（${physical}）`);
+  return plcBoardPointFor(unit, found.pos, box);
 }
