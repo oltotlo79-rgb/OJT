@@ -71,6 +71,16 @@ const WIRED_FILES: Readonly<Record<string, readonly string[]>> = {
     'c2-007-flicker.json',
     'c2-008-stop-priority.json',
   ],
+  plc: [
+    'd-001-self-hold.json',
+    'd-002-interlock.json',
+    'd-003-on-delay.json',
+    'd-004-one-shot.json',
+    'd-005-sequential.json',
+    'd-006-flicker.json',
+    'd-007-counter.json',
+    'd-008-stop-priority.json',
+  ],
 };
 
 describe('resources/content の複写（§7.8 / Phase 2 acceptance BLOCKER）', () => {
