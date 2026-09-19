@@ -35,7 +35,10 @@ export {
 
 export { MITSUBISHI_FX5U, roundTimerPreset, timerBaseMs } from './mitsubishi.js';
 
+export { OMRON_CP1E } from './omron.js';
+
 import { MITSUBISHI_FX5U } from './mitsubishi.js';
+import { OMRON_CP1E } from './omron.js';
 import {
   DIALECT_IDS,
   UnknownDialectError,
@@ -46,7 +49,10 @@ import {
 /**
  * 実装済みの方言プロファイル。Phase 4 で3つ増える（§16）。
  */
-const PROFILES: Partial<Record<DialectId, DialectProfile>> = { mitsubishi: MITSUBISHI_FX5U };
+const PROFILES: Partial<Record<DialectId, DialectProfile>> = {
+  mitsubishi: MITSUBISHI_FX5U,
+  omron: OMRON_CP1E,
+};
 
 /** 実装済みの方言プロファイル一覧（`DIALECT_IDS` の順）。 */
 export function availableDialects(): DialectProfile[] {
