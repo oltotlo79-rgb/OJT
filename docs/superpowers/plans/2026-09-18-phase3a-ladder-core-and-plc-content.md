@@ -5003,7 +5003,9 @@ describe('三菱 FX5U のデバイス表記（§10.5）', () => {
 
   it('publishes the device ranges of §10.5', () => {
     expect(profile.deviceRanges.input).toEqual({ radix: 8, prefix: 'X', min: 0, max: 1023 });
-    expect(profile.deviceRanges.internal).toEqual({ radix: 10, prefix: 'M', min: 0, max: 32767 });
+    // `M8000`以降は特殊リレー帯（`SPECIAL_DEVICES`）と番号が重なるため、通常の内部リレーの
+    // 上限は `M7999` まで（レビュー #M1。§10.5 表の32767は特殊デバイスを含まない前提の誤記だった）
+    expect(profile.deviceRanges.internal).toEqual({ radix: 10, prefix: 'M', min: 0, max: 7999 });
     expect(profile.deviceRanges.timer).toEqual({ radix: 10, prefix: 'T', min: 0, max: 7999 });
     expect(profile.deviceRanges.counter.max).toBe(32767);
   });
@@ -5126,11 +5128,16 @@ export function roundTimerPreset(ms: number, baseMs: number): number {
 const MIN_K = 1;
 const MAX_K = 32_767;
 
-/** デバイス種別ごとの番号体系。§10.5 */
+/**
+ * デバイス種別ごとの番号体系。§10.5
+ * `internal.max` は `M7999` まで。`M8000` 以降は特殊リレー帯（`SPECIAL_DEVICES` の
+ * `M8000`/`M8002`/`M8013` を含む）と番号が重なるため、通常の内部リレーとしては使わせない
+ * （レビュー #M1）。
+ */
 const DEVICE_RANGES: Readonly<Record<DeviceKind, DeviceRange>> = {
   input: { radix: 8, prefix: 'X', min: 0, max: 1023 },
   output: { radix: 8, prefix: 'Y', min: 0, max: 1023 },
-  internal: { radix: 10, prefix: 'M', min: 0, max: 32_767 },
+  internal: { radix: 10, prefix: 'M', min: 0, max: 7_999 },
   timer: { radix: 10, prefix: 'T', min: 0, max: 7_999 },
   counter: { radix: 10, prefix: 'C', min: 0, max: 32_767 },
   // 特殊デバイスはIR側の通し番号（`SP0`〜`SP2`）の範囲。実デバイス名は `SPECIAL_DEVICES` が持つ
@@ -5285,7 +5292,7 @@ git commit -m "feat(plc-dialects): add the FX5U device notation and timer bands 
 
 | 決めること | 本タスクの実装 |
 |---|---|
-| `validate()` | デバイス番号の範囲外（`device-range`）／タイマ設定値が番号帯で表せない（`timer-unit`）／カウンタ設定値が範囲外（`counter-range`）／未対応の特殊デバイス（`special-unsupported`） |
+| `validate()` | デバイス番号の範囲外（`device-range`）／タイマ設定値が番号帯で表せない（`timer-unit`）／タイマ設定値（K値）がこの機種の範囲を超える（`timer-range`。レビュー #M1: 単位に合わない設定値と範囲外の設定値は原因が別なのでエラーコードを分けた）／カウンタ設定値が範囲外（`counter-range`）／未対応の特殊デバイス（`special-unsupported`） |
 | スキン | `gridCols: 11`、`monitorColors.powered: '#1E64FF'`、`convertStep: true`、ショートカット表は §10.6 の◎（一次資料）と△（慣例）を `confirmed` で区別する |
 | `convert()` | `compile()` のエラーと `validate()` の指摘を1つの配列にまとめ、両方空のときだけ `ok: true`。二重コイルの警告は `ok: true` でも返す |
 
@@ -5364,7 +5371,13 @@ describe('三菱バリデータ（§10.5 固有バリデーション / §10.8）
   });
 
   it('has a Japanese message for every error code it can raise', () => {
-    for (const code of ['device-range', 'timer-unit', 'counter-range', 'special-unsupported']) {
+    for (const code of [
+      'device-range',
+      'timer-unit',
+      'timer-range',
+      'counter-range',
+      'special-unsupported',
+    ]) {
       expect(profile.errorMessages[code]).toBeDefined();
     }
   });
@@ -5643,6 +5656,7 @@ const SHORTCUTS: ShortcutTable = [
 const ERROR_MESSAGES: Readonly<Record<string, string>> = {
   'device-range': 'デバイス番号がこの機種の範囲を超えています',
   'timer-unit': 'このタイマ番号の時間単位では指定できない設定値です',
+  'timer-range': 'タイマ設定値（K値）がこの機種の範囲を超えています',
   'counter-range': 'カウンタ設定値がこの機種の範囲を超えています',
   'special-unsupported': 'この機種に対応する特殊デバイスがありません',
 };
@@ -6224,6 +6238,7 @@ Expected: `Tests  13 passed (13)`。
 - Modify: `packages/content/src/static-checks.ts`（`CHECKS` に仮の3件。Task 16 で本実装に差し替える）
 - Test: `packages/content/test/schema-plc.test.ts`
 - Test: `packages/content/test/helpers/plc.ts`（モードD課題JSONの骨組み）
+- Modify: `apps/desktop/src/renderer/i18n/ja.ts`（`PlcInputMapSchema.pb` の PB4 カスタムエラー等、本タスクで増えるゾッドのメッセージに追随する訳文の差分）
 
 §7.6 のフィールド（`plc` / `io` / `referenceLadder` / `wiringRequired`）と、§7.4 の静的チェック3件（`twoStage` / `plcPowerIndependent` / `ioAssignment`）を足す。
 
@@ -9512,6 +9527,7 @@ Plan 3B（`apps/desktop` のGX Works3風スキン・3D・モードD画面）は�
 | API | 用途 |
 |---|---|
 | `BUILTIN_PLC_PROBLEMS`（8題）/ `BUILTIN_ALL_PROBLEMS`（28題）/ `findBuiltinProblem(id)` | 課題一覧（モードDを一覧に出す） |
+| （ハンドオフ注記 H-6） | **内蔵モードD課題8題の名前はすべて `BUILTIN_PLC_PROBLEMS` から引くこと。** Plan 3B の課題一覧・選択画面・E2E（Task 20）で個別のIDやタイトルを直書きせず、必ず `@ojt/content` のこの配列（またはそれを介した `findBuiltinProblem()`）を経由する。8題は2級形式4題・1級形式4題で、追加・差し替えがあっても3Bは配列を読み直すだけで追随できる |
 | `isPlcProblem(problem)` / `PlcProblem` / `SupportedProblem` | モード判別と型付け |
 | `PlcProblemSchema` / `parseProblem(json)` | 利用者フォルダのモードD課題の読込 |
 | `resolvePlcIo(problem.io)` → `ResolvedPlcIo`（`{mode, wiring, inputs, outputs}`）/ `DEFAULT_PLC_IO` | 割付の表示（「X0 = PB1（黒）」等）と3Dの配線ガイド |
@@ -9560,7 +9576,7 @@ Plan 3B（`apps/desktop` のGX Works3風スキン・3D・モードD画面）は�
 - [ ] 三菱プロファイルの `SHORTCUTS` が F5/F6/F7/F4 を持ち、`convert()` が模範ラダー8題すべてで `ok: true` を返す（§16 Phase 3 ①の3A側）。
 - [ ] `ladder-core` の編集API7つ（`setCell` / `clearCell` / `insertRow` / `deleteRow` / `insertNetwork` / `deleteNetwork` / `setVerticalLink`）がバレルから公開され、どれも引数のプログラムを書き換えない（`test/edit.test.ts`）。
 - [ ] `PlcSnapshot.poweredCells` が毎スキャン更新され、END ネットワークのキーを含まない（`test/runtime.test.ts`）。
-- [ ] `apps/desktop` への変更が `test/content-loader.test.ts` と `src/renderer/three/labels.ts` の2ファイルだけである（`git show --stat` で確認する。後者はレビュー反映 I1: `TerminalRole` が11種→17種に増えたことに追随する変更）。
+- [ ] `apps/desktop` への変更が `test/content-loader.test.ts` と `src/renderer/three/labels.ts` と `src/renderer/i18n/ja.ts` の3ファイルだけである（`git show --stat` で確認する。`labels.ts` はレビュー反映 I1: `TerminalRole` が11種→17種に増えたことに追随する変更、`ja.ts` は Task 12 で増えるゾッドのカスタムメッセージの訳文）。
 
 ---
 
@@ -9568,6 +9584,7 @@ Plan 3B（`apps/desktop` のGX Works3風スキン・3D・モードD画面）は�
 
 | 日付 | 内容 |
 |---|---|
+| 2026-09-19 | D〜E レビュー反映: `timer-unit` と `timer-range` のエラーコード分離（単位に合わない設定値と範囲外の設定値は原因が別。§10.5 `errorMessages`）、`roundTimerPreset()` の丸め、`internal.max` を `32767` から `7999` に（`M8000` 以降の特殊リレー帯との重なりを避ける。レビュー #M1）、`ConvertResult` を readonly に、`@ojt/content` 側のクロスフィールド検証（`PlcProblemSchema` の `referenceLadder`/`operations`/`judge.compareSignals` をI/O割付の範囲内に限定、`io.mode === 'fixed'` は `inputs`/`outputs` を両方指定するか両方省略、`DeviceCommentsSchema` のキー範囲を `SP0`〜`SP2` と桁数上限に狭める）、Task 12 Files に `apps/desktop/src/renderer/i18n/ja.ts` を追加（PB4カスタムエラー等の訳文）、3Bへの引き渡し表にハンドオフ注記 H-6（内蔵モードD課題8題は `BUILTIN_PLC_PROBLEMS` 経由。Task 20 で使う） |
 | 2026-09-18 | A〜C レビュー反映: `coil-on-read-only-device`（M2）と MC/MCR のデバイス不一致検査（M3）、`setVerticalLink()` のコイル列拒否（M5）、`poweredCells` の空セル列0を `false` に（M4）、`outputCount` JSDoc修正（M6）、レビュー probe の移植テスト、`apps/desktop/src/renderer/three/labels.ts` の `TerminalRole` 追随（I1）、3Bへの引き渡し表の追記（FX5U実機値・8進/10進の対応・追加公開API） |
 | 2026-09-18 | レビュー反映: B1〜B8、I1〜I11、Minor、Task 1b（IR編集API）、`poweredCells`、デバイスコメント、バッチ表の更新 |
 | 2026-09-18 | 初版。Phase 3（モードD＝PLC）をライブラリ（3A）と `apps/desktop`（3B）に分割し、本書は 3A を扱う。新パッケージ `@ojt/ladder-core` / `@ojt/plc-dialects` の構成、PLC本体の電気モデル（入力＝抵抗負荷・出力＝外部駆動接点・電源＝非電気端子）、スキャンと tick の結合点（`@ojt/content` の `beforeTick`）、IRの `Device.index` を0起点の通し番号とする決定、`vline` の意味、模範配線をI/O割付から生成する方式、`twoStage` / `plcPowerIndependent` / `ioAssignment` の判定方法、内蔵モードD課題8題の題材と操作列を確定した |
