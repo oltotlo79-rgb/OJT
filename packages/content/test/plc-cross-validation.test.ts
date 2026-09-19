@@ -1,4 +1,11 @@
+import { readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { JIPM_BOARD, plcUnitFor } from '@ojt/board-model';
+import { availableDialects, convert, instructionList, JTEKT_PC10G } from '@ojt/plc-dialects';
 import { describe, expect, it } from 'vitest';
+import { BUILTIN_PLC_PROBLEMS } from '../src/builtin/index.js';
+import { judgePlcReference } from '../src/judge-plc.js';
 import { DeviceCommentsSchema } from '../src/schema/ladder.js';
 import { PlcProblemSchema } from '../src/schema/plc.js';
 import { ladderWith, plcProblemJson } from './helpers/plc.js';
@@ -123,5 +130,101 @@ describe('DeviceCommentsSchema のキー範囲（レビュー #M5）', () => {
     expect(
       DeviceCommentsSchema.safeParse({ X0: 'a', Y1: 'b', M2: 'c', T3: 'd', C4: 'e' }).success,
     ).toBe(true);
+  });
+});
+
+/** 命令語リストの改行（§10.7。純正ツールに合わせて CRLF）。 */
+const CRLF = '\r\n';
+
+/** 4メーカーと機種の対応（§7.6）。 */
+const MODELS = [
+  { vendor: 'mitsubishi', model: 'FX5U' },
+  { vendor: 'jtekt', model: 'PC10G-1SP' },
+  { vendor: 'omron', model: 'CP1E' },
+  { vendor: 'sharp', model: 'JW-300' },
+] as const;
+
+describe('内蔵モーD課題8題は4機種すべてで成立する（§16 Phase 4）', () => {
+  it.each(MODELS.map((m) => [m.model, m] as const))(
+    '%s で8題すべてが読めて模範が合格する',
+    (_model, plc) => {
+      expect(BUILTIN_PLC_PROBLEMS).toHaveLength(8);
+      for (const problem of BUILTIN_PLC_PROBLEMS) {
+        const swapped = PlcProblemSchema.parse({ ...problem, plc });
+        const judged = judgePlcReference(swapped, JIPM_BOARD);
+        expect(judged.ok, `${problem.id} / ${plc.model}`).toBe(true);
+        if (!judged.ok) continue;
+        expect(judged.value.mismatches, `${problem.id} / ${plc.model}`).toEqual([]);
+        expect(judged.value.staticChecks.filter((c) => !c.ok)).toEqual([]);
+        expect(judged.value.passed).toBe(true);
+      }
+    },
+  );
+
+  it('模範ラダーはベンダ中立で、4方言すべてで変換が通る（受入基準②）', () => {
+    // TOYOPUC の「X と Y の同番号禁止」は **アドレス**で判定する（決定表#16）。8題はすべて
+    // `X(0)`〜`X(2)` と `Y(0)`〜`Y(3)` を使うので、出力が `1Y010` から始まる限り衝突しない。
+    // ここが `device-conflict` で落ちたら `jtekt.ts` の `OUTPUT_BASE` を疑う
+    expect(availableDialects()).toHaveLength(4);
+    for (const profile of availableDialects()) {
+      for (const problem of BUILTIN_PLC_PROBLEMS) {
+        const result = convert(problem.referenceLadder, profile);
+        expect(result.errors, `${problem.id} / ${profile.id}`).toEqual([]);
+        expect(result.ok).toBe(true);
+      }
+    }
+  });
+
+  it('命令語リストが4方言すべてで書き出せる（受入基準⑥）', () => {
+    for (const profile of availableDialects()) {
+      for (const problem of BUILTIN_PLC_PROBLEMS) {
+        const list = instructionList(problem.referenceLadder, profile);
+        expect(list.errors, `${problem.id} / ${profile.id}`).toEqual([]);
+        expect(list.lines.length).toBeGreaterThan(0);
+        expect(list.text.endsWith(CRLF)).toBe(true);
+      }
+    }
+  });
+
+  it('TOYOPUC の出力表記と端子の印字が16点とも揃っている（決定表#16）', () => {
+    // `OUTPUT_BASE = 0x010` は `jtekt.ts`（方言）と `plc-unit.ts`（端子）に二重にある。
+    // 片方だけ動かすと模範配線の端子名とラダーの表記がすれるので、ここで縛る
+    const unit = plcUnitFor('PC10G-1SP');
+    expect(unit).toBeDefined();
+    if (unit === undefined) return;
+    expect(unit.spec.outputs).toHaveLength(16);
+    unit.spec.outputs.forEach((output, index) => {
+      const device = JTEKT_PC10G.formatDevice({ kind: 'output', index });
+      expect(device, `Y(${index})`).toMatch(/^1Y0[0-9A-F]{2}$/u);
+      expect(
+        device.endsWith(output.name.slice(1)),
+        `Y(${index}) = ${device} / ${output.name}`,
+      ).toBe(true);
+    });
+    // 入力はずらさない（`1X000` が `X(0)`）
+    unit.spec.inputs.forEach((input, index) => {
+      expect(JTEKT_PC10G.formatDevice({ kind: 'input', index }).endsWith(input.name.slice(1))).toBe(
+        true,
+      );
+    });
+  });
+});
+
+describe('方言はテスト限定の依存である（3A 決定表#7）', () => {
+  /** `src` 以下の `.ts` をすべて集める。 */
+  function sourceFiles(dir: string): string[] {
+    return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+      const path = join(dir, entry.name);
+      if (entry.isDirectory()) return sourceFiles(path);
+      return entry.name.endsWith('.ts') ? [path] : [];
+    });
+  }
+
+  it('packages/content/src は @ojt/plc-dialects を import しない', () => {
+    const src = join(fileURLToPath(new URL('../src/', import.meta.url)));
+    const offenders = sourceFiles(src).filter((path) =>
+      readFileSync(path, 'utf8').includes('@ojt/plc-dialects'),
+    );
+    expect(offenders).toEqual([]);
   });
 });

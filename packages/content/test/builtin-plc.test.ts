@@ -19,6 +19,8 @@ describe('内蔵モードD課題（§7.9）', () => {
       'd-007',
       'd-008',
     ]);
+    // 同梱の8題は三菱で出題するが、IRはベンダ中立で4機種すべてで成立する
+    // （`plc-cross-validation.test.ts` が機種を差し替えて確かめている。決定表#14）
     expect(BUILTIN_PLC_PROBLEMS.every((p) => p.plc.model === 'FX5U')).toBe(true);
     expect(BUILTIN_PLC_PROBLEMS.every((p) => p.wiringRequired)).toBe(true);
   });
