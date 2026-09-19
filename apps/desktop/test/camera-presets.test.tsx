@@ -1,3 +1,5 @@
+import { PLC_UNIT_FX5U, PLC_UNIT_JW300 } from '@ojt/board-model';
+import { BUILTIN_PLC_PROBLEMS } from '@ojt/content';
 import { cleanup, render } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -156,5 +158,55 @@ describe('store.setCamera（§12.2）', () => {
     useStore.getState().setCamera('socket');
     expect(useStore.getState().camera).toBe('socket');
     expect(useStore.getState().cameraNonce).toBe(1);
+  });
+});
+
+/**
+ * `plc` プリセットと机上の機種（Plan 4B Task 12 の積み残し）。
+ *
+ * `camera.ts` の `cameraPose('plc', { plcUnit })` は既に機種ごとの画角を計算できていたが
+ * （`plc-camera.test.ts`）、呼び出し側の `CameraPresets` が常に既定（FX5U）を渡していたため
+ * 実機では反映されていなかった。ここでは `CameraPresets` がストアの `problem` から機種を
+ * 引いて `cameraPose()` へ渡していることを、コンポーネント越しに確かめる。
+ */
+describe('CameraPresets と机上の機種（決定表#18）', () => {
+  afterEach(() => {
+    useStore.setState({ problem: undefined });
+  });
+
+  it('JW300 の課題を開いていると `plc` プリセットの視点が FX5U と変わる', () => {
+    const fx5uProblem = BUILTIN_PLC_PROBLEMS[0]!;
+    expect(fx5uProblem.plc.model).toBe('FX5U');
+
+    useStore.setState({ problem: fx5uProblem, camera: 'plc', cameraNonce: 0 });
+    render(<CameraPresets preset="plc" nonce={0} controls={controls} />);
+    const fx5uPose = cameraPose('plc', { plcUnit: PLC_UNIT_FX5U });
+    expect(positions.at(-1)).toEqual(fx5uPose.position);
+    expect(targets.at(-1)).toEqual(fx5uPose.target);
+
+    cleanup();
+    positions = [];
+    targets = [];
+    controlsTargets = [];
+
+    const jw300Problem = {
+      ...fx5uProblem,
+      plc: { vendor: 'sharp' as const, model: 'JW-300' as const },
+    };
+    useStore.setState({ problem: jw300Problem, camera: 'plc', cameraNonce: 0 });
+    render(<CameraPresets preset="plc" nonce={0} controls={controls} />);
+    const jw300Pose = cameraPose('plc', { plcUnit: PLC_UNIT_JW300 });
+    expect(positions.at(-1)).toEqual(jw300Pose.position);
+    expect(targets.at(-1)).toEqual(jw300Pose.target);
+
+    // 機種で画角そのものが変わっている（FX5U と同じ視点のままではない）ことを確かめる
+    expect(jw300Pose.target).not.toEqual(fx5uPose.target);
+    const distanceOf = (pose: typeof fx5uPose): number =>
+      Math.hypot(
+        pose.position[0] - pose.target[0],
+        pose.position[1] - pose.target[1],
+        pose.position[2] - pose.target[2],
+      );
+    expect(distanceOf(jw300Pose)).not.toBeCloseTo(distanceOf(fx5uPose), 3);
   });
 });

@@ -1,6 +1,8 @@
 import { useFrame, useThree } from '@react-three/fiber';
 import { useCallback, useEffect, useRef, type JSX } from 'react';
+import { useStore } from '../app/store.js';
 import type { CameraPreset } from '../app/store-types.js';
+import { boardForProblem } from '../session/plc-session.js';
 import { cameraPose, interpolatePose, type CameraPose } from './camera.js';
 
 /**
@@ -54,6 +56,10 @@ export function CameraPresets({
 }): JSX.Element | null {
   const camera = useThree((state) => state.camera);
   const invalidate = useThree((state) => state.invalidate);
+  // モードDで机上に載っている機種。`plc` プリセットの画角はこれで変わる（決定表#18）。
+  // `boardForProblem()` はPLC課題以外・未対応機種では `undefined` を返すので、そのときは
+  // 既定（FX5U）のまま（`cameraPose()` 側の既定）。
+  const plcUnit = useStore((state) => boardForProblem(state.problem).plcUnit);
   // 直近に反映した視点（次の遷移の `from`）。マウント直後は null。
   const currentPose = useRef<CameraPose | null>(null);
   const animation = useRef<PoseAnimation | null>(null);
@@ -81,7 +87,7 @@ export function CameraPresets({
   useEffect(() => {
     // 値そのものは使わない。「同じプリセットを押し直した」ことを効果に伝えるためだけの依存。
     void nonce;
-    const to = cameraPose(preset);
+    const to = cameraPose(preset, plcUnit === undefined ? {} : { plcUnit });
     if (currentPose.current === null) {
       // マウント直後・OrbitControls 接続前は補間せず即座に合わせる
       // （Canvas の初期カメラ位置から意図しない“飛行”をしないため）。
@@ -91,7 +97,7 @@ export function CameraPresets({
       animation.current = { from: currentPose.current, to, startMs: performance.now() };
     }
     invalidate();
-  }, [preset, nonce, applyPose, invalidate]);
+  }, [preset, nonce, plcUnit, applyPose, invalidate]);
 
   useFrame(() => {
     const anim = animation.current;
