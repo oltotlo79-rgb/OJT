@@ -89,7 +89,7 @@ export const MAX_COUNTER_PRESET = 32_767;
 export type CompileErrorCode =
   | 'empty-program' | 'grid-shape' | 'missing-end' | 'after-end' | 'coil-column'
   | 'contact-in-coil-column' | 'no-output' | 'dangling-vline' | 'timer-preset'
-  | 'counter-preset' | 'mc-unmatched';
+  | 'counter-preset' | 'mc-unmatched' | 'coil-on-read-only-device';
 export interface CompileError { code: CompileErrorCode; networkId: string; row?: number; col?: number; message: string }
 export interface CompileWarning { code: 'double-coil'; networkId: string; row: number; col: number; device: Device; message: string }
 export interface CompiledOutput { row: number; col: number; cell: OutputCell }
@@ -132,7 +132,7 @@ export function createPlcRuntime(program: CompiledProgram, options: PlcRuntimeOp
 - `PlcSnapshot.poweredCells` の `col` は **0〜15**（`IR_COLS` ぶん全部）。コイルの通電は `col === COIL_COL` の値。
 - **`poweredCells` の0列目は「空セルなら `false`」で返る**（`runtime.ts` の `state()` が `col === 0 && cell?.kind === 'empty'` を `false` に落とす。3A レビュー指摘への対応が landed 済み）。それ以外の行では0列目は必ず `true`（`Rails` が全行の0列目を左母線へ union する）。**UI 側でも `empty` のセルは塗らない**こと（Task 4）。ライブラリと画面の両方で弾くので、どちらが変わっても空行が光らない。
 - **`deleteNetwork()` は END ネットワークも消せる**（仕様どおり）。消すと `compile()` が `missing-end` を返すので、出力ウィンドウで気づける。エディタは END の削除を止めない。
-- **3A が足した検査は landed 済み**: `CompileErrorCode` に `'coil-on-read-only-device'`（X・SP への OUT/SET/RST など）が**既に入っている**。今後もコードは増えうるので、**`CompileErrorCode` を画面側で網羅しない**こと（`ConvertErrorLine.code` は `string` のまま扱い、`message` をそのまま出す）。`buildCell()`（Task 5）の許可表がこれらを先に弾くので、通常は出ない。
+- **3A が足した検査は landed 済み**: `CompileErrorCode` に `'coil-on-read-only-device'`（X・SP への OUT/SET/RST など）が**既に入っている**。`compile()` は **MC と MCR の対応**も見ており、開いた MC に対応する MCR が無い／別デバイスの MCR で閉じている／MC 無しの MCR がある、のいずれも `'mc-unmatched'` を返す（プログラム全体の誤りは `networkId` が空文字。決定表#4）。今後もコードは増えうるので、**`CompileErrorCode` を画面側で網羅しない**こと（`ConvertErrorLine.code` は `string` のまま扱い、`message` をそのまま出す）。`buildCell()`（Task 5）の許可表がこれらを先に弾くので、通常は出ない。
 - **3B が使ってよい追加の公開名**: `PlcRuntimeOptions` / `CLOCK_PERIOD_MS` / `TIMER_STEP_MS` / `MAX_TIMER_PRESET_MS` / `MAX_COUNTER_PRESET` / `DEVICE_PREFIX` / `NetworkOptions` / `CompiledNetwork` / `CompiledOutput` / `DeviceUsage` / `PlcRuntime`。
 - **性能（3A 実測）**: 1スキャン **0.06ms**、`judgePlc()` は 6 秒の課題で **約 72ms**。H-4 の「0.3〜1 秒」は見積もりで、実測はこれより軽い。それでも `judgeRepair` と同じく追従ループを止める（1級の 8 秒課題や将来の長い課題で `MAX_CATCHUP_TICKS`（200ms相当）に近づくため。余白を残す）。
 
@@ -185,7 +185,14 @@ export function getDialect(id: DialectId): DialectProfile;  // 未実装は Unkn
 export const MITSUBISHI_FX5U: DialectProfile;   // id 'mitsubishi' / displayName '三菱電機 MELSEC iQ-F FX5U（GX Works3風）'
 export function timerBaseMs(timer: Device): number;          // index>=256→1 / >=200→10 / それ以外→100
 export function roundTimerPreset(ms: number, baseMs: number): number;
-// validate() のコード: 'device-range' / 'timer-unit' / 'counter-range' / 'special-unsupported'
+// validate() のコード: 'device-range' / 'timer-unit' / 'timer-range' / 'counter-range' / 'special-unsupported'
+//   'timer-unit'  … K値が機種の刻み（100ms / 10ms / 1ms）に載っていない
+//   'timer-range' … K値が機種の上限（K32767 × 刻み）を超えている（3A レビューで 'timer-unit' から分離済み）
+// deviceRanges（FX5U。画面に数値を直書きせず `profile.deviceRanges` から引く。決定表#16）:
+//   input X 8進 0〜1023 / output Y 8進 0〜1023 / internal M 10進 0〜**7999**（M8000 以降は
+//   特殊リレー帯と重なるので通常の内部リレーとして使わせない。3A レビュー #M1）/
+//   timer T 10進 0〜7999 / counter C 10進 0〜32767 / special SP 10進 0〜2（`SP0`〜`SP2` は
+//   IR側の通し番号で、実デバイス名（`M8000`/`M8002`/`M8013`）は `specialDevices` が持つ）
 
 // convert.ts（landed）
 export interface ConvertError { source: 'structure' | 'dialect'; code: string; message: string; networkId?: string; row?: number; col?: number }
@@ -541,13 +548,13 @@ export function LogPanel(props); ElapsedTimer(props); PowerControls(props); Prob
 | バッチ | タスク | 対象 | モデル | 依存 |
 |---|---|---|---|---|
 | 1 | 1 → 2 → 3 | 純粋層・ストア・Worker プロトコル | 1=Sonnet（そのまま写す） / 2=**Opus**（`store.ts` MERGE） / 3=**Opus**（`sim.worker.ts` MERGE） | なし |
-| 2 | 4 → 5 → 6 ／ 7 ／ 10 | ラダーエディタ本体 ／ コメント欄・I/O表 ／ 3D | 4=**Opus** / 5=**Opus** / 6=Sonnet ／ 7=Sonnet ／ 10=**Opus**（`BoardScene.tsx` MERGE） | 1・2（10 は 2 のみ） |
-| 3 | 8 → 9 ／ 11 | GX Works3風の枠 → モニタ ／ 配線操作 | 8=Sonnet / 9=**Opus** / 11=**Opus** | 2（4〜7・10 が揃っていること）。**8 と 9 は直列**（9 が `LadderWorkspace.tsx` に差し込むため） |
+| 2 | 4 → 5 → 6 → 7 ／ 10 | ラダーエディタ本体・コメント欄・I/O表 ／ 3D | 4=**Opus** / 5=**Opus** / 6=**Opus** / 7=Sonnet ／ 10=**Opus**（`BoardScene.tsx` MERGE） | 1・2（10 は 2 のみ） |
+| 3 | 8 → 9 ／ 11 | GX Works3風の枠 → モニタ ／ 配線操作 | 8=**Opus** / 9=**Opus** ／ 11=**Opus** | 2（4〜7・10 が揃っていること）。**8 と 9 は直列**（9 が `LadderWorkspace.tsx` に差し込むため。MERGE 注意 #12） |
 | 4 | 12 → 13 | セッション画面 → 結果画面 | どちらも **Opus** | 1〜3 すべて |
-| 5 | 14 ／ 15 ／ 16 | 作業ファイル ／ ホーム・一覧 ／ 設定 | すべて Sonnet | 12 |
+| 5 | 14 → 16 ／ 15 | 作業ファイル → 設定 ／ ホーム・一覧 | すべて Sonnet | 12 |
 | 6 | 17 → 18 | E2E・スクリーンショット → 全体検証 | 17=**Opus** / 18=Sonnet | 1〜5 すべて |
 
-進め方: **1** → **2（3系統を並行）** → **3（2系統を並行）** → **4** → **5（3系統を並行）** → **6**。並行の上限は3系統までにする（`ja.ts` の追記が衝突するため。MERGE 注意 #1）。
+進め方: **1** → **2（2系統を並行）** → **3（2系統を並行）** → **4** → **5（2系統を並行）** → **6**。並行の上限は**2系統**にする（`ja.ts` の追記が衝突するため。MERGE 注意 #1）。**4 → 5 → 6 → 7 を直列にしたのは `ladder.module.css` を5タスクが末尾へ追記するから**、**14 → 16 を直列にしたのは `shared/ipc.ts` を2タスクが触るから**である（MERGE 注意 #13・#14）。
 
 「そのまま写す（Sonnet-verbatim）」と書いたタスクは、本プランのコードとテストをそのまま書き写せば通る。**どのタスクも、後のタスクが作るファイルを import しない**ことを各タスクの Files 欄で確認すること。
 
@@ -9876,7 +9883,7 @@ git commit -m "docs(plan-3b): tick the tasks and record the implementation delta
 
 ## 実装者への MERGE 注意
 
-複数のタスクが同じファイルへ別々の箇所から手を入れる。「推奨バッチ」で並行させるときは次の12点を守ること。
+複数のタスクが同じファイルへ別々の箇所から手を入れる。「推奨バッチ」で並行させるときは次の14点を守ること。
 
 1. **`i18n/ja.ts` への挿入は、挿入のたびにファイルを読み直してから行う。** Task 4・5・6・7・8・9・10・12・13・14・15・16 がそれぞれ別の位置へ追記する。本プランは「`JA.timeChart` の直後に `ladder`、その直後に `plc`」とだけ決めており、以降は**その2つのブロックの中**に足す。`JA.staticCheck` への3件（Task 13）と `JA.home.plcDesc`（Task 15）だけがブロックの外である。
 2. **`store.ts` は Task 2 の5箇所 ＋ Task 16 の3箇所だけ。** Task 2 は「import」「定数と `AnyJudgeResult`」「`AppState` のフィールド」「アクションの宣言」「実装と `plcFields()` の差し込み」。Task 16 は「`ladderGridCols` / `monitorColor` のフィールド」「`applyLadderSettings` の宣言」「その実装」。Task 10 が `openProblem()` に足す `camera: 'plc'` の1行もここに含める（Task 2 と同じバッチなら一緒に入れる）。
@@ -9890,6 +9897,8 @@ git commit -m "docs(plan-3b): tick the tasks and record the implementation delta
 10. **`app/App.tsx` の設定読込の `then` は1箇所だけ触る**（Task 16 の `applyLadderSettings`）。`setInterval` は Plan 2B で決めた2つのままにし、増やさない。
 11. **`e2e/projection.ts` は追記のみ**（Task 17）。既存の `import type { TerminalId } from '@ojt/circuit-sim';` と `SELF_HOLD_WIRES` を消さないこと（Plan 2B I-6 と同じ指摘）。
 12. **`ladder/LadderWorkspace.tsx` は Task 8 が作り、Task 9 が `workspaceSide` の先頭に `<MonitorPanel …/>` の1行を差し込む。この2つは同じバッチで直列に実行する**（並行させると片方の書き込みが失われる）。`ladder/LadderEditor.tsx` は Task 5 が作り、Task 8 が `errorCells` props を、Task 16 が `colors` props を足す（いずれも別バッチなので衝突しない）。
+13. **`ladder/ladder.module.css` は Task 4 が作り、Task 5・6・7・8・9 が**それぞれ末尾へ追記する**（レビュー指摘 I6）。クラス名は重ならない（`.grid*` = Task 4、`.input*` = Task 5、`.comment*` = Task 6、`.io*` = Task 7、`.output*` / `.tree*` / `.shortcut*` = Task 8、`.monitor*` / `.side*` = Task 9）が、**同じファイルの末尾へ同時に書くと片方が消える**。バッチ2の 4 → 5 → 6 → 7 は直列、バッチ3の 8 → 9 も直列なので、この順を崩さないこと。追記のたびにファイルを読み直す。
+14. **`shared/ipc.ts` は Task 14 の1箇所（`WorkFile` にモードDの項目）と Task 16 の1箇所（`AppSettings` に `defaultVendor` / `ladderGridCols` / `monitorColor`）だけ**（レビュー指摘 I6）。どちらも**同じバッチ5**なので、**14 → 16 の順に直列**で実行する（15 は別ファイルなので並行してよい）。`IPC_CHANNELS` は**6本のまま**で、どちらのタスクも増やさない（前提#5）。
 
 ---
 
