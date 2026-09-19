@@ -5,6 +5,8 @@ import {
   MAX_CAMERA_DISTANCE_MM,
   MAX_POLAR_ANGLE,
   MIN_CAMERA_DISTANCE_MM,
+  MIN_POLAR_ANGLE_RAD,
+  poseForDirection,
 } from '../src/renderer/three/camera.js';
 import {
   cameraReadoutText,
@@ -12,7 +14,12 @@ import {
   createPickDragGuard,
   GIZMO_DRAG_RAD_PER_PX,
   GIZMO_DRAG_THRESHOLD_PX,
+  GIZMO_HIT_BOXES,
+  GIZMO_HIT_RATIO,
+  GIZMO_TARGETS,
   gizmoDragToSpherical,
+  gizmoTargetById,
+  gizmoTargetForDirection,
   middleButtonActionFor,
   middleButtonAssignmentFor,
   mouseButtonAssignment,
@@ -180,6 +187,122 @@ describe('cameraPose（Blender 風に増えた視点）', () => {
       expect(distance(preset)).toBeGreaterThanOrEqual(MIN_CAMERA_DISTANCE_MM);
       expect(distance(preset)).toBeLessThanOrEqual(MAX_CAMERA_DISTANCE_MM);
     }
+  });
+});
+
+describe('ビューキューブの26箇所（面6・辺12・角8）。2026-09-19 の利用者要望', () => {
+  it('面6・辺12・角8 のちょうど26箇所があり、名前は重ならない', () => {
+    expect(GIZMO_TARGETS).toHaveLength(26);
+    expect(GIZMO_TARGETS.filter((target) => target.kind === 'face')).toHaveLength(6);
+    expect(GIZMO_TARGETS.filter((target) => target.kind === 'edge')).toHaveLength(12);
+    expect(GIZMO_TARGETS.filter((target) => target.kind === 'corner')).toHaveLength(8);
+    expect(new Set(GIZMO_TARGETS.map((target) => target.id)).size).toBe(26);
+  });
+
+  it('面だけが視点プリセットを持ち、6面が front/back/left/right/top/bottom に対応する', () => {
+    const presets = GIZMO_TARGETS.filter((target) => target.preset !== undefined);
+    expect(presets.map((target) => target.preset).sort()).toEqual([
+      'back',
+      'bottom',
+      'front',
+      'left',
+      'right',
+      'top',
+    ]);
+    for (const target of presets) expect(target.kind).toBe('face');
+    // 名札は日本語（§15）
+    expect(gizmoTargetById('front')?.label).toBe('正面');
+    expect(gizmoTargetById('back')?.label).toBe('背面');
+    expect(gizmoTargetById('top')?.label).toBe('上');
+  });
+
+  it('指した向きからいちばん近い箇所を引ける（面の法線・辺・角）', () => {
+    expect(gizmoTargetForDirection([0, 0, 1]).id).toBe('front');
+    expect(gizmoTargetForDirection([0, 0, 1]).preset).toBe('front');
+    expect(gizmoTargetForDirection([-1, 0, 0]).id).toBe('left');
+    // 辺と角は45°の向きそのもの（以前のように6面へ丸めない）
+    expect(gizmoTargetForDirection([0, 1, 1]).id).toBe('front-top');
+    expect(gizmoTargetForDirection([1, 1, 1]).id).toBe('front-top-right');
+    expect(gizmoTargetForDirection([-1, -1, -1]).id).toBe('back-bottom-left');
+    expect(gizmoTargetForDirection([1, 1, 1]).preset).toBeUndefined();
+  });
+
+  it('辺・角の当たり判定の箱は面の外周にあり、面の中央は空いている', () => {
+    expect(GIZMO_HIT_BOXES).toHaveLength(20);
+    const offset = 0.5 - GIZMO_HIT_RATIO / 2;
+    for (const box of GIZMO_HIT_BOXES) {
+      const target = gizmoTargetById(box.id);
+      expect(target).toBeDefined();
+      for (const axis of [0, 1, 2] as const) {
+        const component = target?.direction[axis] ?? 0;
+        // 向きのある軸はキューブの表面ぎわ、無い軸は中央（面の中央は空く）
+        expect(box.position[axis]).toBeCloseTo(component * offset, 10);
+        expect(box.size[axis]).toBeCloseTo(
+          component === 0 ? 1 - 2 * GIZMO_HIT_RATIO : GIZMO_HIT_RATIO,
+          10,
+        );
+      }
+    }
+    // 96px のキューブなら角は 26px 角以上（以前の drei 既定は 60px キューブの 15px 角）
+    expect(GIZMO_HIT_RATIO * 96).toBeGreaterThanOrEqual(26);
+  });
+});
+
+describe('poseForDirection（辺・角の45°視点。2026-09-19 の利用者要望）', () => {
+  const at = (direction: readonly [number, number, number]): [number, number, number] =>
+    poseForDirection(direction, { distance: 380, target: [0, 0, 0] }).position;
+
+  it('26箇所すべてが、注視点から見てその向きの視点になる（距離は変えない）', () => {
+    for (const target of GIZMO_TARGETS) {
+      const position = at(target.direction);
+      expect(Math.hypot(position[0], position[1], position[2])).toBeCloseTo(380, 6);
+      const horizontal = target.direction[0] !== 0 || target.direction[2] !== 0;
+      if (horizontal) {
+        // 水平成分の向きは必ず一致する（上下は極角の上限・下限で丸めることがある）
+        expect(Math.sign(Math.round(position[0] * 1e6))).toBe(Math.sign(target.direction[0]));
+        expect(Math.sign(Math.round(position[2] * 1e6))).toBe(Math.sign(target.direction[2]));
+      }
+      // 上向きの箇所は必ず注視点より上から見る
+      if (target.direction[1] > 0) expect(position[1]).toBeGreaterThan(0);
+    }
+  });
+
+  it('真上の面は注視点のほぼ真上（極の直前まで）に着く', () => {
+    const top = at([0, 1, 0]);
+    expect(top[1]).toBeGreaterThan(379);
+    expect(Math.hypot(top[0], top[2])).toBeLessThan(10);
+  });
+
+  it('角の視点は3軸とも45°の側にある', () => {
+    const corner = at([1, 1, 1]);
+    expect(corner[0]).toBeGreaterThan(0);
+    expect(corner[1]).toBeGreaterThan(0);
+    expect(corner[2]).toBeGreaterThan(0);
+    expect(corner[0]).toBeCloseTo(corner[2], 6);
+  });
+
+  it('下向きは極角の上限で丸める（OrbitControls に引き戻されない）', () => {
+    for (const direction of [
+      [0, -1, 0],
+      [0, -1, 1],
+      [-1, -1, -1],
+    ] as const) {
+      const position = at(direction);
+      const polar = Math.acos(position[1] / Math.hypot(...position));
+      expect(polar).toBeLessThanOrEqual(MAX_POLAR_ANGLE + 1e-9);
+      expect(polar).toBeGreaterThanOrEqual(MIN_POLAR_ANGLE_RAD - 1e-9);
+    }
+  });
+
+  it('注視点をずらしても向きは変わらず、注視点はそのまま保たれる', () => {
+    const pose = poseForDirection([0, 1, 1], { distance: 200, target: [10, -20, 30] });
+    expect(pose.target).toEqual([10, -20, 30]);
+    expect(
+      Math.hypot(pose.position[0] - 10, pose.position[1] + 20, pose.position[2] - 30),
+    ).toBeCloseTo(200, 6);
+    expect(pose.position[1]).toBeGreaterThan(-20);
+    expect(pose.position[2]).toBeGreaterThan(30);
+    expect(pose.up).toEqual([0, 1, 0]);
   });
 });
 
