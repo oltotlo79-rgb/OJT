@@ -22,5 +22,8 @@
     "@ojt/ladder-core": "workspace:*",
     "@ojt/schematic-core": "workspace:*",
     "zod": "4.6.0"
+  },
+  "devDependencies": {
+    "ajv": "^8.20.0"
   }
 }
