@@ -74,6 +74,11 @@ export function App(): JSX.Element {
     void api.getSettings().then(
       (settings) => {
         sounds.configure({ enabled: settings.soundEnabled, volume: settings.soundVolume });
+        useStore.getState().applyLadderSettings({
+          gridCols: settings.ladderGridCols,
+          monitorColor: settings.monitorColor,
+          vendor: settings.defaultVendor,
+        });
         // 設定ファイルが壊れていた（main が控えを取って既定値で起動した）ことを知らせる。§12.1
         if (settings.warning !== undefined) {
           useStore.getState().toast(settings.warning, 'error');

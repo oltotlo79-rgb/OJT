@@ -8,6 +8,7 @@ import {
 } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { app } from 'electron';
+import { IMPLEMENTED_DIALECT_IDS, MAX_GRID_COLS, MIN_GRID_COLS } from '@ojt/plc-dialects';
 import { DEFAULT_SETTINGS, type AppSettings, type AppSettingsResponse } from '../shared/ipc.js';
 import { MSG } from '../shared/messages.js';
 
@@ -59,6 +60,21 @@ function sanitizePatch(base: AppSettings, patch: unknown): AppSettings {
     next.soundVolume = Math.min(1, Math.max(0, volume));
   }
   if (typeof source['restorePrompt'] === 'boolean') next.restorePrompt = source['restorePrompt'];
+  const vendor = source['defaultVendor'];
+  if (
+    typeof vendor === 'string' &&
+    (IMPLEMENTED_DIALECT_IDS as readonly string[]).includes(vendor)
+  ) {
+    next.defaultVendor = vendor;
+  }
+  const gridCols = source['ladderGridCols'];
+  if (typeof gridCols === 'number' && Number.isFinite(gridCols)) {
+    next.ladderGridCols = Math.min(MAX_GRID_COLS, Math.max(MIN_GRID_COLS, Math.round(gridCols)));
+  }
+  const monitorColor = source['monitorColor'];
+  if (typeof monitorColor === 'string' && /^#[0-9a-fA-F]{6}$/.test(monitorColor)) {
+    next.monitorColor = monitorColor;
+  }
   return next;
 }
 

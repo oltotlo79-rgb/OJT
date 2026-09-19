@@ -126,6 +126,9 @@ describe('writeSettings（レビュー指摘: renderer からの入力を信用�
       soundEnabled: false,
       soundVolume: 0.25,
       restorePrompt: false,
+      defaultVendor: DEFAULT_SETTINGS.defaultVendor,
+      ladderGridCols: DEFAULT_SETTINGS.ladderGridCols,
+      monitorColor: DEFAULT_SETTINGS.monitorColor,
     });
     expect(readSettings()).toEqual(saved);
   });
@@ -136,7 +139,15 @@ describe('writeSettings（レビュー指摘: renderer からの入力を信用�
     const raw = onDisk();
     expect(raw['evilKey']).toBeUndefined();
     expect(Object.keys(raw).sort()).toEqual(
-      ['restorePrompt', 'soundEnabled', 'soundVolume', 'userContentDir'].sort(),
+      [
+        'defaultVendor',
+        'ladderGridCols',
+        'monitorColor',
+        'restorePrompt',
+        'soundEnabled',
+        'soundVolume',
+        'userContentDir',
+      ].sort(),
     );
   });
 
@@ -187,5 +198,18 @@ describe('writeSettings（レビュー指摘: renderer からの入力を信用�
     expect(saved.userContentDir).toBe('C:/a');
     expect(saved.soundVolume).toBe(0.7);
     expect(saved.soundEnabled).toBe(false);
+  });
+
+  it('defaults and clamps the PLC settings (§10.6)', () => {
+    expect(DEFAULT_SETTINGS.defaultVendor).toBe('mitsubishi');
+    expect(DEFAULT_SETTINGS.ladderGridCols).toBe(11);
+    expect(DEFAULT_SETTINGS.monitorColor).toBe('#1E64FF');
+    // `main/settings.ts` は正規化を単体の `normalizeSettings()` としては公開していない
+    // （`sanitizePatch(base, patch)` が非公開のまま既定値とマージする）。ここでは公開APIの
+    // `writeSettings()` 経由で同じ正規化（クランプ・ホワイトリスト）を確かめる。
+    expect(writeSettings({ ladderGridCols: 2 }).ladderGridCols).toBe(8);
+    expect(writeSettings({ ladderGridCols: 99 }).ladderGridCols).toBe(15);
+    expect(writeSettings({ monitorColor: 'red' }).monitorColor).toBe('#1E64FF');
+    expect(writeSettings({ defaultVendor: 'omron' }).defaultVendor).toBe('mitsubishi');
   });
 });

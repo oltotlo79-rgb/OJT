@@ -1,10 +1,24 @@
+import {
+  DIALECT_IDS,
+  IMPLEMENTED_DIALECT_IDS,
+  MAX_GRID_COLS,
+  MIN_GRID_COLS,
+} from '@ojt/plc-dialects';
 import { useEffect, useState, type JSX } from 'react';
-import type { AppSettings, AppSettingsResponse } from '../../shared/ipc.js';
+import { DEFAULT_SETTINGS, type AppSettings, type AppSettingsResponse } from '../../shared/ipc.js';
 import { ojtApi } from '../app/ojt-api.js';
 import { useStore } from '../app/store.js';
 import { sounds } from '../audio/sounds.js';
 import { JA } from '../i18n/ja.js';
 import styles from './screens.module.css';
+
+/** メーカーの表示名（Phase 3 は三菱のみ実装。決定表#13）。 */
+const VENDOR_LABELS: Record<string, string> = {
+  mitsubishi: '三菱電機',
+  jtekt: 'ジェイテクト',
+  omron: 'オムロン',
+  sharp: 'シャープ',
+};
 
 /**
  * 設定画面。設計仕様 §12.1 / §15。
@@ -62,6 +76,12 @@ export function Settings(): JSX.Element {
       (saved) => {
         setSettings(saved);
         sounds.configure({ enabled: saved.soundEnabled, volume: saved.soundVolume });
+        // 設定画面にいる間もラダーへ即時反映する（§12.1）。起動直後の反映は App.tsx が担う。
+        useStore.getState().applyLadderSettings({
+          gridCols: saved.ladderGridCols,
+          monitorColor: saved.monitorColor,
+          vendor: saved.defaultVendor,
+        });
         if (options.silent !== true) toast(JA.settings.saved);
       },
       (error: unknown) => {
@@ -78,6 +98,17 @@ export function Settings(): JSX.Element {
   const commitVolume = (): void => {
     if (settings === undefined) return;
     patch({ soundVolume: settings.soundVolume }, { silent: true });
+  };
+
+  /** ラダーの表示列数の確定。範囲外はここで丸めてから保存する（§10.6）。 */
+  const commitGridCols = (): void => {
+    if (settings === undefined) return;
+    const clamped = Math.min(
+      MAX_GRID_COLS,
+      Math.max(MIN_GRID_COLS, Math.round(settings.ladderGridCols)),
+    );
+    if (clamped !== settings.ladderGridCols) setSettings({ ...settings, ladderGridCols: clamped });
+    patch({ ladderGridCols: clamped });
   };
 
   return (
@@ -172,6 +203,98 @@ export function Settings(): JSX.Element {
                 patch({ restorePrompt: event.target.checked });
               }}
             />
+          </section>
+
+          <section data-testid="plc-settings">
+            <h2 style={{ fontSize: 14, margin: '16px 0 6px' }}>{JA.settings.plcGroup}</h2>
+
+            <section className={styles.settingRow}>
+              <label htmlFor="setting-vendor">{JA.settings.vendor}</label>
+              <select
+                id="setting-vendor"
+                data-testid="setting-vendor"
+                value={settings.defaultVendor}
+                onChange={(event) => {
+                  patch({ defaultVendor: event.target.value });
+                }}
+              >
+                {DIALECT_IDS.map((id) => (
+                  <option
+                    key={id}
+                    value={id}
+                    data-testid={`vendor-option-${id}`}
+                    disabled={!IMPLEMENTED_DIALECT_IDS.includes(id)}
+                  >
+                    {VENDOR_LABELS[id] ?? id}
+                    {IMPLEMENTED_DIALECT_IDS.includes(id)
+                      ? ''
+                      : `（${JA.settings.vendorUnimplemented}）`}
+                  </option>
+                ))}
+              </select>
+            </section>
+            <p className={styles.subtitle} data-testid="vendor-note">
+              {JA.settings.vendorHelp} {JA.settings.vendorUnimplemented}
+            </p>
+            <p className={styles.subtitle} data-testid="vendor-assumption">
+              {ASSUMPTION_NOTICE}
+            </p>
+
+            <section className={styles.settingRow}>
+              <label htmlFor="setting-grid-cols">{JA.settings.gridCols}</label>
+              <input
+                id="setting-grid-cols"
+                type="number"
+                min={MIN_GRID_COLS}
+                max={MAX_GRID_COLS}
+                value={settings.ladderGridCols}
+                data-testid="setting-grid-cols"
+                onChange={(event) => {
+                  const value = Number(event.target.value);
+                  setSettings({
+                    ...settings,
+                    ladderGridCols: Number.isFinite(value) ? value : settings.ladderGridCols,
+                  });
+                }}
+                onBlur={commitGridCols}
+              />
+            </section>
+            <p className={styles.subtitle} data-testid="grid-cols-help">
+              {JA.settings.gridColsHelp}
+            </p>
+
+            <section className={styles.settingRow}>
+              <label htmlFor="setting-monitor-color">{JA.settings.monitorColor}</label>
+              <input
+                id="setting-monitor-color"
+                type="color"
+                value={settings.monitorColor}
+                data-testid="setting-monitor-color"
+                onChange={(event) => {
+                  setSettings({ ...settings, monitorColor: event.target.value });
+                }}
+                onBlur={(event) => {
+                  patch({ monitorColor: event.target.value });
+                }}
+              />
+            </section>
+            <p className={styles.subtitle} data-testid="monitor-color-help">
+              {JA.settings.monitorColorHelp}
+            </p>
+
+            <button
+              type="button"
+              data-testid="setting-plc-reset"
+              onClick={() => {
+                patch({
+                  defaultVendor: DEFAULT_SETTINGS.defaultVendor,
+                  ladderGridCols: DEFAULT_SETTINGS.ladderGridCols,
+                  monitorColor: DEFAULT_SETTINGS.monitorColor,
+                });
+              }}
+            >
+              {JA.settings.resetPlcGroup}
+            </button>
           </section>
 
           <section className={styles.about} data-testid="about">

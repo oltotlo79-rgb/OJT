@@ -54,6 +54,7 @@ afterEach(() => {
 describe('設定の読み込み（§12.1）', () => {
   it('入力欄に getSettings の値がそのまま出る', async () => {
     apiWith({
+      ...DEFAULT_SETTINGS,
       userContentDir: 'C:/problems',
       soundEnabled: false,
       soundVolume: 0.25,

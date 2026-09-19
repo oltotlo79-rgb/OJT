@@ -169,6 +169,12 @@ export interface AppSettings {
   soundVolume: number;
   /** 起動時に一時保存から復帰するか確認する。§12.3 */
   restorePrompt: boolean;
+  /** モードDの既定メーカー（Phase 3 は `mitsubishi` のみ実装）。§10.5 / §12.1 */
+  defaultVendor: string;
+  /** ラダーの表示列数（接点列。8〜15）。§10.6 */
+  ladderGridCols: number;
+  /** モニタ中の通電表示色（`#rrggbb`）。§10.6 */
+  monitorColor: string;
 }
 
 /**
@@ -186,6 +192,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
   soundEnabled: true,
   soundVolume: 0.5,
   restorePrompt: true,
+  defaultVendor: 'mitsubishi',
+  ladderGridCols: 11,
+  monitorColor: '#1E64FF',
 };
 
 /** preload が `window.ojt` に公開する型付きAPI。§4.3 */

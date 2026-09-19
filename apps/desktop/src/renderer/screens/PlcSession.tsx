@@ -149,11 +149,8 @@ export function PlcSession(): JSX.Element {
   const sessionEpoch = useStore((s) => s.sessionEpoch);
 
   const profile = useMemo(() => getDialect(dialectId), [dialectId]);
-  /*
-   * 表示列数はスキンの既定（三菱は11）。**Task 16** が設定画面の値（8〜15）で上書きする。
-   * このタスクでは設定に依存させない（バッチ4がバッチ5より先に動くため）。§10.6
-   */
-  const gridCols = profile.gridCols;
+  /** 表示列数は設定画面の値（8〜15。既定11）。§10.6 */
+  const gridCols = useStore((s) => s.ladderGridCols);
   const board = useMemo(() => boardForProblem(problem), [problem]);
 
   // 視点のショートカットはラダーにフォーカスが無いときだけ効かせる（決定表#3）
