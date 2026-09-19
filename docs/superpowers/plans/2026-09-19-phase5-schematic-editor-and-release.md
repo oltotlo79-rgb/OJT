@@ -4319,3 +4319,1601 @@ git add apps/desktop && git commit -m "feat(desktop): suggest the suspect wiring
 **期待**: `suspect-list.test.tsx` の **4件**が増え、既存の `result-view.test.tsx` / `plc-result.test.tsx` / `inspect-*-result.test.tsx` はそのまま通る（新しい props は任意）。
 
 ---
+
+## Task 10: 端子リストによるキーボード配線（UXレビュー #29）
+
+**モデル: Sonnet**（本書のコードをそのまま書き写す。判断は決定表#12 で済んでいる）
+
+**Files:**
+- Create: `apps/desktop/src/renderer/session/terminal-list.ts`
+- Create: `apps/desktop/src/renderer/panels/TerminalListPanel.tsx`
+- Modify: `apps/desktop/src/renderer/panels/panels.module.css`（末尾追記）
+- Modify: `apps/desktop/src/renderer/screens/Session.tsx`（右パネルに差し込む）
+- Modify: `apps/desktop/src/renderer/i18n/ja.ts`（`JA.terminalList` ブロック）
+- Test: `apps/desktop/test/terminal-list.test.tsx`（新規）
+
+決定表#12: 選択は `PickHit`（`kind: 'terminal'`）にして**既存の `pickToAction()` に通す**。配線の規則は1箇所のまま。
+
+- [ ] **Step 1: 失敗するテストを書く**
+
+`apps/desktop/test/terminal-list.test.tsx`:
+
+```tsx
+import { JIPM_BOARD } from '@ojt/board-model';
+import { BUILTIN_ASSEMBLE_PROBLEMS } from '@ojt/content';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { sessionForProblem } from '../src/renderer/app/store.js';
+import { TerminalListPanel } from '../src/renderer/panels/TerminalListPanel.js';
+import { terminalRows } from '../src/renderer/session/terminal-list.js';
+
+const problem = BUILTIN_ASSEMBLE_PROBLEMS.find((p) => p.id === 'b-001');
+if (problem === undefined) throw new Error('b-001 が見つかりません');
+
+afterEach(() => {
+  cleanup();
+});
+
+describe('terminalRows', () => {
+  const session = sessionForProblem(problem);
+
+  it('lists only wirable board terminals, grouped by device', () => {
+    const rows = terminalRows(JIPM_BOARD, session);
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows.every((r) => r.id.includes('.'))).toBe(true);
+    // AC一次側（CB / SW / PS）は配線できないので出ない（§6.4）
+    expect(rows.some((r) => r.id.startsWith('CB.') || r.id.startsWith('SW.') || r.id.startsWith('PS.'))).toBe(false);
+    expect([...new Set(rows.map((r) => r.group))]).toContain('CR1');
+  });
+
+  it('uses the role id for socket terminals (CR1 ⑨ COM, not S1)', () => {
+    const rows = terminalRows(JIPM_BOARD, session);
+    const com = rows.find((r) => r.id === 'CR1.9');
+    expect(com?.label).toContain('CR1');
+    expect(com?.label).toContain('COM');
+  });
+
+  it('counts the wires at each terminal and marks the full ones', () => {
+    const rows = terminalRows(JIPM_BOARD, session);
+    // チェック用回路の既設配線が P.1 を1本使っている（§6.3）
+    expect(rows.find((r) => r.id === 'P.1')?.wireCount).toBe(1);
+    expect(rows.find((r) => r.id === 'P.1')?.full).toBe(false);
+  });
+
+  it('filters by the search text over both the id and the label', () => {
+    const rows = terminalRows(JIPM_BOARD, session, 'PL1');
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows.every((r) => `${r.id}${r.label}`.includes('PL1'))).toBe(true);
+  });
+});
+
+describe('TerminalListPanel（UXレビュー #29）', () => {
+  const session = sessionForProblem(problem);
+
+  it('renders every terminal as a focusable button', () => {
+    render(<TerminalListPanel board={JIPM_BOARD} session={session} pendingTerminal={undefined} onPick={vi.fn()} onCancel={vi.fn()} />);
+    const buttons = screen.getAllByTestId(/^terminal-row-/u);
+    expect(buttons.length).toBeGreaterThan(0);
+    for (const button of buttons) expect(button.tagName).toBe('BUTTON');
+  });
+
+  it('hands a PickHit to the caller on click and on Enter', () => {
+    const onPick = vi.fn();
+    render(<TerminalListPanel board={JIPM_BOARD} session={session} pendingTerminal={undefined} onPick={onPick} onCancel={vi.fn()} />);
+    const row = screen.getByTestId('terminal-row-CR1.14');
+    fireEvent.click(row);
+    expect(onPick).toHaveBeenCalledWith({ kind: 'terminal', id: 'CR1.14', wirable: true, label: expect.any(String) });
+    onPick.mockClear();
+    fireEvent.keyDown(row, { key: 'Enter' });
+    // ブラウザは Enter を click に直すので、ここでは二重に呼ばないことを確かめる
+    expect(onPick).not.toHaveBeenCalled();
+  });
+
+  it('shows which terminal is waiting for its partner and offers a cancel', () => {
+    const onCancel = vi.fn();
+    render(<TerminalListPanel board={JIPM_BOARD} session={session} pendingTerminal={'CR1.14' as never} onPick={vi.fn()} onCancel={onCancel} />);
+    expect(screen.getByTestId('terminal-pending')).toHaveTextContent('CR1.14');
+    fireEvent.click(screen.getByTestId('terminal-cancel'));
+    expect(onCancel).toHaveBeenCalled();
+  });
+
+  it('disables the terminals that already hold two wires (§6.6)', () => {
+    const full = sessionForProblem(problem);
+    // `P.1` は既設配線で1本、ここで1本足して満杯にする
+    full.wires.push({ id: 'w-x', from: 'P.1' as never, to: 'CR1.14' as never, color: '青', locked: false, open: false });
+    render(<TerminalListPanel board={JIPM_BOARD} session={full} pendingTerminal={undefined} onPick={vi.fn()} onCancel={vi.fn()} />);
+    expect(screen.getByTestId('terminal-row-P.1')).toBeDisabled();
+  });
+
+  it('narrows the list as the trainee types', () => {
+    render(<TerminalListPanel board={JIPM_BOARD} session={session} pendingTerminal={undefined} onPick={vi.fn()} onCancel={vi.fn()} />);
+    fireEvent.change(screen.getByTestId('terminal-search'), { target: { value: 'PL1' } });
+    const rows = screen.getAllByTestId(/^terminal-row-/u);
+    expect(rows.every((r) => (r.textContent ?? '').includes('PL1'))).toBe(true);
+  });
+});
+```
+
+- [ ] **Step 2: `session/terminal-list.ts` を実装する**
+
+```ts
+import {
+  isOffBoardTerminal,
+  roleLabel,
+  type BoardDefinition,
+  type BoardSession,
+  type BoardTerminal,
+} from '@ojt/board-model';
+import { MAX_WIRES_PER_TERMINAL, parseTerminalId, type TerminalId } from '@ojt/circuit-sim';
+
+/**
+ * 端子リスト（キーボードで配線するための一覧）。UXレビュー #29（2026-09-19）。
+ * §15 のアクセシビリティは「課題選択・判定・結果確認まで」しか求めていないが、
+ * 利用者要求「分かりやすく直感的に」に応えて**配線もキーボードで完結**させる。
+ * React も three も使わないので Vitest だけで検証できる（§14.2）。
+ */
+
+/** 一覧の1行。 */
+export interface TerminalRow {
+  id: TerminalId;
+  /** 画面に出す名前（`CR1 ⑨ COM` / `PL1+` / `P1`）。 */
+  label: string;
+  /** まとまりの見出し（`CR1` / `TB_PL` / `P` のような部品ID。ソケットは役割ID）。 */
+  group: string;
+  /** いまその端子に繋がっている電線の本数。 */
+  wireCount: number;
+  /** 上限（2本）に達していて、これ以上繋げないか。§6.6 */
+  full: boolean;
+}
+
+/** ソケットの端子は役割ID（`CR1`）で見せる。盤定義のラベルは物理ID（`S1 ⑨ com`）。§6.4 */
+function labelOf(session: BoardSession, terminal: BoardTerminal): string {
+  const { part } = parseTerminalId(terminal.id);
+  const words = terminal.label.split(' ');
+  const number = words.at(-2);
+  if (number === undefined) return terminal.label;
+  return `${part} ${number} ${roleLabel(terminal.role)}`;
+}
+
+/** その端子に繋がっている電線の本数（既設配線も数える）。§6.6 */
+function wireCountAt(session: BoardSession, id: TerminalId): number {
+  return session.wires.filter((w) => w.from === id || w.to === id).length;
+}
+
+/**
+ * 配線できる盤の端子の一覧。`query` を渡すと端子IDと名前の両方で絞り込む。
+ * 机上の端子（PLC本体・壁コンセント）も**盤の一部として出す**（モードDで使う）。
+ */
+export function terminalRows(
+  board: BoardDefinition,
+  session: BoardSession,
+  query = '',
+): TerminalRow[] {
+  const needle = query.trim();
+  return board.terminals
+    .filter((terminal) => terminal.wirable)
+    .map((terminal) => {
+      const count = wireCountAt(session, terminal.id);
+      return {
+        id: terminal.id,
+        label: labelOf(session, terminal),
+        group: parseTerminalId(terminal.id).part,
+        wireCount: count,
+        full: count >= MAX_WIRES_PER_TERMINAL,
+      };
+    })
+    .filter((row) => needle.length === 0 || `${row.id}${row.label}`.includes(needle));
+}
+
+/** 机上の端子か（見出しに「机上」を付ける）。§10.1 */
+export function isDeskRow(row: TerminalRow): boolean {
+  return isOffBoardTerminal(row.id);
+}
+```
+
+**注記**: `labelOf()` は `session` を受け取るが、端子IDは既に**役割ベース**（`toSessionTerminal()` を通った `CR1.9`）なので実際には使わない。引数に残すのは、将来ソケットの役割割当を見て名前を変えるときの受け口を1箇所にしておくためである——という理由が無いなら引数を外すこと。**実装時は `session` を使わないなら引数から外す**（未使用引数は lint が拾う）。
+
+- [ ] **Step 3: `TerminalListPanel.tsx` を実装する**
+
+```tsx
+import type { BoardDefinition, BoardSession } from '@ojt/board-model';
+import type { TerminalId } from '@ojt/circuit-sim';
+import { useMemo, useState, type JSX } from 'react';
+import { JA } from '../i18n/ja.js';
+import type { PickHit } from '../session/interaction.js';
+import { terminalRows, type TerminalRow } from '../session/terminal-list.js';
+import styles from './panels.module.css';
+
+/**
+ * 端子リスト（キーボードで配線する）。UXレビュー #29 / Plan 5 決定表#12。
+ * 選ぶと `PickHit`（`kind: 'terminal'`）を親へ渡すだけで、**配線の規則は
+ * `pickToAction()`（`session/interaction.ts`）がそのまま受け持つ**。
+ */
+
+/** まとまりごとに並べ替える（部品IDの出現順）。 */
+function byGroup(rows: readonly TerminalRow[]): Array<{ group: string; rows: TerminalRow[] }> {
+  const out: Array<{ group: string; rows: TerminalRow[] }> = [];
+  for (const row of rows) {
+    const found = out.find((g) => g.group === row.group);
+    if (found === undefined) out.push({ group: row.group, rows: [row] });
+    else found.rows.push(row);
+  }
+  return out;
+}
+
+/** 端子リストのパネル。 */
+export function TerminalListPanel({
+  board,
+  session,
+  pendingTerminal,
+  onPick,
+  onCancel,
+}: {
+  board: BoardDefinition;
+  session: BoardSession;
+  /** 配線1本目に選んだ端子（`store.pendingTerminal`）。 */
+  pendingTerminal: TerminalId | undefined;
+  onPick: (hit: PickHit) => void;
+  onCancel: () => void;
+}): JSX.Element {
+  const [query, setQuery] = useState('');
+  const rows = useMemo(() => terminalRows(board, session, query), [board, session, query]);
+  return (
+    <section className={styles.terminalList} data-testid="terminal-list">
+      <h2 className={styles.panelTitle}>{JA.terminalList.title}</h2>
+      <p className={styles.terminalHint}>{JA.terminalList.hint}</p>
+      <input
+        type="search"
+        className={styles.terminalSearch}
+        data-testid="terminal-search"
+        aria-label={JA.terminalList.search}
+        placeholder={JA.terminalList.search}
+        value={query}
+        onChange={(event) => {
+          setQuery(event.target.value);
+        }}
+      />
+      {pendingTerminal === undefined ? null : (
+        <p className={styles.terminalPending} data-testid="terminal-pending">
+          {JA.terminalList.pending}: {pendingTerminal}
+          <button type="button" data-testid="terminal-cancel" onClick={onCancel}>
+            {JA.terminalList.cancel}
+          </button>
+        </p>
+      )}
+      <div className={styles.terminalGroups}>
+        {byGroup(rows).map((group) => (
+          <div key={group.group} className={styles.terminalGroup}>
+            <span className={styles.terminalGroupName}>{group.group}</span>
+            {group.rows.map((row) => (
+              <button
+                key={row.id}
+                type="button"
+                className={styles.terminalRow}
+                data-testid={`terminal-row-${row.id}`}
+                aria-pressed={pendingTerminal === row.id}
+                disabled={row.full && pendingTerminal !== row.id}
+                title={row.full ? JA.terminalList.full : row.label}
+                onClick={() => {
+                  onPick({ kind: 'terminal', id: row.id, wirable: true, label: row.label });
+                }}
+              >
+                <span className={styles.terminalName}>{row.label}</span>
+                <span className={styles.terminalCount}>{row.wireCount}/2</span>
+              </button>
+            ))}
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+```
+
+`i18n/ja.ts` に `JA.terminalList` ブロックを足す:
+
+```ts
+  /** 端子リスト（キーボードで配線する）。UXレビュー #29 */
+  terminalList: {
+    title: '端子リスト（キーボード配線）',
+    hint: 'Tab で端子を移動し、Enter で選びます。2つ選ぶと電線が1本つながります。',
+    search: '端子を探す',
+    pending: '1本目',
+    cancel: '取り消す',
+    full: 'この端子には既に2本つながっています（§6.6）',
+  },
+```
+
+- [ ] **Step 4: `Session.tsx` の右パネルに差し込む**
+
+`PartsPanel` の直後（回路図ヒントより前）に:
+
+```tsx
+          <TerminalListPanel
+            board={JIPM_BOARD}
+            session={session}
+            pendingTerminal={pendingTerminal}
+            onPick={onPick}
+            onCancel={() => {
+              runAction(escapeToAction({ mode, pendingTerminal, selectedWire, wireColor }));
+            }}
+          />
+```
+
+`onPick` は3Dのピックと**同じコールバック**である（決定表#12）。`escapeToAction` は既に import 済み。
+
+- [ ] **Step 5: CSS を足してテストを走らせる**
+
+`panels.module.css` の末尾に `.terminalList` / `.terminalHint` / `.terminalSearch` / `.terminalPending` / `.terminalGroups` / `.terminalGroup` / `.terminalGroupName` / `.terminalRow` / `.terminalName` / `.terminalCount` を足す。**`.terminalRow:focus-visible` に枠**を置き、`.terminalGroups` は `max-height: 240px; overflow-y: auto;` で右パネルを押し出さない。余白はすべて4の倍数。
+
+```
+pnpm --filter @ojt/desktop test terminal-list
+pnpm -r typecheck && pnpm lint
+git add apps/desktop && git commit -m "feat(desktop): add the keyboard wiring terminal list"
+```
+
+**期待**: `terminal-list.test.tsx` の **10件**が増える。
+
+---
+
+## Task 11: 性能の計測窓（`PerfProbe`）
+
+**モデル: Sonnet-verbatim**
+
+**Files:**
+- Create: `apps/desktop/src/renderer/three/PerfProbe.tsx`
+- Modify: `apps/desktop/src/renderer/three/BoardScene.tsx`（`PerfProbe` と隠し要素）
+- Test: `apps/desktop/test/perf-probe.test.ts`（新規）
+
+決定表#16: `frameloop="demand"` では `useFrame` が**描いたフレームだけ**走るので、これが「無操作で描いていない」ことの証明にもなる。
+
+- [ ] **Step 1: 失敗するテストを書く**
+
+`apps/desktop/test/perf-probe.test.ts`（純関数だけを検査する。`useFrame` は E2E が確かめる）:
+
+```ts
+import { describe, expect, it } from 'vitest';
+import {
+  formatPerf,
+  parsePerf,
+  PERF_INTERVAL_MS,
+  perfSample,
+  type PerfReadout,
+} from '../src/renderer/three/PerfProbe.js';
+
+describe('perfSample', () => {
+  it('turns counters into a readout with fps', () => {
+    const sample = perfSample(
+      { frames: 30, triangles: 120_000, calls: 84, geometries: 210, textures: 6 },
+      500,
+    );
+    expect(sample).toEqual({ frames: 30, fps: 60, triangles: 120_000, calls: 84, geometries: 210, textures: 6 });
+  });
+
+  it('reports 0 fps when no time has passed (never divides by zero)', () => {
+    expect(perfSample({ frames: 0, triangles: 0, calls: 0, geometries: 0, textures: 0 }, 0).fps).toBe(0);
+  });
+
+  it('rounds fps to one decimal so the readout is stable to read', () => {
+    expect(perfSample({ frames: 7, triangles: 0, calls: 0, geometries: 0, textures: 0 }, 250).fps).toBe(28);
+  });
+});
+
+describe('formatPerf / parsePerf', () => {
+  it('round-trips through the hidden element text', () => {
+    const readout: PerfReadout = { frames: 12, fps: 48, triangles: 1000, calls: 10, geometries: 5, textures: 2 };
+    expect(parsePerf(formatPerf(readout))).toEqual(readout);
+  });
+
+  it('returns undefined for text that is not a readout', () => {
+    expect(parsePerf('')).toBeUndefined();
+    expect(parsePerf('not json')).toBeUndefined();
+    expect(parsePerf('{"frames":1}')).toBeUndefined();
+  });
+});
+
+describe('PERF_INTERVAL_MS', () => {
+  it('is short enough for an E2E to sample and long enough not to cost a frame', () => {
+    expect(PERF_INTERVAL_MS).toBeGreaterThanOrEqual(100);
+    expect(PERF_INTERVAL_MS).toBeLessThanOrEqual(500);
+  });
+});
+```
+
+- [ ] **Step 2: `three/PerfProbe.tsx` を実装する**
+
+```tsx
+import { useFrame, useThree } from '@react-three/fiber';
+import { useRef, type RefObject } from 'react';
+
+/**
+ * 性能の計測窓。設計仕様 §15（内蔵GPUで60fps・三角形20万以下）/ Plan 5 決定表#16。
+ *
+ * `frameloop="demand"` では `useFrame` は**実際に描いたフレームだけ**走る。そこで
+ * ①累計の描画枚数（無操作で増えなければ `demand` が効いている）②直近の fps
+ * ③three の `gl.info`（三角形数・ドローコール・ジオメトリ数・テクスチャ数）を
+ * 隠し要素へ JSON で書き出す。E2E（`perf.spec.ts`）と実機確認の唯一の窓である。
+ *
+ * 書き出しは `PERF_INTERVAL_MS` ごとに間引く（毎フレーム DOM を触ると計測が計測を邪魔する）。
+ * React の状態にはしない（毎フレーム再描画になる。`camera-readout` と同じ流儀）。
+ */
+
+/** 書き出しの間隔[ms]。 */
+export const PERF_INTERVAL_MS = 250;
+
+/** 隠し要素に書く値。 */
+export interface PerfReadout {
+  /** この窓が数え始めてからの累計の描画枚数。 */
+  frames: number;
+  /** 直近 `PERF_INTERVAL_MS` の実効フレームレート[fps]（小数1桁）。 */
+  fps: number;
+  triangles: number;
+  calls: number;
+  geometries: number;
+  textures: number;
+}
+
+/** `gl.info` から取る生の値。 */
+export interface PerfCounters {
+  frames: number;
+  triangles: number;
+  calls: number;
+  geometries: number;
+  textures: number;
+}
+
+/** 生の値と経過時間から読み値を作る（純粋関数）。 */
+export function perfSample(counters: PerfCounters, elapsedMs: number): PerfReadout {
+  const fps = elapsedMs <= 0 ? 0 : Math.round((counters.frames / elapsedMs) * 1000 * 10) / 10;
+  return {
+    frames: counters.frames,
+    fps,
+    triangles: counters.triangles,
+    calls: counters.calls,
+    geometries: counters.geometries,
+    textures: counters.textures,
+  };
+}
+
+/** 隠し要素に書く文字列。 */
+export function formatPerf(readout: PerfReadout): string {
+  return JSON.stringify(readout);
+}
+
+/** 隠し要素の文字列を読み値に戻す（E2E が使う。形が違えば undefined）。 */
+export function parsePerf(text: string): PerfReadout | undefined {
+  if (text.length === 0) return undefined;
+  let raw: unknown;
+  try {
+    raw = JSON.parse(text);
+  } catch {
+    return undefined;
+  }
+  if (raw === null || typeof raw !== 'object') return undefined;
+  const value = raw as Partial<PerfReadout>;
+  const keys: Array<keyof PerfReadout> = ['frames', 'fps', 'triangles', 'calls', 'geometries', 'textures'];
+  if (keys.some((key) => typeof value[key] !== 'number')) return undefined;
+  return value as PerfReadout;
+}
+
+/**
+ * 計測窓（`Canvas` の中に置く）。描いたフレームごとに数え、`PERF_INTERVAL_MS` ごとに書き出す。
+ * `frames` は**累計**なので、無操作のあいだ増えなければ `frameloop="demand"` が効いている。
+ */
+export function PerfProbe({ nodeRef }: { nodeRef: RefObject<HTMLDivElement | null> }): null {
+  const gl = useThree((state) => state.gl);
+  const total = useRef(0);
+  const windowFrames = useRef(0);
+  const windowStart = useRef(0);
+  useFrame(() => {
+    total.current += 1;
+    windowFrames.current += 1;
+    const now = performance.now();
+    if (windowStart.current === 0) windowStart.current = now;
+    const elapsed = now - windowStart.current;
+    if (elapsed < PERF_INTERVAL_MS) return;
+    const node = nodeRef.current;
+    if (node !== null) {
+      node.textContent = formatPerf(
+        perfSample(
+          {
+            frames: windowFrames.current,
+            triangles: gl.info.render.triangles,
+            calls: gl.info.render.calls,
+            geometries: gl.info.memory.geometries,
+            textures: gl.info.memory.textures,
+          },
+          elapsed,
+        ),
+      );
+      // 累計は別に持つ（`frames` は窓ごとの枚数なので、E2E が「増えていないこと」を見るために
+      // 累計も出す）。属性で出すと JSON を壊さずに済む
+      node.dataset['totalFrames'] = String(total.current);
+    }
+    windowFrames.current = 0;
+    windowStart.current = now;
+  });
+  return null;
+}
+```
+
+- [ ] **Step 3: `BoardScene.tsx` に差し込む**
+
+`BoardContents` の props に `perfRef: RefObject<HTMLDivElement | null>` を足し、`<Invalidator />` の隣に `<PerfProbe nodeRef={perfRef} />` を置く。`BoardSceneImpl` では `const perfRef = useRef<HTMLDivElement | null>(null);` を作り、`camera-readout` の隣に隠し要素を置く:
+
+```tsx
+      {/* 性能の計測窓（§15 / Plan 5 決定表#16）。画面には出ない */}
+      <div data-testid="perf-readout" hidden ref={perfRef} />
+```
+
+- [ ] **Step 4: テストを走らせてコミットする**
+
+```
+pnpm --filter @ojt/desktop test perf-probe board-scene
+git add apps/desktop && git commit -m "feat(desktop): add the render performance readout"
+```
+
+**期待**: `perf-probe.test.ts` の **6件**が増える。
+
+---
+
+## Task 12: 端子のインスタンス化（`TerminalField`）
+
+**モデル: Opus**（`instancedMesh` のレイキャストと色の載せ方、`Socket` / `TerminalBlock` の props 変更）
+
+**Files:**
+- Create: `apps/desktop/src/renderer/three/TerminalField.tsx`
+- Modify: `apps/desktop/src/renderer/three/Socket.tsx` / `TerminalBlock.tsx`（`TerminalHit` のループを外す）
+- Modify: `apps/desktop/src/renderer/three/BoardScene.tsx`（1本の `TerminalField` を置く）
+- Test: `apps/desktop/test/terminal-field.test.ts`（新規）
+
+決定表#13・#14。**`TerminalHit.tsx` は消さない**（`PlcUnit` / `Outlet` が使い続ける）。
+
+- [ ] **Step 1: 失敗するテストを書く（純関数）**
+
+`apps/desktop/test/terminal-field.test.ts`:
+
+```ts
+import { JIPM_BOARD, isOffBoardTerminal } from '@ojt/board-model';
+import { describe, expect, it } from 'vitest';
+import { sessionForProblem } from '../src/renderer/app/store.js';
+import { BUILTIN_ASSEMBLE_PROBLEMS } from '@ojt/content';
+import {
+  boardFieldTerminals,
+  terminalColorOf,
+  terminalStateOf,
+  TERMINAL_STATE_COLORS,
+} from '../src/renderer/three/TerminalField.js';
+
+const problem = BUILTIN_ASSEMBLE_PROBLEMS[0];
+if (problem === undefined) throw new Error('内蔵課題がありません');
+
+describe('boardFieldTerminals', () => {
+  it('takes every board terminal and leaves the desk ones to PlcUnit / Outlet (決定表#13)', () => {
+    const field = boardFieldTerminals(JIPM_BOARD);
+    expect(field.length).toBeGreaterThan(100);
+    expect(field.some((t) => isOffBoardTerminal(t.id))).toBe(false);
+  });
+
+  it('keeps the order stable so the instance ids do not shuffle between renders', () => {
+    expect(boardFieldTerminals(JIPM_BOARD).map((t) => t.id)).toEqual(
+      boardFieldTerminals(JIPM_BOARD).map((t) => t.id),
+    );
+  });
+});
+
+describe('terminalStateOf（決定表#14）', () => {
+  it('ranks pending over hovered over plain', () => {
+    expect(terminalStateOf('CR1.14', { hovered: 'CR1.14', pending: 'CR1.14' })).toBe('pending');
+    expect(terminalStateOf('CR1.14', { hovered: 'CR1.14', pending: undefined })).toBe('hovered');
+    expect(terminalStateOf('CR1.14', { hovered: undefined, pending: undefined })).toBe('plain');
+  });
+
+  it('has a colour for every state and does not reuse one', () => {
+    const colors = Object.values(TERMINAL_STATE_COLORS);
+    expect(colors).toHaveLength(3);
+    expect(new Set(colors).size).toBe(3);
+    expect(terminalColorOf('plain')).toBe(TERMINAL_STATE_COLORS.plain);
+  });
+});
+```
+
+- [ ] **Step 2: `three/TerminalField.tsx` を実装する**
+
+```tsx
+import { isOffBoardTerminal, type BoardDefinition, type BoardTerminal } from '@ojt/board-model';
+import type { TerminalId } from '@ojt/circuit-sim';
+import { Html } from '@react-three/drei';
+import type { ThreeEvent } from '@react-three/fiber';
+import { useEffect, useMemo, useRef, type JSX } from 'react';
+import { Color, InstancedMesh, Matrix4, Quaternion, Vector3 } from 'three';
+import {
+  TERMINAL_HOVER_COLOR,
+  TERMINAL_PENDING_COLOR,
+  TERMINAL_SCREW_COLOR,
+} from '../session/colors.js';
+import { toScene } from './coords.js';
+import { INVISIBLE_MATERIAL, PICK_GEOMETRY, SCREW_GEOMETRY, sharedMaterial } from './materials.js';
+
+/**
+ * 盤の端子をまとめて描く。設計仕様 §6.5 / §15 / Plan 5 決定表#13・#14。
+ *
+ * `TerminalHit` は端子1個につき `<group>` ＋ ネジの mesh ＋ 当たり判定の mesh を作る。
+ * 盤の端子は142個なので 284 個のオブジェクトになり、ドローコールも同数になる（§15 の
+ * 「60fps・三角形20万以下」の足を引っ張るのはここが最大）。ここでは
+ * **`instancedMesh` 2本**（ネジ頭＝見える／当たり判定＝不可視）にまとめ、
+ * 状態の色は `instanceColor` に載せる。
+ *
+ * 当たり判定の mesh は `visible={false}` のままイベントを拾う（`TerminalHit` と同じ手）。
+ * `instancedMesh` のレイキャストは `event.instanceId` を返すので、添字から端子を引く。
+ *
+ * ツールチップは**ホバー中の1個だけ**を `Html` で出す（以前は端子ごとに条件分岐していた）。
+ * 連動ハイライトはここでは描かない（`ProbeMarkers` の輪が受け持つ。決定表#14）。
+ */
+
+/** 端子の見た目の状態。 */
+export type TerminalState = 'plain' | 'hovered' | 'pending';
+
+/** 状態ごとの色（`session/colors.ts` の値をそのまま使う）。 */
+export const TERMINAL_STATE_COLORS: Readonly<Record<TerminalState, string>> = {
+  plain: TERMINAL_SCREW_COLOR,
+  hovered: TERMINAL_HOVER_COLOR,
+  pending: TERMINAL_PENDING_COLOR,
+};
+
+/** 当たり判定の球を盤面から浮かせる量[mm]（`TerminalHit` と同じ）。 */
+const PICK_LIFT_MM = 3;
+/** ツールチップの位置（端子の中心からのずれ[mm]。`TerminalHit` と同じ）。 */
+const TOOLTIP_OFFSET_MM: [number, number, number] = [0, -8, 8];
+/** ラベルは見せるだけ（drei の `Html` のラッパがクリックを飲まないようにする）。 */
+const LABEL_STYLE = { pointerEvents: 'none' } as const;
+/** ネジ頭の円柱は横倒しに置く（`TerminalHit` と同じ姿勢）。 */
+const SCREW_ROTATION = new Quaternion().setFromAxisAngle(new Vector3(1, 0, 0), Math.PI / 2);
+
+/** この場が描く端子（机上の端子は `PlcUnit` / `Outlet` が描く。決定表#13）。 */
+export function boardFieldTerminals(board: BoardDefinition): BoardTerminal[] {
+  return board.terminals.filter((terminal) => !isOffBoardTerminal(terminal.id));
+}
+
+/** その端子の状態（配線待ち > ホバー > 平常）。 */
+export function terminalStateOf(
+  id: string,
+  state: { hovered: string | undefined; pending: string | undefined },
+): TerminalState {
+  if (state.pending === id) return 'pending';
+  if (state.hovered === id) return 'hovered';
+  return 'plain';
+}
+
+/** 状態 → 色。 */
+export function terminalColorOf(state: TerminalState): string {
+  return TERMINAL_STATE_COLORS[state];
+}
+
+/** 盤の端子をまとめて描く。 */
+export function TerminalField({
+  terminals,
+  tooltipOf,
+  hovered,
+  pending,
+  onHover,
+  onPick,
+}: {
+  terminals: readonly BoardTerminal[];
+  /** 端子 → ツールチップの文字列（`BoardScene` が役割IDを知っているので親が決める）。 */
+  tooltipOf: (terminal: BoardTerminal) => string;
+  hovered: string | undefined;
+  pending: string | undefined;
+  onHover: (id: TerminalId | undefined) => void;
+  onPick: (terminal: BoardTerminal) => void;
+}): JSX.Element | null {
+  const screws = useRef<InstancedMesh | null>(null);
+  const picks = useRef<InstancedMesh | null>(null);
+  const count = terminals.length;
+
+  /** 端子の位置（インスタンスの行列）。端子の並びが変わったときだけ作り直す。 */
+  const matrices = useMemo(() => {
+    const screwMatrices: Matrix4[] = [];
+    const pickMatrices: Matrix4[] = [];
+    const scale = new Vector3(1, 1, 1);
+    for (const terminal of terminals) {
+      const [x, y, z] = toScene(terminal.pos);
+      screwMatrices.push(new Matrix4().compose(new Vector3(x, y, z), SCREW_ROTATION, scale));
+      pickMatrices.push(
+        new Matrix4().compose(
+          new Vector3(x, y, z + PICK_LIFT_MM),
+          new Quaternion(),
+          new Vector3(terminal.pickRadiusMm, terminal.pickRadiusMm, terminal.pickRadiusMm),
+        ),
+      );
+    }
+    return { screwMatrices, pickMatrices };
+  }, [terminals]);
+
+  useEffect(() => {
+    const screwMesh = screws.current;
+    const pickMesh = picks.current;
+    if (screwMesh === null || pickMesh === null) return;
+    matrices.screwMatrices.forEach((m, i) => screwMesh.setMatrixAt(i, m));
+    matrices.pickMatrices.forEach((m, i) => pickMesh.setMatrixAt(i, m));
+    screwMesh.instanceMatrix.needsUpdate = true;
+    pickMesh.instanceMatrix.needsUpdate = true;
+  }, [matrices]);
+
+  /** 色は状態が変わったときだけ書き換える（毎フレームは触らない。§15）。 */
+  useEffect(() => {
+    const mesh = screws.current;
+    if (mesh === null) return;
+    const color = new Color();
+    terminals.forEach((terminal, i) => {
+      color.set(terminalColorOf(terminalStateOf(terminal.id, { hovered, pending })));
+      mesh.setColorAt(i, color);
+    });
+    if (mesh.instanceColor !== null) mesh.instanceColor.needsUpdate = true;
+  }, [terminals, hovered, pending]);
+
+  const hoveredTerminal = terminals.find((t) => t.id === hovered);
+  if (count === 0) return null;
+  return (
+    <group name="terminal-field">
+      <instancedMesh
+        ref={screws}
+        args={[SCREW_GEOMETRY, sharedMaterial('#FFFFFF', { metalness: 0.7, roughness: 0.3 }), count]}
+        // 見えるだけ。クリックは下の不可視メッシュが受ける（電線より手前に出さない）
+        raycast={() => undefined}
+      />
+      <instancedMesh
+        ref={picks}
+        args={[PICK_GEOMETRY, INVISIBLE_MATERIAL, count]}
+        visible={false}
+        onPointerOver={(event: ThreeEvent<PointerEvent>) => {
+          event.stopPropagation();
+          const terminal = terminals[event.instanceId ?? -1];
+          onHover(terminal?.id);
+        }}
+        onPointerOut={() => {
+          onHover(undefined);
+        }}
+        onClick={(event: ThreeEvent<MouseEvent>) => {
+          event.stopPropagation();
+          const terminal = terminals[event.instanceId ?? -1];
+          if (terminal !== undefined) onPick(terminal);
+        }}
+      />
+      {hoveredTerminal === undefined ? null : (
+        <Html
+          center
+          style={LABEL_STYLE}
+          distanceFactor={260}
+          position={[
+            toScene(hoveredTerminal.pos)[0] + TOOLTIP_OFFSET_MM[0],
+            toScene(hoveredTerminal.pos)[1] + TOOLTIP_OFFSET_MM[1],
+            toScene(hoveredTerminal.pos)[2] + TOOLTIP_OFFSET_MM[2],
+          ]}
+          zIndexRange={[20, 0]}
+        >
+          <span className="terminal-tooltip">{tooltipOf(hoveredTerminal)}</span>
+        </Html>
+      )}
+    </group>
+  );
+}
+```
+
+**注意（レビューで見る点）:** `instancedMesh` の `instanceColor` は最初の `setColorAt()` で確保される。three r160 以降は `mesh.instanceColor` が `null` のままだと `setColorAt()` が自分で作るので、上の順（`setColorAt` → `instanceColor !== null` の確認）で正しい。ネジのマテリアルは**白**にしてインスタンス色を素直に乗せる（`sharedMaterial('#FFFFFF', ...)`）。
+
+- [ ] **Step 3: `Socket.tsx` / `TerminalBlock.tsx` から端子のループを外す**
+
+両方から `terminals.map((terminal) => <TerminalHit ... />)` のブロックと、`hoveredTerminal` / `pendingTerminal` / `onHoverTerminal` / `onPickTerminal` の4 props を削る。`terminals` は**残す**（印字テクスチャと台座の外接矩形に要る）。`Socket.tsx` の `socketTerminalLabel()` は **export したまま**（`BoardScene` がツールチップに使う）。
+
+- [ ] **Step 4: `BoardScene.tsx` に1本置く**
+
+`<FixedWires board={board} />` の直後（電線より奥、ソケットより手前）に:
+
+```tsx
+        {/*
+          盤の端子はここで**まとめて1回**描く（§15 / 決定表#13）。ソケット・端子台は
+          筐体と印字だけを描き、端子は持たない。机上の端子（PLC本体・壁コンセント）は
+          `PlcUnit` / `Outlet` が従来どおり `TerminalHit` で描く。
+        */}
+        <TerminalField
+          terminals={fieldTerminals}
+          tooltipOf={terminalTooltipOf}
+          hovered={hovered}
+          pending={pending}
+          onHover={onHover}
+          onPick={pickTerminal}
+        />
+```
+
+`BoardContents` の中で:
+
+```tsx
+  const fieldTerminals = useMemo(() => boardFieldTerminals(board), [board]);
+  /** ソケットの端子は役割IDで、それ以外は盤定義の印字で見せる（従来の2通りをここへ寄せる）。§8.2 */
+  const terminalTooltipOf = useCallback(
+    (terminal: BoardTerminal): string => {
+      const socket = board.sockets.find((s) => terminal.id.startsWith(`${s.id}.`));
+      if (socket === undefined) return terminal.label;
+      return socketTerminalLabel(session?.socketRoles[socket.id], terminal);
+    },
+    [board, session],
+  );
+```
+
+**注意**: 端子IDは `toSessionTerminal()` を通った**役割ベース**（`CR1.9`）ではなく盤定義の物理ID（`S1.9`）である。`Socket` が従来 `socketTerminalLabel(role, terminal)` に渡していたのと同じ `role` を `session.socketRoles[socket.id]` から引けば、文言は1文字も変わらない。
+
+- [ ] **Step 5: テストを走らせてコミットする**
+
+```
+pnpm --filter @ojt/desktop test terminal-field scene three-fidelity board-scene probe-markers
+pnpm -r typecheck && pnpm lint
+git add apps/desktop && git commit -m "perf(desktop): draw the board terminals with two instanced meshes"
+```
+
+**期待**: `terminal-field.test.ts` の **4件**が増える。`scene.test.ts` は `socketTerminalLabel` を import しているだけなので通る。`Socket` / `TerminalBlock` を**描画して**端子の数を数えているテストがあれば、端子が `TerminalField` へ移ったことに合わせて直す（MERGE 注意 #6）。
+
+---
+
+## Task 13: 印字テクスチャの共有・机上ケーブルのメモ化・`frameloop` 監査
+
+**モデル: Opus**（キャッシュの鍵の設計と、既存の `useMemo` を壊さない差分）
+
+**Files:**
+- Modify: `apps/desktop/src/renderer/three/labels.ts`（末尾に追記＋2関数の先頭でキャッシュを引く）
+- Modify: `apps/desktop/src/renderer/three/DeskWires.tsx`
+- Modify: `apps/desktop/test/board-scene.test.ts`（`visualSignature` の監査を追記）
+- Test: `apps/desktop/test/label-cache.test.ts`（新規）
+
+決定表#15。前提D #6・#7。
+
+- [ ] **Step 1: 失敗するテストを書く**
+
+`apps/desktop/test/label-cache.test.ts`:
+
+```ts
+import { JIPM_BOARD } from '@ojt/board-model';
+import { beforeEach, describe, expect, it } from 'vitest';
+import {
+  blockFaceTexture,
+  clearFaceTextureCache,
+  faceTextureCacheSize,
+  socketFaceTexture,
+  SOCKET_PLATE_MARGIN_MM,
+} from '../src/renderer/three/labels.js';
+
+/** ソケット1個ぶんの引数（`Socket.tsx` と同じ作り方）。 */
+function socketArgs(index: number) {
+  const socket = JIPM_BOARD.sockets[index];
+  if (socket === undefined) throw new Error(`ソケット ${index} がありません`);
+  const terminals = JIPM_BOARD.terminals.filter((t) => t.id.startsWith(`${socket.id}.`));
+  return {
+    terminals,
+    originX: socket.origin.x - SOCKET_PLATE_MARGIN_MM,
+    originY: socket.origin.y - SOCKET_PLATE_MARGIN_MM,
+    w: socket.bodyMm.width + SOCKET_PLATE_MARGIN_MM * 2,
+    h: socket.bodyMm.length + SOCKET_PLATE_MARGIN_MM * 2,
+  };
+}
+
+beforeEach(() => {
+  clearFaceTextureCache();
+});
+
+describe('socketFaceTexture のキャッシュ（決定表#15）', () => {
+  it('bakes one canvas and shares it across every socket', () => {
+    const first = socketArgs(0);
+    const second = socketArgs(1);
+    const a = socketFaceTexture(first.terminals, first.originX, first.originY, first.w, first.h);
+    const b = socketFaceTexture(second.terminals, second.originX, second.originY, second.w, second.h);
+    expect(a).toBeDefined();
+    expect(b).toBe(a);
+    expect(faceTextureCacheSize()).toBe(1);
+  });
+
+  it('bakes every socket of the board into the same one texture', () => {
+    for (let i = 0; i < JIPM_BOARD.sockets.length; i += 1) {
+      const args = socketArgs(i);
+      socketFaceTexture(args.terminals, args.originX, args.originY, args.w, args.h);
+    }
+    expect(faceTextureCacheSize()).toBe(1);
+  });
+
+  it('bakes a second texture when the plate size differs', () => {
+    const args = socketArgs(0);
+    socketFaceTexture(args.terminals, args.originX, args.originY, args.w, args.h);
+    socketFaceTexture(args.terminals, args.originX, args.originY, args.w + 10, args.h);
+    expect(faceTextureCacheSize()).toBe(2);
+  });
+
+  it('keeps the three terminal blocks apart (their prints differ)', () => {
+    for (const prefix of ['TB_PL', 'TB_PB', 'P']) {
+      blockFaceTexture(JIPM_BOARD.terminals.filter((t) => t.id.startsWith(`${prefix}.`)), 6);
+    }
+    expect(faceTextureCacheSize()).toBe(3);
+  });
+
+  it('returns undefined for an empty terminal list without touching the cache', () => {
+    expect(socketFaceTexture([], 0, 0, 10, 10)).toBeUndefined();
+    expect(blockFaceTexture([], 6)).toBeUndefined();
+    expect(faceTextureCacheSize()).toBe(0);
+  });
+
+  it('keeps the texture resolution under the 2048px cap of §15', () => {
+    const args = socketArgs(0);
+    const texture = socketFaceTexture(args.terminals, args.originX, args.originY, args.w, args.h);
+    const image = texture?.image as { width: number; height: number } | undefined;
+    expect(image?.width ?? 0).toBeLessThanOrEqual(2048);
+    expect(image?.height ?? 0).toBeLessThanOrEqual(2048);
+  });
+});
+```
+
+- [ ] **Step 2: `labels.ts` にキャッシュを足す**
+
+モジュール末尾（`blockFaceTexture` の後ろ）ではなく、**`makeCanvasTexture()` の直後**に置く（両方の焼き関数から引くため）:
+
+```ts
+/**
+ * 焼いたテクスチャの共有キャッシュ。設計仕様 §15 / Plan 5 決定表#15。
+ *
+ * 盤の8ソケットは**相対的な端子配置も印字も完全に同一**なので、焼く絵も同一である。
+ * 以前は `Socket` ごとに `useMemo` していたため、1枚 1440×1280px（約7.4MB）のキャンバスが
+ * 8枚あった。鍵を「板の左上からの相対位置＋印字＋役割＋板の寸法」にすると8枚が1枚になる。
+ *
+ * テクスチャは**アプリの寿命のあいだ生き続ける**（盤の形は課題で変わらない）。
+ * 破棄の責任を持たないのはそのためで、`clearFaceTextureCache()` はテストからのみ呼ぶ。
+ */
+const faceTextureCache = new Map<string, Texture>();
+
+/** キャッシュの件数（テスト用）。 */
+export function faceTextureCacheSize(): number {
+  return faceTextureCache.size;
+}
+
+/** キャッシュを空にする（テスト用。テクスチャも破棄する）。 */
+export function clearFaceTextureCache(): void {
+  for (const texture of faceTextureCache.values()) texture.dispose();
+  faceTextureCache.clear();
+}
+
+/** 端子群の「相対位置＋印字＋役割」からキャッシュの鍵を作る。 */
+function faceKey(
+  prefix: string,
+  terminals: readonly BoardTerminal[],
+  originX: number,
+  originY: number,
+  widthMm: number,
+  heightMm: number,
+): string {
+  const parts = terminals.map(
+    (t) =>
+      `${(t.pos.x - originX).toFixed(2)},${(t.pos.y - originY).toFixed(2)},${terminalNumber(t)},${t.role},${blockTerminalMark(t)}`,
+  );
+  return `${prefix}|${widthMm.toFixed(2)}x${heightMm.toFixed(2)}|${parts.join('|')}`;
+}
+
+/** キャッシュ越しに焼く。 */
+function cachedTexture(key: string, bake: () => Texture | undefined): Texture | undefined {
+  const found = faceTextureCache.get(key);
+  if (found !== undefined) return found;
+  const made = bake();
+  if (made !== undefined) faceTextureCache.set(key, made);
+  return made;
+}
+```
+
+`socketFaceTexture()` の本体を次の形にする（中の `makeCanvasTexture(...)` の呼び出しは**1行も変えない**）:
+
+```ts
+export function socketFaceTexture(
+  terminals: readonly BoardTerminal[],
+  originX: number,
+  originY: number,
+  plateWidthMm: number,
+  plateHeightMm: number,
+): Texture | undefined {
+  if (terminals.length === 0) return undefined;
+  const key = faceKey('socket', terminals, originX, originY, plateWidthMm, plateHeightMm);
+  return cachedTexture(key, () =>
+    makeCanvasTexture(plateWidthMm, plateHeightMm, (ctx) => {
+      /* …既存の描画そのまま… */
+    }),
+  );
+}
+```
+
+`blockFaceTexture()` も同じく `faceKey('block', terminals, rect.minX, rect.minY, rect.w, rect.h)` で包む（`rect` は既存の `faceRect()` の戻り）。
+
+- [ ] **Step 3: `DeskWires.tsx` のメモ化を直す**
+
+`useMemo` の鍵を署名にし、`memo()` で包む（`Wire.tsx` の `routeSignature()` と同じ流儀。前提D #7）:
+
+```tsx
+/**
+ * 机上ケーブルの同一性を表す文字列。§15
+ * `session` は配線のたびに `cloneSession()` で新しい参照になるので、そのまま依存に並べると
+ * 盤の電線を1本足すだけで机上の `TubeGeometry` が全部作り直される（GPU バッファの作り直し）。
+ * 本数・両端・色が同じなら形も同じなので、それを鍵にする。
+ */
+export function deskWireSignature(board: BoardDefinition, session: BoardSession): string {
+  return deskWires(board, session)
+    .map((wire) => {
+      const color = session.wires.find((w) => w.id === wire.id)?.color ?? PLC_WIRE_COLOR;
+      return `${wire.id}:${color}:${wire.fromPos.x},${wire.fromPos.y},${wire.fromPos.z}>${wire.toPos.x},${wire.toPos.y},${wire.toPos.z}`;
+    })
+    .join('|');
+}
+```
+
+`DeskWires` の中で:
+
+```tsx
+  const signature = deskWireSignature(board, session);
+  const latest = useRef({ board, session });
+  latest.current = { board, session };
+  const cables = useMemo(() => {
+    void signature; // 署名が同じ＝形も色も同じ。作り直しの引き金としてだけ使う
+    const { board: b, session: s } = latest.current;
+    const colors = new Map<string, WireColor>(s.wires.map((wire) => [wire.id, wire.color]));
+    return deskWires(b, s).map((wire) => { /* …既存のまま… */ });
+  }, [signature]);
+```
+
+末尾を `export const DeskWires = memo(DeskWiresImpl);` にし、関数名を `DeskWiresImpl` に変える（`BoardScene` の import は変えない）。
+
+- [ ] **Step 4: `frameloop` の監査を単体テストに足す**
+
+`apps/desktop/test/board-scene.test.ts` の末尾に（`visualSignature` の既存テストの隣）:
+
+```ts
+describe('visualSignature: 絵に効かない更新では変わらない（§15 / Plan 5 決定表#16）', () => {
+  it('ignores the clock, the voltages and the tester needle', () => {
+    const base = useStore.getState();
+    const before = visualSignature(base);
+    const after = visualSignature({
+      ...base,
+      snapshot: {
+        ...base.snapshot,
+        tMs: base.snapshot.tMs + 1000,
+        sourceAmps: 0.42,
+        droppedTicks: 3,
+        tester: { ...base.snapshot.tester, needleDeg: 17.5, value: 23.9 },
+      },
+    });
+    expect(after).toBe(before);
+  });
+
+  it('changes when the schematic guide lights a terminal', () => {
+    const base = useStore.getState();
+    const before = visualSignature(base);
+    const after = visualSignature({
+      ...base,
+      highlight: { cellIds: ['c1'], terminals: ['CR1.14'], wireIds: [] },
+    });
+    expect(after).not.toBe(before);
+  });
+});
+```
+
+- [ ] **Step 5: テストを走らせてコミットする**
+
+```
+pnpm --filter @ojt/desktop test label-cache board-scene desk-wires scene
+pnpm -r typecheck && pnpm lint
+git add apps/desktop && git commit -m "perf(desktop): share the printed label textures and memoise the desk cables"
+```
+
+**期待**: `label-cache.test.ts` の **6件**と `board-scene.test.ts` の **2件**が増える。
+
+---
+
+## Task 14: 配布パッケージの固め（v1.0.0）
+
+**モデル: Opus**（配布物の検査と、公開しないことの線引き）
+
+**Files:**
+- Modify: `apps/desktop/package.json`（`version` と `dist`）
+- Create: `apps/desktop/scripts/check-dist.mjs`
+- Create: `apps/desktop/build/license.txt`
+- Create: `README.md`
+- Create: `docs/releases/v1.0.0.md`
+- Test: `apps/desktop/test/release-content.test.ts`（新規）
+
+決定表#18〜#22。**`electron-builder.yml` と `copy-content.mjs` は1行も変えない。**
+
+- [ ] **Step 1: 失敗するテストを書く（同梱物の検査）**
+
+`apps/desktop/test/release-content.test.ts`:
+
+```ts
+import { readFileSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { JIPM_BOARD } from '@ojt/board-model';
+import {
+  BUILTIN_ALL_PROBLEMS,
+  BUILTIN_PLC_PROBLEMS,
+  PLC_MODELS,
+  PLC_VENDORS,
+  plcBoardFor,
+  resolvePlcIo,
+} from '@ojt/content';
+import { describe, expect, it } from 'vitest';
+
+const APP_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const pkg = JSON.parse(readFileSync(join(APP_ROOT, 'package.json'), 'utf8')) as {
+  version: string;
+  scripts: Record<string, string>;
+};
+const builderYml = readFileSync(join(APP_ROOT, 'electron-builder.yml'), 'utf8');
+
+describe('配布物の版と設定（§15 / Plan 5 決定表#20）', () => {
+  it('is version 1.0.0', () => {
+    expect(pkg.version).toBe('1.0.0');
+  });
+
+  it('runs the artefact check after electron-builder', () => {
+    expect(pkg.scripts['dist']).toContain('check-dist.mjs');
+    expect(pkg.scripts['dist']).toContain('copy-content.mjs');
+  });
+
+  it('still ships NSIS and the portable zip with no auto-update (§15)', () => {
+    expect(builderYml).toContain('target: nsis');
+    expect(builderYml).toContain('target: zip');
+    expect(builderYml).toContain('publish: null');
+    expect(builderYml).toContain('productName: 電気教育ツール');
+  });
+
+  it('shows the installer description page (SmartScreen の手順。§15)', () => {
+    const license = readFileSync(join(APP_ROOT, 'build', 'license.txt'), 'utf8');
+    expect(license).toContain('詳細情報');
+    expect(license).toContain('実行');
+    expect(license).toContain('三菱電機');
+  });
+});
+
+describe('同梱課題が4メーカーで成立する（決定表#19）', () => {
+  it('ships every builtin problem', () => {
+    expect(BUILTIN_ALL_PROBLEMS.length).toBeGreaterThanOrEqual(28);
+  });
+
+  it.each(PLC_VENDORS.map((vendor, i) => [vendor, PLC_MODELS[i]] as const))(
+    '%s (%s) has a board with every X/Y terminal that the builtin problems need',
+    (vendor, model) => {
+      expect(model).toBeDefined();
+      if (model === undefined) return;
+      for (const problem of BUILTIN_PLC_PROBLEMS) {
+        const swapped = { ...problem, plc: { vendor, model } };
+        const board = plcBoardFor(swapped, JIPM_BOARD);
+        expect(board?.plcUnit).toBeDefined();
+        const names = new Set((board?.plcUnit?.terminals ?? []).map((t) => t.id.split('.').slice(1).join('.')));
+        const io = resolvePlcIo(problem.io);
+        for (const input of io.inputs) expect(names.has(input.device) || names.size > 0).toBe(true);
+        for (const output of io.outputs) expect(names.has(output.device) || names.size > 0).toBe(true);
+      }
+    },
+  );
+});
+```
+
+**注記**: 方言ごとにデバイス名の綴りが変わる（`X0` / `0.00` / `A0` / `000000`）ので、端子名の一致は「その機種の端子集合が空でないこと」と「盤に `plcUnit` があること」で縛る。綴りの写像は 4A の `plc-dialects` が持ち、その正しさは 4A のテストが縛っている（二重に縛らない）。
+
+- [ ] **Step 2: `package.json` を直す**
+
+```json
+  "version": "1.0.0",
+```
+
+```json
+    "dist": "node scripts/copy-content.mjs && node scripts/build.mjs && electron-builder --config electron-builder.yml && node scripts/check-dist.mjs"
+```
+
+- [ ] **Step 3: `scripts/check-dist.mjs` を作る**
+
+```js
+import { createHash } from 'node:crypto';
+import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+/**
+ * 配布物の検査とチェックサム表の生成。設計仕様 §15 / Plan 5 決定表#21。
+ *
+ * `electron-builder` の直後に走り、
+ * ①NSISインストーラとポータブル版の2つが出ていること
+ * ②`win-unpacked/resources/content/<mode>/*.json` が正本と同じ件数あること（§7.8）
+ * ③`resources/app.asar` があること
+ * を確かめ、`release/artifacts.md`（ファイル名・バイト数・SHA256）を書き出す。
+ *
+ * **公開はしない**（タグ付けも GitHub Release もこのスクリプトの仕事ではない。決定表#22）。
+ */
+
+const HERE = dirname(fileURLToPath(import.meta.url));
+const APP_ROOT = resolve(HERE, '..');
+const RELEASE = join(APP_ROOT, 'release');
+const UNPACKED = join(RELEASE, 'win-unpacked');
+const SOURCE_CONTENT = resolve(APP_ROOT, '../../packages/content/src/builtin');
+
+const out = globalThis.process.stdout;
+const fail = (message) => {
+  globalThis.process.stderr.write(`配布物の検査に失敗しました: ${message}\n`);
+  globalThis.process.exitCode = 1;
+};
+
+if (!existsSync(RELEASE)) {
+  fail(`${RELEASE} がありません（先に electron-builder を走らせてください）`);
+} else {
+  const version = JSON.parse(readFileSync(join(APP_ROOT, 'package.json'), 'utf8')).version;
+  const expected = [`電気教育ツール-${version}-x64.exe`, `電気教育ツール-${version}-x64.zip`];
+  const rows = [];
+  for (const name of expected) {
+    const path = join(RELEASE, name);
+    if (!existsSync(path)) {
+      fail(`成果物がありません: ${name}`);
+      continue;
+    }
+    const bytes = readFileSync(path);
+    rows.push({
+      name,
+      size: statSync(path).size,
+      sha256: createHash('sha256').update(bytes).digest('hex').toUpperCase(),
+    });
+  }
+
+  // 同梱課題（asar の外）。§7.8
+  const shipped = join(UNPACKED, 'resources', 'content');
+  if (!existsSync(shipped)) {
+    fail(`同梱課題のフォルダがありません: ${shipped}`);
+  } else {
+    const modes = readdirSync(SOURCE_CONTENT, { withFileTypes: true })
+      .filter((e) => e.isDirectory())
+      .map((e) => e.name)
+      .sort();
+    for (const mode of modes) {
+      const want = readdirSync(join(SOURCE_CONTENT, mode)).filter((n) => n.endsWith('.json')).length;
+      const got = existsSync(join(shipped, mode))
+        ? readdirSync(join(shipped, mode)).filter((n) => n.endsWith('.json')).length
+        : 0;
+      if (got !== want) fail(`同梱課題の件数が違います: ${mode} は ${want} 件のはずが ${got} 件`);
+      else out.write(`同梱課題 OK: ${mode} ${got} 件\n`);
+    }
+  }
+
+  if (!existsSync(join(UNPACKED, 'resources', 'app.asar'))) {
+    fail('resources/app.asar がありません（asar: true のはずです）');
+  }
+
+  const table = [
+    '# 成果物一覧（`pnpm --filter @ojt/desktop dist` が生成）',
+    '',
+    `- 版: ${version}`,
+    `- 生成: ${new Date().toISOString()}`,
+    '',
+    '| ファイル | バイト数 | SHA256 |',
+    '|---|---:|---|',
+    ...rows.map((r) => `| \`${r.name}\` | ${r.size.toLocaleString('en-US')} | \`${r.sha256}\` |`),
+    '',
+  ].join('\n');
+  writeFileSync(join(RELEASE, 'artifacts.md'), table, 'utf8');
+  out.write(`成果物一覧を書き出しました: ${join(RELEASE, 'artifacts.md')}\n`);
+}
+```
+
+- [ ] **Step 4: `apps/desktop/build/license.txt`（NSIS の説明画面）を作る**
+
+`oneClick: false` の NSIS は `build/license.txt` を「使用許諾／説明」のページとして出す。§15 が求める SmartScreen の手順と商標注記をここに置く。
+
+```text
+電気教育ツール
+
+本ソフトウェアは、機械保全技能検定 電気系保全作業の実技（課題1・課題2）と、
+有接点シーケンス回路の組立を、パソコン上の3D練習盤で学ぶための教育用ツールです。
+
+■ 初回起動時の注意（Windows SmartScreen）
+本ソフトウェアにはコード署名を行っていないため、初回起動時に
+「Windows によって PC が保護されました」という画面が出ることがあります。
+その場合は「詳細情報」をクリックし、続いて「実行」を選んでください。
+
+■ 通信について
+本ソフトウェアは起動時・実行時ともに外部へ一切通信しません。
+自動更新の機能もありません。更新は新しいインストーラの配布で行います。
+
+■ 商標について
+MELSEC / MELSEC iQ-F / MELSOFT / GX Works3 は三菱電機株式会社の商標または登録商標です。
+SYSMAC / CP1E / CP1L / CX-Programmer / CX-One はオムロン株式会社の商標または登録商標です。
+TOYOPUC / PCwin は株式会社ジェイテクトの商標または登録商標です。
+JW / JW300 / JW-300SP はシャープ株式会社の商標または登録商標です。
+各社の製品名は識別を目的としてのみ使用しており、提携・後援の関係を示すものではありません。
+各社のロゴ・アイコン・画面キャプチャは本ソフトウェアに含まれていません。
+
+■ 表記について
+一部の命令名・キー割当は実機マニュアルを確認できていないため、本ソフトウェア独自の表記です。
+詳細は設定画面の「このアプリについて」を参照してください。
+```
+
+- [ ] **Step 5: `README.md` を作る**
+
+リポジトリ直下に置く（§15 の「README に SmartScreen の手順」）。内容は「このアプリは何か／動作環境／入手と導入（NSIS とポータブル）／初回起動時の SmartScreen／オフライン／開発者向けの `pnpm` コマンド／ライセンスと商標」。**配布ファイルの置き場所やURLは書かない**（まだ公開していない。決定表#22）。開発者向けの節には次のコマンドだけを載せる:
+
+```
+pnpm install
+pnpm -r test
+pnpm -r typecheck && pnpm lint
+pnpm --filter @ojt/desktop dev
+pnpm --filter @ojt/desktop build
+pnpm --filter @ojt/desktop e2e
+pnpm --filter @ojt/desktop dist
+```
+
+- [ ] **Step 6: `docs/releases/v1.0.0.md` を作る**
+
+`docs/releases/v0.2.0.md` の構成をそのまま踏襲し、次の節を置く。**数値（サイズ・SHA256）は書かない**——`release/artifacts.md` を参照する（決定表#21）。
+
+1. 概要（Phase 1〜5 の全機能。モードB／C1／C2／D、4メーカーのスキンと3D、回路図エディタと検算、配線ガイド）
+2. 動作環境（Windows 10 / 11 x64、コード署名なし、完全オフライン）
+3. インストール（NSIS／ポータブル、SmartScreen の手順）
+4. 内蔵課題（モード別の件数）
+5. 既知の制限（ソフトウェア描画での性能数値は参考値であること、OSダイアログの自動テストは IPC 往復までであること）
+6. **リリース手順チェックリスト**（下記）
+7. GitHub Release 本文（貼り付け用のコードブロック）
+
+リリース手順チェックリスト（そのまま書く）:
+
+```markdown
+## リリース手順チェックリスト
+
+**公開は利用者の明示の指示を受けてから行う。** 以下の 1〜8 は指示が無くても進めてよい準備で、
+9 以降は指示を受けてから実行する。
+
+- [ ] 1. `git pull --rebase origin main` して main が最新であること
+- [ ] 2. `pnpm -r test` が全て通ること
+- [ ] 3. `pnpm -r typecheck` と `pnpm lint` が無警告で通ること
+- [ ] 4. `pnpm --filter @ojt/desktop build` と `pnpm --filter @ojt/desktop e2e` が全て通ること（2回連続）
+- [ ] 5. `pnpm --filter @ojt/desktop dist` が成功し、`release/artifacts.md` が生成されること
+- [ ] 6. **実機（内蔵GPU・FHD 1920×1080）** で `release/win-unpacked/電気教育ツール.exe` を起動し、
+      `OJT_PERF_TARGET=1 pnpm --filter @ojt/desktop e2e perf` の測定値が **60fps 以上**であること
+      （§16 Phase 5 受入基準④。測定値をこのチェックリストの下に転記する）
+- [ ] 7. **オフラインのWindows 11** でNSISインストーラからインストールし、課題を1つ最後まで
+      完了できること（§16 Phase 5 受入基準③）。ネットワークアダプタを無効にして確認する
+- [ ] 8. ポータブル版（zip）を展開して起動できること
+- [ ] 9. （指示後）`git tag -a v1.0.0 -m "電気教育ツール v1.0.0"` と `git push origin v1.0.0`
+- [ ] 10.（指示後）GitHub Release を作り、本節の「GitHub Release 本文」を貼り、
+      `release/` の2ファイルを添付する
+```
+
+- [ ] **Step 7: テストを走らせてコミットする**
+
+```
+pnpm --filter @ojt/desktop test release-content content-resources
+npx prettier --check "README.md" "docs/releases/v1.0.0.md"
+git add apps/desktop README.md docs/releases/v1.0.0.md && git commit -m "chore(release): harden the v1.0.0 distribution (version, artefact check, README, installer page)"
+```
+
+**期待**: `release-content.test.ts` の **4件 ＋ メーカー4件 = 8件**が増える。
+
+---
+
+## Task 15: E2E（受入基準①〜④ ＋ #28/#29 ＋ オフライン）
+
+**モデル: Opus**（Electron の待ち方と、性能の測り方）
+
+**Files:**
+- Create: `apps/desktop/e2e/schematic.spec.ts`
+- Create: `apps/desktop/e2e/perf.spec.ts`
+- Test: 上記2本
+
+既存6本（`smoke` / `navigation` / `chart` / `inspect` / `plc` / `polish`）は**1行も変えない**。起動の定型（`CHROMIUM_FLAGS`・`shot()`・復元プロンプトの片付け）は `polish.spec.ts` からそのまま写す。
+
+- [ ] **Step 1: `e2e/schematic.spec.ts` を書く**
+
+```ts
+test.describe('回路図エディタ（§16 Phase 5 受入基準①②）', () => {
+  // beforeAll: polish.spec.ts と同じ起動＋復元プロンプトの片付け。1440×900
+
+  test('受入基準①: 自己保持回路を描いて検算で合格する', async () => {
+    await page.getByTestId('mode-assemble').click();
+    await page.getByTestId('open-b-001').click();
+    await expect(page.getByTestId('viewport')).toBeVisible();
+    await page.getByTestId('assemble-view-schematic').click();
+    await expect(page.getByTestId('schematic-editor')).toBeVisible();
+
+    // 1段目: PB1 a接点 → CR1 コイル
+    await page.getByTestId('palette-pb-a:PB1').click();
+    await page.locator('[data-slot="r1#0"]').click();
+    await page.getByTestId('palette-coil:CR1').click();
+    await page.locator('[data-slot="r1#1"]').click();
+    // 2段目（分岐の自己保持）: CR1 a接点
+    await page.getByRole('button', { name: '段を追加' }).click();
+    await page.getByTestId('palette-cr-a:CR1').click();
+    await page.locator('[data-slot="r2#0"]').click();
+    // 3段目: CR1 a接点 → PL1
+    await page.getByRole('button', { name: '段を追加' }).click();
+    await page.getByTestId('palette-cr-a:CR1').click();
+    await page.locator('[data-slot="r3#0"]').click();
+    await page.getByTestId('palette-lamp:PL1').click();
+    await page.locator('[data-slot="r3#1"]').click();
+
+    await shot(app, '50-schematic-editor');
+    await expect(page.getByTestId('verify-button')).toBeEnabled();
+    await page.getByTestId('verify-button').click();
+    await expect(page.getByTestId('verify-verdict')).toHaveText('検算 合格', { timeout: 30_000 });
+    await shot(app, '51-verify-passed');
+  });
+
+  test('受入基準②: 回路図の要素をクリックすると3D盤の端子が光る', async () => {
+    await page.getByTestId('assemble-view-split').click();
+    await expect(page.getByTestId('viewport')).toBeVisible();
+    await page.locator('[data-testid="schematic-editor"] [data-cell]').first().click();
+    // ハイライトはストアに出る（3Dの発光はスクリーンショットで見る）
+    const terminals = await page.evaluate(() =>
+      (window as unknown as { __ojtHighlight?: string[] }).__ojtHighlight ?? [],
+    );
+    expect(terminals.length).toBeGreaterThan(0);
+    await shot(app, '52-wiring-guide');
+  });
+});
+```
+
+**`window.__ojtHighlight` について**: E2E からストアの中身を読む窓が無いので、`app/store.ts` の `setHighlight()` の中で **開発・配布とも常に** `(globalThis as { __ojtHighlight?: string[] }).__ojtHighlight = highlight.terminals;` を1行書く。`camera-readout` と同じ「E2E のための窓」であり、画面には出ない（決定表#16 と同じ理由で旗では切り替えない）。この1行は `store.ts` の MERGE 注意 #2 に含める。
+
+2本目の spec は #28 と #29 を見る:
+
+```ts
+test.describe('結果の疑い一覧とキーボード配線（UXレビュー #28 / #29）', () => {
+  test('#28: 不合格の結果から疑わしい端子を盤で見られる', async () => {
+    await page.getByTestId('assemble-view-board').click();
+    await page.getByRole('button', { name: '判定' }).click();
+    await expect(page.getByTestId('verdict')).toBeVisible({ timeout: 60_000 });
+    await expect(page.getByTestId('suspect-list')).toBeVisible();
+    await shot(app, '53-result-suspects');
+    await page.getByRole('button', { name: '盤で見る' }).first().click();
+    await expect(page.getByTestId('board-focus')).toBeVisible();
+    await shot(app, '54-suspect-on-board');
+    await page.getByTestId('back-to-result').click();
+    await expect(page.getByTestId('verdict')).toBeVisible();
+  });
+
+  test('#29: 端子リストから Tab と Enter だけで電線を1本張れる', async () => {
+    await page.getByRole('button', { name: 'もう一度' }).click();
+    await expect(page.getByTestId('viewport')).toBeVisible();
+    const before = await page.getByTestId('status-overlay').textContent();
+    await page.getByTestId('terminal-search').fill('CR1');
+    await page.getByTestId('terminal-row-CR1.14').focus();
+    await page.keyboard.press('Enter');
+    await expect(page.getByTestId('terminal-pending')).toContainText('CR1.14');
+    await page.getByTestId('terminal-search').fill('P1');
+    await page.getByTestId('terminal-row-P.1').focus();
+    await page.keyboard.press('Enter');
+    await expect(page.getByTestId('status-overlay')).not.toHaveText(before ?? '');
+    await shot(app, '55-keyboard-wiring');
+  });
+});
+```
+
+- [ ] **Step 2: `e2e/perf.spec.ts` を書く**
+
+```ts
+/** 性能の予算（§15 / Plan 5 決定表#17）。GPU に依らない値だけを自動で縛る。 */
+const TRIANGLE_BUDGET = 200_000;
+const DRAW_CALL_BUDGET = 120;
+/** 実機確認のときだけ 60fps を要求する（`OJT_PERF_TARGET=1`）。 */
+const FPS_TARGET = 60;
+
+async function readPerf(page: Page) {
+  const node = page.getByTestId('perf-readout');
+  const text = await node.textContent();
+  const total = await node.getAttribute('data-total-frames');
+  if (text === null) throw new Error('perf-readout が空です');
+  return { ...(JSON.parse(text) as Record<string, number>), total: Number(total ?? '0') };
+}
+
+test.describe('性能（§16 Phase 5 受入基準④）', () => {
+  test('三角形数とドローコールが予算に収まる', async () => {
+    await page.getByTestId('mode-assemble').click();
+    await page.getByTestId('open-b-001').click();
+    await expect(page.getByTestId('viewport')).toBeVisible();
+    await page.getByRole('button', { name: '俯瞰' }).click();
+    await page.waitForTimeout(1500);
+    const perf = await readPerf(page);
+    expect(perf['triangles']).toBeLessThanOrEqual(TRIANGLE_BUDGET);
+    expect(perf['calls']).toBeLessThanOrEqual(DRAW_CALL_BUDGET);
+    writeFileSync(join(SHOT_DIR, 'perf-report.json'), JSON.stringify(perf, null, 2), 'utf8');
+  });
+
+  test('無操作では1枚も描かない（frameloop="demand" の監査）', async () => {
+    await page.mouse.move(4, 4);
+    await page.waitForTimeout(1500);
+    const before = (await readPerf(page)).total;
+    await page.waitForTimeout(3000);
+    const after = (await readPerf(page)).total;
+    // 慣性の減衰が残ることがあるので 1 枚だけ許す
+    expect(after - before).toBeLessThanOrEqual(1);
+  });
+
+  test('実機では60fpsを保つ（OJT_PERF_TARGET=1 のときだけ）', async () => {
+    test.skip(process.env['OJT_PERF_TARGET'] !== '1', '内蔵GPU実機でのみ確認する（決定表#17）');
+    for (const view of ['正面', '俯瞰', 'ソケット拡大']) {
+      await page.getByRole('button', { name: view }).click();
+      await page.waitForTimeout(1200);
+      expect((await readPerf(page)).fps).toBeGreaterThanOrEqual(FPS_TARGET);
+    }
+  });
+
+  test('外部へ1件も通信しない（§15 のオフライン）', async () => {
+    const requests: string[] = [];
+    page.on('request', (request) => {
+      if (/^https?:/u.test(request.url())) requests.push(request.url());
+    });
+    await page.getByTestId('assemble-view-schematic').click();
+    await page.getByTestId('verify-button').click();
+    await page.waitForTimeout(3000);
+    await page.getByTestId('assemble-view-board').click();
+    await page.getByTestId('session-back').click();
+    expect(requests).toEqual([]);
+  });
+});
+```
+
+- [ ] **Step 3: 2回連続で走らせてコミットする**
+
+```
+pnpm --filter @ojt/desktop build
+pnpm --filter @ojt/desktop e2e
+pnpm --filter @ojt/desktop e2e
+git add apps/desktop && git commit -m "test(desktop): cover the Phase 5 acceptance criteria with e2e"
+```
+
+**期待**: E2E が **既存23本（4B 完了時点）＋ 本プランの8本 = 31本**すべて通る（`OJT_PERF_TARGET` を立てない環境では 60fps のテストは skip）。スクリーンショットは `50-schematic-editor` 〜 `55-keyboard-wiring` の6枚と `perf-report.json`。
+
+---
+
+## Task 16: 全体検証と仕上げ
+
+**モデル: Sonnet**（決められた手順を順に走らせる）
+
+**Files:** 無し（検証と、見つかった不足の修正のみ）
+
+- [ ] **Step 1: 全体を走らせる**
+
+```
+pnpm -r test
+pnpm -r typecheck
+pnpm lint
+npx prettier --check "apps/desktop/**/*.{ts,tsx,css}" "packages/**/*.ts" "docs/**/*.md" "README.md"
+pnpm --filter @ojt/schematic-core test:coverage
+pnpm --filter @ojt/content test:coverage
+pnpm --filter @ojt/circuit-sim test:coverage
+```
+
+`schematic-core` / `content` / `circuit-sim` の行・分岐カバレッジが **90%以上**であること（§16 Phase 1 受入基準④は Phase 5 でも維持する）。
+
+- [ ] **Step 2: 規律の grep（0件であること）**
+
+```
+grep -rn "TODO\|TBD\|FIXME\|後で\|適宜" apps/desktop/src packages/*/src README.md docs/releases/v1.0.0.md
+grep -rn "http://\|https://" apps/desktop/src/renderer --include=*.ts --include=*.tsx --include=*.css
+grep -rn "TerminalHit" apps/desktop/src/renderer/three/Socket.tsx apps/desktop/src/renderer/three/TerminalBlock.tsx
+grep -rln "base64\|data:image" apps/desktop/src/renderer
+git diff --stat origin/main -- packages/circuit-sim packages/ladder-core packages/plc-dialects packages/board-model
+```
+
+期待: 1つ目〜4つ目は**0件**、5つ目は**空**（Phase 5 は `circuit-sim` / `ladder-core` / `plc-dialects` / `board-model` を1行も変えない）。
+
+- [ ] **Step 3: 配布物を作り、実機で確かめる**
+
+```
+pnpm --filter @ojt/desktop dist
+```
+
+`release/artifacts.md` が生成され、`release/` に NSIS（`.exe`）とポータブル（`.zip`）の2つが出ること。`docs/releases/v1.0.0.md` の「リリース手順チェックリスト」の 1〜8 を順に埋め、**6 の実機 fps の測定値をチェックリストの下に転記**する。
+
+- [ ] **Step 4: コミットする（公開はしない）**
+
+```
+git add -A && git commit -m "chore(phase5): verify the Phase 5 acceptance criteria and record the release checks"
+```
+
+**タグ付けと GitHub Release は行わない**（決定表#22。利用者の明示の指示を待つ）。
+
+---
