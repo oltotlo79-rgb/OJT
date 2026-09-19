@@ -5801,7 +5801,7 @@ git add apps/desktop && git commit -m "feat(desktop): add the render performance
 
 決定表#13・#14。**`TerminalHit.tsx` は消さない**（`PlcUnit` / `Outlet` が使い続ける）。
 
-- [ ] **Step 1: 失敗するテストを書く（純関数）**
+- [x] **Step 1: 失敗するテストを書く（純関数）**
 
 `apps/desktop/test/terminal-field.test.ts`:
 
@@ -5864,7 +5864,7 @@ describe('terminalStateOf（決定表#14）', () => {
 });
 ```
 
-- [ ] **Step 2: `three/TerminalField.tsx` を実装する**
+- [x] **Step 2: `three/TerminalField.tsx` を実装する**
 
 ```tsx
 import { isOffBoardTerminal, type BoardDefinition, type BoardTerminal } from '@ojt/board-model';
@@ -6092,7 +6092,7 @@ export function TerminalField({
 
 **注意（レビューで見る点）:** `instancedMesh` の `instanceColor` は最初の `setColorAt()` で確保される。three r160 以降は `mesh.instanceColor` が `null` のままだと `setColorAt()` が自分で作るので、上の順（`setColorAt` → `instanceColor !== null` の確認）で正しい。ネジのマテリアルは**この場専用の白1個**（`SCREW_MATERIAL`）で、`sharedMaterial()` のキャッシュには入れない（I7 の理由）。
 
-- [ ] **Step 3: `Socket.tsx` / `TerminalBlock.tsx` から端子のループを外し、`noPick` を1つにする**
+- [x] **Step 3: `Socket.tsx` / `TerminalBlock.tsx` から端子のループを外し、`noPick` を1つにする**
 
 両方から `terminals.map((terminal) => <TerminalHit ... />)` のブロックと、`hoveredTerminal` / `pendingTerminal` / `onHoverTerminal` / `onPickTerminal` の4 props を削る。`terminals` は**残す**（印字テクスチャと台座の外接矩形に要る）。`Socket.tsx` の `socketTerminalLabel()` は **export したまま**（`BoardScene` がツールチップに使う）。
 
@@ -6101,7 +6101,7 @@ export function TerminalField({
 `TerminalField.tsx` の3つが同じものを import する。同じ1行の関数を3箇所に置かないため（I7）。
 既存の `raycast={noPick}` の使い方は1つも変えない。
 
-- [ ] **Step 4: `BoardScene.tsx` に1本置く**
+- [x] **Step 4: `BoardScene.tsx` に1本置く**
 
 `<FixedWires board={board} />` の直後（電線より奥、ソケットより手前）に:
 
@@ -6157,7 +6157,7 @@ export function TerminalField({
 ここで正規化してはいけない（二重に変換すると `CR1.9` を役割IDとして解釈し直すことになる）。
 **役割ベースで持つのは `session.wires` と Task 10 の端子リストだけ**という分担を崩さないこと。
 
-- [ ] **Step 5: テストを走らせてコミットする**
+- [x] **Step 5: テストを走らせてコミットする**
 
 ```
 pnpm --filter @ojt/desktop test terminal-field scene three-fidelity board-scene probe-markers

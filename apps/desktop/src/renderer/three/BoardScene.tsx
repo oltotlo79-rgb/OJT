@@ -59,8 +59,10 @@ import { Lamp } from './Lamp.js';
 import { MountedPart } from './MountedPart.js';
 import { ProbeMarkers } from './ProbeMarkers.js';
 import { PushButton } from './PushButton.js';
-import { Socket } from './Socket.js';
+import { Socket, socketTerminalLabel } from './Socket.js';
 import { TerminalBlock } from './TerminalBlock.js';
+import { boardFieldTerminals, TerminalField } from './TerminalField.js';
+import { terminalTooltip } from './TerminalHit.js';
 import { ViewGizmo } from './ViewGizmo.js';
 import { Wire } from './Wire.js';
 
@@ -430,6 +432,32 @@ function BoardContents({
     return out;
   }, [board]);
 
+  /**
+   * 盤の端子（ネジ端子と当たり判定球）は `TerminalField` が**1回でまとめて**描く。決定表#13
+   * 盤に足した任意部品の**中身**が変われば作り直す（`session` の同一性は配線のたびに変わるので、
+   * 配列そのものを依存に並べると端子の並びが変わっていなくても作り直しになる）。
+   */
+  const extraPartsKey = (session?.extraParts ?? []).join(',');
+  const fieldTerminals = useMemo(
+    () => boardFieldTerminals(board, extraPartsKey.length === 0 ? [] : extraPartsKey.split(',')),
+    [board, extraPartsKey],
+  );
+  /**
+   * ソケットの端子は役割IDで、それ以外は盤定義の印字で見せる（従来の2通りをここへ寄せる）。§8.2
+   * 文言の組み立ては既存の `terminalTooltip()`（`TerminalHit.tsx`）に通す。`PlcUnit` /
+   * `Outlet` が使っているのと同じ関数なので、盤と机上でツールチップの作り方が割れない。
+   */
+  const terminalTooltipOf = useCallback(
+    (terminal: BoardTerminal): string => {
+      const socket = board.sockets.find((s) => terminal.id.startsWith(`${s.id}.`));
+      return terminalTooltip(
+        terminal,
+        socket === undefined ? '' : socketTerminalLabel(session?.socketRoles[socket.id], terminal),
+      );
+    },
+    [board, session],
+  );
+
   /*
    * 3Dの子へ渡すハンドラは**必ず `useCallback` で安定させる**。§15
    * 毎レンダーで新しい関数を作ると R3F が props の差分を検出して `invalidate()` を呼ぶため、
@@ -544,6 +572,20 @@ function BoardContents({
         ))}
         <FixedWires board={board} />
 
+        {/*
+          盤の端子はここで**まとめて1回**描く（§15 / 決定表#13）。ソケット・端子台は
+          筐体と印字だけを描き、端子は持たない。机上の端子（PLC本体・壁コンセント）は
+          `PlcUnit` / `PlcRack` / `Outlet` が従来どおり `TerminalHit` で描く。
+        */}
+        <TerminalField
+          terminals={fieldTerminals}
+          tooltipOf={terminalTooltipOf}
+          hovered={hovered}
+          pending={pending}
+          onHover={onHover}
+          onPick={pickTerminal}
+        />
+
         {board.sockets.map((socket) => {
           const role = session?.socketRoles[socket.id];
           const mounted = session?.mounted[socket.id];
@@ -556,10 +598,6 @@ function BoardContents({
                 occupied={mounted !== undefined}
                 selected={selectedSocket === socket.id}
                 terminals={terminals}
-                hoveredTerminal={hovered}
-                pendingTerminal={pending}
-                onHoverTerminal={onHover}
-                onPickTerminal={pickTerminal}
                 onPickSocket={pickSocket}
               />
               {mounted === undefined || role === undefined ? null : (
@@ -584,10 +622,6 @@ function BoardContents({
             label={block.label}
             {...(block.labelOffsetMm === undefined ? {} : { labelOffsetMm: block.labelOffsetMm })}
             terminals={blocks.get(block.key) ?? []}
-            hoveredTerminal={hovered}
-            pendingTerminal={pending}
-            onHoverTerminal={onHover}
-            onPickTerminal={pickTerminal}
           />
         ))}
 

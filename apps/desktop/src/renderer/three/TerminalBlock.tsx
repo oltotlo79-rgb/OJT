@@ -1,12 +1,10 @@
 import type { BoardTerminal } from '@ojt/board-model';
-import type { TerminalId } from '@ojt/circuit-sim';
 import { Html } from '@react-three/drei';
 import { useMemo, type JSX } from 'react';
 import { TERMINAL_BLOCK_CAP_COLOR, TERMINAL_BLOCK_COLOR } from '../session/colors.js';
 import { blockFaceTexture } from './labels.js';
-import { sharedMaterial, UNIT_BOX } from './materials.js';
+import { noPick, sharedMaterial, UNIT_BOX } from './materials.js';
 import { toScene } from './coords.js';
-import { TerminalHit } from './TerminalHit.js';
 
 /**
  * 端子台（ランプ用8P・押ボタン用12P・P/N供給端子）。設計仕様 §6.1 / §6.5。
@@ -31,21 +29,12 @@ const CAP_DEPTH_MM = 9;
 /** 印字の板をネジの頭より上に浮かせる量[mm]。 */
 const LABEL_LIFT_MM = 1.4;
 
-/** レイキャストを受けない（印字の板がクリックを奪わないようにする）。 */
-function noPick(): void {
-  // 交差候補を積まない
-}
-
 /** 端子台1個（台座＋端子＋ラベル）。 */
 export function TerminalBlock({
   name,
   label,
   labelOffsetMm,
   terminals,
-  hoveredTerminal,
-  pendingTerminal,
-  onHoverTerminal,
-  onPickTerminal,
 }: {
   name: string;
   label: string;
@@ -55,11 +44,11 @@ export function TerminalBlock({
    * 左上の状態オーバーレイが居るので、右斜め下へずらして重なりを避ける（レビュー指摘）。
    */
   labelOffsetMm?: { x: number; y: number };
+  /**
+   * この端子台の端子（台座の外接矩形と印字テクスチャに使う）。
+   * **端子そのものは描かない**（`TerminalField` が盤の端子をまとめて1回で描く。決定表#13）。
+   */
   terminals: readonly BoardTerminal[];
-  hoveredTerminal: string | undefined;
-  pendingTerminal: string | undefined;
-  onHoverTerminal: (id: TerminalId | undefined) => void;
-  onPickTerminal: (terminal: BoardTerminal) => void;
 }): JSX.Element | null {
   // 印字は端子台1個につきテクスチャ1枚にまとめる（labels.ts の方針）
   const faceTexture = useMemo(() => blockFaceTexture(terminals, PAD_MM), [terminals]);
@@ -113,17 +102,6 @@ export function TerminalBlock({
       >
         <span className="block-label">{label}</span>
       </Html>
-      {terminals.map((terminal) => (
-        <TerminalHit
-          key={terminal.id}
-          terminal={terminal}
-          tooltip={terminal.label}
-          hovered={hoveredTerminal === terminal.id}
-          pending={pendingTerminal === terminal.id}
-          onHover={onHoverTerminal}
-          onPick={onPickTerminal}
-        />
-      ))}
     </group>
   );
 }

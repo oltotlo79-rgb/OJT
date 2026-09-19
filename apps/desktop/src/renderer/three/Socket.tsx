@@ -6,15 +6,13 @@ import {
   type SocketId,
   type SocketRole,
 } from '@ojt/board-model';
-import type { TerminalId } from '@ojt/circuit-sim';
 import { Html } from '@react-three/drei';
 import { useMemo, type JSX } from 'react';
 import type { ThreeEvent } from '@react-three/fiber';
 import { SOCKET_BODY_COLOR, SOCKET_LEVER_COLOR, SOCKET_SELECTED_COLOR } from '../session/colors.js';
 import { socketFaceTexture, SOCKET_PLATE_MARGIN_MM } from './labels.js';
-import { sharedMaterial, UNIT_BOX } from './materials.js';
+import { noPick, sharedMaterial, UNIT_BOX } from './materials.js';
 import { toScene } from './coords.js';
-import { TerminalHit } from './TerminalHit.js';
 
 /**
  * 14ピンソケット（PYF14A 相当）。設計仕様 §6.2 / §6.5。
@@ -49,11 +47,6 @@ const LEVER_WIDTH_MM = 4;
 /** 差込穴の半径[mm]。 */
 const PIN_HOLE_RADIUS_MM = 1;
 
-/** レイキャストを受けない（クリックを下の本体・端子へ通す）。 */
-function noPick(): void {
-  // 交差候補を積まない
-}
-
 /**
  * ソケット本体（差込領域）のマテリアル。選択中は縁が光って見えるよう発光を足す。
  * 「いまどのソケットを触っているか」が3Dの側でも分かるようにするため（利用者要望 2026-09-19）。
@@ -85,10 +78,6 @@ export function Socket({
   occupied,
   selected,
   terminals,
-  hoveredTerminal,
-  pendingTerminal,
-  onHoverTerminal,
-  onPickTerminal,
   onPickSocket,
 }: {
   socket: SocketDefinition;
@@ -96,11 +85,11 @@ export function Socket({
   occupied: boolean;
   /** 部品パネルのカードがこのソケットを指しているか（本体を光らせる）。§8.2 */
   selected: boolean;
+  /**
+   * このソケットの端子（印字テクスチャの焼き付けに使う）。
+   * **端子そのものは描かない**（`TerminalField` が盤の端子をまとめて1回で描く。決定表#13）。
+   */
   terminals: readonly BoardTerminal[];
-  hoveredTerminal: string | undefined;
-  pendingTerminal: string | undefined;
-  onHoverTerminal: (id: TerminalId | undefined) => void;
-  onPickTerminal: (terminal: BoardTerminal) => void;
   onPickSocket: (socketId: SocketId, occupied: boolean) => void;
 }): JSX.Element {
   const { width, length } = socket.bodyMm;
@@ -209,17 +198,6 @@ export function Socket({
           <small>{socket.id}</small>
         </span>
       </Html>
-      {terminals.map((terminal) => (
-        <TerminalHit
-          key={terminal.id}
-          terminal={terminal}
-          tooltip={socketTerminalLabel(role, terminal)}
-          hovered={hoveredTerminal === terminal.id}
-          pending={pendingTerminal === terminal.id}
-          onHover={onHoverTerminal}
-          onPick={onPickTerminal}
-        />
-      ))}
     </group>
   );
 }

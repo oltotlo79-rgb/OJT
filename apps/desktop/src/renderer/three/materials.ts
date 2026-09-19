@@ -27,6 +27,14 @@ export const UNIT_BOX = new BoxGeometry(1, 1, 1);
 /** Y型圧着端子の輪（外径 5mm・線径 0.9mm）。§6.6 */
 export const LUG_GEOMETRY = new CylinderGeometry(2.5, 2.5, 0.9, 10, 1, true);
 
+/**
+ * レイキャストを受けない（飾りの板や輪がクリックを奪わないようにする）。
+ * `Socket` / `TerminalBlock` / `TerminalField` が同じものを使う（同じ1行を3箇所に置かないため）。
+ */
+export function noPick(): void {
+  // 交差候補を積まない
+}
+
 /** 当たり判定メッシュ用の透明マテリアル（見えないが raycast は拾う）。 */
 export const INVISIBLE_MATERIAL: Material = new MeshStandardMaterial({
   transparent: true,
