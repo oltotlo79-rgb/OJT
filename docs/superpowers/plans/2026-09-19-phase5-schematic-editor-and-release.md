@@ -6181,7 +6181,7 @@ git add apps/desktop && git commit -m "perf(desktop): draw the board terminals w
 
 決定表#15。前提D #6・#7。
 
-- [ ] **Step 1: 失敗するテストを書く**
+- [x] **Step 1: 失敗するテストを書く**
 
 **`apps/desktop/vitest.config.ts` は `environment: 'happy-dom'` で、2Dキャンバスを持たない**
 （`canvas.getContext('2d')` が `null` を返し、`makeCanvasTexture()` は `undefined` を返す）。
@@ -6323,7 +6323,7 @@ describe('印字テクスチャの解像度（§15: 2048px 以下）', () => {
 });
 ```
 
-- [ ] **Step 2: `labels.ts` にキャッシュを足す**
+- [x] **Step 2: `labels.ts` にキャッシュを足す**
 
 モジュール末尾（`blockFaceTexture` の後ろ）ではなく、**`makeCanvasTexture()` の直後**に置く（両方の焼き関数から引くため）:
 
@@ -6410,7 +6410,7 @@ export function socketFaceTexture(
 
 `blockFaceTexture()` も同じく `faceKey('block', terminals, rect.minX, rect.minY, rect.w, rect.h)` で包む（`rect` は既存の `faceRect()` の戻り）。
 
-- [ ] **Step 3: `DeskWires.tsx` のメモ化を直す**
+- [x] **Step 3: `DeskWires.tsx` のメモ化を直す**
 
 `useMemo` の鍵を署名にし、`memo()` で包む（`Wire.tsx` の `routeSignature()` と同じ流儀。前提D #7）:
 
@@ -6466,7 +6466,7 @@ export function deskWireSignature(board: BoardDefinition, session: BoardSession)
 を `}, [signature]);` の直前の行に置く（`Wire.tsx` L213 と同じ書き方。ルールは `warn` だが、
 完了条件は「無警告」なので放置しない）。
 
-- [ ] **Step 4: `frameloop` の監査を単体テストに足す**
+- [x] **Step 4: `frameloop` の監査を単体テストに足す**
 
 `apps/desktop/test/board-scene.test.ts` の末尾に（`visualSignature` の既存テストの隣）:
 
@@ -6500,7 +6500,7 @@ describe('visualSignature: 絵に効かない更新では変わらない（§15 
 });
 ```
 
-- [ ] **Step 5: テストを走らせてコミットする**
+- [x] **Step 5: テストを走らせてコミットする**
 
 ```
 pnpm --filter @ojt/desktop test label-cache board-scene desk-wires scene
@@ -6526,7 +6526,7 @@ git add apps/desktop && git commit -m "perf(desktop): share the printed label te
 
 決定表#18〜#22。**`electron-builder.yml` と `copy-content.mjs` は1行も変えない。**
 
-- [ ] **Step 1: 失敗するテストを書く（同梱物の検査）**
+- [x] **Step 1: 失敗するテストを書く（同梱物の検査）**
 
 `apps/desktop/test/release-content.test.ts`:
 
@@ -6611,7 +6611,7 @@ describe('同梱課題が4メーカーで成立する（決定表#19）', () => 
 
 **注記**: 方言ごとにデバイス名の綴りが変わる（`X0` / `0.00` / `A0` / `000000`）ので、**端子名そのものの一致はここでは見ない**。綴りの写像は 4A の `plc-dialects` が持ち、その正しさは 4A のテストが縛っている（二重に縛らない）。ここが縛るのは「4機種すべてで**机上の本体が実際に差し替わり**、課題のI/O点数に足りる端子を持つこと」——つまり**同梱物として4メーカーが成立していること**だけである。
 
-- [ ] **Step 2: `package.json` を直す**
+- [x] **Step 2: `package.json` を直す**
 
 ```json
   "version": "1.0.0",
@@ -6621,7 +6621,7 @@ describe('同梱課題が4メーカーで成立する（決定表#19）', () => 
     "dist": "node scripts/copy-content.mjs && node scripts/build.mjs && electron-builder --config electron-builder.yml && node scripts/check-dist.mjs"
 ```
 
-- [ ] **Step 3: `scripts/check-dist.mjs` を作る**
+- [x] **Step 3: `scripts/check-dist.mjs` を作る**
 
 ```js
 import { createHash } from 'node:crypto';
@@ -6724,7 +6724,7 @@ if (!existsSync(RELEASE)) {
 **モジュールのトップレベル**に置いたままでよい（`.mjs` はトップレベル `await` が使える）。
 `for (const name of expected)` の中で `await` するだけなので、関数で包み直す必要は無い。
 
-- [ ] **Step 4: `apps/desktop/build/license.txt`（NSIS の説明画面）を作る**
+- [x] **Step 4: `apps/desktop/build/license.txt`（NSIS の説明画面）を作る**
 
 `oneClick: false` の NSIS は `build/license.txt` を「使用許諾／説明」のページとして出す。§15 が求める SmartScreen の手順と商標注記をここに置く。
 
@@ -6756,7 +6756,7 @@ JW / JW300 / JW-300SP はシャープ株式会社の商標または登録商標�
 詳細は設定画面の「このアプリについて」を参照してください。
 ```
 
-- [ ] **Step 5: `README.md` を作る**
+- [x] **Step 5: `README.md` を作る**
 
 リポジトリ直下に置く（§15 の「README に SmartScreen の手順」）。内容は「このアプリは何か／動作環境／入手と導入（NSIS とポータブル）／初回起動時の SmartScreen／オフライン／開発者向けの `pnpm` コマンド／ライセンスと商標」。**配布ファイルの置き場所やURLは書かない**（まだ公開していない。決定表#22）。開発者向けの節には次のコマンドだけを載せる:
 
@@ -6770,7 +6770,7 @@ pnpm --filter @ojt/desktop e2e
 pnpm --filter @ojt/desktop dist
 ```
 
-- [ ] **Step 6: `docs/releases/v1.0.0.md` を作る**
+- [x] **Step 6: `docs/releases/v1.0.0.md` を作る**
 
 `docs/releases/v0.2.0.md` の構成をそのまま踏襲し、次の節を置く。**数値（サイズ・SHA256）は書かない**——`release/artifacts.md` を参照する（決定表#21）。
 
@@ -6808,7 +6808,7 @@ pnpm --filter @ojt/desktop dist
       `release/` の2ファイルを添付する
 ```
 
-- [ ] **Step 7: テストを走らせてコミットする**
+- [x] **Step 7: テストを走らせてコミットする**
 
 ```
 pnpm --filter @ojt/desktop test release-content content-resources

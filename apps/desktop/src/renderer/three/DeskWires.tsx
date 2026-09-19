@@ -1,12 +1,14 @@
 import {
   deskRoutes,
+  deskWires,
   isOffBoardTerminal,
   type BoardDefinition,
   type BoardSession,
   type BoardTerminal,
   type DeskRoute,
 } from '@ojt/board-model';
-import { useMemo, type JSX } from 'react';
+import { PLC_WIRE_COLOR } from '@ojt/content';
+import { memo, useMemo, useRef, type JSX } from 'react';
 import { BackSide } from 'three';
 import { WIRE_COLORS, WIRE_OUTLINE_COLOR } from '../session/colors.js';
 import { sharedMaterial } from './materials.js';
@@ -72,15 +74,47 @@ function DeskCable({ route }: { route: DeskRoute }): JSX.Element {
   );
 }
 
+/**
+ * 机上ケーブルの同一性を表す文字列。§15
+ * `session` は配線のたびに `cloneSession()` で新しい参照になるので、そのまま依存に並べると
+ * 盤の電線を1本足すだけで机上の `TubeGeometry` が全部作り直される（GPU バッファの作り直し）。
+ * 本数・両端・色が同じなら形も同じなので、それを鍵にする。`deskRoutes()`（ダクトの障害物回避で
+ * 折れ点を求める）ではなく**軽い** `deskWires()`（端子の生座標だけ）から作る。回避経路は
+ * 「机上に渡るどの電線が・どの端子間か・何色か」だけの純関数なので、この鍵が一致していれば
+ * `deskRoutes()` をもう一度呼んでも同じ折れ線になる。
+ */
+export function deskWireSignature(board: BoardDefinition, session: BoardSession): string {
+  return deskWires(board, session)
+    .map((wire) => {
+      const color = session.wires.find((w) => w.id === wire.id)?.color ?? PLC_WIRE_COLOR;
+      return `${wire.id}:${color}:${wire.fromPos.x},${wire.fromPos.y},${wire.fromPos.z}>${wire.toPos.x},${wire.toPos.y},${wire.toPos.z}`;
+    })
+    .join('|');
+}
+
 /** 机上へ渡るケーブルをまとめて描く。 */
-export function DeskWires({
+function DeskWiresImpl({
   board,
   session,
 }: {
   board: BoardDefinition;
   session: BoardSession;
 }): JSX.Element | null {
-  const routes = useMemo(() => deskRoutes(board, session), [board, session]);
+  const signature = deskWireSignature(board, session);
+  /*
+   * 署名が同じなら形も色も同じなので、最新の `board` / `session` をそのまま使ってよい。
+   * `useRef` 越しに読むのは **`react-hooks/exhaustive-deps` を黙らせるためではなく**、
+   * 「依存は署名1本」という意図をコードの形で表すためである。ref は規則が「安定」と見なす値で、
+   * `.current` の読み出しは依存に数えられない。だから `eslint-disable` は要らない——
+   * `Wire.tsx` の `useTubeGeometry()` が同じ形で無警告に通っているのが先例である（I8）。
+   */
+  const latest = useRef({ board, session });
+  latest.current = { board, session };
+  const routes = useMemo(() => {
+    void signature; // 署名が同じ＝形も色も同じ。作り直しの引き金としてだけ使う
+    const { board: b, session: s } = latest.current;
+    return deskRoutes(b, s);
+  }, [signature]);
   if (routes.length === 0) return null;
   return (
     <group name="desk-wires">
@@ -90,3 +124,5 @@ export function DeskWires({
     </group>
   );
 }
+
+export const DeskWires = memo(DeskWiresImpl);

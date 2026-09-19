@@ -141,3 +141,31 @@ describe('visualSignature（§15 再描画の判断）', () => {
     expect(visualSignature(stateWith({ session: plugged }))).not.toBe(base);
   });
 });
+
+describe('visualSignature: 絵に効かない更新では変わらない（§15 / Plan 5 決定表#16）', () => {
+  it('ignores the clock, the voltages and the tester needle', () => {
+    const base = useStore.getState();
+    const before = visualSignature(base);
+    const after = visualSignature({
+      ...base,
+      snapshot: {
+        ...base.snapshot,
+        tMs: base.snapshot.tMs + 1000,
+        sourceAmps: 0.42,
+        droppedTicks: 3,
+        tester: { ...base.snapshot.tester, needleDeg: 17.5, value: 23.9 },
+      },
+    });
+    expect(after).toBe(before);
+  });
+
+  it('changes when the schematic guide lights a terminal', () => {
+    const base = useStore.getState();
+    const before = visualSignature(base);
+    const after = visualSignature({
+      ...base,
+      highlight: { cellIds: ['c1'], terminals: ['CR1.14'], wireIds: [] },
+    });
+    expect(after).not.toBe(before);
+  });
+});

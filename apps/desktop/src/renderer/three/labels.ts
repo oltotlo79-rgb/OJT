@@ -286,9 +286,88 @@ export function makeCanvasTexture(
 }
 
 /**
+ * 焼いたテクスチャの共有キャッシュ。設計仕様 §15 / Plan 5 決定表#15。
+ *
+ * 盤の8ソケットは**相対的な端子配置も印字も完全に同一**なので、焼く絵も同一である。
+ * 以前は `Socket` ごとに `useMemo` していたため、1枚 1440×1280px（約7.4MB）のキャンバスが
+ * 8枚あった。鍵を「板の左上からの相対位置＋印字＋役割＋板の寸法」にすると8枚が1枚になる。
+ *
+ * テクスチャは**アプリの寿命のあいだ生き続ける**（盤の形は課題で変わらない）。
+ * 破棄の責任を持たないのはそのためで、`clearFaceTextureCache()` はテストからのみ呼ぶ。
+ */
+const faceTextureCache = new Map<string, Texture>();
+
+/** キャッシュの件数（テスト用）。 */
+export function faceTextureCacheSize(): number {
+  return faceTextureCache.size;
+}
+
+/** キャッシュを空にする（テスト用。テクスチャも破棄する）。 */
+export function clearFaceTextureCache(): void {
+  for (const texture of faceTextureCache.values()) texture.dispose();
+  faceTextureCache.clear();
+}
+
+/**
+ * 端子群の「相対位置＋印字＋役割」からキャッシュの鍵を作る。
+ * **export する**のは、焼いた絵そのものを比べられない環境（`happy-dom` には2Dキャンバスが無い）
+ * でも「8枚が1枚に共有されること」を鍵の一致として検査できるようにするため。
+ *
+ * `colors`（省略可）は `blockFaceTexture()` が受け取る印字の色表（`ROLE_COLOR` か
+ * `roleColorsFor(plateColor)` の結果）をそのまま渡す。`role` だけでは**色表そのものの違い**は
+ * 分からない（例: 別メーカーのPLC端子台が同じ相対配置・同じ印字になったとき、片方が
+ * `roleColorsFor()` で明色、もう片方が暗色を選んでいても role 文字列は同じになりうる）ので、
+ * 省いた形にすると片方の印字が古い色のまま焼き直されずに使い回されてしまう
+ * （このタスクの完了条件: 「PLC/ラックの銘板が古い印字を出さない」）。ソケットは色表が固定
+ * （`SOCKET_ROLE_COLOR`）なので `colors` を渡さなくてよい。
+ *
+ * `blockTerminalMark(t)` は **`prefix === 'block'` のときだけ**鍵に混ぜる。
+ * `blockTerminalMark()` は物理端子ID（`S1.13` など**ソケットIDを含む絶対ID**）から作るため、
+ * 無条件に混ぜるとソケット8個の鍵が「板の左上からの相対位置」で揃っていても全部バラバラになり、
+ * 決定表#15 の「8ソケットは鍵が一致する」が壊れる。ソケットの印字は `terminalNumber(t)` と
+ * `t.role`（→ `roleLabel()`）だけで決まり、どちらも既に鍵に入っているので `blockTerminalMark(t)`
+ * が無くても取り違えは起きない。
+ */
+export function faceKey(
+  prefix: string,
+  terminals: readonly BoardTerminal[],
+  originX: number,
+  originY: number,
+  widthMm: number,
+  heightMm: number,
+  colors?: Readonly<Record<TerminalRole, string>>,
+): string {
+  const parts = terminals.map((t) => {
+    const mark = prefix === 'block' ? blockTerminalMark(t) : '';
+    const ink = colors === undefined ? '' : colors[t.role];
+    return `${(t.pos.x - originX).toFixed(2)},${(t.pos.y - originY).toFixed(2)},${terminalNumber(t)},${t.role},${mark},${ink}`;
+  });
+  return `${prefix}|${widthMm.toFixed(2)}x${heightMm.toFixed(2)}|${parts.join('|')}`;
+}
+
+/**
+ * キャッシュ越しに焼く。**焼く関数を受け取る**ので、テストは本物のキャンバスが無くても
+ * 「鍵ごとに1回しか焼かない」を確かめられる。焼けなかった（`undefined`）ときは**覚えない**ので、
+ * キャンバスが後から使える環境になれば次の呼び出しで焼き直す。
+ */
+export function cachedFaceTexture(
+  key: string,
+  bake: () => Texture | undefined,
+): Texture | undefined {
+  const found = faceTextureCache.get(key);
+  if (found !== undefined) return found;
+  const made = bake();
+  if (made !== undefined) faceTextureCache.set(key, made);
+  return made;
+}
+
+/**
  * ソケット1個ぶんの印字（`⑬ −` のような盤定義の `label` をそのまま焼く）。
  * 盤の mm 座標 `(originX, originY)` を板の左上に対応させるので、
  * 端子が段付きに並んでいても印字は端子の真上に来る。
+ *
+ * 8ソケットは相対配置も印字も同一なので、`faceKey()` が一致し `cachedFaceTexture()` が
+ * 1枚だけ焼いて残り7枚に使い回す（決定表#15）。
  */
 export function socketFaceTexture(
   terminals: readonly BoardTerminal[],
@@ -298,23 +377,30 @@ export function socketFaceTexture(
   plateHeightMm: number,
 ): Texture | undefined {
   if (terminals.length === 0) return undefined;
-  return makeCanvasTexture(plateWidthMm, plateHeightMm, (ctx) => {
-    for (const terminal of terminals) {
-      // 位置は `socketLabelBoxes()` が持つ（テストが検査するのと同じ値で描く）
-      const boxes = socketLabelBoxes(terminal, originX, originY);
-      const x = (terminal.pos.x - originX) * PX_PER_MM;
-      ctx.fillStyle = '#F2F2EE';
-      ctx.font = `700 ${NUMBER_MM * PX_PER_MM}px sans-serif`;
-      ctx.fillText(
-        terminalNumber(terminal),
-        x,
-        ((boxes.number.y0 + boxes.number.y1) / 2) * PX_PER_MM,
-      );
-      ctx.fillStyle = SOCKET_ROLE_COLOR[terminal.role];
-      ctx.font = `700 ${ROLE_MM * PX_PER_MM}px sans-serif`;
-      ctx.fillText(roleLabel(terminal.role), x, ((boxes.role.y0 + boxes.role.y1) / 2) * PX_PER_MM);
-    }
-  });
+  const key = faceKey('socket', terminals, originX, originY, plateWidthMm, plateHeightMm);
+  return cachedFaceTexture(key, () =>
+    makeCanvasTexture(plateWidthMm, plateHeightMm, (ctx) => {
+      for (const terminal of terminals) {
+        // 位置は `socketLabelBoxes()` が持つ（テストが検査するのと同じ値で描く）
+        const boxes = socketLabelBoxes(terminal, originX, originY);
+        const x = (terminal.pos.x - originX) * PX_PER_MM;
+        ctx.fillStyle = '#F2F2EE';
+        ctx.font = `700 ${NUMBER_MM * PX_PER_MM}px sans-serif`;
+        ctx.fillText(
+          terminalNumber(terminal),
+          x,
+          ((boxes.number.y0 + boxes.number.y1) / 2) * PX_PER_MM,
+        );
+        ctx.fillStyle = SOCKET_ROLE_COLOR[terminal.role];
+        ctx.font = `700 ${ROLE_MM * PX_PER_MM}px sans-serif`;
+        ctx.fillText(
+          roleLabel(terminal.role),
+          x,
+          ((boxes.role.y0 + boxes.role.y1) / 2) * PX_PER_MM,
+        );
+      }
+    }),
+  );
 }
 
 /** 端子台の印字に使う短い名前（`PL1+` / `PB1c` / `P1` / `N1`）。§6.4 */
@@ -337,7 +423,12 @@ export function terminalNumber(terminal: BoardTerminal): string {
   return terminal.label.split(' ').at(-2) ?? terminal.label;
 }
 
-/** 端子台1個ぶんの印字。端子の外接矩形＋余白を板とし、各端子の真下に名前を描く。 */
+/**
+ * 端子台1個ぶんの印字。端子の外接矩形＋余白を板とし、各端子の真下に名前を描く。
+ *
+ * `faceKey()` に `colors` も渡す（役割文字列だけでは色表そのものの違いを拾えないため。
+ * `faceKey()` の doc comment を参照）。
+ */
 export function blockFaceTexture(
   terminals: readonly BoardTerminal[],
   padMm: number,
@@ -350,18 +441,21 @@ export function blockFaceTexture(
   if (rect === undefined) return undefined;
   const offsetX = (rect.w - (rect.maxX - rect.minX)) / 2;
   const offsetY = (rect.h - (rect.maxY - rect.minY)) / 2;
-  return makeCanvasTexture(rect.w, rect.h, (ctx) => {
-    for (const terminal of terminals) {
-      const mark = blockTerminalMark(terminal);
-      // 名前が長いときは `blockMarkFontMm()` で縮める（項目1: 9mmピッチの隣と重ならない幅にする）
-      const fontMm = blockMarkFontMm(mark);
-      const x = (terminal.pos.x - rect.minX + offsetX) * PX_PER_MM;
-      const y = (terminal.pos.y - rect.minY + offsetY) * PX_PER_MM;
-      ctx.font = `700 ${fontMm * PX_PER_MM}px sans-serif`;
-      ctx.fillStyle = colors[terminal.role];
-      ctx.fillText(mark, x, y + BLOCK_MARK_OFFSET_MM * PX_PER_MM);
-    }
-  });
+  const key = faceKey('block', terminals, rect.minX, rect.minY, rect.w, rect.h, colors);
+  return cachedFaceTexture(key, () =>
+    makeCanvasTexture(rect.w, rect.h, (ctx) => {
+      for (const terminal of terminals) {
+        const mark = blockTerminalMark(terminal);
+        // 名前が長いときは `blockMarkFontMm()` で縮める（項目1: 9mmピッチの隣と重ならない幅にする）
+        const fontMm = blockMarkFontMm(mark);
+        const x = (terminal.pos.x - rect.minX + offsetX) * PX_PER_MM;
+        const y = (terminal.pos.y - rect.minY + offsetY) * PX_PER_MM;
+        ctx.font = `700 ${fontMm * PX_PER_MM}px sans-serif`;
+        ctx.fillStyle = colors[terminal.role];
+        ctx.fillText(mark, x, y + BLOCK_MARK_OFFSET_MM * PX_PER_MM);
+      }
+    }),
+  );
 }
 
 /**
