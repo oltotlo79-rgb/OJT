@@ -224,6 +224,13 @@ export interface OpenProblemOptions {
   resolvedFaults?: readonly FaultSpecData[] | undefined;
   /** モードC2の故障の種（記録用）。渡すと `Date.now()` を引き直さない。§5.2 */
   faultSeed?: number | undefined;
+  /**
+   * モードDで「もう一度」を押したときにラダーを残す（Batch 4+5 レビュー I4）。
+   * 盤・履歴・危険操作は今までどおり作り直すが、ラダー・デバイスコメント・方言は保ち、
+   * `converted` だけ `false` に落とす（また変換を通させる。§10.6 H-1）。
+   * モードD以外の課題では無視される。
+   */
+  keepLadder?: boolean | undefined;
 }
 
 /** ストアの形。 */
@@ -485,6 +492,12 @@ export interface AppState {
     monitorColor: string;
     vendor: string;
   }) => void;
+  /**
+   * 方言（メーカー）だけを差し替える。§10.5
+   * 作業ファイルの復元専用（`applyLadderSettings()` と違い、グリッド幅やモニタ色には触れない）。
+   * 実装済みかどうかの確認は呼び出し側（`work-file.ts`）が済ませてから呼ぶ。Batch 4+5 レビュー I5
+   */
+  setDialect: (dialectId: DialectId) => void;
   /** ラダーを1手戻す（戻せたら true）。決定表#2 */
   undoLadderEdit: () => boolean;
   /** ラダーを1手やり直す（やり直せたら true）。決定表#2 */
@@ -713,6 +726,13 @@ export const useStore = create<AppState>((set, get) => ({
       // 回路図ヒントの出し方は級だけで決まる（§8.4）
       schematicVisible = schematicPolicy(problem.grade).shown;
     }
+    /*
+     * モードDの「もう一度」はラダーを残す（Batch 4+5 レビュー I4）。`plcFields()` が書き込む
+     * 前のいまの値をここで捕まえておく（下の `set()` で上書きされてしまうため）。
+     */
+    const keepLadder = options.keepLadder === true && isPlcProblem(problem);
+    const previousLadder = keepLadder ? get().ladder : undefined;
+    const previousLadderComments = keepLadder ? get().ladderComments : undefined;
     set({
       problem,
       session,
@@ -759,6 +779,9 @@ export const useStore = create<AppState>((set, get) => ({
       pendingReport: undefined,
       highlight: NO_HIGHLIGHT,
       ...plcFields(problem),
+      ...(keepLadder && previousLadder !== undefined
+        ? { ladder: previousLadder, ladderComments: previousLadderComments ?? {} }
+        : {}),
       /*
        * モードDは「盤＋PLC」視点で開く（決定表#6）。机上のPLC本体と壁コンセントは
        * 既存の7プリセットのどれにも入らないので、既定の視点を切り替えないと
@@ -1090,6 +1113,9 @@ export const useStore = create<AppState>((set, get) => ({
         : {}),
     });
   },
+  setDialect: (dialectId) => {
+    set({ dialectId });
+  },
   undoLadderEdit: () => {
     const { ladder, ladderHistory } = get();
     if (ladder === undefined) return false;
@@ -1129,10 +1155,14 @@ export const useStore = create<AppState>((set, get) => ({
      *
      * C2は**同じ故障のまま**新品の故障入り盤で再挑戦する（Plan 2B Task 4 Step 8）。そのため
      * 種も故障も引き直さず、いま入っている解決済みリストから作り直す。
+     *
+     * モードDは訓練者のラダーを残す（Batch 4+5 レビュー I4。結果画面「もう一度」）。盤・履歴・
+     * 危険操作は今までどおり作り直し、ラダーだけ持ち越す（`openProblem()` の `keepLadder`）。
      */
     const reopened = get().openProblem(problem, {
       resolvedFaults: state.resolvedFaults,
       faultSeed: state.faultSeed,
+      keepLadder: isPlcProblem(problem),
     });
     // 作り直せなかったら理由はトーストに出ている。画面も世代番号も動かさない（§13 #2）
     if (!reopened) return;

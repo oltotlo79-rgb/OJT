@@ -9,7 +9,7 @@ import { COIL_COL, no, out, X, Y } from '@ojt/ladder-core';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { DEVICE_COMMENT_COUNT_LIMIT, useStore } from '../src/renderer/app/store.js';
 import type { PlcMonitorSnapshot } from '../src/renderer/app/store-types.js';
-import { applyLadderCell, initialLadder } from '../src/renderer/session/ladder.js';
+import { applyLadderCell } from '../src/renderer/session/ladder.js';
 import { plcBoardOf } from '../src/renderer/session/plc-session.js';
 
 const problem = BUILTIN_PLC_PROBLEMS[0]!;
@@ -230,7 +230,33 @@ describe('モードDの状態を持ち越さない（Plan 2B Batch 1 B4 と同�
     expect(state.converted).toBe(false);
   });
 
-  it('starts a retry from an empty ladder again', () => {
+  /*
+   * Batch 4+5 レビュー I4: 結果画面の「もう一度」（`resetSession()`）はラダーを残す
+   * （盤・履歴・危険操作だけ作り直す）。前は `openProblem()` が毎回 `plcFields()` で
+   * ラダーも空に戻していたが、訓練者の入力を失うため変更した。
+   */
+  it('keeps the trainee ladder and comments on a retry, but drops the ladder history and converted flag', () => {
+    useStore.getState().openProblem(problem);
+    const seeded = applyLadderCell(
+      useStore.getState().ladder!,
+      { networkId: 'n1', row: 0, col: 0 },
+      no(X(1)),
+    );
+    if (!seeded.ok) throw new Error(seeded.message);
+    useStore.getState().setLadder(seeded.program);
+    useStore.getState().setDeviceComment('X1', '運転押ボタン');
+    useStore.setState({ converted: true, plcRunning: true, ladderMode: 'monitor' });
+    useStore.getState().resetSession();
+    const state = useStore.getState();
+    expect(state.ladder).toEqual(seeded.program);
+    expect(state.ladderComments['X1']).toBe('運転押ボタン');
+    // 変換済みフラグ・履歴・モニタ関連は作り直す（また変換を通させる。§10.6 H-1）
+    expect(state.converted).toBe(false);
+    expect(state.ladderHistory.done).toEqual([]);
+    expect(state.plcRunning).toBe(false);
+  });
+
+  it('drops the ladder on abandon, even right after a retry (I4 と B4 の切り分け)', () => {
     useStore.getState().openProblem(problem);
     const seeded = applyLadderCell(
       useStore.getState().ladder!,
@@ -240,8 +266,8 @@ describe('モードDの状態を持ち越さない（Plan 2B Batch 1 B4 と同�
     if (!seeded.ok) throw new Error(seeded.message);
     useStore.getState().setLadder(seeded.program);
     useStore.getState().resetSession();
-    expect(useStore.getState().ladder).toEqual(initialLadder());
-    expect(useStore.getState().ladderHistory.done).toEqual([]);
+    useStore.getState().abandonSession();
+    expect(useStore.getState().ladder).toBeUndefined();
   });
 
   it('bumps the session epoch on a retry so the worker reloads', () => {

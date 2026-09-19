@@ -1921,7 +1921,7 @@ function plcFields(problem?: SupportedProblem): Pick<
       ...plcFields(problem),
 ```
 
-`resetSession()` は `openProblem()` を呼び直すので**追加の後始末は要らない**（`plcFields(problem)` が走る）。
+`resetSession()` は `openProblem()` を呼び直すので**追加の後始末は要らない**（`plcFields(problem)` が走る）。（Batch 4+5 レビュー I4で変更: モードDの「もう一度」は `openProblem()` に `keepLadder: true` を渡し、盤・履歴・危険操作だけを作り直してラダー・デバイスコメント・方言は残すよう改めた。）
 
 **`abandonSession()`**（課題を離れる）の `set({ … })` には:
 
