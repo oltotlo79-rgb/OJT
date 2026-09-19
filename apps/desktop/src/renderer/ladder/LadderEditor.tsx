@@ -1,6 +1,12 @@
 import { cellAt, hline, vline, type Cell } from '@ojt/ladder-core';
 import type { DialectProfile } from '@ojt/plc-dialects';
-import { useCallback, useState, type JSX, type KeyboardEvent as ReactKeyboardEvent } from 'react';
+import {
+  useCallback,
+  useMemo,
+  useState,
+  type JSX,
+  type KeyboardEvent as ReactKeyboardEvent,
+} from 'react';
 import { useStore } from '../app/store.js';
 import { JA } from '../i18n/ja.js';
 import { isTypingTarget } from '../session/interaction.js';
@@ -22,6 +28,7 @@ import {
 } from '../session/ladder.js';
 import { DeviceInput } from './DeviceInput.js';
 import { LadderGrid } from './LadderGrid.js';
+import { skinThemeOf } from './skins/index.js';
 import styles from './ladder.module.css';
 
 /**
@@ -198,6 +205,9 @@ export function LadderEditor({
     [commit, gridCols, onConvert, onModeChange, profile],
   );
 
+  /** 見た目（セル寸法・コメント行数）はスキンが持つ（Plan 4B 決定表#6）。 */
+  const theme = useMemo(() => skinThemeOf(profile), [profile]);
+
   if (program === undefined) return <div className={styles.editor} data-testid="ladder-editor" />;
 
   return (
@@ -221,6 +231,7 @@ export function LadderEditor({
       <LadderGrid
         program={program}
         profile={profile}
+        theme={theme}
         cursor={cursor}
         mode={mode}
         comments={comments}

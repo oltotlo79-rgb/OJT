@@ -12,20 +12,8 @@ import { memo, useRef, type JSX } from 'react';
 import { useStore } from '../app/store.js';
 import { JA } from '../i18n/ja.js';
 import type { LadderCursor, LadderEditorMode } from '../session/ladder.js';
-import {
-  CELL_H,
-  CELL_W,
-  END_MARK,
-  LEAD_FULL,
-  LEAD_LEFT,
-  LEAD_RIGHT,
-  leadAcrossHidden,
-  LINK_DOWN,
-  MC_SYMBOL_ID,
-  MCR_SYMBOL_ID,
-  symbolShape,
-  WIRE_Y,
-} from './symbols.js';
+import type { SkinTheme } from './skins/index.js';
+import { MC_SYMBOL_ID, MCR_SYMBOL_ID, symbolMetrics, type SymbolMetrics } from './symbols.js';
 import styles from './ladder.module.css';
 
 /**
@@ -40,6 +28,24 @@ import styles from './ladder.module.css';
 
 /** 左母線の幅[px]。 */
 const RAIL_W = 6;
+
+/** デバイスコメント1行の文字数（セル幅に収まる目安）。 */
+const COMMENT_CHARS = 6;
+/** デバイスコメントの行間[px]。 */
+const COMMENT_LINE_H = 8;
+
+/** コメントを `lines` 行に折り返す（入りきらない分は最後の行の末尾を `…` にする）。 */
+export function commentLines(text: string, lines: number, perLine: number): string[] {
+  if (lines <= 0 || text.length === 0) return [];
+  const out: string[] = [];
+  for (let index = 0; index < lines; index += 1) {
+    const slice = text.slice(index * perLine, (index + 1) * perLine);
+    if (slice.length === 0) break;
+    const last = index === lines - 1 && text.length > (index + 1) * perLine;
+    out.push(last ? `${slice.slice(0, Math.max(0, perLine - 1))}…` : slice);
+  }
+  return out;
+}
 
 /** 表示する列（IRの列番号）の並び。最後は必ずコイル列。 */
 export function displayColumns(gridCols: number): number[] {
@@ -114,14 +120,20 @@ function cellText(cell: Cell, profile: DialectProfile): { top: string; bottom: s
 function symbolIdOf(cell: Cell, profile: DialectProfile): string | undefined {
   const symbols = profile.symbols;
   switch (cell.kind) {
-    case 'contact':
-      return cell.type === 'NO'
-        ? symbols.no
-        : cell.type === 'NC'
-          ? symbols.nc
-          : cell.type === 'P'
-            ? symbols.rise
-            : symbols.fall;
+    case 'contact': {
+      /*
+       * 実機ではb接点で使う特殊デバイス（シャープの `007366`＝常時ON。4A H-4 / §17 #22）。
+       * IRの `SP0` は「常時ON」という意味そのもので、a接点で描くと実機の見た目と食い違う。
+       * 判定・ランタイムには一切効かない**表示だけ**の話である。
+       */
+      const inverted =
+        cell.device.kind === 'special' &&
+        (profile.specialInverted ?? []).includes(cell.device.index);
+      if (cell.type === 'NO') return inverted ? symbols.nc : symbols.no;
+      if (cell.type === 'NC') return inverted ? symbols.no : symbols.nc;
+      // 微分接点（`P` / `F`）は反転しない（立上り／立下りそのものが向きを持つ）
+      return cell.type === 'P' ? symbols.rise : symbols.fall;
+    }
     case 'coil':
       return cell.type === 'OUT' ? symbols.coil : cell.type === 'SET' ? symbols.set : symbols.rst;
     case 'timer':
@@ -145,6 +157,8 @@ function GridCell({
   cellKey,
   cell9,
   profile,
+  theme,
+  metrics,
   comment,
   leftOn,
   rightOn,
@@ -158,6 +172,8 @@ function GridCell({
   cursorKey: string;
   cell9: { row: number; col: number; networkId: string };
   profile: DialectProfile;
+  theme: SkinTheme;
+  metrics: SymbolMetrics;
   comment: string | undefined;
   leftOn: boolean;
   rightOn: boolean;
@@ -170,7 +186,7 @@ function GridCell({
   const leftColor = leftOn ? colors.powered : colors.idle;
   const rightColor = rightOn ? colors.powered : colors.idle;
   const symbolId = symbolIdOf(cell, profile);
-  const shape = symbolId === undefined ? undefined : symbolShape(symbolId);
+  const shape = symbolId === undefined ? undefined : metrics.shape(symbolId);
   const text = cellText(cell, profile);
   const conducting = cell.kind === 'hline' || cell.kind === 'vline';
   return (
@@ -181,52 +197,67 @@ function GridCell({
       data-error={error}
       data-powered={leftOn}
       className={styles.cell}
-      transform={`translate(${String(cell9.col * CELL_W)} ${String(cell9.row * CELL_H)})`}
+      transform={`translate(${String(cell9.col * metrics.w)} ${String(cell9.row * metrics.h)})`}
       onClick={() => {
         onPick({ networkId: cell9.networkId, row: cell9.row, col: cell9.col });
       }}
     >
       {/* 当たり判定（透明の矩形。線だけだとクリックしづらい） */}
-      <rect width={CELL_W} height={CELL_H} className={styles.cellHit} />
+      <rect width={metrics.w} height={metrics.h} className={styles.cellHit} />
       {conducting ? (
-        <path d={LEAD_FULL} stroke={leftColor} className={styles.wire} />
+        <path d={metrics.leadFull} stroke={leftColor} className={styles.wire} />
       ) : shape === undefined ? null : (
         <>
-          <path d={LEAD_LEFT} stroke={leftColor} className={styles.wire} />
-          <path d={LEAD_RIGHT} stroke={rightColor} className={styles.wire} />
+          <path d={metrics.leadLeft} stroke={leftColor} className={styles.wire} />
+          <path d={metrics.leadRight} stroke={rightColor} className={styles.wire} />
         </>
       )}
       {cell.kind === 'vline' && hasLinkBelow ? (
-        <path d={LINK_DOWN} stroke={leftColor} className={styles.wire} />
+        <path d={metrics.linkDown} stroke={leftColor} className={styles.wire} />
       ) : null}
       {cell.kind === 'end'
-        ? END_MARK.map((d) => <path key={d} d={d} stroke={colors.idle} className={styles.wire} />)
+        ? metrics.endMark.map((d) => (
+            <path key={d} d={d} stroke={colors.idle} className={styles.wire} />
+          ))
         : null}
       {shape?.paths.map((d) => (
-        <path key={d} d={d} stroke={rightColor} className={styles.symbol} />
+        // `data-symbol` は「どの記号で描いたか」をテストから引くための印（Plan 4B Task 4）
+        <path key={d} d={d} data-symbol={symbolId} stroke={rightColor} className={styles.symbol} />
       ))}
       {shape?.text === undefined ? null : (
-        <text x={CELL_W / 2} y={WIRE_Y + 4} className={styles.symbolText}>
+        <text x={metrics.w / 2} y={metrics.wireY + 4} className={styles.symbolText}>
           {shape.text}
         </text>
       )}
       {text.top === '' ? null : (
-        <text x={CELL_W / 2} y={9} className={styles.deviceText}>
+        <text x={metrics.w / 2} y={9} className={styles.deviceText}>
           {text.top}
         </text>
       )}
       {text.bottom === '' ? null : (
-        <text x={CELL_W / 2} y={CELL_H - 9} className={styles.presetText}>
+        <text x={metrics.w / 2} y={metrics.h - 9} className={styles.presetText}>
           {text.bottom}
         </text>
       )}
-      {comment === undefined ? null : (
-        <text x={CELL_W / 2} y={CELL_H - 1} className={styles.commentText}>
-          {comment}
-        </text>
-      )}
-      {selected ? <rect width={CELL_W} height={CELL_H} className={styles.cursor} /> : null}
-      {error ? <rect width={CELL_W} height={CELL_H} className={styles.errorCell} /> : null}
+      {/*
+        デバイスコメントは記号の**下**に `theme.commentLines` 行で出す
+        （CX-Programmer風は2行。「実物との対応」表）。長い文字は行ごとに切る。
+      */}
+      {comment === undefined
+        ? null
+        : commentLines(comment, theme.commentLines, COMMENT_CHARS).map((line, index) => (
+            <text
+              key={line + String(index)}
+              className={styles.commentText}
+              data-testid={`comment-line-${String(index)}`}
+              x={metrics.w / 2}
+              y={metrics.h - 2 - (theme.commentLines - 1 - index) * COMMENT_LINE_H}
+            >
+              {line}
+            </text>
+          ))}
+      {selected ? <rect width={metrics.w} height={metrics.h} className={styles.cursor} /> : null}
+      {error ? <rect width={metrics.w} height={metrics.h} className={styles.errorCell} /> : null}
     </g>
   );
 }
@@ -243,6 +274,8 @@ function GridCell({
 function NetworkView({
   net,
   profile,
+  theme,
+  metrics,
   mode,
   comments,
   errorCells,
@@ -254,6 +287,8 @@ function NetworkView({
 }: {
   net: Network;
   profile: DialectProfile;
+  theme: SkinTheme;
+  metrics: SymbolMetrics;
   mode: LadderEditorMode;
   comments: Record<string, string>;
   errorCells: ReadonlySet<string>;
@@ -299,15 +334,15 @@ function NetworkView({
       <svg
         className={styles.grid}
         width={width}
-        height={net.rows * CELL_H}
-        viewBox={`0 0 ${String(width)} ${String(net.rows * CELL_H)}`}
+        height={net.rows * metrics.h}
+        viewBox={`0 0 ${String(width)} ${String(net.rows * metrics.h)}`}
         role="grid"
         aria-label={`${JA.ladder.network} ${net.id}`}
       >
         {/* 左母線（全行を繋ぐ。§10.3） */}
         <rect
           width={RAIL_W}
-          height={net.rows * CELL_H}
+          height={net.rows * metrics.h}
           className={styles.rail}
           data-testid={`rail-${net.id}`}
         />
@@ -328,6 +363,8 @@ function NetworkView({
                     cell={cell}
                     cell9={{ networkId: net.id, row, col: index }}
                     profile={profile}
+                    theme={theme}
+                    metrics={metrics}
                     comment={deviceComment}
                     /*
                      * 空セルは塗らない。`poweredCells` は「どの行でも0列目は左母線と
@@ -352,7 +389,7 @@ function NetworkView({
               {hiddenSpanIsWire(net, gridCols, row) ? (
                 <path
                   data-testid={`rung-to-coil-${net.id}:${String(row)}`}
-                  d={leadAcrossHidden(columns.length - 2, row)}
+                  d={metrics.leadAcrossHidden(columns.length - 2, row)}
                   stroke={on(row, COIL_COL) ? colors.powered : colors.idle}
                   className={styles.wire}
                   aria-hidden="true"
@@ -370,6 +407,7 @@ function NetworkView({
 function LadderGridImpl({
   program,
   profile,
+  theme,
   cursor,
   mode,
   comments,
@@ -379,6 +417,8 @@ function LadderGridImpl({
 }: {
   program: LadderProgram;
   profile: DialectProfile;
+  /** 見た目（セル寸法・線幅・コメント行数）。決定表#5 / #6 */
+  theme: SkinTheme;
   cursor: LadderCursor;
   mode: LadderEditorMode;
   /** デバイスコメント（キーは `deviceLabel()` の形）。§10.7 */
@@ -389,8 +429,9 @@ function LadderGridImpl({
   gridCols: number;
   onPickCell: (cursor: LadderCursor) => void;
 }): JSX.Element {
+  const metrics = symbolMetrics(theme.cell);
   const columns = displayColumns(gridCols);
-  const width = RAIL_W + columns.length * CELL_W;
+  const width = RAIL_W + columns.length * metrics.w;
   const cursorKey = `${cursor.networkId}:${String(cursor.row)}:${String(cursor.col)}`;
   return (
     <div className={styles.gridScroll} data-testid="ladder-grid">
@@ -399,6 +440,8 @@ function LadderGridImpl({
           key={net.id}
           net={net}
           profile={profile}
+          theme={theme}
+          metrics={metrics}
           mode={mode}
           comments={comments}
           errorCells={errorCells}

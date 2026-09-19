@@ -627,3 +627,16 @@ details[open] > .sideSummary::before {
   max-width: min(var(--ladder-tree-w), var(--skin-tree-w, 240px));
 }
 /* --- /Plan 4B Task 3 --- */
+
+/* --- Plan 4B Task 4: スキンの格子線（「実物との対応」表） --- */
+/*
+ * `--skin-grid` を背景と同色にしているスキン（GX Works3風・JW-300SP風）では格子線が見えない。
+ * 「実物との対応」表の「格子線: 無し」がそのまま実装になる。
+ */
+.gridScroll {
+  background-image:
+    linear-gradient(to right, var(--skin-grid, transparent) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--skin-grid, transparent) 1px, transparent 1px);
+  background-size: var(--skin-cell-w, 48px) var(--skin-cell-h, 36px);
+}
+/* --- /Plan 4B Task 4 --- */

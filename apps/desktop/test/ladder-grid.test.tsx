@@ -15,12 +15,13 @@ import {
   Y,
   type LadderProgram,
 } from '@ojt/ladder-core';
-import { MITSUBISHI_FX5U } from '@ojt/plc-dialects';
+import { MITSUBISHI_FX5U, OMRON_CP1E } from '@ojt/plc-dialects';
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useStore } from '../src/renderer/app/store.js';
 import type { PlcMonitorSnapshot } from '../src/renderer/app/store-types.js';
 import { LadderGrid } from '../src/renderer/ladder/LadderGrid.js';
+import { skinThemeOf } from '../src/renderer/ladder/skins/index.js';
 import { CELL_H, CELL_W, WIRE_Y } from '../src/renderer/ladder/symbols.js';
 import { applyOrContact } from '../src/renderer/session/ladder.js';
 
@@ -65,6 +66,8 @@ function offBits(rows: number): string {
 
 const base = {
   profile: MITSUBISHI_FX5U,
+  // 見た目（セル寸法・コメント行数）はスキンが持つ（Plan 4B Task 4。決定表#6）
+  theme: skinThemeOf(MITSUBISHI_FX5U),
   cursor: { networkId: 'n1', row: 0, col: 0 },
   mode: 'write' as const,
   comments: {},
@@ -72,6 +75,42 @@ const base = {
   gridCols: MITSUBISHI_FX5U.gridCols,
   onPickCell: () => undefined,
 };
+
+describe('スキンの寸法（利用者要求: 実物に近い画面）', () => {
+  it('sizes the cells from the skin', () => {
+    render(
+      <LadderGrid
+        program={sample()}
+        {...base}
+        profile={OMRON_CP1E}
+        theme={skinThemeOf(OMRON_CP1E)}
+        gridCols={OMRON_CP1E.gridCols}
+      />,
+    );
+    const svg = screen.getByRole('grid', { name: /n1/u });
+    // OMRON は 52×40。接点11列＋コイル列1＋母線6px
+    expect(svg.getAttribute('height')).toBe('40');
+    expect(Number(svg.getAttribute('width'))).toBe(12 * 52 + 6);
+  });
+
+  it('shows two comment lines in the CX-Programmer style and one elsewhere', () => {
+    const comments = { X0: 'とても長いデバイスコメントの例です' };
+    render(
+      <LadderGrid
+        program={sample()}
+        {...base}
+        profile={OMRON_CP1E}
+        theme={skinThemeOf(OMRON_CP1E)}
+        gridCols={OMRON_CP1E.gridCols}
+        comments={comments}
+      />,
+    );
+    expect(screen.getAllByTestId(/^comment-line-/u)).toHaveLength(2);
+    cleanup();
+    render(<LadderGrid program={sample()} {...base} comments={comments} />);
+    expect(screen.getAllByTestId(/^comment-line-/u)).toHaveLength(1);
+  });
+});
 
 describe('LadderGrid（§10.7）', () => {
   it('draws every network with its id, comment and END', () => {
