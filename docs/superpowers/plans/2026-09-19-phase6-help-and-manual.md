@@ -1831,7 +1831,7 @@ git show --stat HEAD
 
 Task 3 と同じ書き方の規則に従う。**`10-authoring.md` だけ**は `JSON` と課題ファイルの項目名を書いてよい（本設計 §6.2 の規則3）。
 
-- [ ] **Step 1: `06-mode-d.md` を書く**
+- [x] **Step 1: `06-mode-d.md` を書く**
 
 ```markdown
 # PLCでプログラムを作る（モードD）
@@ -1938,7 +1938,7 @@ Task 3 と同じ書き方の規則に従う。**`10-authoring.md` だけ**は `J
 - 端子の名前が機種で変わるので、配線もやり直しになること
 ```
 
-- [ ] **Step 2: `07-schematic.md` を書く**
+- [x] **Step 2: `07-schematic.md` を書く**
 
 ```markdown
 # 回路図を描いて確かめる
@@ -1995,7 +1995,7 @@ Task 3 と同じ書き方の規則に従う。**`10-authoring.md` だけ**は `J
 - `![回路図の記号をクリックして盤の端子が光ったところ。](images/schematic-editor.png)`
 ```
 
-- [ ] **Step 3: `08-workfile.md` を書く**
+- [x] **Step 3: `08-workfile.md` を書く**
 
 ```markdown
 # 作業を保存する・続きからやる
@@ -2026,7 +2026,7 @@ Task 3 と同じ書き方の規則に従う。**`10-authoring.md` だけ**は `J
 - 設定でこのたずねを出さなくできること
 ```
 
-- [ ] **Step 4: `09-settings.md` を書く**
+- [x] **Step 4: `09-settings.md` を書く**
 
 ```markdown
 # 設定
@@ -2073,7 +2073,7 @@ PLCの課題を開くときに、最初に選ばれているメーカーを決�
 - 「既定に戻す」ボタン
 ```
 
-- [ ] **Step 5: `10-authoring.md` を書く**
+- [x] **Step 5: `10-authoring.md` を書く**
 
 ```markdown
 # 指導者向け: 課題の作り方と配り方
@@ -2130,7 +2130,7 @@ PLCの課題を開くときに、最初に選ばれているメーカーを決�
 - アプリそのものの更新は新しいインストーラで入れ替えること（自動更新はありません）
 ```
 
-- [ ] **Step 6: `11-glossary.md` を書く**
+- [x] **Step 6: `11-glossary.md` を書く**
 
 ```markdown
 # 用語集
@@ -2150,7 +2150,7 @@ PLCの課題を開くときに、最初に選ばれているメーカーを決�
 - 五十音順に並べる
 ```
 
-- [ ] **Step 7: `12-troubleshooting.md` を書く**
+- [x] **Step 7: `12-troubleshooting.md` を書く**
 
 ```markdown
 # 困ったときは
@@ -2206,7 +2206,7 @@ PLC の一部の命令の名前とキーの割り当ては、実際の機器の�
 - ちがいが分かったときは、その機種の設定だけを直せばよい作りになっていること
 ```
 
-- [ ] **Step 8: 生成物を作り直してテストを通す**
+- [x] **Step 8: 生成物を作り直してテストを通す**
 
 ```
 cd apps/desktop && node scripts/build-manual.mjs
@@ -2215,7 +2215,7 @@ pnpm --filter @ojt/desktop test manual-
 # 期待: Test Files 2 passed / Tests 22 passed
 ```
 
-- [ ] **Step 9: commit**
+- [x] **Step 9: commit**
 
 ```
 git add docs/manual/06-mode-d.md docs/manual/07-schematic.md docs/manual/08-workfile.md docs/manual/09-settings.md docs/manual/10-authoring.md docs/manual/11-glossary.md docs/manual/12-troubleshooting.md apps/desktop/src/renderer/help/manual-content.ts
