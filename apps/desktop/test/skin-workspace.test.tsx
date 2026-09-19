@@ -109,6 +109,25 @@ describe('スキンの枠（利用者要求: 実物に近い画面）', () => {
     expect(root).toHaveAttribute('data-skin', 'jtekt');
   });
 
+  /**
+   * `--skin-output-h` は `SkinLayout.outputHeightPx` から出るが、実際にレイアウトへ効いて
+   * いるか（値が固定で死んでいないか）を確かめるテストが無かった（レビュー「テスト不足」）。
+   */
+  it('varies --skin-output-h with the skin (PCwin vs GX Works3)', () => {
+    workspace(JTEKT_PC10G);
+    const jtektHeight = screen
+      .getByTestId('ladder-workspace')
+      .style.getPropertyValue('--skin-output-h');
+    expect(jtektHeight).toBe(`${String(SKIN_THEMES['jtekt'].layout.outputHeightPx)}px`);
+    cleanup();
+    workspace(MITSUBISHI_FX5U);
+    const mitsubishiHeight = screen
+      .getByTestId('ladder-workspace')
+      .style.getPropertyValue('--skin-output-h');
+    expect(mitsubishiHeight).toBe(`${String(SKIN_THEMES['mitsubishi'].layout.outputHeightPx)}px`);
+    expect(mitsubishiHeight).not.toBe(jtektHeight);
+  });
+
   it('shows the status items each tool shows', () => {
     workspace(MITSUBISHI_FX5U);
     expect(screen.getByTestId('status-mode')).toHaveTextContent('書込');
@@ -131,6 +150,20 @@ describe('スキンの枠（利用者要求: 実物に近い画面）', () => {
     cleanup();
     workspace(MITSUBISHI_FX5U);
     expect(screen.getByTestId('ladder-workspace')).toHaveAttribute('data-output-pane', 'window');
+  });
+
+  /**
+   * レビュー B2: `data-output-pane` は見た目に効かない飾りの旗だった。`OutputWindow` の
+   * `open` を配線してから、実際に `<details>` が閉じているか（PCwin風）を確かめる。
+   */
+  it('folds the output details closed by default in the PCwin style, keeps it open elsewhere (B2)', () => {
+    workspace(JTEKT_PC10G);
+    expect(screen.getByTestId('output-details')).not.toHaveAttribute('open');
+    for (const profile of [MITSUBISHI_FX5U, OMRON_CP1E, SHARP_JW300]) {
+      cleanup();
+      workspace(profile);
+      expect(screen.getByTestId('output-details'), profile.id).toHaveAttribute('open');
+    }
   });
 });
 

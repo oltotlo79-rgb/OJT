@@ -611,9 +611,14 @@ details[open] > .sideSummary::before {
   font-style: italic;
 }
 
-/* PCwin風は出力を下部のステータスバーに畳む（§10.6 / 決定表#7） */
+/*
+ * PCwin風は出力を下部のステータスバーに畳む（§10.6 / 決定表#7）。`outputPane: 'status-bar'` は
+ * `data-output-pane` を変えるだけで見た目には効かなかった（レビュー B2）。`OutputWindow` の
+ * `open` を閉じた既定にしたうえで、ここでは開いたときにも高さを超えて伸びないよう抑える。
+ */
 .outputCollapsed {
   max-height: var(--skin-output-h, 150px);
+  overflow: hidden;
 }
 
 /* --- Plan 4B Task 3: ツリーの幅（`--skin-tree-w` の扱い） --- */

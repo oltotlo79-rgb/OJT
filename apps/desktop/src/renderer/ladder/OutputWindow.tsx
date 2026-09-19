@@ -24,12 +24,19 @@ export function OutputWindow({
   issues,
   converted,
   convertKey,
+  open,
   onJump,
 }: {
   issues: ConvertIssues;
   converted: boolean;
   /** 「変換」のキー。無いスキン（`convertStep: false`）では `undefined`。決定表#3 */
   convertKey: string | undefined;
+  /**
+   * 折りたたみの既定の開閉。スキンごとの出力ペインの形（`SkinLayout.outputPane`）に従う
+   * （レビュー B2）。`window` のスキンは開いたまま、`status-bar`（PCwin風）は
+   * ステータスバーの1行だけを見せて畳んでおく。
+   */
+  open: boolean;
   onJump: (cursor: LadderCursor) => void;
 }): JSX.Element {
   const rows: Row[] = [
@@ -52,10 +59,11 @@ export function OutputWindow({
   return (
     <section className={styles.output} data-testid="output-window" aria-label={JA.ladder.output}>
       {/*
-        畳めるようにする（2026-09-19 UXレビュー #27）。既定は開いたまま（変換の結果は
-        いちばん見せたい情報）だが、畳めばその高さがそのまま格子に戻る。
+        畳めるようにする（2026-09-19 UXレビュー #27）。既定の開閉はスキンが持つ `open` に従う
+        （`window` のスキンは開いたまま。変換の結果はいちばん見せたい情報。PCwin風だけは
+        ステータスバー1行に畳んでおく。レビュー B2）。畳めばその高さがそのまま格子に戻る。
       */}
-      <details open data-testid="output-details">
+      <details open={open} data-testid="output-details">
         <summary className={styles.outputHeader} data-testid="output-summary">
           <h2>{JA.ladder.output}</h2>
           <span data-testid="convert-state" className={converted ? styles.okTag : styles.ngTag}>

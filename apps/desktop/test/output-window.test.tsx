@@ -42,7 +42,13 @@ afterEach(() => {
 describe('出力ウィンドウ（§10.6）', () => {
   it('lists structural errors first, then dialect errors, then warnings', () => {
     render(
-      <OutputWindow issues={issues} converted={false} convertKey="F4" onJump={() => undefined} />,
+      <OutputWindow
+        issues={issues}
+        converted={false}
+        convertKey="F4"
+        open
+        onJump={() => undefined}
+      />,
     );
     const rows = screen.getAllByTestId(/^output-row-/u);
     expect(rows).toHaveLength(4);
@@ -55,7 +61,13 @@ describe('出力ウィンドウ（§10.6）', () => {
 
   it('shows where each issue is', () => {
     render(
-      <OutputWindow issues={issues} converted={false} convertKey="F4" onJump={() => undefined} />,
+      <OutputWindow
+        issues={issues}
+        converted={false}
+        convertKey="F4"
+        open
+        onJump={() => undefined}
+      />,
     );
     expect(screen.getByTestId('output-row-0')).toHaveTextContent('n1');
     expect(screen.getByTestId('output-row-0')).toHaveTextContent('1 行');
@@ -64,7 +76,7 @@ describe('出力ウィンドウ（§10.6）', () => {
 
   it('jumps to the cell an issue points at, and does nothing for the rest', () => {
     const onJump = vi.fn();
-    render(<OutputWindow issues={issues} converted={false} convertKey="F4" onJump={onJump} />);
+    render(<OutputWindow issues={issues} converted={false} convertKey="F4" open onJump={onJump} />);
     fireEvent.click(screen.getByTestId('output-row-0'));
     expect(onJump).toHaveBeenCalledWith({ networkId: 'n1', row: 0, col: 2 });
     // `missing-end` はセルを指していないので押しても動かない（決定表#4）
@@ -79,6 +91,7 @@ describe('出力ウィンドウ（§10.6）', () => {
         issues={{ errors: [], warnings: [], usage: issues.usage, unused: issues.unused }}
         converted
         convertKey="F4"
+        open
         onJump={() => undefined}
       />,
     );
@@ -94,9 +107,35 @@ describe('出力ウィンドウ（§10.6）', () => {
         issues={{ errors: [], warnings: [], usage: undefined, unused: undefined }}
         converted={false}
         convertKey="F4"
+        open
         onJump={() => undefined}
       />,
     );
     expect(screen.getByTestId('convert-state')).toHaveTextContent('未変換');
+  });
+
+  /** レビュー B2: 折りたたみの既定はスキンの `open` に従う。 */
+  it('opens or closes the details from the open prop', () => {
+    render(
+      <OutputWindow
+        issues={{ errors: [], warnings: [], usage: undefined, unused: undefined }}
+        converted={false}
+        convertKey="F4"
+        open={false}
+        onJump={() => undefined}
+      />,
+    );
+    expect(screen.getByTestId('output-details')).not.toHaveAttribute('open');
+    cleanup();
+    render(
+      <OutputWindow
+        issues={{ errors: [], warnings: [], usage: undefined, unused: undefined }}
+        converted={false}
+        convertKey="F4"
+        open
+        onJump={() => undefined}
+      />,
+    );
+    expect(screen.getByTestId('output-details')).toHaveAttribute('open');
   });
 });

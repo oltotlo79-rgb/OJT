@@ -353,6 +353,8 @@ export function LadderWorkspace({
               issues={issues}
               converted={converted}
               convertKey={shortcutKeyOf(profile, 'convert')}
+              // PCwin風（`status-bar`）は畳んだまま。ほかは開いたまま（レビュー B2）
+              open={theme.layout.outputPane === 'window'}
               onJump={(next) => {
                 useStore.getState().setLadderCursor(next);
               }}

@@ -1,5 +1,5 @@
-import { PLC_UNIT_FX5U } from '@ojt/board-model';
-import { MITSUBISHI_FX5U } from '@ojt/plc-dialects';
+import { PLC_UNIT_CP1E, PLC_UNIT_FX5U } from '@ojt/board-model';
+import { MITSUBISHI_FX5U, OMRON_CP1E } from '@ojt/plc-dialects';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useStore } from '../src/renderer/app/store.js';
@@ -40,6 +40,15 @@ describe('モニタ一覧（§10.7）', () => {
   it('asks to convert first while the ladder is not converted (I3)', () => {
     panel();
     expect(screen.getByTestId('monitor-not-converted')).toHaveTextContent('F4');
+  });
+
+  /** レビュー B1: OMRON（`convertStep: false`）は押す場所が無いので変換キーを名乗らない。 */
+  it('says conversion happens automatically under a skin with no 変換 key (B1)', () => {
+    render(<MonitorPanel profile={OMRON_CP1E} unit={PLC_UNIT_CP1E} onPlc={vi.fn()} />);
+    const note = screen.getByTestId('monitor-not-converted');
+    expect(note).not.toHaveTextContent('先に変換');
+    expect(note).not.toHaveTextContent('F4');
+    expect(note).toHaveTextContent('自動で変換します');
   });
 
   it('asks to start monitoring, then to RUN, once converted (I3 / Plan 4B Task 3)', () => {

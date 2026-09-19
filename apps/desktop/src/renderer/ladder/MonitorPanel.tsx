@@ -34,6 +34,8 @@ export function MonitorPanel({
   const running = useStore((s) => s.plcRunning);
   const converted = useStore((s) => s.converted);
   const terminal = (name: string | undefined): string => `PLC.${name ?? ''}`;
+  /** 「変換」のキー。無いスキン（`convertStep: false`）では `undefined`。決定表#3 */
+  const convertKey = shortcutKeyOf(profile, 'convert');
   return (
     // RUN/STOP とデバイスの状態は作業中いつでも見たいので、既定は開いた状態（#27）
     <SidePanel title={JA.ladder.monitor} testId="monitor-panel" open>
@@ -72,7 +74,13 @@ export function MonitorPanel({
       */}
       {!converted ? (
         <p className={styles.sideNote} data-testid="monitor-not-converted">
-          {JA.ladder.monitorNotConverted(shortcutKeyOf(profile, 'convert') ?? 'F4')}
+          {/*
+            「変換」を持たないメーカーでは押す場所が無いので、変換キーを名乗らずに自動で変換される
+            旨を出す（`OutputWindow` の `convert-state` と同じ分岐。レビュー B1）。
+          */}
+          {convertKey === undefined
+            ? JA.ladder.notConvertedAuto
+            : JA.ladder.monitorNotConverted(convertKey)}
         </p>
       ) : monitor === undefined ? (
         <p className={styles.sideNote} data-testid="monitor-no-snapshot">
