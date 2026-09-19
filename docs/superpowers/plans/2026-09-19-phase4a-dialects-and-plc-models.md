@@ -1292,3 +1292,2043 @@ git commit -m "feat(plc-dialects): add the OMRON CP1E profile"
 ```
 
 ---
+
+## Task 3: JTEKT TOYOPUC PC10G-1SP プロファイル（PCwin風）と同番号重複バリデータ
+
+**モデル: Opus**（§10.5 固有バリデーションの設計判断があるため）
+
+**Files:**
+- Create: `packages/plc-dialects/src/jtekt.ts`
+- Modify: `packages/plc-dialects/src/index.ts`
+- Test: `packages/plc-dialects/test/jtekt.test.ts`
+
+§10.5 の JTEKT 列（16進デバイス、先頭の `1` はプログラム番号）と §10.6 の PCwin風の行を実装する。命令ニーモニックは §17 #10 の前提（三菱系の流用）、タイマ単位は §17 #20 の前提（0.1秒）、特殊デバイスは §17 #22 の前提割当（`1V00` / `1V01` / `V072`）である。**この機種だけが持つ検査**が「X と Y、T と C の同一番号の併用禁止」（§10.5 固有バリデーション・調査資料 §8.1）である。
+
+| 決めること | 本タスクの実装 |
+|---|---|
+| デバイス表記 | `1X000`〜`1X7FF`（16進3桁・大文字）。`1Y` / `1M` は同じ形、`1T` / `1C` は `000`〜`1FF` |
+| プログラム番号 | **1 固定**。`parseDevice('2X000')` は「プログラム番号は1です」のエラー（前提表） |
+| タイマ設定値 | 設定値レジスタ `H` ＋ 16進4桁。`H001E` = 30カウント = 3.0s（前提表） |
+| 同番号重複 | `1X000` と `1Y000` を同じプログラムで使うと `device-conflict`。`1T000` と `1C000` も同様（§16 Phase 4 受入基準③の3A側） |
+| 変換 | **不要**（`convertStep: false`。スクリーンエディタ方式。§10.6）。ショートカットは GX Works3風から「変換」を落として流用（§17 #19） |
+
+- [ ] **Step 1: 失敗するテストを書く**
+
+`packages/plc-dialects/test/jtekt.test.ts`:
+
+```ts
+import {
+  C,
+  ctu,
+  endNetwork,
+  hline,
+  IR_COLS,
+  M,
+  network,
+  no,
+  out,
+  program,
+  SP,
+  T,
+  ton,
+  X,
+  Y,
+  type Cell,
+} from '@ojt/ladder-core';
+import { describe, expect, it } from 'vitest';
+import { getDialect, GX_STYLE_SHORTCUTS, JTEKT_PC10G } from '../src/index.js';
+
+function rung(...cells: Cell[]): Cell[] {
+  const row = [...cells];
+  const output = row.pop();
+  if (output === undefined) throw new Error('出力セルが要ります');
+  while (row.length < IR_COLS - 1) row.push(hline());
+  row.push(output);
+  return row;
+}
+
+const profile = JTEKT_PC10G;
+
+describe('JTEKT TOYOPUC PC10G-1SP のデバイス表記（§10.5 / PLC調査資料 §3-B）', () => {
+  it('is registered as the jtekt dialect', () => {
+    expect(getDialect('jtekt')).toBe(profile);
+    expect(profile.id).toBe('jtekt');
+    expect(profile.displayName).toContain('PC10G-1SP');
+    expect(profile.displayName).toContain('風');
+  });
+
+  it('formats every device kind in hexadecimal with the program number 1', () => {
+    expect(profile.formatDevice(X(0))).toBe('1X000');
+    expect(profile.formatDevice(X(15))).toBe('1X00F');
+    expect(profile.formatDevice(X(2047))).toBe('1X7FF');
+    expect(profile.formatDevice(Y(16))).toBe('1Y010');
+    expect(profile.formatDevice(M(255))).toBe('1M0FF');
+    expect(profile.formatDevice(T(511))).toBe('1T1FF');
+    expect(profile.formatDevice(C(0))).toBe('1C000');
+  });
+
+  it('maps the three special devices (§17 #22 の前提割当)', () => {
+    expect(profile.formatDevice(SP(0))).toBe('1V00');
+    expect(profile.formatDevice(SP(1))).toBe('1V01');
+    expect(profile.formatDevice(SP(2))).toBe('V072');
+    expect(profile.specialInverted).toBeUndefined();
+  });
+
+  it('parses the dialect notation back into IR devices', () => {
+    expect(profile.parseDevice('1X00F')).toEqual(X(15));
+    expect(profile.parseDevice('1x00f')).toEqual(X(15));
+    expect(profile.parseDevice('1Y010')).toEqual(Y(16));
+    expect(profile.parseDevice('1M0FF')).toEqual(M(255));
+    expect(profile.parseDevice('1T1FF')).toEqual(T(511));
+    expect(profile.parseDevice('V072')).toEqual(SP(2));
+  });
+
+  it('rejects a program number other than 1 (前提表)', () => {
+    expect(String(profile.parseDevice('2X000'))).toContain('プログラム番号');
+    expect(String(profile.parseDevice('3Y000'))).toContain('プログラム番号');
+  });
+
+  it('rejects out-of-range and unreadable notations', () => {
+    expect(profile.parseDevice('1X800')).toBeInstanceOf(Error);
+    expect(profile.parseDevice('1T200')).toBeInstanceOf(Error);
+    expect(profile.parseDevice('1G000')).toBeInstanceOf(Error);
+    expect(profile.parseDevice('1XGGG')).toBeInstanceOf(Error);
+    expect(profile.parseDevice('')).toBeInstanceOf(Error);
+  });
+
+  it('publishes the device ranges of PLC調査資料 §3-B', () => {
+    expect(profile.deviceRanges.input).toEqual({ radix: 16, prefix: '1X', min: 0, max: 2047 });
+    expect(profile.deviceRanges.internal.max).toBe(2047);
+    expect(profile.deviceRanges.timer.max).toBe(511);
+    expect(profile.deviceRanges.counter.max).toBe(511);
+  });
+});
+
+describe('JTEKT のタイマ（§17 #20 の前提: 0.1秒単位・設定値レジスタ H）', () => {
+  it('renders and parses the hexadecimal preset', () => {
+    expect(profile.timerPreset(3000, T(0))).toEqual({ text: 'H001E', device: T(0) });
+    expect(profile.timerPreset(100, T(0))).toEqual({ text: 'H0001', device: T(0) });
+    expect(profile.parseTimerPreset('H001E', T(0))).toBe(3000);
+    expect(profile.parseTimerPreset('h1e', T(0))).toBe(3000);
+  });
+
+  it('refuses a preset the 0.1 s base cannot express', () => {
+    expect(profile.timerPreset(150, T(0))).toBeInstanceOf(Error);
+    expect(String(profile.timerPreset(150, T(0)))).toContain('0.1秒');
+    expect(profile.timerPreset(0, T(0))).toBeInstanceOf(Error);
+    expect(profile.timerPreset(10_000_000, T(0))).toBeInstanceOf(Error);
+    expect(profile.parseTimerPreset('30', T(0))).toBeInstanceOf(Error);
+    expect(profile.parseTimerPreset('H0000', T(0))).toBeInstanceOf(Error);
+  });
+});
+
+describe('JTEKT 固有のバリデーション（§10.5 / 調査資料 §8.1 / 受入基準③）', () => {
+  it('rejects the same number used on both X and Y', () => {
+    const p = program(network('n1', [rung(no(X(0)), out(Y(0)))]), endNetwork());
+    const errors = profile.validate(p);
+    expect(errors.map((e) => e.code)).toEqual(['device-conflict']);
+    expect(errors[0]?.message).toContain('1X000');
+    expect(errors[0]?.message).toContain('1Y000');
+    expect(errors[0]?.networkId).toBe('n1');
+  });
+
+  it('rejects the same number used on both T and C', () => {
+    const p = program(
+      network('n1', [rung(no(X(1)), ton(T(0), 1000))]),
+      network('n2', [rung(no(X(2)), ctu(C(0), 3, X(3)))]),
+      endNetwork(),
+    );
+    expect(profile.validate(p).map((e) => e.code)).toEqual(['device-conflict']);
+  });
+
+  it('accepts different numbers on X and Y', () => {
+    const p = program(network('n1', [rung(no(X(0)), out(Y(16)))]), endNetwork());
+    expect(profile.validate(p)).toEqual([]);
+  });
+
+  it('still reports the shared device-range issues', () => {
+    const p = program(network('n1', [rung(no(X(1)), ton(T(0), 150))]), endNetwork());
+    expect(profile.validate(p).map((e) => e.code)).toEqual(['timer-unit']);
+    expect(profile.errorMessages['device-conflict']).toBeDefined();
+  });
+});
+
+describe('PCwin風スキン（§10.6 / §17 #19）', () => {
+  it('is a screen editor: no conversion step and no conversion key', () => {
+    expect(profile.convertStep).toBe(false);
+    expect(profile.shortcuts.some((s) => s.action === 'convert')).toBe(false);
+    expect(profile.shortcuts).toHaveLength(GX_STYLE_SHORTCUTS.length - 1);
+    expect(profile.shortcuts.find((s) => s.action === 'contact-no')?.keys).toBe('F5');
+    expect(profile.shortcuts.find((s) => s.action === 'coil')?.keys).toBe('F7');
+  });
+
+  it('uses the JTEKT monitor colour and the shared grid width (§10.6 の本アプリ既定)', () => {
+    expect(profile.monitorColors.powered).toBe('#E08A1E');
+    expect(profile.gridCols).toBe(11);
+  });
+
+  it('names the instructions borrowed from the Mitsubishi set (§17 #10)', () => {
+    const names = profile.instructionNames;
+    expect(names.ld).toBe('LD');
+    expect(names.ldi).toBe('LDI');
+    expect(names.pulseUp).toBe('PLS');
+    expect(names.andBlock).toBe('ANB');
+    expect(names.orBlock).toBe('ORB');
+    expect(names.mc).toBe('MC');
+    expect(names.end).toBe('END');
+    expect(names.timer).toBe('OUT');
+    expect(names.counter).toBe('OUT');
+  });
+
+  it('borrows no vendor artwork or vendor name outside displayName', () => {
+    const text = [
+      profile.panels.tree,
+      profile.panels.editor,
+      profile.panels.output,
+      ...profile.shortcuts.map((s) => s.label),
+      ...Object.values(profile.errorMessages),
+    ].join('|');
+    expect(text).not.toMatch(/PCwin|TOYOPUC|JTEKT|ジェイテクト/iu);
+    for (const value of Object.values(profile.symbols)) expect(value).toMatch(/^[a-z-]+$/u);
+  });
+});
+```
+
+- [ ] **Step 2: RED を確認する**
+
+```powershell
+pnpm --filter @ojt/plc-dialects exec vitest run test/jtekt.test.ts
+```
+
+Expected: 失敗。`does not provide an export named 'JTEKT_PC10G'`。
+
+- [ ] **Step 3: `src/jtekt.ts` を書く**
+
+`packages/plc-dialects/src/jtekt.ts`:
+
+```ts
+import {
+  device,
+  SPECIAL_ALWAYS_ON,
+  SPECIAL_CLOCK_1S,
+  SPECIAL_FIRST_SCAN,
+  type Device,
+  type DeviceKind,
+  type LadderProgram,
+} from '@ojt/ladder-core';
+import {
+  collectDeviceIssues,
+  collectDevices,
+  makeParseTimerPreset,
+  makeTimerPreset,
+  type DeviceRuleSet,
+  type DeviceUse,
+  type TimerRule,
+} from './device-rules.js';
+import { GX_STYLE_SHORTCUTS, withoutConvert } from './shortcuts.js';
+import type {
+  DeviceRange,
+  DialectError,
+  DialectProfile,
+  InstructionKey,
+  MonitorColors,
+  PanelLayout,
+  SymbolDrawing,
+} from './profile.js';
+
+/**
+ * JTEKT TOYOPUC PC10G-1SP ＋ PCwin風スキンの方言プロファイル。設計仕様 §10.5 / §10.6。
+ *
+ * デバイス体系は PLC調査資料 §3-B の「PC10標準モード」（16進・先頭の数字はプログラム番号）で、
+ * 本アプリは**プログラム1のみ**を使う（§17 #21 のとおり PC10G-1SP にそのまま対応する）。
+ * 命令ニーモニック・タイマ時間単位・特殊リレー番号は一次資料が未入手のため §17 #10 / #20 / #22 の
+ * 前提値である。実機と異なると分かった場合の修正箇所はこのファイルだけである（§17.1）。
+ */
+
+/** 本アプリが使うプログラム番号。§10.5（先頭の 1/2/3 はプログラム番号） */
+const PROGRAM_NUMBER = 1;
+
+/** デバイス種別ごとの番号体系。PLC調査資料 §3-B */
+const DEVICE_RANGES: Readonly<Record<DeviceKind, DeviceRange>> = {
+  input: { radix: 16, prefix: '1X', min: 0, max: 0x7ff },
+  output: { radix: 16, prefix: '1Y', min: 0, max: 0x7ff },
+  internal: { radix: 16, prefix: '1M', min: 0, max: 0x7ff },
+  timer: { radix: 16, prefix: '1T', min: 0, max: 0x1ff },
+  counter: { radix: 16, prefix: '1C', min: 0, max: 0x1ff },
+  special: { radix: 10, prefix: 'SP', min: 0, max: 2 },
+};
+
+/** 種別を表す1文字（プログラム番号の次の桁）。 */
+const KIND_LETTER: Readonly<Record<string, DeviceKind>> = {
+  X: 'input',
+  Y: 'output',
+  M: 'internal',
+  T: 'timer',
+  C: 'counter',
+};
+
+/** 特殊デバイス番号 → TOYOPUC の実デバイス名。§17 #22 の前提割当 */
+const SPECIAL_DEVICES: Readonly<Record<number, string>> = {
+  [SPECIAL_ALWAYS_ON]: '1V00',
+  [SPECIAL_FIRST_SCAN]: '1V01',
+  [SPECIAL_CLOCK_1S]: 'V072',
+};
+
+/** 実デバイス名（大文字化）→ 特殊デバイス番号。 */
+const SPECIAL_BY_NAME = new Map<string, number>(
+  Object.entries(SPECIAL_DEVICES).map(([index, name]) => [name.toUpperCase(), Number(index)]),
+);
+
+/** IRのデバイス → 方言表記（16進3桁・大文字）。§10.5 */
+function formatDevice(target: Device): string {
+  if (target.kind === 'special') return SPECIAL_DEVICES[target.index] ?? `SP${target.index}`;
+  const range = DEVICE_RANGES[target.kind];
+  return `${range.prefix}${target.index.toString(16).toUpperCase().padStart(3, '0')}`;
+}
+
+/** 方言表記 → IRのデバイス。読めない表記は Error を返す（投げない）。§10.5 */
+function parseDevice(text: string): Device | Error {
+  const trimmed = text.trim();
+  const upper = trimmed.toUpperCase();
+  const special = SPECIAL_BY_NAME.get(upper);
+  if (special !== undefined) return device('special', special);
+  const matched = /^([0-9])([XYMTC])([0-9A-F]{1,3})$/u.exec(upper);
+  if (matched === null) {
+    return new Error(`読めないデバイス表記です（<プログラム番号><種別><16進3桁>）: ${trimmed}`);
+  }
+  if (Number(matched[1]) !== PROGRAM_NUMBER) {
+    return new Error(`プログラム番号は${PROGRAM_NUMBER}です（本アプリはプログラム1のみ）: ${trimmed}`);
+  }
+  const kind = KIND_LETTER[matched[2] ?? ''];
+  if (kind === undefined) return new Error(`読めないデバイス種別です: ${trimmed}`);
+  const index = parseInt(matched[3] ?? '', 16);
+  const range = DEVICE_RANGES[kind];
+  if (index < range.min || index > range.max) {
+    return new Error(
+      `デバイス番号が範囲外です（${formatDevice({ kind, index: range.min })}〜${formatDevice({ kind, index: range.max })}）: ${trimmed}`,
+    );
+  }
+  return device(kind, index);
+}
+
+/** タイマ規則（設定値レジスタ `H` ＋ 16進4桁、0.1秒単位）。§17 #20 の前提 */
+const TIMER: TimerRule = {
+  baseMs: 100,
+  min: 1,
+  max: 0xffff,
+  unitLabel: '0.1秒',
+  format: (count) => `H${count.toString(16).toUpperCase().padStart(4, '0')}`,
+  parse: (text) => {
+    const matched = /^H([0-9A-F]{1,4})$/u.exec(text.trim().toUpperCase());
+    return matched === null ? undefined : parseInt(matched[1] ?? '', 16);
+  },
+};
+
+const timerPreset = makeTimerPreset(TIMER, formatDevice);
+const parseTimerPreset = makeParseTimerPreset(TIMER);
+
+/** 共通デバイス検査に渡す規則。 */
+const RULES: DeviceRuleSet = {
+  deviceRanges: DEVICE_RANGES,
+  specialDevices: SPECIAL_DEVICES,
+  formatDevice,
+  timer: TIMER,
+  counter: { min: 1, max: 0xffff },
+};
+
+/**
+ * この機種だけの検査: **X と Y、T と C に同じ番号を使ってはならない**。§10.5 / 調査資料 §8.1
+ * 同じ番号のX/Yは実機では同じメモリ領域を指すため、入力を読んだつもりで出力を読んでしまう。
+ * 指摘位置は「後から現れたほう」にする（先に書いた側を消させないため）。
+ */
+function checkNumberConflicts(source: LadderProgram): DialectError[] {
+  const uses = collectDevices(source);
+  const errors: DialectError[] = [];
+  const pairs: readonly (readonly [DeviceKind, DeviceKind])[] = [
+    ['input', 'output'],
+    ['timer', 'counter'],
+  ];
+  for (const [first, second] of pairs) {
+    const seen = new Map<number, DeviceUse>();
+    for (const use of uses) {
+      if (use.device.kind === first) seen.set(use.device.index, use);
+    }
+    for (const use of uses) {
+      if (use.device.kind !== second) continue;
+      const other = seen.get(use.device.index);
+      if (other === undefined) continue;
+      errors.push({
+        code: 'device-conflict',
+        message: `${formatDevice(other.device)} と ${formatDevice(use.device)} は同じ番号です（この機種では併用できません）`,
+        device: use.device,
+        ...use.place,
+      });
+    }
+  }
+  return errors;
+}
+
+/** 命令語（§17 #10 の前提: 三菱系の流用）。タイマ・カウンタは `OUT` ＋ デバイス ＋ 設定値。 */
+const INSTRUCTION_NAMES: Readonly<Record<InstructionKey, string>> = {
+  ld: 'LD',
+  ldi: 'LDI',
+  and: 'AND',
+  ani: 'ANI',
+  or: 'OR',
+  ori: 'ORI',
+  ldp: 'LDP',
+  ldf: 'LDF',
+  andp: 'ANDP',
+  andf: 'ANDF',
+  orp: 'ORP',
+  orf: 'ORF',
+  andBlock: 'ANB',
+  orBlock: 'ORB',
+  out: 'OUT',
+  set: 'SET',
+  rst: 'RST',
+  pulseUp: 'PLS',
+  pulseDown: 'PLF',
+  timer: 'OUT',
+  counter: 'OUT',
+  mc: 'MC',
+  mcr: 'MCR',
+  end: 'END',
+};
+
+/** 記号の線画（自前の識別子）。§10.6 / §17 */
+const SYMBOLS: SymbolDrawing = {
+  no: 'contact-no',
+  nc: 'contact-nc',
+  rise: 'contact-rise',
+  fall: 'contact-fall',
+  coil: 'coil-round',
+  set: 'coil-set',
+  rst: 'coil-reset',
+  timer: 'coil-timer',
+  counter: 'coil-counter',
+};
+
+/** モニタ中の通電表示色（本アプリ既定。§10.6 / §17 #19） */
+const MONITOR_COLORS: MonitorColors = { powered: '#E08A1E', idle: '#6B7280' };
+
+/** 画面構成。§10.6（左にツリー、右にラダー編集、下にステータスバー） */
+const PANELS: PanelLayout = {
+  tree: 'プロジェクトツリー（プログラム／データファイル／パラメータ／LD／SFC）',
+  editor: 'ラダー編集エリア',
+  output: 'ステータスバー',
+  toolbar: ['JP1', 'DGR', 'MOB', 'STP', 'RDY', 'RUN', 'RES', 'モニタ開始', 'モニタ停止'],
+};
+
+/** 方言エラーの日本語文言。§10.5 の `errorMessages` */
+const ERROR_MESSAGES: Readonly<Record<string, string>> = {
+  'device-range': 'デバイス番号がこの機種の範囲を超えています',
+  'device-conflict': 'この機種では X と Y、T と C に同じ番号を使えません',
+  'timer-unit': 'このタイマの時間単位では指定できない設定値です',
+  'timer-range': 'タイマ設定値がこの機種の範囲を超えています',
+  'counter-range': 'カウンタ設定値がこの機種の範囲を超えています',
+  'special-unsupported': 'この機種に対応する特殊デバイスがありません',
+};
+
+/** 方言に依る検査。§10.5 / §10.8 */
+function validate(source: LadderProgram): DialectError[] {
+  return [...collectDeviceIssues(source, RULES), ...checkNumberConflicts(source)];
+}
+
+/** JTEKT TOYOPUC PC10G-1SP ＋ PCwin風スキン。§10.5 / §10.6 */
+export const JTEKT_PC10G: DialectProfile = {
+  id: 'jtekt',
+  displayName: 'JTEKT TOYOPUC PC10G-1SP（PCwin風）',
+  formatDevice,
+  parseDevice,
+  deviceRanges: DEVICE_RANGES,
+  timerPreset,
+  parseTimerPreset,
+  specialDevices: SPECIAL_DEVICES,
+  instructionNames: INSTRUCTION_NAMES,
+  symbols: SYMBOLS,
+  gridCols: 11,
+  shortcuts: withoutConvert(GX_STYLE_SHORTCUTS),
+  convertStep: false,
+  monitorColors: MONITOR_COLORS,
+  panels: PANELS,
+  validate,
+  errorMessages: ERROR_MESSAGES,
+};
+```
+
+- [ ] **Step 4: `src/index.ts` に登録する**
+
+`export { OMRON_CP1E } from './omron.js';` の下に `export { JTEKT_PC10G } from './jtekt.js';` を足し、`PROFILES` に `jtekt: JTEKT_PC10G,` を足す（`import { JTEKT_PC10G } from './jtekt.js';` も要る）。
+
+- [ ] **Step 5: GREEN を確認する**
+
+```powershell
+pnpm --filter @ojt/plc-dialects exec vitest run test/jtekt.test.ts
+```
+
+Expected: 全ケース通過。
+
+- [ ] **Step 6: コミットする**
+
+```powershell
+git add packages/plc-dialects
+git commit -m "feat(plc-dialects): add the JTEKT TOYOPUC PC10G-1SP profile"
+```
+
+---
+
+## Task 4: シャープ JW300 プロファイル（JW-300SP風）と8進バリデータ
+
+**モデル: Opus**（リレー番号の割付と8進検査の設計判断があるため）
+
+**Files:**
+- Create: `packages/plc-dialects/src/sharp.ts`
+- Modify: `packages/plc-dialects/src/index.ts`
+- Test: `packages/plc-dialects/test/sharp.test.ts`
+
+§10.5 のシャープ列（8進リレー番号、`STR/AND/OR POS·NEG`、`OUT POS/NEG`、`SET`/`RST`、`AND STR`/`OR STR`、`F-40`/`F-47`/`F-48`）と §10.6 の JW-300SP風の行を実装する。命令ニーモニックは §17 #10 で**確定済み**（PLC調査資料 §4-C）、特殊リレーも §17 #22 で確定（`007366` は**b接点**で常時ON／`007362` 初期パルス／`007364` 1秒クロック）。リレー番号の割付（どのユニットが何番から始まるか）だけが本アプリの前提である。
+
+| 決めること | 本タスクの実装 |
+|---|---|
+| リレー番号 | 8進6桁。入力ユニット（スロット1）`000000`〜`000017`、出力ユニット（スロット2）`000020`〜`000037`、内部リレー `001000`〜`001777`（前提表） |
+| 8進の検査 | `parseDevice('000008')` は「8進で表記します（8・9は使えません）」のエラー（§16 Phase 4 受入基準④） |
+| タイマ・カウンタ | `TMR00000`〜`TMR17777` / `CNT00000`〜`CNT17777`（8進5桁）。接頭辞は `parseDevice()` を一意にするための本アプリの表記（前提表） |
+| 設定値 | 0.1秒単位の10進4桁（`0030` = 3.0s）。§10.5 の `DTMR(BCD) 00001 / 0100` の書式に合わせる |
+| 常時ON | `specialInverted: [SPECIAL_ALWAYS_ON]`。4B は `007366` の接点をb接点で描く |
+| 変換 | **必要**（`convertStep: true`。§17.1 の前提）。ショートカットは GX Works3風をそのまま流用 |
+
+- [ ] **Step 1: 失敗するテストを書く**
+
+`packages/plc-dialects/test/sharp.test.ts`:
+
+```ts
+import {
+  C,
+  ctu,
+  device,
+  endNetwork,
+  hline,
+  IR_COLS,
+  M,
+  network,
+  no,
+  out,
+  program,
+  SP,
+  SPECIAL_ALWAYS_ON,
+  T,
+  ton,
+  X,
+  Y,
+  type Cell,
+} from '@ojt/ladder-core';
+import { describe, expect, it } from 'vitest';
+import { getDialect, GX_STYLE_SHORTCUTS, SHARP_JW300 } from '../src/index.js';
+
+function rung(...cells: Cell[]): Cell[] {
+  const row = [...cells];
+  const output = row.pop();
+  if (output === undefined) throw new Error('出力セルが要ります');
+  while (row.length < IR_COLS - 1) row.push(hline());
+  row.push(output);
+  return row;
+}
+
+const profile = SHARP_JW300;
+
+describe('シャープ JW300 のリレー番号（§10.5 / 前提表）', () => {
+  it('is registered as the sharp dialect', () => {
+    expect(getDialect('sharp')).toBe(profile);
+    expect(profile.id).toBe('sharp');
+    expect(profile.displayName).toContain('JW300');
+    expect(profile.displayName).toContain('風');
+  });
+
+  it('numbers the relays in octal by unit slot', () => {
+    expect(profile.formatDevice(X(0))).toBe('000000');
+    expect(profile.formatDevice(X(7))).toBe('000007');
+    expect(profile.formatDevice(X(8))).toBe('000010');
+    expect(profile.formatDevice(X(15))).toBe('000017');
+    expect(profile.formatDevice(Y(0))).toBe('000020');
+    expect(profile.formatDevice(Y(15))).toBe('000037');
+    expect(profile.formatDevice(M(0))).toBe('001000');
+    expect(profile.formatDevice(M(511))).toBe('001777');
+  });
+
+  it('prefixes timers and counters so the notation can be read back (前提表)', () => {
+    expect(profile.formatDevice(T(0))).toBe('TMR00000');
+    expect(profile.formatDevice(T(8191))).toBe('TMR17777');
+    expect(profile.formatDevice(C(9))).toBe('CNT00011');
+  });
+
+  it('maps the three special relays and marks the always-on one as a b contact (§17 #22)', () => {
+    expect(profile.formatDevice(SP(0))).toBe('007366');
+    expect(profile.formatDevice(SP(1))).toBe('007362');
+    expect(profile.formatDevice(SP(2))).toBe('007364');
+    expect(profile.specialInverted).toEqual([SPECIAL_ALWAYS_ON]);
+  });
+
+  it('parses the dialect notation back into IR devices', () => {
+    expect(profile.parseDevice('000010')).toEqual(X(8));
+    expect(profile.parseDevice('000020')).toEqual(Y(0));
+    expect(profile.parseDevice('001000')).toEqual(M(0));
+    expect(profile.parseDevice('TMR00000')).toEqual(T(0));
+    expect(profile.parseDevice('cnt00011')).toEqual(C(9));
+    expect(profile.parseDevice('007366')).toEqual(SP(0));
+    expect(profile.parseDevice('20')).toEqual(Y(0));
+  });
+
+  it('rejects the octal digits 8 and 9 (§16 Phase 4 受入基準④)', () => {
+    expect(profile.parseDevice('000008')).toBeInstanceOf(Error);
+    expect(String(profile.parseDevice('000008'))).toContain('8進');
+    expect(String(profile.parseDevice('8'))).toContain('8進');
+    expect(String(profile.parseDevice('TMR00009'))).toContain('8進');
+  });
+
+  it('rejects numbers no unit of this rack owns', () => {
+    expect(profile.parseDevice('000040')).toBeInstanceOf(Error);
+    expect(profile.parseDevice('002000')).toBeInstanceOf(Error);
+    expect(profile.parseDevice('TMR20000')).toBeInstanceOf(Error);
+    expect(profile.parseDevice('ABC')).toBeInstanceOf(Error);
+    expect(profile.parseDevice('')).toBeInstanceOf(Error);
+  });
+
+  it('publishes the device ranges of this rack', () => {
+    expect(profile.deviceRanges.input).toEqual({ radix: 8, prefix: '', min: 0, max: 15 });
+    expect(profile.deviceRanges.output).toEqual({ radix: 8, prefix: '', min: 0, max: 15 });
+    expect(profile.deviceRanges.internal.max).toBe(511);
+    expect(profile.deviceRanges.timer).toEqual({ radix: 8, prefix: 'TMR', min: 0, max: 8191 });
+  });
+});
+
+describe('シャープのタイマ（§10.5 の TMR／0.1秒）', () => {
+  it('renders and parses the 4-digit preset', () => {
+    expect(profile.timerPreset(3000, T(0))).toEqual({ text: '0030', device: T(0) });
+    expect(profile.parseTimerPreset('0030', T(0))).toBe(3000);
+    expect(profile.parseTimerPreset('30', T(0))).toBe(3000);
+  });
+
+  it('refuses a preset the 0.1 s base cannot express', () => {
+    expect(profile.timerPreset(150, T(0))).toBeInstanceOf(Error);
+    expect(String(profile.timerPreset(150, T(0)))).toContain('0.1秒');
+    expect(profile.timerPreset(1_000_000, T(0))).toBeInstanceOf(Error);
+    expect(profile.parseTimerPreset('0000', T(0))).toBeInstanceOf(Error);
+    expect(profile.parseTimerPreset('K30', T(0))).toBeInstanceOf(Error);
+  });
+});
+
+describe('シャープのバリデータと JW-300SP風スキン（§10.5 / §10.6）', () => {
+  it('accepts a program inside the ranges and reports one outside', () => {
+    const ok = program(network('n1', [rung(no(X(0)), out(Y(0)))]), endNetwork());
+    expect(profile.validate(ok)).toEqual([]);
+    const ng = program(network('n1', [rung(no(device('input', 16)), out(Y(0)))]), endNetwork());
+    const errors = profile.validate(ng);
+    expect(errors.map((e) => e.code)).toEqual(['device-range']);
+    expect(errors[0]?.message).toContain('000000〜000017');
+  });
+
+  it('reports timer and counter presets outside the model range', () => {
+    const t = program(network('n1', [rung(no(X(0)), ton(T(0), 150))]), endNetwork());
+    expect(profile.validate(t).map((e) => e.code)).toEqual(['timer-unit']);
+    const c = program(network('n1', [rung(no(X(0)), ctu(C(0), 10_000, X(1)))]), endNetwork());
+    expect(profile.validate(c).map((e) => e.code)).toEqual(['counter-range']);
+  });
+
+  it('keeps the conversion step and reuses the GX-style keys (§17.1 の前提)', () => {
+    expect(profile.convertStep).toBe(true);
+    expect(profile.shortcuts).toBe(GX_STYLE_SHORTCUTS);
+    expect(profile.monitorColors.powered).toBe('#00A0C8');
+    expect(profile.gridCols).toBe(11);
+  });
+
+  it('names the instructions confirmed in PLC調査資料 §4-C (§17 #10)', () => {
+    const names = profile.instructionNames;
+    expect(names.ld).toBe('STR');
+    expect(names.ldi).toBe('STR NOT');
+    expect(names.ldp).toBe('STR POS');
+    expect(names.andf).toBe('AND NEG');
+    expect(names.pulseUp).toBe('OUT POS');
+    expect(names.pulseDown).toBe('OUT NEG');
+    expect(names.andBlock).toBe('AND STR');
+    expect(names.orBlock).toBe('OR STR');
+    expect(names.mc).toBe('F-47');
+    expect(names.mcr).toBe('F-48');
+    expect(names.end).toBe('F-40');
+    expect(names.timer).toBe('TMR');
+    expect(names.counter).toBe('CNT');
+  });
+
+  it('borrows no vendor artwork or vendor name outside displayName', () => {
+    const text = [
+      profile.panels.tree,
+      profile.panels.editor,
+      profile.panels.output,
+      ...profile.panels.toolbar,
+      ...Object.values(profile.errorMessages),
+    ].join('|');
+    expect(text).not.toMatch(/JW-300SP|SHARP|シャープ/iu);
+    for (const value of Object.values(profile.symbols)) expect(value).toMatch(/^[a-z-]+$/u);
+  });
+});
+```
+
+- [ ] **Step 2: RED を確認する**
+
+```powershell
+pnpm --filter @ojt/plc-dialects exec vitest run test/sharp.test.ts
+```
+
+Expected: 失敗。`does not provide an export named 'SHARP_JW300'`。
+
+- [ ] **Step 3: `src/sharp.ts` を書く**
+
+`packages/plc-dialects/src/sharp.ts`:
+
+```ts
+import {
+  device,
+  SPECIAL_ALWAYS_ON,
+  SPECIAL_CLOCK_1S,
+  SPECIAL_FIRST_SCAN,
+  type Device,
+  type DeviceKind,
+  type LadderProgram,
+} from '@ojt/ladder-core';
+import {
+  collectDeviceIssues,
+  makeParseTimerPreset,
+  makeTimerPreset,
+  type DeviceRuleSet,
+  type TimerRule,
+} from './device-rules.js';
+import { GX_STYLE_SHORTCUTS } from './shortcuts.js';
+import type {
+  DeviceRange,
+  DialectError,
+  DialectProfile,
+  InstructionKey,
+  MonitorColors,
+  PanelLayout,
+  SymbolDrawing,
+} from './profile.js';
+
+/**
+ * シャープ JW300（基本ベース＋`JW-301PU`＋`JW-312CU`＋`JW-212NA`＋`JW-214SA`）＋
+ * JW-300SP風スキンの方言プロファイル。設計仕様 §10.5 / §10.6。
+ *
+ * 命令ニーモニックと特殊リレー番号は PLC調査資料 §4-C / §17 #22 で**確定済み**である。
+ * 本アプリの前提はリレー番号の割付（どのユニットが何番から始まるか。§10.5 は「割付はユニット
+ * 装着位置による」とのみ規定）と、タイマ・カウンタに接頭辞を付ける表記の2点だけで、
+ * 実機と異なると分かった場合の修正箇所はこのファイルである（§17.1）。
+ */
+
+/** 入力ユニット（スロット1）の先頭リレー番号（8進）。前提表 */
+const INPUT_BASE = 0o0;
+/** 出力ユニット（スロット2）の先頭リレー番号（8進）。前提表 */
+const OUTPUT_BASE = 0o20;
+/** 内部リレーの先頭番号（8進）。前提表 */
+const INTERNAL_BASE = 0o1000;
+/** 入出力ユニットの点数。§10.1 */
+const IO_POINTS = 16;
+/** 内部リレーの点数（`001000`〜`001777`）。 */
+const INTERNAL_POINTS = 512;
+/** タイマ・カウンタ番号の上限（`17777` 8進）。§10.5 */
+const TIMER_MAX = 0o17777;
+
+/** 値を8進 `digits` 桁で書く。 */
+function octal(value: number, digits: number): string {
+  return value.toString(8).padStart(digits, '0');
+}
+
+/** デバイス種別ごとの番号体系。§10.5 */
+const DEVICE_RANGES: Readonly<Record<DeviceKind, DeviceRange>> = {
+  input: { radix: 8, prefix: '', min: 0, max: IO_POINTS - 1 },
+  output: { radix: 8, prefix: '', min: 0, max: IO_POINTS - 1 },
+  internal: { radix: 8, prefix: '', min: 0, max: INTERNAL_POINTS - 1 },
+  timer: { radix: 8, prefix: 'TMR', min: 0, max: TIMER_MAX },
+  counter: { radix: 8, prefix: 'CNT', min: 0, max: TIMER_MAX },
+  special: { radix: 10, prefix: 'SP', min: 0, max: 2 },
+};
+
+/** リレー種別 → 先頭番号。 */
+const RELAY_BASE: Readonly<Record<'input' | 'output' | 'internal', number>> = {
+  input: INPUT_BASE,
+  output: OUTPUT_BASE,
+  internal: INTERNAL_BASE,
+};
+
+/** 特殊デバイス番号 → JW の実リレー番号。§10.5 / §17 #22 */
+const SPECIAL_DEVICES: Readonly<Record<number, string>> = {
+  [SPECIAL_ALWAYS_ON]: '007366',
+  [SPECIAL_FIRST_SCAN]: '007362',
+  [SPECIAL_CLOCK_1S]: '007364',
+};
+
+/** 実リレー番号 → 特殊デバイス番号。 */
+const SPECIAL_BY_NAME = new Map<string, number>(
+  Object.entries(SPECIAL_DEVICES).map(([index, name]) => [name, Number(index)]),
+);
+
+/** IRのデバイス → 方言表記。§10.5 */
+function formatDevice(target: Device): string {
+  switch (target.kind) {
+    case 'special':
+      return SPECIAL_DEVICES[target.index] ?? `SP${target.index}`;
+    case 'timer':
+      return `TMR${octal(target.index, 5)}`;
+    case 'counter':
+      return `CNT${octal(target.index, 5)}`;
+    default:
+      return octal(RELAY_BASE[target.kind] + target.index, 6);
+  }
+}
+
+/** 8進の数字だけか（`8` / `9` を拒否する。§16 Phase 4 受入基準④）。 */
+function parseOctal(digits: string, text: string): number | Error {
+  if (/[89]/u.test(digits)) {
+    return new Error(`リレー番号は8進で表記します（8・9は使えません）: ${text}`);
+  }
+  return parseInt(digits, 8);
+}
+
+/** 番号が範囲内なら IR デバイス、外なら Error。 */
+function inRange(kind: DeviceKind, index: number, text: string): Device | Error {
+  const range = DEVICE_RANGES[kind];
+  if (index < range.min || index > range.max) {
+    const low = formatDevice({ kind, index: range.min });
+    const high = formatDevice({ kind, index: range.max });
+    return new Error(`この機種にはない番号です（${low}〜${high}）: ${text}`);
+  }
+  return device(kind, index);
+}
+
+/** 方言表記 → IRのデバイス。読めない表記は Error を返す（投げない）。§10.5 */
+function parseDevice(text: string): Device | Error {
+  const trimmed = text.trim();
+  const upper = trimmed.toUpperCase();
+  const timer = /^(TMR|CNT)([0-9]{1,5})$/u.exec(upper);
+  if (timer !== null) {
+    const index = parseOctal(timer[2] ?? '', trimmed);
+    if (index instanceof Error) return index;
+    return inRange(timer[1] === 'TMR' ? 'timer' : 'counter', index, trimmed);
+  }
+  if (!/^[0-9]{1,6}$/u.test(upper)) {
+    return new Error(`読めないデバイス表記です（8進6桁のリレー番号）: ${trimmed}`);
+  }
+  const special = SPECIAL_BY_NAME.get(upper.padStart(6, '0'));
+  if (special !== undefined) return device('special', special);
+  const value = parseOctal(upper, trimmed);
+  if (value instanceof Error) return value;
+  for (const kind of ['input', 'output', 'internal'] as const) {
+    const base = RELAY_BASE[kind];
+    const index = value - base;
+    if (index >= 0 && index <= DEVICE_RANGES[kind].max) return device(kind, index);
+  }
+  return new Error(
+    `この機種のユニットに割り付いていない番号です（入力 000000〜000017／出力 000020〜000037／内部 001000〜001777）: ${trimmed}`,
+  );
+}
+
+/** タイマ規則（`TMR` の0.1秒・10進4桁）。§10.5 の `DTMR(BCD) 00001 / 0100` の書式 */
+const TIMER: TimerRule = {
+  baseMs: 100,
+  min: 1,
+  max: 9999,
+  unitLabel: '0.1秒',
+  format: (count) => String(count).padStart(4, '0'),
+  parse: (text) => {
+    const matched = /^([0-9]{1,4})$/u.exec(text.trim());
+    return matched === null ? undefined : Number(matched[1]);
+  },
+};
+
+const timerPreset = makeTimerPreset(TIMER, formatDevice);
+const parseTimerPreset = makeParseTimerPreset(TIMER);
+
+/** 共通デバイス検査に渡す規則。 */
+const RULES: DeviceRuleSet = {
+  deviceRanges: DEVICE_RANGES,
+  specialDevices: SPECIAL_DEVICES,
+  formatDevice,
+  timer: TIMER,
+  counter: { min: 1, max: 9999 },
+};
+
+/** 命令語。§10.5 のシャープ列（PLC調査資料 §4-C で確定。§17 #10） */
+const INSTRUCTION_NAMES: Readonly<Record<InstructionKey, string>> = {
+  ld: 'STR',
+  ldi: 'STR NOT',
+  and: 'AND',
+  ani: 'AND NOT',
+  or: 'OR',
+  ori: 'OR NOT',
+  ldp: 'STR POS',
+  ldf: 'STR NEG',
+  andp: 'AND POS',
+  andf: 'AND NEG',
+  orp: 'OR POS',
+  orf: 'OR NEG',
+  andBlock: 'AND STR',
+  orBlock: 'OR STR',
+  out: 'OUT',
+  set: 'SET',
+  rst: 'RST',
+  pulseUp: 'OUT POS',
+  pulseDown: 'OUT NEG',
+  timer: 'TMR',
+  counter: 'CNT',
+  mc: 'F-47',
+  mcr: 'F-48',
+  end: 'F-40',
+};
+
+/** 記号の線画（自前の識別子）。§10.6 / §17 */
+const SYMBOLS: SymbolDrawing = {
+  no: 'contact-no',
+  nc: 'contact-nc',
+  rise: 'contact-rise',
+  fall: 'contact-fall',
+  coil: 'coil-round',
+  set: 'coil-set',
+  rst: 'coil-reset',
+  timer: 'coil-timer',
+  counter: 'coil-counter',
+};
+
+/** モニタ中の通電表示色（本アプリ既定。§10.6 / §17 #19） */
+const MONITOR_COLORS: MonitorColors = { powered: '#00A0C8', idle: '#6B7280' };
+
+/** 画面構成。§10.6（変換の要否は §17.1 の前提で `true`） */
+const PANELS: PanelLayout = {
+  tree: 'プロジェクトツリー',
+  editor: 'ラダー編集',
+  output: '出力ウィンドウ',
+  toolbar: ['変換', 'PLCへの書込み', '運転／停止', 'モニタ開始', 'モニタ停止'],
+};
+
+/** 方言エラーの日本語文言。§10.5 の `errorMessages` */
+const ERROR_MESSAGES: Readonly<Record<string, string>> = {
+  'device-range': 'リレー番号がこの機種のユニット割付を外れています',
+  'timer-unit': 'このタイマの時間単位では指定できない設定値です',
+  'timer-range': 'タイマ設定値がこの機種の範囲を超えています',
+  'counter-range': 'カウンタ設定値がこの機種の範囲を超えています',
+  'special-unsupported': 'この機種に対応する特殊リレーがありません',
+};
+
+/** 方言に依る検査。§10.5 / §10.8 */
+function validate(source: LadderProgram): DialectError[] {
+  return collectDeviceIssues(source, RULES);
+}
+
+/** シャープ JW300 ＋ JW-300SP風スキン。§10.5 / §10.6 */
+export const SHARP_JW300: DialectProfile = {
+  id: 'sharp',
+  displayName: 'シャープ JW300（JW-300SP風）',
+  formatDevice,
+  parseDevice,
+  deviceRanges: DEVICE_RANGES,
+  timerPreset,
+  parseTimerPreset,
+  specialDevices: SPECIAL_DEVICES,
+  specialInverted: [SPECIAL_ALWAYS_ON],
+  instructionNames: INSTRUCTION_NAMES,
+  symbols: SYMBOLS,
+  gridCols: 11,
+  shortcuts: GX_STYLE_SHORTCUTS,
+  convertStep: true,
+  monitorColors: MONITOR_COLORS,
+  panels: PANELS,
+  validate,
+  errorMessages: ERROR_MESSAGES,
+};
+```
+
+- [ ] **Step 4: `src/index.ts` に登録する**
+
+`export { JTEKT_PC10G } from './jtekt.js';` の下に `export { SHARP_JW300 } from './sharp.js';` を足し、`PROFILES` に `sharp: SHARP_JW300,` を足す（import も要る）。
+
+- [ ] **Step 5: GREEN を確認する**
+
+```powershell
+pnpm --filter @ojt/plc-dialects exec vitest run test/sharp.test.ts
+```
+
+Expected: 全ケース通過。
+
+- [ ] **Step 6: コミットする**
+
+```powershell
+git add packages/plc-dialects
+git commit -m "feat(plc-dialects): add the Sharp JW300 profile"
+```
+
+---
+
+## Task 5: 4方言の登録と方言横断の不変条件
+
+**モデル: Sonnet-verbatim**
+
+**Files:**
+- Modify: `packages/plc-dialects/src/profile.ts`（`IMPLEMENTED_DIALECT_IDS`）
+- Modify: `packages/plc-dialects/src/index.ts`
+- Test: `packages/plc-dialects/test/profile.test.ts`（Phase 3 の2ケースを差し替え）
+- Test: `packages/plc-dialects/test/dialects.test.ts`（新規。4方言に同じ条件をかける）
+
+4方言が揃ったので `IMPLEMENTED_DIALECT_IDS` を全IDにし、`getDialect()` がどのIDでも引けるようにする。あわせて「新しい方言を足したときに必ず守らせたい条件」を1ファイルにまとめ、Plan 4B のスキン実装が拠れる土台にする。
+
+- [ ] **Step 1: 失敗するテストを書く**
+
+`packages/plc-dialects/test/dialects.test.ts`:
+
+```ts
+import { C, M, SP, T, X, Y, type Device } from '@ojt/ladder-core';
+import { describe, expect, it } from 'vitest';
+import {
+  availableDialects,
+  DIALECT_IDS,
+  IMPLEMENTED_DIALECT_IDS,
+  MAX_GRID_COLS,
+  MIN_GRID_COLS,
+  type DialectProfile,
+} from '../src/index.js';
+
+const profiles = availableDialects();
+const cases = profiles.map((profile) => [profile.id, profile] as const);
+
+describe('4方言が揃っている（§16 Phase 4）', () => {
+  it('implements every vendor of 決定事項#14', () => {
+    expect(IMPLEMENTED_DIALECT_IDS).toEqual([...DIALECT_IDS]);
+    expect(profiles.map((p) => p.id)).toEqual([...DIALECT_IDS]);
+  });
+
+  it('has exactly one skin without a conversion step per §10.6', () => {
+    const withConvert = profiles.filter((p) => p.convertStep).map((p) => p.id);
+    expect(withConvert.sort()).toEqual(['mitsubishi', 'sharp']);
+  });
+
+  it('gives every skin its own monitor colour (§10.6 の本アプリ既定)', () => {
+    const colours = profiles.map((p) => p.monitorColors.powered);
+    expect(colours).toEqual(['#1E64FF', '#E08A1E', '#2FA02C', '#00A0C8']);
+    expect(new Set(colours).size).toBe(colours.length);
+  });
+});
+
+describe.each(cases)('%s プロファイルの不変条件', (_id, profile: DialectProfile) => {
+  it('shows 11 contact columns inside the settings bounds (§10.6)', () => {
+    expect(profile.gridCols).toBe(11);
+    expect(profile.gridCols).toBeGreaterThanOrEqual(MIN_GRID_COLS);
+    expect(profile.gridCols).toBeLessThanOrEqual(MAX_GRID_COLS);
+  });
+
+  it('maps the three special devices of §10.3', () => {
+    expect(Object.keys(profile.specialDevices).sort()).toEqual(['0', '1', '2']);
+    for (const index of [0, 1, 2]) {
+      expect(profile.formatDevice(SP(index)).length).toBeGreaterThan(0);
+    }
+    for (const index of profile.specialInverted ?? []) {
+      expect(profile.specialDevices[index]).toBeDefined();
+    }
+  });
+
+  it('round-trips every device kind through formatDevice and parseDevice (§10.7 表記切替)', () => {
+    const samples: Device[] = [X(0), X(1), Y(0), Y(1), M(0), T(0), C(0), SP(0), SP(1), SP(2)];
+    for (const target of samples) {
+      const text = profile.formatDevice(target);
+      expect(profile.parseDevice(text), `${profile.id}: ${text}`).toEqual(target);
+    }
+  });
+
+  it('round-trips a 3 s timer preset', () => {
+    const preset = profile.timerPreset(3000, T(0));
+    expect(preset, profile.id).not.toBeInstanceOf(Error);
+    if (preset instanceof Error) return;
+    expect(profile.parseTimerPreset(preset.text, T(0))).toBe(3000);
+  });
+
+  it('names all 24 instructions without an empty string', () => {
+    const names = Object.values(profile.instructionNames);
+    expect(names).toHaveLength(24);
+    for (const name of names) expect(name.trim().length).toBeGreaterThan(0);
+  });
+
+  it('has a Japanese message for every error code and a unique shortcut table', () => {
+    for (const message of Object.values(profile.errorMessages)) {
+      expect(message.trim().length).toBeGreaterThan(0);
+    }
+    const actions = profile.shortcuts.map((s) => s.action);
+    const keys = profile.shortcuts.map((s) => s.keys);
+    expect(new Set(actions).size).toBe(actions.length);
+    expect(new Set(keys).size).toBe(keys.length);
+    // 「変換」の行は convertStep のスキンにしか無い（決定表#5）
+    expect(profile.shortcuts.some((s) => s.action === 'convert')).toBe(profile.convertStep);
+  });
+
+  it('names the panels and keeps the symbol drawings vendor-neutral (§17 / PLC調査資料 §6)', () => {
+    expect(profile.panels.tree.trim().length).toBeGreaterThan(0);
+    expect(profile.panels.editor.trim().length).toBeGreaterThan(0);
+    expect(profile.panels.output.trim().length).toBeGreaterThan(0);
+    expect(profile.panels.toolbar.length).toBeGreaterThan(0);
+    for (const value of Object.values(profile.symbols)) expect(value).toMatch(/^[a-z-]+$/u);
+    expect(profile.displayName).toContain('風');
+  });
+});
+```
+
+- [ ] **Step 2: `test/profile.test.ts` の Phase 3 の2ケースを差し替える**
+
+`it('implements only Mitsubishi in Phase 3 (§16)', …)` と `it('throws a readable error for a dialect that Phase 4 will add', …)` を次の2つで置き換える:
+
+```ts
+  it('implements all four vendors in Phase 4 (§16)', () => {
+    expect(IMPLEMENTED_DIALECT_IDS).toEqual(['mitsubishi', 'jtekt', 'omron', 'sharp']);
+    expect(availableDialects().map((d) => d.id)).toEqual([
+      'mitsubishi',
+      'jtekt',
+      'omron',
+      'sharp',
+    ]);
+  });
+
+  it('throws a readable error for an id that is not a dialect', () => {
+    // 作業ファイルや設定に未知の方言IDが入っていた場合（`isDialectId()` を通していない経路）
+    expect(() => getDialect('siemens' as DialectId)).toThrow(UnknownDialectError);
+  });
+```
+
+`import` に `type DialectId` を足す。
+
+- [ ] **Step 3: RED を確認する**
+
+```powershell
+pnpm --filter @ojt/plc-dialects exec vitest run test/dialects.test.ts test/profile.test.ts
+```
+
+Expected: 失敗。`IMPLEMENTED_DIALECT_IDS` が `['mitsubishi']` のままなので `implements every vendor of 決定事項#14` などが落ちる。
+
+- [ ] **Step 4: `src/profile.ts` の `IMPLEMENTED_DIALECT_IDS` を直す**
+
+```ts
+/** Phase 4 で4メーカーすべてを実装した。§16 */
+export const IMPLEMENTED_DIALECT_IDS: readonly DialectId[] = DIALECT_IDS;
+```
+
+- [ ] **Step 5: `src/index.ts` の `PROFILES` と例外文言を仕上げる**
+
+```ts
+/** 実装済みの方言プロファイル（`DIALECT_IDS` の順）。§16 Phase 4 */
+const PROFILES: Partial<Record<DialectId, DialectProfile>> = {
+  mitsubishi: MITSUBISHI_FX5U,
+  jtekt: JTEKT_PC10G,
+  omron: OMRON_CP1E,
+  sharp: SHARP_JW300,
+};
+```
+
+`getDialect()` の例外文言を次に変える（4方言が揃ったので「Phase 4 で追加します」はもう正しくない）:
+
+```ts
+    throw new UnknownDialectError(`対応していない方言IDです: ${id}`);
+```
+
+- [ ] **Step 6: GREEN を確認する**
+
+```powershell
+pnpm --filter @ojt/plc-dialects exec vitest run
+pnpm --filter @ojt/plc-dialects exec vitest run --coverage
+```
+
+Expected: `Test Files  9 passed`（`convert` / `device-rules` / `dialects` / `jtekt` / `mitsubishi-devices` / `mitsubishi-validate` / `omron` / `profile` / `sharp` / `skin` の10ファイル。`skin.test.ts` を含めて10）。カバレッジは lines / statements / functions / branches すべて90%以上。
+
+- [ ] **Step 7: バッチAのレビューとコミット**
+
+```powershell
+pnpm --filter @ojt/plc-dialects exec tsc --noEmit
+npx prettier --check "packages/plc-dialects/**/*.ts"
+git add packages/plc-dialects
+git commit -m "feat(plc-dialects): register all four dialects and pin the cross-profile invariants"
+```
+
+ここで**バッチA のレビュー（Opus 1回）**をかける。見どころ: ①`formatDevice` / `parseDevice` の往復が4方言すべてで閉じているか ②`deviceRanges` の上限が §10.5 の表と機種の実装点数のどちらを採ったか（決定表#1）の一貫性 ③TOYOPUC の同番号重複が「後から現れたほう」を指しているか ④シャープの8進エラーが `8` を含む入力すべてで出るか。
+
+---
+
+## Task 6: 表記切替（`switchNotation()`）
+
+**モデル: Sonnet**
+
+**Files:**
+- Create: `packages/plc-dialects/src/notation.ts`
+- Modify: `packages/plc-dialects/src/index.ts`
+- Test: `packages/plc-dialects/test/notation.test.ts`
+
+§10.7 の「表記切替」を実装する。IRはベンダー中立なので**書き換えは要らない**（決定表#6）。この関数は「切替後にデバイス名がどう変わるか」と「切替先で表せない項目」を返すだけで、4B の表記切替ダイアログがその一覧をそのまま出す。§16 Phase 4 受入基準②（三菱で組んだラダーを OMRON 表記に切り替えると `0.00` 形式になる）の3A側の裏づけになる。
+
+- [ ] **Step 1: 失敗するテストを書く**
+
+`packages/plc-dialects/test/notation.test.ts`:
+
+```ts
+import {
+  device,
+  endNetwork,
+  hline,
+  IR_COLS,
+  network,
+  no,
+  out,
+  program,
+  T,
+  ton,
+  X,
+  Y,
+  type Cell,
+} from '@ojt/ladder-core';
+import { describe, expect, it } from 'vitest';
+import { JTEKT_PC10G, MITSUBISHI_FX5U, OMRON_CP1E, SHARP_JW300, switchNotation } from '../src/index.js';
+
+function rung(...cells: Cell[]): Cell[] {
+  const row = [...cells];
+  const output = row.pop();
+  if (output === undefined) throw new Error('出力セルが要ります');
+  while (row.length < IR_COLS - 1) row.push(hline());
+  row.push(output);
+  return row;
+}
+
+const selfHold = program(
+  network('n1', [rung(no(X(8)), out(Y(1))), [no(Y(1))]]),
+  network('n2', [rung(no(X(0)), ton(T(0), 3000))]),
+  endNetwork(),
+);
+
+describe('switchNotation（§10.7 表記切替 / §16 Phase 4 受入基準②）', () => {
+  it('lists how every device is spelled in the target dialect', () => {
+    const result = switchNotation(selfHold, MITSUBISHI_FX5U, OMRON_CP1E);
+    expect(result.ok).toBe(true);
+    expect(result.errors).toEqual([]);
+    expect(result.changes.map((c) => [c.from, c.to])).toEqual([
+      ['X10', '0.08'],
+      ['Y1', '100.01'],
+      ['X0', '0.00'],
+    ]);
+  });
+
+  it('keeps only the devices whose spelling actually differs', () => {
+    const result = switchNotation(selfHold, MITSUBISHI_FX5U, OMRON_CP1E);
+    // `T0` は両方の方言で `T0` なので一覧に出ない
+    expect(result.changes.some((c) => c.from === 'T0')).toBe(false);
+    for (const change of result.changes) expect(change.from).not.toBe(change.to);
+  });
+
+  it('spells the same program in the other two dialects', () => {
+    const jtekt = switchNotation(selfHold, MITSUBISHI_FX5U, JTEKT_PC10G);
+    expect(jtekt.changes[0]).toEqual({ device: X(8), from: 'X10', to: '1X008' });
+    const sharp = switchNotation(selfHold, MITSUBISHI_FX5U, SHARP_JW300);
+    expect(sharp.changes[0]).toEqual({ device: X(8), from: 'X10', to: '000010' });
+    expect(sharp.changes.find((c) => c.device.kind === 'output')?.to).toBe('000021');
+  });
+
+  it('reports what the target dialect cannot express (§10.7)', () => {
+    const wide = program(
+      network('n1', [rung(no(X(0)), out(device('output', 14)))]),
+      endNetwork(),
+    );
+    const result = switchNotation(wide, MITSUBISHI_FX5U, OMRON_CP1E);
+    expect(result.ok).toBe(false);
+    expect(result.errors.map((e) => e.code)).toEqual(['device-range']);
+    // 表記の一覧は「表せない」ときも返す（UIは赤字で並べる）
+    expect(result.changes.length).toBeGreaterThan(0);
+  });
+
+  it('reports a preset the target dialect cannot express', () => {
+    const fine = program(network('n1', [rung(no(X(0)), ton(T(200), 150))]), endNetwork());
+    // 三菱の T200 帯は 10ms 単位なので 150ms は書ける
+    expect(MITSUBISHI_FX5U.validate(fine)).toEqual([]);
+    const result = switchNotation(fine, MITSUBISHI_FX5U, SHARP_JW300);
+    expect(result.ok).toBe(false);
+    expect(result.errors.map((e) => e.code)).toEqual(['timer-unit']);
+  });
+
+  it('is a no-op when the source and the target are the same dialect', () => {
+    const result = switchNotation(selfHold, OMRON_CP1E, OMRON_CP1E);
+    expect(result.changes).toEqual([]);
+    expect(result.from).toBe('omron');
+    expect(result.to).toBe('omron');
+  });
+});
+```
+
+- [ ] **Step 2: RED を確認する**
+
+```powershell
+pnpm --filter @ojt/plc-dialects exec vitest run test/notation.test.ts
+```
+
+Expected: 失敗。`does not provide an export named 'switchNotation'`。
+
+- [ ] **Step 3: `src/notation.ts` を書く**
+
+`packages/plc-dialects/src/notation.ts`:
+
+```ts
+import type { Device, LadderProgram } from '@ojt/ladder-core';
+import { collectDevices } from './device-rules.js';
+import type { DialectError, DialectId, DialectProfile } from './profile.js';
+
+/**
+ * 表記切替。設計仕様 §10.7。
+ *
+ * IRはベンダー中立（§10.3 / 3A 決定表#5）なので、方言を切り替えてもプログラムは**変換しない**。
+ * 変わるのは画面に出るデバイス名と設定値の書き方だけである。この関数は
+ * 「切替後にどう書かれるか」の一覧と「切替先の方言で表せない項目」を返し、4B の切替ダイアログが
+ * そのまま並べる。プログラム自体は呼び出し側が持ったままでよい。
+ */
+
+/** デバイス1つの表記の変化。 */
+export interface NotationChange {
+  device: Device;
+  from: string;
+  to: string;
+}
+
+/** 表記切替の下見の結果。 */
+export interface NotationSwitchResult {
+  /** 切替先の方言で表せるか（`errors` が空か）。 */
+  ok: boolean;
+  from: DialectId;
+  to: DialectId;
+  /** 表記が変わるデバイス（変わらないものは載せない）。グリッドの順。 */
+  changes: readonly NotationChange[];
+  /** 切替先の方言のバリデータの指摘（デバイス範囲・設定値）。 */
+  errors: readonly DialectError[];
+}
+
+/**
+ * 方言を切り替えたときの表記の変化と、切替先で表せない項目を調べる。§10.7
+ * プログラムは書き換えない（引数も戻り値も IR を含まない）。
+ */
+export function switchNotation(
+  source: LadderProgram,
+  from: DialectProfile,
+  to: DialectProfile,
+): NotationSwitchResult {
+  const changes: NotationChange[] = [];
+  for (const use of collectDevices(source)) {
+    const before = from.formatDevice(use.device);
+    const after = to.formatDevice(use.device);
+    if (before === after) continue;
+    changes.push({ device: use.device, from: before, to: after });
+  }
+  const errors = to.validate(source);
+  return { ok: errors.length === 0, from: from.id, to: to.id, changes, errors };
+}
+```
+
+- [ ] **Step 4: `src/index.ts` に足す**
+
+```ts
+export {
+  switchNotation,
+  type NotationChange,
+  type NotationSwitchResult,
+} from './notation.js';
+```
+
+- [ ] **Step 5: GREEN を確認してコミットする**
+
+```powershell
+pnpm --filter @ojt/plc-dialects exec vitest run test/notation.test.ts
+git add packages/plc-dialects
+git commit -m "feat(plc-dialects): add the notation switch preview"
+```
+
+---
+
+## Task 7: 命令語リストのエクスポート（`instructionList()`）
+
+**モデル: Opus**（グリッドから直並列式への分解が本プランで最も判断の要る部分）
+
+**Files:**
+- Create: `packages/plc-dialects/src/instruction-list.ts`
+- Modify: `packages/plc-dialects/src/profile.ts`（`formatCounterPreset?` を足す）
+- Modify: `packages/plc-dialects/src/{mitsubishi,omron,jtekt,sharp}.ts`（`formatCounterPreset` を1行ずつ）
+- Modify: `packages/plc-dialects/src/index.ts`
+- Test: `packages/plc-dialects/test/instruction-list.test.ts`
+
+§10.7 の「命令語リストのエクスポート（テキスト、UTF-8、CRLF）」を実装する。§16 Phase 4 受入基準⑥（方言どおりの命令名で出力される）の本体である。
+
+**アルゴリズム（決定表#7）:** グリッドを「節点と枝」の無向グラフに直す。枝は接点セル（`(row,col)`–`(row,col+1)`）と横線・縦線（縦線は右方向の枝と下方向の枝の2本）で、各行の0列目はすべて左母線の1節点（`-1`）にまとめる（ランタイムの `solve()` と同じ結線。§10.4）。出力セルの行のコイル列の節点を終点にして、**並列簡約**（同じ2点を結ぶ枝を OR にまとめる）と**直列簡約**（端点でない次数2の節点で2本を AND にまとめる）を繰り返す。1本に縮んだらその式を命令語へ展開し、縮まなければ `not-series-parallel` を返す。
+
+| 決めること | 本タスクの実装 |
+|---|---|
+| 接点の位置と命令 | 先頭は `ld`/`ldi`/`ldp`/`ldf`、AND位置は `and`/`ani`/`andp`/`andf`、OR位置は `or`/`ori`/`orp`/`orf` |
+| ブロック接続 | 合成式どうしの直列は `andBlock`、並列は `orBlock` |
+| タイマ・カウンタ | ニーモニックがデバイス接頭辞で終わる方言（三菱の `OUT T`）は番号を続けて `OUT T0 K100`、そうでなければ `TIM T0 #0030` のように空けて書く |
+| カウンタのリセット | IRは `resetDevice` をセルに持つので、`OUT C0 K5` の直後に `LD <reset>` ＋ `RST C0` の2行を足す（実機の書き方） |
+| 同じ条件の複数出力 | 直前の出力と式が同じなら条件行を繰り返さない（`OUT Y0` / `OUT Y1` が並ぶ） |
+| END | END ネットワークは条件なしで `end` の1行（三菱 `END`、シャープ `F-40`） |
+| テキスト | `0000  LD        X0` の形。ネットワークの切れ目に `; n1  自己保持` の見出し。改行は **CRLF**、末尾にも改行を置く（§10.7） |
+
+- [ ] **Step 1: 失敗するテストを書く**
+
+`packages/plc-dialects/test/instruction-list.test.ts`:
+
+```ts
+import {
+  C,
+  ctu,
+  endNetwork,
+  hline,
+  IR_COLS,
+  M,
+  mc,
+  mcr,
+  network,
+  nc,
+  no,
+  out,
+  program,
+  rise,
+  set,
+  T,
+  ton,
+  vline,
+  X,
+  Y,
+  type Cell,
+} from '@ojt/ladder-core';
+import { describe, expect, it } from 'vitest';
+import {
+  instructionList,
+  INSTRUCTION_LIST_MESSAGES,
+  JTEKT_PC10G,
+  MITSUBISHI_FX5U,
+  OMRON_CP1E,
+  SHARP_JW300,
+} from '../src/index.js';
+
+function rung(...cells: Cell[]): Cell[] {
+  const row = [...cells];
+  const output = row.pop();
+  if (output === undefined) throw new Error('出力セルが要ります');
+  while (row.length < IR_COLS - 1) row.push(hline());
+  row.push(output);
+  return row;
+}
+
+/** 自己保持（X0 で入り X1 で切れる）。内蔵課題 d-001 の n1 と同じ形。 */
+const selfHold = program(
+  network('n1', [rung(no(X(0)), vline(), nc(X(1)), out(Y(0))), [no(Y(0))]], {
+    comment: '自己保持',
+  }),
+  endNetwork(),
+);
+
+const mnemonics = (profile: typeof MITSUBISHI_FX5U, source: typeof selfHold): string[] =>
+  instructionList(source, profile).lines.map((line) => `${line.mnemonic} ${line.operand}`.trim());
+
+describe('instructionList（§10.7 / §16 Phase 4 受入基準⑥）', () => {
+  it('turns a self-holding rung into the textbook Mitsubishi list', () => {
+    expect(mnemonics(MITSUBISHI_FX5U, selfHold)).toEqual([
+      'LD X0',
+      'OR Y0',
+      'ANI X1',
+      'OUT Y0',
+      'END',
+    ]);
+  });
+
+  it('writes the same rung in each dialect mnemonics', () => {
+    expect(mnemonics(OMRON_CP1E, selfHold)).toEqual([
+      'LD 0.00',
+      'OR 100.00',
+      'AND NOT 0.01',
+      'OUT 100.00',
+      'END',
+    ]);
+    expect(mnemonics(JTEKT_PC10G, selfHold)).toEqual([
+      'LD 1X000',
+      'OR 1Y000',
+      'ANI 1X001',
+      'OUT 1Y000',
+      'END',
+    ]);
+    expect(mnemonics(SHARP_JW300, selfHold)).toEqual([
+      'STR 000000',
+      'OR 000020',
+      'AND NOT 000001',
+      'OUT 000020',
+      'F-40',
+    ]);
+  });
+
+  it('uses the edge-contact and SET mnemonics', () => {
+    const p = program(network('n1', [rung(rise(X(0)), set(M(0)))]), endNetwork());
+    expect(mnemonics(MITSUBISHI_FX5U, p)).toEqual(['LDP X0', 'SET M0', 'END']);
+    expect(mnemonics(SHARP_JW300, p)).toEqual(['STR POS 000000', 'SET 001000', 'F-40']);
+  });
+
+  it('merges the timer mnemonic with its device when the dialect spells it that way', () => {
+    const p = program(network('n1', [rung(no(X(0)), ton(T(0), 3000))]), endNetwork());
+    expect(mnemonics(MITSUBISHI_FX5U, p)).toEqual(['LD X0', 'OUT T0 K30', 'END']);
+    expect(mnemonics(OMRON_CP1E, p)).toEqual(['LD 0.00', 'TIM T0 #0030', 'END']);
+    expect(mnemonics(JTEKT_PC10G, p)).toEqual(['LD 1X000', 'OUT 1T000 H001E', 'END']);
+    expect(mnemonics(SHARP_JW300, p)).toEqual(['STR 000000', 'TMR00000 0030', 'F-40']);
+  });
+
+  it('writes the counter and its reset the way the manual does', () => {
+    const p = program(network('n1', [rung(no(X(0)), ctu(C(0), 5, X(1)))]), endNetwork());
+    expect(mnemonics(MITSUBISHI_FX5U, p)).toEqual([
+      'LD X0',
+      'OUT C0 K5',
+      'LD X1',
+      'RST C0',
+      'END',
+    ]);
+  });
+
+  it('writes MC / MCR with the master-control mnemonics of the dialect', () => {
+    const p = program(
+      network('n1', [rung(no(X(0)), mc(M(0)))]),
+      network('n2', [rung(no(X(1)), out(Y(0)))]),
+      network('n3', [rung(no(X(0)), mcr(M(0)))]),
+      endNetwork(),
+    );
+    expect(mnemonics(MITSUBISHI_FX5U, p)).toContain('MC M0');
+    expect(mnemonics(MITSUBISHI_FX5U, p)).toContain('MCR M0');
+    expect(mnemonics(OMRON_CP1E, p)).toContain('IL W0.00');
+  });
+
+  it('emits a block instruction when a branch is itself a series', () => {
+    // X0 と（X1 AND X2）の並列 → LD X0 / LD X1 / AND X2 / ORB / OUT Y0
+    const p = program(
+      network('n1', [
+        [no(X(0)), vline(), ...Array.from({ length: IR_COLS - 3 }, () => hline()), out(Y(0))],
+        [no(X(1)), no(X(2))],
+      ]),
+      endNetwork(),
+    );
+    expect(mnemonics(MITSUBISHI_FX5U, p)).toEqual([
+      'LD X0',
+      'LD X1',
+      'AND X2',
+      'ORB',
+      'OUT Y0',
+      'END',
+    ]);
+  });
+
+  it('does not repeat the condition when two outputs share a rung', () => {
+    const p = program(
+      network('n1', [
+        [no(X(0)), vline(), ...Array.from({ length: IR_COLS - 3 }, () => hline()), out(Y(0))],
+        [hline(), ...Array.from({ length: IR_COLS - 2 }, () => hline()), out(Y(1))],
+      ]),
+      endNetwork(),
+    );
+    expect(mnemonics(MITSUBISHI_FX5U, p)).toEqual(['LD X0', 'OUT Y0', 'OUT Y1', 'END']);
+  });
+
+  it('numbers the steps and renders CRLF text with a heading per network (§10.7)', () => {
+    const result = instructionList(selfHold, MITSUBISHI_FX5U);
+    expect(result.errors).toEqual([]);
+    expect(result.lines.map((l) => l.step)).toEqual([0, 1, 2, 3, 4]);
+    expect(result.lines[0]?.networkId).toBe('n1');
+    expect(result.text).toContain('\r\n');
+    expect(result.text).not.toMatch(/[^\r]\n/u);
+    expect(result.text.endsWith('\r\n')).toBe(true);
+    expect(result.text).toContain('; n1  自己保持');
+    expect(result.text).toContain('0000  LD');
+  });
+
+  it('reports a ladder it cannot convert', () => {
+    const broken = program(network('n1', [[no(X(0))]]));
+    const result = instructionList(broken, MITSUBISHI_FX5U);
+    expect(result.lines).toEqual([]);
+    expect(result.errors[0]?.code).toBe('compile-failed');
+    expect(INSTRUCTION_LIST_MESSAGES['compile-failed']).toBeDefined();
+    expect(INSTRUCTION_LIST_MESSAGES['not-series-parallel']).toBeDefined();
+  });
+
+  it('marks a preset the dialect cannot express instead of guessing', () => {
+    const p = program(network('n1', [rung(no(X(0)), ton(T(0), 150))]), endNetwork());
+    const result = instructionList(p, SHARP_JW300);
+    expect(result.errors.map((e) => e.code)).toEqual(['preset-unavailable']);
+    expect(result.lines.map((l) => l.operand)).toContain('?');
+  });
+});
+```
+
+- [ ] **Step 2: RED を確認する**
+
+```powershell
+pnpm --filter @ojt/plc-dialects exec vitest run test/instruction-list.test.ts
+```
+
+Expected: 失敗。`does not provide an export named 'instructionList'`。
+
+- [ ] **Step 3: `src/profile.ts` に `formatCounterPreset` を足す**
+
+`DialectProfile` の `parseTimerPreset` の直後に足す:
+
+```ts
+  /**
+   * カウンタ設定値の方言表記（三菱は `K5`、OMRON は `#0005`）。§10.7
+   * 命令語リストだけが使う。省略した方言は10進の数値そのままで書かれる。
+   */
+  formatCounterPreset?(preset: number): string;
+```
+
+- [ ] **Step 4: 4プロファイルに `formatCounterPreset` を足す**
+
+それぞれのプロファイル定数（`MITSUBISHI_FX5U` など）の `parseTimerPreset,` の直後に1行足す:
+
+```ts
+// mitsubishi.ts
+  formatCounterPreset: (preset) => `K${preset}`,
+// omron.ts
+  formatCounterPreset: (preset) => `#${String(preset).padStart(4, '0')}`,
+// jtekt.ts
+  formatCounterPreset: (preset) => `H${preset.toString(16).toUpperCase().padStart(4, '0')}`,
+// sharp.ts
+  formatCounterPreset: (preset) => String(preset).padStart(4, '0'),
+```
+
+- [ ] **Step 5: `src/instruction-list.ts` を書く**
+
+`packages/plc-dialects/src/instruction-list.ts`:
+
+```ts
+import {
+  COIL_COL,
+  compile,
+  IR_COLS,
+  SPECIAL_ALWAYS_ON,
+  type Cell,
+  type CompiledNetwork,
+  type ContactType,
+  type Device,
+  type LadderProgram,
+  type OutputCell,
+} from '@ojt/ladder-core';
+import type { DialectError, DialectProfile, InstructionKey } from './profile.js';
+
+/**
+ * 命令語リストのエクスポート。設計仕様 §10.7。
+ *
+ * グリッドを「節点と枝」のグラフに直し、直並列簡約で1つの式にしてから方言の命令語へ展開する
+ * （決定表#7）。方言に依るのは命令名・デバイス表記・設定値表記の3つだけで、
+ * 分解の手順は方言に依らない。
+ *
+ * **方言バリデータは走らせない**（`convert()` の仕事。§10.6）。ここが返すのは
+ * 「リストにできなかった」種類の指摘だけである。
+ */
+
+/** 命令語リスト1行。 */
+export interface InstructionLine {
+  /** 0起点のステップ番号。 */
+  step: number;
+  mnemonic: string;
+  /** デバイスや設定値（無ければ空文字）。 */
+  operand: string;
+  networkId: string;
+}
+
+/** エクスポートの結果。 */
+export interface InstructionListResult {
+  lines: readonly InstructionLine[];
+  /** UTF-8・CRLF のテキスト（§10.7）。 */
+  text: string;
+  errors: readonly DialectError[];
+}
+
+/** 命令語リスト固有の指摘の文言。`DialectProfile.errorMessages` には入れない（決定表#8）。 */
+export const INSTRUCTION_LIST_MESSAGES: Readonly<Record<string, string>> = {
+  'compile-failed': 'ラダーを変換できないため命令語リストを作れません',
+  'not-series-parallel': '直列・並列に分解できない回路です（命令語リストにできません）',
+  'preset-unavailable': 'この機種で表せない設定値です（`?` で書き出しました）',
+};
+
+/** 接点セル。 */
+type ContactCell = Extract<Cell, { kind: 'contact' }>;
+
+/** 直並列に分解した回路。 */
+type Expr =
+  | { kind: 'wire' }
+  | { kind: 'contact'; cell: ContactCell }
+  | { kind: 'and'; parts: readonly Expr[] }
+  | { kind: 'or'; parts: readonly Expr[] };
+
+/** 直列に繋ぐ（渡り＝`wire` は直列では消える）。 */
+function andOf(parts: readonly Expr[]): Expr {
+  const flat: Expr[] = [];
+  for (const part of parts) {
+    if (part.kind === 'wire') continue;
+    if (part.kind === 'and') flat.push(...part.parts);
+    else flat.push(part);
+  }
+  if (flat.length === 0) return { kind: 'wire' };
+  return flat.length === 1 ? (flat[0] ?? { kind: 'wire' }) : { kind: 'and', parts: flat };
+}
+
+/** 並列に繋ぐ（渡りが1本でもあれば常時成立）。 */
+function orOf(parts: readonly Expr[]): Expr {
+  const flat: Expr[] = [];
+  for (const part of parts) {
+    if (part.kind === 'wire') return { kind: 'wire' };
+    if (part.kind === 'or') flat.push(...part.parts);
+    else flat.push(part);
+  }
+  if (flat.length === 0) return { kind: 'wire' };
+  return flat.length === 1 ? (flat[0] ?? { kind: 'wire' }) : { kind: 'or', parts: flat };
+}
+
+/** 枝の向きを逆にする（直列の並びだけが向きを持つ）。 */
+function reverse(expr: Expr): Expr {
+  if (expr.kind === 'and') return { kind: 'and', parts: [...expr.parts].reverse().map(reverse) };
+  if (expr.kind === 'or') return { kind: 'or', parts: expr.parts.map(reverse) };
+  return expr;
+}
+
+/** 式の同一性を見るためのキー（同じ条件の複数出力をまとめるのに使う）。 */
+function exprKey(expr: Expr): string {
+  if (expr.kind === 'wire') return 'w';
+  if (expr.kind === 'contact') {
+    return `c:${expr.cell.type}:${expr.cell.device.kind}:${expr.cell.device.index}`;
+  }
+  return `${expr.kind}(${expr.parts.map(exprKey).join(',')})`;
+}
+
+/** グラフの枝。 */
+interface Edge {
+  a: number;
+  b: number;
+  expr: Expr;
+}
+
+/** 左母線の節点番号（各行の0列目はここへまとめる。§10.4 の `solve()` と同じ結線）。 */
+const LEFT_RAIL = -1;
+
+/** 節点番号。0列目はすべて左母線。 */
+function nodeId(row: number, col: number): number {
+  return col === 0 ? LEFT_RAIL : row * (IR_COLS + 1) + col;
+}
+
+/** ネットワークのグリッドを枝の集まりに直す。 */
+function buildEdges(net: CompiledNetwork): Edge[] {
+  const edges: Edge[] = [];
+  for (let row = 0; row < net.rows; row += 1) {
+    for (let col = 0; col < COIL_COL; col += 1) {
+      const cell = net.cells[row]?.[col];
+      if (cell === undefined) continue;
+      if (cell.kind === 'contact') {
+        edges.push({ a: nodeId(row, col), b: nodeId(row, col + 1), expr: { kind: 'contact', cell } });
+      } else if (cell.kind === 'hline' || cell.kind === 'vline') {
+        edges.push({ a: nodeId(row, col), b: nodeId(row, col + 1), expr: { kind: 'wire' } });
+      }
+      if (cell.kind === 'vline' && row + 1 < net.rows) {
+        edges.push({ a: nodeId(row, col), b: nodeId(row + 1, col), expr: { kind: 'wire' } });
+      }
+    }
+  }
+  return edges.filter((edge) => edge.a !== edge.b);
+}
+
+/** 同じ2点を結ぶ枝をまとめる。まとめたら true。 */
+function reduceParallel(edges: Edge[]): { edges: Edge[]; changed: boolean } {
+  const groups = new Map<string, Edge[]>();
+  for (const edge of edges) {
+    const key = edge.a < edge.b ? `${edge.a}|${edge.b}` : `${edge.b}|${edge.a}`;
+    const list = groups.get(key) ?? [];
+    list.push(edge);
+    groups.set(key, list);
+  }
+  const next: Edge[] = [];
+  let changed = false;
+  for (const list of groups.values()) {
+    const head = list[0];
+    if (head === undefined) continue;
+    if (list.length === 1) {
+      next.push(head);
+      continue;
+    }
+    changed = true;
+    const parts = list.map((edge) => (edge.a === head.a ? edge.expr : reverse(edge.expr)));
+    next.push({ a: head.a, b: head.b, expr: orOf(parts) });
+  }
+  return { edges: next, changed };
+}
+
+/** 端点でない次数2の節点を潰す（行き止まりの枝は落とす）。潰したら true。 */
+function reduceSeries(edges: Edge[], sink: number): { edges: Edge[]; changed: boolean } {
+  const incident = new Map<number, Edge[]>();
+  for (const edge of edges) {
+    for (const node of [edge.a, edge.b]) {
+      const list = incident.get(node) ?? [];
+      list.push(edge);
+      incident.set(node, list);
+    }
+  }
+  for (const [node, list] of incident) {
+    if (node === LEFT_RAIL || node === sink) continue;
+    const first = list[0];
+    if (first === undefined) continue;
+    if (list.length === 1) {
+      // 行き止まり（分岐を描いたが繋がっていない枝）。落としても導通は変わらない
+      return { edges: edges.filter((edge) => edge !== first), changed: true };
+    }
+    const second = list[1];
+    if (list.length !== 2 || second === undefined || first === second) continue;
+    const left = first.b === node ? first.expr : reverse(first.expr);
+    const leftEnd = first.b === node ? first.a : first.b;
+    const right = second.a === node ? second.expr : reverse(second.expr);
+    const rightEnd = second.a === node ? second.b : second.a;
+    const rest = edges.filter((edge) => edge !== first && edge !== second);
+    rest.push({ a: leftEnd, b: rightEnd, expr: andOf([left, right]) });
+    return { edges: rest, changed: true };
+  }
+  return { edges, changed: false };
+}
+
+/** 左母線 → 終点 の式にまとめる。分解できなければ undefined。 */
+function reduceToExpr(source: readonly Edge[], sink: number): Expr | undefined {
+  let edges = source.map((edge) => ({ ...edge }));
+  for (;;) {
+    const parallel = reduceParallel(edges);
+    edges = parallel.edges;
+    const series = reduceSeries(edges, sink);
+    edges = series.edges;
+    if (!parallel.changed && !series.changed) break;
+  }
+  const only = edges[0];
+  if (edges.length !== 1 || only === undefined) return undefined;
+  if (only.a === LEFT_RAIL && only.b === sink) return only.expr;
+  if (only.b === LEFT_RAIL && only.a === sink) return reverse(only.expr);
+  return undefined;
+}
+
+/** 接点の置かれた位置 → 命令語キー。§10.5 */
+const CONTACT_KEYS: Readonly<Record<'ld' | 'and' | 'or', Readonly<Record<ContactType, InstructionKey>>>> =
+  {
+    ld: { NO: 'ld', NC: 'ldi', P: 'ldp', F: 'ldf' },
+    and: { NO: 'and', NC: 'ani', P: 'andp', F: 'andf' },
+    or: { NO: 'or', NC: 'ori', P: 'orp', F: 'orf' },
+  };
+
+/** 組み立て中の1行。 */
+interface Emit {
+  mnemonic: string;
+  operand: string;
+}
+
+/** 接点1つを命令語にする。 */
+function contactEmit(cell: ContactCell, at: 'ld' | 'and' | 'or', profile: DialectProfile): Emit {
+  const key = CONTACT_KEYS[at][cell.type];
+  return { mnemonic: profile.instructionNames[key], operand: profile.formatDevice(cell.device) };
+}
+
+/** 式を1つのブロックとして展開する（先頭は必ず `ld` 系）。 */
+function emitBlock(expr: Expr, profile: DialectProfile, out: Emit[]): void {
+  if (expr.kind === 'wire') {
+    out.push({
+      mnemonic: profile.instructionNames.ld,
+      operand: profile.formatDevice({ kind: 'special', index: SPECIAL_ALWAYS_ON }),
+    });
+    return;
+  }
+  if (expr.kind === 'contact') {
+    out.push(contactEmit(expr.cell, 'ld', profile));
+    return;
+  }
+  const [first, ...rest] = expr.parts;
+  if (first === undefined) return;
+  emitBlock(first, profile, out);
+  const at = expr.kind === 'and' ? 'and' : 'or';
+  const blockKey: InstructionKey = expr.kind === 'and' ? 'andBlock' : 'orBlock';
+  for (const part of rest) {
+    if (part.kind === 'contact') {
+      out.push(contactEmit(part.cell, at, profile));
+      continue;
+    }
+    emitBlock(part, profile, out);
+    out.push({ mnemonic: profile.instructionNames[blockKey], operand: '' });
+  }
+}
+
+/**
+ * ニーモニックがデバイス接頭辞で終わる方言では番号だけを続ける。
+ * 三菱の `OUT T` ＋ `T0` は `OUT T0`、OMRON の `TIM` ＋ `T0` は `TIM T0` になる。
+ */
+function presetEmit(
+  profile: DialectProfile,
+  key: 'timer' | 'counter',
+  target: Device,
+  preset: string,
+): Emit {
+  const name = profile.instructionNames[key];
+  const prefix = profile.deviceRanges[target.kind].prefix;
+  const text = profile.formatDevice(target);
+  if (prefix.length > 0 && name.endsWith(prefix) && text.startsWith(prefix)) {
+    return { mnemonic: `${name}${text.slice(prefix.length)}`, operand: preset };
+  }
+  return { mnemonic: name, operand: `${text} ${preset}`.trim() };
+}
+
+/** 出力セルを命令語にする。表せない設定値は `?` にして指摘を返す。 */
+function emitOutput(
+  cell: OutputCell,
+  profile: DialectProfile,
+  networkId: string,
+  out: Emit[],
+  errors: DialectError[],
+): void {
+  if (cell.kind === 'coil') {
+    const key: InstructionKey = cell.type === 'OUT' ? 'out' : cell.type === 'SET' ? 'set' : 'rst';
+    out.push({ mnemonic: profile.instructionNames[key], operand: profile.formatDevice(cell.device) });
+    return;
+  }
+  if (cell.kind === 'mc' || cell.kind === 'mcr') {
+    out.push({
+      mnemonic: profile.instructionNames[cell.kind],
+      operand: profile.formatDevice(cell.device),
+    });
+    return;
+  }
+  if (cell.kind === 'timer') {
+    const preset = profile.timerPreset(cell.presetMs, cell.device);
+    if (preset instanceof Error) {
+      errors.push({ code: 'preset-unavailable', message: preset.message, device: cell.device, networkId });
+    }
+    out.push(
+      presetEmit(profile, 'timer', cell.device, preset instanceof Error ? '?' : preset.text),
+    );
+    return;
+  }
+  const preset = profile.formatCounterPreset?.(cell.preset) ?? String(cell.preset);
+  out.push(presetEmit(profile, 'counter', cell.device, preset));
+  // リセットは実機と同じく別の回路として書く（IRはセルに resetDevice を持っている）
+  out.push({
+    mnemonic: profile.instructionNames.ld,
+    operand: profile.formatDevice(cell.resetDevice),
+  });
+  out.push({
+    mnemonic: profile.instructionNames.rst,
+    operand: profile.formatDevice(cell.device),
+  });
+}
+
+/** ネットワーク1つを命令語にする。 */
+function emitNetwork(
+  net: CompiledNetwork,
+  profile: DialectProfile,
+  out: Emit[],
+  errors: DialectError[],
+): void {
+  if (net.isEnd) {
+    out.push({ mnemonic: profile.instructionNames.end, operand: '' });
+    return;
+  }
+  const edges = buildEdges(net);
+  let previousKey = '';
+  for (const output of net.outputs) {
+    const expr = reduceToExpr(edges, nodeId(output.row, COIL_COL));
+    if (expr === undefined) {
+      errors.push({
+        code: 'not-series-parallel',
+        message: `${net.id} は直列・並列に分解できないため命令語リストにできません`,
+        networkId: net.id,
+        row: output.row,
+        col: output.col,
+      });
+      continue;
+    }
+    const key = exprKey(expr);
+    if (key !== previousKey) emitBlock(expr, profile, out);
+    previousKey = key;
+    emitOutput(output.cell, profile, net.id, out, errors);
+  }
+}
+
+/** テキストへ整形する（UTF-8・CRLF。§10.7）。 */
+function render(lines: readonly InstructionLine[], source: LadderProgram): string {
+  const comments = new Map(source.networks.map((net) => [net.id, net.comment ?? '']));
+  const rows: string[] = [];
+  let current = '';
+  for (const line of lines) {
+    if (line.networkId !== current) {
+      current = line.networkId;
+      rows.push(`; ${current}  ${comments.get(current) ?? ''}`.trimEnd());
+    }
+    rows.push(
+      `${String(line.step).padStart(4, '0')}  ${line.mnemonic.padEnd(10)}${line.operand}`.trimEnd(),
+    );
+  }
+  return rows.length === 0 ? '' : `${rows.join('\r\n')}\r\n`;
+}
+
+/**
+ * ラダーを方言の命令語リストへ書き出す。§10.7 / §16 Phase 4 受入基準⑥
+ * 変換に落ちるラダーは行を1つも作らず `compile-failed` を返す（実機でも書き込めない）。
+ */
+export function instructionList(
+  source: LadderProgram,
+  profile: DialectProfile,
+): InstructionListResult {
+  const compiled = compile(source);
+  if (!compiled.ok) {
+    return {
+      lines: [],
+      text: '',
+      errors: compiled.errors.map((error) => ({
+        code: 'compile-failed',
+        message: error.message,
+        ...(error.networkId === '' ? {} : { networkId: error.networkId }),
+      })),
+    };
+  }
+  const errors: DialectError[] = [];
+  const lines: InstructionLine[] = [];
+  for (const net of compiled.program.networks.slice(0, compiled.program.endNetworkIndex + 1)) {
+    const emits: Emit[] = [];
+    emitNetwork(net, profile, emits, errors);
+    for (const emit of emits) {
+      lines.push({ step: lines.length, mnemonic: emit.mnemonic, operand: emit.operand, networkId: net.id });
+    }
+  }
+  return { lines, text: render(lines, source), errors };
+}
+```
+
+- [ ] **Step 6: `src/index.ts` に足す**
+
+```ts
+export {
+  instructionList,
+  INSTRUCTION_LIST_MESSAGES,
+  type InstructionLine,
+  type InstructionListResult,
+} from './instruction-list.js';
+```
+
+- [ ] **Step 7: GREEN を確認する**
+
+```powershell
+pnpm --filter @ojt/plc-dialects exec vitest run
+pnpm --filter @ojt/plc-dialects exec vitest run --coverage
+```
+
+Expected: 全ファイル通過。カバレッジ90%以上。もし `not-series-parallel` の枝が未到達でカバレッジが落ちるなら、テストに「ブリッジ回路（`[no(X0), vline(), no(X1)]` と `[no(X2), vline(), no(X3)]` の2行を中央で横に繋いだ形）が `not-series-parallel` になる」ケースを足す。
+
+- [ ] **Step 8: バッチBのレビューとコミット**
+
+```powershell
+pnpm --filter @ojt/plc-dialects exec tsc --noEmit
+npx prettier --check "packages/plc-dialects/**/*.ts"
+git add packages/plc-dialects
+git commit -m "feat(plc-dialects): export the instruction list in each dialect"
+```
+
+ここで**バッチB のレビュー（Opus 1回）**をかける。見どころ: ①直並列簡約が内蔵課題8題の全ネットワークで `not-series-parallel` を出さないか（レビューで `BUILTIN_PLC_PROBLEMS` を読み込んで確かめる probe を書いてよい）②`presetEmit` の接頭辞合流が4方言で意図どおりか ③CRLF とステップ番号の連番。
+
+---
