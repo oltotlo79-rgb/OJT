@@ -713,6 +713,16 @@ export const JA = {
     redo: 'やり直せる操作がありません',
     zeroAdjust: 'デジタルテスター、またはΩ／導通レンジのときだけ調整できます',
   },
+  /**
+   * 波形の見比べの凡例（UXレビュー #7）。`result/ChartOverlay.tsx` の小さい重ね表示と
+   * 拡大表示の両方に出す。線の太さ・色は `result.module.css` の `.overlayExpected` /
+   * `.overlayActual` / `.legendBand` と揃える。
+   */
+  chartLegend: {
+    expected: '模範（細い薄色）',
+    actual: '訓練者（太い線）',
+    diff: '差分（赤い帯）',
+  },
   // --- /UX pass 2026-09-19 ---
 } as const;
 

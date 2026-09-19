@@ -1,4 +1,11 @@
-import { addWire, createSession, JIPM_BOARD, PLC_UNIT_FX5U, withPlcUnit } from '@ojt/board-model';
+import {
+  addWire,
+  createSession,
+  JIPM_BOARD,
+  PLC_UNIT_FX5U,
+  PLC_UNIT_PC10G,
+  withPlcUnit,
+} from '@ojt/board-model';
 import type { TerminalId } from '@ojt/circuit-sim';
 import { cleanup, render } from '@testing-library/react';
 import { TubeGeometry } from 'three';
@@ -37,6 +44,33 @@ describe('DeskWires（§10.1 / 決定表#9）', () => {
     expect(disposeSpy).not.toHaveBeenCalled();
     unmount();
     // このセッションは机上の電線を1本だけ張る（PLC電源は別途）
+    expect(disposeSpy).toHaveBeenCalledTimes(1);
+    disposeSpy.mockRestore();
+  });
+
+  it('routes the same desk cable when the PLC is a rack (受入基準③)', () => {
+    // ラックの `IN-12` の端子は `X0`〜（4A 決定表#16）。端子IDにモジュール名は入らない（H-6）
+    const rackBoard = withPlcUnit(JIPM_BOARD, PLC_UNIT_PC10G);
+    const session = createSession(rackBoard, {
+      roles: { S1: 'CR1', S7: 'CHK' },
+      allowedColors: ['青'],
+      extraParts: [],
+      inventory: [],
+    });
+    const added = addWire(
+      session,
+      rackBoard,
+      'TB_PB.1a' as TerminalId,
+      'PLC.X0' as TerminalId,
+      '青',
+    );
+    expect(added.ok).toBe(true);
+
+    const disposeSpy = vi.spyOn(TubeGeometry.prototype, 'dispose');
+    const { unmount } = render(<DeskWires board={rackBoard} session={session} />);
+    expect(disposeSpy).not.toHaveBeenCalled();
+    unmount();
+    // 机上のケーブルがちょうど1本（＝`deskWires()` がラックの端子を FX5U と同じように引けている）
     expect(disposeSpy).toHaveBeenCalledTimes(1);
     disposeSpy.mockRestore();
   });

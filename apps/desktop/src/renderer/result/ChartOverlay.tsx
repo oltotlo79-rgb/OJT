@@ -95,7 +95,8 @@ function stackedFigure(
       waves: [
         {
           key: 'expected',
-          className: panels.chartLine ?? '',
+          // UXレビュー #7: 拡大表示も小さい重ね表示と同じ2色を使う（`panels.chartLine` は使わない）
+          className: styles.overlayExpected ?? '',
           segments: signal.segments,
         },
       ],
@@ -108,7 +109,7 @@ function stackedFigure(
       waves: [
         {
           key: 'actual',
-          className: panels.chartLine ?? '',
+          className: styles.overlayActual ?? '',
           segments: signal.segments,
         },
       ],
@@ -152,7 +153,31 @@ export function ChartOverlay({
         largeGeom={LARGE_STACKED_GEOMETRY}
         testId="chart-overlay"
         smallClassName={panels.chart}
+        legend={<ChartLegend />}
       />
     </div>
+  );
+}
+
+/**
+ * 波形の見比べの凡例（UXレビュー #7）。色見本は `result.module.css` の
+ * `.overlayExpected` / `.overlayActual` / `.legendBand` と同じ見た目にする。
+ */
+function ChartLegend(): JSX.Element {
+  return (
+    <p className={styles.legend} data-testid="chart-legend">
+      <span className={styles.legendItem}>
+        <span className={`${styles.legendSwatch} ${styles.legendExpected}`} aria-hidden="true" />
+        {JA.chartLegend.expected}
+      </span>
+      <span className={styles.legendItem}>
+        <span className={`${styles.legendSwatch} ${styles.legendActual}`} aria-hidden="true" />
+        {JA.chartLegend.actual}
+      </span>
+      <span className={styles.legendItem}>
+        <span className={`${styles.legendSwatch} ${styles.legendBand}`} aria-hidden="true" />
+        {JA.chartLegend.diff}
+      </span>
+    </p>
   );
 }

@@ -6,6 +6,8 @@ import {
   JIPM_BOARD,
   PLC_UNIT_CP1E,
   PLC_UNIT_FX5U,
+  PLC_UNIT_JW300,
+  PLC_UNIT_PC10G,
   routeSession,
   withPlcUnit,
 } from '@ojt/board-model';
@@ -66,6 +68,13 @@ describe('机上の3D（§10.1 / 決定表#9）', () => {
     // 銘板は型式の文字列だけ（`displayName` とは別物。§17）
     expect(PLC_UNIT_FX5U.appearance.nameplate).toBe('FX5U-32MR/ES');
     expect(PLC_UNIT_FX5U.appearance.nameplate).not.toBe(PLC_UNIT_FX5U.displayName);
+  });
+
+  it('picks the rack drawing for a rack model and the body for a one-piece model', () => {
+    expect(PLC_UNIT_PC10G.form).toBe('rack');
+    expect(PLC_UNIT_JW300.form).toBe('rack');
+    expect(PLC_UNIT_FX5U.form).toBe('unit');
+    expect(PLC_UNIT_CP1E.form).toBe('unit');
   });
 
   it('draws a sagging cable between the two ends', () => {

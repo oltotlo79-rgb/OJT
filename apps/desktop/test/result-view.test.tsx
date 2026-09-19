@@ -9,6 +9,7 @@ import {
 import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { JA } from '../src/renderer/i18n/ja.js';
+import resultStyles from '../src/renderer/result/result.module.css';
 import { ResultView } from '../src/renderer/result/ResultView.js';
 import { Result } from '../src/renderer/screens/Result.js';
 import { useStore } from '../src/renderer/app/store.js';
@@ -71,6 +72,20 @@ describe('ResultView', () => {
     );
     expect(screen.getByTestId('verdict').textContent).toBe('不合格');
     expect(screen.getByTestId('mismatch-table')).toBeTruthy();
+  });
+
+  it('「もう一度／課題一覧へ」を画面下端に固定する（UXレビュー #8）', () => {
+    if (PROBLEM === undefined) return;
+    render(
+      <ResultView
+        problem={PROBLEM}
+        result={judgeWith()}
+        onRetry={() => undefined}
+        onBackToList={() => undefined}
+      />,
+    );
+    const retry = screen.getByRole('button', { name: JA.result.retry });
+    expect(retry.parentElement?.className).toContain(resultStyles.stickyActions);
   });
 
   it('所要時間を標準時間との対比付きで出す（§8.3）', () => {

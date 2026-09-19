@@ -108,16 +108,59 @@
   padding-left: 12px;
 }
 
+/*
+ * UXレビュー #7: 模範＝細い薄色の線、訓練者＝太い線（凡例と一致させる）。
+ * 見比べる主役は「訓練者がどう動いたか」なので、太く濃い線をそちらに割り当てる。
+ */
 .overlayExpected {
   stroke: rgba(231, 235, 242, 0.38);
-  stroke-width: 3;
+  stroke-width: 1.5;
   fill: none;
 }
 
 .overlayActual {
   stroke: var(--accent);
-  stroke-width: 1.6;
+  stroke-width: 3;
   fill: none;
+}
+
+/* 凡例の色見本（UXレビュー #7）。線と同じ色・太さ・破線パターンを再現する。 */
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  color: var(--muted);
+  font-size: 11px;
+  margin: 2px 0 6px;
+}
+
+.legendItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.legendSwatch {
+  display: inline-block;
+  width: 22px;
+  height: 0;
+}
+
+.legendExpected {
+  border-top: 1.5px solid rgba(231, 235, 242, 0.6);
+}
+
+.legendActual {
+  border-top: 3px solid var(--accent);
+}
+
+.legendBand {
+  background: var(--ng);
+  border: 1px solid var(--ng);
+  border-radius: 2px;
+  height: 10px;
+  opacity: 0.3;
 }
 
 .forbidden {
@@ -131,6 +174,19 @@
   display: flex;
   gap: 10px;
   margin-top: 16px;
+}
+
+/*
+ * UXレビュー #8: 「もう一度／課題一覧へ」を画面下端に固定する（B/C1/C2の結果画面）。
+ * `.wrap` が縦スクロールする箱なので、その中で `position: sticky` にすれば
+ * 長い結果（差分一覧・指摘一覧など）をスクロールしても押せる位置に留まる。
+ */
+.stickyActions {
+  position: sticky;
+  bottom: -32px;
+  background: var(--bg);
+  border-top: 1px solid var(--line);
+  padding: 10px 0;
 }
 
 /* --- Plan 3B Task 13: モードDの結果画面 --- */

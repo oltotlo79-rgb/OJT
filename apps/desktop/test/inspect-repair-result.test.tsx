@@ -212,4 +212,20 @@ describe('InspectRepairResult（§9.2 判定）', () => {
     );
     expect(screen.queryByTestId('schematic-open-count')).toBeNull();
   });
+
+  it('「もう一度／課題一覧へ」を画面下端に固定する（UXレビュー #8）', () => {
+    expect(C2).toBeDefined();
+    if (C2 === undefined) return;
+    render(
+      <InspectRepairResult
+        problem={C2}
+        result={result()}
+        restoredHazardCount={0}
+        onRetry={vi.fn()}
+        onBackToList={vi.fn()}
+      />,
+    );
+    const retry = screen.getByRole('button', { name: 'もう一度' });
+    expect(retry.parentElement?.className).toMatch(/stickyActions/);
+  });
 });

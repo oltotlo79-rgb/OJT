@@ -105,7 +105,7 @@ export function InspectPartsResult({
         />
       </div>
 
-      <div className={styles.actions}>
+      <div className={`${styles.actions} ${styles.stickyActions}`}>
         <button type="button" onClick={onRetry}>
           {JA.result.retry}
         </button>

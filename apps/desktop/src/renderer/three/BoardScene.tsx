@@ -51,6 +51,7 @@ import { DeskWires, offBoardTerminals } from './DeskWires.js';
 import { DinRail } from './DinRail.js';
 import { FixedWires } from './FixedWires.js';
 import { Outlet } from './Outlet.js';
+import { PlcRack } from './PlcRack.js';
 import { PlcUnit } from './PlcUnit.js';
 import { Fixture, FIXTURES } from './Fixtures.js';
 import { Lamp } from './Lamp.js';
@@ -611,14 +612,26 @@ function BoardContents({
         {/* 机上のPLC本体・壁コンセント・渡りケーブル（モードDの盤だけが持つ）。§10.1 */}
         {board.plcUnit === undefined ? null : (
           <>
-            <PlcUnit
-              unit={board.plcUnit}
-              terminals={plcTerminals}
-              hoveredTerminal={hovered}
-              pendingTerminal={pending}
-              onHoverTerminal={onHover}
-              onPickTerminal={pickTerminal}
-            />
+            {/* 一体形は本体1枚、ラック形はベース＋モジュール（§10.1 / 決定表#17） */}
+            {board.plcUnit.form === 'rack' ? (
+              <PlcRack
+                unit={board.plcUnit}
+                terminals={plcTerminals}
+                hoveredTerminal={hovered}
+                pendingTerminal={pending}
+                onHoverTerminal={onHover}
+                onPickTerminal={pickTerminal}
+              />
+            ) : (
+              <PlcUnit
+                unit={board.plcUnit}
+                terminals={plcTerminals}
+                hoveredTerminal={hovered}
+                pendingTerminal={pending}
+                onHoverTerminal={onHover}
+                onPickTerminal={pickTerminal}
+              />
+            )}
             <Outlet
               terminals={outletTerminals}
               hoveredTerminal={hovered}

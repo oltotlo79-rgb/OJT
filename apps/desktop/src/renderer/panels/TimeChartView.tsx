@@ -504,6 +504,7 @@ export function EnlargeableChart({
   largeGeom = LARGE_GEOMETRY,
   testId,
   smallClassName,
+  legend,
 }: {
   title: string;
   figure: ChartFigure;
@@ -511,6 +512,11 @@ export function EnlargeableChart({
   largeGeom?: ChartGeometry | undefined;
   testId?: string | undefined;
   smallClassName?: string | undefined;
+  /**
+   * 色見本の凡例（UXレビュー #7）。小さい図の上と、拡大したモーダルの両方に同じものを出す
+   * （`ChartOverlay.tsx` の模範／訓練者／差分の3件など）。無ければ何も出さない。
+   */
+  legend?: ReactNode;
 }): JSX.Element {
   const [open, setOpen] = useState(false);
   const openerRef = useRef<HTMLDivElement | null>(null);
@@ -523,6 +529,7 @@ export function EnlargeableChart({
   }, []);
   return (
     <div className={styles.frame}>
+      {legend === undefined ? null : legend}
       <button
         type="button"
         className={styles.enlargeButton}
@@ -556,6 +563,7 @@ export function EnlargeableChart({
       </div>
       {open ? (
         <ChartModal title={title} onClose={close}>
+          {legend === undefined ? null : legend}
           <ChartCanvas
             figure={largeFigure ?? figure}
             geom={largeGeom}

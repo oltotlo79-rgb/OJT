@@ -209,4 +209,20 @@ describe('InspectPartsResult（§9.1 判定）', () => {
     expect(onRetry).toHaveBeenCalledTimes(1);
     expect(onBackToList).toHaveBeenCalledTimes(1);
   });
+
+  it('「もう一度／課題一覧へ」を画面下端に固定する（UXレビュー #8）', () => {
+    expect(C1).toBeDefined();
+    if (C1 === undefined) return;
+    render(
+      <InspectPartsResult
+        problem={C1}
+        result={result()}
+        restoredHazardCount={0}
+        onRetry={vi.fn()}
+        onBackToList={vi.fn()}
+      />,
+    );
+    const retry = screen.getByRole('button', { name: 'もう一度' });
+    expect(retry.parentElement?.className).toMatch(/stickyActions/);
+  });
 });

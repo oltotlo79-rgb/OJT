@@ -239,6 +239,27 @@ describe('結果画面の拡大（§8.3）', () => {
       screen.getByTestId('chart-overlay').querySelectorAll('[data-role="mismatch"]').length,
     ).toBeGreaterThan(0);
   });
+
+  it('模範・訓練者・差分の凡例を小さい図と拡大表示の両方に出す（UXレビュー #7）', () => {
+    const result = judgeResult();
+    render(
+      <ChartOverlay
+        expected={result.charts.expected}
+        actual={result.charts.actual}
+        mismatches={result.mismatches}
+      />,
+    );
+    // 小さい図の上に1つ
+    expect(screen.getAllByTestId('chart-legend')).toHaveLength(1);
+    const before = screen.getAllByTestId('chart-legend')[0];
+    expect(before?.textContent).toContain(JA.chartLegend.expected);
+    expect(before?.textContent).toContain(JA.chartLegend.actual);
+    expect(before?.textContent).toContain(JA.chartLegend.diff);
+
+    // 拡大したモーダルの中にも同じ凡例が出る
+    fireEvent.click(screen.getByTestId('chart-enlarge-button'));
+    expect(screen.getAllByTestId('chart-legend')).toHaveLength(2);
+  });
 });
 
 /** 操作の変化点を `count` 個持つチャート（破線の数を作為的に作る）。 */
