@@ -10,7 +10,7 @@ import type { TerminalId } from '@ojt/circuit-sim';
 import { Html } from '@react-three/drei';
 import { useMemo, type JSX } from 'react';
 import type { ThreeEvent } from '@react-three/fiber';
-import { SOCKET_BODY_COLOR, SOCKET_LEVER_COLOR } from '../session/colors.js';
+import { SOCKET_BODY_COLOR, SOCKET_LEVER_COLOR, SOCKET_SELECTED_COLOR } from '../session/colors.js';
 import { socketFaceTexture, SOCKET_PLATE_MARGIN_MM } from './labels.js';
 import { sharedMaterial, UNIT_BOX } from './materials.js';
 import { toScene } from './coords.js';
@@ -54,6 +54,22 @@ function noPick(): void {
   // 交差候補を積まない
 }
 
+/**
+ * ソケット本体（差込領域）のマテリアル。選択中は縁が光って見えるよう発光を足す。
+ * 「いまどのソケットを触っているか」が3Dの側でも分かるようにするため（利用者要望 2026-09-19）。
+ * `sharedMaterial()` は設定ごとに1個しか作らないので、選択の有無で2個に収まる（§15）。
+ */
+export function socketBodyMaterial(selected: boolean): ReturnType<typeof sharedMaterial> {
+  return selected
+    ? sharedMaterial(SOCKET_BODY_COLOR, {
+        roughness: 0.55,
+        metalness: 0.1,
+        emissive: SOCKET_SELECTED_COLOR,
+        emissiveIntensity: 0.6,
+      })
+    : sharedMaterial(SOCKET_BODY_COLOR, { roughness: 0.55, metalness: 0.1 });
+}
+
 /** ツールチップの文字列（`CR1 ⑨ COM`）。盤定義の印字に役割IDを足す。§8.2 */
 export function socketTerminalLabel(role: SocketRole | undefined, terminal: BoardTerminal): string {
   // 盤定義のラベルは `S1 ⑨ COM`。物理ソケットIDを役割IDに置き換えて出す
@@ -67,6 +83,7 @@ export function Socket({
   socket,
   role,
   occupied,
+  selected,
   terminals,
   hoveredTerminal,
   pendingTerminal,
@@ -77,6 +94,8 @@ export function Socket({
   socket: SocketDefinition;
   role: SocketRole | undefined;
   occupied: boolean;
+  /** 部品パネルのカードがこのソケットを指しているか（本体を光らせる）。§8.2 */
+  selected: boolean;
   terminals: readonly BoardTerminal[];
   hoveredTerminal: string | undefined;
   pendingTerminal: string | undefined;
@@ -113,7 +132,7 @@ export function Socket({
       {/* 本体（中央の差込領域）。クリックで装着／取り外しUIを出す */}
       <mesh
         geometry={UNIT_BOX}
-        material={sharedMaterial(SOCKET_BODY_COLOR, { roughness: 0.55, metalness: 0.1 })}
+        material={socketBodyMaterial(selected)}
         position={bodyCenter}
         scale={[width, length, BODY_HEIGHT_MM]}
         onClick={(event: ThreeEvent<MouseEvent>) => {

@@ -204,6 +204,8 @@ export function visualSignature(state: AppState): string {
     state.hoveredTerminal ?? '',
     state.pendingTerminal ?? '',
     state.selectedWire ?? '',
+    // 選択中のソケットは3Dでも光らせる（利用者要望 2026-09-19）ので署名に入れる
+    state.selectedSocket ?? '',
     // プローブの位置とハイライトは絵に効くので署名に入れる（§9.3 / §9.2）
     `${state.tester.black ?? ''}>${state.tester.red ?? ''}`,
     state.highlight.terminals.join(','),
@@ -311,6 +313,8 @@ function BoardContents({
   const hovered = useStore((s) => s.hoveredTerminal);
   const pending = useStore((s) => s.pendingTerminal);
   const selectedWire = useStore((s) => s.selectedWire);
+  // 部品パネルのカードが指しているソケット（3Dでも光らせる）。§8.2 利用者要望 2026-09-19
+  const selectedSocket = useStore((s) => s.selectedSocket);
   const probeBlack = useStore((s) => s.tester.black);
   const probeRed = useStore((s) => s.tester.red);
   const highlightTerminals = useStore((s) => s.highlight.terminals);
@@ -532,6 +536,7 @@ function BoardContents({
                 socket={socket}
                 role={role}
                 occupied={mounted !== undefined}
+                selected={selectedSocket === socket.id}
                 terminals={terminals}
                 hoveredTerminal={hovered}
                 pendingTerminal={pending}
@@ -546,6 +551,8 @@ function BoardContents({
                   part={mounted}
                   energized={energized[role] === true}
                   timedOut={timedOut[role] === true}
+                  selected={selectedSocket === socket.id}
+                  onPickSocket={pickSocket}
                 />
               )}
             </group>

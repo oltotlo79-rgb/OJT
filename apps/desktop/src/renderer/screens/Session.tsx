@@ -32,6 +32,7 @@ import {
   runPlug,
   runRemoveWire,
   runSetPreset,
+  runSwapPart,
   runUnplug,
   undo as undoHistory,
   type CommandHistory,
@@ -417,6 +418,21 @@ export function Session(): JSX.Element {
     });
   };
 
+  /**
+   * 部品を入れ替える（取り外して別の部品を挿し直す）。§8.2 利用者要望 2026-09-19
+   * 盤としては `unplug` → `plug` だが、履歴には1手として積む（`runSwapPart()`）ので
+   * 「元に戻す」1回で元の部品に戻る。Worker へは実機と同じ順（抜く → 挿す）で送る。
+   */
+  const onSwap = (socketId: SocketId, kind: MountableKind): void => {
+    apply(runSwapPart(session, socketId, kind), () => {
+      const next = useStore.getState().session;
+      if (next === undefined) return;
+      const partId = socketPartId(session.socketRoles, socketId);
+      bridge.send({ type: 'unplug', partId, session: cloneSession(next) });
+      bridge.send({ type: 'plug', socketId, session: cloneSession(next) });
+    });
+  };
+
   const onPreset = (socketId: SocketId, presetMs: number): void => {
     apply(runSetPreset(session, socketId, presetMs), () => {
       const next = useStore.getState().session;
@@ -635,11 +651,13 @@ export function Session(): JSX.Element {
           <PartsPanel
             session={session}
             selectedSocket={selectedSocket}
+            powered={powered}
             onSelectSocket={(socketId) => {
               useStore.getState().setSelectedSocket(socketId);
             }}
             onPlug={onPlug}
             onUnplug={onUnplug}
+            onSwap={onSwap}
             onPreset={onPreset}
           />
           {/*

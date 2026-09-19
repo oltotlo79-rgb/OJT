@@ -1,12 +1,14 @@
 import type {
   MountedPart as MountedPartData,
   SocketDefinition,
+  SocketId,
   SocketRole,
 } from '@ojt/board-model';
 import { Html } from '@react-three/drei';
 import { useMemo, type JSX } from 'react';
+import type { ThreeEvent } from '@react-three/fiber';
 import { BoxGeometry, EdgesGeometry, MeshStandardMaterial } from 'three';
-import { RELAY_BODY_COLOR, TIMER_BODY_COLOR } from '../session/colors.js';
+import { RELAY_BODY_COLOR, SOCKET_SELECTED_COLOR, TIMER_BODY_COLOR } from '../session/colors.js';
 import { JA_3D } from '../i18n/ja.js';
 import { UNIT_BOX } from './materials.js';
 import { PartIndicator, type MountedBodyBox } from './PartIndicator.js';
@@ -18,9 +20,13 @@ import { toScene } from './coords.js';
  *
  * 実機ではネジ端子はソケットのフランジ上にあり部品に隠れないが、本アプリの盤モデル（§6.2）は
  * 端子を4段4列のグリッドに置くため、本体を不透明に描くと端子が隠れて配線できなくなる。
- * そこで本体はネジ端子ティアを避けた大きさにしたうえで**やや透ける程度（0.85）**に描き、
- * **レイキャストの対象から外す**（`raycast` を空実装にする）。
- * 装着部品の選択・取り外しはソケット台座のクリックで行う（台座は本体より一回り大きい）。
+ * そこで本体はネジ端子ティアを避けた大きさにしたうえで**やや透ける程度（0.85）**に描く。
+ *
+ * **本体の箱だけがクリックを受ける**（利用者要望 2026-09-19「リレーやタイマはソケットから外して
+ * 入れ替えたりできるようにすること」）。見えている部品を押せばそのソケットが選べる、が一番素直で
+ * あり、UXレビューの「取り外しに気付けない」もここが起点だった。箱はネジ端子ティアを避けた
+ * 大きさなので、端子のクリック（配線そのもの）は奪わない。稜線・動作表示・札といった飾りは
+ * これまでどおり `raycast` を空実装にして下へ通す。
  *
  * ラベルは**本体の上面**に置く。以前は手前（`center - height/2 - 5`）に置いていたため、
  * 手前ティアの `⑫` / `④` の印字に重なって番号が読めなかった（レビュー指摘）。
@@ -59,6 +65,8 @@ const SOCKET_TOP_Z_MM = 9;
 const BODY_OPACITY = 0.85;
 /** 稜線の色（暗い本体の輪郭を盤の上で見せる）。 */
 const EDGE_COLOR = '#C9D2DC';
+/** 選択中の稜線の色（部品パネルのカードが指しているソケット）。利用者要望 2026-09-19 */
+const SELECTED_EDGE_COLOR = SOCKET_SELECTED_COLOR;
 /** ラベルを本体の上面からさらに浮かせる量[mm]（⑫/④ の印字に被せないため）。 */
 const LABEL_LIFT_MM = 4;
 
@@ -126,6 +134,8 @@ export function MountedPart({
   part,
   energized,
   timedOut,
+  selected,
+  onPickSocket,
 }: {
   socket: SocketDefinition;
   role: SocketRole;
@@ -134,6 +144,10 @@ export function MountedPart({
   energized: boolean;
   /** タイマの限時接点が動作したか（`SimSnapshot` の `timers[].timedOut`）。リレーでは常に false。 */
   timedOut: boolean;
+  /** 部品パネルのカードがこのソケットを指しているか（稜線を光らせる）。§8.2 */
+  selected: boolean;
+  /** 本体を押したときの通知（ソケット台座を押したときと同じ扱いにする）。§8.2 */
+  onPickSocket: (socketId: SocketId, occupied: boolean) => void;
 }): JSX.Element {
   // 部品の外形はソケット本体（`bodyMm`）から作る。ソケットの差込領域に載る大きさ
   const box = mountedBodyBox(socket);
@@ -157,16 +171,20 @@ export function MountedPart({
   );
   return (
     <group name={`mounted-${socket.id}`}>
+      {/* 本体の箱。ここだけがクリックを受け、押すとそのソケットが選ばれる（利用者要望 2026-09-19） */}
       <mesh
         geometry={UNIT_BOX}
         material={bodyMaterial}
-        raycast={noPick}
         position={center}
         scale={[width, height, BODY_HEIGHT_MM]}
+        onClick={(event: ThreeEvent<MouseEvent>) => {
+          event.stopPropagation();
+          onPickSocket(socket.id, true);
+        }}
       />
       {/* 箱の輪郭。半透明のままでも「そこに部品が載っている」ことが分かるようにする */}
       <lineSegments geometry={edges} position={center} raycast={noPick}>
-        <lineBasicMaterial color={EDGE_COLOR} />
+        <lineBasicMaterial color={selected ? SELECTED_EDGE_COLOR : EDGE_COLOR} />
       </lineSegments>
       {/* 動作表示（リレー＝動作表示窓、タイマ＝POWER/UP の2灯＋ダイヤル）。§5.3.1 / §5.3.2 */}
       <PartIndicator
