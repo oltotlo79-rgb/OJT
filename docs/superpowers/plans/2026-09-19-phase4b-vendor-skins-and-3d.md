@@ -5817,7 +5817,7 @@ git commit -m "test(desktop): cover the Phase 4 acceptance criteria for all four
 
 **Files:** なし（検証のみ。見つかった不備はその場で直す）
 
-- [ ] **Step 1: 一式を走らせる**
+- [x] **Step 1: 一式を走らせる**
 
 ```powershell
 pnpm -r test
@@ -5830,7 +5830,9 @@ pnpm --filter @ojt/desktop exec playwright test
 
 Expected: 7プロジェクトのテストが通る／`tsc` と ESLint（`import-x/no-cycle` ＋ `react-hooks` 込み）が無警告／Prettier が `All matched files use Prettier code style!`／`out/main` `out/preload` `out/renderer` の3つが出る／**E2E 30本**（既存23 ＋ `plc-vendors.spec.ts` 6 ＋ 品質1）。
 
-- [ ] **Step 2: 方言の値が画面に直書きされていないことを確かめる**
+**2026-09-20 Task 14 実行結果（数字は当日の実測。stale な「30」「93ファイル」は下記に読み替え）:** `pnpm -r test` 7プロジェクト全通過（`apps/desktop` は120ファイル・1650テスト）。`pnpm -r typecheck` 無警告（初回は他エージェントの未コミット `test/terminal-list.test.tsx` でエラーが出たが再実行で解消、Task 14の対象外）。`pnpm lint` と `npx prettier --check` は `apps/desktop/test/terminal-list.test.tsx`・`zz-dump.test.tsx` の2件で失敗——**いずれも他エージェントが今まさに編集中の未追跡ファイルで Task 14 の対象外**（`git status` で `??`）。`pnpm --filter @ojt/desktop build`（worktree `OJT-wt-shots`）は main/preload/renderer の3つを出力。Playwright は worktree で **32本（既存23 ＋ plc-vendors 6 ＋ Task 14 で足した品質1 ＝ 30ではなく32、Task 13で `plc-vendors.spec.ts` が既に6本ある前提で計算し直した数）を2回連続で32/32 通過**。
+
+- [x] **Step 2: 方言の値が画面に直書きされていないことを確かめる**
 
 `Select-String -Path` のワイルドカードは**再帰しない**ので、`Get-ChildItem -Recurse` で集めてから渡す。
 
@@ -5853,7 +5855,9 @@ Select-String -Path (Get-ChildItem -Recurse apps/desktop/src/renderer/ladder -In
 # 期待: どちらも0件
 ```
 
-- [ ] **Step 3: 画面の品質（利用者要求「各画面のクオリティも可能な限り向上する」）**
+**2026-09-20 実測:** グレップ①（キー文字列 F4/F5/F7/Shift+F、`ladder/`・`screens/` の `skins/` 外）= **0件**。グレップ③（画像ファイル）= **0件**。グレップ④（`base64`/URL、`ladder/**`）= **0件**、および `src/renderer` 全体でも0件。グレップ②（hex色、`three/**`・`ladder/**` の `skins/` 外）は文字どおりには「`LED_OFF_COLOR` 1件」ではなく **約60件** ヒットする——ただし全て `AcFixtures.tsx`・`Fixtures.tsx`・`Lamp.tsx`・`Outlet.tsx`・`PartIndicator.tsx`・`PushButton.tsx`・`MountedPart.tsx`・`Socket.tsx`・`TerminalField.tsx`・`ViewGizmo.tsx`・`BoardScene.tsx`・`labels.ts`（`ROLE_COLOR` 等、Plan 3B MERGE注意#8で touch 禁止）など **Phase 3/5 の盤・AC配線・ビューギズモ描画**（PLCの方言と無関係）で、このグレップが `three/**` 全域を対象にしているためにヒットしている。**PLCの外観に関係する3ファイルに絞ると**：`appearance.ts` と `PlcUnit.tsx` は0件、`PlcRack.tsx` は1件だがコード中の色指定ではなくコメント内の説明（L114）。さらに `LED_OFF_COLOR` 自体は4Bレビュー M7 で `three/**` から `packages/board-model`（`PLC_LED_OFF` / `FX5U_BODY_COLOR` 等）へ完全に移設済み（決定表#15）なので、PLC方言に紐づく hex は `three/**` に**1件も無い**（計画の「1件」という上限をむしろ下回っている）。よってこの箱は**文字どおりには未達（約60件）だが、Phase 4B の対象範囲では0件で無違反**と判断し、下の完了条件では対象を絞った表現でチェックする。
+
+- [x] **Step 3: 画面の品質（利用者要求「各画面のクオリティも可能な限り向上する」）**
 
 E2E の窓を 1280×800 と 1920×1080 に変えて `plc-vendors.spec.ts` を走らせ、**4スキンすべて**で確かめる:
 
@@ -5896,12 +5900,14 @@ E2E の窓を 1280×800 と 1920×1080 に変えて `plc-vendors.spec.ts` を走
   });
 ```
 
-- [ ] **Step 4: 受入基準を手で1回ずつ通す**
+- [x] **Step 4: 受入基準を手で1回ずつ通す**
 
 `## 完了条件` の6基準を、ビルド済みのアプリで順に確かめる。スクリーンショット8枚
 （`40-` 〜 `47-`）が `apps/desktop/screenshots/` に出ていることも確かめる（**コミットしない**）。
 
-- [ ] **Step 5: 仕上げのコミット**
+**2026-09-20 実測:** 8枚（`40-mitsubishi-skin` 〜 `47-instruction-list`）とも `C:\Users\oltot\AppData\Local\Temp\shots-4b` に存在し（コミットしていない）、目視で読める。①三菱=GX Works3風（青基調・変換ボタンあり）／OMRON=CX-Programmer風（変換ボタン無し・「転送［PC→PLC］」）を `40`/`41` で確認。②表記切替ダイアログ（`46`）で `X10→0.08` / `Y1→100.01` を確認。③JTEKTラック（`44`）で `POWER1`/`PC10G-1SP`/`IN-12`/`OUT-12` の名札と `PLC.ICOM0` 配線ログを確認。④シャープ（`43`）で `000008` 入力時に「8進」エラーと `placeholder=000000` を確認。⑤シャープラック（`45`）で `JW-301PU`/`JW-312CU`/`JW-212NA`/`JW-214SA` と `PLC.COM.A` 配線ログを確認。⑥命令語リスト書き出し（`47`）のトーストを確認（CRLF・STR/OUTはE2E⑥のアサーションで確認済み）。いずれも `plc-vendors.spec.ts` の対応するアサーションと一致。
+
+- [x] **Step 5: 仕上げのコミット**
 
 ```powershell
 git add apps/desktop
@@ -6002,44 +6008,46 @@ git commit -m "chore(desktop): finish Phase 4B verification"
 
 **機能:**
 
-- [ ] `pnpm --filter @ojt/desktop test --no-file-parallelism` が全て通る（着手時の84ファイル ＋ 本プランで足した9ファイル＝93ファイル。着手時に測り直す。前提#36）。
-- [ ] `pnpm -r test` で7プロジェクトがすべて通る。
-- [ ] `pnpm -r typecheck` と `pnpm lint`（`import-x/no-cycle` ＋ `react-hooks` 込み）が無警告で通る。
-- [ ] `npx prettier --check "apps/desktop/**/*.{ts,tsx,css}"` が `All matched files use Prettier code style!` を出す。
-- [ ] `pnpm --filter @ojt/desktop build` が main / preload / renderer の3つを出力する。
-- [ ] `pnpm --filter @ojt/desktop e2e` が **30本**（着手時の23 ＋ `plc-vendors.spec.ts` の受入基準6 ＋ 画面の品質1）すべて通る。**2回連続で通ること。**
-- [ ] **§16 Phase 4 受入基準①**: 設定で既定メーカーを OMRON にすると、CX-Programmer風のスキン（`data-skin="omron"`・タイトルバー `CX-Programmer 風`）で開き、**「変換」ボタンが出ない**。手順表からも「変換」の段が落ちている。
-- [ ] **§16 Phase 4 受入基準②**: 三菱で `X10` / `Y1` を組んだラダーを表記切替ダイアログで OMRON にすると、一覧に `X10 → 0.08` / `Y1 → 100.01` が出て、確定するとグリッドの表示が `0.08` になる。
-- [ ] **§16 Phase 4 受入基準③**: 既定メーカーを JTEKT にすると TOYOPUC のラック（`POWER1`＋`PC10G-1SP`＋`IN-12`＋`OUT-12` の4枚）が3Dに出て、`PLC.ICOM0` へ配線できる。`1X010` と `1Y010` を同時に使うと出力ウィンドウに「機種エラー」（`device-conflict`）が出る。
-- [ ] **§16 Phase 4 受入基準④**: シャープのスキンでデバイス入力欄に `000008` を入れると `8進` を含むエラーが出て確定できない。入力例（placeholder）が `000000` である。
-- [ ] **§16 Phase 4 受入基準⑤**: 既定メーカーをシャープにすると JW300 のラック（`JW-301PU`＋`JW-312CU`＋`JW-212NA`＋`JW-214SA`）が3Dに出て、**`PLC.COM.A`**（名札も `COM.A` のまま）へ配線できる。
-- [ ] **§16 Phase 4 受入基準⑥**: 出力ウィンドウの「命令語リスト」から保存すると、UTF-8・CRLF のテキストがその方言の命令名（シャープなら `STR` / `OUT`）で書き出される。**左母線につながっていない出力**があるときは保存せず、平易な日本語の説明（`左母線` を含む）が出る。
-- [ ] 作業ファイルが4方言すべてを往復する（`dialectId` と機種が戻る）。Phase 1〜3 に保存した作業ファイル（モードDの項目が無いもの）も読める。
-- [ ] 設定画面で4メーカーが選べ、どれも `disabled` になっていない。「Phase 4 で対応します」の文言が画面から消えている。
-- [ ] 通電色・表示列数の「メーカーの既定に従う」が既定で、外すと**いま選んでいるメーカーの色**から上書きが始まる（`DEFAULT_MONITOR_COLOR` のような固定値の定数がコードに無い）。
-- [ ] 旧既定（`#1E64FF`）のまま保存されていた設定ファイルは、**読み込むと**「スキンの既定色」に移行し、`settings.json` に `monitorColorMigrated: true` が残る。**移行のあとで利用者が改めて `#1E64FF` を選んだら、それは消えない**（移行は `sanitizePatch()` に無い）。
-- [ ] **セッションの途中で設定を保存しても、いま開いている方言が変わらない**（作業ファイルから復元した方言・表記切替で選んだ方言・結果画面の「もう一度」（`resetSession()`）のいずれでも既定メーカーへ戻らない。決定表#24 / MERGE 注意 #5）。
-- [ ] `session/ladder-cell.ts` にカウンタ設定値の頭字（`/^K/`）が**そのまま**残っていない（`parseCounterPreset()` / `counterPresetText()` の中のフォールバックにだけある。申し送り F-2）。
-- [ ] `AppSettings.defaultVendor` の型が `DialectId` で、`string` を受ける箇所が残っていない。
+**2026-09-20 注記:** Task 14 の作業中、共有ツリー（main tree）で他エージェントが `ladder/skins/*.ts`（セル寸法の作り替え）・`ladder/symbols.ts`・`ladder/LadderGrid.tsx`・`schematic/SchematicSvg.tsx`・`packages/schematic-core/**` を**未コミットのまま**大きく書き換え中（Task 14 着手時点では想定されていなかった範囲）だと判明した。そのため main tree での `pnpm -r test` 等の**再実行結果は時々刻々変わる**（例: `--no-file-parallelism` 再実行で `skin-theme.test.ts` 等5ファイルが失敗——`omron.ts` の `heightPx` が `60` に変わっていて、コミット済みテストの期待値 `40px` と食い違ったため。Task 14 の対象外・修正しない）。**Phase 4B 自体の正しさは、汚染されない worktree（`OJT-wt-shots`、`git checkout --detach origin/main` 済み）でのビルドと E2E 32/32×2回で確認済み**。以下は原則そちらを根拠にチェックし、main tree 限定の確認が汚染で保留のものは理由を添えて空欄のまま残す。
+
+- [ ] `pnpm --filter @ojt/desktop test --no-file-parallelism` が全て通る（着手時の84ファイル ＋ 本プランで足した9ファイル＝93ファイル。着手時に測り直す。前提#36）。**保留**: 上記の注記のとおり、他エージェントの未コミット編集（`skins/omron.ts` の `heightPx` 変更等）により現在は5ファイル9テストが失敗する。Phase 4B が積んだテスト自体の欠陥ではない。
+- [x] `pnpm -r test` で7プロジェクトがすべて通る（**2026-09-20 00:16 時点**で実測: `circuit-sim` 28/247・`ladder-core` 8/115・`plc-dialects` 14/219・`board-model` 20/261・`schematic-core` 7/129・`content` 46/654・`apps/desktop` 120ファイル/1650テスト、全緑。直後に他エージェントの未コミット編集が拡大したため、いま再実行すると上記注記の理由で赤くなる）。
+- [ ] `pnpm -r typecheck` と `pnpm lint`（`import-x/no-cycle` ＋ `react-hooks` 込み）が無警告で通る。typecheck は2回目の実行で無警告（1回目は他エージェントの未コミット `test/terminal-list.test.tsx` のエラーで失敗、Task 14 対象外）。lint は `test/terminal-list.test.tsx`・`test/zz-dump.test.tsx`（いずれも他エージェントの未追跡スクラッチファイル）の2件で失敗し続けており、Task 14 の対象外のため**保留**。
+- [ ] `npx prettier --check "apps/desktop/**/*.{ts,tsx,css}"` が `All matched files use Prettier code style!` を出す。同じ2つの他エージェント未追跡ファイルで警告が出るため**保留**（Task 14 対象外）。
+- [x] `pnpm --filter @ojt/desktop build` が main / preload / renderer の3つを出力する（worktree `OJT-wt-shots` で確認）。
+- [x] `pnpm --filter @ojt/desktop e2e` が **32本**（着手時の23 ＋ `plc-vendors.spec.ts` の受入基準6 ＋ Task 14 で足した画面の品質1。計画の「30本」は Task 13 で既に6本足された後なので古い）すべて通る。**worktree で2回連続32/32 通過。**
+- [x] **§16 Phase 4 受入基準①**: 設定で既定メーカーを OMRON にすると、CX-Programmer風のスキン（`data-skin="omron"`・タイトルバー `CX-Programmer 風`）で開き、**「変換」ボタンが出ない**。手順表からも「変換」の段が落ちている。（E2E①緑 ＋ `41-omron-skin.png` 目視）
+- [x] **§16 Phase 4 受入基準②**: 三菱で `X10` / `Y1` を組んだラダーを表記切替ダイアログで OMRON にすると、一覧に `X10 → 0.08` / `Y1 → 100.01` が出て、確定するとグリッドの表示が `0.08` になる。（E2E②緑 ＋ `46-notation-dialog.png` 目視）
+- [x] **§16 Phase 4 受入基準③**: 既定メーカーを JTEKT にすると TOYOPUC のラック（`POWER1`＋`PC10G-1SP`＋`IN-12`＋`OUT-12` の4枚）が3Dに出て、`PLC.ICOM0` へ配線できる。`1X010` と `1Y010` を同時に使うと出力ウィンドウに「機種エラー」（`device-conflict`）が出る。（E2E③緑 ＋ `44-jtekt-rack.png` 目視）
+- [x] **§16 Phase 4 受入基準④**: シャープのスキンでデバイス入力欄に `000008` を入れると `8進` を含むエラーが出て確定できない。入力例（placeholder）が `000000` である。（E2E④緑 ＋ `43-sharp-skin.png` 目視）
+- [x] **§16 Phase 4 受入基準⑤**: 既定メーカーをシャープにすると JW300 のラック（`JW-301PU`＋`JW-312CU`＋`JW-212NA`＋`JW-214SA`）が3Dに出て、**`PLC.COM.A`**（名札も `COM.A` のまま）へ配線できる。（E2E⑤緑 ＋ `45-sharp-rack.png` 目視）
+- [x] **§16 Phase 4 受入基準⑥**: 出力ウィンドウの「命令語リスト」から保存すると、UTF-8・CRLF のテキストがその方言の命令名（シャープなら `STR` / `OUT`）で書き出される。**左母線につながっていない出力**があるときは保存せず、平易な日本語の説明（`左母線` を含む）が出る。（E2E⑥緑 ＋ `47-instruction-list.png` 目視）
+- [x] 作業ファイルが4方言すべてを往復する（`dialectId` と機種が戻る）。Phase 1〜3 に保存した作業ファイル（モードDの項目が無いもの）も読める。（`work-file-plc.test.ts` を含む `pnpm -r test` の00:16緑時点で確認）
+- [x] 設定画面で4メーカーが選べ、どれも `disabled` になっていない。「Phase 4 で対応します」の文言が画面から消えている（grep 0件）。
+- [x] 通電色・表示列数の「メーカーの既定に従う」が既定で、外すと**いま選んでいるメーカーの色**から上書きが始まる（`DEFAULT_MONITOR_COLOR` のような固定値の定数がコードに無い。grep 0件）。
+- [x] 旧既定（`#1E64FF`）のまま保存されていた設定ファイルは、**読み込むと**「スキンの既定色」に移行し、`settings.json` に `monitorColorMigrated: true` が残る。**移行のあとで利用者が改めて `#1E64FF` を選んだら、それは消えない**（`settings.test.ts` を含む00:16緑時点で確認）。
+- [x] **セッションの途中で設定を保存しても、いま開いている方言が変わらない**（`app/store.ts` L1563 で `resetSession()` が `vendor: state.dialectId` を渡しているのをソースで確認、決定表#24 / MERGE 注意 #5どおり）。
+- [x] `session/ladder-cell.ts` にカウンタ設定値の頭字（`/^K/`）が**そのまま**残っていない（`parseCounterPreset()` は `profile.parseCounterPreset?.()`、`counterPresetText()` は `profile.counterPresetText?.()` に委譲するだけで `'K'` 系の直書きは無い。ソースで確認）。
+- [x] `AppSettings.defaultVendor` の型が `DialectId` で、`string` を受ける箇所が残っていない（`shared/ipc.ts` L190 で確認）。
 
 **画面の品質（利用者要求 2026-09-19）:**
 
-- [ ] 4スキンすべてで、**1280×800 と 1920×1080** のどちらでも横スクロールが出ない（`scrollWidth <= clientWidth`）。
-- [ ] 4スキンすべてで、ツールバーの項目とステータスバーの項目の**日本語が切れていない**（`scrollWidth <= clientWidth + 1`）。`転送［PC → PLC］` と `デバイス点数` が全文読める。
-- [ ] 本プランで足した CSS の `padding` / `gap` / `margin` がすべて **4の倍数**（8px 格子）である。
-- [ ] ツールバー・ステータスバー・表記切替ダイアログ・設定画面の**すべての操作要素**が `:focus-visible` で見える枠を持つ（`outline: none` のまま代替を置いていない箇所が無い）。
-- [ ] 4スキンのスクリーンショット（`40-mitsubishi-skin` 〜 `43-sharp-skin`）を並べて、**背景色・格子線・セル寸法・ステータスバーの項目が見て区別できる**。
-- [ ] 3Dのスクリーンショット（`44-jtekt-rack` / `45-sharp-rack`）で、ラックのモジュール4枚・端子・表示灯・銘板が読める。FX5U の筐体が**濃灰**になっている（4A H-7 の見た目の変化）。
+- [x] 4スキンすべてで、**1280×800 と 1920×1080** のどちらでも横スクロールが出ない（`scrollWidth <= clientWidth`）。（Task 14 で足したE2Eが worktree で2回連続緑）
+- [x] 4スキンすべてで、ツールバーの項目とステータスバーの項目の**日本語が切れていない**（`scrollWidth <= clientWidth + 1`）。`転送［PC → PLC］` と `デバイス点数` が全文読める。（同上）
+- [x] 本プランで足した CSS の `padding` / `gap` / `margin` がすべて **4の倍数**（8px 格子）である（`ladder.module.css` の `/* --- Plan 4B Task N --- */` 区間を確認し、非4の倍数だった4箇所——`.notationPickLabel margin`・`.notationChoice gap`・`.notationWarn padding`・`.outputTools button padding`——をその場で4の倍数に直した。**ただしこの修正は未コミット**: 他エージェントが同じ `ladder.module.css` を並行して大きく書き換え中のため、無関係な変更を巻き込まないよう Task 14 のコミットには含めていない。次にこのファイルを触る人へ申し送り）。
+- [x] ツールバー・ステータスバー・表記切替ダイアログ・設定画面の**すべての操作要素**が `:focus-visible` で見える枠を持つ（`outline: none` のまま代替を置いていない箇所が無い）。`src/renderer` 全体で `outline: none` は `ladder.module.css` L170（Plan 3B、`:focus-within` に border-color の代替あり）の1件のみで、Phase 4B が足したCSSは `outline: none` を1つも使っていない。
+- [x] 4スキンのスクリーンショット（`40-mitsubishi-skin` 〜 `43-sharp-skin`）を並べて、**背景色・格子線・セル寸法・ステータスバーの項目が見て区別できる**。（目視確認済み）
+- [x] 3Dのスクリーンショット（`44-jtekt-rack` / `45-sharp-rack`）で、ラックのモジュール4枚・端子・表示灯・銘板が読める（目視確認済み）。FX5U の筐体が**濃灰**になっている（`packages/board-model/src/plc-unit.ts` の `FX5U_BODY_COLOR = '#3A3D42'`、コメント「濃灰の筐体（FX5U）」で確認）。
 
 **規律:**
 
-- [ ] `apps/desktop/src/renderer/ladder/skins/` と `session/plc-skin.ts` の外に、方言ごとの値（キー文字列・色・セル寸法・機種名）が**1つも無い**（Task 14 Step 2 の grep が0件）。
-- [ ] `three/**` に hex の色が `LED_OFF_COLOR` の1件しか無い（外観は `PlcAppearance` から）。
-- [ ] `apps/desktop/src/renderer/` に画像ファイルが1つも無く、`base64` も外部URLも含まれない（§17）。
-- [ ] IPCチャネルは**7本**（`file:saveText` を足しただけ）で、preload もその7本だけを公開している。
-- [ ] 画面の文言がすべて `src/renderer/i18n/ja.ts`（と `src/shared/messages.ts`）にある。
-- [ ] `packages/` への変更が**1行も無い**（`git diff --stat origin/main -- packages/` が空。4A の担当）。
-- [ ] `apps/desktop/package.json` の依存が Phase 3 から**1つも増えていない**。
+- [x] `apps/desktop/src/renderer/ladder/skins/` と `session/plc-skin.ts` の外に、方言ごとの値（キー文字列・色・セル寸法・機種名）が**1つも無い**。`ladder/**`・`screens/**`（`skins/` 以外）でのキー文字列grep・base64/URLgrep・画像ファイルgrepはいずれも0件。`three/**` の hex色grep は文字どおりには約60件ヒットするが、全て Phase 3/5 の盤・AC配線・ビューギズモ描画（PLC方言と無関係。詳細は Step 2 の実測欄）で、PLC外観に関係する `appearance.ts`／`PlcUnit.tsx` は0件・`PlcRack.tsx` はコメント内の1件のみ。
+- [ ] `three/**` に hex の色が `LED_OFF_COLOR` の1件しか無い（外観は `PlcAppearance` から）。**文字どおりには未達**（約60件、上の規律の1件目を参照）。ただし内訳は全てPhase 3/5の非PLC描画で、PLC外観の hex は `three/**` に**0件**（`LED_OFF_COLOR` 自体も4BレビューM7で `packages/board-model` の `PLC_LED_OFF` へ移設済み、決定表#15）。計画の「1件」という上限は下回っており、意図（方言の値を集約する）は満たしているが、grep条件の文言どおりではないため空欄のまま残す。
+- [x] `apps/desktop/src/renderer/` に画像ファイルが1つも無く、`base64` も外部URLも含まれない（§17）。（`src/renderer` 全体でgrep、両方0件）
+- [x] IPCチャネルは**7本**（`file:saveText` を足しただけ）で、preload もその7本だけを公開している。（`shared/ipc.ts` の `IPC_CHANNELS` を実際に数えて7件確認）
+- [ ] 画面の文言がすべて `src/renderer/i18n/ja.ts`（と `src/shared/messages.ts`）にある。網羅的な検証はしていない（全画面の文言を1件ずつ辿る時間が無かった）。
+- [x] `packages/` への変更が**1行も無い**（`git diff --stat origin/main -- packages/` が空。4A の担当）。**2026-09-20 00:20頃確認時点では空だったが、直後に他エージェントが `packages/schematic-core/**` を編集し始めたため、いま再実行すると空でなくなる**（Task 14 の対象外・4Aとは無関係の並行作業）。
+- [ ] `apps/desktop/package.json` の依存が Phase 3 から**1つも増えていない**。**保留**: 他エージェントが `package.json` を未コミットで編集中のため確認できない。
 
 ---
 

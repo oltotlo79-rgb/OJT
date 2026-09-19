@@ -375,4 +375,33 @@ test.describe('Phase 4 受入基準（4メーカー）', () => {
       expect(existsSync(target)).toBe(false);
     });
   });
+
+  test('どのスキンでも 1280×800 と 1920×1080 ではみ出さない（利用者要求: 画面の品質）', async () => {
+    for (const vendor of ['mitsubishi', 'omron', 'jtekt', 'sharp']) {
+      await withVendor(vendor, async (page, app) => {
+        await openPlcProblem(page);
+        for (const size of [
+          { width: 1280, height: 800 },
+          { width: 1920, height: 1080 },
+        ]) {
+          await app.evaluate(({ BrowserWindow }, bounds) => {
+            BrowserWindow.getAllWindows()[0]?.setBounds({ x: 0, y: 0, ...bounds });
+          }, size);
+          await page.waitForTimeout(400);
+          const overflow = await page.evaluate(
+            () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+          );
+          expect(overflow, `${vendor} ${size.width}x${size.height}`).toBeLessThanOrEqual(0);
+          // ツールバーの項目が全部読める(文字が切れていない)
+          const clipped = await page.evaluate(
+            () =>
+              [...document.querySelectorAll('[data-testid^="toolbar-"]')].filter(
+                (el) => el.scrollWidth > el.clientWidth + 1,
+              ).length,
+          );
+          expect(clipped, `${vendor} のツールバーの文字が切れている`).toBe(0);
+        }
+      });
+    }
+  });
 });
