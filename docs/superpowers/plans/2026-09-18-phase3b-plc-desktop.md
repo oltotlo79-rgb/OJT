@@ -8713,7 +8713,18 @@ export function PlcResult({
 
 - [ ] **Step 5: `Result.tsx` に分岐（**MERGE 注意 #9**）**
 
-`isInspectJudge()` の分岐の**前**に1ブロック足す（Task 2 で `isPlcJudge()` を作ってある）:
+まず import を3行足す（レビュー指摘 I15。既存の import 群の並びに合わせる）:
+
+```tsx
+import { isPlcProblem } from '@ojt/content';
+import { isPlcJudge } from '../app/store.js';
+import { PlcResult } from '../result/PlcResult.js';
+```
+
+（`isPlcProblem` は `@ojt/content` の既存 import 行があればそこへ足す。`isPlcJudge` は Task 2 が
+`app/store.ts` に置いた述語で、`Result.tsx` は既に `useStore` を同じファイルから読んでいる。）
+
+そのうえで `isInspectJudge()` の分岐の**前**に1ブロック足す:
 
 ```tsx
   if (isPlcJudge(judge)) {
@@ -8956,6 +8967,17 @@ export const MAX_WORK_FILE_NETWORKS = 64;
 
 - [ ] **Step 5: `renderer/session/work-file.ts` を広げる**
 
+まず import を足す（レビュー指摘 I15。`isRecord` はこのファイルに既にある私有のヘルパ、
+`isInspectPartsProblem` などの既存 import 行へ `isPlcProblem` を混ぜる）:
+
+```ts
+import { isPlcProblem } from '@ojt/content';
+import { IR_COLS, MAX_ROWS, type LadderProgram } from '@ojt/ladder-core';
+// `useStore` を読んでいる既存の import 行（`import { useStore } from '../app/store.js';`）へ
+// Task 2 が足した2つの上限を混ぜる
+import { DEVICE_COMMENT_COUNT_LIMIT, DEVICE_COMMENT_LIMIT, useStore } from '../app/store.js';
+```
+
 ```ts
 /** 作業ファイルに載せられるネットワーク数の上限（main の `MAX_WORK_FILE_NETWORKS` と同じ値）。 */
 export const MAX_RESTORED_NETWORKS = 64;
@@ -9009,13 +9031,13 @@ function isCellLike(value: unknown): boolean {
 function isCommentsLike(value: unknown): value is Record<string, string> {
   if (!isRecord(value)) return false;
   const entries = Object.entries(value);
-  if (entries.length > MAX_DEVICE_COMMENTS) return false;
+  if (entries.length > DEVICE_COMMENT_COUNT_LIMIT) return false;
   return entries.every(
     ([key, text]) =>
       /^(X|Y|M|T|C|SP)\d+$/u.test(key) &&
       typeof text === 'string' &&
       text.length > 0 &&
-      text.length <= MAX_DEVICE_COMMENT_LENGTH,
+      text.length <= DEVICE_COMMENT_LIMIT,
   );
 }
 
