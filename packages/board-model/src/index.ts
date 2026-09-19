@@ -103,6 +103,7 @@ export {
 
 export {
   channelNames,
+  commonOf,
   CP1E_APPEARANCE,
   CP1E_COMMON_SIZES,
   CP1E_INPUT_OHMS_HIGH,
@@ -137,18 +138,21 @@ export {
   PLC_UNIT_JW300,
   PLC_UNIT_PC10G,
   PLC_UNITS,
+  plcRole,
   plcUnitFor,
   RACK_BASE_HEIGHT_MM,
   RACK_BASE_MARGIN_MM,
   RACK_MODULE_HEIGHT_MM,
   RACK_MODULE_WIDTH_MM,
   RACK_POINTS_PER_COMMON,
+  RACK_RAIL_HEIGHT_MM,
   RACK_TERMINAL_COLS_MM,
   RACK_TERMINAL_ROW_PITCH_MM,
   RACK_TERMINAL_TOP_MM,
   RACK_TERMINALS_PER_MODULE,
   rackModulePos,
   rackSizeMm,
+  rackTerminals,
   withPlcUnit,
 } from './plc-unit.js';
 

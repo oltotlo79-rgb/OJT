@@ -1,15 +1,21 @@
+import { createPlcUnit, plcMetaOf } from '@ojt/circuit-sim';
 import { describe, expect, it } from 'vitest';
 import {
+  BoardError,
+  FX5U_SPEC,
   JIPM_BOARD,
   JW300_SPEC,
   PC10G_SPEC,
   PLC_ORIGIN_MM,
+  PLC_PART_ID,
   PLC_UNIT_JW300,
   PLC_UNIT_PC10G,
+  PLC_UNITS,
+  plcUnitFor,
   RACK_MODULE_HEIGHT_MM,
   RACK_MODULE_WIDTH_MM,
+  rackTerminals,
   TERMINAL_PICK_RADIUS_MM,
-  plcUnitFor,
   validateBoard,
   withPlcUnit,
 } from '../src/index.js';
@@ -112,6 +118,11 @@ describe('PLC_UNIT_JW300（§10.1 / 受入基準⑤）', () => {
     expect(JW300_SPEC.inputs.every((i) => i.ohms === 3300)).toBe(true);
     expect(JW300_SPEC.commons).toEqual(['COM.C', 'COM.D']);
     expect(JW300_SPEC.outputs.map((o) => o.name).slice(0, 2)).toEqual(['C0', 'C1']);
+    // 群の境界（M3: 三項演算子から Math.floor の一般形に直しても同じ結果であること）
+    expect(JW300_SPEC.inputs[7]?.com).toBe('COM.A');
+    expect(JW300_SPEC.inputs[8]?.com).toBe('COM.B');
+    expect(JW300_SPEC.outputs[7]?.com).toBe('COM.C');
+    expect(JW300_SPEC.outputs[8]?.com).toBe('COM.D');
   });
 
   it('shows the A / B input lamps in two rows of eight (§10.1)', () => {
@@ -134,5 +145,37 @@ describe('PLC_UNIT_JW300（§10.1 / 受入基準⑤）', () => {
     expect(comA?.role).toBe('ss');
     expect(comA?.label).toBe('COM.A');
     expect(validateBoard(board)).toEqual([]);
+  });
+});
+
+describe('createPlcUnit()（circuit-sim。board-model の *_SPEC がそのまま通ることを確認する。I2）', () => {
+  it.each(Object.values(PLC_UNITS))(
+    'builds a $model part with the same terminal set as board-model, every input above the ON threshold at 24V',
+    (unit) => {
+      const part = createPlcUnit(PLC_PART_ID, unit.spec);
+      expect(new Set(part.terminals)).toEqual(new Set(unit.terminals.map((t) => t.id)));
+      const meta = plcMetaOf(part);
+      expect(meta, unit.model).toBeDefined();
+      for (const element of part.elements) {
+        if (element.kind !== 'load') continue;
+        expect(24 / element.nominalOhms, `${unit.model} / ${element.id}`).toBeGreaterThan(
+          meta?.onAmps ?? Infinity,
+        );
+      }
+    },
+  );
+
+  it('matches the terminal counts from §10.1', () => {
+    expect(PLC_UNITS['FX5U']?.terminals).toHaveLength(42);
+    expect(PLC_UNITS['CP1E']?.terminals).toHaveLength(40);
+    expect(PLC_UNITS['PC10G-1SP']?.terminals).toHaveLength(39);
+    expect(PLC_UNITS['JW-300']?.terminals).toHaveLength(39);
+  });
+});
+
+describe('rackTerminals()（防御的な例外。M6）', () => {
+  it('throws past the 18-terminal-per-module cap instead of silently overlapping the next module', () => {
+    const names = Array.from({ length: 19 }, (_unused, i) => `Z${i}`);
+    expect(() => rackTerminals(FX5U_SPEC, names, 0)).toThrow(BoardError);
   });
 });

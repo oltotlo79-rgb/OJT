@@ -1,11 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import {
+  BoardError,
+  commonOf,
   FX5U_SPEC,
   isOffBoardTerminal,
   JIPM_BOARD,
   OUTLET_ID,
   PLC_PART_ID,
   PLC_UNIT_FX5U,
+  plcRole,
   plcUnitFor,
   validateBoard,
   withPlcUnit,
@@ -138,5 +141,18 @@ describe('isOffBoardTerminal', () => {
     expect(isOffBoardTerminal('S1.13')).toBe(false);
     expect(PLC_PART_ID).toBe('PLC');
     expect(OUTLET_ID).toBe('OUTLET');
+  });
+});
+
+describe('commonOf（防御的な既定値。M6）', () => {
+  it('falls back to the last group when index runs past every group in `sizes`', () => {
+    // CP1E_COMMON_SIZES の合計12点を超える index は本来渡らないが、フォールバックを固定する
+    expect(commonOf(100, [1, 2])).toBe('COM1');
+  });
+});
+
+describe('plcRole（未知の端子名。M7）', () => {
+  it('throws instead of defaulting an unrecognised name to the y role', () => {
+    expect(() => plcRole(FX5U_SPEC, 'NOT-A-TERMINAL')).toThrow(BoardError);
   });
 });

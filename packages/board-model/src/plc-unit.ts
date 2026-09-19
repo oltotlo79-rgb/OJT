@@ -72,19 +72,35 @@ export const PLC_LED_GREEN = '#35C759';
 export const PLC_LED_RED = '#FF3B30';
 export const PLC_LED_AMBER = '#FFB020';
 
-/** LEDを横1列に並べる。`pitch` は中心間隔[mm]。 */
+/**
+ * LEDを横1列に並べる。`pitch` は中心間隔[mm]。
+ * `colorOverrides` に名前があればそちらの色を使う（既定色 `color` は他の全灯）。§10.1 / B1
+ */
 export function ledRow(
   names: readonly string[],
   group: PlcLedMark['group'],
   at: { x: number; y: number; w: number; h: number; pitch: number },
   color: string,
+  colorOverrides: Readonly<Record<string, string>> = {},
 ): PlcLedMark[] {
   return names.map((name, index) => ({
     name,
     group,
     rect: { x: at.x + index * at.pitch, y: at.y, w: at.w, h: at.h },
-    color,
+    color: colorOverrides[name] ?? color,
   }));
+}
+
+/**
+ * `[本体の外観, ...モジュールの外観]` から本体表示LED（`group: 'status'`）の名前を集める。
+ * `PlcUnitDefinition.leds` はこの結果をそのまま使い、`appearance.leds` と食い違わないようにする
+ * （レビュー I1: 以前は手書きで PC10G に無い `IN` を含み JW300 の `POWER` を落としていた）。
+ */
+function statusLedNames(appearances: readonly PlcAppearance[]): readonly string[] {
+  return appearances
+    .flatMap((a) => a.leds)
+    .filter((l) => l.group === 'status')
+    .map((l) => l.name);
 }
 
 /** 濃灰の筐体（FX5U）。 */
@@ -123,6 +139,8 @@ export const FX5U_APPEARANCE: PlcAppearance = {
       'status',
       { x: 6, y: 28, w: 4, h: 3, pitch: 9 },
       PLC_LED_GREEN,
+      // §10.1: PWR(緑) / ERR(赤) / P.RUN(緑) / BAT(赤) / CARD(緑)
+      { ERR: PLC_LED_RED, BAT: PLC_LED_RED },
     ),
     ...ledRow(octalNames('X', 16), 'input', { x: 6, y: 36, w: 3, h: 3, pitch: 8.5 }, PLC_LED_AMBER),
     ...ledRow(
@@ -162,8 +180,12 @@ export const FX5U_APPEARANCE: PlcAppearance = {
   ],
 };
 
-/** 端子名 → 役割（§6.6 の `role`）。機種仕様の集合から引く。 */
-function plcRole(spec: PlcUnitSpec, name: string): TerminalRole {
+/**
+ * 端子名 → 役割（§6.6 の `role`）。機種仕様の集合から引く。
+ * どの集合にも属さない名前は `*_SPEC` の記載漏れ（本アプリのバグ）なので、既定で `y` にせず
+ * `BoardError` を投げる（レビュー M7）。
+ */
+export function plcRole(spec: PlcUnitSpec, name: string): TerminalRole {
   if (name === spec.acPower[0]) return 'ac-l';
   if (name === spec.acPower[1]) return 'ac-n';
   if (spec.power.includes(name)) return 'ac';
@@ -171,7 +193,8 @@ function plcRole(spec: PlcUnitSpec, name: string): TerminalRole {
   if (spec.commons.includes(name)) return 'plc-com';
   if ((spec.service ?? []).includes(name)) return name === '0V' || name === '-' ? '-' : '+';
   if (spec.inputs.some((input) => input.name === name)) return 'x';
-  return 'y';
+  if (spec.outputs.some((output) => output.name === name)) return 'y';
+  throw new BoardError(`端子名の役割が機種仕様のどの集合にもありません: ${spec.model} / ${name}`);
 }
 
 /** 端子名 → 銘板（実機の印字）。 */
@@ -239,7 +262,7 @@ export const PLC_UNIT_FX5U: PlcUnitDefinition = {
   pos: PLC_ORIGIN_MM,
   spec: FX5U_SPEC,
   terminals: fx5uTerminals(),
-  leds: ['PWR', 'ERR', 'P.RUN', 'BAT', 'CARD'],
+  leds: statusLedNames([FX5U_APPEARANCE]),
 };
 
 /** CP1E の入力抵抗[Ω]（`0.00`〜`0.07`）。§5.1.3 */
@@ -254,8 +277,11 @@ export function channelNames(ch: number, count: number): string[] {
   return Array.from({ length: count }, (_unused, i) => `${ch}.${String(i).padStart(2, '0')}`);
 }
 
-/** 出力の並びから所属COMを決める（先頭から `sizes` 点ずつ）。 */
-function commonOf(index: number, sizes: readonly number[]): string {
+/**
+ * 出力の並びから所属COMを決める（先頭から `sizes` 点ずつ）。
+ * `sizes` の合計を超える `index` は本来呼ばれない（末尾のCOMへ収める防御的な既定値。§17.1）。
+ */
+export function commonOf(index: number, sizes: readonly number[]): string {
   let start = 0;
   for (const [group, size] of sizes.entries()) {
     if (index < start + size) return `COM${group}`;
@@ -332,6 +358,8 @@ export const CP1E_APPEARANCE: PlcAppearance = {
       'status',
       { x: 6, y: 27, w: 4, h: 3, pitch: 9 },
       PLC_LED_GREEN,
+      // 【本アプリの前提】ERR/ALM を赤とした（PLC調査資料 O-3 が未確認）
+      { ERR: PLC_LED_RED, ALM: PLC_LED_RED },
     ),
     ...ledRow(
       CP1E_SPEC.inputs.map((input) => input.name),
@@ -366,6 +394,7 @@ export const CP1E_APPEARANCE: PlcAppearance = {
     '筐体色・端子台色（一般に知られた見え方。実機写真は使っていない）',
     'LED・USBポート・オプションボードスロットの面上の位置',
     '本体表示LEDの種類は §10.1 の【本アプリの前提】（PLC調査資料 O-3 が未確認）',
+    'ERR / ALM の点灯色は本アプリの前提（赤とした）',
     '銘板は型式の文字列のみ（ロゴ・ブランド名は描かない）',
   ],
 };
@@ -382,8 +411,7 @@ export const PLC_UNIT_CP1E: PlcUnitDefinition = {
   spec: CP1E_SPEC,
   terminals: cp1eTerminals(),
   appearance: CP1E_APPEARANCE,
-  // 【本アプリの前提】PLC調査資料 O-3 が未確認のため §10.1 の記載どおり
-  leds: ['POWER', 'RUN', 'ERR', 'ALM'],
+  leds: statusLedNames([CP1E_APPEARANCE]),
 };
 
 /** ラック形モジュール1枚の幅[mm]。§10.1 / §17.1 の前提値 */
@@ -394,6 +422,8 @@ export const RACK_MODULE_HEIGHT_MM = 130;
 export const RACK_BASE_MARGIN_MM = 10;
 /** ベースの高さ[mm]（モジュール高さ＋上下の縁）。 */
 export const RACK_BASE_HEIGHT_MM = 140;
+/** ベース上下のレール帯の高さ[mm]。モジュールはこの下（`RACK_RAIL_HEIGHT_MM`〜）に載る。§17.1 / M1・M5 */
+export const RACK_RAIL_HEIGHT_MM = 5;
 /** モジュール左端から端子2列までの距離[mm]。 */
 export const RACK_TERMINAL_COLS_MM: readonly [number, number] = [9, 26];
 /** モジュール内の端子の段ピッチ[mm]。 */
@@ -407,7 +437,7 @@ export const RACK_TERMINALS_PER_MODULE = 18;
 export function rackModulePos(slot: number): Vec3 {
   return vec3(
     PLC_ORIGIN_MM.x + RACK_BASE_MARGIN_MM + slot * RACK_MODULE_WIDTH_MM,
-    PLC_ORIGIN_MM.y + 5,
+    PLC_ORIGIN_MM.y + RACK_RAIL_HEIGHT_MM,
     PLC_ORIGIN_MM.z,
   );
 }
@@ -432,8 +462,13 @@ export function rackSizeMm(
  * モジュール1枚の端子を2列×最大9段で並べる。§17 #11 / 決定表#12
  * 実機の着脱式端子台は1列だが、当たり判定半径4mm（＝8mm離す必要）が高さ130mmに18点は入らない
  * ため、本アプリは2列に配置する。実機の並びが判明したらここだけを差し替える。
+ * 上限超えは `*_SPEC` の記載漏れ（本アプリのバグ）を早期に落とすための防御的な例外（M6）。
  */
-function rackTerminals(spec: PlcUnitSpec, names: readonly string[], slot: number): BoardTerminal[] {
+export function rackTerminals(
+  spec: PlcUnitSpec,
+  names: readonly string[],
+  slot: number,
+): BoardTerminal[] {
   if (names.length > RACK_TERMINALS_PER_MODULE) {
     throw new BoardError(
       `1モジュールの端子は${RACK_TERMINALS_PER_MODULE}点までです: ${names.length}点`,
@@ -465,9 +500,11 @@ export function hexNames(prefix: string, count: number, start = 0): string[] {
 }
 
 /**
- * `OUT-12` の先頭アドレス。`@ojt/plc-dialects` の `jtekt.ts` の `OUTPUT_BASE` と同じ値で、
- * 端子の印字（`Y10`）と方言表記（`1Y010`）を揃えるためにある（決定表#16）。
- * 片方だけ変えると `plcWiringPlan()` が引く端子名とラダーの表記がずれるので、必ず両方直す。
+ * `OUT-12` の先頭アドレス。`packages/plc-dialects/src/jtekt.ts:49` の `OUTPUT_BASE`（`const`、非公開）
+ * と同じ値で、端子の印字（`Y10`）と方言表記（`1Y010`）を揃えるためにある（決定表#16）。
+ * `board-model` は `plc-dialects` に依存しないので、この2箇所は import で結べない — 片方だけ変えると
+ * `plcWiringPlan()` が引く端子名とラダーの表記がずれるので、必ず両方直す（値の対応はバッチDの
+ * クロス検証テストが見る。I3）。
  */
 export const PC10G_OUTPUT_BASE = 0x010;
 
@@ -515,6 +552,13 @@ function pc10gTerminals(): BoardTerminal[] {
   ];
 }
 
+/** モジュール前面の銘板の矩形。§10.1 / 決定表#15 */
+const RACK_NAMEPLATE_RECT: FaceRect = { x: 2, y: 123, w: 22, h: 5 };
+/** モジュール固定ラッチの矩形。 */
+const RACK_LATCH_RECT: FaceRect = { x: 27, y: 123, w: 6, h: 5 };
+/** 入出力表示灯の列ピッチ[mm]。 */
+const RACK_POINT_LED_PITCH_MM = 3.8;
+
 /**
  * ラックのモジュール1枚ぶんの外観を組み立てる。§10.1 / 決定表#15
  * 上端の帯（y 0〜12mm）が入出力表示灯、その下が端子台カバー、最下段が銘板と固定ラッチである。
@@ -526,8 +570,8 @@ function rackFace(options: {
   terminalColor: string;
   /** 端子台カバーの矩形（端子を持たないモジュールは省略）。 */
   cover?: FaceRect;
-  /** 本体表示LED（列の上端 y）。 */
-  statusLeds?: { names: readonly string[]; y: number };
+  /** 本体表示LED（列の上端 y）。既定色は緑、`colors` にある名前だけ上書きする（§10.1 / B1）。 */
+  statusLeds?: { names: readonly string[]; y: number; colors?: Readonly<Record<string, string>> };
   /** 入出力表示灯。上端の帯に `perRow` 点ずつ並べる（`JW-212NA` は A/B 各8点2段）。 */
   pointLeds?: { names: readonly string[]; group: 'input' | 'output'; perRow: number };
   features?: readonly PlcFeatureMark[];
@@ -541,6 +585,7 @@ function rackFace(options: {
         'status',
         { x: 4, y: options.statusLeds.y, w: 4, h: 3, pitch: 9 },
         PLC_LED_GREEN,
+        options.statusLeds.colors ?? {},
       ),
     );
   }
@@ -551,7 +596,7 @@ function rackFace(options: {
         ...ledRow(
           points.names.slice(row * points.perRow, (row + 1) * points.perRow),
           points.group,
-          { x: 3, y: 3 + row * 5, w: 2.5, h: 2.5, pitch: 3.8 },
+          { x: 3, y: 3 + row * 5, w: 2.5, h: 2.5, pitch: RACK_POINT_LED_PITCH_MM },
           PLC_LED_AMBER,
         ),
       );
@@ -562,7 +607,7 @@ function rackFace(options: {
     bodyColor: options.bodyColor,
     terminalBlockColor: options.terminalColor,
     nameplate: options.model,
-    nameplateRect: { x: 2, y: 123, w: 22, h: 5 },
+    nameplateRect: RACK_NAMEPLATE_RECT,
     covers:
       options.cover === undefined
         ? []
@@ -581,7 +626,7 @@ function rackFace(options: {
         id: 'latch',
         kind: 'latch',
         label: 'モジュール固定ラッチ',
-        rect: { x: 27, y: 123, w: 6, h: 5 },
+        rect: RACK_LATCH_RECT,
         color: '#7A7F86',
       },
     ],
@@ -612,13 +657,128 @@ function rackModules(
 const PC10G_BODY_COLOR = '#B9BCC1';
 /** TOYOPUC の端子台色（黒）。 */
 const PC10G_TERMINAL_COLOR = '#22262B';
-/** ラック形の外観が前提値である旨（4スロット共通）。§17.1 */
+/** ラック形の外観が前提値である旨（モジュール共通。端子台カバーを持つ4種）。§17.1 */
 const RACK_ASSUMED: readonly string[] = [
   'モジュールの筐体色・端子台色（一般に知られた見え方。実機写真は使っていない）',
   '表示灯・スイッチ・コネクタ・固定ラッチの面上の位置（カタログ寸法から作図）',
   '端子台カバーの範囲（端子を2列に並べた本アプリの配置に合わせてある。決定表#12）',
   '銘板は型式の文字列のみ（ロゴ・ブランド名は描かない）',
 ];
+/**
+ * ラック形の外観が前提値である旨（ベース側）。§17.1 / M2
+ * ベースは端子台カバーを持たない（`covers: []`）ので `RACK_ASSUMED` の3項目め（端子台カバーの範囲）
+ * は当てはまらず、そのままでは事実と異なる主張になる。ベース専用にその項目を外した一覧を使う。
+ */
+const RACK_BASE_ASSUMED: readonly string[] = [
+  'モジュールの筐体色・端子台色（一般に知られた見え方。実機写真は使っていない）',
+  '表示灯・スイッチ・コネクタ・固定ラッチの面上の位置（カタログ寸法から作図）',
+  '銘板は型式の文字列のみ（ロゴ・ブランド名は描かない）',
+];
+
+/** JTEKT TOYOPUC PC10G-1SP ラックの土台（ベース）の外観。§10.1 / 決定表#15 */
+const PC10G_BASE_APPEARANCE: PlcAppearance = {
+  faceMm: { width: rackSizeMm(4, 120).width, height: RACK_BASE_HEIGHT_MM },
+  bodyColor: '#9AA0A6',
+  terminalBlockColor: PC10G_TERMINAL_COLOR,
+  nameplate: 'PC10G-1SP',
+  nameplateRect: { x: 4, y: 132, w: 40, h: 6 },
+  covers: [],
+  leds: [],
+  // ベース側の造作はモジュールを並べるスロットの上下レールだけ（モジュールはこの間に載る。M1）
+  features: [
+    {
+      id: 'slot-rail-top',
+      kind: 'slot',
+      label: '基本ベース（電源部＋3スロット）',
+      rect: { x: 0, y: 0, w: rackSizeMm(4, 120).width, h: RACK_RAIL_HEIGHT_MM },
+      color: '#7E848B',
+    },
+    {
+      id: 'slot-rail-bottom',
+      kind: 'slot',
+      label: '基本ベース（電源部＋3スロット）',
+      rect: {
+        x: 0,
+        y: RACK_BASE_HEIGHT_MM - RACK_RAIL_HEIGHT_MM,
+        w: rackSizeMm(4, 120).width,
+        h: RACK_RAIL_HEIGHT_MM,
+      },
+      color: '#7E848B',
+    },
+  ],
+  assumed: RACK_BASE_ASSUMED,
+};
+
+/** JTEKT TOYOPUC PC10G-1SP のモジュール一覧。§10.1 / §17 #21 */
+const PC10G_MODULES: readonly PlcModuleDefinition[] = rackModules([
+  {
+    model: 'POWER1',
+    displayName: '電源モジュール',
+    depthMm: 120,
+    appearance: rackFace({
+      model: 'POWER1',
+      bodyColor: PC10G_BODY_COLOR,
+      terminalColor: PC10G_TERMINAL_COLOR,
+      cover: { x: 0, y: 12, w: 35, h: 28 },
+      statusLeds: { names: ['POWER'], y: 46 },
+      assumed: RACK_ASSUMED,
+    }),
+  },
+  {
+    model: 'PC10G-1SP',
+    displayName: 'CPUモジュール',
+    depthMm: 120,
+    appearance: rackFace({
+      model: 'PC10G-1SP',
+      bodyColor: PC10G_BODY_COLOR,
+      terminalColor: PC10G_TERMINAL_COLOR,
+      statusLeds: { names: ['RUN', 'ERR'], y: 20 },
+      features: [
+        {
+          id: 'run-stop',
+          kind: 'switch',
+          label: 'RUN/STOPスイッチ',
+          rect: { x: 6, y: 34, w: 23, h: 8 },
+          color: '#8A8F96',
+        },
+        {
+          id: 'peripheral',
+          kind: 'port',
+          label: 'ツールポート',
+          rect: { x: 8, y: 50, w: 19, h: 12 },
+          color: PC10G_TERMINAL_COLOR,
+        },
+      ],
+      assumed: RACK_ASSUMED,
+    }),
+  },
+  {
+    model: 'IN-12',
+    displayName: 'DC入力16点（THK-2750）',
+    depthMm: 120,
+    appearance: rackFace({
+      model: 'IN-12',
+      bodyColor: PC10G_BODY_COLOR,
+      terminalColor: PC10G_TERMINAL_COLOR,
+      cover: { x: 0, y: 12, w: 35, h: 110 },
+      pointLeds: { names: hexNames('X', 16), group: 'input', perRow: 8 },
+      assumed: RACK_ASSUMED,
+    }),
+  },
+  {
+    model: 'OUT-12',
+    displayName: 'リレー出力16点（THK-2752）',
+    depthMm: 120,
+    appearance: rackFace({
+      model: 'OUT-12',
+      bodyColor: PC10G_BODY_COLOR,
+      terminalColor: PC10G_TERMINAL_COLOR,
+      cover: { x: 0, y: 12, w: 35, h: 110 },
+      pointLeds: { names: hexNames('Y', 16, PC10G_OUTPUT_BASE), group: 'output', perRow: 8 },
+      assumed: RACK_ASSUMED,
+    }),
+  },
+]);
 
 /** JTEKT TOYOPUC PC10G-1SP（ラック形）。§10.1 / §17 #21 */
 export const PLC_UNIT_PC10G: PlcUnitDefinition = {
@@ -631,97 +791,9 @@ export const PLC_UNIT_PC10G: PlcUnitDefinition = {
   pos: PLC_ORIGIN_MM,
   spec: PC10G_SPEC,
   terminals: pc10gTerminals(),
-  appearance: {
-    faceMm: { width: rackSizeMm(4, 120).width, height: RACK_BASE_HEIGHT_MM },
-    bodyColor: '#9AA0A6',
-    terminalBlockColor: PC10G_TERMINAL_COLOR,
-    nameplate: 'PC10G-1SP',
-    nameplateRect: { x: 4, y: 132, w: 40, h: 6 },
-    covers: [],
-    leds: [],
-    // ベース側の造作はモジュールを並べるスロットのレールだけ（モジュールはこの上に載る）
-    features: [
-      {
-        id: 'slot-rail',
-        kind: 'slot',
-        label: '基本ベース（電源部＋3スロット）',
-        rect: { x: 0, y: 0, w: rackSizeMm(4, 120).width, h: RACK_BASE_HEIGHT_MM },
-        color: '#7E848B',
-      },
-    ],
-    assumed: RACK_ASSUMED,
-  },
-  modules: rackModules([
-    {
-      model: 'POWER1',
-      displayName: '電源モジュール',
-      depthMm: 120,
-      appearance: rackFace({
-        model: 'POWER1',
-        bodyColor: PC10G_BODY_COLOR,
-        terminalColor: PC10G_TERMINAL_COLOR,
-        cover: { x: 0, y: 12, w: 35, h: 28 },
-        statusLeds: { names: ['POWER'], y: 46 },
-        assumed: RACK_ASSUMED,
-      }),
-    },
-    {
-      model: 'PC10G-1SP',
-      displayName: 'CPUモジュール',
-      depthMm: 120,
-      appearance: rackFace({
-        model: 'PC10G-1SP',
-        bodyColor: PC10G_BODY_COLOR,
-        terminalColor: PC10G_TERMINAL_COLOR,
-        statusLeds: { names: ['RUN', 'ERR'], y: 20 },
-        features: [
-          {
-            id: 'run-stop',
-            kind: 'switch',
-            label: 'RUN/STOPスイッチ',
-            rect: { x: 6, y: 34, w: 23, h: 8 },
-            color: '#8A8F96',
-          },
-          {
-            id: 'peripheral',
-            kind: 'port',
-            label: 'ツールポート',
-            rect: { x: 8, y: 50, w: 19, h: 12 },
-            color: PC10G_TERMINAL_COLOR,
-          },
-        ],
-        assumed: RACK_ASSUMED,
-      }),
-    },
-    {
-      model: 'IN-12',
-      displayName: 'DC入力16点（THK-2750）',
-      depthMm: 120,
-      appearance: rackFace({
-        model: 'IN-12',
-        bodyColor: PC10G_BODY_COLOR,
-        terminalColor: PC10G_TERMINAL_COLOR,
-        cover: { x: 0, y: 12, w: 35, h: 110 },
-        pointLeds: { names: hexNames('X', 16), group: 'input', perRow: 8 },
-        assumed: RACK_ASSUMED,
-      }),
-    },
-    {
-      model: 'OUT-12',
-      displayName: 'リレー出力16点（THK-2752）',
-      depthMm: 120,
-      appearance: rackFace({
-        model: 'OUT-12',
-        bodyColor: PC10G_BODY_COLOR,
-        terminalColor: PC10G_TERMINAL_COLOR,
-        cover: { x: 0, y: 12, w: 35, h: 110 },
-        pointLeds: { names: hexNames('Y', 16, PC10G_OUTPUT_BASE), group: 'output', perRow: 8 },
-        assumed: RACK_ASSUMED,
-      }),
-    },
-  ]),
-  // 【本アプリの前提】PLC調査資料 J-3 が未確認のため §10.1 の記載どおり
-  leds: ['POWER', 'RUN', 'ERR', 'IN'],
+  appearance: PC10G_BASE_APPEARANCE,
+  modules: PC10G_MODULES,
+  leds: statusLedNames([PC10G_BASE_APPEARANCE, ...PC10G_MODULES.map((m) => m.appearance)]),
 };
 
 /** `JW-212NA` の入力抵抗[Ω]（7.5mA/点）。§5.1.3 */
@@ -738,6 +810,15 @@ export function groupNames(letter: string, count: number): string[] {
 }
 
 /**
+ * `points` 点ごとに2群のどちらかへ割り当てる（8点1コモンの規則的な分割）。PC10G_SPEC の
+ * `Math.floor(index / RACK_POINTS_PER_COMMON)` と同じ一般形で、JW300 の群名がアルファベットな
+ * ぶん配列引きにしてある（M3）。
+ */
+function groupOf(index: number, points: number, names: readonly [string, string]): string {
+  return names[Math.floor(index / points)] ?? names[1];
+}
+
+/**
  * JW300 ラックの電気的な仕様。§10.1 / §5.1.3
  * 入力の `A` / `B` 群と `COM.A` / `COM.B` は §10.1 で確定。出力側は一次資料に記載が無いため、
  * 同じ様式で `C` / `D` 群（`COM.C` / `COM.D`）とするのが本アプリの前提である（前提表）。
@@ -749,17 +830,21 @@ export const JW300_SPEC: PlcUnitSpec = {
   inputCommons: ['COM.A', 'COM.B'],
   inputs: [...groupNames('A', 8), ...groupNames('B', 8)].map((name, index) => ({
     name,
-    com: index < RACK_POINTS_PER_COMMON ? 'COM.A' : 'COM.B',
+    com: groupOf(index, RACK_POINTS_PER_COMMON, ['COM.A', 'COM.B']),
     ohms: JW300_INPUT_OHMS,
   })),
   commons: ['COM.C', 'COM.D'],
   outputs: [...groupNames('C', 8), ...groupNames('D', 8)].map((name, index) => ({
     name,
-    com: index < RACK_POINTS_PER_COMMON ? 'COM.C' : 'COM.D',
+    com: groupOf(index, RACK_POINTS_PER_COMMON, ['COM.C', 'COM.D']),
   })),
 };
 
-/** JW300 ラックの端子（電源 → `JW-212NA` → `JW-214SA` の順）。§10.1 の記載順 */
+/**
+ * JW300 ラックの端子（電源 → `JW-212NA` → `JW-214SA` の順）。§10.1 の記載順。
+ * `pc10gTerminals()` は各群の先頭にCOMを置く（`ICOM0, X0..X7, ICOM1, ...`）が、JW300 は §10.1 の
+ * 記載順どおり各群の末尾にCOMを置く（`A0..A7, COM.A, ...`）— 意図的な違いである（M4）。
+ */
 function jw300Terminals(): BoardTerminal[] {
   const inputNames = [
     ...JW300_SPEC.inputs.slice(0, RACK_POINTS_PER_COMMON).map((i) => i.name),
@@ -780,6 +865,122 @@ function jw300Terminals(): BoardTerminal[] {
   ];
 }
 
+/** シャープ JW300 ラックの土台（ベース）の外観。§10.1 / 決定表#15 */
+const JW300_BASE_APPEARANCE: PlcAppearance = {
+  faceMm: { width: rackSizeMm(4, 109.4).width, height: RACK_BASE_HEIGHT_MM },
+  bodyColor: '#A9A8A2',
+  terminalBlockColor: JW300_TERMINAL_COLOR,
+  nameplate: 'JW-300',
+  nameplateRect: { x: 4, y: 132, w: 40, h: 6 },
+  covers: [],
+  leds: [],
+  // ベース側の造作はモジュールを並べるスロットの上下レールだけ（モジュールはこの間に載る。M1）
+  features: [
+    {
+      id: 'slot-rail-top',
+      kind: 'slot',
+      label: '基本ベース（電源＋CU＋2スロット）',
+      rect: { x: 0, y: 0, w: rackSizeMm(4, 109.4).width, h: RACK_RAIL_HEIGHT_MM },
+      color: '#8C8B85',
+    },
+    {
+      id: 'slot-rail-bottom',
+      kind: 'slot',
+      label: '基本ベース（電源＋CU＋2スロット）',
+      rect: {
+        x: 0,
+        y: RACK_BASE_HEIGHT_MM - RACK_RAIL_HEIGHT_MM,
+        w: rackSizeMm(4, 109.4).width,
+        h: RACK_RAIL_HEIGHT_MM,
+      },
+      color: '#8C8B85',
+    },
+  ],
+  assumed: RACK_BASE_ASSUMED,
+};
+
+/** シャープ JW300 のモジュール一覧。§10.1 */
+const JW300_MODULES: readonly PlcModuleDefinition[] = rackModules([
+  {
+    model: 'JW-301PU',
+    displayName: '電源ユニット',
+    depthMm: 109.4,
+    appearance: rackFace({
+      model: 'JW-301PU',
+      bodyColor: JW300_BODY_COLOR,
+      terminalColor: JW300_TERMINAL_COLOR,
+      cover: { x: 0, y: 12, w: 35, h: 28 },
+      statusLeds: { names: ['POWER'], y: 46 },
+      assumed: RACK_ASSUMED,
+    }),
+  },
+  {
+    model: 'JW-312CU',
+    displayName: 'コントロールユニット',
+    depthMm: 99.8,
+    appearance: rackFace({
+      model: 'JW-312CU',
+      bodyColor: JW300_BODY_COLOR,
+      terminalColor: JW300_TERMINAL_COLOR,
+      // RUN / FLT / MW は §10.1 で確定している本体表示。点灯色は §10.1 に記載が無い
+      statusLeds: { names: ['RUN', 'FLT', 'MW'], y: 20, colors: { FLT: PLC_LED_RED } },
+      features: [
+        {
+          id: 'run-stop',
+          kind: 'switch',
+          label: 'RUN/STOPスイッチ',
+          rect: { x: 6, y: 34, w: 23, h: 8 },
+          color: '#8A8F96',
+        },
+        {
+          id: 'peripheral',
+          kind: 'port',
+          label: 'ツールポート',
+          rect: { x: 8, y: 50, w: 19, h: 12 },
+          color: JW300_TERMINAL_COLOR,
+        },
+      ],
+      // 【本アプリの前提】FLT の点灯色は赤とした（PLC調査資料 S-3 が未確認）
+      assumed: [...RACK_ASSUMED, 'FLT の点灯色は本アプリの前提（赤とした）'],
+    }),
+  },
+  {
+    model: 'JW-212NA',
+    displayName: 'DC入力16点（18P着脱式端子台）',
+    depthMm: 109.4,
+    appearance: rackFace({
+      model: 'JW-212NA',
+      bodyColor: JW300_BODY_COLOR,
+      terminalColor: JW300_TERMINAL_COLOR,
+      cover: { x: 0, y: 12, w: 35, h: 110 },
+      // §10.1 の「入力表示灯 A/B 各8点2段」をそのまま2段で並べる
+      pointLeds: {
+        names: JW300_SPEC.inputs.map((input) => input.name),
+        group: 'input',
+        perRow: 8,
+      },
+      assumed: RACK_ASSUMED,
+    }),
+  },
+  {
+    model: 'JW-214SA',
+    displayName: 'リレー出力16点',
+    depthMm: 109.4,
+    appearance: rackFace({
+      model: 'JW-214SA',
+      bodyColor: JW300_BODY_COLOR,
+      terminalColor: JW300_TERMINAL_COLOR,
+      cover: { x: 0, y: 12, w: 35, h: 110 },
+      pointLeds: {
+        names: JW300_SPEC.outputs.map((output) => output.name),
+        group: 'output',
+        perRow: 8,
+      },
+      assumed: RACK_ASSUMED,
+    }),
+  },
+]);
+
 /** シャープ JW300（ラック形）。§10.1 */
 export const PLC_UNIT_JW300: PlcUnitDefinition = {
   id: 'jw300',
@@ -791,105 +992,9 @@ export const PLC_UNIT_JW300: PlcUnitDefinition = {
   pos: PLC_ORIGIN_MM,
   spec: JW300_SPEC,
   terminals: jw300Terminals(),
-  appearance: {
-    faceMm: { width: rackSizeMm(4, 109.4).width, height: RACK_BASE_HEIGHT_MM },
-    bodyColor: '#A9A8A2',
-    terminalBlockColor: JW300_TERMINAL_COLOR,
-    nameplate: 'JW-300',
-    nameplateRect: { x: 4, y: 132, w: 40, h: 6 },
-    covers: [],
-    leds: [],
-    features: [
-      {
-        id: 'slot-rail',
-        kind: 'slot',
-        label: '基本ベース（電源＋CU＋2スロット）',
-        rect: { x: 0, y: 0, w: rackSizeMm(4, 109.4).width, h: RACK_BASE_HEIGHT_MM },
-        color: '#8C8B85',
-      },
-    ],
-    assumed: RACK_ASSUMED,
-  },
-  modules: rackModules([
-    {
-      model: 'JW-301PU',
-      displayName: '電源ユニット',
-      depthMm: 109.4,
-      appearance: rackFace({
-        model: 'JW-301PU',
-        bodyColor: JW300_BODY_COLOR,
-        terminalColor: JW300_TERMINAL_COLOR,
-        cover: { x: 0, y: 12, w: 35, h: 28 },
-        statusLeds: { names: ['POWER'], y: 46 },
-        assumed: RACK_ASSUMED,
-      }),
-    },
-    {
-      model: 'JW-312CU',
-      displayName: 'コントロールユニット',
-      depthMm: 99.8,
-      appearance: rackFace({
-        model: 'JW-312CU',
-        bodyColor: JW300_BODY_COLOR,
-        terminalColor: JW300_TERMINAL_COLOR,
-        // RUN / FLT / MW は §10.1 で確定している本体表示
-        statusLeds: { names: ['RUN', 'FLT', 'MW'], y: 20 },
-        features: [
-          {
-            id: 'run-stop',
-            kind: 'switch',
-            label: 'RUN/STOPスイッチ',
-            rect: { x: 6, y: 34, w: 23, h: 8 },
-            color: '#8A8F96',
-          },
-          {
-            id: 'peripheral',
-            kind: 'port',
-            label: 'ツールポート',
-            rect: { x: 8, y: 50, w: 19, h: 12 },
-            color: JW300_TERMINAL_COLOR,
-          },
-        ],
-        assumed: RACK_ASSUMED,
-      }),
-    },
-    {
-      model: 'JW-212NA',
-      displayName: 'DC入力16点（18P着脱式端子台）',
-      depthMm: 109.4,
-      appearance: rackFace({
-        model: 'JW-212NA',
-        bodyColor: JW300_BODY_COLOR,
-        terminalColor: JW300_TERMINAL_COLOR,
-        cover: { x: 0, y: 12, w: 35, h: 110 },
-        // §10.1 の「入力表示灯 A/B 各8点2段」をそのまま2段で並べる
-        pointLeds: {
-          names: JW300_SPEC.inputs.map((input) => input.name),
-          group: 'input',
-          perRow: 8,
-        },
-        assumed: RACK_ASSUMED,
-      }),
-    },
-    {
-      model: 'JW-214SA',
-      displayName: 'リレー出力16点',
-      depthMm: 109.4,
-      appearance: rackFace({
-        model: 'JW-214SA',
-        bodyColor: JW300_BODY_COLOR,
-        terminalColor: JW300_TERMINAL_COLOR,
-        cover: { x: 0, y: 12, w: 35, h: 110 },
-        pointLeds: {
-          names: JW300_SPEC.outputs.map((output) => output.name),
-          group: 'output',
-          perRow: 8,
-        },
-        assumed: RACK_ASSUMED,
-      }),
-    },
-  ]),
-  leds: ['RUN', 'FLT', 'MW'],
+  appearance: JW300_BASE_APPEARANCE,
+  modules: JW300_MODULES,
+  leds: statusLedNames([JW300_BASE_APPEARANCE, ...JW300_MODULES.map((m) => m.appearance)]),
 };
 
 /** 機種名（課題JSONの `plc.model`）→ 本体定義。§7.6 / §16 Phase 4 */
