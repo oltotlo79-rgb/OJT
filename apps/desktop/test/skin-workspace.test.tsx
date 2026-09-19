@@ -222,4 +222,20 @@ describe('キーの文字列を文言に埋め込まない（前提#22 / 決定�
     const key = getDialect('mitsubishi').shortcuts.find((s) => s.action === 'write-mode')?.keys;
     expect(useStore.getState().toasts.at(-1)?.text).toContain(key);
   });
+
+  /**
+   * レビュー I8: OMRON のキー割当表には `write-mode` が無い（実機はツールバーの
+   * 「オンライン編集」で、ファンクションキーではない）。`?? 'F2'` は OMRON に無いキーを
+   * 教えてしまっていた。ツールバーの項目名へ倒れることを確かめる。
+   */
+  it('names the toolbar label, not the invented F2, when the skin has no write-mode key (I8)', () => {
+    workspace(OMRON_CP1E);
+    act(() => {
+      useStore.getState().setLadderMode('read');
+      fireEvent.click(screen.getByTestId('toolbar-insert-network'));
+    });
+    const message = useStore.getState().toasts.at(-1)?.text ?? '';
+    expect(message).not.toContain('F2');
+    expect(message).toContain('オンライン編集');
+  });
 });

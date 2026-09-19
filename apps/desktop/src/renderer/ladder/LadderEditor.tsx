@@ -18,7 +18,6 @@ import {
   clearLadderCell,
   ladderKeyToAction,
   moveCursor,
-  shortcutKeyOf,
   toggleNoNcAt,
   togglePulseAt,
   type LadderCursor,
@@ -26,6 +25,7 @@ import {
   type LadderEditorMode,
   type PlaceKind,
 } from '../session/ladder.js';
+import { writeModeLabel } from '../session/plc-skin.js';
 import { DeviceInput } from './DeviceInput.js';
 import { LadderGrid } from './LadderGrid.js';
 import { skinThemeOf } from './skins/index.js';
@@ -195,8 +195,8 @@ export function LadderEditor({
           store.toast(action.entry.note ?? action.entry.label, 'error');
           break;
         case 'readOnly':
-          // キーの文字列は方言から引く（Plan 4B Task 3。前提#22）
-          store.toast(JA.ladder.readOnly(shortcutKeyOf(profile, 'write-mode') ?? 'F2'), 'error');
+          // キー、無ければツールバーの項目名を方言から引く（Plan 4B Task 3 / レビュー I8）
+          store.toast(JA.ladder.readOnly(writeModeLabel(profile)), 'error');
           break;
         default:
           break;
