@@ -289,18 +289,61 @@ describe('端子ラベル', () => {
     expect(roleLabel('nc')).toBe('b');
   });
 
-  it('ツールチップは役割IDを足して `CR1 ⑨ COM` にする（§8.2）', () => {
-    const terminal = JIPM_BOARD.terminals.find((t) => t.id === socketPinTerminal('S1', 9));
-    expect(terminal).toBeDefined();
-    if (terminal === undefined) return;
-    expect(socketTerminalLabel('CR1', terminal)).toBe('CR1 ⑨ COM');
+  /** ソケットの端子1個を引く。 */
+  function socketTerminal(socketId: 'S1' | 'S5' | 'S7' | 'S8', pin: number): BoardTerminal {
+    const terminal = JIPM_BOARD.terminals.find((t) => t.id === socketPinTerminal(socketId, pin));
+    if (terminal === undefined) throw new Error(`${socketId}.${String(pin)} がありません`);
+    return terminal;
+  }
+
+  /*
+   * 利用者要望 2026-09-20「リレーソケットの各番号はどこが何かわからないから分かるようにしてね」。
+   * ツールチップは番号のほかに「何のネジか」と「どのピンと組か」を日本語で出す。
+   */
+  it('ツールチップはソケット・端子番号・部品・役割・組になる相手を出す（§8.2）', () => {
+    expect(socketTerminalLabel('S1', 'CR1', undefined, socketTerminal('S1', 5))).toBe(
+      'S1 端子5: CR1 の a接点（COM 9 と組）',
+    );
+  });
+
+  it('部品が挿さっていれば型番まで出す', () => {
+    expect(socketTerminalLabel('S1', 'CR1', 'relay-my4n', socketTerminal('S1', 5))).toBe(
+      'S1 端子5: CR1 リレー MY4N の a接点（COM 9 と組）',
+    );
+    expect(socketTerminalLabel('S5', 'T1', 'timer-h3y4', socketTerminal('S5', 13))).toBe(
+      'S5 端子13: T1 タイマ H3Y-4 の コイル（14 と組）',
+    );
+  });
+
+  it('COM は b接点・a接点の2本と組になることを出す', () => {
+    expect(socketTerminalLabel('S1', 'CR1', undefined, socketTerminal('S1', 9))).toBe(
+      'S1 端子9: CR1 の COM（b接点 1・a接点 5 と組）',
+    );
+  });
+
+  it('同じ仲間どうしの組は役割名を繰り返さない（`コイル（コイル 14）` にしない）', () => {
+    expect(socketTerminalLabel('S1', 'CR1', undefined, socketTerminal('S1', 14))).toBe(
+      'S1 端子14: CR1 の コイル（13 と組）',
+    );
+  });
+
+  it('チェック用ソケットも同じ言葉で説明する（§6.3）', () => {
+    expect(socketTerminalLabel('S7', 'CHK', undefined, socketTerminal('S7', 14))).toBe(
+      'S7 端子14: CHK の コイル（13 と組）',
+    );
   });
 
   it('役割が割り当てられていない予備ソケットでも表示できる', () => {
-    const terminal = JIPM_BOARD.terminals.find((t) => t.id === socketPinTerminal('S8', 13));
-    expect(terminal).toBeDefined();
-    if (terminal === undefined) return;
-    expect(socketTerminalLabel(undefined, terminal)).toBe('予備 ⑬ −');
+    expect(socketTerminalLabel('S8', undefined, undefined, socketTerminal('S8', 13))).toBe(
+      'S8 端子13: 予備 の コイル（14 と組）',
+    );
+  });
+
+  it('内部の役割記号（`nc` / `no` / `coil+`）をそのまま画面に出さない', () => {
+    for (const pin of [1, 5, 9, 13, 14]) {
+      const text = socketTerminalLabel('S1', 'CR1', 'relay-my4n', socketTerminal('S1', pin));
+      expect(text, String(pin)).not.toMatch(/\b(nc|no|coil\+|coil-)\b/);
+    }
   });
 
   it('ネジ端子は奥端・手前端の段付きティアに分かれる（§6.2）', () => {

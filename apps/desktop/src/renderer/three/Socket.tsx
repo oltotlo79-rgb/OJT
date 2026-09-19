@@ -1,15 +1,18 @@
 import {
-  roleLabel,
   socketPinHoleOffsets,
   type BoardTerminal,
+  type MountableKind,
   type SocketDefinition,
   type SocketId,
   type SocketRole,
 } from '@ojt/board-model';
+import { parseTerminalId } from '@ojt/circuit-sim';
 import { Html } from '@react-three/drei';
 import { useMemo, type JSX } from 'react';
 import type { ThreeEvent } from '@react-three/fiber';
+import { partKindLabel, socketPinTooltip } from '../i18n/ja.js';
 import { SOCKET_BODY_COLOR, SOCKET_LEVER_COLOR, SOCKET_SELECTED_COLOR } from '../session/colors.js';
+import { pinGroup, pinPartners } from '../session/socket-pins.js';
 import { socketFaceTexture, SOCKET_PLATE_MARGIN_MM } from './labels.js';
 import { noPick, sharedMaterial, UNIT_BOX } from './materials.js';
 import { toScene } from './coords.js';
@@ -63,12 +66,33 @@ export function socketBodyMaterial(selected: boolean): ReturnType<typeof sharedM
     : sharedMaterial(SOCKET_BODY_COLOR, { roughness: 0.55, metalness: 0.1 });
 }
 
-/** ツールチップの文字列（`CR1 ⑨ COM`）。盤定義の印字に役割IDを足す。§8.2 */
-export function socketTerminalLabel(role: SocketRole | undefined, terminal: BoardTerminal): string {
-  // 盤定義のラベルは `S1 ⑨ COM`。物理ソケットIDを役割IDに置き換えて出す
-  const parts = terminal.label.split(' ');
-  const number = parts.at(-2) ?? terminal.label;
-  return `${role ?? '予備'} ${number} ${roleLabel(terminal.role)}`;
+/**
+ * ツールチップの文字列（`S1 端子5: CR1 リレー MY4N の a接点（COM 9 と組）`）。§8.2
+ *
+ * 利用者要望 2026-09-20「リレーソケットの各番号はどこが何かわからないから分かるようにしてね」。
+ * 以前は盤定義の印字に役割IDを足すだけの `CR1 ⑨ COM` で、`COM` の意味も、
+ * その端子が**どのピンと組になるか**も分からなかった。いま出すのは5つ:
+ * ソケットID／端子番号／挿さっている部品／役割（日本語）／組になる相手のピン。
+ * 文言の組み立ては `i18n/ja.ts` の `socketPinTooltip()` が持つ（§15: 文言は1箇所）。
+ */
+export function socketTerminalLabel(
+  socketId: SocketId,
+  role: SocketRole | undefined,
+  /** いまそのソケットに挿さっている部品（空きソケットは undefined）。 */
+  mountedKind: MountableKind | undefined,
+  terminal: BoardTerminal,
+): string {
+  const pin = Number(parseTerminalId(terminal.id).name);
+  // ソケット以外の端子（番号でないもの）が来たら盤定義の印字をそのまま返す
+  if (!Number.isInteger(pin)) return terminal.label;
+  return socketPinTooltip({
+    socketId,
+    pin,
+    role,
+    partName: mountedKind === undefined ? undefined : partKindLabel(mountedKind),
+    group: pinGroup(pin),
+    partners: pinPartners(pin).map((partner) => ({ pin: partner, group: pinGroup(partner) })),
+  });
 }
 
 /** ソケット1個（本体＋段付き端子ティア＋差込穴＋保持レバー＋印字）。 */

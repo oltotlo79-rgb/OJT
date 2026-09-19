@@ -2,11 +2,16 @@ import {
   OUTLET_ID,
   PLC_PART_ID,
   roleLabel,
+  SOCKET_BODY_WIDTH_MM,
+  SOCKET_COL_PITCH_MM,
   type BoardTerminal,
   type TerminalRole,
 } from '@ojt/board-model';
 import { parseTerminalId } from '@ojt/circuit-sim';
 import { CanvasTexture, LinearFilter, SRGBColorSpace, type Texture } from 'three';
+import { JA_PIN } from '../i18n/ja.js';
+import { SOCKET_BODY_COLOR } from '../session/colors.js';
+import { groupOfRole, PIN_GROUP_COLOR, type PinGroup } from '../session/socket-pins.js';
 
 /**
  * 端子の印字ラベル。設計仕様 §6.2 / §8.2 / §15。
@@ -65,6 +70,34 @@ export const ROLE_CENTER_MM = NUMBER_CENTER_MM + NUMBER_MM / 2 + ROW_GAP_MM + RO
 export const SOCKET_PLATE_MARGIN_MM = 4;
 
 /**
+ * 段見出しの文字高さ[mm]。利用者要望 2026-09-20
+ * 「リレーソケットの各番号はどこが何かわからないから分かるようにしてね」。
+ *
+ * ネジの脇の役割文字（`ROLE_MM` ＝ 2.2mm）は「小さすぎて誰も気付かない」と言われた大きさだが、
+ * 段ピッチ 8mm の中にこれ以上の余地は無い（`ROLE_MM` の doc comment 参照）。そこで
+ * **段の外側の余白**に、日本語の段見出し（`b接点` / `a接点` / `COM` / `コイル`）を別に印字する。
+ *
+ * 値はいちばん狭い奥端（板の余白 4mm ＋ 段1の番号までの 1.7mm ＝ 5.7mm）に
+ * 「見出し 3.25 ＋ 余白 0.4 ＋ 色帯 1.0 ＋ 余白 0.6」が収まる最大で、番号（4.6mm）の約7割。
+ * 「ソケット拡大」の視点では画面上 10px 相当になる（番号は 14px 相当）。
+ */
+export const HEADER_MM = 3.25;
+
+/** 役割の色帯の厚み[mm]。 */
+export const BAND_MM = 1;
+/** 色帯と段の印字（番号・役割文字）のあいだの余白[mm]。 */
+export const BAND_GAP_MM = 0.6;
+/** 色帯と段見出しのあいだの余白[mm]。 */
+export const HEADER_GAP_MM = 0.4;
+/**
+ * 色帯を**本体の端で止める**ための、外側の列の端子から本体の端までの距離[mm]。
+ * `socketPinOffset()` の列の置き方（`(本体幅 − 3列ぶんのピッチ) / 2`）と同じ式で求めるので、
+ * 盤定義が列を動かせば帯の端も追随する。帯が本体からはみ出すと、隣のソケットとの 2mm の隙間や
+ * 明るい台座の上に色が乗ってしまう。
+ */
+export const BAND_EDGE_MM = (SOCKET_BODY_WIDTH_MM - 3 * SOCKET_COL_PITCH_MM) / 2;
+
+/**
  * 半角1文字の幅比（sans-serif 700 のおおよその値）。
  * 実測ではなく「はみ出さないこと」を検査するための概算なので、やや大きめに取る。
  */
@@ -114,6 +147,150 @@ export function socketLabelBoxes(
     number: textBox(x, y + NUMBER_CENTER_MM, terminalNumber(terminal), NUMBER_MM),
     role: textBox(x, y + ROLE_CENTER_MM, roleLabel(terminal.role), ROLE_MM),
   };
+}
+
+/**
+ * 段見出しの文字の周りに敷く下地の余白[mm]。
+ *
+ * 奥ティアの1段目と手前ティアの4段目の見出しは、板の余白（`SOCKET_PLATE_MARGIN_MM`）に
+ * 出るので**本体の黒から外れ、明るい台座（`BOARD_PLATE_COLOR`）の上に載る**。
+ * 明るい地の上では役割の色（橙・緑・青・赤）はコントラスト比が 1.3 程度しか無く読めないので、
+ * 文字の下に本体と同じ黒の下地を敷いて、4つの見出しをどこでも同じ見え方にする。
+ */
+export const HEADER_PAD_MM = 0.4;
+
+/** 段見出し1つ（板の左上を原点とする mm）。 */
+export interface SocketHeader {
+  group: PinGroup;
+  /** 印字する言葉（`b接点` など。`i18n/ja.ts` が持つ）。 */
+  text: string;
+  /** 文字の外接矩形（重なりの検査に使う）。 */
+  box: LabelBox;
+  /** 文字の下地（`box` を `HEADER_PAD_MM` だけ広げたもの）。 */
+  plate: LabelBox;
+  /** 文字の中心（`fillText` に渡す位置）。 */
+  cx: number;
+  cy: number;
+}
+
+/** 役割の色帯1本（板の左上を原点とする mm）。 */
+export interface SocketBand {
+  group: PinGroup;
+  color: string;
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+}
+
+/**
+ * ソケットの面の「役割の色帯」と「段見出し」。§6.2 / §8.2
+ * 利用者要望 2026-09-20「リレーソケットの各番号はどこが何かわからないから分かるようにしてね」。
+ *
+ * 置き方:
+ * - 段（`pos.y` が同じ端子）ごとに、**同じ役割が横に続くあいだ**を1本の帯にする。
+ *   段4は `④`（b接点）と `⑭⑬`（コイル）で役割が変わるので、そこで帯の色が切り替わる。
+ * - 帯と見出しは段の**外側**（番号にも役割文字にも触れない側）へ出す。ネジ端子は
+ *   「奥ティア2段・手前ティア2段」なので、段の並び順で外向きを交互に取ると、
+ *   奥ティアの1段目は板の奥端へ、2段目は中央の差込領域へ、という空いている側に必ず出る。
+ * - 見出しは帯の中心の真上（外側）に1つ。**帯1本に見出し1つ**で、返す2つの配列は同じ並びで対応する。
+ *
+ * 色だけでは第1色覚・第2色覚の人が4つを見分けられないので、帯には必ず言葉の見出しが付く
+ * （`session/socket-pins.ts` の `PIN_GROUP_COLOR` の doc comment 参照）。
+ *
+ * 純関数にして export するのは、焼いた絵を見られない環境（`happy-dom` には2Dキャンバスが無い）
+ * でも「何にも重ならない」「板からはみ出さない」を mm の数値で検査できるようにするため。
+ */
+export function socketFaceRows(
+  terminals: readonly BoardTerminal[],
+  originX: number,
+  originY: number,
+): { headers: SocketHeader[]; bands: SocketBand[] } {
+  const headers: SocketHeader[] = [];
+  const bands: SocketBand[] = [];
+  if (terminals.length === 0) return { headers, bands };
+
+  // 帯を本体の端で止めるための左右の限界（外側の列の端子＋`BAND_EDGE_MM`）
+  const xs = terminals.map((terminal) => terminal.pos.x - originX);
+  const limitX0 = Math.min(...xs) - BAND_EDGE_MM;
+  const limitX1 = Math.max(...xs) + BAND_EDGE_MM;
+
+  // 段にまとめる（キーは板の左上からの奥行。浮動小数の誤差を避けて文字列にする）
+  const rows = new Map<string, BoardTerminal[]>();
+  for (const terminal of terminals) {
+    const key = (terminal.pos.y - originY).toFixed(2);
+    const row = rows.get(key);
+    if (row === undefined) rows.set(key, [terminal]);
+    else row.push(terminal);
+  }
+
+  [...rows.keys()]
+    .sort((a, b) => Number(a) - Number(b))
+    .forEach((key, rowIndex) => {
+      const row = [...(rows.get(key) ?? [])].sort((a, b) => a.pos.x - b.pos.x);
+      const outward = rowIndex % 2 === 0 ? -1 : 1;
+      // その段の印字の外縁（番号と役割文字のうち、外向きにいちばん出ているもの）
+      const edges = row.map((terminal) => {
+        const boxes = socketLabelBoxes(terminal, originX, originY);
+        return outward < 0
+          ? Math.min(boxes.number.y0, boxes.role.y0)
+          : Math.max(boxes.number.y1, boxes.role.y1);
+      });
+      const ref = outward < 0 ? Math.min(...edges) : Math.max(...edges);
+      const bandNear = ref + outward * BAND_GAP_MM;
+      const bandFar = bandNear + outward * BAND_MM;
+      const headerY = bandFar + outward * (HEADER_GAP_MM + HEADER_MM / 2);
+
+      let run: { group: PinGroup; x0: number; x1: number } | undefined;
+      const flush = (): void => {
+        if (run === undefined) return;
+        const x0 = Math.max(run.x0, limitX0);
+        const x1 = Math.min(run.x1, limitX1);
+        bands.push({
+          group: run.group,
+          color: PIN_GROUP_COLOR[run.group],
+          x0,
+          x1,
+          y0: Math.min(bandNear, bandFar),
+          y1: Math.max(bandNear, bandFar),
+        });
+        const text = JA_PIN.group[run.group];
+        const cx = (x0 + x1) / 2;
+        const box = textBox(cx, headerY, text, HEADER_MM);
+        headers.push({
+          group: run.group,
+          text,
+          cx,
+          cy: headerY,
+          box,
+          plate: {
+            x0: box.x0 - HEADER_PAD_MM,
+            x1: box.x1 + HEADER_PAD_MM,
+            y0: box.y0 - HEADER_PAD_MM,
+            y1: box.y1 + HEADER_PAD_MM,
+          },
+        });
+        run = undefined;
+      };
+      for (const terminal of row) {
+        const group = groupOfRole(terminal.role);
+        // ソケットの役割でない端子（機種を替えたときなど）は帯も見出しも作らない
+        if (group === undefined) {
+          flush();
+          continue;
+        }
+        const x = terminal.pos.x - originX;
+        if (run === undefined || run.group !== group) {
+          flush();
+          run = { group, x0: x - SOCKET_COL_PITCH_MM / 2, x1: x + SOCKET_COL_PITCH_MM / 2 };
+        } else {
+          run.x1 = x + SOCKET_COL_PITCH_MM / 2;
+        }
+      }
+      flush();
+    });
+
+  return { headers, bands };
 }
 
 /** 端子台の印字テクスチャの最小の幅・奥行[mm]（`TerminalBlock` の `MIN_BODY_MM` と合わせる）。 */
@@ -381,7 +558,78 @@ export function cachedFaceTexture(
 }
 
 /**
- * ソケット1個ぶんの印字（`⑬ −` のような盤定義の `label` をそのまま焼く）。
+ * ソケット1個ぶんの印字を1枚のキャンバスに描く。§6.2 / §8.2
+ *
+ * 焼く順（下から）:
+ * 1. 役割の色帯（`socketFaceRows()`）
+ * 2. 段見出し（`b接点` / `a接点` / `COM` / `コイル`）
+ * 3. ネジ端子の番号（`⑨`）と、ネジの手元で確かめる小さな役割文字（`COM` / `+` / `−`）
+ *
+ * **`socketFaceTexture()` から切り出して export する**のは、2Dキャンバスの無い環境
+ * （`happy-dom`）でも偽のキャンバスを渡して「何を・どの色で・どこへ描くか」を単体テストで
+ * 縛れるようにするため。呼ぶ側は `textAlign = 'center'` / `textBaseline = 'middle'` を
+ * 済ませておく（`makeCanvasTexture()` がやる）。
+ */
+export function drawSocketFace(
+  ctx: CanvasRenderingContext2D,
+  terminals: readonly BoardTerminal[],
+  originX: number,
+  originY: number,
+): void {
+  const { headers, bands } = socketFaceRows(terminals, originX, originY);
+
+  for (const band of bands) {
+    ctx.fillStyle = band.color;
+    ctx.fillRect(
+      band.x0 * PX_PER_MM,
+      band.y0 * PX_PER_MM,
+      (band.x1 - band.x0) * PX_PER_MM,
+      (band.y1 - band.y0) * PX_PER_MM,
+    );
+  }
+
+  // 見出しの下地（本体の黒）。明るい台座にはみ出す段でも同じ見え方にする
+  for (const header of headers) {
+    ctx.fillStyle = SOCKET_BODY_COLOR;
+    ctx.fillRect(
+      header.plate.x0 * PX_PER_MM,
+      header.plate.y0 * PX_PER_MM,
+      (header.plate.x1 - header.plate.x0) * PX_PER_MM,
+      (header.plate.y1 - header.plate.y0) * PX_PER_MM,
+    );
+  }
+
+  ctx.font = `700 ${HEADER_MM * PX_PER_MM}px sans-serif`;
+  for (const header of headers) {
+    ctx.fillStyle = PIN_GROUP_COLOR[header.group];
+    ctx.fillText(header.text, header.cx * PX_PER_MM, header.cy * PX_PER_MM);
+  }
+
+  for (const terminal of terminals) {
+    // 位置は `socketLabelBoxes()` が持つ（テストが検査するのと同じ値で描く）
+    const boxes = socketLabelBoxes(terminal, originX, originY);
+    const x = (terminal.pos.x - originX) * PX_PER_MM;
+    ctx.fillStyle = '#F2F2EE';
+    ctx.font = `700 ${NUMBER_MM * PX_PER_MM}px sans-serif`;
+    ctx.fillText(
+      terminalNumber(terminal),
+      x,
+      ((boxes.number.y0 + boxes.number.y1) / 2) * PX_PER_MM,
+    );
+    /*
+     * 役割文字は段見出しと**同じ色**にする（段見出し＝離れて見たときの案内、
+     * 役割文字＝ネジを締める手元での確認。同じ意味には同じ色、が利用者の求める「統一」）。
+     * ソケットの役割でない端子（機種を替えたときなど）だけ従来の色表に落ちる。
+     */
+    const group = groupOfRole(terminal.role);
+    ctx.fillStyle = group === undefined ? SOCKET_ROLE_COLOR[terminal.role] : PIN_GROUP_COLOR[group];
+    ctx.font = `700 ${ROLE_MM * PX_PER_MM}px sans-serif`;
+    ctx.fillText(roleLabel(terminal.role), x, ((boxes.role.y0 + boxes.role.y1) / 2) * PX_PER_MM);
+  }
+}
+
+/**
+ * ソケット1個ぶんの印字テクスチャ。
  * 盤の mm 座標 `(originX, originY)` を板の左上に対応させるので、
  * 端子が段付きに並んでいても印字は端子の真上に来る。
  *
@@ -399,25 +647,7 @@ export function socketFaceTexture(
   const key = faceKey('socket', terminals, originX, originY, plateWidthMm, plateHeightMm);
   return cachedFaceTexture(key, () =>
     makeCanvasTexture(plateWidthMm, plateHeightMm, (ctx) => {
-      for (const terminal of terminals) {
-        // 位置は `socketLabelBoxes()` が持つ（テストが検査するのと同じ値で描く）
-        const boxes = socketLabelBoxes(terminal, originX, originY);
-        const x = (terminal.pos.x - originX) * PX_PER_MM;
-        ctx.fillStyle = '#F2F2EE';
-        ctx.font = `700 ${NUMBER_MM * PX_PER_MM}px sans-serif`;
-        ctx.fillText(
-          terminalNumber(terminal),
-          x,
-          ((boxes.number.y0 + boxes.number.y1) / 2) * PX_PER_MM,
-        );
-        ctx.fillStyle = SOCKET_ROLE_COLOR[terminal.role];
-        ctx.font = `700 ${ROLE_MM * PX_PER_MM}px sans-serif`;
-        ctx.fillText(
-          roleLabel(terminal.role),
-          x,
-          ((boxes.role.y0 + boxes.role.y1) / 2) * PX_PER_MM,
-        );
-      }
+      drawSocketFace(ctx, terminals, originX, originY);
     }),
   );
 }

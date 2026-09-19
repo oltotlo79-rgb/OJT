@@ -1,0 +1,66 @@
+/*
+ * ソケットのピン配列の凡例（部品カードの中）。設計仕様 §8.2。
+ * 利用者要望 2026-09-20「リレーソケットの各番号はどこが何かわからないから分かるようにしてね」。
+ *
+ * 余白は8pxの格子に載せる。図はカードの幅いっぱいには広げず、実物のソケットと同じ
+ * 「縦4段×横4列」の形が崩れない `max-width` で止める（横に伸ばすと段の対応が読み取りにくい）。
+ */
+
+.pinout {
+  margin: 8px 0;
+}
+
+.heading {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  margin: 0 0 4px;
+}
+
+.figure {
+  margin: 0;
+}
+
+/*
+ * 図そのもの。`viewBox` の比（184:112）を保ったまま縮むので、
+ * 幅が足りない画面でも番号が重ならない。
+ */
+.svg {
+  display: block;
+  width: 100%;
+  max-width: 216px;
+  height: auto;
+}
+
+/** 空きスロット（実物のソケットにネジが無い位置）。 */
+.hole {
+  fill: none;
+  stroke: var(--line);
+  stroke-width: 1;
+}
+
+/** ネジ1個ぶんの丸。縁の色が役割の色。 */
+.pin {
+  fill: var(--panel);
+  stroke-width: 2;
+}
+
+.pinNumber {
+  fill: var(--text);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+/** 段見出し（`b接点 1-4` など）。色は見分けの補助なので、文字は読みやすい地の色で出す。 */
+.groupName {
+  fill: var(--text);
+  font-size: 10px;
+}
+
+/** 接点の組の一行（図の下）。 */
+.pairs {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+  margin: 8px 0 0;
+}

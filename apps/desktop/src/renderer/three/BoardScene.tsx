@@ -452,7 +452,14 @@ function BoardContents({
       const socket = board.sockets.find((s) => terminal.id.startsWith(`${s.id}.`));
       return terminalTooltip(
         terminal,
-        socket === undefined ? '' : socketTerminalLabel(session?.socketRoles[socket.id], terminal),
+        socket === undefined
+          ? ''
+          : socketTerminalLabel(
+              socket.id,
+              session?.socketRoles[socket.id],
+              session?.mounted[socket.id]?.kind,
+              terminal,
+            ),
       );
     },
     [board, session],

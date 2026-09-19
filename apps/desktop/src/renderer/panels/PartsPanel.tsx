@@ -17,6 +17,7 @@ import {
   socketSelectedLabel,
   timerDialLabel,
 } from '../i18n/ja.js';
+import { SocketPinout } from './SocketPinout.js';
 import { TimerDial } from './TimerDial.js';
 import styles from './panels.module.css';
 
@@ -160,6 +161,13 @@ export function PartsPanel({
           <p className={styles.socketCardStatus} data-testid="socket-card-status">
             {socketSelectedLabel(selectedSocket, session.socketRoles[selectedSocket])}
           </p>
+
+          {/*
+           * ピン配列の凡例（利用者要望 2026-09-20「各番号はどこが何かわからない」）。
+           * ソケット名のすぐ下に置く。どのソケットも同じ14ピンなので図は共通で、
+           * 装着・取り外し・交換のボタンとは縦に並ぶだけで重ならない。
+           */}
+          <SocketPinout />
 
           {mounted === undefined ? (
             remaining.map((item) => (
