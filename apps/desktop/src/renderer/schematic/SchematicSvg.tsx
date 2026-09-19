@@ -14,27 +14,78 @@ import { useMemo, type JSX } from 'react';
  * 座標計算は `@ojt/schematic-core` の `layout()`（純粋関数）が行い、ここは SVG 化だけを担う。
  * ヒントの出し方は級で決まる（§8.4: 1級は非表示、2級は開閉可、3級は常時表示）。
  *
- * 図形は `Shape`（`line` / `circle` / `arc` / `text`）の直和で、`role` から線幅と色を引く。
+ * 図形は `Shape`（`line` / `circle` / `rect` / `arc` / `text`）の直和で、`role` から線幅と色を引く。
  * `key` は配列の添字でよい（`layout()` は決定論なので同じ文書からは同じ並びが出る）。
- * `shape.rungId` / `shape.cellId`（Plan 1B Task 13d）は、Phase 2 で
- * 「盤の端子にホバーすると回路図の該当要素が光る」を作るときに使う。
+ * `shape.rungId` / `shape.cellId` は §9.2 の連動ハイライトと §11.4 の配線ガイドで使う。
+ *
+ * **印刷された練習シートに寄せる**ための約束（利用者要求 2026-09-19「回路図のクオリティ」）:
+ * - 用紙は必ず白。アプリが暗色テーマでも図の中に白い紙を敷く
+ * - 線幅は画面の実px（`vector-effect="non-scaling-stroke"`）。拡大しても線が太らず、
+ *   縮めても潰れない。直交する電線は `shape-rendering="crispEdges"` で半端な位置に置かない
+ * - 文字は和文の読める書体で、機器の銘板は 1x で 12px 以上。端子番号は等幅で一回り小さく
+ * - 図の外（母線の見出し・段番号）まで入るよう viewBox は**図形の外接矩形**から作る
  */
 
-/** 役割ごとの線幅と色。 */
-const STROKE: Readonly<Record<ShapeRole, { color: string; width: number }>> = {
-  bus: { color: '#111418', width: 2.2 },
-  wire: { color: '#111418', width: 1.2 },
-  symbol: { color: '#111418', width: 1.4 },
-  label: { color: '#111418', width: 0 },
-  junction: { color: '#111418', width: 0 },
+/**
+ * 寸法設定（論理単位）。読取専用のヒントも編集エディタもこの1つを共有する
+ * （`layout()` と `slotRects()` に同じ設定を渡さないとカーソルが記号からずれる）。
+ *
+ * `DEFAULT_LAYOUT_OPTIONS` の `colWidth: 24` だと `T1 (3.0秒)` の銘板が隣に重なる。
+ * 端子番号（記号の下）と銘板（記号の上）を両方刷るので、段の高さも既定の24では足りない。
+ */
+export const SCHEMATIC_LAYOUT: LayoutOptions = {
+  colWidth: 44,
+  rowHeight: 34,
+  marginX: 16,
+  marginY: 22,
+  symbolWidth: 13,
+  labelRise: 1.45,
+  rungNumbers: true,
+  terminalNumbers: true,
 };
 
-/** 銘板の文字の大きさ（論理単位）。 */
-const LABEL_FONT_SIZE = 6;
+/** 和文が化けない・字面の揃う書体。Windows と Electron の既定に両方ある順に並べる。 */
+const FONT_STACK = '"Noto Sans JP", "Yu Gothic UI", "Meiryo", system-ui, sans-serif';
+/** 端子番号は数字が揃う等幅で。 */
+const MONO_STACK = '"Consolas", "Roboto Mono", ui-monospace, monospace';
 
-/** 連動ハイライトの線色と線幅の倍率。§9.2 */
+/** 機器の銘板の文字寸法（論理単位）。幅いっぱいに収めたとき 1x で約12px になる。 */
+const LABEL_FONT_SIZE = 8;
+/** 端子番号（一回り小さい等幅）。 */
+const TERMINAL_FONT_SIZE = 5.2;
+/** 段番号（左余白）。 */
+const RUNG_FONT_SIZE = 6.2;
+
+/** 用紙の色と縁（暗色テーマでも図は必ず白地）。 */
+const PAPER = '#FFFFFF';
+const PAPER_EDGE = '#C8CCD4';
+
+/**
+ * 役割ごとの線幅（画面px。`vector-effect="non-scaling-stroke"` なので拡大縮小しても変わらない）と色。
+ * 母線は器具より太く、電線は細く——印刷図の階層をそのまま写す。
+ */
+const STROKE: Readonly<Record<ShapeRole, { color: string; width: number }>> = {
+  bus: { color: '#0B0D10', width: 2.6 },
+  wire: { color: '#111418', width: 1.2 },
+  symbol: { color: '#111418', width: 1.6 },
+  label: { color: '#111418', width: 0 },
+  junction: { color: '#111418', width: 0 },
+  terminal: { color: '#4A525C', width: 0 },
+  rung: { color: '#6B737D', width: 0 },
+};
+
+/** 役割ごとの文字寸法と書体。 */
+const TEXT_STYLE: Partial<Record<ShapeRole, { size: number; family: string; weight: number }>> = {
+  label: { size: LABEL_FONT_SIZE, family: FONT_STACK, weight: 600 },
+  terminal: { size: TERMINAL_FONT_SIZE, family: MONO_STACK, weight: 400 },
+  rung: { size: RUNG_FONT_SIZE, family: MONO_STACK, weight: 400 },
+};
+
+/** 連動ハイライトの色。§9.2 白地の図では琥珀が読めないので濃い橙＋薄い暈し（ハロー）で示す。 */
 const HIGHLIGHT_STROKE = '#C2410C';
-const HIGHLIGHT_WIDTH_SCALE = 1.8;
+const HIGHLIGHT_HALO = 'rgba(249, 115, 22, 0.35)';
+/** 暈しは元の線幅にこれだけ足す（px）。線そのものは太らせず、まわりを光らせる。 */
+const HIGHLIGHT_HALO_ADD = 6;
 
 /** 編集カーソルの枠と薄い塗り（白地の図で目立ち、記号を隠さない濃さ）。§11.4 */
 const CURSOR_STROKE = '#1D4ED8';
@@ -42,13 +93,8 @@ const CURSOR_FILL = 'rgba(29, 78, 216, 0.10)';
 /** 当たり矩形は透明でもクリックを受ける（記号より手前にあるため）。 */
 const SLOT_STYLE = { pointerEvents: 'all' } as const;
 
-/**
- * 寸法設定。`DEFAULT_LAYOUT_OPTIONS` の `colWidth: 24` だと、タイマコイルの銘板
- * （`layout()` が `T1 (3.0秒)` の形で作る）が隣の要素の銘板と重なる。
- * 文字は最大10字ぶん（全角混じりで約 6 × 5.5 ≒ 33）を見込んで1列を 40 にする。
- * 段の高さは `@ojt/schematic-core` の既定（24）に任せる。
- */
-const LAYOUT: LayoutOptions = { colWidth: 40 };
+/** 図の外接矩形にこれだけ余白（紙の白縁）を足す（論理単位）。 */
+const VIEW_PAD = 10;
 
 /** 極座標の角度[度]を SVG の座標に直す（弧の端点計算）。 */
 function arcPoint(cx: number, cy: number, r: number, deg: number): [number, number] {
@@ -56,48 +102,131 @@ function arcPoint(cx: number, cy: number, r: number, deg: number): [number, numb
   return [cx + r * Math.cos(rad), cy + r * Math.sin(rad)];
 }
 
+/** 図形1つの外接矩形（`[x1, y1, x2, y2]`）。文字は字送りから見積もる。 */
+function boundsOf(shape: Shape): [number, number, number, number] {
+  switch (shape.kind) {
+    case 'line':
+      return [
+        Math.min(shape.x1, shape.x2),
+        Math.min(shape.y1, shape.y2),
+        Math.max(shape.x1, shape.x2),
+        Math.max(shape.y1, shape.y2),
+      ];
+    case 'circle':
+    case 'arc':
+      return [shape.cx - shape.r, shape.cy - shape.r, shape.cx + shape.r, shape.cy + shape.r];
+    case 'rect':
+      return [shape.x, shape.y, shape.x + shape.w, shape.y + shape.h];
+    case 'text': {
+      const size = TEXT_STYLE[shape.role]?.size ?? LABEL_FONT_SIZE;
+      // 全角混じりでも収まるよう1字 0.62em で見積もる（切れるより広いほうがよい）
+      const width = shape.text.length * size * 0.62;
+      const left =
+        shape.anchor === 'middle'
+          ? shape.x - width / 2
+          : shape.anchor === 'end'
+            ? shape.x - width
+            : shape.x;
+      return [left, shape.y - size / 2, left + width, shape.y + size / 2];
+    }
+  }
+}
+
+/**
+ * 図形すべてを含む viewBox。`layout()` は母線の見出しを負のyに、段番号を負のxに置くので、
+ * `0 0 width height` のままだとそれらが**切り落とされる**（2026-09-19 の指摘の一因）。
+ */
+export function viewBoxOf(shapes: readonly Shape[], width: number, height: number): string {
+  const first = shapes[0];
+  if (first === undefined) return `0 0 ${width} ${height}`;
+  let [x1, y1, x2, y2] = boundsOf(first);
+  for (const shape of shapes) {
+    const b = boundsOf(shape);
+    if (b[0] < x1) x1 = b[0];
+    if (b[1] < y1) y1 = b[1];
+    if (b[2] > x2) x2 = b[2];
+    if (b[3] > y2) y2 = b[3];
+  }
+  // 余白は上下左右そろえる（`layout()` の `marginY` に任せると下だけ間延びする）
+  const round = (v: number): number => Math.round(v * 100) / 100;
+  return `${round(x1 - VIEW_PAD)} ${round(y1 - VIEW_PAD)} ${round(x2 - x1 + VIEW_PAD * 2)} ${round(y2 - y1 + VIEW_PAD * 2)}`;
+}
+
+/** 直交する線・長方形は格子に乗せる（にじまない）。斜めと円は滑らかに。 */
+function rendering(shape: Shape): 'crispEdges' | 'geometricPrecision' {
+  if (shape.kind === 'rect') return 'crispEdges';
+  if (shape.kind === 'line' && (shape.x1 === shape.x2 || shape.y1 === shape.y2)) {
+    return 'crispEdges';
+  }
+  return 'geometricPrecision';
+}
+
+/** 図形1つの SVG 属性（塗り・線・にじみ止め）。 */
+function paint(
+  shape: Shape,
+  color: string,
+  width: number,
+): Record<string, string | number | undefined> {
+  return {
+    stroke: color,
+    strokeWidth: width,
+    strokeLinecap: 'round',
+    strokeLinejoin: 'round',
+    vectorEffect: 'non-scaling-stroke',
+    shapeRendering: rendering(shape),
+  };
+}
+
 /**
  * 図形プリミティブ1つを SVG 要素にする。
- * `highlighted` は §9.2 の連動ハイライト。白地の回路図では琥珀が読めないので、
- * 3D側（`HIGHLIGHT_COLOR`）とは別に濃い橙を使い、線幅も太らせて見分けられるようにする。
  * `data-cell` は「どの要素の図形か」を DOM に残すもので、クリックの受け口にもテストの
  * 手がかりにもなる（`Shape.cellId`。Plan 1B）。
  */
-function renderShape(shape: Shape, index: number, highlighted: boolean): JSX.Element | null {
-  const base = STROKE[shape.role];
-  const style = highlighted
-    ? { color: HIGHLIGHT_STROKE, width: base.width * HIGHLIGHT_WIDTH_SCALE }
-    : base;
-  const common = {
-    ...(shape.cellId === undefined ? {} : { 'data-cell': shape.cellId }),
-    ...(highlighted ? { 'data-highlight': 'true' } : {}),
-  };
+function drawShape(
+  shape: Shape,
+  key: string,
+  color: string,
+  width: number,
+  common: Record<string, string>,
+): JSX.Element | null {
+  const style = paint(shape, color, width);
   switch (shape.kind) {
     case 'line':
       return (
         <line
-          key={index}
+          key={key}
           {...common}
+          {...style}
           x1={shape.x1}
           y1={shape.y1}
           x2={shape.x2}
           y2={shape.y2}
-          stroke={style.color}
-          strokeWidth={style.width}
-          strokeLinecap="round"
         />
       );
     case 'circle':
       return (
         <circle
-          key={index}
+          key={key}
           {...common}
+          {...style}
           cx={shape.cx}
           cy={shape.cy}
           r={shape.r}
-          fill={shape.fill ?? (shape.role === 'junction' ? style.color : 'none')}
-          stroke={style.color}
-          strokeWidth={shape.role === 'junction' ? 0 : style.width}
+          fill={shape.fill ?? (shape.role === 'junction' ? color : 'none')}
+          strokeWidth={shape.role === 'junction' ? 0 : width}
+        />
+      );
+    case 'rect':
+      return (
+        <rect
+          key={key}
+          {...common}
+          {...style}
+          x={shape.x}
+          y={shape.y}
+          width={shape.w}
+          height={shape.h}
+          fill={shape.fill ?? 'none'}
         />
       );
     case 'arc': {
@@ -106,31 +235,67 @@ function renderShape(shape: Shape, index: number, highlighted: boolean): JSX.Ele
       const large = Math.abs(shape.endDeg - shape.startDeg) > 180 ? 1 : 0;
       return (
         <path
-          key={index}
+          key={key}
           {...common}
+          {...style}
           d={`M ${x1} ${y1} A ${shape.r} ${shape.r} 0 ${large} 1 ${x2} ${y2}`}
           fill="none"
-          stroke={style.color}
-          strokeWidth={style.width}
         />
       );
     }
-    case 'text':
+    case 'text': {
+      const text = TEXT_STYLE[shape.role] ?? {
+        size: LABEL_FONT_SIZE,
+        family: FONT_STACK,
+        weight: 400,
+      };
       return (
         <text
-          key={index}
+          key={key}
           {...common}
           x={shape.x}
           y={shape.y}
-          fill={style.color}
-          fontSize={LABEL_FONT_SIZE}
+          fill={color}
+          fontFamily={text.family}
+          fontSize={text.size}
+          fontWeight={text.weight}
           textAnchor={shape.anchor}
           dominantBaseline="middle"
+          /* 文字は線ではないので暈しも太らせもしない */
+          stroke="none"
         >
           {shape.text}
         </text>
       );
+    }
   }
+}
+
+/**
+ * 図形1つ（ハイライト中なら暈しを1枚下に敷いてから）。
+ * 色を変えるだけだと白地では見落とすので、**まわりを光らせて**目立たせる。§9.2
+ */
+function renderShape(shape: Shape, index: number, highlighted: boolean): JSX.Element[] {
+  const base = STROKE[shape.role];
+  const color = highlighted ? HIGHLIGHT_STROKE : base.color;
+  const common = {
+    ...(shape.cellId === undefined ? {} : { 'data-cell': shape.cellId }),
+    ...(highlighted ? { 'data-highlight': 'true' } : {}),
+  };
+  const out: JSX.Element[] = [];
+  if (highlighted && shape.kind !== 'text') {
+    const halo = drawShape(
+      shape,
+      `halo-${index}`,
+      HIGHLIGHT_HALO,
+      base.width + HIGHLIGHT_HALO_ADD,
+      { ...common, 'data-halo': 'true' },
+    );
+    if (halo !== null) out.push(halo);
+  }
+  const main = drawShape(shape, `s-${index}`, color, base.width, common);
+  if (main !== null) out.push(main);
+  return out;
 }
 
 /**
@@ -146,6 +311,7 @@ export function SchematicSvg({
   onPickCell,
   cursor,
   onPickSlot,
+  testId = 'schematic-svg',
 }: {
   document: SchematicDocument;
   highlightCellIds?: readonly string[];
@@ -159,29 +325,50 @@ export function SchematicSvg({
    * 「要素を置く」のかは呼び出し側（`SchematicEditor`）が決める（B2）。
    */
   onPickSlot?: (rungId: string, index: number, cellId?: string) => void;
+  /** 同じ図を2枚出す画面（拡大表示）で取り違えないための識別子。 */
+  testId?: string;
 }): JSX.Element {
-  const result = useMemo(() => layout(doc, LAYOUT), [doc]);
+  const result = useMemo(() => layout(doc, SCHEMATIC_LAYOUT), [doc]);
+  const view = useMemo(
+    () => viewBoxOf(result.shapes, result.width, result.height),
+    [result.shapes, result.width, result.height],
+  );
   const highlighted = useMemo(() => new Set(highlightCellIds ?? []), [highlightCellIds]);
   const slots = useMemo(
-    () => (onPickSlot === undefined ? [] : slotRects(doc, LAYOUT)),
+    () => (onPickSlot === undefined ? [] : slotRects(doc, SCHEMATIC_LAYOUT)),
     [doc, onPickSlot],
   );
+  const [vx, vy, vw, vh] = view.split(' ').map(Number) as [number, number, number, number];
   return (
     <svg
-      viewBox={`0 0 ${result.width} ${result.height}`}
+      viewBox={view}
       role="img"
       aria-label={doc.title}
-      data-testid="schematic-svg"
-      style={{ width: '100%', background: '#F7F7F4', borderRadius: 4 }}
+      data-testid={testId}
+      preserveAspectRatio="xMidYMid meet"
+      style={{ width: '100%', height: 'auto', display: 'block' }}
       onClick={(event) => {
         if (onPickCell === undefined) return;
-        // クリックされた図形の `data-cell` を読む。母線やラベルには無いので解除になる
+        // クリックされた図形の `data-cell` を読む。用紙や母線には無いので解除になる
         const target = event.target as { getAttribute?: (name: string) => string | null };
         const cellId = target.getAttribute?.('data-cell') ?? undefined;
         onPickCell(cellId);
       }}
     >
-      {result.shapes.map((shape, index) =>
+      {/* 用紙。暗色テーマでも図は白地で、縁だけ薄く付ける（印刷されたシートの見え方） */}
+      <rect
+        data-testid="schematic-paper"
+        x={vx}
+        y={vy}
+        width={vw}
+        height={vh}
+        fill={PAPER}
+        stroke={PAPER_EDGE}
+        strokeWidth={1}
+        vectorEffect="non-scaling-stroke"
+        shapeRendering="crispEdges"
+      />
+      {result.shapes.flatMap((shape, index) =>
         renderShape(shape, index, shape.cellId !== undefined && highlighted.has(shape.cellId)),
       )}
       {/*
@@ -209,6 +396,7 @@ export function SchematicSvg({
             fill={isCursor ? CURSOR_FILL : 'transparent'}
             stroke={isCursor ? CURSOR_STROKE : 'none'}
             strokeWidth={isCursor ? 1.2 : 0}
+            vectorEffect="non-scaling-stroke"
             /* `fill="transparent"` でも当たり判定は残るが、意図を明示しておく */
             style={SLOT_STYLE}
             onClick={(event) => {

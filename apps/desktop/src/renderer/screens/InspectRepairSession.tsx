@@ -37,7 +37,7 @@ import { TimeChartPanel } from '../panels/TimeChartPanel.js';
 import { Toolbar } from '../panels/Toolbar.js';
 import { ViewHint } from '../panels/ViewHint.js';
 import { WarningBanner } from '../panels/WarningBanner.js';
-import { SchematicSvg } from '../schematic/SchematicSvg.js';
+import { SchematicView } from '../schematic/SchematicView.js';
 import {
   cloneSession,
   redo as redoHistory,
@@ -798,8 +798,9 @@ export function InspectRepairSession(): JSX.Element {
             <section className={styles.panelLive} data-testid="schematic-hint">
               <h2 className={styles.liveTitle}>{JA.session.schematicHint}</h2>
               <div className={styles.schematicBox}>
-                <SchematicSvg
+                <SchematicView
                   document={problem.schematic}
+                  title={JA.session.schematicHint}
                   highlightCellIds={highlightCells}
                   onPickCell={(cellId) => {
                     const store = useStore.getState();

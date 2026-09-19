@@ -888,6 +888,18 @@ export const JA = {
     branchDone: 'この段を分岐にしました。',
   },
   // --- /Plan 5 Task 4 ---
+  // --- schematic quality 2026-09-19 ---
+  /**
+   * 回路図ヒントの見せ方（タイムチャートと同じ「クリックで拡大」）。§8.1 / §11.2
+   * 文字はタイムチャート（`JA.timeChart`）と揃え、回路図にしか無い倍率の言い方だけ足す。
+   */
+  schematicView: {
+    zoomIn: '拡大',
+    zoomOut: '縮小',
+    zoomReset: '等倍',
+    zoomLabel: '表示倍率',
+  },
+  // --- /schematic quality 2026-09-19 ---
 } as const;
 
 /** アナログのΩレンジの表示（`×1` / `×10` / `×1k`）。§9.3 */
@@ -1292,3 +1304,10 @@ export function socketCardTitle(
     : `${JA_PARTS.socket} ${socketId}: ${name}（${role}）`;
 }
 // --- /parts swap 2026-09-19 ---
+
+// --- schematic quality 2026-09-19 ---
+/** 回路図の拡大表示の倍率の読み上げ（`表示倍率 150%`）。§11.2 */
+export function schematicZoomText(zoom: number): string {
+  return `${JA.schematicView.zoomLabel} ${String(Math.round(zoom * 100))}%`;
+}
+// --- /schematic quality 2026-09-19 ---

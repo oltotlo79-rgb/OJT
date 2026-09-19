@@ -1,0 +1,171 @@
+/*
+ * 回路図ヒントの器（利用者要求 2026-09-19「回路図のクオリティ」）。§8.1 / §11.2
+ * 図そのものは SVG が描く。ここが決めるのは「紙の置き方」だけ:
+ * 幅いっぱい・縦横比そのまま・段が潰れない最低の高さ・暗色テーマでも白い紙。
+ */
+
+.frame {
+  position: relative;
+  min-width: 0;
+}
+
+/*
+ * 用紙。アプリの暗色テーマに関わらず白地で、印刷された練習シートのように薄い縁と影を付ける。
+ * `min-height` は「3段の図が 1x で読める高さ」の目安（1段 34 論理単位 × 約 3.5 段ぶん）。
+ */
+.paper {
+  display: block;
+  width: 100%;
+  min-height: 160px;
+  padding: 0;
+  background: #ffffff;
+  border: 1px solid #c8ccd4;
+  border-radius: 4px;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 35%);
+  cursor: zoom-in;
+  /* 高DPIでも輪郭が眠くならないよう、拡大縮小は等倍合成に任せる */
+  image-rendering: auto;
+}
+
+.paper:focus-visible {
+  outline: 2px solid #6aa3ff;
+  outline-offset: 2px;
+}
+
+.paper > svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+/* 「⤢ 拡大」。タイムチャートと同じ位置・同じ見た目にそろえる。 */
+.enlargeButton {
+  position: absolute;
+  top: -28px;
+  right: 0;
+  min-height: 24px;
+  padding: 2px 8px;
+  font-size: 11px;
+  color: #c9d2dc;
+  background: #2a2f36;
+  border: 1px solid #3a4049;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.enlargeButton:hover {
+  background: #343a43;
+}
+
+.enlargeButton:focus-visible {
+  outline: 2px solid #6aa3ff;
+  outline-offset: 2px;
+}
+
+/* --- 拡大表示 --- */
+
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgb(0 0 0 / 60%);
+}
+
+.modal {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: min(1200px, 96vw);
+  max-height: 92vh;
+  padding: 12px;
+  background: #1b1e23;
+  border: 1px solid #3a4049;
+  border-radius: 6px;
+}
+
+.modalHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.modalTitle {
+  margin: 0;
+  font-size: 14px;
+  color: #e4e7ec;
+}
+
+.closeButton {
+  margin-left: auto;
+  min-width: 32px;
+  min-height: 32px;
+  font-size: 16px;
+  color: #e4e7ec;
+  background: #2a2f36;
+  border: 1px solid #3a4049;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.closeButton:focus-visible,
+.zoomButton:focus-visible {
+  outline: 2px solid #6aa3ff;
+  outline-offset: 2px;
+}
+
+.modalBody {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+}
+
+.zoomBar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.zoomButton {
+  min-width: 32px;
+  min-height: 32px;
+  padding: 4px 10px;
+  font-size: 12px;
+  color: #e4e7ec;
+  background: #2a2f36;
+  border: 1px solid #3a4049;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.zoomButton:disabled {
+  color: #7a828c;
+  cursor: not-allowed;
+}
+
+.zoomText {
+  font-size: 12px;
+  color: #c9d2dc;
+}
+
+/* 倍率を上げたぶんは横にも縦にもスクロールで追う（図は切らない）。 */
+.modalScroll {
+  min-height: 0;
+  overflow: auto;
+}
+
+.modalPaper {
+  background: #ffffff;
+  border: 1px solid #c8ccd4;
+  border-radius: 4px;
+}
+
+.modalPaper > svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}

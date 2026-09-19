@@ -32,12 +32,12 @@ describe('回路図レンダラ（§11.2）', () => {
     expect(result.height).toBeGreaterThan(0);
     expect(result.shapes.length).toBeGreaterThan(0);
     expect(result.shapes.some((s) => s.kind === 'text')).toBe(true);
-    // 図形は4種の直和で、`fill` を持つのは circle だけ（表示灯の色）
+    // 図形は5種の直和（コイルは JIS の長方形なので `rect` も出る）
     for (const shape of result.shapes) {
-      expect(['line', 'circle', 'arc', 'text']).toContain(shape.kind);
+      expect(['line', 'circle', 'rect', 'arc', 'text']).toContain(shape.kind);
     }
     // 銘板が重ならないよう SchematicSvg は列幅を広げて渡す（既定の 24 では `T1 (3.0秒)` が溢れる）
-    expect(layout(problem.schematic, { colWidth: 40 }).width).toBeGreaterThan(result.width);
+    expect(layout(problem.schematic, { colWidth: 44 }).width).toBeGreaterThan(result.width);
     expect(DEFAULT_LAYOUT_OPTIONS.colWidth).toBe(24);
   });
 });

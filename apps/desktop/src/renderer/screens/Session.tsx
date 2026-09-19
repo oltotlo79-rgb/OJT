@@ -26,7 +26,7 @@ import { liveChart, TimeChartPanel, TimeChartSvg } from '../panels/TimeChartPane
 import { Toolbar } from '../panels/Toolbar.js';
 import { ViewHint } from '../panels/ViewHint.js';
 import { WarningBanner } from '../panels/WarningBanner.js';
-import { SchematicSvg } from '../schematic/SchematicSvg.js';
+import { SchematicView } from '../schematic/SchematicView.js';
 import {
   cloneSession,
   redo as redoHistory,
@@ -691,7 +691,7 @@ export function Session(): JSX.Element {
             <section className={styles.panelLive} data-testid="schematic-hint">
               <h2 className={styles.liveTitle}>{JA.session.schematicHint}</h2>
               <div className={styles.schematicBox}>
-                <SchematicSvg document={problem.schematic} />
+                <SchematicView document={problem.schematic} title={JA.session.schematicHint} />
               </div>
             </section>
           ) : null}
