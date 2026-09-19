@@ -113,10 +113,26 @@ async function activeTestId(): Promise<string | null> {
  * 撮ってある図（Task 12 以降）は、読み込みに成功していることまで見る。
  */
 async function figureProblems(): Promise<string[]> {
-  return page.evaluate(() => {
+  return page.evaluate(async () => {
     const problems: string[] = [];
     const root = document.querySelector('[data-testid="help-prose"]');
     if (root === null) return ['本文（help-prose）がありません'];
+    /*
+     * 本文の図は `loading="lazy"`（決定表 P17）なので、節の下のほうにある図は画面に
+     * 入るまで読み込まれない。まず全部を画面へ送り、読み込みが終わるのを（上限つきで）待つ。
+     * `decode()` で待つと、画面外の遅延読み込みの図では**解決しないまま止まる**ことがある。
+     */
+    const shown = [...root.querySelectorAll<HTMLImageElement>('img[data-manual-image]')];
+    for (const image of shown) image.scrollIntoView({ block: 'center' });
+    const deadline = Date.now() + 5000;
+    while (
+      Date.now() < deadline &&
+      shown.some((image) => (image.getAttribute('src') ?? '') !== '' && !image.complete)
+    ) {
+      await new Promise((done) => {
+        setTimeout(done, 50);
+      });
+    }
     for (const image of root.querySelectorAll('img[data-manual-image]')) {
       const name = (image as HTMLImageElement).dataset['manualImage'] ?? '(名前なし)';
       const source = image.getAttribute('src') ?? '';
@@ -480,14 +496,15 @@ test.describe('ヘルプ（§16 Phase 6 受入基準①②③⑥）', () => {
     await goHome();
   });
 
-  test('受入基準⑥: まだ撮っていない図は枠ごと出ず、PDFのボタンは押せる', async () => {
+  test('受入基準⑥⑧: 図が本文に出て、押すと原寸が開く。PDFのボタンは押せる', async () => {
     await goHome();
     await page.getByTestId('open-help').click();
     await expect(page.getByTestId('help-drawer')).toBeVisible();
 
     /*
      * 図を載せている節（`manual-content.ts` の `imageNames` が空でない節）を回る。
-     * Task 12 で図を撮るまでは全部が畳まれ、撮ったあとは読み込めていることを見る。
+     * Task 12 で図を撮ったので、どの節でも**縮小版が読み込めている**ことまで見る
+     * （撮る前は枠ごと畳まれていることを見ていた。`figureProblems()` は両方を見分ける）。
      */
     for (const [chapterIndex, sectionId, title] of [
       [2, 'screens/ホームの画面', 'ホームの画面'],
@@ -501,6 +518,36 @@ test.describe('ヘルプ（§16 Phase 6 受入基準①②③⑥）', () => {
       // 図の覆いは開いていない（押せない図を押しても何も出ない）
       await expect(page.getByTestId('help-figure-modal')).toHaveCount(0);
     }
+
+    /*
+     * 受入基準⑧: 本文の図（縮小版）を押すと**原寸**が覆いで開き、`Esc` で戻って
+     * 押した図へ焦点が返る。Task 12 で図が入るまでは押せるボタンが1つも無かった。
+     */
+    await showSection(2, 'screens/ホームの画面');
+    const figure = page.locator('[data-testid="help-prose"] button[data-manual-image]').first();
+    await expect(figure).toBeEnabled();
+    const name = await figure.getAttribute('data-manual-image');
+    expect(name).not.toBeNull();
+    const small = await figure.locator('img').getAttribute('src');
+    await figure.click();
+    const modal = page.getByTestId('help-figure-modal');
+    await expect(modal).toBeVisible();
+    const full = page.getByTestId('help-figure-full');
+    await expect(full).toBeVisible();
+    // 覆いに出るのは**原寸**（本文の縮小版とは別の束ね先）で、読み込めている
+    expect(await full.getAttribute('src')).not.toBe(small);
+    expect(
+      await full.evaluate((image) => {
+        const shown = image as HTMLImageElement;
+        return shown.complete && shown.naturalWidth > 0;
+      }),
+    ).toBe(true);
+    await page.keyboard.press('Escape');
+    await expect(modal).toHaveCount(0);
+    await expect(page.getByTestId('help-drawer')).toBeVisible();
+    expect(
+      await page.evaluate(() => document.activeElement?.getAttribute('data-manual-image') ?? null),
+    ).toBe(name);
 
     // 「説明書（PDF）を開く」は出ていて押せる。**押さない**（決定表 P9）
     await expect(page.getByTestId('help-open-pdf')).toBeVisible();

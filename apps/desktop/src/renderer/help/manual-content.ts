@@ -5,6 +5,41 @@
  * 正本との一致は `test/manual-sync.test.ts` がバイト単位で検査する（取扱説明書 設計 §4.3）。
  */
 
+import full_c1_marksheet from '@manual-images/c1-marksheet.png';
+import small_c1_marksheet from '@manual-images/small/c1-marksheet.png';
+import full_c1_tester from '@manual-images/c1-tester.png';
+import small_c1_tester from '@manual-images/small/c1-tester.png';
+import full_c2_repair from '@manual-images/c2-repair.png';
+import small_c2_repair from '@manual-images/small/c2-repair.png';
+import full_help_drawer from '@manual-images/help-drawer.png';
+import small_help_drawer from '@manual-images/small/help-drawer.png';
+import full_home from '@manual-images/home.png';
+import small_home from '@manual-images/small/home.png';
+import full_judge_result from '@manual-images/judge-result.png';
+import small_judge_result from '@manual-images/small/judge-result.png';
+import full_list from '@manual-images/list.png';
+import small_list from '@manual-images/small/list.png';
+import full_plc_ladder from '@manual-images/plc-ladder.png';
+import small_plc_ladder from '@manual-images/small/plc-ladder.png';
+import full_plc_monitor from '@manual-images/plc-monitor.png';
+import small_plc_monitor from '@manual-images/small/plc-monitor.png';
+import full_plc_notation from '@manual-images/plc-notation.png';
+import small_plc_notation from '@manual-images/small/plc-notation.png';
+import full_schematic_editor from '@manual-images/schematic-editor.png';
+import small_schematic_editor from '@manual-images/small/schematic-editor.png';
+import full_session_board from '@manual-images/session-board.png';
+import small_session_board from '@manual-images/small/session-board.png';
+import full_session_terminal from '@manual-images/session-terminal.png';
+import small_session_terminal from '@manual-images/small/session-terminal.png';
+import full_settings from '@manual-images/settings.png';
+import small_settings from '@manual-images/small/settings.png';
+import full_socket_card from '@manual-images/socket-card.png';
+import small_socket_card from '@manual-images/small/socket-card.png';
+import full_timechart from '@manual-images/timechart.png';
+import small_timechart from '@manual-images/small/timechart.png';
+import full_view_cube from '@manual-images/view-cube.png';
+import small_view_cube from '@manual-images/small/view-cube.png';
+
 /** 章（正本のファイル1つ）。 */
 export interface ManualChapter {
   id: string;
@@ -36,23 +71,23 @@ export interface ManualImage {
 
 /** 図の名前 → 置き場所。 */
 export const MANUAL_IMAGES: Readonly<Record<string, ManualImage>> = {
-  "c1-marksheet": { small: '', full: '' },
-  "c1-tester": { small: '', full: '' },
-  "c2-repair": { small: '', full: '' },
-  "help-drawer": { small: '', full: '' },
-  "home": { small: '', full: '' },
-  "judge-result": { small: '', full: '' },
-  "list": { small: '', full: '' },
-  "plc-ladder": { small: '', full: '' },
-  "plc-monitor": { small: '', full: '' },
-  "plc-notation": { small: '', full: '' },
-  "schematic-editor": { small: '', full: '' },
-  "session-board": { small: '', full: '' },
-  "session-terminal": { small: '', full: '' },
-  "settings": { small: '', full: '' },
-  "socket-card": { small: '', full: '' },
-  "timechart": { small: '', full: '' },
-  "view-cube": { small: '', full: '' },
+  "c1-marksheet": { small: small_c1_marksheet, full: full_c1_marksheet },
+  "c1-tester": { small: small_c1_tester, full: full_c1_tester },
+  "c2-repair": { small: small_c2_repair, full: full_c2_repair },
+  "help-drawer": { small: small_help_drawer, full: full_help_drawer },
+  "home": { small: small_home, full: full_home },
+  "judge-result": { small: small_judge_result, full: full_judge_result },
+  "list": { small: small_list, full: full_list },
+  "plc-ladder": { small: small_plc_ladder, full: full_plc_ladder },
+  "plc-monitor": { small: small_plc_monitor, full: full_plc_monitor },
+  "plc-notation": { small: small_plc_notation, full: full_plc_notation },
+  "schematic-editor": { small: small_schematic_editor, full: full_schematic_editor },
+  "session-board": { small: small_session_board, full: full_session_board },
+  "session-terminal": { small: small_session_terminal, full: full_session_terminal },
+  "settings": { small: small_settings, full: full_settings },
+  "socket-card": { small: small_socket_card, full: full_socket_card },
+  "timechart": { small: small_timechart, full: full_timechart },
+  "view-cube": { small: small_view_cube, full: full_view_cube },
 };
 
 /** 章の並び。 */
@@ -301,8 +336,8 @@ export const MANUAL_SECTIONS: readonly ManualSection[] = [
     chapterId: "screens",
     chapterTitle: "画面の見方",
     title: "部品を入れかえる",
-    html: "<p>ソケットをクリックすると、そのソケットのカードが出ます。3D盤のソケット、または装着済みの部品をクリックすると、そのカードで装着・取り外し・交換ができます。</p>\n<p>カードには「ソケット」の名前と、いま乗っている部品（たとえば「リレー MY4N」）が出ます。何も乗っていないソケットでは、のせたい部品を選んで「装着」を押します。「取り外す」で部品を外し、「交換…」を押すと入れ替える部品を「選択」してから「これに交換」を押すと入れ替わります。やめたいときは「交換をやめる」を押します。選んでいるソケットのカードには「選択中」と出ます。</p>\n<p>部品にはリレーとタイマの2種類があります。リレーは電気を流すとすぐに接点が切り替わり、タイマは決めた時間が経ってから切り替わります。</p>\n<p>電気を流したまま部品を入れかえようとすると、「通電中です。実機ではブレーカを切ってから部品を抜き差しします」という注意が出ます。実機では必ずブレーカを切ってから抜き差ししてください。</p>\n<p>図では、①が「装着」、②が「取り外す」、③が「交換…」です。</p>\n<figure class=\"manual-figure\"><button type=\"button\" data-manual-image=\"socket-card\"><img data-manual-image=\"socket-card\" alt=\"ソケットのカード。のせる・外す・入れかえるが並びます。\" loading=\"lazy\" width=\"400\"></button><figcaption>ソケットのカード。のせる・外す・入れかえるが並びます。</figcaption></figure>\n",
-    text: "ソケットをクリックすると、そのソケットのカードが出ます。3D盤のソケット、または装着済みの部品をクリックすると、そのカードで装着・取り外し・交換ができます。 カードには「ソケット」の名前と、いま乗っている部品（たとえば「リレー MY4N」）が出ます。何も乗っていないソケットでは、のせたい部品を選んで「装着」を押します。「取り外す」で部品を外し、「交換…」を押すと入れ替える部品を「選択」してから「これに交換」を押すと入れ替わります。やめたいときは「交換をやめる」を押します。選んでいるソケットのカードには「選択中」と出ます。 部品にはリレーとタイマの2種類があります。リレーは電気を流すとすぐに接点が切り替わり、タイマは決めた時間が経ってから切り替わります。 電気を流したまま部品を入れかえようとすると、「通電中です。実機ではブレーカを切ってから部品を抜き差しします」という注意が出ます。実機では必ずブレーカを切ってから抜き差ししてください。 図では、①が「装着」、②が「取り外す」、③が「交換…」です。",
+    html: "<p>ソケットをクリックすると、そのソケットのカードが出ます。3D盤のソケット、または装着済みの部品をクリックすると、そのカードで装着・取り外し・交換ができます。</p>\n<p>カードには「ソケット」の名前と、いま乗っている部品（たとえば「リレー MY4N」）が出ます。何も乗っていないソケットでは、のせたい部品を選んで「装着」を押します。「取り外す」で部品を外し、「交換…」を押すと入れ替える部品を「選択」してから「これに交換」を押すと入れ替わります。やめたいときは「交換をやめる」を押します。選んでいるソケットのカードには「選択中」と出ます。</p>\n<p>部品にはリレーとタイマの2種類があります。リレーは電気を流すとすぐに接点が切り替わり、タイマは決めた時間が経ってから切り替わります。</p>\n<p>電気を流したまま部品を入れかえようとすると、「通電中です。実機ではブレーカを切ってから部品を抜き差しします」という注意が出ます。実機では必ずブレーカを切ってから抜き差ししてください。</p>\n<p>図は部品が乗っているソケットのカードです。①が「選択中」の控え、②が「取り外す」、③が「交換…」です。まだ何も乗っていないソケットでは、②③のかわりに「装着」が並びます。</p>\n<figure class=\"manual-figure\"><button type=\"button\" data-manual-image=\"socket-card\"><img data-manual-image=\"socket-card\" alt=\"ソケットのカード。のせる・外す・入れかえるが並びます。\" loading=\"lazy\" width=\"400\"></button><figcaption>ソケットのカード。のせる・外す・入れかえるが並びます。</figcaption></figure>\n",
+    text: "ソケットをクリックすると、そのソケットのカードが出ます。3D盤のソケット、または装着済みの部品をクリックすると、そのカードで装着・取り外し・交換ができます。 カードには「ソケット」の名前と、いま乗っている部品（たとえば「リレー MY4N」）が出ます。何も乗っていないソケットでは、のせたい部品を選んで「装着」を押します。「取り外す」で部品を外し、「交換…」を押すと入れ替える部品を「選択」してから「これに交換」を押すと入れ替わります。やめたいときは「交換をやめる」を押します。選んでいるソケットのカードには「選択中」と出ます。 部品にはリレーとタイマの2種類があります。リレーは電気を流すとすぐに接点が切り替わり、タイマは決めた時間が経ってから切り替わります。 電気を流したまま部品を入れかえようとすると、「通電中です。実機ではブレーカを切ってから部品を抜き差しします」という注意が出ます。実機では必ずブレーカを切ってから抜き差ししてください。 図は部品が乗っているソケットのカードです。①が「選択中」の控え、②が「取り外す」、③が「交換…」です。まだ何も乗っていないソケットでは、②③のかわりに「装着」が並びます。",
     hasFigure: true,
     imageNames: ["socket-card"],
   },
@@ -621,8 +656,8 @@ export const MANUAL_SECTIONS: readonly ManualSection[] = [
     chapterId: "mode-d",
     chapterTitle: "PLCでプログラムを作る（モードD）",
     title: "動きを見る",
-    html: "<p>「モニタ開始」を押すと、いま電気が通っているところに色が付きます。色はメーカーごとにちがい、設定で変えられます。</p>\n<p>「モニタ」の欄には「RUN」「STOP」の切り替えボタンと、「デバイス初期化」（内部のデバイスを最初の状態に戻す）ボタンがあります。PLCが停止中のときは「PLCが停止中です。RUN にすると動きます。」と出ます。動かし始めると「運転中（RUN）」に変わり、「スキャン回数」（プログラムを何回まわしたか）が経過秒数とともに増えていきます。まだ動かしていないときは「RUN にすると動きます」とだけ出ます。</p>\n<p>通電している回路の線や接点には色が付きます（「通電」の状態です）。この色は設定の「ラダーの見た目」で変えられます。</p>\n<p>図では、①が「モニタ開始」、②が「RUN」の切り替え、③が「デバイス初期化」、④が「スキャン回数」、⑤が通電の色（電気が通っている線に付く色）です。</p>\n<figure class=\"manual-figure\"><button type=\"button\" data-manual-image=\"plc-monitor\"><img data-manual-image=\"plc-monitor\" alt=\"モードDのモニタ。通電しているところに色が付きます。\" loading=\"lazy\" width=\"400\"></button><figcaption>モードDのモニタ。通電しているところに色が付きます。</figcaption></figure>\n",
-    text: "「モニタ開始」を押すと、いま電気が通っているところに色が付きます。色はメーカーごとにちがい、設定で変えられます。 「モニタ」の欄には「RUN」「STOP」の切り替えボタンと、「デバイス初期化」（内部のデバイスを最初の状態に戻す）ボタンがあります。PLCが停止中のときは「PLCが停止中です。RUN にすると動きます。」と出ます。動かし始めると「運転中（RUN）」に変わり、「スキャン回数」（プログラムを何回まわしたか）が経過秒数とともに増えていきます。まだ動かしていないときは「RUN にすると動きます」とだけ出ます。 通電している回路の線や接点には色が付きます（「通電」の状態です）。この色は設定の「ラダーの見た目」で変えられます。 図では、①が「モニタ開始」、②が「RUN」の切り替え、③が「デバイス初期化」、④が「スキャン回数」、⑤が通電の色（電気が通っている線に付く色）です。",
+    html: "<p>「モニタ開始」を押すと、いま電気が通っているところに色が付きます。色はメーカーごとにちがい、設定で変えられます。</p>\n<p>運転と停止を切り替えるボタンは、ラダーの上の帯にあります。止まっているときは「RUN」と出ていて、押すと運転になり、運転中は「STOP」と出ます。「モニタ」の欄には「デバイス初期化」（内部のデバイスを最初の状態に戻す）ボタンがあります。PLCが停止中のときは「PLCが停止中です。RUN にすると動きます。」と出ます。動かし始めると「運転中（RUN）」に変わり、「スキャン回数」（プログラムを何回まわしたか）が経過秒数とともに増えていきます。まだ動かしていないときは「RUN にすると動きます」とだけ出ます。</p>\n<p>通電している回路の線や接点には色が付きます（「通電」の状態です）。この色は設定の「ラダーの見た目」で変えられます。</p>\n<p>図では、①が「モニタ開始」、②が「RUN」と「STOP」を切り替えるボタン（図は運転中なので「STOP」と出ています）、③が「デバイス初期化」、④が「スキャン回数」、⑤が通電の色（電気が通っている線に付く色）です。</p>\n<figure class=\"manual-figure\"><button type=\"button\" data-manual-image=\"plc-monitor\"><img data-manual-image=\"plc-monitor\" alt=\"モードDのモニタ。通電しているところに色が付きます。\" loading=\"lazy\" width=\"400\"></button><figcaption>モードDのモニタ。通電しているところに色が付きます。</figcaption></figure>\n",
+    text: "「モニタ開始」を押すと、いま電気が通っているところに色が付きます。色はメーカーごとにちがい、設定で変えられます。 運転と停止を切り替えるボタンは、ラダーの上の帯にあります。止まっているときは「RUN」と出ていて、押すと運転になり、運転中は「STOP」と出ます。「モニタ」の欄には「デバイス初期化」（内部のデバイスを最初の状態に戻す）ボタンがあります。PLCが停止中のときは「PLCが停止中です。RUN にすると動きます。」と出ます。動かし始めると「運転中（RUN）」に変わり、「スキャン回数」（プログラムを何回まわしたか）が経過秒数とともに増えていきます。まだ動かしていないときは「RUN にすると動きます」とだけ出ます。 通電している回路の線や接点には色が付きます（「通電」の状態です）。この色は設定の「ラダーの見た目」で変えられます。 図では、①が「モニタ開始」、②が「RUN」と「STOP」を切り替えるボタン（図は運転中なので「STOP」と出ています）、③が「デバイス初期化」、④が「スキャン回数」、⑤が通電の色（電気が通っている線に付く色）です。",
     hasFigure: true,
     imageNames: ["plc-monitor"],
   },
@@ -631,8 +666,8 @@ export const MANUAL_SECTIONS: readonly ManualSection[] = [
     chapterId: "mode-d",
     chapterTitle: "PLCでプログラムを作る（モードD）",
     title: "別のメーカーの書き方に変える",
-    html: "<p>上の帯の「表記切替」を押すと、いま書いたプログラムを別のメーカーの書き方で表示できます。プログラムそのものは書き換わりません。</p>\n<p>窓には「どのメーカーの表記にしますか？」と出て、いまと別の3社（たとえば「オムロン」）から選びます。課題の入出力の割り付けが、その機種に収まらないメーカーは選べず、「このメーカーには切り替えられません」と理由が添えられます。切り替え先を選ぶと「機種も切り替わるため、盤の配線はやり直しになります」という注意と、「デバイスの書き方」の一覧（<code>X0</code> が <code>0.00</code> になるなど、いまの表記と切替後の表記の対応）が出ます。タイマ・カウンタの設定値の書き方が変わる場合も同じように一覧になります。「切替後の表記で表せない項目」があれば、それも一覧で出ます。よければ「この表記に切り替える」を押して確定し、「取消」でやめます。窓は「閉じる」でも閉じられます。切り替えると、画面いちばん上のタイトル帯のメーカー名も変わり、上の帯のボタンの名前も、そのメーカーの実機の操作パネルの項目に変わります。</p>\n<p>図では、①が「表記切替」、②が「デバイスの書き方」の一覧、③が「この表記に切り替える」です。</p>\n<figure class=\"manual-figure\"><button type=\"button\" data-manual-image=\"plc-notation\"><img data-manual-image=\"plc-notation\" alt=\"表記の切替。切替先のメーカーと、変わる名前の一覧が出ます。\" loading=\"lazy\" width=\"400\"></button><figcaption>表記の切替。切替先のメーカーと、変わる名前の一覧が出ます。</figcaption></figure>\n",
-    text: "上の帯の「表記切替」を押すと、いま書いたプログラムを別のメーカーの書き方で表示できます。プログラムそのものは書き換わりません。 窓には「どのメーカーの表記にしますか？」と出て、いまと別の3社（たとえば「オムロン」）から選びます。課題の入出力の割り付けが、その機種に収まらないメーカーは選べず、「このメーカーには切り替えられません」と理由が添えられます。切り替え先を選ぶと「機種も切り替わるため、盤の配線はやり直しになります」という注意と、「デバイスの書き方」の一覧（ X0 が 0.00 になるなど、いまの表記と切替後の表記の対応）が出ます。タイマ・カウンタの設定値の書き方が変わる場合も同じように一覧になります。「切替後の表記で表せない項目」があれば、それも一覧で出ます。よければ「この表記に切り替える」を押して確定し、「取消」でやめます。窓は「閉じる」でも閉じられます。切り替えると、画面いちばん上のタイトル帯のメーカー名も変わり、上の帯のボタンの名前も、そのメーカーの実機の操作パネルの項目に変わります。 図では、①が「表記切替」、②が「デバイスの書き方」の一覧、③が「この表記に切り替える」です。",
+    html: "<p>上の帯の「表記切替」を押すと、いま書いたプログラムを別のメーカーの書き方で表示できます。プログラムそのものは書き換わりません。</p>\n<p>窓には「どのメーカーの表記にしますか？」と出て、いまと別の3社（たとえば「オムロン」）から選びます。課題の入出力の割り付けが、その機種に収まらないメーカーは選べず、「このメーカーには切り替えられません」と理由が添えられます。切り替え先を選ぶと「機種も切り替わるため、盤の配線はやり直しになります」という注意と、「デバイスの書き方」の一覧（<code>X0</code> が <code>0.00</code> になるなど、いまの表記と切替後の表記の対応）が出ます。タイマ・カウンタの設定値の書き方が変わる場合も同じように一覧になります。「切替後の表記で表せない項目」があれば、それも一覧で出ます。よければ「この表記に切り替える」を押して確定し、「取消」でやめます。窓は「閉じる」でも閉じられます。切り替えると、画面いちばん上のタイトル帯のメーカー名も変わり、上の帯のボタンの名前も、そのメーカーの実機の操作パネルの項目に変わります。</p>\n<p>図では、①が「表記切替」、②が「デバイスの書き方」の一覧、③が切り替えを確かめるボタンです（メーカーを選ぶ前は「この表記に切り替える」、選んだあとは図のようにそのメーカーの名前が入ります）。</p>\n<figure class=\"manual-figure\"><button type=\"button\" data-manual-image=\"plc-notation\"><img data-manual-image=\"plc-notation\" alt=\"表記の切替。切替先のメーカーと、変わる名前の一覧が出ます。\" loading=\"lazy\" width=\"400\"></button><figcaption>表記の切替。切替先のメーカーと、変わる名前の一覧が出ます。</figcaption></figure>\n",
+    text: "上の帯の「表記切替」を押すと、いま書いたプログラムを別のメーカーの書き方で表示できます。プログラムそのものは書き換わりません。 窓には「どのメーカーの表記にしますか？」と出て、いまと別の3社（たとえば「オムロン」）から選びます。課題の入出力の割り付けが、その機種に収まらないメーカーは選べず、「このメーカーには切り替えられません」と理由が添えられます。切り替え先を選ぶと「機種も切り替わるため、盤の配線はやり直しになります」という注意と、「デバイスの書き方」の一覧（ X0 が 0.00 になるなど、いまの表記と切替後の表記の対応）が出ます。タイマ・カウンタの設定値の書き方が変わる場合も同じように一覧になります。「切替後の表記で表せない項目」があれば、それも一覧で出ます。よければ「この表記に切り替える」を押して確定し、「取消」でやめます。窓は「閉じる」でも閉じられます。切り替えると、画面いちばん上のタイトル帯のメーカー名も変わり、上の帯のボタンの名前も、そのメーカーの実機の操作パネルの項目に変わります。 図では、①が「表記切替」、②が「デバイスの書き方」の一覧、③が切り替えを確かめるボタンです（メーカーを選ぶ前は「この表記に切り替える」、選んだあとは図のようにそのメーカーの名前が入ります）。",
     hasFigure: true,
     imageNames: ["plc-notation"],
   },
@@ -671,8 +706,8 @@ export const MANUAL_SECTIONS: readonly ManualSection[] = [
     chapterId: "schematic",
     chapterTitle: "回路図を描いて確かめる",
     title: "回路図を描く",
-    html: "<p>左に電源の＋、右に電源の−があり、そのあいだに横向きの段を並べていきます。矢印キーで置く場所を動かし、左のパレットから置きたい記号を選んで <code>Enter</code> を押すと置けます。<code>Delete</code> で消し、<code>Insert</code> で段を1本ふやし、<code>Ctrl+Z</code> でひとつ前に戻し、<code>Ctrl+Y</code> でやり直せます。</p>\n<p>段そのものを消したいときは <code>Ctrl+Delete</code> を押します。いまの書き込み場所（カーソル）は、画面のどこにあるかが常に分かるように示されます。書き込む場所（図の桁）は矢印キーで動かします。</p>\n<p>パレット（「置ける要素」）には、押ボタンのa接点・b接点、リレーのa接点・b接点、タイマのa接点・b接点、コイル、ランプ、ブザー（課題にブザーがあるときだけ）が並びます。盤に無い部品はパレットに出ません。</p>\n<p>描いている途中のまま置いておけて、足りないところは下に指摘として出続けます。描いた回路図をぜんぶ消したいときはツールバーの「全部消す」を押します。「描いた回路図をすべて消します。よろしいですか？」とたずねられるので、「はい、全部消す」で消し、「やめる」でやめます。段を足すときは「段を追加」、消すときは「段を削除」を押します。</p>\n<p>図では、①が左のパレット、②が「段を追加」、③が「段を削除」、④が「全部消す」、⑤が検算の結果（「検算 合格」または「検算 不合格」）です。</p>\n<figure class=\"manual-figure\"><button type=\"button\" data-manual-image=\"schematic-editor\"><img data-manual-image=\"schematic-editor\" alt=\"回路図エディタと検算の結果。\" loading=\"lazy\" width=\"400\"></button><figcaption>回路図エディタと検算の結果。</figcaption></figure>\n",
-    text: "左に電源の＋、右に電源の−があり、そのあいだに横向きの段を並べていきます。矢印キーで置く場所を動かし、左のパレットから置きたい記号を選んで Enter を押すと置けます。 Delete で消し、 Insert で段を1本ふやし、 Ctrl+Z でひとつ前に戻し、 Ctrl+Y でやり直せます。 段そのものを消したいときは Ctrl+Delete を押します。いまの書き込み場所（カーソル）は、画面のどこにあるかが常に分かるように示されます。書き込む場所（図の桁）は矢印キーで動かします。 パレット（「置ける要素」）には、押ボタンのa接点・b接点、リレーのa接点・b接点、タイマのa接点・b接点、コイル、ランプ、ブザー（課題にブザーがあるときだけ）が並びます。盤に無い部品はパレットに出ません。 描いている途中のまま置いておけて、足りないところは下に指摘として出続けます。描いた回路図をぜんぶ消したいときはツールバーの「全部消す」を押します。「描いた回路図をすべて消します。よろしいですか？」とたずねられるので、「はい、全部消す」で消し、「やめる」でやめます。段を足すときは「段を追加」、消すときは「段を削除」を押します。 図では、①が左のパレット、②が「段を追加」、③が「段を削除」、④が「全部消す」、⑤が検算の結果（「検算 合格」または「検算 不合格」）です。",
+    html: "<p>左に電源の＋、右に電源の−があり、そのあいだに横向きの段を並べていきます。矢印キーで置く場所を動かし、左のパレットから置きたい記号を選んで <code>Enter</code> を押すと置けます。<code>Delete</code> で消し、<code>Insert</code> で段を1本ふやし、<code>Ctrl+Z</code> でひとつ前に戻し、<code>Ctrl+Y</code> でやり直せます。</p>\n<p>段そのものを消したいときは <code>Ctrl+Delete</code> を押します。いまの書き込み場所（カーソル）は、画面のどこにあるかが常に分かるように示されます。書き込む場所（図の桁）は矢印キーで動かします。</p>\n<p>パレット（「置ける要素」）には、押ボタンのa接点・b接点、リレーのa接点・b接点、タイマのa接点・b接点、コイル、ランプ、ブザー（課題にブザーがあるときだけ）が並びます。盤に無い部品はパレットに出ません。</p>\n<p>描いている途中のまま置いておけて、足りないところは下に指摘として出続けます。描いた回路図をぜんぶ消したいときはツールバーの「全部消す」を押します。「描いた回路図をすべて消します。よろしいですか？」とたずねられるので、「はい、全部消す」で消し、「やめる」でやめます。段を足すときは「段を追加」、消すときは「段を削除」を押します。</p>\n<p>図では、①が左のパレット、②が「段を追加」、③が「段を削除」、④が「全部消す」、⑤が「回路図の指摘」です。「検算」を押すと、⑤のさらに下に検算の結果（「検算 合格」または「検算 不合格」）が出ます。エディタの欄は縦が短いので、結果を読むときはエディタの欄をすこし下へ送ってください。</p>\n<figure class=\"manual-figure\"><button type=\"button\" data-manual-image=\"schematic-editor\"><img data-manual-image=\"schematic-editor\" alt=\"回路図エディタと回路図の指摘。\" loading=\"lazy\" width=\"400\"></button><figcaption>回路図エディタと回路図の指摘。</figcaption></figure>\n",
+    text: "左に電源の＋、右に電源の−があり、そのあいだに横向きの段を並べていきます。矢印キーで置く場所を動かし、左のパレットから置きたい記号を選んで Enter を押すと置けます。 Delete で消し、 Insert で段を1本ふやし、 Ctrl+Z でひとつ前に戻し、 Ctrl+Y でやり直せます。 段そのものを消したいときは Ctrl+Delete を押します。いまの書き込み場所（カーソル）は、画面のどこにあるかが常に分かるように示されます。書き込む場所（図の桁）は矢印キーで動かします。 パレット（「置ける要素」）には、押ボタンのa接点・b接点、リレーのa接点・b接点、タイマのa接点・b接点、コイル、ランプ、ブザー（課題にブザーがあるときだけ）が並びます。盤に無い部品はパレットに出ません。 描いている途中のまま置いておけて、足りないところは下に指摘として出続けます。描いた回路図をぜんぶ消したいときはツールバーの「全部消す」を押します。「描いた回路図をすべて消します。よろしいですか？」とたずねられるので、「はい、全部消す」で消し、「やめる」でやめます。段を足すときは「段を追加」、消すときは「段を削除」を押します。 図では、①が左のパレット、②が「段を追加」、③が「段を削除」、④が「全部消す」、⑤が「回路図の指摘」です。「検算」を押すと、⑤のさらに下に検算の結果（「検算 合格」または「検算 不合格」）が出ます。エディタの欄は縦が短いので、結果を読むときはエディタの欄をすこし下へ送ってください。",
     hasFigure: true,
     imageNames: ["schematic-editor"],
   },

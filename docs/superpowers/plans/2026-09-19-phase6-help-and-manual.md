@@ -5126,7 +5126,7 @@ git show --stat HEAD
 
 **このタスクは Task 1〜11 がすべて landed し、全画面のUX直しが終わってから始める**（利用者の決定 2026-09-19）。画面を直すたびに17枚を撮り直すのは無駄で、撮り直しを忘れた図が残るほうが害が大きい。
 
-- [ ] **Step 1: 失敗するテストを書く（吹き出しの HTML）**
+- [x] **Step 1: 失敗するテストを書く（吹き出しの HTML）**
 
 `apps/desktop/test/annotate-shots.test.ts`:
 
@@ -5199,7 +5199,7 @@ describe('吹き出しの HTML', () => {
 
 期待（Step 2 のあと）: **6件通る**。
 
-- [ ] **Step 2: 吹き出しの HTML を組む純関数を作る**
+- [x] **Step 2: 吹き出しの HTML を組む純関数を作る**
 
 `apps/desktop/scripts/annotate-shots.mjs`:
 
@@ -5326,7 +5326,7 @@ export declare function overlayHtml(
 export declare function finishedSize(geometry: ShotGeometry, size: Size): Size;
 ```
 
-- [ ] **Step 3: 撮る E2E を書く**
+- [x] **Step 3: 撮る E2E を書く**
 
 `apps/desktop/e2e/manual-shots.spec.ts` は次の形にする。**17枚ぶんの「その画面まで動かす手順」は既存6本の E2E（`smoke` / `inspect` / `plc` / `chart` / `polish` / `schematic`）から写す**——同じ課題・同じ操作で同じ画面まで行けるので、新しい動かし方を考える必要はない。
 
@@ -5470,7 +5470,7 @@ test.describe('取扱説明書の図', () => {
 
 **注記**: 仕上げ用のページは、Electron の `BrowserWindow` ではなく Playwright が開く**別のページ**である。`app.firstWindow()` の `context()` から `newPage()` を取れないときは、`test.use({ browserName: 'chromium' })` の別ファイルに分けるか、Electron 側で隠しウィンドウを1枚作って `loadURL('data:text/html,…')` で同じことをする。**どちらでもよいが、素のPNGと仕上げのPNGが別物として残ることは変えない**（素のPNGは git に入れない）。
 
-- [ ] **Step 4: 位置を決めて撮る**
+- [x] **Step 4: 位置を決めて撮る**
 
 ```
 pnpm --filter @ojt/desktop build
@@ -5499,7 +5499,7 @@ pnpm --filter @ojt/desktop e2e manual-shots
 # 期待: docs/manual/images/ に17枚できる
 ```
 
-- [ ] **Step 5: 失敗するテストを書く（画像）**
+- [x] **Step 5: 失敗するテストを書く（画像）**
 
 `apps/desktop/test/manual-images.test.ts`:
 
@@ -5609,7 +5609,7 @@ describe('縮小版（利用者の決定 2026-09-20）', () => {
 
 期待: **8つの検査項目**（`it.each` を含めると17×3＋5）。
 
-- [ ] **Step 6: 300KB を超えた図を直す**
+- [x] **Step 6: 300KB を超えた図を直す**
 
 ```
 pnpm --filter @ojt/desktop test manual-images
@@ -5623,7 +5623,7 @@ pnpm --filter @ojt/desktop test manual-images
 # 期待: すべて通る
 ```
 
-- [ ] **Step 7: 生成物を作り直して通しで確かめる**
+- [x] **Step 7: 生成物を作り直して通しで確かめる**
 
 `.gitignore` に足す:
 
@@ -5644,7 +5644,7 @@ pnpm --filter @ojt/desktop e2e
 # 期待: すべて通る（2回連続）
 ```
 
-- [ ] **Step 8: commit**
+- [x] **Step 8: commit**
 
 ```
 git add apps/desktop/scripts/annotate-shots.mjs apps/desktop/scripts/annotate-shots.d.mts apps/desktop/e2e/manual-shots.spec.ts apps/desktop/test/annotate-shots.test.ts apps/desktop/test/manual-images.test.ts docs/manual/shot-geometry.json docs/manual/images .gitignore apps/desktop/src/renderer/help/manual-content.ts
@@ -5710,27 +5710,27 @@ git show --stat HEAD
 
 **機能:**
 
-- [ ] `pnpm -r test` が7プロジェクトすべて通る（**BL-1 直し・2026-09-20 C〜Eレビュー対応時点の実測**: 前回の [x]「desktop 123件」は `it.each` 展開後の実数と合わず誤りだった。バッチの最後に `pnpm --filter @ojt/desktop test --no-file-parallelism` を走らせた結果は**緑、140 files / 2072 tests**（うち manual-style 60・manual-coverage 18・manual-shots 5・manual-appdata 24・help-entry 9 の116件を含む）。`pnpm -r test`（7プロジェクト）も全部緑（circuit-sim 247／ladder-core 115／plc-dialects 219／board-model 261／schematic-core 138／content 654／desktop 2072）。共有ツリーには他エージェントが並行して足しているファイル（`three/camera.ts`・`three/label-declutter.*` など）も混ざっており、desktop の内訳は Phase 6 だけのものではなく**その時点のツリー全体の実測**である（実行の途中では他エージェントの未完了差分に起因して `test/view-gizmo.test.tsx` が赤くなる瞬間もあったが、最終確認時点では解消していた）。**Task 12（`annotate-shots` ＋ `manual-images`、あわせて14件）はまだ着地していない**。ツリーが動くたびに実測は変わるので、この箱は次に見る人が自分で走らせて確かめるまで開けたままにする）。
+- [x] `pnpm -r test` が7プロジェクトすべて通る（**BL-1 直し・2026-09-20 C〜Eレビュー対応時点の実測**: 前回の [x]「desktop 123件」は `it.each` 展開後の実数と合わず誤りだった。バッチの最後に `pnpm --filter @ojt/desktop test --no-file-parallelism` を走らせた結果は**緑、140 files / 2072 tests**（うち manual-style 60・manual-coverage 18・manual-shots 5・manual-appdata 24・help-entry 9 の116件を含む）。`pnpm -r test`（7プロジェクト）も全部緑（circuit-sim 247／ladder-core 115／plc-dialects 219／board-model 261／schematic-core 138／content 654／desktop 2072）。共有ツリーには他エージェントが並行して足しているファイル（`three/camera.ts`・`three/label-declutter.*` など）も混ざっており、desktop の内訳は Phase 6 だけのものではなく**その時点のツリー全体の実測**である（実行の途中では他エージェントの未完了差分に起因して `test/view-gizmo.test.tsx` が赤くなる瞬間もあったが、最終確認時点では解消していた）。**Task 12（`annotate-shots` ＋ `manual-images`、あわせて14件）はまだ着地していない**。ツリーが動くたびに実測は変わるので、この箱は次に見る人が自分で走らせて確かめるまで開けたままにする）。（**Task 12 2026-09-20**: 図が入ったあとの実測: `pnpm -r test` 7プロジェクトすべて緑。desktop は **142 files / 2199 tests**（Task 12 で `annotate-shots.test.ts` 17件と `manual-images.test.ts` 76件を追加。`it.each` 展開後の実数）。circuit-sim 247／ladder-core 115／plc-dialects 219／board-model 261／schematic-core 138／content 654）
 - [x] `pnpm -r typecheck` と `pnpm lint`（`import-x/no-cycle` ＋ `react-hooks` 込み）が無警告で通る。（**BL-1 直し・2026-09-20**: `pnpm --filter @ojt/desktop typecheck` は緑。`pnpm lint` は途中 `apps/desktop/e2e/plc-vendors.spec.ts:252` の `no-unsafe-finally`（`aa449fe` Batch E 由来。ファイル自体は別エージェントの持ち物）で赤だったが、本バッチの最後に再実行したところ**別エージェントの直しが着地しており `pnpm lint` は exit 0**。ここで閉じる）。
 - [x] `npx prettier --check "apps/desktop/**/*.{ts,tsx,css}" "packages/**/*.ts" "README.md"` が `All matched files use Prettier code style!` を出す（`docs/` と生成物 `manual-content.ts` は `.prettierignore` の対象）。
-- [ ] `pnpm --filter @ojt/desktop e2e` が既存＋新規のすべて通る。**2回連続で通ること。**（**Task 11 2026-09-20**: 新規の `help.spec.ts` は **8 passed が2回連続**。既存のうち **13本が `origin/main` の時点で赤**——`inspect` 1・`plc-vendors` 6・`plc` 4・`smoke` 1・`ui-quality` の集計 1——で、いずれも画面が先に直ってスペックが追いついていないずれ。別エージェントが整列中なので**この箱は開けたまま**にする）
+- [ ] `pnpm --filter @ojt/desktop e2e` が既存＋新規のすべて通る。**2回連続で通ること。**（**Task 11 2026-09-20**: 新規の `help.spec.ts` は **8 passed が2回連続**。既存のうち **13本が `origin/main` の時点で赤**——`inspect` 1・`plc-vendors` 6・`plc` 4・`smoke` 1・`ui-quality` の集計 1——で、いずれも画面が先に直ってスペックが追いついていないずれ。別エージェントが整列中なので**この箱は開けたまま**にする。**Task 12 2026-09-20**: 新規の `e2e/manual-shots.spec.ts` は **7 passed が2回連続**、`e2e/help.spec.ts` は 受入基準⑥⑧を足したうえで **9 passed**。既存スペックの赤はこのタスクでは触っていない）
 - [x] **受入基準①**: ホーム・課題一覧・設定・モードB・C1・C2・D・回路図・結果の**9画面すべて**で `F1` を押すとヘルプが開き、その画面の節が最初に出る。もう一度 `F1` で閉じる。モードDのラダー編集で押しても同じ引き出しが開き、**トーストは出ない**。
 - [x] **受入基準②**: 検索欄に「自己保持」と入れると該当節が一覧に出て、押すとその節へ跳ぶ。0件のときは「見つかりませんでした。別の言葉で探してください。」が出る。
 - [ ] **受入基準③**: 「説明書（PDF）を開く」が全画面のヘルプにあり、押すと同梱の PDF が OS の既定ビューアで開く（リリース手順チェックリスト 8b で人が確かめる）。PDF が無いときは「説明書（PDF）が見つかりません。もくじから同じ内容を読めます。」が出る。（**Task 11 2026-09-20**: 「9画面すべてのヘルプにあって押せる」までは `help.spec.ts` が緑。**押さない**ので、実際にビューアが開くことは人の確認、欠落時の文言は `manual-ipc.test.ts` の担当。決定表 P9）
 - [ ] **受入基準④**: `pnpm --filter @ojt/desktop dist` が NSIS とポータブルを出し、両方の `resources/manual.pdf` が 0 バイトでなく、`release/artifacts.md` に PDF の行（バイト数と SHA256）が載る。
 - [x] **受入基準⑤**: `manual-coverage.test.ts` が通る（機能一覧表の `controls` が画面の目印と完全一致し、すべての行が節か内部用の理由を持ち、`keys` / `gestures` / `messages` が本文に出ている）。`manual-style.test.ts` の禁止語が **0件**。
 - [x] **受入基準⑥**: `manual-sync.test.ts` が通る（正本から作り直した `manual-content.ts` がいまのファイルとバイト一致し、印刷用 HTML から取り出した節ID・見出し・素の文がアプリ内ヘルプのそれと完全一致）。
-- [ ] **受入基準⑦**: `docs/manual/images/` のファイル名の集合が `shots.json` の鍵と完全一致（作り絵が1枚も紛れていない）。原寸は **300KB 以下**で寸法が `shot-geometry.json` の指定どおり、フォルダ合計 6MB 以下。`images/small/` に同じ名前の縮小版が揃い、**幅400px・80KB 以下**、合計 1.5MB 以下。図を載せた節の本文が吹き出しの番号（①②③）と `label` を指している。
-- [ ] **受入基準⑧**: アプリ内ヘルプの本文に**同梱 PDF と同じ図**が縮小版で出る（`manual-sync.test.ts` が節ごとに図の名前の並びを照合）。図を押すか `Enter` で原寸が覆いで開き、`Esc`・「図を閉じる」・背面で戻って**元の図のボタンに焦点が返る**。まだ撮っていない図は描かれず、そのボタンも押せない。
+- [x] **受入基準⑦**: `docs/manual/images/` のファイル名の集合が `shots.json` の鍵と完全一致（作り絵が1枚も紛れていない）。原寸は **300KB 以下**で寸法が `shot-geometry.json` の指定どおり、フォルダ合計 6MB 以下。`images/small/` に同じ名前の縮小版が揃い、**幅400px・80KB 以下**、合計 1.5MB 以下。図を載せた節の本文が吹き出しの番号（①②③）と `label` を指している。（**Task 12 2026-09-20**: `manual-images.test.ts` が緑。原寸17枚は最大 **241,734 バイト**・合計 **2,145,908 バイト**、縮小版は全部 幅400px・最大 **65,421 バイト**・合計 **724,441 バイト**。寸法は `shot-geometry.json` の `crop` と一致（`finishedSize()` で照合）。`shots.json` に無い PNG は1枚も無い。本文と番号・`label` の対応は `manual-shots.test.ts` が担当）
+- [x] **受入基準⑧**: アプリ内ヘルプの本文に**同梱 PDF と同じ図**が縮小版で出る（`manual-sync.test.ts` が節ごとに図の名前の並びを照合）。図を押すか `Enter` で原寸が覆いで開き、`Esc`・「図を閉じる」・背面で戻って**元の図のボタンに焦点が返る**。まだ撮っていない図は描かれず、そのボタンも押せない。（**Task 12 2026-09-20**: `manual-sync.test.ts` が節ごとの図の並びまで照合して緑。`e2e/help.spec.ts` の受入基準⑥⑧で、本文に縮小版が読み込まれ、押すと原寸（別のURL）が覆いで開き、`Esc` で閉じて**元の図のボタンへ焦点が返る**ことまで確かめた）
 
 **利用者要求（2026-09-19）:**
 
 - [x] **内容の一致**: 説明書の本文が `i18n/ja.ts` に1文字も無い（`JA.help` の値はすべて40文字以下で、キーは決めた12個だけ）。C1の判定表・モードDのキー割当・設定の説明文・商標注記が、コード側の実体と**1行ずつ一致**している（`manual-appdata.test.ts`）。
 - [x] **全機能の解説**: 画面の `data-testid` を1つでも足すと `feature-inventory.test.ts` が落ち、説明書に書くか内部用の理由を書くまで通らない。
 - [x] **専門用語なし**: `style.json` の禁止語が本文に0件。`terms.json` の専門用語はすべて初出が `**用語**（15文字以上の説明）` の形で、用語集に20文字以上の説明がある。
-- [ ] **実画面の図**: 図はすべてアプリを動かして撮ったもので、説明する操作要素の上に丸数字と枠がある。
+- [x] **実画面の図**: 図はすべてアプリを動かして撮ったもので、説明する操作要素の上に丸数字と枠がある。（**Task 12 2026-09-20**: 17枚すべて `e2e/manual-shots.spec.ts` がアプリを動かして撮った実画面。吹き出しの位置は `boundingBox()`／3Dの射影（`projection.ts`）／`gizmoLayoutForViewport()` の**実測**で、手で書いた画素は1つも無い。ラベルは指すものの外に出して引き出し線で結び、`planCallouts()` と `manual-images.test.ts` が「指すものを隠さない・ほかの吹き出しと重ならない・図からはみ出さない」を機械で縛る）
 - [ ] **図もヘルプに出る**（利用者の決定 2026-09-20）: 説明書とヘルプの一致が本文だけでなく**図**にも及ぶ（どの節にどの図が何番目に出るかまで一致）。asar の増加が **3MB 以下**（`release/artifacts.md` のバイト数で前の版と比べる）。
-- [ ] **図は最後**: Task 12 より前のどの commit でも `pnpm -r test` が通る（`manual-images.test.ts` が Task 12 で初めて入るため、図が無いあいだも赤にならない）。
+- [x] **図は最後**: Task 12 より前のどの commit でも `pnpm -r test` が通る（`manual-images.test.ts` が Task 12 で初めて入るため、図が無いあいだも赤にならない）。（**Task 12 2026-09-20**: `manual-images.test.ts` は本タスクで初めて入れた。それより前の commit は図が無くても緑のまま）
 
 **画面の品質:**
 
