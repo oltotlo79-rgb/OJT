@@ -122,22 +122,47 @@ describe('端子の印字は端子台の色に合わせて焼く（4B レビュ�
   });
 });
 
-describe('焼いたテクスチャの解放（4B レビュー M10）', () => {
-  it('disposes the PLC print texture on unmount', () => {
+/*
+ * M10（4B）はもともと「アンマウントのたびに自前で dispose する」ことを求めていたが、
+ * Task 13（Plan 5）で `blockFaceTexture()` が `labels.ts` の共有キャッシュ
+ * （`faceTextureCache`）を返すようになった後もそのままだったため、機種切替・
+ * セッション離脱のたびに**他の消費先とも共有している**テクスチャを破棄済みにしてしまって
+ * いた（I2: Plan 5 C/D レビュー）。寿命はキャッシュが持つので、いまは逆に
+ * **`dispose()` を呼ばない**ことを固定する。
+ */
+describe('焼いたテクスチャの解放は共有キャッシュの責任（I2: Plan 5 C/D レビュー、旧M10）', () => {
+  afterEach(() => {
+    labels.clearFaceTextureCache();
+  });
+
+  it('does not dispose the PLC print texture on unmount (it is shared, I2)', () => {
     stubCanvas2d();
     const dispose = vi.spyOn(CanvasTexture.prototype, 'dispose');
     const { unmount } = renderUnit();
     expect(dispose).not.toHaveBeenCalled();
     unmount();
-    expect(dispose).toHaveBeenCalledTimes(1);
+    expect(dispose).not.toHaveBeenCalled();
   });
 
-  it('disposes the rack print texture on unmount', () => {
+  it('does not dispose the rack print texture on unmount (it is shared, I2)', () => {
     stubCanvas2d();
     const dispose = vi.spyOn(CanvasTexture.prototype, 'dispose');
     const { unmount } = renderRack();
     unmount();
-    expect(dispose).toHaveBeenCalledTimes(1);
+    expect(dispose).not.toHaveBeenCalled();
+  });
+
+  it('keeps the cache entry alive across unmount, so a re-mount does not add a second copy', () => {
+    stubCanvas2d();
+    const before = renderRack();
+    const sizeAfterFirstMount = labels.faceTextureCacheSize();
+    expect(sizeAfterFirstMount).toBeGreaterThan(0);
+    before.unmount();
+    // 破棄していれば、キャッシュに入れ直した2枚目ぶん件数が増える（またはテクスチャが
+    // 破棄済みのまま配られる）。ここではキャッシュの件数が増えないことを固定する。
+    const after = renderRack();
+    expect(labels.faceTextureCacheSize()).toBe(sizeAfterFirstMount);
+    after.unmount();
   });
 });
 

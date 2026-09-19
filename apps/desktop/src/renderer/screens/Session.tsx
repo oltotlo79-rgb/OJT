@@ -214,6 +214,18 @@ export function Session(): JSX.Element {
   const sessionEpoch = useStore((s) => s.sessionEpoch);
 
   /*
+   * 回路図ヒントの出し方は級で決まる（§8.4）。3級は常時表示で開閉ボタンを出さない、
+   * 2級は開閉できて初期は閉じる、1級は出さない。開閉できない級ではストアの値を見ずに
+   * 規則そのものを見るので、何かの拍子に `schematicVisible` が倒れても3級の表示は消えない。
+   * **hooks より前に置く**（B1）: 3D側の逆引き（`latestIndex` / `onHover`）が「いま回路図を
+   * 出しているか」を見て初めてハイライトを許すため。ここで漏らすと、1級（回路図を一切出さない）
+   * や2級で閉じているあいだも、盤の端子にホバーするだけで模範回路の答えが輪で漏れてしまう。
+   */
+  const policy = problem === undefined ? undefined : schematicPolicy(problem.grade);
+  const showSchematic =
+    policy !== undefined && (policy.toggleable ? schematicVisible : policy.shown);
+
+  /*
    * 課題を開いたら Worker を起動して `load` を送る（§4.3）。
    * 依存に `sessionEpoch` を入れるのは、**同じ課題**をやり直したとき（結果画面の「もう一度」、
    * 例外バナーの「セッションをリセット」）に `problemId` が変わらず、この効果が張り直されないため。
@@ -406,10 +418,18 @@ export function Session(): JSX.Element {
    * 索引を使う。エディタが出ているとき（`assembleView !== 'board'`）は下書き、盤だけのときは
    * 模範回路（下書きが割り当てられないあいだも模範回路に落ちる）。I4
    * `onHover` は `useCallback([])` で安定させるので、最新の索引は ref 経由で読む（§15）。
+   *
+   * 模範回路（`hintGuideIndex`）は `showSchematic` が真のときにしか使わない（B1）。下書き
+   * （`draftGuideIndex`）は訓練者自身の編集内容なので回路図の表示可否とは無関係に使ってよいが、
+   * 模範回路へ落ちる側（`??` の右辺）は同じガードを通す。
    */
-  const latestIndex = useRef(hintGuideIndex);
+  const latestIndex = useRef(showSchematic ? hintGuideIndex : undefined);
   latestIndex.current =
-    assembleView === 'board' ? hintGuideIndex : (draftGuideIndex ?? hintGuideIndex);
+    assembleView === 'board'
+      ? showSchematic
+        ? hintGuideIndex
+        : undefined
+      : (draftGuideIndex ?? (showSchematic ? hintGuideIndex : undefined));
 
   /**
    * 3Dへ渡すコールバックは安定させる。毎回作り直すとシーン全体が再構築される。§15
@@ -557,14 +577,6 @@ export function Session(): JSX.Element {
       </div>
     );
   }
-
-  /*
-   * 回路図ヒントの出し方は級で決まる（§8.4）。3級は常時表示で開閉ボタンを出さない、
-   * 2級は開閉できて初期は閉じる、1級は出さない。開閉できない級ではストアの値を見ずに
-   * 規則そのものを見るので、何かの拍子に `schematicVisible` が倒れても3級の表示は消えない。
-   */
-  const policy = schematicPolicy(problem.grade);
-  const showSchematic = policy.toggleable ? schematicVisible : policy.shown;
 
   const onPlug = (socketId: SocketId, kind: MountableKind): void => {
     apply(runPlug(session, socketId, kind), () => {
@@ -750,7 +762,7 @@ export function Session(): JSX.Element {
         }}
         schematicVisible={showSchematic}
         onToggleSchematic={
-          policy.toggleable
+          policy?.toggleable
             ? () => {
                 useStore.getState().toggleSchematic();
               }

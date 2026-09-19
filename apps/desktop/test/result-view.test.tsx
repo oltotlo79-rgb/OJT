@@ -268,4 +268,38 @@ describe('結果画面のルート（§8.3 / §12.3）', () => {
     useStore.setState({ problem: PROBLEM, judge: judgeWith() });
     expect(() => render(<Result />)).not.toThrow();
   });
+
+  /*
+   * I1（Plan 5 C/D レビュー）: 合格した結果画面には「疑わしい配線（0）」のカードを
+   * 出さない。`report.suspects` は合格時 `[]`（`undefined` ではない）なので、`Result.tsx`
+   * が3 props を無条件に渡すと `ResultView` の `suspects === undefined` ガードを素通りして
+   * しまう。ここは `<ResultView>` を直接ではなく `<Result />`（ルート）を描いて、
+   * `Result.tsx` が実際に渡す props まで含めて確かめる。
+   */
+  it('合格したモードBの結果画面には「疑わしい配線」のカードを出さない（I1）', () => {
+    if (PROBLEM === undefined) return;
+    useStore.setState({
+      problem: PROBLEM,
+      session: reference(),
+      judge: judgeWith(),
+      restoredHazardCount: 0,
+    });
+    render(<Result />);
+    expect(screen.getByTestId('verdict').textContent).toBe('合格');
+    expect(screen.queryByTestId('no-suspect')).toBeNull();
+    expect(screen.queryByTestId('suspect-list')).toBeNull();
+  });
+
+  it('不合格でも配線に差が無ければ「疑わしい配線」の空表示は出す（noSuspect の文言はそのまま）', () => {
+    if (PROBLEM === undefined) return;
+    useStore.setState({
+      problem: PROBLEM,
+      session: reference(),
+      judge: { ...judgeWith(), passed: false },
+      restoredHazardCount: 0,
+    });
+    render(<Result />);
+    expect(screen.getByTestId('verdict').textContent).toBe('不合格');
+    expect(screen.getByTestId('no-suspect')).toBeInTheDocument();
+  });
 });

@@ -67,23 +67,44 @@ export function TerminalListPanel({
         {byGroup(rows).map((group) => (
           <div key={group.group} className={styles.terminalGroup}>
             <span className={styles.terminalGroupName}>{group.group}</span>
-            {group.rows.map((row) => (
-              <button
-                key={row.id}
-                type="button"
-                className={styles.terminalRow}
-                data-testid={`terminal-row-${row.id}`}
-                aria-pressed={pendingTerminal === row.id}
-                disabled={row.full && pendingTerminal !== row.id}
-                title={row.full ? JA.terminalList.full : row.label}
-                onClick={() => {
-                  onPick({ kind: 'terminal', id: row.id, wirable: true, label: row.label });
-                }}
-              >
-                <span className={styles.terminalName}>{row.label}</span>
-                <span className={styles.terminalCount}>{row.wireCount}/2</span>
-              </button>
-            ))}
+            {group.rows.map((row) => {
+              /*
+               * 満杯（2本つながっている）の端子は「押せない」のではなく「押しても何も
+               * 起きない」にする（I3: Plan 5 C/D レビュー）。`disabled` の要素には
+               * Chromium がポインタイベント（`title` のツールチップを含む）を配らず、
+               * 読み上げも `disabled` の要素は飛ばすため、理由が訓練者に届かなかった。
+               * `aria-disabled` はフォーカス・読み上げの対象のまま残るので、`title` の
+               * ツールチップも `aria-describedby` の隠し文字も効く。
+               * いま1本目として選んでいる端子自身（`pendingTerminal === row.id`）は
+               * 取り消せるよう、満杯でも押せるままにする（既存の挙動）。
+               */
+              const unavailable = row.full && pendingTerminal !== row.id;
+              const reasonId = `terminal-full-reason-${row.id}`;
+              return (
+                <button
+                  key={row.id}
+                  type="button"
+                  className={styles.terminalRow}
+                  data-testid={`terminal-row-${row.id}`}
+                  aria-pressed={pendingTerminal === row.id}
+                  aria-disabled={unavailable}
+                  {...(unavailable ? { 'aria-describedby': reasonId } : {})}
+                  title={row.full ? JA.terminalList.full : row.label}
+                  onClick={() => {
+                    if (unavailable) return;
+                    onPick({ kind: 'terminal', id: row.id, wirable: true, label: row.label });
+                  }}
+                >
+                  <span className={styles.terminalName}>{row.label}</span>
+                  <span className={styles.terminalCount}>{row.wireCount}/2</span>
+                  {unavailable ? (
+                    <span className={styles.srOnly} id={reasonId} data-testid={reasonId}>
+                      {JA.terminalList.full}
+                    </span>
+                  ) : null}
+                </button>
+              );
+            })}
           </div>
         ))}
       </div>

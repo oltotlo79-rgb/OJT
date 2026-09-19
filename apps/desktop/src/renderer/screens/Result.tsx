@@ -158,14 +158,27 @@ export function Result(): JSX.Element {
     return <NoResult onBack={backToList} />;
   }
 
+  /*
+   * 合格したら「疑わしい配線」の3 props を**渡さない**（I1: Plan 5 C/D レビュー）。
+   * `report.suspects` は合格時 `[]`（`undefined` ではない）なので、そのまま渡すと
+   * `ResultView` の `suspects === undefined` ガードを素通りして「疑わしい配線（0）」の
+   * カードが合格の結果画面にも出てしまう。`noSuspect` の文言（模範回路との配線の違いは
+   * 見つからなかった）は不合格で差が無いときに要るので、`SuspectList` 側は変えない。
+   * `exactOptionalPropertyTypes` のもとでは `undefined` を明示できない（コンパイルエラーに
+   * なる）ので、prop 自体を条件つきで展開して**渡さない**形にする（`Toolbar.tsx` と同じ型）。
+   */
   return (
     <ResultView
       problem={problem}
       result={judge}
       restoredHazardCount={restoredHazardCount}
-      suspects={report.suspects}
-      suspectsTruncated={report.omitted}
-      onShowOnBoard={showOnBoard}
+      {...(judge.passed
+        ? {}
+        : {
+            suspects: report.suspects,
+            suspectsTruncated: report.omitted,
+            onShowOnBoard: showOnBoard,
+          })}
       onRetry={() => {
         resetSession();
       }}

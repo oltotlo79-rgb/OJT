@@ -9,7 +9,7 @@ import {
   nameplateRectMm,
   type NameplateOffsetMm,
 } from './appearance.js';
-import { blockFaceTexture, faceRect, roleColorsFor } from './labels.js';
+import { blockFaceTexture, faceRect, isSharedFaceTexture, roleColorsFor } from './labels.js';
 import { PlcFace, useLedState } from './PlcUnit.js';
 import { TerminalHit, terminalTooltip } from './TerminalHit.js';
 import { toScene } from './coords.js';
@@ -122,10 +122,14 @@ export function PlcRack({
     () => blockFaceTexture(terminals, RACK_LABEL_PAD_MM, faceColors),
     [terminals, faceColors],
   );
-  // 機種を替えるとラックごと作り直される（Plan 4B Task 6）。古いテクスチャは解放する（M10）
+  /*
+   * 機種を替えるとラックごと作り直される（Plan 4B Task 6）。`PlcUnit.tsx` と同じ理由
+   * （I2: Plan 5 C/D レビュー）で、共有キャッシュの持ち物（`isSharedFaceTexture()`）は
+   * 破棄しない。寿命は `labels.ts` の `faceTextureCache` が持つ。
+   */
   useEffect(() => {
     return () => {
-      faceTexture?.dispose();
+      if (!isSharedFaceTexture(faceTexture)) faceTexture?.dispose();
     };
   }, [faceTexture]);
   const labelFace = useMemo(() => faceRect(terminals, RACK_LABEL_PAD_MM), [terminals]);

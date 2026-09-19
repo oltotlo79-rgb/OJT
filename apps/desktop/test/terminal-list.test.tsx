@@ -130,7 +130,13 @@ describe('TerminalListPanel（UXレビュー #29）', () => {
     expect(onCancel).toHaveBeenCalled();
   });
 
-  it('disables the terminals that already hold two wires (§6.6)', () => {
+  /*
+   * I3（Plan 5 C/D レビュー）: 満杯の端子は `disabled` にしない。`disabled` の要素には
+   * Chromium がポインタイベント（`title` のツールチップを含む）を配らず、読み上げも
+   * `disabled` の要素は飛ばすため、以前は理由が訓練者に届かなかった。行は
+   * フォーカスできるまま残し（`aria-disabled`）、押しても何も起きないだけにする。
+   */
+  it('marks the terminals that already hold two wires as aria-disabled, not disabled (I3)', () => {
     const full = sessionForProblem(problem);
     // `P.1` は既設配線で1本、ここで1本足して満杯にする
     full.wires.push({
@@ -150,7 +156,69 @@ describe('TerminalListPanel（UXレビュー #29）', () => {
         onCancel={vi.fn()}
       />,
     );
-    expect(screen.getByTestId('terminal-row-P.1')).toBeDisabled();
+    const row = screen.getByTestId('terminal-row-P.1');
+    // disabled ではない（フォーカスできる。`toBeDisabled()` は false）
+    expect(row).not.toBeDisabled();
+    expect(row).toHaveAttribute('aria-disabled', 'true');
+  });
+
+  it('does not call onPick when a full terminal row is clicked, and keeps the reason reachable (I3)', () => {
+    const full = sessionForProblem(problem);
+    full.wires.push({
+      id: wireId('w-x'),
+      from: 'P.1' as never,
+      to: 'CR1.14' as never,
+      color: '青',
+      locked: false,
+      open: false,
+    });
+    const onPick = vi.fn();
+    render(
+      <TerminalListPanel
+        board={JIPM_BOARD}
+        session={full}
+        pendingTerminal={undefined}
+        onPick={onPick}
+        onCancel={vi.fn()}
+      />,
+    );
+    const row = screen.getByTestId('terminal-row-P.1');
+    fireEvent.click(row);
+    expect(onPick).not.toHaveBeenCalled();
+    // title は disabled ではないので Chromium 上でも表示される
+    expect(row).toHaveAttribute('title', 'この端子には既に2本つながっています');
+    // 読み上げ用にも `aria-describedby` の先に理由文がある
+    const describedBy = row.getAttribute('aria-describedby');
+    expect(describedBy).toBeTruthy();
+    expect(document.getElementById(describedBy ?? '')).toHaveTextContent(
+      'この端子には既に2本つながっています',
+    );
+  });
+
+  it('still lets the trainee cancel the pending terminal even if it is now full', () => {
+    const full = sessionForProblem(problem);
+    full.wires.push({
+      id: wireId('w-x'),
+      from: 'P.1' as never,
+      to: 'CR1.14' as never,
+      color: '青',
+      locked: false,
+      open: false,
+    });
+    const onPick = vi.fn();
+    render(
+      <TerminalListPanel
+        board={JIPM_BOARD}
+        session={full}
+        pendingTerminal={'P.1' as never}
+        onPick={onPick}
+        onCancel={vi.fn()}
+      />,
+    );
+    const row = screen.getByTestId('terminal-row-P.1');
+    expect(row).not.toHaveAttribute('aria-disabled', 'true');
+    fireEvent.click(row);
+    expect(onPick).toHaveBeenCalled();
   });
 
   it('narrows the list as the trainee types', () => {

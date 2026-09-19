@@ -1,6 +1,6 @@
 import { JIPM_BOARD } from '@ojt/board-model';
 import { Texture } from 'three';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   blockFaceTexture,
   cachedFaceTexture,
@@ -8,6 +8,7 @@ import {
   faceKey,
   faceRect,
   faceTextureCacheSize,
+  isSharedFaceTexture,
   PX_PER_MM,
   socketFaceTexture,
   SOCKET_PLATE_MARGIN_MM,
@@ -100,6 +101,42 @@ describe('印字の焼き関数（キャンバスが無い環境でも落ちな�
     expect(socketFaceTexture([], 0, 0, 10, 10)).toBeUndefined();
     expect(blockFaceTexture([], 6)).toBeUndefined();
     expect(faceTextureCacheSize()).toBe(0);
+  });
+});
+
+describe('isSharedFaceTexture（I2: 共有キャッシュの持ち物は消費側が dispose() してはいけない）', () => {
+  /**
+   * `PlcUnit.tsx` / `PlcRack.tsx` のアンマウント時の後始末と同じ形（I2: Plan 5 C/D レビュー）。
+   * キャッシュの持ち物（`isSharedFaceTexture()`）でなければ、これまでどおり消費側が破棄する。
+   */
+  function unmountCleanup(texture: Texture | undefined): void {
+    if (!isSharedFaceTexture(texture)) texture?.dispose();
+  }
+
+  it('does not dispose a texture handed out by the shared cache', () => {
+    const texture = cachedFaceTexture(socketKey(0), () => new Texture());
+    if (texture === undefined) throw new Error('テクスチャが焼けませんでした');
+    expect(isSharedFaceTexture(texture)).toBe(true);
+    const dispose = vi.spyOn(texture, 'dispose');
+    unmountCleanup(texture);
+    expect(dispose).not.toHaveBeenCalled();
+    // 破棄していないので、同じ鍵の再取得（＝もう1つの消費先）も同じ参照のまま使える
+    expect(cachedFaceTexture(socketKey(0), () => new Texture())).toBe(texture);
+  });
+
+  it('still disposes a texture that never went through the cache (the guard is not a no-op)', () => {
+    const standalone = new Texture();
+    expect(isSharedFaceTexture(standalone)).toBe(false);
+    const dispose = vi.spyOn(standalone, 'dispose');
+    unmountCleanup(standalone);
+    expect(dispose).toHaveBeenCalledTimes(1);
+  });
+
+  it('tolerates an unbaked (undefined) texture', () => {
+    expect(isSharedFaceTexture(undefined)).toBe(false);
+    expect(() => {
+      unmountCleanup(undefined);
+    }).not.toThrow();
   });
 });
 

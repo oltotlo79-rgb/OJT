@@ -297,6 +297,22 @@ export function makeCanvasTexture(
  */
 const faceTextureCache = new Map<string, Texture>();
 
+/**
+ * `faceTextureCache` が今持っているテクスチャの集合（I2: Plan 5 C/D レビュー）。
+ * `PlcUnit.tsx` / `PlcRack.tsx` はアンマウント時に「機種を替えたので古いテクスチャを
+ * 解放する」つもりで `faceTexture?.dispose()` を呼んでいたが、Task 13 でキャッシュが
+ * テクスチャを使い回すようになった後もそのままだったため、**共有している他のメッシュの
+ * ぶんまで**破棄済みテクスチャにしてしまっていた（three は再アップロードするので絵は出るが、
+ * 機種切替のたびに全消費先で GPU 転送をやり直す）。`isSharedFaceTexture()` で「破棄の責任が
+ * こちら（キャッシュ）にあるか」を消費側が確認できるようにする。
+ */
+const cachedTextures = new WeakSet<Texture>();
+
+/** `texture` が共有キャッシュの持ち物か（＝消費側は `dispose()` してはいけないか）。I2 */
+export function isSharedFaceTexture(texture: Texture | undefined): boolean {
+  return texture !== undefined && cachedTextures.has(texture);
+}
+
 /** キャッシュの件数（テスト用）。 */
 export function faceTextureCacheSize(): number {
   return faceTextureCache.size;
@@ -357,7 +373,10 @@ export function cachedFaceTexture(
   const found = faceTextureCache.get(key);
   if (found !== undefined) return found;
   const made = bake();
-  if (made !== undefined) faceTextureCache.set(key, made);
+  if (made !== undefined) {
+    faceTextureCache.set(key, made);
+    cachedTextures.add(made);
+  }
   return made;
 }
 

@@ -169,6 +169,87 @@ describe('配線ガイド（§16 Phase 5 受入基準②）', () => {
   });
 
   /*
+   * B1（Plan 5 C/D レビュー）: 3D → 回路図の逆引きは回路図ヒントの表示可否
+   * （`schematicPolicy` / §8.4）を守る。1級は回路図を一切出さない、2級は開いた回数を
+   * 減点として数える（2026-09-18 の利用者決定）ので、出していない・閉じているあいだに
+   * 盤の端子をホバーしただけで模範回路が使う端子を光らせてしまうと、答え合わせが
+   * 無料になってしまう（C2 の `InspectRepairSession.tsx` が持つガードと同じ規則）。
+   */
+  it('lights nothing on hover for a grade-1 problem (schematic is never shown, B1)', () => {
+    const grade1 = BUILTIN_ASSEMBLE_PROBLEMS.find((p) => p.id === 'b-007');
+    if (grade1 === undefined) throw new Error('b-007 が見つかりません');
+    expect(grade1.grade).toBe(1);
+    act(() => {
+      useStore.getState().openProblem(grade1);
+    });
+    const built = buildReferenceSession(grade1, JIPM_BOARD);
+    expect(built.ok).toBe(true);
+    if (!built.ok) return;
+    const cell = built.value.cells.find((c) => c.device === 'CR1');
+    expect(cell).toBeDefined();
+    if (cell === undefined) return;
+    const physical = toPhysicalTerminal(built.value.session.socketRoles, cell.left);
+
+    render(<Session />);
+    expect(scene.hover).toBeDefined();
+    act(() => {
+      scene.hover?.(physical);
+    });
+    expect(useStore.getState().highlight).toEqual({ cellIds: [], terminals: [], wireIds: [] });
+  });
+
+  it('lights nothing on hover for a grade-2 problem while the schematic is closed (B1)', () => {
+    const grade2 = BUILTIN_ASSEMBLE_PROBLEMS.find((p) => p.id === 'b-004');
+    if (grade2 === undefined) throw new Error('b-004 が見つかりません');
+    expect(grade2.grade).toBe(2);
+    act(() => {
+      useStore.getState().openProblem(grade2);
+    });
+    // 2級は初期状態で閉じている（§8.4）
+    expect(useStore.getState().schematicVisible).toBe(false);
+    const built = buildReferenceSession(grade2, JIPM_BOARD);
+    expect(built.ok).toBe(true);
+    if (!built.ok) return;
+    const cell = built.value.cells.find((c) => c.device === 'CR1');
+    expect(cell).toBeDefined();
+    if (cell === undefined) return;
+    const physical = toPhysicalTerminal(built.value.session.socketRoles, cell.left);
+
+    render(<Session />);
+    act(() => {
+      scene.hover?.(physical);
+    });
+    expect(useStore.getState().highlight).toEqual({ cellIds: [], terminals: [], wireIds: [] });
+  });
+
+  it('lights the schematic element on hover for a grade-2 problem once it is opened (B1)', () => {
+    const grade2 = BUILTIN_ASSEMBLE_PROBLEMS.find((p) => p.id === 'b-004');
+    if (grade2 === undefined) throw new Error('b-004 が見つかりません');
+    act(() => {
+      useStore.getState().openProblem(grade2);
+    });
+    const built = buildReferenceSession(grade2, JIPM_BOARD);
+    expect(built.ok).toBe(true);
+    if (!built.ok) return;
+    const cell = built.value.cells.find((c) => c.device === 'CR1');
+    expect(cell).toBeDefined();
+    if (cell === undefined) return;
+    const physical = toPhysicalTerminal(built.value.session.socketRoles, cell.left);
+
+    render(<Session />);
+    act(() => {
+      useStore.getState().toggleSchematic();
+    });
+    expect(useStore.getState().schematicVisible).toBe(true);
+    act(() => {
+      scene.hover?.(physical);
+    });
+    const highlight = useStore.getState().highlight;
+    expect(highlight.cellIds).toContain(cell.cellId);
+    expect(highlight.terminals).toEqual([cell.left]);
+  });
+
+  /*
    * 結果画面の「盤で見る」で連れてきた光を、盤の上でマウスが動いただけで消さない
    * （Plan 5 Task 9 / 決定表#11・#27）。ホバーの読み替え（物理端子 → 役割端子）は
    * 上の1件が見ているので、ここでは**上書きしないこと**だけを見る。

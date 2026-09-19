@@ -24,7 +24,7 @@ import {
   type PlcLedState,
 } from './appearance.js';
 // `plcFaceRect()` は landed のまま `labels.ts` の `faceRect()` を包む（4A H-7 の「残す2つ」）
-import { blockFaceTexture, faceRect, roleColorsFor } from './labels.js';
+import { blockFaceTexture, faceRect, isSharedFaceTexture, roleColorsFor } from './labels.js';
 import { sharedMaterial, UNIT_BOX } from './materials.js';
 import { TerminalHit, terminalTooltip } from './TerminalHit.js';
 import { toScene } from './coords.js';
@@ -265,10 +265,17 @@ export function PlcUnit({
     () => blockFaceTexture(terminals, PLC_LABEL_PAD_MM, faceColors),
     [terminals, faceColors],
   );
-  // 機種を替えると本体ごと作り直される（Plan 4B Task 6）。古いテクスチャは必ず解放する（M10）
+  /*
+   * 機種を替えると本体ごと作り直される（Plan 4B Task 6）。以前は古いテクスチャを毎回
+   * `dispose()` していたが（M10）、Task 13 で `blockFaceTexture()` が共有キャッシュ
+   * （`labels.ts` の `faceTextureCache`）を返すようになった後もそのままだったため、
+   * 機種切替・WebGLロスト再構築・セッション離脱のたびに**他の消費先とも共有している**
+   * テクスチャを破棄済みにしてしまっていた（I2: Plan 5 C/D レビュー）。寿命はキャッシュが
+   * 持つので、共有キャッシュの持ち物（`isSharedFaceTexture()`）は破棄しない。
+   */
   useEffect(() => {
     return () => {
-      faceTexture?.dispose();
+      if (!isSharedFaceTexture(faceTexture)) faceTexture?.dispose();
     };
   }, [faceTexture]);
   const face = useMemo(() => plcFaceRect(terminals), [terminals]);
