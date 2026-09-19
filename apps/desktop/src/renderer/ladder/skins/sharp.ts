@@ -30,7 +30,7 @@ export const SHARP_SKIN: SkinTheme = {
    * **命令ボックス**（`TMR00000` のような8文字のデバイスが入るので、4スキンで2番目に広い）。
    * 調べた出典（2026-09-20。画像は一切複製せず、記述だけを取った）:
    *   - シャープ 公式 JW300 ラダー命令マニュアル
-   *     https://jp.sharp/sms/pdf/plc/jw300/m_jw300l_5.pdf
+   *     出典: docs/reference/ladder-skin-sources.md #7
    *     …… `F-40` ＝ END で各プログラムブロックの最終アドレスに入る／デバイス番号は6桁
    *     （8進表記、0〜7）／タイマ `T00000`〜`T17777`・カウンタ `C00000`〜`C17777`／基本命令は
    *     `STR` `STR NOT` `AND` `AND NOT` `OR` `OR NOT` `OUT`、追加命令に `STR POS` `STR NEG` など。

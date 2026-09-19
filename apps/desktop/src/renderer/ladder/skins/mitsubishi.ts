@@ -29,10 +29,11 @@ export const MITSUBISHI_SKIN: SkinTheme = {
    * 出力＝**丸**（直径 12px＝縦棒の高さ）、SET / RST / MC / MCR / END＝**角括弧**（`[SET Y0]`）、
    * タイマ・カウンタ＝丸コイルの右に設定値を添える（`OUT T0 K30`）。微分接点だけ間隔 8px。
    * 調べた出典（2026-09-20。画像は一切複製せず、形と配置の記述だけを取った）:
-   *   - https://e-sysnet.com/plc-6/ …… 利用者が指定した参照元。左右の母線・接点は縦棒2本・
-   *     b接点は斜線1本・上から下へのスキャン順。https://e-sysnet.com/plc-7/ …… END は
-   *     プログラム末尾に必須、コイルの後ろに接点を置けない。
-   *   - https://control-career.com/ladder-command/ …… タイマ・カウンタは `OUT T0` ＋ `T0 K300`。
+   *   - 出典: docs/reference/ladder-skin-sources.md #2 …… 利用者が指定した参照元。左右の母線・
+   *     接点は縦棒2本・b接点は斜線1本・上から下へのスキャン順。
+   *   - 出典: docs/reference/ladder-skin-sources.md #3 …… END はプログラム末尾に必須、
+   *     コイルの後ろに接点を置けない。
+   *   - 出典: docs/reference/ladder-skin-sources.md #4 …… タイマ・カウンタは `OUT T0` ＋ `T0 K300`。
    * 出典と食い違うが**利用者の指示が勝つ**ところ: 解説サイトは OUT コイルを `( )` で描くが、
    * 利用者（電気系保全の指導員）の 2026-09-20 の指示「出力は丸」に従って**丸**にしている。
    * デバイスコメントは GX Works3 では記号の**上**に出す設定もあるが、本アプリは行を詰める

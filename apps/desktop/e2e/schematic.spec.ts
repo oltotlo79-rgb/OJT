@@ -17,6 +17,9 @@ import {
  * `polish.spec.ts` / `plc-vendors.spec.ts` からそのまま写している。既存の spec は1行も触らない
  * （MERGE 注意 #10）。画面の文言も `src/renderer/i18n/ja.ts` からの**書き写し**で、
  * E2E は成果物を外から触るだけにする（`inspect.spec.ts` 冒頭の注記と同じ流儀）。
+ *
+ * **このファイルの test は上から順に流す前提**（`polish.spec.ts` と同じ流儀。Batch E レビュー
+ * Minor 5）。前の test が置いた画面の状態を次の test が引き継ぐので、`-g` で1本だけ流すと落ちる。
  */
 
 const APP_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');

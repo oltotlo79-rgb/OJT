@@ -32,7 +32,7 @@ export const JTEKT_SKIN: SkinTheme = {
    * 出力＝**丸**（直径 14px＝縦棒の高さ）、TIM / CNT / SET / RST / MC / MCR / END＝**命令ボックス**。
    * 調べた出典（2026-09-20。画像は一切複製せず、形と配置の記述だけを取った）:
    *   - JTEKT 公式 PCwin カタログ CAT-M2067-1
-   *     https://www.jtekt.co.jp/data/Tp/Catalog/CAT-M2067-1_PCwin.pdf
+   *     出典: docs/reference/ladder-skin-sources.md #1
    *     …… 接点は縦棒2本・b接点は斜線1本／**コイルは丸「○」**（括弧ではない。利用者の
    *     「出力は丸」と一致）／OR分岐は主ラインの**下の行**に置いて縦棒で合流／デバイス名は
    *     記号の**左上**／ステップ番号は左バスバーのすぐ左（例 `00049`）。

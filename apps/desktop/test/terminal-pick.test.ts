@@ -50,6 +50,15 @@ import { TerminalHit } from '../src/renderer/three/TerminalHit.js';
 /** E2E（1440×900 のウィンドウ）で実測したキャンバスの矩形。 */
 const CANVAS: CanvasBox = { x: 0, y: 0, width: 1047, height: 574 };
 
+/**
+ * そのキャンバスの縦横比。UI監査バッチA（`76a71af`）以降、`CameraPresets.tsx` は
+ * `useThree(s => s.size)` の実測値を `cameraPose()` へ渡して「ペインいっぱいに盤を収める」
+ * 距離を決める。**アプリと同じ値を渡さないと、ここで組むカメラだけが古い仮定（16:10）の
+ * 位置に立ってしまい、射影点とレイが食い違う**（Batch E で E2E の3Dクリックが端子を
+ * 外していた原因そのもの。`e2e/projection.ts` も同じ縦横比を渡す）。
+ */
+const CANVAS_ASPECT = CANVAS.width / CANVAS.height;
+
 /** 面直で見る視点（`up` が盤面の上方向になるもの）。これらが極角の丸めに当たっていた。 */
 const FACE_ON_PRESETS = ['front', 'back', 'socket', 'plc'] as const;
 
@@ -196,7 +205,7 @@ describe('視点プリセットは極角の丸めで動かない（§12.2）', (
 
 describe('DC24V供給端子のクリック（2026-09-19 の不具合）', () => {
   it('正面視から P.1 の射影点へ飛ばしたレイは、まず端子の当たり判定球に当たる', () => {
-    const pose = clampPolar(cameraPose('front'), MAX_POLAR_ANGLE);
+    const pose = clampPolar(cameraPose('front', { aspect: CANVAS_ASPECT }), MAX_POLAR_ANGLE);
     const raycaster = rayTo(pose, terminalPoint(toTerminalId('P.1'), CANVAS));
     const hits = raycaster.intersectObjects(supplyScene().children, true);
     expect(hits[0]?.object.name).toBe('pick-P.1');
@@ -205,7 +214,7 @@ describe('DC24V供給端子のクリック（2026-09-19 の不具合）', () => 
   it('P.1 の射影点は当たり判定の中心の近くを通る（端ほど効く視点のずれを防ぐ）', () => {
     const terminal = findBoardTerminal(JIPM_BOARD, 'P.1');
     if (terminal === undefined) throw new Error('P.1 がありません');
-    const pose = clampPolar(cameraPose('front'), MAX_POLAR_ANGLE);
+    const pose = clampPolar(cameraPose('front', { aspect: CANVAS_ASPECT }), MAX_POLAR_ANGLE);
     const raycaster = rayTo(pose, terminalPoint(toTerminalId('P.1'), CANVAS));
     const center = new Vector3(...boardToWorld(toScene(terminal.pos)));
     // 3.6° の丸めが残っていると 4mm 以上ずれて、当たり判定（半径4mm）の縁から外れる
@@ -213,7 +222,7 @@ describe('DC24V供給端子のクリック（2026-09-19 の不具合）', () => 
   });
 
   it('N.1 でも同じように当たる', () => {
-    const pose = clampPolar(cameraPose('front'), MAX_POLAR_ANGLE);
+    const pose = clampPolar(cameraPose('front', { aspect: CANVAS_ASPECT }), MAX_POLAR_ANGLE);
     const raycaster = rayTo(pose, terminalPoint(toTerminalId('N.1'), CANVAS));
     const hits = raycaster.intersectObjects(supplyScene().children, true);
     expect(hits[0]?.object.name).toBe('pick-N.1');

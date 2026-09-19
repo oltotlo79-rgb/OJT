@@ -54,6 +54,29 @@ if (!existsSync(RELEASE)) {
   const version = JSON.parse(readFileSync(join(APP_ROOT, 'package.json'), 'utf8')).version;
   const expected = [`電気教育ツール-${version}-x64.exe`, `電気教育ツール-${version}-x64.zip`];
   const rows = [];
+
+  /*
+   * 旧版の成果物が `release/` に残っていても気づけないと、配布のときに古い exe / zip を
+   * 掴みかねない（Batch E レビュー Minor 3）。`electron-builder` は古い名前のファイルを
+   * 消さないので、**いまの版以外の `電気教育ツール-*` があれば警告を出す**。
+   * 検査そのものは落とさない（消すかどうかは人が決める）。
+   */
+  const stale = readdirSync(RELEASE, { withFileTypes: true })
+    .filter((entry) => entry.isFile())
+    .map((entry) => entry.name)
+    .filter(
+      (name) =>
+        name.startsWith('電気教育ツール-') &&
+        // いまの版の本体と、その `.blockmap` のような付属ファイルは残っていてよい
+        !expected.some((want) => name === want || name.startsWith(`${want}.`)),
+    )
+    .sort();
+  if (stale.length > 0) {
+    out.write(
+      `警告: 旧版らしい成果物が ${RELEASE} に残っています（配布前に消してください）: ` +
+        `${stale.join(' / ')}\n`,
+    );
+  }
   for (const name of expected) {
     const path = join(RELEASE, name);
     if (!existsSync(path)) {

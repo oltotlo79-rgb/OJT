@@ -99,7 +99,7 @@ describe('builtinSet', () => {
   });
 
   it('配布版で件数が焼き込みと食い違えば焼き込みへ落とし、件数を理由に出す（Phase 2 acceptance BLOCKER）', () => {
-    // `predist` の複写漏れ（例: 一部モードフォルダしか複写されない）を模して、
+    // `dist` の複写漏れ（例: 一部モードフォルダしか複写されない）を模して、
     // 一部の課題しか置かれていない resources/content を用意する
     const resources = tempDir('ojt-resources-');
     const assemble = join(resources, 'content', 'assemble');

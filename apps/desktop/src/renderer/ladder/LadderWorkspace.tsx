@@ -32,6 +32,7 @@ import {
   toolbarItems,
   writeModeLabel,
   type ToolbarAction,
+  type ToolbarItem,
 } from '../session/plc-skin.js';
 import { CommentPanel } from './CommentPanel.js';
 import { IoTable } from './IoTable.js';
@@ -339,7 +340,26 @@ export function LadderWorkspace({
    * 判断）。`toolbarItems()` 自体は全項目を返したまま（`writeModeLabel()` など、意味の対応
    * だけが要る呼び出し元がある）にして、ここでは**表示するものだけ**に絞る。
    */
-  const items = toolbarItems(profile).filter((item) => item.action !== 'vendor-only');
+  const shown = toolbarItems(profile).filter((item) => item.action !== 'vendor-only');
+  /*
+   * RUN/STOP を1つも持たないスキン（GX Works3 風）には、ツールバーの最後に足す。
+   * UI監査バッチD（`340b2d9`）が `PlcSession` と `MonitorPanel` の RUN/STOP を外して
+   * 「画面に1つだけ・ツールバーに置く」と決めたが、三菱のツールバー
+   * （`session/plc-skin.ts` の `TOOLBAR_ACTIONS_BY_DIALECT`）には `plc-run` が無く、
+   * **運転にする手段が画面から消えていた**（Batch E の E2E で `plc.spec.ts` ①②③ が時間切れ。
+   * 実機の GX Works3 では RUN/STOP は「リモート操作」にあたる）。「画面に1つ」は守ったまま、
+   * 足りないスキンにだけ補う。ラベルは押すたびに RUN⇄STOP と入れ替わる。
+   */
+  const items: ToolbarItem[] = shown.some((item) => item.action === 'plc-run')
+    ? shown
+    : [
+        ...shown,
+        {
+          action: 'plc-run',
+          label: plcRunning ? JA.ladder.stop : JA.ladder.run,
+          index: profile.panels.toolbar.length,
+        },
+      ];
 
   return (
     <div

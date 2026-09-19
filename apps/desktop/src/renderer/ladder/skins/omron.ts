@@ -32,12 +32,12 @@ export const OMRON_SKIN: SkinTheme = {
    * （2行が次の行にかからない最小の高さが 48px）。
    * 調べた出典（2026-09-20。画像は一切複製せず、形と配置の記述だけを取った）:
    *   - OMRON 公式 CX-Programmer 操作マニュアル W446
-   *     https://files.omron.eu/downloads/manual/en/v2/w446_cx-programmer_operation_manual_en.pdf
+   *     出典: docs/reference/ladder-skin-sources.md #5
    *     …… 左バスバーの**左側**にラング番号とステップ番号／各セルの接続点にグリッド／
    *     TIM・CNT・MOV は**オペランドボックス**（命令枠）に入る／コイルは右バスバーに整列／
    *     シンボル名とコメントは記号の上または下（設定）／通電中の要素は**太線**（色は原文に
    *     明記なし。本アプリの緑は △）／END は末尾に固定のセクション。
-   *   - https://plckouza.com/st2/st2_8.html …… 薄い罫線でセルに区切られた編集画面。
+   *   - 出典: docs/reference/ladder-skin-sources.md #6 …… 薄い罫線でセルに区切られた編集画面。
    * 「END(001)」というファンクションコード表記の一次資料は見つからなかったので、END の
    * 綴りは方言（`instructionNames.end`）の `END` のままにしている（△）。§17.1
    */

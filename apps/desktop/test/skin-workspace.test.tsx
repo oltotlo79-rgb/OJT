@@ -85,6 +85,37 @@ describe('スキンごとのツールバー（§10.6 / §16 Phase 4 受入基準
     expect(screen.getByTestId('toolbar-plc-reset')).toHaveTextContent('RES');
   });
 
+  /**
+   * UI監査バッチD（`340b2d9`）は `PlcSession` と `MonitorPanel` の RUN/STOP を外して
+   * 「画面に1つだけ・ツールバーに置く」と決めたが、GX Works3風のツールバー
+   * （`TOOLBAR_ACTIONS_BY_DIALECT.mitsubishi`）には `plc-run` が無く、**運転にする手段が
+   * 画面から消えていた**（Batch E の E2E で `plc.spec.ts` ①②③ が時間切れ）。
+   */
+  it('still offers exactly one RUN/STOP on skins whose toolbar has none (Batch E)', () => {
+    const onPlc = workspace(MITSUBISHI_FX5U);
+    expect(toolbarItems(getDialect('mitsubishi')).some((item) => item.action === 'plc-run')).toBe(
+      false,
+    );
+    const run = screen.getAllByTestId('toolbar-plc-run');
+    expect(run).toHaveLength(1);
+    expect(run[0]).toHaveTextContent('RUN');
+    expect(run[0]).toHaveAttribute('aria-pressed', 'false');
+    act(() => {
+      fireEvent.click(run[0]!);
+    });
+    expect(onPlc).toHaveBeenCalledWith({ kind: 'run', on: true });
+    expect(screen.getByTestId('toolbar-plc-run')).toHaveTextContent('STOP');
+    expect(screen.getByTestId('toolbar-plc-run')).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('does not double the RUN button on skins that already have one', () => {
+    for (const profile of [JTEKT_PC10G, OMRON_CP1E, SHARP_JW300]) {
+      cleanup();
+      workspace(profile);
+      expect(screen.getAllByTestId('toolbar-plc-run')).toHaveLength(1);
+    }
+  });
+
   it('sends run / stop / reset from the PCwin buttons', () => {
     const onPlc = workspace(JTEKT_PC10G);
     act(() => {

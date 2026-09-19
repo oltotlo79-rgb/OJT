@@ -246,7 +246,14 @@
 .editor {
   display: flex;
   flex-direction: column;
-  min-height: 0;
+  /*
+   * 中身（`.gridScroll` の下限 300px ＋ デバイス入力欄）より**低くならない**（Batch E）。
+   * 以前は `min-height: 0` で中身より低く潰れることがあり、はみ出したデバイス入力欄が
+   * 次の兄弟（出力ウィンドウ `.output`）の下に潜って「確定」が押せなくなっていた
+   * （E2E: `device-commit` が `output-summary` に遮られて時間切れ）。足りないぶんは
+   * `.workspaceMain` のスクロールが引き受ける。
+   */
+  min-height: auto;
   flex: 1 1 auto;
   outline: none;
   border: 2px solid transparent;
@@ -580,6 +587,16 @@ details[open] > .sideSummary::before {
   flex-direction: column;
   min-width: 0;
   min-height: 0;
+  /*
+   * 中身（`.gridScroll` の下限 300px ＋ デバイス入力欄）がこの枠より高くなったとき、
+   * **はみ出させずにここで送る**（Batch E）。はみ出したままだと、1440×900 で下段の
+   * 折りたたみ帯（`.workspaceSide`）が後から描かれてデバイス入力欄の「確定」に重なり、
+   * クリックを飲んでいた（E2E: `plc.spec.ts` / `plc-vendors.spec.ts` の
+   * `device-commit` が `monitor-panel-summary` に遮られて時間切れ）。
+   * 横は `LadderGrid` が実測幅で列数を決めるので、増やさない（`overflow-x: hidden`）。
+   */
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 /* 折りたたみ列のスクロールは**ここ1本**だけ。横には絶対に伸ばさない（#27） */

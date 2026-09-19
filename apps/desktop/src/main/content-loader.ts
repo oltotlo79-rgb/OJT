@@ -79,7 +79,7 @@ export function builtinSet(): ProblemSet {
   if (fromDisk.problems.length === 0) {
     return withFallbackNotice(bundled, dir, '同梱課題フォルダから1題も読めませんでした');
   }
-  // BLOCKER: `predist` の複写漏れ（例: `MODES` に一部モードしか無い）や配布後の手作業による
+  // BLOCKER: `dist` の複写漏れ（例: `MODES` に一部モードしか無い）や配布後の手作業による
   // 破損で、フォルダから読めた件数がアプリに焼き込んだ件数と食い違うことがある。
   // 無警告のまま一部の課題だけを一覧に出すと利用者が気付けないため、焼き込みへ確実に落とし、
   // 理由を読込エラー欄に出す（黙って欠けた一覧を出さない）。

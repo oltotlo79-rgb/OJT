@@ -354,8 +354,10 @@ test.describe('モードD（PLC）', () => {
       await showSplit(page);
       await page.getByTestId('toolbar-monitor-start').click();
       await expect(page.getByTestId('plc-ladder-mode')).toContainText('モニタ');
-      await page.getByTestId('plc-run').click();
-      await expect(page.getByTestId('plc-run')).toHaveAttribute('aria-pressed', 'true');
+      // UI監査バッチD（`340b2d9`）で画面内の RUN は1つになり、ツールバーの
+      // `toolbar-plc-run`（`ladder/LadderWorkspace.tsx:366-375`）だけが残った。
+      await page.getByTestId('toolbar-plc-run').click();
+      await expect(page.getByTestId('toolbar-plc-run')).toHaveAttribute('aria-pressed', 'true');
       // 電源ボタンの文言は「① ブレーカ」「② 電源スイッチ」になった（UXレビュー #10）。
       // 文言に縛られないようアプリ側の `data-testid` で指す。
       await page.getByTestId('power-breaker').click();
@@ -443,7 +445,16 @@ test.describe('モードD（PLC）', () => {
       await openPlcProblem(page);
       const judge = page.getByTestId('judge-button');
       await expect(judge).toBeDisabled();
-      await expect(page.getByTestId('plc-hint')).toContainText('判定できません');
+      /*
+       * 押せない理由は**判定ボタンの `title`**で読む。UI監査バッチD（`340b2d9`）で手順帯
+       * （`plc-hint`）は「いまの手順の案内だけ」を1行で出すことになり、押せない理由は
+       * `screens/PlcSession.tsx` の `judgeTitle` → `panels/Toolbar.tsx` の `title` へ移った
+       * （`ja.ts` の `plc.judgeNoLadder`）。
+       */
+      await expect(judge).toHaveAttribute(
+        'title',
+        /ラダーがありません|変換（F4）を通してから判定します/u,
+      );
 
       // コイルを接点列（0列目）に置くと `coil-column` で変換に落ちる
       await expectCursorAt(page, 'n1:0:0');

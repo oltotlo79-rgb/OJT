@@ -9,7 +9,7 @@ import { describe, expect, it } from 'vitest';
  *
  * 配布版は `resources/content/<mode>/*.json` を読んで同梱課題を組み立てる。
  * 正本は `packages/content/src/builtin/<mode>/` の3フォルダ（assemble / inspect-parts /
- * inspect-repair）で、`scripts/copy-content.mjs`（`predist` と `dist` の先頭）が複写する。
+ * inspect-repair）で、`scripts/copy-content.mjs`（`dist` の先頭）が複写する。
  * 以前は `MODES` が `['assemble']` に固定されており、C1/C2（12題）が配布物から欠落したまま
  * `builtinSet()` が「1題でも読めれば成功」とみなすため、無警告で8題しか一覧に出なかった。
  * ここが食い違ったまま配布されないよう、**モード別フォルダすべて**を検査し、

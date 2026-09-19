@@ -39,7 +39,8 @@
   border-radius: 4px;
   color: var(--muted);
   font-size: 11px;
-  padding: 3px 8px;
+  /* 余白は 4px 刻みに揃える（Batch E レビュー Minor 6）。 */
+  padding: 4px 8px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

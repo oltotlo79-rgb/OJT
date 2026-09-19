@@ -72,10 +72,23 @@ export function projectToScreen(
   };
 }
 
+/**
+ * 3Dペインの実測の縦横比。**アプリと同じ値を `cameraPose()` へ渡す**ために使う。
+ *
+ * UI監査バッチA（`76a71af`）で `CameraPresets.tsx` が `useThree(s => s.size)` から実測した
+ * 縦横比を `cameraPose()` へ渡すようになった（盤をペインいっぱいに収める）。E2E が縦横比を
+ * 渡さないままだと、アプリは実測で寄った位置に、E2E は「16:10 の仮定」の位置に端子があると
+ * 思い込み、**クリックが端子を外す**（Batch E: モードBの配線・モードDの配線が落ちていた）。
+ * `state.size` はキャンバスの CSS ピクセル寸法なので、`boundingBox()` の幅・高さと一致する。
+ */
+function aspectOf(box: CanvasBox): number {
+  return box.height > 0 ? box.width / box.height : 1.6;
+}
+
 /** 盤の**物理**端子IDの中心が来るページ座標（正面視プリセット前提）。 */
 export function terminalPoint(terminal: TerminalId, box: CanvasBox): { x: number; y: number } {
   const world = boardToWorld(toScene(boardTerminalPos(JIPM_BOARD, terminal)));
-  return projectToScreen(world, cameraPose('front'), box);
+  return projectToScreen(world, cameraPose('front', { aspect: aspectOf(box) }), box);
 }
 
 /**
@@ -95,7 +108,11 @@ export function boardPoint(
   point: { x: number; y: number; z: number },
   box: CanvasBox,
 ): { x: number; y: number } {
-  return projectToScreen(boardToWorld(toScene(point)), cameraPose('front'), box);
+  return projectToScreen(
+    boardToWorld(toScene(point)),
+    cameraPose('front', { aspect: aspectOf(box) }),
+    box,
+  );
 }
 
 /**
@@ -144,7 +161,11 @@ export function plcBoardPoint(
   point: { x: number; y: number; z: number },
   box: CanvasBox,
 ): { x: number; y: number } {
-  return projectToScreen(boardToWorld(toScene(point)), cameraPose('plc'), box);
+  return projectToScreen(
+    boardToWorld(toScene(point)),
+    cameraPose('plc', { aspect: aspectOf(box) }),
+    box,
+  );
 }
 
 /**
@@ -176,7 +197,11 @@ export function plcBoardPointFor(
   point: { x: number; y: number; z: number },
   box: CanvasBox,
 ): { x: number; y: number } {
-  return projectToScreen(boardToWorld(toScene(point)), cameraPose('plc', { plcUnit: unit }), box);
+  return projectToScreen(
+    boardToWorld(toScene(point)),
+    cameraPose('plc', { plcUnit: unit, aspect: aspectOf(box) }),
+    box,
+  );
 }
 
 /** 機種を指定した端子の射影（盤・PLC本体・壁コンセントのどれでも）。 */

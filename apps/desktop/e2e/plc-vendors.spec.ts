@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -74,9 +74,25 @@ async function shot(app: ElectronApplication, page: Page, name: string): Promise
   writeFileSync(join(SHOT_DIR, `${name}.png`), Buffer.from(base64, 'base64'));
 }
 
+/**
+ * この spec だけの `userData`（設定と一時保存の置き場）。**他の spec を汚さない**ため。
+ *
+ * ここは4メーカーぶんのラダーを組むが、判定まで進まない test がある。判定を通らないと
+ * 一時保存（§12.3）が残り、**次に走る `plc.spec.ts` が d-001 を開いた時点でそのラダーを
+ * 引き継いでしまう**（Batch E: 「変換を通していないラダーでは判定できない」が、開いた
+ * 直後なのに判定ボタンが押せる状態になって落ちた）。Electron は Chromium の
+ * `--user-data-dir` をそのまま `app.getPath('userData')` に使うので、これ1行で分けられる。
+ * 既定メーカーを三菱へ戻す後始末（決定表#21）はこの spec 自身のために残す。
+ */
+const USER_DATA_DIR = mkdtempSync(join(tmpdir(), 'ojt-plc-vendors-'));
+
 async function launch(): Promise<{ app: ElectronApplication; page: Page }> {
   const app = await electron.launch({
-    args: [join(APP_ROOT, 'out', 'main', 'index.js'), ...CHROMIUM_FLAGS],
+    args: [
+      join(APP_ROOT, 'out', 'main', 'index.js'),
+      ...CHROMIUM_FLAGS,
+      `--user-data-dir=${USER_DATA_DIR}`,
+    ],
     env: { ...process.env, NODE_ENV: 'production' },
   });
   const page = await app.firstWindow();
@@ -214,15 +230,30 @@ async function withVendor(
   body: (page: Page, app: ElectronApplication) => Promise<void>,
 ): Promise<void> {
   const { app, page } = await launch();
+  let failed = false;
   try {
     await setVendor(page, vendor);
     await body(page, app);
+  } catch (error) {
+    failed = true;
+    throw error;
   } finally {
+    /*
+     * 後始末の失敗で**本体の失敗を握り潰さない**（Batch E レビュー I5）。`setVendor()` が
+     * 投げると、その例外が `body()` の本来の失敗を置き換えて原因が消えてしまう。
+     * 本体が落ちているときは警告に落とし（原因を残す）、本体が通っているときだけ
+     * 後始末の失敗をそのまま投げる（黙って見逃さない）。`app.close()` は必ず通す。
+     */
     try {
       if (!page.isClosed() && vendor !== 'mitsubishi') await setVendor(page, 'mitsubishi');
-    } finally {
-      await app.close();
+    } catch (error) {
+      if (!failed) {
+        await app.close();
+        throw error;
+      }
+      console.warn(`[withVendor] ${vendor} の既定メーカー復帰に失敗しました:`, error);
     }
+    await app.close();
   }
 }
 
@@ -239,9 +270,11 @@ test.describe('Phase 4 受入基準（4メーカー）', () => {
        * UX 改善（2026-09-19）で「『変換』の操作はありません（編集すると自動で変換されます）」
        * という注記が `plc-guide` の中に入ったので、「`plc-guide` に『変換』の字が出ない」では
        * もう確かめられない（その注記自身が「変換」を含む）。
+       * UI監査バッチD（`340b2d9`）で専用の `plc-auto-convert` は消え、注記は手順帯の1行
+       * （`plc-hint`。`screens/PlcSession.tsx:97` の `ladderHintText()`）へ吸収された。
        */
       await expect(page.getByTestId('plc-step-convert')).toHaveCount(0);
-      await expect(page.getByTestId('plc-auto-convert')).toContainText(
+      await expect(page.getByTestId('plc-hint')).toContainText(
         '「変換」の操作はありません（編集すると自動で変換されます）',
       );
       // 機種も CP1E になっている（決定表#9）
@@ -387,7 +420,19 @@ test.describe('Phase 4 受入基準（4メーカー）', () => {
           await app.evaluate(({ BrowserWindow }, bounds) => {
             BrowserWindow.getAllWindows()[0]?.setBounds({ x: 0, y: 0, ...bounds });
           }, size);
-          await page.waitForTimeout(400);
+          /*
+           * 固定待ちではなく「renderer が新しい幅を見たか」で待つ（Batch E レビュー Minor 4）。
+           * `innerWidth` は窓枠のぶんだけ `setBounds` の値より小さくなるので幅を持たせる。
+           */
+          await expect
+            .poll(
+              async () => {
+                const inner = await page.evaluate(() => window.innerWidth);
+                return Math.abs(inner - size.width) <= 64;
+              },
+              { timeout: 10_000 },
+            )
+            .toBe(true);
           const overflow = await page.evaluate(
             () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
           );
