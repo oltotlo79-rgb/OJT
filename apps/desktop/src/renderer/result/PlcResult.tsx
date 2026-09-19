@@ -36,78 +36,80 @@ export function PlcResult({
   const reasons = failureReasons(result);
   return (
     <div className={styles.wrap}>
-      <div className={styles.header}>
-        {/* 合否は画面を開いた瞬間に読み上げてほしい情報なので、支援技術にも伝える（§8.3） */}
-        <span
-          className={`${styles.verdict} ${styles.verdictBig} ${
-            result.passed ? styles.passed : styles.failed
-          }`}
-          data-testid="verdict"
-          role="status"
-          aria-live="polite"
-        >
-          {result.passed ? JA.result.passed : JA.result.failed}
-        </span>
-        <h1 className={styles.title}>
-          {JA.result.title}: {problem.title}
-        </h1>
-        <span data-testid="result-elapsed">
-          {JA.result.elapsed} {formatElapsed(elapsedMs)}（
-          {elapsedSummaryText(
-            elapsedMs,
-            problem.timeLimit.standardMin,
-            problem.timeLimit.cutoffMin,
-          )}
-          ）
-        </span>
-      </div>
+      <div className={styles.scroll}>
+        <div className={styles.header}>
+          {/* 合否は画面を開いた瞬間に読み上げてほしい情報なので、支援技術にも伝える（§8.3） */}
+          <span
+            className={`${styles.verdict} ${styles.verdictBig} ${
+              result.passed ? styles.passed : styles.failed
+            }`}
+            data-testid="verdict"
+            role="status"
+            aria-live="polite"
+          >
+            {result.passed ? JA.result.passed : JA.result.failed}
+          </span>
+          <h1 className={styles.title}>
+            {JA.result.title}: {problem.title}
+          </h1>
+          <span data-testid="result-elapsed">
+            {JA.result.elapsed} {formatElapsed(elapsedMs)}（
+            {elapsedSummaryText(
+              elapsedMs,
+              problem.timeLimit.standardMin,
+              problem.timeLimit.cutoffMin,
+            )}
+            ）
+          </span>
+        </div>
 
-      {result.chatter.length === 0 ? null : (
-        <p className={styles.forbidden} data-testid="forbidden-warning">
-          {JA.result.forbidden}
-        </p>
-      )}
-
-      {/* 合否のすぐ下に「なぜ」を置く。波形を読む前に、何を直せばよいかが分かるように */}
-      <div className={styles.why} data-testid="plc-why">
-        <h2>{JA.plc.why}</h2>
-        {reasons.length === 0 ? (
-          <p data-testid="plc-why-passed">{JA.plc.whyPassed}</p>
-        ) : (
-          <ol className={styles.reasons}>
-            {reasons.map((line) => (
-              <li key={line}>{line}</li>
-            ))}
-          </ol>
+        {result.chatter.length === 0 ? null : (
+          <p className={styles.forbidden} data-testid="forbidden-warning">
+            {JA.result.forbidden}
+          </p>
         )}
-        <p className={styles.detail} data-testid="compare-signals">
-          {comparedSignalsText(result.compareSignals)}
-        </p>
-      </div>
 
-      <div className={styles.grid}>
-        <LadderIssueList errors={result.ladderErrors} warnings={result.ladderWarnings} />
-        <ChartOverlay
-          expected={result.charts.expected}
-          actual={result.charts.actual}
-          mismatches={result.mismatches}
-        />
-        <MismatchList mismatches={result.mismatches} />
-        <StaticCheckList checks={result.staticChecks} />
-        {powerHelp.length === 0 ? null : (
-          <div className={styles.card} data-testid="plc-power-help">
-            <h2>{JA.staticCheck.plcPowerIndependent}</h2>
-            <ul>
-              {powerHelp.map((line) => (
+        {/* 合否のすぐ下に「なぜ」を置く。波形を読む前に、何を直せばよいかが分かるように */}
+        <div className={styles.why} data-testid="plc-why">
+          <h2>{JA.plc.why}</h2>
+          {reasons.length === 0 ? (
+            <p data-testid="plc-why-passed">{JA.plc.whyPassed}</p>
+          ) : (
+            <ol className={styles.reasons}>
+              {reasons.map((line) => (
                 <li key={line}>{line}</li>
               ))}
-            </ul>
-          </div>
-        )}
-        <HazardList
-          counts={result.hazardsByKind}
-          total={result.hazardCount + restoredHazardCount}
-        />
+            </ol>
+          )}
+          <p className={styles.detail} data-testid="compare-signals">
+            {comparedSignalsText(result.compareSignals)}
+          </p>
+        </div>
+
+        <div className={styles.grid}>
+          <LadderIssueList errors={result.ladderErrors} warnings={result.ladderWarnings} />
+          <ChartOverlay
+            expected={result.charts.expected}
+            actual={result.charts.actual}
+            mismatches={result.mismatches}
+          />
+          <MismatchList mismatches={result.mismatches} />
+          <StaticCheckList checks={result.staticChecks} />
+          {powerHelp.length === 0 ? null : (
+            <div className={styles.card} data-testid="plc-power-help">
+              <h2>{JA.staticCheck.plcPowerIndependent}</h2>
+              <ul>
+                {powerHelp.map((line) => (
+                  <li key={line}>{line}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+          <HazardList
+            counts={result.hazardsByKind}
+            total={result.hazardCount + restoredHazardCount}
+          />
+        </div>
       </div>
 
       <div className={styles.actions}>

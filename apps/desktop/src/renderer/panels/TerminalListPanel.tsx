@@ -1,7 +1,7 @@
 import type { BoardDefinition, BoardSession } from '@ojt/board-model';
 import type { TerminalId } from '@ojt/circuit-sim';
 import { useMemo, useState, type JSX } from 'react';
-import { JA } from '../i18n/ja.js';
+import { JA, terminalNoMatchText } from '../i18n/ja.js';
 import type { PickHit } from '../session/interaction.js';
 import { terminalRows, type TerminalRow } from '../session/terminal-list.js';
 import styles from './panels.module.css';
@@ -63,6 +63,15 @@ export function TerminalListPanel({
           </button>
         </p>
       )}
+      {/*
+        検索して1件も無いとき、以前は無言で空欄になっていた（UI監査 I9）。盤の印字（`S1`）でも
+        役割名（`CR1`）でも探せることを添えて、打ち間違いだと訓練者が気づけるようにする。
+      */}
+      {query.trim().length > 0 && rows.length === 0 ? (
+        <p className={styles.terminalHint} data-testid="terminal-no-match">
+          {terminalNoMatchText(query.trim())}
+        </p>
+      ) : null}
       <div className={styles.terminalGroups}>
         {byGroup(rows).map((group) => (
           <div key={group.group} className={styles.terminalGroup}>

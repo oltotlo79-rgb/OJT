@@ -70,25 +70,69 @@ describe('ツールバーの構造（§8.1）', () => {
   });
 });
 
-describe('押せない理由（UXレビュー #5）', () => {
-  it('元に戻す／やり直しが押せないとき、title と一行の説明を出す', () => {
+describe('押せない理由（UXレビュー #5 / UI監査 I6）', () => {
+  /*
+   * UI監査 I6: 以前は理由を常時1行で表示しており、幅の1/4を占めて1280pxでは
+   * ①ブレーカ②電源スイッチが2行目へ落ちていた。いまは `disabled` ではなく `aria-disabled`
+   * （I3 と同じ型）にして、理由は `title` と隠し文字（`aria-describedby`）だけにする。
+   * 見た目の幅は押せる／押せないで変わらない。
+   */
+  it('元に戻す／やり直しが押せないとき、title と読み上げ用の説明を出す（画面には常時表示しない）', () => {
     renderToolbar({ canUndo: false, canRedo: false });
     const undo = screen.getByRole('button', { name: JA.session.undo });
     const redo = screen.getByRole('button', { name: JA.session.redo });
     expect(undo).toHaveAttribute('title', JA.disabledReason.undo);
     expect(redo).toHaveAttribute('title', JA.disabledReason.redo);
-    const reason = screen.getByTestId('undo-redo-reason');
-    expect(reason).toHaveTextContent(JA.disabledReason.undo);
-    expect(reason).toHaveTextContent(JA.disabledReason.redo);
+    // `disabled` ではない（フォーカス・ツールチップを保つ。I3 と同じ理由）
+    expect(undo).not.toBeDisabled();
+    expect(redo).not.toBeDisabled();
+    expect(undo).toHaveAttribute('aria-disabled', 'true');
+    expect(redo).toHaveAttribute('aria-disabled', 'true');
+    expect(screen.getByTestId('undo-reason')).toHaveTextContent(JA.disabledReason.undo);
+    expect(screen.getByTestId('redo-reason')).toHaveTextContent(JA.disabledReason.redo);
   });
 
-  it('押せるときは title も一行の説明も出さない', () => {
+  it('押せるときは title も隠し文字も出さない', () => {
     renderToolbar({ canUndo: true, canRedo: true });
     const undo = screen.getByRole('button', { name: JA.session.undo });
     const redo = screen.getByRole('button', { name: JA.session.redo });
     expect(undo).not.toHaveAttribute('title');
     expect(redo).not.toHaveAttribute('title');
-    expect(screen.queryByTestId('undo-redo-reason')).toBeNull();
+    expect(undo).toHaveAttribute('aria-disabled', 'false');
+    expect(redo).toHaveAttribute('aria-disabled', 'false');
+    expect(screen.queryByTestId('undo-reason')).toBeNull();
+    expect(screen.queryByTestId('redo-reason')).toBeNull();
+  });
+
+  it('押せないときにクリックしても呼ばれない（aria-disabled はクリックを止めない代わりにガードする）', () => {
+    const onUndo = vi.fn();
+    const onRedo = vi.fn();
+    render(
+      <Toolbar
+        mode="wire"
+        wireColor="青"
+        allowedColors={['青', '白', '黄']}
+        camera="front"
+        canUndo={false}
+        canRedo={false}
+        judging={false}
+        onMode={vi.fn()}
+        onWireColor={vi.fn()}
+        onCamera={vi.fn()}
+        onUndo={onUndo}
+        onRedo={onRedo}
+        onJudge={vi.fn()}
+        onBack={vi.fn()}
+        onSave={vi.fn()}
+        onLoad={vi.fn()}
+        schematicVisible={false}
+        onToggleSchematic={undefined}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: JA.session.undo }));
+    fireEvent.click(screen.getByRole('button', { name: JA.session.redo }));
+    expect(onUndo).not.toHaveBeenCalled();
+    expect(onRedo).not.toHaveBeenCalled();
   });
 });
 

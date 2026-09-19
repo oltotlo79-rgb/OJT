@@ -121,17 +121,19 @@ describe('種別ポップオーバー（§9.2）', () => {
 });
 
 describe('RepairPanel（§9.2 修復）', () => {
+  // `RepairPanel` はもらった文字列をそのまま並べるだけ（呼び出し側が `wireLabel()` で
+  // 表示名を組み立ててから渡す。UI監査 I5）。ここでは表示名で渡す。
   it('追加した白線と外した青線を並べる', () => {
     render(
       <RepairPanel
-        addedWires={['w-101']}
-        removedWires={['sw-002']}
+        addedWires={['CR1.9–PB1.2c の白線']}
+        removedWires={['CR1.9–PB1.2c の青線']}
         mountedParts={[]}
         onReplacePart={vi.fn()}
       />,
     );
-    expect(screen.getByTestId('added-wires').textContent).toContain('w-101');
-    expect(screen.getByTestId('removed-wires').textContent).toContain('sw-002');
+    expect(screen.getByTestId('added-wires').textContent).toContain('CR1.9–PB1.2c の白線');
+    expect(screen.getByTestId('removed-wires').textContent).toContain('CR1.9–PB1.2c の青線');
   });
 
   it('改造かどうかは出さない（判定時に計上する。§9.2）', () => {
@@ -139,7 +141,7 @@ describe('RepairPanel（§9.2 修復）', () => {
       render(
         <RepairPanel
           addedWires={[]}
-          removedWires={['sw-002']}
+          removedWires={['CR1.9–PB1.2c の青線']}
           mountedParts={[]}
           onReplacePart={vi.fn()}
         />,

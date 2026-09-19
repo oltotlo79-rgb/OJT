@@ -68,6 +68,7 @@ function faultedNetlist(
     session: built.value.session,
     applied: applied.value,
     initialWireIds: built.value.session.wires.map((w) => w.id),
+    initialWires: built.value.session.wires.map((w) => ({ ...w })),
     cells: built.value.cells,
   };
   const { netlist, errors } = repairNetlist(circuit, JIPM_BOARD);

@@ -88,6 +88,27 @@ describe('ResultView', () => {
     expect(retry.parentElement?.className).toContain(resultStyles.stickyActions);
   });
 
+  it('操作バーはスクロール領域の外にあり、最後のカードに重ならない（UI監査 Blocking #8）', () => {
+    if (PROBLEM === undefined) return;
+    render(
+      <ResultView
+        problem={PROBLEM}
+        result={judgeWith()}
+        onRetry={() => undefined}
+        onBackToList={() => undefined}
+      />,
+    );
+    const retry = screen.getByRole('button', { name: JA.result.retry });
+    const actionsBar = retry.parentElement;
+    const scrollClass = resultStyles.scroll;
+    expect(scrollClass).toBeDefined();
+    if (scrollClass === undefined) return;
+    // 見出し〜カード列は `.scroll` の中だけがスクロールし、操作バーはその外（`.wrap` の
+    // 最後の行）に置く。中身がどれだけ伸びても操作バーぶんの高さは常に確保されるので、
+    // 「危険操作」などの最後のカードに重なりようがない。
+    expect(actionsBar?.closest(`.${CSS.escape(scrollClass)}`)).toBeNull();
+  });
+
   it('所要時間を標準時間との対比付きで出す（§8.3）', () => {
     if (PROBLEM === undefined) return;
     render(

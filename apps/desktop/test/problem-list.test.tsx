@@ -202,6 +202,54 @@ describe('ProblemList', () => {
     expect(screen.getByTestId('problem-table').textContent).toContain('1級課題');
   });
 
+  /*
+   * UI監査 I17: 2段の絞り込み（モード・級）に見出しが無く、2段目が何の絞り込みか
+   * 分からなかった。それぞれの行にラベルを添える。
+   */
+  it('絞り込みの各行に見出しを添える（UI監査 I17）', async () => {
+    setApi({ listProblems: () => Promise.resolve(PAYLOAD) });
+    render(<ProblemList />);
+    await screen.findByTestId('problem-table');
+    expect(screen.getByTestId('mode-filter').textContent).toContain(
+      JA.problemListExtra.filterModeLabel,
+    );
+    expect(screen.getByTestId('grade-filter').textContent).toContain(
+      JA.problemListExtra.filterGradeLabel,
+    );
+  });
+
+  /* UI監査 I17: 絞り込んだあとに何件当たったかが無言だった。 */
+  it('絞り込みに一致した件数を出す（UI監査 I17）', async () => {
+    setApi({
+      listProblems: () =>
+        Promise.resolve({
+          ...PAYLOAD,
+          problems: [
+            ...PAYLOAD.problems,
+            {
+              id: 'b-002',
+              title: '2件目',
+              grade: 3,
+              description: '2件目',
+              standardMin: 30,
+              cutoffMin: 50,
+              mode: 'assemble',
+              source: 'builtin',
+            },
+          ],
+        }),
+    });
+    render(<ProblemList />);
+    await screen.findByTestId('problem-table');
+    expect(screen.getByTestId('problem-count').textContent).toContain('2 件');
+
+    const filter = screen.getByTestId('grade-filter');
+    fireEvent.click(within(filter).getByRole('button', { name: '1級' }));
+    // 1級は無いので0件（表そのものは出ず、絞り込み結果0件の文言に切り替わる）
+    expect(screen.queryByTestId('problem-count')).toBeNull();
+    expect(screen.getByText(JA.problemList.filterEmpty)).toBeTruthy();
+  });
+
   it('利用者課題フォルダが無ければ警告を出す（§13 #9）', async () => {
     setApi({
       listProblems: () => Promise.resolve({ ...PAYLOAD, userDirExists: false, userDir: 'C:/none' }),

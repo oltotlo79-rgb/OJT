@@ -45,21 +45,29 @@ export function MarkSheetPanel({
               <tr key={row.partId}>
                 <td>{partLabel}</td>
                 <td>
-                  {PART_TRUTHS.map((truth) => (
-                    <label key={truth} style={{ display: 'block' }}>
-                      <input
-                        type="radio"
-                        name={`mark-${row.partId}`}
-                        data-testid={`answer-${row.partId}-${truth}`}
-                        aria-label={`${partLabel} ${PART_TRUTH_LABELS[truth]}`}
-                        checked={row.answer === truth}
-                        onChange={() => {
-                          onAnswer(row.partId, truth);
-                        }}
-                      />{' '}
-                      {PART_TRUTH_LABELS[truth]}
-                    </label>
-                  ))}
+                  {/*
+                    UI監査 I16: 7択を縦一列の13pxラジオで並べていたため、当たり判定が小さく
+                    （small-target）、狭い列幅で「レアショート」が語の途中で折り返していた
+                    （wrap）。横並びのチップへ変え、チップ自身の当たり判定を広げ、
+                    ラベルは折り返さない1行にする。
+                  */}
+                  <div className={styles.markOptions}>
+                    {PART_TRUTHS.map((truth) => (
+                      <label key={truth} className={styles.markOption}>
+                        <input
+                          type="radio"
+                          name={`mark-${row.partId}`}
+                          data-testid={`answer-${row.partId}-${truth}`}
+                          aria-label={`${partLabel} ${PART_TRUTH_LABELS[truth]}`}
+                          checked={row.answer === truth}
+                          onChange={() => {
+                            onAnswer(row.partId, truth);
+                          }}
+                        />
+                        {PART_TRUTH_LABELS[truth]}
+                      </label>
+                    ))}
+                  </div>
                 </td>
               </tr>
             );

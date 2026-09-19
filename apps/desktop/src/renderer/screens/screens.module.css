@@ -195,8 +195,12 @@
 }
 
 /*
- * 回路図は課題によっては縦に長い（1級で 238mm 相当）。右パネルの高さを食い尽くして
- * 「部品」パネルを画面外へ押し出さないよう、高さを頭打ちにして自分でスクロールさせる。§8.1 / §8.4
+ * 回路図は課題によっては縦に長い（1級で 238mm 相当、JIS b-006 は 430×700）。右パネルの高さを
+ * 食い尽くして「部品」パネルを画面外へ押し出さないよう、高さを頭打ちにして自分でスクロールさせる。
+ * §8.1 / §8.4
+ *
+ * 頭打ちは固定 320px ではなく画面の高さに追随させる（UI監査 batch C）。固定値は窓を大きくしても
+ * 常に320pxのままで、縦長の図（b-006 430×700 など）を毎回切り詰めていた。
  */
 .schematicBox {
   background: #f7f7f4;
@@ -207,7 +211,7 @@
    * `overflow: auto` の箱に素で入れるとボタンが切り落とされて押せない（レビュー I5）。
    */
   padding: 32px 6px 6px;
-  max-height: 320px;
+  max-height: 70vh;
   overflow: auto;
 }
 
@@ -226,17 +230,24 @@
   margin: 0 0 6px;
 }
 
+/*
+ * ラベル列の幅を揃える（UI監査 I18）。以前は `display: flex` でラベルが自分の文字数ぶんの
+ * 幅しか取らなかったため、操作子（チェックボックス・スライダ・入力欄）の左端が行ごとに
+ * バラバラだった（効果音155px／音量128px／復元440px、の実測）。2列グリッドにして
+ * ラベル列を固定幅にすれば、操作子は常に同じ位置から始まる。3列目は音量つまみの
+ * 「◯◯%」のような、入力欄のうしろに添える値のためのもの（他の行では使わない）。
+ */
 .settingRow {
-  display: flex;
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr) auto;
   align-items: center;
   gap: 8px;
   border-bottom: 1px solid var(--line);
   padding: 10px 0;
 }
 
-/* UXレビュー #11: 300px 固定だと短い項目名でも間延びしていた。上限だけ決めて中身に合わせる */
 .settingRow label {
-  max-width: 240px;
+  grid-column: 1;
 }
 
 /*
@@ -247,7 +258,7 @@
 .settingRow input[type='text'],
 .settingRow input[type='number'],
 .settingRow select {
-  flex: 1;
+  width: 100%;
   background: var(--panel-2);
   border: 1px solid var(--line);
   border-radius: 3px;
@@ -264,10 +275,24 @@
   padding: 2px;
 }
 
-.settingRow input[type='checkbox'],
+/*
+ * チェックボックス・ラジオは既定で13px前後と小さく、24px未満のクリック対象になっていた
+ * （UI監査 small-target。設定画面の効果音・復元確認・列数/通電色の既定チェックなど）。
+ * `app/global.css`（当たり判定の全体既定）は他バッチが編集中のため、ここでは設定画面に
+ * 閉じたスコープで24pxへ広げる。
+ */
+.settingRow input[type='checkbox'] {
+  accent-color: var(--accent);
+  color-scheme: dark;
+  height: 24px;
+  width: 24px;
+}
+
 .settingRow input[type='range'] {
   accent-color: var(--accent);
   color-scheme: dark;
+  /* トラックだけでなく当たり判定そのものの高さも24pxにする（音量つまみ。small-target） */
+  height: 24px;
 }
 
 .about {
@@ -281,11 +306,20 @@
   padding: 10px 14px;
 }
 
-/* 課題一覧のモード絞り込み。§12.1 */
+/* 課題一覧のモード・級絞り込み。§12.1 */
 .modeFilter {
   display: flex;
+  align-items: center;
   gap: 6px;
   margin-bottom: 10px;
+}
+
+/* 絞り込み行の見出し（「モード:」「級:」。UI監査 I17）。ボタンと同じ行の高さで揃える。 */
+.filterLabel {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  margin-right: 2px;
 }
 
 /*

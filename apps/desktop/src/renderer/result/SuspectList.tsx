@@ -28,41 +28,46 @@ export function SuspectList({
       {suspects.length === 0 ? (
         <p data-testid="no-suspect">{JA.result.noSuspect}</p>
       ) : (
-        <ul className={styles.suspectList}>
-          {suspects.map((suspect) => (
-            <li key={`${suspect.kind}:${suspect.terminals.join('-')}`} className={styles.suspect}>
-              <span
-                className={suspect.kind === 'missing' ? styles.suspectMissing : styles.suspectExtra}
-              >
-                {suspect.kind === 'missing' ? JA.result.suspectMissing : JA.result.suspectExtra}
-              </span>
-              <span className={styles.suspectText}>{suspect.message}</span>
-              <button
-                type="button"
-                className={styles.suspectButton}
-                onClick={() => {
-                  onShowOnBoard(suspect);
-                }}
-              >
-                {JA.result.showOnBoard}
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-      {truncated > 0 ? (
-        <p className={styles.suspectMore} data-testid="suspect-more">
-          {suspectMoreText(truncated)}
-        </p>
-      ) : null}
-      {/*
-        接点の組の違いも「不足」「余分」として出る（決定表#9b）。正規化しないと決めたので、
-        **一覧が出ているあいだは必ず**この1行を添えて、訓練者が誤りだと思い込まないようにする。
-      */}
-      {suspects.length === 0 ? null : (
-        <p className={styles.suspectNote} data-testid="suspect-note">
-          {JA.result.suspectNote}
-        </p>
+        <>
+          {/*
+            接点の組の違いも「不足」「余分」として出る（決定表#9b）。正規化しないと決めたので、
+            **一覧が出ているあいだは必ず**この1行を添えて、訓練者が誤りだと思い込まないように
+            する。見出しの直後（一覧より前）に置く。疑いが5件など多いと一覧だけで `.card` の
+            頭打ち（420px）を超え、以前は下端のこの断りが折り返しの外へ落ちて見えなかった
+            （UI監査）。`.suspectList` 側だけを内側でスクロールさせ、この断りは常に見える位置に置く。
+          */}
+          <p className={styles.suspectNote} data-testid="suspect-note">
+            {JA.result.suspectNote}
+          </p>
+          <ul className={styles.suspectList}>
+            {suspects.map((suspect) => (
+              <li key={`${suspect.kind}:${suspect.terminals.join('-')}`} className={styles.suspect}>
+                <span
+                  className={
+                    suspect.kind === 'missing' ? styles.suspectMissing : styles.suspectExtra
+                  }
+                >
+                  {suspect.kind === 'missing' ? JA.result.suspectMissing : JA.result.suspectExtra}
+                </span>
+                <span className={styles.suspectText}>{suspect.message}</span>
+                <button
+                  type="button"
+                  className={styles.suspectButton}
+                  onClick={() => {
+                    onShowOnBoard(suspect);
+                  }}
+                >
+                  {JA.result.showOnBoard}
+                </button>
+              </li>
+            ))}
+          </ul>
+          {truncated > 0 ? (
+            <p className={styles.suspectMore} data-testid="suspect-more">
+              {suspectMoreText(truncated)}
+            </p>
+          ) : null}
+        </>
       )}
     </div>
   );

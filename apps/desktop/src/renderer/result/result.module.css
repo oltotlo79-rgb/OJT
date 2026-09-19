@@ -1,9 +1,27 @@
 /* 結果画面。設計仕様 §8.3。 */
 
+/*
+ * 「もう一度／課題一覧へ」は画面下端に**常に**見える位置へ置く（UXレビュー #8）。
+ * 以前は `.wrap` 全体をスクロールさせ、その中で操作バーを `position: sticky` にしていたが、
+ * `bottom` に負の値を与えていたためスクロール量によっては直前のカード（危険操作・改造）に
+ * バーが重なっていた（UI監査 Blocking #8）。
+ *
+ * いまは `.wrap` 自体を縦の flex にして、スクロールは `.scroll`（見出し〜カード列）だけに閉じ込め、
+ * `.actions` は flex の最後の行としてスクロール領域の**外**に置く。中身がどれだけ長くても
+ * バーは常に自分の高さぶんだけ確保されるので、カードに重なりようがない。
+ */
 .wrap {
   height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.scroll {
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
-  padding: 16px 24px 32px;
+  padding: 16px 24px;
 }
 
 .header {
@@ -172,21 +190,21 @@
 
 .actions {
   display: flex;
+  flex: 0 0 auto;
   gap: 10px;
-  margin-top: 16px;
+  padding: 10px 24px;
 }
 
 /*
  * UXレビュー #8: 「もう一度／課題一覧へ」を画面下端に固定する（B/C1/C2の結果画面）。
- * `.wrap` が縦スクロールする箱なので、その中で `position: sticky` にすれば
- * 長い結果（差分一覧・指摘一覧など）をスクロールしても押せる位置に留まる。
+ * `.scroll` の外（`.wrap` の flex 最後の行）に置くだけで常に見える。UI監査 Blocking #8 の前は
+ * `.wrap` 全体をスクロールさせ `position: sticky; bottom: -32px` で留めていたが、スクロール量に
+ * よっては直前のカード（危険操作・改造）にバーが重なっていた。中身の長さに関わらず自分の
+ * 高さぶんだけ確保される、いまの形なら重なりようがない。
  */
 .stickyActions {
-  position: sticky;
-  bottom: -32px;
   background: var(--bg);
   border-top: 1px solid var(--line);
-  padding: 10px 0;
 }
 
 /* --- Plan 3B Task 13: モードDの結果画面 --- */
@@ -229,12 +247,19 @@
 
 /* --- Plan 5 Task 9: 疑わしい配線（UXレビュー #28）。§8.3 / 決定表#27 --- */
 
+/*
+ * 疑いが多い（5件など）と一覧だけで `.card` の頭打ち（420px）を超え、以前は下にあった
+ * `.suspectNote`（接点の組の違いの断り）が折り返しの外へ落ちて見えなかった（UI監査）。
+ * `.suspectNote` を見出しの直後（常に見える位置）へ移し、スクロールは一覧の行だけに閉じ込める。
+ */
 .suspectList {
   display: flex;
   flex-direction: column;
   gap: 8px;
   list-style: none;
   margin: 0;
+  max-height: 280px;
+  overflow-y: auto;
   padding: 0;
 }
 
@@ -288,13 +313,16 @@
   margin: 8px 0 0;
 }
 
-/* 接点の組の違いも一覧に出ることの断り（決定表#9b）。一覧があるあいだは必ず出す。 */
+/*
+ * 接点の組の違いも一覧に出ることの断り（決定表#9b）。一覧があるあいだは必ず出す。
+ * 見出しの直後（一覧より前）に置くので、区切りの罫線は上ではなく下に付ける（UI監査）。
+ */
 .suspectNote {
-  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
   color: var(--muted);
   font-size: 12px;
   line-height: 1.6;
-  margin: 8px 0 0;
-  padding-top: 8px;
+  margin: 8px 0;
+  padding-bottom: 8px;
 }
 /* --- /Plan 5 Task 9 --- */

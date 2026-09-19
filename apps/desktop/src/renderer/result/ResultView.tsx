@@ -54,50 +54,53 @@ export function ResultView({
   const elapsedMs = result.elapsedMs ?? 0;
   return (
     <div className={styles.wrap}>
-      <div className={styles.header}>
-        {/* 合否は画面を開いた瞬間に読み上げてほしい情報なので、支援技術にも伝える（§8.3） */}
-        <span
-          className={`${styles.verdict} ${result.passed ? styles.passed : styles.failed}`}
-          data-testid="verdict"
-          role="status"
-          aria-live="polite"
-        >
-          {result.passed ? JA.result.passed : JA.result.failed}
-        </span>
-        <h1 className={styles.title}>
-          {JA.result.title}: {problem.title}
-        </h1>
-        <span data-testid="result-elapsed">
-          {JA.result.elapsed} {formatElapsed(elapsedMs)}（
-          {elapsedSummary(elapsedMs, problem.timeLimit.standardMin, problem.timeLimit.cutoffMin)}）
-        </span>
-      </div>
+      <div className={styles.scroll}>
+        <div className={styles.header}>
+          {/* 合否は画面を開いた瞬間に読み上げてほしい情報なので、支援技術にも伝える（§8.3） */}
+          <span
+            className={`${styles.verdict} ${result.passed ? styles.passed : styles.failed}`}
+            data-testid="verdict"
+            role="status"
+            aria-live="polite"
+          >
+            {result.passed ? JA.result.passed : JA.result.failed}
+          </span>
+          <h1 className={styles.title}>
+            {JA.result.title}: {problem.title}
+          </h1>
+          <span data-testid="result-elapsed">
+            {JA.result.elapsed} {formatElapsed(elapsedMs)}（
+            {elapsedSummary(elapsedMs, problem.timeLimit.standardMin, problem.timeLimit.cutoffMin)}
+            ）
+          </span>
+        </div>
 
-      {result.chatter.length === 0 ? null : (
-        <p className={styles.forbidden} data-testid="forbidden-warning">
-          {JA.result.forbidden}
-        </p>
-      )}
-
-      <div className={styles.grid}>
-        <ChartOverlay
-          expected={result.charts.expected}
-          actual={result.charts.actual}
-          mismatches={result.mismatches}
-        />
-        <MismatchList mismatches={result.mismatches} />
-        {suspects === undefined || onShowOnBoard === undefined ? null : (
-          <SuspectList
-            suspects={suspects}
-            truncated={suspectsTruncated ?? 0}
-            onShowOnBoard={onShowOnBoard}
-          />
+        {result.chatter.length === 0 ? null : (
+          <p className={styles.forbidden} data-testid="forbidden-warning">
+            {JA.result.forbidden}
+          </p>
         )}
-        <StaticCheckList checks={result.staticChecks} />
-        <HazardList
-          counts={result.hazardsByKind}
-          total={result.hazardCount + restoredHazardCount}
-        />
+
+        <div className={styles.grid}>
+          <ChartOverlay
+            expected={result.charts.expected}
+            actual={result.charts.actual}
+            mismatches={result.mismatches}
+          />
+          <MismatchList mismatches={result.mismatches} />
+          {suspects === undefined || onShowOnBoard === undefined ? null : (
+            <SuspectList
+              suspects={suspects}
+              truncated={suspectsTruncated ?? 0}
+              onShowOnBoard={onShowOnBoard}
+            />
+          )}
+          <StaticCheckList checks={result.staticChecks} />
+          <HazardList
+            counts={result.hazardsByKind}
+            total={result.hazardCount + restoredHazardCount}
+          />
+        </div>
       </div>
 
       <div className={`${styles.actions} ${styles.stickyActions}`}>

@@ -1,4 +1,4 @@
-import { DIAGNOSIS_TABLE, layerShortThresholdOhms, PART_TRUTH_LABELS } from '@ojt/content';
+import { DIAGNOSIS_TABLE, PART_TRUTH_LABELS } from '@ojt/content';
 import type { JSX } from 'react';
 import { JA } from '../i18n/ja.js';
 import styles from './tester.module.css';
@@ -6,8 +6,9 @@ import styles from './tester.module.css';
 /**
  * モードC1の判定表ヘルプ。設計仕様 §9.1（ヘルプ）。
  * 表そのものは Plan 2A の `DIAGNOSIS_TABLE`（7行）が唯一の源で、ここは折りたたんで描くだけ。
- * しきい値も `layerShortThresholdOhms()` から引くので、コイル抵抗の前提が変われば表示も動く。
- * 各行の `note`（溶着の優先規則・レアショートの補足）は行があれば併記する。§9.1 なお書き
+ * 各行の `note`（溶着の優先規則・レアショートの補足としきい値）は行があれば併記する。§9.1 なお書き
+ * しきい値（コイル抵抗552.5Ω＝正常値650Ωの85%）は `coil-layer-short` 行の `note` だけに書く
+ * （UI監査 I4: パネル下に同じ説明を重ねて出すと逐語で2回になるので出さない）。
  */
 export function DiagnosisHelp(): JSX.Element {
   return (
@@ -33,9 +34,8 @@ export function DiagnosisHelp(): JSX.Element {
         </tbody>
       </table>
       <p className={styles.hint} data-testid="diagnosis-note">
-        {JA.inspectParts.layerShortNote}（{layerShortThresholdOhms().toFixed(1)} Ω）
+        {JA.inspectParts.ohmSafeNote}
       </p>
-      <p className={styles.hint}>{JA.inspectParts.ohmSafeNote}</p>
     </details>
   );
 }

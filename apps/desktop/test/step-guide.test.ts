@@ -128,27 +128,49 @@ describe('inspectPartsSteps（モードC1: 部品を挿す → 通電 → 測る
 
 describe('inspectRepairSteps（モードC2: 指摘 → 修復 → 判定）', () => {
   it('starts at report', () => {
-    expect(inspectRepairSteps({ reported: false, repaired: false })[0]).toMatchObject({
+    expect(
+      inspectRepairSteps({ reportCount: 0, requiredReportCount: 1, repaired: false })[0],
+    ).toMatchObject({
       key: 'report',
       state: 'current',
     });
   });
 
-  it('moves to fix once at least one report is registered', () => {
+  it('moves to fix once every fault has been reported', () => {
     expect(
-      inspectRepairSteps({ reported: true, repaired: false }).find((s) => s.key === 'fix')?.state,
+      inspectRepairSteps({ reportCount: 1, requiredReportCount: 1, repaired: false }).find(
+        (s) => s.key === 'fix',
+      )?.state,
     ).toBe('current');
+  });
+
+  /*
+   * UI監査 I19: 故障が2箇所ある課題で1件だけ指摘しても「指摘 済」にしない。
+   * 指摘すべき件数（`requiredReportCount`）ぶん揃うまでは「いまここ」のまま。
+   */
+  it('keeps report as current until every fault is reported, not just the first one', () => {
+    const steps = inspectRepairSteps({ reportCount: 1, requiredReportCount: 2, repaired: false });
+    expect(steps.find((s) => s.key === 'report')?.state).toBe('current');
+    expect(steps.find((s) => s.key === 'fix')?.state).toBe('todo');
+  });
+
+  it('moves report to done once all required faults are reported', () => {
+    const steps = inspectRepairSteps({ reportCount: 2, requiredReportCount: 2, repaired: false });
+    expect(steps.find((s) => s.key === 'report')?.state).toBe('done');
+    expect(steps.find((s) => s.key === 'fix')?.state).toBe('current');
   });
 
   it('moves to judge once a repair action follows a report', () => {
     expect(
-      inspectRepairSteps({ reported: true, repaired: true }).find((s) => s.key === 'judge')?.state,
+      inspectRepairSteps({ reportCount: 1, requiredReportCount: 1, repaired: true }).find(
+        (s) => s.key === 'judge',
+      )?.state,
     ).toBe('current');
   });
 
   it('does not treat a repair with no report as fix-done (no wiring diagnosis, just order)', () => {
     // 指摘なしで先に電線を触っても「修復」扱いにしない（手順の順番だけを見る）
-    const steps = inspectRepairSteps({ reported: false, repaired: true });
+    const steps = inspectRepairSteps({ reportCount: 0, requiredReportCount: 1, repaired: true });
     expect(steps.find((s) => s.key === 'report')?.state).toBe('current');
     expect(steps.find((s) => s.key === 'fix')?.state).toBe('todo');
   });

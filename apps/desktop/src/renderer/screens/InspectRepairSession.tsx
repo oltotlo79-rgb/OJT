@@ -28,6 +28,7 @@ import {
   referenceErrorText,
   routeFailedLog,
   wireCountText,
+  wireLabel,
   workFileSavedText,
 } from '../i18n/ja.js';
 import { ElapsedTimer } from '../panels/ElapsedTimer.js';
@@ -439,16 +440,41 @@ export function InspectRepairSession(): JSX.Element {
   );
 
   /**
-   * 外した青線（**事実**）。§9.2
+   * 外した青線のID（**事実**）。§9.2
    * `modificationWireIds()` は故障箇所を除いた「改造」を返す判定用の集計なので、
    * これをそのままパネルに出すと「出ない＝故障箇所」が漏れてしまう（Blocking fix）。
    * ここでは初期配線から**いま無い**ものを機械的に挙げるだけで、故障箇所かどうかは判断しない。
    */
-  const removedWires = useMemo(
+  const removedWireIds = useMemo(
     () =>
       circuit === undefined || session === undefined
         ? []
         : circuit.initialWireIds.filter((id) => !session.wires.some((w) => w.id === id)),
+    [circuit, session],
+  );
+
+  /*
+   * 外した青線の表示名（UI監査 I5）。もう盤に無いので `circuit.initialWires`
+   * （故障適用直後のスナップショット）から引く。見つからない（想定外）ときだけIDへ後退する。
+   */
+  const removedWires = useMemo(
+    () =>
+      removedWireIds.map((id) => {
+        const wire = circuit?.initialWires.find((w) => w.id === id);
+        return wire === undefined ? id : wireLabel(wire);
+      }),
+    [removedWireIds, circuit],
+  );
+
+  /** 追加した白線の表示名（UI監査 I5）。いま盤にあるので `session.wires` から引く。 */
+  const addedWireLabels = useMemo(
+    () =>
+      circuit === undefined || session === undefined
+        ? []
+        : addedWireIds(circuit, session).map((id) => {
+            const wire = session.wires.find((w) => w.id === id);
+            return wire === undefined ? id : wireLabel(wire);
+          }),
     [circuit, session],
   );
 
@@ -519,7 +545,9 @@ export function InspectRepairSession(): JSX.Element {
    * ここでも配線・指摘の中身（合否）は一切見ない（決定表#7と同じ理由）。
    */
   const guideSteps = inspectRepairSteps({
-    reported: reports.length > 0,
+    reportCount: reports.length,
+    // UI監査 I19: 故障が複数ある課題では、その件数ぶん指摘するまで「指摘 済」にしない
+    requiredReportCount: circuit.applied.sites.length,
     repaired: addedWireCount > 0 || mountedParts.some((p) => p.replaced),
   });
   const currentStepKey = guideSteps.find((step) => step.state === 'current')?.key;
@@ -811,7 +839,7 @@ export function InspectRepairSession(): JSX.Element {
           ) : null}
           <TesterPanel />
           <RepairPanel
-            addedWires={addedWireIds(circuit, session)}
+            addedWires={addedWireLabels}
             removedWires={removedWires}
             mountedParts={mountedParts}
             onReplacePart={onReplacePart}

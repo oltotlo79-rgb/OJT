@@ -22,7 +22,11 @@
   outline-offset: 2px;
 }
 
-/* 右上に小さく置く「拡大」ボタン（クリックできることの手がかり）。 */
+/*
+ * 右上に小さく置く「拡大」ボタン（クリックできることの手がかり）。
+ * `nowrap` にする（UI監査 I10）。以前は幅の狭い右パネル（380px）で「⤢ 拡大」が
+ * 「⤢」「拡大」の2行に折れ、`.frame` の上余白（18px）を超えてチャート本体に被っていた。
+ */
 .enlargeButton {
   position: absolute;
   top: 0;
@@ -31,6 +35,7 @@
   padding: 1px 6px;
   font-size: 11px;
   line-height: 1.4;
+  white-space: nowrap;
   background: var(--panel-2);
   border: 1px solid var(--line);
   border-radius: 4px;
@@ -169,10 +174,16 @@
   border-color: var(--accent);
 }
 
-/* 拡大した図はモーダルの中央に置き、はみ出すときだけ縮める（縦長の積み上げ表示）。 */
+/*
+ * 拡大した図はモーダルの中央に置き、はみ出すときだけ縮める（縦長の積み上げ表示）。
+ * `flex-direction: column` にして、凡例（`legend`）を図の**上**に横並びで固定する
+ * （UI監査 I11）。以前は行方向のままだったので、`.modalChart`（width:100%）と
+ * 幅を取り合った凡例が押し潰され、3件が左端に縦にバラけて図と500pxも離れていた。
+ */
 .modalBody {
   flex: 1;
   display: flex;
+  flex-direction: column;
   overflow: auto;
   padding: 10px 14px 16px;
 }

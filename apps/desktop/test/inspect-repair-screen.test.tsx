@@ -3,7 +3,7 @@ import { BUILTIN_INSPECT_REPAIR_PROBLEMS } from '@ojt/content';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useStore } from '../src/renderer/app/store.js';
-import { JA } from '../src/renderer/i18n/ja.js';
+import { JA, wireLabel } from '../src/renderer/i18n/ja.js';
 import { InspectRepairSession } from '../src/renderer/screens/InspectRepairSession.js';
 import type * as SpecChartModule from '../src/renderer/session/spec-chart.js';
 
@@ -252,6 +252,9 @@ describe('修復パネルの「外した青線」が答えを漏らす（§9.2�
     const faultedId = circuit.applied.sites.find((s) => s.kind === 'wire-open')?.wireId;
     expect(faultedId).toBeDefined();
     if (faultedId === undefined) return;
+    const faulted = session.wires.find((w) => w.id === faultedId);
+    expect(faulted).toBeDefined();
+    if (faulted === undefined) return;
     const healthy = session.wires.find((w) => !w.locked && w.id !== faultedId);
     expect(healthy).toBeDefined();
     if (healthy === undefined) return;
@@ -265,8 +268,10 @@ describe('修復パネルの「外した青線」が答えを漏らす（§9.2�
     });
     fireEvent.keyDown(window, { key: 'Delete' });
     expect(useStore.getState().session?.wires.some((w) => w.id === faultedId)).toBe(false);
-    // 故障箇所でも外した事実は出す（判定を漏らさない。Blocking fix）
-    expect(screen.getByTestId('removed-wires').textContent).toContain(faultedId);
+    // 故障箇所でも外した事実は出す（判定を漏らさない。Blocking fix）。
+    // 内部の電線ID（`sw-003` 等）ではなく、他画面と同じ「端子と色」の表示名で出す（UI監査 I5）。
+    expect(screen.getByTestId('removed-wires').textContent).toContain(wireLabel(faulted));
+    expect(screen.getByTestId('removed-wires').textContent).not.toContain(faultedId);
 
     // 健全な青線を外しても同様に出る
     const onPick2 = picks.at(-1);
@@ -275,7 +280,8 @@ describe('修復パネルの「外した青線」が答えを漏らす（§9.2�
       onPick2({ kind: 'wire', id: healthy.id, locked: false });
     });
     fireEvent.keyDown(window, { key: 'Delete' });
-    expect(screen.getByTestId('removed-wires').textContent).toContain(healthy.id);
+    expect(screen.getByTestId('removed-wires').textContent).toContain(wireLabel(healthy));
+    expect(screen.getByTestId('removed-wires').textContent).not.toContain(healthy.id);
   });
 });
 
@@ -441,9 +447,13 @@ describe('元に戻す・やり直し：配線と部品交換（§8.2 / §9.2。
 
 describe('手順帯（UXレビュー #3: 指摘 → 修復 → 判定）', () => {
   it('walks report → fix → judge from real store state', () => {
+    expect(C2).toBeDefined();
+    if (C2 === undefined) return;
     render(<InspectRepairSession />);
     expect(screen.getByTestId('step-report')).toHaveAttribute('data-state', 'current');
     expect(screen.getByTestId('step-fix')).toHaveAttribute('data-state', 'todo');
+    // c2-001 は故障が2箇所（§9.2）。指摘すべき件数ぶん揃うまでは「済」にしない（UI監査 I19）。
+    expect(useStore.getState().circuit?.applied.sites.length).toBe(2);
 
     fireEvent.click(screen.getByTestId('tool-report'));
     const onPick = picks.at(-1);
@@ -452,6 +462,15 @@ describe('手順帯（UXレビュー #3: 指摘 → 修復 → 判定）', () =>
       onPick({ kind: 'wire', id: 'sw-003', locked: false });
     });
     fireEvent.click(screen.getByTestId('report-kind-wire-open'));
+    // 1件目だけでは、まだ「いまここ」のまま（UI監査 I19）
+    expect(screen.getByTestId('step-report')).toHaveAttribute('data-state', 'current');
+    expect(screen.getByTestId('step-fix')).toHaveAttribute('data-state', 'todo');
+
+    act(() => {
+      onPick({ kind: 'wire', id: 'sw-004', locked: false });
+    });
+    fireEvent.click(screen.getByTestId('report-kind-wire-open'));
+    // 2件目で指摘すべき件数に達し、ようやく「済」になる
     expect(screen.getByTestId('step-report')).toHaveAttribute('data-state', 'done');
     expect(screen.getByTestId('step-fix')).toHaveAttribute('data-state', 'current');
 

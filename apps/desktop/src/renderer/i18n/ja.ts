@@ -307,11 +307,6 @@ export const JA = {
     /** 判定表ヘルプの見出し。§9.1 */
     help: '判定表（切り分けの手順）',
     situation: 'チェック状況',
-    /** 判定表の補足（レアショートは動作では見分けられない）。§9.1 補足 */
-    layerShortNote:
-      'レアショートのコイルは通常どおり励磁・復帰し、接点も正常に開閉します。動作を見るだけでは' +
-      '正常品と区別できないため、正常に見えた部品も必ずコイル抵抗を測ります。' +
-      '判定のしきい値は正常値 650Ω の85%（＝552.5Ω）で、これ以下をレアショートとします。',
     /** 測定手順の要約（パネル上部に出す）。§9.1 切り分け手順 */
     steps:
       '⓪ブレーカと電源スイッチを入れる ①赤PB（PB4）を押して吸引するか見る ' +
@@ -908,6 +903,12 @@ export const JA = {
   problemListExtra: {
     allGrades: 'すべて',
     columnTime: '標準時間 / 打切時間',
+    /*
+     * 絞り込みの見出し（UI監査 I17）。モード・級の2段の絞り込みが見出し無しで並んでいて、
+     * 2段目（級）が何の絞り込みか分からなかった。
+     */
+    filterModeLabel: 'モード',
+    filterGradeLabel: '級',
   },
   /**
    * 起動時の復元カード（UXレビュー #15）。`app/App.tsx`。
@@ -1232,6 +1233,15 @@ export function schematicOpenCountText(count: number): string {
 }
 
 /**
+ * 端子リストの検索で1件も無いときの1行。UI監査 I9
+ * 盤に印字された物理ID（`S1`）でも役割ID（`CR1`）でも探せることを添えて、
+ * 「無言で0件」にしない（検索語をそのまま画面に出すので前後のかっこ以外はエスケープしない）。
+ */
+export function terminalNoMatchText(query: string): string {
+  return `「${query}」に一致する端子がありません（盤の印字「S1」でも役割名「CR1」でも探せます）`;
+}
+
+/**
  * 表示しきれなかった疑いの件数（`ほかに 3 件あります。…`）。UXレビュー #28 / 決定表#27
  * `JA` の各ブロックは**値だけ**を持つ流儀なので、件数を埋める文だけを関数として外に置く。
  */
@@ -1261,6 +1271,11 @@ export function answeredText(answered: number, total: number): string {
 /** モードC1の正解数（`2 / 6 正解`）。§9.1 判定 */
 export function correctCountText(correct: number, total: number): string {
   return `${String(correct)} / ${String(total)} ${JA.result.correct}`;
+}
+
+/** 課題一覧の絞り込み後の件数（`12 件`）。UI監査 I17: 絞り込みに何件当たったかが無言だった。 */
+export function problemCountText(count: number): string {
+  return `${String(count)} 件`;
 }
 
 /** 丸数字（①〜⑳）。範囲外は `(21)` のようにかっこ書きに落とす。UXレビュー #6 */

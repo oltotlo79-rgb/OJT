@@ -1,7 +1,20 @@
+import { toTerminalId, wireId, type Wire } from '@ojt/circuit-sim';
 import { BUILTIN_INSPECT_REPAIR_PROBLEMS, type JudgeInspectRepairResult } from '@ojt/content';
 import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { InspectRepairResult } from '../src/renderer/result/InspectRepairResult.js';
+
+/** テスト用の電線1本（`wireId` から表示名を組み立てるための一覧に渡す）。UI監査 I5 */
+function wire(id: string, from: string, to: string, color: Wire['color'] = '青'): Wire {
+  return {
+    id: wireId(id),
+    from: toTerminalId(from),
+    to: toTerminalId(to),
+    color,
+    locked: false,
+    open: false,
+  };
+}
 
 /**
  * モードC2の結果画面（Plan 2B Task 16）。設計仕様 §9.2 判定。
@@ -71,6 +84,7 @@ describe('InspectRepairResult（§9.2 判定）', () => {
   it('見逃しと過剰指摘を並べる（§9.2 判定①）', () => {
     expect(C2).toBeDefined();
     if (C2 === undefined) return;
+    const wires = [wire('sw-004', 'CR1.5', 'TB_PB.1a', '青'), wire('sw-009', 'CR1.9', 'N.1', '青')];
     render(
       <InspectRepairResult
         problem={C2}
@@ -84,20 +98,24 @@ describe('InspectRepairResult（§9.2 判定）', () => {
                 report: 'wire-open',
                 wireId: 'sw-004',
                 partId: undefined,
-                terminals: [],
+                terminals: [toTerminalId('CR1.5'), toTerminalId('TB_PB.1a')],
               },
             ],
             extra: [{ target: { wireId: 'sw-009' }, kind: 'wire-misrouted' }],
           },
         })}
         restoredHazardCount={0}
+        wires={wires}
         onRetry={vi.fn()}
         onBackToList={vi.fn()}
       />,
     );
     expect(screen.getByTestId('verdict').textContent).toBe('不合格');
-    expect(screen.getByTestId('missed-list').textContent).toContain('sw-004');
-    expect(screen.getByTestId('extra-list').textContent).toContain('sw-009');
+    // 内部の電線ID（`sw-004` / `sw-009`）ではなく、他画面と同じ表示名で出す（UI監査 I5）
+    expect(screen.getByTestId('missed-list').textContent).toContain('CR1.5–TB_PB.1a の青線');
+    expect(screen.getByTestId('missed-list').textContent).not.toContain('sw-004');
+    expect(screen.getByTestId('extra-list').textContent).toContain('CR1.9–N.1 の青線');
+    expect(screen.getByTestId('extra-list').textContent).not.toContain('sw-009');
   });
 
   it('未配線の見逃しは訓練者が見ていない wireId ではなく端子で示す（M1）', () => {
@@ -135,18 +153,26 @@ describe('InspectRepairResult（§9.2 判定）', () => {
   it('改造した電線を並べる（§9.2 判定③）', () => {
     expect(C2).toBeDefined();
     if (C2 === undefined) return;
+    const wires = [
+      wire('sw-002', 'CR1.1', 'TB_PL.1+', '青'),
+      wire('sw-006', 'CR1.6', 'TB_PL.1-', '青'),
+    ];
     render(
       <InspectRepairResult
         problem={C2}
         result={result({ passed: false, modifications: ['sw-002', 'sw-006'] })}
         restoredHazardCount={0}
+        wires={wires}
         onRetry={vi.fn()}
         onBackToList={vi.fn()}
       />,
     );
     const list = screen.getByTestId('modification-list');
-    expect(list.textContent).toContain('sw-002');
-    expect(list.textContent).toContain('sw-006');
+    // 内部の電線ID（`sw-002` / `sw-006`）ではなく、他画面と同じ表示名で出す（UI監査 I5）
+    expect(list.textContent).toContain('CR1.1–TB_PL.1+ の青線');
+    expect(list.textContent).toContain('CR1.6–TB_PL.1- の青線');
+    expect(list.textContent).not.toContain('sw-002');
+    expect(list.textContent).not.toContain('sw-006');
   });
 
   it('危険操作の回数に復元分を足す（§5.6 / §12.3）', () => {

@@ -110,6 +110,40 @@
   font-weight: 400;
 }
 
+/*
+ * 不良原因の7択（UI監査 I16）。以前は縦一列の13pxラジオ（`display: block`）で、
+ * 当たり判定が小さく（small-target）、狭い列幅で「レアショート」が語の途中で
+ * 折り返していた（wrap）。横並びのチップに変え、行の幅に応じて折り返す。
+ */
+.markOptions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  padding: 4px 0;
+}
+
+.markOption {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  /* 当たり判定はラベル全体（チップ）にする。ラジオ自体は既定の見た目のまま小さくてよい */
+  min-height: 24px;
+  padding: 2px 8px 2px 4px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel-2);
+  white-space: nowrap;
+}
+
+.markOption:has(input:checked) {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.markOption input[type='radio'] {
+  accent-color: var(--accent);
+}
+
 .trayRow {
   display: flex;
   align-items: center;
@@ -159,8 +193,15 @@
   font-size: 11px;
 }
 
-/* 折りたたみヘルプ（判定表。§9.1） */
+/*
+ * 折りたたみヘルプ（判定表。§9.1）。
+ * `<summary>` は既定で1行ぶん（16px）の高さしか無く、当たり判定が24px未満だった
+ * （UI監査 small-target）。行の高さを24pxに広げる。
+ */
 .help summary {
+  display: flex;
+  align-items: center;
+  min-height: 24px;
   color: var(--muted);
   cursor: pointer;
   font-size: 12px;
@@ -179,4 +220,13 @@
   padding: 3px 4px;
   text-align: left;
   vertical-align: top;
+}
+
+/*
+ * 見出し（「チェック状況」「不良原因」）は短い固定の語なので折り返さない。以前は
+ * 1列目の長い注意書きに幅を取られ、2列目の見出し「不良原因」が語の途中で2行に
+ * 割れていた（UI監査 wrap）。
+ */
+.helpTable th {
+  white-space: nowrap;
 }

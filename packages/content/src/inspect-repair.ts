@@ -1,5 +1,5 @@
 import { toNetlist, type BoardDefinition, type BoardSession } from '@ojt/board-model';
-import type { Netlist, WireColor } from '@ojt/circuit-sim';
+import type { Netlist, Wire, WireColor } from '@ojt/circuit-sim';
 import type { CellAssignment } from '@ojt/schematic-core';
 import { applyFaults, injectPartFaults, withoutPartFaults, type AppliedFaults } from './faults.js';
 import {
@@ -31,6 +31,12 @@ export interface RepairCircuit {
   applied: AppliedFaults;
   /** 故障適用直後の電線ID（改造と白線ルールの基準）。 */
   initialWireIds: readonly string[];
+  /**
+   * 故障適用直後の電線のスナップショット（`id` に加え `from` / `to` / `color` を持つ）。
+   * 修復で外した電線は `session.wires` から消えるため、後から画面に出す表示名
+   * （`wireLabel()` の「CR1.9–PB1.2c の青線」）を組み立てるにはここを引く（UI監査 I5）。
+   */
+  initialWires: readonly Wire[];
   /** 回路図の要素 → 物理端子の対応（連動ハイライト用）。§9.2 */
   cells: readonly CellAssignment[];
 }
@@ -80,6 +86,7 @@ export function buildInspectRepairCircuit(
       session,
       applied: applied.value,
       initialWireIds: session.wires.map((w) => w.id),
+      initialWires: session.wires.map((w) => ({ ...w })),
       cells: built.value.cells,
     },
   };

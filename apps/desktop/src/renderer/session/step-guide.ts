@@ -93,12 +93,19 @@ export type InspectRepairStepKey = 'report' | 'fix' | 'judge';
 
 /** モードC2の手順帯。 */
 export function inspectRepairSteps(input: {
-  /** 指摘が1件以上登録されているか。 */
-  reported: boolean;
+  /**
+   * 登録済みの指摘の件数。§9.2
+   * 以前は1件以上で「指摘 済」にしていたが、故障が2箇所ある課題で1件だけ指摘した時点でも
+   * 「済」になっていた（UI監査 I19）。指摘すべき件数（`requiredReportCount`）ぶん揃うまでは
+   * 「いまここ」のままにする。
+   */
+  reportCount: number;
+  /** 指摘すべき件数（故障箇所の数）。§9.2 */
+  requiredReportCount: number;
   /** 白線を張ったか、部品を交換したか（=修復の作業をしたか）。 */
   repaired: boolean;
 }): ReadonlyArray<GuideStep<InspectRepairStepKey>> {
-  const reportDone = input.reported;
+  const reportDone = input.reportCount >= Math.max(1, input.requiredReportCount);
   const fixDone = reportDone && input.repaired;
   return sequentialSteps([
     { key: 'report', label: JA.stepGuide.repairReport, done: reportDone },

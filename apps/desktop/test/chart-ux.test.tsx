@@ -2,6 +2,8 @@ import { JIPM_BOARD } from '@ojt/board-model';
 import { BUILTIN_PROBLEMS, buildReferenceSession, judgeAssemble } from '@ojt/content';
 import type { TimeChart } from '@ojt/content';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { existsSync, readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { JSX } from 'react';
 import { chartEnlargeLabel, chartOpenerLabel, JA } from '../src/renderer/i18n/ja.js';
@@ -453,5 +455,40 @@ describe('吸い付き許容幅のクランプ（§7.7 レビュー Minor 7）',
     const nearClientX = msToX(near, durationMs, SMALL_GEOMETRY) * scale;
     fireEvent.mouseMove(svg, { clientX: nearClientX, clientY: 30 });
     expect(svg.querySelector('[data-snapped]')?.getAttribute('data-snapped')).toBe('true');
+  });
+});
+
+/* --- 画面の寸法（CSS）。`test/schematic-quality.test.tsx` と同じ読み方 --- */
+
+function read(rel: string): string {
+  for (const base of [process.cwd(), resolve(process.cwd(), 'apps/desktop')]) {
+    const path = resolve(base, rel);
+    if (existsSync(path)) return readFileSync(path, 'utf8');
+  }
+  throw new Error(`${rel} が見つからない（cwd: ${process.cwd()}）`);
+}
+
+function declarations(css: string): string {
+  return css.replace(/\/\*[\s\S]*?\*\//gu, '');
+}
+
+function block(css: string, selector: string): string {
+  const at = css.indexOf(`${selector} {`);
+  expect(at, selector).toBeGreaterThanOrEqual(0);
+  return css.slice(at, css.indexOf('}', at));
+}
+
+const TIMECHART_CSS = declarations(read('src/renderer/panels/timechart.module.css'));
+
+describe('拡大ボタンと凡例の配置（UI監査 I10 / I11）', () => {
+  it('「⤢ 拡大」は1行のまま図に被らない（I10: 右パネル380pxで2行に折れていた）', () => {
+    const button = block(TIMECHART_CSS, '.enlargeButton');
+    expect(button).toContain('white-space: nowrap');
+  });
+
+  it('凡例を図の上に横並びで固定する（I11: 図と幅を取り合って左端に縦にバラけていた）', () => {
+    const body = block(TIMECHART_CSS, '.modalBody');
+    expect(body).toContain('display: flex');
+    expect(body).toContain('flex-direction: column');
   });
 });

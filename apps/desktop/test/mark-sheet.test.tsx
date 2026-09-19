@@ -133,7 +133,7 @@ describe('DiagnosisHelp（§9.1 ヘルプ）', () => {
     render(<DiagnosisHelp />);
     const table = screen.getByTestId('diagnosis-table');
     expect(table.querySelectorAll('tbody tr')).toHaveLength(7);
-    expect(screen.getByTestId('diagnosis-note').textContent).toContain('552.5');
+    expect(table.textContent).toContain('552');
   });
 
   it('既定では折りたたまれている', () => {
@@ -145,5 +145,15 @@ describe('DiagnosisHelp（§9.1 ヘルプ）', () => {
     render(<DiagnosisHelp />);
     const table = screen.getByTestId('diagnosis-table');
     expect(table.textContent).toContain('【溶着が優先】');
+  });
+
+  it('レアショートの説明はパネル内で1回しか出ない（UI監査 I4）', () => {
+    render(<DiagnosisHelp />);
+    const panel = screen.getByTestId('diagnosis-help');
+    const occurrences =
+      (panel.textContent ?? '').split('動作を見るだけでは正常品と区別できない').length - 1;
+    expect(occurrences).toBe(1);
+    // しきい値は552.5Ω（本アプリの既定）の一箇所だけに書く。0/000のような別表記は出さない。
+    expect(panel.textContent).not.toContain('552.5');
   });
 });

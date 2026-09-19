@@ -143,33 +143,48 @@ export function Toolbar({
         ) : null}
         {extraTools === undefined ? null : <div className={styles.toolGroup}>{extraTools}</div>}
         <div className={styles.toolGroup}>
+          {/*
+            UXレビュー #5 の「押せない理由を `title` だけに頼らない」は、`disabled` ではなく
+            `aria-disabled`（I3: `TerminalListPanel` と同じ型）で満たす。`disabled` は
+            Chromium が `title` のツールチップもポインタイベントも配らないため。
+            以前は常時一行で理由を出していたが、幅の1/4を占めて1280pxでは
+            ①ブレーカ②電源スイッチが2行目へ落ちていた（UI監査 I6）。押せる／押せないに
+            関わらず幅が変わらない `title` と、隠し文字（`aria-describedby`）だけにする。
+          */}
           <button
             type="button"
-            disabled={!canUndo}
+            aria-disabled={!canUndo}
+            aria-describedby={canUndo ? undefined : 'undo-reason'}
             title={canUndo ? undefined : JA.disabledReason.undo}
-            onClick={onUndo}
+            onClick={() => {
+              if (!canUndo) return;
+              onUndo();
+            }}
           >
             {JA.session.undo}
           </button>
+          {canUndo ? null : (
+            <span className={styles.srOnly} id="undo-reason" data-testid="undo-reason">
+              {JA.disabledReason.undo}
+            </span>
+          )}
           <button
             type="button"
-            disabled={!canRedo}
+            aria-disabled={!canRedo}
+            aria-describedby={canRedo ? undefined : 'redo-reason'}
             title={canRedo ? undefined : JA.disabledReason.redo}
-            onClick={onRedo}
+            onClick={() => {
+              if (!canRedo) return;
+              onRedo();
+            }}
           >
             {JA.session.redo}
           </button>
-          {/*
-            UXレビュー #5: 押せない理由を `title` のツールチップだけに頼らず、
-            パネル内にも一行で出す。
-          */}
-          {!canUndo || !canRedo ? (
-            <span className={styles.disabledReason} data-testid="undo-redo-reason">
-              {!canUndo ? JA.disabledReason.undo : null}
-              {!canUndo && !canRedo ? ' ／ ' : null}
-              {!canRedo ? JA.disabledReason.redo : null}
+          {canRedo ? null : (
+            <span className={styles.srOnly} id="redo-reason" data-testid="redo-reason">
+              {JA.disabledReason.redo}
             </span>
-          ) : null}
+          )}
         </div>
         {viewSwitch === undefined ? null : (
           <div className={`${styles.toolGroup} ${styles.viewSwitch}`} data-testid="view-switch">

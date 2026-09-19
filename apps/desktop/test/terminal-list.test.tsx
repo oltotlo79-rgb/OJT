@@ -69,6 +69,22 @@ describe('terminalRows', () => {
     expect(rows.length).toBeGreaterThan(0);
     expect(rows.every((r) => `${r.id}${r.label}`.includes('PL1'))).toBe(true);
   });
+
+  /*
+   * UI監査 I9: 盤はソケットに物理ID（`S1`）を印字しているが、`row.id` は役割ID（`CR1.9`）へ
+   * 正規化済みなので、印字どおりに打つと以前は0件だった。物理IDでも一致させる。
+   */
+  it('also matches the physical ID printed on the board (UI監査 I9)', () => {
+    const rows = terminalRows(JIPM_BOARD, session, 'S1');
+    expect(rows.length).toBeGreaterThan(0);
+    // S1 に刺さっている部品は role id CR1 に正規化されている
+    expect(rows.every((r) => r.group === 'CR1')).toBe(true);
+  });
+
+  it('returns nothing for a query that matches no terminal', () => {
+    const rows = terminalRows(JIPM_BOARD, session, 'not-a-real-terminal');
+    expect(rows).toHaveLength(0);
+  });
 });
 
 describe('TerminalListPanel（UXレビュー #29）', () => {
@@ -234,5 +250,39 @@ describe('TerminalListPanel（UXレビュー #29）', () => {
     fireEvent.change(screen.getByTestId('terminal-search'), { target: { value: 'PL1' } });
     const rows = screen.getAllByTestId(/^terminal-row-/u);
     expect(rows.every((r) => (r.textContent ?? '').includes('PL1'))).toBe(true);
+  });
+
+  it('matches the board print (S1), not just the role id (UI監査 I9)', () => {
+    render(
+      <TerminalListPanel
+        board={JIPM_BOARD}
+        session={session}
+        pendingTerminal={undefined}
+        onPick={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+    );
+    fireEvent.change(screen.getByTestId('terminal-search'), { target: { value: 'S1' } });
+    const rows = screen.getAllByTestId(/^terminal-row-/u);
+    expect(rows.length).toBeGreaterThan(0);
+    expect(screen.queryByTestId('terminal-no-match')).toBeNull();
+  });
+
+  it('shows a hint instead of silently showing nothing when the search has no hits (UI監査 I9)', () => {
+    render(
+      <TerminalListPanel
+        board={JIPM_BOARD}
+        session={session}
+        pendingTerminal={undefined}
+        onPick={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+    );
+    fireEvent.change(screen.getByTestId('terminal-search'), {
+      target: { value: 'not-a-real-terminal' },
+    });
+    expect(screen.queryAllByTestId(/^terminal-row-/u)).toHaveLength(0);
+    const noMatch = screen.getByTestId('terminal-no-match');
+    expect(noMatch.textContent).toContain('not-a-real-terminal');
   });
 });

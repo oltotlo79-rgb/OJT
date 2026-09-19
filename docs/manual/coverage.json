@@ -1001,6 +1001,10 @@
       "section": "mode-c1/テスターの使い方"
     },
     {
+      "testid": "problem-count",
+      "internal": "絞り込み結果の件数を添えるだけの補助表示。表そのもので節は説明済み"
+    },
+    {
       "testid": "problem-errors",
       "screen": "課題一覧",
       "label": "読み込めなかった課題",
@@ -1037,6 +1041,12 @@
       "screen": "ホーム",
       "label": "最近の課題",
       "section": "screens/ホームの画面"
+    },
+    {
+      "testid": "redo-reason",
+      "screen": "練習中",
+      "label": "やり直せる操作がありません",
+      "section": "troubleshooting/こう表示されたら"
     },
     {
       "testid": "reference-error",
@@ -1515,6 +1525,10 @@
       "section": "mode-b/電線をつなぐ・外す"
     },
     {
+      "testid": "terminal-no-match",
+      "internal": "検索が0件のときの補助の1行。「端子を探す」欄そのもので節は説明済み"
+    },
+    {
       "testid": "terminal-pending",
       "screen": "練習中",
       "label": "1本目",
@@ -1675,7 +1689,7 @@
       "section": "mode-d/ラダー図を描く"
     },
     {
-      "testid": "undo-redo-reason",
+      "testid": "undo-reason",
       "screen": "練習中",
       "label": "元に戻せる操作がありません",
       "section": "screens/画面の上の帯"

@@ -73,4 +73,30 @@ describe('SuspectList（UXレビュー #28）', () => {
     render(<SuspectList suspects={suspects} onShowOnBoard={vi.fn()} />);
     expect(screen.getByTestId('suspect-note')).toHaveTextContent('接点の組');
   });
+
+  /*
+   * UI監査: 疑いが5件など多いと、一覧だけで `.card` の頭打ち（420px）を超え、
+   * 以前は末尾にあった断り（`suspect-note`）が折り返しの外へ落ちて見えなかった。
+   * 断りを見出しの直後（一覧より前）に置き、スクロールは一覧の行だけに閉じ込める。
+   */
+  it('keeps the contact-pair note above the list, not below the fold, with 5 suspects', () => {
+    const many: WiringSuspect[] = Array.from({ length: 5 }, (_, i) => ({
+      kind: 'missing' as const,
+      terminals: [terminalId('CR1', String(i + 1)), terminalId('P', '1')] as const,
+      devices: ['CR1', 'P'],
+      cellIds: [`c${String(i)}`],
+      wireIds: [],
+      message: `CR1.${String(i + 1)}（CR1）と P.1（P）がつながっていません`,
+    }));
+    render(<SuspectList suspects={many} onShowOnBoard={vi.fn()} />);
+    const card = screen.getByTestId('suspect-list');
+    const note = screen.getByTestId('suspect-note');
+    const list = card.querySelector('ul');
+    expect(list).not.toBeNull();
+    if (list === null) return;
+    // 断りは一覧より前（DOM順）に置く。一覧が長くても常に見える位置にとどまる。
+    expect(
+      Boolean(note.compareDocumentPosition(list) & globalThis.Node.DOCUMENT_POSITION_FOLLOWING),
+    ).toBe(true);
+  });
 });

@@ -77,8 +77,8 @@ export function reportPickToAction(
 /**
  * 判定に渡す回路を作る。§9.2
  * `judgeInspectRepair()`（Plan 2A）は `circuit.session` を**訓練者が提出した盤**として読むので、
- * 開始時の盤ではなく「いまの盤」を差し替えて渡す。`applied` / `initialWireIds` / `cells` は
- * 開始時のまま（故障の在処と改造の基準が変わってはいけない）。
+ * 開始時の盤ではなく「いまの盤」を差し替えて渡す。`applied` / `initialWireIds` / `initialWires` /
+ * `cells` は開始時のまま（故障の在処と改造の基準が変わってはいけない）。
  *
  * 部品交換をした回路は `replacePart()`（Plan 2A）を通したものを渡すこと。`applied.partFaults`
  * から交換した部品が落ちるので、判定側の模範との突き合わせでも良品として扱われる。
@@ -88,6 +88,7 @@ export function circuitForJudge(circuit: RepairCircuit, session: BoardSession): 
     session,
     applied: circuit.applied,
     initialWireIds: circuit.initialWireIds,
+    initialWires: circuit.initialWires,
     cells: circuit.cells,
   };
 }

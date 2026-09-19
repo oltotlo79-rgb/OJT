@@ -45,6 +45,7 @@ export function Result(): JSX.Element {
   const problem = useStore((s) => s.problem);
   const judge = useStore((s) => s.judge);
   const session = useStore((s) => s.session);
+  const circuit = useStore((s) => s.circuit);
   const restoredHazardCount = useStore((s) => s.restoredHazardCount);
   const schematicOpenCount = useStore((s) => s.schematicOpenCount);
   const setRoute = useStore((s) => s.setRoute);
@@ -64,6 +65,16 @@ export function Result(): JSX.Element {
     if (!hasJudge) return;
     void tryOjtApi()?.loadWorkFile({ kind: 'autosave', discard: true });
   }, [hasJudge]);
+
+  /*
+   * モードC2の電線ID→表示名（`CR1.9–PB1.2c の青線`）を組み立てるための一覧。§9.2 / UI監査 I5
+   * いま盤にある電線（`session.wires`）＋故障適用直後のスナップショット
+   * （`circuit.initialWires`。修復で外した電線は前者に無いのでここから拾う）を合わせて渡す。
+   */
+  const repairWires = useMemo(
+    () => [...(session?.wires ?? []), ...(circuit?.initialWires ?? [])],
+    [session, circuit],
+  );
 
   // --- Plan 5 Task 9: 疑わしい配線（UXレビュー #28）。§8.3 ---
   /**
@@ -144,6 +155,7 @@ export function Result(): JSX.Element {
           result={judge}
           restoredHazardCount={restoredHazardCount}
           schematicOpenCount={schematicOpenCount}
+          wires={repairWires}
           onRetry={() => {
             resetSession();
           }}

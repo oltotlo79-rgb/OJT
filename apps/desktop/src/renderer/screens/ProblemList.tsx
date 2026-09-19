@@ -1,5 +1,5 @@
 import { useEffect, useState, type JSX } from 'react';
-import { gradeLabel, JA, minutesLabel } from '../i18n/ja.js';
+import { gradeLabel, JA, minutesLabel, problemCountText } from '../i18n/ja.js';
 import { ojtApi } from '../app/ojt-api.js';
 import { useStore, type ListMode } from '../app/store.js';
 import styles from './screens.module.css';
@@ -98,8 +98,12 @@ export function ProblemList(): JSX.Element {
         <p className={styles.subtitle}>{JA.problemList.empty}</p>
       ) : (
         <>
-          {/* モードの絞り込み（ホームで選んだモードが初期値）。§12.1 */}
+          {/*
+            UI監査 I17: 2段の絞り込み（モード・級）に見出しが無く、2段目が何の絞り込みか
+            分からなかった。それぞれの行の先頭にラベルを添える。
+          */}
           <div className={styles.modeFilter} data-testid="mode-filter">
+            <span className={styles.filterLabel}>{JA.problemListExtra.filterModeLabel}:</span>
             {(
               [
                 [undefined, JA.problemList.allModes],
@@ -123,6 +127,7 @@ export function ProblemList(): JSX.Element {
           </div>
           {/* 級の絞り込み（UXレビュー #12: モードの絞り込みと並べて出す）。 */}
           <div className={styles.modeFilter} data-testid="grade-filter">
+            <span className={styles.filterLabel}>{JA.problemListExtra.filterGradeLabel}:</span>
             {(
               [
                 [undefined, JA.problemListExtra.allGrades],
@@ -146,52 +151,58 @@ export function ProblemList(): JSX.Element {
           {rows.length === 0 ? (
             <p className={styles.subtitle}>{JA.problemList.filterEmpty}</p>
           ) : (
-            <table className={styles.problemTable} data-testid="problem-table">
-              {/*
+            <>
+              {/* 絞り込みに何件当たったか（UI監査 I17）。 */}
+              <p className={styles.subtitle} data-testid="problem-count">
+                {problemCountText(rows.length)}
+              </p>
+              <table className={styles.problemTable} data-testid="problem-table">
+                {/*
                 UXレビュー #12: 見出し行を固定する（縦に長い一覧でも列の意味を見失わない）。
                 出所（内蔵／利用者）は専用の列をやめ、課題名のセルにタグとして添える
                 （列を1つ減らして表を詰める）。
               */}
-              <thead className={styles.stickyThead}>
-                <tr>
-                  <th>{JA.problemList.columnId}</th>
-                  <th>{JA.problemList.columnTitle}</th>
-                  <th>{JA.problemList.grade}</th>
-                  <th>{JA.problemListExtra.columnTime}</th>
-                  <th />
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((problem) => (
-                  <tr key={problem.id}>
-                    <td>{problem.id}</td>
-                    <td>
-                      {problem.title}{' '}
-                      <span className={styles.tag}>
-                        {problem.source === 'builtin'
-                          ? JA.problemList.builtin
-                          : JA.problemList.user}
-                      </span>
-                    </td>
-                    <td>{gradeLabel(problem.grade)}</td>
-                    <td>
-                      {minutesLabel(problem.standardMin)} / {minutesLabel(problem.cutoffMin)}
-                    </td>
-                    <td>
-                      <button
-                        type="button"
-                        data-testid={`open-${problem.id}`}
-                        onClick={() => {
-                          open(problem.id);
-                        }}
-                      >
-                        {JA.problemList.open}
-                      </button>
-                    </td>
+                <thead className={styles.stickyThead}>
+                  <tr>
+                    <th>{JA.problemList.columnId}</th>
+                    <th>{JA.problemList.columnTitle}</th>
+                    <th>{JA.problemList.grade}</th>
+                    <th>{JA.problemListExtra.columnTime}</th>
+                    <th />
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {rows.map((problem) => (
+                    <tr key={problem.id}>
+                      <td>{problem.id}</td>
+                      <td>
+                        {problem.title}{' '}
+                        <span className={styles.tag}>
+                          {problem.source === 'builtin'
+                            ? JA.problemList.builtin
+                            : JA.problemList.user}
+                        </span>
+                      </td>
+                      <td>{gradeLabel(problem.grade)}</td>
+                      <td>
+                        {minutesLabel(problem.standardMin)} / {minutesLabel(problem.cutoffMin)}
+                      </td>
+                      <td>
+                        <button
+                          type="button"
+                          data-testid={`open-${problem.id}`}
+                          onClick={() => {
+                            open(problem.id);
+                          }}
+                        >
+                          {JA.problemList.open}
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </>
           )}
         </>
       )}

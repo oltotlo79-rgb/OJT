@@ -67,8 +67,13 @@ function toRow(session: BoardSession, terminal: BoardTerminal): TerminalRow | un
 }
 
 /**
- * 配線できる盤の端子の一覧（盤定義の並び順）。`query` を渡すと端子IDと名前の両方で絞り込む。
+ * 配線できる盤の端子の一覧（盤定義の並び順）。`query` を渡すと絞り込む。
  * 机上の端子（PLC本体・壁コンセント）も**盤の一部として出す**（モードDで使う）。
+ *
+ * 検索は**役割ID・名前・盤に印字された物理ID**の3つで一致を見る（UI監査 I9）。
+ * 盤はソケットに物理ID（`S1.9`）を印字しているが、`row.id` は役割ID（`CR1.9`）へ
+ * 正規化済みのため、印字どおりに `S1` と打っても以前は0件だった。`terminal.id`
+ * （盤定義そのままの物理ID）も検索対象に加えて一致させる。
  */
 export function terminalRows(
   board: BoardDefinition,
@@ -80,7 +85,7 @@ export function terminalRows(
   for (const terminal of board.terminals) {
     const row = toRow(session, terminal);
     if (row === undefined) continue;
-    if (needle.length > 0 && !`${row.id}${row.label}`.includes(needle)) continue;
+    if (needle.length > 0 && !`${row.id}${row.label}${terminal.id}`.includes(needle)) continue;
     out.push(row);
   }
   return out;
