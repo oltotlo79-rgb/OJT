@@ -231,6 +231,7 @@ async function withVendor(
 ): Promise<void> {
   const { app, page } = await launch();
   let failed = false;
+  let cleanupError: Error | undefined;
   try {
     await setVendor(page, vendor);
     await body(page, app);
@@ -241,20 +242,23 @@ async function withVendor(
     /*
      * 後始末の失敗で**本体の失敗を握り潰さない**（Batch E レビュー I5）。`setVendor()` が
      * 投げると、その例外が `body()` の本来の失敗を置き換えて原因が消えてしまう。
-     * 本体が落ちているときは警告に落とし（原因を残す）、本体が通っているときだけ
-     * 後始末の失敗をそのまま投げる（黙って見逃さない）。`app.close()` は必ず通す。
+     * 本体が落ちているときは警告に落とし（原因を残す）、本体が通っているときは
+     * 後始末の失敗を変数に退避して `finally` を抜けたあとで投げ直す（`finally` 内の
+     * `throw` は `no-unsafe-finally` に触れるため。Batch E 再レビュー N1）。
+     * `app.close()` は必ず通す。
      */
     try {
       if (!page.isClosed() && vendor !== 'mitsubishi') await setVendor(page, 'mitsubishi');
     } catch (error) {
-      if (!failed) {
-        await app.close();
-        throw error;
+      if (failed) {
+        console.warn(`[withVendor] ${vendor} の既定メーカー復帰に失敗しました:`, error);
+      } else {
+        cleanupError = error instanceof Error ? error : new Error(String(error));
       }
-      console.warn(`[withVendor] ${vendor} の既定メーカー復帰に失敗しました:`, error);
     }
     await app.close();
   }
+  if (cleanupError !== undefined) throw cleanupError;
 }
 
 test.describe('Phase 4 受入基準（4メーカー）', () => {
