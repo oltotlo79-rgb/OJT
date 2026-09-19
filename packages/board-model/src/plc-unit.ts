@@ -724,11 +724,180 @@ export const PLC_UNIT_PC10G: PlcUnitDefinition = {
   leds: ['POWER', 'RUN', 'ERR', 'IN'],
 };
 
-/** 機種名（課題JSONの `plc.model`）→ 本体定義。Phase 4 で3機種増える。§7.6 */
+/** `JW-212NA` の入力抵抗[Ω]（7.5mA/点）。§5.1.3 */
+export const JW300_INPUT_OHMS = 3300;
+
+/** JW300 ユニットの筐体色（明灰）。 */
+const JW300_BODY_COLOR = '#C9C7C0';
+/** JW300 の端子台色（黒）。 */
+const JW300_TERMINAL_COLOR = '#2B2B2B';
+
+/** 群の文字ごとの端子名を作る（`A0`〜`A7`）。§10.1 */
+export function groupNames(letter: string, count: number): string[] {
+  return Array.from({ length: count }, (_unused, i) => `${letter}${i}`);
+}
+
+/**
+ * JW300 ラックの電気的な仕様。§10.1 / §5.1.3
+ * 入力の `A` / `B` 群と `COM.A` / `COM.B` は §10.1 で確定。出力側は一次資料に記載が無いため、
+ * 同じ様式で `C` / `D` 群（`COM.C` / `COM.D`）とするのが本アプリの前提である（前提表）。
+ */
+export const JW300_SPEC: PlcUnitSpec = {
+  model: 'JW-300',
+  power: ['L', 'N', 'PE'],
+  acPower: ['L', 'N'],
+  inputCommons: ['COM.A', 'COM.B'],
+  inputs: [...groupNames('A', 8), ...groupNames('B', 8)].map((name, index) => ({
+    name,
+    com: index < RACK_POINTS_PER_COMMON ? 'COM.A' : 'COM.B',
+    ohms: JW300_INPUT_OHMS,
+  })),
+  commons: ['COM.C', 'COM.D'],
+  outputs: [...groupNames('C', 8), ...groupNames('D', 8)].map((name, index) => ({
+    name,
+    com: index < RACK_POINTS_PER_COMMON ? 'COM.C' : 'COM.D',
+  })),
+};
+
+/** JW300 ラックの端子（電源 → `JW-212NA` → `JW-214SA` の順）。§10.1 の記載順 */
+function jw300Terminals(): BoardTerminal[] {
+  const inputNames = [
+    ...JW300_SPEC.inputs.slice(0, RACK_POINTS_PER_COMMON).map((i) => i.name),
+    'COM.A',
+    ...JW300_SPEC.inputs.slice(RACK_POINTS_PER_COMMON).map((i) => i.name),
+    'COM.B',
+  ];
+  const outputNames = [
+    ...JW300_SPEC.outputs.slice(0, RACK_POINTS_PER_COMMON).map((o) => o.name),
+    'COM.C',
+    ...JW300_SPEC.outputs.slice(RACK_POINTS_PER_COMMON).map((o) => o.name),
+    'COM.D',
+  ];
+  return [
+    ...rackTerminals(JW300_SPEC, [...JW300_SPEC.power], 0),
+    ...rackTerminals(JW300_SPEC, inputNames, 2),
+    ...rackTerminals(JW300_SPEC, outputNames, 3),
+  ];
+}
+
+/** シャープ JW300（ラック形）。§10.1 */
+export const PLC_UNIT_JW300: PlcUnitDefinition = {
+  id: 'jw300',
+  model: 'JW-300',
+  vendor: 'sharp',
+  displayName: 'シャープ JW300（基本ベース＋JW-301PU＋JW-312CU＋JW-212NA＋JW-214SA）',
+  form: 'rack',
+  sizeMm: rackSizeMm(4, 109.4),
+  pos: PLC_ORIGIN_MM,
+  spec: JW300_SPEC,
+  terminals: jw300Terminals(),
+  appearance: {
+    faceMm: { width: rackSizeMm(4, 109.4).width, height: RACK_BASE_HEIGHT_MM },
+    bodyColor: '#A9A8A2',
+    terminalBlockColor: JW300_TERMINAL_COLOR,
+    nameplate: 'JW-300',
+    nameplateRect: { x: 4, y: 132, w: 40, h: 6 },
+    covers: [],
+    leds: [],
+    features: [
+      {
+        id: 'slot-rail',
+        kind: 'slot',
+        label: '基本ベース（電源＋CU＋2スロット）',
+        rect: { x: 0, y: 0, w: rackSizeMm(4, 109.4).width, h: RACK_BASE_HEIGHT_MM },
+        color: '#8C8B85',
+      },
+    ],
+    assumed: RACK_ASSUMED,
+  },
+  modules: rackModules([
+    {
+      model: 'JW-301PU',
+      displayName: '電源ユニット',
+      depthMm: 109.4,
+      appearance: rackFace({
+        model: 'JW-301PU',
+        bodyColor: JW300_BODY_COLOR,
+        terminalColor: JW300_TERMINAL_COLOR,
+        cover: { x: 0, y: 12, w: 35, h: 28 },
+        statusLeds: { names: ['POWER'], y: 46 },
+        assumed: RACK_ASSUMED,
+      }),
+    },
+    {
+      model: 'JW-312CU',
+      displayName: 'コントロールユニット',
+      depthMm: 99.8,
+      appearance: rackFace({
+        model: 'JW-312CU',
+        bodyColor: JW300_BODY_COLOR,
+        terminalColor: JW300_TERMINAL_COLOR,
+        // RUN / FLT / MW は §10.1 で確定している本体表示
+        statusLeds: { names: ['RUN', 'FLT', 'MW'], y: 20 },
+        features: [
+          {
+            id: 'run-stop',
+            kind: 'switch',
+            label: 'RUN/STOPスイッチ',
+            rect: { x: 6, y: 34, w: 23, h: 8 },
+            color: '#8A8F96',
+          },
+          {
+            id: 'peripheral',
+            kind: 'port',
+            label: 'ツールポート',
+            rect: { x: 8, y: 50, w: 19, h: 12 },
+            color: JW300_TERMINAL_COLOR,
+          },
+        ],
+        assumed: RACK_ASSUMED,
+      }),
+    },
+    {
+      model: 'JW-212NA',
+      displayName: 'DC入力16点（18P着脱式端子台）',
+      depthMm: 109.4,
+      appearance: rackFace({
+        model: 'JW-212NA',
+        bodyColor: JW300_BODY_COLOR,
+        terminalColor: JW300_TERMINAL_COLOR,
+        cover: { x: 0, y: 12, w: 35, h: 110 },
+        // §10.1 の「入力表示灯 A/B 各8点2段」をそのまま2段で並べる
+        pointLeds: {
+          names: JW300_SPEC.inputs.map((input) => input.name),
+          group: 'input',
+          perRow: 8,
+        },
+        assumed: RACK_ASSUMED,
+      }),
+    },
+    {
+      model: 'JW-214SA',
+      displayName: 'リレー出力16点',
+      depthMm: 109.4,
+      appearance: rackFace({
+        model: 'JW-214SA',
+        bodyColor: JW300_BODY_COLOR,
+        terminalColor: JW300_TERMINAL_COLOR,
+        cover: { x: 0, y: 12, w: 35, h: 110 },
+        pointLeds: {
+          names: JW300_SPEC.outputs.map((output) => output.name),
+          group: 'output',
+          perRow: 8,
+        },
+        assumed: RACK_ASSUMED,
+      }),
+    },
+  ]),
+  leds: ['RUN', 'FLT', 'MW'],
+};
+
+/** 機種名（課題JSONの `plc.model`）→ 本体定義。§7.6 / §16 Phase 4 */
 export const PLC_UNITS: Readonly<Record<string, PlcUnitDefinition>> = {
   FX5U: PLC_UNIT_FX5U,
   CP1E: PLC_UNIT_CP1E,
   'PC10G-1SP': PLC_UNIT_PC10G,
+  'JW-300': PLC_UNIT_JW300,
 };
 
 /** 機種名から本体定義を引く。未対応の機種は undefined（課題エラーにするのは content の責務）。 */

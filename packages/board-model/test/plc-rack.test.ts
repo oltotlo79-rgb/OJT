@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
   JIPM_BOARD,
+  JW300_SPEC,
   PC10G_SPEC,
   PLC_ORIGIN_MM,
+  PLC_UNIT_JW300,
   PLC_UNIT_PC10G,
   RACK_MODULE_HEIGHT_MM,
   RACK_MODULE_WIDTH_MM,
@@ -87,6 +89,50 @@ describe('PLC_UNIT_PC10G（§10.1 / §17 #21）', () => {
         );
       }
     }
+    expect(validateBoard(board)).toEqual([]);
+  });
+});
+
+describe('PLC_UNIT_JW300（§10.1 / 受入基準⑤）', () => {
+  it('is a rack of four units with the A / B input groups', () => {
+    expect(PLC_UNIT_JW300.model).toBe('JW-300');
+    expect(PLC_UNIT_JW300.vendor).toBe('sharp');
+    expect(PLC_UNIT_JW300.form).toBe('rack');
+    expect(PLC_UNIT_JW300.modules?.map((m) => m.model)).toEqual([
+      'JW-301PU',
+      'JW-312CU',
+      'JW-212NA',
+      'JW-214SA',
+    ]);
+    expect(PLC_UNIT_JW300.modules?.[1]?.sizeMm.depth).toBe(99.8);
+    expect(JW300_SPEC.inputCommons).toEqual(['COM.A', 'COM.B']);
+    expect(JW300_SPEC.inputs.map((i) => i.name).slice(0, 2)).toEqual(['A0', 'A1']);
+    expect(JW300_SPEC.inputs.map((i) => i.name).slice(8, 10)).toEqual(['B0', 'B1']);
+    expect(JW300_SPEC.inputs.slice(0, 8).every((i) => i.com === 'COM.A')).toBe(true);
+    expect(JW300_SPEC.inputs.every((i) => i.ohms === 3300)).toBe(true);
+    expect(JW300_SPEC.commons).toEqual(['COM.C', 'COM.D']);
+    expect(JW300_SPEC.outputs.map((o) => o.name).slice(0, 2)).toEqual(['C0', 'C1']);
+  });
+
+  it('shows the A / B input lamps in two rows of eight (§10.1)', () => {
+    const na = PLC_UNIT_JW300.modules?.find((m) => m.model === 'JW-212NA')?.appearance;
+    const lamps = na?.leds.filter((l) => l.group === 'input') ?? [];
+    expect(lamps.map((l) => l.name)).toEqual(JW300_SPEC.inputs.map((i) => i.name));
+    expect(new Set(lamps.map((l) => l.rect.y)).size).toBe(2);
+    expect(
+      PLC_UNIT_JW300.modules
+        ?.find((m) => m.model === 'JW-312CU')
+        ?.appearance.leds.map((l) => l.name),
+    ).toEqual(['RUN', 'FLT', 'MW']);
+  });
+
+  it('exposes COM.A as a wirable terminal (受入基準⑤)', () => {
+    const board = withPlcUnit(JIPM_BOARD, PLC_UNIT_JW300);
+    const comA = board.terminals.find((t) => String(t.id) === 'PLC.COM.A');
+    expect(comA).toBeDefined();
+    expect(comA?.wirable).toBe(true);
+    expect(comA?.role).toBe('ss');
+    expect(comA?.label).toBe('COM.A');
     expect(validateBoard(board)).toEqual([]);
   });
 });
