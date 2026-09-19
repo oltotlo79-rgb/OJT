@@ -280,3 +280,2122 @@ openProblem(problem, options?): boolean;   // …plcFields(problem) ＋ isPlcPro
 「Sonnet-verbatim」と書いたタスクは、本書のコードとテストをそのまま書き写せば通る。**Opus** と書いたのは判断の要るタスク（対応表の設計、自動変換の入れ方、CSS変数の流し込み、`store.ts` / `shared/ipc.ts` の MERGE、3Dの座標、E2Eの待ち方）である。**どのタスクも、後のタスクが作るファイルを import しない。**
 
 ---
+
+## Task 1: スキン層の土台（`session/plc-skin.ts`）
+
+**モデル: Opus**（ツールバーの対応表とメーカー→機種の規則を決める判断があるため）
+
+**Files:**
+- Create: `apps/desktop/src/renderer/session/plc-skin.ts`
+- Test: `apps/desktop/test/plc-skin.test.ts`（新規）
+
+方言ごとの**振る舞い**を1ファイルに集める（決定表#1）。**React も three も CSS も import しない純粋層**なので Node でも読める。`i18n/ja.ts` にも触らない。
+
+| 決めること | 本タスクの実装 |
+|---|---|
+| ツールバーの項目 → 操作 | `TOOLBAR_ACTIONS_BY_DIALECT`（方言ID → `ToolbarAction[]`。`panels.toolbar` と同じ長さ）。決定表#2 |
+| 「変換」が要るか | `profile.convertStep`。`false` なら自動変換（`autoConvert()`）と手順の畳み込み（`skinStepKeys()`）。決定表#3 |
+| 表示列数・通電色 | 設定値が `0` / 空文字なら方言の既定。決定表#8 |
+| メーカー → 機種 | `plcUnitForVendor()`（`PLC_UNITS` から `vendor` で引く。`MODEL_OF_VENDOR` は非公開。前提#19） |
+| 機種を差し替えられるか | `plcForVendor()`。割付の点数がその機種に収まるときだけ差し替えた課題を返す。決定表#10 |
+
+- [ ] **Step 1: 失敗するテストを書く**
+
+`apps/desktop/test/plc-skin.test.ts`:
+
+```ts
+import { PLC_UNITS } from '@ojt/board-model';
+import { BUILTIN_PLC_PROBLEMS, SUPPORTED_PLC_MODELS } from '@ojt/content';
+import { availableDialects, DIALECT_IDS, getDialect, type DialectId } from '@ojt/plc-dialects';
+import { describe, expect, it } from 'vitest';
+import {
+  autoConvert,
+  plcForVendor,
+  plcUnitForVendor,
+  PLC_STEP_KEYS,
+  skinGridCols,
+  skinMonitorColor,
+  skinStepKeys,
+  toolbarItems,
+  TOOLBAR_ACTIONS_BY_DIALECT,
+} from '../src/renderer/session/plc-skin.js';
+
+const problem = BUILTIN_PLC_PROBLEMS[0]!;
+
+describe('ツールバーの項目 → 操作（§10.6 / 決定表#2）', () => {
+  it('has exactly one action per toolbar label in every dialect', () => {
+    for (const profile of availableDialects()) {
+      expect(TOOLBAR_ACTIONS_BY_DIALECT[profile.id], profile.id).toHaveLength(
+        profile.panels.toolbar.length,
+      );
+      const items = toolbarItems(profile);
+      expect(items.map((item) => item.label)).toEqual([...profile.panels.toolbar]);
+      expect(items.map((item) => item.index)).toEqual(items.map((_unused, i) => i));
+    }
+  });
+
+  it('shows a 変換 button only where the skin asks for one (受入基準①)', () => {
+    const has = (id: DialectId): boolean =>
+      toolbarItems(getDialect(id)).some((item) => item.action === 'convert');
+    expect(has('mitsubishi')).toBe(true);
+    expect(has('sharp')).toBe(true);
+    expect(has('omron')).toBe(false);
+    expect(has('jtekt')).toBe(false);
+  });
+
+  it('keeps every dialect able to write, run and monitor', () => {
+    for (const profile of availableDialects()) {
+      const actions = new Set(toolbarItems(profile).map((item) => item.action));
+      expect(actions.has('download'), profile.id).toBe(true);
+      expect(actions.has('monitor-start'), profile.id).toBe(true);
+      expect(actions.has('monitor-stop'), profile.id).toBe(true);
+      expect(
+        actions.has('plc-run') || actions.has('online'),
+        `${profile.id} には運転にできる項目が要る`,
+      ).toBe(true);
+    }
+  });
+
+  it('marks the PCwin-only buttons as inert (決定表#4)', () => {
+    const jtekt = toolbarItems(getDialect('jtekt'));
+    expect(jtekt.filter((item) => item.action === 'vendor-only').map((item) => item.label)).toEqual([
+      'JP1',
+      'DGR',
+      'MOB',
+      'RDY',
+    ]);
+    expect(jtekt.find((item) => item.label === 'RUN')?.action).toBe('plc-run');
+    expect(jtekt.find((item) => item.label === 'STP')?.action).toBe('plc-stop');
+    expect(jtekt.find((item) => item.label === 'RES')?.action).toBe('plc-reset');
+  });
+});
+
+describe('変換の要否（§10.6 / 決定表#3）', () => {
+  it('auto-converts exactly where there is no 変換 button', () => {
+    for (const profile of availableDialects()) {
+      expect(autoConvert(profile), profile.id).toBe(!profile.convertStep);
+    }
+  });
+
+  it('drops the 変換 step from the guide when the skin has none', () => {
+    expect(skinStepKeys(getDialect('mitsubishi'))).toEqual([...PLC_STEP_KEYS]);
+    expect(skinStepKeys(getDialect('omron'))).toEqual(['wire', 'ladder', 'run', 'judge']);
+    expect(skinStepKeys(getDialect('jtekt'))).toEqual(['wire', 'ladder', 'run', 'judge']);
+    expect(skinStepKeys(getDialect('sharp'))).toEqual([...PLC_STEP_KEYS]);
+  });
+});
+
+describe('表示列数と通電色（§10.6 / 決定表#8）', () => {
+  it('falls back to the dialect default when the setting says "follow the vendor"', () => {
+    for (const profile of availableDialects()) {
+      expect(skinGridCols(profile, 0), profile.id).toBe(profile.gridCols);
+      expect(skinMonitorColor(profile, ''), profile.id).toBe(profile.monitorColors.powered);
+    }
+    expect(skinMonitorColor(getDialect('omron'), '')).toBe('#2FA02C');
+    expect(skinMonitorColor(getDialect('jtekt'), '')).toBe('#E08A1E');
+    expect(skinMonitorColor(getDialect('sharp'), '')).toBe('#00A0C8');
+  });
+
+  it('lets the setting win and clamps it to 8..15', () => {
+    const profile = getDialect('omron');
+    expect(skinGridCols(profile, 9)).toBe(9);
+    expect(skinGridCols(profile, 99)).toBe(15);
+    expect(skinGridCols(profile, 3)).toBe(8);
+    expect(skinMonitorColor(profile, '#FF00AA')).toBe('#FF00AA');
+  });
+});
+
+describe('メーカー → 機種（§7.6 / 決定表#9）', () => {
+  it('finds one unit per vendor', () => {
+    for (const id of DIALECT_IDS) {
+      const unit = plcUnitForVendor(id);
+      expect(unit?.vendor, id).toBe(id);
+      expect(SUPPORTED_PLC_MODELS as readonly string[]).toContain(unit?.model);
+    }
+    expect(Object.keys(PLC_UNITS)).toHaveLength(4);
+  });
+
+  it('swaps the problem model to the chosen vendor (受入基準①③⑤)', () => {
+    for (const id of DIALECT_IDS) {
+      const swapped = plcForVendor(problem, id);
+      expect(swapped?.plc.vendor, id).toBe(id);
+      expect(swapped?.plc.model, id).toBe(plcUnitForVendor(id)?.model);
+      // 課題の中身（割付・操作列・判定設定）は触らない
+      expect(swapped?.io).toEqual(problem.io);
+      expect(swapped?.id).toBe(problem.id);
+    }
+  });
+
+  it('returns the same object when the vendor already matches', () => {
+    expect(plcForVendor(problem, 'mitsubishi')).toBe(problem);
+  });
+
+  it('refuses a model that cannot host the assignment (決定表#10)', () => {
+    // CP1E の出力は12点しかない（4A 前提#23）
+    const wide = {
+      ...problem,
+      io: {
+        ...problem.io,
+        mode: 'fixed' as const,
+        inputs: [{ x: 0, pb: 'PB1' as const }],
+        outputs: [{ y: 12, cr: 'CR1', pl: 'PL1' }],
+      },
+    };
+    expect(plcForVendor(wide, 'omron')).toBeUndefined();
+    expect(plcForVendor(wide, 'mitsubishi')).toBe(wide);
+  });
+});
+```
+
+- [ ] **Step 2: RED を確認する**
+
+```powershell
+pnpm --filter @ojt/desktop exec vitest run test/plc-skin.test.ts
+```
+
+Expected: 失敗。`Failed to load url ../src/renderer/session/plc-skin.js`。
+
+- [ ] **Step 3: `src/renderer/session/plc-skin.ts` を作る**
+
+```ts
+import { PLC_UNITS, type PlcUnitDefinition } from '@ojt/board-model';
+import { resolvePlcIo, type PlcProblem } from '@ojt/content';
+import {
+  MAX_GRID_COLS,
+  MIN_GRID_COLS,
+  type DialectId,
+  type DialectProfile,
+} from '@ojt/plc-dialects';
+
+/**
+ * スキン層（振る舞い）。設計仕様 §10.6 / §17.1。決定表#1
+ *
+ * 「メーカーによって変わる動き」の**唯一の持ち主**である。画面部品はここから引くだけにし、
+ * キー文字列・色・列数・機種名を直書きしない。実機と違うと分かったときの修正箇所を
+ * この1ファイルに保つため。見た目（配色・寸法）は `ladder/skins/*.ts` が持つ。
+ *
+ * React も three も import しない（純粋層）。
+ */
+
+/** ツールバーの項目を押したときの意味。§10.6 */
+export type ToolbarAction =
+  /** 変換（`convertStep: true` のスキンだけが持つ）。 */
+  | 'convert'
+  /** 全変換（本アプリでは `convert` と同じ）。 */
+  | 'convert-all'
+  /** 書込みモード（オンライン編集）。 */
+  | 'write-mode'
+  /** 読出しモード。 */
+  | 'read-mode'
+  /** オンライン（本アプリでは書込みと同じ。Plan 3B 意図的な差分 #2）。 */
+  | 'online'
+  /** PLCへの書込み・転送。 */
+  | 'download'
+  | 'monitor-start'
+  | 'monitor-stop'
+  /** 運転／停止の切換。 */
+  | 'plc-run'
+  /** 停止（PCwin風の `STP`）。 */
+  | 'plc-stop'
+  /** デバイス初期化（PCwin風の `RES`）。 */
+  | 'plc-reset'
+  /** 実機の操作パネルにはあるが本アプリでは動かない項目。決定表#4 */
+  | 'vendor-only';
+
+/**
+ * 方言ID → ツールバーの項目の意味。**`profile.panels.toolbar` と同じ並び・同じ長さ**である。
+ * 位置ではなくこの表で引くことで、項目数が方言ごとに違っても取り違えない（決定表#2）。
+ *
+ * 【本アプリの前提】PCwin風の `JP1` / `DGR` / `MOB` / `RDY` は実機の操作パネルの項目で、
+ * 本アプリには対応する機能が無い（PLC調査資料 J-10 未確認）。`vendor-only` として淡色で出す。
+ */
+export const TOOLBAR_ACTIONS_BY_DIALECT: Readonly<Record<DialectId, readonly ToolbarAction[]>> = {
+  // 変換／全変換／書込みモード／読出しモード／オンライン／シーケンサへの書込み／モニタ開始／モニタ停止
+  mitsubishi: [
+    'convert',
+    'convert-all',
+    'write-mode',
+    'read-mode',
+    'online',
+    'download',
+    'monitor-start',
+    'monitor-stop',
+  ],
+  // JP1／DGR／MOB／STP／RDY／RUN／RES／モニタ開始／モニタ停止
+  jtekt: [
+    'vendor-only',
+    'vendor-only',
+    'vendor-only',
+    'plc-stop',
+    'vendor-only',
+    'plc-run',
+    'plc-reset',
+    'monitor-start',
+    'monitor-stop',
+  ],
+  // オンライン編集／転送［PC → PLC］／モニタ開始／モニタ停止／運転／停止
+  omron: ['write-mode', 'download', 'monitor-start', 'monitor-stop', 'plc-run'],
+  // 変換／PLCへの書込み／運転／停止／モニタ開始／モニタ停止
+  sharp: ['convert', 'download', 'plc-run', 'monitor-start', 'monitor-stop'],
+};
+
+/** ツールバー1項目。 */
+export interface ToolbarItem {
+  action: ToolbarAction;
+  label: string;
+  /** `panels.toolbar` の位置（`data-testid` を一意にするために使う）。 */
+  index: number;
+}
+
+/**
+ * スキンのツールバー。`panels.toolbar`（文言）と `TOOLBAR_ACTIONS_BY_DIALECT`（意味）を
+ * 突き合わせる。長さが合わないときは**足りない分を落とす**（表の取り違えで押せない項目を
+ * 出すより、出さないほうが安全）。長さが合っていることは `test/plc-skin.test.ts` が見張る。
+ */
+export function toolbarItems(profile: DialectProfile): ToolbarItem[] {
+  const actions = TOOLBAR_ACTIONS_BY_DIALECT[profile.id];
+  return profile.panels.toolbar.flatMap((label, index) => {
+    const action = actions[index];
+    return action === undefined ? [] : [{ action, label, index }];
+  });
+}
+
+/** 手順表の段。§10.6 の操作フロー */
+export const PLC_STEP_KEYS = ['wire', 'ladder', 'convert', 'run', 'judge'] as const;
+export type PlcStepKey = (typeof PLC_STEP_KEYS)[number];
+
+/**
+ * このスキンの手順。`convertStep: false`（CX-Programmer風・PCwin風）は
+ * 「変換」という手順そのものが無い（§10.6）。決定表#3
+ */
+export function skinStepKeys(profile: DialectProfile): PlcStepKey[] {
+  return PLC_STEP_KEYS.filter((key) => key !== 'convert' || profile.convertStep);
+}
+
+/**
+ * ラダーが変わるたびに自動で変換するか。決定表#3
+ * 「変換」ボタンが無いスキンでは、判定前に `convert()` を通す機会がここしかない（4A H-3）。
+ */
+export function autoConvert(profile: DialectProfile): boolean {
+  return !profile.convertStep;
+}
+
+/**
+ * ラダーの表示列数。設定値 `0` は「メーカーの既定に従う」。§10.6 / 決定表#8
+ * 利用者が選んだ値は 8〜15 に丸める（`MIN_GRID_COLS` / `MAX_GRID_COLS`）。
+ */
+export function skinGridCols(profile: DialectProfile, setting: number): number {
+  if (!Number.isFinite(setting) || setting <= 0) return profile.gridCols;
+  return Math.min(MAX_GRID_COLS, Math.max(MIN_GRID_COLS, Math.round(setting)));
+}
+
+/** モニタ中の通電色。設定値が空文字なら方言の既定。§10.6 / 決定表#8 */
+export function skinMonitorColor(profile: DialectProfile, setting: string): string {
+  return setting.length > 0 ? setting : profile.monitorColors.powered;
+}
+
+/**
+ * メーカー → 机上に置くPLC本体。§7.6
+ * `@ojt/content` の `MODEL_OF_VENDOR` は非公開なので、本体定義の `vendor` から引く
+ * （4A Task 12 が「メーカーと機種の組み合わせ違いは拒否する」ことを保証している）。
+ */
+export function plcUnitForVendor(vendor: DialectId): PlcUnitDefinition | undefined {
+  return Object.values(PLC_UNITS).find((unit) => unit.vendor === vendor);
+}
+
+/**
+ * 割付がこの機種に収まるか。決定表#10
+ * CP1E は出力が12点しかないので、`y: 12` 以降を使う課題は開けない（4A 前提#23）。
+ */
+export function fitsPlcUnit(problem: PlcProblem, unit: PlcUnitDefinition): boolean {
+  const io = resolvePlcIo(problem.io);
+  return (
+    io.inputs.every((input) => input.x < unit.spec.inputs.length) &&
+    io.outputs.every((output) => output.y < unit.spec.outputs.length)
+  );
+}
+
+/**
+ * 課題を「このメーカーの機種で開く」形に直す。§7.6 / 決定表#9
+ *
+ * 内蔵モードD課題8題は機種に依らず成立する（4A 決定表#14 / Task 14）ので、既定メーカーを
+ * 変えるだけで CP1E・TOYOPUC・JW300 の課題として開ける。割付が収まらない課題（利用者課題）は
+ * `undefined` を返し、呼び出し側が元の機種のまま開いて理由を出す。
+ *
+ * 既にそのメーカーなら**同じオブジェクトを返す**（呼び出し側が差し替えの有無を `===` で見る）。
+ */
+export function plcForVendor(problem: PlcProblem, vendor: DialectId): PlcProblem | undefined {
+  if (problem.plc.vendor === vendor) return problem;
+  const unit = plcUnitForVendor(vendor);
+  if (unit === undefined || !fitsPlcUnit(problem, unit)) return undefined;
+  /*
+   * `DialectId` と `@ojt/content` の `PLC_VENDORS` / `PLC_MODELS` は同じ4つの文字列だが
+   * 別々に宣言されている。両者が揃っていることは `test/plc-skin.test.ts` の
+   * 「finds one unit per vendor」が `SUPPORTED_PLC_MODELS` と突き合わせて見張る。
+   */
+  const plc = { vendor, model: unit.model } as PlcProblem['plc'];
+  return { ...problem, plc };
+}
+```
+
+- [ ] **Step 4: GREEN を確認してコミットする**
+
+```powershell
+pnpm --filter @ojt/desktop exec vitest run test/plc-skin.test.ts
+```
+
+Expected: 4 describe / 11 ケースすべて通過。
+
+```powershell
+git add apps/desktop/src/renderer/session/plc-skin.ts apps/desktop/test/plc-skin.test.ts
+git commit -m "feat(desktop): add the vendor skin behaviour layer for mode D"
+```
+
+---
+
+## Task 2: スキンの見た目（`ladder/skins/*.ts` と CSS 変数）
+
+**モデル: Opus**（「実物との対応」表の値を CSS 変数へ落とす設計判断があるため）
+
+**Files:**
+- Create: `apps/desktop/src/renderer/ladder/skins/types.ts`
+- Create: `apps/desktop/src/renderer/ladder/skins/{mitsubishi,omron,jtekt,sharp}.ts`
+- Create: `apps/desktop/src/renderer/ladder/skins/index.ts`
+- Modify: `apps/desktop/src/renderer/ladder/ladder.module.css`（**末尾追記＋既存の色・寸法を `var(--skin-*)` に置き換え**）
+- Test: `apps/desktop/test/skin-theme.test.ts`（新規）
+
+利用者要求「各メーカーのソフト画面に合わせた可能な限り実物に忠実な画面」に対する**データ側**の回答である。上の「実物との対応」表の値をそのままコードにする。**画面キャプチャ・ロゴ・配色データは使わない。** すべて §17.1 の前提（△）であることを `assumed` に残し、設定画面とキー割当欄の注記から辿れるようにする。
+
+- [ ] **Step 1: 失敗するテストを書く**
+
+`apps/desktop/test/skin-theme.test.ts`:
+
+```ts
+import { availableDialects, DIALECT_IDS, getDialect } from '@ojt/plc-dialects';
+import { describe, expect, it } from 'vitest';
+import { SKIN_THEMES, skinCssVars, skinThemeOf } from '../src/renderer/ladder/skins/index.js';
+
+describe('SkinTheme（利用者要求: 実物に近い回路入力画面 / §10.6 / §17.1）', () => {
+  it('has one theme per dialect', () => {
+    expect(Object.keys(SKIN_THEMES).sort()).toEqual([...DIALECT_IDS].sort());
+    for (const profile of availableDialects()) {
+      expect(skinThemeOf(profile).id, profile.id).toBe(profile.id);
+    }
+  });
+
+  it('keeps the 風 suffix and no vendor product screenshot in the title bar (§17.1)', () => {
+    for (const profile of availableDialects()) {
+      const theme = skinThemeOf(profile);
+      expect(theme.titleBar, profile.id).toMatch(/風$/u);
+      expect(theme.titleBar.length).toBeLessThanOrEqual(24);
+    }
+    expect(skinThemeOf(getDialect('mitsubishi')).titleBar).toBe('MELSOFT GX Works3 風');
+    expect(skinThemeOf(getDialect('omron')).titleBar).toBe('CX-Programmer 風');
+    expect(skinThemeOf(getDialect('jtekt')).titleBar).toBe('PCwin 風');
+    expect(skinThemeOf(getDialect('sharp')).titleBar).toBe('JW-300SP 風');
+  });
+
+  it('gives every theme a full, distinct colour set', () => {
+    const canvases = new Set<string>();
+    for (const theme of Object.values(SKIN_THEMES)) {
+      for (const [key, value] of Object.entries(theme.colors)) {
+        expect(value, `${theme.id}.${key}`).toMatch(/^#[0-9A-F]{6}$/u);
+      }
+      canvases.add(theme.colors.canvas);
+      expect(theme.cell.widthPx).toBeGreaterThanOrEqual(40);
+      expect(theme.cell.heightPx).toBeGreaterThanOrEqual(30);
+      expect(theme.assumed.length).toBeGreaterThan(0);
+    }
+    // 4スキンが見分けられること（背景がすべて同じなら「忠実に」の要求を満たさない）
+    expect(canvases.size).toBe(4);
+  });
+
+  it('matches the powered colour to the dialect (§10.6)', () => {
+    for (const profile of availableDialects()) {
+      expect(skinThemeOf(profile).colors.powered, profile.id).toBe(
+        profile.monitorColors.powered,
+      );
+      expect(skinThemeOf(profile).colors.cursor, profile.id).toBe(profile.monitorColors.powered);
+    }
+  });
+
+  it('shows the output pane as a status bar only in the PCwin style (§10.6)', () => {
+    expect(skinThemeOf(getDialect('jtekt')).layout.outputPane).toBe('status-bar');
+    for (const id of ['mitsubishi', 'omron', 'sharp'] as const) {
+      expect(skinThemeOf(getDialect(id)).layout.outputPane, id).toBe('window');
+    }
+  });
+
+  it('lists the status bar items each tool shows', () => {
+    expect(skinThemeOf(getDialect('mitsubishi')).statusItems).toEqual([
+      'mode',
+      'network',
+      'overwrite',
+    ]);
+    expect(skinThemeOf(getDialect('omron')).statusItems).toEqual(['mode', 'plc-state', 'scan']);
+    expect(skinThemeOf(getDialect('jtekt')).statusItems).toEqual([
+      'mode',
+      'plc-state',
+      'scan',
+      'device-count',
+    ]);
+    expect(skinThemeOf(getDialect('sharp')).statusItems).toEqual(['mode', 'network', 'plc-state']);
+  });
+});
+
+describe('CSS 変数への変換（決定表#5）', () => {
+  it('turns every colour and size into a --skin-* custom property', () => {
+    const vars = skinCssVars(skinThemeOf(getDialect('omron')), '#FF00AA', 12);
+    expect(vars['--skin-canvas']).toBe('#FFFFFF');
+    expect(vars['--skin-rail']).toBe('#1F1F1F');
+    expect(vars['--skin-cell-w']).toBe('52px');
+    expect(vars['--skin-cell-h']).toBe('40px');
+    expect(vars['--skin-stroke']).toBe('1.4');
+    // 設定画面の通電色は方言の色を上書きする（決定表#8）
+    expect(vars['--skin-powered']).toBe('#FF00AA');
+    expect(Object.keys(vars).every((key) => key.startsWith('--skin-'))).toBe(true);
+  });
+
+  it('falls back to the dialect colour when the setting is empty', () => {
+    const vars = skinCssVars(skinThemeOf(getDialect('jtekt')), '', 0);
+    expect(vars['--skin-powered']).toBe('#E08A1E');
+  });
+});
+```
+
+- [ ] **Step 2: RED を確認する**
+
+```powershell
+pnpm --filter @ojt/desktop exec vitest run test/skin-theme.test.ts
+```
+
+Expected: 失敗。`Failed to load url ../src/renderer/ladder/skins/index.js`。
+
+- [ ] **Step 3: `ladder/skins/types.ts` を作る**
+
+```ts
+import type { DialectId } from '@ojt/plc-dialects';
+
+/**
+ * スキンの見た目。設計仕様 §10.6 / §17.1。決定表#5
+ *
+ * 利用者要求（2026-09-19）「各メーカーのソフト画面や仕様に合わせた可能な限り実物に忠実な画面」
+ * に対する記述である。**各社の画面キャプチャ・ロゴ・アイコン・図記号ビットマップ・純正の配色
+ * データは一切使っていない**（§17 / PLC調査資料 §6）。再現するのは公知の画面構成・項目名・
+ * 一般に知られた色調で、値はすべて本アプリの記述（§17.1 の前提方針）である。
+ * 実機と異なると分かったときの修正箇所は `ladder/skins/<メーカー>.ts` の1ファイルだけである。
+ */
+
+/** ステータスバーに出す項目。 */
+export type SkinStatusItem =
+  /** 書込／読出／モニタ。 */
+  | 'mode'
+  /** RUN / STOP。 */
+  | 'plc-state'
+  /** スキャン回数と経過時間。 */
+  | 'scan'
+  /** いまカーソルがある回路ブロック。 */
+  | 'network'
+  /** 挿入／上書き。 */
+  | 'overwrite'
+  /** 使っているデバイス点数。 */
+  | 'device-count';
+
+/** 記号の描き方（寸法と線の印象だけを変える。決定表#6）。 */
+export type SkinSymbolStyle = 'gx' | 'cx' | 'pcwin' | 'jw';
+
+/** スキンの配色。すべて `#RRGGBB`（大文字）。 */
+export interface SkinColors {
+  /** 編集領域の背景。 */
+  canvas: string;
+  /** 格子線（`transparent` にしたいときは背景と同色にする）。 */
+  grid: string;
+  /** 左母線。 */
+  rail: string;
+  /** 記号と導線の線色。 */
+  symbol: string;
+  /** デバイス名の文字色。 */
+  device: string;
+  /** 設定値（タイマ・カウンタ）の文字色。 */
+  preset: string;
+  /** デバイスコメントの文字色。 */
+  comment: string;
+  /** カーソル枠。 */
+  cursor: string;
+  /** 変換エラーのセル枠。 */
+  error: string;
+  /** 通電表示（モニタ中）。 */
+  powered: string;
+  /** ツールバーの背景。 */
+  toolbar: string;
+  /** タイトルバーの背景。 */
+  titleBar: string;
+  /** タイトルバーの文字。 */
+  titleBarText: string;
+  /** ステータスバーの背景。 */
+  statusBar: string;
+  /** 出力ウィンドウの背景。 */
+  output: string;
+}
+
+/** セルの寸法と線の太さ[px]。 */
+export interface SkinCell {
+  widthPx: number;
+  heightPx: number;
+  /** 記号・導線の線幅。 */
+  strokeWidth: number;
+  /** 接点の縦棒の上下の余白[px]（小さいほど縦長の接点になる）。 */
+  barInsetPx: number;
+}
+
+/** 画面の並び。 */
+export interface SkinLayout {
+  /** プロジェクトツリーの位置。 */
+  tree: 'left' | 'right';
+  /** ツリーの幅[px]。 */
+  treeWidthPx: number;
+  /** 出力ペインの形（`status-bar` は PCwin風だけ。§10.6）。 */
+  outputPane: 'window' | 'status-bar';
+  /** 出力ウィンドウの高さ[px]（`status-bar` のときは折りたたんだ詳細の高さ）。 */
+  outputHeightPx: number;
+}
+
+/** スキン1つぶんの見た目。 */
+export interface SkinTheme {
+  id: DialectId;
+  /** タイトルバーの文字。**必ず「風」で終わる**（§15 / §17.1 の商標の扱い）。 */
+  titleBar: string;
+  layout: SkinLayout;
+  statusItems: readonly SkinStatusItem[];
+  colors: SkinColors;
+  cell: SkinCell;
+  symbolStyle: SkinSymbolStyle;
+  /** デバイスコメントを記号の下に何行で出すか。 */
+  commentLines: 0 | 1 | 2;
+  /** この見た目のうち §17.1 の前提である項目（設定画面とツールチップに出す）。 */
+  assumed: readonly string[];
+}
+
+/** 4スキン共通の前提（「実物との対応」表の △ の理由）。 */
+export const SKIN_ASSUMED: readonly string[] = [
+  '画面の配色・セル寸法・記号の線の太さ（一般に知られた見え方から作図。純正の画面キャプチャ・配色データは使っていない）',
+  'ペインの幅・出力ウィンドウの高さ・ステータスバーの項目（公知の画面構成から）',
+  'タイトルバーの文字は「風」を付けた本アプリの表記（各社のロゴ・製品画像は持たない）',
+];
+```
+
+- [ ] **Step 4: 4スキンの定義を作る**
+
+`ladder/skins/mitsubishi.ts`:
+
+```ts
+import type { SkinTheme } from './types.js';
+import { SKIN_ASSUMED } from './types.js';
+
+/** GX Works3風（三菱）。「実物との対応」表の三菱列。§10.6 / §17.1 */
+export const MITSUBISHI_SKIN: SkinTheme = {
+  id: 'mitsubishi',
+  titleBar: 'MELSOFT GX Works3 風',
+  layout: { tree: 'left', treeWidthPx: 240, outputPane: 'window', outputHeightPx: 160 },
+  statusItems: ['mode', 'network', 'overwrite'],
+  colors: {
+    canvas: '#F7F8FA',
+    grid: '#F7F8FA',
+    rail: '#3A3F47',
+    symbol: '#1B1E23',
+    device: '#1B1E23',
+    preset: '#555555',
+    comment: '#1B6AC9',
+    cursor: '#1E64FF',
+    error: '#D14343',
+    powered: '#1E64FF',
+    toolbar: '#EDEFF3',
+    titleBar: '#2F4A73',
+    titleBarText: '#FFFFFF',
+    statusBar: '#E6E9EE',
+    output: '#FFFFFF',
+  },
+  cell: { widthPx: 48, heightPx: 36, strokeWidth: 1.6, barInsetPx: 8 },
+  symbolStyle: 'gx',
+  commentLines: 1,
+  assumed: SKIN_ASSUMED,
+};
+```
+
+`ladder/skins/omron.ts`:
+
+```ts
+import type { SkinTheme } from './types.js';
+import { SKIN_ASSUMED } from './types.js';
+
+/** CX-Programmer風（OMRON）。白地・細い線・コメント2行。§10.6 / §17.1 */
+export const OMRON_SKIN: SkinTheme = {
+  id: 'omron',
+  titleBar: 'CX-Programmer 風',
+  layout: { tree: 'left', treeWidthPx: 220, outputPane: 'window', outputHeightPx: 140 },
+  statusItems: ['mode', 'plc-state', 'scan'],
+  colors: {
+    canvas: '#FFFFFF',
+    grid: '#E3E8EE',
+    rail: '#1F1F1F',
+    symbol: '#000000',
+    device: '#101418',
+    preset: '#4A5560',
+    comment: '#0B6E4F',
+    cursor: '#2FA02C',
+    error: '#C62828',
+    powered: '#2FA02C',
+    toolbar: '#F2F4F6',
+    titleBar: '#1F5C99',
+    titleBarText: '#FFFFFF',
+    statusBar: '#EAEEF2',
+    output: '#FBFCFD',
+  },
+  cell: { widthPx: 52, heightPx: 40, strokeWidth: 1.4, barInsetPx: 10 },
+  symbolStyle: 'cx',
+  commentLines: 2,
+  assumed: SKIN_ASSUMED,
+};
+```
+
+`ladder/skins/jtekt.ts`:
+
+```ts
+import type { SkinTheme } from './types.js';
+import { SKIN_ASSUMED } from './types.js';
+
+/**
+ * PCwin風（JTEKT）。灰地・太い線・**下部ステータスバー**（§10.6 の画面構成）。§17.1
+ * ツリーは5分類（プログラム／データファイル／パラメータ／LD／SFC）を出すので少し広い。
+ */
+export const JTEKT_SKIN: SkinTheme = {
+  id: 'jtekt',
+  titleBar: 'PCwin 風',
+  layout: { tree: 'left', treeWidthPx: 260, outputPane: 'status-bar', outputHeightPx: 150 },
+  statusItems: ['mode', 'plc-state', 'scan', 'device-count'],
+  colors: {
+    canvas: '#EDEFF2',
+    grid: '#DCE0E6',
+    rail: '#333A42',
+    symbol: '#12212E',
+    device: '#12212E',
+    preset: '#5A626B',
+    comment: '#8A5A00',
+    cursor: '#E08A1E',
+    error: '#C0392B',
+    powered: '#E08A1E',
+    toolbar: '#E2E5EA',
+    titleBar: '#40546B',
+    titleBarText: '#FFFFFF',
+    statusBar: '#D8DCE2',
+    output: '#F6F7F9',
+  },
+  cell: { widthPx: 46, heightPx: 34, strokeWidth: 1.8, barInsetPx: 7 },
+  symbolStyle: 'pcwin',
+  commentLines: 1,
+  assumed: SKIN_ASSUMED,
+};
+```
+
+`ladder/skins/sharp.ts`:
+
+```ts
+import type { SkinTheme } from './types.js';
+import { SKIN_ASSUMED } from './types.js';
+
+/** JW-300SP風（シャープ）。淡青灰の地。§10.6 / §17.1 */
+export const SHARP_SKIN: SkinTheme = {
+  id: 'sharp',
+  titleBar: 'JW-300SP 風',
+  layout: { tree: 'left', treeWidthPx: 220, outputPane: 'window', outputHeightPx: 150 },
+  statusItems: ['mode', 'network', 'plc-state'],
+  colors: {
+    canvas: '#F2F5F7',
+    grid: '#F2F5F7',
+    rail: '#2C3E50',
+    symbol: '#102A3C',
+    device: '#102A3C',
+    preset: '#546A79',
+    comment: '#00647A',
+    cursor: '#00A0C8',
+    error: '#B03A3A',
+    powered: '#00A0C8',
+    toolbar: '#E7ECEF',
+    titleBar: '#1E6F86',
+    titleBarText: '#FFFFFF',
+    statusBar: '#DCE3E7',
+    output: '#FAFCFD',
+  },
+  cell: { widthPx: 50, heightPx: 38, strokeWidth: 1.6, barInsetPx: 8 },
+  symbolStyle: 'jw',
+  commentLines: 1,
+  assumed: SKIN_ASSUMED,
+};
+```
+
+- [ ] **Step 5: `ladder/skins/index.ts` を作る**
+
+```ts
+import type { DialectId, DialectProfile } from '@ojt/plc-dialects';
+import { JTEKT_SKIN } from './jtekt.js';
+import { MITSUBISHI_SKIN } from './mitsubishi.js';
+import { OMRON_SKIN } from './omron.js';
+import { SHARP_SKIN } from './sharp.js';
+import type { SkinTheme } from './types.js';
+
+export type {
+  SkinCell,
+  SkinColors,
+  SkinLayout,
+  SkinStatusItem,
+  SkinSymbolStyle,
+  SkinTheme,
+} from './types.js';
+export { SKIN_ASSUMED } from './types.js';
+
+/** 方言ID → スキンの見た目。§10.6 / 決定表#5 */
+export const SKIN_THEMES: Readonly<Record<DialectId, SkinTheme>> = {
+  mitsubishi: MITSUBISHI_SKIN,
+  jtekt: JTEKT_SKIN,
+  omron: OMRON_SKIN,
+  sharp: SHARP_SKIN,
+};
+
+/** そのプロファイルのスキン。 */
+export function skinThemeOf(profile: DialectProfile): SkinTheme {
+  return SKIN_THEMES[profile.id];
+}
+
+/**
+ * スキンを CSS カスタムプロパティに直す。決定表#5
+ *
+ * `.workspace` に**1回だけ**流し込む。子の要素（`LadderGrid` の `memo` が効いている部分）に
+ * インラインスタイルを撒かないので、再描画の性質（3B 決定表#5）を壊さない。
+ *
+ * @param monitorColor 設定画面の通電色（空なら方言の既定）。決定表#8
+ * @param gridColsSetting 設定画面の表示列数（0 なら方言の既定。ここでは使わないが、
+ *   呼び出し側が `skinGridCols()` と同じ引数で呼べるように受ける）
+ */
+export function skinCssVars(
+  theme: SkinTheme,
+  monitorColor: string,
+  gridColsSetting: number,
+): Record<string, string> {
+  const powered = monitorColor.length > 0 ? monitorColor : theme.colors.powered;
+  void gridColsSetting;
+  return {
+    '--skin-canvas': theme.colors.canvas,
+    '--skin-grid': theme.colors.grid,
+    '--skin-rail': theme.colors.rail,
+    '--skin-symbol': theme.colors.symbol,
+    '--skin-device': theme.colors.device,
+    '--skin-preset': theme.colors.preset,
+    '--skin-comment': theme.colors.comment,
+    '--skin-cursor': theme.colors.cursor,
+    '--skin-error': theme.colors.error,
+    '--skin-powered': powered,
+    '--skin-toolbar': theme.colors.toolbar,
+    '--skin-title-bar': theme.colors.titleBar,
+    '--skin-title-text': theme.colors.titleBarText,
+    '--skin-status-bar': theme.colors.statusBar,
+    '--skin-output': theme.colors.output,
+    '--skin-cell-w': `${String(theme.cell.widthPx)}px`,
+    '--skin-cell-h': `${String(theme.cell.heightPx)}px`,
+    '--skin-stroke': String(theme.cell.strokeWidth),
+    '--skin-tree-w': `${String(theme.layout.treeWidthPx)}px`,
+    '--skin-output-h': `${String(theme.layout.outputHeightPx)}px`,
+  };
+}
+```
+
+- [ ] **Step 6: `ladder.module.css` を CSS 変数で読むように直す**
+
+**既定値つきで読む**（`var(--skin-canvas, #f7f8fa)`）ので、変数を流し込まない場所（既存テスト）でも今までどおりに見える。ファイルを読み直してから、次の行だけを置き換える:
+
+| 置き換え前 | 置き換え後 |
+|---|---|
+| `.gridScroll { background: #f7f8fa; }` | `background: var(--skin-canvas, #f7f8fa);` |
+| `.rail { fill: #3a3f47; }` | `fill: var(--skin-rail, #3a3f47);` |
+| `.wire, .symbol { stroke-width: 1.6; }` | `stroke-width: var(--skin-stroke, 1.6);` |
+| `.symbolText, .deviceText, … { fill: #1b1e23; }` | `fill: var(--skin-device, #1b1e23);` |
+| `.presetText { fill: #555; }` | `fill: var(--skin-preset, #555);` |
+| `.commentText { fill: #1b6ac9; }` | `fill: var(--skin-comment, #1b6ac9);` |
+| `.cursor { stroke: #1e64ff; }` | `stroke: var(--skin-cursor, #1e64ff);` |
+| `.errorCell { stroke: #d14343; }` | `stroke: var(--skin-error, #d14343);` |
+| `.networkComment { color: #1b6ac9; }` | `color: var(--skin-comment, #1b6ac9);` |
+| `.toolbar { … }`（背景を持っていなければ足す） | `background: var(--skin-toolbar, #edeff3);` |
+| `.output { … }` の背景 | `background: var(--skin-output, #fff);` |
+| `.tree { width: … }` | `width: var(--skin-tree-w, 240px);` |
+
+さらに末尾へ追記する:
+
+```css
+/* --- Plan 4B Task 2: スキンの枠（決定表#5・#7） --- */
+.titleBar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 24px;
+  padding: 0 8px;
+  font-size: 12px;
+  background: var(--skin-title-bar, #2f4a73);
+  color: var(--skin-title-text, #fff);
+}
+
+.titleBarName {
+  font-weight: 700;
+}
+
+.titleBarNote {
+  margin-left: auto;
+  font-size: 10px;
+  opacity: 0.85;
+}
+
+.statusBar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  height: 24px;
+  padding: 0 8px;
+  font-size: 11px;
+  background: var(--skin-status-bar, #e6e9ee);
+  border-top: 1px solid rgb(0 0 0 / 12%);
+}
+
+.statusItem {
+  white-space: nowrap;
+}
+
+/* 実機の操作パネルにあるが動かない項目（決定表#4） */
+.vendorTool {
+  opacity: 0.55;
+  font-style: italic;
+}
+
+/* PCwin風は出力を下部のステータスバーに畳む（§10.6 / 決定表#7） */
+.outputCollapsed {
+  max-height: var(--skin-output-h, 150px);
+}
+```
+
+- [ ] **Step 7: GREEN を確認してコミットする**
+
+```powershell
+pnpm --filter @ojt/desktop exec vitest run test/skin-theme.test.ts
+npx prettier --check "apps/desktop/src/renderer/ladder/**/*.{ts,css}"
+```
+
+Expected: 2 describe / 8 ケース通過、Prettier は `All matched files use Prettier code style!`。
+
+```powershell
+git add apps/desktop/src/renderer/ladder apps/desktop/test/skin-theme.test.ts
+git commit -m "feat(desktop): describe the four vendor skins as themes with CSS variables"
+```
+
+---
+
+## Task 3: `LadderWorkspace` をスキンで駆動する（ツールバー・自動変換・タイトルバー・ステータスバー）
+
+**モデル: Opus**（自動変換の入れ方、押せないボタンの扱い、CSS変数の流し込み位置の判断があるため）
+
+**Files:**
+- Create: `apps/desktop/src/renderer/ladder/SkinFrame.tsx`
+- Modify: `apps/desktop/src/renderer/ladder/LadderWorkspace.tsx`
+- Modify: `apps/desktop/src/renderer/ladder/OutputWindow.tsx`（`convertKey` props）
+- Modify: `apps/desktop/src/renderer/screens/PlcSession.tsx`（手順表・表示列数）
+- Modify: `apps/desktop/src/renderer/i18n/ja.ts`（既存3件を関数化＋追記）
+- Test: `apps/desktop/test/skin-workspace.test.tsx`（新規）
+- Test: `apps/desktop/test/ladder-workspace.test.tsx` / `output-window.test.tsx`（追随）
+
+§16 Phase 4 受入基準①の本体である。**ツールバーは `toolbarItems()` から**描き、`convertStep: false` のスキンでは「変換」ボタンを出さず、ラダーが変わるたびに自動で変換する。あわせてスキンの枠（タイトルバー・ステータスバー）と CSS 変数を入れて、4スキンが見て区別できるようにする（利用者要求）。
+
+| 決めること | 本タスクの実装 |
+|---|---|
+| ボタンの `data-testid` | その action が**最初に出る位置**は `toolbar-<action>`、2つ目以降は `toolbar-<action>-<index>`（PCwin風は `vendor-only` が4つ並ぶ） |
+| CSS 変数 | `.workspace` に `style={skinCssVars(theme, monitorColor, gridColsSetting)}` を1回だけ（決定表#5） |
+| 自動変換 | `useEffect([program])` で `autoConvert(profile)` なら `convert({ silent: true })` |
+| `vendor-only` | 押すと `JA.ladder.vendorOnly` をトーストに出し、`className={styles.vendorTool}` |
+| `plc-run` / `plc-stop` / `plc-reset` | `onPlc({kind:'run', on})` / `onPlc({kind:'reset'})`。RUN の現在値は `plcRunning` |
+| 文言 | `JA.ladder.notConverted` / `readOnly` / `monitorOff` を**引数を取る関数**にし、キーは `shortcutKeyOf(profile, …)` から渡す（前提#22） |
+
+- [ ] **Step 1: 失敗するテストを書く**
+
+`apps/desktop/test/skin-workspace.test.tsx`:
+
+```tsx
+import { BUILTIN_PLC_PROBLEMS } from '@ojt/content';
+import { empty, network, no, program, X } from '@ojt/ladder-core';
+import { getDialect, JTEKT_PC10G, MITSUBISHI_FX5U, OMRON_CP1E, SHARP_JW300 } from '@ojt/plc-dialects';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { useStore } from '../src/renderer/app/store.js';
+import { LadderWorkspace } from '../src/renderer/ladder/LadderWorkspace.js';
+import { SKIN_THEMES } from '../src/renderer/ladder/skins/index.js';
+
+const problem = BUILTIN_PLC_PROBLEMS[0]!;
+
+afterEach(() => {
+  cleanup();
+});
+
+beforeEach(() => {
+  useStore.getState().abandonSession();
+  act(() => {
+    useStore.getState().openProblem(problem);
+  });
+});
+
+function workspace(profile = MITSUBISHI_FX5U, onPlc = vi.fn()): typeof onPlc {
+  render(<LadderWorkspace problem={problem} profile={profile} gridCols={11} onPlc={onPlc} />);
+  return onPlc;
+}
+
+describe('スキンごとのツールバー（§10.6 / §16 Phase 4 受入基準①）', () => {
+  it('draws exactly the labels the skin names, in order', () => {
+    for (const profile of [MITSUBISHI_FX5U, OMRON_CP1E, JTEKT_PC10G, SHARP_JW300]) {
+      cleanup();
+      workspace(profile);
+      const labels = screen
+        .getAllByTestId(/^toolbar-/u)
+        .map((button) => button.textContent)
+        .slice(0, profile.panels.toolbar.length);
+      expect(labels, profile.id).toEqual([...profile.panels.toolbar]);
+    }
+  });
+
+  it('has no 変換 button in the CX-Programmer style skin (受入基準①)', () => {
+    workspace(OMRON_CP1E);
+    expect(screen.queryByTestId('toolbar-convert')).toBeNull();
+    expect(screen.queryByText('変換')).toBeNull();
+    expect(screen.getByTestId('toolbar-download')).toHaveTextContent('転送［PC → PLC］');
+  });
+
+  it('keeps the 変換 button in the GX Works3 and JW-300SP style skins', () => {
+    workspace(MITSUBISHI_FX5U);
+    expect(screen.getByTestId('toolbar-convert')).toHaveTextContent('変換');
+    cleanup();
+    workspace(SHARP_JW300);
+    expect(screen.getByTestId('toolbar-convert')).toHaveTextContent('変換');
+  });
+
+  it('explains the PCwin-only buttons instead of doing nothing (決定表#4)', () => {
+    workspace(JTEKT_PC10G);
+    const jp1 = screen.getByTestId('toolbar-vendor-only');
+    expect(jp1).toHaveTextContent('JP1');
+    act(() => {
+      fireEvent.click(jp1);
+    });
+    expect(useStore.getState().toasts.at(-1)?.text).toContain('本アプリでは動作しません');
+    // 2つ目以降は位置つきで引ける
+    expect(screen.getByTestId('toolbar-vendor-only-1')).toHaveTextContent('DGR');
+  });
+
+  it('sends run / stop / reset from the PCwin buttons', () => {
+    const onPlc = workspace(JTEKT_PC10G);
+    act(() => {
+      fireEvent.click(screen.getByTestId('toolbar-plc-run'));
+    });
+    expect(onPlc).toHaveBeenCalledWith({ kind: 'run', on: true });
+    act(() => {
+      fireEvent.click(screen.getByTestId('toolbar-plc-stop'));
+    });
+    expect(onPlc).toHaveBeenCalledWith({ kind: 'run', on: false });
+    act(() => {
+      fireEvent.click(screen.getByTestId('toolbar-plc-reset'));
+    });
+    expect(onPlc).toHaveBeenCalledWith({ kind: 'reset' });
+  });
+});
+
+describe('スキンの枠（利用者要求: 実物に近い画面）', () => {
+  it('names the tool in the title bar, with 風 and the trademark note', () => {
+    workspace(OMRON_CP1E);
+    expect(screen.getByTestId('skin-title')).toHaveTextContent('CX-Programmer 風');
+    expect(screen.getByTestId('skin-title')).toHaveTextContent('商標');
+  });
+
+  it('pushes the skin colours in as CSS variables, once, on the workspace', () => {
+    workspace(JTEKT_PC10G);
+    const root = screen.getByTestId('ladder-workspace');
+    expect(root.style.getPropertyValue('--skin-canvas')).toBe(
+      SKIN_THEMES['jtekt'].colors.canvas,
+    );
+    expect(root.style.getPropertyValue('--skin-powered')).toBe('#E08A1E');
+    expect(root.style.getPropertyValue('--skin-cell-w')).toBe('46px');
+    expect(root).toHaveAttribute('data-skin', 'jtekt');
+  });
+
+  it('shows the status items each tool shows', () => {
+    workspace(MITSUBISHI_FX5U);
+    expect(screen.getByTestId('status-mode')).toHaveTextContent('書込');
+    expect(screen.getByTestId('status-network')).toHaveTextContent('n1');
+    expect(screen.getByTestId('status-overwrite')).toBeInTheDocument();
+    expect(screen.queryByTestId('status-scan')).toBeNull();
+    cleanup();
+    workspace(JTEKT_PC10G);
+    expect(screen.getByTestId('status-scan')).toBeInTheDocument();
+    expect(screen.getByTestId('status-device-count')).toBeInTheDocument();
+    expect(screen.queryByTestId('status-overwrite')).toBeNull();
+  });
+
+  it('folds the output pane into the status bar in the PCwin style (§10.6)', () => {
+    workspace(JTEKT_PC10G);
+    expect(screen.getByTestId('ladder-workspace')).toHaveAttribute('data-output-pane', 'status-bar');
+    cleanup();
+    workspace(MITSUBISHI_FX5U);
+    expect(screen.getByTestId('ladder-workspace')).toHaveAttribute('data-output-pane', 'window');
+  });
+});
+
+describe('変換のいらないスキン（§10.6 / 決定表#3）', () => {
+  /** 1セルだけ置いたラダー（変換は `no-output` で落ちる）。 */
+  const oneContact = program(network('n1', [[no(X(0)), empty()]]), network('end', [[empty()]]));
+
+  it('converts on every change when the skin has no 変換 step', () => {
+    const onPlc = workspace(OMRON_CP1E);
+    act(() => {
+      useStore.getState().setLadder(oneContact);
+    });
+    // 自動変換が走り、結果が出力ウィンドウに出る（トーストは出さない）
+    expect(useStore.getState().convertIssues.errors.length).toBeGreaterThan(0);
+    expect(useStore.getState().toasts).toHaveLength(0);
+    expect(onPlc).not.toHaveBeenCalled();
+  });
+
+  it('does not convert by itself when the skin has a 変換 button', () => {
+    workspace(MITSUBISHI_FX5U);
+    act(() => {
+      useStore.getState().setLadder(oneContact);
+    });
+    expect(useStore.getState().convertIssues.errors).toHaveLength(0);
+    expect(useStore.getState().converted).toBe(false);
+  });
+});
+
+describe('キーの文字列を文言に埋め込まない（前提#22 / 決定表#2）', () => {
+  it('names the convert key of the current skin in the output window', () => {
+    workspace(MITSUBISHI_FX5U);
+    expect(screen.getByTestId('convert-state')).toHaveTextContent('F4');
+  });
+
+  it('says the ladder is converted automatically where there is no 変換', () => {
+    workspace(OMRON_CP1E);
+    expect(screen.getByTestId('convert-state')).not.toHaveTextContent('F4');
+    expect(screen.getByTestId('convert-state')).toHaveTextContent('自動');
+  });
+
+  it('names the write-mode key of the current skin when an edit is refused', () => {
+    workspace(MITSUBISHI_FX5U);
+    act(() => {
+      useStore.getState().setLadderMode('read');
+      fireEvent.click(screen.getByTestId('toolbar-insert-network'));
+    });
+    const key = getDialect('mitsubishi').shortcuts.find((s) => s.action === 'write-mode')?.keys;
+    expect(useStore.getState().toasts.at(-1)?.text).toContain(key);
+  });
+});
+```
+
+- [ ] **Step 2: RED を確認する**
+
+```powershell
+pnpm --filter @ojt/desktop exec vitest run test/skin-workspace.test.tsx
+```
+
+Expected: 失敗。`Unable to find an element by: [data-testid="toolbar-download"]`（OMRON では位置 1 が `convert-all` に倒れている）。
+
+- [ ] **Step 3: `i18n/ja.ts` の文言を方言非依存にする**
+
+`ja.ts` を読み直してから、`JA.ladder` の該当行を**関数に差し替える**（同じキーを2回書かない）:
+
+```ts
+    /** 読出し・モニタ中に編集しようとした。§10.6（キーは方言から渡す。決定表#2） */
+    readOnly: (writeKey: string): string => `書込みモード（${writeKey}）に切り替えると編集できます`,
+    /** 変換前。「変換」のあるスキンはキーを、無いスキンは自動である旨を出す。決定表#3 */
+    notConverted: (convertKey: string): string => `未変換（${convertKey} で変換します）`,
+    notConvertedAuto: '自動で変換します（このメーカーのツールに「変換」操作はありません）',
+    /** モニタの案内（キーは方言から渡す）。前提#22 */
+    monitorOff: (monitorKey: string): string =>
+      `モニタ（${monitorKey}）を開始すると通電状態が表示されます。`,
+    /** `Shift+F3`（モニタ書込み）の注記。決定表#11（Phase の番号は出さない） */
+    monitorWriteSame: 'モニタと同じ動作です（本アプリにオンライン変更はありません）',
+```
+
+`JA.ladder` の末尾（`// --- /Plan 3B Task 9 ---` の直後）に足す:
+
+```ts
+    // --- Plan 4B Task 3 ---
+    /** 実機の操作パネルにあるが本アプリでは動かない項目。決定表#4 */
+    vendorOnly: 'このボタンは実機の操作パネルの項目で、本アプリでは動作しません',
+    /** タイトルバー（スキン名は `SkinTheme.titleBar`）。§15 / §17.1 */
+    skinTitleNote: '各社の商標については設定画面の「このアプリについて」をご覧ください',
+    /** ステータスバーの項目名。 */
+    statusMode: 'モード',
+    statusPlcState: 'PLC',
+    statusScan: 'スキャン',
+    statusNetwork: '回路ブロック',
+    statusOverwrite: '入力',
+    statusDeviceCount: 'デバイス点数',
+    statusInsert: '挿入',
+    statusOverwriteMode: '上書き',
+    // --- /Plan 4B Task 3 ---
+```
+
+呼び出し側の追随（`tsc` が全部教えてくれる）:
+
+| ファイル | 直し方 |
+|---|---|
+| `ladder/LadderWorkspace.tsx` | `JA.ladder.readOnly` → `JA.ladder.readOnly(shortcutKeyOf(profile, 'write-mode') ?? 'F2')` |
+| `ladder/OutputWindow.tsx` | 下の Step 5 のとおり `convertKey` で分岐 |
+| `ladder/MonitorPanel.tsx` | `JA.ladder.monitorOff` → `JA.ladder.monitorOff(shortcutKeyOf(profile, 'monitor') ?? 'F3')` |
+
+- [ ] **Step 4: `ladder/SkinFrame.tsx` を作る**
+
+```tsx
+import type { DialectProfile } from '@ojt/plc-dialects';
+import type { JSX } from 'react';
+import { useStore } from '../app/store.js';
+import { JA } from '../i18n/ja.js';
+import type { SkinStatusItem, SkinTheme } from './skins/index.js';
+import styles from './ladder.module.css';
+
+/**
+ * スキンの枠（タイトルバーとステータスバー）。設計仕様 §10.6 / §12.1 / §17.1。決定表#7
+ *
+ * 利用者要求（2026-09-19）「各メーカーのソフト画面に合わせた可能な限り実物に忠実な画面」に
+ * 対する部分である。**各社のロゴ・アイコン・画面キャプチャは持たない**（§17）。出すのは
+ * 「`<ツール名> 風`」という文字と、実機のステータスバーが見せている種類の値だけである。
+ */
+
+/** ステータスバーの1項目。値はストアから引くので、新しい状態は増えない。 */
+function StatusItem({ item }: { item: SkinStatusItem }): JSX.Element | null {
+  const mode = useStore((s) => s.ladderMode);
+  const running = useStore((s) => s.plcRunning);
+  const scan = useStore((s) => s.plcMonitor?.scanCount);
+  const networkId = useStore((s) => s.ladderCursor.networkId);
+  const insertMode = useStore((s) => s.insertMode);
+  const usage = useStore((s) => s.convertIssues.usage);
+  const text = ((): string => {
+    switch (item) {
+      case 'mode':
+        return `${JA.ladder.statusMode}: ${
+          mode === 'write' ? JA.plc.modeWrite : mode === 'read' ? JA.plc.modeRead : JA.plc.modeMonitor
+        }`;
+      case 'plc-state':
+        return `${JA.ladder.statusPlcState}: ${running ? JA.ladder.run : JA.ladder.stop}`;
+      case 'scan':
+        return `${JA.ladder.statusScan}: ${scan === undefined ? '—' : String(scan)}`;
+      case 'network':
+        return `${JA.ladder.statusNetwork}: ${networkId}`;
+      case 'overwrite':
+        return `${JA.ladder.statusOverwrite}: ${
+          insertMode === 'insert' ? JA.ladder.statusInsert : JA.ladder.statusOverwriteMode
+        }`;
+      case 'device-count':
+        return `${JA.ladder.statusDeviceCount}: ${String(
+          (usage?.reads.length ?? 0) + (usage?.writes.length ?? 0),
+        )}`;
+    }
+  })();
+  return (
+    <span className={styles.statusItem} data-testid={`status-${item}`}>
+      {text}
+    </span>
+  );
+}
+
+/** タイトルバー。スキン名（「風」つき）と商標の案内だけを出す。§15 / §17.1 */
+export function SkinTitleBar({
+  theme,
+  profile,
+}: {
+  theme: SkinTheme;
+  profile: DialectProfile;
+}): JSX.Element {
+  return (
+    <div className={styles.titleBar} data-testid="skin-title">
+      <span className={styles.titleBarName}>{theme.titleBar}</span>
+      <span>{profile.displayName}</span>
+      <span className={styles.titleBarNote}>{JA.ladder.skinTitleNote}</span>
+    </div>
+  );
+}
+
+/** ステータスバー。項目はスキンが決める（決定表#7）。 */
+export function SkinStatusBar({ theme }: { theme: SkinTheme }): JSX.Element {
+  return (
+    <div className={styles.statusBar} data-testid="skin-status" role="status">
+      {theme.statusItems.map((item) => (
+        <StatusItem key={item} item={item} />
+      ))}
+    </div>
+  );
+}
+```
+
+- [ ] **Step 5: `OutputWindow.tsx` に `convertKey` を足す**
+
+```tsx
+export function OutputWindow({
+  issues,
+  converted,
+  convertKey,
+  onJump,
+}: {
+  issues: ConvertIssues;
+  converted: boolean;
+  /** 「変換」のキー。無いスキン（`convertStep: false`）では `undefined`。決定表#3 */
+  convertKey: string | undefined;
+  onJump: (cursor: LadderCursor) => void;
+}): JSX.Element {
+```
+
+```tsx
+        <span data-testid="convert-state" className={converted ? styles.okTag : styles.ngTag}>
+          {converted
+            ? JA.ladder.convertOk
+            : convertKey === undefined
+              ? JA.ladder.notConvertedAuto
+              : JA.ladder.notConverted(convertKey)}
+        </span>
+```
+
+- [ ] **Step 6: `LadderWorkspace.tsx` をスキンで駆動する**
+
+import に足す（既存の import 行に混ぜる）:
+
+```ts
+import { useEffect } from 'react';                                   // 既存の react import に足す
+import { shortcutKeyOf } from '../session/ladder.js';                // 既存行に足す
+import { autoConvert, toolbarItems, type ToolbarAction } from '../session/plc-skin.js';
+import { skinCssVars, skinThemeOf } from './skins/index.js';
+import { SkinStatusBar, SkinTitleBar } from './SkinFrame.js';
+```
+
+`TOOLBAR_ACTIONS` の定義（`type ToolbarAction` ごと）を**丸ごと削除**する。購読を足す:
+
+```ts
+  const plcRunning = useStore((s) => s.plcRunning);
+  const monitorColor = useStore((s) => s.monitorColor);
+  const gridColsSetting = useStore((s) => s.ladderGridCols);
+  const theme = useMemo(() => skinThemeOf(profile), [profile]);
+  const cssVars = useMemo(
+    () => skinCssVars(theme, monitorColor, gridColsSetting),
+    [theme, monitorColor, gridColsSetting],
+  );
+```
+
+`convert()` を差し替える:
+
+```ts
+  /**
+   * 「変換」。成功したときだけ Worker へ載せる（4A H-3）。§10.6
+   * `silent` は自動変換（`convertStep: false` のスキン）から呼ぶとき。結果は出力ウィンドウに
+   * 出るので、編集のたびにトーストを積まない（決定表#3）。
+   */
+  const convert = useCallback(
+    (options: { silent?: boolean } = {}): void => {
+      const store = useStore.getState();
+      const current = store.ladder;
+      if (current === undefined) return;
+      const run = runConvert(current, profile);
+      store.setConverted(run.ok, run.issues);
+      if (!run.ok) {
+        if (options.silent !== true) store.toast(JA.ladder.convertFailed, 'error');
+        return;
+      }
+      onPlc({ kind: 'load', program: current });
+      if (options.silent !== true) store.toast(JA.ladder.convertOk);
+    },
+    [onPlc, profile],
+  );
+
+  /**
+   * 「変換」のないスキンでは、ラダーが変わるたびに黙って変換し直す（決定表#3）。
+   * 判定は変換済みのラダーしか受け取らない（4A H-3）ので、押す場所が無い以上ここで走らせる。
+   */
+  const auto = autoConvert(profile);
+  useEffect(() => {
+    if (!auto || program === undefined) return;
+    convert({ silent: true });
+  }, [auto, program, convert]);
+```
+
+`edit()` の断り文句にキーを渡す（`useCallback` の依存配列に `profile` を足す）:
+
+```ts
+      if (store.ladderMode !== 'write') {
+        store.toast(JA.ladder.readOnly(shortcutKeyOf(profile, 'write-mode') ?? 'F2'), 'error');
+        return false;
+      }
+```
+
+`onToolbar` を新しい `ToolbarAction` に合わせる:
+
+```ts
+  const onToolbar = (action: ToolbarAction): void => {
+    const store = useStore.getState();
+    const convertKey = shortcutKeyOf(profile, 'convert');
+    switch (action) {
+      case 'convert':
+      case 'convert-all':
+        convert();
+        break;
+      case 'write-mode':
+        changeMode('write');
+        break;
+      case 'read-mode':
+        changeMode('read');
+        break;
+      case 'online':
+      case 'download':
+        // 本アプリでは「変換」がそのまま書込みに当たる（意図的な差分 #2）
+        if (!store.converted) {
+          store.toast(
+            convertKey === undefined
+              ? JA.ladder.notConvertedAuto
+              : JA.ladder.notConverted(convertKey),
+            'error',
+          );
+          break;
+        }
+        onPlc({ kind: 'load', program });
+        store.toast(JA.ladder.downloaded);
+        break;
+      case 'monitor-start':
+        changeMode('monitor');
+        break;
+      case 'monitor-stop':
+        changeMode('read');
+        break;
+      case 'plc-run':
+        onPlc({ kind: 'run', on: !store.plcRunning });
+        store.setPlcRunning(!store.plcRunning);
+        break;
+      case 'plc-stop':
+        onPlc({ kind: 'run', on: false });
+        store.setPlcRunning(false);
+        break;
+      case 'plc-reset':
+        onPlc({ kind: 'reset' });
+        break;
+      case 'vendor-only':
+        store.toast(JA.ladder.vendorOnly);
+        break;
+    }
+  };
+```
+
+ルート要素と枠:
+
+```tsx
+  const items = toolbarItems(profile);
+  return (
+    <div
+      className={styles.workspace}
+      data-testid="ladder-workspace"
+      data-skin={theme.id}
+      data-output-pane={theme.layout.outputPane}
+      // スキンの色と寸法は**ここ1回だけ**流し込む（決定表#5）
+      style={cssVars as CSSProperties}
+    >
+      <SkinTitleBar theme={theme} profile={profile} />
+      <div className={styles.toolbar} role="group" aria-label={JA.ladder.title}>
+        {items.map((item) => {
+          const first = items.findIndex((other) => other.action === item.action) === item.index;
+          return (
+            <button
+              key={`${item.action}-${String(item.index)}`}
+              type="button"
+              // その action の**最初の1つ**は位置なし（既存テストと E2E がこの名前で引く）、
+              // 2つ目以降は位置つき（PCwin風は `vendor-only` が4つ並ぶ）
+              data-testid={
+                first ? `toolbar-${item.action}` : `toolbar-${item.action}-${String(item.index)}`
+              }
+              data-action={item.action}
+              className={item.action === 'vendor-only' ? styles.vendorTool : undefined}
+              aria-pressed={item.action === 'plc-run' ? plcRunning : undefined}
+              onClick={() => {
+                onToolbar(item.action);
+              }}
+            >
+              {item.label}
+            </button>
+          );
+        })}
+        <span className={styles.toolbarGap} />
+        {/* 回路ブロック・行の4ボタンは既存のまま（決定表#12） */}
+```
+
+`OutputWindow` の呼び出しを差し替え、PCwin風は畳む:
+
+```tsx
+          <div
+            className={
+              theme.layout.outputPane === 'status-bar' ? styles.outputCollapsed : undefined
+            }
+          >
+            <OutputWindow
+              issues={issues}
+              converted={converted}
+              convertKey={shortcutKeyOf(profile, 'convert')}
+              onJump={(next) => {
+                useStore.getState().setLadderCursor(next);
+              }}
+            />
+          </div>
+```
+
+`workspaceBody` を閉じたあと（`</div>` の直前）に足す:
+
+```tsx
+      <SkinStatusBar theme={theme} />
+```
+
+`import type { CSSProperties }` を react の型 import に足す。
+
+- [ ] **Step 7: `PlcSession.tsx` の手順表を畳む**
+
+import に足す:
+
+```ts
+import { skinGridCols, skinStepKeys, type PlcStepKey } from '../session/plc-skin.js';
+```
+
+`gridCols` の行を差し替える:
+
+```ts
+  /** 表示列数は設定画面の値。`0` なら方言の既定（§10.6 / 決定表#8）。 */
+  const gridColsSetting = useStore((s) => s.ladderGridCols);
+  const gridCols = skinGridCols(profile, gridColsSetting);
+```
+
+`steps` の定義を差し替える:
+
+```ts
+  const written = hasLadderContent(ladder);
+  const stepState: Readonly<Record<PlcStepKey, StepState>> = {
+    wire: 'anytime',
+    ladder: written ? 'done' : 'current',
+    convert: converted ? 'done' : written ? 'current' : 'todo',
+    // 「変換」の無いスキンは、ラダーを書いた時点で（自動変換が通れば）運転へ進める
+    run: plcRunning ? 'done' : converted ? 'current' : 'todo',
+    judge: readiness.ok && modelKnown ? 'current' : 'todo',
+  };
+  const stepLabel: Readonly<Record<PlcStepKey, string>> = {
+    wire: JA.plc.stepWire,
+    ladder: JA.plc.stepLadder,
+    convert: JA.plc.stepConvert,
+    run: JA.plc.stepRun,
+    judge: JA.plc.stepJudge,
+  };
+  const steps = skinStepKeys(profile).map((key) => ({
+    key,
+    label: stepLabel[key],
+    state: stepState[key],
+  }));
+  const currentStepKey = steps.find((step) => step.state === 'current')?.key;
+```
+
+`stepHintText()` の引数の型を `PlcStepKey | undefined` にする（`'convert'` の枝はそのまま残す。三菱・シャープが使う）。
+
+`judgeTitle` のキー無しの枝を足す:
+
+```ts
+  const convertKey = shortcutKeyOf(profile, 'convert');
+  const judgeTitle = !modelKnown
+    ? JA.plc.unknownModel(problem.plc.model)
+    : readiness.ok
+      ? JA.session.judge
+      : readiness.reason === 'no-ladder'
+        ? JA.plc.judgeNoLadder
+        : convertKey === undefined
+          ? JA.plc.judgeAutoConverting
+          : JA.plc.judgeNotConverted(convertKey);
+```
+
+`JA.plc` に足す（`// --- /Plan 3B Task 12 ---` の直前）:
+
+```ts
+    // --- Plan 4B Task 3 ---
+    /** 「変換」のないスキンで、まだ変換が通っていないとき。決定表#3 */
+    judgeAutoConverting: 'ラダーに直すところがあります（出力ウィンドウを確認してください）',
+    // --- /Plan 4B Task 3 ---
+```
+
+- [ ] **Step 8: 既存テストを追随させる**
+
+| ファイル | 直し方 |
+|---|---|
+| `test/ladder-workspace.test.tsx` | `TOOLBAR_ACTIONS` の import を消し、`toolbarItems(MITSUBISHI_FX5U)` で回す（三菱の8件は並びが変わらないので期待値はそのまま） |
+| `test/output-window.test.tsx` | `render(<OutputWindow … />)` に `convertKey="F4"` を足す |
+| `test/ladder-panels.test.tsx` | `MonitorPanel` の「モニタを開始すると…」を引いているケースがあれば文言はそのまま（関数化しても出力は同じ） |
+
+- [ ] **Step 9: GREEN を確認してコミットする**
+
+```powershell
+pnpm --filter @ojt/desktop exec vitest run test/skin-workspace.test.tsx test/ladder-workspace.test.tsx test/output-window.test.tsx test/ladder-panels.test.tsx test/plc-session-screen.test.tsx
+pnpm --filter @ojt/desktop exec tsc -p tsconfig.json --noEmit
+```
+
+Expected: すべて通過（`skin-workspace.test.tsx` は 4 describe / 13 ケース）。`tsc` は無警告。
+
+```powershell
+git add apps/desktop/src/renderer/ladder apps/desktop/src/renderer/screens/PlcSession.tsx apps/desktop/src/renderer/i18n/ja.ts apps/desktop/test
+git commit -m "feat(desktop): drive the ladder workspace, title bar and status bar from the skin"
+```
+
+---
+
+## Task 4: 回路入力画面の描画をスキンに合わせる（セル寸法・記号・コメント）
+
+**モデル: Opus**（記号の作図をスキン別にする設計判断があるため）
+
+**Files:**
+- Modify: `apps/desktop/src/renderer/ladder/symbols.ts`
+- Modify: `apps/desktop/src/renderer/ladder/LadderGrid.tsx`
+- Modify: `apps/desktop/src/renderer/ladder/LadderEditor.tsx`（`theme` を渡す）
+- Modify: `apps/desktop/src/renderer/ladder/ladder.module.css`（末尾追記）
+- Test: `apps/desktop/test/skin-grid.test.tsx`（新規）
+- Test: `apps/desktop/test/ladder-grid.test.tsx` / `ladder-symbols.test.ts`（追随）
+
+利用者要求「実物に忠実な回路入力画面」の**描画側**である。「実物との対応」表のセル寸法・線幅・接点の余白・コメント行数を効かせる。**記号の形そのもの（接点2本の縦棒・コイルの丸括弧）は4スキン共通**で、変わるのは寸法と線の太さだけである（決定表#6。形を分けても一次資料の裏づけが無く、△ を増やすだけになる）。
+
+- [ ] **Step 1: 失敗するテストを書く**
+
+`apps/desktop/test/skin-grid.test.tsx`:
+
+```tsx
+import { describe, expect, it } from 'vitest';
+import { SKIN_THEMES } from '../src/renderer/ladder/skins/index.js';
+import { CELL_H, CELL_W, GX_CELL, symbolMetrics } from '../src/renderer/ladder/symbols.js';
+
+describe('スキン別の記号の寸法（決定表#6）', () => {
+  it('keeps the GX Works3 numbers as the default', () => {
+    const gx = symbolMetrics(GX_CELL);
+    expect(gx.w).toBe(CELL_W);
+    expect(gx.h).toBe(CELL_H);
+    expect(gx.wireY).toBe(CELL_H / 2);
+    expect(symbolMetrics(SKIN_THEMES['mitsubishi'].cell).w).toBe(48);
+  });
+
+  it('follows the theme for every skin', () => {
+    expect(symbolMetrics(SKIN_THEMES['omron'].cell).w).toBe(52);
+    expect(symbolMetrics(SKIN_THEMES['omron'].cell).h).toBe(40);
+    expect(symbolMetrics(SKIN_THEMES['jtekt'].cell).w).toBe(46);
+    expect(symbolMetrics(SKIN_THEMES['sharp'].cell).h).toBe(38);
+  });
+
+  it('draws the same two bars for an NO contact in every skin, at the skin size', () => {
+    for (const theme of Object.values(SKIN_THEMES)) {
+      const metrics = symbolMetrics(theme.cell);
+      const shape = metrics.shape('contact-no');
+      expect(shape?.paths, theme.id).toHaveLength(2);
+      for (const path of shape?.paths ?? []) {
+        // 縦棒は `M x top L x bottom` の形で、上下の余白はスキンの `barInsetPx`
+        expect(path, theme.id).toMatch(
+          new RegExp(`^M [\\d.]+ ${String(theme.cell.barInsetPx)} L [\\d.]+ `, 'u'),
+        );
+      }
+      expect(metrics.shape('contact-nc')?.paths).toHaveLength(3);
+      expect(metrics.shape('coil-round')?.paths).toHaveLength(2);
+      expect(metrics.shape('coil-set')?.text).toBe('S');
+    }
+  });
+
+  it('returns the same object for the same cell (memoised, so `memo` keeps working)', () => {
+    expect(symbolMetrics(SKIN_THEMES['omron'].cell)).toBe(
+      symbolMetrics(SKIN_THEMES['omron'].cell),
+    );
+  });
+
+  it('spans the hidden columns with a lead that scales with the cell width', () => {
+    const omron = symbolMetrics(SKIN_THEMES['omron'].cell);
+    expect(omron.leadAcrossHidden(4)).toContain(String(4 * 52));
+  });
+});
+```
+
+`apps/desktop/test/ladder-grid.test.tsx` に足す（グリッドがテーマの寸法で描かれること）:
+
+```tsx
+  it('sizes the cells from the skin (利用者要求: 実物に近い画面)', () => {
+    renderGrid({ profile: OMRON_CP1E });
+    const svg = screen.getByRole('grid', { name: /n1/u });
+    // OMRON は 52×40。接点11列＋コイル列1＋母線6px
+    expect(svg.getAttribute('height')).toBe('40');
+    expect(Number(svg.getAttribute('width'))).toBe(12 * 52 + 6);
+  });
+
+  it('shows two comment lines in the CX-Programmer style and one elsewhere', () => {
+    renderGrid({ profile: OMRON_CP1E, comments: { X0: 'とても長いデバイスコメントの例です' } });
+    expect(screen.getAllByTestId(/^comment-line-/u)).toHaveLength(2);
+    cleanup();
+    renderGrid({ profile: MITSUBISHI_FX5U, comments: { X0: 'とても長いデバイスコメントの例です' } });
+    expect(screen.getAllByTestId(/^comment-line-/u)).toHaveLength(1);
+  });
+```
+
+- [ ] **Step 2: RED を確認する**
+
+```powershell
+pnpm --filter @ojt/desktop exec vitest run test/skin-grid.test.tsx test/ladder-grid.test.tsx
+```
+
+Expected: 失敗。`symbols.js` に `symbolMetrics` / `GX_CELL` が無い。
+
+- [ ] **Step 3: `symbols.ts` に `symbolMetrics()` を足す**
+
+**既存の `CELL_W` / `CELL_H` / `WIRE_Y` / `symbolShape()` / `LEAD_*` / `LINK_DOWN` / `END_MARK` / `leadAcrossHidden()` は残す**（GX Works3風の既定として、既存のテストと `LadderGrid` 以外の呼び出しが使う）。その下に足す:
+
+```ts
+import type { SkinCell } from './skins/index.js';
+
+/** GX Works3風の寸法（既定。`CELL_W` / `CELL_H` と同じ値）。 */
+export const GX_CELL: SkinCell = {
+  widthPx: CELL_W,
+  heightPx: CELL_H,
+  strokeWidth: 1.6,
+  barInsetPx: 8,
+};
+
+/** そのスキンの寸法で描いた記号と導線一式。 */
+export interface SymbolMetrics {
+  /** セルの幅・高さ[px]と桟の縦位置。 */
+  w: number;
+  h: number;
+  wireY: number;
+  /** 左半分・右半分・全幅の導線。 */
+  leadLeft: string;
+  leadRight: string;
+  leadFull: string;
+  /** 下の行へ降りる縦リンク。 */
+  linkDown: string;
+  /** END の印。 */
+  endMark: string;
+  /** 表示しない列をまたぐ導線（`spanCols` 列ぶん）。 */
+  leadAcrossHidden: (spanCols: number) => string;
+  /** 識別子 → 線画。 */
+  shape: (id: string) => SymbolShape | undefined;
+}
+
+/**
+ * `SkinCell` は `ladder/skins/*.ts` のモジュール定数なので**同一性が保たれる**。
+ * 同じ寸法には同じオブジェクトを返し、`memo(LadderGrid)` の props 比較を壊さない。
+ */
+const METRICS_CACHE = new WeakMap<SkinCell, SymbolMetrics>();
+
+/**
+ * スキンの寸法で記号を作り直す。決定表#6
+ * 変えるのは**寸法と接点の縦棒の余白**だけで、形（縦棒2本・丸括弧・斜線）は4スキン共通である
+ * （JIS C 0617 に沿った自前の作図。各社の図記号ビットマップは複製しない。§17）。
+ */
+export function symbolMetrics(cell: SkinCell): SymbolMetrics {
+  const cached = METRICS_CACHE.get(cell);
+  if (cached !== undefined) return cached;
+  const w = cell.widthPx;
+  const h = cell.heightPx;
+  const wireY = h / 2;
+  // 記号の横幅は 18px 固定（セルの中央に置く）。左右の余りがリード線になる
+  const left = Math.round((w - 18) / 2);
+  const right = left + 18;
+  const top = cell.barInsetPx;
+  const bottom = h - cell.barInsetPx;
+  const bars = [`M ${left} ${top} L ${left} ${bottom}`, `M ${right} ${top} L ${right} ${bottom}`];
+  const arcRx = 9;
+  const arcRy = (bottom - top) / 2;
+  const arcs = [
+    `M ${left + 2} ${top} A ${arcRx} ${arcRy} 0 0 0 ${left + 2} ${bottom}`,
+    `M ${right - 2} ${top} A ${arcRx} ${arcRy} 0 0 1 ${right - 2} ${bottom}`,
+  ];
+  const shapes: Readonly<Record<string, SymbolShape>> = {
+    'contact-no': { paths: bars },
+    'contact-nc': { paths: [...bars, `M ${left} ${bottom} L ${right} ${top}`] },
+    'contact-rise': { paths: bars, text: '↑' },
+    'contact-fall': { paths: bars, text: '↓' },
+    'coil-round': { paths: arcs },
+    'coil-set': { paths: arcs, text: 'S' },
+    'coil-reset': { paths: arcs, text: 'R' },
+    'coil-timer': { paths: arcs, text: 'T' },
+    'coil-counter': { paths: arcs, text: 'C' },
+    [MC_SYMBOL_ID]: { paths: arcs, text: 'MC' },
+    [MCR_SYMBOL_ID]: { paths: arcs, text: 'MCR' },
+  };
+  const metrics: SymbolMetrics = {
+    w,
+    h,
+    wireY,
+    leadLeft: `M 0 ${wireY} L ${left} ${wireY}`,
+    leadRight: `M ${right} ${wireY} L ${w} ${wireY}`,
+    leadFull: `M 0 ${wireY} L ${w} ${wireY}`,
+    linkDown: `M ${w / 2} ${wireY} L ${w / 2} ${h + wireY}`,
+    endMark: `M ${left} ${top} L ${right} ${top} L ${right} ${bottom} L ${left} ${bottom} Z`,
+    leadAcrossHidden: (spanCols: number) => `M 0 ${wireY} L ${spanCols * w} ${wireY}`,
+    shape: (id: string) => shapes[id],
+  };
+  METRICS_CACHE.set(cell, metrics);
+  return metrics;
+}
+```
+
+> `MC_SYMBOL_ID` / `MCR_SYMBOL_ID` と `SymbolShape` は既存の宣言をそのまま使う。既存の `SHAPES` テーブルと `symbolShape()` は**消さない**（`ladder-symbols.test.ts` が見張っている）。
+
+- [ ] **Step 4: `LadderGrid.tsx` をテーマで描く**
+
+`symbols.js` からの import を `symbolMetrics` 1本に寄せる（`CELL_W` / `CELL_H` / `LEAD_*` / `END_MARK` / `LINK_DOWN` / `leadAcrossHidden` / `symbolShape` の import を落とす。`COIL_COL` などの `ladder-core` からの import はそのまま）。`LadderGrid` / `NetworkGrid` / `GridCell` の props に `theme: SkinTheme` を足し、先頭で:
+
+```ts
+  const metrics = symbolMetrics(theme.cell);
+```
+
+置き換えの対応:
+
+| 置き換え前 | 置き換え後 |
+|---|---|
+| `CELL_W` | `metrics.w` |
+| `CELL_H` | `metrics.h` |
+| `WIRE_Y` | `metrics.wireY` |
+| `LEAD_LEFT` / `LEAD_RIGHT` / `LEAD_FULL` | `metrics.leadLeft` / `metrics.leadRight` / `metrics.leadFull` |
+| `LINK_DOWN` / `END_MARK` | `metrics.linkDown` / `metrics.endMark` |
+| `leadAcrossHidden(n)` | `metrics.leadAcrossHidden(n)` |
+| `symbolShape(id)` | `metrics.shape(id)` |
+
+デバイスコメントの行数をテーマから引く（`GridCell` の描画部）:
+
+```tsx
+              {/*
+                デバイスコメントは記号の**下**に `theme.commentLines` 行で出す
+                （CX-Programmer風は2行。「実物との対応」表）。長い文字は行ごとに切る。
+              */}
+              {comment === undefined
+                ? null
+                : commentLines(comment, theme.commentLines, COMMENT_CHARS).map((line, index) => (
+                    <text
+                      key={line + String(index)}
+                      className={styles.commentText}
+                      data-testid={`comment-line-${String(index)}`}
+                      x={metrics.w / 2}
+                      y={metrics.h - 2 - (theme.commentLines - 1 - index) * COMMENT_LINE_H}
+                    >
+                      {line}
+                    </text>
+                  ))}
+```
+
+ファイル上部に足す:
+
+```ts
+/** デバイスコメント1行の文字数（セル幅に収まる目安）。 */
+const COMMENT_CHARS = 6;
+/** デバイスコメントの行間[px]。 */
+const COMMENT_LINE_H = 8;
+
+/** コメントを `lines` 行に折り返す（入りきらない分は最後の行の末尾を `…` にする）。 */
+export function commentLines(text: string, lines: number, perLine: number): string[] {
+  if (lines <= 0 || text.length === 0) return [];
+  const out: string[] = [];
+  for (let index = 0; index < lines; index += 1) {
+    const slice = text.slice(index * perLine, (index + 1) * perLine);
+    if (slice.length === 0) break;
+    const last = index === lines - 1 && text.length > (index + 1) * perLine;
+    out.push(last ? `${slice.slice(0, Math.max(0, perLine - 1))}…` : slice);
+  }
+  return out;
+}
+```
+
+- [ ] **Step 5: `LadderEditor.tsx` から `theme` を渡す**
+
+```ts
+import { skinThemeOf } from './skins/index.js';
+// …
+  const theme = useMemo(() => skinThemeOf(profile), [profile]);
+```
+
+`<LadderGrid … theme={theme} />` を足す（`profile` の隣）。
+
+- [ ] **Step 6: `ladder.module.css` の末尾に追記する**
+
+```css
+/* --- Plan 4B Task 4: スキンの格子線（「実物との対応」表） --- */
+.gridScroll {
+  background-image: linear-gradient(
+      to right,
+      var(--skin-grid, transparent) 1px,
+      transparent 1px
+    ),
+    linear-gradient(to bottom, var(--skin-grid, transparent) 1px, transparent 1px);
+  background-size: var(--skin-cell-w, 48px) var(--skin-cell-h, 36px);
+}
+```
+
+> `--skin-grid` を背景と同色にしているスキン（GX Works3風・JW-300SP風）では格子線が見えない。
+> 「実物との対応」表の「格子線: 無し」がそのまま実装になる。
+
+- [ ] **Step 7: GREEN を確認してコミットする**
+
+```powershell
+pnpm --filter @ojt/desktop exec vitest run test/skin-grid.test.tsx test/ladder-grid.test.tsx test/ladder-symbols.test.ts test/ladder-editor.test.tsx
+npx prettier --check "apps/desktop/src/renderer/ladder/**/*.{ts,tsx,css}"
+```
+
+Expected: すべて通過（`skin-grid.test.tsx` は 5 ケース）。
+
+```powershell
+git add apps/desktop/src/renderer/ladder apps/desktop/test
+git commit -m "feat(desktop): draw the ladder grid at each skin's size and comment style"
+```
+
+---
+
+## Task 5: デバイス入力欄・キー割当表・I/O表・モニタ一覧の方言／機種対応
+
+**モデル: Sonnet**（本書のコードをそのまま書き写せば通る）
+
+**Files:**
+- Modify: `apps/desktop/src/renderer/ladder/DeviceInput.tsx`
+- Modify: `apps/desktop/src/renderer/ladder/ShortcutHelp.tsx`
+- Modify: `apps/desktop/src/renderer/ladder/IoTable.tsx`
+- Modify: `apps/desktop/src/renderer/ladder/MonitorPanel.tsx`
+- Modify: `apps/desktop/src/renderer/i18n/ja.ts`
+- Test: `apps/desktop/test/device-input.test.tsx` / `ladder-panels.test.tsx`（追記）
+
+§16 Phase 4 受入基準④（シャープで `8` を入れると8進エラー）の画面側と、4A Task 8 の `PlcUnitSpec` 格上げ（前提#25）への追随である。**エラー文言は `profile.parseDevice()` が返す `Error` をそのまま出す**ので、直すのは「入力例」「注記」「端子名の引き方」だけである。
+
+- [ ] **Step 1: 失敗するテストを書く**
+
+`apps/desktop/test/device-input.test.tsx` の末尾に足す:
+
+```tsx
+describe('方言ごとの入力例とエラー（§10.5 / §16 Phase 4 受入基準④）', () => {
+  function hintOf(profile: DialectProfile): string {
+    cleanup();
+    render(
+      <DeviceInput
+        initial={emptyCellForm('contact-no')}
+        profile={profile}
+        onCommit={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+    );
+    return screen.getByTestId('device-text').getAttribute('placeholder') ?? '';
+  }
+
+  it('shows the first input point in the dialect spelling, not a bare prefix', () => {
+    expect(hintOf(MITSUBISHI_FX5U)).toBe('X0');
+    expect(hintOf(OMRON_CP1E)).toBe('0.00');
+    expect(hintOf(JTEKT_PC10G)).toBe('1X000');
+    expect(hintOf(SHARP_JW300)).toBe('000000');
+  });
+
+  it('shows the counter preset in the dialect spelling', () => {
+    cleanup();
+    render(
+      <DeviceInput
+        initial={{ ...emptyCellForm('coil'), target: 'output', output: 'CTU' }}
+        profile={OMRON_CP1E}
+        onCommit={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+    );
+    expect(screen.getByTestId('preset-text')).toHaveAttribute('placeholder', '#0005');
+  });
+
+  it('shows the octal error of the JW-300SP skin (受入基準④)', () => {
+    const onCommit = vi.fn();
+    render(
+      <DeviceInput
+        initial={emptyCellForm('contact-no')}
+        profile={SHARP_JW300}
+        onCommit={onCommit}
+        onCancel={vi.fn()}
+      />,
+    );
+    act(() => {
+      fireEvent.change(screen.getByTestId('device-text'), { target: { value: '000008' } });
+      fireEvent.click(screen.getByTestId('device-commit'));
+    });
+    expect(onCommit).not.toHaveBeenCalled();
+    expect(screen.getByTestId('device-error')).toHaveTextContent('8進');
+  });
+
+  it('accepts the OMRON ch.bit spelling', () => {
+    const onCommit = vi.fn();
+    render(
+      <DeviceInput
+        initial={emptyCellForm('contact-no')}
+        profile={OMRON_CP1E}
+        onCommit={onCommit}
+        onCancel={vi.fn()}
+      />,
+    );
+    act(() => {
+      fireEvent.change(screen.getByTestId('device-text'), { target: { value: '0.08' } });
+      fireEvent.click(screen.getByTestId('device-commit'));
+    });
+    expect(onCommit).toHaveBeenCalledTimes(1);
+  });
+});
+```
+
+`apps/desktop/test/ladder-panels.test.tsx` に足す:
+
+```tsx
+describe('キー割当表と端子名のスキン差（§10.6 / §10.1）', () => {
+  it('drops the 変換 row where the skin has no convert step', () => {
+    render(<ShortcutHelp profile={OMRON_CP1E} />);
+    expect(screen.queryByTestId('shortcut-convert')).toBeNull();
+    expect(screen.getByTestId('shortcuts-convert-note')).toHaveTextContent('変換');
+    cleanup();
+    render(<ShortcutHelp profile={MITSUBISHI_FX5U} />);
+    expect(screen.queryByTestId('shortcuts-convert-note')).toBeNull();
+    expect(screen.getByTestId('shortcut-convert')).toHaveTextContent('F4');
+  });
+
+  it('marks the assumed key bindings of every skin (§17.1)', () => {
+    for (const profile of [MITSUBISHI_FX5U, OMRON_CP1E, JTEKT_PC10G, SHARP_JW300]) {
+      cleanup();
+      render(<ShortcutHelp profile={profile} />);
+      for (const entry of profile.shortcuts.filter((s) => !s.confirmed)) {
+        expect(
+          screen.getByTestId(`shortcut-${entry.action}`),
+          `${profile.id}/${entry.action}`,
+        ).toHaveTextContent('本アプリの表記です');
+      }
+    }
+  });
+
+  it('names the terminals of the model, not the Mitsubishi spelling (4A H-1)', () => {
+    render(<IoTable io={IO} profile={OMRON_CP1E} unit={PLC_UNIT_CP1E} />);
+    expect(screen.getByTestId('io-input-0')).toHaveTextContent('PLC.0.00');
+    cleanup();
+    render(<IoTable io={IO} profile={SHARP_JW300} unit={PLC_UNIT_JW300} />);
+    expect(screen.getByTestId('io-input-0')).toHaveTextContent('PLC.A0');
+    expect(screen.getByTestId('io-common')).toHaveTextContent('COM.A');
+  });
+});
+```
+
+（`IO` は既存のヘルパ、`PLC_UNIT_CP1E` / `PLC_UNIT_JW300` は `@ojt/board-model` から import する。）
+
+- [ ] **Step 2: RED を確認する**
+
+```powershell
+pnpm --filter @ojt/desktop exec vitest run test/device-input.test.tsx test/ladder-panels.test.tsx
+```
+
+Expected: 失敗。`expected '0' to be '0.00'` と `Unable to find … [data-testid="io-common"]`。
+
+- [ ] **Step 3: `DeviceInput.tsx` の入力例を `formatDevice()` から引く**
+
+import を `import { T, X, type Cell } from '@ojt/ladder-core';` にし、`hints` を差し替える:
+
+```ts
+  /*
+   * 入力例（placeholder）は**方言の綴りそのもの**から作る（前提#23）。
+   * `deviceRanges.input.prefix` だけを使うと、接頭辞を持たない OMRON（`0.00`）と
+   * シャープ（`000000`）で入力例が `0` になり、何を入れる欄か分からない。
+   */
+  const hints = useMemo(() => {
+    const preset = profile.timerPreset(3_000, T(0));
+    return {
+      device: profile.formatDevice(X(0)),
+      reset: profile.formatDevice(X(2)),
+      timer: preset instanceof Error ? '3000' : preset.text,
+      counter: profile.formatCounterPreset?.(5) ?? '5',
+    };
+  }, [profile]);
+```
+
+- [ ] **Step 4: `ShortcutHelp.tsx` に「変換が無い」注記を足す**
+
+`APP_NOTES` の直後に足す:
+
+```ts
+/**
+ * 「変換」が無いスキンの注記。決定表#3
+ * 表から `convert` の行が落ちている（4A の `withoutConvert()`）ので、なぜ無いのかを1行で出す。
+ */
+function convertNote(profile: DialectProfile): string | undefined {
+  return profile.convertStep ? undefined : JA.ladder.noConvertNote;
+}
+```
+
+`shortcuts-note` の段落の直後に足す:
+
+```tsx
+      {convertNote(profile) === undefined ? null : (
+        <p className={styles.sideNote} data-testid="shortcuts-convert-note">
+          {convertNote(profile)}
+        </p>
+      )}
+```
+
+- [ ] **Step 5: `IoTable.tsx` を新しい `PlcUnitSpec` に合わせる**
+
+```ts
+  /**
+   * PLC本体の端子名。割付が機種の点数を超えて `unit.spec` に無いときは `undefined` を返す。
+   * 4A Task 8 で `inputs` が `PlcInputSpec[]`（`{name, com, ohms?}`）になった（前提#25）。
+   */
+  const inputTerminal = (x: number): string | undefined => unit.spec.inputs[x]?.name;
+  const outputTerminal = (y: number): string | undefined => unit.spec.outputs[y]?.name;
+```
+
+入力コモンの行を足す（`io-outlet-note` のキャプションの直後）:
+
+```tsx
+        <caption className={styles.sideNote} data-testid="io-common">
+          {JA.ladder.ioCommon}: {unit.spec.inputCommons.map((name) => `PLC.${name}`).join('・')}
+        </caption>
+```
+
+> `<table>` に `<caption>` は1つしか置けないので、**既存の `io-outlet-note` のキャプションの中へ
+> 1行として入れる**（`<caption>` の中に `<span data-testid="io-common">` を並べる）。
+
+```tsx
+        <caption className={styles.sideNote}>
+          <span data-testid="io-outlet-note">{JA.plc.outletNote}</span>{' '}
+          <span data-testid="io-common">
+            {JA.ladder.ioCommon}: {unit.spec.inputCommons.map((name) => `PLC.${name}`).join('・')}
+          </span>
+        </caption>
+```
+
+- [ ] **Step 6: `MonitorPanel.tsx` を新しい `PlcUnitSpec` に合わせる**
+
+```tsx
+                  <td>{terminal(unit.spec.inputs[index]?.name)}</td>
+```
+
+（出力側の `unit.spec.outputs[index]?.name` は変更不要。）
+`JA.ladder.monitorOff` の呼び出しを Task 3 の関数版に合わせる（`shortcutKeyOf(profile, 'monitor') ?? 'F3'`）。
+
+- [ ] **Step 7: `i18n/ja.ts` に追記する**
+
+`JA.ladder` の Plan 4B ブロックに足す:
+
+```ts
+    /** 「変換」操作のないスキンの注記。§10.6 / 決定表#3 */
+    noConvertNote:
+      'このメーカーのツールには「変換」操作がありません。編集するとそのまま反映されます。',
+    /** 入力コモン（機種によって1個とは限らない。4A 前提#17） */
+    ioCommon: '入力コモン',
+```
+
+- [ ] **Step 8: GREEN を確認してコミットする**
+
+```powershell
+pnpm --filter @ojt/desktop exec vitest run test/device-input.test.tsx test/ladder-panels.test.tsx test/monitor-panel.test.tsx
+pnpm --filter @ojt/desktop exec tsc -p tsconfig.json --noEmit
+```
+
+Expected: すべて通過。`tsc` は `spec.inputs` の型追随が済んでいれば無警告。
+
+```powershell
+git add apps/desktop/src/renderer/ladder apps/desktop/src/renderer/i18n/ja.ts apps/desktop/test
+git commit -m "feat(desktop): spell hints, key table and terminals per dialect and model"
+```
+
+---
