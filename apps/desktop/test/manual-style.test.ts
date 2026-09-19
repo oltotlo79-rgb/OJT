@@ -1,0 +1,105 @@
+import { readdirSync, readFileSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { describe, expect, it } from 'vitest';
+import { chapterIdOf } from '../scripts/manual-build.mjs';
+import { MANUAL_SECTIONS } from '../src/renderer/help/manual-content.js';
+
+/**
+ * 説明書の文体。取扱説明書 設計 §6.2 / 決定表#21。
+ * **利用者要求「専門用語なく詳細に解説すること」を機械で数えるテスト。**
+ */
+
+const APP_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const MANUAL_DIR = resolve(APP_ROOT, '../../docs/manual');
+const STYLE = JSON.parse(readFileSync(join(MANUAL_DIR, 'style.json'), 'utf8')) as {
+  banned: string[];
+  exempt: Record<string, string[]>;
+};
+const TERMS = JSON.parse(readFileSync(join(MANUAL_DIR, 'terms.json'), 'utf8')) as {
+  terms: string[];
+};
+
+interface Chapter {
+  id: string;
+  /** 囲み（```）の中を落とした本文。禁止語はここで数える。 */
+  prose: string;
+}
+
+function chapters(): Chapter[] {
+  return readdirSync(MANUAL_DIR)
+    .filter((name) => /^\d{2}-.+\.md$/u.test(name))
+    .sort()
+    .map((name) => ({
+      id: chapterIdOf(name),
+      prose: readFileSync(join(MANUAL_DIR, name), 'utf8')
+        .replace(/\r\n/gu, '\n')
+        // 囲みの中（指導者向けの課題ファイルの例など）は文体の対象外
+        .replace(/```[\s\S]*?```/gu, ' '),
+    }));
+}
+
+/** 全章の本文を章の順につないだもの（初出の位置を見るのに使う）。 */
+function wholeProse(): string {
+  return chapters()
+    .map((chapter) => chapter.prose)
+    .join('\n');
+}
+
+describe('禁止語（決定表#21）', () => {
+  const all = chapters();
+
+  it.each(STYLE.banned)('never writes %s outside the chapters that are exempt', (word) => {
+    const offenders: string[] = [];
+    for (const chapter of all) {
+      if ((STYLE.exempt[chapter.id] ?? []).includes(word)) continue;
+      const index = chapter.prose.toLowerCase().indexOf(word.toLowerCase());
+      if (index >= 0) {
+        offenders.push(
+          `${chapter.id}: …${chapter.prose.slice(Math.max(0, index - 30), index + 30)}…`,
+        );
+      }
+    }
+    expect(offenders, `禁止語「${word}」が残っています`).toEqual([]);
+  });
+
+  it('keeps the banned list and the exempt chapters honest', () => {
+    expect(STYLE.banned.length).toBeGreaterThanOrEqual(20);
+    for (const [chapterId, words] of Object.entries(STYLE.exempt)) {
+      expect(all.some((chapter) => chapter.id === chapterId)).toBe(true);
+      for (const word of words) expect(STYLE.banned).toContain(word);
+    }
+  });
+});
+
+describe('専門用語の初出（決定表#21）', () => {
+  const prose = wholeProse();
+
+  it.each(TERMS.terms)('introduces %s in bold with a plain explanation', (term) => {
+    const first = prose.indexOf(term);
+    expect(first, `「${term}」が本文に1度も出ていません`).toBeGreaterThanOrEqual(0);
+    const context = prose.slice(Math.max(0, first - 30), first + 90);
+    expect(prose.slice(first - 2, first), `初出が太字ではありません: …${context}…`).toBe('**');
+    const after = prose.slice(first + term.length);
+    expect(after.startsWith('**（'), `初出の直後に説明の括弧がありません: …${context}…`).toBe(true);
+    const close = after.indexOf('）');
+    expect(close - 3, `初出の説明が短すぎます: …${context}…`).toBeGreaterThanOrEqual(15);
+  });
+});
+
+describe('用語集', () => {
+  const glossary = MANUAL_SECTIONS.find((section) => section.id === 'glossary/用語集');
+
+  it('exists', () => {
+    expect(glossary).toBeDefined();
+  });
+
+  it.each(TERMS.terms)('explains %s with at least twenty characters', (term) => {
+    const rows = (glossary?.html ?? '').split('<tr>');
+    const row = rows.find((cells) => cells.includes(term));
+    expect(row, `用語集に「${term}」の行がありません`).toBeDefined();
+    const cells = (row ?? '').match(/<td>([\s\S]*?)<\/td>/gu) ?? [];
+    const explanation = (cells[cells.length - 1] ?? '').replace(/<[^>]+>/gu, '').trim();
+    expect(explanation.length, `用語集の「${term}」の説明が短すぎます`).toBeGreaterThanOrEqual(20);
+  });
+});

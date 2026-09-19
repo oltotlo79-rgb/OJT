@@ -1,0 +1,43 @@
+{
+  "banned": [
+    "store",
+    "zustand",
+    "IPC",
+    "Worker",
+    "props",
+    "React",
+    "TypeScript",
+    "Vitest",
+    "Playwright",
+    "testid",
+    "frameloop",
+    "asar",
+    "renderer",
+    "JSON",
+    "ネットリスト",
+    "コンポーネント",
+    "レンダラ",
+    "シリアライズ",
+    "バリデーション",
+    "パース",
+    "インスタンス",
+    "ハンドラ",
+    "コールバック",
+    "プロパティ",
+    "ステート",
+    "デバッグ",
+    "リファクタ",
+    "スキーマ",
+    "Electron",
+    "Chromium",
+    "pnpm",
+    "Vite",
+    "ソースコード",
+    "オブジェクト",
+    "モック",
+    "リポジトリ"
+  ],
+  "exempt": {
+    "authoring": ["JSON", "スキーマ"]
+  }
+}

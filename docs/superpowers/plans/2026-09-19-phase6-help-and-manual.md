@@ -2242,7 +2242,7 @@ git show --stat HEAD
 
 本設計 決定表#21〜#23、§6.2・§6.3。**利用者要求「すべての機能を使用者目線で専門用語なく詳細に解説すること」を機械で保証するタスク。**
 
-- [ ] **Step 1: 禁止語と専門用語の一覧を作る**
+- [x] **Step 1: 禁止語と専門用語の一覧を作る**
 
 `docs/manual/style.json`:
 
@@ -2306,7 +2306,7 @@ git show --stat HEAD
 
 **注記**: `terms` に挙げた語は「本文で最初に出るところ」が `**用語**（やさしい説明）` の形でなければならない。Task 3・4 の原稿で、初出が表や箇条書きのほうに先に来てしまっていたら、**説明の段落を前へ動かす**（規則を変えるのではなく原稿を直す）。テストは落ちた語と前後60文字を出すので、どこを動かせばよいか分かる。
 
-- [ ] **Step 2: 失敗するテストを書く（文体）**
+- [x] **Step 2: 失敗するテストを書く（文体）**
 
 `apps/desktop/test/manual-style.test.ts`:
 
@@ -2418,7 +2418,7 @@ describe('用語集', () => {
 
 期待: `it.each` が展開されるので **禁止語28件 ＋ 一覧の健全性1件 ＋ 初出11件 ＋ 用語集1件 ＋ 用語集11件** になるが、本プランは**節の数ではなくファイル単位**で数える。`pnpm test manual-style` の合計が **52件**（28＋1＋11＋1＋11）になることを確かめる。`## 完了条件` では `manual-style` を **1ファイル**として数え、本プラン 決定表 P12 の「19件」は `manual-style`（10件相当の検査項目）と `manual-coverage`（9件）の**検査項目**の数である。
 
-- [ ] **Step 3: 失敗するテストを書く（機能網羅）**
+- [x] **Step 3: 失敗するテストを書く（機能網羅）**
 
 まず `docs/manual/coverage.json` の `messages` を埋める。次の一行で実物のキーを書き出せる:
 
@@ -2569,7 +2569,7 @@ describe('手順の書き方（設計 §6.2 の規則7）', () => {
 });
 ```
 
-- [ ] **Step 3b: 図の意味を決め、本文を吹き出しの番号で書き直す**
+- [x] **Step 3b: 図の意味を決め、本文を吹き出しの番号で書き直す**
 
 `docs/manual/shots.json` を作る。鍵は画像のファイル名（拡張子を除く）。本設計 §6.4 の表の17枚をすべて書く。`label` は**画面に出ている言葉そのまま**にする。
 
@@ -2704,7 +2704,7 @@ describe('原稿と図の対応（設計 §6.2 の規則9・10）', () => {
 
 期待（Step 5 のあと）: **6件通る**。
 
-- [ ] **Step 4: テストが指したところを直す**
+- [x] **Step 4: テストが指したところを直す**
 
 ```
 pnpm --filter @ojt/desktop test manual-style manual-coverage manual-shots
@@ -2718,7 +2718,7 @@ pnpm --filter @ojt/desktop test manual-style manual-coverage manual-shots
 4. 「禁止語が残っています」→ やさしい言い方に書き換える（例: 「バリデーション」→「書き方の確かめ」）。
 5. 「… に ① が出ていません」→ その節の本文を吹き出しの番号で書き直す（Step 3b の例の形）。
 
-- [ ] **Step 5: 生成物を作り直してテストを通す**
+- [x] **Step 5: 生成物を作り直してテストを通す**
 
 ```
 cd apps/desktop && node scripts/build-manual.mjs
@@ -2728,7 +2728,7 @@ pnpm --filter @ojt/desktop typecheck && pnpm lint
 # 期待: どちらも無警告
 ```
 
-- [ ] **Step 6: commit**
+- [x] **Step 6: commit**
 
 ```
 git add docs/manual/style.json docs/manual/terms.json docs/manual/shots.json docs/manual/coverage.json docs/manual apps/desktop/test/manual-style.test.ts apps/desktop/test/manual-coverage.test.ts apps/desktop/test/manual-shots.test.ts apps/desktop/src/renderer/help/manual-content.ts

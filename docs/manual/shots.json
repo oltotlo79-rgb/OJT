@@ -1,0 +1,147 @@
+{
+  "c1-marksheet": {
+    "caption": "マークシート",
+    "callouts": [
+      { "n": 1, "label": "マークシート（不良原因を選ぶ）" },
+      { "n": 2, "label": "不良原因" },
+      { "n": 3, "label": "解答済み" }
+    ]
+  },
+  "c1-tester": {
+    "caption": "チェック用ソケットとテスター",
+    "callouts": [
+      { "n": 1, "label": "測定モード" },
+      { "n": 2, "label": "測定値" },
+      { "n": 3, "label": "黒プローブ" },
+      { "n": 4, "label": "レンジ" }
+    ]
+  },
+  "c2-repair": {
+    "caption": "モードC2の指摘の欄",
+    "callouts": [
+      { "n": 1, "label": "指摘" },
+      { "n": 2, "label": "故障の種別を選ぶ" },
+      { "n": 3, "label": "登録した指摘" }
+    ]
+  },
+  "help-drawer": {
+    "caption": "ヘルプの引き出し",
+    "callouts": [
+      { "n": 1, "label": "言葉で探す" },
+      { "n": 2, "label": "もくじ" },
+      { "n": 3, "label": "説明書（PDF）を開く" },
+      { "n": 4, "label": "閉じる" }
+    ]
+  },
+  "home": {
+    "caption": "ホームの画面",
+    "callouts": [
+      { "n": 1, "label": "回路組立" },
+      { "n": 2, "label": "設定" },
+      { "n": 3, "label": "ヘルプ" }
+    ]
+  },
+  "judge-result": {
+    "caption": "結果の画面",
+    "callouts": [
+      { "n": 1, "label": "差分一覧" },
+      { "n": 2, "label": "静的チェック" },
+      { "n": 3, "label": "危険操作" },
+      { "n": 4, "label": "所要時間" }
+    ]
+  },
+  "list": {
+    "caption": "課題一覧",
+    "callouts": [
+      { "n": 1, "label": "すべて" },
+      { "n": 2, "label": "課題名" },
+      { "n": 3, "label": "ホームへ戻る" }
+    ]
+  },
+  "plc-ladder": {
+    "caption": "モードDのラダー編集",
+    "callouts": [
+      { "n": 1, "label": "手順" },
+      { "n": 2, "label": "変換" },
+      { "n": 3, "label": "書込み" },
+      { "n": 4, "label": "モニタ開始" },
+      { "n": 5, "label": "判定" }
+    ]
+  },
+  "plc-monitor": {
+    "caption": "モードDのモニタ",
+    "callouts": [
+      { "n": 1, "label": "モニタ開始" },
+      { "n": 2, "label": "RUN" },
+      { "n": 3, "label": "デバイス初期化" },
+      { "n": 4, "label": "スキャン回数" }
+    ]
+  },
+  "plc-notation": {
+    "caption": "表記の切替",
+    "callouts": [
+      { "n": 1, "label": "表記切替" },
+      { "n": 2, "label": "デバイスの書き方" },
+      { "n": 3, "label": "この表記に切り替える" }
+    ]
+  },
+  "schematic-editor": {
+    "caption": "回路図エディタ",
+    "callouts": [
+      { "n": 1, "label": "パレット" },
+      { "n": 2, "label": "段を追加" },
+      { "n": 3, "label": "段を削除" },
+      { "n": 4, "label": "全部消す" }
+    ]
+  },
+  "session-board": {
+    "caption": "モードBの練習中の画面",
+    "callouts": [
+      { "n": 1, "label": "上の帯" },
+      { "n": 2, "label": "手順" },
+      { "n": 3, "label": "3Dの画面" },
+      { "n": 4, "label": "右の欄" },
+      { "n": 5, "label": "下の欄" }
+    ]
+  },
+  "session-terminal": {
+    "caption": "端子にマウスを乗せたときの札",
+    "callouts": [
+      { "n": 1, "label": "札" },
+      { "n": 2, "label": "端子の番号" }
+    ]
+  },
+  "settings": {
+    "caption": "設定の画面",
+    "callouts": [
+      { "n": 1, "label": "利用者課題フォルダ" },
+      { "n": 2, "label": "効果音" },
+      { "n": 3, "label": "既定メーカー" }
+    ]
+  },
+  "socket-card": {
+    "caption": "ソケットのカード",
+    "callouts": [
+      { "n": 1, "label": "装着" },
+      { "n": 2, "label": "取り外す" },
+      { "n": 3, "label": "交換…" }
+    ]
+  },
+  "timechart": {
+    "caption": "タイムチャートを大きく出したところ",
+    "callouts": [
+      { "n": 1, "label": "信号の名前" },
+      { "n": 2, "label": "拡大" },
+      { "n": 3, "label": "期待（模範）" }
+    ]
+  },
+  "view-cube": {
+    "caption": "ビューキューブと2つの丸ボタン",
+    "callouts": [
+      { "n": 1, "label": "ビューキューブ" },
+      { "n": 2, "label": "全体表示" },
+      { "n": 3, "label": "傾きを戻す" },
+      { "n": 4, "label": "視点操作の早見表" }
+    ]
+  }
+}
