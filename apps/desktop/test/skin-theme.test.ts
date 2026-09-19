@@ -75,11 +75,13 @@ describe('CSS 変数への変換（決定表#5）', () => {
     expect(vars['--skin-canvas']).toBe('#FFFFFF');
     expect(vars['--skin-rail']).toBe('#1F1F1F');
     expect(vars['--skin-cell-w']).toBe('52px');
-    expect(vars['--skin-cell-h']).toBe('60px');
-    expect(vars['--skin-stroke']).toBe('1.4');
+    expect(vars['--skin-cell-h']).toBe('48px');
+    expect(vars['--skin-stroke']).toBe('1.2');
     // `--skin-coil-rx` は**丸コイルの半径**（利用者要求 2026-09-20 で丸括弧をやめた）
-    expect(vars['--skin-coil-rx']).toBe('14');
-    expect(vars['--skin-step-gutter']).toBe('26px');
+    expect(vars['--skin-coil-rx']).toBe('9');
+    // コメントの字の大きさもスキンが決める（CX-Programmer風だけ2行なので 8px）
+    expect(vars['--skin-comment-size']).toBe('8px');
+    expect(vars['--skin-step-gutter']).toBe('24px');
     // 出力ウィンドウの高さもスキンが決める（`window` でも `status-bar` でも同じ変数。I11）
     expect(vars['--skin-output-h']).toBe('140px');
     // 設定画面の通電色は方言の色を上書きする（決定表#8）

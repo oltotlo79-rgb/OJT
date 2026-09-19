@@ -2,6 +2,7 @@ import {
   cellAt,
   COIL_COL,
   deviceLabel,
+  hline,
   IR_COLS,
   type Cell,
   type LadderProgram,
@@ -35,8 +36,30 @@ import styles from './ladder.module.css';
  * この部品は**描くだけ**で、キー入力も編集も持たない（`LadderEditor` の役目）。
  */
 
-/** 左母線の幅[px]。 */
-const RAIL_W = 6;
+/**
+ * 左母線の幅[px]（利用者要求 2026-09-20 2回目「各社ソフトの実画面にもっと寄せる」）。
+ * 実機の画面と同じく左は太く（3px）、右は導線と同じ細さ（1.2px）にする。
+ */
+const RAIL_W = 3;
+/** 右母線の幅[px]（`RIGHT_RAIL_SPAN` はそのぶん svg を広げる量）。 */
+const RIGHT_RAIL_W = 1.2;
+const RIGHT_RAIL_SPAN = 2;
+
+/**
+ * 行番号を出す行（回路ブロックの**先頭行**だけ。利用者要求 2026-09-20 2回目）。
+ * 目印（`step-<net>:<row>`）の綴りは機能一覧表（`docs/manual/coverage.json`）が持っているので、
+ * 行番号を1つに減らしても綴りの形は変えない。
+ */
+const STEP_LABEL_ROW = 0;
+
+/**
+ * END の行に敷く導線（利用者要求 2026-09-20「END行の縦線2本は何？」）。
+ *
+ * IR では END は0列目にある（`endNetwork()`）が、どの社のソフトも END 行は**ふつうの回路**
+ * ——左母線から右へ桟が1本走り、出力列に `[END]`（角括弧）か `END` の命令ボックスが載る——
+ * として描く。裸の縦棒2本（旧 `END_MARK`）は実機のどの画面にも無いので消した。
+ */
+const END_ROW_WIRE: Cell = hline();
 
 /** コメントを `lines` 行に折り返す（入りきらない分は最後の行の末尾を `…` にする）。 */
 export function commentLines(text: string, lines: number, perLine: number): string[] {
@@ -209,6 +232,19 @@ function SymbolLabels({
     );
   }
   if (shape.layout === 'box') {
+    // 被演算子を持たない命令（END）は仕切り線の無い箱なので、命令語を箱の中央に1行で置く
+    if (labels.device === '' && labels.preset === '') {
+      return labels.mnemonic === '' ? null : (
+        <text
+          x={mid}
+          y={metrics.bracketTextY}
+          className={styles.frameText}
+          data-testid="frame-text"
+        >
+          {labels.mnemonic}
+        </text>
+      );
+    }
     return (
       <>
         {[labels.mnemonic, labels.device, labels.preset].map((line, index) =>
@@ -228,27 +264,27 @@ function SymbolLabels({
     );
   }
   if (labels.device === '') return null;
-  // 設定値があるときだけ、デバイス名と設定値を桟の中心で左右に分けて同じ行に置く
-  const paired = labels.preset !== '';
+  /*
+   * デバイス名は記号（縦棒・丸）の**真上**に中央揃えで置く。設定値（`K30`）があるときは
+   * 丸の**右**の桟の上に右詰めで添える（GX Works3風の `OUT T0 K30`）。右母線に触れないよう
+   * `presetX` はセルの右端の内側で、地の色の縁取り（`presetText` の `paint-order`）で
+   * 下を通る桟から浮かせる。利用者要求 2026-09-20 2回目
+   */
   return (
     <>
-      <text
-        x={paired ? mid - 2 : mid}
-        y={metrics.labelY}
-        className={paired ? `${styles.deviceText} ${styles.deviceTextEnd}` : styles.deviceText}
-      >
+      <text x={mid} y={metrics.labelY} className={styles.deviceText}>
         {labels.device}
       </text>
-      {paired ? (
+      {labels.preset === '' ? null : (
         <text
-          x={mid + 2}
-          y={metrics.labelY}
-          className={`${styles.presetText} ${styles.presetTextStart}`}
+          x={metrics.presetX}
+          y={metrics.presetY}
+          className={`${styles.presetText} ${styles.presetTextEnd}`}
           data-testid="preset-text"
         >
           {labels.preset}
         </text>
-      ) : null}
+      )}
     </>
   );
 }
@@ -304,7 +340,8 @@ function GridCell({
    * 命令ボックスは箱がセルの高さをほぼ使い切るので、デバイスコメントを置く場所が無い
    * （`SkinTheme.commentLines` の注記）。接点・丸コイル・角括弧の下にだけ出す。
    */
-  const commentRows = shape?.layout === 'box' ? 0 : theme.commentLines;
+  const commentRows =
+    shape?.layout === 'box' || shape?.layout === 'bracket' ? 0 : theme.commentLines;
   return (
     <g
       data-testid={`cell-${cellKey}`}
@@ -396,7 +433,7 @@ function GridCell({
               className={styles.commentText}
               data-testid={`comment-line-${String(index)}`}
               x={metrics.w / 2}
-              y={metrics.commentY - (commentRows - 1 - index) * metrics.commentLineH}
+              y={metrics.commentY + index * metrics.commentLineH}
             >
               {line}
             </text>
@@ -444,6 +481,7 @@ function NetworkView({
   columns,
   width,
   startStep,
+  rungIndex,
   cursorKey,
   onPickCell,
 }: {
@@ -459,6 +497,8 @@ function NetworkView({
   width: number;
   /** この回路ブロックの先頭行の番号（左の行番号欄に出す。§10.6 の画面構成） */
   startStep: number;
+  /** この回路ブロックの通し番号（CX-Programmer風の「ラング番号」）。 */
+  rungIndex: number;
   cursorKey: string;
   onPickCell: (cursor: LadderCursor) => void;
 }): JSX.Element {
@@ -503,21 +543,20 @@ function NetworkView({
         aria-label={`${JA.ladder.network} ${net.id}`}
       >
         {/*
-          左の行番号欄（4社とも回路の左に番号が並ぶ。§10.6 の画面構成）。
+          左の行番号欄（4社とも回路の左に番号が並ぶ。§10.6 の画面構成）。番号は**回路ブロックの
+          先頭行にだけ**出す（実機のソフトも1行ごとには振らない。利用者要求 2026-09-20 2回目）。
           実機のステップ番号は命令の数で進むが、本アプリの中間表現は命令の並びを持たないので
-          **回路ブロックの通し行数**を出す（`SKIN_ASSUMED` の △）。
+          **回路ブロックの通し行数**を出す。CX-Programmer風だけ「ラング番号」＝回路の通し番号
+          （`SkinTheme.stepNumbering`。`SKIN_ASSUMED` の △）。
         */}
-        {Array.from({ length: net.rows }, (_unused, row) => (
-          <text
-            key={`step-${net.id}:${String(row)}`}
-            data-testid={`step-${net.id}:${String(row)}`}
-            className={styles.stepText}
-            x={metrics.stepGutter - 5}
-            y={row * metrics.h + metrics.wireY + 3}
-          >
-            {startStep + row}
-          </text>
-        ))}
+        <text
+          data-testid={`step-${net.id}:${String(STEP_LABEL_ROW)}`}
+          className={styles.stepText}
+          x={metrics.stepGutter - 4}
+          y={metrics.wireY + 3}
+        >
+          {theme.stepNumbering === 'rung' ? rungIndex : startStep}
+        </text>
         {/* 左母線（全行を繋ぐ。§10.3） */}
         <rect
           x={metrics.stepGutter}
@@ -526,57 +565,76 @@ function NetworkView({
           className={styles.rail}
           data-testid={`rail-${net.id}`}
         />
+        {/* 右母線（実機の画面と同じく導線と同じ細さ。桟はここにぴったり届く） */}
+        <rect
+          x={metrics.stepGutter + RAIL_W + columns.length * metrics.w}
+          width={RIGHT_RAIL_W}
+          height={net.rows * metrics.h}
+          className={styles.rail}
+          aria-hidden="true"
+        />
         <g transform={`translate(${String(metrics.stepGutter + RAIL_W)} 0)`}>
-          {Array.from({ length: net.rows }, (_unused, row) => (
-            // `role="grid"` の直下は `role="row"` を挟んでから `gridcell` にする（レビュー指摘 I4）
-            <g role="row" key={`${net.id}:${String(row)}`}>
-              {columns.map((col, index) => {
-                const cell = cellAt(net, row, col);
-                const key = `${net.id}:${String(row)}:${String(col)}`;
-                const deviceComment =
-                  'device' in cell ? comments[deviceLabel(cell.device)] : undefined;
-                return (
-                  <GridCell
-                    key={key}
-                    cellKey={key}
-                    cursorKey={cursorKey}
-                    cell={cell}
-                    cell9={{ networkId: net.id, row, col: index }}
-                    profile={profile}
-                    theme={theme}
-                    metrics={metrics}
-                    comment={deviceComment}
-                    /*
-                     * 空セルは塗らない。`poweredCells` は「どの行でも0列目は左母線と
-                     * 繋がっている」ので真になり（3A `Rails` の構築）、何も書いていない
-                     * 行の先頭まで青く光ってしまう。3A 側で `false` を返すよう直っても
-                     * この判定はそのまま正しい。
-                     */
-                    leftOn={cell.kind !== 'empty' && on(row, col)}
-                    rightOn={
-                      cell.kind !== 'empty' && (col < COIL_COL ? on(row, col + 1) : on(row, col))
-                    }
-                    colors={colors}
-                    error={errorCells.has(key)}
-                    hasLinkBelow={row + 1 < net.rows}
-                    onPick={(picked) => {
-                      onPickCell({ ...picked, col });
-                    }}
+          {Array.from({ length: net.rows }, (_unused, row) => {
+            const first = cellAt(net, row, 0);
+            const endRow = first.kind === 'end' ? first : undefined;
+            return (
+              // `role="grid"` の直下は `role="row"` を挟んでから `gridcell` にする（レビュー指摘 I4）
+              <g role="row" key={`${net.id}:${String(row)}`}>
+                {columns.map((col, index) => {
+                  /*
+                   * END の行はふつうの回路として描く（利用者要求 2026-09-20「END行の縦線2本は何？」）。
+                   * IR では END は0列目だが、画面では**左母線から出力列まで桟を1本**引き、
+                   * 出力列に `[END]`／`END` の箱を置く。編集できないのは今までどおり。
+                   */
+                  const endCell =
+                    endRow === undefined ? undefined : col === COIL_COL ? endRow : END_ROW_WIRE;
+                  const cell = endCell ?? cellAt(net, row, col);
+                  const key = `${net.id}:${String(row)}:${String(col)}`;
+                  const deviceComment =
+                    'device' in cell ? comments[deviceLabel(cell.device)] : undefined;
+                  return (
+                    <GridCell
+                      key={key}
+                      cellKey={key}
+                      cursorKey={cursorKey}
+                      cell={cell}
+                      cell9={{ networkId: net.id, row, col: index }}
+                      profile={profile}
+                      theme={theme}
+                      metrics={metrics}
+                      comment={deviceComment}
+                      /*
+                       * 空セルは塗らない。`poweredCells` は「どの行でも0列目は左母線と
+                       * 繋がっている」ので真になり（3A `Rails` の構築）、何も書いていない
+                       * 行の先頭まで青く光ってしまう。3A 側で `false` を返すよう直っても
+                       * この判定はそのまま正しい。
+                       */
+                      leftOn={cell.kind !== 'empty' && on(row, col)}
+                      rightOn={
+                        cell.kind !== 'empty' && (col < COIL_COL ? on(row, col + 1) : on(row, col))
+                      }
+                      colors={colors}
+                      error={errorCells.has(key)}
+                      hasLinkBelow={row + 1 < net.rows}
+                      onPick={(picked) => {
+                        onPickCell({ ...picked, col });
+                      }}
+                    />
+                  );
+                })}
+                {/* 省略された列が横線で埋まっている行は、コイルまで桟を延ばして「繋がって見える」ようにする */}
+                {hiddenSpanIsWire(net, gridCols, row) ? (
+                  <path
+                    data-testid={`rung-to-coil-${net.id}:${String(row)}`}
+                    d={metrics.leadAcrossHidden(columns.length - 2, row)}
+                    stroke={on(row, COIL_COL) ? colors.powered : colors.idle}
+                    className={styles.wire}
+                    aria-hidden="true"
                   />
-                );
-              })}
-              {/* 省略された列が横線で埋まっている行は、コイルまで桟を延ばして「繋がって見える」ようにする */}
-              {hiddenSpanIsWire(net, gridCols, row) ? (
-                <path
-                  data-testid={`rung-to-coil-${net.id}:${String(row)}`}
-                  d={metrics.leadAcrossHidden(columns.length - 2, row)}
-                  stroke={on(row, COIL_COL) ? colors.powered : colors.idle}
-                  className={styles.wire}
-                  aria-hidden="true"
-                />
-              ) : null}
-            </g>
-          ))}
+                ) : null}
+              </g>
+            );
+          })}
         </g>
       </svg>
     </section>
@@ -611,13 +669,13 @@ function LadderGridImpl({
 }): JSX.Element {
   const metrics = symbolMetrics(theme.cell);
   const columns = displayColumns(gridCols);
-  const width = metrics.stepGutter + RAIL_W + columns.length * metrics.w;
+  const width = metrics.stepGutter + RAIL_W + columns.length * metrics.w + RIGHT_RAIL_SPAN;
   const cursorKey = `${cursor.networkId}:${String(cursor.row)}:${String(cursor.col)}`;
   // 行番号は回路ブロックをまたいで通しで数える（実機のステップ番号の見え方に寄せる）
   let step = 0;
   return (
     <div className={styles.gridScroll} data-testid="ladder-grid">
-      {program.networks.map((net) => {
+      {program.networks.map((net, rungIndex) => {
         const startStep = step;
         step += net.rows;
         return (
@@ -634,6 +692,7 @@ function LadderGridImpl({
             columns={columns}
             width={width}
             startStep={startStep}
+            rungIndex={rungIndex}
             cursorKey={cursorKey}
             onPickCell={onPickCell}
           />

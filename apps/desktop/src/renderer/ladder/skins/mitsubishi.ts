@@ -25,24 +25,38 @@ export const MITSUBISHI_SKIN: SkinTheme = {
     output: '#FFFFFF',
   },
   /*
-   * 接点＝縦棒2本（間隔 8px＝セル幅の 16.7%）、出力＝**丸**（半径 11px＝縦棒の高さの半分）、
-   * SET / RST / MC / MCR / END＝**角括弧**（`[SET Y0]`）、タイマ・カウンタ＝丸コイルに
-   * 設定値を添える（`OUT T0 K30`）。△（一般に知られた GX Works3 の見え方から作図。
-   * 純正の画面キャプチャ・図記号ビットマップは使っていない。§17.1）
+   * 48×34px。接点＝縦棒2本（高さ 12px＝セル高の 35.3%・間隔 6px＝縦棒の高さの 0.50・線 1.2px）、
+   * 出力＝**丸**（直径 12px＝縦棒の高さ）、SET / RST / MC / MCR / END＝**角括弧**（`[SET Y0]`）、
+   * タイマ・カウンタ＝丸コイルの右に設定値を添える（`OUT T0 K30`）。微分接点だけ間隔 8px。
+   * 調べた出典（2026-09-20。画像は一切複製せず、形と配置の記述だけを取った）:
+   *   - https://e-sysnet.com/plc-6/ …… 利用者が指定した参照元。左右の母線・接点は縦棒2本・
+   *     b接点は斜線1本・上から下へのスキャン順。https://e-sysnet.com/plc-7/ …… END は
+   *     プログラム末尾に必須、コイルの後ろに接点を置けない。
+   *   - https://control-career.com/ladder-command/ …… タイマ・カウンタは `OUT T0` ＋ `T0 K300`。
+   * 出典と食い違うが**利用者の指示が勝つ**ところ: 解説サイトは OUT コイルを `( )` で描くが、
+   * 利用者（電気系保全の指導員）の 2026-09-20 の指示「出力は丸」に従って**丸**にしている。
+   * デバイスコメントは GX Works3 では記号の**上**に出す設定もあるが、本アプリは行を詰める
+   * ため記号の**下**に1行で出す（△）。応用命令の角括弧・OR分岐の合流線の厳密な線引きは
+   * 一次資料が見つからず推定のまま（△）。純正の画面キャプチャ・図記号ビットマップは
+   * 使っていない（§17.1）。
    */
   cell: {
     widthPx: 48,
-    heightPx: 46,
-    strokeWidth: 1.6,
-    barInsetPx: 12,
-    contactGapPx: 8,
-    coilRxPx: 11,
+    heightPx: 34,
+    strokeWidth: 1.2,
+    barInsetPx: 11,
+    contactGapPx: 6,
+    pulseGapPx: 8,
+    coilRxPx: 6,
+    commentFontPx: 9,
     instructionStyle: 'bracket',
     timerStyle: 'coil',
-    stepGutterPx: 26,
+    stepGutterPx: 24,
   },
   // 通電中の記号の裏に青い帯を敷く（GX Works3 のモニタの見え方）。△
   monitorStyle: 'block',
+  // 回路ブロックの先頭行にステップ番号（行の通し）を出す。△
+  stepNumbering: 'step',
   commentLines: 1,
   assumed: SKIN_ASSUMED,
 };

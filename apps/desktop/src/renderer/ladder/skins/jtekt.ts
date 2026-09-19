@@ -28,23 +28,36 @@ export const JTEKT_SKIN: SkinTheme = {
     output: '#F6F7F9',
   },
   /*
-   * 接点＝縦棒2本（間隔 8px＝セル幅の 17.4%・線は4スキンでいちばん太い）、出力＝**丸**
-   * （半径 11px）、TIM / CNT / SET / RST / MC / MCR / END＝**命令ボックス**。
-   * △（一般に知られた PCwin の見え方から作図。§17.1）
+   * 46×36px。接点＝縦棒2本（高さ 14px＝セル高の 38.9%・間隔 8px＝縦棒の高さの 0.57・線 1.2px）、
+   * 出力＝**丸**（直径 14px＝縦棒の高さ）、TIM / CNT / SET / RST / MC / MCR / END＝**命令ボックス**。
+   * 調べた出典（2026-09-20。画像は一切複製せず、形と配置の記述だけを取った）:
+   *   - JTEKT 公式 PCwin カタログ CAT-M2067-1
+   *     https://www.jtekt.co.jp/data/Tp/Catalog/CAT-M2067-1_PCwin.pdf
+   *     …… 接点は縦棒2本・b接点は斜線1本／**コイルは丸「○」**（括弧ではない。利用者の
+   *     「出力は丸」と一致）／OR分岐は主ラインの**下の行**に置いて縦棒で合流／デバイス名は
+   *     記号の**左上**／ステップ番号は左バスバーのすぐ左（例 `00049`）。
+   * 出典と食い違うところ（今回は直していない。△）: 回路コメントはカタログでは**コイルの右**に
+   * 出るが、本アプリは他の3スキンと同じく記号の下に出す。モニタの強調はカタログでは行全体の
+   * **薄い水色の背景**だが、本アプリは方言の通電色（橙）のパワーフローのままである（通電色は
+   * `plc-dialects` が持つのでこのファイルだけでは変えられない）。§17.1
    */
   cell: {
     widthPx: 46,
-    heightPx: 46,
-    strokeWidth: 1.8,
-    barInsetPx: 12,
+    heightPx: 36,
+    strokeWidth: 1.2,
+    barInsetPx: 11,
     contactGapPx: 8,
-    coilRxPx: 11,
+    pulseGapPx: 8,
+    coilRxPx: 7,
+    commentFontPx: 9,
     instructionStyle: 'box',
     timerStyle: 'box',
     stepGutterPx: 24,
   },
   // 通電は橙のパワーフロー。△
   monitorStyle: 'flow',
+  // 回路ブロックの先頭行にステップ番号（行の通し）を出す。△
+  stepNumbering: 'step',
   commentLines: 1,
   assumed: SKIN_ASSUMED,
   // キー割当表は GX Works3風の表を流用している（`packages/plc-dialects/src/jtekt.ts`）。レビュー I7

@@ -85,12 +85,13 @@
   background-image:
     linear-gradient(to right, var(--skin-grid, transparent) 1px, transparent 1px),
     linear-gradient(to bottom, var(--skin-grid, transparent) 1px, transparent 1px);
-  background-size: var(--skin-cell-w, 48px) var(--skin-cell-h, 46px);
+  background-size: var(--skin-cell-w, 48px) var(--skin-cell-h, 34px);
   /*
    * 左の行番号欄（`--skin-step-gutter`）と左母線の幅（`RAIL_W`。`LadderGrid.tsx` と値を
-   * 合わせておくこと）のぶん右へずらすと、格子がセルの境界にぴったり合う。
+   * 合わせておくこと。2026-09-20 2回目の作り直しで 6px → 3px）のぶん右へずらすと、
+   * 格子がセルの境界にぴったり合う。
    */
-  background-position: calc(var(--skin-step-gutter, 26px) + 6px) 0;
+  background-position: calc(var(--skin-step-gutter, 24px) + 3px) 0;
 }
 
 .rail {
@@ -108,7 +109,8 @@
 .wire,
 .symbol {
   fill: none;
-  stroke-width: var(--skin-stroke, 1.6);
+  /* 線は 1.2px（利用者要求 2026-09-20 2回目「縦線が太い」）。記号も導線も同じ太さ。 */
+  stroke-width: var(--skin-stroke, 1.2);
   stroke-linecap: square;
 }
 
@@ -117,7 +119,7 @@
  * 通っている経路を**太い色の線**で見せる（「パワーフロー」）。線の色は `stroke` 属性が持つ。
  */
 .powered {
-  stroke-width: calc(var(--skin-stroke, 1.6) * 2);
+  stroke-width: calc(var(--skin-stroke, 1.2) * 2);
   stroke-linecap: round;
 }
 
@@ -162,16 +164,16 @@
 }
 
 /*
- * 丸コイルに設定値があるとき（GX Works3風の `OUT T0 K30`）、デバイス名と設定値を桟の中心で
- * 左右に分けて同じ行に並べる。`text-anchor` は上の共通宣言（`middle`）に負けるので、
- * 要素の属性ではなくクラスで上書きする。
+ * 丸コイルに設定値があるとき（GX Works3風の `OUT T0 K30`）、設定値は丸の**右**の桟の上に
+ * 右詰めで置く。`text-anchor` は上の共通宣言（`middle`）に負けるので、要素の属性ではなく
+ * クラスで上書きする。下を通る桟から字を浮かせるために、地の色で縁取ってから塗る。
  */
-.deviceTextEnd {
+.presetTextEnd {
   text-anchor: end;
-}
-
-.presetTextStart {
-  text-anchor: start;
+  paint-order: stroke fill;
+  stroke: var(--skin-canvas, #f7f8fa);
+  stroke-width: 2.5;
+  stroke-linejoin: round;
 }
 
 /* 角括弧 `[SET Y0]` と命令ボックスの1行目（命令語）。 */
@@ -182,28 +184,29 @@
 
 /*
  * 命令ボックスの2・3行目（デバイスと設定値）。シャープの `TMR00000` のように8文字になる
- * 方言があるので、箱の内寸（セル幅 − 8px）に収まる 8px にする。
+ * 方言があるので、箱の内寸（セル幅 − 4px）に収まる 9px にする。
  */
 .boxOperandText {
-  font-size: 8px;
+  font-size: 9px;
 }
 
-/* 左の行番号欄（右詰め）。 */
+/* 左の行番号欄（右詰め。回路ブロックの先頭行にだけ出る）。 */
 .stepText {
   text-anchor: end;
-  font-size: 9px;
+  font-size: 10px;
   fill: var(--skin-preset, #555);
 }
 
+/* デバイスコメント。行数の多いスキン（CX-Programmer風）だけ1px小さい（`--skin-comment-size`）。 */
 .commentText {
-  font-size: 8px;
+  font-size: var(--skin-comment-size, 9px);
   fill: var(--skin-comment, #1b6ac9);
 }
 
 .cursor {
   fill: none;
   stroke: var(--skin-cursor, #1e64ff);
-  stroke-width: 2;
+  stroke-width: 1.5;
 }
 
 /*

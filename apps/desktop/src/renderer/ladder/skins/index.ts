@@ -61,6 +61,8 @@ export function skinCssVars(
     '--skin-cell-h': `${String(theme.cell.heightPx)}px`,
     '--skin-stroke': String(theme.cell.strokeWidth),
     '--skin-coil-rx': String(theme.cell.coilRxPx),
+    // デバイスコメントの字の大きさもスキンが決める（CX-Programmer風だけ2行なので1px小さい）
+    '--skin-comment-size': `${String(theme.cell.commentFontPx)}px`,
     '--skin-step-gutter': `${String(theme.cell.stepGutterPx)}px`,
     '--skin-tree-w': `${String(theme.layout.treeWidthPx)}px`,
     '--skin-output-h': `${String(theme.layout.outputHeightPx)}px`,

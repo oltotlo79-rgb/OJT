@@ -76,9 +76,28 @@ describe('スキン別の記号の寸法と形（決定表#6 / 利用者要求 2
 
   it('follows the theme for every skin', () => {
     expect(symbolMetrics(SKIN_THEMES['omron'].cell).w).toBe(52);
-    expect(symbolMetrics(SKIN_THEMES['omron'].cell).h).toBe(60);
+    expect(symbolMetrics(SKIN_THEMES['omron'].cell).h).toBe(48);
     expect(symbolMetrics(SKIN_THEMES['jtekt'].cell).w).toBe(46);
-    expect(symbolMetrics(SKIN_THEMES['sharp'].cell).h).toBe(48);
+    expect(symbolMetrics(SKIN_THEMES['sharp'].cell).h).toBe(36);
+  });
+
+  /**
+   * 利用者要求 2026-09-20 2回目「ラダー全体を各社ソフトの実画面にもっと寄せる」。
+   * 行は詰める（32〜36px。2行コメントを出す CX-Programmer風だけ 48px）、線は 1.2px、
+   * 行番号欄は 24px。
+   */
+  it('keeps the rows tight, the stroke thin and the gutter narrow in every skin', () => {
+    for (const theme of Object.values(SKIN_THEMES)) {
+      expect(theme.cell.strokeWidth, theme.id).toBe(1.2);
+      expect(theme.cell.stepGutterPx, theme.id).toBe(24);
+      const limit = theme.commentLines >= 2 ? 48 : 36;
+      expect(theme.cell.heightPx, theme.id).toBeGreaterThanOrEqual(32);
+      expect(theme.cell.heightPx, theme.id).toBeLessThanOrEqual(limit);
+      // 接合点は ⌀4px、コメントは 8〜9px
+      expect(symbolMetrics(theme.cell).junctionR * 2, theme.id).toBe(4);
+      expect(theme.cell.commentFontPx, theme.id).toBeGreaterThanOrEqual(8);
+      expect(theme.cell.commentFontPx, theme.id).toBeLessThanOrEqual(9);
+    }
   });
 
   it('draws the same two bars for an NO contact in every skin, at the skin size', () => {
@@ -95,8 +114,6 @@ describe('スキン別の記号の寸法と形（決定表#6 / 利用者要求 2
       expect(metrics.shape('contact-nc').paths).toHaveLength(3);
       // 知らない識別子は `?` 付きの接点（landed の `symbolShape()` と同じ倒し方。`undefined` にしない）
       expect(metrics.shape('no-such-symbol').text, theme.id).toBe('?');
-      // `END_MARK` と同じく**2本の縦棒の配列**である（1本の文字列ではない）
-      expect(metrics.endMark, theme.id).toHaveLength(2);
       // 縦リンクはセルの**左辺**（landed の `LINK_DOWN` と同じ `M 0 …`）で、下端は `h + wireY`
       expect(metrics.linkDown, theme.id).toBe(
         `M 0 ${String(metrics.wireY)} L 0 ${String(metrics.h + metrics.wireY)}`,
@@ -122,15 +139,15 @@ describe('スキン別の記号の寸法と形（決定表#6 / 利用者要求 2
   });
 
   /**
-   * 利用者要求 2026-09-20「A接点やB接点の縦棒の間隔がやや広い」。
-   * どのスキンでも縦棒の間隔はセル幅の 15〜20% に収める。
+   * 利用者要求 2026-09-20 2回目「2本の縦線の間隔がまだ広い」と、そのあと利用者が示した
+   * 三菱の命令記号表。どのスキンでも**間隔＝縦棒の高さの約半分**（表の実測は 10 : 16）。
    */
-  it('keeps the contact gap at 15-20 percent of the cell width in every skin', () => {
+  it('keeps the contact gap at about half the bar height in every skin', () => {
     for (const theme of Object.values(SKIN_THEMES)) {
       const metrics = symbolMetrics(theme.cell);
-      const ratio = metrics.contactGap / metrics.w;
-      expect(ratio, theme.id).toBeGreaterThanOrEqual(0.15);
-      expect(ratio, theme.id).toBeLessThanOrEqual(0.2);
+      const ratio = metrics.contactGap / (metrics.barBottom - metrics.barTop);
+      expect(ratio, theme.id).toBeGreaterThanOrEqual(0.45);
+      expect(ratio, theme.id).toBeLessThanOrEqual(0.6);
       const xs = metrics
         .shape('contact-no')
         .paths.map((path) => Number(/^M ([\d.]+) /u.exec(path)?.[1] ?? '0'));
@@ -138,13 +155,61 @@ describe('スキン別の記号の寸法と形（決定表#6 / 利用者要求 2
     }
   });
 
-  /** 記号の高さ（＝丸の直径）はセル高の 45〜55%（画面品質の基準）。 */
-  it('keeps the symbol height between 45 and 55 percent of the cell in every skin', () => {
+  /**
+   * 利用者要求 2026-09-20「B接点シンボルの斜め線の位置おかしいんだけど」＋利用者が示した
+   * 三菱の命令記号表（LDI / ANI）。斜線は**縦棒2本の x の範囲を左右に貫く1本**で、
+   * 縦は縦棒の上端・下端の内側に収まる（上のデバイス名にも下のコメントにも触れない）。
+   */
+  it('runs the NC diagonal across both bars, inside the bar height, in every skin', () => {
+    for (const theme of Object.values(SKIN_THEMES)) {
+      const metrics = symbolMetrics(theme.cell);
+      const barX = metrics
+        .shape('contact-no')
+        .paths.map((path) => Number(/^M ([\d.]+) /u.exec(path)?.[1] ?? '0'));
+      const diagonal = metrics.shape('contact-nc').paths[2] ?? '';
+      const ends = [...diagonal.matchAll(/([\d.]+) ([\d.]+)/gu)].flatMap((m) => [
+        Number(m[1]),
+        Number(m[2]),
+      ]);
+      const [x1, y1, x2, y2] = ends;
+      // 左下 → 右上で、両端は縦棒より外（記号表の比）
+      expect(x1, theme.id).toBeLessThan(barX[0] ?? 0);
+      expect(x2, theme.id).toBeGreaterThan(barX[1] ?? 0);
+      expect(y1, theme.id).toBeGreaterThan(y2 ?? 0);
+      expect(((x1 ?? 0) + (x2 ?? 0)) / 2, theme.id).toBeCloseTo(metrics.w / 2, 1);
+      expect(((y1 ?? 0) + (y2 ?? 0)) / 2, theme.id).toBeCloseTo(metrics.wireY, 1);
+      // 縦棒の上端・下端より外へは出ない
+      expect(y2, theme.id).toBeGreaterThanOrEqual(metrics.barTop);
+      expect(y1, theme.id).toBeLessThanOrEqual(metrics.barBottom);
+    }
+  });
+
+  /** 微分接点（立上がり・立下がり）は矢印を線画で描く。軸の高さは縦棒と同じ（記号表の比）。 */
+  it('draws the pulse contacts with a full-height line arrow in every skin', () => {
+    for (const theme of Object.values(SKIN_THEMES)) {
+      const metrics = symbolMetrics(theme.cell);
+      expect(metrics.pulseGap, theme.id).toBeGreaterThanOrEqual(metrics.contactGap);
+      for (const id of ['contact-rise', 'contact-fall']) {
+        const shape = metrics.shape(id);
+        expect(shape.paths, `${theme.id}:${id}`).toHaveLength(4);
+        expect(shape.text, `${theme.id}:${id}`).toBeUndefined();
+        const shaft = [...(shape.paths[2] ?? '').matchAll(/([\d.]+) ([\d.]+)/gu)].map((m) =>
+          Number(m[2]),
+        );
+        expect(Math.abs((shaft[0] ?? 0) - (shaft[1] ?? 0)), `${theme.id}:${id}`).toBe(
+          metrics.barBottom - metrics.barTop,
+        );
+      }
+    }
+  });
+
+  /** 記号の高さ（＝丸の直径）は**セル高の 35〜40%**（利用者要求 2026-09-20 2回目）。 */
+  it('keeps the symbol height between 35 and 40 percent of the cell in every skin', () => {
     for (const theme of Object.values(SKIN_THEMES)) {
       const metrics = symbolMetrics(theme.cell);
       const ratio = (metrics.barBottom - metrics.barTop) / metrics.h;
-      expect(ratio, theme.id).toBeGreaterThanOrEqual(0.45);
-      expect(ratio, theme.id).toBeLessThanOrEqual(0.55);
+      expect(ratio, theme.id).toBeGreaterThanOrEqual(0.35);
+      expect(ratio, theme.id).toBeLessThanOrEqual(0.4);
     }
   });
 
@@ -161,10 +226,12 @@ describe('スキン別の記号の寸法と形（決定表#6 / 利用者要求 2
       expect(metrics.shape('coil-set').layout, id).toBe('box');
       expect(metrics.shape('coil-timer').layout, id).toBe('box');
       expect(metrics.shape('rung-end').layout, id).toBe('box');
-      // 箱は1本の閉じた矩形で、右には繋がない
-      expect(metrics.shape('coil-timer').paths, id).toHaveLength(1);
+      // 箱は閉じた矩形＋命令語と被演算子を分ける細い仕切り線で、右には繋がない
+      expect(metrics.shape('coil-timer').paths, id).toHaveLength(2);
       expect(metrics.shape('coil-timer').paths[0], id).toMatch(/Z$/u);
       expect(metrics.shape('coil-timer').leadRight, id).toBe('');
+      // 被演算子を持たない END は仕切り線を引かない（枠1本だけ）
+      expect(metrics.shape('rung-end').paths, id).toHaveLength(1);
     }
   });
 
@@ -187,9 +254,9 @@ describe('スキン別の記号の寸法と形（決定表#6 / 利用者要求 2
      * （3B 最終修正）。始点は「コイル列の左端」＝ `(lastContactIndex + 1) × セル幅` で、
      * 終点は記号の枠の手前（4px）まで。コイル列が命令ボックスでも箱の中を横切らない。
      */
-    expect(omron.leadAcrossHidden(4, 0)).toBe(`M ${String(5 * 52)} 30 L ${String(5 * 52 + 4)} 30`);
+    expect(omron.leadAcrossHidden(4, 0)).toBe(`M ${String(5 * 52)} 24 L ${String(5 * 52 + 2)} 24`);
     // 行の `<g>` には移動が掛かっていないので、縦位置はこの線自身が持つ
-    expect(omron.leadAcrossHidden(4, 2)).toContain(` ${String(2 * 60 + 30)} `);
+    expect(omron.leadAcrossHidden(4, 2)).toContain(` ${String(2 * 48 + 24)} `);
   });
 
   it('draws the SHARP always-on special relay as an NC contact (4A H-4)', () => {
@@ -244,11 +311,47 @@ describe('描いた DOM（利用者要求 2026-09-20）', () => {
     expect(box.getByTestId('box-line-1')).toHaveTextContent(OMRON_CP1E.formatDevice(Y(0)));
   });
 
-  it('numbers every row in the left gutter', () => {
+  it('numbers the first row of each block in the left gutter', () => {
     renderGrid({ profile: MITSUBISHI_FX5U, cell: no(X(0)) });
     expect(screen.getByTestId('step-n1:0')).toHaveTextContent('0');
     // END の回路ブロックは n1 の次なので 1
     expect(screen.getByTestId('step-end:0')).toHaveTextContent('1');
+    // 番号は回路ブロックの先頭行にだけ（1行ごとには振らない。利用者要求 2026-09-20 2回目）
+    expect(screen.getAllByTestId(/^step-/u)).toHaveLength(2);
+  });
+
+  /**
+   * 利用者要求 2026-09-20「PLCの回路画面のENDの行のデザインが実物と違う」「END行の縦線2本は何？」。
+   * END の行は**ふつうの回路**——左母線から出力列まで桟が1本走り、出力列に角括弧の END か
+   * END の命令ボックスが載る——として描く。接点のような縦棒はその行のどこにも無い。
+   */
+  it('draws the END row as an ordinary rung ending in the END instruction', () => {
+    for (const profile of [MITSUBISHI_FX5U, OMRON_CP1E, JTEKT_PC10G, SHARP_JW300]) {
+      renderGrid({ profile, cell: no(X(0)) });
+      const endNet = screen.getByTestId('network-end');
+      // 出力列にだけ記号があり、その記号が END である
+      const symbols = [...endNet.querySelectorAll('[data-symbol]')];
+      expect(symbols, profile.id).toHaveLength(
+        symbolMetrics(skinThemeOf(profile).cell).shape('rung-end').paths.length,
+      );
+      for (const node of symbols) {
+        expect(node.getAttribute('data-symbol'), profile.id).toBe('rung-end');
+        expect(node.closest('[data-testid]')?.getAttribute('data-testid'), profile.id).toBe(
+          `cell-end:0:${String(COIL_COL)}`,
+        );
+      }
+      // 命令語は方言から引く（シャープは F-40）
+      expect(screen.getByTestId(`cell-end:0:${String(COIL_COL)}`), profile.id).toHaveTextContent(
+        profile.instructionNames.end,
+      );
+      // 0列目は導線だけ（接点の縦棒も END の裸の縦棒も無い）
+      const first = screen.getByTestId('cell-end:0:0');
+      expect(first.querySelectorAll('[data-symbol]'), profile.id).toHaveLength(0);
+      expect(first.querySelector('path')?.getAttribute('d'), profile.id).toBe(
+        symbolMetrics(skinThemeOf(profile).cell).leadFull,
+      );
+      cleanup();
+    }
   });
 
   /**

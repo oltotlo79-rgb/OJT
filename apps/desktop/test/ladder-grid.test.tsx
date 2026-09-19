@@ -90,9 +90,10 @@ describe('スキンの寸法（利用者要求: 実物に近い画面）', () =>
       />,
     );
     const svg = screen.getByRole('grid', { name: /n1/u });
-    // OMRON は 52×60（I/Oコメント2行ぶん背が高い）。接点11列＋コイル列1＋母線6px＋行番号欄26px
-    expect(svg.getAttribute('height')).toBe('60');
-    expect(Number(svg.getAttribute('width'))).toBe(26 + 6 + 12 * 52);
+    // OMRON は 52×48（I/Oコメント2行ぶん背が高い）。接点11列＋コイル列1
+    // ＋左母線3px＋右母線2px＋行番号欄24px（利用者要求 2026-09-20 2回目で母線と欄を細くした）
+    expect(svg.getAttribute('height')).toBe('48');
+    expect(Number(svg.getAttribute('width'))).toBe(24 + 3 + 12 * 52 + 2);
   });
 
   it('shows two comment lines in the CX-Programmer style and one elsewhere', () => {
@@ -169,6 +170,10 @@ describe('LadderGrid（§10.7）', () => {
     expect(screen.getByTestId('network-n1')).toHaveTextContent('運転');
     expect(screen.getByTestId('network-end')).toBeInTheDocument();
     expect(screen.getByTestId('cell-end:0:0')).toBeInTheDocument();
+    // END はふつうの回路と同じく**出力列**に出る（利用者要求 2026-09-20「END行の縦線2本は何？」）
+    expect(screen.getByTestId(`cell-end:0:${String(COIL_COL)}`)).toHaveTextContent(
+      MITSUBISHI_FX5U.instructionNames.end,
+    );
   });
 
   it('shows the contact columns of the skin plus one coil column (§10.6)', () => {

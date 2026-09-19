@@ -56,15 +56,23 @@ const TREE_W = 140;
 const TREE_W_NARROW = 116;
 /** 1列に落ちる境界（利用者決定）。 */
 const SINGLE_PANE_MAX = 1279;
-/** `.gridScroll` の左右パディングと `LadderGrid` の左レール・行番号欄。 */
+/** `.gridScroll` の左右パディングと `LadderGrid` の母線・行番号欄。 */
 const GRID_PAD = 8 * 2;
-const RAIL_W = 6;
-/** GX Works3風の行番号欄（`SkinCell.stepGutterPx`。2026-09-20 の記号の作り直しで足した）。 */
-const STEP_GUTTER = 26;
+/** 左母線（3px）と右母線のぶんの余白（2px）。2026-09-20 2回目の作り直しで細くした。 */
+const RAIL_W = 3;
+const RIGHT_RAIL_SPAN = 2;
+/** GX Works3風の行番号欄（`SkinCell.stepGutterPx`。2026-09-20 2回目で 26 → 24）。 */
+const STEP_GUTTER = 24;
 
 /** 既定（11列）の格子が横スクロールせずに収まるのに要る幅。コイル列ぶん1列足す。 */
 function gridNeeded(cols: number): number {
-  return STEP_GUTTER + RAIL_W + (Math.min(Math.max(cols, 1), 15) + 1) * CELL_W + GRID_PAD;
+  return (
+    STEP_GUTTER +
+    RAIL_W +
+    (Math.min(Math.max(cols, 1), 15) + 1) * CELL_W +
+    RIGHT_RAIL_SPAN +
+    GRID_PAD
+  );
 }
 
 /** `--plc-board-w` と同じ式。 */
@@ -196,7 +204,9 @@ describe('分割レイアウトの列（UXレビュー #27）', () => {
 
   it('代表的な画面サイズで格子に残る幅（スクリーンショット確認の目標値）', () => {
     const need = gridNeeded(11);
-    expect(need).toBe(624);
+    // 12列（接点11＋コイル1）で 621px。1920×1080 の格子 633px に収まる
+    expect(need).toBe(621);
+    expect(need).toBeLessThanOrEqual(633);
 
     // 1920×1080: 3D 614px / ラダー枠 974px / 格子 633px → 横スクロールなし
     expect(Math.round(boardWidth(1920, 1080))).toBe(614);
