@@ -2751,7 +2751,7 @@ git show --stat HEAD
 
 本設計 §5.2・決定表#18・#19。3D もストアも触らない純関数だけを置く。
 
-- [ ] **Step 1: 失敗するテストを書く**
+- [x] **Step 1: 失敗するテストを書く**
 
 `apps/desktop/test/help-model.test.ts`:
 
@@ -2853,7 +2853,7 @@ pnpm --filter @ojt/desktop test help-model
 # 期待: FAIL（`help-model.js` が無い）
 ```
 
-- [ ] **Step 2: 純関数層を作る**
+- [x] **Step 2: 純関数層を作る**
 
 `apps/desktop/src/renderer/help/help-model.ts`:
 
@@ -2998,7 +2998,7 @@ function excerptOf(section: ManualSection, query: string): string {
 
 **注記**: `AssembleView` は Plan 5 Task 7 が `app/store-types.ts` に置いた型である。実ソースで名前を確かめ、違っていたらその名前を使う（`'board' | 'split' | 'schematic'` の共用体であることは変わらない）。
 
-- [ ] **Step 3: テストを通す**
+- [x] **Step 3: テストを通す**
 
 ```
 pnpm --filter @ojt/desktop test help-model
@@ -3007,7 +3007,7 @@ pnpm --filter @ojt/desktop typecheck && pnpm lint
 # 期待: どちらも無警告
 ```
 
-- [ ] **Step 4: commit**
+- [x] **Step 4: commit**
 
 ```
 git add apps/desktop/src/renderer/help/help-model.ts apps/desktop/test/help-model.test.ts
