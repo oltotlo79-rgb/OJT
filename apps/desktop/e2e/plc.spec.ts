@@ -42,19 +42,6 @@ const CHROMIUM_FLAGS = [
 /** 他の E2E と同じ窓の大きさ（スクリーンショットを揃える）。 */
 const WINDOW = { width: 1440, height: 900 } as const;
 
-/** 既定の表示列数（設定画面の初期値）。テストの後始末で戻す。 */
-const DEFAULT_GRID_COLS = 11;
-/**
- * 受入基準③（合格）を通すのに要る表示列数。
- *
- * ラダーの導通は「セルが横線・接点で繋がっているか」だけで決まる（`ladder-core` の `solve()`）。
- * 空セルは繋がないので、接点とコイル列（15列目）の間は **F9（横線）で全部埋める**必要がある。
- * ところが `moveCursor()` は表示列数の右端（既定 11 列目 → 添字10）から**コイル列へ飛ぶ**ので、
- * 既定のままだと 11〜14 列目にカーソルを置けず、横線を引けない（＝どう組んでも通電しない）。
- * 設定画面で表示列数を 15 にすると全列が出て、訓練者と同じ操作で組み切れる。
- */
-const FULL_GRID_COLS = 15;
-
 const PROBLEM: PlcProblem = (() => {
   const found = BUILTIN_PLC_PROBLEMS[0];
   if (found === undefined) throw new Error('内蔵モードD課題がありません');
@@ -107,19 +94,6 @@ async function launch(): Promise<{ app: ElectronApplication; page: Page }> {
     await page.getByRole('button', { name: '復元しない' }).click();
   }
   return { app, page };
-}
-
-/** 設定画面でラダーの表示列数を変える（ホームにいる前提。終わったらホームへ戻る）。§10.6 */
-async function setGridCols(page: Page, cols: number): Promise<void> {
-  await page.getByTestId('open-settings').click();
-  const input = page.getByTestId('setting-grid-cols');
-  await expect(input).toBeVisible();
-  await input.fill(String(cols));
-  await input.blur();
-  // 画面には前の操作のトーストも残っていることがあるので、文面で絞ってから待つ
-  await expect(page.getByTestId('toast').filter({ hasText: '設定を保存しました' })).toBeVisible();
-  await page.getByRole('button', { name: 'ホームへ戻る' }).click();
-  await expect(page.getByTestId('mode-plc')).toBeVisible();
 }
 
 /**
@@ -223,11 +197,18 @@ async function expectCursorAt(page: Page, cell: string): Promise<void> {
   await expect(page.getByTestId(`cell-${cell}`)).toHaveAttribute('aria-selected', 'true');
 }
 
-/** F9（横線）でコイル列の手前まで埋める。`fromCol` から 14 列目まで。 */
-async function fillToCoil(page: Page, networkId: string, fromCol: number): Promise<void> {
-  for (let col = fromCol; col < COIL_COL; col += 1) {
-    await expectCursorAt(page, `${networkId}:0:${String(col)}`);
-    await key(page, 'F9');
+/**
+ * →キーでコイル列までカーソルを送る。`fromCol` から右へ。
+ *
+ * 接点とコイルの間を横線で埋める必要はない。コイルを置いた時点で `applyLadderCell()` が
+ * 左の論理とコイルの間を自動で繋ぐ（GX Works3 と同じ）。既定の表示列数（11）では
+ * 11〜14 列目は描かれないので、`moveCursor()` が 10 列目から**コイル列へ飛ぶ**。
+ */
+async function moveToCoil(page: Page, networkId: string, fromCol: number): Promise<void> {
+  await expectCursorAt(page, `${networkId}:0:${String(fromCol)}`);
+  const coil = page.getByTestId(`cell-${networkId}:0:${String(COIL_COL)}`);
+  for (let step = 0; step < COIL_COL; step += 1) {
+    if ((await coil.getAttribute('aria-selected')) === 'true') break;
     await key(page, 'ArrowRight');
   }
   await expectCursorAt(page, `${networkId}:0:${String(COIL_COL)}`);
@@ -241,7 +222,7 @@ async function insertNetwork(page: Page, expectedId: string): Promise<void> {
 
 /**
  * 受入基準①: F5（a接点）と F7（コイル）でいちばん小さいラダーを組み、F4 で変換する。
- * 通電はしない（空セルで切れている）ので、変換だけを見るテストが使う。
+ * 配線だけを見る（静的チェックの）テストが使う。
  */
 async function buildMinimalLadder(page: Page, coilDevice = 'Y0'): Promise<void> {
   await expectCursorAt(page, 'n1:0:0');
@@ -255,13 +236,13 @@ async function buildMinimalLadder(page: Page, coilDevice = 'Y0'): Promise<void> 
 }
 
 /**
- * 受入基準①③: 模範と同じ動きをするラダーをキーボードだけで組む（F5 / F6 / Shift+F5 / F7 / F9）。
+ * 受入基準①③: 模範と同じ動きをするラダーをキーボードだけで組む（F5 / F6 / Shift+F5 / F7 / →）。
  *
  *  n1: X0 ∥ Y0 ─ /X1 ─( Y0 )   自己保持
  *  n2: /Y0 ─ X1 ─( Y1 )        停止確認表示
  *  n3: X2 ─( Y2 )              点検灯
  *
- * 表示列数を 15 にしてから呼ぶこと（{@link FULL_GRID_COLS} の注記）。
+ * 表示列数は既定（11）のまま。接点とコイルの間はコイルを置いた時点で自動で繋がる。
  */
 async function buildReferenceLadder(page: Page): Promise<void> {
   // n1 1行目: X0（a接点）
@@ -277,7 +258,7 @@ async function buildReferenceLadder(page: Page): Promise<void> {
   await key(page, 'ArrowRight');
   await key(page, 'F6');
   await commitDevice(page, 'X1');
-  await fillToCoil(page, 'n1', 3);
+  await moveToCoil(page, 'n1', 3);
   await key(page, 'F7');
   await commitDevice(page, 'Y0');
 
@@ -287,7 +268,7 @@ async function buildReferenceLadder(page: Page): Promise<void> {
   await commitDevice(page, 'Y0');
   await key(page, 'F5');
   await commitDevice(page, 'X1');
-  await fillToCoil(page, 'n2', 2);
+  await moveToCoil(page, 'n2', 2);
   await key(page, 'F7');
   await commitDevice(page, 'Y1');
 
@@ -295,7 +276,7 @@ async function buildReferenceLadder(page: Page): Promise<void> {
   await insertNetwork(page, 'n3');
   await key(page, 'F5');
   await commitDevice(page, 'X2');
-  await fillToCoil(page, 'n3', 1);
+  await moveToCoil(page, 'n3', 1);
   await key(page, 'F7');
   await commitDevice(page, 'Y2');
 
@@ -334,8 +315,6 @@ test.describe('モードD（PLC）', () => {
   test('①②③ ラダーを組んで配線すると合格する', async () => {
     const { app, page } = await launch();
     try {
-      // 既定の表示列数（11）では 11〜14 列目にカーソルを置けず横線を引けない（定数の注記）
-      await setGridCols(page, FULL_GRID_COLS);
       await openPlcProblem(page);
 
       // ① GX Works3風スキンで F5/F7 を使って組み、変換が通る
@@ -465,15 +444,6 @@ test.describe('モードD（PLC）', () => {
       await expect(page.getByTestId('convert-state')).toHaveText('未変換（F4 で変換します）');
       await expect(judge).toBeDisabled();
     } finally {
-      // 表示列数を既定へ戻す（最初のテストが 15 にしているので、機械の設定を持ち越さない）。
-      // 後始末なので、途中で落ちても本来の失敗を覆い隠さないように握り潰す
-      try {
-        await page.getByTestId('session-back').click();
-        await page.getByRole('button', { name: 'ホームへ戻る' }).click();
-        await setGridCols(page, DEFAULT_GRID_COLS);
-      } catch {
-        // 設定を戻せなくてもテストの成否には関係しない
-      }
       await app.close();
     }
   });
