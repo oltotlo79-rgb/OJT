@@ -255,7 +255,7 @@ export function Session(): JSX.Element {
           break;
         case 'completeWire':
           store.setPending(undefined);
-          apply(runAddWire(current, action.from, action.to, action.color), () => {
+          apply(runAddWire(current, action.from, action.to, action.color, JIPM_BOARD), () => {
             const next = useStore.getState();
             const wire = next.session?.wires.at(-1);
             if (wire === undefined) return;

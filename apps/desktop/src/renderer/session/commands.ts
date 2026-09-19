@@ -6,6 +6,7 @@ import {
   setPreset,
   toNetlistTerminal,
   unplug,
+  type BoardDefinition,
   type BoardSession,
   type MountableKind,
   type Result,
@@ -134,18 +135,23 @@ function wrap<T>(
  *
  * 3D盤から渡ってくる端子IDは**物理ID**（`S1.10`。盤定義 `BoardTerminal.id`）だが、
  * `BoardSession.wires` と `toNetlist()` は**役割ID**（`CR1.10`。§6.4）で持つ。
- * その変換をここ1箇所で行う（`toNetlistTerminal()` は端子台や P/N はそのまま返す）。
+ * その変換をここ1箇所で行う（`toNetlistTerminal()` は端子台・P/N・机上の `PLC.*` / `OUTLET.*`
+ * はそのまま返す）。
+ *
+ * `board` はモードDが**PLC本体と壁コンセントを載せた派生盤**（`withPlcUnit()`）を渡すための
+ * 引数である（§10.1）。既定は `JIPM_BOARD` なので、モードB/C1/C2 の呼び出しは変わらない。
  */
 export function runAddWire(
   session: BoardSession,
   from: TerminalId,
   to: TerminalId,
   color: WireColor,
+  board: BoardDefinition = JIPM_BOARD,
 ): CommandResult<Wire> {
   const before = cloneSession(session);
   const netFrom = toNetlistTerminal(session.socketRoles, from);
   const netTo = toNetlistTerminal(session.socketRoles, to);
-  const result = addWire(session, JIPM_BOARD, netFrom, netTo, color);
+  const result = addWire(session, board, netFrom, netTo, color);
   return wrap(before, session, result, 'addWire', `配線 ${netFrom} — ${netTo}（${color}）`);
 }
 

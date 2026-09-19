@@ -6,6 +6,7 @@ import {
   type ResolvedPlcIo,
   type SupportedProblem,
 } from '@ojt/content';
+import type { LadderProgram } from '@ojt/ladder-core';
 
 /**
  * モードD専用の小さな純関数。設計仕様 §7.6 / §10.1。
@@ -34,4 +35,22 @@ export function boardForProblem(problem: SupportedProblem | undefined): BoardDef
 export function plcIoOf(problem: SupportedProblem | undefined): ResolvedPlcIo | undefined {
   if (problem === undefined || !isPlcProblem(problem)) return undefined;
   return resolvePlcIo(problem.io);
+}
+
+/** 判定を送れるか（H-1: 変換を通ったラダーだけを判定に出す）。 */
+export type JudgeReadiness = { ok: true } | { ok: false; reason: 'no-ladder' | 'not-converted' };
+
+/**
+ * 判定ボタンを押せるか。§10.6 / 3A H-1
+ *
+ * 見るのは**ラダーが変換済みか**だけである。配線の中身（2段結線・PLC電源・割付）は
+ * 判定時の静的チェックが見るので、ここでは触らない（決定表#7: セッション中に合否を漏らさない）。
+ */
+export function canJudgePlc(state: {
+  converted: boolean;
+  ladder: LadderProgram | undefined;
+}): JudgeReadiness {
+  if (state.ladder === undefined) return { ok: false, reason: 'no-ladder' };
+  if (!state.converted) return { ok: false, reason: 'not-converted' };
+  return { ok: true };
 }
