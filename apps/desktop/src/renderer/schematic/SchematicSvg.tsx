@@ -1,6 +1,7 @@
 import {
   layout,
   LAMP_FILL,
+  slotRects,
   type LayoutOptions,
   type SchematicDocument,
   type Shape,
@@ -34,6 +35,12 @@ const LABEL_FONT_SIZE = 6;
 /** 連動ハイライトの線色と線幅の倍率。§9.2 */
 const HIGHLIGHT_STROKE = '#C2410C';
 const HIGHLIGHT_WIDTH_SCALE = 1.8;
+
+/** 編集カーソルの枠と薄い塗り（白地の図で目立ち、記号を隠さない濃さ）。§11.4 */
+const CURSOR_STROKE = '#1D4ED8';
+const CURSOR_FILL = 'rgba(29, 78, 216, 0.10)';
+/** 当たり矩形は透明でもクリックを受ける（記号より手前にあるため）。 */
+const SLOT_STYLE = { pointerEvents: 'all' } as const;
 
 /**
  * 寸法設定。`DEFAULT_LAYOUT_OPTIONS` の `colWidth: 24` だと、タイマコイルの銘板
@@ -127,21 +134,38 @@ function renderShape(shape: Shape, index: number, highlighted: boolean): JSX.Ele
 }
 
 /**
- * 回路図の SVG。§11.2
- * `highlightCellIds` と `onPickCell` はモードC2の連動ハイライト（§9.2）で使う。省略すると
- * 従来どおりの読取専用レンダラとして動く（モードBの回路図ヒント）。
+ * 回路図の SVG。§11.2 / §11.4
+ * `highlightCellIds` と `onPickCell` はモードC2の連動ハイライト（§9.2）とモードBの配線ガイド
+ * （§11.4）で使う。`cursor` / `onPickSlot` を渡すと**編集モード**になり、段 × 桁の当たり矩形
+ * （`slotRects()`）を図の上に敷く。どれも省略でき、省略すれば従来どおりの読取専用レンダラとして
+ * 動く（モードBの回路図ヒント・C2の提示回路図・結果画面はこの形で呼んでいる）。
  */
 export function SchematicSvg({
   document: doc,
   highlightCellIds,
   onPickCell,
+  cursor,
+  onPickSlot,
 }: {
   document: SchematicDocument;
   highlightCellIds?: readonly string[];
   onPickCell?: (cellId: string | undefined) => void;
+  /** 編集中のカーソル（段ID＋桁）。渡すと当たり矩形を敷く。§11.4 */
+  cursor?: { rungId: string; index: number };
+  /**
+   * 桁をクリックしたときに呼ぶ。`cursor` と対で渡す。§11.4
+   * `cellId` はその桁にある要素のID（空き桁なら `undefined`）。**編集モードでは矩形が
+   * 記号より手前に来るので、記号のクリックもここに来る**。だから「要素を選んだ」のか
+   * 「要素を置く」のかは呼び出し側（`SchematicEditor`）が決める（B2）。
+   */
+  onPickSlot?: (rungId: string, index: number, cellId?: string) => void;
 }): JSX.Element {
   const result = useMemo(() => layout(doc, LAYOUT), [doc]);
   const highlighted = useMemo(() => new Set(highlightCellIds ?? []), [highlightCellIds]);
+  const slots = useMemo(
+    () => (onPickSlot === undefined ? [] : slotRects(doc, LAYOUT)),
+    [doc, onPickSlot],
+  );
   return (
     <svg
       viewBox={`0 0 ${result.width} ${result.height}`}
@@ -160,6 +184,40 @@ export function SchematicSvg({
       {result.shapes.map((shape, index) =>
         renderShape(shape, index, shape.cellId !== undefined && highlighted.has(shape.cellId)),
       )}
+      {/*
+        編集の当たり矩形。**図形より後ろに描く＝画面では記号より手前に来る**。
+        本物のブラウザ（Playwright の E2E）は最前面の要素をクリック先に選ぶので、
+        記号を押したつもりのクリックも**必ずこの矩形に当たる**。`onPickCell` は
+        もう呼ばれない（矩形は `data-cell` を持たない）。
+        だから矩形は「どの桁か」に加えて **その桁にある要素ID** も渡し、
+        「要素を光らせる」のか「要素を置き換える」のかは `SchematicEditor` が決める（B2）。
+        JSDOM/happy-dom の `fireEvent.click(symbol)` は記号に直接イベントを投げるので
+        この重なりを再現しない。だから**単体テストは矩形を直接クリックし**、
+        「記号を押したら矩形が受ける」ことは E2E（受入基準②）で確かめる。
+      */}
+      {slots.map((slot) => {
+        const isCursor = cursor?.rungId === slot.rungId && cursor.index === slot.index;
+        return (
+          <rect
+            key={`${slot.rungId}#${slot.index}`}
+            data-slot={`${slot.rungId}#${slot.index}`}
+            {...(isCursor ? { 'data-cursor': 'true' } : {})}
+            x={slot.x}
+            y={slot.y}
+            width={slot.w}
+            height={slot.h}
+            fill={isCursor ? CURSOR_FILL : 'transparent'}
+            stroke={isCursor ? CURSOR_STROKE : 'none'}
+            strokeWidth={isCursor ? 1.2 : 0}
+            /* `fill="transparent"` でも当たり判定は残るが、意図を明示しておく */
+            style={SLOT_STYLE}
+            onClick={(event) => {
+              event.stopPropagation();
+              onPickSlot?.(slot.rungId, slot.index, slot.cellId);
+            }}
+          />
+        );
+      })}
     </svg>
   );
 }
