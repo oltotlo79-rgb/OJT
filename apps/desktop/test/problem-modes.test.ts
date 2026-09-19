@@ -38,10 +38,10 @@ describe('toSummary（§12.1）', () => {
     expect(toSummary(problem, 'user').mode).toBe('inspect-repair');
   });
 
-  it('内蔵20題すべてが行にできる（§7.9）', () => {
+  it('内蔵28題すべてが行にできる（§7.9。モードB 8 / C1 4 / C2 8 / D 8）', () => {
     const rows = BUILTIN_ALL_PROBLEMS.map((p) => toSummary(p, 'builtin'));
-    expect(rows).toHaveLength(20);
+    expect(rows).toHaveLength(28);
     const modes = new Set<SessionMode>(rows.map((r) => r.mode));
-    expect([...modes].sort()).toEqual(['assemble', 'inspect-parts', 'inspect-repair']);
+    expect([...modes].sort()).toEqual(['assemble', 'inspect-parts', 'inspect-repair', 'plc']);
   });
 });
