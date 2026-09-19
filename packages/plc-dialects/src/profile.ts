@@ -151,6 +151,17 @@ export interface DialectProfile {
   timerPreset(ms: number, device: Device): TimerPresetText | Error;
   /** 方言のタイマ設定表記 → ms。 */
   parseTimerPreset(text: string, device: Device): number | Error;
+  /**
+   * カウンタ設定値の方言表記（三菱 `K5` / OMRON `#0005` / JTEKT `H0005` / シャープ `0005`）。
+   * 命令語リスト（§10.7）と 4B のカウンタ設定値欄が使う。タイマの `timerPreset` と対になる
+   * （4B 申し送り F-2）。省略した方言は10進の数値そのままで書かれる。
+   */
+  counterPresetText?(preset: number): string;
+  /**
+   * 方言のカウンタ設定表記 → 設定値。読めない表記と機種の範囲外は `Error` を返す（投げない）。
+   * 4B 申し送り F-2。
+   */
+  parseCounterPreset?(text: string): number | Error;
   instructionNames: Readonly<Record<InstructionKey, string>>;
   /** 特殊デバイス番号（`SP0`〜`SP2`）→ 実デバイス名。§10.3 / §10.5 */
   specialDevices: Readonly<Record<number, string>>;

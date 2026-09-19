@@ -158,13 +158,37 @@ const TIMER: TimerRule = {
 const timerPreset = makeTimerPreset(TIMER, formatDevice);
 const parseTimerPreset = makeParseTimerPreset(TIMER);
 
+/** カウンタ設定値の範囲（10進4桁）。§10.5 の `DCNT(BCD)` の書式 */
+const COUNTER_MIN = 1;
+const COUNTER_MAX = 9_999;
+
+/** カウンタ設定値の方言表記（`0005`）。タイマと同じ10進4桁。4B 申し送り F-2 */
+function counterPresetText(preset: number): string {
+  return String(preset).padStart(4, '0');
+}
+
+/** 10進4桁 → カウンタ設定値。§10.7 / 4B 申し送り F-2 */
+function parseCounterPreset(text: string): number | Error {
+  const digits = /^([0-9]{1,4})$/u.exec(text.trim())?.[1];
+  if (digits === undefined) {
+    return new Error(`カウンタ設定値は10進4桁で指定します: ${text}`);
+  }
+  const preset = Number(digits);
+  if (preset < COUNTER_MIN || preset > COUNTER_MAX) {
+    return new Error(
+      `カウンタ設定値が範囲外です（${counterPresetText(COUNTER_MIN)}〜${counterPresetText(COUNTER_MAX)}）: ${text}`,
+    );
+  }
+  return preset;
+}
+
 /** 共通デバイス検査に渡す規則。 */
 const RULES: DeviceRuleSet = {
   deviceRanges: DEVICE_RANGES,
   specialDevices: SPECIAL_DEVICES,
   formatDevice,
   timer: TIMER,
-  counter: { min: 1, max: 9999 },
+  counter: { min: COUNTER_MIN, max: COUNTER_MAX },
 };
 
 /** 命令語。§10.5 のシャープ列（PLC調査資料 §4-C で確定。§17 #10） */
@@ -242,6 +266,8 @@ export const SHARP_JW300: DialectProfile = {
   deviceRanges: DEVICE_RANGES,
   timerPreset,
   parseTimerPreset,
+  counterPresetText,
+  parseCounterPreset,
   specialDevices: SPECIAL_DEVICES,
   specialInverted: [SPECIAL_ALWAYS_ON],
   instructionNames: INSTRUCTION_NAMES,

@@ -146,6 +146,22 @@ function parseTimerPreset(text: string, timer: Device): number | Error {
   return k * timerBaseMs(timer);
 }
 
+/** カウンタ設定値の方言表記（`K5`）。§10.7 / 4B 申し送り F-2 */
+function counterPresetText(preset: number): string {
+  return `K${preset}`;
+}
+
+/** `K` 表記 → カウンタ設定値。§10.7 / 4B 申し送り F-2 */
+function parseCounterPreset(text: string): number | Error {
+  const digits = /^K([0-9]+)$/u.exec(text.trim().toUpperCase())?.[1];
+  if (digits === undefined) return new Error(`カウンタ設定値は K<数値> の形式です: ${text}`);
+  const preset = Number(digits);
+  if (preset < MIN_K || preset > MAX_K) {
+    return new Error(`カウンタ設定値が範囲外です（K${MIN_K}〜K${MAX_K}）: ${text}`);
+  }
+  return preset;
+}
+
 /** 命令語。§10.5 / §17 #21（FX3系の体系を採用） */
 const INSTRUCTION_NAMES: Readonly<Record<InstructionKey, string>> = {
   ld: 'LD',
@@ -320,6 +336,8 @@ export const MITSUBISHI_FX5U: DialectProfile = {
   deviceRanges: DEVICE_RANGES,
   timerPreset,
   parseTimerPreset,
+  counterPresetText,
+  parseCounterPreset,
   specialDevices: SPECIAL_DEVICES,
   instructionNames: INSTRUCTION_NAMES,
   symbols: SYMBOLS,

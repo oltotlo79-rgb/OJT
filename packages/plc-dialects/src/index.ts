@@ -13,6 +13,13 @@ export {
 
 export { GX_STYLE_SHORTCUTS, withoutConvert } from './shortcuts.js';
 
+export {
+  instructionList,
+  INSTRUCTION_LIST_MESSAGES,
+  type InstructionLine,
+  type InstructionListResult,
+} from './instruction-list.js';
+
 export { switchNotation, type NotationChange, type NotationSwitchResult } from './notation.js';
 
 export {

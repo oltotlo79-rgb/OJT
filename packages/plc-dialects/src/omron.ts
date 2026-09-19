@@ -190,13 +190,40 @@ const TIMER: TimerRule = {
 const timerPreset = makeTimerPreset(TIMER, formatDevice);
 const parseTimerPreset = makeParseTimerPreset(TIMER);
 
+/** カウンタ設定値の範囲（BCD 4桁）。前提表 */
+const COUNTER_MIN = 1;
+const COUNTER_MAX = 9_999;
+
+/** カウンタ設定値の方言表記（`#0005`）。§10.7 / 4B 申し送り F-2 */
+function counterPresetText(preset: number): string {
+  return `#${String(preset).padStart(4, '0')}`;
+}
+
+/**
+ * `#`（BCD・`CNT`）表記 → カウンタ設定値。タイマと同じく読み込みは `&`（BIN・`CNTX`）も受け、
+ * 書き出しは `#` に揃える（§10.5 / 意図的な差分#7）。4B 申し送り F-2
+ */
+function parseCounterPreset(text: string): number | Error {
+  const digits = /^[#&]([0-9]{1,5})$/u.exec(text.trim())?.[1];
+  if (digits === undefined) {
+    return new Error(`カウンタ設定値は #<10進4桁> の形式です: ${text}`);
+  }
+  const preset = Number(digits);
+  if (preset < COUNTER_MIN || preset > COUNTER_MAX) {
+    return new Error(
+      `カウンタ設定値が範囲外です（${counterPresetText(COUNTER_MIN)}〜${counterPresetText(COUNTER_MAX)}）: ${text}`,
+    );
+  }
+  return preset;
+}
+
 /** 共通デバイス検査に渡す規則。 */
 const RULES: DeviceRuleSet = {
   deviceRanges: DEVICE_RANGES,
   specialDevices: SPECIAL_DEVICES,
   formatDevice,
   timer: TIMER,
-  counter: { min: 1, max: 9999 },
+  counter: { min: COUNTER_MIN, max: COUNTER_MAX },
 };
 
 /** 命令語。§10.5 の OMRON 列 */
@@ -290,6 +317,8 @@ export const OMRON_CP1E: DialectProfile = {
   deviceRanges: DEVICE_RANGES,
   timerPreset,
   parseTimerPreset,
+  counterPresetText,
+  parseCounterPreset,
   specialDevices: SPECIAL_DEVICES,
   instructionNames: INSTRUCTION_NAMES,
   symbols: SYMBOLS,

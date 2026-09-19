@@ -137,13 +137,37 @@ const TIMER: TimerRule = {
 const timerPreset = makeTimerPreset(TIMER, formatDevice);
 const parseTimerPreset = makeParseTimerPreset(TIMER);
 
+/** カウンタ設定値の範囲（設定値レジスタ `H` ＋ 16進4桁）。§17 #20 の前提 */
+const COUNTER_MIN = 1;
+const COUNTER_MAX = 0xffff;
+
+/** カウンタ設定値の方言表記（`H0005`）。タイマと同じ設定値レジスタの書式。4B 申し送り F-2 */
+function counterPresetText(preset: number): string {
+  return `H${preset.toString(16).toUpperCase().padStart(4, '0')}`;
+}
+
+/** `H` 表記 → カウンタ設定値。§10.7 / 4B 申し送り F-2 */
+function parseCounterPreset(text: string): number | Error {
+  const digits = /^H([0-9A-F]{1,4})$/u.exec(text.trim().toUpperCase())?.[1];
+  if (digits === undefined) {
+    return new Error(`カウンタ設定値は H<16進4桁> の形式です: ${text}`);
+  }
+  const preset = parseInt(digits, 16);
+  if (preset < COUNTER_MIN || preset > COUNTER_MAX) {
+    return new Error(
+      `カウンタ設定値が範囲外です（${counterPresetText(COUNTER_MIN)}〜${counterPresetText(COUNTER_MAX)}）: ${text}`,
+    );
+  }
+  return preset;
+}
+
 /** 共通デバイス検査に渡す規則。 */
 const RULES: DeviceRuleSet = {
   deviceRanges: DEVICE_RANGES,
   specialDevices: SPECIAL_DEVICES,
   formatDevice,
   timer: TIMER,
-  counter: { min: 1, max: 0xffff },
+  counter: { min: COUNTER_MIN, max: COUNTER_MAX },
 };
 
 /**
@@ -257,6 +281,8 @@ export const JTEKT_PC10G: DialectProfile = {
   deviceRanges: DEVICE_RANGES,
   timerPreset,
   parseTimerPreset,
+  counterPresetText,
+  parseCounterPreset,
   specialDevices: SPECIAL_DEVICES,
   instructionNames: INSTRUCTION_NAMES,
   symbols: SYMBOLS,
