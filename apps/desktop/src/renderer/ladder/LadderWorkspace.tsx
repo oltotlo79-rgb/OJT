@@ -21,6 +21,7 @@ import { nextNetworkId, type LadderEditorMode } from '../session/ladder.js';
 import { CommentPanel } from './CommentPanel.js';
 import { IoTable } from './IoTable.js';
 import { LadderEditor } from './LadderEditor.js';
+import { MonitorPanel } from './MonitorPanel.js';
 import { OutputWindow } from './OutputWindow.js';
 import { ProjectTree } from './ProjectTree.js';
 import { ShortcutHelp } from './ShortcutHelp.js';
@@ -274,7 +275,8 @@ export function LadderWorkspace({
           />
         </div>
         <div className={styles.workspaceSide}>
-          {/* Task 9 の `<MonitorPanel …/>` はこの位置（`workspaceSide` の先頭）へ差し込む（MERGE 注意 #12） */}
+          {/* MERGE 注意 #12: モニタ一覧は `workspaceSide` の先頭（`IoTable` の前）。Task 9 */}
+          <MonitorPanel profile={profile} unit={unit} onPlc={onPlc} />
           <IoTable io={io} profile={profile} unit={unit} />
           <CommentPanel
             program={program}

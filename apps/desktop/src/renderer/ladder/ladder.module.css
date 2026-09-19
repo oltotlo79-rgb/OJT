@@ -375,3 +375,11 @@
   color: #999;
 }
 /* --- /Plan 3B Task 8 --- */
+
+/* --- Plan 3B Task 9 --- */
+.monitorButtons {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+/* --- /Plan 3B Task 9 --- */

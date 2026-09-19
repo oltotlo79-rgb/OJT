@@ -434,6 +434,18 @@ export const JA = {
     convertFailed: '変換できませんでした（出力ウィンドウを確認してください）',
     downloaded: 'シーケンサへ書き込みました（変換済みのラダーを反映）',
     // --- /Plan 3B Task 8 ---
+    // --- Plan 3B Task 9 ---
+    /** モニタ一覧と RUN/STOP。§10.6 / §10.7 */
+    monitor: 'モニタ',
+    monitorOff: 'モニタ（F3）を開始すると通電状態が表示されます。',
+    monitorStopped: 'PLCが停止中です。RUN にすると動きます。',
+    scanCount: 'スキャン回数',
+    run: 'RUN',
+    stop: 'STOP',
+    /** ツールバーの RUN/STOP（盤だけを見ているときも押せる）。決定表#9b */
+    runStopTitle: 'PLCを RUN／STOP します（盤の表示中も押せます）',
+    plcReset: 'デバイス初期化',
+    // --- /Plan 3B Task 9 ---
   },
   // --- /Plan 3B Task 4 ---
   // --- Plan 3B Task 10 ---
@@ -716,3 +728,19 @@ export function commentCapText(limit: number): string {
   return `デバイスコメントは ${String(limit)} 件までです（新しい欄は入力できません）`;
 }
 // --- /Plan 3B Task 7 ---
+
+// --- Plan 3B Task 9 ---
+/** ミリ秒を秒表示にする（`1.2 秒`）。§10.7 */
+export function secondsLabel(ms: number): string {
+  return `${(ms / 1000).toFixed(1)} ${JA.session.seconds}`;
+}
+
+/**
+ * PLC入力回路の仕様の注記。§5.1.3
+ * 値は**機種（FX5U）側**から渡す（`circuit-sim` の既定値 4.7kΩ/3mA ではない）。
+ */
+export function plcInputSpecText(ohms: number, onAmps: number, offAmps: number): string {
+  const mA = (amps: number): string => (amps * 1000).toFixed(1);
+  return `入力回路 ${(ohms / 1000).toFixed(1)}kΩ／ON ${mA(onAmps)}mA 以上／OFF ${mA(offAmps)}mA 以下`;
+}
+// --- /Plan 3B Task 9 ---
