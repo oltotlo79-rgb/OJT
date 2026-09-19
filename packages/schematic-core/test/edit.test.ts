@@ -27,7 +27,7 @@ import {
 /** 深く凍結する（`applyEdit` が入力を書き換えたら即 `TypeError` になるようにする。M-h）。 */
 function deepFreeze<T>(value: T): T {
   if (value !== null && typeof value === 'object') {
-    for (const key of Object.keys(value as Record<string, unknown>)) {
+    for (const key of Object.keys(value)) {
       deepFreeze((value as Record<string, unknown>)[key]);
     }
     Object.freeze(value);
