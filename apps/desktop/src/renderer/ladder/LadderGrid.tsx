@@ -19,6 +19,7 @@ import {
   LEAD_FULL,
   LEAD_LEFT,
   LEAD_RIGHT,
+  leadAcrossHidden,
   LINK_DOWN,
   MC_SYMBOL_ID,
   MCR_SYMBOL_ID,
@@ -63,6 +64,25 @@ export function hasHiddenCells(net: Network, gridCols: number): boolean {
     }
   }
   return false;
+}
+
+/**
+ * その行の**見えない列が罫線だけで繋がっている**か（`applyLadderCell()` の自動の横線）。
+ *
+ * 真なら最後の接点列とコイルの間に導線を重ねて描き、回路が繋がっていることを見せる。
+ * 見えない列に空セルがあれば（＝本当に切れている）描かないし、記号があれば
+ * `hasHiddenCells()` の警告の役目なので、ここでは描かない。
+ */
+function hiddenSpanIsWire(net: Network, gridCols: number, row: number): boolean {
+  if (gridCols >= COIL_COL) return false;
+  if (cellAt(net, row, COIL_COL).kind === 'empty') return false;
+  let wires = 0;
+  for (let col = gridCols; col < COIL_COL; col += 1) {
+    const kind = cellAt(net, row, col).kind;
+    if (kind !== 'hline' && kind !== 'vline') return false;
+    wires += 1;
+  }
+  return wires > 0;
 }
 
 /** セルの見出し文字（デバイス名）と副文字（設定値）。 */
@@ -326,6 +346,16 @@ function NetworkView({
                   />
                 );
               })}
+              {/* 省略された列が横線で埋まっている行は、コイルまで桟を延ばして「繋がって見える」ようにする */}
+              {hiddenSpanIsWire(net, gridCols, row) ? (
+                <path
+                  data-testid={`rung-to-coil-${net.id}:${String(row)}`}
+                  d={leadAcrossHidden(columns.length - 2, row)}
+                  stroke={on(row, COIL_COL) ? colors.powered : colors.idle}
+                  className={styles.wire}
+                  aria-hidden="true"
+                />
+              ) : null}
             </g>
           ))}
         </g>

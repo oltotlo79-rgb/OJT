@@ -53,6 +53,7 @@ export {
   clearCell,
   deleteNetwork,
   deleteRow,
+  fillHlinesToCoil,
   insertNetwork,
   insertRow,
   setCell,

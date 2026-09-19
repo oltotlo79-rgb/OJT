@@ -1,6 +1,8 @@
 import {
   COIL_COL,
   cellAt,
+  compile,
+  createPlcRuntime,
   empty,
   endNetwork,
   hline,
@@ -12,6 +14,7 @@ import {
   X,
   Y,
   type LadderProgram,
+  type PlcIoPort,
 } from '@ojt/ladder-core';
 import type { ShortcutTable } from '@ojt/plc-dialects';
 import { describe, expect, it } from 'vitest';
@@ -391,5 +394,137 @@ describe('shortcutKeyOf（決定表#12 / Batch 4+5 レビュー M9）', () => {
 
   it('returns undefined for an action not in the table', () => {
     expect(shortcutKeyOf({ shortcuts: TABLE } as never, 'no-such-action')).toBeUndefined();
+  });
+});
+
+describe('コイルの自動結線（GX Works3 と同じ「置いたら繋がる」）', () => {
+  /** 入力を差し替えられる最小の `PlcIoPort`。 */
+  class Io implements PlcIoPort {
+    inputs: boolean[] = [false, false, false, false];
+    outputs: boolean[] = [];
+    readInputs(): readonly boolean[] {
+      return this.inputs;
+    }
+    writeOutputs(values: readonly boolean[]): void {
+      this.outputs = [...values];
+    }
+  }
+
+  /** 組んだラダーを変換して走らせ、X0 を押したときの Y0 を返す。 */
+  function y0WhenX0On(source: LadderProgram): boolean {
+    const compiled = compile(source);
+    expect(compiled.ok, compiled.ok ? '' : (compiled.errors[0]?.message ?? '')).toBe(true);
+    if (!compiled.ok) return false;
+    const io = new Io();
+    const runtime = createPlcRuntime(compiled.program, { io });
+    runtime.scan();
+    io.inputs[0] = true;
+    runtime.scan();
+    return io.outputs[0] === true;
+  }
+
+  /** 1行だけの空のネットワーク（＋END）。訓練者がセッションを始めた直後の姿。 */
+  function blank(): LadderProgram {
+    return program(network('n1', [[empty()]]), endNetwork());
+  }
+
+  it('fills columns 1〜14 when a coil is placed after a contact in column 0', () => {
+    const withContact = applyLadderCell(blank(), at('n1', 0, 0), no(X(0)));
+    expect(withContact.ok).toBe(true);
+    if (!withContact.ok) return;
+    const withCoil = applyLadderCell(withContact.program, at('n1', 0, COIL_COL), out(Y(0)));
+    expect(withCoil.ok).toBe(true);
+    if (!withCoil.ok) return;
+    const net = withCoil.program.networks[0]!;
+    for (let col = 1; col < COIL_COL; col += 1) expect(cellAt(net, 0, col)).toEqual(hline());
+    // 表示列数 11 のままでも導通する（これが直っていないと訓練者は永久に合格できない）
+    expect(y0WhenX0On(withCoil.program)).toBe(true);
+  });
+
+  it('keeps an OR branch conducting once the coil is placed', () => {
+    const withContact = applyLadderCell(blank(), at('n1', 0, 0), no(X(0)));
+    expect(withContact.ok).toBe(true);
+    if (!withContact.ok) return;
+    // 自己保持（Shift+F5）: 0列目から下へ分岐して Y0 のa接点を置く
+    const branched = applyOrContact(withContact.program, at('n1', 0, 0), no(Y(0)));
+    expect(branched.ok).toBe(true);
+    if (!branched.ok) return;
+    const withCoil = applyLadderCell(branched.program, at('n1', 0, COIL_COL), out(Y(0)));
+    expect(withCoil.ok).toBe(true);
+    if (!withCoil.ok) return;
+    const net = withCoil.program.networks[0]!;
+    // 分岐の縦線（1列目）は残り、その右だけが横線で埋まる
+    expect(cellAt(net, 0, 1).kind).toBe('vline');
+    expect(cellAt(net, 0, 2)).toEqual(hline());
+    expect(y0WhenX0On(withCoil.program)).toBe(true);
+  });
+
+  it('fills only the columns right of the rightmost symbol', () => {
+    let built = blank();
+    for (const [col, cell] of [
+      [0, no(X(0))],
+      [5, no(X(1))],
+    ] as const) {
+      const step = applyLadderCell(built, at('n1', 0, col), cell);
+      expect(step.ok).toBe(true);
+      if (!step.ok) return;
+      built = step.program;
+    }
+    const withCoil = applyLadderCell(built, at('n1', 0, COIL_COL), out(Y(0)));
+    expect(withCoil.ok).toBe(true);
+    if (!withCoil.ok) return;
+    const net = withCoil.program.networks[0]!;
+    // 1〜4列目は訓練者が空けたまま（勝手に繋がない）。6〜14列目だけ埋まる
+    for (let col = 1; col < 5; col += 1) expect(cellAt(net, 0, col)).toEqual(empty());
+    for (let col = 6; col < COIL_COL; col += 1) expect(cellAt(net, 0, col)).toEqual(hline());
+  });
+
+  it('undoes the coil and its auto-filled hlines in one step (決定表#2)', () => {
+    const withContact = applyLadderCell(blank(), at('n1', 0, 0), no(X(0)));
+    expect(withContact.ok).toBe(true);
+    if (!withContact.ok) return;
+    const before = withContact.program;
+    const withCoil = applyLadderCell(before, at('n1', 0, COIL_COL), out(Y(0)));
+    expect(withCoil.ok).toBe(true);
+    if (!withCoil.ok) return;
+    const back = undoLadder(pushLadder(emptyLadderHistory(), before), withCoil.program);
+    const net = back!.program.networks[0]!;
+    expect(cellAt(net, 0, COIL_COL)).toEqual(empty());
+    expect(cellAt(net, 0, 1)).toEqual(empty());
+  });
+
+  it('still refuses to insert when a real symbol sits in the last contact column', () => {
+    const row = [no(X(0)), ...Array.from({ length: COIL_COL - 2 }, () => hline()), no(X(1))];
+    const blocked = program(network('n1', [row]), endNetwork());
+    const result = applyLadderCell(blocked, at('n1', 0, 1), no(X(2)), true);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.message).toContain('右端が埋まっている');
+  });
+
+  it('treats an auto-filled hline in the last contact column as free space', () => {
+    const withContact = applyLadderCell(blank(), at('n1', 0, 0), no(X(0)));
+    expect(withContact.ok).toBe(true);
+    if (!withContact.ok) return;
+    const withCoil = applyLadderCell(withContact.program, at('n1', 0, COIL_COL), out(Y(0)));
+    expect(withCoil.ok).toBe(true);
+    if (!withCoil.ok) return;
+    const inserted = applyLadderCell(withCoil.program, at('n1', 0, 1), no(X(1)), true);
+    expect(inserted.ok).toBe(true);
+    if (!inserted.ok) return;
+    const net = inserted.program.networks[0]!;
+    expect(cellAt(net, 0, 1)).toEqual(no(X(1)));
+    expect(cellAt(net, 0, COIL_COL - 1)).toEqual(hline());
+    expect(y0WhenX0On(inserted.program)).toBe(false);
+    // X1 も入れれば通電する（押し出された横線がコイルまで繋がったまま）
+    const io = { inputs: [true, true, false, false] };
+    const compiled = compile(inserted.program);
+    expect(compiled.ok).toBe(true);
+    if (!compiled.ok) return;
+    const port = new Io();
+    port.inputs = io.inputs;
+    const runtime = createPlcRuntime(compiled.program, { io: port });
+    runtime.scan();
+    expect(port.outputs[0]).toBe(true);
   });
 });

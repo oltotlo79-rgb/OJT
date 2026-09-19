@@ -88,3 +88,18 @@ export const LEAD_FULL = `M 0 ${WIRE_Y} L ${CELL_W} ${WIRE_Y}`;
 export const LINK_DOWN = `M 0 ${WIRE_Y} L 0 ${CELL_H + WIRE_Y}`;
 /** END の記号（二重線）。 */
 export const END_MARK = [`M 12 ${TOP} L 12 ${BOTTOM}`, `M 18 ${TOP} L 18 ${BOTTOM}`];
+
+/**
+ * 省略された接点列をまたいでコイルへ繋ぐ導線。§10.6
+ *
+ * 表示列数がコイル列より狭いとき（既定は 11 列）、11〜14 列目は描かれないので、最後の接点列と
+ * コイル列は画面上では隣り合う。`applyLadderCell()` が自動で引いた横線でそこが繋がっている行は、
+ * **最後の接点列の桟からコイルの記号まで1本の線**を重ねて、回路が切れていないことを見せる。
+ * `lastContactIndex` は最後の接点列の**表示位置**（0起点。コイル列はその1つ右）、`row` は行番号
+ * （セルと違って行の `<g>` には移動が掛かっていないので、縦位置はこの線自身が持つ）。
+ */
+export function leadAcrossHidden(lastContactIndex: number, row: number): string {
+  const y = row * CELL_H + WIRE_Y;
+  const coilX = (lastContactIndex + 1) * CELL_W;
+  return `M ${lastContactIndex * CELL_W} ${y} L ${coilX + LEFT} ${y}`;
+}

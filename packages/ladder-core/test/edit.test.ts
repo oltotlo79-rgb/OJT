@@ -2,10 +2,12 @@ import { describe, expect, it } from 'vitest';
 import {
   cellAt,
   clearCell,
+  COIL_COL,
   deleteNetwork,
   deleteRow,
   empty,
   endNetwork,
+  fillHlinesToCoil,
   hline,
   insertNetwork,
   insertRow,
@@ -20,6 +22,7 @@ import {
   setVerticalLink,
   X,
   Y,
+  type Cell,
   type LadderProgram,
   type Network,
 } from '../src/index.js';
@@ -148,5 +151,55 @@ describe('連続した編集', () => {
       expect(net.cols).toBe(IR_COLS);
     }
     expect(cellAt(netAt(edited, 0), 1, 0)).toEqual(no(Y(0)));
+  });
+});
+
+describe('fillHlinesToCoil（コイルの自動結線）', () => {
+  /** コイル列（15列目）に出力セルを置いた1行のネットワーク。 */
+  function withCoil(...left: readonly Cell[]): LadderProgram {
+    const row: Cell[] = [...left];
+    while (row.length < COIL_COL) row.push(empty());
+    row.push(out(Y(0)));
+    return program(network('n1', [row]), endNetwork());
+  }
+
+  it('fills every empty cell between the rightmost symbol and the coil', () => {
+    const filled = fillHlinesToCoil(withCoil(no(X(0))), 'n1', 0);
+    const net = netAt(filled, 0);
+    for (let col = 1; col < COIL_COL; col += 1) expect(cellAt(net, 0, col)).toEqual(hline());
+    expect(cellAt(net, 0, 0)).toEqual(no(X(0)));
+    expect(cellAt(net, 0, COIL_COL)).toEqual(out(Y(0)));
+  });
+
+  it('starts at column 0 when the row holds nothing but the coil', () => {
+    const net = netAt(fillHlinesToCoil(withCoil(), 'n1', 0), 0);
+    expect(cellAt(net, 0, 0)).toEqual(hline());
+    expect(cellAt(net, 0, COIL_COL - 1)).toEqual(hline());
+  });
+
+  it('never touches a cell left of the rightmost symbol', () => {
+    const start = withCoil(no(X(0)), empty(), no(X(1)));
+    const net = netAt(fillHlinesToCoil(start, 'n1', 0), 0);
+    // 記号と記号の間の穴はそのまま（勝手に繋がない）
+    expect(cellAt(net, 0, 1)).toEqual(empty());
+    expect(cellAt(net, 0, 3)).toEqual(hline());
+  });
+
+  it('does nothing when the coil column is not an output cell', () => {
+    const start = program(network('n1', [[no(X(0))]]), endNetwork());
+    expect(fillHlinesToCoil(start, 'n1', 0)).toBe(start);
+  });
+
+  it('returns the same program when there is no gap to fill', () => {
+    const start = fillHlinesToCoil(withCoil(no(X(0))), 'n1', 0);
+    expect(fillHlinesToCoil(start, 'n1', 0)).toBe(start);
+  });
+
+  it('leaves the source program untouched and rejects a row outside the network', () => {
+    const start = withCoil(no(X(0)));
+    fillHlinesToCoil(start, 'n1', 0);
+    expect(cellAt(netAt(start, 0), 0, 1)).toEqual(empty());
+    expect(() => fillHlinesToCoil(start, 'n1', 9)).toThrow(LadderError);
+    expect(() => fillHlinesToCoil(start, 'nope', 0)).toThrow(LadderError);
   });
 });

@@ -2,7 +2,9 @@ import {
   cellAt,
   COIL_COL,
   empty,
+  hline,
   IR_COLS,
+  isOutputCell,
   LadderError,
   MAX_ROWS,
   vline,
@@ -152,4 +154,40 @@ export function insertNetwork(
 export function deleteNetwork(program: LadderProgram, networkId: string): LadderProgram {
   const { index } = locate(program, networkId);
   return { networks: program.networks.filter((_net, i) => i !== index) };
+}
+
+/**
+ * コイル列の出力セルと、その左の論理との間を横線で埋める。§10.3
+ *
+ * GX Works3 でコイルを置くと、左にある論理とコイルが**自動で繋がる**。IR の導通は
+ * 「セルが接点・横線・縦線で繋がっているか」だけで決まり（`runtime.ts` の `solve()`）、
+ * 空セルは繋がないので、この穴埋めが無いと訓練者が組んだ回路は決して通電しない
+ * （表示列数が 11 のときは 11〜14 列目にカーソルすら置けず、手で埋めることもできない）。
+ *
+ * 埋めるのは「その行の COIL_COL より左にある最も右の非空セル」から `COIL_COL - 1` までの
+ * **空セルだけ**である（行がまるごと空なら0列目から）。コイル列に出力セル（コイル・タイマ・
+ * カウンタ・MC/MCR）が無い行は何もしない。
+ */
+export function fillHlinesToCoil(
+  program: LadderProgram,
+  networkId: string,
+  row: number,
+): LadderProgram {
+  const { index, net } = locate(program, networkId);
+  assertCellAt(net, row, COIL_COL);
+  if (!isOutputCell(cellAt(net, row, COIL_COL))) return program;
+  let from = 0;
+  for (let col = COIL_COL - 1; col >= 0; col -= 1) {
+    if (cellAt(net, row, col).kind !== 'empty') {
+      from = col + 1;
+      break;
+    }
+  }
+  if (from >= COIL_COL) return program;
+  const cells = net.cells.map((line, r) =>
+    r === row
+      ? line.map((cell, c) => (c >= from && c < COIL_COL && cell.kind === 'empty' ? hline() : cell))
+      : line,
+  );
+  return replaceNetwork(program, index, { ...net, cells });
 }

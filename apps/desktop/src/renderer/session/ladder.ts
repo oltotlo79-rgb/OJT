@@ -4,6 +4,7 @@ import {
   COIL_COL,
   empty,
   endNetwork,
+  fillHlinesToCoil,
   hline,
   insertRow,
   LadderError,
@@ -325,9 +326,15 @@ function guard(run: () => LadderProgram): LadderEditResult {
  * セルを置く。§10.6（`Ins` 挿入・上書きの切換。意図的な差分 #4 ／ レビュー指摘 B6）
  *
  * `insert` が真のときは、カーソルの列からコイル列の**1つ手前**までを右へ1つずらしてから置く
- * （GX Works3 の「挿入」と同じ体感）。押し出される最後の接点列に中身があると、コイル列を
- * 潰してしまうので**置かずに理由を返す**。`edit.ts` に「挿入して右へずらす」操作は無いので、
- * ここで `setCell` の繰り返しとして組む（`edit.ts` は触らない）。
+ * （GX Works3 の「挿入」と同じ体感）。押し出される最後の接点列に**記号**があると、コイル列を
+ * 潰してしまうので**置かずに理由を返す**。自動で引かれた横線（下記）は空きと同じに数える
+ * （ずらしたあと引き直されるため）。`edit.ts` に「挿入して右へずらす」操作は無いので、
+ * ここで `setCell` の繰り返しとして組む。
+ *
+ * 置いたあとは必ず `fillHlinesToCoil()` を通す。コイル列に出力セルがある行は、左の論理と
+ * コイルの間の空セルが横線で埋まり、GX Works3 と同じく**置いた時点で繋がる**（既定の表示列数
+ * 11 では 11〜14 列目にカーソルを置けないので、これが無いと訓練者はどう組んでも通電できない）。
+ * 取り消しは1手（`setLadder()` がこの戻り値を丸ごと履歴に積む）でコイルと横線の両方を戻す。
  */
 export function applyLadderCell(
   program: LadderProgram,
@@ -336,18 +343,27 @@ export function applyLadderCell(
   insert = false,
 ): LadderEditResult {
   if (!insert || cursor.col >= COIL_COL) {
-    return guard(() => setCell(program, cursor.networkId, cursor.row, cursor.col, cell));
+    return guard(() =>
+      fillHlinesToCoil(
+        setCell(program, cursor.networkId, cursor.row, cursor.col, cell),
+        cursor.networkId,
+        cursor.row,
+      ),
+    );
   }
   const net = program.networks.find((n) => n.id === cursor.networkId);
   if (net === undefined) return { ok: false, message: 'ネットワークが見つかりません' };
   return guard(() => {
     const last = cellAt(net, cursor.row, COIL_COL - 1);
-    if (last.kind !== 'empty') throw new LadderError('右端が埋まっているので挿入できません');
+    if (last.kind !== 'empty' && last.kind !== 'hline') {
+      throw new LadderError('右端が埋まっているので挿入できません');
+    }
     let next = program;
     for (let col = COIL_COL - 1; col > cursor.col; col -= 1) {
       next = setCell(next, cursor.networkId, cursor.row, col, cellAt(net, cursor.row, col - 1));
     }
-    return setCell(next, cursor.networkId, cursor.row, cursor.col, cell);
+    next = setCell(next, cursor.networkId, cursor.row, cursor.col, cell);
+    return fillHlinesToCoil(next, cursor.networkId, cursor.row);
   });
 }
 

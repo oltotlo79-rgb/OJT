@@ -1,5 +1,6 @@
 import {
   COIL_COL,
+  empty,
   endNetwork,
   hline,
   IR_COLS,
@@ -20,7 +21,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useStore } from '../src/renderer/app/store.js';
 import type { PlcMonitorSnapshot } from '../src/renderer/app/store-types.js';
 import { LadderGrid } from '../src/renderer/ladder/LadderGrid.js';
-import { CELL_H, WIRE_Y } from '../src/renderer/ladder/symbols.js';
+import { CELL_H, CELL_W, WIRE_Y } from '../src/renderer/ladder/symbols.js';
 import { applyOrContact } from '../src/renderer/session/ladder.js';
 
 // このリポジトリの UI テストの流儀（`globals: false` なので自動クリーンアップは効かない）。
@@ -227,5 +228,34 @@ describe('LadderGrid（§10.7）', () => {
     );
     render(<LadderGrid program={narrow} {...base} gridCols={2} />);
     expect(screen.queryByTestId('hidden-cells-n1')).toBeNull();
+  });
+
+  /**
+   * コイルの自動結線（`applyLadderCell()`）で 11〜14 列目が横線になった行は、画面には出ない。
+   * 最後の接点列からコイルの記号まで桟を1本重ねて、回路が切れていないことを見せる。§10.6
+   */
+  it('draws the rung across the hidden columns and into the coil column', () => {
+    const filled = program(
+      network('n1', [[no(X(0)), ...Array.from({ length: 14 }, () => hline()), out(Y(0))]]),
+      endNetwork(),
+    );
+    render(<LadderGrid program={filled} {...base} gridCols={2} />);
+    const d = screen.getByTestId('rung-to-coil-n1:0').getAttribute('d') ?? '';
+    const endX = Number(/L ([\d.]+) /u.exec(d)?.[1] ?? '0');
+    // 表示は「接点2列＋コイル列」。コイル列の左端は 2 × CELL_W なので、そこを越えて届いている
+    expect(endX).toBeGreaterThan(2 * CELL_W);
+    expect(d.startsWith(`M ${String(CELL_W)} ${String(WIRE_Y)} `)).toBe(true);
+  });
+
+  it('draws no continuation when a hidden column is empty or nothing is hidden', () => {
+    const broken = program(
+      network('n1', [[no(X(0)), hline(), hline(), ...Array.from({ length: 12 }, () => empty())]]),
+      endNetwork(),
+    );
+    render(<LadderGrid program={broken} {...base} gridCols={2} />);
+    expect(screen.queryByTestId('rung-to-coil-n1:0')).toBeNull();
+    cleanup();
+    render(<LadderGrid program={sample()} {...base} gridCols={COIL_COL} />);
+    expect(screen.queryByTestId('rung-to-coil-n1:0')).toBeNull();
   });
 });

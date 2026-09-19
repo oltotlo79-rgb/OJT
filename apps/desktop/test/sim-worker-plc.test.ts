@@ -242,10 +242,7 @@ describe('モニタのスナップショット（決定表#5）', () => {
   });
 
   it('carries the timer preset alongside the elapsed time (Batch 3 レビュー M4)', async () => {
-    const timerLadder = program(
-      network('n1', [rung(no(X(0)), ton(T(0), 3_000))]),
-      endNetwork(),
-    );
+    const timerLadder = program(network('n1', [rung(no(X(0)), ton(T(0), 3_000))]), endNetwork());
     const h = await running(timerLadder);
     h.send({ type: 'plc', action: { kind: 'monitor', on: true } });
     h.advance(100);
