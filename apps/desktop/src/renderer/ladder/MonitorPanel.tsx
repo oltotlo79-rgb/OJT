@@ -41,22 +41,11 @@ export function MonitorPanel({
     <SidePanel title={JA.ladder.monitor} testId="monitor-panel" open>
       <div className={styles.monitorButtons}>
         {/*
-          RUN/STOP の正はツールバー（Task 12 の `extraTools`。決定表#9b）。ここは同じ状態を映す
-          控えなので `data-testid` を分ける（同じ画面に `plc-run` が2つあると Testing Library も
-          Playwright も曖昧になる。レビュー指摘 B5）。
+          RUN/STOP はここには置かない（UI監査 2026-09-20 Important #9）。ツールバー・
+          スキンのツールバー・このパネルの3か所に同じ操作があった。正はスキンの
+          ツールバー（実物のPLCソフトの操作系）1つだけにする。RUN 中かどうかは下の
+          デバイス一覧の見出し（`monitor-stopped` など）でここでも読める。
         */}
-        <button
-          type="button"
-          data-testid="monitor-run"
-          // ラベルが RUN⇄STOP に切り替わるので `aria-pressed` は不要（Batch 3 レビュー M5）
-          onClick={() => {
-            const next = !useStore.getState().plcRunning;
-            useStore.getState().setPlcRunning(next);
-            onPlc({ kind: 'run', on: next });
-          }}
-        >
-          {running ? JA.ladder.stop : JA.ladder.run}
-        </button>
         <button
           type="button"
           data-testid="plc-reset"

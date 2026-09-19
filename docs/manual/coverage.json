@@ -675,12 +675,6 @@
       "section": "mode-d/動きを見る"
     },
     {
-      "testid": "monitor-run",
-      "screen": "練習中（モードD）",
-      "label": "STOP",
-      "section": "mode-d/動きを見る"
-    },
-    {
       "testid": "monitor-scan",
       "screen": "練習中（モードD）",
       "label": "スキャン回数",
@@ -857,12 +851,6 @@
       "internal": "性能の計測値。画面には出ず、試験だけが読む"
     },
     {
-      "testid": "plc-auto-convert",
-      "screen": "練習中（モードD）",
-      "label": "「変換」の操作はありません",
-      "section": "mode-d/変換する"
-    },
-    {
       "testid": "plc-guide",
       "screen": "練習中（モードD）",
       "label": "手順",
@@ -902,12 +890,6 @@
       "testid": "plc-reset",
       "screen": "練習中（モードD）",
       "label": "デバイス初期化",
-      "section": "mode-d/動きを見る"
-    },
-    {
-      "testid": "plc-run",
-      "screen": "練習中（モードD）",
-      "label": "RUN",
       "section": "mode-d/動きを見る"
     },
     {
@@ -1423,6 +1405,10 @@
       "section": "mode-d/別のメーカーの書き方に変える"
     },
     {
+      "testid": "skin-title-note",
+      "internal": "タイトル帯の商標の注記（i印）。親のタイトル帯で説明済み"
+    },
+    {
       "testid": "socket-card",
       "screen": "練習中",
       "label": "ソケット",
@@ -1813,6 +1799,10 @@
       "screen": "練習中",
       "label": "警告",
       "section": "mode-b/うまくいかないとき"
+    },
+    {
+      "testid": "workspace-main",
+      "internal": "ラダー編集エリアの幅を実測するための入れ物。文字も枠も出ない"
     },
     {
       "testid": "zero-disabled-reason",

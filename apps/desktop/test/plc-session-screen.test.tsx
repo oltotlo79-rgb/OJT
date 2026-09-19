@@ -23,6 +23,14 @@ const sent: unknown[] = [];
  */
 const titlePattern = new RegExp(`^${problem.title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`);
 
+/** いま画面が「いまここ」にしている手順のキー一覧（UI監査 2026-09-20 Blocking #7 / B8）。 */
+function currentSteps(): string[] {
+  return screen
+    .getAllByTestId(/^plc-step-/u)
+    .filter((el) => el.getAttribute('data-state') === 'current')
+    .map((el) => el.dataset.testid ?? '');
+}
+
 beforeEach(() => {
   sent.length = 0;
   vi.spyOn(bridge, 'start').mockImplementation(() => undefined);
@@ -121,6 +129,8 @@ describe('モードDのセッション画面（§10.1 / §12.1）', () => {
     expect(screen.getByTestId('plc-step-wire')).toHaveAttribute('data-state', 'anytime');
     // 最初の一歩はキー割当（方言プロファイル）から作る。決定表#12
     expect(screen.getByTestId('plc-hint')).toHaveTextContent('F5');
+    // 「いまここ」はちょうど1つ（UI監査 2026-09-20 Blocking #7 / B8）
+    expect(currentSteps()).toEqual(['plc-step-ladder']);
   });
 
   /** Batch 4+5 レビュー M7: いまの手順だけの案内に絞る（前は常に「ラダー作成」の案内が出ていた）。 */
@@ -138,9 +148,12 @@ describe('モードDのセッション画面（§10.1 / §12.1）', () => {
     expect(screen.getByTestId('plc-hint')).toHaveTextContent('変換します');
   });
 
-  it('says why the judge button is disabled and shows RUN/STOP as text', () => {
+  /*
+   * 押せない理由は判定ボタンの `title` に一本化した（`refuses to judge...` テストが縛る）ので、
+   * `plc-hint` はいまの手順の案内だけを見る（UI監査 2026-09-20 Important #10 / I20）。
+   */
+  it('shows RUN/STOP as text in the status chip', () => {
     render(<SessionRoute />);
-    expect(screen.getByTestId('plc-hint')).toHaveTextContent('判定できません');
     expect(screen.getByTestId('plc-run-status')).toHaveTextContent('停止中');
     expect(screen.getByTestId('plc-ladder-mode')).toHaveTextContent('書込モード');
     act(() => {
@@ -149,16 +162,50 @@ describe('モードDのセッション画面（§10.1 / §12.1）', () => {
     expect(screen.getByTestId('plc-run-status')).toHaveTextContent('運転中');
   });
 
-  /** Batch 4+5 レビュー M8: 判定はRUNを要らない。変換済みなら「いまここ」にする。 */
-  it('marks the judge step current once converted, even before RUN (Batch 4+5 レビュー M8)', () => {
+  /*
+   * UI監査 2026-09-20 Blocking #7 / B8: 以前は「ラダー作成」「モニタ開始RUN」「判定」の
+   * 3段が同時に「いまここ」になり得た（`setConverted(true)` だけで、何も書いていなくても
+   * `judge` が「いまここ」になっていた）。いまは決まった順で1つずつ進む。
+   */
+  it('keeps exactly one current step, in order: ladder → convert → run → judge', () => {
     render(<SessionRoute />);
-    expect(screen.getByTestId('plc-step-judge')).toHaveAttribute('data-state', 'todo');
+    expect(currentSteps()).toEqual(['plc-step-ladder']);
+
+    act(() => {
+      useStore.getState().setLadder(program(network('n1', [[no(X(0))]]), endNetwork()));
+    });
+    expect(currentSteps()).toEqual(['plc-step-convert']);
+
     act(() => {
       useStore.getState().setConverted(true, NO_CONVERT_ISSUES);
     });
-    expect(screen.getByTestId('plc-step-judge')).toHaveAttribute('data-state', 'current');
+    // 変換済み・RUN前は「モニタ開始RUN」がいまの手順（判定はまだ先）。判定はRUNを要らない
+    // ので、ボタン自体は押せる（Batch 4+5 レビュー M8 は維持する）。
+    expect(currentSteps()).toEqual(['plc-step-run']);
     expect(useStore.getState().plcRunning).toBe(false);
     expect(screen.getByTestId('judge-button')).not.toBeDisabled();
+
+    act(() => {
+      useStore.getState().setPlcRunning(true);
+    });
+    expect(currentSteps()).toEqual(['plc-step-judge']);
+  });
+
+  /**
+   * UI監査 2026-09-20 Blocking #7 / B8 の再現ケース。「変換」を持たないスキン（OMRON）は
+   * 課題を開いた瞬間の空のラダーでも自動変換が通ってしまうが、それは「ラダー作成」を
+   * 終えたことにはならない。
+   */
+  it('does not let an auto-converted empty ladder skip the ladder step (OMRON / Blocking #7)', () => {
+    render(<SessionRoute />);
+    act(() => {
+      useStore.getState().switchDialect('omron');
+    });
+    expect(useStore.getState().dialectId).toBe('omron');
+    expect(useStore.getState().converted).toBe(true); // 自動変換は通っている
+    expect(currentSteps()).toEqual(['plc-step-ladder']);
+    expect(screen.getByTestId('plc-step-run')).toHaveAttribute('data-state', 'todo');
+    expect(screen.getByTestId('plc-step-judge')).toHaveAttribute('data-state', 'todo');
   });
 
   /** Batch 4+5 レビュー B1: 決定表#7の静的な1行は判定データではないので常に出す。 */

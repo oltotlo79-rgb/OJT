@@ -38,9 +38,18 @@
   outline-color: #1e64ff;
 }
 
+/*
+ * UI監査 2026-09-20 Blocking #1 / #2: 1280×800 でモードDが1列に積まれたとき、外側の
+ * `.plcLayout` の行の高さ（`screens.module.css` の `clamp(...)`）はいつも十分でも、
+ * `.workspace` → `.workspaceBody` → `.workspaceMain` → `.editor` と挟む段が多く、
+ * ツールバーの折返しや出力ウィンドウの高さ次第では格子（この箱）が約35pxまで潰れて
+ * 編集できなくなっていた。`flex: 1 1 auto` に任せず、**5行ぶん**（いちばん行が高い
+ * OMRON風48px × 5 ＝ 240px ＋ 見出し・余白）を下限として保証する。1280×800・1440×900の
+ * どちらでもこれを下回らないことを `ladder-layout.test.tsx` が縛る。
+ */
 .gridScroll {
   flex: 1 1 auto;
-  min-height: 0;
+  min-height: 300px;
   overflow: auto;
   background: var(--skin-canvas, #f7f8fa);
   color: var(--ladder-fg);
@@ -176,9 +185,12 @@
   stroke-linejoin: round;
 }
 
-/* 角括弧 `[SET Y0]` と命令ボックスの1行目（命令語）。 */
+/*
+ * 角括弧 `[SET Y0]` と命令ボックスの1行目（命令語）。UI監査 2026-09-20 の11px下限
+ * （画面上11px未満の文字は禁止）に合わせ、10px → 11px にした。
+ */
 .frameText {
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
 }
 
@@ -190,10 +202,13 @@
   font-size: 9px;
 }
 
-/* 左の行番号欄（右詰め。回路ブロックの先頭行にだけ出る）。 */
+/*
+ * 左の行番号欄（右詰め。回路ブロックの先頭行にだけ出る）。UI監査 2026-09-20 の11px下限に
+ * 合わせ、10px → 11px にした。
+ */
 .stepText {
   text-anchor: end;
-  font-size: 10px;
+  font-size: 11px;
   fill: var(--skin-preset, #555);
 }
 
@@ -272,6 +287,8 @@
   font: inherit;
   min-width: 0;
   padding: 2px 4px;
+  /* UI監査 2026-09-20: クリック対象は24px以上（デザイン規則）。デバイスコメント欄などが未達だった */
+  min-height: 24px;
 }
 
 .inputError {
@@ -607,6 +624,16 @@ details[open] > .sideSummary::before {
   cursor: pointer;
   font: inherit;
   text-align: left;
+  /*
+   * UI監査 2026-09-20 Important #10: `n1` / `end` のような短い名前でも、ツリーの幅
+   * （`--ladder-tree-w`。狭い画面では 116px）次第で2文字の間に改行が入っていた
+   * （「高さ30px/行送り14px」＝2行）。回路ブロック名は短い識別子なので折り返す意味が無い。
+   */
+  white-space: nowrap;
+  /* UI監査 2026-09-20: クリック対象は24px以上（デザイン規則）。密なツリーでも最低限確保する */
+  min-height: 24px;
+  display: flex;
+  align-items: center;
 }
 
 .treeList button[aria-current='true'] {
@@ -683,13 +710,45 @@ details[open] > .sideSummary::before {
 }
 
 .titleBarName {
+  flex: 0 0 auto;
   font-weight: 700;
+  white-space: nowrap;
 }
 
-.titleBarNote {
+/*
+ * 課題名込みの正式名（例: 「三菱電機 MELSEC iQ-F FX5U（GX Works3風）」）。UI監査
+ * 2026-09-20 Blocking #1 / I22: 24px固定の帯に3つの文字列を並べていたため、狭い画面では
+ * 折り返して2行になっていた。折り返さず、入りきらない分は `…` に省略する（全文は
+ * `title` で読める）。
+ */
+.titleBarModel {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/*
+ * 商標の案内（各社の商標はアプリの設定画面を見よ、という定型の注記）は常に読む必要が
+ * 無いので、文字のままではなく小さな「i」印に畳む（UI監査 2026-09-20 I22）。全文は
+ * `title` / `aria-label` で読める。文字ではなく印にしたことで、24px固定の帯を圧迫しない
+ * （画面上11px未満の文字だったのもこれで解消する）。
+ */
+.titleBarInfo {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
   margin-left: auto;
-  font-size: 10px;
-  opacity: 0.85;
+  border: 1px solid rgb(255 255 255 / 60%);
+  border-radius: 50%;
+  font-size: 11px;
+  font-style: italic;
+  line-height: 1;
+  cursor: default;
 }
 
 .statusBar {
@@ -706,15 +765,6 @@ details[open] > .sideSummary::before {
 
 .statusItem {
   white-space: nowrap;
-}
-
-/*
- * 実機の操作パネルにあるが動かない項目（決定表#4）。`opacity` で薄めると押せるボタンなのに
- * 「無効」に見えてしまう（レビュー M12）。地の色は変えず、文字だけ淡色にする。
- */
-.vendorTool {
-  color: var(--muted, #9aa4b5);
-  font-style: italic;
 }
 
 /*

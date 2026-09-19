@@ -12,6 +12,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useStore } from '../src/renderer/app/store.js';
 import { LadderWorkspace } from '../src/renderer/ladder/LadderWorkspace.js';
 import { SKIN_THEMES } from '../src/renderer/ladder/skins/index.js';
+import { toolbarItems } from '../src/renderer/session/plc-skin.js';
 
 const problem = BUILTIN_PLC_PROBLEMS[0]!;
 
@@ -37,15 +38,22 @@ function workspace(profile = MITSUBISHI_FX5U, onPlc = vi.fn()): typeof onPlc {
 }
 
 describe('スキンごとのツールバー（§10.6 / §16 Phase 4 受入基準①）', () => {
-  it('draws exactly the labels the skin names, in order', () => {
+  /**
+   * UI監査 2026-09-20 Important #9: `vendor-only`（押しても何も起きない実機だけの項目。
+   * 決定表#4）はもう出さない。出るのは実際に動く項目の分だけ、スキンが名乗る順のまま。
+   */
+  it('draws exactly the labels the skin names, minus the vendor-only decorations, in order', () => {
     for (const profile of [MITSUBISHI_FX5U, OMRON_CP1E, JTEKT_PC10G, SHARP_JW300]) {
       cleanup();
       workspace(profile);
+      const expectedLabels = toolbarItems(profile)
+        .filter((item) => item.action !== 'vendor-only')
+        .map((item) => item.label);
       const labels = screen
         .getAllByTestId(/^toolbar-/u)
         .map((button) => button.textContent)
-        .slice(0, profile.panels.toolbar.length);
-      expect(labels, profile.id).toEqual([...profile.panels.toolbar]);
+        .slice(0, expectedLabels.length);
+      expect(labels, profile.id).toEqual(expectedLabels);
     }
   });
 
@@ -64,16 +72,17 @@ describe('スキンごとのツールバー（§10.6 / §16 Phase 4 受入基準
     expect(screen.getByTestId('toolbar-convert')).toHaveTextContent('変換');
   });
 
-  it('explains the PCwin-only buttons instead of doing nothing (決定表#4)', () => {
+  it('drops the PCwin-only decorations instead of showing dead buttons (UI監査 2026-09-20 Important #9)', () => {
     workspace(JTEKT_PC10G);
-    const jp1 = screen.getByTestId('toolbar-vendor-only');
-    expect(jp1).toHaveTextContent('JP1');
-    act(() => {
-      fireEvent.click(jp1);
-    });
-    expect(useStore.getState().toasts.at(-1)?.text).toContain('本アプリでは動作しません');
-    // 2つ目以降は位置つきで引ける
-    expect(screen.getByTestId('toolbar-vendor-only-1')).toHaveTextContent('DGR');
+    expect(screen.queryByTestId('toolbar-vendor-only')).toBeNull();
+    expect(screen.queryByTestId('toolbar-vendor-only-1')).toBeNull();
+    for (const label of ['JP1', 'DGR', 'MOB', 'RDY']) {
+      expect(screen.queryByText(label)).toBeNull();
+    }
+    // 実際に動く項目（STP／RUN／RES）はそのまま出る
+    expect(screen.getByTestId('toolbar-plc-stop')).toHaveTextContent('STP');
+    expect(screen.getByTestId('toolbar-plc-run')).toHaveTextContent('RUN');
+    expect(screen.getByTestId('toolbar-plc-reset')).toHaveTextContent('RES');
   });
 
   it('sends run / stop / reset from the PCwin buttons', () => {
@@ -97,7 +106,11 @@ describe('スキンの枠（利用者要求: 実物に近い画面）', () => {
   it('names the tool in the title bar, with 風 and the trademark note', () => {
     workspace(OMRON_CP1E);
     expect(screen.getByTestId('skin-title')).toHaveTextContent('CX-Programmer 風');
-    expect(screen.getByTestId('skin-title')).toHaveTextContent('商標');
+    // UI監査 2026-09-20 I22: 商標の注記は常時の文字ではなく「i」印に畳んだ（タイトル帯が
+    // 24px固定のまま3列とも2行に折れていた）。全文は title / aria-label で読める。
+    const note = screen.getByTestId('skin-title-note');
+    expect(note).toHaveAttribute('title', expect.stringContaining('商標'));
+    expect(note).toHaveAttribute('aria-label', expect.stringContaining('商標'));
   });
 
   it('pushes the skin colours in as CSS variables, once, on the workspace', () => {

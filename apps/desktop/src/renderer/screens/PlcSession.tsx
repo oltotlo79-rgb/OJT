@@ -87,7 +87,14 @@ function ladderHintText(profile: DialectProfile): string {
     .map((action) => profile.shortcuts.find((entry) => entry.action === action))
     .filter((entry) => entry !== undefined)
     .map((entry) => `${entry.keys}＝${entry.label}`);
-  return keys.length === 0 ? JA.plc.ladderHint : `${JA.plc.ladderHint}: ${keys.join(' ／ ')}`;
+  const base = keys.length === 0 ? JA.plc.ladderHint : `${JA.plc.ladderHint}: ${keys.join(' ／ ')}`;
+  /*
+   * 「変換」の操作を持たないメーカー（決定表#3）の説明は、以前は帯に別行として常に出していた
+   * （句読点無しで手順の案内と続いてしまい読みにくかった。UI監査 2026-09-20 Important #10 /
+   * I20）。手順帯は「いまの手順の1行だけ」にするため、最初の手順（ラダー作成）の案内に
+   * 句点で区切って添える。
+   */
+  return autoConvert(profile) ? `${base}。${JA.plc.stepConvertAuto}` : base;
 }
 
 /** 「変換」の手順の案内（Batch 4+5 レビュー M7 / M9）。 */
@@ -483,18 +490,18 @@ export function PlcSession(): JSX.Element {
    * （決定表#7: セッション中に合否を漏らさない）。「配線」はいつでも行える作業として
    * 完了印を出さない。
    *
-   * 「判定」は RUN を必要としない（判定は静的チェック＋波形の比較で、RUN 中である必要は無い。
-   * Batch 4+5 レビュー M8）ので、変換済みなら「いまここ」にする。
+   * 「いまここ」は必ず1つだけにする（UI監査 2026-09-20 Blocking #7 / B8）。決まった順
+   * （ラダー作成 → 変換 → モニタ開始RUN → 判定）で、まだ終わっていない**最初の**手順だけを
+   * 「いまここ」にし、その手前は「済」、その先は「これから」にする。
+   *
+   * 以前は「ラダー作成」「モニタ開始RUN」「判定」の3段が同時に「いまここ」になることがあった:
+   * 「変換」の無いスキン（自動変換）は課題を開いた瞬間の**空のラダー**でも変換が通ってしまい
+   * （`converted` が真になる）、`ladder`（未着手）・`run`（変換済み・未RUN）・`judge`
+   * （変換済みなら判定可）がそれぞれ独立に「いまここ」の条件を満たしていた。ここでは
+   * 「先の手順が終わっているか」を順番に見ていき、**最初に終わっていない手順で止める**ことで、
+   * 空のラダーの自動変換がまだ「ラダー作成」を終えたことにはならないようにする。
    */
   const written = hasLadderContent(ladder);
-  const stepState: Readonly<Record<PlcStepKey, StepState>> = {
-    wire: 'anytime',
-    ladder: written ? 'done' : 'current',
-    convert: converted ? 'done' : written ? 'current' : 'todo',
-    // 「変換」の無いスキンは、ラダーを書いた時点で（自動変換が通れば）運転へ進める
-    run: plcRunning ? 'done' : converted ? 'current' : 'todo',
-    judge: readiness.ok && modelKnown ? 'current' : 'todo',
-  };
   const stepLabel: Readonly<Record<PlcStepKey, string>> = {
     wire: JA.plc.stepWire,
     ladder: JA.plc.stepLadder,
@@ -502,13 +509,32 @@ export function PlcSession(): JSX.Element {
     run: JA.plc.stepRun,
     judge: JA.plc.stepJudge,
   };
+  /** 「judge」は本画面の中では完了しない（判定に成功すると結果画面へ遷移する）。 */
+  const stepDone: Readonly<Record<Exclude<PlcStepKey, 'wire'>, boolean>> = {
+    ladder: written,
+    convert: converted,
+    run: plcRunning,
+    judge: false,
+  };
   /** 「変換」を持たないメーカーではその段を落とす（決定表#3）。 */
-  const steps = skinStepKeys(profile).map((key) => ({
-    key,
-    label: stepLabel[key],
-    state: stepState[key],
-  }));
-  const currentStepKey = steps.find((step) => step.state === 'current')?.key;
+  let currentStepKey: PlcStepKey | undefined;
+  let currentFound = false;
+  const steps: { key: PlcStepKey; label: string; state: StepState }[] = [];
+  for (const key of skinStepKeys(profile)) {
+    let state: StepState;
+    if (key === 'wire') {
+      state = 'anytime';
+    } else if (currentFound) {
+      state = 'todo';
+    } else if (stepDone[key]) {
+      state = 'done';
+    } else {
+      state = 'current';
+      currentFound = true;
+      currentStepKey = key;
+    }
+    steps.push({ key, label: stepLabel[key], state });
+  }
 
   /** 元に戻す／やり直し（盤のみ。ラダーは `Ctrl+Z` がエディタで処理する。決定表#3） */
   const restore = (step: ReturnType<typeof undoHistory>, verb: string): void => {
@@ -575,25 +601,6 @@ export function PlcSession(): JSX.Element {
                 {label}
               </button>
             ))}
-            {/*
-              RUN/STOP は**盤だけを見ているときも押せる**必要がある（決定表#9b）。`MonitorPanel`
-              の中にしか無いと `board` 表示のあいだ画面から消え、配線してから RUN にする動線が
-              切れる（レビュー指摘 B5）。ここが正で、`MonitorPanel` 側は同じ状態を映す控えである。
-            */}
-            <button
-              type="button"
-              className={styles.plcToolButton}
-              data-testid="plc-run"
-              aria-pressed={plcRunning}
-              title={JA.ladder.runStopTitle}
-              onClick={() => {
-                const next = !useStore.getState().plcRunning;
-                useStore.getState().setPlcRunning(next);
-                onPlc({ kind: 'run', on: next });
-              }}
-            >
-              {plcRunning ? JA.ladder.stop : JA.ladder.run}
-            </button>
           </>
         }
         onMode={(next) => {
@@ -731,20 +738,14 @@ export function PlcSession(): JSX.Element {
             {JA.plc.statusPlc}: {plcRunning ? JA.plc.statusRunning : JA.plc.statusStopped}
           </span>
         </div>
+        {/*
+          UI監査 2026-09-20 Important #10 / I20: 以前はここに「判定できません: …」（押せない
+          理由）・いまの手順の案内・「変換」の無いメーカーの注記の最大3つを区切りなしで並べて
+          いたため、2文が続けて読めない状態になっていた。押せない理由は判定ボタンの `title`
+          （`judgeTitle`）で読めるので、帯には**いまの手順の案内だけ**を1行で出す。
+        */}
         <p className={styles.plcHint} data-testid="plc-hint">
-          {readiness.ok && modelKnown ? null : (
-            <span className={styles.plcBlocked}>
-              {JA.plc.judgeBlocked}: {judgeTitle}
-            </span>
-          )}
           {stepHintText(currentStepKey, profile)}
-          {/*
-            「変換」の段が手順から落ちるメーカーでは、落ちている理由をその場で読めるようにする
-            （2026-09-19 の利用者決定「分かりやすく直感的に」。決定表#3）
-          */}
-          {autoConvert(profile) ? (
-            <span data-testid="plc-auto-convert">{JA.plc.stepConvertAuto}</span>
-          ) : null}
         </p>
       </div>
 

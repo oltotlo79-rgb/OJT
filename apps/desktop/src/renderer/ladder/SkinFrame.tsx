@@ -67,8 +67,25 @@ export function SkinTitleBar({
   return (
     <div className={styles.titleBar} data-testid="skin-title">
       <span className={styles.titleBarName}>{theme.titleBar}</span>
-      <span>{profile.displayName}</span>
-      <span className={styles.titleBarNote}>{JA.ladder.skinTitleNote}</span>
+      {/*
+        型式込みの正式名は長いので折り返さず省略する（UI監査 2026-09-20 Blocking #1 /
+        I22）。全文は `title` で読める。
+      */}
+      <span className={styles.titleBarModel} title={profile.displayName}>
+        {profile.displayName}
+      </span>
+      {/*
+        商標の注記は常時は文字を出さず「i」印に畳む（I22）。全文は `title` /
+        `aria-label` で読める。
+      */}
+      <span
+        className={styles.titleBarInfo}
+        data-testid="skin-title-note"
+        title={JA.ladder.skinTitleNote}
+        aria-label={JA.ladder.skinTitleNote}
+      >
+        i
+      </span>
     </div>
   );
 }

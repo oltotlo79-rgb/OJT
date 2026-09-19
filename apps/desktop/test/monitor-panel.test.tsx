@@ -94,14 +94,10 @@ describe('モニタ一覧（§10.7）', () => {
     expect(note).not.toHaveTextContent('4.7');
   });
 
-  it('runs and stops the PLC through the worker (ツールバーの控え。決定表#9b)', () => {
-    const onPlc = panel();
-    fireEvent.click(screen.getByTestId('monitor-run'));
-    expect(onPlc).toHaveBeenCalledWith({ kind: 'run', on: true });
-    expect(useStore.getState().plcRunning).toBe(true);
-    fireEvent.click(screen.getByTestId('monitor-run'));
-    expect(onPlc).toHaveBeenCalledWith({ kind: 'run', on: false });
-    expect(useStore.getState().plcRunning).toBe(false);
+  /** UI監査 2026-09-20 Important #9: RUN/STOP の重複を消した。正はスキンのツールバー1つだけ。 */
+  it('has no RUN/STOP button of its own any more (UI監査 Important #9)', () => {
+    panel();
+    expect(screen.queryByTestId('monitor-run')).toBeNull();
   });
 
   it('explains why nothing moves while the PLC is stopped', () => {

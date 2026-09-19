@@ -59,6 +59,19 @@ describe('GX Works3風の枠（§10.6 / §17）', () => {
     expect(onPlc).toHaveBeenCalledWith({ kind: 'load', program: useStore.getState().ladder });
   });
 
+  /**
+   * UI監査 2026-09-20 Important #9 / I2: 「変換に成功しました」が出力ウィンドウとトーストの
+   * 2か所に同時に出ていた。出力ウィンドウの見出し（`convert-state`）だけに一本化する。
+   */
+  it('does not toast on a successful convert (the output window already says so)', () => {
+    workspace();
+    const before = useStore.getState().toasts.length;
+    fireEvent.click(screen.getByTestId('toolbar-convert'));
+    expect(useStore.getState().converted).toBe(true);
+    expect(useStore.getState().toasts).toHaveLength(before);
+    expect(screen.getByTestId('convert-state')).toHaveTextContent('変換に成功');
+  });
+
   it('keeps the ladder unconverted and lists the reason when it fails', () => {
     const onPlc = workspace();
     // コイルを接点列に置くと `coil-column` で落ちる（空のラダーそのものは変換を通る）

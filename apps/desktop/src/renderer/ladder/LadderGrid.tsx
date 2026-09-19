@@ -8,14 +8,14 @@ import {
   type LadderProgram,
   type Network,
 } from '@ojt/ladder-core';
-import type { DialectProfile } from '@ojt/plc-dialects';
+import { MIN_GRID_COLS, type DialectProfile } from '@ojt/plc-dialects';
 import { memo, useRef, type JSX } from 'react';
 import { useStore } from '../app/store.js';
 import { JA } from '../i18n/ja.js';
 import { counterPresetText } from '../session/ladder-cell.js';
 import type { LadderCursor, LadderEditorMode } from '../session/ladder.js';
 import { skinMonitorColor } from '../session/plc-skin.js';
-import type { SkinTheme } from './skins/index.js';
+import type { SkinCell, SkinTheme } from './skins/index.js';
 import {
   END_SYMBOL_ID,
   MC_SYMBOL_ID,
@@ -78,6 +78,34 @@ export function commentLines(text: string, lines: number, perLine: number): stri
 export function displayColumns(gridCols: number): number[] {
   const contacts = Math.min(Math.max(gridCols, 1), COIL_COL);
   return [...Array.from({ length: contacts }, (_unused, i) => i), COIL_COL];
+}
+
+/** `.gridScroll` の左右パディング（`ladder.module.css` の `padding: 6px 8px 24px`）。 */
+const GRID_SCROLL_PAD_X = 16;
+
+/**
+ * ペインの実測幅に収まる接点列数（UI監査 2026-09-20 Blocking #6 / B6）。
+ *
+ * 1440px 幅では、スキンの既定列数（11）ぶんの格子（母線・行番号欄・コイル列を含む）が
+ * ラダーのペインより広く、横スクロールに出したコイル列が画面外に出ていた。ここでは
+ * `LadderWorkspace` が実測したペイン幅（`.workspaceMain` の幅。`.gridScroll` 自身と同じ
+ * 内寸を持つ）に収まる列数まで**接点列だけ**を削り、コイル列は常に画面内に収める。
+ *
+ * 実測できない（`availableWidthPx` が未測定・0以下）ときは元の列数をそのまま返す
+ * （jsdom で `getBoundingClientRect()` が全て0を返すテストでも、既存の見た目を変えない）。
+ * `MIN_GRID_COLS`（8列）より狭くはしない——それでも足りない幅は、1280px の1列レイアウトが
+ * 十分な幅を渡すので実際には起きない（`ladder-layout.test.tsx` の `gridWidth()` 参照）。
+ */
+export function fitGridCols(
+  requestedCols: number,
+  availableWidthPx: number | undefined,
+  cell: Pick<SkinCell, 'stepGutterPx' | 'widthPx'>,
+): number {
+  if (availableWidthPx === undefined || availableWidthPx <= 0) return requestedCols;
+  const chrome = cell.stepGutterPx + RAIL_W + RIGHT_RAIL_SPAN + GRID_SCROLL_PAD_X;
+  const maxCols = Math.floor((availableWidthPx - chrome) / cell.widthPx) - 1; // コイル列ぶんを引く
+  if (maxCols >= requestedCols) return requestedCols;
+  return Math.max(MIN_GRID_COLS, maxCols);
 }
 
 /**

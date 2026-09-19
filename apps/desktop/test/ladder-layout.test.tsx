@@ -1,10 +1,12 @@
 import { BUILTIN_PLC_PROBLEMS } from '@ojt/content';
+import { COIL_COL } from '@ojt/ladder-core';
 import { MITSUBISHI_FX5U } from '@ojt/plc-dialects';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useStore } from '../src/renderer/app/store.js';
+import { fitGridCols } from '../src/renderer/ladder/LadderGrid.js';
 import { LadderWorkspace } from '../src/renderer/ladder/LadderWorkspace.js';
 import { CELL_W } from '../src/renderer/ladder/symbols.js';
 import { PLC_VIEW_ASPECT } from '../src/renderer/three/camera.js';
@@ -233,5 +235,77 @@ describe('分割レイアウトの列（UXレビュー #27）', () => {
     ] as const) {
       expect(gridWidth(vw, vh), `${String(vw)}×${String(vh)}`).toBeGreaterThan(gridWidthBefore(vw));
     }
+  });
+});
+
+/**
+ * UI監査 2026-09-20 Blocking #1 / #2 / #6（`REPORT.md` の修正バッチD）。
+ *
+ *   - B2: 1280×800 で1列に積まれたとき、`.plcLayout` の行の高さは十分でも `.workspace` の
+ *     中（ツールバーの折返し・出力ウィンドウの高さ次第）で格子が約35pxまで潰れ、編集できなく
+ *     なっていた。`.gridScroll` に**5行ぶん**の下限（`min-height`）を持たせて防ぐ。
+ *   - B6: 1440×900 の分割表示では格子（`gridWidth(1440,900)` ＝ 530px、既定11列に要る
+ *     621px に届かない）が横スクロールになり、置いたコイルが画面外に出ていた。ペインの実測幅に
+ *     収まる接点列数まで削り、コイル列を常に画面内に収める（`fitGridCols()`）。
+ */
+describe('モードDが編集不能にならない下限（UI監査 2026-09-20 Blocking #1 / #2 / #6）', () => {
+  it('gives the ladder grid a floor of about 5 rows, so it never collapses (Blocking #1 / #2)', () => {
+    // いちばん行が高い OMRON 風（48px）でも 5 行 ＝ 240px。見出し・余白を足した下限を持つ。
+    expect(LADDER_CSS).toMatch(/\.gridScroll\s*\{[^}]*min-height:\s*300px/u);
+    expect(300).toBeGreaterThanOrEqual(48 * 5);
+  });
+
+  it('fitGridCols shrinks the contact columns just enough to keep the coil column on screen (Blocking #6)', () => {
+    const cell = { stepGutterPx: 24, widthPx: CELL_W };
+    // 1440×900 相当（分割表示の格子幅 ≈ 530px。上の `gridWidth(1440, 900)` と同じ値）では
+    // 既定の11列（コイル込み12列 ＝ 621px）が入りきらないので削る。
+    const at1440 = fitGridCols(11, 530, cell);
+    expect(at1440).toBeLessThan(11);
+    expect(at1440).toBeGreaterThanOrEqual(8); // MIN_GRID_COLS より下げない
+    // 削った列数でもコイル列ぶん＋母線・行番号欄が530pxに収まる
+    expect(24 + 3 + (at1440 + 1) * CELL_W + 2 + 16).toBeLessThanOrEqual(530);
+
+    // 1920×1080 相当（格子幅 633px）では既定のまま収まるので削らない
+    expect(fitGridCols(11, 633, cell)).toBe(11);
+
+    // 実測できない（jsdom の既定である0、または未測定）ときは既定の列数のまま
+    expect(fitGridCols(11, undefined, cell)).toBe(11);
+    expect(fitGridCols(11, 0, cell)).toBe(11);
+  });
+
+  it('actually renders fewer contact columns once the pane is measured as narrow, and still draws the coil (integration)', () => {
+    workspace();
+    const main = screen.getByTestId('workspace-main');
+    // happy-dom は実寸を測らないので、既存のチャートのテストと同じ流儀で上書きする
+    // （`test/chart-ux.test.tsx` の `fakeRect`）。
+    Object.defineProperty(main, 'getBoundingClientRect', {
+      configurable: true,
+      value: () => ({
+        x: 0,
+        y: 0,
+        left: 0,
+        top: 0,
+        right: 530,
+        bottom: 400,
+        width: 530,
+        height: 400,
+        toJSON: () => ({}),
+      }),
+    });
+    // マウント時の実測（0px）から測り直させる
+    fireEvent(window, new Event('resize'));
+
+    const effective = fitGridCols(11, 530, { stepGutterPx: 24, widthPx: CELL_W });
+    expect(effective).toBeLessThan(11);
+    // 削った接点列の**次**（表示していない接点列。IR の列番号そのもの）はもう描かれない
+    expect(screen.queryByTestId(`cell-n1:0:${String(effective)}`)).toBeNull();
+    // 最後に残った接点列は描かれている
+    expect(screen.getByTestId(`cell-n1:0:${String(effective - 1)}`)).toBeInTheDocument();
+    // 列を削ってもコイル列（IR の最終列。表示位置に関わらず番号は変わらない）は必ず描く
+    expect(screen.getByTestId(`cell-n1:0:${String(COIL_COL)}`)).toBeInTheDocument();
+    // 格子（svg）の実測できる幅は測ったペイン幅を超えない
+    const svg = screen.getByTestId('network-n1').querySelector('svg');
+    const width = Number(svg?.getAttribute('width') ?? NaN);
+    expect(width).toBeLessThanOrEqual(530);
   });
 });

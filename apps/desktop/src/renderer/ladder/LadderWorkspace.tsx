@@ -12,7 +12,15 @@ import {
   type Network,
 } from '@ojt/ladder-core';
 import { instructionList, INSTRUCTION_LIST_MESSAGES, type DialectProfile } from '@ojt/plc-dialects';
-import { useCallback, useEffect, useMemo, useRef, useState, type JSX } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type JSX,
+} from 'react';
 import type { PlcCommandAction } from '../../worker/protocol.js';
 import { ojtApi } from '../app/ojt-api.js';
 import { useStore } from '../app/store.js';
@@ -28,6 +36,7 @@ import {
 import { CommentPanel } from './CommentPanel.js';
 import { IoTable } from './IoTable.js';
 import { LadderEditor } from './LadderEditor.js';
+import { fitGridCols } from './LadderGrid.js';
 import { MonitorPanel } from './MonitorPanel.js';
 import { NotationDialog } from './NotationDialog.js';
 import { OutputWindow } from './OutputWindow.js';
@@ -96,6 +105,26 @@ export function LadderWorkspace({
     () => skinCssVars(profile, theme, monitorColor),
     [profile, theme, monitorColor],
   );
+  /*
+   * UI監査 2026-09-20 Blocking #6 / B6: 1440px 幅では格子が横スクロールになり、置いた
+   * コイルが画面外に出ていた。`.workspaceMain`（`.gridScroll` と同じ内寸を持つ、水平方向に
+   * 余白の無い祖先）の実測幅から、コイル列を含めて画面に収まる接点列数を出す。
+   * ウィンドウの大きさが変わるたびに測り直す（測れない・変わらないときは何もしない）。
+   */
+  const workspaceMainRef = useRef<HTMLDivElement>(null);
+  const [paneWidth, setPaneWidth] = useState<number | undefined>(undefined);
+  useLayoutEffect(() => {
+    const measure = (): void => {
+      const width = workspaceMainRef.current?.getBoundingClientRect().width;
+      setPaneWidth(width !== undefined && width > 0 ? width : undefined);
+    };
+    measure();
+    window.addEventListener('resize', measure);
+    return () => {
+      window.removeEventListener('resize', measure);
+    };
+  }, []);
+  const effectiveGridCols = fitGridCols(gridCols, paneWidth, theme.cell);
   const io = useMemo(() => resolvePlcIo(problem.io), [problem]);
   /** 機種の端子名はここから引く（決定表#16）。課題の機種が未対応なら FX5U に倒す。 */
   const unit = useMemo(() => plcUnitFor(problem.plc.model) ?? PLC_UNIT_FX5U, [problem]);
@@ -116,6 +145,11 @@ export function LadderWorkspace({
    * 「変換」。成功したときだけ Worker へ載せる（H-1）。§10.6
    * `silent` は自動変換（`convertStep: false` のスキン）から呼ぶとき。結果は出力ウィンドウに
    * 出るので、編集のたびにトーストを積まない（決定表#3）。
+   *
+   * 成功したときのトーストは出さない（UI監査 2026-09-20 Important #9 / I2）。出力ウィンドウの
+   * 見出し（`OutputWindow` の `convert-state`）が同じ「変換に成功しました」を常に出しており、
+   * 同じ文言が画面に2か所同時に出ていた。失敗は出力ウィンドウの行が「どこが」までは教えるが
+   * 「押した操作が失敗した」こと自体はトーストでも知らせる価値があるので、失敗側は残す。
    */
   const convert = useCallback(
     (options: { silent?: boolean } = {}): void => {
@@ -129,7 +163,6 @@ export function LadderWorkspace({
         return;
       }
       onPlcRef.current({ kind: 'load', program: current });
-      if (options.silent !== true) store.toast(JA.ladder.convertOk);
     },
     [profile],
   );
@@ -298,8 +331,15 @@ export function LadderWorkspace({
     }
   };
 
-  // ツールバーの項目はスキン（方言IDの対応表）から引く。位置で対応させない（決定表#2）
-  const items = toolbarItems(profile);
+  /*
+   * ツールバーの項目はスキン（方言IDの対応表）から引く。位置で対応させない（決定表#2）。
+   * `vendor-only`（実機にはあるが本アプリでは動かない項目。決定表#4）は**出さない**
+   * （UI監査 2026-09-20 Important #9: PCwin風の JP1／DGR／MOB／RDY は押しても何も起きない
+   * 飾りボタンで、押せない理由をトーストで説明するより出さないほうが良いという利用者の
+   * 判断）。`toolbarItems()` 自体は全項目を返したまま（`writeModeLabel()` など、意味の対応
+   * だけが要る呼び出し元がある）にして、ここでは**表示するものだけ**に絞る。
+   */
+  const items = toolbarItems(profile).filter((item) => item.action !== 'vendor-only');
 
   return (
     <div
@@ -327,12 +367,11 @@ export function LadderWorkspace({
               key={`${item.action}-${String(item.index)}`}
               type="button"
               // その action の**最初の1つ**は位置なし（既存テストと E2E がこの名前で引く）、
-              // 2つ目以降は位置つき（PCwin風は `vendor-only` が4つ並ぶ）
+              // 2つ目以降は位置つき（jtekt は `plc-reset` と別に `RES` のような重複があり得る）
               data-testid={
                 first ? `toolbar-${item.action}` : `toolbar-${item.action}-${String(item.index)}`
               }
               data-action={item.action}
-              className={item.action === 'vendor-only' ? styles.vendorTool : undefined}
               aria-pressed={item.action === 'plc-run' ? plcRunning : undefined}
               onClick={() => {
                 onToolbar(item.action);
@@ -427,10 +466,10 @@ export function LadderWorkspace({
             useStore.getState().setLadderCursor({ networkId, row: 0, col: 0 });
           }}
         />
-        <div className={styles.workspaceMain}>
+        <div className={styles.workspaceMain} ref={workspaceMainRef} data-testid="workspace-main">
           <LadderEditor
             profile={profile}
-            gridCols={gridCols}
+            gridCols={effectiveGridCols}
             errorCells={errorCells}
             onConvert={convert}
             onModeChange={changeMode}
