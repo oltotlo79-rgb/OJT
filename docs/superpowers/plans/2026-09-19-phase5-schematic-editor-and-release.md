@@ -6831,7 +6831,7 @@ git add apps/desktop README.md docs/releases/v1.0.0.md && git commit -m "chore(r
 
 既存6本（`smoke` / `navigation` / `chart` / `inspect` / `plc` / `polish`）は**1行も変えない**。起動の定型（`CHROMIUM_FLAGS`・`shot()`・復元プロンプトの片付け）は `polish.spec.ts` からそのまま写す。
 
-- [ ] **Step 1: `e2e/schematic.spec.ts` を書く**
+- [x] **Step 1: `e2e/schematic.spec.ts` を書く**
 
 ```ts
 test.describe('回路図エディタ（§16 Phase 5 受入基準①②）', () => {
@@ -6947,7 +6947,7 @@ test.describe('結果の疑い一覧とキーボード配線（UXレビュー #2
 });
 ```
 
-- [ ] **Step 2: `e2e/perf.spec.ts` を書く**
+- [x] **Step 2: `e2e/perf.spec.ts` を書く**
 
 ```ts
 /** 性能の予算（§15 / Plan 5 決定表#17）。GPU に依らない値だけを自動で縛る。 */
@@ -7019,7 +7019,7 @@ test.describe('性能（§16 Phase 5 受入基準④）', () => {
 });
 ```
 
-- [ ] **Step 3: 2回連続で走らせてコミットする**
+- [x] **Step 3: 2回連続で走らせてコミットする**
 
 ```
 pnpm --filter @ojt/desktop build
@@ -7028,7 +7028,7 @@ pnpm --filter @ojt/desktop e2e
 git add apps/desktop && git commit -m "test(desktop): cover the Phase 5 acceptance criteria with e2e"
 ```
 
-**期待**: E2E が **既存23本（4B 完了時点）＋ 本プランの8本 = 31本**すべて通る（`OJT_PERF_TARGET` を立てない環境では 60fps のテストは skip）。スクリーンショットは `50-schematic-editor` 〜 `55-keyboard-wiring` の6枚と `perf-report.json`。
+**期待**: E2E が **既存31本（4B Task 13 の `plc-vendors.spec.ts` 6本と `chart.spec.ts` 2本を含む。起草時の見積り23本はそれらを数えていなかった）＋ 本プランの8本 = 39本**すべて通る（`OJT_PERF_TARGET` を立てない環境では 60fps のテストは skip されるので 38 passed / 1 skipped）。スクリーンショットは `50-schematic-editor` 〜 `55-keyboard-wiring` の6枚と `perf-report.json`。
 
 ---
 
@@ -7176,7 +7176,7 @@ git add -A && git commit -m "chore(phase5): verify the Phase 5 acceptance criter
 - [ ] `pnpm -r test` が7プロジェクトすべて通る（Phase 5 で足した単体テストは **packages 60件 ＋ desktop 123件**）。内訳は各タスクの「期待」のとおり: packages ＝ Task 1 の 36（`edit` 30 ＋ `slot-rects` 6）／Task 2 の 16／Task 3 の 8。desktop ＝ Task 4 の 26／Task 5 の 19／Task 6 の 11（`verify-flow` 7 ＋ `sim-worker-verify` 4）／Task 7 の 7／Task 8 の 15（`wiring-guide` 9 ＋ 画面 6）／Task 9 の 5／Task 10 の 10／Task 11 の 6／Task 12 の 5／Task 13 の 10（`label-cache` 8 ＋ `board-scene` 2）／Task 14 の 9。
 - [ ] `pnpm -r typecheck` と `pnpm lint`（`import-x/no-cycle` ＋ `react-hooks` 込み）が無警告で通る。
 - [ ] `npx prettier --check "apps/desktop/**/*.{ts,tsx,css}" "packages/**/*.ts" "README.md" "docs/**/*.md"` が `All matched files use Prettier code style!` を出す。
-- [ ] `pnpm --filter @ojt/desktop e2e` が **31本**すべて通る。**2回連続で通ること。**
+- [ ] `pnpm --filter @ojt/desktop e2e` が **39本**（うち 60fps の1本は `OJT_PERF_TARGET` 未設定なら skip）すべて通る。**2回連続で通ること。**
 - [ ] **§16 Phase 5 受入基準①**: モードB課題 `b-001` を開き、ビューを「回路図」にして段1に `PB2 b接点 → PB1 a接点 → CR1 コイル`、段2を「分岐にする」で `段1の節点1 → 節点2` に向けて `CR1 a接点`（＝PB1 の a接点と並列）、段3に `CR1 a接点 → PL1` を置き、「検算」で **合格**が出る（b-001 の模範回路と同じ形）。
 - [ ] **§16 Phase 5 受入基準②**: 回路図（エディタでも回路図ヒントでも）の要素をクリックすると、3D盤の対応端子が光る（`highlight.terminals` に2端子が入り、`ProbeMarkers` の輪が出る）。盤の端子にホバーすると逆に回路図の要素が光る。
 - [ ] **§16 Phase 5 受入基準③**: `pnpm --filter @ojt/desktop dist` が NSIS とポータブルの2つを出し、`release/artifacts.md` にサイズと SHA256 が書かれる。オフラインのWindows 11でインストールして課題を1つ完了できる（チェックリスト 7）。
