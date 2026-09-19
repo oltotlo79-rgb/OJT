@@ -53,6 +53,26 @@ describe('slotRects（§11.4 のエディタの当たり判定）', () => {
     expect(rects[1]?.w).toBe(40);
   });
 
+  it('puts the load slot in the rightmost column, level with every other load', () => {
+    const o = DEFAULT_LAYOUT_OPTIONS;
+    const wide = createDocument('d', 't', [
+      rung('r1', BUS_P, BUS_N, [pbA('c1', 'PB1'), coil('c2', 'CR1')]),
+      rung('r2', BUS_P, BUS_N, [pbA('c3', 'PB2'), pbA('c4', 'PB3'), coil('c5', 'CR2')]),
+    ]);
+    const rects = slotRects(wide);
+    const at = (cellId: string): number | undefined => rects.find((s) => s.cellId === cellId)?.x;
+    // 出力はどちらも「いちばん接点の多い段（2個）」の右隣の列
+    expect(at('c2')).toBe(o.marginX + 2 * o.colWidth);
+    expect(at('c5')).toBe(o.marginX + 2 * o.colWidth);
+    // 接点は左詰めのまま
+    expect(at('c1')).toBe(o.marginX);
+    expect(at('c3')).toBe(o.marginX);
+    expect(at('c4')).toBe(o.marginX + o.colWidth);
+    // 末尾の空き桁は出力の右隣
+    const tail = rects.find((s) => s.rungId === 'r1' && s.index === 2);
+    expect(tail?.x).toBe(o.marginX + 3 * o.colWidth);
+  });
+
   it('starts a branch rung at its parent node', () => {
     const branch = slotRects(doc).find((s) => s.rungId === 'r2');
     expect(branch?.x).toBe(DEFAULT_LAYOUT_OPTIONS.marginX + DEFAULT_LAYOUT_OPTIONS.colWidth);

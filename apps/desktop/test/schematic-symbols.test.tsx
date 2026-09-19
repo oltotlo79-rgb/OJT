@@ -172,6 +172,46 @@ describe('文字はぶつからない（銘板・端子番号・設定時間）'
   });
 });
 
+describe('出力は右端の1列（展開接続図の決まり。利用者要求 2026-09-20）', () => {
+  it.each(PROBLEMS)('%s: コイル・ランプが縦にそろい、右母線に付く', (id) => {
+    const { svg } = sheetOf(id);
+    const doc = docOf(id);
+    const loadIds = doc.rungs.flatMap((r) =>
+      r.cells.filter((c) => c.kind === 'coil' || c.kind === 'lamp' || c.kind === 'buzzer'),
+    );
+    expect(loadIds.length).toBeGreaterThan(1);
+    /** その要素の記号の左端x（線・長方形・丸のどれでも）。 */
+    const leftOf = (cellId: string): number => {
+      const own = [...svg.querySelectorAll(`[data-cell="${cellId}"]`)];
+      const xs = own.flatMap((el) => {
+        if (el.tagName === 'rect') return [num(el, 'x')];
+        if (el.tagName === 'circle') return [num(el, 'cx') - num(el, 'r')];
+        if (el.tagName === 'line') return [Math.min(num(el, 'x1'), num(el, 'x2'))];
+        return [];
+      });
+      return Math.min(...xs);
+    };
+    // どの出力もぴったり同じ列に立つ
+    const columns = new Set(loadIds.map((c) => leftOf(c.id).toFixed(3)));
+    expect([...columns]).toHaveLength(1);
+    const loadLeft = leftOf(loadIds[0]?.id ?? '');
+    // 接点はすべてその列より左（出力より右に接点は無い＝出力は右母線に付く）
+    for (const rung of doc.rungs) {
+      for (const cell of rung.cells) {
+        if (cell.kind === 'coil' || cell.kind === 'lamp' || cell.kind === 'buzzer') continue;
+        expect(leftOf(cell.id), cell.id).toBeLessThan(loadLeft);
+      }
+    }
+    // 右母線は出力のすぐ右（1桁ぶんも離れていない）。母線は最初の2本の線
+    const [busP, busN] = [...svg.querySelectorAll('line')];
+    if (busP === undefined || busN === undefined) throw new Error('bus');
+    const busNX = num(busN, 'x1');
+    expect(busNX).toBeGreaterThan(num(busP, 'x1'));
+    expect(busNX).toBeGreaterThan(loadLeft);
+    expect(busNX - loadLeft).toBeLessThan((SCHEMATIC_LAYOUT.colWidth ?? 0) * 2);
+  });
+});
+
 describe('記号が「小さな斜線」に見えない大きさになる', () => {
   it.each(PROBLEMS)('%s: 接点は25px以上の幅、開きは6px以上になる', (id) => {
     const { scale } = sheetOf(id);

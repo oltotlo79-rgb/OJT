@@ -218,6 +218,75 @@ describe('layout: 読取専用レンダラ用の図形データ（§11.2）', ()
     expect(only.x2).toBe(o.marginX + o.colWidth);
   });
 
+  it('出力は右端の1列にそろう（どの段のコイル・ランプも同じx。展開接続図の決まり）', () => {
+    const o = DEFAULT_LAYOUT_OPTIONS;
+    const doc = createDocument('x', '出力の列', [
+      // 接点の数が段ごとに違う（1個・3個・0個）
+      rung('r1', BUS_P, BUS_N, [pbA('c1', 'PB1'), coil('c2', 'CR1')]),
+      rung('r2', BUS_P, BUS_N, [
+        crA('c3', 'CR1'),
+        crB('c4', 'CR2'),
+        tA('c5', 'T1'),
+        lamp('c6', 'PL1'),
+      ]),
+      rung('r3', BUS_P, BUS_N, [buzzer('c7')]),
+    ]);
+    const shapes = layout(doc).shapes;
+    /** その要素の記号の左端x。 */
+    const leftOf = (cellId: string): number =>
+      Math.min(
+        ...shapes
+          .filter((s) => s.cellId === cellId)
+          .flatMap((s) => {
+            if (s.kind === 'line') return [Math.min(s.x1, s.x2)];
+            if (s.kind === 'rect') return [s.x];
+            if (s.kind === 'circle' || s.kind === 'arc') return [s.cx - s.r];
+            return [];
+          }),
+      );
+    // 3つの出力はぴったり同じ列に立つ
+    const loads = ['c2', 'c6', 'c7'].map(leftOf);
+    expect(new Set(loads.map((x) => x.toFixed(6))).size).toBe(1);
+    // 記号は桁の真ん中に立つので、桁の左端からこれだけ内側に入る
+    const inset = (o.colWidth - o.symbolWidth) / 2;
+    // その列は、いちばん接点の多い段（r2 の3個）の右隣
+    expect(loads[0]).toBeCloseTo(o.marginX + 3 * o.colWidth + inset, 6);
+    // 接点は左母線から詰まったまま（r1 の押ボタンは1桁目）
+    expect(leftOf('c1')).toBeCloseTo(o.marginX + inset, 6);
+    // 出力の列と右母線のあいだは1列より狭い（＝出力は右母線に付いている）
+    const busN = shapes.filter((s) => s.role === 'bus')[1];
+    if (busN?.kind !== 'line') throw new Error('bus');
+    expect(busN.x1 - (loads[0] ?? 0) - o.colWidth).toBeLessThan(o.colWidth);
+    expect(busN.x1).toBeGreaterThan((loads[0] ?? 0) + o.colWidth);
+  });
+
+  it('最後の接点から出力の列までは横線で渡す', () => {
+    const o = DEFAULT_LAYOUT_OPTIONS;
+    const doc = createDocument('x', '渡り線', [
+      rung('r1', BUS_P, BUS_N, [pbA('c1', 'PB1'), crA('c2', 'CR1'), coil('c3', 'CR1')]),
+      rung('r2', BUS_P, BUS_N, [crA('c4', 'CR1'), lamp('c5', 'PL1')]),
+    ]);
+    const shapes = layout(doc).shapes;
+    // 接点1個の段（r2）には、接点の右端から出力の列まで渡る横線が1本ある
+    const runOut = shapes.filter(
+      (s) =>
+        s.kind === 'line' &&
+        s.rungId === 'r2' &&
+        s.cellId === undefined &&
+        s.role === 'wire' &&
+        s.y1 === s.y2 &&
+        s.x1 === o.marginX + o.colWidth &&
+        s.x2 === o.marginX + 2 * o.colWidth,
+    );
+    expect(runOut).toHaveLength(1);
+    // 接点2個の段（r1）は出力の列にそのまま続くので渡り線は要らない
+    expect(
+      shapes.filter(
+        (s) => s.kind === 'line' && s.rungId === 'r1' && s.cellId === undefined && s.x1 === s.x2,
+      ),
+    ).toHaveLength(0);
+  });
+
   it('壊れた参照があっても図形は返す（レンダラは落ちない。§13 #2）', () => {
     const doc = createDocument('x', '壊れた参照', [
       rung('r1', at('rX', 0), at('rY', 1), [crA('c1', 'CR1')]),

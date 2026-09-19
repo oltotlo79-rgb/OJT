@@ -127,6 +127,103 @@ function tag(shapes: readonly Shape[], rungId: string, cellId?: string): Shape[]
   return shapes.map((s) => ({ ...s, rungId, ...(cellId === undefined ? {} : { cellId }) }));
 }
 
+/** 段の中で最初の負荷（コイル・表示灯・ブザー）が何番目か。無ければ要素数。 */
+function loadIndexOf(rung: Rung): number {
+  const at = rung.cells.findIndex((c) => isLoad(c.kind));
+  return at === -1 ? rung.cells.length : at;
+}
+
+/**
+ * 段の左端xを親から**再帰で**解く（文書順に足していくと、親が後ろに書かれた分岐段だけ
+ * 親のxが未知になり、左母線に描かれてしまう）。壊れた文書でも止まるよう解決中の段を覚えておく。
+ * `nodeXOf` は「親の段の節点kのx」を返す関数で、負荷の列を入れる前後で差し替える。
+ */
+function resolveStarts(
+  doc: SchematicDocument,
+  busPX: number,
+  nodeXOf: (parent: Rung, parentStartX: number, node: number) => number,
+): Map<string, number> {
+  const rungById = new Map(doc.rungs.map((r) => [r.id, r]));
+  const startX = new Map<string, number>();
+  const resolving = new Set<string>();
+  function startOf(r: Rung): number {
+    const memo = startX.get(r.id);
+    if (memo !== undefined) return memo;
+    if (resolving.has(r.id)) return busPX; // 循環参照（validateDocument が別に弾く）
+    resolving.add(r.id);
+    const x = 'bus' in r.from ? busPX : branchX(r.from);
+    resolving.delete(r.id);
+    startX.set(r.id, x);
+    return x;
+  }
+  function branchX(end: Extract<RungEnd, { rung: string }>): number {
+    const parent = rungById.get(end.rung);
+    if (parent === undefined) return busPX;
+    return nodeXOf(parent, startOf(parent), clampNode(end.node, parent.cells.length));
+  }
+  for (const r of doc.rungs) startOf(r);
+  return startX;
+}
+
+/** 桁割り（`layout()`・`rungStartX()`・`slotRects()` が同じ物差しを使うための1か所）。 */
+interface Columns {
+  /** 段の左端x。 */
+  startX: Map<string, number>;
+  /** 負荷の列の左端x（**全段で同じ**）。 */
+  loadX: number;
+  /** 段の中の桁 `index` の左端x。 */
+  cellLeft: (rung: Rung, index: number) => number;
+  /** 段の節点 `node`（0〜要素数）のx。 */
+  nodeX: (rung: Rung, node: number) => number;
+}
+
+/**
+ * 桁割りを決める。§11.1
+ *
+ * 展開接続図では**出力（コイル・表示灯・ブザー）は必ず右母線に付く**ので、
+ * 接点は左母線から詰め、負荷は**いちばん右の1列**にそろえる（どの段のコイルも縦に並ぶ）。
+ * 接点の数が段ごとに違っても、最後の接点から負荷の列までは横線で渡す。
+ *
+ * 負荷の列は「接点をいちばん多く使う段の右端」で決まるので、まず負荷も左詰めにした
+ * 仮の桁割りで各段の左端を解き、そこから列のxを出してからもう一度解く。
+ */
+function columns(doc: SchematicDocument, options: LayoutOptions = {}): Columns {
+  const o = { ...DEFAULT_LAYOUT_OPTIONS, ...options };
+  const busPX = o.marginX;
+  const loadAt = new Map(doc.rungs.map((r) => [r.id, loadIndexOf(r)]));
+  const loadIndex = (r: Rung): number => loadAt.get(r.id) ?? r.cells.length;
+
+  // 下ごしらえ: 負荷も左詰めにしたときの段の左端。ここから負荷の列のxを決める
+  const packed = resolveStarts(
+    doc,
+    busPX,
+    (_parent, parentStartX, node) => parentStartX + node * o.colWidth,
+  );
+  let loadX = busPX;
+  for (const r of doc.rungs) {
+    const end = (packed.get(r.id) ?? busPX) + loadIndex(r) * o.colWidth;
+    if (end > loadX) loadX = end;
+  }
+
+  /** 節点のx。負荷の手前までは左詰め、負荷から先は負荷の列から数える。 */
+  const nodeXWith = (rung: Rung, startX: number, node: number): number => {
+    const at = loadIndex(rung);
+    return node <= at ? startX + node * o.colWidth : loadX + (node - at) * o.colWidth;
+  };
+  const startX = resolveStarts(doc, busPX, nodeXWith);
+  const startOf = (rung: Rung): number => startX.get(rung.id) ?? busPX;
+
+  return {
+    startX,
+    loadX,
+    cellLeft: (rung, index) => {
+      const at = loadIndex(rung);
+      return index < at ? startOf(rung) + index * o.colWidth : loadX + (index - at) * o.colWidth;
+    },
+    nodeX: (rung, node) => nodeXWith(rung, startOf(rung), node),
+  };
+}
+
 /**
  * 文書を図形プリミティブの列にする。同じ文書からは必ず同じ結果が出る（決定論）。§11.2
  */
@@ -140,17 +237,19 @@ export function layout(doc: SchematicDocument, options: LayoutOptions = {}): Sch
   doc.rungs.forEach((r, i) => rowY.set(r.id, o.marginY + i * o.rowHeight));
   const rowOf = (rungId: string): number => rowY.get(rungId) ?? o.marginY;
 
-  // 段の左端xは `rungStartX()` が決める（編集UIの当たり判定 `slotRects()` と同じ値を使うため）
-  const startX = rungStartX(doc, options);
-  const startOf = (r: Rung): number => startX.get(r.id) ?? busPX;
+  // 桁割りは `columns()` が決める（編集UIの当たり判定 `slotRects()` と同じ値を使うため）
+  const grid = columns(doc, options);
+  const startOf = (r: Rung): number => grid.startX.get(r.id) ?? busPX;
   /** 分岐参照の指す点のx。参照先の段が無ければ左母線に寄せる。 */
-  const branchX = (end: Extract<RungEnd, { rung: string }>): number =>
-    (startX.get(end.rung) ?? busPX) +
-    clampNode(end.node, rungById.get(end.rung)?.cells.length ?? 0) * o.colWidth;
+  const branchX = (end: Extract<RungEnd, { rung: string }>): number => {
+    const parent = rungById.get(end.rung);
+    if (parent === undefined) return busPX;
+    return grid.nodeX(parent, clampNode(end.node, parent.cells.length));
+  };
 
   let maxRight = busPX;
   for (const r of doc.rungs) {
-    const end = startOf(r) + r.cells.length * o.colWidth;
+    const end = grid.nodeX(r, r.cells.length);
     if (end > maxRight) maxRight = end;
   }
   // 右母線までの走りは1列ぶんも要らない（図が横に間延びして記号が小さくなる）
@@ -201,9 +300,21 @@ export function layout(doc: SchematicDocument, options: LayoutOptions = {}): Sch
       shapes.push(...tag([line('wire', x0, parentY, x0, y), junction(x0, parentY)], r.id));
     }
 
+    /*
+     * 最後の接点から負荷の列まで渡す横線（出力は右母線に付くので、段ごとに空いた桁を渡る）。
+     * 接点しか無い段には引かない（終点までの横線が別に引かれる）。
+     */
+    const loadAt = loadIndexOf(r);
+    if (loadAt < r.cells.length) {
+      const handOff = grid.nodeX(r, loadAt);
+      if (handOff !== grid.loadX) {
+        shapes.push(...tag([line('wire', handOff, y, grid.loadX, y)], r.id));
+      }
+    }
+
     // 要素
     r.cells.forEach((cell, index) => {
-      const cellLeft = x0 + index * o.colWidth;
+      const cellLeft = grid.cellLeft(r, index);
       const cellRight = cellLeft + o.colWidth;
       const cx = (cellLeft + cellRight) / 2;
       const symbol = isLoad(cell.kind)
@@ -264,7 +375,7 @@ export function layout(doc: SchematicDocument, options: LayoutOptions = {}): Sch
     });
 
     // 終点（右母線、または他の段への合流）
-    const endX = x0 + r.cells.length * o.colWidth;
+    const endX = grid.nodeX(r, r.cells.length);
     if ('bus' in r.to) {
       if (endX !== busNX) shapes.push(...tag([line('wire', endX, y, busNX, y)], r.id));
     } else if (rungById.has(r.to.rung)) {
@@ -288,33 +399,7 @@ export function rungStartX(
   doc: SchematicDocument,
   options: LayoutOptions = {},
 ): Map<string, number> {
-  const o = { ...DEFAULT_LAYOUT_OPTIONS, ...options };
-  const busPX = o.marginX;
-  const rungById = new Map(doc.rungs.map((r) => [r.id, r]));
-  const startX = new Map<string, number>();
-  const resolving = new Set<string>();
-  /**
-   * 段の左端x。親を**再帰で**先に解く（文書順に足していくと、親が後ろに書かれた分岐段だけ
-   * 親のxが未知になり、左母線に描かれてしまう）。壊れた文書でも止まるよう解決中の段を覚えておく。
-   */
-  function startOf(r: Rung): number {
-    const memo = startX.get(r.id);
-    if (memo !== undefined) return memo;
-    if (resolving.has(r.id)) return busPX; // 循環参照（validateDocument が別に弾く）
-    resolving.add(r.id);
-    const x = 'bus' in r.from ? busPX : branchX(r.from);
-    resolving.delete(r.id);
-    startX.set(r.id, x);
-    return x;
-  }
-  /** 分岐参照の指す点のx。参照先の段が無ければ左母線に寄せる。 */
-  function branchX(end: Extract<RungEnd, { rung: string }>): number {
-    const parent = rungById.get(end.rung);
-    if (parent === undefined) return busPX;
-    return startOf(parent) + clampNode(end.node, parent.cells.length) * o.colWidth;
-  }
-  for (const r of doc.rungs) startOf(r);
-  return startX;
+  return columns(doc, options).startX;
 }
 
 /** 編集UIの当たり判定1つぶん（論理単位。`layout()` と同じ座標系）。§11.4 */
@@ -336,17 +421,17 @@ export interface SlotRect {
  */
 export function slotRects(doc: SchematicDocument, options: LayoutOptions = {}): SlotRect[] {
   const o = { ...DEFAULT_LAYOUT_OPTIONS, ...options };
-  const startX = rungStartX(doc, options);
+  // 負荷の桁は**いちばん右の列**なので、当たり矩形も `columns()` から取る（記号とずれない）
+  const grid = columns(doc, options);
   const out: SlotRect[] = [];
   doc.rungs.forEach((r, rowIndex) => {
-    const x0 = startX.get(r.id) ?? o.marginX;
     const y = o.marginY + rowIndex * o.rowHeight - o.rowHeight / 2;
     for (let index = 0; index <= r.cells.length; index += 1) {
       out.push({
         rungId: r.id,
         index,
         cellId: r.cells[index]?.id,
-        x: x0 + index * o.colWidth,
+        x: grid.cellLeft(r, index),
         y,
         w: o.colWidth,
         h: o.rowHeight,
