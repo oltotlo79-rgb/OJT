@@ -8,6 +8,7 @@ import {
   type BoardTerminal,
   type FaceRect,
   type PlcAppearance,
+  type PlcCoverMark,
   type PlcFeatureMark,
   type PlcLedMark,
   type PlcModuleDefinition,
@@ -1029,6 +1030,88 @@ export const OUTLET_TERMINALS: readonly BoardTerminal[] = (['L', 'N'] as const).
     exit: 'either' as const,
   }),
 );
+
+/**
+ * 端子カバーを開く角度[°]。決定表#16
+ *
+ * 3D側の `apps/desktop/src/renderer/three/appearance.ts` の `COVER_OPEN_DEG` と**同じ値**で、
+ * 開いたカバーの描画（`coverOpenPose()`）と、机上の経路がカバーを避ける計算
+ * （`desk-routing.ts` の `deskObstacles()`）を揃えるためにある。`board-model` は `three/**` に
+ * 依存しないので、この2箇所は import で結べない — 片方だけ変えると経路がカバーを突き抜けるので、
+ * 必ず両方直す（`PC10G_OUTPUT_BASE` と同じ事情）。
+ */
+export const PLC_COVER_OPEN_DEG = 100;
+
+/** 同じ角度[rad]。 */
+export const PLC_COVER_OPEN_RAD = (PLC_COVER_OPEN_DEG * Math.PI) / 180;
+
+/**
+ * 開いた端子カバーが、蝶番の**向こう側**へはみ出す長さ[mm]。
+ * 90°を少し越えて開くので、板は蝶番の線を `h·|cos θ|` だけ越える。
+ */
+export function coverOpenReachMm(
+  cover: PlcCoverMark,
+  openRad: number = PLC_COVER_OPEN_RAD,
+): number {
+  const along = cover.hinge === 'top' || cover.hinge === 'bottom' ? cover.rect.h : cover.rect.w;
+  return along * Math.abs(Math.cos(openRad));
+}
+
+/** 開いた端子カバーが盤面から立ち上がる高さ[mm]（`h·sin θ`）。 */
+export function coverOpenRiseMm(cover: PlcCoverMark, openRad: number = PLC_COVER_OPEN_RAD): number {
+  const along = cover.hinge === 'top' || cover.hinge === 'bottom' ? cover.rect.h : cover.rect.w;
+  return along * Math.abs(Math.sin(openRad));
+}
+
+/** 3Dが描く面1枚ぶん（本体、またはラックのベース・モジュール）。 */
+export interface PlcFacePlacement {
+  id: string;
+  /** 左奥の角（`unit.pos` / `module.pos`）。 */
+  origin: Vec3;
+  appearance: PlcAppearance;
+  /** 筐体の奥行[mm]。 */
+  depthMm: number;
+}
+
+/**
+ * 本体の面を左から順に返す（一体形は1枚、ラックはベース＋モジュール）。
+ * 3Dの `PlcUnit` / `PlcRack` が描く箱と同じ並びなので、机上の経路が避ける箱をここから作れる。
+ */
+export function plcFaces(unit: PlcUnitDefinition): PlcFacePlacement[] {
+  const faces: PlcFacePlacement[] = [
+    { id: unit.id, origin: unit.pos, appearance: unit.appearance, depthMm: unit.sizeMm.depth },
+  ];
+  if (unit.form !== 'rack') return faces;
+  for (const module of [...(unit.modules ?? [])].sort((a, b) => a.slot - b.slot)) {
+    faces.push({
+      id: `${unit.id}-${module.model}`,
+      origin: module.pos,
+      appearance: module.appearance,
+      depthMm: module.sizeMm.depth,
+    });
+  }
+  return faces;
+}
+
+/**
+ * その位置を覆っている端子カバーを探す（机上の経路が「カバーの開いた側」から入るために使う）。
+ * ラックはモジュールのカバーを見る。どのカバーにも入らなければ `undefined`。
+ */
+export function plcCoverAt(
+  unit: PlcUnitDefinition,
+  pos: Vec3,
+): { face: PlcFacePlacement; cover: PlcCoverMark } | undefined {
+  for (const face of plcFaces(unit)) {
+    for (const cover of face.appearance.covers) {
+      const left = face.origin.x + cover.rect.x;
+      const top = face.origin.y + cover.rect.y;
+      if (pos.x < left || pos.x > left + cover.rect.w) continue;
+      if (pos.y < top || pos.y > top + cover.rect.h) continue;
+      return { face, cover };
+    }
+  }
+  return undefined;
+}
 
 /**
  * 盤にPLC本体と壁コンセントを載せた**派生盤**を返す。§10.1 / 決定表#8
