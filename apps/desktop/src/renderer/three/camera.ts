@@ -204,11 +204,28 @@ export function boardUp(): [number, number, number] {
   return boardToWorld([0, 1, 0]);
 }
 
-/** 視点の付帯条件（いまは機種だけ）。 */
+/** 視点の付帯条件（機種と実際のビューポートの縦横比）。 */
 export interface CameraPoseOptions {
   /** モードDで机上に置いている本体。省くと FX5U（決定表#18）。 */
   plcUnit?: PlcUnitDefinition;
+  /**
+   * 実際のビューポート（3Dペイン）の縦横比（幅[px] ÷ 高さ[px]）。省くと `front` / `back` /
+   * `bottom` は「16:10 のビューポート」を仮定した固定距離のまま、`socket` / `plc` は
+   * `SOCKET_VIEW_ASPECT` / `PLC_VIEW_ASPECT` の仮定値のまま（＝既存の呼び出し・テストは
+   * 数値が変わらない）。
+   *
+   * 渡すと、盤（または対象の矩形）が**その縦横比のペインいっぱいに**収まる距離を
+   * `fitDistanceMm()` で計算し直す。2026-09-20 の監査指摘 I14「3Dペインが1〜2割しか
+   * 占めず残りは真っ黒（モードB並べて・モードD）」への対応。モードB「並べて」は
+   * 1280px幅だと3Dペインの縦横比が16:10から大きく外れる（横に広く縦が低い）ので、
+   * 仮定のままだと盤が小さいまま余白ばかりになる。`CameraPresets.tsx` が
+   * `useThree(state => state.size)` から実測して渡す。
+   */
+  aspect?: number;
 }
+
+/** `front` / `back` / `bottom` の面直距離の余白（5%）。`fitDistanceMm()` に掛ける。 */
+const FACE_DISTANCE_MARGIN = 1.05;
 
 /**
  * プリセット → 視点。§12.2
@@ -226,7 +243,12 @@ export function cameraPose(preset: CameraPreset, options: CameraPoseOptions = {}
   const h = BOARD_HEIGHT_MM;
   // 視野角38°・横基準。盤の幅330mmが収まるには距離 ≥ 165/(tan(19°)×aspect) 必要で、
   // 16:10 のビューポート（aspect 1.6）なら 305mm。1割の余白を足した w × 1.05 を面直視の距離にする。
-  const faceDistance = Math.max(w * 1.05, h * 1.55);
+  // `options.aspect` が渡されたときは、その実測の縦横比で盤いっぱいに収まる距離へ計算し直す
+  // （`fitDistanceMm()` は幅・高さ両方の充足条件の大きいほうを返すので、狭いペインでも切れない）。
+  const faceDistance =
+    options.aspect === undefined
+      ? Math.max(w * 1.05, h * 1.55)
+      : fitDistanceMm(w, h, options.aspect) * FACE_DISTANCE_MARGIN;
   switch (preset) {
     case 'front':
       return {
@@ -265,7 +287,7 @@ export function cameraPose(preset: CameraPreset, options: CameraPoseOptions = {}
     case 'plc': {
       // 机上のPLC本体と壁コンセントが収まるまで寄る（盤面の延長なので面直で見る）。§10.1
       const rect = plcViewRect(options.plcUnit ?? PLC_UNIT_FX5U);
-      const distance = fitDistanceMm(rect.w, rect.h, PLC_VIEW_ASPECT);
+      const distance = fitDistanceMm(rect.w, rect.h, options.aspect ?? PLC_VIEW_ASPECT);
       const center: [number, number, number] = [
         rect.x + rect.w / 2 - w / 2,
         h / 2 - (rect.y + rect.h / 2),
@@ -280,7 +302,7 @@ export function cameraPose(preset: CameraPreset, options: CameraPoseOptions = {}
     case 'socket': {
       // ソケット段＋端子台の外接矩形がちょうど収まる距離まで寄る（固定倍率で寄せない）
       const rect = SOCKET_VIEW_RECT;
-      const distance = fitDistanceMm(rect.w, rect.h, SOCKET_VIEW_ASPECT);
+      const distance = fitDistanceMm(rect.w, rect.h, options.aspect ?? SOCKET_VIEW_ASPECT);
       const center: [number, number, number] = [
         rect.x + rect.w / 2 - w / 2,
         h / 2 - (rect.y + rect.h / 2),

@@ -54,7 +54,7 @@ import { Outlet } from './Outlet.js';
 import { PerfProbe } from './PerfProbe.js';
 import { PlcRack } from './PlcRack.js';
 import { PlcUnit } from './PlcUnit.js';
-import { Fixture, FIXTURES } from './Fixtures.js';
+import { Fixture, FIXTURE_LABEL_OFFSET_MM, FIXTURES } from './Fixtures.js';
 import { Lamp } from './Lamp.js';
 import { MountedPart } from './MountedPart.js';
 import { ProbeMarkers } from './ProbeMarkers.js';
@@ -575,6 +575,9 @@ function BoardContents({
             terminals={fixture.terminals}
             footprints={board.footprints}
             on={fixture.kind === 'breaker' ? breakerOn : fixture.kind === 'switch' && switchOn}
+            {...(FIXTURE_LABEL_OFFSET_MM[fixture.id] === undefined
+              ? {}
+              : { labelOffsetMm: FIXTURE_LABEL_OFFSET_MM[fixture.id] })}
           />
         ))}
         <FixedWires board={board} />

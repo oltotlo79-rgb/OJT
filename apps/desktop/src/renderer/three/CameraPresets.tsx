@@ -59,6 +59,11 @@ export function CameraPresets({
 }): JSX.Element | null {
   const camera = useThree((state) => state.camera);
   const invalidate = useThree((state) => state.invalidate);
+  // 3Dペインの実際の縦横比。`cameraPose()` はこれが渡されると「そのペインいっぱいに盤が
+  // 収まる距離」を計算し直す（2026-09-20 の監査指摘 I14「3Dペインが1〜2割しか占めない」）。
+  // モードB「並べて」の1280px幅のように、ペインの形が「16:10 のビューポート」という
+  // 既定の仮定から大きく外れる場面でも、実測から盤を画面いっぱいに合わせられる。
+  const size = useThree((state) => state.size);
   // モードDで机上に載っている機種。`plc` プリセットの画角はこれで変わる（決定表#18）。
   // `boardForProblem()` はPLC課題以外・未対応機種では `undefined` を返すので、そのときは
   // 既定（FX5U）のまま（`cameraPose()` 側の既定）。
@@ -87,10 +92,17 @@ export function CameraPresets({
     [camera, controls],
   );
 
+  // 高さ0（マウント直後・非表示パネルなど）で割ると `Infinity`/`NaN` になるので、そのときは
+  // 渡さない（`cameraPose()` 側の既定の縦横比のまま）。
+  const aspect = size.height > 0 ? size.width / size.height : undefined;
+
   useEffect(() => {
     // 値そのものは使わない。「同じプリセットを押し直した」ことを効果に伝えるためだけの依存。
     void nonce;
-    const to = cameraPose(preset, plcUnit === undefined ? {} : { plcUnit });
+    const to = cameraPose(preset, {
+      ...(plcUnit === undefined ? {} : { plcUnit }),
+      ...(aspect === undefined ? {} : { aspect }),
+    });
     if (currentPose.current === null) {
       // マウント直後・OrbitControls 接続前は補間せず即座に合わせる
       // （Canvas の初期カメラ位置から意図しない“飛行”をしないため）。
@@ -100,7 +112,9 @@ export function CameraPresets({
       animation.current = { from: currentPose.current, to, startMs: performance.now() };
     }
     invalidate();
-  }, [preset, nonce, plcUnit, applyPose, invalidate]);
+    // `aspect` はペインのリサイズ（例: ビュー切替・ウィンドウのリサイズ）のたびに変わりうる。
+    // 変わったら視点を組み直して、常にそのペインいっぱいに盤を収め直す。
+  }, [preset, nonce, plcUnit, aspect, applyPose, invalidate]);
 
   useFrame(() => {
     const anim = animation.current;

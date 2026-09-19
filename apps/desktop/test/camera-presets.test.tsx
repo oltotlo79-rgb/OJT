@@ -22,17 +22,26 @@ interface FakeCamera {
 const harness: {
   camera: unknown;
   invalidate: () => void;
+  /** `Canvas`（3Dペイン）の CSS px。`CameraPresets` はここから縦横比を作って `cameraPose()` に
+   * 渡す（2026-09-20 の監査指摘 I14）。既定は16:10相当（旧・固定の仮定と同じ形）。 */
+  size: { width: number; height: number };
   /** 最後に `useFrame` へ渡されたコールバック（描画のたびに差し替わるので1つだけ持つ）。 */
   frame: (() => void) | null;
 } = vi.hoisted(() => ({
   camera: undefined,
   invalidate: (): void => undefined,
+  size: { width: 1280, height: 800 },
   frame: null,
 }));
 
 vi.mock('@react-three/fiber', () => ({
-  useThree: (selector: (state: { camera: unknown; invalidate: () => void }) => unknown) =>
-    selector({ camera: harness.camera, invalidate: harness.invalidate }),
+  useThree: (
+    selector: (state: {
+      camera: unknown;
+      invalidate: () => void;
+      size: { width: number; height: number };
+    }) => unknown,
+  ) => selector({ camera: harness.camera, invalidate: harness.invalidate, size: harness.size }),
   useFrame: (callback: () => void) => {
     harness.frame = callback;
   },
@@ -41,6 +50,14 @@ vi.mock('@react-three/fiber', () => ({
 const { CameraPresets } = await import('../src/renderer/three/CameraPresets.js');
 const { cameraPose } = await import('../src/renderer/three/camera.js');
 const { useStore } = await import('../src/renderer/app/store.js');
+
+/** `CameraPresets` が渡すのと同じ縦横比を添えて `cameraPose()` を呼ぶ（期待値の作成用）。 */
+function expectedPose(
+  preset: Parameters<typeof cameraPose>[0],
+  extra: Parameters<typeof cameraPose>[1] = {},
+): ReturnType<typeof cameraPose> {
+  return cameraPose(preset, { ...extra, aspect: harness.size.width / harness.size.height });
+}
 
 let positions: Array<[number, number, number]>;
 let targets: Array<[number, number, number]>;
@@ -90,6 +107,7 @@ beforeEach(() => {
   controlsTargets = [];
   harness.frame = null;
   harness.camera = makeCamera();
+  harness.size = { width: 1280, height: 800 };
   nowMs = 0;
   vi.spyOn(performance, 'now').mockImplementation(() => nowMs);
   useStore.setState({ camera: 'front', cameraNonce: 0 });
@@ -103,7 +121,7 @@ afterEach(() => {
 describe('CameraPresets', () => {
   it('マウント直後はプリセットの視点を補間せずそのまま当てる', () => {
     render(<CameraPresets preset="front" nonce={0} controls={controls} />);
-    const pose = cameraPose('front');
+    const pose = expectedPose('front');
     expect(positions.at(-1)).toEqual(pose.position);
     expect(controlsTargets.at(-1)).toEqual(pose.target);
   });
@@ -115,10 +133,10 @@ describe('CameraPresets', () => {
     // 途中のフレームはまだ目標に届いていない
     runFrame(100);
     expect(positions).toHaveLength(1);
-    expect(positions.at(-1)).not.toEqual(cameraPose('top').position);
+    expect(positions.at(-1)).not.toEqual(expectedPose('top').position);
     // 遷移時間（300ms）を過ぎたら目標そのもの
     runFrame(400);
-    expect(positions.at(-1)).toEqual(cameraPose('top').position);
+    expect(positions.at(-1)).toEqual(expectedPose('top').position);
     // 到達したら補間は自己終結する（以後フレームを回しても動かない）
     const settled = positions.length;
     runFrame(100);
@@ -139,8 +157,43 @@ describe('CameraPresets', () => {
     view.rerender(<CameraPresets preset="socket" nonce={1} controls={controls} />);
     runFrame(400);
     expect(positions.length).toBeGreaterThan(0);
-    expect(positions.at(-1)).toEqual(cameraPose('socket').position);
-    expect(controlsTargets.at(-1)).toEqual(cameraPose('socket').target);
+    expect(positions.at(-1)).toEqual(expectedPose('socket').position);
+    expect(controlsTargets.at(-1)).toEqual(expectedPose('socket').target);
+  });
+
+  /**
+   * 2026-09-20 の監査指摘 I14「3Dペインが1〜2割しか占めず残りは真っ黒」。
+   * `size`（3Dペインの実測 px）が変わったら、同じプリセット・同じ `nonce` のままでも
+   * 視点を組み直して、そのペインいっぱいに盤を収め直す。
+   */
+  it('3Dペインの縦横比が変わったら、同じプリセットのままでも視点を組み直す', () => {
+    const view = render(<CameraPresets preset="front" nonce={0} controls={controls} />);
+    positions = [];
+    controlsTargets = [];
+
+    // ウィンドウのリサイズなどでペインの形が変わる
+    harness.size = { width: 900, height: 220 };
+    view.rerender(<CameraPresets preset="front" nonce={0} controls={controls} />);
+    runFrame(400);
+
+    expect(positions.length).toBeGreaterThan(0);
+    const pose = expectedPose('front');
+    expect(positions.at(-1)).toEqual(pose.position);
+    expect(controlsTargets.at(-1)).toEqual(pose.target);
+  });
+
+  /**
+   * `plc` プリセット（モードD）の画角は、これまで `PLC_VIEW_ASPECT`（0.75。安全側の
+   * 保守的な仮定）で固定していた。実際のペインはこれよりずっと横長なことが多く
+   * （机上のPLC＋壁コンセントの外接矩形自体が横長。§`plcViewRect()`）、仮定のまま距離を
+   * 決めると必要以上に遠ざかって「切手大」になっていた（2026-09-20 の監査指摘 I14）。
+   * 実測の縦横比を渡すと、その分だけ寄って盤が大きく映ることを確かめる。
+   */
+  it('plc プリセットは実測の縦横比が渡ると、仮定の0.75より寄って大きく映る', () => {
+    render(<CameraPresets preset="plc" nonce={0} controls={controls} />);
+    const assumedDistance = Math.hypot(...cameraPose('plc', { aspect: 0.75 }).position);
+    const actualDistance = Math.hypot(...positions.at(-1)!);
+    expect(actualDistance).toBeLessThan(assumedDistance);
   });
 });
 
@@ -180,7 +233,7 @@ describe('CameraPresets と机上の機種（決定表#18）', () => {
 
     useStore.setState({ problem: fx5uProblem, camera: 'plc', cameraNonce: 0 });
     render(<CameraPresets preset="plc" nonce={0} controls={controls} />);
-    const fx5uPose = cameraPose('plc', { plcUnit: PLC_UNIT_FX5U });
+    const fx5uPose = expectedPose('plc', { plcUnit: PLC_UNIT_FX5U });
     expect(positions.at(-1)).toEqual(fx5uPose.position);
     expect(targets.at(-1)).toEqual(fx5uPose.target);
 
@@ -195,7 +248,7 @@ describe('CameraPresets と机上の機種（決定表#18）', () => {
     };
     useStore.setState({ problem: jw300Problem, camera: 'plc', cameraNonce: 0 });
     render(<CameraPresets preset="plc" nonce={0} controls={controls} />);
-    const jw300Pose = cameraPose('plc', { plcUnit: PLC_UNIT_JW300 });
+    const jw300Pose = expectedPose('plc', { plcUnit: PLC_UNIT_JW300 });
     expect(positions.at(-1)).toEqual(jw300Pose.position);
     expect(targets.at(-1)).toEqual(jw300Pose.target);
 

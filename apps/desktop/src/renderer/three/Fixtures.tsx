@@ -58,6 +58,24 @@ const SUPPLY_LABEL_Z_MM = 11;
 /** 名札を機器の手前側へ降ろす量[mm]（外形の手前端からの距離）。 */
 const LABEL_OFFSET_MM = 6;
 
+/**
+ * `board.footprints` のブレーカ（`x276 y6 w26 h30`）と電源スイッチ（`x302 y6 w20 h30`）は
+ * 隙間なく隣り合っている（中心間わずか23mm）。既定どおり機器の真下中央へ名札を置くと、
+ * `ブレーカ` と `電源スイッチ` の2枚がほぼ同じ高さで重なる（2026-09-20 の監査指摘 B3・
+ * `hud-overlap` 103件）。左右（`x`）・手前奥（`y`）・高さ（`z`）の3方向すべてへ振って離す。
+ *
+ * 正面／背面視は主に `x`（盤の左右）で、側面視（左右から見る）は盤の左右が奥行きに潰れる
+ * ので主に `z`（機器からの高さ）で、`y`（手前奥）はどちらの視点でも少しずつ効く。3方向とも
+ * ずらしておくことで、`view-gizmo` の6方向プリセットのどれで見ても2枚が重ならない
+ * （`viewport-layout.test.tsx` で6方向×3サイズを検算）。
+ */
+export const FIXTURE_LABEL_OFFSET_MM: Readonly<
+  Record<string, { x: number; y: number; z: number }>
+> = {
+  CB: { x: -18, y: -4, z: -6 },
+  SW: { x: 20, y: 16, z: 20 },
+};
+
 /** 端子の印字色（極性は色でも区別する。§12.2「極性 +/− は色でも区別」）。CB/SW の `ac` は黒。 */
 const FIXTURE_MARK_COLOR: Readonly<Partial<Record<BoardTerminal['role'], string>>> = {
   '+': '#D14343',
@@ -112,6 +130,29 @@ function fixtureFaceTexture(
   );
 }
 
+/**
+ * 固定機器の名札を置くシーン座標。`Fixture` の `Html` と `viewport-layout.test.tsx`
+ * （2026-09-20 の監査指摘 B3 の検算）が同じ式を共有する（実装とテストの式がずれない）。
+ */
+export function fixtureLabelPositionScene(
+  kind: Footprint['kind'],
+  footprint: Footprint,
+  labelOffsetMm?: { x: number; y: number; z: number },
+): [number, number, number] {
+  const heightMm = kind === 'supply' ? SUPPLY_HEIGHT_MM : FIXTURE_HEIGHT_MM;
+  const labelPlateZ = kind === 'supply' ? SUPPLY_LABEL_Z_MM : heightMm + LABEL_LIFT_MM;
+  const center = toScene({
+    x: footprint.x + footprint.w / 2,
+    y: footprint.y + footprint.h / 2,
+    z: heightMm / 2,
+  });
+  return [
+    center[0] + (labelOffsetMm?.x ?? 0),
+    center[1] - footprint.h / 2 - LABEL_OFFSET_MM - (labelOffsetMm?.y ?? 0),
+    labelPlateZ + (labelOffsetMm?.z ?? 0),
+  ];
+}
+
 /** 固定機器1台（外形は `board.footprints` から、端子印字は `terminals` から）。 */
 export function Fixture({
   name,
@@ -121,6 +162,7 @@ export function Fixture({
   terminals,
   footprints,
   on,
+  labelOffsetMm,
 }: {
   name: string;
   label: string;
@@ -133,6 +175,12 @@ export function Fixture({
    * ハンドル／ロッカーの倒れる向きに出る。DC24V電源では使わない。
    */
   on: boolean;
+  /**
+   * 名札を既定位置（機器の手前中央）からずらす量[mm]。`+x` は右、`+y` は手前へさらに降ろす、
+   * `+z` は機器からさらに高く浮かせる。省略すると既定位置のまま。隣り合うブレーカ・電源
+   * スイッチの名札どうしが重なるのを避けるために使う（`FIXTURE_LABEL_OFFSET_MM`）。
+   */
+  labelOffsetMm?: { x: number; y: number; z: number };
 }): JSX.Element | null {
   const footprint = findFixtureFootprint(footprints, kind);
   const faceTexture = useMemo(
@@ -196,7 +244,7 @@ export function Fixture({
         center
         style={LABEL_STYLE}
         distanceFactor={320}
-        position={[center[0], center[1] - footprint.h / 2 - LABEL_OFFSET_MM, labelPlateZ]}
+        position={fixtureLabelPositionScene(kind, footprint, labelOffsetMm)}
         zIndexRange={[10, 0]}
       >
         <span className="block-label">{label}</span>

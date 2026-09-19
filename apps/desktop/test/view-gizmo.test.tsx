@@ -444,6 +444,29 @@ describe('HUD の大きさはキャンバス幅で決まる（2026-09-20 の利�
     expect(Math.abs(narrow.buttonY)).toBeLessThan(108);
     expect(Math.abs(wide.buttonY)).toBeLessThan(108);
   });
+
+  /**
+   * 2026-09-20 の監査指摘 B4「ビューキューブの⌂と視点ヘルプの?が並べて表示（1280px）で
+   * 物理的に重なる」。幅だけで大きさを決めると、モードB「並べて」の1280px幅のように
+   * ペインが横に広く縦だけ低い場面で、下地の丸がペインの下端（＝`panels/ViewHint.tsx` の
+   * 「?」が居る場所）まで届いてしまう。高さも渡すと、下地の丸がその高さに収まらないときは
+   * 幅の判定にかかわらず隠す。
+   */
+  it('高さを渡すと、下地の丸がその高さに収まらないときは幅にかかわらず隠す', () => {
+    const wide = gizmoLayoutForViewport(GIZMO_WIDE_VIEWPORT_PX);
+    if (wide === null) throw new Error('layout is null');
+    const footprint = wide.margin[1] + wide.plateRadius;
+
+    // 収まる高さでは既定どおり出る
+    expect(gizmoLayoutForViewport(GIZMO_WIDE_VIEWPORT_PX, footprint)).not.toBeNull();
+    // ちょうど1px足りないと隠す
+    expect(gizmoLayoutForViewport(GIZMO_WIDE_VIEWPORT_PX, footprint - 1)).toBeNull();
+
+    // モードB「並べて」の1280px幅・縦2段積みで3Dペインが約200px台まで潰れる場合
+    expect(gizmoLayoutForViewport(1280, 210)).toBeNull();
+    // 高さを渡さない（省略）既存の呼び出しは、幅だけの既定の挙動のまま変わらない
+    expect(gizmoLayoutForViewport(1280)?.size).toBe(GIZMO_SIZE);
+  });
 });
 
 describe('⌂ と ⟳ のボタン', () => {

@@ -2,12 +2,20 @@
  * 視点操作の早見表の折りたたみ（UXレビュー #14）。
  * 常時表示の帯（旧 `.viewHint`）は盤の手前（下辺）を覆い、3Dの押ボタンを隠していた。
  * 既定は「?」ボタンだけにして、押したときだけ早見表を出す。
+ *
+ * 2026-09-20 の監査指摘 B4: 左下（旧位置）だと、並べて表示（1280px）のように3Dペインが
+ * 低いときに左上のビューキューブ＋⌂/⟳ボタンと重なった。ビューキューブは左上の隅からしか
+ * 広がらない（`three/ViewGizmo.tsx` の `GIZMO_MAX_FOOTPRINT_PX`）ので、対角の**右下**へ
+ * 固定すれば常に重ならない。状態オーバーレイは右上（`screens.module.css`）なので、右下は
+ * 空いている。`row-reverse` でボタンを右端に置いたまま、早見表の本文はペインの内側
+ * （左）へ向けて開く。
  */
 .wrap {
   position: absolute;
-  left: 12px;
+  right: 12px;
   bottom: 8px;
   display: flex;
+  flex-direction: row-reverse;
   align-items: flex-end;
   gap: 8px;
   pointer-events: none;
@@ -18,6 +26,7 @@
   border-radius: 50%;
   padding: 0;
   width: 32px;
+  height: 32px;
   background: rgba(20, 24, 32, 0.72);
   color: var(--text);
   font-weight: 700;

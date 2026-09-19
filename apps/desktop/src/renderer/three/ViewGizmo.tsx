@@ -151,7 +151,7 @@ export const GIZMO_MIN_VIEWPORT_PX = 600;
 export const GIZMO_TOP_MARGIN_PX = 20;
 
 /** レイアウトの基準になる余白の単位[px]（§UX方針の8pxグリッド）。 */
-const GIZMO_GRID_PX = 8;
+export const GIZMO_GRID_PX = 8;
 
 /**
  * 角を落としたキューブの外形（面取り込み）の中心からの最大半径[px] ÷ キューブの1辺[px]。
@@ -224,21 +224,32 @@ export interface GizmoLayout {
 }
 
 /**
- * キャンバス幅から HUD の置き方を決める。`null` なら隠す。§12.2 / 2026-09-20 の利用者指摘
+ * キャンバス幅・高さから HUD の置き方を決める。`null` なら隠す。§12.2 / 2026-09-20 の利用者指摘
  * 「3Dのキューブと赤、青、緑の骨組みがある意味は？…重なってるし」への対応の一環で、
  * モードD「分割」のような狭い3Dペインでキューブが盤の絵に重ならないようにする。
  *
  * - `GIZMO_WIDE_VIEWPORT_PX`（900px）以上: 既定の `GIZMO_SIZE`（96px）
  * - `GIZMO_MIN_VIEWPORT_PX`（600px）〜900px未満: `GIZMO_SIZE_NARROW`（64px）
  * - 600px未満: `null`（隠す）。視点プリセットはツールバー・テンキーからそのまま押せる
+ *
+ * `heightPx` は 2026-09-20 の監査指摘 B4 で足した引数（省略可・幅だけの既存呼び出しは
+ * そのまま動く）。モードB「並べて」を1280px幅で見ると、3Dペインは横こそ900px前後あるが
+ * 縦は盤・エディタの2段に割られて約200px台まで潰れる。幅だけで判定すると、その高さでは
+ * 下地の丸（縦の占有が `margin[1] + plateRadius`）がペインの下端を越え、`panels/ViewHint.tsx`
+ * の「?」（ペイン自身の下端基準の `bottom` 指定）と重なりかねない。高さも渡されたときは、
+ * 選ばれた大きさの下地の丸がペインの高さに収まるか確かめ、収まらなければ幅の判定にかかわらず
+ * 隠す（視点プリセットの機能はツールバー・テンキーに残るので失われない）。
  */
-export function gizmoLayoutForViewport(widthPx: number): GizmoLayout | null {
+export function gizmoLayoutForViewport(widthPx: number, heightPx?: number): GizmoLayout | null {
   if (widthPx < GIZMO_MIN_VIEWPORT_PX) return null;
   const size = widthPx < GIZMO_WIDE_VIEWPORT_PX ? GIZMO_SIZE_NARROW : GIZMO_SIZE;
+  const margin = gizmoMarginPx(size);
+  const plateRadius = gizmoPlateRadiusPx(size);
+  if (heightPx !== undefined && margin[1] + plateRadius > heightPx) return null;
   return {
     size,
-    margin: gizmoMarginPx(size),
-    plateRadius: gizmoPlateRadiusPx(size),
+    margin,
+    plateRadius,
     buttonY: gizmoButtonYPx(size),
   };
 }
@@ -251,6 +262,16 @@ export const GIZMO_PLATE_RADIUS = gizmoPlateRadiusPx(GIZMO_SIZE);
  * 余白[px]。`margin` は中心の位置なので、下地の上端は `margin[1] - GIZMO_PLATE_RADIUS`。
  */
 export const GIZMO_MARGIN: [number, number] = gizmoMarginPx(GIZMO_SIZE);
+
+/**
+ * 下地の丸（キューブ＋⌂/⟳ボタン一式）がビューポートの**左上から**占める最大の半径[px]
+ * （既定・キャンバス幅900px以上の場合）。`panels/ViewHint.tsx` の「?」を安全に離す位置の
+ * 根拠として使う（2026-09-20 の監査指摘 B4）。実際の位置合わせは `ViewHint` 側で
+ * 「対角のコーナー（右下）に置く」という単純な方法を取るため、この値は
+ * `view-gizmo.test.tsx` の検算にのみ使う（ここより狭い／低いキャンバスではキューブ自体が
+ * 縮む・消えるので、左上の占有はこの値を超えない）。
+ */
+export const GIZMO_MAX_FOOTPRINT_PX = GIZMO_MARGIN[0] + GIZMO_PLATE_RADIUS;
 
 /** ホバーの出入りに掛ける時間[ms]（§12.2 の「控えめな演出」）。 */
 export const GIZMO_FADE_MS = 200;
@@ -533,10 +554,14 @@ export function ViewGizmo({ controls }: { controls: OrbitControlsLike | null }):
   const invalidate = useThree((state) => state.invalidate);
   const camera = useThree((state) => state.camera);
   const gl = useThree((state) => state.gl);
-  // `Canvas`（3Dペイン）の CSS ピクセル幅。モードD「分割」のように幅が限られる場面で、
-  // キューブが盤の絵に重ならないよう大きさ・余白をここから決める（2026-09-20 の利用者指摘）。
+  // `Canvas`（3Dペイン）の CSS ピクセル寸法。モードD「分割」やモードB「並べて」のように
+  // 幅・高さが限られる場面で、キューブが盤の絵やペインの外へはみ出さないよう大きさ・余白を
+  // ここから決める（2026-09-20 の利用者指摘 / 監査指摘 B4）。
   const viewportSize = useThree((state) => state.size);
-  const layout = useMemo(() => gizmoLayoutForViewport(viewportSize.width), [viewportSize.width]);
+  const layout = useMemo(
+    () => gizmoLayoutForViewport(viewportSize.width, viewportSize.height),
+    [viewportSize.width, viewportSize.height],
+  );
   const preset = useStore((state) => state.camera);
   const cube = useRef<Group | null>(null);
   const billboard = useRef<Group | null>(null);

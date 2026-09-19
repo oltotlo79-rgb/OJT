@@ -31,6 +31,18 @@ body {
   font-size: 14px;
   overflow: hidden;
   user-select: none;
+  /*
+   * UI監査 2026-09-20 Important #10: 日本語が語中・小書き仮名の頭で改行されていた
+   * （「タイムチ／ャート」「コイル抵／抗」「レアショー／ト」）。ブラウザ既定の日本語の
+   * 行分割（UAX#14）は仮名・漢字の1文字ごとに切ってよいことになっており、複合語や
+   * 外来語の途中で切れて読みにくい。`line-break: strict` は小書き仮名・長音記号の直後
+   * などの禁則をより厳しくし、`word-break: auto-phrase`（対応ブラウザで自然文節単位に
+   * 判定し直す）と合わせて自然な位置で折り返す。継承されるので個別のCSSに書き足す必要は
+   * 無い。本当に折り返し場所が無い長い文字列（内部ID・数値の羅列など）だけ、その場所で
+   * 個別に `overflow-wrap: anywhere` を残す（`ladder.module.css` の `.ioTable` など）。
+   */
+  line-break: strict;
+  word-break: auto-phrase;
 }
 
 button {
@@ -108,6 +120,8 @@ button[aria-pressed='true'] {
 .block-label {
   background: rgba(231, 235, 242, 0.6);
   font-weight: 400;
+  /* UXレビュー: 画面上11px未満の文字は禁止（§バインディングのデザイン規則）。10px→11px */
+  font-size: 11px;
 }
 
 .part-label {
