@@ -41,7 +41,11 @@
 | 17 | `PlcUnitSpec` が `inputs: readonly PlcInputSpec[]`（`{ name; com; ohms? }`）・`inputCommons: readonly string[]`・`acPower: readonly [string, string]` に格上げされる（旧 `inputs: readonly string[]` / `inputCommon: string` は消える） | 4A Task 8・決定表#9 |
 | 18 | `SUPPORTED_PLC_MODELS`（`@ojt/content`）が4機種になり、内蔵モードD課題8題は**JSONを1文字も変えず**4機種すべてで `PlcProblemSchema.parse()` と `judgePlcReference()` を通る。機種にない入出力点（CP1E の `y: 12` 以降）は `PlcProblemSchema` が弾く | 4A Task 12・Task 14 |
 | 19 | 課題の `plc` は `{ vendor, model }`。`MODEL_OF_VENDOR`（メーカー→機種の1対1）は `schema/plc.ts` の**非公開**定数である | `packages/content/src/schema/plc.ts` L30-38 |
-| 20 | `H-1`（端子名は `unit.spec` / `unit.terminals` から引く。`PLC.X0` を書かない）・`H-3`（`convertStep: false` でも判定前に `convert()` は必ず走らせる）・`H-4`（シャープの常時ONはb接点で描く）・`H-5`（設定画面に §17.1 の常設注記）・`H-6`（ラックもネットリスト上は1部品 `PLC`、端子IDにモジュール名は入らない） | 4A「引き渡し注記」 |
+| 20 | `H-1`（端子名は `unit.spec` / `unit.terminals` から引く。`PLC.X0` を書かない）・`H-2`（表記切替はIRを書き換えない）・`H-3`（`convertStep: false` でも判定前に `convert()` は必ず走らせる）・`H-4`（シャープの常時ONはb接点で描く）・`H-5`（設定画面に §17.1 の常設注記）・`H-6`（ラックもネットリスト上は1部品 `PLC`、端子IDにモジュール名は入らない） | 4A「引き渡し注記」（改訂版 6c875a1） |
+| 20b | **H-7**: `three/PlcUnit.tsx` の FX5U 決め打ちの定数を `unit.appearance` で置き換える。対象は `BODY_COLOR`（L22 `'#D8DBE0'`）・`LED_LEFT_MM`（L26）・`LED_TOP_MM`（L33、L27-32 のコメント込み）・`PLC_LABEL_PAD_MM`（L47）で、**`plcFaceRect()`（L62）はそのまま残す**。`FX5U_APPEARANCE.bodyColor` は `'#3A3D42'`（濃灰）なので、**机上のPLCの見た目が変わる**（受入確認にスクリーンショットを1枚入れる） | 4A H-7 |
+| 20c | **H-8**: `three/labels.ts:267` の `blockTerminalMark()` は `terminal.id.split('.')` の2番目の断片を端子名にしている。端子名側に `.` を含む機種（CP1E の `PLC.0.00` → `'0'`、JW300 の `PLC.COM.A` → `'COM'`）で壊れる。**`parseTerminalId()`（`@ojt/circuit-sim`、`src/ids.ts` L44）の `.name`** に差し替える。直さないと受入基準⑤の3D側が satisfied にならない | 4A H-8 |
+| 20d | **JTEKT のアドレス写像**（4A 決定表#16）: `X(i)` → `1X000`＋i（`IN-12` の端子は `X0`〜`XF`）、`Y(i)` → `1Y010`＋i（`OUT-12` の端子は `Y10`〜`Y1F`。`PC10G_OUTPUT_BASE = 0x010`）。同番号検査（`device-conflict`）は**この写像を通したアドレス**どうしを比べるので、既定の `X(0)`＋`Y(0)` では**起きず**、`1X010` と `1Y010` を同時に使ったときだけ起きる（受入基準③）。T と C はずらさない（決定表#17） | 4A 決定表#16・#17、完了条件 |
+| 20e | 4A Task 8 が **`apps/desktop` の2行だけ**を直す: `ladder/IoTable.tsx:32` と `ladder/MonitorPanel.tsx:94` を `unit.spec.inputs[x]?.name` にする（＋`test/monitor-panel.test.tsx` の期待値1行）。**それ以外の `apps/desktop` の変更は 4B の担当**である | 4A MERGE 注意・完了条件 |
 
 ### 前提B: `apps/desktop` の既存API（**本プランが触る分だけ**。実ソースを確認済み）
 
@@ -138,7 +142,7 @@ openProblem(problem, options?): boolean;   // …plcFields(problem) ＋ isPlcPro
 | 22 | `JA.ladder.notConverted = '未変換（F4 で変換します）'`、`readOnly = '書込みモード（F2）に…'`、`monitorOff = 'モニタ（F3）を開始すると…'`、`monitorWriteSame = 'Phase 3 ではモニタと同じ動作です'`、`JA.settings.gridColsHelp`（`GX Works3 の既定は 11 です`）、`monitorColorHelp`（`モニタ（F3）で…`） | キー文字列とツール名が**文言に直書き**されている。決定表#12（キーは方言が決める）に反し、OMRON では出ない `F4` を案内してしまう | `i18n/ja.ts` L108-115, L381, L403, L411 |
 | 23 | `DeviceInput` の入力例は `` `${profile.deviceRanges.input.prefix}0` `` | OMRON とシャープの `prefix` は `''`（前提#6）なので、入力例が `0` と `2` になる。正しくは `0.00` / `000000` | `DeviceInput.tsx` L71-81 |
 | 24 | `store.monitorColor` の既定は `'#1E64FF'`（三菱の色）で、`LadderGrid` / `ProjectTree` は `monitorColor.length > 0 ? monitorColor : profile.monitorColors.powered` と書いてある | 既定値が空でないので**プロファイルの色が一度も使われない**。OMRON を選んでも通電色が青のまま（§10.6 の「色のみ各社に寄せる」が画面に出ない） | `store.ts` L621, `LadderGrid.tsx` L271-275, `ProjectTree.tsx` L24-25 |
-| 25 | `IoTable` は `unit.spec.inputs[x]`（string）、`MonitorPanel` は `terminal(unit.spec.inputs[index])` | 4A Task 8 で `inputs` が `PlcInputSpec[]` になるので**型エラーになる**（`.name` が要る） | `IoTable.tsx` L32, `MonitorPanel.tsx` L94 |
+| 25 | `IoTable` の `unit.spec.inputs[x]`（string）と `MonitorPanel` の `terminal(unit.spec.inputs[index])` は **4A Task 8 が `?.name` に直して landed している**（前提#20e） | 4B が足すのは**入力コモンの表示**（`spec.inputCommons` は機種で複数）だけである。ここを二重に直さない | `IoTable.tsx` L32, `MonitorPanel.tsx` L94、4A MERGE 注意 |
 | 26 | `ladder.module.css` は背景 `#f7f8fa`・母線 `#3a3f47`・記号 `#1b1e23`・コメント `#1b6ac9`・カーソル `#1e64ff`・エラー `#d14343` を**直書き**し、`symbols.ts` は `CELL_W = 48` / `CELL_H = 36` / 線幅 1.6 / 接点の縦棒 8〜28px を**定数**で持つ | 4スキンが同じ配色・同じセル寸法・同じ記号になる。利用者要求（実物に忠実な回路入力画面）を満たせない | `ladder.module.css` L1-100、`symbols.ts` L11-21 |
 | 27 | 画面にタイトルバーもステータスバーも無い。`LadderWorkspace` はツールバー → ツリー／編集／出力の3ペイン固定で、出力ウィンドウは常に**編集ペインの下**にある | JTEKT の `panels.output` は `ステータスバー` で（前提#4）、PCwin風は「下部にステータスバー」と §10.6 が定める。同じ枠のままでは4スキンが見分けられない | `LadderWorkspace.tsx` L176-300 |
 | 28 | `three/PlcUnit.tsx` は `BODY_COLOR = '#D8DBE0'` / `LED_D_MM` / `LED_LEFT_MM` / `LED_TOP_MM` / `BODY_Z_MM` を**直書き**し、LEDは `unit.leds`（名前の配列）を等間隔で並べ、色は常に `#5A6070` | CP1E（明灰）・FX5U（濃灰）・ラック（モジュール4枚）を描き分けられない。利用者要求と 4A 決定表#15（色と座標を 4B に直書きしない）に反する | `three/PlcUnit.tsx` L22-46, L109-121 |
@@ -2332,27 +2336,12 @@ function convertNote(profile: DialectProfile): string | undefined {
       )}
 ```
 
-- [ ] **Step 5: `IoTable.tsx` を新しい `PlcUnitSpec` に合わせる**
+- [ ] **Step 5: `IoTable.tsx` に入力コモンの行を足す**
 
-```ts
-  /**
-   * PLC本体の端子名。割付が機種の点数を超えて `unit.spec` に無いときは `undefined` を返す。
-   * 4A Task 8 で `inputs` が `PlcInputSpec[]`（`{name, com, ohms?}`）になった（前提#25）。
-   */
-  const inputTerminal = (x: number): string | undefined => unit.spec.inputs[x]?.name;
-  const outputTerminal = (y: number): string | undefined => unit.spec.outputs[y]?.name;
-```
-
-入力コモンの行を足す（`io-outlet-note` のキャプションの直後）:
-
-```tsx
-        <caption className={styles.sideNote} data-testid="io-common">
-          {JA.ladder.ioCommon}: {unit.spec.inputCommons.map((name) => `PLC.${name}`).join('・')}
-        </caption>
-```
-
-> `<table>` に `<caption>` は1つしか置けないので、**既存の `io-outlet-note` のキャプションの中へ
-> 1行として入れる**（`<caption>` の中に `<span data-testid="io-common">` を並べる）。
+`inputTerminal` / `outputTerminal` は **4A Task 8 が既に `?.name` へ直している**（前提#25・#20e）。
+ここで足すのは入力コモンの表示だけである（機種によって1個とは限らない。4A 前提#17）。
+`<table>` に `<caption>` は1つしか置けないので、既存の `io-outlet-note` のキャプションの中へ
+1行として入れる:
 
 ```tsx
         <caption className={styles.sideNote}>
@@ -2363,14 +2352,10 @@ function convertNote(profile: DialectProfile): string | undefined {
         </caption>
 ```
 
-- [ ] **Step 6: `MonitorPanel.tsx` を新しい `PlcUnitSpec` に合わせる**
+- [ ] **Step 6: `MonitorPanel.tsx` の文言を関数版に合わせる**
 
-```tsx
-                  <td>{terminal(unit.spec.inputs[index]?.name)}</td>
-```
-
-（出力側の `unit.spec.outputs[index]?.name` は変更不要。）
-`JA.ladder.monitorOff` の呼び出しを Task 3 の関数版に合わせる（`shortcutKeyOf(profile, 'monitor') ?? 'F3'`）。
+端子名（`unit.spec.inputs[index]?.name`）は 4A Task 8 が直している。ここで直すのは
+`JA.ladder.monitorOff` の呼び出しだけである（Task 3 で関数にした。`shortcutKeyOf(profile, 'monitor') ?? 'F3'`）。
 
 - [ ] **Step 7: `i18n/ja.ts` に追記する**
 
@@ -3701,6 +3686,998 @@ Expected: すべて通過（`text-files` 4 ケース、`instruction-list-export`
 ```powershell
 git add apps/desktop/src/shared apps/desktop/src/main apps/desktop/src/preload apps/desktop/src/renderer apps/desktop/test
 git commit -m "feat(desktop): export the instruction list to a text file"
+```
+
+---
+
+## Task 10: 3Dの `PlcUnit` を `PlcAppearance` から描く
+
+**モデル: Opus**（正面座標 → 盤モデル座標の写像と、LEDが何を映すかの判断があるため）
+
+**Files:**
+- Create: `apps/desktop/src/renderer/three/appearance.ts`
+- Modify: `apps/desktop/src/renderer/three/PlcUnit.tsx`（**4A H-7 が挙げた4定数を置き換える**）
+- Modify: `apps/desktop/src/renderer/three/labels.ts`（**4A H-8**: `blockTerminalMark()` の `.` 分割）
+- Test: `apps/desktop/test/plc-appearance-view.test.ts`（新規・純関数）
+- Test: `apps/desktop/test/plc-scene.test.ts` / `test/materials.test.ts`（追随）
+
+利用者要求「各メーカーのシーケンサーの外観を忠実に再現すること」の**描画側**である。色・寸法・面上の配置は**すべて 4A の `PlcAppearance` から**引き、`three/**` に hex も mm も書かない（決定表#15）。これで FX5U は濃灰（`#3A3D42`）の筐体＋明灰のヒンジ式端子カバー＋LED列＋RUN/STOP＋Ethernet／SD＋銘板になり（**現行の明灰 `#D8DBE0` から見た目が変わる**。4A H-7）、CP1E は明灰（アイボリー）の筐体＋黒の端子台になる。
+
+あわせて **4A H-8** を直す: `three/labels.ts:267` の `blockTerminalMark()` は `terminal.id.split('.')` の2番目の断片を端子名にしているので、CP1E の `PLC.0.00` が `'0'`、JW300 の `PLC.COM.A` が `'COM'` になる。`parseTerminalId()`（`@ojt/circuit-sim`）の `.name` に差し替えないと、受入基準⑤（`PLC.COM.A` へ配線できる）の3D側が満たせない。
+
+- [ ] **Step 1: 失敗するテストを書く**
+
+`apps/desktop/test/plc-appearance-view.test.ts`:
+
+```ts
+import { PLC_UNIT_CP1E, PLC_UNIT_FX5U } from '@ojt/board-model';
+import { describe, expect, it } from 'vitest';
+import {
+  faceRectToBoard,
+  litLedKeys,
+  PLC_BODY_Z_MM,
+  type PlcLedState,
+} from '../src/renderer/three/appearance.js';
+
+const OFF: PlcLedState = { running: false, convertFailed: false, inputs: undefined, outputs: undefined };
+
+describe('正面座標（左上原点・mm）→ 盤モデル座標（4A Task 9 / 決定表#15）', () => {
+  it('puts a face rect at the unit position, measured from its top-left corner', () => {
+    const unit = PLC_UNIT_FX5U;
+    const rect = { x: 10, y: 20, w: 30, h: 6 };
+    const box = faceRectToBoard(unit.pos, rect, 1);
+    expect(box.cx).toBe(unit.pos.x + 10 + 15);
+    expect(box.cy).toBe(unit.pos.y + 20 + 3);
+    expect(box.z).toBe(1);
+    expect(box.w).toBe(30);
+    expect(box.h).toBe(6);
+  });
+
+  it('keeps the body a thin plate under the terminals (Plan 3B 意図的な差分 #1)', () => {
+    expect(PLC_BODY_Z_MM).toBeGreaterThan(0);
+    expect(PLC_BODY_Z_MM).toBeLessThan(PLC_UNIT_FX5U.sizeMm.depth);
+  });
+});
+
+describe('LEDが映すもの（決定表#20）', () => {
+  it('keeps POWER on and everything else off while the session is idle', () => {
+    const lit = litLedKeys(PLC_UNIT_FX5U.appearance, OFF);
+    expect(lit.has('status:PWR')).toBe(true);
+    expect(lit.has('status:P.RUN')).toBe(false);
+    expect(lit.has('status:ERR')).toBe(false);
+    expect([...lit].every((key) => key.startsWith('status:'))).toBe(true);
+  });
+
+  it('lights RUN while the PLC runs and ERR after a failed convert', () => {
+    expect(litLedKeys(PLC_UNIT_FX5U.appearance, { ...OFF, running: true }).has('status:P.RUN')).toBe(
+      true,
+    );
+    expect(
+      litLedKeys(PLC_UNIT_FX5U.appearance, { ...OFF, convertFailed: true }).has('status:ERR'),
+    ).toBe(true);
+  });
+
+  it('lights the input and output lamps only from a monitor snapshot', () => {
+    const lit = litLedKeys(PLC_UNIT_CP1E.appearance, {
+      ...OFF,
+      inputs: [true, false, true],
+      outputs: [false, true],
+    });
+    const inputs = PLC_UNIT_CP1E.appearance.leds.filter((led) => led.group === 'input');
+    const outputs = PLC_UNIT_CP1E.appearance.leds.filter((led) => led.group === 'output');
+    expect(lit.has(`input:${inputs[0]?.name ?? ''}`)).toBe(true);
+    expect(lit.has(`input:${inputs[1]?.name ?? ''}`)).toBe(false);
+    expect(lit.has(`input:${inputs[2]?.name ?? ''}`)).toBe(true);
+    expect(lit.has(`output:${outputs[1]?.name ?? ''}`)).toBe(true);
+    // 点数より短いスナップショットでも落ちない
+    expect(lit.has(`input:${inputs.at(-1)?.name ?? ''}`)).toBe(false);
+  });
+
+  it('never reads the AC wiring (決定表#20: 判定結果を漏らさない)', () => {
+    // `PlcLedState` に配線の情報が無いことを型で縛る
+    const keys = Object.keys(OFF).sort();
+    expect(keys).toEqual(['convertFailed', 'inputs', 'outputs', 'running']);
+  });
+});
+
+describe('端子名の名札（4A H-8）', () => {
+  it('keeps a dotted terminal name whole (受入基準⑤)', () => {
+    const comA = withPlcUnit(JIPM_BOARD, PLC_UNIT_JW300).terminals.find(
+      (t) => String(t.id) === 'PLC.COM.A',
+    );
+    expect(blockTerminalMark(comA!)).toBe('COM.A');
+    const cp1e = withPlcUnit(JIPM_BOARD, PLC_UNIT_CP1E).terminals.find(
+      (t) => String(t.id) === 'PLC.0.00',
+    );
+    expect(blockTerminalMark(cp1e!)).toBe('0.00');
+  });
+
+  it('still names an ordinary board terminal the way Phase 1 did', () => {
+    const chk = JIPM_BOARD.terminals.find((t) => String(t.id).startsWith('CHK.'));
+    expect(blockTerminalMark(chk!)).toBe(parseTerminalId(chk!.id).name);
+  });
+});
+```
+
+（`blockTerminalMark` は `../src/renderer/three/labels.js`、`parseTerminalId` は `@ojt/circuit-sim`、
+`JIPM_BOARD` / `withPlcUnit` / `PLC_UNIT_JW300` / `PLC_UNIT_CP1E` は `@ojt/board-model` から import する。）
+
+- [ ] **Step 2: RED を確認する**
+
+```powershell
+pnpm --filter @ojt/desktop exec vitest run test/plc-appearance-view.test.ts
+```
+
+Expected: 失敗。`Failed to load url ../src/renderer/three/appearance.js`。
+
+- [ ] **Step 3: `three/appearance.ts` を作る**
+
+```ts
+import type { PlcAppearance, PlcLedMark, Vec3 } from '@ojt/board-model';
+// `labels.ts` も `FaceRect` を export している（別の形）。読み手が迷わないよう別名で読む（決定表#19）
+import type { FaceRect as AppearanceRect } from '@ojt/board-model';
+
+/**
+ * PLC本体の外観（`PlcAppearance`）を3Dへ写す純関数。設計仕様 §10.1 / §17.1。決定表#15
+ *
+ * 色・寸法・面上の配置は**すべて `@ojt/board-model` の `PlcAppearance` が持つ**（4A 決定表#15）。
+ * このファイルには hex も mm も書かない（厚みだけは 3D 固有の都合なのでここに置く）。
+ * three を import しないので、`happy-dom` でも Node でも単体テストできる。
+ *
+ * 座標系: `PlcAppearance` は**正面の左上が原点・x が右・y が下・mm**。盤モデルも机上の面を
+ * 同じ向きで見るので、本体の設置位置（`unit.pos` / `module.pos`）に足すだけで写る。
+ */
+
+/**
+ * 筐体の厚み[mm]。
+ * 実寸の奥行（FX5U は 83mm）まで出すと端子が谷底になってクリックしづらく、正面視でも端子列が
+ * 見えなくなるので、薄い台として描く（Plan 3B 意図的な差分 #1 を踏襲）。
+ */
+export const PLC_BODY_Z_MM = 6;
+/** ラックのモジュールの厚み[mm]（ベースより手前に出す）。 */
+export const RACK_BODY_Z_MM = 8;
+/** 端子カバー・造作を筐体から浮かせる高さ[mm]（Zファイティング避け）。 */
+export const FACE_LIFT_MM = 0.4;
+/** 端子の印字テクスチャの高さ[mm]。カバーより**手前**に置く（決定表#16）。 */
+export const FACE_LABEL_LIFT_MM = 1.2;
+/** LEDの高さ[mm]（印字よりさらに手前）。 */
+export const FACE_LED_LIFT_MM = 1.6;
+
+/** 盤モデル座標での箱（中心と大きさ）。 */
+export interface FaceBox {
+  cx: number;
+  cy: number;
+  z: number;
+  w: number;
+  h: number;
+}
+
+/**
+ * 正面の矩形（左上原点・mm）を盤モデル座標の箱に直す。
+ * @param origin 本体（ラックはモジュール）の左奥の角＝`unit.pos` / `module.pos`
+ * @param zMm 盤面からの高さ[mm]
+ */
+export function faceRectToBoard(origin: Vec3, rect: AppearanceRect, zMm: number): FaceBox {
+  return {
+    cx: origin.x + rect.x + rect.w / 2,
+    cy: origin.y + rect.y + rect.h / 2,
+    z: zMm,
+    w: rect.w,
+    h: rect.h,
+  };
+}
+
+/**
+ * LEDが映す状態。決定表#20
+ * **配線の情報は持たない**（`plcPowerIndependent` の判定結果を3Dから漏らさないため。
+ * 3B 決定表#7）。本アプリのPLCはAC電源を電気的に解かないので、`POWER` は常時点灯である。
+ */
+export interface PlcLedState {
+  /** RUN 中か。 */
+  running: boolean;
+  /** 直前の変換が失敗したか。 */
+  convertFailed: boolean;
+  /** モニタ中の入力（モニタでないときは `undefined`）。 */
+  inputs: readonly boolean[] | undefined;
+  /** モニタ中の出力。 */
+  outputs: readonly boolean[] | undefined;
+}
+
+/** 本体表示LEDの名前 → 何を映すか。実機の印字は機種で違うので、名前で振り分ける。 */
+function statusLit(name: string, state: PlcLedState): boolean {
+  const upper = name.toUpperCase();
+  if (upper === 'POWER' || upper === 'PWR') return true;
+  if (upper === 'RUN' || upper === 'P.RUN') return state.running;
+  if (upper === 'ERR' || upper === 'ERROR' || upper === 'FLT') return state.convertFailed;
+  return false;
+}
+
+/**
+ * 点灯しているLEDの鍵（`<group>:<name>`）。§10.1 / 決定表#20
+ * 入出力表示灯は**モニタ中だけ**光る（`SimSnapshot.plc` はモニタ中しか載らない。3B 決定表#5）。
+ */
+export function litLedKeys(appearance: PlcAppearance, state: PlcLedState): Set<string> {
+  const lit = new Set<string>();
+  const counters: Record<PlcLedMark['group'], number> = { status: 0, input: 0, output: 0 };
+  for (const led of appearance.leds) {
+    const index = counters[led.group];
+    counters[led.group] += 1;
+    const on =
+      led.group === 'status'
+        ? statusLit(led.name, state)
+        : led.group === 'input'
+          ? (state.inputs?.[index] ?? false)
+          : (state.outputs?.[index] ?? false);
+    if (on) lit.add(`${led.group}:${led.name}`);
+  }
+  return lit;
+}
+
+/** 消灯しているLEDの色（点灯色を暗く見せる代わりに、共通の暗色を使う）。 */
+export const LED_OFF_COLOR = '#4A4F58';
+```
+
+- [ ] **Step 4: `three/PlcUnit.tsx` を外観から描くように作り替える**
+
+直書きの定数（`BODY_COLOR` / `LED_D_MM` / `LED_LEFT_MM` / `LED_TOP_MM` / `BODY_Z_MM`）を**すべて削除**し、`<PlcFace>` を切り出して export する（Task 11 の `PlcRack` が使う）:
+
+```tsx
+import type { BoardTerminal, PlcAppearance, PlcUnitDefinition, Vec3 } from '@ojt/board-model';
+import type { TerminalId } from '@ojt/circuit-sim';
+import { Html } from '@react-three/drei';
+import { useMemo, type JSX } from 'react';
+import { useStore } from '../app/store.js';
+import {
+  faceRectToBoard,
+  litLedKeys,
+  FACE_LED_LIFT_MM,
+  FACE_LIFT_MM,
+  LED_OFF_COLOR,
+  PLC_BODY_Z_MM,
+  type PlcLedState,
+} from './appearance.js';
+import { blockFaceTexture, faceRect } from './labels.js';
+import { sharedMaterial, UNIT_BOX } from './materials.js';
+import { TerminalHit, terminalTooltip } from './TerminalHit.js';
+import { toScene } from './coords.js';
+
+/**
+ * 机上のPLC本体。設計仕様 §10.1 / §17。決定表#15
+ *
+ * 外形・色・端子カバー・LED・銘板・前面の造作はすべて `PlcAppearance`（`@ojt/board-model`）から
+ * 引く。**このファイルに色も寸法も書かない**ので、実機と違うと分かったときの修正箇所は
+ * `packages/board-model/src/plc-unit.ts` の `*_APPEARANCE` 1ファイルだけである（4A 決定表#15）。
+ * **各社のロゴ・銘板画像・画面キャプチャは描かない**（§17 / PLC調査資料 §6）。銘板は
+ * `appearance.nameplate`（型式の文字列だけ）を出す。
+ */
+
+/** ラベルは見せるだけ（drei の `Html` はラッパに `pointer-events: auto` を付ける）。 */
+const LABEL_STYLE = { pointerEvents: 'none' } as const;
+
+/** レイキャストを受けない（筐体が端子のクリックを奪わないように）。 */
+function noPick(): void {
+  // 交差候補を積まない
+}
+
+/** いまのLEDの状態をストアから作る（決定表#20）。 */
+export function useLedState(): PlcLedState {
+  const running = useStore((s) => s.plcRunning);
+  const convertFailed = useStore((s) => !s.converted && s.convertIssues.errors.length > 0);
+  const inputs = useStore((s) => s.plcMonitor?.inputs);
+  const outputs = useStore((s) => s.plcMonitor?.outputs);
+  return useMemo(
+    () => ({ running, convertFailed, inputs, outputs }),
+    [running, convertFailed, inputs, outputs],
+  );
+}
+
+/**
+ * 外観1枚ぶん（本体、またはラックのモジュール1枚）の面を描く。
+ * 筐体 → 端子カバー → 造作 → LED → 銘板の順に、盤面から少しずつ手前へ重ねる。
+ */
+export function PlcFace({
+  origin,
+  appearance,
+  depthMm,
+  ledState,
+}: {
+  /** 左奥の角（`unit.pos` / `module.pos`）。 */
+  origin: Vec3;
+  appearance: PlcAppearance;
+  /** 筐体の厚み[mm]。 */
+  depthMm: number;
+  ledState: PlcLedState;
+}): JSX.Element {
+  const lit = useMemo(() => litLedKeys(appearance, ledState), [appearance, ledState]);
+  const { width, height } = appearance.faceMm;
+  return (
+    <group name="plc-face">
+      {/* 筐体。端子（z = 0）の**下**へ沈める（台の上に乗せると端子が埋まる） */}
+      <mesh
+        geometry={UNIT_BOX}
+        material={sharedMaterial(appearance.bodyColor, { roughness: 0.65, metalness: 0.1 })}
+        raycast={noPick}
+        position={toScene({ x: origin.x + width / 2, y: origin.y + height / 2, z: -depthMm / 2 })}
+        scale={[width, height, depthMm]}
+      />
+      {/* ヒンジ式の端子カバー（開いた状態で描く。決定表#16） */}
+      {appearance.covers.map((cover) => {
+        const box = faceRectToBoard(origin, cover.rect, -FACE_LIFT_MM);
+        return (
+          <mesh
+            key={cover.id}
+            geometry={UNIT_BOX}
+            material={sharedMaterial(cover.color, { roughness: 0.8, metalness: 0 })}
+            raycast={noPick}
+            position={toScene({ x: box.cx, y: box.cy, z: box.z })}
+            scale={[box.w, box.h, 1]}
+          />
+        );
+      })}
+      {/* 前面の造作（RUN/STOPスイッチ・コネクタ・スロット・固定ラッチ） */}
+      {appearance.features.map((feature) => {
+        const box = faceRectToBoard(origin, feature.rect, FACE_LIFT_MM);
+        return (
+          <mesh
+            key={feature.id}
+            geometry={UNIT_BOX}
+            material={sharedMaterial(feature.color, { roughness: 0.7, metalness: 0.2 })}
+            raycast={noPick}
+            position={toScene({ x: box.cx, y: box.cy, z: box.z })}
+            scale={[box.w, box.h, 1]}
+          />
+        );
+      })}
+      {/* LED。点灯色は `appearance` が持ち、消灯は共通の暗色にする（決定表#20） */}
+      {appearance.leds.map((led) => {
+        const box = faceRectToBoard(origin, led.rect, FACE_LED_LIFT_MM);
+        const on = lit.has(`${led.group}:${led.name}`);
+        return (
+          <mesh
+            key={`${led.group}:${led.name}`}
+            geometry={UNIT_BOX}
+            material={sharedMaterial(on ? led.color : LED_OFF_COLOR, {
+              roughness: 0.3,
+              metalness: 0,
+            })}
+            raycast={noPick}
+            name={`led-${led.group}-${led.name}`}
+            position={toScene({ x: box.cx, y: box.cy, z: box.z })}
+            scale={[box.w, box.h, 0.8]}
+          />
+        );
+      })}
+      {/* 銘板は型式の文字だけ（ロゴ・ブランド名は描かない。§17 / 4A 前提#14） */}
+      <Html
+        center
+        style={LABEL_STYLE}
+        distanceFactor={420}
+        position={toScene({
+          x: origin.x + appearance.nameplateRect.x + appearance.nameplateRect.w / 2,
+          y: origin.y + appearance.nameplateRect.y + appearance.nameplateRect.h / 2,
+          z: FACE_LED_LIFT_MM,
+        })}
+        zIndexRange={[10, 0]}
+      >
+        <span className="block-label">{appearance.nameplate}</span>
+      </Html>
+    </group>
+  );
+}
+```
+
+`PlcUnit` の本体を差し替える（端子・印字・ツールチップは Phase 3 のまま）:
+
+```tsx
+export function PlcUnit({
+  unit,
+  terminals,
+  hoveredTerminal,
+  pendingTerminal,
+  onHoverTerminal,
+  onPickTerminal,
+}: { /* props は Phase 3 のまま */ }): JSX.Element {
+  const faceTexture = useMemo(() => blockFaceTexture(terminals, PLC_LABEL_PAD_MM), [terminals]);
+  const face = useMemo(() => plcFaceRect(terminals), [terminals]);
+  const ledState = useLedState();
+  return (
+    <group name="plc-unit">
+      <PlcFace
+        origin={unit.pos}
+        appearance={unit.appearance}
+        depthMm={PLC_BODY_Z_MM}
+        ledState={ledState}
+      />
+      {/* 端子の印字は1枚のテクスチャ。**カバーより手前**に置く（決定表#16） */}
+      {faceTexture === undefined || face === undefined ? null : (
+        <mesh raycast={noPick} position={toScene({ x: face.cx, y: face.cy, z: FACE_LABEL_LIFT_MM })}>
+          <planeGeometry args={[face.w, face.h]} />
+          <meshBasicMaterial map={faceTexture} transparent depthWrite={false} />
+        </mesh>
+      )}
+      {terminals.map((terminal) => (
+        <TerminalHit
+          key={terminal.id}
+          terminal={terminal}
+          tooltip={terminalTooltip(terminal, terminal.label)}
+          hovered={hoveredTerminal === terminal.id}
+          pending={pendingTerminal === terminal.id}
+          onHover={onHoverTerminal}
+          onPick={onPickTerminal}
+        />
+      ))}
+      {/* 機種名は本体の上に1枚（`displayName`。銘板とは別物） */}
+      <Html
+        center
+        style={LABEL_STYLE}
+        distanceFactor={420}
+        position={toScene({
+          x: unit.pos.x + unit.sizeMm.width / 2,
+          y: unit.pos.y + unit.sizeMm.height + 8,
+          z: 0,
+        })}
+        zIndexRange={[10, 0]}
+      >
+        <span className="block-label">{unit.displayName}</span>
+      </Html>
+    </group>
+  );
+}
+```
+
+（`plcFaceRect` と `PLC_LABEL_PAD_MM` / `LABEL_LIFT_MM` の既存の宣言はそのまま残す。`LABEL_LIFT_MM` は `FACE_LABEL_LIFT_MM` に置き換えて削除する。）
+
+- [ ] **Step 5: `three/labels.ts` の端子名の切り出しを直す（4A H-8）**
+
+`blockTerminalMark()` を差し替える（**`blockFaceTexture()` の本体と `ROLE_COLOR` は触らない**。
+Plan 3B MERGE 注意 #15）:
+
+```ts
+/** 端子台の印字に使う短い名前（`PL1+` / `PB1c` / `P1` / `N1`）。§6.4 */
+export function blockTerminalMark(terminal: BoardTerminal): string {
+  /*
+   * 端子名側は `.` を含んでよい（`PLC.0.00` / `PLC.COM.A`。§6.4 / 4A 前提#8）。
+   * `split('.')` の2番目だけを取ると CP1E が `0`、JW300 が `COM` になり、機種を替えた
+   * 瞬間に印字が壊れる（4A H-8）。**最初の `.` で割る `parseTerminalId()`** を使う。
+   */
+  const { part, name } = parseTerminalId(terminal.id);
+  if (part === 'TB_PL') return `PL${name}`;
+  if (part === 'TB_PB') return `PB${name}`;
+  // 机上のPLC本体と壁コンセントは端子名そのものが印字（`X0` / `0.00` / `COM.A` / `L`）。§10.1
+  if (part === PLC_PART_ID || part === OUTLET_ID) return name;
+  return `${part}${name}`;
+}
+```
+
+`import { parseTerminalId } from '@ojt/circuit-sim';` を足す（`labels.ts` は既に
+`@ojt/circuit-sim` から `TerminalRole` を型 import しているので、依存は増えない）。
+
+- [ ] **Step 6: `test/plc-scene.test.ts` を追随させる**
+
+`BODY_COLOR` / `LED_TOP_MM` を参照しているケースを、`appearance` 由来の値に直す:
+
+```ts
+  it('paints the body in the colour the model describes (4A 決定表#15)', () => {
+    expect(PLC_UNIT_FX5U.appearance.bodyColor).toBe('#3A3D42');
+    expect(PLC_UNIT_CP1E.appearance.bodyColor).not.toBe(PLC_UNIT_FX5U.appearance.bodyColor);
+  });
+```
+
+- [ ] **Step 7: GREEN を確認してコミットする**
+
+```powershell
+pnpm --filter @ojt/desktop exec vitest run test/plc-appearance-view.test.ts test/plc-scene.test.ts test/scene.test.ts test/materials.test.ts
+pnpm --filter @ojt/desktop exec tsc -p tsconfig.json --noEmit
+```
+
+Expected: すべて通過（`plc-appearance-view` は 4 describe / 9 ケース）。
+
+```powershell
+git add apps/desktop/src/renderer/three apps/desktop/test
+git commit -m "feat(desktop): draw the PLC body from the model's appearance record"
+```
+
+---
+
+## Task 11: ラック形の3D（`PlcRack.tsx`）と `BoardScene` の分岐
+
+**モデル: Opus**（ベースとモジュールの重ね順・端子の持ち主の判断があるため）
+
+**Files:**
+- Create: `apps/desktop/src/renderer/three/PlcRack.tsx`
+- Modify: `apps/desktop/src/renderer/three/BoardScene.tsx`（1箇所）
+- Modify: `apps/desktop/src/renderer/i18n/ja.ts`
+- Test: `apps/desktop/test/plc-rack-view.test.ts`（新規・純関数）
+- Test: `apps/desktop/test/plc-scene.test.ts`（追記）
+
+§16 Phase 4 受入基準③（TOYOPUC のラックが3Dに出て `IN-12` のCOM端子へ配線できる）と⑤（JW300 のラックが出て `COM.A` へ配線できる）の本体である。**端子は `unit.terminals` の1本の配列のまま**（4A H-6 / 決定表#17）なので、配線操作は Phase 3 の仕組みがそのまま動く。
+
+- [ ] **Step 1: 失敗するテストを書く**
+
+`apps/desktop/test/plc-rack-view.test.ts`:
+
+```ts
+import { PLC_UNIT_JW300, PLC_UNIT_PC10G } from '@ojt/board-model';
+import { describe, expect, it } from 'vitest';
+import { RACK_BODY_Z_MM } from '../src/renderer/three/appearance.js';
+import { rackModuleBoxes, rackTerminalsOf } from '../src/renderer/three/PlcRack.js';
+
+describe('ラックの3D（§10.1 / §16 Phase 4 受入基準③⑤）', () => {
+  it('lays the four TOYOPUC modules across the base, front of it', () => {
+    const boxes = rackModuleBoxes(PLC_UNIT_PC10G);
+    expect(boxes.map((box) => box.model)).toEqual(['POWER1', 'PC10G-1SP', 'IN-12', 'OUT-12']);
+    for (const box of boxes) {
+      expect(box.depthMm).toBe(RACK_BODY_Z_MM);
+      // ベースの外形の内側に収まる
+      expect(box.origin.x).toBeGreaterThanOrEqual(PLC_UNIT_PC10G.pos.x);
+      expect(box.origin.x + box.appearance.faceMm.width).toBeLessThanOrEqual(
+        PLC_UNIT_PC10G.pos.x + PLC_UNIT_PC10G.sizeMm.width,
+      );
+    }
+    // 左から右へ、重ならずに並ぶ
+    const xs = boxes.map((box) => box.origin.x);
+    expect([...xs].sort((a, b) => a - b)).toEqual(xs);
+  });
+
+  it('lays the four JW300 modules likewise', () => {
+    expect(rackModuleBoxes(PLC_UNIT_JW300).map((box) => box.model)).toEqual([
+      'JW-301PU',
+      'JW-312CU',
+      'JW-212NA',
+      'JW-214SA',
+    ]);
+  });
+
+  it('keeps every terminal on the rack, not on a module (4A H-6 / 決定表#17)', () => {
+    const terminals = rackTerminalsOf(PLC_UNIT_PC10G);
+    expect(terminals).toHaveLength(PLC_UNIT_PC10G.terminals.length);
+    expect(terminals.map((t) => String(t.id))).toContain('PLC.ICOM0');
+    // モジュール名は端子IDに入らない
+    expect(terminals.every((t) => !String(t.id).includes('IN-12'))).toBe(true);
+  });
+
+  it('returns nothing for a one-piece unit', () => {
+    expect(rackModuleBoxes({ ...PLC_UNIT_PC10G, form: 'unit', modules: undefined })).toEqual([]);
+  });
+});
+```
+
+`apps/desktop/test/plc-scene.test.ts` に足す:
+
+```ts
+  it('picks the rack drawing for a rack model and the body for a one-piece model', () => {
+    expect(PLC_UNIT_PC10G.form).toBe('rack');
+    expect(PLC_UNIT_JW300.form).toBe('rack');
+    expect(PLC_UNIT_FX5U.form).toBe('unit');
+    expect(PLC_UNIT_CP1E.form).toBe('unit');
+  });
+```
+
+- [ ] **Step 2: RED を確認する**
+
+```powershell
+pnpm --filter @ojt/desktop exec vitest run test/plc-rack-view.test.ts
+```
+
+Expected: 失敗。`Failed to load url ../src/renderer/three/PlcRack.js`。
+
+- [ ] **Step 3: `three/PlcRack.tsx` を作る**
+
+```tsx
+import type { BoardTerminal, PlcAppearance, PlcUnitDefinition, Vec3 } from '@ojt/board-model';
+import type { TerminalId } from '@ojt/circuit-sim';
+import { Html } from '@react-three/drei';
+import { useMemo, type JSX } from 'react';
+import { JA } from '../i18n/ja.js';
+import { faceRectToBoard, PLC_BODY_Z_MM, RACK_BODY_Z_MM } from './appearance.js';
+import { blockFaceTexture, faceRect } from './labels.js';
+import { sharedMaterial, UNIT_BOX } from './materials.js';
+import { PlcFace, useLedState } from './PlcUnit.js';
+import { TerminalHit, terminalTooltip } from './TerminalHit.js';
+import { toScene } from './coords.js';
+import { FACE_LABEL_LIFT_MM } from './appearance.js';
+
+/**
+ * ラック形のPLC（ベース＋モジュール）。設計仕様 §10.1 / §17 #21。決定表#17
+ *
+ * ベース1枚を薄い台として敷き、その手前に `unit.modules` の箱を並べる。**端子とその印字は
+ * ここが1回だけ描く**（`unit.terminals` は平らな1本の配列で、端子IDにモジュール名は入らない。
+ * 4A H-6）。これで Phase 3 の配線操作・経路生成・E2Eの射影がそのまま動く。
+ * 色・寸法はすべて `PlcAppearance` から引く（4A 決定表#15）。
+ */
+
+/** ラベルは見せるだけ。 */
+const LABEL_STYLE = { pointerEvents: 'none' } as const;
+
+function noPick(): void {
+  // 交差候補を積まない
+}
+
+/** 3Dが描くモジュール1枚ぶんの箱。 */
+export interface RackModuleBox {
+  model: string;
+  displayName: string;
+  origin: Vec3;
+  appearance: PlcAppearance;
+  depthMm: number;
+}
+
+/** ラックのモジュールを左から右へ（一体形は空配列）。 */
+export function rackModuleBoxes(unit: PlcUnitDefinition): RackModuleBox[] {
+  if (unit.form !== 'rack') return [];
+  return [...(unit.modules ?? [])]
+    .sort((a, b) => a.slot - b.slot)
+    .map((module) => ({
+      model: module.model,
+      displayName: module.displayName,
+      origin: module.pos,
+      appearance: module.appearance,
+      depthMm: RACK_BODY_Z_MM,
+    }));
+}
+
+/** ラックの端子（機種の端子をそのまま。4A H-6）。 */
+export function rackTerminalsOf(unit: PlcUnitDefinition): readonly BoardTerminal[] {
+  return unit.terminals;
+}
+
+/** ラック形のPLC。 */
+export function PlcRack({
+  unit,
+  terminals,
+  hoveredTerminal,
+  pendingTerminal,
+  onHoverTerminal,
+  onPickTerminal,
+}: {
+  unit: PlcUnitDefinition;
+  terminals: readonly BoardTerminal[];
+  hoveredTerminal: TerminalId | undefined;
+  pendingTerminal: TerminalId | undefined;
+  onHoverTerminal: (id: TerminalId | undefined) => void;
+  onPickTerminal: (terminal: BoardTerminal) => void;
+}): JSX.Element {
+  const modules = useMemo(() => rackModuleBoxes(unit), [unit]);
+  const ledState = useLedState();
+  const faceTexture = useMemo(() => blockFaceTexture(terminals, RACK_LABEL_PAD_MM), [terminals]);
+  const labelFace = useMemo(() => faceRect(terminals, RACK_LABEL_PAD_MM), [terminals]);
+  const { width, height } = unit.sizeMm;
+  return (
+    <group name="plc-rack">
+      {/* 基本ベース（モジュールより奥。`unit.appearance` が持つ色と `slot-rail`） */}
+      <mesh
+        geometry={UNIT_BOX}
+        material={sharedMaterial(unit.appearance.bodyColor, { roughness: 0.75, metalness: 0.05 })}
+        raycast={noPick}
+        position={toScene({
+          x: unit.pos.x + width / 2,
+          y: unit.pos.y + height / 2,
+          z: -(RACK_BODY_Z_MM + PLC_BODY_Z_MM) / 2,
+        })}
+        scale={[width, height, PLC_BODY_Z_MM]}
+      />
+      {modules.map((module) => (
+        <group key={module.model} name={`rack-module-${module.model}`}>
+          <PlcFace
+            origin={module.origin}
+            appearance={module.appearance}
+            depthMm={module.depthMm}
+            ledState={ledState}
+          />
+          {/* モジュール名はツールチップ代わりの名札（`displayName`。4A 引き渡し表） */}
+          <Html
+            center
+            style={LABEL_STYLE}
+            distanceFactor={520}
+            position={toScene({
+              x: module.origin.x + module.appearance.faceMm.width / 2,
+              y: module.origin.y - 5,
+              z: 0,
+            })}
+            zIndexRange={[10, 0]}
+          >
+            <span className="block-label">{module.displayName}</span>
+          </Html>
+        </group>
+      ))}
+      {/* 端子の印字はラック全体で1枚（モジュールごとに割らない。決定表#17） */}
+      {faceTexture === undefined || labelFace === undefined ? null : (
+        <mesh
+          raycast={noPick}
+          position={toScene({ x: labelFace.cx, y: labelFace.cy, z: FACE_LABEL_LIFT_MM })}
+        >
+          <planeGeometry args={[labelFace.w, labelFace.h]} />
+          <meshBasicMaterial map={faceTexture} transparent depthWrite={false} />
+        </mesh>
+      )}
+      {terminals.map((terminal) => (
+        <TerminalHit
+          key={terminal.id}
+          terminal={terminal}
+          tooltip={terminalTooltip(terminal, terminal.label)}
+          hovered={hoveredTerminal === terminal.id}
+          pending={pendingTerminal === terminal.id}
+          onHover={onHoverTerminal}
+          onPick={onPickTerminal}
+        />
+      ))}
+      <Html
+        center
+        style={LABEL_STYLE}
+        distanceFactor={420}
+        position={toScene({ x: unit.pos.x + width / 2, y: unit.pos.y + height + 8, z: 0 })}
+        zIndexRange={[10, 0]}
+      >
+        <span className="block-label">{unit.displayName}</span>
+      </Html>
+    </group>
+  );
+}
+
+/** ラックの端子の印字板の余白[mm]（`PlcUnit` と同じ理由で下端の列を切らない）。 */
+const RACK_LABEL_PAD_MM = 6;
+```
+
+- [ ] **Step 4: `BoardScene.tsx` で描き分ける**
+
+import に `import { PlcRack } from './PlcRack.js';` を足し、`board.plcUnit === undefined ? null : (` のブロックの `<PlcUnit …/>` を差し替える（**他の2部品（`Outlet` / `DeskWires`）と端子のメモ化は触らない**。MERGE 注意 #5）:
+
+```tsx
+            {board.plcUnit.form === 'rack' ? (
+              <PlcRack
+                unit={board.plcUnit}
+                terminals={plcTerminals}
+                hoveredTerminal={hoveredTerminal}
+                pendingTerminal={pendingTerminal}
+                onHoverTerminal={onHoverTerminal}
+                onPickTerminal={onPickTerminal}
+              />
+            ) : (
+              <PlcUnit
+                unit={board.plcUnit}
+                terminals={plcTerminals}
+                hoveredTerminal={hoveredTerminal}
+                pendingTerminal={pendingTerminal}
+                onHoverTerminal={onHoverTerminal}
+                onPickTerminal={onPickTerminal}
+              />
+            )}
+```
+
+（`plcTerminals` は既存の `useMemo` の名前に合わせる。`PlcUnit` へ渡していた props をそのまま使う。）
+
+- [ ] **Step 5: 机上配線の確認（変更なしであることを確かめる）**
+
+`DeskWires` は `deskWires(board, session)` が返す端子の座標をそのまま結ぶので、ラックでも**変更は要らない**（4A の `deskWires()` は機種に依らない。4A 前提#13）。`test/desk-wires.test.tsx` にラックのケースを1つ足して、それを固定する:
+
+```tsx
+  it('routes a cable to a rack module terminal (受入基準③)', () => {
+    const board = withPlcUnit(JIPM_BOARD, PLC_UNIT_PC10G);
+    const session = sessionWithWire(board, 'TB_PB.1a', 'PLC.X0');
+    const points = deskCablePoints(
+      board.terminals.find((t) => String(t.id) === 'PLC.X0')!.pos,
+      OUTLET_TERMINAL_POS,
+    );
+    expect(points).toHaveLength(3);
+    expect(render(<DeskWires board={board} session={session} />).container).toBeTruthy();
+  });
+```
+
+- [ ] **Step 6: GREEN を確認してコミットする**
+
+```powershell
+pnpm --filter @ojt/desktop exec vitest run test/plc-rack-view.test.ts test/plc-scene.test.ts test/desk-wires.test.tsx test/board-scene.test.ts
+```
+
+Expected: すべて通過（`plc-rack-view` は 4 ケース）。
+
+```powershell
+git add apps/desktop/src/renderer/three apps/desktop/src/renderer/i18n/ja.ts apps/desktop/test
+git commit -m "feat(desktop): draw the TOYOPUC and JW300 racks in 3D"
+```
+
+---
+
+## Task 12: カメラと射影を機種に追随させる
+
+**モデル: Sonnet**（本書のコードをそのまま書き写せば通る）
+
+**Files:**
+- Modify: `apps/desktop/src/renderer/three/camera.ts`
+- Modify: `apps/desktop/src/renderer/three/CameraPresets.tsx` / `navigation.ts`
+- Modify: `apps/desktop/e2e/projection.ts`（**追記のみ**）
+- Test: `apps/desktop/test/plc-camera.test.ts`（追記）
+
+ラック（160 × 140mm）は FX5U（150 × 90mm）より大きいので、FX5U 基準の画角では下段の端子が切れる（前提#30）。`cameraPose(preset, options?)` の**第2引数**で機種を渡せるようにする（決定表#18。引数を省くと従来どおり FX5U）。
+
+- [ ] **Step 1: 失敗するテストを書く**
+
+`apps/desktop/test/plc-camera.test.ts` に足す:
+
+```ts
+describe('機種ごとの「盤＋PLC」視点（決定表#18）', () => {
+  it('keeps the FX5U rect as the default', () => {
+    expect(plcViewRect(PLC_UNIT_FX5U)).toEqual(PLC_VIEW_RECT);
+    expect(cameraPose('plc')).toEqual(cameraPose('plc', { plcUnit: PLC_UNIT_FX5U }));
+  });
+
+  it('widens the rect so a rack fits', () => {
+    const rack = plcViewRect(PLC_UNIT_PC10G);
+    expect(rack.w).toBeGreaterThanOrEqual(PLC_VIEW_RECT.w);
+    expect(rack.h).toBeGreaterThanOrEqual(PLC_VIEW_RECT.h);
+    // ラックの下端まで入る
+    expect(rack.y + rack.h).toBeGreaterThanOrEqual(
+      PLC_UNIT_PC10G.pos.y + PLC_UNIT_PC10G.sizeMm.height,
+    );
+  });
+
+  it('stays inside the orbit distance limits for every model', () => {
+    for (const unit of Object.values(PLC_UNITS)) {
+      const rect = plcViewRect(unit);
+      const distance = fitDistanceMm(rect.w, rect.h, PLC_VIEW_ASPECT);
+      expect(distance, unit.model).toBeLessThanOrEqual(MAX_CAMERA_DISTANCE_MM);
+      expect(distance, unit.model).toBeGreaterThanOrEqual(MIN_CAMERA_DISTANCE_MM);
+    }
+  });
+
+  it('moves the target when the model changes', () => {
+    expect(cameraPose('plc', { plcUnit: PLC_UNIT_JW300 }).target).not.toEqual(
+      cameraPose('plc', { plcUnit: PLC_UNIT_FX5U }).target,
+    );
+    // 他のプリセットは機種で変わらない
+    expect(cameraPose('front', { plcUnit: PLC_UNIT_JW300 })).toEqual(cameraPose('front'));
+  });
+});
+```
+
+- [ ] **Step 2: RED を確認する**
+
+```powershell
+pnpm --filter @ojt/desktop exec vitest run test/plc-camera.test.ts
+```
+
+Expected: 失敗。`plcViewRect is not a function`。
+
+- [ ] **Step 3: `camera.ts` を直す**
+
+`PLC_VIEW_RECT` の IIFE を関数に切り出し、定数はその呼び出しにする:
+
+```ts
+/**
+ * 「盤＋PLC」視点が収める矩形（盤モデル mm）。§10.1 / 3B 決定表#6 / 4B 決定表#18
+ *
+ * **盤・机上のPLC本体・壁コンセントを全部**入れる。機種によって本体の外形が違う
+ * （FX5U 150×90 / CP1E 130×90 / ラック 160×140）ので、機種を引数に取る。
+ * 数値は盤モデルの定義から求めるのでハードコードしない。
+ */
+export function plcViewRect(unit: PlcUnitDefinition): {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+} {
+  const xs = [
+    0,
+    BOARD_WIDTH_MM,
+    unit.pos.x,
+    unit.pos.x + unit.sizeMm.width,
+    OUTLET_ORIGIN_MM.x,
+    OUTLET_ORIGIN_MM.x + PLC_TERMINAL_PITCH_MM * 2,
+  ];
+  const ys = [
+    0,
+    BOARD_HEIGHT_MM,
+    unit.pos.y,
+    unit.pos.y + unit.sizeMm.height,
+    OUTLET_ORIGIN_MM.y - PLC_TERMINAL_PITCH_MM,
+    OUTLET_ORIGIN_MM.y + PLC_TERMINAL_PITCH_MM,
+  ];
+  /* 以降は landed 実装（外接矩形＋`PLC_VIEW_MARGIN_MM`）をそのまま移す */
+}
+
+/** 既定（FX5U）の矩形。既存の呼び出しと landed テストのために残す。 */
+export const PLC_VIEW_RECT = plcViewRect(PLC_UNIT_FX5U);
+```
+
+`cameraPose` に任意の第2引数を足す:
+
+```ts
+/** 視点の付帯条件（いまは機種だけ）。 */
+export interface CameraPoseOptions {
+  /** モードDで机上に置いている本体。省くと FX5U（決定表#18）。 */
+  plcUnit?: PlcUnitDefinition;
+}
+
+export function cameraPose(preset: CameraPreset, options: CameraPoseOptions = {}): CameraPose {
+```
+
+`case 'plc':` の中だけを差し替える:
+
+```ts
+    case 'plc': {
+      const rect = plcViewRect(options.plcUnit ?? PLC_UNIT_FX5U);
+      /* 以降は landed 実装のまま */
+    }
+```
+
+`import type { PlcUnitDefinition } from '@ojt/board-model';` を足す。
+
+- [ ] **Step 4: 呼び出し側から機種を渡す**
+
+`three/CameraPresets.tsx`:
+
+```ts
+import { plcUnitOfBoard } from './PlcRack.js';   // 下の注記のとおり、ここは `board.plcUnit` で足りる
+// …
+  const plcUnit = useStore((s) => boardForProblem(s.problem).plcUnit);
+  const to = cameraPose(preset, plcUnit === undefined ? {} : { plcUnit });
+```
+
+> `boardForProblem()` は `session/plc-session.ts` の純関数で、`three/**` から呼んでも循環しない
+> （`plc-session.ts` は three を知らない）。`plcUnit` は課題が変わらない限り同じ参照なので、
+> `useStore` の購読は増えても再描画は起きない。
+
+`three/navigation.ts` の `cameraPose(preset)` も同じ形にする（`navigation.ts` は純関数なので、
+**引数で受け取る**ようにして呼び出し側（`CameraPresets` / `useViewportShortcuts`）が渡す）:
+
+```ts
+export function poseForKey(
+  preset: CameraPreset,
+  options: CameraPoseOptions = {},
+): CameraPose {
+  return cameraPose(preset, options);
+}
+```
+
+- [ ] **Step 5: `e2e/projection.ts` に機種を取る射影を足す（追記のみ）**
+
+**既存の `PLC_BOARD` / `plcBoardPoint` / `plcTerminalPoint` は消さない**（MERGE 注意 #11）。下に足す:
+
+```ts
+/**
+ * 機種を指定した机上の盤（Phase 4）。§10.1
+ * 既定メーカーを変えると机上の本体が変わるので、E2Eも同じ機種で射影する必要がある。
+ */
+export function plcBoardFor(unit: PlcUnitDefinition): BoardDefinition {
+  return withPlcUnit(JIPM_BOARD, unit);
+}
+
+/** 機種を指定した `plc` 視点の射影。 */
+export function plcBoardPointFor(
+  unit: PlcUnitDefinition,
+  point: { x: number; y: number; z: number },
+  box: CanvasBox,
+): { x: number; y: number } {
+  return projectToScreen(boardToWorld(toScene(point)), cameraPose('plc', { plcUnit: unit }), box);
+}
+
+/** 機種を指定した端子の射影（盤・PLC本体・壁コンセントのどれでも）。 */
+export function plcTerminalPointFor(
+  unit: PlcUnitDefinition,
+  roles: SocketRoles,
+  terminal: string,
+  box: CanvasBox,
+): { x: number; y: number } {
+  const board = plcBoardFor(unit);
+  const physical = toPhysicalTerminal(roles, terminal as TerminalId);
+  const found = board.terminals.find((t) => t.id === physical);
+  if (found === undefined) throw new Error(`端子が盤にありません: ${terminal}（${physical}）`);
+  return plcBoardPointFor(unit, found.pos, box);
+}
+```
+
+- [ ] **Step 6: GREEN を確認してコミットする**
+
+```powershell
+pnpm --filter @ojt/desktop exec vitest run test/plc-camera.test.ts test/camera-presets.test.tsx test/view-navigation.test.ts test/scene.test.ts
+pnpm --filter @ojt/desktop exec tsc -p tsconfig.json --noEmit
+```
+
+Expected: すべて通過（`plc-camera` に4ケース追加）。
+
+```powershell
+git add apps/desktop/src/renderer/three apps/desktop/e2e/projection.ts apps/desktop/test
+git commit -m "feat(desktop): fit the plc view to whichever model is on the desk"
 ```
 
 ---
