@@ -1,8 +1,17 @@
+import { JIPM_BOARD } from '@ojt/board-model';
 import { BUILTIN_ASSEMBLE_PROBLEMS, BUILTIN_INSPECT_PARTS_PROBLEMS } from '@ojt/content';
+import { SCHEMATIC_FORMAT_VERSION } from '@ojt/schematic-core';
 import { act } from '@testing-library/react';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { useStore } from '../src/renderer/app/store.js';
-import { toSchematicDoc, toWorkFile } from '../src/renderer/session/work-file.js';
+import { JA } from '../src/renderer/i18n/ja.js';
+import { keyToEdit, paletteFor } from '../src/renderer/session/schematic-edit.js';
+import {
+  MAX_RESTORED_RUNGS,
+  restoreInspectState,
+  toSchematicDoc,
+  toWorkFile,
+} from '../src/renderer/session/work-file.js';
 
 /**
  * 検算の状態遷移（§11.4 / Plan 5 Task 6）。**ストアの側**だけを確かめる（Worker は立てない）。
@@ -118,5 +127,225 @@ describe('検算の状態遷移（§11.4）', () => {
     expect(left.schematicDoc).toBeUndefined();
     expect(left.schematicHistory.done).toEqual([]);
     expect(left.verifyResult).toBeUndefined();
+  });
+});
+
+/** いまの下書き（無ければ落ちる）。 */
+function draft() {
+  const doc = useStore.getState().schematicDoc;
+  if (doc === undefined) throw new Error('下書きがありません');
+  return doc;
+}
+
+/** 段の要素の機器名。 */
+function devices(rungIndex = 0): string[] {
+  return (draft().rungs[rungIndex]?.cells ?? []).map((c) => c.device);
+}
+
+describe('置いたあとのカーソル（レビュー I1: 打った順に並ぶ）', () => {
+  it('advances the cursor so three Enters keep the typed order', () => {
+    const palette = paletteFor(problem, JIPM_BOARD);
+    const pick = (id: string) => {
+      const found = palette.find((item) => item.id === id);
+      if (found === undefined) throw new Error(`パレットにありません: ${id}`);
+      return found;
+    };
+    // 画面の `Enter` が作る編集をそのままストアへ渡す（キーボードだけの操作の再現）
+    for (const id of ['pb-b:PB2', 'pb-a:PB1', 'coil:CR1']) {
+      act(() => {
+        const store = useStore.getState();
+        const edit = keyToEdit(draft(), store.schematicCursor, 'Enter', pick(id));
+        if (edit === undefined) throw new Error('編集になりませんでした');
+        store.applySchematicEdit(edit);
+      });
+    }
+    expect(devices()).toEqual(['PB2', 'PB1', 'CR1']);
+    expect(useStore.getState().schematicCursor).toEqual({ rungId: 'r1', index: 3 });
+  });
+
+  it('keeps the cursor on the element that was replaced', () => {
+    act(() => {
+      useStore.getState().applySchematicEdit(pb1);
+    });
+    const cellId = draft().rungs[0]?.cells[0]?.id ?? '';
+    act(() => {
+      useStore.getState().setSchematicCursor({ rungId: 'r1', index: 1 });
+      useStore.getState().applySchematicEdit({
+        kind: 'replaceCell',
+        cellId,
+        draft: { kind: 'lamp', device: 'PL1' },
+      });
+    });
+    expect(useStore.getState().schematicCursor).toEqual({ rungId: 'r1', index: 0 });
+  });
+});
+
+describe('画面に出す文面（レビュー I3: 内部IDを出さない）', () => {
+  /** 段3本（r2 は r1 の分岐、r3 は r2 の分岐）。分岐の分岐と循環を作るための下ごしらえ。 */
+  function threeRungs(): void {
+    act(() => {
+      const store = useStore.getState();
+      store.applySchematicEdit(pb1);
+      store.applySchematicEdit({ kind: 'addRung' });
+      store.applySchematicEdit({
+        kind: 'insertCell',
+        rungId: 'r2',
+        index: 0,
+        draft: { kind: 'cr-a', device: 'CR1' },
+      });
+      store.applySchematicEdit({ kind: 'addRung' });
+      store.applySchematicEdit({
+        kind: 'insertCell',
+        rungId: 'r3',
+        index: 0,
+        draft: { kind: 'cr-b', device: 'CR1' },
+      });
+    });
+  }
+
+  it('names the rung in Japanese when an edit is refused', () => {
+    threeRungs();
+    act(() => {
+      const store = useStore.getState();
+      // r2 を r1 の分岐に、r3 を r2 の分岐にする（分岐の分岐は描ける）
+      store.applySchematicEdit({
+        kind: 'setEnds',
+        rungId: 'r2',
+        from: { rung: 'r1', node: 0 },
+        to: { rung: 'r1', node: 1 },
+      });
+      store.applySchematicEdit({
+        kind: 'setEnds',
+        rungId: 'r3',
+        from: { rung: 'r2', node: 0 },
+        to: { rung: 'r2', node: 1 },
+      });
+    });
+    expect(draft().rungs[2]?.from).toEqual({ rung: 'r2', node: 0 });
+    let accepted = true;
+    act(() => {
+      // これで r2 → r3 → r2 の輪になる（`applyEdit()` が断る）
+      accepted = useStore.getState().applySchematicEdit({
+        kind: 'setEnds',
+        rungId: 'r2',
+        from: { rung: 'r3', node: 0 },
+        to: { rung: 'r3', node: 1 },
+      });
+    });
+    expect(accepted).toBe(false);
+    const toast = useStore.getState().toasts.at(-1)?.text ?? '';
+    expect(toast).toContain('段目');
+    expect(toast).not.toMatch(/\b[rc]\d/u);
+  });
+
+  it('names the rung in Japanese in the operation log', () => {
+    threeRungs();
+    act(() => {
+      useStore.getState().applySchematicEdit({ kind: 'removeRung', rungId: 'r2' });
+    });
+    const line = useStore.getState().logLines.at(-1)?.text ?? '';
+    expect(line).toContain('2段目');
+    expect(line).not.toMatch(/\b[rc]\d/u);
+  });
+});
+
+describe('検算の往復（レビュー I2: 古い図の結果を出さない）', () => {
+  const someResult = { ok: false, errors: [] } as const;
+
+  it('drops a result for a document the trainee has already changed', () => {
+    act(() => {
+      useStore.getState().setVerifying(true);
+    });
+    expect(useStore.getState().verifying).toBe(true);
+    act(() => {
+      useStore.getState().applySchematicEdit(pb1);
+    });
+    // 編集したら「検算中…」は下ろす（ボタンが戻らないままにしない）
+    expect(useStore.getState().verifying).toBe(false);
+    act(() => {
+      useStore.getState().setVerifyResult(someResult);
+    });
+    expect(useStore.getState().verifyResult).toBeUndefined();
+    expect(useStore.getState().verifying).toBe(false);
+  });
+
+  it('takes the result of the document that was actually sent', () => {
+    act(() => {
+      useStore.getState().setVerifying(true);
+      useStore.getState().setVerifyResult(someResult);
+    });
+    expect(useStore.getState().verifyResult).toEqual(someResult);
+    expect(useStore.getState().verifying).toBe(false);
+  });
+});
+
+describe('分岐と「全部消す」（レビュー Minor）', () => {
+  it('undoes and redoes a branch (setEnds)', () => {
+    act(() => {
+      const store = useStore.getState();
+      store.applySchematicEdit(pb1);
+      store.applySchematicEdit({ kind: 'addRung' });
+      store.applySchematicEdit({
+        kind: 'setEnds',
+        rungId: 'r2',
+        from: { rung: 'r1', node: 0 },
+        to: { rung: 'r1', node: 1 },
+      });
+    });
+    expect(draft().rungs[1]?.from).toEqual({ rung: 'r1', node: 0 });
+    act(() => {
+      useStore.getState().undoSchematicEdit();
+    });
+    expect(draft().rungs[1]?.from).toEqual({ bus: 'P' });
+    act(() => {
+      useStore.getState().redoSchematicEdit();
+    });
+    expect(draft().rungs[1]?.to).toEqual({ rung: 'r1', node: 1 });
+  });
+
+  it('clears the whole drawing and can be undone', () => {
+    act(() => {
+      const store = useStore.getState();
+      store.applySchematicEdit(pb1);
+      store.applySchematicEdit({ kind: 'addRung' });
+    });
+    act(() => {
+      useStore.getState().clearSchematic();
+    });
+    expect(draft().rungs).toHaveLength(1);
+    expect(devices()).toEqual([]);
+    expect(useStore.getState().toasts.at(-1)?.text).toBe(JA.schematic.cleared);
+    act(() => {
+      useStore.getState().undoSchematicEdit();
+    });
+    expect(draft().rungs).toHaveLength(2);
+    expect(devices()).toEqual(['PB1']);
+  });
+});
+
+describe('作業ファイルの下書き（§13 #8 / レビュー Minor）', () => {
+  it('drops a draft with more rungs than the cap and says why', () => {
+    const rungs = Array.from({ length: MAX_RESTORED_RUNGS + 1 }, (_, i) => ({
+      id: `r${String(i + 1)}`,
+      from: { bus: 'P' },
+      to: { bus: 'N' },
+      cells: [],
+    }));
+    const big = {
+      formatVersion: SCHEMATIC_FORMAT_VERSION,
+      id: 'draft-big',
+      title: '大きすぎる下書き',
+      orientation: 'horizontal',
+      rungs,
+    };
+    expect(toSchematicDoc(big)).toBeUndefined();
+    let ok = false;
+    act(() => {
+      ok = restoreInspectState(problem, { mode: 'assemble', schematic: big });
+    });
+    // 盤の配線は開く。下書きだけを捨て、捨てたことは必ず知らせる
+    expect(ok).toBe(true);
+    expect(draft().rungs).toHaveLength(1);
+    expect(useStore.getState().toasts.at(-1)?.text).toBe(JA.schematic.draftUnreadable);
   });
 });

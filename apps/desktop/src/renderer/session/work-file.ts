@@ -737,6 +737,14 @@ export function restoreInspectState(problem: SupportedProblem, state: InspectWor
    */
   const draft = toSchematicDoc(state.schematic);
   if (draft !== undefined) store.setSchematicDoc(draft);
+  /*
+   * 形が違う下書き（段が {@link MAX_RESTORED_RUNGS} 本を超える・要素の形が壊れている）は
+   * 捨てるが、**黙って捨てない**。描いたはずの図が消えて見えるので理由を伝える（レビュー Minor）。
+   * 盤の配線はそのまま開く（机上の下書きが読めないことを理由に配線まで捨てさせない）。
+   */
+  if (draft === undefined && state.schematic !== undefined) {
+    store.toast(JA.schematic.draftUnreadable, 'error');
+  }
   return true;
 }
 
