@@ -360,6 +360,15 @@ export const JA = {
     hiddenCells: '表示列数の外にセルがあります（設定でラダーの表示列数を増やしてください）',
   },
   // --- /Plan 3B Task 4 ---
+  // --- Plan 3B Task 10 ---
+  /** モードD（PLC）の画面。§10.1 / §10.2 / §12.1 */
+  plc: {
+    outlet: '壁コンセント（AC100V）',
+    /** 盤・PLC本体・壁コンセントを全部入れる視点。決定表#6 */
+    viewPlc: '盤＋PLC',
+    unit: 'PLC本体',
+  },
+  // --- /Plan 3B Task 10 ---
   hazard: {
     'ohm-on-live': '通電中のΩ／導通測定',
     'range-exceeded': 'レンジ超過',

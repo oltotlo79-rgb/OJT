@@ -737,6 +737,14 @@ export const useStore = create<AppState>((set, get) => ({
       pendingReport: undefined,
       highlight: NO_HIGHLIGHT,
       ...plcFields(problem),
+      /*
+       * モードDは「盤＋PLC」視点で開く（決定表#6）。机上のPLC本体と壁コンセントは
+       * 既存の7プリセットのどれにも入らないので、既定の視点を切り替えないと
+       * 配線の相手が最初から画面の外にいる。`cameraNonce` も進めて必ず適用させる。
+       */
+      ...(isPlcProblem(problem)
+        ? { camera: 'plc' as const, cameraNonce: get().cameraNonce + 1 }
+        : {}),
     });
     return true;
   },

@@ -1,4 +1,10 @@
-import { roleLabel, type BoardTerminal, type TerminalRole } from '@ojt/board-model';
+import {
+  OUTLET_ID,
+  PLC_PART_ID,
+  roleLabel,
+  type BoardTerminal,
+  type TerminalRole,
+} from '@ojt/board-model';
 import { CanvasTexture, LinearFilter, SRGBColorSpace, type Texture } from 'three';
 
 /**
@@ -228,6 +234,8 @@ export function blockTerminalMark(terminal: BoardTerminal): string {
   if (part === undefined || name === undefined) return terminal.id;
   if (part === 'TB_PL') return `PL${name}`;
   if (part === 'TB_PB') return `PB${name}`;
+  // 机上のPLC本体と壁コンセントは端子名そのものが印字（`X0` / `Y10` / `L` / `N`）。§10.1
+  if (part === PLC_PART_ID || part === OUTLET_ID) return name;
   return `${part}${name}`;
 }
 

@@ -1,4 +1,11 @@
-import { BOARD_HEIGHT_MM, BOARD_WIDTH_MM, JIPM_BOARD } from '@ojt/board-model';
+import {
+  BOARD_HEIGHT_MM,
+  BOARD_WIDTH_MM,
+  JIPM_BOARD,
+  OUTLET_ORIGIN_MM,
+  PLC_TERMINAL_PITCH_MM,
+  PLC_UNIT_FX5U,
+} from '@ojt/board-model';
 import type { CameraPreset } from '../app/store-types.js';
 
 /**
@@ -77,6 +84,44 @@ export const SOCKET_VIEW_RECT = ((): { x: number; y: number; w: number; h: numbe
   };
 })();
 
+/** 「PLC」視点で必ず画角に入れる余白[mm]。 */
+export const PLC_VIEW_MARGIN_MM = 20;
+
+/**
+ * 「盤＋PLC」視点が収める矩形（盤モデル mm）。§10.1 / 決定表#6
+ *
+ * **盤・机上のPLC本体・壁コンセントを全部**入れる。モードDの配線は「盤の端子 ⇄ PLCの端子」を
+ * 往復するので、片方しか見えない視点だと1本の電線を張るのに視点を切り替えることになる
+ * （＝2点目のクリックのたびに画角が変わる）。数値は盤モデルの定義から求めるのでハードコードしない。
+ */
+export const PLC_VIEW_RECT = ((): { x: number; y: number; w: number; h: number } => {
+  const unit = PLC_UNIT_FX5U;
+  const xs = [
+    0,
+    BOARD_WIDTH_MM,
+    unit.pos.x,
+    unit.pos.x + unit.sizeMm.width,
+    OUTLET_ORIGIN_MM.x,
+    OUTLET_ORIGIN_MM.x + PLC_TERMINAL_PITCH_MM * 2,
+  ];
+  const ys = [
+    0,
+    BOARD_HEIGHT_MM,
+    unit.pos.y,
+    unit.pos.y + unit.sizeMm.height,
+    OUTLET_ORIGIN_MM.y - PLC_TERMINAL_PITCH_MM,
+    OUTLET_ORIGIN_MM.y + PLC_TERMINAL_PITCH_MM,
+  ];
+  const x = Math.min(...xs) - PLC_VIEW_MARGIN_MM;
+  const y = Math.min(...ys) - PLC_VIEW_MARGIN_MM;
+  return {
+    x,
+    y,
+    w: Math.max(...xs) + PLC_VIEW_MARGIN_MM - x,
+    h: Math.max(...ys) + PLC_VIEW_MARGIN_MM - y,
+  };
+})();
+
 /** 視野角の半分の tan（画角計算の共通項）。 */
 const HALF_FOV_TAN = Math.tan((CAMERA_FOV_DEG / 2) * (Math.PI / 180));
 
@@ -125,6 +170,7 @@ export function boardUp(): [number, number, number] {
  * - `front`（正面）: 盤面の法線方向から見る。面直なので端子が重ならずいちばん操作しやすい
  * - `top`（俯瞰）: 実物写真と同じ左手前・上からの斜め俯瞰。盤の立体感を見せる
  * - `socket`（ソケット拡大）: 面直のままソケット段へ寄る
+ * - `plc`（盤＋PLC）: 面直のまま、机上のPLC本体と壁コンセントまで画角に入れる（モードD）。§10.1
  * - `back`（後）: 盤の裏側から。盤面の裏（板の背面）を見る
  * - `left` / `right`（左・右）: 盤の側面から。傾斜角と機器の高さが分かる
  * - `bottom`（下）: 盤を下から見上げる。ただし `MAX_POLAR_ANGLE` より下へは回り込めないので
@@ -137,9 +183,6 @@ export function cameraPose(preset: CameraPreset): CameraPose {
   // 16:10 のビューポート（aspect 1.6）なら 305mm。1割の余白を足した w × 1.05 を面直視の距離にする。
   const faceDistance = Math.max(w * 1.05, h * 1.55);
   switch (preset) {
-    // `plc`（机上のPLC本体と壁コンセントを収める視点）は Plan 3B Task 10 が `PLC_VIEW_RECT` を
-    // 足して実装する。それまでは正面視と同じ（画角が足りないだけで、破綻はしない）。決定表#6
-    case 'plc':
     case 'front':
       return {
         position: boardToWorld([0, 0, faceDistance]),
@@ -174,6 +217,21 @@ export function cameraPose(preset: CameraPreset): CameraPose {
         target: [0, 0, -h * 0.02],
         up: [0, 1, 0],
       };
+    case 'plc': {
+      // 机上のPLC本体と壁コンセントが収まるまで寄る（盤面の延長なので面直で見る）。§10.1
+      const rect = PLC_VIEW_RECT;
+      const distance = fitDistanceMm(rect.w, rect.h, SOCKET_VIEW_ASPECT);
+      const center: [number, number, number] = [
+        rect.x + rect.w / 2 - w / 2,
+        h / 2 - (rect.y + rect.h / 2),
+        0,
+      ];
+      return {
+        position: boardToWorld([center[0], center[1], distance]),
+        target: boardToWorld(center),
+        up: boardUp(),
+      };
+    }
     case 'socket': {
       // ソケット段＋端子台の外接矩形がちょうど収まる距離まで寄る（固定倍率で寄せない）
       const rect = SOCKET_VIEW_RECT;

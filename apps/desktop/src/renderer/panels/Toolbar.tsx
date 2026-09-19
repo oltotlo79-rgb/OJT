@@ -24,6 +24,7 @@ export function Toolbar({
   wireColor,
   allowedColors,
   showWireTools = true,
+  showPlcView = false,
   extraTools,
   camera,
   canUndo,
@@ -50,6 +51,12 @@ export function Toolbar({
    * モードC1は盤に配線しないので出さない（既定は出す）。
    */
   showWireTools?: boolean;
+  /**
+   * 「盤＋PLC」視点のボタンを出すか。§10.1 / 決定表#6
+   * 机上のPLC本体と壁コンセントを持つのはモードDの盤だけなので、既定は出さない。
+   * テンキーとビューキューブの割当（盤の6面）は変えない。
+   */
+  showPlcView?: boolean;
   /** モード固有の道具（テスター／指摘モードの切替など）を差し込む枠。§9.2 / §9.3 */
   extraTools?: JSX.Element;
   camera: CameraPreset;
@@ -137,6 +144,19 @@ export function Toolbar({
               {view.label}
             </button>
           ))}
+          {showPlcView ? (
+            <button
+              type="button"
+              data-testid="view-plc"
+              aria-pressed={camera === 'plc'}
+              title={JA.plc.viewPlc}
+              onClick={() => {
+                onCamera('plc');
+              }}
+            >
+              {JA.plc.viewPlc}
+            </button>
+          ) : null}
         </div>
         <div className={styles.toolGroup}>
           <button type="button" onClick={onSave}>

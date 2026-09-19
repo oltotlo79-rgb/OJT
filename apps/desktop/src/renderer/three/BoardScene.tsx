@@ -1,5 +1,7 @@
 import {
   JIPM_BOARD,
+  OUTLET_ID,
+  PLC_PART_ID,
   routeSession,
   routeWire,
   RoutingError,
@@ -45,8 +47,11 @@ import {
   type MiddleDragAction,
   type OrbitControlsLike,
 } from './navigation.js';
+import { DeskWires, offBoardTerminals } from './DeskWires.js';
 import { DinRail } from './DinRail.js';
 import { FixedWires } from './FixedWires.js';
+import { Outlet } from './Outlet.js';
+import { PlcUnit } from './PlcUnit.js';
 import { Fixture, FIXTURES } from './Fixtures.js';
 import { Lamp } from './Lamp.js';
 import { MountedPart } from './MountedPart.js';
@@ -258,12 +263,18 @@ function useButtons(): Record<string, boolean> {
 
 /** 盤のシーン本体（Canvas の中身）。 */
 function BoardContents({
+  board,
   onPick,
   onHover,
   onPress,
   onRelease,
   readoutRef,
 }: {
+  /**
+   * 描く盤。モードDだけ `withPlcUnit()` 済みの派生盤が来る（§10.1 / Task 10）。
+   * モードB/C1/C2 は `JIPM_BOARD` のままなので挙動は変わらない。
+   */
+  board: BoardDefinition;
   onPick: (hit: PickHit) => void;
   onHover: (id: TerminalId | undefined) => void;
   onPress: (pbId: string) => void;
@@ -287,7 +298,6 @@ function BoardContents({
   const cameraNonce = useStore((s) => s.cameraNonce);
   const [controls, setControls] = useState<OrbitControlsLike | null>(null);
 
-  const board = JIPM_BOARD;
   const { routes, errors: routeErrors } = useMemo(
     () => safeRoutes(board, session),
     [board, session],
@@ -358,6 +368,17 @@ function BoardContents({
       })),
     ],
     [board],
+  );
+
+  /** 机上の端子（PLC本体・壁コンセント）。同一性を保つためメモ化する。§15 */
+  const deskTerminals = useMemo(() => offBoardTerminals(board), [board]);
+  const plcTerminals = useMemo(
+    () => deskTerminals.filter((t) => t.id.startsWith(`${PLC_PART_ID}.`)),
+    [deskTerminals],
+  );
+  const outletTerminals = useMemo(
+    () => deskTerminals.filter((t) => t.id.startsWith(`${OUTLET_ID}.`)),
+    [deskTerminals],
   );
 
   const socketTerminals = useMemo(() => {
@@ -556,6 +577,28 @@ function BoardContents({
           );
         })}
 
+        {/* 机上のPLC本体・壁コンセント・渡りケーブル（モードDの盤だけが持つ）。§10.1 */}
+        {board.plcUnit === undefined ? null : (
+          <>
+            <PlcUnit
+              unit={board.plcUnit}
+              terminals={plcTerminals}
+              hoveredTerminal={hovered}
+              pendingTerminal={pending}
+              onHoverTerminal={onHover}
+              onPickTerminal={pickTerminal}
+            />
+            <Outlet
+              terminals={outletTerminals}
+              hoveredTerminal={hovered}
+              pendingTerminal={pending}
+              onHoverTerminal={onHover}
+              onPickTerminal={pickTerminal}
+            />
+            {session === undefined ? null : <DeskWires board={board} session={session} />}
+          </>
+        )}
+
         {session === undefined ? null : (
           <ProbeMarkers
             probes={{ black: probeBlack, red: probeRed }}
@@ -612,11 +655,17 @@ function BoardContents({
  * ここで止めれば `Canvas` の中身が巻き添えで再描画されることがなくなる。
  */
 function BoardSceneImpl({
+  board = JIPM_BOARD,
   onPick,
   onHover,
   onPress,
   onRelease,
 }: {
+  /**
+   * 描く盤。省略すると `JIPM_BOARD`（モードB/C1/C2 はこれまでどおり）。
+   * モードDは `boardForProblem()` が返す派生盤を渡す（§10.1 / Task 10）。
+   */
+  board?: BoardDefinition;
   onPick: (hit: PickHit) => void;
   onHover: (id: TerminalId | undefined) => void;
   onPress: (pbId: string) => void;
@@ -690,6 +739,7 @@ function BoardSceneImpl({
         }}
       >
         <BoardContents
+          board={board}
           onPick={guardedPick}
           onHover={onHover}
           onPress={onPress}
