@@ -45,6 +45,12 @@ const NEEDS_DEVICE: Readonly<Record<PlaceKind, boolean>> = {
 interface Pending {
   kind: PlaceKind;
   form: CellForm;
+  /**
+   * `Enter`（既存セルの編集）で開いたか。真なら挿入モードの列ずらしを無視して**置き換える**
+   * （GX Works3 の挙動。決定表#12 / Batch 2 レビュー D2）。新規に置くとき（`false`）だけ
+   * `insertMode` に従って右のセルをずらす。
+   */
+  replace: boolean;
 }
 
 /** ラダーエディタ。 */
@@ -71,8 +77,6 @@ export function LadderEditor({
   const cursor = useStore((s) => s.ladderCursor);
   const mode = useStore((s) => s.ladderMode);
   const comments = useStore((s) => s.ladderComments);
-  /** モニタ中だけ通電文字列を購読する（決定表#5）。 */
-  const powered = useStore((s) => s.plcMonitor?.powered);
   const [pending, setPending] = useState<Pending | undefined>(undefined);
 
   /**
@@ -129,6 +133,7 @@ export function LadderEditor({
               action.kind === 'contact-nc' || action.kind === 'or-contact-nc'
                 ? { ...form, contact: 'NC' }
                 : form,
+            replace: false,
           });
           break;
         }
@@ -137,7 +142,7 @@ export function LadderEditor({
           if (net === undefined) break;
           const cell = cellAt(net, store.ladderCursor.row, store.ladderCursor.col);
           if (cell.kind === 'empty' || cell.kind === 'hline' || cell.kind === 'vline') break;
-          setPending({ kind: 'contact-no', form: formForCell(cell, profile) });
+          setPending({ kind: 'contact-no', form: formForCell(cell, profile), replace: true });
           break;
         }
         case 'ruleLine':
@@ -162,7 +167,8 @@ export function LadderEditor({
           onConvert();
           break;
         case 'setMode':
-          store.setLadderMode(action.mode);
+          // ストアへの書込みは `onModeChange`（実体は `LadderWorkspace.changeMode`）が持つ。
+          // ここでも `setLadderMode()` していたのは二重書き（Batch 3 レビュー M6）
           onModeChange(action.mode);
           // `Shift+F3`（モニタ書込み）は `F3` と同じ動作。**そのセッションで最初の1回だけ**
           // 理由をトーストで出す（毎回出すと `F3` と往復するたびに邪魔になる。決定表#11）
@@ -215,7 +221,6 @@ export function LadderEditor({
         profile={profile}
         cursor={cursor}
         mode={mode}
-        powered={powered}
         comments={comments}
         errorCells={errorCells}
         gridCols={gridCols}
@@ -229,15 +234,16 @@ export function LadderEditor({
             setPending(undefined);
           }}
           onCommit={(cell) => {
-            if (cell instanceof Error) return;
             const store = useStore.getState();
             const current = store.ladder;
             if (current === undefined) return;
             const isBranch = pending.kind === 'or-contact-no' || pending.kind === 'or-contact-nc';
+            // `Enter` での編集は挿入モードでも置き換える（右のセルをずらさない。D2）
+            const insert = !pending.replace && store.insertMode === 'insert';
             commit(
               isBranch
                 ? applyOrContact(current, store.ladderCursor, cell)
-                : applyLadderCell(current, store.ladderCursor, cell, store.insertMode === 'insert'),
+                : applyLadderCell(current, store.ladderCursor, cell, insert),
             );
             // 確定したらカーソルを1つ右へ送る（GX Works3 と同じ。続けて接点を並べられる）
             const after = useStore.getState();

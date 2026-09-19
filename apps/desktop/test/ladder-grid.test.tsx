@@ -15,8 +15,10 @@ import {
   type LadderProgram,
 } from '@ojt/ladder-core';
 import { MITSUBISHI_FX5U } from '@ojt/plc-dialects';
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { useStore } from '../src/renderer/app/store.js';
+import type { PlcMonitorSnapshot } from '../src/renderer/app/store-types.js';
 import { LadderGrid } from '../src/renderer/ladder/LadderGrid.js';
 import { CELL_H, WIRE_Y } from '../src/renderer/ladder/symbols.js';
 import { applyOrContact } from '../src/renderer/session/ladder.js';
@@ -25,6 +27,24 @@ import { applyOrContact } from '../src/renderer/session/ladder.js';
 afterEach(() => {
   cleanup();
 });
+
+beforeEach(() => {
+  useStore.setState({ plcMonitor: undefined });
+});
+
+/** モニタのスナップショット（`powered` だけ差し替え、他は使わないので固定値）。D1 */
+function monitorSnapshot(powered: Record<string, string>): PlcMonitorSnapshot {
+  return {
+    scanCount: 0,
+    tMs: 0,
+    powered,
+    inputs: [],
+    outputs: [],
+    internals: {},
+    timers: {},
+    counters: {},
+  };
+}
 
 function sample(): LadderProgram {
   return program(
@@ -46,7 +66,6 @@ const base = {
   profile: MITSUBISHI_FX5U,
   cursor: { networkId: 'n1', row: 0, col: 0 },
   mode: 'write' as const,
-  powered: undefined,
   comments: {},
   errorCells: new Set<string>(),
   gridCols: MITSUBISHI_FX5U.gridCols,
@@ -123,14 +142,8 @@ describe('LadderGrid（§10.7）', () => {
     const bits = offBits(1).split('');
     bits[0] = '1'; // X0 の左（左母線）は常に通電
     bits[1] = '1'; // X0 が閉じているので右も通電
-    render(
-      <LadderGrid
-        program={sample()}
-        {...base}
-        mode="monitor"
-        powered={{ n1: bits.join(''), n2: offBits(1) }}
-      />,
-    );
+    useStore.setState({ plcMonitor: monitorSnapshot({ n1: bits.join(''), n2: offBits(1) }) });
+    render(<LadderGrid program={sample()} {...base} mode="monitor" />);
     expect(screen.getByTestId('cell-n1:0:0')).toHaveAttribute('data-powered', 'true');
     expect(screen.getByTestId('cell-n1:0:1')).toHaveAttribute('data-powered', 'true');
     expect(screen.getByTestId('cell-n2:0:0')).toHaveAttribute('data-powered', 'false');
@@ -139,9 +152,8 @@ describe('LadderGrid（§10.7）', () => {
   it('never paints an empty cell even though column 0 reports powered (3A レビュー指摘)', () => {
     const blank = program(network('n1', [[no(X(0))]]), endNetwork());
     // すべてのセルが通電しているという最悪の入力を渡す
-    render(
-      <LadderGrid program={blank} {...base} mode="monitor" powered={{ n1: '1'.repeat(IR_COLS) }} />,
-    );
+    useStore.setState({ plcMonitor: monitorSnapshot({ n1: '1'.repeat(IR_COLS) }) });
+    render(<LadderGrid program={blank} {...base} mode="monitor" />);
     expect(screen.getByTestId('cell-n1:0:0')).toHaveAttribute('data-powered', 'true');
     expect(screen.getByTestId('cell-n1:0:1')).toHaveAttribute('data-powered', 'false');
     expect(screen.getByTestId(`cell-n1:0:${String(COIL_COL)}`)).toHaveAttribute(
@@ -151,8 +163,25 @@ describe('LadderGrid（§10.7）', () => {
   });
 
   it('does not paint anything while not monitoring', () => {
-    render(<LadderGrid program={sample()} {...base} powered={{ n1: '1'.repeat(IR_COLS) }} />);
+    useStore.setState({ plcMonitor: monitorSnapshot({ n1: '1'.repeat(IR_COLS) }) });
+    render(<LadderGrid program={sample()} {...base} />);
     expect(screen.getByTestId('cell-n1:0:0')).toHaveAttribute('data-powered', 'false');
+  });
+
+  it('re-renders only the network whose powered string changed (Batch 2 レビュー D1 / 決定表#5)', () => {
+    useStore.setState({ plcMonitor: monitorSnapshot({ n1: offBits(1), n2: offBits(1) }) });
+    render(<LadderGrid program={sample()} {...base} mode="monitor" />);
+    const n1Before = screen.getByTestId('network-n1').getAttribute('data-render-count');
+    const n2Before = screen.getByTestId('network-n2').getAttribute('data-render-count');
+    // n2 だけ通電を変える。n1 は変わっていないので再描画されない（`memo` は無関係。
+    // `NetworkView` 自身がネットワークごとに `plcMonitor.powered[net.id]` を購読するため）
+    act(() => {
+      useStore.setState({
+        plcMonitor: monitorSnapshot({ n1: offBits(1), n2: '1'.repeat(IR_COLS) }),
+      });
+    });
+    expect(screen.getByTestId('network-n1').getAttribute('data-render-count')).toBe(n1Before);
+    expect(screen.getByTestId('network-n2').getAttribute('data-render-count')).not.toBe(n2Before);
   });
 
   it('groups each row under role="row" under the grid (I4)', () => {

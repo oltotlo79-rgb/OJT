@@ -1,4 +1,4 @@
-import { T } from '@ojt/ladder-core';
+import { T, type Cell } from '@ojt/ladder-core';
 import type { DialectProfile } from '@ojt/plc-dialects';
 import { useEffect, useMemo, useRef, useState, type JSX } from 'react';
 import { JA, timerRoundPrompt } from '../i18n/ja.js';
@@ -43,7 +43,12 @@ export function DeviceInput({
 }: {
   initial: CellForm;
   profile: DialectProfile;
-  onCommit: (cell: ReturnType<typeof buildCell>) => void;
+  /**
+   * `buildCell()` は `Cell | Error` を返すが、`commit()` はエラーを `error` に入れて表示するだけで、
+   * `onCommit` にはセルが組み立てられたときしか渡さない。呼び出し側で `instanceof Error` を
+   * 確かめる必要は無い（Batch 3 レビュー D3）。
+   */
+  onCommit: (cell: Cell) => void;
   onCancel: () => void;
 }): JSX.Element {
   const [form, setForm] = useState<CellForm>(initial);

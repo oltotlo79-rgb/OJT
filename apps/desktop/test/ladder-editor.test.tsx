@@ -5,9 +5,15 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useStore } from '../src/renderer/app/store.js';
 import { LadderEditor } from '../src/renderer/ladder/LadderEditor.js';
+import type { LadderEditorMode } from '../src/renderer/session/ladder.js';
 
 const problem = BUILTIN_PLC_PROBLEMS[0]!;
 
+/**
+ * 既定の `onModeChange` は `LadderWorkspace.changeMode` と同じくストアへ書き込む
+ * （M6: `setMode` のストア書込みは `onModeChange` 側だけが持つようになったので、モックが
+ * 何もしないと `ladderMode` が変わらない）。
+ */
 function editor(props: Partial<Parameters<typeof LadderEditor>[0]> = {}): void {
   render(
     <LadderEditor
@@ -15,7 +21,12 @@ function editor(props: Partial<Parameters<typeof LadderEditor>[0]> = {}): void {
       gridCols={MITSUBISHI_FX5U.gridCols}
       errorCells={props.errorCells ?? new Set<string>()}
       onConvert={props.onConvert ?? ((): void => undefined)}
-      onModeChange={props.onModeChange ?? ((): void => undefined)}
+      onModeChange={
+        props.onModeChange ??
+        ((mode: LadderEditorMode): void => {
+          useStore.getState().setLadderMode(mode);
+        })
+      }
     />,
   );
 }
@@ -118,6 +129,23 @@ describe('キー操作（§10.6 の割当表から引く）', () => {
     expect(cellAt(net, 0, 1)).toMatchObject({ device: X(0) });
   });
 
+  it('replaces the cell on Enter even while the Ins mode is 挿入 (Batch 2 レビュー D2)', () => {
+    editor();
+    fireEvent.keyDown(grid(), { key: 'F5' });
+    fireEvent.change(screen.getByTestId('device-text'), { target: { value: 'X0' } });
+    fireEvent.click(screen.getByTestId('device-commit'));
+    useStore.getState().setLadderCursor({ networkId: 'n1', row: 0, col: 0 });
+    fireEvent.keyDown(grid(), { key: 'Insert' });
+    expect(useStore.getState().insertMode).toBe('insert');
+    // `Enter` は既存セルの編集なので、挿入モードでも右へずらさず置き換える
+    fireEvent.keyDown(grid(), { key: 'Enter' });
+    fireEvent.change(screen.getByTestId('device-text'), { target: { value: 'X1' } });
+    fireEvent.click(screen.getByTestId('device-commit'));
+    const net = useStore.getState().ladder!.networks[0]!;
+    expect(cellAt(net, 0, 0)).toMatchObject({ device: X(1) });
+    expect(cellAt(net, 0, 1).kind).toBe('empty');
+  });
+
   it('shows the Shift+F3 notice once and not again (決定表#11)', () => {
     editor();
     fireEvent.keyDown(grid(), { key: 'F3', shiftKey: true });
@@ -178,7 +206,9 @@ describe('キー操作（§10.6 の割当表から引く）', () => {
   });
 
   it('switches to monitor on F3 and tells the parent (決定表#11)', () => {
-    const onModeChange = vi.fn();
+    const onModeChange = vi.fn((mode: LadderEditorMode) => {
+      useStore.getState().setLadderMode(mode);
+    });
     editor({ onModeChange });
     fireEvent.keyDown(grid(), { key: 'F3' });
     expect(useStore.getState().ladderMode).toBe('monitor');

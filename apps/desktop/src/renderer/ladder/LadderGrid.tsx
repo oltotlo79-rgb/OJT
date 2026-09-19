@@ -8,7 +8,8 @@ import {
   type Network,
 } from '@ojt/ladder-core';
 import type { DialectProfile } from '@ojt/plc-dialects';
-import { memo, type JSX } from 'react';
+import { memo, useRef, type JSX } from 'react';
+import { useStore } from '../app/store.js';
 import { JA } from '../i18n/ja.js';
 import type { LadderCursor, LadderEditorMode } from '../session/ladder.js';
 import {
@@ -208,13 +209,127 @@ function GridCell({
   );
 }
 
+/**
+ * 1ネットワークぶんの描画。**`plcMonitor.powered[net.id]` をここで直接購読する**（決定表#5）。
+ *
+ * 以前は `LadderEditor` がスナップショット全体（`plcMonitor.powered`。全ネットワーク分の
+ * `Record`）を購読して `LadderGrid` に丸ごと渡していたため、モニタ中は毎スキャン（約33ms毎）に
+ * 新しいオブジェクトが届き、`memo(LadderGrid)` が効かずネットワークが何本あっても全部
+ * 再描画されていた（Batch 2 レビュー D1）。ここでは文字列1本（`net.id` の分だけ）を購読するので、
+ * 通電が変わったネットワークだけが再描画される。
+ */
+function NetworkView({
+  net,
+  profile,
+  mode,
+  comments,
+  errorCells,
+  gridCols,
+  columns,
+  width,
+  cursorKey,
+  onPickCell,
+}: {
+  net: Network;
+  profile: DialectProfile;
+  mode: LadderEditorMode;
+  comments: Record<string, string>;
+  errorCells: ReadonlySet<string>;
+  gridCols: number;
+  columns: number[];
+  width: number;
+  cursorKey: string;
+  onPickCell: (cursor: LadderCursor) => void;
+}): JSX.Element {
+  const bits = useStore((s) => (mode === 'monitor' ? (s.plcMonitor?.powered[net.id] ?? '') : ''));
+  const on = (row: number, col: number): boolean => bits.charAt(row * IR_COLS + col) === '1';
+  // レンダー回数を DOM に出す（D1 のテストが「他ネットワークの通電が変わっても再描画されない」
+  // ことを確かめるための、副作用の無い観測用カウンタ）。
+  const renderCount = useRef(0);
+  renderCount.current += 1;
+  return (
+    <section
+      className={styles.network}
+      data-testid={`network-${net.id}`}
+      data-render-count={renderCount.current}
+    >
+      <header className={styles.networkHeader}>
+        <span className={styles.networkId}>{net.id}</span>
+        {net.comment === undefined ? null : (
+          <span className={styles.networkComment}>{net.comment}</span>
+        )}
+        {hasHiddenCells(net, gridCols) ? (
+          <span className={styles.hiddenWarn} data-testid={`hidden-cells-${net.id}`}>
+            {JA.ladder.hiddenCells}
+          </span>
+        ) : null}
+      </header>
+      <svg
+        className={styles.grid}
+        width={width}
+        height={net.rows * CELL_H}
+        viewBox={`0 0 ${String(width)} ${String(net.rows * CELL_H)}`}
+        role="grid"
+        aria-label={`${JA.ladder.network} ${net.id}`}
+      >
+        {/* 左母線（全行を繋ぐ。§10.3） */}
+        <rect
+          width={RAIL_W}
+          height={net.rows * CELL_H}
+          className={styles.rail}
+          data-testid={`rail-${net.id}`}
+        />
+        <g transform={`translate(${String(RAIL_W)} 0)`}>
+          {Array.from({ length: net.rows }, (_unused, row) => (
+            // `role="grid"` の直下は `role="row"` を挟んでから `gridcell` にする（レビュー指摘 I4）
+            <g role="row" key={`${net.id}:${String(row)}`}>
+              {columns.map((col, index) => {
+                const cell = cellAt(net, row, col);
+                const key = `${net.id}:${String(row)}:${String(col)}`;
+                const deviceComment =
+                  'device' in cell ? comments[deviceLabel(cell.device)] : undefined;
+                return (
+                  <GridCell
+                    key={key}
+                    cellKey={key}
+                    cursorKey={cursorKey}
+                    cell={cell}
+                    cell9={{ networkId: net.id, row, col: index }}
+                    profile={profile}
+                    comment={deviceComment}
+                    /*
+                     * 空セルは塗らない。`poweredCells` は「どの行でも0列目は左母線と
+                     * 繋がっている」ので真になり（3A `Rails` の構築）、何も書いていない
+                     * 行の先頭まで青く光ってしまう。3A 側で `false` を返すよう直っても
+                     * この判定はそのまま正しい。
+                     */
+                    leftOn={cell.kind !== 'empty' && on(row, col)}
+                    rightOn={
+                      cell.kind !== 'empty' && (col < COIL_COL ? on(row, col + 1) : on(row, col))
+                    }
+                    colors={profile.monitorColors}
+                    error={errorCells.has(key)}
+                    hasLinkBelow={row + 1 < net.rows}
+                    onPick={(picked) => {
+                      onPickCell({ ...picked, col });
+                    }}
+                  />
+                );
+              })}
+            </g>
+          ))}
+        </g>
+      </svg>
+    </section>
+  );
+}
+
 /** ラダーのセルグリッド。 */
 function LadderGridImpl({
   program,
   profile,
   cursor,
   mode,
-  powered,
   comments,
   errorCells,
   gridCols,
@@ -224,8 +339,6 @@ function LadderGridImpl({
   profile: DialectProfile;
   cursor: LadderCursor;
   mode: LadderEditorMode;
-  /** ネットワークID → 「行 × 16列」を連ねた通電文字列。モニタ中だけ渡す。決定表#5 */
-  powered: Record<string, string> | undefined;
   /** デバイスコメント（キーは `deviceLabel()` の形）。§10.7 */
   comments: Record<string, string>;
   /** 変換エラーが指すセル（`"net:row:col"`）。 */
@@ -237,85 +350,23 @@ function LadderGridImpl({
   const columns = displayColumns(gridCols);
   const width = RAIL_W + columns.length * CELL_W;
   const cursorKey = `${cursor.networkId}:${String(cursor.row)}:${String(cursor.col)}`;
-  const monitoring = mode === 'monitor' && powered !== undefined;
   return (
     <div className={styles.gridScroll} data-testid="ladder-grid">
-      {program.networks.map((net) => {
-        const bits = monitoring ? (powered[net.id] ?? '') : '';
-        const on = (row: number, col: number): boolean => bits.charAt(row * IR_COLS + col) === '1';
-        return (
-          <section key={net.id} className={styles.network} data-testid={`network-${net.id}`}>
-            <header className={styles.networkHeader}>
-              <span className={styles.networkId}>{net.id}</span>
-              {net.comment === undefined ? null : (
-                <span className={styles.networkComment}>{net.comment}</span>
-              )}
-              {hasHiddenCells(net, gridCols) ? (
-                <span className={styles.hiddenWarn} data-testid={`hidden-cells-${net.id}`}>
-                  {JA.ladder.hiddenCells}
-                </span>
-              ) : null}
-            </header>
-            <svg
-              className={styles.grid}
-              width={width}
-              height={net.rows * CELL_H}
-              viewBox={`0 0 ${String(width)} ${String(net.rows * CELL_H)}`}
-              role="grid"
-              aria-label={`${JA.ladder.network} ${net.id}`}
-            >
-              {/* 左母線（全行を繋ぐ。§10.3） */}
-              <rect
-                width={RAIL_W}
-                height={net.rows * CELL_H}
-                className={styles.rail}
-                data-testid={`rail-${net.id}`}
-              />
-              <g transform={`translate(${String(RAIL_W)} 0)`}>
-                {Array.from({ length: net.rows }, (_unused, row) => (
-                  // `role="grid"` の直下は `role="row"` を挟んでから `gridcell` にする（レビュー指摘 I4）
-                  <g role="row" key={`${net.id}:${String(row)}`}>
-                    {columns.map((col, index) => {
-                      const cell = cellAt(net, row, col);
-                      const key = `${net.id}:${String(row)}:${String(col)}`;
-                      const deviceComment =
-                        'device' in cell ? comments[deviceLabel(cell.device)] : undefined;
-                      return (
-                        <GridCell
-                          key={key}
-                          cellKey={key}
-                          cursorKey={cursorKey}
-                          cell={cell}
-                          cell9={{ networkId: net.id, row, col: index }}
-                          profile={profile}
-                          comment={deviceComment}
-                          /*
-                           * 空セルは塗らない。`poweredCells` は「どの行でも0列目は左母線と
-                           * 繋がっている」ので真になり（3A `Rails` の構築）、何も書いていない
-                           * 行の先頭まで青く光ってしまう。3A 側で `false` を返すよう直っても
-                           * この判定はそのまま正しい。
-                           */
-                          leftOn={cell.kind !== 'empty' && on(row, col)}
-                          rightOn={
-                            cell.kind !== 'empty' &&
-                            (col < COIL_COL ? on(row, col + 1) : on(row, col))
-                          }
-                          colors={profile.monitorColors}
-                          error={errorCells.has(key)}
-                          hasLinkBelow={row + 1 < net.rows}
-                          onPick={(picked) => {
-                            onPickCell({ ...picked, col });
-                          }}
-                        />
-                      );
-                    })}
-                  </g>
-                ))}
-              </g>
-            </svg>
-          </section>
-        );
-      })}
+      {program.networks.map((net) => (
+        <NetworkView
+          key={net.id}
+          net={net}
+          profile={profile}
+          mode={mode}
+          comments={comments}
+          errorCells={errorCells}
+          gridCols={gridCols}
+          columns={columns}
+          width={width}
+          cursorKey={cursorKey}
+          onPickCell={onPickCell}
+        />
+      ))}
     </div>
   );
 }
