@@ -435,11 +435,20 @@ describe('判定（§8.2 / §13 #2）', () => {
   });
 });
 
+/**
+ * UXレビュー #17: 保存・読込は「…」メニューの中に畳んだので、各テストは
+ * まずトリガーを押して開いてから操作する。
+ */
+function openToolbarOverflow(): void {
+  fireEvent.click(screen.getByTestId('toolbar-overflow-toggle'));
+}
+
 describe('作業ファイルの保存・読込（§12.3）', () => {
   it('「作業を保存」は manual で保存し、成功したパスをトーストで出す', async () => {
     const saveWorkFile = vi.fn().mockResolvedValue({ ok: true, path: 'C:/work.ojtw' });
     setApi({ saveWorkFile });
     openSession();
+    openToolbarOverflow();
 
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: JA.session.save }));
@@ -463,6 +472,7 @@ describe('作業ファイルの保存・読込（§12.3）', () => {
       .mockResolvedValue({ ok: false, canceled: false, message: '保存に失敗しました' });
     setApi({ saveWorkFile });
     openSession();
+    openToolbarOverflow();
 
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: JA.session.save }));
@@ -476,6 +486,7 @@ describe('作業ファイルの保存・読込（§12.3）', () => {
 
   it('preload が無ければ投げずにトーストで知らせる（保存・読込とも）', () => {
     openSession();
+    openToolbarOverflow();
     expect(() => {
       fireEvent.click(screen.getByRole('button', { name: JA.session.save }));
     }).not.toThrow();
@@ -492,6 +503,7 @@ describe('作業ファイルの保存・読込（§12.3）', () => {
     const loadWorkFile = vi.fn().mockResolvedValue({ ok: true, file, path: 'C:/work.ojtw' });
     setApi({ loadWorkFile });
     openSession();
+    openToolbarOverflow();
 
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: JA.session.load }));
@@ -508,6 +520,7 @@ describe('作業ファイルの保存・読込（§12.3）', () => {
       .mockResolvedValue({ ok: false, canceled: true, message: '読込を取り消しました' });
     setApi({ loadWorkFile });
     openSession();
+    openToolbarOverflow();
     const before = useStore.getState().toasts.length;
 
     await act(async () => {
@@ -533,7 +546,9 @@ describe('回路図ヒント（§8.4: 3級=常時／2級=開閉可・初期は�
   it('3級課題（b-001）は常時表示で、開閉ボタンを出さない', () => {
     openSession();
     expect(screen.getByTestId('schematic-hint')).toBeTruthy();
-    // 常時表示なので訓練者が閉じる手段は無い（1D2-a: §8.4 の「常時表示」に合わせた）
+    // 常時表示なので訓練者が閉じる手段は無い（1D2-a: §8.4 の「常時表示」に合わせた）。
+    // UXレビュー #17で開閉ボタンは「…」の中なので、そこを開いても出ないことを確かめる。
+    openToolbarOverflow();
     expect(screen.queryByTestId('toggle-schematic')).toBeNull();
   });
 
@@ -541,6 +556,7 @@ describe('回路図ヒント（§8.4: 3級=常時／2級=開閉可・初期は�
     expect(GRADE2_PROBLEM).toBeDefined();
     if (GRADE2_PROBLEM === undefined) return;
     openProblemScreen(GRADE2_PROBLEM);
+    openToolbarOverflow();
 
     expect(screen.queryByTestId('schematic-hint')).toBeNull();
     const toggle = screen.getByTestId('toggle-schematic');
@@ -558,6 +574,7 @@ describe('回路図ヒント（§8.4: 3級=常時／2級=開閉可・初期は�
     expect(GRADE1_PROBLEM).toBeDefined();
     if (GRADE1_PROBLEM === undefined) return;
     openProblemScreen(GRADE1_PROBLEM);
+    openToolbarOverflow();
 
     expect(screen.queryByTestId('toggle-schematic')).toBeNull();
     expect(screen.queryByTestId('schematic-hint')).toBeNull();

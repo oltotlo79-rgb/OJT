@@ -219,3 +219,13 @@ describe('利用者課題フォルダ（§7.8）', () => {
     expect(useStore.getState().toasts.map((t) => t.text)).toContain(JA.settings.saved);
   });
 });
+
+describe('このアプリについて（UXレビュー #11: 重複した注記を減らす）', () => {
+  it('未確認事項の注記はPLC設定のすぐ下にだけ出し、下の商標注記の節では繰り返さない', async () => {
+    apiWith(DEFAULT_SETTINGS);
+    await renderSettings();
+    expect(screen.getByTestId('vendor-assumption')).toHaveTextContent('未確認');
+    const about = screen.getByTestId('about');
+    expect(about.textContent).not.toContain('未確認');
+  });
+});

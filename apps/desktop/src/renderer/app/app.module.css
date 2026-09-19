@@ -58,3 +58,45 @@
 .toastError {
   border-left-color: var(--ng);
 }
+
+/*
+ * 起動時の復元カード（UXレビュー #15）。`.restorePrompt`（薄い帯）と違い、
+ * どの課題のどんな作業を復元するのか（モード・課題名・経過時間）を見せる必要があるので、
+ * 独立したカードとして目立たせる。復元しない・破棄するまで押させたくないので画面の上に留める。
+ */
+.restoreCard {
+  background: var(--panel);
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+  color: var(--text);
+  margin: 10px 12px;
+  padding: 12px 16px;
+}
+
+.restoreCardTitle {
+  font-weight: 700;
+  margin: 0 0 8px;
+}
+
+.restoreCardDetail {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 10px;
+  row-gap: 2px;
+  margin: 0 0 10px;
+}
+
+.restoreCardDetail dt {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.restoreCardDetail dd {
+  margin: 0;
+}
+
+.restoreCardActions {
+  display: flex;
+  gap: 10px;
+}

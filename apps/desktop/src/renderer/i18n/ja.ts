@@ -106,8 +106,8 @@ export const JA = {
     /** 既定メーカーの選択欄。§10.5 / 決定表#13 */
     vendor: '既定メーカー',
     vendorHelp: 'モードDの課題を開いたときに使う機種（メーカー）の初期値です。',
-    /** 実装が無いメーカーに添える注記。決定表#13 */
-    vendorUnimplemented: 'Phase 4 で対応します',
+    /** 実装が無いメーカーに添える注記。決定表#13。UXレビュー #11: 内部の開発フェーズ名を出さない */
+    vendorUnimplemented: '準備中',
     /** ラダーの表示列数。§10.6 */
     gridCols: 'ラダーの表示列数',
     gridColsHelp: 'ラダー編集画面の接点列の数。GX Works3 の既定は 11 です。',
@@ -739,6 +739,35 @@ export const JA = {
   },
   /** 視点操作の早見表の開閉ボタン（UXレビュー #14）。`panels/ViewHint.tsx`。 */
   viewHintToggle: '視点操作の早見表',
+  /**
+   * 課題一覧（UXレビュー #12 / #20）。`screens/ProblemList.tsx`。
+   * 標準時間・打切時間はどちらも分単位で単位まで出す（`30分 / 50分`）。
+   */
+  problemListExtra: {
+    allGrades: 'すべて',
+    columnTime: '標準時間 / 打切時間',
+  },
+  /**
+   * 起動時の復元カード（UXレビュー #15）。`app/App.tsx`。
+   * どの課題のどんな作業を復元するのか（モード・課題名・経過時間）をカードで見せる。
+   */
+  restoreCard: {
+    mode: 'モード',
+    problem: '課題',
+    elapsed: '経過時間',
+    savedAt: '保存時刻',
+    /** 課題名がまだ引けていない（読み込み中）ときの仮の表示。 */
+    unknownProblem: '（読み込み中…）',
+  },
+  /**
+   * ツールバーの「…」メニュー（UXレビュー #17）。頻度の低い視点・保存読込・回路図の
+   * 開閉をここに畳み、1280px幅でも判定ボタンが1行目に残るようにする。
+   */
+  toolbarOverflow: {
+    label: 'その他の操作',
+    view: '視点',
+    workFile: '作業ファイル',
+  },
   // --- /UX pass 2026-09-19 ---
 } as const;
 
@@ -761,6 +790,19 @@ export function probeLabel(side: ProbeSide, terminal: string | undefined): strin
 /** 級の表示（`3級` など）。 */
 export function gradeLabel(grade: number): string {
   return `${grade}${JA.problemList.grade}`;
+}
+
+/**
+ * モードの表示名（UXレビュー #15）。作業ファイルの `mode` は無ければ `assemble` とみなす
+ * （`WorkFile.mode` の既定と同じ約束。§12.1）。
+ */
+export function sessionModeLabel(
+  mode: 'assemble' | 'inspect-parts' | 'inspect-repair' | 'plc' | undefined,
+): string {
+  if (mode === 'inspect-parts') return JA.home.inspectParts;
+  if (mode === 'inspect-repair') return JA.home.inspectRepair;
+  if (mode === 'plc') return JA.home.plc;
+  return JA.home.assemble;
 }
 
 /** 分の表示（`30分`）。 */

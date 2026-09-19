@@ -4,6 +4,9 @@ import { ojtApi } from '../app/ojt-api.js';
 import { useStore, type ListMode } from '../app/store.js';
 import styles from './screens.module.css';
 
+/** 級の絞り込み（`undefined` は「すべて」）。UXレビュー #12 */
+type GradeFilter = 1 | 2 | 3 | undefined;
+
 /**
  * 課題一覧。設計仕様 §12.1 / §7.8（利用者フォルダの合流）/ §13 #1（読込エラー） / §13 #9（フォルダ無し）。
  * main の `content:list` が返した一覧をそのまま並べ、出所タグ・読込エラー・フォルダ無しの警告を出す。
@@ -26,6 +29,8 @@ export function ProblemList(): JSX.Element {
   const openProblem = useStore((s) => s.openProblem);
   const toast = useStore((s) => s.toast);
   const [listError, setListError] = useState<string | undefined>(undefined);
+  /** 級の絞り込み（UXレビュー #12）。モードの絞り込みと同じくホーム由来ではないので画面内だけで持つ。 */
+  const [gradeFilter, setGradeFilter] = useState<GradeFilter>(undefined);
 
   useEffect(() => {
     try {
@@ -60,9 +65,14 @@ export function ProblemList(): JSX.Element {
     }
   };
 
-  /** ホームで選んだモードで絞った行（`undefined` は「すべて」）。§12.1 */
+  /**
+   * ホームで選んだモードと、画面内で選んだ級で絞った行（どちらも `undefined` は「すべて」）。
+   * §12.1 / UXレビュー #12
+   */
   const rows = (problems?.problems ?? []).filter(
-    (problem) => listMode === undefined || problem.mode === listMode,
+    (problem) =>
+      (listMode === undefined || problem.mode === listMode) &&
+      (gradeFilter === undefined || problem.grade === gradeFilter),
   );
 
   return (
@@ -111,19 +121,43 @@ export function ProblemList(): JSX.Element {
               </button>
             ))}
           </div>
+          {/* 級の絞り込み（UXレビュー #12: モードの絞り込みと並べて出す）。 */}
+          <div className={styles.modeFilter} data-testid="grade-filter">
+            {(
+              [
+                [undefined, JA.problemListExtra.allGrades],
+                [3, gradeLabel(3)],
+                [2, gradeLabel(2)],
+                [1, gradeLabel(1)],
+              ] as ReadonlyArray<readonly [GradeFilter, string]>
+            ).map(([grade, label]) => (
+              <button
+                key={label}
+                type="button"
+                aria-pressed={gradeFilter === grade}
+                onClick={() => {
+                  setGradeFilter(grade);
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
           {rows.length === 0 ? (
             <p className={styles.subtitle}>{JA.problemList.filterEmpty}</p>
           ) : (
             <table className={styles.problemTable} data-testid="problem-table">
-              <thead>
+              {/*
+                UXレビュー #12: 見出し行を固定する（縦に長い一覧でも列の意味を見失わない）。
+                出所（内蔵／利用者）は専用の列をやめ、課題名のセルにタグとして添える
+                （列を1つ減らして表を詰める）。
+              */}
+              <thead className={styles.stickyThead}>
                 <tr>
                   <th>{JA.problemList.columnId}</th>
                   <th>{JA.problemList.columnTitle}</th>
                   <th>{JA.problemList.grade}</th>
-                  <th>
-                    {JA.problemList.standard}/{JA.problemList.cutoff}
-                  </th>
-                  <th>{JA.problemList.columnSource}</th>
+                  <th>{JA.problemListExtra.columnTime}</th>
                   <th />
                 </tr>
               </thead>
@@ -131,17 +165,17 @@ export function ProblemList(): JSX.Element {
                 {rows.map((problem) => (
                   <tr key={problem.id}>
                     <td>{problem.id}</td>
-                    <td>{problem.title}</td>
-                    <td>{gradeLabel(problem.grade)}</td>
                     <td>
-                      {problem.standardMin}/{minutesLabel(problem.cutoffMin)}
-                    </td>
-                    <td>
+                      {problem.title}{' '}
                       <span className={styles.tag}>
                         {problem.source === 'builtin'
                           ? JA.problemList.builtin
                           : JA.problemList.user}
                       </span>
+                    </td>
+                    <td>{gradeLabel(problem.grade)}</td>
+                    <td>
+                      {minutesLabel(problem.standardMin)} / {minutesLabel(problem.cutoffMin)}
                     </td>
                     <td>
                       <button

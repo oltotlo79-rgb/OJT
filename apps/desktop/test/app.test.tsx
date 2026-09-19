@@ -4,7 +4,7 @@ import { createElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from '../src/renderer/app/App.js';
 import { JA } from '../src/renderer/i18n/ja.js';
-import { formatSavedAt } from '../src/worker/runtime.js';
+import { formatElapsed, formatSavedAt } from '../src/worker/runtime.js';
 import {
   DEFAULT_SETTINGS,
   type OjtApi,
@@ -251,6 +251,31 @@ describe('起動時の復元プロンプト（§12.3）', () => {
     // 生のISO(UTC)文字列ではなく、ローカル日時表記（`T`/`Z`を含まない）で出す
     expect(prompt.textContent).not.toContain(file.savedAt);
     expect(prompt.textContent).toContain(formatSavedAt(file.savedAt));
+  });
+
+  it('復元カードにモード・課題名・経過時間を出す（UXレビュー #15）', async () => {
+    const file = autosaveFile({ mode: 'inspect-repair', elapsedMs: 65_000 });
+    setApi({
+      getSettings: () => Promise.resolve(DEFAULT_SETTINGS),
+      loadWorkFile: () => Promise.resolve({ ok: true, file, path: 'C:/autosave.json' }),
+      readProblem: () => Promise.resolve(PROBLEM),
+    });
+    render(<App />);
+    const detail = await screen.findByTestId('restore-detail');
+    expect(detail.textContent).toContain(JA.home.inspectRepair);
+    expect(detail.textContent).toContain(formatElapsed(65_000));
+    await screen.findByText(PROBLEM.title);
+  });
+
+  it('readProblem が無い簡易な preload でも復元カードは落ちない（既定の課題名の仮表示に留まる）', async () => {
+    const file = autosaveFile();
+    setApi({
+      getSettings: () => Promise.resolve(DEFAULT_SETTINGS),
+      loadWorkFile: () => Promise.resolve({ ok: true, file, path: 'C:/autosave.json' }),
+    });
+    render(<App />);
+    const detail = await screen.findByTestId('restore-detail');
+    expect(detail.textContent).toContain(JA.restoreCard.unknownProblem);
   });
 
   it('設定で無効化していれば一時保存を確認しない', async () => {

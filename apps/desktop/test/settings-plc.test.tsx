@@ -49,7 +49,9 @@ describe('設定画面のPLC項目（§12.1 / §10.6 / 決定表#13）', () => {
       const option = screen.getByTestId(`vendor-option-${id}`);
       expect(option).toHaveProperty('disabled', !IMPLEMENTED_DIALECT_IDS.includes(id));
     }
-    expect(screen.getByTestId('vendor-note')).toHaveTextContent('Phase 4');
+    // UXレビュー #11: 内部の開発フェーズ名（Phase 4）ではなく「準備中」を出す
+    expect(screen.getByTestId('vendor-note')).toHaveTextContent('準備中');
+    expect(screen.getByTestId('vendor-note')).not.toHaveTextContent('Phase 4');
   });
 
   it('repeats the assumption notice next to the vendor choice (§17.1)', async () => {

@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { JA } from '../src/renderer/i18n/ja.js';
 import { Toolbar } from '../src/renderer/panels/Toolbar.js';
@@ -50,13 +50,14 @@ describe('ツールバーの構造（§8.1）', () => {
     expect(scroll?.contains(judgeButton)).toBe(false);
   });
 
-  it('戻る・線色・元に戻す・視点・保存読込は折り返す枠の中にある', () => {
+  it('戻る・線色・元に戻す・「…」トリガーは折り返す枠の中にある（視点・保存読込はUXレビュー #17でその中へ畳む）', () => {
     renderToolbar();
     const scroll = document.querySelector(`.${styles.toolbarScroll}`);
     expect(scroll).not.toBeNull();
     if (scroll === null) return;
     expect(scroll.contains(screen.getByTestId('session-back'))).toBe(true);
     expect(scroll.contains(screen.getByRole('button', { name: '青' }))).toBe(true);
+    expect(scroll.contains(screen.getByTestId('toolbar-overflow-toggle'))).toBe(true);
   });
 
   it('既存のテストID・ボタン順は変わらない', () => {
@@ -88,5 +89,39 @@ describe('押せない理由（UXレビュー #5）', () => {
     expect(undo).not.toHaveAttribute('title');
     expect(redo).not.toHaveAttribute('title');
     expect(screen.queryByTestId('undo-redo-reason')).toBeNull();
+  });
+});
+
+describe('「…」メニュー（UXレビュー #17: 視点・保存読込を畳んで1280px幅でも判定を1行目に残す）', () => {
+  it('既定では畳まれていて、視点・保存読込のボタンは出さない', () => {
+    renderToolbar();
+    expect(screen.getByTestId('toolbar-overflow-toggle')).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    );
+    expect(screen.queryByTestId('toolbar-overflow')).toBeNull();
+    expect(screen.queryByRole('button', { name: JA.session.viewFront })).toBeNull();
+    expect(screen.queryByRole('button', { name: JA.session.save })).toBeNull();
+  });
+
+  it('「…」を押すと視点・保存読込・回路図の開閉が出て、もう一度押すと畳む', () => {
+    renderToolbar();
+    const toggle = screen.getByTestId('toolbar-overflow-toggle');
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByRole('button', { name: JA.session.viewFront })).toBeTruthy();
+    expect(screen.getByRole('button', { name: JA.session.save })).toBeTruthy();
+    expect(screen.getByRole('button', { name: JA.session.load })).toBeTruthy();
+
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByRole('button', { name: JA.session.viewFront })).toBeNull();
+  });
+
+  it('判定ボタンは折り返す枠の外に留まる（開いていても閉じていても）', () => {
+    renderToolbar();
+    const scroll = document.querySelector(`.${styles.toolbarScroll}`);
+    fireEvent.click(screen.getByTestId('toolbar-overflow-toggle'));
+    expect(scroll?.contains(screen.getByTestId('judge-button'))).toBe(false);
   });
 });

@@ -200,22 +200,45 @@
 .settingRow {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
   border-bottom: 1px solid var(--line);
   padding: 10px 0;
 }
 
+/* UXレビュー #11: 300px 固定だと短い項目名でも間延びしていた。上限だけ決めて中身に合わせる */
 .settingRow label {
-  width: 300px;
+  max-width: 240px;
 }
 
-.settingRow input[type='text'] {
+/*
+ * UXレビュー #11: チェックボックス・セレクト・数値・カラーの4種が既定の白いUIのままで、
+ * 暗いUIから浮いていた。`color-scheme: dark` でブラウザ既定の部品（カレンダー・矢印等）も
+ * 暗い配色に切り替え、枠と背景は他の設定欄と揃える。
+ */
+.settingRow input[type='text'],
+.settingRow input[type='number'],
+.settingRow select {
   flex: 1;
   background: var(--panel-2);
   border: 1px solid var(--line);
   border-radius: 3px;
   color: var(--text);
+  color-scheme: dark;
   padding: 5px 8px;
+}
+
+.settingRow input[type='color'] {
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  color-scheme: dark;
+  padding: 2px;
+}
+
+.settingRow input[type='checkbox'],
+.settingRow input[type='range'] {
+  accent-color: var(--accent);
+  color-scheme: dark;
 }
 
 .about {
@@ -554,5 +577,18 @@
   font-size: 11px;
   line-height: 1.5;
   margin: 0;
+}
+
+/*
+ * 課題一覧の見出し行を固定する（UXレビュー #12）。`.center` が縦スクロールする箱なので、
+ * `th` に `position: sticky` を付ければスクロールしても列の意味を見失わない。
+ * `thead` ではなく `th` に付けるのは、`display: table-header-group` への sticky 対応が
+ * 環境によってまちまちなため（`th` は確実に効く）。
+ */
+.stickyThead th {
+  position: sticky;
+  top: 0;
+  background: var(--bg);
+  z-index: 1;
 }
 /* --- /UX pass 2026-09-19 --- */

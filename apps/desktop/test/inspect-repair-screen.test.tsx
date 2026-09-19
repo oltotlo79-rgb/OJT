@@ -79,6 +79,11 @@ afterEach(() => {
   cleanup();
 });
 
+/** UXレビュー #17: 回路図の開閉は「…」メニューの中に畳んだので、まずそこを開く。 */
+function openToolbarOverflow(): void {
+  fireEvent.click(screen.getByTestId('toolbar-overflow-toggle'));
+}
+
 describe('画面の骨格（§9.2）', () => {
   it('指摘パネル・修復パネル・テスターを並べ、線色は白だけを出す', () => {
     render(<InspectRepairSession />);
@@ -91,6 +96,7 @@ describe('画面の骨格（§9.2）', () => {
 
   it('2級形式は回路図ヒントを開閉できる。既定は閉じている（§8.4 2026-09-18の決定）', () => {
     render(<InspectRepairSession />);
+    openToolbarOverflow();
     expect(screen.queryByTestId('schematic-hint')).toBeNull();
     const toggle = screen.getByTestId('toggle-schematic');
     expect(toggle.getAttribute('aria-pressed')).toBe('false');
@@ -101,6 +107,7 @@ describe('画面の骨格（§9.2）', () => {
 
   it('回路図ヒントを開くたびにストアの開いた回数が増える（§8.4）', () => {
     render(<InspectRepairSession />);
+    openToolbarOverflow();
     expect(useStore.getState().schematicOpenCount).toBe(0);
     const toggle = screen.getByTestId('toggle-schematic');
     fireEvent.click(toggle); // 開く: 1
@@ -116,12 +123,14 @@ describe('画面の骨格（§9.2）', () => {
     if (C2_GRADE1 === undefined) return;
     useStore.getState().openProblem(C2_GRADE1);
     render(<InspectRepairSession />);
+    openToolbarOverflow();
     expect(screen.queryByTestId('toggle-schematic')).toBeNull();
     expect(screen.queryByTestId('schematic-hint')).toBeNull();
   });
 
   it('閉じている間は端子ホバーで連動ハイライトを引かない（§9.2 I-8）', () => {
     render(<InspectRepairSession />);
+    openToolbarOverflow();
     expect(screen.queryByTestId('schematic-hint')).toBeNull();
     // 開く前に何か光らせておき、閉じたままのホバーでは動かないことを確かめる
     useStore.getState().setHighlight({ cellIds: ['c1'], terminals: ['CR1.13'], wireIds: [] });
@@ -144,6 +153,7 @@ describe('画面の骨格（§9.2）', () => {
 
   it('回路図ヒントはテスターより上に出す（M4）', () => {
     render(<InspectRepairSession />);
+    openToolbarOverflow();
     fireEvent.click(screen.getByTestId('toggle-schematic'));
     const schematic = screen.getByTestId('schematic-hint');
     const tester = screen.getByTestId('tester-panel');

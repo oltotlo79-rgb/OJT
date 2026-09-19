@@ -132,7 +132,7 @@ describe('ProblemList', () => {
     expect(useStore.getState().toasts[0]?.text).toContain(JA.problemList.loadFailed);
   });
 
-  it('出所タグを列に出す（§7.8）', async () => {
+  it('出所タグを課題名のセルに添える（§7.8 / UXレビュー #12: 専用の列はやめて詰める）', async () => {
     setApi({
       listProblems: () =>
         Promise.resolve({
@@ -154,9 +154,51 @@ describe('ProblemList', () => {
     });
     render(<ProblemList />);
     await screen.findByTestId('problem-table');
-    expect(screen.getByText(JA.problemList.columnSource)).toBeTruthy();
+    // 専用の列見出しはもう出さない
+    expect(screen.queryByText(JA.problemList.columnSource)).toBeNull();
     expect(screen.getByText(JA.problemList.builtin)).toBeTruthy();
-    expect(screen.getByText(JA.problemList.user)).toBeTruthy();
+    const userTag = screen.getByText(JA.problemList.user);
+    expect(userTag.closest('td')?.textContent).toContain('利用者課題');
+  });
+
+  it('標準時間・打切時間をどちらも分単位で1列に出す（UXレビュー #12 / #20）', async () => {
+    setApi({ listProblems: () => Promise.resolve(PAYLOAD) });
+    render(<ProblemList />);
+    const table = await screen.findByTestId('problem-table');
+    expect(table.textContent).toContain(JA.problemListExtra.columnTime);
+    expect(table.textContent).toContain('30分 / 50分');
+  });
+
+  it('級の絞り込みチップを並べ、選ぶと一覧が絞られる（UXレビュー #12）', async () => {
+    setApi({
+      listProblems: () =>
+        Promise.resolve({
+          ...PAYLOAD,
+          problems: [
+            ...PAYLOAD.problems,
+            {
+              id: 'b-002',
+              title: '1級課題',
+              grade: 1,
+              description: '1級',
+              standardMin: 40,
+              cutoffMin: 60,
+              mode: 'assemble',
+              source: 'builtin',
+            },
+          ],
+        }),
+    });
+    render(<ProblemList />);
+    await screen.findByTestId('problem-table');
+    expect(screen.getByTestId('problem-table').querySelectorAll('tbody tr')).toHaveLength(2);
+
+    const filter = screen.getByTestId('grade-filter');
+    fireEvent.click(within(filter).getByRole('button', { name: '1級' }));
+
+    const rows = screen.getByTestId('problem-table').querySelectorAll('tbody tr');
+    expect(rows).toHaveLength(1);
+    expect(screen.getByTestId('problem-table').textContent).toContain('1級課題');
   });
 
   it('利用者課題フォルダが無ければ警告を出す（§13 #9）', async () => {

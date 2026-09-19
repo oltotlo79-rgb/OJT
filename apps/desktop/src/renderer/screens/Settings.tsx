@@ -317,10 +317,14 @@ export function Settings(): JSX.Element {
             </button>
           </section>
 
+          {/*
+            UXレビュー #11: 未確認事項の注記（ASSUMPTION_NOTICE）は既に PLC 設定のすぐ下
+            （`vendor-assumption`）に出ている。ここでも繰り返すと同じ注記が2回出て冗長だったので、
+            この節では商標注記だけにする。
+          */}
           <section className={styles.about} data-testid="about">
             <h2 style={{ fontSize: 14, margin: '0 0 6px' }}>{JA.settings.about}</h2>
             <p>{TRADEMARK_NOTICE}</p>
-            <p>{ASSUMPTION_NOTICE}</p>
           </section>
         </div>
       )}

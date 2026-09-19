@@ -1,5 +1,5 @@
 import type { WireColor } from '@ojt/circuit-sim';
-import type { JSX } from 'react';
+import { useState, type JSX } from 'react';
 import { JA } from '../i18n/ja.js';
 import type { CameraPreset } from '../app/store.js';
 import type { ToolMode } from '../session/interaction.js';
@@ -89,6 +89,12 @@ export function Toolbar({
   onToggleSchematic: (() => void) | undefined;
   children?: JSX.Element;
 }): JSX.Element {
+  /*
+   * 視点／保存・読込／回路図の開閉は「…」の中にまとめる（UXレビュー #17）。
+   * 1280px幅では元は全部を並べると2行になり、判定ボタンが2行目に落ちていた
+   * （レビュー指摘）。頻度の低い3群だけを畳み、線色・元に戻す・判定は常に1行目に残す。
+   */
+  const [overflowOpen, setOverflowOpen] = useState(false);
   return (
     <div className={styles.toolbar} role="toolbar">
       {/*
@@ -157,51 +163,76 @@ export function Toolbar({
             </span>
           ) : null}
         </div>
-        <div className={styles.toolGroup}>
-          {VIEWS.map((view) => (
-            <button
-              key={view.preset}
-              type="button"
-              aria-pressed={camera === view.preset}
-              title={`${view.label} (${view.key})`}
-              onClick={() => {
-                onCamera(view.preset);
-              }}
-            >
-              {view.label}
-            </button>
-          ))}
-          {showPlcView ? (
-            <button
-              type="button"
-              data-testid="view-plc"
-              aria-pressed={camera === 'plc'}
-              title={JA.plc.viewPlc}
-              onClick={() => {
-                onCamera('plc');
-              }}
-            >
-              {JA.plc.viewPlc}
-            </button>
+        {/*
+          UXレビュー #17: 視点・保存読込・回路図の開閉は「…」の中に畳む。トリガーと
+          パネルを `.overflowHost`（`position: relative`）でくくり、パネルはその真下に
+          浮かせる（`.toolbarScroll` の折り返しの1項目に混ぜない）。
+        */}
+        <div className={styles.overflowHost}>
+          <button
+            type="button"
+            className={styles.overflowToggle}
+            data-testid="toolbar-overflow-toggle"
+            aria-expanded={overflowOpen}
+            aria-label={JA.toolbarOverflow.label}
+            onClick={() => {
+              setOverflowOpen((next) => !next);
+            }}
+          >
+            ⋯
+          </button>
+          {overflowOpen ? (
+            <div className={styles.overflowPanel} data-testid="toolbar-overflow">
+              <div className={styles.toolGroup}>
+                <span className={styles.toolLabel}>{JA.toolbarOverflow.view}</span>
+                {VIEWS.map((view) => (
+                  <button
+                    key={view.preset}
+                    type="button"
+                    aria-pressed={camera === view.preset}
+                    title={`${view.label} (${view.key})`}
+                    onClick={() => {
+                      onCamera(view.preset);
+                    }}
+                  >
+                    {view.label}
+                  </button>
+                ))}
+                {showPlcView ? (
+                  <button
+                    type="button"
+                    data-testid="view-plc"
+                    aria-pressed={camera === 'plc'}
+                    title={JA.plc.viewPlc}
+                    onClick={() => {
+                      onCamera('plc');
+                    }}
+                  >
+                    {JA.plc.viewPlc}
+                  </button>
+                ) : null}
+              </div>
+              <div className={styles.toolGroup}>
+                <span className={styles.toolLabel}>{JA.toolbarOverflow.workFile}</span>
+                <button type="button" onClick={onSave}>
+                  {JA.session.save}
+                </button>
+                <button type="button" onClick={onLoad}>
+                  {JA.session.load}
+                </button>
+                {onToggleSchematic === undefined ? null : (
+                  <button
+                    type="button"
+                    aria-pressed={schematicVisible}
+                    data-testid="toggle-schematic"
+                    onClick={onToggleSchematic}
+                  >
+                    {schematicVisible ? JA.session.hideSchematic : JA.session.showSchematic}
+                  </button>
+                )}
+              </div>
+            </div>
           ) : null}
-        </div>
-        <div className={styles.toolGroup}>
-          <button type="button" onClick={onSave}>
-            {JA.session.save}
-          </button>
-          <button type="button" onClick={onLoad}>
-            {JA.session.load}
-          </button>
-          {onToggleSchematic === undefined ? null : (
-            <button
-              type="button"
-              aria-pressed={schematicVisible}
-              data-testid="toggle-schematic"
-              onClick={onToggleSchematic}
-            >
-              {schematicVisible ? JA.session.hideSchematic : JA.session.showSchematic}
-            </button>
-          )}
         </div>
         {children}
       </div>

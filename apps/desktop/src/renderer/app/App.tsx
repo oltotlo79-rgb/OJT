@@ -1,13 +1,13 @@
 import { useEffect, useState, type JSX } from 'react';
 import type { OjtApi, WorkFile } from '../../shared/ipc.js';
 import { sounds } from '../audio/sounds.js';
-import { JA } from '../i18n/ja.js';
+import { JA, sessionModeLabel } from '../i18n/ja.js';
 import { applyWorkFile, toInspectWorkFile } from '../session/work-file.js';
 import { ErrorBoundary } from './ErrorBoundary.js';
 import { tryOjtApi } from './ojt-api.js';
 import { renderRoute } from './routes.js';
 import { useStore, type Route } from './store.js';
-import { formatSavedAt } from '../../worker/runtime.js';
+import { formatElapsed, formatSavedAt } from '../../worker/runtime.js';
 import styles from './app.module.css';
 
 /**
@@ -53,6 +53,29 @@ export function App(): JSX.Element {
   /** 復元プロンプトの保存時刻（ローカル日時表記）。整形できなければ空文字（時刻無し表示）。 */
   const restoreSavedAtLabel =
     pendingRestore === undefined ? '' : formatSavedAt(pendingRestore.savedAt);
+  /**
+   * 復元カードに出す課題名（UXレビュー #15）。§12.3 の一時保存は `problemId`（内部ID）しか
+   * 持たないので、`readProblem()` で引き直す。起動直後は一覧をまだ読んでおらず、
+   * 引けるまでは `restoreCard.unknownProblem` を出す。preload が古い・テスト用の簡易実装で
+   * `readProblem` が無いときは黙って諦める（他の `tryApi()` 呼び出しと同じ流儀。§13 #5）。
+   */
+  const [restoreProblemTitle, setRestoreProblemTitle] = useState<string | undefined>(undefined);
+  useEffect(() => {
+    setRestoreProblemTitle(undefined);
+    if (pendingRestore === undefined) return undefined;
+    const api = tryApi();
+    if (api === undefined || typeof api.readProblem !== 'function') return undefined;
+    let cancelled = false;
+    api.readProblem(pendingRestore.problemId).then(
+      (problem) => {
+        if (!cancelled && problem !== null) setRestoreProblemTitle(problem.title);
+      },
+      () => undefined,
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [pendingRestore]);
 
   /*
    * 課題を開いたら復元の確認欄は引っ込める（1D2-a のレビュー指摘）。
@@ -208,31 +231,45 @@ export function App(): JSX.Element {
         </div>
       )}
       {pendingRestore === undefined ? null : (
-        <div className={styles.restorePrompt} role="dialog" data-testid="restore-prompt">
-          <span>
+        <div className={styles.restoreCard} role="dialog" data-testid="restore-prompt">
+          <p className={styles.restoreCardTitle}>
             {restoreSavedAtLabel === ''
               ? JA.session.restoreTitle
               : `${JA.session.restoreTitle}（${restoreSavedAtLabel}）`}
-          </span>
-          <button
-            type="button"
-            onClick={() => {
-              const file = pendingRestore;
-              setPendingRestore(undefined);
-              void applyWorkFile(file);
-            }}
-          >
-            {JA.session.restoreYes}
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setPendingRestore(undefined);
-              void tryApi()?.loadWorkFile({ kind: 'autosave', discard: true });
-            }}
-          >
-            {JA.session.restoreNo}
-          </button>
+          </p>
+          {/*
+            UXレビュー #15: どの課題のどんな作業を復元するのか（モード・課題名・経過時間）を
+            具体的に見せる。「復元する」を押す前に中身が分かるようにする。
+          */}
+          <dl className={styles.restoreCardDetail} data-testid="restore-detail">
+            <dt>{JA.restoreCard.mode}</dt>
+            <dd>{sessionModeLabel(pendingRestore.mode)}</dd>
+            <dt>{JA.restoreCard.problem}</dt>
+            <dd>{restoreProblemTitle ?? JA.restoreCard.unknownProblem}</dd>
+            <dt>{JA.restoreCard.elapsed}</dt>
+            <dd>{formatElapsed(pendingRestore.elapsedMs)}</dd>
+          </dl>
+          <div className={styles.restoreCardActions}>
+            <button
+              type="button"
+              onClick={() => {
+                const file = pendingRestore;
+                setPendingRestore(undefined);
+                void applyWorkFile(file);
+              }}
+            >
+              {JA.session.restoreYes}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setPendingRestore(undefined);
+                void tryApi()?.loadWorkFile({ kind: 'autosave', discard: true });
+              }}
+            >
+              {JA.session.restoreNo}
+            </button>
+          </div>
         </div>
       )}
       <ErrorBoundary

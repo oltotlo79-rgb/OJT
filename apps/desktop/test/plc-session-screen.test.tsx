@@ -64,6 +64,8 @@ describe('モードDのセッション画面（§10.1 / §12.1）', () => {
 
   it('offers the PLC camera preset', () => {
     render(<SessionRoute />);
+    // UXレビュー #17: 視点は「…」メニューの中に畳んである
+    fireEvent.click(screen.getByTestId('toolbar-overflow-toggle'));
     fireEvent.click(screen.getByTestId('view-plc'));
     expect(useStore.getState().camera).toBe('plc');
   });
