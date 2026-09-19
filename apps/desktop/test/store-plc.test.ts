@@ -6,7 +6,7 @@ import {
   BUILTIN_PLC_PROBLEMS,
   isPlcProblem,
 } from '@ojt/content';
-import { COIL_COL, no, out, X, Y } from '@ojt/ladder-core';
+import { COIL_COL, deviceKey, no, out, X, Y, type LadderProgram } from '@ojt/ladder-core';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { DEVICE_COMMENT_COUNT_LIMIT, useStore } from '../src/renderer/app/store.js';
 import type { PlcMonitorSnapshot } from '../src/renderer/app/store-types.js';
@@ -445,3 +445,72 @@ describe('既定メーカーの機種で開く（§7.6 / 決定表#9・#24）', 
     expect(useStore.getState().defaultVendor).toBe('omron');
   });
 });
+
+// --- Plan 4B Task 8 ---
+describe('switchDialect（表記切替。§10.7 / 決定表#11・#12）', () => {
+  /** 接点1つと出力1つ（出力はコイル列に置く）。 */
+  function editedLadder(): LadderProgram {
+    const base = useStore.getState().ladder!;
+    const contact = applyLadderCell(base, { networkId: 'n1', row: 0, col: 0 }, no(X(0)));
+    if (!contact.ok) throw new Error(contact.message);
+    const coil = applyLadderCell(
+      contact.program,
+      { networkId: 'n1', row: 0, col: COIL_COL },
+      out(Y(0)),
+    );
+    if (!coil.ok) throw new Error(coil.message);
+    return coil.program;
+  }
+
+  it('swaps the dialect and the model but keeps the ladder, the comments and the undo stack', () => {
+    useStore.getState().openProblem(problem);
+    const ladder = editedLadder();
+    useStore.getState().setLadder(ladder);
+    useStore.getState().setDeviceComment(deviceKey(X(0)), '起動');
+    const boardBefore = useStore.getState().session;
+
+    useStore.getState().switchDialect('omron');
+
+    const state = useStore.getState();
+    expect(state.dialectId).toBe('omron');
+    const opened = state.problem;
+    expect(opened !== undefined && isPlcProblem(opened) ? opened.plc : undefined).toEqual({
+      vendor: 'omron',
+      model: 'CP1E',
+    });
+    // IRは書き換えない（4A H-2）。コメントも持ち越す（決定表#12）
+    expect(state.ladder).toEqual(ladder);
+    expect(Object.values(state.ladderComments)).toContain('起動');
+    expect(state.converted).toBe(false);
+    // 盤は作り直す（端子名が変わるので配線は残せない）
+    expect(state.session).not.toBe(boardBefore);
+    // 取り消しスタックはそのまま（決定表#11）
+    expect(useStore.getState().undoLadderEdit()).toBe(true);
+  });
+
+  it('keeps the dialect and the model when the I/O does not fit the maker’s unit (決定表#10)', () => {
+    useStore.getState().openProblem(problem);
+    // CP1E は出力12点なので `y: 12` の割付は収まらない（4A 前提#23）
+    useStore.setState({
+      problem: { ...problem, io: { ...problem.io, outputs: [{ y: 12, cr: 'CR1', pl: 'PL1' }] } },
+    });
+
+    useStore.getState().switchDialect('omron');
+
+    const state = useStore.getState();
+    expect(state.dialectId).toBe('mitsubishi');
+    const opened = state.problem;
+    expect(opened !== undefined && isPlcProblem(opened) ? opened.plc.model : undefined).toBe(
+      'FX5U',
+    );
+    expect(state.toasts.at(-1)?.tone).toBe('error');
+  });
+
+  it('only swaps the dialect when no PLC problem is open', () => {
+    useStore.getState().abandonSession();
+    useStore.getState().switchDialect('sharp');
+    expect(useStore.getState().dialectId).toBe('sharp');
+    expect(useStore.getState().problem).toBeUndefined();
+  });
+});
+// --- /Plan 4B Task 8 ---

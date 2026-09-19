@@ -12,7 +12,7 @@ import {
   type Network,
 } from '@ojt/ladder-core';
 import type { DialectProfile } from '@ojt/plc-dialects';
-import { useCallback, useEffect, useMemo, useRef, type JSX } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type JSX } from 'react';
 import type { PlcCommandAction } from '../../worker/protocol.js';
 import { useStore } from '../app/store.js';
 import { JA } from '../i18n/ja.js';
@@ -28,6 +28,7 @@ import { CommentPanel } from './CommentPanel.js';
 import { IoTable } from './IoTable.js';
 import { LadderEditor } from './LadderEditor.js';
 import { MonitorPanel } from './MonitorPanel.js';
+import { NotationDialog } from './NotationDialog.js';
 import { OutputWindow } from './OutputWindow.js';
 import { ProjectTree } from './ProjectTree.js';
 import { ShortcutHelp } from './ShortcutHelp.js';
@@ -81,6 +82,11 @@ export function LadderWorkspace({
   const ladderMode = useStore((s) => s.ladderMode);
   const plcRunning = useStore((s) => s.plcRunning);
   const monitorColor = useStore((s) => s.monitorColor);
+  /** 表記切替ダイアログ（§10.7 / Task 8）。 */
+  const [notationOpen, setNotationOpen] = useState(false);
+  const closeNotation = useCallback((): void => {
+    setNotationOpen(false);
+  }, []);
   /** 見た目（配色・セル寸法・枠の並び）はスキンが決める。決定表#5 */
   const theme = useMemo(() => skinThemeOf(profile), [profile]);
   const cssVars = useMemo(
@@ -335,6 +341,20 @@ export function LadderWorkspace({
         >
           {JA.ladder.deleteRow}
         </button>
+        {/*
+          表記切替（§10.7 / Task 8）。メーカーごとの操作表（`TOOLBAR_ACTIONS_BY_DIALECT`）は
+          実機のツールバーの写しなので、本アプリだけの操作はその後ろに並べる（決定表#2）。
+          読出し・モニタ中でも押せる（プログラムは書き換わらないため。4A H-2）。
+        */}
+        <button
+          type="button"
+          data-testid="toolbar-notation"
+          onClick={() => {
+            setNotationOpen(true);
+          }}
+        >
+          {JA.ladder.notationTitle}
+        </button>
       </div>
 
       <div className={styles.workspaceBody}>
@@ -373,6 +393,8 @@ export function LadderWorkspace({
           </div>
         </div>
         <div className={styles.workspaceSide}>
+          {/* 表記切替ダイアログ（画面中央に出る。Task 8） */}
+          {notationOpen ? <NotationDialog profile={profile} onClose={closeNotation} /> : null}
           {/* MERGE 注意 #12: モニタ一覧は `workspaceSide` の先頭（`IoTable` の前）。Task 9 */}
           <MonitorPanel profile={profile} unit={unit} onPlc={onPlc} />
           <IoTable io={io} profile={profile} unit={unit} />

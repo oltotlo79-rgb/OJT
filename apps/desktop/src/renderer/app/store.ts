@@ -597,6 +597,15 @@ export interface AppState {
    * 実装済みかどうかの確認は呼び出し側（`work-file.ts`）が済ませてから呼ぶ。Batch 4+5 レビュー I5
    */
   setDialect: (dialectId: DialectId) => void;
+  // --- Plan 4B Task 8 ---
+  /**
+   * 表記（メーカー）を切り替える。§10.7 / 決定表#12
+   * 方言と課題の機種を差し替え、盤と履歴を作り直す。**ラダーとデバイスコメントと取り消し
+   * スタックは持ち越す**（IRは書き換えないので、戻せる手もそのまま生きる。4A H-2 / 決定表#11）。
+   * 機種が変わると端子名が変わるので、配線だけは残せない（盤に無い端子を指す電線ができる）。
+   */
+  switchDialect: (dialectId: DialectId) => void;
+  // --- /Plan 4B Task 8 ---
   /** ラダーを1手戻す（戻せたら true）。決定表#2 */
   undoLadderEdit: () => boolean;
   /** ラダーを1手やり直す（やり直せたら true）。決定表#2 */
@@ -1367,6 +1376,43 @@ export const useStore = create<AppState>((set, get) => ({
   setDialect: (dialectId) => {
     set({ dialectId });
   },
+  // --- Plan 4B Task 8 ---
+  switchDialect: (dialectId) => {
+    const { problem, ladder, ladderComments, ladderHistory } = get();
+    // 課題を開いていないとき（ホームや設定）は方言を入れ替えるだけでよい
+    if (problem === undefined || !isPlcProblem(problem)) {
+      set({ dialectId });
+      return;
+    }
+    const swapped = plcForVendor(problem, dialectId);
+    if (swapped === undefined) {
+      /*
+       * 割付がその機種に収まらない（CP1E の出力は12点。決定表#10）。**方言も変えない**——
+       * ラダーだけ別メーカーの表記にすると、机上のPLC本体の端子名と食い違う（4A H-1）。
+       * 画面（`NotationDialog`）は押す前にこの理由を出して押させないので、ここは念のための砦。
+       */
+      const model = plcUnitForVendor(dialectId)?.model ?? dialectId;
+      const wanted = plcUnitFor(model)?.displayName ?? model;
+      const used = plcUnitFor(problem.plc.model)?.displayName ?? problem.plc.model;
+      get().toast(JA.plc.modelNotUsable(wanted, used), 'error');
+      return;
+    }
+    /*
+     * `openProblem()` が方言 → 機種 → 盤・履歴・ログ・計時を作り直す。**`vendor` を必ず渡す**
+     * （渡さないと `defaultVendor` に戻され、切り替えたはずの方言が元へ戻る。決定表#24）。
+     * ラダー・デバイスコメント・取り消しスタックだけ持ち越す（決定表#11・#12）。
+     */
+    if (!get().openProblem(swapped, { vendor: dialectId })) return;
+    set({
+      ladder,
+      ladderComments,
+      ladderHistory,
+      converted: false,
+      convertIssues: NO_CONVERT_ISSUES,
+    });
+    get().toast(JA.plc.notationSwitched(getDialect(dialectId).displayName));
+  },
+  // --- /Plan 4B Task 8 ---
   undoLadderEdit: () => {
     const { ladder, ladderHistory } = get();
     if (ladder === undefined) return false;

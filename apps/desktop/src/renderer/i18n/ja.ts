@@ -557,6 +557,30 @@ export const JA = {
      */
     keyMapAssumedNote: 'キー割当は実機マニュアル未確認のため本アプリの表記です',
     // --- /Plan 4B review fixes (Batch: skin stream) ---
+    // --- Plan 4B Task 8 ---
+    /** 表記切替（§10.7 / 決定表#11・#12）。 */
+    notationTitle: '表記切替',
+    notationHelp: '同じラダーを別メーカーの表記で表示します。プログラムは書き換わりません。',
+    /** 切替先を選ばせる問いかけ（何をすればよいかを画面に出す）。 */
+    notationPick: 'どのメーカーの表記にしますか？',
+    notationPickFirst: 'メーカーを選ぶと、切替後の書き方をここに一覧で出します。',
+    notationWarning:
+      '機種も切り替わるため、盤の配線はやり直しになります（ラダーとデバイスコメントは残ります）。',
+    notationFrom: 'いまの表記',
+    notationTo: '切替後',
+    /** 一覧の見出し。 */
+    notationDevices: 'デバイスの書き方',
+    notationPresets: 'タイマ・カウンタの設定値の書き方',
+    notationIssues: '切替後の表記で表せない項目',
+    notationNoChange: '表記が変わるデバイスはありません。',
+    notationNoIssue: '表せない項目はありません。',
+    notationApply: 'この表記に切り替える',
+    notationApplyTo: (name: string): string => `${name} の表記に切り替える`,
+    notationClose: '閉じる',
+    /** その機種では開けない課題（決定表#10）。押す前に理由を読ませる。 */
+    notationNotFit: (model: string): string =>
+      `この課題の入出力の割付が ${model} に収まらないため、このメーカーには切り替えられません`,
+    // --- /Plan 4B Task 8 ---
   },
   // --- /Plan 3B Task 4 ---
   // --- Plan 3B Task 10 ---
@@ -681,6 +705,10 @@ export const JA = {
     ladderErrors: 'ラダーの変換エラー',
     ladderWarnings: 'ラダーの警告',
     // --- /Plan 3B Task 13 ---
+    // --- Plan 4B Task 8 ---
+    /** 表記切替が終わったことを伝える（§10.7 / 決定表#12）。 */
+    notationSwitched: (name: string): string => `${name} の表記に切り替えました`,
+    // --- /Plan 4B Task 8 ---
   },
   // --- /Plan 3B Task 10 ---
   hazard: {

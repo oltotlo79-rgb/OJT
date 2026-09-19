@@ -239,3 +239,32 @@ describe('キーの文字列を文言に埋め込まない（前提#22 / 決定�
     expect(message).toContain('オンライン編集');
   });
 });
+
+// --- Plan 4B Task 8 ---
+describe('表記切替の入口（§10.7 / Task 8）', () => {
+  it('opens the notation dialog from the toolbar of every skin', () => {
+    for (const profile of [MITSUBISHI_FX5U, OMRON_CP1E, JTEKT_PC10G, SHARP_JW300]) {
+      cleanup();
+      workspace(profile);
+      expect(screen.queryByTestId('notation-dialog'), profile.id).toBeNull();
+      act(() => {
+        fireEvent.click(screen.getByTestId('toolbar-notation'));
+      });
+      expect(screen.getByTestId('notation-dialog'), profile.id).toBeInTheDocument();
+      // いまのメーカーは切替先に出ない
+      expect(screen.queryByTestId(`notation-to-${profile.id}`), profile.id).toBeNull();
+    }
+  });
+
+  it('closes the dialog with the close button', () => {
+    workspace(MITSUBISHI_FX5U);
+    act(() => {
+      fireEvent.click(screen.getByTestId('toolbar-notation'));
+    });
+    act(() => {
+      fireEvent.click(screen.getByTestId('notation-close'));
+    });
+    expect(screen.queryByTestId('notation-dialog')).toBeNull();
+  });
+});
+// --- /Plan 4B Task 8 ---

@@ -681,3 +681,121 @@ details[open] > .sideSummary::before {
  * 移した（レビュー M9。セルの境界に合わせる補正が要るため）。
  * --- /Plan 4B Task 4 ---
  */
+
+/* --- Plan 4B Task 8: 表記切替ダイアログ（§10.7 / 決定表#11・#12） --- */
+/*
+ * 画面の中央に出す。`position: fixed` なので `.workspaceSide`（`overflow-y: auto`）の中に
+ * 置いても切り取られず、`.workspace` の子のままなので `--skin-*` と `--ladder-fg` を継げる
+ * （`document.body` へポータルすると、スキンの色が届かない）。
+ */
+.notationOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgb(0 0 0 / 40%);
+}
+
+.notation {
+  background: var(--skin-output, #fff);
+  border: 1px solid var(--ladder-line, #d5d8de);
+  border-radius: 6px;
+  box-shadow: 0 6px 24px rgb(0 0 0 / 35%);
+  color: var(--ladder-fg, #1a1d22);
+  max-height: 84vh;
+  overflow-y: auto;
+  padding: 12px 16px 16px;
+  width: min(560px, 100%);
+}
+
+.notationHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.notationHead .sideTitle {
+  flex: 1 1 auto;
+}
+
+/* 閉じる「×」。指でもマウスでも外さない大きさにする（利用者要求: 32px 以上） */
+.notationClose {
+  flex: 0 0 auto;
+  min-width: 32px;
+  min-height: 32px;
+  font-size: 16px;
+  line-height: 1;
+}
+
+.notationPickLabel {
+  font-weight: 700;
+  margin: 8px 0 6px;
+}
+
+.notationPicker {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.notationChoice {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* 選択肢・確定・取消のボタンはどれも 32px 以上（利用者要求「直感的に操作できるUI」） */
+.notationPicker button,
+.notationActions button {
+  min-height: 32px;
+  padding: 4px 12px;
+}
+
+.notationPicker button[aria-pressed='true'] {
+  border-color: var(--skin-cursor, #1e64ff);
+  box-shadow: inset 0 0 0 1px var(--skin-cursor, #1e64ff);
+  font-weight: 700;
+}
+
+/* 押せない選択肢は理由を添えて淡色にする（`title` だけに頼らない） */
+.notationReason {
+  color: var(--ladder-fg-muted, #555);
+  font-size: 11px;
+}
+
+.notationSection {
+  font-size: 12px;
+  font-weight: 700;
+  margin: 12px 0 4px;
+}
+
+.notationWarn {
+  background: #fff3e6;
+  border-left: 3px solid #b34700;
+  color: #7a3000;
+  font-size: 12px;
+  margin: 0 0 8px;
+  padding: 6px 8px;
+}
+
+.notationErrors {
+  font-size: 12px;
+  color: var(--skin-error, #d14343);
+  margin: 4px 0;
+  padding-left: 16px;
+}
+
+.notationActions {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.notationPrimary {
+  font-weight: 700;
+}
+/* --- /Plan 4B Task 8 --- */
