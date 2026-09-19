@@ -89,7 +89,11 @@ const PROBLEM_FIELD_NAMES: Readonly<Record<string, string>> = {
  */
 export function problemIssueText(issue: { path: string; message: string }): string {
   if (issue.path === '' || issue.path === '(root)') return '課題データの形式が不正です';
-  const lastKey = issue.path.split('.').pop()?.replace(/\[\d+\]$/, '') ?? issue.path;
+  const lastKey =
+    issue.path
+      .split('.')
+      .pop()
+      ?.replace(/\[\d+\]$/, '') ?? issue.path;
   const name = PROBLEM_FIELD_NAMES[lastKey];
   return name === undefined ? `項目 ${issue.path} が不正です` : `${name}（${lastKey}）が不正です`;
 }

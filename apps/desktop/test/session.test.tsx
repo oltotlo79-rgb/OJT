@@ -140,6 +140,24 @@ afterEach(() => {
   setApi(undefined);
 });
 
+describe('状態オーバーレイの電線カウント（UXレビュー #21）', () => {
+  it('固定を除いた本数と固定の本数を分けて示す', () => {
+    openSession();
+    const before = useStore.getState().session?.wires.filter((w) => w.locked).length ?? 0;
+    const overlay = screen.getByTestId('status-overlay');
+    expect(overlay.textContent).toContain(`自分で張った電線 0 本（固定 ${String(before)} 本）`);
+
+    act(() => {
+      scene.pick?.(terminalHit('P.1'));
+      scene.pick?.(terminalHit('TB_PB.2c'));
+    });
+
+    expect(screen.getByTestId('status-overlay').textContent).toContain(
+      `自分で張った電線 1 本（固定 ${String(before)} 本）`,
+    );
+  });
+});
+
 describe('端子 → 端子の配線（§8.2）', () => {
   it('2つめの端子で電線が1本増え、Worker へ addWire を1回だけ送り、履歴も1つだけ積む', () => {
     openSession();

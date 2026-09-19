@@ -14,6 +14,7 @@ import {
   powerLog,
   referenceErrorText,
   routeFailedLog,
+  wireCountText,
   workFileSavedText,
 } from '../i18n/ja.js';
 import { ElapsedTimer } from '../panels/ElapsedTimer.js';
@@ -653,8 +654,8 @@ export function Session(): JSX.Element {
           <WarningBanner />
           <BoardScene onPick={onPick} onHover={onHover} onPress={onPress} onRelease={onRelease} />
           <div className={styles.statusOverlay} data-testid="status-overlay">
-            {powered ? JA.session.powered : JA.session.unpowered} / {JA.session.wires}{' '}
-            {session.wires.length} {JA.session.wiresUnit} /{' '}
+            {powered ? JA.session.powered : JA.session.unpowered} /{' '}
+            {wireCountText(session.wires.length, fixedWireCount)} /{' '}
             {pendingTerminal === undefined
               ? JA.session.noTerminal
               : `${JA.session.firstTerminal}: ${pendingTerminal}`}

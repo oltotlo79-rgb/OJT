@@ -343,14 +343,21 @@ export const JA = {
     reason: '理由',
     staticChecks: '静的チェック',
     hazards: '危険操作',
-    /** 危険操作の回数を訓練者向けに言い換えたもの（合否には影響しない。§17.2 #3）。 */
-    mistakes: 'ミス',
+    /**
+     * 警告バナーの回数表示（UXレビュー #26）。「ミス」だと技能検定の用語（危険操作）と
+     * ずれるので言い換えをやめる。実技試験では減点対象になることを添えるが、
+     * このアプリの合否には影響しない（§17.2 #3）。
+     */
+    mistakes: '危険操作',
+    mistakesSuffix: '（減点）',
     /** モードC1の正解数（§9.1 判定の「n/m 正解」）。 */
     correct: '正解',
     /** 訓練者の解答。§9.1 */
     yourAnswer: 'あなたの解答',
     /** 本当の状態。§9.1 */
     truth: '正解',
+    /** 正解の見分け方（期待される読み）の列見出し。§9.1 / UXレビュー #23 */
+    truthReading: '見分け方（期待される読み）',
     /** マークシートの採点表の見出し。§9.1 */
     markSheet: 'マークシート採点',
     /** 未解答。 */
@@ -768,6 +775,8 @@ export const JA = {
     view: '視点',
     workFile: '作業ファイル',
   },
+  /** ホームの「最近の課題」の一行（UXレビュー #19）。`screens/Home.tsx`。 */
+  recentProblem: '最近の課題',
   // --- /UX pass 2026-09-19 ---
 } as const;
 
@@ -808,6 +817,15 @@ export function sessionModeLabel(
 /** 分の表示（`30分`）。 */
 export function minutesLabel(minutes: number): string {
   return `${minutes}${JA.problemList.minutes}`;
+}
+
+/**
+ * 電線の本数の表示（UXレビュー #21）。総数だけだと固定配線（チェック用回路の既設配線など）と
+ * 見分けが付かないので、訓練者が張った本数と固定の本数を分けて示す
+ * （`自分で張った電線 2 本（固定 3 本）`）。
+ */
+export function wireCountText(totalWires: number, fixedWires: number): string {
+  return `自分で張った電線 ${String(Math.max(0, totalWires - fixedWires))} 本（固定 ${String(fixedWires)} 本）`;
 }
 
 /** 真偽値の信号表示（`ON` / `OFF`）。 */
@@ -932,9 +950,13 @@ export function schematicOpenCountText(count: number): string {
   return `${JA.inspectRepair.schematicOpenCount}: ${count}`;
 }
 
-/** 警告バナーのミス回数（`ミス 3 回`）。§5.6 / 利用者の決定「警告表示＋ミス回数記録」 */
+/**
+ * 警告バナーの危険操作回数（`危険操作 3 回（減点）`）。§5.6 / 利用者の決定「警告表示＋回数記録」
+ * UXレビュー #26: 「ミス」ではなく技能検定の用語「危険操作」に揃え、実技試験では
+ * 減点対象になることを添える（このアプリの合否には影響しない。§17.2 #3）。
+ */
 export function mistakeCountText(count: number): string {
-  return `${JA.result.mistakes} ${count} ${JA.result.times}`;
+  return `${JA.result.mistakes} ${count} ${JA.result.times}${JA.result.mistakesSuffix}`;
 }
 
 /** 接点の組のプローブ位置の表示（`1組 a接点`）。§9.1 */

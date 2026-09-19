@@ -1,6 +1,8 @@
-import type { JSX } from 'react';
-import { JA } from '../i18n/ja.js';
+import { useEffect, useState, type JSX } from 'react';
+import { JA, sessionModeLabel } from '../i18n/ja.js';
 import { useStore, type ListMode } from '../app/store.js';
+import { tryOjtApi } from '../app/ojt-api.js';
+import { formatElapsed } from '../../worker/runtime.js';
 import styles from './screens.module.css';
 
 /**
@@ -48,14 +50,62 @@ const MODES: ReadonlyArray<{
   },
 ];
 
+/** 「最近の課題」の一行に出す情報（UXレビュー #19）。 */
+interface RecentProblem {
+  title: string;
+  mode: 'assemble' | 'inspect-parts' | 'inspect-repair' | 'plc' | undefined;
+  elapsedMs: number;
+}
+
 /** ホーム画面。 */
 export function Home(): JSX.Element {
   const setRoute = useStore((s) => s.setRoute);
   const setListMode = useStore((s) => s.setListMode);
+  /**
+   * 最近の課題（UXレビュー #19）。§12.3 の一時保存を読まずに覗くだけ（`discard` を
+   * 付けないので一時保存は消えない。`App.tsx` の復元プロンプトとは独立に動く）。
+   * preload が無い・一時保存が無いときは黙って何も出さない（§13 #5 と同じ流儀）。
+   */
+  const [recent, setRecent] = useState<RecentProblem | undefined>(undefined);
+  useEffect(() => {
+    const api = tryOjtApi();
+    if (api === undefined) return;
+    let cancelled = false;
+    void api.loadWorkFile({ kind: 'autosave' }).then((result) => {
+      if (cancelled || !result.ok) return;
+      void api.readProblem(result.file.problemId).then((problem) => {
+        if (cancelled || problem === null) return;
+        setRecent({
+          title: problem.title,
+          mode: result.file.mode,
+          elapsedMs: result.file.elapsedMs,
+        });
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   return (
     <div className={styles.center}>
-      <h1 className={styles.title}>{JA.app.name}</h1>
-      <p className={styles.subtitle}>{JA.app.subtitle}</p>
+      {/* UXレビュー #19: 設定は右上に置く（モードカードを選ぶ主導線から離す）。 */}
+      <div className={styles.homeHeader}>
+        <div>
+          <h1 className={styles.title}>{JA.app.name}</h1>
+          <p className={styles.subtitle}>{JA.app.subtitle}</p>
+        </div>
+        <button
+          type="button"
+          className={styles.homeSettings}
+          data-testid="open-settings"
+          onClick={() => {
+            setRoute('settings');
+          }}
+        >
+          {JA.home.settings}
+        </button>
+      </div>
       <h2 className={styles.title} style={{ fontSize: 18 }}>
         {JA.home.title}
       </h2>
@@ -77,17 +127,12 @@ export function Home(): JSX.Element {
           </button>
         ))}
       </div>
-      <p style={{ marginTop: 24 }}>
-        <button
-          type="button"
-          data-testid="open-settings"
-          onClick={() => {
-            setRoute('settings');
-          }}
-        >
-          {JA.home.settings}
-        </button>
-      </p>
+      {recent === undefined ? null : (
+        <p className={styles.subtitle} data-testid="recent-problem">
+          {JA.recentProblem}: {sessionModeLabel(recent.mode)} {recent.title}（
+          {formatElapsed(recent.elapsedMs)}）
+        </p>
+      )}
     </div>
   );
 }

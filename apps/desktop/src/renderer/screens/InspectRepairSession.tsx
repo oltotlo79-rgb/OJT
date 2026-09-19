@@ -23,6 +23,7 @@ import {
   powerLog,
   referenceErrorText,
   routeFailedLog,
+  wireCountText,
   workFileSavedText,
 } from '../i18n/ja.js';
 import { ElapsedTimer } from '../panels/ElapsedTimer.js';
@@ -510,6 +511,9 @@ export function InspectRepairSession(): JSX.Element {
   const policy = schematicPolicy(problem.grade);
   const showSchematic = policy.toggleable ? schematicVisible : policy.shown;
 
+  /** 状態オーバーレイの電線カウントが見る「固定」本数（UXレビュー #21）。 */
+  const fixedWireCount = session.wires.filter((w) => w.locked).length;
+
   /*
    * 手順の見える化（UXレビュー #3）。指摘 → 修復 → 判定。
    * ここでも配線・指摘の中身（合否）は一切見ない（決定表#7と同じ理由）。
@@ -753,8 +757,8 @@ export function InspectRepairSession(): JSX.Element {
           <WarningBanner />
           <BoardScene onPick={onPick} onHover={onHover} onPress={onPress} onRelease={onRelease} />
           <div className={styles.statusOverlay} data-testid="status-overlay">
-            {powered ? JA.session.powered : JA.session.unpowered} / {JA.session.wires}{' '}
-            {session.wires.length} {JA.session.wiresUnit} / {JA.inspectRepair.reportCount}{' '}
+            {powered ? JA.session.powered : JA.session.unpowered} /{' '}
+            {wireCountText(session.wires.length, fixedWireCount)} / {JA.inspectRepair.reportCount}{' '}
             {reports.length}
             {tripped ? ` / ${JA.session.tripped}` : ''}
           </div>

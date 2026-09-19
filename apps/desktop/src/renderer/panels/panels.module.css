@@ -43,13 +43,19 @@
   margin-right: 2px;
 }
 
+/*
+ * UXレビュー #18: 判定は他のボタンと同じ配色で目立たず押し間違えやすかった。
+ * 「進める操作」として緑（`--ok`）にし、一回り大きくする。
+ */
 .judgeButton {
   flex: 0 0 auto;
   margin-left: auto;
-  background: var(--accent);
+  background: var(--ok);
   color: #10151c;
-  border-color: var(--accent);
+  border-color: var(--ok);
+  font-size: 15px;
   font-weight: 700;
+  padding: 8px 18px;
 }
 
 .panel {
@@ -330,3 +336,26 @@
   white-space: nowrap;
 }
 /* --- /UX pass 2026-09-19 (#17) --- */
+
+/* --- UX pass 2026-09-19 (#25): 経過時間バーの色の凡例 --- */
+.elapsedLegend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.legendItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.legendSwatch {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+}
+/* --- /UX pass 2026-09-19 (#25) --- */

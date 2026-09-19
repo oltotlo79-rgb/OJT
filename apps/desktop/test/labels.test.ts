@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { partKindLabel, reportTargetLabel, trayPartLabel, wireLabel } from '../src/renderer/i18n/ja.js';
+import {
+  partKindLabel,
+  reportTargetLabel,
+  trayPartLabel,
+  wireCountText,
+  wireLabel,
+} from '../src/renderer/i18n/ja.js';
 
 /**
  * 表示名の組み立て（UXレビュー #6: 内部IDをそのまま画面に出さない）。
@@ -56,5 +62,19 @@ describe('reportTargetLabel（#6b: 指摘対象の表示）', () => {
   it('端子・部品の対象はこれまでどおり', () => {
     expect(reportTargetLabel({ terminalId: 'CR1.13' })).toContain('CR1.13');
     expect(reportTargetLabel({ partId: 'CR2' })).toContain('CR2');
+  });
+});
+
+describe('wireCountText（#21: 電線の本数）', () => {
+  it('固定を除いた本数と、固定の本数を分けて示す', () => {
+    expect(wireCountText(5, 3)).toBe('自分で張った電線 2 本（固定 3 本）');
+  });
+
+  it('固定が0本でも成り立つ（モードD）', () => {
+    expect(wireCountText(2, 0)).toBe('自分で張った電線 2 本（固定 0 本）');
+  });
+
+  it('総数が固定を下回ることはない前提だが、マイナスにはしない', () => {
+    expect(wireCountText(1, 3)).toBe('自分で張った電線 0 本（固定 3 本）');
   });
 });

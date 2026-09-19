@@ -1,4 +1,5 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { BUILTIN_PROBLEMS } from '@ojt/content';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { OjtApi, ProblemListPayload } from '../src/renderer/../shared/ipc.js';
 import { ojtApi } from '../src/renderer/app/ojt-api.js';
@@ -366,5 +367,58 @@ describe('ホームのモードカード（Plan 2B Task 17。§12.1）', () => {
     fireEvent.click(screen.getByTestId('mode-plc'));
     expect(useStore.getState().listMode).toBe('plc');
     expect(useStore.getState().route).toBe('list');
+  });
+
+  it('設定ボタンは4モードのカードより前（画面の上）に置く（UXレビュー #19: 右上）', () => {
+    render(<Home />);
+    const settings = screen.getByTestId('open-settings');
+    const firstCard = screen.getByTestId('mode-assemble');
+    expect(
+      settings.compareDocumentPosition(firstCard) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it('preload が無ければ「最近の課題」は出さない', async () => {
+    render(<Home />);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(screen.queryByTestId('recent-problem')).toBeNull();
+  });
+
+  it('一時保存があれば「最近の課題」に1行で出す（UXレビュー #19）', async () => {
+    setApi({
+      loadWorkFile: () =>
+        Promise.resolve({
+          ok: true,
+          path: 'C:/autosave.json',
+          file: {
+            formatVersion: 1,
+            problemId: 'b-001',
+            session: {},
+            elapsedMs: 90_000,
+            hazardCount: 0,
+            savedAt: '2026-09-19T09:00:00.000Z',
+            mode: 'assemble',
+          },
+        }),
+      readProblem: () => Promise.resolve(BUILTIN_PROBLEMS.find((p) => p.id === 'b-001') ?? null),
+    });
+    render(<Home />);
+    const recent = await screen.findByTestId('recent-problem');
+    expect(recent.textContent).toContain('自己保持回路');
+    expect(recent.textContent).toContain(JA.home.assemble);
+  });
+
+  it('一時保存が無ければ「最近の課題」は出さない', async () => {
+    setApi({
+      loadWorkFile: () =>
+        Promise.resolve({ ok: false, canceled: false, message: '一時保存がありません' }),
+    });
+    render(<Home />);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(screen.queryByTestId('recent-problem')).toBeNull();
   });
 });

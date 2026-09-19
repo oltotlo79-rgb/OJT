@@ -95,10 +95,7 @@ describe('押せない理由（UXレビュー #5）', () => {
 describe('「…」メニュー（UXレビュー #17: 視点・保存読込を畳んで1280px幅でも判定を1行目に残す）', () => {
   it('既定では畳まれていて、視点・保存読込のボタンは出さない', () => {
     renderToolbar();
-    expect(screen.getByTestId('toolbar-overflow-toggle')).toHaveAttribute(
-      'aria-expanded',
-      'false',
-    );
+    expect(screen.getByTestId('toolbar-overflow-toggle')).toHaveAttribute('aria-expanded', 'false');
     expect(screen.queryByTestId('toolbar-overflow')).toBeNull();
     expect(screen.queryByRole('button', { name: JA.session.viewFront })).toBeNull();
     expect(screen.queryByRole('button', { name: JA.session.save })).toBeNull();

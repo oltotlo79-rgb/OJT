@@ -56,9 +56,19 @@ export function ElapsedTimer({ limit }: { limit: TimeLimit }): JSX.Element {
             title={`${JA.result.cutoffMark} ${minutesLabel(limit.cutoffMin)}`}
           />
         </div>
-        <span className={styles.toolLabel}>
-          {JA.result.standardMark} {limit.standardMin} / {JA.result.cutoffMark}{' '}
-          {minutesLabel(limit.cutoffMin)}
+        {/*
+          UXレビュー #25: 目盛の色（緑＝標準時間／赤＝打切り）が何を表すか、色だけに頼らず
+          文字でも示す凡例。
+        */}
+        <span className={styles.elapsedLegend} data-testid="elapsed-legend">
+          <span className={styles.legendItem}>
+            <span className={`${styles.legendSwatch} ${styles.markStandard}`} aria-hidden="true" />
+            {JA.result.standardMark} {minutesLabel(limit.standardMin)}
+          </span>
+          <span className={styles.legendItem}>
+            <span className={`${styles.legendSwatch} ${styles.markCutoff}`} aria-hidden="true" />
+            {JA.result.cutoffMark} {minutesLabel(limit.cutoffMin)}
+          </span>
         </span>
       </div>
     </section>

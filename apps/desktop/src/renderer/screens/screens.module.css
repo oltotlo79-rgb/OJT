@@ -16,19 +16,30 @@
   margin: 0 0 24px;
 }
 
+/*
+ * UXレビュー #19: 4つのモードを2×2で並べ、カードを大きくする（読みやすさ・押しやすさ優先。
+ * 「分かりやすく直感的に」の利用者要望）。狭い幅では自動的に1列へ落ちる。
+ */
 .modeGrid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(2, minmax(260px, 1fr));
+  gap: 20px;
   max-width: 900px;
+}
+
+@media (max-width: 640px) {
+  .modeGrid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .modeCard {
   background: var(--panel);
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: 10px;
   cursor: pointer;
-  padding: 18px 20px;
+  min-height: 120px;
+  padding: 24px 26px;
   text-align: left;
 }
 
@@ -38,15 +49,29 @@
 
 .modeName {
   display: block;
-  font-size: 18px;
+  font-size: 22px;
   font-weight: 700;
-  margin-bottom: 6px;
+  margin-bottom: 8px;
 }
 
 .modeDesc {
   color: var(--muted);
   display: block;
-  font-size: 12px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* ホーム上部：タイトルと設定ボタンを両端に置く（UXレビュー #19）。 */
+.homeHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  max-width: 900px;
+}
+
+.homeSettings {
+  flex: 0 0 auto;
 }
 
 .problemTable {

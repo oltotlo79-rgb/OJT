@@ -82,6 +82,28 @@ describe('InspectPartsResult（§9.1 判定）', () => {
     expect(screen.getByTestId('correct-count').textContent).toContain('1 / 2');
   });
 
+  it('正解ごとに見分け方（期待される読み）を1行添える（UXレビュー #23）', () => {
+    expect(C1).toBeDefined();
+    if (C1 === undefined) return;
+    render(
+      <InspectPartsResult
+        problem={C1}
+        result={result({
+          scores: [
+            { partId: 'p1', truth: 'a-weld', answer: 'a-weld', correct: true },
+            { partId: 'p2', truth: 'coil-open', answer: 'coil-open', correct: true },
+          ],
+        })}
+        restoredHazardCount={0}
+        onRetry={vi.fn()}
+        onBackToList={vi.fn()}
+      />,
+    );
+    // `DiagnosisHelp` の判定表と同じ文言（`DIAGNOSIS_TABLE` が唯一の源）
+    expect(screen.getByTestId('reading-p1').textContent).toContain('OFF時に a接点 導通あり');
+    expect(screen.getByTestId('reading-p2').textContent).toContain('コイルが吸引しない');
+  });
+
   it('未解答は「—」で出す', () => {
     expect(C1).toBeDefined();
     if (C1 === undefined) return;

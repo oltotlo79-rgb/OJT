@@ -20,6 +20,7 @@ import {
   powerLog,
   referenceErrorText,
   routeFailedLog,
+  wireCountText,
   workFileSavedText,
 } from '../i18n/ja.js';
 import { LadderWorkspace } from '../ladder/LadderWorkspace.js';
@@ -458,6 +459,9 @@ export function PlcSession(): JSX.Element {
     });
   };
 
+  /** 状態オーバーレイの電線カウントが見る「固定」本数（UXレビュー #21）。 */
+  const fixedWireCount = session.wires.filter((w) => w.locked).length;
+
   const readiness = canJudgePlc({ converted, ladder });
   const convertKey = shortcutKeyOf(profile, 'convert') ?? 'F4';
   const judgeTitle = !modelKnown
@@ -749,8 +753,8 @@ export function PlcSession(): JSX.Element {
               onRelease={onRelease}
             />
             <div className={styles.statusOverlay} data-testid="status-overlay">
-              {powered ? JA.session.powered : JA.session.unpowered} / {JA.session.wires}{' '}
-              {session.wires.length} {JA.session.wiresUnit}
+              {powered ? JA.session.powered : JA.session.unpowered} /{' '}
+              {wireCountText(session.wires.length, fixedWireCount)}
               {tripped ? ` / ${JA.session.tripped}` : ''}
             </div>
             <ViewHint />

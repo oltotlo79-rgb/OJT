@@ -168,6 +168,16 @@ describe('画面の骨格（§9.2）', () => {
     expect(load).toBeDefined();
     expect(load?.['partFaults']).toBeDefined();
   });
+
+  it('状態オーバーレイは固定を除いた本数と固定の本数を分けて示す（UXレビュー #21）', () => {
+    render(<InspectRepairSession />);
+    const wires = useStore.getState().session?.wires ?? [];
+    const fixed = wires.filter((w) => w.locked).length;
+    const overlay = screen.getByTestId('status-overlay');
+    expect(overlay.textContent).toContain(
+      `自分で張った電線 ${String(wires.length - fixed)} 本（固定 ${String(fixed)} 本）`,
+    );
+  });
 });
 
 describe('指摘（§9.2）', () => {

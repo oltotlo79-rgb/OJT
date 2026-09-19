@@ -142,8 +142,7 @@ describe('inspectRepairSteps（モードC2: 指摘 → 修復 → 判定）', ()
 
   it('moves to judge once a repair action follows a report', () => {
     expect(
-      inspectRepairSteps({ reported: true, repaired: true }).find((s) => s.key === 'judge')
-        ?.state,
+      inspectRepairSteps({ reported: true, repaired: true }).find((s) => s.key === 'judge')?.state,
     ).toBe('current');
   });
 

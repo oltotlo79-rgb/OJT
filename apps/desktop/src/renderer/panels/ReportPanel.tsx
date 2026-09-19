@@ -74,9 +74,7 @@ export function ReportPanel({
         ) : (
           reports.map((report, index) => (
             <div key={`${String(index)}-${report.kind}`} className={styles.reportRow}>
-              <span className={styles.reportTarget}>
-                {reportTargetLabel(report.target, wires)}
-              </span>
+              <span className={styles.reportTarget}>{reportTargetLabel(report.target, wires)}</span>
               <span>{JA.reportKind[report.kind]}</span>
               <button
                 type="button"

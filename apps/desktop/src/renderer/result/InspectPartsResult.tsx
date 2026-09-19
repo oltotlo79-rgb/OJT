@@ -1,13 +1,24 @@
 import {
+  DIAGNOSIS_TABLE,
   PART_TRUTH_LABELS,
   type InspectPartsProblem,
   type JudgeInspectPartsResult,
+  type PartTruth,
 } from '@ojt/content';
 import type { JSX } from 'react';
 import { formatElapsed } from '../../worker/runtime.js';
 import { correctCountText, elapsedSummaryText, JA, trayPartLabel } from '../i18n/ja.js';
 import { HazardList } from './StaticCheckList.js';
 import styles from './result.module.css';
+
+/**
+ * 正解（`truth`）1件ぶんの「そう見分けられる理由」（UXレビュー #23）。
+ * `DIAGNOSIS_TABLE`（判定表ヘルプ §9.1 と同じ唯一の源）の `situation` をそのまま使うので、
+ * 文言はヘルプパネルと常に一致する。
+ */
+const SITUATION_BY_TRUTH: ReadonlyMap<PartTruth, string> = new Map(
+  DIAGNOSIS_TABLE.map((row) => [row.cause, row.situation] as const),
+);
 
 /**
  * モードC1の結果画面。設計仕様 §9.1 判定 / §8.3。
@@ -68,6 +79,7 @@ export function InspectPartsResult({
                 <th>{JA.inspectParts.part}</th>
                 <th>{JA.result.yourAnswer}</th>
                 <th>{JA.result.truth}</th>
+                <th>{JA.result.truthReading}</th>
               </tr>
             </thead>
             <tbody>
@@ -94,6 +106,13 @@ export function InspectPartsResult({
                       : PART_TRUTH_LABELS[score.answer]}
                   </td>
                   <td>{PART_TRUTH_LABELS[score.truth]}</td>
+                  {/*
+                    UXレビュー #23: 正解だけでなく「なぜそう見分けられるか」（期待される読み）
+                    を1行添える。`DiagnosisHelp` の判定表と同じ `situation` 文言を使う。
+                  */}
+                  <td className={styles.detail} data-testid={`reading-${score.partId}`}>
+                    {SITUATION_BY_TRUTH.get(score.truth) ?? ''}
+                  </td>
                 </tr>
               ))}
             </tbody>
