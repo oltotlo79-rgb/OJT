@@ -5496,7 +5496,7 @@ git commit -m "feat(desktop): fit the plc view to whichever model is on the desk
 | ⑥ | 命令語リストをテキストへ書き出すと方言どおりの命令名で出力される。変換できない回路（左母線につながっていない出力）のときは保存せず理由を出す | `47-instruction-list` |
 | （基準外） | GX Works3風の画面（比較用） | `40-mitsubishi-skin` |
 
-- [ ] **Step 1: `e2e/plc-vendors.spec.ts` を書く**
+- [x] **Step 1: `e2e/plc-vendors.spec.ts` を書く**
 
 ```ts
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -5784,7 +5784,7 @@ test.describe('Phase 4 受入基準（4メーカー）', () => {
 > `skin-title` / `skin-status` / `status-*` / `toolbar-*` / `plc-model` / `toolbar-notation` /
 > `notation-*` / `export-il` / `il-issues` / `setting-*-auto` / `skin-assumed` だけである。
 
-- [ ] **Step 2: RED を確認する**
+- [x] **Step 2: RED を確認する**
 
 ```powershell
 pnpm --filter @ojt/desktop build
@@ -5793,7 +5793,7 @@ pnpm --filter @ojt/desktop exec playwright test e2e/plc-vendors.spec.ts
 
 Expected: 6本すべて失敗（実装前なら `data-skin` が無い等）。Task 1〜12 が済んでいれば通る。
 
-- [ ] **Step 3: 通るまで直してコミットする**
+- [x] **Step 3: 通るまで直してコミットする**
 
 ```powershell
 pnpm --filter @ojt/desktop exec playwright test
