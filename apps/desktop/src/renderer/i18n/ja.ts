@@ -1,6 +1,6 @@
 import type { RoutingErrorReason } from '@ojt/board-model';
-import type { HazardKind, MismatchReason } from '@ojt/circuit-sim';
-import type { FaultReportKind } from '@ojt/content';
+import type { HazardKind, Mismatch, MismatchReason } from '@ojt/circuit-sim';
+import type { FaultReportKind, StaticCheckId } from '@ojt/content';
 import { MSG } from '../../shared/messages.js';
 import type { ProbeSide } from '../app/store-types.js';
 
@@ -42,6 +42,10 @@ export const JA = {
     inspectRepairDesc: '故障が入った盤を点検し、白線で修復する（モードC2）',
     plc: 'PLC',
     comingSoon: '準備中',
+    // --- Plan 3B Task 15 ---
+    /** モードDのモードカードの説明。§10 */
+    plcDesc: 'PLCでラダーを組み、盤と配線して動かす（モードD）',
+    // --- /Plan 3B Task 15 ---
     settings: '設定',
   },
   problemList: {
@@ -386,7 +390,8 @@ export const JA = {
     insertOff: '上書きモードです',
     /** `Shift+F3`（モニタ書込み）の注記。セッションで1回だけ出す。決定表#11 */
     monitorWriteSame: 'Phase 3 ではモニタと同じ動作です',
-    helpHint: 'キー割当はツールバーの「キー割当」から見られます',
+    // 右側のキー割当欄（`ShortcutHelp`）は常に表示されている。ツールバーに専用ボタンは無い（M7）
+    helpHint: 'キー割当は右側のキー割当欄に常に表示されています',
     nothingToUndo: 'これ以上は元に戻せません',
     nothingToRedo: 'これ以上はやり直せません',
     // --- /Plan 3B Task 5 ---
@@ -446,6 +451,18 @@ export const JA = {
     runStopTitle: 'PLCを RUN／STOP します（盤の表示中も押せます）',
     plcReset: 'デバイス初期化',
     // --- /Plan 3B Task 9 ---
+    // --- Plan 3B fix (Batch 3) ---
+    /** モニタ表示の空状態を「未変換」と「変換済みだがまだスナップショット無し」に分ける（I3） */
+    monitorNotConverted: '先に変換（F4）してください',
+    monitorNoSnapshot: 'RUN にすると動きます',
+    /** I/O割付表で機種の端子範囲を超えたとき（M3） */
+    ioTerminalUnknown: '—',
+    ioTerminalNote: 'この機種の割付範囲を超えています（端子名を表示できません）。',
+    /** キー割当表の見出し行（M8: `<thead>` を追加） */
+    shortcutKeyHeader: 'キー',
+    shortcutLabelHeader: '操作',
+    shortcutNoteHeader: '備考',
+    // --- /Plan 3B fix (Batch 3) ---
   },
   // --- /Plan 3B Task 4 ---
   // --- Plan 3B Task 10 ---
@@ -511,7 +528,7 @@ export const JA = {
     twoStage: '二段構成（PLC出力→中継リレー→表示灯）',
     plcPowerIndependent: 'PLC電源の独立',
     ioAssignment: 'I/O割付',
-  },
+  } satisfies Record<StaticCheckId, string>,
   mismatchReason: {
     timing: '時刻ずれ',
     value: '値違い',

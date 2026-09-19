@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { OjtApi, ProblemListPayload } from '../src/renderer/../shared/ipc.js';
 import { ojtApi } from '../src/renderer/app/ojt-api.js';
@@ -245,6 +245,45 @@ describe('モードで絞る（Plan 2B Task 17。§12.1）', () => {
     expect(screen.getByTestId('problem-table').textContent).toContain('回路点検・修復1');
   });
 
+  /** Plan 3B Task 15: PLC を絞り込みの4件目として足す。 */
+  it('filters the list down to the PLC problems', async () => {
+    setApi({
+      listProblems: () =>
+        Promise.resolve({
+          problems: [
+            {
+              id: 'b-001',
+              title: '自己保持回路',
+              mode: 'assemble',
+              grade: 3,
+              description: '起動と停止',
+              standardMin: 30,
+              cutoffMin: 50,
+              source: 'builtin',
+            },
+            {
+              id: 'd-001',
+              title: 'PLC 自己保持回路（2級形式）',
+              mode: 'plc',
+              grade: 2,
+              description: 'PLCでラダーを組んで動かす',
+              standardMin: 50,
+              cutoffMin: 60,
+              source: 'builtin',
+            },
+          ],
+          errors: [],
+          userDir: 'C:/dummy',
+          userDirExists: true,
+        }),
+    });
+    render(<ProblemList />);
+    await screen.findByTestId('problem-table');
+    fireEvent.click(screen.getByRole('button', { name: 'PLC' }));
+    expect(screen.getByTestId('open-d-001')).toBeInTheDocument();
+    expect(screen.queryByTestId('open-b-001')).toBeNull();
+  });
+
   /**
    * Plan 2B レビュー M4: 絞り込みに一致する行が無いのと、フォルダそのものが空なのは
    * 別の状況なので別の文言にする（フォルダは空ではない。単に選んだモードの課題が無いだけ）。
@@ -262,12 +301,13 @@ describe('モードで絞る（Plan 2B Task 17。§12.1）', () => {
 });
 
 describe('ホームのモードカード（Plan 2B Task 17。§12.1）', () => {
-  it('3モードは押せて、押すと一覧の絞り込みが決まる（PLC は準備中のまま）', () => {
+  it('4モードすべてが押せて、押すと一覧の絞り込みが決まる（Plan 3B Task 15）', () => {
     render(<Home />);
     for (const [key, mode] of [
       ['assemble', 'assemble'],
       ['inspect-parts', 'inspect-parts'],
       ['inspect-repair', 'inspect-repair'],
+      ['plc', 'plc'],
     ] as const) {
       const card = screen.getByTestId(`mode-${key}`);
       expect(card.hasAttribute('disabled')).toBe(false);
@@ -275,6 +315,14 @@ describe('ホームのモードカード（Plan 2B Task 17。§12.1）', () => {
       expect(useStore.getState().listMode).toBe(mode);
       expect(useStore.getState().route).toBe('list');
     }
-    expect(screen.getByTestId('mode-plc').hasAttribute('disabled')).toBe(true);
+  });
+
+  /** §16 Phase 3 の完成条件（Plan 3B Task 15）。 */
+  it('lists all four modes and lets PLC start (§16 Phase 3)', () => {
+    render(<Home />);
+    expect(screen.getByTestId('mode-plc')).toBeEnabled();
+    fireEvent.click(screen.getByTestId('mode-plc'));
+    expect(useStore.getState().listMode).toBe('plc');
+    expect(useStore.getState().route).toBe('list');
   });
 });

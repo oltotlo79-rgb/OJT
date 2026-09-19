@@ -96,6 +96,7 @@ export function ProblemList(): JSX.Element {
                 ['assemble', JA.home.assemble],
                 ['inspect-parts', JA.home.inspectParts],
                 ['inspect-repair', JA.home.inspectRepair],
+                ['plc', JA.home.plc],
               ] as ReadonlyArray<readonly [ListMode, string]>
             ).map(([mode, label]) => (
               <button

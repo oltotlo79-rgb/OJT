@@ -5,8 +5,8 @@ import styles from './screens.module.css';
 
 /**
  * ホーム（モード選択）。設計仕様 §12.1。
- * Phase 2 で開けるのはモードB（回路組立）・C1（部品点検）・C2（回路点検・修復）の3つで、
- * PLC だけが押せない状態で並ぶ（§16 Phase 2「モードB・C1・C2 が動くアプリ」）。
+ * モードB（回路組立）・C1（部品点検）・C2（回路点検・修復）・D（PLC）の4つが並ぶ
+ * （Plan 3B Task 15 で PLC も押せるようになった）。
  * 押したモードは `listMode` に残り、課題一覧はそれで絞り込まれる。
  */
 
@@ -39,7 +39,13 @@ const MODES: ReadonlyArray<{
     desc: JA.home.inspectRepairDesc,
     enabled: true,
   },
-  { key: 'plc', mode: undefined, name: JA.home.plc, desc: JA.home.comingSoon, enabled: false },
+  {
+    key: 'plc',
+    mode: 'plc',
+    name: JA.home.plc,
+    desc: JA.home.plcDesc,
+    enabled: true,
+  },
 ];
 
 /** ホーム画面。 */
