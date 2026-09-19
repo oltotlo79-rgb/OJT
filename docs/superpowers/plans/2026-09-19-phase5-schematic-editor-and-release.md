@@ -4908,7 +4908,7 @@ git add apps/desktop && git commit -m "feat(desktop): light the board terminals 
 
 決定表#10・#11・#27。
 
-- [ ] **Step 1: ストアに `boardFocus` を足す**
+- [x] **Step 1: ストアに `boardFocus` を足す**
 
 `store-types.ts`（値型なのでこちら）:
 
@@ -4925,7 +4925,7 @@ export interface BoardFocus {
 
 `store.ts`: `boardFocus: BoardFocus | undefined;` ＋ `setBoardFocus: (focus: BoardFocus | undefined) => void;` ＋ 実装 ＋ 初期値 `undefined`。`openProblem()` / `resetSession()` / `restartSession()` / `abandonSession()` で `undefined` に戻す。
 
-- [ ] **Step 2: 失敗するテストを書く**
+- [x] **Step 2: 失敗するテストを書く**
 
 `apps/desktop/test/suspect-list.test.tsx`:
 
@@ -4996,7 +4996,7 @@ describe('SuspectList（UXレビュー #28）', () => {
 });
 ```
 
-- [ ] **Step 3: `SuspectList.tsx` を実装する**
+- [x] **Step 3: `SuspectList.tsx` を実装する**
 
 ```tsx
 import type { WiringSuspect } from '@ojt/content';
@@ -5095,7 +5095,7 @@ export function suspectMoreText(count: number): string {
 
 `JA.result.suspectMore` は関数を持てないので、`SuspectList` 側で `suspectMoreText(truncated)` を呼ぶ形にする（`JA` は値だけを持つ既存の流儀に合わせる）。
 
-- [ ] **Step 4: `ResultView.tsx` と `Result.tsx` をつなぐ**
+- [x] **Step 4: `ResultView.tsx` と `Result.tsx` をつなぐ**
 
 `ResultView` に props を2つ足す（**任意**にしてモードC1/C2/Dの結果画面を壊さない）:
 
@@ -5160,7 +5160,7 @@ import に `type WiringSuspectReport`（`@ojt/content`）を足す。
   }, []);
 ```
 
-- [ ] **Step 5: セッション画面に「結果から」の帯を出す**
+- [x] **Step 5: セッション画面に「結果から」の帯を出す**
 
 `Session.tsx` の `.stepGuide` の直前に:
 
@@ -5194,7 +5194,7 @@ import に `type WiringSuspectReport`（`@ojt/content`）を足す。
     if (store.boardFocus !== undefined) return;
 ```
 
-- [ ] **Step 6: テストを走らせてコミットする**
+- [x] **Step 6: テストを走らせてコミットする**
 
 ```
 pnpm --filter @ojt/desktop test suspect-list result-view

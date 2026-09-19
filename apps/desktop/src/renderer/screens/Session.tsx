@@ -206,6 +206,8 @@ export function Session(): JSX.Element {
   const verifyResult = useStore((s) => s.verifyResult);
   /** 配線ガイドで光っている回路図の要素。§11.4 / 決定表#7・#8 */
   const highlightCells = useStore((s) => s.highlight.cellIds);
+  /** 結果画面の「盤で見る」で跳んできたか。§8.3 / UXレビュー #28 / 決定表#11 */
+  const boardFocus = useStore((s) => s.boardFocus);
   const restoredHazardCount = useStore((s) => s.restoredHazardCount);
   const problemId = problem?.id;
   const sessionEpoch = useStore((s) => s.sessionEpoch);
@@ -414,10 +416,16 @@ export function Session(): JSX.Element {
    * 盤の端子にホバーしたら回路図の要素を光らせる（決定表#8）。3Dが返すのは物理端子ID
    * （`S1.13`）なので、索引が持つ役割ID（`CR1.13`）へ直してから引く（§6.4）。
    * ホバーは毎秒何度も走るので、**同じ選択なら書かない**（`sameSelection`）。
+   *
+   * 結果画面から跳んできている（`boardFocus`）あいだは**ハイライトを触らない**（Task 9 /
+   * 決定表#11・#27）。疑わしい端子を光らせて連れてきたのに、盤の上でマウスが少し動いただけで
+   * その光が消えてしまうと、「どこを見ればよいか」を示すという導線そのものが成り立たない。
+   * ホバー中の端子（ツールチップ）は帯が出ていても要るので、`setHovered()` は先に済ませる。
    */
   const onHover = useCallback((id: TerminalId | undefined) => {
     const store = useStore.getState();
     store.setHovered(id);
+    if (store.boardFocus !== undefined) return;
     const current = store.session;
     const next =
       current === undefined || id === undefined
@@ -767,6 +775,31 @@ export function Session(): JSX.Element {
           }}
         />
       </Toolbar>
+
+      {/*
+        結果画面の「疑わしい配線」から跳んできたときの帯（UXレビュー #28 / 決定表#11）。
+        跳んだ先で「どうして盤が開いたのか」と「どこへ戻ればよいのか」が分からなくならないよう、
+        理由の1行と「結果へ戻る」を必ず一緒に出す。戻るときは光らせた選択も畳む。
+      */}
+      {boardFocus === undefined ? null : (
+        <div className={styles.boardFocus} data-testid="board-focus">
+          <span>
+            {JA.result.fromResult}: {boardFocus.text}
+          </span>
+          <button
+            type="button"
+            data-testid="back-to-result"
+            onClick={() => {
+              const store = useStore.getState();
+              store.setBoardFocus(undefined);
+              store.setHighlight(NO_HIGHLIGHT);
+              store.setRoute('result');
+            }}
+          >
+            {JA.result.backToResult}
+          </button>
+        </div>
+      )}
 
       {/*
         いまどの手順にいるのかを文字でも出す（UXレビュー #3。決定表#7の理由から配線の中身には

@@ -706,3 +706,28 @@
   }
 }
 /* --- /Plan 5 Task 7 --- */
+
+/* --- Plan 5 Task 9: 結果画面から跳んできたときの帯（UXレビュー #28 / 決定表#11） --- */
+
+/*
+ * 手順帯（`.stepGuide`）のすぐ上に出る1行。手順帯と同じ高さ・同じ余白にして、
+ * 帯が2本並んでも盤の見える面積が急に変わらないようにする。左の縦線で「案内」と区別する。
+ */
+.boardFocus {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+  background: var(--panel-2);
+  border-bottom: 1px solid var(--line);
+  border-left: 4px solid var(--accent);
+  line-height: 1.6;
+  padding: 6px 10px;
+}
+
+.boardFocus button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+/* --- /Plan 5 Task 9 --- */

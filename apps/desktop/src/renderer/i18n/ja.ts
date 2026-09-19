@@ -404,6 +404,18 @@ export const JA = {
     exceeded: '超過',
     forbidden:
       'タイマの接点で自分のコイルを切る回路は実機では動作が不安定になります（リレーを介してください）。',
+    // --- Plan 5 Task 9: 疑わしい配線（UXレビュー #28）。§8.3 / 決定表#9・#9b・#11・#27 ---
+    suspects: '疑わしい配線',
+    noSuspect:
+      '模範回路との配線の違いは見つかりませんでした。部品の設定や操作の順序を見直してください。',
+    suspectMissing: '不足',
+    suspectExtra: '余分',
+    suspectNote:
+      '同じ機器の接点の組（CR1 の ⑨⑤／⑩⑥／⑪⑦／⑫⑧）は、どれを使っても回路は成立します。組が違うだけのときも、ここに「不足」「余分」として出ます。',
+    showOnBoard: '盤で見る',
+    backToResult: '結果へ戻る',
+    fromResult: '結果から',
+    // --- /Plan 5 Task 9 ---
   },
   /** タイムチャートの拡大表示と縦の補助線（Task CHART-UX）。§7.7 / §8.1 / §8.3 */
   timeChart: {
@@ -1175,6 +1187,14 @@ export function restoredHazardsText(count: number): string {
 /** 回路図ヒントを開いた回数（結果画面の1行。`回路図を開いた回数: 3`）。§8.4 */
 export function schematicOpenCountText(count: number): string {
   return `${JA.inspectRepair.schematicOpenCount}: ${count}`;
+}
+
+/**
+ * 表示しきれなかった疑いの件数（`ほかに 3 件あります。…`）。UXレビュー #28 / 決定表#27
+ * `JA` の各ブロックは**値だけ**を持つ流儀なので、件数を埋める文だけを関数として外に置く。
+ */
+export function suspectMoreText(count: number): string {
+  return `ほかに ${count} 件あります。まず上の指摘から直してください。`;
 }
 
 /**

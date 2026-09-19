@@ -1,10 +1,13 @@
+import { JIPM_BOARD } from '@ojt/board-model';
 import {
   isAssembleProblem,
   isInspectPartsProblem,
   isInspectRepairProblem,
   isPlcProblem,
+  wiringSuspects,
 } from '@ojt/content';
-import { useEffect, type JSX } from 'react';
+import type { WiringSuspect, WiringSuspectReport } from '@ojt/content';
+import { useCallback, useEffect, useMemo, type JSX } from 'react';
 import { isInspectJudge, isPlcJudge, useStore } from '../app/store.js';
 import { tryOjtApi } from '../app/ojt-api.js';
 import { JA } from '../i18n/ja.js';
@@ -34,10 +37,14 @@ function NoResult({ onBack }: { onBack: () => void }): JSX.Element {
   );
 }
 
+/** 空の疑い一覧（モードB以外・合格・模範回路が作れないとき）。 */
+const NO_SUSPECTS: WiringSuspectReport = { suspects: [], total: 0, omitted: 0 };
+
 /** 結果画面。 */
 export function Result(): JSX.Element {
   const problem = useStore((s) => s.problem);
   const judge = useStore((s) => s.judge);
+  const session = useStore((s) => s.session);
   const restoredHazardCount = useStore((s) => s.restoredHazardCount);
   const schematicOpenCount = useStore((s) => s.schematicOpenCount);
   const setRoute = useStore((s) => s.setRoute);
@@ -57,6 +64,39 @@ export function Result(): JSX.Element {
     if (!hasJudge) return;
     void tryOjtApi()?.loadWorkFile({ kind: 'autosave', discard: true });
   }, [hasJudge]);
+
+  // --- Plan 5 Task 9: 疑わしい配線（UXレビュー #28）。§8.3 ---
+  /**
+   * 疑いは **renderer で** 求める（決定表#10）。節点分割はソルバを回さないグラフ処理
+   * （union-find。数百端子で1ms未満）なので Worker へ往復させる必要が無く、`JudgeResult` に
+   * 項目を足すと `@ojt/content` の公開型が C1/C2/D と作業ファイルにも波及する。
+   * モードB以外と合格したときは出さない（見るところが無い。決定表#9）。
+   */
+  const report = useMemo((): WiringSuspectReport => {
+    if (problem === undefined || session === undefined || !isAssembleProblem(problem)) {
+      return NO_SUSPECTS;
+    }
+    if (judge?.mode === 'assemble' && judge.passed) return NO_SUSPECTS;
+    return wiringSuspects(problem, JIPM_BOARD, session);
+  }, [problem, session, judge]);
+
+  /**
+   * 「盤で見る」（決定表#11）。端子・電線・回路図要素を光らせたうえで、戻る導線として
+   * 「結果から」の帯（`boardFocus`）を立ててからセッション画面へ移る。視点は正面に戻す
+   * （疑いの端子が画面の外にいると「光らせた」ことが伝わらない）。
+   */
+  const showOnBoard = useCallback((suspect: WiringSuspect): void => {
+    const store = useStore.getState();
+    store.setHighlight({
+      cellIds: [...suspect.cellIds],
+      terminals: [...suspect.terminals],
+      wireIds: [...suspect.wireIds],
+    });
+    store.setBoardFocus({ from: 'result', text: suspect.message });
+    store.setCamera('front');
+    store.setRoute('session');
+  }, []);
+  // --- /Plan 5 Task 9 ---
 
   if (problem === undefined || judge === undefined) {
     return <NoResult onBack={backToList} />;
@@ -123,6 +163,9 @@ export function Result(): JSX.Element {
       problem={problem}
       result={judge}
       restoredHazardCount={restoredHazardCount}
+      suspects={report.suspects}
+      suspectsTruncated={report.omitted}
+      onShowOnBoard={showOnBoard}
       onRetry={() => {
         resetSession();
       }}

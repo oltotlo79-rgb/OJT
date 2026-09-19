@@ -1,10 +1,11 @@
-import type { AssembleProblem, JudgeResult } from '@ojt/content';
+import type { AssembleProblem, JudgeResult, WiringSuspect } from '@ojt/content';
 import type { JSX } from 'react';
 import { formatElapsed } from '../../worker/runtime.js';
 import { elapsedSummaryText, JA } from '../i18n/ja.js';
 import { ChartOverlay } from './ChartOverlay.js';
 import { MismatchList } from './MismatchList.js';
 import { HazardList, StaticCheckList } from './StaticCheckList.js';
+import { SuspectList } from './SuspectList.js';
 import styles from './result.module.css';
 
 /**
@@ -21,6 +22,9 @@ export function ResultView({
   problem,
   result,
   restoredHazardCount = 0,
+  suspects,
+  suspectsTruncated,
+  onShowOnBoard,
   onRetry,
   onBackToList,
 }: {
@@ -34,6 +38,16 @@ export function ResultView({
    * 「今回の分 ＋ 復元した分」にして、訓練者が実際に踏んだ回数と食い違わないようにする。
    */
   restoredHazardCount?: number;
+  /*
+   * 疑わしい配線（UXレビュー #28）。3つとも**任意**にして、`ResultView` を使わない
+   * C1/C2/D の結果画面と、同じ部品を使う検算パネルの署名を変えないでおく（MERGE 注意 #9）。
+   */
+  /** 疑わしい配線（モードBのみ）。§8.3 / 決定表#9 */
+  suspects?: readonly WiringSuspect[];
+  /** 表示上限で切り捨てた件数。決定表#27 */
+  suspectsTruncated?: number;
+  /** 「盤で見る」。決定表#11 */
+  onShowOnBoard?: (suspect: WiringSuspect) => void;
   onRetry: () => void;
   onBackToList: () => void;
 }): JSX.Element {
@@ -72,6 +86,13 @@ export function ResultView({
           mismatches={result.mismatches}
         />
         <MismatchList mismatches={result.mismatches} />
+        {suspects === undefined || onShowOnBoard === undefined ? null : (
+          <SuspectList
+            suspects={suspects}
+            truncated={suspectsTruncated ?? 0}
+            onShowOnBoard={onShowOnBoard}
+          />
+        )}
         <StaticCheckList checks={result.staticChecks} />
         <HazardList
           counts={result.hazardsByKind}

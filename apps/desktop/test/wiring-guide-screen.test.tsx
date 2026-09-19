@@ -167,4 +167,43 @@ describe('配線ガイド（§16 Phase 5 受入基準②）', () => {
     });
     expect(useStore.getState().highlight).toEqual({ cellIds: [], terminals: [], wireIds: [] });
   });
+
+  /*
+   * 結果画面の「盤で見る」で連れてきた光を、盤の上でマウスが動いただけで消さない
+   * （Plan 5 Task 9 / 決定表#11・#27）。ホバーの読み替え（物理端子 → 役割端子）は
+   * 上の1件が見ているので、ここでは**上書きしないこと**だけを見る。
+   */
+  it('keeps the highlight from the result screen while boardFocus is set (I3)', () => {
+    const built = buildReferenceSession(problem, JIPM_BOARD);
+    expect(built.ok).toBe(true);
+    if (!built.ok) return;
+    const cell = built.value.cells.find((c) => c.device === 'CR1');
+    expect(cell).toBeDefined();
+    if (cell === undefined) return;
+    const physical = toPhysicalTerminal(built.value.session.socketRoles, cell.left);
+
+    render(<Session />);
+    // 結果画面から跳んできた状態を作る（`setHighlight` → `setBoardFocus` → `setRoute`）
+    const focused = { cellIds: ['c99'], terminals: ['CR1.14'], wireIds: ['sw-001'] };
+    act(() => {
+      useStore.getState().setHighlight(focused);
+      useStore
+        .getState()
+        .setBoardFocus({ from: 'result', text: 'CR1.14 と P.1 がつながっていません' });
+    });
+    expect(screen.getByTestId('board-focus')).toHaveTextContent('結果から');
+
+    act(() => {
+      scene.hover?.(physical);
+    });
+    expect(useStore.getState().highlight).toEqual(focused);
+    // ホバーそのものは止めない（端子のツールチップは帯が出ていても要る）
+    expect(useStore.getState().hoveredTerminal).toBe(physical);
+
+    // 「結果へ戻る」で帯も光も畳む
+    fireEvent.click(screen.getByTestId('back-to-result'));
+    expect(useStore.getState().boardFocus).toBeUndefined();
+    expect(useStore.getState().highlight).toEqual({ cellIds: [], terminals: [], wireIds: [] });
+    expect(useStore.getState().route).toBe('result');
+  });
 });

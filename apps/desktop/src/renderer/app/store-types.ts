@@ -87,6 +87,17 @@ export interface HighlightSelection {
 /** 何も光っていない状態。 */
 export const NO_HIGHLIGHT: HighlightSelection = { cellIds: [], terminals: [], wireIds: [] };
 
+// --- Plan 5 Task 9 ---
+/**
+ * 結果画面から盤へ跳んだときの注目。§8.3 / UXレビュー #28 / 決定表#11
+ * `text` は帯に出す1行（「CR1.14（CR1）と P.1（P）がつながっていません」）。
+ */
+export interface BoardFocus {
+  from: 'result';
+  text: string;
+}
+// --- /Plan 5 Task 9 ---
+
 /**
  * モニタ（`F3`）の通電状況。§10.7 / 決定表#5
  *

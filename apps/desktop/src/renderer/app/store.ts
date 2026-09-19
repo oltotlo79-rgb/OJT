@@ -99,6 +99,7 @@ import { nextProbeAfter } from '../session/tester.js';
 import {
   NO_CONVERT_ISSUES,
   NO_HIGHLIGHT,
+  type BoardFocus,
   type CameraPreset,
   type ConvertIssues,
   type HazardBanner,
@@ -127,6 +128,7 @@ import {
 export {
   NO_CONVERT_ISSUES,
   NO_HIGHLIGHT,
+  type BoardFocus,
   type CameraPreset,
   type ConvertErrorLine,
   type ConvertIssues,
@@ -346,6 +348,15 @@ export interface AppState {
   /** 回路図 ⇄ 3D盤の連動ハイライト。§9.2 */
   highlight: HighlightSelection;
 
+  // --- Plan 5 Task 9 ---
+  /**
+   * 結果画面の「盤で見る」で跳んできたときの注目。§8.3 / UXレビュー #28 / 決定表#11
+   * 立っているあいだはセッション画面に「結果から」の帯が出て、3Dのホバーは
+   * ハイライトを上書きしない（決定表#27 のレビュー指摘）。
+   */
+  boardFocus: BoardFocus | undefined;
+  // --- /Plan 5 Task 9 ---
+
   // --- Plan 5 Task 6 ---
   /** 回路図エディタの下書き（モードBの課題を開くと空の文書で始まる）。§11.4 */
   schematicDoc: SchematicDocument | undefined;
@@ -548,6 +559,10 @@ export interface AppState {
   setPendingReport: (target: PendingReport | undefined) => void;
   /** 連動ハイライトを設定する。§9.2 */
   setHighlight: (selection: HighlightSelection) => void;
+  // --- Plan 5 Task 9 ---
+  /** 結果画面から盤へ跳んだ注目を立てる／畳む。§8.3 / 決定表#11 */
+  setBoardFocus: (focus: BoardFocus | undefined) => void;
+  // --- /Plan 5 Task 9 ---
   // --- Plan 5 Task 6 ---
   /** 下書きをまるごと差し替える（作業ファイルからの復元）。§11.4 / §12.3 */
   setSchematicDoc: (doc: SchematicDocument) => void;
@@ -785,6 +800,8 @@ export const useStore = create<AppState>((set, get) => ({
   resolvedFaults: undefined,
   pendingReport: undefined,
   highlight: NO_HIGHLIGHT,
+  // 結果画面から跳んできたときだけ立つ（Plan 5 Task 9 / 決定表#11）
+  boardFocus: undefined,
   ...schematicFields(),
   // モードBは必ず盤から始まる（Plan 5 Task 7 / 決定表#1）
   assembleView: 'board',
@@ -979,6 +996,8 @@ export const useStore = create<AppState>((set, get) => ({
       resolvedFaults,
       pendingReport: undefined,
       highlight: NO_HIGHLIGHT,
+      // 前の課題の結果から跳んだ注目は持ち越さない（Plan 5 Task 9 / 決定表#11）
+      boardFocus: undefined,
       // 回路図エディタの下書きは課題ごとに作り直す（モードB以外は持たない）。§11.4
       ...schematicFields(problem),
       // 課題を開いたら必ず盤から始める（Plan 5 Task 7 / 決定表#1）
@@ -1238,7 +1257,19 @@ export const useStore = create<AppState>((set, get) => ({
   },
   setHighlight: (highlight) => {
     set({ highlight });
+    /*
+     * E2E からストアの中身を読む窓（Plan 5 Task 15 / MERGE 注意 #2）。`camera-readout` と
+     * 同じ「E2E のための窓」で、画面には何も出ない。旗で切り替えると E2E が配布版と
+     * 違う道を通ることになるので、開発・配布とも常に書く（決定表#16 と同じ理由）。
+     */
+    (globalThis as unknown as { __ojtHighlight?: readonly string[] }).__ojtHighlight =
+      highlight.terminals;
   },
+  // --- Plan 5 Task 9 ---
+  setBoardFocus: (boardFocus) => {
+    set({ boardFocus });
+  },
+  // --- /Plan 5 Task 9 ---
   // --- Plan 5 Task 6 ---
   setSchematicDoc: (schematicDoc) => {
     set({
@@ -1559,6 +1590,8 @@ export const useStore = create<AppState>((set, get) => ({
       checkPartId: undefined,
       pendingReport: undefined,
       highlight: NO_HIGHLIGHT,
+      // 盤を作り直すので結果から跳んだ注目も畳む（Plan 5 Task 9 / 決定表#11）
+      boardFocus: undefined,
       /*
        * 検算の結果は盤を作り直したら古いので落とす。**下書きそのものは残す**（§11.4）。
        * `restartSession()` は課題から離れるわけではなく、描画の立て直しでラダーを残すのと
@@ -1633,6 +1666,8 @@ export const useStore = create<AppState>((set, get) => ({
       checkPartId: undefined,
       pendingReport: undefined,
       highlight: NO_HIGHLIGHT,
+      // 課題を離れるので結果から跳んだ注目も畳む（Plan 5 Task 9 / 決定表#11）
+      boardFocus: undefined,
       // 課題を離れるので回路図エディタの下書きと検算の結果も手放す（§11.4）
       ...schematicFields(),
       // 次に開く課題は盤から始まる（Plan 5 Task 7 / 決定表#1）
