@@ -3,7 +3,6 @@ import { useFrame, useThree, type ThreeEvent } from '@react-three/fiber';
 import {
   CircleGeometry,
   Color,
-  CylinderGeometry,
   PlaneGeometry,
   RingGeometry,
   type BufferGeometry,
@@ -36,13 +35,12 @@ import {
 } from './navigation.js';
 import {
   chamferedFaceGeometry,
-  GIZMO_AXIS_STUBS,
   GIZMO_CORNER_FACET_RADIUS,
   GIZMO_EDGE_FACET_SIZE,
+  GIZMO_FACE_SPAN,
   GIZMO_FACETS,
 } from './view-gizmo-geometry.js';
 import {
-  bakeAxisBallTexture,
   bakeButtonTexture,
   bakeFaceTexture,
   bakeTooltipTexture,
@@ -79,8 +77,9 @@ import {
  * - **面の陰影と名札**（`view-gizmo-textures.ts`）。縦のグラデーションと内側の細いふち、
  *   実寸の2倍以上で焼いた和文の名札。HUD には光が無いので、このコンポーネントが
  *   環境光＋キーライトを1組だけ置いて立体の陰影を作る。
- * - **座標軸の三脚**（X 赤・Y 緑・Z 青）。キューブと同じ回転で回り、球を押すと面と同じ視点へ。
  * - **半透明の丸い下地**。明るい盤や白い回路図パネルに重なってもキューブが消えない。
+ *   `gizmoLayoutForViewport()` の大きさぶんだけ、キューブと⌂/⟳の2ボタンの外接円ちょうどに絞る
+ *   （空き地を残さない。2026-09-20 の利用者指摘）。
  * - **⌂ 全体表示 / ⟳ 傾きを戻す**の2ボタン（28px・和文のツールチップ付き）。
  * - ホバーは 200ms で暖色へふわりと変わり、**いまの視点の面**には淡い青が乗る。
  *
@@ -94,6 +93,18 @@ import {
  * 辺・角のスナップとホバーの補間は `useFrame` の中で次のフレームを要求して自己終結する。
  * ここで一定間隔の `invalidate()` を回してはいけない（常時再描画になる）。
  * 毎フレームの処理は**確保なし**（四元数と色はすべて既存の入れ物へ `copy` する）。
+ *
+ * 2026-09-20 の利用者指摘「3Dのキューブと赤、青、緑の骨組みがある意味は？同じようなものが
+ * 2つある意味がない。重なってるし。」に対して、**座標軸の三脚（X 赤・Y 緑・Z 青の球＋棒）を
+ * 撤去した**。押すと視点が変わる操作はキューブの面・辺・角にすでにあり、三脚は同じ操作の
+ * 見た目だけの重複だった。
+ *
+ * 合わせて、モードD「分割」のような狭い3Dペインでキューブが盤に重なる問題
+ * （`gizmoLayoutForViewport()`）にも対応した。HUD の大きさはキャンバス幅で決まる。
+ * - 900px 以上: 既定の `GIZMO_SIZE`（96px）
+ * - 600〜900px未満: `GIZMO_SIZE_NARROW`（64px）
+ * - 600px未満: 隠す（`null`）。視点プリセットはツールバー・テンキーからそのまま押せるので、
+ *   狭いペインではキューブという「手段」を引っ込めるだけで「視点を変える」機能は失わない。
  */
 
 /** キューブの面ラベル（日本語）。§15 の文言方針にあわせる。 */
@@ -107,7 +118,8 @@ export const GIZMO_FACES = {
 } as const;
 
 /**
- * キューブの1辺の大きさ[px]。§12.2 / 2026-09-19 の利用者要望
+ * キューブの1辺の大きさ[px]（キャンバス幅が `GIZMO_WIDE_VIEWPORT_PX` 以上のときの既定値）。
+ * §12.2 / 2026-09-19 の利用者要望
  *
  * `GizmoHelper` は HUD 用の正射影カメラを画面と同じ寸法で作る（`margin` がそのまま px で
  * 効くのと同じ空間）ので、**この値はそのまま CSS ピクセル**になる。実際の描画解像度は
@@ -116,43 +128,129 @@ export const GIZMO_FACES = {
 export const GIZMO_SIZE = 96;
 
 /**
+ * 狭いキャンバス（`GIZMO_MIN_VIEWPORT_PX` 〜 `GIZMO_WIDE_VIEWPORT_PX` 未満）でのキューブの
+ * 大きさ[px]。2026-09-20 の利用者指摘「重なってるし」対応。モードD「分割」の3Dペインのように
+ * 幅が限られる場面で、キューブが盤の絵を大きく覆わないよう縮める。
+ */
+export const GIZMO_SIZE_NARROW = 64;
+
+/** これ以上の幅[px]ならキューブを `GIZMO_SIZE`（96px）で出す。 */
+export const GIZMO_WIDE_VIEWPORT_PX = 900;
+
+/**
+ * これ未満の幅[px]ならキューブごと隠す。視点プリセットはツールバーの「…」とテンキーに
+ * 変わらず残るので、機能は失わない（`gizmoLayoutForViewport()` の doc を参照）。
+ */
+export const GIZMO_MIN_VIEWPORT_PX = 600;
+
+/**
  * ビューポートの上端からキューブの上端までに空ける余白[px]。
  * 状態オーバーレイは右上へ移したので（`screens.module.css` の `.statusOverlay`）、
  * 左上はキューブの場所として空いている。盤の上端の名札と重ならない高さに置く。
  */
 export const GIZMO_TOP_MARGIN_PX = 20;
 
-/** キューブの後ろに敷く半透明の丸い下地の半径[px]。 */
-export const GIZMO_PLATE_RADIUS = 80;
+/** レイアウトの基準になる余白の単位[px]（§UX方針の8pxグリッド）。 */
+const GIZMO_GRID_PX = 8;
 
 /**
- * ビューポートの角からの**キューブ中心**の余白[px]。
- * `margin` は中心の位置なので、下地の上端は `margin[1] - GIZMO_PLATE_RADIUS`。
- *
- * いちばん外まで出るのは下地の丸（半径 80px）なので、余白はそれより大きく取る
- * （角を落としたキューブ自体は半径 71px、ホバー中の辺・角の光だけが 85px まで出る）。
+ * 角を落としたキューブの外形（面取り込み）の中心からの最大半径[px] ÷ キューブの1辺[px]。
+ * 面の頂点（面中心から局所 `±GIZMO_FACE_SPAN/2` だけ離れた四隅）がいちばん遠く、
+ * 中心からの距離は一辺1の局所座標で `√(0.5² + (GIZMO_FACE_SPAN/2)² × 2)` になる
+ * （面直の距離0.5・面内の2成分が最大）。検算は `view-gizmo.test.tsx` に置く。
  */
-export const GIZMO_MARGIN: [number, number] = [102, 102];
+const GIZMO_CUBE_RADIUS_RATIO = Math.sqrt(0.5 ** 2 + 2 * (GIZMO_FACE_SPAN / 2) ** 2);
 
-/** 座標軸の三脚の置き場所と大きさ[px]（キューブの下・下地のすぐ外）。 */
-export const GIZMO_TRIAD = {
-  /** 三脚の中心（キューブ中心からの上下位置）。 */
-  y: -108,
-  /** 球の中心までの距離。 */
-  radius: 25,
-  /** 球の半径。 */
-  ball: 6,
-  /** 棒の半径。 */
-  stub: 1.5,
-} as const;
+/** キューブの外形の半径[px]。 */
+function gizmoCubeRadiusPx(size: number): number {
+  return size * GIZMO_CUBE_RADIUS_RATIO;
+}
 
-/** ボタン（⌂ / ⟳）の置き場所と大きさ[px]。押しやすさのため 24px 以上にする（UXレビュー #4）。 */
+/** ボタン（⌂ / ⟳）の1辺[px]。押しやすさのため 24px 以上にする（UXレビュー #4）。 */
+const GIZMO_BUTTON_SIZE_PX = 28;
+
+/** ボタン（⌂ / ⟳）の置き場所と大きさ[px]。 */
 export const GIZMO_BUTTON = {
-  size: 28,
-  y: -108,
-  /** 中心からの左右の位置（三脚を挟んで両側）。 */
-  x: 58,
+  size: GIZMO_BUTTON_SIZE_PX,
+  /** 中心からの左右の位置（2つのボタンのあいだに `GIZMO_GRID_PX` を空ける）。 */
+  x: GIZMO_BUTTON_SIZE_PX / 2 + GIZMO_GRID_PX / 2,
 } as const;
+
+/** キューブの外形からボタンの中心までの隙間[px]（8pxグリッド）。 */
+const GIZMO_BUTTON_CUBE_GAP_PX = GIZMO_GRID_PX;
+
+/**
+ * ボタン行のY位置（キューブ中心からの下方向オフセット）[px]。三脚を撤去したので、
+ * キューブの外形のすぐ下（`GIZMO_BUTTON_CUBE_GAP_PX` の隙間だけ空けて）に置ける
+ * （2026-09-20 の利用者指摘。以前は三脚の場所ぶん `-108px` まで離れていた）。
+ */
+function gizmoButtonYPx(size: number): number {
+  return -(gizmoCubeRadiusPx(size) + GIZMO_BUTTON_CUBE_GAP_PX + GIZMO_BUTTON.size / 2);
+}
+
+/** 下地の丸がキューブ・ボタンの外接円からさらに空ける余白[px]。 */
+const GIZMO_PLATE_PAD_PX = GIZMO_GRID_PX;
+
+/**
+ * 下地の丸の半径[px]。キューブとボタン2つ、両方の外接円ちょうど（空き地を残さない。
+ * 2026-09-20 の利用者指摘「重なってるし」への対応: 三脚が無くなった分、下地は
+ * **キューブ＋ボタンだけ**を包む大きさに絞る）。
+ */
+function gizmoPlateRadiusPx(size: number): number {
+  const cubeRadius = gizmoCubeRadiusPx(size);
+  const buttonY = gizmoButtonYPx(size);
+  const buttonOuterCorner = Math.hypot(
+    GIZMO_BUTTON.x + GIZMO_BUTTON.size / 2,
+    Math.abs(buttonY) + GIZMO_BUTTON.size / 2,
+  );
+  return Math.max(cubeRadius, buttonOuterCorner) + GIZMO_PLATE_PAD_PX;
+}
+
+/** ビューポートの角から HUD（下地の外形）までの隙間[px]（8pxグリッド2つぶん）。 */
+const GIZMO_EDGE_GAP_PX = GIZMO_GRID_PX * 2;
+
+/** HUD（`GizmoHelper` の `margin`）の中心位置[px]。下地の丸の半径＋角の隙間。 */
+function gizmoMarginPx(size: number): [number, number] {
+  const margin = gizmoPlateRadiusPx(size) + GIZMO_EDGE_GAP_PX;
+  return [margin, margin];
+}
+
+/** HUD の置き方（キューブの大きさ・余白・下地の半径・ボタン行のY位置）。 */
+export interface GizmoLayout {
+  size: number;
+  margin: [number, number];
+  plateRadius: number;
+  buttonY: number;
+}
+
+/**
+ * キャンバス幅から HUD の置き方を決める。`null` なら隠す。§12.2 / 2026-09-20 の利用者指摘
+ * 「3Dのキューブと赤、青、緑の骨組みがある意味は？…重なってるし」への対応の一環で、
+ * モードD「分割」のような狭い3Dペインでキューブが盤の絵に重ならないようにする。
+ *
+ * - `GIZMO_WIDE_VIEWPORT_PX`（900px）以上: 既定の `GIZMO_SIZE`（96px）
+ * - `GIZMO_MIN_VIEWPORT_PX`（600px）〜900px未満: `GIZMO_SIZE_NARROW`（64px）
+ * - 600px未満: `null`（隠す）。視点プリセットはツールバー・テンキーからそのまま押せる
+ */
+export function gizmoLayoutForViewport(widthPx: number): GizmoLayout | null {
+  if (widthPx < GIZMO_MIN_VIEWPORT_PX) return null;
+  const size = widthPx < GIZMO_WIDE_VIEWPORT_PX ? GIZMO_SIZE_NARROW : GIZMO_SIZE;
+  return {
+    size,
+    margin: gizmoMarginPx(size),
+    plateRadius: gizmoPlateRadiusPx(size),
+    buttonY: gizmoButtonYPx(size),
+  };
+}
+
+/** 既定（キャンバス幅900px以上・96px）のときの下地の丸の半径[px]。 */
+export const GIZMO_PLATE_RADIUS = gizmoPlateRadiusPx(GIZMO_SIZE);
+
+/**
+ * 既定（キャンバス幅900px以上・96px）のときのビューポートの角から**キューブ中心**までの
+ * 余白[px]。`margin` は中心の位置なので、下地の上端は `margin[1] - GIZMO_PLATE_RADIUS`。
+ */
+export const GIZMO_MARGIN: [number, number] = gizmoMarginPx(GIZMO_SIZE);
 
 /** ホバーの出入りに掛ける時間[ms]（§12.2 の「控えめな演出」）。 */
 export const GIZMO_FADE_MS = 200;
@@ -161,7 +259,7 @@ export const GIZMO_FADE_MS = 200;
  * ギズモの毎フレーム処理の優先度。
  *
  * drei の `GizmoHelper` は優先度 0 の `useFrame` でギズモの向きを本体カメラの逆回転に合わせ、
- * `Hud` は優先度 1 で HUD シーンを描く。**その間**で走らせると、下地・ボタン・三脚の
+ * `Hud` は優先度 1 で HUD シーンを描く。**その間**で走らせると、下地・ボタンの
  * 打ち消し回転が「同じフレームのキューブの向き」に必ず追随する（1フレーム遅れない）。
  */
 export const GIZMO_FRAME_PRIORITY = 0.5;
@@ -172,7 +270,7 @@ export const GIZMO_FRAME_PRIORITY = 0.5;
  * 以前は面が明るい灰（`#D8DDE6`）で盤の色とほとんど同じになり、`上` も側面も沈んで見えなかった
  * （レビュー指摘）。面を中間の青灰に落とし、文字は白、稜線は濃紺にして対比を作る。
  *
- * 2026-09-19 の「デザインがシンプルすぎる」への追加分（面取り・下地・軸・ボタン）は
+ * 2026-09-19 の「デザインがシンプルすぎる」への追加分（面取り・下地・ボタン）は
  * `global.css` の配色変数（`--bg` `--panel` `--line` `--muted` `--accent`）から取る。
  */
 export const GIZMO_COLORS = {
@@ -192,10 +290,6 @@ export const GIZMO_COLORS = {
   plateBorder: '#39404E',
   /** いまの視点の面に乗せる淡い色（`--accent`）。 */
   accent: '#39D0FF',
-  /** 座標軸（X 赤 / Y 緑 / Z 青）。 */
-  axisX: '#E0665C',
-  axisY: '#5FC46B',
-  axisZ: '#5B9BFF',
   /** ボタンの地（`--panel`）と絵記号（`--text`）。 */
   button: '#1E232D',
   buttonInk: '#E7EBF2',
@@ -216,9 +310,6 @@ export const GIZMO_CHAMFER_PREFIX = 'view-cube-chamfer-';
 /** 面取りをまとめる `group` の名前。 */
 export const GIZMO_CHAMFER_GROUP_NAME = 'view-cube-chamfer';
 
-/** 座標軸の球のメッシュ名の接頭辞（接尾辞は面と同じ当たり判定の名前）。 */
-export const GIZMO_AXIS_PREFIX = 'view-cube-axis-';
-
 /** ボタンのメッシュ名の接頭辞。 */
 export const GIZMO_BUTTON_PREFIX = 'view-cube-button-';
 
@@ -227,9 +318,6 @@ export const GIZMO_TIP_PREFIX = 'view-cube-tip-';
 
 /** 画面に貼り付く（キューブと一緒に回らない）入れ物の名前。 */
 export const GIZMO_BILLBOARD_NAME = 'view-cube-billboard';
-
-/** 座標軸の三脚の入れ物の名前。 */
-export const GIZMO_TRIAD_NAME = 'view-cube-triad';
 
 /** 下地の丸の名前。 */
 export const GIZMO_PLATE_NAME = 'view-cube-plate';
@@ -271,16 +359,9 @@ const HOVER_TINT = /* @__PURE__ */ new Color(GIZMO_COLORS.hover);
 /** 辺・角の当たり判定が光るときの濃さ。 */
 const HIT_OPACITY = 0.78;
 
-/** 軸の文字 → 色。 */
-const AXIS_COLOR: Readonly<Record<'X' | 'Y' | 'Z', string>> = {
-  X: GIZMO_COLORS.axisX,
-  Y: GIZMO_COLORS.axisY,
-  Z: GIZMO_COLORS.axisZ,
-};
-
 /** 当たり判定を持たせない（見た目だけの部品）。 */
 function noRaycast(): void {
-  // three の当たり判定から外す（面取り・下地・棒はクリックの邪魔をしない）
+  // three の当たり判定から外す（面取り・下地はクリックの邪魔をしない）
 }
 
 /** 進行中のキューブのドラッグ。 */
@@ -320,7 +401,7 @@ interface HoverFade {
 
 /** ギズモの塗り分けの状態。 */
 export interface GizmoHighlight {
-  /** いま指している当たり判定（面・辺・角・軸の球・ボタン）。 */
+  /** いま指している当たり判定（面・辺・角・ボタン）。 */
   hovered: string | null;
   /** 直前に指していた当たり判定（`fade` の分だけ光が残る）。 */
   fading: string | null;
@@ -399,7 +480,7 @@ export function paintGizmo(root: Object3D | null, highlight: GizmoHighlight): vo
     return;
   }
 
-  const tinted = suffixOf(name, GIZMO_AXIS_PREFIX) ?? suffixOf(name, GIZMO_BUTTON_PREFIX);
+  const tinted = suffixOf(name, GIZMO_BUTTON_PREFIX);
   if (tinted !== null) {
     const glow = gizmoGlow(tinted, highlight);
     for (const material of materialsOf(mesh)) {
@@ -428,35 +509,47 @@ export function gizmoActiveFace(preset: string): string | null {
 
 /**
  * 押した（あるいは指した）先の当たり判定の名前。
- * 辺・角と軸の球は専用のメッシュ名から、面は当たった三角形の法線から引く
+ * 辺・角は専用のメッシュ名から、面は当たった三角形の法線から引く
  * （キューブはカメラの逆回転で置かれているので、局所の法線はそのままワールドの向きになる）。
  */
 function targetIdOf(event: ThreeEvent<PointerEvent> | ThreeEvent<MouseEvent>): string | null {
   const name = event.object.name;
-  const hit = suffixOf(name, GIZMO_HIT_PREFIX) ?? suffixOf(name, GIZMO_AXIS_PREFIX);
+  const hit = suffixOf(name, GIZMO_HIT_PREFIX);
   if (hit !== null) return hit;
   const normal = event.face?.normal;
   if (normal === undefined || normal === null) return null;
   return gizmoTargetForDirection([normal.x, normal.y, normal.z]).id;
 }
 
-/** 左上のビューキューブ。 */
+/**
+ * 下地の丸の外周のふちの厚み ÷ 半径。以前の固定サイズ（半径80px・ふち1.4px）と同じ見た目の
+ * 比率にする（`gizmoLayoutForViewport()` でキューブの大きさが変わっても、ふちの太さの
+ * 見た目の比率は変わらない）。
+ */
+const GIZMO_PLATE_RING_THICKNESS_RATIO = 1.4 / 80;
+
+/** 左上のビューキューブ。`GIZMO_MIN_VIEWPORT_PX` 未満の幅では何も描かない。 */
 export function ViewGizmo({ controls }: { controls: OrbitControlsLike | null }): JSX.Element {
   const invalidate = useThree((state) => state.invalidate);
   const camera = useThree((state) => state.camera);
   const gl = useThree((state) => state.gl);
+  // `Canvas`（3Dペイン）の CSS ピクセル幅。モードD「分割」のように幅が限られる場面で、
+  // キューブが盤の絵に重ならないよう大きさ・余白をここから決める（2026-09-20 の利用者指摘）。
+  const viewportSize = useThree((state) => state.size);
+  const layout = useMemo(
+    () => gizmoLayoutForViewport(viewportSize.width),
+    [viewportSize.width],
+  );
   const preset = useStore((state) => state.camera);
   const cube = useRef<Group | null>(null);
   const billboard = useRef<Group | null>(null);
-  const triad = useRef<Group | null>(null);
-  const balls = useRef<(Group | null)[]>([]);
   const drag = useRef<GizmoDrag | null>(null);
   const hovered = useRef<string | null>(null);
   const fade = useRef<HoverFade | null>(null);
   const snap = useRef<SnapAnimation | null>(null);
 
   /**
-   * 面の名札・軸の球・ボタン・ツールチップのテクスチャは**一度だけ**焼く。drei の
+   * 面の名札・ボタン・ツールチップのテクスチャは**一度だけ**焼く。drei の
    * `GizmoViewcube` は `faces` 配列の同一性でメモ化するため、親の再描画のたびに6枚を焼き直して
    * 捨てていた（§15 / GPUのテクスチャ漏れ）。
    */
@@ -467,14 +560,6 @@ export function ViewGizmo({ controls }: { controls: OrbitControlsLike | null }):
         base: GIZMO_COLORS.face,
         highlight: GIZMO_COLORS.faceTop,
         rim: GIZMO_COLORS.rim,
-        text: GIZMO_COLORS.text,
-      }),
-    );
-    const axes = GIZMO_AXIS_STUBS.map((axis) =>
-      bakeAxisBallTexture({
-        letter: axis.letter,
-        color: AXIS_COLOR[axis.letter],
-        positive: axis.positive,
         text: GIZMO_COLORS.text,
       }),
     );
@@ -500,19 +585,21 @@ export function ViewGizmo({ controls }: { controls: OrbitControlsLike | null }):
         GIZMO_COLORS.plate,
       ),
     };
-    return { faces, axes, buttons, tips };
+    return { faces, buttons, tips };
   }, []);
 
-  /** 形は使い回す（辺12枚・角8枚・球6個は同じジオメトリを共有する）。 */
+  /**
+   * 形は使い回す（辺12枚・角8枚は同じジオメトリを共有する）。下地の丸・ふちは半径1で作り、
+   * `layout.plateRadius` ぶん `scale` を掛けて出す（`gizmoLayoutForViewport()` でキューブの
+   * 大きさが変わっても、ジオメトリを焼き直さずに済む）。
+   */
   const shapes = useMemo(
     () => ({
       faces: chamferedFaceGeometry(),
       edge: new PlaneGeometry(GIZMO_EDGE_FACET_SIZE[0], GIZMO_EDGE_FACET_SIZE[1]),
       corner: new CircleGeometry(GIZMO_CORNER_FACET_RADIUS, 3),
-      ball: new CircleGeometry(1, 24),
-      stub: new CylinderGeometry(1, 1, 1, 10),
-      plate: new CircleGeometry(GIZMO_PLATE_RADIUS, 72),
-      plateRing: new RingGeometry(GIZMO_PLATE_RADIUS - 1.4, GIZMO_PLATE_RADIUS, 72),
+      plate: new CircleGeometry(1, 72),
+      plateRing: new RingGeometry(1 - GIZMO_PLATE_RING_THICKNESS_RATIO, 1, 72),
       quad: new PlaneGeometry(1, 1),
     }),
     [],
@@ -521,7 +608,6 @@ export function ViewGizmo({ controls }: { controls: OrbitControlsLike | null }):
   useEffect(
     () => () => {
       for (const texture of art.faces) texture.dispose();
-      for (const texture of art.axes) texture.dispose();
       for (const texture of Object.values(art.buttons)) texture.dispose();
       for (const tip of Object.values(art.tips)) tip.texture.dispose();
       for (const shape of Object.values(shapes) as BufferGeometry[]) shape.dispose();
@@ -613,11 +699,13 @@ export function ViewGizmo({ controls }: { controls: OrbitControlsLike | null }):
   /**
    * 毎フレームの仕事。`GizmoHelper` がキューブの向きを決めたあと、`Hud` が描く前に走る。
    *
-   * 1. 下地・ボタン・ツールチップ・軸の球を**画面に正対**させる（親の回転を打ち消す）。
-   *    三脚だけは親と同じ回転に戻して、キューブと一緒に回す。
+   * 1. 下地・ボタン・ツールチップを**画面に正対**させる（親の回転を打ち消す）。
    * 2. 辺・角のスナップを `VIEW_TRANSITION_MS` で補間する。
    * 3. ホバーの出入りを `GIZMO_FADE_MS` で補間する。
    * 2と3は終わったら自分でループを止める（`frameloop="demand"`）。
+   *
+   * `GIZMO_MIN_VIEWPORT_PX` 未満でキューブを描いていない（`layout === null`）ときは
+   * `cube.current` / `billboard.current` が `null` のままなので、ここは何もしない。
    */
   useFrame(() => {
     const plate = billboard.current;
@@ -625,8 +713,6 @@ export function ViewGizmo({ controls }: { controls: OrbitControlsLike | null }):
     if (plate !== null && parent !== null) {
       // 親（`GizmoHelper` が本体カメラの逆回転を入れる group）を打ち消す
       plate.quaternion.copy(parent.quaternion).invert();
-      triad.current?.quaternion.copy(parent.quaternion);
-      for (const ball of balls.current) ball?.quaternion.copy(plate.quaternion);
     }
 
     const animation = snap.current;
@@ -790,15 +876,19 @@ export function ViewGizmo({ controls }: { controls: OrbitControlsLike | null }):
     store.setCamera(id === 'home' ? 'front' : store.camera);
   }, []);
 
+  // `GIZMO_MIN_VIEWPORT_PX`（600px）未満のキャンバスでは何も描かない。視点プリセットは
+  // ツールバー・テンキーからそのまま押せるので、機能は失わない（コンポーネント冒頭の doc）。
+  if (layout === null) return <></>;
+
   return (
-    <GizmoHelper alignment="top-left" margin={GIZMO_MARGIN} renderPriority={1}>
+    <GizmoHelper alignment="top-left" margin={layout.margin} renderPriority={1}>
       {/* HUD は本体シーンと別なので、ここに置く光はギズモだけを照らす */}
       <ambientLight intensity={GIZMO_LIGHT.ambient} />
       <directionalLight intensity={GIZMO_LIGHT.key} position={GIZMO_LIGHT.keyPosition} />
 
       <group
         ref={cube}
-        scale={[GIZMO_SIZE, GIZMO_SIZE, GIZMO_SIZE]}
+        scale={[layout.size, layout.size, layout.size]}
         onPointerDown={onPointerDown}
         onClick={onClick}
       >
@@ -874,7 +964,8 @@ export function ViewGizmo({ controls }: { controls: OrbitControlsLike | null }):
         <mesh
           name={GIZMO_PLATE_NAME}
           geometry={shapes.plate}
-          position={[0, 0, -GIZMO_SIZE]}
+          position={[0, 0, -layout.size]}
+          scale={layout.plateRadius}
           renderOrder={-10}
           raycast={noRaycast}
         >
@@ -889,7 +980,8 @@ export function ViewGizmo({ controls }: { controls: OrbitControlsLike | null }):
         </mesh>
         <mesh
           geometry={shapes.plateRing}
-          position={[0, 0, -GIZMO_SIZE + 0.5]}
+          position={[0, 0, -layout.size + 0.5]}
+          scale={layout.plateRadius}
           renderOrder={-9}
           raycast={noRaycast}
         >
@@ -903,71 +995,9 @@ export function ViewGizmo({ controls }: { controls: OrbitControlsLike | null }):
           />
         </mesh>
 
-        {/* 座標軸の三脚。位置は画面に貼り付いたまま、向きだけキューブと一緒に回る */}
-        <group ref={triad} name={GIZMO_TRIAD_NAME} position={[0, GIZMO_TRIAD.y, 0]}>
-          {GIZMO_AXIS_STUBS.map((axis, index) => {
-            const length = GIZMO_TRIAD.radius - GIZMO_TRIAD.ball;
-            const ball: [number, number, number] = [
-              axis.direction[0] * GIZMO_TRIAD.radius,
-              axis.direction[1] * GIZMO_TRIAD.radius,
-              axis.direction[2] * GIZMO_TRIAD.radius,
-            ];
-            return (
-              <group key={axis.id}>
-                {axis.positive && (
-                  <mesh
-                    geometry={shapes.stub}
-                    position={[
-                      (axis.direction[0] * length) / 2,
-                      (axis.direction[1] * length) / 2,
-                      (axis.direction[2] * length) / 2,
-                    ]}
-                    quaternion={[
-                      axis.quaternion[0],
-                      axis.quaternion[1],
-                      axis.quaternion[2],
-                      axis.quaternion[3],
-                    ]}
-                    scale={[GIZMO_TRIAD.stub, length, GIZMO_TRIAD.stub]}
-                    raycast={noRaycast}
-                  >
-                    <meshBasicMaterial color={AXIS_COLOR[axis.letter]} toneMapped={false} />
-                  </mesh>
-                )}
-                <group
-                  position={ball}
-                  ref={(instance) => {
-                    balls.current[index] = instance;
-                  }}
-                >
-                  <mesh
-                    name={`${GIZMO_AXIS_PREFIX}${axis.id}`}
-                    geometry={shapes.ball}
-                    scale={GIZMO_TRIAD.ball}
-                    onPointerDown={onPointerDown}
-                    onPointerOver={(event: ThreeEvent<PointerEvent>) => {
-                      event.stopPropagation();
-                      setHover(axis.id);
-                    }}
-                    onPointerOut={onPointerOut}
-                    onClick={onClick}
-                  >
-                    <meshBasicMaterial
-                      map={art.axes[index] ?? null}
-                      color={NO_TINT}
-                      transparent
-                      toneMapped={false}
-                    />
-                  </mesh>
-                </group>
-              </group>
-            );
-          })}
-        </group>
-
-        {/* ⌂ 全体表示 / ⟳ 傾きを戻す */}
+        {/* ⌂ 全体表示 / ⟳ 傾きを戻す（キューブのすぐ下、空き地を残さない大きさの下地の中） */}
         {GIZMO_BUTTONS.map((button) => (
-          <group key={button.id} position={[button.x, GIZMO_BUTTON.y, 0]}>
+          <group key={button.id} position={[button.x, layout.buttonY, 0]}>
             <mesh
               name={`${GIZMO_BUTTON_PREFIX}${button.id}`}
               geometry={shapes.quad}

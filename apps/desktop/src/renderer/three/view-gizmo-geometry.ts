@@ -1,5 +1,4 @@
 import { BufferGeometry, Float32BufferAttribute, Matrix4, Quaternion, Vector3 } from 'three';
-import type { GIZMO_FACE_ORDER } from './navigation.js';
 import { GIZMO_TARGETS } from './navigation.js';
 
 /**
@@ -157,53 +156,5 @@ export const GIZMO_FACETS: readonly GizmoFacet[] = GIZMO_TARGETS.filter(
     kind: 'corner',
     position: [dx * offset, dy * offset, dz * offset] as const,
     quaternion: quaternionFromBasis(x, y, normal),
-  };
-});
-
-/** 座標軸の三脚（Blender のナビゲーションギズモの X/Y/Z）の1本。 */
-export interface GizmoAxisStub {
-  /** 当たり判定と同じ名前（`right` / `left` …）。押すと同じ視点プリセットへ着く。 */
-  id: (typeof GIZMO_FACE_ORDER)[number];
-  /** 軸の名前（球に焼く文字）。 */
-  letter: 'X' | 'Y' | 'Z';
-  /** 正の向きか（負の向きは球を小さく・暗くして、棒も描かない）。 */
-  positive: boolean;
-  /** 軸の向き（単位ベクトル）。球はこの向きの先に置く。 */
-  direction: readonly [number, number, number];
-  /** 棒（円柱は局所 +Y が軸）をこの向きへ倒す四元数 `[x, y, z, w]`。 */
-  quaternion: readonly [number, number, number, number];
-}
-
-/** 面の当たり判定 → 軸の文字と符号。 */
-const AXIS_OF_FACE: Readonly<
-  Record<(typeof GIZMO_FACE_ORDER)[number], { letter: 'X' | 'Y' | 'Z'; positive: boolean }>
-> = {
-  right: { letter: 'X', positive: true },
-  left: { letter: 'X', positive: false },
-  top: { letter: 'Y', positive: true },
-  bottom: { letter: 'Y', positive: false },
-  front: { letter: 'Z', positive: true },
-  back: { letter: 'Z', positive: false },
-};
-
-/**
- * 座標軸の三脚6本（+X/−X/+Y/−Y/+Z/−Z）。§12.2
- * キューブと同じ回転で回るので「いま画面のどちらがどの軸か」が一目で分かる。
- * 球を押すと**面と同じ視点プリセット**へ着く（`id` が面の当たり判定と同じ）。
- */
-export const GIZMO_AXIS_STUBS: readonly GizmoAxisStub[] = GIZMO_TARGETS.filter(
-  (target) => target.kind === 'face',
-).map((target) => {
-  const [dx, dy, dz] = target.direction;
-  const direction = new Vector3(dx, dy, dz).normalize();
-  const quaternion = new Quaternion().setFromUnitVectors(new Vector3(0, 1, 0), direction);
-  const id = (target.preset ?? 'front') as (typeof GIZMO_FACE_ORDER)[number];
-  const axis = AXIS_OF_FACE[id];
-  return {
-    id,
-    letter: axis.letter,
-    positive: axis.positive,
-    direction: [direction.x, direction.y, direction.z] as const,
-    quaternion: [quaternion.x, quaternion.y, quaternion.z, quaternion.w] as const,
   };
 });

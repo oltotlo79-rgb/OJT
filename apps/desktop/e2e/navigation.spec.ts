@@ -9,7 +9,7 @@ import {
   type Page,
 } from '@playwright/test';
 import { closeOverflow, openOverflow } from './projection.js';
-import { GIZMO_MARGIN, GIZMO_SIZE } from '../src/renderer/three/ViewGizmo.js';
+import { gizmoLayoutForViewport } from '../src/renderer/three/ViewGizmo.js';
 import { cameraPose, type CameraPose } from '../src/renderer/three/camera.js';
 import { GIZMO_DRAG_RAD_PER_PX } from '../src/renderer/three/navigation.js';
 
@@ -67,10 +67,31 @@ async function canvasBox(page: Page): Promise<{ x: number; y: number; w: number;
   return { x: box.x, y: box.y, w: box.width, h: box.height };
 }
 
-/** ビューキューブの中心（ページ座標）。左上から `GIZMO_MARGIN` の位置に居る。 */
+/**
+ * いまのキャンバス幅でのHUDの置き方。2026-09-20 の利用者指摘「重なってるし」対応で
+ * `ViewGizmo` の大きさ・余白はキャンバス幅で決まる（`gizmoLayoutForViewport()`）ので、
+ * ここでも同じ関数を使って求める（決め打ちの定数だと実際のキャンバス幅とずれる）。
+ * `assemble` モードの3Dペインは十分広いので `null`（600px未満で隠す）にはならないはずだが、
+ * 万一なった場合は分かりやすいエラーで落とす。
+ */
+async function gizmoLayout(
+  page: Page,
+): Promise<{ size: number; margin: readonly [number, number] }> {
+  const box = await canvasBox(page);
+  const layout = gizmoLayoutForViewport(box.w);
+  if (layout === null) {
+    throw new Error(
+      `ビューキューブが隠れる幅です（${String(box.w)}px < 600px）。E2E はキューブが見える幅を前提にしています`,
+    );
+  }
+  return layout;
+}
+
+/** ビューキューブの中心（ページ座標）。左上から HUD の `margin` の位置に居る。 */
 async function gizmoCenter(page: Page): Promise<{ x: number; y: number }> {
   const box = await canvasBox(page);
-  return { x: box.x + GIZMO_MARGIN[0], y: box.y + GIZMO_MARGIN[1] };
+  const layout = await gizmoLayout(page);
+  return { x: box.x + layout.margin[0], y: box.y + layout.margin[1] };
 }
 
 /**
@@ -78,7 +99,8 @@ async function gizmoCenter(page: Page): Promise<{ x: number; y: number }> {
  *
  * drei の `GizmoHelper` はキューブを**主カメラの回転の逆**で置き、HUD は画面と同じ寸法の
  * 正射影（`margin` がそのまま px で効く空間）なので、面の法線をカメラの基底（右・上）へ
- * 写した成分に `GIZMO_SIZE / 2` を掛ければ、そのまま画面上のずれ［px］になる。
+ * 写した成分に `size / 2`（キューブの1辺。`gizmoLayoutForViewport()` が決める）を掛ければ、
+ * そのまま画面上のずれ［px］になる。
  *
  * 決め打ちのピクセル数で面を突くと、キューブの見た目（面取りの量・大きさ）が変わるたびに
  * 隣の辺や角を押してしまう。面の中心を計算で出しておけば見た目の変更に追随する。
@@ -86,6 +108,7 @@ async function gizmoCenter(page: Page): Promise<{ x: number; y: number }> {
 function gizmoFaceOffset(
   pose: CameraPose,
   normal: readonly [number, number, number],
+  size: number,
 ): { dx: number; dy: number } {
   const sub = (a: readonly number[], b: readonly number[]): [number, number, number] => [
     (a[0] ?? 0) - (b[0] ?? 0),
@@ -108,7 +131,7 @@ function gizmoFaceOffset(
   const forward = unit(sub(pose.target, pose.position));
   const right = unit(cross(forward, pose.up));
   const up = cross(right, forward);
-  const half = GIZMO_SIZE / 2;
+  const half = size / 2;
   // 画面の y は下向きなので、カメラの上方向の成分は符号を反転する
   return { dx: dot(normal, right) * half, dy: -dot(normal, up) * half };
 }
@@ -328,7 +351,8 @@ test.describe('Blender 風の3D操作（§12.2）', () => {
     await expectPresetPressed(page, '俯瞰');
     // 俯瞰では上・前・左の3面が見える。「正面」の面（世界の +Z）の中心を突く
     const center = await gizmoCenter(page);
-    const face = gizmoFaceOffset(cameraPose('top'), [0, 0, 1]);
+    const layout = await gizmoLayout(page);
+    const face = gizmoFaceOffset(cameraPose('top'), [0, 0, 1], layout.size);
     await page.mouse.move(center.x + face.dx, center.y + face.dy);
     await page.mouse.down();
     await page.mouse.up();

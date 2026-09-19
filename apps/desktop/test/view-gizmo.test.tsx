@@ -2,6 +2,8 @@ import { cleanup, render } from '@testing-library/react';
 import { isValidElement, type ReactElement, type ReactNode } from 'react';
 import { Color } from 'three';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { PLC_UNIT_FX5U } from '@ojt/board-model';
+import { projectToScreen, type CanvasBox } from '../e2e/projection.js';
 
 /**
  * ビューキューブ（`ViewGizmo`）の操作テスト。§12.2 / 2026-09-19 の利用者要望
@@ -13,7 +15,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
  * 「押した瞬間にどれだけ回るか」「いつストアへ書くか」を丸ごと検証できる
  * （`camera-presets.test.tsx` と同じ仕掛け）。
  *
- * 見た目（面取り・下地・座標軸・ボタン）は、木の形と `paintGizmo()` の塗り分けで確かめる。
+ * 見た目（面取り・下地・ボタン）は、木の形と `paintGizmo()` の塗り分けで確かめる。
+ *
+ * 2026-09-20 の利用者指摘「3Dのキューブと赤、青、緑の骨組みがある意味は？…重なってるし」で
+ * 座標軸の三脚を撤去し、HUD の大きさ・余白をキャンバス幅から決めるようにした
+ * （`gizmoLayoutForViewport()`）ので、`useThree` の身代わりに `size`（キャンバスの CSS px）を足す。
  */
 
 interface Vec {
@@ -29,12 +35,15 @@ const harness: {
   camera: unknown;
   frame: (() => void) | null;
   gl: { domElement: { style: { cursor: string } } };
+  /** キャンバスの CSS px 幅・高さ。既定は HUD が既定の96pxで出る広さ（900px以上）。 */
+  size: { width: number; height: number };
 } = vi.hoisted(() => ({
   children: null,
   invalidateCount: 0,
   camera: undefined,
   frame: null,
   gl: { domElement: { style: { cursor: '' } } },
+  size: { width: 1024, height: 768 },
 }));
 
 vi.mock('@react-three/drei', () => ({
@@ -46,7 +55,12 @@ vi.mock('@react-three/drei', () => ({
 
 vi.mock('@react-three/fiber', () => ({
   useThree: (
-    selector: (state: { invalidate: () => void; camera: unknown; gl: unknown }) => unknown,
+    selector: (state: {
+      invalidate: () => void;
+      camera: unknown;
+      gl: unknown;
+      size: { width: number; height: number };
+    }) => unknown,
   ) =>
     selector({
       invalidate: () => {
@@ -54,6 +68,7 @@ vi.mock('@react-three/fiber', () => ({
       },
       camera: harness.camera,
       gl: harness.gl,
+      size: harness.size,
     }),
   useFrame: (callback: () => void) => {
     harness.frame = callback;
@@ -64,8 +79,12 @@ const {
   ViewGizmo,
   gizmoGlow,
   paintGizmo,
+  gizmoLayoutForViewport,
   GIZMO_SIZE,
-  GIZMO_AXIS_PREFIX,
+  GIZMO_SIZE_NARROW,
+  GIZMO_MIN_VIEWPORT_PX,
+  GIZMO_WIDE_VIEWPORT_PX,
+  GIZMO_BUTTON,
   GIZMO_BUTTON_PREFIX,
   GIZMO_BUTTONS,
   GIZMO_CHAMFER_GROUP_NAME,
@@ -77,13 +96,15 @@ const {
   GIZMO_PLATE_NAME,
   GIZMO_PLATE_RADIUS,
   GIZMO_TIP_PREFIX,
-  GIZMO_TRIAD_NAME,
 } = await import('../src/renderer/three/ViewGizmo.js');
 const { GIZMO_DRAG_RAD_PER_PX, GIZMO_DRAG_THRESHOLD_PX, GIZMO_FACE_ORDER, GIZMO_HIT_BOXES } =
   await import('../src/renderer/three/navigation.js');
-const { chamferedFaceGeometry, GIZMO_AXIS_STUBS, GIZMO_FACETS } =
-  await import('../src/renderer/three/view-gizmo-geometry.js');
-const { MAX_POLAR_ANGLE, poseForDirection } = await import('../src/renderer/three/camera.js');
+const { chamferedFaceGeometry, GIZMO_FACETS } = await import(
+  '../src/renderer/three/view-gizmo-geometry.js'
+);
+const { MAX_POLAR_ANGLE, poseForDirection, cameraPose, boardToWorld, plcViewRect, PLC_VIEW_ASPECT } =
+  await import('../src/renderer/three/camera.js');
+const { toScene } = await import('../src/renderer/three/coords.js');
 const { useStore } = await import('../src/renderer/app/store.js');
 
 /** 盤の `OrbitControls` の身代わり（ギズモが触る部分だけ）。 */
@@ -250,6 +271,7 @@ beforeEach(() => {
   harness.frame = null;
   harness.camera = makeCamera();
   harness.gl.domElement.style.cursor = '';
+  harness.size = { width: 1024, height: 768 };
   controls = makeControls();
   useStore.setState({ camera: 'front', cameraNonce: 0 });
   storeWrites = 0;
@@ -371,33 +393,51 @@ describe('角を落としたキューブの見た目（2026-09-19「シンプル
   });
 });
 
-describe('座標軸の三脚（Blender 風）', () => {
-  it('6本の軸の球があり、X 赤・Y 緑・Z 青で正負がそろっている', () => {
-    expect(GIZMO_AXIS_STUBS).toHaveLength(6);
-    expect(GIZMO_AXIS_STUBS.filter((axis) => axis.positive)).toHaveLength(3);
-    expect(GIZMO_AXIS_STUBS.map((axis) => axis.letter).sort()).toEqual([
-      'X',
-      'X',
-      'Y',
-      'Y',
-      'Z',
-      'Z',
-    ]);
-    const balls = byPrefix(GIZMO_AXIS_PREFIX);
-    expect(balls).toHaveLength(6);
-    // 三脚はキューブと一緒に回るよう、専用の入れ物に入っている
-    expect(byName(GIZMO_TRIAD_NAME)).toBeDefined();
+describe('座標軸の三脚は撤去（2026-09-20 の利用者指摘「重なってるし」）', () => {
+  it('キューブと同じ操作をする重複した部品なので、木のどこにも三脚・軸の球が無い', () => {
+    const namedMeshes = elements().filter(
+      (element) => element.type === 'mesh' && typeof element.props['name'] === 'string',
+    );
+    const names = namedMeshes.map((element) => element.props['name'] as string);
+    expect(names.some((name) => name.includes('axis'))).toBe(false);
+    expect(names.some((name) => name.includes('triad'))).toBe(false);
+    // 名前を持つメッシュは 面(1) + 辺・角の当たり判定(20) + 面取り(20) + ボタン(2) + ツールチップ(2) +
+    // 下地の丸(1) だけ（軸の球の6個ぶんが増えていない）
+    expect(namedMeshes).toHaveLength(1 + 20 + 20 + 2 + 2 + 1);
+  });
+});
+
+describe('HUD の大きさはキャンバス幅で決まる（2026-09-20 の利用者指摘「重なってるし」）', () => {
+  it('900px以上は96px、600〜900px未満は64px、600px未満は隠す', () => {
+    expect(gizmoLayoutForViewport(GIZMO_WIDE_VIEWPORT_PX)?.size).toBe(GIZMO_SIZE);
+    expect(gizmoLayoutForViewport(1280)?.size).toBe(GIZMO_SIZE);
+    expect(gizmoLayoutForViewport(GIZMO_WIDE_VIEWPORT_PX - 1)?.size).toBe(GIZMO_SIZE_NARROW);
+    expect(gizmoLayoutForViewport(GIZMO_MIN_VIEWPORT_PX)?.size).toBe(GIZMO_SIZE_NARROW);
+    expect(gizmoLayoutForViewport(GIZMO_MIN_VIEWPORT_PX - 1)).toBeNull();
+    expect(gizmoLayoutForViewport(420)).toBeNull();
   });
 
-  it('軸の球をクリックすると、面と同じ6つの視点プリセットへ着く', () => {
-    for (const axis of GIZMO_AXIS_STUBS) {
-      useStore.setState({ camera: 'socket' });
-      const ball = byName(`${GIZMO_AXIS_PREFIX}${axis.id}`);
-      pointerDown(`${GIZMO_AXIS_PREFIX}${axis.id}`, null, { x: 200, y: 200 }, ball);
-      firePointer('pointerup', { pointerId: 7, clientX: 200, clientY: 200 });
-      expect(useStore.getState().camera).toBe(axis.id);
+  it('下地の丸はキューブとボタン2つの外接円ちょうどに収まる（空き地を残さない）', () => {
+    for (const widthPx of [GIZMO_MIN_VIEWPORT_PX, GIZMO_WIDE_VIEWPORT_PX]) {
+      const layout = gizmoLayoutForViewport(widthPx);
+      if (layout === null) throw new Error('layout is null');
+      // ボタンの外側の縁（下端）は下地の丸の中に収まる（下地がボタンを包む）
+      expect(Math.abs(layout.buttonY) + GIZMO_BUTTON.size / 2).toBeLessThan(layout.plateRadius);
+      // 余白は下地の丸より大きい（HUD がビューポートの外へはみ出さない）
+      expect(layout.margin[0]).toBeGreaterThan(layout.plateRadius);
+      expect(layout.margin[1]).toBeGreaterThan(layout.plateRadius);
     }
-    expect(GIZMO_AXIS_STUBS.map((axis) => axis.id).sort()).toEqual([...GIZMO_FACE_ORDER].sort());
+  });
+
+  it('狭いキャンバス（64px）はキューブが既定より小さく、ボタンはキューブのすぐ下に来る', () => {
+    const wide = gizmoLayoutForViewport(GIZMO_WIDE_VIEWPORT_PX);
+    const narrow = gizmoLayoutForViewport(GIZMO_MIN_VIEWPORT_PX);
+    if (wide === null || narrow === null) throw new Error('layout is null');
+    expect(narrow.size).toBeLessThan(wide.size);
+    expect(narrow.plateRadius).toBeLessThan(wide.plateRadius);
+    // ボタン行までの隙間（キューブの外形からボタン中心まで）は三脚が居たころの108pxよりずっと近い
+    expect(Math.abs(narrow.buttonY)).toBeLessThan(108);
+    expect(Math.abs(wide.buttonY)).toBeLessThan(108);
   });
 });
 
@@ -437,28 +477,28 @@ describe('⌂ と ⟳ のボタン', () => {
 });
 
 describe('ホバーの光り方（200ms で出入りする）', () => {
-  /** `paintGizmo()` に渡す偽の3D木（面6枚＋辺・角の箱＋軸の球）。 */
+  /** `paintGizmo()` に渡す偽の3D木（面6枚＋辺・角の箱＋ボタン）。 */
   function fakeGizmo(): {
     root: { name: string; children: unknown[] };
     faces: { emissive: Color }[];
     hit: { opacity: number; visible: boolean };
-    ball: { color: Color };
+    button: { color: Color };
   } {
     const faces = GIZMO_FACE_ORDER.map(() => ({ emissive: new Color('#000000') }));
     const hit = { opacity: 0, visible: false };
-    const ball = { color: new Color('#FFFFFF') };
+    const button = { color: new Color('#FFFFFF') };
     return {
       root: {
         name: '',
         children: [
           { name: GIZMO_FACE_MESH_NAME, children: [], material: faces },
           { name: `${GIZMO_HIT_PREFIX}front-top`, children: [], material: hit },
-          { name: `${GIZMO_AXIS_PREFIX}right`, children: [], material: ball },
+          { name: `${GIZMO_BUTTON_PREFIX}home`, children: [], material: button },
         ],
       },
       faces,
       hit,
-      ball,
+      button,
     };
   }
 
@@ -514,7 +554,7 @@ describe('ホバーの光り方（200ms で出入りする）', () => {
     expect(hovered.r).toBeGreaterThan(hovered.b);
   });
 
-  it('辺・角の箱と軸の球も同じ割合で光る', () => {
+  it('辺・角の箱とボタンも同じ割合で光る', () => {
     const fake = fakeGizmo();
     paint(fake, { hovered: 'front-top', fading: null, fade: 1, active: null });
     expect(fake.hit.visible).toBe(true);
@@ -524,9 +564,9 @@ describe('ホバーの光り方（200ms で出入りする）', () => {
     expect(fake.hit.visible).toBe(false);
     expect(fake.hit.opacity).toBe(0);
 
-    paint(fake, { hovered: 'right', fading: null, fade: 1, active: null });
+    paint(fake, { hovered: 'home', fading: null, fade: 1, active: null });
     // 白いテクスチャに暖色を掛ける（赤が青より強くなる）
-    expect(fake.ball.color.r).toBeGreaterThan(fake.ball.color.b);
+    expect(fake.button.color.r).toBeGreaterThan(fake.button.color.b);
   });
 
   it('光り具合は 0〜1 に収まる（出入りが重なっても飽和しない）', () => {
@@ -698,5 +738,66 @@ describe('面・辺・角のクリックでその視点へ着く', () => {
     firePointer('pointermove', { pointerId: 7, clientX: 320, clientY: 200 });
     firePointer('pointerup', { pointerId: 7, clientX: 320, clientY: 200 });
     expect(useStore.getState().camera).toBe('front');
+  });
+});
+
+describe('狭いキャンバスでは何も描かない（600px未満・2026-09-20 の利用者指摘）', () => {
+  it('600px未満のキャンバスでは GizmoHelper を呼ばない（キューブ・下地・ボタンが一切出ない）', () => {
+    cleanup();
+    harness.children = null;
+    harness.size = { width: 420, height: 560 };
+    render(<ViewGizmo controls={controls} />);
+    expect(harness.children).toBeNull();
+    // useFrame は登録されるが、参照する group が無いので何もしない（例外を投げない）
+    expect(() => harness.frame?.()).not.toThrow();
+  });
+});
+
+describe('HUDは分割ビューの盤に重ならない（2026-09-20 の利用者指摘「重なってるし」）', () => {
+  it('1280×800の分割レイアウト（3Dペイン420px幅）ではHUDが隠れ、盤の投影と重ならない', () => {
+    /*
+     * `screens.module.css` の `.plcLayout` は `--plc-board-w: max(420px, min(32vw, aspect×paneH))`。
+     * 1280px幅では 32vw ≈ 409.6px < 420px なので下限の420pxに丸まり、高さは
+     * `PLC_VIEW_ASPECT`（camera.ts）で決まる（`max-height: calc(--plc-board-w / --plc-aspect)`）。
+     */
+    const canvasBox: CanvasBox = { x: 0, y: 0, width: 420, height: 420 / PLC_VIEW_ASPECT };
+    const layout = gizmoLayoutForViewport(canvasBox.width);
+    // 600px未満は隠す仕様なので、分割レイアウトの実測幅ではそもそも描かれない
+    expect(layout).toBeNull();
+
+    // 隠れている理由を幾何でも確かめる: 万一 hidden にならなかったとしても、
+    // HUD の外形（下地の丸の外接正方形）が盤の投影と重ならないことを検証する
+    // （`plcViewRect()` / `projectToScreen()` は E2E の `e2e/navigation.spec.ts` と同じ計算）。
+    const rect = plcViewRect(PLC_UNIT_FX5U);
+    const pose = cameraPose('plc');
+    const corners = [
+      { x: rect.x, y: rect.y, z: 0 },
+      { x: rect.x + rect.w, y: rect.y, z: 0 },
+      { x: rect.x, y: rect.y + rect.h, z: 0 },
+      { x: rect.x + rect.w, y: rect.y + rect.h, z: 0 },
+    ].map((point) => projectToScreen(boardToWorld(toScene(point)), pose, canvasBox));
+    const boardRect = {
+      left: Math.min(...corners.map((c) => c.x)),
+      right: Math.max(...corners.map((c) => c.x)),
+      top: Math.min(...corners.map((c) => c.y)),
+      bottom: Math.max(...corners.map((c) => c.y)),
+    };
+    const hudRadius = layout?.plateRadius ?? 0;
+    const hudRect = { left: 0, right: hudRadius * 2, top: 0, bottom: hudRadius * 2 };
+    const intersects =
+      hudRect.left < boardRect.right &&
+      hudRect.right > boardRect.left &&
+      hudRect.top < boardRect.bottom &&
+      hudRect.bottom > boardRect.top;
+    expect(intersects).toBe(false);
+  });
+
+  it('96pxキューブが出るぎりぎりの幅（900px）でも、HUDは左上の角のすぐ内側に収まる', () => {
+    const canvasBox: CanvasBox = { x: 0, y: 0, width: 900, height: 900 / PLC_VIEW_ASPECT };
+    const layout = gizmoLayoutForViewport(canvasBox.width);
+    if (layout === null) throw new Error('layout is null');
+    // HUD の外形は左上の角から見て、キャンバスの半分未満に収まる（画面を覆い尽くさない）
+    expect(layout.margin[0] + layout.plateRadius).toBeLessThan(canvasBox.width / 2);
+    expect(layout.margin[1] + layout.plateRadius).toBeLessThan(canvasBox.height / 2);
   });
 });

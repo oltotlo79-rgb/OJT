@@ -4,7 +4,7 @@ import { CanvasTexture, LinearFilter, SRGBColorSpace } from 'three';
  * ビューキューブに貼る**絵**を焼く。設計仕様 §12.2 / 2026-09-19 の利用者要望
  * 「3Dのキューブのデザインがシンプルすぎる」。
  *
- * 面の名札・座標軸の球・ボタンの絵記号・ツールチップを、すべて 2D キャンバスへ一度だけ描いて
+ * 面の名札・ボタンの絵記号・ツールチップを、すべて 2D キャンバスへ一度だけ描いて
  * テクスチャにする。焼くのは**マウント時の1回だけ**で、`ViewGizmo` が unmount で解放する
  * （drei の `GizmoViewcube` は親の再描画のたびに焼き直していた。§15）。
  *
@@ -22,9 +22,6 @@ const GIZMO_FONT = "'Noto Sans JP', 'Yu Gothic UI', 'Meiryo', system-ui, sans-se
 
 /** 面に焼くキャンバスの1辺[px]。面の実寸（96px の 76%）に対しておよそ3.4倍。 */
 export const FACE_TEXTURE_PX = 256;
-
-/** 座標軸の球に焼くキャンバスの1辺[px]（実寸 15px に対して4倍）。 */
-export const BALL_TEXTURE_PX = 64;
 
 /** ボタンに焼くキャンバスの1辺[px]（実寸 28px に対して約4.6倍）。 */
 export const BUTTON_TEXTURE_PX = 128;
@@ -134,62 +131,6 @@ export function bakeFaceTexture(paint: GizmoFacePaint): CanvasTexture {
     context.fillText(paint.label, size / 2, size / 2 + Math.max(1, size * 0.008));
     context.fillStyle = paint.text;
     context.fillText(paint.label, size / 2, size / 2);
-  }
-  return finishTexture(canvas);
-}
-
-/** 座標軸の球の色づかい。 */
-export interface GizmoBallPaint {
-  /** 軸の文字（X / Y / Z）。負の向きには焼かない。 */
-  letter: string;
-  /** 軸の色。 */
-  color: string;
-  /** 正の向きか（負は中を抜いて暗くする＝Blender と同じ）。 */
-  positive: boolean;
-  /** 文字の色。 */
-  text: string;
-}
-
-/**
- * 座標軸の球のテクスチャ（正＝塗り＋軸名、負＝輪郭だけの暗い球）。
- * 手前・奥どちらを向いているかが色の濃さで分かる。
- */
-export function bakeAxisBallTexture(paint: GizmoBallPaint): CanvasTexture {
-  const size = BALL_TEXTURE_PX;
-  const canvas = makeCanvas(size, size);
-  const context = context2d(canvas);
-  if (context !== null) {
-    const center = size / 2;
-    const radius = size * 0.46;
-    context.beginPath();
-    context.arc(center, center, radius, 0, Math.PI * 2);
-    if (paint.positive) {
-      const gradient = context.createRadialGradient(
-        center - radius * 0.3,
-        center - radius * 0.35,
-        radius * 0.1,
-        center,
-        center,
-        radius,
-      );
-      gradient.addColorStop(0, '#FFFFFF');
-      gradient.addColorStop(0.35, paint.color);
-      gradient.addColorStop(1, paint.color);
-      context.fillStyle = gradient;
-    } else {
-      context.fillStyle = 'rgba(20, 24, 32, 0.78)';
-    }
-    context.fill();
-    context.lineWidth = Math.max(1, size * 0.055);
-    context.strokeStyle = paint.color;
-    context.stroke();
-    if (paint.positive) {
-      context.font = `700 ${String(Math.round(size * 0.46))}px ${GIZMO_FONT}`;
-      context.textAlign = 'center';
-      context.textBaseline = 'middle';
-      context.fillStyle = paint.text;
-      context.fillText(paint.letter, center, center + size * 0.02);
-    }
   }
   return finishTexture(canvas);
 }
