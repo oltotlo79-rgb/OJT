@@ -1,4 +1,5 @@
 import {
+  plcUnitFor,
   socketPartId,
   toNetlistTerminal,
   type MountableKind,
@@ -781,6 +782,10 @@ export function PlcSession(): JSX.Element {
           */}
           <p className={styles.plcOutletNote} data-testid="plc-outlet-note">
             {JA.plc.outletNote}
+          </p>
+          {/* 3Dの本体と同じ機種であることを字でも見せる（決定表#9。既定メーカーで差し替わる） */}
+          <p className={styles.plcOutletNote} data-testid="plc-model">
+            {JA.plc.modelLabel}: {plcUnitFor(problem.plc.model)?.displayName ?? problem.plc.model}
           </p>
           {/*
             モードDもリレーはソケットへ装着してから `CRn.14` へ配線する（§10.2 の2段結線）。

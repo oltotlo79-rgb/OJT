@@ -599,18 +599,21 @@ export function restoreInspectState(problem: SupportedProblem, state: InspectWor
     const parsed = toLadderProgram(state.ladder);
     // ラダーが読めない作業ファイルは**開かない**（黙って空のラダーで開くと作業を失う）。§13 #8
     if (state.ladder !== undefined && parsed === undefined) return false;
-    if (!store.openProblem(problem)) return false;
     /*
-     * 方言（メーカー）も戻す（Batch 4+5 レビュー I5: 前は `dialectId` を保存するだけで
-     * 読み戻さず、キー割当が既定（三菱）のまま開いていた）。未実装・見覚えの無いIDは
-     * 黙って無視する（既定のまま開く。読込そのものは断らない）。
+     * 保存されていた方言でそのまま開く（決定表#24）。`openProblem()` が方言 → 機種 → 盤の順に
+     * 作り直すので、ここで渡さないと「ラダーは `0.00` 表記なのに盤の端子は `X0`」になる
+     * （Batch 4+5 レビュー I5 の `setDialect()` は、機種の差し替えが `openProblem()` の中で
+     * 起きるようになった今は後追いになってしまうので置き換える）。
+     * 未実装・見覚えの無いIDは黙って無視する（既定メーカーで開く。読込そのものは断らない）。
      */
-    if (
+    const savedDialect =
       typeof state.dialectId === 'string' &&
       isDialectId(state.dialectId) &&
       IMPLEMENTED_DIALECT_IDS.includes(state.dialectId)
-    ) {
-      store.setDialect(state.dialectId);
+        ? state.dialectId
+        : undefined;
+    if (!store.openProblem(problem, savedDialect === undefined ? {} : { vendor: savedDialect })) {
+      return false;
     }
     if (parsed !== undefined) store.restoreLadder(parsed.program, parsed.comments);
     return true;

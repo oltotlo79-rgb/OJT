@@ -1,4 +1,4 @@
-import { BUILTIN_PLC_PROBLEMS } from '@ojt/content';
+import { BUILTIN_PLC_PROBLEMS, isPlcProblem } from '@ojt/content';
 import { COIL_COL, IR_COLS, no, out, X, Y } from '@ojt/ladder-core';
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { useStore } from '../src/renderer/app/store.js';
@@ -40,7 +40,8 @@ beforeEach(() => {
   apiState.readProblem.mockReset();
   useStore.getState().abandonSession();
   // I5のテストが `dialectId` を書き換えるので、他のテスト/他ファイルへ漏らさないよう戻す
-  useStore.setState({ dialectId: 'mitsubishi' });
+  // （既定メーカーも設定なので `abandonSession()` では戻らない）
+  useStore.setState({ dialectId: 'mitsubishi', defaultVendor: 'mitsubishi' });
   useStore.getState().openProblem(problem);
 });
 
@@ -295,5 +296,43 @@ describe('applyWorkFile（モードDの往復。§12.3 / Batch 4+5 レビュー 
     expect(useStore.getState().ladder?.networks[0]?.cells[0]?.[0]).toMatchObject({
       kind: 'contact',
     });
+  });
+});
+
+describe('4方言の作業ファイル往復（§12.3 / 4A H-2）', () => {
+  it.each(['mitsubishi', 'jtekt', 'omron', 'sharp'] as const)(
+    'round-trips the dialect id %s',
+    async (vendor) => {
+      useStore.getState().applyLadderSettings({ gridCols: 0, monitorColor: '', vendor });
+      useStore.getState().openProblem(problem);
+      const file = toWorkFile(problem.id, useStore.getState().session!, 0, 0);
+      expect(file.dialectId).toBe(vendor);
+      useStore.getState().abandonSession();
+      // 既定メーカーが違っていても、保存された方言で戻る（決定表#24）
+      useStore
+        .getState()
+        .applyLadderSettings({ gridCols: 0, monitorColor: '', vendor: 'mitsubishi' });
+      apiState.readProblem.mockResolvedValue(problem);
+      expect(await applyWorkFile(file)).toBe(true);
+      expect(useStore.getState().dialectId).toBe(vendor);
+      // 機種も戻る（作業ファイルには課題IDしか無いので、方言 → 機種の規則で引き直す）
+      const opened = useStore.getState().problem;
+      expect(opened !== undefined && isPlcProblem(opened) ? opened.plc.vendor : undefined).toBe(
+        vendor,
+      );
+    },
+  );
+
+  it('keeps the restored dialect when an unrelated setting is saved afterwards (前提#31b)', async () => {
+    useStore.getState().applyLadderSettings({ gridCols: 0, monitorColor: '', vendor: 'sharp' });
+    useStore.getState().openProblem(problem);
+    const file = toWorkFile(problem.id, useStore.getState().session!, 0, 0);
+    useStore.getState().abandonSession();
+    apiState.readProblem.mockResolvedValue(problem);
+    expect(await applyWorkFile(file)).toBe(true);
+    // セッションの途中で既定メーカーを変えても、いまの方言は動かない
+    useStore.getState().applyLadderSettings({ gridCols: 0, monitorColor: '', vendor: 'omron' });
+    expect(useStore.getState().dialectId).toBe('sharp');
+    expect(useStore.getState().defaultVendor).toBe('omron');
   });
 });

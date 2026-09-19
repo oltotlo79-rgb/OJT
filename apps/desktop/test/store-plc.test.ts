@@ -10,7 +10,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { DEVICE_COMMENT_COUNT_LIMIT, useStore } from '../src/renderer/app/store.js';
 import type { PlcMonitorSnapshot } from '../src/renderer/app/store-types.js';
 import { applyLadderCell } from '../src/renderer/session/ladder.js';
-import { plcBoardOf } from '../src/renderer/session/plc-session.js';
+import { boardForProblem, plcBoardOf } from '../src/renderer/session/plc-session.js';
 
 const problem = BUILTIN_PLC_PROBLEMS[0]!;
 const assembleProblem = BUILTIN_ASSEMBLE_PROBLEMS[0]!;
@@ -18,7 +18,13 @@ const inspectPartsProblem = BUILTIN_INSPECT_PARTS_PROBLEMS[0]!;
 
 beforeEach(() => {
   useStore.getState().abandonSession();
-  useStore.setState({ route: 'home', problems: undefined });
+  // 既定メーカーは設定なので `abandonSession()` では戻らない。ケース間で漏らさないよう明示に戻す
+  useStore.setState({
+    route: 'home',
+    problems: undefined,
+    defaultVendor: 'mitsubishi',
+    dialectId: 'mitsubishi',
+  });
 });
 
 describe('openProblem（モードD）', () => {
@@ -321,5 +327,90 @@ describe('画面の分割とフォーカス（決定表#3 / #10）', () => {
     expect(useStore.getState().ladderFocused).toBe(true);
     useStore.getState().setLadderFocused(false);
     expect(useStore.getState().ladderFocused).toBe(false);
+  });
+});
+
+describe('既定メーカーの機種で開く（§7.6 / 決定表#9・#24）', () => {
+  it('swaps the model of a mode D problem to the default vendor', () => {
+    useStore.getState().applyLadderSettings({ gridCols: 0, monitorColor: '', vendor: 'omron' });
+    expect(useStore.getState().openProblem(problem)).toBe(true);
+    expect(useStore.getState().dialectId).toBe('omron');
+    const opened = useStore.getState().problem;
+    expect(opened?.mode).toBe('plc');
+    expect(opened !== undefined && isPlcProblem(opened) ? opened.plc : undefined).toEqual({
+      vendor: 'omron',
+      model: 'CP1E',
+    });
+    // 盤も機種に追随する（3Dとワーカーが同じ端子名を見る。4A H-1）
+    expect(boardForProblem(opened).terminals.map((t) => String(t.id))).toContain('PLC.0.00');
+  });
+
+  it('puts the TOYOPUC rack on the desk for the JTEKT default', () => {
+    useStore.getState().applyLadderSettings({ gridCols: 0, monitorColor: '', vendor: 'jtekt' });
+    useStore.getState().openProblem(problem);
+    const board = boardForProblem(useStore.getState().problem);
+    expect(board.plcUnit?.form).toBe('rack');
+    expect(board.plcUnit?.modules?.map((m) => m.model)).toEqual([
+      'POWER1',
+      'PC10G-1SP',
+      'IN-12',
+      'OUT-12',
+    ]);
+    expect(board.terminals.map((t) => String(t.id))).toContain('PLC.ICOM0');
+  });
+
+  it('keeps the original model when the vendor cannot host the assignment (決定表#10)', () => {
+    const wide = {
+      ...problem,
+      io: {
+        ...problem.io,
+        mode: 'fixed' as const,
+        inputs: [{ x: 0, pb: 'PB1' as const }],
+        outputs: [{ y: 12, cr: 'CR1' as const, pl: 'PL1' as const }],
+      },
+    };
+    useStore.getState().applyLadderSettings({ gridCols: 0, monitorColor: '', vendor: 'omron' });
+    expect(useStore.getState().openProblem(wide)).toBe(true);
+    const opened = useStore.getState().problem;
+    expect(opened !== undefined && isPlcProblem(opened) ? opened.plc.model : undefined).toBe(
+      'FX5U',
+    );
+    expect(useStore.getState().toasts.at(-1)?.text).toContain('CP1E');
+    // 方言も課題の機種に合わせる（ラダーの表記だけ OMRON になってしまわないように）
+    expect(useStore.getState().dialectId).toBe('mitsubishi');
+  });
+
+  it('leaves the other modes alone', () => {
+    useStore.getState().applyLadderSettings({ gridCols: 0, monitorColor: '', vendor: 'sharp' });
+    useStore.getState().openProblem(assembleProblem);
+    expect(useStore.getState().problem?.id).toBe(assembleProblem.id);
+  });
+
+  it('lets the caller pin a vendor (作業ファイルの復元。決定表#24)', () => {
+    useStore.getState().applyLadderSettings({ gridCols: 0, monitorColor: '', vendor: 'omron' });
+    useStore.getState().openProblem(problem, { vendor: 'jtekt' });
+    expect(useStore.getState().dialectId).toBe('jtekt');
+    const opened = useStore.getState().problem;
+    expect(opened !== undefined && isPlcProblem(opened) ? opened.plc.model : undefined).toBe(
+      'PC10G-1SP',
+    );
+    // 設定（既定メーカー）は動かない
+    expect(useStore.getState().defaultVendor).toBe('omron');
+  });
+
+  it('keeps the session dialect through 「もう一度」 (MERGE 注意 #5 / 決定表#24)', () => {
+    // 既定メーカーは三菱のまま、セッションだけ JTEKT にしてある状態
+    useStore
+      .getState()
+      .applyLadderSettings({ gridCols: 0, monitorColor: '', vendor: 'mitsubishi' });
+    useStore.getState().openProblem(problem, { vendor: 'jtekt' });
+    expect(useStore.getState().dialectId).toBe('jtekt');
+    useStore.getState().resetSession();
+    // やり直しても既定メーカー（三菱）へ戻らない
+    expect(useStore.getState().dialectId).toBe('jtekt');
+    const again = useStore.getState().problem;
+    expect(again !== undefined && isPlcProblem(again) ? again.plc.model : undefined).toBe(
+      'PC10G-1SP',
+    );
   });
 });

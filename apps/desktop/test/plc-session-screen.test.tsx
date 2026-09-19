@@ -167,6 +167,12 @@ describe('モードDのセッション画面（§10.1 / §12.1）', () => {
     expect(screen.getByTestId('plc-outlet-note')).toHaveTextContent('壁コンセント');
   });
 
+  /** Plan 4B Task 7: 既定メーカーで機種が差し替わるので、いまの機種を字でも出す（決定表#9）。 */
+  it('shows the model the problem was opened on', () => {
+    render(<SessionRoute />);
+    expect(screen.getByTestId('plc-model')).toHaveTextContent('FX5U');
+  });
+
   it('shows the problem statement and the parts panel（リレーを装着する）', () => {
     render(<SessionRoute />);
     expect(screen.getByText(titlePattern)).toBeInTheDocument();
@@ -180,10 +186,14 @@ describe('モードDのセッション画面（§10.1 / §12.1）', () => {
    */
   it('blocks judging and toasts once for an unsupported PLC model (§13 #2)', () => {
     useStore.getState().abandonSession();
-    useStore.getState().openProblem({
-      ...problem,
-      plc: { vendor: 'omron', model: 'CP1E-UNKNOWN' } as unknown as (typeof problem)['plc'],
-    });
+    useStore.getState().openProblem(
+      {
+        ...problem,
+        plc: { vendor: 'omron', model: 'CP1E-UNKNOWN' } as unknown as (typeof problem)['plc'],
+      },
+      // 既定メーカーで機種を差し替えられると見覚えのない機種が消えてしまう（Plan 4B Task 7）
+      { vendor: 'omron' },
+    );
     render(<SessionRoute />);
     expect(screen.getByTestId('judge-button')).toBeDisabled();
     expect(screen.getByTestId('judge-button')).toHaveAttribute(

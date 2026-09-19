@@ -65,6 +65,7 @@ import {
   type LadderHistory,
 } from '../session/ladder.js';
 import { boardForProblem } from '../session/plc-session.js';
+import { plcForVendor, plcUnitForVendor } from '../session/plc-skin.js';
 import { nextProbeAfter } from '../session/tester.js';
 import {
   NO_CONVERT_ISSUES,
@@ -232,6 +233,12 @@ export interface OpenProblemOptions {
    * モードD以外の課題では無視される。
    */
   keepLadder?: boolean | undefined;
+  /**
+   * この方言（＝機種）で開く。§10.5 / 決定表#24
+   * 省くとストアの `defaultVendor`（設定画面の既定メーカー）を使う。作業ファイルの復元だけが
+   * 保存されていた方言を渡す（`work-file.ts`）。
+   */
+  vendor?: DialectId | undefined;
 }
 
 /** ストアの形。 */
@@ -675,6 +682,28 @@ export const useStore = create<AppState>((set, get) => ({
      * C2は故障を注入した盤を作る（`buildInspectRepairCircuit`。Plan 2A）。課題データの誤りで
      * 作れないことがあるので、その場合は**画面を移らずに**理由を出す（§13 #2）。
      */
+    /*
+     * モードDは**既定メーカーの機種**で開く（決定表#9）。内蔵8題は `mitsubishi` / `FX5U` だが、
+     * 4A Task 14 が「`plc` だけ差し替えれば4機種すべてで成立する」ことを確かめているので、
+     * ここで差し替えれば課題JSONを1文字も変えずに CP1E・TOYOPUC・JW300 の課題になる。
+     * 差し替えた課題がそのまま盤・Worker・判定・作業ファイルへ流れるので、3Dの端子名と
+     * ラダーのデバイス名が食い違わない（4A H-1）。
+     *
+     * **方言（`dialectId`）を決めるのはここだけ**である（決定表#24）。設定を保存するたびに
+     * 上書きすると、復元した方言や表記切替で選んだ方言がセッションの途中で戻る（前提#31b）。
+     */
+    let vendor = options.vendor ?? get().defaultVendor;
+    if (isPlcProblem(problem)) {
+      const swapped = plcForVendor(problem, vendor);
+      if (swapped === undefined) {
+        // 割付がその機種に収まらない（CP1E の出力は12点。決定表#10）。元の機種のまま開く
+        const model = plcUnitForVendor(vendor)?.model ?? vendor;
+        get().toast(JA.plc.modelNotUsable(model, problem.plc.model), 'error');
+        vendor = problem.plc.vendor;
+      } else {
+        problem = swapped;
+      }
+    }
     let session: BoardSession;
     let circuit: RepairCircuit | undefined;
     let faultSeed: number | undefined;
@@ -796,6 +825,8 @@ export const useStore = create<AppState>((set, get) => ({
       camera: isPlcProblem(problem) ? ('plc' as const) : ('front' as const),
       cameraNonce: get().cameraNonce + 1,
       ...plcFields(problem),
+      // 方言を決めるのはこの1箇所だけ（決定表#24）。モードD以外でも入れてよい
+      dialectId: vendor,
       ...(keepLadder && previousLadder !== undefined
         ? { ladder: previousLadder, ladderComments: previousLadderComments ?? {} }
         : {}),
@@ -1190,6 +1221,8 @@ export const useStore = create<AppState>((set, get) => ({
       resolvedFaults: state.resolvedFaults,
       faultSeed: state.faultSeed,
       keepLadder: isPlcProblem(problem),
+      // いまのセッションの方言のまま作り直す（既定メーカーへ戻さない。MERGE 注意 #5 / 決定表#24）
+      vendor: state.dialectId,
     });
     // 作り直せなかったら理由はトーストに出ている。画面も世代番号も動かさない（§13 #2）
     if (!reopened) return;

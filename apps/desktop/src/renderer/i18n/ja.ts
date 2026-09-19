@@ -607,6 +607,13 @@ export const JA = {
      */
     stepConvertAuto: '「変換」の操作はありません（編集すると自動で変換されます）',
     // --- /Plan 4B Task 3 ---
+    // --- Plan 4B Task 7 ---
+    /** 既定メーカーの機種では開けない課題（決定表#10）。 */
+    modelNotUsable: (wanted: string, used: string): string =>
+      `この課題の入出力の割付は ${wanted} に収まらないため、${used} のまま開きました`,
+    /** セッション画面に出す機種名（3Dの本体と同じ機種であることを見せる）。 */
+    modelLabel: '機種',
+    // --- /Plan 4B Task 7 ---
     // --- /Plan 3B Task 12 ---
     // --- Plan 3B Task 13 ---
     /** 結果画面で最初に読ませる「なぜそうなったか」。2026-09-19 の利用者決定 */
