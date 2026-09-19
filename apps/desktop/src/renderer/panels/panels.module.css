@@ -291,3 +291,10 @@
   line-height: 1.5;
 }
 /* --- /UX pass 2026-09-19 (#5) --- */
+
+/* --- UX pass 2026-09-19 (#10): 電源操作の次の一手を強調する --- */
+.nextStep {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+/* --- /UX pass 2026-09-19 (#10) --- */

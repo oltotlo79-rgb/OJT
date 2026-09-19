@@ -2,7 +2,7 @@ import { JIPM_BOARD, mountedKinds, remainingInventory, socketPartId } from '@ojt
 import { isAssembleProblem } from '@ojt/content';
 import type { BoardSession, MountableKind, SocketId } from '@ojt/board-model';
 import type { TerminalId } from '@ojt/circuit-sim';
-import { useCallback, useEffect, useMemo, useRef, type JSX } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type JSX } from 'react';
 import { ojtApi } from '../app/ojt-api.js';
 import { schematicPolicy, useStore } from '../app/store.js';
 import { sounds, soundsForSnapshot } from '../audio/sounds.js';
@@ -23,6 +23,7 @@ import { PowerControls } from '../panels/PowerControls.js';
 import { ProblemPanel } from '../panels/ProblemPanel.js';
 import { liveChart, TimeChartPanel, TimeChartSvg } from '../panels/TimeChartPanel.js';
 import { Toolbar } from '../panels/Toolbar.js';
+import { ViewHint } from '../panels/ViewHint.js';
 import { WarningBanner } from '../panels/WarningBanner.js';
 import { SchematicSvg } from '../schematic/SchematicSvg.js';
 import {
@@ -76,19 +77,45 @@ function reasonOf(error: unknown): string {
  * ライブ記録のチャート。§8.2
  * 毎秒約30回変わる `snapshot.tMs` をここで受けることで、`Session`（＝3Dビューポートを含む）を
  * 巻き添えで再描画しない（§15）。
+ *
+ * UXレビュー #9: 何も起きていないうちは空のグラフを出さず折りたたんでおき、最初の変化点が
+ * 記録されたら自動で開く。そのあとは訓練者が自分で畳み直せる（強制はしない）。
  */
 function LivePanel(): JSX.Element {
   const chartSpecs = useStore((s) => s.chartSpecs);
   const liveTransitions = useStore((s) => s.liveTransitions);
   const tMs = useStore((s) => s.snapshot.tMs);
+  const hasRecording = Object.keys(liveTransitions).length > 0;
+  const [expanded, setExpanded] = useState(hasRecording);
+  useEffect(() => {
+    if (hasRecording) setExpanded(true);
+  }, [hasRecording]);
   const live = useMemo(
     () => liveChart(chartSpecs, liveTransitions, Math.max(tMs, LIVE_MIN_DURATION_MS)),
     [chartSpecs, liveTransitions, tMs],
   );
   return (
-    <section className={styles.panelLive}>
-      <h2 className={styles.liveTitle}>{JA.session.liveChart}</h2>
-      <TimeChartSvg chart={live} title={JA.session.liveChart} />
+    <section className={styles.panelLive} data-testid="live-panel">
+      <div className={styles.liveHeader}>
+        <h2 className={styles.liveTitle}>{JA.session.liveChart}</h2>
+        <button
+          type="button"
+          data-testid="live-toggle"
+          aria-expanded={expanded}
+          onClick={() => {
+            setExpanded((next) => !next);
+          }}
+        >
+          {expanded ? JA.liveCollapse.collapse : JA.liveCollapse.expand}
+        </button>
+      </div>
+      {expanded ? (
+        <TimeChartSvg chart={live} title={JA.session.liveChart} />
+      ) : (
+        <p className={styles.liveEmptyHint} data-testid="live-empty-hint">
+          {JA.liveCollapse.empty}
+        </p>
+      )}
     </section>
   );
 }
@@ -635,19 +662,18 @@ export function Session(): JSX.Element {
             {tripped ? ` / ${JA.session.tripped}` : ''}
             {webglLost ? ` / ${JA.error.webglLost}` : ''}
           </div>
-          {/* 視点操作の早見表（Blender 風の割り当て）。§12.2 */}
-          <div className={styles.viewHint} data-testid="view-hint">
-            {JA.session.viewHint}
-          </div>
+          <ViewHint />
         </div>
 
+        {/*
+          右パネルの並びは 課題 → 部品 → 回路図 → タイムチャート（UXレビュー #9）。
+          回路図ヒントは**部品パネルより後**に置く（1D2-a のレビュー指摘）。
+          3級は常時表示なので、先に置くと縦長の回路図に押し出されて「部品」が画面外へ行き、
+          右パネルを一番下までスクロールしないと部品を装着できなかった。§8.4 / §8.1
+          ライブ記録は最初の変化点までは折りたたむので、いちばん下に置いても目障りにならない。
+        */}
         <div className={styles.rightPanel}>
           <ProblemPanel problem={problem} />
-          {spec !== undefined && spec.ok ? <TimeChartPanel chart={spec.chart} /> : null}
-          {spec !== undefined && !spec.ok ? (
-            <p data-testid="reference-error">{referenceErrorText(spec.errors)}</p>
-          ) : null}
-          <LivePanel />
           <PartsPanel
             session={session}
             selectedSocket={selectedSocket}
@@ -660,11 +686,6 @@ export function Session(): JSX.Element {
             onSwap={onSwap}
             onPreset={onPreset}
           />
-          {/*
-            回路図ヒントは**部品パネルより後**に置く（1D2-a のレビュー指摘）。
-            3級は常時表示なので、先に置くと縦長の回路図に押し出されて「部品」が画面外へ行き、
-            右パネルを一番下までスクロールしないと部品を装着できなかった。§8.4 / §8.1
-          */}
           {showSchematic ? (
             <section className={styles.panelLive} data-testid="schematic-hint">
               <h2 className={styles.liveTitle}>{JA.session.schematicHint}</h2>
@@ -673,6 +694,11 @@ export function Session(): JSX.Element {
               </div>
             </section>
           ) : null}
+          {spec !== undefined && spec.ok ? <TimeChartPanel chart={spec.chart} /> : null}
+          {spec !== undefined && !spec.ok ? (
+            <p data-testid="reference-error">{referenceErrorText(spec.errors)}</p>
+          ) : null}
+          <LivePanel />
         </div>
 
         <div className={styles.bottomPanel}>

@@ -388,8 +388,11 @@ describe('キーボードのショートカット（§8.2）', () => {
     input.remove();
   });
 
-  it('操作ヒントに Blender 風の割り当てが出ている（§12.2）', () => {
+  it('操作ヒントに Blender 風の割り当てが出ている（§12.2 / UXレビュー #14: 既定は畳んでおく）', () => {
     openSession();
+    // 既定では「?」だけで、押ボタンを覆う帯は出さない
+    expect(screen.queryByTestId('view-hint')).toBeNull();
+    fireEvent.click(screen.getByTestId('view-hint-toggle'));
     expect(screen.getByTestId('view-hint').textContent).toBe(JA.session.viewHint);
   });
 });
@@ -569,6 +572,52 @@ describe('回路図ヒント（§8.4: 3級=常時／2級=開閉可・初期は�
     const parts = screen.getByTestId('parts-panel');
     const hint = screen.getByTestId('schematic-hint');
     expect(parts.compareDocumentPosition(hint) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+});
+
+describe('右パネルの並び（UXレビュー #9: 課題 → 部品 → 回路図 → タイムチャート）', () => {
+  it('部品パネルは回路図ヒントより前、回路図ヒントはタイムチャートより前に並ぶ', () => {
+    const grade3 = BUILTIN_PROBLEMS.find((p) => p.grade === 3);
+    expect(grade3).toBeDefined();
+    if (grade3 === undefined) return;
+    act(() => {
+      useStore.getState().openProblem(grade3);
+    });
+    render(<Session />);
+    const parts = screen.getByTestId('parts-panel');
+    const hint = screen.getByTestId('schematic-hint');
+    const chart = screen.getByTestId('live-panel');
+    expect(parts.compareDocumentPosition(hint) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(hint.compareDocumentPosition(chart) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+});
+
+describe('ライブ記録の折りたたみ（UXレビュー #9）', () => {
+  it('最初は折りたたまれ、記録が始まると自動で開く', () => {
+    openSession();
+    expect(screen.getByTestId('live-empty-hint')).toBeTruthy();
+    expect(screen.getByTestId('live-toggle')).toHaveAttribute('aria-expanded', 'false');
+
+    act(() => {
+      useStore.setState({
+        liveTransitions: { PB1: [{ tMs: 0, value: true }] },
+      });
+    });
+    expect(screen.queryByTestId('live-empty-hint')).toBeNull();
+    expect(screen.getByTestId('live-toggle')).toHaveAttribute('aria-expanded', 'true');
+  });
+
+  it('開いたあとも訓練者が自分で畳み直せる', () => {
+    openSession();
+    act(() => {
+      useStore.setState({ liveTransitions: { PB1: [{ tMs: 0, value: true }] } });
+    });
+    expect(screen.getByTestId('live-toggle')).toHaveAttribute('aria-expanded', 'true');
+    act(() => {
+      fireEvent.click(screen.getByTestId('live-toggle'));
+    });
+    expect(screen.getByTestId('live-toggle')).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.getByTestId('live-empty-hint')).toBeTruthy();
   });
 });
 

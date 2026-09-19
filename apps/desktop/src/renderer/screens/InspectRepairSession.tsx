@@ -34,6 +34,7 @@ import { ReportPanel } from '../panels/ReportPanel.js';
 import { dispatchTester, TesterPanel } from '../panels/TesterPanel.js';
 import { TimeChartPanel } from '../panels/TimeChartPanel.js';
 import { Toolbar } from '../panels/Toolbar.js';
+import { ViewHint } from '../panels/ViewHint.js';
 import { WarningBanner } from '../panels/WarningBanner.js';
 import { SchematicSvg } from '../schematic/SchematicSvg.js';
 import {
@@ -757,10 +758,7 @@ export function InspectRepairSession(): JSX.Element {
             {reports.length}
             {tripped ? ` / ${JA.session.tripped}` : ''}
           </div>
-          {/* 視点操作の早見表（Blender 風の割り当て）。§12.2 */}
-          <div className={styles.viewHint} data-testid="view-hint">
-            {JA.session.viewHint}
-          </div>
+          <ViewHint />
         </div>
 
         <div className={styles.rightPanel}>

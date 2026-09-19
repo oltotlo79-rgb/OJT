@@ -29,6 +29,7 @@ import { PartsPanel } from '../panels/PartsPanel.js';
 import { PowerControls } from '../panels/PowerControls.js';
 import { ProblemPanel } from '../panels/ProblemPanel.js';
 import { Toolbar } from '../panels/Toolbar.js';
+import { ViewHint } from '../panels/ViewHint.js';
 import { WarningBanner } from '../panels/WarningBanner.js';
 import {
   cloneSession,
@@ -752,9 +753,7 @@ export function PlcSession(): JSX.Element {
               {session.wires.length} {JA.session.wiresUnit}
               {tripped ? ` / ${JA.session.tripped}` : ''}
             </div>
-            <div className={styles.viewHint} data-testid="view-hint">
-              {JA.session.viewHint}
-            </div>
+            <ViewHint />
           </div>
         )}
         <div className={styles.plcRight}>

@@ -22,6 +22,7 @@ import { PowerControls } from '../panels/PowerControls.js';
 import { ProblemPanel } from '../panels/ProblemPanel.js';
 import { dispatchTester, TesterPanel } from '../panels/TesterPanel.js';
 import { Toolbar } from '../panels/Toolbar.js';
+import { ViewHint } from '../panels/ViewHint.js';
 import { WarningBanner } from '../panels/WarningBanner.js';
 import { cloneSession } from '../session/commands.js';
 import { checkLoadFor, probeTargets } from '../session/inspect-parts.js';
@@ -466,10 +467,7 @@ export function InspectPartsSession(): JSX.Element {
               : `${JA.inspectParts.mounted}: ${checkPartId}`}
             {tripped ? ` / ${JA.session.tripped}` : ''}
           </div>
-          {/* 視点操作の早見表（Blender 風の割り当て）。§12.2 */}
-          <div className={styles.viewHint} data-testid="view-hint">
-            {JA.session.viewHint}
-          </div>
+          <ViewHint />
         </div>
 
         <div className={styles.rightPanel}>

@@ -536,4 +536,23 @@
   line-height: 1.6;
   margin: 0;
 }
+
+/* ライブ記録の見出し行（UXレビュー #9）。開閉ボタンを右端に置く。 */
+.liveHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 0 0 6px;
+}
+
+.liveHeader .liveTitle {
+  margin: 0;
+}
+
+.liveEmptyHint {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+  margin: 0;
+}
 /* --- /UX pass 2026-09-19 --- */

@@ -25,6 +25,11 @@ export function PowerControls({
   onSwitch: (on: boolean) => void;
   onResetTrip: () => void;
 }): JSX.Element {
+  /*
+   * 次に押す1つを強調する（UXレビュー #10「①ブレーカ→②電源スイッチ」）。
+   * 保護動作中（`tripped`）は復帰の手順が別にあるので、ここでは強調しない。
+   */
+  const nextStep = tripped ? undefined : !breakerOn ? 'breaker' : !switchOn ? 'switch' : undefined;
   return (
     <div className={`${styles.toolGroup} ${styles.power}`}>
       <span
@@ -33,21 +38,25 @@ export function PowerControls({
       />
       <button
         type="button"
+        className={nextStep === 'breaker' ? styles.nextStep : undefined}
         aria-pressed={breakerOn}
+        data-testid="power-breaker"
         onClick={() => {
           onBreaker(!breakerOn);
         }}
       >
-        {JA.session.breaker}
+        {JA.powerStep.breaker}
       </button>
       <button
         type="button"
+        className={nextStep === 'switch' ? styles.nextStep : undefined}
         aria-pressed={switchOn}
+        data-testid="power-switch"
         onClick={() => {
           onSwitch(!switchOn);
         }}
       >
-        {JA.session.switch}
+        {JA.powerStep.switch}
       </button>
       {tripped ? (
         <button type="button" onClick={onResetTrip}>

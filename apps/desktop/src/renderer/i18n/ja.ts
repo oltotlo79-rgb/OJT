@@ -723,6 +723,22 @@ export const JA = {
     actual: '訓練者（太い線）',
     diff: '差分（赤い帯）',
   },
+  /**
+   * ライブ記録の折りたたみ（UXレビュー #9）。最初の変化が起きるまでは空のグラフを
+   * 出さず、折りたたんだまま案内だけ出す。`screens/Session.tsx` の `LivePanel`。
+   */
+  liveCollapse: {
+    empty: 'まだ記録がありません（通電して操作すると記録が始まります）',
+    expand: '開く',
+    collapse: '折りたたむ',
+  },
+  /** 電源操作の順番（UXレビュー #10）。`panels/PowerControls.tsx`。 */
+  powerStep: {
+    breaker: '① ブレーカ',
+    switch: '② 電源スイッチ',
+  },
+  /** 視点操作の早見表の開閉ボタン（UXレビュー #14）。`panels/ViewHint.tsx`。 */
+  viewHintToggle: '視点操作の早見表',
   // --- /UX pass 2026-09-19 ---
 } as const;
 

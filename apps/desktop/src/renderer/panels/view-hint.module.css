@@ -1,0 +1,38 @@
+/*
+ * 視点操作の早見表の折りたたみ（UXレビュー #14）。
+ * 常時表示の帯（旧 `.viewHint`）は盤の手前（下辺）を覆い、3Dの押ボタンを隠していた。
+ * 既定は「?」ボタンだけにして、押したときだけ早見表を出す。
+ */
+.wrap {
+  position: absolute;
+  left: 12px;
+  bottom: 8px;
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.toggle {
+  pointer-events: auto;
+  border-radius: 50%;
+  padding: 0;
+  width: 32px;
+  background: rgba(20, 24, 32, 0.72);
+  color: var(--text);
+  font-weight: 700;
+}
+
+.hint {
+  pointer-events: none;
+  background: rgba(20, 24, 32, 0.72);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  color: var(--muted);
+  font-size: 11px;
+  padding: 3px 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: min(70vw, 700px);
+}
