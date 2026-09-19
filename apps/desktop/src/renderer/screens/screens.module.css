@@ -524,7 +524,8 @@
   gap: 8px 14px;
   background: var(--panel);
   border-bottom: 1px solid var(--line);
-  padding: 6px 10px;
+  /* 4pxグリッドに揃える（Plan 5 C/D レビュー M6）。`.boardFocus` が高さを合わせに来るので一緒に直す */
+  padding: 8px 12px;
 }
 
 .stepList {
@@ -723,7 +724,8 @@
   border-bottom: 1px solid var(--line);
   border-left: 4px solid var(--accent);
   line-height: 1.6;
-  padding: 6px 10px;
+  /* `.stepGuide` と同じ余白（4pxグリッド。Plan 5 C/D レビュー M6） */
+  padding: 8px 12px;
 }
 
 .boardFocus button:focus-visible {

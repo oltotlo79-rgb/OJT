@@ -81,15 +81,25 @@ function DeskCable({ route }: { route: DeskRoute }): JSX.Element {
  * 本数・両端・色が同じなら形も同じなので、それを鍵にする。`deskRoutes()`（ダクトの障害物回避で
  * 折れ点を求める）ではなく**軽い** `deskWires()`（端子の生座標だけ）から作る。回避経路は
  * 「机上に渡るどの電線が・どの端子間か・何色か」だけの純関数なので、この鍵が一致していれば
- * `deskRoutes()` をもう一度呼んでも同じ折れ線になる。
+ * `deskRoutes()` をもう一度呼んでも同じ折れ線になる——**ただし障害物（`board.plcUnit` の外形）
+ * が変わらない限り**（M2: Plan 5 C/D レビュー）。`withPlcUnit()` は同じ `board.id` のまま
+ * 機種だけ差し替えるので、机上の端子位置がたまたま同じでも、本体の位置・寸法が変われば
+ * `deskRoutes()` が避ける形は変わりうる。板そのもの（`board.id`）とPLC本体の外形
+ * （機種キー・設置位置・寸法）も鍵に混ぜる。
  */
 export function deskWireSignature(board: BoardDefinition, session: BoardSession): string {
-  return deskWires(board, session)
+  const unit = board.plcUnit;
+  const obstacle =
+    unit === undefined
+      ? 'none'
+      : `${unit.id}:${unit.pos.x},${unit.pos.y},${unit.pos.z}:${unit.sizeMm.width}x${unit.sizeMm.height}x${unit.sizeMm.depth}`;
+  const wires = deskWires(board, session)
     .map((wire) => {
       const color = session.wires.find((w) => w.id === wire.id)?.color ?? PLC_WIRE_COLOR;
       return `${wire.id}:${color}:${wire.fromPos.x},${wire.fromPos.y},${wire.fromPos.z}>${wire.toPos.x},${wire.toPos.y},${wire.toPos.z}`;
     })
     .join('|');
+  return `${board.id}|${obstacle}|${wires}`;
 }
 
 /** 机上へ渡るケーブルをまとめて描く。 */

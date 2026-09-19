@@ -385,7 +385,8 @@
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 5px;
-  padding: 8px 10px;
+  /* 4pxグリッドに揃える（Plan 5 C/D レビュー M6） */
+  padding: 8px;
   margin-bottom: 8px;
 }
 

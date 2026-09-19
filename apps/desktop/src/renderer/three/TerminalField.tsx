@@ -1,7 +1,7 @@
 import { isOffBoardTerminal, type BoardDefinition, type BoardTerminal } from '@ojt/board-model';
 import { parseTerminalId, type TerminalId } from '@ojt/circuit-sim';
 import { Html } from '@react-three/drei';
-import type { ThreeEvent } from '@react-three/fiber';
+import { useThree, type ThreeEvent } from '@react-three/fiber';
 import { useEffect, useMemo, useRef, type JSX } from 'react';
 import type { InstancedMesh } from 'three';
 import { Color, Matrix4, MeshStandardMaterial, Quaternion, Vector3 } from 'three';
@@ -173,6 +173,8 @@ export function TerminalField({
   const screws = useRef<InstancedMesh | null>(null);
   const picks = useRef<InstancedMesh | null>(null);
   const count = terminals.length;
+  /** `frameloop="demand"` の下で色の書き換えを確実に1枚描かせる（M3）。 */
+  const invalidate = useThree((s) => s.invalidate);
 
   /** 端子の位置（インスタンスの行列）。端子の並びが変わったときだけ作り直す。 */
   const matrices = useMemo(() => terminalFieldMatrices(terminals), [terminals]);
@@ -194,7 +196,14 @@ export function TerminalField({
     pickMesh.computeBoundingSphere();
   }, [matrices]);
 
-  /** 色は状態が変わったときだけ書き換える（毎フレームは触らない。§15）。 */
+  /*
+   * 色は状態が変わったときだけ書き換える（毎フレームは触らない。§15）。
+   * `frameloop="demand"` なので、色を書き換えただけでは three は次のフレームを描かない
+   * （M3: Plan 5 C/D レビュー）。今日までは `visualSignature()` が `hoveredTerminal` /
+   * `pendingTerminal` を含んでいて、React の passive effect（この effect）が
+   * `invalidate` を要求するより先に走ることに**たまたま**頼っていた。前提を1つ減らすため、
+   * ここで直接 `invalidate()` を呼ぶ。
+   */
   useEffect(() => {
     const mesh = screws.current;
     if (mesh === null) return;
@@ -204,7 +213,8 @@ export function TerminalField({
       mesh.setColorAt(i, color);
     });
     if (mesh.instanceColor !== null) mesh.instanceColor.needsUpdate = true;
-  }, [terminals, hovered, pending]);
+    invalidate();
+  }, [terminals, hovered, pending, invalidate]);
 
   const hoveredTerminal = terminals.find((t) => t.id === hovered);
   if (count === 0) return null;

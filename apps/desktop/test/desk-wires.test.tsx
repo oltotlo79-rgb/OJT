@@ -7,12 +7,13 @@ import {
   PLC_UNIT_PC10G,
   withPlcUnit,
   type BoardDefinition,
+  type PlcUnitDefinition,
 } from '@ojt/board-model';
 import type { TerminalId } from '@ojt/circuit-sim';
 import { cleanup, render } from '@testing-library/react';
 import { TubeGeometry } from 'three';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { DeskWires } from '../src/renderer/three/DeskWires.js';
+import { DeskWires, deskWireSignature } from '../src/renderer/three/DeskWires.js';
 
 /**
  * 机上のケーブルの描画（§10.1 / §11.3 / 決定表#9）。
@@ -100,5 +101,27 @@ describe('DeskWires（§10.1 / 決定表#9）', () => {
     // 机上のケーブルがちょうど1本（＝ラックの端子も FX5U と同じように引けている）
     expect(disposeSpy).toHaveBeenCalledTimes(1);
     disposeSpy.mockRestore();
+  });
+});
+
+describe('deskWireSignature（M2: Plan 5 C/D レビュー）', () => {
+  it('changes when only the PLC obstacle (outline) moves, wire endpoints unchanged', () => {
+    const session = sessionWith(board, [['TB_PB.1a', 'PLC.X0']]);
+    /*
+     * 端子（`unit.terminals`）はそのまま流用し、本体の設置位置だけずらす。
+     * `PLC.X0` の生座標（＝配線の両端）は1mmも動いていないのに、本体（障害物）の外形は変わる
+     * ——机上の端子位置が同じまま機種だけ差し替わる盤（`withPlcUnit()`）と同じ状況を作る。
+     */
+    const shiftedUnit: PlcUnitDefinition = {
+      ...PLC_UNIT_FX5U,
+      pos: { x: PLC_UNIT_FX5U.pos.x + 50, y: PLC_UNIT_FX5U.pos.y, z: PLC_UNIT_FX5U.pos.z },
+    };
+    const shiftedBoard = withPlcUnit(JIPM_BOARD, shiftedUnit);
+    expect(deskWireSignature(board, session)).not.toBe(deskWireSignature(shiftedBoard, session));
+  });
+
+  it('stays the same when nothing (board id, PLC outline, wires) changed', () => {
+    const session = sessionWith(board, [['TB_PB.1a', 'PLC.X0']]);
+    expect(deskWireSignature(board, session)).toBe(deskWireSignature(board, session));
   });
 });

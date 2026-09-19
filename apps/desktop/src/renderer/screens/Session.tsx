@@ -466,17 +466,25 @@ export function Session(): JSX.Element {
    * 回路図エディタ（下書き）の要素をクリックしたら盤の端子を光らせる（受入基準②）。§11.4
    * 索引は**出どころごとに持つ**（I4）。「並べて」では下書きと模範回路が同時に画面へ出るので、
    * 1つの索引を画面の状態で切り替えると、押した図と光る端子が食い違う。
+   *
+   * `onHover` と同じく、結果画面から跳んできている（`boardFocus`）あいだはハイライトを
+   * 触らない（M1）。帯は「結果から: …」のままなのに、回路図の要素を押しただけで光が
+   * 別物へ差し替わると、帯と光の対応が食い違って見える。
    */
   const onPickDraftCell = useCallback(
     (cellId: string | undefined): void => {
-      useStore.getState().setHighlight(selectionFor(draftGuideIndex, cellId));
+      const store = useStore.getState();
+      if (store.boardFocus !== undefined) return;
+      store.setHighlight(selectionFor(draftGuideIndex, cellId));
     },
     [draftGuideIndex],
   );
   /** 回路図ヒント（模範回路）の要素をクリックしたときも同じ道を通す。決定表#7 */
   const onPickHintCell = useCallback(
     (cellId: string | undefined): void => {
-      useStore.getState().setHighlight(selectionFor(hintGuideIndex, cellId));
+      const store = useStore.getState();
+      if (store.boardFocus !== undefined) return;
+      store.setHighlight(selectionFor(hintGuideIndex, cellId));
     },
     [hintGuideIndex],
   );

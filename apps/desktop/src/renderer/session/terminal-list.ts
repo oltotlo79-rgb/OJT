@@ -1,5 +1,4 @@
 import {
-  isOffBoardTerminal,
   isSocketId,
   toSessionTerminal,
   type BoardDefinition,
@@ -85,9 +84,4 @@ export function terminalRows(
     out.push(row);
   }
   return out;
-}
-
-/** 机上の端子か（見出しに「机上」を付ける）。§10.1 */
-export function isDeskRow(row: TerminalRow): boolean {
-  return isOffBoardTerminal(row.id);
 }

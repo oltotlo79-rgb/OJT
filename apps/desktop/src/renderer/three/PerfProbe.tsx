@@ -18,7 +18,12 @@ export const PERF_INTERVAL_MS = 250;
 
 /** 隠し要素に書く値。 */
 export interface PerfReadout {
-  /** この窓が数え始めてからの累計の描画枚数。 */
+  /**
+   * 直近 `PERF_INTERVAL_MS`（250ms）ぶんに描いたフレーム数（**累計ではない**。M7:
+   * Plan 5 C/D レビュー）。`PerfProbe` は書き出すたびにこの窓を0へ戻す。アプリを起動して
+   * からの累計は隠し要素の `data-total-frames` にある（無操作3秒で増えないことを見る
+   * E2E はそちらを読むこと）。
+   */
   frames: number;
   /** 直近 `PERF_INTERVAL_MS` の実効フレームレート[fps]（小数1桁）。 */
   fps: number;
@@ -80,7 +85,9 @@ export function parsePerf(text: string): PerfReadout | undefined {
 
 /**
  * 計測窓（`Canvas` の中に置く）。描いたフレームごとに数え、`PERF_INTERVAL_MS` ごとに書き出す。
- * `frames` は**累計**なので、無操作のあいだ増えなければ `frameloop="demand"` が効いている。
+ * JSON の `frames` は**直近の窓ぶん**（`windowFrames`。累計ではない。M7）。無操作のあいだ
+ * 増えなければ `frameloop="demand"` が効いている、を見るのは累計を持つ `data-total-frames`
+ * の方（`total`）。
  */
 export function PerfProbe({ nodeRef }: { nodeRef: RefObject<HTMLDivElement | null> }): null {
   const gl = useThree((state) => state.gl);

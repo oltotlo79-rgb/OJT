@@ -287,4 +287,26 @@ describe('配線ガイド（§16 Phase 5 受入基準②）', () => {
     expect(useStore.getState().highlight).toEqual({ cellIds: [], terminals: [], wireIds: [] });
     expect(useStore.getState().route).toBe('result');
   });
+
+  /*
+   * M1（Plan 5 C/D レビュー）: `onHover` と同じく、結果画面から跳んできている
+   * （`boardFocus`）あいだは回路図の要素クリック（ヒント／下書き）もハイライトを触らない。
+   * 帯は「結果から: …」のままなのに、要素を押しただけで光が別物へ差し替わると、
+   * 帯と光の対応が食い違って見える。
+   */
+  it('keeps the highlight from the result screen when a schematic hint element is clicked while boardFocus is set (M1)', () => {
+    render(<Session />);
+    const focused = { cellIds: ['c99'], terminals: ['CR1.14'], wireIds: ['sw-001'] };
+    act(() => {
+      useStore.getState().setHighlight(focused);
+      useStore
+        .getState()
+        .setBoardFocus({ from: 'result', text: 'CR1.14 と P.1 がつながっていません' });
+    });
+    const symbol = screen.getByTestId('schematic-hint').querySelector('[data-cell]');
+    expect(symbol).not.toBeNull();
+    if (symbol === null) return;
+    fireEvent.click(symbol);
+    expect(useStore.getState().highlight).toEqual(focused);
+  });
 });

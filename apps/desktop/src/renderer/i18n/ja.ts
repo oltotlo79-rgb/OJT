@@ -4,6 +4,7 @@ import type { FaultReportKind, StaticCheckId } from '@ojt/content';
 import type { DialectId } from '@ojt/plc-dialects';
 import { MSG } from '../../shared/messages.js';
 import type { ProbeSide } from '../app/store-types.js';
+import type { PinGroup } from '../session/socket-pins.js';
 
 /**
  * 日本語文言。設計仕様 §15「全文言を1箇所に集約しハードコードしない」。
@@ -1025,7 +1026,8 @@ export const JA = {
     search: '端子を探す',
     pending: '1本目',
     cancel: '取り消す',
-    full: 'この端子には既に2本つながっています（§6.6）',
+    // 上限は §6.6（1端子2本まで）。訓練者が読む文字列に節番号は出さない（M4: Plan 5 C/D レビュー）
+    full: 'この端子には既に2本つながっています',
   },
   // --- /Plan 5 Task 10 ---
 } as const;
@@ -1447,3 +1449,95 @@ export function schematicZoomText(zoom: number): string {
   return `${JA.schematicView.zoomLabel} ${String(Math.round(zoom * 100))}%`;
 }
 // --- /schematic quality 2026-09-19 ---
+
+// --- socket pin roles 2026-09-20 ---
+/**
+ * ソケットのピンの役割の言葉。設計仕様 §6.2 / §8.2。
+ * 利用者要望 2026-09-20「リレーソケットの各番号はどこが何かわからないから分かるようにしてね」。
+ *
+ * 3Dソケットの面の印字（`three/labels.ts`）・端子のツールチップ（`three/Socket.tsx`）・
+ * 部品カードのピン配列の図（`panels/SocketPinout.tsx`）の**3か所が同じ4語**を使う。
+ * `NC` / `NO` / `接点a` のような言い換えは作らない（利用者の設計方針「統一された見た目」）。
+ */
+const PIN_GROUP_NAME: Readonly<Record<PinGroup, string>> = {
+  nc: 'b接点',
+  no: 'a接点',
+  com: 'COM',
+  coil: 'コイル',
+};
+
+/** ピンの役割まわりの文言。 */
+export const JA_PIN = {
+  /** 役割の大分類の呼び名。3か所で共有する。 */
+  group: PIN_GROUP_NAME,
+  /** 部品カードの図の見出し。 */
+  legendTitle: 'ピン配列',
+  /** 図の読み上げ（`role="img"` の代替テキスト）。 */
+  legendAria: 'ソケットのピン配列。番号ごとに b接点・a接点・COM・コイルのどれかを示す',
+  /** 「接点の組」の呼び名。 */
+  pairs: '接点の組',
+  /** ツールチップでの端子の呼び方（`端子5`）。 */
+  pin: '端子',
+  /** ツールチップの「組になる」。 */
+  pairedWith: 'と組',
+  /** 役割が割り当てられていないソケット。 */
+  spare: '予備',
+} as const;
+
+/**
+ * ピン番号の並びの書き方。連番が3本以上なら `1-4`、そうでなければ `13・14` のように並べる。
+ * 番号そのものは盤定義（`SOCKET_PIN_GRID`）から来るので、ここで数を決め打ちしない。
+ */
+export function pinRangeText(pins: readonly number[]): string {
+  const first = pins.at(0);
+  const last = pins.at(-1);
+  if (first === undefined || last === undefined) return '';
+  const contiguous = pins.every((pin, index) => pin === first + index);
+  return contiguous && pins.length > 2
+    ? `${String(first)}-${String(last)}`
+    : pins.map(String).join('・');
+}
+
+/** 部品カードの段見出し（`b接点 1-4` / `コイル 13・14`）。§8.2 */
+export function pinGroupLabel(group: PinGroup, pins: readonly number[]): string {
+  const range = pinRangeText(pins);
+  return range === '' ? JA_PIN.group[group] : `${JA_PIN.group[group]} ${range}`;
+}
+
+/** 接点の組の一行（`接点の組: 1-5-9 / 2-6-10 / 3-7-11 / 4-8-12`）。§6.2 */
+export function contactSetsText(sets: ReadonlyArray<readonly number[]>): string {
+  return `${JA_PIN.pairs}: ${sets.map((set) => set.map(String).join('-')).join(' / ')}`;
+}
+
+/**
+ * 端子のツールチップ（`S1 端子5: CR1 リレー MY4N の a接点（COM 9 と組）`）。§8.2
+ *
+ * 出すのは5つだけ: ソケットID・端子番号・挿さっている部品・役割・組になる相手。
+ * 相手が**同じ仲間**（コイルの13と14）のときは役割名を繰り返さず番号だけにする
+ * （`コイル（コイル 14 と組）` は同じ言葉が2回出て読みにくい）。
+ */
+export function socketPinTooltip(args: {
+  socketId: string;
+  pin: number;
+  /** 役割ID（`CR1` / `T1` / `CHK`）。予備ソケットは undefined。 */
+  role: string | undefined;
+  /** 挿さっている部品の呼び名（`リレー MY4N`）。空きソケットは undefined。 */
+  partName: string | undefined;
+  group: PinGroup;
+  /** 組になるピン（`session/socket-pins.ts` の `pinPartners()`）。 */
+  partners: ReadonlyArray<{ pin: number; group: PinGroup }>;
+}): string {
+  const owner = [args.role ?? JA_PIN.spare, args.partName]
+    .filter((part): part is string => part !== undefined && part !== '')
+    .join(' ');
+  const pairs = args.partners
+    .map((partner) =>
+      partner.group === args.group
+        ? String(partner.pin)
+        : `${JA_PIN.group[partner.group]} ${String(partner.pin)}`,
+    )
+    .join('・');
+  const tail = pairs === '' ? '' : `（${pairs} ${JA_PIN.pairedWith}）`;
+  return `${args.socketId} ${JA_PIN.pin}${String(args.pin)}: ${owner} の ${JA_PIN.group[args.group]}${tail}`;
+}
+// --- /socket pin roles 2026-09-20 ---

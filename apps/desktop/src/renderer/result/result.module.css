@@ -256,7 +256,8 @@
   color: #10141c;
   font-size: 12px;
   font-weight: 700;
-  padding: 2px 8px;
+  /* 4pxグリッドに揃える（Plan 5 C/D レビュー M6） */
+  padding: 4px 8px;
   white-space: nowrap;
 }
 
