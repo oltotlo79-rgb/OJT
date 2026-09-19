@@ -37,6 +37,9 @@ export { MITSUBISHI_FX5U, roundTimerPreset, timerBaseMs } from './mitsubishi.js'
 
 export { OMRON_CP1E } from './omron.js';
 
+export { JTEKT_PC10G } from './jtekt.js';
+
+import { JTEKT_PC10G } from './jtekt.js';
 import { MITSUBISHI_FX5U } from './mitsubishi.js';
 import { OMRON_CP1E } from './omron.js';
 import {
@@ -51,6 +54,7 @@ import {
  */
 const PROFILES: Partial<Record<DialectId, DialectProfile>> = {
   mitsubishi: MITSUBISHI_FX5U,
+  jtekt: JTEKT_PC10G,
   omron: OMRON_CP1E,
 };
 
