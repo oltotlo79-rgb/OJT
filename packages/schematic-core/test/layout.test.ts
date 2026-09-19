@@ -55,6 +55,7 @@ function markBox(s: Shape): Box | undefined {
     };
   }
   if (s.kind === 'text') return undefined;
+  if (s.kind === 'rect') return { x1: s.x, x2: s.x + s.w, y1: s.y, y2: s.y + s.h };
   return { x1: s.cx - s.r, x2: s.cx + s.r, y1: s.cy - s.r, y2: s.cy + s.r };
 }
 
@@ -65,8 +66,17 @@ function overlaps(a: Box, b: Box): boolean {
 /** 段の並び順に依らない図形の表現（y座標を「どの段の行か＋ずれ」に読み替える）。 */
 function shapesByRow(doc: SchematicDocument): string[] {
   const o = DEFAULT_LAYOUT_OPTIONS;
-  const row = (y: number): string => {
-    const index = Math.round((y - o.marginY) / o.rowHeight);
+  /**
+   * 線や円は「いちばん近い行」を基準にする（親の段へ渡る縦線は他の行にも触れるので、
+   * 自分の段を基準にすると段の並び順で表現が変わってしまう）。
+   * 文字だけは**自分の段**を基準にする（銘板は段の中心より1行ぶん近く上に出るため、
+   * いちばん近い行に丸めると隣の行の持ち物に見えてしまう）。
+   */
+  const row = (y: number, rungId: string | undefined): string => {
+    const index =
+      rungId === undefined
+        ? Math.round((y - o.marginY) / o.rowHeight)
+        : doc.rungs.findIndex((r) => r.id === rungId);
     const owner = doc.rungs[index];
     const base = owner === undefined ? 0 : o.marginY + index * o.rowHeight;
     return `@${owner?.id ?? '-'}${(y - base).toFixed(3)}`;
@@ -75,12 +85,15 @@ function shapesByRow(doc: SchematicDocument): string[] {
     .shapes.map((s) => {
       const source = `${s.rungId ?? '-'}/${s.cellId ?? '-'} ${s.role}`;
       if (s.kind === 'line') {
-        return `${source} line ${s.x1},${row(s.y1)} ${s.x2},${row(s.y2)}`;
+        return `${source} line ${s.x1},${row(s.y1, undefined)} ${s.x2},${row(s.y2, undefined)}`;
       }
-      if (s.kind === 'text') return `${source} text ${s.x},${row(s.y)} ${s.text} ${s.anchor}`;
+      if (s.kind === 'text')
+        return `${source} text ${s.x},${row(s.y, s.rungId)} ${s.text} ${s.anchor}`;
       if (s.kind === 'circle')
-        return `${source} circle ${s.cx},${row(s.cy)} ${s.r} ${s.fill ?? ''}`;
-      return `${source} arc ${s.cx},${row(s.cy)} ${s.r} ${s.startDeg}-${s.endDeg}`;
+        return `${source} circle ${s.cx},${row(s.cy, undefined)} ${s.r} ${s.fill ?? ''}`;
+      if (s.kind === 'rect')
+        return `${source} rect ${s.x},${row(s.y, undefined)} ${s.w}x${s.h} ${s.fill ?? ''}`;
+      return `${source} arc ${s.cx},${row(s.cy, undefined)} ${s.r} ${s.startDeg}-${s.endDeg}`;
     })
     .sort();
 }
@@ -126,23 +139,31 @@ describe('layout: 読取専用レンダラ用の図形データ（§11.2）', ()
   });
 
   it('接点記号: a接点／b接点／押ボタン操作子／限時記号（調査資料 §3.4）', () => {
+    // 刃形は「左の固定接点・右の固定接点・ブレード」の3本が土台。§11.1
     const a = contactShapes('cr-a', 0, 0, 12);
     const b = contactShapes('cr-b', 0, 0, 12);
     expect(a).toHaveLength(3);
-    expect(b).toHaveLength(4);
+    expect(b).toHaveLength(3);
+    // a接点はブレードの先が右の固定接点に届かない（開）。b接点は届く（閉）
+    const bladeOf = (shapes: readonly Shape[]): Shape | undefined => shapes[2];
+    const aBlade = bladeOf(a);
+    const bBlade = bladeOf(b);
+    if (aBlade?.kind !== 'line' || bBlade?.kind !== 'line') throw new Error('blade');
+    expect(aBlade.x2).toBeLessThan(bBlade.x2);
+    expect(bBlade.x2).toBeCloseTo(6, 6);
     const pb = contactShapes('pb-a', 0, 0, 12);
     expect(pb).toHaveLength(5);
     const timed = contactShapes('t-a', 0, 0, 12);
     expect(timed).toHaveLength(4);
     expect(timed[3]?.kind).toBe('arc');
-    expect(contactShapes('t-b', 0, 0, 12)).toHaveLength(5);
+    expect(contactShapes('t-b', 0, 0, 12)).toHaveLength(4);
   });
 
-  it('負荷記号: コイル＝丸、ランプ＝丸＋×（色つき）、ブザー＝半円（§11.1）', () => {
+  it('負荷記号: コイル＝長方形、ランプ＝丸＋×（色つき）、ブザー＝半円（§11.1）', () => {
     const cr = loadShapes(coil('c', 'CR1'), 0, 0, 12);
     expect(cr).toHaveLength(1);
-    expect(cr[0]?.kind).toBe('circle');
-    expect(cr[0]?.kind === 'circle' ? cr[0].r : 0).toBeCloseTo(4.8, 6);
+    expect(cr[0]?.kind).toBe('rect');
+    expect(cr[0]?.kind === 'rect' ? cr[0].w : 0).toBeCloseTo(12, 6);
     const pl = loadShapes(lamp('c', 'PL3'), 0, 0, 12);
     expect(pl).toHaveLength(3);
     expect(pl[0]?.kind === 'circle' ? pl[0].fill : '').toBe(LAMP_FILL.PL3);

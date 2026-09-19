@@ -58,11 +58,15 @@ export {
   loadShapes,
   rungStartX,
   slotRects,
+  SYMBOL_METRICS,
+  terminalMarks,
   type LayoutOptions,
   type SchematicLayout,
   type Shape,
   type ShapeRole,
+  type ShapeSource,
   type SlotRect,
+  type TerminalMark,
 } from './layout.js';
 
 export {
