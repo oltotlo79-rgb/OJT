@@ -32,7 +32,7 @@ import { toScene } from '../src/renderer/three/coords.js';
 /*
  * `900×600`（aspect 1.5）は分割画面の3Dペインの実際の形を再現しておらず、I2 のバグ
  * （盤面延長の PLC が画角の外に落ちる）を隠していた（レビュー指摘）。分割画面の右ペイン
- * は `PLC_VIEW_ASPECT`（0.6）ぶんだけ縦長になるので、ここでもその比のボックスで検査する。
+ * は `PLC_VIEW_ASPECT`（0.75）ぶんだけ縦長になるので、ここでもその比のボックスで検査する。
  */
 const BOX = { x: 0, y: 0, width: 420, height: 420 / PLC_VIEW_ASPECT };
 
@@ -98,14 +98,21 @@ describe('機種ごとの「盤＋PLC」視点（決定表#18）', () => {
     expect(cameraPose('plc')).toEqual(cameraPose('plc', { plcUnit: PLC_UNIT_FX5U }));
   });
 
-  it('widens the rect so a rack fits', () => {
+  it('widens the rect so a rack fits, with the outline strictly inside it', () => {
     const rack = plcViewRect(PLC_UNIT_PC10G);
     expect(rack.w).toBeGreaterThanOrEqual(PLC_VIEW_RECT.w);
     expect(rack.h).toBeGreaterThanOrEqual(PLC_VIEW_RECT.h);
-    // ラックの下端まで入る
-    expect(rack.y + rack.h).toBeGreaterThanOrEqual(
-      PLC_UNIT_PC10G.pos.y + PLC_UNIT_PC10G.sizeMm.height,
-    );
+    /*
+     * 「辺がぴったり重なる」では余白ゼロで、画面の端に張り付いた時点で合格になってしまう
+     * （レビュー M9）。ラックの外形は矩形の**内側**にあることを厳密（`>` / `<`）に見る。
+     */
+    for (const unit of [PLC_UNIT_PC10G, PLC_UNIT_JW300]) {
+      const rect = plcViewRect(unit);
+      expect(rect.x, unit.model).toBeLessThan(unit.pos.x);
+      expect(rect.y, unit.model).toBeLessThan(unit.pos.y);
+      expect(rect.x + rect.w, unit.model).toBeGreaterThan(unit.pos.x + unit.sizeMm.width);
+      expect(rect.y + rect.h, unit.model).toBeGreaterThan(unit.pos.y + unit.sizeMm.height);
+    }
   });
 
   it('stays inside the orbit distance limits for every model', () => {
