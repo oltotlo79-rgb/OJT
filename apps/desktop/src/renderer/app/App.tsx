@@ -287,7 +287,13 @@ export function App(): JSX.Element {
         {toasts.map((toast) => (
           <div
             key={toast.id}
-            className={`${styles.toast} ${toast.tone === 'error' ? styles.toastError : ''}`}
+            className={`${styles.toast} ${
+              toast.tone === 'error'
+                ? styles.toastError
+                : toast.tone === 'warn'
+                  ? styles.toastWarn
+                  : ''
+            }`}
             data-testid="toast"
             role="status"
           >

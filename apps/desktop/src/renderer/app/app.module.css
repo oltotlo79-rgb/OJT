@@ -59,6 +59,11 @@
   border-left-color: var(--ng);
 }
 
+/* 保存は続けたが直したほうがよい指摘（設定値が `?` で書き出された等）。Plan 4B Batch C 修正 #3 */
+.toastWarn {
+  border-left-color: var(--warn);
+}
+
 /*
  * 起動時の復元カード（UXレビュー #15）。`.restorePrompt`（薄い帯）と違い、
  * どの課題のどんな作業を復元するのか（モード・課題名・経過時間）を見せる必要があるので、

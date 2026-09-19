@@ -197,5 +197,26 @@ describe('命令語リストの書き出し（§10.7 / Task 9）', () => {
     );
     expect(screen.getByTestId('il-issues')).toHaveTextContent('左母線');
   });
+
+  /**
+   * レビュー #1: `il-issues` は `<details>` の**外**にある必要がある。PCwin風
+   * （`outputPane: 'status-bar'`）は `open={false}` で畳んだまま渡されるので、中に置くと
+   * 「命令語リスト」を押しても理由が読めなくなる。
+   */
+  it('still shows the explanation when the details are folded closed', () => {
+    render(
+      <OutputWindow
+        issues={{ errors: [], warnings: [], usage: undefined, unused: undefined }}
+        converted
+        convertKey="F4"
+        open={false}
+        onJump={() => undefined}
+        onExport={() => undefined}
+        exportIssues={['左母線につながっていない出力があります。']}
+      />,
+    );
+    expect(screen.getByTestId('output-details')).not.toHaveAttribute('open');
+    expect(screen.getByTestId('il-issues')).toHaveTextContent('左母線');
+  });
 });
 // --- /Plan 4B Task 9 ---

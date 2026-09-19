@@ -77,6 +77,19 @@ export function OutputWindow({
         </button>
       </div>
       {/*
+        命令語リストにできなかった理由（§10.7 / Task 9。直し方まで書く）。**`<details>` の外**に
+        置く（レビュー #1）: PCwin風（`outputPane: 'status-bar'`）は `open` が常に `false` で
+        中身が畳まれているため、`<details>` の中に置くと「命令語リスト」を押しても何も出ず、
+        保存もされない（未接続コイルなど）ように見えてしまう。畳んでいるスキンでも読める位置。
+      */}
+      {exportIssues.length === 0 ? null : (
+        <ul className={styles.notationErrors} data-testid="il-issues">
+          {exportIssues.map((text) => (
+            <li key={text}>{text}</li>
+          ))}
+        </ul>
+      )}
+      {/*
         畳めるようにする（2026-09-19 UXレビュー #27）。既定の開閉はスキンが持つ `open` に従う
         （`window` のスキンは開いたまま。変換の結果はいちばん見せたい情報。PCwin風だけは
         ステータスバー1行に畳んでおく。レビュー B2）。畳めばその高さがそのまま格子に戻る。
@@ -99,14 +112,6 @@ export function OutputWindow({
           </span>
         </summary>
         <div className={styles.outputBody}>
-          {/* 命令語リストにできなかった理由（§10.7 / Task 9）。直し方まで書く */}
-          {exportIssues.length === 0 ? null : (
-            <ul className={styles.notationErrors} data-testid="il-issues">
-              {exportIssues.map((text) => (
-                <li key={text}>{text}</li>
-              ))}
-            </ul>
-          )}
           <ul className={styles.outputList}>
             {rows.length === 0 ? (
               <li className={styles.outputEmpty}>{JA.ladder.noIssues}</li>

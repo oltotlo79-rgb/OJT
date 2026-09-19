@@ -37,7 +37,9 @@ export type CameraPreset =
 export interface Toast {
   id: number;
   text: string;
-  tone: 'info' | 'error';
+  // --- Plan 4B Batch C 修正 #3: 保存は続けるが直したほうがよい指摘（設定値が `?` で書き出された等） ---
+  tone: 'info' | 'error' | 'warn';
+  // --- /Plan 4B Batch C 修正 #3 ---
   /** これを過ぎたら消す時刻（`Date.now()` と同じ基準の[ms]）。 */
   expiresAt: number;
 }

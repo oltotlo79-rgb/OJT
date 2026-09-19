@@ -152,30 +152,38 @@ export function LadderWorkspace({
    * 文言は 4A の `INSTRUCTION_LIST_MESSAGES` を使い、訓練者が直せない言い回し
    * （`coil-unconnected` / `not-series-parallel`）だけ**平易な直し方**に置き換える。
    * `instructionList()` の生の `message` は回路ブロックの内部ID（`n1`）を含むので画面には出さない。
+   *
+   * `preset-unavailable`（設定値が機種で表せず `?` で書き出される）は行自体は書けているので
+   * **保存を止めない**。それ以外（`compile-failed` / `coil-unconnected` /
+   * `not-series-parallel`）は書けた行に意味が無いので保存しない（レビュー #3）。
    */
   const exportIl = useCallback((): void => {
     const store = useStore.getState();
     const current = store.ladder;
     if (current === undefined) return;
     const list = instructionList(current, profile);
-    if (list.errors.length > 0) {
-      /*
-       * `INSTRUCTION_LIST_MESSAGES` は `Readonly<Record<string, string>>` で4キーしか入って
-       * いない（landed `instruction-list.ts` L45-50）。`issue.code` はただの `string` なので、
-       * **必ず `??` で受ける**（`noUncheckedIndexedAccess` の下で `string | undefined` に
-       * なる。無い鍵を引いたら `issue.message` に倒す。レビュー I9）。
-       * 同じ理由の指摘が出力の数だけ並ぶので、同じ文は1つに畳む。
-       */
-      const texts = list.errors.map(
-        (issue) =>
-          JA.ladder.ilIssueAdvice[issue.code] ??
-          INSTRUCTION_LIST_MESSAGES[issue.code] ??
-          issue.message,
-      );
-      setExportIssues([...new Set(texts)]);
+    /*
+     * `INSTRUCTION_LIST_MESSAGES` / `JA.ladder.ilIssueAdvice` は `Readonly<Record<string, string>>`
+     * で決まったキーしか入っていない（landed `instruction-list.ts` L45-50）。`issue.code` はただの
+     * `string` なので、**必ず `??` で受ける**（`noUncheckedIndexedAccess` の下で `string | undefined`
+     * になる。無い鍵を引いたら `issue.message` に倒す。レビュー I9）。
+     * 同じ理由の指摘が出力の数だけ並ぶので、同じ文は1つに畳む。
+     */
+    const adviceOf = (issue: (typeof list.errors)[number]): string =>
+      JA.ladder.ilIssueAdvice[issue.code] ?? INSTRUCTION_LIST_MESSAGES[issue.code] ?? issue.message;
+    const blocked = list.errors.some((issue) => issue.code !== 'preset-unavailable');
+    if (blocked) {
+      const texts = [...new Set(list.errors.map(adviceOf))];
+      setExportIssues(texts);
+      // 出力ウィンドウを畳んでいるスキンでも押した直後に気付けるように（レビュー #1）
+      const [first] = texts;
+      if (first !== undefined) store.toast(first, 'error');
       return;
     }
-    setExportIssues([]);
+    const warnings = [...new Set(list.errors.map(adviceOf))];
+    setExportIssues(warnings);
+    const [firstWarning] = warnings;
+    if (firstWarning !== undefined) store.toast(firstWarning, 'warn');
     try {
       void ojtApi()
         .saveTextFile({ defaultFileName: `${problem.id}_命令語リスト.txt`, text: list.text })
