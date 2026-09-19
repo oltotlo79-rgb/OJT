@@ -236,14 +236,46 @@
   margin-bottom: 10px;
 }
 
-/* モードDのセッション画面。決定表#10（ラダー ⇄ 3D の分割） */
+/*
+ * モードDのセッション画面。決定表#10（ラダー ⇄ 3D の分割）。列は左から
+ * 「3D（盤＋PLC）／ラダー／課題・部品・ログ」。
+ *
+ * 2026-09-19 UXレビュー #27: `minmax(520px, 1fr) minmax(420px, 1fr)` は両ペインを等分に
+ * 伸ばすので、1920px でも3Dが 794px（中身は 3割ほどで残りは黒）、ラダーの格子は 425px
+ * しか残らず横スクロールしていた。3Dは**必要なぶんだけ**取り、余りはラダーに渡す。
+ *
+ * 3Dの幅は `three/camera.ts` の `PLC_VIEW_ASPECT`（= 幅 ÷ 高さ）で決める。`fitDistanceMm()`
+ * はこの比を前提にカメラ距離を決めるので、ペインがこれより横長だと左右に、縦長だと上下に
+ * 黒が増えるだけで中身は大きくならない。だから **`--plc-aspect` の箱ちょうど**に収める。
+ */
 .plcLayout {
+  /* `three/camera.ts` の `PLC_VIEW_ASPECT`。片方だけ変えない（`ladder-layout.test.tsx` が縛る） */
+  --plc-aspect: 0.75;
+  /* ツールバー＋手順帯＋上下パディングの実測（1920×1080 で 94px）。少し余裕を見て 96px */
+  --plc-chrome: 96px;
+  --plc-pane-h: calc(100vh - var(--plc-chrome));
+  /*
+   * 3Dの幅の上限。これ以上広げるとラダーの格子（既定 12 列 = 582px）が横スクロールに戻る。
+   * 1920px で 614px、2560px で 819px。下限の 420px は `camera.ts` が想定する最小幅。
+   */
+  --plc-board-max: 32vw;
+  --plc-board-w: max(420px, min(var(--plc-board-max), calc(var(--plc-aspect) * var(--plc-pane-h))));
+
   display: grid;
-  grid-template-columns: minmax(520px, 1fr) minmax(420px, 1fr) 300px;
+  grid-template-columns: var(--plc-board-w) minmax(0, 1fr) 300px;
   gap: 8px;
   padding: 8px;
   min-height: 0;
   flex: 1 1 auto;
+}
+
+/*
+ * 分割のときだけ、3Dペインの高さも `--plc-aspect` の箱に丸める。縦に伸ばしても中身は
+ * 大きくならず黒が増えるだけなので、伸ばさずに縦中央へ置く。
+ */
+.plcLayout[data-view='split'] > .viewport {
+  align-self: center;
+  max-height: calc(var(--plc-board-w) / var(--plc-aspect));
 }
 
 .plcLayout[data-view='ladder'] {
@@ -271,11 +303,14 @@
 }
 
 /*
- * 狭い画面では分割をやめて1面に落とす（2026-09-18 の利用者決定。決定表#10）。
- * 520 + 420 + 300px の3列 + 列間ギャップ2本（8px×2）+ 左右パディング（8px×2）で
- * 必要な幅は 1272px（Batch 4+5 レビュー I3: 1180px 境界では3列を並べきれず潰れていた）。
- * 状態は増やさない: `split` のときは `ladder` と同じ1面として描き、盤を見たいときは
- * ツールバーの既存の3ボタンで `board` に切り替えてもらう。
+ * 狭い画面では分割をやめて1列に積む（2026-09-18 の利用者決定。決定表#10）。
+ * 420 + 582 + 300px の3列 + 列間ギャップ2本（8px×2）+ 左右パディング（8px×2）で
+ * 必要な幅は 1318px。境界は利用者決定どおり 1279px に据え置く。
+ *
+ * 2026-09-19 UXレビュー #27: 以前は `split` のとき3Dを `display: none` で消していたため、
+ * 狭い画面では盤がまったく見えなかった。いまは**ラダーが上・3Dが下**（`.viewport` の
+ * `grid-row: 1` をここだけ 2 にする）で、それぞれ自分の高さを持たせて積む。
+ * 3列ぶんの高さが1列に伸びるので、この幅では `.plcLayout` 自身を縦スクロールにする。
  */
 @media (max-width: 1279px) {
   .plcLayout,
@@ -283,11 +318,36 @@
   .plcLayout[data-view='board'] {
     /* 1列に積む（上がラダーか盤、その下に課題・部品・ログの縦列） */
     grid-template-columns: minmax(0, 1fr);
+    overflow-y: auto;
   }
 
-  /* `split` のときは**ラダーだけ**を見せる。盤はツールバーの「盤」で切り替えて見てもらう */
+  /* ラダー（上）→ 3D（下）→ 課題・部品・ログ、の順で高さを配る */
+  .plcLayout[data-view='split'] {
+    grid-template-rows: clamp(380px, 52vh, 760px) clamp(300px, 38vh, 560px) auto;
+  }
+
+  .plcLayout[data-view='ladder'] {
+    grid-template-rows: clamp(420px, 64vh, 900px) auto;
+  }
+
+  .plcLayout[data-view='board'] {
+    grid-template-rows: clamp(360px, 54vh, 760px) auto;
+  }
+
+  /*
+   * `.viewport` の既定は `grid-row: 1`（モードA/B/Cの2列レイアウト用）。1列に積むときは
+   * ラダーを先に置きたいので、ここだけ2行目へ動かす。高さは行が決めるので比の丸めは外す。
+   */
   .plcLayout[data-view='split'] > .viewport {
-    display: none;
+    align-self: stretch;
+    grid-column: 1;
+    grid-row: 2;
+    max-height: none;
+  }
+
+  /* 入れ子のスクロールを増やさない（縦スクロールは `.plcLayout` の1本だけ） */
+  .plcRight {
+    overflow: visible;
   }
 }
 

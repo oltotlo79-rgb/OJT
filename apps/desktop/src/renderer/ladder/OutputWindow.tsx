@@ -48,49 +48,59 @@ export function OutputWindow({
   const unused = issues.unused;
   return (
     <section className={styles.output} data-testid="output-window" aria-label={JA.ladder.output}>
-      <header className={styles.outputHeader}>
-        <h2>{JA.ladder.output}</h2>
-        <span data-testid="convert-state" className={converted ? styles.okTag : styles.ngTag}>
-          {converted ? JA.ladder.convertOk : JA.ladder.notConverted}
-        </span>
-      </header>
-      <ul className={styles.outputList}>
-        {rows.length === 0 ? <li className={styles.outputEmpty}>{JA.ladder.noIssues}</li> : null}
-        {rows.map((row, index) => (
-          // 行は**ボタン**にする（`<li onClick>` はキーボードから押せず、読み上げにも出ない。I11）。
-          // セルを指していない行（`missing-end` など）は `disabled` にして「押せない」ことを見せる。
-          <li key={row.key}>
-            <button
-              type="button"
-              data-testid={`output-row-${String(index)}`}
-              data-severity={row.severity}
-              disabled={row.cursor === undefined}
-              className={row.severity === 'error' ? styles.outputError : styles.outputWarning}
-              onClick={() => {
-                if (row.cursor !== undefined) onJump(row.cursor);
-              }}
-            >
-              <span className={styles.outputLabel}>{row.label}</span>
-              <span className={styles.outputPlace}>{row.place}</span>
-              <span>{row.message}</span>
-            </button>
-          </li>
-        ))}
-      </ul>
-      {issues.usage === undefined || unused === undefined ? null : (
-        <div className={styles.usage}>
-          <p data-testid="usage-reads">
-            {JA.ladder.usageReads}: {issues.usage.reads.join(' ') || JA.inspectRepair.none}
-          </p>
-          <p data-testid="usage-writes">
-            {JA.ladder.usageWrites}: {issues.usage.writes.join(' ') || JA.inspectRepair.none}
-          </p>
-          <p data-testid="usage-unused" className={styles.usageUnused}>
-            {JA.ladder.usageUnused}:{' '}
-            {[...unused.neverRead, ...unused.neverWritten].join(' ') || JA.inspectRepair.none}
-          </p>
+      {/*
+        畳めるようにする（2026-09-19 UXレビュー #27）。既定は開いたまま（変換の結果は
+        いちばん見せたい情報）だが、畳めばその高さがそのまま格子に戻る。
+      */}
+      <details open data-testid="output-details">
+        <summary className={styles.outputHeader} data-testid="output-summary">
+          <h2>{JA.ladder.output}</h2>
+          <span data-testid="convert-state" className={converted ? styles.okTag : styles.ngTag}>
+            {converted ? JA.ladder.convertOk : JA.ladder.notConverted}
+          </span>
+        </summary>
+        <div className={styles.outputBody}>
+          <ul className={styles.outputList}>
+            {rows.length === 0 ? (
+              <li className={styles.outputEmpty}>{JA.ladder.noIssues}</li>
+            ) : null}
+            {rows.map((row, index) => (
+              // 行は**ボタン**にする（`<li onClick>` はキーボードから押せず、読み上げにも出ない。I11）。
+              // セルを指していない行（`missing-end` など）は `disabled` にして「押せない」ことを見せる。
+              <li key={row.key}>
+                <button
+                  type="button"
+                  data-testid={`output-row-${String(index)}`}
+                  data-severity={row.severity}
+                  disabled={row.cursor === undefined}
+                  className={row.severity === 'error' ? styles.outputError : styles.outputWarning}
+                  onClick={() => {
+                    if (row.cursor !== undefined) onJump(row.cursor);
+                  }}
+                >
+                  <span className={styles.outputLabel}>{row.label}</span>
+                  <span className={styles.outputPlace}>{row.place}</span>
+                  <span>{row.message}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+          {issues.usage === undefined || unused === undefined ? null : (
+            <div className={styles.usage}>
+              <p data-testid="usage-reads">
+                {JA.ladder.usageReads}: {issues.usage.reads.join(' ') || JA.inspectRepair.none}
+              </p>
+              <p data-testid="usage-writes">
+                {JA.ladder.usageWrites}: {issues.usage.writes.join(' ') || JA.inspectRepair.none}
+              </p>
+              <p data-testid="usage-unused" className={styles.usageUnused}>
+                {JA.ladder.usageUnused}:{' '}
+                {[...unused.neverRead, ...unused.neverWritten].join(' ') || JA.inspectRepair.none}
+              </p>
+            </div>
+          )}
         </div>
-      )}
+      </details>
     </section>
   );
 }

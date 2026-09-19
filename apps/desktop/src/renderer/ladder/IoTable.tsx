@@ -4,6 +4,7 @@ import { X, Y } from '@ojt/ladder-core';
 import type { DialectProfile } from '@ojt/plc-dialects';
 import type { JSX } from 'react';
 import { JA } from '../i18n/ja.js';
+import { SidePanel } from './SidePanel.js';
 import styles from './ladder.module.css';
 
 /**
@@ -35,8 +36,8 @@ export function IoTable({
     io.inputs.some((input) => inputTerminal(input.x) === undefined) ||
     io.outputs.some((output) => outputTerminal(output.y) === undefined);
   return (
-    <section className={styles.side} aria-label={JA.ladder.ioTable} data-testid="io-table">
-      <h2 className={styles.sideTitle}>{JA.ladder.ioTable}</h2>
+    // 配線中はいつでも見たい表なので、折りたたみの既定は「開いた状態」（#27）
+    <SidePanel title={JA.ladder.ioTable} testId="io-table" open>
       <p className={styles.sideNote} data-testid="io-mode">
         {io.mode === 'fixed' ? JA.ladder.ioFixed : JA.ladder.ioFree}
       </p>
@@ -85,6 +86,6 @@ export function IoTable({
           {JA.ladder.ioTerminalNote}
         </p>
       ) : null}
-    </section>
+    </SidePanel>
   );
 }

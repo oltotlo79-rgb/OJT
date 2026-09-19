@@ -15,6 +15,10 @@
   --ladder-fg-muted: #555;
   --ladder-fg-faint: #6b7280;
   --ladder-line: #d5d8de;
+  /* 右の折りたたみ列の幅。`workspaceBody` の3列目（#27） */
+  --ladder-side-w: 200px;
+  /* 左のプロジェクトツリーの上限幅。回路コメントが長くてもここより広げない（#27） */
+  --ladder-tree-w: 140px;
 
   display: flex;
   flex-direction: column;
@@ -191,20 +195,23 @@
   border-top: 1px solid var(--ladder-line);
   background: #fff;
   color: var(--ladder-fg);
-  max-height: 168px;
-  overflow: auto;
   font-size: 12px;
 }
 
+/*
+ * 出力ウィンドウも開閉できるようにする（#27）。既定は開いたまま（変換の結果はいちばん
+ * 見せたい情報）だが、畳めばその分の高さがそのまま格子に戻る。
+ */
 .outputHeader {
   display: flex;
   gap: 8px;
   align-items: center;
+  background: #e4e7ec;
+  border-bottom: 1px solid var(--ladder-line);
   color: var(--ladder-fg);
+  cursor: pointer;
+  list-style: none;
   padding: 4px 8px;
-  position: sticky;
-  top: 0;
-  background: #eef0f4;
 }
 
 .outputHeader h2 {
@@ -213,13 +220,44 @@
   margin: 0;
 }
 
+.outputBody {
+  max-height: 168px;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+/* 開閉の目印。`display: flex` にすると既定の三角が消えるので自前で出す */
+.outputHeader::before,
+.sideSummary::before {
+  color: var(--ladder-fg-muted);
+  content: '▸';
+  flex: 0 0 auto;
+  font-size: 10px;
+}
+
+details[open] > .outputHeader::before,
+details[open] > .sideSummary::before {
+  content: '▾';
+}
+
+.outputHeader::-webkit-details-marker,
+.sideSummary::-webkit-details-marker {
+  display: none;
+}
+
+.outputHeader:focus-visible,
+.sideSummary:focus-visible {
+  outline: 2px solid #1e64ff;
+  outline-offset: -2px;
+}
+
 .okTag {
-  /* #1c7c3c は見出しの下地で 4.24:1（AA 不足）だったので濃くする（#1） */
+  /* #1c7c3c は見出しの下地（#e4e7ec）で 4.24:1（AA 不足）だったので濃くする（#1） */
   color: #146b31;
 }
 
 .ngTag {
-  /* #b34700 は見出しの下地で 4.45:1（AA 不足）だったので濃くする（#1） */
+  /* #b34700 は見出しの下地（#e4e7ec）で 4.45:1（AA 不足）だったので濃くする（#1） */
   color: #9c3d00;
 }
 
@@ -232,7 +270,7 @@
 /* 行はボタン（キーボードで辿れる。I11）。ボタンの既定の見た目は消して一覧に馴染ませる */
 .outputList li > button {
   display: grid;
-  grid-template-columns: 76px 128px 1fr;
+  grid-template-columns: 76px 128px minmax(0, 1fr);
   gap: 6px;
   padding: 2px 8px;
   width: 100%;
@@ -264,6 +302,7 @@
 .outputEmpty {
   color: #666;
   cursor: default;
+  padding: 2px 8px;
 }
 
 .outputLabel {
@@ -291,19 +330,42 @@
 /* --- /Plan 3B Task 6 --- */
 
 /* --- Plan 3B Task 7 --- */
+/*
+ * 右の列（モニタ／I/O割付／デバイスコメント／キー割当）は `<details>` の折りたたみにする（#27）。
+ * 以前は4つとも `max-height: 200px` の入れ子スクロールで、209px の列に縦スクロールバーが
+ * 4本並んでいた。いまは**列ごと1本**（`.workspaceSide`）だけにする。
+ */
 .side {
   border-top: 1px solid var(--ladder-line);
   color: var(--ladder-fg);
-  padding: 6px 8px;
   font-size: 12px;
-  max-height: 200px;
-  overflow: auto;
+  min-width: 0;
+}
+
+.sideGroup {
+  min-width: 0;
+}
+
+.sideSummary {
+  align-items: center;
+  background: #e4e7ec;
+  color: var(--ladder-fg);
+  cursor: pointer;
+  display: flex;
+  gap: 6px;
+  list-style: none;
+  padding: 5px 8px;
+}
+
+.sideBody {
+  padding: 6px 8px 8px;
 }
 
 .sideTitle {
   color: var(--ladder-fg);
+  display: inline;
   font-size: 12px;
-  margin: 0 0 4px;
+  margin: 0;
 }
 
 .sideNote {
@@ -319,7 +381,7 @@
 
 .commentList li {
   display: grid;
-  grid-template-columns: 52px 1fr;
+  grid-template-columns: 52px minmax(0, 1fr);
   gap: 6px;
   align-items: center;
   margin-bottom: 2px;
@@ -329,17 +391,44 @@
   font-weight: 700;
 }
 
+/*
+ * 表は必ず列の幅に収める（#27）。`table-layout: auto` だと「用途」や注記の文字列が列を
+ * 押し広げ、狭い画面では表だけが横にはみ出して横スクロールが出ていた。
+ */
 .ioTable {
-  width: 100%;
   border-collapse: collapse;
+  table-layout: fixed;
+  width: 100%;
 }
 
 .ioTable th,
 .ioTable td {
   border-bottom: 1px solid #e4e7ec;
   color: var(--ladder-fg);
-  text-align: left;
+  overflow-wrap: anywhere;
   padding: 2px 4px;
+  text-align: left;
+}
+
+.ioTable th:first-child,
+.ioTable td:first-child {
+  width: 30%;
+}
+
+.ioTable th:nth-child(2),
+.ioTable td:nth-child(2) {
+  width: 34%;
+}
+
+/* キー割当表は「注記」が長いので、キーと項目を詰めて注記に幅を回す */
+.shortcutTable th:first-child,
+.shortcutTable td:first-child {
+  width: 26%;
+}
+
+.shortcutTable th:nth-child(2),
+.shortcutTable td:nth-child(2) {
+  width: 30%;
 }
 /* --- /Plan 3B Task 7 --- */
 
@@ -357,9 +446,14 @@
   flex: 1 1 auto;
 }
 
+/*
+ * 余った幅は中央（格子）に全部渡す（#27）。以前は `148px minmax(0, 1fr) 210px` の固定2列に
+ * 挟まれて、1920px でも格子に 425px しか残らず横スクロールしていた。ツリーは中身なりの幅
+ * （`auto`）にし、`.tree` の `max-width` で上限だけ押さえる。
+ */
 .workspaceBody {
   display: grid;
-  grid-template-columns: 148px minmax(0, 1fr) 210px;
+  grid-template-columns: auto minmax(0, 1fr) var(--ladder-side-w);
   min-height: 0;
   flex: 1 1 auto;
 }
@@ -371,20 +465,25 @@
   min-height: 0;
 }
 
+/* 折りたたみ列のスクロールは**ここ1本**だけ。横には絶対に伸ばさない（#27） */
 .workspaceSide {
+  background: #fff;
   border-left: 1px solid var(--ladder-line);
   color: var(--ladder-fg);
-  overflow: auto;
-  background: #fff;
+  min-width: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 .tree {
+  background: #fff;
   border-right: 1px solid var(--ladder-line);
   color: var(--ladder-fg);
-  padding: 6px;
   font-size: 12px;
-  background: #fff;
+  max-width: var(--ladder-tree-w);
+  min-width: 92px;
   overflow: auto;
+  padding: 6px;
 }
 
 .treeRoot {
@@ -434,3 +533,35 @@
   margin-bottom: 4px;
 }
 /* --- /Plan 3B Task 9 --- */
+
+/*
+ * 1600px 未満では、右の折りたたみ列を**編集画面の下の帯**へ回す（#27）。
+ * 1440×900 で3列のまま並べると格子に 300px 前後しか残らない。帯に回すと（畳んだ状態なら
+ * 見出し2段ぶん＝約 56px で済む）格子に 530px 前後を返せる。
+ */
+@media (max-width: 1599px) {
+  .workspace {
+    --ladder-tree-w: 116px;
+  }
+
+  .workspaceBody {
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) auto;
+  }
+
+  .workspaceSide {
+    align-items: flex-start;
+    border-left: 0;
+    border-top: 1px solid var(--ladder-line);
+    display: flex;
+    flex-wrap: wrap;
+    grid-column: 1 / -1;
+    grid-row: 2;
+    max-height: 34vh;
+  }
+
+  .side {
+    border-top: 0;
+    flex: 1 1 240px;
+  }
+}

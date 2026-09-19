@@ -11,6 +11,7 @@ import type { PlcCommandAction } from '../../worker/protocol.js';
 import { useStore } from '../app/store.js';
 import { JA, onOffLabel, plcInputSpecText, secondsLabel } from '../i18n/ja.js';
 import { shortcutKeyOf } from '../session/ladder.js';
+import { SidePanel } from './SidePanel.js';
 import styles from './ladder.module.css';
 
 /**
@@ -33,8 +34,8 @@ export function MonitorPanel({
   const converted = useStore((s) => s.converted);
   const terminal = (name: string | undefined): string => `PLC.${name ?? ''}`;
   return (
-    <section className={styles.side} aria-label={JA.ladder.monitor} data-testid="monitor-panel">
-      <h2 className={styles.sideTitle}>{JA.ladder.monitor}</h2>
+    // RUN/STOP とデバイスの状態は作業中いつでも見たいので、既定は開いた状態（#27）
+    <SidePanel title={JA.ladder.monitor} testId="monitor-panel" open>
       <div className={styles.monitorButtons}>
         {/*
           RUN/STOP の正はツールバー（Task 12 の `extraTools`。決定表#9b）。ここは同じ状態を映す
@@ -133,6 +134,6 @@ export function MonitorPanel({
           </p>
         </>
       )}
-    </section>
+    </SidePanel>
   );
 }

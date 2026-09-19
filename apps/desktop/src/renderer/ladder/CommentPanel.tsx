@@ -3,6 +3,7 @@ import type { DialectProfile } from '@ojt/plc-dialects';
 import { useMemo, type JSX } from 'react';
 import { DEVICE_COMMENT_COUNT_LIMIT, DEVICE_COMMENT_LIMIT } from '../app/store.js';
 import { commentCapText, JA } from '../i18n/ja.js';
+import { SidePanel } from './SidePanel.js';
 import styles from './ladder.module.css';
 
 /**
@@ -53,8 +54,8 @@ export function CommentPanel({
   );
   const full = Object.keys(comments).length >= DEVICE_COMMENT_COUNT_LIMIT;
   return (
-    <section className={styles.side} aria-label={JA.ladder.comments} data-testid="comment-panel">
-      <h2 className={styles.sideTitle}>{JA.ladder.comments}</h2>
+    // コメントは必要なときだけ開く枠なので、既定は畳んだ状態（#27）
+    <SidePanel title={JA.ladder.comments} testId="comment-panel">
       {full ? (
         <p className={styles.sideNote} id={capId} data-testid="comment-cap">
           {commentCapText(DEVICE_COMMENT_COUNT_LIMIT)}
@@ -85,6 +86,6 @@ export function CommentPanel({
           );
         })}
       </ul>
-    </section>
+    </SidePanel>
   );
 }

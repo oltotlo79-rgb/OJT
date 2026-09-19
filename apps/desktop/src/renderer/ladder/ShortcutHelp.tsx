@@ -1,6 +1,7 @@
 import type { DialectProfile } from '@ojt/plc-dialects';
 import type { JSX } from 'react';
 import { JA } from '../i18n/ja.js';
+import { SidePanel } from './SidePanel.js';
 import styles from './ladder.module.css';
 
 /**
@@ -23,17 +24,19 @@ const APP_NOTES: Readonly<Record<string, string>> = {
 export function ShortcutHelp({ profile }: { profile: DialectProfile }): JSX.Element {
   return (
     // 入れ物の `data-testid` は `shortcuts` / `shortcuts-note`。行だけが `shortcut-<action>` に
-    // なるようにして、`getAllByTestId(/^shortcut-/u)` が行だけを数えられるようにする（B9）
-    <section className={styles.side} aria-label={JA.ladder.shortcuts} data-testid="shortcuts">
-      <h2 className={styles.sideTitle}>
-        {JA.ladder.shortcuts}（{profile.displayName}）
-      </h2>
+    // なるようにして、`getAllByTestId(/^shortcut-/u)` が行だけを数えられるようにする（B9）。
+    // 割当表は「困ったときに開く」枠なので、折りたたみの既定は畳んだ状態（#27）
+    <SidePanel
+      title={`${JA.ladder.shortcuts}（${profile.displayName}）`}
+      label={JA.ladder.shortcuts}
+      testId="shortcuts"
+    >
       {/* メーカー名を出す以上、商標の帰属も同じ場所に出す（§17.1） */}
       <p className={styles.sideNote}>{JA.settings.trademarkNotice}</p>
       <p className={styles.sideNote} data-testid="shortcuts-note">
         {JA.ladder.shortcutNote}
       </p>
-      <table className={styles.ioTable}>
+      <table className={`${styles.ioTable} ${styles.shortcutTable}`}>
         <thead>
           <tr>
             <th scope="col">{JA.ladder.shortcutKeyHeader}</th>
@@ -63,6 +66,6 @@ export function ShortcutHelp({ profile }: { profile: DialectProfile }): JSX.Elem
           })}
         </tbody>
       </table>
-    </section>
+    </SidePanel>
   );
 }
