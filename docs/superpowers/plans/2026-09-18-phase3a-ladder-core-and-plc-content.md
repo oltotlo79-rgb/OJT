@@ -9576,7 +9576,7 @@ Plan 3B（`apps/desktop` のGX Works3風スキン・3D・モードD画面）は�
 - [ ] 三菱プロファイルの `SHORTCUTS` が F5/F6/F7/F4 を持ち、`convert()` が模範ラダー8題すべてで `ok: true` を返す（§16 Phase 3 ①の3A側）。
 - [ ] `ladder-core` の編集API7つ（`setCell` / `clearCell` / `insertRow` / `deleteRow` / `insertNetwork` / `deleteNetwork` / `setVerticalLink`）がバレルから公開され、どれも引数のプログラムを書き換えない（`test/edit.test.ts`）。
 - [ ] `PlcSnapshot.poweredCells` が毎スキャン更新され、END ネットワークのキーを含まない（`test/runtime.test.ts`）。
-- [ ] `apps/desktop` への変更が `test/content-loader.test.ts` と `src/renderer/three/labels.ts` と `src/renderer/i18n/ja.ts` の3ファイルだけである（`git show --stat` で確認する。`labels.ts` はレビュー反映 I1: `TerminalRole` が11種→17種に増えたことに追随する変更、`ja.ts` は Task 12 で増えるゾッドのカスタムメッセージの訳文）。
+- [ ] `apps/desktop` への変更は、63c89ec 時点で8件の同梱課題JSON（`resources/content/plc/d-00{1..8}-*.json`）＋ `test/problem-modes.test.ts` ＋ `test/content-loader.test.ts` ＋ `test/content-resources.test.ts`（F〜Hレビュー反映）と、`test/content-loader.test.ts` / `src/renderer/three/labels.ts` / `src/renderer/i18n/ja.ts` の3ファイルの合計である（`git show --stat` で確認する。`labels.ts` はレビュー反映 I1: `TerminalRole` が11種→17種に増えたことに追随する変更、`ja.ts` は Task 12 で増えるゾッドのカスタムメッセージの訳文）。
 
 ---
 
@@ -9584,6 +9584,7 @@ Plan 3B（`apps/desktop` のGX Works3風スキン・3D・モードD画面）は�
 
 | 日付 | 内容 |
 |---|---|
+| 2026-09-19 | F〜H レビュー反映: `checkTwoStage` を `io.mode: 'free'` では配線そのものから判定するよう分離（1）、`content-resources.test.ts` の `WIRED_FILES` に `plc` の8ファイルを追加（2）、`runPlcOperations` の `scanMs` が `tickMs` を既定値に取るよう修正（3）、d-008 の説明にPL1の挙動を追記（4）、d-006 の説明の点滅周期表現を明確化（5）、`PlcCheckContext.roles` を任意化し未使用の実引数を削除（6）、`plcTimerMarkers` が `formatSeconds()`/`deviceLabel()` を再利用し重複デバイスを除去（7）、`detectPlcWiring` の `source`/未配線と `twoStage` の接点未駆動と `ioAssignment` のS/S未配線・シンク/ソース食い違いのテストを追加（8）、内蔵モードD弁別テストにタイマ設定値ずらし（d-003 3000→5000）と出力入れ替えラダーを追加（9）、`checkIoAssignment` を入力・出力とも短絡（X0/X1・Y0/Y1等）を検出するよう強化（10）、本節の3ファイル記述を63c89ec後の実態（同梱課題JSON8件＋関連テスト）に更新（11）、`buildPlcReferenceSession`/`judgePlcReference` の二重コンパイルは `PlcProblemSchema` がコンパイル結果を公開APIとして持たないため見送り（12） |
 | 2026-09-19 | D〜E レビュー反映: `timer-unit` と `timer-range` のエラーコード分離（単位に合わない設定値と範囲外の設定値は原因が別。§10.5 `errorMessages`）、`roundTimerPreset()` の丸め、`internal.max` を `32767` から `7999` に（`M8000` 以降の特殊リレー帯との重なりを避ける。レビュー #M1）、`ConvertResult` を readonly に、`@ojt/content` 側のクロスフィールド検証（`PlcProblemSchema` の `referenceLadder`/`operations`/`judge.compareSignals` をI/O割付の範囲内に限定、`io.mode === 'fixed'` は `inputs`/`outputs` を両方指定するか両方省略、`DeviceCommentsSchema` のキー範囲を `SP0`〜`SP2` と桁数上限に狭める）、Task 12 Files に `apps/desktop/src/renderer/i18n/ja.ts` を追加（PB4カスタムエラー等の訳文）、3Bへの引き渡し表にハンドオフ注記 H-6（内蔵モードD課題8題は `BUILTIN_PLC_PROBLEMS` 経由。Task 20 で使う） |
 | 2026-09-18 | A〜C レビュー反映: `coil-on-read-only-device`（M2）と MC/MCR のデバイス不一致検査（M3）、`setVerticalLink()` のコイル列拒否（M5）、`poweredCells` の空セル列0を `false` に（M4）、`outputCount` JSDoc修正（M6）、レビュー probe の移植テスト、`apps/desktop/src/renderer/three/labels.ts` の `TerminalRole` 追随（I1）、3Bへの引き渡し表の追記（FX5U実機値・8進/10進の対応・追加公開API） |
 | 2026-09-18 | レビュー反映: B1〜B8、I1〜I11、Minor、Task 1b（IR編集API）、`poweredCells`、デバイスコメント、バッチ表の更新 |
