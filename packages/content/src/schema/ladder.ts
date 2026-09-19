@@ -144,7 +144,10 @@ export const DeviceCommentsSchema = z
   .record(
     z
       .string()
-      .regex(/^(X|Y|M|T|C|SP)\d+$/u, 'デバイス表示名は `X0` / `M1` / `T0` / `SP2` の形です'),
+      .regex(
+        /^(?:X\d{1,4}|Y\d{1,4}|M\d{1,4}|T\d{1,4}|C\d{1,5}|SP[0-2])$/u,
+        'デバイス表示名は `X0` / `M1` / `T0` / `SP0`〜`SP2` の形です（桁数は機種の番号帯に収まる範囲）',
+      ),
     z.string().min(1).max(MAX_DEVICE_COMMENT_LENGTH),
   )
   .refine((comments) => Object.keys(comments).length <= MAX_DEVICE_COMMENTS, {
