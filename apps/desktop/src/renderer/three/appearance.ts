@@ -1,5 +1,11 @@
 // `labels.ts` も `FaceRect` を export している（別の形）。読み手が迷わないよう別名で読む（決定表#19）
-import type { FaceRect as AppearanceRect, PlcAppearance, PlcLedMark, Vec3 } from '@ojt/board-model';
+import type {
+  FaceRect as AppearanceRect,
+  PlcAppearance,
+  PlcCoverMark,
+  PlcLedMark,
+  Vec3,
+} from '@ojt/board-model';
 
 /**
  * PLC本体の外観（`PlcAppearance`）を3Dへ写す純関数。設計仕様 §10.1 / §17.1。決定表#15
@@ -98,5 +104,112 @@ export function litLedKeys(appearance: PlcAppearance, state: PlcLedState): Set<s
   return lit;
 }
 
-/** 消灯しているLEDの色（点灯色を暗く見せる代わりに、共通の暗色を使う）。 */
-export const LED_OFF_COLOR = '#4A4F58';
+/*
+ * 消灯色は `@ojt/board-model` の `PLC_LED_OFF` が持つ（`three/**` に色を書かない。決定表#15。
+ * 4B レビュー M7 で `LED_OFF_COLOR` をこのファイルから移した）。
+ */
+
+/**
+ * 端子カバーを開く角度[°]。決定表#16
+ * 実機のヒンジ式カバーは 90° を少し越えて開き、開いたまま止まる。ここも 90° ちょうどだと
+ * 真横から見たときに板が消えてしまうので、少し倒して「開いている」ことが見えるようにする。
+ */
+export const COVER_OPEN_DEG = 100;
+/** 同じ角度[rad]。 */
+export const COVER_OPEN_RAD = (COVER_OPEN_DEG * Math.PI) / 180;
+/** 端子カバーの板厚[mm]。 */
+export const COVER_THICKNESS_MM = 1;
+
+/**
+ * 開いた端子カバー1枚の姿勢。
+ * 3Dは「蝶番の位置に置いた `group` を回し、その中に板を置く」形で描くので、
+ * 回転の軸（＝蝶番）と、蝶番から見た板の中心をそれぞれ返す。
+ */
+export interface CoverPose {
+  /** 蝶番の辺の中点（盤モデル mm）。 */
+  hinge: Vec3;
+  /** 蝶番まわりの回転[rad]（**シーン座標**の XYZ。`toScene()` 後の軸）。 */
+  rotation: [number, number, number];
+  /** 蝶番から見た板の中心（**シーン座標** mm・回転前）。 */
+  offset: [number, number, number];
+  /** 板の幅・高さ[mm]。 */
+  w: number;
+  h: number;
+}
+
+/**
+ * 端子カバーを `hinge` の辺で開いた姿勢を求める。決定表#16
+ *
+ * `toScene()` は盤モデルの y を反転する（盤の手前 = シーンの −Y）ので、
+ * 「上ヒンジのカバーは上へ、下ヒンジのカバーは下へ、いずれも手前（+Z）へ倒す」を
+ * シーン座標の回転で書くとこうなる。左右ヒンジ（ラックのモジュール用）も同じ理屈である。
+ *
+ * @param origin 本体（ラックはモジュール）の左奥の角
+ * @param cover `PlcAppearance.covers` の1枚
+ * @param faceZMm 筐体の前面の高さ[mm]（ラックのベースだけ奥へ下げる）
+ */
+export function coverOpenPose(
+  origin: Vec3,
+  cover: PlcCoverMark,
+  faceZMm = 0,
+  openRad: number = COVER_OPEN_RAD,
+): CoverPose {
+  const { x, y, w, h } = cover.rect;
+  const left = origin.x + x;
+  const top = origin.y + y;
+  const cx = left + w / 2;
+  const cy = top + h / 2;
+  switch (cover.hinge) {
+    case 'top':
+      return {
+        hinge: { x: cx, y: top, z: faceZMm },
+        rotation: [-openRad, 0, 0],
+        offset: [0, -h / 2, 0],
+        w,
+        h,
+      };
+    case 'bottom':
+      return {
+        hinge: { x: cx, y: top + h, z: faceZMm },
+        rotation: [openRad, 0, 0],
+        offset: [0, h / 2, 0],
+        w,
+        h,
+      };
+    case 'left':
+      return {
+        hinge: { x: left, y: cy, z: faceZMm },
+        rotation: [0, -openRad, 0],
+        offset: [w / 2, 0, 0],
+        w,
+        h,
+      };
+    case 'right':
+      return {
+        hinge: { x: left + w, y: cy, z: faceZMm },
+        rotation: [0, openRad, 0],
+        offset: [-w / 2, 0, 0],
+        w,
+        h,
+      };
+  }
+}
+
+/**
+ * 開いたカバーの**自由端**（蝶番の反対側の辺の中点）の位置（盤モデル mm）。
+ * 「カバーが端子の列や机上ケーブルの引き込みを塞いでいないこと」を単体テストで確かめるために、
+ * 3Dの描画と同じ式からこの点を出す。
+ */
+export function coverOpenTip(pose: CoverPose): Vec3 {
+  const [rx, ry] = pose.rotation;
+  // 板の中心までの2倍＝自由端まで
+  const [ox, oy, oz] = [pose.offset[0] * 2, pose.offset[1] * 2, pose.offset[2] * 2];
+  // X軸まわり
+  const y1 = oy * Math.cos(rx) - oz * Math.sin(rx);
+  const z1 = oy * Math.sin(rx) + oz * Math.cos(rx);
+  // Y軸まわり
+  const x2 = ox * Math.cos(ry) + z1 * Math.sin(ry);
+  const z2 = -ox * Math.sin(ry) + z1 * Math.cos(ry);
+  // シーン座標の差分 → 盤モデルの差分（y だけ向きが逆）
+  return { x: pose.hinge.x + x2, y: pose.hinge.y - y1, z: pose.hinge.z + z2 };
+}

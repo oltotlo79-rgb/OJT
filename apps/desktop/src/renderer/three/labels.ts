@@ -206,6 +206,36 @@ export const SOCKET_ROLE_COLOR: Readonly<Record<TerminalRole, string>> = {
   'ac-n': '#8FB8FF',
 };
 
+/**
+ * 印字の色表を「背板（台座）の明るさ」で選ぶ仕組み。B1
+ *
+ * 盤の端子台（`#F1EFE9` の明るい台座）は濃い字が読みやすく、ソケット本体やPLCの端子台（黒）は
+ * 濃い字だと**黒地に黒**で消える。2つの表は同じ役割の並びなので、呼び出し側は背板の色を
+ * 渡すだけでよい。
+ */
+
+/** これより暗い背板は明るい字にする（相対輝度）。 */
+export const PLATE_DARK_LUMINANCE = 0.4;
+
+/** 16進色（`#RRGGBB`）の相対輝度（0＝黒〜1＝白）。sRGBのガンマまでは見ない概算。 */
+export function plateLuminance(hex: string): number {
+  const value = hex.replace('#', '');
+  if (value.length !== 6) return 1;
+  const r = Number.parseInt(value.slice(0, 2), 16) / 255;
+  const g = Number.parseInt(value.slice(2, 4), 16) / 255;
+  const b = Number.parseInt(value.slice(4, 6), 16) / 255;
+  if (Number.isNaN(r) || Number.isNaN(g) || Number.isNaN(b)) return 1;
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+/**
+ * 背板の色に合う印字の色表を返す。B1
+ * 暗い背板（PLCの端子台・ソケット本体）には明るい字、明るい背板（盤の端子台）には濃い字。
+ */
+export function roleColorsFor(plateColor: string): Readonly<Record<TerminalRole, string>> {
+  return plateLuminance(plateColor) < PLATE_DARK_LUMINANCE ? SOCKET_ROLE_COLOR : ROLE_COLOR;
+}
+
 /** キャンバスを作って描き、テクスチャにする。キャンバスが使えない環境では undefined。 */
 export function makeCanvasTexture(
   widthMm: number,
@@ -287,6 +317,8 @@ export function terminalNumber(terminal: BoardTerminal): string {
 export function blockFaceTexture(
   terminals: readonly BoardTerminal[],
   padMm: number,
+  /** 印字の色表（既定は明るい台座用の濃い字。暗い台座には `roleColorsFor()` を渡す。B1）。 */
+  colors: Readonly<Record<TerminalRole, string>> = ROLE_COLOR,
 ): Texture | undefined {
   // 端子が1〜2点しかない端子台でもテクスチャが潰れないよう、外接矩形と最小サイズは
   // `faceRect()` が持つ（`PlcUnit.tsx` の `plcFaceRect()` と共通。レビュー MERGE #15）
@@ -299,7 +331,7 @@ export function blockFaceTexture(
     for (const terminal of terminals) {
       const x = (terminal.pos.x - rect.minX + offsetX) * PX_PER_MM;
       const y = (terminal.pos.y - rect.minY + offsetY) * PX_PER_MM;
-      ctx.fillStyle = ROLE_COLOR[terminal.role];
+      ctx.fillStyle = colors[terminal.role];
       ctx.fillText(blockTerminalMark(terminal), x, y + BLOCK_MARK_MM * PX_PER_MM * 1.5);
     }
   });

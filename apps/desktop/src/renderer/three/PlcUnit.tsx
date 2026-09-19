@@ -1,20 +1,28 @@
-import type { BoardTerminal, PlcAppearance, PlcUnitDefinition, Vec3 } from '@ojt/board-model';
+import {
+  PLC_LED_OFF,
+  type BoardTerminal,
+  type PlcAppearance,
+  type PlcUnitDefinition,
+  type Vec3,
+} from '@ojt/board-model';
 import type { TerminalId } from '@ojt/circuit-sim';
 import { Html } from '@react-three/drei';
-import { useMemo, type JSX } from 'react';
+import { useEffect, useMemo, type JSX } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { useStore } from '../app/store.js';
 import {
+  coverOpenPose,
   faceRectToBoard,
   litLedKeys,
+  COVER_THICKNESS_MM,
   FACE_LABEL_LIFT_MM,
   FACE_LED_LIFT_MM,
   FACE_LIFT_MM,
-  LED_OFF_COLOR,
   PLC_BODY_Z_MM,
   type PlcLedState,
 } from './appearance.js';
 // `plcFaceRect()` は landed のまま `labels.ts` の `faceRect()` を包む（4A H-7 の「残す2つ」）
-import { blockFaceTexture, faceRect } from './labels.js';
+import { blockFaceTexture, faceRect, roleColorsFor } from './labels.js';
 import { sharedMaterial, UNIT_BOX } from './materials.js';
 import { TerminalHit, terminalTooltip } from './TerminalHit.js';
 import { toScene } from './coords.js';
@@ -59,12 +67,22 @@ export function plcFaceRect(
   return faceRect(terminals, padMm);
 }
 
-/** いまのLEDの状態をストアから作る（決定表#20）。 */
+/**
+ * いまのLEDの状態をストアから作る（決定表#20）。
+ *
+ * 入出力の配列は `plcMonitor` がスキャンごとに作り直す（中身が同じでも参照が変わる）ので、
+ * `s.plcMonitor?.inputs` をそのまま購読すると**スナップショットが届くたびに再描画**になる
+ * （4B レビュー I5）。`useShallow` で「点の並びが変わったときだけ」通す。
+ *
+ * 再描画さえ起きればLEDは塗り替わる: R3F 9 の再構成器は prop を書き換えるたびに
+ * `invalidateInstance()` を呼ぶので、`frameloop="demand"` でも LED の色替えは1フレーム描き直される
+ * （「変わった印」＝ `visualSignature` のような値を別に持たせる必要はない）。
+ */
 export function useLedState(): PlcLedState {
   const running = useStore((s) => s.plcRunning);
   const convertFailed = useStore((s) => !s.converted && s.convertIssues.errors.length > 0);
-  const inputs = useStore((s) => s.plcMonitor?.inputs);
-  const outputs = useStore((s) => s.plcMonitor?.outputs);
+  const inputs = useStore(useShallow((s) => s.plcMonitor?.inputs));
+  const outputs = useStore(useShallow((s) => s.plcMonitor?.outputs));
   return useMemo(
     () => ({ running, convertFailed, inputs, outputs }),
     [running, convertFailed, inputs, outputs],
@@ -73,13 +91,14 @@ export function useLedState(): PlcLedState {
 
 /**
  * 外観1枚ぶん（本体、またはラックのモジュール1枚）の面を描く。
- * 筐体 → 端子カバー → 造作 → LED → 銘板の順に、盤面から少しずつ手前へ重ねる。
+ * 筐体 → 端子台 → 開いた端子カバー → 造作 → LED → 銘板の順に、盤面から少しずつ手前へ重ねる。
  */
 export function PlcFace({
   origin,
   appearance,
   depthMm,
   ledState,
+  faceZMm = 0,
 }: {
   /** 左奥の角（`unit.pos` / `module.pos`）。 */
   origin: Vec3;
@@ -87,6 +106,11 @@ export function PlcFace({
   /** 筐体の厚み[mm]。 */
   depthMm: number;
   ledState: PlcLedState;
+  /**
+   * 筐体の**前面**の高さ[mm]（既定 0 ＝ 端子と同じ面）。
+   * ラックのベースだけモジュールより奥へ下げるので、そのぶんをここで渡す（4B レビュー I3）。
+   */
+  faceZMm?: number;
 }): JSX.Element {
   const lit = useMemo(() => litLedKeys(appearance, ledState), [appearance, ledState]);
   const { width, height } = appearance.faceMm;
@@ -97,27 +121,63 @@ export function PlcFace({
         geometry={UNIT_BOX}
         material={sharedMaterial(appearance.bodyColor, { roughness: 0.65, metalness: 0.1 })}
         raycast={noPick}
-        position={toScene({ x: origin.x + width / 2, y: origin.y + height / 2, z: -depthMm / 2 })}
+        position={toScene({
+          x: origin.x + width / 2,
+          y: origin.y + height / 2,
+          z: faceZMm - depthMm / 2,
+        })}
         scale={[width, height, depthMm]}
       />
-      {/* ヒンジ式の端子カバー（開いた状態で描く。決定表#16） */}
+      {/*
+        端子台（ネジ端子ブロック）。カバーを開けて描くので、その下の端子台が見える
+        （決定表#16 / レビュー I2）。色は `appearance.terminalBlockColor`。
+        端子のネジ・当たり判定球（z = 0 が中心）より**奥**に敷くので、クリックは奪わない。
+      */}
       {appearance.covers.map((cover) => {
-        const box = faceRectToBoard(origin, cover.rect, -FACE_LIFT_MM);
+        const box = faceRectToBoard(origin, cover.rect, faceZMm - FACE_LIFT_MM);
         return (
           <mesh
-            key={cover.id}
+            key={`terminal-block-${cover.id}`}
             geometry={UNIT_BOX}
-            material={sharedMaterial(cover.color, { roughness: 0.8, metalness: 0 })}
+            material={sharedMaterial(appearance.terminalBlockColor, {
+              roughness: 0.85,
+              metalness: 0.05,
+            })}
             raycast={noPick}
-            name={`plc-cover-${cover.id}`}
+            name={`plc-terminal-block-${cover.id}`}
             position={toScene({ x: box.cx, y: box.cy, z: box.z })}
             scale={[box.w, box.h, 1]}
           />
         );
       })}
+      {/*
+        ヒンジ式の端子カバーは**開いた状態**で描く（決定表#16）。蝶番の辺に置いた `group` を
+        `COVER_OPEN_DEG` だけ回し、その中に板を吊るす（姿勢の式は `coverOpenPose()`）。
+        上ヒンジは上へ、下ヒンジは下へ倒れるので、端子の列・机上ケーブルの引き込み・銘板の
+        どれも塞がない（`plc-appearance-view.test.ts` が検査する）。
+      */}
+      {appearance.covers.map((cover) => {
+        const pose = coverOpenPose(origin, cover, faceZMm);
+        return (
+          <group
+            key={cover.id}
+            name={`plc-cover-${cover.id}`}
+            position={toScene(pose.hinge)}
+            rotation={pose.rotation}
+          >
+            <mesh
+              geometry={UNIT_BOX}
+              material={sharedMaterial(cover.color, { roughness: 0.8, metalness: 0 })}
+              raycast={noPick}
+              position={pose.offset}
+              scale={[pose.w, pose.h, COVER_THICKNESS_MM]}
+            />
+          </group>
+        );
+      })}
       {/* 前面の造作（RUN/STOPスイッチ・コネクタ・スロット・固定ラッチ） */}
       {appearance.features.map((feature) => {
-        const box = faceRectToBoard(origin, feature.rect, FACE_LIFT_MM);
+        const box = faceRectToBoard(origin, feature.rect, faceZMm + FACE_LIFT_MM);
         return (
           <mesh
             key={feature.id}
@@ -132,13 +192,13 @@ export function PlcFace({
       })}
       {/* LED。点灯色は `appearance` が持ち、消灯は共通の暗色にする（決定表#20） */}
       {appearance.leds.map((led) => {
-        const box = faceRectToBoard(origin, led.rect, FACE_LED_LIFT_MM);
+        const box = faceRectToBoard(origin, led.rect, faceZMm + FACE_LED_LIFT_MM);
         const on = lit.has(`${led.group}:${led.name}`);
         return (
           <mesh
             key={`${led.group}:${led.name}`}
             geometry={UNIT_BOX}
-            material={sharedMaterial(on ? led.color : LED_OFF_COLOR, {
+            material={sharedMaterial(on ? led.color : PLC_LED_OFF, {
               roughness: 0.3,
               metalness: 0,
             })}
@@ -157,7 +217,7 @@ export function PlcFace({
         position={toScene({
           x: origin.x + appearance.nameplateRect.x + appearance.nameplateRect.w / 2,
           y: origin.y + appearance.nameplateRect.y + appearance.nameplateRect.h / 2,
-          z: FACE_LED_LIFT_MM,
+          z: faceZMm + FACE_LED_LIFT_MM,
         })}
         zIndexRange={[10, 0]}
       >
@@ -183,8 +243,25 @@ export function PlcUnit({
   onHoverTerminal: (id: TerminalId | undefined) => void;
   onPickTerminal: (terminal: BoardTerminal) => void;
 }): JSX.Element {
-  /** 端子の印字を1枚のテクスチャに焼く。§6.4 / I7 */
-  const faceTexture = useMemo(() => blockFaceTexture(terminals, PLC_LABEL_PAD_MM), [terminals]);
+  /*
+   * 端子の印字を1枚のテクスチャに焼く。§6.4 / I7
+   * 字の色は**背板（端子台）の明るさ**で選ぶ（4B レビュー B1）。PLCの端子台は黒なので、
+   * 盤の端子台（明るい台座）と同じ濃い字では黒地に黒になって読めない。
+   */
+  const faceColors = useMemo(
+    () => roleColorsFor(unit.appearance.terminalBlockColor),
+    [unit.appearance.terminalBlockColor],
+  );
+  const faceTexture = useMemo(
+    () => blockFaceTexture(terminals, PLC_LABEL_PAD_MM, faceColors),
+    [terminals, faceColors],
+  );
+  // 機種を替えると本体ごと作り直される（Plan 4B Task 6）。古いテクスチャは必ず解放する（M10）
+  useEffect(() => {
+    return () => {
+      faceTexture?.dispose();
+    };
+  }, [faceTexture]);
   const face = useMemo(() => plcFaceRect(terminals), [terminals]);
   const ledState = useLedState();
   return (
@@ -199,7 +276,7 @@ export function PlcUnit({
         端子の印字は**テクスチャ1枚**に焼く（`TerminalBlock.tsx` と同じ方針。レビュー指摘 I7）。
         端子42点ぶんの `<Html>` を並べると、DOM のオーバーレイが42個できて `frameloop="demand"`
         でも毎フレーム位置が再計算され、`plc` 視点に切り替えた瞬間にコマ落ちする（§15）。
-        板は**カバーより手前**に置く（決定表#16）。
+        板は**端子台より手前**に置く（決定表#16）。
       */}
       {faceTexture === undefined || face === undefined ? null : (
         <mesh

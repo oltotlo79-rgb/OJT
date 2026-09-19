@@ -1,19 +1,33 @@
 import {
   JIPM_BOARD,
+  PLC_LED_OFF,
   PLC_UNIT_CP1E,
   PLC_UNIT_FX5U,
   PLC_UNIT_JW300,
+  PLC_UNIT_PC10G,
   withPlcUnit,
+  type BoardTerminal,
+  type PlcAppearance,
+  type PlcCoverMark,
+  type Vec3,
 } from '@ojt/board-model';
 import { parseTerminalId } from '@ojt/circuit-sim';
 import { describe, expect, it } from 'vitest';
 import {
+  coverOpenPose,
+  coverOpenTip,
+  COVER_OPEN_RAD,
   faceRectToBoard,
   litLedKeys,
   PLC_BODY_Z_MM,
   type PlcLedState,
 } from '../src/renderer/three/appearance.js';
-import { blockTerminalMark } from '../src/renderer/three/labels.js';
+import {
+  blockTerminalMark,
+  plateLuminance,
+  roleColorsFor,
+  SOCKET_ROLE_COLOR,
+} from '../src/renderer/three/labels.js';
 
 /**
  * 机上のPLC本体の3Dを `PlcAppearance` から描くための純関数（設計仕様 §10.1 / §17.1）。
@@ -143,5 +157,117 @@ describe('端子名の名札（4A H-8）', () => {
     expect(blockTerminalMark(button!)).toBe('PB1a');
     const buzzer = JIPM_BOARD.terminals.find((t) => String(t.id) === 'BZ.+');
     expect(blockTerminalMark(buzzer!)).toBe(`BZ${parseTerminalId(buzzer!.id).name}`);
+  });
+});
+
+describe('端子カバーは開いた状態で描く（決定表#16 / 4B レビュー I2）', () => {
+  const origin = { x: 100, y: 200, z: 0 };
+  /** 試験用のカバー（同じ矩形のまま蝶番の辺だけ替える）。 */
+  function coverAt(hinge: PlcCoverMark['hinge']): PlcCoverMark {
+    return { id: `cover-${hinge}`, rect: { x: 10, y: 20, w: 40, h: 30 }, color: '#CCCCCC', hinge };
+  }
+
+  it('turns the plate about the hinge edge the model names', () => {
+    const top = coverOpenPose(origin, coverAt('top'));
+    expect(top.hinge).toEqual({ x: 130, y: 220, z: 0 });
+    expect(top.rotation).toEqual([-COVER_OPEN_RAD, 0, 0]);
+    expect(top.offset).toEqual([0, -15, 0]);
+    const bottom = coverOpenPose(origin, coverAt('bottom'));
+    expect(bottom.hinge).toEqual({ x: 130, y: 250, z: 0 });
+    expect(bottom.rotation).toEqual([COVER_OPEN_RAD, 0, 0]);
+    expect(bottom.offset).toEqual([0, 15, 0]);
+    const left = coverOpenPose(origin, coverAt('left'));
+    expect(left.hinge).toEqual({ x: 110, y: 235, z: 0 });
+    expect(left.rotation).toEqual([0, -COVER_OPEN_RAD, 0]);
+    expect(left.offset).toEqual([20, 0, 0]);
+    const right = coverOpenPose(origin, coverAt('right'));
+    expect(right.hinge).toEqual({ x: 150, y: 235, z: 0 });
+    expect(right.rotation).toEqual([0, COVER_OPEN_RAD, 0]);
+    expect(right.offset).toEqual([-20, 0, 0]);
+    // ラックのベースだけ前面が奥にあるので、蝶番もそこに乗る
+    expect(coverOpenPose(origin, coverAt('top'), -4).hinge.z).toBe(-4);
+  });
+
+  it('swings the free edge out of the face — up for a top hinge, down for a bottom one', () => {
+    const top = coverOpenTip(coverOpenPose(origin, coverAt('top')));
+    expect(top.z).toBeCloseTo(30 * Math.sin(COVER_OPEN_RAD), 6);
+    expect(top.z).toBeGreaterThan(20);
+    expect(top.y).toBeLessThan(220);
+    const bottom = coverOpenTip(coverOpenPose(origin, coverAt('bottom')));
+    expect(bottom.z).toBeCloseTo(30 * Math.sin(COVER_OPEN_RAD), 6);
+    expect(bottom.y).toBeGreaterThan(250);
+    const left = coverOpenTip(coverOpenPose(origin, coverAt('left')));
+    expect(left.z).toBeCloseTo(40 * Math.sin(COVER_OPEN_RAD), 6);
+    expect(left.x).toBeLessThan(110);
+    const right = coverOpenTip(coverOpenPose(origin, coverAt('right')));
+    expect(right.x).toBeGreaterThan(150);
+  });
+
+  it('never sweeps over a terminal row, the nameplate or the desk cable entry', () => {
+    interface DrawnFace {
+      name: string;
+      origin: Vec3;
+      appearance: PlcAppearance;
+      terminals: readonly BoardTerminal[];
+    }
+    const faces: DrawnFace[] = [PLC_UNIT_FX5U, PLC_UNIT_CP1E].map((unit) => ({
+      name: unit.model,
+      origin: unit.pos,
+      appearance: unit.appearance,
+      terminals: unit.terminals,
+    }));
+    for (const unit of [PLC_UNIT_PC10G, PLC_UNIT_JW300]) {
+      for (const module of unit.modules ?? []) {
+        faces.push({
+          name: `${unit.model}/${module.model}`,
+          origin: module.pos,
+          appearance: module.appearance,
+          terminals: unit.terminals,
+        });
+      }
+    }
+    for (const face of faces) {
+      const plate = face.appearance.nameplateRect;
+      for (const cover of face.appearance.covers) {
+        const pose = coverOpenPose(face.origin, cover);
+        const tip = coverOpenTip(pose);
+        const from = Math.min(pose.hinge.y, tip.y);
+        const to = Math.max(pose.hinge.y, tip.y);
+        // 開いた板が通る帯（盤モデルの y）に端子は1つも入らない
+        for (const terminal of face.terminals) {
+          const clear = terminal.pos.y < from || terminal.pos.y > to;
+          expect(clear, `${face.name} ${cover.id} ${String(terminal.id)}`).toBe(true);
+        }
+        // 銘板も隠さない
+        const plateFrom = face.origin.y + plate.y;
+        const plateTo = plateFrom + plate.h;
+        expect(plateFrom > to || plateTo < from, `${face.name} ${cover.id} nameplate`).toBe(true);
+        // 面から出ない板は描かない（カバーは必ず前へ出る）
+        expect(tip.z).toBeGreaterThan(0);
+      }
+    }
+  });
+});
+
+describe('印字の色は背板の明るさで選ぶ（4B レビュー B1）', () => {
+  it('reads a dark terminal block as needing the light ink', () => {
+    for (const unit of [PLC_UNIT_FX5U, PLC_UNIT_CP1E, PLC_UNIT_PC10G, PLC_UNIT_JW300]) {
+      expect(roleColorsFor(unit.appearance.terminalBlockColor), unit.model).toBe(SOCKET_ROLE_COLOR);
+    }
+  });
+
+  it('keeps the dark ink for the light plate of the board terminal block', () => {
+    expect(plateLuminance('#F1EFE9')).toBeGreaterThan(plateLuminance('#22262B'));
+    const light = roleColorsFor('#F1EFE9');
+    expect(light).not.toBe(SOCKET_ROLE_COLOR);
+    expect(light.com).toBe('#1B1E23');
+    expect(light['coil+']).toBe('#D14343');
+  });
+});
+
+describe('消灯色は board-model が持つ（4B レビュー M7）', () => {
+  it('exports PLC_LED_OFF next to the lit colours', () => {
+    expect(PLC_LED_OFF).toMatch(/^#[0-9A-Fa-f]{6}$/);
+    for (const led of PLC_UNIT_FX5U.appearance.leds) expect(led.color).not.toBe(PLC_LED_OFF);
   });
 });

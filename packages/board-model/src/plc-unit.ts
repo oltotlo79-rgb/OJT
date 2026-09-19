@@ -71,6 +71,12 @@ export const FX5U_SPEC: PlcUnitSpec = {
 export const PLC_LED_GREEN = '#35C759';
 export const PLC_LED_RED = '#FF3B30';
 export const PLC_LED_AMBER = '#FFB020';
+/**
+ * 消灯しているLEDの色（機種共通）。§10.1 / 決定表#20
+ * 点灯色を暗く見せる代わりに共通の暗色を使う。**3Dはここから引く**（`three/**` に色を書かない。
+ * 4A 決定表#15。以前は `three/appearance.ts` の `LED_OFF_COLOR` に置いていた。4B レビュー M7）。
+ */
+export const PLC_LED_OFF = '#4A4F58';
 
 /**
  * LEDを横1列に並べる。`pitch` は中心間隔[mm]。
