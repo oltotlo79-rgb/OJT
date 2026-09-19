@@ -1,7 +1,10 @@
 import {
   JIPM_BOARD,
+  plcUnitFor,
   socketPartId,
   toNetlist,
+  withPlcUnit,
+  type BoardDefinition,
   type BoardSession,
   type SocketId,
 } from '@ojt/board-model';
@@ -24,12 +27,17 @@ import {
   type TesterState,
 } from '@ojt/circuit-sim';
 import {
+  createPlcCoupling,
   injectPartFaults,
   judgeAssemble,
   judgeInspectParts,
   judgeInspectRepair,
+  judgePlc,
   type FaultSpecData,
+  type PlcCoupling,
 } from '@ojt/content';
+import { compile, IR_COLS, type LadderProgram } from '@ojt/ladder-core';
+import type { PlcMonitorSnapshot } from '../renderer/app/store-types.js';
 import { planTicks } from './runtime.js';
 import {
   SNAPSHOT_INTERVAL_MS,
@@ -80,6 +88,14 @@ let testerReading: TesterReading = {
   live: false,
   conductive: false,
 };
+/** いま読んでいる盤（モードDは `withPlcUnit()` 済みの派生盤）。§10.1 */
+let board: BoardDefinition = JIPM_BOARD;
+/** スキャンとtickの結合（モードDでラダーを載せている間だけ存在する）。§10.4 */
+let plcCoupling: PlcCoupling | undefined;
+/** PLCが RUN 中か。STOP の間はスキャンを回さない。§10.6 */
+let plcRunning = false;
+/** モニタ（`F3`）中か。true の間だけスナップショットに `plc` を載せる。決定表#5 */
+let plcMonitoring = false;
 /** 直近の `stepTester()` 実測からの経過tick数。§9.3 / 前提D */
 let ticksSinceTesterMeasure = 0;
 /** つまみ・レンジ・プローブ・盤が変わって、次tickで即座に実測し直す必要があるか。 */
@@ -96,9 +112,25 @@ function post(message: SimMessage): void {
  * 同じ実体に当たるので、故障は入れ直さなくてよい（`plug` だけは新しい部品を作る＝良品に
  * 差し替えるのと同じで、それが §9.2 の「部品交換」そのものになる）。
  */
-function load(next: BoardSession, partFaults: readonly FaultSpecData[] = []): void {
+function load(
+  next: BoardSession,
+  partFaults: readonly FaultSpecData[] = [],
+  plcModel?: string,
+): void {
   session = next;
-  const netlist = toNetlist(next, JIPM_BOARD);
+  /*
+   * モードDは机上のPLC本体と壁コンセントを持つ派生盤で解く（§10.1）。`withPlcUnit()` は
+   * `id` を変えないので、`BoardSession.boardId` の照合も既存の差分コマンドもそのまま通る。
+   * 未対応の機種はここで断る（renderer は課題の `plc.model` をそのまま送ってくる）。
+   */
+  if (plcModel === undefined) {
+    board = JIPM_BOARD;
+  } else {
+    const unit = plcUnitFor(plcModel);
+    if (unit === undefined) throw new Error(`未対応のPLC機種です: ${plcModel}`);
+    board = withPlcUnit(JIPM_BOARD, unit);
+  }
+  const netlist = toNetlist(next, board);
   const issues = injectPartFaults(netlist, partFaults);
   if (issues.length > 0) {
     throw new Error(issues.map((i) => `${i.path}: ${i.message}`).join(' / '));
@@ -109,6 +141,10 @@ function load(next: BoardSession, partFaults: readonly FaultSpecData[] = []): vo
   logCursor = 0;
   hazardCursor = 0;
   chatterCursor = 0;
+  // 盤を作り直したらラダーの結合も捨てる（新しい `Simulation` を指していないため）。§10.4
+  plcCoupling = undefined;
+  plcRunning = false;
+  plcMonitoring = false;
   /*
    * 盤を作り直したらプローブは外す（前の盤の端子IDは新しいネットリストに無いかもしれない）。
    * **つまみとレンジは残す。** テスターは盤ではなく計器であり、C1では部品を挿し替えるたびに
@@ -183,6 +219,54 @@ function testerSnapshot(): TesterSnapshot {
   };
 }
 
+/**
+ * ラダーを載せる。§10.4
+ * 変換は renderer が済ませてから送ってくる（H-1）が、保険としてここでも `compile()` を通し、
+ * 落ちたら**前のラダーを残したまま**理由だけ返す（ループは回り続けるので `fatal: false`）。
+ */
+function loadLadder(sim: Simulation, source: LadderProgram): void {
+  const compiled = compile(source);
+  if (!compiled.ok) {
+    throw new Error(compiled.errors.map((e) => e.message).join(' / '));
+  }
+  plcCoupling = createPlcCoupling(sim, compiled.program);
+}
+
+/**
+ * モニタのスナップショット。決定表#5
+ * `poweredCells` の `Record<string, boolean>`（最大1,536件）を、ネットワーク1本＝
+ * 「行 × 16列」を連ねた `'0110…'` の**文字列1本**へ畳む。renderer はこの文字列を
+ * ネットワーク単位で購読するので、比較も再描画の判定も文字列1本で済む。
+ */
+function plcSnapshot(coupling: PlcCoupling): PlcMonitorSnapshot {
+  const state = coupling.runtime.state();
+  const powered: Record<string, string> = {};
+  for (const net of coupling.runtime.program.networks) {
+    if (net.isEnd) continue;
+    let bits = '';
+    for (let row = 0; row < net.rows; row += 1) {
+      for (let col = 0; col < IR_COLS; col += 1) {
+        bits += state.poweredCells[`${net.id}:${row}:${col}`] === true ? '1' : '0';
+      }
+    }
+    powered[net.id] = bits;
+  }
+  return {
+    scanCount: state.scanCount,
+    tMs: state.tMs,
+    powered,
+    inputs: [...state.inputs],
+    outputs: [...state.outputs],
+    internals: { ...state.internals },
+    timers: Object.fromEntries(
+      Object.entries(state.timers).map(([index, value]) => [index, { ...value }]),
+    ),
+    counters: Object.fromEntries(
+      Object.entries(state.counters).map(([index, value]) => [index, { ...value }]),
+    ),
+  };
+}
+
 function buildSnapshot(sim: Simulation): SimSnapshot {
   const state = sim.state();
   const entries = sim.log.entries();
@@ -209,6 +293,8 @@ function buildSnapshot(sim: Simulation): SimSnapshot {
     hazardDelta,
     chatterDelta,
     tester: testerSnapshot(),
+    // モニタ中だけ載せる（決定表#5）
+    ...(plcMonitoring && plcCoupling !== undefined ? { plc: plcSnapshot(plcCoupling) } : {}),
     droppedTicks,
   };
 }
@@ -261,6 +347,13 @@ function loop(): void {
      * `range-exceeded` は実測した tick の `sim.events` に流れる（`hazardDelta` にそのまま乗る）。
      */
     for (let i = 0; i < plan.ticks; i += 1) {
+      /*
+       * 1 tick ＝ 1 スキャン（§10.4 / 3A 決定表#4）。順序は
+       * 「①`runtime.scan()` が `sim.plcInputs()` で入力を読む（＝直前のtickの解）
+       *  →②ネットワークを上から順に実行 →③`sim.setPlcOutputs()` でY接点を書く」
+       * のあとに `sim.step()` が今tickの回路を解く。実機と同じく入力は1スキャンぶん遅れる。
+       */
+      if (plcRunning && plcCoupling !== undefined) plcCoupling.beforeTick(sim, sim.state().tMs);
       sim.step(TICK_MS);
       ticksSinceTesterMeasure += 1;
       const measurable =
@@ -323,7 +416,7 @@ function start(): void {
 
 function handle(command: SimCommand): void {
   if (command.type === 'load') {
-    load(command.session, command.partFaults ?? []);
+    load(command.session, command.partFaults ?? [], command.plcModel);
     start();
     return;
   }
@@ -376,6 +469,7 @@ function handle(command: SimCommand): void {
     case 'reset':
       // 時刻・ログ・イベント・保護状態を初期化する（課題のやり直し）
       sim.reset();
+      plcCoupling?.runtime.reset();
       logCursor = 0;
       hazardCursor = 0;
       chatterCursor = 0;
@@ -399,6 +493,55 @@ function handle(command: SimCommand): void {
       tester = applyTesterAction(tester, command.action);
       testerDirty = true;
       break;
+    case 'plc': {
+      const action = command.action;
+      if (action.kind === 'load') {
+        loadLadder(sim, action.program);
+        break;
+      }
+      if (action.kind === 'run') {
+        plcRunning = action.on;
+        if (!action.on) {
+          /*
+           * STOP はPLCのデバイスを初期化する。`runtime.reset()` は `io.writeOutputs()` も
+           * 呼ぶので（3A 引渡し表）Y接点が開く。盤に反映するために1tick進める。
+           */
+          plcCoupling?.runtime.reset();
+          sim.step(TICK_MS);
+        }
+        break;
+      }
+      if (action.kind === 'monitor') {
+        plcMonitoring = action.on;
+        break;
+      }
+      plcCoupling?.runtime.reset();
+      sim.step(TICK_MS);
+      break;
+    }
+    case 'judgePlc': {
+      /*
+       * 模範と訓練者の2回ぶんを最後まで回すので 0.3〜1 秒かかる（H-4）。判定中にループを
+       * 回したままにすると `MAX_CATCHUP_TICKS`（200ms相当）の窓を超え、訓練者が何もして
+       * いないのに「捨てた tick」が計上される。`judgeRepair` と同じ扱いにする。
+       */
+      stopLoop();
+      try {
+        const outcome = judgePlc(command.problem, JIPM_BOARD, command.session, command.ladder, {
+          elapsedMs: command.elapsedMs,
+          sessionHazards: [...carriedHazards, ...sim.events.hazards()],
+        });
+        post({
+          type: 'plcResult',
+          result: outcome.ok
+            ? { ok: true, value: outcome.value }
+            : { ok: false, errors: outcome.errors },
+        });
+      } finally {
+        resumeLoop();
+      }
+      break;
+    }
     case 'judge': {
       /*
        * 判定は模範回路と訓練者回路を丸ごと並走させるので 240〜440ms かかる（§8.3）。

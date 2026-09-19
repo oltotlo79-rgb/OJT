@@ -18,9 +18,13 @@ import type {
   InspectRepairProblem,
   JudgeAssembleResult,
   JudgeInspectResult,
+  JudgePlcResult,
+  PlcProblem,
   ProblemIssue,
   RepairCircuit,
 } from '@ojt/content';
+import type { LadderProgram } from '@ojt/ladder-core';
+import type { PlcMonitorSnapshot } from '../renderer/app/store-types.js';
 
 /**
  * renderer ⇄ Simulation Worker のプロトコル。設計仕様 §4.3。
@@ -53,6 +57,12 @@ export type SimCommand =
       problemId: string;
       session: BoardSession;
       partFaults?: readonly FaultSpecData[];
+      /**
+       * モードDのPLC機種（`FX5U`）。§10.1
+       * 渡されたときだけ `withPlcUnit()` 済みの派生盤からネットリストを作る。盤の `id` は
+       * 変わらないので、`BoardSession` の照合も既存のコマンドもそのまま通る。
+       */
+      plcModel?: string;
     }
   /** 電線を1本張る（`Simulation` に差分適用するのでリレー／タイマの状態は保たれる）。 */
   | { type: 'addWire'; wire: Wire }
@@ -112,7 +122,39 @@ export type SimCommand =
       circuit: RepairCircuit;
       reports: readonly FaultReport[];
       elapsedMs: number;
+    }
+  /**
+   * PLCの操作。§10.4 / §10.6
+   *
+   * テスター（`tester`）と同じく**1本のコマンド**にまとめる。ラダーの載せ替え・RUN/STOP・
+   * モニタの開始停止・リセットはどれも「PLC本体に対する操作」で、種別ごとにコマンドを
+   * 分けると片方だけ実装し忘れたときに静かにずれる。
+   */
+  | { type: 'plc'; action: PlcCommandAction }
+  /**
+   * モードDを判定する。§10.8
+   * `ladder` は**変換を通った**ラダー（H-1）。`judgePlc()` は模範と訓練者の2回ぶんを
+   * 10ms tick で最後まで回すので 0.3〜1 秒かかる（H-4）。`judgeRepair` と同じく
+   * 追従ループを止めてから実行する。
+   */
+  | {
+      type: 'judgePlc';
+      problem: PlcProblem;
+      session: BoardSession;
+      ladder: LadderProgram;
+      elapsedMs: number;
     };
+
+/** `plc` コマンドの中身。 */
+export type PlcCommandAction =
+  /** 変換済みのラダーを載せる（`compile()` は Worker 側で行う）。 */
+  | { kind: 'load'; program: LadderProgram }
+  /** RUN/STOP。`false` で `runtime.reset()` を呼び、Y接点を開く。 */
+  | { kind: 'run'; on: boolean }
+  /** モニタ（`F3`）の開始・停止。`true` の間だけスナップショットに `plc` が載る。 */
+  | { kind: 'monitor'; on: boolean }
+  /** デバイスを初期化する（RUN は保ったまま）。 */
+  | { kind: 'reset' };
 
 /** ランプ1個の表示状態。 */
 export interface LampSnapshot {
@@ -178,6 +220,11 @@ export interface SimSnapshot {
   chatterDelta: ChatterEvent[];
   /** テスターの読値と針（約30fpsで送る。tick ごとの更新は worker の中で行う）。§9.3 */
   tester: TesterSnapshot;
+  /**
+   * モニタ中のPLCの状態。§10.7 / 決定表#5
+   * **モニタしていないときは `undefined`**（毎フレームの構造化複製と比較を避ける）。
+   */
+  plc?: PlcMonitorSnapshot;
   /** 追従上限を超えて捨てた tick 数の累計（ウィンドウ非表示時の詰まり）。 */
   droppedTicks: number;
 }
@@ -190,11 +237,16 @@ export interface SimSnapshot {
 export type InspectOutcome =
   { ok: true; value: JudgeInspectResult } | { ok: false; errors: ProblemIssue[] };
 
+/** モードDの判定結果。§10.8 / §13 #2 */
+export type PlcOutcome =
+  { ok: true; value: JudgePlcResult } | { ok: false; errors: ProblemIssue[] };
+
 /** worker → renderer のメッセージ。 */
 export type SimMessage =
   | { type: 'snapshot'; snapshot: SimSnapshot }
   | { type: 'judgeResult'; result: JudgeAssembleResult }
   | { type: 'inspectResult'; result: InspectOutcome }
+  | { type: 'plcResult'; result: PlcOutcome }
   /**
    * エラー。§13 #6
    * `fatal: false` はコマンド1件が失敗しただけ（ループは回り続けるのでトーストで足りる）。
