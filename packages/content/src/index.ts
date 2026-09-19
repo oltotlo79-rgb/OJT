@@ -141,7 +141,6 @@ export {
 
 export {
   DEFAULT_PLC_IO,
-  PHASE3_MODELS,
   PLC_MODELS,
   PLC_VENDORS,
   PlcInputMapSchema,
@@ -152,6 +151,7 @@ export {
   PlcRefSchema,
   PlcWiringSchema,
   resolvePlcIo,
+  SUPPORTED_PLC_MODELS,
   type PlcInputMapData,
   type PlcIoData,
   type PlcOutputMapData,

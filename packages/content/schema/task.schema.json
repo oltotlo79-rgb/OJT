@@ -1420,7 +1420,7 @@
             "model": {
               "type": "string",
               "enum": ["FX5U", "PC10G-1SP", "CP1E", "JW-300"],
-              "description": "PLC機種。Phase 3 で開始できるのは FX5U のみです。"
+              "description": "PLC機種。メーカーと組になる機種を指定します（§7.6）。"
             }
           },
           "required": ["vendor", "model"],

@@ -138,7 +138,6 @@ import {
   MAX_DEVICE_COMMENTS,
   // schema/plc.js
   DEFAULT_PLC_IO,
-  PHASE3_MODELS,
   PLC_MODELS,
   PLC_VENDORS,
   PlcInputMapSchema,
@@ -148,6 +147,7 @@ import {
   PlcProblemSchema,
   PlcRefSchema,
   PlcWiringSchema,
+  SUPPORTED_PLC_MODELS,
   resolvePlcIo,
   // schema/judge.js（Phase 3）
   PLC_DEFAULT_STATIC_CHECKS,
@@ -649,7 +649,7 @@ describe('Phase 3 の公開API（バレル経由。Task 20）', () => {
   it('exposes the PLC problem schema pieces and resolvePlcIo (schema/plc.js, schema/judge.js)', () => {
     expect(PLC_VENDORS).toContain('mitsubishi');
     expect(PLC_MODELS).toContain('FX5U');
-    expect(PHASE3_MODELS).toEqual(['FX5U']);
+    expect(SUPPORTED_PLC_MODELS).toEqual([...PLC_MODELS]);
     expect(PlcRefSchema.safeParse({ vendor: 'mitsubishi', model: 'FX5U' }).success).toBe(true);
     expect(PlcIoModeSchema.safeParse('fixed').success).toBe(true);
     expect(PlcWiringSchema.safeParse('sink').success).toBe(true);

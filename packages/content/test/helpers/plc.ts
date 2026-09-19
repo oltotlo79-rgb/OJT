@@ -65,3 +65,16 @@ export function plcProblemJson(overrides: Record<string, unknown> = {}): Record<
     ...overrides,
   };
 }
+
+/**
+ * コイルが `outIndex`（Y）、接点が `inIndex`（X）の最小ラダー。
+ * 割付の範囲検査（機種にない点・割付にない点）を確かめるテストが機種を跨いで使う。
+ */
+export function ladderWith(outIndex: number, inIndex = 0): Record<string, unknown> {
+  return {
+    networks: [
+      { id: 'n1', cells: [rungJson(noJson('input', inIndex), outJson(outIndex))] },
+      { id: 'end', cells: [[{ kind: 'end' }]] },
+    ],
+  };
+}

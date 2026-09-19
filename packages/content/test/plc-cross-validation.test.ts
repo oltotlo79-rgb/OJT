@@ -1,23 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { DeviceCommentsSchema } from '../src/schema/ladder.js';
 import { PlcProblemSchema } from '../src/schema/plc.js';
-import { noJson, outJson, plcProblemJson, rungJson } from './helpers/plc.js';
+import { ladderWith, plcProblemJson } from './helpers/plc.js';
 
 /**
- * `PlcProblemSchema` のクロスフィールド検証（レビュー #2）。
+ * `PlcProblemSchema` のクロスフィールド検証（レビュー #2）と、内蔵モードD課題8題の
+ * 4機種クロス検証（§16 Phase 4 / 決定表#14）。
  * 模範ラダー・操作列・判定設定は、すべてI/O割付にある点だけを扱えるようにする
  * （模範ラダーの参照するX/Y、操作列のPB、`judge.compareSignals` のPL）。
  */
-
-/** コイルが `outIndex`（Y）、接点が `inIndex`（X）の最小ラダー。 */
-function ladderWith(outIndex: number, inIndex = 0): Record<string, unknown> {
-  return {
-    networks: [
-      { id: 'n1', cells: [rungJson(noJson('input', inIndex), outJson(outIndex))] },
-      { id: 'end', cells: [[{ kind: 'end' }]] },
-    ],
-  };
-}
 
 describe('模範ラダー・操作列・判定設定はI/O割付の範囲内でなければならない', () => {
   it('GAP 1: 模範ラダーがI/O割付にないYへ書き込むと拒否する', () => {

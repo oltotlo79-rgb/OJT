@@ -2,15 +2,16 @@ import { describe, expect, it } from 'vitest';
 import { DEFAULT_STATIC_CHECKS, STATIC_CHECK_IDS } from '../src/schema/judge.js';
 import {
   DEFAULT_PLC_IO,
-  PHASE3_MODELS,
   PLC_DEFAULT_STATIC_CHECKS,
   PLC_MODELS,
   PLC_VENDORS,
   PlcInputMapSchema,
   PlcProblemSchema,
+  PlcRefSchema,
   resolvePlcIo,
+  SUPPORTED_PLC_MODELS,
 } from '../src/schema/plc.js';
-import { noJson, outJson, plcProblemJson, rungJson } from './helpers/plc.js';
+import { ladderWith, noJson, outJson, plcProblemJson, rungJson } from './helpers/plc.js';
 
 describe('PlcProblemSchema（§7.6）', () => {
   it('parses a mode D problem', () => {
@@ -36,15 +37,50 @@ describe('PlcProblemSchema（§7.6）', () => {
     expect(STATIC_CHECK_IDS).toHaveLength(9);
   });
 
-  it('knows the four vendors and models of 決定事項#14 and starts only FX5U (§16)', () => {
+  it('starts every vendor of 決定事項#14 in Phase 4 (§16)', () => {
     expect(PLC_VENDORS).toEqual(['mitsubishi', 'jtekt', 'omron', 'sharp']);
     expect(PLC_MODELS).toEqual(['FX5U', 'PC10G-1SP', 'CP1E', 'JW-300']);
-    expect(PHASE3_MODELS).toEqual(['FX5U']);
-    const other = plcProblemJson({ plc: { vendor: 'omron', model: 'CP1E' } });
-    const parsed = PlcProblemSchema.safeParse(other);
-    expect(parsed.success).toBe(false);
-    if (parsed.success) return;
-    expect(JSON.stringify(parsed.error.issues)).toContain('Phase 4');
+    expect(SUPPORTED_PLC_MODELS).toEqual(['FX5U', 'PC10G-1SP', 'CP1E', 'JW-300']);
+    for (const [vendor, model] of [
+      ['mitsubishi', 'FX5U'],
+      ['jtekt', 'PC10G-1SP'],
+      ['omron', 'CP1E'],
+      ['sharp', 'JW-300'],
+    ] as const) {
+      expect(PlcRefSchema.safeParse({ vendor, model }).success).toBe(true);
+    }
+    // メーカーと機種の組み合わせ違いは引き続き拒否する（§7.6）
+    expect(PlcRefSchema.safeParse({ vendor: 'omron', model: 'FX5U' }).success).toBe(false);
+  });
+
+  it('rejects an I/O point the model does not have (前提#23 / 決定表#13)', () => {
+    const cp1e = { vendor: 'omron', model: 'CP1E' } as const;
+    const ok = PlcProblemSchema.safeParse(
+      plcProblemJson({
+        plc: cp1e,
+        io: {
+          mode: 'fixed',
+          inputs: [{ x: 0, pb: 'PB1' }],
+          outputs: [{ y: 11, cr: 'CR1', pl: 'PL1' }],
+        },
+        referenceLadder: ladderWith(11, 0),
+      }),
+    );
+    expect(ok.success).toBe(true);
+    const ng = PlcProblemSchema.safeParse(
+      plcProblemJson({
+        plc: cp1e,
+        io: {
+          mode: 'fixed',
+          inputs: [{ x: 0, pb: 'PB1' }],
+          outputs: [{ y: 12, cr: 'CR1', pl: 'PL1' }],
+        },
+        referenceLadder: ladderWith(12, 0),
+      }),
+    );
+    expect(ng.success).toBe(false);
+    if (ng.success) return;
+    expect(JSON.stringify(ng.error.issues)).toContain('CP1E');
   });
 
   it('rejects a vendor and model that do not belong together', () => {

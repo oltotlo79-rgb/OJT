@@ -1,3 +1,4 @@
+import { plcUnitFor } from '@ojt/board-model';
 import { TICK_MS } from '@ojt/circuit-sim';
 import { compile, deviceLabel } from '@ojt/ladder-core';
 import { z } from 'zod';
@@ -24,8 +25,8 @@ export { PLC_DEFAULT_STATIC_CHECKS } from './judge.js';
 export const PLC_VENDORS = ['mitsubishi', 'jtekt', 'omron', 'sharp'] as const;
 /** PLC機種。§7.6 */
 export const PLC_MODELS = ['FX5U', 'PC10G-1SP', 'CP1E', 'JW-300'] as const;
-/** Phase 3 で開始できる機種。§16 */
-export const PHASE3_MODELS = ['FX5U'] as const;
+/** Phase 4 で4機種すべてを開始できるようにした。§16 */
+export const SUPPORTED_PLC_MODELS = PLC_MODELS;
 
 /** メーカー → 機種（§7.6 の対応）。 */
 const MODEL_OF_VENDOR: Readonly<Record<(typeof PLC_VENDORS)[number], (typeof PLC_MODELS)[number]>> =
@@ -40,7 +41,7 @@ const MODEL_OF_VENDOR: Readonly<Record<(typeof PLC_VENDORS)[number], (typeof PLC
 export const PlcRefSchema = z
   .strictObject({
     vendor: z.enum(PLC_VENDORS).describe('PLCメーカー。'),
-    model: z.enum(PLC_MODELS).describe('PLC機種。Phase 3 で開始できるのは FX5U のみです。'),
+    model: z.enum(PLC_MODELS).describe('PLC機種。メーカーと組になる機種を指定します（§7.6）。'),
   })
   .superRefine((plc, ctx) => {
     if (MODEL_OF_VENDOR[plc.vendor] !== plc.model) {
@@ -50,11 +51,11 @@ export const PlcRefSchema = z
         message: `${plc.vendor} の機種は ${MODEL_OF_VENDOR[plc.vendor]} です`,
       });
     }
-    if (!(PHASE3_MODELS as readonly string[]).includes(plc.model)) {
+    if (plcUnitFor(plc.model) === undefined) {
       ctx.addIssue({
         code: 'custom',
         path: ['model'],
-        message: `この機種はまだ開始できません（Phase 4 で追加します）: ${plc.model}`,
+        message: `この機種の本体定義がありません（board-model の PLC_UNITS）: ${plc.model}`,
       });
     }
   });
@@ -244,6 +245,27 @@ export const PlcProblemSchema = z
     // 割付にない点を参照すると読込時には気づかず、判定や配線の段階で初めて崩れるため
     // ここで前もって拾う（レビュー #2）。
     const io = resolvePlcIo(problem.io);
+    // 機種にない入出力点を割り付けると、模範配線を張る段になって初めて崩れる。
+    // 端子は機種仕様（`unit.spec`）だけが知っているのでここで前もって拾う（決定表#13）
+    const unit = plcUnitFor(problem.plc.model);
+    if (unit !== undefined) {
+      io.inputs.forEach((input, index) => {
+        if (input.x < unit.spec.inputs.length) return;
+        ctx.addIssue({
+          code: 'custom',
+          path: ['io', 'inputs', index, 'x'],
+          message: `${problem.plc.model} の入力は ${unit.spec.inputs.length} 点です（割付 x: ${input.x} はありません）`,
+        });
+      });
+      io.outputs.forEach((output, index) => {
+        if (output.y < unit.spec.outputs.length) return;
+        ctx.addIssue({
+          code: 'custom',
+          path: ['io', 'outputs', index, 'y'],
+          message: `${problem.plc.model} の出力は ${unit.spec.outputs.length} 点です（割付 y: ${output.y} はありません）`,
+        });
+      });
+    }
     const mappedX = new Set(io.inputs.map((i) => i.x));
     const mappedY = new Set(io.outputs.map((o) => o.y));
     const mappedPb: ReadonlySet<string> = new Set(io.inputs.map((i) => i.pb));
