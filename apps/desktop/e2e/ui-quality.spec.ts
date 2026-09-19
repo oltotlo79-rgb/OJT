@@ -105,13 +105,14 @@ const MIN_TARGET_PX = 24;
  */
 const BASELINE: Readonly<Record<string, number>> = {
   'page-overflow': 0,
+  // 日本語が切れていないことは Plan 5 の完了条件そのものなので **0 のまま**（1件でも落とす）
   clip: 0,
-  overlap: 521,
-  'hud-overlap': 103,
-  duplicate: 78,
-  wrap: 220,
-  'small-text': 268,
-  'small-target': 234,
+  overlap: 132,
+  'hud-overlap': 94,
+  duplicate: 0,
+  wrap: 30,
+  'small-text': 24,
+  'small-target': 126,
   focus: 0,
   canvas: 0,
 };
@@ -119,14 +120,16 @@ const BASELINE: Readonly<Record<string, number>> = {
 /**
  * 致命（`blocking`）の件数の上限。**本来は 0 でなければならない**。
  *
- * 2026-09-20 の監査時点で下記の3種が残っているため、いったん実測値で置く。
- * 修正バッチが載るたびに実測まで下げ、最後は 0 にすること。
+ * UI監査バッチ A〜D と Batch E の直しを載せたあとの実測（2026-09-20）。残っているのは
+ * 次の2種で、どちらも**3D盤の上の表示**と**モードDの1920×1080**に限られる。
+ * 直すたびに実測まで下げ、最後は 0 にすること。
  *
- * - 3D盤の名札どうし／名札と状態オーバーレイの重なり（`hud-overlap`）
- * - モードDの1列レイアウトで潰れた格子の上に要素が折り重なる（`overlap` 操作要素どうし）
- * - 回路図エディタが拡大されすぎて母線ラベルが重なる（`overlap`）
+ * - 3D盤の名札どうし／名札と状態オーバーレイの重なり（`hud-overlap`。モードB「並べて」と
+ *   モードDの盤。`span.block-label ∩ span.block-label`）
+ * - モードD 1920×1080 でデバイスコメント欄がキー割当表の見出しと重なる
+ *   （`overlap`。`comment-input-X0 ∩ shortcuts-summary`）
  */
-const BLOCKING_BASELINE = 133;
+const BLOCKING_BASELINE = 120;
 
 /** 歩けなかった状態のメモ。多すぎると網として意味が無いので上限を置く。 */
 const MAX_NOTES = 6;
@@ -531,6 +534,13 @@ async function auditDom(page: Page): Promise<RawFinding[]> {
       }
       if (Number(style.opacity) === 0) continue;
       if (rect.width <= 0 || rect.height <= 0) continue;
+      /*
+       * 読み上げ専用の文字（`panels.module.css` の `.srOnly`: 1×1px ＋ `clip-path: inset(50%)`）は
+       * **目に見えない**ので、どの検査の対象にもしない（Batch E レビュー B3 の再測定で
+       * `undo-reason` / `redo-reason` が「文字が切れている」として 276 件数えられていた。
+       * 目に見えない文字を「切れている」と数えると、本物の文字切れが埋もれて網の意味が無くなる）。
+       */
+      if (style.clipPath !== 'none' && rect.width <= 2 && rect.height <= 2) continue;
       const shown: Clip = {
         l: Math.max(rect.left, parentClip.l),
         t: Math.max(rect.top, parentClip.t),
@@ -1499,7 +1509,8 @@ test.describe.serial('画面品質の機械点検', () => {
         });
 
         await step(`modeD-${vendor}-monitor`, async () => {
-          await page.getByTestId('plc-run').click();
+          // UI監査バッチD（`340b2d9`）で RUN はツールバーの1つだけになった
+          await page.getByTestId('toolbar-plc-run').first().click();
           await page.getByTestId('toolbar-monitor-start').first().click();
           await expect(page.getByTestId('monitor-scan')).toBeVisible({ timeout: 40_000 });
           await stop(app, page, `modeD-${vendor}-monitor-run`);
