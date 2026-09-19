@@ -2852,7 +2852,14 @@ Expected: `pnpm install` が `Done`。既存の 60ファイル / 825テストが
 ```ts
 import { MITSUBISHI_FX5U } from '@ojt/plc-dialects';
 import { describe, expect, it } from 'vitest';
-import { CELL_H, CELL_W, symbolShape, WIRE_Y } from '../src/renderer/ladder/symbols.js';
+import {
+  CELL_H,
+  CELL_W,
+  MC_SYMBOL_ID,
+  MCR_SYMBOL_ID,
+  symbolShape,
+  WIRE_Y,
+} from '../src/renderer/ladder/symbols.js';
 
 describe('記号の線画（§10.6 / §17: ベンダーの画像は持たない）', () => {
   it('draws every symbol the Mitsubishi profile names', () => {
@@ -2875,6 +2882,17 @@ describe('記号の線画（§10.6 / §17: ベンダーの画像は持たない�
     const shape = symbolShape('contact-quantum');
     expect(shape.text).toBe('?');
     expect(shape.paths.length).toBeGreaterThan(0);
+  });
+
+  it('draws MC and MCR, which the profile does not name', () => {
+    // `SymbolDrawing` に MC / MCR は無いので、本アプリ側の固定IDで引ける必要がある
+    for (const id of [MC_SYMBOL_ID, MCR_SYMBOL_ID]) {
+      const shape = symbolShape(id);
+      expect(shape.paths.length).toBeGreaterThan(0);
+      expect(shape.text).not.toBe('?');
+    }
+    expect(symbolShape(MC_SYMBOL_ID).text).toBe('MC');
+    expect(symbolShape(MCR_SYMBOL_ID).text).toBe('MCR');
   });
 
   it('keeps the rung on the vertical middle of the cell', () => {
@@ -3072,7 +3090,7 @@ const BOTTOM = 28;
 export interface SymbolShape {
   /** `<path d>` にそのまま入る文字列。 */
   paths: readonly string[];
-  /** 記号の中に描く1文字（`S` / `R` / `T` / `C` / `↑` / `↓`）。 */
+  /** 記号の中に描く短い文字（`S` / `R` / `T` / `C` / `↑` / `↓` / `MC` / `MCR`）。 */
   text?: string;
 }
 
@@ -3088,7 +3106,15 @@ const COIL_ARCS = [
   `M ${RIGHT - 2} ${TOP} A 9 10 0 0 1 ${RIGHT - 2} ${BOTTOM}`,
 ];
 
-/** 識別子 → 線画。`DialectProfile.symbols` の値をキーにする。 */
+/**
+ * MC / MCR の識別子。**`DialectProfile.symbols`（`SymbolDrawing`）には MC / MCR が無い**ので、
+ * ここだけは本アプリ側の固定の識別子を使う（`plc-dialects` は Plan 3A の所有物なので広げない）。
+ * Phase 4 でプロファイルが MC / MCR を持つようになったら `symbolIdOf()` がそちらを優先すればよい。
+ */
+export const MC_SYMBOL_ID = 'coil-mc';
+export const MCR_SYMBOL_ID = 'coil-mcr';
+
+/** 識別子 → 線画。`DialectProfile.symbols` の値（＋ MC / MCR の固定ID）をキーにする。 */
 const SHAPES: Readonly<Record<string, SymbolShape>> = {
   'contact-no': { paths: CONTACT_BARS },
   'contact-nc': { paths: [...CONTACT_BARS, `M ${LEFT} ${BOTTOM} L ${RIGHT} ${TOP}`] },
@@ -3099,6 +3125,9 @@ const SHAPES: Readonly<Record<string, SymbolShape>> = {
   'coil-reset': { paths: COIL_ARCS, text: 'R' },
   'coil-timer': { paths: COIL_ARCS, text: 'T' },
   'coil-counter': { paths: COIL_ARCS, text: 'C' },
+  // マスタコントロール。コイルと同じ括弧に `MC` / `MCR` の文字を入れて区別する（§10.3）
+  [MC_SYMBOL_ID]: { paths: COIL_ARCS, text: 'MC' },
+  [MCR_SYMBOL_ID]: { paths: COIL_ARCS, text: 'MCR' },
 };
 
 /** 未知の識別子（Phase 4 で足された記号など）に出す暫定の絵。 */
@@ -3145,6 +3174,8 @@ import {
   LEAD_LEFT,
   LEAD_RIGHT,
   LINK_DOWN,
+  MC_SYMBOL_ID,
+  MCR_SYMBOL_ID,
   symbolShape,
   WIRE_Y,
 } from './symbols.js';
@@ -3226,6 +3257,11 @@ function symbolIdOf(cell: Cell, profile: DialectProfile): string | undefined {
       return symbols.timer;
     case 'counter':
       return symbols.counter;
+    // MC / MCR は `SymbolDrawing` に無いので本アプリ側の固定IDを使う（`symbols.ts`）
+    case 'mc':
+      return MC_SYMBOL_ID;
+    case 'mcr':
+      return MCR_SYMBOL_ID;
     default:
       return undefined;
   }
@@ -3567,7 +3603,7 @@ pnpm --filter @ojt/desktop exec vitest run test/ladder-symbols.test.ts test/ladd
 pnpm --filter @ojt/desktop typecheck
 ```
 
-Expected: `Tests  14 passed (14)`（記号4件＋グリッド10件）。
+Expected: `Tests  15 passed (15)`（記号5件＋グリッド10件。記号は MC / MCR の1件を含む）。
 
 - [ ] **Step 8: コミットする**
 
