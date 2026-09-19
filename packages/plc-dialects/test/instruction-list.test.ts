@@ -199,6 +199,19 @@ describe('instructionList（§10.7 / §16 Phase 4 受入基準⑥）', () => {
     ]);
   });
 
+  it('prunes a dangling branch that never reaches the coil without affecting the live path', () => {
+    // X1 は縦線で本線に触れるだけで、そこから先はどこにも繋がっていない（配線ミスの分岐）。
+    // 左母線からコイルへは X0 だけの直列で届くので、行き止まりの枝を落として X0 だけが残る
+    const p = program(
+      network('n1', [
+        [no(X(0)), ...hlines(5), vline(), ...hlines(IR_COLS - 8), out(Y(0))],
+        [...Array.from({ length: 6 }, () => empty()), no(X(1))],
+      ]),
+      endNetwork(),
+    );
+    expect(mnemonics(MITSUBISHI_FX5U, p)).toEqual(['LD X0', 'OUT Y0', 'END']);
+  });
+
   it('does not repeat the condition when two outputs share a rung', () => {
     // 出力の分岐はコイル列の手前で縦線に落とす。下の行の0列目を横線にすると左母線と
     // 直結してしまい、実機どおり「常時ON」の回路になってしまう（ランタイムの `solve()` と同じ）
@@ -210,6 +223,28 @@ describe('instructionList（§10.7 / §16 Phase 4 受入基準⑥）', () => {
       endNetwork(),
     );
     expect(mnemonics(MITSUBISHI_FX5U, p)).toEqual(['LD X0', 'OUT Y0', 'OUT Y1', 'END']);
+  });
+
+  it('re-emits the LD after a counter shares a rung with the next output (B1)', () => {
+    // カウンタの実体は「OUT C0 K5 / LD X1 / RST C0」で終わり、最後の LD はリセット条件（X1）
+    // になる。次の出力が元の条件（X0）と同じ exprKey でも LD を省略すると、実機では
+    // Y0 がリセット条件（X1）で駆動されてしまう
+    const p = program(
+      network('n1', [
+        [no(X(0)), ...hlines(IR_COLS - 3), vline(), ctu(C(0), 5, X(1))],
+        [...Array.from({ length: IR_COLS - 2 }, () => empty()), hline(), out(Y(0))],
+      ]),
+      endNetwork(),
+    );
+    expect(mnemonics(MITSUBISHI_FX5U, p)).toEqual([
+      'LD X0',
+      'OUT C0 K5',
+      'LD X1',
+      'RST C0',
+      'LD X0',
+      'OUT Y0',
+      'END',
+    ]);
   });
 
   it('numbers the steps and renders CRLF text with a heading per network (§10.7)', () => {
@@ -232,11 +267,12 @@ describe('instructionList（§10.7 / §16 Phase 4 受入基準⑥）', () => {
     expect(result.errors[0]?.code).toBe('compile-failed');
     expect(INSTRUCTION_LIST_MESSAGES['compile-failed']).toBeDefined();
     expect(INSTRUCTION_LIST_MESSAGES['not-series-parallel']).toBeDefined();
+    expect(INSTRUCTION_LIST_MESSAGES['coil-unconnected']).toBeDefined();
   });
 
-  it('reports the coil it cannot reduce to a series-parallel condition', () => {
-    // 左母線まで繋がっていないコイル。命令語リストは直並列の表現なので、
-    // 1つの式にまとめられない出力は行を作らずに指摘する（意図的な差分#10）
+  it('reports a coil that never reaches the left rail as coil-unconnected, not not-series-parallel (I3)', () => {
+    // 2行目のコイルはどの接点を閉じても左母線まで繋がらない（配線忘れ）。ブリッジ回路
+    // （直並列に分解できないが左母線には繋がる）とは別の指摘にする
     const p = program(
       network('n1', [
         [no(X(0)), ...hlines(IR_COLS - 2), out(Y(0))],
@@ -245,10 +281,26 @@ describe('instructionList（§10.7 / §16 Phase 4 受入基準⑥）', () => {
       endNetwork(),
     );
     const result = instructionList(p, MITSUBISHI_FX5U);
-    expect(result.errors.map((e) => e.code)).toEqual(['not-series-parallel']);
+    expect(result.errors.map((e) => e.code)).toEqual(['coil-unconnected']);
     expect(result.errors[0]?.row).toBe(1);
     expect(result.errors[0]?.networkId).toBe('n1');
     expect(mnemonics(MITSUBISHI_FX5U, p)).toEqual(['LD X0', 'OUT Y0', 'END']);
+  });
+
+  it('reports a genuine bridge circuit as not-series-parallel (I3)', () => {
+    // ホイートストンブリッジ（5枝・4節点）: L=左母線, A=(0,1)+(0,2)+(1,1) を渡りで束ねた節点、
+    // B=(1,2)+(2,1)+(2,2) を渡りで束ねた節点、R=コイル手前（(1,4) を含む渡りの節点）。
+    // 5本の枝（X0: L-A、X4: A-B、X1: L-B、X2: A-R、X3: B-R）のどれを落としても直並列には
+    // 分解できない（次数3以上の節点が残る）。コイルは2行目、`vline` は (0,1)・(1,2)・(0,4) の3本
+    const bridge: Cell[][] = [
+      [empty(), vline(), no(X(2)), hline(), vline()],
+      [no(X(0)), no(X(4)), vline(), no(X(3)), ...hlines(IR_COLS - 5), out(Y(0))],
+      [no(X(1)), hline()],
+    ];
+    const p = program(network('n1', bridge), endNetwork());
+    const result = instructionList(p, MITSUBISHI_FX5U);
+    expect(result.errors.map((e) => e.code)).toEqual(['not-series-parallel']);
+    expect(result.errors[0]?.networkId).toBe('n1');
   });
 
   it('marks a preset the dialect cannot express instead of guessing', () => {
@@ -258,10 +310,28 @@ describe('instructionList（§10.7 / §16 Phase 4 受入基準⑥）', () => {
     expect(result.lines.map((l) => l.operand)).toContain('?');
   });
 
+  it('marks a counter preset the dialect cannot express instead of guessing (B2)', () => {
+    const p = program(network('n1', [rung(no(X(0)), ctu(C(0), 20_000, X(1)))]), endNetwork());
+    for (const profile of [OMRON_CP1E, SHARP_JW300]) {
+      const result = instructionList(p, profile);
+      expect(
+        result.errors.map((e) => e.code),
+        profile.id,
+      ).toEqual(['preset-unavailable']);
+      const operands = result.lines.map((l) => l.operand);
+      expect(
+        operands.some((operand) => operand === '?' || operand.endsWith(' ?')),
+        `${profile.id}: ${operands.join('|')}`,
+      ).toBe(true);
+    }
+  });
+
   it('falls back to the plain number when a dialect has no counter spelling', () => {
-    // `counterPresetText` は任意の項目なので、持たない方言でも命令語リストは作れる
+    // `counterPresetText` / `parseCounterPreset` は対の任意項目なので、持たない方言でも
+    // 命令語リストは作れる（B2 の往復検査は `parseCounterPreset` が無ければ働かない）
     const bare: DialectProfile = { ...MITSUBISHI_FX5U };
     delete bare.counterPresetText;
+    delete bare.parseCounterPreset;
     const p = program(network('n1', [rung(no(X(0)), ctu(C(0), 5, X(1)))]), endNetwork());
     expect(mnemonics(bare, p)).toContain('OUT C0 5');
   });

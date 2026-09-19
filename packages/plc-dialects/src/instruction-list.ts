@@ -25,7 +25,7 @@ import type { DialectError, DialectProfile, InstructionKey } from './profile.js'
 
 /** 命令語リスト1行。 */
 export interface InstructionLine {
-  /** 0起点のステップ番号。 */
+  /** 0起点の行番号（PLC実機のステップ番号／アドレスとは対応しない。命令語リスト内の通し行番号）。 */
   step: number;
   mnemonic: string;
   /** デバイスや設定値（無ければ空文字）。 */
@@ -45,6 +45,7 @@ export interface InstructionListResult {
 export const INSTRUCTION_LIST_MESSAGES: Readonly<Record<string, string>> = {
   'compile-failed': 'ラダーを変換できないため命令語リストを作れません',
   'not-series-parallel': '直列・並列に分解できない回路です（命令語リストにできません）',
+  'coil-unconnected': 'コイルが左母線に繋がっていません',
   'preset-unavailable': 'この機種で表せない設定値です（`?` で書き出しました）',
 };
 
@@ -263,25 +264,62 @@ function reduceSeries(edges: readonly Edge[], sink: number): { edges: Edge[]; ch
       return { edges: edges.filter((edge) => edge !== at.first), changed: true };
     }
     if (at.count !== 2) continue;
-    // `andOf()` が列順に並べ替えるので、枝の向きは端点の付け替えだけ気にすればよい
+    // `andOf()` が列順に並べ替えるので、枝の向きは端点の付け替えだけ気にすればよい。
+    // 直前に必ず `reduceParallel()` を通しているので、同じ2点を結ぶ枝は既に1本にまとまっており
+    // `leftEnd === rightEnd`（＝両端が同じ節点）にはならない
     const leftEnd = at.first.a === node ? at.first.b : at.first.a;
     const rightEnd = at.second.a === node ? at.second.b : at.second.a;
     const rest = edges.filter((edge) => edge !== at.first && edge !== at.second);
-    if (leftEnd !== rightEnd) {
-      rest.push({ a: leftEnd, b: rightEnd, expr: andOf([at.first.expr, at.second.expr]) });
-    }
+    rest.push({ a: leftEnd, b: rightEnd, expr: andOf([at.first.expr, at.second.expr]) });
     return { edges: rest, changed: true };
   }
   return { edges: [...edges], changed: false };
 }
 
-/** 左母線 → 終点 の式にまとめる。分解できなければ undefined。 */
-function reduceToExpr(source: readonly RawEdge[], sinkNode: number): Expr | undefined {
+/**
+ * 接点の開閉を考えず、枝を辿るだけで左母線から終点に届くか（＝すべての接点を閉じても
+ * コイルが左母線に繋がらない「浮いたコイル」かどうか）。§10.7 決定表#7 I3
+ */
+function reachesSink(edges: readonly Edge[], sink: number): boolean {
+  const adjacent = new Map<number, number[]>();
+  const link = (from: number, to: number): void => {
+    const found = adjacent.get(from);
+    if (found === undefined) adjacent.set(from, [to]);
+    else found.push(to);
+  };
+  for (const edge of edges) {
+    link(edge.a, edge.b);
+    link(edge.b, edge.a);
+  }
+  const seen = new Set<number>([LEFT_RAIL]);
+  const stack = [LEFT_RAIL];
+  for (let node = stack.pop(); node !== undefined; node = stack.pop()) {
+    for (const next of adjacent.get(node) ?? []) {
+      if (seen.has(next)) continue;
+      seen.add(next);
+      stack.push(next);
+    }
+  }
+  return seen.has(sink);
+}
+
+/**
+ * 直並列の簡約に失敗した理由。`unconnected` は接点をすべて閉じても左母線に届かない
+ * （配線忘れ）、`not-series-parallel` は届くが直並列には分解できない（ブリッジ回路）。§10.7 I3
+ */
+type ReduceFailure = 'unconnected' | 'not-series-parallel';
+
+/** 直並列の簡約結果。 */
+type ReduceOutcome = { ok: true; expr: Expr } | { ok: false; reason: ReduceFailure };
+
+/** 左母線 → 終点 の式にまとめる。分解できなければ理由つきで失敗を返す。 */
+function reduceToExpr(source: readonly RawEdge[], sinkNode: number): ReduceOutcome {
   const contracted = contractWires(source, sinkNode);
   const sink = contracted.sink;
   // 接点を1つも通らずに左母線へ届く（接点の無い行）。実機では「常時ON」を読む
-  if (sink === LEFT_RAIL) return { kind: 'wire' };
+  if (sink === LEFT_RAIL) return { ok: true, expr: { kind: 'wire' } };
   let edges = contracted.edges;
+  if (!reachesSink(edges, sink)) return { ok: false, reason: 'unconnected' };
   for (;;) {
     const parallel = reduceParallel(edges);
     edges = parallel.edges;
@@ -290,10 +328,8 @@ function reduceToExpr(source: readonly RawEdge[], sinkNode: number): Expr | unde
     if (!parallel.changed && !series.changed) break;
   }
   const [only] = edges;
-  if (edges.length !== 1 || only === undefined) return undefined;
-  const ends = [only.a, only.b];
-  if (!ends.includes(LEFT_RAIL) || !ends.includes(sink)) return undefined;
-  return only.expr;
+  if (edges.length !== 1 || only === undefined) return { ok: false, reason: 'not-series-parallel' };
+  return { ok: true, expr: only.expr };
 }
 
 /** 接点の置かれた位置 → 命令語キー。§10.5 */
@@ -418,8 +454,19 @@ function emitOutput(
     );
     return;
   }
-  const preset = profile.counterPresetText?.(cell.preset) ?? String(cell.preset);
-  out.push(presetEmit(profile, 'counter', cell.device, preset));
+  // タイマ（`timerPreset`）と対称のチェック: 書いてから読み直し、値が違えば表せない（B2）
+  const text = profile.counterPresetText?.(cell.preset) ?? String(cell.preset);
+  const back = profile.parseCounterPreset?.(text);
+  const unavailable = back instanceof Error || (back !== undefined && back !== cell.preset);
+  if (unavailable) {
+    errors.push({
+      code: 'preset-unavailable',
+      message: `${profile.formatDevice(cell.device)} はこの機種で表せないカウンタ設定値です: ${cell.preset}`,
+      device: cell.device,
+      networkId,
+    });
+  }
+  out.push(presetEmit(profile, 'counter', cell.device, unavailable ? '?' : text));
   // リセットは実機と同じく別の回路として書く（IRはセルに resetDevice を持っている）
   out.push({
     mnemonic: profile.instructionNames.ld,
@@ -445,21 +492,24 @@ function emitNetwork(
   const edges = buildEdges(net);
   let previousKey = '';
   for (const output of net.outputs) {
-    const expr = reduceToExpr(edges, nodeId(output.row, COIL_COL));
-    if (expr === undefined) {
+    const outcome = reduceToExpr(edges, nodeId(output.row, COIL_COL));
+    if (!outcome.ok) {
       errors.push({
-        code: 'not-series-parallel',
-        message: `${net.id} は直列・並列に分解できないため命令語リストにできません`,
+        code: outcome.reason === 'unconnected' ? 'coil-unconnected' : 'not-series-parallel',
+        message:
+          outcome.reason === 'unconnected'
+            ? `${net.id} のコイルが左母線に繋がっていません`
+            : `${net.id} は直列・並列に分解できないため命令語リストにできません`,
         networkId: net.id,
         row: output.row,
         col: output.col,
       });
       continue;
     }
-    const key = exprKey(expr);
-    if (key !== previousKey) emitBlock(expr, profile, out);
-    previousKey = key;
+    const key = exprKey(outcome.expr);
+    if (key !== previousKey) emitBlock(outcome.expr, profile, out);
     emitOutput(output.cell, profile, net.id, out, errors);
+    previousKey = output.cell.kind === 'counter' ? '' : key;
   }
 }
 
