@@ -1868,7 +1868,7 @@ export function isPlcJudge(result: AnyJudgeResult): result is JudgePlcResult {
   redoLadderEdit: () => boolean;
 ```
 
-**(e) 実装**。初期値は既定値の並びへ、アクションは `setHighlight` の実装の直後へ入れる。そして **`openProblem()` / `resetSession()` / `restartSession()` / `abandonSession()` の `set()` に下の `plcFields()` を混ぜる**。
+**(e) 実装**。初期値は既定値の並びへ、アクションは `setHighlight` の実装の直後へ入れる。そして **`openProblem()` と `abandonSession()` の `set()` にだけ下の `plcFields()` を混ぜる**（`resetSession()` は `openProblem()` を呼び直すので自動で走る。**`restartSession()` には混ぜない**＝ラダーを消さない。レビュー指摘 B3）。
 
 ```ts
 /** モードDの状態の初期値（課題を開く・離れるときに必ずここへ戻す）。 */
@@ -6595,7 +6595,7 @@ git add apps/desktop/src apps/desktop/test
 git commit -m "feat(desktop): show the monitored devices and run/stop the PLC"
 ```
 
-Expected: `monitor-panel` が `Tests  6 passed (6)`。
+Expected: `monitor-panel` が `Tests  6 passed (6)`、`ladder-workspace` は Task 8 の `Tests  11 passed (11)` のまま（`MonitorPanel` を差し込んでも枠のテストは落ちない）。2ファイル合わせて **17件**。
 
 ---
 
@@ -9945,7 +9945,7 @@ git commit -m "docs(plan-3b): tick the tasks and record the implementation delta
 
 ## 実装者への MERGE 注意
 
-複数のタスクが同じファイルへ別々の箇所から手を入れる。「推奨バッチ」で並行させるときは次の14点を守ること。
+複数のタスクが同じファイルへ別々の箇所から手を入れる。「推奨バッチ」で並行させるときは次の15点を守ること。
 
 1. **`i18n/ja.ts` への挿入は、挿入のたびにファイルを読み直してから行う。** Task 4・5・6・7・8・9・10・12・13・14・15・16 がそれぞれ別の位置へ追記する。本プランは「`JA.timeChart` の直後に `ladder`、その直後に `plc`」とだけ決めており、以降は**その2つのブロックの中**に足す。`JA.staticCheck` への3件（Task 13）と `JA.home.plcDesc`（Task 15）だけがブロックの外である。
 2. **`store.ts` は Task 2 の5箇所 ＋ Task 16 の3箇所だけ。** Task 2 は「import」「定数と `AnyJudgeResult`」「`AppState` のフィールド」「アクションの宣言」「実装と `plcFields()` の差し込み」。Task 16 は「`ladderGridCols` / `monitorColor` のフィールド」「`applyLadderSettings` の宣言」「その実装」。Task 10 が `openProblem()` に足す `camera: 'plc'` の1行もここに含める（Task 2 と同じバッチなら一緒に入れる）。
@@ -9961,6 +9961,7 @@ git commit -m "docs(plan-3b): tick the tasks and record the implementation delta
 12. **`ladder/LadderWorkspace.tsx` は Task 8 が作り、Task 9 が `workspaceSide` の先頭に `<MonitorPanel …/>` の1行を差し込む。この2つは同じバッチで直列に実行する**（並行させると片方の書き込みが失われる）。`ladder/LadderEditor.tsx` は Task 5 が作り、Task 8 が `errorCells` props を、Task 16 が `colors` props を足す（いずれも別バッチなので衝突しない）。
 13. **`ladder/ladder.module.css` は Task 4 が作り、Task 5・6・7・8・9 が**それぞれ末尾へ追記する**（レビュー指摘 I6）。クラス名は重ならない（`.grid*` = Task 4、`.input*` = Task 5、`.comment*` = Task 6、`.io*` = Task 7、`.output*` / `.tree*` / `.shortcut*` = Task 8、`.monitor*` / `.side*` = Task 9）が、**同じファイルの末尾へ同時に書くと片方が消える**。バッチ2の 4 → 5 → 6 → 7 は直列、バッチ3の 8 → 9 も直列なので、この順を崩さないこと。追記のたびにファイルを読み直す。
 14. **`shared/ipc.ts` は Task 14 の1箇所（`WorkFile` にモードDの項目）と Task 16 の1箇所（`AppSettings` に `defaultVendor` / `ladderGridCols` / `monitorColor`）だけ**（レビュー指摘 I6）。どちらも**同じバッチ5**なので、**14 → 16 の順に直列**で実行する（15 は別ファイルなので並行してよい）。`IPC_CHANNELS` は**6本のまま**で、どちらのタスクも増やさない（前提#5）。
+15. **`three/labels.ts` は Task 10 の1箇所だけ**（`blockTerminalMark()` が `PLC` / `OUTLET` の端子IDをそのまま名札にする分岐）。`blockFaceTexture()` の本体と `ROLE_COLOR` は**触らない**（新しい色も新しい引き手も足さない。§15）。
 
 ---
 
@@ -9999,12 +10000,4 @@ git commit -m "docs(plan-3b): tick the tasks and record the implementation delta
 |---|---|
 | 2026-09-18 | 初版。Phase 3（モードD＝PLC）のうち `apps/desktop`（3B）を扱う。ラダーエディタを **SVG のセルグリッド**とし、編集の実体は `@ojt/ladder-core` の `edit.ts` 純関数、取り消しは `LadderProgram` のスナップショットスタック（盤とは別）と決めた。キーの意味は `DialectProfile.shortcuts` から引き、キー文字列を画面に書かない（Phase 4 はプロファイルの差し替えだけで済む）。モニタは `PlcSnapshot.poweredCells` を**ネットワーク1本＝行を連ねた文字列**に畳んで 33ms のスナップショットへ相乗りさせる。Worker のコマンドは `plc`（ラダー載せ替え・RUN/STOP・モニタ・リセット）と `judgePlc` の2本だけ足し、盤は既存の `load` に `plcModel` を添えて派生させる。3Dは盤と同じ傾斜グループの延長として描き、視点プリセット `plc`（盤＋PLC＋コンセント全体）を1つ足した。セッション中は `twoStage` / `plcPowerIndependent` / `ioAssignment` を一切漏らさない。`plcPowerIndependent` は端子IDの形で2つの理由に振り分け、どちらにも「シミュレートされるPLCは未配線でも動く」説明を添える |
 | 2026-09-18 | 3A の landed 実装（`ladder-core` 68テスト・`plc-dialects` 37テスト）と 3A レビューの指摘を反映: ①画面に出す入力仕様は `@ojt/board-model` の FX5U の値（4.5kΩ / 3.5mA / 1.5mA）で、`circuit-sim` の既定値（4.7kΩ / 3mA）ではない ②IRのデバイス番号は10進・FX5U の端子名は8進なので、端子を指す文字列は必ず機種側（`unit.spec`）から取る（決定表#16）③`poweredCells` は全行の0列目が真になるので**空セルは塗らない** ④`CompileErrorCode` を画面側で網羅しない（3A 側で構造エラーが増える予定）⑤`judgePlc` の実測は6秒課題で約72ms |
-
-
-
-
-
-
-
-
-
+| 2026-09-19 | Plan 3B の Opus レビューを反映: **B1〜B12**（`@ojt/ladder-core` / `@ojt/plc-dialects` をワークスペース依存として Task 1 Step 0 で足す・`@testing-library/jest-dom` と `test/setup.ts`（`environment` は `happy-dom`）・`restartSession()` は `plcFields()` を混ぜずラダーを残す・`restore()` が RUN とモニタを送り直す・RUN/STOP をツールバーの `extraTools` へ・`KEY_ALIASES` と `insertMode` / `toggleInsert`・`JA.staticCheck` の既存3件に `satisfies`・前提#2 のバレル掲載一覧・自己矛盾していた固定値と行番号・E2E の `装着` とソケット・受入基準⑤の給電元 `CR1.9` / `CR1.13`・`e2e` のコミット対象）、**I1〜I16**（ベースラインを 60ファイル/825テスト・E2E 17本に直す・各タスクの Expected 件数・Files の欠け・MERGE 注意 #13〜#15・`blockFaceTexture()` の1枚板・机上ケーブルのメモ化・`hasHiddenCells()` / `unusedDevices()` の除外・エラー行をボタンに・確定後のカーソル送り・E2E の待ち方と受入基準③・`BOARD_POWER_PREFIXES` の import・不足していた import 行・再帰する `Get-ChildItem`）、**Minor**（no-op の `visualSignature` を落とす・`MonitorPanel` の細い購読・`PLC_PART_ID` / `PLC_WIRE_COLOR`・`Outlet.tsx` の重複 import・ツリーの色と入力例を方言から引く・`ShortcutHelp` の商標注記・MC/MCR の記号）、**利用者決定4件**（①PLC本体と壁コンセントは盤と同じ傾斜グループの延長＝傾きは意図した簡略化 ②`Shift+F3` は `F3` と同じ動作＋キー割当表の注記＋初回1回だけのトースト ③分割比は固定で 1180px 未満は1面フォールバック ④セッション中のライブ配線診断は出さず「PLC電源は壁コンセント（AC100V）から取ります」の静的な1行だけ出す。PLC電源の未配線はエラーで盤給電とは別文言、未使用デバイスは表示のみ）、および**バッチ表の見直し**（4→5→6→7 と 14→16 を直列化、並行は2系統まで、モデル割当を更新）。前提A〜Eを 3A の landed 実装に合わせて更新（`coil-on-read-only-device` と MC/MCR 対応検査・`timer-range`・`internal.max` 7999・内蔵D課題8題で `BUILTIN_ALL_PROBLEMS` は28題） |
