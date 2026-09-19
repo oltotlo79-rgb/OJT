@@ -109,6 +109,29 @@ describe('モードDのセッション画面（§10.1 / §12.1）', () => {
     expect(useStore.getState().camera).toBe('top');
   });
 
+  it('shows which step the trainee is in and what to do first (2026-09-19 の利用者決定)', () => {
+    render(<SessionRoute />);
+    // 空のラダーで始まるので「ラダー作成」がいまの手順、「変換」はこれから
+    expect(screen.getByTestId('plc-step-ladder')).toHaveAttribute('data-state', 'current');
+    expect(screen.getByTestId('plc-step-convert')).toHaveAttribute('data-state', 'todo');
+    // 「配線」はいつでも行えるので完了印を出さない（決定表#7 に触れない）
+    expect(screen.getByTestId('plc-step-wire')).toHaveAttribute('data-state', 'anytime');
+    // 最初の一歩はキー割当（方言プロファイル）から作る。決定表#12
+    expect(screen.getByTestId('plc-hint')).toHaveTextContent('F5');
+    expect(screen.getByTestId('plc-hint')).toHaveTextContent('F4');
+  });
+
+  it('says why the judge button is disabled and shows RUN/STOP as text', () => {
+    render(<SessionRoute />);
+    expect(screen.getByTestId('plc-hint')).toHaveTextContent('判定できません');
+    expect(screen.getByTestId('plc-run-status')).toHaveTextContent('停止中');
+    expect(screen.getByTestId('plc-ladder-mode')).toHaveTextContent('書込モード');
+    act(() => {
+      useStore.getState().setPlcRunning(true);
+    });
+    expect(screen.getByTestId('plc-run-status')).toHaveTextContent('運転中');
+  });
+
   it('shows the problem statement and the parts panel（リレーを装着する）', () => {
     render(<SessionRoute />);
     expect(screen.getByText(titlePattern)).toBeInTheDocument();

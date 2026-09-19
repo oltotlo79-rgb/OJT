@@ -463,6 +463,32 @@ export const JA = {
     /** 判定ボタンを押せない理由。3A H-1 */
     judgeNoLadder: 'ラダーがありません',
     judgeNotConverted: '変換（F4）を通してから判定します',
+    /**
+     * 画面の上段に出す手順の案内（2026-09-19 の利用者決定「分かりやすく直感的に」）。
+     * 見出し語は GX Works3 の言い方に合わせる（内部の識別子は画面に出さない）。
+     */
+    guide: '手順',
+    stepWire: '配線（3D盤）',
+    stepLadder: 'ラダー作成',
+    stepConvert: '変換',
+    stepRun: 'モニタ開始・RUN',
+    stepJudge: '判定',
+    /** 「配線」はいつでも行えるので完了印を出さない（決定表#7 に触れない）。 */
+    stepAnytime: 'いつでも',
+    stepDone: '済',
+    stepCurrent: 'いまここ',
+    /** いまの状態（ボタンの見た目だけに頼らず文字でも出す）。 */
+    statusLadder: 'ラダー',
+    statusPlc: 'PLC',
+    statusRunning: '運転中（RUN）',
+    statusStopped: '停止中（STOP）',
+    modeWrite: '書込モード',
+    modeRead: '読出モード',
+    modeMonitor: 'モニタ',
+    /** 最初に何をすればよいか。キーの文字列は方言プロファイルから足す（決定表#12）。 */
+    ladderHint: 'まずラダーを作ります',
+    /** 押せないボタンの理由を画面にも出す（`title` だけに頼らない）。 */
+    judgeBlocked: '判定できません',
     // --- /Plan 3B Task 12 ---
   },
   // --- /Plan 3B Task 10 ---

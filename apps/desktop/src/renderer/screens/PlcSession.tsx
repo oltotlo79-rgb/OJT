@@ -6,7 +6,8 @@ import {
 } from '@ojt/board-model';
 import type { TerminalId } from '@ojt/circuit-sim';
 import { isPlcProblem } from '@ojt/content';
-import { getDialect } from '@ojt/plc-dialects';
+import type { LadderProgram } from '@ojt/ladder-core';
+import { getDialect, type DialectProfile } from '@ojt/plc-dialects';
 import { useCallback, useEffect, useMemo, useRef, type JSX } from 'react';
 import type { PlcCommandAction } from '../../worker/protocol.js';
 import { ojtApi } from '../app/ojt-api.js';
@@ -49,6 +50,7 @@ import {
   type PickAction,
   type PickHit,
 } from '../session/interaction.js';
+import type { LadderEditorMode } from '../session/ladder.js';
 import { boardForProblem, canJudgePlc } from '../session/plc-session.js';
 import { useViewportShortcuts } from '../session/viewport-keys.js';
 import { applyWorkFile, toWorkFile } from '../session/work-file.js';
@@ -66,6 +68,39 @@ import styles from './screens.module.css';
 
 /** 経過時間の更新間隔[ms]。 */
 const ELAPSED_INTERVAL_MS = 200;
+
+/** 手順の進み方（`done` 済み / `current` いまここ / `todo` これから / `anytime` いつでも）。 */
+type StepState = 'done' | 'current' | 'todo' | 'anytime';
+
+/**
+ * ラダーに中身があるか（空セルと END だけなら「まだ作っていない」）。
+ * 手順の表示にだけ使う。中身の**正しさ**は見ない（決定表#7）。
+ */
+function hasLadderContent(program: LadderProgram | undefined): boolean {
+  if (program === undefined) return false;
+  return program.networks.some((net) =>
+    net.cells.some((row) => row.some((cell) => cell.kind !== 'empty' && cell.kind !== 'end')),
+  );
+}
+
+/**
+ * ラダーの作り方の1行。キーの文字列は**方言プロファイルから引く**（決定表#12）。
+ * 画面にキーを直接書かないので、Phase 4 でメーカーを替えると案内も一緒に変わる。
+ */
+function ladderHintText(profile: DialectProfile): string {
+  const keys = (['contact-no', 'coil', 'convert'] as const)
+    .map((action) => profile.shortcuts.find((entry) => entry.action === action))
+    .filter((entry) => entry !== undefined)
+    .map((entry) => `${entry.keys}＝${entry.label}`);
+  return keys.length === 0 ? JA.plc.ladderHint : `${JA.plc.ladderHint}: ${keys.join(' ／ ')}`;
+}
+
+/** 書込み／読出し／モニタの表示名（GX Works3 の言い方に揃える）。§10.6 */
+function ladderModeLabel(mode: LadderEditorMode): string {
+  if (mode === 'write') return JA.plc.modeWrite;
+  if (mode === 'read') return JA.plc.modeRead;
+  return JA.plc.modeMonitor;
+}
 
 /** 例外から画面に出す1行を作る。 */
 function reasonOf(error: unknown): string {
@@ -95,6 +130,7 @@ export function PlcSession(): JSX.Element {
   const camera = useStore((s) => s.camera);
   const view = useStore((s) => s.ladderView);
   const ladderFocused = useStore((s) => s.ladderFocused);
+  const ladderMode = useStore((s) => s.ladderMode);
   const converted = useStore((s) => s.converted);
   const ladder = useStore((s) => s.ladder);
   const plcRunning = useStore((s) => s.plcRunning);
@@ -381,6 +417,33 @@ export function PlcSession(): JSX.Element {
       ? JA.plc.judgeNoLadder
       : JA.plc.judgeNotConverted;
 
+  /*
+   * 手順の見える化（2026-09-19 の利用者決定「分かりやすく直感的に」）。
+   * 見るのは**ラダーの有無・変換済みか・RUN 中か**の3つだけで、配線の中身は一切見ない
+   * （決定表#7: セッション中に合否を漏らさない）。「配線」はいつでも行える作業として
+   * 完了印を出さない。
+   */
+  const written = hasLadderContent(ladder);
+  const steps: ReadonlyArray<{ key: string; label: string; state: StepState }> = [
+    { key: 'wire', label: JA.plc.stepWire, state: 'anytime' },
+    { key: 'ladder', label: JA.plc.stepLadder, state: written ? 'done' : 'current' },
+    {
+      key: 'convert',
+      label: JA.plc.stepConvert,
+      state: converted ? 'done' : written ? 'current' : 'todo',
+    },
+    {
+      key: 'run',
+      label: JA.plc.stepRun,
+      state: plcRunning ? 'done' : converted ? 'current' : 'todo',
+    },
+    {
+      key: 'judge',
+      label: JA.plc.stepJudge,
+      state: readiness.ok && plcRunning ? 'current' : 'todo',
+    },
+  ];
+
   /** 元に戻す／やり直し（盤のみ。ラダーは `Ctrl+Z` がエディタで処理する。決定表#3） */
   const restore = (step: ReturnType<typeof undoHistory>, verb: string): void => {
     if (step === undefined) return;
@@ -436,6 +499,7 @@ export function PlcSession(): JSX.Element {
               <button
                 key={value}
                 type="button"
+                className={styles.plcToolButton}
                 data-testid={`view-${value}`}
                 aria-pressed={view === value}
                 onClick={() => {
@@ -452,6 +516,7 @@ export function PlcSession(): JSX.Element {
             */}
             <button
               type="button"
+              className={styles.plcToolButton}
               data-testid="plc-run"
               aria-pressed={plcRunning}
               title={JA.ladder.runStopTitle}
@@ -558,6 +623,57 @@ export function PlcSession(): JSX.Element {
           }}
         />
       </Toolbar>
+
+      {/*
+        いまどの手順にいるのか・いまの状態は何か・次に何をすればよいのかを、
+        ボタンの見た目に頼らず文字でも出す（2026-09-19 の利用者決定）。
+        手順の判定材料はラダーの有無・変換済みか・RUN 中かの3つだけで、
+        配線の中身（＝合否）には一切触れない（決定表#7）。
+      */}
+      <div className={styles.plcGuide} data-testid="plc-guide">
+        <ol className={styles.plcSteps} aria-label={JA.plc.guide}>
+          {steps.map((step) => (
+            <li
+              key={step.key}
+              className={styles.plcStep}
+              data-state={step.state}
+              data-testid={`plc-step-${step.key}`}
+              {...(step.state === 'current' ? { 'aria-current': 'step' as const } : {})}
+            >
+              <span className={styles.plcStepName}>{step.label}</span>
+              {step.state === 'done' ? (
+                <span className={styles.plcStepNote}>{JA.plc.stepDone}</span>
+              ) : null}
+              {step.state === 'current' ? (
+                <span className={styles.plcStepNote}>{JA.plc.stepCurrent}</span>
+              ) : null}
+              {step.state === 'anytime' ? (
+                <span className={styles.plcStepNote}>{JA.plc.stepAnytime}</span>
+              ) : null}
+            </li>
+          ))}
+        </ol>
+        <div className={styles.plcStatus}>
+          <span className={styles.plcChip} data-testid="plc-ladder-mode">
+            {JA.plc.statusLadder}: {ladderModeLabel(ladderMode)}
+          </span>
+          <span
+            className={styles.plcChip}
+            data-testid="plc-run-status"
+            data-on={plcRunning ? 'true' : 'false'}
+          >
+            {JA.plc.statusPlc}: {plcRunning ? JA.plc.statusRunning : JA.plc.statusStopped}
+          </span>
+        </div>
+        <p className={styles.plcHint} data-testid="plc-hint">
+          {readiness.ok ? null : (
+            <span className={styles.plcBlocked}>
+              {JA.plc.judgeBlocked}: {judgeTitle}
+            </span>
+          )}
+          {ladderHintText(profile)}
+        </p>
+      </div>
 
       <div className={styles.plcLayout} data-testid="plc-session" data-view={view}>
         {view === 'board' ? null : (
