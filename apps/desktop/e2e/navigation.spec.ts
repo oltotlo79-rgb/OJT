@@ -8,7 +8,9 @@ import {
   type ElectronApplication,
   type Page,
 } from '@playwright/test';
-import { GIZMO_MARGIN } from '../src/renderer/three/ViewGizmo.js';
+import { closeOverflow, openOverflow } from './projection.js';
+import { GIZMO_MARGIN, GIZMO_SIZE } from '../src/renderer/three/ViewGizmo.js';
+import { cameraPose, type CameraPose } from '../src/renderer/three/camera.js';
 import { GIZMO_DRAG_RAD_PER_PX } from '../src/renderer/three/navigation.js';
 
 /**
@@ -69,6 +71,69 @@ async function canvasBox(page: Page): Promise<{ x: number; y: number; w: number;
 async function gizmoCenter(page: Page): Promise<{ x: number; y: number }> {
   const box = await canvasBox(page);
   return { x: box.x + GIZMO_MARGIN[0], y: box.y + GIZMO_MARGIN[1] };
+}
+
+/**
+ * ビューキューブの**面の中心**が来るページ座標（キューブ中心からのずれ）。
+ *
+ * drei の `GizmoHelper` はキューブを**主カメラの回転の逆**で置き、HUD は画面と同じ寸法の
+ * 正射影（`margin` がそのまま px で効く空間）なので、面の法線をカメラの基底（右・上）へ
+ * 写した成分に `GIZMO_SIZE / 2` を掛ければ、そのまま画面上のずれ［px］になる。
+ *
+ * 決め打ちのピクセル数で面を突くと、キューブの見た目（面取りの量・大きさ）が変わるたびに
+ * 隣の辺や角を押してしまう。面の中心を計算で出しておけば見た目の変更に追随する。
+ */
+function gizmoFaceOffset(
+  pose: CameraPose,
+  normal: readonly [number, number, number],
+): { dx: number; dy: number } {
+  const sub = (a: readonly number[], b: readonly number[]): [number, number, number] => [
+    (a[0] ?? 0) - (b[0] ?? 0),
+    (a[1] ?? 0) - (b[1] ?? 0),
+    (a[2] ?? 0) - (b[2] ?? 0),
+  ];
+  const cross = (a: readonly number[], b: readonly number[]): [number, number, number] => [
+    (a[1] ?? 0) * (b[2] ?? 0) - (a[2] ?? 0) * (b[1] ?? 0),
+    (a[2] ?? 0) * (b[0] ?? 0) - (a[0] ?? 0) * (b[2] ?? 0),
+    (a[0] ?? 0) * (b[1] ?? 0) - (a[1] ?? 0) * (b[0] ?? 0),
+  ];
+  const dot = (a: readonly number[], b: readonly number[]): number =>
+    (a[0] ?? 0) * (b[0] ?? 0) + (a[1] ?? 0) * (b[1] ?? 0) + (a[2] ?? 0) * (b[2] ?? 0);
+  const unit = (v: readonly number[]): [number, number, number] => {
+    const length = Math.hypot(v[0] ?? 0, v[1] ?? 0, v[2] ?? 0);
+    return length === 0
+      ? [0, 0, 0]
+      : [(v[0] ?? 0) / length, (v[1] ?? 0) / length, (v[2] ?? 0) / length];
+  };
+  const forward = unit(sub(pose.target, pose.position));
+  const right = unit(cross(forward, pose.up));
+  const up = cross(right, forward);
+  const half = GIZMO_SIZE / 2;
+  // 画面の y は下向きなので、カメラの上方向の成分は符号を反転する
+  return { dx: dot(normal, right) * half, dy: -dot(normal, up) * half };
+}
+
+/**
+ * 視点プリセット（正面／俯瞰／ソケット拡大）を押す。
+ * 2026-09-19 の UX 変更でツールバーの「…」（`toolbar-overflow-toggle`）の中に畳まれたので、
+ * 開いて押して閉じるところまでをここでまとめる（UXレビュー #17）。
+ */
+async function selectPreset(page: Page, label: string): Promise<void> {
+  await openOverflow(page);
+  await page
+    .getByTestId('toolbar-overflow')
+    .getByRole('button', { name: label, exact: true })
+    .click();
+  await closeOverflow(page);
+}
+
+/** 「…」を開いて視点ボタンが押された状態であることを確かめ、閉じる。 */
+async function expectPresetPressed(page: Page, label: string): Promise<void> {
+  await openOverflow(page);
+  await expect(
+    page.getByTestId('toolbar-overflow').getByRole('button', { name: label, exact: true }),
+  ).toHaveAttribute('aria-pressed', 'true');
+  await closeOverflow(page);
 }
 
 /**
@@ -138,7 +203,7 @@ test.describe('Blender 風の3D操作（§12.2）', () => {
   });
 
   test('ビューキューブをドラッグすると視点が回り、放すと慣性が減衰して止まる', async () => {
-    await page.getByRole('button', { name: '正面' }).click();
+    await selectPreset(page, '正面');
     await page.waitForTimeout(600);
     const before = await camera(page);
     await shot(app, '20-nav-before-gizmo-drag');
@@ -173,7 +238,7 @@ test.describe('Blender 風の3D操作（§12.2）', () => {
   });
 
   test('中ドラッグで回転、Shift＋中ドラッグで平行移動、ホイールでズーム', async () => {
-    await page.getByRole('button', { name: '正面' }).click();
+    await selectPreset(page, '正面');
     await page.waitForTimeout(600);
     const box = await canvasBox(page);
     const cx = box.x + box.w / 2;
@@ -222,26 +287,20 @@ test.describe('Blender 風の3D操作（§12.2）', () => {
   });
 
   test('テンキーで視点が切り替わる（1/3/7 と Ctrl、Home で全体）', async () => {
-    await page.getByRole('button', { name: '正面' }).click();
+    await selectPreset(page, '正面');
     await page.waitForTimeout(600);
     const front = await camera(page);
 
     await page.keyboard.press('Numpad7');
     await page.waitForTimeout(700);
-    await expect(page.getByRole('button', { name: '俯瞰' })).toHaveAttribute(
-      'aria-pressed',
-      'true',
-    );
+    await expectPresetPressed(page, '俯瞰');
     const top = await camera(page);
     expect(top.polar).toBeLessThan(front.polar);
     await shot(app, '25-nav-numpad7-top');
 
     await page.keyboard.press('Numpad1');
     await page.waitForTimeout(700);
-    await expect(page.getByRole('button', { name: '正面' })).toHaveAttribute(
-      'aria-pressed',
-      'true',
-    );
+    await expectPresetPressed(page, '正面');
     const backToFront = await camera(page);
     expect(backToFront.az).toBeCloseTo(front.az, 1);
 
@@ -256,10 +315,7 @@ test.describe('Blender 風の3D操作（§12.2）', () => {
     // Home は盤全体（正面）へ戻す
     await page.keyboard.press('Home');
     await page.waitForTimeout(700);
-    await expect(page.getByRole('button', { name: '正面' })).toHaveAttribute(
-      'aria-pressed',
-      'true',
-    );
+    await expectPresetPressed(page, '正面');
     const home = await camera(page);
     expect(home.az).toBeCloseTo(front.az, 1);
     expect(home.dist).toBeCloseTo(front.dist, 0);
@@ -269,25 +325,20 @@ test.describe('Blender 風の3D操作（§12.2）', () => {
   test('キューブの面をクリックするとその視点へスナップする', async () => {
     await page.keyboard.press('Numpad7');
     await page.waitForTimeout(800);
-    await expect(page.getByRole('button', { name: '俯瞰' })).toHaveAttribute(
-      'aria-pressed',
-      'true',
-    );
-    // 俯瞰では上・前・左の3面が見える。手前下側は「前」の面
+    await expectPresetPressed(page, '俯瞰');
+    // 俯瞰では上・前・左の3面が見える。「正面」の面（世界の +Z）の中心を突く
     const center = await gizmoCenter(page);
-    await page.mouse.move(center.x + 10, center.y + 18);
+    const face = gizmoFaceOffset(cameraPose('top'), [0, 0, 1]);
+    await page.mouse.move(center.x + face.dx, center.y + face.dy);
     await page.mouse.down();
     await page.mouse.up();
     await page.waitForTimeout(800);
-    await expect(page.getByRole('button', { name: '正面' })).toHaveAttribute(
-      'aria-pressed',
-      'true',
-    );
+    await expectPresetPressed(page, '正面');
     await shot(app, '28-nav-cube-face-click');
   });
 
   test('視点を回したドラッグでは端子を拾わない（配線が始まらない）', async () => {
-    await page.getByRole('button', { name: '正面' }).click();
+    await selectPreset(page, '正面');
     await page.waitForTimeout(700);
     const box = await canvasBox(page);
     // 盤の真ん中あたり（端子が並ぶ帯）から左ドラッグで回す
@@ -300,5 +351,30 @@ test.describe('Blender 風の3D操作（§12.2）', () => {
     await page.waitForTimeout(400);
     // 1本目の端子が選ばれていない（＝ドラッグの終わりのクリックを捨てている）
     await expect(page.getByTestId('status-overlay')).toContainText('端子未選択');
+  });
+
+  /**
+   * ビューキューブの「上」の面（§12.2）。
+   *
+   * 盤は 13° の傾斜コンソールなので、**面直の「正面」視はワールドではほぼ真上から
+   * 見下ろす姿勢**になる（`cameraPose('front')` のカメラは +Y 側に立つ）。キューブは
+   * ワールドの向きを示すので、正面視ではキューブの「上」の面が正対して見えており、
+   * その中心を押すと俯瞰（`top`）プリセットへ移る。
+   */
+  test('キューブの「上」の面を押すと俯瞰プリセットへ移る', async () => {
+    await selectPreset(page, '正面');
+    await page.waitForTimeout(700);
+    const front = await camera(page);
+
+    const center = await gizmoCenter(page);
+    await page.mouse.move(center.x, center.y);
+    await page.mouse.down();
+    await page.mouse.up();
+    await page.waitForTimeout(900);
+
+    await expectPresetPressed(page, '俯瞰');
+    const top = await camera(page);
+    expect(top.polar).toBeLessThan(front.polar);
+    await shot(app, '29-nav-cube-top-face');
   });
 });

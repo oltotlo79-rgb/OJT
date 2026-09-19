@@ -10,7 +10,14 @@ import {
   type ElectronApplication,
   type Page,
 } from '@playwright/test';
-import { boardPoint, SELF_HOLD_WIRES, terminalPoint, type CanvasBox } from './projection.js';
+import {
+  boardPoint,
+  SELF_HOLD_WIRES,
+  selectView,
+  terminalPoint,
+  wireCountText,
+  type CanvasBox,
+} from './projection.js';
 
 /**
  * Electron スモーク（§14.2 の E2E ①）。設計仕様 §16 Phase 1 受入基準①〜③。
@@ -29,6 +36,13 @@ const CHROMIUM_FLAGS = [
   '--use-angle=swiftshader',
   '--enable-unsafe-swiftshader',
 ];
+
+/**
+ * 内蔵課題 b-001 の固定配線（チェック用回路の既設配線）の本数。§6.3
+ * 状態オーバーレイは「自分で張った電線 N 本（固定 M 本）」と出すので、
+ * 期待値を作るときに総数と固定本数の両方が要る（UXレビュー #21）。
+ */
+const FIXED_WIRES = 3;
 
 /**
  * スクリーンショットは `BrowserWindow.capturePage()` で撮る。
@@ -124,7 +138,7 @@ test.describe('モードB スモーク', () => {
     // ③ 課題を開く → 3D盤（§8.1）
     await page.getByTestId('open-b-001').click();
     await expect(page.getByTestId('viewport')).toBeVisible();
-    await expect(page.getByTestId('status-overlay')).toContainText('電線 3 本');
+    await expect(page.getByTestId('status-overlay')).toContainText(wireCountText(3, FIXED_WIRES));
     // WebGL の初期化とシーンの1フレーム目を待つ
     await expect
       .poll(async () => page.locator('[data-testid="viewport"] canvas').count(), {
@@ -141,7 +155,7 @@ test.describe('モードB スモーク', () => {
     await page.mouse.click(socketEdge.x, socketEdge.y);
     await expect(page.getByText('S1（CR1）を選択中')).toBeVisible();
     await page.getByRole('button', { name: '装着' }).first().click();
-    await expect(page.getByTestId('operation-log')).toContainText('S1 に relay-my4n を装着');
+    await expect(page.getByTestId('operation-log')).toContainText('S1 に リレー MY4N を装着');
     await shot(app, '04-relay-mounted');
 
     // ⑤ 端子クリックで模範どおりに配線する（§8.2）
@@ -149,21 +163,21 @@ test.describe('モードB スモーク', () => {
       await clickTerminal(page, box, from);
       await clickTerminal(page, box, to);
     }
-    await expect(page.getByTestId('status-overlay')).toContainText('電線 12 本');
+    await expect(page.getByTestId('status-overlay')).toContainText(wireCountText(12, FIXED_WIRES));
     await shot(app, '05-wired');
 
     // ⑤-1 配線帯で束になって直角に走る様子をソケット拡大で1枚撮る（§6.6）
-    await page.getByRole('button', { name: 'ソケット拡大' }).click();
+    await selectView(page, 'ソケット拡大');
     await page.waitForTimeout(900);
     await shot(app, '05a-wire-bundle');
-    await page.getByRole('button', { name: '正面' }).click();
+    await selectView(page, '正面');
     await page.waitForTimeout(600);
 
     // ⑤-2 実物写真と同じ斜め俯瞰で1枚撮る（§12.2 の俯瞰プリセット）
-    await page.getByRole('button', { name: '俯瞰' }).click();
+    await selectView(page, '俯瞰');
     await page.waitForTimeout(900);
     await shot(app, '05b-board-birdseye');
-    await page.getByRole('button', { name: '正面' }).click();
+    await selectView(page, '正面');
     await page.waitForTimeout(600);
 
     // ⑥ ブレーカ → 電源スイッチ の順に通電（§5.3.5）
@@ -192,7 +206,7 @@ test.describe('モードB スモーク', () => {
       await clickTerminal(page, retryBox, from);
       await clickTerminal(page, retryBox, to);
     }
-    await expect(page.getByTestId('status-overlay')).toContainText('電線 11 本');
+    await expect(page.getByTestId('status-overlay')).toContainText(wireCountText(11, FIXED_WIRES));
     await page.getByRole('button', { name: '判定' }).click();
     await expect(page.getByTestId('verdict')).toHaveText('不合格');
     await expect(page.getByTestId('mismatch-table')).toBeVisible();

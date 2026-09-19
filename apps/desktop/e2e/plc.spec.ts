@@ -17,7 +17,13 @@ import {
   type ElectronApplication,
   type Page,
 } from '@playwright/test';
-import { PLC_BOARD, plcBoardPoint, plcTerminalPoint, type CanvasBox } from './projection.js';
+import {
+  PLC_BOARD,
+  plcBoardPoint,
+  plcTerminalPoint,
+  wireCountText,
+  type CanvasBox,
+} from './projection.js';
 
 /**
  * モードDのE2E（§14.2 ③ / §16 Phase 3 受入基準①〜⑤）。
@@ -140,12 +146,24 @@ async function showSplit(page: Page): Promise<void> {
   await page.waitForTimeout(600);
 }
 
-/** `status-overlay` が出している電線の本数。 */
-async function wireCount(page: Page): Promise<number> {
+/**
+ * `status-overlay` が出している電線の本数（UXレビュー #21 で
+ * 「自分で張った電線 N 本（固定 M 本）」の形になった）。
+ */
+async function wireCounts(page: Page): Promise<{ own: number; fixed: number }> {
   const text = (await page.getByTestId('status-overlay').textContent()) ?? '';
-  const matched = /電線\s+(\d+)\s+本/u.exec(text);
-  if (matched?.[1] === undefined) throw new Error(`電線の本数を読めません: ${text}`);
-  return Number(matched[1]);
+  const matched = /自分で張った電線\s+(\d+)\s+本（固定\s+(\d+)\s+本）/u.exec(text);
+  const own = matched?.[1];
+  const fixed = matched?.[2];
+  if (own === undefined || fixed === undefined) {
+    throw new Error(`電線の本数を読めません: ${text}`);
+  }
+  return { own: Number(own), fixed: Number(fixed) };
+}
+
+/** 「自分で張った電線 N 本（固定 M 本）」の期待文字列。 */
+function ownWiresText(own: number, fixed: number): string {
+  return wireCountText(own + fixed, fixed);
 }
 
 /**
@@ -174,7 +192,7 @@ async function mountRelays(page: Page, box: CanvasBox): Promise<void> {
     await page.mouse.click(point.x, point.y);
     await page.getByRole('button', { name: '装着' }).first().click();
     await expect(page.getByTestId('operation-log')).toContainText(
-      `${socketId} に relay-my4n を装着`,
+      `${socketId} に リレー MY4N を装着`,
     );
   }
 }
@@ -288,7 +306,7 @@ async function buildReferenceLadder(page: Page): Promise<void> {
 
 /** 電線を1本張る（端子 → 端子）。張れたことを本数で確かめる。 */
 async function wire(page: Page, box: CanvasBox, from: string, to: string): Promise<void> {
-  const before = await wireCount(page);
+  const before = await wireCounts(page);
   const a = plcTerminalPoint(ROLES, from, box);
   const b = plcTerminalPoint(ROLES, to, box);
   await page.mouse.click(a.x, a.y);
@@ -296,7 +314,7 @@ async function wire(page: Page, box: CanvasBox, from: string, to: string): Promi
   await expect(
     page.getByTestId('status-overlay'),
     `${from} – ${to} を張れませんでした`,
-  ).toContainText(`電線 ${String(before + 1)} 本`);
+  ).toContainText(ownWiresText(before.own + 1, before.fixed));
 }
 
 /** 受入基準②: 模範どおりに配線する（`skip` に挙げた端子を使う電線は張らない）。 */
@@ -324,10 +342,10 @@ test.describe('モードD（PLC）', () => {
       // ② 3D上で模範どおりに配線する。3Dの準備を待ってから矩形を測り、その矩形で射影する
       const box = await showBoardOnly(page);
       await mountRelays(page, box);
-      const initialWires = await wireCount(page);
+      const initialWires = await wireCounts(page);
       await wireReference(page, box);
       await expect(page.getByTestId('status-overlay')).toContainText(
-        `電線 ${String(initialWires + REFERENCE_WIRES.length)} 本`,
+        ownWiresText(initialWires.own + REFERENCE_WIRES.length, initialWires.fixed),
       );
       await shot(app, '31-plc-wired');
 
@@ -338,8 +356,10 @@ test.describe('モードD（PLC）', () => {
       await expect(page.getByTestId('plc-ladder-mode')).toContainText('モニタ');
       await page.getByTestId('plc-run').click();
       await expect(page.getByTestId('plc-run')).toHaveAttribute('aria-pressed', 'true');
-      await page.getByRole('button', { name: 'ブレーカ', exact: true }).click();
-      await page.getByRole('button', { name: '電源スイッチ', exact: true }).click();
+      // 電源ボタンの文言は「① ブレーカ」「② 電源スイッチ」になった（UXレビュー #10）。
+      // 文言に縛られないようアプリ側の `data-testid` で指す。
+      await page.getByTestId('power-breaker').click();
+      await page.getByTestId('power-switch').click();
       await expect(page.getByTestId('status-overlay')).toContainText('通電中');
       // スキャンが回っていることを「止まっています」の注記が消えたことで確かめる
       await expect(page.getByTestId('monitor-scan')).toBeVisible({ timeout: 30_000 });

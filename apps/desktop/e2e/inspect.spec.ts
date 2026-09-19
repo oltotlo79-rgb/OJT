@@ -19,7 +19,15 @@ import {
   type ElectronApplication,
   type Page,
 } from '@playwright/test';
-import { boardPoint, pushButtonPoint, roleTerminalPoint, type CanvasBox } from './projection.js';
+import {
+  boardPoint,
+  closeOverflow,
+  openOverflow,
+  pushButtonPoint,
+  roleTerminalPoint,
+  wireCountText,
+  type CanvasBox,
+} from './projection.js';
 
 /**
  * モードC1/C2 のE2E（§14.2 / §16 Phase 2 受入基準①〜⑤）。
@@ -142,11 +150,22 @@ async function waitForBoard(page: Page): Promise<void> {
  * C1は挿し替えのたびに `load` を送り直し、Worker は新しい `Simulation` を作るので電源が落ちる。
  */
 async function powerOn(page: Page): Promise<void> {
-  const breaker = page.getByRole('button', { name: 'ブレーカ', exact: true });
+  // 文言は「① ブレーカ」「② 電源スイッチ」になった（UXレビュー #10）ので、
+  // 名前ではなくアプリ側の `data-testid` で指す（`panels/PowerControls.tsx`）。
+  const breaker = page.getByTestId('power-breaker');
   if ((await breaker.getAttribute('aria-pressed')) !== 'true') await breaker.click();
-  const supply = page.getByRole('button', { name: '電源スイッチ', exact: true });
+  const supply = page.getByTestId('power-switch');
   if ((await supply.getAttribute('aria-pressed')) !== 'true') await supply.click();
   await expect(page.getByTestId('status-overlay')).toContainText('通電中');
+}
+
+/**
+ * セッションの固定配線（`locked`）の本数。
+ * 状態オーバーレイは「自分で張った電線 N 本（固定 M 本）」と出すので、期待値を作るには
+ * 総数だけでなく固定本数も要る（UXレビュー #21 / `i18n/ja.ts` の `wireCountText()`）。
+ */
+function fixedWiresOf(session: BoardSession): number {
+  return session.wires.filter((w) => w.locked).length;
 }
 
 /** 内蔵C1課題から、その `truth` を持つ部品を1つ選ぶ。 */
@@ -205,8 +224,17 @@ function wireRoutePoints(session: BoardSession, wireId: string): Vec3[] {
 }
 
 /**
+ * 電線の表示名（`i18n/ja.ts` の `wireLabel()` と同じ文言）。
+ * UXレビュー #6b で内部の電線ID（`sw-005`）を画面に出すのをやめ、両端の端子と色から
+ * 組み立てた `CR1.9–PB1.2c の青線` を出すようになった。
+ */
+function wireDisplayLabel(wire: { from: unknown; to: unknown; color: string }): string {
+  return `${String(wire.from)}–${String(wire.to)} の${wire.color}線`;
+}
+
+/**
  * 指摘モードで目的の電線を掴めるページ座標を探す。
- * 当たった対象は種別ポップオーバーの見出し（`電線 sw-005`）で確かめられるので、
+ * 当たった対象は種別ポップオーバーの見出し（`CR1.9–PB1.2c の青線`）で確かめられるので、
  * 別の電線や端子を掴んでしまったら取り消して次の候補へ進む。
  *
  * 候補はまず両端の中点（短い電線ならここが経路の上に来る）、次に経路器が返す折れ線の上の点。
@@ -227,6 +255,7 @@ async function findWirePoint(
   for (const local of wireRoutePoints(session, wireId).slice(0, 24)) {
     candidates.push(boardPoint(local, box));
   }
+  const label = wire === undefined ? `電線 ${wireId}` : wireDisplayLabel(wire);
   const popover = page.getByTestId('report-popover');
   for (const point of candidates) {
     if (point.x < box.x || point.x > box.x + box.width) continue;
@@ -235,7 +264,7 @@ async function findWirePoint(
     await page.waitForTimeout(120);
     if ((await popover.count()) === 0) continue;
     const text = (await popover.textContent()) ?? '';
-    if (text.includes(`電線 ${wireId}`)) return point;
+    if (text.includes(label)) return point;
     await page.getByTestId('report-cancel').click();
   }
   throw new Error(`3D盤で電線 ${wireId} を掴めませんでした`);
@@ -405,7 +434,8 @@ test.describe.serial('モードC1 部品点検（§16 Phase 2 受入基準①②
     }
 
     await expect(page.getByTestId('hazard-banner')).toBeVisible();
-    await expect(page.getByTestId('mistake-count')).toContainText('ミス 1 回');
+    // 危険操作の回数の文言は「危険操作 N 回（減点）」になった（`i18n/ja.ts` の `mistakeCountText()`）
+    await expect(page.getByTestId('mistake-count')).toContainText('危険操作 1 回');
     // 表示は測れないことを示す `----`（§5.6 #1。前提Cの訂正）
     await expect(page.getByTestId('tester-readout')).toHaveText('----');
     await shot(app, '16-c1-hazard-banner');
@@ -517,11 +547,14 @@ test.describe.serial('モードC2 回路点検・修復（§16 Phase 2 受入基
     expect(sites).toHaveLength(2);
     const socketRoles = faulted.socketRoles;
     const initialWires = faulted.wires.length;
+    const fixedWires = fixedWiresOf(faulted);
 
     await openProblem(page, 'mode-inspect-repair', problem.id);
     await expect(page.getByTestId('report-panel')).toBeVisible();
     await waitForBoard(page);
-    await expect(page.getByTestId('status-overlay')).toContainText(`電線 ${initialWires} 本`);
+    await expect(page.getByTestId('status-overlay')).toContainText(
+      wireCountText(initialWires, fixedWires),
+    );
     await shot(app, '20-c2-board');
 
     const box = await canvasBox(page);
@@ -572,7 +605,9 @@ test.describe.serial('モードC2 回路点検・修復（§16 Phase 2 受入基
         await page.mouse.click(point.x, point.y);
         await page.keyboard.press('Delete');
         expectedWires -= 1;
-        await expect(page.getByTestId('status-overlay')).toContainText(`電線 ${expectedWires} 本`);
+        await expect(page.getByTestId('status-overlay')).toContainText(
+          wireCountText(expectedWires, fixedWires),
+        );
         /*
          * `removed-wires`（修復パネルの「外した青線」）は**外した事実**を並べるだけで、
          * それが改造かどうかは出さない（§9.2。判定時に初めて計上する）。ここでは中身を
@@ -585,7 +620,9 @@ test.describe.serial('モードC2 回路点検・修復（§16 Phase 2 受入基
       await clickTerminal(String(original.from));
       await clickTerminal(String(original.to));
       expectedWires += 1;
-      await expect(page.getByTestId('status-overlay')).toContainText(`電線 ${expectedWires} 本`);
+      await expect(page.getByTestId('status-overlay')).toContainText(
+        wireCountText(expectedWires, fixedWires),
+      );
     }
     await expect(page.getByTestId('added-wires')).not.toHaveText('なし');
     await shot(app, '22-c2-repaired');
@@ -604,6 +641,7 @@ test.describe.serial('モードC2 回路点検・修復（§16 Phase 2 受入基
     const { faulted } = build();
     const socketRoles = faulted.socketRoles;
     const before = faulted.wires.length;
+    const fixedWires = fixedWiresOf(faulted);
     const workFilePath = join(APP_ROOT, 'test-results', 'c2-worksave.json');
     mkdirSync(dirname(workFilePath), { recursive: true });
 
@@ -611,7 +649,9 @@ test.describe.serial('モードC2 回路点検・修復（§16 Phase 2 受入基
     await openProblem(page, 'mode-inspect-repair', problem.id);
     await expect(page.getByTestId('report-panel')).toBeVisible();
     await waitForBoard(page);
-    await expect(page.getByTestId('status-overlay')).toContainText(`電線 ${before} 本`);
+    await expect(page.getByTestId('status-overlay')).toContainText(
+      wireCountText(before, fixedWires),
+    );
 
     const box = await canvasBox(page);
     await page.getByRole('button', { name: '白', exact: true }).click();
@@ -625,11 +665,16 @@ test.describe.serial('モードC2 回路点検・修復（§16 Phase 2 受入基
       await page.mouse.click(point.x, point.y);
       await page.waitForTimeout(120);
     }
-    await expect(page.getByTestId('status-overlay')).toContainText(`電線 ${before + 1} 本`);
+    await expect(page.getByTestId('status-overlay')).toContainText(
+      wireCountText(before + 1, fixedWires),
+    );
 
     // ② 保存する（ダイアログは固定パスへスタブする）
     await stubFileDialogs(app, workFilePath);
+    // 保存・読込はツールバーの「…」の中（UXレビュー #17）
+    await openOverflow(page);
     await page.getByRole('button', { name: '作業を保存', exact: true }).click();
+    await closeOverflow(page);
     await expect(page.getByTestId('toast').filter({ hasText: '保存しました' })).toBeVisible();
 
     // ③ 閉じて開き直す（作業ファイルはプロセスを跨いで残る）
@@ -642,10 +687,16 @@ test.describe.serial('モードC2 回路点検・修復（§16 Phase 2 受入基
     await openProblem(page, 'mode-inspect-repair', problem.id);
     await expect(page.getByTestId('report-panel')).toBeVisible();
     await waitForBoard(page);
-    await expect(page.getByTestId('status-overlay')).toContainText(`電線 ${before} 本`);
+    await expect(page.getByTestId('status-overlay')).toContainText(
+      wireCountText(before, fixedWires),
+    );
     await stubFileDialogs(app, workFilePath);
+    await openOverflow(page);
     await page.getByRole('button', { name: '作業を読込', exact: true }).click();
-    await expect(page.getByTestId('status-overlay')).toContainText(`電線 ${before + 1} 本`);
+    await closeOverflow(page);
+    await expect(page.getByTestId('status-overlay')).toContainText(
+      wireCountText(before + 1, fixedWires),
+    );
   });
 
   /**
@@ -663,11 +714,14 @@ test.describe.serial('モードC2 回路点検・修復（§16 Phase 2 受入基
     if (first === undefined || second === undefined) return;
     const socketRoles = faulted.socketRoles;
     const initialWires = faulted.wires.length;
+    const fixedWires = fixedWiresOf(faulted);
 
     await openProblem(page, 'mode-inspect-repair', problem.id);
     await expect(page.getByTestId('report-panel')).toBeVisible();
     await waitForBoard(page);
-    await expect(page.getByTestId('status-overlay')).toContainText(`電線 ${initialWires} 本`);
+    await expect(page.getByTestId('status-overlay')).toContainText(
+      wireCountText(initialWires, fixedWires),
+    );
 
     const box = await canvasBox(page);
     const clickTerminal = async (terminal: string): Promise<void> => {
@@ -736,7 +790,10 @@ test.describe.serial('モードC2 回路点検・修復（§16 Phase 2 受入基
     // 既定は閉じている（DOMに無い。`showSchematic ? <section>...` の分岐）
     await expect(page.getByTestId('schematic-svg')).toHaveCount(0);
 
+    // 回路図の開閉はツールバーの「…」の中（UXレビュー #17）
+    await openOverflow(page);
     await page.getByTestId('toggle-schematic').click();
+    await closeOverflow(page);
     await expect(page.getByTestId('schematic-svg')).toBeVisible();
     await shot(app, '24-c2-schematic-open');
 

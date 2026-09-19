@@ -81,7 +81,10 @@ function poseShiftMm(a: CameraPose, b: CameraPose): number {
 }
 
 /** `TerminalHit` が描く当たり判定メッシュ（`onClick` を持つ唯一のメッシュ）の props を取り出す。 */
-function pickBodyProps(terminal: BoardTerminal): { position: [number, number, number]; scale: number } {
+function pickBodyProps(terminal: BoardTerminal): {
+  position: [number, number, number];
+  scale: number;
+} {
   const element = TerminalHit({
     terminal,
     tooltip: terminal.label,
@@ -120,11 +123,7 @@ function plate(name: string, center: [number, number, number], w: number, h: num
 }
 
 /** 箱（端子台の台座・DC24V電源の台）を1個置く。 */
-function box(
-  name: string,
-  center: [number, number, number],
-  size: [number, number, number],
-): Mesh {
+function box(name: string, center: [number, number, number], size: [number, number, number]): Mesh {
   const mesh = new Mesh(new BoxGeometry(...size), new MeshBasicMaterial());
   mesh.name = name;
   mesh.position.set(...center);
@@ -166,7 +165,7 @@ function rayTo(pose: CameraPose, point: { x: number; y: number }): Raycaster {
   camera.updateProjectionMatrix();
   const ndc = new Vector2(
     ((point.x - CANVAS.x) / CANVAS.width) * 2 - 1,
-    -((((point.y - CANVAS.y) / CANVAS.height) * 2 - 1)),
+    -(((point.y - CANVAS.y) / CANVAS.height) * 2 - 1),
   );
   const raycaster = new Raycaster();
   raycaster.setFromCamera(ndc, camera);

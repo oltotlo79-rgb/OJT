@@ -7,6 +7,9 @@ import {
 } from '@ojt/board-model';
 import type { BoardDefinition, PlcUnitDefinition, SocketRoles } from '@ojt/board-model';
 import type { TerminalId } from '@ojt/circuit-sim';
+// 型だけを借りる（実行時に `@playwright/test` を読み込まない。このモジュールは
+// Vitest の `test/three-fidelity.test.tsx` からも import されるため）。
+import type { Page } from '@playwright/test';
 import {
   boardToWorld,
   CAMERA_FOV_DEG,
@@ -188,4 +191,57 @@ export function plcTerminalPointFor(
   const found = board.terminals.find((t) => t.id === physical);
   if (found === undefined) throw new Error(`端子が盤にありません: ${terminal}（${physical}）`);
   return plcBoardPointFor(unit, found.pos, box);
+}
+
+/* ------------------------------------------------------------------------- *
+ * 画面操作の共有ヘルパ（2026-09-19 の UX 変更に合わせて追加。追記のみ）
+ * ------------------------------------------------------------------------- */
+
+/**
+ * 状態オーバーレイの電線カウント（UXレビュー #21）。
+ * `src/renderer/i18n/ja.ts` の `wireCountText()` と同じ文言を書き写したもの
+ * （E2E は成果物を外から触るので `ja.ts` を読み込まない方針。`inspect.spec.ts` 冒頭の注記）。
+ *
+ * @param total 盤にある電線の総数（固定配線を含む）
+ * @param fixed そのうち固定配線（`locked`）の本数
+ */
+export function wireCountText(total: number, fixed: number): string {
+  return `自分で張った電線 ${String(Math.max(0, total - fixed))} 本（固定 ${String(fixed)} 本）`;
+}
+
+/**
+ * ツールバーの「…」（`toolbar-overflow-toggle`）を開く。UXレビュー #17
+ * 視点プリセット（正面／俯瞰／ソケット拡大）・作業ファイルの保存／読込・回路図の開閉は
+ * 1行に収まらなくなったのでこの中へ畳まれた。開いていれば何もしない。
+ */
+export async function openOverflow(page: Page): Promise<void> {
+  const panel = page.getByTestId('toolbar-overflow');
+  if ((await panel.count()) === 0) {
+    await page.getByTestId('toolbar-overflow-toggle').click();
+  }
+  await panel.waitFor({ state: 'visible' });
+}
+
+/**
+ * 「…」を閉じる。開いたままだとパネル（`position: absolute`）が3Dビューポートの
+ * 上端に被さり、盤の上側の端子やビューキューブのクリックを奪う。
+ */
+export async function closeOverflow(page: Page): Promise<void> {
+  const panel = page.getByTestId('toolbar-overflow');
+  if ((await panel.count()) > 0) {
+    await page.getByTestId('toolbar-overflow-toggle').click();
+    await panel.waitFor({ state: 'detached' });
+  }
+}
+
+/** 「…」の中のボタンを名前で1つ押し、閉じるところまで面倒を見る。 */
+export async function clickOverflowButton(page: Page, name: string): Promise<void> {
+  await openOverflow(page);
+  await page.getByTestId('toolbar-overflow').getByRole('button', { name, exact: true }).click();
+  await closeOverflow(page);
+}
+
+/** 「…」の中の視点プリセットを押す（正面／俯瞰／ソケット拡大）。 */
+export async function selectView(page: Page, label: string): Promise<void> {
+  await clickOverflowButton(page, label);
 }

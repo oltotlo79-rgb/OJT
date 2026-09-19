@@ -8,6 +8,7 @@ import {
   type ElectronApplication,
   type Page,
 } from '@playwright/test';
+import { closeOverflow, openOverflow, selectView } from './projection.js';
 
 /**
  * 仕上げ部分の E2E（設定画面・回路図ヒント・作業ファイルの保存）。
@@ -66,8 +67,11 @@ test.describe('仕上げ', () => {
 
   test('設定画面に商標注記が出て、音量を変えても落ちない（§12.1 / §15）', async () => {
     await page.getByTestId('open-settings').click();
+    // 商標注記は4メーカー分に増えた（§15 / `ja.ts` の `settings.trademarkNotice`）。
+    // 「未確認事項の注記」はキー割当表（`ladder/ShortcutHelp.tsx`）へ移ったのでここには出ない。
     await expect(page.getByTestId('about')).toContainText('三菱電機');
-    await expect(page.getByTestId('about')).toContainText('本アプリの表記');
+    await expect(page.getByTestId('about')).toContainText('オムロン株式会社');
+    await expect(page.getByTestId('about')).toContainText('商標または登録商標');
     await expect(page.getByTestId('setting-user-dir')).toBeVisible();
     // 前回の実行の設定が残っていても動くように、値ではなく「切り替わること」を確かめる
     const before = await page.getByTestId('setting-sound-enabled').isChecked();
@@ -87,11 +91,18 @@ test.describe('仕上げ', () => {
     await page.waitForTimeout(800);
     await expect(page.getByTestId('schematic-hint')).toHaveCount(0);
 
-    await page.getByRole('button', { name: '回路図を表示' }).click();
+    // 回路図の開閉はツールバーの「…」の中（UXレビュー #17）。ヒントは拡大ボタン付きの
+    // 「印刷した練習シート」（`SchematicView`）として出る。
+    await openOverflow(page);
+    await page.getByTestId('toggle-schematic').click();
+    await closeOverflow(page);
     await expect(page.getByTestId('schematic-hint')).toBeVisible();
     await expect(page.getByTestId('schematic-svg')).toBeVisible();
+    await expect(page.getByTestId('schematic-enlarge-button')).toBeVisible();
     await shot(app, '10-schematic-hint');
-    await page.getByRole('button', { name: '回路図を隠す' }).click();
+    await openOverflow(page);
+    await page.getByTestId('toggle-schematic').click();
+    await closeOverflow(page);
     await expect(page.getByTestId('schematic-hint')).toHaveCount(0);
 
     // b-001 は3級課題。常時表示で、開閉ボタンそのものが出ない
@@ -100,23 +111,58 @@ test.describe('仕上げ', () => {
     await expect(page.getByTestId('viewport')).toBeVisible();
     await page.waitForTimeout(800);
     await expect(page.getByTestId('schematic-hint')).toBeVisible();
+    // 3級は開閉ボタンそのものを出さない（「…」を開いても無い）
+    await openOverflow(page);
     await expect(page.getByTestId('toggle-schematic')).toHaveCount(0);
+    await closeOverflow(page);
     // 部品パネルより後ろに描く（回路図に押し出されて部品が画面外へ行かない）。1D2-a
     await expect(page.getByTestId('parts-panel')).toBeVisible();
   });
 
   test('視点プリセットを切り替えても盤が描かれ続け、端子番号が読める（§6.2 / §12.2）', async () => {
-    await page.getByRole('button', { name: '俯瞰' }).click();
+    await selectView(page, '俯瞰');
     await page.waitForTimeout(900);
     await shot(app, '11-view-top-birdseye');
-    await page.getByRole('button', { name: 'ソケット拡大' }).click();
+    await selectView(page, 'ソケット拡大');
     await page.waitForTimeout(900);
     // ソケット拡大では ①〜⑭ の印字がはっきり読める大きさになる
     await shot(app, '12-view-socket-labels');
-    await page.getByRole('button', { name: '正面' }).click();
+    await selectView(page, '正面');
     await page.waitForTimeout(900);
     // 正面でも全端子の番号・役割が見えている。左上のビューキューブも写る（§12.2）
     await shot(app, '13-view-front-labels');
     await expect(page.locator('[data-testid="viewport"] canvas')).toBeVisible();
+  });
+
+  /**
+   * モードBの表示切替（盤 → 並べて → 回路図）。§11.4 / Plan 5 決定表#1
+   * ツールバーのボタン（`assemble-view-*`）と `F2` の巡回が同じものを指していること、
+   * 「回路図」では3Dの `Canvas` を捨ててGPUを空けること（§15）を確かめる。
+   */
+  test('F2 で「盤 → 並べて → 回路図」と表示が巡回する（§11.4）', async () => {
+    await expect(page.getByTestId('assemble-view-board')).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByTestId('viewport')).toBeVisible();
+    await expect(page.getByTestId('editor-pane')).toHaveCount(0);
+
+    await page.keyboard.press('F2');
+    await expect(page.getByTestId('assemble-view-split')).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByTestId('viewport')).toBeVisible();
+    await expect(page.getByTestId('editor-pane')).toBeVisible();
+    await page.waitForTimeout(600);
+    await shot(app, '14-assemble-view-split');
+
+    await page.keyboard.press('F2');
+    await expect(page.getByTestId('assemble-view-schematic')).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    // 回路図だけを見ているあいだは3Dビューポートを外す（§15 / Plan 5 決定表#1）
+    await expect(page.getByTestId('viewport')).toHaveCount(0);
+    await expect(page.getByTestId('editor-pane')).toBeVisible();
+    await shot(app, '15-assemble-view-schematic');
+
+    await page.keyboard.press('F2');
+    await expect(page.getByTestId('assemble-view-board')).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByTestId('viewport')).toBeVisible();
   });
 });
