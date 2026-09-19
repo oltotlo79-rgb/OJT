@@ -374,3 +374,11 @@ export {
   type VerifyOptions,
   type VerifyResult,
 } from './verify.js';
+
+export {
+  MAX_WIRING_SUSPECTS,
+  wiringSuspects,
+  type SuspectKind,
+  type WiringSuspect,
+  type WiringSuspectReport,
+} from './wiring-diff.js';

@@ -1,0 +1,207 @@
+import { toNetlist, type BoardDefinition, type BoardSession } from '@ojt/board-model';
+import { buildNets, terminalId, type Nets, type TerminalId } from '@ojt/circuit-sim';
+import type { CellAssignment } from '@ojt/schematic-core';
+import { buildReferenceSession, type SchematicProblem } from './reference.js';
+
+/**
+ * 「疑わしい配線」の割り出し。UXレビュー #28（2026-09-19）。
+ *
+ * 判定（`judgeAssemble()`）は波形の食い違いしか返さないので、訓練者は「PL1 が点かない」までは
+ * 分かっても**どの電線を見ればよいか**が分からない。ここでは模範回路と訓練者回路の
+ * **節点分割**（`buildNets()` の union-find）を比べ、「本来つながるはずの2端子がつながっていない」
+ * （`missing`）と「本来別のはずの2端子がつながっている」（`extra`）を挙げる。
+ *
+ * 電線を1本ずつ突き合わせないのは、§11.3 の母線分配が**渡り配線**（鎖）であり、鎖の順序に
+ * 自由度があるためである（`P.1 → A → B` と `P.1 → B → A` は電気的に同じ）。節点分割なら
+ * 「電気的に同じかどうか」だけを見るので、正しい配線を誤りと呼ばずに済む。
+ *
+ * 比べる端子は**回路図の要素が使う端子と母線の供給端子**に限る。盤の全端子で比べると、
+ * その課題で使わないソケットの端子が大量に `missing` として出てくる。
+ */
+
+/** 疑いの種別。 */
+export type SuspectKind = 'missing' | 'extra';
+
+/** 疑い1件。 */
+export interface WiringSuspect {
+  kind: SuspectKind;
+  /** 関わる2端子（模範回路の出現順）。 */
+  terminals: readonly [TerminalId, TerminalId];
+  /** その端子を使う回路図上の機器名（重複を除いた出現順）。 */
+  devices: readonly string[];
+  /** その端子を使う回路図の要素ID（`buildHighlightIndex()` の鍵）。 */
+  cellIds: readonly string[];
+  /** その2端子のどちらかに繋がっている訓練者の電線ID（3Dで光らせる先）。 */
+  wireIds: readonly string[];
+  /** 画面にそのまま出せる1行。 */
+  message: string;
+}
+
+/**
+ * 疑いの一覧と、上限で切り捨てた件数。決定表#27
+ * 「ほかに N 件」を結果画面が出せるように、**切り捨てた件数まで**返す（一覧の長さだけでは
+ * 「5件しか無かった」のか「5件しか出していない」のかが呼び出し側から分からない）。
+ */
+export interface WiringSuspectReport {
+  /** 画面に出す疑い（最大 `MAX_WIRING_SUSPECTS` 件）。 */
+  suspects: readonly WiringSuspect[];
+  /** 見つかった疑いの総数。 */
+  total: number;
+  /** 上限で切り捨てた件数（`total - suspects.length`）。 */
+  omitted: number;
+}
+
+/** 結果画面に出す上限（決定表#27）。 */
+export const MAX_WIRING_SUSPECTS = 5;
+
+/** 母線の供給端子（§6.1: P/N は各1点）。 */
+const BUS_P_TERMINAL = terminalId('P', '1');
+const BUS_N_TERMINAL = terminalId('N', '1');
+const BUS_TERMINALS: readonly TerminalId[] = [BUS_P_TERMINAL, BUS_N_TERMINAL];
+
+/** 端子 → 回路図の機器名（母線は `P` / `N`）。 */
+function deviceIndex(cells: readonly CellAssignment[]): Map<TerminalId, string> {
+  const out = new Map<TerminalId, string>();
+  for (const cell of cells) {
+    for (const id of [cell.left, cell.right]) if (!out.has(id)) out.set(id, cell.device);
+  }
+  out.set(BUS_P_TERMINAL, 'P');
+  out.set(BUS_N_TERMINAL, 'N');
+  return out;
+}
+
+/** 端子 → その端子を使う回路図要素ID（出現順）。 */
+function cellIndex(cells: readonly CellAssignment[]): Map<TerminalId, string[]> {
+  const out = new Map<TerminalId, string[]>();
+  for (const cell of cells) {
+    for (const id of [cell.left, cell.right]) {
+      out.set(id, [...(out.get(id) ?? []), cell.cellId]);
+    }
+  }
+  return out;
+}
+
+/** 見張る端子（回路図の要素が使う端子 ＋ 母線の供給端子。模範回路の出現順）。 */
+function watchedTerminals(cells: readonly CellAssignment[]): TerminalId[] {
+  const out: TerminalId[] = [];
+  for (const cell of cells) {
+    for (const id of [cell.left, cell.right]) if (!out.includes(id)) out.push(id);
+  }
+  for (const bus of BUS_TERMINALS) if (!out.includes(bus)) out.push(bus);
+  return out;
+}
+
+/**
+ * 端子の節点番号。そのネットリストに無い端子は `undefined`。
+ * 盤に無い端子（課題が使わないソケットの役割）でも落ちないようにする。
+ */
+function nodeOf(nets: Nets, id: TerminalId): number | undefined {
+  return nets.hasTerminal(id) ? nets.nodeOf(id) : undefined;
+}
+
+/** 節点番号ごとに端子をまとめる（`undefined` の端子は除く）。 */
+function groupByNode(nets: Nets, terminals: readonly TerminalId[]): Map<number, TerminalId[]> {
+  const out = new Map<number, TerminalId[]>();
+  for (const id of terminals) {
+    const node = nodeOf(nets, id);
+    if (node === undefined) continue;
+    out.set(node, [...(out.get(node) ?? []), id]);
+  }
+  return out;
+}
+
+/** その2端子のどちらかに繋がっている訓練者の電線（既設配線も含む。3Dで光らせる）。 */
+function wiresTouching(session: BoardSession, pair: readonly TerminalId[]): string[] {
+  return session.wires.filter((w) => pair.includes(w.from) || pair.includes(w.to)).map((w) => w.id);
+}
+
+/** 疑い1件を組み立てる。 */
+function makeSuspect(
+  kind: SuspectKind,
+  a: TerminalId,
+  b: TerminalId,
+  devices: ReadonlyMap<TerminalId, string>,
+  cells: ReadonlyMap<TerminalId, string[]>,
+  session: BoardSession,
+): WiringSuspect {
+  const deviceA = devices.get(a) ?? a;
+  const deviceB = devices.get(b) ?? b;
+  const names = [...new Set([deviceA, deviceB])];
+  const message =
+    kind === 'missing'
+      ? `${a}（${deviceA}）と ${b}（${deviceB}）がつながっていません`
+      : `${a}（${deviceA}）と ${b}（${deviceB}）が余計につながっています`;
+  return {
+    kind,
+    terminals: [a, b],
+    devices: names,
+    cellIds: [...new Set([...(cells.get(a) ?? []), ...(cells.get(b) ?? [])])],
+    wireIds: wiresTouching(session, [a, b]),
+    message,
+  };
+}
+
+/**
+ * ある分割（`from`）のまとまりが、別の分割（`to`）で割れている箇所を挙げる。
+ * まとまりの先頭（模範回路の出現順の1つ目）を基準にし、別の節点にいる端子を1つずつ挙げる。
+ * 同じ節点に落ちた端子はまとめて1件にするので、4端子が2対2に割れても2件ではなく1件になる。
+ */
+function splits(
+  groups: ReadonlyMap<number, TerminalId[]>,
+  other: Nets,
+): Array<[TerminalId, TerminalId]> {
+  const out: Array<[TerminalId, TerminalId]> = [];
+  for (const members of groups.values()) {
+    const anchor = members[0];
+    if (anchor === undefined || members.length < 2) continue;
+    const anchorNode = nodeOf(other, anchor);
+    const seen = new Set<number | undefined>([anchorNode]);
+    for (const id of members.slice(1)) {
+      const node = nodeOf(other, id);
+      if (seen.has(node)) continue;
+      seen.add(node);
+      out.push([anchor, id]);
+    }
+  }
+  return out;
+}
+
+/** 何も疑うところが無いときの戻り。 */
+const NO_SUSPECTS: WiringSuspectReport = { suspects: [], total: 0, omitted: 0 };
+
+/**
+ * 模範回路と訓練者回路の節点分割の差を「疑わしい配線」として返す。UXレビュー #28
+ * 模範回路が作れない課題（課題データの誤り。§13 #2）では空の報告を返す——判定そのものが
+ * 先に課題エラーで止まるので、結果画面に出すものは無い。
+ *
+ * **接点の組の違いも出る**（決定表#9b）。`assignToBoard()` は模範回路の要素の出現順に
+ * `CR1` の4組（⑨⑤／⑩⑥／⑪⑦／⑫⑧）を割り当てるので、訓練者が別の組へ張ると、
+ * 電気的には正しくても節点分割は違う。正規化はせず、画面（`JA.result.suspectNote`）で断る。
+ */
+export function wiringSuspects(
+  problem: SchematicProblem,
+  board: BoardDefinition,
+  traineeSession: BoardSession,
+): WiringSuspectReport {
+  const reference = buildReferenceSession(problem, board);
+  if (!reference.ok) return NO_SUSPECTS;
+
+  const cells = reference.value.cells;
+  const watched = watchedTerminals(cells);
+  const devices = deviceIndex(cells);
+  const cellsAt = cellIndex(cells);
+
+  const referenceNets = buildNets(reference.value.netlist);
+  const traineeNets = buildNets(toNetlist(traineeSession, board));
+
+  const missing = splits(groupByNode(referenceNets, watched), traineeNets).map(([a, b]) =>
+    makeSuspect('missing', a, b, devices, cellsAt, traineeSession),
+  );
+  const extra = splits(groupByNode(traineeNets, watched), referenceNets).map(([a, b]) =>
+    makeSuspect('extra', a, b, devices, cellsAt, traineeSession),
+  );
+
+  const all = [...missing, ...extra];
+  const suspects = all.slice(0, MAX_WIRING_SUSPECTS);
+  return { suspects, total: all.length, omitted: all.length - suspects.length };
+}
