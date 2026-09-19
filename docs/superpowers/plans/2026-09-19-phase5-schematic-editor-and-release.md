@@ -2305,3 +2305,2017 @@ git add apps/desktop && git commit -m "feat(desktop): add the pure layer of the 
 **期待**: `schematic-edit.test.ts` の **18件**が増え、既存の `step-guide.test.ts` はそのまま通る。
 
 ---
+
+## Task 5: 編集できる回路図（`SchematicSvg` の編集モード ＋ `SchematicEditor` ＋ パレット）
+
+**モデル: Opus**（SVG の当たり判定の敷き方と、読取専用の呼び出しを壊さない差分）
+
+**Files:**
+- Modify: `apps/desktop/src/renderer/schematic/SchematicSvg.tsx`
+- Create: `apps/desktop/src/renderer/schematic/SchematicPalette.tsx`
+- Create: `apps/desktop/src/renderer/schematic/SchematicEditor.tsx`
+- Create: `apps/desktop/src/renderer/schematic/schematic.module.css`
+- Test: `apps/desktop/test/schematic-editor.test.tsx`（新規）
+
+`SchematicSvg` に**任意**の props を足すだけにし、既存の3つの呼び出し（モードBの回路図ヒント・C2の提示回路図・結果画面）は**1行も変えずに動く**ようにする。
+
+- [ ] **Step 1: 失敗するテストを書く**
+
+`apps/desktop/test/schematic-editor.test.tsx`:
+
+```tsx
+import { JIPM_BOARD } from '@ojt/board-model';
+import { BUILTIN_ASSEMBLE_PROBLEMS } from '@ojt/content';
+import { emptySchematic } from '@ojt/schematic-core';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { SchematicEditor } from '../src/renderer/schematic/SchematicEditor.js';
+import { SchematicSvg } from '../src/renderer/schematic/SchematicSvg.js';
+
+const problem = BUILTIN_ASSEMBLE_PROBLEMS.find((p) => p.id === 'b-001');
+if (problem === undefined) throw new Error('b-001 が見つかりません');
+
+afterEach(() => {
+  cleanup();
+});
+
+describe('SchematicSvg: 読取専用のふるまいは変わらない', () => {
+  it('draws no slot rects without the editing props', () => {
+    render(<SchematicSvg document={problem.schematic} />);
+    expect(screen.getByTestId('schematic-svg').querySelectorAll('[data-slot]')).toHaveLength(0);
+  });
+
+  it('still reports the clicked cell through onPickCell', () => {
+    const onPickCell = vi.fn();
+    render(<SchematicSvg document={problem.schematic} onPickCell={onPickCell} />);
+    const symbol = screen.getByTestId('schematic-svg').querySelector('[data-cell]');
+    expect(symbol).not.toBeNull();
+    if (symbol === null) return;
+    fireEvent.click(symbol);
+    expect(onPickCell).toHaveBeenCalledWith(symbol.getAttribute('data-cell'));
+  });
+});
+
+describe('SchematicSvg: 編集モード', () => {
+  it('draws one transparent rect per slot and reports the picked slot', () => {
+    const onPickSlot = vi.fn();
+    render(
+      <SchematicSvg
+        document={problem.schematic}
+        cursor={{ rungId: problem.schematic.rungs[0]?.id ?? 'r1', index: 0 }}
+        onPickSlot={onPickSlot}
+      />,
+    );
+    const slots = screen.getByTestId('schematic-svg').querySelectorAll('[data-slot]');
+    expect(slots.length).toBeGreaterThan(0);
+    const first = slots[0];
+    if (first === undefined) return;
+    fireEvent.click(first);
+    expect(onPickSlot).toHaveBeenCalledWith(problem.schematic.rungs[0]?.id, 0);
+  });
+
+  it('marks the cursor slot so the trainee can see where the next element goes', () => {
+    render(
+      <SchematicSvg
+        document={problem.schematic}
+        cursor={{ rungId: problem.schematic.rungs[0]?.id ?? 'r1', index: 1 }}
+        onPickSlot={vi.fn()}
+      />,
+    );
+    const marked = screen.getByTestId('schematic-svg').querySelectorAll('[data-cursor="true"]');
+    expect(marked).toHaveLength(1);
+  });
+});
+
+describe('SchematicEditor', () => {
+  function renderEditor(overrides: Partial<Parameters<typeof SchematicEditor>[0]> = {}) {
+    const props = {
+      problem,
+      board: JIPM_BOARD,
+      document: emptySchematic('draft-b-001', '下書き'),
+      cursor: { rungId: 'r1', index: 0 },
+      history: { done: [], undone: [] },
+      verifying: false,
+      onEdit: vi.fn(),
+      onCursor: vi.fn(),
+      onUndo: vi.fn(),
+      onRedo: vi.fn(),
+      onVerify: vi.fn(),
+      onPickCell: vi.fn(),
+      ...overrides,
+    };
+    render(<SchematicEditor {...props} />);
+    return props;
+  }
+
+  it('lists the palette grouped by device kind', () => {
+    renderEditor();
+    expect(screen.getByTestId('schematic-palette')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /押ボタン a接点 PB1/u })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /コイル CR1/u })).toBeInTheDocument();
+  });
+
+  it('places the selected palette item when a slot is clicked', () => {
+    const props = renderEditor();
+    fireEvent.click(screen.getByRole('button', { name: /押ボタン a接点 PB1/u }));
+    const slot = screen.getByTestId('schematic-svg').querySelector('[data-slot]');
+    if (slot === null) return;
+    fireEvent.click(slot);
+    expect(props.onEdit).toHaveBeenCalledWith({
+      kind: 'insertCell',
+      rungId: 'r1',
+      index: 0,
+      draft: { kind: 'pb-a', device: 'PB1' },
+    });
+  });
+
+  it('shows the structural issues of a half-finished drawing (決定表#3)', () => {
+    renderEditor();
+    expect(screen.getByTestId('schematic-issues')).toHaveTextContent('段に要素がありません');
+  });
+
+  it('disables 検算 while the drawing is not valid and while verifying', () => {
+    renderEditor();
+    expect(screen.getByTestId('verify-button')).toBeDisabled();
+    cleanup();
+    renderEditor({ document: problem.schematic });
+    expect(screen.getByTestId('verify-button')).toBeEnabled();
+    cleanup();
+    renderEditor({ document: problem.schematic, verifying: true });
+    expect(screen.getByTestId('verify-button')).toBeDisabled();
+  });
+
+  it('shows the step guide with 描く as the current step', () => {
+    renderEditor();
+    expect(screen.getByTestId('schematic-step-guide')).toHaveTextContent('回路図を描く');
+  });
+
+  it('moves the cursor with the arrow keys and places with Enter', () => {
+    const props = renderEditor({ document: problem.schematic, cursor: { rungId: problem.schematic.rungs[0]?.id ?? 'r1', index: 0 } });
+    const grid = screen.getByTestId('schematic-grid');
+    fireEvent.keyDown(grid, { key: 'ArrowRight' });
+    expect(props.onCursor).toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: /表示灯 PL1/u }));
+    fireEvent.keyDown(grid, { key: 'Enter' });
+    expect(props.onEdit).toHaveBeenCalledWith(expect.objectContaining({ kind: 'insertCell' }));
+  });
+
+  it('never leaks the reference circuit into the draft (決定表#2)', () => {
+    renderEditor();
+    // 空の下書きしか描いていない。模範回路の要素IDは1つも出ない
+    const ids = [...screen.getByTestId('schematic-svg').querySelectorAll('[data-cell]')];
+    expect(ids).toHaveLength(0);
+  });
+});
+```
+
+- [ ] **Step 2: テストを走らせて失敗を確かめる**
+
+```
+pnpm --filter @ojt/desktop test schematic-editor
+```
+
+- [ ] **Step 3: `SchematicSvg.tsx` に編集モードを足す**
+
+既存の import に `slotRects`（と `type SlotRect`）を足し、props を次の形に広げる。**既存の3つの props は変えない。**
+
+```tsx
+/**
+ * 回路図の SVG。§11.2 / §11.4
+ * `highlightCellIds` と `onPickCell` はモードC2の連動ハイライト（§9.2）とモードBの配線ガイド
+ * （§11.4）で使う。`cursor` / `onPickSlot` を渡すと**編集モード**になり、段 × 桁の当たり矩形
+ * （`slotRects()`）を図の上に敷く。どれも省略でき、省略すれば従来どおりの読取専用レンダラとして
+ * 動く（モードBの回路図ヒント・C2の提示回路図・結果画面はこの形で呼んでいる）。
+ */
+export function SchematicSvg({
+  document: doc,
+  highlightCellIds,
+  onPickCell,
+  cursor,
+  onPickSlot,
+}: {
+  document: SchematicDocument;
+  highlightCellIds?: readonly string[];
+  onPickCell?: (cellId: string | undefined) => void;
+  /** 編集中のカーソル（段ID＋桁）。渡すと当たり矩形を敷く。§11.4 */
+  cursor?: { rungId: string; index: number };
+  /** 桁をクリックしたときに呼ぶ。`cursor` と対で渡す。§11.4 */
+  onPickSlot?: (rungId: string, index: number) => void;
+}): JSX.Element {
+  const result = useMemo(() => layout(doc, LAYOUT), [doc]);
+  const highlighted = useMemo(() => new Set(highlightCellIds ?? []), [highlightCellIds]);
+  const slots = useMemo(
+    () => (onPickSlot === undefined ? [] : slotRects(doc, LAYOUT)),
+    [doc, onPickSlot],
+  );
+  return (
+    <svg
+      viewBox={`0 0 ${result.width} ${result.height}`}
+      role="img"
+      aria-label={doc.title}
+      data-testid="schematic-svg"
+      style={{ width: '100%', background: '#F7F7F4', borderRadius: 4 }}
+      onClick={(event) => {
+        if (onPickCell === undefined) return;
+        const target = event.target as { getAttribute?: (name: string) => string | null };
+        const cellId = target.getAttribute?.('data-cell') ?? undefined;
+        onPickCell(cellId);
+      }}
+    >
+      {result.shapes.map((shape, index) =>
+        renderShape(shape, index, shape.cellId !== undefined && highlighted.has(shape.cellId)),
+      )}
+      {/*
+        編集の当たり矩形。**図形より後ろに描く**ので、記号のクリック（`data-cell` を読む
+        `onPickCell`）より手前に来る。要素の上を押しても桁を押しても同じ「その桁を選ぶ」に
+        なるのが素直なので、`onPickSlot` を先に呼び、`onPickCell` は `data-cell` を持つ
+        図形にだけ効く（矩形は `data-cell` を持たないので、編集中は解除にならない）。
+      */}
+      {slots.map((slot) => {
+        const isCursor = cursor?.rungId === slot.rungId && cursor.index === slot.index;
+        return (
+          <rect
+            key={`${slot.rungId}#${slot.index}`}
+            data-slot={`${slot.rungId}#${slot.index}`}
+            {...(isCursor ? { 'data-cursor': 'true' } : {})}
+            x={slot.x}
+            y={slot.y}
+            width={slot.w}
+            height={slot.h}
+            fill={isCursor ? CURSOR_FILL : 'transparent'}
+            stroke={isCursor ? CURSOR_STROKE : 'none'}
+            strokeWidth={isCursor ? 1.2 : 0}
+            onClick={(event) => {
+              event.stopPropagation();
+              onPickSlot?.(slot.rungId, slot.index);
+            }}
+          />
+        );
+      })}
+    </svg>
+  );
+}
+```
+
+モジュールの先頭（`HIGHLIGHT_STROKE` の隣）に足す:
+
+```tsx
+/** 編集カーソルの枠と薄い塗り（白地の図で目立ち、記号を隠さない濃さ）。§11.4 */
+const CURSOR_STROKE = '#1D4ED8';
+const CURSOR_FILL = 'rgba(29, 78, 216, 0.10)';
+```
+
+- [ ] **Step 4: `SchematicPalette.tsx` を作る**
+
+```tsx
+import type { JSX } from 'react';
+import { JA } from '../i18n/ja.js';
+import type { PaletteItem } from '../session/schematic-edit.js';
+import styles from './schematic.module.css';
+
+/**
+ * 回路図エディタのパレット。設計仕様 §11.4 / Plan 5 決定表#26。
+ * 置ける要素は課題と盤から決まる（`paletteFor()`）ので、ここは**並べるだけ**にする。
+ */
+
+/** まとまりの順に並べ替えた項目（見出しごと）。 */
+function byGroup(items: readonly PaletteItem[]): Array<{ group: string; items: PaletteItem[] }> {
+  const out: Array<{ group: string; items: PaletteItem[] }> = [];
+  for (const item of items) {
+    const found = out.find((g) => g.group === item.group);
+    if (found === undefined) out.push({ group: item.group, items: [item] });
+    else found.items.push(item);
+  }
+  return out;
+}
+
+/** パレット。 */
+export function SchematicPalette({
+  items,
+  selectedId,
+  onSelect,
+}: {
+  items: readonly PaletteItem[];
+  selectedId: string | undefined;
+  onSelect: (item: PaletteItem) => void;
+}): JSX.Element {
+  return (
+    <section className={styles.palette} data-testid="schematic-palette">
+      <h3 className={styles.paletteTitle}>{JA.schematic.palette}</h3>
+      {byGroup(items).map((group) => (
+        <div key={group.group} className={styles.paletteGroup}>
+          <span className={styles.paletteGroupName}>{group.group}</span>
+          <div className={styles.paletteItems}>
+            {group.items.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                className={styles.paletteItem}
+                aria-pressed={selectedId === item.id}
+                data-testid={`palette-${item.id}`}
+                onClick={() => {
+                  onSelect(item);
+                }}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      ))}
+    </section>
+  );
+}
+```
+
+- [ ] **Step 5: `SchematicEditor.tsx` を作る**
+
+```tsx
+import type { BoardDefinition } from '@ojt/board-model';
+import type { AssembleProblem } from '@ojt/content';
+import { validateDocument, type SchematicDocument, type SchematicEdit } from '@ojt/schematic-core';
+import { useMemo, useState, type JSX, type KeyboardEvent } from 'react';
+import { JA } from '../i18n/ja.js';
+import {
+  cellCount,
+  keyToEdit,
+  moveCursor,
+  paletteFor,
+  type EditorCursor,
+  type PaletteItem,
+  type SchematicHistory,
+} from '../session/schematic-edit.js';
+import { schematicStepHint, schematicSteps } from '../session/step-guide.js';
+import { SchematicPalette } from './SchematicPalette.js';
+import { SchematicSvg } from './SchematicSvg.js';
+import styles from './schematic.module.css';
+
+/**
+ * 回路図エディタ。設計仕様 §11.4。
+ *
+ * 状態（文書・カーソル・履歴）は**すべて親（ストア）が持つ**（`LadderEditor` と同じ流儀）。
+ * ここは「描く・選ぶ・キーを編集操作に直す」だけで、編集そのものは `onEdit` に投げる。
+ * 作りかけの文書は許し（決定表#3）、`validateDocument()` の指摘は下の欄に出し続ける。
+ */
+
+/** エディタ。 */
+export function SchematicEditor({
+  problem,
+  board,
+  document: doc,
+  cursor,
+  history,
+  verifying,
+  verified = false,
+  boardWired = false,
+  highlightCellIds,
+  onEdit,
+  onCursor,
+  onUndo,
+  onRedo,
+  onVerify,
+  onPickCell,
+}: {
+  problem: AssembleProblem;
+  board: BoardDefinition;
+  document: SchematicDocument;
+  cursor: EditorCursor;
+  history: SchematicHistory;
+  /** 検算の往復中（ボタンを止める）。 */
+  verifying: boolean;
+  /** 直近の検算に合格しているか（手順帯に出す）。 */
+  verified?: boolean;
+  /** 盤に電線を張ったか（手順帯に出す）。 */
+  boardWired?: boolean;
+  /** 配線ガイドで光らせる要素（Task 8 が渡す）。 */
+  highlightCellIds?: readonly string[];
+  onEdit: (edit: SchematicEdit) => void;
+  onCursor: (cursor: EditorCursor) => void;
+  onUndo: () => void;
+  onRedo: () => void;
+  onVerify: () => void;
+  onPickCell: (cellId: string | undefined) => void;
+}): JSX.Element {
+  const palette = useMemo(() => paletteFor(problem, board), [problem, board]);
+  const [selectedId, setSelectedId] = useState<string | undefined>(undefined);
+  const selected = palette.find((i) => i.id === selectedId);
+  const issues = useMemo(() => validateDocument(doc), [doc]);
+  const steps = schematicSteps({ cellCount: cellCount(doc), verified, boardWired });
+  const currentStep = steps.find((s) => s.state === 'current')?.key;
+
+  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>): void => {
+    if (event.key.startsWith('Arrow')) {
+      event.preventDefault();
+      onCursor(moveCursor(doc, cursor, event.key));
+      return;
+    }
+    if ((event.ctrlKey || event.metaKey) && (event.key === 'z' || event.key === 'y')) {
+      event.preventDefault();
+      if (event.key === 'z') onUndo();
+      else onRedo();
+      return;
+    }
+    const edit = keyToEdit(doc, cursor, event.key, selected, { ctrl: event.ctrlKey });
+    if (edit === undefined) return;
+    event.preventDefault();
+    onEdit(edit);
+  };
+
+  const pickPalette = (item: PaletteItem): void => {
+    setSelectedId(item.id === selectedId ? undefined : item.id);
+  };
+
+  return (
+    <div className={styles.editor} data-testid="schematic-editor">
+      <div className={styles.editorHead}>
+        <h2 className={styles.editorTitle}>{JA.schematic.title}</h2>
+        <div className={styles.editorTools}>
+          <button type="button" disabled={history.done.length === 0} onClick={onUndo}>
+            {JA.schematic.undo}
+          </button>
+          <button type="button" disabled={history.undone.length === 0} onClick={onRedo}>
+            {JA.schematic.redo}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              onEdit({ kind: 'addRung', after: cursor.rungId });
+            }}
+          >
+            {JA.schematic.addRung}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              onEdit({ kind: 'removeRung', rungId: cursor.rungId });
+            }}
+          >
+            {JA.schematic.removeRung}
+          </button>
+          <button
+            type="button"
+            className={styles.verifyButton}
+            data-testid="verify-button"
+            disabled={verifying || issues.length > 0}
+            title={issues.length > 0 ? issues[0]?.message : JA.schematic.verifyNote}
+            onClick={onVerify}
+          >
+            {verifying ? JA.schematic.verifying : JA.schematic.verify}
+          </button>
+        </div>
+      </div>
+
+      <div className={styles.stepGuide} data-testid="schematic-step-guide">
+        <ol className={styles.stepList} aria-label={JA.stepGuide.label}>
+          {steps.map((step) => (
+            <li
+              key={step.key}
+              className={styles.step}
+              data-state={step.state}
+              data-testid={`schematic-step-${step.key}`}
+              {...(step.state === 'current' ? { 'aria-current': 'step' as const } : {})}
+            >
+              {step.label}
+            </li>
+          ))}
+        </ol>
+        <p className={styles.stepHint}>{schematicStepHint(currentStep)}</p>
+      </div>
+
+      <div className={styles.editorBody}>
+        <SchematicPalette items={palette} selectedId={selectedId} onSelect={pickPalette} />
+        {/*
+          グリッドはキーボードの受け口。`tabIndex={0}` で Tab から入れるようにし、
+          `aria-label` に操作の早見表を載せる（§15 のアクセシビリティ）。
+        */}
+        <div
+          className={styles.grid}
+          data-testid="schematic-grid"
+          tabIndex={0}
+          role="application"
+          aria-label={`${JA.schematic.title}: ${JA.schematic.keyHint}`}
+          onKeyDown={onKeyDown}
+        >
+          <SchematicSvg
+            document={doc}
+            cursor={cursor}
+            {...(highlightCellIds === undefined ? {} : { highlightCellIds })}
+            onPickCell={onPickCell}
+            onPickSlot={(rungId, index) => {
+              onCursor({ rungId, index });
+              if (selected === undefined) return;
+              onEdit({
+                kind: 'insertCell',
+                rungId,
+                index,
+                draft: { kind: selected.kind, device: selected.device },
+              });
+            }}
+          />
+          <p className={styles.keyHint}>{JA.schematic.keyHint}</p>
+        </div>
+      </div>
+
+      <section className={styles.issues} data-testid="schematic-issues">
+        <h3 className={styles.issuesTitle}>{JA.schematic.issues}</h3>
+        {issues.length === 0 ? (
+          <p className={styles.issuesOk}>{JA.schematic.noIssues}</p>
+        ) : (
+          <ul className={styles.issueList}>
+            {issues.map((issue) => (
+              <li key={`${issue.path}:${issue.message}`}>{issue.message}</li>
+            ))}
+          </ul>
+        )}
+      </section>
+    </div>
+  );
+}
+```
+
+- [ ] **Step 6: `schematic.module.css` を作る**
+
+余白・間隔はすべて **4の倍数**（8px 格子）。すべての操作要素に `:focus-visible` の枠を置く（完了条件の「画面の品質」）。
+
+```css
+/* 回路図エディタ（§11.4 / Plan 5 Task 5・6）。8px 格子・フォーカス枠を守る。 */
+
+.editor {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  height: 100%;
+  padding: 8px;
+  background: #1b1e23;
+  border-radius: 4px;
+}
+
+.editorHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.editorTitle {
+  margin: 0;
+  font-size: 14px;
+  color: #e4e7ec;
+}
+
+.editorTools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.editorTools button,
+.paletteItem {
+  padding: 4px 8px;
+  font-size: 12px;
+  color: #e4e7ec;
+  background: #2a2f36;
+  border: 1px solid #3a4049;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.editorTools button:disabled {
+  color: #7a828c;
+  cursor: not-allowed;
+}
+
+.editorTools button:focus-visible,
+.paletteItem:focus-visible,
+.grid:focus-visible {
+  outline: 2px solid #6aa3ff;
+  outline-offset: 2px;
+}
+
+.verifyButton {
+  font-weight: 700;
+  background: #1d4ed8;
+  border-color: #2d5ee8;
+}
+
+.verifyButton:disabled {
+  background: #2a2f36;
+  border-color: #3a4049;
+}
+
+.stepGuide {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.stepList {
+  display: flex;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.step {
+  padding: 4px 8px;
+  font-size: 12px;
+  color: #98a1ac;
+  background: #23262b;
+  border-radius: 4px;
+}
+
+.step[data-state='current'] {
+  color: #0f1216;
+  background: #f2c230;
+  font-weight: 700;
+}
+
+.step[data-state='done'] {
+  color: #9fd6a8;
+}
+
+.stepHint {
+  margin: 0;
+  font-size: 12px;
+  color: #c9d2dc;
+}
+
+.editorBody {
+  display: flex;
+  gap: 8px;
+  min-height: 0;
+  flex: 1;
+}
+
+.palette {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 200px;
+  min-width: 160px;
+  max-height: 100%;
+  overflow-y: auto;
+}
+
+.paletteTitle,
+.issuesTitle,
+.paletteGroupName {
+  margin: 0;
+  font-size: 12px;
+  color: #98a1ac;
+}
+
+.paletteGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.paletteItems {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.paletteItem[aria-pressed='true'] {
+  color: #0f1216;
+  background: #6aa3ff;
+  border-color: #6aa3ff;
+}
+
+.grid {
+  flex: 1;
+  min-width: 0;
+  overflow: auto;
+  padding: 8px;
+  background: #f7f7f4;
+  border-radius: 4px;
+}
+
+.keyHint {
+  margin: 8px 0 0;
+  font-size: 11px;
+  color: #4a515b;
+}
+
+.issues {
+  max-height: 120px;
+  overflow-y: auto;
+}
+
+.issueList {
+  margin: 4px 0 0;
+  padding-left: 16px;
+  font-size: 12px;
+  color: #ffb4b4;
+}
+
+.issuesOk {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: #9fd6a8;
+}
+
+/* 検算パネル（Task 6）。 */
+.verify {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
+  background: #1b1e23;
+  border-radius: 4px;
+}
+
+.verdict {
+  display: inline-block;
+  padding: 4px 12px;
+  font-weight: 700;
+  border-radius: 4px;
+}
+
+.passed {
+  color: #0f1216;
+  background: #6ad39a;
+}
+
+.failed {
+  color: #fff;
+  background: #d64545;
+}
+
+.verifyNote {
+  margin: 0;
+  font-size: 12px;
+  color: #98a1ac;
+}
+```
+
+- [ ] **Step 7: テストを走らせてコミットする**
+
+```
+pnpm --filter @ojt/desktop test schematic-editor
+npx prettier --check "apps/desktop/src/renderer/schematic/**/*.{ts,tsx,css}"
+git add apps/desktop && git commit -m "feat(desktop): make the schematic renderer editable and add the editor screen"
+```
+
+**期待**: `schematic-editor.test.tsx` の **11件**が増え、既存の `polish.test.ts` / `session.test.tsx`（`SchematicSvg` を読取専用で使う）はそのまま通る。
+
+---
+
+## Task 6: 検算の往復（Worker `verify` ＋ ストア ＋ `VerifyPanel` ＋ 作業ファイル）
+
+**モデル: Opus**（Worker のコマンドを増やす判断と `store.ts` の MERGE）
+
+**Files:**
+- Modify: `apps/desktop/src/worker/protocol.ts` / `apps/desktop/src/worker/sim.worker.ts`
+- Modify: `apps/desktop/src/renderer/session/worker-bridge.ts`
+- Modify: `apps/desktop/src/renderer/app/store.ts`
+- Modify: `apps/desktop/src/shared/ipc.ts`（`WorkFile.schematic?`）
+- Modify: `apps/desktop/src/renderer/session/work-file.ts`
+- Create: `apps/desktop/src/renderer/schematic/VerifyPanel.tsx`
+- Test: `apps/desktop/test/verify-flow.test.ts`（新規）
+- Test: `apps/desktop/test/sim-worker-verify.test.ts`（新規）
+
+決定表#4: 検算は **Worker**。`judge` と同じ往復にする。
+
+- [ ] **Step 1: 失敗するテストを書く（Worker 側）**
+
+`apps/desktop/test/sim-worker-verify.test.ts` は既存の `sim-worker.test.ts` と同じ作り（`sim.worker.ts` の `handle()` を直接呼ぶ形）にする。既存ファイルの冒頭を読み、同じ補助関数（Worker の起動と `postMessage` の捕捉）を使うこと。確かめるのは次の4点:
+
+```ts
+describe('verify コマンド（§11.4 / Plan 5 決定表#4）', () => {
+  it('returns a passing result for the reference drawing of the problem', () => {/* ... */});
+  it('returns ok:false with the document issues for a half-finished drawing', () => {/* ... */});
+  it('does not disturb the running simulation (tMs keeps advancing afterwards)', () => {/* ... */});
+  it('reports a thrown error as { type: "error", fatal: false } instead of dying', () => {/* ... */});
+});
+```
+
+- [ ] **Step 2: `protocol.ts` に追記する**
+
+`SimCommand` の末尾に:
+
+```ts
+  /**
+   * 回路図を検算する。§11.4 / Plan 5 決定表#4
+   * `document` は**訓練者がエディタで描いた文書**（素のJSONなので構造化複製でそのまま渡る）。
+   * `judge` と同じく模範回路と訓練者回路の2回ぶんを回すので、追従ループを止めてから実行する。
+   */
+  | { type: 'verify'; problem: AssembleProblem; document: SchematicDocument; elapsedMs: number };
+```
+
+`SimMessage` の `judgeResult` の隣に:
+
+```ts
+  /** 検算の結果。§11.4 */
+  | { type: 'verifyResult'; result: VerifyResult }
+```
+
+import に `import type { SchematicDocument } from '@ojt/schematic-core';` と `VerifyResult`（`@ojt/content`）を足す。
+
+- [ ] **Step 3: `sim.worker.ts` に `case 'verify'` を足す**
+
+`case 'judge'` の直後に、同じ「追従ループを止める → 実行 → 送る → 再開」の形で置く（`judge` の実装をそのまま読み、`judgeAssemble(...)` を `verifySchematic(command.problem, JIPM_BOARD, command.document, { elapsedMs: command.elapsedMs })` に、`postMessage({ type: 'judgeResult', ... })` を `postMessage({ type: 'verifyResult', result })` に替える）。**`try` / `catch` で例外を `{ type: 'error', fatal: false }` として返すところも `judge` と同じにする**（検算が失敗してもセッションは続く）。
+
+- [ ] **Step 4: `worker-bridge.ts` に `onVerify?` を足す**
+
+```ts
+  /**
+   * 検算の結果。§11.4
+   * モードB以外の画面は渡さないので任意にする（届いても何も起きない）。
+   */
+  onVerify?: (message: Extract<SimMessage, { type: 'verifyResult' }>) => void;
+```
+
+`worker.onmessage` の分岐に `else if (message.type === 'verifyResult') handlers.onVerify?.(message);` を足す（`plcResult` の後ろ、`else handlers.onError(...)` の前）。
+
+- [ ] **Step 5: ストアに欄と操作を足す**
+
+`AppState` に（`highlight` の隣、`// --- Plan 5 Task 6 ---` で挟む）:
+
+```ts
+  /** 回路図エディタの下書き（モードBの課題を開くと空の文書で始まる）。§11.4 */
+  schematicDoc: SchematicDocument | undefined;
+  /** 下書きの元に戻す／やり直し。 */
+  schematicHistory: SchematicHistory;
+  /** 編集カーソル。 */
+  schematicCursor: EditorCursor;
+  /** 検算の往復中か。 */
+  verifying: boolean;
+  /** 直近の検算の結果（課題を開き直すと消える）。 */
+  verifyResult: VerifyResult | undefined;
+```
+
+操作（`setHighlight` の隣）:
+
+```ts
+  setSchematicDoc: (doc: SchematicDocument) => void;
+  applySchematicEdit: (edit: SchematicEdit) => boolean;
+  setSchematicCursor: (cursor: EditorCursor) => void;
+  undoSchematicEdit: () => boolean;
+  redoSchematicEdit: () => boolean;
+  setVerifying: (verifying: boolean) => void;
+  setVerifyResult: (result: VerifyResult | undefined) => void;
+```
+
+実装（`setHighlight` の実装の隣）:
+
+```ts
+  setSchematicDoc: (schematicDoc) => {
+    set({ schematicDoc, schematicCursor: clampCursor(schematicDoc, get().schematicCursor) });
+  },
+  /**
+   * 編集を1つ当てる。断られたらトーストに理由を出して `false` を返す（盤のコマンドと同じ流儀）。
+   * 成功したら**編集前の文書**を履歴に積み、カーソルを文書の中へ収め直す。
+   */
+  applySchematicEdit: (edit) => {
+    const doc = get().schematicDoc;
+    if (doc === undefined) return false;
+    const outcome = applyEdit(doc, edit);
+    if (!outcome.ok) {
+      get().toast(outcome.message, 'error');
+      return false;
+    }
+    set({
+      schematicDoc: outcome.doc,
+      schematicHistory: pushSchematic(get().schematicHistory, doc),
+      schematicCursor: clampCursor(outcome.doc, get().schematicCursor),
+      // 文書が変わったら前回の検算結果は古い（決定表#6）
+      verifyResult: undefined,
+    });
+    get().addLog(editLabel(edit));
+    return true;
+  },
+  setSchematicCursor: (schematicCursor) => {
+    const doc = get().schematicDoc;
+    set({ schematicCursor: doc === undefined ? schematicCursor : clampCursor(doc, schematicCursor) });
+  },
+  undoSchematicEdit: () => {
+    const doc = get().schematicDoc;
+    if (doc === undefined) return false;
+    const step = undoSchematic(get().schematicHistory, doc);
+    if (step === undefined) return false;
+    set({
+      schematicDoc: step.doc,
+      schematicHistory: step.history,
+      schematicCursor: clampCursor(step.doc, get().schematicCursor),
+      verifyResult: undefined,
+    });
+    return true;
+  },
+  redoSchematicEdit: () => {
+    const doc = get().schematicDoc;
+    if (doc === undefined) return false;
+    const step = redoSchematic(get().schematicHistory, doc);
+    if (step === undefined) return false;
+    set({
+      schematicDoc: step.doc,
+      schematicHistory: step.history,
+      schematicCursor: clampCursor(step.doc, get().schematicCursor),
+      verifyResult: undefined,
+    });
+    return true;
+  },
+  setVerifying: (verifying) => {
+    set({ verifying });
+  },
+  setVerifyResult: (verifyResult) => {
+    set({ verifyResult, verifying: false });
+  },
+```
+
+初期値（`highlight: NO_HIGHLIGHT,` の隣）と、`openProblem()` / `resetSession()` / `restartSession()` / `abandonSession()` の `set({...})` に次を**同じ内容で**入れる。モードB以外では `schematicDoc: undefined` にする（`isAssembleProblem(problem)` で分ける）:
+
+```ts
+  schematicDoc: undefined,
+  schematicHistory: emptySchematicHistory(),
+  schematicCursor: { rungId: 'r1', index: 0 },
+  verifying: false,
+  verifyResult: undefined,
+```
+
+`openProblem()` の中で、モードBのときだけ下書きを作る:
+
+```ts
+    // 回路図エディタの下書きは**空**で始める（決定表#2: 模範回路は絶対に入れない）
+    const schematicDoc = isAssembleProblem(problem)
+      ? emptySchematic(`draft-${problem.id}`, `${problem.title}（下書き）`)
+      : undefined;
+```
+
+- [ ] **Step 6: 作業ファイルに下書きを載せる（決定表#23）**
+
+`shared/ipc.ts` の `WorkFile` に:
+
+```ts
+  /**
+   * モードBの回路図エディタの下書き（`SchematicDocument` をそのまま JSON にしたもの）。§11.4 / §12.3
+   * 任意項目なので、Phase 1〜4 に保存した作業ファイルは下書き無しで開く（`formatVersion` は 1 のまま）。
+   */
+  schematic?: unknown;
+```
+
+`session/work-file.ts` の `toWorkFile()` に `...(state.schematicDoc === undefined ? {} : { schematic: state.schematicDoc })` を足し、`applyWorkFile()` で読み戻す。**読み戻しは形を確かめてから**入れる（壊れた作業ファイルで画面が落ちないように）:
+
+```ts
+/** 作業ファイルの下書きを文書として読む。形が違えば undefined（下書き無しで開く）。§13 #8 */
+function toSchematicDoc(raw: unknown): SchematicDocument | undefined {
+  if (raw === null || typeof raw !== 'object') return undefined;
+  const doc = raw as Partial<SchematicDocument>;
+  if (doc.formatVersion !== SCHEMATIC_FORMAT_VERSION) return undefined;
+  if (doc.orientation !== 'horizontal' || !Array.isArray(doc.rungs)) return undefined;
+  if (typeof doc.id !== 'string' || typeof doc.title !== 'string') return undefined;
+  // 中身の妥当性は見ない（作りかけの下書きも復元する。決定表#3）。
+  // 段と要素の形だけを確かめ、壊れていれば下書き無しで開く
+  for (const r of doc.rungs) {
+    if (typeof r?.id !== 'string' || !Array.isArray(r.cells)) return undefined;
+    for (const cell of r.cells) {
+      if (typeof cell?.id !== 'string' || typeof cell.device !== 'string') return undefined;
+    }
+  }
+  return doc as SchematicDocument;
+}
+```
+
+- [ ] **Step 7: `VerifyPanel.tsx` を作る**
+
+```tsx
+import type { AssembleProblem, VerifyResult } from '@ojt/content';
+import type { JSX } from 'react';
+import { JA } from '../i18n/ja.js';
+import { ChartOverlay } from '../result/ChartOverlay.js';
+import { MismatchList } from '../result/MismatchList.js';
+import { StaticCheckList } from '../result/StaticCheckList.js';
+import styles from './schematic.module.css';
+
+/**
+ * 検算の結果。設計仕様 §11.4 / Plan 5 決定表#5・#6。
+ *
+ * 判定の結果画面（`result/ResultView.tsx`）と**同じ部品**を使う（`ChartOverlay` / `MismatchList` /
+ * `StaticCheckList`）。基準が同じであることを画面の見た目でも示すためである。
+ * 「盤に写す」は置かない（決定表#5: 配線操作そのものが訓練）。
+ */
+export function VerifyPanel({
+  problem,
+  result,
+  onPickCell,
+}: {
+  problem: AssembleProblem;
+  result: VerifyResult;
+  /** 指摘をクリックしたときに回路図の要素を光らせる（Task 8 の配線ガイドと同じ道）。 */
+  onPickCell: (cellId: string | undefined) => void;
+}): JSX.Element {
+  if (!result.ok) {
+    return (
+      <section className={styles.verify} data-testid="verify-panel">
+        <span className={`${styles.verdict} ${styles.failed}`} data-testid="verify-verdict" role="status" aria-live="polite">
+          {JA.schematic.verifyFailed}
+        </span>
+        <ul className={styles.issueList} data-testid="verify-issues">
+          {result.errors.map((issue) => (
+            <li key={`${issue.source}:${issue.path}:${issue.message}`}>
+              {issue.cellId === undefined ? (
+                issue.message
+              ) : (
+                <button
+                  type="button"
+                  className={styles.paletteItem}
+                  onClick={() => {
+                    onPickCell(issue.cellId);
+                  }}
+                >
+                  {issue.message}
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
+        <p className={styles.verifyNote}>{JA.schematic.verifyNote}</p>
+      </section>
+    );
+  }
+  return (
+    <section className={styles.verify} data-testid="verify-panel">
+      <span
+        className={`${styles.verdict} ${result.passed ? styles.passed : styles.failed}`}
+        data-testid="verify-verdict"
+        role="status"
+        aria-live="polite"
+      >
+        {result.passed ? JA.schematic.verifyPassed : JA.schematic.verifyFailed}
+      </span>
+      <p className={styles.verifyNote}>{JA.schematic.verifyNote}</p>
+      <ChartOverlay
+        expected={result.judge.charts.expected}
+        actual={result.judge.charts.actual}
+        mismatches={result.judge.mismatches}
+      />
+      <MismatchList mismatches={result.judge.mismatches} />
+      <StaticCheckList checks={result.judge.staticChecks} />
+      <span className={styles.verifyNote}>{problem.title}</span>
+    </section>
+  );
+}
+```
+
+- [ ] **Step 8: テストを走らせてコミットする**
+
+`apps/desktop/test/verify-flow.test.ts` は**ストアの側**を確かめる（Worker は立てない）:
+
+```ts
+describe('検算の状態遷移（§11.4）', () => {
+  it('starts every mode-B session with an empty draft (決定表#2)', () => {/* ... */});
+  it('keeps no draft for C1 / C2 / D problems', () => {/* ... */});
+  it('pushes the previous document on every accepted edit and drops the stale verify result', () => {/* ... */});
+  it('refuses an impossible edit with a toast and leaves the document alone', () => {/* ... */});
+  it('undoes and redoes the draft', () => {/* ... */});
+  it('clamps the cursor when the rung under it disappears', () => {/* ... */});
+  it('round-trips the draft through the work file and ignores a broken one', () => {/* ... */});
+});
+```
+
+```
+pnpm --filter @ojt/desktop test verify-flow sim-worker-verify work-file
+pnpm -r typecheck && pnpm lint
+git add apps/desktop && git commit -m "feat(desktop): run the schematic desk check in the simulation worker"
+```
+
+---
+
+## Task 7: モードBの画面に組み込む（ビュー切替・ツールバー・レイアウト）
+
+**モデル: Opus**（`Session.tsx` の MERGE と、3つのビューの配分）
+
+**Files:**
+- Modify: `apps/desktop/src/renderer/app/store.ts`（`assembleView` と `setAssembleView`）
+- Modify: `apps/desktop/src/renderer/panels/Toolbar.tsx`（`viewSwitch` の差し込み口）
+- Modify: `apps/desktop/src/renderer/panels/panels.module.css`（`.viewSwitch`）
+- Modify: `apps/desktop/src/renderer/screens/Session.tsx`
+- Modify: `apps/desktop/src/renderer/screens/screens.module.css`（`.splitLayout`）
+- Test: `apps/desktop/test/assemble-view.test.tsx`（新規）
+
+決定表#1: `assembleView: 'board' | 'split' | 'schematic'`。モードDの `ladderView` と同じ語彙・同じ見た目。
+
+- [ ] **Step 1: 失敗するテストを書く**
+
+`apps/desktop/test/assemble-view.test.tsx`:
+
+```tsx
+import { BUILTIN_ASSEMBLE_PROBLEMS } from '@ojt/content';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { useStore } from '../src/renderer/app/store.js';
+import { Session } from '../src/renderer/screens/Session.js';
+
+const problem = BUILTIN_ASSEMBLE_PROBLEMS.find((p) => p.id === 'b-001');
+if (problem === undefined) throw new Error('b-001 が見つかりません');
+
+beforeEach(() => {
+  useStore.getState().abandonSession();
+  act(() => {
+    useStore.getState().openProblem(problem);
+  });
+});
+
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+});
+
+describe('モードBのビュー切替（Plan 5 決定表#1）', () => {
+  it('opens on the board view (Phase 1〜4 のふるまいを変えない)', () => {
+    render(<Session />);
+    expect(screen.getByTestId('viewport')).toBeVisible();
+    expect(screen.queryByTestId('schematic-editor')).toBeNull();
+    expect(useStore.getState().assembleView).toBe('board');
+  });
+
+  it('switches to 並べて and shows both the board and the editor', () => {
+    render(<Session />);
+    fireEvent.click(screen.getByTestId('assemble-view-split'));
+    expect(screen.getByTestId('viewport')).toBeVisible();
+    expect(screen.getByTestId('schematic-editor')).toBeVisible();
+  });
+
+  it('switches to 回路図 and hides the 3D viewport', () => {
+    render(<Session />);
+    fireEvent.click(screen.getByTestId('assemble-view-schematic'));
+    expect(screen.getByTestId('schematic-editor')).toBeVisible();
+    expect(screen.queryByTestId('viewport')).toBeNull();
+  });
+
+  it('marks the current view with aria-pressed', () => {
+    render(<Session />);
+    fireEvent.click(screen.getByTestId('assemble-view-schematic'));
+    expect(screen.getByTestId('assemble-view-schematic')).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByTestId('assemble-view-board')).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('keeps the draft when the view changes back and forth', () => {
+    render(<Session />);
+    fireEvent.click(screen.getByTestId('assemble-view-schematic'));
+    act(() => {
+      useStore
+        .getState()
+        .applySchematicEdit({ kind: 'insertCell', rungId: 'r1', index: 0, draft: { kind: 'pb-a', device: 'PB1' } });
+    });
+    fireEvent.click(screen.getByTestId('assemble-view-board'));
+    fireEvent.click(screen.getByTestId('assemble-view-schematic'));
+    expect(useStore.getState().schematicDoc?.rungs[0]?.cells).toHaveLength(1);
+  });
+
+  it('shows the verify panel once a result arrives', () => {
+    render(<Session />);
+    fireEvent.click(screen.getByTestId('assemble-view-schematic'));
+    act(() => {
+      useStore.getState().setVerifyResult({
+        ok: false,
+        errors: [{ source: 'document', path: 'rungs[0]', message: '段に要素がありません: r1' }],
+      });
+    });
+    expect(screen.getByTestId('verify-panel')).toHaveTextContent('段に要素がありません');
+    expect(useStore.getState().verifying).toBe(false);
+  });
+
+  it('does not offer the view switch to C1 / C2 / D screens', () => {
+    // モードBの画面だけが `assemble-view-*` を出す（他の画面は `Toolbar` に渡さない）
+    render(<Session />);
+    fireEvent.click(screen.getByTestId('assemble-view-board'));
+    expect(screen.queryAllByTestId(/^assemble-view-/u)).toHaveLength(3);
+  });
+});
+```
+
+- [ ] **Step 2: ストアに `assembleView` を足す**
+
+`AppState` の `ladderView` の隣（`// --- Plan 5 Task 7 ---`）:
+
+```ts
+  /**
+   * モードBのビュー（盤／並べて／回路図）。§11.4 / Plan 5 決定表#1
+   * モードDの `ladderView` と同じ役割で、値の並びも同じ順（盤 → 並べて → 図）。
+   */
+  assembleView: AssembleViewMode;
+```
+
+型は `store.ts` の `LadderViewMode` の隣に置く:
+
+```ts
+/** モードBのビュー。§11.4 */
+export type AssembleViewMode = 'board' | 'split' | 'schematic';
+```
+
+初期値 `assembleView: 'board',`、操作 `setAssembleView: (view: AssembleViewMode) => void;` と実装 `setAssembleView: (assembleView) => { set({ assembleView }); },`。`openProblem()` / `resetSession()` / `restartSession()` / `abandonSession()` では **`'board'` に戻す**（課題を開いたら必ず盤から始まる）。
+
+- [ ] **Step 3: `Toolbar.tsx` に差し込み口を足す**
+
+`extraTools` の隣に、**判定ボタンの左**へ出る枠を1つ足す（`extraTools` はモード固有の道具＝テスター・指摘モードで既に埋まっている）:
+
+```tsx
+  /**
+   * ビュー切替（モードBの 盤／並べて／回路図）。§11.4 / Plan 5 決定表#1
+   * 視点プリセットの隣に置く（どちらも「何を見るか」の道具）。渡さない画面には出ない。
+   */
+  viewSwitch?: JSX.Element;
+```
+
+`VIEWS.map(...)` の `</div>` の直後に `{viewSwitch === undefined ? null : <div className={styles.toolGroup}>{viewSwitch}</div>}` を置く。
+
+- [ ] **Step 4: `Session.tsx` を組み替える**
+
+import に足す:
+
+```tsx
+import { emptySchematic } from '@ojt/schematic-core';
+import { SchematicEditor } from '../schematic/SchematicEditor.js';
+import { VerifyPanel } from '../schematic/VerifyPanel.js';
+```
+
+`Session()` の購読に足す:
+
+```tsx
+  const assembleView = useStore((s) => s.assembleView);
+  const schematicDoc = useStore((s) => s.schematicDoc);
+  const schematicCursor = useStore((s) => s.schematicCursor);
+  const schematicHistory = useStore((s) => s.schematicHistory);
+  const verifying = useStore((s) => s.verifying);
+  const verifyResult = useStore((s) => s.verifyResult);
+```
+
+Worker の購読（`bridge.start({...})`）に検算のハンドラを足す:
+
+```tsx
+      onVerify: (message) => {
+        useStore.getState().setVerifyResult(message.result);
+      },
+```
+
+ツールバーに切替を渡す（`<Toolbar ... />` の props に）:
+
+```tsx
+        viewSwitch={
+          <>
+            <span className={styles.toolLabelInline}>{JA.schematic.title}</span>
+            {(
+              [
+                ['board', JA.schematic.viewBoard],
+                ['split', JA.schematic.viewSplit],
+                ['schematic', JA.schematic.viewSchematic],
+              ] as const
+            ).map(([view, label]) => (
+              <button
+                key={view}
+                type="button"
+                data-testid={`assemble-view-${view}`}
+                aria-pressed={assembleView === view}
+                onClick={() => {
+                  useStore.getState().setAssembleView(view);
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </>
+        }
+```
+
+`.sessionLayout` の中身を、ビューに応じて3通りに分ける。**3Dビューポートの JSX は1箇所のまま**にし（`memo(BoardScene)` が効くように）、`display: none` ではなく**マウントするかどうか**で切り替える（`schematic` のときは Canvas を捨てて GPU を空ける。§15）:
+
+```tsx
+      <div className={styles.sessionLayout} data-view={assembleView}>
+        {assembleView === 'schematic' ? null : (
+          <div className={styles.viewport} data-testid="viewport">
+            {/* …既存の中身（WarningBanner / BoardScene / statusOverlay / viewHint）をそのまま… */}
+          </div>
+        )}
+        {assembleView === 'board' || schematicDoc === undefined ? null : (
+          <div className={styles.editorPane}>
+            <SchematicEditor
+              problem={problem}
+              board={JIPM_BOARD}
+              document={schematicDoc}
+              cursor={schematicCursor}
+              history={schematicHistory}
+              verifying={verifying}
+              verified={verifyResult?.ok === true && verifyResult.passed}
+              boardWired={session.wires.some((w) => !w.locked)}
+              highlightCellIds={highlightCells}
+              onEdit={(edit) => {
+                useStore.getState().applySchematicEdit(edit);
+              }}
+              onCursor={(next) => {
+                useStore.getState().setSchematicCursor(next);
+              }}
+              onUndo={() => {
+                useStore.getState().undoSchematicEdit();
+              }}
+              onRedo={() => {
+                useStore.getState().redoSchematicEdit();
+              }}
+              onVerify={() => {
+                const store = useStore.getState();
+                if (store.verifying || store.schematicDoc === undefined) return;
+                store.setVerifying(true);
+                bridge.send({
+                  type: 'verify',
+                  problem,
+                  document: store.schematicDoc,
+                  elapsedMs: store.elapsedMs,
+                });
+              }}
+              onPickCell={onPickSchematicCell}
+            />
+            {verifyResult === undefined ? null : (
+              <VerifyPanel problem={problem} result={verifyResult} onPickCell={onPickSchematicCell} />
+            )}
+          </div>
+        )}
+        {/* …右パネル・下パネルは既存のまま… */}
+      </div>
+```
+
+`highlightCells` と `onPickSchematicCell` は **Task 8 が定義する**。Task 7 の時点では次の暫定を置き、Task 8 で中身を差し替える（未定義の識別子を残さない）:
+
+```tsx
+  // 配線ガイドは Task 8 が実装する。ここでは「何も光らない・クリックは無視」で動かす
+  const highlightCells = useStore((s) => s.highlight.cellIds);
+  const onPickSchematicCell = useCallback((_cellId: string | undefined): void => {
+    // Task 8 でストアの `highlight` を更新する
+  }, []);
+```
+
+- [ ] **Step 5: CSS を足す**
+
+`screens.module.css` の末尾（`/* --- Plan 5 Task 7 --- */`）:
+
+```css
+/* モードBのビュー切替（盤／並べて／回路図）。§11.4 */
+.sessionLayout[data-view='split'] .viewport {
+  flex: 1 1 50%;
+  min-width: 360px;
+}
+
+.editorPane {
+  display: flex;
+  flex: 1 1 50%;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 360px;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.sessionLayout[data-view='schematic'] .editorPane {
+  flex: 1 1 100%;
+}
+
+.toolLabelInline {
+  font-size: 12px;
+  color: #98a1ac;
+}
+```
+
+- [ ] **Step 6: テストを走らせてコミットする**
+
+```
+pnpm --filter @ojt/desktop test assemble-view session
+npx prettier --check "apps/desktop/src/renderer/**/*.{ts,tsx,css}"
+git add apps/desktop && git commit -m "feat(desktop): put the schematic editor into the mode-B session as a view switch"
+```
+
+**期待**: `assemble-view.test.tsx` の **7件**が増え、既存の `session.test.tsx` はそのまま通る（初期ビューが `board` なので、既存テストが見る DOM は変わらない）。
+
+---
+
+## Task 8: 配線ガイドのハイライト（受入基準②）
+
+**モデル: Opus**（索引の出どころの切り替えと、C2 の landed コードを壊さない寄せ方）
+
+**Files:**
+- Create: `apps/desktop/src/renderer/session/wiring-guide.ts`
+- Modify: `apps/desktop/src/renderer/screens/Session.tsx`
+- Modify: `apps/desktop/src/renderer/screens/InspectRepairSession.tsx`（glue を共通化）
+- Test: `apps/desktop/test/wiring-guide.test.ts`（新規）
+- Test: `apps/desktop/test/wiring-guide-screen.test.tsx`（新規）
+
+§11.4「配線ガイド: 回路図の要素をクリックすると3D盤の対応端子をハイライトする」＝**受入基準②**。決定表#7・#8。
+
+- [ ] **Step 1: 失敗するテストを書く（純関数）**
+
+`apps/desktop/test/wiring-guide.test.ts`:
+
+```ts
+import { JIPM_BOARD } from '@ojt/board-model';
+import { BUILTIN_ASSEMBLE_PROBLEMS, buildHighlightIndex, buildReferenceSession } from '@ojt/content';
+import { describe, expect, it } from 'vitest';
+import { NO_HIGHLIGHT } from '../src/renderer/app/store-types.js';
+import {
+  cellsForHover,
+  guideIndexFor,
+  selectionFor,
+  sameSelection,
+} from '../src/renderer/session/wiring-guide.js';
+
+const problem = BUILTIN_ASSEMBLE_PROBLEMS.find((p) => p.id === 'b-001');
+if (problem === undefined) throw new Error('b-001 が見つかりません');
+
+function reference() {
+  const built = buildReferenceSession(problem, JIPM_BOARD);
+  if (!built.ok) throw new Error('模範回路が作れません');
+  return built.value;
+}
+
+describe('selectionFor', () => {
+  it('turns a cell id into terminals and wires', () => {
+    const { cells, session } = reference();
+    const index = buildHighlightIndex(cells, session);
+    const cellId = cells[0]?.cellId ?? '';
+    const selection = selectionFor(index, cellId);
+    expect(selection.cellIds).toEqual([cellId]);
+    expect(selection.terminals).toHaveLength(2);
+    expect(selection.wireIds.length).toBeGreaterThan(0);
+  });
+
+  it('clears the selection for an unknown or undefined cell', () => {
+    const { cells, session } = reference();
+    const index = buildHighlightIndex(cells, session);
+    expect(selectionFor(index, undefined)).toEqual(NO_HIGHLIGHT);
+    expect(selectionFor(index, 'nope')).toEqual(NO_HIGHLIGHT);
+  });
+});
+
+describe('cellsForHover（3D → 回路図の逆引き。決定表#8）', () => {
+  it('finds the cells that use a hovered terminal', () => {
+    const { cells, session } = reference();
+    const index = buildHighlightIndex(cells, session);
+    const terminal = cells[0]?.left ?? '';
+    expect(cellsForHover(index, { terminal })).toContain(cells[0]?.cellId);
+  });
+
+  it('finds the cells that a hovered wire joins', () => {
+    const { cells, session } = reference();
+    const index = buildHighlightIndex(cells, session);
+    const wireId = session.wires.find((w) => !w.locked)?.id ?? '';
+    expect(cellsForHover(index, { wireId }).length).toBeGreaterThan(0);
+  });
+
+  it('returns nothing when nothing is hovered', () => {
+    const { cells, session } = reference();
+    expect(cellsForHover(buildHighlightIndex(cells, session), {})).toEqual([]);
+  });
+});
+
+describe('guideIndexFor（決定表#7）', () => {
+  it('uses the trainee drawing when one is given', () => {
+    const { session } = reference();
+    const index = guideIndexFor({ doc: problem.schematic, problem, board: JIPM_BOARD, session });
+    expect(index).not.toBeUndefined();
+    expect(index?.size).toBe(problem.schematic.rungs.flatMap((r) => r.cells).length);
+  });
+
+  it('falls back to the reference circuit when there is no drawing', () => {
+    const { session } = reference();
+    const index = guideIndexFor({ doc: undefined, problem, board: JIPM_BOARD, session });
+    expect(index?.size).toBeGreaterThan(0);
+  });
+
+  it('returns undefined for a drawing that cannot be assigned to the board', () => {
+    const { session } = reference();
+    const broken = { ...problem.schematic, rungs: [] };
+    expect(guideIndexFor({ doc: broken, problem, board: JIPM_BOARD, session })).toBeUndefined();
+  });
+});
+
+describe('sameSelection', () => {
+  it('compares by value so hover does not restart the store on every frame', () => {
+    expect(sameSelection(NO_HIGHLIGHT, { cellIds: [], terminals: [], wireIds: [] })).toBe(true);
+    expect(sameSelection(NO_HIGHLIGHT, { cellIds: ['c1'], terminals: [], wireIds: [] })).toBe(false);
+  });
+});
+```
+
+- [ ] **Step 2: `session/wiring-guide.ts` を実装する**
+
+```ts
+import { type BoardDefinition, type BoardSession } from '@ojt/board-model';
+import {
+  buildHighlightIndex,
+  buildReferenceSession,
+  cellIdsAtTerminal,
+  cellIdsOfWire,
+  highlightFor,
+  type HighlightIndex,
+  type SchematicProblem,
+} from '@ojt/content';
+import { assignToBoard, type SchematicDocument } from '@ojt/schematic-core';
+import { NO_HIGHLIGHT, type HighlightSelection } from '../app/store-types.js';
+
+/**
+ * 回路図 ⇄ 3D盤の連動ハイライト。設計仕様 §9.2（C2）/ §11.4（モードBの配線ガイド）。
+ *
+ * C2 で landed していた glue（`InspectRepairSession.tsx` の中）をここへ寄せ、モードBの
+ * 配線ガイドと**同じ実装**を使う。索引の出どころは Plan 5 決定表#7 のとおり:
+ * 訓練者の下書きがあればそれ、無ければ課題の模範回路。
+ *
+ * React も three も使わないので Vitest だけで検証できる（§14.2）。
+ */
+
+/** 索引を作るための入力。 */
+export interface GuideInput {
+  /** 訓練者が描いた回路図（モードBのエディタ）。C2 は課題の提示回路図を渡す。 */
+  doc: SchematicDocument | undefined;
+  problem: SchematicProblem;
+  board: BoardDefinition;
+  /** いまの盤（電線IDを引くのに使う。配線が変わったら作り直すこと）。 */
+  session: BoardSession;
+}
+
+/**
+ * 連動ハイライトの索引。決定表#7
+ * `doc` の物理割当に失敗したら（作りかけの下書きなど）`undefined` を返す。呼び出し側は
+ * ハイライトを出さない（エディタの指摘欄が理由を出しているので、二重に言わない）。
+ */
+export function guideIndexFor(input: GuideInput): HighlightIndex | undefined {
+  if (input.doc !== undefined) {
+    const assigned = assignToBoard(input.doc, { roles: input.session.socketRoles });
+    if (!assigned.ok) return undefined;
+    return buildHighlightIndex(assigned.cells, input.session);
+  }
+  const reference = buildReferenceSession(input.problem, input.board);
+  if (!reference.ok) return undefined;
+  return buildHighlightIndex(reference.value.cells, input.session);
+}
+
+/** 回路図の要素 → 盤の選択。要素が無い／引けないときは「何も光らない」。§11.4 */
+export function selectionFor(
+  index: HighlightIndex | undefined,
+  cellId: string | undefined,
+): HighlightSelection {
+  if (index === undefined || cellId === undefined) return NO_HIGHLIGHT;
+  const target = highlightFor(index, cellId);
+  if (target === undefined) return NO_HIGHLIGHT;
+  return { cellIds: [target.cellId], terminals: [...target.terminals], wireIds: [...target.wireIds] };
+}
+
+/** 盤の端子・電線 → 回路図の要素ID（逆引き）。決定表#8 */
+export function cellsForHover(
+  index: HighlightIndex | undefined,
+  hover: { terminal?: string | undefined; wireId?: string | undefined },
+): string[] {
+  if (index === undefined) return [];
+  if (hover.terminal !== undefined) return cellIdsAtTerminal(index, hover.terminal);
+  if (hover.wireId !== undefined) return cellIdsOfWire(index, hover.wireId);
+  return [];
+}
+
+/** 盤の端子・電線から作る選択（逆引きでは端子と電線はそのまま光らせる）。 */
+export function selectionForHover(
+  index: HighlightIndex | undefined,
+  hover: { terminal?: string | undefined; wireId?: string | undefined },
+): HighlightSelection {
+  const cellIds = cellsForHover(index, hover);
+  if (cellIds.length === 0) return NO_HIGHLIGHT;
+  return {
+    cellIds,
+    terminals: hover.terminal === undefined ? [] : [hover.terminal],
+    wireIds: hover.wireId === undefined ? [] : [hover.wireId],
+  };
+}
+
+/**
+ * 2つの選択が同じか。ホバーは1秒に何度も走るので、**同じ結果なら `setHighlight()` を呼ばない**
+ * ために使う（`visualSignature()` が変わらなくても zustand の購読は全部走るため）。
+ */
+export function sameSelection(a: HighlightSelection, b: HighlightSelection): boolean {
+  const key = (s: HighlightSelection): string =>
+    `${s.cellIds.join(',')}|${s.terminals.join(',')}|${s.wireIds.join(',')}`;
+  return key(a) === key(b);
+}
+```
+
+- [ ] **Step 3: `Session.tsx` の暫定を差し替える（モードBの配線ガイド）**
+
+Task 7 で置いた暫定の2行を次に替える:
+
+```tsx
+  /**
+   * 配線ガイドの索引。§11.4 / 決定表#7
+   * 「いま画面に出ている回路図」から作る: 回路図エディタを開いていれば訓練者の下書き、
+   * 開いていなければ回路図ヒント（課題の模範回路）。盤の配線が変わったら電線IDが古くなるので、
+   * `session` も依存に並べる（`buildHighlightIndex()` の注記のとおり）。
+   */
+  const guideIndex = useMemo(
+    () =>
+      guideIndexFor({
+        doc: assembleView === 'board' ? undefined : schematicDoc,
+        problem,
+        board: JIPM_BOARD,
+        session,
+      }),
+    [assembleView, schematicDoc, problem, session],
+  );
+  const highlightCells = useStore((s) => s.highlight.cellIds);
+
+  /** 回路図の要素をクリックしたら盤の端子を光らせる（受入基準②）。 */
+  const onPickSchematicCell = useCallback(
+    (cellId: string | undefined): void => {
+      useStore.getState().setHighlight(selectionFor(guideIndex, cellId));
+    },
+    [guideIndex],
+  );
+```
+
+3D側の逆引きは、既存の `onHover` を包む形で足す（`setHovered()` はそのまま残す）:
+
+```tsx
+  const latestIndex = useRef(guideIndex);
+  latestIndex.current = guideIndex;
+  /**
+   * 盤の端子にホバーしたら回路図の要素を光らせる（決定表#8）。
+   * ホバーは毎秒何度も走るので、**同じ選択なら書かない**（`sameSelection`）。
+   */
+  const onHover = useCallback((id: TerminalId | undefined) => {
+    const store = useStore.getState();
+    store.setHovered(id);
+    const next = selectionForHover(latestIndex.current, { terminal: id });
+    if (sameSelection(next, store.highlight)) return;
+    store.setHighlight(next);
+  }, []);
+```
+
+回路図ヒント（`schematic-hint` の `SchematicSvg`）にも `highlightCellIds` と `onPickCell` を渡す:
+
+```tsx
+                <SchematicSvg
+                  document={problem.schematic}
+                  highlightCellIds={highlightCells}
+                  onPickCell={onPickSchematicCell}
+                />
+```
+
+- [ ] **Step 4: `InspectRepairSession.tsx` の glue を寄せる**
+
+L297〜L340 の `highlightIndex` / `latestIndex` / ホバー処理を `wiring-guide.ts` の関数で書き直す。**挙動は変えない**（`buildHighlightIndex(circuit.cells, session)` はそのまま、`setHighlight` を呼ぶ条件も `sameSelection()` で同じになる）。L800〜L812 の `onPickCell` は `selectionFor(index, cellId)` の1行にする。
+
+- [ ] **Step 5: 画面のテストを書いて走らせる**
+
+`apps/desktop/test/wiring-guide-screen.test.tsx`:
+
+```tsx
+import { BUILTIN_ASSEMBLE_PROBLEMS } from '@ojt/content';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { useStore } from '../src/renderer/app/store.js';
+import { Session } from '../src/renderer/screens/Session.js';
+
+const problem = BUILTIN_ASSEMBLE_PROBLEMS.find((p) => p.id === 'b-001');
+if (problem === undefined) throw new Error('b-001 が見つかりません');
+
+beforeEach(() => {
+  useStore.getState().abandonSession();
+  act(() => {
+    useStore.getState().openProblem(problem);
+  });
+});
+
+afterEach(() => {
+  cleanup();
+});
+
+describe('配線ガイド（§16 Phase 5 受入基準②）', () => {
+  it('lights the board terminals when a schematic hint element is clicked', () => {
+    render(<Session />);
+    // b-001 は3級課題なので回路図ヒントが常時出ている（§8.4）
+    const symbol = screen.getByTestId('schematic-hint').querySelector('[data-cell]');
+    expect(symbol).not.toBeNull();
+    if (symbol === null) return;
+    fireEvent.click(symbol);
+    const highlight = useStore.getState().highlight;
+    expect(highlight.cellIds).toEqual([symbol.getAttribute('data-cell')]);
+    expect(highlight.terminals).toHaveLength(2);
+    // 端子IDは盤の語彙（`CR1.14` のような `<部品>.<端子>`）
+    for (const terminal of highlight.terminals) expect(terminal).toMatch(/^[A-Z_0-9]+\./u);
+  });
+
+  it('clears the highlight when the empty area of the schematic is clicked', () => {
+    render(<Session />);
+    const svg = screen.getByTestId('schematic-hint').querySelector('[data-testid="schematic-svg"]');
+    if (svg === null) return;
+    fireEvent.click(svg);
+    expect(useStore.getState().highlight.cellIds).toEqual([]);
+  });
+
+  it('lights the drawn element when the editor is open (決定表#7)', () => {
+    render(<Session />);
+    fireEvent.click(screen.getByTestId('assemble-view-schematic'));
+    act(() => {
+      const store = useStore.getState();
+      store.applySchematicEdit({ kind: 'insertCell', rungId: 'r1', index: 0, draft: { kind: 'pb-a', device: 'PB1' } });
+      store.applySchematicEdit({ kind: 'insertCell', rungId: 'r1', index: 1, draft: { kind: 'coil', device: 'CR1' } });
+    });
+    const symbol = screen.getByTestId('schematic-editor').querySelector('[data-cell]');
+    if (symbol === null) return;
+    fireEvent.click(symbol);
+    expect(useStore.getState().highlight.terminals.length).toBeGreaterThan(0);
+  });
+
+  it('lights nothing while the drawing cannot be assigned to the board', () => {
+    render(<Session />);
+    fireEvent.click(screen.getByTestId('assemble-view-schematic'));
+    // 要素0個の下書きは割当できない（`validateDocument` が段の空を弾く）
+    const svg = screen.getByTestId('schematic-editor').querySelector('[data-testid="schematic-svg"]');
+    if (svg === null) return;
+    fireEvent.click(svg);
+    expect(useStore.getState().highlight).toEqual({ cellIds: [], terminals: [], wireIds: [] });
+  });
+});
+```
+
+```
+pnpm --filter @ojt/desktop test wiring-guide inspect-repair-screen highlight-link
+pnpm -r typecheck && pnpm lint
+git add apps/desktop && git commit -m "feat(desktop): light the board terminals from the schematic (wiring guide)"
+```
+
+**期待**: `wiring-guide.test.ts` の **9件**と `wiring-guide-screen.test.tsx` の **4件**が増え、既存の `highlight-link.test.tsx`（C2）はそのまま通る。
+
+---
+
+## Task 9: 結果画面の「疑わしい配線」と「盤で見る」（UXレビュー #28）
+
+**モデル: Opus**（結果 → セッションの遷移と、戻る導線）
+
+**Files:**
+- Create: `apps/desktop/src/renderer/result/SuspectList.tsx`
+- Modify: `apps/desktop/src/renderer/result/ResultView.tsx` / `result.module.css`
+- Modify: `apps/desktop/src/renderer/screens/Result.tsx`（`SuspectList` へ渡す盤と遷移）
+- Modify: `apps/desktop/src/renderer/app/store.ts`（`boardFocus`）
+- Modify: `apps/desktop/src/renderer/screens/Session.tsx`（「結果から」の帯）
+- Modify: `apps/desktop/src/renderer/i18n/ja.ts`
+- Test: `apps/desktop/test/suspect-list.test.tsx`（新規）
+
+決定表#10・#11・#27。
+
+- [ ] **Step 1: ストアに `boardFocus` を足す**
+
+`store-types.ts`（値型なのでこちら）:
+
+```ts
+/**
+ * 結果画面から盤へ跳んだときの注目。§8.3 / UXレビュー #28
+ * `text` は帯に出す1行（「CR1.14（CR1）と P.1（P）がつながっていません」）。
+ */
+export interface BoardFocus {
+  from: 'result';
+  text: string;
+}
+```
+
+`store.ts`: `boardFocus: BoardFocus | undefined;` ＋ `setBoardFocus: (focus: BoardFocus | undefined) => void;` ＋ 実装 ＋ 初期値 `undefined`。`openProblem()` / `resetSession()` / `restartSession()` / `abandonSession()` で `undefined` に戻す。
+
+- [ ] **Step 2: 失敗するテストを書く**
+
+`apps/desktop/test/suspect-list.test.tsx`:
+
+```tsx
+import { JIPM_BOARD } from '@ojt/board-model';
+import { BUILTIN_ASSEMBLE_PROBLEMS, buildReferenceSession, wiringSuspects } from '@ojt/content';
+import { removeWire } from '@ojt/board-model';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { SuspectList } from '../src/renderer/result/SuspectList.js';
+
+const problem = BUILTIN_ASSEMBLE_PROBLEMS.find((p) => p.id === 'b-001');
+if (problem === undefined) throw new Error('b-001 が見つかりません');
+
+function brokenSession() {
+  const built = buildReferenceSession(problem, JIPM_BOARD);
+  if (!built.ok) throw new Error('模範回路が作れません');
+  const victim = built.value.session.wires.find((w) => !w.locked);
+  if (victim !== undefined) removeWire(built.value.session, victim.id);
+  return built.value.session;
+}
+
+afterEach(() => {
+  cleanup();
+});
+
+describe('SuspectList（UXレビュー #28）', () => {
+  it('lists the suspects with a 盤で見る button each', () => {
+    const suspects = wiringSuspects(problem, JIPM_BOARD, brokenSession());
+    expect(suspects.length).toBeGreaterThan(0);
+    render(<SuspectList suspects={suspects} onShowOnBoard={vi.fn()} />);
+    expect(screen.getAllByRole('button', { name: '盤で見る' })).toHaveLength(suspects.length);
+    expect(screen.getByTestId('suspect-list')).toHaveTextContent('つながっていません');
+  });
+
+  it('hands the terminals, wires and cells to the caller', () => {
+    const suspects = wiringSuspects(problem, JIPM_BOARD, brokenSession());
+    const onShowOnBoard = vi.fn();
+    render(<SuspectList suspects={suspects} onShowOnBoard={onShowOnBoard} />);
+    fireEvent.click(screen.getAllByRole('button', { name: '盤で見る' })[0] as HTMLElement);
+    expect(onShowOnBoard).toHaveBeenCalledWith(suspects[0]);
+  });
+
+  it('says so when there is nothing to suspect', () => {
+    render(<SuspectList suspects={[]} onShowOnBoard={vi.fn()} />);
+    expect(screen.getByTestId('no-suspect')).toBeInTheDocument();
+    expect(screen.queryAllByRole('button', { name: '盤で見る' })).toHaveLength(0);
+  });
+
+  it('tells the trainee when the list was cut short (決定表#27)', () => {
+    const many = Array.from({ length: 5 }, (_, i) => ({
+      kind: 'missing' as const,
+      terminals: [`CR1.${i + 1}`, 'P.1'] as unknown as readonly [string, string],
+      devices: ['CR1', 'P'],
+      cellIds: [`c${i}`],
+      wireIds: [],
+      message: `CR1.${i + 1}（CR1）と P.1（P）がつながっていません`,
+    }));
+    render(<SuspectList suspects={many} onShowOnBoard={vi.fn()} truncated={3} />);
+    expect(screen.getByTestId('suspect-more')).toHaveTextContent('3');
+  });
+});
+```
+
+- [ ] **Step 3: `SuspectList.tsx` を実装する**
+
+```tsx
+import type { WiringSuspect } from '@ojt/content';
+import type { JSX } from 'react';
+import { JA } from '../i18n/ja.js';
+import styles from './result.module.css';
+
+/**
+ * 疑わしい配線の一覧。UXレビュー #28（2026-09-19）。
+ *
+ * 判定は波形の食い違いしか返さないので、訓練者は「どこを直せばよいか」が分からない。
+ * `wiringSuspects()`（模範回路との節点分割の差）を並べ、「盤で見る」でその端子と電線を
+ * 3Dで光らせる（Plan 5 決定表#11）。
+ */
+export function SuspectList({
+  suspects,
+  truncated = 0,
+  onShowOnBoard,
+}: {
+  suspects: readonly WiringSuspect[];
+  /** 表示上限で切り捨てた件数（0 なら切り捨て無し）。決定表#27 */
+  truncated?: number;
+  onShowOnBoard: (suspect: WiringSuspect) => void;
+}): JSX.Element {
+  return (
+    <div className={styles.card} data-testid="suspect-list">
+      <h2>
+        {JA.result.suspects}（{suspects.length}）
+      </h2>
+      {suspects.length === 0 ? (
+        <p data-testid="no-suspect">{JA.result.noSuspect}</p>
+      ) : (
+        <ul className={styles.suspectList}>
+          {suspects.map((suspect) => (
+            <li key={`${suspect.kind}:${suspect.terminals.join('-')}`} className={styles.suspect}>
+              <span className={suspect.kind === 'missing' ? styles.suspectMissing : styles.suspectExtra}>
+                {suspect.kind === 'missing' ? JA.result.suspectMissing : JA.result.suspectExtra}
+              </span>
+              <span className={styles.suspectText}>{suspect.message}</span>
+              <button
+                type="button"
+                className={styles.suspectButton}
+                onClick={() => {
+                  onShowOnBoard(suspect);
+                }}
+              >
+                {JA.result.showOnBoard}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {truncated > 0 ? (
+        <p className={styles.suspectMore} data-testid="suspect-more">
+          {JA.result.suspectMore(truncated)}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+```
+
+`i18n/ja.ts` の `JA.result` に追記（`// --- Plan 5 Task 9 ---`）:
+
+```ts
+    suspects: '疑わしい配線',
+    noSuspect: '模範回路との配線の違いは見つかりませんでした。部品の設定や操作の順序を見直してください。',
+    suspectMissing: '不足',
+    suspectExtra: '余分',
+    showOnBoard: '盤で見る',
+    backToResult: '結果へ戻る',
+    fromResult: '結果から',
+```
+
+`JA` の関数群（`schematicOpenCountText` の隣）に:
+
+```ts
+/** 表示しきれなかった疑いの件数。UXレビュー #28 */
+export function suspectMoreText(count: number): string {
+  return `ほかに ${count} 件あります。まず上の指摘から直してください。`;
+}
+```
+
+`JA.result.suspectMore` は関数を持てないので、`SuspectList` 側で `suspectMoreText(truncated)` を呼ぶ形にする（`JA` は値だけを持つ既存の流儀に合わせる）。
+
+- [ ] **Step 4: `ResultView.tsx` と `Result.tsx` をつなぐ**
+
+`ResultView` に props を2つ足す（**任意**にしてモードC1/C2/Dの結果画面を壊さない）:
+
+```tsx
+  /** 疑わしい配線（モードBのみ。UXレビュー #28）。 */
+  suspects?: readonly WiringSuspect[];
+  /** 表示上限で切り捨てた件数。 */
+  suspectsTruncated?: number;
+  /** 「盤で見る」。 */
+  onShowOnBoard?: (suspect: WiringSuspect) => void;
+```
+
+`.grid` の中、`MismatchList` の直後に:
+
+```tsx
+        {suspects === undefined || onShowOnBoard === undefined ? null : (
+          <SuspectList
+            suspects={suspects}
+            truncated={suspectsTruncated ?? 0}
+            onShowOnBoard={onShowOnBoard}
+          />
+        )}
+```
+
+`screens/Result.tsx` で計算して渡す（決定表#10: renderer で `useMemo`）:
+
+```tsx
+  const suspects = useMemo(() => {
+    if (problem === undefined || session === undefined || !isAssembleProblem(problem)) return [];
+    // 合格したときは出さない（見るところが無い）
+    if (result?.mode === 'assemble' && result.passed) return [];
+    return wiringSuspects(problem, JIPM_BOARD, session);
+  }, [problem, session, result]);
+```
+
+「盤で見る」の実体（決定表#11）:
+
+```tsx
+  const showOnBoard = useCallback((suspect: WiringSuspect): void => {
+    const store = useStore.getState();
+    store.setHighlight({
+      cellIds: [...suspect.cellIds],
+      terminals: [...suspect.terminals],
+      wireIds: [...suspect.wireIds],
+    });
+    store.setBoardFocus({ from: 'result', text: suspect.message });
+    store.setCamera('front');
+    store.setRoute('session');
+  }, []);
+```
+
+- [ ] **Step 5: セッション画面に「結果から」の帯を出す**
+
+`Session.tsx` の `.stepGuide` の直前に:
+
+```tsx
+      {boardFocus === undefined ? null : (
+        <div className={styles.boardFocus} data-testid="board-focus">
+          <span>
+            {JA.result.fromResult}: {boardFocus.text}
+          </span>
+          <button
+            type="button"
+            data-testid="back-to-result"
+            onClick={() => {
+              const store = useStore.getState();
+              store.setBoardFocus(undefined);
+              store.setHighlight(NO_HIGHLIGHT);
+              store.setRoute('result');
+            }}
+          >
+            {JA.result.backToResult}
+          </button>
+        </div>
+      )}
+```
+
+`result.module.css` と `screens.module.css` に `.suspectList` / `.suspect` / `.suspectMissing` / `.suspectExtra` / `.suspectText` / `.suspectButton` / `.suspectMore` / `.boardFocus` を足す（余白は4の倍数、ボタンに `:focus-visible` の枠）。
+
+- [ ] **Step 6: テストを走らせてコミットする**
+
+```
+pnpm --filter @ojt/desktop test suspect-list result-view
+pnpm -r typecheck && pnpm lint
+git add apps/desktop && git commit -m "feat(desktop): suggest the suspect wiring on the result screen and show it on the board"
+```
+
+**期待**: `suspect-list.test.tsx` の **4件**が増え、既存の `result-view.test.tsx` / `plc-result.test.tsx` / `inspect-*-result.test.tsx` はそのまま通る（新しい props は任意）。
+
+---

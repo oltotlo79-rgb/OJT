@@ -3843,7 +3843,7 @@ const faces: [string, PlcAppearance][] = Object.values(PLC_UNITS).flatMap((unit)
 
 describe('PlcAppearance（3Dが外観を描くための記述）', () => {
   it('exists for every catalogue unit and every rack module', () => {
-    // Task 9 の時点は FX5U と CP1E の2機種だけ。Task 10 で `2 + 4`、Task 11 で `4 + 4 + 4` に上げる
+    // Task 9 の時点は FX5U と CP1E の2機種だけ。Task 10 で `3 + 4`、Task 11 で `4 + 4 + 4` に上げる
     expect(faces.length).toBe(2);
     for (const [name, face] of faces) {
       expect(face.faceMm.width, name).toBeGreaterThan(0);
@@ -4119,18 +4119,22 @@ export const PLC_LED_GREEN = '#35C759';
 export const PLC_LED_RED = '#FF3B30';
 export const PLC_LED_AMBER = '#FFB020';
 
-/** LEDを横1列に並べる。`pitch` は中心間隔[mm]。 */
+/**
+ * LEDを横1列に並べる。`pitch` は中心間隔[mm]。
+ * `colorOverrides` に名前があればそちらの色を使う（既定色 `color` は他の全灯）。§10.1
+ */
 export function ledRow(
   names: readonly string[],
   group: PlcLedMark['group'],
   at: { x: number; y: number; w: number; h: number; pitch: number },
   color: string,
+  colorOverrides: Readonly<Record<string, string>> = {},
 ): PlcLedMark[] {
   return names.map((name, index) => ({
     name,
     group,
     rect: { x: at.x + index * at.pitch, y: at.y, w: at.w, h: at.h },
-    color,
+    color: colorOverrides[name] ?? color,
   }));
 }
 
@@ -4155,7 +4159,8 @@ export const FX5U_APPEARANCE: PlcAppearance = {
     { id: 'output-cover', rect: { x: 0, y: 64, w: 150, h: 26 }, color: FX5U_COVER_COLOR, hinge: 'bottom' },
   ],
   leds: [
-    ...ledRow(['PWR', 'ERR', 'P.RUN', 'BAT', 'CARD'], 'status', { x: 6, y: 28, w: 4, h: 3, pitch: 9 }, PLC_LED_GREEN),
+    // §10.1: PWR(緑) / ERR(赤) / P.RUN(緑) / BAT(赤) / CARD(緑)
+    ...ledRow(['PWR', 'ERR', 'P.RUN', 'BAT', 'CARD'], 'status', { x: 6, y: 28, w: 4, h: 3, pitch: 9 }, PLC_LED_GREEN, { ERR: PLC_LED_RED, BAT: PLC_LED_RED }),
     ...ledRow(octalNames('X', 16), 'input', { x: 6, y: 36, w: 3, h: 3, pitch: 8.5 }, PLC_LED_AMBER),
     ...ledRow(octalNames('Y', 16), 'output', { x: 6, y: 42, w: 3, h: 3, pitch: 8.5 }, PLC_LED_AMBER),
   ],
@@ -4258,7 +4263,8 @@ export const CP1E_APPEARANCE: PlcAppearance = {
     { id: 'output-cover', rect: { x: 0, y: 66, w: 130, h: 24 }, color: '#C0BEB6', hinge: 'bottom' },
   ],
   leds: [
-    ...ledRow(['POWER', 'RUN', 'ERR', 'ALM'], 'status', { x: 6, y: 27, w: 4, h: 3, pitch: 9 }, PLC_LED_GREEN),
+    // 【本アプリの前提】ERR/ALM を赤とした（PLC調査資料 O-3 が未確認）
+    ...ledRow(['POWER', 'RUN', 'ERR', 'ALM'], 'status', { x: 6, y: 27, w: 4, h: 3, pitch: 9 }, PLC_LED_GREEN, { ERR: PLC_LED_RED, ALM: PLC_LED_RED }),
     ...ledRow(
       CP1E_SPEC.inputs.map((input) => input.name),
       'input',
@@ -4311,7 +4317,7 @@ git add packages/board-model
 git commit -m "feat(board-model): describe the PLC appearance and add the OMRON CP1E body"
 ```
 
-> `plc-appearance.test.ts` の「本体4 ＋ モジュール8」を数える1ケースは、Task 11 で全機種が揃うまで落ちたままになる。Task 9 の時点では `faces.length` の期待値を `2` とし（FX5U と CP1E）、Task 10 で `2 + 4`、Task 11 で `4 + 4 + 4` に更新する。
+> `plc-appearance.test.ts` の「本体4 ＋ モジュール8」を数える1ケースは、Task 11 で全機種が揃うまで落ちたままになる。Task 9 の時点では `faces.length` の期待値を `2` とし（FX5U と CP1E）、Task 10 で `3 + 4`、Task 11 で `4 + 4 + 4` に更新する。
 
 ---
 
@@ -4327,7 +4333,7 @@ git commit -m "feat(board-model): describe the PLC appearance and add the OMRON 
 
 §10.1 の JTEKT 行と §17 #21 を実装する。ラックは「ベース＋モジュール」で、ネットリスト上は従来どおり1部品（`PLC`）である（決定表#11）。3Dで箱を4つ描くのは 4B の仕事なので、ここで渡すのは**寸法と位置**だけである。
 
-**端子配置（決定表#12）**: 1モジュールにつき2列×最大9段。列は左端から 9mm と 26mm、段は上端から 8mm・ピッチ 13mm。段間13mm・列間17mm・モジュール間18mm となり、前提#15 の「8mm以上離す」を満たす。
+**端子配置（決定表#12）**: 1モジュールにつき2列×最大9段。列は左端から 9mm と 26mm、段は上端から 14mm・ピッチ 13mm（上の14mmは入出力表示灯の帯に空ける）。段間13mm・列間17mm・モジュール間18mm となり、前提#15 の「8mm以上離す」を満たす。
 
 - [ ] **Step 1: 失敗するテストを書く**
 
@@ -4747,7 +4753,7 @@ export const PLC_UNIT_PC10G: PlcUnitDefinition = {
 };
 ```
 
-`PLC_UNITS` に `'PC10G-1SP': PLC_UNIT_PC10G,` を足す。`src/index.ts` にラックの定数・`hexNames` / `rackModulePos` / `rackSizeMm` / `PC10G_SPEC` / `PC10G_INPUT_OHMS` / `PC10G_OUTPUT_BASE` / `RACK_POINTS_PER_COMMON` / `PLC_UNIT_PC10G` / `type PlcModuleDefinition` を足す。`test/plc-appearance.test.ts` の `faces.length` の期待値を `2 + 4` にする。
+`PLC_UNITS` に `'PC10G-1SP': PLC_UNIT_PC10G,` を足す。`src/index.ts` にラックの定数・`hexNames` / `rackModulePos` / `rackSizeMm` / `PC10G_SPEC` / `PC10G_INPUT_OHMS` / `PC10G_OUTPUT_BASE` / `RACK_POINTS_PER_COMMON` / `PLC_UNIT_PC10G` / `type PlcModuleDefinition` を足す。`test/plc-appearance.test.ts` の `faces.length` の期待値を `3 + 4` にする。
 
 - [ ] **Step 4: GREEN を確認してコミットする**
 
@@ -5704,6 +5710,7 @@ Plan 4B（`apps/desktop` の3スキン・ラックの3D・設定画面・表記�
 
 | 日付 | 内容 |
 |---|---|
+| 2026-09-19 | Batch C レビュー反映: B1、I1〜I3、M1〜M8 |
 | 2026-09-19 | レビュー反映: B1〜B3、I1〜I8、M1〜M7、行番号修正 |
 | 2026-09-19 | 利用者要求（3Dのシーケンサーを各メーカーの外観どおりに再現する）を反映: `PlcAppearance`（筐体色・端子カバー・LED・銘板・前面の造作を正面座標で持つ記述）を `board-model` に追加し、FX5U・CP1E・TOYOPUC 4モジュール・JW300 4モジュールぶんを定義。ラックの端子開始位置を上端8mm→14mmに変えて入出力表示灯の帯を確保。決定表#15・意図的な差分#13・4B引き渡しの行・`test/plc-appearance.test.ts` を追加 |
 | 2026-09-19 | 初版。Phase 4 をライブラリ（4A）と `apps/desktop`（4B）に分割し、本書は 4A を扱う。OMRON・JTEKT・シャープの3プロファイル、GX Works3風キー割当の共有、共通デバイス検査、表記切替（IRを書き換えない）、命令語リスト（直並列簡約）、`PlcUnitSpec` の点別コモン・点別抵抗・AC端子への格上げ、CP1E（一体形）と TOYOPUC・JW300（ラック形）の本体定義、ラック端子の2列配置、4機種でのモードD課題の開始、静的チェックの機種非依存化、内蔵8題の4機種クロス検証を確定した |
