@@ -232,6 +232,86 @@ describe('元に戻す（§8.2）', () => {
   });
 });
 
+describe('手順帯（UXレビュー #3: 部品装着 → 配線 → 通電 → 判定）', () => {
+  it('starts at the parts step before anything is mounted', () => {
+    openSession();
+    expect(screen.getByTestId('step-parts')).toHaveAttribute('data-state', 'current');
+    expect(screen.getByTestId('step-wire')).toHaveAttribute('data-state', 'todo');
+  });
+
+  it('moves to wire once every part is mounted, to power once a wire is drawn, and to judge once powered', () => {
+    openSession();
+    const session = useStore.getState().session;
+    if (session === undefined) throw new Error('セッションがありません');
+
+    // 部品を使い切った体で「配線」がいまここになることを確かめる（装着の中身は問わない）
+    act(() => {
+      useStore.getState().setSession({ ...session, inventory: [] });
+    });
+    expect(screen.getByTestId('step-wire')).toHaveAttribute('data-state', 'current');
+    expect(screen.getByTestId('step-power')).toHaveAttribute('data-state', 'todo');
+
+    // 固定配線より多く配線したら「通電」がいまここになる
+    act(() => {
+      scene.pick?.(terminalHit('P.1'));
+      scene.pick?.(terminalHit('TB_PB.2c'));
+    });
+    expect(screen.getByTestId('step-wire')).toHaveAttribute('data-state', 'done');
+    expect(screen.getByTestId('step-power')).toHaveAttribute('data-state', 'current');
+
+    // 通電したら「判定」がいまここになる
+    act(() => {
+      workerMock.handlers?.onSnapshot({ ...EMPTY_SNAPSHOT, powered: true });
+    });
+    expect(screen.getByTestId('step-power')).toHaveAttribute('data-state', 'done');
+    expect(screen.getByTestId('step-judge')).toHaveAttribute('data-state', 'current');
+  });
+});
+
+describe('部品の入れ替え（§8.2 / 利用者要望 2026-09-19）', () => {
+  /**
+   * 3Dの装着部品を押す → カードが「装着済み」の見た目になる → 「交換…」で別の部品に入れ替える。
+   * 盤の上では抜いて挿し直すので Worker へは `unplug` → `plug` の順で送るが、
+   * 履歴は1手だけ積む（「元に戻す」1回で元の部品に戻る）。
+   */
+  it('装着済み部品を押すとカードが開き、交換は unplug → plug の順で1手だけ積む', () => {
+    openSession();
+    act(() => {
+      scene.pick?.({ kind: 'socket', id: 'S1', occupied: false });
+    });
+    act(() => {
+      fireEvent.click(screen.getByTestId('mount-relay-my4n'));
+    });
+    const historyAfterMount = useStore.getState().history.done.length;
+    workerMock.sent = [];
+
+    // 3Dの装着部品の本体を押すと `occupied: true` で返ってくる（`MountedPart` の当たり判定）
+    act(() => {
+      scene.pick?.({ kind: 'socket', id: 'S1', occupied: true });
+    });
+    expect(screen.getByTestId('socket-card-title')).toHaveTextContent(
+      'ソケット S1: リレー MY4N（CR1）',
+    );
+
+    act(() => {
+      fireEvent.click(screen.getByTestId('card-swap'));
+    });
+    act(() => {
+      fireEvent.click(screen.getByTestId('swap-timer-h3y4'));
+    });
+
+    const state = useStore.getState();
+    expect(state.session?.mounted['S1']?.kind).toBe('timer-h3y4');
+    expect(state.history.done).toHaveLength(historyAfterMount + 1);
+    expect(workerMock.sent.map((c) => (c as { type: string }).type)).toEqual(['unplug', 'plug']);
+
+    act(() => {
+      fireEvent.click(screen.getByRole('button', { name: JA.session.undo }));
+    });
+    expect(useStore.getState().session?.mounted['S1']?.kind).toBe('relay-my4n');
+  });
+});
+
 describe('キーボードのショートカット（§8.2）', () => {
   it('数値入力欄に打った数字では視点が変わらない', () => {
     openSession();

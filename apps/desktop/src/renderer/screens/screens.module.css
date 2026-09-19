@@ -399,3 +399,81 @@
   color: var(--warn);
   margin-right: 10px;
 }
+
+/* --- UX pass 2026-09-19: B/C1/C2の手順帯 (#3) --- */
+/*
+ * モードD の `.plcGuide` 系と見た目を揃えるための汎用エイリアス（クラス名はそのまま複製する。
+ * `.plcGuide` 系はラダー担当が持つルールなので、ここでは新しい名前で同じ見た目だけを作る）。
+ */
+.stepGuide {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+  padding: 6px 10px;
+}
+
+.stepList {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.step {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+  padding: 3px 10px;
+}
+
+/* 手順の矢印（見出しの並びが順番であることを見せる） */
+.step + .step::before {
+  color: var(--muted);
+  content: '→';
+  margin-left: -4px;
+  margin-right: 2px;
+}
+
+.step[data-state='current'] {
+  background: color-mix(in srgb, var(--accent) 18%, var(--panel-2));
+  border-color: var(--accent);
+  color: var(--text);
+  font-weight: 700;
+}
+
+.step[data-state='done'] {
+  border-color: var(--ok);
+  color: var(--text);
+}
+
+.stepName {
+  white-space: nowrap;
+}
+
+.stepNote {
+  font-size: 11px;
+  font-weight: 400;
+  opacity: 0.85;
+  white-space: nowrap;
+}
+
+.stepHint {
+  color: var(--muted);
+  flex: 1 1 260px;
+  font-size: 12px;
+  line-height: 1.6;
+  margin: 0;
+}
+/* --- /UX pass 2026-09-19 --- */

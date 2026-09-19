@@ -1,6 +1,6 @@
 import { toTerminalId } from '@ojt/circuit-sim';
 import { BUILTIN_INSPECT_PARTS_PROBLEMS } from '@ojt/content';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useStore } from '../src/renderer/app/store.js';
 import { InspectPartsSession } from '../src/renderer/screens/InspectPartsSession.js';
@@ -154,5 +154,37 @@ describe('判定（§9.1）', () => {
     expect(judge).toBeDefined();
     expect((judge?.['answers'] as unknown[]).length).toBe(1);
     expect(useStore.getState().judging).toBe(true);
+  });
+});
+
+describe('手順帯（UXレビュー #3: 部品を挿す → 通電 → 測る → マーク → 判定）', () => {
+  it('walks plug → power → measure → mark → judge from real store state', () => {
+    expect(C1).toBeDefined();
+    if (C1 === undefined) return;
+    const first = C1.parts[0];
+    if (first === undefined) return;
+    render(<InspectPartsSession />);
+
+    expect(screen.getByTestId('step-plug')).toHaveAttribute('data-state', 'current');
+
+    fireEvent.click(screen.getByTestId(`plug-${first.id}`));
+    expect(screen.getByTestId('step-plug')).toHaveAttribute('data-state', 'done');
+    expect(screen.getByTestId('step-power')).toHaveAttribute('data-state', 'current');
+
+    // Worker はこのテストでは応答を返さないので、通電はスナップショットを直接更新する
+    const snapshot = useStore.getState().snapshot;
+    act(() => {
+      useStore.setState({ snapshot: { ...snapshot, powered: true } });
+    });
+    expect(screen.getByTestId('step-power')).toHaveAttribute('data-state', 'done');
+    expect(screen.getByTestId('step-measure')).toHaveAttribute('data-state', 'current');
+
+    fireEvent.click(screen.getByTestId('probe-target-coil'));
+    expect(screen.getByTestId('step-measure')).toHaveAttribute('data-state', 'done');
+    expect(screen.getByTestId('step-mark')).toHaveAttribute('data-state', 'current');
+
+    fireEvent.click(screen.getByTestId(`answer-${first.id}-normal`));
+    expect(screen.getByTestId('step-mark')).toHaveAttribute('data-state', 'done');
+    expect(screen.getByTestId('step-judge')).toHaveAttribute('data-state', 'current');
   });
 });

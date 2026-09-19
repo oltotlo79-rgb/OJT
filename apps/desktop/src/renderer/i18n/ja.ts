@@ -658,13 +658,52 @@ export const JA = {
      * 故障入りの盤・点検する部品は作り直せないので、課題を捨てて一覧へ戻ったことを伝える。
      */
     boardAbandoned: '盤を作り直せないため課題一覧へ戻りました',
-    webglLost: '描画を復旧しています…',
+    webglLost: '表示を作り直しています',
     workerError: 'シミュレーションでエラーが発生しました',
     /** preload が読み込まれていない（`window.ojt` が無い）。§4.3 */
     preloadMissing: 'プリロードが読み込まれていません',
     /** renderer のマウント先が無い（index.html の破損）。 */
     rootMissing: '#root が見つかりません',
   },
+  // --- UX pass 2026-09-19 ---
+  /**
+   * モードB/C1/C2の手順帯（UXレビュー #3）。モードDの `plc.guide` 系と同じ考え方で、
+   * 「いまここ」「済」をストアの状態（部品装着・配線・通電・判定）だけから決める。
+   * 配線の中身や合否には一切触れない（決定表#7と同じ理由）。`session/step-guide.ts` から使う。
+   */
+  stepGuide: {
+    label: '手順',
+    done: '済',
+    current: 'いまここ',
+    /** モードB: 部品装着 → 配線 → 通電（ブレーカ→電源スイッチ）→ 判定 */
+    assembleParts: '部品装着',
+    assembleWire: '配線',
+    assemblePower: '通電（ブレーカ→電源スイッチ）',
+    assembleJudge: '判定',
+    assemblePartsHint: '部品パネルでソケットを選び、「装着」を押します。',
+    assembleWireHint: '3D盤の端子を2つクリックして配線します。',
+    assemblePowerHint: 'ブレーカ → 電源スイッチの順に入れます。',
+    assembleJudgeHint: '判定ボタンで判定します。',
+    /** モードC1: 部品を挿す → 通電 → 測る → マーク → 判定 */
+    inspectPlug: '部品を挿す',
+    inspectPower: '通電',
+    inspectMeasure: '測る',
+    inspectMark: 'マーク',
+    inspectJudge: '判定',
+    inspectPlugHint: '部品トレイから部品を選び、チェック用ソケットに挿します。',
+    inspectPowerHint: 'ブレーカ → 電源スイッチの順に入れます。',
+    inspectMeasureHint: 'テスターの黒・赤プローブを端子に当てて測ります。',
+    inspectMarkHint: 'マークシートで不良原因を選びます。',
+    inspectJudgeHint: '判定ボタンで判定します。',
+    /** モードC2: 指摘 → 修復 → 判定 */
+    repairReport: '指摘',
+    repairFix: '修復',
+    repairJudge: '判定',
+    repairReportHint: '3D盤の電線・端子・部品をクリックして故障の種別を選びます。',
+    repairFixHint: '白線を張るか部品を交換して修復します。',
+    repairJudgeHint: '判定ボタンで判定します。',
+  },
+  // --- /UX pass 2026-09-19 ---
 } as const;
 
 /** アナログのΩレンジの表示（`×1` / `×10` / `×1k`）。§9.3 */

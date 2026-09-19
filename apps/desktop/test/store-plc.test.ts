@@ -59,6 +59,13 @@ describe('openProblem（モードD）', () => {
     expect(board?.id).toBe('board-jipm-std');
   });
 
+  it('never leaves a PLC session view carried over into the next problem (UXレビュー #2)', () => {
+    useStore.getState().openProblem(problem);
+    expect(useStore.getState().camera).toBe('plc');
+    useStore.getState().openProblem(assembleProblem);
+    expect(useStore.getState().camera).toBe('front');
+  });
+
   it('leaves the mode D fields at their defaults for a mode B problem (no leakage into Phase 2)', () => {
     expect(useStore.getState().openProblem(assembleProblem)).toBe(true);
     const state = useStore.getState();

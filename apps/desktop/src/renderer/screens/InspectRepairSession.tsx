@@ -56,6 +56,7 @@ import {
   type PickHit,
 } from '../session/interaction.js';
 import { buildSpecChart } from '../session/spec-chart.js';
+import { inspectRepairStepHint, inspectRepairSteps } from '../session/step-guide.js';
 import { testerPickToAction, testerShortcut } from '../session/tester.js';
 import { useViewportShortcuts } from '../session/viewport-keys.js';
 import { applyWorkFile, replayTesterToWorker, toWorkFile } from '../session/work-file.js';
@@ -477,6 +478,13 @@ export function InspectRepairSession(): JSX.Element {
     return out;
   }, [session, circuit]);
 
+  /** 白線を張った本数（手順帯が見る「修復の作業をしたか」の元。§9.2 / UXレビュー #3）。 */
+  const addedWireCount = useMemo(
+    () =>
+      circuit === undefined || session === undefined ? 0 : addedWireIds(circuit, session).length,
+    [circuit, session],
+  );
+
   if (problem === undefined || session === undefined || circuit === undefined) {
     return (
       <div className={styles.center}>
@@ -500,6 +508,16 @@ export function InspectRepairSession(): JSX.Element {
    */
   const policy = schematicPolicy(problem.grade);
   const showSchematic = policy.toggleable ? schematicVisible : policy.shown;
+
+  /*
+   * 手順の見える化（UXレビュー #3）。指摘 → 修復 → 判定。
+   * ここでも配線・指摘の中身（合否）は一切見ない（決定表#7と同じ理由）。
+   */
+  const guideSteps = inspectRepairSteps({
+    reported: reports.length > 0,
+    repaired: addedWireCount > 0 || mountedParts.some((p) => p.replaced),
+  });
+  const currentStepKey = guideSteps.find((step) => step.state === 'current')?.key;
 
   /**
    * 元に戻す／やり直し。§8.2 / §9.2（I-11）
@@ -702,6 +720,32 @@ export function InspectRepairSession(): JSX.Element {
           }}
         />
       </Toolbar>
+
+      {/* いまどの手順にいるのかを文字でも出す（UXレビュー #3）。決定表#7と同じ理由で合否には触れない。 */}
+      <div className={styles.stepGuide} data-testid="step-guide">
+        <ol className={styles.stepList} aria-label={JA.stepGuide.label}>
+          {guideSteps.map((step) => (
+            <li
+              key={step.key}
+              className={styles.step}
+              data-state={step.state}
+              data-testid={`step-${step.key}`}
+              {...(step.state === 'current' ? { 'aria-current': 'step' as const } : {})}
+            >
+              <span className={styles.stepName}>{step.label}</span>
+              {step.state === 'done' ? (
+                <span className={styles.stepNote}>{JA.stepGuide.done}</span>
+              ) : null}
+              {step.state === 'current' ? (
+                <span className={styles.stepNote}>{JA.stepGuide.current}</span>
+              ) : null}
+            </li>
+          ))}
+        </ol>
+        <p className={styles.stepHint} data-testid="step-hint">
+          {inspectRepairStepHint(currentStepKey)}
+        </p>
+      </div>
 
       <div className={styles.sessionLayout}>
         <div className={styles.viewport} data-testid="viewport">

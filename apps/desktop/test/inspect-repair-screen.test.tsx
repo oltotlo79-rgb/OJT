@@ -418,3 +418,31 @@ describe('元に戻す・やり直し：配線と部品交換（§8.2 / §9.2。
     expect(load?.['partFaults']).toEqual(before.applied.partFaults);
   });
 });
+
+describe('手順帯（UXレビュー #3: 指摘 → 修復 → 判定）', () => {
+  it('walks report → fix → judge from real store state', () => {
+    render(<InspectRepairSession />);
+    expect(screen.getByTestId('step-report')).toHaveAttribute('data-state', 'current');
+    expect(screen.getByTestId('step-fix')).toHaveAttribute('data-state', 'todo');
+
+    fireEvent.click(screen.getByTestId('tool-report'));
+    const onPick = picks.at(-1);
+    if (onPick === undefined) return;
+    act(() => {
+      onPick({ kind: 'wire', id: 'sw-003', locked: false });
+    });
+    fireEvent.click(screen.getByTestId('report-kind-wire-open'));
+    expect(screen.getByTestId('step-report')).toHaveAttribute('data-state', 'done');
+    expect(screen.getByTestId('step-fix')).toHaveAttribute('data-state', 'current');
+
+    fireEvent.click(screen.getByRole('button', { name: '白' }));
+    act(() => {
+      onPick({ kind: 'terminal', id: REPAIR_FROM, wirable: true, label: 'a' });
+    });
+    act(() => {
+      onPick({ kind: 'terminal', id: REPAIR_TO, wirable: true, label: 'b' });
+    });
+    expect(screen.getByTestId('step-fix')).toHaveAttribute('data-state', 'done');
+    expect(screen.getByTestId('step-judge')).toHaveAttribute('data-state', 'current');
+  });
+});

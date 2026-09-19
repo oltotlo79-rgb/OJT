@@ -1,4 +1,4 @@
-import { JIPM_BOARD, socketPartId } from '@ojt/board-model';
+import { JIPM_BOARD, mountedKinds, remainingInventory, socketPartId } from '@ojt/board-model';
 import { isAssembleProblem } from '@ojt/content';
 import type { BoardSession, MountableKind, SocketId } from '@ojt/board-model';
 import type { TerminalId } from '@ojt/circuit-sim';
@@ -47,6 +47,7 @@ import {
   type PickHit,
 } from '../session/interaction.js';
 import { buildSpecChart } from '../session/spec-chart.js';
+import { assembleStepHint, assembleSteps } from '../session/step-guide.js';
 import { useViewportShortcuts } from '../session/viewport-keys.js';
 import { applyWorkFile, replayTesterToWorker, toWorkFile } from '../session/work-file.js';
 import { bridge } from '../session/worker-bridge.js';
@@ -451,6 +452,24 @@ export function Session(): JSX.Element {
     bridge.send({ type: 'load', problemId: problem.id, session: cloneSession(step.session) });
   };
 
+  /*
+   * 手順の見える化（UXレビュー #3。2026-09-19の利用者決定「分かりやすく直感的に」）。
+   * モードDの手順帯（`PlcSession.tsx`）と同じ考え方で、見るのは**部品装着・配線・通電**だけ
+   * （配線の中身は一切見ない。決定表#7と同じ理由）。
+   */
+  const partsRemaining = remainingInventory(session.inventory, mountedKinds(session)).reduce(
+    (sum, item) => sum + item.count,
+    0,
+  );
+  const fixedWireCount = session.wires.filter((w) => w.locked).length;
+  const steps = assembleSteps({
+    partsRemaining,
+    wireCount: session.wires.length,
+    fixedWireCount,
+    powered,
+  });
+  const currentStepKey = steps.find((step) => step.state === 'current')?.key;
+
   return (
     <>
       <SoundEffects />
@@ -556,6 +575,35 @@ export function Session(): JSX.Element {
           }}
         />
       </Toolbar>
+
+      {/*
+        いまどの手順にいるのかを文字でも出す（UXレビュー #3。決定表#7の理由から配線の中身には
+        触れない。モードDの `.plcGuide` と同じ見た目を汎用クラス名 `.stepGuide` で再現する）。
+      */}
+      <div className={styles.stepGuide} data-testid="step-guide">
+        <ol className={styles.stepList} aria-label={JA.stepGuide.label}>
+          {steps.map((step) => (
+            <li
+              key={step.key}
+              className={styles.step}
+              data-state={step.state}
+              data-testid={`step-${step.key}`}
+              {...(step.state === 'current' ? { 'aria-current': 'step' as const } : {})}
+            >
+              <span className={styles.stepName}>{step.label}</span>
+              {step.state === 'done' ? (
+                <span className={styles.stepNote}>{JA.stepGuide.done}</span>
+              ) : null}
+              {step.state === 'current' ? (
+                <span className={styles.stepNote}>{JA.stepGuide.current}</span>
+              ) : null}
+            </li>
+          ))}
+        </ol>
+        <p className={styles.stepHint} data-testid="step-hint">
+          {assembleStepHint(currentStepKey)}
+        </p>
+      </div>
 
       <div className={styles.sessionLayout}>
         <div className={styles.viewport} data-testid="viewport">

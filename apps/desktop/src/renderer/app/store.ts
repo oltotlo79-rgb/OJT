@@ -778,17 +778,17 @@ export const useStore = create<AppState>((set, get) => ({
       resolvedFaults,
       pendingReport: undefined,
       highlight: NO_HIGHLIGHT,
+      /*
+       * 視点は課題を開くたびに既定へ戻す（UXレビュー #2）。モードDは「盤＋PLC」視点
+       * （決定表#6。机上のPLC本体と壁コンセントは既存の7プリセットのどれにも入らない）、
+       * それ以外は正面。前の課題（特にモードD）の視点を持ち越すと、配線の相手が
+       * 最初から画面の外にいることがある。`cameraNonce` も進めて必ず適用させる。
+       */
+      camera: isPlcProblem(problem) ? ('plc' as const) : ('front' as const),
+      cameraNonce: get().cameraNonce + 1,
       ...plcFields(problem),
       ...(keepLadder && previousLadder !== undefined
         ? { ladder: previousLadder, ladderComments: previousLadderComments ?? {} }
-        : {}),
-      /*
-       * モードDは「盤＋PLC」視点で開く（決定表#6）。机上のPLC本体と壁コンセントは
-       * 既存の7プリセットのどれにも入らないので、既定の視点を切り替えないと
-       * 配線の相手が最初から画面の外にいる。`cameraNonce` も進めて必ず適用させる。
-       */
-      ...(isPlcProblem(problem)
-        ? { camera: 'plc' as const, cameraNonce: get().cameraNonce + 1 }
         : {}),
     });
     return true;

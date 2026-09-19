@@ -26,6 +26,7 @@ import { WarningBanner } from '../panels/WarningBanner.js';
 import { cloneSession } from '../session/commands.js';
 import { checkLoadFor, probeTargets } from '../session/inspect-parts.js';
 import { shouldIgnoreShortcut, type PickHit } from '../session/interaction.js';
+import { inspectPartsStepHint, inspectPartsSteps } from '../session/step-guide.js';
 import { testerPickToAction, testerShortcut } from '../session/tester.js';
 import { useViewportShortcuts } from '../session/viewport-keys.js';
 import { applyWorkFile, replayTesterToWorker, toWorkFile } from '../session/work-file.js';
@@ -108,6 +109,9 @@ export function InspectPartsSession(): JSX.Element {
   const checkPartId = useStore((s) => s.checkPartId);
   const mode = useStore((s) => s.mode);
   const camera = useStore((s) => s.camera);
+  /** 手順帯（UXレビュー #3）が見る「両プローブが置かれているか」。 */
+  const probeBlack = useStore((s) => s.tester.black);
+  const probeRed = useStore((s) => s.tester.red);
   /*
    * スナップショットは毎秒約30枚届くが、この画面が見るのは電源まわりの真偽値だけ。
    * `snapshot` をまるごと購読すると3Dビューポートごと巻き添えになる（§15）。
@@ -320,6 +324,18 @@ export function InspectPartsSession(): JSX.Element {
     );
   }
 
+  /*
+   * 手順の見える化（UXレビュー #3）。部品を挿す → 通電 → 測る → マーク → 判定。
+   * ここでも配線・測定値の中身は一切見ない（決定表#7と同じ理由）。
+   */
+  const steps = inspectPartsSteps({
+    plugged: checkPartId !== undefined,
+    powered,
+    probed: probeBlack !== undefined && probeRed !== undefined,
+    answered: answers.length > 0,
+  });
+  const currentStepKey = steps.find((step) => step.state === 'current')?.key;
+
   return (
     <>
       <SoundEffects />
@@ -412,6 +428,32 @@ export function InspectPartsSession(): JSX.Element {
           }}
         />
       </Toolbar>
+
+      {/* いまどの手順にいるのかを文字でも出す（UXレビュー #3）。決定表#7と同じ理由で測定値には触れない。 */}
+      <div className={styles.stepGuide} data-testid="step-guide">
+        <ol className={styles.stepList} aria-label={JA.stepGuide.label}>
+          {steps.map((step) => (
+            <li
+              key={step.key}
+              className={styles.step}
+              data-state={step.state}
+              data-testid={`step-${step.key}`}
+              {...(step.state === 'current' ? { 'aria-current': 'step' as const } : {})}
+            >
+              <span className={styles.stepName}>{step.label}</span>
+              {step.state === 'done' ? (
+                <span className={styles.stepNote}>{JA.stepGuide.done}</span>
+              ) : null}
+              {step.state === 'current' ? (
+                <span className={styles.stepNote}>{JA.stepGuide.current}</span>
+              ) : null}
+            </li>
+          ))}
+        </ol>
+        <p className={styles.stepHint} data-testid="step-hint">
+          {inspectPartsStepHint(currentStepKey)}
+        </p>
+      </div>
 
       <div className={styles.sessionLayout}>
         <div className={styles.viewport} data-testid="viewport">
