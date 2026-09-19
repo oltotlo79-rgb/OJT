@@ -29,8 +29,18 @@ export const MAX_CAMERA_DISTANCE_MM = 1200;
  * `OrbitControls` は `update()` のたびに極角をこの値へ丸めるので、**プリセットの視点も
  * この範囲に収まっていなければならない**（超えた視点を置くと、次のフレームで引き戻される）。
  * `cameraPose('bottom')` がちょうどこの角度を使うのはそのため。
+ *
+ * ちょうど 90°（`Math.PI / 2`）にする。極角は `OrbitControls` が **`camera.up` から**
+ * 測る（three-stdlib `OrbitControls.update()` の `quat.setFromUnitVectors(object.up, up)`）
+ * ので、面直の視点（`front` / `back` / `socket` / `plc`。`up` は `boardUp()`）はどれも
+ * 極角ちょうど 90° に来る。以前の `Math.PI * 0.48`（86.4°）だと**正面視そのものが範囲外**で、
+ * `update()` が毎回カメラを 3.6° 引き戻していた。見た目には気づきにくいが、面直でなくなるため
+ * 端子の射影が画面の端ほど大きくずれ、盤の左上隅にある DC24V 供給端子 `P.1` では
+ * ずれが当たり判定の半径（4mm ≒ 9px）を超えてクリックが当たらなくなっていた
+ * （2026-09-19 のスクリーンショット確認で判明）。90° は「盤の水平面より下へ回り込ませない」
+ * という本来の意図そのもので、面直の視点を範囲内に収めつつ裏側は禁じたままにできる。
  */
-export const MAX_POLAR_ANGLE = Math.PI * 0.48;
+export const MAX_POLAR_ANGLE = Math.PI / 2;
 
 /** ソケット段の中心の盤モデル y[mm]。盤定義のソケット原点と本体寸法から求める（ハードコードしない）。 */
 export const SOCKET_ROW_CENTER_MM = ((): number => {
