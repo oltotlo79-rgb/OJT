@@ -20,6 +20,7 @@ import {
   applyOrContact,
   clearLadderCell,
   emptyLadderHistory,
+  hasLadderContent,
   initialLadder,
   keyChord,
   ladderKeyToAction,
@@ -29,6 +30,7 @@ import {
   nextNetworkId,
   pushLadder,
   redoLadder,
+  shortcutKeyOf,
   togglePulseAt,
   toggleNoNcAt,
   undoLadder,
@@ -368,5 +370,26 @@ describe('ラダーの取り消し／やり直し（決定表#2）', () => {
   it('returns undefined when there is nothing to undo', () => {
     expect(undoLadder(emptyLadderHistory(), twoRungs())).toBeUndefined();
     expect(redoLadder(emptyLadderHistory(), twoRungs())).toBeUndefined();
+  });
+});
+
+describe('hasLadderContent（Batch 4+5 レビュー B2）', () => {
+  it('says false for undefined and for the initial (empty + END) ladder', () => {
+    expect(hasLadderContent(undefined)).toBe(false);
+    expect(hasLadderContent(initialLadder())).toBe(false);
+  });
+
+  it('says true once a real cell (contact/coil/…) is placed', () => {
+    expect(hasLadderContent(twoRungs())).toBe(true);
+  });
+});
+
+describe('shortcutKeyOf（決定表#12 / Batch 4+5 レビュー M9）', () => {
+  it('finds the key string for a known action', () => {
+    expect(shortcutKeyOf({ shortcuts: TABLE } as never, 'convert')).toBe('F4');
+  });
+
+  it('returns undefined for an action not in the table', () => {
+    expect(shortcutKeyOf({ shortcuts: TABLE } as never, 'no-such-action')).toBeUndefined();
   });
 });

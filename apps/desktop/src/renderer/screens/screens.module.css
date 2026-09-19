@@ -262,13 +262,22 @@
   min-height: 0;
 }
 
+/* 決定表#7の静的な1行（PLC電源は壁コンセントから）。Batch 4+5 レビュー B1 */
+.plcOutletNote {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+  margin: 0;
+}
+
 /*
  * 狭い画面では分割をやめて1面に落とす（2026-09-18 の利用者決定。決定表#10）。
- * 520 + 420 + 300 に余白を足すと 1180px を切ったところで3列とも潰れるので、そこを境にする。
+ * 520 + 420 + 300px の3列 + 列間ギャップ2本（8px×2）+ 左右パディング（8px×2）で
+ * 必要な幅は 1272px（Batch 4+5 レビュー I3: 1180px 境界では3列を並べきれず潰れていた）。
  * 状態は増やさない: `split` のときは `ladder` と同じ1面として描き、盤を見たいときは
  * ツールバーの既存の3ボタンで `board` に切り替えてもらう。
  */
-@media (max-width: 1179px) {
+@media (max-width: 1279px) {
   .plcLayout,
   .plcLayout[data-view='ladder'],
   .plcLayout[data-view='board'] {

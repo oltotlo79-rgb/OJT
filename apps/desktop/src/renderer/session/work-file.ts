@@ -26,6 +26,7 @@ import {
   type SupportedProblem,
 } from '@ojt/content';
 import { IR_COLS, MAX_ROWS, type LadderProgram } from '@ojt/ladder-core';
+import { IMPLEMENTED_DIALECT_IDS, isDialectId } from '@ojt/plc-dialects';
 import { WORK_FILE_FORMAT_VERSION, type WorkFile } from '../../shared/ipc.js';
 import { ojtApi } from '../app/ojt-api.js';
 import { DEVICE_COMMENT_COUNT_LIMIT, DEVICE_COMMENT_LIMIT, useStore } from '../app/store.js';
@@ -33,6 +34,7 @@ import { JA, workFileProblemMissingText, workFileRestoredLog } from '../i18n/ja.
 import { cloneSession } from './commands.js';
 import { checkLoadFor } from './inspect-parts.js';
 import { circuitForJudge } from './inspect-repair.js';
+import { hasLadderContent } from './ladder.js';
 import { bridge } from './worker-bridge.js';
 
 /**
@@ -173,13 +175,22 @@ function inspectFieldsFor(problemId: string): Partial<WorkFile> {
       mode: 'plc',
       dialectId: state.dialectId,
       converted: state.converted,
-      // ラダーとデバイスコメントは `LadderProgramData` と同じ形で残す（3A H-3）
-      ladder: {
-        networks: state.ladder?.networks ?? [],
-        ...(Object.keys(state.ladderComments).length === 0
-          ? {}
-          : { comments: { ...state.ladderComments } }),
-      },
+      /*
+       * ラダーとデバイスコメントは `LadderProgramData` と同じ形で残す（3A H-3）。
+       * `ladder` が無いときは**キーごと省く**（Batch 4+5 レビュー M14）: 前は
+       * `networks: []` を書いていたが、`toLadderProgram()` は空配列を「壊れている」として
+       * 拒む（`networks.length === 0` は不可）ので、そのファイルは二度と読み込めなかった。
+       */
+      ...(state.ladder === undefined
+        ? {}
+        : {
+            ladder: {
+              networks: state.ladder.networks,
+              ...(Object.keys(state.ladderComments).length === 0
+                ? {}
+                : { comments: { ...state.ladderComments } }),
+            },
+          }),
     };
   }
   return { mode: 'assemble' };
@@ -376,14 +387,22 @@ function reasonOf(error: unknown): string {
 
 /**
  * いまの作業を捨ててよいか確認が要るか。§12.3
- * **別の課題**の作業ファイルを開くときで、いまの盤に訓練者が張った電線か操作履歴があるときだけ。
- * 同じ課題の続きを読むぶんには確認しない（元々その課題を作業していたのだから驚きが無い）。
+ * **別の課題**の作業ファイルを開くときで、いまの盤に訓練者が張った電線か操作履歴が
+ * あるときだけ。同じ課題の続きを読むぶんには確認しない（元々その課題を作業していたのだから
+ * 驚きが無い）。
+ *
+ * モードDはラダーも見る（Batch 4+5 レビュー B2）: 盤に何も配線していなくても、ラダーの
+ * 編集履歴があるか中身（`hasLadderContent()`）があれば、それを読み込みで黙って捨てさせない。
  */
 export function needsDiscardConfirm(file: WorkFile): boolean {
-  const { problem, session, history } = useStore.getState();
+  const { problem, session, history, ladderHistory, ladder } = useStore.getState();
   if (problem === undefined || session === undefined) return false;
   if (problem.id === file.problemId) return false;
-  return session.wires.some((wire) => !wire.locked) || history.done.length > 0;
+  return (
+    session.wires.some((wire) => !wire.locked) ||
+    history.done.length > 0 ||
+    (isPlcProblem(problem) && (ladderHistory.done.length > 0 || hasLadderContent(ladder)))
+  );
 }
 
 /** 作業ファイルのモード固有の部分（読み手が受け取る形）。§12.3 */
@@ -581,6 +600,18 @@ export function restoreInspectState(problem: SupportedProblem, state: InspectWor
     // ラダーが読めない作業ファイルは**開かない**（黙って空のラダーで開くと作業を失う）。§13 #8
     if (state.ladder !== undefined && parsed === undefined) return false;
     if (!store.openProblem(problem)) return false;
+    /*
+     * 方言（メーカー）も戻す（Batch 4+5 レビュー I5: 前は `dialectId` を保存するだけで
+     * 読み戻さず、キー割当が既定（三菱）のまま開いていた）。未実装・見覚えの無いIDは
+     * 黙って無視する（既定のまま開く。読込そのものは断らない）。
+     */
+    if (
+      typeof state.dialectId === 'string' &&
+      isDialectId(state.dialectId) &&
+      IMPLEMENTED_DIALECT_IDS.includes(state.dialectId)
+    ) {
+      store.setDialect(state.dialectId);
+    }
     if (parsed !== undefined) store.restoreLadder(parsed.program, parsed.comments);
     return true;
   }

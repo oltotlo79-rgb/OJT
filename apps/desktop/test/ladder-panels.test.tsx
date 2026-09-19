@@ -149,6 +149,11 @@ describe('I/Oテーブル（§7.6 / 決定表#7 / #16）', () => {
     }
   });
 
+  it('always shows the wall-outlet note as a table caption (決定表#7 / Batch 4+5 レビュー B1)', () => {
+    render(<IoTable io={io} profile={MITSUBISHI_FX5U} unit={unit} />);
+    expect(screen.getByTestId('io-outlet-note')).toHaveTextContent('壁コンセント');
+  });
+
   it('names its columns with scope="col" (Batch 3 レビュー M8)', () => {
     render(<IoTable io={io} profile={MITSUBISHI_FX5U} unit={unit} />);
     const headers = screen.getByTestId('io-table').querySelectorAll('thead th[scope="col"]');

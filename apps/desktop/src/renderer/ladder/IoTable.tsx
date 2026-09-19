@@ -44,6 +44,10 @@ export function IoTable({
         {io.wiring === 'sink' ? JA.ladder.wiringSink : JA.ladder.wiringSource}
       </p>
       <table className={styles.ioTable}>
+        {/* 決定表#7の静的な1行（判定データではないので常に出してよい）。Batch 4+5 レビュー B1 */}
+        <caption className={styles.sideNote} data-testid="io-outlet-note">
+          {JA.plc.outletNote}
+        </caption>
         <thead>
           <tr>
             <th scope="col">{JA.ladder.ioDevice}</th>

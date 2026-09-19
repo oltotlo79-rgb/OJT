@@ -19,7 +19,7 @@ import {
   type LadderProgram,
   type Network,
 } from '@ojt/ladder-core';
-import type { ShortcutEntry, ShortcutTable } from '@ojt/plc-dialects';
+import type { DialectProfile, ShortcutEntry, ShortcutTable } from '@ojt/plc-dialects';
 
 /**
  * ラダー編集の純粋層。設計仕様 §10.3 / §10.6 / §10.7。
@@ -249,6 +249,27 @@ export function ladderKeyToAction(
   }
   if (state.mode !== 'write' && isEditing(action)) return { type: 'readOnly' };
   return action;
+}
+
+/**
+ * ラダーに中身があるか（空セルと END だけなら「まだ作っていない」）。
+ * 手順の表示や「作業ファイルを捨ててよいか」の判定にだけ使う。中身の**正しさ**は見ない
+ * （決定表#7）。Batch 4+5 レビュー B2: `PlcSession.tsx` 専用のローカル関数だったものを
+ * `session/work-file.ts`（`needsDiscardConfirm()`）からも使えるようここへ移した。
+ */
+export function hasLadderContent(program: LadderProgram | undefined): boolean {
+  if (program === undefined) return false;
+  return program.networks.some((net) =>
+    net.cells.some((row) => row.some((cell) => cell.kind !== 'empty' && cell.kind !== 'end')),
+  );
+}
+
+/**
+ * 方言表からその `action` のキー表記を引く（決定表#12）。画面に「F4」のようなキーを直書き
+ * しないための共通口（Batch 4+5 レビュー M9）。表に無い `action` は `undefined`。
+ */
+export function shortcutKeyOf(profile: DialectProfile, action: string): string | undefined {
+  return profile.shortcuts.find((entry) => entry.action === action)?.keys;
 }
 
 /** ネットワークを引く（無ければ undefined）。 */
