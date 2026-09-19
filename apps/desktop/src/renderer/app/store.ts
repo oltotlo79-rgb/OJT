@@ -34,15 +34,9 @@ import {
   type TimeChartSignalSpec,
 } from '@ojt/content';
 import type { LadderProgram } from '@ojt/ladder-core';
-import {
-  IMPLEMENTED_DIALECT_IDS,
-  MAX_GRID_COLS,
-  MIN_GRID_COLS,
-  isDialectId,
-  type DialectId,
-} from '@ojt/plc-dialects';
+import type { DialectId } from '@ojt/plc-dialects';
 import { create } from 'zustand';
-import { DEFAULT_SETTINGS, type ProblemListPayload, type WorkFile } from '../../shared/ipc.js';
+import type { ProblemListPayload, WorkFile } from '../../shared/ipc.js';
 import type { SimSnapshot } from '../../worker/protocol.js';
 import { droppedTicksLog, JA, referenceErrorText } from '../i18n/ja.js';
 import {
@@ -305,10 +299,6 @@ export interface AppState {
   monitorWriteNoticeShown: boolean;
   /** いま使っている方言（Phase 3 は常に `mitsubishi`）。§10.5 */
   dialectId: DialectId;
-  /** ラダーの表示列数（設定画面。§10.6） */
-  ladderGridCols: number;
-  /** モニタ中の通電色（設定画面。§10.6） */
-  monitorColor: string;
   /** 最後の編集のあと「変換」を通したか。§10.6 / 3A H-1 */
   converted: boolean;
   /** 出力ウィンドウの中身。§10.6 */
@@ -479,12 +469,6 @@ export interface AppState {
   setPlcMonitor: (monitor: PlcMonitorSnapshot | undefined) => void;
   /** RUN/STOP。§10.6 */
   setPlcRunning: (running: boolean) => void;
-  /** 設定画面の値をラダーへ反映する。§12.1 */
-  applyLadderSettings: (settings: {
-    gridCols: number;
-    monitorColor: string;
-    vendor: string;
-  }) => void;
   /** ラダーを1手戻す（戻せたら true）。決定表#2 */
   undoLadderEdit: () => boolean;
   /** ラダーを1手やり直す（やり直せたら true）。決定表#2 */
@@ -604,8 +588,6 @@ export const useStore = create<AppState>((set, get) => ({
 
   ...plcFields(),
   dialectId: 'mitsubishi',
-  ladderGridCols: DEFAULT_SETTINGS.ladderGridCols,
-  monitorColor: DEFAULT_SETTINGS.monitorColor,
 
   mode: 'wire',
   wireColor: '青',
@@ -1079,16 +1061,6 @@ export const useStore = create<AppState>((set, get) => ({
   },
   setPlcRunning: (plcRunning) => {
     set({ plcRunning });
-  },
-  applyLadderSettings: ({ gridCols, monitorColor, vendor }) => {
-    set({
-      ladderGridCols: Math.min(MAX_GRID_COLS, Math.max(MIN_GRID_COLS, Math.round(gridCols))),
-      monitorColor,
-      // 未実装のメーカーが設定に残っていても落とさない（Phase 4 で実装されたら効く）
-      ...(isDialectId(vendor) && IMPLEMENTED_DIALECT_IDS.includes(vendor)
-        ? { dialectId: vendor }
-        : {}),
-    });
   },
   undoLadderEdit: () => {
     const { ladder, ladderHistory } = get();
