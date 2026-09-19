@@ -1,8 +1,23 @@
 import { GizmoHelper } from '@react-three/drei';
 import { useFrame, useThree, type ThreeEvent } from '@react-three/fiber';
-import { CanvasTexture, type Group, type Mesh, type MeshBasicMaterial } from 'three';
+import {
+  CircleGeometry,
+  Color,
+  CylinderGeometry,
+  PlaneGeometry,
+  RingGeometry,
+  type BufferGeometry,
+  type CanvasTexture,
+  type Group,
+  type Material,
+  type Mesh,
+  type MeshBasicMaterial,
+  type MeshLambertMaterial,
+  type Object3D,
+} from 'three';
 import { useCallback, useEffect, useMemo, useRef, type JSX } from 'react';
 import { useStore } from '../app/store.js';
+import { JA } from '../i18n/ja.js';
 import {
   interpolatePose,
   poseForDirection,
@@ -19,6 +34,20 @@ import {
   gizmoTargetForDirection,
   type OrbitControlsLike,
 } from './navigation.js';
+import {
+  chamferedFaceGeometry,
+  GIZMO_AXIS_STUBS,
+  GIZMO_CORNER_FACET_RADIUS,
+  GIZMO_EDGE_FACET_SIZE,
+  GIZMO_FACETS,
+} from './view-gizmo-geometry.js';
+import {
+  bakeAxisBallTexture,
+  bakeButtonTexture,
+  bakeFaceTexture,
+  bakeTooltipTexture,
+  type GizmoTooltip,
+} from './view-gizmo-textures.js';
 
 /**
  * 視点ギズモ（Blender のビューキューブ）。設計仕様 §12.2。
@@ -42,6 +71,19 @@ import {
  *    `useMemo` するので、親が再描画されるたびに 128×128 のキャンバスを6枚焼き直していた
  *    （GPUのテクスチャも捨てられず溜まる）。ここでは一度だけ作って `unmount` で解放する。
  *
+ * さらに 2026-09-19 の追加要望「3Dのキューブのデザインがシンプルすぎる」に対して、
+ * 見た目を Blender のナビゲーションギズモ＋古典的なビューキューブに寄せた。
+ *
+ * - **角を落としたキューブ**（`view-gizmo-geometry.ts`）。面・辺・角が形として分かれるので、
+ *   「辺や角も押せる」ことが見た目から読める。
+ * - **面の陰影と名札**（`view-gizmo-textures.ts`）。縦のグラデーションと内側の細いふち、
+ *   実寸の2倍以上で焼いた和文の名札。HUD には光が無いので、このコンポーネントが
+ *   環境光＋キーライトを1組だけ置いて立体の陰影を作る。
+ * - **座標軸の三脚**（X 赤・Y 緑・Z 青）。キューブと同じ回転で回り、球を押すと面と同じ視点へ。
+ * - **半透明の丸い下地**。明るい盤や白い回路図パネルに重なってもキューブが消えない。
+ * - **⌂ 全体表示 / ⟳ 傾きを戻す**の2ボタン（28px・和文のツールチップ付き）。
+ * - ホバーは 200ms で暖色へふわりと変わり、**いまの視点の面**には淡い青が乗る。
+ *
  * 操作は Blender と同じ2通り。
  * - **ドラッグ**: キューブを掴んで引くと、その量だけ本体のカメラが注視点のまわりを回る
  *   （1000px で1回転 ≒ 0.36°/px）。慣性なしで 1:1。
@@ -49,8 +91,9 @@ import {
  *   面はストアの視点プリセット（ツールバー・テンキーと同じ場所）、辺と角は45°の斜め視点。
  *
  * `frameloop="demand"` と組み合わせる。ドラッグ中は動かすたびに `invalidate()` し、
- * 辺・角のスナップは `useFrame` の中で補間しながら次のフレームを要求して自己終結する。
+ * 辺・角のスナップとホバーの補間は `useFrame` の中で次のフレームを要求して自己終結する。
  * ここで一定間隔の `invalidate()` を回してはいけない（常時再描画になる）。
+ * 毎フレームの処理は**確保なし**（四元数と色はすべて既存の入れ物へ `copy` する）。
  */
 
 /** キューブの面ラベル（日本語）。§15 の文言方針にあわせる。 */
@@ -79,27 +122,87 @@ export const GIZMO_SIZE = 96;
  */
 export const GIZMO_TOP_MARGIN_PX = 20;
 
+/** キューブの後ろに敷く半透明の丸い下地の半径[px]。 */
+export const GIZMO_PLATE_RADIUS = 80;
+
 /**
  * ビューポートの角からの**キューブ中心**の余白[px]。
- * `margin` は中心の位置なので、キューブの上端は `margin[1] - GIZMO_SIZE / 2`。
+ * `margin` は中心の位置なので、下地の上端は `margin[1] - GIZMO_PLATE_RADIUS`。
  *
- * キューブは回るので、いちばん遠い角までの距離は `GIZMO_SIZE × √3 / 2 ≒ 83px`。
- * どの向きでも画面の外へはみ出さないよう、余白はそれより大きく取る。
+ * いちばん外まで出るのは下地の丸（半径 80px）なので、余白はそれより大きく取る
+ * （角を落としたキューブ自体は半径 71px、ホバー中の辺・角の光だけが 85px まで出る）。
  */
-export const GIZMO_MARGIN: [number, number] = [100, 100];
+export const GIZMO_MARGIN: [number, number] = [102, 102];
+
+/** 座標軸の三脚の置き場所と大きさ[px]（キューブの下・下地のすぐ外）。 */
+export const GIZMO_TRIAD = {
+  /** 三脚の中心（キューブ中心からの上下位置）。 */
+  y: -108,
+  /** 球の中心までの距離。 */
+  radius: 25,
+  /** 球の半径。 */
+  ball: 6,
+  /** 棒の半径。 */
+  stub: 1.5,
+} as const;
+
+/** ボタン（⌂ / ⟳）の置き場所と大きさ[px]。押しやすさのため 24px 以上にする（UXレビュー #4）。 */
+export const GIZMO_BUTTON = {
+  size: 28,
+  y: -108,
+  /** 中心からの左右の位置（三脚を挟んで両側）。 */
+  x: 58,
+} as const;
+
+/** ホバーの出入りに掛ける時間[ms]（§12.2 の「控えめな演出」）。 */
+export const GIZMO_FADE_MS = 200;
+
+/**
+ * ギズモの毎フレーム処理の優先度。
+ *
+ * drei の `GizmoHelper` は優先度 0 の `useFrame` でギズモの向きを本体カメラの逆回転に合わせ、
+ * `Hud` は優先度 1 で HUD シーンを描く。**その間**で走らせると、下地・ボタン・三脚の
+ * 打ち消し回転が「同じフレームのキューブの向き」に必ず追随する（1フレーム遅れない）。
+ */
+export const GIZMO_FRAME_PRIORITY = 0.5;
 
 /**
  * キューブの色。暗い背景（`#141820`）の上で輪郭と面が読めること、かつ
  * **正面視で明るい盤（`#E6E4DE`）に重なっても面と文字が読める**ことの両方を満たす必要がある。
  * 以前は面が明るい灰（`#D8DDE6`）で盤の色とほとんど同じになり、`上` も側面も沈んで見えなかった
  * （レビュー指摘）。面を中間の青灰に落とし、文字は白、稜線は濃紺にして対比を作る。
+ *
+ * 2026-09-19 の「デザインがシンプルすぎる」への追加分（面取り・下地・軸・ボタン）は
+ * `global.css` の配色変数（`--bg` `--panel` `--line` `--muted` `--accent`）から取る。
  */
 export const GIZMO_COLORS = {
   face: '#4A5563',
   text: '#FFFFFF',
   stroke: '#141820',
-  hover: '#FFB400',
+  hover: '#FFB347',
+  /** 面の上側（グラデーションの明るい端）。 */
+  faceTop: '#57626F',
+  /** 面の内側に通す細い明るいふち（`--muted`）。 */
+  rim: '#9AA4B5',
+  /** 角・辺の面取り（`--line` と同じ暗さ）。 */
+  chamfer: '#39404E',
+  /** 下地の丸（`--bg`）。 */
+  plate: '#141820',
+  /** 下地のふち（`--line`）。 */
+  plateBorder: '#39404E',
+  /** いまの視点の面に乗せる淡い色（`--accent`）。 */
+  accent: '#39D0FF',
+  /** 座標軸（X 赤 / Y 緑 / Z 青）。 */
+  axisX: '#E0665C',
+  axisY: '#5FC46B',
+  axisZ: '#5B9BFF',
+  /** ボタンの地（`--panel`）と絵記号（`--text`）。 */
+  button: '#1E232D',
+  buttonInk: '#E7EBF2',
 } as const;
+
+/** 下地の透け具合（明るい盤の上でもキューブが浮くぎりぎりの濃さ）。 */
+export const GIZMO_PLATE_OPACITY = 0.6;
 
 /** 面のメッシュの名前（当たり判定の箱と区別する）。 */
 export const GIZMO_FACE_MESH_NAME = 'view-cube-faces';
@@ -107,11 +210,78 @@ export const GIZMO_FACE_MESH_NAME = 'view-cube-faces';
 /** 辺・角の当たり判定のメッシュ名の接頭辞。 */
 export const GIZMO_HIT_PREFIX = 'view-cube-hit-';
 
+/** 面取り（見た目だけ。当たり判定は持たない）のメッシュ名の接頭辞。 */
+export const GIZMO_CHAMFER_PREFIX = 'view-cube-chamfer-';
+
+/** 面取りをまとめる `group` の名前。 */
+export const GIZMO_CHAMFER_GROUP_NAME = 'view-cube-chamfer';
+
+/** 座標軸の球のメッシュ名の接頭辞（接尾辞は面と同じ当たり判定の名前）。 */
+export const GIZMO_AXIS_PREFIX = 'view-cube-axis-';
+
+/** ボタンのメッシュ名の接頭辞。 */
+export const GIZMO_BUTTON_PREFIX = 'view-cube-button-';
+
+/** ツールチップのメッシュ名の接頭辞（接尾辞はボタンと同じ）。 */
+export const GIZMO_TIP_PREFIX = 'view-cube-tip-';
+
+/** 画面に貼り付く（キューブと一緒に回らない）入れ物の名前。 */
+export const GIZMO_BILLBOARD_NAME = 'view-cube-billboard';
+
+/** 座標軸の三脚の入れ物の名前。 */
+export const GIZMO_TRIAD_NAME = 'view-cube-triad';
+
+/** 下地の丸の名前。 */
+export const GIZMO_PLATE_NAME = 'view-cube-plate';
+
 /** ホバーしていない面の色（テクスチャをそのまま出す）。 */
 const NO_TINT = '#FFFFFF';
 
-/** 面に焼くキャンバスの1辺[px]（高DPIでも文字がぼけない程度）。 */
-const FACE_TEXTURE_PX = 256;
+/** ボタン（⌂ / ⟳）の並び。 */
+export const GIZMO_BUTTONS = [
+  { id: 'home', x: -GIZMO_BUTTON.x },
+  { id: 'reset', x: GIZMO_BUTTON.x },
+] as const;
+
+/** ボタンの名前。 */
+export type GizmoButtonId = (typeof GIZMO_BUTTONS)[number]['id'];
+
+/** HUD シーンの光。ここを消すと `meshLambertMaterial` が真っ黒になる。 */
+export const GIZMO_LIGHT = {
+  /**
+   * 環境光。three の拡散反射は `色 × 強さ / π` なので、**π を入れるとテクスチャの色がそのまま出る**。
+   * 少し落として、キーライトの当たる面との差を作る。
+   */
+  ambient: 2.8,
+  /** キーライト（左上手前から）。面の向きで陰影が変わり、回すと立体に見える。 */
+  key: 1.2,
+  keyPosition: [-80, 140, 160] as [number, number, number],
+} as const;
+
+/** 色の入れ物（毎フレームの `copy`/`lerp` 用。確保はここだけ）。 */
+const NO_GLOW = /* @__PURE__ */ new Color('#000000');
+const WHITE = /* @__PURE__ */ new Color(NO_TINT);
+/** ホバー中の自発光（強すぎると名札が飛ぶ）。 */
+const HOVER_EMISSIVE = /* @__PURE__ */ new Color(GIZMO_COLORS.hover).multiplyScalar(0.62);
+/** いまの視点の面に乗せる淡い自発光。 */
+const ACTIVE_EMISSIVE = /* @__PURE__ */ new Color(GIZMO_COLORS.accent).multiplyScalar(0.2);
+/** ホバー中の球・ボタンの色（テクスチャに掛ける）。 */
+const HOVER_TINT = /* @__PURE__ */ new Color(GIZMO_COLORS.hover);
+
+/** 辺・角の当たり判定が光るときの濃さ。 */
+const HIT_OPACITY = 0.78;
+
+/** 軸の文字 → 色。 */
+const AXIS_COLOR: Readonly<Record<'X' | 'Y' | 'Z', string>> = {
+  X: GIZMO_COLORS.axisX,
+  Y: GIZMO_COLORS.axisY,
+  Z: GIZMO_COLORS.axisZ,
+};
+
+/** 当たり判定を持たせない（見た目だけの部品）。 */
+function noRaycast(): void {
+  // three の当たり判定から外す（面取り・下地・棒はクリックの邪魔をしない）
+}
 
 /** 進行中のキューブのドラッグ。 */
 interface GizmoDrag {
@@ -139,66 +309,132 @@ interface SnapAnimation {
   startMs: number;
 }
 
-/** 面に名札を焼いたテクスチャを作る。 */
-function createFaceTexture(label: string): CanvasTexture {
-  const canvas = document.createElement('canvas');
-  canvas.width = FACE_TEXTURE_PX;
-  canvas.height = FACE_TEXTURE_PX;
-  try {
-    const context = canvas.getContext('2d');
-    if (context !== null) {
-      context.fillStyle = GIZMO_COLORS.face;
-      context.fillRect(0, 0, FACE_TEXTURE_PX, FACE_TEXTURE_PX);
-      context.lineWidth = FACE_TEXTURE_PX / 24;
-      context.strokeStyle = GIZMO_COLORS.stroke;
-      context.strokeRect(0, 0, FACE_TEXTURE_PX, FACE_TEXTURE_PX);
-      context.font = `bold ${Math.round(FACE_TEXTURE_PX * (label.length > 1 ? 0.26 : 0.4))}px sans-serif`;
-      context.textAlign = 'center';
-      context.textBaseline = 'middle';
-      context.fillStyle = GIZMO_COLORS.text;
-      context.fillText(label, FACE_TEXTURE_PX / 2, FACE_TEXTURE_PX / 2);
-    }
-  } catch {
-    // テスト環境（happy-dom）には 2D コンテキストが無い。名札が無いだけで形は出る
-  }
-  return new CanvasTexture(canvas);
+/** 進行中のホバーの出入り（暖色へふわりと変える）。 */
+interface HoverFade {
+  /** 消えていく側。 */
+  from: string | null;
+  /** 現れる側。 */
+  to: string | null;
+  startMs: number;
+}
+
+/** ギズモの塗り分けの状態。 */
+export interface GizmoHighlight {
+  /** いま指している当たり判定（面・辺・角・軸の球・ボタン）。 */
+  hovered: string | null;
+  /** 直前に指していた当たり判定（`fade` の分だけ光が残る）。 */
+  fading: string | null;
+  /** 0→1 の補間の進み。 */
+  fade: number;
+  /** いまの視点プリセットに対応する面（淡い色を乗せる）。無ければ `null`。 */
+  active: string | null;
+}
+
+/** ある部品の光り具合（0＝ふだん、1＝ホバー中）。 */
+export function gizmoGlow(id: string, highlight: GizmoHighlight): number {
+  let glow = 0;
+  if (highlight.hovered === id) glow += highlight.fade;
+  if (highlight.fading === id) glow += 1 - highlight.fade;
+  return Math.min(1, Math.max(0, glow));
+}
+
+/** メッシュのマテリアルを1枚ずつ見る（面のメッシュだけ6枚ある）。 */
+function materialsOf(mesh: Mesh): readonly Material[] {
+  return Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+}
+
+/** 名前が接頭辞で始まれば、その後ろ（＝当たり判定の名前）を返す。 */
+function suffixOf(name: string, prefix: string): string | null {
+  return name.startsWith(prefix) ? name.slice(prefix.length) : null;
 }
 
 /**
- * ホバー中の当たり判定だけを光らせる（React の再描画を起こさず直接触る）。§15
+ * ホバー中・いまの視点の部品だけを光らせる（React の再描画を起こさず直接触る）。§15
  *
- * 辺・角の箱は**マテリアルの** `visible` で出し入れする。メッシュ自体を隠すと
+ * 辺・角の箱は**マテリアルの** `visible` と `opacity` で出し入れする。メッシュ自体を隠すと
  * three の当たり判定の対象から外れかねないが、マテリアルなら見た目だけが消える
  * （drei の `GizmoViewcube` も同じ手を使っている）。
+ *
+ * 毎フレーム呼ばれるので、色は必ず既存の `Color` へ `copy`/`lerp` する（確保しない）。
  */
-export function applyGizmoHover(group: Group | null, id: string | null): void {
-  if (group === null) return;
-  for (const child of group.children) {
-    const mesh = child as Mesh;
-    if (mesh.name.startsWith(GIZMO_HIT_PREFIX)) {
-      const material = mesh.material as MeshBasicMaterial | undefined;
-      if (material !== undefined) material.visible = mesh.name === `${GIZMO_HIT_PREFIX}${id ?? ''}`;
-      continue;
-    }
-    if (mesh.name !== GIZMO_FACE_MESH_NAME) continue;
-    const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-    materials.forEach((material, index) => {
-      const face = GIZMO_FACE_ORDER[index];
-      (material as MeshBasicMaterial).color.set(
-        face !== undefined && face === id ? GIZMO_COLORS.hover : NO_TINT,
-      );
-    });
+export function paintGizmo(root: Object3D | null, highlight: GizmoHighlight): void {
+  if (root === null) return;
+  for (const child of root.children) {
+    paintGizmo(child, highlight);
   }
+  const mesh = root as Mesh;
+  const name = mesh.name;
+  if (name === '') return;
+
+  if (name === GIZMO_FACE_MESH_NAME) {
+    materialsOf(mesh).forEach((material, index) => {
+      const face = GIZMO_FACE_ORDER[index];
+      const lambert = material as MeshLambertMaterial;
+      if (face === undefined || lambert.emissive === undefined) return;
+      const base = highlight.active === face ? ACTIVE_EMISSIVE : NO_GLOW;
+      lambert.emissive.copy(base).lerp(HOVER_EMISSIVE, gizmoGlow(face, highlight));
+    });
+    return;
+  }
+
+  const hit = suffixOf(name, GIZMO_HIT_PREFIX);
+  if (hit !== null) {
+    const glow = gizmoGlow(hit, highlight);
+    for (const material of materialsOf(mesh)) {
+      const basic = material as MeshBasicMaterial;
+      basic.opacity = glow * HIT_OPACITY;
+      basic.visible = glow > 0.002;
+    }
+    return;
+  }
+
+  const chamfer = suffixOf(name, GIZMO_CHAMFER_PREFIX);
+  if (chamfer !== null) {
+    const glow = gizmoGlow(chamfer, highlight);
+    for (const material of materialsOf(mesh)) {
+      const lambert = material as MeshLambertMaterial;
+      if (lambert.emissive === undefined) continue;
+      lambert.emissive.copy(NO_GLOW).lerp(HOVER_EMISSIVE, glow);
+    }
+    return;
+  }
+
+  const tinted = suffixOf(name, GIZMO_AXIS_PREFIX) ?? suffixOf(name, GIZMO_BUTTON_PREFIX);
+  if (tinted !== null) {
+    const glow = gizmoGlow(tinted, highlight);
+    for (const material of materialsOf(mesh)) {
+      const basic = material as MeshBasicMaterial;
+      if (basic.color === undefined) continue;
+      basic.color.copy(WHITE).lerp(HOVER_TINT, glow * 0.85);
+    }
+    return;
+  }
+
+  const tip = suffixOf(name, GIZMO_TIP_PREFIX);
+  if (tip !== null) {
+    const glow = gizmoGlow(tip, highlight);
+    mesh.visible = glow > 0.5;
+    for (const material of materialsOf(mesh)) {
+      const basic = material as MeshBasicMaterial;
+      basic.opacity = glow;
+    }
+  }
+}
+
+/** 視点プリセット → 淡く色を乗せる面（`socket` / `plc` は面に対応しないので `null`）。 */
+export function gizmoActiveFace(preset: string): string | null {
+  return (GIZMO_FACE_ORDER as readonly string[]).includes(preset) ? preset : null;
 }
 
 /**
  * 押した（あるいは指した）先の当たり判定の名前。
- * 辺・角は専用のメッシュ名から、面は当たった三角形の法線から引く
+ * 辺・角と軸の球は専用のメッシュ名から、面は当たった三角形の法線から引く
  * （キューブはカメラの逆回転で置かれているので、局所の法線はそのままワールドの向きになる）。
  */
 function targetIdOf(event: ThreeEvent<PointerEvent> | ThreeEvent<MouseEvent>): string | null {
   const name = event.object.name;
-  if (name.startsWith(GIZMO_HIT_PREFIX)) return name.slice(GIZMO_HIT_PREFIX.length);
+  const hit = suffixOf(name, GIZMO_HIT_PREFIX) ?? suffixOf(name, GIZMO_AXIS_PREFIX);
+  if (hit !== null) return hit;
   const normal = event.face?.normal;
   if (normal === undefined || normal === null) return null;
   return gizmoTargetForDirection([normal.x, normal.y, normal.z]).id;
@@ -208,37 +444,130 @@ function targetIdOf(event: ThreeEvent<PointerEvent> | ThreeEvent<MouseEvent>): s
 export function ViewGizmo({ controls }: { controls: OrbitControlsLike | null }): JSX.Element {
   const invalidate = useThree((state) => state.invalidate);
   const camera = useThree((state) => state.camera);
+  const gl = useThree((state) => state.gl);
+  const preset = useStore((state) => state.camera);
   const cube = useRef<Group | null>(null);
+  const billboard = useRef<Group | null>(null);
+  const triad = useRef<Group | null>(null);
+  const balls = useRef<(Group | null)[]>([]);
   const drag = useRef<GizmoDrag | null>(null);
   const hovered = useRef<string | null>(null);
+  const fade = useRef<HoverFade | null>(null);
   const snap = useRef<SnapAnimation | null>(null);
 
   /**
-   * 面の名札テクスチャは**一度だけ**焼く。drei の `GizmoViewcube` は `faces` 配列の同一性で
-   * メモ化するため、親の再描画のたびに6枚を焼き直して捨てていた（§15 / GPUのテクスチャ漏れ）。
+   * 面の名札・軸の球・ボタン・ツールチップのテクスチャは**一度だけ**焼く。drei の
+   * `GizmoViewcube` は `faces` 配列の同一性でメモ化するため、親の再描画のたびに6枚を焼き直して
+   * 捨てていた（§15 / GPUのテクスチャ漏れ）。
    */
-  const faceTextures = useMemo(
-    () => GIZMO_FACE_ORDER.map((face) => createFaceTexture(GIZMO_FACES[face])),
+  const art = useMemo(() => {
+    const faces = GIZMO_FACE_ORDER.map((face) =>
+      bakeFaceTexture({
+        label: GIZMO_FACES[face],
+        base: GIZMO_COLORS.face,
+        highlight: GIZMO_COLORS.faceTop,
+        rim: GIZMO_COLORS.rim,
+        text: GIZMO_COLORS.text,
+      }),
+    );
+    const axes = GIZMO_AXIS_STUBS.map((axis) =>
+      bakeAxisBallTexture({
+        letter: axis.letter,
+        color: AXIS_COLOR[axis.letter],
+        positive: axis.positive,
+        text: GIZMO_COLORS.text,
+      }),
+    );
+    const buttons: Record<GizmoButtonId, CanvasTexture> = {
+      home: bakeButtonTexture({
+        icon: 'home',
+        base: GIZMO_COLORS.button,
+        rim: GIZMO_COLORS.plateBorder,
+        ink: GIZMO_COLORS.buttonInk,
+      }),
+      reset: bakeButtonTexture({
+        icon: 'reset',
+        base: GIZMO_COLORS.button,
+        rim: GIZMO_COLORS.plateBorder,
+        ink: GIZMO_COLORS.buttonInk,
+      }),
+    };
+    const tips: Record<GizmoButtonId, GizmoTooltip> = {
+      home: bakeTooltipTexture(JA.session.viewCubeHome, GIZMO_COLORS.buttonInk, GIZMO_COLORS.plate),
+      reset: bakeTooltipTexture(
+        JA.session.viewCubeReset,
+        GIZMO_COLORS.buttonInk,
+        GIZMO_COLORS.plate,
+      ),
+    };
+    return { faces, axes, buttons, tips };
+  }, []);
+
+  /** 形は使い回す（辺12枚・角8枚・球6個は同じジオメトリを共有する）。 */
+  const shapes = useMemo(
+    () => ({
+      faces: chamferedFaceGeometry(),
+      edge: new PlaneGeometry(GIZMO_EDGE_FACET_SIZE[0], GIZMO_EDGE_FACET_SIZE[1]),
+      corner: new CircleGeometry(GIZMO_CORNER_FACET_RADIUS, 3),
+      ball: new CircleGeometry(1, 24),
+      stub: new CylinderGeometry(1, 1, 1, 10),
+      plate: new CircleGeometry(GIZMO_PLATE_RADIUS, 72),
+      plateRing: new RingGeometry(GIZMO_PLATE_RADIUS - 1.4, GIZMO_PLATE_RADIUS, 72),
+      quad: new PlaneGeometry(1, 1),
+    }),
     [],
   );
+
   useEffect(
     () => () => {
-      for (const texture of faceTextures) texture.dispose();
+      for (const texture of art.faces) texture.dispose();
+      for (const texture of art.axes) texture.dispose();
+      for (const texture of Object.values(art.buttons)) texture.dispose();
+      for (const tip of Object.values(art.tips)) tip.texture.dispose();
+      for (const shape of Object.values(shapes) as BufferGeometry[]) shape.dispose();
     },
-    [faceTextures],
+    [art, shapes],
   );
+
+  /** ポインタの形（掴めることを見せる。§12.2 の操作感）。 */
+  const setCursor = useCallback(
+    (value: string): void => {
+      const element: HTMLElement | undefined = gl?.domElement;
+      if (element?.style === undefined) return;
+      element.style.cursor = value;
+    },
+    [gl],
+  );
+
+  /** いま塗るべき状態でギズモ全体を塗り直す。 */
+  const paint = useCallback((highlight: GizmoHighlight): void => {
+    paintGizmo(cube.current, highlight);
+    paintGizmo(billboard.current, highlight);
+  }, []);
 
   /** ホバー表示を差し替える（同じなら何もしない＝ポインタが動くたびの再描画を避ける）。 */
   const setHover = useCallback(
     (id: string | null): void => {
       // ドラッグ中はキューブの外を通るので、ホバーは触らない（点滅する）
       if (drag.current !== null || hovered.current === id) return;
+      fade.current = { from: hovered.current, to: id, startMs: performance.now() };
       hovered.current = id;
-      applyGizmoHover(cube.current, id);
+      setCursor(id === null ? '' : 'grab');
       invalidate();
     },
-    [invalidate],
+    [invalidate, setCursor],
   );
+
+  /** 視点プリセットが変わったら、いまの視点の面の色を塗り直す（初回の塗りもここ）。 */
+  useEffect(() => {
+    paint({
+      hovered: hovered.current,
+      fading: null,
+      fade: 1,
+      active: gizmoActiveFace(preset),
+    });
+    invalidate();
+  }, [invalidate, paint, preset]);
 
   /** カメラと `OrbitControls` に1つの視点を反映する（辺・角のスナップ専用）。 */
   const applyPose = useCallback(
@@ -281,16 +610,48 @@ export function ViewGizmo({ controls }: { controls: OrbitControlsLike | null }):
     [camera, controls, invalidate],
   );
 
-  /** 辺・角のスナップを `VIEW_TRANSITION_MS` で補間する（終わったら自分でループを止める）。 */
+  /**
+   * 毎フレームの仕事。`GizmoHelper` がキューブの向きを決めたあと、`Hud` が描く前に走る。
+   *
+   * 1. 下地・ボタン・ツールチップ・軸の球を**画面に正対**させる（親の回転を打ち消す）。
+   *    三脚だけは親と同じ回転に戻して、キューブと一緒に回す。
+   * 2. 辺・角のスナップを `VIEW_TRANSITION_MS` で補間する。
+   * 3. ホバーの出入りを `GIZMO_FADE_MS` で補間する。
+   * 2と3は終わったら自分でループを止める（`frameloop="demand"`）。
+   */
   useFrame(() => {
+    const plate = billboard.current;
+    const parent = plate?.parent ?? null;
+    if (plate !== null && parent !== null) {
+      // 親（`GizmoHelper` が本体カメラの逆回転を入れる group）を打ち消す
+      plate.quaternion.copy(parent.quaternion).invert();
+      triad.current?.quaternion.copy(parent.quaternion);
+      for (const ball of balls.current) ball?.quaternion.copy(plate.quaternion);
+    }
+
     const animation = snap.current;
-    if (animation === null) return;
-    const elapsed = performance.now() - animation.startMs;
-    const t = Math.min(1, elapsed / VIEW_TRANSITION_MS);
-    applyPose(interpolatePose(animation.from, animation.to, t));
-    if (t < 1) invalidate();
-    else snap.current = null;
-  });
+    if (animation !== null) {
+      const elapsed = performance.now() - animation.startMs;
+      const t = Math.min(1, elapsed / VIEW_TRANSITION_MS);
+      applyPose(interpolatePose(animation.from, animation.to, t));
+      if (t < 1) invalidate();
+      else snap.current = null;
+    }
+
+    const hover = fade.current;
+    if (hover !== null) {
+      const t = Math.min(1, (performance.now() - hover.startMs) / GIZMO_FADE_MS);
+      // なめらかに出入りさせる（三次の滑り出し・滑り込み）
+      paint({
+        hovered: hover.to,
+        fading: hover.from,
+        fade: t * t * (3 - 2 * t),
+        active: gizmoActiveFace(preset),
+      });
+      if (t < 1) invalidate();
+      else fade.current = null;
+    }
+  }, GIZMO_FRAME_PRIORITY);
 
   /**
    * ドラッグの追従はウィンドウ全体で受ける。キューブは小さいので、少し引いただけで
@@ -304,6 +665,7 @@ export function ViewGizmo({ controls }: { controls: OrbitControlsLike | null }):
       // 慣性と盤側の操作を元に戻す
       controls.dampingFactor = current.dampingFactor;
       controls.enabled = true;
+      setCursor(hovered.current === null ? '' : 'grab');
       if (current.capture !== null) {
         try {
           current.capture.releasePointerCapture(current.pointerId);
@@ -352,7 +714,7 @@ export function ViewGizmo({ controls }: { controls: OrbitControlsLike | null }):
       // ドラッグの途中で消えても慣性と盤の操作を止めたままにしない
       if (drag.current !== null) finish(drag.current);
     };
-  }, [controls, invalidate, snapTo]);
+  }, [controls, invalidate, setCursor, snapTo]);
 
   const onPointerDown = useCallback(
     (event: ThreeEvent<PointerEvent>): void => {
@@ -393,9 +755,10 @@ export function ViewGizmo({ controls }: { controls: OrbitControlsLike | null }):
        */
       controls.enabled = false;
       controls.dampingFactor = 1;
+      setCursor('grabbing');
       invalidate();
     },
-    [controls, invalidate],
+    [controls, invalidate, setCursor],
   );
 
   /** 面の上でポインタが動いたら、その面を光らせる。 */
@@ -416,23 +779,38 @@ export function ViewGizmo({ controls }: { controls: OrbitControlsLike | null }):
     event.stopPropagation();
   }, []);
 
+  /**
+   * ボタンの効果。どちらも**ストアへの書き込み1回**で済ませる（§15）。
+   * ⌂ は正面から盤全体を見る既定の視点へ、⟳ はいまの視点プリセットへ着け直す
+   * （自由に回して傾いた画を、プリセットの正しい向きへ戻す）。
+   */
+  const onButton = useCallback((id: GizmoButtonId, event: ThreeEvent<MouseEvent>): void => {
+    event.stopPropagation();
+    const store = useStore.getState();
+    store.setCamera(id === 'home' ? 'front' : store.camera);
+  }, []);
+
   return (
     <GizmoHelper alignment="top-left" margin={GIZMO_MARGIN} renderPriority={1}>
+      {/* HUD は本体シーンと別なので、ここに置く光はギズモだけを照らす */}
+      <ambientLight intensity={GIZMO_LIGHT.ambient} />
+      <directionalLight intensity={GIZMO_LIGHT.key} position={GIZMO_LIGHT.keyPosition} />
+
       <group
         ref={cube}
         scale={[GIZMO_SIZE, GIZMO_SIZE, GIZMO_SIZE]}
         onPointerDown={onPointerDown}
         onClick={onClick}
       >
-        {/* 本体（面6つ）。面の当たり判定はこのキューブそのもの */}
+        {/* 本体（角を落としたキューブの面6枚）。面の当たり判定はこのメッシュそのもの */}
         <mesh
           name={GIZMO_FACE_MESH_NAME}
+          geometry={shapes.faces}
           onPointerMove={onFacePointerMove}
           onPointerOut={onPointerOut}
         >
-          <boxGeometry />
-          {faceTextures.map((texture, index) => (
-            <meshBasicMaterial
+          {art.faces.map((texture, index) => (
+            <meshLambertMaterial
               key={GIZMO_FACE_ORDER[index] ?? index}
               attach={`material-${index}`}
               map={texture}
@@ -441,7 +819,29 @@ export function ViewGizmo({ controls }: { controls: OrbitControlsLike | null }):
             />
           ))}
         </mesh>
-        {/* 辺12・角8。ふだんは見えず、指したときだけ光る（Blender と同じ） */}
+
+        {/* 面取り（辺12・角8）。見た目だけで、押す相手は下の当たり判定の箱 */}
+        <group name={GIZMO_CHAMFER_GROUP_NAME}>
+          {GIZMO_FACETS.map((facet) => (
+            <mesh
+              key={facet.id}
+              name={`${GIZMO_CHAMFER_PREFIX}${facet.id}`}
+              geometry={facet.kind === 'edge' ? shapes.edge : shapes.corner}
+              position={[facet.position[0], facet.position[1], facet.position[2]]}
+              quaternion={[
+                facet.quaternion[0],
+                facet.quaternion[1],
+                facet.quaternion[2],
+                facet.quaternion[3],
+              ]}
+              raycast={noRaycast}
+            >
+              <meshLambertMaterial color={GIZMO_COLORS.chamfer} toneMapped={false} />
+            </mesh>
+          ))}
+        </group>
+
+        {/* 辺12・角8の当たり判定。ふだんは見えず、指したときだけ光る（Blender と同じ） */}
         {GIZMO_HIT_BOXES.map((box) => (
           <mesh
             key={box.id}
@@ -458,11 +858,159 @@ export function ViewGizmo({ controls }: { controls: OrbitControlsLike | null }):
             <meshBasicMaterial
               color={GIZMO_COLORS.hover}
               transparent
-              opacity={0.75}
+              opacity={0}
               toneMapped={false}
               visible={false}
             />
           </mesh>
+        ))}
+      </group>
+
+      {/*
+        画面に正対したまま動かない部分。親の回転は `useFrame` で打ち消す。
+        下地は深度を書かずに真っ先に描くので、キューブは必ずその上に出る。
+      */}
+      <group ref={billboard} name={GIZMO_BILLBOARD_NAME}>
+        <mesh
+          name={GIZMO_PLATE_NAME}
+          geometry={shapes.plate}
+          position={[0, 0, -GIZMO_SIZE]}
+          renderOrder={-10}
+          raycast={noRaycast}
+        >
+          <meshBasicMaterial
+            color={GIZMO_COLORS.plate}
+            transparent
+            opacity={GIZMO_PLATE_OPACITY}
+            depthTest={false}
+            depthWrite={false}
+            toneMapped={false}
+          />
+        </mesh>
+        <mesh
+          geometry={shapes.plateRing}
+          position={[0, 0, -GIZMO_SIZE + 0.5]}
+          renderOrder={-9}
+          raycast={noRaycast}
+        >
+          <meshBasicMaterial
+            color={GIZMO_COLORS.plateBorder}
+            transparent
+            opacity={0.85}
+            depthTest={false}
+            depthWrite={false}
+            toneMapped={false}
+          />
+        </mesh>
+
+        {/* 座標軸の三脚。位置は画面に貼り付いたまま、向きだけキューブと一緒に回る */}
+        <group ref={triad} name={GIZMO_TRIAD_NAME} position={[0, GIZMO_TRIAD.y, 0]}>
+          {GIZMO_AXIS_STUBS.map((axis, index) => {
+            const length = GIZMO_TRIAD.radius - GIZMO_TRIAD.ball;
+            const ball: [number, number, number] = [
+              axis.direction[0] * GIZMO_TRIAD.radius,
+              axis.direction[1] * GIZMO_TRIAD.radius,
+              axis.direction[2] * GIZMO_TRIAD.radius,
+            ];
+            return (
+              <group key={axis.id}>
+                {axis.positive && (
+                  <mesh
+                    geometry={shapes.stub}
+                    position={[
+                      (axis.direction[0] * length) / 2,
+                      (axis.direction[1] * length) / 2,
+                      (axis.direction[2] * length) / 2,
+                    ]}
+                    quaternion={[
+                      axis.quaternion[0],
+                      axis.quaternion[1],
+                      axis.quaternion[2],
+                      axis.quaternion[3],
+                    ]}
+                    scale={[GIZMO_TRIAD.stub, length, GIZMO_TRIAD.stub]}
+                    raycast={noRaycast}
+                  >
+                    <meshBasicMaterial color={AXIS_COLOR[axis.letter]} toneMapped={false} />
+                  </mesh>
+                )}
+                <group
+                  position={ball}
+                  ref={(instance) => {
+                    balls.current[index] = instance;
+                  }}
+                >
+                  <mesh
+                    name={`${GIZMO_AXIS_PREFIX}${axis.id}`}
+                    geometry={shapes.ball}
+                    scale={GIZMO_TRIAD.ball}
+                    onPointerDown={onPointerDown}
+                    onPointerOver={(event: ThreeEvent<PointerEvent>) => {
+                      event.stopPropagation();
+                      setHover(axis.id);
+                    }}
+                    onPointerOut={onPointerOut}
+                    onClick={onClick}
+                  >
+                    <meshBasicMaterial
+                      map={art.axes[index] ?? null}
+                      color={NO_TINT}
+                      transparent
+                      toneMapped={false}
+                    />
+                  </mesh>
+                </group>
+              </group>
+            );
+          })}
+        </group>
+
+        {/* ⌂ 全体表示 / ⟳ 傾きを戻す */}
+        {GIZMO_BUTTONS.map((button) => (
+          <group key={button.id} position={[button.x, GIZMO_BUTTON.y, 0]}>
+            <mesh
+              name={`${GIZMO_BUTTON_PREFIX}${button.id}`}
+              geometry={shapes.quad}
+              scale={[GIZMO_BUTTON.size, GIZMO_BUTTON.size, 1]}
+              renderOrder={12}
+              onPointerOver={(event: ThreeEvent<PointerEvent>) => {
+                event.stopPropagation();
+                setHover(button.id);
+              }}
+              onPointerOut={onPointerOut}
+              onPointerDown={(event: ThreeEvent<PointerEvent>) => {
+                event.stopPropagation();
+              }}
+              onClick={(event: ThreeEvent<MouseEvent>) => {
+                onButton(button.id, event);
+              }}
+            >
+              <meshBasicMaterial
+                map={art.buttons[button.id]}
+                color={NO_TINT}
+                transparent
+                depthTest={false}
+                toneMapped={false}
+              />
+            </mesh>
+            <mesh
+              name={`${GIZMO_TIP_PREFIX}${button.id}`}
+              geometry={shapes.quad}
+              visible={false}
+              position={[0, -(GIZMO_BUTTON.size / 2 + art.tips[button.id].height / 2 + 4), 0]}
+              scale={[art.tips[button.id].width, art.tips[button.id].height, 1]}
+              renderOrder={14}
+              raycast={noRaycast}
+            >
+              <meshBasicMaterial
+                map={art.tips[button.id].texture}
+                transparent
+                opacity={0}
+                depthTest={false}
+                toneMapped={false}
+              />
+            </mesh>
+          </group>
         ))}
       </group>
     </GizmoHelper>
