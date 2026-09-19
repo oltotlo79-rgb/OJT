@@ -1,5 +1,17 @@
 import { BUILTIN_PLC_PROBLEMS } from '@ojt/content';
-import { empty, network, no, program, X } from '@ojt/ladder-core';
+import {
+  COIL_COL,
+  empty,
+  endNetwork,
+  hline,
+  network,
+  no,
+  out,
+  program,
+  X,
+  Y,
+  type Cell,
+} from '@ojt/ladder-core';
 import {
   getDialect,
   JTEKT_PC10G,
@@ -130,6 +142,84 @@ describe('スキンごとのツールバー（§10.6 / §16 Phase 4 受入基準
       fireEvent.click(screen.getByTestId('toolbar-plc-reset'));
     });
     expect(onPlc).toHaveBeenCalledWith({ kind: 'reset' });
+  });
+
+  /**
+   * 出力を**コイル列**（`COIL_COL` = 15）に置いた1行。`instruction-list-export.test.tsx` の
+   * `coilRow` と同じ理由（最終列以外の出力は `compile-failed` になる）。
+   */
+  function coilRow(contacts: readonly Cell[], output: Cell): Cell[] {
+    const line: Cell[] = [...contacts];
+    while (line.length < COIL_COL) line.push(hline());
+    line.push(output);
+    return line;
+  }
+
+  /*
+   * UI監査 2026-09-20: `modeD-jtekt-output-error` / `modeD-sharp-output-error` に到達できなかった
+   * （`il-issues` が出ない）。PCwin風（JTEKT）・JW-300SP風（SHARP）は `write-mode` のツールバー
+   * ボタンを持たない（`TOOLBAR_ACTIONS_BY_DIALECT`）ので、モニタ開始→停止のあとに `changeMode`
+   * が `read` へ落としていると、編集へ戻す手段が画面から消え、セルを壊すことも命令語リストの
+   * 不具合表示（`il-issues`）を再現することもできなくなっていた。
+   */
+  it.each([
+    ['PCwin風（JTEKT）', JTEKT_PC10G],
+    ['JW-300SP風（SHARP）', SHARP_JW300],
+  ])(
+    'restores write mode after monitor-stop on %s, which has no write-mode button, so editing works again',
+    (_label, profile) => {
+      // この2スキンには write-mode／read-mode のツールバー項目が無い（決定表#2）
+      expect(
+        toolbarItems(profile).some(
+          (item) => item.action === 'write-mode' || item.action === 'read-mode',
+        ),
+      ).toBe(false);
+      workspace(profile);
+      expect(screen.queryByTestId('toolbar-write-mode')).toBeNull();
+
+      act(() => {
+        fireEvent.click(screen.getByTestId('toolbar-monitor-start'));
+      });
+      expect(useStore.getState().ladderMode).toBe('monitor');
+      // モニタ中は編集の入口（回路ブロック操作ボタン）が閉じている
+      expect(screen.getByTestId('toolbar-insert-network')).toBeDisabled();
+
+      act(() => {
+        fireEvent.click(screen.getByTestId('toolbar-monitor-stop'));
+      });
+      // 直したバグ: 以前はここで `read` のままになり、二度と `write` へ戻す手段が無かった
+      expect(useStore.getState().ladderMode).toBe('write');
+      expect(screen.getByTestId('toolbar-insert-network')).not.toBeDisabled();
+    },
+  );
+
+  it('lets the trainee break the circuit and see the IL export issue again after monitor-stop (PCwin風)', () => {
+    const working = program(network('n1', [coilRow([no(X(0))], out(Y(0)))]), endNetwork());
+    act(() => {
+      useStore.getState().setLadder(working);
+    });
+    workspace(JTEKT_PC10G);
+
+    act(() => {
+      fireEvent.click(screen.getByTestId('toolbar-monitor-start'));
+    });
+    act(() => {
+      fireEvent.click(screen.getByTestId('toolbar-monitor-stop'));
+    });
+    expect(useStore.getState().ladderMode).toBe('write');
+
+    // 入力接点（左母線に繋がる唯一のセル）を消す。書込みモードでなければ `readOnly` で断られる。
+    act(() => {
+      fireEvent.click(screen.getByTestId('cell-n1:0:0'));
+    });
+    act(() => {
+      fireEvent.keyDown(screen.getByTestId('ladder-editor'), { key: 'Delete' });
+    });
+
+    act(() => {
+      fireEvent.click(screen.getByTestId('export-il'));
+    });
+    expect(screen.getByTestId('il-issues')).toHaveTextContent('左母線');
   });
 });
 

@@ -96,6 +96,14 @@
   text-align: left;
 }
 
+/*
+ * UI監査バッチF (wrap): 見出しは短い1行の語なので、狭い画面で列が競り合っても
+ * 語の途中で折り返さない（`truthReading` を短くしたのと合わせて、両方で直す）。
+ */
+.table th {
+  white-space: nowrap;
+}
+
 .checkRow {
   display: flex;
   align-items: baseline;

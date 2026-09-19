@@ -5,8 +5,12 @@
 
 .frame {
   position: relative;
-  /* 右上の「⤢ 拡大」ボタンがチャート右上の値と重ならないよう、その分だけ本体を下げる。 */
-  padding-top: 18px;
+  /*
+   * 右上の「⤢ 拡大」ボタンがチャート右上の値と重ならないよう、その分だけ本体を下げる。
+   * ボタンの高さ（`.enlargeButton` の `height`）と揃える（UI監査バッチF: ボタンを24pxへ
+   * 広げたのに合わせないと、ボタンの下端がチャート本体に被る＝overlap になる）。
+   */
+  padding-top: 24px;
 }
 
 /* チャート本体（クリック／Enter で拡大）。UXレビュー #4: クリック領域は最低でも32px確保する。 */
@@ -32,10 +36,22 @@
   top: 0;
   right: 0;
   z-index: 1;
-  padding: 1px 6px;
+  /*
+   * UI監査バッチF (wrap 21件): `nowrap` は既に付けていたが、"⤢"（案内の矢印記号）が
+   * フォールバックフォントでは行送りより背が高く、`height: auto` のボタンがその分だけ
+   * 縦に伸びて「2行に見える」高さになっていた（実際の折り返しではなく矢印グリフの背の高さ）。
+   * `display: inline-flex` ＋ 固定 `height` ＋ `overflow: hidden` で、矢印グリフの実測に
+   * 関わらずボタンの高さを1行ぶん（かつ当たり判定24px以上）に固定する。
+   */
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  height: 24px;
+  padding: 0 6px;
   font-size: 11px;
-  line-height: 1.4;
+  line-height: 1;
   white-space: nowrap;
+  overflow: hidden;
   background: var(--panel-2);
   border: 1px solid var(--line);
   border-radius: 4px;

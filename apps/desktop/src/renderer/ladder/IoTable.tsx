@@ -2,10 +2,27 @@ import type { PlcUnitDefinition } from '@ojt/board-model';
 import type { ResolvedPlcIo } from '@ojt/content';
 import { X, Y } from '@ojt/ladder-core';
 import type { DialectProfile } from '@ojt/plc-dialects';
-import type { JSX } from 'react';
+import { Fragment, type JSX, type ReactNode } from 'react';
 import { JA } from '../i18n/ja.js';
 import { SidePanel } from './SidePanel.js';
 import styles from './ladder.module.css';
+
+/**
+ * `PLC.100.02` のような端子名を「.」の直後だけで折り返せるようにする（UI監査バッチF
+ * wrap 7件）。狭い列幅では `overflow-wrap: anywhere`（#27。表を列幅に収めるための指定）が
+ * 数字の途中（`10` と `0.02` の間など）で折り返していた。`.` の直後に `<wbr>` を挟むと、
+ * 折り返しが要る時も意味の区切り（`PLC.` / `100.` / `02`）でだけ割れる。
+ */
+function terminalNode(name: string): ReactNode {
+  const parts = name.split('.');
+  return parts.map((part, index) => (
+    <Fragment key={index}>
+      {index > 0 ? '.' : ''}
+      {part}
+      {index < parts.length - 1 ? <wbr /> : null}
+    </Fragment>
+  ));
+}
 
 /**
  * I/O割付表。設計仕様 §7.6 / §10.2。
@@ -47,8 +64,10 @@ export function IoTable({
       <table className={styles.ioTable}>
         {/* 決定表#7の静的な1行（判定データではないので常に出してよい）。Batch 4+5 レビュー B1 */}
         <caption className={styles.sideNote}>
-          <span data-testid="io-outlet-note">{JA.plc.outletNote}</span>{' '}
-          <span data-testid="io-common">
+          <span className={styles.ioCaptionLine} data-testid="io-outlet-note">
+            {JA.plc.outletNote}
+          </span>
+          <span className={styles.ioCaptionLine} data-testid="io-common">
             {JA.ladder.ioCommon}: {unit.spec.inputCommons.map((name) => `PLC.${name}`).join('・')}
           </span>
         </caption>
@@ -65,7 +84,11 @@ export function IoTable({
             return (
               <tr key={`in-${String(index)}`} data-testid={`io-input-${String(index)}`}>
                 <td>{profile.formatDevice(X(input.x))}</td>
-                <td>{terminal === undefined ? JA.ladder.ioTerminalUnknown : `PLC.${terminal}`}</td>
+                <td>
+                  {terminal === undefined
+                    ? JA.ladder.ioTerminalUnknown
+                    : terminalNode(`PLC.${terminal}`)}
+                </td>
                 <td>{input.pb}</td>
               </tr>
             );
@@ -75,7 +98,11 @@ export function IoTable({
             return (
               <tr key={`out-${String(index)}`} data-testid={`io-output-${String(index)}`}>
                 <td>{profile.formatDevice(Y(output.y))}</td>
-                <td>{terminal === undefined ? JA.ladder.ioTerminalUnknown : `PLC.${terminal}`}</td>
+                <td>
+                  {terminal === undefined
+                    ? JA.ladder.ioTerminalUnknown
+                    : terminalNode(`PLC.${terminal}`)}
+                </td>
                 <td>
                   {output.cr} → {output.pl}
                 </td>
