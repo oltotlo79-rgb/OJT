@@ -403,6 +403,22 @@ export const JA = {
     usageWrites: '書き込んでいるデバイス',
     usageUnused: '使われていないデバイス（表示のみ・合否には影響しません）',
     // --- /Plan 3B Task 6 ---
+    // --- Plan 3B Task 7 ---
+    comments: 'デバイスコメント',
+    comment: 'コメント',
+    noDevices: 'まだデバイスを置いていません。',
+    ioTable: 'I/O割付',
+    ioDevice: 'デバイス',
+    /** PLC本体の端子名（機種の8進表記）。決定表#16 */
+    ioTerminal: 'PLC端子',
+    ioTarget: '割当',
+    /** §7.6 `io.mode` */
+    ioFixed: 'この割付どおりに配線します。',
+    ioFree: '推奨の割付です（変更できます）。',
+    /** §10.2 入力コモンの結線 */
+    wiringSink: 'シンク結線（P → S/S、PBのa接点 → X、PBのc端子 → N）',
+    wiringSource: 'ソース結線（N → S/S、PBのa接点 → X、PBのc端子 → P）',
+    // --- /Plan 3B Task 7 ---
   },
   // --- /Plan 3B Task 4 ---
   // --- Plan 3B Task 10 ---
@@ -678,3 +694,10 @@ export function ladderIssuePlace(networkId?: string, row?: number, col?: number)
   return `${networkId} / ${String(row + 1)} 行 / ${String(col + 1)} 列`;
 }
 // --- /Plan 3B Task 6 ---
+
+// --- Plan 3B Task 7 ---
+/** デバイスコメントの上限に達した注記。§10.7 */
+export function commentCapText(limit: number): string {
+  return `デバイスコメントは ${String(limit)} 件までです（新しい欄は入力できません）`;
+}
+// --- /Plan 3B Task 7 ---

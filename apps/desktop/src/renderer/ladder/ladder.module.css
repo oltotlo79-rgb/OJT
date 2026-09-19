@@ -239,3 +239,53 @@
   color: #777;
 }
 /* --- /Plan 3B Task 6 --- */
+
+/* --- Plan 3B Task 7 --- */
+.side {
+  border-top: 1px solid #d5d8de;
+  padding: 6px 8px;
+  font-size: 12px;
+  max-height: 200px;
+  overflow: auto;
+}
+
+.sideTitle {
+  font-size: 12px;
+  margin: 0 0 4px;
+}
+
+.sideNote {
+  margin: 2px 0;
+  color: #555;
+}
+
+.commentList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.commentList li {
+  display: grid;
+  grid-template-columns: 52px 1fr;
+  gap: 6px;
+  align-items: center;
+  margin-bottom: 2px;
+}
+
+.commentDevice {
+  font-weight: 700;
+}
+
+.ioTable {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.ioTable th,
+.ioTable td {
+  border-bottom: 1px solid #e4e7ec;
+  text-align: left;
+  padding: 2px 4px;
+}
+/* --- /Plan 3B Task 7 --- */
