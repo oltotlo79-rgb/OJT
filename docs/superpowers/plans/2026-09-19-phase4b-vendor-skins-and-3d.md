@@ -139,7 +139,7 @@ openProblem(problem, options?): boolean;   // …plcFields(problem) ＋ isPlcPro
 | # | いまの実装 | なぜ4方言だと破れるか | 確認した場所 |
 |---|---|---|---|
 | 21 | `TOOLBAR_ACTIONS` は**位置**で `panels.toolbar` に対応する（0番目＝`convert`、…）。表に無い位置は `?? 'convert'` に倒れる | 三菱（8件）でしか合わない。OMRON（5件）では `オンライン編集` が `convert` に、JTEKT（9件）では `JP1` が `convert` になり、**「変換」を出さないはずのスキンで押すと変換が走る**（受入基準①が成立しない） | `LadderWorkspace.tsx` L37-60, L186-196 |
-| 22 | `JA.ladder.notConverted = '未変換（F4 で変換します）'`、`readOnly = '書込みモード（F2）に…'`、`monitorOff = 'モニタ（F3）を開始すると…'`、`monitorWriteSame = 'Phase 3 ではモニタと同じ動作です'`、`JA.settings.gridColsHelp`（`GX Works3 の既定は 11 です`）、`monitorColorHelp`（`モニタ（F3）で…`） | キー文字列とツール名が**文言に直書き**されている。決定表#12（キーは方言が決める）に反し、OMRON では出ない `F4` を案内してしまう | `i18n/ja.ts` L108-115, L381, L403, L411 |
+| 22 | `JA.ladder.notConverted = '未変換（F4 で変換します）'`、`readOnly = '書込みモード（F2）に…'`、`monitorOff = 'モニタ（F3）を開始すると…'`、`monitorWriteSame = 'Phase 3 ではモニタと同じ動作です'`、`JA.settings.gridColsHelp`（`GX Works3 の既定は 11 です`）、`monitorColorHelp`（`モニタ（F3）で…`） | キー文字列とツール名が**文言に直書き**されている。Plan 3B 決定表#12（キーは方言が決める）に反し、OMRON では出ない `F4` を案内してしまう | `i18n/ja.ts` L108-115, L381, L403, L411 |
 | 23 | `DeviceInput` の入力例は `` `${profile.deviceRanges.input.prefix}0` `` | OMRON とシャープの `prefix` は `''`（前提#6）なので、入力例が `0` と `2` になる。正しくは `0.00` / `000000` | `DeviceInput.tsx` L71-81 |
 | 24 | `store.monitorColor` の既定は `'#1E64FF'`（三菱の色）で、`LadderGrid` / `ProjectTree` は `monitorColor.length > 0 ? monitorColor : profile.monitorColors.powered` と書いてある | 既定値が空でないので**プロファイルの色が一度も使われない**。OMRON を選んでも通電色が青のまま（§10.6 の「色のみ各社に寄せる」が画面に出ない） | `store.ts` L621, `LadderGrid.tsx` L271-275, `ProjectTree.tsx` L24-25 |
 | 25 | `IoTable` の `unit.spec.inputs[x]`（string）と `MonitorPanel` の `terminal(unit.spec.inputs[index])` は **4A Task 8 が `?.name` に直して landed している**（前提#20e） | 4B が足すのは**入力コモンの表示**（`spec.inputCommons` は機種で複数）だけである。ここを二重に直さない | `IoTable.tsx` L32, `MonitorPanel.tsx` L94、4A MERGE 注意 |
@@ -265,8 +265,8 @@ openProblem(problem, options?): boolean;   // …plcFields(problem) ＋ isPlcPro
 | 20 | **LEDが映すもの** | 本体表示（`status`）は `POWER`/`PWR` = 常時点灯、`RUN`/`P.RUN` = `plcRunning`、`ERR`/`FLT` = 直前の変換が失敗、それ以外は消灯。入出力表示灯は**モニタ中だけ** `plcMonitor.inputs[i]` / `.outputs[i]` | 本アプリのPLCはAC電源を電気的に解かない（3A 決定表#3）ので、`POWER` を配線の有無で点けると `plcPowerIndependent` の判定結果を漏らす（3B 決定表#7 の禁止事項）。入出力は `SimSnapshot.plc` がモニタ中しか載らない（3B 決定表#5）ので、モニタ外は消灯にして画面にその旨を出す |
 | 21 | **E2Eの機種切替** | 設定画面の既定メーカーを変えてから課題を開く（＝利用者と同じ道筋）。`plc-vendors.spec.ts` は**各テストの最後に三菱へ戻す**（設定は `userData` に永続化されるので、戻さないと既存の `plc.spec.ts` が落ちる） | 受入基準①が「設定で既定メーカーをOMRONにすると」と書いている。作業ファイルや起動フラグで注入する案は、その道筋自体が受入基準だから使えない |
 | 22 | **既存の `plc.spec.ts` は触らない** | 4本の既存E2Eはそのまま（三菱の道筋）。Phase 4 の6基準は新しい `plc-vendors.spec.ts` に書く。`projection.ts` は**追記のみ** | 既存4本は Phase 3 の受入基準の証拠なので、消すと「まだ通ることを誰も確かめていない」状態になる（MERGE 注意 #11・Plan 3B と同じ） |
-| 24 | **既定メーカーはいつ効くか** | `AppSettings.defaultVendor` は**課題を開くときの初期値**であって「いまのセッションの方言」ではない。`applyLadderSettings()` はストアの **`defaultVendor`** だけを更新し、**`dialectId` には触らない**。`dialectId` を決めるのは `openProblem(problem, { vendor })` の1箇所で、`vendor` を省くと `defaultVendor` を使う。作業ファイルの復元は保存されていた方言を `vendor` に渡す。型は `AppSettings.defaultVendor: DialectId`（`string` をやめる） | 前提#31b。いまの実装は**保存のたび**に `dialectId` を `defaultVendor` へ戻すので、Phase 4 では「作業ファイルから OMRON で復元 → 音量を1つ動かす → ラダーが三菱表記に戻る」「表記切替で JTEKT にした直後に設定を触ると三菱へ戻る」が起きる。`openProblem` の1箇所に寄せれば、方言の持ち主（セッション）と既定の持ち主（設定）が分かれ、`switchDialect()`（決定表#12）とも衝突しない。`DialectId` に型を狭めると、`isDialectId()` の判定漏れを `tsc` が捕まえる |
 | 23 | **スクリーンショット** | `plc-vendors.spec.ts` が `40-mitsubishi-skin` / `41-omron-skin` / `42-jtekt-skin` / `43-sharp-skin` / `44-jtekt-rack` / `45-sharp-rack` / `46-notation-dialog` / `47-instruction-list` の8枚を撮る。`screenshots/` は `.gitignore` 済みなので**コミットしない** | 利用者の「見えるものは見せる」方針。4スキンを1枚ずつ撮るのは、利用者が「実物に近いか」を確かめる唯一の手段だからである |
+| 24 | **既定メーカーはいつ効くか** | `AppSettings.defaultVendor` は**課題を開くときの初期値**であって「いまのセッションの方言」ではない。`applyLadderSettings()` はストアの **`defaultVendor`** だけを更新し、**`dialectId` には触らない**。`dialectId` を決めるのは `openProblem(problem, { vendor })` の1箇所で、`vendor` を省くと `defaultVendor` を使う。作業ファイルの復元は保存されていた方言を `vendor` に渡す。型は `AppSettings.defaultVendor: DialectId`（`string` をやめる） | 前提#31b。いまの実装は**保存のたび**に `dialectId` を `defaultVendor` へ戻すので、Phase 4 では「作業ファイルから OMRON で復元 → 音量を1つ動かす → ラダーが三菱表記に戻る」「表記切替で JTEKT にした直後に設定を触ると三菱へ戻る」が起きる。`openProblem` の1箇所に寄せれば、方言の持ち主（セッション）と既定の持ち主（設定）が分かれ、`switchDialect()`（決定表#12）とも衝突しない。`DialectId` に型を狭めると、`isDialectId()` の判定漏れを `tsc` が捕まえる |
 
 ---
 
@@ -1424,7 +1424,7 @@ Expected: 失敗。`Unable to find an element by: [data-testid="toolbar-download
     /** モニタの案内（キーは方言から渡す）。前提#22 */
     monitorOff: (monitorKey: string): string =>
       `モニタ（${monitorKey}）を開始すると通電状態が表示されます。`,
-    /** `Shift+F3`（モニタ書込み）の注記。決定表#11（Phase の番号は出さない） */
+    /** `Shift+F3`（モニタ書込み）の注記。Plan 3B 決定表#11（Phase の番号は出さない） */
     monitorWriteSame: 'モニタと同じ動作です（本アプリにオンライン変更はありません）',
 ```
 
@@ -1731,7 +1731,7 @@ import { SkinStatusBar, SkinTitleBar } from './SkinFrame.js';
           );
         })}
         <span className={styles.toolbarGap} />
-        {/* 回路ブロック・行の4ボタンは既存のまま（決定表#12） */}
+        {/* 回路ブロック・行の4ボタンは既存のまま（Plan 3B 決定表#12） */}
 ```
 
 `OutputWindow` の呼び出しを差し替え、PCwin風は畳む:
@@ -2088,6 +2088,55 @@ export function symbolMetrics(cell: SkinCell): SymbolMetrics {
                     </text>
                   ))}
 ```
+
+`symbolIdOf()` に**シャープの常時ON**の扱いを足す（4A H-4）。`profile.specialInverted` に
+載っている特殊デバイス番号の接点は**b接点の線画**で描く:
+
+```ts
+/** セルの記号（`SymbolDrawing` の識別子）。線画を持たないセルは `undefined`。 */
+function symbolIdOf(cell: Cell, profile: DialectProfile): string | undefined {
+  const symbols = profile.symbols;
+  switch (cell.kind) {
+    case 'contact': {
+      /*
+       * 実機ではb接点で使う特殊デバイス（シャープの `007366`＝常時ON。4A H-4 / §17 #22）。
+       * IRの `SP0` は「常時ON」という意味そのもので、a接点で描くと実機の見た目と食い違う。
+       * 判定・ランタイムには一切効かない**表示だけ**の話である。
+       */
+      const inverted =
+        cell.device.kind === 'special' &&
+        (profile.specialInverted ?? []).includes(cell.device.index);
+      if (cell.type === 'NO') return inverted ? symbols.nc : symbols.no;
+      if (cell.type === 'NC') return inverted ? symbols.no : symbols.nc;
+      /* 微分接点（`P` / `F`）は landed 実装のまま */
+    }
+    /* 以降の case は landed 実装のまま */
+  }
+}
+```
+
+テストに1ケース足す（`test/skin-grid.test.tsx`）:
+
+```tsx
+  it('draws the SHARP always-on special relay as an NC contact (4A H-4)', () => {
+    expect(SHARP_JW300.specialInverted).toContain(SPECIAL_ALWAYS_ON);
+    renderGrid({ profile: SHARP_JW300, cell: no(SP(SPECIAL_ALWAYS_ON)) });
+    expect(screen.getByTestId('cell-n1:0:0').querySelector('path[data-symbol]')).toHaveAttribute(
+      'data-symbol',
+      SHARP_JW300.symbols.nc,
+    );
+    // 他の3方言は a接点のまま
+    cleanup();
+    renderGrid({ profile: MITSUBISHI_FX5U, cell: no(SP(SPECIAL_ALWAYS_ON)) });
+    expect(screen.getByTestId('cell-n1:0:0').querySelector('path[data-symbol]')).toHaveAttribute(
+      'data-symbol',
+      MITSUBISHI_FX5U.symbols.no,
+    );
+  });
+```
+
+（`data-symbol` 属性が無ければ `GridCell` の `<path>` に足す。`SP` / `SPECIAL_ALWAYS_ON` は
+`@ojt/ladder-core` から import する。）
 
 ファイル上部に足す:
 
@@ -4833,7 +4882,7 @@ export function cameraPose(preset: CameraPreset, options: CameraPoseOptions = {}
 `three/CameraPresets.tsx`:
 
 ```ts
-import { plcUnitOfBoard } from './PlcRack.js';   // 下の注記のとおり、ここは `board.plcUnit` で足りる
+import { boardForProblem } from '../session/plc-session.js';
 // …
   const plcUnit = useStore((s) => boardForProblem(s.problem).plcUnit);
   const to = cameraPose(preset, plcUnit === undefined ? {} : { plcUnit });
@@ -5261,7 +5310,7 @@ Select-String -Path $files -Pattern "'F4'|'F5'|'F7'|'Shift\+F" | Where-Object { 
 $style = Get-ChildItem -Recurse apps/desktop/src/renderer/three, apps/desktop/src/renderer/ladder -Include *.ts,*.tsx |
   Where-Object { $_.FullName -notmatch 'skins' }
 Select-String -Path $style -Pattern '#[0-9A-Fa-f]{6}'
-# 期待: `appearance.ts` の `LED_OFF_COLOR` 1件だけ（決定表#12・#15）
+# 期待: `appearance.ts` の `LED_OFF_COLOR` 1件だけ（決定表#5・#15）
 
 # ベンダーのロゴ・画像が1つも無いこと（§17）
 Get-ChildItem -Recurse apps/desktop/src/renderer -Include *.png,*.jpg,*.svg,*.webp
@@ -5333,7 +5382,7 @@ git commit -m "chore(desktop): finish Phase 4B verification"
 | Task 1 | §10.6（スキン定義の振る舞い）、§17.1（修正箇所の区分）、§16 Phase 4 受入基準① |
 | Task 2 | §10.6（画面構成・列数・通電色）、§17.1・§17 #19、利用者要求（実物に忠実な回路入力画面） |
 | Task 3 | §10.6（操作フローと `convertStep`）、§12.1（画面の常設注記）、§16 Phase 4 受入基準① |
-| Task 4 | §10.3・§10.6（セルグリッドと記号）、§17（図記号ビットマップを持たない）、利用者要求 |
+| Task 4 | §10.3・§10.6（セルグリッドと記号）、§17 #22（シャープの常時ONはb接点）、§17（図記号ビットマップを持たない）、利用者要求 |
 | Task 5 | §10.5（デバイス表記とバリデータ）、§10.1（機種の端子名）、§16 Phase 4 受入基準④ |
 | Task 6 | §12.1（設定画面）、§10.5（既定メーカー）、§10.6（列数・通電色）、§16 Phase 4 受入基準① |
 | Task 7 | §7.6（モードD課題）、§12.3（作業ファイル）、§16 Phase 4 受入基準①③⑤ |
@@ -5357,6 +5406,7 @@ git commit -m "chore(desktop): finish Phase 4B verification"
 | §10.6 | 接点11列・通電色が4スキンで違う | `skinGridCols()` / `skinMonitorColor()` / `--skin-powered` | `plc-skin.test.ts` / `skin-theme.test.ts` |
 | §10.6 | キー割当表がスキンごとに切り替わる | `ShortcutHelp`（`profile.shortcuts`） | `ladder-panels.test.tsx` |
 | §10.5 | デバイス入力が方言の綴りとエラーを出す | `DeviceInput`（`formatDevice` / `parseDevice`） | `device-input.test.tsx`、E2E ④ |
+| §10.5・§17 #22 | シャープの常時ON（`007366`）をb接点で描く（4A H-4） | `symbolIdOf()`（`profile.specialInverted`） | `skin-grid.test.tsx` |
 | §10.7 | 表記切替が対象方言で表せない項目を一覧で示す | `NotationDialog`（`switchNotation()`） | `notation-dialog.test.tsx`、E2E ② |
 | §10.7 | 命令語リストをテキスト（UTF-8・CRLF）へ、出力先は利用者が選ぶ | `saveTextFile()` ＋ `export-il` | `text-files.test.ts` / `instruction-list-export.test.tsx`、E2E ⑥ |
 | §10.1 | 機種の外観（筐体色・端子カバー・LED・銘板・造作）を3Dが描く | `PlcFace`（`PlcAppearance`） | `plc-appearance-view.test.ts`、スクリーンショット |
@@ -5394,14 +5444,14 @@ git commit -m "chore(desktop): finish Phase 4B verification"
 
 ## 実装者への MERGE 注意
 
-複数のタスクが同じファイルへ別々の箇所から手を入れる。「推奨バッチ」で並行させるときは次の12点を守ること。
+複数のタスクが同じファイルへ別々の箇所から手を入れる。「推奨バッチ」で並行させるときは次の13点を守ること。
 
 1. **`i18n/ja.ts` への挿入は、挿入のたびにファイルを読み直してから行う。** Task 3・5・6・7・8・9・10・11 がそれぞれ別の位置へ追記する。本プランは「`JA.ladder` と `JA.plc` と `JA.settings` の各ブロックの末尾に `// --- Plan 4B Task N ---` で挟んで足す」とだけ決めている。**Task 3 は既存の3件（`readOnly` / `notConverted` / `monitorOff`）を関数に置き換える**ので、他のタスクと同時に走らせない。
 2. **`ladder/LadderWorkspace.tsx` は Task 3 が作り替え、Task 8（表記切替ボタン）と Task 9（命令語リストの書き出し）が足す。** 3 → 8 → 9 の順に直列で実行する（同じ `return` の JSX に3回手を入れる）。
 3. **`ladder/ladder.module.css` は Task 2 が既存の色・寸法を `var(--skin-*)` に置き換え、Task 2・3・4・8 が末尾へ追記する。** クラス名は重ならない（`.titleBar` / `.statusBar` / `.vendorTool` / `.outputCollapsed` = Task 2・3、`.gridScroll` の背景 = Task 4、`.notation*` = Task 8）が、**同じファイルの末尾へ同時に書くと片方が消える**。追記のたびに読み直す。
 4. **`shared/ipc.ts` は Task 6 の1箇所（`DEFAULT_SETTINGS` と `AppSettings` のコメント、`DEFAULT_MONITOR_COLOR`）と Task 9 の1箇所（`IPC_CHANNELS` の7本目と `SaveTextRequest` / `SaveTextResult` / `OjtApi`）だけ。** **6 → 9 の順に直列**（バッチ B → C の順がそのまま順序になる）。
 5. **`app/store.ts` は Task 6 の2箇所（`defaultVendor` の欄と `applyLadderSettings`）・Task 7 の3箇所（`OpenProblemOptions.vendor` / `openProblem()` の先頭＋`set()` の1行 / `restartSession()` の `openProblem()` 呼び出し）・Task 8 の2箇所（`switchDialect` の宣言と実装）だけ。** `plcFields()` の中身は**触らない**（Plan 3B の決定がそのまま生きる）。`restartSession()`（結果画面の「もう一度」）は `openProblem()` に **`{ vendor: get().dialectId }`** を添える——添えないと、表記切替や作業ファイルで選んだ方言が「もう一度」で既定メーカーへ戻る（決定表#24）。
-6b. **`session/work-file.ts` は Task 7 の1箇所だけ**（`openProblem()` への `vendor` の受け渡しと、後ろの `setDialect()` の削除）。`toWorkFile()` の `dialectId: state.dialectId` は**そのまま**でよい。
+5b. **`session/work-file.ts` は Task 7 の1箇所だけ**（`openProblem()` への `vendor` の受け渡しと、後ろの `setDialect()` の削除）。`toWorkFile()` の `dialectId: state.dialectId` は**そのまま**でよい。
 6. **`screens/PlcSession.tsx` は Task 3 の2箇所（手順表・表示列数）と Task 7 の1箇所（機種名）と Task 12 の0箇所**（カメラは `CameraPresets` が持つ）。`useEffect` の依存配列と Hooks の順序を崩さない（早期 return より前にすべての Hook を置く既存の並びを守る）。
 7. **`three/PlcUnit.tsx` は Task 10 だけが触る。** `plcFaceRect()`（＝ `labels.ts` の `faceRect()` の再輸出）は**残す**（4A H-7）。`PlcFace` と `useLedState` を export するのは Task 11 が使うためで、`PlcUnit` の props は Phase 3 のまま変えない。
 8. **`three/labels.ts` は Task 10 の1箇所（`blockTerminalMark()`）だけ。** `blockFaceTexture()` の本体と `ROLE_COLOR` は触らない（Plan 3B MERGE 注意 #15 がそのまま生きる）。
