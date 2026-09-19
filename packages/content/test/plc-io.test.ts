@@ -124,7 +124,7 @@ describe('runPlcOperations', () => {
       ),
     );
     if (!timed.ok) throw new Error('変換に失敗しました');
-    const operations = [{ t: 0, target: 'PB1', action: 'press' as const }];
+    const operations = [{ t: 0, target: 'PB1' as const, action: 'press' as const }];
     const result = runPlcOperations(circuit.netlist, timed.program, operations, {
       durationMs: problem.durationMs,
       tickMs: 20,
