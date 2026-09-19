@@ -4,3 +4,4 @@ coverage
 dist
 docs/
 test-results
+apps/desktop/src/renderer/help/manual-content.ts

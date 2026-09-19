@@ -6,7 +6,8 @@
     "types": ["node", "vite/client"],
     "jsx": "react-jsx",
     "resolveJsonModule": true,
-    "allowImportingTsExtensions": true
+    "allowImportingTsExtensions": true,
+    "paths": { "@manual-images/*": ["../../docs/manual/images/*"] }
   },
   "include": [
     "src/**/*.ts",

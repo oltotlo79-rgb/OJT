@@ -537,7 +537,7 @@ git show --stat HEAD
 
 本設計 §4 と 決定表#2・#3・#9・#12・#13、本プラン 決定表 P4〜P8。
 
-- [ ] **Step 1: `markdown-it` を入れる**
+- [x] **Step 1: `markdown-it` を入れる**
 
 ```
 pnpm --filter @ojt/desktop add -D -E markdown-it
@@ -546,7 +546,7 @@ git diff --stat -- apps/desktop/package.json pnpm-lock.yaml
 #       dependencies は1つも増えていない
 ```
 
-- [ ] **Step 2: 失敗するテストを書く（変換の規則）**
+- [x] **Step 2: 失敗するテストを書く（変換の規則）**
 
 `apps/desktop/test/manual-build.test.ts`:
 
@@ -805,7 +805,7 @@ pnpm --filter @ojt/desktop test manual-
 # 期待: FAIL（`../scripts/manual-build.mjs` が無い）
 ```
 
-- [ ] **Step 3: 変換の本体を作る**
+- [x] **Step 3: 変換の本体を作る**
 
 `apps/desktop/scripts/manual-build.mjs`:
 
@@ -1195,7 +1195,7 @@ export declare function buildManual(
 ): BuiltManual;
 ```
 
-- [ ] **Step 4: 生成を走らせるスクリプトを作る**
+- [x] **Step 4: 生成を走らせるスクリプトを作る**
 
 `apps/desktop/scripts/build-manual.mjs`:
 
@@ -1273,7 +1273,7 @@ if (files.length === 0) {
 }
 ```
 
-- [ ] **Step 5: 最初の1章を書き、生成物を作る**
+- [x] **Step 5: 最初の1章を書き、生成物を作る**
 
 `docs/manual/00-intro.md`（この段階は2節だけ。Task 3 が残りの節を書き足す）:
 
@@ -1299,7 +1299,7 @@ cd apps/desktop && node scripts/build-manual.mjs
 
 **注記（図がまだ無いあいだ）**: 生成物は**実在する図の読み込みだけ**を書く（`buildManual()` の第3引数 `availableImages`）。原稿が図を参照していても、その PNG がまだ無ければ `MANUAL_IMAGES` にはその名前で `{ small: '', full: '' }` が入る。こうしておくと、**Task 12 で図を撮るまで `pnpm build` も `pnpm -r test` も通り続ける**（利用者の決定「画像撮影は最後でよい」。決定表 P13）。図が揃ったら Task 12 が生成物を作り直し、読み込みが出そろう。引き出しは `src` が空の図を**描かない**（Task 8）。
 
-- [ ] **Step 6: 生成物を整形・検査・追跡の対象から外す**
+- [x] **Step 6: 生成物を整形・検査・追跡の対象から外す**
 
 `.prettierignore` の末尾に足す:
 
@@ -1354,7 +1354,7 @@ TypeScript にも同じ別名を教える。`apps/desktop/tsconfig.json` の `co
     "build": "node scripts/build-manual.mjs && node scripts/build.mjs",
 ```
 
-- [ ] **Step 7: テストを通す**
+- [x] **Step 7: テストを通す**
 
 ```
 pnpm --filter @ojt/desktop test manual-
@@ -1365,7 +1365,7 @@ pnpm --filter @ojt/desktop build
 # 期待: 変換が先に走ってから electron-vite のビルドが通る
 ```
 
-- [ ] **Step 8: commit**
+- [x] **Step 8: commit**
 
 ```
 git add apps/desktop/scripts/manual-build.mjs apps/desktop/scripts/manual-build.d.mts apps/desktop/scripts/build-manual.mjs apps/desktop/src/renderer/help/manual-content.ts apps/desktop/test/manual-build.test.ts apps/desktop/test/manual-sync.test.ts apps/desktop/package.json docs/manual/00-intro.md .prettierignore .gitignore eslint.config.js pnpm-lock.yaml

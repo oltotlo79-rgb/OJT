@@ -51,8 +51,14 @@ export default defineConfig({
     root: resolve(import.meta.dirname, 'src/renderer'),
     plugins: [react()],
     resolve: {
-      alias: { '@shared': resolve(import.meta.dirname, 'src/shared') },
+      alias: {
+        '@shared': resolve(import.meta.dirname, 'src/shared'),
+        // 取扱説明書の図（生成物 `manual-content.ts` が読み込む）。取扱説明書 設計 §7.2b
+        '@manual-images': resolve(import.meta.dirname, '../../docs/manual/images'),
+      },
     },
+    // `docs/` は `apps/desktop` の外にあるので、開発サーバに読んでよい根を明示する
+    server: { fs: { allow: [resolve(import.meta.dirname, '../..')] } },
     worker: { format: 'es' },
     build: {
       rollupOptions: {

@@ -5,7 +5,8 @@ import reactHooks from 'eslint-plugin-react-hooks';
 import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
-  // `out/` は electron-vite のビルド成果物、`test-results/` は Playwright の出力
+  // `out/` は electron-vite のビルド成果物、`test-results/` は Playwright の出力。
+  // `manual-content.ts` は `docs/manual/*.md` からの生成物（取扱説明書 設計 決定表#2）。
   {
     ignores: [
       '**/dist/**',
@@ -13,6 +14,7 @@ export default tseslint.config(
       '**/coverage/**',
       '**/node_modules/**',
       '**/test-results/**',
+      'apps/desktop/src/renderer/help/manual-content.ts',
     ],
   },
   js.configs.recommended,

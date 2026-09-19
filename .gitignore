@@ -10,3 +10,4 @@ coverage/
 Thumbs.db
 .env*
 .claude/scheduled_tasks.lock
+apps/desktop/resources/manual/
