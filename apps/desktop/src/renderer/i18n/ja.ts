@@ -1,6 +1,7 @@
 import type { RoutingErrorReason } from '@ojt/board-model';
 import type { HazardKind, MismatchReason } from '@ojt/circuit-sim';
 import type { FaultReportKind, StaticCheckId } from '@ojt/content';
+import type { DialectId } from '@ojt/plc-dialects';
 import { MSG } from '../../shared/messages.js';
 import type { ProbeSide } from '../app/store-types.js';
 
@@ -116,6 +117,15 @@ export const JA = {
     /** グループを既定値へ戻す。 */
     resetPlcGroup: '既定に戻す',
     // --- /Plan 3B Task 16 ---
+    // --- Plan 3B final fix ---
+    /** メーカーの表示名（Phase 3 は三菱のみ実装。決定表#13）。最終レビュー指摘: `Settings.tsx` から移設。 */
+    vendorLabels: {
+      mitsubishi: '三菱電機',
+      jtekt: 'ジェイテクト',
+      omron: 'オムロン',
+      sharp: 'シャープ',
+    } satisfies Record<DialectId, string>,
+    // --- /Plan 3B final fix ---
   },
   session: {
     back: '課題一覧へ戻る',
@@ -917,6 +927,7 @@ export function comparedSignalsText(signals: readonly string[]): string {
   return `${JA.plc.compared}: ${signals.join('・')}`;
 }
 // --- /Plan 3B Task 13 ---
+
 // --- 3D fidelity 2026-09-19 ---
 /**
  * 3Dの機器表示の文言（§6.1 / §6.5 / §8.2。利用者要望 2026-09-19）。

@@ -405,6 +405,8 @@ test.describe('モードD（PLC）', () => {
       const check = page.getByTestId('static-check-plcPowerIndependent');
       await expect(check).toContainText('PLC電源の独立');
       await expect(check).toContainText('エラー');
+      // 節点としては盤の P.1 に繋がっている旨の詳細が出る（CR3.9 / TB_PL.3- の鎖の末端。レビュー指摘 #8）
+      await expect(check).toContainText('P.');
       // 2つの文言の出し分けと「未配線でも動く」説明が出る（3A H-5）
       const help = page.getByTestId('plc-power-help');
       await expect(help).toContainText('壁コンセント');

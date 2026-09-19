@@ -210,6 +210,10 @@ describe('writeSettings（レビュー指摘: renderer からの入力を信用�
     expect(writeSettings({ ladderGridCols: 2 }).ladderGridCols).toBe(8);
     expect(writeSettings({ ladderGridCols: 99 }).ladderGridCols).toBe(15);
     expect(writeSettings({ monitorColor: 'red' }).monitorColor).toBe('#1E64FF');
-    expect(writeSettings({ defaultVendor: 'omron' }).defaultVendor).toBe('mitsubishi');
+    // Plan 4A Task 5（81c701a）で4方言すべてが登録され、`omron` も実装済みメーカーとして通る
+    // （以前は三菱以外は弾かれ、既定値の `mitsubishi` に戻っていた。決定表#13 の前提が更新された）
+    expect(writeSettings({ defaultVendor: 'omron' }).defaultVendor).toBe('omron');
+    // 方言IDの形をしていない値は引き続き無視して、直前に保存された値を保つ
+    expect(writeSettings({ defaultVendor: 'not-a-real-dialect' }).defaultVendor).toBe('omron');
   });
 });

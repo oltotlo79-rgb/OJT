@@ -244,7 +244,8 @@ describe('LadderGrid（§10.7）', () => {
     const endX = Number(/L ([\d.]+) /u.exec(d)?.[1] ?? '0');
     // 表示は「接点2列＋コイル列」。コイル列の左端は 2 × CELL_W なので、そこを越えて届いている
     expect(endX).toBeGreaterThan(2 * CELL_W);
-    expect(d.startsWith(`M ${String(CELL_W)} ${String(WIRE_Y)} `)).toBe(true);
+    // 始点はコイル列の左端（2 × CELL_W）。最後の接点セル（1列目）の中を通らない（レビュー指摘 #1）
+    expect(d.startsWith(`M ${String(2 * CELL_W)} ${String(WIRE_Y)} `)).toBe(true);
   });
 
   it('draws no continuation when a hidden column is empty or nothing is hidden', () => {
@@ -256,6 +257,36 @@ describe('LadderGrid（§10.7）', () => {
     expect(screen.queryByTestId('rung-to-coil-n1:0')).toBeNull();
     cleanup();
     render(<LadderGrid program={sample()} {...base} gridCols={COIL_COL} />);
+    expect(screen.queryByTestId('rung-to-coil-n1:0')).toBeNull();
+  });
+
+  /** レビュー指摘 #1: オーバーレイの始点はコイル列の左端（col8 の x）で、col7 のセルを横切らない。 */
+  it('starts the hidden-column overlay at the coil column, not inside the last visible contact cell', () => {
+    const filled = program(
+      network('n1', [
+        [
+          no(X(0)),
+          ...Array.from({ length: 6 }, () => hline()),
+          no(X(1)), // col7: 最後に表示される接点
+          ...Array.from({ length: 7 }, () => hline()), // col8〜14: 隠れる列
+          out(Y(0)), // col15: コイル列
+        ],
+      ]),
+      endNetwork(),
+    );
+    render(<LadderGrid program={filled} {...base} gridCols={8} />);
+    const d = screen.getByTestId('rung-to-coil-n1:0').getAttribute('d') ?? '';
+    // col8 の x（= (col7 + 1) × CELL_W）から始まり、col7 の範囲 [7*CELL_W, 8*CELL_W) には入らない
+    expect(d.startsWith(`M ${String(8 * CELL_W)} ${String(WIRE_Y)} `)).toBe(true);
+  });
+
+  /** レビュー指摘 #1: 最後に見えるセルが空なら、隠れた列が罫線でも「切れている」まま重ねない。 */
+  it('draws no overlay when the last visible cell is empty', () => {
+    const gapped = program(
+      network('n1', [[no(X(0)), empty(), ...Array.from({ length: 13 }, () => hline()), out(Y(0))]]),
+      endNetwork(),
+    );
+    render(<LadderGrid program={gapped} {...base} gridCols={2} />);
     expect(screen.queryByTestId('rung-to-coil-n1:0')).toBeNull();
   });
 });

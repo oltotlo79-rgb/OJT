@@ -101,5 +101,8 @@ export const END_MARK = [`M 12 ${TOP} L 12 ${BOTTOM}`, `M 18 ${TOP} L 18 ${BOTTO
 export function leadAcrossHidden(lastContactIndex: number, row: number): string {
   const y = row * CELL_H + WIRE_Y;
   const coilX = (lastContactIndex + 1) * CELL_W;
-  return `M ${lastContactIndex * CELL_W} ${y} L ${coilX + LEFT} ${y}`;
+  // 始点は「コイル列の左端」（`coilX`）にする。`lastContactIndex * CELL_W` にすると最後の
+  // 接点セルの左端から引くことになり、そのセルの絵の上をオーバーレイが横切ってしまう
+  // （レビュー指摘 #1）。最後の接点セル自体は自分のリード線で右端まで繋がっている。
+  return `M ${coilX} ${y} L ${coilX + LEFT} ${y}`;
 }

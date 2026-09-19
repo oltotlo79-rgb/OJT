@@ -8,7 +8,12 @@ import {
 } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { app } from 'electron';
-import { IMPLEMENTED_DIALECT_IDS, MAX_GRID_COLS, MIN_GRID_COLS } from '@ojt/plc-dialects';
+import {
+  IMPLEMENTED_DIALECT_IDS,
+  isDialectId,
+  MAX_GRID_COLS,
+  MIN_GRID_COLS,
+} from '@ojt/plc-dialects';
 import { DEFAULT_SETTINGS, type AppSettings, type AppSettingsResponse } from '../shared/ipc.js';
 import { MSG } from '../shared/messages.js';
 
@@ -63,7 +68,8 @@ function sanitizePatch(base: AppSettings, patch: unknown): AppSettings {
   const vendor = source['defaultVendor'];
   if (
     typeof vendor === 'string' &&
-    (IMPLEMENTED_DIALECT_IDS as readonly string[]).includes(vendor)
+    isDialectId(vendor) &&
+    IMPLEMENTED_DIALECT_IDS.includes(vendor)
   ) {
     next.defaultVendor = vendor;
   }

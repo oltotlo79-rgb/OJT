@@ -1,4 +1,5 @@
 import type { ProblemLoadError, SupportedProblem } from '@ojt/content';
+import type { DialectId } from '@ojt/plc-dialects';
 
 /**
  * main ⇄ renderer の IPC 契約。設計仕様 §4.3。
@@ -170,7 +171,7 @@ export interface AppSettings {
   /** 起動時に一時保存から復帰するか確認する。§12.3 */
   restorePrompt: boolean;
   /** モードDの既定メーカー（Phase 3 は `mitsubishi` のみ実装）。§10.5 / §12.1 */
-  defaultVendor: string;
+  defaultVendor: DialectId;
   /** ラダーの表示列数（接点列。8〜15）。§10.6 */
   ladderGridCols: number;
   /** モニタ中の通電表示色（`#rrggbb`）。§10.6 */

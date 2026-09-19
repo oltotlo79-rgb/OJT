@@ -249,17 +249,26 @@ describe('restoreInspectState（モードD分岐。§13 #8 / Batch 4+5 レビュ
     expect(useStore.getState().dialectId).toBe('mitsubishi');
   });
 
-  it('ignores an unimplemented or unknown dialect id and keeps the current one (I5)', () => {
+  it('ignores an unknown dialect id and keeps the current one (I5)', () => {
     useStore.getState().abandonSession();
     useStore.setState({ dialectId: 'mitsubishi' });
-    // `jtekt` はスキーマ上は実在するが Phase 3 では未実装（`IMPLEMENTED_DIALECT_IDS`）
-    expect(restoreInspectState(problem, { mode: 'plc', dialectId: 'jtekt' })).toBe(true);
-    expect(useStore.getState().dialectId).toBe('mitsubishi');
-    // 見覚えの無い文字列も黙って無視する（読込そのものは断らない）
+    // スキーマの形（string）はしていても方言IDとして見覚えの無い文字列は黙って無視する
+    // （読込そのものは断らない）
     expect(restoreInspectState(problem, { mode: 'plc', dialectId: 'not-a-real-dialect' })).toBe(
       true,
     );
     expect(useStore.getState().dialectId).toBe('mitsubishi');
+  });
+
+  /**
+   * Plan 4A Task 5（81c701a）で4方言すべてが `IMPLEMENTED_DIALECT_IDS` に登録された
+   * （以前は `jtekt` は未実装として弾かれ、現在の方言のまま保たれていた）。
+   */
+  it('restores a valid, implemented, non-Mitsubishi dialect id (I5)', () => {
+    useStore.getState().abandonSession();
+    useStore.setState({ dialectId: 'mitsubishi' });
+    expect(restoreInspectState(problem, { mode: 'plc', dialectId: 'jtekt' })).toBe(true);
+    expect(useStore.getState().dialectId).toBe('jtekt');
   });
 });
 

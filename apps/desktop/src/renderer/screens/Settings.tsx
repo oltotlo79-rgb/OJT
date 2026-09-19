@@ -1,24 +1,17 @@
 import {
   DIALECT_IDS,
   IMPLEMENTED_DIALECT_IDS,
+  isDialectId,
   MAX_GRID_COLS,
   MIN_GRID_COLS,
 } from '@ojt/plc-dialects';
-import { useEffect, useState, type JSX } from 'react';
+import { useEffect, useRef, useState, type JSX } from 'react';
 import { DEFAULT_SETTINGS, type AppSettings, type AppSettingsResponse } from '../../shared/ipc.js';
 import { ojtApi } from '../app/ojt-api.js';
 import { useStore } from '../app/store.js';
 import { sounds } from '../audio/sounds.js';
 import { JA } from '../i18n/ja.js';
 import styles from './screens.module.css';
-
-/** メーカーの表示名（Phase 3 は三菱のみ実装。決定表#13）。 */
-const VENDOR_LABELS: Record<string, string> = {
-  mitsubishi: '三菱電機',
-  jtekt: 'ジェイテクト',
-  omron: 'オムロン',
-  sharp: 'シャープ',
-};
 
 /**
  * 設定画面。設計仕様 §12.1 / §15。
@@ -46,14 +39,25 @@ export function Settings(): JSX.Element {
   const toast = useStore((s) => s.toast);
   const [settings, setSettings] = useState<AppSettingsResponse | undefined>(undefined);
   const [loadError, setLoadError] = useState<string | undefined>(undefined);
+  /**
+   * サーバ側で確定した最新の設定（保存の度に更新。onChange の手元の編集では動かさない）。
+   * `commitGridCols()` が「変わっていないのに保存」を避けるのに使う（レビュー指摘 #6）。
+   */
+  const savedRef = useRef<AppSettingsResponse | undefined>(undefined);
 
   useEffect(() => {
     try {
       void ojtApi()
         .getSettings()
-        .then(setSettings, (error: unknown) => {
-          setLoadError(reasonOf(error));
-        });
+        .then(
+          (fetched) => {
+            setSettings(fetched);
+            savedRef.current = fetched;
+          },
+          (error: unknown) => {
+            setLoadError(reasonOf(error));
+          },
+        );
     } catch (error) {
       setLoadError(reasonOf(error));
     }
@@ -72,16 +76,23 @@ export function Settings(): JSX.Element {
       toast(reasonOf(error), 'error');
       return;
     }
+    // ラダーへ即時反映するのは3キー（メーカー・表示列数・通電色）のどれかが変わったときだけ
+    // （レビュー指摘 #4）。他の設定（音量など）を保存するたびに毎回呼ぶ必要はない。
+    const changesLadderSettings =
+      'defaultVendor' in next || 'ladderGridCols' in next || 'monitorColor' in next;
     void api.setSettings(next).then(
       (saved) => {
         setSettings(saved);
+        savedRef.current = saved;
         sounds.configure({ enabled: saved.soundEnabled, volume: saved.soundVolume });
-        // 設定画面にいる間もラダーへ即時反映する（§12.1）。起動直後の反映は App.tsx が担う。
-        useStore.getState().applyLadderSettings({
-          gridCols: saved.ladderGridCols,
-          monitorColor: saved.monitorColor,
-          vendor: saved.defaultVendor,
-        });
+        if (changesLadderSettings) {
+          // 設定画面にいる間もラダーへ即時反映する（§12.1）。起動直後の反映は App.tsx が担う。
+          useStore.getState().applyLadderSettings({
+            gridCols: saved.ladderGridCols,
+            monitorColor: saved.monitorColor,
+            vendor: saved.defaultVendor,
+          });
+        }
         if (options.silent !== true) toast(JA.settings.saved);
       },
       (error: unknown) => {
@@ -100,7 +111,10 @@ export function Settings(): JSX.Element {
     patch({ soundVolume: settings.soundVolume }, { silent: true });
   };
 
-  /** ラダーの表示列数の確定。範囲外はここで丸めてから保存する（§10.6）。 */
+  /**
+   * ラダーの表示列数の確定。範囲外はここで丸めてから保存する（§10.6）。
+   * 保存済みの値と同じなら保存・トーストをしない（触っただけで blur したとき。レビュー指摘 #6）。
+   */
   const commitGridCols = (): void => {
     if (settings === undefined) return;
     const clamped = Math.min(
@@ -108,6 +122,7 @@ export function Settings(): JSX.Element {
       Math.max(MIN_GRID_COLS, Math.round(settings.ladderGridCols)),
     );
     if (clamped !== settings.ladderGridCols) setSettings({ ...settings, ladderGridCols: clamped });
+    if (clamped === savedRef.current?.ladderGridCols) return;
     patch({ ladderGridCols: clamped });
   };
 
@@ -215,7 +230,12 @@ export function Settings(): JSX.Element {
                 data-testid="setting-vendor"
                 value={settings.defaultVendor}
                 onChange={(event) => {
-                  patch({ defaultVendor: event.target.value });
+                  // 値は `DIALECT_IDS` から作った <option> の value しか来ないが、DOM の
+                  // `event.target.value` は素の string なので `isDialectId()` で絞ってから渡す
+                  // （`AppSettings.defaultVendor` は `DialectId`。レビュー指摘 #9）。
+                  if (isDialectId(event.target.value)) {
+                    patch({ defaultVendor: event.target.value });
+                  }
                 }}
               >
                 {DIALECT_IDS.map((id) => (
@@ -225,7 +245,7 @@ export function Settings(): JSX.Element {
                     data-testid={`vendor-option-${id}`}
                     disabled={!IMPLEMENTED_DIALECT_IDS.includes(id)}
                   >
-                    {VENDOR_LABELS[id] ?? id}
+                    {JA.settings.vendorLabels[id]}
                     {IMPLEMENTED_DIALECT_IDS.includes(id)
                       ? ''
                       : `（${JA.settings.vendorUnimplemented}）`}

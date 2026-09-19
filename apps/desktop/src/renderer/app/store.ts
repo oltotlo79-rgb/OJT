@@ -33,7 +33,7 @@ import {
   type SupportedProblem,
   type TimeChartSignalSpec,
 } from '@ojt/content';
-import type { LadderProgram } from '@ojt/ladder-core';
+import { COIL_COL, type LadderProgram } from '@ojt/ladder-core';
 import {
   IMPLEMENTED_DIALECT_IDS,
   MAX_GRID_COLS,
@@ -1104,9 +1104,19 @@ export const useStore = create<AppState>((set, get) => ({
     set({ plcRunning });
   },
   applyLadderSettings: ({ gridCols, monitorColor, vendor }) => {
+    const clampedGridCols = Math.min(MAX_GRID_COLS, Math.max(MIN_GRID_COLS, Math.round(gridCols)));
+    const cursor = get().ladderCursor;
+    // 表示列数が縮んで、カーソルがいま見えない接点列を指していたら、見える最後の接点列へ
+    // 詰める。コイル列（`COIL_COL`）はどの表示列数でも必ず見えているので動かさない
+    // （レビュー指摘 #7）。
+    const clampedCursor =
+      cursor.col === COIL_COL || cursor.col < clampedGridCols
+        ? cursor
+        : { ...cursor, col: clampedGridCols - 1 };
     set({
-      ladderGridCols: Math.min(MAX_GRID_COLS, Math.max(MIN_GRID_COLS, Math.round(gridCols))),
+      ladderGridCols: clampedGridCols,
       monitorColor,
+      ladderCursor: clampedCursor,
       // 未実装のメーカーが設定に残っていても落とさない（Phase 4 で実装されたら効く）
       ...(isDialectId(vendor) && IMPLEMENTED_DIALECT_IDS.includes(vendor)
         ? { dialectId: vendor }

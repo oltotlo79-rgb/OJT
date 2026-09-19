@@ -76,6 +76,8 @@ export function hasHiddenCells(net: Network, gridCols: number): boolean {
 function hiddenSpanIsWire(net: Network, gridCols: number, row: number): boolean {
   if (gridCols >= COIL_COL) return false;
   if (cellAt(net, row, COIL_COL).kind === 'empty') return false;
+  // 最後に**見えている**セルが空なら、そこで本当に切れている（レビュー指摘 #1）。
+  if (cellAt(net, row, gridCols - 1).kind === 'empty') return false;
   let wires = 0;
   for (let col = gridCols; col < COIL_COL; col += 1) {
     const kind = cellAt(net, row, col).kind;
