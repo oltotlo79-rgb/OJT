@@ -1,0 +1,99 @@
+/* ラダーエディタの見た目。設計仕様 §10.6（GX Works3“風”。ベンダーの画面の複製ではない）。 */
+
+.gridScroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  background: #f7f8fa;
+  padding: 6px 8px 24px;
+}
+
+.network {
+  margin-bottom: 10px;
+}
+
+.networkHeader {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  font-size: 11px;
+  color: #444;
+  border-bottom: 1px solid #d5d8de;
+  padding: 2px 4px;
+}
+
+.networkId {
+  font-weight: 700;
+}
+
+.networkComment {
+  color: #1b6ac9;
+}
+
+.hiddenWarn {
+  color: #b34700;
+}
+
+.grid {
+  display: block;
+}
+
+.rail {
+  fill: #3a3f47;
+}
+
+.cell {
+  cursor: pointer;
+}
+
+.cellHit {
+  fill: transparent;
+}
+
+.wire,
+.symbol {
+  fill: none;
+  stroke-width: 1.6;
+  stroke-linecap: square;
+}
+
+.symbolText,
+.deviceText,
+.presetText,
+.commentText {
+  text-anchor: middle;
+  fill: #1b1e23;
+  font-family: inherit;
+}
+
+.symbolText {
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.deviceText {
+  font-size: 10px;
+}
+
+.presetText {
+  font-size: 9px;
+  fill: #555;
+}
+
+.commentText {
+  font-size: 8px;
+  fill: #1b6ac9;
+}
+
+.cursor {
+  fill: none;
+  stroke: #1e64ff;
+  stroke-width: 2;
+}
+
+.errorCell {
+  fill: none;
+  stroke: #d14343;
+  stroke-width: 2;
+  stroke-dasharray: 3 2;
+}

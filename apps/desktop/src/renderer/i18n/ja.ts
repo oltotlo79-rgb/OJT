@@ -351,6 +351,15 @@ export const JA = {
     expected: '期待（模範）',
     actual: '実際（訓練者）',
   },
+  // --- Plan 3B Task 4 ---
+  /** ラダーエディタ（GX Works3風スキン）。§10.6 / §10.7 */
+  ladder: {
+    title: 'ラダーエディタ',
+    network: '回路ブロック',
+    /** 表示列数を超えた位置にセルがある。§10.6 */
+    hiddenCells: '表示列数の外にセルがあります（設定でラダーの表示列数を増やしてください）',
+  },
+  // --- /Plan 3B Task 4 ---
   hazard: {
     'ohm-on-live': '通電中のΩ／導通測定',
     'range-exceeded': 'レンジ超過',
