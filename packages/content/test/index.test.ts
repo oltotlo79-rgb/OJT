@@ -1,7 +1,7 @@
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { JIPM_BOARD } from '@ojt/board-model';
-import { Simulation, TICK_MS } from '@ojt/circuit-sim';
+import { buildNets, Simulation, TICK_MS } from '@ojt/circuit-sim';
 import { describe, expect, it } from 'vitest';
 import {
   // schema/common.js
@@ -119,23 +119,89 @@ import {
   BUILTIN_ASSEMBLE_PROBLEMS,
   BUILTIN_INSPECT_PARTS_PROBLEMS,
   BUILTIN_INSPECT_REPAIR_PROBLEMS,
+  BUILTIN_PLC_PROBLEMS,
   BUILTIN_PROBLEMS,
   BuiltinProblemError,
   findBuiltinProblem,
   parseBuiltinProblems,
+  // schema/index.js（Phase 3）
+  isPlcProblem,
+  // schema/ladder.js
+  CellSchema,
+  DeviceCommentsSchema,
+  DeviceKindSchema,
+  DeviceSchema,
+  LADDER_COIL_COL,
+  LadderNetworkSchema,
+  LadderProgramSchema,
+  MAX_DEVICE_COMMENT_LENGTH,
+  MAX_DEVICE_COMMENTS,
+  // schema/plc.js
+  DEFAULT_PLC_IO,
+  PHASE3_MODELS,
+  PLC_MODELS,
+  PLC_VENDORS,
+  PlcInputMapSchema,
+  PlcIoModeSchema,
+  PlcIoSchema,
+  PlcOutputMapSchema,
+  PlcProblemSchema,
+  PlcRefSchema,
+  PlcWiringSchema,
+  resolvePlcIo,
+  // schema/judge.js（Phase 3）
+  PLC_DEFAULT_STATIC_CHECKS,
+  PlcJudgeSettingsSchema,
+  // plc-io.js
+  createPlcCoupling,
+  createSimulationIoPort,
+  runPlcOperations,
+  // plc-reference.js
+  buildPlcReferenceSession,
+  PLC_WIRE_COLOR,
+  plcBoardFor,
+  plcWiringPlan,
+  plcWiringPlanIssues,
+  // plc-static-checks.js
+  BOARD_POWER_PREFIXES,
+  checkIoAssignment,
+  checkPlcPowerIndependent,
+  checkTwoStage,
+  detectPlcWiring,
+  // judge-plc.js
+  judgePlc,
+  judgePlcReference,
+  plcTimerMarkers,
+  // runner.js（Phase 3）
+  runOperationsOn,
   type AssembleProblem,
+  type CellData,
+  type DeviceCommentsData,
+  type DeviceData,
+  type JudgePlcOutcome,
+  type JudgePlcResult,
   type JudgeSettings,
+  type LadderProgramData,
   type Operation,
+  type PlcCoupling,
+  type PlcCouplingOptions,
+  type PlcInputMapData,
+  type PlcIoData,
+  type PlcCheckContext,
+  type PlcOutputMapData,
+  type PlcProblem,
+  type PlcReferenceCircuit,
+  type PlcReferenceResult,
+  type PlcRunOptions,
+  type PlcRunResult,
+  type PlcWireSpec,
   type ProblemHeader,
   type ReferenceCircuit,
+  type ResolvedPlcIo,
   type StaticCheckInput,
   type JudgeResult,
   type TimeChart,
 } from '../src/index.js';
-// `isPlcProblem` / `PlcProblemSchema` は Task 20 でバレルの公開APIが確定するまで
-// バレル (`../src/index.js`) には乗らない。ここでは直接 import して疎通だけ確かめる。
-import { isPlcProblem } from '../src/schema/index.js';
-import { PlcProblemSchema } from '../src/schema/plc.js';
 import { inspectPartsProblemJson, inspectRepairProblemJson } from './helpers/inspect.js';
 import { plcProblemJson } from './helpers/plc.js';
 import {
@@ -557,3 +623,142 @@ describe('Phase 2A の公開API（バレル経由）', () => {
     expect(applyFaults(built.value.session, []).ok).toBe(true);
   });
 });
+
+describe('Phase 3 の公開API（バレル経由。Task 20）', () => {
+  it('内蔵課題は28題（モードB 8 / C1 4 / C2 8 / D 8）', () => {
+    expect(BUILTIN_ALL_PROBLEMS).toHaveLength(28);
+    expect(BUILTIN_PLC_PROBLEMS).toHaveLength(8);
+  });
+
+  it('exposes the ladder schema pieces (schema/ladder.js)', () => {
+    expect(LADDER_COIL_COL).toBe(15);
+    expect(MAX_DEVICE_COMMENT_LENGTH).toBe(32);
+    expect(MAX_DEVICE_COMMENTS).toBe(200);
+    expect(DeviceKindSchema.safeParse('input').success).toBe(true);
+    const device: DeviceData = { kind: 'input', index: 0 };
+    expect(DeviceSchema.safeParse(device).success).toBe(true);
+    const cell: CellData = { kind: 'contact', type: 'NO', device };
+    expect(CellSchema.safeParse(cell).success).toBe(true);
+    expect(LadderNetworkSchema.safeParse({ id: 'n1', cells: [[cell]] }).success).toBe(true);
+    const comments: DeviceCommentsData = { X0: 'PB1' };
+    expect(DeviceCommentsSchema.safeParse(comments).success).toBe(true);
+    const ladder: LadderProgramData = simpleLadderJsonAsProgram();
+    expect(LadderProgramSchema.safeParse(ladder).success).toBe(true);
+  });
+
+  it('exposes the PLC problem schema pieces and resolvePlcIo (schema/plc.js, schema/judge.js)', () => {
+    expect(PLC_VENDORS).toContain('mitsubishi');
+    expect(PLC_MODELS).toContain('FX5U');
+    expect(PHASE3_MODELS).toEqual(['FX5U']);
+    expect(PlcRefSchema.safeParse({ vendor: 'mitsubishi', model: 'FX5U' }).success).toBe(true);
+    expect(PlcIoModeSchema.safeParse('fixed').success).toBe(true);
+    expect(PlcWiringSchema.safeParse('sink').success).toBe(true);
+    const inputMap: PlcInputMapData = { x: 0, pb: 'PB1' };
+    expect(PlcInputMapSchema.safeParse(inputMap).success).toBe(true);
+    const outputMap: PlcOutputMapData = { y: 0, cr: 'CR1', pl: 'PL1' };
+    expect(PlcOutputMapSchema.safeParse(outputMap).success).toBe(true);
+    const io: PlcIoData = {
+      mode: 'fixed',
+      wiring: 'sink',
+      inputs: [inputMap],
+      outputs: [outputMap],
+    };
+    expect(PlcIoSchema.safeParse(io).success).toBe(true);
+    expect(DEFAULT_PLC_IO.inputs).toHaveLength(3);
+    expect(DEFAULT_PLC_IO.outputs).toHaveLength(4);
+    const resolved: ResolvedPlcIo = resolvePlcIo(io);
+    expect(resolved.inputs).toHaveLength(1);
+
+    const plc: PlcProblem = PlcProblemSchema.parse(plcProblemJson());
+    expect(isPlcProblem(plc)).toBe(true);
+
+    expect(PLC_DEFAULT_STATIC_CHECKS.twoStage).toBe(true);
+    expect(PlcJudgeSettingsSchema.parse({}).staticChecks).toEqual(PLC_DEFAULT_STATIC_CHECKS);
+  });
+
+  it('builds a reference PLC session and judges it against itself (plc-reference.js, judge-plc.js)', () => {
+    expect(PLC_WIRE_COLOR).toBe('青');
+    const plc: PlcProblem = PlcProblemSchema.parse(plcProblemJson());
+    const built: PlcReferenceResult = buildPlcReferenceSession(plc, JIPM_BOARD);
+    if (!built.ok) throw new Error(JSON.stringify(built.errors, null, 2));
+    const circuit: PlcReferenceCircuit = built.value;
+    expect(plcBoardFor(plc, JIPM_BOARD)).toBeDefined();
+    const wires: PlcWireSpec[] = plcWiringPlan(resolvePlcIo(plc.io), circuit.unit);
+    expect(wires.length).toBeGreaterThan(0);
+    expect(plcWiringPlanIssues(resolvePlcIo(plc.io), circuit.session)).toEqual([]);
+
+    const judged: JudgePlcOutcome = judgePlcReference(plc, JIPM_BOARD);
+    expect(judged.ok).toBe(true);
+    if (!judged.ok) return;
+    const result: JudgePlcResult = judged.value;
+    expect(result.mode).toBe('plc');
+    expect(result.passed).toBe(true);
+    expect(plcTimerMarkers(circuit.program)).toEqual([]);
+
+    const traineeJudged = judgePlc(plc, JIPM_BOARD, circuit.session, plc.referenceLadder);
+    expect(traineeJudged.ok && traineeJudged.value.passed).toBe(true);
+  });
+
+  it('couples the PLC scan into a simulation and replays it deterministically (plc-io.js, runner.js)', () => {
+    const plc: PlcProblem = PlcProblemSchema.parse(plcProblemJson());
+    const built = buildPlcReferenceSession(plc, JIPM_BOARD);
+    if (!built.ok) throw new Error(JSON.stringify(built.errors, null, 2));
+
+    const run: PlcRunResult = runPlcOperations(
+      built.value.netlist,
+      built.value.program,
+      plc.operations,
+      { durationMs: plc.durationMs },
+    );
+    expect(run.lastTickMs).toBe(plc.durationMs - TICK_MS);
+
+    const simulation = new Simulation(built.value.netlist);
+    const port = createSimulationIoPort(simulation);
+    expect(port).toBeDefined();
+    const coupling: PlcCoupling = createPlcCoupling(simulation, built.value.program, {});
+    expect(coupling.runtime).toBeDefined();
+
+    const replayed = runOperationsOn(simulation, plc.operations, {
+      durationMs: plc.durationMs,
+      beforeTick: coupling.beforeTick,
+    });
+    expect(replayed.lastTickMs).toBe(plc.durationMs - TICK_MS);
+    const options: PlcCouplingOptions = {};
+    const runOptions: PlcRunOptions = { durationMs: plc.durationMs, ...options };
+    expect(runOptions.durationMs).toBe(plc.durationMs);
+  });
+
+  it('exposes the PLC static checks (plc-static-checks.js)', () => {
+    expect(BOARD_POWER_PREFIXES).toContain('P.');
+    const plc: PlcProblem = PlcProblemSchema.parse(plcProblemJson());
+    const built = buildPlcReferenceSession(plc, JIPM_BOARD);
+    if (!built.ok) throw new Error(JSON.stringify(built.errors, null, 2));
+    const run = runPlcOperations(built.value.netlist, built.value.program, plc.operations, {
+      durationMs: plc.durationMs,
+    });
+    const context: PlcCheckContext = {
+      unit: built.value.unit,
+      io: built.value.io,
+      roles: built.value.session.socketRoles,
+    };
+    const input: StaticCheckInput = {
+      session: built.value.session,
+      netlist: built.value.netlist,
+      log: run.log,
+      hazards: run.events.hazards(),
+      chatters: run.events.chatters(),
+      allowedColors: [PLC_WIRE_COLOR],
+      plc: context,
+    };
+    expect(checkTwoStage(input).ok).toBe(true);
+    expect(checkPlcPowerIndependent(input).ok).toBe(true);
+    expect(checkIoAssignment(input).ok).toBe(true);
+    expect(detectPlcWiring(buildNets(built.value.netlist), built.value.unit)).toBeDefined();
+  });
+});
+
+/** `plcProblemJson().referenceLadder` を `LadderProgramData` として使う。 */
+function simpleLadderJsonAsProgram(): LadderProgramData {
+  const problem = plcProblemJson();
+  return problem.referenceLadder as LadderProgramData;
+}

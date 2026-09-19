@@ -111,6 +111,7 @@ export {
   isAssembleProblem,
   isInspectPartsProblem,
   isInspectRepairProblem,
+  isPlcProblem,
   parseProblem,
   problemJsonSchema,
   ProblemSchema,
@@ -120,9 +121,88 @@ export {
   type ProblemFailureReason,
   type ProblemIssue,
   type SupportedProblem,
-  // `isPlcProblem` / `PlcProblemSchema` / モードD関連の型はまだこのバレルに乗せない
-  // （公開APIの一覧は Task 20 で確定する）。
 } from './schema/index.js';
+
+export {
+  CellSchema,
+  DeviceCommentsSchema,
+  DeviceKindSchema,
+  DeviceSchema,
+  LADDER_COIL_COL,
+  LadderNetworkSchema,
+  LadderProgramSchema,
+  MAX_DEVICE_COMMENT_LENGTH,
+  MAX_DEVICE_COMMENTS,
+  type CellData,
+  type DeviceCommentsData,
+  type DeviceData,
+  type LadderProgramData,
+} from './schema/ladder.js';
+
+export {
+  DEFAULT_PLC_IO,
+  PHASE3_MODELS,
+  PLC_MODELS,
+  PLC_VENDORS,
+  PlcInputMapSchema,
+  PlcIoModeSchema,
+  PlcIoSchema,
+  PlcOutputMapSchema,
+  PlcProblemSchema,
+  PlcRefSchema,
+  PlcWiringSchema,
+  resolvePlcIo,
+  type PlcInputMapData,
+  type PlcIoData,
+  type PlcOutputMapData,
+  type PlcProblem,
+  type ResolvedPlcIo,
+} from './schema/plc.js';
+
+export { PLC_DEFAULT_STATIC_CHECKS, PlcJudgeSettingsSchema } from './schema/judge.js';
+
+export {
+  createPlcCoupling,
+  createSimulationIoPort,
+  runPlcOperations,
+  type PlcCoupling,
+  type PlcCouplingOptions,
+  type PlcRunOptions,
+  type PlcRunResult,
+} from './plc-io.js';
+
+export {
+  buildPlcReferenceSession,
+  PLC_WIRE_COLOR,
+  plcBoardFor,
+  plcWiringPlan,
+  plcWiringPlanIssues,
+  type PlcReferenceCircuit,
+  type PlcReferenceResult,
+  type PlcWireSpec,
+} from './plc-reference.js';
+
+export {
+  BOARD_POWER_PREFIXES,
+  checkIoAssignment,
+  checkPlcPowerIndependent,
+  checkTwoStage,
+  detectPlcWiring,
+} from './plc-static-checks.js';
+
+// `StaticCheckInput` / `StaticCheckResult` は既に `./static-checks.js` 経由で公開されている。
+// 重複させない
+export type { PlcCheckContext } from './static-check-types.js';
+
+export {
+  judgePlc,
+  judgePlcReference,
+  plcTimerMarkers,
+  type JudgePlcOutcome,
+  type JudgePlcResult,
+} from './judge-plc.js';
+
+export { BUILTIN_PLC_PROBLEMS } from './builtin/index.js';
 
 // `loadProblemsFromDir` / `mergeProblemSets`（`node:fs` を使う）はこのバレルに載せない。
 // renderer（ブラウザ相当）がこのバレルの何か1つでも import すると ESM の評価順で
@@ -141,7 +221,13 @@ export {
   type SchematicProblem,
 } from './reference.js';
 
-export { powerUp, runOperations, type RunOptions, type RunResult } from './runner.js';
+export {
+  powerUp,
+  runOperations,
+  runOperationsOn,
+  type RunOptions,
+  type RunResult,
+} from './runner.js';
 
 export {
   buildTimeChart,
