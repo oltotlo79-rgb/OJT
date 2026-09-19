@@ -137,6 +137,9 @@ export function cameraPose(preset: CameraPreset): CameraPose {
   // 16:10 のビューポート（aspect 1.6）なら 305mm。1割の余白を足した w × 1.05 を面直視の距離にする。
   const faceDistance = Math.max(w * 1.05, h * 1.55);
   switch (preset) {
+    // `plc`（机上のPLC本体と壁コンセントを収める視点）は Plan 3B Task 10 が `PLC_VIEW_RECT` を
+    // 足して実装する。それまでは正面視と同じ（画角が足りないだけで、破綻はしない）。決定表#6
+    case 'plc':
     case 'front':
       return {
         position: boardToWorld([0, 0, faceDistance]),

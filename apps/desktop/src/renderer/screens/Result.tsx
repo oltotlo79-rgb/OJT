@@ -1,6 +1,6 @@
 import { isAssembleProblem, isInspectPartsProblem, isInspectRepairProblem } from '@ojt/content';
 import { useEffect, type JSX } from 'react';
-import { isInspectJudge, useStore } from '../app/store.js';
+import { isInspectJudge, isPlcJudge, useStore } from '../app/store.js';
 import { tryOjtApi } from '../app/ojt-api.js';
 import { JA } from '../i18n/ja.js';
 import { InspectPartsResult } from '../result/InspectPartsResult.js';
@@ -51,8 +51,8 @@ export function Result(): JSX.Element {
   }
 
   /*
-   * 判定結果のモードで結果画面を選ぶ。3モードとも `mode` を持つ（Plan 2A I-3）ので、
-   * `isInspectJudge()` は `mode` が `'assemble'` 以外かどうかで振り分ける（`store.ts`）。
+   * 判定結果のモードで結果画面を選ぶ。4モードとも `mode` を持つ（Plan 2A I-3 ＋ 3A）ので、
+   * `isInspectJudge()` は `inspect-parts` / `inspect-repair` の明示の2値で振り分ける（`store.ts`）。
    * 課題と結果のモードが食い違っている（保存データの取り違え等）ときは、判定が無いのと
    * 同じ扱いにして一覧へ戻せるようにする。
    */
@@ -103,7 +103,11 @@ export function Result(): JSX.Element {
     );
   }
 
-  if (!isAssembleProblem(problem)) {
+  /*
+   * モードDの結果画面は Plan 3B Task 13 が足す。それまでは判定が無いのと同じ扱いにして
+   * 一覧へ戻せるようにする（`ResultView` はモードBの `JudgeResult` しか受けない）。
+   */
+  if (!isAssembleProblem(problem) || isPlcJudge(judge)) {
     return (
       <div className={styles.center}>
         <p>{JA.result.noResult}</p>

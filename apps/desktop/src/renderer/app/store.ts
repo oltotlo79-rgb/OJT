@@ -16,6 +16,7 @@ import {
   isAssembleProblem,
   isInspectPartsProblem,
   isInspectRepairProblem,
+  isPlcProblem,
   REPAIR_WIRE_COLOR,
   resolveCompareSignals,
   resolveFaults,
@@ -25,12 +26,15 @@ import {
   type InspectPartAnswer,
   type InspectPartsProblem,
   type JudgeInspectResult,
+  type JudgePlcResult,
   type JudgeResult,
   type PartTruth,
   type RepairCircuit,
   type SupportedProblem,
   type TimeChartSignalSpec,
 } from '@ojt/content';
+import type { LadderProgram } from '@ojt/ladder-core';
+import type { DialectId } from '@ojt/plc-dialects';
 import { create } from 'zustand';
 import type { ProblemListPayload, WorkFile } from '../../shared/ipc.js';
 import type { SimSnapshot } from '../../worker/protocol.js';
@@ -43,15 +47,29 @@ import {
   type SessionCommand,
 } from '../session/commands.js';
 import type { ToolMode } from '../session/interaction.js';
+import {
+  emptyLadderHistory,
+  initialLadder,
+  pushLadder,
+  redoLadder,
+  undoLadder,
+  type LadderCursor,
+  type LadderEditorMode,
+  type LadderHistory,
+} from '../session/ladder.js';
+import { boardForProblem } from '../session/plc-session.js';
 import { nextProbeAfter } from '../session/tester.js';
 import {
+  NO_CONVERT_ISSUES,
   NO_HIGHLIGHT,
   type CameraPreset,
+  type ConvertIssues,
   type HazardBanner,
   type HighlightSelection,
   type ListMode,
   type LogLine,
   type PendingReport,
+  type PlcMonitorSnapshot,
   type ProbeSide,
   type Route,
   type Toast,
@@ -70,13 +88,18 @@ import {
  */
 
 export {
+  NO_CONVERT_ISSUES,
   NO_HIGHLIGHT,
   type CameraPreset,
+  type ConvertErrorLine,
+  type ConvertIssues,
+  type ConvertWarningLine,
   type HazardBanner,
   type HighlightSelection,
   type ListMode,
   type LogLine,
   type PendingReport,
+  type PlcMonitorSnapshot,
   type ProbeSide,
   type Route,
   type Toast,
@@ -142,15 +165,32 @@ export function schematicPolicy(grade: 1 | 2 | 3): { shown: boolean; toggleable:
 /** 警告バナーを自動で畳むまでの時間[ms]。§5.6 */
 export const HAZARD_BANNER_TTL_MS = 6000;
 
-/** 判定結果（モードB／C1／C2）。§8.3 / §9.1 / §9.2 */
-export type AnyJudgeResult = JudgeResult | JudgeInspectResult;
+/** デバイスコメント1件の長さの上限（`@ojt/content` の `MAX_DEVICE_COMMENT_LENGTH` と同じ値）。§10.7 */
+export const DEVICE_COMMENT_LIMIT = 32;
+
+/** デバイスコメントの件数の上限（`@ojt/content` の `MAX_DEVICE_COMMENTS` と同じ値）。§10.7 */
+export const DEVICE_COMMENT_COUNT_LIMIT = 200;
+
+/** 画面の分割。決定表#10 */
+export type LadderViewMode = 'ladder' | 'split' | 'board';
+
+/** 判定結果（モードB／C1／C2／D）。§8.3 / §9.1 / §9.2 / §10.8 */
+export type AnyJudgeResult = JudgeResult | JudgeInspectResult | JudgePlcResult;
 
 /**
  * 点検系（C1/C2）の判定結果か。§9.1 / §9.2
- * 3モードとも `mode` を持つ（Plan 2A I-3）ので、`'assemble'` かどうかで判別する。
+ *
+ * 4モードとも `mode` を持つ（Plan 2A I-3 ＋ 3A）。モードDが増えた以上「組立でなければ点検」は
+ * 成り立たない（`Result.tsx` が C1/C2 の画面にモードDの結果を流し込んでしまう）ので、
+ * **明示の2値判定**にする。
  */
 export function isInspectJudge(result: AnyJudgeResult): result is JudgeInspectResult {
-  return result.mode !== 'assemble';
+  return result.mode === 'inspect-parts' || result.mode === 'inspect-repair';
+}
+
+/** モードDの判定結果か。§10.8 */
+export function isPlcJudge(result: AnyJudgeResult): result is JudgePlcResult {
+  return result.mode === 'plc';
 }
 
 /**
@@ -238,6 +278,35 @@ export interface AppState {
   pendingReport: PendingReport | undefined;
   /** 回路図 ⇄ 3D盤の連動ハイライト。§9.2 */
   highlight: HighlightSelection;
+
+  /** 訓練者のラダー（モードDのみ）。§10.3 */
+  ladder: LadderProgram | undefined;
+  /** デバイスコメント（キーは `deviceLabel()` の形）。§10.7 */
+  ladderComments: Record<string, string>;
+  /** ラダー専用の取り消しスタック（盤の `history` とは別。決定表#2） */
+  ladderHistory: LadderHistory;
+  /** セルカーソル。§10.7 */
+  ladderCursor: LadderCursor;
+  /** 書込み／読出し／モニタ。§10.6 */
+  ladderMode: LadderEditorMode;
+  /** ラダーエディタにフォーカスがあるか（キーの宛先を決める。決定表#3） */
+  ladderFocused: boolean;
+  /** 画面の分割。決定表#10 */
+  ladderView: LadderViewMode;
+  /** セル入力が挿入か上書きか（`Ins` で切り替える）。決定表#12b */
+  insertMode: 'insert' | 'overwrite';
+  /** `Shift+F3`（モニタ書込み）の注記トーストを既に出したか。決定表#11 */
+  monitorWriteNoticeShown: boolean;
+  /** いま使っている方言（Phase 3 は常に `mitsubishi`）。§10.5 */
+  dialectId: DialectId;
+  /** 最後の編集のあと「変換」を通したか。§10.6 / 3A H-1 */
+  converted: boolean;
+  /** 出力ウィンドウの中身。§10.6 */
+  convertIssues: ConvertIssues;
+  /** モニタ中の通電状況（モニタでないときは undefined）。決定表#5 */
+  plcMonitor: PlcMonitorSnapshot | undefined;
+  /** PLCが RUN 中か。§10.6 */
+  plcRunning: boolean;
 
   mode: ToolMode;
   wireColor: WireColor;
@@ -372,6 +441,34 @@ export interface AppState {
   setPendingReport: (target: PendingReport | undefined) => void;
   /** 連動ハイライトを設定する。§9.2 */
   setHighlight: (selection: HighlightSelection) => void;
+  /** ラダーを差し替える（前の状態を履歴に積み、変換済みフラグを落とす）。§10.6 */
+  setLadder: (program: LadderProgram) => void;
+  /** ラダーを履歴を積まずに差し替える（作業ファイルからの復元）。§12.3 */
+  restoreLadder: (program: LadderProgram, comments?: Record<string, string>) => void;
+  /** セルカーソルを動かす。 */
+  setLadderCursor: (cursor: LadderCursor) => void;
+  /** 書込み／読出し／モニタを切り替える。§10.6 */
+  setLadderMode: (mode: LadderEditorMode) => void;
+  /** ラダーエディタのフォーカス。決定表#3 */
+  setLadderFocused: (focused: boolean) => void;
+  /** 画面の分割。決定表#10 */
+  setLadderView: (view: LadderViewMode) => void;
+  /** 挿入・上書きを切り替える（`Ins`）。切り替えた**後**の値を返す。決定表#12b */
+  toggleInsert: () => 'insert' | 'overwrite';
+  /** `Shift+F3` の注記トーストを「出した」と記録する（初回だけ true を返す）。決定表#11 */
+  markMonitorWriteNotice: () => boolean;
+  /** デバイスコメントを1件入れる（空文字で削除、32文字で切り詰め、200件まで）。§10.7 */
+  setDeviceComment: (device: string, text: string) => void;
+  /** 「変換」の結果を入れる。§10.6 */
+  setConverted: (converted: boolean, issues: ConvertIssues) => void;
+  /** モニタのスナップショット。決定表#5 */
+  setPlcMonitor: (monitor: PlcMonitorSnapshot | undefined) => void;
+  /** RUN/STOP。§10.6 */
+  setPlcRunning: (running: boolean) => void;
+  /** ラダーを1手戻す（戻せたら true）。決定表#2 */
+  undoLadderEdit: () => boolean;
+  /** ラダーを1手やり直す（やり直せたら true）。決定表#2 */
+  redoLadderEdit: () => boolean;
   /** 画面を描けた（`ErrorBoundary` から）。連続リセットの数え直し。§13 #5 */
   noteRenderSuccess: () => void;
   /**
@@ -411,12 +508,55 @@ function nextId(): number {
  * そのときは故障入りの回路も一緒に手放している（§13 #5）。
  */
 export function sessionForProblem(problem: SupportedProblem): BoardSession {
-  return createSession(JIPM_BOARD, {
+  /*
+   * モードDは机上のPLC本体と壁コンセントを持つ派生盤で作る（3A 引渡し表）。`id` は同じなので
+   * `boardId` の照合も作業ファイルの読み戻しもそのまま通る。モードB/C1/C2 では
+   * `boardForProblem()` が `JIPM_BOARD` をそのまま返すので挙動は変わらない。
+   */
+  return createSession(boardForProblem(problem), {
     roles: toSocketRoles(problem.board.socketRoles),
     allowedColors: ['青'],
     extraParts: (problem.board.extraParts ?? []).map((name) => partId(name)),
     inventory: problem.inventory,
   });
+}
+
+/** モードDの状態の初期値（課題を開く・離れるときに必ずここへ戻す）。 */
+function plcFields(
+  problem?: SupportedProblem,
+): Pick<
+  AppState,
+  | 'ladder'
+  | 'ladderComments'
+  | 'ladderHistory'
+  | 'ladderCursor'
+  | 'ladderMode'
+  | 'ladderFocused'
+  | 'ladderView'
+  | 'insertMode'
+  | 'monitorWriteNoticeShown'
+  | 'converted'
+  | 'convertIssues'
+  | 'plcMonitor'
+  | 'plcRunning'
+> {
+  const isPlc = problem !== undefined && isPlcProblem(problem);
+  return {
+    // モードD以外では `undefined`（3Dだけの画面がラダーを持たない）
+    ladder: isPlc ? initialLadder() : undefined,
+    ladderComments: {},
+    ladderHistory: emptyLadderHistory(),
+    ladderCursor: { networkId: 'n1', row: 0, col: 0 },
+    ladderMode: 'write',
+    ladderFocused: false,
+    ladderView: 'split',
+    insertMode: 'overwrite',
+    monitorWriteNoticeShown: false,
+    converted: false,
+    convertIssues: NO_CONVERT_ISSUES,
+    plcMonitor: undefined,
+    plcRunning: false,
+  };
 }
 
 /** アプリ全体のストア。 */
@@ -441,6 +581,9 @@ export const useStore = create<AppState>((set, get) => ({
   resolvedFaults: undefined,
   pendingReport: undefined,
   highlight: NO_HIGHLIGHT,
+
+  ...plcFields(),
+  dialectId: 'mitsubishi',
 
   mode: 'wire',
   wireColor: '青',
@@ -554,7 +697,8 @@ export const useStore = create<AppState>((set, get) => ({
       circuit,
       history: emptyHistory(),
       route: 'session',
-      mode: isAssembleProblem(problem) ? 'wire' : 'tester',
+      // 配線する2モード（B と D）は電線ツール、点検系（C1/C2）はテスターから始める
+      mode: isAssembleProblem(problem) || isPlcProblem(problem) ? 'wire' : 'tester',
       wireColor,
       pendingTerminal: undefined,
       hoveredTerminal: undefined,
@@ -592,6 +736,7 @@ export const useStore = create<AppState>((set, get) => ({
       resolvedFaults,
       pendingReport: undefined,
       highlight: NO_HIGHLIGHT,
+      ...plcFields(problem),
     });
     return true;
   },
@@ -834,6 +979,95 @@ export const useStore = create<AppState>((set, get) => ({
   setHighlight: (highlight) => {
     set({ highlight });
   },
+  setLadder: (program) => {
+    const current = get().ladder;
+    set({
+      ladder: program,
+      // 編集したら変換済みではなくなる（H-1: 判定は変換を通ったものだけ）
+      converted: false,
+      convertIssues: NO_CONVERT_ISSUES,
+      ...(current === undefined ? {} : { ladderHistory: pushLadder(get().ladderHistory, current) }),
+    });
+  },
+  restoreLadder: (program, comments) => {
+    set({
+      ladder: program,
+      ladderHistory: emptyLadderHistory(),
+      converted: false,
+      convertIssues: NO_CONVERT_ISSUES,
+      ...(comments === undefined ? {} : { ladderComments: { ...comments } }),
+    });
+  },
+  setLadderCursor: (ladderCursor) => {
+    set({ ladderCursor });
+  },
+  setLadderMode: (ladderMode) => {
+    set({ ladderMode });
+  },
+  setLadderFocused: (ladderFocused) => {
+    set({ ladderFocused });
+  },
+  setLadderView: (ladderView) => {
+    set({ ladderView });
+  },
+  toggleInsert: () => {
+    const insertMode = get().insertMode === 'insert' ? 'overwrite' : 'insert';
+    set({ insertMode });
+    return insertMode;
+  },
+  markMonitorWriteNotice: () => {
+    // 初回だけ true（`Shift+F3` のトーストを1回しか出さない。決定表#11）
+    if (get().monitorWriteNoticeShown) return false;
+    set({ monitorWriteNoticeShown: true });
+    return true;
+  },
+  setDeviceComment: (device, text) => {
+    const comments = { ...get().ladderComments };
+    const trimmed = text.trim();
+    if (trimmed.length === 0) delete comments[device];
+    else if (
+      Object.hasOwn(comments, device) ||
+      Object.keys(comments).length < DEVICE_COMMENT_COUNT_LIMIT
+    ) {
+      comments[device] = trimmed.slice(0, DEVICE_COMMENT_LIMIT);
+    }
+    set({ ladderComments: comments });
+  },
+  setConverted: (converted, convertIssues) => {
+    set({ converted, convertIssues });
+  },
+  setPlcMonitor: (plcMonitor) => {
+    set({ plcMonitor });
+  },
+  setPlcRunning: (plcRunning) => {
+    set({ plcRunning });
+  },
+  undoLadderEdit: () => {
+    const { ladder, ladderHistory } = get();
+    if (ladder === undefined) return false;
+    const step = undoLadder(ladderHistory, ladder);
+    if (step === undefined) return false;
+    set({
+      ladder: step.program,
+      ladderHistory: step.history,
+      converted: false,
+      convertIssues: NO_CONVERT_ISSUES,
+    });
+    return true;
+  },
+  redoLadderEdit: () => {
+    const { ladder, ladderHistory } = get();
+    if (ladder === undefined) return false;
+    const step = redoLadder(ladderHistory, ladder);
+    if (step === undefined) return false;
+    set({
+      ladder: step.program,
+      ladderHistory: step.history,
+      converted: false,
+      convertIssues: NO_CONVERT_ISSUES,
+    });
+    return true;
+  },
   noteRenderSuccess: () => {
     if (get().restartAttempts !== 0) set({ restartAttempts: 0 });
   },
@@ -884,6 +1118,17 @@ export const useStore = create<AppState>((set, get) => ({
       nextProbe: 'black',
       // 課題を作り直す操作なので回路図ヒントを開いた回数も数え直す（§8.4）
       schematicOpenCount: 0,
+      /*
+       * 盤は作り直すがラダーは残す（§13 #5。レビュー指摘 B3）。`restartSession()` は課題から
+       * 離れるわけではないので `plcFields()` は混ぜない（混ぜると訓練者が組んだラダーが
+       * 最初のやり直しで消える）。Worker は `load` で作り直されるので、「変換済み」「モニタ」
+       * 「RUN」の3つだけを落として画面と Worker を揃える
+       */
+      converted: false,
+      convertIssues: NO_CONVERT_ISSUES,
+      plcMonitor: undefined,
+      plcRunning: false,
+      ladderMode: 'write',
     });
     // 1回目は作業保持を優先して盤を残す。2回目は盤そのものが描けないとみて作り直す（§13 #5）
     if (attempts < RESTART_FALLBACK_ATTEMPTS || problem === undefined) return;
@@ -937,6 +1182,8 @@ export const useStore = create<AppState>((set, get) => ({
       nextProbe: 'black',
       // 課題を離れるので回路図ヒントを開いた回数も手放す（§8.4）
       schematicOpenCount: 0,
+      // 課題を離れるのでモードDの状態も丸ごと手放す（Plan 2B Task 4 Step 8）
+      ...plcFields(),
     });
   },
 }));

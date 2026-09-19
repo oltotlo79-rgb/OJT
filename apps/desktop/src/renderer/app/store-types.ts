@@ -22,8 +22,11 @@ export type ListMode = SessionMode | undefined;
  * `front`（正面）／`top`（俯瞰）／`socket`（ソケット拡大）はツールバーの3ボタンと同じ。
  * `back` / `left` / `right` / `bottom` は Blender 風のテンキー操作とビューキューブの面から
  * 使う方向プリセット（2026-09-14 の利用者要望）。
+ * `plc` は机上のPLC本体と壁コンセントを画角に収める視点で、**モードDだけ**ツールバーに出る
+ * （テンキーとビューキューブの割当は変えない。決定表#6）。
  */
-export type CameraPreset = 'front' | 'top' | 'socket' | 'back' | 'left' | 'right' | 'bottom';
+export type CameraPreset =
+  'front' | 'top' | 'socket' | 'back' | 'left' | 'right' | 'bottom' | 'plc';
 
 /**
  * 画面に出す短いお知らせ（配線失敗の理由など）。§8.2
@@ -81,3 +84,59 @@ export interface HighlightSelection {
 
 /** 何も光っていない状態。 */
 export const NO_HIGHLIGHT: HighlightSelection = { cellIds: [], terminals: [], wireIds: [] };
+
+/**
+ * モニタ（`F3`）の通電状況。§10.7 / 決定表#5
+ *
+ * `PlcSnapshot.poweredCells` の `Record<string, boolean>` をそのまま運ぶと、33ms ごとに
+ * 千数百個の真偽値が新しいオブジェクトで届き、セレクタの比較も毎回その数だけ走る。
+ * ネットワーク1本＝行を連ねた `'0110…'` の**文字列1本**に畳むと、比較も購読も文字列1本で済む。
+ */
+export interface PlcMonitorSnapshot {
+  scanCount: number;
+  tMs: number;
+  /** ネットワークID → 「行 × 16列」を連ねた `'0'`/`'1'` の文字列。ENDネットワークは入らない。 */
+  powered: Record<string, string>;
+  inputs: boolean[];
+  outputs: boolean[];
+  internals: Record<number, boolean>;
+  timers: Record<number, { elapsedMs: number; on: boolean }>;
+  counters: Record<number, { value: number; on: boolean }>;
+}
+
+/**
+ * 出力ウィンドウの1行（`ConvertError` を画面の語彙に直したもの）。
+ *
+ * `@ojt/plc-dialects` の `ConvertError` / `@ojt/ladder-core` の `CompileError` を**構造的に写した**
+ * 型である。`store-types.ts` は「React にも three にも依存しない値型」を置く場所で、`Device` の
+ * ようなライブラリの型を持ち込むとストアの値が構造化複製できるかどうかが読めなくなる
+ * （Worker と作業ファイルの両方を通る）。写像は Task 6 の `session/ladder-errors.ts` が1箇所で持つ。
+ */
+export interface ConvertErrorLine {
+  source: 'structure' | 'dialect';
+  code: string;
+  message: string;
+  networkId?: string;
+  row?: number;
+  col?: number;
+}
+
+/** 変換警告の1行（二重コイル）。 */
+export interface ConvertWarningLine {
+  code: string;
+  message: string;
+  networkId: string;
+  row: number;
+  col: number;
+}
+
+/** 出力ウィンドウに並べるもの。§10.6 */
+export interface ConvertIssues {
+  errors: ConvertErrorLine[];
+  warnings: ConvertWarningLine[];
+  /** 変換が通ったときの使用デバイス一覧（`CompiledProgram.usage`）。§10.8 */
+  usage: { reads: string[]; writes: string[] } | undefined;
+}
+
+/** 空の変換結果（課題を開いた直後・編集した直後）。 */
+export const NO_CONVERT_ISSUES: ConvertIssues = { errors: [], warnings: [], usage: undefined };
