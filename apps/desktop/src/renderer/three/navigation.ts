@@ -21,6 +21,12 @@ export interface OrbitControlsLike {
   target: { x: number; y: number; z: number; set: (x: number, y: number, z: number) => void };
   minPolarAngle: number;
   maxPolarAngle: number;
+  /**
+   * 慣性の強さ（`OrbitControls.dampingFactor`）。`update()` 1回で目標の何割を詰めるか。
+   * ビューキューブのドラッグ中だけ **1**（＝慣性なし・1回で全部詰める）に差し替えて、
+   * 指の動きに 1:1 で追従させる（2026-09-19 の利用者要望「サクサク動くように」）。
+   */
+  dampingFactor: number;
   /** ボタンごとの操作（`three` の `MOUSE`）。修飾キーで中ボタンだけ差し替える。 */
   mouseButtons: {
     LEFT?: number | undefined;
@@ -182,6 +188,159 @@ export function presetForDirection(direction: readonly [number, number, number])
     }
   }
   return best;
+}
+
+/**
+ * ビューキューブの当たり判定1つ分（面6・辺12・角8 の計26）。§12.2
+ * 2026-09-19 の利用者要望「blender のようにキューブを選択しサクサク動くようにしたい」。
+ *
+ * Blender のナビゲーションギズモと同じく、**面だけでなく辺と角も押せる**ようにする。
+ * 以前は辺・角を押しても `presetForDirection()` が6つの面プリセットのどれかへ丸めていたので、
+ * 斜め45°の視点には決して着けなかった。
+ */
+export interface GizmoTarget {
+  /** 当たり判定の名前（`front` / `front-top` / `front-top-right` など）。 */
+  id: string;
+  /** 面・辺・角のどれか（押せる大きさと見た目が変わる）。 */
+  kind: 'face' | 'edge' | 'corner';
+  /** キューブ中心からの向き（各成分は -1 / 0 / 1。正規化はしていない）。 */
+  direction: readonly [number, number, number];
+  /** 面のときだけ、対応する視点プリセット（ツールバーのボタン・テンキーと同じ場所に着く）。 */
+  preset?: CameraPreset | undefined;
+  /** 面のときだけ、キューブに焼く日本語の名札。 */
+  label?: string | undefined;
+}
+
+/**
+ * キューブの面に焼く名札（three の `BoxGeometry` のマテリアル順＝ +X / -X / +Y / -Y / +Z / -Z）。
+ * 盤面の法線が +Z なので、+Z が「正面」。§15 の文言方針にあわせて日本語にする。
+ */
+export const GIZMO_FACE_ORDER: readonly Extract<
+  CameraPreset,
+  'right' | 'left' | 'top' | 'bottom' | 'front' | 'back'
+>[] = ['right', 'left', 'top', 'bottom', 'front', 'back'];
+
+/** 面 → 名札。 */
+const FACE_LABELS: Readonly<Record<(typeof GIZMO_FACE_ORDER)[number], string>> = {
+  right: '右',
+  left: '左',
+  top: '上',
+  bottom: '下',
+  front: '正面',
+  back: '背面',
+};
+
+/** 向き（各成分 -1/0/1）→ 当たり判定の名前。前後 → 上下 → 左右 の順に並べる。 */
+function gizmoTargetId(direction: readonly [number, number, number]): string {
+  const parts: string[] = [];
+  if (direction[2] !== 0) parts.push(direction[2] > 0 ? 'front' : 'back');
+  if (direction[1] !== 0) parts.push(direction[1] > 0 ? 'top' : 'bottom');
+  if (direction[0] !== 0) parts.push(direction[0] > 0 ? 'right' : 'left');
+  return parts.join('-');
+}
+
+/** 面の向き → 視点プリセット。 */
+const PRESET_FOR_AXIS: ReadonlyArray<{
+  direction: readonly [number, number, number];
+  preset: (typeof GIZMO_FACE_ORDER)[number];
+}> = [
+  { direction: [1, 0, 0], preset: 'right' },
+  { direction: [-1, 0, 0], preset: 'left' },
+  { direction: [0, 1, 0], preset: 'top' },
+  { direction: [0, -1, 0], preset: 'bottom' },
+  { direction: [0, 0, 1], preset: 'front' },
+  { direction: [0, 0, -1], preset: 'back' },
+];
+
+/** 26個の当たり判定（面6 → 辺12 → 角8 の順）。 */
+export const GIZMO_TARGETS: readonly GizmoTarget[] = ((): readonly GizmoTarget[] => {
+  const axis = [-1, 0, 1] as const;
+  const out: GizmoTarget[] = [];
+  for (const x of axis) {
+    for (const y of axis) {
+      for (const z of axis) {
+        const nonZero = (x === 0 ? 0 : 1) + (y === 0 ? 0 : 1) + (z === 0 ? 0 : 1);
+        if (nonZero === 0) continue;
+        const direction: readonly [number, number, number] = [x, y, z];
+        const face = PRESET_FOR_AXIS.find(
+          (entry) =>
+            entry.direction[0] === x && entry.direction[1] === y && entry.direction[2] === z,
+        );
+        out.push({
+          id: gizmoTargetId(direction),
+          kind: nonZero === 1 ? 'face' : nonZero === 2 ? 'edge' : 'corner',
+          direction,
+          ...(face === undefined ? {} : { preset: face.preset, label: FACE_LABELS[face.preset] }),
+        });
+      }
+    }
+  }
+  const rank = { face: 0, edge: 1, corner: 2 } as const;
+  return out.sort((a, b) => rank[a.kind] - rank[b.kind]);
+})();
+
+/**
+ * 辺・角の当たり判定の厚み（1辺1のキューブに対する割合）。§12.2
+ *
+ * 面の押せる範囲は中央の `1 - 2 × この値` の正方形になる。
+ * 96px のキューブなら 角 ≒ 27px 角、辺 ≒ 27×42px、面 ≒ 42×42px。
+ * drei 既定（60px・角15px）では小さすぎて狙えなかった（2026-09-19 の利用者要望）。
+ */
+export const GIZMO_HIT_RATIO = 0.28;
+
+/** 辺・角の箱（キューブの局所座標。1辺を1とする）。 */
+export interface GizmoHitBox {
+  id: string;
+  /** 箱の中心。 */
+  position: readonly [number, number, number];
+  /** 箱の寸法。 */
+  size: readonly [number, number, number];
+}
+
+/** 辺12＋角8の当たり判定の箱（面はラベル付きの本体キューブがそのまま当たり判定になる）。 */
+export const GIZMO_HIT_BOXES: readonly GizmoHitBox[] = GIZMO_TARGETS.filter(
+  (target) => target.kind !== 'face',
+).map((target) => {
+  const offset = 0.5 - GIZMO_HIT_RATIO / 2;
+  const span = 1 - 2 * GIZMO_HIT_RATIO;
+  const axisSize = (value: number): number => (value === 0 ? span : GIZMO_HIT_RATIO);
+  return {
+    id: target.id,
+    position: [
+      target.direction[0] * offset,
+      target.direction[1] * offset,
+      target.direction[2] * offset,
+    ] as const,
+    size: [
+      axisSize(target.direction[0]),
+      axisSize(target.direction[1]),
+      axisSize(target.direction[2]),
+    ] as const,
+  };
+});
+
+/**
+ * 指した向き → 26個のうちいちばん近い当たり判定。§12.2
+ * 面の法線（`event.face.normal`）からでも、辺・角の箱の向きからでも引ける。
+ */
+export function gizmoTargetForDirection(direction: readonly [number, number, number]): GizmoTarget {
+  const [x, y, z] = normalize(direction);
+  let best = GIZMO_TARGETS[0] as GizmoTarget;
+  let bestDot = -Infinity;
+  for (const target of GIZMO_TARGETS) {
+    const [tx, ty, tz] = normalize(target.direction);
+    const dot = tx * x + ty * y + tz * z;
+    if (dot > bestDot) {
+      bestDot = dot;
+      best = target;
+    }
+  }
+  return best;
+}
+
+/** 名前から当たり判定を引く（見つからなければ `undefined`）。 */
+export function gizmoTargetById(id: string): GizmoTarget | undefined {
+  return GIZMO_TARGETS.find((target) => target.id === id);
 }
 
 /** E2E へ出すカメラの状態（隠し要素 `camera-readout` の中身）。 */

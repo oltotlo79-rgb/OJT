@@ -285,6 +285,53 @@ export function cameraPose(preset: CameraPreset, options: CameraPoseOptions = {}
   }
 }
 
+/**
+ * 視点の遷移時間[ms]。§12.2「視点プリセットとギズモのスナップは同じ短い補間で遷移」。
+ * `CameraPresets`（プリセット）と `ViewGizmo`（キューブの辺・角へのスナップ）が共有する。
+ */
+export const VIEW_TRANSITION_MS = 300;
+
+/**
+ * 極角の下限[rad]。真上（極）ちょうどに置くとカメラの上方向（0,1,0）と視線が平行になり
+ * 画が定まらないので、わずかに外す。
+ */
+export const MIN_POLAR_ANGLE_RAD = 0.02;
+
+/**
+ * 任意の向き → 視点。ビューキューブの**辺・角**（45°の斜め視点）のスナップ先。§12.2
+ *
+ * 面の6方向はツールバーと同じ `cameraPose()` のプリセットを使うが、辺12・角8には
+ * 対応するプリセットが無い（プリセットを20個増やすのは筋が悪い）。距離と注視点は
+ * 「いまの視点のまま」にして**向きだけ**その方向へ向け直す。
+ *
+ * 極角は `MAX_POLAR_ANGLE` に丸める。盤の裏側・真下へは回り込めないので、丸めずに置くと
+ * `OrbitControls.update()` が次のフレームで引き戻して視点が落ち着かない（`cameraPose('bottom')`
+ * と同じ理由）。下向きの辺・角は「許される範囲でいちばん低い位置から見上げる」視点になる。
+ */
+export function poseForDirection(
+  direction: readonly [number, number, number],
+  { distance, target }: { distance: number; target: readonly [number, number, number] },
+): CameraPose {
+  const length = Math.hypot(direction[0], direction[1], direction[2]);
+  const [x, y, z] =
+    length === 0
+      ? [0, 0, 1]
+      : ([direction[0] / length, direction[1] / length, direction[2] / length] as const);
+  // three の `Spherical` と同じ取り方（+Y が極、方位角は +Z から +X へ）
+  const azimuth = Math.atan2(x, z);
+  const polar = Math.min(MAX_POLAR_ANGLE, Math.max(MIN_POLAR_ANGLE_RAD, Math.acos(y)));
+  const sin = Math.sin(polar);
+  return {
+    position: [
+      target[0] + distance * sin * Math.sin(azimuth),
+      target[1] + distance * Math.cos(polar),
+      target[2] + distance * sin * Math.cos(azimuth),
+    ],
+    target: [target[0], target[1], target[2]],
+    up: [0, 1, 0],
+  };
+}
+
 /** `t`∈[0,1] を ease-out（3次）に変換する。速く動き出し、減速しながら止まる。 */
 function easeOutCubic(t: number): number {
   const clamped = Math.min(1, Math.max(0, t));

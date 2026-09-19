@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, type JSX } from 'react';
 import { useStore } from '../app/store.js';
 import type { CameraPreset } from '../app/store-types.js';
 import { boardForProblem } from '../session/plc-session.js';
-import { cameraPose, interpolatePose, type CameraPose } from './camera.js';
+import { cameraPose, interpolatePose, VIEW_TRANSITION_MS, type CameraPose } from './camera.js';
 
 /**
  * 視点プリセットの適用。設計仕様 §12.2。
@@ -22,8 +22,11 @@ import { cameraPose, interpolatePose, type CameraPose } from './camera.js';
  * マウント直後（および `OrbitControls` 接続前）は補間せず即座に反映する。
  */
 
-/** プリセット遷移の所要時間[ms]。ギズモのスナップと体感を揃える短い値。§12.2 */
-const TRANSITION_MS = 300;
+/**
+ * プリセット遷移の所要時間[ms]。ギズモのスナップと体感を揃える短い値。§12.2
+ * 値は `camera.ts` に置き、`ViewGizmo`（辺・角へのスナップ）と共有する。
+ */
+const TRANSITION_MS = VIEW_TRANSITION_MS;
 
 /** `OrbitControls` のうちこの層が使う部分。 */
 export interface ControlsLike {

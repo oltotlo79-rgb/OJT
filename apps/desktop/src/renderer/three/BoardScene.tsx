@@ -74,10 +74,17 @@ import { Wire } from './Wire.js';
  */
 
 /**
- * 視点操作の効き（Blender の操作感に寄せる。§12.2 / 2026-09-14 の利用者要望）。
- * 回転はやや控えめ、ズームは素直、慣性は 0.1（約0.5秒で止まる）。
+ * 視点操作の効き（Blender の操作感に寄せる。§12.2 / 2026-09-14・2026-09-19 の利用者要望）。
+ *
+ * `dampingFactor` は「`update()` 1回で目標の何割を詰めるか」。以前の 0.1 だと、
+ * ドラッグ1回ぶんの回転のうちその場で入るのは**1割**だけで、残りは次のフレーム以降に
+ * 9割・8割…と指数で詰まっていく（＝ポインタに対して常に約9フレーム＝150ms 遅れて付いてくる）。
+ * `frameloop="demand"` では `pointermove` 1回につき1フレームしか描かないので、この遅れが
+ * そのまま「回しづらい」になっていた（2026-09-19「3Dの視点の角度を変えるの少し動かしづらい」）。
+ * 0.35 にすると 3フレーム（60fps で約50ms）でほぼ追い付くので、慣性の感じは残したまま
+ * 指に付いてくる。回転量そのものも three 既定の 1.0 に戻して、少ないドラッグでよく回るようにする。
  */
-const ORBIT_FEEL = { rotateSpeed: 0.7, zoomSpeed: 0.9, dampingFactor: 0.1 } as const;
+const ORBIT_FEEL = { rotateSpeed: 1, zoomSpeed: 0.9, dampingFactor: 0.35 } as const;
 
 /** ドラッグの操作 → three の `MOUSE`。 */
 const MOUSE_FOR_ACTION: Readonly<Record<MiddleDragAction, MOUSE>> = {
@@ -463,7 +470,12 @@ function BoardContents({
       // three は修飾キーで回転と平行移動を入れ替えるので、左右の割り当ても打ち消して入れ直す
       const held = shift || ctrl;
       controls.mouseButtons.LEFT = MOUSE_FOR_ACTION[mouseButtonAssignment('rotate', held)];
-      controls.mouseButtons.RIGHT = MOUSE_FOR_ACTION[mouseButtonAssignment('pan', held)];
+      /*
+       * 右ボタンは中ボタンの別名にする（2026-09-19 の利用者要望）。中ボタンの無いマウスや
+       * ノートPCのタッチパッドでも「押して引けば回る」を成立させるため、素＝回転 /
+       * Shift＝平行移動 / Ctrl＝ズーム を中ボタンとまったく同じ表にする。
+       */
+      controls.mouseButtons.RIGHT = MOUSE_FOR_ACTION[middleButtonAssignmentFor({ shift, ctrl })];
       controls.mouseButtons.MIDDLE = MOUSE_FOR_ACTION[middleButtonAssignmentFor({ shift, ctrl })];
     };
     apply(false, false);
@@ -653,9 +665,10 @@ function BoardContents({
       </group>
 
       {/*
-        操作は Blender に合わせる（§12.2 / 2026-09-14 の利用者要望）。
-        左ドラッグ・中ドラッグ＝軌道回転、Shift＋中／右ドラッグ＝平行移動、
-        Ctrl＋中ドラッグ／ホイール＝ズーム。ボタンの割り当ては上の効果が入れる。
+        操作は Blender に合わせる（§12.2 / 2026-09-14・2026-09-19 の利用者要望）。
+        左ドラッグ・中ドラッグ・右ドラッグ＝軌道回転、Shift＋中／右ドラッグ＝平行移動、
+        Ctrl＋中／右ドラッグ・ホイール＝ズーム。`zoomToCursor` でホイールは
+        ポインタの指す位置へ寄る（Blender と同じ）。ボタンの割り当ては上の効果が入れる。
         `screenSpacePanning` は Blender と同じ画面平面の平行移動。
         `maxPolarAngle` で盤の裏側へ回り込まないようにし、注視点は盤の中心に固定する。
         慣性（ダンピング）あり（§12.2「慣性（ダンピング）あり」）。`frameloop="demand"` と
@@ -674,6 +687,7 @@ function BoardContents({
         dampingFactor={ORBIT_FEEL.dampingFactor}
         rotateSpeed={ORBIT_FEEL.rotateSpeed}
         zoomSpeed={ORBIT_FEEL.zoomSpeed}
+        zoomToCursor
         screenSpacePanning
         minDistance={MIN_CAMERA_DISTANCE_MM}
         maxDistance={MAX_CAMERA_DISTANCE_MM}
