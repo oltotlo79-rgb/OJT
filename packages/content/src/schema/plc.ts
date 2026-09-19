@@ -1,5 +1,5 @@
 import { TICK_MS } from '@ojt/circuit-sim';
-import { compile } from '@ojt/ladder-core';
+import { compile, deviceLabel } from '@ojt/ladder-core';
 import { z } from 'zod';
 import { ProblemHeaderShape } from './common.js';
 import { PlcJudgeSettingsSchema } from './judge.js';
@@ -74,7 +74,12 @@ export const PlcWiringSchema = z.enum(['sink', 'source']);
  */
 export const PlcInputMapSchema = z.strictObject({
   x: z.int().min(0).max(15),
-  pb: z.enum(['PB1', 'PB2', 'PB3']),
+  pb: z.enum(['PB1', 'PB2', 'PB3'], {
+    error: (issue) =>
+      issue.input === 'PB4'
+        ? 'PB4 はチェック用回路の押ボタンです。TB_PB.4c は既設固定配線 fw-chk-1 が使用中のため、PLC入力には割り当てられません（§6.3）'
+        : undefined,
+  }),
 });
 
 /** 出力1点の割付（`y` は出力番号、`cr` は中継リレー、`pl` は表示灯）。§7.6 / §10.2 */
@@ -136,6 +141,14 @@ export const PlcIoSchema = z
     outputs: z.array(PlcOutputMapSchema).min(1).max(4).optional(),
   })
   .superRefine((io, ctx) => {
+    if (io.mode === 'fixed' && (io.inputs === undefined) !== (io.outputs === undefined)) {
+      ctx.addIssue({
+        code: 'custom',
+        path: [io.inputs === undefined ? 'inputs' : 'outputs'],
+        message:
+          '固定割付（mode: "fixed"）は inputs と outputs を両方指定するか、両方とも省略（既定割付）にします',
+      });
+    }
     const inputs = io.inputs ?? [];
     const outputs = io.outputs ?? [];
     checkDuplicates(
@@ -227,6 +240,53 @@ export const PlcProblemSchema = z
         });
       }
     }
+    // 模範ラダー・操作列・判定設定は、いずれもI/O割付にある点だけを扱えるようにする。
+    // 割付にない点を参照すると読込時には気づかず、判定や配線の段階で初めて崩れるため
+    // ここで前もって拾う（レビュー #2）。
+    const io = resolvePlcIo(problem.io);
+    const mappedX = new Set(io.inputs.map((i) => i.x));
+    const mappedY = new Set(io.outputs.map((o) => o.y));
+    const mappedPb: ReadonlySet<string> = new Set(io.inputs.map((i) => i.pb));
+    const mappedPl: ReadonlySet<string> = new Set(io.outputs.map((o) => o.pl));
+    if (compiled.ok) {
+      for (const d of compiled.program.usage.reads) {
+        if (d.kind === 'input' && !mappedX.has(d.index)) {
+          ctx.addIssue({
+            code: 'custom',
+            path: ['referenceLadder'],
+            message: `模範ラダーが読む ${deviceLabel(d)} はI/O割付にありません`,
+          });
+        }
+      }
+      for (const d of compiled.program.usage.writes) {
+        if (d.kind === 'output' && !mappedY.has(d.index)) {
+          ctx.addIssue({
+            code: 'custom',
+            path: ['referenceLadder'],
+            message: `模範ラダーが書く ${deviceLabel(d)} はI/O割付にありません`,
+          });
+        }
+      }
+    }
+    problem.operations.forEach((op, index) => {
+      if (!mappedPb.has(op.target)) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['operations', index, 'target'],
+          message: `操作対象 ${op.target} はI/O割付にありません`,
+        });
+      }
+    });
+    (problem.judge.compareSignals ?? []).forEach((signal, index) => {
+      // PL 以外の信号（`BZ` などボードの追加部品）はI/O割付の対象外なのでここでは見ない。
+      if (/^PL\d+$/u.test(signal) && !mappedPl.has(signal)) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['judge', 'compareSignals', index],
+          message: `比較信号 ${signal} はI/O割付にありません`,
+        });
+      }
+    });
   });
 
 /** モードD課題。 */

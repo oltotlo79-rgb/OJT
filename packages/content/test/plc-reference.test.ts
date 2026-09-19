@@ -155,8 +155,10 @@ describe('buildPlcReferenceSession（§7.2 / §10.2）', () => {
         io: {
           mode: 'fixed',
           inputs: [{ x: 0, pb: 'PB1' }],
-          outputs: [{ y: 1, cr: 'CR2', pl: 'PL2' }],
+          // y は既定の模範ラダー（X0 → Y0）に合わせて 0 のまま。CR2 だけ盤の役割割当から外す。
+          outputs: [{ y: 0, cr: 'CR2', pl: 'PL2' }],
         },
+        judge: { compareSignals: ['PL2'] },
       }),
     );
     const built = buildPlcReferenceSession(problem, JIPM_BOARD);
