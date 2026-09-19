@@ -904,6 +904,15 @@ export const JA = {
     branchNeedsAnotherRung: '分岐先になる段がありません。先に「段を追加」で段を増やしてください。',
     branchHasLoad: 'コイル・表示灯・ブザーのある段は分岐にできません（分岐段に負荷は置けません）。',
     branchDone: 'この段を分岐にしました。',
+    // --- Plan 5 Task 7: ビュー切替（盤／並べて／回路図） ---
+    /** ツールバーの切替の見出し。「何を見るか」を選ぶ道具であることを先に言う。 */
+    viewLabel: '表示',
+    /** 切替のキー割当（画面にも出す。利用者要求 2026-09-19「キーボードも示す」）。 */
+    viewKey: 'F2',
+    viewBoardTitle: '3Dの盤だけを見ます（F2 で切替）',
+    viewSplitTitle: '3Dの盤と回路図エディタを並べて見ます（F2 で切替）',
+    viewSchematicTitle: '回路図エディタだけを見ます（F2 で切替）',
+    // --- /Plan 5 Task 7 ---
   },
   // --- /Plan 5 Task 4 ---
   // --- schematic quality 2026-09-19 ---

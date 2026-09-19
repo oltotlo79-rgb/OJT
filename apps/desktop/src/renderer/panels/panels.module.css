@@ -359,3 +359,23 @@
   border-radius: 2px;
 }
 /* --- /UX pass 2026-09-19 (#25) --- */
+
+/* --- Plan 5 Task 7: モードBのビュー切替（盤／並べて／回路図） --- */
+/*
+ * いま見ているビューが一目で分かるように、押されている側だけ色を反転する
+ * （`aria-pressed` の既定の見た目は枠線だけで、離れて見ると区別がつかなかった）。
+ * ボタンは指でも押せる高さ（32px 以上）にする。利用者要求 2026-09-19 / §11.4
+ */
+.viewSwitch button {
+  min-height: 32px;
+  min-width: 56px;
+  padding: 4px 12px;
+}
+
+.viewSwitch button[aria-pressed='true'] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #10151c;
+  font-weight: 700;
+}
+/* --- /Plan 5 Task 7 --- */

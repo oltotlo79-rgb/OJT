@@ -4,7 +4,8 @@ import type { BoardSession, MountableKind, SocketId } from '@ojt/board-model';
 import type { TerminalId } from '@ojt/circuit-sim';
 import { useCallback, useEffect, useMemo, useRef, useState, type JSX } from 'react';
 import { ojtApi } from '../app/ojt-api.js';
-import { schematicPolicy, useStore } from '../app/store.js';
+import { nextAssembleView, schematicPolicy, useStore } from '../app/store.js';
+import type { AssembleViewMode } from '../app/store.js';
 import { sounds, soundsForSnapshot } from '../audio/sounds.js';
 import {
   failedLog,
@@ -26,7 +27,9 @@ import { liveChart, TimeChartPanel, TimeChartSvg } from '../panels/TimeChartPane
 import { Toolbar } from '../panels/Toolbar.js';
 import { ViewHint } from '../panels/ViewHint.js';
 import { WarningBanner } from '../panels/WarningBanner.js';
+import { SchematicEditor } from '../schematic/SchematicEditor.js';
 import { SchematicView } from '../schematic/SchematicView.js';
+import { VerifyPanel } from '../schematic/VerifyPanel.js';
 import {
   cloneSession,
   redo as redoHistory,
@@ -68,6 +71,17 @@ const ELAPSED_INTERVAL_MS = 200;
 
 /** ライブチャートの最小横軸長[ms]（開始直後に潰れないようにする）。 */
 const LIVE_MIN_DURATION_MS = 5000;
+
+/**
+ * ビュー切替のボタン定義（盤 → 並べて → 回路図）。§11.4 / Plan 5 決定表#1
+ * `F2` の巡回順（`ASSEMBLE_VIEW_ORDER`）と同じ並びにしてある。`title` には押した先で何が
+ * 見えるかを日本語で書く（利用者要求 2026-09-19「押せる・押せないの理由は日本語で」）。
+ */
+const ASSEMBLE_VIEWS: ReadonlyArray<readonly [AssembleViewMode, string, string]> = [
+  ['board', JA.schematic.viewBoard, JA.schematic.viewBoardTitle],
+  ['split', JA.schematic.viewSplit, JA.schematic.viewSplitTitle],
+  ['schematic', JA.schematic.viewSchematic, JA.schematic.viewSchematicTitle],
+];
 
 /** 例外から画面に出す1行を作る。 */
 function reasonOf(error: unknown): string {
@@ -170,6 +184,18 @@ export function Session(): JSX.Element {
   const judging = useStore((s) => s.judging);
   const webglLost = useStore((s) => s.webglLost);
   const schematicVisible = useStore((s) => s.schematicVisible);
+  // --- Plan 5 Task 7: 回路図エディタ（§11.4 / 決定表#1） ---
+  const assembleView = useStore((s) => s.assembleView);
+  const schematicDoc = useStore((s) => s.schematicDoc);
+  const schematicCursor = useStore((s) => s.schematicCursor);
+  const schematicHistory = useStore((s) => s.schematicHistory);
+  const verifying = useStore((s) => s.verifying);
+  const verifyResult = useStore((s) => s.verifyResult);
+  /*
+   * 配線ガイドは Task 8 が実装する。ここでは「何も光らない・クリックは効かない」で動かす。
+   * 未定義の識別子を残さないために、ストアの `highlight` をそのまま読むところまで置いておく。
+   */
+  const highlightCells = useStore((s) => s.highlight.cellIds);
   const restoredHazardCount = useStore((s) => s.restoredHazardCount);
   const problemId = problem?.id;
   const sessionEpoch = useStore((s) => s.sessionEpoch);
@@ -208,10 +234,19 @@ export function Session(): JSX.Element {
           state.toast(referenceErrorText(message.result.errors.map((e) => e.message)), 'error');
         }
       },
+      // 検算の結果（Plan 5 Task 6 の `verify` コマンドの返り）。§11.4
+      onVerify: (message) => {
+        useStore.getState().setVerifyResult(message.result);
+      },
       onError: (text, fatal) => {
         const state = useStore.getState();
         // 判定の往復中に落ちたら「判定中…」のまま固まるので、必ず戻す（§8.2）
         state.setJudging(false);
+        /*
+         * 検算も同じ（レビュー I5）。`setVerifyResult()` は届かないので `verifying` が下りず、
+         * 「検算中…」のままボタンが戻らなくなる。§11.4
+         */
+        state.setVerifying(false);
         const line = `${JA.error.workerError}: ${text}`;
         // 追従ループが止まったら（§13 #6）トーストでは気づけない。バナーを出して立て直させる
         if (fatal) state.setFatalError(line);
@@ -343,6 +378,15 @@ export function Session(): JSX.Element {
     bridge.send({ type: 'release', pbId });
   }, []);
 
+  /**
+   * 回路図エディタ（訓練者の下書き）の要素をクリックしたとき。§11.4 / 決定表#7
+   * 配線ガイド（3D盤の端子を光らせる）は **Task 8** が入れる。いまは何もしない
+   * （受け口の署名は `(cellId: string | undefined) => void`。Task 8 が引数を使い始める）。
+   */
+  const onPickDraftCell = useCallback((): void => {
+    // Task 8 で `buildHighlightIndex()` を通してストアの `highlight` を更新する
+  }, []);
+
   const onPick = useCallback(
     (hit: PickHit): void => {
       const store = useStore.getState();
@@ -375,6 +419,23 @@ export function Session(): JSX.Element {
       const store = useStore.getState();
       const current = store.session;
       if (current === undefined) return;
+      /*
+       * 盤 → 並べて → 回路図 → 盤（Plan 5 Task 7 / 決定表#1）。エディタに入っていても
+       * 抜け出せるように、下のフォーカス除けより**先**に見る（F2 はエディタの割当と重ならない）。
+       */
+      if (event.key === 'F2') {
+        event.preventDefault();
+        store.setAssembleView(nextAssembleView(store.assembleView));
+        return;
+      }
+      /*
+       * 回路図エディタに入っているあいだは盤の Esc / Delete を動かさない。エディタは同じキーを
+       * 「分岐をやめる」「要素を消す」に使っており（決定表#25）、窓口の購読はエディタの
+       * `onKeyDown` のあとにも必ず走るので、放っておくと1打鍵で盤の電線まで消える。§11.4
+       */
+      if (event.target instanceof Element && event.target.closest('[data-editor-pane]') !== null) {
+        return;
+      }
       const state = {
         mode: store.mode,
         pendingTerminal: store.pendingTerminal,
@@ -524,6 +585,28 @@ export function Session(): JSX.Element {
         camera={camera}
         canUndo={history.done.length > 0}
         canRedo={history.undone.length > 0}
+        viewSwitch={
+          <>
+            <span className={styles.toolLabelInline}>{JA.schematic.viewLabel}</span>
+            {ASSEMBLE_VIEWS.map(([view, label, title]) => (
+              <button
+                key={view}
+                type="button"
+                data-testid={`assemble-view-${view}`}
+                aria-pressed={assembleView === view}
+                title={title}
+                onClick={() => {
+                  useStore.getState().setAssembleView(view);
+                }}
+              >
+                {label}
+              </button>
+            ))}
+            <span className={styles.toolKeyBadge} data-testid="assemble-view-key">
+              {JA.schematic.viewKey}
+            </span>
+          </>
+        }
         onMode={(next) => {
           useStore.getState().setMode(next);
         }}
@@ -649,22 +732,80 @@ export function Session(): JSX.Element {
         </p>
       </div>
 
-      <div className={styles.sessionLayout}>
-        <div className={styles.viewport} data-testid="viewport">
-          <WarningBanner />
-          <BoardScene onPick={onPick} onHover={onHover} onPress={onPress} onRelease={onRelease} />
-          <div className={styles.statusOverlay} data-testid="status-overlay">
-            {powered ? JA.session.powered : JA.session.unpowered} /{' '}
-            {wireCountText(session.wires.length, fixedWireCount)} /{' '}
-            {pendingTerminal === undefined
-              ? JA.session.noTerminal
-              : `${JA.session.firstTerminal}: ${pendingTerminal}`}
-            {selectedWire === undefined ? '' : ` / ${JA.session.selection}: ${selectedWire}`}
-            {tripped ? ` / ${JA.session.tripped}` : ''}
-            {webglLost ? ` / ${JA.error.webglLost}` : ''}
+      <div className={styles.sessionLayout} data-view={assembleView}>
+        {/*
+          3Dビューポートの JSX は**1箇所のまま**にして（`memo(BoardScene)` が効くように）、
+          `display: none` ではなくマウントするかどうかで切り替える。回路図だけを見ている
+          あいだは Canvas を捨ててGPUを空ける（§15 / Plan 5 決定表#1）。
+        */}
+        {assembleView === 'schematic' ? null : (
+          <div className={styles.viewport} data-testid="viewport">
+            <WarningBanner />
+            <BoardScene onPick={onPick} onHover={onHover} onPress={onPress} onRelease={onRelease} />
+            <div className={styles.statusOverlay} data-testid="status-overlay">
+              {powered ? JA.session.powered : JA.session.unpowered} /{' '}
+              {wireCountText(session.wires.length, fixedWireCount)} /{' '}
+              {pendingTerminal === undefined
+                ? JA.session.noTerminal
+                : `${JA.session.firstTerminal}: ${pendingTerminal}`}
+              {selectedWire === undefined ? '' : ` / ${JA.session.selection}: ${selectedWire}`}
+              {tripped ? ` / ${JA.session.tripped}` : ''}
+              {webglLost ? ` / ${JA.error.webglLost}` : ''}
+            </div>
+            <ViewHint />
           </div>
-          <ViewHint />
-        </div>
+        )}
+
+        {/*
+          回路図エディタと検算の結果。§11.4 / Plan 5 決定表#1・#4
+          `data-editor-pane` は盤のショートカット（Esc / Delete）の除けにも使う（上のキー購読）。
+        */}
+        {assembleView === 'board' || schematicDoc === undefined ? null : (
+          <div className={styles.editorPane} data-editor-pane data-testid="editor-pane">
+            <SchematicEditor
+              problem={problem}
+              board={JIPM_BOARD}
+              document={schematicDoc}
+              cursor={schematicCursor}
+              history={schematicHistory}
+              verifying={verifying}
+              verified={verifyResult?.ok === true && verifyResult.passed}
+              boardWired={session.wires.some((w) => !w.locked)}
+              highlightCellIds={highlightCells}
+              onEdit={(edit) => {
+                useStore.getState().applySchematicEdit(edit);
+              }}
+              onCursor={(next) => {
+                useStore.getState().setSchematicCursor(next);
+              }}
+              onUndo={() => {
+                useStore.getState().undoSchematicEdit();
+              }}
+              onRedo={() => {
+                useStore.getState().redoSchematicEdit();
+              }}
+              onVerify={() => {
+                const store = useStore.getState();
+                // 往復中は押させない（判定ボタンと同じ流儀。§8.2 / 決定表#4）
+                if (store.verifying || store.schematicDoc === undefined) return;
+                store.setVerifying(true);
+                bridge.send({
+                  type: 'verify',
+                  problem,
+                  document: store.schematicDoc,
+                  elapsedMs: store.elapsedMs,
+                });
+              }}
+              onPickCell={onPickDraftCell}
+              onRefuse={(message) => {
+                useStore.getState().toast(message, 'error');
+              }}
+            />
+            {verifyResult === undefined ? null : (
+              <VerifyPanel problem={problem} result={verifyResult} onPickCell={onPickDraftCell} />
+            )}
+          </div>
+        )}
 
         {/*
           右パネルの並びは 課題 → 部品 → 回路図 → タイムチャート（UXレビュー #9）。

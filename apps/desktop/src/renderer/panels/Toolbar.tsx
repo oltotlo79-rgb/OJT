@@ -26,6 +26,7 @@ export function Toolbar({
   showWireTools = true,
   showPlcView = false,
   extraTools,
+  viewSwitch,
   camera,
   canUndo,
   canRedo,
@@ -61,6 +62,13 @@ export function Toolbar({
   showPlcView?: boolean;
   /** モード固有の道具（テスター／指摘モードの切替など）を差し込む枠。§9.2 / §9.3 */
   extraTools?: JSX.Element;
+  /**
+   * ビュー切替（モードBの 盤／並べて／回路図）。§11.4 / Plan 5 決定表#1
+   * 「何を見るか」を選ぶ道具なので、元に戻す・やり直しの隣・判定ボタンの左へ**常に出す**
+   * （「…」の中には畳まない。利用者要求 2026-09-19「切替が一目で分かること」）。
+   * 渡さない画面には出ない。
+   */
+  viewSwitch?: JSX.Element;
   camera: CameraPreset;
   canUndo: boolean;
   canRedo: boolean;
@@ -163,6 +171,11 @@ export function Toolbar({
             </span>
           ) : null}
         </div>
+        {viewSwitch === undefined ? null : (
+          <div className={`${styles.toolGroup} ${styles.viewSwitch}`} data-testid="view-switch">
+            {viewSwitch}
+          </div>
+        )}
         {/*
           UXレビュー #17: 視点・保存読込・回路図の開閉は「…」の中に畳む。トリガーと
           パネルを `.overflowHost`（`position: relative`）でくくり、パネルはその真下に

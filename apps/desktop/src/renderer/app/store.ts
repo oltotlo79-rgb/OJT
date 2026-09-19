@@ -209,6 +209,23 @@ export const DEVICE_COMMENT_COUNT_LIMIT = 200;
 /** 画面の分割。決定表#10 */
 export type LadderViewMode = 'ladder' | 'split' | 'board';
 
+// --- Plan 5 Task 7 ---
+/** モードBのビュー（盤／並べて／回路図）。§11.4 / Plan 5 決定表#1 */
+export type AssembleViewMode = 'board' | 'split' | 'schematic';
+
+/**
+ * ビューを1つ進める順（盤 → 並べて → 回路図 → 盤）。`F2` の巡回に使う。
+ * モードDの `ladderView` と同じ並び（3Dだけ → 両方 → 図だけ）にしてある。§11.4
+ */
+export const ASSEMBLE_VIEW_ORDER: readonly AssembleViewMode[] = ['board', 'split', 'schematic'];
+
+/** いまのビューの次（`F2` を1回押したときの行き先）。 */
+export function nextAssembleView(view: AssembleViewMode): AssembleViewMode {
+  const index = ASSEMBLE_VIEW_ORDER.indexOf(view);
+  return ASSEMBLE_VIEW_ORDER[(index + 1) % ASSEMBLE_VIEW_ORDER.length] ?? 'board';
+}
+// --- /Plan 5 Task 7 ---
+
 /** 判定結果（モードB／C1／C2／D）。§8.3 / §9.1 / §9.2 / §10.8 */
 export type AnyJudgeResult = JudgeResult | JudgeInspectResult | JudgePlcResult;
 
@@ -354,6 +371,13 @@ export interface AppState {
   ladderFocused: boolean;
   /** 画面の分割。決定表#10 */
   ladderView: LadderViewMode;
+  // --- Plan 5 Task 7 ---
+  /**
+   * モードBのビュー（盤／並べて／回路図）。§11.4 / Plan 5 決定表#1
+   * モードDの `ladderView` と同じ役割で、値の並びも同じ順（盤 → 並べて → 図）。
+   */
+  assembleView: AssembleViewMode;
+  // --- /Plan 5 Task 7 ---
   /** セル入力が挿入か上書きか（`Ins` で切り替える）。決定表#12b */
   insertMode: 'insert' | 'overwrite';
   /** `Shift+F3`（モニタ書込み）の注記トーストを既に出したか。決定表#11 */
@@ -541,6 +565,10 @@ export interface AppState {
   setLadderFocused: (focused: boolean) => void;
   /** 画面の分割。決定表#10 */
   setLadderView: (view: LadderViewMode) => void;
+  // --- Plan 5 Task 7 ---
+  /** モードBのビューを切り替える。§11.4 / Plan 5 決定表#1 */
+  setAssembleView: (view: AssembleViewMode) => void;
+  // --- /Plan 5 Task 7 ---
   /** 挿入・上書きを切り替える（`Ins`）。切り替えた**後**の値を返す。決定表#12b */
   toggleInsert: () => 'insert' | 'overwrite';
   /** `Shift+F3` の注記トーストを「出した」と記録する（初回だけ true を返す）。決定表#11 */
@@ -714,6 +742,8 @@ export const useStore = create<AppState>((set, get) => ({
   pendingReport: undefined,
   highlight: NO_HIGHLIGHT,
   ...schematicFields(),
+  // モードBは必ず盤から始まる（Plan 5 Task 7 / 決定表#1）
+  assembleView: 'board',
 
   ...plcFields(),
   dialectId: 'mitsubishi',
@@ -907,6 +937,8 @@ export const useStore = create<AppState>((set, get) => ({
       highlight: NO_HIGHLIGHT,
       // 回路図エディタの下書きは課題ごとに作り直す（モードB以外は持たない）。§11.4
       ...schematicFields(problem),
+      // 課題を開いたら必ず盤から始める（Plan 5 Task 7 / 決定表#1）
+      assembleView: 'board' as const,
       /*
        * 視点は課題を開くたびに既定へ戻す（UXレビュー #2）。モードDは「盤＋PLC」視点
        * （決定表#6。机上のPLC本体と壁コンセントは既存の7プリセットのどれにも入らない）、
@@ -1259,6 +1291,11 @@ export const useStore = create<AppState>((set, get) => ({
   setLadderView: (ladderView) => {
     set({ ladderView });
   },
+  // --- Plan 5 Task 7 ---
+  setAssembleView: (assembleView) => {
+    set({ assembleView });
+  },
+  // --- /Plan 5 Task 7 ---
   toggleInsert: () => {
     const insertMode = get().insertMode === 'insert' ? 'overwrite' : 'insert';
     set({ insertMode });
@@ -1415,6 +1452,8 @@ export const useStore = create<AppState>((set, get) => ({
        */
       verifying: false,
       verifyResult: undefined,
+      // 盤を描き直すので盤のビューへ戻す（Plan 5 Task 7 / 決定表#1）
+      assembleView: 'board' as const,
       tester: createTesterState(get().tester.kind),
       nextProbe: 'black',
       // 課題を作り直す操作なので回路図ヒントを開いた回数も数え直す（§8.4）
@@ -1481,6 +1520,8 @@ export const useStore = create<AppState>((set, get) => ({
       highlight: NO_HIGHLIGHT,
       // 課題を離れるので回路図エディタの下書きと検算の結果も手放す（§11.4）
       ...schematicFields(),
+      // 次に開く課題は盤から始まる（Plan 5 Task 7 / 決定表#1）
+      assembleView: 'board' as const,
       tester: createTesterState(get().tester.kind),
       nextProbe: 'black',
       // 課題を離れるので回路図ヒントを開いた回数も手放す（§8.4）

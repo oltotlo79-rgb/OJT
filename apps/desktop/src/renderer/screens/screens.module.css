@@ -617,3 +617,85 @@
   z-index: 1;
 }
 /* --- /UX pass 2026-09-19 --- */
+
+/* --- Plan 5 Task 7: モードBのビュー切替（盤／並べて／回路図） --- */
+/*
+ * `.sessionLayout` は2列のグリッド（3D盤 ＋ 右パネル）なので、`split` では真ん中に
+ * エディタの列を差し込み、`schematic` では盤の列をそのままエディタに置き換える。
+ * 3Dビューポートは `display: none` ではなく**マウントするかどうか**で切り替える
+ * （`schematic` のときは Canvas を捨ててGPUを空ける。§15 / Plan 5 決定表#1）。
+ */
+.sessionLayout[data-view='split'] {
+  grid-template-columns: minmax(360px, 1fr) minmax(360px, 1fr) 380px;
+}
+
+.sessionLayout[data-view='split'] .editorPane {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+.sessionLayout[data-view='split'] .rightPanel {
+  grid-column: 3;
+}
+
+.sessionLayout[data-view='split'] .bottomPanel {
+  grid-column: 1 / span 2;
+}
+
+.sessionLayout[data-view='schematic'] .editorPane {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+/** エディタと検算パネルの縦並び。中身が長いのでこの箱の中だけでスクロールさせる。 */
+.editorPane {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+  min-width: 0;
+  overflow-y: auto;
+  padding: 8px;
+}
+
+/** ツールバーに置く小さな見出し（`.toolLabel` と同じ見た目を画面側からも使う）。 */
+.toolLabelInline {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/** キー割当の札（`F2`）。ボタンではないことが分かるように枠だけにする。 */
+.toolKeyBadge {
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  color: var(--muted);
+  font-size: 11px;
+  padding: 1px 5px;
+}
+
+/*
+ * 狭い画面では3列（360 + 360 + 380px ＝ 1100px ＋ 余白）が入りきらない。
+ * `.plcLayout` と同じ境界（1279px）で「盤が上・エディタが下」の1列に積み替える。
+ */
+@media (max-width: 1279px) {
+  .sessionLayout[data-view='split'] {
+    grid-template-columns: minmax(0, 1fr) 380px;
+    grid-template-rows: minmax(0, 1fr) minmax(0, 1fr) var(--bottom-panel-h, 200px);
+  }
+
+  .sessionLayout[data-view='split'] .editorPane {
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  .sessionLayout[data-view='split'] .rightPanel {
+    grid-column: 2;
+    grid-row: 1 / span 3;
+  }
+
+  .sessionLayout[data-view='split'] .bottomPanel {
+    grid-column: 1;
+    grid-row: 3;
+  }
+}
+/* --- /Plan 5 Task 7 --- */
