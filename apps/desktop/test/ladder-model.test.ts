@@ -216,6 +216,28 @@ describe('moveCursor', () => {
   it('keeps the column inside the shorter network', () => {
     expect(moveCursor(p, at('n1', 0, COIL_COL), 1, 0)).toEqual(at('n2', 0, COIL_COL));
   });
+
+  describe('gridCols（レビュー指摘 I1）', () => {
+    // `profile.gridCols`（11）だけ描く画面では、非表示の列11〜14を飛び越えてコイル列へ移りたい。
+    const gridCols = 11;
+
+    it('jumps right from the last visible contact column straight to the coil column', () => {
+      expect(moveCursor(p, at('n1', 0, gridCols - 1), 0, 1, gridCols)).toEqual(
+        at('n1', 0, COIL_COL),
+      );
+    });
+
+    it('jumps left from the coil column straight to the last visible contact column', () => {
+      expect(moveCursor(p, at('n1', 0, COIL_COL), 0, -1, gridCols)).toEqual(
+        at('n1', 0, gridCols - 1),
+      );
+    });
+
+    it('defaults to COIL_COL when gridCols is omitted (既定の呼び出しは変えない)', () => {
+      expect(moveCursor(p, at('n1', 0, COIL_COL - 1), 0, 1)).toEqual(at('n1', 0, COIL_COL));
+      expect(moveCursor(p, at('n1', 0, COIL_COL), 0, -1)).toEqual(at('n1', 0, COIL_COL - 1));
+    });
+  });
 });
 
 describe('applyLadderCell / clearLadderCell', () => {
@@ -240,6 +262,13 @@ describe('applyLadderCell / clearLadderCell', () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(cellAt(result.program.networks[0]!, 0, 0)).toEqual(empty());
+  });
+
+  it('returns ok:false instead of throwing for an out-of-range row in insert mode (レビュー指摘 M1)', () => {
+    const result = applyLadderCell(twoRungs(), at('n1', 9, 0), no(X(0)), true);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.message).toContain('範囲外');
   });
 });
 

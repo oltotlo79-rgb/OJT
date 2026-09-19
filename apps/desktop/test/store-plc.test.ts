@@ -1,12 +1,20 @@
 import { terminalId } from '@ojt/circuit-sim';
-import { BUILTIN_PLC_PROBLEMS, isPlcProblem } from '@ojt/content';
+import {
+  BUILTIN_ASSEMBLE_PROBLEMS,
+  BUILTIN_INSPECT_PARTS_PROBLEMS,
+  BUILTIN_PLC_PROBLEMS,
+  isPlcProblem,
+} from '@ojt/content';
 import { COIL_COL, no, out, X, Y } from '@ojt/ladder-core';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { useStore } from '../src/renderer/app/store.js';
+import { DEVICE_COMMENT_COUNT_LIMIT, useStore } from '../src/renderer/app/store.js';
+import type { PlcMonitorSnapshot } from '../src/renderer/app/store-types.js';
 import { applyLadderCell, initialLadder } from '../src/renderer/session/ladder.js';
 import { plcBoardOf } from '../src/renderer/session/plc-session.js';
 
 const problem = BUILTIN_PLC_PROBLEMS[0]!;
+const assembleProblem = BUILTIN_ASSEMBLE_PROBLEMS[0]!;
+const inspectPartsProblem = BUILTIN_INSPECT_PARTS_PROBLEMS[0]!;
 
 beforeEach(() => {
   useStore.getState().abandonSession();
@@ -50,6 +58,36 @@ describe('openProblem（モードD）', () => {
     expect(board?.terminals.some((t) => t.id === terminalId('OUTLET', 'L'))).toBe(true);
     expect(board?.id).toBe('board-jipm-std');
   });
+
+  it('leaves the mode D fields at their defaults for a mode B problem (no leakage into Phase 2)', () => {
+    expect(useStore.getState().openProblem(assembleProblem)).toBe(true);
+    const state = useStore.getState();
+    expect(state.ladder).toBeUndefined();
+    expect(state.ladderComments).toEqual({});
+    expect(state.ladderHistory).toEqual({ done: [], undone: [] });
+    expect(state.ladderMode).toBe('write');
+    expect(state.ladderView).toBe('split');
+    expect(state.insertMode).toBe('overwrite');
+    expect(state.monitorWriteNoticeShown).toBe(false);
+    expect(state.converted).toBe(false);
+    expect(state.plcMonitor).toBeUndefined();
+    expect(state.plcRunning).toBe(false);
+  });
+
+  it('leaves the mode D fields at their defaults for a C1 problem (no leakage into Phase 2)', () => {
+    expect(useStore.getState().openProblem(inspectPartsProblem)).toBe(true);
+    const state = useStore.getState();
+    expect(state.ladder).toBeUndefined();
+    expect(state.ladderComments).toEqual({});
+    expect(state.ladderHistory).toEqual({ done: [], undone: [] });
+    expect(state.ladderMode).toBe('write');
+    expect(state.ladderView).toBe('split');
+    expect(state.insertMode).toBe('overwrite');
+    expect(state.monitorWriteNoticeShown).toBe(false);
+    expect(state.converted).toBe(false);
+    expect(state.plcMonitor).toBeUndefined();
+    expect(state.plcRunning).toBe(false);
+  });
 });
 
 describe('ラダーの編集と履歴', () => {
@@ -88,12 +126,85 @@ describe('ラダーの編集と履歴', () => {
 
   it('keeps device comments inside the caps (§10.7)', () => {
     const store = useStore.getState();
-    store.setDeviceComment('X0', '運転押ボタン');
+    expect(store.setDeviceComment('X0', '運転押ボタン')).toBe(true);
     expect(useStore.getState().ladderComments['X0']).toBe('運転押ボタン');
-    store.setDeviceComment('X0', '');
+    expect(store.setDeviceComment('X0', '')).toBe(true);
     expect(useStore.getState().ladderComments['X0']).toBeUndefined();
-    store.setDeviceComment('Y0', 'あ'.repeat(40));
+    expect(store.setDeviceComment('Y0', 'あ'.repeat(40))).toBe(true);
     expect(useStore.getState().ladderComments['Y0']).toHaveLength(32);
+  });
+
+  it('returns false and drops a new comment beyond DEVICE_COMMENT_COUNT_LIMIT (レビュー指摘 M4)', () => {
+    const store = useStore.getState();
+    for (let i = 0; i < DEVICE_COMMENT_COUNT_LIMIT; i += 1) {
+      expect(store.setDeviceComment(`X${i}`, `コメント${i}`)).toBe(true);
+    }
+    expect(Object.keys(useStore.getState().ladderComments)).toHaveLength(
+      DEVICE_COMMENT_COUNT_LIMIT,
+    );
+    // 上限に達した後でも、既存のデバイスへの上書きはできる
+    expect(store.setDeviceComment('X0', '上書き')).toBe(true);
+    expect(useStore.getState().ladderComments['X0']).toBe('上書き');
+    // 新規デバイスは弾かれる
+    expect(store.setDeviceComment('Y100', '入らない')).toBe(false);
+    expect(useStore.getState().ladderComments['Y100']).toBeUndefined();
+  });
+
+  it('toggles insert/overwrite and returns the new value (決定表#12b)', () => {
+    const store = useStore.getState();
+    expect(useStore.getState().insertMode).toBe('overwrite');
+    expect(store.toggleInsert()).toBe('insert');
+    expect(useStore.getState().insertMode).toBe('insert');
+    expect(store.toggleInsert()).toBe('overwrite');
+    expect(useStore.getState().insertMode).toBe('overwrite');
+  });
+
+  it('shows the Shift+F3 monitor-write notice only once (決定表#11)', () => {
+    const store = useStore.getState();
+    expect(useStore.getState().monitorWriteNoticeShown).toBe(false);
+    expect(store.markMonitorWriteNotice()).toBe(true);
+    expect(useStore.getState().monitorWriteNoticeShown).toBe(true);
+    expect(store.markMonitorWriteNotice()).toBe(false);
+  });
+
+  it('restores a ladder and its comments, clearing the ladder history', () => {
+    const store = useStore.getState();
+    const before = useStore.getState().ladder!;
+    const edited = applyLadderCell(before, { networkId: 'n1', row: 0, col: 0 }, no(X(0)));
+    if (!edited.ok) throw new Error(edited.message);
+    store.setLadder(edited.program);
+    expect(useStore.getState().ladderHistory.done).toEqual([before]);
+    const restored = applyLadderCell(
+      edited.program,
+      { networkId: 'n1', row: 0, col: COIL_COL },
+      out(Y(0)),
+    );
+    if (!restored.ok) throw new Error(restored.message);
+    store.restoreLadder(restored.program, { X0: '運転押ボタン' });
+    const state = useStore.getState();
+    expect(state.ladder).toBe(restored.program);
+    expect(state.ladderHistory).toEqual({ done: [], undone: [] });
+    expect(state.converted).toBe(false);
+    expect(state.ladderComments['X0']).toBe('運転押ボタン');
+  });
+
+  it('sets and clears the PLC monitor snapshot', () => {
+    const store = useStore.getState();
+    expect(useStore.getState().plcMonitor).toBeUndefined();
+    const snapshot: PlcMonitorSnapshot = {
+      scanCount: 1,
+      tMs: 10,
+      powered: {},
+      inputs: [true, false],
+      outputs: [false],
+      internals: {},
+      timers: {},
+      counters: {},
+    };
+    store.setPlcMonitor(snapshot);
+    expect(useStore.getState().plcMonitor).toBe(snapshot);
+    store.setPlcMonitor(undefined);
+    expect(useStore.getState().plcMonitor).toBeUndefined();
   });
 });
 

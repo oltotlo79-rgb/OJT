@@ -256,17 +256,32 @@ function findNetwork(program: LadderProgram, networkId: string): Network | undef
   return program.networks.find((net) => net.id === networkId);
 }
 
-/** カーソルを動かす。上下の端では隣のネットワークへ移る。 */
+/**
+ * カーソルを動かす。上下の端では隣のネットワークへ移る。
+ *
+ * `gridCols` は表示される接点列数（既定は `COIL_COL`）。エディタが `profile.gridCols`
+ * （例: 11）分の接点列しか描画しないときは、これを渡すことで右方向の移動が
+ * 非表示の列（`gridCols`〜`COIL_COL - 1`）を飛び越してコイル列へ直接ジャンプし、
+ * 左方向の移動はコイル列から `gridCols - 1` へ直接戻る（レビュー指摘 I1）。
+ */
 export function moveCursor(
   program: LadderProgram,
   cursor: LadderCursor,
   dRow: number,
   dCol: number,
+  gridCols: number = COIL_COL,
 ): LadderCursor {
   const index = program.networks.findIndex((net) => net.id === cursor.networkId);
   const net = program.networks[index];
   if (net === undefined) return cursor;
-  const col = Math.min(COIL_COL, Math.max(0, cursor.col + dCol));
+  let col: number;
+  if (dCol > 0 && cursor.col === gridCols - 1) {
+    col = COIL_COL;
+  } else if (dCol < 0 && cursor.col === COIL_COL) {
+    col = gridCols - 1;
+  } else {
+    col = Math.min(COIL_COL, Math.max(0, cursor.col + dCol));
+  }
   const row = cursor.row + dRow;
   if (row >= 0 && row < net.rows) return { networkId: net.id, row, col };
   const nextIndex = row < 0 ? index - 1 : index + 1;
@@ -304,9 +319,9 @@ export function applyLadderCell(
   }
   const net = program.networks.find((n) => n.id === cursor.networkId);
   if (net === undefined) return { ok: false, message: 'ネットワークが見つかりません' };
-  const last = cellAt(net, cursor.row, COIL_COL - 1);
-  if (last.kind !== 'empty') return { ok: false, message: '右端が埋まっているので挿入できません' };
   return guard(() => {
+    const last = cellAt(net, cursor.row, COIL_COL - 1);
+    if (last.kind !== 'empty') throw new LadderError('右端が埋まっているので挿入できません');
     let next = program;
     for (let col = COIL_COL - 1; col > cursor.col; col -= 1) {
       next = setCell(next, cursor.networkId, cursor.row, col, cellAt(net, cursor.row, col - 1));
@@ -320,7 +335,7 @@ export function clearLadderCell(program: LadderProgram, cursor: LadderCursor): L
   return guard(() => clearCell(program, cursor.networkId, cursor.row, cursor.col));
 }
 
-/** 罫線を引く／消す（`Ctrl+↓` で下へ、`Ctrl+↑` で上の行から、左右は横線）。§10.3 */
+/** 罫線を引く（`Ctrl+↓` で下へ、`Ctrl+↑` で上の行から、左右は横線）。§10.3 */
 export function applyRuleLine(
   program: LadderProgram,
   cursor: LadderCursor,

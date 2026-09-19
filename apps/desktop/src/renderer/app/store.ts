@@ -457,8 +457,12 @@ export interface AppState {
   toggleInsert: () => 'insert' | 'overwrite';
   /** `Shift+F3` の注記トーストを「出した」と記録する（初回だけ true を返す）。決定表#11 */
   markMonitorWriteNotice: () => boolean;
-  /** デバイスコメントを1件入れる（空文字で削除、32文字で切り詰め、200件まで）。§10.7 */
-  setDeviceComment: (device: string, text: string) => void;
+  /**
+   * デバイスコメントを1件入れる（空文字で削除、32文字で切り詰め、200件まで）。§10.7
+   * 件数の上限（`DEVICE_COMMENT_COUNT_LIMIT`）に達していて新規のデバイスなら入れずに
+   * `false` を返す（呼び出し側がトーストを出す。レビュー指摘 M4）。
+   */
+  setDeviceComment: (device: string, text: string) => boolean;
   /** 「変換」の結果を入れる。§10.6 */
   setConverted: (converted: boolean, issues: ConvertIssues) => void;
   /** モニタのスナップショット。決定表#5 */
@@ -1032,14 +1036,20 @@ export const useStore = create<AppState>((set, get) => ({
   setDeviceComment: (device, text) => {
     const comments = { ...get().ladderComments };
     const trimmed = text.trim();
-    if (trimmed.length === 0) delete comments[device];
-    else if (
-      Object.hasOwn(comments, device) ||
-      Object.keys(comments).length < DEVICE_COMMENT_COUNT_LIMIT
-    ) {
-      comments[device] = trimmed.slice(0, DEVICE_COMMENT_LIMIT);
+    if (trimmed.length === 0) {
+      delete comments[device];
+      set({ ladderComments: comments });
+      return true;
     }
+    if (
+      !Object.hasOwn(comments, device) &&
+      Object.keys(comments).length >= DEVICE_COMMENT_COUNT_LIMIT
+    ) {
+      return false;
+    }
+    comments[device] = trimmed.slice(0, DEVICE_COMMENT_LIMIT);
     set({ ladderComments: comments });
+    return true;
   },
   setConverted: (converted, convertIssues) => {
     set({ converted, convertIssues });

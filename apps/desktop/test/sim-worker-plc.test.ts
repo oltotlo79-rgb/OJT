@@ -238,6 +238,17 @@ describe('モニタのスナップショット（決定表#5）', () => {
     expect(after?.inputs[0]).toBe(true);
     expect(after?.scanCount).toBeGreaterThan(0);
   });
+
+  it('sizes outputs to the PLC unit output count instead of the default full length (レビュー指摘 I3)', async () => {
+    const h = await running();
+    h.send({ type: 'plc', action: { kind: 'monitor', on: true } });
+    h.advance(100);
+    const snapshot = h.snapshots.at(-1)?.plc;
+    expect(snapshot).toBeDefined();
+    // FX5U は16点（`FX5U_SPEC.outputs`）。既定の `outputCount` 未指定時のフルレングスと
+    // 一致しないよう、実機の点数で切り詰まっていることを確かめる。
+    expect(snapshot?.outputs).toHaveLength(16);
+  });
 });
 
 describe('モードDの判定（§10.8 / H-4）', () => {
@@ -302,7 +313,8 @@ describe('モードDの判定（§10.8 / H-4）', () => {
       elapsedMs: 0,
     });
     const result = h.plcResults[0]?.result;
-    if (result === undefined || !result.ok) return;
+    expect(result?.ok).toBe(true);
+    if (result === undefined || !result.ok) throw new Error('judgePlc did not return ok');
     expect(result.value.hazardCount).toBeGreaterThan(0);
   });
 });

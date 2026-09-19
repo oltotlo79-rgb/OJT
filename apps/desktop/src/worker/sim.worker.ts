@@ -229,7 +229,9 @@ function loadLadder(sim: Simulation, source: LadderProgram): void {
   if (!compiled.ok) {
     throw new Error(compiled.errors.map((e) => e.message).join(' / '));
   }
-  plcCoupling = createPlcCoupling(sim, compiled.program);
+  plcCoupling = createPlcCoupling(sim, compiled.program, {
+    outputCount: board.plcUnit?.spec.outputs.length ?? 0,
+  });
 }
 
 /**
@@ -353,7 +355,7 @@ function loop(): void {
        *  →②ネットワークを上から順に実行 →③`sim.setPlcOutputs()` でY接点を書く」
        * のあとに `sim.step()` が今tickの回路を解く。実機と同じく入力は1スキャンぶん遅れる。
        */
-      if (plcRunning && plcCoupling !== undefined) plcCoupling.beforeTick(sim, sim.state().tMs);
+      if (plcRunning && plcCoupling !== undefined) plcCoupling.beforeTick(sim, sim.tMs);
       sim.step(TICK_MS);
       ticksSinceTesterMeasure += 1;
       const measurable =
@@ -515,8 +517,12 @@ function handle(command: SimCommand): void {
         plcMonitoring = action.on;
         break;
       }
-      plcCoupling?.runtime.reset();
-      sim.step(TICK_MS);
+      if (action.kind === 'reset') {
+        plcCoupling?.runtime.reset();
+        sim.step(TICK_MS);
+        break;
+      }
+      action satisfies never;
       break;
     }
     case 'judgePlc': {
