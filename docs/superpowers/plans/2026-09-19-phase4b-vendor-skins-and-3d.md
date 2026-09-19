@@ -2399,3 +2399,1308 @@ git commit -m "feat(desktop): spell hints, key table and terminals per dialect a
 ```
 
 ---
+
+## Task 6: 設定画面で4メーカーを選べるようにする（＋「メーカーの既定に従う」）
+
+**モデル: Opus**（`shared/ipc.ts` と `main/settings.ts` の MERGE と既定値の変更があるため）
+
+**Files:**
+- Modify: `apps/desktop/src/shared/ipc.ts`（`DEFAULT_SETTINGS` の2値とコメント）
+- Modify: `apps/desktop/src/main/settings.ts`（空の色・0 の列数を受ける）
+- Modify: `apps/desktop/src/renderer/app/store.ts`（`applyLadderSettings` が 0 を素通しする）
+- Modify: `apps/desktop/src/renderer/screens/Settings.tsx`
+- Modify: `apps/desktop/src/renderer/i18n/ja.ts`
+- Test: `apps/desktop/test/settings.test.ts`（3行の期待値）・`settings-plc.test.tsx`（追記）
+
+§16 Phase 4 受入基準①の入口である。`IMPLEMENTED_DIALECT_IDS` が4件になるので**選べるようになる仕組みは既にある**（前提#31）。ここで直すのは ①注記の文言 ②メーカー名の出どころ（`profile.displayName`）③通電色と表示列数の「メーカーの既定に従う」（決定表#8）である。
+
+- [ ] **Step 1: 失敗するテストを書く**
+
+`apps/desktop/test/settings-plc.test.tsx` に足す:
+
+```tsx
+describe('4メーカーの選択（§16 Phase 4 受入基準①）', () => {
+  it('offers all four vendors, none disabled, named by the profile', async () => {
+    render(<Settings />);
+    const select = await screen.findByTestId('setting-vendor');
+    const options = [...select.querySelectorAll('option')];
+    expect(options).toHaveLength(4);
+    for (const option of options) {
+      expect(option, option.value).not.toBeDisabled();
+      expect(option.textContent, option.value).toBe(getDialect(option.value as DialectId).displayName);
+    }
+    expect(screen.queryByText(/Phase 4 で対応/u)).toBeNull();
+  });
+
+  it('saves the chosen vendor and pushes it into the store', async () => {
+    render(<Settings />);
+    const select = await screen.findByTestId('setting-vendor');
+    fireEvent.change(select, { target: { value: 'omron' } });
+    await waitFor(() => {
+      expect(saved.at(-1)).toEqual({ defaultVendor: 'omron' });
+    });
+    expect(useStore.getState().dialectId).toBe('omron');
+  });
+});
+
+describe('「メーカーの既定に従う」（§10.6 / 決定表#8）', () => {
+  it('defaults both the colour and the column count to the vendor default', () => {
+    expect(DEFAULT_SETTINGS.monitorColor).toBe('');
+    expect(DEFAULT_SETTINGS.ladderGridCols).toBe(0);
+  });
+
+  it('turns the colour override off by writing an empty string', async () => {
+    render(<Settings />);
+    const auto = await screen.findByTestId('setting-monitor-color-auto');
+    // 既定は「メーカーの既定に従う」＝チェック済み
+    expect(auto).toBeChecked();
+    fireEvent.click(auto);
+    await waitFor(() => {
+      expect(saved.at(-1)).toEqual({ monitorColor: DEFAULT_MONITOR_COLOR });
+    });
+    fireEvent.click(await screen.findByTestId('setting-monitor-color-auto'));
+    await waitFor(() => {
+      expect(saved.at(-1)).toEqual({ monitorColor: '' });
+    });
+  });
+
+  it('turns the column override off by writing 0', async () => {
+    render(<Settings />);
+    const auto = await screen.findByTestId('setting-grid-cols-auto');
+    expect(auto).toBeChecked();
+    fireEvent.click(auto);
+    await waitFor(() => {
+      expect(saved.at(-1)).toEqual({ ladderGridCols: MITSUBISHI_FX5U.gridCols });
+    });
+  });
+
+  it('keeps 0 and "" through the store (does not clamp 0 up to 8)', () => {
+    useStore.getState().applyLadderSettings({ gridCols: 0, monitorColor: '', vendor: 'omron' });
+    expect(useStore.getState().ladderGridCols).toBe(0);
+    expect(useStore.getState().monitorColor).toBe('');
+    expect(useStore.getState().dialectId).toBe('omron');
+  });
+
+  it('shows the assumption note of the current skin', async () => {
+    render(<Settings />);
+    expect(await screen.findByTestId('skin-assumed')).toHaveTextContent('画面の配色');
+  });
+});
+```
+
+（`DEFAULT_MONITOR_COLOR` は `shared/ipc.ts` が新しく出す「上書きを始めるときの初期色」＝三菱の青。import に `getDialect` / `MITSUBISHI_FX5U` / `type DialectId` / `DEFAULT_MONITOR_COLOR` を足す。）
+
+`apps/desktop/test/settings.test.ts` の `defaults and clamps the PLC settings (§10.6)` を差し替える:
+
+```ts
+  it('defaults and clamps the PLC settings (§10.6 / Plan 4B 決定表#8)', () => {
+    expect(DEFAULT_SETTINGS.defaultVendor).toBe('mitsubishi');
+    // 0 と '' は「メーカーの既定に従う」（Plan 4B 決定表#8）
+    expect(DEFAULT_SETTINGS.ladderGridCols).toBe(0);
+    expect(DEFAULT_SETTINGS.monitorColor).toBe('');
+    expect(writeSettings({ ladderGridCols: 2 }).ladderGridCols).toBe(8);
+    expect(writeSettings({ ladderGridCols: 99 }).ladderGridCols).toBe(15);
+    expect(writeSettings({ ladderGridCols: 0 }).ladderGridCols).toBe(0);
+    expect(writeSettings({ monitorColor: 'red' }).monitorColor).toBe('');
+    expect(writeSettings({ monitorColor: '' }).monitorColor).toBe('');
+    // Phase 4 で4メーカーすべてが選べる
+    expect(writeSettings({ defaultVendor: 'omron' }).defaultVendor).toBe('omron');
+    expect(writeSettings({ defaultVendor: 'nope' }).defaultVendor).toBe('omron');
+  });
+```
+
+- [ ] **Step 2: RED を確認する**
+
+```powershell
+pnpm --filter @ojt/desktop exec vitest run test/settings.test.ts test/settings-plc.test.tsx
+```
+
+Expected: 失敗。`expected '#1E64FF' to be ''`。
+
+- [ ] **Step 3: `src/shared/ipc.ts` の既定値を直す**
+
+`AppSettings` の3つのコメントを直し、定数を1つ足す:
+
+```ts
+  /** モードDの既定メーカー（Phase 4 で4社すべてが選べる）。§10.5 / §12.1 */
+  defaultVendor: string;
+  /**
+   * ラダーの表示列数（接点列。8〜15）。§10.6
+   * **`0` は「メーカーの既定に従う」**（`profile.gridCols`）。Plan 4B 決定表#8
+   */
+  ladderGridCols: number;
+  /**
+   * モニタ中の通電表示色（`#rrggbb`）。§10.6
+   * **空文字は「メーカーの既定に従う」**（`profile.monitorColors.powered`）。Plan 4B 決定表#8
+   */
+  monitorColor: string;
+```
+
+```ts
+/**
+ * 通電色の上書きを始めるときの初期色（三菱の青）。§10.6
+ * 設定画面の「メーカーの既定に従う」を外したときに、色の欄へ最初に入れる値である。
+ */
+export const DEFAULT_MONITOR_COLOR = '#1E64FF';
+
+/** 設定の既定値。 */
+export const DEFAULT_SETTINGS: AppSettings = {
+  userContentDir: '',
+  soundEnabled: true,
+  soundVolume: 0.5,
+  restorePrompt: true,
+  defaultVendor: 'mitsubishi',
+  // 0 / '' = メーカーの既定に従う（決定表#8）
+  ladderGridCols: 0,
+  monitorColor: '',
+};
+```
+
+- [ ] **Step 4: `src/main/settings.ts` に 0 と空文字を通す**
+
+```ts
+  const gridCols = source['ladderGridCols'];
+  if (typeof gridCols === 'number' && Number.isFinite(gridCols)) {
+    // 0 は「メーカーの既定に従う」（Plan 4B 決定表#8）。それ以外は 8〜15 に丸める
+    next.ladderGridCols =
+      gridCols === 0 ? 0 : Math.min(MAX_GRID_COLS, Math.max(MIN_GRID_COLS, Math.round(gridCols)));
+  }
+  const monitorColor = source['monitorColor'];
+  // 空文字は「メーカーの既定に従う」（決定表#8）
+  if (typeof monitorColor === 'string' && /^(#[0-9a-fA-F]{6})?$/.test(monitorColor)) {
+    next.monitorColor = monitorColor;
+  }
+```
+
+`defaultVendor` の分岐は**そのまま**（`IMPLEMENTED_DIALECT_IDS` が4件になるので自動で4社を受ける）。
+
+- [ ] **Step 5: `src/renderer/app/store.ts` の `applyLadderSettings` を直す**
+
+```ts
+  applyLadderSettings: ({ gridCols, monitorColor, vendor }) => {
+    set({
+      // 0 は「メーカーの既定に従う」の印なのでそのまま持つ（丸めない。決定表#8）
+      ladderGridCols:
+        gridCols === 0 ? 0 : Math.min(MAX_GRID_COLS, Math.max(MIN_GRID_COLS, Math.round(gridCols))),
+      monitorColor,
+      ...(isDialectId(vendor) && IMPLEMENTED_DIALECT_IDS.includes(vendor)
+        ? { dialectId: vendor }
+        : {}),
+    });
+  },
+```
+
+- [ ] **Step 6: `Settings.tsx` を直す**
+
+`VENDOR_LABELS` の定数を**削除**し、import を差し替える:
+
+```ts
+import {
+  availableDialects,
+  getDialect,
+  IMPLEMENTED_DIALECT_IDS,
+  isDialectId,
+  MAX_GRID_COLS,
+  MIN_GRID_COLS,
+} from '@ojt/plc-dialects';
+import { DEFAULT_MONITOR_COLOR, DEFAULT_SETTINGS, type AppSettings, type AppSettingsResponse } from '../../shared/ipc.js';
+import { SKIN_THEMES } from '../ladder/skins/index.js';
+```
+
+メーカーの `<select>` を差し替える:
+
+```tsx
+              <select
+                id="setting-vendor"
+                data-testid="setting-vendor"
+                value={settings.defaultVendor}
+                onChange={(event) => {
+                  patch({ defaultVendor: event.target.value });
+                }}
+              >
+                {availableDialects().map((profile) => (
+                  <option key={profile.id} value={profile.id} data-testid={`vendor-option-${profile.id}`}>
+                    {profile.displayName}
+                  </option>
+                ))}
+              </select>
+```
+
+> `availableDialects()` は**実装済みのプロファイルだけ**を返す（4A Task 5 で4件）。`DIALECT_IDS` を
+> 回して `disabled` を付ける必要はもう無い。未実装のIDが将来また増えたときは
+> `availableDialects()` から落ちるだけなので、この画面は勝手に追随する。
+
+注記の段落を差し替える:
+
+```tsx
+            <p className={styles.subtitle} data-testid="vendor-note">
+              {JA.settings.vendorHelp}
+            </p>
+            <p className={styles.subtitle} data-testid="vendor-assumption">
+              {ASSUMPTION_NOTICE}
+            </p>
+            {/* いま選んでいるスキンの見た目のうち、何が前提なのかを出す（§17.1 / 4A H-5） */}
+            <ul className={styles.subtitle} data-testid="skin-assumed">
+              {(isDialectId(settings.defaultVendor)
+                ? SKIN_THEMES[settings.defaultVendor].assumed
+                : []
+              ).map((note) => (
+                <li key={note}>{note}</li>
+              ))}
+            </ul>
+```
+
+表示列数の欄に「メーカーの既定に従う」を足す（既存の `setting-grid-cols` の `<section>` の**前**）:
+
+```tsx
+            <section className={styles.settingRow}>
+              <label htmlFor="setting-grid-cols-auto">{JA.settings.followVendor}</label>
+              <input
+                id="setting-grid-cols-auto"
+                type="checkbox"
+                checked={settings.ladderGridCols === 0}
+                data-testid="setting-grid-cols-auto"
+                onChange={(event) => {
+                  // 外したときは「いまのメーカーの既定」から上書きを始める
+                  const vendorCols = isDialectId(settings.defaultVendor)
+                    ? getDialect(settings.defaultVendor).gridCols
+                    : DEFAULT_SETTINGS.ladderGridCols;
+                  patch({ ladderGridCols: event.target.checked ? 0 : vendorCols });
+                }}
+              />
+            </section>
+```
+
+既存の数値欄は `disabled={settings.ladderGridCols === 0}` を足す。`commitGridCols()` も 0 を素通しするようにする:
+
+```ts
+  const commitGridCols = (): void => {
+    if (settings === undefined) return;
+    if (settings.ladderGridCols === 0) return; // メーカーの既定に従う
+    const clamped = Math.min(
+      MAX_GRID_COLS,
+      Math.max(MIN_GRID_COLS, Math.round(settings.ladderGridCols)),
+    );
+    if (clamped !== settings.ladderGridCols) setSettings({ ...settings, ladderGridCols: clamped });
+    patch({ ladderGridCols: clamped });
+  };
+```
+
+通電色にも同じ対（`setting-monitor-color-auto`、外したら `DEFAULT_MONITOR_COLOR` から始める）を足し、色の欄に `disabled={settings.monitorColor.length === 0}` を付ける。
+
+`JA.settings` に足す（`// --- /Plan 3B Task 16 ---` の直前）:
+
+```ts
+    // --- Plan 4B Task 6 ---
+    /** 色・列数を方言の既定に任せる。決定表#8 */
+    followVendor: 'メーカーの既定に従う',
+    // --- /Plan 4B Task 6 ---
+```
+
+`JA.settings` の既存の3件を直す（前提#22。ツール名とキーを出さない）:
+
+```ts
+    vendorHelp: 'モードDの課題を開いたときに使う機種（メーカー）です。課題の機種もこのメーカーに合わせて開きます。',
+    gridColsHelp: 'ラダー編集画面の接点列の数（8〜15）。メーカーの既定は 11 です。',
+    monitorColorHelp: 'モニタ中に通電しているセルへ塗る色です。',
+```
+
+`vendorUnimplemented` は**使わなくなる**が、キーは消さずに文言だけ直す（将来また未実装のメーカーが出たときの受け皿。`settings-screen.test.tsx` が参照していたら追随させる）:
+
+```ts
+    /** 実装が無いメーカーに添える注記（Phase 4 で4社すべて実装済み）。 */
+    vendorUnimplemented: 'このメーカーはまだ対応していません',
+```
+
+- [ ] **Step 7: GREEN を確認してコミットする**
+
+```powershell
+pnpm --filter @ojt/desktop exec vitest run test/settings.test.ts test/settings-plc.test.tsx test/settings-screen.test.tsx test/store.test.ts
+pnpm --filter @ojt/desktop exec tsc -p tsconfig.json --noEmit
+```
+
+Expected: すべて通過。
+
+```powershell
+git add apps/desktop/src/shared/ipc.ts apps/desktop/src/main/settings.ts apps/desktop/src/renderer apps/desktop/test
+git commit -m "feat(desktop): offer all four vendors and follow the vendor defaults"
+```
+
+---
+
+## Task 7: 課題を既定メーカーの機種で開く（＋作業ファイルの4方言往復）
+
+**モデル: Opus**（`store.ts` の `openProblem()` の MERGE と、差し替えられない課題の扱いの判断があるため）
+
+**Files:**
+- Modify: `apps/desktop/src/renderer/app/store.ts`（`openProblem()` の1箇所）
+- Modify: `apps/desktop/src/renderer/screens/PlcSession.tsx`（機種名の表示）
+- Modify: `apps/desktop/src/renderer/i18n/ja.ts`
+- Test: `apps/desktop/test/store-plc.test.ts`（追記）
+- Test: `apps/desktop/test/work-file-plc.test.ts`（追記）
+
+§16 Phase 4 受入基準①③⑤の土台である。内蔵8題は全部 `mitsubishi` / `FX5U` なので（前提#32）、**開くときに既定メーカーの機種へ差し替える**（決定表#9）。差し替えた課題がそのまま盤・Worker・判定・作業ファイルへ流れるので、3Dのラック（受入基準③⑤）も画面に出る。
+
+- [ ] **Step 1: 失敗するテストを書く**
+
+`apps/desktop/test/store-plc.test.ts` に足す:
+
+```ts
+describe('既定メーカーの機種で開く（§7.6 / 決定表#9）', () => {
+  it('swaps the model of a mode D problem to the default vendor', () => {
+    useStore.getState().applyLadderSettings({ gridCols: 0, monitorColor: '', vendor: 'omron' });
+    expect(useStore.getState().openProblem(plcProblem)).toBe(true);
+    const opened = useStore.getState().problem;
+    expect(opened?.mode).toBe('plc');
+    expect(isPlcProblem(opened!) ? opened.plc : undefined).toEqual({
+      vendor: 'omron',
+      model: 'CP1E',
+    });
+    // 盤も機種に追随する（3Dとワーカーが同じ端子名を見る。4A H-1）
+    expect(boardForProblem(opened).terminals.map((t) => String(t.id))).toContain('PLC.0.00');
+  });
+
+  it('puts the TOYOPUC rack on the desk for the JTEKT default', () => {
+    useStore.getState().applyLadderSettings({ gridCols: 0, monitorColor: '', vendor: 'jtekt' });
+    useStore.getState().openProblem(plcProblem);
+    const board = boardForProblem(useStore.getState().problem);
+    expect(board.plcUnit?.form).toBe('rack');
+    expect(board.plcUnit?.modules?.map((m) => m.model)).toEqual([
+      'POWER1',
+      'PC10G-1SP',
+      'IN-12',
+      'OUT-12',
+    ]);
+    expect(board.terminals.map((t) => String(t.id))).toContain('PLC.ICOM0');
+  });
+
+  it('keeps the original model when the vendor cannot host the assignment (決定表#10)', () => {
+    const wide = {
+      ...plcProblem,
+      io: {
+        ...plcProblem.io,
+        mode: 'fixed' as const,
+        inputs: [{ x: 0, pb: 'PB1' as const }],
+        outputs: [{ y: 12, cr: 'CR1', pl: 'PL1' }],
+      },
+    };
+    useStore.getState().applyLadderSettings({ gridCols: 0, monitorColor: '', vendor: 'omron' });
+    expect(useStore.getState().openProblem(wide)).toBe(true);
+    const opened = useStore.getState().problem;
+    expect(isPlcProblem(opened!) ? opened.plc.model : undefined).toBe('FX5U');
+    expect(useStore.getState().toasts.at(-1)?.text).toContain('CP1E');
+  });
+
+  it('leaves the other modes alone', () => {
+    useStore.getState().applyLadderSettings({ gridCols: 0, monitorColor: '', vendor: 'sharp' });
+    useStore.getState().openProblem(assembleProblem);
+    expect(useStore.getState().problem?.id).toBe(assembleProblem.id);
+  });
+});
+```
+
+`apps/desktop/test/work-file-plc.test.ts` に足す:
+
+```ts
+describe('4方言の作業ファイル往復（§12.3 / 4A H-2）', () => {
+  it.each(['mitsubishi', 'jtekt', 'omron', 'sharp'] as const)(
+    'round-trips the dialect id %s',
+    async (vendor) => {
+      useStore.getState().applyLadderSettings({ gridCols: 0, monitorColor: '', vendor });
+      useStore.getState().openProblem(plcProblem);
+      const file = toWorkFile(/* 既存のテストと同じ引数 */);
+      expect(file.dialectId).toBe(vendor);
+      useStore.getState().abandonSession();
+      expect(await applyWorkFile(file)).toBe(true);
+      expect(useStore.getState().dialectId).toBe(vendor);
+      // 機種も戻る（作業ファイルには課題IDしか無いので、方言 → 機種の規則で引き直す）
+      const opened = useStore.getState().problem;
+      expect(isPlcProblem(opened!) ? opened.plc.vendor : undefined).toBe(vendor);
+    },
+  );
+});
+```
+
+- [ ] **Step 2: RED を確認する**
+
+```powershell
+pnpm --filter @ojt/desktop exec vitest run test/store-plc.test.ts test/work-file-plc.test.ts
+```
+
+Expected: 失敗。`expected { vendor: 'mitsubishi', model: 'FX5U' } to equal { vendor: 'omron', model: 'CP1E' }`。
+
+- [ ] **Step 3: `store.ts` の `openProblem()` に差し替えを入れる**
+
+import に足す:
+
+```ts
+import { plcForVendor, plcUnitForVendor } from '../session/plc-skin.js';
+```
+
+`openProblem` の**先頭**（`let session: BoardSession;` の前）に足す:
+
+```ts
+    /*
+     * モードDは**既定メーカーの機種**で開く（決定表#9）。内蔵8題は `mitsubishi` / `FX5U` だが、
+     * 4A Task 14 が「`plc` だけ差し替えれば4機種すべてで成立する」ことを確かめているので、
+     * ここで差し替えれば課題JSONを1文字も変えずに CP1E・TOYOPUC・JW300 の課題になる。
+     * 差し替えた課題がそのまま盤・Worker・判定・作業ファイルへ流れるので、3Dの端子名と
+     * ラダーのデバイス名が食い違わない（4A H-1）。
+     */
+    if (isPlcProblem(problem)) {
+      const vendor = get().dialectId;
+      const swapped = plcForVendor(problem, vendor);
+      if (swapped === undefined) {
+        // 割付がその機種に収まらない（CP1E の出力は12点。決定表#10）。元の機種のまま開く
+        const model = plcUnitForVendor(vendor)?.model ?? vendor;
+        get().toast(JA.plc.modelNotUsable(model, problem.plc.model), 'error');
+      } else {
+        problem = swapped;
+      }
+    }
+```
+
+> `problem` は `openProblem: (problem, options = {}) => {` の引数なので、**再代入できるよう
+> `let` にする**（引数の再代入は ESLint の `no-param-reassign` を設定していないので許される。
+> 気になるなら `const target = swapped ?? problem;` として以降を `target` にしてもよいが、
+> `problem` を使う箇所が20行以上あるため再代入のほうが差分が小さい）。
+
+- [ ] **Step 4: `i18n/ja.ts` に文言を足す**
+
+`JA.plc` の Plan 4B ブロックに足す:
+
+```ts
+    /** 既定メーカーの機種では開けない課題（決定表#10）。 */
+    modelNotUsable: (wanted: string, used: string): string =>
+      `この課題の入出力の割付は ${wanted} に収まらないため、${used} のまま開きました`,
+    /** セッション画面に出す機種名（3Dの本体と同じ機種であることを見せる）。 */
+    modelLabel: '機種',
+```
+
+- [ ] **Step 5: `PlcSession.tsx` に機種名を出す**
+
+`ProblemPanel` の下（`JA.plc.outletNote` を出している並び）に足す:
+
+```tsx
+        <p className={styles.plcNote} data-testid="plc-model">
+          {JA.plc.modelLabel}: {plcUnitFor(problem.plc.model)?.displayName ?? problem.plc.model}
+        </p>
+```
+
+（`import { plcUnitFor } from '@ojt/board-model';` を足す。`styles.plcNote` が無ければ
+`screens.module.css` の既存の注記クラスを使う。）
+
+- [ ] **Step 6: GREEN を確認してコミットする**
+
+```powershell
+pnpm --filter @ojt/desktop exec vitest run test/store-plc.test.ts test/work-file-plc.test.ts test/plc-session-screen.test.tsx test/store.test.ts
+```
+
+Expected: すべて通過（`store-plc` に4ケース、`work-file-plc` に4ケース追加）。
+
+```powershell
+git add apps/desktop/src/renderer apps/desktop/test
+git commit -m "feat(desktop): open mode D problems on the default vendor's model"
+```
+
+---
+
+## Task 8: 表記切替ダイアログ（§10.7）
+
+**モデル: Opus**（切替時に配線をどうするかの判断があるため）
+
+**Files:**
+- Create: `apps/desktop/src/renderer/ladder/NotationDialog.tsx`
+- Modify: `apps/desktop/src/renderer/ladder/LadderWorkspace.tsx`（ツールバーの隣にボタン）
+- Modify: `apps/desktop/src/renderer/ladder/ladder.module.css`（末尾追記）
+- Modify: `apps/desktop/src/renderer/app/store.ts`（`switchDialect()`）
+- Modify: `apps/desktop/src/renderer/i18n/ja.ts`
+- Test: `apps/desktop/test/notation-dialog.test.tsx`（新規）
+
+§16 Phase 4 受入基準②（三菱で組んだラダーを OMRON 表記に切り替えると `0.00` 形式になる）の本体である。**IRは書き換えない**（4A H-2 / 決定表#11）。機種も一緒に変わるので**配線はやり直しになる**ことを先に伝える（決定表#12）。
+
+- [ ] **Step 1: 失敗するテストを書く**
+
+`apps/desktop/test/notation-dialog.test.tsx`:
+
+```tsx
+import { BUILTIN_PLC_PROBLEMS } from '@ojt/content';
+import { endNetwork, hline, network, no, out, program, X, Y } from '@ojt/ladder-core';
+import { MITSUBISHI_FX5U } from '@ojt/plc-dialects';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { useStore } from '../src/renderer/app/store.js';
+import { NotationDialog } from '../src/renderer/ladder/NotationDialog.js';
+
+const problem = BUILTIN_PLC_PROBLEMS[0]!;
+const selfHold = program(
+  network('n1', [[no(X(8)), hline(), out(Y(1))]]),
+  endNetwork(),
+);
+
+afterEach(() => {
+  cleanup();
+});
+
+beforeEach(() => {
+  useStore.getState().abandonSession();
+  act(() => {
+    useStore.getState().openProblem(problem);
+    useStore.getState().setLadder(selfHold);
+  });
+});
+
+function dialog(onClose = vi.fn()): typeof onClose {
+  render(<NotationDialog profile={MITSUBISHI_FX5U} onClose={onClose} />);
+  return onClose;
+}
+
+describe('表記切替（§10.7 / §16 Phase 4 受入基準②）', () => {
+  it('lists every dialect but the current one', () => {
+    dialog();
+    expect(screen.queryByTestId('notation-to-mitsubishi')).toBeNull();
+    for (const id of ['omron', 'jtekt', 'sharp']) {
+      expect(screen.getByTestId(`notation-to-${id}`)).toBeInTheDocument();
+    }
+  });
+
+  it('previews how every device will be spelled (受入基準②)', () => {
+    dialog();
+    act(() => {
+      fireEvent.click(screen.getByTestId('notation-to-omron'));
+    });
+    const rows = screen.getAllByTestId(/^notation-change-/u).map((row) => row.textContent);
+    expect(rows.some((text) => text?.includes('X10') === true && text.includes('0.08'))).toBe(true);
+    expect(rows.some((text) => text?.includes('Y1') === true && text.includes('100.01'))).toBe(true);
+  });
+
+  it('warns that the wiring will be cleared before switching (決定表#12)', () => {
+    dialog();
+    act(() => {
+      fireEvent.click(screen.getByTestId('notation-to-omron'));
+    });
+    expect(screen.getByTestId('notation-warning')).toHaveTextContent('配線');
+    // 確定するまで方言は変わらない
+    expect(useStore.getState().dialectId).toBe('mitsubishi');
+  });
+
+  it('switches the dialect and the model but keeps the ladder (4A H-2)', () => {
+    const onClose = dialog();
+    act(() => {
+      fireEvent.click(screen.getByTestId('notation-to-omron'));
+      fireEvent.click(screen.getByTestId('notation-apply'));
+    });
+    const state = useStore.getState();
+    expect(state.dialectId).toBe('omron');
+    expect(state.ladder).toEqual(selfHold);
+    expect(state.converted).toBe(false);
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it('shows what the target dialect cannot spell', () => {
+    // 内部リレーを機種の範囲外へ置いたラダー（OMRON の W は 0..W-1）
+    act(() => {
+      useStore.getState().setLadder(selfHold);
+    });
+    dialog();
+    act(() => {
+      fireEvent.click(screen.getByTestId('notation-to-sharp'));
+    });
+    // 表せない項目が無ければ一覧は空でよい（`errors` の欄そのものは必ずある）
+    expect(screen.getByTestId('notation-errors')).toBeInTheDocument();
+  });
+});
+```
+
+- [ ] **Step 2: RED を確認する**
+
+```powershell
+pnpm --filter @ojt/desktop exec vitest run test/notation-dialog.test.tsx
+```
+
+Expected: 失敗。`Failed to load url ../src/renderer/ladder/NotationDialog.js`。
+
+- [ ] **Step 3: `ladder/NotationDialog.tsx` を作る**
+
+```tsx
+import {
+  availableDialects,
+  switchNotation,
+  type DialectId,
+  type DialectProfile,
+  type NotationSwitchResult,
+} from '@ojt/plc-dialects';
+import { useMemo, useState, type JSX } from 'react';
+import { useStore } from '../app/store.js';
+import { JA } from '../i18n/ja.js';
+import styles from './ladder.module.css';
+
+/**
+ * 表記切替ダイアログ。設計仕様 §10.7 / §16 Phase 4 受入基準②。決定表#11・#12
+ *
+ * **IRは書き換えない**（4A H-2）。切り替えるのは「どの方言で表示するか」だけで、
+ * プログラムも取り消しスタックもそのまま残る。ただし機種（3Dの本体と端子名）も一緒に
+ * 変わるため、**盤の配線はやり直しになる**。それを先に伝えてから確定する。
+ */
+export function NotationDialog({
+  profile,
+  onClose,
+}: {
+  profile: DialectProfile;
+  onClose: () => void;
+}): JSX.Element {
+  const program = useStore((s) => s.ladder);
+  const [target, setTarget] = useState<DialectId | undefined>(undefined);
+  const others = useMemo(
+    () => availableDialects().filter((other) => other.id !== profile.id),
+    [profile],
+  );
+  const preview: NotationSwitchResult | undefined = useMemo(() => {
+    if (target === undefined || program === undefined) return undefined;
+    const to = others.find((other) => other.id === target);
+    return to === undefined ? undefined : switchNotation(program, profile, to);
+  }, [others, profile, program, target]);
+
+  return (
+    <div className={styles.notation} role="dialog" aria-label={JA.ladder.notationTitle} data-testid="notation-dialog">
+      <h2 className={styles.sideTitle}>{JA.ladder.notationTitle}</h2>
+      <p className={styles.sideNote}>{JA.ladder.notationHelp}</p>
+      <div className={styles.notationPicker}>
+        {others.map((other) => (
+          <button
+            key={other.id}
+            type="button"
+            data-testid={`notation-to-${other.id}`}
+            aria-pressed={target === other.id}
+            onClick={() => {
+              setTarget(other.id);
+            }}
+          >
+            {other.displayName}
+          </button>
+        ))}
+      </div>
+      {preview === undefined ? null : (
+        <>
+          <p className={styles.notationWarn} data-testid="notation-warning">
+            {JA.ladder.notationWarning}
+          </p>
+          <table className={styles.ioTable}>
+            <thead>
+              <tr>
+                <th scope="col">{JA.ladder.notationFrom}</th>
+                <th scope="col">{JA.ladder.notationTo}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {preview.changes.length === 0 ? (
+                <tr>
+                  <td colSpan={2}>{JA.ladder.notationNoChange}</td>
+                </tr>
+              ) : null}
+              {preview.changes.map((change, index) => (
+                <tr key={`${change.from}-${String(index)}`} data-testid={`notation-change-${String(index)}`}>
+                  <td>{change.from}</td>
+                  <td>{change.to}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <ul className={styles.notationErrors} data-testid="notation-errors">
+            {preview.errors.map((issue, index) => (
+              <li key={`${issue.code}-${String(index)}`}>{issue.message}</li>
+            ))}
+          </ul>
+          <div className={styles.notationActions}>
+            <button
+              type="button"
+              data-testid="notation-apply"
+              onClick={() => {
+                useStore.getState().switchDialect(preview.to);
+                onClose();
+              }}
+            >
+              {JA.ladder.notationApply}
+            </button>
+            <button type="button" data-testid="notation-cancel" onClick={onClose}>
+              {JA.inspectRepair.cancel}
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+```
+
+- [ ] **Step 4: `store.ts` に `switchDialect()` を足す**
+
+`AppState` のアクション宣言（`setDialect` の直後）:
+
+```ts
+  /**
+   * 表記（メーカー）を切り替える。§10.7 / 決定表#12
+   * 方言と課題の機種を差し替え、盤と履歴を作り直す。**ラダーとデバイスコメントは持ち越す。**
+   * 機種が変わると端子名が変わるので、配線は残せない（盤に無い端子を指す電線ができる）。
+   */
+  switchDialect: (dialectId: DialectId) => void;
+```
+
+実装（`setDialect` の直後）:
+
+```ts
+  switchDialect: (dialectId) => {
+    const { problem, ladder, ladderComments } = get();
+    set({ dialectId });
+    if (problem === undefined || !isPlcProblem(problem)) return;
+    const swapped = plcForVendor(problem, dialectId);
+    if (swapped === undefined) {
+      const model = plcUnitForVendor(dialectId)?.model ?? dialectId;
+      get().toast(JA.plc.modelNotUsable(model, problem.plc.model), 'error');
+      return;
+    }
+    // `openProblem()` が盤・履歴・ログ・計時を作り直す。ラダーだけ持ち越す（決定表#12）
+    get().openProblem(swapped);
+    set({ ladder, ladderComments, converted: false, convertIssues: NO_CONVERT_ISSUES });
+    get().toast(JA.plc.notationSwitched(getDialect(dialectId).displayName));
+  },
+```
+
+（`getDialect` を `@ojt/plc-dialects` の import に足す。）
+
+- [ ] **Step 5: `LadderWorkspace.tsx` にボタンを足す**
+
+ツールバーの `toolbarGap` の直後（回路ブロック操作の4ボタンの後ろ）に足す:
+
+```tsx
+        <button
+          type="button"
+          data-testid="toolbar-notation"
+          onClick={() => {
+            setNotationOpen(true);
+          }}
+        >
+          {JA.ladder.notationTitle}
+        </button>
+```
+
+`const [notationOpen, setNotationOpen] = useState(false);` を足し、`workspaceSide` の先頭に:
+
+```tsx
+          {notationOpen ? (
+            <NotationDialog
+              profile={profile}
+              onClose={() => {
+                setNotationOpen(false);
+              }}
+            />
+          ) : null}
+```
+
+- [ ] **Step 6: `i18n/ja.ts` と `ladder.module.css` に足す**
+
+`JA.ladder` の Plan 4B ブロック:
+
+```ts
+    /** 表記切替（§10.7）。 */
+    notationTitle: '表記切替',
+    notationHelp: '同じラダーを別メーカーの表記で表示します。プログラムは書き換わりません。',
+    notationWarning:
+      '機種も切り替わるため、盤の配線はやり直しになります（ラダーとデバイスコメントは残ります）。',
+    notationFrom: 'いまの表記',
+    notationTo: '切替後',
+    notationNoChange: '表記が変わるデバイスはありません。',
+    notationApply: 'この表記に切り替える',
+```
+
+`JA.plc` の Plan 4B ブロック:
+
+```ts
+    notationSwitched: (name: string): string => `${name} の表記に切り替えました`,
+```
+
+`ladder.module.css` の末尾:
+
+```css
+/* --- Plan 4B Task 8: 表記切替ダイアログ --- */
+.notation {
+  border: 1px solid rgb(0 0 0 / 20%);
+  background: var(--skin-output, #fff);
+  padding: 8px;
+  margin-bottom: 8px;
+}
+
+.notationPicker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.notationWarn {
+  font-size: 11px;
+  color: #b34700;
+  margin: 0 0 8px;
+}
+
+.notationErrors {
+  font-size: 11px;
+  color: var(--skin-error, #d14343);
+  margin: 8px 0;
+  padding-left: 16px;
+}
+
+.notationActions {
+  display: flex;
+  gap: 8px;
+}
+```
+
+- [ ] **Step 7: GREEN を確認してコミットする**
+
+```powershell
+pnpm --filter @ojt/desktop exec vitest run test/notation-dialog.test.tsx test/skin-workspace.test.tsx test/store-plc.test.ts
+```
+
+Expected: すべて通過（`notation-dialog` は 5 ケース）。
+
+```powershell
+git add apps/desktop/src/renderer apps/desktop/test
+git commit -m "feat(desktop): add the notation switch dialog for mode D"
+```
+
+---
+
+## Task 9: 命令語リストのエクスポート（§10.7 / 受入基準⑥）
+
+**モデル: Opus**（IPCを1本増やす判断と main 側の検証があるため）
+
+**Files:**
+- Modify: `apps/desktop/src/shared/ipc.ts`（`textfileSave` と型、`OjtApi`）
+- Modify: `apps/desktop/src/shared/messages.ts`（`MSG.textFile`）
+- Create: `apps/desktop/src/main/text-files.ts`
+- Modify: `apps/desktop/src/main/ipc.ts` / `apps/desktop/src/preload/index.ts`
+- Modify: `apps/desktop/src/renderer/ladder/OutputWindow.tsx`（書き出しボタンと指摘欄）
+- Modify: `apps/desktop/src/renderer/ladder/LadderWorkspace.tsx`（書き出しの実体）
+- Modify: `apps/desktop/src/renderer/i18n/ja.ts`
+- Test: `apps/desktop/test/instruction-list-export.test.tsx`（新規）
+- Test: `apps/desktop/test/text-files.test.ts`（新規・main 側）
+
+§10.7「命令語リストのエクスポート（テキスト、UTF-8、CRLF）。ファイル出力先は利用者が選ぶ」＝受入基準⑥である。**IPCを7本目にする**（決定表#13・意図的な差分 #1）。
+
+- [ ] **Step 1: 失敗するテストを書く（main 側）**
+
+`apps/desktop/test/text-files.test.ts`:
+
+```ts
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+const showSaveDialog = vi.fn();
+vi.mock('electron', () => ({
+  app: { getPath: () => dir },
+  dialog: { showSaveDialog: (...args: unknown[]) => showSaveDialog(...args) as unknown },
+}));
+
+let dir = '';
+const { MAX_TEXT_BYTES, saveTextFile } = await import('../src/main/text-files.js');
+
+beforeEach(() => {
+  dir = mkdtempSync(join(tmpdir(), 'ojt-text-'));
+  showSaveDialog.mockReset();
+});
+
+afterEach(() => {
+  rmSync(dir, { recursive: true, force: true });
+});
+
+describe('saveTextFile（§10.7 / §13 #7）', () => {
+  it('writes the text as UTF-8 exactly as given (CRLF は 4A が付けている)', async () => {
+    const target = join(dir, 'il.txt');
+    showSaveDialog.mockResolvedValue({ canceled: false, filePath: target });
+    const result = await saveTextFile(undefined, {
+      defaultFileName: 'd-001_命令語リスト.txt',
+      text: '0000  LD        X0\r\n0001  OUT       Y0\r\n',
+    });
+    expect(result).toEqual({ ok: true, path: target });
+    expect(readFileSync(target, 'utf8')).toBe('0000  LD        X0\r\n0001  OUT       Y0\r\n');
+    // BOM は付けない（§10.7 は UTF-8 とだけ定める）
+    expect(readFileSync(target)[0]).not.toBe(0xef);
+  });
+
+  it('reports a cancel without writing anything', async () => {
+    showSaveDialog.mockResolvedValue({ canceled: true, filePath: undefined });
+    const result = await saveTextFile(undefined, { defaultFileName: 'a.txt', text: 'x' });
+    expect(result.ok).toBe(false);
+    expect(result).toMatchObject({ canceled: true });
+  });
+
+  it('refuses a text that is too large (§13 #8)', async () => {
+    const result = await saveTextFile(undefined, {
+      defaultFileName: 'a.txt',
+      text: 'x'.repeat(MAX_TEXT_BYTES + 1),
+    });
+    expect(result.ok).toBe(false);
+    expect(showSaveDialog).not.toHaveBeenCalled();
+  });
+
+  it('strips path separators from the suggested file name', async () => {
+    showSaveDialog.mockResolvedValue({ canceled: true, filePath: undefined });
+    await saveTextFile(undefined, { defaultFileName: '../../evil/name.txt', text: 'x' });
+    const options = showSaveDialog.mock.calls[0]?.[0] as { defaultPath?: string } | undefined;
+    expect(options?.defaultPath).not.toContain('..');
+    expect(options?.defaultPath).toContain('name.txt');
+  });
+});
+```
+
+- [ ] **Step 2: 失敗するテストを書く（renderer 側）**
+
+`apps/desktop/test/instruction-list-export.test.tsx`:
+
+```tsx
+import { BUILTIN_PLC_PROBLEMS } from '@ojt/content';
+import { endNetwork, hline, network, no, out, program, X, Y } from '@ojt/ladder-core';
+import { MITSUBISHI_FX5U, SHARP_JW300 } from '@ojt/plc-dialects';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { useStore } from '../src/renderer/app/store.js';
+import { LadderWorkspace } from '../src/renderer/ladder/LadderWorkspace.js';
+
+const problem = BUILTIN_PLC_PROBLEMS[0]!;
+const simple = program(network('n1', [[no(X(0)), hline(), out(Y(0))]]), endNetwork());
+const saveTextFile = vi.fn();
+
+afterEach(() => {
+  cleanup();
+});
+
+beforeEach(() => {
+  saveTextFile.mockReset().mockResolvedValue({ ok: true, path: 'C:/tmp/il.txt' });
+  (window as unknown as { ojt: unknown }).ojt = {
+    listProblems: vi.fn(),
+    readProblem: vi.fn(),
+    saveWorkFile: vi.fn(),
+    loadWorkFile: vi.fn(),
+    getSettings: vi.fn(),
+    setSettings: vi.fn(),
+    saveTextFile,
+  };
+  useStore.getState().abandonSession();
+  act(() => {
+    useStore.getState().openProblem(problem);
+    useStore.getState().setLadder(simple);
+  });
+});
+
+describe('命令語リストの書き出し（§10.7 / §16 Phase 4 受入基準⑥）', () => {
+  it('writes the mnemonics of the current dialect', async () => {
+    render(
+      <LadderWorkspace problem={problem} profile={MITSUBISHI_FX5U} gridCols={11} onPlc={vi.fn()} />,
+    );
+    act(() => {
+      fireEvent.click(screen.getByTestId('export-il'));
+    });
+    await waitFor(() => {
+      expect(saveTextFile).toHaveBeenCalledTimes(1);
+    });
+    const request = saveTextFile.mock.calls[0]?.[0] as { defaultFileName: string; text: string };
+    expect(request.text).toContain('LD');
+    expect(request.text).toContain('OUT');
+    expect(request.text.endsWith('\r\n')).toBe(true);
+    expect(request.defaultFileName).toContain(problem.id);
+  });
+
+  it('writes the SHARP mnemonics when that skin is open (受入基準⑥)', async () => {
+    render(
+      <LadderWorkspace problem={problem} profile={SHARP_JW300} gridCols={11} onPlc={vi.fn()} />,
+    );
+    act(() => {
+      fireEvent.click(screen.getByTestId('export-il'));
+    });
+    await waitFor(() => {
+      expect(saveTextFile).toHaveBeenCalled();
+    });
+    const request = saveTextFile.mock.calls[0]?.[0] as { text: string };
+    expect(request.text).toContain('STR');
+    expect(request.text).not.toContain('LD ');
+  });
+
+  it('explains a bridge circuit in plain Japanese instead of writing a file', async () => {
+    // 直並列に分解できない回路（4A 意図的な差分 #10）
+    act(() => {
+      useStore.getState().setLadder(bridgeProgram());
+    });
+    render(
+      <LadderWorkspace problem={problem} profile={MITSUBISHI_FX5U} gridCols={11} onPlc={vi.fn()} />,
+    );
+    act(() => {
+      fireEvent.click(screen.getByTestId('export-il'));
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId('il-issues')).toHaveTextContent('ブリッジ');
+    });
+    expect(saveTextFile).not.toHaveBeenCalled();
+  });
+
+  it('tells the trainee where the file went', async () => {
+    render(
+      <LadderWorkspace problem={problem} profile={MITSUBISHI_FX5U} gridCols={11} onPlc={vi.fn()} />,
+    );
+    act(() => {
+      fireEvent.click(screen.getByTestId('export-il'));
+    });
+    await waitFor(() => {
+      expect(useStore.getState().toasts.at(-1)?.text).toContain('C:/tmp/il.txt');
+    });
+  });
+});
+```
+
+（`bridgeProgram()` は `test/` のヘルパとして同じファイルの末尾に置く。縦線で2本の枝を橋渡しした
+1ネットワークで、4A の `instructionList()` が `not-series-parallel` を返す形にする。）
+
+- [ ] **Step 3: RED を確認する**
+
+```powershell
+pnpm --filter @ojt/desktop exec vitest run test/text-files.test.ts test/instruction-list-export.test.tsx
+```
+
+Expected: 失敗。`Failed to load url ../src/main/text-files.js` と `[data-testid="export-il"]` が無い。
+
+- [ ] **Step 4: `shared/ipc.ts` に7本目を足す**
+
+```ts
+/**
+ * IPCチャネル名。§4.3
+ * Phase 4 で `file:saveText` を足して**7本**になった（Plan 4B 意図的な差分 #1）。
+ * 命令語リストの保存（§10.7「ファイル出力先は利用者が選ぶ」）には保存ダイアログが要り、
+ * renderer からはダイアログを開けないためである。preload はこの7本だけを公開する。
+ */
+export const IPC_CHANNELS = {
+  contentList: 'content:list',
+  contentRead: 'content:read',
+  workfileSave: 'workfile:save',
+  workfileLoad: 'workfile:load',
+  settingsGet: 'settings:get',
+  settingsSet: 'settings:set',
+  textfileSave: 'file:saveText',
+} as const;
+
+/** テキストファイルの保存要求（命令語リスト）。§10.7 */
+export interface SaveTextRequest {
+  /** 保存ダイアログに出す既定のファイル名（パス区切りは main 側で落とす）。 */
+  defaultFileName: string;
+  /** 中身。改行は呼び出し側が整えてから渡す（`instructionList()` は CRLF 済み）。 */
+  text: string;
+}
+
+/** 保存結果（`WorkFileSaveResult` と同じ形）。§13 #7 */
+export type SaveTextResult =
+  { ok: true; path: string } | { ok: false; canceled: boolean; message: string };
+```
+
+`OjtApi` に足す:
+
+```ts
+  /** テキストファイルを保存する（命令語リスト）。§10.7 */
+  saveTextFile: (request: SaveTextRequest) => Promise<SaveTextResult>;
+```
+
+- [ ] **Step 5: `shared/messages.ts` に文言を足す**
+
+```ts
+  textFile: {
+    saveTitle: '命令語リストを保存',
+    filterName: 'テキストファイル',
+    saveCanceled: '保存を取り消しました',
+    /** 中身が大きすぎる（壊れた／作為的な要求）。§13 #8 */
+    tooLarge: '書き出す内容が大きすぎます',
+  },
+```
+
+- [ ] **Step 6: `main/text-files.ts` を作る**
+
+```ts
+import { writeFileSync } from 'node:fs';
+import { basename, join } from 'node:path';
+import { app, dialog, type BrowserWindow } from 'electron';
+import type { SaveTextRequest, SaveTextResult } from '../shared/ipc.js';
+import { MSG, saveFailedText } from '../shared/messages.js';
+
+/**
+ * テキストファイルの保存（命令語リスト）。設計仕様 §10.7 / §13 #7。
+ * `work-files.ts` と同じ流儀で、**保存先は利用者が選ぶ**（`dialog.showSaveDialog`）。
+ * 中身は呼び出し側（renderer）が作った文字列をそのまま UTF-8 で書く。BOM は付けない。
+ */
+
+/** 書き出せるテキストの最大バイト数（命令語リストは大きくても数十KB）。§13 #8 */
+export const MAX_TEXT_BYTES = 2 * 1024 * 1024;
+
+/** 既定のファイル名からパス区切りを落とす（renderer からの生入力を信用しない）。 */
+function safeFileName(name: string): string {
+  const base = basename(name.replace(/[\\/]/gu, '_')).trim();
+  return base.length === 0 ? 'export.txt' : base;
+}
+
+/** テキストを保存する。 */
+export async function saveTextFile(
+  window: BrowserWindow | undefined,
+  request: SaveTextRequest,
+): Promise<SaveTextResult> {
+  if (typeof request.text !== 'string' || Buffer.byteLength(request.text, 'utf8') > MAX_TEXT_BYTES) {
+    return { ok: false, canceled: false, message: MSG.textFile.tooLarge };
+  }
+  const defaultPath = join(app.getPath('documents'), safeFileName(request.defaultFileName));
+  const options = {
+    title: MSG.textFile.saveTitle,
+    defaultPath,
+    filters: [{ name: MSG.textFile.filterName, extensions: ['txt'] }],
+  };
+  const picked =
+    window === undefined
+      ? await dialog.showSaveDialog(options)
+      : await dialog.showSaveDialog(window, options);
+  if (picked.canceled || picked.filePath === undefined) {
+    return { ok: false, canceled: true, message: MSG.textFile.saveCanceled };
+  }
+  try {
+    writeFileSync(picked.filePath, request.text, 'utf8');
+    return { ok: true, path: picked.filePath };
+  } catch (error) {
+    return {
+      ok: false,
+      canceled: false,
+      message: saveFailedText(error instanceof Error ? error.message : String(error)),
+    };
+  }
+}
+```
+
+> `app.getPath('documents')` はテストの `vi.mock('electron')` で差し替える（`getPath: () => dir`）。
+
+- [ ] **Step 7: `main/ipc.ts` と `preload/index.ts` に7本目を足す**
+
+`main/ipc.ts`（見出しコメントの「6チャネル」も「7チャネル」に直す）:
+
+```ts
+  ipcMain.handle(IPC_CHANNELS.textfileSave, async (event, request: SaveTextRequest) => {
+    const window = BrowserWindow.fromWebContents(event.sender) ?? undefined;
+    return saveTextFile(window, request);
+  });
+```
+
+`preload/index.ts`:
+
+```ts
+  saveTextFile: (request: SaveTextRequest) =>
+    ipcRenderer.invoke(IPC_CHANNELS.textfileSave, request) as Promise<SaveTextResult>,
+```
+
+- [ ] **Step 8: `OutputWindow.tsx` に書き出しボタンと指摘欄を足す**
+
+props に足す:
+
+```ts
+  /** 命令語リストの書き出し（§10.7 / 決定表#14）。 */
+  onExport: () => void;
+  /** 書き出せなかった理由（`INSTRUCTION_LIST_MESSAGES` の文言＋平易な説明）。 */
+  exportIssues: readonly string[];
+```
+
+ヘッダに足す（`convert-state` の隣）:
+
+```tsx
+        <button type="button" data-testid="export-il" onClick={onExport}>
+          {JA.ladder.exportIl}
+        </button>
+```
+
+一覧の下に足す:
+
+```tsx
+      {exportIssues.length === 0 ? null : (
+        <ul className={styles.notationErrors} data-testid="il-issues">
+          {exportIssues.map((text) => (
+            <li key={text}>{text}</li>
+          ))}
+        </ul>
+      )}
+```
+
+- [ ] **Step 9: `LadderWorkspace.tsx` に書き出しの実体を足す**
+
+```ts
+import { instructionList, INSTRUCTION_LIST_MESSAGES } from '@ojt/plc-dialects';
+import { ojtApi } from '../app/ojt-api.js';
+// …
+  const [exportIssues, setExportIssues] = useState<readonly string[]>([]);
+
+  /**
+   * 命令語リストを書き出す。§10.7 / 受入基準⑥
+   * 文言は 4A の `INSTRUCTION_LIST_MESSAGES` を使い、直並列に分解できない回路
+   * （ブリッジ回路。4A 意図的な差分 #10）だけは**平易な直し方**を足して出す。
+   */
+  const exportIl = useCallback((): void => {
+    const store = useStore.getState();
+    const current = store.ladder;
+    if (current === undefined) return;
+    const list = instructionList(current, profile);
+    if (list.errors.length > 0) {
+      setExportIssues(
+        list.errors.map((issue) => {
+          const base = INSTRUCTION_LIST_MESSAGES[issue.code] ?? issue.message;
+          return issue.code === 'not-series-parallel'
+            ? `${base} ${JA.ladder.ilNotSeriesParallel}`
+            : base;
+        }),
+      );
+      return;
+    }
+    setExportIssues([]);
+    try {
+      void ojtApi()
+        .saveTextFile({ defaultFileName: `${problem.id}_命令語リスト.txt`, text: list.text })
+        .then((result) => {
+          const next = useStore.getState();
+          if (result.ok) next.toast(JA.ladder.ilSaved(result.path));
+          else if (!result.canceled) next.toast(result.message, 'error');
+        });
+    } catch (error) {
+      store.toast(error instanceof Error ? error.message : String(error), 'error');
+    }
+  }, [problem, profile]);
+```
+
+`<OutputWindow … onExport={exportIl} exportIssues={exportIssues} />` を渡す。
+
+- [ ] **Step 10: `i18n/ja.ts` に足す**
+
+`JA.ladder` の Plan 4B ブロック:
+
+```ts
+    /** 命令語リストの書き出し（§10.7）。 */
+    exportIl: '命令語リスト',
+    ilSaved: (path: string): string => `命令語リストを保存しました: ${path}`,
+    /** `not-series-parallel` の平易な説明（4A 意図的な差分 #10）。 */
+    ilNotSeriesParallel:
+      '接点が橋渡し（ブリッジ）になっている回路は、直列と並列の組み合わせに書き直せないため命令語になりません。縦線を1本減らすか、回路ブロックを分けてください。',
+```
+
+- [ ] **Step 11: GREEN を確認してコミットする**
+
+```powershell
+pnpm --filter @ojt/desktop exec vitest run test/text-files.test.ts test/instruction-list-export.test.tsx test/output-window.test.tsx test/runtime.test.ts
+pnpm --filter @ojt/desktop exec tsc -p tsconfig.json --noEmit
+```
+
+Expected: すべて通過（`text-files` 4 ケース、`instruction-list-export` 4 ケース）。`runtime.test.ts`（preload のチャネル一覧を見ているなら）の期待値を7本に直す。
+
+```powershell
+git add apps/desktop/src/shared apps/desktop/src/main apps/desktop/src/preload apps/desktop/src/renderer apps/desktop/test
+git commit -m "feat(desktop): export the instruction list to a text file"
+```
+
+---
