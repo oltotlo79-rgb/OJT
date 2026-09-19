@@ -6,7 +6,12 @@ import {
   type SocketRoles,
 } from '@ojt/board-model';
 import { partId, toTerminalId, type Netlist, type PartId, type TerminalId } from '@ojt/circuit-sim';
-import { toSession, type CellAssignment } from '@ojt/schematic-core';
+import {
+  toSession,
+  type CellAssignment,
+  type SchematicDocument,
+  type ToSessionResult,
+} from '@ojt/schematic-core';
 import { toSocketRoles } from './schema/common.js';
 import type { AssembleProblem } from './schema/assemble.js';
 import type { InspectRepairProblem } from './schema/inspect-repair.js';
@@ -98,6 +103,30 @@ export function toProblemPath(problem: SchematicProblem, path: string): string {
 }
 
 /**
+ * 回路図1枚を、その課題の盤の設定（役割割当・任意部品・在庫・線色）で盤セッションに落とす。§7.2 / §11.3
+ *
+ * `physicalOverride`（§7.2）の鍵は**課題の模範回路の要素ID**である。だから渡すのは
+ * `doc === problem.schematic` のとき——つまり課題自身の回路図を落とすときだけにする。
+ * 訓練者の下書きは自分のID（`c1`, `c2`, …）を持つので、そのまま渡すと `toSession()` の
+ * `checkOverride()` が「要素IDが見つかりません」を返し、回路とは無関係な指摘がエディタに出る。
+ */
+export function buildSchematicSession(
+  problem: SchematicProblem,
+  board: BoardDefinition,
+  doc: SchematicDocument,
+): ToSessionResult {
+  const override =
+    doc === problem.schematic ? toPhysicalOverride(problem.physicalOverride) : undefined;
+  return toSession(doc, board, {
+    roles: toRoles(problem),
+    color: ASSEMBLE_WIRE_COLOR,
+    extraParts: toExtraParts(problem),
+    inventory: problem.inventory,
+    ...(override === undefined ? {} : { physicalOverride: override }),
+  });
+}
+
+/**
  * 課題の模範回路を盤セッション＋ネットリストとして組み立てる。§7.2
  * 盤IDが課題と一致しない場合と、割当に失敗した場合はエラーを返す（課題一覧で「模範回路エラー」。§13 #2）。
  */
@@ -116,14 +145,7 @@ export function buildReferenceSession(
       ],
     };
   }
-  const override = toPhysicalOverride(problem.physicalOverride);
-  const built = toSession(problem.schematic, board, {
-    roles: toRoles(problem),
-    color: ASSEMBLE_WIRE_COLOR,
-    extraParts: toExtraParts(problem),
-    inventory: problem.inventory,
-    ...(override === undefined ? {} : { physicalOverride: override }),
-  });
+  const built = buildSchematicSession(problem, board, problem.schematic);
   if (!built.ok) {
     return {
       ok: false,
