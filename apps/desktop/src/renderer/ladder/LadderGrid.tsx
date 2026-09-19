@@ -13,6 +13,7 @@ import { useStore } from '../app/store.js';
 import { JA } from '../i18n/ja.js';
 import { counterPresetText } from '../session/ladder-cell.js';
 import type { LadderCursor, LadderEditorMode } from '../session/ladder.js';
+import { skinMonitorColor } from '../session/plc-skin.js';
 import type { SkinTheme } from './skins/index.js';
 import { MC_SYMBOL_ID, MCR_SYMBOL_ID, symbolMetrics, type SymbolMetrics } from './symbols.js';
 import styles from './ladder.module.css';
@@ -268,7 +269,23 @@ function GridCell({
               {line}
             </text>
           ))}
-      {selected ? <rect width={metrics.w} height={metrics.h} className={styles.cursor} /> : null}
+      {selected ? (
+        <>
+          <rect width={metrics.w} height={metrics.h} className={styles.cursor} />
+          {/*
+            色だけに頼らない手がかり（内側の破線）。JTEKT風・SHARP風はカーソル色と背景の
+            コントラストが低いので、色を判別できなくても選択セルだと分かるようにする（レビュー M11）
+          */}
+          <rect
+            x={2}
+            y={2}
+            width={Math.max(0, metrics.w - 4)}
+            height={Math.max(0, metrics.h - 4)}
+            data-testid="cursor-inner"
+            className={styles.cursorInner}
+          />
+        </>
+      ) : null}
       {error ? <rect width={metrics.w} height={metrics.h} className={styles.errorCell} /> : null}
     </g>
   );
@@ -318,10 +335,9 @@ function NetworkView({
    * 未設定（空文字）なら方言の既定へ戻す。`idle`（非通電）色は方言のまま。
    */
   const monitorColor = useStore((s) => s.monitorColor);
-  const colors = {
-    ...profile.monitorColors,
-    powered: monitorColor.length > 0 ? monitorColor : profile.monitorColors.powered,
-  };
+  // 通電色の決め方は3箇所に散っていた（`skins/index.ts` / `ProjectTree.tsx` とここ）ので
+  // `skinMonitorColor()` の1本に集める（レビュー M13）
+  const colors = { ...profile.monitorColors, powered: skinMonitorColor(profile, monitorColor) };
   // レンダー回数を DOM に出す（D1 のテストが「他ネットワークの通電が変わっても再描画されない」
   // ことを確かめるための、副作用の無い観測用カウンタ）。
   const renderCount = useRef(0);

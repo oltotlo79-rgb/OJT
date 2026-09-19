@@ -3,6 +3,7 @@ import type { DialectProfile } from '@ojt/plc-dialects';
 import type { CSSProperties, JSX } from 'react';
 import { useStore } from '../app/store.js';
 import { JA } from '../i18n/ja.js';
+import { skinMonitorColor } from '../session/plc-skin.js';
 import styles from './ladder.module.css';
 
 /**
@@ -20,9 +21,9 @@ export function ProjectTree({
   currentNetworkId: string;
   onPick: (networkId: string) => void;
 }): JSX.Element {
-  // 設定画面のモニタ色が方言の既定色を上書きする（Batch 4+5 レビュー M15）
+  // 設定画面のモニタ色が方言の既定色を上書きする（Batch 4+5 レビュー M15 / M13）
   const monitorColor = useStore((s) => s.monitorColor);
-  const currentColor = monitorColor.length > 0 ? monitorColor : profile.monitorColors.powered;
+  const currentColor = skinMonitorColor(profile, monitorColor);
   return (
     <nav
       className={styles.tree}

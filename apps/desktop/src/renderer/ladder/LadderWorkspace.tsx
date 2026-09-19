@@ -83,7 +83,10 @@ export function LadderWorkspace({
   const monitorColor = useStore((s) => s.monitorColor);
   /** 見た目（配色・セル寸法・枠の並び）はスキンが決める。決定表#5 */
   const theme = useMemo(() => skinThemeOf(profile), [profile]);
-  const cssVars = useMemo(() => skinCssVars(theme, monitorColor), [theme, monitorColor]);
+  const cssVars = useMemo(
+    () => skinCssVars(profile, theme, monitorColor),
+    [profile, theme, monitorColor],
+  );
   const io = useMemo(() => resolvePlcIo(problem.io), [problem]);
   /** 機種の端子名はここから引く（決定表#16）。課題の機種が未対応なら FX5U に倒す。 */
   const unit = useMemo(() => plcUnitFor(problem.plc.model) ?? PLC_UNIT_FX5U, [problem]);
@@ -247,8 +250,11 @@ export function LadderWorkspace({
         （Batch 3 レビュー M8。ただの押しボタンの集まりとして `role="group"` にする）
       */}
       <div className={styles.toolbar} role="group" aria-label={JA.ladder.title}>
-        {items.map((item) => {
-          const first = items.findIndex((other) => other.action === item.action) === item.index;
+        {items.map((item, index) => {
+          // `map` 自身の添字で「最初の1件」を決める（レビュー M10。`item.index` は
+          // `panels.toolbar` 側の位置で、`toolbarItems()` が意味の無い項目を落とすと配列の
+          // 添字とずれうる）
+          const first = items.findIndex((other) => other.action === item.action) === index;
           return (
             <button
               key={`${item.action}-${String(item.index)}`}

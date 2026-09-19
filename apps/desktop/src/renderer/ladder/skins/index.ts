@@ -1,4 +1,5 @@
 import type { DialectId, DialectProfile } from '@ojt/plc-dialects';
+import { skinMonitorColor } from '../../session/plc-skin.js';
 import { JTEKT_SKIN } from './jtekt.js';
 import { MITSUBISHI_SKIN } from './mitsubishi.js';
 import { OMRON_SKIN } from './omron.js';
@@ -32,8 +33,14 @@ export function skinThemeOf(profile: DialectProfile): SkinTheme {
  *
  * @param monitorColor 設定画面の通電色（空なら方言の既定）。決定表#8
  */
-export function skinCssVars(theme: SkinTheme, monitorColor: string): Record<string, string> {
-  const powered = monitorColor.length > 0 ? monitorColor : theme.colors.powered;
+export function skinCssVars(
+  profile: DialectProfile,
+  theme: SkinTheme,
+  monitorColor: string,
+): Record<string, string> {
+  // 通電色の決め方は3箇所に散っていた（`LadderGrid.tsx` / `ProjectTree.tsx` とここ）ので
+  // `skinMonitorColor()` の1本に集める（レビュー M13）
+  const powered = skinMonitorColor(profile, monitorColor);
   return {
     '--skin-canvas': theme.colors.canvas,
     '--skin-grid': theme.colors.grid,

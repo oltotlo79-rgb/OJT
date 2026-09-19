@@ -73,8 +73,21 @@
   color: #b34700;
 }
 
+/*
+ * 格子線は `.grid`（ネットワークごとの `<svg>`）自身の背景にする（レビュー M9）。
+ * 以前は `.gridScroll` の背景だったため、スクロール領域の左上（0,0）を起点に敷かれ、
+ * `.gridScroll` の余白（`padding: 6px 8px`）と左母線の幅（`RAIL_W`＝`LadderGrid.tsx` の 6px）
+ * のぶんだけセルの実際の境界からずれていた。svg 自身の背景にすれば余白の影響を受けず、
+ * `background-position` で母線の幅だけ補正すればセルの境界にぴったり合う。
+ */
 .grid {
   display: block;
+  background-image:
+    linear-gradient(to right, var(--skin-grid, transparent) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--skin-grid, transparent) 1px, transparent 1px);
+  background-size: var(--skin-cell-w, 48px) var(--skin-cell-h, 36px);
+  /* 左母線の幅ぶん右へ（`RAIL_W`。`LadderGrid.tsx` と値を合わせておくこと） */
+  background-position: 6px 0;
 }
 
 .rail {
@@ -128,6 +141,17 @@
   fill: none;
   stroke: var(--skin-cursor, #1e64ff);
   stroke-width: 2;
+}
+
+/*
+ * 色以外の手がかり（内側の破線）。JTEKT風・SHARP風のようにカーソル色と背景のコントラストが
+ * 低いスキンでも、線の形だけで選択セルだと判別できるようにする（レビュー M11）。
+ */
+.cursorInner {
+  fill: none;
+  stroke: var(--skin-cursor, #1e64ff);
+  stroke-width: 1;
+  stroke-dasharray: 2 2;
 }
 
 .errorCell {
@@ -520,8 +544,12 @@ details[open] > .sideSummary::before {
 }
 
 .treeList button[aria-current='true'] {
-  /* 選択中は色だけでなく太字でも示す（色の当てにならない環境でも読める。#1） */
+  /*
+   * 選択中は色だけでなく太字＋下線でも示す（色の当てにならない環境でも読める。#1 / レビュー M14。
+   * 「実物との対応」表の「選択中の回路ブロック」＝「ツリーの項目に同色の下線」を実装する）。
+   */
   font-weight: 700;
+  text-decoration: underline;
   /*
    * 色は `ProjectTree` が `profile.monitorColors.powered` から `--tree-current` に流し込む
    * （レビュー Minor）。CSS に `#1e64ff` を直書きすると、方言プロファイルの色を変えたときに
@@ -614,9 +642,12 @@ details[open] > .sideSummary::before {
   white-space: nowrap;
 }
 
-/* 実機の操作パネルにあるが動かない項目（決定表#4） */
+/*
+ * 実機の操作パネルにあるが動かない項目（決定表#4）。`opacity` で薄めると押せるボタンなのに
+ * 「無効」に見えてしまう（レビュー M12）。地の色は変えず、文字だけ淡色にする。
+ */
 .vendorTool {
-  opacity: 0.55;
+  color: var(--muted, #9aa4b5);
   font-style: italic;
 }
 
@@ -643,15 +674,10 @@ details[open] > .sideSummary::before {
 }
 /* --- /Plan 4B Task 3 --- */
 
-/* --- Plan 4B Task 4: スキンの格子線（「実物との対応」表） --- */
 /*
+ * --- Plan 4B Task 4: スキンの格子線（「実物との対応」表） ---
  * `--skin-grid` を背景と同色にしているスキン（GX Works3風・JW-300SP風）では格子線が見えない。
- * 「実物との対応」表の「格子線: 無し」がそのまま実装になる。
+ * 「実物との対応」表の「格子線: 無し」がそのまま実装になる。実体（背景の宣言）は `.grid` に
+ * 移した（レビュー M9。セルの境界に合わせる補正が要るため）。
+ * --- /Plan 4B Task 4 ---
  */
-.gridScroll {
-  background-image:
-    linear-gradient(to right, var(--skin-grid, transparent) 1px, transparent 1px),
-    linear-gradient(to bottom, var(--skin-grid, transparent) 1px, transparent 1px);
-  background-size: var(--skin-cell-w, 48px) var(--skin-cell-h, 36px);
-}
-/* --- /Plan 4B Task 4 --- */

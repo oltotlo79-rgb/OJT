@@ -70,7 +70,8 @@ describe('SkinTheme（利用者要求: 実物に近い回路入力画面 / §10.
 
 describe('CSS 変数への変換（決定表#5）', () => {
   it('turns every colour and size into a --skin-* custom property', () => {
-    const vars = skinCssVars(skinThemeOf(getDialect('omron')), '#FF00AA');
+    const omron = getDialect('omron');
+    const vars = skinCssVars(omron, skinThemeOf(omron), '#FF00AA');
     expect(vars['--skin-canvas']).toBe('#FFFFFF');
     expect(vars['--skin-rail']).toBe('#1F1F1F');
     expect(vars['--skin-cell-w']).toBe('52px');
@@ -85,7 +86,8 @@ describe('CSS 変数への変換（決定表#5）', () => {
   });
 
   it('falls back to the dialect colour when the setting is empty', () => {
-    const vars = skinCssVars(skinThemeOf(getDialect('jtekt')), '');
+    const jtekt = getDialect('jtekt');
+    const vars = skinCssVars(jtekt, skinThemeOf(jtekt), '');
     expect(vars['--skin-powered']).toBe('#E08A1E');
   });
 });
