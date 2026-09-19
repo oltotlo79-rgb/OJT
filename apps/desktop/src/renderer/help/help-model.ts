@@ -102,7 +102,8 @@ export interface HelpHit {
 
 /*
  * Minor#11: `MANUAL_SECTIONS` は生成物で、実行中に変わらない。正規化した本文（検索対象）を
- * 打鍵のたびに93節ぶん作り直すと無駄なので、モジュール読み込み時に1回だけ作って使い回す。
+ * 打鍵のたびに全部の節ぶん作り直すと無駄なので、モジュール読み込み時に1回だけ作って使い回す
+ * （節数は原稿が増えるたびに変わるので、ここでは数を書かない。レビュー Minor#2）。
  */
 const NORMALIZED_HAYSTACK = new Map<string, string>(
   MANUAL_SECTIONS.map((section) => [section.id, normalize(`${section.title} ${section.text}`)]),

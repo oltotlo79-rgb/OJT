@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
@@ -71,6 +71,67 @@ function messageLeaves(): Map<string, string | undefined> {
   return out;
 }
 
+/*
+ * IM-5: これまでの検査は「`label` が説明書の節に出ているか」だけを見ていて、その `label` が
+ * **画面の実際の文言かどうか**は誰も見ていなかった（`shortcuts-note` の label が
+ * `JA.ladder.shortcutNote` の断片の書き換えに追随せず古いままでも、説明書側さえ同じ古い語で
+ * 書けば緑のままになる、という抜け道）。ここでは `label` が画面のコード（`i18n/ja.ts` /
+ * `src/shared/messages.ts` / `src/renderer/**` の部品）の中にリテラルとして実在するかを見る。
+ * `help/manual-content.ts` は説明書から作った生成物なので、これを混ぜると「説明書に書いてあるか」
+ * を見るだけの無意味な検査になってしまう。除外する。
+ */
+const RENDERER_DIR = resolve(APP_ROOT, 'src', 'renderer');
+const SHARED_MESSAGES_FILE = resolve(APP_ROOT, 'src', 'shared', 'messages.ts');
+const GENERATED_MANUAL_FILE = resolve(RENDERER_DIR, 'help', 'manual-content.ts');
+
+function rendererSourceFiles(dir: string): string[] {
+  const out: string[] = [];
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const path = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      out.push(...rendererSourceFiles(path));
+      continue;
+    }
+    if (!/\.tsx?$/u.test(entry.name)) continue;
+    if (path === GENERATED_MANUAL_FILE) continue; // 生成物。画面の実装ではない
+    out.push(path);
+  }
+  return out;
+}
+
+function rendererSourceHaystack(): string {
+  const files = [...rendererSourceFiles(RENDERER_DIR), SHARED_MESSAGES_FILE];
+  return files.map((file) => readFileSync(file, 'utf8')).join('\n');
+}
+
+/*
+ * `coverage.json` の `label` は普段は本当にボタン・見出しの文字そのもの（例:
+ * 「既定に戻す」）だが、次の testid だけは**押しても見えても文字が無い場所の名前**か
+ * **中身が実行時に決まる欄の呼び名**を `label` に書いている（`role="presentation"` の
+ * 覆い、`error` の中身がゾッドやライブラリの実行結果になる欄、折りたたみの `<summary>` の
+ * 呼び名など）。実測でこの14件だけは renderer のソースのどこにも逐語で存在しない
+ * （`internal` の理由文と同じ「説明のための言葉」で、画面のliteralな文字ではない）。
+ * 消してはいけない情報なので、ここに明記したうえで別扱いにする（節への一致は
+ * 上の「writes the on-screen label…」がすべての行に対して変わらず見ている）。
+ */
+const DESCRIPTIVE_NOT_LITERAL_LABELS: ReadonlySet<string> = new Set([
+  'chart-backdrop', // 覆い（`role="presentation"`）。押すと閉じるが文字は無い
+  'schematic-backdrop', // 同上（回路図ヒントの覆い）
+  'device-error', // 中身は `parseDevice()` が返すエラー文（デバイスごとに違う）
+  'diagnosis-note', // 判定表の備考の要約（本文は行ごとに違う）
+  'il-issues', // 命令語リストの書き出せなかった理由の一覧（欄の呼び名）
+  'ladder-grid', // ラダーの格子そのものの呼び名（文字は無い）
+  'ladder-workspace', // ラダー編集の欄全体の呼び名
+  'output-summary', // 出力ウィンドウの折りたたみ `<summary>` の呼び名
+  '{}-summary', // 同上（IDが課題ごとに変わる折りたたみの呼び名）
+  'plc-session', // モードDの画面全体の呼び名
+  'report-list', // 指摘一覧の欄の呼び名（中身は指摘ごとに違う）
+  'schematic-enlarge-button', // `aria-label` が `${title}を${JA.timeChart.enlarge}` の組み立てで、逐語の1本の文字列としてはソースに現れない
+  'skin-assumed', // 前提の一覧欄の呼び名
+  'skin-title', // タイトル帯の呼び名（中身はメーカーごとに違う機種名）
+  'toast', // 通知の欄の呼び名（中身は状況ごとに違う）
+]);
+
 describe('操作要素（決定表#22）', () => {
   it('covers exactly the controls the screens have', () => {
     expect(COVERAGE.controls.map((row) => row.testid).sort()).toEqual(collectTestIds());
@@ -94,6 +155,29 @@ describe('操作要素（決定表#22）', () => {
         missing.push(`${row.section} に「${row.label}」が出ていません`);
     }
     expect(missing).toEqual([]);
+  });
+
+  it('writes the on-screen label of every documented control into the renderer source, not just the manual (IM-5)', () => {
+    const haystack = rendererSourceHaystack();
+    const missing: string[] = [];
+    for (const row of COVERAGE.controls) {
+      if (row.section === undefined || row.label === undefined) continue;
+      if (DESCRIPTIVE_NOT_LITERAL_LABELS.has(row.testid)) continue;
+      if (!haystack.includes(row.label)) {
+        missing.push(`${row.testid} の label「${row.label}」が画面のコードに見つかりません`);
+      }
+    }
+    expect(missing).toEqual([]);
+  });
+
+  it('keeps the descriptive-label exception list from silently growing', () => {
+    // 説明用（逐語ではない）と断った14件以外は、必ずソースのどこかにリテラルで実在すること。
+    const haystack = rendererSourceHaystack();
+    const stillDescriptive = [...DESCRIPTIVE_NOT_LITERAL_LABELS].filter((testid) => {
+      const row = COVERAGE.controls.find((r) => r.testid === testid);
+      return row?.label === undefined || !haystack.includes(row.label);
+    });
+    expect(stillDescriptive.sort()).toEqual([...DESCRIPTIVE_NOT_LITERAL_LABELS].sort());
   });
 });
 
@@ -139,6 +223,32 @@ describe('メッセージ（決定表#23）', () => {
       else if (!section.includes(text)) missing.push(`${row.section} に「${text}」が出ていません`);
     }
     expect(missing).toEqual([]);
+  });
+
+  /*
+   * IM-4: 設計 §6.3 検査5は「関数ならば代表の引数で呼んだ結果が節に出ていること」を求めるが、
+   * 上のテストは `text === undefined`（＝関数）を素通ししていた。`messageLeaves()` が名前だけ
+   * 拾う関数は `MSG.content.countMismatch` と `MSG.manual.openFailed` の2件だけなので、
+   * それぞれ代表の引数で呼び、可変部を除いた固定部分（数字の手前・手前後 / `: ` の手前）が
+   * 節に出ていることを求める。`12-troubleshooting.md` の `◯` の伏字は実例に置き換えた。
+   */
+  it('writes the fixed wording of MSG.content.countMismatch (called with representative counts) into the manual', () => {
+    const sample = MSG.content.countMismatch(18, 20);
+    const fixedParts = sample.split(/\d+/u).filter((part) => part.length > 0);
+    expect(fixedParts.length).toBeGreaterThan(0);
+    const section = TEXT_BY_ID.get('troubleshooting/こう表示されたら') ?? '';
+    for (const part of fixedParts) {
+      expect(section, `固定部分が説明書にありません: 「${part}」`).toContain(part);
+    }
+  });
+
+  it('writes the fixed prefix of MSG.manual.openFailed (called with a representative reason) into the manual', () => {
+    const sample = MSG.manual.openFailed('PDFを開けるアプリが見つかりません');
+    const colonIndex = sample.indexOf(': ');
+    expect(colonIndex).toBeGreaterThan(0);
+    const fixedPrefix = sample.slice(0, colonIndex + 2);
+    const section = TEXT_BY_ID.get('troubleshooting/こう表示されたら') ?? '';
+    expect(section, `固定部分が説明書にありません: 「${fixedPrefix}」`).toContain(fixedPrefix);
   });
 });
 

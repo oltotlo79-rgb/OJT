@@ -365,8 +365,12 @@ test.describe('ヘルプ（§16 Phase 6 受入基準①②③⑥）', () => {
     await expect(page.getByTestId('help-search')).toHaveValue('');
     await expect(hits).toHaveCount(0);
 
-    // 当たりが上限より多いときは件数のふりをせず「20 件以上」と出す（IM-12）
-    await page.getByTestId('help-search').fill('ボタン');
+    /*
+     * 当たりが上限より多いときは件数のふりをせず「20 件以上」と出す（IM-12）。
+     * 「画面」は47節に出て20件の上限に十分な余裕がある（「ボタン」は32節で、原稿が減ると
+     * すぐ20を割り込みかねない。レビュー Minor#5）。
+     */
+    await page.getByTestId('help-search').fill('画面');
     await expect(hits).toHaveCount(20);
     await expect(drawer).toContainText('20 件以上見つかりました');
 
@@ -448,6 +452,32 @@ test.describe('ヘルプ（§16 Phase 6 受入基準①②③⑥）', () => {
       await setWindow(WINDOW.width, WINDOW.height);
       await goHome();
     }
+  });
+
+  /*
+   * レビュー Minor#7: 「ヘルプ」ボタンの位置はホームだけ右端で、他の4画面は「もどる」の隣に
+   * ある。重なりの検査がモードBの「判定」1画面だけだと、ホームや結果の見た目が変わっても
+   * 気づけない。矩形の交差を見るだけなので安く、ホームと結果でも見ておく。
+   */
+  test('受入基準③: ホーム・結果でもヘルプは近くの操作に重ならない（Minor#7）', async () => {
+    await goHome();
+    const homeHelp = await boxOf('open-help');
+    const homeSettings = await boxOf('open-settings');
+    expect(
+      intersects(homeHelp, homeSettings),
+      `ホームでヘルプ ${JSON.stringify(homeHelp)} が「設定」 ${JSON.stringify(homeSettings)} に重なっています`,
+    ).toBe(false);
+
+    await openProblem('assemble', 'b-001');
+    await page.getByTestId('judge-button').click();
+    await expect(page.getByTestId('verdict')).toBeVisible({ timeout: 60_000 });
+    const resultHelp = await boxOf('open-help');
+    const resultVerdict = await boxOf('verdict');
+    expect(
+      intersects(resultHelp, resultVerdict),
+      `結果でヘルプ ${JSON.stringify(resultHelp)} が判定結果 ${JSON.stringify(resultVerdict)} に重なっています`,
+    ).toBe(false);
+    await goHome();
   });
 
   test('受入基準⑥: まだ撮っていない図は枠ごと出ず、PDFのボタンは押せる', async () => {

@@ -22,21 +22,26 @@ const TERMS = JSON.parse(readFileSync(join(MANUAL_DIR, 'terms.json'), 'utf8')) a
 
 interface Chapter {
   id: string;
-  /** 囲み（```）の中を落とした本文。禁止語はここで数える。 */
+  /** 本文。章によっては囲み（```）の中を落としてある。禁止語はここで数える。 */
   prose: string;
 }
 
+/*
+ * IM-3: 以前は**どの章でも**囲み（```）の中を丸ごと対象外にしていたため、囲みに入れさえすれば
+ * 禁止語が何語でも通る抜け道になっていた（`09-settings.md` の引用に禁止語「JSON」が残っていた）。
+ * 囲みを対象外にしてよいのは `style.json` の `exempt` に載っている章（いまは `authoring` だけ、
+ * 指導者向けの課題ファイルの例）だけにし、それ以外の章では囲みの中も禁止語検査にかける。
+ */
 function chapters(): Chapter[] {
   return readdirSync(MANUAL_DIR)
     .filter((name) => /^\d{2}-.+\.md$/u.test(name))
     .sort()
-    .map((name) => ({
-      id: chapterIdOf(name),
-      prose: readFileSync(join(MANUAL_DIR, name), 'utf8')
-        .replace(/\r\n/gu, '\n')
-        // 囲みの中（指導者向けの課題ファイルの例など）は文体の対象外
-        .replace(/```[\s\S]*?```/gu, ' '),
-    }));
+    .map((name) => {
+      const id = chapterIdOf(name);
+      const text = readFileSync(join(MANUAL_DIR, name), 'utf8').replace(/\r\n/gu, '\n');
+      const fencesExempt = Object.hasOwn(STYLE.exempt, id);
+      return { id, prose: fencesExempt ? text.replace(/```[\s\S]*?```/gu, ' ') : text };
+    });
 }
 
 /** 全章の本文を章の順につないだもの（初出の位置を見るのに使う）。 */
