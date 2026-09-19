@@ -222,7 +222,7 @@ describe('キー操作（§10.6 の割当表から引く）', () => {
   it('explains why F8 does nothing (§17.1)', () => {
     editor();
     fireEvent.keyDown(grid(), { key: 'F8' });
-    expect(useStore.getState().toasts.at(-1)?.text).toContain('Phase 4');
+    expect(useStore.getState().toasts.at(-1)?.text).toContain('応用命令');
   });
 
   it('owns the keyboard only while focused (決定表#3)', () => {

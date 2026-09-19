@@ -175,7 +175,7 @@ describe('キー割当表（§12.1 / §17.1）', () => {
   it('greys out and explains the entry Phase 3 cannot place', () => {
     render(<ShortcutHelp profile={MITSUBISHI_FX5U} />);
     expect(screen.getByTestId('shortcut-application')).toHaveAttribute('data-enabled', 'false');
-    expect(screen.getByTestId('shortcut-application')).toHaveTextContent('Phase 4');
+    expect(screen.getByTestId('shortcut-application')).toHaveTextContent('応用命令');
   });
 
   it('says the table is swapped with the vendor (Phase 4)', () => {
