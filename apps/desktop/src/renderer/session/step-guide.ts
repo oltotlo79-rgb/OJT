@@ -133,3 +133,37 @@ export function inspectRepairStepHint(key: InspectRepairStepKey | undefined): st
   if (key === 'judge') return JA.stepGuide.repairJudgeHint;
   return undefined;
 }
+
+// --- Plan 5 Task 4 ---
+
+/** 回路図エディタの手順キー（描く → 検算 → 盤に配線）。Plan 5 決定表#24 */
+export type SchematicStepKey = 'draw' | 'verify' | 'wire';
+
+/** 回路図エディタの手順帯。 */
+export function schematicSteps(input: {
+  /** 回路図に置かれている要素の数。 */
+  cellCount: number;
+  /** 検算に合格したか。 */
+  verified: boolean;
+  /** 盤に電線を1本でも張ったか（固定配線は数えない）。 */
+  boardWired: boolean;
+}): ReadonlyArray<GuideStep<SchematicStepKey>> {
+  const drawDone = input.cellCount > 0;
+  const verifyDone = drawDone && input.verified;
+  const wireDone = verifyDone && input.boardWired;
+  return sequentialSteps([
+    { key: 'draw', label: JA.stepGuide.schematicDraw, done: drawDone },
+    { key: 'verify', label: JA.stepGuide.schematicVerify, done: verifyDone },
+    { key: 'wire', label: JA.stepGuide.schematicWire, done: wireDone },
+  ]);
+}
+
+/** いまの手順にだけ効く1行の案内（回路図エディタ）。 */
+export function schematicStepHint(key: SchematicStepKey | undefined): string | undefined {
+  if (key === 'draw') return JA.stepGuide.schematicDrawHint;
+  if (key === 'verify') return JA.stepGuide.schematicVerifyHint;
+  if (key === 'wire') return JA.stepGuide.schematicWireHint;
+  return undefined;
+}
+
+// --- /Plan 5 Task 4 ---

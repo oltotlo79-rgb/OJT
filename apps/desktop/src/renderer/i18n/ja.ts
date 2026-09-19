@@ -760,6 +760,17 @@ export const JA = {
     repairReportHint: '3D盤の電線・端子・部品をクリックして故障の種別を選びます。',
     repairFixHint: '白線を張るか部品を交換して修復します。',
     repairJudgeHint: '判定ボタンで判定します。',
+    // --- Plan 5 Task 4 ---
+    /** モードBの回路図エディタ: 描く → 検算 → 盤に配線（Plan 5 決定表#24） */
+    schematicDraw: '回路図を描く',
+    schematicVerify: '検算する',
+    schematicWire: '盤に配線する',
+    schematicDrawHint:
+      'パレットで要素を選び、図の桁をクリック（またはカーソルを合わせて Enter）で置きます。',
+    schematicVerifyHint:
+      '「検算」を押すと、描いた回路を課題の操作列で確かめます。盤の配線はまだ見ません。',
+    schematicWireHint: '検算に通りました。回路図の要素をクリックすると、3D盤の対応端子が光ります。',
+    // --- /Plan 5 Task 4 ---
   },
   /**
    * 押せないボタンの理由（UXレビュー #5）。`title` と、パネル内に出す一行の説明の両方に使う
@@ -829,6 +840,50 @@ export const JA = {
   /** ホームの「最近の課題」の一行（UXレビュー #19）。`screens/Home.tsx`。 */
   recentProblem: '最近の課題',
   // --- /UX pass 2026-09-19 ---
+  // --- Plan 5 Task 4 ---
+  /** 回路図エディタ（§11.4 / Plan 5）。 */
+  schematic: {
+    title: '回路図エディタ',
+    palette: '置ける要素',
+    verify: '検算',
+    verifying: '検算中…',
+    verifyPassed: '検算 合格',
+    verifyFailed: '検算 不合格',
+    verifyNote: '机上の検算です。盤の配線は「判定」で別に確かめます。',
+    issues: '回路図の指摘',
+    noIssues: '指摘はありません。検算できます。',
+    addRung: '段を追加',
+    removeRung: '段を削除',
+    clear: '全部消す',
+    clearConfirm: '描いた回路図をすべて消します。よろしいですか？',
+    undo: '元に戻す',
+    redo: 'やり直し',
+    cursor: 'カーソル',
+    keyHint:
+      '矢印＝移動　Enter＝置く　Delete＝消す　Insert＝段を追加　Ctrl+Delete＝段を削除　Ctrl+Z／Ctrl+Y＝元に戻す／やり直し　Esc＝分岐をやめる',
+    viewBoard: '盤',
+    viewSplit: '並べて',
+    viewSchematic: '回路図',
+    guide: '配線ガイド',
+    guideOff: '要素をクリックすると3D盤の端子が光ります',
+    // 分岐（§11.1 の分岐点。自己保持回路に要る）
+    branch: 'この段を分岐にする',
+    branchCancel: '分岐をやめる',
+    branchHint:
+      'いま選んでいる段を、ほかの段の節点どうしをつなぐ「分岐」にします。自己保持回路に使います。',
+    branchPickFrom:
+      '分岐の始点をクリックしてください（ほかの段の、要素と要素のあいだを選びます）。Esc でやめられます。',
+    branchPickTo:
+      '分岐の終点をクリックしてください。始点から右側の節点を選ぶと、そのあいだの要素と並列になります。Esc でやめられます。',
+    branchSelfRefused: '分岐の始点・終点には、ほかの段の節点を選んでください。',
+    branchSameNode: '始点と同じ節点は終点にできません。別の節点を選んでください。',
+    branchNoRung: 'その段がありません。',
+    branchNoNode: 'その節点がありません。',
+    branchNeedsAnotherRung: '分岐先になる段がありません。先に「段を追加」で段を増やしてください。',
+    branchHasLoad: 'コイル・表示灯・ブザーのある段は分岐にできません（分岐段に負荷は置けません）。',
+    branchDone: 'この段を分岐にしました。',
+  },
+  // --- /Plan 5 Task 4 ---
 } as const;
 
 /** アナログのΩレンジの表示（`×1` / `×10` / `×1k`）。§9.3 */
