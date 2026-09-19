@@ -203,7 +203,9 @@ describe('detectPlcWiring（§10.2）', () => {
   });
 
   it('recognises source wiring', () => {
-    const problem = PlcProblemSchema.parse(plcProblemJson({ io: { mode: 'fixed', wiring: 'source' } }));
+    const problem = PlcProblemSchema.parse(
+      plcProblemJson({ io: { mode: 'fixed', wiring: 'source' } }),
+    );
     const built = buildPlcReferenceSession(problem, JIPM_BOARD);
     if (!built.ok) throw new Error(JSON.stringify(built.errors));
     const nets = buildNets(toNetlist(built.value.session, built.value.board));

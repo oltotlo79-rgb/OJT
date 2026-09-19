@@ -162,7 +162,9 @@ describe('plcTimerMarkers（§7.7 / レビュー反映: formatSeconds/deviceLabe
   });
 
   it('formats a non-integer preset like timerMarkers() (§7.7)', () => {
-    const compiled = compile(program(network('n1', [rung(no(X(0)), ton(T(1), 800))]), endNetwork()));
+    const compiled = compile(
+      program(network('n1', [rung(no(X(0)), ton(T(1), 800))]), endNetwork()),
+    );
     if (!compiled.ok) throw new Error('変換に失敗しました');
     expect(plcTimerMarkers(compiled.program)).toEqual([{ tMs: 800, label: 'T1=0.8秒' }]);
   });
