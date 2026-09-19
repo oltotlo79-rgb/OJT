@@ -136,7 +136,18 @@ export interface ConvertIssues {
   warnings: ConvertWarningLine[];
   /** 変換が通ったときの使用デバイス一覧（`CompiledProgram.usage`）。§10.8 */
   usage: { reads: string[]; writes: string[] } | undefined;
+  /**
+   * 使われていないデバイス（表示のみ。決定表#15b）。§10.8
+   * `Device.kind` がまだ分かる段階（`runConvert`）で判定を済ませ、ここには方言表記の
+   * 文字列だけを渡す（レビュー指摘 B2。`OutputWindow` は文字列の表示に専念できる）。
+   */
+  unused: { neverRead: string[]; neverWritten: string[] } | undefined;
 }
 
 /** 空の変換結果（課題を開いた直後・編集した直後）。 */
-export const NO_CONVERT_ISSUES: ConvertIssues = { errors: [], warnings: [], usage: undefined };
+export const NO_CONVERT_ISSUES: ConvertIssues = {
+  errors: [],
+  warnings: [],
+  usage: undefined,
+  unused: undefined,
+};

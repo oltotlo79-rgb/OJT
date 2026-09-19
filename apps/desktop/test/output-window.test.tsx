@@ -32,6 +32,7 @@ const issues = {
     },
   ],
   usage: { reads: ['X0'], writes: ['Y0', 'M1'] },
+  unused: { neverRead: ['M1'], neverWritten: [] },
 };
 
 afterEach(() => {
@@ -71,7 +72,7 @@ describe('出力ウィンドウ（§10.6）', () => {
   it('shows the used devices and marks the unused ones (決定表#15b)', () => {
     render(
       <OutputWindow
-        issues={{ errors: [], warnings: [], usage: issues.usage }}
+        issues={{ errors: [], warnings: [], usage: issues.usage, unused: issues.unused }}
         converted
         onJump={() => undefined}
       />,
@@ -85,7 +86,7 @@ describe('出力ウィンドウ（§10.6）', () => {
   it('says the ladder still needs converting when it does', () => {
     render(
       <OutputWindow
-        issues={{ errors: [], warnings: [], usage: undefined }}
+        issues={{ errors: [], warnings: [], usage: undefined, unused: undefined }}
         converted={false}
         onJump={() => undefined}
       />,

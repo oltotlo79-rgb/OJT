@@ -97,7 +97,7 @@ describe('ラダーの編集と履歴', () => {
 
   it('records the previous program and clears the converted flag', () => {
     const store = useStore.getState();
-    store.setConverted(true, { errors: [], warnings: [], usage: undefined });
+    store.setConverted(true, { errors: [], warnings: [], usage: undefined, unused: undefined });
     const before = useStore.getState().ladder!;
     const edited = applyLadderCell(before, { networkId: 'n1', row: 0, col: 0 }, no(X(0)));
     expect(edited.ok).toBe(true);

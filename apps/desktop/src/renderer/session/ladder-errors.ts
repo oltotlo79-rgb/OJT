@@ -1,4 +1,4 @@
-import { deviceLabel, type CompiledProgram, type LadderProgram } from '@ojt/ladder-core';
+import { deviceKey, type CompiledProgram, type Device, type LadderProgram } from '@ojt/ladder-core';
 import { convert, type DialectProfile } from '@ojt/plc-dialects';
 import type { ConvertIssues, ConvertErrorLine } from '../app/store-types.js';
 
@@ -35,7 +35,11 @@ export function runConvert(source: LadderProgram, profile: DialectProfile): Conv
     col: warning.col,
   }));
   if (!result.ok) {
-    return { ok: false, issues: { errors, warnings, usage: undefined }, program: undefined };
+    return {
+      ok: false,
+      issues: { errors, warnings, usage: undefined, unused: undefined },
+      program: undefined,
+    };
   }
   return {
     ok: true,
@@ -47,6 +51,8 @@ export function runConvert(source: LadderProgram, profile: DialectProfile): Conv
         reads: result.program.usage.reads.map((device) => profile.formatDevice(device)),
         writes: result.program.usage.writes.map((device) => profile.formatDevice(device)),
       },
+      // `Device[]`（`kind` を持ったまま）のうちに未使用判定を済ませる。レビュー指摘 B2
+      unused: unusedDevices(result.program.usage, profile),
     },
     program: result.program,
   };
@@ -72,27 +78,26 @@ export function errorCellKeys(errors: readonly ConvertErrorLine[]): Set<string> 
  * 設計上ラダーから書けない（外部入力とシステムが値を入れる。`compile()` も X・SP への
  * OUT/SET/RST を `coil-on-read-only-device` で拒む）。読んだだけで「書かれていません」と
  * 並べると、**正しいラダーほど警告が増える**。判定に効かない一覧だからこそ、嘘を並べない。
+ *
+ * **`Device.kind` で見る**（レビュー指摘 B2）。以前は方言表記の文字列（`X0` / `SP0`）の
+ * 先頭を見ていたが、三菱の特殊デバイスは `formatDevice()` で `M8000` 等のリレー表記になり、
+ * 先頭が `SP`/`X` のどちらでもなくなってしまう（正しい `SP(SPECIAL_CLOCK_1S)` の読み出しが
+ * 未使用扱いになる）。`kind` はフォーマットより前の IR 段階の値なので方言に左右されない。
  */
-const READ_ONLY_PREFIXES = ['SP', 'X'] as const;
-
-function isReadOnlyDevice(device: string): boolean {
-  // 方言表記（`X0` / `SP0`）の先頭で見る。`SP` を先に見ないと `S` 始まりの別デバイスと混ざらない
-  return READ_ONLY_PREFIXES.some(
-    (prefix) => device.startsWith(prefix) && /^[0-9A-F]+$/iu.test(device.slice(prefix.length)),
+export function unusedDevices(
+  usage: { reads: readonly Device[]; writes: readonly Device[] },
+  profile: DialectProfile,
+): { neverRead: string[]; neverWritten: string[] } {
+  const readKeys = new Set(usage.reads.map(deviceKey));
+  const writeKeys = new Set(usage.writes.map(deviceKey));
+  const neverRead = usage.writes.filter((device) => !readKeys.has(deviceKey(device)));
+  const neverWritten = usage.reads.filter(
+    (device) =>
+      !writeKeys.has(deviceKey(device)) && device.kind !== 'input' && device.kind !== 'special',
   );
-}
-
-export function unusedDevices(usage: { reads: readonly string[]; writes: readonly string[] }): {
-  neverRead: string[];
-  neverWritten: string[];
-} {
-  const reads = new Set(usage.reads);
-  const writes = new Set(usage.writes);
   return {
-    neverRead: usage.writes.filter((device) => !reads.has(device)),
-    neverWritten: usage.reads.filter((device) => !writes.has(device) && !isReadOnlyDevice(device)),
+    // 表示は方言表記（`formatDevice()`）でする。判定は上の `kind` フィルタで済んでいる
+    neverRead: neverRead.map((device) => profile.formatDevice(device)),
+    neverWritten: neverWritten.map((device) => profile.formatDevice(device)),
   };
 }
-
-/** IR の `deviceLabel()` をそのまま使いたいとき（デバイスコメントの鍵）。§10.7 */
-export { deviceLabel };

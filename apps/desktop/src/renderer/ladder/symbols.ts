@@ -78,7 +78,13 @@ export const LEAD_LEFT = `M 0 ${WIRE_Y} L ${LEFT} ${WIRE_Y}`;
 export const LEAD_RIGHT = `M ${RIGHT} ${WIRE_Y} L ${CELL_W} ${WIRE_Y}`;
 /** セルを丸ごと横断する導線（`hline` / `vline`）。 */
 export const LEAD_FULL = `M 0 ${WIRE_Y} L ${CELL_W} ${WIRE_Y}`;
-/** 縦線（セルの左辺で下の行と繋ぐ渡り）。§10.3 */
-export const LINK_DOWN = `M 0 ${WIRE_Y} L 0 ${CELL_H}`;
+/**
+ * 縦線（セルの左辺で下の行と繋ぐ渡り）。§10.3
+ *
+ * 下端は `CELL_H` ではなく `CELL_H + WIRE_Y` にする。`vline` が繋ぐのは (row,col) → (row+1,col)
+ * で、次の行の桟は `WIRE_Y` だけ下にあるため、`CELL_H` で止めると桟の手前で線が切れて見える
+ * （レビュー指摘 B1。`<g>` は子を clip しないので、セルの外まで伸ばしてよい）。
+ */
+export const LINK_DOWN = `M 0 ${WIRE_Y} L 0 ${CELL_H + WIRE_Y}`;
 /** END の記号（二重線）。 */
 export const END_MARK = [`M 12 ${TOP} L 12 ${BOTTOM}`, `M 18 ${TOP} L 18 ${BOTTOM}`];

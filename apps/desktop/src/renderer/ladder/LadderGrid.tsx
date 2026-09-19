@@ -272,42 +272,45 @@ function LadderGridImpl({
                 data-testid={`rail-${net.id}`}
               />
               <g transform={`translate(${String(RAIL_W)} 0)`}>
-                {Array.from({ length: net.rows }, (_unused, row) =>
-                  columns.map((col, index) => {
-                    const cell = cellAt(net, row, col);
-                    const key = `${net.id}:${String(row)}:${String(col)}`;
-                    const deviceComment =
-                      'device' in cell ? comments[deviceLabel(cell.device)] : undefined;
-                    return (
-                      <GridCell
-                        key={key}
-                        cellKey={key}
-                        cursorKey={cursorKey}
-                        cell={cell}
-                        cell9={{ networkId: net.id, row, col: index }}
-                        profile={profile}
-                        comment={deviceComment}
-                        /*
-                         * 空セルは塗らない。`poweredCells` は「どの行でも0列目は左母線と
-                         * 繋がっている」ので真になり（3A `Rails` の構築）、何も書いていない
-                         * 行の先頭まで青く光ってしまう。3A 側で `false` を返すよう直っても
-                         * この判定はそのまま正しい。
-                         */
-                        leftOn={cell.kind !== 'empty' && on(row, col)}
-                        rightOn={
-                          cell.kind !== 'empty' &&
-                          (col < COIL_COL ? on(row, col + 1) : on(row, col))
-                        }
-                        colors={profile.monitorColors}
-                        error={errorCells.has(key)}
-                        hasLinkBelow={row + 1 < net.rows}
-                        onPick={(picked) => {
-                          onPickCell({ ...picked, col });
-                        }}
-                      />
-                    );
-                  }),
-                )}
+                {Array.from({ length: net.rows }, (_unused, row) => (
+                  // `role="grid"` の直下は `role="row"` を挟んでから `gridcell` にする（レビュー指摘 I4）
+                  <g role="row" key={`${net.id}:${String(row)}`}>
+                    {columns.map((col, index) => {
+                      const cell = cellAt(net, row, col);
+                      const key = `${net.id}:${String(row)}:${String(col)}`;
+                      const deviceComment =
+                        'device' in cell ? comments[deviceLabel(cell.device)] : undefined;
+                      return (
+                        <GridCell
+                          key={key}
+                          cellKey={key}
+                          cursorKey={cursorKey}
+                          cell={cell}
+                          cell9={{ networkId: net.id, row, col: index }}
+                          profile={profile}
+                          comment={deviceComment}
+                          /*
+                           * 空セルは塗らない。`poweredCells` は「どの行でも0列目は左母線と
+                           * 繋がっている」ので真になり（3A `Rails` の構築）、何も書いていない
+                           * 行の先頭まで青く光ってしまう。3A 側で `false` を返すよう直っても
+                           * この判定はそのまま正しい。
+                           */
+                          leftOn={cell.kind !== 'empty' && on(row, col)}
+                          rightOn={
+                            cell.kind !== 'empty' &&
+                            (col < COIL_COL ? on(row, col + 1) : on(row, col))
+                          }
+                          colors={profile.monitorColors}
+                          error={errorCells.has(key)}
+                          hasLinkBelow={row + 1 < net.rows}
+                          onPick={(picked) => {
+                            onPickCell({ ...picked, col });
+                          }}
+                        />
+                      );
+                    })}
+                  </g>
+                ))}
               </g>
             </svg>
           </section>

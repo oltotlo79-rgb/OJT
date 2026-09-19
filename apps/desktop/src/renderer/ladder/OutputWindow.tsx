@@ -1,7 +1,6 @@
 import type { JSX } from 'react';
 import type { ConvertIssues } from '../app/store-types.js';
 import { JA, ladderIssuePlace } from '../i18n/ja.js';
-import { unusedDevices } from '../session/ladder-errors.js';
 import type { LadderCursor } from '../session/ladder.js';
 import styles from './ladder.module.css';
 
@@ -46,7 +45,7 @@ export function OutputWindow({
       place: ladderIssuePlace(warning.networkId, warning.row, warning.col),
     })),
   ];
-  const unused = issues.usage === undefined ? undefined : unusedDevices(issues.usage);
+  const unused = issues.unused;
   return (
     <section className={styles.output} data-testid="output-window" aria-label={JA.ladder.output}>
       <header className={styles.outputHeader}>

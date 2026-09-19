@@ -15,9 +15,11 @@ import {
   type LadderProgram,
 } from '@ojt/ladder-core';
 import { MITSUBISHI_FX5U } from '@ojt/plc-dialects';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { LadderGrid } from '../src/renderer/ladder/LadderGrid.js';
+import { CELL_H, WIRE_Y } from '../src/renderer/ladder/symbols.js';
+import { applyOrContact } from '../src/renderer/session/ladder.js';
 
 // このリポジトリの UI テストの流儀（`globals: false` なので自動クリーンアップは効かない）。
 afterEach(() => {
@@ -151,5 +153,35 @@ describe('LadderGrid（§10.7）', () => {
   it('does not paint anything while not monitoring', () => {
     render(<LadderGrid program={sample()} {...base} powered={{ n1: '1'.repeat(IR_COLS) }} />);
     expect(screen.getByTestId('cell-n1:0:0')).toHaveAttribute('data-powered', 'false');
+  });
+
+  it('groups each row under role="row" under the grid (I4)', () => {
+    render(<LadderGrid program={sample()} {...base} />);
+    const grid = screen.getByRole('grid', { name: /n1/u });
+    const rows = within(grid).getAllByRole('row');
+    expect(rows).toHaveLength(1);
+    expect(within(rows[0] as HTMLElement).getByTestId('cell-n1:0:0')).toBeInTheDocument();
+  });
+
+  it('draws the OR-branch link all the way down to the next row (B1)', () => {
+    const start = sample();
+    const applied = applyOrContact(start, { networkId: 'n1', row: 0, col: 0 }, no(X(1)));
+    expect(applied.ok).toBe(true);
+    if (!applied.ok) return;
+    render(<LadderGrid program={applied.program} {...base} />);
+    // 0列目のOR分岐は1列目に縦線（vline）を作る。§10.3 の `applyOrContact` の規則
+    const vlineCell = screen.getByTestId('cell-n1:0:1');
+    const paths = [...vlineCell.querySelectorAll('path')];
+    const linkDown = paths.find((path) => path.getAttribute('d')?.endsWith(`0 ${CELL_H + WIRE_Y}`));
+    expect(linkDown).toBeDefined();
+  });
+
+  it('does not warn when only rule lines (hline/vline) sit in a hidden column (I9 negative case)', () => {
+    const narrow = program(
+      network('n1', [[no(X(0)), hline(), ...Array.from({ length: 13 }, () => hline()), out(Y(0))]]),
+      endNetwork(),
+    );
+    render(<LadderGrid program={narrow} {...base} gridCols={2} />);
+    expect(screen.queryByTestId('hidden-cells-n1')).toBeNull();
   });
 });

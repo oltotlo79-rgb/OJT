@@ -2,10 +2,13 @@ import {
   endNetwork,
   hline,
   IR_COLS,
+  M,
   network,
   no,
   out,
   program,
+  SP,
+  SPECIAL_CLOCK_1S,
   T,
   ton,
   X,
@@ -85,9 +88,24 @@ describe('errorCellKeys', () => {
 describe('unusedDevices（§10.8。表示のみ。決定表#15b）', () => {
   it('lists devices that are written but never read, and the other way round', () => {
     // X・SP は設計上ラダーから書けないので `neverWritten` に入れない（I10）
-    expect(unusedDevices({ reads: ['X0', 'M1', 'SP0'], writes: ['Y0', 'M2'] })).toEqual({
+    expect(
+      unusedDevices({ reads: [X(0), M(1), SP(SPECIAL_CLOCK_1S)], writes: [Y(0), M(2)] }, profile),
+    ).toEqual({
       neverRead: ['Y0', 'M2'],
       neverWritten: ['M1'],
     });
+  });
+
+  it('does not mistake the dialect-formatted special relay for an unwritten one (B2)', () => {
+    // 三菱の特殊デバイスは `formatDevice()` で M8000 系のリレー表記になる（先頭が SP/X でない）。
+    // `runConvert` は `kind` で判定するので、方言表記に化けても正しく除外される
+    const result = runConvert(
+      program(network('n1', [rung(no(SP(SPECIAL_CLOCK_1S)), out(Y(0)))]), endNetwork()),
+      profile,
+    );
+    expect(result.ok).toBe(true);
+    // Y0 は書くだけで読まないので `neverRead` には出る。ここで見たいのは `neverWritten` が
+    // 空であること（SP が「未使用」扱いされないこと）
+    expect(result.issues.unused).toEqual({ neverRead: ['Y0'], neverWritten: [] });
   });
 });
