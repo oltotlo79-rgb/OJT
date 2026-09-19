@@ -1,16 +1,19 @@
 import { cleanup, render } from '@testing-library/react';
 import { isValidElement, type ReactElement, type ReactNode } from 'react';
+import { Color } from 'three';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 /**
  * ビューキューブ（`ViewGizmo`）の操作テスト。§12.2 / 2026-09-19 の利用者要望
  * 「3Dの視点の角度を変えるの少し動かしづらい。blender のようにキューブを選択し
- * サクサク動くようにしたい」。
+ * サクサク動くようにしたい」と「3Dのキューブのデザインがシンプルすぎる」。
  *
- * `ViewGizmo` が three に触るのは `useThree`（`invalidate` と `camera`）と `useFrame` だけ、
+ * `ViewGizmo` が three に触るのは `useThree`（`invalidate` / `camera` / `gl`）と `useFrame` だけ、
  * 3Dの木は `GizmoHelper` の子として返すだけなので、その3つを差し替えれば WebGL 無しで
  * 「押した瞬間にどれだけ回るか」「いつストアへ書くか」を丸ごと検証できる
  * （`camera-presets.test.tsx` と同じ仕掛け）。
+ *
+ * 見た目（面取り・下地・座標軸・ボタン）は、木の形と `paintGizmo()` の塗り分けで確かめる。
  */
 
 interface Vec {
@@ -25,11 +28,13 @@ const harness: {
   invalidateCount: number;
   camera: unknown;
   frame: (() => void) | null;
+  gl: { domElement: { style: { cursor: string } } };
 } = vi.hoisted(() => ({
   children: null,
   invalidateCount: 0,
   camera: undefined,
   frame: null,
+  gl: { domElement: { style: { cursor: '' } } },
 }));
 
 vi.mock('@react-three/drei', () => ({
@@ -40,22 +45,44 @@ vi.mock('@react-three/drei', () => ({
 }));
 
 vi.mock('@react-three/fiber', () => ({
-  useThree: (selector: (state: { invalidate: () => void; camera: unknown }) => unknown) =>
+  useThree: (
+    selector: (state: { invalidate: () => void; camera: unknown; gl: unknown }) => unknown,
+  ) =>
     selector({
       invalidate: () => {
         harness.invalidateCount += 1;
       },
       camera: harness.camera,
+      gl: harness.gl,
     }),
   useFrame: (callback: () => void) => {
     harness.frame = callback;
   },
 }));
 
-const { ViewGizmo, GIZMO_SIZE, GIZMO_FACE_MESH_NAME, GIZMO_HIT_PREFIX } =
-  await import('../src/renderer/three/ViewGizmo.js');
-const { GIZMO_DRAG_RAD_PER_PX, GIZMO_DRAG_THRESHOLD_PX, GIZMO_HIT_BOXES } =
+const {
+  ViewGizmo,
+  gizmoGlow,
+  paintGizmo,
+  GIZMO_SIZE,
+  GIZMO_AXIS_PREFIX,
+  GIZMO_BUTTON_PREFIX,
+  GIZMO_BUTTONS,
+  GIZMO_CHAMFER_GROUP_NAME,
+  GIZMO_CHAMFER_PREFIX,
+  GIZMO_COLORS,
+  GIZMO_FACE_MESH_NAME,
+  GIZMO_HIT_PREFIX,
+  GIZMO_MARGIN,
+  GIZMO_PLATE_NAME,
+  GIZMO_PLATE_RADIUS,
+  GIZMO_TIP_PREFIX,
+  GIZMO_TRIAD_NAME,
+} = await import('../src/renderer/three/ViewGizmo.js');
+const { GIZMO_DRAG_RAD_PER_PX, GIZMO_DRAG_THRESHOLD_PX, GIZMO_FACE_ORDER, GIZMO_HIT_BOXES } =
   await import('../src/renderer/three/navigation.js');
+const { chamferedFaceGeometry, GIZMO_AXIS_STUBS, GIZMO_FACETS } =
+  await import('../src/renderer/three/view-gizmo-geometry.js');
 const { MAX_POLAR_ANGLE, poseForDirection } = await import('../src/renderer/three/camera.js');
 const { useStore } = await import('../src/renderer/app/store.js');
 
@@ -157,6 +184,21 @@ function cubeGroup(): ReactElement<Record<string, unknown>> {
   return group;
 }
 
+/** 名前で3D要素を引く。 */
+function byName(name: string): ReactElement<Record<string, unknown>> {
+  const found = elements().find((element) => element.props['name'] === name);
+  if (found === undefined) throw new Error(`${name} が見つからない`);
+  return found;
+}
+
+/** 名前が接頭辞で始まる3D要素をすべて引く。 */
+function byPrefix(prefix: string): ReactElement<Record<string, unknown>>[] {
+  return elements().filter((element) => {
+    const name = element.props['name'];
+    return typeof name === 'string' && name.startsWith(prefix);
+  });
+}
+
 /** ポインタイベント（happy-dom の `PointerEvent` に頼らず素の `Event` に値を載せる）。 */
 function firePointer(
   type: string,
@@ -172,14 +214,29 @@ function pointerDown(
   name: string,
   normal: { x: number; y: number; z: number } | null,
   at: { x: number; y: number } = { x: 200, y: 200 },
+  source: ReactElement<Record<string, unknown>> = cubeGroup(),
 ): void {
-  const handler = cubeGroup().props['onPointerDown'] as ((event: unknown) => void) | undefined;
+  const handler = source.props['onPointerDown'] as ((event: unknown) => void) | undefined;
   if (handler === undefined) throw new Error('onPointerDown が無い');
   handler({
     nativeEvent: { pointerId: 7, clientX: at.x, clientY: at.y, button: 0, target: null },
     stopPropagation: () => undefined,
     object: { name },
     face: normal === null ? null : { normal },
+  });
+}
+
+/** ホバーの出入りを呼ぶ（面のメッシュの `onPointerMove` / `onPointerOut`）。 */
+function hoverFace(normal: { x: number; y: number; z: number } | null): void {
+  const mesh = byName(GIZMO_FACE_MESH_NAME);
+  if (normal === null) {
+    (mesh.props['onPointerOut'] as () => void)();
+    return;
+  }
+  (mesh.props['onPointerMove'] as (event: unknown) => void)({
+    stopPropagation: () => undefined,
+    object: { name: GIZMO_FACE_MESH_NAME },
+    face: { normal },
   });
 }
 
@@ -192,6 +249,7 @@ beforeEach(() => {
   harness.invalidateCount = 0;
   harness.frame = null;
   harness.camera = makeCamera();
+  harness.gl.domElement.style.cursor = '';
   controls = makeControls();
   useStore.setState({ camera: 'front', cameraNonce: 0 });
   storeWrites = 0;
@@ -221,11 +279,11 @@ describe('ビューキューブの形と当たり判定（§12.2）', () => {
     expect(faces).toHaveLength(1);
     expect(hits).toHaveLength(20);
     expect(hits).toHaveLength(GIZMO_HIT_BOXES.length);
-    // 面は1つのキューブに6枚の名札マテリアルを貼る（面6 + 辺12 + 角8 = 26箇所）
+    // 面は1つのメッシュに6枚の名札マテリアルを貼る（面6 + 辺12 + 角8 = 26箇所）
     const faceMesh = faces[0];
     if (faceMesh === undefined) throw new Error('面のメッシュが無い');
     const materials = (collect(faceMesh) as ReactElement<Record<string, unknown>>[]).filter(
-      (element) => element.type === 'meshBasicMaterial',
+      (element) => element.type === 'meshLambertMaterial',
     );
     expect(materials).toHaveLength(6);
     expect(materials.map((material) => material.props['attach'])).toEqual([
@@ -246,6 +304,252 @@ describe('ビューキューブの形と当たり判定（§12.2）', () => {
   });
 });
 
+describe('角を落としたキューブの見た目（2026-09-19「シンプルすぎる」）', () => {
+  it('面は6枚の板（材質グループ6つ）で、キューブの外形は ±0.5 に収まる', () => {
+    const geometry = chamferedFaceGeometry();
+    expect(geometry.groups).toHaveLength(6);
+    expect(geometry.groups.map((group) => group.materialIndex)).toEqual([0, 1, 2, 3, 4, 5]);
+    const position = geometry.getAttribute('position');
+    // 6面 × 4頂点
+    expect(position.count).toBe(24);
+    geometry.computeBoundingBox();
+    const box = geometry.boundingBox;
+    if (box === null) throw new Error('外形が計算できない');
+    expect(box.max.x).toBeCloseTo(0.5, 10);
+    expect(box.min.y).toBeCloseTo(-0.5, 10);
+    geometry.dispose();
+  });
+
+  it('面取りは辺12枚・角8枚あり、当たり判定と同じ名前で描かれる', () => {
+    expect(GIZMO_FACETS.filter((facet) => facet.kind === 'edge')).toHaveLength(12);
+    expect(GIZMO_FACETS.filter((facet) => facet.kind === 'corner')).toHaveLength(8);
+
+    const chamferGroup = byName(GIZMO_CHAMFER_GROUP_NAME);
+    const facets = (collect(chamferGroup) as ReactElement<Record<string, unknown>>[]).filter(
+      (element) => element.type === 'mesh',
+    );
+    expect(facets).toHaveLength(GIZMO_FACETS.length);
+    expect(facets).toHaveLength(20);
+    // 面取りは見た目だけ（当たり判定は同じ名前の箱が持つ）
+    for (const facet of facets) expect(typeof facet.props['raycast']).toBe('function');
+    expect(new Set(facets.map((facet) => facet.props['name'])).size).toBe(20);
+    for (const facet of GIZMO_FACETS) {
+      expect(byName(`${GIZMO_CHAMFER_PREFIX}${facet.id}`)).toBeDefined();
+      expect(GIZMO_HIT_BOXES.some((box) => box.id === facet.id)).toBe(true);
+    }
+  });
+
+  it('角の面取りはキューブの稜線の上に頂点が来る（面取りの深さと辻褄が合う）', () => {
+    const corner = GIZMO_FACETS.find((facet) => facet.id === 'front-top-right');
+    if (corner === undefined) throw new Error('角の面取りが無い');
+    // 中心はキューブの対角線の上（3成分が同じ）
+    expect(corner.position[0]).toBeCloseTo(corner.position[1], 12);
+    expect(corner.position[1]).toBeCloseTo(corner.position[2], 12);
+    expect(corner.position[0]).toBeLessThan(0.5);
+    expect(corner.position[0]).toBeGreaterThan(0.4);
+  });
+
+  it('暗い下地の丸がキューブの後ろにあり、深度を書かずに真っ先に描かれる', () => {
+    const plate = byName(GIZMO_PLATE_NAME);
+    expect(plate.props['renderOrder']).toBe(-10);
+    const material = (collect(plate) as ReactElement<Record<string, unknown>>[]).find(
+      (element) => element.type === 'meshBasicMaterial',
+    );
+    if (material === undefined) throw new Error('下地のマテリアルが無い');
+    expect(material.props['color']).toBe(GIZMO_COLORS.plate);
+    expect(material.props['transparent']).toBe(true);
+    expect(material.props['opacity']).toBeCloseTo(0.6, 10);
+    expect(material.props['depthWrite']).toBe(false);
+    // 下地はビューポートの外へはみ出さない（`margin` は中心の位置）
+    expect(GIZMO_MARGIN[0]).toBeGreaterThan(GIZMO_PLATE_RADIUS);
+    expect(GIZMO_MARGIN[1]).toBeGreaterThan(GIZMO_PLATE_RADIUS);
+  });
+
+  it('HUD には光が無いので、環境光とキーライトを自前で置く', () => {
+    expect(elements().filter((element) => element.type === 'ambientLight')).toHaveLength(1);
+    expect(elements().filter((element) => element.type === 'directionalLight')).toHaveLength(1);
+  });
+});
+
+describe('座標軸の三脚（Blender 風）', () => {
+  it('6本の軸の球があり、X 赤・Y 緑・Z 青で正負がそろっている', () => {
+    expect(GIZMO_AXIS_STUBS).toHaveLength(6);
+    expect(GIZMO_AXIS_STUBS.filter((axis) => axis.positive)).toHaveLength(3);
+    expect(GIZMO_AXIS_STUBS.map((axis) => axis.letter).sort()).toEqual([
+      'X',
+      'X',
+      'Y',
+      'Y',
+      'Z',
+      'Z',
+    ]);
+    const balls = byPrefix(GIZMO_AXIS_PREFIX);
+    expect(balls).toHaveLength(6);
+    // 三脚はキューブと一緒に回るよう、専用の入れ物に入っている
+    expect(byName(GIZMO_TRIAD_NAME)).toBeDefined();
+  });
+
+  it('軸の球をクリックすると、面と同じ6つの視点プリセットへ着く', () => {
+    for (const axis of GIZMO_AXIS_STUBS) {
+      useStore.setState({ camera: 'socket' });
+      const ball = byName(`${GIZMO_AXIS_PREFIX}${axis.id}`);
+      pointerDown(`${GIZMO_AXIS_PREFIX}${axis.id}`, null, { x: 200, y: 200 }, ball);
+      firePointer('pointerup', { pointerId: 7, clientX: 200, clientY: 200 });
+      expect(useStore.getState().camera).toBe(axis.id);
+    }
+    expect(GIZMO_AXIS_STUBS.map((axis) => axis.id).sort()).toEqual([...GIZMO_FACE_ORDER].sort());
+  });
+});
+
+describe('⌂ と ⟳ のボタン', () => {
+  it('2つとも 24px 以上の押しやすさで、日本語のツールチップを持つ', () => {
+    const buttons = byPrefix(GIZMO_BUTTON_PREFIX);
+    expect(buttons).toHaveLength(2);
+    for (const button of buttons) {
+      const scale = button.props['scale'] as [number, number, number];
+      expect(scale[0]).toBeGreaterThanOrEqual(24);
+      expect(scale[1]).toBeGreaterThanOrEqual(24);
+    }
+    expect(byPrefix(GIZMO_TIP_PREFIX)).toHaveLength(2);
+    // ツールチップはふだん出さない
+    for (const tip of byPrefix(GIZMO_TIP_PREFIX)) expect(tip.props['visible']).toBe(false);
+  });
+
+  it('⌂ は正面の全体表示へ、⟳ はいまの視点へ着け直す（どちらもストアへ1回だけ書く）', () => {
+    useStore.setState({ camera: 'top' });
+    storeWrites = 0;
+
+    const home = byName(`${GIZMO_BUTTON_PREFIX}${GIZMO_BUTTONS[0].id}`);
+    (home.props['onClick'] as (event: unknown) => void)({ stopPropagation: () => undefined });
+    expect(storeWrites).toBe(1);
+    expect(useStore.getState().camera).toBe('front');
+
+    useStore.setState({ camera: 'left' });
+    storeWrites = 0;
+    const nonce = useStore.getState().cameraNonce;
+    const reset = byName(`${GIZMO_BUTTON_PREFIX}${GIZMO_BUTTONS[1].id}`);
+    (reset.props['onClick'] as (event: unknown) => void)({ stopPropagation: () => undefined });
+    expect(storeWrites).toBe(1);
+    // 視点は変えず、番号だけ進めて同じプリセットへ着け直す（傾きが戻る）
+    expect(useStore.getState().camera).toBe('left');
+    expect(useStore.getState().cameraNonce).toBe(nonce + 1);
+  });
+});
+
+describe('ホバーの光り方（200ms で出入りする）', () => {
+  /** `paintGizmo()` に渡す偽の3D木（面6枚＋辺・角の箱＋軸の球）。 */
+  function fakeGizmo(): {
+    root: { name: string; children: unknown[] };
+    faces: { emissive: Color }[];
+    hit: { opacity: number; visible: boolean };
+    ball: { color: Color };
+  } {
+    const faces = GIZMO_FACE_ORDER.map(() => ({ emissive: new Color('#000000') }));
+    const hit = { opacity: 0, visible: false };
+    const ball = { color: new Color('#FFFFFF') };
+    return {
+      root: {
+        name: '',
+        children: [
+          { name: GIZMO_FACE_MESH_NAME, children: [], material: faces },
+          { name: `${GIZMO_HIT_PREFIX}front-top`, children: [], material: hit },
+          { name: `${GIZMO_AXIS_PREFIX}right`, children: [], material: ball },
+        ],
+      },
+      faces,
+      hit,
+      ball,
+    };
+  }
+
+  /** 偽の木を `paintGizmo()` に食わせる。 */
+  function paint(
+    fake: ReturnType<typeof fakeGizmo>,
+    highlight: {
+      hovered: string | null;
+      fading: string | null;
+      fade: number;
+      active: string | null;
+    },
+  ): void {
+    paintGizmo(fake.root as unknown as Parameters<typeof paintGizmo>[0], highlight);
+  }
+
+  it('指している面だけが自発光し、離すと元へ戻る', () => {
+    const fake = fakeGizmo();
+    const front = GIZMO_FACE_ORDER.indexOf('front');
+    const back = GIZMO_FACE_ORDER.indexOf('back');
+
+    paint(fake, { hovered: 'front', fading: null, fade: 1, active: null });
+    expect(fake.faces[front]?.emissive.getHex()).toBeGreaterThan(0);
+    expect(fake.faces[back]?.emissive.getHex()).toBe(0);
+
+    // 離すと（消えていく側として）0 に戻る
+    paint(fake, { hovered: null, fading: 'front', fade: 1, active: null });
+    expect(fake.faces[front]?.emissive.getHex()).toBe(0);
+  });
+
+  it('出入りの途中は明るさが中間になる（200ms の補間）', () => {
+    const fake = fakeGizmo();
+    const front = GIZMO_FACE_ORDER.indexOf('front');
+    paint(fake, { hovered: 'front', fading: null, fade: 0.5, active: null });
+    const half = fake.faces[front]?.emissive.r ?? 0;
+    paint(fake, { hovered: 'front', fading: null, fade: 1, active: null });
+    const full = fake.faces[front]?.emissive.r ?? 0;
+    expect(half).toBeGreaterThan(0);
+    expect(half).toBeLessThan(full);
+  });
+
+  it('いまの視点の面には淡い色が残り、ホバーの色で上書きされる', () => {
+    const fake = fakeGizmo();
+    const top = GIZMO_FACE_ORDER.indexOf('top');
+    paint(fake, { hovered: null, fading: null, fade: 1, active: 'top' });
+    const idle = fake.faces[top]?.emissive.clone() ?? new Color();
+    expect(idle.getHex()).toBeGreaterThan(0);
+    // 淡い青（ホバーの暖色とは別物）
+    expect(idle.b).toBeGreaterThan(idle.r);
+
+    paint(fake, { hovered: 'top', fading: null, fade: 1, active: 'top' });
+    const hovered = fake.faces[top]?.emissive.clone() ?? new Color();
+    expect(hovered.r).toBeGreaterThan(hovered.b);
+  });
+
+  it('辺・角の箱と軸の球も同じ割合で光る', () => {
+    const fake = fakeGizmo();
+    paint(fake, { hovered: 'front-top', fading: null, fade: 1, active: null });
+    expect(fake.hit.visible).toBe(true);
+    expect(fake.hit.opacity).toBeGreaterThan(0.5);
+
+    paint(fake, { hovered: null, fading: null, fade: 1, active: null });
+    expect(fake.hit.visible).toBe(false);
+    expect(fake.hit.opacity).toBe(0);
+
+    paint(fake, { hovered: 'right', fading: null, fade: 1, active: null });
+    // 白いテクスチャに暖色を掛ける（赤が青より強くなる）
+    expect(fake.ball.color.r).toBeGreaterThan(fake.ball.color.b);
+  });
+
+  it('光り具合は 0〜1 に収まる（出入りが重なっても飽和しない）', () => {
+    expect(gizmoGlow('front', { hovered: 'front', fading: null, fade: 0.25, active: null })).toBe(
+      0.25,
+    );
+    expect(gizmoGlow('front', { hovered: null, fading: 'front', fade: 0.25, active: null })).toBe(
+      0.75,
+    );
+    expect(gizmoGlow('front', { hovered: 'front', fading: 'front', fade: 0.5, active: null })).toBe(
+      1,
+    );
+    expect(gizmoGlow('left', { hovered: 'front', fading: null, fade: 1, active: null })).toBe(0);
+  });
+
+  it('キューブの上ではカーソルが掴む形になり、離すと戻る', () => {
+    hoverFace({ x: 0, y: 0, z: 1 });
+    expect(harness.gl.domElement.style.cursor).toBe('grab');
+    hoverFace(null);
+    expect(harness.gl.domElement.style.cursor).toBe('');
+  });
+});
+
 describe('キューブのドラッグ（1:1・慣性なし）', () => {
   it('押した瞬間に慣性を切り、盤側の操作を止める', () => {
     expect(controls.dampingFactor).toBe(0.35);
@@ -253,6 +557,7 @@ describe('キューブのドラッグ（1:1・慣性なし）', () => {
     // ドラッグ中だけ慣性ゼロ（＝`update()` 1回で目標へ届く）にして指に付いてこさせる
     expect(controls.dampingFactor).toBe(1);
     expect(controls.enabled).toBe(false);
+    expect(harness.gl.domElement.style.cursor).toBe('grabbing');
   });
 
   it('100px 引いたぶんがその場で全部入る（1000px で1回転 ≒ 0.36°/px）', () => {
@@ -294,6 +599,7 @@ describe('キューブのドラッグ（1:1・慣性なし）', () => {
     firePointer('pointerup', { pointerId: 7, clientX: 300, clientY: 200 });
     expect(controls.dampingFactor).toBe(0.35);
     expect(controls.enabled).toBe(true);
+    expect(harness.gl.domElement.style.cursor).toBe('');
   });
 
   it('別のポインタの動きは無視する', () => {
