@@ -344,6 +344,30 @@ describe('parseWorkFile のモード固有の項目（§12.3 / §13 #8）', () =
     expect(parseWorkFile({ ...base, ladder: 'x' }).ok).toBe(false);
     expect(parseWorkFile({ ...base, mode: 'quantum' }).ok).toBe(false);
   });
+
+  // --- Plan 5 Task 6 ---
+  it('carries the mode B schematic draft through (§11.4 / 決定表#23)', () => {
+    const draft = {
+      formatVersion: 1,
+      id: 'draft-b-001',
+      title: '自己保持回路（下書き）',
+      orientation: 'horizontal',
+      rungs: [{ id: 'r1', from: { bus: 'P' }, to: { bus: 'N' }, cells: [] }],
+    };
+    const ok = parseWorkFile(sampleFile({ schematic: draft }));
+    expect(ok.ok).toBe(true);
+    if (!ok.ok) return;
+    expect(ok.file.schematic).toEqual(draft);
+
+    // 形の違う下書きは無かったことにする（読込そのものは断らない）
+    for (const bad of ['x', 42, [], null]) {
+      const result = parseWorkFile(sampleFile({ schematic: bad }));
+      expect(result.ok).toBe(true);
+      if (!result.ok) continue;
+      expect(result.file.schematic).toBeUndefined();
+    }
+  });
+  // --- /Plan 5 Task 6 ---
 });
 
 describe('saveWorkFile / loadWorkFile（一時保存。§12.3）', () => {

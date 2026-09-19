@@ -22,8 +22,10 @@ import type {
   PlcProblem,
   ProblemIssue,
   RepairCircuit,
+  VerifyResult,
 } from '@ojt/content';
 import type { LadderProgram } from '@ojt/ladder-core';
+import type { SchematicDocument } from '@ojt/schematic-core';
 import type { PlcMonitorSnapshot } from '../renderer/app/store-types.js';
 
 /**
@@ -143,7 +145,15 @@ export type SimCommand =
       session: BoardSession;
       ladder: LadderProgram;
       elapsedMs: number;
-    };
+    }
+  // --- Plan 5 Task 6 ---
+  /**
+   * 回路図を検算する。§11.4 / Plan 5 決定表#4
+   * `document` は**訓練者がエディタで描いた文書**（素のJSONなので構造化複製でそのまま渡る）。
+   * `judge` と同じく模範回路と訓練者回路の2回ぶんを回すので、追従ループを止めてから実行する。
+   */
+  | { type: 'verify'; problem: AssembleProblem; document: SchematicDocument; elapsedMs: number };
+// --- /Plan 5 Task 6 ---
 
 /** `plc` コマンドの中身。 */
 export type PlcCommandAction =
@@ -247,6 +257,8 @@ export type SimMessage =
   | { type: 'judgeResult'; result: JudgeAssembleResult }
   | { type: 'inspectResult'; result: InspectOutcome }
   | { type: 'plcResult'; result: PlcOutcome }
+  /** 検算の結果。§11.4 / Plan 5 Task 6 */
+  | { type: 'verifyResult'; result: VerifyResult }
   /**
    * エラー。§13 #6
    * `fatal: false` はコマンド1件が失敗しただけ（ループは回り続けるのでトーストで足りる）。

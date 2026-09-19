@@ -25,6 +25,11 @@ export interface BridgeHandlers {
    */
   onPlc?: (message: Extract<SimMessage, { type: 'plcResult' }>) => void;
   /**
+   * 検算の結果。§11.4 / Plan 5 Task 6
+   * モードB以外の画面は渡さないので任意にする（届いても何も起きない）。
+   */
+  onVerify?: (message: Extract<SimMessage, { type: 'verifyResult' }>) => void;
+  /**
    * エラー。`fatal` が真なら追従ループが止まっている（Worker の異常終了も含む）。
    * 呼び出し側は例外バナーを出して立て直せるようにする。§13 #6
    */
@@ -50,6 +55,7 @@ export class WorkerBridge {
       else if (message.type === 'judgeResult') handlers.onJudge(message);
       else if (message.type === 'inspectResult') handlers.onInspect?.(message);
       else if (message.type === 'plcResult') handlers.onPlc?.(message);
+      else if (message.type === 'verifyResult') handlers.onVerify?.(message);
       else handlers.onError(message.message, message.fatal);
     };
     worker.onerror = (event: ErrorEvent) => {
