@@ -1,8 +1,11 @@
 import {
+  C,
+  ctu,
   device,
   endNetwork,
   hline,
   IR_COLS,
+  M,
   network,
   no,
   out,
@@ -15,12 +18,26 @@ import {
 } from '@ojt/ladder-core';
 import { describe, expect, it } from 'vitest';
 import {
+  availableDialects,
+  collectDevices,
   JTEKT_PC10G,
   MITSUBISHI_FX5U,
   OMRON_CP1E,
   SHARP_JW300,
   switchNotation,
+  type DialectProfile,
 } from '../src/index.js';
+
+/** オブジェクトを再帰的に凍結する（渡した引数を書き換えないことを保証するテスト用）。 */
+function deepFreeze<T>(value: T): T {
+  if (value !== null && typeof value === 'object' && !Object.isFrozen(value)) {
+    Object.freeze(value);
+    for (const child of Object.values(value as Record<string, unknown>)) {
+      deepFreeze(child);
+    }
+  }
+  return value;
+}
 
 function rung(...cells: Cell[]): Cell[] {
   const row = [...cells];
@@ -90,4 +107,63 @@ describe('switchNotation（§10.7 表記切替 / §16 Phase 4 受入基準②）
     expect(result.from).toBe('omron');
     expect(result.to).toBe('omron');
   });
+
+  it('does not blame the target dialect for a device already out of range in the source (M1)', () => {
+    // internal（M）は三菱で7999まで、OMRON では1599まで。8000はどちらでも範囲外
+    const broken = program(network('n1', [rung(no(M(8000)), out(Y(0)))]), endNetwork());
+    expect(MITSUBISHI_FX5U.validate(broken).map((e) => e.code)).toEqual(['device-range']);
+    expect(OMRON_CP1E.validate(broken).map((e) => e.code)).toEqual(['device-range']);
+    const result = switchNotation(broken, MITSUBISHI_FX5U, OMRON_CP1E);
+    // 切替前から壊れていたデバイスなので、切替先の指摘には出さない
+    expect(result.errors).toEqual([]);
+  });
+
+  it('lists the preset spelling changes for timers and counters (M2)', () => {
+    // T0 に3000ms（三菱では K30、OMRON では #0030）
+    const result = switchNotation(selfHold, MITSUBISHI_FX5U, OMRON_CP1E);
+    expect(result.presetChanges).toEqual([{ device: T(0), from: 'K30', to: '#0030' }]);
+  });
+
+  it('lists a counter preset spelling change too, not just timers (M2)', () => {
+    // C0 に5（三菱では K5、OMRON では #0005）
+    const withCounter = program(network('n1', [rung(no(X(0)), ctu(C(0), 5, X(1)))]), endNetwork());
+    const result = switchNotation(withCounter, MITSUBISHI_FX5U, OMRON_CP1E);
+    expect(result.presetChanges).toEqual([{ device: C(0), from: 'K5', to: '#0005' }]);
+  });
+
+  it('leaves the preset list empty when nothing changes (M2)', () => {
+    const result = switchNotation(selfHold, OMRON_CP1E, OMRON_CP1E);
+    expect(result.presetChanges).toEqual([]);
+  });
+});
+
+describe('switchNotation A→B→A over every ordered pair of dialects (M5)', () => {
+  const dialects = availableDialects();
+  const pairs: readonly (readonly [DialectProfile, DialectProfile])[] = dialects.flatMap((a) =>
+    dialects.filter((b) => b.id !== a.id).map((b) => [a, b] as const),
+  );
+
+  it('has all 12 ordered pairs for 4 dialects', () => {
+    expect(pairs).toHaveLength(12);
+  });
+
+  it.each(pairs.map(([a, b]) => [`${a.id}→${b.id}→${a.id}`, a, b] as const))(
+    '%s restores every device spelling and never mutates the source',
+    (_label, a, b) => {
+      // 深く凍結した入力を渡す。switchNotation が書き換えようとすれば strict mode で例外になる
+      const frozen = deepFreeze(structuredClone(selfHold));
+      expect(() => switchNotation(frozen, a, b)).not.toThrow();
+      const back = switchNotation(frozen, b, a);
+      for (const use of collectDevices(frozen)) {
+        const originalText = a.formatDevice(use.device);
+        const restored =
+          back.changes.find(
+            (c) => c.device.kind === use.device.kind && c.device.index === use.device.index,
+          )?.to ?? originalText; // 変わらない項目は changes に載らない（=すでに元どおり）
+        expect(restored, `${a.id}→${b.id}→${a.id}: ${use.device.kind}${use.device.index}`).toBe(
+          originalText,
+        );
+      }
+    },
+  );
 });

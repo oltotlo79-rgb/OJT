@@ -9,6 +9,7 @@ import {
 } from '@ojt/ladder-core';
 import {
   collectDeviceIssues,
+  deviceInRange,
   makeParseTimerPreset,
   makeTimerPreset,
   type DeviceRuleSet,
@@ -86,6 +87,9 @@ const SPECIAL_BY_NAME = new Map<string, number>(
 function formatDevice(target: Device): string {
   switch (target.kind) {
     case 'special':
+      // device() が SP0〜SP2 以外を作らせず、SPECIAL_DEVICES がその3つを定義しているため
+      // `??` の右側には到達しない（防御的）
+      /* c8 ignore next */
       return SPECIAL_DEVICES[target.index] ?? `SP${target.index}`;
     case 'timer':
       return `TMR${octal(target.index, 5)}`;
@@ -104,17 +108,6 @@ function parseOctal(digits: string, text: string): number | Error {
   return parseInt(digits, 8);
 }
 
-/** 番号が範囲内なら IR デバイス、外なら Error。 */
-function inRange(kind: DeviceKind, index: number, text: string): Device | Error {
-  const range = DEVICE_RANGES[kind];
-  if (index < range.min || index > range.max) {
-    const low = formatDevice({ kind, index: range.min });
-    const high = formatDevice({ kind, index: range.max });
-    return new Error(`この機種にはない番号です（${low}〜${high}）: ${text}`);
-  }
-  return device(kind, index);
-}
-
 /** 方言表記 → IRのデバイス。読めない表記は Error を返す（投げない）。§10.5 */
 function parseDevice(text: string): Device | Error {
   const trimmed = text.trim();
@@ -123,7 +116,13 @@ function parseDevice(text: string): Device | Error {
   if (timer !== null) {
     const index = parseOctal(timer[2] ?? '', trimmed);
     if (index instanceof Error) return index;
-    return inRange(timer[1] === 'TMR' ? 'timer' : 'counter', index, trimmed);
+    return deviceInRange(
+      DEVICE_RANGES,
+      formatDevice,
+      timer[1] === 'TMR' ? 'timer' : 'counter',
+      index,
+      trimmed,
+    );
   }
   if (!/^[0-9]{1,6}$/u.test(upper)) {
     return new Error(`読めないデバイス表記です（8進6桁のリレー番号）: ${trimmed}`);
@@ -162,12 +161,19 @@ const parseTimerPreset = makeParseTimerPreset(TIMER);
 const COUNTER_MIN = 1;
 const COUNTER_MAX = 9_999;
 
-/** カウンタ設定値の方言表記（`0005`）。タイマと同じ10進4桁。4B 申し送り F-2 */
+/**
+ * カウンタ設定値の方言表記（`0005`）。タイマと同じ10進4桁。Plan 4B の申し送り F-2
+ * この機種で表せる 1〜{@link COUNTER_MAX} だけを4桁で書く。範囲外は素の10進数のまま返す
+ * （B2 の往復検査が拾えるようにする。M4）。
+ */
 function counterPresetText(preset: number): string {
+  if (!Number.isInteger(preset) || preset < COUNTER_MIN || preset > COUNTER_MAX) {
+    return String(preset);
+  }
   return String(preset).padStart(4, '0');
 }
 
-/** 10進4桁 → カウンタ設定値。§10.7 / 4B 申し送り F-2 */
+/** 10進4桁 → カウンタ設定値。§10.7 / Plan 4B の申し送り F-2 */
 function parseCounterPreset(text: string): number | Error {
   const digits = /^([0-9]{1,4})$/u.exec(text.trim())?.[1];
   if (digits === undefined) {

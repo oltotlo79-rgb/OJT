@@ -10,6 +10,7 @@ import {
 import {
   collectDeviceIssues,
   collectDevices,
+  deviceInRange,
   makeParseTimerPreset,
   makeTimerPreset,
   type DeviceRuleSet,
@@ -87,7 +88,12 @@ function addressOf(target: Device): number {
 
 /** IRのデバイス → 方言表記（16進3桁・大文字）。§10.5 */
 function formatDevice(target: Device): string {
-  if (target.kind === 'special') return SPECIAL_DEVICES[target.index] ?? `SP${target.index}`;
+  if (target.kind === 'special') {
+    // device() が SP0〜SP2 以外を作らせず、SPECIAL_DEVICES がその3つを定義しているため
+    // `??` の右側には到達しない（防御的）
+    /* c8 ignore next */
+    return SPECIAL_DEVICES[target.index] ?? `SP${target.index}`;
+  }
   const range = DEVICE_RANGES[target.kind];
   return `${range.prefix}${addressOf(target).toString(16).toUpperCase().padStart(3, '0')}`;
 }
@@ -107,18 +113,14 @@ function parseDevice(text: string): Device | Error {
       `プログラム番号は${PROGRAM_NUMBER}です（本アプリはプログラム1のみ）: ${trimmed}`,
     );
   }
+  // 正規表現が `[XYMTC]` の1文字しか通さないので、`KIND_LETTER` は必ず引ける（防御的。A-M4）
   const kind = KIND_LETTER[matched[2] ?? ''];
+  /* c8 ignore next */
   if (kind === undefined) return new Error(`読めないデバイス種別です: ${trimmed}`);
   // アドレス → IRの通し番号。出力は `1Y010` が `Y(0)` なので `OUTPUT_BASE` を引く（決定表#16）
   const address = parseInt(matched[3] ?? '', 16);
   const index = kind === 'output' ? address - OUTPUT_BASE : address;
-  const range = DEVICE_RANGES[kind];
-  if (index < range.min || index > range.max) {
-    return new Error(
-      `デバイス番号が範囲外です（${formatDevice({ kind, index: range.min })}〜${formatDevice({ kind, index: range.max })}）: ${trimmed}`,
-    );
-  }
-  return device(kind, index);
+  return deviceInRange(DEVICE_RANGES, formatDevice, kind, index, trimmed);
 }
 
 /** タイマ規則（設定値レジスタ `H` ＋ 16進4桁、0.1秒単位）。§17 #20 の前提 */
@@ -141,12 +143,19 @@ const parseTimerPreset = makeParseTimerPreset(TIMER);
 const COUNTER_MIN = 1;
 const COUNTER_MAX = 0xffff;
 
-/** カウンタ設定値の方言表記（`H0005`）。タイマと同じ設定値レジスタの書式。4B 申し送り F-2 */
+/**
+ * カウンタ設定値の方言表記（`H0005`）。タイマと同じ設定値レジスタの書式。Plan 4B の申し送り F-2
+ * この機種で表せる 1〜{@link COUNTER_MAX} だけをベンダー表記で書く。範囲外は素の10進数のまま
+ * 返し、`H` を付けた「表せるふりの表記」にしない（B2 の往復検査が拾えるようにする。M4）。
+ */
 function counterPresetText(preset: number): string {
+  if (!Number.isInteger(preset) || preset < COUNTER_MIN || preset > COUNTER_MAX) {
+    return String(preset);
+  }
   return `H${preset.toString(16).toUpperCase().padStart(4, '0')}`;
 }
 
-/** `H` 表記 → カウンタ設定値。§10.7 / 4B 申し送り F-2 */
+/** `H` 表記 → カウンタ設定値。§10.7 / Plan 4B の申し送り F-2 */
 function parseCounterPreset(text: string): number | Error {
   const digits = /^H([0-9A-F]{1,4})$/u.exec(text.trim().toUpperCase())?.[1];
   if (digits === undefined) {
@@ -194,11 +203,13 @@ function checkNumberConflicts(source: LadderProgram): DialectError[] {
       if (use.device.kind !== second) continue;
       const other = seen.get(addressOf(use.device));
       if (other === undefined) continue;
+      // 指摘位置は「後から現れたほう」（グリッドの順で後ろ）にする（先に書いた側を消させないため。A-I1）
+      const later = uses.indexOf(other) > uses.indexOf(use) ? other : use;
       errors.push({
         code: 'device-conflict',
         message: `${formatDevice(other.device)} と ${formatDevice(use.device)} は同じアドレスです（この機種では併用できません）`,
-        device: use.device,
-        ...use.place,
+        device: later.device,
+        ...later.place,
       });
     }
   }

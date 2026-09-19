@@ -62,5 +62,17 @@ describe.each(CASES)(
         expect(profile.parseCounterPreset?.(text), text).toBeInstanceOf(Error);
       }
     });
+
+    it('spells an out-of-range value as a plain decimal, not a fake vendor notation (M4)', () => {
+      const outOfRange = max + 1;
+      expect(profile.counterPresetText?.(outOfRange)).toBe(String(outOfRange));
+    });
   },
 );
+
+describe('OMRON のカウンタ設定値が範囲外を素の10進数で書く（M4）', () => {
+  it('does not dress 10000 up as #10000', () => {
+    expect(OMRON_CP1E.counterPresetText?.(10_000)).toBe('10000');
+    expect(OMRON_CP1E.parseCounterPreset?.('10000')).toBeInstanceOf(Error);
+  });
+});

@@ -89,6 +89,14 @@ describe('JTEKT TOYOPUC PC10G-1SP のデバイス表記（§10.5 / PLC調査資�
     expect(profile.parseDevice('')).toBeInstanceOf(Error);
   });
 
+  it('rejects every address below OUTPUT_BASE, not just 1Y000 (A-M6)', () => {
+    // 出力は `1Y010` からしか無いので、`1Y001`〜`1Y00F` はどれも通し番号が負になり拒否される（決定表#16）
+    for (let address = 1; address <= 0xf; address += 1) {
+      const text = `1Y${address.toString(16).toUpperCase().padStart(3, '0')}`;
+      expect(profile.parseDevice(text), text).toBeInstanceOf(Error);
+    }
+  });
+
   it('publishes the device ranges of PLC調査資料 §3-B', () => {
     expect(profile.deviceRanges.input).toEqual({ radix: 16, prefix: '1X', min: 0, max: 2047 });
     // 出力は `OUTPUT_BASE`（0x010）ぶん後ろにずれるので、上限 `1Y7FF` は通し番号 2031
@@ -135,6 +143,20 @@ describe('JTEKT 固有のバリデーション（§10.5 / 調査資料 §8.1 / �
       endNetwork(),
     );
     expect(profile.validate(p).map((e) => e.code)).toEqual(['device-conflict']);
+  });
+
+  it('flags whichever device was written later, even when that is the input (A-I1)', () => {
+    // `Y0`（`1Y010`）を先に、後から重なる `X16`（`1X010`。同じアドレス 0x010）を書いた場合、
+    // 消させるべきは後から書いた X 側であって、いつも Y 側ではない
+    const p = program(
+      network('n1', [rung(no(X(0)), out(Y(0)))]),
+      network('n2', [rung(no(X(16)), out(Y(1)))]),
+      endNetwork(),
+    );
+    const errors = profile.validate(p);
+    expect(errors.map((e) => e.code)).toEqual(['device-conflict']);
+    expect(errors[0]?.device).toEqual(X(16));
+    expect(errors[0]?.networkId).toBe('n2');
   });
 
   it('accepts the default assignment where X and Y never collide (決定表#16)', () => {

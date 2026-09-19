@@ -80,6 +80,8 @@ describe('OMRON CP1E のデバイス表記（§10.5）', () => {
   it('rejects a bit part outside 00〜15 (§10.5 固有バリデーション)', () => {
     expect(String(profile.parseDevice('0.16') as Error)).toContain('00〜15');
     expect(String(profile.parseDevice('W0.16') as Error)).toContain('00〜15');
+    // `W` を剥がす前の元の表記でエラーに出す（レビュー A-M1）
+    expect(String(profile.parseDevice('W0.16') as Error)).toContain('W0.16');
     expect(profile.parseDevice('0.5')).toBeInstanceOf(Error);
   });
 
@@ -91,6 +93,33 @@ describe('OMRON CP1E のデバイス表記（§10.5）', () => {
     expect(profile.parseDevice('T256')).toBeInstanceOf(Error);
     expect(profile.parseDevice('Z0')).toBeInstanceOf(Error);
     expect(profile.parseDevice('')).toBeInstanceOf(Error);
+  });
+
+  it('rejects a bit within the channel that this model just does not wire (A-M6)', () => {
+    // ビット部は00〜15の範囲内だが、その ch が実装していない点（§10.1）
+    expect(profile.parseDevice('0.15')).toBeInstanceOf(Error);
+    expect(profile.parseDevice('1.15')).toBeInstanceOf(Error);
+    expect(profile.parseDevice('101.04')).toBeInstanceOf(Error);
+  });
+
+  it('gives a T/C-prefixed typo its own message, unlike a plain Z0 (A-M2)', () => {
+    // `Z0` はチャネル始まりの表記と紛らわしくないので、汎用の文言のままでよい
+    const z0 = profile.parseDevice('Z0');
+    expect(z0, 'Z0').toBeInstanceOf(Error);
+    if (z0 instanceof Error) expect(z0.message).toContain('<チャネル>.<ビット>');
+    // `T-1` は T 始まりなので、チャネル.ビットの文言では紛らわしい（専用の文言にする）
+    const timer = profile.parseDevice('T-1');
+    expect(timer, 'T-1').toBeInstanceOf(Error);
+    if (timer instanceof Error) {
+      expect(timer.message).not.toContain('<チャネル>.<ビット>');
+      expect(timer.message).toContain('T-1');
+    }
+    const counter = profile.parseDevice('C-1');
+    expect(counter, 'C-1').toBeInstanceOf(Error);
+    if (counter instanceof Error) {
+      expect(counter.message).not.toContain('<チャネル>.<ビット>');
+      expect(counter.message).toContain('C-1');
+    }
   });
 
   it('publishes the device ranges of this model', () => {

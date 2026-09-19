@@ -1,4 +1,10 @@
-import type { Cell, Device, DeviceKind, LadderProgram } from '@ojt/ladder-core';
+import {
+  device,
+  type Cell,
+  type Device,
+  type DeviceKind,
+  type LadderProgram,
+} from '@ojt/ladder-core';
 import type { DeviceRange, DialectError, TimerPresetText } from './profile.js';
 
 /**
@@ -60,6 +66,28 @@ export function makeParseTimerPreset(
     }
     return count * rule.baseMs;
   };
+}
+
+/**
+ * 番号が範囲内なら IR のデバイスを、外なら共通の文言（「この機種にはない番号です」）で
+ * `Error` を返す（投げない）。OMRON・JTEKT・シャープの3方言で重複していた番号帯チェックを
+ * ここに集めた（レビュー A-M3）。三菱は番号帯ごとに時間単位が変わるうえエラー文言が
+ * Phase 3 のテストで固定されているのでこの器を使わない（決定表#3）。
+ */
+export function deviceInRange(
+  ranges: Readonly<Record<DeviceKind, DeviceRange>>,
+  formatDevice: (target: Device) => string,
+  kind: DeviceKind,
+  index: number,
+  text: string,
+): Device | Error {
+  const range = ranges[kind];
+  if (index < range.min || index > range.max) {
+    const low = formatDevice({ kind, index: range.min });
+    const high = formatDevice({ kind, index: range.max });
+    return new Error(`この機種にはない番号です（${low}〜${high}）: ${text}`);
+  }
+  return device(kind, index);
 }
 
 /** 共通デバイス検査に要る方言の情報。 */
@@ -139,6 +167,9 @@ function checkDevice(
 ): void {
   if (target.kind === 'special') {
     if (rules.specialDevices[target.index] !== undefined) return;
+    // device() が SP0〜SP2 以外を作らせず、この器を使う3方言とも SPECIAL_DEVICES がその3つを
+    // すべて定義しているため、ここから先には到達しない（防御的）
+    /* c8 ignore next 8 */
     const range = rules.deviceRanges.special;
     errors.push({
       code: 'special-unsupported',
@@ -158,18 +189,16 @@ function checkDevice(
   });
 }
 
-/** セル1つを検査する（設定値の検査もここで行う）。 */
+/** セル1つを検査する（設定値の検査もここで行う）。`timerPreset` は呼び出し側が1回だけ作る（A-M5）。 */
 function checkCell(
   cell: Cell,
   place: DevicePlace,
   rules: DeviceRuleSet,
+  timerPreset: (ms: number, timer: Device) => TimerPresetText | Error,
   errors: DialectError[],
 ): void {
   if (cell.kind === 'timer') {
-    const preset = makeTimerPreset(rules.timer, (d) => rules.formatDevice(d))(
-      cell.presetMs,
-      cell.device,
-    );
+    const preset = timerPreset(cell.presetMs, cell.device);
     if (preset instanceof Error) {
       const divisible =
         Number.isInteger(cell.presetMs) &&
@@ -201,11 +230,13 @@ function checkCell(
  */
 export function collectDeviceIssues(source: LadderProgram, rules: DeviceRuleSet): DialectError[] {
   const errors: DialectError[] = [];
+  // セルの数だけ作り直さない（A-M5）。デバイス表記はプログラム全体で同じなので1回で足りる
+  const timerPreset = makeTimerPreset(rules.timer, (d) => rules.formatDevice(d));
   for (const net of source.networks) {
     net.cells.forEach((cells, row) => {
       cells.forEach((cell, col) => {
         if (cell.kind === 'empty') return;
-        checkCell(cell, { networkId: net.id, row, col }, rules, errors);
+        checkCell(cell, { networkId: net.id, row, col }, rules, timerPreset, errors);
       });
     });
   }

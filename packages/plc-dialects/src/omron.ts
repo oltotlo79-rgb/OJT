@@ -9,6 +9,7 @@ import {
 } from '@ojt/ladder-core';
 import {
   collectDeviceIssues,
+  deviceInRange,
   makeParseTimerPreset,
   makeTimerPreset,
   type DeviceRuleSet,
@@ -77,6 +78,9 @@ const SPECIAL_BY_NAME = new Map<string, number>(
 function formatDevice(target: Device): string {
   switch (target.kind) {
     case 'special':
+      // device() が SP0〜SP2 以外を作らせず、SPECIAL_DEVICES がその3つを定義しているため
+      // `??` の右側には到達しない（防御的）
+      /* c8 ignore next */
       return SPECIAL_DEVICES[target.index] ?? `SP${target.index}`;
     case 'input':
       return target.index < INPUT_CH0_POINTS
@@ -93,35 +97,32 @@ function formatDevice(target: Device): string {
   }
 }
 
-/** `ch.bit` を読む。ビット部は必ず2桁で00〜15。§10.5 の固有バリデーション */
-function parseChannelBit(text: string): { ch: number; bit: number } | Error {
+/**
+ * `ch.bit` を読む。ビット部は必ず2桁で00〜15。§10.5 の固有バリデーション
+ * `label` はエラー文言に出す表記の形（`<チャネル>.<ビット>` / `W<チャネル>.<ビット>`）、
+ * `original` はエラーに出す元の文字列（`W` を剥がす前の全体。レビュー A-M1）。
+ */
+function parseChannelBit(
+  text: string,
+  original: string,
+  label: string,
+): { ch: number; bit: number } | Error {
   const matched = /^([0-9]{1,3})\.([0-9]{2})$/u.exec(text);
   if (matched === null) {
-    return new Error(`読めないデバイス表記です（<チャネル>.<ビット>）: ${text}`);
+    return new Error(`読めないデバイス表記です（${label}）: ${original}`);
   }
   const bit = Number(matched[2]);
   if (bit > BITS_PER_CH - 1) {
-    return new Error(`ビット部は00〜15です（1チャネルは16点）: ${text}`);
+    return new Error(`ビット部は00〜15です（1チャネルは16点）: ${original}`);
   }
   return { ch: Number(matched[1]), bit };
-}
-
-/** 番号が範囲内なら IR デバイス、外なら Error。 */
-function inRange(kind: DeviceKind, index: number, text: string): Device | Error {
-  const range = DEVICE_RANGES[kind];
-  if (index < range.min || index > range.max) {
-    const low = formatDevice({ kind, index: range.min });
-    const high = formatDevice({ kind, index: range.max });
-    return new Error(`この機種にはないデバイスです（${low}〜${high}）: ${text}`);
-  }
-  return device(kind, index);
 }
 
 /**
  * チャネル内のビットを検査してからIRの通し番号に直す。§10.1 / 決定表#1
  * CP1E が実装しているのは ch0 が12点・ch1 が6点・ch100 が8点・ch101 が4点で、
  * `0.12` や `100.08` は「隣のチャネルの先頭」ではなく**この機種に無い点**である。
- * `inRange` にそのまま渡すと `0.12` が `1.00` と同じ通し番号（12）になってしまうので、
+ * `deviceInRange` にそのまま渡すと `0.12` が `1.00` と同じ通し番号（12）になってしまうので、
  * 通し番号に直す**前に**チャネル内の点数で弾く。
  */
 function inChannel(
@@ -137,7 +138,13 @@ function inChannel(
       `この機種にはないデバイスです（${ch}.00〜${ch}.${bit2(points - 1)}）: ${text}`,
     );
   }
-  return inRange(kind, base + bit, text);
+  return deviceInRange(DEVICE_RANGES, formatDevice, kind, base + bit, text);
+}
+
+/** `W`／`T`／`C` で始まるが自分の書式（`T<10進>` / `C<10進>`）に合わない表記の文言。A-M2 */
+function prefixedDeviceError(prefix: 'T' | 'C', text: string): Error {
+  const label = prefix === 'T' ? 'T<10進>' : 'C<10進>';
+  return new Error(`読めないデバイス表記です（${label}）: ${text}`);
 }
 
 /** 方言表記 → IRのデバイス。読めない表記は Error を返す（投げない）。§10.5 */
@@ -149,14 +156,25 @@ function parseDevice(text: string): Device | Error {
   const numbered = /^([TC])([0-9]+)$/u.exec(upper);
   if (numbered !== null) {
     const kind: DeviceKind = numbered[1] === 'T' ? 'timer' : 'counter';
-    return inRange(kind, Number(numbered[2]), trimmed);
+    return deviceInRange(DEVICE_RANGES, formatDevice, kind, Number(numbered[2]), trimmed);
+  }
+  // `T-1` のような T／C 始まりの崩れた表記は、チャネル.ビットの文言では紛らわしいので
+  // 専用の文言にする（A-M2）。`W` は後段の `parseChannelBit` が `label` で区別する
+  if (upper.startsWith('T') || upper.startsWith('C')) {
+    return prefixedDeviceError(upper.startsWith('T') ? 'T' : 'C', trimmed);
   }
   if (upper.startsWith('W')) {
-    const work = parseChannelBit(upper.slice(1));
+    const work = parseChannelBit(upper.slice(1), trimmed, 'W<チャネル>.<ビット>');
     if (work instanceof Error) return work;
-    return inRange('internal', work.ch * BITS_PER_CH + work.bit, trimmed);
+    return deviceInRange(
+      DEVICE_RANGES,
+      formatDevice,
+      'internal',
+      work.ch * BITS_PER_CH + work.bit,
+      trimmed,
+    );
   }
-  const parsed = parseChannelBit(upper);
+  const parsed = parseChannelBit(upper, trimmed, '<チャネル>.<ビット>');
   if (parsed instanceof Error) return parsed;
   if (parsed.ch === 0) return inChannel('input', 0, parsed.bit, INPUT_CH0_POINTS, 0, trimmed);
   if (parsed.ch === 1) {
@@ -194,14 +212,21 @@ const parseTimerPreset = makeParseTimerPreset(TIMER);
 const COUNTER_MIN = 1;
 const COUNTER_MAX = 9_999;
 
-/** カウンタ設定値の方言表記（`#0005`）。§10.7 / 4B 申し送り F-2 */
+/**
+ * カウンタ設定値の方言表記（`#0005`）。§10.7 / Plan 4B の申し送り F-2
+ * この機種で表せる 1〜{@link COUNTER_MAX} だけをベンダー表記で書く。範囲外は素の10進数のまま
+ * 返し、`#` を付けた「表せるふりの表記」にしない（B2 の往復検査が拾えるようにする。M4）。
+ */
 function counterPresetText(preset: number): string {
+  if (!Number.isInteger(preset) || preset < COUNTER_MIN || preset > COUNTER_MAX) {
+    return String(preset);
+  }
   return `#${String(preset).padStart(4, '0')}`;
 }
 
 /**
  * `#`（BCD・`CNT`）表記 → カウンタ設定値。タイマと同じく読み込みは `&`（BIN・`CNTX`）も受け、
- * 書き出しは `#` に揃える（§10.5 / 意図的な差分#7）。4B 申し送り F-2
+ * 書き出しは `#` に揃える（§10.5 / 意図的な差分#7）。Plan 4B の申し送り F-2
  */
 function parseCounterPreset(text: string): number | Error {
   const digits = /^[#&]([0-9]{1,5})$/u.exec(text.trim())?.[1];
@@ -290,8 +315,20 @@ const SHORTCUTS: ShortcutTable = [
   { action: 'instruction', keys: 'I', label: '命令入力', confirmed: true },
   { action: 'online-edit', keys: 'Ctrl+E', label: 'オンライン編集', confirmed: true },
   { action: 'transfer', keys: 'Ctrl+Shift+E', label: '転送［PC → PLC］', confirmed: true },
-  { action: 'hline', keys: 'W', label: '横線', confirmed: false },
-  { action: 'vline', keys: 'L', label: '縦線', confirmed: false },
+  {
+    action: 'hline',
+    keys: 'W',
+    label: '横線',
+    confirmed: false,
+    note: 'PLC調査資料に横線の割当の記載が無いため、罫線描画の慣例的なキーを仮に当てた（§17.1）',
+  },
+  {
+    action: 'vline',
+    keys: 'L',
+    label: '縦線',
+    confirmed: false,
+    note: 'PLC調査資料に縦線の割当の記載が無いため、罫線描画の慣例的なキーを仮に当てた（§17.1）',
+  },
 ];
 
 /** 方言エラーの日本語文言。§10.5 の `errorMessages` */

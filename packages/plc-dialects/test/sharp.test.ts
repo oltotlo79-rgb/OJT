@@ -79,6 +79,9 @@ describe('シャープ JW300 のリレー番号（§10.5 / 前提表）', () => 
     expect(String(profile.parseDevice('000008') as Error)).toContain('8進');
     expect(String(profile.parseDevice('8') as Error)).toContain('8進');
     expect(String(profile.parseDevice('TMR00009') as Error)).toContain('8進');
+    // タイマだけでなくカウンタの接頭辞でも8進外の数字を拒否する（A-M6）
+    expect(String(profile.parseDevice('TMR00008') as Error)).toContain('8進');
+    expect(String(profile.parseDevice('CNT00008') as Error)).toContain('8進');
   });
 
   it('rejects numbers no unit of this rack owns', () => {

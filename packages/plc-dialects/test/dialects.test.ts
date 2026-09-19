@@ -1,4 +1,4 @@
-import { C, M, SP, T, X, Y, type Device } from '@ojt/ladder-core';
+import { C, M, SP, T, X, Y, type Device, type DeviceKind } from '@ojt/ladder-core';
 import { describe, expect, it } from 'vitest';
 import {
   availableDialects,
@@ -53,6 +53,20 @@ describe.each(cases)('%s プロファイルの不変条件', (_id, profile: Dial
     for (const target of samples) {
       const text = profile.formatDevice(target);
       expect(profile.parseDevice(text), `${profile.id}: ${text}`).toEqual(target);
+    }
+  });
+
+  it('round-trips every value of every device kind, not just a sample (A-M6)', () => {
+    const kinds = (Object.keys(profile.deviceRanges) as DeviceKind[]).filter(
+      (kind) => kind !== 'special',
+    );
+    for (const kind of kinds) {
+      const range = profile.deviceRanges[kind];
+      for (let index = range.min; index <= range.max; index += 1) {
+        const target: Device = { kind, index };
+        const text = profile.formatDevice(target);
+        expect(profile.parseDevice(text), `${profile.id} ${kind}: ${text}`).toEqual(target);
+      }
     }
   });
 

@@ -146,12 +146,19 @@ function parseTimerPreset(text: string, timer: Device): number | Error {
   return k * timerBaseMs(timer);
 }
 
-/** カウンタ設定値の方言表記（`K5`）。§10.7 / 4B 申し送り F-2 */
+/**
+ * カウンタ設定値の方言表記（`K5`）。§10.7 / Plan 4B の申し送り F-2
+ * この機種で表せる {@link MIN_K}〜{@link MAX_K} だけを `K` 表記で書く。範囲外は素の10進数の
+ * まま返す（`K` を付けた「表せるふりの表記」にしない。B2 の往復検査が拾えるようにする。M4）。
+ */
 function counterPresetText(preset: number): string {
+  if (!Number.isInteger(preset) || preset < MIN_K || preset > MAX_K) {
+    return String(preset);
+  }
   return `K${preset}`;
 }
 
-/** `K` 表記 → カウンタ設定値。§10.7 / 4B 申し送り F-2 */
+/** `K` 表記 → カウンタ設定値。§10.7 / Plan 4B の申し送り F-2 */
 function parseCounterPreset(text: string): number | Error {
   const digits = /^K([0-9]+)$/u.exec(text.trim().toUpperCase())?.[1];
   if (digits === undefined) return new Error(`カウンタ設定値は K<数値> の形式です: ${text}`);
@@ -286,6 +293,9 @@ function checkCell(
   }
   for (const target of devices) {
     if (target.kind === 'special') {
+      // device() が SP0〜SP2 以外を作らせず、SPECIAL_DEVICES がその3つを定義しているため、
+      // この分岐には到達しない（防御的）
+      /* c8 ignore next 10 */
       if (SPECIAL_DEVICES[target.index] === undefined) {
         const sp = DEVICE_RANGES.special;
         errors.push({
