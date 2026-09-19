@@ -1,9 +1,10 @@
-import { T, type Cell } from '@ojt/ladder-core';
+import { T, X, type Cell } from '@ojt/ladder-core';
 import type { DialectProfile } from '@ojt/plc-dialects';
 import { useEffect, useMemo, useRef, useState, type JSX } from 'react';
 import { JA, timerRoundPrompt } from '../i18n/ja.js';
 import {
   buildCell,
+  counterPresetText,
   roundSuggestionFor,
   timerPresetMs,
   type CellForm,
@@ -68,16 +69,18 @@ export function DeviceInput({
   }, []);
 
   /*
-   * 入力例（placeholder）も**方言から引く**（レビュー Minor）。`'X0'` や `'K30'` を直書きすると、
-   * Phase 4 でメーカーが増えたときにここだけ三菱の綴りのまま取り残される。
+   * 入力例（placeholder）は**方言の綴りそのもの**から作る（前提#23）。
+   * `deviceRanges.input.prefix` だけを使うと、接頭辞を持たない OMRON（`0.00`）と
+   * シャープ（`000000`）で入力例が `0` になり、何を入れる欄か分からない。
    */
   const hints = useMemo(() => {
     const preset = profile.timerPreset(3_000, T(0));
     return {
-      device: `${profile.deviceRanges.input.prefix}0`,
-      reset: `${profile.deviceRanges.input.prefix}2`,
+      device: profile.formatDevice(X(0)),
+      reset: profile.formatDevice(X(2)),
       timer: preset instanceof Error ? '3000' : preset.text,
-      counter: '5',
+      // カウンタは Step 3 の `counterPresetText()`（申し送り F-2 のフォールバック込み）
+      counter: counterPresetText(5, profile),
     };
   }, [profile]);
 

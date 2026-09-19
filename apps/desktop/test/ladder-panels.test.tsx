@@ -1,4 +1,4 @@
-import { PLC_UNIT_FX5U } from '@ojt/board-model';
+import { PLC_UNIT_CP1E, PLC_UNIT_FX5U, PLC_UNIT_JW300 } from '@ojt/board-model';
 import { BUILTIN_PLC_PROBLEMS, resolvePlcIo } from '@ojt/content';
 import {
   endNetwork,
@@ -14,13 +14,17 @@ import {
   Y,
   type Cell,
 } from '@ojt/ladder-core';
-import { MITSUBISHI_FX5U } from '@ojt/plc-dialects';
+import { JTEKT_PC10G, MITSUBISHI_FX5U, OMRON_CP1E, SHARP_JW300 } from '@ojt/plc-dialects';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CommentPanel } from '../src/renderer/ladder/CommentPanel.js';
 import { IoTable } from '../src/renderer/ladder/IoTable.js';
+import { ShortcutHelp } from '../src/renderer/ladder/ShortcutHelp.js';
 
 afterEach(cleanup);
+
+// 既存の「I/Oテーブル」describe と同じ課題の割付を、方言・機種をまたいで使う（Task 5）。
+const IO = resolvePlcIo(BUILTIN_PLC_PROBLEMS[0]!.io);
 
 function rung(...cells: Cell[]): Cell[] {
   const row = [...cells];
@@ -166,5 +170,39 @@ describe('I/Oテーブル（§7.6 / 決定表#7 / #16）', () => {
     expect(screen.getByTestId('io-input-0')).toHaveTextContent('—');
     expect(screen.getByTestId('io-input-0')).not.toHaveTextContent('PLC.');
     expect(screen.getByTestId('io-terminal-note')).toBeInTheDocument();
+  });
+});
+
+describe('キー割当表と端子名のスキン差（§10.6 / §10.1）', () => {
+  it('drops the 変換 row where the skin has no convert step', () => {
+    render(<ShortcutHelp profile={OMRON_CP1E} />);
+    expect(screen.queryByTestId('shortcut-convert')).toBeNull();
+    expect(screen.getByTestId('shortcuts-convert-note')).toHaveTextContent('変換');
+    cleanup();
+    render(<ShortcutHelp profile={MITSUBISHI_FX5U} />);
+    expect(screen.queryByTestId('shortcuts-convert-note')).toBeNull();
+    expect(screen.getByTestId('shortcut-convert')).toHaveTextContent('F4');
+  });
+
+  it('marks the assumed key bindings of every skin (§17.1)', () => {
+    for (const profile of [MITSUBISHI_FX5U, OMRON_CP1E, JTEKT_PC10G, SHARP_JW300]) {
+      cleanup();
+      render(<ShortcutHelp profile={profile} />);
+      for (const entry of profile.shortcuts.filter((s) => !s.confirmed)) {
+        expect(
+          screen.getByTestId(`shortcut-${entry.action}`),
+          `${profile.id}/${entry.action}`,
+        ).toHaveTextContent('本アプリの表記です');
+      }
+    }
+  });
+
+  it('names the terminals of the model, not the Mitsubishi spelling (4A H-1)', () => {
+    render(<IoTable io={IO} profile={OMRON_CP1E} unit={PLC_UNIT_CP1E} />);
+    expect(screen.getByTestId('io-input-0')).toHaveTextContent('PLC.0.00');
+    cleanup();
+    render(<IoTable io={IO} profile={SHARP_JW300} unit={PLC_UNIT_JW300} />);
+    expect(screen.getByTestId('io-input-0')).toHaveTextContent('PLC.A0');
+    expect(screen.getByTestId('io-common')).toHaveTextContent('COM.A');
   });
 });

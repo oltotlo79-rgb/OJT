@@ -21,6 +21,14 @@ const APP_NOTES: Readonly<Record<string, string>> = {
   'monitor-write': JA.ladder.monitorWriteSame,
 };
 
+/**
+ * 「変換」が無いスキンの注記。決定表#3
+ * 表から `convert` の行が落ちている（4A の `withoutConvert()`）ので、なぜ無いのかを1行で出す。
+ */
+function convertNote(profile: DialectProfile): string | undefined {
+  return profile.convertStep ? undefined : JA.ladder.noConvertNote;
+}
+
 export function ShortcutHelp({ profile }: { profile: DialectProfile }): JSX.Element {
   return (
     // 入れ物の `data-testid` は `shortcuts` / `shortcuts-note`。行だけが `shortcut-<action>` に
@@ -36,6 +44,11 @@ export function ShortcutHelp({ profile }: { profile: DialectProfile }): JSX.Elem
       <p className={styles.sideNote} data-testid="shortcuts-note">
         {JA.ladder.shortcutNote}
       </p>
+      {convertNote(profile) === undefined ? null : (
+        <p className={styles.sideNote} data-testid="shortcuts-convert-note">
+          {convertNote(profile)}
+        </p>
+      )}
       <table className={`${styles.ioTable} ${styles.shortcutTable}`}>
         <thead>
           <tr>

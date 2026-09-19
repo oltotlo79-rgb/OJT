@@ -105,17 +105,23 @@ export const JA = {
     plcGroup: 'PLC（ラダー）',
     /** 既定メーカーの選択欄。§10.5 / 決定表#13 */
     vendor: '既定メーカー',
-    vendorHelp: 'モードDの課題を開いたときに使う機種（メーカー）の初期値です。',
-    /** 実装が無いメーカーに添える注記。決定表#13。UXレビュー #11: 内部の開発フェーズ名を出さない */
-    vendorUnimplemented: '準備中',
+    vendorHelp:
+      'モードDの課題を開いたときに使う機種（メーカー）です。課題の機種もこのメーカーに合わせて開きます。',
+    /** 実装が無いメーカーに添える注記（Phase 4 で4社すべて実装済み）。決定表#13 */
+    vendorUnimplemented: 'このメーカーはまだ対応していません',
     /** ラダーの表示列数。§10.6 */
     gridCols: 'ラダーの表示列数',
-    gridColsHelp: 'ラダー編集画面の接点列の数。GX Works3 の既定は 11 です。',
+    gridColsHelp: 'ラダー編集画面の接点列の数（8〜15）。メーカーの既定は 11 です。',
     /** 通電色。§10.6 */
     monitorColor: '通電色',
-    monitorColorHelp: 'モニタ（F3）で通電しているセルに塗る色です。',
+    monitorColorHelp:
+      'モニタ中に通電しているセルへ塗る色です。「メーカーの既定に従う」のあいだは、選んでいるメーカーの色を使います。',
     /** グループを既定値へ戻す。 */
     resetPlcGroup: '既定に戻す',
+    // --- Plan 4B Task 6 ---
+    /** 色・列数を方言の既定に任せる。決定表#8 */
+    followVendor: 'メーカーの既定に従う',
+    // --- /Plan 4B Task 6 ---
     // --- /Plan 3B Task 16 ---
     // --- Plan 3B final fix ---
     /** メーカーの表示名（Phase 3 は三菱のみ実装。決定表#13）。最終レビュー指摘: `Settings.tsx` から移設。 */
@@ -522,6 +528,13 @@ export const JA = {
     statusInsert: '挿入',
     statusOverwriteMode: '上書き',
     // --- /Plan 4B Task 3 ---
+    // --- Plan 4B Task 5 ---
+    /** 「変換」操作のないスキンの注記。§10.6 / 決定表#3 */
+    noConvertNote:
+      'このメーカーのツールには「変換」操作がありません。編集するとそのまま反映されます。',
+    /** 入力コモン（機種によって1個とは限らない。4A 前提#17） */
+    ioCommon: '入力コモン',
+    // --- /Plan 4B Task 5 ---
   },
   // --- /Plan 3B Task 4 ---
   // --- Plan 3B Task 10 ---

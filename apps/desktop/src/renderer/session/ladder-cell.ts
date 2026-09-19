@@ -39,12 +39,6 @@ export interface CellForm {
   resetText: string;
 }
 
-/**
- * カウンタの設定値の頭字（三菱の `K30` の `K`）。Phase 4 でメーカーが増えたら `DialectProfile`
- * 側の値にすること（レビュー Minor）。
- */
-const COUNTER_PRESET_PREFIX = /^K/iu;
-
 /** 空の入力欄。 */
 export function emptyCellForm(target: CellForm['target']): CellForm {
   return { target, contact: 'NO', output: 'OUT', deviceText: '', presetText: '', resetText: '' };
@@ -114,6 +108,37 @@ export function roundSuggestionFor(
   return { ms, baseMs, rounded: roundTimerPreset(ms, baseMs) };
 }
 
+/** 1以上の整数であることだけを確かめる（番号帯の上限は `profile.validate()` が見る）。 */
+function checkedCounterPreset(preset: number): number | Error {
+  return Number.isInteger(preset) && preset >= 1
+    ? preset
+    : new Error('カウンタの設定値は1以上の整数にします');
+}
+
+/**
+ * カウンタ設定値の綴り → 数。§10.5 / 申し送り F-2
+ *
+ * 綴りの持ち主は `DialectProfile`（三菱 `K5` / OMRON `#0005` / JTEKT `H0005` / シャープ `0005`。
+ * 4A Task 7 / d721b23）。タイマの {@link timerPresetMs} と同じく、**素の数値（`5`）も受ける**
+ * ——訓練者が方言の頭字を知らなくても入力できるようにするためで、Phase 3 からの振る舞いでもある。
+ */
+export function parseCounterPreset(text: string, profile: DialectProfile): number | Error {
+  const trimmed = text.trim();
+  if (trimmed.length === 0) return new Error('設定値を入力してください');
+  const parsed = profile.parseCounterPreset?.(trimmed);
+  if (typeof parsed === 'number') return checkedCounterPreset(parsed);
+  if (/^[0-9]+$/u.test(trimmed)) return checkedCounterPreset(Number(trimmed));
+  return parsed ?? new Error('カウンタの設定値を入力してください');
+}
+
+/**
+ * 数 → カウンタ設定値の綴り（入力例と `Enter` での編集に使う）。
+ * 4方言すべてが `counterPresetText` を持つが、型の上では任意なので素の数値へ倒す枝を置く。
+ */
+export function counterPresetText(preset: number, profile: DialectProfile): string {
+  return profile.counterPresetText?.(preset) ?? String(preset);
+}
+
 /** 入力欄からセルを作る。読めない値は `Error`（投げない）。 */
 export function buildCell(form: CellForm, profile: DialectProfile): Cell | Error {
   const device = readDevice(form.deviceText, profile);
@@ -143,12 +168,9 @@ export function buildCell(form: CellForm, profile: DialectProfile): Cell | Error
     if (preset instanceof Error) return preset;
     return ton(device, ms);
   }
-  // Phase 4: プロファイルへ。カウンタの設定値の頭字（三菱の `K`）は `DialectProfile` が
-  // 今のところ持っていないので、ここへ孤立させておく（レビュー Minor）
-  const preset = Number(form.presetText.trim().replace(COUNTER_PRESET_PREFIX, ''));
-  if (!Number.isInteger(preset) || preset < 1) {
-    return new Error('カウンタの設定値は1以上の整数にします');
-  }
+  // Phase 4: 設定値の綴りは方言が決める（`DialectProfile.parseCounterPreset`。申し送り F-2）
+  const preset = parseCounterPreset(form.presetText, profile);
+  if (preset instanceof Error) return preset;
   const reset = readDevice(form.resetText, profile);
   if (reset instanceof Error) return reset;
   return ctu(device, preset, reset);
@@ -181,7 +203,7 @@ export function formForCell(cell: Cell, profile: DialectProfile): CellForm {
       ...base,
       output: 'CTU',
       deviceText: profile.formatDevice(cell.device),
-      presetText: String(cell.preset),
+      presetText: counterPresetText(cell.preset, profile),
       resetText: profile.formatDevice(cell.resetDevice),
     };
   }

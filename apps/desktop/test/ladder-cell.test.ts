@@ -1,10 +1,12 @@
 import { C, M, T, X, type Cell } from '@ojt/ladder-core';
-import { MITSUBISHI_FX5U } from '@ojt/plc-dialects';
+import { JTEKT_PC10G, MITSUBISHI_FX5U, OMRON_CP1E, SHARP_JW300 } from '@ojt/plc-dialects';
 import { describe, expect, it } from 'vitest';
 import {
   buildCell,
+  counterPresetText,
   emptyCellForm,
   formForCell,
+  parseCounterPreset,
   roundSuggestionFor,
   timerPresetMs,
   type CellForm,
@@ -87,7 +89,7 @@ describe('buildCell（入力欄 → セル）', () => {
         { kind: 'counter', type: 'CTU', device: C(0), preset: 5, resetDevice: M(3) },
         profile,
       ),
-    ).toMatchObject({ output: 'CTU', presetText: '5', resetText: 'M3' });
+    ).toMatchObject({ output: 'CTU', presetText: 'K5', resetText: 'M3' });
   });
 });
 
@@ -114,5 +116,37 @@ describe('timerPresetMs / roundSuggestionFor（§10.5）', () => {
 
   it('never rounds down to zero', () => {
     expect(roundSuggestionFor(30, T(0), profile)?.rounded).toBe(100);
+  });
+});
+
+describe('カウンタ設定値を方言へ寄せる（§10.5 / 申し送り F-2）', () => {
+  it('spells the preset the way each dialect does (4A Task 7)', () => {
+    expect(counterPresetText(5, MITSUBISHI_FX5U)).toBe('K5');
+    expect(counterPresetText(5, OMRON_CP1E)).toBe('#0005');
+    expect(counterPresetText(5, JTEKT_PC10G)).toBe('H0005');
+    expect(counterPresetText(5, SHARP_JW300)).toBe('0005');
+  });
+
+  it('reads the preset in each dialect spelling', () => {
+    expect(parseCounterPreset('K5', MITSUBISHI_FX5U)).toBe(5);
+    expect(parseCounterPreset('#0005', OMRON_CP1E)).toBe(5);
+    // OMRON は BIN 表記（`&`）も受ける（4A 意図的な差分#7）
+    expect(parseCounterPreset('&5', OMRON_CP1E)).toBe(5);
+    expect(parseCounterPreset('H0005', JTEKT_PC10G)).toBe(5);
+    expect(parseCounterPreset('0005', SHARP_JW300)).toBe(5);
+    // 別の方言の綴りは受けない
+    expect(parseCounterPreset('K5', OMRON_CP1E)).toBeInstanceOf(Error);
+  });
+
+  it('also takes a plain number, like the timer field does', () => {
+    expect(parseCounterPreset('5', MITSUBISHI_FX5U)).toBe(5);
+    expect(parseCounterPreset('5', OMRON_CP1E)).toBe(5);
+  });
+
+  it('refuses a preset that is not a positive integer', () => {
+    expect(parseCounterPreset('K0', MITSUBISHI_FX5U)).toBeInstanceOf(Error);
+    expect(parseCounterPreset('0', MITSUBISHI_FX5U)).toBeInstanceOf(Error);
+    expect(parseCounterPreset('あ', MITSUBISHI_FX5U)).toBeInstanceOf(Error);
+    expect(parseCounterPreset('', MITSUBISHI_FX5U)).toBeInstanceOf(Error);
   });
 });

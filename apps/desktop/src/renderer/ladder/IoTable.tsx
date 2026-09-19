@@ -46,8 +46,11 @@ export function IoTable({
       </p>
       <table className={styles.ioTable}>
         {/* 決定表#7の静的な1行（判定データではないので常に出してよい）。Batch 4+5 レビュー B1 */}
-        <caption className={styles.sideNote} data-testid="io-outlet-note">
-          {JA.plc.outletNote}
+        <caption className={styles.sideNote}>
+          <span data-testid="io-outlet-note">{JA.plc.outletNote}</span>{' '}
+          <span data-testid="io-common">
+            {JA.ladder.ioCommon}: {unit.spec.inputCommons.map((name) => `PLC.${name}`).join('・')}
+          </span>
         </caption>
         <thead>
           <tr>
