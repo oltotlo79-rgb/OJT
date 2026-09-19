@@ -2029,7 +2029,7 @@
       "section": "mode-d/キーの割り当て"
     },
     {
-      "key": "Ctrl+矢印",
+      "key": "Ctrl+←↑↓→",
       "screen": "ラダー（三菱の書き方）",
       "action": "線を引きながらカーソルを動かす",
       "section": "mode-d/キーの割り当て"

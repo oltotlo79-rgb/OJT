@@ -109,10 +109,12 @@ describe('InspectRepairResult with a real judge result', () => {
     );
     expect(screen.getByTestId('verdict').textContent).toBe('不合格');
     const missed = screen.getByTestId('missed-list').textContent ?? '';
-    // c2-001 の見逃しは断線（sw-005。wireId で示す）と未配線（sw-009。M1で端子表示に変更 —
-    // 訓練者は配線されたことのない電線を見ていないので、その wireId ではなく端子で示す）
-    expect(missed).toContain('sw-005');
+    // c2-001 の見逃しは断線（sw-005）と未配線（sw-009）。この描画では `wires` を渡していない
+    // （実運用ではセッションの電線一覧を渡す）ので、`siteLabel()` はどちらも電線IDではなく
+    // 見えている端子で示す（UI監査 I5 / UI監査バッチC 46b4972 でsw-005側も端子表示に統一）。
+    expect(missed).toContain('端子 TB_PB.1a / CR1.14 — 断線');
     expect(missed).toContain('CR1.6');
+    expect(missed).not.toContain('sw-005');
     expect(missed).not.toContain('sw-009');
     expect(value.mismatches.length).toBeGreaterThan(0);
   });
