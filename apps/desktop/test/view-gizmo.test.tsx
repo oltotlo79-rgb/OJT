@@ -99,11 +99,16 @@ const {
 } = await import('../src/renderer/three/ViewGizmo.js');
 const { GIZMO_DRAG_RAD_PER_PX, GIZMO_DRAG_THRESHOLD_PX, GIZMO_FACE_ORDER, GIZMO_HIT_BOXES } =
   await import('../src/renderer/three/navigation.js');
-const { chamferedFaceGeometry, GIZMO_FACETS } = await import(
-  '../src/renderer/three/view-gizmo-geometry.js'
-);
-const { MAX_POLAR_ANGLE, poseForDirection, cameraPose, boardToWorld, plcViewRect, PLC_VIEW_ASPECT } =
-  await import('../src/renderer/three/camera.js');
+const { chamferedFaceGeometry, GIZMO_FACETS } =
+  await import('../src/renderer/three/view-gizmo-geometry.js');
+const {
+  MAX_POLAR_ANGLE,
+  poseForDirection,
+  cameraPose,
+  boardToWorld,
+  plcViewRect,
+  PLC_VIEW_ASPECT,
+} = await import('../src/renderer/three/camera.js');
 const { toScene } = await import('../src/renderer/three/coords.js');
 const { useStore } = await import('../src/renderer/app/store.js');
 

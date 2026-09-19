@@ -536,10 +536,7 @@ export function ViewGizmo({ controls }: { controls: OrbitControlsLike | null }):
   // `Canvas`（3Dペイン）の CSS ピクセル幅。モードD「分割」のように幅が限られる場面で、
   // キューブが盤の絵に重ならないよう大きさ・余白をここから決める（2026-09-20 の利用者指摘）。
   const viewportSize = useThree((state) => state.size);
-  const layout = useMemo(
-    () => gizmoLayoutForViewport(viewportSize.width),
-    [viewportSize.width],
-  );
+  const layout = useMemo(() => gizmoLayoutForViewport(viewportSize.width), [viewportSize.width]);
   const preset = useStore((state) => state.camera);
   const cube = useRef<Group | null>(null);
   const billboard = useRef<Group | null>(null);
