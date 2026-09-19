@@ -6,6 +6,7 @@ import { resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useStore } from '../src/renderer/app/store.js';
 import { LadderWorkspace } from '../src/renderer/ladder/LadderWorkspace.js';
+import { SKIN_THEMES } from '../src/renderer/ladder/skins/index.js';
 import styles from '../src/renderer/ladder/ladder.module.css';
 
 /**
@@ -41,6 +42,9 @@ const CSS = ((): string => {
 
 /** `body` の文字色（`app/global.css` の `--text`）。ラダーの枠がこれを継いでいたのが #1。 */
 const BODY_FG = '#e7ebf2';
+
+/** ラダーの枠の文字色（`.workspace` の `--ladder-fg`）。スキンが変わっても枠の字はこの色。 */
+const LADDER_FG = '#1a1d22';
 
 /** ラダーの枠で使っている下地。いちばん濃いのは見出し帯の `#e4e7ec`。 */
 const SURFACES = {
@@ -124,6 +128,17 @@ const PAIRS: ReadonlyArray<{ selector: string; prop: string; fg: string; bg: str
   { selector: '.shortcutOff', prop: 'color', fg: '#6f747e', bg: SURFACES.white },
 ];
 
+/**
+ * 宣言された色を探す正規表現。Plan 4B Task 2 で、スキンの効く宣言は
+ * `fill: var(--skin-comment, #1b6ac9)` の**既定値つきの変数読み**になった（決定表#5）。
+ * 変数を流し込まない場所では既定値（＝従来の色）がそのまま効くので、どちらの綴りでも
+ * 「その色がいまも書かれている」ことを見る。
+ */
+function declares(prop: string, color: string): RegExp {
+  const literal = color.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
+  return new RegExp(`${prop}:\\s*(?:var\\(\\s*--skin-[a-z-]+\\s*,\\s*)?${literal}`, 'u');
+}
+
 const problem = BUILTIN_PLC_PROBLEMS[0]!;
 
 afterEach(() => {
@@ -152,8 +167,8 @@ describe('ラダーの枠の文字色（UXレビュー #1）', () => {
 
   it('宣言された色が下地に対して WCAG AA（4.5:1）を満たす', () => {
     for (const pair of PAIRS) {
-      expect(rule(pair.selector), `${pair.selector} の ${pair.prop}`).toContain(
-        `${pair.prop}: ${pair.fg}`,
+      expect(rule(pair.selector), `${pair.selector} の ${pair.prop}`).toMatch(
+        declares(pair.prop, pair.fg),
       );
       const ratio = contrast(pair.fg, pair.bg);
       expect(
@@ -204,5 +219,55 @@ describe('ラダーの枠の文字色（UXレビュー #1）', () => {
     }
     // 測れたかどうかに関わらず、上の3本の検査で回帰は捕まる
     expect(measured).toBeGreaterThanOrEqual(0);
+  });
+});
+
+/**
+ * 4スキンの配色（Plan 4B Task 2）。
+ *
+ * 利用者要求は「各メーカーのソフト画面に合わせた可能な限り実物に忠実な画面」だが、
+ * 「分かりやすく直感的に」も同じ日の要求である。スキンを増やすたびに #1（白地に白）の
+ * 再発を防ぐため、**4スキンぶんの文字色を地に対して測る**。
+ */
+describe('4スキンの配色（Plan 4B Task 2 / 利用者要求: 実物に近く、かつ読める画面）', () => {
+  it('どのスキンでも、編集領域の文字が地に対して WCAG AA（4.5:1）を満たす', () => {
+    for (const theme of Object.values(SKIN_THEMES)) {
+      for (const key of ['device', 'preset', 'comment', 'symbol'] as const) {
+        const ratio = contrast(theme.colors[key], theme.colors.canvas);
+        expect(
+          ratio,
+          `${theme.id}.${key} ${theme.colors[key]} on ${theme.colors.canvas} = ${ratio.toFixed(2)}:1`,
+        ).toBeGreaterThanOrEqual(4.5);
+      }
+      // タイトルバー・ステータスバー・出力ウィンドウの文字（枠の文字色は `--ladder-fg`）
+      const bars: ReadonlyArray<[string, string, string]> = [
+        ['titleBar', theme.colors.titleBarText, theme.colors.titleBar],
+        ['statusBar', LADDER_FG, theme.colors.statusBar],
+        ['output', LADDER_FG, theme.colors.output],
+        ['toolbar', LADDER_FG, theme.colors.toolbar],
+      ];
+      for (const [name, fg, bg] of bars) {
+        const ratio = contrast(fg, bg);
+        expect(
+          ratio,
+          `${theme.id}.${name} ${fg} on ${bg} = ${ratio.toFixed(2)}:1`,
+        ).toBeGreaterThanOrEqual(4.5);
+      }
+    }
+  });
+
+  it('母線は地に対して 3:1（WCAG 1.4.11 の非文字）を満たし、通電色は地と見分けられる', () => {
+    for (const theme of Object.values(SKIN_THEMES)) {
+      const rail = contrast(theme.colors.rail, theme.colors.canvas);
+      expect(rail, `${theme.id}.rail = ${rail.toFixed(2)}:1`).toBeGreaterThanOrEqual(3);
+      /*
+       * 通電色・カーソル色は §10.6 が定める各社の色（◎）なので、こちらで濃さを決められない
+       * （橙 #E08A1E は 2.33:1、水色 #00A0C8 は 2.80:1 で 3:1 に届かない）。画面では 2px の枠と
+       * 太い導線として描き、状態は色だけでなくステータスバーの文字でも示す（決定表#7）ので、
+       * ここでは「地と同化していないこと」だけを見張る。
+       */
+      const powered = contrast(theme.colors.powered, theme.colors.canvas);
+      expect(powered, `${theme.id}.powered = ${powered.toFixed(2)}:1`).toBeGreaterThanOrEqual(2);
+    }
   });
 });

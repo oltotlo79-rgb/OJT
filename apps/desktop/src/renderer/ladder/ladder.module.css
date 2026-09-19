@@ -33,7 +33,7 @@
   flex: 1 1 auto;
   min-height: 0;
   overflow: auto;
-  background: #f7f8fa;
+  background: var(--skin-canvas, #f7f8fa);
   color: var(--ladder-fg);
   padding: 6px 8px 24px;
 }
@@ -57,7 +57,7 @@
 }
 
 .networkComment {
-  color: #1b6ac9;
+  color: var(--skin-comment, #1b6ac9);
 }
 
 .hiddenWarn {
@@ -69,7 +69,7 @@
 }
 
 .rail {
-  fill: #3a3f47;
+  fill: var(--skin-rail, #3a3f47);
 }
 
 .cell {
@@ -83,7 +83,7 @@
 .wire,
 .symbol {
   fill: none;
-  stroke-width: 1.6;
+  stroke-width: var(--skin-stroke, 1.6);
   stroke-linecap: square;
 }
 
@@ -92,7 +92,7 @@
 .presetText,
 .commentText {
   text-anchor: middle;
-  fill: #1b1e23;
+  fill: var(--skin-device, #1b1e23);
   font-family: inherit;
 }
 
@@ -107,23 +107,23 @@
 
 .presetText {
   font-size: 9px;
-  fill: #555;
+  fill: var(--skin-preset, #555);
 }
 
 .commentText {
   font-size: 8px;
-  fill: #1b6ac9;
+  fill: var(--skin-comment, #1b6ac9);
 }
 
 .cursor {
   fill: none;
-  stroke: #1e64ff;
+  stroke: var(--skin-cursor, #1e64ff);
   stroke-width: 2;
 }
 
 .errorCell {
   fill: none;
-  stroke: #d14343;
+  stroke: var(--skin-error, #d14343);
   stroke-width: 2;
   stroke-dasharray: 3 2;
 }
@@ -193,7 +193,7 @@
 /* --- Plan 3B Task 6 --- */
 .output {
   border-top: 1px solid var(--ladder-line);
-  background: #fff;
+  background: var(--skin-output, #fff);
   color: var(--ladder-fg);
   font-size: 12px;
 }
@@ -221,7 +221,8 @@
 }
 
 .outputBody {
-  max-height: 168px;
+  /* 高さはスキンが決める（`--skin-output-h`。決定表#5 / I11）。既定は Plan 3B の 168px */
+  max-height: var(--skin-output-h, 168px);
   overflow-x: hidden;
   overflow-y: auto;
 }
@@ -438,7 +439,7 @@ details[open] > .sideSummary::before {
   flex-wrap: wrap;
   gap: 4px;
   padding: 4px 6px;
-  background: #e4e7ec;
+  background: var(--skin-toolbar, #e4e7ec);
   border-bottom: 1px solid var(--ladder-line);
 }
 
@@ -564,4 +565,53 @@ details[open] > .sideSummary::before {
     border-top: 0;
     flex: 1 1 240px;
   }
+}
+
+/* --- Plan 4B Task 2: スキンの枠（決定表#5・#7） --- */
+.titleBar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 24px;
+  padding: 0 8px;
+  font-size: 12px;
+  background: var(--skin-title-bar, #2f4a73);
+  color: var(--skin-title-text, #fff);
+}
+
+.titleBarName {
+  font-weight: 700;
+}
+
+.titleBarNote {
+  margin-left: auto;
+  font-size: 10px;
+  opacity: 0.85;
+}
+
+.statusBar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  height: 24px;
+  padding: 0 8px;
+  font-size: 11px;
+  background: var(--skin-status-bar, #e6e9ee);
+  border-top: 1px solid rgb(0 0 0 / 12%);
+  color: var(--ladder-fg);
+}
+
+.statusItem {
+  white-space: nowrap;
+}
+
+/* 実機の操作パネルにあるが動かない項目（決定表#4） */
+.vendorTool {
+  opacity: 0.55;
+  font-style: italic;
+}
+
+/* PCwin風は出力を下部のステータスバーに畳む（§10.6 / 決定表#7） */
+.outputCollapsed {
+  max-height: var(--skin-output-h, 150px);
 }
