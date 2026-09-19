@@ -8,7 +8,7 @@
 
 **モニタとスキャンの置き場所（依頼の DECIDE に対する回答）:** セッション中のスキャンは **Worker の中だけ**で回る。renderer は `PlcRuntime` を持たない。Worker は `load` で `withPlcUnit()` 済みの盤からネットリストを作り、`loadLadder` で受け取った `LadderProgram` を `compile()` し、`createPlcCoupling()`（Plan 3A Task 15）の `beforeTick` を追従ループの各 tick の先頭で呼ぶ。モニタ表示（`PlcSnapshot.poweredCells`）は **33ms のスナップショット**に相乗りさせ、しかも「モニタ中（`F3`）のときだけ」載せる。判定（`judgePlc`）は Plan 2B の `judgeRepair` と同じく**追従ループを止めてから** Worker 内で実行する（3A ハンドオフ注記 H-4）。
 
-**Tech Stack:** Electron 44 / electron-vite 5 / React 19.2.8 / three 0.186 / @react-three/fiber 9.7 / @react-three/drei 10.7 / zustand 5 / CSS Modules / Web Worker（`SimCommand` / `SimMessage`、33ms スナップショット）/ Playwright（Electron）/ TypeScript ~6（`strict` ＋ `exactOptionalPropertyTypes` ＋ `noUncheckedIndexedAccess` ＋ `verbatimModuleSyntax`、`.js` 拡張子つき相対 import）/ Vitest ＋ Testing Library / ESLint flat config（`react-hooks` ＋ `import-x/no-cycle`）/ Prettier（printWidth 100）。**新しい依存は1つも増やさない。** 画面の文言はすべて `apps/desktop/src/renderer/i18n/ja.ts`（main プロセス側は `src/shared/messages.ts`）に置く。
+**Tech Stack:** Electron 44 / electron-vite 5 / React 19.2.8 / three 0.186 / @react-three/fiber 9.7 / @react-three/drei 10.7 / zustand 5 / CSS Modules / Web Worker（`SimCommand` / `SimMessage`、33ms スナップショット）/ Playwright（Electron）/ TypeScript ~6（`strict` ＋ `exactOptionalPropertyTypes` ＋ `noUncheckedIndexedAccess` ＋ `verbatimModuleSyntax`、`.js` 拡張子つき相対 import）/ Vitest ＋ Testing Library / ESLint flat config（`react-hooks` ＋ `import-x/no-cycle`）/ Prettier（printWidth 100）。**足す依存は3つだけ**: ワークスペース内の `@ojt/ladder-core` / `@ojt/plc-dialects`（Task 1 Step 0）と、テスト用の `@testing-library/jest-dom`（Task 4 Step 0）。**実行時（`dependencies`）に外部パッケージは1つも増やさない。** 画面の文言はすべて `apps/desktop/src/renderer/i18n/ja.ts`（main プロセス側は `src/shared/messages.ts`）に置く。
 
 ---
 
@@ -16,8 +16,8 @@
 
 | # | 前提 | 確認方法 |
 |---|---|---|
-| 1 | Plan 1A〜1D・2A・2B が `main` に入っており、`pnpm -r test` が5プロジェクト（`circuit-sim` / `board-model` / `schematic-core` / `content` / `desktop`）すべて通る。`desktop` のベースラインは 32ファイル / 541テスト、E2E 11本 | `pnpm -r test` / `pnpm --filter @ojt/desktop e2e` |
-| 2 | **Plan 3A が `main` に入っている。** 本プランは 3A の公開APIを全面的に使うので、3A 未完了では Task 1 から通らない。とくに `@ojt/content` の `judgePlc` / `createPlcCoupling` / `plcBoardFor` と `UNSUPPORTED_MODES` の削除（3A Task 13）が無いと Task 2 以降が書けない | `pnpm -r test`（7プロジェクト）と下の 前提A〜E |
+| 1 | Plan 1A〜1D・2A・2B が `main` に入っており、`pnpm -r test` が5プロジェクト（`circuit-sim` / `board-model` / `schematic-core` / `content` / `desktop`）すべて通る。`desktop` のベースラインは **60ファイル / 825テスト、E2E 17本**（2026-09-18 に `main` で実測。本プランの増分はこの数からの差である） | `pnpm -r test` / `pnpm --filter @ojt/desktop e2e` |
+| 2 | **Plan 3A が `main` に入っている。** 本プランは 3A の公開APIを全面的に使うので、3A 未完了では Task 1 から通らない。とくに **3A の Task 20 が `@ojt/content` のバレル（`src/index.ts`）に `isPlcProblem` / `PlcProblem` / `resolvePlcIo` / `ResolvedPlcIo` / `plcBoardFor` / `plcWiringPlan` / `BUILTIN_PLC_PROBLEMS` / `judgePlc` / `JudgePlcResult` / `judgePlcReference` / `BOARD_POWER_PREFIXES` / `PLC_WIRE_COLOR` を載せていること**（2026-09-18 現在、バレルは 123行目に「モードD関連の型はまだこのバレルに乗せない」と書いたまま＝**未掲載**。`judge-plc.ts` / `plc-static-checks.ts` / `BUILTIN_PLC_PROBLEMS` の実体は 3A Task 17〜19 で landed 済み）。`StaticCheckInput` / `StaticCheckResult` / `PlcCheckContext` は `static-check-types.ts` にあり、`static-checks.ts` が再輸出してバレルへ出している（`PlcCheckContext` はバレル未掲載なので、必要なら 3A Task 20 で一緒に載せてもらう）。`UNSUPPORTED_MODES` の削除（3A Task 13）も必須 | `pnpm -r test`（7プロジェクト）と下の 前提A〜E。バレルは `Select-String -Path packages/content/src/index.ts -Pattern "judgePlc\|BUILTIN_PLC_PROBLEMS"` で確認する |
 | 3 | 内蔵課題が28題（モードB 8・C1 4セット・C2 8・**D 8**）になっている | `BUILTIN_ALL_PROBLEMS.length === 28` |
 | 4 | `pnpm -r typecheck` / `pnpm lint` が無警告、`npx prettier --check "apps/desktop/**/*.{ts,tsx,css}"` が通る | 同左 |
 | 5 | `apps/desktop` の IPCチャネルは6本のまま（`IPC_CHANNELS`）。本プランでも**増やさない**（§4.3） | `src/shared/ipc.ts` |
@@ -130,9 +130,9 @@ export function createPlcRuntime(program: CompiledProgram, options: PlcRuntimeOp
 - `deleteRow()` は最後の1行を消せない。`deleteNetwork()` は最後のネットワークでも消せる（＝プログラムが空になりうる）。空になると `compile()` が `empty-program` を返すので、変換で気づける。
 - `vline()` は**そのセル自身も横線として導通する**（`runtime.ts` の `solve()`）。エディタの描画も「縦線＋横線」で描く。
 - `PlcSnapshot.poweredCells` の `col` は **0〜15**（`IR_COLS` ぶん全部）。コイルの通電は `col === COIL_COL` の値。
-- **`poweredCells` は「どの行でも0列目は必ず `true`」になる**（`Rails` の構築時に全行の0列目を左母線へ union するため。3A レビュー指摘）。空セルの0列目まで青く塗ると、何も書いていない行が光って見える。**モニタは `empty` のセルを塗らない**こと（Task 4）。3A 側でランタイムが「空セルの0列目は `false`」を返すよう直る可能性があるので、**どちらでも正しく見えるように**書く（＝UI 側で `empty` を弾く）。
+- **`poweredCells` の0列目は「空セルなら `false`」で返る**（`runtime.ts` の `state()` が `col === 0 && cell?.kind === 'empty'` を `false` に落とす。3A レビュー指摘への対応が landed 済み）。それ以外の行では0列目は必ず `true`（`Rails` が全行の0列目を左母線へ union する）。**UI 側でも `empty` のセルは塗らない**こと（Task 4）。ライブラリと画面の両方で弾くので、どちらが変わっても空行が光らない。
 - **`deleteNetwork()` は END ネットワークも消せる**（仕様どおり）。消すと `compile()` が `missing-end` を返すので、出力ウィンドウで気づける。エディタは END の削除を止めない。
-- **今後 3A 側で増える検査**: `setVerticalLink()` がコイル列を拒否するようになる／`compile()` が「X・SP への OUT/SET/RST」「T・C への OUT」を新しい構造エラーコードで拒否するようになる。したがって **`CompileErrorCode` を画面側で網羅しない**こと（`ConvertErrorLine.code` は `string` のまま扱い、`message` をそのまま出す）。`buildCell()`（Task 5）の許可表がこれらを先に弾くので、通常は出ない。
+- **3A が足した検査は landed 済み**: `CompileErrorCode` に `'coil-on-read-only-device'`（X・SP への OUT/SET/RST など）が**既に入っている**。今後もコードは増えうるので、**`CompileErrorCode` を画面側で網羅しない**こと（`ConvertErrorLine.code` は `string` のまま扱い、`message` をそのまま出す）。`buildCell()`（Task 5）の許可表がこれらを先に弾くので、通常は出ない。
 - **3B が使ってよい追加の公開名**: `PlcRuntimeOptions` / `CLOCK_PERIOD_MS` / `TIMER_STEP_MS` / `MAX_TIMER_PRESET_MS` / `MAX_COUNTER_PRESET` / `DEVICE_PREFIX` / `NetworkOptions` / `CompiledNetwork` / `CompiledOutput` / `DeviceUsage` / `PlcRuntime`。
 - **性能（3A 実測）**: 1スキャン **0.06ms**、`judgePlc()` は 6 秒の課題で **約 72ms**。H-4 の「0.3〜1 秒」は見積もりで、実測はこれより軽い。それでも `judgeRepair` と同じく追従ループを止める（1級の 8 秒課題や将来の長い課題で `MAX_CATCHUP_TICKS`（200ms相当）に近づくため。余白を残す）。
 
@@ -515,17 +515,20 @@ export function LogPanel(props); ElapsedTimer(props); PowerControls(props); Prob
 | 3 | **`Ctrl+Z` の宛先** | ラダーエディタにフォーカスがある間（`ladderFocused`）は**ラダー**、それ以外は**盤**。`ladderFocused` はストアが持ち、`LadderEditor` の `onFocus` / `onBlur` で切り替える。視点のショートカット（テンキー・`1`/`2`/`3`）と `Delete`／`Esc` も `ladderFocused` の間は盤へ通さない | 1画面に取り消しの対象が2つある以上、どちらかを選ぶ規則が要る。「最後に触ったほう」は状態が見えず説明できない。フォーカスなら枠線で見えるので、訓練者が「いまどちらを編集しているか」を目で確認できる。`useViewportShortcuts({ enabled: !ladderFocused })` の1行で済み、既存のフックを壊さない |
 | 4 | **変換エラー → セルの写像** | `CompileError` / `ConvertError` の `networkId` / `row` / `col` をそのまま使う。`col` が無い（`no-output` など）ものは**そのネットワークの見出し行**、`networkId` が空文字（`missing-end` / `mc-unmatched` のプログラム全体版）のものは**出力ウィンドウの先頭**に置き、クリックしてもカーソルは動かさない。行をクリックするとカーソルが該当セルへ飛び、そのセルが赤枠になる | `compile()` が既に位置を持っている（前提A）ので、UI 側で位置を推定しない。推定すると `grid-shape` のようにセルに紐づかない誤りで嘘の場所を指す |
 | 5 | **モニタの更新頻度と再描画** | Worker が**モニタ中だけ** `SimSnapshot.plc` を載せる。`poweredCells`（最大 16×12×64 個の boolean）は**そのまま渡さず**、ネットワークごとに `'0110…'` の行文字列へ畳んだ `powered: Record<string, string>` にする。グリッドは `useStore((s) => s.plcMonitor?.powered[net.id] ?? '')` という**ネットワーク1本ぶんの文字列**を購読し、文字列が同じなら React が再描画しない | テスター読値（Plan 2B 前提D）と同じ考え方。boolean の `Record` をそのまま渡すと、33ms ごとに 1,536 個の比較と新しいオブジェクトが生まれ、`useShallow` でも毎回「変わった」と判定される（キーの数が同じでも参照が違う）。行文字列なら比較は文字列1本で、ネットワークを跨いだ再描画も起きない。**送出は 33ms のスナップショットに相乗り**させ、コマンドもメッセージも増やさない |
+| 5b | **机上のPLC本体・壁コンセントの置き場所**（2026-09-18 の利用者決定） | **盤と同じ傾斜グループの中に、盤面の延長として描く。**「実際の机は水平なのに3Dでは盤と同じ角度で傾いている」ことは**意図した簡略化**として受け入れ、プランと画面の注記に残す（意図的な差分 #1） | 傾いていない別グループに置くと、`toScene()` / `boardToWorld()` / `safeRoutes()` / E2E の射影がすべて2系統になり、端子の当たり判定・ピック・視点プリセットも別に作ることになる。得られるのは「机の高さが正しい」ことだけで、訓練の目的（どの端子とどの端子を結ぶか）には効かない。利用者に「傾きを直すか、1系統のままにするか」を提示し、**1系統のまま**を選んでもらった |
 | 6 | **3Dの視点** | `CameraPreset` に **`'plc'`（盤＋PLC＋壁コンセントの全体）** を1つだけ足す（ツールバー4つ目のボタン、`data-testid="view-plc"`、モードDのときだけ出す）。画角は `PLC_VIEW_RECT`（盤の矩形と `PLC_ORIGIN_MM` / `sizeMm` / `OUTLET_ORIGIN_MM` の外接＋余白20mm）を `fitDistanceMm()` で収める。**モードDを開いたときの既定の視点もこれにする**。**テンキーとビューキューブの割当は変えない**（盤の6面のまま） | 机上のPLCは盤座標の外（x ≈ 390mm）にあり、既存の7プリセットではどれも画角に入らない。かつモードDの配線は「盤の端子 ⇄ PLCの端子」を往復するので、**1本の電線の両端が同じ画角に入っている**必要がある（片方ずつしか見えないと2点目を選ぶために視点を切り替えることになる）。テンキーに足すと Blender の 1/3/7 の意味（面直視）が崩れる（§12.2 の割当表がそのまま使えなくなる）。ツールバーのボタンなら §12.2 の「ツールバーは前の3種」に1つ足すだけで、既存のキー表を触らない。寄って見たいときはホイールのズームで足りる |
-| 7 | **配線ルールの UI と判定の切り分け** | UI が断るのは**盤のルールだけ**（1端子2本・盤に無い端子・既設配線・線色パレット＝青のみ）。`twoStage` / `plcPowerIndependent` / `ioAssignment` は**判定時のみ**。セッション中に「いまの配線の診断」は**出さない** | Plan 2B の C2 で「外した青線」を判定用の集計で出したら故障箇所が漏れた（`removedWires` の修正）のと同じ構図。`Y0` をランプへ直結した瞬間に「2段結線になっていません」と出すと、受入基準④（`twoStage` エラー）が体験として成立しない。I/Oテーブル（Task 7）が出すのは**課題が与えた割付**（＝課題文）だけで、配線できているかどうかは出さない |
+| 7 | **配線ルールの UI と判定の切り分け**（2026-09-18 の利用者決定） | UI が断るのは**盤のルールだけ**（1端子2本・盤に無い端子・既設配線・線色パレット＝青のみ）。`twoStage` / `plcPowerIndependent` / `ioAssignment` は**判定時のみ**で、**セッション中の「いまの配線の診断」は一切出さない**。代わりに**判定に依らない静的な1行**「PLC電源は壁コンセント（AC100V）から取ります」を**課題文（`PlcSession` の課題説明）と I/O テーブルの見出し（Task 7）に常時出す**。手順は教えるが、いまの配線が合っているかは漏らさない | Plan 2B の C2 で「外した青線」を判定用の集計で出したら故障箇所が漏れた（`removedWires` の修正）のと同じ構図。`Y0` をランプへ直結した瞬間に「2段結線になっていません」と出すと、受入基準④（`twoStage` エラー）が体験として成立しない。一方「壁コンセントから取る」こと自体は§10.1 が定める**手順の知識**であって答え合わせではないので、静的な文言なら出しても判定を漏らさない。利用者に「ライブ診断を出す／静的な注意書きだけ出す」を提示し、**静的な注意書きだけ**を選んでもらった |
 | 8 | **作業ファイルの形** | `formatVersion` は **1 のまま**。モードDの項目はすべて任意: `mode: 'plc'` / `ladder`（`LadderProgramData` の JSON。`comments` を含む）/ `dialectId` / `converted`（boolean）。読み手は `toLadderProgram()`（`toSession()` と同じ流儀の自前検証）で断る。上限はネットワーク64・行12・列16・コメント200件×32文字 | §13 #8 の「バージョンを上げると古いファイルが読めなくなる」を Plan 2B が既に決めている。`@ojt/content` の `LadderProgramSchema` を renderer から呼べば zod で検証できるが、**呼ばない**: 保存データの検証は「盤に載せる前に断る」ためのもので、課題スキーマの読込パス（zod の ja locale・`ProblemIssue`）とは目的が違い、`toSession()` と同じ層に揃えたほうが読み手が1箇所になる |
 | 9 | **Worker の `load` がモードDで要るもの** | `load` に **`plcModel?: string`** を足すだけにする。Worker は `plcUnitFor(model)` → `withPlcUnit(JIPM_BOARD, unit)` で盤を派生させ、`toNetlist()` に渡す。ラダーは**別コマンド** `loadLadder { program }`、RUN/STOP は `plcRun { on }` | 盤とラダーは寿命が違う。ラダーは変換のたびに送り直すが盤はそのままで、盤は配線のたびに差分コマンド（`addWire`）で当たるがラダーは丸ごと入れ替わる。1つの `load` にまとめると、ラダーを1文字直すたびに `new Simulation()` が走って `tMs`・信号ログ・危険操作が切れる（Plan 2B が `plug` で避けたのと同じ失敗） |
-| 10 | **画面の分割** | 既定は **左右分割**（左＝ラダーワークスペース、右＝3D盤）。ツールバーの3ボタン（`ラダー` / `分割` / `盤`）で切り替える。`viewMode` はストアが持つ。分割比は CSS の `grid-template-columns: minmax(520px, 1fr) minmax(420px, 1fr)` 固定で、ドラッグでの可変分割は入れない | §16 Phase 3 の受入基準①〜③が「ラダーを組む」→「配線する」→「判定」と行き来するので、既定で両方見えているのが自然。可変分割（スプリッタ）は 3D の `Canvas` をリサイズし続けることになり、`frameloop="demand"` の前提（§15）が崩れる。1280px 幅では左520px＋右660px 程度で、ラダーの12列（48px × 12 = 576px）は横スクロール1画面ぶんに収まる |
-| 11 | **`F2` / `Shift+F2`（書込み／読出しモード）と `F3`（モニタ）の意味** | `editorMode: 'write' \| 'read' \| 'monitor'` の3値。`write` は編集可、`read` は編集不可（セルの選択と移動だけ）、`monitor` は編集不可＋通電表示。`Shift+F3`（モニタ書込み）は **Phase 3 では `monitor` と同じ**にし、キー割当表に「Phase 3 ではモニタと同じ動作です」の注記を出す | GX Works3 の「モニタ（書込み）」はオンラインでのプログラム変更で、本アプリには「シーケンサへ書き込む」という実体が無い（`loadLadder` が即反映される）。`enabled: false` にしてしまうと `SHORTCUTS` を書き換えることになり、方言プロファイルは 3A の所有物なので触れない。**注記で差を説明する**のが §17.1 の流儀に合う |
+| 9b | **RUN/STOP の置き場所**（レビュー指摘 B5） | **ツールバーの `extraTools`**（`data-testid="plc-run"`）に置き、`ladderView` が `board` でも `ladder` でも**常に見える**ようにする。`MonitorPanel` にも同じ状態を映すボタンを残すが、そちらは控えなので `data-testid="monitor-run"` と分ける | 当初案（`MonitorPanel` だけに置く）だと、RUN のボタンは `LadderWorkspace` の中にしか無い。ところが受入基準②③の動線は「ラダーを組む → **盤の表示に切り替えて**配線する → 判定」で、配線中は `ladderView === 'board'` なのでボタンが画面から消える。結果として **RUN にできる場所がどこにも無いまま判定へ進める**（=受入基準③のモニタが一度も動かない）。ツールバーは3つの表示モードすべてで出ているので、ここが唯一の正しい置き場所になる。同じ `data-testid` を2箇所に置くと Testing Library も Playwright も曖昧になるので名前を分ける |
+| 10 | **画面の分割** | 既定は **左右分割**（左＝ラダーワークスペース、右＝3D盤）。ツールバーの3ボタン（`ラダー` / `分割` / `盤`）で切り替える。`viewMode` はストアが持つ。分割比は CSS の `grid-template-columns: minmax(520px, 1fr) minmax(420px, 1fr)` 固定で、ドラッグでの可変分割は入れない。**ただし 1180px 未満では `@media (max-width: 1179px)` で1面表示に落とし**、ツールバーの既存の3ボタン（`ラダー` / `分割` / `盤`）で切り替えてもらう（`split` のときは `ladder` と同じ1面として描く）。2026-09-18 の利用者決定 | §16 Phase 3 の受入基準①〜③が「ラダーを組む」→「配線する」→「判定」と行き来するので、既定で両方見えているのが自然。可変分割（スプリッタ）は 3D の `Canvas` をリサイズし続けることになり、`frameloop="demand"` の前提（§15）が崩れる。1280px 幅では左520px＋右660px 程度で、ラダーの12列（48px × 12 = 576px）は横スクロール1画面ぶんに収まるが、**520 + 420 = 940px ＋ 余白では 1180px を切ると両方が潰れる**。利用者に「可変分割にする／固定比のまま狭い画面は1面に落とす」を提示し、**固定比＋1面フォールバック**を選んでもらった。新しい状態は増えない（`ladderView` の3値をそのまま使う） |
+| 11 | **`F2` / `Shift+F2`（書込み／読出しモード）と `F3`（モニタ）の意味** | `editorMode: 'write' \| 'read' \| 'monitor'` の3値。`write` は編集可、`read` は編集不可（セルの選択と移動だけ）、`monitor` は編集不可＋通電表示。`Shift+F3`（モニタ書込み）は **Phase 3 では `F3` とまったく同じ動作**にし、①キー割当表の `monitor-write` の行に「Phase 3 ではモニタと同じ動作です」の注記を出し、②**そのセッションで最初に押したときだけ**同じ文言をトーストで出す（2回目以降は出さない）。2026-09-18 の利用者決定 | GX Works3 の「モニタ（書込み）」はオンラインでのプログラム変更で、本アプリには「シーケンサへ書き込む」という実体が無い（`loadLadder` が即反映される）。`enabled: false` にしてしまうと `SHORTCUTS` を書き換えることになり、方言プロファイルは 3A の所有物なので触れない。黙って `F3` と同じに振る舞うと「押し間違えた」と思われ、毎回トーストを出すと `F3` と往復するたびに邪魔になる。利用者に「毎回出す／1回だけ出す／注記だけ」を提示し、**注記＋初回1回だけのトースト**を選んでもらった |
 | 12 | **キー割当表は誰のものか** | 画面は `profile.shortcuts` を**表として描くだけ**で、キーの文字列を1つもハードコードしない。「キー文字列 → `action`」の照合は `session/ladder.ts` の `matchShortcut()` が行い、`action` 文字列に対して振る舞いを決める | Phase 4 で `getDialect('omron')` に差し替えるだけでキー割当が変わる（§17.1 の「修正箇所は方言プロファイルのみ」）。`event.key === 'F5'` と書いた瞬間にこの性質が壊れる。テストは「`MITSUBISHI_FX5U.shortcuts` から作った表で `F5` が `contact-no` になる」ことと「架空のプロファイルで `F5` を別の action に割り当てたら振る舞いも変わる」ことの両方を見る |
+| 12b | **`Ins`（挿入・上書きの切換）の受け皿**（レビュー指摘 B6） | ストアが **`insertMode: 'insert' \| 'overwrite'`**（既定 `'overwrite'`）を持ち、アクション **`toggleInsert()`** が反転させる。`ladderKeyToAction()` は `Insert` を `{ type: 'toggleInsert' }` に写し、`LadderEditor`（Task 5）のセル配置が `applyLadderCell(program, cursor, cell, insertMode === 'insert')` の第4引数で使う。`insert` のときはカーソル列からコイル列の1つ手前までを右へ1つずらしてから置き、押し出される最後の接点列に中身があれば置かずに理由をトーストに出す | 「押しても何も起きない」キーを表に残すと、キー割当表が画面の唯一の情報源でなくなる（決定表#12）。かといって `SHORTCUTS` から消すのは 3A の所有物を触ることになる。`edit.ts` に「挿入して右へずらす」操作は無いが、`setCell` の繰り返しで**純粋層の中だけ**で組める。**`KeyboardEvent.key` は `Insert` であって `Ins` ではない**ので、照合側に `KEY_ALIASES`（`Ins`→`Insert` / `Del`→`Delete` / `Esc`→`Escape`）を置く（これが無いと `Ins` の行は永久に一致しない） |
 | 13 | **設定画面のメーカー選択** | `AppSettings.defaultVendor: DialectId`（既定 `'mitsubishi'`）。選択肢は `availableDialects()` が返すものだけ（Phase 3 は三菱1件）。未実装の3社は**淡色で並べて押せない**ようにし、「Phase 4 で追加します」の注記を添える | §16 Phase 4 の受入基準①が「設定で既定メーカーをOMRONにすると…」なので、Phase 3 で入れ物を作っておくと Phase 4 は選択肢を増やすだけになる。並べずに隠すと「4社対応」という約束（§10.5）が画面から消える |
 | 14 | **セッション開始時のラダー** | **空のラダー**（`program(network('n1', [[empty()]]), endNetwork())`）から始める。課題の `referenceLadder` は**絶対に出さない** | 模範ラダーは答えそのものである。§8.4 のヒント方針（回路図は級で出し分け）はモードDには適用しない（§7.6 が `referenceLadder` をヒントとして挙げていない） |
 | 15 | **新規ネットワークの ID** | `n1` / `n2` / … の通し番号を、**既存の最大番号＋1**で採る（`deleteNetwork` のあとに番号が飛んでもよい）。END ネットワークの ID は `'end'` 固定 | `program()` と `insertNetwork()` が ID 重複で投げる（前提A）ので、一意さが要る。番号を詰め直すと、変換エラーの `networkId` と出力ウィンドウの行が編集のたびにずれる |
-| 15b | **未使用デバイスの扱い**（§10.8） | `CompiledProgram.usage`（`reads` / `writes`）から「宣言・配置したが使われていないデバイス」を出力ウィンドウに**表示するだけ**にし、**合否には一切効かせない**（2026-09-18 の利用者決定） | 未使用デバイスは実機でも警告どまりで、動作が正しければ検定の減点にはならない。判定は `judgePlc()`（3A）が持っており、そこに未使用デバイスの項目は無い。UI 側で勝手に不合格要素を足すと、3A の判定と画面の合否が食い違う |
+| 15b | **未使用デバイスの扱い**（§10.8） | `CompiledProgram.usage`（`reads` / `writes`）から「宣言・配置したが使われていないデバイス」を出力ウィンドウに**表示するだけ**にし、**合否には一切効かせない**（2026-09-18 の利用者決定）。**入力（X）と特殊リレー（SP）は「書かれていない」側に入れない**（設計上ラダーから書けないので、正しいラダーほど警告が増えてしまう。レビュー指摘 I10） | 未使用デバイスは実機でも警告どまりで、動作が正しければ検定の減点にはならない。判定は `judgePlc()`（3A）が持っており、そこに未使用デバイスの項目は無い。UI 側で勝手に不合格要素を足すと、3A の判定と画面の合否が食い違う |
 | 15c | **PLC電源が壁コンセントへ未配線のとき** | **エラー**（`plcPowerIndependent` の不合格）とし、盤から取っているときとは**別の文言**を出す。さらに「シミュレートされるPLCは `PLC.L` / `PLC.N` が未配線でも動きます」という説明を**常に**添える（2026-09-18 の利用者決定 ＋ 3A H-5） | §10.1 は「PLC電源は壁コンセント（AC100V）へ配線する」と定めており、未配線は手順の欠落である。ただし本アプリのPLCは電気的に解かない端子（3A 決定表#3）なので未配線でも動いてしまい、訓練者からは「動いているのにチェックだけ赤い」ように見える。理由を書かない限り不親切な不合格になる |
 | 16 | **端子名（8進）とIRのデバイス番号（10進）を混ぜない** | **端子を指す文字列は必ず機種側から取る**（`unit.spec.inputs[x]` / `unit.spec.outputs[y].name` / `plcMetaOf(part)`）。**ラダーの中に出るデバイス名は必ず方言側から取る**（`profile.formatDevice(device)`）。`deviceLabel()`（ベンダー中立の10進表記）は**デバイスコメントの鍵**にだけ使う | IR の `Device.index` は0起点の通し番号（3A 決定表#5）で、FX5U の端子名は8進なので `Y(8)` の端子は `PLC.Y10` である。三菱スキンでは `formatDevice()` も8進なので画面上は一致するが、Phase 4 の OMRON は端子名 `100.00`・デバイス表記 `100.00`、TOYOPUC は16進で、**根拠の違う2つの文字列**になる。ここを混ぜると Phase 4 で「3Dの端子は見つかるのにラダーの表示が合わない」類の不具合が出る |
 
@@ -551,6 +554,7 @@ export function LogPanel(props); ElapsedTimer(props); PowerControls(props); Prob
 ## Task 1: ラダー編集の純粋層（`session/ladder.ts`）
 
 **Files:**
+- Modify: `apps/desktop/package.json`（Step 0。`@ojt/ladder-core` / `@ojt/plc-dialects` の2本を足す）
 - Create: `apps/desktop/src/renderer/session/ladder.ts`
 - Test: `apps/desktop/test/ladder-model.test.ts`
 
@@ -563,6 +567,28 @@ export function LogPanel(props); ElapsedTimer(props); PowerControls(props); Prob
 | OR接点（`Shift+F5` / `Shift+F6`） | 1行下に接点を置き、右側は `setVerticalLink(row, col+1, true)`、左側は `col > 0` のとき `setVerticalLink(row, col-1, true)` ＋ 1行下の同じ列に `hline()`。`col === 0` は左母線が既に全行を繋いでいるので左側の罫線は要らない |
 | 取り消し | `LadderProgram` のスナップショットスタック。上限は盤と同じ `HISTORY_LIMIT`（50） |
 | 失敗 | `edit.ts` が投げる `LadderError` は**そのまま文言として返す**（ライブラリが日本語で持っている） |
+
+- [ ] **Step 0: `apps/desktop` から 3A の2パッケージを参照できるようにする（本プランで唯一の依存追加）**
+
+`apps/desktop/package.json` の `dependencies` は現在 `@ojt/board-model` / `@ojt/circuit-sim` / `@ojt/content` / `@ojt/schematic-core` の4本で、**`@ojt/ladder-core` と `@ojt/plc-dialects` が入っていない**。この2本を入れないと Task 1 の import が解決しない（pnpm のワークスペースは `package.json` に書かれた依存しかリンクしない）。アルファベット順を保って2行足す:
+
+```json
+    "@ojt/board-model": "workspace:*",
+    "@ojt/circuit-sim": "workspace:*",
+    "@ojt/content": "workspace:*",
+    "@ojt/ladder-core": "workspace:*",
+    "@ojt/plc-dialects": "workspace:*",
+    "@ojt/schematic-core": "workspace:*"
+```
+
+そのあと**1回だけ** `pnpm install` を走らせてリンクを張る（以降のタスクでは不要）:
+
+```powershell
+pnpm install
+pnpm --filter @ojt/desktop exec node -e "console.log(require.resolve('@ojt/ladder-core'))"
+```
+
+Expected: `pnpm install` が `Done` で終わり、`node_modules/@ojt/ladder-core` と `node_modules/@ojt/plc-dialects` がシンボリックリンクとして張られる。**外部（npm レジストリ）の依存は1つも増えない**（ワークスペース内の2本だけ）。
 
 - [ ] **Step 1: 失敗するテストを書く**
 
@@ -619,6 +645,7 @@ const TABLE: ShortcutTable = [
   { action: 'toggle-no-nc', keys: '/', label: '切換', confirmed: true },
   { action: 'toggle-pulse', keys: 'Alt+/', label: '微分切換', confirmed: true },
   { action: 'monitor', keys: 'F3', label: 'モニタ', confirmed: true },
+  { action: 'insert-toggle', keys: 'Ins', label: '挿入・上書きの切換', confirmed: true },
 ];
 
 function twoRungs(): LadderProgram {
@@ -669,6 +696,12 @@ describe('keyChord / matchShortcut（決定表#12）', () => {
     const swapped: ShortcutTable = [{ action: 'coil', keys: 'F5', label: 'コイル', confirmed: false }];
     expect(matchShortcut(swapped, { key: 'F5' })?.action).toBe('coil');
   });
+
+  it('reads the short names the skin uses (Ins / Del / Esc) as real KeyboardEvent.key values', () => {
+    // `KeyboardEvent.key` は 'Insert'。表の 'Ins' をそのまま比べると永久に一致しない
+    expect(matchShortcut(TABLE, { key: 'Insert' })?.action).toBe('insert-toggle');
+    expect(matchShortcut(TABLE, { key: 'Ins' })).toBeUndefined();
+  });
 });
 
 describe('ladderKeyToAction', () => {
@@ -716,6 +749,10 @@ describe('ladderKeyToAction', () => {
     expect(ladderKeyToAction(TABLE, { key: 'Enter' }, state)).toEqual({ type: 'edit' });
     expect(ladderKeyToAction(TABLE, { key: 'Delete' }, state)).toEqual({ type: 'delete' });
     expect(ladderKeyToAction(TABLE, { key: 'Backspace' }, state)).toEqual({ type: 'delete' });
+  });
+
+  it('turns the real Insert key into toggleInsert（B6）', () => {
+    expect(ladderKeyToAction(TABLE, { key: 'Insert' }, state)).toEqual({ type: 'toggleInsert' });
   });
 
   it('routes Ctrl+Z / Ctrl+Y to the ladder history (決定表#3)', () => {
@@ -976,7 +1013,8 @@ export type LadderAction =
   | { type: 'toggleNoNc' }
   | { type: 'togglePulse' }
   | { type: 'convert' }
-  | { type: 'setMode'; mode: LadderEditorMode }
+  /** `monitorWrite` は `Shift+F3`（モニタ書込み）で押されたことを示す。決定表#11 */
+  | { type: 'setMode'; mode: LadderEditorMode; monitorWrite?: true }
   | { type: 'toggleInsert' }
   | { type: 'help' }
   /** カーソル位置のセルを編集する（デバイス入力欄を開く）。 */
@@ -1004,6 +1042,19 @@ const ARROW_KEYS: Readonly<Record<string, string>> = {
   '↑': 'ArrowUp',
   '↓': 'ArrowDown',
   '→': 'ArrowRight',
+};
+
+/**
+ * 方言表の短い名前 → `KeyboardEvent.key` が実際に返す値。
+ *
+ * 三菱スキンは `Ins` / `Del` / `Esc` と書くが、ブラウザが渡すのは `Insert` / `Delete` / `Escape`
+ * である。直さないと `insert-toggle` の行は**永久に一致しない**（レビュー指摘 B6）。表そのものは
+ * Plan 3A の所有物なので書き換えず、照合側で吸収する。
+ */
+const KEY_ALIASES: Readonly<Record<string, string>> = {
+  Ins: 'Insert',
+  Del: 'Delete',
+  Esc: 'Escape',
 };
 
 /** 矢印キー → 罫線の向き。 */
@@ -1051,14 +1102,14 @@ export function keyChord(event: LadderKeyEvent): string {
   return parts.join('+');
 }
 
-/** `keys` の文字列を照合できる形の一覧に展開する（`Ctrl+←↑↓→` → 4件）。 */
+/** `keys` の文字列を照合できる形の一覧に展開する（`Ctrl+←↑↓→` → 4件、`Ins` → `Insert`）。 */
 function expandKeys(keys: string): string[] {
   const plus = keys.lastIndexOf('+');
   const prefix = plus < 0 ? '' : keys.slice(0, plus + 1);
   const tail = plus < 0 ? keys : keys.slice(plus + 1);
   const arrows = [...tail].filter((char) => ARROW_KEYS[char] !== undefined);
-  if (arrows.length === 0) return [keys];
-  return arrows.map((char) => `${prefix}${ARROW_KEYS[char] ?? char}`);
+  if (arrows.length > 0) return arrows.map((char) => `${prefix}${ARROW_KEYS[char] ?? char}`);
+  return [`${prefix}${KEY_ALIASES[tail] ?? tail}`];
 }
 
 /** キー入力に対応するショートカット表の行を探す。決定表#12 */
@@ -1124,8 +1175,13 @@ export function ladderKeyToAction(
     const place = PLACE_KINDS[entry.action];
     const mode = MODE_ACTIONS[entry.action];
     if (place !== undefined) action = { type: 'place', kind: place };
-    else if (mode !== undefined) action = { type: 'setMode', mode };
-    else if (entry.action === 'rule-line') {
+    else if (mode !== undefined) {
+      // `Shift+F3`（モニタ書込み）は `F3` と同じ動作だが、初回だけ注記を出すので印を付ける（決定表#11）
+      action =
+        entry.action === 'monitor-write'
+          ? { type: 'setMode', mode, monitorWrite: true }
+          : { type: 'setMode', mode };
+    } else if (entry.action === 'rule-line') {
       const direction = ARROW_DIRECTION[event.key ?? ''];
       action = direction === undefined ? { type: 'none' } : { type: 'ruleLine', direction };
     } else if (entry.action === 'toggle-no-nc') action = { type: 'toggleNoNc' };
@@ -1174,13 +1230,34 @@ function guard(run: () => LadderProgram): LadderEditResult {
   }
 }
 
-/** セルを置く。 */
+/**
+ * セルを置く。§10.6（`Ins` 挿入・上書きの切換。意図的な差分 #4 ／ レビュー指摘 B6）
+ *
+ * `insert` が真のときは、カーソルの列からコイル列の**1つ手前**までを右へ1つずらしてから置く
+ * （GX Works3 の「挿入」と同じ体感）。押し出される最後の接点列に中身があると、コイル列を
+ * 潰してしまうので**置かずに理由を返す**。`edit.ts` に「挿入して右へずらす」操作は無いので、
+ * ここで `setCell` の繰り返しとして組む（`edit.ts` は触らない）。
+ */
 export function applyLadderCell(
   program: LadderProgram,
   cursor: LadderCursor,
   cell: Cell,
+  insert = false,
 ): LadderEditResult {
-  return guard(() => setCell(program, cursor.networkId, cursor.row, cursor.col, cell));
+  if (!insert || cursor.col >= COIL_COL) {
+    return guard(() => setCell(program, cursor.networkId, cursor.row, cursor.col, cell));
+  }
+  const net = program.networks.find((n) => n.id === cursor.networkId);
+  if (net === undefined) return { ok: false, message: 'ネットワークが見つかりません' };
+  const last = cellAt(net, cursor.row, COIL_COL - 1);
+  if (last.kind !== 'empty') return { ok: false, message: '右端が埋まっているので挿入できません' };
+  return guard(() => {
+    let next = program;
+    for (let col = COIL_COL - 1; col > cursor.col; col -= 1) {
+      next = setCell(next, cursor.networkId, cursor.row, col, cellAt(net, cursor.row, col - 1));
+    }
+    return setCell(next, cursor.networkId, cursor.row, cursor.col, cell);
+  });
 }
 
 /** セルを空にする。 */
@@ -1340,7 +1417,7 @@ pnpm --filter @ojt/desktop exec vitest run test/ladder-model.test.ts
 pnpm --filter @ojt/desktop typecheck
 ```
 
-Expected: `Tests  29 passed (29)`。
+Expected: `Tests  30 passed (30)`（レビューがスクラッチで実測した28件 ＋ B6 で足した2件）。
 
 - [ ] **Step 5: コミットする**
 
@@ -1508,6 +1585,25 @@ describe('モードDの状態を持ち越さない（Plan 2B Batch 1 B4 と同�
     const epoch = useStore.getState().sessionEpoch;
     useStore.getState().resetSession();
     expect(useStore.getState().sessionEpoch).toBe(epoch + 1);
+  });
+
+  it('keeps the trainee ladder across restartSession (§13 #5。レビュー指摘 B3)', () => {
+    useStore.getState().openProblem(problem);
+    const seeded = applyLadderCell(useStore.getState().ladder!, { networkId: 'n1', row: 0, col: 0 }, no(X(1)));
+    if (!seeded.ok) throw new Error(seeded.message);
+    useStore.getState().setLadder(seeded.program);
+    useStore.getState().setDeviceComment('X1', '運転押ボタン');
+    useStore.setState({ converted: true, plcRunning: true, ladderMode: 'monitor' });
+    useStore.getState().restartSession();
+    const state = useStore.getState();
+    // 組んだラダーとコメントは残る
+    expect(state.ladder).toBe(seeded.program);
+    expect(state.ladderComments['X1']).toBe('運転押ボタン');
+    // Worker と同期している派生状態だけが落ちる
+    expect(state.converted).toBe(false);
+    expect(state.plcRunning).toBe(false);
+    expect(state.plcMonitor).toBeUndefined();
+    expect(state.ladderMode).toBe('write');
   });
 });
 
@@ -1716,6 +1812,10 @@ export function isPlcJudge(result: AnyJudgeResult): result is JudgePlcResult {
   ladderFocused: boolean;
   /** 画面の分割。決定表#10 */
   ladderView: LadderViewMode;
+  /** セル入力が挿入か上書きか（`Ins` で切り替える）。決定表#12b */
+  insertMode: 'insert' | 'overwrite';
+  /** `Shift+F3`（モニタ書込み）の注記トーストを既に出したか。決定表#11 */
+  monitorWriteNoticeShown: boolean;
   /** いま使っている方言（Phase 3 は常に `mitsubishi`）。§10.5 */
   dialectId: DialectId;
   /** 最後の編集のあと「変換」を通したか。§10.6 / 3A H-1 */
@@ -1743,6 +1843,10 @@ export function isPlcJudge(result: AnyJudgeResult): result is JudgePlcResult {
   setLadderFocused: (focused: boolean) => void;
   /** 画面の分割。決定表#10 */
   setLadderView: (view: LadderViewMode) => void;
+  /** 挿入・上書きを切り替える（`Ins`）。切り替えた**後**の値を返す。決定表#12b */
+  toggleInsert: () => 'insert' | 'overwrite';
+  /** `Shift+F3` の注記トーストを「出した」と記録する（初回だけ true を返す）。決定表#11 */
+  markMonitorWriteNotice: () => boolean;
   /** デバイスコメントを1件入れる（空文字で削除、32文字で切り詰め、200件まで）。§10.7 */
   setDeviceComment: (device: string, text: string) => void;
   /** 「変換」の結果を入れる。§10.6 */
@@ -1770,6 +1874,8 @@ function plcFields(problem?: SupportedProblem): Pick<
   | 'ladderMode'
   | 'ladderFocused'
   | 'ladderView'
+  | 'insertMode'
+  | 'monitorWriteNoticeShown'
   | 'converted'
   | 'convertIssues'
   | 'plcMonitor'
@@ -1785,6 +1891,8 @@ function plcFields(problem?: SupportedProblem): Pick<
     ladderMode: 'write',
     ladderFocused: false,
     ladderView: 'split',
+    insertMode: 'overwrite',
+    monitorWriteNoticeShown: false,
     converted: false,
     convertIssues: NO_CONVERT_ISSUES,
     plcMonitor: undefined,
@@ -1806,13 +1914,29 @@ function plcFields(problem?: SupportedProblem): Pick<
       ...plcFields(problem),
 ```
 
-`resetSession()` は `openProblem()` を呼び直すので**追加の後始末は要らない**（`plcFields(problem)` が走る）。`restartSession()` と `abandonSession()` の `set({ … })` にはそれぞれ:
+`resetSession()` は `openProblem()` を呼び直すので**追加の後始末は要らない**（`plcFields(problem)` が走る）。
+
+**`abandonSession()`**（課題を離れる）の `set({ … })` には:
 
 ```ts
       ...plcFields(),
 ```
 
-を足す（課題を離れる／作り直すので空に戻す。Plan 2B Task 4 Step 8 と同じ規則）。
+を足す（モードDの状態を丸ごと手放す。Plan 2B Task 4 Step 8 と同じ規則）。
+
+**`restartSession()` には `...plcFields()` を足してはならない**（レビュー指摘 B3）。`restartSession()` は「同じ課題をもう一度やる／結果画面から戻る」ための再開で、課題から離れるわけではない。`plcFields()` は `ladder` を `undefined` に戻すので、**訓練者が組んだラダーが最初のやり直しで消える**（§13 #5「作業内容の保持」に正面から反する）。盤の配線と同じく「盤は初期状態へ戻すが、ラダーは残す」が正しい。代わりに**Worker と同期している派生状態だけ**を戻す:
+
+```ts
+      // 盤は作り直すがラダーは残す（§13 #5）。Worker は `load` で作り直されるので、
+      // 「変換済み」「モニタ」「RUN」の3つだけを落として画面と Worker を揃える
+      converted: false,
+      convertIssues: NO_CONVERT_ISSUES,
+      plcMonitor: undefined,
+      plcRunning: false,
+      ladderMode: 'write',
+```
+
+（`ladder` / `ladderComments` / `ladderHistory` / `ladderCursor` / `ladderView` / `ladderFocused` は**触らない**。）
 
 アクションの実装:
 
@@ -1847,6 +1971,17 @@ function plcFields(problem?: SupportedProblem): Pick<
   },
   setLadderView: (ladderView) => {
     set({ ladderView });
+  },
+  toggleInsert: () => {
+    const insertMode = get().insertMode === 'insert' ? 'overwrite' : 'insert';
+    set({ insertMode });
+    return insertMode;
+  },
+  markMonitorWriteNotice: () => {
+    // 初回だけ true（`Shift+F3` のトーストを1回しか出さない。決定表#11）
+    if (get().monitorWriteNoticeShown) return false;
+    set({ monitorWriteNoticeShown: true });
+    return true;
   },
   setDeviceComment: (device, text) => {
     const comments = { ...get().ladderComments };
@@ -1920,7 +2055,7 @@ pnpm --filter @ojt/desktop exec vitest run test/store-plc.test.ts test/store.tes
 pnpm --filter @ojt/desktop typecheck
 ```
 
-Expected: `store-plc` が `Tests  11 passed (11)`。既存の `store.test.ts` / `store-inspect.test.ts` も通る（`isInspectJudge()` の判定を変えたので、モードB/C1/C2 の分岐が変わっていないことをここで確認する）。
+Expected: `store-plc` が `Tests  12 passed (12)`（B3 の `restartSession` 保持テストを含む）。既存の `store.test.ts` / `store-inspect.test.ts` も通る（`isInspectJudge()` の判定を変えたので、モードB/C1/C2 の分岐が変わっていないことをここで確認する）。
 
 - [ ] **Step 7: コミットする**
 
@@ -2638,12 +2773,59 @@ git commit -m "feat(desktop): run the PLC scan and the mode D judge inside the w
 ## Task 4: ラダーのセルグリッド（SVG）
 
 **Files:**
+- Modify: `apps/desktop/package.json`（Step 0。`@testing-library/jest-dom` を `devDependencies` へ）
+- Create: `apps/desktop/test/setup.ts`（Step 0）
+- Modify: `apps/desktop/vitest.config.ts`（Step 0。`setupFiles`）
 - Create: `apps/desktop/src/renderer/ladder/symbols.ts`
 - Create: `apps/desktop/src/renderer/ladder/LadderGrid.tsx`
 - Create: `apps/desktop/src/renderer/ladder/ladder.module.css`
 - Modify: `apps/desktop/src/renderer/i18n/ja.ts`（**MERGE 注意 #1**）
 - Test: `apps/desktop/test/ladder-symbols.test.ts`
 - Test: `apps/desktop/test/ladder-grid.test.tsx`
+
+- [ ] **Step 0: `@testing-library/jest-dom` のマッチャを使えるようにする（本プランで唯一の外部依存の追加）**
+
+本プランの UI テストは `toBeInTheDocument()` / `toHaveTextContent()` / `toHaveAttribute()` / `toBeDisabled()` / `toHaveValue()` を**約100箇所**で使う。ところが**このリポジトリには jest-dom が入っていない**（既存の UI テストは `expect(el).toBeTruthy()` / `el.textContent` / `el.getAttribute()` という素の書き方で通している）。入れずに書くと `TypeError: expect(...).toBeInTheDocument is not a function` で全滅するので、**Task 4 の最初に1回だけ**入れる。
+
+(a) `apps/desktop/package.json` の `devDependencies` に1行（`@testing-library/react` の隣、アルファベット順）。**版は固定表記**（このリポジトリの流儀。`^` を付けない）で、実際の値は次のコマンドが書き込んだものをそのまま使う:
+
+```powershell
+pnpm --filter @ojt/desktop add -D @testing-library/jest-dom
+```
+
+```json
+    "@testing-library/jest-dom": "<上のコマンドが入れた 6.x>",
+    "@testing-library/react": "16.3.3",
+```
+
+(b) `apps/desktop/test/setup.ts`（新規）:
+
+```ts
+// Testing Library のマッチャ（`toBeInTheDocument` など）を vitest の `expect` に足す。
+// 本プランの UI テストが全面的に使うので、セットアップは1箇所にまとめる。
+import '@testing-library/jest-dom/vitest';
+```
+
+(c) `apps/desktop/vitest.config.ts` に `setupFiles` を1行足す（`environment` は**既に `happy-dom`**。jsdom ではない）:
+
+```ts
+export default defineConfig({
+  test: {
+    name: 'desktop',
+    environment: 'happy-dom',
+    setupFiles: ['./test/setup.ts'],
+    include: ['test/**/*.test.ts', 'test/**/*.test.tsx'],
+  },
+});
+```
+
+(d) 入れて既存テストが壊れないことを確かめる:
+
+```powershell
+pnpm --filter @ojt/desktop test --no-file-parallelism
+```
+
+Expected: `pnpm install` が `Done`。既存の 60ファイル / 825テストが**そのまま**通る（jest-dom はマッチャを足すだけで既存の書き方を変えない）。以降のタスクは `toBeInTheDocument()` 系をそのまま書いてよい。
 
 決定表#1 のとおり **SVG 1枚**でセルグリッドを描く。記号の線画は `DialectProfile.symbols` の識別子から自前の `<path>` を引く（**ベンダーの画像・図記号ビットマップは持たない**。§17 / PLC調査資料 §6）。
 
@@ -2724,7 +2906,8 @@ function sample(): LadderProgram {
     network('n1', [[no(X(0)), hline(), ...Array.from({ length: 13 }, () => hline()), out(Y(0))]], {
       comment: '運転',
     }),
-    network('n2', [[nc(X(1)), ton(T(0), 3000)]]),
+    // コイル列（15列目）に TON が来るよう、間を横線で埋める（テストが `cell-n2:0:15` を引く）
+    network('n2', [[nc(X(1)), ...Array.from({ length: 14 }, () => hline()), ton(T(0), 3000)]]),
     endNetwork(),
   );
 }
@@ -2981,11 +3164,20 @@ export function displayColumns(gridCols: number): number[] {
   return [...Array.from({ length: contacts }, (_unused, i) => i), COIL_COL];
 }
 
-/** 表示しない列に中身があるか（`empty` 以外が置かれているか）。 */
+/**
+ * 表示しない列に**中身**があるか。
+ *
+ * 罫線（`hline` / `vline`）は「中身」ではない。`applyLadderCell()` が接点とコイルの間を横線で
+ * 埋めるので、正しく組んだラダーでも 11〜14 列目には必ず `hline` が並ぶ。それを中身と数えると
+ * **どの課題でも常に警告が出て**、警告が意味を失う（レビュー指摘 I9）。接点・コイル・タイマ・
+ * カウンタ・MC/MCR・END が隠れているときだけ警告する。
+ */
+const HIDDEN_IGNORED: ReadonlySet<Cell['kind']> = new Set(['empty', 'hline', 'vline']);
+
 export function hasHiddenCells(net: Network, gridCols: number): boolean {
   for (let row = 0; row < net.rows; row += 1) {
     for (let col = gridCols; col < COIL_COL; col += 1) {
-      if (cellAt(net, row, col).kind !== 'empty') return true;
+      if (!HIDDEN_IGNORED.has(cellAt(net, row, col).kind)) return true;
     }
   }
   return false;
@@ -3501,7 +3693,8 @@ describe('timerPresetMs / roundSuggestionFor（§10.5）', () => {
 
   it('offers the 100ms rounding the spec asks for', () => {
     const suggestion = roundSuggestionFor(3050, T(0), profile);
-    expect(suggestion).toEqual({ ms: 3050, baseMs: 100, rounded: 3000 });
+    // `roundTimerPreset()` は四捨五入（`Math.round(3050 / 100) * 100`）なので 3100
+    expect(suggestion).toEqual({ ms: 3050, baseMs: 100, rounded: 3100 });
     // T200 帯は 10ms 単位なので 3050ms はそのまま置ける
     expect(roundSuggestionFor(3050, T(200), profile)).toBeUndefined();
   });
@@ -3599,7 +3792,46 @@ describe('キー操作（§10.6 の割当表から引く）', () => {
     expect(screen.getByTestId('round-prompt')).toHaveTextContent('100ms');
     fireEvent.click(screen.getByTestId('round-yes'));
     const net = useStore.getState().ladder!.networks[0]!;
-    expect(cellAt(net, 0, COIL_COL)).toMatchObject({ kind: 'timer', presetMs: 3000 });
+    // 四捨五入なので 3050 → 3100（`roundTimerPreset(3050, 100)`）
+    expect(cellAt(net, 0, COIL_COL)).toMatchObject({ kind: 'timer', presetMs: 3100 });
+  });
+
+  it('moves the cursor one column right after a device is confirmed (I12)', () => {
+    editor();
+    fireEvent.keyDown(grid(), { key: 'F5' });
+    fireEvent.change(screen.getByTestId('device-text'), { target: { value: 'X0' } });
+    fireEvent.click(screen.getByTestId('device-commit'));
+    // 続けて接点を並べられるよう、確定したら1つ右へ送る（GX Works3 と同じ）
+    expect(useStore.getState().ladderCursor).toEqual({ networkId: 'n1', row: 0, col: 1 });
+  });
+
+  it('shifts the row right while the Ins mode is 挿入 (決定表#12b)', () => {
+    editor();
+    // X0 を置いてから先頭へ戻り、挿入モードで X1 を入れる
+    fireEvent.keyDown(grid(), { key: 'F5' });
+    fireEvent.change(screen.getByTestId('device-text'), { target: { value: 'X0' } });
+    fireEvent.click(screen.getByTestId('device-commit'));
+    useStore.getState().setLadderCursor({ networkId: 'n1', row: 0, col: 0 });
+    fireEvent.keyDown(grid(), { key: 'Insert' });
+    expect(useStore.getState().insertMode).toBe('insert');
+    fireEvent.keyDown(grid(), { key: 'F5' });
+    fireEvent.change(screen.getByTestId('device-text'), { target: { value: 'X1' } });
+    fireEvent.click(screen.getByTestId('device-commit'));
+    const net = useStore.getState().ladder!.networks[0]!;
+    expect(cellAt(net, 0, 0)).toMatchObject({ device: X(1) });
+    expect(cellAt(net, 0, 1)).toMatchObject({ device: X(0) });
+  });
+
+  it('shows the Shift+F3 notice once and not again (決定表#11)', () => {
+    editor();
+    fireEvent.keyDown(grid(), { key: 'F3', shiftKey: true });
+    expect(useStore.getState().ladderMode).toBe('monitor');
+    expect(useStore.getState().toasts.at(-1)?.text).toContain('モニタと同じ');
+    const count = useStore.getState().toasts.length;
+    fireEvent.keyDown(grid(), { key: 'F2' });
+    fireEvent.keyDown(grid(), { key: 'F3', shiftKey: true });
+    // 2回目は注記を出さない
+    expect(useStore.getState().toasts).toHaveLength(count);
   });
 
   it('toggles a/b with / and the pulse form with Alt+/', () => {
@@ -3607,6 +3839,8 @@ describe('キー操作（§10.6 の割当表から引く）', () => {
     fireEvent.keyDown(grid(), { key: 'F5' });
     fireEvent.change(screen.getByTestId('device-text'), { target: { value: 'X0' } });
     fireEvent.click(screen.getByTestId('device-commit'));
+    // 確定でカーソルが右へ動くので、切換の前に戻す（I12）
+    useStore.getState().setLadderCursor({ networkId: 'n1', row: 0, col: 0 });
     fireEvent.keyDown(grid(), { key: '/' });
     expect(net1()).toMatchObject({ type: 'NC' });
     fireEvent.keyDown(grid(), { key: '/', altKey: true });
@@ -3618,6 +3852,7 @@ describe('キー操作（§10.6 の割当表から引く）', () => {
     fireEvent.keyDown(grid(), { key: 'F5' });
     fireEvent.change(screen.getByTestId('device-text'), { target: { value: 'X0' } });
     fireEvent.click(screen.getByTestId('device-commit'));
+    useStore.getState().setLadderCursor({ networkId: 'n1', row: 0, col: 0 });
     fireEvent.keyDown(grid(), { key: 'F5', shiftKey: true });
     fireEvent.change(screen.getByTestId('device-text'), { target: { value: 'Y0' } });
     fireEvent.click(screen.getByTestId('device-commit'));
@@ -4177,7 +4412,9 @@ export function LadderEditor({
         case 'place': {
           if (!NEEDS_DEVICE[action.kind]) {
             const cell: Cell = action.kind === 'hline' ? hline() : vline();
-            commit(applyLadderCell(current, store.ladderCursor, cell));
+            commit(
+              applyLadderCell(current, store.ladderCursor, cell, store.insertMode === 'insert'),
+            );
             break;
           }
           const target = action.kind === 'coil' ? 'output' : 'contact';
@@ -4223,10 +4460,17 @@ export function LadderEditor({
         case 'setMode':
           store.setLadderMode(action.mode);
           onModeChange(action.mode);
+          // `Shift+F3`（モニタ書込み）は `F3` と同じ動作。**そのセッションで最初の1回だけ**
+          // 理由をトーストで出す（毎回出すと `F3` と往復するたびに邪魔になる。決定表#11）
+          if (action.monitorWrite === true && store.markMonitorWriteNotice()) {
+            store.toast(JA.ladder.monitorWriteSame);
+          }
           break;
         case 'toggleInsert':
-          // 挿入・上書きの切換は Phase 3 では常に上書き（意図的な差分 #4）
-          store.toast(JA.ladder.overwriteOnly);
+          // 挿入・上書きの切換（決定表#12b）。どちらになったかをトーストで知らせる
+          store.toast(
+            store.toggleInsert() === 'insert' ? JA.ladder.insertOn : JA.ladder.insertOff,
+          );
           break;
         case 'help':
           store.toast(JA.ladder.helpHint);
@@ -4302,8 +4546,18 @@ export function LadderEditor({
             commit(
               isBranch
                 ? applyOrContact(current, store.ladderCursor, cell)
-                : applyLadderCell(current, store.ladderCursor, cell),
+                : applyLadderCell(
+                    current,
+                    store.ladderCursor,
+                    cell,
+                    store.insertMode === 'insert',
+                  ),
             );
+            // 確定したらカーソルを1つ右へ送る（GX Works3 と同じ。続けて接点を並べられる）
+            const after = useStore.getState();
+            if (after.ladder !== undefined) {
+              after.setLadderCursor(moveCursor(after.ladder, after.ladderCursor, 0, 1));
+            }
             setPending(undefined);
           }}
         />
@@ -4390,8 +4644,11 @@ export function LadderEditor({
     roundNo: 'いいえ',
     /** 読出し・モニタ中に編集しようとした。§10.6 */
     readOnly: '書込みモード（F2）に切り替えると編集できます',
-    /** 挿入・上書きの切換（Phase 3 は常に上書き）。意図的な差分 #4 */
-    overwriteOnly: 'Phase 3 のラダーエディタは常に上書きです',
+    /** 挿入・上書きの切換（`Ins`）。決定表#12b */
+    insertOn: '挿入モードです（入力すると右のセルがずれます）',
+    insertOff: '上書きモードです',
+    /** `Shift+F3`（モニタ書込み）の注記。セッションで1回だけ出す。決定表#11 */
+    monitorWriteSame: 'Phase 3 ではモニタと同じ動作です',
     helpHint: 'キー割当はツールバーの「キー割当」から見られます',
     nothingToUndo: 'これ以上は元に戻せません',
     nothingToRedo: 'これ以上はやり直せません',
@@ -4416,7 +4673,7 @@ pnpm --filter @ojt/desktop exec vitest run test/ladder-cell.test.ts test/ladder-
 pnpm --filter @ojt/desktop typecheck
 ```
 
-Expected: `ladder-cell` が `Tests  9 passed (9)`、`ladder-editor` が `Tests  12 passed (12)`。
+Expected: `ladder-cell` が `Tests  9 passed (9)`、`ladder-editor` が `Tests  15 passed (15)`（I12 のカーソル送り・決定表#12b の挿入モード・決定表#11 の初回注記を足した3件を含む）。
 
 - [ ] **Step 8: コミットする**
 
@@ -4536,9 +4793,10 @@ describe('errorCellKeys', () => {
 
 describe('unusedDevices（§10.8。表示のみ。決定表#15b）', () => {
   it('lists devices that are written but never read, and the other way round', () => {
-    expect(unusedDevices({ reads: ['X0', 'M1'], writes: ['Y0', 'M2'] })).toEqual({
+    // X・SP は設計上ラダーから書けないので `neverWritten` に入れない（I10）
+    expect(unusedDevices({ reads: ['X0', 'M1', 'SP0'], writes: ['Y0', 'M2'] })).toEqual({
       neverRead: ['Y0', 'M2'],
-      neverWritten: ['X0', 'M1'],
+      neverWritten: ['M1'],
     });
   });
 });
@@ -4568,8 +4826,10 @@ describe('出力ウィンドウ（§10.6）', () => {
     render(<OutputWindow issues={issues} converted={false} onJump={() => undefined} />);
     const rows = screen.getAllByTestId(/^output-row-/u);
     expect(rows).toHaveLength(4);
+    // 構造エラーは渡された順（coil-column → missing-end）、そのあと機種エラー、最後に警告
     expect(rows[0]).toHaveTextContent('コイルは最終列');
-    expect(rows[2]).toHaveTextContent('END がありません');
+    expect(rows[1]).toHaveTextContent('END がありません');
+    expect(rows[2]).toHaveTextContent('X の番号が範囲外');
     expect(rows[3]).toHaveTextContent('二重コイル');
   });
 
@@ -4585,8 +4845,10 @@ describe('出力ウィンドウ（§10.6）', () => {
     render(<OutputWindow issues={issues} converted={false} onJump={onJump} />);
     fireEvent.click(screen.getByTestId('output-row-0'));
     expect(onJump).toHaveBeenCalledWith({ networkId: 'n1', row: 0, col: 2 });
-    fireEvent.click(screen.getByTestId('output-row-2'));
+    // `missing-end` はセルを指していないので押しても動かない（決定表#4）
+    fireEvent.click(screen.getByTestId('output-row-1'));
     expect(onJump).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId('output-row-1')).toBeDisabled();
   });
 
   it('shows the used devices and marks the unused ones (決定表#15b)', () => {
@@ -4680,7 +4942,21 @@ export function errorCellKeys(errors: readonly ConvertErrorLine[]): Set<string> 
 /**
  * 使われていないデバイス。§10.8
  * **表示のみ**で合否には効かせない（決定表#15b）。
+ *
+ * **入力（X）と特殊リレー（SP）は `neverWritten` に入れない**（レビュー指摘 I10）。この2種は
+ * 設計上ラダーから書けない（外部入力とシステムが値を入れる。`compile()` も X・SP への
+ * OUT/SET/RST を `coil-on-read-only-device` で拒む）。読んだだけで「書かれていません」と
+ * 並べると、**正しいラダーほど警告が増える**。判定に効かない一覧だからこそ、嘘を並べない。
  */
+const READ_ONLY_PREFIXES = ['X', 'SP'] as const;
+
+function isReadOnlyDevice(device: string): boolean {
+  // 方言表記（`X0` / `SP0`）の先頭で見る。`SP` を先に見ないと `S` 始まりの別デバイスと混ざらない
+  return READ_ONLY_PREFIXES.some(
+    (prefix) => device.startsWith(prefix) && /^[0-9A-F]+$/iu.test(device.slice(prefix.length)),
+  );
+}
+
 export function unusedDevices(usage: { reads: readonly string[]; writes: readonly string[] }): {
   neverRead: string[];
   neverWritten: string[];
@@ -4689,7 +4965,9 @@ export function unusedDevices(usage: { reads: readonly string[]; writes: readonl
   const writes = new Set(usage.writes);
   return {
     neverRead: usage.writes.filter((device) => !reads.has(device)),
-    neverWritten: usage.reads.filter((device) => !writes.has(device)),
+    neverWritten: usage.reads.filter(
+      (device) => !writes.has(device) && !isReadOnlyDevice(device),
+    ),
   };
 }
 
@@ -4763,18 +5041,23 @@ export function OutputWindow({
       <ul className={styles.outputList}>
         {rows.length === 0 ? <li className={styles.outputEmpty}>{JA.ladder.noIssues}</li> : null}
         {rows.map((row, index) => (
-          <li
-            key={row.key}
-            data-testid={`output-row-${String(index)}`}
-            data-severity={row.severity}
-            className={row.severity === 'error' ? styles.outputError : styles.outputWarning}
-            onClick={() => {
-              if (row.cursor !== undefined) onJump(row.cursor);
-            }}
-          >
-            <span className={styles.outputLabel}>{row.label}</span>
-            <span className={styles.outputPlace}>{row.place}</span>
-            <span>{row.message}</span>
+          // 行は**ボタン**にする（`<li onClick>` はキーボードから押せず、読み上げにも出ない。I11）。
+          // セルを指していない行（`missing-end` など）は `disabled` にして「押せない」ことを見せる。
+          <li key={row.key}>
+            <button
+              type="button"
+              data-testid={`output-row-${String(index)}`}
+              data-severity={row.severity}
+              disabled={row.cursor === undefined}
+              className={row.severity === 'error' ? styles.outputError : styles.outputWarning}
+              onClick={() => {
+                if (row.cursor !== undefined) onJump(row.cursor);
+              }}
+            >
+              <span className={styles.outputLabel}>{row.label}</span>
+              <span className={styles.outputPlace}>{row.place}</span>
+              <span>{row.message}</span>
+            </button>
           </li>
         ))}
       </ul>
@@ -4880,12 +5163,27 @@ CSS（`ladder.module.css` へ追記）:
   padding: 0;
 }
 
-.outputList li {
+/* 行はボタン（キーボードで辿れる。I11）。ボタンの既定の見た目は消して一覧に馴染ませる */
+.outputList li > button {
   display: grid;
   grid-template-columns: 76px 128px 1fr;
   gap: 6px;
   padding: 2px 8px;
+  width: 100%;
+  border: 0;
+  background: none;
+  font: inherit;
+  text-align: left;
   cursor: pointer;
+}
+
+.outputList li > button:disabled {
+  cursor: default;
+}
+
+.outputList li > button:focus-visible {
+  outline: 2px solid #1e64ff;
+  outline-offset: -2px;
 }
 
 .outputError {
@@ -5436,6 +5734,8 @@ describe('GX Works3風の枠（§10.6 / §17）', () => {
 describe('キー割当表（§12.1 / §17.1）', () => {
   it('shows every shortcut the profile declares', () => {
     render(<ShortcutHelp profile={MITSUBISHI_FX5U} />);
+    // 行だけが `shortcut-<action>`。入れ物は `shortcuts` / `shortcuts-note` で、この正規表現に
+    // 引っかからない（`shortcut-help` / `shortcut-note` だと件数が2件増える）
     expect(screen.getAllByTestId(/^shortcut-/u)).toHaveLength(MITSUBISHI_FX5U.shortcuts.length);
     expect(screen.getByTestId('shortcut-contact-no')).toHaveTextContent('F5');
   });
@@ -5454,7 +5754,9 @@ describe('キー割当表（§12.1 / §17.1）', () => {
 
   it('says the table is swapped with the vendor (Phase 4)', () => {
     render(<ShortcutHelp profile={MITSUBISHI_FX5U} />);
-    expect(screen.getByTestId('shortcut-note')).toHaveTextContent('メーカー');
+    expect(screen.getByTestId('shortcuts-note')).toHaveTextContent('メーカー');
+    // 商標の注記も同じ場所に出す（§17.1）
+    expect(screen.getByTestId('shortcuts')).toHaveTextContent('商標');
   });
 });
 ```
@@ -5530,11 +5832,15 @@ import styles from './ladder.module.css';
  */
 export function ShortcutHelp({ profile }: { profile: DialectProfile }): JSX.Element {
   return (
-    <section className={styles.side} aria-label={JA.ladder.shortcuts} data-testid="shortcut-help">
+    // 入れ物の `data-testid` は `shortcuts` / `shortcuts-note`。行だけが `shortcut-<action>` に
+    // なるようにして、`getAllByTestId(/^shortcut-/u)` が行だけを数えられるようにする（B9）
+    <section className={styles.side} aria-label={JA.ladder.shortcuts} data-testid="shortcuts">
       <h2 className={styles.sideTitle}>
         {JA.ladder.shortcuts}（{profile.displayName}）
       </h2>
-      <p className={styles.sideNote} data-testid="shortcut-note">
+      {/* メーカー名を出す以上、商標の帰属も同じ場所に出す（§17.1） */}
+      <p className={styles.sideNote}>{JA.settings.trademarkNotice}</p>
+      <p className={styles.sideNote} data-testid="shortcuts-note">
         {JA.ladder.shortcutNote}
       </p>
       <table className={styles.ioTable}>
@@ -5945,7 +6251,7 @@ Expected: `ladder-workspace` が `Tests  11 passed (11)`（枠7件＋キー割�
 | 再描画の範囲 | `plcMonitor` を購読するのは **`MonitorPanel` と `LadderGrid` だけ**。`LadderGrid` は `powered[net.id]` の**文字列1本**を見る（決定表#5）ので、値が変わらないネットワークは再描画されない。セッション画面本体・3D・右パネルは `plcMonitor` を購読しない |
 | 一覧の中身 | 入力（`X` ＋ **PLCの端子名**）／出力（`Y` ＋ 端子名）／内部リレー／タイマ（経過 ms と設定値）／カウンタ（現在値）。デバイス名は `profile.formatDevice()`、端子名は `unit.spec`（決定表#16） |
 | 入力仕様の注記 | FX5U の値（4.5kΩ／ON 3.5mA／OFF 1.5mA）を `@ojt/board-model` の `FX5U_INPUT_OHMS` / `FX5U_ON_AMPS` / `FX5U_OFF_AMPS` から出す（`circuit-sim` の既定値ではない） |
-| RUN/STOP | ツールバーの外に独立したボタンを置く。`plcRunning` はストアが持ち、押すと `plc { kind:'run', on }` を送る。STOP 中はモニタの値を出したまま「停止中」を添える |
+| RUN/STOP | **正はツールバー**（Task 12 の `extraTools`。`data-testid="plc-run"`。決定表#9b）。`MonitorPanel` には同じ状態を映す控えのボタン（`data-testid="monitor-run"`）だけを置く。`plcRunning` はストアが持ち、押すと `plc { kind:'run', on }` を送る。STOP 中はモニタの値を出したまま「停止中」を添える |
 | モニタとRUNの関係 | RUN していないときにモニタを開始したら、「RUN にすると動きます」と注記を出す（止まったまま光らない理由が分からないため） |
 
 - [ ] **Step 1: 失敗するテストを書く**
@@ -6013,12 +6319,12 @@ describe('モニタ一覧（§10.7）', () => {
     expect(note).not.toHaveTextContent('4.7');
   });
 
-  it('runs and stops the PLC through the worker', () => {
+  it('runs and stops the PLC through the worker (ツールバーの控え。決定表#9b)', () => {
     const onPlc = panel();
-    fireEvent.click(screen.getByTestId('plc-run'));
+    fireEvent.click(screen.getByTestId('monitor-run'));
     expect(onPlc).toHaveBeenCalledWith({ kind: 'run', on: true });
     expect(useStore.getState().plcRunning).toBe(true);
-    fireEvent.click(screen.getByTestId('plc-run'));
+    fireEvent.click(screen.getByTestId('monitor-run'));
     expect(onPlc).toHaveBeenCalledWith({ kind: 'run', on: false });
     expect(useStore.getState().plcRunning).toBe(false);
   });
@@ -6077,9 +6383,14 @@ export function MonitorPanel({
     <section className={styles.side} aria-label={JA.ladder.monitor} data-testid="monitor-panel">
       <h2 className={styles.sideTitle}>{JA.ladder.monitor}</h2>
       <div className={styles.monitorButtons}>
+        {/*
+          RUN/STOP の正はツールバー（Task 12 の `extraTools`。決定表#9b）。ここは同じ状態を映す
+          控えなので `data-testid` を分ける（同じ画面に `plc-run` が2つあると Testing Library も
+          Playwright も曖昧になる。レビュー指摘 B5）。
+        */}
         <button
           type="button"
-          data-testid="plc-run"
+          data-testid="monitor-run"
           aria-pressed={running}
           onClick={() => {
             const next = !useStore.getState().plcRunning;
@@ -6171,6 +6482,8 @@ export function MonitorPanel({
     scanCount: 'スキャン回数',
     run: 'RUN',
     stop: 'STOP',
+    /** ツールバーの RUN/STOP（盤だけを見ているときも押せる）。決定表#9b */
+    runStopTitle: 'PLCを RUN／STOP します（盤の表示中も押せます）',
     plcReset: 'デバイス初期化',
 ```
 
@@ -6223,9 +6536,11 @@ Expected: `monitor-panel` が `Tests  6 passed (6)`。
 - Create: `apps/desktop/src/renderer/three/PlcUnit.tsx`
 - Create: `apps/desktop/src/renderer/three/Outlet.tsx`
 - Create: `apps/desktop/src/renderer/three/DeskWires.tsx`
+- Modify: `apps/desktop/src/renderer/three/labels.ts`（**MERGE 注意 #15。`blockTerminalMark()` の1箇所のみ**）
 - Modify: `apps/desktop/src/renderer/three/camera.ts`
-- Modify: `apps/desktop/src/renderer/three/BoardScene.tsx`（**MERGE 注意 #5。4箇所のみ**）
+- Modify: `apps/desktop/src/renderer/three/BoardScene.tsx`（**MERGE 注意 #5。3箇所のみ**）
 - Modify: `apps/desktop/src/renderer/panels/Toolbar.tsx`（**MERGE 注意 #6。1箇所のみ**）
+- Modify: `apps/desktop/src/renderer/app/store.ts`（`openProblem()` に `camera: 'plc'` の1行。**MERGE 注意 #2**）
 - Modify: `apps/desktop/src/renderer/i18n/ja.ts`（**MERGE 注意 #1**）
 - Test: `apps/desktop/test/plc-scene.test.ts`
 - Test: `apps/desktop/test/plc-camera.test.ts`
@@ -6359,7 +6674,8 @@ describe('机上の3D（§10.1 / 決定表#9）', () => {
   it('draws a sagging cable between the two ends', () => {
     const points = deskCablePoints({ x: 0, y: 0, z: 0 }, { x: 100, y: 0, z: 0 });
     expect(points).toHaveLength(3);
-    expect(points[0]).toEqual([0 - 165, 110, 0]);
+    // `toScene()` は盤の中心を原点に置く（`BOARD_WIDTH_MM = 330` / `BOARD_HEIGHT_MM = 245`）
+    expect(points[0]).toEqual([-165, 122.5, 0]);
     // 中間点は手前（盤モデルの y が増える方向＝シーンの −Y）へ垂れる
     expect(points[1]?.[1]).toBeLessThan(points[0]?.[1] ?? 0);
     expect(points[2]?.[0]).toBeCloseTo(100 - 165, 6);
@@ -6447,8 +6763,8 @@ export const PLC_VIEW_RECT = ((): { x: number; y: number; w: number; h: number }
 import type { BoardTerminal, PlcUnitDefinition } from '@ojt/board-model';
 import type { TerminalId } from '@ojt/circuit-sim';
 import { Html } from '@react-three/drei';
-import type { JSX } from 'react';
-import { roleColor } from './labels.js';
+import { useMemo, type JSX } from 'react';
+import { blockFaceTexture } from './labels.js';
 import { sharedMaterial, UNIT_BOX } from './materials.js';
 import { TerminalHit, terminalTooltip } from './TerminalHit.js';
 import { toScene } from './coords.js';
@@ -6530,19 +6846,18 @@ export function PlcUnit({
           onPick={onPickTerminal}
         />
       ))}
-      {/* 端子の印字（常時表示）。色は役割ごとの既存の表から引く（§12.2） */}
-      {terminals.map((terminal) => (
-        <Html
-          key={`label-${terminal.id}`}
-          center
-          style={{ pointerEvents: 'none', color: roleColor(terminal.role) }}
-          distanceFactor={300}
-          position={toScene({ x: terminal.pos.x, y: terminal.pos.y - 5, z: bodyZ + 0.5 })}
-          zIndexRange={[10, 0]}
-        >
-          <span className="terminal-mark">{terminal.label}</span>
-        </Html>
-      ))}
+      {/*
+        端子の印字は**テクスチャ1枚**に焼く（`TerminalBlock.tsx` と同じ方針。レビュー指摘 I7）。
+        端子42点ぶんの `<Html>` を並べると、DOM のオーバーレイが42個できて `frameloop="demand"`
+        でも毎フレーム位置が再計算され、`plc` 視点に切り替えた瞬間にコマ落ちする（§15）。
+      */}
+      {faceTexture === undefined ? null : (
+        <mesh raycast={noPick} position={[center[0], center[1], bodyZ + LABEL_LIFT_MM]}>
+          <planeGeometry args={[width, height]} />
+          <meshBasicMaterial map={faceTexture} transparent depthWrite={false} />
+        </mesh>
+      )}
+      {/* 銘板は1枚だけなので `<Html>` のままでよい（文字だけ。ベンダーの画像は持たない。§17） */}
       <Html
         center
         style={{ pointerEvents: 'none' }}
@@ -6557,12 +6872,42 @@ export function PlcUnit({
 }
 ```
 
-> `roleColor(role)` は `three/labels.ts` に**既にある**役割色の引き手（`x` / `y` / `ss` / `plc-com` / `ac-l` / `ac-n` を含む）。無ければ既存の色表から同じ形の関数を切り出すこと（色の値は足さない）。
+`faceTexture` は端子と同じ `useMemo` 群に置く（`TerminalBlock.tsx` と同じ形）:
+
+```tsx
+  /** 端子の印字を1枚のテクスチャに焼く。§6.4 / I7 */
+  const faceTexture = useMemo(() => blockFaceTexture(terminals, PLC_LABEL_PAD_MM), [terminals]);
+```
+
+```tsx
+/** 印字の板の余白[mm]（`TerminalBlock.tsx` の `PAD_MM` と同じ考え方）。 */
+const PLC_LABEL_PAD_MM = 4;
+/** 印字の板を筐体から浮かせる高さ[mm]（Zファイティング避け）。 */
+const LABEL_LIFT_MM = 0.5;
+```
+
+> **`three/labels.ts` に1箇所だけ手を入れる**（Task 10。**MERGE 注意 #15**）。`blockFaceTexture()` は
+> 印字の文字を `blockTerminalMark()` から取るが、この関数は `TB_PL` / `TB_PB` しか知らないので
+> `PLC.X0` が `PLCX0`、`OUTLET.L` が `OUTLETL` になってしまう。机上の2部品ぶんの分岐を足す:
+>
+> ```ts
+>   if (part === 'TB_PL') return `PL${name}`;
+>   if (part === 'TB_PB') return `PB${name}`;
+>   // 机上のPLC本体と壁コンセントは端子名そのものが印字（`X0` / `Y10` / `L` / `N`）。§10.1
+>   if (part === PLC_PART_ID || part === OUTLET_ID) return name;
+>   return `${part}${name}`;
+> ```
+>
+> 役割色（`ROLE_COLOR`）は `blockFaceTexture()` の中で既に引かれているので、**新しい色も新しい
+> 引き手も足さない**（`roleColor()` という関数は `labels.ts` に存在しない）。
 
 ```tsx
 // Outlet.tsx
-import type { BoardTerminal } from '@ojt/board-model';
-import { OUTLET_ORIGIN_MM, PLC_TERMINAL_PITCH_MM } from '@ojt/board-model';
+import {
+  OUTLET_ORIGIN_MM,
+  PLC_TERMINAL_PITCH_MM,
+  type BoardTerminal,
+} from '@ojt/board-model';
 import type { TerminalId } from '@ojt/circuit-sim';
 import { Html } from '@react-three/drei';
 import type { JSX } from 'react';
@@ -6648,9 +6993,10 @@ import {
   type Vec3,
 } from '@ojt/board-model';
 import type { WireColor } from '@ojt/circuit-sim';
+import { PLC_WIRE_COLOR } from '@ojt/content';
 import { useMemo, type JSX } from 'react';
-import { CatmullRomCurve3, Vector3 } from 'three';
-import { wireBodyColor } from '../session/colors.js';
+import { CatmullRomCurve3, TubeGeometry, Vector3 } from 'three';
+import { WIRE_COLORS } from '../session/colors.js';
 import { sharedMaterial } from './materials.js';
 import { toScene } from './coords.js';
 
@@ -6693,11 +7039,23 @@ export function DeskWires({
 }): JSX.Element | null {
   const cables = useMemo(() => {
     const colors = new Map<string, WireColor>(session.wires.map((wire) => [wire.id, wire.color]));
-    return deskWires(board, session).map((wire) => ({
-      id: wire.id,
-      color: colors.get(wire.id) ?? '青',
-      points: deskCablePoints(wire.fromPos, wire.toPos),
-    }));
+    return deskWires(board, session).map((wire) => {
+      const points = deskCablePoints(wire.fromPos, wire.toPos);
+      return {
+        id: wire.id,
+        color: WIRE_COLORS[colors.get(wire.id) ?? PLC_WIRE_COLOR],
+        // 曲線とチューブ形状も**ここで作る**。JSX の `args` に `new CatmullRomCurve3(...)` と
+        // 書くと毎レンダーで新しい曲線とジオメトリが生まれ、three 側が古い方を破棄しない
+        // （§15 の「同一性を保つ」に反する。レビュー指摘 I8）
+        geometry: new TubeGeometry(
+          new CatmullRomCurve3(points.map((p) => new Vector3(p[0], p[1], p[2]))),
+          16,
+          CABLE_R_MM,
+          8,
+          false,
+        ),
+      };
+    });
   }, [board, session]);
   if (cables.length === 0) return null;
   return (
@@ -6705,40 +7063,26 @@ export function DeskWires({
       {cables.map((cable) => (
         <mesh
           key={cable.id}
-          material={sharedMaterial(wireBodyColor(cable.color, false, false), {
-            roughness: 0.5,
-            metalness: 0.1,
-          })}
-        >
-          <tubeGeometry
-            args={[
-              new CatmullRomCurve3(cable.points.map((p) => new Vector3(p[0], p[1], p[2]))),
-              16,
-              CABLE_R_MM,
-              8,
-              false,
-            ]}
-          />
-        </mesh>
+          geometry={cable.geometry}
+          material={sharedMaterial(cable.color, { roughness: 0.5, metalness: 0.1 })}
+        />
       ))}
     </group>
   );
 }
 ```
 
-> `wireBodyColor(color, selected, locked)` は `session/colors.ts` の既存の関数。引数の形が違えば既存の署名に合わせること（線色 → 色の変換を新しく書かない）。
+> `WIRE_COLORS` は `session/colors.ts` の既存の**線色 → 16進色**の表（`session/colors.ts` に
+> `wireBodyColor()` という関数は**無い**）。`PLC_WIRE_COLOR` は `@ojt/content` の
+> `plc-reference.ts` が公開しているモードDの線色（`'青'`）で、文字列リテラルを画面に書かない
+> ためにこちらから引く（3A Task 20 がバレルへ載せる。前提の表 #2）。
+> `TubeGeometry` は `three` から import する（`CatmullRomCurve3` / `Vector3` と同じ行）。
 
 - [ ] **Step 5: `BoardScene.tsx` に足す（**MERGE 注意 #5。編集は4箇所のみ**）**
 
 1. **import**: `PlcUnit` / `Outlet` / `DeskWires` / `offBoardTerminals` を足す。
 2. **`BoardContents` の `board`**: `const board = JIPM_BOARD;` を **props で受け取る**（`board: BoardDefinition`）ように変える。`BoardSceneImpl` にも `board` props を足し、既定値を `JIPM_BOARD` にする（モードB/C1/C2 の呼び出し側は変えなくてよい）。
-3. **`visualSignature()`**: 机上の配線と盤が変わったことを署名に入れる（下の2行を配列の末尾に足す）。
-
-```ts
-    // 机上のPLC・コンセントと机上配線が絵に効く（§10.1）
-    session?.boardId ?? '',
-    state.problem !== undefined && state.problem.mode === 'plc' ? 'plc' : '',
-```
+3. **`visualSignature()` は触らない。** 当初は `session?.boardId` と `'plc'` の2行を足すつもりだったが、どちらも**セッションの間ずっと同じ値**なので署名の役に立たない（机上の電線は既存の `session.wires` の署名に含まれており、盤も課題を開いた時点で決まる）。値の変わらない要素を足すと「何を見ているのか」が読めなくなるだけなので入れない。したがって `BoardScene.tsx` の編集は**3箇所**である。
 
 4. **`<group rotation={[BOARD_TILT_RAD, 0, 0]}>` の中**（`ProbeMarkers` の**直前**）に机上の3つを足す:
 
@@ -7020,6 +7364,7 @@ Expected: `plc-wiring` が `Tests  8 passed (8)`。既存の `commands.test.ts` 
 **Files:**
 - Create: `apps/desktop/src/renderer/screens/PlcSession.tsx`
 - Modify: `apps/desktop/src/renderer/screens/SessionRoute.tsx`（**MERGE 注意 #8。1箇所のみ**）
+- Modify: `apps/desktop/src/renderer/panels/Toolbar.tsx`（**MERGE 注意 #6。`judgeDisabled` / `judgeTitle` の1箇所のみ**。`showPlcView` は Task 10 が足す）
 - Modify: `apps/desktop/src/renderer/screens/screens.module.css`
 - Modify: `apps/desktop/src/renderer/i18n/ja.ts`（**MERGE 注意 #1**）
 - Test: `apps/desktop/test/plc-session-screen.test.tsx`
@@ -7048,7 +7393,7 @@ import { useStore } from '../src/renderer/app/store.js';
 import { SessionRoute } from '../src/renderer/screens/SessionRoute.js';
 import { bridge } from '../src/renderer/session/worker-bridge.js';
 
-/** 3D は jsdom で描けないので `BoardScene` を差し替える（既存の画面テストと同じ流儀）。 */
+/** 3D は happy-dom（このリポジトリのテスト環境）では描けないので `BoardScene` を差し替える。 */
 vi.mock('../src/renderer/three/BoardScene.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../src/renderer/three/BoardScene.js')>();
   return { ...actual, BoardScene: () => <div data-testid="board-canvas" /> };
@@ -7121,7 +7466,7 @@ describe('モードDのセッション画面（§10.1 / §12.1）', () => {
   it('never leaks the static checks while the session is running (決定表#7)', () => {
     const { container } = render(<SessionRoute />);
     const text = container.textContent ?? '';
-    for (const forbidden of ['2段結線', '直結', 'PLCの電源が未配線', '割付どおりに配線されて']) {
+    for (const forbidden of ['二段構成', '直結', 'PLCの電源が未配線', '割付どおりに配線されて']) {
       expect(text).not.toContain(forbidden);
     }
   });
@@ -7544,8 +7889,15 @@ export function PlcSession(): JSX.Element {
       plcModel: problem.plc.model,
     });
     // 盤を読み直すとスキャン結合も捨てられるので、変換済みのラダーを載せ直す（§10.4）
-    if (useStore.getState().converted && ladder !== undefined) {
+    const after = useStore.getState();
+    if (after.converted && ladder !== undefined) {
       bridge.send({ type: 'plc', action: { kind: 'load', program: ladder } });
+      // `load` は Worker 側で RUN もモニタも落とす（Task 3）。画面が RUN／モニタのままなら
+      // 送り直さないと「ボタンは RUN なのに動かない」状態になる（レビュー指摘 B4）
+      if (after.plcRunning) bridge.send({ type: 'plc', action: { kind: 'run', on: true } });
+      if (after.ladderMode === 'monitor') {
+        bridge.send({ type: 'plc', action: { kind: 'monitor', on: true } });
+      }
     }
   };
 
@@ -7584,6 +7936,24 @@ export function PlcSession(): JSX.Element {
                 {label}
               </button>
             ))}
+            {/*
+              RUN/STOP は**盤だけを見ているときも押せる**必要がある（決定表#9b）。`MonitorPanel`
+              の中にしか無いと `board` 表示のあいだ画面から消え、配線してから RUN にする動線が
+              切れる（レビュー指摘 B5）。ここが正で、`MonitorPanel` 側は同じ状態を映す控えである。
+            */}
+            <button
+              type="button"
+              data-testid="plc-run"
+              aria-pressed={plcRunning}
+              title={JA.ladder.runStopTitle}
+              onClick={() => {
+                const next = !useStore.getState().plcRunning;
+                useStore.getState().setPlcRunning(next);
+                onPlc({ kind: 'run', on: next });
+              }}
+            >
+              {plcRunning ? JA.ladder.stop : JA.ladder.run}
+            </button>
           </>
         }
         onMode={(next) => {
@@ -7736,15 +8106,15 @@ export function PlcSession(): JSX.Element {
 
 `selectedSocket` も購読に足すこと（`const selectedSocket = useStore((s) => s.selectedSocket);`）。
 
-- [ ] **Step 4: `Toolbar.tsx` に `judgeDisabled` / `judgeTitle` / `showPlcView` を足す（**MERGE 注意 #6**）**
+- [ ] **Step 4: `Toolbar.tsx` に `judgeDisabled` / `judgeTitle` を足す（**MERGE 注意 #6**）**
+
+`showPlcView` は **Task 10 が既に足している**ので、ここでは重ねて書かない（同じ props を2回宣言すると片方の編集が消える）。このタスクが足すのは2つだけ:
 
 ```tsx
   /** 判定ボタンを押させない理由がある（モードD: 未変換のラダー。H-1）。 */
   judgeDisabled?: boolean;
   /** 判定ボタンの `title`（押せない理由）。 */
   judgeTitle?: string;
-  /** 机上のPLCへ寄る視点ボタンを出すか（モードDのみ）。§12.2 / 決定表#6 */
-  showPlcView?: boolean;
 ```
 
 ```tsx
@@ -7795,7 +8165,31 @@ export function PlcSession(): JSX.Element {
   overflow: auto;
   min-height: 0;
 }
+
+/*
+ * 狭い画面では分割をやめて1面に落とす（2026-09-18 の利用者決定。決定表#10）。
+ * 520 + 420 + 300 に余白を足すと 1180px を切ったところで3列とも潰れるので、そこを境にする。
+ * 状態は増やさない: `split` のときは `ladder` と同じ1面として描き、盤を見たいときは
+ * ツールバーの既存の3ボタンで `board` に切り替えてもらう。
+ */
+@media (max-width: 1179px) {
+  .plcLayout,
+  .plcLayout[data-view='ladder'],
+  .plcLayout[data-view='board'] {
+    /* 1列に積む（上がラダーか盤、その下に課題・部品・ログの縦列） */
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* `split` のときは**ラダーだけ**を見せる。盤はツールバーの「盤」で切り替えて見てもらう */
+  .plcLayout[data-view='split'] > .viewport {
+    display: none;
+  }
+}
 ```
+
+> `PlcSession.tsx` 側は**何も分岐しない**（`data-view` は既に `ladderView` から出ている）。3D の
+> `Canvas` は `display: none` になっても `frameloop="demand"` のままなので、描画は走らない（§15）。
+> 幅の境（1179px）は `520 + 420 + 300` に余白を足した値で、これを切ると3列とも読めなくなる。
 
 `ja.ts` の `plc` ブロックへ追記:
 
@@ -7828,7 +8222,8 @@ Expected: `plc-session-screen` が `Tests  9 passed (9)`。
 - Create: `apps/desktop/src/renderer/result/LadderIssueList.tsx`
 - Create: `apps/desktop/src/renderer/result/PlcResult.tsx`
 - Modify: `apps/desktop/src/renderer/screens/Result.tsx`（**MERGE 注意 #9。1箇所のみ**）
-- Modify: `apps/desktop/src/renderer/i18n/ja.ts`（**MERGE 注意 #1**。`JA.staticCheck` に3件）
+- Modify: `apps/desktop/src/renderer/result/StaticCheckList.tsx`（**1行だけ**。行に `data-testid={`static-check-${check.id}`}` を足す。E2E が3チェックを個別に見るため。I13）
+- Modify: `apps/desktop/src/renderer/i18n/ja.ts`（**MERGE 注意 #1**。`JA.staticCheck` の**既存3件**に `satisfies` を付ける）
 - Test: `apps/desktop/test/plc-explain.test.ts`
 - Test: `apps/desktop/test/plc-result.test.tsx`
 
@@ -7836,7 +8231,7 @@ Expected: `plc-session-screen` が `Tests  9 passed (9)`。
 
 | 決めること | 本タスクの実装 |
 |---|---|
-| 静的チェックの見出し | `JA.staticCheck` に `twoStage` / `plcPowerIndependent` / `ioAssignment` を足し、**`satisfies Record<StaticCheckId, string>`** を付けて網羅を型で守る |
+| 静的チェックの見出し | `JA.staticCheck` の `twoStage` / `plcPowerIndependent` / `ioAssignment` は**既に `ja.ts` にある**。文言は変えず、**`satisfies Record<StaticCheckId, string>`** を付けて網羅を型で守るだけにする（B7） |
 | H-5 の文言分け | `details` の中身を `explainPowerCheck()` が見て「盤から取っている（`P.` / `N.` / `CB.` / `SW.` / `PS.` の端子が出てくる）」と「壁コンセントへ未配線」に振り分ける。**文言に依存せず端子IDの形で判定**するので、3A 側の文言が変わっても壊れない |
 | 説明文 | どちらの場合も「本アプリのPLCは `PLC.L` / `PLC.N` が未配線でも動作します。動いていてもこのチェックは不合格になります」を添える |
 | 変換エラー | `ladderErrors` があれば**最上段**に出す（シミュレートされずに不合格になった理由）。`ladderWarnings`（二重コイル）はその下に参考表示 |
@@ -7940,7 +8335,7 @@ describe('モードDの結果画面（§10.8）', () => {
   it('shows the verdict, the elapsed time and the three PLC checks', () => {
     render(<PlcResult problem={problem} result={result()} onRetry={() => undefined} onBackToList={() => undefined} />);
     expect(screen.getByTestId('verdict')).toHaveTextContent('合格');
-    expect(screen.getByTestId('static-checks')).toHaveTextContent('2段結線');
+    expect(screen.getByTestId('static-check-twoStage')).toHaveTextContent('二段構成');
     expect(screen.getByTestId('static-checks')).toHaveTextContent('PLC電源の独立');
     expect(screen.getByTestId('static-checks')).toHaveTextContent('I/O割付');
   });
@@ -8020,7 +8415,7 @@ describe('モードDの結果画面（§10.8）', () => {
 - [ ] **Step 2: RED を確認し、Step 3 で `session/plc-explain.ts` を書く**
 
 ```ts
-import type { StaticCheckResult } from '@ojt/content';
+import { BOARD_POWER_PREFIXES, type StaticCheckResult } from '@ojt/content';
 import { JA } from '../i18n/ja.js';
 
 /**
@@ -8032,12 +8427,12 @@ import { JA } from '../i18n/ja.js';
  *
  * さらに、どちらの場合も「本アプリのPLCは `PLC.L` / `PLC.N` が未配線でも動く」ことを必ず添える。
  * 添えないと「回路は正しく動いているのにチェックだけ赤い」と見え、理由が分からないまま終わる。
+ *
+ * 接頭辞の表は**判定側と同じもの**（`@ojt/content` の `BOARD_POWER_PREFIXES`）を import する。
+ * 画面側に写しを持つと、3A が盤の電源部品を増やしたときに静かにずれる（レビュー指摘 I14）。
  */
 
-/** 盤側の電源にあたる端子の接頭辞（§10.1 の違反検出の対象）。 */
-const BOARD_POWER_PREFIXES = ['P.', 'N.', 'CB.', 'SW.', 'PS.'];
-
-/** その指摘が「盤から取っている」ものか。 */
+/** その指摘が「盤から取っている」ものか。接頭辞の表は `@ojt/content` の判定側と同じものを使う。 */
 export function isBoardFedDetail(detail: string): boolean {
   return BOARD_POWER_PREFIXES.some((prefix) => detail.includes(prefix));
 }
@@ -8073,7 +8468,7 @@ export function explainPowerCheck(check: StaticCheckResult): string[] {
     ladderWarnings: 'ラダーの警告',
 ```
 
-`JA.staticCheck` に3件足して網羅検査を付ける（**MERGE 注意 #1**）:
+`JA.staticCheck` の**モードD3件は既に `ja.ts` にある**（`twoStage` / `plcPowerIndependent` / `ioAssignment`。Phase 2 の時点で入っている）。したがってこのタスクでやることは **①既存3件の文言を確認する ②`satisfies Record<StaticCheckId, string>` を付けて網羅を型で守る**の2つだけで、**文言は書き換えない**（レビュー指摘 B7。書き換えると `二段構成` を期待している他の箇所とずれる）:
 
 ```ts
   staticCheck: {
@@ -8083,14 +8478,20 @@ export function explainPowerCheck(check: StaticCheckResult): string[] {
     forbiddenCircuit: '禁則回路',
     coilPolarity: 'コイル極性',
     powerSequence: '電源操作手順',
-    /** §10.2 / §7.4（Phase 3 で追加） */
-    twoStage: '2段結線（Y出力 → リレー → ランプ）',
-    plcPowerIndependent: 'PLC電源の独立（壁コンセントから）',
+    // モードD（PLC）の3件。§7.4 の D 列（**既存のまま。触らない**）
+    twoStage: '二段構成（PLC出力→中継リレー→表示灯）',
+    plcPowerIndependent: 'PLC電源の独立',
     ioAssignment: 'I/O割付',
   } satisfies Record<StaticCheckId, string>,
 ```
 
-`import type { StaticCheckId } from '@ojt/content';` を `ja.ts` の先頭に足す（型だけなので main からは読まれない）。
+`import type { StaticCheckId } from '@ojt/content';` を `ja.ts` の先頭に足す（型だけなので main からは読まれない）。`satisfies` が通れば、3A が `StaticCheckId` を増やしたときに**型エラーで気づける**。
+
+`StaticCheckList.tsx` の行に `data-testid` を1つ足す（E2E が3チェックを個別に見る。I13）:
+
+```tsx
+          <div key={check.id} data-testid={`static-check-${check.id}`}>
+```
 
 - [ ] **Step 4: `result/LadderIssueList.tsx` と `result/PlcResult.tsx` を書く**
 
@@ -8973,11 +9374,22 @@ export function plcTerminalPoint(
   const physical = toPhysicalTerminal(roles, terminal as TerminalId);
   const found = PLC_BOARD.terminals.find((t) => t.id === physical);
   if (found === undefined) throw new Error(`端子が盤にありません: ${terminal}`);
-  return projectToScreen(boardToWorld(toScene(found.pos)), cameraPose('plc'), box);
+  return plcBoardPoint(found.pos, box);
+}
+
+/**
+ * 盤ローカル座標（mm）を `plc` 視点で射影する（ソケット本体の中央など）。
+ * `boardPoint()` は `front` 視点固定なので、モードDでは使えない（レビュー指摘 B10）。
+ */
+export function plcBoardPoint(
+  point: { x: number; y: number; z: number },
+  box: CanvasBox,
+): { x: number; y: number } {
+  return projectToScreen(boardToWorld(toScene(point)), cameraPose('plc'), box);
 }
 ```
 
-> `boardTerminalPos()` は `JIPM_BOARD` を見るので机上の端子を知らない。`PLC_BOARD.terminals` から直接引く。
+> `boardTerminalPos()` は `JIPM_BOARD` を見るので机上の端子を知らない。`PLC_BOARD.terminals` から直接引く。**既存の `boardPoint()` / `terminalPoint()` / `SELF_HOLD_WIRES` は消さない**（MERGE 注意 #11）。
 
 - [ ] **Step 2: `e2e/plc.spec.ts` を書く**
 
@@ -9001,7 +9413,7 @@ import {
   type ElectronApplication,
   type Page,
 } from '@playwright/test';
-import { plcTerminalPoint, type CanvasBox } from './projection.js';
+import { plcBoardPoint, plcTerminalPoint, type CanvasBox } from './projection.js';
 
 /**
  * モードDのE2E（§14.2 ③ / §16 Phase 3 受入基準①〜⑤）。
@@ -9059,7 +9471,7 @@ async function launch(): Promise<{ app: ElectronApplication; page: Page }> {
     window.show();
     window.focus();
   }, WINDOW);
-  await page.waitForTimeout(1500);
+  await expect(page.getByTestId('mode-plc')).toBeVisible({ timeout: 30_000 });
   const restore = page.getByTestId('restore-prompt');
   if ((await restore.count()) > 0) {
     await page.getByRole('button', { name: '復元しない' }).click();
@@ -9067,9 +9479,22 @@ async function launch(): Promise<{ app: ElectronApplication; page: Page }> {
   return { app, page };
 }
 
+/**
+ * WebGL の初期化とシーンの1フレーム目を待つ（`inspect.spec.ts` の `waitForBoard()` と同じ）。
+ * `waitForTimeout` で決め打ちの秒数を待つと、遅いCIでは足りず速い機械では無駄に待つ（I13）。
+ */
+async function waitForBoard(page: Page): Promise<void> {
+  await expect(page.getByTestId('viewport')).toBeVisible();
+  await expect
+    .poll(async () => page.locator('[data-testid="viewport"] canvas').count(), {
+      timeout: 30_000,
+    })
+    .toBe(1);
+}
+
 async function canvasBox(page: Page): Promise<CanvasBox> {
+  await waitForBoard(page);
   const canvas = page.locator('[data-testid="viewport"] canvas');
-  await expect(canvas).toBeVisible();
   const box = await canvas.boundingBox();
   if (box === null) throw new Error('キャンバスの矩形を取得できませんでした');
   return box;
@@ -9083,12 +9508,31 @@ async function openPlcProblem(page: Page): Promise<void> {
   await expect(page.getByTestId('plc-session')).toBeVisible();
 }
 
-/** リレーを4個装着する（模範配線が `CRn.14` などを使う）。 */
-async function mountRelays(page: Page): Promise<void> {
+/**
+ * リレーを4個装着する（模範配線が `CRn.14` などを使う）。
+ *
+ * **`socket-<id>` という `data-testid` はこのアプリに存在しない**（ソケットは3Dのメッシュで、
+ * DOM の要素ではない）。`smoke.spec.ts` / `chart.spec.ts` と同じく**3Dのソケット本体を射影して
+ * クリック**し、部品パネルの「装着」ボタンを押す（レビュー指摘 B10）。ボタンの名前も「リレー」
+ * ではなく **「装着」** である。矩形は呼び出し側が測ってから渡す（`canvasBox()` が3Dの準備も待つ）。
+ */
+async function mountRelays(page: Page, box: CanvasBox): Promise<void> {
   for (const socketId of SOCKET_IDS.slice(0, 4)) {
-    await page.getByTestId(`socket-${socketId}`).click();
-    await page.getByRole('button', { name: 'リレー' }).first().click();
+    const socket = BOARD.sockets.find((s) => s.id === socketId);
+    if (socket === undefined) throw new Error(`ソケットが定義されていません: ${socketId}`);
+    // 本体の中央（差込領域）。ネジ端子のティアから離れているのでソケット本体が拾える
+    const point = plcBoardPoint(
+      {
+        x: socket.origin.x + socket.bodyMm.width / 2,
+        y: socket.origin.y + socket.bodyMm.length / 2,
+        z: 9,
+      },
+      box,
+    );
+    await page.mouse.click(point.x, point.y);
+    await page.getByRole('button', { name: '装着' }).first().click();
   }
+  await expect(page.getByTestId('operation-log')).toContainText('装着');
 }
 
 /** ラダーのセルにカーソルを置く。 */
@@ -9141,25 +9585,33 @@ test.describe('モードD（PLC）', () => {
       await buildLadder(page);
       await shot(app, '30-plc-ladder');
 
-      await mountRelays(page);
+      // 3Dの準備を待ってから矩形を測り、その矩形でソケットも端子も射影する
       const box = await canvasBox(page);
+      await mountRelays(page, box);
       await wireReference(page, box);
       await expect(page.getByTestId('status-overlay')).toContainText(
         `電線 ${String(REFERENCE_WIRES.length)} 本`,
       );
       await shot(app, '31-plc-wired');
 
-      // モニタ（F3）で通電が見えることも確かめる（§10.7）
+      // モニタ（F3）で通電が見えることも確かめる（§10.7）。RUN は**ツールバー**から入れる
+      // （`MonitorPanel` の控えは盤表示中に見えないため。決定表#9b）
       await page.getByTestId('toolbar-monitor-start').click();
       await page.getByTestId('plc-run').click();
-      await page.getByRole('button', { name: 'ブレーカ' }).click();
-      await page.getByRole('button', { name: '電源スイッチ' }).click();
-      await page.waitForTimeout(400);
+      await expect(page.getByTestId('plc-run')).toHaveAttribute('aria-pressed', 'true');
+      await page.getByRole('button', { name: 'ブレーカ', exact: true }).click();
+      await page.getByRole('button', { name: '電源スイッチ', exact: true }).click();
+      // スキャンが回っていることを「止まっています」の注記が消えたことで確かめる（I13）
+      await expect(page.getByTestId('monitor-stopped')).toHaveCount(0);
+      await expect(page.getByTestId('monitor-scan')).toBeVisible();
       await shot(app, '32-plc-monitor');
 
       await page.getByTestId('judge-button').click();
       await expect(page.getByTestId('verdict')).toHaveText('合格', { timeout: 15_000 });
-      await expect(page.getByTestId('static-checks')).toContainText('2段結線');
+      // 受入基準③は「3チェックすべて OK」。1件の文字列が出ているだけでは足りない（I13）
+      for (const id of ['twoStage', 'plcPowerIndependent', 'ioAssignment']) {
+        await expect(page.getByTestId(`static-check-${id}`)).toContainText('OK');
+      }
       await shot(app, '33-plc-result');
     } finally {
       await app.close();
@@ -9171,8 +9623,8 @@ test.describe('モードD（PLC）', () => {
     try {
       await openPlcProblem(page);
       await buildLadder(page);
-      await mountRelays(page);
       const box = await canvasBox(page);
+      await mountRelays(page, box);
       // 2段目（Y0 → CR1.14 と CR1.5 → PL1+）を張らずに、Y0 を PL1+ へ直結する
       await wireReference(page, box, ['CR1.14', 'CR1.5']);
       await wire(page, box, 'PLC.Y0', 'TB_PL.1+');
@@ -9180,7 +9632,7 @@ test.describe('モードD（PLC）', () => {
       await page.getByTestId('judge-button').click();
       await expect(page.getByTestId('verdict')).toHaveText('不合格', { timeout: 15_000 });
       const checks = page.getByTestId('static-checks');
-      await expect(checks).toContainText('2段結線');
+      await expect(checks).toContainText('二段構成');
       await expect(checks.getByText('エラー').first()).toBeVisible();
       await shot(app, '34-plc-twostage');
     } finally {
@@ -9193,12 +9645,16 @@ test.describe('モードD（PLC）', () => {
     try {
       await openPlcProblem(page);
       await buildLadder(page);
-      await mountRelays(page);
       const box = await canvasBox(page);
-      // 壁コンセントへの2本を張らず、盤の P.1 / N.1 から取る
+      await mountRelays(page, box);
+      // 壁コンセントへの2本を張らず、盤の電源系から取る。
+      // **`P.1` / `N.1` は使えない**: 課題の初期配線（電源チェーン ＋ `fw-chk-1`）で既に2本ずつ
+      // 埋まっており、3本目は「1端子2本まで」で UI に断られる（レビュー指摘 B11）。同じ節点の
+      // 下流にあたる `CR1.9` / `CR1.13`（P/N から配られた先）から取れば、`plcPowerIndependent` の
+      // 「盤から給電」の枝に入る。
       await wireReference(page, box, ['OUTLET.L', 'OUTLET.N']);
-      await wire(page, box, 'P.1', 'PLC.L');
-      await wire(page, box, 'N.1', 'PLC.N');
+      await wire(page, box, 'CR1.9', 'PLC.L');
+      await wire(page, box, 'CR1.13', 'PLC.N');
 
       await page.getByTestId('judge-button').click();
       await expect(page.getByTestId('verdict')).toHaveText('不合格', { timeout: 15_000 });
@@ -9255,11 +9711,11 @@ pnpm --filter @ojt/desktop build
 pnpm --filter @ojt/desktop e2e
 ```
 
-Expected: E2E **15本**（既存11 ＋ 本プランの4）がすべて通る。**2回連続で流して flake が無いことを確かめる**（Plan 2B Task 18 で `chart.spec.ts` が1度 flake している）。
+Expected: E2E **21本**（既存17 ＋ 本プランの `plc.spec.ts` 4本）がすべて通る。**2回連続で流して flake が無いことを確かめる**（Plan 2B Task 18 で `chart.spec.ts` が1度 flake している）。
 
 実装との差分が出たら、**プランではなく E2E を実装に合わせて直し、その差分を Task 18 の改訂履歴に書く**（Plan 2B Task 18 と同じ扱い）。よくある調整点:
 
-- `socket-S1` のような `data-testid` が無ければ、3Dのソケット台座を `boardPoint()` で射影してクリックするか、`PartsPanel` 側のソケット選択UIを使う。
+- ソケットは3Dのメッシュなので `data-testid` を持たない。`mountRelays()` のように `plcBoardPoint()` で本体の中央を射影してクリックし、部品パネルの「装着」ボタンを押す（`smoke.spec.ts` と同じ流儀）。
 - 端子の当たり判定は 4mm（`plc` 視点では約6px）なので、`page.mouse.click()` の座標がずれると隣を拾う。拾えないときは `viewport` を大きく（`WINDOW` を 1600×1000 に）してから試す。
 - 模範配線の本数（`REFERENCE_WIRES.length`）は課題の割付で変わる。`status-overlay` の本数の期待値は**必ず配列の長さから作る**（数値を書かない）。
 
@@ -9267,7 +9723,9 @@ Expected: E2E **15本**（既存11 ＋ 本プランの4）がすべて通る。*
 
 ```powershell
 npx prettier --write "apps/desktop/e2e/*.ts"
-git add apps/desktop/e2e apps/desktop/screenshots
+# `apps/desktop/screenshots/` は .gitignore 済み。スクリーンショットは**生成物**で、
+# リポジトリには入れない（`git add` に混ぜると `paths are ignored` で失敗する。B12）
+git add apps/desktop/e2e
 git commit -m "test(desktop): cover the Phase 3 acceptance criteria end to end"
 ```
 
@@ -9293,9 +9751,9 @@ pnpm --filter @ojt/desktop e2e
 
 Expected:
 
-- `pnpm -r test` が7プロジェクト（`circuit-sim` / `board-model` / `schematic-core` / `content` / `ladder-core` / `plc-dialects` / `desktop`）すべて通る。`desktop` は **32ファイル/541テスト → 約48ファイル/約660テスト**に増える（着手時の実測を基準にすること）。
+- `pnpm -r test` が7プロジェクト（`circuit-sim` / `board-model` / `schematic-core` / `content` / `ladder-core` / `plc-dialects` / `desktop`）すべて通る。`desktop` は **60ファイル/825テスト → 約76ファイル/約985テスト**に増える（着手時の実測を基準にすること）。
 - `pnpm -r typecheck` と `pnpm lint`（`import-x/no-cycle` ＋ `react-hooks`）が無警告。
-- E2E 15本。
+- E2E **21本**（既存17 ＋ `plc.spec.ts` 4本）。
 
 - [ ] **Step 2: 依存とチャネルの確認**
 
@@ -9304,12 +9762,15 @@ git diff --stat main -- apps/desktop/package.json
 Select-String -Path apps/desktop/src/shared/ipc.ts -Pattern "IPC_CHANNELS" -Context 0,10
 ```
 
-Expected: `apps/desktop/package.json` の依存が**1つも増えていない**。`IPC_CHANNELS` が**6本のまま**。
+Expected: `apps/desktop/package.json` の差分が **Phase 2 から3行だけ**である——`dependencies` に `@ojt/ladder-core` / `@ojt/plc-dialects`（どちらも `workspace:*`。Task 1 Step 0）、`devDependencies` に `@testing-library/jest-dom`（Task 4 Step 0）。**外部の実行時依存は1つも増えていない。** `IPC_CHANNELS` が**6本のまま**。
 
 - [ ] **Step 3: 文言の集約を確認**
 
 ```powershell
-Select-String -Path "apps/desktop/src/renderer/**/*.tsx" -Pattern "[ぁ-んァ-ン一-龥]" |
+# `Select-String -Path` のワイルドカードは**再帰しない**ので、`Get-ChildItem -Recurse` で
+# ファイルを集めてから渡す（そうしないと `ladder/` も `three/` も見ずに0件で通ってしまう）
+Get-ChildItem apps/desktop/src/renderer -Recurse -Filter *.tsx |
+  Select-String -Pattern "[ぁ-んァ-ン一-龥]" |
   Where-Object { $_.Line -notmatch "^\s*(\*|//|/\*)" } |
   Where-Object { $_.Path -notmatch "i18n" }
 ```
@@ -9365,7 +9826,7 @@ git commit -m "docs(plan-3b): tick the tasks and record the implementation delta
 |---|---|---|---|
 | §10.1 | PLC本体を盤の右側の机上に置く。盤上には置かない | `three/PlcUnit.tsx`（`PLC_UNIT_FX5U.pos`） | `test/plc-scene.test.ts` / `e2e/plc.spec.ts` |
 | §10.1 | PLC電源は壁コンセント（`OUTLET`）へ配線する | `three/Outlet.tsx` / `three/DeskWires.tsx` | `e2e/plc.spec.ts`（①②③） |
-| §10.1 | 盤の `P.*` / `N.*` から PLC電源を取ると警告 | `result/PlcResult.tsx` ＋ `session/plc-explain.ts` | `test/plc-explain.test.ts` / `e2e/plc.spec.ts`（⑤） |
+| §10.1 | 盤の電源系（`P.` / `N.` / `CB.` / `SW.` / `PS.` に繋がる節点）から PLC電源を取ると不合格 | `result/PlcResult.tsx` ＋ `session/plc-explain.ts` | `test/plc-explain.test.ts` / `e2e/plc.spec.ts`（⑤） |
 | §10.1 | 端子列・LED・電源端子・S/S・COMグループを描く | `three/PlcUnit.tsx`（`unit.terminals` / `unit.leds`） | `test/plc-scene.test.ts`（端子44点） |
 | §10.2 | 入力側: PB端子台 → X入力 | 3Dの配線操作（Task 11） | `e2e/plc.spec.ts`（②） |
 | §10.2 | 出力側: Y → CRコイル → CR接点 → ランプの2段結線 | 同上（判定は `twoStage`） | `e2e/plc.spec.ts`（②④） |
@@ -9385,7 +9846,7 @@ git commit -m "docs(plan-3b): tick the tasks and record the implementation delta
 | §10.8 | 未使用デバイスを出す（合否には効かせない） | `unusedDevices()` ＋ 出力ウィンドウ | `test/ladder-errors.test.ts` / `test/output-window.test.tsx` |
 | §7.6 | I/O割付（`fixed` / `free`）を表示する | `IoTable` | `test/ladder-panels.test.tsx` |
 | §12.1 | ホームに4モード、設定に既定メーカー | `Home.tsx` / `Settings.tsx` | `test/problem-modes.test.ts` / `test/settings-plc.test.tsx` |
-| §12.2 | 视点プリセット（`plc` を追加）、テンキーは不変 | `camera.ts` / `Toolbar.tsx` | `test/plc-camera.test.ts` / `test/view-navigation.test.ts` |
+| §12.2 | 視点プリセット（`plc` を追加）、テンキーは不変 | `camera.ts` / `Toolbar.tsx` | `test/plc-camera.test.ts` / `test/view-navigation.test.ts` |
 | §12.3 | 作業ファイルにラダーIRを残す | `work-file.ts` ＋ `main/work-files.ts` | `test/work-file-plc.test.ts` / `test/work-files.test.ts` |
 | §13 #2 | 課題データの誤りは画面を移らずに理由を出す | `onPlc` の `ok: false` 分岐 | `test/plc-session-screen.test.tsx` |
 | §13 #8 | 未知の作業ファイルは読み込まない | `toLadderProgram()` ＋ `parseWorkFile()` | `test/work-file-plc.test.ts` |
@@ -9402,8 +9863,8 @@ git commit -m "docs(plan-3b): tick the tasks and record the implementation delta
 |---|---|---|---|
 | 1 | §10.1「PLC本体を盤の右側の**机上**に配置する」 | 3Dでは**盤と同じ傾斜グループの中**に、盤面の延長として描く。筐体の厚みも実寸（奥行83mm）ではなく6mmの薄い台にする | 別の（傾いていない）グループに置くと、`toScene()` / `boardToWorld()` / `safeRoutes()` / E2E の射影計算がすべて2系統になる。端子の当たり判定・ピック・視点プリセットもそれぞれ別に作ることになり、得られるのは「机の高さが正しい」ことだけである。厚みを寝かせるのは、正面視で端子列が筐体の陰にならないようにするため（Plan 1D2 の `SUPPLY_HEIGHT_MM` と同じ判断） |
 | 2 | §10.6「［オンライン］→［シーケンサへの書込み］」 | ツールバーには**項目として出す**が、押すと「変換済みのラダーを Worker へ送り直す」だけにする（実体は「変換」と同じ） | 本アプリには「シーケンサ」という別の実体が無く、`plc { kind:'load' }` が届いた瞬間に反映される。項目を消すと `profile.panels.toolbar` の8項目と画面が食い違い、スキン定義が画面の唯一の情報源でなくなる |
-| 3 | §10.6「`Shift+F3` モニタ（書込み）」 | Phase 3 では `F3`（モニタ）と同じ動作にし、キー割当表に注記を出す | 「モニタ中のプログラム変更」に対応する実体（オンライン編集）が無い。`enabled: false` にするには `plc-dialects` の `SHORTCUTS` を書き換えることになるが、方言プロファイルは Plan 3A の所有物で本プランは触らない |
-| 4 | §10.6「`Ins` 挿入・上書きの切換」 | Phase 3 は**常に上書き**。押すとその旨をトーストで出す | IRの編集APIに「挿入して右へずらす」操作が無い（`edit.ts` は `setCell` / `insertRow` だけ）。行の挿入はツールバーのボタンで行える |
+| 3 | §10.6「`Shift+F3` モニタ（書込み）」 | Phase 3 では `F3`（モニタ）と同じ動作にし、キー割当表に注記を出す。さらに**そのセッションで最初に押したときだけ**「Phase 3 ではモニタと同じ動作です」のトーストを出す（2026-09-18 の利用者決定。決定表#11） | 「モニタ中のプログラム変更」に対応する実体（オンライン編集）が無い。`enabled: false` にするには `plc-dialects` の `SHORTCUTS` を書き換えることになるが、方言プロファイルは Plan 3A の所有物で本プランは触らない |
+| 4 | §10.6「`Ins` 挿入・上書きの切換」 | **仕様どおり実装する**（既定は上書き）。ストアの `insertMode` を `Ins` で切り替え、挿入モードではカーソル列からコイル列の1つ手前までを右へずらしてから置く。右端が埋まっていたら置かずに理由を出す | 当初は「Phase 3 は常に上書き」にするつもりだったが、`edit.ts` の `setCell` を繰り返すだけで挿入は組めると分かった（純粋層の中で完結し、`edit.ts` には手を入れない）。押しても何も起きないキーを割当表に残すほうが、画面と表の食い違いとして残る。決定表#12b |
 | 5 | §10.7「表記切替」「命令語リストのエクスポート」 | **実装しない**（Phase 4） | §16 Phase 3 の「含まない」に明記されている |
 | 6 | §10.3「IRの列数は16固定」 | 画面は `profile.gridCols`（11）＋コイル列の12列だけを描き、中間列（11〜14）は描かない。中身があれば見出しに警告を出す | §10.6 が「表示列数を変えてもIRは16列のまま保持される」と定めているので、表示しない列があること自体は仕様どおり。到達手段は横スクロールではなく**設定画面の表示列数**（§10.6 が 8〜15 で変更できると定めている）にする |
 | 7 | §12.2「プリセットは7種」 | **8種**（`plc` を追加）。ただしツールバーに出すのは**モードDのときだけ**で、テンキーとビューキューブの割当は変えない | 机上のPLCは既存の7プリセットのどれにも入らない。詳しくは決定表#6 |
@@ -9421,8 +9882,8 @@ git commit -m "docs(plan-3b): tick the tasks and record the implementation delta
 2. **`store.ts` は Task 2 の5箇所 ＋ Task 16 の3箇所だけ。** Task 2 は「import」「定数と `AnyJudgeResult`」「`AppState` のフィールド」「アクションの宣言」「実装と `plcFields()` の差し込み」。Task 16 は「`ladderGridCols` / `monitorColor` のフィールド」「`applyLadderSettings` の宣言」「その実装」。Task 10 が `openProblem()` に足す `camera: 'plc'` の1行もここに含める（Task 2 と同じバッチなら一緒に入れる）。
 3. **`worker/protocol.ts` は Task 3 の4箇所だけ**（`load` の `plcModel`、`plc` / `judgePlc` コマンドと `PlcCommandAction`、`SimSnapshot.plc`、`PlcOutcome` と `plcResult`）。
 4. **`worker/sim.worker.ts` は Task 3 の6箇所だけ。** とくに `load()` は Plan 2B Task 3 と Task 8 で既に2回触られている。**プローブ解除の5行を消さずに新しい `load()` の中へ持っていくこと。**
-5. **`three/BoardScene.tsx` は Task 10 の4箇所だけ**（import、`board` を props にする、`visualSignature()` への2行、傾斜グループの中への3部品と端子のメモ化）。
-6. **`panels/Toolbar.tsx` は Task 10 の1箇所（`showPlcView` と視点ボタン）と Task 12 の1箇所（`judgeDisabled` / `judgeTitle`）だけ。** どちらも既存の props と JSX を消さずに足す。
+5. **`three/BoardScene.tsx` は Task 10 の3箇所だけ**（import、`board` を props にする、傾斜グループの中への3部品と端子のメモ化）。`visualSignature()` は**触らない**（値が変わらない要素を足しても意味がないため。Task 10 Step 5）。
+6. **`panels/Toolbar.tsx` は Task 10 の1箇所（`showPlcView` と視点ボタン）と Task 12 の1箇所（`judgeDisabled` / `judgeTitle`）だけ。** どちらも既存の props と JSX を消さずに足す。`extraTools` は**既存の props**なので広げない（RUN/STOP と表示切替ボタンは `PlcSession.tsx` が中身として渡す。決定表#9b）。
 7. **`session/commands.ts` は Task 11 の1箇所だけ**（`runAddWire` の `board` 引数）。`runPlug` / `runUnplug` / `runSetPreset` は**触らない**（`plug()` などは盤を取らない）。
 8. **`screens/SessionRoute.tsx` は Task 12 の1箇所（`case 'plc'`）だけ。** 既定の分岐（`default`）は残す。
 9. **`screens/Result.tsx` は Task 13 の1箇所（`isPlcJudge` の分岐）＋ `NoResult` の切り出しだけ。** 既存の C1/C2/B の分岐の**前**に置く（`isInspectJudge()` は Task 2 で明示の2値判定に変えてあるので順序に依存しないが、読み手のために前に置く）。
@@ -9434,17 +9895,17 @@ git commit -m "docs(plan-3b): tick the tasks and record the implementation delta
 
 ## 完了条件
 
-- [ ] `pnpm --filter @ojt/desktop test --no-file-parallelism` が全て通る（Phase 1・2 の32ファイル ＋ 本プランで足した約16ファイル）。
+- [ ] `pnpm --filter @ojt/desktop test --no-file-parallelism` が全て通る（着手時の60ファイル/825テスト ＋ 本プランで足した約16ファイル/約160テスト）。
 - [ ] `pnpm -r test` で7プロジェクト（`circuit-sim` / `board-model` / `schematic-core` / `content` / `ladder-core` / `plc-dialects` / `desktop`）がすべて通る。
 - [ ] `pnpm -r typecheck` と `pnpm lint`（`import-x/no-cycle` ＋ `react-hooks` 込み）が無警告で通る。
 - [ ] `npx prettier --check "apps/desktop/**/*.{ts,tsx,css}"` が `All matched files use Prettier code style!` を出す。
 - [ ] `pnpm --filter @ojt/desktop build` が main / preload / renderer の3つを出力する。
-- [ ] `pnpm --filter @ojt/desktop e2e` が15本（既存11 ＋ `plc.spec.ts` 4本）すべて通る。**2回連続で通ること。**
+- [ ] `pnpm --filter @ojt/desktop e2e` が **21本**（既存17 ＋ `plc.spec.ts` 4本）すべて通る。**2回連続で通ること。**
 - [ ] **§16 Phase 3 受入基準①**: PLC課題を開き、GX Works3風スキンで `F5` / `F7` を使ってラダーを組み、`F4`（変換）で「変換に成功しました」が出る（`e2e/plc.spec.ts`）。
 - [ ] **§16 Phase 3 受入基準②**: 3D上で PB端子台 → `PLC.X0`、`PLC.Y0` → `CR1.14`、`CR1.5` → `TB_PL.1+` と配線し、`OUTLET.L` / `OUTLET.N` → `PLC.L` / `PLC.N` を配線できる。
 - [ ] **§16 Phase 3 受入基準③**: 判定で `合格` が表示され、`twoStage` / `plcPowerIndependent` / `ioAssignment` の3チェックがすべて `OK` になる。
-- [ ] **§16 Phase 3 受入基準④**: `PLC.Y0` を `TB_PL.1+` へ直結すると `不合格` になり、静的チェックの「2段結線」が `エラー` になる。
-- [ ] **§16 Phase 3 受入基準⑤**: PLC電源を盤の `P.1` / `N.1` から取ると `不合格` になり、「PLC電源の独立」が `エラー` になる。結果画面に**盤から取っている旨の文言**と「シミュレートされるPLCは未配線でも動作します」の説明が出る。
+- [ ] **§16 Phase 3 受入基準④**: `PLC.Y0` を `TB_PL.1+` へ直結すると `不合格` になり、静的チェックの「二段構成」（`twoStage`）が `エラー` になる。
+- [ ] **§16 Phase 3 受入基準⑤**: PLC電源を盤の電源系（`CR1.9` / `CR1.13`）から取ると `不合格` になり、「PLC電源の独立」が `エラー` になる。結果画面に**盤から取っている旨の文言**と「シミュレートされるPLCは未配線でも動作します」の説明が出る。
 - [ ] ホームから4モード（回路組立／部品点検／回路点検・修復／**PLC**）すべてを開ける。
 - [ ] 課題一覧に内蔵28題（B 8・C1 4・C2 8・**D 8**）が出て、モードで絞り込める。
 - [ ] ラダーエディタで `F5` / `F6` / `Shift+F5` / `F7` / `F9` / `Shift+F9` / `Ctrl+←↑↓→` / `/` / `Alt+/` / `F2` / `Shift+F2` / `F3` / `F4` / `Tab` / `Ins` / `F1` が §10.6 の表どおりに働き、`F8` は押すと理由が出る。
@@ -9453,7 +9914,7 @@ git commit -m "docs(plan-3b): tick the tasks and record the implementation delta
 - [ ] デバイスコメントを入れて保存し、読み込むと同じコメントが戻る。Phase 1・2 に保存した作業ファイル（モードDの項目が無いもの）も読める。
 - [ ] 設定画面でメーカー（三菱のみ選択可・他3社は淡色）・ラダーの表示列数（8〜15）・通電色を変えられ、ラダーエディタに反映される。
 - [ ] `apps/desktop/screenshots/` にモードDのスクリーンショット6枚（`30-` 〜 `35-`）が出ている。
-- [ ] `apps/desktop/package.json` の依存が Phase 2 から増えていない。
+- [ ] `apps/desktop/package.json` の依存が Phase 2 から増えたのは `@ojt/ladder-core` / `@ojt/plc-dialects`（ワークスペース）と `@testing-library/jest-dom`（devDependency）の**3本だけ**である。
 - [ ] IPCチャネルは6本のまま（`IPC_CHANNELS` が変わっていない）。
 - [ ] 画面の文言がすべて `src/renderer/i18n/ja.ts`（と `src/shared/messages.ts`）にある。
 - [ ] `apps/desktop/src/renderer/ladder/` に画像ファイルが1つも無く、`symbols.ts` のパス文字列に URL も `base64` も含まれない（§17）。
