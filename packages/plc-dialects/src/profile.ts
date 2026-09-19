@@ -14,8 +14,8 @@ export type DialectId = 'mitsubishi' | 'jtekt' | 'omron' | 'sharp';
 /** 方言IDの一覧（初回リリースの順）。 */
 export const DIALECT_IDS: readonly DialectId[] = ['mitsubishi', 'jtekt', 'omron', 'sharp'];
 
-/** Phase 3 で実装済みの方言。§16 */
-export const IMPLEMENTED_DIALECT_IDS: readonly DialectId[] = ['mitsubishi'];
+/** Phase 4 で4メーカーすべてを実装した。§16 */
+export const IMPLEMENTED_DIALECT_IDS: readonly DialectId[] = DIALECT_IDS;
 
 /** 表示グリッドの接点列数の下限・上限（利用者が設定画面で選べる範囲）。§10.6 */
 export const MIN_GRID_COLS = 8;

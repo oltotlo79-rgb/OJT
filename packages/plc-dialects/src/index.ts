@@ -52,9 +52,7 @@ import {
   type DialectProfile,
 } from './profile.js';
 
-/**
- * 実装済みの方言プロファイル。Phase 4 で3つ増える（§16）。
- */
+/** 実装済みの方言プロファイル（`DIALECT_IDS` の順）。§16 Phase 4 */
 const PROFILES: Partial<Record<DialectId, DialectProfile>> = {
   mitsubishi: MITSUBISHI_FX5U,
   jtekt: JTEKT_PC10G,
@@ -69,13 +67,11 @@ export function availableDialects(): DialectProfile[] {
   );
 }
 
-/** 方言プロファイルを引く。未実装のメーカーは `UnknownDialectError`。 */
+/** 方言プロファイルを引く。未知の方言IDは `UnknownDialectError`。 */
 export function getDialect(id: DialectId): DialectProfile {
   const profile = PROFILES[id];
   if (profile === undefined) {
-    throw new UnknownDialectError(
-      `この方言はまだ実装されていません（Phase 4 で追加します）: ${id}`,
-    );
+    throw new UnknownDialectError(`対応していない方言IDです: ${id}`);
   }
   return profile;
 }
