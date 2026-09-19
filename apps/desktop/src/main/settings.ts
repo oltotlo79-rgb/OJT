@@ -161,7 +161,19 @@ function loadSettings(): { settings: AppSettings; corrupt: boolean } {
   // 壊れたファイルには書き戻さない（`writeSettings()` が控えを取る前に踏み潰さないため）
   if (!corrupt && migrateMonitorColor(settings, raw)) {
     try {
-      writeFileAtomic(settingsPath(), `${JSON.stringify(settings, null, 2)}\n`);
+      /*
+       * `settings`（`sanitizePatch(DEFAULT_SETTINGS, raw)` の戻り）ではなく、`raw` に
+       * `monitorColor` / `monitorColorMigrated` だけ重ねて書く（レビュー指摘 #5）。
+       * `settings` を丸ごと書くと、まだ書かれていなかった `userContentDir`（既定パスに解決
+       * 済み）まで焼き付き、`raw` に残っていた未知のキー（手で足した項目など）も消えてしまう。
+       * 移行が触ってよいのはこの2キーだけ。
+       */
+      const migrated = {
+        ...(raw as Record<string, unknown>),
+        monitorColor: settings.monitorColor,
+        monitorColorMigrated: true,
+      };
+      writeFileAtomic(settingsPath(), `${JSON.stringify(migrated, null, 2)}\n`);
     } catch {
       // 印を残せなくても読込は続ける（次の `writeSettings()` で残る）
     }

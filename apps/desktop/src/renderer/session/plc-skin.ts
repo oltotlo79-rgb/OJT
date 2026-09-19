@@ -136,8 +136,10 @@ export function skinMonitorColor(profile: DialectProfile, setting: string): stri
 
 /**
  * メーカー → 机上に置くPLC本体。§7.6
- * `@ojt/content` の `MODEL_OF_VENDOR` は非公開なので、本体定義の `vendor` から引く
- * （4A Task 12 が「メーカーと機種の組み合わせ違いは拒否する」ことを保証している）。
+ * `@ojt/content` は `MODEL_OF_VENDOR`（メーカー→機種名の対応）を公開している（レビュー指摘
+ * #10）が、ここで欲しいのは機種名ではなく本体定義（`PlcUnitDefinition`）そのものなので、
+ * `PLC_UNITS` の `vendor` から直接引く（4A Task 12 が「メーカーと機種の組み合わせ違いは
+ * 拒否する」ことを保証しているので、この引き方で取りこぼしは起きない）。
  */
 export function plcUnitForVendor(vendor: DialectId): PlcUnitDefinition | undefined {
   return Object.values(PLC_UNITS).find((unit) => unit.vendor === vendor);

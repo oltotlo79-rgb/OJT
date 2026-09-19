@@ -1,3 +1,4 @@
+import { plcUnitFor } from '@ojt/board-model';
 import { terminalId } from '@ojt/circuit-sim';
 import {
   BUILTIN_ASSEMBLE_PROBLEMS,
@@ -376,6 +377,12 @@ describe('既定メーカーの機種で開く（§7.6 / 決定表#9・#24）', 
       'FX5U',
     );
     expect(useStore.getState().toasts.at(-1)?.text).toContain('CP1E');
+    /*
+     * レビュー指摘 #9: 生のID(機種コード)ではなく本体の表示名を出す(`PlcSession.tsx` の
+     * `plc-model` 表示と同じ流儀)。`plcUnitFor()` はここでも `PlcSession.tsx` と同じ関数。
+     */
+    expect(useStore.getState().toasts.at(-1)?.text).toContain(plcUnitFor('CP1E')!.displayName);
+    expect(useStore.getState().toasts.at(-1)?.text).toContain(plcUnitFor('FX5U')!.displayName);
     // 方言も課題の機種に合わせる（ラダーの表記だけ OMRON になってしまわないように）
     expect(useStore.getState().dialectId).toBe('mitsubishi');
   });
@@ -412,5 +419,29 @@ describe('既定メーカーの機種で開く（§7.6 / 決定表#9・#24）', 
     expect(again !== undefined && isPlcProblem(again) ? again.plc.model : undefined).toBe(
       'PC10G-1SP',
     );
+  });
+
+  /**
+   * レビュー指摘 #11: 既定メーカーはあくまで「次に開くときの既定」であって、いま開いている
+   * 課題を動かすものではない（決定表#24）。`applyLadderSettings()` は設定画面が保存のたびに
+   * 呼ぶので、開いたままの課題の `plc`（機種）まで書き換えてしまうと3Dの端子名とラダーの
+   * デバイス名が食い違う。
+   */
+  it('does not touch the already-open problem when the default vendor changes mid-session (決定表#24)', () => {
+    useStore
+      .getState()
+      .applyLadderSettings({ gridCols: 0, monitorColor: '', vendor: 'mitsubishi' });
+    useStore.getState().openProblem(problem);
+    const before = useStore.getState().problem;
+    const plcBefore = before !== undefined && isPlcProblem(before) ? before.plc : undefined;
+    expect(plcBefore).toEqual({ vendor: 'mitsubishi', model: 'FX5U' });
+
+    useStore.getState().applyLadderSettings({ gridCols: 0, monitorColor: '', vendor: 'omron' });
+
+    const after = useStore.getState().problem;
+    const plcAfter = after !== undefined && isPlcProblem(after) ? after.plc : undefined;
+    expect(plcAfter).toEqual(plcBefore);
+    expect(useStore.getState().dialectId).toBe('mitsubishi');
+    expect(useStore.getState().defaultVendor).toBe('omron');
   });
 });

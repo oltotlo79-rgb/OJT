@@ -162,16 +162,6 @@ export function parseWorkFile(
     }
     optional.ladder = ladder;
   }
-  /*
-   * モードBの回路図エディタの下書き（Plan 5 決定表#23）。main は回路図の文法を知らないので
-   * 「オブジェクトであること」だけを見て素通しする（`session` / `ladder` と同じ分担で、
-   * 段と要素の形は renderer の `toSchematicDoc()` が確かめる）。形が違えば**黙って落とす**
-   * ＝下書き無しで開く（読込そのものは断らない）。§11.4 / §13 #8
-   */
-  const schematic = source['schematic'];
-  if (typeof schematic === 'object' && schematic !== null && !Array.isArray(schematic)) {
-    optional.schematic = schematic;
-  }
   if (typeof source['checkPartId'] === 'string') optional.checkPartId = source['checkPartId'];
   if (typeof source['faultSeed'] === 'number') optional.faultSeed = source['faultSeed'];
   /*

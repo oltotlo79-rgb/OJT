@@ -33,7 +33,6 @@ import {
   judgeInspectParts,
   judgeInspectRepair,
   judgePlc,
-  verifySchematic,
   type FaultSpecData,
   type PlcCoupling,
 } from '@ojt/content';
@@ -583,25 +582,6 @@ function handle(command: SimCommand): void {
           sessionHazards: [...carriedHazards, ...sim.events.hazards()],
         });
         post({ type: 'judgeResult', result });
-      } finally {
-        resumeLoop();
-      }
-      break;
-    }
-    case 'verify': {
-      /*
-       * 検算は模範回路と訓練者の**回路図**を並走させるので、判定とほぼ同じ 0.3〜0.6 秒かかる
-       * （§11.4 / 決定表#4）。`judge` と同じく、その間は追従ループを止めて「捨てた tick」を
-       * 誤って計上しない。危険操作（`sessionHazards`）は渡さない（机上の作業に危険操作は
-       * 無い。決定表#6）。例外は `self.onmessage` の `catch` が `{ type: 'error', fatal: false }`
-       * として返すので、検算が失敗してもセッションは続く。
-       */
-      stopLoop();
-      try {
-        const result = verifySchematic(command.problem, JIPM_BOARD, command.document, {
-          elapsedMs: command.elapsedMs,
-        });
-        post({ type: 'verifyResult', result });
       } finally {
         resumeLoop();
       }

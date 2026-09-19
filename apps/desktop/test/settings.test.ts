@@ -246,4 +246,83 @@ describe('旧い設定ファイルの移行（Plan 4B 決定表#8 / レビュー
     expect(readSettings().monitorColor).toBe('');
     expect(existsSync(settingsPath())).toBe(false);
   });
+
+  /** 大文字小文字を無視して旧既定を見分ける（`toUpperCase()` で比べているので通る）。 */
+  it('migrates a lowercase "#1e64ff" the same as the uppercase default', () => {
+    writeFileSync(settingsPath(), JSON.stringify({ monitorColor: '#1e64ff' }), 'utf8');
+    expect(readSettings().monitorColor).toBe('');
+    expect(onDisk()['monitorColorMigrated']).toBe(true);
+  });
+
+  /** レビュー指摘 #11: 印の型が違う・`false` のときは移行済みと見なさず、走り直す。 */
+  it('re-runs the migration when the on-disk marker is not exactly true (wrong type)', () => {
+    writeFileSync(
+      settingsPath(),
+      JSON.stringify({ monitorColor: '#1E64FF', monitorColorMigrated: 'yes' }),
+      'utf8',
+    );
+    expect(readSettings().monitorColor).toBe('');
+    expect(onDisk()['monitorColorMigrated']).toBe(true);
+  });
+
+  it('re-runs the migration when the on-disk marker is false', () => {
+    writeFileSync(
+      settingsPath(),
+      JSON.stringify({ monitorColor: '#1E64FF', monitorColorMigrated: false }),
+      'utf8',
+    );
+    expect(readSettings().monitorColor).toBe('');
+    expect(onDisk()['monitorColorMigrated']).toBe(true);
+  });
+
+  /** レビュー指摘 #11: 壊れたファイルは移行もせず、控えを取る前に書き戻しもしない。 */
+  it('does not migrate or rewrite a corrupt settings file', () => {
+    const broken = '{ 壊れた設定, "monitorColor": "#1E64FF"';
+    writeFileSync(settingsPath(), broken, 'utf8');
+    expect(readSettings().monitorColor).toBe(DEFAULT_SETTINGS.monitorColor);
+    // 読んだだけでは書き戻さない（控えを取るのは `writeSettings()` の役目）
+    expect(readFileSync(settingsPath(), 'utf8')).toBe(broken);
+  });
+
+  /**
+   * レビュー指摘 #5: 移行の書き戻しは `raw` に2キーだけ重ねる。丸ごと書き直すと、
+   * まだファイルに無かった `userContentDir`（既定パスに解決済み）が焼き付き、
+   * `raw` にあった見覚えの無いキー（利用者が手で足した項目など）も消えてしまっていた。
+   */
+  it('keeps an unknown hand-added key through the migration write-back, and does not bake userContentDir', () => {
+    writeFileSync(
+      settingsPath(),
+      JSON.stringify({ monitorColor: '#1E64FF', someHandAddedKey: 'keep-me' }),
+      'utf8',
+    );
+    readSettings();
+    const raw = onDisk();
+    expect(raw['someHandAddedKey']).toBe('keep-me');
+    expect(raw['monitorColor']).toBe('');
+    expect(raw['monitorColorMigrated']).toBe(true);
+    // 元のファイルに無かったキーは書き戻しでも増やさない
+    expect(raw['userContentDir']).toBeUndefined();
+  });
+
+  /**
+   * レビュー指摘 #4: `sanitizePatch()` が `monitorColorMigrated: false` をそのまま通すと、
+   * renderer からの保存のたびに一度きりの移行が再武装され、利用者が改めて選び直した
+   * `#1E64FF` が次の読込で黙って消える。`writeSettings()`（= `sanitizePatch()` 経由）では
+   * `true` しか取り込まないことを確かめる。
+   */
+  it('ignores monitorColorMigrated:false from a patch instead of re-arming the one-shot migration', () => {
+    // 移行を一度走らせておく
+    writeFileSync(settingsPath(), JSON.stringify({ monitorColor: '#1E64FF' }), 'utf8');
+    expect(readSettings().monitorColor).toBe('');
+    expect(onDisk()['monitorColorMigrated']).toBe(true);
+    // 利用者が改めて三菱の青を選ぶ
+    writeSettings({ monitorColor: '#1E64FF' });
+    expect(onDisk()['monitorColor']).toBe('#1E64FF');
+    // renderer から（バグ・改ざんのいずれでも）false が来ても、印は消えない
+    const saved = writeSettings({ monitorColorMigrated: false });
+    expect(saved.monitorColorMigrated).toBe(true);
+    expect(onDisk()['monitorColorMigrated']).toBe(true);
+    // 次回の読込でも青のまま。移行が再武装されて勝手に消されることはない
+    expect(readSettings().monitorColor).toBe('#1E64FF');
+  });
 });

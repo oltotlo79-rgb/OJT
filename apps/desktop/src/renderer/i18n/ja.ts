@@ -111,7 +111,12 @@ export const JA = {
     vendorUnimplemented: 'このメーカーはまだ対応していません',
     /** ラダーの表示列数。§10.6 */
     gridCols: 'ラダーの表示列数',
-    gridColsHelp: 'ラダー編集画面の接点列の数（8〜15）。メーカーの既定は 11 です。',
+    /**
+     * ラダーの表示列数の説明。引数は**いま選んでいるメーカー**の既定列数（レビュー指摘 #6:
+     * 以前は「11」に固定していたが、機種によって既定が違うので固定値を出すと誤解させる）。
+     */
+    gridColsHelp: (vendorCols: number): string =>
+      `ラダー編集画面の接点列の数（8〜15）。メーカーの既定は ${String(vendorCols)} です。`,
     /** 通電色。§10.6 */
     monitorColor: '通電色',
     monitorColorHelp:
@@ -119,8 +124,13 @@ export const JA = {
     /** グループを既定値へ戻す。 */
     resetPlcGroup: '既定に戻す',
     // --- Plan 4B Task 6 ---
-    /** 色・列数を方言の既定に任せる。決定表#8 */
-    followVendor: 'メーカーの既定に従う',
+    /**
+     * 色・列数を方言の既定に任せるチェックボックス。決定表#8
+     * レビュー指摘 #8: 以前はどちらも同じ「メーカーの既定に従う」で、何を指すか画面だけでは
+     * 分からなかった（隣のチェックボックスと取り違えかねない）ので、対象ごとに文言を分ける。
+     */
+    followVendorGridCols: '列数はメーカーの既定に従う',
+    followVendorMonitorColor: '通電色はメーカーの既定に従う',
     // --- /Plan 4B Task 6 ---
     // --- /Plan 3B Task 16 ---
     // --- Plan 3B final fix ---
