@@ -604,7 +604,13 @@ export function restoreInspectState(problem: SupportedProblem, state: InspectWor
      * 作り直すので、ここで渡さないと「ラダーは `0.00` 表記なのに盤の端子は `X0`」になる
      * （Batch 4+5 レビュー I5 の `setDialect()` は、機種の差し替えが `openProblem()` の中で
      * 起きるようになった今は後追いになってしまうので置き換える）。
-     * 未実装・見覚えの無いIDは黙って無視する（既定メーカーで開く。読込そのものは断らない）。
+     * 未実装・見覚えの無いIDは黙って無視する（読込そのものは断らない）。
+     *
+     * 無視したときのフォールバックは**既定メーカーではなく、この課題が保存された機種**
+     * （`problem.plc.vendor`）にする（レビュー指摘 #3）。既定メーカーへ逃がすと、
+     * 保存後に利用者が設定を変えているだけで機種が入れ替わり、作業ファイルの電線が
+     * 参照する端子名がその新しい機種に無い名前になって `safeRoutes()` が黙って落としてしまう。
+     * `problem.plc.vendor` は保存した盤がそのまま乗る機種なので、電線を必ず保つ。
      */
     const savedDialect =
       typeof state.dialectId === 'string' &&
@@ -612,7 +618,7 @@ export function restoreInspectState(problem: SupportedProblem, state: InspectWor
       IMPLEMENTED_DIALECT_IDS.includes(state.dialectId)
         ? state.dialectId
         : undefined;
-    if (!store.openProblem(problem, savedDialect === undefined ? {} : { vendor: savedDialect })) {
+    if (!store.openProblem(problem, { vendor: savedDialect ?? problem.plc.vendor })) {
       return false;
     }
     if (parsed !== undefined) store.restoreLadder(parsed.program, parsed.comments);

@@ -336,3 +336,94 @@ describe('4方言の作業ファイル往復（§12.3 / 4A H-2）', () => {
     expect(useStore.getState().defaultVendor).toBe('omron');
   });
 });
+
+/**
+ * レビュー指摘 #3: `dialectId` が無い（または未実装の値の）作業ファイルは、既定メーカーへ
+ * 逃げてはいけない。既定メーカーへ逃げると、保存後に利用者が設定を変えただけで機種が
+ * すり替わり、保存されていた電線が新しい機種に無い端子名を参照して失われる
+ * （`safeRoutes()` が黙って落とす）。フォールバック先は「この課題が保存された機種」
+ * （`problem.plc.vendor`）でなければならない。
+ */
+describe('復元時の機種フォールバック（§7.6 / 決定表#9・#24 / レビュー指摘 #3）', () => {
+  it('falls back to the problem’s own vendor, not the current default, when dialectId is missing', async () => {
+    useStore
+      .getState()
+      .applyLadderSettings({ gridCols: 0, monitorColor: '', vendor: 'mitsubishi' });
+    useStore.getState().openProblem(problem);
+    const file = toWorkFile(problem.id, useStore.getState().session!, 0, 0);
+    const { dialectId: _drop, ...withoutDialect } = file;
+    void _drop;
+    useStore.getState().abandonSession();
+    // バグの再現条件: 既定メーカーを課題の機種と別のメーカーへ変えておく
+    useStore.getState().applyLadderSettings({ gridCols: 0, monitorColor: '', vendor: 'omron' });
+    apiState.readProblem.mockResolvedValue(problem);
+    expect(await applyWorkFile(withoutDialect)).toBe(true);
+    // 既定メーカー（オムロン）ではなく、保存されていた課題自身の機種（三菱 FX5U）で開く
+    expect(useStore.getState().dialectId).toBe('mitsubishi');
+    const opened = useStore.getState().problem;
+    expect(opened !== undefined && isPlcProblem(opened) ? opened.plc : undefined).toEqual({
+      vendor: 'mitsubishi',
+      model: 'FX5U',
+    });
+    // 設定（既定メーカー）そのものは変わっていない
+    expect(useStore.getState().defaultVendor).toBe('omron');
+  });
+
+  it('also falls back to the problem’s own vendor when the saved dialectId is an unimplemented one', async () => {
+    useStore
+      .getState()
+      .applyLadderSettings({ gridCols: 0, monitorColor: '', vendor: 'mitsubishi' });
+    useStore.getState().openProblem(problem);
+    const file = {
+      ...toWorkFile(problem.id, useStore.getState().session!, 0, 0),
+      dialectId: 'not-a-real-dialect',
+    };
+    useStore.getState().abandonSession();
+    useStore.getState().applyLadderSettings({ gridCols: 0, monitorColor: '', vendor: 'jtekt' });
+    apiState.readProblem.mockResolvedValue(problem);
+    expect(await applyWorkFile(file)).toBe(true);
+    expect(useStore.getState().dialectId).toBe('mitsubishi');
+    const opened = useStore.getState().problem;
+    expect(opened !== undefined && isPlcProblem(opened) ? opened.plc.model : undefined).toBe(
+      'FX5U',
+    );
+    expect(useStore.getState().defaultVendor).toBe('jtekt');
+  });
+
+  /**
+   * レビュー指摘 #11: 既定メーカーでは収まらない課題（決定表#10）でも、保存・復元が壊れない。
+   * `openProblem()` 自身の「収まらなければ元の機種のまま開く」フォールバックと、
+   * このファイルのフォールバックの両方を通した往復になる。
+   */
+  it('round-trips a work file for a problem only its own vendor can host, even when the default vendor cannot host it', async () => {
+    const unhostable = {
+      ...problem,
+      io: {
+        ...problem.io,
+        mode: 'fixed' as const,
+        inputs: [{ x: 0, pb: 'PB1' as const }],
+        outputs: [{ y: 12, cr: 'CR1' as const, pl: 'PL1' as const }],
+      },
+    };
+    useStore
+      .getState()
+      .applyLadderSettings({ gridCols: 0, monitorColor: '', vendor: 'mitsubishi' });
+    useStore.getState().openProblem(unhostable);
+    const file = toWorkFile(unhostable.id, useStore.getState().session!, 0, 0);
+    const savedWireCount = useStore.getState().session!.wires.length;
+
+    useStore.getState().abandonSession();
+    // 既定メーカーを、この課題を収められないメーカーへ変えておく
+    useStore.getState().applyLadderSettings({ gridCols: 0, monitorColor: '', vendor: 'omron' });
+    apiState.readProblem.mockResolvedValue(unhostable);
+    expect(await applyWorkFile(file)).toBe(true);
+
+    const opened = useStore.getState().problem;
+    expect(opened !== undefined && isPlcProblem(opened) ? opened.plc.model : undefined).toBe(
+      'FX5U',
+    );
+    expect(useStore.getState().dialectId).toBe('mitsubishi');
+    // 保存されていた電線の本数がそのまま戻る（端子名の食い違いで失われていない）
+    expect(useStore.getState().session?.wires).toHaveLength(savedWireCount);
+  });
+});

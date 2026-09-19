@@ -89,9 +89,15 @@ function sanitizePatch(base: AppSettings, patch: unknown): AppSettings {
   if (typeof monitorColor === 'string' && /^(#[0-9a-fA-F]{6})?$/.test(monitorColor)) {
     next.monitorColor = monitorColor;
   }
-  // 移行の印（renderer からも来るが、`true` を消せるだけなので害はない）
-  if (typeof source['monitorColorMigrated'] === 'boolean') {
-    next.monitorColorMigrated = source['monitorColorMigrated'];
+  /*
+   * 移行の印。`true` だけを受け付ける（レビュー指摘 #4）。
+   * `boolean` 全般を通していたときは renderer から `monitorColorMigrated: false` が来ると
+   * 一度きりのはずの移行が再武装され、次の読込で `migrateMonitorColor()` が走り直して
+   * 利用者が改めて選び直した `#1E64FF` まで黙って消してしまっていた。印を消す用途は無いので、
+   * `false` や他の型はここで捨てる（一度立てた印は `sanitizePatch()` 経由では下ろせない）。
+   */
+  if (source['monitorColorMigrated'] === true) {
+    next.monitorColorMigrated = true;
   }
   return next;
 }

@@ -45,6 +45,14 @@ export function Settings(): JSX.Element {
    * `commitGridCols()` が「変わっていないのに保存」を避けるのに使う（レビュー指摘 #6）。
    */
   const savedRef = useRef<AppSettingsResponse | undefined>(undefined);
+  /**
+   * 直前に選んでいた上書き値（列数・通電色それぞれ）。§10.6 / レビュー指摘 #2
+   * 「メーカーの既定に従う」を外すたびに毎回メーカーの値から上書きを始めると、外す→戻す→
+   * 外すを繰り返しただけで訓練者が選んだ値（例: 列数13）が消えてメーカーの既定に化ける。
+   * 0 / '' でない値を見るたびに覚えておき、外したときはまずこれを使う（無ければメーカーの値）。
+   */
+  const gridColsOverrideRef = useRef<number | undefined>(undefined);
+  const monitorColorOverrideRef = useRef<string | undefined>(undefined);
 
   useEffect(() => {
     try {
@@ -63,6 +71,12 @@ export function Settings(): JSX.Element {
       setLoadError(reasonOf(error));
     }
   }, []);
+
+  useEffect(() => {
+    if (settings === undefined) return;
+    if (settings.ladderGridCols !== 0) gridColsOverrideRef.current = settings.ladderGridCols;
+    if (settings.monitorColor.length > 0) monitorColorOverrideRef.current = settings.monitorColor;
+  }, [settings]);
 
   /**
    * 設定を1キーだけ保存する。
@@ -123,7 +137,12 @@ export function Settings(): JSX.Element {
       MAX_GRID_COLS,
       Math.max(MIN_GRID_COLS, Math.round(settings.ladderGridCols)),
     );
-    if (clamped !== settings.ladderGridCols) setSettings({ ...settings, ladderGridCols: clamped });
+    /*
+     * 空欄のまま blur したとき（onChange 側が空欄を無視して手元の値を動かしていない）でも、
+     * 表示だけは打鍵で空になっている。ここで確定値を毎回書き戻して表示を揃え直す
+     * （レビュー指摘 #1）。値そのものが同じでも新しいオブジェクトを渡して再描画させる。
+     */
+    setSettings({ ...settings, ladderGridCols: clamped });
     if (clamped === savedRef.current?.ladderGridCols) return;
     patch({ ladderGridCols: clamped });
   };
@@ -269,21 +288,28 @@ export function Settings(): JSX.Element {
             </ul>
 
             <section className={styles.settingRow}>
-              <label htmlFor="setting-grid-cols-auto">{JA.settings.followVendor}</label>
+              {/* レビュー指摘 #8: 列数・通電色のどちらを指すか分かる文言にする（同じ文言だと
+                  隣のチェックボックスと取り違えかねない） */}
+              <label htmlFor="setting-grid-cols-auto">{JA.settings.followVendorGridCols}</label>
               <input
                 id="setting-grid-cols-auto"
                 type="checkbox"
-                checked={settings.ladderGridCols === 0}
+                // レビュー指摘 #1: draft（打鍵中の手元の値）ではなく保存済みの値で判定する。
+                // 空欄にしている最中の 0 相当の見た目に引きずられてチェックが動かないように。
+                checked={savedRef.current?.ladderGridCols === 0}
                 data-testid="setting-grid-cols-auto"
                 onChange={(event) => {
-                  // 外したときは「いまのメーカーの既定」から上書きを始める
-                  const vendorCols = isDialectId(settings.defaultVendor)
-                    ? getDialect(settings.defaultVendor).gridCols
-                    : DEFAULT_SETTINGS.ladderGridCols;
-                  patch({ ladderGridCols: event.target.checked ? 0 : vendorCols });
+                  // 外したときは、前回の上書き値があればそれを、無ければ「いまのメーカーの
+                  // 既定」から上書きを始める（レビュー指摘 #2・#7）
+                  const restoreValue =
+                    gridColsOverrideRef.current ?? getDialect(settings.defaultVendor).gridCols;
+                  patch({ ladderGridCols: event.target.checked ? 0 : restoreValue });
                 }}
               />
             </section>
+            <p className={styles.subtitle} data-testid="grid-cols-help">
+              {JA.settings.gridColsHelp(getDialect(settings.defaultVendor).gridCols)}
+            </p>
 
             <section className={styles.settingRow}>
               <label htmlFor="setting-grid-cols">{JA.settings.gridCols}</label>
@@ -293,38 +319,50 @@ export function Settings(): JSX.Element {
                 min={MIN_GRID_COLS}
                 max={MAX_GRID_COLS}
                 disabled={settings.ladderGridCols === 0}
-                value={settings.ladderGridCols}
+                // レビュー指摘 #6: 無効化中は 0（min=8 未満で表示がおかしい）ではなく、
+                // 実際に使われるメーカーの既定値を見せる（通電色の見本と同じ扱い）
+                value={
+                  settings.ladderGridCols > 0
+                    ? settings.ladderGridCols
+                    : getDialect(settings.defaultVendor).gridCols
+                }
                 data-testid="setting-grid-cols"
                 onChange={(event) => {
-                  const value = Number(event.target.value);
-                  setSettings({
-                    ...settings,
-                    ladderGridCols: Number.isFinite(value) ? value : settings.ladderGridCols,
-                  });
+                  // 空欄・0以下は無視して前の値を保つ（レビュー指摘 #1: 空欄が 0 になって
+                  // 「メーカーの既定に従う」チェックまで動いてしまっていた）。確定は blur で行う。
+                  const raw = event.target.value;
+                  if (raw.trim().length === 0) return;
+                  const value = Number(raw);
+                  if (!Number.isFinite(value) || value <= 0) return;
+                  setSettings({ ...settings, ladderGridCols: value });
                 }}
                 onBlur={commitGridCols}
               />
             </section>
-            <p className={styles.subtitle} data-testid="grid-cols-help">
-              {JA.settings.gridColsHelp}
-            </p>
 
             <section className={styles.settingRow}>
-              <label htmlFor="setting-monitor-color-auto">{JA.settings.followVendor}</label>
+              <label htmlFor="setting-monitor-color-auto">
+                {JA.settings.followVendorMonitorColor}
+              </label>
               <input
                 id="setting-monitor-color-auto"
                 type="checkbox"
-                checked={settings.monitorColor.length === 0}
+                // レビュー指摘 #1と同じ理由で保存済みの値を見る
+                checked={savedRef.current?.monitorColor.length === 0}
                 data-testid="setting-monitor-color-auto"
                 onChange={(event) => {
-                  // 外したときは「いま選んでいるメーカーの通電色」から上書きを始める（B1）
-                  const vendorColor = isDialectId(settings.defaultVendor)
-                    ? getDialect(settings.defaultVendor).monitorColors.powered
-                    : DEFAULT_SETTINGS.monitorColor;
-                  patch({ monitorColor: event.target.checked ? '' : vendorColor });
+                  // 外したときは、前回の上書き値があればそれを、無ければ「いま選んでいる
+                  // メーカーの通電色」から上書きを始める（B1・レビュー指摘 #2・#7）
+                  const restoreValue =
+                    monitorColorOverrideRef.current ??
+                    getDialect(settings.defaultVendor).monitorColors.powered;
+                  patch({ monitorColor: event.target.checked ? '' : restoreValue });
                 }}
               />
             </section>
+            <p className={styles.subtitle} data-testid="monitor-color-help">
+              {JA.settings.monitorColorHelp}
+            </p>
 
             <section className={styles.settingRow}>
               <label htmlFor="setting-monitor-color">{JA.settings.monitorColor}</label>
@@ -350,9 +388,6 @@ export function Settings(): JSX.Element {
                 }}
               />
             </section>
-            <p className={styles.subtitle} data-testid="monitor-color-help">
-              {JA.settings.monitorColorHelp}
-            </p>
 
             <button
               type="button"

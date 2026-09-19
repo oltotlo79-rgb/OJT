@@ -279,6 +279,97 @@ describe('「メーカーの既定に従う」（§10.6 / 決定表#8）', () =>
     expect(screen.getByTestId('monitor-color-help')).toHaveTextContent('メーカーの既定');
   });
 
+  /**
+   * レビュー指摘 #6: 無効化中の列数欄は `0`（`min=8` を下回り欄がおかしく見える）ではなく、
+   * 色見本と同じく「実際に使われるメーカーの既定値」を見せる。ヘルプ文言も固定の「11」では
+   * なく、いま選んでいるメーカーの値を出す。
+   */
+  it('shows the vendor default column count in the disabled field, not 0', async () => {
+    installOjt({ defaultVendor: 'omron' });
+    render(<Settings />);
+    const input = await screen.findByTestId<HTMLInputElement>('setting-grid-cols');
+    expect(input).toBeDisabled();
+    expect(input.value).toBe(String(OMRON_CP1E.gridCols));
+    expect(screen.getByTestId('grid-cols-help')).toHaveTextContent(String(OMRON_CP1E.gridCols));
+  });
+
+  /** レビュー指摘 #8: 列数・通電色のどちらを指すか、文言だけで分かる。 */
+  it('labels the two "follow vendor" checkboxes distinctly', async () => {
+    render(<Settings />);
+    await screen.findByTestId('setting-grid-cols-auto');
+    const gridLabel = document.querySelector('label[for="setting-grid-cols-auto"]');
+    const colorLabel = document.querySelector('label[for="setting-monitor-color-auto"]');
+    expect(gridLabel?.textContent ?? '').toContain('列数');
+    expect(colorLabel?.textContent ?? '').toContain('通電色');
+    expect(gridLabel?.textContent).not.toBe(colorLabel?.textContent);
+  });
+
+  /**
+   * レビュー指摘 #1: 列数欄を空欄にしても「メーカーの既定に従う」チェックは(draft ではなく
+   * 保存済みの値で見ているので)動かない。blur すると保存値へ表示が戻る(保存もされない)。
+   */
+  it('does not tick the follow-vendor checkbox when the field is cleared, and restores the saved value on blur', async () => {
+    installOjt({ ladderGridCols: MITSUBISHI_FX5U.gridCols });
+    render(<Settings />);
+    const input = await screen.findByTestId<HTMLInputElement>('setting-grid-cols');
+    const auto = await screen.findByTestId<HTMLInputElement>('setting-grid-cols-auto');
+    expect(auto).not.toBeChecked();
+
+    fireEvent.change(input, { target: { value: '' } });
+    expect(auto).not.toBeChecked();
+
+    fireEvent.blur(input);
+    expect(saved).toHaveLength(0);
+    expect(input.value).toBe(String(MITSUBISHI_FX5U.gridCols));
+  });
+
+  /**
+   * レビュー指摘 #2: 外す→上書き値を選ぶ→戻す→また外す、を繰り返しても、直前に選んでいた
+   * 上書き値(訓練者が選んだ値)が消えてメーカーの既定に化けない。列数・通電色の両方で確かめる。
+   */
+  it('remembers the last override value per key across toggling the vendor default off and on', async () => {
+    render(<Settings />);
+
+    fireEvent.click(await screen.findByTestId('setting-grid-cols-auto'));
+    await waitFor(() => {
+      expect(saved.at(-1)).toEqual({ ladderGridCols: MITSUBISHI_FX5U.gridCols });
+    });
+    const gridInput = await screen.findByTestId('setting-grid-cols');
+    fireEvent.change(gridInput, { target: { value: '13' } });
+    fireEvent.blur(gridInput);
+    await waitFor(() => {
+      expect(saved.at(-1)).toEqual({ ladderGridCols: 13 });
+    });
+    fireEvent.click(await screen.findByTestId('setting-grid-cols-auto'));
+    await waitFor(() => {
+      expect(saved.at(-1)).toEqual({ ladderGridCols: 0 });
+    });
+    fireEvent.click(await screen.findByTestId('setting-grid-cols-auto'));
+    await waitFor(() => {
+      // メーカーの既定(11)ではなく、直前に選んでいた 13 に戻る
+      expect(saved.at(-1)).toEqual({ ladderGridCols: 13 });
+    });
+
+    fireEvent.click(await screen.findByTestId('setting-monitor-color-auto'));
+    await waitFor(() => {
+      expect(saved.at(-1)).toEqual({ monitorColor: MITSUBISHI_FX5U.monitorColors.powered });
+    });
+    const colorInput = await screen.findByTestId('setting-monitor-color');
+    fireEvent.change(colorInput, { target: { value: '#123456' } });
+    fireEvent.blur(colorInput);
+    await waitFor(() => {
+      expect(saved.at(-1)).toEqual({ monitorColor: '#123456' });
+    });
+    fireEvent.click(await screen.findByTestId('setting-monitor-color-auto'));
+    await waitFor(() => {
+      expect(saved.at(-1)).toEqual({ monitorColor: '' });
+    });
+    fireEvent.click(await screen.findByTestId('setting-monitor-color-auto'));
+    await waitFor(() => {
+      expect(saved.at(-1)).toEqual({ monitorColor: '#123456' });
+    });
+  });
+
   it('writes "" and 0 when the group is reset', async () => {
     render(<Settings />);
     fireEvent.click(await screen.findByTestId('setting-plc-reset'));
