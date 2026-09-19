@@ -95,7 +95,7 @@ export function plcWiringPlan(
   unit: PlcUnitDefinition | undefined,
 ): PlcWireSpec[] {
   if (unit === undefined) return [];
-  const inputName = (x: number): string => unit.spec.inputs[x] ?? `X${x}`;
+  const inputName = (x: number): string => unit.spec.inputs[x]?.name ?? `X${x}`;
   const outputName = (y: number): string => unit.spec.outputs[y]?.name ?? `Y${y}`;
   const comName = (y: number): string => unit.spec.outputs[y]?.com ?? 'COM0';
   const plcTerminal = (name: string): TerminalId => terminalId('PLC', name);
@@ -118,7 +118,7 @@ export function plcWiringPlan(
   // 入力側の端子が必ず鎖の先頭に来る（シンクなら S/S、ソースなら押ボタンのコモン）。
   // N側の鎖と同じ並び方にしておくと、どちらの結線でも「起点 → 入力側 → 出力側」で読める
   const pTargets: TerminalId[] = [
-    ...(io.wiring === 'sink' ? [plcTerminal(unit.spec.inputCommon)] : []),
+    ...(io.wiring === 'sink' ? unit.spec.inputCommons.map(plcTerminal) : []),
     ...(io.wiring === 'source' ? io.inputs.map((input) => pbTerminal(input.pb, 'c')) : []),
     ...usedCommons.map(plcTerminal),
     ...io.outputs.map((output) => terminalId(output.cr, '9')),
@@ -126,15 +126,15 @@ export function plcWiringPlan(
   wires.push(...chain(terminalId(P_RAIL_ID, '1'), pTargets));
   // N側の鎖: 入力コモン（ソースのみ）→ 押ボタンのコモン（シンクのみ）→ コイル(−) → ランプ(−)
   const nTargets: TerminalId[] = [
-    ...(io.wiring === 'source' ? [plcTerminal(unit.spec.inputCommon)] : []),
+    ...(io.wiring === 'source' ? unit.spec.inputCommons.map(plcTerminal) : []),
     ...(io.wiring === 'sink' ? io.inputs.map((input) => pbTerminal(input.pb, 'c')) : []),
     ...io.outputs.map((output) => terminalId(output.cr, '13')),
     ...io.outputs.map((output) => plTerminal(output.pl, '-')),
   ];
   wires.push(...chain(terminalId(N_RAIL_ID, '1'), nTargets));
   // PLC電源は壁コンセントから取る（盤から取ると `plcPowerIndependent` 違反。§10.1）
-  wires.push({ from: terminalId('OUTLET', 'L'), to: plcTerminal('L') });
-  wires.push({ from: terminalId('OUTLET', 'N'), to: plcTerminal('N') });
+  wires.push({ from: terminalId('OUTLET', 'L'), to: plcTerminal(unit.spec.acPower[0]) });
+  wires.push({ from: terminalId('OUTLET', 'N'), to: plcTerminal(unit.spec.acPower[1]) });
   return wires;
 }
 

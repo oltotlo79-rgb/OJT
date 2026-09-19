@@ -57,6 +57,7 @@ describe('モニタ一覧（§10.7）', () => {
     });
     panel();
     expect(screen.getByTestId('monitor-input-0')).toHaveTextContent('X0');
+    // 端子名は機種仕様（`unit.spec.inputs[i].name`）から引く。FX5U の入力0は `X0`（Task 8 で型だけ変えた）
     expect(screen.getByTestId('monitor-input-0')).toHaveTextContent('PLC.X0');
     expect(screen.getByTestId('monitor-input-0')).toHaveTextContent('ON');
     expect(screen.getByTestId('monitor-output-1')).toHaveTextContent('Y1');

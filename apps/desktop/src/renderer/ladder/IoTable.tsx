@@ -29,7 +29,7 @@ export function IoTable({
    * PLC本体の端子名。割付が機種の点数を超えて `unit.spec` に無いときは `undefined` を返し、
    * 呼び出し側が「—」＋注記行を出す（`?? ''` で `PLC.` だけを出していたのを直す。M3）。
    */
-  const inputTerminal = (x: number): string | undefined => unit.spec.inputs[x];
+  const inputTerminal = (x: number): string | undefined => unit.spec.inputs[x]?.name;
   const outputTerminal = (y: number): string | undefined => unit.spec.outputs[y]?.name;
   const unknown =
     io.inputs.some((input) => inputTerminal(input.x) === undefined) ||

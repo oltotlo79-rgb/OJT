@@ -74,6 +74,7 @@ export {
   PLC_INPUT_ON_AMPS,
   plcMetaOf,
   PlcUnitError,
+  type PlcInputSpec,
   type PlcOutputSpec,
   type PlcUnitSpec,
 } from './plc.js';

@@ -5,9 +5,10 @@ export function tinySpec(): PlcUnitSpec {
   return {
     model: 'TEST-2',
     power: ['L', 'N', 'PE'],
-    inputCommon: 'SS',
+    acPower: ['L', 'N'],
+    inputCommons: ['SS'],
     service: ['24V', '0V'],
-    inputs: ['X0', 'X1'],
+    inputs: ['X0', 'X1'].map((name) => ({ name, com: 'SS' })),
     commons: ['COM0'],
     outputs: [
       { name: 'Y0', com: 'COM0' },

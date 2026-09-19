@@ -21,7 +21,7 @@ describe('PLC_UNIT_FX5U', () => {
   });
 
   it('names the 16 inputs and 16 outputs in octal (§10.1)', () => {
-    expect(FX5U_SPEC.inputs).toEqual([
+    expect(FX5U_SPEC.inputs.map((input) => input.name)).toEqual([
       'X0',
       'X1',
       'X2',
@@ -65,6 +65,12 @@ describe('PLC_UNIT_FX5U', () => {
     expect(FX5U_SPEC.outputs[4]?.com).toBe('COM1');
     expect(FX5U_SPEC.outputs[8]?.com).toBe('COM2');
     expect(FX5U_SPEC.outputs[12]?.com).toBe('COM3');
+  });
+
+  it('ties every input to the single S/S common and the AC pair to L and N (§10.1)', () => {
+    expect(FX5U_SPEC.inputCommons).toEqual(['SS']);
+    expect(FX5U_SPEC.inputs.every((input) => input.com === 'SS')).toBe(true);
+    expect(FX5U_SPEC.acPower).toEqual(['L', 'N']);
   });
 
   it('uses the FX5U input circuit values (§5.1.3)', () => {

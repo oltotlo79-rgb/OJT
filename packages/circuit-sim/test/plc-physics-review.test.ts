@@ -120,9 +120,10 @@ describe('COM isolation', () => {
   const twoComSpec = (): PlcUnitSpec => ({
     model: 'TEST-2COM',
     power: ['L', 'N', 'PE'],
-    inputCommon: 'SS',
+    acPower: ['L', 'N'],
+    inputCommons: ['SS'],
     service: ['24V', '0V'],
-    inputs: ['X0'],
+    inputs: [{ name: 'X0', com: 'SS' }],
     commons: ['COM0', 'COM1'],
     outputs: [
       { name: 'Y0', com: 'COM0' },
@@ -196,8 +197,9 @@ describe('createPlcUnit() defaults', () => {
     const spec: PlcUnitSpec = {
       model: 'TEST-BARE',
       power: ['L', 'N', 'PE'],
-      inputCommon: 'SS',
-      inputs: ['X0'],
+      acPower: ['L', 'N'],
+      inputCommons: ['SS'],
+      inputs: [{ name: 'X0', com: 'SS' }],
       commons: ['COM0'],
       outputs: [{ name: 'Y0', com: 'COM0' }],
     };

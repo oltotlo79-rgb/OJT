@@ -87,8 +87,8 @@ export type PartMeta =
       kind: 'plc';
       /** 機種名（`FX5U` など。表示と課題データの照合に使う）。§7.6 */
       model: string;
-      /** 入力コモン（S/S 相当）の端子。 */
-      inputCommon: TerminalId;
+      /** 入力コモン端子（8点1コモンの機種は複数）。§10.1 */
+      inputCommons: readonly TerminalId[];
       inputs: readonly PlcInputChannel[];
       outputs: readonly PlcOutputChannel[];
       /** 入力ON判定のしきい値[A]。§5.1.3 */

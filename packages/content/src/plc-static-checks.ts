@@ -67,15 +67,15 @@ function outputTerminal(unit: PlcUnitDefinition, y: number): TerminalId {
 
 /** 割付の入力番号 → PLCの入力端子。 */
 function inputTerminal(unit: PlcUnitDefinition, x: number): TerminalId {
-  return plcTerminal(unit.spec.inputs[x] ?? `X${x}`);
+  return plcTerminal(unit.spec.inputs[x]?.name ?? `X${x}`);
 }
 
-/** 入力コモンの結線方式を判定する。§10.2 */
+/** 入力コモンの結線方式を判定する。§10.2（8点1コモンの機種はどれか1本でも判定できる） */
 export function detectPlcWiring(
   nets: Nets,
   unit: PlcUnitDefinition,
 ): 'sink' | 'source' | undefined {
-  const terminals = netTerminals(nets, plcTerminal(unit.spec.inputCommon));
+  const terminals = unit.spec.inputCommons.flatMap((name) => netTerminals(nets, plcTerminal(name)));
   if (terminals.some((id) => id.startsWith('P.'))) return 'sink';
   if (terminals.some((id) => id.startsWith('N.'))) return 'source';
   return undefined;
@@ -193,7 +193,7 @@ export function checkPlcPowerIndependent(input: StaticCheckInput): StaticCheckRe
   if (plc === undefined) return missingContext('plcPowerIndependent');
   const nets = buildNets(input.netlist);
   const details: string[] = [];
-  for (const name of ['L', 'N']) {
+  for (const name of plc.unit.spec.acPower) {
     const terminal = plcTerminal(name);
     const terminals = netTerminals(nets, terminal);
     const fromBoard = terminals.filter((id) =>

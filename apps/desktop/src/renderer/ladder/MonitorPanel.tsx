@@ -91,7 +91,7 @@ export function MonitorPanel({
               {monitor.inputs.map((value, index) => (
                 <tr key={`x-${String(index)}`} data-testid={`monitor-input-${String(index)}`}>
                   <td>{profile.formatDevice(X(index))}</td>
-                  <td>{terminal(unit.spec.inputs[index])}</td>
+                  <td>{terminal(unit.spec.inputs[index]?.name)}</td>
                   <td>{onOffLabel(value)}</td>
                 </tr>
               ))}

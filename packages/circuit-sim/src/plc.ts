@@ -32,18 +32,32 @@ export interface PlcOutputSpec {
   com: string;
 }
 
+/**
+ * 入力1点の仕様（端子名・所属する入力コモン・入力回路の抵抗）。§10.1 / §5.1.3
+ * 8点1コモンの機種（TOYOPUC `IN-12` / シャープ `JW-212NA`）と、点によって抵抗が違う機種
+ * （CP1E は `0.00`〜`0.07` が 3.3kΩ、`0.08` 以降が 4.8kΩ）を表すために点ごとに持つ。
+ */
+export interface PlcInputSpec {
+  name: string;
+  com: string;
+  /** この点の入力回路の抵抗[Ω]。省略時は `PlcUnitSpec.inputOhms`。 */
+  ohms?: number;
+}
+
 /** PLC本体1機種の仕様。§10.1 */
 export interface PlcUnitSpec {
   /** 機種名（`FX5U` など）。 */
   model: string;
   /** 電源端子名（`L` / `N` / `PE`）。電気的には解かない。 */
   power: readonly string[];
-  /** 入力コモン端子名（`S/S` 相当。端子IDに使うので `/` は入れない）。 */
-  inputCommon: string;
+  /** 壁コンセントへ配線するAC電源端子（活線側・中性線側）。§10.1 */
+  acPower: readonly [string, string];
+  /** 入力コモン端子名（`S/S` 相当。8点1コモンの機種は複数。端子IDに使うので `/` は入れない）。 */
+  inputCommons: readonly string[];
   /** 本体のサービス電源など、要素を持たない付随端子（`24V` / `0V`）。 */
   service?: readonly string[];
-  /** 入力端子名（機種の表記どおり。並び順が入力番号）。 */
-  inputs: readonly string[];
+  /** 入力端子（並び順が入力番号）。 */
+  inputs: readonly PlcInputSpec[];
   /** 出力コモン端子名。 */
   commons: readonly string[];
   /** 出力端子（並び順が出力番号）。 */
@@ -79,6 +93,18 @@ export function createPlcUnit(id: PartId | string, spec: PlcUnitSpec): Part {
       throw new PlcUnitError(`出力 ${output.name} のCOM端子が機種にありません: ${output.com}`);
     }
   }
+  const inputCommons = new Set(spec.inputCommons);
+  for (const input of spec.inputs) {
+    if (!inputCommons.has(input.com)) {
+      throw new PlcUnitError(`入力 ${input.name} のコモン端子が機種にありません: ${input.com}`);
+    }
+  }
+  const power = new Set(spec.power);
+  for (const name of spec.acPower) {
+    if (!power.has(name)) {
+      throw new PlcUnitError(`AC電源端子が機種の電源端子にありません: ${name}`);
+    }
+  }
   const inputOhms = spec.inputOhms ?? PLC_INPUT_OHMS;
   const onAmps = spec.onAmps ?? PLC_INPUT_ON_AMPS;
   const offAmps = spec.offAmps ?? PLC_INPUT_OFF_AMPS;
@@ -86,22 +112,21 @@ export function createPlcUnit(id: PartId | string, spec: PlcUnitSpec): Part {
     throw new PlcUnitError(`ON判定はOFF判定より大きい必要があります: ${onAmps} / ${offAmps}`);
   }
 
-  const inputCommon = term(spec.inputCommon);
   const elements: Element[] = [];
-  const inputs: PlcInputChannel[] = spec.inputs.map((name, index) => {
-    const terminal = term(name);
+  const inputs: PlcInputChannel[] = spec.inputs.map((input, index) => {
+    const terminal = term(input.name);
     const elementId = `${pid}:in${index}`;
     const load: LoadElement = {
       kind: 'load',
       id: elementId,
-      from: inputCommon,
+      from: term(input.com),
       to: terminal,
       load: 'plcInput',
-      nominalOhms: inputOhms,
+      nominalOhms: input.ohms ?? inputOhms,
       polarized: false,
     };
     elements.push(load);
-    return { name, terminal, elementId };
+    return { name: input.name, terminal, elementId };
   });
   const outputs: PlcOutputChannel[] = spec.outputs.map((output, index) => {
     const terminal = term(output.name);
@@ -123,9 +148,10 @@ export function createPlcUnit(id: PartId | string, spec: PlcUnitSpec): Part {
     return { name: output.name, terminal, com, elementId };
   });
 
+  const commonTerminals = spec.inputCommons.map(term);
   const terminals: TerminalId[] = [
     ...spec.power.map(term),
-    inputCommon,
+    ...commonTerminals,
     ...(spec.service ?? []).map(term),
     ...inputs.map((channel) => channel.terminal),
     ...spec.commons.map(term),
@@ -140,7 +166,7 @@ export function createPlcUnit(id: PartId | string, spec: PlcUnitSpec): Part {
     meta: {
       kind: 'plc',
       model: spec.model,
-      inputCommon,
+      inputCommons: commonTerminals,
       inputs,
       outputs,
       onAmps,

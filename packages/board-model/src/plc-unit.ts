@@ -47,9 +47,10 @@ export function octalNames(prefix: string, count: number): string[] {
 export const FX5U_SPEC: PlcUnitSpec = {
   model: 'FX5U',
   power: ['L', 'PE', 'N'],
-  inputCommon: 'SS',
+  acPower: ['L', 'N'],
+  inputCommons: ['SS'],
   service: ['24V', '0V'],
-  inputs: octalNames('X', 16),
+  inputs: octalNames('X', 16).map((name) => ({ name, com: 'SS' })),
   commons: ['COM0', 'COM1', 'COM2', 'COM3'],
   outputs: octalNames('Y', 16).map((name, index) => ({
     name,
@@ -60,16 +61,15 @@ export const FX5U_SPEC: PlcUnitSpec = {
   offAmps: FX5U_OFF_AMPS,
 };
 
-/** 端子名 → 役割（§6.6 の `role`）。 */
-function plcRole(name: string): TerminalRole {
-  if (name === 'L') return 'ac-l';
-  if (name === 'N') return 'ac-n';
-  if (name === 'PE') return 'ac';
-  if (name === 'SS') return 'ss';
-  if (name === '24V') return '+';
-  if (name === '0V') return '-';
-  if (name.startsWith('COM')) return 'plc-com';
-  if (name.startsWith('X')) return 'x';
+/** 端子名 → 役割（§6.6 の `role`）。機種仕様の集合から引く。 */
+function plcRole(spec: PlcUnitSpec, name: string): TerminalRole {
+  if (name === spec.acPower[0]) return 'ac-l';
+  if (name === spec.acPower[1]) return 'ac-n';
+  if (spec.power.includes(name)) return 'ac';
+  if (spec.inputCommons.includes(name)) return 'ss';
+  if (spec.commons.includes(name)) return 'plc-com';
+  if ((spec.service ?? []).includes(name)) return name === '0V' || name === '-' ? '-' : '+';
+  if (spec.inputs.some((input) => input.name === name)) return 'x';
   return 'y';
 }
 
@@ -77,15 +77,20 @@ function plcRole(name: string): TerminalRole {
 function plcLabel(name: string): string {
   if (name === 'SS') return 'S/S';
   if (name === 'PE') return '⏚';
+  if (name === 'L2N') return 'L2/N';
   return name;
 }
 
 /** 千鳥2列に並べた端子を作る。偶数番が奥列、奇数番が手前列。 */
-function staggeredTerminals(names: readonly string[], origin: Vec3): BoardTerminal[] {
+function staggeredTerminals(
+  spec: PlcUnitSpec,
+  names: readonly string[],
+  origin: Vec3,
+): BoardTerminal[] {
   return names.map((name, index) => ({
     id: `${PLC_PART_ID}.${name}` as TerminalId,
     label: plcLabel(name),
-    role: plcRole(name),
+    role: plcRole(spec, name),
     pos: vec3(
       origin.x + Math.floor(index / 2) * PLC_TERMINAL_PITCH_MM + (index % 2) * PLC_STAGGER_MM,
       origin.y + (index % 2) * PLC_ROW_GAP_MM,
@@ -102,9 +107,9 @@ function staggeredTerminals(names: readonly string[], origin: Vec3): BoardTermin
 function fx5uTerminals(): BoardTerminal[] {
   const inputSide = [
     ...FX5U_SPEC.power,
-    FX5U_SPEC.inputCommon,
+    ...FX5U_SPEC.inputCommons,
     ...(FX5U_SPEC.service ?? []),
-    ...FX5U_SPEC.inputs,
+    ...FX5U_SPEC.inputs.map((input) => input.name),
   ];
   const outputSide: string[] = [];
   FX5U_SPEC.outputs.forEach((output, index) => {
@@ -112,8 +117,12 @@ function fx5uTerminals(): BoardTerminal[] {
     outputSide.push(output.name);
   });
   return [
-    ...staggeredTerminals(inputSide, vec3(PLC_ORIGIN_MM.x + 6, PLC_ORIGIN_MM.y + 6, 0)),
-    ...staggeredTerminals(outputSide, vec3(PLC_ORIGIN_MM.x + 6, PLC_ORIGIN_MM.y + 72, 0)),
+    ...staggeredTerminals(FX5U_SPEC, inputSide, vec3(PLC_ORIGIN_MM.x + 6, PLC_ORIGIN_MM.y + 6, 0)),
+    ...staggeredTerminals(
+      FX5U_SPEC,
+      outputSide,
+      vec3(PLC_ORIGIN_MM.x + 6, PLC_ORIGIN_MM.y + 72, 0),
+    ),
   ];
 }
 

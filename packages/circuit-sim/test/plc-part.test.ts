@@ -72,7 +72,7 @@ describe('createPlcUnit', () => {
     const part = createPlcUnit('PLC', tinySpec());
     const meta = plcMetaOf(part);
     expect(meta?.model).toBe('TEST-2');
-    expect(meta?.inputCommon).toBe('PLC.SS');
+    expect(meta?.inputCommons).toEqual(['PLC.SS']);
     expect(meta?.inputs).toEqual([
       { name: 'X0', terminal: 'PLC.X0', elementId: 'PLC:in0' },
       { name: 'X1', terminal: 'PLC.X1', elementId: 'PLC:in1' },
@@ -104,6 +104,33 @@ describe('createPlcUnit', () => {
     expect(() =>
       createPlcUnit('PLC', { ...spec, outputs: [{ name: 'Y0', com: 'COM9' }] }),
     ).toThrow();
+  });
+
+  it('rejects an input whose common is not in the inputCommons list (§10.1)', () => {
+    const spec = tinySpec();
+    expect(() =>
+      createPlcUnit('PLC', { ...spec, inputs: [{ name: 'X0', com: 'ICOM9' }] }),
+    ).toThrow();
+  });
+
+  it('rejects an AC power terminal that is not one of the power terminals (§10.1)', () => {
+    const spec = tinySpec();
+    expect(() => createPlcUnit('PLC', { ...spec, acPower: ['L1', 'L2N'] })).toThrow();
+  });
+
+  it('takes the per-point resistance over the model-wide one (§5.1.3)', () => {
+    const spec = tinySpec();
+    const part = createPlcUnit('PLC', {
+      ...spec,
+      inputs: [
+        { name: 'X0', com: 'SS', ohms: 3300 },
+        { name: 'X1', com: 'SS' },
+      ],
+    });
+    const ohms = part.elements
+      .filter((el): el is Extract<typeof el, { kind: 'load' }> => el.kind === 'load')
+      .map((el) => el.nominalOhms);
+    expect(ohms).toEqual([3300, 4500]);
   });
 
   it('returns undefined for a part that is not a PLC', () => {
