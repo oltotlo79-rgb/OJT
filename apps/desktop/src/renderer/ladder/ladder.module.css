@@ -143,3 +143,99 @@
   font-size: 12px;
 }
 /* --- /Plan 3B Task 5 --- */
+
+/* --- Plan 3B Task 6 --- */
+.output {
+  border-top: 1px solid #d5d8de;
+  background: #fff;
+  max-height: 168px;
+  overflow: auto;
+  font-size: 12px;
+}
+
+.outputHeader {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 4px 8px;
+  position: sticky;
+  top: 0;
+  background: #eef0f4;
+}
+
+.outputHeader h2 {
+  font-size: 12px;
+  margin: 0;
+}
+
+.okTag {
+  color: #1c7c3c;
+}
+
+.ngTag {
+  color: #b34700;
+}
+
+.outputList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+/* 行はボタン（キーボードで辿れる。I11）。ボタンの既定の見た目は消して一覧に馴染ませる */
+.outputList li > button {
+  display: grid;
+  grid-template-columns: 76px 128px 1fr;
+  gap: 6px;
+  padding: 2px 8px;
+  width: 100%;
+  border: 0;
+  background: none;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.outputList li > button:disabled {
+  cursor: default;
+}
+
+.outputList li > button:focus-visible {
+  outline: 2px solid #1e64ff;
+  outline-offset: -2px;
+}
+
+.outputError {
+  color: #b3261e;
+}
+
+.outputWarning {
+  color: #b34700;
+}
+
+.outputEmpty {
+  color: #666;
+  cursor: default;
+}
+
+.outputLabel {
+  font-weight: 700;
+}
+
+.outputPlace {
+  color: #555;
+}
+
+.usage {
+  padding: 4px 8px 8px;
+  border-top: 1px dashed #d5d8de;
+}
+
+.usage p {
+  margin: 2px 0;
+}
+
+.usageUnused {
+  color: #777;
+}
+/* --- /Plan 3B Task 6 --- */

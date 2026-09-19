@@ -390,6 +390,19 @@ export const JA = {
     nothingToUndo: 'これ以上は元に戻せません',
     nothingToRedo: 'これ以上はやり直せません',
     // --- /Plan 3B Task 5 ---
+    // --- Plan 3B Task 6 ---
+    /** 出力ウィンドウ（変換の結果）。§10.6 */
+    output: '出力ウィンドウ',
+    structureError: '構造エラー',
+    dialectError: '機種エラー',
+    doubleCoil: '二重コイル',
+    noIssues: '指摘はありません。',
+    convertOk: '変換に成功しました',
+    notConverted: '未変換（F4 で変換します）',
+    usageReads: '読み出しているデバイス',
+    usageWrites: '書き込んでいるデバイス',
+    usageUnused: '使われていないデバイス（表示のみ・合否には影響しません）',
+    // --- /Plan 3B Task 6 ---
   },
   // --- /Plan 3B Task 4 ---
   // --- Plan 3B Task 10 ---
@@ -656,3 +669,12 @@ export function timerRoundPrompt(ms: number, device: string, baseMs: number): st
   return `${String(ms)}ms は ${device} では指定できません。${String(baseMs)}ms 刻みに丸めますか？`;
 }
 // --- /Plan 3B Task 5 ---
+
+// --- Plan 3B Task 6 ---
+/** 変換エラーの場所（`n1 / 1 行 / 3 列`）。位置を持たない指摘は空文字。§10.6 */
+export function ladderIssuePlace(networkId?: string, row?: number, col?: number): string {
+  if (networkId === undefined) return '';
+  if (row === undefined || col === undefined) return networkId;
+  return `${networkId} / ${String(row + 1)} 行 / ${String(col + 1)} 列`;
+}
+// --- /Plan 3B Task 6 ---
