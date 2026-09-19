@@ -5220,7 +5220,7 @@ git add apps/desktop && git commit -m "feat(desktop): suggest the suspect wiring
 
 決定表#12: 選択は `PickHit`（`kind: 'terminal'`）にして**既存の `pickToAction()` に通す**。配線の規則は1箇所のまま。
 
-- [ ] **Step 1: 失敗するテストを書く**
+- [x] **Step 1: 失敗するテストを書く**
 
 `apps/desktop/test/terminal-list.test.tsx`:
 
@@ -5346,7 +5346,7 @@ describe('TerminalListPanel（UXレビュー #29）', () => {
 });
 ```
 
-- [ ] **Step 2: `session/terminal-list.ts` を実装する**
+- [x] **Step 2: `session/terminal-list.ts` を実装する**
 
 ```ts
 import {
@@ -5444,7 +5444,7 @@ export function isDeskRow(row: TerminalRow): boolean {
 }
 ```
 
-- [ ] **Step 3: `TerminalListPanel.tsx` を実装する**
+- [x] **Step 3: `TerminalListPanel.tsx` を実装する**
 
 ```tsx
 import type { BoardDefinition, BoardSession } from '@ojt/board-model';
@@ -5555,7 +5555,7 @@ export function TerminalListPanel({
   },
 ```
 
-- [ ] **Step 4: `Session.tsx` の右パネルに差し込む**
+- [x] **Step 4: `Session.tsx` の右パネルに差し込む**
 
 `PartsPanel` の直後（回路図ヒントより前）に:
 
@@ -5573,7 +5573,7 @@ export function TerminalListPanel({
 
 `onPick` は3Dのピックと**同じコールバック**である（決定表#12）。`escapeToAction` は既に import 済み。
 
-- [ ] **Step 5: CSS を足してテストを走らせる**
+- [x] **Step 5: CSS を足してテストを走らせる**
 
 `panels.module.css` の末尾に `.terminalList` / `.terminalHint` / `.terminalSearch` / `.terminalPending` / `.terminalGroups` / `.terminalGroup` / `.terminalGroupName` / `.terminalRow` / `.terminalName` / `.terminalCount` を足す。**`.terminalRow:focus-visible` に枠**を置き、`.terminalGroups` は `max-height: 240px; overflow-y: auto;` で右パネルを押し出さない。余白はすべて4の倍数。
 

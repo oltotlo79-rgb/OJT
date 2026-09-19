@@ -30,6 +30,7 @@ import { LogPanel } from '../panels/LogPanel.js';
 import { PartsPanel } from '../panels/PartsPanel.js';
 import { PowerControls } from '../panels/PowerControls.js';
 import { ProblemPanel } from '../panels/ProblemPanel.js';
+import { TerminalListPanel } from '../panels/TerminalListPanel.js';
 import { liveChart, TimeChartPanel, TimeChartSvg } from '../panels/TimeChartPanel.js';
 import { Toolbar } from '../panels/Toolbar.js';
 import { ViewHint } from '../panels/ViewHint.js';
@@ -935,6 +936,17 @@ export function Session(): JSX.Element {
             onSwap={onSwap}
             onPreset={onPreset}
           />
+          {/* --- Plan 5 Task 10: 端子リストによるキーボード配線（UXレビュー #29 / 決定表#12） --- */}
+          <TerminalListPanel
+            board={JIPM_BOARD}
+            session={session}
+            pendingTerminal={pendingTerminal}
+            onPick={onPick}
+            onCancel={() => {
+              runAction(escapeToAction({ mode, pendingTerminal, selectedWire, wireColor }));
+            }}
+          />
+          {/* --- /Plan 5 Task 10 --- */}
           {showSchematic ? (
             <section className={styles.panelLive} data-testid="schematic-hint">
               <h2 className={styles.liveTitle}>{JA.session.schematicHint}</h2>

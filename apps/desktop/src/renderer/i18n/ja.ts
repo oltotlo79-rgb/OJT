@@ -1017,6 +1017,17 @@ export const JA = {
     zoomLabel: '表示倍率',
   },
   // --- /schematic quality 2026-09-19 ---
+  // --- Plan 5 Task 10 ---
+  /** 端子リスト（キーボードで配線する）。UXレビュー #29 */
+  terminalList: {
+    title: '端子リスト（キーボード配線）',
+    hint: 'Tab で端子を移動し、Enter で選びます。2つ選ぶと電線が1本つながります。',
+    search: '端子を探す',
+    pending: '1本目',
+    cancel: '取り消す',
+    full: 'この端子には既に2本つながっています（§6.6）',
+  },
+  // --- /Plan 5 Task 10 ---
 } as const;
 
 /** アナログのΩレンジの表示（`×1` / `×10` / `×1k`）。§9.3 */

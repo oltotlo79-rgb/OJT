@@ -379,3 +379,89 @@
   font-weight: 700;
 }
 /* --- /Plan 5 Task 7 --- */
+
+/* --- Plan 5 Task 10: 端子リストによるキーボード配線（UXレビュー #29） --- */
+.terminalList {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  padding: 8px 10px;
+  margin-bottom: 8px;
+}
+
+.terminalHint {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+  margin: 0 0 8px;
+}
+
+.terminalSearch {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 4px 8px;
+  margin-bottom: 8px;
+}
+
+.terminalPending {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  background: var(--panel-2);
+  border-left: 4px solid var(--accent);
+  padding: 4px 8px;
+  margin: 0 0 8px;
+  font-size: 12px;
+}
+
+.terminalGroups {
+  max-height: 240px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.terminalGroup {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
+.terminalGroupName {
+  flex: 0 0 100%;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.terminalRow {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  min-height: 28px;
+}
+
+.terminalRow:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.terminalRow[aria-pressed='true'] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #10151c;
+}
+
+.terminalName {
+  font-size: 12px;
+}
+
+.terminalCount {
+  color: var(--muted);
+  font-size: 11px;
+}
+/* --- /Plan 5 Task 10 --- */
