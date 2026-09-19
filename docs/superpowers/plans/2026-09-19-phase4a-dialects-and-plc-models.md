@@ -3332,3 +3332,1031 @@ git commit -m "feat(plc-dialects): export the instruction list in each dialect"
 ここで**バッチB のレビュー（Opus 1回）**をかける。見どころ: ①直並列簡約が内蔵課題8題の全ネットワークで `not-series-parallel` を出さないか（レビューで `BUILTIN_PLC_PROBLEMS` を読み込んで確かめる probe を書いてよい）②`presetEmit` の接頭辞合流が4方言で意図どおりか ③CRLF とステップ番号の連番。
 
 ---
+
+## Task 8: `PlcUnitSpec` を「8点1コモン・点別入力抵抗・機種別AC端子」に対応させる
+
+**モデル: Opus**（既存3パッケージに跨る型変更で、振る舞いを変えないことの確認が要るため）
+
+**Files:**
+- Modify: `packages/circuit-sim/src/plc.ts`・`src/parts.ts`・`src/index.ts`
+- Modify: `packages/board-model/src/plc-unit.ts`（FX5U の追随と `plcRole` の一般化）
+- Modify: `packages/content/src/plc-reference.ts`・`src/plc-static-checks.ts`（呼び出し側の追随）
+- Test: `packages/circuit-sim/test/helpers/plc.ts`・`test/plc-part.test.ts`・`test/plc-physics-review.test.ts`
+- Test: `packages/board-model/test/plc-unit.test.ts`
+
+**振る舞いは変えない**。FX5U のネットリスト・端子・判定はこのタスクの前後で同一でなければならない（既存テストがそのまま通ることで確かめる）。変えるのは「機種を足せる形」にするための型だけである（決定表#9・#10）。
+
+| 変更 | 前 | 後 |
+|---|---|---|
+| 入力1点 | `inputs: readonly string[]`（端子名） | `inputs: readonly PlcInputSpec[]`（`{name, com, ohms?}`） |
+| 入力コモン | `inputCommon: string`（単数） | `inputCommons: readonly string[]`（8点1コモンの機種は2つ） |
+| AC電源端子 | `checkPlcPowerIndependent` が `'L'`/`'N'` を直書き | `acPower: readonly [string, string]`（CP1E は `L1`/`L2N`） |
+| `PartMeta` | `inputCommon: TerminalId` | `inputCommons: readonly TerminalId[]` |
+
+- [ ] **Step 1: 失敗するテストを書く（既存テストの更新が RED になる）**
+
+`packages/circuit-sim/test/helpers/plc.ts` の spec を新しい形にする:
+
+```ts
+    power: ['L', 'PE', 'N'],
+    acPower: ['L', 'N'],
+    inputCommons: ['SS'],
+    inputs: ['X0', 'X1', 'X2', 'X3'].map((name) => ({ name, com: 'SS' })),
+```
+
+（`inputs` の並びと端子名は変えない。`plc-physics-review.test.ts` の2箇所の spec も同じ形に直す。）
+
+`packages/circuit-sim/test/plc-part.test.ts` の `expect(meta?.inputCommon).toBe('PLC.SS');` を次にする:
+
+```ts
+    expect(meta?.inputCommons).toEqual(['PLC.SS']);
+```
+
+`packages/board-model/test/plc-unit.test.ts` の入力端子名の検査を次にする:
+
+```ts
+    expect(FX5U_SPEC.inputs.map((input) => input.name)).toEqual([
+```
+
+同じファイルに、点別の値とAC端子の検査を足す:
+
+```ts
+  it('ties every input to the single S/S common and the AC pair to L and N (§10.1)', () => {
+    expect(FX5U_SPEC.inputCommons).toEqual(['SS']);
+    expect(FX5U_SPEC.inputs.every((input) => input.com === 'SS')).toBe(true);
+    expect(FX5U_SPEC.acPower).toEqual(['L', 'N']);
+  });
+```
+
+- [ ] **Step 2: RED を確認する**
+
+```powershell
+pnpm --filter @ojt/circuit-sim exec vitest run test/plc-part.test.ts
+```
+
+Expected: 失敗（`inputCommons` が無い／`inputs` の型が合わない）。
+
+- [ ] **Step 3: `packages/circuit-sim/src/plc.ts` を直す**
+
+`PlcOutputSpec` の直後に足す:
+
+```ts
+/**
+ * 入力1点の仕様（端子名・所属する入力コモン・入力回路の抵抗）。§10.1 / §5.1.3
+ * 8点1コモンの機種（TOYOPUC `IN-12` / シャープ `JW-212NA`）と、点によって抵抗が違う機種
+ * （CP1E は `0.00`〜`0.07` が 3.3kΩ、`0.08` 以降が 4.8kΩ）を表すために点ごとに持つ。
+ */
+export interface PlcInputSpec {
+  name: string;
+  com: string;
+  /** この点の入力回路の抵抗[Ω]。省略時は `PlcUnitSpec.inputOhms`。 */
+  ohms?: number;
+}
+```
+
+`PlcUnitSpec` の `inputCommon` / `inputs` を次で置き換える（他の項目はそのまま）:
+
+```ts
+  /** 壁コンセントへ配線するAC電源端子（活線側・中性線側）。§10.1 */
+  acPower: readonly [string, string];
+  /** 入力コモン端子名（`S/S` 相当。8点1コモンの機種は複数。端子IDに使うので `/` は入れない）。 */
+  inputCommons: readonly string[];
+  /** 入力端子（並び順が入力番号）。 */
+  inputs: readonly PlcInputSpec[];
+```
+
+`createPlcUnit()` の本体を次のように直す（変更箇所のみ）:
+
+```ts
+  const commons = new Set(spec.commons);
+  for (const output of spec.outputs) {
+    if (!commons.has(output.com)) {
+      throw new PlcUnitError(`出力 ${output.name} のCOM端子が機種にありません: ${output.com}`);
+    }
+  }
+  const inputCommons = new Set(spec.inputCommons);
+  for (const input of spec.inputs) {
+    if (!inputCommons.has(input.com)) {
+      throw new PlcUnitError(`入力 ${input.name} のコモン端子が機種にありません: ${input.com}`);
+    }
+  }
+  const power = new Set(spec.power);
+  for (const name of spec.acPower) {
+    if (!power.has(name)) {
+      throw new PlcUnitError(`AC電源端子が機種の電源端子にありません: ${name}`);
+    }
+  }
+```
+
+入力要素の組み立てを次にする:
+
+```ts
+  const inputs: PlcInputChannel[] = spec.inputs.map((input, index) => {
+    const terminal = term(input.name);
+    const elementId = `${pid}:in${index}`;
+    const load: LoadElement = {
+      kind: 'load',
+      id: elementId,
+      from: term(input.com),
+      to: terminal,
+      load: 'plcInput',
+      nominalOhms: input.ohms ?? inputOhms,
+      polarized: false,
+    };
+    elements.push(load);
+    return { name: input.name, terminal, elementId };
+  });
+```
+
+端子一覧とメタデータを次にする（`const inputCommon = term(spec.inputCommon);` の行は削除する）:
+
+```ts
+  const commonTerminals = spec.inputCommons.map(term);
+  const terminals: TerminalId[] = [
+    ...spec.power.map(term),
+    ...commonTerminals,
+    ...(spec.service ?? []).map(term),
+    ...inputs.map((channel) => channel.terminal),
+    ...spec.commons.map(term),
+    ...outputs.map((channel) => channel.terminal),
+  ];
+```
+
+```ts
+    meta: {
+      kind: 'plc',
+      model: spec.model,
+      inputCommons: commonTerminals,
+      inputs,
+      outputs,
+      onAmps,
+      offAmps,
+      power: spec.power.map(term),
+    },
+```
+
+- [ ] **Step 4: `packages/circuit-sim/src/parts.ts` と `src/index.ts` を直す**
+
+`PartMeta` の `inputCommon: TerminalId;` を次にする:
+
+```ts
+      /** 入力コモン端子（8点1コモンの機種は複数）。§10.1 */
+      inputCommons: readonly TerminalId[];
+```
+
+`src/index.ts` の `plc.js` からの再エクスポートに `type PlcInputSpec` を足す。
+
+- [ ] **Step 5: `packages/board-model/src/plc-unit.ts` を追随させる**
+
+`FX5U_SPEC` を次にする:
+
+```ts
+/** FX5U-32MR/ES の電気的な仕様。§10.1 / §5.1.3 */
+export const FX5U_SPEC: PlcUnitSpec = {
+  model: 'FX5U',
+  power: ['L', 'PE', 'N'],
+  acPower: ['L', 'N'],
+  inputCommons: ['SS'],
+  service: ['24V', '0V'],
+  inputs: octalNames('X', 16).map((name) => ({ name, com: 'SS' })),
+  commons: ['COM0', 'COM1', 'COM2', 'COM3'],
+  outputs: octalNames('Y', 16).map((name, index) => ({
+    name,
+    com: `COM${Math.floor(index / FX5U_POINTS_PER_COMMON)}`,
+  })),
+  inputOhms: FX5U_INPUT_OHMS,
+  onAmps: FX5U_ON_AMPS,
+  offAmps: FX5U_OFF_AMPS,
+};
+```
+
+`plcRole()` を機種仕様から引く形にする（名前の綴りに頼らない。Phase 4 の `0.00` / `A0` / `COM.A` に備える）:
+
+```ts
+/** 端子名 → 役割（§6.6 の `role`）。機種仕様の集合から引く。 */
+function plcRole(spec: PlcUnitSpec, name: string): TerminalRole {
+  if (name === spec.acPower[0]) return 'ac-l';
+  if (name === spec.acPower[1]) return 'ac-n';
+  if (spec.power.includes(name)) return 'ac';
+  if (spec.inputCommons.includes(name)) return 'ss';
+  if (spec.commons.includes(name)) return 'plc-com';
+  if ((spec.service ?? []).includes(name)) return name === '0V' || name === '-' ? '-' : '+';
+  if (spec.inputs.some((input) => input.name === name)) return 'x';
+  return 'y';
+}
+```
+
+`plcLabel()` に CP1E の銘板を足す:
+
+```ts
+function plcLabel(name: string): string {
+  if (name === 'SS') return 'S/S';
+  if (name === 'PE') return '⏚';
+  if (name === 'L2N') return 'L2/N';
+  return name;
+}
+```
+
+`staggeredTerminals()` に機種仕様を渡すようにし（`plcRole(spec, name)`）、`fx5uTerminals()` の入力側を次にする:
+
+```ts
+  const inputSide = [
+    ...FX5U_SPEC.power,
+    ...FX5U_SPEC.inputCommons,
+    ...(FX5U_SPEC.service ?? []),
+    ...FX5U_SPEC.inputs.map((input) => input.name),
+  ];
+```
+
+- [ ] **Step 6: `@ojt/content` の呼び出し側を追随させる（コンパイルを通す最小の変更）**
+
+`packages/content/src/plc-reference.ts` の `plcWiringPlan()`:
+
+```ts
+  const inputName = (x: number): string => unit.spec.inputs[x]?.name ?? `X${x}`;
+```
+
+入力コモンを鎖に入れる2箇所を次にする（FX5U は1本なので従来と同じ配線になる）:
+
+```ts
+    ...(io.wiring === 'sink' ? unit.spec.inputCommons.map(plcTerminal) : []),
+```
+
+```ts
+    ...(io.wiring === 'source' ? unit.spec.inputCommons.map(plcTerminal) : []),
+```
+
+PLC電源の2本を次にする:
+
+```ts
+  wires.push({ from: terminalId('OUTLET', 'L'), to: plcTerminal(unit.spec.acPower[0]) });
+  wires.push({ from: terminalId('OUTLET', 'N'), to: plcTerminal(unit.spec.acPower[1]) });
+```
+
+`packages/content/src/plc-static-checks.ts`:
+
+```ts
+function inputTerminal(unit: PlcUnitDefinition, x: number): TerminalId {
+  return plcTerminal(unit.spec.inputs[x]?.name ?? `X${x}`);
+}
+```
+
+```ts
+/** 入力コモンの結線方式を判定する。§10.2（8点1コモンの機種はどれか1本でも判定できる） */
+export function detectPlcWiring(
+  nets: Nets,
+  unit: PlcUnitDefinition,
+): 'sink' | 'source' | undefined {
+  const terminals = unit.spec.inputCommons.flatMap((name) => netTerminals(nets, plcTerminal(name)));
+  if (terminals.some((id) => id.startsWith('P.'))) return 'sink';
+  if (terminals.some((id) => id.startsWith('N.'))) return 'source';
+  return undefined;
+}
+```
+
+`checkPlcPowerIndependent()` の `for (const name of ['L', 'N'])` を次にする:
+
+```ts
+  for (const name of plc.unit.spec.acPower) {
+```
+
+（`checkIoAssignment()` の三菱固有の正規表現は Task 13 で直す。）
+
+- [ ] **Step 7: GREEN を確認する**
+
+```powershell
+pnpm --filter @ojt/circuit-sim exec vitest run
+pnpm --filter @ojt/board-model exec vitest run
+pnpm --filter @ojt/content exec vitest run
+pnpm -r typecheck
+```
+
+Expected: 3パッケージとも着手前と**同じ件数**が通る（振る舞いを変えていないため）。特に `board-model/test/plc-netlist.test.ts` と `content/test/builtin-plc.test.ts` が無変更で通ること。
+
+- [ ] **Step 8: コミットする**
+
+```powershell
+git add packages/circuit-sim packages/board-model packages/content
+git commit -m "refactor(circuit-sim): let a PLC spec describe per-point commons, resistance and AC terminals"
+```
+
+---
+
+## Task 9: OMRON CP1E-N30DR-A（一体形）の本体定義
+
+**モデル: Sonnet**
+
+**Files:**
+- Modify: `packages/board-model/src/plc-unit.ts`
+- Modify: `packages/board-model/src/index.ts`
+- Test: `packages/board-model/test/plc-cp1e.test.ts`
+
+§10.1 の CP1E 行を実装する。一体形なので端子の並べ方は FX5U と同じ千鳥2列でよい（前提#16 の定数をそのまま使う）。COM分けは §17.1 の前提値 3/3/2/2/2、入力抵抗は §5.1.3 の 3.3kΩ（`0.00`〜`0.07`）と 4.8kΩ（`0.08` 以降）。
+
+- [ ] **Step 1: 失敗するテストを書く**
+
+`packages/board-model/test/plc-cp1e.test.ts`:
+
+```ts
+import { describe, expect, it } from 'vitest';
+import {
+  CP1E_SPEC,
+  JIPM_BOARD,
+  PLC_UNIT_CP1E,
+  plcUnitFor,
+  validateBoard,
+  withPlcUnit,
+} from '../src/index.js';
+
+describe('PLC_UNIT_CP1E（§10.1 / §17.1 の前提値）', () => {
+  it('describes the CP1E-N30DR-A body', () => {
+    expect(PLC_UNIT_CP1E.model).toBe('CP1E');
+    expect(PLC_UNIT_CP1E.vendor).toBe('omron');
+    expect(PLC_UNIT_CP1E.form).toBe('unit');
+    expect(PLC_UNIT_CP1E.sizeMm).toEqual({ width: 130, height: 90, depth: 85 });
+    expect(PLC_UNIT_CP1E.leds).toEqual(['POWER', 'RUN', 'ERR', 'ALM']);
+    expect(plcUnitFor('CP1E')).toBe(PLC_UNIT_CP1E);
+  });
+
+  it('names 18 inputs and 12 outputs in the CIO spelling (§10.1)', () => {
+    expect(CP1E_SPEC.inputs.map((i) => i.name).slice(0, 3)).toEqual(['0.00', '0.01', '0.02']);
+    expect(CP1E_SPEC.inputs.map((i) => i.name).slice(11, 14)).toEqual(['0.11', '1.00', '1.01']);
+    expect(CP1E_SPEC.inputs).toHaveLength(18);
+    expect(CP1E_SPEC.outputs.map((o) => o.name).slice(0, 2)).toEqual(['100.00', '100.01']);
+    expect(CP1E_SPEC.outputs.map((o) => o.name).slice(8, 10)).toEqual(['101.00', '101.01']);
+    expect(CP1E_SPEC.outputs).toHaveLength(12);
+  });
+
+  it('splits the outputs 3/3/2/2/2 over five commons (§17.1 の前提値)', () => {
+    expect(CP1E_SPEC.commons).toEqual(['COM0', 'COM1', 'COM2', 'COM3', 'COM4']);
+    expect(CP1E_SPEC.outputs.map((o) => o.com)).toEqual([
+      'COM0', 'COM0', 'COM0',
+      'COM1', 'COM1', 'COM1',
+      'COM2', 'COM2',
+      'COM3', 'COM3',
+      'COM4', 'COM4',
+    ]);
+  });
+
+  it('uses the two input resistances of §5.1.3 and the L1 / L2N power pair', () => {
+    expect(CP1E_SPEC.inputs.slice(0, 8).every((i) => i.ohms === 3300)).toBe(true);
+    expect(CP1E_SPEC.inputs.slice(8).every((i) => i.ohms === 4800)).toBe(true);
+    expect(CP1E_SPEC.inputCommons).toEqual(['COM']);
+    expect(CP1E_SPEC.power).toEqual(['L1', 'L2N']);
+    expect(CP1E_SPEC.acPower).toEqual(['L1', 'L2N']);
+    expect(CP1E_SPEC.service).toEqual(['+', '-']);
+  });
+
+  it('puts every terminal on the board with a readable label (§8.2)', () => {
+    const board = withPlcUnit(JIPM_BOARD, PLC_UNIT_CP1E);
+    const ids = board.terminals.map((t) => String(t.id));
+    expect(ids).toContain('PLC.0.00');
+    expect(ids).toContain('PLC.1.05');
+    expect(ids).toContain('PLC.100.00');
+    expect(ids).toContain('PLC.COM4');
+    expect(ids).toContain('PLC.L1');
+    const plc = board.terminals.filter((t) => String(t.id).startsWith('PLC.'));
+    // 電源2 ＋ 入力コモン1 ＋ サービス2 ＋ 入力18 ＋ COM5 ＋ 出力12 = 40
+    expect(plc).toHaveLength(40);
+    expect(plc.every((t) => t.wirable && t.label.trim().length > 0)).toBe(true);
+    expect(plc.find((t) => String(t.id) === 'PLC.L2N')?.label).toBe('L2/N');
+    expect(plc.find((t) => String(t.id) === 'PLC.COM')?.role).toBe('ss');
+    expect(plc.find((t) => String(t.id) === 'PLC.100.00')?.role).toBe('y');
+    expect(validateBoard(board)).toEqual([]);
+  });
+});
+```
+
+- [ ] **Step 2: RED を確認する**
+
+```powershell
+pnpm --filter @ojt/board-model exec vitest run test/plc-cp1e.test.ts
+```
+
+Expected: 失敗。`does not provide an export named 'CP1E_SPEC'`。
+
+- [ ] **Step 3: `src/board-jipm.ts` に `form` を足す**
+
+`PlcUnitDefinition` の `displayName` の直後に足す（ラック形は Task 10 で使う）:
+
+```ts
+  /** 一体形（`unit`）かラック形（`rack`）か。§10.1 */
+  form: 'unit' | 'rack';
+```
+
+`PLC_UNIT_FX5U` に `form: 'unit',` を足す。
+
+- [ ] **Step 4: `src/plc-unit.ts` に CP1E を足す**
+
+```ts
+/** CP1E の入力抵抗[Ω]（`0.00`〜`0.07`）。§5.1.3 */
+export const CP1E_INPUT_OHMS_LOW = 3300;
+/** CP1E の入力抵抗[Ω]（`0.08` 以降）。§5.1.3 */
+export const CP1E_INPUT_OHMS_HIGH = 4800;
+/** CP1E の出力COMごとの点数（§17.1 の前提値 3/3/2/2/2）。 */
+export const CP1E_COMMON_SIZES: readonly number[] = [3, 3, 2, 2, 2];
+
+/** `ch.bit` 形式の端子名を作る（`0.00`〜`0.11`）。§10.1 */
+export function channelNames(ch: number, count: number): string[] {
+  return Array.from({ length: count }, (_unused, i) => `${ch}.${String(i).padStart(2, '0')}`);
+}
+
+/** 出力の並びから所属COMを決める（先頭から `sizes` 点ずつ）。 */
+function commonOf(index: number, sizes: readonly number[]): string {
+  let start = 0;
+  for (const [group, size] of sizes.entries()) {
+    if (index < start + size) return `COM${group}`;
+    start += size;
+  }
+  return `COM${sizes.length - 1}`;
+}
+
+/** CP1E-N30DR-A の電気的な仕様。§10.1 / §5.1.3 / §17.1 */
+export const CP1E_SPEC: PlcUnitSpec = {
+  model: 'CP1E',
+  power: ['L1', 'L2N'],
+  acPower: ['L1', 'L2N'],
+  inputCommons: ['COM'],
+  service: ['+', '-'],
+  inputs: [...channelNames(0, 12), ...channelNames(1, 6)].map((name, index) => ({
+    name,
+    com: 'COM',
+    ohms: index < 8 ? CP1E_INPUT_OHMS_LOW : CP1E_INPUT_OHMS_HIGH,
+  })),
+  commons: CP1E_COMMON_SIZES.map((_unused, group) => `COM${group}`),
+  outputs: [...channelNames(100, 8), ...channelNames(101, 4)].map((name, index) => ({
+    name,
+    com: commonOf(index, CP1E_COMMON_SIZES),
+  })),
+};
+
+/** CP1E の端子（入力側の列 → 出力側の列）。§10.1 の記載順 / §17 #11 */
+function cp1eTerminals(): BoardTerminal[] {
+  const inputSide = [
+    ...CP1E_SPEC.power,
+    ...CP1E_SPEC.inputCommons,
+    ...CP1E_SPEC.inputs.map((input) => input.name),
+  ];
+  const outputSide: string[] = [];
+  let previous = '';
+  for (const output of CP1E_SPEC.outputs) {
+    if (output.com !== previous) outputSide.push(output.com);
+    previous = output.com;
+    outputSide.push(output.name);
+  }
+  outputSide.push(...(CP1E_SPEC.service ?? []));
+  return [
+    ...staggeredTerminals(CP1E_SPEC, inputSide, vec3(PLC_ORIGIN_MM.x + 6, PLC_ORIGIN_MM.y + 6, 0)),
+    ...staggeredTerminals(CP1E_SPEC, outputSide, vec3(PLC_ORIGIN_MM.x + 6, PLC_ORIGIN_MM.y + 72, 0)),
+  ];
+}
+
+/** OMRON CP1E-N30DR-A（一体形）。§10.1 */
+export const PLC_UNIT_CP1E: PlcUnitDefinition = {
+  id: 'cp1e',
+  model: 'CP1E',
+  vendor: 'omron',
+  displayName: 'OMRON CP1E-N30DR-A',
+  form: 'unit',
+  sizeMm: { width: 130, height: 90, depth: 85 },
+  pos: PLC_ORIGIN_MM,
+  spec: CP1E_SPEC,
+  terminals: cp1eTerminals(),
+  // 【本アプリの前提】PLC調査資料 O-3 が未確認のため §10.1 の記載どおり
+  leds: ['POWER', 'RUN', 'ERR', 'ALM'],
+};
+```
+
+`PLC_UNITS` に `CP1E: PLC_UNIT_CP1E,` を足す。`src/index.ts` に `CP1E_SPEC` / `PLC_UNIT_CP1E` / `CP1E_INPUT_OHMS_LOW` / `CP1E_INPUT_OHMS_HIGH` / `CP1E_COMMON_SIZES` / `channelNames` を足す。
+
+- [ ] **Step 5: GREEN を確認してコミットする**
+
+```powershell
+pnpm --filter @ojt/board-model exec vitest run
+git add packages/board-model
+git commit -m "feat(board-model): add the OMRON CP1E body"
+```
+
+---
+
+## Task 10: ラック形の枠組みと JTEKT TOYOPUC PC10G-1SP ラック
+
+**モデル: Opus**（端子座標の不変条件（前提#15）を満たす配置を決める判断があるため）
+
+**Files:**
+- Modify: `packages/board-model/src/board-jipm.ts`（`PlcModuleDefinition` / `PlcUnitDefinition.modules?`）
+- Modify: `packages/board-model/src/plc-unit.ts`
+- Modify: `packages/board-model/src/index.ts`
+- Test: `packages/board-model/test/plc-rack.test.ts`
+
+§10.1 の JTEKT 行と §17 #21 を実装する。ラックは「ベース＋モジュール」で、ネットリスト上は従来どおり1部品（`PLC`）である（決定表#11）。3Dで箱を4つ描くのは 4B の仕事なので、ここで渡すのは**寸法と位置**だけである。
+
+**端子配置（決定表#12）**: 1モジュールにつき2列×最大9段。列は左端から 9mm と 26mm、段は上端から 8mm・ピッチ 13mm。段間13mm・列間17mm・モジュール間18mm となり、前提#15 の「8mm以上離す」を満たす。
+
+- [ ] **Step 1: 失敗するテストを書く**
+
+`packages/board-model/test/plc-rack.test.ts`:
+
+```ts
+import { describe, expect, it } from 'vitest';
+import {
+  JIPM_BOARD,
+  PLC_ORIGIN_MM,
+  PLC_UNIT_PC10G,
+  PC10G_SPEC,
+  RACK_MODULE_HEIGHT_MM,
+  RACK_MODULE_WIDTH_MM,
+  TERMINAL_PICK_RADIUS_MM,
+  plcUnitFor,
+  validateBoard,
+  withPlcUnit,
+} from '../src/index.js';
+
+describe('PLC_UNIT_PC10G（§10.1 / §17 #21）', () => {
+  it('is a rack of four modules', () => {
+    expect(PLC_UNIT_PC10G.model).toBe('PC10G-1SP');
+    expect(PLC_UNIT_PC10G.vendor).toBe('jtekt');
+    expect(PLC_UNIT_PC10G.form).toBe('rack');
+    expect(PLC_UNIT_PC10G.modules?.map((m) => m.model)).toEqual([
+      'POWER1',
+      'PC10G-1SP',
+      'IN-12',
+      'OUT-12',
+    ]);
+    expect(plcUnitFor('PC10G-1SP')).toBe(PLC_UNIT_PC10G);
+  });
+
+  it('sizes the base from the module widths (§17.1 の前提値)', () => {
+    expect(PLC_UNIT_PC10G.sizeMm).toEqual({ width: 4 * RACK_MODULE_WIDTH_MM + 20, height: 140, depth: 120 });
+    for (const module of PLC_UNIT_PC10G.modules ?? []) {
+      expect(module.sizeMm).toEqual({ width: RACK_MODULE_WIDTH_MM, height: RACK_MODULE_HEIGHT_MM, depth: 120 });
+      expect(module.pos.x).toBeGreaterThanOrEqual(PLC_ORIGIN_MM.x);
+    }
+  });
+
+  it('wires 16 inputs on two commons of eight and 16 relay outputs likewise (§10.1)', () => {
+    expect(PC10G_SPEC.inputCommons).toEqual(['ICOM0', 'ICOM1']);
+    expect(PC10G_SPEC.inputs.map((i) => i.name).slice(0, 3)).toEqual(['X0', 'X1', 'X2']);
+    expect(PC10G_SPEC.inputs.map((i) => i.name).slice(14)).toEqual(['XE', 'XF']);
+    expect(PC10G_SPEC.inputs.slice(0, 8).every((i) => i.com === 'ICOM0')).toBe(true);
+    expect(PC10G_SPEC.inputs.slice(8).every((i) => i.com === 'ICOM1')).toBe(true);
+    expect(PC10G_SPEC.inputs.every((i) => i.ohms === 2400)).toBe(true);
+    expect(PC10G_SPEC.commons).toEqual(['COM0', 'COM1']);
+    expect(PC10G_SPEC.outputs.map((o) => o.com).slice(7, 9)).toEqual(['COM0', 'COM1']);
+    expect(PC10G_SPEC.acPower).toEqual(['L', 'N']);
+  });
+
+  it('keeps every terminal inside its module box and 8 mm apart (前提#15)', () => {
+    const board = withPlcUnit(JIPM_BOARD, PLC_UNIT_PC10G);
+    const plc = board.terminals.filter((t) => String(t.id).startsWith('PLC.'));
+    // 電源3 ＋ 入力コモン2 ＋ 入力16 ＋ COM2 ＋ 出力16 = 39
+    expect(plc).toHaveLength(39);
+    expect(String(plc.find((t) => String(t.id) === 'PLC.ICOM0')?.role)).toBe('ss');
+    for (let i = 0; i < plc.length; i += 1) {
+      for (let j = i + 1; j < plc.length; j += 1) {
+        const a = plc[i];
+        const b = plc[j];
+        if (a === undefined || b === undefined) continue;
+        expect(Math.hypot(a.pos.x - b.pos.x, a.pos.y - b.pos.y)).toBeGreaterThanOrEqual(
+          2 * TERMINAL_PICK_RADIUS_MM,
+        );
+      }
+    }
+    expect(validateBoard(board)).toEqual([]);
+  });
+});
+```
+
+- [ ] **Step 2: RED を確認する**
+
+```powershell
+pnpm --filter @ojt/board-model exec vitest run test/plc-rack.test.ts
+```
+
+Expected: 失敗。`does not provide an export named 'PLC_UNIT_PC10G'`。
+
+- [ ] **Step 3: `src/board-jipm.ts` に `PlcModuleDefinition` を足す**
+
+`PlcUnitDefinition` の直前に足す:
+
+```ts
+/**
+ * ラック形PLCのモジュール1枚。§10.1 / §17 #21
+ * 端子は `PlcUnitDefinition.terminals` に平らに載っている（ネットリスト上はラックでも1部品。
+ * 決定表#11）。ここにあるのは 4B が箱を描くための寸法と位置だけである。
+ */
+export interface PlcModuleDefinition {
+  /** ベース内のスロット番号（0起点）。 */
+  slot: number;
+  /** 形式名（`IN-12` / `JW-212NA`）。 */
+  model: string;
+  displayName: string;
+  sizeMm: { width: number; height: number; depth: number };
+  /** 机上の設置位置（モジュールの左奥の角）。 */
+  pos: Vec3;
+}
+```
+
+`PlcUnitDefinition` の `leds` の直前に足す:
+
+```ts
+  /** ラック形のときのモジュール一覧（一体形は持たない）。§10.1 */
+  modules?: readonly PlcModuleDefinition[];
+```
+
+- [ ] **Step 4: `src/plc-unit.ts` にラックの枠組みと TOYOPUC を足す**
+
+```ts
+/** ラック形モジュール1枚の幅[mm]。§10.1 / §17.1 の前提値 */
+export const RACK_MODULE_WIDTH_MM = 35;
+/** ラック形モジュールの高さ[mm]。 */
+export const RACK_MODULE_HEIGHT_MM = 130;
+/** ベースの左右の余白[mm]。 */
+export const RACK_BASE_MARGIN_MM = 10;
+/** ベースの高さ[mm]（モジュール高さ＋上下の縁）。 */
+export const RACK_BASE_HEIGHT_MM = 140;
+/** モジュール左端から端子2列までの距離[mm]。 */
+export const RACK_TERMINAL_COLS_MM: readonly [number, number] = [9, 26];
+/** モジュール内の端子の段ピッチ[mm]。 */
+export const RACK_TERMINAL_ROW_PITCH_MM = 13;
+/** モジュール上端から最初の段までの距離[mm]。 */
+export const RACK_TERMINAL_TOP_MM = 8;
+/** 1モジュールに並べられる端子数の上限（2列×9段）。 */
+export const RACK_TERMINALS_PER_MODULE = 18;
+
+/** スロット番号 → モジュールの左奥の角。 */
+export function rackModulePos(slot: number): Vec3 {
+  return vec3(
+    PLC_ORIGIN_MM.x + RACK_BASE_MARGIN_MM + slot * RACK_MODULE_WIDTH_MM,
+    PLC_ORIGIN_MM.y + 5,
+    PLC_ORIGIN_MM.z,
+  );
+}
+
+/** ベースの外形（モジュール幅の合計＋左右の余白）。§10.1 の前提 */
+export function rackSizeMm(slots: number, depthMm: number): {
+  width: number;
+  height: number;
+  depth: number;
+} {
+  return {
+    width: slots * RACK_MODULE_WIDTH_MM + 2 * RACK_BASE_MARGIN_MM,
+    height: RACK_BASE_HEIGHT_MM,
+    depth: depthMm,
+  };
+}
+
+/**
+ * モジュール1枚の端子を2列×最大9段で並べる。§17 #11 / 決定表#12
+ * 実機の着脱式端子台は1列だが、当たり判定半径4mm（＝8mm離す必要）が高さ130mmに18点は入らない
+ * ため、本アプリは2列に配置する。実機の並びが判明したらここだけを差し替える。
+ */
+function rackTerminals(spec: PlcUnitSpec, names: readonly string[], slot: number): BoardTerminal[] {
+  if (names.length > RACK_TERMINALS_PER_MODULE) {
+    throw new BoardError(
+      `1モジュールの端子は${RACK_TERMINALS_PER_MODULE}点までです: ${names.length}点`,
+    );
+  }
+  const origin = rackModulePos(slot);
+  return names.map((name, index) => ({
+    id: `${PLC_PART_ID}.${name}` as TerminalId,
+    label: plcLabel(name),
+    role: plcRole(spec, name),
+    pos: vec3(
+      origin.x + (RACK_TERMINAL_COLS_MM[index % 2] ?? 0),
+      origin.y + RACK_TERMINAL_TOP_MM + Math.floor(index / 2) * RACK_TERMINAL_ROW_PITCH_MM,
+      origin.z,
+    ),
+    pickRadiusMm: TERMINAL_PICK_RADIUS_MM,
+    wirable: true,
+    optional: false,
+    exit: 'either',
+  }));
+}
+
+/** 16進表記の端子名を作る（`X0`〜`XF`）。§10.1 */
+export function hexNames(prefix: string, count: number): string[] {
+  return Array.from({ length: count }, (_unused, i) => `${prefix}${i.toString(16).toUpperCase()}`);
+}
+
+/** TOYOPUC `IN-12` の入力抵抗[Ω]（10mA/点）。§5.1.3 */
+export const PC10G_INPUT_OHMS = 2400;
+/** ラック形の入出力モジュールの1コモンあたりの点数。§10.1（`IN-12` は8点/COM） */
+export const RACK_POINTS_PER_COMMON = 8;
+
+/** TOYOPUC PC10G-1SP ラックの電気的な仕様。§10.1 / §5.1.3 / §17 #21 */
+export const PC10G_SPEC: PlcUnitSpec = {
+  model: 'PC10G-1SP',
+  power: ['L', 'N', 'PE'],
+  acPower: ['L', 'N'],
+  inputCommons: ['ICOM0', 'ICOM1'],
+  inputs: hexNames('X', 16).map((name, index) => ({
+    name,
+    com: `ICOM${Math.floor(index / RACK_POINTS_PER_COMMON)}`,
+    ohms: PC10G_INPUT_OHMS,
+  })),
+  commons: ['COM0', 'COM1'],
+  outputs: hexNames('Y', 16).map((name, index) => ({
+    name,
+    com: `COM${Math.floor(index / RACK_POINTS_PER_COMMON)}`,
+  })),
+};
+
+/** TOYOPUC ラックの端子（`POWER1` → `IN-12` → `OUT-12` の順）。§10.1 の記載順 */
+function pc10gTerminals(): BoardTerminal[] {
+  const inputNames = ['ICOM0', ...PC10G_SPEC.inputs.slice(0, 8).map((i) => i.name), 'ICOM1', ...PC10G_SPEC.inputs.slice(8).map((i) => i.name)];
+  const outputNames = ['COM0', ...PC10G_SPEC.outputs.slice(0, 8).map((o) => o.name), 'COM1', ...PC10G_SPEC.outputs.slice(8).map((o) => o.name)];
+  return [
+    ...rackTerminals(PC10G_SPEC, [...PC10G_SPEC.power], 0),
+    ...rackTerminals(PC10G_SPEC, inputNames, 2),
+    ...rackTerminals(PC10G_SPEC, outputNames, 3),
+  ];
+}
+
+/** ラックのモジュール一覧を作る。 */
+function rackModules(
+  entries: readonly { model: string; displayName: string; depthMm: number }[],
+): PlcModuleDefinition[] {
+  return entries.map((entry, slot) => ({
+    slot,
+    model: entry.model,
+    displayName: entry.displayName,
+    sizeMm: { width: RACK_MODULE_WIDTH_MM, height: RACK_MODULE_HEIGHT_MM, depth: entry.depthMm },
+    pos: rackModulePos(slot),
+  }));
+}
+
+/** JTEKT TOYOPUC PC10G-1SP（ラック形）。§10.1 / §17 #21 */
+export const PLC_UNIT_PC10G: PlcUnitDefinition = {
+  id: 'pc10g',
+  model: 'PC10G-1SP',
+  vendor: 'jtekt',
+  displayName: 'JTEKT TOYOPUC PC10G-1SP（基本ベース＋POWER1＋CPU＋IN-12＋OUT-12）',
+  form: 'rack',
+  sizeMm: rackSizeMm(4, 120),
+  pos: PLC_ORIGIN_MM,
+  spec: PC10G_SPEC,
+  terminals: pc10gTerminals(),
+  modules: rackModules([
+    { model: 'POWER1', displayName: '電源モジュール', depthMm: 120 },
+    { model: 'PC10G-1SP', displayName: 'CPUモジュール', depthMm: 120 },
+    { model: 'IN-12', displayName: 'DC入力16点（THK-2750）', depthMm: 120 },
+    { model: 'OUT-12', displayName: 'リレー出力16点（THK-2752）', depthMm: 120 },
+  ]),
+  // 【本アプリの前提】PLC調査資料 J-3 が未確認のため §10.1 の記載どおり
+  leds: ['POWER', 'RUN', 'ERR', 'IN'],
+};
+```
+
+`PLC_UNITS` に `'PC10G-1SP': PLC_UNIT_PC10G,` を足す。`src/index.ts` にラックの定数・`hexNames` / `rackModulePos` / `rackSizeMm` / `PC10G_SPEC` / `PC10G_INPUT_OHMS` / `RACK_POINTS_PER_COMMON` / `PLC_UNIT_PC10G` / `type PlcModuleDefinition` を足す。
+
+- [ ] **Step 5: GREEN を確認してコミットする**
+
+```powershell
+pnpm --filter @ojt/board-model exec vitest run
+git add packages/board-model
+git commit -m "feat(board-model): add the rack form and the JTEKT TOYOPUC PC10G-1SP rack"
+```
+
+---
+
+## Task 11: シャープ JW300 ラックと机上ジオメトリの機種横断検査
+
+**モデル: Opus**
+
+**Files:**
+- Modify: `packages/board-model/src/plc-unit.ts`
+- Modify: `packages/board-model/src/index.ts`
+- Test: `packages/board-model/test/plc-rack.test.ts`（JW300 を追記）
+- Test: `packages/board-model/test/plc-geometry-review.test.ts`（4機種に広げる）
+
+§10.1 のシャープ行を実装し、前提#15 の机上ジオメトリ検査を**全機種**にかける。`COM.A` へ配線できること（§16 Phase 4 受入基準⑤の3A側）をここで固定する。
+
+- [ ] **Step 1: 失敗するテストを書く**
+
+`packages/board-model/test/plc-rack.test.ts` に足す:
+
+```ts
+describe('PLC_UNIT_JW300（§10.1 / 受入基準⑤）', () => {
+  it('is a rack of four units with the A / B input groups', () => {
+    expect(PLC_UNIT_JW300.model).toBe('JW-300');
+    expect(PLC_UNIT_JW300.vendor).toBe('sharp');
+    expect(PLC_UNIT_JW300.form).toBe('rack');
+    expect(PLC_UNIT_JW300.modules?.map((m) => m.model)).toEqual([
+      'JW-301PU',
+      'JW-312CU',
+      'JW-212NA',
+      'JW-214SA',
+    ]);
+    expect(PLC_UNIT_JW300.modules?.[1]?.sizeMm.depth).toBe(99.8);
+    expect(JW300_SPEC.inputCommons).toEqual(['COM.A', 'COM.B']);
+    expect(JW300_SPEC.inputs.map((i) => i.name).slice(0, 2)).toEqual(['A0', 'A1']);
+    expect(JW300_SPEC.inputs.map((i) => i.name).slice(8, 10)).toEqual(['B0', 'B1']);
+    expect(JW300_SPEC.inputs.slice(0, 8).every((i) => i.com === 'COM.A')).toBe(true);
+    expect(JW300_SPEC.inputs.every((i) => i.ohms === 3300)).toBe(true);
+    expect(JW300_SPEC.commons).toEqual(['COM.C', 'COM.D']);
+    expect(JW300_SPEC.outputs.map((o) => o.name).slice(0, 2)).toEqual(['C0', 'C1']);
+  });
+
+  it('exposes COM.A as a wirable terminal (受入基準⑤)', () => {
+    const board = withPlcUnit(JIPM_BOARD, PLC_UNIT_JW300);
+    const comA = board.terminals.find((t) => String(t.id) === 'PLC.COM.A');
+    expect(comA).toBeDefined();
+    expect(comA?.wirable).toBe(true);
+    expect(comA?.role).toBe('ss');
+    expect(comA?.label).toBe('COM.A');
+    expect(validateBoard(board)).toEqual([]);
+  });
+});
+```
+
+`packages/board-model/test/plc-geometry-review.test.ts` の3ケースを4機種に広げる。ファイル先頭の `const BOARD = withPlcUnit(JIPM_BOARD, PLC_UNIT_FX5U);` はそのまま残し（後段の配線テストが使う）、机上ジオメトリの `describe` を次で置き換える:
+
+```ts
+describe.each(Object.values(PLC_UNITS).map((unit) => [unit.model, unit] as const))(
+  'desk-terminal geometry (%s + outlet)',
+  (_model, unit) => {
+    const board = withPlcUnit(JIPM_BOARD, unit);
+
+    it('no two desk terminals are closer than two pick radii (>= 8mm)', () => {
+      const desk = board.terminals.filter((x) => isOffBoardTerminal(x.id));
+      for (let i = 0; i < desk.length; i += 1) {
+        for (let j = i + 1; j < desk.length; j += 1) {
+          const a = desk[i];
+          const b = desk[j];
+          if (a === undefined || b === undefined) continue;
+          expect(dist(a.pos, b.pos), `${String(a.id)} <-> ${String(b.id)}`).toBeGreaterThanOrEqual(
+            2 * TERMINAL_PICK_RADIUS_MM,
+          );
+        }
+      }
+    });
+
+    it('every PLC terminal sits inside the unit box and every outlet terminal is outside it', () => {
+      const box = {
+        x0: PLC_ORIGIN_MM.x,
+        y0: PLC_ORIGIN_MM.y,
+        x1: PLC_ORIGIN_MM.x + unit.sizeMm.width,
+        y1: PLC_ORIGIN_MM.y + unit.sizeMm.height,
+      };
+      for (const term of unit.terminals) {
+        expect(term.pos.x, String(term.id)).toBeGreaterThanOrEqual(box.x0);
+        expect(term.pos.x, String(term.id)).toBeLessThanOrEqual(box.x1);
+        expect(term.pos.y, String(term.id)).toBeGreaterThanOrEqual(box.y0);
+        expect(term.pos.y, String(term.id)).toBeLessThanOrEqual(box.y1);
+      }
+      for (const term of OUTLET_TERMINALS) {
+        const inside =
+          term.pos.x >= box.x0 &&
+          term.pos.x <= box.x1 &&
+          term.pos.y >= box.y0 &&
+          term.pos.y <= box.y1;
+        expect(inside, String(term.id)).toBe(false);
+      }
+      expect(OUTLET_ORIGIN_MM.y).toBeGreaterThan(box.y1);
+    });
+
+    it('all desk terminals are entirely to the right of the board footprint', () => {
+      const boardMaxX = Math.max(...JIPM_BOARD.terminals.map((x) => x.pos.x));
+      for (const term of board.terminals.filter((x) => isOffBoardTerminal(x.id))) {
+        expect(term.pos.x, String(term.id)).toBeGreaterThan(boardMaxX);
+      }
+    });
+
+    it('every rack terminal sits inside one of its modules', () => {
+      if (unit.form !== 'rack') return;
+      for (const term of unit.terminals) {
+        const inside = (unit.modules ?? []).some(
+          (module) =>
+            term.pos.x >= module.pos.x &&
+            term.pos.x <= module.pos.x + module.sizeMm.width &&
+            term.pos.y >= module.pos.y &&
+            term.pos.y <= module.pos.y + module.sizeMm.height,
+        );
+        expect(inside, String(term.id)).toBe(true);
+      }
+    });
+  },
+);
+```
+
+（`PLC_UNITS` / `PLC_ORIGIN_MM` / `OUTLET_TERMINALS` / `OUTLET_ORIGIN_MM` / `isOffBoardTerminal` / `TERMINAL_PICK_RADIUS_MM` を import に足す。）
+
+- [ ] **Step 2: RED を確認する**
+
+```powershell
+pnpm --filter @ojt/board-model exec vitest run test/plc-rack.test.ts test/plc-geometry-review.test.ts
+```
+
+Expected: 失敗。`does not provide an export named 'PLC_UNIT_JW300'`。
+
+- [ ] **Step 3: `src/plc-unit.ts` に JW300 を足す**
+
+```ts
+/** `JW-212NA` の入力抵抗[Ω]（7.5mA/点）。§5.1.3 */
+export const JW300_INPUT_OHMS = 3300;
+
+/** 群の文字ごとの端子名を作る（`A0`〜`A7`）。§10.1 */
+export function groupNames(letter: string, count: number): string[] {
+  return Array.from({ length: count }, (_unused, i) => `${letter}${i}`);
+}
+
+/**
+ * JW300 ラックの電気的な仕様。§10.1 / §5.1.3
+ * 入力の `A` / `B` 群と `COM.A` / `COM.B` は §10.1 で確定。出力側は一次資料に記載が無いため、
+ * 同じ様式で `C` / `D` 群（`COM.C` / `COM.D`）とするのが本アプリの前提である（前提表）。
+ */
+export const JW300_SPEC: PlcUnitSpec = {
+  model: 'JW-300',
+  power: ['L', 'N', 'PE'],
+  acPower: ['L', 'N'],
+  inputCommons: ['COM.A', 'COM.B'],
+  inputs: [...groupNames('A', 8), ...groupNames('B', 8)].map((name, index) => ({
+    name,
+    com: index < RACK_POINTS_PER_COMMON ? 'COM.A' : 'COM.B',
+    ohms: JW300_INPUT_OHMS,
+  })),
+  commons: ['COM.C', 'COM.D'],
+  outputs: [...groupNames('C', 8), ...groupNames('D', 8)].map((name, index) => ({
+    name,
+    com: index < RACK_POINTS_PER_COMMON ? 'COM.C' : 'COM.D',
+  })),
+};
+
+/** JW300 ラックの端子（電源 → `JW-212NA` → `JW-214SA` の順）。§10.1 の記載順 */
+function jw300Terminals(): BoardTerminal[] {
+  const inputNames = [
+    ...JW300_SPEC.inputs.slice(0, 8).map((i) => i.name),
+    'COM.A',
+    ...JW300_SPEC.inputs.slice(8).map((i) => i.name),
+    'COM.B',
+  ];
+  const outputNames = [
+    ...JW300_SPEC.outputs.slice(0, 8).map((o) => o.name),
+    'COM.C',
+    ...JW300_SPEC.outputs.slice(8).map((o) => o.name),
+    'COM.D',
+  ];
+  return [
+    ...rackTerminals(JW300_SPEC, [...JW300_SPEC.power], 0),
+    ...rackTerminals(JW300_SPEC, inputNames, 2),
+    ...rackTerminals(JW300_SPEC, outputNames, 3),
+  ];
+}
+
+/** シャープ JW300（ラック形）。§10.1 */
+export const PLC_UNIT_JW300: PlcUnitDefinition = {
+  id: 'jw300',
+  model: 'JW-300',
+  vendor: 'sharp',
+  displayName: 'シャープ JW300（基本ベース＋JW-301PU＋JW-312CU＋JW-212NA＋JW-214SA）',
+  form: 'rack',
+  sizeMm: rackSizeMm(4, 109.4),
+  pos: PLC_ORIGIN_MM,
+  spec: JW300_SPEC,
+  terminals: jw300Terminals(),
+  modules: rackModules([
+    { model: 'JW-301PU', displayName: '電源ユニット', depthMm: 109.4 },
+    { model: 'JW-312CU', displayName: 'コントロールユニット', depthMm: 99.8 },
+    { model: 'JW-212NA', displayName: 'DC入力16点', depthMm: 109.4 },
+    { model: 'JW-214SA', displayName: 'リレー出力16点', depthMm: 109.4 },
+  ]),
+  leds: ['RUN', 'FLT', 'MW'],
+};
+```
+
+`PLC_UNITS` を4機種にする:
+
+```ts
+/** 機種名（課題JSONの `plc.model`）→ 本体定義。§7.6 / §16 Phase 4 */
+export const PLC_UNITS: Readonly<Record<string, PlcUnitDefinition>> = {
+  FX5U: PLC_UNIT_FX5U,
+  CP1E: PLC_UNIT_CP1E,
+  'PC10G-1SP': PLC_UNIT_PC10G,
+  'JW-300': PLC_UNIT_JW300,
+};
+```
+
+`src/index.ts` に `JW300_SPEC` / `JW300_INPUT_OHMS` / `groupNames` / `PLC_UNIT_JW300` を足す。
+
+- [ ] **Step 4: GREEN を確認する**
+
+```powershell
+pnpm --filter @ojt/board-model exec vitest run
+pnpm --filter @ojt/board-model exec vitest run --coverage
+pnpm -r typecheck
+```
+
+Expected: 全ケース通過。カバレッジ90%以上。
+
+- [ ] **Step 5: バッチCのレビューとコミット**
+
+```powershell
+npx prettier --check "packages/board-model/**/*.ts" "packages/circuit-sim/**/*.ts"
+git add packages/board-model packages/circuit-sim
+git commit -m "feat(board-model): add the Sharp JW300 rack and check the desk geometry for all four models"
+```
+
+ここで**バッチC のレビュー（Opus 1回）**をかける。見どころ: ①`createPlcUnit()` の検証（入力コモン・AC端子）が全機種で通ること ②端子の総数が §10.1 の点数と一致すること ③ラックの端子がモジュールの箱に収まり8mm以上離れていること ④CP1E の点別抵抗が §5.1.3 のとおりで、24V印加時の入力電流がON判定を超えること（`24 / 4800 = 5.0mA > 3mA`）。
+
+---
