@@ -202,7 +202,11 @@
   background: #f7f7f4;
   border-radius: 4px;
   margin-top: 6px;
-  padding: 6px;
+  /*
+   * 上だけ広く取るのは、回路図の「⤢ 拡大」ボタンが紙の上（`top: -28px`）に出るため。
+   * `overflow: auto` の箱に素で入れるとボタンが切り落とされて押せない（レビュー I5）。
+   */
+  padding: 32px 6px 6px;
   max-height: 320px;
   overflow: auto;
 }
@@ -675,9 +679,12 @@
 
 /*
  * 狭い画面では3列（360 + 360 + 380px ＝ 1100px ＋ 余白）が入りきらない。
- * `.plcLayout` と同じ境界（1279px）で「盤が上・エディタが下」の1列に積み替える。
+ *
+ * 境界は `.plcLayout`（1279px）より**広く**取る（レビュー I6）。モードBの「並べて」は
+ * 右パネル（380px）も同時に出るので、1280×800 では回路図の列が 194px しか残らず
+ * 図が読めなかった。1440px 未満は「盤が上・エディタが下」の1列に積み替える。
  */
-@media (max-width: 1279px) {
+@media (max-width: 1439px) {
   .sessionLayout[data-view='split'] {
     grid-template-columns: minmax(0, 1fr) 380px;
     grid-template-rows: minmax(0, 1fr) minmax(0, 1fr) var(--bottom-panel-h, 200px);
