@@ -10,6 +10,7 @@ import { DEFAULT_SETTINGS, type AppSettings, type AppSettingsResponse } from '..
 import { ojtApi } from '../app/ojt-api.js';
 import { useStore } from '../app/store.js';
 import { sounds } from '../audio/sounds.js';
+import { HelpButton } from '../help/HelpButton.js';
 import { JA } from '../i18n/ja.js';
 import { SKIN_THEMES } from '../ladder/skins/index.js';
 import styles from './screens.module.css';
@@ -149,14 +150,18 @@ export function Settings(): JSX.Element {
 
   return (
     <div className={styles.center}>
-      <button
-        type="button"
-        onClick={() => {
-          setRoute('home');
-        }}
-      >
-        {JA.problemList.back}
-      </button>
+      {/* 画面の上の帯（Plan 6 Task 9）。「もどる」の隣にヘルプを並べる。 */}
+      <div className={styles.screenHeader}>
+        <button
+          type="button"
+          onClick={() => {
+            setRoute('home');
+          }}
+        >
+          {JA.problemList.back}
+        </button>
+        <HelpButton />
+      </div>
       <h1 className={styles.title} style={{ marginTop: 12 }}>
         {JA.home.settings}
       </h1>

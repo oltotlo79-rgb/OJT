@@ -1,6 +1,7 @@
 import { useEffect, useState, type JSX } from 'react';
 import type { OjtApi, WorkFile } from '../../shared/ipc.js';
 import { sounds } from '../audio/sounds.js';
+import { HelpRoot } from '../help/HelpRoot.js';
 import { JA, sessionModeLabel } from '../i18n/ja.js';
 import { applyWorkFile, toInspectWorkFile } from '../session/work-file.js';
 import { ErrorBoundary } from './ErrorBoundary.js';
@@ -283,6 +284,11 @@ export function App(): JSX.Element {
       >
         <RouteView route={route} />
       </ErrorBoundary>
+      {/*
+        ヘルプの引き出しと `F1` の窓口（Plan 6 Task 9）。`ErrorBoundary` の**外**に置く。
+        中に置くと、引き出しの中で例外が出たときに引き出しごと消えてバナーまで消える。
+      */}
+      <HelpRoot />
       <div className={styles.toasts}>
         {toasts.map((toast) => (
           <div

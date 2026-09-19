@@ -2,6 +2,7 @@ import { useEffect, useState, type JSX } from 'react';
 import { gradeLabel, JA, minutesLabel, problemCountText } from '../i18n/ja.js';
 import { ojtApi } from '../app/ojt-api.js';
 import { useStore, type ListMode } from '../app/store.js';
+import { HelpButton } from '../help/HelpButton.js';
 import styles from './screens.module.css';
 
 /** 級の絞り込み（`undefined` は「すべて」）。UXレビュー #12 */
@@ -77,14 +78,18 @@ export function ProblemList(): JSX.Element {
 
   return (
     <div className={styles.center}>
-      <button
-        type="button"
-        onClick={() => {
-          setRoute('home');
-        }}
-      >
-        {JA.problemList.back}
-      </button>
+      {/* 画面の上の帯（Plan 6 Task 9）。「もどる」の隣にヘルプを並べる。 */}
+      <div className={styles.screenHeader}>
+        <button
+          type="button"
+          onClick={() => {
+            setRoute('home');
+          }}
+        >
+          {JA.problemList.back}
+        </button>
+        <HelpButton />
+      </div>
       <h1 className={styles.title} style={{ marginTop: 12 }}>
         {JA.problemList.title}
       </h1>

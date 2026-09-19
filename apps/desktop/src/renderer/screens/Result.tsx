@@ -10,6 +10,7 @@ import type { WiringSuspect, WiringSuspectReport } from '@ojt/content';
 import { useCallback, useEffect, useMemo, type JSX } from 'react';
 import { isInspectJudge, isPlcJudge, useStore } from '../app/store.js';
 import { tryOjtApi } from '../app/ojt-api.js';
+import { HelpButton } from '../help/HelpButton.js';
 import { JA } from '../i18n/ja.js';
 import { InspectPartsResult } from '../result/InspectPartsResult.js';
 import { InspectRepairResult } from '../result/InspectRepairResult.js';
@@ -40,8 +41,23 @@ function NoResult({ onBack }: { onBack: () => void }): JSX.Element {
 /** 空の疑い一覧（モードB以外・合格・模範回路が作れないとき）。 */
 const NO_SUSPECTS: WiringSuspectReport = { suspects: [], total: 0, omitted: 0 };
 
-/** 結果画面。 */
+/**
+ * 結果画面。上の帯のヘルプだけを共通の囲みに出し、中身（4つの結果の画面と「結果がありません」）
+ * は `ResultBody` がそのまま描く（Plan 6 Task 9 / MERGE 注意#7）。4つの結果部品は1行も変えない。
+ */
 export function Result(): JSX.Element {
+  return (
+    <>
+      <div className={`${styles.screenHeader} ${styles.resultHeader}`}>
+        <HelpButton />
+      </div>
+      <ResultBody />
+    </>
+  );
+}
+
+/** 結果画面の中身（判定結果でどの結果の画面を出すかを決める）。 */
+function ResultBody(): JSX.Element {
   const problem = useStore((s) => s.problem);
   const judge = useStore((s) => s.judge);
   const session = useStore((s) => s.session);

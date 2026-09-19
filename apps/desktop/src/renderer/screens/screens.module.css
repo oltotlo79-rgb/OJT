@@ -70,10 +70,6 @@
   max-width: 900px;
 }
 
-.homeSettings {
-  flex: 0 0 auto;
-}
-
 .problemTable {
   border-collapse: collapse;
   width: 100%;
@@ -761,3 +757,35 @@
   outline-offset: 2px;
 }
 /* --- /Plan 5 Task 9 --- */
+
+/* --- Plan 6 Task 9: 画面の見出しの横に置くボタンの列 --- */
+
+/*
+ * 「もどる」とヘルプを同じ行に並べる帯。余白は 8px 格子。
+ * 課題一覧・設定は `.center` の中に置くので左右の余白は `.center` が持つ。
+ */
+.screenHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+/*
+ * 結果画面は `.center` を通さず画面の一番上に置くので、左右の余白を自分で持つ。
+ * 下の `.scroll`（`result.module.css`）の padding と同じ 24px にして、ヘルプが
+ * 結果の見出しと同じ左端にそろうようにする。
+ */
+.resultHeader {
+  margin-bottom: 0;
+  padding: 8px 24px 0;
+}
+
+/* ホームの上の帯の右端（ヘルプと設定）。`.homeHeader` の3つ目の項目として置く。 */
+.homeActions {
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+  gap: 8px;
+}
+/* --- /Plan 6 Task 9 --- */

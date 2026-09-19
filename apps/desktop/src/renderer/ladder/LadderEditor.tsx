@@ -8,6 +8,7 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
 } from 'react';
 import { useStore } from '../app/store.js';
+import { useHelpStore } from '../help/help-store.js';
 import { JA } from '../i18n/ja.js';
 import { isTypingTarget } from '../session/interaction.js';
 import { emptyCellForm, formForCell, type CellForm } from '../session/ladder-cell.js';
@@ -189,7 +190,14 @@ export function LadderEditor({
           store.toast(store.toggleInsert() === 'insert' ? JA.ladder.insertOn : JA.ladder.insertOff);
           break;
         case 'help':
-          store.toast(JA.ladder.helpHint);
+          // §10.6 の「F1 ヘルプ」。取扱説明書の引き出しをモードDの節で開く（取扱説明書 設計 決定表#16）。
+          // 止めておかないと、窓口（`HelpRoot`）の `F1` も走って開いた直後に閉じる。
+          // `event` はここでは React の合成イベントなので、`stopPropagation()` は下の本物の
+          // イベントにも伝わって `window` の listener には届かない。`preventDefault()`（switch の
+          // 手前で既に呼んである）と併せて、伝播の経路が変わっても `defaultPrevented` で弾ける。
+          event.preventDefault();
+          event.stopPropagation();
+          useHelpStore.getState().openHelp('plc');
           break;
         case 'disabled':
           store.toast(action.entry.note ?? action.entry.label, 'error');

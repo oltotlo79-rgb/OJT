@@ -4492,7 +4492,7 @@ git show --stat HEAD
 
 本設計 §5.1、決定表#16・#17。
 
-- [ ] **Step 1: 失敗するテストを書く**
+- [x] **Step 1: 失敗するテストを書く**
 
 `apps/desktop/test/help-entry.test.tsx`:
 
@@ -4598,7 +4598,7 @@ function HelpButtonHarness(): JSX.Element {
 
 期待（Step 4 のあと）: **9件通る**。
 
-- [ ] **Step 2: ボタンと窓口を作る**
+- [x] **Step 2: ボタンと窓口を作る**
 
 `apps/desktop/src/renderer/help/HelpButton.tsx`:
 
@@ -4680,7 +4680,7 @@ export function HelpRoot(): JSX.Element | null {
 }
 ```
 
-- [ ] **Step 3: 5つの画面に差し込む**
+- [x] **Step 3: 5つの画面に差し込む**
 
 `App.tsx`: `<div className={styles.toasts}>` の**直前**に1行（`ErrorBoundary` の外に置く。引き出しの中で例外が出ても、引き出しごと消えてバナーまで消えることがないようにする）。
 
@@ -4734,7 +4734,7 @@ export function HelpRoot(): JSX.Element | null {
 }
 ```
 
-- [ ] **Step 4: モードDの `F1` を調停する**
+- [x] **Step 4: モードDの `F1` を調停する**
 
 `ladder/LadderEditor.tsx` の `action === 'help'` の分岐を差し替える。いまは `store.toast(JA.ladder.helpHint)` を出しているだけなので、**引き出しを開いて `preventDefault()` する**。
 
@@ -4754,13 +4754,13 @@ export function HelpRoot(): JSX.Element | null {
 
 **注記**: `event` はここでは React の合成イベントである。`stopPropagation()` は下の本物のイベントにも伝わるので、`window` の listener には届かない。`preventDefault()` も併せて呼ぶのは、万一伝播の経路が変わっても `defaultPrevented` で弾けるようにするためである（二重の守り）。
 
-- [ ] **Step 5: 機能一覧表に1行足す**
+- [x] **Step 5: 機能一覧表に1行足す**
 
 ```json
   { "testid": "open-help", "screen": "全画面", "label": "ヘルプ", "section": "screens/画面の上の帯" }
 ```
 
-- [ ] **Step 6: テストを通す**
+- [x] **Step 6: テストを通す**
 
 ```
 cd apps/desktop && node scripts/build-manual.mjs
@@ -4772,7 +4772,7 @@ pnpm --filter @ojt/desktop typecheck && pnpm lint
 # 期待: どちらも無警告
 ```
 
-- [ ] **Step 7: commit**
+- [x] **Step 7: commit**
 
 ```
 git add apps/desktop/src/renderer/help/HelpRoot.tsx apps/desktop/src/renderer/help/HelpButton.tsx apps/desktop/src/renderer/app/App.tsx apps/desktop/src/renderer/panels/Toolbar.tsx apps/desktop/src/renderer/screens/Home.tsx apps/desktop/src/renderer/screens/ProblemList.tsx apps/desktop/src/renderer/screens/Settings.tsx apps/desktop/src/renderer/screens/Result.tsx apps/desktop/src/renderer/screens/screens.module.css apps/desktop/src/renderer/ladder/LadderEditor.tsx apps/desktop/test/help-entry.test.tsx docs/manual/coverage.json

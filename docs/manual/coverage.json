@@ -777,6 +777,12 @@
       "section": "mode-d/別のメーカーの書き方に変える"
     },
     {
+      "testid": "open-help",
+      "screen": "全画面",
+      "label": "ヘルプ",
+      "section": "screens/画面の上の帯"
+    },
+    {
       "testid": "open-settings",
       "screen": "ホーム",
       "label": "設定",

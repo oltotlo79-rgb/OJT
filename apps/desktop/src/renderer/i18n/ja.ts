@@ -458,8 +458,6 @@ export const JA = {
     insertOff: '上書きモードです',
     /** `Shift+F3`（モニタ書込み）の注記。セッションで1回だけ出す。決定表#11 */
     monitorWriteSame: 'モニタと同じ動作です（本アプリにオンライン変更はありません）',
-    // 右側のキー割当欄（`ShortcutHelp`）は常に表示されている。ツールバーに専用ボタンは無い（M7）
-    helpHint: 'キー割当は右側のキー割当欄に常に表示されています',
     nothingToUndo: 'これ以上は元に戻せません',
     nothingToRedo: 'これ以上はやり直せません',
     // --- /Plan 3B Task 5 ---

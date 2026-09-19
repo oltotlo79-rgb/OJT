@@ -1,5 +1,6 @@
 import type { WireColor } from '@ojt/circuit-sim';
 import { useState, type JSX } from 'react';
+import { HelpButton } from '../help/HelpButton.js';
 import { JA } from '../i18n/ja.js';
 import type { CameraPreset } from '../app/store.js';
 import type { ToolMode } from '../session/interaction.js';
@@ -114,6 +115,11 @@ export function Toolbar({
         <button type="button" data-testid="session-back" onClick={onBack}>
           {JA.session.back}
         </button>
+        {/*
+          ヘルプ（Plan 6 Task 9）。この1つで4つのセッション画面（モードB・C1・C2・D）
+          すべてに同じ位置で出る。画面ごとに足さない（MERGE 注意#8）。
+        */}
+        <HelpButton />
         {showWireTools ? (
           <div className={styles.toolGroup}>
             <span className={styles.toolLabel}>{JA.session.wireColor}</span>

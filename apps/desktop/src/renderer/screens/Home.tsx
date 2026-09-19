@@ -3,6 +3,7 @@ import { JA, sessionModeLabel } from '../i18n/ja.js';
 import { useStore, type ListMode } from '../app/store.js';
 import { tryOjtApi } from '../app/ojt-api.js';
 import { formatElapsed } from '../../worker/runtime.js';
+import { HelpButton } from '../help/HelpButton.js';
 import styles from './screens.module.css';
 
 /**
@@ -95,16 +96,23 @@ export function Home(): JSX.Element {
           <h1 className={styles.title}>{JA.app.name}</h1>
           <p className={styles.subtitle}>{JA.app.subtitle}</p>
         </div>
-        <button
-          type="button"
-          className={styles.homeSettings}
-          data-testid="open-settings"
-          onClick={() => {
-            setRoute('settings');
-          }}
-        >
-          {JA.home.settings}
-        </button>
+        {/*
+          ホームには「もどる」が無いので、上の帯のボタンは右端の設定の隣に並べる
+          （Plan 6 Task 9）。`justify-content: space-between` の直下に3つ目を置くと
+          ヘルプだけが帯の真ん中へ流れるので、2つを1つの枠にまとめる。
+        */}
+        <div className={styles.homeActions}>
+          <HelpButton />
+          <button
+            type="button"
+            data-testid="open-settings"
+            onClick={() => {
+              setRoute('settings');
+            }}
+          >
+            {JA.home.settings}
+          </button>
+        </div>
       </div>
       <h2 className={styles.title} style={{ fontSize: 18 }}>
         {JA.home.title}
