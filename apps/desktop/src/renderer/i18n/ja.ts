@@ -18,7 +18,7 @@ import type { ProbeSide } from '../app/store-types.js';
  */
 
 /** アプリ名称（仮称。§17.2 #18）。 */
-export const APP_NAME = 'OJT電気保全トレーナー';
+export const APP_NAME = '電気教育ツール';
 
 export { MSG, readFailedText, saveFailedText } from '../../shared/messages.js';
 

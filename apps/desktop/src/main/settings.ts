@@ -41,7 +41,7 @@ export function corruptSettingsPath(now: Date = new Date()): string {
 
 /** 利用者課題フォルダの既定パス。§7.8 */
 export function defaultUserContentDir(): string {
-  return join(app.getPath('appData'), 'OJT電気保全トレーナー', 'content');
+  return join(app.getPath('appData'), '電気教育ツール', 'content');
 }
 
 /**

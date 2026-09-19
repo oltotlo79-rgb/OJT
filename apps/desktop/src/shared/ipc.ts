@@ -149,7 +149,7 @@ export type WorkFileLoadResult =
 
 /** アプリ設定。§12.1 */
 export interface AppSettings {
-  /** 利用者課題フォルダ。空文字なら既定（`%APPDATA%/OJT電気保全トレーナー/content`）。§7.8 */
+  /** 利用者課題フォルダ。空文字なら既定（`%APPDATA%/電気教育ツール/content`）。§7.8 */
   userContentDir: string;
   /** 効果音のON/OFF。§15 */
   soundEnabled: boolean;

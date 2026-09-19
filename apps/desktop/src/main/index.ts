@@ -50,7 +50,7 @@ function createWindow(): BrowserWindow {
     minWidth: 1100,
     minHeight: 720,
     show: false,
-    title: 'OJT電気保全トレーナー',
+    title: '電気教育ツール',
     backgroundColor: '#1b1e24',
     webPreferences: {
       preload: join(import.meta.dirname, '../preload/index.js'),
