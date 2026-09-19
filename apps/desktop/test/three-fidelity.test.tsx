@@ -12,6 +12,7 @@ import {
   SWITCH_ROCKER_MM,
   SWITCH_ROCKER_TILT_RAD,
   switchRockerPose,
+  wellColorFor,
 } from '../src/renderer/three/AcFixtures.js';
 import { boardToWorld, cameraPose } from '../src/renderer/three/camera.js';
 import { findFixtureFootprint } from '../src/renderer/three/Fixtures.js';
@@ -111,6 +112,34 @@ describe('ブレーカの3D（§6.1 / 利用者要望 2026-09-19）', () => {
     }
   });
 
+  it('ハンドルの傾きは通常ズームでも見分けられる角度まで広げてある（項目4）', () => {
+    // 今日のスクリーンショット確認 10/11: 20°では ON/OFF の姿勢の違いにほとんど気づけなかった
+    const clearlyVisibleRad = (25 * Math.PI) / 180;
+    expect(BREAKER_HANDLE_TILT_RAD).toBeGreaterThanOrEqual(clearlyVisibleRad);
+  });
+
+  it('ハンドル窓の色は ON で緑、OFF で既定の暗い色に変わる（項目4）', () => {
+    expect(wellColorFor(true)).not.toBe(wellColorFor(false));
+    expect(wellColorFor(true)).toMatch(/^#[0-9A-Fa-f]{6}$/);
+    expect(wellColorFor(false)).toMatch(/^#[0-9A-Fa-f]{6}$/);
+
+    for (const on of [true, false]) {
+      const meshes = pickables(
+        <Breaker
+          footprint={CB}
+          terminals={terminalsOf('CB')}
+          color="#DCDCD6"
+          heightMm={HEIGHT_MM}
+          on={on}
+        />,
+      );
+      const well = meshes.find((mesh) => mesh.props['name'] === 'breaker-well');
+      expect(well, `on=${on}`).toBeDefined();
+      const material = well?.props['material'] as { color: { getHexString: () => string } };
+      expect(`#${material.color.getHexString()}`, `on=${on}`).toBe(wellColorFor(on).toLowerCase());
+    }
+  });
+
   it('飾りのメッシュは1つもクリックを奪わない', () => {
     const meshes = pickables(
       <Breaker
@@ -142,6 +171,29 @@ describe('電源スイッチの3D（§6.1 / 利用者要望 2026-09-19）', () =
     expect(off.rotationX).toBeCloseTo(SWITCH_ROCKER_TILT_RAD, 10);
     expect(on.position[1]).toBeGreaterThan(off.position[1]);
     expect(SWITCH_ROCKER_MM.depth).toBeLessThan(SW.h);
+  });
+
+  it('ロッカーの傾きは通常ズームでも見分けられる角度まで広げてある（項目4）', () => {
+    const clearlyVisibleRad = (25 * Math.PI) / 180;
+    expect(SWITCH_ROCKER_TILT_RAD).toBeGreaterThanOrEqual(clearlyVisibleRad);
+  });
+
+  it('ロッカー窓の色は ON で緑、OFF で既定の暗い色に変わる（項目4）', () => {
+    for (const on of [true, false]) {
+      const meshes = pickables(
+        <PowerSwitch
+          footprint={SW}
+          terminals={terminalsOf('SW')}
+          color="#DCDCD6"
+          heightMm={HEIGHT_MM}
+          on={on}
+        />,
+      );
+      const well = meshes.find((mesh) => mesh.props['name'] === 'switch-well');
+      expect(well, `on=${on}`).toBeDefined();
+      const material = well?.props['material'] as { color: { getHexString: () => string } };
+      expect(`#${material.color.getHexString()}`, `on=${on}`).toBe(wellColorFor(on).toLowerCase());
+    }
   });
 
   it('飾りのメッシュは1つもクリックを奪わない', () => {

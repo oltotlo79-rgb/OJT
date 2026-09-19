@@ -3,6 +3,7 @@ import type { TerminalId } from '@ojt/circuit-sim';
 import { Html } from '@react-three/drei';
 import type { JSX } from 'react';
 import type { ThreeEvent } from '@react-three/fiber';
+import { RingGeometry } from 'three';
 import {
   TERMINAL_HOVER_COLOR,
   TERMINAL_PENDING_COLOR,
@@ -36,9 +37,53 @@ const PICK_LIFT_MM = 3;
  */
 const TOOLTIP_OFFSET_MM: [number, number, number] = [0, -8, 8];
 
+/**
+ * ホバー中の発光強度。ネジ本体は半径1.8mmしかなく、色替えだけでは `plc` プリセット
+ * （機種によっては1m以上離れる。§12.2）まで引くとほとんど気づけなかった
+ * （今日のスクリーンショット確認 08）。発光を足して遠目でも分かるようにする（項目3）。
+ */
+export const TERMINAL_HOVER_EMISSIVE_INTENSITY = 1.1;
+
+/**
+ * ホバー時にネジの周りへ足す光る輪の内外半径[mm]。
+ * ネジ（半径1.8mm）より一回り大きく、当たり判定の半径（盤定義の既定4mm）を超えない大きさにして、
+ * 「いま指している端子」がひと目で分かるようにする（項目3）。
+ */
+export const HOVER_RING_INNER_MM = 2.4;
+export const HOVER_RING_OUTER_MM = 4.2;
+/** 端子は盤に何百個もあるので、輪のジオメトリも1個を使い回す（§15）。 */
+export const HOVER_RING_GEOMETRY = new RingGeometry(HOVER_RING_INNER_MM, HOVER_RING_OUTER_MM, 24);
+/** 輪をネジ（z=0）より手前、当たり判定球（`PICK_LIFT_MM`）より奥に置く[mm]。 */
+const HOVER_RING_LIFT_MM = PICK_LIFT_MM - 0.6;
+
+/** レイキャストを受けない（飾りの輪がクリックを奪わないように）。 */
+function noPick(): void {
+  // 交差候補を積まない
+}
+
 /** ツールチップのラベル文字列を作る（役割名は盤定義の `label` をそのまま使う）。§8.2 */
 export function terminalTooltip(terminal: BoardTerminal, roleLabel: string): string {
   return roleLabel.length > 0 ? roleLabel : terminal.label;
+}
+
+/**
+ * ホバー中のネジの見た目（色＋発光）。JSXから切り出した純関数にして、単体テストが
+ * 「ホバーで光る」ことを数値で確かめられるようにする（項目3）。
+ */
+export function terminalScrewAppearance(
+  hovered: boolean,
+  pending: boolean,
+): { color: string; emissive: string | undefined; emissiveIntensity: number } {
+  const color = pending
+    ? TERMINAL_PENDING_COLOR
+    : hovered
+      ? TERMINAL_HOVER_COLOR
+      : TERMINAL_SCREW_COLOR;
+  return {
+    color,
+    emissive: hovered ? TERMINAL_HOVER_COLOR : undefined,
+    emissiveIntensity: hovered ? TERMINAL_HOVER_EMISSIVE_INTENSITY : 0,
+  };
 }
 
 /** 端子1個。 */
@@ -58,18 +103,35 @@ export function TerminalHit({
   onPick: (terminal: BoardTerminal) => void;
 }): JSX.Element {
   const pos = toScene(terminal.pos);
-  const screwColor = pending
-    ? TERMINAL_PENDING_COLOR
-    : hovered
-      ? TERMINAL_HOVER_COLOR
-      : TERMINAL_SCREW_COLOR;
+  const screw = terminalScrewAppearance(hovered, pending);
   return (
     <group position={pos}>
       <mesh
         geometry={SCREW_GEOMETRY}
-        material={sharedMaterial(screwColor, { metalness: 0.7, roughness: 0.3 })}
+        material={sharedMaterial(screw.color, {
+          metalness: 0.7,
+          roughness: 0.3,
+          ...(screw.emissive === undefined
+            ? {}
+            : { emissive: screw.emissive, emissiveIntensity: screw.emissiveIntensity }),
+        })}
         rotation={[Math.PI / 2, 0, 0]}
       />
+      {hovered ? (
+        <mesh
+          geometry={HOVER_RING_GEOMETRY}
+          material={sharedMaterial(TERMINAL_HOVER_COLOR, {
+            metalness: 0,
+            roughness: 0.4,
+            emissive: TERMINAL_HOVER_COLOR,
+            emissiveIntensity: TERMINAL_HOVER_EMISSIVE_INTENSITY,
+            transparent: true,
+            opacity: 0.85,
+          })}
+          raycast={noPick}
+          position={[0, 0, HOVER_RING_LIFT_MM]}
+        />
+      ) : null}
       <mesh
         geometry={PICK_GEOMETRY}
         scale={terminal.pickRadiusMm}

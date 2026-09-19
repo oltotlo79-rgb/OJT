@@ -51,8 +51,21 @@ const MARK_MM = 1.6;
 const BODY_INSET_MM = 2;
 /** ハンドル／ロッカーの色（写真の濃いグレー）。 */
 const HANDLE_COLOR = '#2B2F36';
-/** ハンドル窓（凹み）の色。 */
+/** ハンドル窓（凹み）の色（OFF・既定）。 */
 const WELL_COLOR = '#17191D';
+/**
+ * ハンドル窓の色（ON）。実物のMCBのように状態で窓の色そのものを変える。
+ * ハンドルの傾き（`BREAKER_HANDLE_TILT_RAD` / `SWITCH_ROCKER_TILT_RAD`）だけでは通常ズームでは
+ * 見分けづらく、印字（ON/OFF）も両方常時見えたままなので、ON/OFF の判別材料が姿勢しか無かった
+ * （今日のスクリーンショット確認 10/11・レビュー指摘・項目4）。
+ */
+const WELL_COLOR_ON = '#2E8B4F';
+
+/** ハンドル窓の色。ONは緑、OFFは既定の暗い凹み色。 */
+export function wellColorFor(on: boolean): string {
+  return on ? WELL_COLOR_ON : WELL_COLOR;
+}
+
 /** 本体を横切る青のライン（写真）。 */
 const STRIPE_COLOR = '#2F6FD0';
 /** 極間の見切り（2極であることが分かる筋）。 */
@@ -63,12 +76,17 @@ const POLE_SEAM_MM = 1.2;
  */
 const FACE_LIFT_MM = 0.5;
 
-/** ブレーカのハンドルの倒れ角[rad]（ON は盤の奥＝実物の「上」へ倒れる）。 */
-export const BREAKER_HANDLE_TILT_RAD = (20 * Math.PI) / 180;
+/**
+ * ブレーカのハンドルの倒れ角[rad]（ON は盤の奥＝実物の「上」へ倒れる）。
+ * 以前は20°しかなく、支点からの半長（高さ6mmの半分＝3mm）に掛けても1mm程度しか動かないため、
+ * 通常ズームではON/OFFの姿勢の違いにほとんど気づけなかった（今日のスクリーンショット確認 10/11・
+ * レビュー指摘・項目4）。はっきり見分けられる 25° を超える角度まで広げる。
+ */
+export const BREAKER_HANDLE_TILT_RAD = (32 * Math.PI) / 180;
 /** ブレーカのハンドルの寸法[mm]（幅×奥行×高さ）。 */
 export const BREAKER_HANDLE_MM = { width: 13, depth: 4.5, height: 6 } as const;
-/** 電源スイッチのロッカーの倒れ角[rad]。 */
-export const SWITCH_ROCKER_TILT_RAD = (14 * Math.PI) / 180;
+/** 電源スイッチのロッカーの倒れ角[rad]。ブレーカと同じ理由で 25° を超える角度まで広げる（項目4）。 */
+export const SWITCH_ROCKER_TILT_RAD = (30 * Math.PI) / 180;
 /** 電源スイッチのロッカーの寸法[mm]（幅×奥行×厚み）。 */
 export const SWITCH_ROCKER_MM = { width: 13, depth: 6, height: 3.5 } as const;
 
@@ -345,10 +363,11 @@ export function Breaker({
         })}
         scale={[footprint.w - BODY_INSET_MM, 0.9, 0.6]}
       />
-      {/* ハンドル窓（凹み）と連動ハンドル */}
+      {/* ハンドル窓（凹み）と連動ハンドル。窓の色は ON で緑に変わる（項目4） */}
       <mesh
+        name="breaker-well"
         geometry={UNIT_BOX}
-        material={sharedMaterial(WELL_COLOR, { roughness: 0.8 })}
+        material={sharedMaterial(wellColorFor(on), { roughness: 0.8 })}
         raycast={noPick}
         position={toScene({ x: wellX, y, z: heightMm - 1 })}
         scale={[BREAKER_HANDLE_MM.width + 2, BREAKER_HANDLE_MM.depth + 2, 1.6]}
@@ -409,10 +428,11 @@ export function PowerSwitch({
         position={toScene({ x, y, z: (BASE_TOP_MM + heightMm) / 2 })}
         scale={[footprint.w - BODY_INSET_MM, footprint.h - BODY_INSET_MM, heightMm - BASE_TOP_MM]}
       />
-      {/* ロッカーを受ける黒い枠（実物の操作窓） */}
+      {/* ロッカーを受ける黒い枠（実物の操作窓）。窓の色は ON で緑に変わる（項目4） */}
       <mesh
+        name="switch-well"
         geometry={UNIT_BOX}
-        material={sharedMaterial(WELL_COLOR, { roughness: 0.8 })}
+        material={sharedMaterial(wellColorFor(on), { roughness: 0.8 })}
         raycast={noPick}
         position={toScene({ x, y, z: heightMm - 1 })}
         scale={[SWITCH_ROCKER_MM.width + 2.5, SWITCH_ROCKER_MM.depth + 2, 1.6]}
