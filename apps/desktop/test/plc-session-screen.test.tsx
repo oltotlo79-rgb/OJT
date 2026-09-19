@@ -1,4 +1,5 @@
 import { BUILTIN_PLC_PROBLEMS } from '@ojt/content';
+import { endNetwork, network, no, program, X } from '@ojt/ladder-core';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useStore } from '../src/renderer/app/store.js';
@@ -118,7 +119,21 @@ describe('モードDのセッション画面（§10.1 / §12.1）', () => {
     expect(screen.getByTestId('plc-step-wire')).toHaveAttribute('data-state', 'anytime');
     // 最初の一歩はキー割当（方言プロファイル）から作る。決定表#12
     expect(screen.getByTestId('plc-hint')).toHaveTextContent('F5');
-    expect(screen.getByTestId('plc-hint')).toHaveTextContent('F4');
+  });
+
+  /** Batch 4+5 レビュー M7: いまの手順だけの案内に絞る（前は常に「ラダー作成」の案内が出ていた）。 */
+  it('shows only the hint for the current step (Batch 4+5 レビュー M7)', () => {
+    render(<SessionRoute />);
+    // まだ何も置いていない → 「ラダー作成」の案内（F5＝a接点／F7＝コイル）だけ。
+    // 「変換」の手順の案内（`convertHintText` の「変換します」）はまだ出ない。
+    expect(screen.getByTestId('plc-hint')).toHaveTextContent('F5');
+    expect(screen.getByTestId('plc-hint')).not.toHaveTextContent('変換します');
+    // 変換済みでない中身を積むと「変換」がいまの手順になり、その案内に切り替わる
+    act(() => {
+      useStore.getState().setLadder(program(network('n1', [[no(X(0))]]), endNetwork()));
+    });
+    expect(screen.getByTestId('plc-step-convert')).toHaveAttribute('data-state', 'current');
+    expect(screen.getByTestId('plc-hint')).toHaveTextContent('変換します');
   });
 
   it('says why the judge button is disabled and shows RUN/STOP as text', () => {
@@ -132,9 +147,47 @@ describe('モードDのセッション画面（§10.1 / §12.1）', () => {
     expect(screen.getByTestId('plc-run-status')).toHaveTextContent('運転中');
   });
 
+  /** Batch 4+5 レビュー M8: 判定はRUNを要らない。変換済みなら「いまここ」にする。 */
+  it('marks the judge step current once converted, even before RUN (Batch 4+5 レビュー M8)', () => {
+    render(<SessionRoute />);
+    expect(screen.getByTestId('plc-step-judge')).toHaveAttribute('data-state', 'todo');
+    act(() => {
+      useStore.getState().setConverted(true, NO_CONVERT_ISSUES);
+    });
+    expect(screen.getByTestId('plc-step-judge')).toHaveAttribute('data-state', 'current');
+    expect(useStore.getState().plcRunning).toBe(false);
+    expect(screen.getByTestId('judge-button')).not.toBeDisabled();
+  });
+
+  /** Batch 4+5 レビュー B1: 決定表#7の静的な1行は判定データではないので常に出す。 */
+  it('always shows the wall-outlet note (決定表#7 / Batch 4+5 レビュー B1)', () => {
+    render(<SessionRoute />);
+    expect(screen.getByTestId('plc-outlet-note')).toHaveTextContent('壁コンセント');
+  });
+
   it('shows the problem statement and the parts panel（リレーを装着する）', () => {
     render(<SessionRoute />);
     expect(screen.getByText(titlePattern)).toBeInTheDocument();
     expect(screen.getByTestId('parts-panel')).toBeInTheDocument();
+  });
+
+  /**
+   * Batch 4+5 レビュー M13: `PLC_UNITS`（board-model）は FX5U だけを持つ。Phase 4 の
+   * 機種（`CP1E` 等）はスキーマ上は許されるが本体定義が無いので「未対応」になる。
+   */
+  it('blocks judging and toasts once for an unsupported PLC model (§13 #2)', () => {
+    useStore.getState().abandonSession();
+    useStore.getState().openProblem({
+      ...problem,
+      plc: { vendor: 'omron', model: 'CP1E' },
+    });
+    render(<SessionRoute />);
+    expect(screen.getByTestId('judge-button')).toBeDisabled();
+    expect(screen.getByTestId('judge-button')).toHaveAttribute(
+      'title',
+      expect.stringContaining('CP1E'),
+    );
+    const toasts = useStore.getState().toasts.filter((t) => t.text.includes('CP1E'));
+    expect(toasts).toHaveLength(1);
   });
 });

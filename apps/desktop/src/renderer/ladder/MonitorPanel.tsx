@@ -10,6 +10,7 @@ import type { JSX } from 'react';
 import type { PlcCommandAction } from '../../worker/protocol.js';
 import { useStore } from '../app/store.js';
 import { JA, onOffLabel, plcInputSpecText, secondsLabel } from '../i18n/ja.js';
+import { shortcutKeyOf } from '../session/ladder.js';
 import styles from './ladder.module.css';
 
 /**
@@ -69,7 +70,7 @@ export function MonitorPanel({
       */}
       {!converted ? (
         <p className={styles.sideNote} data-testid="monitor-not-converted">
-          {JA.ladder.monitorNotConverted}
+          {JA.ladder.monitorNotConverted(shortcutKeyOf(profile, 'convert') ?? 'F4')}
         </p>
       ) : monitor === undefined ? (
         <p className={styles.sideNote} data-testid="monitor-no-snapshot">

@@ -1,4 +1,4 @@
-import type { JudgePlcResult } from '@ojt/content';
+import type { JudgePlcResult, StaticCheckId } from '@ojt/content';
 import { describe, expect, it } from 'vitest';
 import {
   checkAdvice,
@@ -93,8 +93,26 @@ describe('checkAdvice（2026-09-19 の利用者決定「何をすればよいか
     expect(checkAdvice('ioAssignment')).toContain('割付');
   });
 
-  it('直し方を用意していないチェックには何も返さない', () => {
-    expect(checkAdvice('wireColorRule')).toBeUndefined();
+  /** Batch 4+5 レビュー M11: 9件すべてに用意する（`static-check-types.ts` の全ID）。 */
+  it('判定に出うる静的チェック9件すべてに直し方がある', () => {
+    const ids: readonly StaticCheckId[] = [
+      'wireColorRule',
+      'terminalLimit',
+      'unusedParts',
+      'forbiddenCircuit',
+      'coilPolarity',
+      'powerSequence',
+      'twoStage',
+      'plcPowerIndependent',
+      'ioAssignment',
+    ];
+    for (const id of ids) {
+      expect(checkAdvice(id).length).toBeGreaterThan(0);
+    }
+  });
+
+  it('見覚えの無いIDには汎用の言い方へ落とす', () => {
+    expect(checkAdvice('unknown-check' as StaticCheckId)).toBe('配線の指摘を確認してください。');
   });
 });
 
@@ -136,7 +154,11 @@ describe('failureReasons（不合格の理由を先に出す）', () => {
     expect(lines[0]).toContain('→');
   });
 
-  it('PLC電源の独立には H-5 の言い換えを直し方として添える', () => {
+  /*
+   * Batch 4+5 レビュー M11: `explainPowerCheck()` の詳しい説明（`plc-power-help` カード）とは
+   * 別の短い助言を添える。長い言い換え（`2本配線してください`）を1行に重ねない。
+   */
+  it('PLC電源の独立には専用の短い直し方を添える（H-5の説明カードとは重ねない）', () => {
     const lines = failureReasons(
       plcResult({
         passed: false,
@@ -150,7 +172,8 @@ describe('failureReasons（不合格の理由を先に出す）', () => {
         ],
       }),
     );
-    expect(lines[0]).toContain('2本配線');
+    expect(lines[0]).toContain('壁コンセント');
+    expect(lines[0]).not.toContain('2本配線');
   });
 
   it('差分は信号名と時刻を添えて並べ、多いときは件数でまとめる', () => {

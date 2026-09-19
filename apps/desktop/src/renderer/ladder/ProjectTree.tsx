@@ -1,6 +1,7 @@
 import type { LadderProgram } from '@ojt/ladder-core';
 import type { DialectProfile } from '@ojt/plc-dialects';
 import type { CSSProperties, JSX } from 'react';
+import { useStore } from '../app/store.js';
 import { JA } from '../i18n/ja.js';
 import styles from './ladder.module.css';
 
@@ -19,13 +20,16 @@ export function ProjectTree({
   currentNetworkId: string;
   onPick: (networkId: string) => void;
 }): JSX.Element {
+  // 設定画面のモニタ色が方言の既定色を上書きする（Batch 4+5 レビュー M15）
+  const monitorColor = useStore((s) => s.monitorColor);
+  const currentColor = monitorColor.length > 0 ? monitorColor : profile.monitorColors.powered;
   return (
     <nav
       className={styles.tree}
       data-testid="project-tree"
       aria-label={profile.panels.tree}
-      // 選択中のネットワークの色は方言から引く（CSS に直書きしない。レビュー Minor）
-      style={{ '--tree-current': profile.monitorColors.powered } as CSSProperties}
+      // 選択中のネットワークの色は方言（＋設定の上書き）から引く（CSS に直書きしない。レビュー Minor）
+      style={{ '--tree-current': currentColor } as CSSProperties}
     >
       <p className={styles.treeRoot}>{JA.ladder.treeProgram}</p>
       {/* a11y: ネットワーク一覧は木構造として読み上げる（Batch 3 レビュー M8） */}

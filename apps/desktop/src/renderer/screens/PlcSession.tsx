@@ -6,7 +6,6 @@ import {
 } from '@ojt/board-model';
 import type { TerminalId } from '@ojt/circuit-sim';
 import { isPlcProblem } from '@ojt/content';
-import type { LadderProgram } from '@ojt/ladder-core';
 import { getDialect, type DialectProfile } from '@ojt/plc-dialects';
 import { useCallback, useEffect, useMemo, useRef, type JSX } from 'react';
 import type { PlcCommandAction } from '../../worker/protocol.js';
@@ -50,8 +49,8 @@ import {
   type PickAction,
   type PickHit,
 } from '../session/interaction.js';
-import type { LadderEditorMode } from '../session/ladder.js';
-import { boardForProblem, canJudgePlc } from '../session/plc-session.js';
+import { hasLadderContent, shortcutKeyOf, type LadderEditorMode } from '../session/ladder.js';
+import { boardForProblem, canJudgePlc, plcBoardOf } from '../session/plc-session.js';
 import { useViewportShortcuts } from '../session/viewport-keys.js';
 import { applyWorkFile, toWorkFile } from '../session/work-file.js';
 import { bridge } from '../session/worker-bridge.js';
@@ -73,26 +72,46 @@ const ELAPSED_INTERVAL_MS = 200;
 type StepState = 'done' | 'current' | 'todo' | 'anytime';
 
 /**
- * ラダーに中身があるか（空セルと END だけなら「まだ作っていない」）。
- * 手順の表示にだけ使う。中身の**正しさ**は見ない（決定表#7）。
- */
-function hasLadderContent(program: LadderProgram | undefined): boolean {
-  if (program === undefined) return false;
-  return program.networks.some((net) =>
-    net.cells.some((row) => row.some((cell) => cell.kind !== 'empty' && cell.kind !== 'end')),
-  );
-}
-
-/**
  * ラダーの作り方の1行。キーの文字列は**方言プロファイルから引く**（決定表#12）。
  * 画面にキーを直接書かないので、Phase 4 でメーカーを替えると案内も一緒に変わる。
+ * Batch 4+5 レビュー M7: これは「ラダー作成」の手順だけの案内で、`convert` は含めない
+ * （変換の手順になったら {@link convertHintText} に切り替わる）。
  */
 function ladderHintText(profile: DialectProfile): string {
-  const keys = (['contact-no', 'coil', 'convert'] as const)
+  const keys = (['contact-no', 'coil'] as const)
     .map((action) => profile.shortcuts.find((entry) => entry.action === action))
     .filter((entry) => entry !== undefined)
     .map((entry) => `${entry.keys}＝${entry.label}`);
   return keys.length === 0 ? JA.plc.ladderHint : `${JA.plc.ladderHint}: ${keys.join(' ／ ')}`;
+}
+
+/** 「変換」の手順の案内（Batch 4+5 レビュー M7 / M9）。 */
+function convertHintText(profile: DialectProfile): string {
+  const key = shortcutKeyOf(profile, 'convert');
+  return key === undefined
+    ? JA.plc.convertHint
+    : `${JA.plc.convertHint}: ${key}＝${JA.plc.stepConvert}`;
+}
+
+/** 「モニタ開始・RUN」の手順の案内（Batch 4+5 レビュー M7）。 */
+function runHintText(profile: DialectProfile): string {
+  const entry = profile.shortcuts.find((e) => e.action === 'monitor');
+  return entry === undefined ? JA.plc.runHint : `${JA.plc.runHint}: ${entry.keys}＝${entry.label}`;
+}
+
+/**
+ * いまの手順にだけ効く1行の案内（Batch 4+5 レビュー M7）。手順ごとに1つだけ出し、
+ * どの手順も「いまここ」でなければ（＝全部終わっていれば）何も出さない。
+ */
+function stepHintText(
+  stepKey: 'wire' | 'ladder' | 'convert' | 'run' | 'judge' | undefined,
+  profile: DialectProfile,
+): string | undefined {
+  if (stepKey === 'ladder') return ladderHintText(profile);
+  if (stepKey === 'convert') return convertHintText(profile);
+  if (stepKey === 'run') return runHintText(profile);
+  if (stepKey === 'judge') return JA.plc.judgeHint;
+  return undefined;
 }
 
 /** 書込み／読出し／モニタの表示名（GX Works3 の言い方に揃える）。§10.6 */
@@ -357,6 +376,21 @@ export function PlcSession(): JSX.Element {
     };
   }, [runAction]);
 
+  /*
+   * 未対応の機種（§13 #2 / Batch 4+5 レビュー M13）。`boardForProblem()` は未対応機種でも
+   * `JIPM_BOARD` へ静かに落ちる（3D は描ける）が、Worker へ送る `plcModel` に対応する本体が
+   * 無いので判定できない。ここで検知して判定を止め、理由をトーストと判定ボタンの両方に出す。
+   * 早期 return（次のブロック）より**前**に置く（Hooks はレンダーごとに必ず同じ順で呼ぶ）。
+   */
+  const modelKnown = problem === undefined ? true : plcBoardOf(problem) !== undefined;
+  useEffect(() => {
+    if (problem !== undefined && !modelKnown) {
+      useStore.getState().toast(JA.plc.unknownModel(problem.plc.model), 'error');
+    }
+    // 機種は課題が変わらない限り変わらないので、課題ごとに1回だけ出す
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [problemId, modelKnown]);
+
   if (problem === undefined || session === undefined) {
     return (
       <div className={styles.center}>
@@ -408,20 +442,30 @@ export function PlcSession(): JSX.Element {
   };
 
   const readiness = canJudgePlc({ converted, ladder });
-  const judgeTitle = readiness.ok
-    ? JA.session.judge
-    : readiness.reason === 'no-ladder'
-      ? JA.plc.judgeNoLadder
-      : JA.plc.judgeNotConverted;
+  const convertKey = shortcutKeyOf(profile, 'convert') ?? 'F4';
+  const judgeTitle = !modelKnown
+    ? JA.plc.unknownModel(problem.plc.model)
+    : readiness.ok
+      ? JA.session.judge
+      : readiness.reason === 'no-ladder'
+        ? JA.plc.judgeNoLadder
+        : JA.plc.judgeNotConverted(convertKey);
 
   /*
    * 手順の見える化（2026-09-19 の利用者決定「分かりやすく直感的に」）。
    * 見るのは**ラダーの有無・変換済みか・RUN 中か**の3つだけで、配線の中身は一切見ない
    * （決定表#7: セッション中に合否を漏らさない）。「配線」はいつでも行える作業として
    * 完了印を出さない。
+   *
+   * 「判定」は RUN を必要としない（判定は静的チェック＋波形の比較で、RUN 中である必要は無い。
+   * Batch 4+5 レビュー M8）ので、変換済みなら「いまここ」にする。
    */
   const written = hasLadderContent(ladder);
-  const steps: ReadonlyArray<{ key: string; label: string; state: StepState }> = [
+  const steps: ReadonlyArray<{
+    key: 'wire' | 'ladder' | 'convert' | 'run' | 'judge';
+    label: string;
+    state: StepState;
+  }> = [
     { key: 'wire', label: JA.plc.stepWire, state: 'anytime' },
     { key: 'ladder', label: JA.plc.stepLadder, state: written ? 'done' : 'current' },
     {
@@ -437,9 +481,10 @@ export function PlcSession(): JSX.Element {
     {
       key: 'judge',
       label: JA.plc.stepJudge,
-      state: readiness.ok && plcRunning ? 'current' : 'todo',
+      state: readiness.ok && modelKnown ? 'current' : 'todo',
     },
   ];
+  const currentStepKey = steps.find((step) => step.state === 'current')?.key;
 
   /** 元に戻す／やり直し（盤のみ。ラダーは `Ctrl+Z` がエディタで処理する。決定表#3） */
   const restore = (step: ReturnType<typeof undoHistory>, verb: string): void => {
@@ -482,7 +527,7 @@ export function PlcSession(): JSX.Element {
         canUndo={history.done.length > 0}
         canRedo={history.undone.length > 0}
         judging={judging}
-        judgeDisabled={!readiness.ok}
+        judgeDisabled={!readiness.ok || !modelKnown}
         judgeTitle={judgeTitle}
         extraTools={
           <>
@@ -544,7 +589,7 @@ export function PlcSession(): JSX.Element {
         }}
         onJudge={() => {
           const store = useStore.getState();
-          if (store.judging) return;
+          if (store.judging || !modelKnown) return;
           const boardSession = store.session;
           const currentLadder = store.ladder;
           if (boardSession === undefined || currentLadder === undefined) return;
@@ -663,12 +708,12 @@ export function PlcSession(): JSX.Element {
           </span>
         </div>
         <p className={styles.plcHint} data-testid="plc-hint">
-          {readiness.ok ? null : (
+          {readiness.ok && modelKnown ? null : (
             <span className={styles.plcBlocked}>
               {JA.plc.judgeBlocked}: {judgeTitle}
             </span>
           )}
-          {ladderHintText(profile)}
+          {stepHintText(currentStepKey, profile)}
         </p>
       </div>
 
@@ -698,6 +743,12 @@ export function PlcSession(): JSX.Element {
         )}
         <div className={styles.plcRight}>
           <ProblemPanel problem={problem} />
+          {/*
+            決定表#7の静的な1行（判定データではないので常に出してよい）。Batch 4+5 レビュー B1。
+          */}
+          <p className={styles.plcOutletNote} data-testid="plc-outlet-note">
+            {JA.plc.outletNote}
+          </p>
           {/*
             モードDもリレーはソケットへ装着してから `CRn.14` へ配線する（§10.2 の2段結線）。
             `onPlug` / `onUnplug` / `onPreset` は `Session.tsx` の3つをそのまま写す。

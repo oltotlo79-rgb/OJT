@@ -149,6 +149,21 @@ describe('LadderGrid（§10.7）', () => {
     expect(screen.getByTestId('cell-n2:0:0')).toHaveAttribute('data-powered', 'false');
   });
 
+  /** Batch 4+5 レビュー M15: 設定画面のモニタ色が方言の既定色を上書きする。 */
+  it('uses the store monitorColor setting to recolour a powered cell (M15)', () => {
+    const bits = offBits(1).split('');
+    bits[0] = '1';
+    bits[1] = '1';
+    useStore.setState({
+      plcMonitor: monitorSnapshot({ n1: bits.join(''), n2: offBits(1) }),
+      monitorColor: '#FF00AA',
+    });
+    render(<LadderGrid program={sample()} {...base} mode="monitor" />);
+    const path = screen.getByTestId('cell-n1:0:0').querySelector('path');
+    expect(path).toHaveAttribute('stroke', '#FF00AA');
+    useStore.setState({ monitorColor: MITSUBISHI_FX5U.monitorColors.powered });
+  });
+
   it('never paints an empty cell even though column 0 reports powered (3A レビュー指摘)', () => {
     const blank = program(network('n1', [[no(X(0))]]), endNetwork());
     // すべてのセルが通電しているという最悪の入力を渡す

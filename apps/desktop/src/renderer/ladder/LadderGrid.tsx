@@ -243,6 +243,16 @@ function NetworkView({
 }): JSX.Element {
   const bits = useStore((s) => (mode === 'monitor' ? (s.plcMonitor?.powered[net.id] ?? '') : ''));
   const on = (row: number, col: number): boolean => bits.charAt(row * IR_COLS + col) === '1';
+  /*
+   * 設定画面のモニタ色（`monitorColor`）が方言の既定色（`profile.monitorColors.powered`）を
+   * 上書きする（Task 16 で設定を追加したが配線されていなかった。Batch 4+5 レビュー M15）。
+   * 未設定（空文字）なら方言の既定へ戻す。`idle`（非通電）色は方言のまま。
+   */
+  const monitorColor = useStore((s) => s.monitorColor);
+  const colors = {
+    ...profile.monitorColors,
+    powered: monitorColor.length > 0 ? monitorColor : profile.monitorColors.powered,
+  };
   // レンダー回数を DOM に出す（D1 のテストが「他ネットワークの通電が変わっても再描画されない」
   // ことを確かめるための、副作用の無い観測用カウンタ）。
   const renderCount = useRef(0);
@@ -307,7 +317,7 @@ function NetworkView({
                     rightOn={
                       cell.kind !== 'empty' && (col < COIL_COL ? on(row, col + 1) : on(row, col))
                     }
-                    colors={profile.monitorColors}
+                    colors={colors}
                     error={errorCells.has(key)}
                     hasLinkBelow={row + 1 < net.rows}
                     onPick={(picked) => {

@@ -4,6 +4,15 @@ import { JA, ladderIssuePlace } from '../i18n/ja.js';
 import styles from './result.module.css';
 
 /**
+ * 警告の見出し語（`warning.code` から引く）。Batch 4+5 レビュー M12: 前は常に
+ * `JA.ladder.doubleCoil` を出していたので、`code` が増えたときに黙って誤表示していた。
+ * `satisfies` で `CompileWarning['code']` の全件を網羅させる。
+ */
+const WARNING_LABELS = {
+  'double-coil': JA.ladder.doubleCoil,
+} satisfies Record<CompileWarning['code'], string>;
+
+/**
  * 変換エラーと警告の一覧（結果画面）。設計仕様 §10.6 / §10.8。
  * エラーがあるということは**シミュレートされずに不合格になった**ということなので、その旨を添える。
  */
@@ -36,7 +45,7 @@ export function LadderIssueList({
           <ul>
             {warnings.map((warning, index) => (
               <li key={`w-${String(index)}`}>
-                {JA.ladder.doubleCoil}:{' '}
+                {WARNING_LABELS[warning.code]}:{' '}
                 {ladderIssuePlace(warning.networkId, warning.row, warning.col)} {warning.message}
               </li>
             ))}

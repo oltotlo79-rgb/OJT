@@ -52,17 +52,29 @@ export function explainPowerCheck(check: StaticCheckResult): string[] {
 }
 
 /**
- * 落ちた静的チェックの直し方（用意していないチェックは `undefined`）。
- * `plcPowerIndependent` は落ち方で言うことが変わるので `explainPowerCheck()` が受け持つ。
+ * 落ちた静的チェックの直し方。9件すべてに用意する（Batch 4+5 レビュー M11）。
+ * `plcPowerIndependent` はここでは短い助言だけを持つ（詳しい説明は `explainPowerCheck()` が
+ * `plc-power-help` カードへ別に出すので、`failureReasons()` の1行に同じ文を重ねない）。
  */
-const ADVICE: Partial<Record<StaticCheckId, string>> = {
+const ADVICE: Record<StaticCheckId, string> = {
+  wireColorRule: JA.plc.adviceWireColorRule,
+  terminalLimit: JA.plc.adviceTerminalLimit,
+  unusedParts: JA.plc.adviceUnusedParts,
+  forbiddenCircuit: JA.plc.adviceForbiddenCircuit,
+  coilPolarity: JA.plc.adviceCoilPolarity,
+  powerSequence: JA.plc.advicePowerSequence,
   twoStage: JA.plc.adviceTwoStage,
+  plcPowerIndependent: JA.plc.advicePlcPowerIndependent,
   ioAssignment: JA.plc.adviceIoAssignment,
 };
 
-/** そのチェックの直し方。2026-09-19 の利用者決定「何をすればよいかまで書く」。 */
-export function checkAdvice(id: StaticCheckId): string | undefined {
-  return ADVICE[id];
+/**
+ * そのチェックの直し方。2026-09-19 の利用者決定「何をすればよいかまで書く」。
+ * `@ojt/content` に見覚えのない `id` が来ても（型は締まっているが判定側の変更に画面が
+ * 追従し損ねた場合に備え）汎用の1行へ落とす。
+ */
+export function checkAdvice(id: StaticCheckId): string {
+  return ADVICE[id] ?? JA.plc.adviceGeneric;
 }
 
 /** 差分1件を1文にする（`PL1 が 1.20 s で ON のはずが OFF でした（値違い）`）。 */
@@ -87,10 +99,12 @@ export function failureReasons(result: JudgePlcResult): string[] {
   if (result.ladderErrors.length > 0) lines.push(ladderErrorSummary(result.ladderErrors.length));
   for (const check of result.staticChecks) {
     if (check.ok) continue;
-    const advice =
-      check.id === 'plcPowerIndependent' ? explainPowerCheck(check)[0] : checkAdvice(check.id);
     lines.push(
-      checkReasonText(JA.staticCheck[check.id], check.details[0] ?? check.message, advice),
+      checkReasonText(
+        JA.staticCheck[check.id],
+        check.details[0] ?? check.message,
+        checkAdvice(check.id),
+      ),
     );
   }
   for (const mismatch of result.mismatches.slice(0, MAX_REASON_MISMATCHES)) {
