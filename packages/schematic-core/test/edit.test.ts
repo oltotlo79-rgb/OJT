@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   applyEdit,
+  at,
   crA,
   coil,
   editLabel,
@@ -297,6 +298,54 @@ describe('applyEdit: addRung / removeRung / setEnds', () => {
       to: BUS_N,
     });
     expect(out).toEqual({ ok: false, message: '段の端点が循環します: r1' });
+  });
+
+  it('names whichever rung actually stopped resolving, not always the edited one (I2)', () => {
+    // 同じ「輪」だが、今度は依存されている側（r2）を配列の先頭に置く。輪は r1 と r2 の
+    // どちらからも解決できなくなるので、（rungId=r1 に決め打ちせず）先に見つかった方の
+    // IDを文面に出す。
+    const doc = createDocument('d', 't', [
+      rung('r2', { rung: 'r1', node: 0 }, { rung: 'r1', node: 1 }, [crA('c3', 'CR1')]),
+      rung('r1', BUS_P, BUS_N, [pbA('c1', 'PB1'), coil('c2', 'CR1')]),
+    ]);
+    const out = applyEdit(doc, {
+      kind: 'setEnds',
+      rungId: 'r1',
+      from: { rung: 'r2', node: 0 },
+      to: BUS_N,
+    });
+    expect(out).toEqual({ ok: false, message: '段の端点が循環します: r2' });
+  });
+
+  it('does not blame the edited rung for another rung’s pre-existing stale reference (I2)', () => {
+    // r2 は最初から壊れている（r1 に無い節点9を指す）。r1 への `setEnds` は輪を作らないので、
+    // r2 のもともとの壊れ方まで今回の編集のせいにして断ってはいけない。
+    const doc = createDocument('d', 't', [
+      rung('r1', BUS_P, BUS_N, [pbA('c1', 'PB1'), coil('c2', 'CR1')]),
+      rung('r2', { rung: 'r1', node: 9 }, BUS_N, [lamp('c3', 'PL1')]),
+    ]);
+    const out = applyEdit(doc, { kind: 'setEnds', rungId: 'r1', from: BUS_P, to: BUS_N });
+    expect(out.ok).toBe(true);
+  });
+
+  it('clamps another rung’s branch ends when removeCell shrinks the referenced rung (I1)', () => {
+    // r2 は r1 の節点2（c2 と c3 のあいだ）を指す分岐。r1 から2個消して1個（coil）だけにすると、
+    // 節点2は範囲外になる。新しい末尾（節点1 ＝ coil の右側 ＝ r1.to）へ引き寄せられるはず。
+    const doc = createDocument('d', 't', [
+      rung('r1', BUS_P, BUS_N, [pbA('c1', 'PB1'), pbB('c2', 'PB2'), coil('c3', 'CR1')]),
+      rung('r2', BUS_P, at('r1', 2), [crA('c4', 'CR1'), lamp('c5', 'PL1')]),
+    ]);
+    const step1 = applyEdit(doc, { kind: 'removeCell', cellId: 'c1' });
+    expect(step1.ok).toBe(true);
+    if (!step1.ok) return;
+    const step2 = applyEdit(step1.doc, { kind: 'removeCell', cellId: 'c2' });
+    expect(step2.ok).toBe(true);
+    if (!step2.ok) return;
+    expect(step2.doc.rungs[0]?.cells).toEqual([{ kind: 'coil', id: 'c3', device: 'CR1' }]);
+    expect(step2.doc.rungs[1]?.to).toEqual({ rung: 'r1', node: 1 });
+    expect(validateDocument(step2.doc)).toEqual([]);
+    // I1 の対象は元の文書を変えない
+    expect(doc.rungs[1]?.to).toEqual({ rung: 'r1', node: 2 });
   });
 
   it('draws b-001 self-hold branch (受入基準①と同じ形)', () => {

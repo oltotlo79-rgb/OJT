@@ -62,6 +62,27 @@ describe('wiringSuspects（UXレビュー #28）', () => {
     expect(extra?.wireIds).toContain('extra-1');
   });
 
+  it('never highlights a locked fixed wire, even when it touches the same terminal (I3)', () => {
+    // fw-chk-1（既設固定配線。青・locked）は P.1 に繋がっている（§6.3）。母線の渡り配線の
+    // 先頭（P.1 に繋がる非lockedの電線）を1本外すと、その疑いの wireIds に fw-chk-1 が
+    // 紛れ込んでいた（訓練者は変更できない電線なので、光らせても直しようが無い）。
+    const { session } = referenceSession();
+    const busP = toTerminalId('P.1');
+    const lockedIds = new Set<string>(session.wires.filter((w) => w.locked).map((w) => w.id));
+    expect(lockedIds.has('fw-chk-1')).toBe(true);
+    const chainHead = session.wires.find((w) => !w.locked && (w.from === busP || w.to === busP));
+    expect(chainHead).toBeDefined();
+    if (chainHead === undefined) return;
+    expect(removeWire(session, chainHead.id).ok).toBe(true);
+    const { suspects } = wiringSuspects(problem, JIPM_BOARD, session);
+    expect(suspects.length).toBeGreaterThan(0);
+    for (const suspect of suspects) {
+      for (const wireId of suspect.wireIds) expect(lockedIds.has(wireId)).toBe(false);
+    }
+    // P.1 を含む疑いが少なくとも1件はある（このケースを実際に確かめるため）
+    expect(suspects.some((s) => s.terminals.includes(busP))).toBe(true);
+  });
+
   it('is blind to the order of the bus chain (§11.3 の渡り配線)', () => {
     // 母線の鎖を組み替えても電気的に同じなら疑いは出ない
     const { session, roles } = referenceSession();

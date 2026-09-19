@@ -110,9 +110,15 @@ function groupByNode(nets: Nets, terminals: readonly TerminalId[]): Map<number, 
   return out;
 }
 
-/** その2端子のどちらかに繋がっている訓練者の電線（既設配線も含む。3Dで光らせる）。 */
+/**
+ * その2端子のどちらかに繋がっている訓練者の電線（3Dで光らせる）。
+ * `locked` な既設固定配線（チェック用回路。`fw-chk-*` など。§6.3）は除く。訓練者は変更できない
+ * 電線なので、光らせても直しようがなく誤解を招く（I3）。
+ */
 function wiresTouching(session: BoardSession, pair: readonly TerminalId[]): string[] {
-  return session.wires.filter((w) => pair.includes(w.from) || pair.includes(w.to)).map((w) => w.id);
+  return session.wires
+    .filter((w) => !w.locked && (pair.includes(w.from) || pair.includes(w.to)))
+    .map((w) => w.id);
 }
 
 /** 疑い1件を組み立てる。 */

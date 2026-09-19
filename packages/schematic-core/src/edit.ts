@@ -189,6 +189,26 @@ function detachEnd(end: RungEnd, removedId: string, side: 'from' | 'to'): RungEn
   return side === 'from' ? BUS_P : BUS_N;
 }
 
+/**
+ * その段の節点 `newLength` を超えて参照している端点を、新しい末尾の節点まで引き寄せる。
+ * `detachEnd`（`removeRung` で消えた段への参照を母線へ逃がす）と同じ考え方で、こちらは
+ * 段そのものは残るが要素数が変わった（`insertCell` / `removeCell`）ときに使う。
+ */
+function clampEnd(end: RungEnd, rungId: string, newLength: number): RungEnd {
+  if ('bus' in end || end.rung !== rungId || end.node <= newLength) return end;
+  return { rung: rungId, node: newLength };
+}
+
+/** `rungId` の要素数が `newLength` に変わったとき、他の段からその段への参照を新しい節点数に収める。 */
+function clampOtherEnds(rungs: readonly Rung[], rungId: string, newLength: number): Rung[] {
+  return rungs.map((r) => {
+    if (r.id === rungId) return r;
+    const from = clampEnd(r.from, rungId, newLength);
+    const to = clampEnd(r.to, rungId, newLength);
+    return from === r.from && to === r.to ? r : { ...r, from, to };
+  });
+}
+
 function editAddRung(doc: SchematicDocument, after: string | undefined): EditOutcome {
   if (doc.rungs.length >= MAX_RUNGS) return fail(`段は${MAX_RUNGS}本までです`);
   const created = makeRung(nextRungId(doc), BUS_P, BUS_N, []);
@@ -236,7 +256,13 @@ function editInsertCell(
   }
   const cells = [...target.cells];
   cells.splice(index, 0, buildCell(nextCellId(doc), draft, DEFAULT_EDIT_PRESET_MS));
-  return { ok: true, doc: withRung(doc, rungId, { ...target, cells }) };
+  // 要素が増えるので既存の参照が範囲外になることは無いが、`removeCell` と同じ扱いにそろえる（I1）
+  const rungs = clampOtherEnds(
+    replaceRung(doc, rungId, { ...target, cells }),
+    rungId,
+    cells.length,
+  );
+  return { ok: true, doc: withRungs(doc, rungs) };
 }
 
 /** 要素1個を作り替える（IDは保つ）。`replaceCell` / `setDevice` / `setPreset` の共通部分。 */
@@ -258,7 +284,13 @@ function editRemoveCell(doc: SchematicDocument, cellId: string): EditOutcome {
   const found = locate(doc, cellId);
   if (found === undefined) return fail(`要素がありません: ${cellId}`);
   const cells = found.rung.cells.filter((c) => c.id !== cellId);
-  return { ok: true, doc: withRung(doc, found.rung.id, { ...found.rung, cells }) };
+  // 段が縮むと他の段の分岐先（`from`/`to` の `node`）が範囲外になり得るので、新しい末尾に収める（I1）
+  const rungs = clampOtherEnds(
+    replaceRung(doc, found.rung.id, { ...found.rung, cells }),
+    found.rung.id,
+    cells.length,
+  );
+  return { ok: true, doc: withRungs(doc, rungs) };
 }
 
 function editMoveCell(doc: SchematicDocument, cellId: string, toIndex: number): EditOutcome {
@@ -276,6 +308,11 @@ function editMoveCell(doc: SchematicDocument, cellId: string, toIndex: number): 
   return { ok: true, doc: withRung(doc, found.rung.id, { ...found.rung, cells }) };
 }
 
+/** その段の両端が（循環せず）解決できるか。 */
+function rungResolves(doc: SchematicDocument, r: Rung): boolean {
+  return resolveNode(doc, r, 0) !== undefined && resolveNode(doc, r, r.cells.length) !== undefined;
+}
+
 /**
  * 段の両端を決め直す（分岐を作る／外す）。
  *
@@ -284,6 +321,12 @@ function editMoveCell(doc: SchematicDocument, cellId: string, toIndex: number): 
  * 参照は「どの節点か」が存在しない（`resolveNode()` が `undefined` を返し、`layout()` は
  * 段を左母線に寄せ、`toSession()` は割当に失敗する）。作りかけの文書として許してよい
  * 「まだ回路になっていない」とは違い、**図にすら描けない**ので、ここで断る。
+ *
+ * 判定は**編集の前後を比べる**（I2）。`resolveNode()` は「循環」も「参照切れ」もどちらも
+ * `undefined` にするので、他の段がもともと持っていた壊れた参照（このrungのせいではない）まで
+ * 拾ってしまうと、無関係な段の話をこの編集のエラーとして――しかも `rungId` を名指しして――
+ * 返してしまう。編集の前から解決できていなかった段は無視し、**編集の前後で解決できなくなった
+ * 段**だけを断り、その段自身のIDを文面に出す。
  */
 function editSetEnds(
   doc: SchematicDocument,
@@ -297,14 +340,12 @@ function editSetEnds(
     const problem = endProblem(doc, rungId, end);
     if (problem !== undefined) return fail(problem);
   }
+  const resolvedBefore = new Set(doc.rungs.filter((r) => rungResolves(doc, r)).map((r) => r.id));
   const next = withRung(doc, rungId, { ...target, from, to });
   for (const r of next.rungs) {
-    if (
-      resolveNode(next, r, 0) === undefined ||
-      resolveNode(next, r, r.cells.length) === undefined
-    ) {
-      return fail(`段の端点が循環します: ${rungId}`);
-    }
+    if (rungResolves(next, r)) continue;
+    if (!resolvedBefore.has(r.id)) continue; // この編集の前から解決できていない（この編集のせいではない）
+    return fail(`段の端点が循環します: ${r.id}`);
   }
   return { ok: true, doc: next };
 }
