@@ -1,6 +1,7 @@
 import {
   addWire,
   createSession,
+  deskRoutes,
   deskWires,
   isOffBoardTerminal,
   JIPM_BOARD,
@@ -13,7 +14,7 @@ import {
 } from '@ojt/board-model';
 import type { TerminalId } from '@ojt/circuit-sim';
 import { describe, expect, it } from 'vitest';
-import { deskCablePoints, offBoardTerminals } from '../src/renderer/three/DeskWires.js';
+import { offBoardTerminals } from '../src/renderer/three/DeskWires.js';
 import { safeRoutes } from '../src/renderer/three/BoardScene.js';
 
 /**
@@ -77,13 +78,14 @@ describe('机上の3D（§10.1 / 決定表#9）', () => {
     expect(PLC_UNIT_CP1E.form).toBe('unit');
   });
 
-  it('draws a sagging cable between the two ends', () => {
-    const points = deskCablePoints({ x: 0, y: 0, z: 0 }, { x: 100, y: 0, z: 0 });
-    expect(points).toHaveLength(3);
-    // `toScene()` は盤の中心を原点に置く（`BOARD_WIDTH_MM = 330` / `BOARD_HEIGHT_MM = 245`）
-    expect(points[0]).toEqual([-165, 122.5, 0]);
-    // 中間点は手前（盤モデルの y が増える方向＝シーンの −Y）へ垂れる
-    expect(points[1]?.[1]).toBeLessThan(points[0]?.[1] ?? 0);
-    expect(points[2]?.[0]).toBeCloseTo(100 - 165, 6);
+  it('routes the desk cables along the desk ducts (§11.3)', () => {
+    const session = sessionWithDeskWire();
+    const routes = deskRoutes(board, session);
+    expect(routes).toHaveLength(2);
+    // 盤の中と同じ直角の折れ線で返る（3Dは `Wire.tsx` と同じヘルパで管にするだけ）
+    for (const route of routes) {
+      expect(route.corners.length).toBeGreaterThan(3);
+      expect(route.ductIds).toContain('desk-trunk');
+    }
   });
 });

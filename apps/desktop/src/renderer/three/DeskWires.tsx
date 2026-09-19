@@ -1,52 +1,75 @@
 import {
-  deskWires,
+  deskRoutes,
   isOffBoardTerminal,
   type BoardDefinition,
   type BoardSession,
   type BoardTerminal,
-  type Vec3,
+  type DeskRoute,
 } from '@ojt/board-model';
-import type { WireColor } from '@ojt/circuit-sim';
-import { PLC_WIRE_COLOR } from '@ojt/content';
-import { useEffect, useMemo, type JSX } from 'react';
-import { CatmullRomCurve3, TubeGeometry, Vector3 } from 'three';
-import { WIRE_COLORS } from '../session/colors.js';
+import { useMemo, type JSX } from 'react';
+import { BackSide } from 'three';
+import { WIRE_COLORS, WIRE_OUTLINE_COLOR } from '../session/colors.js';
 import { sharedMaterial } from './materials.js';
-import { toScene } from './coords.js';
+import { shouldOutlineWireBody, useTubeGeometry, WIRE_RADIUS_MM } from './Wire.js';
 
 /**
- * 机上へ渡るケーブル。設計仕様 §10.1 / 3A 決定表#9。
+ * 机上へ渡るケーブル。設計仕様 §6.6 / §10.1 / §11.3。決定表#9
  *
  * 盤の配線帯（§6.6）は机上まで伸びていないので、これらの電線は `routeSession()` の対象外で
- * ある（`deskWires()` が別に返す）。ここでは**たるんだ直線ケーブル**として描く。
+ * ある。代わりに `deskRoutes()`（`@ojt/board-model` の `desk-routing.ts`）が机上のダクトに
+ * 沿った**直角の経路**を返すので、ここは盤の電線（`Wire.tsx`）と**同じ描き方**で管にするだけ
+ * でよい（半径・色・角の丸め・白線の縁取り・ジオメトリの解放まで `Wire.tsx` のヘルパを使う）。
+ *
+ * ピックは受けない。机上のケーブルは盤の電線と違って削除モードの対象ではなく、手前を通る管が
+ * PLCの端子のクリックを奪うと配線できなくなるためである（§8.2 の操作性を優先）。
  */
 
-/** ケーブルの半径[mm]。 */
-const CABLE_R_MM = 1.6;
-/**
- * ケーブルの垂れ下がり量[mm]。
- * 盤モデルの y が増える方向（`deskCablePoints()` が `+SAG_MM` する向き）へ垂らす。
- * `toScene()` を通すとこれはシーン座標の **−Y（画面の下）** になる（レビュー Minor。
- * `plc-scene.test.ts`「中間点は手前（盤モデルの y が増える方向＝シーンの −Y）へ垂れる」と
- * 揃える）。あわせて z も `+2mm` して盤面よりわずかに手前へも出す。
- */
-const SAG_MM = 12;
+/** レイキャストを受けない。 */
+function noPick(): void {
+  // 交差候補を積まない
+}
 
 /** 机上に属する端子（PLC本体と壁コンセント）。 */
 export function offBoardTerminals(board: BoardDefinition): BoardTerminal[] {
   return board.terminals.filter((terminal) => isOffBoardTerminal(terminal.id));
 }
 
-/** ケーブルの制御点（始点・たるみ・終点）をシーン座標で返す。 */
-export function deskCablePoints(from: Vec3, to: Vec3): Array<[number, number, number]> {
-  const a = toScene(from);
-  const b = toScene(to);
-  const middle = toScene({
-    x: (from.x + to.x) / 2,
-    y: (from.y + to.y) / 2 + SAG_MM,
-    z: (from.z + to.z) / 2 + 2,
-  });
-  return [a, middle, b];
+/**
+ * 白いケーブルに付ける、内側から見た暗い輪郭（`Wire.tsx` の `WireOutline` と同じ手）。
+ * 別コンポーネントにしてあるのは、白以外では形を**作らない**ためで、外れたときの後始末が
+ * そのまま `dispose()` になる。
+ */
+function DeskCableOutline({ route }: { route: DeskRoute }): JSX.Element {
+  const geometry = useTubeGeometry(route, WIRE_RADIUS_MM * 1.5);
+  return (
+    <mesh
+      geometry={geometry}
+      raycast={noPick}
+      renderOrder={-1}
+      material={sharedMaterial(WIRE_OUTLINE_COLOR, {
+        roughness: 0.9,
+        metalness: 0,
+        side: BackSide,
+      })}
+    />
+  );
+}
+
+/** 机上のケーブル1本。 */
+function DeskCable({ route }: { route: DeskRoute }): JSX.Element {
+  // 形のメモ化（折れ点が同じなら作り直さない）と、作り直したときの解放は `Wire.tsx` と共通
+  const geometry = useTubeGeometry(route);
+  const bodyColor = WIRE_COLORS[route.color];
+  return (
+    <group name={`desk-wire-${route.wireId}`} userData={{ lane: route.lane }}>
+      {shouldOutlineWireBody(bodyColor) ? <DeskCableOutline route={route} /> : null}
+      <mesh
+        geometry={geometry}
+        raycast={noPick}
+        material={sharedMaterial(bodyColor, { roughness: 0.55, metalness: 0.05 })}
+      />
+    </group>
+  );
 }
 
 /** 机上へ渡るケーブルをまとめて描く。 */
@@ -57,45 +80,12 @@ export function DeskWires({
   board: BoardDefinition;
   session: BoardSession;
 }): JSX.Element | null {
-  const cables = useMemo(() => {
-    const colors = new Map<string, WireColor>(session.wires.map((wire) => [wire.id, wire.color]));
-    return deskWires(board, session).map((wire) => {
-      const points = deskCablePoints(wire.fromPos, wire.toPos);
-      return {
-        id: wire.id,
-        color: WIRE_COLORS[colors.get(wire.id) ?? PLC_WIRE_COLOR],
-        // 曲線とチューブ形状も**ここで作る**。JSX の `args` に `new CatmullRomCurve3(...)` と
-        // 書くと毎レンダーで新しい曲線とジオメトリが生まれ、three 側が古い方を破棄しない
-        // （§15 の「同一性を保つ」に反する。レビュー指摘 I8）
-        geometry: new TubeGeometry(
-          new CatmullRomCurve3(points.map((p) => new Vector3(p[0], p[1], p[2]))),
-          16,
-          CABLE_R_MM,
-          8,
-          false,
-        ),
-      };
-    });
-  }, [board, session]);
-  /*
-   * 作り直した古いチューブは GPU 側に残るので、束が入れ替わったら必ず捨てる。
-   * 配線のたびに `session` が変わるため、捨てないと訓練1回ぶんで数十本ぶんのジオメトリが溜まる。
-   */
-  useEffect(
-    () => () => {
-      for (const cable of cables) cable.geometry.dispose();
-    },
-    [cables],
-  );
-  if (cables.length === 0) return null;
+  const routes = useMemo(() => deskRoutes(board, session), [board, session]);
+  if (routes.length === 0) return null;
   return (
     <group name="desk-wires">
-      {cables.map((cable) => (
-        <mesh
-          key={cable.id}
-          geometry={cable.geometry}
-          material={sharedMaterial(cable.color, { roughness: 0.5, metalness: 0.1 })}
-        />
+      {routes.map((route) => (
+        <DeskCable key={route.wireId} route={route} />
       ))}
     </group>
   );

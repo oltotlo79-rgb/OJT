@@ -1,10 +1,12 @@
 import {
   addWire,
   createSession,
+  deskRoutes,
   JIPM_BOARD,
   PLC_UNIT_FX5U,
   PLC_UNIT_PC10G,
   withPlcUnit,
+  type BoardDefinition,
 } from '@ojt/board-model';
 import type { TerminalId } from '@ojt/circuit-sim';
 import { cleanup, render } from '@testing-library/react';
@@ -13,9 +15,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { DeskWires } from '../src/renderer/three/DeskWires.js';
 
 /**
- * 机上のケーブルの `TubeGeometry` の解放（§15。レビュー Test gaps）。
- * `wire-geometry.test.ts` が盤側（`Wire.tsx`）で確かめているのと同じ「外れたら解放する」を
- * 机上ケーブル（`DeskWires.tsx`）側でも固定する。
+ * 机上のケーブルの描画（§10.1 / §11.3 / 決定表#9）。
+ * 経路1本につき管1本であること（`deskRoutes()` の結果をそのまま描いていること）と、
+ * 外れたときに `TubeGeometry` を解放すること（§15。レビュー Test gaps）を固定する。
+ * `wire-geometry.test.ts` が盤側（`Wire.tsx`）で確かめているのと同じ約束である。
  */
 
 afterEach(() => {
@@ -24,53 +27,77 @@ afterEach(() => {
 
 const board = withPlcUnit(JIPM_BOARD, PLC_UNIT_FX5U);
 
-function sessionWithDeskWire(): ReturnType<typeof createSession> {
-  const session = createSession(board, {
+function sessionWith(
+  target: BoardDefinition,
+  wires: ReadonlyArray<readonly [string, string]>,
+  colors: readonly ['青'] | readonly ['青', '白'] = ['青'],
+): ReturnType<typeof createSession> {
+  const session = createSession(target, {
     roles: { S1: 'CR1', S7: 'CHK' },
-    allowedColors: ['青'],
+    allowedColors: colors,
     extraParts: [],
     inventory: [],
   });
-  const added = addWire(session, board, 'TB_PB.1a' as TerminalId, 'PLC.X0' as TerminalId, '青');
-  expect(added.ok).toBe(true);
+  for (const [from, to] of wires) {
+    const added = addWire(
+      session,
+      target,
+      from as TerminalId,
+      to as TerminalId,
+      colors[colors.length - 1],
+    );
+    expect(added.ok).toBe(true);
+  }
   return session;
 }
 
 describe('DeskWires（§10.1 / 決定表#9）', () => {
-  it('disposes the cable TubeGeometry on unmount', () => {
-    const session = sessionWithDeskWire();
+  it('draws one tube per desk route and disposes it on unmount', () => {
+    const session = sessionWith(board, [
+      ['TB_PB.1a', 'PLC.X0'],
+      ['OUTLET.L', 'PLC.L'],
+    ]);
+    expect(deskRoutes(board, session)).toHaveLength(2);
     const disposeSpy = vi.spyOn(TubeGeometry.prototype, 'dispose');
     const { unmount } = render(<DeskWires board={board} session={session} />);
     expect(disposeSpy).not.toHaveBeenCalled();
     unmount();
-    // このセッションは机上の電線を1本だけ張る（PLC電源は別途）
-    expect(disposeSpy).toHaveBeenCalledTimes(1);
+    // 青いケーブルは胴体だけ（縁取りは白線にしか付かない）
+    expect(disposeSpy).toHaveBeenCalledTimes(2);
     disposeSpy.mockRestore();
   });
 
-  it('routes the same desk cable when the PLC is a rack (受入基準③)', () => {
-    // ラックの `IN-12` の端子は `X0`〜（4A 決定表#16）。端子IDにモジュール名は入らない（H-6）
-    const rackBoard = withPlcUnit(JIPM_BOARD, PLC_UNIT_PC10G);
-    const session = createSession(rackBoard, {
+  it('adds the dark outline only to a white cable', () => {
+    const session = sessionWith(board, [['TB_PB.1a', 'PLC.X0']], ['青', '白']);
+    const disposeSpy = vi.spyOn(TubeGeometry.prototype, 'dispose');
+    const { unmount } = render(<DeskWires board={board} session={session} />);
+    unmount();
+    // 白線は盤面に同化するので胴体＋縁取りの2本になる（`Wire.tsx` と同じ扱い）
+    expect(disposeSpy).toHaveBeenCalledTimes(2);
+    disposeSpy.mockRestore();
+  });
+
+  it('draws nothing when no wire reaches the desk', () => {
+    const session = createSession(board, {
       roles: { S1: 'CR1', S7: 'CHK' },
       allowedColors: ['青'],
       extraParts: [],
       inventory: [],
     });
-    const added = addWire(
-      session,
-      rackBoard,
-      'TB_PB.1a' as TerminalId,
-      'PLC.X0' as TerminalId,
-      '青',
-    );
-    expect(added.ok).toBe(true);
+    const { container } = render(<DeskWires board={board} session={session} />);
+    expect(container.textContent).toBe('');
+  });
+
+  it('routes the same desk cable when the PLC is a rack (受入基準③)', () => {
+    // ラックの `IN-12` の端子は `X0`〜（4A 決定表#16）。端子IDにモジュール名は入らない（H-6）
+    const rackBoard = withPlcUnit(JIPM_BOARD, PLC_UNIT_PC10G);
+    const session = sessionWith(rackBoard, [['TB_PB.1a', 'PLC.X0']]);
 
     const disposeSpy = vi.spyOn(TubeGeometry.prototype, 'dispose');
     const { unmount } = render(<DeskWires board={rackBoard} session={session} />);
     expect(disposeSpy).not.toHaveBeenCalled();
     unmount();
-    // 机上のケーブルがちょうど1本（＝`deskWires()` がラックの端子を FX5U と同じように引けている）
+    // 机上のケーブルがちょうど1本（＝ラックの端子も FX5U と同じように引けている）
     expect(disposeSpy).toHaveBeenCalledTimes(1);
     disposeSpy.mockRestore();
   });
