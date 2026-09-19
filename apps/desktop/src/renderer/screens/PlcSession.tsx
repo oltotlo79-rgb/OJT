@@ -54,6 +54,7 @@ import {
 } from '../session/interaction.js';
 import { hasLadderContent, shortcutKeyOf, type LadderEditorMode } from '../session/ladder.js';
 import { boardForProblem, canJudgePlc, plcBoardOf } from '../session/plc-session.js';
+import { autoConvert, skinGridCols, skinStepKeys, type PlcStepKey } from '../session/plc-skin.js';
 import { useViewportShortcuts } from '../session/viewport-keys.js';
 import { applyWorkFile, toWorkFile } from '../session/work-file.js';
 import { bridge } from '../session/worker-bridge.js';
@@ -107,7 +108,7 @@ function runHintText(profile: DialectProfile): string {
  * どの手順も「いまここ」でなければ（＝全部終わっていれば）何も出さない。
  */
 function stepHintText(
-  stepKey: 'wire' | 'ladder' | 'convert' | 'run' | 'judge' | undefined,
+  stepKey: PlcStepKey | undefined,
   profile: DialectProfile,
 ): string | undefined {
   if (stepKey === 'ladder') return ladderHintText(profile);
@@ -171,8 +172,8 @@ export function PlcSession(): JSX.Element {
   const sessionEpoch = useStore((s) => s.sessionEpoch);
 
   const profile = useMemo(() => getDialect(dialectId), [dialectId]);
-  /** 表示列数は設定画面の値（8〜15。既定11）。§10.6 */
-  const gridCols = useStore((s) => s.ladderGridCols);
+  /** 表示列数は設定画面の値。`0` なら方言の既定（§10.6 / 決定表#8）。 */
+  const gridColsSetting = useStore((s) => s.ladderGridCols);
   const board = useMemo(() => boardForProblem(problem), [problem]);
 
   // 視点のショートカットはラダーにフォーカスが無いときだけ効かせる（決定表#3）
@@ -463,14 +464,17 @@ export function PlcSession(): JSX.Element {
   const fixedWireCount = session.wires.filter((w) => w.locked).length;
 
   const readiness = canJudgePlc({ converted, ladder });
-  const convertKey = shortcutKeyOf(profile, 'convert') ?? 'F4';
+  /** 「変換」を持たないメーカー（`convertStep: false`）では `undefined`。決定表#3 */
+  const convertKey = shortcutKeyOf(profile, 'convert');
   const judgeTitle = !modelKnown
     ? JA.plc.unknownModel(problem.plc.model)
     : readiness.ok
       ? JA.session.judge
       : readiness.reason === 'no-ladder'
         ? JA.plc.judgeNoLadder
-        : JA.plc.judgeNotConverted(convertKey);
+        : convertKey === undefined
+          ? JA.plc.judgeAutoConverting
+          : JA.plc.judgeNotConverted(convertKey);
 
   /*
    * 手順の見える化（2026-09-19 の利用者決定「分かりやすく直感的に」）。
@@ -482,29 +486,27 @@ export function PlcSession(): JSX.Element {
    * Batch 4+5 レビュー M8）ので、変換済みなら「いまここ」にする。
    */
   const written = hasLadderContent(ladder);
-  const steps: ReadonlyArray<{
-    key: 'wire' | 'ladder' | 'convert' | 'run' | 'judge';
-    label: string;
-    state: StepState;
-  }> = [
-    { key: 'wire', label: JA.plc.stepWire, state: 'anytime' },
-    { key: 'ladder', label: JA.plc.stepLadder, state: written ? 'done' : 'current' },
-    {
-      key: 'convert',
-      label: JA.plc.stepConvert,
-      state: converted ? 'done' : written ? 'current' : 'todo',
-    },
-    {
-      key: 'run',
-      label: JA.plc.stepRun,
-      state: plcRunning ? 'done' : converted ? 'current' : 'todo',
-    },
-    {
-      key: 'judge',
-      label: JA.plc.stepJudge,
-      state: readiness.ok && modelKnown ? 'current' : 'todo',
-    },
-  ];
+  const stepState: Readonly<Record<PlcStepKey, StepState>> = {
+    wire: 'anytime',
+    ladder: written ? 'done' : 'current',
+    convert: converted ? 'done' : written ? 'current' : 'todo',
+    // 「変換」の無いスキンは、ラダーを書いた時点で（自動変換が通れば）運転へ進める
+    run: plcRunning ? 'done' : converted ? 'current' : 'todo',
+    judge: readiness.ok && modelKnown ? 'current' : 'todo',
+  };
+  const stepLabel: Readonly<Record<PlcStepKey, string>> = {
+    wire: JA.plc.stepWire,
+    ladder: JA.plc.stepLadder,
+    convert: JA.plc.stepConvert,
+    run: JA.plc.stepRun,
+    judge: JA.plc.stepJudge,
+  };
+  /** 「変換」を持たないメーカーではその段を落とす（決定表#3）。 */
+  const steps = skinStepKeys(profile).map((key) => ({
+    key,
+    label: stepLabel[key],
+    state: stepState[key],
+  }));
   const currentStepKey = steps.find((step) => step.state === 'current')?.key;
 
   /** 元に戻す／やり直し（盤のみ。ラダーは `Ctrl+Z` がエディタで処理する。決定表#3） */
@@ -735,12 +737,24 @@ export function PlcSession(): JSX.Element {
             </span>
           )}
           {stepHintText(currentStepKey, profile)}
+          {/*
+            「変換」の段が手順から落ちるメーカーでは、落ちている理由をその場で読めるようにする
+            （2026-09-19 の利用者決定「分かりやすく直感的に」。決定表#3）
+          */}
+          {autoConvert(profile) ? (
+            <span data-testid="plc-auto-convert">{JA.plc.stepConvertAuto}</span>
+          ) : null}
         </p>
       </div>
 
       <div className={styles.plcLayout} data-testid="plc-session" data-view={view}>
         {view === 'board' ? null : (
-          <LadderWorkspace problem={problem} profile={profile} gridCols={gridCols} onPlc={onPlc} />
+          <LadderWorkspace
+            problem={problem}
+            profile={profile}
+            gridCols={skinGridCols(profile, gridColsSetting)}
+            onPlc={onPlc}
+          />
         )}
         {view === 'ladder' ? null : (
           <div className={styles.viewport} data-testid="viewport">

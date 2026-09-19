@@ -41,7 +41,9 @@ afterEach(() => {
 
 describe('出力ウィンドウ（§10.6）', () => {
   it('lists structural errors first, then dialect errors, then warnings', () => {
-    render(<OutputWindow issues={issues} converted={false} onJump={() => undefined} />);
+    render(
+      <OutputWindow issues={issues} converted={false} convertKey="F4" onJump={() => undefined} />,
+    );
     const rows = screen.getAllByTestId(/^output-row-/u);
     expect(rows).toHaveLength(4);
     // 構造エラーは渡された順（coil-column → missing-end）、そのあと機種エラー、最後に警告
@@ -52,7 +54,9 @@ describe('出力ウィンドウ（§10.6）', () => {
   });
 
   it('shows where each issue is', () => {
-    render(<OutputWindow issues={issues} converted={false} onJump={() => undefined} />);
+    render(
+      <OutputWindow issues={issues} converted={false} convertKey="F4" onJump={() => undefined} />,
+    );
     expect(screen.getByTestId('output-row-0')).toHaveTextContent('n1');
     expect(screen.getByTestId('output-row-0')).toHaveTextContent('1 行');
     expect(screen.getByTestId('output-row-0')).toHaveTextContent('3 列');
@@ -60,7 +64,7 @@ describe('出力ウィンドウ（§10.6）', () => {
 
   it('jumps to the cell an issue points at, and does nothing for the rest', () => {
     const onJump = vi.fn();
-    render(<OutputWindow issues={issues} converted={false} onJump={onJump} />);
+    render(<OutputWindow issues={issues} converted={false} convertKey="F4" onJump={onJump} />);
     fireEvent.click(screen.getByTestId('output-row-0'));
     expect(onJump).toHaveBeenCalledWith({ networkId: 'n1', row: 0, col: 2 });
     // `missing-end` はセルを指していないので押しても動かない（決定表#4）
@@ -74,6 +78,7 @@ describe('出力ウィンドウ（§10.6）', () => {
       <OutputWindow
         issues={{ errors: [], warnings: [], usage: issues.usage, unused: issues.unused }}
         converted
+        convertKey="F4"
         onJump={() => undefined}
       />,
     );
@@ -88,6 +93,7 @@ describe('出力ウィンドウ（§10.6）', () => {
       <OutputWindow
         issues={{ errors: [], warnings: [], usage: undefined, unused: undefined }}
         converted={false}
+        convertKey="F4"
         onJump={() => undefined}
       />,
     );

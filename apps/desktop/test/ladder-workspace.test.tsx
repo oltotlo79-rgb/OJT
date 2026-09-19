@@ -4,9 +4,10 @@ import { MITSUBISHI_FX5U } from '@ojt/plc-dialects';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useStore } from '../src/renderer/app/store.js';
-import { LadderWorkspace, TOOLBAR_ACTIONS } from '../src/renderer/ladder/LadderWorkspace.js';
+import { LadderWorkspace } from '../src/renderer/ladder/LadderWorkspace.js';
 import { ShortcutHelp } from '../src/renderer/ladder/ShortcutHelp.js';
 import { applyLadderCell } from '../src/renderer/session/ladder.js';
+import { toolbarItems } from '../src/renderer/session/plc-skin.js';
 
 const problem = BUILTIN_PLC_PROBLEMS[0]!;
 
@@ -44,9 +45,11 @@ describe('GX Works3風の枠（§10.6 / §17）', () => {
   });
 
   it('has one action per toolbar label, so the position mapping never falls through (Batch 3 レビュー M2)', () => {
-    // `TOOLBAR_ACTIONS[index] ?? 'convert'` は並びがズレても黙って通ってしまうので、
-    // 少なくとも長さが一致していることをテストで縛る
-    expect(MITSUBISHI_FX5U.panels.toolbar.length).toBe(TOOLBAR_ACTIONS.length);
+    // 項目と意味の対応表（Plan 4B 決定表#2）は長さが合わないと黙って項目を落とすので、
+    // 三菱の8件がそのまま出ていることをテストで縛る
+    expect(toolbarItems(MITSUBISHI_FX5U).map((item) => item.label)).toEqual([
+      ...MITSUBISHI_FX5U.panels.toolbar,
+    ]);
   });
 
   it('converts and sends the ladder to the worker when it succeeds (H-1)', () => {

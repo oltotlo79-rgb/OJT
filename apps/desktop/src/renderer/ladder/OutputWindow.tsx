@@ -23,10 +23,13 @@ interface Row {
 export function OutputWindow({
   issues,
   converted,
+  convertKey,
   onJump,
 }: {
   issues: ConvertIssues;
   converted: boolean;
+  /** 「変換」のキー。無いスキン（`convertStep: false`）では `undefined`。決定表#3 */
+  convertKey: string | undefined;
   onJump: (cursor: LadderCursor) => void;
 }): JSX.Element {
   const rows: Row[] = [
@@ -56,7 +59,17 @@ export function OutputWindow({
         <summary className={styles.outputHeader} data-testid="output-summary">
           <h2>{JA.ladder.output}</h2>
           <span data-testid="convert-state" className={converted ? styles.okTag : styles.ngTag}>
-            {converted ? JA.ladder.convertOk : JA.ladder.notConverted}
+            {/*
+              「変換」を持たないメーカーでは、成功したときも「自動で変換されます」と添える
+              （手で押した変換と区別が付かないと、押し忘れたのかと迷う。決定表#3）
+            */}
+            {convertKey === undefined
+              ? converted
+                ? JA.ladder.convertOkAuto
+                : JA.ladder.notConvertedAuto
+              : converted
+                ? JA.ladder.convertOk
+                : JA.ladder.notConverted(convertKey)}
           </span>
         </summary>
         <div className={styles.outputBody}>

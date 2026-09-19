@@ -615,3 +615,15 @@ details[open] > .sideSummary::before {
 .outputCollapsed {
   max-height: var(--skin-output-h, 150px);
 }
+
+/* --- Plan 4B Task 3: ツリーの幅（`--skin-tree-w` の扱い） --- */
+/*
+ * スキンは 220〜260px のツリー幅を持つ（「実物との対応」表）が、2026-09-19 の UX バッチB が
+ * `.tree` を `--ladder-tree-w`（140px / 1600px 未満は 116px）で抑えて、余った幅を格子へ
+ * 渡すことにした。格子の幅を削ってまで実物の幅に寄せない——**狭いほうを採る**ことにして、
+ * 将来スキンが 140px より狭い幅を持ったときだけスキンに従う。
+ */
+.tree {
+  max-width: min(var(--ladder-tree-w), var(--skin-tree-w, 240px));
+}
+/* --- /Plan 4B Task 3 --- */

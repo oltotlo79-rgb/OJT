@@ -42,8 +42,14 @@ describe('モニタ一覧（§10.7）', () => {
     expect(screen.getByTestId('monitor-not-converted')).toHaveTextContent('F4');
   });
 
-  it('asks to RUN once converted but before the first snapshot arrives (I3)', () => {
+  it('asks to start monitoring, then to RUN, once converted (I3 / Plan 4B Task 3)', () => {
     useStore.setState({ converted: true });
+    panel();
+    // モニタを始めていないうちはスナップショットが来ないのが当たり前なので、そう案内する
+    // （キーは方言プロファイルから。`JA.ladder.monitorOff` の関数化。前提#22）
+    expect(screen.getByTestId('monitor-no-snapshot')).toHaveTextContent('モニタ（F3）');
+    cleanup();
+    useStore.setState({ converted: true, ladderMode: 'monitor' });
     panel();
     expect(screen.getByTestId('monitor-no-snapshot')).toHaveTextContent('RUN');
   });

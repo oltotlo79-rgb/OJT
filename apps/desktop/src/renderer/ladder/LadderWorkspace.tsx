@@ -12,12 +12,13 @@ import {
   type Network,
 } from '@ojt/ladder-core';
 import type { DialectProfile } from '@ojt/plc-dialects';
-import { useCallback, useMemo, type JSX } from 'react';
+import { useCallback, useEffect, useMemo, useRef, type JSX } from 'react';
 import type { PlcCommandAction } from '../../worker/protocol.js';
 import { useStore } from '../app/store.js';
 import { JA } from '../i18n/ja.js';
 import { errorCellKeys, runConvert } from '../session/ladder-errors.js';
-import { nextNetworkId, type LadderEditorMode } from '../session/ladder.js';
+import { nextNetworkId, shortcutKeyOf, type LadderEditorMode } from '../session/ladder.js';
+import { autoConvert, toolbarItems, type ToolbarAction } from '../session/plc-skin.js';
 import { CommentPanel } from './CommentPanel.js';
 import { IoTable } from './IoTable.js';
 import { LadderEditor } from './LadderEditor.js';
@@ -25,6 +26,8 @@ import { MonitorPanel } from './MonitorPanel.js';
 import { OutputWindow } from './OutputWindow.js';
 import { ProjectTree } from './ProjectTree.js';
 import { ShortcutHelp } from './ShortcutHelp.js';
+import { SkinStatusBar, SkinTitleBar } from './SkinFrame.js';
+import { skinCssVars, skinThemeOf } from './skins/index.js';
 import styles from './ladder.module.css';
 
 /**
@@ -34,32 +37,6 @@ import styles from './ladder.module.css';
  * すべて `DialectProfile.panels` から引く。**各社のロゴ・アイコン・画面キャプチャ・図記号
  * ビットマップは一切使わない**（§17 / PLC調査資料 §6）。
  */
-
-/** ツールバーの項目 → 押したときの意味。`profile.panels.toolbar` の並び順で引く。 */
-type ToolbarAction =
-  | 'convert'
-  | 'convert-all'
-  | 'write-mode'
-  | 'read-mode'
-  | 'online'
-  | 'download'
-  | 'monitor-start'
-  | 'monitor-stop';
-
-/**
- * `panels.toolbar` の並び（§10.6 のスキン定義と同じ順）に対応させる。
- * `export` するのは、プロファイルの項目数とここのズレをテストで縛るため（Batch 3 レビュー M2）。
- */
-export const TOOLBAR_ACTIONS: readonly ToolbarAction[] = [
-  'convert',
-  'convert-all',
-  'write-mode',
-  'read-mode',
-  'online',
-  'download',
-  'monitor-start',
-  'monitor-stop',
-];
 
 /**
  * END ネットワークか。IR には印が無いので `END` セルの有無で見る（決定表#15）。
@@ -97,25 +74,61 @@ export function LadderWorkspace({
   const issues = useStore((s) => s.convertIssues);
   const converted = useStore((s) => s.converted);
   const ladderMode = useStore((s) => s.ladderMode);
+  const plcRunning = useStore((s) => s.plcRunning);
+  const monitorColor = useStore((s) => s.monitorColor);
+  /** 見た目（配色・セル寸法・枠の並び）はスキンが決める。決定表#5 */
+  const theme = useMemo(() => skinThemeOf(profile), [profile]);
+  const cssVars = useMemo(() => skinCssVars(theme, monitorColor), [theme, monitorColor]);
   const io = useMemo(() => resolvePlcIo(problem.io), [problem]);
   /** 機種の端子名はここから引く（決定表#16）。課題の機種が未対応なら FX5U に倒す。 */
   const unit = useMemo(() => plcUnitFor(problem.plc.model) ?? PLC_UNIT_FX5U, [problem]);
   const errorCells = useMemo(() => errorCellKeys(issues.errors), [issues]);
 
-  /** 「変換」。成功したときだけ Worker へ載せる（H-1）。§10.6 */
-  const convert = useCallback((): void => {
-    const store = useStore.getState();
-    const current = store.ladder;
-    if (current === undefined) return;
-    const run = runConvert(current, profile);
-    store.setConverted(run.ok, run.issues);
-    if (!run.ok) {
-      store.toast(JA.ladder.convertFailed, 'error');
-      return;
-    }
-    onPlc({ kind: 'load', program: current });
-    store.toast(JA.ladder.convertOk);
-  }, [onPlc, profile]);
+  /*
+   * `onPlc` は呼び出し側（`PlcSession`）が作る関数である。そのまま `convert` の依存に入れると
+   * `convert` も毎レンダー新しくなり、下の自動変換の `useEffect` が毎レンダー走って
+   * 「変換 → setConverted → 再レンダー → 変換」のループになる（レビュー I12）。
+   * ref に持ち替えて、`convert` の同一性を `profile` だけに結びつける。
+   */
+  const onPlcRef = useRef(onPlc);
+  useEffect(() => {
+    onPlcRef.current = onPlc;
+  }, [onPlc]);
+
+  /**
+   * 「変換」。成功したときだけ Worker へ載せる（H-1）。§10.6
+   * `silent` は自動変換（`convertStep: false` のスキン）から呼ぶとき。結果は出力ウィンドウに
+   * 出るので、編集のたびにトーストを積まない（決定表#3）。
+   */
+  const convert = useCallback(
+    (options: { silent?: boolean } = {}): void => {
+      const store = useStore.getState();
+      const current = store.ladder;
+      if (current === undefined) return;
+      const run = runConvert(current, profile);
+      store.setConverted(run.ok, run.issues);
+      if (!run.ok) {
+        if (options.silent !== true) store.toast(JA.ladder.convertFailed, 'error');
+        return;
+      }
+      onPlcRef.current({ kind: 'load', program: current });
+      if (options.silent !== true) store.toast(JA.ladder.convertOk);
+    },
+    [profile],
+  );
+
+  /**
+   * 「変換」のないスキンでは、ラダーが変わるたびに黙って変換し直す（決定表#3）。
+   * 判定は変換済みのラダーしか受け取らない（H-1）ので、押す場所が無い以上ここで走らせる。
+   *
+   * 依存は実質 `[auto, program]` である（`convert` は上のとおり `profile` が変わったときしか
+   * 作り直されないので、`react-hooks/exhaustive-deps` を満たしたまま余計に走らない。I12）。
+   */
+  const auto = autoConvert(profile);
+  useEffect(() => {
+    if (!auto || program === undefined) return;
+    convert({ silent: true });
+  }, [auto, program, convert]);
 
   /** 書込み／読出し／モニタ。モニタの開始停止は Worker にも伝える（決定表#5）。 */
   const changeMode = useCallback(
@@ -130,22 +143,26 @@ export function LadderWorkspace({
    * 回路ブロック・行の編集。`edit.ts` の7関数は境界で `LadderError` を投げるので、
    * ここで捕まえて理由をトーストに出す（投げたままだと押した瞬間に画面が落ちる）。
    */
-  const edit = useCallback((run: () => LadderProgram): boolean => {
-    const store = useStore.getState();
-    // キー操作の編集と同じ規則で、書込みモード（`write`）以外は断る（決定表#11 / Batch 3 レビュー I1）
-    if (store.ladderMode !== 'write') {
-      store.toast(JA.ladder.readOnly, 'error');
-      return false;
-    }
-    try {
-      store.setLadder(run());
-      return true;
-    } catch (error) {
-      if (!(error instanceof LadderError)) throw error;
-      store.toast(error.message, 'error');
-      return false;
-    }
-  }, []);
+  const edit = useCallback(
+    (run: () => LadderProgram): boolean => {
+      const store = useStore.getState();
+      // キー操作の編集と同じ規則で、書込みモード以外は断る（決定表#11 / Batch 3 レビュー I1）。
+      // キーの文字列は方言から引く（前提#22）
+      if (store.ladderMode !== 'write') {
+        store.toast(JA.ladder.readOnly(shortcutKeyOf(profile, 'write-mode') ?? 'F2'), 'error');
+        return false;
+      }
+      try {
+        store.setLadder(run());
+        return true;
+      } catch (error) {
+        if (!(error instanceof LadderError)) throw error;
+        store.toast(error.message, 'error');
+        return false;
+      }
+    },
+    [profile],
+  );
 
   if (program === undefined || !isPlcProblem(problem)) {
     return <div className={styles.workspace} data-testid="ladder-workspace" />;
@@ -155,6 +172,7 @@ export function LadderWorkspace({
 
   const onToolbar = (action: ToolbarAction): void => {
     const store = useStore.getState();
+    const convertKey = shortcutKeyOf(profile, 'convert');
     switch (action) {
       case 'convert':
       case 'convert-all':
@@ -170,7 +188,12 @@ export function LadderWorkspace({
       case 'download':
         // 本アプリでは「変換」がそのまま書込みに当たる（意図的な差分 #2）
         if (!store.converted) {
-          store.toast(JA.ladder.notConverted, 'error');
+          store.toast(
+            convertKey === undefined
+              ? JA.ladder.notConvertedAuto
+              : JA.ladder.notConverted(convertKey),
+            'error',
+          );
           break;
         }
         onPlc({ kind: 'load', program });
@@ -182,29 +205,62 @@ export function LadderWorkspace({
       case 'monitor-stop':
         changeMode('read');
         break;
+      case 'plc-run':
+        onPlc({ kind: 'run', on: !store.plcRunning });
+        store.setPlcRunning(!store.plcRunning);
+        break;
+      case 'plc-stop':
+        onPlc({ kind: 'run', on: false });
+        store.setPlcRunning(false);
+        break;
+      case 'plc-reset':
+        onPlc({ kind: 'reset' });
+        break;
+      // 実機の操作パネルにあるが本アプリでは動かない項目（決定表#4）
+      case 'vendor-only':
+        store.toast(JA.ladder.vendorOnly);
+        break;
     }
   };
 
+  // ツールバーの項目はスキン（方言IDの対応表）から引く。位置で対応させない（決定表#2）
+  const items = toolbarItems(profile);
+
   return (
-    <div className={styles.workspace} data-testid="ladder-workspace">
+    <div
+      className={styles.workspace}
+      data-testid="ladder-workspace"
+      data-skin={theme.id}
+      data-output-pane={theme.layout.outputPane}
+      // スキンの色と寸法は**ここ１回だけ**流し込む（決定表#5。
+      // `--skin-*` のカスタムプロパティは React の `style` がそのまま受ける）
+      style={cssVars}
+    >
+      <SkinTitleBar theme={theme} profile={profile} />
       {/*
         ロービングフォーカスは実装していないので `role="toolbar"` を名乗らない
         （Batch 3 レビュー M8。ただの押しボタンの集まりとして `role="group"` にする）
       */}
       <div className={styles.toolbar} role="group" aria-label={JA.ladder.title}>
-        {profile.panels.toolbar.map((label, index) => {
-          // 位置ではなく `action` をキーにする（プロファイルの並びが変わっても取り違えない。M2）
-          const action = TOOLBAR_ACTIONS[index] ?? 'convert';
+        {items.map((item) => {
+          const first = items.findIndex((other) => other.action === item.action) === item.index;
           return (
             <button
-              key={action}
+              key={`${item.action}-${String(item.index)}`}
               type="button"
-              data-testid={`toolbar-${action}`}
+              // その action の**最初の1つ**は位置なし（既存テストと E2E がこの名前で引く）、
+              // 2つ目以降は位置つき（PCwin風は `vendor-only` が4つ並ぶ）
+              data-testid={
+                first ? `toolbar-${item.action}` : `toolbar-${item.action}-${String(item.index)}`
+              }
+              data-action={item.action}
+              className={item.action === 'vendor-only' ? styles.vendorTool : undefined}
+              aria-pressed={item.action === 'plc-run' ? plcRunning : undefined}
               onClick={() => {
-                onToolbar(action);
+                onToolbar(item.action);
               }}
             >
-              {label}
+              {item.label}
             </button>
           );
         })}
@@ -287,13 +343,21 @@ export function LadderWorkspace({
             onConvert={convert}
             onModeChange={changeMode}
           />
-          <OutputWindow
-            issues={issues}
-            converted={converted}
-            onJump={(next) => {
-              useStore.getState().setLadderCursor(next);
-            }}
-          />
+          {/* PCwin風は出力を下部のステータスバーへ畳む（§10.6 / 決定表#7） */}
+          <div
+            className={
+              theme.layout.outputPane === 'status-bar' ? styles.outputCollapsed : undefined
+            }
+          >
+            <OutputWindow
+              issues={issues}
+              converted={converted}
+              convertKey={shortcutKeyOf(profile, 'convert')}
+              onJump={(next) => {
+                useStore.getState().setLadderCursor(next);
+              }}
+            />
+          </div>
         </div>
         <div className={styles.workspaceSide}>
           {/* MERGE 注意 #12: モニタ一覧は `workspaceSide` の先頭（`IoTable` の前）。Task 9 */}
@@ -310,6 +374,8 @@ export function LadderWorkspace({
           <ShortcutHelp profile={profile} />
         </div>
       </div>
+
+      <SkinStatusBar theme={theme} />
     </div>
   );
 }

@@ -30,6 +30,7 @@ export function MonitorPanel({
   onPlc: (action: PlcCommandAction) => void;
 }): JSX.Element {
   const monitor = useStore((s) => s.plcMonitor);
+  const mode = useStore((s) => s.ladderMode);
   const running = useStore((s) => s.plcRunning);
   const converted = useStore((s) => s.converted);
   const terminal = (name: string | undefined): string => `PLC.${name ?? ''}`;
@@ -75,7 +76,14 @@ export function MonitorPanel({
         </p>
       ) : monitor === undefined ? (
         <p className={styles.sideNote} data-testid="monitor-no-snapshot">
-          {JA.ladder.monitorNoSnapshot}
+          {/*
+            変換済みでまだ1枚も届いていない理由は2つある。モニタを始めていない（`plcMonitor` は
+            モニタ中しか載らない。決定表#5）か、始めたが PLC が停止しているか。キーは方言から
+            渡す（Plan 4B Task 3。前提#22）。
+          */}
+          {mode === 'monitor'
+            ? JA.ladder.monitorNoSnapshot
+            : JA.ladder.monitorOff(shortcutKeyOf(profile, 'monitor') ?? 'F3')}
         </p>
       ) : (
         <>

@@ -12,6 +12,7 @@ import {
   clearLadderCell,
   ladderKeyToAction,
   moveCursor,
+  shortcutKeyOf,
   toggleNoNcAt,
   togglePulseAt,
   type LadderCursor,
@@ -187,7 +188,8 @@ export function LadderEditor({
           store.toast(action.entry.note ?? action.entry.label, 'error');
           break;
         case 'readOnly':
-          store.toast(JA.ladder.readOnly, 'error');
+          // キーの文字列は方言から引く（Plan 4B Task 3。前提#22）
+          store.toast(JA.ladder.readOnly(shortcutKeyOf(profile, 'write-mode') ?? 'F2'), 'error');
           break;
         default:
           break;

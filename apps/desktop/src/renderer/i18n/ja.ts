@@ -417,13 +417,13 @@ export const JA = {
     commit: '確定',
     roundYes: 'はい',
     roundNo: 'いいえ',
-    /** 読出し・モニタ中に編集しようとした。§10.6 */
-    readOnly: '書込みモード（F2）に切り替えると編集できます',
+    /** 読出し・モニタ中に編集しようとした。§10.6（キーは方言から渡す。決定表#2） */
+    readOnly: (writeKey: string): string => `書込みモード（${writeKey}）に切り替えると編集できます`,
     /** 挿入・上書きの切換（`Ins`）。決定表#12b */
     insertOn: '挿入モードです（入力すると右のセルがずれます）',
     insertOff: '上書きモードです',
     /** `Shift+F3`（モニタ書込み）の注記。セッションで1回だけ出す。決定表#11 */
-    monitorWriteSame: 'Phase 3 ではモニタと同じ動作です',
+    monitorWriteSame: 'モニタと同じ動作です（本アプリにオンライン変更はありません）',
     // 右側のキー割当欄（`ShortcutHelp`）は常に表示されている。ツールバーに専用ボタンは無い（M7）
     helpHint: 'キー割当は右側のキー割当欄に常に表示されています',
     nothingToUndo: 'これ以上は元に戻せません',
@@ -437,7 +437,12 @@ export const JA = {
     doubleCoil: '二重コイル',
     noIssues: '指摘はありません。',
     convertOk: '変換に成功しました',
-    notConverted: '未変換（F4 で変換します）',
+    /** 変換前。「変換」のあるスキンはキーを、無いスキンは自動である旨を出す。決定表#3 */
+    notConverted: (convertKey: string): string => `未変換（${convertKey} で変換します）`,
+    /** 「変換」操作を持たないメーカー（`convertStep: false`）の未変換。決定表#3 */
+    notConvertedAuto: '自動で変換します（このメーカーのツールに「変換」操作はありません）',
+    /** 同じく、自動変換が通ったとき（手で押した変換と区別して見せる）。 */
+    convertOkAuto: '変換に成功しました（自動で変換されます）',
     usageReads: '読み出しているデバイス',
     usageWrites: '書き込んでいるデバイス',
     usageUnused: '使われていないデバイス（表示のみ・合否には影響しません）',
@@ -476,7 +481,9 @@ export const JA = {
     // --- Plan 3B Task 9 ---
     /** モニタ一覧と RUN/STOP。§10.6 / §10.7 */
     monitor: 'モニタ',
-    monitorOff: 'モニタ（F3）を開始すると通電状態が表示されます。',
+    /** モニタの案内（キーは方言から渡す）。前提#22 */
+    monitorOff: (monitorKey: string): string =>
+      `モニタ（${monitorKey}）を開始すると通電状態が表示されます。`,
     monitorStopped: 'PLCが停止中です。RUN にすると動きます。',
     scanCount: 'スキャン回数',
     run: 'RUN',
@@ -500,6 +507,21 @@ export const JA = {
     shortcutLabelHeader: '操作',
     shortcutNoteHeader: '備考',
     // --- /Plan 3B fix (Batch 3) ---
+    // --- Plan 4B Task 3 ---
+    /** 実機の操作パネルにあるが本アプリでは動かない項目。決定表#4 */
+    vendorOnly: 'このボタンは実機の操作パネルの項目で、本アプリでは動作しません',
+    /** タイトルバー（スキン名は `SkinTheme.titleBar`）。§15 / §17.1 */
+    skinTitleNote: '各社の商標については設定画面の「このアプリについて」をご覧ください',
+    /** ステータスバーの項目名。 */
+    statusMode: 'モード',
+    statusPlcState: 'PLC',
+    statusScan: 'スキャン',
+    statusNetwork: '回路ブロック',
+    statusOverwrite: '入力',
+    statusDeviceCount: 'デバイス点数',
+    statusInsert: '挿入',
+    statusOverwriteMode: '上書き',
+    // --- /Plan 4B Task 3 ---
   },
   // --- /Plan 3B Task 4 ---
   // --- Plan 3B Task 10 ---
@@ -563,6 +585,15 @@ export const JA = {
     judgeHint: '判定ボタンで判定します',
     /** 押せないボタンの理由を画面にも出す（`title` だけに頼らない）。 */
     judgeBlocked: '判定できません',
+    // --- Plan 4B Task 3 ---
+    /** 「変換」のないスキンで、まだ変換が通っていないとき。決定表#3 */
+    judgeAutoConverting: 'ラダーに直すところがあります（出力ウィンドウを確認してください）',
+    /**
+     * 「変換」操作を持たないメーカーの手順帯に添える1行（利用者要求「分かりやすく直感的に」）。
+     * 手順から「変換」の段が落ちる理由をその場で読めるようにする。決定表#3
+     */
+    stepConvertAuto: '「変換」の操作はありません（編集すると自動で変換されます）',
+    // --- /Plan 4B Task 3 ---
     // --- /Plan 3B Task 12 ---
     // --- Plan 3B Task 13 ---
     /** 結果画面で最初に読ませる「なぜそうなったか」。2026-09-19 の利用者決定 */
