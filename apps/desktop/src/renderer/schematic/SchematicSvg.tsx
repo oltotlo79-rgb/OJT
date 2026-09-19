@@ -2,6 +2,7 @@ import {
   layout,
   LAMP_FILL,
   slotRects,
+  SYMBOL_METRICS,
   type LayoutOptions,
   type SchematicDocument,
   type Shape,
@@ -30,16 +31,21 @@ import { useMemo, type JSX } from 'react';
  * 寸法設定（論理単位）。読取専用のヒントも編集エディタもこの1つを共有する
  * （`layout()` と `slotRects()` に同じ設定を渡さないとカーソルが記号からずれる）。
  *
- * `DEFAULT_LAYOUT_OPTIONS` の `colWidth: 24` だと `T1 (3.0秒)` の銘板が隣に重なる。
- * 端子番号（記号の下）と銘板（記号の上）を両方刷るので、段の高さも既定の24では足りない。
+ * 数字は「ヒント欄の紙（約430px）に置いたとき何pxになるか」から決めてある（2026-09-20 の記号見直し）:
+ * 銘板 11px 以上・端子番号 9px 以上・接点の幅 25px 以上。`test/schematic-symbols.test.tsx` が
+ * 内蔵課題を実際に描いて測る。
+ * - `symbolWidth` は `colWidth` の半分。これより小さいと記号が「短い斜線」に見える
+ * - `colWidth` は「記号 ＋ 左右の端子番号 ＋ 逃げ」が並ぶ幅
+ * - `rowHeight` は「銘板（記号の上 `labelRise`）＋ 端子番号（下 `terminalDrop`）」が
+ *   上下の段とぶつからない高さ
  */
 export const SCHEMATIC_LAYOUT: LayoutOptions = {
   colWidth: 44,
-  rowHeight: 34,
-  marginX: 16,
-  marginY: 22,
-  symbolWidth: 13,
-  labelRise: 1.45,
+  rowHeight: 50,
+  marginX: 10,
+  marginY: 20,
+  symbolWidth: 22,
+  labelRise: SYMBOL_METRICS.labelRise,
   rungNumbers: true,
   terminalNumbers: true,
 };
@@ -49,34 +55,42 @@ const FONT_STACK = '"Noto Sans JP", "Yu Gothic UI", "Meiryo", system-ui, sans-se
 /** 端子番号は数字が揃う等幅で。 */
 const MONO_STACK = '"Consolas", "Roboto Mono", ui-monospace, monospace';
 
-/** 機器の銘板の文字寸法（論理単位）。幅いっぱいに収めたとき 1x で約12px になる。 */
+/** 機器の銘板の文字寸法（論理単位）。ヒント欄の幅（約430px）で 11px 以上になる大きさ。 */
 const LABEL_FONT_SIZE = 8;
-/** 端子番号（一回り小さい等幅）。 */
-const TERMINAL_FONT_SIZE = 5.2;
+/** 端子番号（一回り小さい等幅）。同じくヒント欄で 9px 以上。 */
+const TERMINAL_FONT_SIZE = 6.4;
 /** 段番号（左余白）。 */
-const RUNG_FONT_SIZE = 6.2;
+const RUNG_FONT_SIZE = 6.4;
+/** 設定時間（`2.0秒`）。端子番号のあいだに収める添え書きなので一回り小さい。 */
+const PRESET_FONT_SIZE = 5.6;
 
 /** 用紙の色と縁（暗色テーマでも図は必ず白地）。 */
 const PAPER = '#FFFFFF';
 const PAPER_EDGE = '#C8CCD4';
+/** 図の本線・器具の色と、添え字（端子番号・設定時間）の色。 */
+const INK = '#111418';
+const INK_SUB = '#4A525C';
 
 /**
  * 役割ごとの線幅（画面px。`vector-effect="non-scaling-stroke"` なので拡大縮小しても変わらない）と色。
- * 母線は器具より太く、電線は細く——印刷図の階層をそのまま写す。
+ * 印刷図の階層をそのまま写す: **母線だけが太く**、器具の線と電線は同じ太さ。
  */
 const STROKE: Readonly<Record<ShapeRole, { color: string; width: number }>> = {
-  bus: { color: '#0B0D10', width: 2.6 },
-  wire: { color: '#111418', width: 1.2 },
-  symbol: { color: '#111418', width: 1.6 },
-  label: { color: '#111418', width: 0 },
-  junction: { color: '#111418', width: 0 },
-  terminal: { color: '#4A525C', width: 0 },
+  bus: { color: '#0B0D10', width: 2.8 },
+  // 器具の線は電線と同じ太さ（印刷図では母線だけが太い）
+  wire: { color: INK, width: 1.5 },
+  symbol: { color: INK, width: 1.5 },
+  label: { color: INK, width: 0 },
+  preset: { color: INK_SUB, width: 0 },
+  junction: { color: INK, width: 0 },
+  terminal: { color: INK_SUB, width: 0 },
   rung: { color: '#6B737D', width: 0 },
 };
 
 /** 役割ごとの文字寸法と書体。 */
 const TEXT_STYLE: Partial<Record<ShapeRole, { size: number; family: string; weight: number }>> = {
   label: { size: LABEL_FONT_SIZE, family: FONT_STACK, weight: 600 },
+  preset: { size: PRESET_FONT_SIZE, family: FONT_STACK, weight: 400 },
   terminal: { size: TERMINAL_FONT_SIZE, family: MONO_STACK, weight: 400 },
   rung: { size: RUNG_FONT_SIZE, family: MONO_STACK, weight: 400 },
 };
@@ -95,6 +109,9 @@ const SLOT_STYLE = { pointerEvents: 'all' } as const;
 
 /** 図の外接矩形にこれだけ余白（紙の白縁）を足す（論理単位）。 */
 const VIEW_PAD = 10;
+
+/** 機械的連結（押ボタンの操作子の軸）の破線。IEC 60617 の作法。 */
+const DASH_PATTERN = '2.2 1.6';
 
 /** 極座標の角度[度]を SVG の座標に直す（弧の端点計算）。 */
 function arcPoint(cx: number, cy: number, r: number, deg: number): [number, number] {
@@ -201,6 +218,7 @@ function drawShape(
           y1={shape.y1}
           x2={shape.x2}
           y2={shape.y2}
+          {...(shape.dashed === true ? { strokeDasharray: DASH_PATTERN } : {})}
         />
       );
     case 'circle':

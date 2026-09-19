@@ -85,7 +85,10 @@ function shapesByRow(doc: SchematicDocument): string[] {
     .shapes.map((s) => {
       const source = `${s.rungId ?? '-'}/${s.cellId ?? '-'} ${s.role}`;
       if (s.kind === 'line') {
-        return `${source} line ${s.x1},${row(s.y1, undefined)} ${s.x2},${row(s.y2, undefined)}`;
+        // 段に属さない線（母線）は行に丸めない。丸め先の段は文書順で変わってしまう
+        const at = (y: number): string =>
+          s.rungId === undefined ? `@${y.toFixed(3)}` : row(y, undefined);
+        return `${source} line ${s.x1},${at(s.y1)} ${s.x2},${at(s.y2)}`;
       }
       if (s.kind === 'text')
         return `${source} text ${s.x},${row(s.y, s.rungId)} ${s.text} ${s.anchor}`;
@@ -135,7 +138,9 @@ describe('layout: 読取専用レンダラ用の図形データ（§11.2）', ()
     const texts = layout(doc)
       .shapes.filter((s) => s.kind === 'text')
       .map((s) => (s.kind === 'text' ? s.text : ''));
-    expect(texts).toContain('T1 (2.5秒)');
+    // 銘板は機器名だけ。設定時間は記号の下の別の文字（2026-09-20 の記号見直し）
+    expect(texts).toContain('T1');
+    expect(texts).toContain('2.5秒');
   });
 
   it('接点記号: a接点／b接点／押ボタン操作子／限時記号（調査資料 §3.4）', () => {
@@ -150,7 +155,8 @@ describe('layout: 読取専用レンダラ用の図形データ（§11.2）', ()
     const bBlade = bladeOf(b);
     if (aBlade?.kind !== 'line' || bBlade?.kind !== 'line') throw new Error('blade');
     expect(aBlade.x2).toBeLessThan(bBlade.x2);
-    expect(bBlade.x2).toBeCloseTo(6, 6);
+    // b接点は右の固定接点（x = 6）を横切って外へ出る
+    expect(bBlade.x2).toBeGreaterThan(6);
     const pb = contactShapes('pb-a', 0, 0, 12);
     expect(pb).toHaveLength(5);
     const timed = contactShapes('t-a', 0, 0, 12);
@@ -164,12 +170,17 @@ describe('layout: 読取専用レンダラ用の図形データ（§11.2）', ()
     expect(cr).toHaveLength(1);
     expect(cr[0]?.kind).toBe('rect');
     expect(cr[0]?.kind === 'rect' ? cr[0].w : 0).toBeCloseTo(12, 6);
+    // ⌀は記号幅より小さいので、電線との突き合わせに引出線が2本付く（丸＋×2本＋引出線2本）
     const pl = loadShapes(lamp('c', 'PL3'), 0, 0, 12);
-    expect(pl).toHaveLength(3);
+    expect(pl).toHaveLength(5);
     expect(pl[0]?.kind === 'circle' ? pl[0].fill : '').toBe(LAMP_FILL.PL3);
     const bz = loadShapes(buzzer('c'), 0, 0, 12);
     expect(bz[0]?.kind).toBe('arc');
-    expect(bz).toHaveLength(2);
+    expect(bz).toHaveLength(4);
+    // タイマのコイルは長方形の中に限時記号（パラシュート）を持つ
+    expect(
+      loadShapes(coil('c', 'T1', 2000), 0, 0, 12).filter((s) => s.kind === 'arc'),
+    ).toHaveLength(1);
   });
 
   it('分岐は縦線と分岐点で描かれる', () => {
@@ -294,8 +305,9 @@ describe('layout: 読取専用レンダラ用の図形データ（§11.2）', ()
     for (const s of shapes.filter((s) => s.rungId !== undefined)) {
       expect(rungIds.has(s.rungId ?? '')).toBe(true);
       // 記号とラベルは要素の物、電線と分岐点は段の物
-      if (s.role === 'symbol' || s.role === 'label') expect(s.cellId).toBeDefined();
-      else expect(s.cellId).toBeUndefined();
+      if (s.role === 'symbol' || s.role === 'label' || s.role === 'preset') {
+        expect(s.cellId).toBeDefined();
+      } else expect(s.cellId).toBeUndefined();
     }
 
     for (const r of doc.rungs) {
@@ -303,9 +315,9 @@ describe('layout: 読取専用レンダラ用の図形データ（§11.2）', ()
         const own = shapes.filter((s) => s.cellId === cell.id);
         expect(own.every((s) => s.rungId === r.id)).toBe(true);
         expect(own.filter((s) => s.role === 'symbol').length).toBeGreaterThan(0);
-        const label = own.filter((s) => s.kind === 'text');
+        const label = own.filter((s) => s.role === 'label');
         expect(label).toHaveLength(1);
-        expect(label[0]?.kind === 'text' ? label[0].text : '').toContain(cell.device);
+        expect(label[0]?.kind === 'text' ? label[0].text : '').toBe(cell.device);
       }
     }
   });
@@ -316,7 +328,8 @@ describe('layout: 読取専用レンダラ用の図形データ（§11.2）', ()
       rung('r2', BUS_P, BUS_N, [tB('c3', 'T1'), lamp('c4', 'PL1')]),
       rung('r3', BUS_P, BUS_N, [tA('c5', 'T1'), lamp('c6', 'PL2')]),
     ]);
+    // 限時接点2つ＋タイマコイルの中の限時記号
     const arcs = layout(doc).shapes.filter((s) => s.kind === 'arc');
-    expect(arcs).toHaveLength(2);
+    expect(arcs).toHaveLength(3);
   });
 });

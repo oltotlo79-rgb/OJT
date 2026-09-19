@@ -47,12 +47,13 @@ export interface LayoutOptions {
 /**
  * 既定の寸法設定。
  *
- * `colWidth` 24 は文字寸法6のラベルで7文字ぶん（`3.4 × 7 ≒ 24`）まで。`T1 (3.0秒)` のような
- * 長いラベルを重ねずに描くには、描画側が `colWidth` を広げて渡す。
- * `rowHeight` 24 は、行の記号（`y ± symbolWidth × 0.3`、押ボタンの操作子は
- * `y − symbolWidth × SYMBOL_METRICS.actuatorTop`）と次の行の銘板
+ * `colWidth` 24 は文字寸法6のラベル（機器名だけ。設定時間は別の文字として記号の下に出る）
+ * で7文字ぶん（`3.4 × 7 ≒ 24`）まで。
+ * `rowHeight` 24 は、行の記号（`y ± symbolWidth × SYMBOL_METRICS.contactBarHalf`、押ボタンの
+ * 操作子は `y − symbolWidth × SYMBOL_METRICS.actuatorTop`）と次の行の銘板
  * （`y − symbolWidth × SYMBOL_METRICS.labelRise`、高さ6）が重ならない最小の目安。
- * 端子番号（`terminalNumbers`）まで刷るときは描画側が `rowHeight` を広げて渡す。
+ * 端子番号（`terminalNumbers`）まで刷るときは描画側が `colWidth` も `rowHeight` も広げて渡す
+ * （`SchematicSvg.SCHEMATIC_LAYOUT` が実際の寸法を持つ）。
  */
 export const DEFAULT_LAYOUT_OPTIONS: Required<LayoutOptions> = {
   colWidth: 24,
@@ -84,6 +85,9 @@ export interface SchematicLayout {
   shapes: Shape[];
 }
 
+/** 母線の出しろに足す、文字1行ぶんの逃げ（論理単位）。 */
+const LABEL_CLEARANCE = 6;
+
 function line(role: ShapeRole, x1: number, y1: number, x2: number, y2: number): Shape {
   return { kind: 'line', role, x1, y1, x2, y2 };
 }
@@ -98,11 +102,14 @@ function text(
   return { kind: 'text', role, x, y, text: value, anchor };
 }
 
-function cellLabel(cell: SchematicCell): string {
-  if (cell.kind === 'coil' && cell.presetMs !== undefined) {
-    return `${cell.device} (${(cell.presetMs / 1000).toFixed(1)}秒)`;
-  }
-  return cell.device;
+/**
+ * 設定時間の表記（`2.0秒`）。銘板（`T1`）とは**別の文字**にして記号の下へ置く。§11.1
+ * 1つの銘板に押し込むと `T1 (2.0秒)` が列幅いっぱいになり、記号を小さくしないと
+ * 隣の銘板と重なってしまう（2026-09-20 の指摘）。
+ */
+function presetLabel(cell: SchematicCell): string | undefined {
+  if (cell.kind !== 'coil' || cell.presetMs === undefined) return undefined;
+  return `${(cell.presetMs / 1000).toFixed(1)}秒`;
 }
 
 function isLoad(kind: CellKind): boolean {
@@ -146,17 +153,25 @@ export function layout(doc: SchematicDocument, options: LayoutOptions = {}): Sch
     const end = startOf(r) + r.cells.length * o.colWidth;
     if (end > maxRight) maxRight = end;
   }
-  const busNX = maxRight + o.colWidth;
-  const topY = o.marginY - o.rowHeight * 0.6;
+  // 右母線までの走りは1列ぶんも要らない（図が横に間延びして記号が小さくなる）
+  const busNX = maxRight + o.colWidth * 0.6;
+  /*
+   * 母線の出しろ。上は**銘板まで、下は端子番号まで**を母線の内側に入れる
+   * （段の高さから決めると、段を高くしたぶんだけ上下が間延びする）。
+   */
+  const topOverhang = o.symbolWidth * o.labelRise + LABEL_CLEARANCE;
+  const bottomOverhang = o.symbolWidth * SYMBOL_METRICS.terminalDrop + LABEL_CLEARANCE;
+  const topY = o.marginY - topOverhang;
   const bottomY =
     doc.rungs.length === 0
       ? topY
-      : o.marginY + (doc.rungs.length - 1) * o.rowHeight + o.rowHeight * 0.6;
+      : o.marginY + (doc.rungs.length - 1) * o.rowHeight + bottomOverhang;
 
   shapes.push(line('bus', busPX, topY, busPX, bottomY));
   shapes.push(line('bus', busNX, topY, busNX, bottomY));
-  shapes.push(text('label', busPX, topY - o.rowHeight * 0.4, 'P(+24V)', 'middle'));
-  shapes.push(text('label', busNX, topY - o.rowHeight * 0.4, 'N(0V)', 'middle'));
+  // 見出しは母線の真上。紙の外へはみ出さないよう内側へそろえる（図が横に痩せない）
+  shapes.push(text('label', busPX, topY - o.symbolWidth * 0.55, 'P(+24V)', 'start'));
+  shapes.push(text('label', busNX, topY - o.symbolWidth * 0.55, 'N(0V)', 'end'));
 
   const junction = (cx: number, cy: number): Shape => ({
     kind: 'circle',
@@ -204,11 +219,24 @@ export function layout(doc: SchematicDocument, options: LayoutOptions = {}): Sch
         ),
       );
       const mark = marks?.get(cell.id);
+      const preset = presetLabel(cell);
       shapes.push(
         ...tag(
           [
             ...symbol,
-            text('label', cx, y - o.symbolWidth * o.labelRise, cellLabel(cell), 'middle'),
+            text('label', cx, y - o.symbolWidth * o.labelRise, cell.device, 'middle'),
+            // 設定時間は記号の下・端子番号のあいだ（銘板は機器名だけにして列幅を稼ぐ）
+            ...(preset === undefined
+              ? []
+              : [
+                  text(
+                    'preset',
+                    cx,
+                    y + o.symbolWidth * SYMBOL_METRICS.terminalDrop,
+                    preset,
+                    'middle',
+                  ),
+                ]),
             // 端子番号は記号の下、電線の外側に振り分ける（線にも銘板にも重ならない）
             ...(mark === undefined
               ? []

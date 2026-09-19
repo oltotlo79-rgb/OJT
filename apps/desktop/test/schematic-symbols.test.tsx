@@ -1,0 +1,187 @@
+import { BUILTIN_ASSEMBLE_PROBLEMS, BUILTIN_INSPECT_REPAIR_PROBLEMS } from '@ojt/content';
+import { SYMBOL_METRICS, type SchematicDocument } from '@ojt/schematic-core';
+import { cleanup, render } from '@testing-library/react';
+import { afterEach, describe, expect, it } from 'vitest';
+import { SCHEMATIC_LAYOUT, SchematicSvg } from '../src/renderer/schematic/SchematicSvg.js';
+
+/**
+ * 回路図ヒントの**刷り上がり**を見る（利用者要求 2026-09-20「表示シンボルのデザインがおかしい」）。
+ *
+ * `@ojt/schematic-core` の `test/symbols.test.ts` は記号1つの作りを比で見る。ここは反対に、
+ * 内蔵課題を実際に SVG にしてから「ヒント欄の幅（約430px）に置いたとき何pxになるか」を測る。
+ * 記号の比が正しくても、寸法設定（`SCHEMATIC_LAYOUT`）が釣り合っていなければ画面では読めない。
+ *
+ * 見るのは3つだけ:
+ * - 文字が読める大きさか（銘板 11px 以上・端子番号 9px 以上）
+ * - 文字が他の文字にも線にもかぶらないか（2px 以上あける）
+ * - 記号が「小さな斜線」に見えない大きさか
+ */
+
+/** 右パネルの回路図ヒントの紙の幅（`screens.module.css` の `.schematicBox` の実寸）。 */
+const HINT_WIDTH_PX = 430;
+/** 文字と文字・文字と線のあいだに最低限あける距離（画面px）。 */
+const MIN_CLEARANCE_PX = 2;
+
+interface Box {
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+}
+
+interface Named {
+  box: Box;
+  what: string;
+}
+
+function num(element: Element, name: string): number {
+  return Number(element.getAttribute(name) ?? '0');
+}
+
+/**
+ * 文字の外形。ブラウザ無しでは字幅を測れないので、描画側（`SchematicSvg.boundsOf`）と
+ * **同じ見積もり**（全角混じりで1字 0.62em）を使う。実機より広めに見るので安全側。
+ */
+function textBox(element: Element): Box {
+  const size = num(element, 'font-size');
+  const text = element.textContent ?? '';
+  const width = text.length * size * 0.62;
+  const x = num(element, 'x');
+  const anchor = element.getAttribute('text-anchor');
+  const left = anchor === 'middle' ? x - width / 2 : anchor === 'end' ? x - width : x;
+  const y = num(element, 'y');
+  return { x1: left, y1: y - size / 2, x2: left + width, y2: y + size / 2 };
+}
+
+/** 線・長方形・丸の外形（線幅の半分だけ太らせる）。 */
+function strokeBoxes(svg: Element, scale: number): Named[] {
+  const out: Named[] = [];
+  for (const l of svg.querySelectorAll('line')) {
+    const pad = num(l, 'stroke-width') / scale / 2;
+    out.push({
+      what: `line ${String(num(l, 'x1'))},${String(num(l, 'y1'))}`,
+      box: {
+        x1: Math.min(num(l, 'x1'), num(l, 'x2')) - pad,
+        y1: Math.min(num(l, 'y1'), num(l, 'y2')) - pad,
+        x2: Math.max(num(l, 'x1'), num(l, 'x2')) + pad,
+        y2: Math.max(num(l, 'y1'), num(l, 'y2')) + pad,
+      },
+    });
+  }
+  for (const r of svg.querySelectorAll('rect')) {
+    // 用紙（`schematic-paper`）と編集の当たり矩形は図形ではない
+    if (r.getAttribute('data-testid') === 'schematic-paper') continue;
+    out.push({
+      what: 'rect',
+      box: {
+        x1: num(r, 'x'),
+        y1: num(r, 'y'),
+        x2: num(r, 'x') + num(r, 'width'),
+        y2: num(r, 'y') + num(r, 'height'),
+      },
+    });
+  }
+  for (const c of svg.querySelectorAll('circle')) {
+    const r = num(c, 'r');
+    out.push({
+      what: 'circle',
+      box: {
+        x1: num(c, 'cx') - r,
+        y1: num(c, 'cy') - r,
+        x2: num(c, 'cx') + r,
+        y2: num(c, 'cy') + r,
+      },
+    });
+  }
+  return out;
+}
+
+/** 2つの外形が `gap` だけ離れているか（どちらかの軸で離れていればよい）。 */
+function apart(a: Box, b: Box, gap: number): boolean {
+  return a.x2 + gap <= b.x1 || b.x2 + gap <= a.x1 || a.y2 + gap <= b.y1 || b.y2 + gap <= a.y1;
+}
+
+const PROBLEMS = ['b-001', 'b-006', 'c2-001'] as const;
+
+function docOf(id: string): SchematicDocument {
+  const found = [...BUILTIN_ASSEMBLE_PROBLEMS, ...BUILTIN_INSPECT_REPAIR_PROBLEMS].find(
+    (p) => p.id === id,
+  );
+  if (found === undefined) throw new Error(`内蔵課題がありません: ${id}`);
+  return found.schematic;
+}
+
+/** 図を1枚描いて、ヒント欄に置いたときの縮尺と図形をまとめて返す。 */
+function sheetOf(id: string): { svg: Element; scale: number; texts: Element[] } {
+  const { container } = render(<SchematicSvg document={docOf(id)} />);
+  const svg = container.querySelector('svg');
+  if (svg === null) throw new Error('svg');
+  const view = (svg.getAttribute('viewBox') ?? '').split(' ').map(Number);
+  const width = view[2] ?? 1;
+  return { svg, scale: HINT_WIDTH_PX / width, texts: [...svg.querySelectorAll('text')] };
+}
+
+afterEach(() => {
+  cleanup();
+});
+
+describe('ヒント欄の幅で文字が読める（2026-09-20 の記号見直し）', () => {
+  it.each(PROBLEMS)('%s: 銘板は11px以上・端子番号は9px以上になる', (id) => {
+    const { scale, texts } = sheetOf(id);
+    const px = (element: Element): number => num(element, 'font-size') * scale;
+    const labels = texts.filter((t) => Number(t.getAttribute('font-weight')) === 600);
+    expect(labels.length).toBeGreaterThan(0);
+    for (const label of labels)
+      expect(px(label), label.textContent ?? '').toBeGreaterThanOrEqual(11);
+    const numbers = texts.filter((t) => (t.getAttribute('font-family') ?? '').includes('mono'));
+    expect(numbers.length).toBeGreaterThan(0);
+    for (const n of numbers) expect(px(n), n.textContent ?? '').toBeGreaterThanOrEqual(9);
+  });
+});
+
+describe('文字はぶつからない（銘板・端子番号・設定時間）', () => {
+  it.each(PROBLEMS)('%s: 文字どうしが2px以上あく', (id) => {
+    const { scale, texts } = sheetOf(id);
+    const gap = MIN_CLEARANCE_PX / scale;
+    const hits: string[] = [];
+    for (let i = 0; i < texts.length; i += 1) {
+      for (let j = i + 1; j < texts.length; j += 1) {
+        const a = texts[i];
+        const b = texts[j];
+        if (a === undefined || b === undefined) continue;
+        if (!apart(textBox(a), textBox(b), gap)) {
+          hits.push(`${a.textContent ?? ''} と ${b.textContent ?? ''}`);
+        }
+      }
+    }
+    expect(hits).toEqual([]);
+  });
+
+  it.each(PROBLEMS)('%s: 文字が電線・記号に乗らない', (id) => {
+    const { svg, scale, texts } = sheetOf(id);
+    const gap = MIN_CLEARANCE_PX / scale;
+    const marks = strokeBoxes(svg, scale);
+    const hits: string[] = [];
+    for (const t of texts) {
+      const box = textBox(t);
+      for (const mark of marks) {
+        if (!apart(box, mark.box, gap)) hits.push(`${t.textContent ?? ''} が ${mark.what} に乗る`);
+      }
+    }
+    expect(hits).toEqual([]);
+  });
+});
+
+describe('記号が「小さな斜線」に見えない大きさになる', () => {
+  it.each(PROBLEMS)('%s: 接点は25px以上の幅、開きは6px以上になる', (id) => {
+    const { scale } = sheetOf(id);
+    const s = SCHEMATIC_LAYOUT.symbolWidth ?? 0;
+    expect(s * scale).toBeGreaterThanOrEqual(25);
+    // a接点の開き（ブレードの先から右の固定接点まで）
+    expect(s * SYMBOL_METRICS.bladeGap * scale).toBeGreaterThanOrEqual(6);
+    // 固定接点の縦棒の高さ
+    expect(s * SYMBOL_METRICS.contactBarHalf * 2 * scale).toBeGreaterThanOrEqual(14);
+    // 記号は列の幅の半分以上（引出線ばかりが長い、記号の痩せた図にしない）
+    expect(s).toBeGreaterThanOrEqual((SCHEMATIC_LAYOUT.colWidth ?? 0) * 0.5);
+  });
+});

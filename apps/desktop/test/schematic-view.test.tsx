@@ -90,12 +90,14 @@ describe('紙に収まる（幅いっぱい・縦横比そのまま・切り落�
     const svg = screen.getByTestId('schematic-svg');
     const bus = svg.querySelector('line[shape-rendering="crispEdges"]');
     expect(bus?.getAttribute('vector-effect')).toBe('non-scaling-stroke');
-    // 母線は器具より太い（印刷図の階層）
+    // 母線だけが太く、器具の線は電線と同じ太さ（印刷図の階層。2026-09-20 の記号見直し）
     const widths = [...svg.querySelectorAll('line')].map((l) =>
       Number(l.getAttribute('stroke-width')),
     );
     expect(Math.max(...widths)).toBeGreaterThan(2);
-    expect(Math.min(...widths.filter((w) => w > 0))).toBeLessThanOrEqual(1.2);
+    const thin = new Set(widths.filter((w) => w > 0 && w < 2));
+    expect([...thin]).toHaveLength(1);
+    expect(Math.min(...thin)).toBeLessThanOrEqual(1.6);
   });
 
   it('銘板は読める大きさで、和文の書体を指定する', () => {

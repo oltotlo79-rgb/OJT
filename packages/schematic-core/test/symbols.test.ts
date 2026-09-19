@@ -35,18 +35,26 @@ import { flickerDoc, interlockDoc, onDelayDoc, selfHoldDoc } from './helpers/doc
 /** 描画側（`SchematicSvg`）が渡す寸法設定。端子番号と段番号まで刷る。 */
 const PRINT: LayoutOptions = {
   colWidth: 44,
-  rowHeight: 34,
-  marginX: 16,
-  marginY: 22,
-  symbolWidth: 13,
-  labelRise: 1.45,
+  rowHeight: 50,
+  marginX: 10,
+  marginY: 20,
+  symbolWidth: 22,
+  labelRise: SYMBOL_METRICS.labelRise,
   rungNumbers: true,
   terminalNumbers: true,
 };
 
 /** 描画側の文字寸法（論理単位）。`SchematicSvg` の `LABEL_FONT_SIZE` と揃える。 */
 const LABEL_FONT = 8;
-const TERMINAL_FONT = 5.2;
+const TERMINAL_FONT = 6.4;
+const PRESET_FONT = 5.6;
+
+/** 役割ごとの文字寸法（描画側と同じ表）。 */
+function fontOf(role: Shape['role']): number {
+  if (role === 'terminal') return TERMINAL_FONT;
+  if (role === 'preset') return PRESET_FONT;
+  return LABEL_FONT;
+}
 
 interface Box {
   x1: number;
@@ -104,19 +112,26 @@ describe('接点記号（JIS C 0617 の刃形）', () => {
       const a = contactShapes(open, 0, 0, s)[2];
       const b = contactShapes(closed, 0, 0, s)[2];
       if (a?.kind !== 'line' || b?.kind !== 'line') throw new Error('blade');
-      // b接点のブレードの先は右の固定接点（x = +s/2）の上
-      expect(b.x2, closed).toBeCloseTo(s / 2, 6);
+      // b接点のブレードは右の固定接点（x = +s/2）を横切って外へ出る
+      expect(b.x2, closed).toBeCloseTo(s / 2 + s * SYMBOL_METRICS.bladeOvershoot, 6);
+      expect(b.x2, closed).toBeGreaterThan(s / 2);
       // a接点は記号幅の 0.2 倍ぶん手前で止まる（＝目で見える開き）
       expect(a.x2, open).toBeCloseTo(s / 2 - s * SYMBOL_METRICS.bladeGap, 6);
       expect(s / 2 - a.x2).toBeGreaterThanOrEqual(s * 0.2);
     }
   });
 
-  it('b接点の右の固定接点はブレードの先より上まで伸びる（触れている）', () => {
-    const shapes = contactShapes('cr-b', 0, 0, 12);
+  it('b接点の右の固定接点は交差点より上まで伸びる（閉じている）', () => {
+    const s = 12;
+    const shapes = contactShapes('cr-b', 0, 0, s);
     const [, rightBar, blade] = shapes;
     if (rightBar?.kind !== 'line' || blade?.kind !== 'line') throw new Error('shape');
-    expect(rightBar.y1).toBeLessThan(blade.y2);
+    // 縦棒 x = +s/2 でのブレードの高さ（＝交差点）より、縦棒の上端はさらに上にある
+    const crossY = -s * SYMBOL_METRICS.bladeSlope;
+    expect(rightBar.y1).toBeCloseTo(crossY - s * SYMBOL_METRICS.breakOverrun, 6);
+    expect(rightBar.y1).toBeLessThan(crossY);
+    // ブレードの先は縦棒より外（右・上）にある
+    expect(blade.y2).toBeLessThan(crossY);
     // a接点の右棒はブレードの先よりずっと下（開いて見える）
     const openBar = contactShapes('cr-a', 0, 0, 12)[1];
     if (openBar?.kind !== 'line') throw new Error('shape');
@@ -148,6 +163,108 @@ describe('接点記号（JIS C 0617 の刃形）', () => {
   });
 });
 
+describe('記号の釣り合い（1モジュール M ＝ 記号幅に対する比。2026-09-20 の記号見直し）', () => {
+  const M = 20;
+
+  /** ブレード（3番目の図形）。 */
+  function blade(kind: CellKind): Extract<Shape, { kind: 'line' }> {
+    const found = contactShapes(kind, 0, 0, M)[2];
+    if (found?.kind !== 'line') throw new Error('blade');
+    return found;
+  }
+
+  it('ブレードの勾配は全種別でそろい、電線から約30°で立ち上がる', () => {
+    for (const kind of CONTACT_KINDS) {
+      const b = blade(kind);
+      const deg = (Math.atan2(b.y1 - b.y2, b.x2 - b.x1) * 180) / Math.PI;
+      expect(deg, kind).toBeGreaterThan(28);
+      expect(deg, kind).toBeLessThan(34);
+      // 刃は記号幅の 0.6 M 以上の長さがある（短い斜線に見えない）
+      expect(Math.hypot(b.x2 - b.x1, b.y2 - b.y1), kind).toBeGreaterThanOrEqual(M * 0.6);
+    }
+  });
+
+  it('a接点の開きは 0.30 M 以上、b接点は固定接点を横切る', () => {
+    for (const [open, closed] of [
+      ['cr-a', 'cr-b'],
+      ['t-a', 't-b'],
+      ['pb-a', 'pb-b'],
+    ] as const) {
+      expect(M * 0.5 - blade(open).x2, open).toBeGreaterThanOrEqual(M * 0.3);
+      expect(blade(closed).x2, closed).toBeGreaterThan(M * 0.5);
+    }
+  });
+
+  it('固定接点の縦棒は 0.68 M の高さ（短い刻みに見えない）', () => {
+    const [left] = contactShapes('cr-a', 0, 0, M);
+    if (left?.kind !== 'line') throw new Error('bar');
+    expect(Math.abs(left.y2 - left.y1)).toBeCloseTo(M * 0.68, 6);
+  });
+
+  it('押ボタンの操作子はブレードの上に乗り、キャップは 0.5 M の横棒', () => {
+    const shapes = contactShapes('pb-a', 0, 0, M);
+    const stem = shapes[3];
+    const cap = shapes[4];
+    if (stem?.kind !== 'line' || cap?.kind !== 'line') throw new Error('actuator');
+    // 軸の下端は**ブレードの線上**（浮かない）
+    const b = blade('pb-a');
+    const onBlade = b.y1 + ((stem.x1 - b.x1) * (b.y2 - b.y1)) / (b.x2 - b.x1);
+    expect(stem.y1).toBeCloseTo(onBlade, 6);
+    // 軸は破線（機械的連結）、キャップは実線の横棒
+    expect(stem.dashed).toBe(true);
+    expect(cap.dashed).toBeUndefined();
+    expect(cap.x2 - cap.x1).toBeCloseTo(M * 0.5, 6);
+    expect(cap.y1).toBeCloseTo(cap.y2, 6);
+  });
+
+  it('限時記号はブレードの上（弦がブレードと平行）に載る', () => {
+    for (const kind of ['t-a', 't-b'] as const) {
+      const arc = contactShapes(kind, 0, 0, M)[3];
+      if (arc?.kind !== 'arc') throw new Error('arc');
+      const b = blade(kind);
+      // 中心はブレードの中点
+      expect(arc.cx, kind).toBeCloseTo((b.x1 + b.x2) / 2, 6);
+      expect(arc.cy, kind).toBeCloseTo((b.y1 + b.y2) / 2, 6);
+      // 弦（半円の両端）はブレードの向きに沿う
+      const deg = (Math.atan2(b.y2 - b.y1, b.x2 - b.x1) * 180) / Math.PI;
+      expect(arc.startDeg - 180, kind).toBeCloseTo(deg, 6);
+      expect(arc.endDeg - arc.startDeg, kind).toBeCloseTo(180, 6);
+      // 半円はブレードからはみ出さない大きさ
+      expect(arc.r * 2, kind).toBeLessThan(Math.hypot(b.x2 - b.x1, b.y2 - b.y1));
+    }
+  });
+
+  it('コイルは 1.0 M × 0.50 M、タイマコイルは中に限時記号を持つ', () => {
+    const rect = loadShapes(coil('c', 'CR1'), 0, 0, M)[0];
+    if (rect?.kind !== 'rect') throw new Error('rect');
+    expect(rect.w).toBeCloseTo(M, 6);
+    expect(rect.h).toBeCloseTo(M * 0.5, 6);
+    const timer = loadShapes(coil('c', 'T1', 2000), 0, 0, M);
+    const mark = timer[1];
+    if (mark?.kind !== 'arc') throw new Error('arc');
+    // 限時記号は長方形の中に収まる
+    expect(mark.cx - mark.r).toBeGreaterThan(rect.x);
+    expect(mark.cx + mark.r).toBeLessThan(rect.x + rect.w);
+    expect(mark.cy - mark.r).toBeGreaterThan(rect.y);
+    expect(mark.cy).toBeLessThan(rect.y + rect.h);
+  });
+
+  it('ランプは ⌀0.64 M で、引出線が電線の端まで届く', () => {
+    const shapes = loadShapes(lamp('c', 'PL1'), 0, 0, M);
+    const circle = shapes[0];
+    if (circle?.kind !== 'circle') throw new Error('circle');
+    expect(circle.r * 2).toBeCloseTo(M * 0.64, 6);
+    const leads = shapes
+      .slice(3)
+      .filter((s): s is Extract<Shape, { kind: 'line' }> => s.kind === 'line');
+    expect(leads).toHaveLength(2);
+    // 引出線は円周から記号の端（±M/2）までを埋める
+    expect(Math.min(...leads.map((l) => l.x1))).toBeCloseTo(-M / 2, 6);
+    expect(Math.max(...leads.map((l) => l.x2))).toBeCloseTo(M / 2, 6);
+    for (const l of leads) expect(l.y1).toBeCloseTo(0, 6);
+  });
+});
+
 describe('負荷記号', () => {
   it('コイルは端子と突き合う長方形（JIS C 0617）', () => {
     const shapes = loadShapes(coil('c', 'CR1'), 100, 50, 12);
@@ -162,7 +279,7 @@ describe('負荷記号', () => {
     const shapes = loadShapes(lamp('c', 'PL2'), 0, 0, 12);
     const circle = shapes[0];
     if (circle?.kind !== 'circle') throw new Error('circle');
-    expect(circle.r).toBeCloseTo(6, 6);
+    expect(circle.r).toBeCloseTo(12 * SYMBOL_METRICS.loadRadius, 6);
     expect(circle.fill).toBe('#F2C230');
     const arm = shapes[1];
     if (arm?.kind !== 'line') throw new Error('line');
@@ -202,7 +319,7 @@ describe('図としての体裁（印刷された練習シートの決まりご�
       const hits: string[] = [];
       for (const s of shapes) {
         if (s.kind !== 'text') continue;
-        const box = textBox(s, s.role === 'terminal' ? TERMINAL_FONT : LABEL_FONT);
+        const box = textBox(s, fontOf(s.role));
         if (box === undefined) continue;
         for (const wire of wires) {
           // 縦線と横線は太さぶんだけ余裕を見る
@@ -222,8 +339,8 @@ describe('図としての体裁（印刷された練習シートの決まりご�
           const a = texts[i];
           const b = texts[j];
           if (a === undefined || b === undefined) continue;
-          const boxA = textBox(a, a.role === 'terminal' ? TERMINAL_FONT : LABEL_FONT);
-          const boxB = textBox(b, b.role === 'terminal' ? TERMINAL_FONT : LABEL_FONT);
+          const boxA = textBox(a, fontOf(a.role));
+          const boxB = textBox(b, fontOf(b.role));
           if (boxA === undefined || boxB === undefined) continue;
           if (overlaps(boxA, boxB)) {
             hits.push(`${a.kind === 'text' ? a.text : ''} と ${b.kind === 'text' ? b.text : ''}`);
