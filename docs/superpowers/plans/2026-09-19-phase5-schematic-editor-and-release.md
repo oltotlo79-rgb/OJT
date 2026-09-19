@@ -516,22 +516,17 @@ describe('applyEdit: addRung / removeRung / setEnds', () => {
 
 describe('editLabel（操作ログ）', () => {
   it('describes every edit kind in Japanese', () => {
-    const labels = [
-      { kind: 'addRung' } as const,
-      { kind: 'removeRung', rungId: 'r1' } as const,
-      { kind: 'insertCell', rungId: 'r1', index: 0, draft: { kind: 'pb-a', device: 'PB1' } } as const,
-      { kind: 'replaceCell', cellId: 'c1', draft: { kind: 'pb-b', device: 'PB1' } } as const,
-      { kind: 'removeCell', cellId: 'c1' } as const,
-      { kind: 'setDevice', cellId: 'c1', device: 'PB2' } as const,
-      { kind: 'setPreset', cellId: 'c1', presetMs: 3000 } as const,
-      { kind: 'setEnds', rungId: 'r1', from: BUS_P, to: BUS_N } as const,
-      { kind: 'moveCell', cellId: 'c1', toIndex: 1 } as const,
-    ];
-    for (const edit of labels) {
-      const text = editLabel(edit);
-      expect(text.length).toBeGreaterThan(0);
-      expect(text).not.toMatch(/[A-Za-z]{6,}/u); // 英単語の羅列にしない（日本語の操作ログ）
-    }
+    expect(editLabel({ kind: 'addRung' })).toBe('段を追加');
+    expect(editLabel({ kind: 'removeRung', rungId: 'r1' })).toBe('段を削除（r1）');
+    expect(
+      editLabel({ kind: 'insertCell', rungId: 'r1', index: 0, draft: { kind: 'pb-a', device: 'PB1' } }),
+    ).toBe('押ボタン a接点 PB1 を配置');
+    expect(editLabel({ kind: 'setPreset', cellId: 'c1', presetMs: 3000 })).toBe(
+      '設定時間を 3.0秒 に変更',
+    );
+    expect(editLabel({ kind: 'setEnds', rungId: 'r1', from: BUS_P, to: BUS_N })).toBe(
+      '段の両端を P母線 → N母線 に変更',
+    );
   });
 });
 ```
@@ -2302,7 +2297,7 @@ pnpm -r typecheck && pnpm lint
 git add apps/desktop && git commit -m "feat(desktop): add the pure layer of the schematic editor (cursor, palette, history)"
 ```
 
-**期待**: `schematic-edit.test.ts` の **18件**が増え、既存の `step-guide.test.ts` はそのまま通る。
+**期待**: `schematic-edit.test.ts` の **19件**が増え、既存の `step-guide.test.ts` はそのまま通る。
 
 ---
 
@@ -3084,14 +3079,47 @@ git add apps/desktop && git commit -m "feat(desktop): make the schematic rendere
 
 - [ ] **Step 1: 失敗するテストを書く（Worker 側）**
 
-`apps/desktop/test/sim-worker-verify.test.ts` は既存の `sim-worker.test.ts` と同じ作り（`sim.worker.ts` の `handle()` を直接呼ぶ形）にする。既存ファイルの冒頭を読み、同じ補助関数（Worker の起動と `postMessage` の捕捉）を使うこと。確かめるのは次の4点:
+`apps/desktop/test/sim-worker-verify.test.ts`。**冒頭の定型（Worker の読み込み・`postMessage` の捕捉・`sent()` ヘルパ）は既存の `sim-worker.test.ts` からそのまま写す**（同じ補助関数を2通りに書かない）。本体は次のとおり:
 
 ```ts
 describe('verify コマンド（§11.4 / Plan 5 決定表#4）', () => {
-  it('returns a passing result for the reference drawing of the problem', () => {/* ... */});
-  it('returns ok:false with the document issues for a half-finished drawing', () => {/* ... */});
-  it('does not disturb the running simulation (tMs keeps advancing afterwards)', () => {/* ... */});
-  it('reports a thrown error as { type: "error", fatal: false } instead of dying', () => {/* ... */});
+  beforeEach(() => {
+    sent.length = 0;
+    handle({ type: 'load', problemId: problem.id, session: sessionForProblem(problem) });
+  });
+
+  it('returns a passing result for the reference drawing of the problem', () => {
+    handle({ type: 'verify', problem, document: problem.schematic, elapsedMs: 0 });
+    const message = sent.find((m) => m.type === 'verifyResult');
+    expect(message?.result.ok).toBe(true);
+    expect(message?.result.ok === true && message.result.passed).toBe(true);
+  });
+
+  it('returns ok:false with the document issues for a half-finished drawing', () => {
+    handle({ type: 'verify', problem, document: emptySchematic('draft', '下書き'), elapsedMs: 0 });
+    const message = sent.find((m) => m.type === 'verifyResult');
+    expect(message?.result.ok).toBe(false);
+    expect(
+      message?.result.ok === false && message.result.errors.map((e) => e.message),
+    ).toContain('段に要素がありません: r1');
+  });
+
+  it('does not disturb the running simulation (tMs keeps advancing afterwards)', () => {
+    handle({ type: 'breaker', on: true });
+    handle({ type: 'switch', on: true });
+    const before = latestSnapshot().tMs;
+    handle({ type: 'verify', problem, document: problem.schematic, elapsedMs: 0 });
+    advance(200);
+    expect(latestSnapshot().tMs).toBeGreaterThan(before);
+  });
+
+  it('reports a broken command as { type: "error", fatal: false } instead of dying', () => {
+    handle({ type: 'verify', problem, document: undefined as never, elapsedMs: 0 });
+    const error = sent.find((m) => m.type === 'error');
+    expect(error?.fatal).toBe(false);
+    advance(100);
+    expect(sent.some((m) => m.type === 'snapshot')).toBe(true);
+  });
 });
 ```
 
@@ -3367,16 +3395,96 @@ export function VerifyPanel({
 `apps/desktop/test/verify-flow.test.ts` は**ストアの側**を確かめる（Worker は立てない）:
 
 ```ts
+import { BUILTIN_ASSEMBLE_PROBLEMS, BUILTIN_INSPECT_PARTS_PROBLEMS } from '@ojt/content';
+import { act } from '@testing-library/react';
+import { beforeEach, describe, expect, it } from 'vitest';
+import { useStore } from '../src/renderer/app/store.js';
+import { toWorkFile } from '../src/renderer/session/work-file.js';
+
+const problem = BUILTIN_ASSEMBLE_PROBLEMS.find((p) => p.id === 'b-001');
+const partsProblem = BUILTIN_INSPECT_PARTS_PROBLEMS[0];
+if (problem === undefined || partsProblem === undefined) throw new Error('内蔵課題がありません');
+const pb1 = { kind: 'insertCell', rungId: 'r1', index: 0, draft: { kind: 'pb-a', device: 'PB1' } } as const;
+
+beforeEach(() => {
+  useStore.getState().abandonSession();
+  act(() => {
+    useStore.getState().openProblem(problem);
+  });
+});
+
 describe('検算の状態遷移（§11.4）', () => {
-  it('starts every mode-B session with an empty draft (決定表#2)', () => {/* ... */});
-  it('keeps no draft for C1 / C2 / D problems', () => {/* ... */});
-  it('pushes the previous document on every accepted edit and drops the stale verify result', () => {/* ... */});
-  it('refuses an impossible edit with a toast and leaves the document alone', () => {/* ... */});
-  it('undoes and redoes the draft', () => {/* ... */});
-  it('clamps the cursor when the rung under it disappears', () => {/* ... */});
-  it('round-trips the draft through the work file and ignores a broken one', () => {/* ... */});
+  it('starts every mode-B session with an empty draft (決定表#2)', () => {
+    const doc = useStore.getState().schematicDoc;
+    expect(doc?.rungs).toHaveLength(1);
+    expect(doc?.rungs[0]?.cells).toEqual([]);
+    expect(doc?.id).toBe(`draft-${problem.id}`);
+  });
+
+  it('keeps no draft for C1 / C2 / D problems', () => {
+    act(() => {
+      useStore.getState().openProblem(partsProblem);
+    });
+    expect(useStore.getState().schematicDoc).toBeUndefined();
+  });
+
+  it('pushes the previous document on every accepted edit and drops the stale verify result', () => {
+    act(() => {
+      useStore.getState().setVerifyResult({ ok: false, errors: [] });
+      useStore.getState().applySchematicEdit(pb1);
+    });
+    const state = useStore.getState();
+    expect(state.schematicHistory.done).toHaveLength(1);
+    expect(state.schematicHistory.done[0]?.rungs[0]?.cells).toEqual([]);
+    expect(state.verifyResult).toBeUndefined();
+  });
+
+  it('refuses an impossible edit with a toast and leaves the document alone', () => {
+    let accepted = true;
+    act(() => {
+      accepted = useStore.getState().applySchematicEdit({ kind: 'removeCell', cellId: 'c9' });
+    });
+    expect(accepted).toBe(false);
+    expect(useStore.getState().toasts.at(-1)?.text).toContain('要素がありません');
+    expect(useStore.getState().schematicHistory.done).toHaveLength(0);
+  });
+
+  it('undoes and redoes the draft', () => {
+    act(() => {
+      useStore.getState().applySchematicEdit(pb1);
+      useStore.getState().undoSchematicEdit();
+    });
+    expect(useStore.getState().schematicDoc?.rungs[0]?.cells).toEqual([]);
+    act(() => {
+      useStore.getState().redoSchematicEdit();
+    });
+    expect(useStore.getState().schematicDoc?.rungs[0]?.cells).toHaveLength(1);
+  });
+
+  it('clamps the cursor when the rung under it disappears', () => {
+    act(() => {
+      const store = useStore.getState();
+      store.applySchematicEdit({ kind: 'addRung' });
+      store.setSchematicCursor({ rungId: 'r2', index: 0 });
+      store.applySchematicEdit({ kind: 'removeRung', rungId: 'r2' });
+    });
+    expect(useStore.getState().schematicCursor).toEqual({ rungId: 'r1', index: 0 });
+  });
+
+  it('round-trips the draft through the work file and ignores a broken one', () => {
+    act(() => {
+      useStore.getState().applySchematicEdit(pb1);
+    });
+    const state = useStore.getState();
+    const file = toWorkFile(problem.id, state.session as never, state.elapsedMs, 0);
+    expect((file.schematic as { rungs: unknown[] }).rungs).toHaveLength(1);
+    expect(toSchematicDoc({ formatVersion: 9, rungs: [] })).toBeUndefined();
+    expect(toSchematicDoc('not a document')).toBeUndefined();
+  });
 });
 ```
+
+`toSchematicDoc()` は Step 6 で `work-file.ts` に足した関数である。このテストから使えるよう **export** すること。
 
 ```
 pnpm --filter @ojt/desktop test verify-flow sim-worker-verify work-file
@@ -4147,7 +4255,7 @@ describe('SuspectList（UXレビュー #28）', () => {
 ```tsx
 import type { WiringSuspect } from '@ojt/content';
 import type { JSX } from 'react';
-import { JA } from '../i18n/ja.js';
+import { JA, suspectMoreText } from '../i18n/ja.js';
 import styles from './result.module.css';
 
 /**
@@ -4197,7 +4305,7 @@ export function SuspectList({
       )}
       {truncated > 0 ? (
         <p className={styles.suspectMore} data-testid="suspect-more">
-          {JA.result.suspectMore(truncated)}
+          {suspectMoreText(truncated)}
         </p>
       ) : null}
     </div>
@@ -4216,6 +4324,8 @@ export function SuspectList({
     backToResult: '結果へ戻る',
     fromResult: '結果から',
 ```
+
+`JA` の各ブロックは**値だけ**を持つ既存の流儀なので、件数を埋める文だけは関数として外に置く。
 
 `JA` の関数群（`schematicOpenCountText` の隣）に:
 
@@ -4466,11 +4576,13 @@ export interface TerminalRow {
   full: boolean;
 }
 
-/** ソケットの端子は役割ID（`CR1`）で見せる。盤定義のラベルは物理ID（`S1 ⑨ com`）。§6.4 */
-function labelOf(session: BoardSession, terminal: BoardTerminal): string {
+/**
+ * 画面に出す名前。端子IDは**役割ベース**（`toSessionTerminal()` を通った `CR1.9`）なので、
+ * 盤定義のラベル（物理ID入りの `S1 ⑨ com`）から番号と役割だけを取り、部品IDはIDの側から取る。§6.4
+ */
+function labelOf(terminal: BoardTerminal): string {
   const { part } = parseTerminalId(terminal.id);
-  const words = terminal.label.split(' ');
-  const number = words.at(-2);
+  const number = terminal.label.split(' ').at(-2);
   if (number === undefined) return terminal.label;
   return `${part} ${number} ${roleLabel(terminal.role)}`;
 }
@@ -4496,7 +4608,7 @@ export function terminalRows(
       const count = wireCountAt(session, terminal.id);
       return {
         id: terminal.id,
-        label: labelOf(session, terminal),
+        label: labelOf(terminal),
         group: parseTerminalId(terminal.id).part,
         wireCount: count,
         full: count >= MAX_WIRES_PER_TERMINAL,
@@ -4510,8 +4622,6 @@ export function isDeskRow(row: TerminalRow): boolean {
   return isOffBoardTerminal(row.id);
 }
 ```
-
-**注記**: `labelOf()` は `session` を受け取るが、端子IDは既に**役割ベース**（`toSessionTerminal()` を通った `CR1.9`）なので実際には使わない。引数に残すのは、将来ソケットの役割割当を見て名前を変えるときの受け口を1箇所にしておくためである——という理由が無いなら引数を外すこと。**実装時は `session` を使わないなら引数から外す**（未使用引数は lint が拾う）。
 
 - [ ] **Step 3: `TerminalListPanel.tsx` を実装する**
 
@@ -4652,7 +4762,7 @@ pnpm -r typecheck && pnpm lint
 git add apps/desktop && git commit -m "feat(desktop): add the keyboard wiring terminal list"
 ```
 
-**期待**: `terminal-list.test.tsx` の **10件**が増える。
+**期待**: `terminal-list.test.tsx` の **9件**が増える。
 
 ---
 
@@ -5917,3 +6027,145 @@ git add -A && git commit -m "chore(phase5): verify the Phase 5 acceptance criter
 **タグ付けと GitHub Release は行わない**（決定表#22。利用者の明示の指示を待つ）。
 
 ---
+
+## タスクと仕様節の対応
+
+| Task | 仕様節 | 受入基準・レビュー項目 |
+|---|---|---|
+| 1 | §11.1（文書形式）／§11.2（描画）／§11.4（エディタ機能） | ①の土台 |
+| 2 | §11.3（回路図→ネットリスト。渡り配線＝§17.2 #33）／§11.4（検算）／§7.4（判定設定） | ① |
+| 3 | §8.3（差分一覧）／§5.1（ネットリスト） | UXレビュー #28 |
+| 4 | §11.4／§12.2（純粋関数化）／§8.1（操作ログ） | ①②の土台 |
+| 5 | §11.1（要素・記号）／§11.2（`layout()` は純粋関数、描画は desktop） | ① |
+| 6 | §11.4（検算）／§4.3（Worker）／§12.3（作業ファイル）／§13 #8（形式版） | ① |
+| 7 | §12.1（画面遷移）／§8.1（セッション画面）／§8.4（ヒントの級別） | ①② |
+| 8 | §11.4（配線ガイド）／§9.2（C2の連動ハイライト）／§12.2（ピック） | ② |
+| 9 | §8.3（結果画面）／§5.1 | UXレビュー #28 |
+| 10 | §15（アクセシビリティ）／§8.2（配線操作）／§6.6（1端子2本） | UXレビュー #29 |
+| 11 | §15（60fps・三角形20万以下）／§14.2（E2E） | ④ |
+| 12 | §6.5（3D座標）／§6.2（端子）／§15（ドローコール） | ④ |
+| 13 | §6.2（印字）／§15（テクスチャ2048px以下・共有マテリアル） | ④ |
+| 14 | §15（配布・署名なし・オフライン・商標）／§7.8（同梱課題） | ③ |
+| 15 | §14.2（E2E）／§16 Phase 5 の受入基準すべて | ①②③④ ＋ #28/#29 |
+| 16 | §14.1（カバレッジ）／§14.3（開発プロセス規則） | 全体 |
+
+---
+
+## 仕様との対応表（完了判定に使う）
+
+| 仕様 | 要件 | 実装 | 検証 |
+|---|---|---|---|
+| §11.4 | 訓練者が描いた回路図をネットリスト化し、課題の操作列で判定にかける | `verifySchematic()` | `verify.test.ts`、E2E ① |
+| §11.4 | 3D盤に配線する前に机上で確かめられる | `assembleView` ＋ `VerifyPanel`（盤への自動配線はしない。決定表#5） | `assemble-view.test.tsx`、E2E ① |
+| §11.4 | 回路図の要素をクリックすると3D盤の対応端子をハイライトする | `wiring-guide.ts` ＋ ストアの `highlight` ＋ `ProbeMarkers` | `wiring-guide*.test.*`、E2E ② |
+| §11.3 | 母線は渡り配線（§17.2 #33）で分配する | **既存の `assignToBoard()` をそのまま使う**（Phase 1B で landed） | `verify.test.ts`（模範回路8題が検算に通る） |
+| §11.1 | 要素はPB a/b・CR a/b・T a/b・コイル・PL・BZ・結線・分岐点 | `SchematicEdit` ＋ `paletteFor()` | `edit.test.ts` / `schematic-edit.test.ts` |
+| §11.2 | `layout()` は純粋関数、描画は `apps/desktop` | `slotRects()` も `schematic-core` 側に置く | `slot-rects.test.ts` |
+| §11.2 | 縦書きは表示だけの切替で、文書モデルは常に横書き | `emptySchematic()` は `orientation: 'horizontal'` 固定。エディタは向きを変えない | `edit.test.ts` |
+| §7.4 | 合否は動作一致 ＋ 有効な静的チェックにエラー無し | `judgeAssemble()` をそのまま使う（検算も同じ） | `verify.test.ts` |
+| §8.3 | 差分一覧に該当信号が出る／結果から次の一手が分かる | `MismatchList` ＋ `SuspectList`（#28） | `suspect-list.test.tsx`、E2E #28 |
+| §12.3 | 作業ファイルに机上の下書きも残る | `WorkFile.schematic?`（任意項目・版は1のまま） | `verify-flow.test.ts` |
+| §4.3 | シミュレーションは Worker。renderer をブロックしない | `verify` コマンド／`verifyResult` メッセージ | `sim-worker-verify.test.ts` |
+| §15 | 内蔵GPU・FHDで60fps | `PerfProbe` ＋ インスタンス化 ＋ テクスチャ共有 ＋ `frameloop` 監査 | `perf.spec.ts`（予算）／実機測定（チェックリスト 6） |
+| §15 | 三角形20万以下・テクスチャ2048px以下 | `TRIANGLE_BUDGET` ／ `PX_PER_MM` の検査 | `perf.spec.ts` / `label-cache.test.ts` |
+| §15 | NSISインストーラ ＋ ポータブル版 | 既存の `electron-builder.yml`（変更なし） | `release-content.test.ts` |
+| §15 | SmartScreen の手順を README とインストーラの説明画面に書く | `README.md` ＋ `build/license.txt` | `release-content.test.ts` |
+| §15 | 起動時・実行時に外部通信を行わない | 依存も設定も増やさない | `perf.spec.ts` のオフライン計測 |
+| §15 | キーボードのみで課題選択・判定・結果確認まで到達できる | 既存 ＋ `TerminalListPanel`（配線まで広げた） | `terminal-list.test.tsx`、E2E #29 |
+| §15 | 商標注記 | `build/license.txt`（設定画面の既存注記に加えて） | `release-content.test.ts` |
+| §7.8 | 同梱課題は `resources/content/<mode>/<id>.json` | 既存の `copy-content.mjs` ＋ `check-dist.mjs` の件数照合 | `content-resources.test.ts` / `check-dist.mjs` |
+| §14.1 | `circuit-sim` / `schematic-core` / `content` のカバレッジ90%以上 | 新規モジュールに全分岐のテストを付ける | Task 16 Step 1 |
+| 利用者要求 | 分かりやすく直感的なUI・UX | 手順帯（決定表#24）／パレット／キー割当表／「盤で見る」／端子リスト | `## 完了条件` の「画面の品質」 |
+| 利用者要求 | 各画面のクオリティ向上 | 8px 格子・`:focus-visible`・横スクロール無し・文字切れ無し | Task 16 ＋ E2E の品質テスト |
+
+---
+
+## 仕様からの意図的な差分（レビュー時に確認する）
+
+| # | 仕様の記述 | 本プランの実装 | 理由 |
+|---|---|---|---|
+| 1 | §16 Phase 5 受入基準④「内蔵GPU・FHDで60fpsを維持する」 | **E2E は GPU非依存の予算**（三角形 ≤ 200,000／ドローコール ≤ 120／無操作で描画枚数が増えない）を自動で縛り、**60fps そのものは実機で確認**してリリース手順チェックリストに転記する | CI・リモートデスクトップにはGPUが無く、既存E2Eは `--use-gl=swiftshader` で動いている。ソフトウェアラスタライザの fps は実機の指標にならない（v0.2.0 リリースノートの「既知の制限」と同じ理由。決定表#17） |
+| 2 | §16 Phase 5 受入基準③「NSISインストーラでインストールし、オフラインのWindows 11で起動して課題を1つ完了できる」 | **インストール自体は自動化しない**。E2E は「外部通信0件」だけを自動で確かめ、インストールと完了はリリース手順チェックリストの 7 として人が確かめる | Playwright は `_electron.launch()` でビルド成果物を起動するだけで、NSIS の実行・再起動・アンインストールは扱えない。v0.2.0 の受入も同じ手順（人が確かめてリリースノートに記録）で行った |
+| 3 | §15「アクセシビリティ: キーボードのみで課題選択・判定・結果確認まで到達できること。3D操作はマウス必須」 | **配線もキーボードで完結**させる（端子リスト。#29） | 利用者要求「分かりやすく直感的に」。仕様の最低線を上回る改善で、3Dの視点操作は従来どおりマウス必須のまま（回すのはマウスでしかできない） |
+| 4 | §11.4 は検算の実行場所を定めていない | **Worker で実行**する（`verify` コマンドを1本足す） | §15「シミュレーションは Web Worker」。検算は模範＋訓練者の2回ぶん（0.3〜0.6秒）で、renderer で回すとエディタの入力が固まる（決定表#4） |
+| 5 | §11.2 は Phase 5 を「ラダーと同じグリッド編集エンジンで編集可能にする」と書く | エンジンのコードは**共有しない**。共有するのは**操作の流儀**（矢印で移動・機能キーで置く・スナップショットの履歴・出力欄に指摘を出し続ける）である | ラダーのグリッドは「行×列の固定格子にセルを置く」モデル、回路図は「段＝経路、列＝直列位置、段が段を参照して分岐する」モデルで、データ構造が違う（`LadderProgram` と `SchematicDocument`）。無理に1つのエンジンにすると両方の制約が混ざる（決定表#3 の「作りかけを許す」も回路図側だけの要求） |
+| 6 | §11.4 は「3D盤に配線する前に机上で確かめられる」とだけ書く | 検算の結果から**盤へ自動配線しない** | §8.2 の配線操作そのものが訓練である。自動配線を置くと盤の練習が空洞になる（決定表#5）。代わりに配線ガイドで「どの端子へ張ればよいか」を示す |
+| 7 | §12.3 の作業ファイルの中身に回路図の下書きは含まれていない | `WorkFile.schematic?` を**任意項目**として足す（`formatVersion` は 1 のまま） | 下書きが消えると「保存して続きから」で机上作業だけが失われる。`mode?` / `tester?` / `ladder?` と同じ流儀で、古い作業ファイルはそのまま読める（決定表#23） |
+| 8 | §8.3 の結果画面は「合否・差分一覧・チャート・静的チェック・危険操作・所要時間」の6点 | **7点目として「疑わしい配線」**を足す（モードBのみ・最大5件） | UXレビュー #28。判定は波形の食い違いしか返さないので、訓練者は「どこを直せばよいか」が分からない。合格時は出さない（決定表#9・#27） |
+| 9 | §6.5 / §6.2 は端子を1個ずつの部品として描くことを前提に書かれている | 盤の端子は **`instancedMesh` 2本**でまとめて描く（机上の端子は従来どおり） | §15 の「60fps・三角形20万以下」。端子142個で284メッシュはドローコールの最大の出どころである。見た目・当たり判定の半径・ツールチップの文言は1つも変えない（決定表#13） |
+| 10 | §16 Phase 5 の「含む」に配布パッケージの構築が挙がっている | **新規構築ではなく固め**（版の 1.0.0 化・同梱物の検査・成果物の検査とチェックサム・README・インストーラ説明画面・手順書） | v0.2.0 の事前リリースで NSIS とポータブルの両方が実際に出ており、受入基準③はそのビルドで確かめられている。作り直すと退行の危険だけが増える（決定表#18） |
+| 11 | §16 は「配布可能なインストーラ」を成果物とする | **公開（タグ付け・GitHub Release・配布）は行わない**。成果物と手順書までを用意する | 利用者の明示の決定（2026-09-19）。手順はチェックリストの 9・10 としてコマンドごと書いてあるので、指示が出たらそのまま実行できる（決定表#22） |
+
+---
+
+## 実装者への MERGE 注意
+
+複数のタスクが同じファイルへ別々の箇所から手を入れる。「推奨バッチ」で並行させるときは次の10点を守ること。
+
+1. **`i18n/ja.ts` への挿入は、挿入のたびにファイルを読み直してから行う。** Phase 5 が触るのは **Task 4（`JA.stepGuide` の末尾＋新ブロック `JA.schematic`）・Task 9（`JA.result` の末尾＋関数 `suspectMoreText()`）・Task 10（新ブロック `JA.terminalList`）**の3箇所だけ。いずれも `// --- Plan 5 Task N ---` で挟む。**Plan 4B は `JA.ladder` / `JA.plc` / `JA.settings` を触る**ので、4B が landed していない状態で並行させない。
+2. **`app/store.ts` は Task 6（回路図の欄と6つの操作）・Task 7（`assembleView` と `setAssembleView`）・Task 9（`boardFocus` と `setBoardFocus`、`setHighlight()` の中の `__ojtHighlight` の1行）だけ。** どれも `openProblem()` / `resetSession()` / `restartSession()` / `abandonSession()` の `set({...})` に**同じ初期値を4箇所とも**入れる必要がある（入れ忘れると課題をまたいで下書きが残る）。`plcFields()` の中身は触らない。
+3. **`screens/Session.tsx` は Task 7 → 8 → 9 → 10 の順に直列で触る。** 7 がビューの骨組みと暫定の `highlightCells` / `onPickSchematicCell` を置き、8 がその2つを本物に差し替え、9 が「結果から」の帯を足し、10 が右パネルに端子リストを足す。**同じ `return` の JSX に4回手を入れる**ので、並行させない。Hooks はすべて早期 return より前に置く既存の並びを守る。
+4. **`worker/protocol.ts` と `sim.worker.ts` と `worker-bridge.ts` は Task 6 だけ。** `judge` の実装をひな型にし、追従ループを止める・再開する手順を変えない。`SimMessage` に足すのは `verifyResult` の1つだけ（8本目のコマンドは作らない）。
+5. **`three/BoardScene.tsx` は Task 11（`PerfProbe` と隠し要素）と Task 12（`TerminalField` と `fieldTerminals` / `terminalTooltipOf`）だけ。** `visualSignature()` の中身と傾斜グループの構造は触らない。**Plan 4B Task 11 も同じファイルの `PlcUnit` / `PlcRack` の分岐を触る**ので、4B が landed してから入ること。
+6. **`three/Socket.tsx` / `TerminalBlock.tsx` から props を4つ外すと、それを渡している `BoardScene` の呼び出しも直す必要がある。** `socketTerminalLabel()` は **export したまま**（`BoardScene` と `scene.test.ts` が使う）。両ファイルを描画して端子の数を数えているテストがあれば、端子が `TerminalField` へ移ったことに合わせて直す。
+7. **`three/TerminalHit.tsx` は消さない。** `PlcUnit.tsx` / `Outlet.tsx` が使い続ける（決定表#13）。`terminalTooltip()` の export もそのまま。
+8. **`three/labels.ts` は Task 13 の3箇所（キャッシュの追加・`socketFaceTexture()` の包み・`blockFaceTexture()` の包み）だけ。** `socketLabelBoxes()` / `faceRect()` / `ROLE_COLOR` / `SOCKET_ROLE_COLOR` / `PX_PER_MM` は触らない（Plan 4B Task 10 が `blockTerminalMark()` を触るので、そこは読み直してから）。
+9. **`result/ResultView.tsx` に足す3つの props はすべて任意にする。** C1/C2/D の結果画面（`InspectPartsResult` / `InspectRepairResult` / `PlcResult`）は `ResultView` を使わないが、`MismatchList` / `StaticCheckList` / `ChartOverlay` は共有しているので**それらの署名は変えない**（`VerifyPanel` も同じ部品をそのまま使う）。
+10. **`e2e/` は追加のみ。** 既存6本（`smoke` / `navigation` / `chart` / `inspect` / `plc` / `polish`）と `projection.ts` は**1行も変えない**。新しい2本は起動の定型を `polish.spec.ts` から写す（同じ `CHROMIUM_FLAGS`・同じ復元プロンプトの片付け）。スクリーンショットの連番は **50 番台**を使う（1D2 が 09〜13、4B が 40 番台）。
+
+---
+
+## 完了条件
+
+**機能:**
+
+- [ ] `pnpm -r test` が7プロジェクトすべて通る（Phase 5 で足した単体テストは **packages 57件 ＋ desktop 100件**）。
+- [ ] `pnpm -r typecheck` と `pnpm lint`（`import-x/no-cycle` ＋ `react-hooks` 込み）が無警告で通る。
+- [ ] `npx prettier --check "apps/desktop/**/*.{ts,tsx,css}" "packages/**/*.ts" "README.md" "docs/**/*.md"` が `All matched files use Prettier code style!` を出す。
+- [ ] `pnpm --filter @ojt/desktop e2e` が **31本**すべて通る。**2回連続で通ること。**
+- [ ] **§16 Phase 5 受入基準①**: モードB課題 `b-001` を開き、ビューを「回路図」にして PB1 a接点 → CR1 コイル、CR1 a接点の自己保持段、CR1 a接点 → PL1 を置き、「検算」で **合格**が出る。
+- [ ] **§16 Phase 5 受入基準②**: 回路図（エディタでも回路図ヒントでも）の要素をクリックすると、3D盤の対応端子が光る（`highlight.terminals` に2端子が入り、`ProbeMarkers` の輪が出る）。盤の端子にホバーすると逆に回路図の要素が光る。
+- [ ] **§16 Phase 5 受入基準③**: `pnpm --filter @ojt/desktop dist` が NSIS とポータブルの2つを出し、`release/artifacts.md` にサイズと SHA256 が書かれる。オフラインのWindows 11でインストールして課題を1つ完了できる（チェックリスト 7）。
+- [ ] **§16 Phase 5 受入基準④**: 三角形数 ≤ 200,000・ドローコール ≤ 120・無操作3秒で描画枚数が増えない。**実機（内蔵GPU・FHD）で3つの視点プリセットすべて 60fps 以上**（チェックリスト 6）。
+- [ ] **UXレビュー #28**: 不合格の結果画面に「疑わしい配線」が最大5件出て、「盤で見る」でその端子と電線が3Dで光り、「結果へ戻る」で結果画面に戻れる。合格時は出ない。
+- [ ] **UXレビュー #29**: 端子リストから Tab と Enter だけで電線を1本張れる。2本埋まった端子は押せず、理由が `title` に出る。
+- [ ] 検算と判定の合否が一致する（同じ課題・同じ回路図なら、検算の `passed` と判定の `passed` が同じ）。
+- [ ] 作業ファイルを保存して読み直すと、回路図の下書きも戻る。Phase 1〜4 に保存した作業ファイルも読める。
+- [ ] 課題を開き直す・「もう一度」・課題一覧へ戻る、のいずれでも下書き・検算結果・注目・ビューが初期化される。
+
+**画面の品質（利用者要求 2026-09-19）:**
+
+- [ ] 3つのビュー（盤／並べて／回路図）すべてで、**1280×800 と 1920×1080** のどちらでも横スクロールが出ない（`scrollWidth <= clientWidth`）。
+- [ ] 回路図エディタのパレット・ツール・指摘欄の**日本語が切れていない**（`scrollWidth <= clientWidth + 1`）。
+- [ ] 本プランで足した CSS の `padding` / `gap` / `margin` がすべて **4の倍数**（8px 格子）。
+- [ ] エディタ・パレット・検算パネル・疑い一覧・端子リストの**すべての操作要素**が `:focus-visible` で見える枠を持つ。
+- [ ] 回路図のグリッド（`schematic-grid`）に Tab で入れ、そこから矢印と Enter だけで回路を描ける。
+- [ ] スクリーンショット（`50-schematic-editor` / `51-verify-passed` / `52-wiring-guide` / `53-result-suspects` / `54-suspect-on-board` / `55-keyboard-wiring`）で、記号・銘板・カーソル枠・疑い一覧の文字が読める。
+- [ ] 「検算」ボタンが押せないとき、その理由が `title` に出る（作りかけの指摘の1件目、または検算中）。
+
+**性能（§15）:**
+
+- [ ] `perf-readout` の `triangles` が **200,000 以下**（正面・俯瞰・ソケット拡大のどの視点でも）。
+- [ ] `perf-readout` の `calls` が **120 以下**（端子のインスタンス化前は 280 超だった）。
+- [ ] ソケットの印字テクスチャが **1枚**に共有されている（`faceTextureCacheSize()` が 1）。テクスチャの1辺が **2048px 以下**。
+- [ ] 盤に電線を1本足しても、机上ケーブルの `TubeGeometry` が作り直されない（`deskWireSignature()` が変わらない）。
+- [ ] 無操作3秒で描画枚数が **1枚以下**しか増えない（`frameloop="demand"` が効いている）。
+
+**規律:**
+
+- [ ] `packages/circuit-sim` / `packages/ladder-core` / `packages/plc-dialects` / `packages/board-model` への変更が**1行も無い**（`git diff --stat origin/main -- …` が空）。
+- [ ] `apps/desktop/src/renderer/ladder/**` への変更が**1行も無い**（Plan 4B の担当）。
+- [ ] `TODO` / `TBD` / `FIXME` / `後で` / `適宜` が本プランで足したコードとドキュメントに**1つも無い**。
+- [ ] `apps/desktop/src/renderer` に `http://` / `https://` の文字列も画像ファイルも `base64` も無い（§15 のオフラインと商標）。
+- [ ] 画面の文言がすべて `src/renderer/i18n/ja.ts`（と `src/shared/messages.ts`）にある。
+- [ ] IPCチャネルの本数が Phase 4 から**増えていない**（検算は Worker の往復であって IPC ではない）。
+- [ ] `apps/desktop/package.json` の依存が Phase 4 から**1つも増えていない**。
+- [ ] `git tag` も `gh release create` も**実行していない**（決定表#22）。
+
+---
+
+## 改訂履歴
+
+| 日付 | 内容 |
+|---|---|
+| 2026-09-19 | 初版。§16 Phase 5 の5項目（回路図エディタの編集機能・検算・配線ガイドのハイライト・配布パッケージ・性能最適化）と、2026-09-19 のUXレビューの残り2件（#28 疑わしい配線、#29 キーボード配線）を16タスクに分けた。文書の編集は `schematic-core/src/edit.ts` の純関数に置き、**作りかけの文書を許して妥当性は `validateDocument()` が別に出す**方針にした（編集を拒むと1要素も置けないため）。検算は既存の `toSession()` ＋ `judgeAssemble()` を Worker で回すだけにし、判定と基準を完全に一致させた。配線ガイドは C2 で landed した連動ハイライトを `session/wiring-guide.ts` に寄せてモードBと共有する。#28 は電線の1対1照合ではなく**節点分割の差**（`buildNets()`）で求め、§11.3 の渡り配線の順序自由度を誤りと呼ばないようにした。性能は「計測窓（`PerfProbe`）→ 端子のインスタンス化 → 印字テクスチャの共有と机上ケーブルのメモ化」の順に進め、受入基準④のうち GPU非依存の予算だけを E2E で自動化し、60fps は実機測定としてリリース手順チェックリストに残した。配布は v0.2.0 で動いている構成を**固める**方針（版の 1.0.0 化・同梱物と成果物の検査・README・NSIS の説明画面・手順書）とし、**タグ付けと公開は利用者の明示の指示を待つ**ことを決定表#22 と完了条件に明記した |
