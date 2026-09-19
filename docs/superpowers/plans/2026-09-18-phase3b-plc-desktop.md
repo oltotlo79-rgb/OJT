@@ -4151,8 +4151,9 @@ export function formForCell(cell: Cell, profile: DialectProfile): CellForm {
 - [ ] **Step 4: `src/renderer/ladder/DeviceInput.tsx` を書く**
 
 ```tsx
+import { T } from '@ojt/ladder-core';
 import type { DialectProfile } from '@ojt/plc-dialects';
-import { useEffect, useRef, useState, type JSX } from 'react';
+import { useEffect, useMemo, useRef, useState, type JSX } from 'react';
 import { JA, timerRoundPrompt } from '../i18n/ja.js';
 import {
   buildCell,
@@ -4206,6 +4207,20 @@ export function DeviceInput({
   useEffect(() => {
     firstRef.current?.focus();
   }, []);
+
+  /*
+   * 入力例（placeholder）も**方言から引く**（レビュー Minor）。`'X0'` や `'K30'` を直書きすると、
+   * Phase 4 でメーカーが増えたときにここだけ三菱の綴りのまま取り残される。
+   */
+  const hints = useMemo(() => {
+    const preset = profile.timerPreset(3_000, T(0));
+    return {
+      device: `${profile.deviceRanges.input.prefix}0`,
+      reset: `${profile.deviceRanges.input.prefix}2`,
+      timer: preset instanceof Error ? '3000' : preset.text,
+      counter: '5',
+    };
+  }, [profile]);
 
   const commit = (presetOverrideMs?: number): void => {
     const next =
@@ -4276,7 +4291,7 @@ export function DeviceInput({
           data-testid="device-text"
           aria-label={JA.ladder.device}
           value={form.deviceText}
-          placeholder={profile.deviceRanges.input.prefix + '0'}
+          placeholder={hints.device}
           onChange={(event) => {
             setForm({ ...form, deviceText: event.target.value });
           }}
@@ -4290,7 +4305,7 @@ export function DeviceInput({
             data-testid="preset-text"
             aria-label={JA.ladder.preset}
             value={form.presetText}
-            placeholder={form.output === 'TON' ? 'K30' : '5'}
+            placeholder={form.output === 'TON' ? hints.timer : hints.counter}
             onChange={(event) => {
               setForm({ ...form, presetText: event.target.value });
             }}
@@ -4301,7 +4316,7 @@ export function DeviceInput({
             data-testid="reset-text"
             aria-label={JA.ladder.resetDevice}
             value={form.resetText}
-            placeholder="X2"
+            placeholder={hints.reset}
             onChange={(event) => {
               setForm({ ...form, resetText: event.target.value });
             }}
@@ -5810,7 +5825,7 @@ describe('キー割当表（§12.1 / §17.1）', () => {
 // ProjectTree.tsx
 import type { LadderProgram } from '@ojt/ladder-core';
 import type { DialectProfile } from '@ojt/plc-dialects';
-import type { JSX } from 'react';
+import type { CSSProperties, JSX } from 'react';
 import { JA } from '../i18n/ja.js';
 import styles from './ladder.module.css';
 
@@ -5830,7 +5845,13 @@ export function ProjectTree({
   onPick: (networkId: string) => void;
 }): JSX.Element {
   return (
-    <nav className={styles.tree} data-testid="project-tree" aria-label={profile.panels.tree}>
+    <nav
+      className={styles.tree}
+      data-testid="project-tree"
+      aria-label={profile.panels.tree}
+      // 選択中のネットワークの色は方言から引く（CSS に直書きしない。レビュー Minor）
+      style={{ '--tree-current': profile.monitorColors.powered } as CSSProperties}
+    >
       <p className={styles.treeRoot}>{JA.ladder.treeProgram}</p>
       <ul className={styles.treeList}>
         <li>
@@ -6244,7 +6265,12 @@ CSS（追記）:
 
 .treeList button[aria-current='true'] {
   font-weight: 700;
-  color: #1e64ff;
+  /*
+   * 色は `ProjectTree` が `profile.monitorColors.powered` から `--tree-current` に流し込む
+   * （レビュー Minor）。CSS に `#1e64ff` を直書きすると、方言プロファイルの色を変えたときに
+   * ここだけ取り残される。プロファイルが読めないときのための予備値だけ残す。
+   */
+  color: var(--tree-current, #1e64ff);
 }
 
 .shortcutOff {
