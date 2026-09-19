@@ -917,3 +917,29 @@ export function comparedSignalsText(signals: readonly string[]): string {
   return `${JA.plc.compared}: ${signals.join('・')}`;
 }
 // --- /Plan 3B Task 13 ---
+// --- 3D fidelity 2026-09-19 ---
+/**
+ * 3Dの機器表示の文言（§6.1 / §6.5 / §8.2。利用者要望 2026-09-19）。
+ *
+ * ブレーカ・電源スイッチの ON/OFF 印字と銘板、リレー／タイマの動作表示に添える札。
+ * 3Dの部品モジュール（`three/AcFixtures.tsx` / `three/PartIndicator.tsx` /
+ * `three/MountedPart.tsx`）からだけ使う。
+ */
+export const JA_3D = {
+  /** 励磁中（動作表示灯が点いている）ことを示す札。 */
+  running: '動作中',
+  /** 投入（ON）側の印字。 */
+  on: 'ON',
+  /** 開放（OFF）側の印字。 */
+  off: 'OFF',
+  /**
+   * ブレーカの銘板。写真（654×552px）では銘板の文字が判読できないため、
+   * §6.1 の「ブレーカ 1個・1A・AC一次側」と2極である点から起こした定格を印字する。
+   */
+  breakerRating: '2P 1A',
+  /** タイマの電源表示灯（H3Y-4 相当）。 */
+  timerPower: 'POWER',
+  /** タイマの限時接点の動作表示灯（タイムアップ）。 */
+  timerOut: 'UP',
+} as const;
+// --- /3D fidelity 2026-09-19 ---

@@ -3,6 +3,7 @@ import { Html } from '@react-three/drei';
 import { useMemo, type JSX } from 'react';
 import type { Texture } from 'three';
 import { BREAKER_COLOR, SUPPLY_BLOCK_COLOR } from '../session/colors.js';
+import { Breaker, PowerSwitch } from './AcFixtures.js';
 import { makeCanvasTexture, PX_PER_MM } from './labels.js';
 import { sharedMaterial, UNIT_BOX } from './materials.js';
 import { toScene } from './coords.js';
@@ -119,6 +120,7 @@ export function Fixture({
   kind,
   terminals,
   footprints,
+  on,
 }: {
   name: string;
   label: string;
@@ -126,6 +128,11 @@ export function Fixture({
   kind: Footprint['kind'];
   terminals: readonly BoardTerminal[];
   footprints: readonly Footprint[];
+  /**
+   * 投入状態（ブレーカ＝`SimSnapshot.breakerOn`、電源スイッチ＝`switchOn`）。
+   * ハンドル／ロッカーの倒れる向きに出る。DC24V電源では使わない。
+   */
+  on: boolean;
 }): JSX.Element | null {
   const footprint = findFixtureFootprint(footprints, kind);
   const faceTexture = useMemo(
@@ -142,13 +149,35 @@ export function Fixture({
   });
   return (
     <group name={`fixture-${name}`}>
-      <mesh
-        geometry={UNIT_BOX}
-        material={sharedMaterial(color, { roughness: 0.6, metalness: 0.15 })}
-        raycast={noPick}
-        position={center}
-        scale={[footprint.w, footprint.h, heightMm]}
-      />
+      {/*
+        ブレーカと電源スイッチは実物（写真右上）に寄せて作り込む（利用者要望 2026-09-19）。
+        DC24V電源は端子台が上に載るだけの低い台なので、これまでどおり単純な箱で描く。
+      */}
+      {kind === 'breaker' ? (
+        <Breaker
+          footprint={footprint}
+          terminals={terminals}
+          color={color}
+          heightMm={heightMm}
+          on={on}
+        />
+      ) : kind === 'switch' ? (
+        <PowerSwitch
+          footprint={footprint}
+          terminals={terminals}
+          color={color}
+          heightMm={heightMm}
+          on={on}
+        />
+      ) : (
+        <mesh
+          geometry={UNIT_BOX}
+          material={sharedMaterial(color, { roughness: 0.6, metalness: 0.15 })}
+          raycast={noPick}
+          position={center}
+          scale={[footprint.w, footprint.h, heightMm]}
+        />
+      )}
       {/* 端子の名前の印字（常時表示）。§12.2 */}
       {faceTexture === undefined ? null : (
         <mesh raycast={noPick} position={[center[0], center[1], labelPlateZ]}>

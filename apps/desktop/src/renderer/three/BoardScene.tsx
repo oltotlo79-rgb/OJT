@@ -192,6 +192,13 @@ export function visualSignature(state: AppState): string {
     buttons,
     snapshot.powered ? 1 : 0,
     snapshot.tripped ? 1 : 0,
+    /*
+     * ブレーカ・電源スイッチのハンドルは3Dで倒れる向きが変わる（利用者要望 2026-09-19）ので、
+     * この2つも署名に入れる。`powered` だけでは「スイッチを切ったままブレーカを入れた」
+     * 操作で絵が更新されない（`frameloop="demand"` は署名が変わらなければ描き直さない）。
+     */
+    snapshot.breakerOn ? 1 : 0,
+    snapshot.switchOn ? 1 : 0,
     session?.wires.length ?? 0,
     Object.keys(session?.mounted ?? {}).join('/'),
     state.hoveredTerminal ?? '',
@@ -286,6 +293,9 @@ function BoardContents({
   const lampLevels = useLampLevels();
   const energized = useEnergized();
   const buttons = useButtons();
+  // ブレーカ・電源スイッチのハンドルの向き（3Dの見た目にだけ効く）。§6.1
+  const breakerOn = useStore((s) => s.snapshot.breakerOn);
+  const switchOn = useStore((s) => s.snapshot.switchOn);
   const hovered = useStore((s) => s.hoveredTerminal);
   const pending = useStore((s) => s.pendingTerminal);
   const selectedWire = useStore((s) => s.selectedWire);
@@ -495,6 +505,7 @@ function BoardContents({
             kind={fixture.kind}
             terminals={fixture.terminals}
             footprints={board.footprints}
+            on={fixture.kind === 'breaker' ? breakerOn : fixture.kind === 'switch' && switchOn}
           />
         ))}
         <FixedWires board={board} />
