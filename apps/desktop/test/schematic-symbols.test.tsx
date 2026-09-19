@@ -11,10 +11,11 @@ import { SCHEMATIC_LAYOUT, SchematicSvg } from '../src/renderer/schematic/Schema
  * 内蔵課題を実際に SVG にしてから「ヒント欄の幅（約430px）に置いたとき何pxになるか」を測る。
  * 記号の比が正しくても、寸法設定（`SCHEMATIC_LAYOUT`）が釣り合っていなければ画面では読めない。
  *
- * 見るのは3つだけ:
+ * 見るのは4つだけ:
  * - 文字が読める大きさか（銘板 11px 以上・端子番号 9px 以上）
  * - 文字が他の文字にも線にもかぶらないか（2px 以上あける）
  * - 記号が「小さな斜線」に見えない大きさか
+ * - **出力がすべて丸か**（長方形は1つも使わない。利用者の決め事 2026-09-20）
  */
 
 /** 右パネルの回路図ヒントの紙の幅（`screens.module.css` の `.schematicBox` の実寸）。 */
@@ -224,5 +225,38 @@ describe('記号が「小さな斜線」に見えない大きさになる', () =
     expect(s * SYMBOL_METRICS.stubHeight * scale).toBeGreaterThanOrEqual(12);
     // 記号は列の幅の半分以上（引出線ばかりが長い、記号の痩せた図にしない）
     expect(s).toBeGreaterThanOrEqual((SCHEMATIC_LAYOUT.colWidth ?? 0) * 0.5);
+    // コイルの丸は「丸」と分かる大きさ、タイマの限時記号もその中で読める大きさ
+    expect(s * SYMBOL_METRICS.coilRadius * 2 * scale).toBeGreaterThanOrEqual(17);
+    expect(s * SYMBOL_METRICS.coilDelayRadius * 2 * scale).toBeGreaterThanOrEqual(8);
+  });
+});
+
+describe('出力はすべて丸（四角は使わない。利用者の決め事 2026-09-20）', () => {
+  it.each(PROBLEMS)('%s: コイルは丸で、ランプの丸よりひと回り大きい', (id) => {
+    const { svg, scale } = sheetOf(id);
+    const doc = docOf(id);
+    const loads = doc.rungs.flatMap((r) =>
+      r.cells.filter((c) => c.kind === 'coil' || c.kind === 'lamp' || c.kind === 'buzzer'),
+    );
+    const coils = loads.filter((c) => c.kind === 'coil');
+    expect(coils.length).toBeGreaterThan(0);
+    // どの出力の図形にも長方形は出ない（用紙と編集の当たり矩形は `data-cell` を持たない）
+    for (const load of loads) {
+      const own = [...svg.querySelectorAll(`[data-cell="${load.id}"]`)].map((el) => el.tagName);
+      expect(own, load.id).not.toContain('rect');
+    }
+    /** その出力の丸の直径（ヒント欄に置いたときの画面px）。 */
+    const diameterPx = (cellId: string): number => {
+      const circle = svg.querySelector(`circle[data-cell="${cellId}"]`);
+      if (circle === null) throw new Error(`丸がありません: ${cellId}`);
+      return num(circle, 'r') * 2 * scale;
+    };
+    for (const c of coils) expect(diameterPx(c.id), c.id).toBeGreaterThanOrEqual(17);
+    const lamp = loads.find((c) => c.kind === 'lamp');
+    const firstCoil = coils[0];
+    if (lamp !== undefined && firstCoil !== undefined) {
+      // コイル＝ただの丸、ランプ＝ひと回り小さい丸＋×。大きさと×の両方で読み分ける
+      expect(diameterPx(firstCoil.id)).toBeGreaterThan(diameterPx(lamp.id));
+    }
   });
 });

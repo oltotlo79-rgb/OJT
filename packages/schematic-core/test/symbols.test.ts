@@ -261,19 +261,23 @@ describe('記号の釣り合い（1モジュール M ＝ 記号幅に対する�
     }
   });
 
-  it('コイルは 1.0 M × 0.50 M、タイマコイルは中に限時記号を持つ', () => {
-    const rect = loadShapes(coil('c', 'CR1'), 0, 0, M)[0];
-    if (rect?.kind !== 'rect') throw new Error('rect');
-    expect(rect.w).toBeCloseTo(M, 6);
-    expect(rect.h).toBeCloseTo(M * 0.5, 6);
+  it('コイルは ⌀0.70 M の丸、タイマコイルは中に限時記号を持つ', () => {
+    const shapes = loadShapes(coil('c', 'CR1'), 0, 0, M);
+    const circle = shapes[0];
+    if (circle?.kind !== 'circle') throw new Error('circle');
+    expect(circle.r * 2).toBeCloseTo(M * 0.7, 6);
+    // 電線の上に中心があり、塗りつぶさない（ランプだけが色を持つ）
+    expect(circle.cx).toBeCloseTo(0, 6);
+    expect(circle.cy).toBeCloseTo(0, 6);
+    expect(circle.fill).toBeUndefined();
+    // 長方形はもうどの負荷にも使わない
+    expect(shapes.some((s) => s.kind === 'rect')).toBe(false);
     const timer = loadShapes(coil('c', 'T1', 2000), 0, 0, M);
+    expect(timer.some((s) => s.kind === 'rect')).toBe(false);
     const mark = timer[1];
     if (mark?.kind !== 'arc') throw new Error('arc');
-    // 限時記号は長方形の中に収まる
-    expect(mark.cx - mark.r).toBeGreaterThan(rect.x);
-    expect(mark.cx + mark.r).toBeLessThan(rect.x + rect.w);
-    expect(mark.cy - mark.r).toBeGreaterThan(rect.y);
-    expect(mark.cy).toBeLessThan(rect.y + rect.h);
+    // 限時記号は丸の中に収まる（中心から測って半径ぶん余る）
+    expect(Math.hypot(mark.cx - circle.cx, mark.cy - circle.cy) + mark.r).toBeLessThan(circle.r);
   });
 
   it('ランプは ⌀0.64 M で、引出線が電線の端まで届く', () => {
@@ -293,13 +297,24 @@ describe('記号の釣り合い（1モジュール M ＝ 記号幅に対する�
 });
 
 describe('負荷記号', () => {
-  it('コイルは端子と突き合う長方形（JIS C 0617）', () => {
+  it('コイルは丸で、引出線が電線の端まで届く（出力は丸。2026-09-20）', () => {
     const shapes = loadShapes(coil('c', 'CR1'), 100, 50, 12);
-    const rect = shapes[0];
-    if (rect?.kind !== 'rect') throw new Error('rect');
-    expect(rect.x).toBe(94);
-    expect(rect.x + rect.w).toBe(106);
-    expect(rect.h).toBeCloseTo(12 * SYMBOL_METRICS.coilHalfHeight * 2, 6);
+    const circle = shapes[0];
+    if (circle?.kind !== 'circle') throw new Error('circle');
+    expect(circle.r).toBeCloseTo(12 * SYMBOL_METRICS.coilRadius, 6);
+    // 丸はランプ（⌀0.64 M）より少し大きい＝ひと目で見分けられる
+    expect(circle.r).toBeGreaterThan(12 * SYMBOL_METRICS.loadRadius);
+    const leads = shapes
+      .slice(1)
+      .filter((s): s is Extract<Shape, { kind: 'line' }> => s.kind === 'line');
+    expect(leads).toHaveLength(2);
+    // 引出線は円周（100±4.2）から記号の端（100±6）までを埋める
+    expect(Math.min(...leads.map((l) => l.x1))).toBeCloseTo(94, 6);
+    expect(Math.max(...leads.map((l) => l.x2))).toBeCloseTo(106, 6);
+    for (const l of leads) {
+      expect(l.y1).toBeCloseTo(50, 6);
+      expect(l.y2).toBeCloseTo(50, 6);
+    }
   });
 
   it('ランプは色つきの丸＋×で、×は円周に触れる', () => {

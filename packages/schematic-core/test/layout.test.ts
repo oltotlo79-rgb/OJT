@@ -170,22 +170,25 @@ describe('layout: 読取専用レンダラ用の図形データ（§11.2）', ()
     expect(contactShapes('t-b', 0, 0, 12)).toHaveLength(4);
   });
 
-  it('負荷記号: コイル＝長方形、ランプ＝丸＋×（色つき）、ブザー＝半円（§11.1）', () => {
+  it('負荷記号: コイル＝丸、ランプ＝丸＋×（色つき）、ブザー＝半円（§11.1）', () => {
+    // どの ⌀ も記号幅より小さいので、電線との突き合わせに引出線が2本付く
     const cr = loadShapes(coil('c', 'CR1'), 0, 0, 12);
-    expect(cr).toHaveLength(1);
-    expect(cr[0]?.kind).toBe('rect');
-    expect(cr[0]?.kind === 'rect' ? cr[0].w : 0).toBeCloseTo(12, 6);
-    // ⌀は記号幅より小さいので、電線との突き合わせに引出線が2本付く（丸＋×2本＋引出線2本）
+    expect(cr).toHaveLength(3);
+    expect(cr[0]?.kind).toBe('circle');
+    expect(cr[0]?.kind === 'circle' ? cr[0].r * 2 : 0).toBeCloseTo(12 * 0.7, 6);
     const pl = loadShapes(lamp('c', 'PL3'), 0, 0, 12);
     expect(pl).toHaveLength(5);
     expect(pl[0]?.kind === 'circle' ? pl[0].fill : '').toBe(LAMP_FILL.PL3);
     const bz = loadShapes(buzzer('c'), 0, 0, 12);
     expect(bz[0]?.kind).toBe('arc');
     expect(bz).toHaveLength(4);
-    // タイマのコイルは長方形の中に限時記号（パラシュート）を持つ
-    expect(
-      loadShapes(coil('c', 'T1', 2000), 0, 0, 12).filter((s) => s.kind === 'arc'),
-    ).toHaveLength(1);
+    // タイマのコイルは丸の中に限時記号（パラシュート）を持つ
+    const t1 = loadShapes(coil('c', 'T1', 2000), 0, 0, 12);
+    expect(t1.filter((s) => s.kind === 'arc')).toHaveLength(1);
+    // 出力に長方形は1つも出ない（出力は丸。利用者の決め事 2026-09-20）
+    for (const shapes of [cr, pl, bz, t1]) {
+      expect(shapes.some((s) => s.kind === 'rect')).toBe(false);
+    }
   });
 
   it('分岐は縦線と分岐点で描かれる', () => {

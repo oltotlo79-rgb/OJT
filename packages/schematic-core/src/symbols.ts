@@ -54,6 +54,10 @@ export type Shape = ShapeSource &
         dashed?: boolean;
       }
     | { kind: 'circle'; role: ShapeRole; cx: number; cy: number; r: number; fill?: string }
+    /**
+     * 長方形。**いまの記号集は1つも使っていない**（出力はすべて丸。`loadShapes()` を見よ）が、
+     * 描画側が扱えるプリミティブとして残してある（課題の枠取りなど図記号以外の用途向け）。
+     */
     | {
         kind: 'rect';
         role: ShapeRole;
@@ -121,9 +125,12 @@ export const SYMBOL_METRICS = {
   actuatorHalf: 0.25,
   /** 限時記号（半円＝パラシュート）の半径。 */
   delayRadius: 0.28,
-  /** コイルの長方形の半分の高さ（長方形は 1.0 M × 0.50 M）。 */
-  coilHalfHeight: 0.25,
-  /** タイマコイルの中に刷る限時記号（パラシュート）の半径。 */
+  /**
+   * コイル（リレー・タイマ）の丸の半径（⌀0.70 M）。
+   * ランプの丸（⌀0.64 M）より**少しだけ大きい**ので、×の有無と合わせてひと目で見分けられる。
+   */
+  coilRadius: 0.35,
+  /** タイマコイルの丸の中に刷る限時記号（パラシュート）の半径。 */
   coilDelayRadius: 0.17,
   /** ランプ・ブザーの半径（⌀0.64 M。電線とは `loadLeads()` の引出線で突き合わせる）。 */
   loadRadius: 0.32,
@@ -227,15 +234,22 @@ function loadLeads(cx: number, cy: number, s: number, r: number): Shape[] {
   ];
 }
 
-/** タイマのコイルか（限時記号を長方形の中に刷る）。 */
+/** タイマのコイルか（限時記号を丸の中に刷る）。 */
 function isTimerCoil(cell: SchematicCell): boolean {
   return cell.kind === 'coil' && (cell.presetMs !== undefined || cell.device.startsWith('T'));
 }
 
 /**
  * 1つの負荷記号の図形。§11.1
- * コイル＝端子付きの長方形（JIS C 0617 の操作機器）、ランプ＝丸＋×、ブザー＝半円。
- * タイマのコイルは長方形の中に限時記号（限時接点と同じパラシュート）を刷る。
+ *
+ * **出力はすべて丸**で描く（利用者の決め事「出力は丸。`()` でも四角でもない」2026-09-20）。
+ * 梯子図の出力と同じ読み方が展開接続図でもそのまま通るように、どの負荷にも長方形を使わない。
+ * - コイル（リレー・タイマ）＝ ⌀0.70 M の丸。電線の上に中心を置き、引出線は円周で止める
+ * - ランプ＝ ⌀0.64 M の丸＋×（コイルより**ひと回り小さく**、×が付くので取り違えない）
+ * - ブザー＝半円＋弦
+ *
+ * タイマのコイルは同じ丸の中に限時記号（限時接点と同じパラシュート）を刷る。
+ * 銘板（`T1`）は丸の上、設定時間（`2.0秒`）は下に `layout()` が置く。
  */
 export function loadShapes(
   cell: SchematicCell,
@@ -246,18 +260,11 @@ export function loadShapes(
   const s = symbolWidth;
   const m = SYMBOL_METRICS;
   if (cell.kind === 'coil') {
-    const h = s * m.coilHalfHeight;
-    const rect: Shape = {
-      kind: 'rect',
-      role: 'symbol',
-      x: cx - s * 0.5,
-      y: cy - h,
-      w: s,
-      h: h * 2,
-    };
-    if (!isTimerCoil(cell)) return [rect];
+    const rc = s * m.coilRadius;
+    const circle: Shape = { kind: 'circle', role: 'symbol', cx, cy, r: rc };
+    if (!isTimerCoil(cell)) return [circle, ...loadLeads(cx, cy, s, rc)];
     return [
-      rect,
+      circle,
       {
         kind: 'arc',
         role: 'symbol',
@@ -267,6 +274,7 @@ export function loadShapes(
         startDeg: 180,
         endDeg: 360,
       },
+      ...loadLeads(cx, cy, s, rc),
     ];
   }
   const r = s * m.loadRadius;
