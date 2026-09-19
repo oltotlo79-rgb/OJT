@@ -2734,10 +2734,11 @@ git commit -m "feat(plc-dialects): add the notation switch preview"
 
 **Files:**
 - Create: `packages/plc-dialects/src/instruction-list.ts`
-- Modify: `packages/plc-dialects/src/profile.ts`（`formatCounterPreset?` を足す）
-- Modify: `packages/plc-dialects/src/{mitsubishi,omron,jtekt,sharp}.ts`（`formatCounterPreset` を1行ずつ）
+- Modify: `packages/plc-dialects/src/profile.ts`（`counterPresetText?` / `parseCounterPreset?` を足す）
+- Modify: `packages/plc-dialects/src/{mitsubishi,omron,jtekt,sharp}.ts`（`counterPresetText` / `parseCounterPreset` を1組ずつ）
 - Modify: `packages/plc-dialects/src/index.ts`
 - Test: `packages/plc-dialects/test/instruction-list.test.ts`
+- Test: `packages/plc-dialects/test/counter-preset.test.ts`
 
 §10.7 の「命令語リストのエクスポート（テキスト、UTF-8、CRLF）」を実装する。§16 Phase 4 受入基準⑥（方言どおりの命令名で出力される）の本体である。
 
@@ -2970,31 +2971,37 @@ pnpm --filter @ojt/plc-dialects exec vitest run test/instruction-list.test.ts
 
 Expected: 失敗。`does not provide an export named 'instructionList'`。
 
-- [ ] **Step 3: `src/profile.ts` に `formatCounterPreset` を足す**
+- [ ] **Step 3: `src/profile.ts` に `counterPresetText` / `parseCounterPreset` を足す**
 
-`DialectProfile` の `parseTimerPreset` の直後に足す:
+`DialectProfile` の `parseTimerPreset` の直後に、タイマの対と同じ形で足す（landed 名。Plan 4B の申し送り F-2 がこの対をそのまま使う）:
 
 ```ts
   /**
    * カウンタ設定値の方言表記（三菱は `K5`、OMRON は `#0005`）。§10.7
-   * 命令語リストだけが使う。省略した方言は10進の数値そのままで書かれる。
+   * 命令語リストと 4B のカウンタ設定値欄が使う。省略した方言は10進の数値そのままで書かれる。
    */
-  formatCounterPreset?(preset: number): string;
+  counterPresetText?(preset: number): string;
+  /** 方言のカウンタ設定表記 → 設定値。読めない表記と機種の範囲外は `Error` を返す（投げない）。 */
+  parseCounterPreset?(text: string): number | Error;
 ```
 
-- [ ] **Step 4: 4プロファイルに `formatCounterPreset` を足す**
+- [ ] **Step 4: 4プロファイルに `counterPresetText` / `parseCounterPreset` を足す**
 
-それぞれのプロファイル定数（`MITSUBISHI_FX5U` など）の `parseTimerPreset,` の直後に1行足す:
+それぞれのプロファイル定数（`MITSUBISHI_FX5U` など）の `parseTimerPreset,` の直後に、読み書きの対で足す（この機種で表せる範囲の値だけをベンダー表記で書き、範囲外は素の10進数のまま返す。M4）:
 
 ```ts
 // mitsubishi.ts
-  formatCounterPreset: (preset) => `K${preset}`,
+  counterPresetText: (preset) => (1 <= preset && preset <= 32_767 ? `K${preset}` : String(preset)),
+  parseCounterPreset: (text) => { /* `K<数値>` を読み、1〜32767 の範囲を検査する */ },
 // omron.ts
-  formatCounterPreset: (preset) => `#${String(preset).padStart(4, '0')}`,
+  counterPresetText: (preset) => /* 1〜9999 なら `#0005` 式、それ以外は素の10進数 */,
+  parseCounterPreset: (text) => { /* `#`／`&` の10進1〜5桁を読み、1〜9999 の範囲を検査する */ },
 // jtekt.ts
-  formatCounterPreset: (preset) => `H${preset.toString(16).toUpperCase().padStart(4, '0')}`,
+  counterPresetText: (preset) => /* 1〜65535 なら `H0005` 式、それ以外は素の10進数 */,
+  parseCounterPreset: (text) => { /* `H<16進4桁>` を読み、1〜65535 の範囲を検査する */ },
 // sharp.ts
-  formatCounterPreset: (preset) => String(preset).padStart(4, '0'),
+  counterPresetText: (preset) => /* 1〜9999 なら10進4桁、それ以外は素の10進数 */,
+  parseCounterPreset: (text) => { /* 10進1〜4桁を読み、1〜9999 の範囲を検査する */ },
 ```
 
 - [ ] **Step 5: `src/instruction-list.ts` を書く**
@@ -3339,7 +3346,7 @@ function emitOutput(
     );
     return;
   }
-  const preset = profile.formatCounterPreset?.(cell.preset) ?? String(cell.preset);
+  const preset = profile.counterPresetText?.(cell.preset) ?? String(cell.preset);
   out.push(presetEmit(profile, 'counter', cell.device, preset));
   // リセットは実機と同じく別の回路として書く（IRはセルに resetDevice を持っている）
   out.push({
@@ -5622,6 +5629,10 @@ git commit -m "test(content): cross-validate the eight built-in mode D problems 
 | 14 | §10.5 は TOYOPUC の入力を `1X000`〜`1X7FF`、出力を `1Y000`〜`1Y7FF` と書く（同じ番号帯） | 出力のIR通し番号を **`1Y010` から**始める（`OUTPUT_BASE = 0x010`）。`deviceRanges.output.max` は `1Y7FF` を超えないよう 2031 にする | 同じ §10.5 が「X と Y の同一番号の重複使用禁止」も定めており、両方をそのまま実装すると `X(0)` と `Y(0)` を使う内蔵8題が全題エラーになる。実機のラックでも入出力モジュールは別アドレスに実装される（決定表#16） |
 | 15 | §10.5 の `DialectProfile` は命令語を13キー（`ld`〜`counter`）で示す | `InstructionKey` を **24キー**に拡張する（`ldp`/`ldf`/`andp`/`andf`/`orp`/`orf`・`andBlock`/`orBlock`・`mc`/`mcr`・`end` を追加） | §10.7 の命令語リストは `ANB`/`ORB`・`MC`/`MCR`・`END`・接点形の微分（`LDP` 等）を書き出す必要があり、13キーでは方言ごとの綴り（OMRON `AND LD`、シャープ `AND STR` / `F-40`）を表に持てない。§10.5 の表自体はこれらの綴りを4社ぶん載せており、キーが足りないだけである（前提#4） |
 | 16 | §10.5 の命令語の行は JTEKT 列を「同上（前提）」と書く（表の並びでは直前の **OMRON 列**と同じに読める） | JTEKT は**三菱系**の綴り（`SET`/`RST`・`ANB`/`ORB`・`MC`/`MCR`・`END`）にする | §17.2 #10 が「JTEKT TOYOPUC の命令名のみ未入手のため、**三菱系**の `LD`/`OUT`/`SET`/`RST`/`PLS`/`PLF` を前提表記とする」と明記しており、§10.5 の同じ表の微分の行も JTEKT に `PLS` / `PLF`（三菱系）を割り当てている。表の「同上」は直前列ではなく §17.1 の前提方針を指すと読んだ（§17 #10） |
+| 17 | 実機は MC/MCR の書式が方言でまちまち（GX Works3 は `MC N0 M0` / `MCR N0` とネスト番号＋デバイス、CX-Programmer の `IL` / `ILC` はオペランド無し） | **全方言で「命令語＋デバイスのみ」の1形式**に統一する（ネスト番号は持たない） | IRの `mc`/`mcr` セルはネスト番号を持たない（§10.3）。CX-Programmer の「オペランド無し」をそのまま書くとIRのデバイス情報が命令語リストから消える。全方言を1形式に揃えれば `emitOutput()`（`instruction-list.ts`）が方言に依らない1つの手順で書ける（本アプリの表記。レビュー I1） |
+| 18 | 実機の CX-Programmer・JW-300SP はカウンタを `LD <計数条件> / LD <リセット条件> / CNT <デバイス> <設定値>`（LDを2回重ねてから命令語）の順で書く | 全方言を**三菱の書式**（`<計数条件> / OUT・CNT <デバイス> <設定値> / LD <リセット条件> / RST <デバイス>`）に統一する | 三菱のカウンタは計数とリセットを別回路（別の `LD` 始まり）として書き、IRの `counter` セルも `device`（計数・プリセット）と `resetDevice`（リセット）を別々に持つ（§10.3）。全方言をこの形に揃えれば `emitOutput()` が1つの手順で書ける（本アプリの表記。レビュー I2） |
+| 19 | §10.5 はシャープのタイマ単位を「0.1／0.01／0.001秒」の3通りとして挙げる | **0.1秒固定**にする | シャープの `TMR` 命令は §4-C の一次資料で0.1秒刻みとしか確認できておらず（§17.1 の前提方針）、IRのタイマ設定値はms単位のみで刻みの種別を持たない（§10.3）。0.01／0.001秒を選ばせるにはIRに刻みの種別を持たせる必要があり、§17.1 の「IRは変更不要」に反する（レビュー A-I2） |
+| 20 | §10.5 は OMRON の `&`（BIN）表記の上限を書いていない | 読み込みは `&10000`〜`&65535` も**拒否**し、`#0001`〜`#9999`（BCD 4桁）と同じ範囲にする | `TIM`（本アプリが書き出す唯一の形）は BCD 4桁機であり、CP1E の設定値レジスタは機種を通じて 0〜9999 が上限である。`&` はBIN表記を読めるだけの入口であり、機種の設定値レンジそのものを広げるものではない（レビュー A-I2） |
 
 ---
 
@@ -5640,7 +5651,7 @@ Plan 4B（`apps/desktop` の3スキン・ラックの3D・設定画面・表記�
 | `profile.gridCols` / `profile.monitorColors` | ラダーの表示列数とモニタ通電色。設定画面は 8〜15（`MIN_GRID_COLS`/`MAX_GRID_COLS`）と色を上書きできる |
 | `profile.panels` | パネル名称とツールバーのボタン名（スキンごとに変える） |
 | `profile.formatDevice` / `parseDevice` | デバイス入力欄と表示（**受入基準④**: シャープで `8` を入れると `Error` が返る。その文言をそのまま出す） |
-| `profile.timerPreset(ms, device)` / `parseTimerPreset(text, device)` / `formatCounterPreset?(n)` | タイマ・カウンタの設定値欄。`Error` のときは §10.5 の「丸めますか？」を出す（三菱は `roundTimerPreset(ms, timerBaseMs(device))`） |
+| `profile.timerPreset(ms, device)` / `parseTimerPreset(text, device)` / `counterPresetText?(n)` / `parseCounterPreset?(text)` | タイマ・カウンタの設定値欄。`Error` のときは §10.5 の「丸めますか？」を出す（三菱は `roundTimerPreset(ms, timerBaseMs(device))`）。カウンタの対は Plan 4B の申し送り F-2 がそのまま使う |
 | `profile.specialDevices` / `specialInverted` | 特殊デバイスの選択肢。**`specialInverted` に載っている番号はb接点で描く**（シャープの `007366`＝常時ON） |
 | `profile.validate(program)` / `convert(program, profile)` | 「変換」操作と出力ウィンドウ |
 | `switchNotation(program, from, to)` → `{ok, changes, errors}` | **表記切替ダイアログ**（受入基準②）。`changes` は `X10 → 0.08` の一覧、`errors` は切替先で表せない項目。IRは書き換えないので、切り替えても取り消しスタックは無傷 |
@@ -5710,6 +5721,7 @@ Plan 4B（`apps/desktop` の3スキン・ラックの3D・設定画面・表記�
 
 | 日付 | 内容 |
 |---|---|
+| 2026-09-19 | Batch A/B レビュー反映: B1、B2、I1〜I4、M1〜M6、A-I1、A-I2、A-M1〜A-M7 |
 | 2026-09-19 | Batch C レビュー反映: B1、I1〜I3、M1〜M8 |
 | 2026-09-19 | レビュー反映: B1〜B3、I1〜I8、M1〜M7、行番号修正 |
 | 2026-09-19 | 利用者要求（3Dのシーケンサーを各メーカーの外観どおりに再現する）を反映: `PlcAppearance`（筐体色・端子カバー・LED・銘板・前面の造作を正面座標で持つ記述）を `board-model` に追加し、FX5U・CP1E・TOYOPUC 4モジュール・JW300 4モジュールぶんを定義。ラックの端子開始位置を上端8mm→14mmに変えて入出力表示灯の帯を確保。決定表#15・意図的な差分#13・4B引き渡しの行・`test/plc-appearance.test.ts` を追加 |
