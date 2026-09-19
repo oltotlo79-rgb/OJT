@@ -177,10 +177,11 @@ describe('記号が「小さな斜線」に見えない大きさになる', () =
     const { scale } = sheetOf(id);
     const s = SCHEMATIC_LAYOUT.symbolWidth ?? 0;
     expect(s * scale).toBeGreaterThanOrEqual(25);
-    // a接点の開き（ブレードの先から右の固定接点まで）
+    // a接点の開き（ブレードの先から右の引出線の始まりまで）
     expect(s * SYMBOL_METRICS.bladeGap * scale).toBeGreaterThanOrEqual(6);
-    // 固定接点の縦棒の高さ
-    expect(s * SYMBOL_METRICS.contactBarHalf * 2 * scale).toBeGreaterThanOrEqual(14);
+    // ブレードの長さと、b接点の縦棒の高さ
+    expect(s * SYMBOL_METRICS.bladeLength * scale).toBeGreaterThanOrEqual(22);
+    expect(s * SYMBOL_METRICS.stubHeight * scale).toBeGreaterThanOrEqual(12);
     // 記号は列の幅の半分以上（引出線ばかりが長い、記号の痩せた図にしない）
     expect(s).toBeGreaterThanOrEqual((SCHEMATIC_LAYOUT.colWidth ?? 0) * 0.5);
   });

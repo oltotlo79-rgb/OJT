@@ -144,24 +144,29 @@ describe('layout: 読取専用レンダラ用の図形データ（§11.2）', ()
   });
 
   it('接点記号: a接点／b接点／押ボタン操作子／限時記号（調査資料 §3.4）', () => {
-    // 刃形は「左の固定接点・右の固定接点・ブレード」の3本が土台。§11.1
+    // 土台は「ブレード ＋ 右の引出線」の2本。固定接点の縦棒は描かない。§11.1
     const a = contactShapes('cr-a', 0, 0, 12);
     const b = contactShapes('cr-b', 0, 0, 12);
-    expect(a).toHaveLength(3);
+    expect(a).toHaveLength(2);
+    // b接点はそこへ引出線の立ち上がり（縦棒）が1本増える
     expect(b).toHaveLength(3);
-    // a接点はブレードの先が右の固定接点に届かない（開）。b接点は届く（閉）
-    const bladeOf = (shapes: readonly Shape[]): Shape | undefined => shapes[2];
+    // 刃は開閉で同じ。違うのは引出線の始まり方だけ
+    const bladeOf = (shapes: readonly Shape[]): Shape | undefined => shapes[0];
     const aBlade = bladeOf(a);
     const bBlade = bladeOf(b);
     if (aBlade?.kind !== 'line' || bBlade?.kind !== 'line') throw new Error('blade');
-    expect(aBlade.x2).toBeLessThan(bBlade.x2);
-    // b接点は右の固定接点（x = 6）を横切って外へ出る
-    expect(bBlade.x2).toBeGreaterThan(6);
+    expect(aBlade.x2).toBeCloseTo(bBlade.x2, 6);
+    // a接点の引出線はブレードの先より右から始まる（開）。b接点の縦棒は先より左（＝横切る）
+    const aLead = a[1];
+    const bStub = b[2];
+    if (aLead?.kind !== 'line' || bStub?.kind !== 'line') throw new Error('lead');
+    expect(aLead.x1).toBeGreaterThan(aBlade.x2);
+    expect(bStub.x1).toBeLessThan(bBlade.x2);
     const pb = contactShapes('pb-a', 0, 0, 12);
-    expect(pb).toHaveLength(5);
+    expect(pb).toHaveLength(4);
     const timed = contactShapes('t-a', 0, 0, 12);
-    expect(timed).toHaveLength(4);
-    expect(timed[3]?.kind).toBe('arc');
+    expect(timed).toHaveLength(3);
+    expect(timed[2]?.kind).toBe('arc');
     expect(contactShapes('t-b', 0, 0, 12)).toHaveLength(4);
   });
 

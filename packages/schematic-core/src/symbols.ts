@@ -9,19 +9,20 @@ import {
  * 展開接続図の図記号（JIS C 0617）。設計仕様 §11.1 / 調査資料 §3.4。
  *
  * `layout.ts` は「どこに置くか」だけを決め、ここは「1つの記号をどう描くか」だけを持つ。
- * 座標は論理単位で、**記号1つの左右の取り付け点は必ず `cx ± symbolWidth / 2`**
- * （b接点のブレードだけは交差を見せるため右へ `bladeOvershoot` だけ出るが、
- * そこは電線よりずっと上なので電線とはぶつからない）。
+ * 座標は論理単位で、**記号1つの左右の取り付け点は必ず `cx ± symbolWidth / 2`**。
  * `layout()` が電線を `cx ± symbolWidth / 2` まで引いているので、この約束を守ると
  * 電線と記号がぴったり突き合わさる（守らないと両側に隙間が空く）。
  * 記号幅 `s` を以下では **1モジュール（M）** と呼ぶ。寸法はすべて M の倍率で書く。
  *
- * 接点は「固定接点の縦棒2本 ＋ 可動接点（ブレード）」の刃形で描く。ブレードの勾配は
- * a接点もb接点も同じ（`bladeSlope`）にして、**長さだけ**を変える:
- * - a接点: 右の固定接点の手前 `bladeGap` M で止まる（開いている）
- * - b接点: 右の固定接点を `bladeOvershoot` M だけ**横切り**、固定接点は交差点の
- *   さらに `breakOverrun` M 上まで伸びる（閉じている）
- * 勾配が同じなので記号の傾きが図中でそろい、開閉は「横切るか・届かないか」の1点で読める。
+ * 接点は JIS C 0617 / IEC 60617 の形で描く。横向きの段では**固定接点の縦棒は引かない**
+ * （縦棒を電線の上下に出すと梯子図の記号に見え、b接点の斜め線の位置がおかしく見える。
+ * 2026-09-20 の指摘）。描くのは「可動接点（ブレード）＋ 右側の引出線」だけ:
+ * - a接点: 電線の左端（支点）から 30° で `bladeLength` M 立ち上がり、先は右の引出線の
+ *   始まりより `bladeGap` M 手前で止まる（開いている）
+ * - b接点: **同じブレード**。右の引出線は電線から上へだけ伸びる短い縦棒（`stubHeight` M）で
+ *   始まり、ブレードがその縦棒を横切って `stubOvershoot` M 行き過ぎる（閉じている）
+ * どちらも電線の**下には何も出ない**。傾きも刃の長さも同じなので、開閉の違いは
+ * 「縦棒を横切るか・何も無いところで止まるか」の1点だけで読める。
  */
 
 /** 図形の役割（描画側が線幅・色を決めるための分類）。 */
@@ -101,18 +102,21 @@ const BREAK_KINDS: readonly CellKind[] = ['pb-b', 'cr-b', 't-b'];
  * 数値をここに集めておくと、記号どうしの釣り合いを1か所で直せる。
  */
 export const SYMBOL_METRICS = {
-  /** 固定接点（縦棒）の半分の高さ。縦棒全体で 0.68 M。 */
-  contactBarHalf: 0.34,
-  /** ブレードの勾配（立ち上がり ÷ 横走り）。0.6 ＝ 電線から約31°。a接点もb接点も同じ。 */
-  bladeSlope: 0.6,
-  /** a接点でブレードの先を右の縦棒より内側に止める量。＝開いている隙間（0.30 M）。 */
-  bladeGap: 0.3,
-  /** b接点でブレードを右の縦棒より外へ出す量（＝縦棒と交差して閉じている）。 */
-  bladeOvershoot: 0.1,
-  /** b接点で右の縦棒を交差点より上に出す量（交差がはっきり見える）。 */
-  breakOverrun: 0.22,
+  /** ブレード（可動接点）の電線からの角度[度]。a接点もb接点も同じ。 */
+  bladeDeg: 30,
+  /** ブレードの長さ。 */
+  bladeLength: 0.6,
+  /** a接点でブレードの先と右の引出線の始まりとのあいだに空ける横の隙間（＝開いている）。 */
+  bladeGap: 0.25,
+  /** b接点で右の引出線の始まりに立てる縦棒（電線から**上へだけ**）の高さ。 */
+  stubHeight: 0.32,
+  /**
+   * b接点でブレードがその縦棒を横切って行き過ぎる量。
+   * ブレードが縦棒の**高さの真ん中あたり**で交わるように決めてある（`test/symbols.test.ts`）。
+   */
+  stubOvershoot: 0.24,
   /** 押ボタンの操作子（キャップ）の高さ。 */
-  actuatorTop: 0.82,
+  actuatorTop: 0.72,
   /** 押ボタンの操作子の半幅（キャップ全体で 0.5 M）。 */
   actuatorHalf: 0.25,
   /** 限時記号（半円＝パラシュート）の半径。 */
@@ -141,27 +145,30 @@ function line(
   return { kind: 'line', role, x1, y1, x2, y2 };
 }
 
-/**
- * ブレード（可動接点）の先端。勾配は共通で、長さだけが違う。
- * a接点は右の縦棒の手前で止まり（開）、b接点は縦棒を横切って外へ出る（閉）。
- */
-function bladeTip(kind: CellKind, cx: number, cy: number, s: number): { x: number; y: number } {
+/** ブレードの支点（電線の左端）と先端。a接点もb接点も同じ1本。 */
+function bladeOf(
+  cx: number,
+  cy: number,
+  s: number,
+): { x1: number; y1: number; x2: number; y2: number } {
   const m = SYMBOL_METRICS;
-  const open = !BREAK_KINDS.includes(kind);
-  const run = s * (open ? 1 - m.bladeGap : 1 + m.bladeOvershoot);
-  return { x: cx - s * 0.5 + run, y: cy - run * m.bladeSlope };
-}
-
-/** 度 → SVGの角度で見たブレードの向き（y下向きの座標系なので上り勾配は負の角）。 */
-function bladeDeg(): number {
-  return (Math.atan2(-SYMBOL_METRICS.bladeSlope, 1) * 180) / Math.PI;
+  const rad = (m.bladeDeg * Math.PI) / 180;
+  const length = s * m.bladeLength;
+  const x1 = cx - s * 0.5;
+  return {
+    x1,
+    y1: cy,
+    x2: x1 + length * Math.cos(rad),
+    y2: cy - length * Math.sin(rad),
+  };
 }
 
 /**
- * 1つの接点記号の図形（JIS C 0617 の刃形）。§11.1
+ * 1つの接点記号の図形（JIS C 0617 / IEC 60617）。§11.1
  *
- * 返す図形は必ず「左の縦棒 → 右の縦棒 → ブレード」で始まる。描画側や試験は
- * この並びに頼ってよい（押ボタンの操作子・限時記号はその後ろに続く）。
+ * 返す図形は必ず「ブレード → 右の引出線」で始まり、b接点だけそのうしろに縦棒が付く。
+ * 描画側や試験はこの並びに頼ってよい（押ボタンの操作子・限時記号はさらにそのあと）。
+ * **固定接点の縦棒は描かない**（理由はこのファイル冒頭の注釈を見よ）。
  */
 export function contactShapes(
   kind: CellKind,
@@ -171,41 +178,41 @@ export function contactShapes(
 ): Shape[] {
   const s = symbolWidth;
   const m = SYMBOL_METRICS;
-  const xL = cx - s * 0.5;
   const xR = cx + s * 0.5;
-  const top = cy - s * m.contactBarHalf;
-  const bottom = cy + s * m.contactBarHalf;
-  const tip = bladeTip(kind, cx, cy, s);
+  const blade = bladeOf(cx, cy, s);
   const closed = BREAK_KINDS.includes(kind);
-  // b接点はブレードが右の固定接点を横切る。固定接点はその交差点のさらに上まで伸ばす
-  const crossY = cy - s * m.bladeSlope;
-  const rightTop = closed ? crossY - s * m.breakOverrun : top;
 
-  const shapes: Shape[] = [
-    line('symbol', xL, top, xL, bottom),
-    line('symbol', xR, rightTop, xR, bottom),
-    line('symbol', xL, cy, tip.x, tip.y),
-  ];
+  const shapes: Shape[] = [line('symbol', blade.x1, blade.y1, blade.x2, blade.y2)];
+  if (closed) {
+    // 右の引出線は縦棒から始まる。ブレードはその縦棒を横切って少し行き過ぎる
+    const stubX = blade.x2 - s * m.stubOvershoot;
+    shapes.push(line('symbol', stubX, cy, xR, cy));
+    shapes.push(line('symbol', stubX, cy, stubX, cy - s * m.stubHeight));
+  } else {
+    // a接点はブレードの先から隙間を空けて引出線が始まる（＝開いている）
+    shapes.push(line('symbol', blade.x2 + s * m.bladeGap, cy, xR, cy));
+  }
+
+  const midX = (blade.x1 + blade.x2) / 2;
+  const midY = (blade.y1 + blade.y2) / 2;
 
   if (PUSH_BUTTON_KINDS.includes(kind)) {
-    // 操作子は記号の中心（ブレードの上）から立てる。軸は破線＝機械的連結（IEC 60617）
+    // 操作子はブレードの真ん中から立てる。軸は破線＝機械的連結（IEC 60617）
     const capY = cy - s * m.actuatorTop;
-    const stemY = cy - s * 0.5 * m.bladeSlope; // x = cx でブレードに乗る高さ
-    shapes.push({ ...line('symbol', cx, stemY, cx, capY), dashed: true });
-    shapes.push(line('symbol', cx - s * m.actuatorHalf, capY, cx + s * m.actuatorHalf, capY));
+    shapes.push({ ...line('symbol', midX, midY, midX, capY), dashed: true });
+    shapes.push(line('symbol', midX - s * m.actuatorHalf, capY, midX + s * m.actuatorHalf, capY));
   }
   if (TIMED_KINDS.includes(kind)) {
-    // 限時記号（パラシュート）は**ブレードの上に載せる**。弦がブレートと平行になるよう傾ける。
+    // 限時記号（パラシュート）は**ブレードの上に載せる**。弦がブレードと平行になるよう傾ける。
     // 開口はブレードの側＝閉じる向きを向き、限時動作（オンディレー）を表す
-    const deg = bladeDeg();
     shapes.push({
       kind: 'arc',
       role: 'symbol',
-      cx: (xL + tip.x) / 2,
-      cy: (cy + tip.y) / 2,
+      cx: midX,
+      cy: midY,
       r: s * m.delayRadius,
-      startDeg: deg + 180,
-      endDeg: deg + 360,
+      startDeg: 180 - m.bladeDeg,
+      endDeg: 360 - m.bladeDeg,
     });
   }
   return shapes;

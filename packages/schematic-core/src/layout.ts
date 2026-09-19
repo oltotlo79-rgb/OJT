@@ -49,8 +49,8 @@ export interface LayoutOptions {
  *
  * `colWidth` 24 は文字寸法6のラベル（機器名だけ。設定時間は別の文字として記号の下に出る）
  * で7文字ぶん（`3.4 × 7 ≒ 24`）まで。
- * `rowHeight` 24 は、行の記号（`y ± symbolWidth × SYMBOL_METRICS.contactBarHalf`、押ボタンの
- * 操作子は `y − symbolWidth × SYMBOL_METRICS.actuatorTop`）と次の行の銘板
+ * `rowHeight` 24 は、行の記号（接点は電線の上だけに出る。押ボタンの
+ * 操作子が一番高く `y − symbolWidth × SYMBOL_METRICS.actuatorTop`）と次の行の銘板
  * （`y − symbolWidth × SYMBOL_METRICS.labelRise`、高さ6）が重ならない最小の目安。
  * 端子番号（`terminalNumbers`）まで刷るときは描画側が `colWidth` も `rowHeight` も広げて渡す
  * （`SchematicSvg.SCHEMATIC_LAYOUT` が実際の寸法を持つ）。
