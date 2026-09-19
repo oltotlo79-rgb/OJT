@@ -11,8 +11,8 @@ const faces: [string, PlcAppearance][] = Object.values(PLC_UNITS).flatMap((unit)
 
 describe('PlcAppearance（3Dが外観を描くための記述）', () => {
   it('exists for every catalogue unit and every rack module', () => {
-    // Task 9 の時点は FX5U と CP1E の2機種だけ。Task 10 で `2 + 4`、Task 11 で `4 + 4 + 4` に上げる
-    expect(faces.length).toBe(2);
+    // Task 10 の時点は本体3機種＋TOYOPUC の4モジュール。Task 11 で `4 + 4 + 4` に上げる
+    expect(faces.length).toBe(3 + 4);
     for (const [name, face] of faces) {
       expect(face.faceMm.width, name).toBeGreaterThan(0);
       expect(face.faceMm.height, name).toBeGreaterThan(0);
