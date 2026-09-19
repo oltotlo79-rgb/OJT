@@ -39,9 +39,12 @@ export { OMRON_CP1E } from './omron.js';
 
 export { JTEKT_PC10G } from './jtekt.js';
 
+export { SHARP_JW300 } from './sharp.js';
+
 import { JTEKT_PC10G } from './jtekt.js';
 import { MITSUBISHI_FX5U } from './mitsubishi.js';
 import { OMRON_CP1E } from './omron.js';
+import { SHARP_JW300 } from './sharp.js';
 import {
   DIALECT_IDS,
   UnknownDialectError,
@@ -56,6 +59,7 @@ const PROFILES: Partial<Record<DialectId, DialectProfile>> = {
   mitsubishi: MITSUBISHI_FX5U,
   jtekt: JTEKT_PC10G,
   omron: OMRON_CP1E,
+  sharp: SHARP_JW300,
 };
 
 /** 実装済みの方言プロファイル一覧（`DIALECT_IDS` の順）。 */
