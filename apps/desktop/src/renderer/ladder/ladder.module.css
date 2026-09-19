@@ -1,10 +1,36 @@
 /* ラダーエディタの見た目。設計仕様 §10.6（GX Works3“風”。ベンダーの画面の複製ではない）。 */
 
+/*
+ * --- 文字色（2026-09-19 UXレビュー #1 Blocking）---
+ *
+ * ラダーの枠だけは**明るい背景**（GX Works3“風”の白い編集画面）なのに、`body` の
+ * `color: #e7ebf2`（暗い画面向けの淡色）をそのまま継いでいたため、プロジェクトツリー・
+ * 出力ウィンドウの見出し・I/O割付・キー割当の文字が白地に白で出ていた。
+ * 明るい背景を持つ入れ物には**必ず** `--ladder-fg` を書く（継承任せにしない）。
+ * `--ladder-fg` は白（#fff）に対して 16.9:1、いちばん濃い下地（#e4e7ec）でも 13.6:1 で、
+ * どこに置いても WCAG AA（4.5:1）を満たす。淡い字（注記など）は `--ladder-fg-muted` を使う。
+ */
+.workspace {
+  --ladder-fg: #1a1d22;
+  --ladder-fg-muted: #555;
+  --ladder-fg-faint: #6b7280;
+  --ladder-line: #d5d8de;
+
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  background: #eef0f4;
+  border-right: 1px solid var(--ladder-line);
+  color: var(--ladder-fg);
+}
+
 .gridScroll {
   flex: 1 1 auto;
   min-height: 0;
   overflow: auto;
   background: #f7f8fa;
+  color: var(--ladder-fg);
   padding: 6px 8px 24px;
 }
 
@@ -18,7 +44,7 @@
   align-items: baseline;
   font-size: 11px;
   color: #444;
-  border-bottom: 1px solid #d5d8de;
+  border-bottom: 1px solid var(--ladder-line);
   padding: 2px 4px;
 }
 
@@ -113,8 +139,9 @@
 }
 
 .inputBox {
-  border-top: 1px solid #d5d8de;
+  border-top: 1px solid var(--ladder-line);
   background: #fff;
+  color: var(--ladder-fg);
   padding: 6px 8px;
 }
 
@@ -127,6 +154,21 @@
 
 .inputRow input {
   width: 92px;
+}
+
+/*
+ * 入力欄・選択欄も白地なので色を明示する（#1）。ブラウザ既定に任せると環境によって
+ * `color: inherit` になり、`body` の淡色を継いで白地に白で出る。
+ */
+.workspace input,
+.workspace select {
+  background: #fff;
+  border: 1px solid var(--ladder-line);
+  border-radius: 3px;
+  color: var(--ladder-fg);
+  font: inherit;
+  min-width: 0;
+  padding: 2px 4px;
 }
 
 .inputError {
@@ -146,8 +188,9 @@
 
 /* --- Plan 3B Task 6 --- */
 .output {
-  border-top: 1px solid #d5d8de;
+  border-top: 1px solid var(--ladder-line);
   background: #fff;
+  color: var(--ladder-fg);
   max-height: 168px;
   overflow: auto;
   font-size: 12px;
@@ -157,6 +200,7 @@
   display: flex;
   gap: 8px;
   align-items: center;
+  color: var(--ladder-fg);
   padding: 4px 8px;
   position: sticky;
   top: 0;
@@ -164,16 +208,19 @@
 }
 
 .outputHeader h2 {
+  color: var(--ladder-fg);
   font-size: 12px;
   margin: 0;
 }
 
 .okTag {
-  color: #1c7c3c;
+  /* #1c7c3c は見出しの下地で 4.24:1（AA 不足）だったので濃くする（#1） */
+  color: #146b31;
 }
 
 .ngTag {
-  color: #b34700;
+  /* #b34700 は見出しの下地で 4.45:1（AA 不足）だったので濃くする（#1） */
+  color: #9c3d00;
 }
 
 .outputList {
@@ -191,6 +238,7 @@
   width: 100%;
   border: 0;
   background: none;
+  color: var(--ladder-fg);
   font: inherit;
   text-align: left;
   cursor: pointer;
@@ -228,21 +276,24 @@
 
 .usage {
   padding: 4px 8px 8px;
-  border-top: 1px dashed #d5d8de;
+  border-top: 1px dashed var(--ladder-line);
 }
 
 .usage p {
+  color: var(--ladder-fg);
   margin: 2px 0;
 }
 
 .usageUnused {
-  color: #777;
+  /* #777 は白地で 4.48:1（AA 不足）だったので、わずかに濃くする（#1） */
+  color: var(--ladder-fg-faint);
 }
 /* --- /Plan 3B Task 6 --- */
 
 /* --- Plan 3B Task 7 --- */
 .side {
-  border-top: 1px solid #d5d8de;
+  border-top: 1px solid var(--ladder-line);
+  color: var(--ladder-fg);
   padding: 6px 8px;
   font-size: 12px;
   max-height: 200px;
@@ -250,13 +301,14 @@
 }
 
 .sideTitle {
+  color: var(--ladder-fg);
   font-size: 12px;
   margin: 0 0 4px;
 }
 
 .sideNote {
   margin: 2px 0;
-  color: #555;
+  color: var(--ladder-fg-muted);
 }
 
 .commentList {
@@ -285,28 +337,20 @@
 .ioTable th,
 .ioTable td {
   border-bottom: 1px solid #e4e7ec;
+  color: var(--ladder-fg);
   text-align: left;
   padding: 2px 4px;
 }
 /* --- /Plan 3B Task 7 --- */
 
 /* --- Plan 3B Task 8 --- */
-.workspace {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  min-height: 0;
-  background: #eef0f4;
-  border-right: 1px solid #d5d8de;
-}
-
 .toolbar {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
   padding: 4px 6px;
   background: #e4e7ec;
-  border-bottom: 1px solid #d5d8de;
+  border-bottom: 1px solid var(--ladder-line);
 }
 
 .toolbarGap {
@@ -328,13 +372,15 @@
 }
 
 .workspaceSide {
-  border-left: 1px solid #d5d8de;
+  border-left: 1px solid var(--ladder-line);
+  color: var(--ladder-fg);
   overflow: auto;
   background: #fff;
 }
 
 .tree {
-  border-right: 1px solid #d5d8de;
+  border-right: 1px solid var(--ladder-line);
+  color: var(--ladder-fg);
   padding: 6px;
   font-size: 12px;
   background: #fff;
@@ -342,6 +388,7 @@
 }
 
 .treeRoot {
+  color: var(--ladder-fg);
   font-weight: 700;
   margin: 0 0 4px;
 }
@@ -356,12 +403,15 @@
 .treeList button {
   background: none;
   border: none;
+  color: var(--ladder-fg);
   padding: 1px 2px;
   cursor: pointer;
   font: inherit;
+  text-align: left;
 }
 
 .treeList button[aria-current='true'] {
+  /* 選択中は色だけでなく太字でも示す（色の当てにならない環境でも読める。#1） */
   font-weight: 700;
   /*
    * 色は `ProjectTree` が `profile.monitorColors.powered` から `--tree-current` に流し込む
@@ -372,7 +422,8 @@
 }
 
 .shortcutOff {
-  color: #999;
+  /* #999 は白地で 2.9:1（AA 不足）。淡いままで AA を満たす濃さにする（#1） */
+  color: #6f747e;
 }
 /* --- /Plan 3B Task 8 --- */
 
