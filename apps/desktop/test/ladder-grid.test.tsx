@@ -1,5 +1,7 @@
 import {
+  C,
   COIL_COL,
+  ctu,
   empty,
   endNetwork,
   hline,
@@ -105,10 +107,50 @@ describe('スキンの寸法（利用者要求: 実物に近い画面）', () =>
         comments={comments}
       />,
     );
-    expect(screen.getAllByTestId(/^comment-line-/u)).toHaveLength(2);
+    const lines = screen.getAllByTestId(/^comment-line-/u);
+    expect(lines).toHaveLength(2);
+    // 「テストが不足」レビュー指摘: 2行目そのもの（`comment-line-1`）が実在すること
+    expect(screen.getByTestId('comment-line-0')).toBeInTheDocument();
+    expect(screen.getByTestId('comment-line-1')).toBeInTheDocument();
     cleanup();
     render(<LadderGrid program={sample()} {...base} comments={comments} />);
     expect(screen.getAllByTestId(/^comment-line-/u)).toHaveLength(1);
+  });
+
+  /** レビュー I3: `K5` のような三菱綴りを固定で出していたので、OMRON の `#0005` を確かめる。 */
+  it('spells the counter preset in the dialect notation (I3)', () => {
+    const withCounter = program(
+      network('n1', [[no(X(0)), ...Array.from({ length: 14 }, () => hline()), ctu(C(0), 5, X(1))]]),
+      endNetwork(),
+    );
+    render(
+      <LadderGrid
+        program={withCounter}
+        {...base}
+        profile={OMRON_CP1E}
+        theme={skinThemeOf(OMRON_CP1E)}
+        gridCols={OMRON_CP1E.gridCols}
+      />,
+    );
+    expect(screen.getByTestId(`cell-n1:0:${String(COIL_COL)}`)).toHaveTextContent('#0005');
+  });
+
+  /** レビュー I5: OMRON（2行コメント）で設定値がコメントの1行目と重なっていた。 */
+  it('keeps the timer preset clear of the two-line OMRON comment (I5)', () => {
+    render(
+      <LadderGrid
+        program={sample()}
+        {...base}
+        profile={OMRON_CP1E}
+        theme={skinThemeOf(OMRON_CP1E)}
+        gridCols={OMRON_CP1E.gridCols}
+        comments={{ T0: 'タイマの説明コメントです' }}
+      />,
+    );
+    const cell = screen.getByTestId(`cell-n2:0:${String(COIL_COL)}`);
+    const presetY = Number(within(cell).getByTestId('preset-text').getAttribute('y'));
+    const commentY = Number(within(cell).getByTestId('comment-line-0').getAttribute('y'));
+    expect(presetY).toBeLessThan(commentY);
   });
 });
 

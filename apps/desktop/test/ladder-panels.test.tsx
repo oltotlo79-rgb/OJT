@@ -197,6 +197,19 @@ describe('キー割当表と端子名のスキン差（§10.6 / §10.1）', () =
     }
   });
 
+  it('flags the whole key map as borrowed for skins that reuse the GX Works3 table (I7)', () => {
+    for (const profile of [JTEKT_PC10G, SHARP_JW300]) {
+      cleanup();
+      render(<ShortcutHelp profile={profile} />);
+      expect(screen.getByTestId('shortcuts-keymap-note'), profile.id).toHaveTextContent('キー割当');
+    }
+    for (const profile of [MITSUBISHI_FX5U, OMRON_CP1E]) {
+      cleanup();
+      render(<ShortcutHelp profile={profile} />);
+      expect(screen.queryByTestId('shortcuts-keymap-note'), profile.id).toBeNull();
+    }
+  });
+
   it('names the terminals of the model, not the Mitsubishi spelling (4A H-1)', () => {
     render(<IoTable io={IO} profile={OMRON_CP1E} unit={PLC_UNIT_CP1E} />);
     expect(screen.getByTestId('io-input-0')).toHaveTextContent('PLC.0.00');

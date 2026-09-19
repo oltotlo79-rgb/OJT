@@ -1,6 +1,6 @@
 import { BUILTIN_PLC_PROBLEMS } from '@ojt/content';
 import { cellAt, COIL_COL, X, Y, type Cell } from '@ojt/ladder-core';
-import { MITSUBISHI_FX5U } from '@ojt/plc-dialects';
+import { MITSUBISHI_FX5U, OMRON_CP1E } from '@ojt/plc-dialects';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useStore } from '../src/renderer/app/store.js';
@@ -17,8 +17,8 @@ const problem = BUILTIN_PLC_PROBLEMS[0]!;
 function editor(props: Partial<Parameters<typeof LadderEditor>[0]> = {}): void {
   render(
     <LadderEditor
-      profile={MITSUBISHI_FX5U}
-      gridCols={MITSUBISHI_FX5U.gridCols}
+      profile={props.profile ?? MITSUBISHI_FX5U}
+      gridCols={props.gridCols ?? MITSUBISHI_FX5U.gridCols}
       errorCells={props.errorCells ?? new Set<string>()}
       onConvert={props.onConvert ?? ((): void => undefined)}
       onModeChange={
@@ -223,6 +223,20 @@ describe('キー操作（§10.6 の割当表から引く）', () => {
     editor();
     fireEvent.keyDown(grid(), { key: 'F8' });
     expect(useStore.getState().toasts.at(-1)?.text).toContain('応用命令');
+  });
+
+  /**
+   * レビュー I8: OMRON は `write-mode` のキー割当を持たない（決定表#12。実機はツールバーの
+   * 「オンライン編集」）。以前の `?? 'F2'` は OMRON に無いキーを教えていた。
+   */
+  it('names the toolbar label, not the invented F2, under a skin with no write-mode key (I8)', () => {
+    useStore.getState().setLadderMode('monitor');
+    editor({ profile: OMRON_CP1E, gridCols: OMRON_CP1E.gridCols });
+    // OMRON の a接点キーは `C`（モニタ中なので置けず、readOnly になる）
+    fireEvent.keyDown(grid(), { key: 'C' });
+    const message = useStore.getState().toasts.at(-1)?.text ?? '';
+    expect(message).not.toContain('F2');
+    expect(message).toContain('オンライン編集');
   });
 
   it('owns the keyboard only while focused (決定表#3)', () => {

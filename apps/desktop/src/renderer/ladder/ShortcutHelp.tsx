@@ -2,6 +2,7 @@ import type { DialectProfile } from '@ojt/plc-dialects';
 import type { JSX } from 'react';
 import { JA } from '../i18n/ja.js';
 import { SidePanel } from './SidePanel.js';
+import { skinThemeOf } from './skins/index.js';
 import styles from './ladder.module.css';
 
 /**
@@ -30,6 +31,7 @@ function convertNote(profile: DialectProfile): string | undefined {
 }
 
 export function ShortcutHelp({ profile }: { profile: DialectProfile }): JSX.Element {
+  const theme = skinThemeOf(profile);
   return (
     // 入れ物の `data-testid` は `shortcuts` / `shortcuts-note`。行だけが `shortcut-<action>` に
     // なるようにして、`getAllByTestId(/^shortcut-/u)` が行だけを数えられるようにする（B9）。
@@ -49,6 +51,15 @@ export function ShortcutHelp({ profile }: { profile: DialectProfile }): JSX.Elem
           {convertNote(profile)}
         </p>
       )}
+      {/*
+        表**全体**を別メーカーから借りているスキン（PCwin風・JW-300SP風）の注記（レビュー I7）。
+        行ごとの `confirmed: false` の注記とは別に、表そのものの出どころを1回だけ添える。
+      */}
+      {theme.keyMapAssumed === true ? (
+        <p className={styles.sideNote} data-testid="shortcuts-keymap-note">
+          {JA.ladder.keyMapAssumedNote}
+        </p>
+      ) : null}
       <table className={`${styles.ioTable} ${styles.shortcutTable}`}>
         <thead>
           <tr>

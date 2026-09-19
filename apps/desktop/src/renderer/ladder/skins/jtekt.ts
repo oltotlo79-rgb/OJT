@@ -30,4 +30,6 @@ export const JTEKT_SKIN: SkinTheme = {
   cell: { widthPx: 46, heightPx: 34, strokeWidth: 1.8, barInsetPx: 7, coilRxPx: 9 },
   commentLines: 1,
   assumed: SKIN_ASSUMED,
+  // キー割当表は GX Works3風の表を流用している（`packages/plc-dialects/src/jtekt.ts`）。レビュー I7
+  keyMapAssumed: true,
 };

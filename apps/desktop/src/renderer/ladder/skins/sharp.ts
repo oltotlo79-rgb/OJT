@@ -27,4 +27,6 @@ export const SHARP_SKIN: SkinTheme = {
   cell: { widthPx: 50, heightPx: 38, strokeWidth: 1.6, barInsetPx: 8, coilRxPx: 9 },
   commentLines: 1,
   assumed: SKIN_ASSUMED,
+  // キー割当表は GX Works3風の表を流用している（`packages/plc-dialects/src/sharp.ts`）。レビュー I7
+  keyMapAssumed: true,
 };

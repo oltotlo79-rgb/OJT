@@ -29,6 +29,15 @@
   color: var(--ladder-fg);
 }
 
+/*
+ * `app/global.css` の既定のフォーカス輪郭（`--accent` の水色 `#39d0ff`）は、ラダーの明るい
+ * 画面の地（白〜淡灰）に対して 1.57:1 しかなく、キーボード操作の位置が見えにくい（レビュー I6）。
+ * ラダーの枠の内側だけ、暗い地でも定義済みの濃い青（`--skin-cursor` の三菱既定と同じ）に替える。
+ */
+.workspace :focus-visible {
+  outline-color: #1e64ff;
+}
+
 .gridScroll {
   flex: 1 1 auto;
   min-height: 0;
@@ -626,7 +635,8 @@ details[open] > .sideSummary::before {
  * スキンは 220〜260px のツリー幅を持つ（「実物との対応」表）が、2026-09-19 の UX バッチB が
  * `.tree` を `--ladder-tree-w`（140px / 1600px 未満は 116px）で抑えて、余った幅を格子へ
  * 渡すことにした。格子の幅を削ってまで実物の幅に寄せない——**狭いほうを採る**ことにして、
- * 将来スキンが 140px より狭い幅を持ったときだけスキンに従う。
+ * 将来スキンが 140px より狭い幅を持ったときだけスキンに従う。決定の記録は Plan 4B の
+ * `## 仕様からの意図的な差分` #12（レビュー I4）。
  */
 .tree {
   max-width: min(var(--ladder-tree-w), var(--skin-tree-w, 240px));

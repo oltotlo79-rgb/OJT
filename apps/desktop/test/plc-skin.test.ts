@@ -12,6 +12,7 @@ import {
   skinStepKeys,
   toolbarItems,
   TOOLBAR_ACTIONS_BY_DIALECT,
+  writeModeLabel,
 } from '../src/renderer/session/plc-skin.js';
 
 const problem = BUILTIN_PLC_PROBLEMS[0]!;
@@ -98,6 +99,18 @@ describe('表示列数と通電色（§10.6 / 決定表#8）', () => {
     expect(skinGridCols(profile, 99)).toBe(15);
     expect(skinGridCols(profile, 3)).toBe(8);
     expect(skinMonitorColor(profile, '#FF00AA')).toBe('#FF00AA');
+  });
+});
+
+describe('書込みモードの名乗り（§10.6 / レビュー I8）', () => {
+  it('names the shortcut key where the dialect has one', () => {
+    expect(writeModeLabel(getDialect('mitsubishi'))).toBe('F2');
+  });
+
+  it('falls back to the toolbar label where the dialect has no write-mode key (OMRON)', () => {
+    const label = writeModeLabel(getDialect('omron'));
+    expect(label).not.toBe('F2');
+    expect(label).toBe('オンライン編集');
   });
 });
 

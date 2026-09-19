@@ -82,7 +82,13 @@ export interface SkinCell {
  * ツリーの**位置**は4スキンとも左なので欄を持たない（持っても誰も読まない旗になる。I11）。
  */
 export interface SkinLayout {
-  /** ツリーの幅[px]。 */
+  /**
+   * ツリーの幅[px]。「実物との対応」表の値の**記録**として残すが、実装はこの値を使わない
+   * （レビュー I4）。2026-09-19 UXバッチB の判断で、実際の幅は常に `--ladder-tree-w`
+   * （`ladder.module.css` の `.tree`。140px・1600px未満は116px）が勝つ——格子（回路の編集領域）
+   * に幅を渡すことを優先し、狭いほうを採ったため（`## 仕様からの意図的な差分` の #12）。
+   * 将来スキンがこれより狭い幅を持ったときだけスキンに従う（`min()`）。
+   */
   treeWidthPx: number;
   /** 出力ペインの形（`status-bar` は PCwin風だけ。§10.6）。 */
   outputPane: 'window' | 'status-bar';
@@ -106,6 +112,14 @@ export interface SkinTheme {
   commentLines: 0 | 1 | 2;
   /** この見た目のうち §17.1 の前提である項目（設定画面とツールチップに出す）。 */
   assumed: readonly string[];
+  /**
+   * キー割当表**全体**を別メーカーの表から流用しているか（レビュー I7）。
+   * 行ごとの `ShortcutEntry.confirmed` は個々のキーの一次資料の有無を示すが、PCwin風・
+   * JW-300SP風は GX Works3風の表そのものを借りている（`GX_STYLE_SHORTCUTS`）ため、
+   * `confirmed: true` の行だけを見ると「このメーカーで確認済み」に読めてしまう。
+   * 真のときだけ `ShortcutHelp` が §17.1 の注記をもう1つ添える。省略時は `false` 相当。
+   */
+  keyMapAssumed?: boolean;
 }
 
 /** 4スキン共通の前提（「実物との対応」表の △ の理由）。 */

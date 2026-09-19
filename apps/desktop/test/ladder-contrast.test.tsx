@@ -200,6 +200,18 @@ describe('ラダーの枠の文字色（UXレビュー #1）', () => {
     }
   });
 
+  /** レビュー I6: 既定の `--accent`（水色）はラダーの明るい地では 1.57:1 しか無かった。 */
+  it('フォーカス枠は明るい地でも判別できる濃さの色を使う（I6）', () => {
+    expect(rule('.workspace :focus-visible')).toMatch(declares('outline-color', '#1e64ff'));
+    for (const [name, bg] of Object.entries(SURFACES)) {
+      const ratio = contrast('#1e64ff', bg);
+      expect(
+        ratio,
+        `focus outline #1e64ff on ${name} = ${ratio.toFixed(2)}:1`,
+      ).toBeGreaterThanOrEqual(3);
+    }
+  });
+
   it('計算スタイルが読める環境では、body の淡色を継いでいない', () => {
     workspace();
     const targets = [

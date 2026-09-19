@@ -18,7 +18,12 @@ import { useStore } from '../app/store.js';
 import { JA } from '../i18n/ja.js';
 import { errorCellKeys, runConvert } from '../session/ladder-errors.js';
 import { nextNetworkId, shortcutKeyOf, type LadderEditorMode } from '../session/ladder.js';
-import { autoConvert, toolbarItems, type ToolbarAction } from '../session/plc-skin.js';
+import {
+  autoConvert,
+  toolbarItems,
+  writeModeLabel,
+  type ToolbarAction,
+} from '../session/plc-skin.js';
 import { CommentPanel } from './CommentPanel.js';
 import { IoTable } from './IoTable.js';
 import { LadderEditor } from './LadderEditor.js';
@@ -147,9 +152,9 @@ export function LadderWorkspace({
     (run: () => LadderProgram): boolean => {
       const store = useStore.getState();
       // キー操作の編集と同じ規則で、書込みモード以外は断る（決定表#11 / Batch 3 レビュー I1）。
-      // キーの文字列は方言から引く（前提#22）
+      // キー、無ければツールバーの項目名を方言から引く（前提#22 / レビュー I8）
       if (store.ladderMode !== 'write') {
-        store.toast(JA.ladder.readOnly(shortcutKeyOf(profile, 'write-mode') ?? 'F2'), 'error');
+        store.toast(JA.ladder.readOnly(writeModeLabel(profile)), 'error');
         return false;
       }
       try {

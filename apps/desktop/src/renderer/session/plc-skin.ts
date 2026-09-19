@@ -135,6 +135,20 @@ export function skinMonitorColor(profile: DialectProfile, setting: string): stri
 }
 
 /**
+ * 「書込みモード」の名乗り。読出し専用中に編集を断るメッセージに埋め込む（§10.6）。
+ *
+ * OMRON（CX-Programmer風）はキー割当表に `write-mode` の行を持たない（実機はツールバーの
+ * 「オンライン編集」操作で、専用のファンクションキーが無い）。以前は `shortcutKeyOf(...) ?? 'F2'`
+ * で埋めていたため、OMRON にも無い `F2` を教えていた（レビュー I8）。キーが無ければツールバーの
+ * 項目名（`toolbarItems()` の `write-mode` のラベル）へ、それも無ければ `'F2'` へ倒す。
+ */
+export function writeModeLabel(profile: DialectProfile): string {
+  const key = profile.shortcuts.find((entry) => entry.action === 'write-mode')?.keys;
+  if (key !== undefined) return key;
+  return toolbarItems(profile).find((item) => item.action === 'write-mode')?.label ?? 'F2';
+}
+
+/**
  * メーカー → 机上に置くPLC本体。§7.6
  * `@ojt/content` は `MODEL_OF_VENDOR`（メーカー→機種名の対応）を公開している（レビュー指摘
  * #10）が、ここで欲しいのは機種名ではなく本体定義（`PlcUnitDefinition`）そのものなので、

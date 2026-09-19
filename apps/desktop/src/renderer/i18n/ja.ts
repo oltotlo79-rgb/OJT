@@ -549,6 +549,14 @@ export const JA = {
     /** 入力コモン（機種によって1個とは限らない。4A 前提#17） */
     ioCommon: '入力コモン',
     // --- /Plan 4B Task 5 ---
+    // --- Plan 4B review fixes (Batch: skin stream) ---
+    /**
+     * キー割当表全体が「別メーカーの表を流用した」注記（I7）。行ごとの `assumptionNotice`
+     * とは別に、PCwin風・JW-300SP風のように**表そのもの**を GX Works3風から借りているスキンで
+     * 一度だけ出す（`SkinTheme.keyMapAssumed`）。
+     */
+    keyMapAssumedNote: 'キー割当は実機マニュアル未確認のため本アプリの表記です',
+    // --- /Plan 4B review fixes (Batch: skin stream) ---
   },
   // --- /Plan 3B Task 4 ---
   // --- Plan 3B Task 10 ---

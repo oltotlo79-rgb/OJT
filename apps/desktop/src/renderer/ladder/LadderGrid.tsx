@@ -11,6 +11,7 @@ import type { DialectProfile } from '@ojt/plc-dialects';
 import { memo, useRef, type JSX } from 'react';
 import { useStore } from '../app/store.js';
 import { JA } from '../i18n/ja.js';
+import { counterPresetText } from '../session/ladder-cell.js';
 import type { LadderCursor, LadderEditorMode } from '../session/ladder.js';
 import type { SkinTheme } from './skins/index.js';
 import { MC_SYMBOL_ID, MCR_SYMBOL_ID, symbolMetrics, type SymbolMetrics } from './symbols.js';
@@ -111,7 +112,11 @@ function cellText(cell: Cell, profile: DialectProfile): { top: string; bottom: s
     };
   }
   if (cell.kind === 'counter') {
-    return { top: profile.formatDevice(cell.device), bottom: `K${String(cell.preset)}` };
+    // 方言のカウンタ設定値の綴り（`K5` / `#0005` / `H0005` / `0005`）。レビュー I3
+    return {
+      top: profile.formatDevice(cell.device),
+      bottom: counterPresetText(cell.preset, profile),
+    };
   }
   return { top: '', bottom: '' };
 }
@@ -235,7 +240,14 @@ function GridCell({
         </text>
       )}
       {text.bottom === '' ? null : (
-        <text x={metrics.w / 2} y={metrics.h - 9} className={styles.presetText}>
+        <text
+          x={metrics.w / 2}
+          // コメントが2行のスキン（OMRON）では、下の行のぶんだけ設定値を押し上げて重ならないよう
+          // にする（レビュー I5。1行のスキンは従来どおり `h - 9`）
+          y={metrics.h - 9 - Math.max(0, theme.commentLines - 1) * COMMENT_LINE_H}
+          className={styles.presetText}
+          data-testid="preset-text"
+        >
           {text.bottom}
         </text>
       )}
