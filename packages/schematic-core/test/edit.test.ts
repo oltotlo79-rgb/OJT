@@ -3,6 +3,7 @@ import {
   applyEdit,
   at,
   crA,
+  crB,
   coil,
   editLabel,
   emptySchematic,
@@ -20,7 +21,19 @@ import {
   createDocument,
   validateDocument,
   type SchematicDocument,
+  type SchematicEdit,
 } from '../src/index.js';
+
+/** 深く凍結する（`applyEdit` が入力を書き換えたら即 `TypeError` になるようにする。M-h）。 */
+function deepFreeze<T>(value: T): T {
+  if (value !== null && typeof value === 'object') {
+    for (const key of Object.keys(value as Record<string, unknown>)) {
+      deepFreeze((value as Record<string, unknown>)[key]);
+    }
+    Object.freeze(value);
+  }
+  return value;
+}
 
 /** 自己保持回路（§16 Phase 5 受入基準①）を素で組んだ文書。 */
 function selfHold(): SchematicDocument {
@@ -110,7 +123,7 @@ describe('applyEdit: insertCell', () => {
       index: 0,
       draft: { kind: 'lamp', device: 'CR1' },
     });
-    expect(out).toEqual({ ok: false, message: 'lamp に使えない機器名です: CR1' });
+    expect(out).toEqual({ ok: false, message: '表示灯 に使えない機器名です: CR1' });
   });
 
   it('refuses an index outside the rung', () => {
@@ -344,8 +357,45 @@ describe('applyEdit: addRung / removeRung / setEnds', () => {
     expect(step2.doc.rungs[0]?.cells).toEqual([{ kind: 'coil', id: 'c3', device: 'CR1' }]);
     expect(step2.doc.rungs[1]?.to).toEqual({ rung: 'r1', node: 1 });
     expect(validateDocument(step2.doc)).toEqual([]);
-    // I1 の対象は元の文書を変えない
+    // I1 の対象は元の文書を変えない（M-h）
     expect(doc.rungs[1]?.to).toEqual({ rung: 'r1', node: 2 });
+  });
+
+  it('resolves a branch that taps another branch rung, not just the main backbone (M-h)', () => {
+    const doc = createDocument('d', 't', [
+      rung('r1', BUS_P, BUS_N, [pbA('c1', 'PB1'), coil('c2', 'CR1')]),
+      rung('r2', BUS_P, { rung: 'r1', node: 1 }, [crA('c3', 'CR1'), crB('c3b', 'CR2')]),
+      rung('r3', BUS_P, BUS_N, [crA('c4', 'CR2'), lamp('c5', 'PL1')]),
+    ]);
+    const out = applyEdit(doc, {
+      kind: 'setEnds',
+      rungId: 'r3',
+      from: { rung: 'r2', node: 1 }, // r2 の内部節点（c3 と c3b のあいだ）＝分岐のそのまた分岐
+      to: BUS_N,
+    });
+    expect(out.ok).toBe(true);
+    if (!out.ok) return;
+    expect(out.doc.rungs[2]?.from).toEqual({ rung: 'r2', node: 1 });
+    expect(validateDocument(out.doc)).toEqual([]);
+  });
+
+  it('never throws on a deep-frozen input document, whatever edit kind runs (M-h)', () => {
+    const doc = deepFreeze(selfHold());
+    const edits: SchematicEdit[] = [
+      { kind: 'addRung' },
+      { kind: 'addRung', after: 'r1' },
+      { kind: 'removeRung', rungId: 'r2' },
+      { kind: 'insertCell', rungId: 'r1', index: 0, draft: { kind: 'pb-a', device: 'PB3' } },
+      { kind: 'replaceCell', cellId: 'c1', draft: { kind: 'pb-b', device: 'PB2' } },
+      { kind: 'removeCell', cellId: 'c3' },
+      { kind: 'setDevice', cellId: 'c5', device: 'PL2' },
+      { kind: 'setPreset', cellId: 'c1', presetMs: 3000 },
+      { kind: 'setEnds', rungId: 'r3', from: { rung: 'r1', node: 1 }, to: BUS_N },
+      { kind: 'moveCell', cellId: 'c5', toIndex: 0 },
+    ];
+    for (const edit of edits) {
+      expect(() => applyEdit(doc, edit)).not.toThrow();
+    }
   });
 
   it('draws b-001 self-hold branch (受入基準①と同じ形)', () => {
@@ -426,7 +476,7 @@ describe('applyEdit: 断る場面', () => {
   it('refuses a device name that the kind cannot use when only the name changes', () => {
     expect(applyEdit(selfHold(), { kind: 'setDevice', cellId: 'c5', device: 'CR1' })).toEqual({
       ok: false,
-      message: 'lamp に使えない機器名です: CR1',
+      message: '表示灯 に使えない機器名です: CR1',
     });
   });
 });

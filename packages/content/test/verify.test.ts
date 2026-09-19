@@ -93,6 +93,18 @@ describe('verifySchematic（§11.4 検算）', () => {
     if (result.ok) return;
     expect(result.errors[0]?.message).toContain('渡された盤');
   });
+
+  it('surfaces a judge-side problem-data error instead of judging (M-g)', () => {
+    // 比較信号に模範回路の記録に無い信号を指定した課題データの誤り（§13 #2）。
+    // `judgeAssemble()` は `ok: false` を返し、`verifySchematic()` はそれを構造検査・割当と
+    // 同じ `VerifyIssue` の形（`source: 'document'`）で通す。
+    const broken = { ...problem, judge: { ...problem.judge, compareSignals: ['PL9'] } };
+    const result = verifySchematic(broken, JIPM_BOARD, broken.schematic);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.errors[0]?.source).toBe('document');
+    expect(result.errors[0]?.message).toContain('PL9');
+  });
 });
 
 describe('verifySchematic: 全内蔵モードB課題の模範回路が検算に通る（§7.8 の自己整合）', () => {

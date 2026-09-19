@@ -102,21 +102,38 @@ export function toProblemPath(problem: SchematicProblem, path: string): string {
   return 'schematic';
 }
 
+/** `buildSchematicSession()` のオプション。 */
+export interface BuildSchematicSessionOptions {
+  /**
+   * `physicalOverride`（§7.2）を使うか。省略時は `doc === problem.schematic`（参照の同一性。
+   * 課題自身の回路図をそのまま渡しているか）で決める。
+   */
+  useProblemOverride?: boolean;
+}
+
 /**
  * 回路図1枚を、その課題の盤の設定（役割割当・任意部品・在庫・線色）で盤セッションに落とす。§7.2 / §11.3
  *
- * `physicalOverride`（§7.2）の鍵は**課題の模範回路の要素ID**である。だから渡すのは
- * `doc === problem.schematic` のとき——つまり課題自身の回路図を落とすときだけにする。
- * 訓練者の下書きは自分のID（`c1`, `c2`, …）を持つので、そのまま渡すと `toSession()` の
- * `checkOverride()` が「要素IDが見つかりません」を返し、回路とは無関係な指摘がエディタに出る。
+ * `physicalOverride`（§7.2）の鍵は**課題の模範回路の要素ID**である。だから使うのは
+ * 課題自身の回路図を落とすときだけにする。訓練者の下書きは自分のID（`c1`, `c2`, …）を持つので、
+ * そのまま渡すと `toSession()` の `checkOverride()` が「要素IDが見つかりません」を返し、
+ * 回路とは無関係な指摘がエディタに出る。
+ *
+ * 既定は `doc === problem.schematic` という**参照の同一性**で判定する（今までの呼び出し元は
+ * この既定のままで動く）。ただし同一性は壊れやすい――構造的に等しいだけの複製（保存して
+ * 読み込み直した課題データなど）を渡すと `false` 側に倒れて override が黙って抜け落ちる。
+ * 呼び出し側が「これは課題自身の回路図だ」と分かっているときは `useProblemOverride` で
+ * 明示できる。`verifySchematic()`（訓練者の下書きを検算する側）は常に `false` を明示で渡す
+ * （訓練者の下書きがたまたま `problem.schematic` と同じ参照であっても override を使わない）。
  */
 export function buildSchematicSession(
   problem: SchematicProblem,
   board: BoardDefinition,
   doc: SchematicDocument,
+  options: BuildSchematicSessionOptions = {},
 ): ToSessionResult {
-  const override =
-    doc === problem.schematic ? toPhysicalOverride(problem.physicalOverride) : undefined;
+  const useOverride = options.useProblemOverride ?? doc === problem.schematic;
+  const override = useOverride ? toPhysicalOverride(problem.physicalOverride) : undefined;
   return toSession(doc, board, {
     roles: toRoles(problem),
     color: ASSEMBLE_WIRE_COLOR,

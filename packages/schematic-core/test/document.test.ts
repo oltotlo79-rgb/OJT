@@ -58,8 +58,10 @@ describe('document: 展開接続図の文書モデル（§11.1）', () => {
       rung('r1', BUS_P, BUS_N, [pbA('c1', 'CR1'), coil('c2', 'PL1')]),
     ]);
     const errors = validateDocument(bad).map((e) => e.message);
-    expect(errors).toContain('pb-a に使えない機器名です: CR1');
-    expect(errors).toContain('coil に使えない機器名です: PL1');
+    // 「〜に使えない機器名です」の種別名は日本語ラベル（`CELL_KIND_LABELS`）。edit.ts の
+    // `deviceProblem()` と言い回しをそろえる（M-a）。
+    expect(errors).toContain('押ボタン a接点 に使えない機器名です: CR1');
+    expect(errors).toContain('コイル に使えない機器名です: PL1');
   });
 
   it('タイマコイルには presetMs が要る／他の要素には置けない（§5.3.2）', () => {

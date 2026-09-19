@@ -78,6 +78,23 @@ export const DEVICE_PATTERNS: Readonly<Record<CellKind, RegExp>> = {
   buzzer: /^BZ$/,
 };
 
+/**
+ * 種別の日本語名（パレットと操作ログ、構造エラーの文面で使う）。§11.1
+ * `edit.ts` の `deviceProblem()` と `checkCell()` の「〜に使えない機器名です」の言い回しを
+ * そろえるため、ここに置く（`edit.ts` が document.ts を import する向きは変えない。§import-x/no-cycle）。
+ */
+export const CELL_KIND_LABELS: Readonly<Record<CellKind, string>> = {
+  'pb-a': '押ボタン a接点',
+  'pb-b': '押ボタン b接点',
+  'cr-a': 'リレー a接点',
+  'cr-b': 'リレー b接点',
+  't-a': 'タイマ a接点（限時）',
+  't-b': 'タイマ b接点（限時）',
+  coil: 'コイル',
+  lamp: '表示灯',
+  buzzer: 'ブザー',
+};
+
 /** 負荷（コイル・ランプ・ブザー）の要素か。 */
 export function isLoadCell(cell: SchematicCell): boolean {
   return cell.kind === 'coil' || cell.kind === 'lamp' || cell.kind === 'buzzer';
@@ -366,7 +383,10 @@ function checkCell(cell: SchematicCell, cellPath: string, errors: DocumentError[
   if (pattern === undefined) {
     errors.push({ path: cellPath, message: `未知の要素種別です: ${String(cell.kind)}` });
   } else if (!pattern.test(cell.device)) {
-    errors.push({ path: cellPath, message: `${cell.kind} に使えない機器名です: ${cell.device}` });
+    errors.push({
+      path: cellPath,
+      message: `${CELL_KIND_LABELS[cell.kind]} に使えない機器名です: ${cell.device}`,
+    });
   }
   if (cell.kind === 'coil' && cell.device.startsWith('T')) {
     if (cell.presetMs === undefined) {

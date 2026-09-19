@@ -86,8 +86,10 @@ export function verifySchematic(
   }
 
   // 盤への落とし込みは模範回路と同じ関数を通す（Step 3a）。`physicalOverride` の扱いも
-  // そこが決めるので、ここには課題データの読み方が1行も残らない
-  const built = buildSchematicSession(problem, board, doc);
+  // そこが決めるので、ここには課題データの読み方が1行も残らない。ここで渡す `doc` は
+  // **訓練者の下書き**なので、たまたま `problem.schematic` と同じ参照でも override は
+  // 使わない（M-e。既定の参照同一性に頼らず明示する）
+  const built = buildSchematicSession(problem, board, doc, { useProblemOverride: false });
   if (!built.ok) {
     const known = cellIds(doc);
     return {

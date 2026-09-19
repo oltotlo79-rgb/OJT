@@ -1,6 +1,7 @@
 import { TIMER_RANGE_60S } from '@ojt/board-model';
 import { TIMER_MIN_PRESET_MS } from '@ojt/circuit-sim';
 import {
+  CELL_KIND_LABELS,
   createDocument,
   DEVICE_PATTERNS,
   isLoadCell,
@@ -91,7 +92,13 @@ export function emptySchematic(id: string, title: string): SchematicDocument {
   return createDocument(id, title, [makeRung('r1', BUS_P, BUS_N, [])]);
 }
 
-/** `prefix` + 連番のIDのうち、まだ使われていない最小の番号。 */
+/**
+ * `prefix` + 連番のIDのうち、まだ使われていない最小の番号。
+ * 「まだ使われていない」は渡された `used` だけで決まるので、要素を消してからまた足すと
+ * 消したIDを再利用できる（`c3` を消してから足すと次はまた `c3` になる）。呼び出し側が
+ * 集めた `cellIds`（例: ハイライトの索引）を編集のたびに作り直していないと、そこだけ
+ * 古いIDを指したまま残ることがある点に注意。
+ */
 function nextId(prefix: string, used: readonly string[]): string {
   const pattern = new RegExp(`^${prefix}(\\d+)$`, 'u');
   let max = 0;
@@ -138,7 +145,9 @@ function deviceProblem(kind: CellKind, device: string): string | undefined {
   const pattern = DEVICE_PATTERNS[kind];
   /* c8 ignore next -- 種別は `CellKind` に閉じているので表に載っていない種別は来ない */
   if (pattern === undefined) return `未知の要素種別です: ${String(kind)}`;
-  return pattern.test(device) ? undefined : `${kind} に使えない機器名です: ${device}`;
+  return pattern.test(device)
+    ? undefined
+    : `${CELL_KIND_LABELS[kind]} に使えない機器名です: ${device}`;
 }
 
 /** タイマコイル（設定時間を持つ要素）か。 */
@@ -298,6 +307,8 @@ function editMoveCell(doc: SchematicDocument, cellId: string, toIndex: number): 
   if (found === undefined) return fail(`要素がありません: ${cellId}`);
   const last = found.rung.cells.length - 1;
   if (!Number.isInteger(toIndex) || toIndex < 0 || toIndex > last) {
+    /* c8 ignore next -- `locate` が見つけた要素自身がその段にあるので `last` は必ず0以上 */
+    if (last < 0) return fail(`段 ${found.rung.id} は空です`);
     return fail(`段 ${found.rung.id} に桁 ${toIndex} はありません（0〜${last}）`);
   }
   const cells = [...found.rung.cells];
@@ -401,18 +412,12 @@ export function applyEdit(doc: SchematicDocument, edit: SchematicEdit): EditOutc
   }
 }
 
-/** 種別の日本語名（パレットと操作ログで使う）。§11.1 */
-export const CELL_KIND_LABELS: Readonly<Record<CellKind, string>> = {
-  'pb-a': '押ボタン a接点',
-  'pb-b': '押ボタン b接点',
-  'cr-a': 'リレー a接点',
-  'cr-b': 'リレー b接点',
-  't-a': 'タイマ a接点（限時）',
-  't-b': 'タイマ b接点（限時）',
-  coil: 'コイル',
-  lamp: '表示灯',
-  buzzer: 'ブザー',
-};
+// `CELL_KIND_LABELS`（種別の日本語名。パレットと操作ログ、`deviceProblem()` の文面で使う）は
+// `document.ts` に定義がある（`checkCell()` も同じ表を使って言い回しをそろえるため。M-a）。
+// ここでは既存の import 元（`@ojt/schematic-core`）を変えないよう、上の import で取り込んだ
+// 束縛をそのまま再輸出するだけにする（`from './document.js'` を重ねて import-x/no-duplicates を
+// 招かないため）。
+export { CELL_KIND_LABELS };
 
 /** 端点の日本語表現（`P母線` / `N母線` / `r1 の3番目`）。 */
 function endLabel(end: RungEnd): string {

@@ -1,7 +1,13 @@
 import { JIPM_BOARD } from '@ojt/board-model';
 import { describe, expect, it } from 'vitest';
 import { toTerminalId } from '@ojt/circuit-sim';
-import { buildReferenceSession, toPhysicalOverride, toProblemPath } from '../src/reference.js';
+import type { SchematicDocument } from '@ojt/schematic-core';
+import {
+  buildReferenceSession,
+  buildSchematicSession,
+  toPhysicalOverride,
+  toProblemPath,
+} from '../src/reference.js';
 import { parseOrThrow, selfHoldProblemJson } from './helpers/problems.js';
 
 describe('buildReferenceSession', () => {
@@ -77,6 +83,35 @@ describe('buildReferenceSession', () => {
       (w) => w.to === coilMinus || w.from === coilMinus,
     );
     expect(coilWire).toBeDefined();
+  });
+
+  it('keeps physicalOverride for a structurally-equal clone only when told to (M-e)', () => {
+    // PL4 は自己保持回路では使わないので、既定の割当ではどの電線も触れない。override先に
+    // 使うと「override が効いたかどうか」を電線の有無だけで見分けられる
+    // （`CR1.13` のような既定の割当と重なる端子だと、override無しでも同じ端子に触れてしまう）。
+    const problem = parseOrThrow({
+      ...selfHoldProblemJson(),
+      physicalOverride: { c03: ['TB_PL.4+', 'TB_PL.4-'] },
+    });
+    // 参照は違うが中身は同じ複製（保存して読み込み直した課題データを模す）
+    const clone = JSON.parse(JSON.stringify(problem.schematic)) as SchematicDocument;
+    expect(clone).not.toBe(problem.schematic);
+    expect(clone).toEqual(problem.schematic);
+    const overrideTerminal = toTerminalId('TB_PL.4+');
+    const usesOverride = (session: { wires: readonly { from: string; to: string }[] }): boolean =>
+      session.wires.some((w) => w.to === overrideTerminal || w.from === overrideTerminal);
+
+    // 既定（参照の同一性）: 複製は `problem.schematic` と同じ参照ではないので override は使わない
+    const byDefault = buildSchematicSession(problem, JIPM_BOARD, clone);
+    expect(byDefault.ok).toBe(true);
+    expect(byDefault.ok && usesOverride(byDefault.session)).toBe(false);
+
+    // 明示: `useProblemOverride: true` なら同一性に関係なく override を使う
+    const explicit = buildSchematicSession(problem, JIPM_BOARD, clone, {
+      useProblemOverride: true,
+    });
+    expect(explicit.ok).toBe(true);
+    expect(explicit.ok && usesOverride(explicit.session)).toBe(true);
   });
 
   it('converts a physicalOverride record into terminal ids', () => {

@@ -1,9 +1,10 @@
 import { addWire, createSession, JIPM_BOARD, plug, removeWire } from '@ojt/board-model';
-import { toTerminalId } from '@ojt/circuit-sim';
+import { toTerminalId, type TerminalId } from '@ojt/circuit-sim';
 import { describe, expect, it } from 'vitest';
 import { BUILTIN_ASSEMBLE_PROBLEMS } from '../src/builtin/index.js';
 import { buildReferenceSession } from '../src/reference.js';
 import { MAX_WIRING_SUSPECTS, wiringSuspects } from '../src/wiring-diff.js';
+import { parseOrThrow, selfHoldProblemJson } from './helpers/problems.js';
 
 const found = BUILTIN_ASSEMBLE_PROBLEMS.find((p) => p.id === 'b-001');
 if (found === undefined) throw new Error('b-001 が見つかりません');
@@ -148,5 +149,86 @@ describe('wiringSuspects（UXレビュー #28）', () => {
   it('returns nothing when the problem reference circuit cannot be built', () => {
     const broken = { ...problem, board: { ...problem.board, boardId: 'nope' } };
     expect(wiringSuspects(broken, JIPM_BOARD, referenceSession().session)).toEqual(CLEAN);
+  });
+
+  it('gives BZ+ and BZ- each their own suspect instead of collapsing into one (M-f)', () => {
+    // 課題は BZ を使う（extraParts）。訓練者の盤には BZ が無い（extraParts に足していない）ので、
+    // `BZ.+` も `BZ.-` もネットリストに無い（= どちらも `nodeOf()` が undefined を返す）。
+    // 2つの「無い端子」を同じ節点と誤認すると、どちらか一方の疑いが消えてしまう。
+    const json = selfHoldProblemJson();
+    const board = json.board as Record<string, unknown>;
+    const schematic = json.schematic as { rungs: unknown[] };
+    const bzProblem = parseOrThrow({
+      ...json,
+      board: { ...board, extraParts: ['BZ'] },
+      schematic: {
+        ...schematic,
+        rungs: [
+          ...schematic.rungs,
+          {
+            id: 'r-bz',
+            from: { bus: 'P' },
+            to: { bus: 'N' },
+            cells: [{ kind: 'buzzer', id: 'c-bz', device: 'BZ' }],
+          },
+        ],
+      },
+    });
+    const ref = buildReferenceSession(bzProblem, JIPM_BOARD);
+    expect(ref.ok).toBe(true);
+    if (!ref.ok) return;
+
+    // 参照と同じ配線を、BZ の2端子に触れる分だけ除いて再現する（＝「BZ が無い盤」）
+    const trainee = createSession(JIPM_BOARD, { roles: ref.value.roles, extraParts: [] });
+    expect(plug(trainee, 'S1', 'relay-my4n').ok).toBe(true);
+    const bzPlus = toTerminalId('BZ.+');
+    const bzMinus = toTerminalId('BZ.-');
+    for (const w of ref.value.session.wires) {
+      if (w.locked) continue; // createSession が既に同じ既設配線を張っている
+      if (w.from === bzPlus || w.to === bzPlus || w.from === bzMinus || w.to === bzMinus) continue;
+      expect(addWire(trainee, JIPM_BOARD, w.from, w.to, w.color, { id: w.id }).ok).toBe(true);
+    }
+
+    const report = wiringSuspects(bzProblem, JIPM_BOARD, trainee);
+    const bzSuspects = report.suspects.filter((s) => s.devices.includes('BZ'));
+    // BZ.+ 側と BZ.- 側、それぞれ別の疑いとして出る（1件に潰れない）
+    expect(bzSuspects).toHaveLength(2);
+    const terminals = bzSuspects.flatMap((s) => s.terminals);
+    expect(terminals).toContain(bzPlus);
+    expect(terminals).toContain(bzMinus);
+    // BZ 以外はすべて参照どおりに再現できているので、BZ がらみ以外の疑いは出ない
+    expect(report.total).toBe(2);
+    expect(report.omitted).toBe(0);
+  });
+
+  it('ranks a genuine gap before a contact group-choice artefact (RANKING)', () => {
+    // CR1 の組1（⑨⑤）と組2（⑩⑥）を丸ごと入れ替える。電気的には模範回路と同じだが、
+    // 節点分割の上では「別の組」に見える＝決定表#9bの組選びの違い（配線ミスではない）。
+    // そこへ本物の欠け（PL1 まわりの電線を1本外す）を1つ混ぜ、本物の欠けが先頭に来ることを確かめる。
+    const { session } = referenceSession();
+    const swapMap: Readonly<Record<string, string>> = {
+      'CR1.9': 'CR1.10',
+      'CR1.10': 'CR1.9',
+      'CR1.5': 'CR1.6',
+      'CR1.6': 'CR1.5',
+    };
+    const swap = (id: string): TerminalId => toTerminalId(swapMap[id] ?? id);
+    session.wires = session.wires.map((w) =>
+      w.locked ? w : { ...w, from: swap(w.from), to: swap(w.to) },
+    );
+    const realGapWire = session.wires.find(
+      (w) => !w.locked && (w.from.startsWith('TB_PL.1') || w.to.startsWith('TB_PL.1')),
+    );
+    expect(realGapWire).toBeDefined();
+    if (realGapWire === undefined) return;
+    expect(removeWire(session, realGapWire.id).ok).toBe(true);
+
+    const report = wiringSuspects(problem, JIPM_BOARD, session);
+    expect(report.total).toBeGreaterThan(0);
+    const first = report.suspects[0];
+    expect(first).toBeDefined();
+    // 本物の欠け（PL1がらみ）が先頭。件数・omittedの数え方は変わらない（RANKING はソートのみ）
+    expect(first?.devices).toContain('PL1');
+    expect(report.omitted).toBe(report.total - report.suspects.length);
   });
 });

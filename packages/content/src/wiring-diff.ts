@@ -1,5 +1,11 @@
 import { toNetlist, type BoardDefinition, type BoardSession } from '@ojt/board-model';
-import { buildNets, terminalId, type Nets, type TerminalId } from '@ojt/circuit-sim';
+import {
+  buildNets,
+  parseTerminalId,
+  terminalId,
+  type Nets,
+  type TerminalId,
+} from '@ojt/circuit-sim';
 import type { CellAssignment } from '@ojt/schematic-core';
 import { buildReferenceSession, type SchematicProblem } from './reference.js';
 
@@ -148,6 +154,18 @@ function makeSuspect(
 }
 
 /**
+ * `nodeOf()` の結果を集合の要素として比べるための鍵。節点番号はそのまま使い、
+ * その端子がそのネットリストに無い（`undefined`）ときは**端子ごとに違う印**を返す。
+ * 素の `undefined` を鍵にすると、盤に無い端子が2つあるだけで「同じ節点」と誤認して
+ * 本物の疑いを1件にまとめて消してしまう（M-f。例: `BZ` を `extraParts` に足していない
+ * 訓練者の盤では `BZ.+` も `BZ.-` も無いが、電気的には別の節点である）。
+ */
+function nodeKeyOf(nets: Nets, id: TerminalId): number | `absent:${TerminalId}` {
+  const node = nodeOf(nets, id);
+  return node ?? `absent:${id}`;
+}
+
+/**
  * ある分割（`from`）のまとまりが、別の分割（`to`）で割れている箇所を挙げる。
  * まとまりの先頭（模範回路の出現順の1つ目）を基準にし、別の節点にいる端子を1つずつ挙げる。
  * 同じ節点に落ちた端子はまとめて1件にするので、4端子が2対2に割れても2件ではなく1件になる。
@@ -160,16 +178,57 @@ function splits(
   for (const members of groups.values()) {
     const anchor = members[0];
     if (anchor === undefined || members.length < 2) continue;
-    const anchorNode = nodeOf(other, anchor);
-    const seen = new Set<number | undefined>([anchorNode]);
+    const seen = new Set<number | string>([nodeKeyOf(other, anchor)]);
     for (const id of members.slice(1)) {
-      const node = nodeOf(other, id);
-      if (seen.has(node)) continue;
-      seen.add(node);
+      const key = nodeKeyOf(other, id);
+      if (seen.has(key)) continue;
+      seen.add(key);
       out.push([anchor, id]);
     }
   }
   return out;
+}
+
+/** 接点のピン番号 → 役割クラス（①〜④＝b接点、⑤〜⑧＝a接点、⑨〜⑫＝COM）。範囲外は `undefined`。 */
+function contactRoleClass(pin: number): 'nc' | 'no' | 'com' | undefined {
+  if (pin >= 1 && pin <= 4) return 'nc';
+  if (pin >= 5 && pin <= 8) return 'no';
+  if (pin >= 9 && pin <= 12) return 'com';
+  return undefined;
+}
+
+/**
+ * `id` と同じ部品・同じ役割クラス（b接点／a接点／COM）の4組ぶんの端子。§11.3
+ * `id` が接点の組のピン（①〜⑫）でなければ空（PB・PL・BZ・母線・コイルの⑬⑭には組が無い）。
+ */
+function samePartRoleClassTerminals(id: TerminalId): TerminalId[] {
+  let parsed;
+  try {
+    parsed = parseTerminalId(id);
+  } catch {
+    /* c8 ignore next -- id は TerminalId 型（terminalId() で作った値）なので形式は必ず正しい */
+    return [];
+  }
+  const pin = Number(parsed.name);
+  if (!Number.isInteger(pin)) return [];
+  const roleClass = contactRoleClass(pin);
+  if (roleClass === undefined) return [];
+  const base = roleClass === 'nc' ? 0 : roleClass === 'no' ? 4 : 8;
+  return [1, 2, 3, 4].map((group) => terminalId(parsed.part, String(base + group)));
+}
+
+/**
+ * 「組の選び方の違い」（決定表#9b）で出た `missing` の疑いか。RANKING（レビュー#9b）
+ * `assignToBoard()` は模範回路の要素の出現順に接点の4組を割り当てるので、訓練者が
+ * 電気的に正しいまま別の組へ張ると、節点分割は違って見える。`b` と同じ部品・同じ役割クラスの
+ * **別の**組が、訓練者の回路で `a` と同じ節点にいれば、それは配線ミスではなく組の選び方の違い。
+ */
+function isPairChoiceArtifact(a: TerminalId, b: TerminalId, traineeNets: Nets): boolean {
+  const aNode = nodeOf(traineeNets, a);
+  if (aNode === undefined) return false;
+  return samePartRoleClassTerminals(b).some(
+    (candidate) => candidate !== b && nodeOf(traineeNets, candidate) === aNode,
+  );
 }
 
 /** 何も疑うところが無いときの戻り。 */
@@ -182,7 +241,8 @@ const NO_SUSPECTS: WiringSuspectReport = { suspects: [], total: 0, omitted: 0 };
  *
  * **接点の組の違いも出る**（決定表#9b）。`assignToBoard()` は模範回路の要素の出現順に
  * `CR1` の4組（⑨⑤／⑩⑥／⑪⑦／⑫⑧）を割り当てるので、訓練者が別の組へ張ると、
- * 電気的には正しくても節点分割は違う。正規化はせず、画面（`JA.result.suspectNote`）で断る。
+ * 電気的には正しくても節点分割は違う。正規化はしない（画面（`JA.result.suspectNote`）で断る）が、
+ * 本物の配線ミスより後ろへ回す（消しはしない。RANKING・レビュー#9b）。
  */
 export function wiringSuspects(
   problem: SchematicProblem,
@@ -200,14 +260,20 @@ export function wiringSuspects(
   const referenceNets = buildNets(reference.value.netlist);
   const traineeNets = buildNets(toNetlist(traineeSession, board));
 
-  const missing = splits(groupByNode(referenceNets, watched), traineeNets).map(([a, b]) =>
-    makeSuspect('missing', a, b, devices, cellsAt, traineeSession),
-  );
-  const extra = splits(groupByNode(traineeNets, watched), referenceNets).map(([a, b]) =>
-    makeSuspect('extra', a, b, devices, cellsAt, traineeSession),
-  );
+  const missing = splits(groupByNode(referenceNets, watched), traineeNets).map(([a, b]) => ({
+    suspect: makeSuspect('missing', a, b, devices, cellsAt, traineeSession),
+    artifact: isPairChoiceArtifact(a, b, traineeNets),
+  }));
+  const extra = splits(groupByNode(traineeNets, watched), referenceNets).map(([a, b]) => ({
+    suspect: makeSuspect('extra', a, b, devices, cellsAt, traineeSession),
+    artifact: false,
+  }));
 
-  const all = [...missing, ...extra];
-  const suspects = all.slice(0, MAX_WIRING_SUSPECTS);
-  return { suspects, total: all.length, omitted: all.length - suspects.length };
+  // 安定ソート（`Array#sort` はES2019以降のJSエンジンでは安定）：組の選び方の違いだけ後ろへ回す。
+  // 件数は変えない（キャップは変わらず MAX_WIRING_SUSPECTS、`omitted` の数え方も変わらない）。
+  const ranked = [...missing, ...extra]
+    .sort((x, y) => Number(x.artifact) - Number(y.artifact))
+    .map((x) => x.suspect);
+  const suspects = ranked.slice(0, MAX_WIRING_SUSPECTS);
+  return { suspects, total: ranked.length, omitted: ranked.length - suspects.length };
 }
