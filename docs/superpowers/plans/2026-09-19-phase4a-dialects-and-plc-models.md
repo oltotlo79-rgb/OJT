@@ -140,6 +140,7 @@
 | 15 | 3Dの外観をどこに持つか | `PlcUnitDefinition.appearance` / `PlcModuleDefinition.appearance`（`PlcAppearance`）に**データとして**持ち、4B はそれを読んで描くだけにする。色はhex、寸法・矩形はmm、座標系は「正面の左上が原点・x右・y下」 | 利用者の要求は「各メーカーのシーケンサーの外観を忠実に再現する」ことだが、実機写真・純正画像は入手できない（§17.1 / PLC調査資料 §7）。カタログの外形寸法と一般に知られた見え方から**自前で作図**し、値を1ファイルに集める。4B に色や座標を直書きすると、実機と違うと分かったときの修正箇所が3Dコンポーネントに散る（§17.1 の「修正箇所は盤モデル」を守れない） |
 | 16 | TOYOPUC の X と Y のアドレス | **同じアドレス空間に置き、出力を次の16点境界からにずらす**。`X(i)` → `1X000`＋i、`Y(i)` → `1Y010`＋i（`OUTPUT_BASE = 0x010`）。同番号検査（`checkNumberConflicts`）は IRの `index` ではなく**この写像を通したアドレス**どうしを比べる | §10.5 の固有バリデーションは「X と Y、T と C の同一番号の重複使用禁止」である（実機では同じ番号のXとYが同じI/Oメモリを指す）。IRの `index` をそのまま X・Y 両方のアドレスにすると、内蔵8題がすべて `X(0)`＋`Y(0)` を使うため `convert()` が全題 `device-conflict` になり、Task 14 が通らない。実機のラックでも入力モジュールと出力モジュールは別のアドレスに実装されるので、既定の割付を「`IN-12` が `1X000`〜`1X00F`、`OUT-12` が `1Y010`〜`1Y01F`」とすれば衝突は起きず、検査は**利用者が明示的に同じ番号を書いたとき**（`1X010` と `1Y010`）にだけ働く。却下案: ①検査を落とす → §10.5 の固有バリデーションを実装しないことになる ②`index` を比べたまま内蔵課題のJSONを書き換える → 決定表#14（JSONは1文字も変えない）に反する |
 | 17 | TOYOPUC の T と C のアドレス | **ずらさない**（`1T000` と `1C000` は併用できないまま）。内蔵8題はタイマを使う題（d-003〜d-006）とカウンタを使う題（d-007）が分かれており、同じ題でTとCを併用していないので衝突しない（実コードで確認済み） | X/Y と違い、TとCを同じ課題で使う要求が今のところ無い。必要になった時点で #16 と同じ要領で `COUNTER_BASE` を置けばよく、そのときの修正箇所は `jtekt.ts` の1ファイルである |
+| 18 | 模範配線と `ioAssignment` が見る入力コモンの範囲 | 模範配線と `ioAssignment` は**使う点のコモンだけ**を見る（使わない群は浮かせたまま）— ラック機種を1端子2本の予算内に収めるため、未使用の `ICOM1` / `COM.B` の誤配線は判定しない | 8点1コモンの機種（ラック形）は入力コモンが複数ある。母線の鎖（§11.3）が全コモンを通すと、使わない群のコモンにも1本の渡り配線が要り、他の端子（チェック用回路など）が2本の予算を超えかねない。使わない群は模範配線でも浮いたままにしておけば、`ioAssignment` も「未配線」と「誤配線」を混同せずに済む。両者で判定が重複しないよう `usedInputCommons(unit, io)` を共有ヘルパに括り出した（レビュー M4） |
 
 ---
 
@@ -5263,7 +5264,9 @@ git commit -m "feat(content): let mode D problems start on all four PLC models"
 
 **Files:**
 - Modify: `packages/content/src/plc-static-checks.ts`
+- Modify: `packages/content/src/plc-reference.ts`
 - Test: `packages/content/test/plc-static-checks.test.ts`
+- Test: `packages/content/test/plc-reference.test.ts`
 
 前提#19 のとおり `checkIoAssignment()` は `/^PLC\.X\d+$/` と `/^PLC\.Y\d+$/` を持っており、CP1E の `PLC.0.00` や JW300 の `PLC.A0` では一致しない（短絡の検出がすり抜ける）。機種仕様から端子集合を作って判定する形に変える。あわせて、8点1コモンの機種で**使うコモンが配線されていない**場合を拾う（§16 Phase 4 受入基準③・⑤の「`IN-12` の COM端子へ配線でき」「`COM.A` へ配線でき」に対応する検査）。
 
@@ -5339,6 +5342,15 @@ function withoutWire(built: ReturnType<typeof buildFor>, id: string): StaticChec
 }
 ```
 
+実際に着地した形は、上の `withoutWire()` の中身（電線を外して相手どうしを結び直す部分）が
+`unchain()` という名前の別関数に分かれ、`withoutWire()` はそれを呼んでから `inputOf()` を返すだけの
+薄いラッパーになっている。「配線を崩してから静的チェックの入力を作る」処理と「その端子だけを
+浮かせる」処理を分けたのは、Batch D で足したテスト（結線方式の mismatch を作るテストなど）が
+`unchain()` だけを呼んで**続けて別の電線を足す**必要があったため（`withoutWire()` はすぐ
+`inputOf()` を呼んでしまい、その隙が無い）。あわせて `buildFor()` の中身（課題を組んで回路を
+建てる部分）も `buildOf(problem)` という機種を選ばない下位ヘルパーに分かれ、`buildFor(model)` は
+`buildOf(PlcProblemSchema.parse({ ...plcProblemJson(), plc: {...} }))` を呼ぶだけになっている。
+
 そのうえで、このファイルの末尾に足す:
 
 ```ts
@@ -5409,6 +5421,57 @@ Expected: 失敗（CP1E の短絡が検出されない／`COM.A` 未配線が通
     if (outputCom !== undefined && netTerminals(nets, plcTerminal(outputCom)).length <= 1) {
       details.push(`${terminal} の出力コモン（${plcTerminal(outputCom)}）が配線されていません`);
     }
+```
+
+**Batch D のレビュー反映（2026-09-19）**: `detectPlcWiring()` に、見るコモンを絞り込む第3引数
+`commons?`（省略時は機種の全入力コモン）を足し、返り値に `'mismatch'` を追加する。8点1コモンの
+機種は複数コモンがあるので、最初に見つかった1本だけで `sink`/`source` を決めると
+`ICOM0`→P・`ICOM1`→N のような誤配線を `sink` と見逃してしまう。**見るべきコモンがすべて
+同じ側に揃っているか**を見て、P側・N側が混ざっていたら `mismatch` を返す:
+
+```ts
+export type PlcInputWiring = 'sink' | 'source' | 'mismatch';
+
+export function detectPlcWiring(
+  nets: Nets,
+  unit: PlcUnitDefinition,
+  commons: readonly string[] = unit.spec.inputCommons,
+): PlcInputWiring | undefined {
+  let sink = false;
+  let source = false;
+  for (const name of commons) {
+    const terminals = netTerminals(nets, plcTerminal(name));
+    if (terminals.some((id) => id.startsWith('P.'))) sink = true;
+    if (terminals.some((id) => id.startsWith('N.'))) source = true;
+  }
+  if (sink && source) return 'mismatch';
+  if (sink) return 'sink';
+  if (source) return 'source';
+  return undefined;
+}
+```
+
+`checkIoAssignment()` の末尾に、`commons` を**使う点のコモンだけ**（`usedInputCommons()`。
+下記の設計判断の行を参照）に絞って `detectPlcWiring()` を呼び、`mismatch` と「判定した結線方式が
+課題の指定（`plc.io.wiring`）と違う」場合を報告する検査を足す:
+
+```ts
+  const commons = usedInputCommons(plc.unit, plc.io);
+  const commonLabel = commons.map((name) => String(plcTerminal(name))).join('・');
+  const wiring = detectPlcWiring(nets, plc.unit, commons);
+  if (wiring === undefined) {
+    details.push(`入力コモン（${commonLabel}）が盤のP側・N側のどちらにも配線されていません`);
+  } else if (wiring === 'mismatch') {
+    details.push(
+      commons.length === 1
+        ? `入力コモン（${commonLabel}）でP側とN側を短絡しています`
+        : `入力コモン（${commonLabel}）のP側・N側が食い違っています（すべて同じ側に揃えます）`,
+    );
+  } else if (wiring !== plc.io.wiring) {
+    details.push(
+      `入力コモン（${commonLabel}）の結線が課題の指定（${plc.io.wiring}）と違います（${wiring} になっています）`,
+    );
+  }
 ```
 
 - [ ] **Step 4: GREEN を確認してコミットする**
@@ -5713,7 +5776,7 @@ Plan 4B（`apps/desktop` の3スキン・ラックの3D・設定画面・表記�
 - [ ] `PLC_UNITS` の4機種すべてと、ラック2機種の各4モジュールに `appearance` があり、矩形が面からはみ出さず、銘板がロゴ・ブランド名を含まない（`test/plc-appearance.test.ts`）。
 - [ ] `packages/ladder-core` に**一切の変更が無い**（`git diff --stat packages/ladder-core` が空。§17.1 の「IR・ランタイムの変更は不要」の実地検証）。
 - [ ] `packages/content/src` が `@ojt/plc-dialects` を import していない（テストのみ可。3A 決定表#7）。
-- [ ] `apps/desktop` の変更は `src/renderer/ladder/IoTable.tsx` と `src/renderer/ladder/MonitorPanel.tsx` の**各1行**（と `test/monitor-panel.test.tsx` の期待値1行）**だけ**である（Task 8 の型変更に追随させる最小変更。それ以外は 4B の担当）。
+- [ ] `apps/desktop` の変更は `src/renderer/ladder/IoTable.tsx` と `src/renderer/ladder/MonitorPanel.tsx` の**各1行**（と `test/monitor-panel.test.tsx` の期待値1行）**だけ**である（Task 8 の型変更に追随させる最小変更。それ以外は 4B の担当）。**Plan 4A 時点では各1行；以後は Plan 4B が変更する**（4B は UI 側の実装なので `apps/desktop` に本格的に手を入れる。この条件は 4A が終わった時点のスナップショットであり、4B 完了後の `apps/desktop` の行数を縛るものではない）。
 
 ---
 
@@ -5721,6 +5784,7 @@ Plan 4B（`apps/desktop` の3スキン・ラックの3D・設定画面・表記�
 
 | 日付 | 内容 |
 |---|---|
+| 2026-09-19 | Batch D レビュー反映: I1、I2、M3〜M9、決定表（使う点のコモン） |
 | 2026-09-19 | Batch A/B レビュー反映: B1、B2、I1〜I4、M1〜M6、A-I1、A-I2、A-M1〜A-M7 |
 | 2026-09-19 | Batch C レビュー反映: B1、I1〜I3、M1〜M8 |
 | 2026-09-19 | レビュー反映: B1〜B3、I1〜I8、M1〜M7、行番号修正 |
