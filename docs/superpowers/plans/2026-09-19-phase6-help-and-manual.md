@@ -1394,7 +1394,7 @@ git show --stat HEAD
 5. 手順は `1.` から始まる番号付きリストで、最初から最後まで通す。
 6. 図は `![図の中身を説明する文](images/xxx.png)` を段落として1行で置く。画像は Task 12 が撮る（この時点ではファイルが無くてよい。存在検査は Task 12 が入れる）。
 
-- [ ] **Step 1: `00-intro.md` を4節にする**
+- [x] **Step 1: `00-intro.md` を4節にする**
 
 Task 2 が書いた2節はそのまま残し、あいだに2節を足して**この順**にする。
 
@@ -1436,7 +1436,7 @@ Task 2 が書いた2節はそのまま残し、あいだに2節を足して**こ
 - 「各社のロゴや画面の写真はこのアプリに入っていません」の1文
 ```
 
-- [ ] **Step 2: `01-setup.md` を書く**
+- [x] **Step 2: `01-setup.md` を書く**
 
 ```markdown
 # パソコンに入れる
@@ -1489,7 +1489,7 @@ Windows 10 または Windows 11 の 64ビット版が動くパソコンなら使
 - 設定と一時保存の置き場所（`%APPDATA%\電気教育ツール`）と、消したいときはそのフォルダも消すこと
 ```
 
-- [ ] **Step 3: `02-screens.md` を書く**
+- [x] **Step 3: `02-screens.md` を書く**
 
 ```markdown
 # 画面の見方
@@ -1580,7 +1580,7 @@ Windows 10 または Windows 11 の 64ビット版が動くパソコンなら使
 - `![タイムチャートを大きく出したところ。](images/timechart.png)`
 ```
 
-- [ ] **Step 4: `03-mode-b.md` を書く**
+- [x] **Step 4: `03-mode-b.md` を書く**
 
 ```markdown
 # 回路を組み立てる（モードB）
@@ -1667,7 +1667,7 @@ Windows 10 または Windows 11 の 64ビット版が動くパソコンなら使
 - 結果の「あやしい電線」から「盤で見る」を押すと、その端子が3Dの画面で光ること
 ```
 
-- [ ] **Step 5: `04-mode-c1.md` を書く**
+- [x] **Step 5: `04-mode-c1.md` を書く**
 
 ```markdown
 # 部品を点検する（モードC1）
@@ -1732,7 +1732,7 @@ Windows 10 または Windows 11 の 64ビット版が動くパソコンなら使
 - 実際に測れた値も結果に並ぶので、どこで取り違えたかを見直せること
 ```
 
-- [ ] **Step 6: `05-mode-c2.md` を書く**
+- [x] **Step 6: `05-mode-c2.md` を書く**
 
 ```markdown
 # 回路を点検して直す（モードC2）
@@ -1801,7 +1801,7 @@ Windows 10 または Windows 11 の 64ビット版が動くパソコンなら使
 - 結果の画面に出る「当たった指摘」「見落とし」「余分な指摘」の読み方
 ```
 
-- [ ] **Step 7: 生成物を作り直してテストを通す**
+- [x] **Step 7: 生成物を作り直してテストを通す**
 
 ```
 cd apps/desktop && node scripts/build-manual.mjs
@@ -1810,7 +1810,7 @@ pnpm --filter @ojt/desktop test manual-
 # 期待: Test Files 2 passed / Tests 22 passed
 ```
 
-- [ ] **Step 8: commit**
+- [x] **Step 8: commit**
 
 ```
 git add docs/manual/00-intro.md docs/manual/01-setup.md docs/manual/02-screens.md docs/manual/03-mode-b.md docs/manual/04-mode-c1.md docs/manual/05-mode-c2.md apps/desktop/src/renderer/help/manual-content.ts

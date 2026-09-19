@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
@@ -28,6 +28,21 @@ function manualFiles(): Array<{ name: string; text: string }> {
     .filter((name) => /^\d{2}-.+\.md$/u.test(name))
     .sort()
     .map((name) => ({ name, text: lf(readFileSync(join(MANUAL_DIR, name), 'utf8')) }));
+}
+
+/**
+ * 撮り終わっている図の名前（`scripts/build-manual.mjs` と同じ判定）。決定表 P13。
+ * ここを `buildManual()` の既定（引数省略＝全部あるものとして扱う）に任せると、
+ * 図をまだ1枚も撮っていない段階（Task 12 より前）で「生成物と一致しない」という
+ * 誤った失敗になる（原稿はまだ無い図を参照してよい。§6.2 規則6）。
+ */
+function availableImages(): string[] | undefined {
+  const imageDir = join(MANUAL_DIR, 'images');
+  if (!existsSync(imageDir)) return [];
+  return readdirSync(imageDir)
+    .filter((name) => name.endsWith('.png'))
+    .map((name) => name.replace(/\.png$/u, ''))
+    .sort();
 }
 
 /** 印刷用 HTML から節ID・見出し・素の文を取り出す（生成物と同じ3つ）。 */
@@ -61,7 +76,7 @@ function plainOf(html: string): string {
 }
 
 describe('正本と生成物', () => {
-  const built = buildManual(manualFiles());
+  const built = buildManual(manualFiles(), '', availableImages());
 
   it('has a generated module identical to a fresh build of the manual', () => {
     expect(lf(readFileSync(GENERATED, 'utf8'))).toBe(built.helpModule);
