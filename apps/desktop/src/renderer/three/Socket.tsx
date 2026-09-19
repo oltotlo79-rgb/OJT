@@ -12,7 +12,7 @@ import { useMemo, type JSX } from 'react';
 import type { ThreeEvent } from '@react-three/fiber';
 import { partKindLabel, socketPinTooltip } from '../i18n/ja.js';
 import { SOCKET_BODY_COLOR, SOCKET_LEVER_COLOR, SOCKET_SELECTED_COLOR } from '../session/colors.js';
-import { pinGroup, pinPartners } from '../session/socket-pins.js';
+import { coilBusSide, pinGroup, pinPartners } from '../session/socket-pins.js';
 import { socketFaceTexture, SOCKET_PLATE_MARGIN_MM } from './labels.js';
 import { noPick, sharedMaterial, UNIT_BOX } from './materials.js';
 import { toScene } from './coords.js';
@@ -74,6 +74,10 @@ export function socketBodyMaterial(selected: boolean): ReturnType<typeof sharedM
  * その端子が**どのピンと組になるか**も分からなかった。いま出すのは5つ:
  * ソケットID／端子番号／挿さっている部品／役割（日本語）／組になる相手のピン。
  * 文言の組み立ては `i18n/ja.ts` の `socketPinTooltip()` が持つ（§15: 文言は1箇所）。
+ *
+ * コイル（⑬・⑭）には**どちらの母線の側か**（`P(+)側` / `N(−)側`）も足す。利用者指摘 2026-09-20
+ * 「リレーソケットの13、14番の端子にコイルとしか書いてないがこれではどちらがPかNか分からない」。
+ * 向きは `session/socket-pins.ts` の `coilBusSide()` が1つだけ持つ（3Dの面の印字・部品カードと同じ）。
  */
 export function socketTerminalLabel(
   socketId: SocketId,
@@ -85,13 +89,15 @@ export function socketTerminalLabel(
   const pin = Number(parseTerminalId(terminal.id).name);
   // ソケット以外の端子（番号でないもの）が来たら盤定義の印字をそのまま返す
   if (!Number.isInteger(pin)) return terminal.label;
+  const group = pinGroup(pin);
   return socketPinTooltip({
     socketId,
     pin,
     role,
     partName: mountedKind === undefined ? undefined : partKindLabel(mountedKind),
-    group: pinGroup(pin),
+    group,
     partners: pinPartners(pin).map((partner) => ({ pin: partner, group: pinGroup(partner) })),
+    ...(group === 'coil' ? { busSide: coilBusSide(pin) } : {}),
   });
 }
 

@@ -1,6 +1,9 @@
 import {
+  N_RAIL_ID,
   OUTLET_ID,
+  P_RAIL_ID,
   PLC_PART_ID,
+  POWER_SUPPLY_ID,
   roleLabel,
   SOCKET_BODY_WIDTH_MM,
   SOCKET_COL_PITCH_MM,
@@ -9,9 +12,14 @@ import {
 } from '@ojt/board-model';
 import { parseTerminalId } from '@ojt/circuit-sim';
 import { CanvasTexture, LinearFilter, SRGBColorSpace, type Texture } from 'three';
-import { JA_PIN } from '../i18n/ja.js';
+import { busSideMark, JA_PIN } from '../i18n/ja.js';
 import { SOCKET_BODY_COLOR } from '../session/colors.js';
-import { groupOfRole, PIN_GROUP_COLOR, type PinGroup } from '../session/socket-pins.js';
+import {
+  busSideOfRole,
+  groupOfRole,
+  PIN_GROUP_COLOR,
+  type PinGroup,
+} from '../session/socket-pins.js';
 
 /**
  * 端子の印字ラベル。設計仕様 §6.2 / §8.2 / §15。
@@ -133,6 +141,28 @@ function textBox(centerX: number, centerY: number, text: string, fontMm: number)
 }
 
 /**
+ * ネジの脇に印字する役割の文字。
+ *
+ * ふだんは盤定義の銘板表記（`roleLabel()`。`COM` / `a` / `b`）だが、**コイルの⑭⑬だけは
+ * `+` / `−` を `P(+)` / `N(−)` に置き換える**。利用者指摘 2026-09-20
+ * 「リレーソケットの13、14番の端子にコイルとしか書いてないがこれではどちらがPかNか分からない」。
+ * 段見出しは「コイル」のまま（何のネジかを離れた所から示す）で、**どちらが P でどちらが N か**は
+ * ネジの手元のこの文字が示す、という役割分担にする。
+ *
+ * 置き換えを `board-model` の `roleLabel()` 側でやらないのは、あちらが**実物の銘板の表記**
+ * （MY4N のソケットには `+` `−` としか刻印が無い）であり、机上のPLCの端子台の印字もそれを使うため。
+ * ここは「訓練者に分かるように盤へ足した案内」なので描画側（renderer）が持つ。
+ *
+ * 幅は 2.2mm（`ROLE_MM`）で `P(+)` ≒ 5.5mm・`N(−)` ≒ 6.3mm。列ピッチ 8mm
+ * （`SOCKET_COL_PITCH_MM`）に収まり、隣のネジの印字とも板の縁とも当たらないことは
+ * `test/socket-face-print.test.ts` が mm で確かめる。
+ */
+export function socketRoleMark(terminal: BoardTerminal): string {
+  if (terminal.role !== 'coil+' && terminal.role !== 'coil-') return roleLabel(terminal.role);
+  return busSideMark(busSideOfRole(terminal.role));
+}
+
+/**
  * ソケットの端子1個ぶんの印字の位置（板の左上を原点とする mm）。
  * 描画（`socketFaceTexture`）と、段どうしが当たらないことを確かめる単体テストの両方がこれを使う。
  */
@@ -145,7 +175,7 @@ export function socketLabelBoxes(
   const y = terminal.pos.y - originY;
   return {
     number: textBox(x, y + NUMBER_CENTER_MM, terminalNumber(terminal), NUMBER_MM),
-    role: textBox(x, y + ROLE_CENTER_MM, roleLabel(terminal.role), ROLE_MM),
+    role: textBox(x, y + ROLE_CENTER_MM, socketRoleMark(terminal), ROLE_MM),
   };
 }
 
@@ -360,6 +390,20 @@ export function blockMarkFontMm(mark: string): number {
  * `blockFaceTexture()` が実際に描く位置と一致させる（名前の文字高さでは動かさない）。
  */
 export const BLOCK_MARK_OFFSET_MM = BLOCK_MARK_MM * 1.5;
+
+/**
+ * 極性の印（`P(+)` / `N(−)`）の文字高さ[mm]。利用者指摘 2026-09-20「ランプも同様」。
+ * 名前（`PL1+`、3mm）より一段小さくして、9mmピッチの隣の端子の印と当たらない幅にする
+ * （`P(+)` ≒ 5.0mm・`N(−)` ≒ 5.7mm で、隣とのあいだに 3.3mm 以上残る）。
+ */
+export const BLOCK_POLARITY_MM = BLOCK_MARK_LONG_MM;
+
+/**
+ * 端子の中心から極性の印の中心までの奥行方向のずれ[mm]（負＝盤の奥側）。
+ * 名前は手前側（`BLOCK_MARK_OFFSET_MM`）に出ているので、印は**反対側**へ置いて行を分ける。
+ * こうすると `PL1+` と `P(+)` が横に並ばず、9mmピッチでも両方が読める。
+ */
+export const BLOCK_POLARITY_OFFSET_MM = -BLOCK_MARK_OFFSET_MM;
 
 /** 役割ごとの印字色（極性は色でも区別する）。端子台の**明るい**台座（`#F1EFE9`）に載せる用。 */
 const ROLE_COLOR: Readonly<Record<TerminalRole, string>> = {
@@ -624,7 +668,7 @@ export function drawSocketFace(
     const group = groupOfRole(terminal.role);
     ctx.fillStyle = group === undefined ? SOCKET_ROLE_COLOR[terminal.role] : PIN_GROUP_COLOR[group];
     ctx.font = `700 ${ROLE_MM * PX_PER_MM}px sans-serif`;
-    ctx.fillText(roleLabel(terminal.role), x, ((boxes.role.y0 + boxes.role.y1) / 2) * PX_PER_MM);
+    ctx.fillText(socketRoleMark(terminal), x, ((boxes.role.y0 + boxes.role.y1) / 2) * PX_PER_MM);
   }
 }
 
@@ -667,6 +711,28 @@ export function blockTerminalMark(terminal: BoardTerminal): string {
   return `${part}${name}`;
 }
 
+/**
+ * 端子台の名前に添える極性の印（`P(+)` / `N(−)`）。極性を示さない端子は undefined。
+ * 利用者指摘 2026-09-20「リレーソケットの13、14番…どちらがPかNか分からない。ランプも同様」。
+ *
+ * 付けるのは「名前が `+` / `−` としか言っていない端子」だけにする:
+ * - **付ける**: ランプ用端子台（`TB_PL.1+`→`PL1+`）・ブザー（`BZ.+`）・ランプ本体（`PL1.+`）
+ * - **付けない**: DC24V供給端子（`P1` / `N1`）と電源の内部端子（`PS +24V` / `PS 0V`）。
+ *   名前そのものが母線を名乗っているので、`P1` の下にもう一度 `P(+)` と書いても増えるのは
+ *   密度だけである（供給端子台は 8本×2 あるので印だけで16個になる）。
+ * - **付けない**: 机上のPLC本体・増設ラック（`PLC.*`）と壁コンセント（`OUTLET.*`）。
+ *   PLCの端子は千鳥2列で段の隙間が 9mm しかなく、反対側の行に印を置くと隣の段の名前と当たる。
+ *   コンセントの `L` / `N` は**交流**で、直流母線の `P(+)` / `N(−)` とは別物である。
+ */
+export function blockPolarityMark(terminal: BoardTerminal): string | undefined {
+  const side = busSideOfRole(terminal.role);
+  if (side === undefined) return undefined;
+  const { part } = parseTerminalId(terminal.id);
+  if (part === PLC_PART_ID || part === OUTLET_ID) return undefined;
+  if (part === P_RAIL_ID || part === N_RAIL_ID || part === POWER_SUPPLY_ID) return undefined;
+  return busSideMark(side);
+}
+
 /** 盤定義のラベルから丸数字だけを取り出す（`S1 ⑨ com` → `⑨`）。 */
 export function terminalNumber(terminal: BoardTerminal): string {
   return terminal.label.split(' ').at(-2) ?? terminal.label;
@@ -702,6 +768,12 @@ export function blockFaceTexture(
         ctx.font = `700 ${fontMm * PX_PER_MM}px sans-serif`;
         ctx.fillStyle = colors[terminal.role];
         ctx.fillText(mark, x, y + BLOCK_MARK_OFFSET_MM * PX_PER_MM);
+        // どちらの母線から来る端子かの印（`P(+)` / `N(−)`）。名前とは反対側の行に置く
+        const polarity = blockPolarityMark(terminal);
+        if (polarity !== undefined) {
+          ctx.font = `700 ${BLOCK_POLARITY_MM * PX_PER_MM}px sans-serif`;
+          ctx.fillText(polarity, x, y + BLOCK_POLARITY_OFFSET_MM * PX_PER_MM);
+        }
       }
     }),
   );
@@ -717,4 +789,19 @@ export function blockLabelBox(terminal: BoardTerminal): LabelBox {
   const mark = blockTerminalMark(terminal);
   const fontMm = blockMarkFontMm(mark);
   return textBox(terminal.pos.x, terminal.pos.y + BLOCK_MARK_OFFSET_MM, mark, fontMm);
+}
+
+/**
+ * 極性の印1個の外接矩形（盤モデル mm・平行移動不変）。印を出さない端子は undefined。
+ * `blockFaceTexture()` が実際に描く位置・文字高さと同じ式を使う（`blockLabelBox()` と同じ考え方）。
+ */
+export function blockPolarityBox(terminal: BoardTerminal): LabelBox | undefined {
+  const mark = blockPolarityMark(terminal);
+  if (mark === undefined) return undefined;
+  return textBox(
+    terminal.pos.x,
+    terminal.pos.y + BLOCK_POLARITY_OFFSET_MM,
+    mark,
+    BLOCK_POLARITY_MM,
+  );
 }

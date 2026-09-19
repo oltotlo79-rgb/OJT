@@ -1,4 +1,5 @@
-import { JIPM_BOARD, type BoardTerminal } from '@ojt/board-model';
+import { BLOCK_PITCH_MM, JIPM_BOARD, PL_BLOCK_ID, type BoardTerminal } from '@ojt/board-model';
+import { toTerminalId } from '@ojt/circuit-sim';
 import { describe, expect, it } from 'vitest';
 import {
   BAND_MM,
@@ -9,12 +10,24 @@ import {
   ROLE_MM,
   socketFaceRows,
   socketLabelBoxes,
+  socketRoleMark,
   SOCKET_PLATE_MARGIN_MM,
   terminalNumber,
+  blockLabelBox,
+  blockPolarityBox,
+  blockPolarityMark,
+  blockTerminalMark,
+  BLOCK_POLARITY_MM,
   type LabelBox,
 } from '../src/renderer/three/labels.js';
 import { JA_PIN } from '../src/renderer/i18n/ja.js';
-import { PIN_GROUPS, PIN_GROUP_COLOR, pinGroup } from '../src/renderer/session/socket-pins.js';
+import {
+  COIL_N_PIN,
+  COIL_P_PIN,
+  PIN_GROUPS,
+  PIN_GROUP_COLOR,
+  pinGroup,
+} from '../src/renderer/session/socket-pins.js';
 import { SOCKET_BODY_COLOR } from '../src/renderer/session/colors.js';
 
 /**
@@ -357,6 +370,128 @@ describe('焼く内容（`drawSocketFace`）', () => {
       expect(item.x).toBeLessThanOrEqual(plate.w * PX_PER_MM);
       expect(item.y).toBeGreaterThanOrEqual(0);
       expect(item.y).toBeLessThanOrEqual(plate.h * PX_PER_MM);
+    }
+  });
+});
+
+/*
+ * 利用者指摘 2026-09-20「リレーソケットの13、14番の端子にコイルとしか書いてないがこれでは
+ * どちらがPかNか分からない。ランプも同様」。
+ */
+describe('コイルの極性の印字（⑭ = P(+) / ⑬ = N(−)）', () => {
+  const plate = plateOf(0);
+
+  /** ソケットの端子1個を引く。 */
+  function pinTerminal(pin: number): BoardTerminal {
+    const terminal = plate.terminals.find((t) => pinOf(t) === pin);
+    if (terminal === undefined) throw new Error(`ピン${String(pin)}がありません`);
+    return terminal;
+  }
+
+  it('⑭⑬ のネジの脇は `+` `−` ではなく `P(+)` `N(−)` と印字する', () => {
+    expect(socketRoleMark(pinTerminal(COIL_P_PIN))).toBe(JA_PIN.bus.P);
+    expect(socketRoleMark(pinTerminal(COIL_N_PIN))).toBe(JA_PIN.bus.N);
+    // 極性を持たないネジの印字は今までどおり（盤定義の銘板表記）
+    expect(socketRoleMark(pinTerminal(9))).toBe('COM');
+    expect(socketRoleMark(pinTerminal(5))).toBe('a');
+    expect(socketRoleMark(pinTerminal(1))).toBe('b');
+  });
+
+  it('段見出しは「コイル」のままで、どちら側かはネジの脇の印字が示す', () => {
+    const { headers } = socketFaceRows(plate.terminals, plate.originX, plate.originY);
+    expect(headers.map((h) => h.text)).toContain(JA_PIN.group.coil);
+  });
+
+  it('`P(+)` `N(−)` は隣のネジの印字とも板の縁とも当たらない（列ピッチ 8mm）', () => {
+    const prints = printBoxes(0);
+    for (const a of prints) {
+      for (const b of prints) {
+        if (a === b) continue;
+        expect(overlaps(a.box, b.box), `${a.label} と ${b.label}`).toBe(false);
+      }
+      expect(a.box.x0, a.label).toBeGreaterThanOrEqual(0);
+      expect(a.box.x1, a.label).toBeLessThanOrEqual(plate.w);
+      expect(a.box.y0, a.label).toBeGreaterThanOrEqual(0);
+      expect(a.box.y1, a.label).toBeLessThanOrEqual(plate.h);
+    }
+  });
+
+  it('焼く絵にも `P(+)` と `N(−)` が入る（8ソケットとも同じ）', () => {
+    for (let index = 0; index < JIPM_BOARD.sockets.length; index += 1) {
+      const one = plateOf(index);
+      const { ctx, texts } = fakeContext();
+      drawSocketFace(ctx, one.terminals, one.originX, one.originY);
+      const socketId = JIPM_BOARD.sockets[index]?.id ?? '';
+      expect(
+        texts.some((t) => t.text === JA_PIN.bus.P),
+        socketId,
+      ).toBe(true);
+      expect(
+        texts.some((t) => t.text === JA_PIN.bus.N),
+        socketId,
+      ).toBe(true);
+      // 裸の `+` `−` は残さない（「どちらがPか」が分からない印字を無くすのが目的）
+      expect(texts.some((t) => t.text === '+')).toBe(false);
+      expect(texts.some((t) => t.text === '−')).toBe(false);
+    }
+  });
+});
+
+describe('ランプ用端子台の極性の印字（利用者指摘「ランプも同様」）', () => {
+  const lampTerminals = JIPM_BOARD.terminals.filter((t) => t.id.startsWith(`${PL_BLOCK_ID}.`));
+
+  it('`PL1+` の下に `P(+)`、`PL1-` の下に `N(−)` を添える', () => {
+    const plus = lampTerminals.find((t) => t.id === toTerminalId(`${PL_BLOCK_ID}.1+`));
+    const minus = lampTerminals.find((t) => t.id === toTerminalId(`${PL_BLOCK_ID}.1-`));
+    expect(blockTerminalMark(plus as BoardTerminal)).toBe('PL1+');
+    expect(blockPolarityMark(plus as BoardTerminal)).toBe(JA_PIN.bus.P);
+    expect(blockPolarityMark(minus as BoardTerminal)).toBe(JA_PIN.bus.N);
+    expect(lampTerminals.every((t) => blockPolarityMark(t) !== undefined)).toBe(true);
+  });
+
+  it('名前と極性の印は別の行に出る（横に並べて 9mm ピッチを食い潰さない）', () => {
+    for (const terminal of lampTerminals) {
+      const name = blockLabelBox(terminal);
+      const polarity = blockPolarityBox(terminal);
+      expect(polarity, terminal.id).toBeDefined();
+      if (polarity === undefined) continue;
+      expect(overlaps(name, polarity), terminal.id).toBe(false);
+      expect(polarity.y1).toBeLessThan(name.y0);
+    }
+  });
+
+  it('隣の端子の印とも当たらない（`P(+)` と `N(−)` が続いても読める）', () => {
+    const boxes = lampTerminals.flatMap((terminal) => {
+      const polarity = blockPolarityBox(terminal);
+      return polarity === undefined
+        ? [{ box: blockLabelBox(terminal), label: `${terminal.id} 名前` }]
+        : [
+            { box: blockLabelBox(terminal), label: `${terminal.id} 名前` },
+            { box: polarity, label: `${terminal.id} 極性` },
+          ];
+    });
+    for (const a of boxes) {
+      for (const b of boxes) {
+        if (a === b) continue;
+        expect(overlaps(a.box, b.box), `${a.label} と ${b.label}`).toBe(false);
+      }
+    }
+    // 印の幅そのものが端子ピッチに収まっている（盤の端子台は 9mm ピッチ）
+    for (const terminal of lampTerminals) {
+      const polarity = blockPolarityBox(terminal);
+      if (polarity === undefined) continue;
+      expect(polarity.x1 - polarity.x0, terminal.id).toBeLessThan(BLOCK_PITCH_MM);
+    }
+    expect(BLOCK_POLARITY_MM).toBeLessThan(BLOCK_PITCH_MM);
+  });
+
+  it('母線を名乗る端子・押ボタン・机上のPLCには印を出さない', () => {
+    for (const id of ['P.1', 'N.1', 'PS.+', 'PS.-', 'TB_PB.1c']) {
+      const terminal = JIPM_BOARD.terminals.find((t) => t.id === id);
+      expect(terminal, id).toBeDefined();
+      if (terminal === undefined) continue;
+      expect(blockPolarityMark(terminal), id).toBeUndefined();
+      expect(blockPolarityBox(terminal), id).toBeUndefined();
     }
   });
 });

@@ -1,10 +1,19 @@
 import { SOCKET_PIN_GRID } from '@ojt/board-model';
 import type { JSX } from 'react';
-import { JA_PIN, contactSetsText, pinGroupLabel } from '../i18n/ja.js';
 import {
+  JA_PIN,
+  busSideMark,
+  coilPolarityText,
+  contactSetsText,
+  pinGroupLabel,
+} from '../i18n/ja.js';
+import {
+  COIL_N_PIN,
+  COIL_P_PIN,
   CONTACT_SETS,
   PIN_GROUPS,
   PIN_GROUP_COLOR,
+  coilBusSide,
   pinGroup,
   type PinGroup,
 } from '../session/socket-pins.js';
@@ -25,8 +34,12 @@ import styles from './pinout.module.css';
  * 左の見出しが `b接点 1-4` と範囲を出しているので、④ が段1の①②③と同じ仲間だと分かる。
  */
 
-/** 図の座標系（`viewBox`）。幅・高さの比がそのままカード内での見え方になる。 */
-export const PINOUT_VIEW = { w: 184, h: 112 } as const;
+/**
+ * 図の座標系（`viewBox`）。幅・高さの比がそのままカード内での見え方になる。
+ * 高さは段4の帯の下に**コイルの極性の印**（`P(+)` / `N(−)`）の一行ぶんを足した分ある
+ * （利用者指摘 2026-09-20「どちらがPかNか分からない」）。
+ */
+export const PINOUT_VIEW = { w: 184, h: 126 } as const;
 
 /** 列の中心X（実物の4列）。 */
 const COL_X0 = 92;
@@ -42,6 +55,8 @@ const SWATCH = { x: 0, w: 8, h: 8, rx: 2 } as const;
 const NAME_X = 12;
 /** 役割の帯（段の中心からの下げ量・高さ・ネジ1個ぶんの左右の張り出し）。 */
 const BAND = { dy: 12, h: 3, half: 12, rx: 1.5 } as const;
+/** コイルの極性の印を置く段の中心からの下げ量（帯のさらに下）。 */
+const POLARITY_DY = 24;
 
 /** 列の中心X。 */
 export function pinoutColumnX(col: number): number {
@@ -98,6 +113,18 @@ export function pinoutBands(row: readonly (number | undefined)[], rowIndex: numb
   });
   flush();
   return out;
+}
+
+/**
+ * ピン1個の図の上での中心（実物の並びから引く）。盤に無い番号は undefined。
+ * コイルの極性の印を「そのネジの真下」に置くために使う（位置の決め打ちを増やさない）。
+ */
+export function pinoutPinPos(pin: number): { x: number; y: number } | undefined {
+  for (let row = 0; row < SOCKET_PIN_GRID.length; row += 1) {
+    const col = (SOCKET_PIN_GRID[row] ?? []).indexOf(pin);
+    if (col >= 0) return { x: pinoutColumnX(col), y: pinoutRowY(row) };
+  }
+  return undefined;
 }
 
 /** その大分類に属するピン番号（実物の並びから拾うので、番号は盤定義が決める）。 */
@@ -187,9 +214,31 @@ export function SocketPinout(): JSX.Element {
               );
             }),
           )}
+          {/*
+            コイルの極性（利用者指摘 2026-09-20「どちらがPかNか分からない」）。
+            ⑭⑬ のネジの真下に、3Dソケットの面の印字・ツールチップと同じ言葉で出す。
+            `data-pin` の組には入れない（番号だけを読む既存の引き方を壊さないため）。
+          */}
+          {[COIL_P_PIN, COIL_N_PIN].map((pin) => {
+            const pos = pinoutPinPos(pin);
+            if (pos === undefined) return null;
+            return (
+              <text
+                key={`polarity-${String(pin)}`}
+                className={styles.polarity}
+                data-polarity={pin}
+                x={pos.x}
+                y={pos.y + POLARITY_DY}
+                textAnchor="middle"
+              >
+                {busSideMark(coilBusSide(pin))}
+              </text>
+            );
+          })}
         </svg>
       </figure>
       <p className={styles.pairs}>{contactSetsText(CONTACT_SETS)}</p>
+      <p className={styles.pairs}>{coilPolarityText(COIL_P_PIN, COIL_N_PIN)}</p>
     </div>
   );
 }

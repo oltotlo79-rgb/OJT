@@ -23,12 +23,29 @@ vi.mock('@react-three/drei', () => ({
   Html: ({ children }: { children?: ReactNode }) => children,
 }));
 
-const { SocketPinout, pinoutBands, pinoutColumnX, pinoutRowY, pinsOfGroup, PINOUT_VIEW } =
-  await import('../src/renderer/panels/SocketPinout.js');
+const {
+  SocketPinout,
+  pinoutBands,
+  pinoutColumnX,
+  pinoutPinPos,
+  pinoutRowY,
+  pinsOfGroup,
+  PINOUT_VIEW,
+} = await import('../src/renderer/panels/SocketPinout.js');
 const { PartsPanel } = await import('../src/renderer/panels/PartsPanel.js');
-const { JA, JA_PIN, contactSetsText, pinGroupLabel } = await import('../src/renderer/i18n/ja.js');
-const { CONTACT_SETS, COIL_PINS, PIN_GROUPS, PIN_GROUP_COLOR, pinGroup, pinPartners } =
-  await import('../src/renderer/session/socket-pins.js');
+const { JA, JA_PIN, busSideMark, coilPolarityText, contactSetsText, pinGroupLabel } =
+  await import('../src/renderer/i18n/ja.js');
+const {
+  CONTACT_SETS,
+  COIL_PINS,
+  COIL_N_PIN,
+  COIL_P_PIN,
+  PIN_GROUPS,
+  PIN_GROUP_COLOR,
+  coilBusSide,
+  pinGroup,
+  pinPartners,
+} = await import('../src/renderer/session/socket-pins.js');
 
 afterEach(() => {
   cleanup();
@@ -228,6 +245,61 @@ describe('役割の帯（段ごとに色が変わる）', () => {
       expect(cy - r).toBeGreaterThanOrEqual(0);
       expect(cy + r).toBeLessThanOrEqual(PINOUT_VIEW.h);
     }
+  });
+});
+
+/*
+ * 利用者指摘 2026-09-20「リレーソケットの13、14番の端子にコイルとしか書いてないがこれでは
+ * どちらがPかNか分からない」。
+ */
+describe('コイルの極性（⑭ = P(+) / ⑬ = N(−)）', () => {
+  /** 図の中の極性の印（`data-polarity` で引く）。 */
+  function polarityMark(pin: number): Element {
+    const mark = document.querySelector(`[data-polarity="${String(pin)}"]`);
+    if (mark === null) throw new Error(`ピン${String(pin)}の極性の印がありません`);
+    return mark;
+  }
+
+  it('⑭ の下に `P(+)`、⑬ の下に `N(−)` を出す', () => {
+    render(<SocketPinout />);
+    expect(polarityMark(COIL_P_PIN).textContent).toBe(busSideMark(coilBusSide(COIL_P_PIN)));
+    expect(polarityMark(COIL_N_PIN).textContent).toBe(busSideMark(coilBusSide(COIL_N_PIN)));
+    expect(polarityMark(COIL_P_PIN).textContent).toBe(JA_PIN.bus.P);
+    expect(polarityMark(COIL_N_PIN).textContent).toBe(JA_PIN.bus.N);
+  });
+
+  it('印はそのネジの真下に置き、`viewBox` の中に収まる', () => {
+    render(<SocketPinout />);
+    for (const pin of [COIL_P_PIN, COIL_N_PIN]) {
+      const pos = pinoutPinPos(pin);
+      expect(pos, `ピン${String(pin)}`).toBeDefined();
+      const mark = polarityMark(pin);
+      expect(Number(mark.getAttribute('x'))).toBe(pos?.x);
+      expect(Number(mark.getAttribute('y'))).toBeGreaterThan(pos?.y ?? 0);
+      expect(Number(mark.getAttribute('y'))).toBeLessThanOrEqual(PINOUT_VIEW.h);
+    }
+  });
+
+  it('極性の無いネジには印を出さない（番号だけを読む引き方も壊さない）', () => {
+    render(<SocketPinout />);
+    for (const pin of SOCKET_PIN_GRID.flat()) {
+      if (pin === undefined || pinGroup(pin) === 'coil') continue;
+      expect(document.querySelector(`[data-polarity="${String(pin)}"]`), String(pin)).toBeNull();
+      expect(pinCell(pin).textContent).toBe(String(pin));
+    }
+  });
+
+  it('図の下にもコイルの一行を出す（`コイル: 14 = P(+) / 13 = N(−)`）', () => {
+    render(<SocketPinout />);
+    expect(coilPolarityText(COIL_P_PIN, COIL_N_PIN)).toBe('コイル: 14 = P(+) / 13 = N(−)');
+    expect(screen.getByText(coilPolarityText(COIL_P_PIN, COIL_N_PIN))).toBeInTheDocument();
+  });
+
+  it('読み上げの代替テキストにもどちらが P 側かを入れる', () => {
+    render(<SocketPinout />);
+    expect(JA_PIN.legendAria).toContain(JA_PIN.bus.P);
+    expect(JA_PIN.legendAria).toContain(JA_PIN.bus.N);
+    expect(screen.getByRole('img', { name: JA_PIN.legendAria })).toBeInTheDocument();
   });
 });
 

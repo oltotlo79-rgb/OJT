@@ -29,6 +29,7 @@ import {
   type CameraPose,
 } from '../src/renderer/three/camera.js';
 import { socketTerminalLabel } from '../src/renderer/three/Socket.js';
+import { polarityTerminalLabel } from '../src/renderer/three/BoardScene.js';
 import { mountedLabel } from '../src/renderer/three/MountedPart.js';
 import { findFixtureFootprint, fixtureTerminalMark } from '../src/renderer/three/Fixtures.js';
 import { secondsToMs } from '../src/renderer/panels/TimerDial.js';
@@ -49,6 +50,7 @@ import {
   type LabelBox,
 } from '../src/renderer/three/labels.js';
 import { SOCKET_BODY_COLOR } from '../src/renderer/session/colors.js';
+import { JA_PIN } from '../src/renderer/i18n/ja.js';
 
 describe('toScene', () => {
   it('盤の中心が原点になる', () => {
@@ -311,7 +313,7 @@ describe('端子ラベル', () => {
       'S1 端子5: CR1 リレー MY4N の a接点（COM 9 と組）',
     );
     expect(socketTerminalLabel('S5', 'T1', 'timer-h3y4', socketTerminal('S5', 13))).toBe(
-      'S5 端子13: T1 タイマ H3Y-4 の コイル（14 と組）',
+      'S5 端子13: T1 タイマ H3Y-4 の コイル N(−)側（14 と組）',
     );
   });
 
@@ -323,19 +325,19 @@ describe('端子ラベル', () => {
 
   it('同じ仲間どうしの組は役割名を繰り返さない（`コイル（コイル 14）` にしない）', () => {
     expect(socketTerminalLabel('S1', 'CR1', undefined, socketTerminal('S1', 14))).toBe(
-      'S1 端子14: CR1 の コイル（13 と組）',
+      'S1 端子14: CR1 の コイル P(+)側（13 と組）',
     );
   });
 
   it('チェック用ソケットも同じ言葉で説明する（§6.3）', () => {
     expect(socketTerminalLabel('S7', 'CHK', undefined, socketTerminal('S7', 14))).toBe(
-      'S7 端子14: CHK の コイル（13 と組）',
+      'S7 端子14: CHK の コイル P(+)側（13 と組）',
     );
   });
 
   it('役割が割り当てられていない予備ソケットでも表示できる', () => {
     expect(socketTerminalLabel('S8', undefined, undefined, socketTerminal('S8', 13))).toBe(
-      'S8 端子13: 予備 の コイル（14 と組）',
+      'S8 端子13: 予備 の コイル N(−)側（14 と組）',
     );
   });
 
@@ -343,6 +345,23 @@ describe('端子ラベル', () => {
     for (const pin of [1, 5, 9, 13, 14]) {
       const text = socketTerminalLabel('S1', 'CR1', 'relay-my4n', socketTerminal('S1', pin));
       expect(text, String(pin)).not.toMatch(/\b(nc|no|coil\+|coil-)\b/);
+    }
+  });
+
+  /*
+   * 利用者指摘 2026-09-20「リレーソケットの13、14番の端子にコイルとしか書いてないがこれでは
+   * どちらがPかNか分からない。ランプも同様」。
+   */
+  it('コイルの⑭⑬は母線のどちら側かまで出す（`コイル` で終わらせない）', () => {
+    const plus = socketTerminalLabel('S1', 'CR1', 'relay-my4n', socketTerminal('S1', 14));
+    const minus = socketTerminalLabel('S1', 'CR1', 'relay-my4n', socketTerminal('S1', 13));
+    expect(plus).toBe('S1 端子14: CR1 リレー MY4N の コイル P(+)側（13 と組）');
+    expect(minus).toBe('S1 端子13: CR1 リレー MY4N の コイル N(−)側（14 と組）');
+    // 極性を持たないピンには母線の印を付けない（`COM P(+)側` のような嘘を出さない）
+    for (const pin of [1, 5, 9]) {
+      const text = socketTerminalLabel('S1', 'CR1', 'relay-my4n', socketTerminal('S1', pin));
+      expect(text, String(pin)).not.toContain(JA_PIN.bus.P);
+      expect(text, String(pin)).not.toContain(JA_PIN.bus.N);
     }
   });
 
@@ -355,6 +374,45 @@ describe('端子ラベル', () => {
 
   it('差込穴は2列×7段で中央に並ぶ（§6.2）', () => {
     expect(socketPinHoleOffsets()).toHaveLength(14);
+  });
+});
+
+describe('極性を持つ端子のツールチップ（利用者指摘 2026-09-20「ランプも同様」）', () => {
+  /** 盤の端子1個を引く。 */
+  function boardTerminal(id: string): BoardTerminal {
+    const terminal = JIPM_BOARD.terminals.find((t) => t.id === id);
+    if (terminal === undefined) throw new Error(`${id} がありません`);
+    return terminal;
+  }
+
+  it('ランプ用端子台は色と銘板と母線の側を出す', () => {
+    expect(polarityTerminalLabel(JIPM_BOARD, boardTerminal('TB_PL.1+'))).toBe(
+      'TB_PL PL1+: 白ランプ PL1 の P(+)側',
+    );
+    expect(polarityTerminalLabel(JIPM_BOARD, boardTerminal('TB_PL.1-'))).toBe(
+      'TB_PL PL1-: 白ランプ PL1 の N(−)側',
+    );
+    expect(polarityTerminalLabel(JIPM_BOARD, boardTerminal('TB_PL.4+'))).toBe(
+      'TB_PL PL4+: 赤ランプ PL4 の P(+)側',
+    );
+  });
+
+  it('ランプ本体とブザーにも同じ言葉を出す', () => {
+    expect(polarityTerminalLabel(JIPM_BOARD, boardTerminal('PL2.+'))).toBe(
+      'PL2+: 黄ランプ PL2 の P(+)側',
+    );
+    expect(polarityTerminalLabel(JIPM_BOARD, boardTerminal('BZ.-'))).toBe(
+      'BZ-: ブザー BZ の N(−)側',
+    );
+  });
+
+  it('母線を名乗っている端子と極性の無い端子には出さない', () => {
+    // `P1` / `N1` は名前そのものが母線。押ボタンは c/a/b で極性が無い
+    expect(polarityTerminalLabel(JIPM_BOARD, boardTerminal('P.1'))).toBeUndefined();
+    expect(polarityTerminalLabel(JIPM_BOARD, boardTerminal('N.1'))).toBeUndefined();
+    expect(polarityTerminalLabel(JIPM_BOARD, boardTerminal('PS.+'))).toBeUndefined();
+    expect(polarityTerminalLabel(JIPM_BOARD, boardTerminal('TB_PB.1c'))).toBeUndefined();
+    expect(polarityTerminalLabel(JIPM_BOARD, boardTerminal('S1.9'))).toBeUndefined();
   });
 });
 

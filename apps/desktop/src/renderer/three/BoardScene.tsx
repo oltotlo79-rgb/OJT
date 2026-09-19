@@ -1,6 +1,8 @@
 import {
+  BUZZER_ID,
   JIPM_BOARD,
   OUTLET_ID,
+  PL_BLOCK_ID,
   PLC_PART_ID,
   routeSession,
   routeWire,
@@ -12,7 +14,7 @@ import {
   type SocketId,
   type WireRoute,
 } from '@ojt/board-model';
-import type { LampLevel, TerminalId } from '@ojt/circuit-sim';
+import { parseTerminalId, type LampLevel, type TerminalId } from '@ojt/circuit-sim';
 import { OrbitControls } from '@react-three/drei';
 import { Canvas, useThree } from '@react-three/fiber';
 import { MOUSE } from 'three';
@@ -28,8 +30,15 @@ import {
 } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useStore, type AppState } from '../app/store.js';
-import { JA, routeFailedLog } from '../i18n/ja.js';
+import {
+  buzzerDeviceName,
+  JA,
+  lampDeviceName,
+  polarityTerminalTooltip,
+  routeFailedLog,
+} from '../i18n/ja.js';
 import type { PickHit } from '../session/interaction.js';
+import { busSideOfRole } from '../session/socket-pins.js';
 import { BoardPlate } from './BoardPlate.js';
 import {
   BOARD_TILT_RAD,
@@ -59,6 +68,7 @@ import { Lamp } from './Lamp.js';
 import { MountedPart } from './MountedPart.js';
 import { ProbeMarkers } from './ProbeMarkers.js';
 import { PushButton } from './PushButton.js';
+import { blockPolarityMark, blockTerminalMark } from './labels.js';
 import { Socket, socketTerminalLabel } from './Socket.js';
 import { TerminalBlock } from './TerminalBlock.js';
 import { boardFieldTerminals, TerminalField } from './TerminalField.js';
@@ -116,6 +126,36 @@ const BLOCK_PARTS: ReadonlyArray<{
 
 /** DINレールを敷く機器のまとまり（ソケット群と端子台群）。実物写真のとおり。§6.5 */
 const RAIL_GROUPS: readonly string[][] = [['TB_PL'], ['TB_PB'], ['P', 'N']];
+
+/**
+ * 極性を持つ端子のツールチップ（`TB_PL PL1+: 白ランプ PL1 の P(+)側`）。極性が無い端子は undefined。
+ *
+ * 利用者指摘 2026-09-20「リレーソケットの13、14番の端子にコイルとしか書いてないがこれでは
+ * どちらがPかNか分からない。ランプも同様」。ランプ用端子台は `PL1+` / `PL1−` としか印字が無く、
+ * `+` が P（＋24V）側だと**どこにも書かれていなかった**。
+ *
+ * 出す端子は3Dの面の印字（`blockPolarityMark()`）と**同じ集合**にする（印字がある端子には
+ * ツールチップの言葉もある、という対応を崩さない）。機器の呼び名は盤定義の色と銘板から作るので、
+ * 盤がランプの色を変えればツールチップも追随する。
+ */
+export function polarityTerminalLabel(
+  board: BoardDefinition,
+  terminal: BoardTerminal,
+): string | undefined {
+  const side = busSideOfRole(terminal.role);
+  if (side === undefined || blockPolarityMark(terminal) === undefined) return undefined;
+  const { part, name } = parseTerminalId(terminal.id);
+  // ランプ用端子台は `TB_PL.1+` の `1` が PL1、ランプ本体は部品IDがそのまま PL1
+  const panelLabel = part === PL_BLOCK_ID ? `PL${name.slice(0, -1)}` : part;
+  const lamp = board.lamps.find((l) => l.panelLabel === panelLabel);
+  const deviceName =
+    lamp !== undefined
+      ? lampDeviceName(lamp.color, lamp.panelLabel)
+      : part === BUZZER_ID
+        ? buzzerDeviceName(BUZZER_ID)
+        : undefined;
+  return polarityTerminalTooltip({ part, mark: blockTerminalMark(terminal), deviceName, side });
+}
 
 /** 例外から1行の理由を作る。 */
 function reasonOf(error: unknown): string {
@@ -450,17 +490,18 @@ function BoardContents({
   const terminalTooltipOf = useCallback(
     (terminal: BoardTerminal): string => {
       const socket = board.sockets.find((s) => terminal.id.startsWith(`${s.id}.`));
-      return terminalTooltip(
-        terminal,
-        socket === undefined
-          ? ''
-          : socketTerminalLabel(
-              socket.id,
-              session?.socketRoles[socket.id],
-              session?.mounted[socket.id]?.kind,
-              terminal,
-            ),
-      );
+      if (socket !== undefined) {
+        return terminalTooltip(
+          terminal,
+          socketTerminalLabel(
+            socket.id,
+            session?.socketRoles[socket.id],
+            session?.mounted[socket.id]?.kind,
+            terminal,
+          ),
+        );
+      }
+      return terminalTooltip(terminal, polarityTerminalLabel(board, terminal) ?? '');
     },
     [board, session],
   );

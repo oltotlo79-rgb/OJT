@@ -4,7 +4,7 @@ import type { FaultReportKind, StaticCheckId } from '@ojt/content';
 import type { DialectId } from '@ojt/plc-dialects';
 import { MSG } from '../../shared/messages.js';
 import type { ProbeSide } from '../app/store-types.js';
-import type { PinGroup } from '../session/socket-pins.js';
+import type { BusSide, PinGroup } from '../session/socket-pins.js';
 
 /**
  * 日本語文言。設計仕様 §15「全文言を1箇所に集約しハードコードしない」。
@@ -1520,7 +1520,8 @@ export const JA_PIN = {
   /** 部品カードの図の見出し。 */
   legendTitle: 'ピン配列',
   /** 図の読み上げ（`role="img"` の代替テキスト）。 */
-  legendAria: 'ソケットのピン配列。番号ごとに b接点・a接点・COM・コイルのどれかを示す',
+  legendAria:
+    'ソケットのピン配列。番号ごとに b接点・a接点・COM・コイルのどれかを示し、コイルは 14 が P(+) 側、13 が N(−) 側',
   /** 「接点の組」の呼び名。 */
   pairs: '接点の組',
   /** ツールチップでの端子の呼び方（`端子5`）。 */
@@ -1529,6 +1530,19 @@ export const JA_PIN = {
   pairedWith: 'と組',
   /** 役割が割り当てられていないソケット。 */
   spare: '予備',
+  /**
+   * 母線の側の書き方。利用者指摘 2026-09-20
+   * 「リレーソケットの13、14番の端子にコイルとしか書いてないがこれではどちらがPかNか分からない。
+   * ランプも同様」。
+   *
+   * `+` / `−` だけでは**どちらの母線から来た線か**が伝わらないので、盤の母線の名前（`P` / `N`）と
+   * 極性（`(+)` / `(−)`）を必ずセットで出す。この2語を、3Dソケットの面の印字・ランプ端子台の印字・
+   * 端子のツールチップ・部品カードのピン配列の**4か所すべてで同じ形**で使う
+   * （`session/socket-pins.ts` の `BusSide` が向きそのものを持つ）。
+   */
+  bus: { P: 'P(+)', N: 'N(−)' } as Readonly<Record<BusSide, string>>,
+  /** 「P(+)側」の「側」。 */
+  side: '側',
 } as const;
 
 /**
@@ -1556,12 +1570,33 @@ export function contactSetsText(sets: ReadonlyArray<readonly number[]>): string 
   return `${JA_PIN.pairs}: ${sets.map((set) => set.map(String).join('-')).join(' / ')}`;
 }
 
+/** 母線の側の印（`P(+)` / `N(−)`）。極性が無い端子は空文字。 */
+export function busSideMark(side: BusSide | undefined): string {
+  return side === undefined ? '' : JA_PIN.bus[side];
+}
+
+/** 「P(+)側」。文の中で母線の向きを言うときはいつもこの形。 */
+export function busSideText(side: BusSide): string {
+  return `${JA_PIN.bus[side]}${JA_PIN.side}`;
+}
+
+/**
+ * 部品カードのコイルの一行（`コイル: 14 = P(+) / 13 = N(−)`）。利用者指摘 2026-09-20。
+ * 番号は `session/socket-pins.ts` の `COIL_P_PIN` / `COIL_N_PIN` から渡す（ここで決め打ちしない）。
+ */
+export function coilPolarityText(pPin: number, nPin: number): string {
+  return `${JA_PIN.group.coil}: ${String(pPin)} = ${JA_PIN.bus.P} / ${String(nPin)} = ${JA_PIN.bus.N}`;
+}
+
 /**
  * 端子のツールチップ（`S1 端子5: CR1 リレー MY4N の a接点（COM 9 と組）`）。§8.2
  *
  * 出すのは5つだけ: ソケットID・端子番号・挿さっている部品・役割・組になる相手。
  * 相手が**同じ仲間**（コイルの13と14）のときは役割名を繰り返さず番号だけにする
  * （`コイル（コイル 14 と組）` は同じ言葉が2回出て読みにくい）。
+ *
+ * コイル（⑬・⑭）だけは役割名のうしろに母線の側（`P(+)側` / `N(−)側`）を足す。利用者指摘
+ * 2026-09-20「コイルとしか書いてないがこれではどちらがPかNか分からない」。
  */
 export function socketPinTooltip(args: {
   socketId: string;
@@ -1573,6 +1608,8 @@ export function socketPinTooltip(args: {
   group: PinGroup;
   /** 組になるピン（`session/socket-pins.ts` の `pinPartners()`）。 */
   partners: ReadonlyArray<{ pin: number; group: PinGroup }>;
+  /** 母線の側（`session/socket-pins.ts` の `coilBusSide()`）。極性を持たないピンは undefined。 */
+  busSide?: BusSide | undefined;
 }): string {
   const owner = [args.role ?? JA_PIN.spare, args.partName]
     .filter((part): part is string => part !== undefined && part !== '')
@@ -1585,6 +1622,44 @@ export function socketPinTooltip(args: {
     )
     .join('・');
   const tail = pairs === '' ? '' : `（${pairs} ${JA_PIN.pairedWith}）`;
-  return `${args.socketId} ${JA_PIN.pin}${String(args.pin)}: ${owner} の ${JA_PIN.group[args.group]}${tail}`;
+  const side = args.busSide === undefined ? '' : ` ${busSideText(args.busSide)}`;
+  return `${args.socketId} ${JA_PIN.pin}${String(args.pin)}: ${owner} の ${JA_PIN.group[args.group]}${side}${tail}`;
+}
+
+/**
+ * 極性を持つ端子台のツールチップ（`TB_PL PL1+: 白ランプ PL1 の P(+)側`）。利用者指摘 2026-09-20
+ * 「ランプも同様」。
+ *
+ * ランプ端子台（`TB_PL`）・ブザー（`BZ`）・DC24V供給端子（`P` / `N`）のように、
+ * `+` と `−` しか書かれていない端子に「どちらの母線か」を添える。
+ * ソケットのコイル（`socketPinTooltip()`）と**同じ語**（`P(+)側` / `N(−)側`）で終える。
+ */
+export function polarityTerminalTooltip(args: {
+  /** 端子IDの部品側（`TB_PL` / `BZ` / `P`）。 */
+  part: string;
+  /** 端子台の印字の名前（`PL1+`）。 */
+  mark: string;
+  /** つながっている機器の呼び名（`白ランプ PL1`）。分からなければ undefined（印字で代える）。 */
+  deviceName: string | undefined;
+  side: BusSide;
+}): string {
+  const owner =
+    args.deviceName === undefined || args.deviceName === '' ? args.mark : args.deviceName;
+  // 機器そのものの端子（`PL1.+` → 印字 `PL1+`）は部品名が印字に含まれるので繰り返さない
+  const head = args.mark.startsWith(args.part) ? args.mark : `${args.part} ${args.mark}`;
+  return `${head}: ${owner} の ${busSideText(args.side)}`;
+}
+
+/** 極性を持つ機器の呼び名に使う言葉。 */
+const JA_POLARITY_DEVICE = { lamp: 'ランプ', buzzer: 'ブザー' } as const;
+
+/** ランプの呼び名（`白ランプ PL1`）。色も銘板も盤定義から来る。 */
+export function lampDeviceName(color: string, panelLabel: string): string {
+  return `${color}${JA_POLARITY_DEVICE.lamp} ${panelLabel}`;
+}
+
+/** ブザーの呼び名（`ブザー BZ`）。§5.3.4 の任意部品。 */
+export function buzzerDeviceName(partLabel: string): string {
+  return `${JA_POLARITY_DEVICE.buzzer} ${partLabel}`;
 }
 // --- /socket pin roles 2026-09-20 ---

@@ -99,3 +99,55 @@ export const PIN_GROUP_COLOR: Readonly<Record<PinGroup, string>> = {
   com: '#57A6FF',
   coil: '#FF7070',
 };
+
+// --- coil / lamp polarity 2026-09-20 ---
+/**
+ * 母線の側。盤はDC24Vで、母線は **P（＋24V）** と **N（0V）** の2本しかない（§5.2 / §6.1）。
+ * 「＋側」「−側」だけでは新人にはどちらの母線から来た線か伝わらないので、
+ * 画面では必ず母線の名前（`P` / `N`）と極性（`(+)` / `(−)`）を**セットで**出す。
+ */
+export type BusSide = 'P' | 'N';
+
+/**
+ * コイル（リレー／タイマ）の **P（＋24V）側**のピン番号。利用者指摘 2026-09-20
+ * 「リレーソケットの13、14番の端子にコイルとしか書いてないがこれではどちらがPかNか分からない」。
+ *
+ * この値は**推測ではなく、アプリが持つ回路そのものから**決めた。根拠は3つあり、すべて一致する。
+ *
+ * 1. 盤定義（`board-model` の `pinRole()`）が ⑭ を `coil+`、⑬ を `coil-` としている。
+ * 2. 盤の既設配線（§6.3 のチェック用回路。`board-jipm.ts` の `FIXED_WIRES`）が
+ *    `P.1 → TB_PB.4c` / `TB_PB.4a → CHK.14` / `CHK.13 → N.1` と結ばれている。
+ *    ＝ ⑭ が押ボタンを経て P へ、⑬ が直接 N へ。
+ * 3. 内蔵課題の模範回路すべて（モードB 8題・モードC2 8題・モードD 8題）で、
+ *    コイル要素を外した回路をたどると ⑭ 側だけが P 母線に、⑬ 側だけが N 母線に着く。
+ *    反例は1件も無い（`test/coil-lamp-polarity.test.ts` が毎回この3つを数え直す）。
+ *
+ * ランプ（`PL1+` / `PL1−`）とブザーも同じ向きで、`+` が P、`−` が N である（同テスト）。
+ */
+export const COIL_P_PIN = 14;
+
+/** コイルの **N（0V）側**のピン番号。根拠は `COIL_P_PIN` の doc comment。 */
+export const COIL_N_PIN = 13;
+
+/**
+ * コイルのピン → 母線の側。コイル以外のピンを渡すと例外（黙って `undefined` を返さない）。
+ * 3Dの面の印字・ツールチップ・部品カードの3か所は、どれもこの1つの関数から向きを引く。
+ */
+export function coilBusSide(pin: number): BusSide {
+  if (pinGroup(pin) !== 'coil') throw new PinError(`コイルのピンではありません: ${String(pin)}`);
+  return pin === COIL_P_PIN ? 'P' : 'N';
+}
+
+/**
+ * 端子の役割 → 母線の側。極性を持たない役割（`com` / `no` / `nc` / `c` / `a` / `b` ほか）は
+ * `undefined`。
+ *
+ * 交流のコンセント（`ac-l` / `ac-n`）は**DC母線ではない**ので、ここでは極性を付けない
+ * （`L` / `N` に `P(+)` と書くと壁コンセントが直流に見えてしまう）。
+ */
+export function busSideOfRole(role: TerminalRole): BusSide | undefined {
+  if (role === 'coil+' || role === '+') return 'P';
+  if (role === 'coil-' || role === '-') return 'N';
+  return undefined;
+}
+// --- /coil / lamp polarity 2026-09-20 ---
