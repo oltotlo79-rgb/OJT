@@ -301,7 +301,7 @@
 }
 ```
 
-どのモードでも、`packages/content/src/builtin/` の中に手本があります（`assemble` に8題、`inspect-parts` に4題、`inspect-repair` に8題、`plc` に8題）。似た課題を作りたいときは、その中の1つをコピーして書き換えるのが早道です。
+どのモードでも、アプリを入れたところの `resources/content/` の中に同梱課題の実体があります（`assemble` に8題、`inspect-parts` に4題、`inspect-repair` に8題、`plc` に8題）。似た課題を作りたいときは、その中の1つを設定の「利用者課題フォルダ」にコピーして書き換えるのが早道です。
 
 ## 採点のしくみ
 
