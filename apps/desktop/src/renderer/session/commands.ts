@@ -14,6 +14,7 @@ import {
 } from '@ojt/board-model';
 import type { TerminalId, Wire, WireColor } from '@ojt/circuit-sim';
 import type { RepairCircuit } from '@ojt/content';
+import { partKindLabel, wireLabel } from '../i18n/ja.js';
 
 /**
  * 盤操作のコマンド履歴（元に戻す／やり直し、上限50手）。設計仕様 §8.2。
@@ -159,7 +160,9 @@ export function runAddWire(
 export function runRemoveWire(session: BoardSession, wireId: string): CommandResult<Wire> {
   const before = cloneSession(session);
   const result = removeWire(session, wireId);
-  return wrap(before, session, result, 'removeWire', `電線を削除 ${wireId}`);
+  // UXレビュー #6b: 内部の電線ID（`sw-005`）をそのまま出さず、両端の端子と色で示す
+  const label = result.ok ? `電線を削除: ${wireLabel(result.value)}` : `電線を削除 ${wireId}`;
+  return wrap(before, session, result, 'removeWire', label);
 }
 
 /** 部品を装着する。§8.2 */
@@ -170,7 +173,8 @@ export function runPlug(
 ): CommandResult<unknown> {
   const before = cloneSession(session);
   const result = plug(session, socketId, kind);
-  return wrap(before, session, result, 'plug', `${socketId} に ${kind} を装着`);
+  // UXレビュー #6c: 操作ログに `relay-my4n` のような内部種別をそのまま出さない
+  return wrap(before, session, result, 'plug', `${socketId} に ${partKindLabel(kind)} を装着`);
 }
 
 /** 部品を外す。§8.2 */
@@ -227,7 +231,8 @@ export function runSwapPart(
     value: result.value,
     command: {
       kind: 'replacePart',
-      label: `${socketId} の部品を ${kind} に交換`,
+      // UXレビュー #6c: 操作ログに `relay-my4n` のような内部種別をそのまま出さない
+      label: `${socketId} の部品を ${partKindLabel(kind)} に交換`,
       before,
       after: cloneSession(session),
     },

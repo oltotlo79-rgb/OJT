@@ -1,5 +1,6 @@
 import type { ProblemLoadError, SupportedProblem } from '@ojt/content';
 import type { DialectId } from '@ojt/plc-dialects';
+import { problemIssueText } from './messages.js';
 
 /**
  * main ⇄ renderer の IPC 契約。設計仕様 §4.3。
@@ -208,13 +209,17 @@ export interface OjtApi {
   setSettings: (patch: Partial<AppSettings>) => Promise<AppSettings>;
 }
 
-/** `ProblemLoadError` を一覧行に直す。§13 #1 */
+/**
+ * `ProblemLoadError` を一覧行に直す。§13 #1
+ * `details` はzodの生の検証結果ではなく、フィールド名を日本語に直した1文にする
+ * （UXレビュー #6d: 「description: Required」のような内部寄りの文言を画面に出さない）。
+ */
 export function toErrorRow(error: ProblemLoadError): ProblemErrorRow {
   return {
     file: error.file,
     reason: error.reason,
     message: error.message,
-    details: error.issues.map((i) => `${i.path}: ${i.message}`),
+    details: error.issues.map((i) => problemIssueText(i)),
   };
 }
 

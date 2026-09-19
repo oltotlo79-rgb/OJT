@@ -1,3 +1,4 @@
+import type { Wire } from '@ojt/circuit-sim';
 import type { FaultReport, FaultReportKind } from '@ojt/content';
 import type { JSX } from 'react';
 import { JA, reportTargetLabel } from '../i18n/ja.js';
@@ -18,6 +19,7 @@ import styles from './tester.module.css';
 export function ReportPanel({
   reports,
   pending,
+  wires = [],
   onPick,
   onCancel,
   onRemove,
@@ -25,6 +27,11 @@ export function ReportPanel({
   reports: readonly FaultReport[];
   /** 3Dで選んだ直後の対象（種別を選ぶ前）。 */
   pending: ReportTarget | undefined;
+  /**
+   * いまの盤の電線（UXレビュー #6b）。指摘対象が電線のとき、内部の電線IDではなく
+   * 両端の端子と色で示すための参照。渡さない・見つからないときは電線IDへ後退する。
+   */
+  wires?: readonly Wire[];
   onPick: (kind: FaultReportKind) => void;
   onCancel: () => void;
   onRemove: (index: number) => void;
@@ -37,7 +44,7 @@ export function ReportPanel({
       {pending === undefined ? null : (
         <div className={styles.popover} data-testid="report-popover">
           <span className={styles.popoverTitle}>
-            {JA.inspectRepair.chooseKind}: {reportTargetLabel(pending)}
+            {JA.inspectRepair.chooseKind}: {reportTargetLabel(pending, wires)}
           </span>
           {reportKindsFor(pending).map((kind) => (
             <button
@@ -67,7 +74,9 @@ export function ReportPanel({
         ) : (
           reports.map((report, index) => (
             <div key={`${String(index)}-${report.kind}`} className={styles.reportRow}>
-              <span className={styles.reportTarget}>{reportTargetLabel(report.target)}</span>
+              <span className={styles.reportTarget}>
+                {reportTargetLabel(report.target, wires)}
+              </span>
               <span>{JA.reportKind[report.kind]}</span>
               <button
                 type="button"

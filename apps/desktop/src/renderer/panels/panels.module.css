@@ -283,3 +283,11 @@
   margin: 2px 0 0;
 }
 /* --- /parts swap 2026-09-19 --- */
+
+/* --- UX pass 2026-09-19 (#5): 押せない理由の一行表示 --- */
+.disabledReason {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+/* --- /UX pass 2026-09-19 (#5) --- */

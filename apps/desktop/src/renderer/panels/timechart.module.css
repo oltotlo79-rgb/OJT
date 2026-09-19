@@ -9,11 +9,12 @@
   padding-top: 18px;
 }
 
-/* チャート本体（クリック／Enter で拡大）。 */
+/* チャート本体（クリック／Enter で拡大）。UXレビュー #4: クリック領域は最低でも32px確保する。 */
 .opener {
   cursor: zoom-in;
   display: block;
   border-radius: 4px;
+  min-height: 32px;
 }
 
 .opener:focus-visible {

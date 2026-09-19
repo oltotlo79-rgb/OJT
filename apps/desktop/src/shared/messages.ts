@@ -49,6 +49,52 @@ export const MSG = {
   },
 } as const;
 
+// --- UX pass 2026-09-19 (#6d): 課題データの読込エラーを日本語で要約する ---
+/**
+ * 課題JSONのよく壊れるフィールド名の日本語表記。zodの検証結果（`path`）の末尾のキーで引く。
+ * ここに無いフィールドは `problemIssueText()` が「項目 <name> が不正です」に落とす。
+ * 「小さな対応表」なので網羅は狙わず、実際に壊れやすい主要フィールドだけを持つ。
+ */
+const PROBLEM_FIELD_NAMES: Readonly<Record<string, string>> = {
+  id: '課題ID',
+  mode: 'モード',
+  title: 'タイトル',
+  description: '説明文',
+  grade: '級',
+  standardMin: '標準時間',
+  cutoffMin: '打切時間',
+  timeLimit: '制限時間',
+  boardId: '盤ID',
+  extraParts: '追加部品',
+  inventory: '部品在庫',
+  formatVersion: '形式バージョン',
+  schematicVisible: '回路図の初期表示',
+  schematic: '回路図',
+  judge: '判定条件',
+  io: 'I/O割付',
+  plc: 'PLC設定',
+  parts: '部品一覧',
+  faults: '故障',
+  kind: '種別',
+  truth: '正解',
+  dialect: '方言',
+  model: '機種',
+};
+
+/**
+ * 課題データの検証で見つかった1件を日本語の1文にする（UXレビュー #6d）。
+ * zodの `message` はそのまま出すと英語まじりになる（例: `Required` / `Invalid input`）ので使わず、
+ * `path` の末尾のキーからフィールド名を引いて言い直す。未知のフィールドは
+ * 「項目 <name> が不正です」に落とす（`<name>` はそのパス）。
+ */
+export function problemIssueText(issue: { path: string; message: string }): string {
+  if (issue.path === '' || issue.path === '(root)') return '課題データの形式が不正です';
+  const lastKey = issue.path.split('.').pop()?.replace(/\[\d+\]$/, '') ?? issue.path;
+  const name = PROBLEM_FIELD_NAMES[lastKey];
+  return name === undefined ? `項目 ${issue.path} が不正です` : `${name}（${lastKey}）が不正です`;
+}
+// --- /UX pass 2026-09-19 (#6d) ---
+
 /** 保存に失敗したときの理由付きメッセージ。§13 #7 */
 export function saveFailedText(reason: string): string {
   return `保存に失敗しました: ${reason}`;

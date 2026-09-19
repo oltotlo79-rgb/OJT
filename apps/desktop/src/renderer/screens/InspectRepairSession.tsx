@@ -768,6 +768,7 @@ export function InspectRepairSession(): JSX.Element {
           <ReportPanel
             reports={reports}
             pending={pendingReport}
+            wires={session.wires}
             onPick={(kind) => {
               const store = useStore.getState();
               const target = store.pendingReport;

@@ -104,7 +104,9 @@ describe('MarkSheetPanel（§9.1 回答 / §17.2 #5）', () => {
     const first = C1.parts[0];
     if (first === undefined) return;
     const radio = screen.getByTestId(`answer-${first.id}-coil-open`);
-    expect(radio.getAttribute('aria-label')).toContain(first.id);
+    // UXレビュー #6a: 内部ID（`p1`）ではなく番号＋型番で読み上げる（①リレー MY4N）
+    expect(radio.getAttribute('aria-label')).toContain('①');
+    expect(radio.getAttribute('aria-label')).not.toContain(first.id);
     expect(radio.getAttribute('aria-label')).toContain('コイル断線');
   });
 

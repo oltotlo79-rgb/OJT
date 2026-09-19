@@ -17,7 +17,8 @@ import styles from './result.module.css';
  * 故障の在処を1行の文字列にする（見逃しの一覧に出す）。
  * `wire-missing`（未配線）は取り除かれた電線の `wireId` を持つが、訓練者は盤の上で
  * その電線を一度も見ていない（そもそも配線されていない）ので、`wireId` ではなく
- * 見えている端子（`terminals`）で示す（レビュー指摘 M1）。
+ * 見えている端子（`terminals`）で示す（レビュー指摘 M1）。それ以外の電線の故障（断線など）は
+ * 訓練者が実際に見ている電線なので、電線IDのまま示す。
  */
 function siteLabel(site: FaultSite): string {
   const where =

@@ -39,12 +39,28 @@ button {
   background: var(--panel-2);
   border: 1px solid var(--line);
   border-radius: 4px;
-  padding: 5px 10px;
+  /* UXレビュー #4: クリック領域が狭いボタンがあった。押しやすい最小サイズを底上げする */
+  min-height: 32px;
+  padding: 6px 12px;
   cursor: pointer;
 }
 
 button:hover:not(:disabled) {
   border-color: var(--accent);
+}
+
+/*
+ * UXレビュー #16: キーボード操作時にフォーカス位置が見えなかった。マウスクリックでは出さず、
+ * Tab移動など：focus-visible のときだけ輪郭を出す。
+ */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* UXレビュー #24: 暗いUIでもスクロールバーが背景に溶けて見えなかった。 */
+* {
+  scrollbar-color: var(--line) var(--panel);
 }
 
 button:disabled {

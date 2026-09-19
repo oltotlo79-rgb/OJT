@@ -129,12 +129,33 @@ export function Toolbar({
         ) : null}
         {extraTools === undefined ? null : <div className={styles.toolGroup}>{extraTools}</div>}
         <div className={styles.toolGroup}>
-          <button type="button" disabled={!canUndo} onClick={onUndo}>
+          <button
+            type="button"
+            disabled={!canUndo}
+            title={canUndo ? undefined : JA.disabledReason.undo}
+            onClick={onUndo}
+          >
             {JA.session.undo}
           </button>
-          <button type="button" disabled={!canRedo} onClick={onRedo}>
+          <button
+            type="button"
+            disabled={!canRedo}
+            title={canRedo ? undefined : JA.disabledReason.redo}
+            onClick={onRedo}
+          >
             {JA.session.redo}
           </button>
+          {/*
+            UXレビュー #5: 押せない理由を `title` のツールチップだけに頼らず、
+            パネル内にも一行で出す。
+          */}
+          {!canUndo || !canRedo ? (
+            <span className={styles.disabledReason} data-testid="undo-redo-reason">
+              {!canUndo ? JA.disabledReason.undo : null}
+              {!canUndo && !canRedo ? ' ／ ' : null}
+              {!canRedo ? JA.disabledReason.redo : null}
+            </span>
+          ) : null}
         </div>
         <div className={styles.toolGroup}>
           {VIEWS.map((view) => (

@@ -71,6 +71,20 @@ describe('runRemoveWire', () => {
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.code).toBe('locked-wire');
   });
+
+  it('ログに内部の電線IDをそのまま出さず、端子と色で示す（UXレビュー #6b）', () => {
+    const s = session();
+    const added = runAddWire(s, toTerminalId('P.1'), toTerminalId('CR1.14'), '青');
+    expect(added.ok).toBe(true);
+    if (!added.ok) return;
+    const removed = runRemoveWire(s, added.value.id);
+    expect(removed.ok).toBe(true);
+    if (!removed.ok) return;
+    expect(removed.command.label).not.toContain(added.value.id);
+    expect(removed.command.label).toContain('P.1');
+    expect(removed.command.label).toContain('CR1.14');
+    expect(removed.command.label).toContain('青');
+  });
 });
 
 describe('runPlug / runUnplug / runSetPreset', () => {
@@ -104,6 +118,15 @@ describe('runPlug / runUnplug / runSetPreset', () => {
     const result = runSetPreset(s, 'S1', 3000);
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.code).toBe('not-a-timer');
+  });
+
+  it('装着のログに内部種別をそのまま出さない（UXレビュー #6c）', () => {
+    const s = session();
+    const result = runPlug(s, 'S1', 'relay-my4n');
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.command.label).not.toContain('relay-my4n');
+    expect(result.command.label).toContain('MY4N');
   });
 });
 

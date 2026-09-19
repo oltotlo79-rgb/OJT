@@ -120,6 +120,26 @@ describe('種別とレンジ（§9.3）', () => {
     fireEvent.click(screen.getByRole('button', { name: 'DCV' }));
     expect(screen.getByRole('button', { name: '0Ω ADJ' }).hasAttribute('disabled')).toBe(true);
   });
+
+  it('押せない理由を title と一行の説明の両方で出す（UXレビュー #5）', () => {
+    render(<TesterPanel />);
+    fireEvent.click(screen.getByRole('button', { name: 'アナログ' }));
+    fireEvent.click(screen.getByRole('button', { name: 'DCV' }));
+    const zero = screen.getByRole('button', { name: '0Ω ADJ' });
+    expect(zero).toHaveAttribute('title', JA.disabledReason.zeroAdjust);
+    expect(screen.getByTestId('zero-disabled-reason')).toHaveTextContent(
+      JA.disabledReason.zeroAdjust,
+    );
+  });
+
+  it('押せるときは title も一行の説明も出さない（UXレビュー #5）', () => {
+    render(<TesterPanel />);
+    fireEvent.click(screen.getByRole('button', { name: 'アナログ' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Ω' }));
+    const zero = screen.getByRole('button', { name: '0Ω ADJ' });
+    expect(zero).not.toHaveAttribute('title');
+    expect(screen.queryByTestId('zero-disabled-reason')).toBeNull();
+  });
 });
 
 describe('プローブ（§9.3）', () => {

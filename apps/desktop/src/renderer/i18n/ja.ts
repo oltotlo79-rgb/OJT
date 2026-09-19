@@ -703,6 +703,16 @@ export const JA = {
     repairFixHint: '白線を張るか部品を交換して修復します。',
     repairJudgeHint: '判定ボタンで判定します。',
   },
+  /**
+   * 押せないボタンの理由（UXレビュー #5）。`title` と、パネル内に出す一行の説明の両方に使う
+   * （ツールチップだけに頼らない）。`panels/Toolbar.tsx` の元に戻す／やり直し、
+   * `panels/TesterPanel.tsx` の 0Ω ADJ。
+   */
+  disabledReason: {
+    undo: '元に戻せる操作がありません',
+    redo: 'やり直せる操作がありません',
+    zeroAdjust: 'デジタルテスター、またはΩ／導通レンジのときだけ調整できます',
+  },
   // --- /UX pass 2026-09-19 ---
 } as const;
 
@@ -874,16 +884,49 @@ export function correctCountText(correct: number, total: number): string {
   return `${String(correct)} / ${String(total)} ${JA.result.correct}`;
 }
 
-/** 部品トレイの1行（`p1（リレー）`）。§9.1 */
-export function trayPartLabel(partId: string, isTimer: boolean): string {
-  return `${partId}（${isTimer ? JA.session.timer : JA.session.relay}）`;
+/** 丸数字（①〜⑳）。範囲外は `(21)` のようにかっこ書きに落とす。UXレビュー #6 */
+function circledNumber(n: number): string {
+  return n >= 1 && n <= 20 ? String.fromCodePoint(0x2460 + n - 1) : `(${String(n)})`;
 }
 
-/** 指摘の対象の表示（`電線 sw-003` / `端子 CR1.13` / `部品 CR2`）。§9.2 */
+/**
+ * 部品トレイ・マークシート・結果画面の部品表示。UXレビュー #6: 内部ID（`p1`）を
+ * そのまま画面に出さず、`①リレー MY4N` のように番号＋型番で示す。番号はIDの末尾の連番
+ * （`p1` → 1）から出す（`problem.parts` は常にこの並びで、番号は課題内で安定する）。
+ * IDに連番が無い（`problem.parts` に無い部品IDなど）ときは番号を付けない。
+ */
+export function trayPartLabel(partId: string, isTimer: boolean): string {
+  const match = /(\d+)$/.exec(partId);
+  const name = isTimer ? `${JA.session.timer} H3Y-4` : `${JA.session.relay} MY4N`;
+  if (match === null) return name;
+  return `${circledNumber(Number(match[1]))}${name}`;
+}
+
+/** 部品種別の表示名（UXレビュー #6c）。操作ログに `relay-my4n` のような内部種別を出さない。 */
+export function partKindLabel(kind: 'relay-my4n' | 'timer-h3y4'): string {
+  return kind === 'timer-h3y4' ? `${JA.session.timer} H3Y-4` : `${JA.session.relay} MY4N`;
+}
+
+/**
+ * 電線の表示名（UXレビュー #6b）。内部の電線ID（`sw-005` / `w-001`）をそのまま出さず、
+ * 両端の端子と色から組み立てる（`CR1.9–PB1.2c の青線`）。
+ */
+export function wireLabel(wire: { from: string; to: string; color: string }): string {
+  return `${wire.from}–${wire.to} の${wire.color}線`;
+}
+
+/**
+ * 指摘の対象の表示（`端子 CR1.13` / `部品 CR2`、電線は `wires` が渡っていれば
+ * `CR1.9–PB1.2c の青線`。渡っていない・見つからないときは電線IDへ後退する）。§9.2 / UXレビュー #6b
+ */
 export function reportTargetLabel(
   target: { wireId: string } | { partId: string } | { terminalId: string },
+  wires?: readonly { id: string; from: string; to: string; color: string }[],
 ): string {
-  if ('wireId' in target) return `${JA.session.wires} ${target.wireId}`;
+  if ('wireId' in target) {
+    const wire = wires?.find((w) => w.id === target.wireId);
+    return wire === undefined ? `${JA.session.wires} ${target.wireId}` : wireLabel(wire);
+  }
   if ('terminalId' in target) return `${JA.inspectRepair.terminal} ${target.terminalId}`;
   return `${JA.session.parts} ${target.partId}`;
 }

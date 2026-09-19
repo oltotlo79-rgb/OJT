@@ -223,6 +223,7 @@ export function TesterPanel({ children }: { children?: JSX.Element }): JSX.Eleme
         <button
           type="button"
           disabled={!canZero}
+          title={canZero ? undefined : JA.disabledReason.zeroAdjust}
           onClick={() => {
             dispatchTester({ type: 'zero-adjust' });
           }}
@@ -233,7 +234,12 @@ export function TesterPanel({ children }: { children?: JSX.Element }): JSX.Eleme
           <span className={styles.label} data-testid="zero-state">
             {zeroAdjusted ? JA.tester.zeroDone : JA.tester.zeroTodo}
           </span>
-        ) : null}
+        ) : (
+          // UXレビュー #5: 押せない理由をパネル内にも一行で出す
+          <span className={styles.label} data-testid="zero-disabled-reason">
+            {JA.disabledReason.zeroAdjust}
+          </span>
+        )}
       </div>
 
       <ProbeRow side="black" />
