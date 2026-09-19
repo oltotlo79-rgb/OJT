@@ -171,12 +171,27 @@ export interface AppSettings {
   soundVolume: number;
   /** 起動時に一時保存から復帰するか確認する。§12.3 */
   restorePrompt: boolean;
-  /** モードDの既定メーカー（Phase 3 は `mitsubishi` のみ実装）。§10.5 / §12.1 */
+  /**
+   * モードDの既定メーカー（Phase 4 で4社すべてが選べる）。§10.5 / §12.1
+   * **「課題を開くときの初期値」**であって、いま開いているセッションの方言ではない（決定表#24）。
+   */
   defaultVendor: DialectId;
-  /** ラダーの表示列数（接点列。8〜15）。§10.6 */
+  /**
+   * ラダーの表示列数（接点列。8〜15）。§10.6
+   * **`0` は「メーカーの既定に従う」**（`profile.gridCols`）。Plan 4B 決定表#8
+   */
   ladderGridCols: number;
-  /** モニタ中の通電表示色（`#rrggbb`）。§10.6 */
+  /**
+   * モニタ中の通電表示色（`#rrggbb`）。§10.6
+   * **空文字は「スキンの既定色」**（`profile.monitorColors.powered`）。Plan 4B 決定表#8
+   */
   monitorColor: string;
+  /**
+   * 通電色の移行（`LEGACY_MONITOR_COLOR` → `''`）が済んだ印。Plan 4B 決定表#8 / レビュー B1
+   * **画面はこの欄を読まない**（設定ファイルに一度きりの移行を記録するためだけの内部の印）。
+   * 印を持たないと、移行のあとで利用者が改めて選び直した `#1E64FF` を毎回消してしまう。
+   */
+  monitorColorMigrated: boolean;
 }
 
 /**
@@ -188,6 +203,13 @@ export interface AppSettingsResponse extends AppSettings {
   warning?: string;
 }
 
+/**
+ * Phase 3 の `monitorColor` の既定（三菱の青）。§10.6 / Plan 4B 決定表#8
+ * この値のまま保存されている設定ファイルは、読込時に `''`（スキンの既定色）へ移行する。
+ * 移行しないと OMRON・JTEKT・シャープを選んでも通電色が青のままになる（前提#24）。
+ */
+export const LEGACY_MONITOR_COLOR = '#1E64FF';
+
 /** 設定の既定値。 */
 export const DEFAULT_SETTINGS: AppSettings = {
   userContentDir: '',
@@ -195,8 +217,11 @@ export const DEFAULT_SETTINGS: AppSettings = {
   soundVolume: 0.5,
   restorePrompt: true,
   defaultVendor: 'mitsubishi',
-  ladderGridCols: 11,
-  monitorColor: '#1E64FF',
+  // 0 / '' = メーカーの既定に従う（決定表#8）
+  ladderGridCols: 0,
+  monitorColor: '',
+  // 新しい設定ファイルには移行すべき旧既定が入っていないので、最初から済み扱いでよい
+  monitorColorMigrated: true,
 };
 
 /** preload が `window.ojt` に公開する型付きAPI。§4.3 */

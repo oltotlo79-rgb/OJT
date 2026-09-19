@@ -1,6 +1,6 @@
 import {
-  DIALECT_IDS,
-  IMPLEMENTED_DIALECT_IDS,
+  availableDialects,
+  getDialect,
   isDialectId,
   MAX_GRID_COLS,
   MIN_GRID_COLS,
@@ -11,6 +11,7 @@ import { ojtApi } from '../app/ojt-api.js';
 import { useStore } from '../app/store.js';
 import { sounds } from '../audio/sounds.js';
 import { JA } from '../i18n/ja.js';
+import { SKIN_THEMES } from '../ladder/skins/index.js';
 import styles from './screens.module.css';
 
 /**
@@ -117,6 +118,7 @@ export function Settings(): JSX.Element {
    */
   const commitGridCols = (): void => {
     if (settings === undefined) return;
+    if (settings.ladderGridCols === 0) return; // メーカーの既定に従う
     const clamped = Math.min(
       MAX_GRID_COLS,
       Math.max(MIN_GRID_COLS, Math.round(settings.ladderGridCols)),
@@ -230,7 +232,7 @@ export function Settings(): JSX.Element {
                 data-testid="setting-vendor"
                 value={settings.defaultVendor}
                 onChange={(event) => {
-                  // 値は `DIALECT_IDS` から作った <option> の value しか来ないが、DOM の
+                  // 値は実装済みプロファイルから作った <option> の value しか来ないが、DOM の
                   // `event.target.value` は素の string なので `isDialectId()` で絞ってから渡す
                   // （`AppSettings.defaultVendor` は `DialectId`。レビュー指摘 #9）。
                   if (isDialectId(event.target.value)) {
@@ -238,27 +240,50 @@ export function Settings(): JSX.Element {
                   }
                 }}
               >
-                {DIALECT_IDS.map((id) => (
+                {/* `availableDialects()` は実装済みのプロファイルだけを返す（Phase 4 で4件） */}
+                {availableDialects().map((profile) => (
                   <option
-                    key={id}
-                    value={id}
-                    data-testid={`vendor-option-${id}`}
-                    disabled={!IMPLEMENTED_DIALECT_IDS.includes(id)}
+                    key={profile.id}
+                    value={profile.id}
+                    data-testid={`vendor-option-${profile.id}`}
                   >
-                    {JA.settings.vendorLabels[id]}
-                    {IMPLEMENTED_DIALECT_IDS.includes(id)
-                      ? ''
-                      : `（${JA.settings.vendorUnimplemented}）`}
+                    {profile.displayName}
                   </option>
                 ))}
               </select>
             </section>
             <p className={styles.subtitle} data-testid="vendor-note">
-              {JA.settings.vendorHelp} {JA.settings.vendorUnimplemented}
+              {JA.settings.vendorHelp}
             </p>
             <p className={styles.subtitle} data-testid="vendor-assumption">
               {ASSUMPTION_NOTICE}
             </p>
+            {/* いま選んでいるスキンの見た目のうち、何が前提なのかを出す（§17.1 / 4A H-5） */}
+            <ul className={styles.subtitle} data-testid="skin-assumed">
+              {(isDialectId(settings.defaultVendor)
+                ? SKIN_THEMES[settings.defaultVendor].assumed
+                : []
+              ).map((note) => (
+                <li key={note}>{note}</li>
+              ))}
+            </ul>
+
+            <section className={styles.settingRow}>
+              <label htmlFor="setting-grid-cols-auto">{JA.settings.followVendor}</label>
+              <input
+                id="setting-grid-cols-auto"
+                type="checkbox"
+                checked={settings.ladderGridCols === 0}
+                data-testid="setting-grid-cols-auto"
+                onChange={(event) => {
+                  // 外したときは「いまのメーカーの既定」から上書きを始める
+                  const vendorCols = isDialectId(settings.defaultVendor)
+                    ? getDialect(settings.defaultVendor).gridCols
+                    : DEFAULT_SETTINGS.ladderGridCols;
+                  patch({ ladderGridCols: event.target.checked ? 0 : vendorCols });
+                }}
+              />
+            </section>
 
             <section className={styles.settingRow}>
               <label htmlFor="setting-grid-cols">{JA.settings.gridCols}</label>
@@ -267,6 +292,7 @@ export function Settings(): JSX.Element {
                 type="number"
                 min={MIN_GRID_COLS}
                 max={MAX_GRID_COLS}
+                disabled={settings.ladderGridCols === 0}
                 value={settings.ladderGridCols}
                 data-testid="setting-grid-cols"
                 onChange={(event) => {
@@ -284,11 +310,37 @@ export function Settings(): JSX.Element {
             </p>
 
             <section className={styles.settingRow}>
+              <label htmlFor="setting-monitor-color-auto">{JA.settings.followVendor}</label>
+              <input
+                id="setting-monitor-color-auto"
+                type="checkbox"
+                checked={settings.monitorColor.length === 0}
+                data-testid="setting-monitor-color-auto"
+                onChange={(event) => {
+                  // 外したときは「いま選んでいるメーカーの通電色」から上書きを始める（B1）
+                  const vendorColor = isDialectId(settings.defaultVendor)
+                    ? getDialect(settings.defaultVendor).monitorColors.powered
+                    : DEFAULT_SETTINGS.monitorColor;
+                  patch({ monitorColor: event.target.checked ? '' : vendorColor });
+                }}
+              />
+            </section>
+
+            <section className={styles.settingRow}>
               <label htmlFor="setting-monitor-color">{JA.settings.monitorColor}</label>
               <input
                 id="setting-monitor-color"
                 type="color"
-                value={settings.monitorColor}
+                disabled={settings.monitorColor.length === 0}
+                value={
+                  settings.monitorColor.length > 0
+                    ? settings.monitorColor
+                    : // 空＝スキンの既定色。見本にはその色を出す（決定表#8）
+                      (isDialectId(settings.defaultVendor)
+                        ? getDialect(settings.defaultVendor).monitorColors.powered
+                        : '#000000'
+                      ).toLowerCase()
+                }
                 data-testid="setting-monitor-color"
                 onChange={(event) => {
                   setSettings({ ...settings, monitorColor: event.target.value });

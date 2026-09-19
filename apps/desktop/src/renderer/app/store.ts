@@ -35,6 +35,7 @@ import {
 } from '@ojt/content';
 import { COIL_COL, type LadderProgram } from '@ojt/ladder-core';
 import {
+  getDialect,
   IMPLEMENTED_DIALECT_IDS,
   MAX_GRID_COLS,
   MIN_GRID_COLS,
@@ -312,6 +313,13 @@ export interface AppState {
   monitorWriteNoticeShown: boolean;
   /** いま使っている方言（Phase 3 は常に `mitsubishi`）。§10.5 */
   dialectId: DialectId;
+  /**
+   * 設定画面の既定メーカー。§12.1 / 決定表#24
+   * **課題を開くときの初期値**であって、いまのセッションの方言（`dialectId`）ではない。
+   * 設定を保存するたびに `dialectId` を上書きすると、作業ファイルから復元した方言や
+   * 表記切替で選んだ方言がセッションの途中で戻ってしまう（前提#31b）。
+   */
+  defaultVendor: DialectId;
   /** ラダーの表示列数（設定画面。§10.6） */
   ladderGridCols: number;
   /** モニタ中の通電色（設定画面。§10.6） */
@@ -617,6 +625,7 @@ export const useStore = create<AppState>((set, get) => ({
 
   ...plcFields(),
   dialectId: 'mitsubishi',
+  defaultVendor: DEFAULT_SETTINGS.defaultVendor,
   ladderGridCols: DEFAULT_SETTINGS.ladderGridCols,
   monitorColor: DEFAULT_SETTINGS.monitorColor,
 
@@ -1104,22 +1113,30 @@ export const useStore = create<AppState>((set, get) => ({
     set({ plcRunning });
   },
   applyLadderSettings: ({ gridCols, monitorColor, vendor }) => {
-    const clampedGridCols = Math.min(MAX_GRID_COLS, Math.max(MIN_GRID_COLS, Math.round(gridCols)));
+    // 0 は「スキンの既定列数」の印なのでそのまま持つ（丸めない。決定表#8）
+    const clampedGridCols =
+      gridCols === 0 ? 0 : Math.min(MAX_GRID_COLS, Math.max(MIN_GRID_COLS, Math.round(gridCols)));
+    /*
+     * 表示列数が縮んで、カーソルがいま見えない接点列を指していたら、見える最後の接点列へ詰める
+     * （レビュー指摘 #7）。**この詰めは残す**（4B レビュー I3）——落とすと 15列から8列へ狭めた
+     * 直後にカーソルが画面外を指し、`Enter` が見えないセルを編集する。
+     * `0`（＝メーカーの既定に従う）のときは、いまの方言の既定列数で詰める。
+     */
+    const visibleCols =
+      clampedGridCols === 0 ? getDialect(get().dialectId).gridCols : clampedGridCols;
     const cursor = get().ladderCursor;
-    // 表示列数が縮んで、カーソルがいま見えない接点列を指していたら、見える最後の接点列へ
-    // 詰める。コイル列（`COIL_COL`）はどの表示列数でも必ず見えているので動かさない
-    // （レビュー指摘 #7）。
+    // コイル列（`COIL_COL`）はどの表示列数でも必ず見えているので動かさない
     const clampedCursor =
-      cursor.col === COIL_COL || cursor.col < clampedGridCols
+      cursor.col === COIL_COL || cursor.col < visibleCols
         ? cursor
-        : { ...cursor, col: clampedGridCols - 1 };
+        : { ...cursor, col: visibleCols - 1 };
     set({
       ladderGridCols: clampedGridCols,
       monitorColor,
       ladderCursor: clampedCursor,
-      // 未実装のメーカーが設定に残っていても落とさない（Phase 4 で実装されたら効く）
+      // **`dialectId` には触らない**（決定表#24）。効くのは次に課題を開くときである
       ...(isDialectId(vendor) && IMPLEMENTED_DIALECT_IDS.includes(vendor)
-        ? { dialectId: vendor }
+        ? { defaultVendor: vendor }
         : {}),
     });
   },

@@ -129,6 +129,7 @@ describe('writeSettings（レビュー指摘: renderer からの入力を信用�
       defaultVendor: DEFAULT_SETTINGS.defaultVendor,
       ladderGridCols: DEFAULT_SETTINGS.ladderGridCols,
       monitorColor: DEFAULT_SETTINGS.monitorColor,
+      monitorColorMigrated: true,
     });
     expect(readSettings()).toEqual(saved);
   });
@@ -143,6 +144,7 @@ describe('writeSettings（レビュー指摘: renderer からの入力を信用�
         'defaultVendor',
         'ladderGridCols',
         'monitorColor',
+        'monitorColorMigrated',
         'restorePrompt',
         'soundEnabled',
         'soundVolume',
@@ -200,20 +202,48 @@ describe('writeSettings（レビュー指摘: renderer からの入力を信用�
     expect(saved.soundEnabled).toBe(false);
   });
 
-  it('defaults and clamps the PLC settings (§10.6)', () => {
+  it('defaults and clamps the PLC settings (§10.6 / Plan 4B 決定表#8)', () => {
     expect(DEFAULT_SETTINGS.defaultVendor).toBe('mitsubishi');
-    expect(DEFAULT_SETTINGS.ladderGridCols).toBe(11);
-    expect(DEFAULT_SETTINGS.monitorColor).toBe('#1E64FF');
+    // 0 と '' は「メーカーの既定に従う」（Plan 4B 決定表#8）
+    expect(DEFAULT_SETTINGS.ladderGridCols).toBe(0);
+    expect(DEFAULT_SETTINGS.monitorColor).toBe('');
     // `main/settings.ts` は正規化を単体の `normalizeSettings()` としては公開していない
     // （`sanitizePatch(base, patch)` が非公開のまま既定値とマージする）。ここでは公開APIの
     // `writeSettings()` 経由で同じ正規化（クランプ・ホワイトリスト）を確かめる。
     expect(writeSettings({ ladderGridCols: 2 }).ladderGridCols).toBe(8);
     expect(writeSettings({ ladderGridCols: 99 }).ladderGridCols).toBe(15);
-    expect(writeSettings({ monitorColor: 'red' }).monitorColor).toBe('#1E64FF');
+    expect(writeSettings({ ladderGridCols: 0 }).ladderGridCols).toBe(0);
+    expect(writeSettings({ monitorColor: 'red' }).monitorColor).toBe('');
+    expect(writeSettings({ monitorColor: '' }).monitorColor).toBe('');
     // Plan 4A Task 5（81c701a）で4方言すべてが登録され、`omron` も実装済みメーカーとして通る
     // （以前は三菱以外は弾かれ、既定値の `mitsubishi` に戻っていた。決定表#13 の前提が更新された）
     expect(writeSettings({ defaultVendor: 'omron' }).defaultVendor).toBe('omron');
     // 方言IDの形をしていない値は引き続き無視して、直前に保存された値を保つ
     expect(writeSettings({ defaultVendor: 'not-a-real-dialect' }).defaultVendor).toBe('omron');
+  });
+});
+
+describe('旧い設定ファイルの移行（Plan 4B 決定表#8 / レビュー B1）', () => {
+  it('turns the old Mitsubishi-blue default into "follow the skin", once', () => {
+    // 旧既定（`#1E64FF`）のまま保存されていた設定ファイル（移行の印はまだ無い）
+    writeFileSync(settingsPath(), JSON.stringify({ monitorColor: '#1E64FF' }), 'utf8');
+    // 読み込む（＝main 側の読み手を実際に通す）と「スキンの既定色」になる
+    expect(readSettings().monitorColor).toBe('');
+    // 印がファイルに残るので、次からは走らない
+    expect(onDisk()['monitorColorMigrated']).toBe(true);
+    // 移行のあとで利用者が**改めて三菱の青を選んだ**ら、それは消さない
+    expect(writeSettings({ monitorColor: '#1E64FF' }).monitorColor).toBe('#1E64FF');
+    expect(readSettings().monitorColor).toBe('#1E64FF');
+  });
+
+  it('leaves a colour the trainee chose alone', () => {
+    expect(writeSettings({ monitorColor: '#FF00AA' }).monitorColor).toBe('#FF00AA');
+    expect(readSettings().monitorColor).toBe('#FF00AA');
+  });
+
+  /** 移行は設定ファイルがあるときだけ（新規インストールには移行すべき値が無い）。 */
+  it('does not write a settings file just because it was read', () => {
+    expect(readSettings().monitorColor).toBe('');
+    expect(existsSync(settingsPath())).toBe(false);
   });
 });

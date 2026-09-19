@@ -14,7 +14,12 @@ import {
   MAX_GRID_COLS,
   MIN_GRID_COLS,
 } from '@ojt/plc-dialects';
-import { DEFAULT_SETTINGS, type AppSettings, type AppSettingsResponse } from '../shared/ipc.js';
+import {
+  DEFAULT_SETTINGS,
+  LEGACY_MONITOR_COLOR,
+  type AppSettings,
+  type AppSettingsResponse,
+} from '../shared/ipc.js';
 import { MSG } from '../shared/messages.js';
 
 /**
@@ -75,13 +80,50 @@ function sanitizePatch(base: AppSettings, patch: unknown): AppSettings {
   }
   const gridCols = source['ladderGridCols'];
   if (typeof gridCols === 'number' && Number.isFinite(gridCols)) {
-    next.ladderGridCols = Math.min(MAX_GRID_COLS, Math.max(MIN_GRID_COLS, Math.round(gridCols)));
+    // 0 は「メーカーの既定に従う」（Plan 4B 決定表#8）。それ以外は 8〜15 に丸める
+    next.ladderGridCols =
+      gridCols === 0 ? 0 : Math.min(MAX_GRID_COLS, Math.max(MIN_GRID_COLS, Math.round(gridCols)));
   }
   const monitorColor = source['monitorColor'];
-  if (typeof monitorColor === 'string' && /^#[0-9a-fA-F]{6}$/.test(monitorColor)) {
+  // 空文字は「スキンの既定色」（決定表#8）。**ここでは移行しない**（下の `loadSettings()` が持つ）
+  if (typeof monitorColor === 'string' && /^(#[0-9a-fA-F]{6})?$/.test(monitorColor)) {
     next.monitorColor = monitorColor;
   }
+  // 移行の印（renderer からも来るが、`true` を消せるだけなので害はない）
+  if (typeof source['monitorColorMigrated'] === 'boolean') {
+    next.monitorColorMigrated = source['monitorColorMigrated'];
+  }
   return next;
+}
+
+/**
+ * 旧既定（三菱の青）の通電色を「スキンの既定色」へ**一度だけ**移行する。
+ * Plan 4B 決定表#8 / レビュー B1
+ *
+ * `sanitizePatch()` に置いてはいけない。あの関数は `settings:set` の**保存でも通る**ので、
+ * 移行のあとで利用者が設定画面から改めて選び直した `#1E64FF` まで毎回消してしまう。
+ * 印（`monitorColorMigrated`）を設定ファイルに残し、二度と走らせない。
+ *
+ * 印の有無は**設定ファイルの生の中身**で見る。`DEFAULT_SETTINGS` は印を立てた状態（新規
+ * インストールには移行すべき値が無い）なので、重ねたあとの `settings` で見ると印を持たない
+ * 旧いファイルまで「移行済み」に見えてしまう。
+ *
+ * @param settings 読み込んだ設定（移行するときはこの場で書き換える）
+ * @param raw 設定ファイルの生の中身（`undefined` ならファイルが無い＝移行するものが無い）
+ * @returns 印を新しく立てたら `true`（＝ファイルへ書き戻す価値がある）
+ */
+function migrateMonitorColor(settings: AppSettings, raw: unknown): boolean {
+  if (typeof raw !== 'object' || raw === null) return false;
+  if ((raw as Record<string, unknown>)['monitorColorMigrated'] === true) return false;
+  settings.monitorColorMigrated = true;
+  if (settings.monitorColor.toUpperCase() !== LEGACY_MONITOR_COLOR) return true;
+  /*
+   * 移行しないと、Phase 4 で OMRON・JTEKT・シャープを選んでも通電色が青のままになる
+   * （`LadderGrid` の「空ならプロファイルの色」という分岐が一度も通らない。前提#24）。
+   * 三菱の青を意図して選んでいた利用者も1度だけ既定へ戻るが、設定画面で選び直せる。
+   */
+  settings.monitorColor = '';
+  return true;
 }
 
 /** 一時ファイル（`<target>.tmp`）→rename でアトミックに書く。`work-files.ts` と同じ理由。 */
@@ -110,6 +152,14 @@ function loadSettings(): { settings: AppSettings; corrupt: boolean } {
   }
   const settings = sanitizePatch(DEFAULT_SETTINGS, raw);
   if (settings.userContentDir.length === 0) settings.userContentDir = defaultUserContentDir();
+  // 壊れたファイルには書き戻さない（`writeSettings()` が控えを取る前に踏み潰さないため）
+  if (!corrupt && migrateMonitorColor(settings, raw)) {
+    try {
+      writeFileAtomic(settingsPath(), `${JSON.stringify(settings, null, 2)}\n`);
+    } catch {
+      // 印を残せなくても読込は続ける（次の `writeSettings()` で残る）
+    }
+  }
   return { settings, corrupt };
 }
 
