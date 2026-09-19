@@ -1,0 +1,481 @@
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import {
+  _electron as electron,
+  expect,
+  test,
+  type ElectronApplication,
+  type Page,
+} from '@playwright/test';
+
+/**
+ * ヘルプと取扱説明書の E2E。§16 Phase 6 受入基準①②③⑥（Plan 6 Task 11）。
+ *
+ * **「説明書（PDF）を開く」は押さない**（Plan 6 決定表 P9）。押すと OS の既定の PDF
+ * ビューアが本当に起動し、CI でもレビュー中でも閉じられない。ここが確かめるのは
+ * 「どの画面のヘルプにもボタンが出ていて押せること」までで、`shell.openPath()` の3分岐
+ * （開けた・PDFが無い・OSが拒んだ）は `test/manual-ipc.test.ts` が縛る。同梱 PDF そのもの
+ * の実在は配布物の検査（`scripts/check-dist.mjs`／受入基準④）の仕事で、`build` しか
+ * していないこのスペックは見ない。
+ *
+ * **図は見ない**（Task 12 の仕事）。ここで確かめるのは「まだ撮っていない図が壊れた画像の
+ * 枠として出ていないこと」（受入基準⑥）だけである。
+ *
+ * 起動の定型（`CHROMIUM_FLAGS`・窓の大きさ・復元プロンプトの片付け）と `goHome()` /
+ * `setVendor()` は `plc-vendors.spec.ts` / `schematic.spec.ts` からそのまま写している。
+ * 既存の spec は1行も触らない。画面の文言も `src/renderer/i18n/ja.ts` と
+ * `src/renderer/help/manual-content.ts` からの**書き写し**で、E2E は成果物を外から触るだけに
+ * する（`inspect.spec.ts` 冒頭の注記と同じ流儀）。
+ */
+
+const APP_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const CHROMIUM_FLAGS = [
+  '--use-gl=swiftshader',
+  '--use-angle=swiftshader',
+  '--enable-unsafe-swiftshader',
+];
+/** 他の E2E と同じ窓の大きさ。 */
+const WINDOW = { width: 1440, height: 900 } as const;
+
+/**
+ * もくじに出る章の並び（`help/manual-content.ts` の `MANUAL_CHAPTERS` からの書き写し）。
+ * 受入基準③の「もくじに全13章が正本の順で出ている」はこの配列との完全一致で見る。
+ */
+const CHAPTER_TITLES = [
+  'はじめに',
+  'パソコンに入れる',
+  '画面の見方',
+  '回路を組み立てる（モードB）',
+  '部品を点検する（モードC1）',
+  '回路を点検して直す（モードC2）',
+  'PLCでプログラムを作る（モードD）',
+  '回路図を描いて確かめる',
+  '作業を保存する・続きからやる',
+  '設定',
+  '指導者向け: 課題の作り方と配り方',
+  '用語集',
+  '困ったときは',
+] as const;
+
+/** 画面 → 最初に出る節の見出し（`help/help-model.ts` の `HELP_SECTION_BY_SCREEN`）。 */
+const HOME_SECTION = 'このアプリでできること';
+const LIST_SECTION = '課題をえらぶ';
+const SETTINGS_SECTION = '設定の画面';
+const ASSEMBLE_SECTION = '回路を組み立てる';
+const SCHEMATIC_SECTION = '回路図を描く';
+const C1_SECTION = '部品を点検する';
+const C2_SECTION = '回路を点検して直す';
+const PLC_SECTION = 'PLCの課題を進める';
+const RESULT_SECTION = '結果の画面';
+
+let app: ElectronApplication;
+let page: Page;
+
+interface Box {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+function intersects(a: Box, b: Box): boolean {
+  return a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
+}
+
+async function boxOf(testId: string): Promise<Box> {
+  const box = await page.getByTestId(testId).boundingBox();
+  if (box === null) throw new Error(`${testId} の矩形を取得できませんでした`);
+  return box;
+}
+
+/** 窓の大きさを変える（Playwright の `setViewportSize()` は Electron では使えない）。 */
+async function setWindow(width: number, height: number): Promise<void> {
+  await app.evaluate(
+    ({ BrowserWindow }, size) => {
+      const window = BrowserWindow.getAllWindows()[0];
+      if (window === undefined) throw new Error('ウィンドウがありません');
+      window.setBounds({ x: 0, y: 0, width: size.width, height: size.height });
+    },
+    { width, height },
+  );
+  // 折り返しの計算が終わるまで待つ（`@media` の切り替えも含む）
+  await page.waitForTimeout(600);
+}
+
+/** いま焦点がある要素の目印（焦点が戻ったことを確かめるのに使う）。 */
+async function activeTestId(): Promise<string | null> {
+  return page.evaluate(() => document.activeElement?.getAttribute('data-testid') ?? null);
+}
+
+/**
+ * まだ撮っていない図が「壊れた画像の枠」として出ていないこと（受入基準⑥）。
+ * `src` を入れなかった図は `figure` ごと畳まれ、押せるボタンも残らない。
+ * 撮ってある図（Task 12 以降）は、読み込みに成功していることまで見る。
+ */
+async function figureProblems(): Promise<string[]> {
+  return page.evaluate(() => {
+    const problems: string[] = [];
+    const root = document.querySelector('[data-testid="help-prose"]');
+    if (root === null) return ['本文（help-prose）がありません'];
+    for (const image of root.querySelectorAll('img[data-manual-image]')) {
+      const name = (image as HTMLImageElement).dataset['manualImage'] ?? '(名前なし)';
+      const source = image.getAttribute('src') ?? '';
+      const figure = image.closest('figure');
+      const hidden = figure instanceof HTMLElement && figure.hidden;
+      if (source === '') {
+        if (!hidden) problems.push(`${name}: 図が無いのに枠が出ています`);
+      } else {
+        if (hidden) problems.push(`${name}: 図があるのに枠が畳まれています`);
+        const img = image as HTMLImageElement;
+        if (!img.complete || img.naturalWidth === 0) problems.push(`${name}: 図を読み込めません`);
+      }
+    }
+    for (const button of root.querySelectorAll('button[data-manual-image]')) {
+      const name = (button as HTMLButtonElement).dataset['manualImage'] ?? '(名前なし)';
+      const image = button.querySelector('img');
+      const source = image?.getAttribute('src') ?? '';
+      const disabled = (button as HTMLButtonElement).disabled;
+      if (source === '' && !disabled) problems.push(`${name}: 図が無いのにボタンが押せます`);
+      if (source !== '' && disabled) problems.push(`${name}: 図があるのにボタンが押せません`);
+    }
+    return problems;
+  });
+}
+
+/**
+ * 受入基準①をこの画面で確かめる。
+ * `F1` でも「ヘルプ」ボタンでも同じ節が開き、`Esc` で閉じて**押した人のところへ焦点が戻る**。
+ * ついでに受入基準③の「どの画面のヘルプにも PDF のボタンがある」と、受入基準⑥の
+ * 「壊れた図の枠が出ない」も毎回見る（押さない・撮らない）。
+ */
+async function expectHelpOpensHere(sectionTitle: string): Promise<void> {
+  const opener = page.getByTestId('open-help');
+  const drawer = page.getByTestId('help-drawer');
+  const title = page.getByTestId('help-section-title');
+  await expect(opener).toBeVisible();
+  // 9画面すべてで同じ言葉（部品は `HelpButton` 1つだけ）
+  await expect(opener).toHaveText('ヘルプ');
+
+  // ① F1 で開く
+  await opener.focus();
+  await page.keyboard.press('F1');
+  await expect(drawer).toBeVisible();
+  await expect(title).toHaveText(sectionTitle);
+  // 開いた直後の焦点は引き出しの「閉じる」（読み始める場所が毎回同じになる）
+  await expect(page.getByTestId('help-close')).toBeFocused();
+  // ③ 「説明書（PDF）を開く」はどの画面のヘルプにもあって押せる（**押さない**）
+  await expect(page.getByTestId('help-open-pdf')).toBeEnabled();
+  await expect(page.getByTestId('help-open-pdf')).toHaveText('説明書（PDF）を開く');
+  // ⑥ まだ撮っていない図は枠ごと出ない
+  expect(await figureProblems()).toEqual([]);
+  // ① もう一度 `F1` で閉じて、開くのに使ったところへ焦点が戻る
+  await page.keyboard.press('F1');
+  await expect(drawer).toBeHidden();
+  expect(await activeTestId()).toBe('open-help');
+
+  // ① 「ヘルプ」ボタンでも同じ節が開き、`Esc` で閉じる
+  await opener.click();
+  await expect(drawer).toBeVisible();
+  await expect(title).toHaveText(sectionTitle);
+  await page.keyboard.press('Escape');
+  await expect(drawer).toBeHidden();
+  expect(await activeTestId()).toBe('open-help');
+}
+
+/**
+ * もくじから節へ跳ぶ。
+ * 章は**いまの節が入っている章だけ**が開いているので（`HelpDrawer` の `<details open>`）、
+ * 畳んである章はまず見出しを押して開く。`chapterIndex` は `CHAPTER_TITLES` の位置。
+ */
+async function showSection(chapterIndex: number, sectionId: string): Promise<void> {
+  const button = page.getByTestId(`help-section-${sectionId}`);
+  if (!(await button.isVisible())) {
+    await page.locator('[data-testid="help-contents"] summary').nth(chapterIndex).click();
+  }
+  await expect(button).toBeVisible();
+  await button.click();
+}
+
+/** どの画面からでもホームへ戻る（`plc-vendors.spec.ts` の `goHome()` と同じ流儀）。 */
+async function goHome(): Promise<void> {
+  const home = page.getByTestId('mode-plc');
+  if ((await home.count()) > 0) {
+    await expect(home).toBeVisible();
+    return;
+  }
+  const toList = page.getByRole('button', { name: '課題一覧へ', exact: true });
+  if ((await toList.count()) > 0) await toList.first().click();
+  const sessionBack = page.getByTestId('session-back');
+  if ((await sessionBack.count()) > 0) await sessionBack.click();
+  const listBack = page.getByRole('button', { name: 'ホームへ戻る', exact: true });
+  if ((await listBack.count()) > 0) await listBack.click();
+  await expect(home).toBeVisible();
+}
+
+/** ホーム → そのモードの一覧 → 課題を開く。 */
+async function openProblem(modeKey: string, problemId: string): Promise<void> {
+  await goHome();
+  await page.getByTestId(`mode-${modeKey}`).click();
+  await expect(page.getByTestId('problem-table')).toBeVisible();
+  await page.getByTestId(`open-${problemId}`).click();
+}
+
+/**
+ * 設定画面で既定メーカーを選ぶ（＝利用者と同じ道筋。Phase 4 決定表#21）。
+ * **設定は `userData` に残る**ので、呼んだ側は必ず三菱へ戻す。
+ */
+async function setVendor(vendor: string): Promise<void> {
+  await goHome();
+  await page.getByTestId('open-settings').click();
+  const select = page.getByTestId('setting-vendor');
+  await expect(select).toBeVisible();
+  if ((await select.inputValue()) !== vendor) {
+    const saved = page.getByTestId('toast').filter({ hasText: '設定を保存しました' });
+    await expect(saved).toHaveCount(0);
+    await select.selectOption(vendor);
+    await expect(saved).toHaveCount(1);
+  }
+  await expect(select).toHaveValue(vendor);
+  await page.getByRole('button', { name: 'ホームへ戻る', exact: true }).click();
+  await expect(page.getByTestId('mode-plc')).toBeVisible();
+}
+
+test.beforeAll(async () => {
+  app = await electron.launch({
+    args: [join(APP_ROOT, 'out', 'main', 'index.js'), ...CHROMIUM_FLAGS],
+    env: { ...process.env, NODE_ENV: 'production' },
+  });
+  page = await app.firstWindow();
+  await page.waitForLoadState('domcontentloaded');
+  await app.evaluate(({ BrowserWindow }, size) => {
+    const window = BrowserWindow.getAllWindows()[0];
+    if (window === undefined) throw new Error('ウィンドウがありません');
+    window.setBounds({ x: 0, y: 0, width: size.width, height: size.height });
+    window.show();
+    window.focus();
+  }, WINDOW);
+  await page.waitForTimeout(1500);
+  // 前回の実行が残した一時保存があると復元プロンプトが出るので、先に片付ける（§12.3）
+  const restore = page.getByTestId('restore-prompt');
+  if ((await restore.count()) > 0) {
+    await page.getByRole('button', { name: '復元しない' }).click();
+  }
+  await expect(page.getByTestId('mode-assemble')).toBeVisible({ timeout: 30_000 });
+});
+
+test.afterAll(async () => {
+  await app.close();
+});
+
+test.describe('ヘルプ（§16 Phase 6 受入基準①②③⑥）', () => {
+  test('受入基準①: ホーム・課題一覧・設定で F1 がその画面の節を開く', async () => {
+    await goHome();
+    await expectHelpOpensHere(HOME_SECTION);
+
+    await page.getByTestId('open-settings').click();
+    await expect(page.getByTestId('setting-user-dir')).toBeVisible();
+    await expectHelpOpensHere(SETTINGS_SECTION);
+    await page.getByRole('button', { name: 'ホームへ戻る', exact: true }).click();
+
+    await page.getByTestId('mode-assemble').click();
+    await expect(page.getByTestId('problem-table')).toBeVisible();
+    await expectHelpOpensHere(LIST_SECTION);
+    await page.getByRole('button', { name: 'ホームへ戻る', exact: true }).click();
+    await expect(page.getByTestId('mode-plc')).toBeVisible();
+  });
+
+  test('受入基準①: モードB・回路図・結果で F1 がその画面の節を開く', async () => {
+    await openProblem('assemble', 'b-001');
+    await expect(page.getByTestId('viewport')).toBeVisible();
+    await expectHelpOpensHere(ASSEMBLE_SECTION);
+
+    // 同じ画面でも回路図に切り替えると「回路図を描く」が出る（`currentHelpScreen()`）
+    await page.getByTestId('assemble-view-schematic').click();
+    await expect(page.getByTestId('assemble-view-schematic')).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    await expectHelpOpensHere(SCHEMATIC_SECTION);
+    await page.getByTestId('assemble-view-board').click();
+
+    // 判定すると結果画面へ進む（合否は問わない）
+    await page.getByTestId('judge-button').click();
+    await expect(page.getByTestId('verdict')).toBeVisible({ timeout: 60_000 });
+    await expectHelpOpensHere(RESULT_SECTION);
+    await goHome();
+  });
+
+  test('受入基準①: モードC1・C2で F1 がその画面の節を開く', async () => {
+    await openProblem('inspect-parts', 'c1-001');
+    await expect(page.getByTestId('viewport')).toBeVisible();
+    await expectHelpOpensHere(C1_SECTION);
+    await goHome();
+
+    await openProblem('inspect-repair', 'c2-001');
+    await expect(page.getByTestId('viewport')).toBeVisible();
+    await expectHelpOpensHere(C2_SECTION);
+    await goHome();
+  });
+
+  test('受入基準①: モードDは4メーカーとも F1 でヘルプが開き、トーストは出ない', async () => {
+    try {
+      for (const vendor of ['mitsubishi', 'jtekt', 'omron', 'sharp']) {
+        await setVendor(vendor);
+        await openProblem('plc', 'd-001');
+        await expect(page.getByTestId('plc-session')).toBeVisible();
+        // 上の帯の「ヘルプ」と窓口（`HelpRoot`）の `F1`
+        await expectHelpOpensHere(PLC_SECTION);
+
+        /*
+         * ラダー編集の上で押した `F1`。三菱・JTEKT・シャープはスキンのキー割当表が
+         * `help` を持っているのでそちらが開き（`LadderEditor` の `openHelp('plc')`）、
+         * OMRON は表に `help` が無いので窓口の `F1` が開く（Plan 6 決定表#16）。
+         * どちらの道でも同じ引き出しが同じ節で開き、**トーストは出ない**。
+         */
+        const editor = page.getByTestId('ladder-editor');
+        await editor.press('F1');
+        await expect(page.getByTestId('help-drawer')).toBeVisible();
+        await expect(page.getByTestId('help-section-title')).toHaveText(PLC_SECTION);
+        await expect(page.getByTestId('toast')).toHaveCount(0);
+        await page.keyboard.press('Escape');
+        await expect(page.getByTestId('help-drawer')).toBeHidden();
+        expect(await activeTestId()).toBe('ladder-editor');
+        await goHome();
+      }
+    } finally {
+      // 設定は `userData` に残る。次に走る spec のために必ず三菱へ戻す（Phase 4 決定表#21）
+      if (!page.isClosed()) await setVendor('mitsubishi');
+    }
+  });
+
+  test('受入基準②: 「自己保持」で探すと該当節へ跳べる', async () => {
+    await goHome();
+    await page.getByTestId('open-help').click();
+    const drawer = page.getByTestId('help-drawer');
+    await expect(drawer).toBeVisible();
+
+    await page.getByTestId('help-search').fill('自己保持');
+    const hits = page.getByTestId('help-hit');
+    await expect(hits.first()).toBeVisible();
+    const hitTitle = await hits.first().locator('span').nth(1).innerText();
+    await hits.first().click();
+    await expect(page.getByTestId('help-section-title')).toHaveText(hitTitle);
+    await expect(page.getByTestId('help-prose')).toContainText('自己保持');
+    // 節へ跳んだら検索の一覧は畳む（§5.3）
+    await expect(page.getByTestId('help-search')).toHaveValue('');
+    await expect(hits).toHaveCount(0);
+
+    // 当たりが上限より多いときは件数のふりをせず「20 件以上」と出す（IM-12）
+    await page.getByTestId('help-search').fill('ボタン');
+    await expect(hits).toHaveCount(20);
+    await expect(drawer).toContainText('20 件以上見つかりました');
+
+    // 0件のときの言葉（§9）
+    await page.getByTestId('help-search').fill('ぜったいに出てこない言葉');
+    await expect(hits).toHaveCount(0);
+    await expect(drawer).toContainText('見つかりませんでした。別の言葉で探してください。');
+
+    await page.keyboard.press('Escape');
+    await expect(drawer).toBeHidden();
+  });
+
+  test('受入基準③: もくじに全13章が正本の順で出る', async () => {
+    await goHome();
+    await page.getByTestId('open-help').click();
+    await expect(page.getByTestId('help-drawer')).toBeVisible();
+    await expect(page.locator('[data-testid="help-contents"] summary')).toHaveText([
+      ...CHAPTER_TITLES,
+    ]);
+    // もくじから節へ跳べる（この節は図を載せている節でもある）
+    await showSection(2, 'screens/ホームの画面');
+    await expect(page.getByTestId('help-section-title')).toHaveText('ホームの画面');
+
+    /*
+     * `Tab` は引き出しの中だけを回る（`trapFocus()`）。外へ出ると、後ろの画面の
+     * ボタンへ焦点が移って「読んでいるのに裏の盤を触ってしまう」ことになる。
+     */
+    for (let i = 0; i < 20; i += 1) {
+      await page.keyboard.press('Tab');
+      const inside = await page.evaluate(() => {
+        const active = document.activeElement;
+        return (
+          active instanceof HTMLElement && active.closest('[data-testid="help-drawer"]') !== null
+        );
+      });
+      expect(inside, `${String(i + 1)}回目の Tab で焦点が引き出しの外へ出ました`).toBe(true);
+    }
+
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('help-drawer')).toBeHidden();
+  });
+
+  test('受入基準③: 引き出しは「判定」を覆わず、横スクロールも出さない', async () => {
+    await openProblem('assemble', 'b-001');
+    await expect(page.getByTestId('viewport')).toBeVisible();
+
+    try {
+      // 1280×800（いちばん狭い想定。設計仕様 §11 の最小幅）
+      await setWindow(1280, 800);
+      await page.getByTestId('open-help').click();
+      await expect(page.getByTestId('help-drawer')).toBeVisible();
+      const drawer = await boxOf('help-drawer');
+      const judge = await boxOf('judge-button');
+      expect(
+        intersects(drawer, judge),
+        `引き出し ${JSON.stringify(drawer)} が判定ボタン ${JSON.stringify(judge)} に重なっています`,
+      ).toBe(false);
+      await expect(page.getByTestId('judge-button')).toBeEnabled();
+
+      // 引き出しを開けたまま、3つの大きさで横スクロールが出ないこと
+      for (const [width, height] of [
+        [1280, 800],
+        [1440, 900],
+        [1920, 1080],
+      ] as const) {
+        await setWindow(width, height);
+        await expect(page.getByTestId('help-drawer')).toBeVisible();
+        const overflow = await page.evaluate(() => ({
+          doc: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+          body: document.body.scrollWidth - document.body.clientWidth,
+          inner: window.innerWidth,
+        }));
+        expect(overflow.doc, `${String(width)}px で横にはみ出しています`).toBeLessThanOrEqual(0);
+        expect(overflow.body, `${String(width)}px で横にはみ出しています`).toBeLessThanOrEqual(0);
+      }
+      await page.keyboard.press('Escape');
+      await expect(page.getByTestId('help-drawer')).toBeHidden();
+    } finally {
+      await setWindow(WINDOW.width, WINDOW.height);
+      await goHome();
+    }
+  });
+
+  test('受入基準⑥: まだ撮っていない図は枠ごと出ず、PDFのボタンは押せる', async () => {
+    await goHome();
+    await page.getByTestId('open-help').click();
+    await expect(page.getByTestId('help-drawer')).toBeVisible();
+
+    /*
+     * 図を載せている節（`manual-content.ts` の `imageNames` が空でない節）を回る。
+     * Task 12 で図を撮るまでは全部が畳まれ、撮ったあとは読み込めていることを見る。
+     */
+    for (const [chapterIndex, sectionId, title] of [
+      [2, 'screens/ホームの画面', 'ホームの画面'],
+      [2, 'screens/画面の上の帯', '画面の上の帯'],
+      [4, 'mode-c1/答えを書き込む', '答えを書き込む'],
+      [9, 'settings/設定の画面', '設定の画面'],
+    ] as const) {
+      await showSection(chapterIndex, sectionId);
+      await expect(page.getByTestId('help-section-title')).toHaveText(title);
+      expect(await figureProblems(), `${sectionId} の図`).toEqual([]);
+      // 図の覆いは開いていない（押せない図を押しても何も出ない）
+      await expect(page.getByTestId('help-figure-modal')).toHaveCount(0);
+    }
+
+    // 「説明書（PDF）を開く」は出ていて押せる。**押さない**（決定表 P9）
+    await expect(page.getByTestId('help-open-pdf')).toBeVisible();
+    await expect(page.getByTestId('help-open-pdf')).toBeEnabled();
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('help-drawer')).toBeHidden();
+  });
+});

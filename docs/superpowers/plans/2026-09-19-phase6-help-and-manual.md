@@ -4937,7 +4937,9 @@ git show --stat HEAD
 
 本設計 §11 の受入基準①②③⑥。**図は見ない**（Task 12 の仕事）。
 
-- [ ] **Step 1: E2E を書く**
+- [x] **Step 1: E2E を書く**
+
+**実装メモ（2026-09-20）**: 実ソースに合わせて8本に組み直した（受入基準を確かめることが目的で、拾い方は手段）。雛形との違いは次のとおり。① 課題一覧の行は `open-help` も `open-` で始まるので、`[data-testid^="open-"]` ではなく `open-b-001` のように**課題IDで**押す。② 受入基準①は9画面すべて（ホーム・課題一覧・設定・モードB・回路図・C1・C2・D・結果）を回り、モードDは**4メーカーぶん**（設定で既定メーカーを変え、`finally` で三菱へ戻す）。`F1` で開いて**もう一度 `F1` で閉じ**、「ヘルプ」ボタンでも開いて `Esc` で閉じ、どちらも**開く前の要素へ焦点が戻る**ことまで見る。③ 受入基準③は「もくじに全13章が正本の順で出る」「`Tab` が引き出しの中だけを回る」「1280×800 で引き出しが**判定ボタンを覆わない**（矩形が交わらない）」「1280×800 / 1440×900 / 1920×1080 で横スクロールが出ない」。④ 受入基準⑥は「まだ撮っていない図が壊れた画像の枠として出ていない（`figure.hidden`・`src` 無し・ボタンが押せない）」。⑤ **PDF の実在は見ない**——`build` しかしないこのスペックでは `resources/manual/manual.pdf` はまだ焼かれておらず、同梱物の検査は `check-dist.mjs`（受入基準④）の仕事だからである。ボタンが出ていて押せることは9画面すべてで見る（**押さない**。決定表 P9）。
 
 `apps/desktop/e2e/help.spec.ts`:
 
@@ -5061,7 +5063,7 @@ test.describe('ヘルプ', () => {
 
 **注記**: 課題一覧の行の目印は `open-<課題ID>` なので、`[data-testid^="open-"]` の最初を押す。既存6本の E2E も同じ拾い方をしているところがあるので、実ソースに合わせて書き直してよい（**受入基準を確かめることが目的で、拾い方は手段**）。`受入基準⑥` は E2E では「本文が空でなく、生成物のとおりに出ている」までを見る。一字一句の一致は `manual-sync.test.ts` が正本から作り直して証明している。
 
-- [ ] **Step 2: ビルドして E2E を通す**
+- [x] **Step 2: ビルドして E2E を通す**
 
 ```
 pnpm --filter @ojt/desktop build
@@ -5072,7 +5074,11 @@ pnpm --filter @ojt/desktop e2e
 # 期待: 既存の E2E も含めてすべて通る。**2回連続で通ること**
 ```
 
-- [ ] **Step 3: 全体を見直す**
+**結果（2026-09-20、`OJT-wt-shots` を `origin/main` = `d2017ed` に detach して実施）**: `e2e/help.spec.ts` は **8 passed** が**2回連続**（単体でも全体の中でも）。`print-manual.mjs` は走らせていない（このスペックは PDF の実在を見ないため）。
+
+**外部の赤（本タスクの対象外。別エージェントが整列中）**: 全体を通すと `origin/main` の時点で **13 failed**（`inspect` 1・`plc-vendors` 6・`plc` 4・`smoke` 1・`ui-quality` の集計 1）。いずれも**画面が先に直り、スペックがまだ追いついていない**ずれで、ヘルプとは関わりがない（例: `plc-vendors` が待つ `plc-auto-convert` という目印はアプリに無く、文言は `plc-hint` に出ている。`smoke` は9本張るはずの電線が3本しか張れていない）。**この13本には触っていない。**
+
+- [x] **Step 3: 全体を見直す**
 
 ```
 pnpm -r test
@@ -5085,6 +5091,10 @@ pnpm --filter @ojt/desktop dist
 grep -c "TODO\|TBD\|FIXME\|適宜" docs/manual/*.md docs/superpowers/plans/2026-09-19-phase6-help-and-manual.md
 # 期待: 0
 ```
+
+**結果（2026-09-20）**: `pnpm -r test` は**7プロジェクトすべて緑**（circuit-sim 247／ladder-core 115／board-model 261／plc-dialects 219／schematic-core 138／content 654／desktop 2019、合計 3653）。`pnpm -r typecheck`・`pnpm lint`・`prettier --check` も緑（`All matched files use Prettier code style!`）。`grep` は `docs/manual/*.md` が **0件**（本プラン自身の2件は、この検査の命令行と完了条件の行そのもの）。**`pnpm --filter @ojt/desktop dist` は走らせていない**——配布物の検査（受入基準④）は Task 10 の `check-dist.mjs` の仕事で、本タスクは E2E と全体の見直しに限る（利用者の指示 2026-09-20）。
+
+**この見直しで見つけて直したもの**: キー割当表の注記 `JA.ladder.shortcutNote` が「キー割当はメーカー（**方言プロファイル**）ごとに切り替わります。」と、訓練者に通じない社内の言葉を出していた。「キー割当はメーカーごとに切り替わります。一部は実機マニュアル未確認のため本アプリの表記です。」に言い直し（前提で決めた割当があるという断りは残す。§17.1）、`docs/manual/06-mode-d.md` の引用と生成物 `manual-content.ts` も合わせた。
 
 - [ ] **Step 4: commit**
 
@@ -5700,47 +5710,47 @@ git show --stat HEAD
 
 **機能:**
 
-- [ ] `pnpm -r test` が7プロジェクトすべて通る（Phase 6 で足した単体テストは **packages 0件 ＋ desktop 123件**）。内訳は各タスクの「期待」のとおり: Task 1 の 6／Task 2 の 22（`manual-build` 16 ＋ `manual-sync` 6）／Task 5 の 24（`manual-style` 10 ＋ `manual-coverage` 9 ＋ `manual-shots` 5）／Task 6 の 12／Task 7 の 12（`manual-ipc` 7 ＋ `release-manual` 5）／Task 8 の 17／Task 9 の 9／Task 10 の 7／Task 12 の 14（`annotate-shots` 6 ＋ `manual-images` 8）。
-- [ ] `pnpm -r typecheck` と `pnpm lint`（`import-x/no-cycle` ＋ `react-hooks` 込み）が無警告で通る。
-- [ ] `npx prettier --check "apps/desktop/**/*.{ts,tsx,css}" "packages/**/*.ts" "README.md"` が `All matched files use Prettier code style!` を出す（`docs/` と生成物 `manual-content.ts` は `.prettierignore` の対象）。
-- [ ] `pnpm --filter @ojt/desktop e2e` が既存＋新規のすべて通る。**2回連続で通ること。**
-- [ ] **受入基準①**: ホーム・課題一覧・設定・モードB・C1・C2・D・回路図・結果の**9画面すべて**で `F1` を押すとヘルプが開き、その画面の節が最初に出る。もう一度 `F1` で閉じる。モードDのラダー編集で押しても同じ引き出しが開き、**トーストは出ない**。
-- [ ] **受入基準②**: 検索欄に「自己保持」と入れると該当節が一覧に出て、押すとその節へ跳ぶ。0件のときは「見つかりませんでした。別の言葉で探してください。」が出る。
-- [ ] **受入基準③**: 「説明書（PDF）を開く」が全画面のヘルプにあり、押すと同梱の PDF が OS の既定ビューアで開く（リリース手順チェックリスト 8b で人が確かめる）。PDF が無いときは「説明書（PDF）が見つかりません。もくじから同じ内容を読めます。」が出る。
+- [x] `pnpm -r test` が7プロジェクトすべて通る（Phase 6 で足した単体テストは **packages 0件 ＋ desktop 123件**）。内訳は各タスクの「期待」のとおり: Task 1 の 6／Task 2 の 22（`manual-build` 16 ＋ `manual-sync` 6）／Task 5 の 24（`manual-style` 10 ＋ `manual-coverage` 9 ＋ `manual-shots` 5）／Task 6 の 12／Task 7 の 12（`manual-ipc` 7 ＋ `release-manual` 5）／Task 8 の 17／Task 9 の 9／Task 10 の 7／Task 12 の 14（`annotate-shots` 6 ＋ `manual-images` 8）。
+- [x] `pnpm -r typecheck` と `pnpm lint`（`import-x/no-cycle` ＋ `react-hooks` 込み）が無警告で通る。
+- [x] `npx prettier --check "apps/desktop/**/*.{ts,tsx,css}" "packages/**/*.ts" "README.md"` が `All matched files use Prettier code style!` を出す（`docs/` と生成物 `manual-content.ts` は `.prettierignore` の対象）。
+- [ ] `pnpm --filter @ojt/desktop e2e` が既存＋新規のすべて通る。**2回連続で通ること。**（**Task 11 2026-09-20**: 新規の `help.spec.ts` は **8 passed が2回連続**。既存のうち **13本が `origin/main` の時点で赤**——`inspect` 1・`plc-vendors` 6・`plc` 4・`smoke` 1・`ui-quality` の集計 1——で、いずれも画面が先に直ってスペックが追いついていないずれ。別エージェントが整列中なので**この箱は開けたまま**にする）
+- [x] **受入基準①**: ホーム・課題一覧・設定・モードB・C1・C2・D・回路図・結果の**9画面すべて**で `F1` を押すとヘルプが開き、その画面の節が最初に出る。もう一度 `F1` で閉じる。モードDのラダー編集で押しても同じ引き出しが開き、**トーストは出ない**。
+- [x] **受入基準②**: 検索欄に「自己保持」と入れると該当節が一覧に出て、押すとその節へ跳ぶ。0件のときは「見つかりませんでした。別の言葉で探してください。」が出る。
+- [ ] **受入基準③**: 「説明書（PDF）を開く」が全画面のヘルプにあり、押すと同梱の PDF が OS の既定ビューアで開く（リリース手順チェックリスト 8b で人が確かめる）。PDF が無いときは「説明書（PDF）が見つかりません。もくじから同じ内容を読めます。」が出る。（**Task 11 2026-09-20**: 「9画面すべてのヘルプにあって押せる」までは `help.spec.ts` が緑。**押さない**ので、実際にビューアが開くことは人の確認、欠落時の文言は `manual-ipc.test.ts` の担当。決定表 P9）
 - [ ] **受入基準④**: `pnpm --filter @ojt/desktop dist` が NSIS とポータブルを出し、両方の `resources/manual.pdf` が 0 バイトでなく、`release/artifacts.md` に PDF の行（バイト数と SHA256）が載る。
-- [ ] **受入基準⑤**: `manual-coverage.test.ts` が通る（機能一覧表の `controls` が画面の目印と完全一致し、すべての行が節か内部用の理由を持ち、`keys` / `gestures` / `messages` が本文に出ている）。`manual-style.test.ts` の禁止語が **0件**。
-- [ ] **受入基準⑥**: `manual-sync.test.ts` が通る（正本から作り直した `manual-content.ts` がいまのファイルとバイト一致し、印刷用 HTML から取り出した節ID・見出し・素の文がアプリ内ヘルプのそれと完全一致）。
+- [x] **受入基準⑤**: `manual-coverage.test.ts` が通る（機能一覧表の `controls` が画面の目印と完全一致し、すべての行が節か内部用の理由を持ち、`keys` / `gestures` / `messages` が本文に出ている）。`manual-style.test.ts` の禁止語が **0件**。
+- [x] **受入基準⑥**: `manual-sync.test.ts` が通る（正本から作り直した `manual-content.ts` がいまのファイルとバイト一致し、印刷用 HTML から取り出した節ID・見出し・素の文がアプリ内ヘルプのそれと完全一致）。
 - [ ] **受入基準⑦**: `docs/manual/images/` のファイル名の集合が `shots.json` の鍵と完全一致（作り絵が1枚も紛れていない）。原寸は **300KB 以下**で寸法が `shot-geometry.json` の指定どおり、フォルダ合計 6MB 以下。`images/small/` に同じ名前の縮小版が揃い、**幅400px・80KB 以下**、合計 1.5MB 以下。図を載せた節の本文が吹き出しの番号（①②③）と `label` を指している。
 - [ ] **受入基準⑧**: アプリ内ヘルプの本文に**同梱 PDF と同じ図**が縮小版で出る（`manual-sync.test.ts` が節ごとに図の名前の並びを照合）。図を押すか `Enter` で原寸が覆いで開き、`Esc`・「図を閉じる」・背面で戻って**元の図のボタンに焦点が返る**。まだ撮っていない図は描かれず、そのボタンも押せない。
 
 **利用者要求（2026-09-19）:**
 
-- [ ] **内容の一致**: 説明書の本文が `i18n/ja.ts` に1文字も無い（`JA.help` の値はすべて40文字以下で、キーは決めた12個だけ）。C1の判定表・モードDのキー割当・設定の説明文・商標注記が、コード側の実体と**1行ずつ一致**している（`manual-appdata.test.ts`）。
-- [ ] **全機能の解説**: 画面の `data-testid` を1つでも足すと `feature-inventory.test.ts` が落ち、説明書に書くか内部用の理由を書くまで通らない。
-- [ ] **専門用語なし**: `style.json` の禁止語が本文に0件。`terms.json` の専門用語はすべて初出が `**用語**（15文字以上の説明）` の形で、用語集に20文字以上の説明がある。
+- [x] **内容の一致**: 説明書の本文が `i18n/ja.ts` に1文字も無い（`JA.help` の値はすべて40文字以下で、キーは決めた12個だけ）。C1の判定表・モードDのキー割当・設定の説明文・商標注記が、コード側の実体と**1行ずつ一致**している（`manual-appdata.test.ts`）。
+- [x] **全機能の解説**: 画面の `data-testid` を1つでも足すと `feature-inventory.test.ts` が落ち、説明書に書くか内部用の理由を書くまで通らない。
+- [x] **専門用語なし**: `style.json` の禁止語が本文に0件。`terms.json` の専門用語はすべて初出が `**用語**（15文字以上の説明）` の形で、用語集に20文字以上の説明がある。
 - [ ] **実画面の図**: 図はすべてアプリを動かして撮ったもので、説明する操作要素の上に丸数字と枠がある。
 - [ ] **図もヘルプに出る**（利用者の決定 2026-09-20）: 説明書とヘルプの一致が本文だけでなく**図**にも及ぶ（どの節にどの図が何番目に出るかまで一致）。asar の増加が **3MB 以下**（`release/artifacts.md` のバイト数で前の版と比べる）。
 - [ ] **図は最後**: Task 12 より前のどの commit でも `pnpm -r test` が通る（`manual-images.test.ts` が Task 12 で初めて入るため、図が無いあいだも赤にならない）。
 
 **画面の品質:**
 
-- [ ] 引き出しが **1280×800 と 1920×1080** のどちらでも横スクロールを出さない（`scrollWidth <= clientWidth`）。1100px 未満では全幅になる。
+- [x] 引き出しが **1280×800 と 1920×1080** のどちらでも横スクロールを出さない（`scrollWidth <= clientWidth`）。1100px 未満では全幅になる。
 - [ ] 引き出しの日本語が切れていない（もくじ・検索欄・本文・脚注）。
 - [ ] Task 8 で足した CSS の `padding` / `gap` / `margin` がすべて **4の倍数**（8px 格子）。
 - [ ] 引き出しのすべての操作要素（閉じる・PDF・検索欄・もくじの節・検索結果・**図のボタン**・**図を閉じる**）が `:focus-visible` で見える枠を持つ。
 - [ ] 図の覆いが開いているあいだ、`Esc` は**覆いだけ**を閉じる（引き出しは開いたまま）。
-- [ ] `Tab` が引き出しの中だけを回り、`Esc` で閉じ、閉じたあと**開く前の要素に焦点が戻る**。
+- [x] `Tab` が引き出しの中だけを回り、`Esc` で閉じ、閉じたあと**開く前の要素に焦点が戻る**。
 - [ ] ヘルプが開いているあいだ、盤のショートカット（`Delete` / `1` / `2` / `3`）もラダーのキーも効かない（`pushModalLayer()` が積まれている）。
-- [ ] 「ヘルプ」ボタンが9画面すべてで同じ言葉・同じ見た目で出る（部品は `HelpButton` 1つだけ）。
+- [x] 「ヘルプ」ボタンが9画面すべてで同じ言葉・同じ見た目で出る（部品は `HelpButton` 1つだけ）。
 
 **規律:**
 
 - [ ] `packages/**` への変更が**1行も無い**（`git diff --stat origin/main -- packages` が空）。
 - [ ] `apps/desktop/src/renderer/app/store.ts` への変更が**1行も無い**。
 - [ ] `apps/desktop/package.json` の `dependencies` が Phase 5 から**1つも増えていない**（増えるのは `devDependencies` の `markdown-it` 1つだけ）。
-- [ ] IPCチャネルが **8本**で、8本目は `manual:open`（引数なし）である。9本目を作っていない。
+- [x] IPCチャネルが **8本**で、8本目は `manual:open`（引数なし）である。9本目を作っていない。
 - [ ] `apps/desktop/src/renderer` に `http://` / `https://` の文字列が無い（§15 のオフライン）。
-- [ ] `TODO` / `TBD` / `FIXME` / `後で` / `適宜` が本プランで足したコード・原稿・文書に**1つも無い**。
+- [x] `TODO` / `TBD` / `FIXME` / `後で` / `適宜` が本プランで足したコード・原稿・文書に**1つも無い**。
 - [ ] 他社のロゴ・アイコン・画面キャプチャ・マニュアル本文を1つも複製していない（§15・§17.1）。
 - [ ] `git tag` も `gh release create` も**実行していない**（Plan 5 決定表#22 を引き継ぐ）。
 - [ ] 他のプランの文書（`docs/superpowers/plans/2026-09-19-phase4b-*.md` など）を1つも stage していない。
