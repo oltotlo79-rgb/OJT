@@ -47,8 +47,65 @@ const BODY_HEIGHT_MM = 9;
 const LABEL_LIFT_MM = 2;
 /** 保持レバーの幅[mm]。 */
 const LEVER_WIDTH_MM = 4;
+/** 保持レバーの長さ（本体幅に対する比）。 */
+const LEVER_SPAN_RATIO = 0.6;
+/** 保持レバーの厚み[mm]。 */
+const LEVER_HEIGHT_MM = 2.5;
+/** 保持レバーの中心の高さ[mm]。 */
+const LEVER_CENTER_Z_MM = BODY_HEIGHT_MM + 1;
+/** 保持レバーの天面の高さ[mm]。 */
+export const LEVER_TOP_Z_MM = LEVER_CENTER_Z_MM + LEVER_HEIGHT_MM / 2;
 /** 差込穴の半径[mm]。 */
 const PIN_HOLE_RADIUS_MM = 1;
+
+/** 印字の板と、その下にある立体とのあいだに必ず空ける隙間[mm]。 */
+const PRINT_CLEARANCE_MM = 0.5;
+
+/**
+ * 印字の板を置く高さ[mm]。利用者指摘 2026-09-20
+ * 「3Dのリレーソケット部のCOMの文字重なって見えないけど」の**直接の原因**がここだった。
+ *
+ * 板はこれまで `TIER_HEIGHT_MM + LABEL_LIFT_MM` ＝ **11mm** に置いていた。ところが黄色い保持レバーは
+ * `LEVER_CENTER_Z_MM`（10mm）を中心に厚み 2.5mm あり、天面は **11.25mm** ＝ 板より 0.25mm 高い。
+ * 板は `depthWrite={false}` でも深度**テスト**はするので、レバーの方が手前と判定され、
+ * レバーに重なる印字はレバーに塗り潰される。手前のレバー（本体の手前端から 24mm）は板の座標で
+ * y 54〜58mm を占め、COM の段見出し（y 56.5〜59.7mm）の**下半分をちょうど隠していた**。
+ * 4つの段見出しのうち COM だけが読めなくなっていたのはこのためで、焼いたテクスチャ自体は
+ * 1文字も重なっていない（`test/socket-face-print.test.ts` が mm で確かめている）。
+ *
+ * 直し方は「板をソケットのいちばん高い立体より上へ出す」。数値を直打ちせずレバーの寸法から出すので、
+ * レバーを厚くしても板が自動で追随する。板は 11mm → 11.75mm と 0.75mm 上がるだけなので、
+ * 斜めから見たときのネジと番号のずれ（視差）はほぼ変わらない。
+ */
+export const SOCKET_PRINT_Z_MM = Math.max(
+  TIER_HEIGHT_MM + LABEL_LIFT_MM,
+  LEVER_TOP_Z_MM + PRINT_CLEARANCE_MM,
+);
+
+/**
+ * 保持レバー2本が印字の板の上に落とす影（板の左上を原点とする mm）。
+ *
+ * レバーは本体のいちばん高い立体で、段見出しの一部（COM と a接点）はこの真上に出る。
+ * 「隠れないのは板がレバーより上にあるからだ」という約束を `test/socket-face-print.test.ts` が
+ * 数値で確かめられるよう、描画と同じ式を純関数にして出す（`socketFaceRows()` と同じ考え方）。
+ */
+export function socketLeverFootprints(bodyMm: { width: number; length: number }): Array<{
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+}> {
+  const centerX = SOCKET_PLATE_MARGIN_MM + bodyMm.width / 2;
+  const half = (bodyMm.width * LEVER_SPAN_RATIO) / 2;
+  return [TIER_DEPTH_MM + LEVER_WIDTH_MM, bodyMm.length - TIER_DEPTH_MM - LEVER_WIDTH_MM].map(
+    (y) => ({
+      x0: centerX - half,
+      x1: centerX + half,
+      y0: SOCKET_PLATE_MARGIN_MM + y - LEVER_WIDTH_MM / 2,
+      y1: SOCKET_PLATE_MARGIN_MM + y + LEVER_WIDTH_MM / 2,
+    }),
+  );
+}
 
 /**
  * ソケット本体（差込領域）のマテリアル。選択中は縁が光って見えるよう発光を足す。
@@ -201,17 +258,14 @@ export function Socket({
             geometry={UNIT_BOX}
             material={sharedMaterial(SOCKET_LEVER_COLOR, { roughness: 0.45 })}
             raycast={noPick}
-            position={toScene({ x: centerX, y, z: BODY_HEIGHT_MM + 1 })}
-            scale={[width * 0.6, LEVER_WIDTH_MM, 2.5]}
+            position={toScene({ x: centerX, y, z: LEVER_CENTER_Z_MM })}
+            scale={[width * LEVER_SPAN_RATIO, LEVER_WIDTH_MM, LEVER_HEIGHT_MM]}
           />
         );
       })}
       {/* ネジ端子の番号と役割の印字（常時表示）。§6.2 */}
       {faceTexture === undefined ? null : (
-        <mesh
-          raycast={noPick}
-          position={[bodyCenter[0], bodyCenter[1], TIER_HEIGHT_MM + LABEL_LIFT_MM]}
-        >
+        <mesh raycast={noPick} position={[bodyCenter[0], bodyCenter[1], SOCKET_PRINT_Z_MM]}>
           <planeGeometry args={[plateWidth, plateLength]} />
           <meshBasicMaterial map={faceTexture} transparent depthWrite={false} />
         </mesh>

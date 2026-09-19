@@ -3,9 +3,12 @@ import { toTerminalId } from '@ojt/circuit-sim';
 import { describe, expect, it } from 'vitest';
 import {
   BAND_MM,
+  COM_PIN_MARK,
   drawSocketFace,
   HEADER_MM,
+  labelWidthMm,
   NUMBER_MM,
+  PRINT_EDGE_MARGIN_MM,
   PX_PER_MM,
   ROLE_MM,
   socketFaceRows,
@@ -29,6 +32,11 @@ import {
   pinGroup,
 } from '../src/renderer/session/socket-pins.js';
 import { SOCKET_BODY_COLOR } from '../src/renderer/session/colors.js';
+import {
+  LEVER_TOP_Z_MM,
+  socketLeverFootprints,
+  SOCKET_PRINT_Z_MM,
+} from '../src/renderer/three/Socket.js';
 
 /**
  * 3Dソケットの面の印字（段見出し＋役割の色帯）。設計仕様 §6.2 / §8.2。
@@ -391,8 +399,8 @@ describe('コイルの極性の印字（⑭ = P(+) / ⑬ = N(−)）', () => {
   it('⑭⑬ のネジの脇は `+` `−` ではなく `P(+)` `N(−)` と印字する', () => {
     expect(socketRoleMark(pinTerminal(COIL_P_PIN))).toBe(JA_PIN.bus.P);
     expect(socketRoleMark(pinTerminal(COIL_N_PIN))).toBe(JA_PIN.bus.N);
-    // 極性を持たないネジの印字は今までどおり（盤定義の銘板表記）
-    expect(socketRoleMark(pinTerminal(9))).toBe('COM');
+    // 接点のネジは1文字（b接点 `b` / a接点 `a` / COM `C`）。`COM_PIN_MARK` の doc comment 参照
+    expect(socketRoleMark(pinTerminal(9))).toBe(COM_PIN_MARK);
     expect(socketRoleMark(pinTerminal(5))).toBe('a');
     expect(socketRoleMark(pinTerminal(1))).toBe('b');
   });
@@ -506,6 +514,138 @@ describe('タイマ用ソケットとチェック用ソケット（§6.1 / §6.3
       const socketId = JIPM_BOARD.sockets[index]?.id ?? '';
       expect(rows.headers, socketId).toEqual(base.headers);
       expect(rows.bands, socketId).toEqual(base.bands);
+    }
+  });
+});
+
+/*
+ * 「ソケットの面の印字はどこも重ならない」の総点検。利用者指摘 2026-09-20
+ * 「3Dのリレーソケット部のCOMの文字重なって見えないけど」。
+ *
+ * 上の describe は板1枚（`plateOf(0)`）の見出しと帯だけを見ていた。ここでは
+ * **8ソケットすべて**（実行時に リレー／タイマ／チェック の役割が付く。`SocketRole` は印字を変えない）
+ * について、焼く絵に出る箱を**もれなく**並べて総当たりで調べる:
+ * 番号・ネジ脇の役割文字・段見出しの下地・役割の色帯。
+ *
+ * 併せて**3Dの重なり**も見る。テクスチャの中で1文字も重なっていなくても、
+ * 板より高い立体（黄色い保持レバー）が上に乗れば画面では隠れる。COM の段見出しが読めなかった
+ * 本当の原因はこれだった（`three/Socket.tsx` の `SOCKET_PRINT_Z_MM` の doc comment 参照）。
+ */
+describe('ソケットの面の印字は何にも重ならない（利用者指摘 2026-09-20 COM）', () => {
+  /** 浮動小数の比較の遊び[mm]（接していることを「重なり」と誤判定しないため）。 */
+  const EPS_MM = 1e-6;
+
+  /** 焼く絵に出る箱（不透明なもの）をすべて並べる。 */
+  function faceBoxes(index: number): Array<{ box: LabelBox; label: string; pinPrint: boolean }> {
+    const plate = plateOf(index);
+    const { headers, bands } = socketFaceRows(plate.terminals, plate.originX, plate.originY);
+    const out: Array<{ box: LabelBox; label: string; pinPrint: boolean }> = [];
+    for (const terminal of plate.terminals) {
+      const boxes = socketLabelBoxes(terminal, plate.originX, plate.originY);
+      out.push({ box: boxes.number, label: `${terminal.id} 番号`, pinPrint: true });
+      out.push({
+        box: boxes.role,
+        label: `${terminal.id} 役割「${socketRoleMark(terminal)}」`,
+        pinPrint: true,
+      });
+    }
+    // 段見出しは**下地**（`plate`）が不透明な四角なので、そちらで当たりを見る（文字はその中）
+    for (const header of headers) {
+      out.push({ box: header.plate, label: `見出し「${header.text}」の下地`, pinPrint: false });
+    }
+    for (const band of bands) {
+      out.push({
+        box: { x0: band.x0, x1: band.x1, y0: band.y0, y1: band.y1 },
+        label: `${band.group} の帯`,
+        pinPrint: false,
+      });
+    }
+    return out;
+  }
+
+  /** 8ソケットぶんの添字。 */
+  const indexes = JIPM_BOARD.sockets.map((_, index) => index);
+
+  it.each(indexes)('S%i: 焼く絵のどの2つの箱も重ならない', (index) => {
+    const boxes = faceBoxes(index);
+    for (let a = 0; a < boxes.length; a += 1) {
+      for (let b = a + 1; b < boxes.length; b += 1) {
+        const one = boxes[a] as (typeof boxes)[number];
+        const other = boxes[b] as (typeof boxes)[number];
+        const hit =
+          one.box.x0 < other.box.x1 - EPS_MM &&
+          other.box.x0 < one.box.x1 - EPS_MM &&
+          one.box.y0 < other.box.y1 - EPS_MM &&
+          other.box.y0 < one.box.y1 - EPS_MM;
+        expect(hit, `${one.label} と ${other.label}`).toBe(false);
+      }
+    }
+  });
+
+  it.each(indexes)('S%i: ネジ脇の印字は本体の黒の上に収まる（端へはみ出さない）', (index) => {
+    const socket = JIPM_BOARD.sockets[index];
+    if (socket === undefined) throw new Error('no socket');
+    // 本体は板の中央（四方に `SOCKET_PLATE_MARGIN_MM` の余白）。その内側へさらに
+    // `PRINT_EDGE_MARGIN_MM`（丸数字が端に残す 0.7mm）だけ入った所が、印字の許される範囲
+    const x0 = SOCKET_PLATE_MARGIN_MM + PRINT_EDGE_MARGIN_MM;
+    const x1 = SOCKET_PLATE_MARGIN_MM + socket.bodyMm.width - PRINT_EDGE_MARGIN_MM;
+    const y0 = SOCKET_PLATE_MARGIN_MM + PRINT_EDGE_MARGIN_MM;
+    const y1 = SOCKET_PLATE_MARGIN_MM + socket.bodyMm.length - PRINT_EDGE_MARGIN_MM;
+    for (const item of faceBoxes(index).filter((one) => one.pinPrint)) {
+      expect(item.box.x0, `${item.label} の左`).toBeGreaterThanOrEqual(x0 - EPS_MM);
+      expect(item.box.x1, `${item.label} の右`).toBeLessThanOrEqual(x1 + EPS_MM);
+      expect(item.box.y0, `${item.label} の奥`).toBeGreaterThanOrEqual(y0 - EPS_MM);
+      expect(item.box.y1, `${item.label} の手前`).toBeLessThanOrEqual(y1 + EPS_MM);
+    }
+  });
+
+  it.each(indexes)('S%i: 段見出しと帯は印字の板からはみ出さない', (index) => {
+    const plate = plateOf(index);
+    for (const item of faceBoxes(index).filter((one) => !one.pinPrint)) {
+      expect(item.box.x0, `${item.label} の左`).toBeGreaterThanOrEqual(-EPS_MM);
+      expect(item.box.x1, `${item.label} の右`).toBeLessThanOrEqual(plate.w + EPS_MM);
+      expect(item.box.y0, `${item.label} の奥`).toBeGreaterThanOrEqual(-EPS_MM);
+      expect(item.box.y1, `${item.label} の手前`).toBeLessThanOrEqual(plate.h + EPS_MM);
+    }
+  });
+
+  it('印字の板は保持レバーより上にある（COM の段見出しがレバーの真上に出るため）', () => {
+    const socket = JIPM_BOARD.sockets[0];
+    if (socket === undefined) throw new Error('no socket');
+    const plate = plateOf(0);
+    const { headers } = socketFaceRows(plate.terminals, plate.originX, plate.originY);
+    const levers = socketLeverFootprints(socket.bodyMm);
+    const covered = headers.filter((header) =>
+      levers.some(
+        (lever) =>
+          header.plate.x0 < lever.x1 &&
+          lever.x0 < header.plate.x1 &&
+          header.plate.y0 < lever.y1 &&
+          lever.y0 < header.plate.y1,
+      ),
+    );
+    // 「レバーの真上に出る見出しが実在する」ことごと縛る（実在しなければこの検査は無意味になる）
+    expect(covered.map((header) => header.text)).toContain(JA_PIN.group.com);
+    // だから板はレバーの天面より高くなければならない（低いとレバーが見出しを塗り潰す）
+    expect(SOCKET_PRINT_Z_MM).toBeGreaterThan(LEVER_TOP_Z_MM);
+  });
+
+  it('文字幅の見積もりは実際に焼かれる幅と一致する（太字の大文字を小さく数えない）', () => {
+    /*
+     * Chromium（Windows の `sans-serif` ＝ Meiryo）で `700 1000px` を `measureText()` した実測値。
+     * 一律 0.62em で数えていた頃は `COM` を 4.09mm（実際は 5.27mm）と見積もっており、
+     * 「重なっていない」という検査結果が実際の見え方と食い違っていた。
+     */
+    expect(labelWidthMm('COM', ROLE_MM)).toBeCloseTo(5.27, 2);
+    expect(labelWidthMm(COM_PIN_MARK, ROLE_MM)).toBeCloseTo(1.51, 2);
+    expect(labelWidthMm('a', ROLE_MM)).toBeCloseTo(1.39, 2);
+    expect(labelWidthMm('b', ROLE_MM)).toBeCloseTo(1.47, 2);
+    expect(labelWidthMm(JA_PIN.bus.P, ROLE_MM)).toBeCloseTo(5.51, 2);
+    expect(labelWidthMm(JA_PIN.group.nc, HEADER_MM)).toBeCloseTo(8.66, 2);
+    expect(labelWidthMm(JA_PIN.group.coil, HEADER_MM)).toBeCloseTo(9.75, 2);
+    // ネジ脇の1文字は、その上の丸数字より細い（枡の広さは番号で決まっている）
+    for (const mark of [COM_PIN_MARK, 'a', 'b']) {
+      expect(labelWidthMm(mark, ROLE_MM), mark).toBeLessThan(NUMBER_MM);
     }
   });
 });

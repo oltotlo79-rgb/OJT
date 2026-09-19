@@ -1,8 +1,10 @@
 import {
+  BLOCK_PITCH_MM,
   N_RAIL_ID,
   OUTLET_ID,
   P_RAIL_ID,
   PLC_PART_ID,
+  PLC_TERMINAL_PITCH_MM,
   POWER_SUPPLY_ID,
   roleLabel,
   SOCKET_BODY_WIDTH_MM,
@@ -106,10 +108,79 @@ export const HEADER_GAP_MM = 0.4;
 export const BAND_EDGE_MM = (SOCKET_BODY_WIDTH_MM - 3 * SOCKET_COL_PITCH_MM) / 2;
 
 /**
- * 半角1文字の幅比（sans-serif 700 のおおよその値）。
- * 実測ではなく「はみ出さないこと」を検査するための概算なので、やや大きめに取る。
+ * 半角1文字の送り幅[em]の表（`700 …px sans-serif`）。
+ *
+ * 以前はどの半角文字も一律 `0.62em` という「やや大きめの概算」にしていたが、これは
+ * **太字の大文字に対しては小さすぎる**。実測（下記）では `C`=0.688 / `O`=0.801 / `M`=0.908 で、
+ * `COM` は 2.40em ある。一律 0.62 では 1.86em と見積もるので **22% 少なく**数えてしまい、
+ * 「重なっていない」と単体テストが言うのに画面では文字が詰まって読めない、という
+ * 見落としが起きる（利用者指摘 2026-09-20「3Dのリレーソケット部のCOMの文字重なって見えない」）。
+ *
+ * 値は Chromium（Windows の `sans-serif` ＝ Meiryo。`700 1000px` で `measureText()`）の実測で、
+ * このアプリが焼く文字（番号・役割・段見出し・端子名）の実寸と一致する。
+ * 表に無い半角文字は実測の最大（`%` ＝ 1.141em）を使う（少なく数えない側へ倒す）。
+ * 全角（`接` `点` `コ` `イ` `ル` `①`〜`⑭` など U+2000 以上）は 1em。
  */
-const HALF_WIDTH_RATIO = 0.62;
+const CHAR_WIDTH_ROWS: ReadonlyArray<readonly [number, string]> = [
+  [0.305, 'il'],
+  [0.347, ',.'],
+  [0.374, 'j'],
+  [0.391, '!f'],
+  [0.404, ':;'],
+  [0.426, 't'],
+  [0.47, '-r'],
+  [0.492, '()[]'],
+  [0.5, '|'],
+  [0.509, 'IJ'],
+  [0.537, '"'],
+  [0.55, 'cs'],
+  [0.567, 'z'],
+  [0.582, '?'],
+  [0.594, '/'],
+  [0.609, 'Lvy'],
+  [0.62, 'Fe'],
+  [0.625, 'k'],
+  [0.63, 'a'],
+  [0.641, 'x'],
+  [0.649, 'o'],
+  [0.653, 'E{}'],
+  [0.661, 'T'],
+  [0.666, 'bdgpq'],
+  [0.674, 'SZ'],
+  [0.677, '0123456789$*_`'],
+  [0.68, 'hnu'],
+  [0.687, 'P'],
+  [0.688, 'C'],
+  [0.702, 'Y'],
+  [0.729, 'VX'],
+  [0.731, 'B'],
+  [0.74, 'A'],
+  [0.743, 'K'],
+  [0.75, 'R'],
+  [0.775, 'G'],
+  [0.783, 'U'],
+  [0.79, 'D'],
+  [0.801, 'OQ'],
+  [0.806, 'H'],
+  [0.81, 'N'],
+  [0.828, '&'],
+  [0.833, '#+<=>^~'],
+  [0.895, 'w'],
+  [0.908, 'M'],
+  [1.003, '@'],
+  [1.026, 'm'],
+  [1.051, 'W'],
+  [1.141, '%'],
+];
+
+const CHAR_WIDTH_EM: ReadonlyMap<string, number> = new Map(
+  CHAR_WIDTH_ROWS.flatMap(([em, chars]) => [...chars].map((char) => [char, em] as const)),
+);
+
+/** 表に無い半角文字の幅[em]（実測の最大。少なく数えない側へ倒す）。 */
+const UNKNOWN_HALF_WIDTH_EM = 1.141;
+/** 全角1文字の幅[em]。 */
+const FULL_WIDTH_EM = 1;
 
 /** 印字1つぶんの外接矩形（板の左上を原点とする mm）。 */
 export interface LabelBox {
@@ -119,12 +190,12 @@ export interface LabelBox {
   y1: number;
 }
 
-/** 文字列の描画幅[mm]の概算（全角は1文字ぶん、半角は `HALF_WIDTH_RATIO` ぶん）。 */
+/** 文字列の描画幅[mm]（全角は1文字ぶん、半角は `CHAR_WIDTH_EM` の実測値）。 */
 export function labelWidthMm(text: string, fontMm: number): number {
   let units = 0;
   for (const char of text) {
     const code = char.codePointAt(0) ?? 0;
-    units += code >= 0x2000 ? 1 : HALF_WIDTH_RATIO;
+    units += code >= 0x2000 ? FULL_WIDTH_EM : (CHAR_WIDTH_EM.get(char) ?? UNKNOWN_HALF_WIDTH_EM);
   }
   return units * fontMm;
 }
@@ -143,24 +214,54 @@ function textBox(centerX: number, centerY: number, text: string, fontMm: number)
 /**
  * ネジの脇に印字する役割の文字。
  *
- * ふだんは盤定義の銘板表記（`roleLabel()`。`COM` / `a` / `b`）だが、**コイルの⑭⑬だけは
- * `+` / `−` を `P(+)` / `N(−)` に置き換える**。利用者指摘 2026-09-20
- * 「リレーソケットの13、14番の端子にコイルとしか書いてないがこれではどちらがPかNか分からない」。
- * 段見出しは「コイル」のまま（何のネジかを離れた所から示す）で、**どちらが P でどちらが N か**は
- * ネジの手元のこの文字が示す、という役割分担にする。
+ * ふだんは盤定義の銘板表記（`roleLabel()`。`a` / `b`）だが、2つだけ置き換える。
+ *
+ * 1. **コイルの⑭⑬は `+` / `−` を `P(+)` / `N(−)` に**。利用者指摘 2026-09-20
+ *    「リレーソケットの13、14番の端子にコイルとしか書いてないがこれではどちらがPかNか分からない」。
+ *    段見出しは「コイル」のまま（何のネジかを離れた所から示す）で、**どちらが P でどちらが N か**は
+ *    ネジの手元のこの文字が示す、という役割分担にする。⑭⑬は段4の内側の2列なので、
+ *    4文字（`P(+)` ＝ 5.5mm）でも列ピッチ 8mm に収まり本体の端にも届かない。
+ * 2. **COM（⑨〜⑫）は `COM` ではなく1文字の `C`**（`COM_PIN_MARK`）。利用者指摘 2026-09-20
+ *    「3Dのリレーソケット部のCOMの文字重なって見えないけど」。
+ *    `COM` は 2.2mm（`ROLE_MM`）でも 5.3mm 幅あり、⑨〜⑫の4本が列ピッチ 8mm で並ぶ段では
+ *    文字のあいだが 2.7mm しか空かず、`COM COM COM COM` が1本の帯に見える。さらに外側の
+ *    ⑨と⑫では本体の端まで 0.36mm しか残らず、明るい台座へ文字がにじみ出てしまう
+ *    （`PRINT_EDGE_MARGIN_MM`）。
+ *    **`C` にしてよい理由**は、この段が COM であることは段見出し「COM」と青い色帯が既に言っており、
+ *    ネジの手元の文字は「いま締めているこの1本が何か」を確かめるためのものだから。
+ *    b接点の段は `b`、a接点の段は `a` と1文字なので、COM を `C` にすると
+ *    実物の配線図と同じ **b / a / C** の3文字組になり、3段の見た目もそろう。
  *
  * 置き換えを `board-model` の `roleLabel()` 側でやらないのは、あちらが**実物の銘板の表記**
- * （MY4N のソケットには `+` `−` としか刻印が無い）であり、机上のPLCの端子台の印字もそれを使うため。
- * ここは「訓練者に分かるように盤へ足した案内」なので描画側（renderer）が持つ。
+ * （MY4N のソケットには `COM` / `+` / `−` と刻印がある）であり、机上のPLCの端子台の印字や
+ * ツールチップ・部品カードもそれを使うため。ここは「訓練者に分かるように盤へ足した案内」なので
+ * 描画側（renderer）が持つ。段見出し・ツールチップ・部品カードの3か所は今までどおり `COM` と書く。
  *
- * 幅は 2.2mm（`ROLE_MM`）で `P(+)` ≒ 5.5mm・`N(−)` ≒ 6.3mm。列ピッチ 8mm
- * （`SOCKET_COL_PITCH_MM`）に収まり、隣のネジの印字とも板の縁とも当たらないことは
- * `test/socket-face-print.test.ts` が mm で確かめる。
+ * 隣のネジの印字とも本体の端とも当たらないことは `test/socket-face-print.test.ts` が mm で確かめる。
  */
 export function socketRoleMark(terminal: BoardTerminal): string {
+  if (terminal.role === 'com') return COM_PIN_MARK;
   if (terminal.role !== 'coil+' && terminal.role !== 'coil-') return roleLabel(terminal.role);
   return busSideMark(busSideOfRole(terminal.role));
 }
+
+/**
+ * COM のネジの脇に印字する1文字（段見出しの `COM` に対する短縮形）。
+ * 言葉としての `COM` は `i18n/ja.ts` の `JA_PIN.group.com` が持ち、こちらは**印字の都合の短縮形**
+ * なので描画側に置く（`socketRoleMark()` の doc comment 参照）。
+ */
+export const COM_PIN_MARK = 'C';
+
+/**
+ * ネジの脇の印字（番号・役割文字）が本体の端から必ず残す余白[mm]。
+ *
+ * 外側の列のネジは本体の端から `BAND_EDGE_MM`（3mm）しか離れていないので、その中に収まる
+ * いちばん大きな印字は番号（`NUMBER_MM` ＝ 4.6mm 幅の丸数字）で、端に残るのは 0.7mm である。
+ * **ネジ脇の印字はこの 0.7mm を割ってはならない**: 本体の外は明るい台座（`BOARD_PLATE_COLOR`）で、
+ * 役割の色（橙・緑・青・赤）はそこではコントラスト比 2 を切って読めなくなる。
+ * 段見出しは別で、板の余白へ出てよい（自前の黒い下地 `HEADER_PAD_MM` を敷いてあるため）。
+ */
+export const PRINT_EDGE_MARGIN_MM = BAND_EDGE_MM - NUMBER_MM / 2;
 
 /**
  * ソケットの端子1個ぶんの印字の位置（板の左上を原点とする mm）。
@@ -368,21 +469,40 @@ export function faceRect(terminals: readonly BoardTerminal[], padMm: number): Fa
 const BLOCK_MARK_MM = 3;
 
 /**
- * 5文字以上の端子名（CP1E の出力 `100.00`〜`101.03` など6文字）に使う縮めた印字の高さ[mm]。
+ * 9mm ピッチに収まらない端子名（CP1E の出力 `100.00`〜`101.03`、`COM0`、JW300 の `COM.A` など）に
+ * 使う縮めた印字の高さ[mm]。
  *
  * 机上のPLC本体は端子を千鳥2列（`PLC_TERMINAL_PITCH_MM` = 9mm ピッチ）に並べるため、同じ段の
  * 隣どうしは 9mm しか離れていない。`BLOCK_MARK_MM`（3mm）のまま6文字を描くと概算の印字幅が
  * 11mm を超え、隣の名前と重なって読めなかった（今日のスクリーンショット確認 03:
- * `COM0100.01COM1100.04…` が続けて潰れていた）。4文字以下（`COM0` / `0.00` など）は
- * 今までどおり `BLOCK_MARK_MM` のままでよい（`labelWidthMm()` の概算で 9mm ピッチに収まる）。
+ * `COM0100.01COM1100.04…` が続けて潰れていた）。9mm ピッチに収まる名前（`0.00` / `PB1c` など）は
+ * 今までどおり `BLOCK_MARK_MM` のままでよい（どちらを使うかは `blockMarkFontMm()` が幅で決める）。
  */
 export const BLOCK_MARK_LONG_MM = 2;
-/** これを超える文字数の名前だけ `BLOCK_MARK_LONG_MM` を使う。 */
-const BLOCK_MARK_LONG_THRESHOLD_CHARS = 4;
 
-/** 端子1個の印字に使う文字高さ[mm]（名前の長さで `BLOCK_MARK_MM` / `BLOCK_MARK_LONG_MM` を選ぶ）。 */
+/** 隣の端子の印字とのあいだに必ず空ける隙間[mm]。 */
+export const BLOCK_MARK_GAP_MM = 1;
+
+/**
+ * 端子名1個に許される最大の印字幅[mm]（端子ピッチ − 隣との隙間）。
+ * 盤の端子台（`BLOCK_PITCH_MM`）も机上のPLC（`PLC_TERMINAL_PITCH_MM`）もいまは 9mm だが、
+ * 片方だけ変わっても狭い側に合うよう小さい方を取る。
+ */
+const BLOCK_MARK_MAX_WIDTH_MM = Math.min(BLOCK_PITCH_MM, PLC_TERMINAL_PITCH_MM) - BLOCK_MARK_GAP_MM;
+
+/**
+ * 端子1個の印字に使う文字高さ[mm]。**名前の幅**で `BLOCK_MARK_MM` / `BLOCK_MARK_LONG_MM` を選ぶ。
+ *
+ * 以前は「5文字以上なら縮める」と**文字数**で決めていた。文字数は幅の代わりにならない:
+ * `COM0` は4文字だが `C` `O` `M` が太字の大文字でいちばん広い部類なので 3mm では 9.2mm あり、
+ * 9mm ピッチの隣の名前と 0.2mm 食い合っていた（CP1E の `COM0` と `100.01`）。
+ * 同じ4文字でも `0.00` は 7.1mm で収まる。`labelWidthMm()` が実測の字幅を持つようになったので、
+ * ここも実際の幅で決める。利用者指摘 2026-09-20「COMの文字重なって見えない」と同じ種類の取りこぼし。
+ */
 export function blockMarkFontMm(mark: string): number {
-  return mark.length > BLOCK_MARK_LONG_THRESHOLD_CHARS ? BLOCK_MARK_LONG_MM : BLOCK_MARK_MM;
+  return labelWidthMm(mark, BLOCK_MARK_MM) > BLOCK_MARK_MAX_WIDTH_MM
+    ? BLOCK_MARK_LONG_MM
+    : BLOCK_MARK_MM;
 }
 
 /**

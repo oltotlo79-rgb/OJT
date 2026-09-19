@@ -307,9 +307,15 @@ describe('端子名の印字は隣と重ならない（項目1）', () => {
     }
   });
 
-  it('keeps the normal font for names up to 4 characters and shrinks past that', () => {
-    expect(blockMarkFontMm('COM0')).toBe(blockMarkFontMm('0.00')); // 4文字はどちらも既定のまま
-    expect(blockMarkFontMm('100.00')).toBeLessThan(blockMarkFontMm('COM0')); // 6文字は縮める
+  /*
+   * 縮めるかどうかは**文字数ではなく幅**で決める（`blockMarkFontMm()` の doc comment）。
+   * 同じ4文字でも `0.00`（3mm で 7.1mm）は 9mm ピッチに収まり、`COM0`（同 9.2mm）は収まらない。
+   */
+  it('keeps the normal font for names that fit the 9mm pitch and shrinks the ones that do not', () => {
+    expect(blockMarkFontMm('0.00')).toBe(blockMarkFontMm('X0')); // 収まる名前は既定のまま
+    expect(blockMarkFontMm('100.00')).toBeLessThan(blockMarkFontMm('0.00')); // 6文字は縮める
+    // 4文字でも太字の大文字ばかりの `COM0` は 9mm に収まらないので縮める（`100.01` と食い合っていた）
+    expect(blockMarkFontMm('COM0')).toBeLessThan(blockMarkFontMm('0.00'));
   });
 
   it('shrinks the box for the CP1E output names that used to overlap (100.00–101.03)', () => {
