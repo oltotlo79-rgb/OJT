@@ -159,21 +159,39 @@ test.describe('回路図エディタ（§16 Phase 5 受入基準①②）', () =
      * 記号の上に敷いた当たり矩形（`data-slot`）が受け取り、その桁の要素IDが
      * `onPickCell` に回る。この重なりは JSDOM では再現できないので、ここでしか確かめられない（B2）。
      *
-     * Playwright の `click()` は「その点で実際に受け取るのが自分自身か」を先に確かめて、
-     * 矩形が手前にあると `intercepts pointer events` で断ってしまう。だから
-     * ①その点の最前面が当たり矩形であることを `elementFromPoint` で**明示的に確かめ**、
-     * ②`force: true` で本物のクリックをその点へ投げる、の2段にする（重なりの検査は緩めない）。
+     * 「並べて」ではエディタの枠が縦に細く、図の一部は枠の外へはみ出す。まず記号を枠の中へ
+     * 送ってから、**記号の上に当たり矩形が載っている点**を `elementsFromPoint()` で探す
+     * （重なりの順まで確かめる）。見つけた点を `page.mouse.click()` で素直に押すので、
+     * `force` で当たり判定の検査を省いたりはしない。
      */
-    const symbol = page.locator('[data-testid="schematic-editor"] [data-cell]').first();
-    const box = await symbol.boundingBox();
-    if (box === null) throw new Error('回路図の記号が見つかりません');
-    const point = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
-    const topmost = await page.evaluate(
-      (at) => document.elementFromPoint(at.x, at.y)?.getAttribute('data-slot') ?? null,
-      point,
-    );
-    expect(topmost).not.toBeNull();
-    await symbol.click({ force: true });
+    await page
+      .locator('[data-testid="schematic-editor"] [data-cell]')
+      .first()
+      .scrollIntoViewIfNeeded();
+    const target = await page.evaluate(() => {
+      const root = document.querySelector('[data-testid="schematic-editor"]');
+      if (root === null) return null;
+      for (const node of root.querySelectorAll('[data-cell]')) {
+        const box = node.getBoundingClientRect();
+        const x = box.x + box.width / 2;
+        const y = box.y + box.height / 2;
+        const stack = document.elementsFromPoint(x, y);
+        const slot = stack.find((el) => el.hasAttribute('data-slot'));
+        // 記号がその点にあり、その手前に当たり矩形が載っていること
+        if (slot === undefined || !stack.includes(node)) continue;
+        if (stack.indexOf(slot) > stack.indexOf(node)) continue;
+        return {
+          x,
+          y,
+          cellId: node.getAttribute('data-cell'),
+          slot: slot.getAttribute('data-slot'),
+        };
+      }
+      return null;
+    });
+    expect(target).not.toBeNull();
+    if (target === null) throw new Error('当たり矩形に覆われた記号が見つかりません');
+    await page.mouse.click(target.x, target.y);
     // ハイライトはストアに出る（3Dの発光はスクリーンショットで見る）
     const terminals = await highlightedTerminals();
     expect(terminals.length).toBeGreaterThan(0);
