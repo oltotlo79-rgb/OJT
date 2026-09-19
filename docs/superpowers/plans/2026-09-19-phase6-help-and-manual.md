@@ -234,7 +234,7 @@
 
 本設計 決定表#22。このタスクは**説明書が何を説明しなければならないかを決める**。以降のタスクはこの表を埋める作業になる。
 
-- [ ] **Step 1: 失敗するテストを書く（抽出の規則）**
+- [x] **Step 1: 失敗するテストを書く（抽出の規則）**
 
 `apps/desktop/test/feature-inventory.test.ts`:
 
@@ -313,7 +313,7 @@ pnpm --filter @ojt/desktop test feature-inventory
 # 期待: FAIL（`../scripts/feature-inventory.mjs` も coverage.json も無い）
 ```
 
-- [ ] **Step 2: 抽出器を作る**
+- [x] **Step 2: 抽出器を作る**
 
 `apps/desktop/scripts/feature-inventory.mjs`:
 
@@ -409,7 +409,7 @@ export declare function testIdsIn(source: string): Set<string>;
 export declare function collectTestIds(dir?: string): string[];
 ```
 
-- [ ] **Step 3: 機能一覧表を作る**
+- [x] **Step 3: 機能一覧表を作る**
 
 ```
 cd apps/desktop && node scripts/feature-inventory.mjs > "$TEMP/testids.json"
@@ -499,7 +499,7 @@ JA.error.* / JA.hazard.* / JA.staticCheck.* / JA.disabledReason.* /
 JA.routeReason.* / JA.mismatchReason.* / MSG.workFile.* / MSG.content.* / MSG.textFile.*
 ```
 
-- [ ] **Step 4: テストを通す**
+- [x] **Step 4: テストを通す**
 
 ```
 pnpm --filter @ojt/desktop test feature-inventory
@@ -508,7 +508,7 @@ pnpm --filter @ojt/desktop typecheck && pnpm lint
 # 期待: どちらも無警告
 ```
 
-- [ ] **Step 5: commit**
+- [x] **Step 5: commit**
 
 ```
 git add apps/desktop/scripts/feature-inventory.mjs apps/desktop/scripts/feature-inventory.d.mts apps/desktop/test/feature-inventory.test.ts docs/manual/coverage.json
