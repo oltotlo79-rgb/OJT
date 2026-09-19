@@ -247,7 +247,10 @@ export function Fixture({
         position={fixtureLabelPositionScene(kind, footprint, labelOffsetMm)}
         zIndexRange={[10, 0]}
       >
-        <span className="block-label">{label}</span>
+        {/* 名札の優先度（`label-declutter.ts`）。固定機器は端子台より先に残す */}
+        <span className="block-label" data-label-rank={3}>
+          {label}
+        </span>
       </Html>
     </group>
   );

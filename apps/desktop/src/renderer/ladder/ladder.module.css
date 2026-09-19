@@ -350,6 +350,11 @@
   overflow-y: auto;
 }
 
+/* 畳んだ出力ウィンドウの中身も箱ごと消す（理由は `.sideGroup:not([open])` と同じ）。UI監査バッチE */
+details:not([open]) > .outputBody {
+  display: none;
+}
+
 /* 開閉の目印。`display: flex` にすると既定の三角が消えるので自前で出す */
 .outputHeader::before,
 .sideSummary::before {
@@ -483,6 +488,20 @@ details[open] > .sideSummary::before {
 
 .sideBody {
   padding: 6px 8px 8px;
+}
+
+/*
+ * 畳んだ枠の中身は**箱ごと消す**。UI監査バッチE。
+ *
+ * Chromium は閉じた `<details>` の中身を `display: none` ではなく `content-visibility: hidden`
+ * （`::details-content`）で隠す。描画も当たり判定も止まるが**レイアウトは残る**ので、
+ * `getBoundingClientRect()` は畳んだままのデバイスコメント欄に実寸の矩形を返し、その矩形が
+ * 次の枠（キー割当）の見出しに食い込んでいた（`e2e/ui-quality.spec.ts` の
+ * `comment-input-X0 ∩ shortcuts-summary`。1920×1080 のモードDで致命4件）。
+ * 見た目は変わらないが、畳んだ中身が「そこに在る」ことをやめるので重なりが消える。
+ */
+.sideGroup:not([open]) > .sideBody {
+  display: none;
 }
 
 .sideTitle {

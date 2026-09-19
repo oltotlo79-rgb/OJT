@@ -100,7 +100,9 @@ export function TerminalBlock({
         }
         zIndexRange={[10, 0]}
       >
-        <span className="block-label">{label}</span>
+        <span className="block-label" data-label-rank={4}>
+          {label}
+        </span>
       </Html>
     </group>
   );

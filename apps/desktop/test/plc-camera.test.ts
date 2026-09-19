@@ -1,4 +1,5 @@
 import {
+  BOARD_HEIGHT_MM,
   BOARD_WIDTH_MM,
   JIPM_BOARD,
   OUTLET_ORIGIN_MM,
@@ -31,8 +32,9 @@ import { toScene } from '../src/renderer/three/coords.js';
 
 /*
  * `900×600`（aspect 1.5）は分割画面の3Dペインの実際の形を再現しておらず、I2 のバグ
- * （盤面延長の PLC が画角の外に落ちる）を隠していた（レビュー指摘）。分割画面の右ペイン
- * は `PLC_VIEW_ASPECT`（0.75）ぶんだけ縦長になるので、ここでもその比のボックスで検査する。
+ * （盤面延長の PLC が画角の外に落ちる）を隠していた（レビュー指摘）。モードDの3Dペインは
+ * `PLC_VIEW_ASPECT` の箱（バッチEからは中身と同じ横長の 2）なので、その比のボックスで検査する。
+ * 420×210px はいちばん狭い 1280×800 のときの実寸そのもの。
  */
 const BOX = { x: 0, y: 0, width: 420, height: 420 / PLC_VIEW_ASPECT };
 
@@ -130,5 +132,92 @@ describe('機種ごとの「盤＋PLC」視点（決定表#18）', () => {
     );
     // 他のプリセットは機種で変わらない
     expect(cameraPose('front', { plcUnit: PLC_UNIT_JW300 })).toEqual(cameraPose('front'));
+  });
+});
+
+/**
+ * モードDの3Dペインの**実測**寸法で画角を検算する（UI監査バッチE）。
+ *
+ * `screens.module.css` の `.plcLayout`: 幅 ＝ `max(420px, min(32vw, ...))`、
+ * 高さ ＝ 幅 ÷ `--plc-aspect`（＝ `PLC_VIEW_ASPECT`）。
+ * バッチEまでは高さを `max-height` だけで与えていたため `align-self: center` と組み合わさって
+ * ペインが中身なり（実測 150px）まで潰れ、盤がほとんど描かれず名札だけが浮いていた。
+ * ここでは**3つの画面サイズの実寸**で、盤の四隅・PLC本体の四隅・壁コンセントが
+ * ペインの内側に 8px 以上の余白を持って収まることを、E2E と同じ射影で確かめる。
+ */
+describe('モードDの3Dペインに盤・PLC本体・壁コンセントが収まる（UI監査バッチE）', () => {
+  /** 画面の端からこれ以上内側に居ること[px]（デザイン規則の 8px 格子）。 */
+  const MARGIN_PX = 8;
+
+  /** `--plc-board-w` と同じ式（`ladder-layout.test.tsx` の `boardWidth()` と揃える）。 */
+  function paneWidth(vw: number, vh: number): number {
+    return Math.max(420, Math.min(0.32 * vw, PLC_VIEW_ASPECT * (vh - 96)));
+  }
+
+  /** 3つの画面サイズでの3Dペイン（幅 ＝ CSS の式、高さ ＝ 幅 ÷ 比）。 */
+  const PANES = (
+    [
+      [1280, 800],
+      [1440, 900],
+      [1920, 1080],
+    ] as const
+  ).map(([vw, vh]) => {
+    const width = paneWidth(vw, vh);
+    return { name: `${String(vw)}x${String(vh)}`, width, height: width / PLC_VIEW_ASPECT };
+  });
+
+  it('keeps the board, the unit and the outlet inside every measured pane', () => {
+    let checked = 0;
+    for (const pane of PANES) {
+      const box = { x: 0, y: 0, width: pane.width, height: pane.height };
+      for (const unit of Object.values(PLC_UNITS)) {
+        const pose = cameraPose('plc', { plcUnit: unit, aspect: pane.width / pane.height });
+        const points = [
+          // 盤の四隅
+          { x: 0, y: 0, z: 0 },
+          { x: BOARD_WIDTH_MM, y: 0, z: 0 },
+          { x: 0, y: BOARD_HEIGHT_MM, z: 0 },
+          { x: BOARD_WIDTH_MM, y: BOARD_HEIGHT_MM, z: 0 },
+          // 机上のPLC本体の四隅
+          { x: unit.pos.x, y: unit.pos.y, z: 0 },
+          { x: unit.pos.x + unit.sizeMm.width, y: unit.pos.y, z: 0 },
+          { x: unit.pos.x, y: unit.pos.y + unit.sizeMm.height, z: 0 },
+          {
+            x: unit.pos.x + unit.sizeMm.width,
+            y: unit.pos.y + unit.sizeMm.height,
+            z: 0,
+          },
+          // 壁コンセント
+          { x: OUTLET_ORIGIN_MM.x, y: OUTLET_ORIGIN_MM.y, z: 0 },
+        ];
+        for (const point of points) {
+          const at = projectToScreen(boardToWorld(toScene(point)), pose, box);
+          const where = `${pane.name} / ${unit.model}`;
+          expect(at.x, where).toBeGreaterThanOrEqual(MARGIN_PX);
+          expect(at.x, where).toBeLessThanOrEqual(pane.width - MARGIN_PX);
+          expect(at.y, where).toBeGreaterThanOrEqual(MARGIN_PX);
+          expect(at.y, where).toBeLessThanOrEqual(pane.height - MARGIN_PX);
+          checked += 1;
+        }
+      }
+    }
+    // ループの空振りで緑にならないように
+    expect(checked).toBeGreaterThanOrEqual(3 * 4 * 9);
+  });
+
+  it('fills the pane: the board is not a speck in a black field', () => {
+    for (const pane of PANES) {
+      const box = { x: 0, y: 0, width: pane.width, height: pane.height };
+      const pose = cameraPose('plc', { aspect: pane.width / pane.height });
+      const project = (x: number, y: number): { x: number; y: number } =>
+        projectToScreen(boardToWorld(toScene({ x, y, z: 0 })), pose, box);
+      const left = project(0, BOARD_HEIGHT_MM / 2).x;
+      const right = project(BOARD_WIDTH_MM, BOARD_HEIGHT_MM / 2).x;
+      const top = project(BOARD_WIDTH_MM / 2, 0).y;
+      const bottom = project(BOARD_WIDTH_MM / 2, BOARD_HEIGHT_MM).y;
+      // 盤だけで横は4割以上・縦は7割以上を占める（残りは机上のPLCと壁コンセント）
+      expect((right - left) / pane.width, pane.name).toBeGreaterThan(0.4);
+      expect((bottom - top) / pane.height, pane.name).toBeGreaterThan(0.7);
+    }
   });
 });

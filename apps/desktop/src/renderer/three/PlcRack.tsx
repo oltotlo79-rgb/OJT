@@ -173,7 +173,7 @@ export function PlcRack({
             })}
             zIndexRange={[10, 0]}
           >
-            <span className="block-label" title={module.displayName}>
+            <span className="block-label" title={module.displayName} data-label-rank={6}>
               {module.model}
             </span>
           </Html>
@@ -207,7 +207,9 @@ export function PlcRack({
         position={toScene({ x: unit.pos.x + width / 2, y: unit.pos.y + height + 8, z: 0 })}
         zIndexRange={[10, 0]}
       >
-        <span className="block-label">{unit.displayName}</span>
+        <span className="block-label" data-label-rank={1}>
+          {unit.displayName}
+        </span>
       </Html>
     </group>
   );

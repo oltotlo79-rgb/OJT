@@ -230,7 +230,10 @@ export function PlcFace({
         })}
         zIndexRange={[10, 0]}
       >
-        <span className="block-label">{appearance.nameplate}</span>
+        {/* 銘板は機種名（下の `displayName`）と同じことを言うので、ぶつかったらこちらを譲る */}
+        <span className="block-label" data-label-rank={5}>
+          {appearance.nameplate}
+        </span>
       </Html>
     </group>
   );
@@ -326,7 +329,9 @@ export function PlcUnit({
         })}
         zIndexRange={[10, 0]}
       >
-        <span className="block-label">{unit.displayName}</span>
+        <span className="block-label" data-label-rank={1}>
+          {unit.displayName}
+        </span>
       </Html>
     </group>
   );

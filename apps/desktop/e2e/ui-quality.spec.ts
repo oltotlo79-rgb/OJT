@@ -45,8 +45,7 @@ import {
  * **判定の方針**
  *
  * - `severity: 'blocking'`（はみ出し・ツールバー／状態／ボタンの文字切れ・操作要素どうしの
- *   重なり）は **0 件であること**を assert する。既知の未修正分だけを `KNOWN_BLOCKING` に
- *   書き出して除外しているので、修正が載るたびにその行を消す。
+ *   重なり）は **0 件であること**を assert する（UI監査バッチE で実際に 0 になった）。
  * - それ以外は件数を `BASELINE` 以下であることだけ見る（新規の悪化を止める網）。
  *   **直したら必ず BASELINE を下げる**こと。下げ方は下記 `BASELINE` のコメント参照。
  *
@@ -107,8 +106,12 @@ const BASELINE: Readonly<Record<string, number>> = {
   'page-overflow': 0,
   // 日本語が切れていないことは Plan 5 の完了条件そのものなので **0 のまま**（1件でも落とす）
   clip: 0,
-  overlap: 132,
-  'hud-overlap': 94,
+  // UI監査バッチE の実測（132 → 27）。畳んだ `<details>` の中身を `display: none` にしたぶん、
+  // 「描かれていないデバイスコメント欄が次の枠に食い込む」偽の重なりが消えた
+  overlap: 27,
+  // UI監査バッチE の実測（94 → 0）。3D盤の名札は `three/label-declutter.ts` が重なる枚数だけ
+  // 引っ込めるので、**どのペインの形でも 0 件**。1件でも出たら重なり取りが効いていない
+  'hud-overlap': 0,
   duplicate: 0,
   wrap: 30,
   'small-text': 24,
@@ -120,16 +123,17 @@ const BASELINE: Readonly<Record<string, number>> = {
 /**
  * 致命（`blocking`）の件数の上限。**本来は 0 でなければならない**。
  *
- * UI監査バッチ A〜D と Batch E の直しを載せたあとの実測（2026-09-20）。残っているのは
- * 次の2種で、どちらも**3D盤の上の表示**と**モードDの1920×1080**に限られる。
- * 直すたびに実測まで下げ、最後は 0 にすること。
+ * UI監査バッチE（2026-09-20）で **0 に到達**した。内訳は次の2つの直しで消えた。
  *
  * - 3D盤の名札どうし／名札と状態オーバーレイの重なり（`hud-overlap`。モードB「並べて」と
- *   モードDの盤。`span.block-label ∩ span.block-label`）
+ *   モードDの盤）→ `three/label-declutter.ts` が入らない名札を引っ込める
  * - モードD 1920×1080 でデバイスコメント欄がキー割当表の見出しと重なる
- *   （`overlap`。`comment-input-X0 ∩ shortcuts-summary`）
+ *   （`overlap`。`comment-input-X0 ∩ shortcuts-summary`）→ 畳んだ `<details>` の中身を
+ *   `display: none`（`ladder.module.css` の `.sideGroup:not([open]) > .sideBody`）
+ *
+ * **二度と上げないこと**。上がったらそれは画面が壊れている。
  */
-const BLOCKING_BASELINE = 120;
+const BLOCKING_BASELINE = 0;
 
 /** 歩けなかった状態のメモ。多すぎると網として意味が無いので上限を置く。 */
 const MAX_NOTES = 6;

@@ -73,7 +73,10 @@ export function Outlet({
         })}
         zIndexRange={[10, 0]}
       >
-        <span className="block-label">{JA.plc.outlet}</span>
+        {/* PLCの電源を取る先なので、端子台の名札より優先して残す（`label-declutter.ts`） */}
+        <span className="block-label" data-label-rank={2}>
+          {JA.plc.outlet}
+        </span>
       </Html>
     </group>
   );

@@ -157,6 +157,19 @@ describe('折りたたみ列（UXレビュー #27）', () => {
     expect(LADDER_CSS).toMatch(/\.workspaceSide\s*\{[^}]*overflow-y:\s*auto/u);
   });
 
+  /*
+   * UI監査バッチE: Chromium は閉じた `<details>` の中身を `display: none` ではなく
+   * `content-visibility: hidden` で隠すので、描かれていないデバイスコメント欄が
+   * `getBoundingClientRect()` には実寸で残り、下の枠（キー割当）の見出しに食い込んでいた
+   * （`e2e/ui-quality.spec.ts` の `comment-input-X0 ∩ shortcuts-summary`）。箱ごと消す。
+   */
+  it('畳んだ枠の中身は箱ごと消す（下の枠の見出しに食い込まない）', () => {
+    expect(LADDER_CSS).toMatch(
+      /\.sideGroup:not\(\[open\]\) > \.sideBody\s*\{[^}]*display:\s*none/u,
+    );
+    expect(LADDER_CSS).toMatch(/details:not\(\[open\]\) > \.outputBody\s*\{[^}]*display:\s*none/u);
+  });
+
   it('表は列の幅に収める（狭い画面で横にはみ出さない）', () => {
     expect(LADDER_CSS).toMatch(/\.ioTable\s*\{[^}]*table-layout:\s*fixed/u);
     expect(LADDER_CSS).toMatch(/overflow-wrap:\s*anywhere/u);
@@ -184,9 +197,39 @@ describe('分割レイアウトの列（UXレビュー #27）', () => {
       /\.plcLayout\s*\{[^}]*grid-template-columns:\s*var\(--plc-board-w\) minmax\(0, 1fr\) 300px/u,
     );
     // 縦に伸ばしても中身は大きくならないので、比の箱に丸めて縦中央へ置く
+    //
+    // UI監査バッチE: 丸めは `max-height` ではなく `height` で行う。`align-self: center` は
+    // 行いっぱいへの伸長をやめさせるので、`max-height` だけだと高さが中身なり（実測 150px）まで
+    // 潰れ、モードDの3Dペインに盤がほとんど描かれていなかった。
     expect(SCREENS_CSS).toMatch(
-      /\[data-view='split'\] > \.viewport\s*\{[^}]*max-height:\s*calc\(var\(--plc-board-w\) \/ var\(--plc-aspect\)\)/u,
+      /\[data-view='split'\] > \.viewport\s*\{[^}]*height:\s*calc\(var\(--plc-board-w\) \/ var\(--plc-aspect\)\)/u,
     );
+    expect(SCREENS_CSS).toMatch(/\[data-view='split'\] > \.viewport\s*\{[^}]*max-height:\s*100%/u);
+  });
+
+  /*
+   * UI監査バッチE: ペインの高さは「幅 ÷ 比」で決まるので、3つの画面サイズで**必ず行に収まる**
+   * こと（`height` が `.plcLayout` の行より高いと `max-height: 100%` に切られ、
+   * また `--plc-aspect` から外れた形になってしまう）を数で押さえる。
+   */
+  it('3Dペインの高さ（幅 ÷ 比）がどの画面サイズでも行に収まる', () => {
+    for (const [vw, vh] of [
+      [1920, 1080],
+      [1440, 900],
+      [1280, 800],
+      // ウィンドウの最小の大きさ（`BrowserWindow` の minWidth/minHeight）
+      [1280, 720],
+    ] as const) {
+      const paneH = vh - CHROME;
+      const height = boardWidth(vw, vh) / PLC_VIEW_ASPECT;
+      expect(height, `${String(vw)}×${String(vh)}`).toBeLessThanOrEqual(paneH);
+      // 盤（245mm）が中身（285mm）の 86% を占めるので、ペインの高さもそれなりに要る
+      expect(height, `${String(vw)}×${String(vh)}`).toBeGreaterThanOrEqual(200);
+    }
+    // 1280×800 で 210px、1440×900 で 230px、1920×1080 で 307px
+    expect(Math.round(boardWidth(1280, 800) / PLC_VIEW_ASPECT)).toBe(210);
+    expect(Math.round(boardWidth(1440, 900) / PLC_VIEW_ASPECT)).toBe(230);
+    expect(Math.round(boardWidth(1920, 1080) / PLC_VIEW_ASPECT)).toBe(307);
   });
 
   it('1列に落ちたときも盤が見える（ラダーが上・3Dが下）', () => {
@@ -196,6 +239,8 @@ describe('分割レイアウトの列（UXレビュー #27）', () => {
     expect(narrow).not.toMatch(/\[data-view='split'\] > \.viewport\s*\{[^}]*display:\s*none/u);
     // `.viewport` の既定は `grid-row: 1`。ラダーを先に置くため2行目へ動かす
     expect(narrow).toMatch(/\[data-view='split'\] > \.viewport\s*\{[^}]*grid-row:\s*2/u);
+    // 高さは行が決めるので、比の丸め（`height` / `max-height`）はここで外す
+    expect(narrow).toMatch(/\[data-view='split'\] > \.viewport\s*\{[^}]*height:\s*auto/u);
     // ラダーと3Dがそれぞれ自分の高さを持つ
     expect(narrow).toMatch(
       /\.plcLayout\[data-view='split'\]\s*\{[^}]*grid-template-rows:\s*clamp\([^)]*\) clamp\([^)]*\) auto/u,

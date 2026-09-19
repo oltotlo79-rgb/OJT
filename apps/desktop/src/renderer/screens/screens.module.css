@@ -329,10 +329,13 @@
  * 3Dの幅は `three/camera.ts` の `PLC_VIEW_ASPECT`（= 幅 ÷ 高さ）で決める。`fitDistanceMm()`
  * はこの比を前提にカメラ距離を決めるので、ペインがこれより横長だと左右に、縦長だと上下に
  * 黒が増えるだけで中身は大きくならない。だから **`--plc-aspect` の箱ちょうど**に収める。
+ *
+ * UI監査バッチE: 比は 0.75（縦長）ではなく**中身の比**（盤＋机上のPLC＋壁コンセントの外接は
+ * 約 580×285mm ＝ 2）。0.75 のままだと中身は上下3割で残りは黒だった（I14）。
  */
 .plcLayout {
   /* `three/camera.ts` の `PLC_VIEW_ASPECT`。片方だけ変えない（`ladder-layout.test.tsx` が縛る） */
-  --plc-aspect: 0.75;
+  --plc-aspect: 2;
   /* ツールバー＋手順帯＋上下パディングの実測（1920×1080 で 94px）。少し余裕を見て 96px */
   --plc-chrome: 96px;
   --plc-pane-h: calc(100vh - var(--plc-chrome));
@@ -354,10 +357,17 @@
 /*
  * 分割のときだけ、3Dペインの高さも `--plc-aspect` の箱に丸める。縦に伸ばしても中身は
  * 大きくならず黒が増えるだけなので、伸ばさずに縦中央へ置く。
+ *
+ * UI監査バッチE: 高さは `max-height` ではなく **`height` で決める**。`align-self: center` は
+ * 「行いっぱいに伸ばす」のをやめさせるので、`max-height` だけでは高さが中身なり（`.viewport`
+ * の中は絶対配置の重ね物ばかりなので実測 150px）まで潰れ、盤がほとんど描かれていなかった。
+ * `max-height: 100%` は行より高くならないための保険（ウィンドウの最小高さでも
+ * `--plc-board-w ÷ --plc-aspect` は行に収まるので、ふだんは効かない）。
  */
 .plcLayout[data-view='split'] > .viewport {
   align-self: center;
-  max-height: calc(var(--plc-board-w) / var(--plc-aspect));
+  height: calc(var(--plc-board-w) / var(--plc-aspect));
+  max-height: 100%;
 }
 
 .plcLayout[data-view='ladder'] {
@@ -424,6 +434,8 @@
     align-self: stretch;
     grid-column: 1;
     grid-row: 2;
+    /* 高さは行（`grid-template-rows` の2つめ）が決めるので、比の丸めは外す */
+    height: auto;
     max-height: none;
   }
 

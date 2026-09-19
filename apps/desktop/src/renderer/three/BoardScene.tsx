@@ -64,6 +64,7 @@ import { PerfProbe } from './PerfProbe.js';
 import { PlcRack } from './PlcRack.js';
 import { PlcUnit } from './PlcUnit.js';
 import { Fixture, FIXTURE_LABEL_OFFSET_MM, FIXTURES } from './Fixtures.js';
+import { LabelDeclutter } from './label-declutter.js';
 import { Lamp } from './Lamp.js';
 import { MountedPart } from './MountedPart.js';
 import { ProbeMarkers } from './ProbeMarkers.js';
@@ -789,6 +790,11 @@ function BoardContents({
       />
       <CameraPresets preset={camera} nonce={cameraNonce} controls={controls} />
       <ViewGizmo controls={controls} />
+      {/*
+        名札の重なり取り（UI監査バッチE）。drei の `<Html>` が名札を置いた**後**に走らせたいので、
+        `useFrame` の登録がいちばん最後になるよう、必ずこの位置（最後の子）に置く。
+      */}
+      <LabelDeclutter />
     </>
   );
 }

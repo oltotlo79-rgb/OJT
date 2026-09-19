@@ -728,38 +728,48 @@ export function ViewGizmo({ controls }: { controls: OrbitControlsLike | null }):
    *
    * `GIZMO_MIN_VIEWPORT_PX` 未満でキューブを描いていない（`layout === null`）ときは
    * `cube.current` / `billboard.current` が `null` のままなので、ここは何もしない。
+   *
+   * **優先度はキューブを描くときだけ 0 より大きくする**（UI監査バッチE）。R3F は
+   * 「優先度 0 より大きい `useFrame` が1つでもあれば自動描画をやめ、描くのはアプリの責任」
+   * という約束なので、キューブを隠しているのにここだけ 0.5 で居座ると、本体シーンを描く者
+   * （`GizmoHelper` の `Hud`、優先度 1）が居なくなり**キャンバスが真っ黒のまま**になる。
+   * 実際、モードDの分割（3Dペイン 457px 幅 < 600px）では盤が1枚も描かれず、drei の
+   * `<Html>` の名札だけが黒地に浮いていた（監査の「盤が描かれずに名札だけ」）。
    */
-  useFrame(() => {
-    const plate = billboard.current;
-    const parent = plate?.parent ?? null;
-    if (plate !== null && parent !== null) {
-      // 親（`GizmoHelper` が本体カメラの逆回転を入れる group）を打ち消す
-      plate.quaternion.copy(parent.quaternion).invert();
-    }
+  useFrame(
+    () => {
+      const plate = billboard.current;
+      const parent = plate?.parent ?? null;
+      if (plate !== null && parent !== null) {
+        // 親（`GizmoHelper` が本体カメラの逆回転を入れる group）を打ち消す
+        plate.quaternion.copy(parent.quaternion).invert();
+      }
 
-    const animation = snap.current;
-    if (animation !== null) {
-      const elapsed = performance.now() - animation.startMs;
-      const t = Math.min(1, elapsed / VIEW_TRANSITION_MS);
-      applyPose(interpolatePose(animation.from, animation.to, t));
-      if (t < 1) invalidate();
-      else snap.current = null;
-    }
+      const animation = snap.current;
+      if (animation !== null) {
+        const elapsed = performance.now() - animation.startMs;
+        const t = Math.min(1, elapsed / VIEW_TRANSITION_MS);
+        applyPose(interpolatePose(animation.from, animation.to, t));
+        if (t < 1) invalidate();
+        else snap.current = null;
+      }
 
-    const hover = fade.current;
-    if (hover !== null) {
-      const t = Math.min(1, (performance.now() - hover.startMs) / GIZMO_FADE_MS);
-      // なめらかに出入りさせる（三次の滑り出し・滑り込み）
-      paint({
-        hovered: hover.to,
-        fading: hover.from,
-        fade: t * t * (3 - 2 * t),
-        active: gizmoActiveFace(preset),
-      });
-      if (t < 1) invalidate();
-      else fade.current = null;
-    }
-  }, GIZMO_FRAME_PRIORITY);
+      const hover = fade.current;
+      if (hover !== null) {
+        const t = Math.min(1, (performance.now() - hover.startMs) / GIZMO_FADE_MS);
+        // なめらかに出入りさせる（三次の滑り出し・滑り込み）
+        paint({
+          hovered: hover.to,
+          fading: hover.from,
+          fade: t * t * (3 - 2 * t),
+          active: gizmoActiveFace(preset),
+        });
+        if (t < 1) invalidate();
+        else fade.current = null;
+      }
+    },
+    layout === null ? 0 : GIZMO_FRAME_PRIORITY,
+  );
 
   /**
    * ドラッグの追従はウィンドウ全体で受ける。キューブは小さいので、少し引いただけで

@@ -38,8 +38,11 @@ import styles from './pinout.module.css';
  * 図の座標系（`viewBox`）。幅・高さの比がそのままカード内での見え方になる。
  * 高さは段4の帯の下に**コイルの極性の印**（`P(+)` / `N(−)`）の一行ぶんを足した分ある
  * （利用者指摘 2026-09-20「どちらがPかNか分からない」）。
+ *
+ * UI監査バッチE: 印の文字を 9px → 11px（デザイン規則の下限）へ上げたぶん、一行ぶんの高さを
+ * 126 → 130 に広げてある（`POLARITY_DY` も 24 → 26）。
  */
-export const PINOUT_VIEW = { w: 184, h: 126 } as const;
+export const PINOUT_VIEW = { w: 184, h: 130 } as const;
 
 /** 列の中心X（実物の4列）。 */
 const COL_X0 = 92;
@@ -55,8 +58,13 @@ const SWATCH = { x: 0, w: 8, h: 8, rx: 2 } as const;
 const NAME_X = 12;
 /** 役割の帯（段の中心からの下げ量・高さ・ネジ1個ぶんの左右の張り出し）。 */
 const BAND = { dy: 12, h: 3, half: 12, rx: 1.5 } as const;
-/** コイルの極性の印を置く段の中心からの下げ量（帯のさらに下）。 */
-const POLARITY_DY = 24;
+/**
+ * コイルの極性の印を置く段の中心からの下げ量（帯のさらに下）。
+ * 印の文字は 11px（`pinout.module.css` の `.polarity`）なので、段4の帯の下端
+ * （`BAND.dy + BAND.h` = 15）から文字の上端（`POLARITY_DY − 11 × 0.72` ≈ 18）まで
+ * 3単位ぶん空く。番号（半径 `PIN_R` の丸の中）にも届かない。
+ */
+const POLARITY_DY = 26;
 
 /** 列の中心X。 */
 export function pinoutColumnX(col: number): number {

@@ -34,6 +34,8 @@ const harness: {
   invalidateCount: number;
   camera: unknown;
   frame: (() => void) | null;
+  /** `useFrame` に渡した優先度。0 より大きいと R3F は自動描画をやめる（バッチE）。 */
+  framePriority: number;
   gl: { domElement: { style: { cursor: string } } };
   /** キャンバスの CSS px 幅・高さ。既定は HUD が既定の96pxで出る広さ（900px以上）。 */
   size: { width: number; height: number };
@@ -42,6 +44,7 @@ const harness: {
   invalidateCount: 0,
   camera: undefined,
   frame: null,
+  framePriority: 0,
   gl: { domElement: { style: { cursor: '' } } },
   size: { width: 1024, height: 768 },
 }));
@@ -70,8 +73,9 @@ vi.mock('@react-three/fiber', () => ({
       gl: harness.gl,
       size: harness.size,
     }),
-  useFrame: (callback: () => void) => {
+  useFrame: (callback: () => void, priority?: number) => {
     harness.frame = callback;
+    harness.framePriority = priority ?? 0;
   },
 }));
 
@@ -91,6 +95,7 @@ const {
   GIZMO_CHAMFER_PREFIX,
   GIZMO_COLORS,
   GIZMO_FACE_MESH_NAME,
+  GIZMO_FRAME_PRIORITY,
   GIZMO_HIT_PREFIX,
   GIZMO_MARGIN,
   GIZMO_PLATE_NAME,
@@ -779,6 +784,37 @@ describe('狭いキャンバスでは何も描かない（600px未満・2026-09-
     // useFrame は登録されるが、参照する group が無いので何もしない（例外を投げない）
     expect(() => harness.frame?.()).not.toThrow();
   });
+
+  /*
+   * UI監査バッチE: R3F は「優先度 0 より大きい `useFrame` が1つでもあれば自動描画をやめる」
+   * （描くのはアプリの責任になる）。キューブを隠しているのにこの `useFrame` が 0.5 のまま
+   * 居座ると、本体シーンを描く者（`GizmoHelper` の `Hud`、優先度 1）が居なくなり、
+   * **キャンバスが真っ黒**になる。モードDの分割（3Dペイン 457px < 600px）で実際にそうなり、
+   * 盤が1枚も描かれず drei の `<Html>` の名札だけが黒地に浮いていた。
+   */
+  it('キューブを隠すときは useFrame の優先度を 0 に戻す（本体シーンの自動描画を止めない）', () => {
+    cleanup();
+    harness.children = null;
+    harness.framePriority = -1;
+    harness.size = { width: 457, height: 228 }; // モードD分割の 1440×900 の実測ペイン
+    render(<ViewGizmo controls={controls} />);
+    expect(gizmoLayoutForViewport(457, 228)).toBeNull();
+    expect(harness.children).toBeNull();
+    expect(harness.framePriority).toBe(0);
+  });
+
+  it('キューブを描くときだけ優先度を上げる（Hud より前・GizmoHelper より後に走らせる）', () => {
+    cleanup();
+    harness.children = null;
+    harness.framePriority = -1;
+    harness.size = { width: 1024, height: 768 };
+    render(<ViewGizmo controls={controls} />);
+    expect(harness.children).not.toBeNull();
+    expect(harness.framePriority).toBe(GIZMO_FRAME_PRIORITY);
+    expect(GIZMO_FRAME_PRIORITY).toBeGreaterThan(0);
+    // `Hud`（優先度 1）より前に走る
+    expect(GIZMO_FRAME_PRIORITY).toBeLessThan(1);
+  });
 });
 
 describe('HUDは分割ビューの盤に重ならない（2026-09-20 の利用者指摘「重なってるし」）', () => {
@@ -821,11 +857,42 @@ describe('HUDは分割ビューの盤に重ならない（2026-09-20 の利用�
   });
 
   it('96pxキューブが出るぎりぎりの幅（900px）でも、HUDは左上の角のすぐ内側に収まる', () => {
-    const canvasBox: CanvasBox = { x: 0, y: 0, width: 900, height: 900 / PLC_VIEW_ASPECT };
-    const layout = gizmoLayoutForViewport(canvasBox.width);
+    /*
+     * 96pxキューブが出るのは幅900px以上のペイン＝**モードB/C の3Dペイン**だけ
+     * （モードDの3Dペインは `--plc-board-max: 32vw` の上限があり、1920×1080 でも 614px）。
+     * そこで高さもモードBのペインの形（おおむね 16:10）で取る。
+     * UI監査バッチE以前はここを `900 / PLC_VIEW_ASPECT`（= 1200px）で作っていたが、
+     * それはモードDの比（当時 0.75 ＝ 縦長）を幅900pxに当てた**実在しないペイン**で、
+     * 縦の検算が素通りしていた（比を中身どおりの 2 に直した時点で 450px になり落ちる）。
+     */
+    const canvasBox: CanvasBox = { x: 0, y: 0, width: 900, height: Math.round(900 / 1.6) };
+    const layout = gizmoLayoutForViewport(canvasBox.width, canvasBox.height);
     if (layout === null) throw new Error('layout is null');
     // HUD の外形は左上の角から見て、キャンバスの半分未満に収まる（画面を覆い尽くさない）
     expect(layout.margin[0] + layout.plateRadius).toBeLessThan(canvasBox.width / 2);
     expect(layout.margin[1] + layout.plateRadius).toBeLessThan(canvasBox.height / 2);
+  });
+
+  /*
+   * UI監査バッチE: モードDの3Dペインは実寸で 420×210 / 461×230 / 614×307px（`--plc-aspect` が
+   * 中身と同じ横長の 2 になったぶん、高さは以前の見込みより低い）。この3つでキューブが
+   * 出るのは 1920×1080 だけで、そこでも下地の丸はペインの高さに収まる（`heightPx` の判定）。
+   */
+  it('モードDの3つの実寸ペインで、HUDはペインの高さに収まるか隠れる', () => {
+    for (const [width, height] of [
+      [420, 210],
+      [461, 230],
+      [614, 307],
+    ] as const) {
+      const layout = gizmoLayoutForViewport(width, height);
+      if (layout === null) continue; // 隠れていれば重なりようがない
+      expect(layout.margin[1] + layout.plateRadius, `${String(width)}px`).toBeLessThanOrEqual(
+        height,
+      );
+    }
+    // 420px / 461px は下限（600px）未満なので隠れる
+    expect(gizmoLayoutForViewport(420, 210)).toBeNull();
+    expect(gizmoLayoutForViewport(461, 230)).toBeNull();
+    expect(gizmoLayoutForViewport(614, 307)).not.toBeNull();
   });
 });

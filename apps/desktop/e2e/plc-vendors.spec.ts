@@ -189,12 +189,27 @@ async function showBoardOnly(page: Page): Promise<CanvasBox> {
  * **3Dビューポートの中だけ**を、**完全一致**で見る（右の `plc-model` にも
  * `JTEKT TOYOPUC PC10G-1SP（基本ベース＋POWER1＋CPU＋IN-12＋OUT-12）` のように型式が
  * 部分文字列として出るので、部分一致だと名札が描かれていなくても通ってしまう）。
+ *
+ * UI監査バッチE: 「4枚とも**見えている**」ことは要求できなくなった。ラックのモジュールは
+ * 幅 40mm 前後で、画面上の間隔（3Dペインの大きさ次第で 30px 前後）より名札のほうが広いので、
+ * 全部出すと必ず重なる。デザイン規則「なにも重ならない」を優先して
+ * `three/label-declutter.ts` が入らない名札を引っ込めるため、ここでは
+ *
+ *   - 4枚とも**3Dビューポートの中の名札として描かれている**（`.block-label`。右の
+ *     `plc-model` の部分文字列ではない）
+ *   - そのうち**少なくとも1枚は読める状態**で出ている
+ *
+ * を見る。型式そのものは右の `plc-model` が必ず全部出す（同じテストが別途見ている）。
  */
 async function expectRackModules(page: Page, models: readonly string[]): Promise<void> {
   const viewport = page.locator('[data-testid="viewport"]');
+  let shown = 0;
   for (const model of models) {
-    await expect(viewport.getByText(model, { exact: true }).first()).toBeVisible();
+    const labels = viewport.getByText(model, { exact: true });
+    await expect(labels.first()).toHaveClass(/block-label/u);
+    if (await labels.first().isVisible()) shown += 1;
   }
+  expect(shown, `ラックの名札が1枚も読めない: ${models.join(' / ')}`).toBeGreaterThan(0);
 }
 
 /** ラダーエディタにキーを送る（`press()` は要素にフォーカスしてから押す）。 */

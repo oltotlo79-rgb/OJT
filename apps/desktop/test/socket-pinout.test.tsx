@@ -7,6 +7,8 @@ import {
   type SocketId,
 } from '@ojt/board-model';
 import { cleanup, render, screen } from '@testing-library/react';
+import { existsSync, readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import type { ReactNode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -22,6 +24,21 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 vi.mock('@react-three/drei', () => ({
   Html: ({ children }: { children?: ReactNode }) => children,
 }));
+
+/** CSS Modules は happy-dom では当たらないので、宣言そのものを読んで縛る（`ladder-layout.test.tsx` と同じ流儀）。 */
+function readCss(rel: string): string {
+  for (const base of [process.cwd(), resolve(process.cwd(), 'apps/desktop')]) {
+    const path = resolve(base, rel);
+    if (existsSync(path)) return readFileSync(path, 'utf8');
+  }
+  throw new Error(`${rel} が見つからない（cwd: ${process.cwd()}）`);
+}
+
+/** コメントを落とす（注釈の中の数字まで拾わないように）。 */
+const PINOUT_CSS = readCss('src/renderer/panels/pinout.module.css').replace(
+  /\/\*[\s\S]*?\*\//gu,
+  '',
+);
 
 const {
   SocketPinout,
@@ -277,6 +294,42 @@ describe('コイルの極性（⑭ = P(+) / ⑬ = N(−)）', () => {
       expect(Number(mark.getAttribute('x'))).toBe(pos?.x);
       expect(Number(mark.getAttribute('y'))).toBeGreaterThan(pos?.y ?? 0);
       expect(Number(mark.getAttribute('y'))).toBeLessThanOrEqual(PINOUT_VIEW.h);
+    }
+  });
+
+  /*
+   * UI監査バッチE（2026-09-20）: 印は 9px で描いていたため、図の拡大率
+   * （`max-width: 216px` ÷ `viewBox` の 184 ＝ 1.17 倍）を掛けても画面上 10.6px にしかならず、
+   * 「画面上 11px 未満の文字は作らない」というデザイン規則を3つの画面サイズすべてで
+   * 外していた（`e2e/ui-quality.spec.ts` の `small-text` が 33 件）。番号と同じ 11px にする。
+   */
+  it('印の文字は番号と同じ 11px（画面上 11px 未満を作らない）', () => {
+    expect(PINOUT_CSS).toMatch(/\.polarity\s*\{[^}]*font-size:\s*11px/u);
+    expect(PINOUT_CSS).toMatch(/\.pinNumber\s*\{[^}]*font-size:\s*11px/u);
+    // 図は `viewBox` の比のまま拡大され、縮むのは幅が 184px を切る画面だけ（部品カードは 216px）
+    expect(PINOUT_CSS).toMatch(/max-width:\s*216px/u);
+    expect(216 / PINOUT_VIEW.w).toBeGreaterThanOrEqual(1);
+  });
+
+  it('11px に上げた印が段4の帯にも `viewBox` の下端にもぶつからない', () => {
+    render(<SocketPinout />);
+    const row = SOCKET_PIN_GRID[3];
+    if (row === undefined) throw new Error('段4がありません');
+    const band = pinoutBands(row, 3).find((b) => b.group === 'coil');
+    if (band === undefined) throw new Error('コイルの帯がありません');
+    /** 印の文字の大きさ[`viewBox` 単位]（`pinout.module.css` の `.polarity`）。 */
+    const fontPx = 11;
+    /** 大文字の高さ・下げの目安（比率）。太字サンセリフの一般的な値で、余裕を見て大きめに取る。 */
+    const capRatio = 0.75;
+    const descentRatio = 0.25;
+    for (const pin of [COIL_P_PIN, COIL_N_PIN]) {
+      const baseline = Number(polarityMark(pin).getAttribute('y'));
+      // 文字の上端が帯の下端より下にある（帯と印が重ならない）
+      expect(baseline - fontPx * capRatio, `ピン${String(pin)}`).toBeGreaterThan(band.y + band.h);
+      // 文字の下端が `viewBox` に収まる（カードの外へはみ出さない）
+      expect(baseline + fontPx * descentRatio, `ピン${String(pin)}`).toBeLessThanOrEqual(
+        PINOUT_VIEW.h,
+      );
     }
   });
 
