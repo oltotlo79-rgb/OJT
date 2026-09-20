@@ -45,6 +45,13 @@ describe('配布物の版と設定（§15 / Plan 5 決定表#20）', () => {
     expect(license).toContain('実行');
     expect(license).toContain('三菱電機');
   });
+
+  it('saves the license text with a BOM so the NSIS installer renders Japanese (Phase 7 Task 1)', () => {
+    const raw = readFileSync(join(APP_ROOT, 'build', 'license.txt'));
+    expect(raw.subarray(0, 3)).toEqual(Buffer.from([0xef, 0xbb, 0xbf]));
+    const firstLine = raw.subarray(3).toString('utf8').split(/\r?\n/)[0];
+    expect(firstLine).toBe('電気教育ツール');
+  });
 });
 
 describe('同梱課題が4メーカーで成立する（決定表#19）', () => {
