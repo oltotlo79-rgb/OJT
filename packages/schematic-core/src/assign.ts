@@ -387,10 +387,13 @@ function fixedBondKeys(roles: SocketRoles): Map<TerminalId, string> {
   return keys;
 }
 
-/** 既設配線の組ごとの端子（`bond:P.1` → `[P.1, TB_PB.4c]`）。§6.3 */
-function fixedBondGroups(roles: SocketRoles): Map<string, TerminalId[]> {
+/**
+ * 既設配線の組ごとの端子（`bond:P.1` → `[P.1, TB_PB.4c]`）。§6.3
+ * `bonds` は呼び出し側が `fixedBondKeys()` で1回だけ作ったものを渡すこと（SC-06）。
+ */
+function fixedBondGroups(bonds: ReadonlyMap<TerminalId, string>): Map<string, TerminalId[]> {
   const groups = new Map<string, TerminalId[]>();
-  for (const [id, key] of fixedBondKeys(roles)) {
+  for (const [id, key] of bonds) {
     groups.set(key, [...(groups.get(key) ?? []), id]);
   }
   return groups;
@@ -450,12 +453,14 @@ function terminalNets(nets: Nets): Map<TerminalId, string> {
  *
  * 逆に `TB_PB.4a` の組（相方はチェック用コイルの `CHK.14`）は、相方が回路図に現れない限りどの節点にも
  * 置ける。その節点にチェック用コイルが**並列にぶら下がる**が、実機どおりの姿なので許す。§6.3
+ *
+ * `bonds` は呼び出し側が `fixedBondKeys()` で1回だけ作ったものを渡すこと（SC-06）。
  */
-function checkFixedBonds(build: CellBuild, roles: SocketRoles): AssignError[] {
+function checkFixedBonds(build: CellBuild, bonds: ReadonlyMap<TerminalId, string>): AssignError[] {
   const netOf = terminalNets(build.nets);
   const owners = terminalOwners(build.cells);
   const errors: AssignError[] = [];
-  for (const members of fixedBondGroups(roles).values()) {
+  for (const members of fixedBondGroups(bonds).values()) {
     const placed = members.filter((id) => netOf.has(id));
     // 基準は母線の供給端子（動かせるのは要素の側）。母線を含まない組は最初の端子を基準にする
     const anchor = placed.find(isBusTerminal) ?? placed[0];
@@ -527,10 +532,17 @@ function orderGroups(groups: readonly ChainGroup[]): ChainGroup[] | undefined {
  * `faults[].target.wireId` を実際に生成される集合（`buildReferenceSession()` が返す
  * `session.wires` の `id`）から取り直すこと。内蔵C2課題はこの対応が壊れていないことを
  * `packages/content/test/builtin-inspect-repair.test.ts` の固定テストで縛っている。
+ *
+ * `fixedCount` / `bonds` は呼び出し側が `fixedWireCounts()` / `fixedBondKeys()` で1回だけ
+ * 作ったものを渡すこと（SC-06。以前は `checkFixedBonds` 経由と合わせて1回の割当で3回
+ * 組み直されていた）。
  */
-function chainWires(nets: Nets, roles: SocketRoles, color: WireColor): Outcome<WireSpec[]> {
-  const fixedCount = fixedWireCounts(roles);
-  const bonds = fixedBondKeys(roles);
+function chainWires(
+  nets: Nets,
+  fixedCount: ReadonlyMap<TerminalId, number>,
+  bonds: ReadonlyMap<TerminalId, string>,
+  color: WireColor,
+): Outcome<WireSpec[]> {
   const used = new Map<TerminalId, number>(fixedCount);
   const errors: AssignError[] = [];
   const wires: WireSpec[] = [];
@@ -664,10 +676,15 @@ export function assignToBoard(doc: SchematicDocument, options: AssignOptions = {
   const built = buildCellAssignments(doc, override);
   if (!built.ok) return built;
 
-  const bondErrors = checkFixedBonds(built.value, roles);
+  // SC-06: 既設配線の索引は1回の割当で使い回す（以前は checkFixedBonds／chainWires が
+  // それぞれ作り直しており、正味3回組み直していた）。
+  const fixedCount = fixedWireCounts(roles);
+  const bonds = fixedBondKeys(roles);
+
+  const bondErrors = checkFixedBonds(built.value, bonds);
   if (bondErrors.length > 0) return { ok: false, errors: bondErrors };
 
-  const wires = chainWires(built.value.nets, roles, options.color ?? '青');
+  const wires = chainWires(built.value.nets, fixedCount, bonds, options.color ?? '青');
   if (!wires.ok) return wires;
 
   const parts = mountedParts(roles, needed, built.value.presets);

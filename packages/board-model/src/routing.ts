@@ -317,11 +317,18 @@ export function entryChannelFor(
   return Math.abs(a.at - terminal.pos.y) <= Math.abs(b.at - terminal.pos.y) ? a : b;
 }
 
-/** 配線帯どうしの交点と、電線の出入口を節点にしたグラフを組む。 */
-function buildChannelGraph(
-  channels: readonly WiringChannel[],
-  entries: ReadonlyArray<{ channel: WiringChannel; along: number }>,
-): { nodes: Map<string, GraphNode>; edges: Map<string, GraphEdge[]> } {
+/**
+ * 配線帯どうしの交点（`channels` だけで決まり、電線には依存しない）。§6.6
+ *
+ * 総当たり（`O(C²)`）は帯の組み合わせが盤定義から変わらない限り同じ結果になるので、
+ * `channels` 配列の参照ごとに1回だけ計算して使い回す（BM-05。以前は `buildChannelGraph()` が
+ * 電線1本ごとにこの総当たりをやり直しており、盤内17本で1.064msかかっていた）。
+ */
+const intersectionAlongsCache = new WeakMap<readonly WiringChannel[], Map<string, number[]>>();
+
+function intersectionAlongs(channels: readonly WiringChannel[]): Map<string, number[]> {
+  const cached = intersectionAlongsCache.get(channels);
+  if (cached !== undefined) return cached;
   const onChannel = new Map<string, number[]>();
   const add = (channel: WiringChannel, along: number): void => {
     const list = onChannel.get(channel.id) ?? [];
@@ -337,6 +344,50 @@ function buildChannelGraph(
       add(b, a.at);
     }
   }
+  for (const list of onChannel.values()) list.sort((p, q) => p - q);
+  intersectionAlongsCache.set(channels, onChannel);
+  return onChannel;
+}
+
+/**
+ * `channel.id → WiringChannel` の索引。盤定義だけで決まるので、`channels` 配列の参照ごとに
+ * 1回だけ作って使い回す（BM-05）。`routeSession()` は電線ごとに `routeWire()` を呼ぶが、
+ * これも同じ `board.wiringChannels` を渡すので毎回作り直す意味が無かった。
+ */
+const channelByIdCache = new WeakMap<readonly WiringChannel[], Map<string, WiringChannel>>();
+
+function channelByIdOf(channels: readonly WiringChannel[]): Map<string, WiringChannel> {
+  const cached = channelByIdCache.get(channels);
+  if (cached !== undefined) return cached;
+  const map = new Map(channels.map((c) => [c.id, c] as const));
+  channelByIdCache.set(channels, map);
+  return map;
+}
+
+/**
+ * 配線帯どうしの交点と、電線の出入口を節点にしたグラフを組む。
+ * 交点部分は {@link intersectionAlongs} でメモ化済みなので、ここでは出入口2点の挿入だけを
+ * 電線ごとに行う（BM-05）。
+ */
+function buildChannelGraph(
+  channels: readonly WiringChannel[],
+  entries: ReadonlyArray<{ channel: WiringChannel; along: number }>,
+): { nodes: Map<string, GraphNode>; edges: Map<string, GraphEdge[]> } {
+  const base = intersectionAlongs(channels);
+  const onChannel = new Map(base);
+  const cloned = new Set<string>();
+  const add = (channel: WiringChannel, along: number): void => {
+    let list = onChannel.get(channel.id);
+    if (list === undefined || !cloned.has(channel.id)) {
+      list = list === undefined ? [] : list.slice();
+      onChannel.set(channel.id, list);
+      cloned.add(channel.id);
+    }
+    if (!list.some((v) => Math.abs(v - along) < EPS)) {
+      list.push(along);
+      list.sort((p, q) => p - q);
+    }
+  };
   for (const entry of entries) add(entry.channel, entry.along);
 
   const nodes = new Map<string, GraphNode>();
@@ -347,7 +398,7 @@ function buildChannelGraph(
     edges.set(ka, list);
   };
   for (const channel of channels) {
-    const alongs = (onChannel.get(channel.id) ?? []).slice().sort((p, q) => p - q);
+    const alongs = onChannel.get(channel.id) ?? [];
     for (const along of alongs) {
       const p = pointOn(channel, along);
       const k = key(p.x, p.y);
@@ -690,7 +741,7 @@ interface Traversal {
 function buildTraversals(
   path: { keys: string[]; channelIds: string[] },
   nodes: Map<string, GraphNode>,
-  channelById: Map<string, WiringChannel>,
+  channelById: ReadonlyMap<string, WiringChannel>,
 ): { traversals: Traversal[]; edgeTraversal: number[] } {
   const traversals: Traversal[] = [];
   const edgeTraversal: number[] = [];
@@ -781,7 +832,7 @@ export function routeWire(
   // 両端が同じ節点に出るなら、帯まで下りて折り返さずまっすぐ渡す
   if (path.channelIds.length === 0) return sameNodeRoute(board, wire, a, b);
 
-  const channelById = new Map(board.wiringChannels.map((c) => [c.id, c]));
+  const channelById = options.channelById ?? channelByIdOf(board.wiringChannels);
   const { traversals, edgeTraversal } = buildTraversals(path, graph.nodes, channelById);
   const spans: ChannelSpan[] = traversals.map((t) => ({
     channelId: t.channelId,
@@ -873,6 +924,12 @@ export function routeWire(
 export interface RouteOptions {
   /** 端子ごとに引き出し向きを強制する（既設ハーネスを写真どおり手前へ出すのに使う）。 */
   exitOverride?: Readonly<Record<string, 'rear' | 'front'>>;
+  /**
+   * `channel.id → WiringChannel` の索引。省略時は {@link channelByIdOf} が `board.wiringChannels`
+   * ごとにメモ化した索引を使うので、渡さなくても電線ごとに作り直されることはない（BM-05）。
+   * `routeSession()` は1セッションぶんを1回だけ作って渡す。
+   */
+  channelById?: ReadonlyMap<string, WiringChannel>;
 }
 
 /** 机上へ渡る電線（盤の経路生成の対象外）。§10.1 / 決定表#9 */
@@ -897,6 +954,10 @@ export interface DeskWire {
  */
 export function routeSession(board: BoardDefinition, session: BoardSession): WireRoute[] {
   const routes: WireRoute[] = [];
+  // BM-05: 1セッションぶんの `channelById` をここで1回だけ作り、電線ごとに使い回す
+  // （`routeWire()` 単体で呼ぶ他の呼び出し元は、渡さなければ `channelByIdOf()` の
+  // メモ化に自動で乗る）。
+  const channelById = channelByIdOf(board.wiringChannels);
   for (const wire of session.wires) {
     if (isOffBoardTerminal(wire.from) || isOffBoardTerminal(wire.to)) continue;
     routes.push(
@@ -908,6 +969,7 @@ export function routeSession(board: BoardDefinition, session: BoardSession): Wir
           to: toPhysicalTerminal(session.socketRoles, wire.to),
         },
         routes,
+        { channelById },
       ),
     );
   }

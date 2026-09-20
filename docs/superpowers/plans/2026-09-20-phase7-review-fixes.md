@@ -714,17 +714,17 @@ pnpm --filter @ojt/desktop test -- content-resources content-loader problem-mode
 
 **Steps:**
 
-- [ ] 1. **CS-04**: `solve()` の冒頭で `allElements()` を1回だけ作り、`pickReference(elements, nets, override)` に渡す。
-- [ ] 2. **CS-08**: `equivalentResistance()` の後始末を `pop()` の位置依存から `lastIndexOf` ＋ `splice` の同一性削除に変え、JSDoc に前提を書く。
-- [ ] 3. **BM-05**: `buildChannelGraph()` を「盤ごとに1回メモ化した交点グラフ ＋ 出入口2点の挿入」に分け、`channelById` は `routeSession()` で1回作る。
-- [ ] 4. **BM-07**: `plcFaces()` の冗長な `.sort()` を落とす（`rackModules()` が既に昇順）。
-- [ ] 5. **CT-07**: `judge-plc.ts:118` の `traineeNetlist` を `!compiled.ok` ブロックの後ろへ移す。
-- [ ] 6. **CT-10**: `findForbiddenPatterns()` の先頭で `buildNets()` を1回だけ作る。
-- [ ] 7. **SC-06**: `assignToBoard()` で `fixedWireCounts` / `fixedBondKeys` を1回作って渡す。
-- [ ] 8. **DM-10**: `settings.ts` にモジュール変数のキャッシュを置く（IPC のたびに設定ファイルを読み直さない）。
-- [ ] 9. **CS-03（代替）**: 本体仕様 **§5.2** の「LU分解を再利用する」を実装に合わせて訂正する。訂正文: 「解法は毎tick 密行列を組み直す素のガウス消去である（節点162で 408 KiB/tick）。LU の再利用は行っていない。性能の実測が必要になった時点で `Solver` クラス化（`fill(0)` での使い回し）を検討する」。
-- [ ] 10. **CS-02（代替）**: 本体仕様 **§13 #3** を訂正する。訂正文: 「各節点に 1nS の漏れ抵抗を入れているため特異行列は発生しない。したがって `solver-warning` / 直前解での置換 / 10tick 停止は実装しない」。
-- [ ] 11. `pnpm -r test` のうち性能に触れるテストの期待値を確かめる（件数が変わらないこと）。
+- [x] 1. **CS-04**: `solve()` の冒頭で `allElements()` を1回だけ作り、`pickReference(elements, nets, override)` に渡す。
+- [x] 2. **CS-08**: `equivalentResistance()` の後始末を `pop()` の位置依存から `lastIndexOf` ＋ `splice` の同一性削除に変え、JSDoc に前提を書く。
+- [x] 3. **BM-05**: `buildChannelGraph()` を「盤ごとに1回メモ化した交点グラフ ＋ 出入口2点の挿入」に分け、`channelById` は `routeSession()` で1回作る。
+- [x] 4. **BM-07**: `plcFaces()` の冗長な `.sort()` を落とす（`rackModules()` が既に昇順）。
+- [x] 5. **CT-07**: `judge-plc.ts:118` の `traineeNetlist` を `!compiled.ok` ブロックの後ろへ移す。
+- [x] 6. **CT-10**: `findForbiddenPatterns()` の先頭で `buildNets()` を1回だけ作る。
+- [x] 7. **SC-06**: `assignToBoard()` で `fixedWireCounts` / `fixedBondKeys` を1回作って渡す。
+- [x] 8. **DM-10**: `settings.ts` にモジュール変数のキャッシュを置く（IPC のたびに設定ファイルを読み直さない）。
+- [x] 9. **CS-03（代替）**: 本体仕様 **§5.2** の「LU分解を再利用する」を実装に合わせて訂正する。訂正文: 「解法は毎tick 密行列を組み直す素のガウス消去である（節点162で 408 KiB/tick）。LU の再利用は行っていない。性能の実測が必要になった時点で `Solver` クラス化（`fill(0)` での使い回し）を検討する」。
+- [x] 10. **CS-02（代替）**: 本体仕様 **§13 #3** を訂正する。訂正文: 「各節点に 1nS の漏れ抵抗を入れているため特異行列は発生しない。したがって `solver-warning` / 直前解での置換 / 10tick 停止は実装しない」。
+- [x] 11. `pnpm -r test` のうち性能に触れるテストの期待値を確かめる（件数が変わらないこと）。（circuit-sim 257件・board-model 266件・schematic-core 144件・`apps/desktop/test/settings.test.ts` 27件、すべて変更前と同数で pass。`packages/content` は本タスクが触った `forbidden.test.ts`／`judge-plc.test.ts`／`index.test.ts` で確認。パッケージ全体には Task 13 並行作業による無関係な件数不一致が別途ある）
 
 **期待:** `pnpm -r test` 全件 pass。`docs/superpowers/specs/2026-09-13-…design.md` の §5.2 と §13 #3 が実装と一致する。
 

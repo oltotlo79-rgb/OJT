@@ -106,7 +106,6 @@ export function judgePlc(
 
   const compiled = compile(traineeLadder);
   const ladderWarnings = compiled.warnings;
-  const traineeNetlist = toNetlist(traineeSession, plcBoard);
   const sessionHazards = options.sessionHazards ?? [];
   const chartSignals = defaultChartSignals(compareSignals);
   const markers = plcTimerMarkers(referenceProgram);
@@ -137,6 +136,10 @@ export function judgePlc(
     };
   }
 
+  // CT-07: 変換に落ちたラダー（上の `!compiled.ok` 早期リターン）ではネットリストを使わないので、
+  // ここまで作らずに済ませる。`toNetlist()` は `SessionError` を投げうる（壊れた作業ファイルの
+  // 端子IDなど）ので、変換が通ったときだけ組む。
+  const traineeNetlist = toNetlist(traineeSession, plcBoard);
   const actualRun = runPlcOperations(traineeNetlist, compiled.program, problem.operations, {
     durationMs: problem.durationMs,
     outputCount,

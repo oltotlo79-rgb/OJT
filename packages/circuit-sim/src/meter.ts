@@ -85,6 +85,13 @@ function formatVolts(volts: number): string {
  * 流れる電流から逆算する。回り込み経路を含む値になる。§5.5 / 調査資料 §6.5(A)
  * 無効化（`enabled=false`）した電源は完全にスキップされるため、電源OFFの状態でP−N間を測ると
  * OLになる（電源内部は見えない、という教育上意図した挙動）。
+ *
+ * 前提（CS-08）: 一時的に `netlist.parts` へ試験電源を1個 `push()` し、`finally` で
+ * `lastIndexOf()` ＋ `splice()` により**同一性**で取り除く。`netlist.parts.pop()` に頼る
+ * 実装（配列の末尾＝この関数が足した要素、という**位置**の前提）はやめてある。この関数は
+ * 同期的にしか呼ばれず、`try` ブロックの間に他のコードが `netlist.parts` を書き換えることは
+ * 無い（JSと `Simulation` はシングルスレッド）が、後始末を位置ではなく同一性に頼ることで、
+ * 将来 `solve()` 側の呼び出し順が変わっても壊れない。
  */
 export function equivalentResistance(netlist: Netlist, t1: TerminalId, t2: TerminalId): number {
   const saved: Array<{ el: SourceElement; enabled: boolean }> = [];
@@ -123,7 +130,11 @@ export function equivalentResistance(netlist: Netlist, t1: TerminalId, t2: Termi
     if (Math.abs(amps) < 1e-15) return Number.POSITIVE_INFINITY;
     return Math.abs(volts / amps);
   } finally {
-    netlist.parts.pop();
+    // `pop()` は「最後に足した要素」という**位置**に頼った後始末だった（CS-08）。
+    // 同一性（`lastIndexOf` ＋ `splice`）で消せば、`solve()`／`buildNets()` の呼び出し順が
+    // 将来変わって `netlist.parts` の末尾が別の要素になっても、この一時部品だけを確実に消せる。
+    const index = netlist.parts.lastIndexOf(probePart);
+    if (index !== -1) netlist.parts.splice(index, 1);
     for (const entry of saved) entry.el.enabled = entry.enabled;
   }
 }

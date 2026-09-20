@@ -1,5 +1,12 @@
 import { N_RAIL_ID, P_RAIL_ID } from '@ojt/board-model';
-import { buildNets, terminalId, type Netlist, type Part, type TerminalId } from '@ojt/circuit-sim';
+import {
+  buildNets,
+  terminalId,
+  type Nets,
+  type Netlist,
+  type Part,
+  type TerminalId,
+} from '@ojt/circuit-sim';
 
 /**
  * 禁則回路の構造パターン照合。設計仕様 §7.4 / §5.3.2 / 調査資料 §5.5。
@@ -51,11 +58,19 @@ function coilOf(timer: Part): { id: string; from: TerminalId; to: TerminalId } |
  * 「タイマが自分のコイルを切っている」と誤検出してしまう（レビュー指摘 BLOCKING）。
  * 見たいのは「コイルの両端が P / N に**繋がっているか**」であり、コイル自身より先に別の負荷を
  * 通る経路は電気的にも給電経路ではない。
+ *
+ * `nets` は呼び出し側（{@link findForbiddenPatterns}）が `buildNets()` で1回だけ作ったものを渡す
+ * こと（CT-10。以前はここで毎回 `buildNets(netlist)` をやり直しており、タイマ `timers` 個に対し
+ * `timers × (timers+1)` 回、ネットリストの組み直しが起きていた）。
  */
-function isCoilCut(netlist: Netlist, timer: Part, energized: ReadonlySet<string>): boolean {
+function isCoilCut(
+  netlist: Netlist,
+  nets: Nets,
+  timer: Part,
+  energized: ReadonlySet<string>,
+): boolean {
   const coil = coilOf(timer);
   if (coil === undefined) return true;
-  const nets = buildNets(netlist);
   if (!nets.hasTerminal(P_TERMINAL) || !nets.hasTerminal(N_TERMINAL)) return false;
   const adjacency = new Map<number, number[]>();
   const push = (from: number, to: number): void => {
@@ -107,13 +122,15 @@ function isCoilCut(netlist: Netlist, timer: Part, energized: ReadonlySet<string>
 export function findForbiddenPatterns(netlist: Netlist): ForbiddenPattern[] {
   const timers = netlist.parts.filter((p) => p.meta.kind === 'timer-h3y4');
   if (timers.length === 0) return [];
+  // CT-10: ネットリストは判定のあいだ変わらないので、`buildNets()` はここで1回だけ作る。
+  const nets = buildNets(netlist);
   const alive = new Map<string, boolean>();
   const cutBy = new Map<string, Set<string>>();
   for (const timer of timers) {
-    alive.set(timer.id, !isCoilCut(netlist, timer, new Set()));
+    alive.set(timer.id, !isCoilCut(netlist, nets, timer, new Set()));
     const cut = new Set<string>();
     for (const other of timers) {
-      if (isCoilCut(netlist, timer, new Set([other.id]))) cut.add(other.id);
+      if (isCoilCut(netlist, nets, timer, new Set([other.id]))) cut.add(other.id);
     }
     cutBy.set(timer.id, cut);
   }

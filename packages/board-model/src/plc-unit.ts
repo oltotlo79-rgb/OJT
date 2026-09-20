@@ -1082,7 +1082,8 @@ export function plcFaces(unit: PlcUnitDefinition): PlcFacePlacement[] {
     { id: unit.id, origin: unit.pos, appearance: unit.appearance, depthMm: unit.sizeMm.depth },
   ];
   if (unit.form !== 'rack') return faces;
-  for (const module of [...(unit.modules ?? [])].sort((a, b) => a.slot - b.slot)) {
+  // `rackModules()` が既に slot 昇順で配列を作るので、ここでの複製＋再ソートは冗長だった（BM-07）。
+  for (const module of unit.modules ?? []) {
     faces.push({
       id: `${unit.id}-${module.model}`,
       origin: module.pos,

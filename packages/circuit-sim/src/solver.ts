@@ -1,4 +1,10 @@
-import { CLOSED_CONTACT_OHMS, contactOhms, loadOhms, type SourceElement } from './elements.js';
+import {
+  CLOSED_CONTACT_OHMS,
+  contactOhms,
+  loadOhms,
+  type Element,
+  type SourceElement,
+} from './elements.js';
 import type { TerminalId } from './ids.js';
 import { allElements, NetlistError, type Nets, type Netlist } from './netlist.js';
 
@@ -113,11 +119,15 @@ function gaussSolve(a: Matrix, b: Float64Array): Float64Array {
   return x;
 }
 
-/** 基準にする節点を選ぶ。通電中の電源のN側 → 最初の電源のN側 → 節点0。 */
-function pickReference(netlist: Netlist, nets: Nets, override?: TerminalId): number {
+/**
+ * 基準にする節点を選ぶ。通電中の電源のN側 → 最初の電源のN側 → 節点0。
+ * `elements` は呼び出し側（{@link solve}）が `allElements()` で1回だけ作った配列を渡すこと
+ * （CS-04: 以前はここでも `allElements(netlist)` を呼んでおり、1tickに全要素の配列を2回作っていた）。
+ */
+function pickReference(elements: readonly Element[], nets: Nets, override?: TerminalId): number {
   if (override !== undefined && nets.hasTerminal(override)) return nets.nodeOf(override);
   let firstSource: SourceElement | undefined;
-  for (const el of allElements(netlist)) {
+  for (const el of elements) {
     if (el.kind !== 'source') continue;
     firstSource ??= el;
     if (el.enabled) return nets.nodeOf(el.to);
@@ -141,8 +151,8 @@ export function solve(netlist: Netlist, nets: Nets, options: SolveOptions = {}):
     throw new NetlistError(`節点数 ${nets.nodeCount} が上限 ${MAX_NODES} を超えています`);
   }
   const n = nets.nodeCount;
-  const reference = n === 0 ? 0 : pickReference(netlist, nets, options.reference);
   const elements = allElements(netlist);
+  const reference = n === 0 ? 0 : pickReference(elements, nets, options.reference);
 
   const full = new Matrix(n);
   const inject = new Float64Array(n);

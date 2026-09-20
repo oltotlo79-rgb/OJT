@@ -33,6 +33,18 @@ import { writeFileAtomic } from './fs-atomic.js';
 /** UTF-8 の BOM。メモ帳で設定を直すと付く。`JSON.parse()` は受け付けない（`loader.ts` と同じ扱い）。 */
 const BOM = '\uFEFF';
 
+/**
+ * 直近に読んだ設定をファイルパスごとに1件だけ覚えておく（DM-10）。
+ *
+ * `content-loader.ts` は読込結果をキャッシュするのに `settings.ts` だけが持たず、`content:list`
+ * ＋ `content:read` の組だけで最低3回、設定スライダの1操作でも読み書きのたびにディスクへ
+ * アクセスしていた。ここでは `writeSettings()` が書いた値をそのままキャッシュへ反映するので、
+ * 実際にファイルを読み直すのは「まだ一度も読んでいない／書いていない」ときだけになる。
+ * キーをファイルパスにしているのは、テスト（`app.getPath('userData')` を差し替える）でも
+ * 前のテストのキャッシュを誤って使い回さないため。
+ */
+let cache: { path: string; settings: AppSettings; corrupt: boolean } | undefined;
+
 /** 設定ファイルのパス。 */
 export function settingsPath(): string {
   return join(app.getPath('userData'), 'settings.json');
@@ -147,18 +159,27 @@ function migrateMonitorColor(settings: AppSettings, raw: unknown): boolean {
 /**
  * 設定を読む。未設定の利用者フォルダは既定パスに解決して返す。
  * `corrupt` は「ファイルはあるのに読めなかった」ことを表す（ファイルが無いだけなら偽）。
+ *
+ * 直近に読んだ（または `writeSettings()` が書いた）結果があれば、ディスクへは触らずそれを返す
+ * （DM-10）。設定ファイルは main プロセスがこのモジュールを通してしか書かないので、
+ * キャッシュを更新し忘れる経路は無い（`writeSettings()` は書き込み成功のたびに `cache` を
+ * 更新する。移行の書き戻しはこの関数の中で完結するので、下でまとめて1回だけキャッシュする）。
  */
 function loadSettings(): { settings: AppSettings; corrupt: boolean } {
+  const path = settingsPath();
+  if (cache !== undefined && cache.path === path) {
+    return { settings: { ...cache.settings }, corrupt: cache.corrupt };
+  }
   let raw: unknown;
   let corrupt = false;
   try {
-    let text = readFileSync(settingsPath(), 'utf8');
+    let text = readFileSync(path, 'utf8');
     // メモ帳などが付ける BOM は落とす。残したままだと `JSON.parse()` が構文エラーにする（§7.8 と同じ）
     if (text.startsWith(BOM)) text = text.slice(BOM.length);
     raw = JSON.parse(text);
   } catch {
     raw = undefined;
-    corrupt = existsSync(settingsPath());
+    corrupt = existsSync(path);
   }
   const settings = sanitizePatch(DEFAULT_SETTINGS, raw);
   if (settings.userContentDir.length === 0) settings.userContentDir = defaultUserContentDir();
@@ -177,11 +198,12 @@ function loadSettings(): { settings: AppSettings; corrupt: boolean } {
         monitorColor: settings.monitorColor,
         monitorColorMigrated: true,
       };
-      writeFileAtomic(settingsPath(), `${JSON.stringify(migrated, null, 2)}\n`);
+      writeFileAtomic(path, `${JSON.stringify(migrated, null, 2)}\n`);
     } catch {
       // 印を残せなくても読込は続ける（次の `writeSettings()` で残る）
     }
   }
+  cache = { path, settings: { ...settings }, corrupt };
   return { settings, corrupt };
 }
 
@@ -211,6 +233,9 @@ export function writeSettings(patch: unknown): AppSettings {
     }
   }
   const next = sanitizePatch(settings, patch);
-  writeFileAtomic(settingsPath(), `${JSON.stringify(next, null, 2)}\n`);
+  const path = settingsPath();
+  writeFileAtomic(path, `${JSON.stringify(next, null, 2)}\n`);
+  // 書いた内容をそのままキャッシュへ反映する（DM-10）。次の `readSettings()` はディスクを読まない。
+  cache = { path, settings: { ...next }, corrupt: false };
   return next;
 }
