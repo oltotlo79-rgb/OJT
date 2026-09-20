@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 設計仕様 §16 Phase 7 の行を実装し、受入基準①〜⑧を動作で示す。詳細設計は `docs/superpowers/specs/2026-09-20-phase7-review-fixes-design.md`（以下「本設計」）にある。本プランは本設計の決定を **38タスク**に割る。
+**Goal:** 設計仕様 §16 Phase 7 の行を実装し、受入基準①〜⑧を動作で示す。詳細設計は `docs/superpowers/specs/2026-09-20-phase7-review-fixes-design.md`（以下「本設計」）にある。本プランは本設計の決定を **41タスク**に割る。
 
-**進捗の報告（利用者の要望11）:** タスクは 1〜38 の通し番号を持つ。**進捗は必ず `X/38` の形で報告する**（例:「12/38 完了。次は Task 13（課題の拡充 B・C1）」）。分母は 38 で固定であり、タスクを足すときはこの見出しと §「修正タスク ↔ 指摘ID ↔ 利用者要望」の表を同時に直す。
+**進捗の報告（利用者の要望11）:** タスクは 1〜41 の通し番号を持つ。**進捗は必ず `X/41` の形で報告する**（例:「12/38 完了。次は Task 13（課題の拡充 B・C1）」）。分母は 41 で固定であり、タスクを足すときはこの見出しと §「修正タスク ↔ 指摘ID ↔ 利用者要望」の表を同時に直す。
 
 **受入基準（§16 Phase 7）:**
 
@@ -31,7 +31,7 @@
 8. 「3D図で上から正面にキューブを回そうとすると回らない」→ Task 19。
 9. 「3D図をクリックして電源をON/OFFしたり配線したりドラッグして部品を配置したり…UI,UX刷新して」→ Task 23〜28。
 10. 「取扱説明書は全ての修正が終わってから必要な画像を取り直し」→ **Task 36 はバッチH（最後から2番目）**。
-11. 「修正タスクがいくつに対していくつ終わったか都度報告する」→ `X/38`。
+11. 「修正タスクがいくつに対していくつ終わったか都度報告する」→ `X/41`。
 12. 「終わったら新しいバージョンをリリースして」→ **Task 38**（v1.1.0）。
 
 **公開について:** Task 38 だけがタグ付けと GitHub Release を行う。**それ以外のタスクは `git tag` も Release も作らない**（2026-09-19 の利用者決定: 明示の指示があるまでリリースしない。本プランは要望12がその明示の指示にあたる）。
@@ -137,6 +137,9 @@
 | `apps/desktop/src/renderer/panels/HoverHint.tsx` | ホバー予告の1行 | 27 |
 | `apps/desktop/src/renderer/tour/{TourOverlay.tsx,tour-store.ts,tour.module.css}` | 初回ガイド | 28 |
 | `apps/desktop/src/renderer/result/verdict-summary.ts` | 「なぜ落ちたか」1行 | 25 |
+| `apps/desktop/src/renderer/session/replay.ts` ＋ `panels/ReplayBar.tsx` | 判定の操作列を1歩ずつ再生（PR-12） | 39 |
+| `apps/desktop/src/renderer/result/{CompareView.tsx,compare.ts,compare.module.css}` | 模範との並置比較（PR-13） | 40 |
+| `apps/desktop/src/renderer/result/report-html.ts` ＋ `apps/desktop/src/main/result-export.ts` | 結果の1枚書き出し（PR-14。IPC 9本目） | 41 |
 | `.github/workflows/ci.yml` | CI | 29 |
 | `apps/desktop/e2e/app.ts` | E2E の起動定型 | 30 |
 | `apps/desktop/e2e/direct-manipulation.spec.ts` | 3D直接操作のE2E | 27 |
@@ -160,12 +163,14 @@
 | **C** | 8 → 9 ／ 10 → 4 ／ 11 → 12 | 3 | 信頼境界を塞ぎ、以降が乗る土台（共通シェル・ストア）を作る | 8,11,4=**Opus** / 9,10,12=Sonnet |
 | **D** | 16 → 17 → 15 ／ 14 ／ 13 → 18 | 3 | まず測れるようにして性能を直し、課題を72題に増やす | 16,17,15,13,18=**Opus** / 14=Sonnet |
 | **E** | 19 ／ 20 → 21 → 22 | 2 | ビューキューブの不具合と、純正ツールの忠実な再現 | すべて**Opus** |
-| **F** | 27 → 28 ／ 23 → 24 → 26 ／ 25 | 3 | 3Dの直接操作と全画面のUI/UX刷新 | 23=Sonnet / 他すべて**Opus** |
-| **G** | 29 → 30 → 31 ／ 32 → 33 | 2 | 直したことが戻らない仕組み（CI・E2E・配布ゲート・文書） | 29,30,31=**Opus** / 32,33=Sonnet |
+| **F** | 27 → 28 ／ 23 → 24 → 26 ／ 25 → **39** → **40** | 3 | 3Dの直接操作と全画面のUI/UX刷新、判定の再生と並置比較 | 23=Sonnet / 他すべて**Opus** |
+| **G** | 29 → 30 → 31 ／ 32 → 33 ／ **41** | 3 | 直したことが戻らない仕組み（CI・E2E・配布ゲート・文書）と結果の書き出し | 29,30,31,41=**Opus** / 32,33=Sonnet |
 | **H** | 34 → 35 → 36 | 1 | **説明書の体裁・チュートリアル章・図の撮り直し（最後から2番目）** | 34,36=**Opus** / 35=Sonnet-verbatim |
 | **I** | 37 → 38 | 1 | 全体検証とリリース | 両方**Opus** |
 
 **進め方**: A → B → C → D → E → F → G → H → I。
+
+**タスク番号の並びについて**: Task **39・40・41** は 2026-09-20 の所有者決定で後から足したもの（PR-12 / PR-13 / PR-14）で、**番号は 38 より大きいが実行はバッチ F・G、つまり Task 37・38 より前**である。既に走り始めた番号を振り直すと進捗報告（`X/41`）と引き継ぎが食い違うので、あえて振り直していない。**Task 37（全体検証）と Task 38（v1.1.0 リリース）は常に最後の2つ**であり、39〜41 が landed していなければ 37 を始めない。
 
 **バッチHを最後から2番目に置く理由**（利用者の要望10）: 図はすべての画面直し（バッチB〜G）が landed してから1回だけ撮る。撮り直しを忘れた古い図が残るほうが害が大きい。
 
@@ -174,7 +179,8 @@
 - **B**: 2・3 は `renderer/ladder/**` と `plc-dialects`、5 は `packages/content` と `schematic-core`、6 は `board-model` と `renderer/three`、7 は `screens`/`panels`/`i18n`。`i18n/ja.ts` は 3 と 7 が触るが**どちらも末尾に足すだけ**。
 - **C**: 8・9 は `src/main/**`、10 は `packages/{circuit-sim,content}` と `worker/`、11・12 は `renderer/app` と `renderer/screens`。4 は `packages/content/src/schema`（10 と同じパッケージだが別ファイル。10 → 4 の直列にしてある）。
 - **D**: 16・17・15 は `renderer/three` と `worker`、14 は `packages/*` の純関数、13・18 は `packages/content/src/builtin`。
-- **F**: 27・28 は `renderer/three` と `renderer/tour`、23・24・26 は CSS とパネル、25 は `screens/Home`・`ProblemList`・`result`。`i18n/ja.ts` は3系統とも末尾に足す。
+- **F**: 27・28 は `renderer/three` と `renderer/tour`、23・24・26 は CSS とパネル、25・39・40 は `screens/Home`・`ProblemList`・`result` と新規の `session/replay.ts`。`i18n/ja.ts` は3系統とも末尾に足す。25 → 39 → 40 を直列にしているのは3本とも `result/ResultView.tsx` に入口を足すため。
+- **G**: 29・30・31 はビルドと E2E の足場、32・33 はヘルプと文書、41 は `shared/ipc.ts` ＋ `src/main/` ＋ `result/`。41 が触る `test/ipc-surface.test.ts` は Task 8（バッチC）が作るので、バッチG の時点では landed している。
 
 ---
 
@@ -480,7 +486,7 @@ pnpm --filter @ojt/desktop test -- probe-markers
 
 **Steps:**
 
-- [ ] 1. **DM-4**: `electron.vite.config.ts` の preload に `{ format: 'cjs', entryFileNames: 'index.cjs' }` を足し、`main/index.ts` の `webPreferences.sandbox` を `true` にする。preload が Node API を使っていないことを確認する（使っていれば IPC 経由へ移す）。**起動して全画面が動くことを worktree で確かめてから commit する。** 動かない場合は (b) 案（コメントを事実に直して据え置き）に倒し、その判断を本タスクの Steps に追記する。
+- [ ] 1. **DM-4**（**2026-09-20 の所有者決定: (a) 有効化する。(b) の据え置き案は採らない**）: `electron.vite.config.ts` の preload に `{ format: 'cjs', entryFileNames: 'index.cjs' }` を足し、`main/index.ts` の `webPreferences.sandbox` を `true` にする。`main/index.ts` の `preload` パスを `index.cjs` に合わせる。preload が Node API を使っていないことを確認する（使っていれば IPC 経由へ移す）。**worktree で `pnpm --filter @ojt/desktop dist` まで通し、配布物（`release/win-unpacked`）を起動して全画面が動くことを確かめてから commit する**（開発ビルドだけの確認では不十分。sandbox の効き方が違う）。`hardening.test.ts` に `sandbox: true` の検査を入れる（Step 6）。
 - [ ] 2. **DM-5 ≡ QA-05**: `app.whenReady()` 内に `session.defaultSession.setPermissionRequestHandler((_wc, _p, cb) => cb(false))` を足す。`webPreferences` に `webviewTag: false` / `allowRunningInsecureContent: false` / `webSecurity: true` を明示する。`electron-builder.yml` に `electronFuses:` を足す（`runAsNode: false` / `enableNodeOptionsEnvironmentVariable: false` / `enableNodeCliInspectArguments: false` / `onlyLoadAppFromAsar: true` / `enableEmbeddedAsarIntegrityValidation: true` / `grantFileProtocolExtraPrivileges: false`）。
 - [ ] 3. **DM-9**: `index.html` の CSP に `; base-uri 'none'; form-action 'none'; frame-src 'none'; frame-ancestors 'none'` を足す。
 - [ ] 4. **QA-06**: `apps/desktop/build/icon.ico` を1枚置く（16/32/48/64/128/256 のマルチサイズ。**盤とコンセントを想起させる本アプリ独自の図形**。ベンダーのアイコンは使わない）。`electron-builder.yml` の変更は不要。`check-dist.mjs` に存在チェックを足す。
@@ -866,8 +872,8 @@ pnpm --filter @ojt/desktop test
 
 - [ ] 1. **まず再現する**。worktree でアプリを起動し、`俯瞰` プリセットにしてからビューキューブを上下左右へ引き、`camera-readout` の値を記録する。本設計 §8.2 の仮説（`top` は極角ちょうど0＝極なので、下向きも水平も動かない）が正しいかを**実測で確かめ**、結果をこの Steps に追記する。
 - [ ] 2. **極を踏まないようにする**。`BoardScene.tsx` の `<OrbitControls>` に `minPolarAngle={MIN_POLAR_ANGLE_RAD}` を渡す。`camera.ts` の `poseForDirection()` と `CameraPresets.applyPose()` で、`top` の着地点を `MIN_POLAR_ANGLE_RAD`、面直プリセットの着地点を `MAX_POLAR_ANGLE - MIN_POLAR_ANGLE_RAD` にする。
-- [ ] 3. **上下の向きを利用者の言葉に合わせる**。`navigation.ts` の `gizmoDragToSpherical()` を `{ azimuth: -dx * k, polar: +dy * k }` にする（下へ引いたらカメラが下へ回り、`top` から `front` へ着く）。上のコメント（「下へ引けば極角が減る」）も直す。
-- [ ] 4. **左右を手で確かめる**。上下を直したあと、水平ドラッグの向きが上下と同じ比喩になっているかを実機で確かめる。食い違っていれば `azimuth` の符号も反転し、`e2e/navigation.spec.ts:228-261` の期待値を同時に直す。**どちらにしたかをこの Steps に記録する。**
+- [ ] 3. **向きを「カメラが指に付いてくる」に統一する**（**2026-09-20 の所有者決定: 上下・左右とも反転する**）。`navigation.ts` の `gizmoDragToSpherical()` を **`{ azimuth: +dx * k, polar: +dy * k }`** にする（下へ引いたらカメラが下へ回り `top` から `front` へ着く／右へ引いたらカメラが右へ回る）。上のコメント（「右へ引けば方位角が減り、下へ引けば極角が減る」）を新しい規則に書き直す。
+- [ ] 4. **左右の反転に伴う期待値をすべて直す**。`e2e/navigation.spec.ts:228-261`（水平ドラッグ）の期待値を反転させる。`test/view-gizmo.test.tsx` の方位角に関する既存アサーションも同様。本体仕様 §12.2 の「1000px で1回転」の記述はそのままでよいが、向きの説明があれば直す。**実機で「盤が指に付いてくる」ことを確かめ、結果をこの Steps に記録する。**
 - [ ] 5. **3D-15**: `onPointerDown` の先頭に `if (drag.current !== null) return;`（2本目のポインタで `dampingFactor: 1` を保存してしまい、盤の慣性が永久に失われるのを止める）。
 - [ ] 6. **3D-16**: `ViewGizmo.tsx`（1,080行）を `view-gizmo-layout.ts`（111-274行）／ `view-gizmo-paint.ts`（288-529行）／ `use-gizmo-drag.ts`（状態機械）に割る。JSX と配線だけを `ViewGizmo.tsx` に残す。
 - [ ] 7. **3D-19**: `navigation.ts` の非公開 `FACE_LABELS` を消し、`ViewGizmo.tsx` の `GIZMO_FACES` を唯一の源にする（本番が使う側がテストされていない状態を解消する）。
@@ -1031,7 +1037,7 @@ apps/desktop/e2e/ladder-entry.spec.ts（新規）
 **Steps:**
 
 - [ ] 1. **PR-08 ／ UX-07**: `panels/CollapsiblePanel.tsx` を作り（モードDの `SidePanel` を共通化）、右の欄を `<details>` に揃える。既定は 課題＝開く／部品＝開く／回路図ヒント＝級の規則どおり／タイムチャート＝開く／**端子リスト＝畳む**／ライブ記録＝畳む。並びは 課題→部品→回路図ヒント→タイムチャート→端子リスト→ライブ記録。畳んだ見出しに要点を添える。
-- [ ] 2. **UX-10 ／ 3D-10**: `.socket-label` / `.part-label` を **12px** に上げ、`label-declutter` の `LABEL_SELECTOR` / `HUD_SELECTOR` に2クラスを足し `data-label-rank` を付ける。`e2e/ui-quality.spec.ts` の `HUD_SELECTOR` にも足す。**本体仕様 §8.2 の「10px 相当以上」を「12px 相当以上」に改訂する**（所有者の承認が要る変更。Task 37 で確認する）。
+- [ ] 2. **UX-10 ／ 3D-10**: `.socket-label` / `.part-label` を **12px** に上げ、`label-declutter` の `LABEL_SELECTOR` / `HUD_SELECTOR` に2クラスを足し `data-label-rank` を付ける。`e2e/ui-quality.spec.ts` の `HUD_SELECTOR` にも足す。**本体仕様 §8.2 と §12 の「画面上10px相当以上」は 2026-09-20 の所有者決定で既に「12px相当以上」に改訂済み**なので、実装をその記述に合わせるだけでよい（新たな仕様変更ではない）。
 - [ ] 3. **UI-03**: 「⋯」メニューを `Esc` ・外側 `pointerdown` ・項目の `onClick` で閉じる。`aria-haspopup="true"` を足す。
 - [ ] 4. **UX-25**: 1440px 以上では保存・読込・視点を「⋯」から**出したままにする**。
 - [ ] 5. **UI-09**: 設定に `patchIfChanged(key, value)` を足し、変わっていないのに保存してトーストを出すのをやめる。`userContentDir` に入力検証（Task 9 の main 側と同じ条件）。
@@ -1091,7 +1097,8 @@ apps/desktop/e2e/ladder-entry.spec.ts（新規）
 - Modify: `apps/desktop/src/main/settings.ts`（検証と既定）
 - Modify: 主要な `*.module.css`（注記・表・パネル見出しから段階的に `rem` へ）
 - Modify: `apps/desktop/src/renderer/three/label-declutter.ts`
-- Modify: `docs/superpowers/specs/2026-09-13-…design.md` §8.2（Task 24 と調整）
+
+> 本体仕様 §8.2 / §12 の名札の大きさ（12px 相当以上）は 2026-09-20 の所有者決定で改訂済み。本タスクは仕様を触らない。
 
 **Steps:**
 
@@ -1307,6 +1314,184 @@ worktree で `pnpm --filter @ojt/desktop dist` を**2回**走らせ、`manual.pd
 
 ---
 
+> **ここから Task 39・40・41**（2026-09-20 の所有者決定で Phase 7 に採用した PR-12・PR-13・PR-14）。番号は 38 より大きいが、**実行はバッチ F・G**であり、Task 34〜36（バッチH）と Task 37・38（バッチI）より**前**に landed させる。番号を振り直していない理由は §「実装バッチ」の注記を参照。
+
+---
+
+## Task 39: 判定の操作列を1歩ずつ再生する（PR-12）
+
+**モデル: Opus**（判定と食い違わない再生経路の設計が中心）
+**指摘: PR-12 ／ 利用者要望9（「操作説明がなくても直感的に」）**
+**バッチ: F（3系統目。Task 25 のあと）**
+
+**Files:**
+- Create: `apps/desktop/src/renderer/session/replay.ts`（純関数）
+- Create: `apps/desktop/src/renderer/panels/ReplayBar.tsx` ＋ `panels/replay-bar.module.css`
+- Modify: `apps/desktop/src/worker/protocol.ts` / `sim.worker.ts`（`replay` コマンド）
+- Modify: `apps/desktop/src/renderer/screens/{Session.tsx,PlcSession.tsx}`
+- Modify: `apps/desktop/src/renderer/result/ResultView.tsx`（入口「動きを見直す」）
+- Modify: `apps/desktop/src/renderer/app/store-session.ts` / `i18n/ja.ts`
+- Create: `apps/desktop/test/replay.test.ts` / `apps/desktop/test/replay-bar.test.tsx`
+
+**設計の要（これを外すと教材として害になる）:** 再生は**判定とまったく同じ操作列（課題の `operations`）と同じ許容差（`judge.tolerance`）**を使う。再生が判定と違う答えを出したら、それは不具合である。再生中は盤の編集（配線・装着・電源）を**すべて止める**（誤って直してしまい、結果と食い違うのを防ぐ）。
+
+**Steps:**
+
+- [ ] 1. **純関数を先に**: `replay.ts` に次を書き、`replay.test.ts` を全分岐ぶん緑にする。
+
+```ts
+/** 再生の1歩。課題の operations と判定結果から機械的に作る。 */
+export interface ReplayStep {
+  readonly index: number;          // 1 から
+  readonly total: number;
+  readonly atMs: number;           // この歩の操作時刻
+  readonly action: string;         // 「黒押ボタン（PB1）を押す」（PB_LABELS 由来）
+  readonly expect: string;         // 「白ランプ（PL1）が点くはず」（OUTPUT_LABELS 由来）
+  readonly mismatched: boolean;    // この歩の窓（atMs 〜 次の操作時刻）に差分があるか
+  readonly mismatchNote?: string;  // 「ここで食い違いました: 白ランプ（PL1）が点きませんでした」
+}
+
+/** 課題の操作列と判定結果から歩の並びを作る。副作用なし。 */
+export function replaySteps(
+  operations: readonly Operation[],
+  durationMs: number,
+  mismatches: readonly Mismatch[],
+): readonly ReplayStep[];
+```
+
+歩の窓は「その操作の時刻から次の操作の時刻まで（最後は `durationMs` まで）」。`mismatches` の `tMs` がその窓に入る歩を `mismatched: true` にする。信号名は必ず `packages/content/src/timechart.ts` の `PB_LABELS` / `OUTPUT_LABELS` を通す（UX-11 と同じ規則。素の `PL1` を出さない）。
+
+- [ ] 2. **Worker のコマンドを1つ増やす**: `protocol.ts` に `{ type: 'replay'; action: 'start' | 'step' | 'stop' }` を足す。`start` は現在の盤（配線も装着もそのまま）で時刻を 0 に戻し、`step` は次の操作時刻までを進めてスナップショットを返す。`sim.worker.ts` の外側 `switch` に分岐を足す（Task 10 で入れた `default: command satisfies never` があるので、足し忘れると `tsc` が落ちる）。**Task 12 が削除する `reset` コマンドを復活させないこと**（用途が違う）。
+- [ ] 3. **`ReplayBar`**: 画面上部に「`1/6 歩: 黒押ボタン（PB1）を押す → 白ランプ（PL1）が点くはず`」と「← 前へ / 次へ →」「最初から」「やめる」を出す。`mismatched` の歩では帯を赤（`--danger`）にし `mismatchNote` を添える。色だけに頼らないよう `▲` と文字を添える（UX-14 の規則）。
+- [ ] 4. **入口**: 結果画面（`ResultView`）に「動きを見直す」を置く。押すと盤（モードDはラダーのモニタ）へ戻り、再生モードで開く。モードB・Dが対象（C1 は操作列を持たず、C2 は B と同じ経路で動く）。
+- [ ] 5. **編集の凍結**: 再生中は `store.replay !== undefined` とし、`intentOf()`（Task 27）と `pickToAction()` が `{ type: 'none' }` を返すようにする。ツールバーの編集系ボタンを `aria-disabled` にし、押したら「見直し中は盤を触れません。『やめる』を押してください」とトーストを出す（UX-03 と同じ作法）。
+- [ ] 6. **やめると元に戻る**: `stop` で再生前の時刻・スナップショットに戻す。**履歴（`pushCommand`）には一切積まない**（再生は編集ではない）。
+- [ ] 7. テスト。
+
+```
+apps/desktop/test/replay.test.ts
+  - 操作6件・差分1件の課題で歩が6つでき、差分のある歩だけ mismatched: true
+  - 信号名が PB_LABELS / OUTPUT_LABELS を通っている（素の 'PL1' が文字列に出ない）
+  - 差分が0件なら mismatched がすべて false
+  - 最後の歩の窓が durationMs まで伸びる
+apps/desktop/test/replay-bar.test.tsx
+  - 「次へ」で歩が進み、最後の歩で「次へ」が aria-disabled になる
+  - mismatched の歩で帯に ▲ と理由が出る
+  - 再生中にツールバーの「電線を引く」を押すとトーストが出て bridge.send が飛ばない
+```
+
+**期待:** `pnpm --filter @ojt/desktop test -- replay` 全件 pass。結果画面から「動きを見直す」で盤へ戻り、6歩を1歩ずつ進めて食い違った歩が赤く出ること。**再生の判定（どの歩で食い違うか）が結果画面の差分一覧と一致すること。**
+
+---
+
+## Task 40: 模範と自分を並べて見る比較ビュー（PR-13）
+
+**モデル: Opus**（級による開示制限の判断が要る）
+**指摘: PR-13 ／ 利用者要望9**
+**バッチ: F（3系統目。Task 39 のあと）**
+
+**Files:**
+- Create: `apps/desktop/src/renderer/result/compare.ts`（純関数）
+- Create: `apps/desktop/src/renderer/result/CompareView.tsx` ＋ `result/compare.module.css`
+- Modify: `apps/desktop/src/renderer/result/ResultView.tsx` / `PlcResult.tsx`
+- Modify: `apps/desktop/src/renderer/i18n/ja.ts`
+- Create: `apps/desktop/test/compare.test.ts` / `apps/desktop/test/compare-view.test.tsx`
+
+**級による開示制限（外すと検定の前提が崩れる）:** 回路図（模範回路）を見せてよいのは、その級で回路図が与えられる課題だけである。`assemble` は `hints.schematicVisible === (grade === 3)`、`inspect-repair` は `=== (grade === 2)`。**`hints.schematicVisible === false` の課題では、比較ビューは波形だけを出し、模範回路図は出さない。** PLC（モードD）は模範ラダーを出さない（`referenceLadder` は答えそのもの）。
+
+**Steps:**
+
+- [ ] 1. **純関数を先に**: `compare.ts` に次を書く。
+
+```ts
+/** 1信号ぶんの並置データ。模範と訓練者の区間を同じ時間軸に揃え、食い違う区間を抜き出す。 */
+export interface CompareRow {
+  readonly signal: string;         // 'PL1'
+  readonly label: string;          // '白ランプ（PL1）'（OUTPUT_LABELS 由来）
+  readonly expected: readonly Segment[];
+  readonly actual: readonly Segment[];
+  readonly diffWindows: readonly { fromMs: number; toMs: number }[];
+}
+
+/** 模範チャートと訓練者チャートを突き合わせる。許容差は判定と同じ値を渡す。 */
+export function compareCharts(
+  expected: TimeChart,
+  actual: TimeChart,
+  tolerance: Tolerance,
+): readonly CompareRow[];
+
+/** その課題で模範回路図を見せてよいか。級と mode の規則そのもの。 */
+export function mayShowReference(problem: SupportedProblem): boolean;
+```
+
+- [ ] 2. **`CompareView`**: 信号ごとに2段（上=模範・破線 `--muted`、下=自分・実線）で並べ、`diffWindows` を薄い帯で塗り、帯の上に `▲` と時刻を出す。**色だけに頼らない**（UX-09 / UX-14 の規則をそのまま適用。既存の `TimeChartView` の描画部品を再利用する）。
+- [ ] 3. `mayShowReference(problem) === true` のときだけ、波形の下に「模範の回路図」と「自分の配線」の**差分一覧**（不足している接続・余分な接続）を出す。`packages/schematic-core` の割当結果と盤のネットリストを突き合わせる。`false` のときは「この級では回路図は出しません。波形と『疑わしい配線』から考えてください」と1行で断る。
+- [ ] 4. **入口**: 結果画面に「模範と見くらべる」を置く。`pushModalLayer()` の作法で覆いとして開き、`Esc` で閉じ、フォーカスを戻す（`app/focus-trap.ts` を使う）。
+- [ ] 5. 拡大と案内線は既存のタイムチャート（2026-09-18 の利用者決定「クリックで拡大＋縦の案内線」）と**同じ操作**にする。新しい操作を作らない。
+- [ ] 6. テスト。
+
+```
+apps/desktop/test/compare.test.ts
+  - 完全一致なら diffWindows が空
+  - 許容差 edgeMs 以内のずれは diff にしない（判定と同じ値で同じ答えになる）
+  - 遷移が余分／不足のとき窓が出る
+  - mayShowReference: assemble 3級=true / 2級・1級=false、inspect-repair 2級=true / 1級=false、plc=false
+apps/desktop/test/compare-view.test.tsx
+  - 1級の課題で模範回路図が描かれず、断りの1行が出る
+  - 差分の帯に時刻と ▲ が出る（色以外の手がかり）
+  - Esc で閉じてフォーカスが「模範と見くらべる」に戻る
+```
+
+**期待:** `pnpm --filter @ojt/desktop test -- compare` 全件 pass。**`compareCharts()` の差分が結果画面の差分一覧・Task 39 の再生と3つとも一致すること。**
+
+---
+
+## Task 41: 結果の1枚書き出し（PR-14）
+
+**モデル: Opus**（決定#5 の境目にあたるので、書き出す範囲と「貯めない」ことの担保が要る）
+**指摘: PR-14 ／ 利用者要望11（進み具合を残したい）**
+**バッチ: G（3系統目・単独）**
+
+**決定#5 との関係（2026-09-20 の所有者決定）:** 「進捗・成績の永続記録はしない」は**アプリが貯めないこと**を指す。本タスクは**利用者が選んだ場所へ1回書き出すだけ**であり、アプリ側に履歴・集計・既定の保存先を一切持たない。**自動保存しない／前回の保存先を覚えない／書き出した件数を数えない。**
+
+**Files:**
+- Create: `apps/desktop/src/renderer/result/report-html.ts`（純関数）
+- Create: `apps/desktop/src/main/result-export.ts`
+- Modify: `apps/desktop/src/shared/ipc.ts`（`IPC_CHANNELS` に9本目 `resultExport`、`OjtApi.exportResult`）
+- Modify: `apps/desktop/src/shared/messages.ts` / `src/main/ipc.ts` / `src/preload/index.ts`
+- Modify: `apps/desktop/src/renderer/result/ResultView.tsx` / `PlcResult.tsx` / `i18n/ja.ts`
+- Modify: `apps/desktop/test/ipc-surface.test.ts`（**8本 → 9本**）
+- Create: `apps/desktop/test/report-html.test.ts` / `apps/desktop/test/result-export.test.ts`
+
+**Steps:**
+
+- [ ] 1. **純関数を先に**: `report-html.ts` に `resultReportHtml(input: ReportInput): string` を書く。載せるもの: 課題ID・題名・級・難易度／開始と所要時間／合否／「なぜ落ちたか」1行（Task 25 の `verdictSummary()` を再利用）／静的チェックの結果／差分一覧（表示名。`OUTPUT_LABELS` 経由）／疑わしい配線／危険操作の回数／ヒントを使った回数。**利用者名・絶対パス・内部ID（`w-003`）は一切載せない**（DM-8 / UI-04 と同じ規則）。文字列はすべて HTML エスケープする。体裁は Task 34 の `PRINT_CSS` から**紙のトークンだけ**を借りた小さな `<style>` を埋め込む（外部参照0・画像0で1ファイルに閉じる）。
+- [ ] 2. **IPC 9本目**: `IPC_CHANNELS` に `resultExport: 'result:export'` を足す。引数は `{ html: string; suggestedName: string }`。main 側 `result-export.ts` は ①`html` の型とサイズ（1 MiB 上限）を検査 ②`safeFileName(suggestedName)` ③`dialog.showSaveDialog`（既定の保存先は OS のドキュメント。**前回の場所は覚えない**）④キャンセルなら `{ ok: true, canceled: true }` ⑤PDF を選んだら**オフスクリーンの `BrowserWindow`**（`nodeIntegration: false` / `contextIsolation: true` / `sandbox: true` / `javascript: false`）で一時ファイルの HTML を読み `printToPDF()`、HTML を選んだらそのまま書く ⑥一時ファイルを必ず消す。書き込みは Task 9 の `fs-atomic.ts` を使う。
+- [ ] 3. **入口**: 結果画面の操作バーに「この結果を書き出す」を置く。押すと保存ダイアログが出る。**押す前にアプリは何も書かない。**
+- [ ] 4. **文言**: 成功「結果を書き出しました」、キャンセルは無言、失敗は `errno` 対応表（Task 9 の DM-8）経由の日本語。すべて `i18n/ja.ts` と `shared/messages.ts`。
+- [ ] 5. **ハードニングの検査を更新**: `ipc-surface.test.ts` の期待を **9本**にする（Task 8 が作った「`IPC_CHANNELS` と完全一致」の検査はそのまま効く）。CSP・`setPermissionRequestHandler` はオフスクリーン窓にも適用されることを `hardening.test.ts` で確かめる。
+- [ ] 6. **本体仕様への追記**: §4.3 の IPC 一覧に9本目を足し、決定#5 の解釈（アプリは貯めない／利用者が1回書き出すだけ）を1行で明記する。Task 33 が触る節とは別の節なので競合しない。
+- [ ] 7. テスト。
+
+```
+apps/desktop/test/report-html.test.ts
+  - 利用者名・絶対パス・w-\d{3} 形式の内部IDが出力に出ない
+  - <script> を含む課題名を渡してもエスケープされる
+  - 合格時と不合格時で節の構成が変わる
+  - 外部参照（http: / https: / src=）が1つも無い
+apps/desktop/test/result-export.test.ts
+  - dialog をスタブしてキャンセルすると何も書かれない
+  - 1 MiB を超える html が拒否される
+  - safeFileName が '../' を含む名前を弾く
+  - 一時ファイルが後始末される（失敗時も）
+apps/desktop/test/ipc-surface.test.ts
+  - 登録チャネルが 9 本で IPC_CHANNELS と完全一致
+```
+
+**期待:** `pnpm --filter @ojt/desktop test -- report-html result-export ipc-surface hardening` 全件 pass。結果画面から1枚の PDF を書き出せ、**アプリ側には何も残らない**こと（`%APPDATA%/電気教育ツール` に差分が出ない）。
+
+---
+
 ## Task 34: 説明書PDFの体裁ともくじのリンク
 
 **モデル: Opus**（版面設計と PDF のリンク・しおりの検査方法）
@@ -1409,7 +1594,7 @@ pnpm --filter @ojt/desktop test -- manual-style manual-coverage manual-sync manu
 
 **Steps:**
 
-- [ ] 1. **本文を先に直す**。`node apps/desktop/scripts/feature-inventory.mjs` を走らせ、v1.0.0 時点の `coverage.json` との差分（増えた／消えた `data-testid`）を出す。差分のある画面の節を読み直し、実装に合わせて書き換える。特に: 3Dの直接操作（Task 27）、初回ガイド（Task 28）、回路入力（Task 21）、課題一覧の導線（Task 25）、文字サイズの設定（Task 26）、72題（Task 13・18）。
+- [ ] 1. **本文を先に直す**。`node apps/desktop/scripts/feature-inventory.mjs` を走らせ、v1.0.0 時点の `coverage.json` との差分（増えた／消えた `data-testid`）を出す。差分のある画面の節を読み直し、実装に合わせて書き換える。特に: 3Dの直接操作（Task 27）、初回ガイド（Task 28）、回路入力（Task 21）、課題一覧の導線（Task 25）、文字サイズの設定（Task 26）、72題（Task 13・18）、**判定の再生（Task 39）・模範との比較（Task 40）・結果の書き出し（Task 41）**。
 - [ ] 2. **UX-24**: ①最近の課題が押せる ②格子クリック（ダブルクリック）で欄が出る ③キー割当がいつも出ている は実装側が真になったので本文はそのまま。④「左上」→「右上」は Task 33 で直っている。再確認する。
 - [ ] 3. `manual-shots.spec.ts` に新しい図の撮影を足す（チュートリアル章の手順図 約20枚）。既存17枚も**全部撮り直す**。
 - [ ] 4. `pnpm --filter @ojt/desktop e2e manual-shots` を**worktree で**走らせる（共有ツリーでは追跡対象の図を書き換えるので走らせない）。`shot-geometry.json` が更新される。
@@ -1454,8 +1639,8 @@ pnpm --filter @ojt/desktop dist
 ```
 
 - [ ] 2. **受入基準①〜⑧を人が実行して確かめる**（本設計 §11 の表）。それぞれの確認結果を `docs/releases/v1.1.0.md` の下書きに書く。
-- [ ] 3. **所有者の承認が要る変更を洗い出して1枚にまとめる**: (a) 本体仕様 §8.2 の「10px 相当以上」→「12px 相当以上」（Task 24）、(b) `sandbox: true` の可否（Task 8）、(c) ビューキューブの左右の向き（Task 19 Step 4）、(d) 成果物名の ASCII 化（Task 31）。
-- [ ] 4. 残った既知の課題（PR-12 / PR-13 / PR-14 / PR-15、CS-02・CS-03・CS-07 の代替対応）を `docs/releases/v1.1.0.md` の「積み残し」に書く。
+- [ ] 3. **2026-09-20 の所有者決定が実装に反映されていることを確かめる**: (a) 本体仕様 §8.2・§12 が「12px 相当以上」で、名札が実際に 12px（Task 24・26）、(b) `sandbox: true` が配布物で有効（Task 8）、(c) ビューキューブが上下・左右とも「盤が指に付いてくる」向き（Task 19）、(d) 成果物名が ASCII（Task 31）、(e) PR-12・PR-13・PR-14 が動く（Task 39・40・41）。
+- [ ] 4. 残った既知の課題（**PR-15 のみ**。ほかに CS-02・CS-03・CS-07 の代替対応）を `docs/releases/v1.1.0.md` の「積み残し」に書く。
 - [ ] 5. 機械点検（`ui-quality.spec.ts`）の残件を数え、v1.0.0 の 25件（小さすぎる文字24・折り返し1・blocking 0）と比べて記録する。
 
 **期待:** すべて緑。受入基準①〜⑧が動作で示されている。
@@ -1503,12 +1688,15 @@ pnpm --filter @ojt/desktop dist
 | 10 | `electron-builder.yml` を Task 8・31 が触る | 8（バッチC）→ 31（バッチG）の順 |
 | 11 | E2E は追跡対象の図を書き換える | `pnpm e2e` は **worktree でのみ**走らせる。Task 30 で `manual-shots` を既定から外したあとも、`dist` の前には必ず `git status --short` が空であることを確かめる |
 | 12 | Task 1 の対象ファイルに未コミットの変更がある | **破棄しない**。`git diff` で読んでから足りない分だけ足す（前提D） |
+| 13 | `test/ipc-surface.test.ts` を Task 8 が作り Task 41 が 8本→9本に伸ばす | 8（バッチC）→ 41（バッチG）の順。41 の担当者は Task 8 の検査の形（`IPC_CHANNELS` と完全一致）を変えず、期待の本数だけ伸ばす |
+| 14 | `worker/protocol.ts` を Task 12（`reset` を削除）と Task 39（`replay` を追加）が触る | 12（バッチC）→ 39（バッチF）の順。**削除した `reset` を再生のために復活させない**（用途が違う。`replay` を新設する） |
+| 15 | `result/ResultView.tsx` を Task 25・39・40・41 が触る | 25 → 39 → 40（バッチF の3系統目で直列）→ 41（バッチG）。いずれも**操作バーにボタンを1つ足すだけ**にし、外殻は Task 11 の `ResultShell.tsx` に任せる |
 
 ---
 
 ## 修正タスク番号 ↔ レビュー指摘ID ↔ 利用者要望
 
-進捗は **`X/38`** の形で報告する。
+進捗は **`X/41`** の形で報告する。
 
 | Task | バッチ | モデル | 見出し | レビュー指摘ID | 利用者要望 |
 |---:|---|---|---|---|---|
@@ -1548,10 +1736,13 @@ pnpm --filter @ojt/desktop dist
 | 34 | H | Opus | PDFの体裁ともくじのリンク | — | 5, 6 |
 | 35 | H | Sonnet | チュートリアル章の新設 | — | 7 |
 | 36 | H | Opus | 図の撮り直しと本文の更新 | UX-24 | 10 |
+| **39** | **F** | Opus | 判定の操作列を1歩ずつ再生（PR-12） | PR-12 | 9 |
+| **40** | **F** | Opus | 模範との並置比較（PR-13） | PR-13 | 9 |
+| **41** | **G** | Opus | 結果の1枚書き出し（PR-14） | PR-14 | 11 |
 | 37 | I | Opus | 全体検証 | — | 11 |
 | 38 | I | Opus | v1.1.0 のリリース | — | 12 |
 
-**カバレッジ確認**: 上表に出る指摘IDの集合は、本設計 §3.3 の171件と**一致する**（§3.2 の3件 CS-02 / CS-03 / CS-07 は「代替」として Task 12・14 に載っている）。利用者要望は 1〜12 すべてが少なくとも1つのタスクに現れる。
+**カバレッジ確認**: 上表に出る指摘IDの集合は、本設計 §3.3 の171件と**一致する**（§3.2 の3件 CS-02 / CS-03 / CS-07 は「代替」として Task 12・14 に載っている）。UI/UX 改善提案は **PR-01〜PR-14 の14件を採用**し、PR-15 だけを代替（課題検証 CLI。Task 4）で閉じている。利用者要望は 1〜12 すべてが少なくとも1つのタスクに現れる。**行の並びは実行順**（バッチ A→I）であり、Task 39・40・41 の番号が 37・38 より大きいのは後から足したためである（§「実装バッチ」の注記）。
 
 ---
 
@@ -1582,7 +1773,15 @@ ls packages/content/src/builtin/inspect-repair/*.json | wc -l  # 期待: 20
 ls packages/content/src/builtin/plc/*.json | wc -l             # 期待: 20
 ```
 
-3. **受入基準**（本設計 §11 の①〜⑧）が人の操作で示され、`docs/releases/v1.1.0.md` に記録されていること。
+3. **受入基準**（本設計 §11 の①〜⑧）が人の操作で示され、`docs/releases/v1.1.0.md` に記録されていること。あわせて 2026-09-20 の所有者決定5件が反映されていること。
+
+```bash
+grep -c "12px相当以上" docs/superpowers/specs/2026-09-13-ojt-electrical-trainer-design.md   # 期待: 2（§8.2 と §12）
+node -e "const {IPC_CHANNELS}=require('./apps/desktop/out/main/index.js');" 2>/dev/null || true
+pnpm --filter @ojt/desktop test -- ipc-surface   # 期待: 登録チャネル 9 本で完全一致（PR-14）
+pnpm --filter @ojt/desktop test -- replay compare report-html result-export
+# 期待: Task 39・40・41 のテストが全件 pass
+```
 
 4. **文書**
 
@@ -1608,3 +1807,4 @@ gh release view v1.1.0
 | 日付 | 内容 |
 |---|---|
 | 2026-09-20 | 初版。評価レポートの指摘171件、課題の拡充（28→72題）、純正ツールの忠実化、3Dの直接操作とUI/UX刷新、ビューキューブの不具合、説明書とヘルプの体裁刷新、チュートリアル章、CIと配布ゲート、v1.1.0 のリリースを38タスク・9バッチに割った |
+| 2026-09-20 | 所有者の決定5件を反映（本設計 決定表 D17）。①課題は72題のまま（変更なし） ②ビューキューブは上下・左右とも反転（Task 19 Step 3・4） ③`sandbox: true` を有効化し配布物で確認（Task 8 Step 1） ④名札12px は本体仕様が改訂済みなので実装を合わせるだけ（Task 24 Step 2・Task 26） ⑤**PR-12・PR-13・PR-14 を Task 39・40・41 として追加**（バッチ F・G）。**N は 38 → 41**。Task 37・38 は引き続き最後の2つで、39〜41 はその前に landed させる。MERGE 注意 #13〜#15 を追加 |
