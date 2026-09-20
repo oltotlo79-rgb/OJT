@@ -60,7 +60,7 @@ import { DeskWires, offBoardTerminals } from './DeskWires.js';
 import { DinRail } from './DinRail.js';
 import { FixedWires } from './FixedWires.js';
 import { Outlet } from './Outlet.js';
-import { PerfProbe } from './PerfProbe.js';
+import { configurePerfCounters, PerfProbe } from './PerfProbe.js';
 import { PlcRack } from './PlcRack.js';
 import { PlcUnit } from './PlcUnit.js';
 import { Fixture, FIXTURE_LABEL_OFFSET_MM, FIXTURES } from './Fixtures.js';
@@ -874,6 +874,12 @@ function BoardSceneImpl({
           guardedPick({ kind: 'empty' });
         }}
         onCreated={({ gl }) => {
+          /*
+           * 3D-01: `gl.info` の自動リセットを止める。止めないと、ビューキューブ（drei の `Hud`）が
+           * 1フレームに2回呼ぶ `gl.render()` の2回目で数値が上書きされ、性能の門は**ギズモ単体の
+           * 値**しか測らない。止めたぶんは `PerfProbe` が毎フレーム自分で戻す。
+           */
+          configurePerfCounters(gl);
           const canvas = gl.domElement;
           canvas.addEventListener(
             'webglcontextlost',

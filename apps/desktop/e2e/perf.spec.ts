@@ -30,9 +30,33 @@ const CHROMIUM_FLAGS = [
 ];
 const WINDOW = { width: 1440, height: 900 } as const;
 
-/** 性能の予算（§15 / Plan 5 決定表#17）。GPU に依らない値だけを自動で縛る。 */
+/**
+ * 性能の予算（§15 / Plan 5 決定表#17）。GPU に依らない値だけを自動で縛る。
+ *
+ * **2026-09-20 Phase 7 Task 16（3D-01）で盤を含む実測値に取り直した。** それまでの
+ * `120` は、ビューキューブ（drei の `Hud`）が1フレームに2回呼ぶ `gl.render()` の2回目で
+ * `gl.info` が上書きされていたため、**ギズモ単体の 280/30 に対して置かれた値**だった
+ * （3視点とも 280/30 で同値だったのがその証拠）。`BoardScene` の `onCreated` で
+ * `gl.info.autoReset` を切り、`PerfProbe` が毎フレーム自分で戻すようにしたので、
+ * ここで読む値は**盤＋ギズモの合計**になっている。
+ *
+ * 測り方: origin/main をビルドした worktree（`OJT-wt-e2e`、`--use-gl=swiftshader`、1440×900、
+ * `pnpm --filter @ojt/desktop build` のあと `playwright test e2e/perf.spec.ts` を foreground で）。
+ * 2回続けて同じ値が出た実測（モードB b-001）:
+ *
+ * | 視点 | triangles | calls |
+ * |---|---:|---:|
+ * | 正面 | 50,364 | 309 |
+ * | 俯瞰 | 50,364 | 309 |
+ * | ソケット拡大 | 45,898 | 253 |
+ *
+ * `TRIANGLE_BUDGET` は §15 の受入基準そのものの数（20万）を残す（実測 50,364 で4倍の余裕がある）。
+ * `DRAW_CALL_BUDGET` は §15 に数字が無く Plan 5 決定表#17 が独自に置いたものなので、
+ * 実測 309 に約1割の余裕を足した値へ取り直す。Task 17（3D 資源解放とドローコールの畳み込み）は
+ * この実測値より**下がる**ことを目標にする。
+ */
 const TRIANGLE_BUDGET = 200_000;
-const DRAW_CALL_BUDGET = 120;
+const DRAW_CALL_BUDGET = 340;
 /** 実機確認のときだけ 60fps を要求する（`OJT_PERF_TARGET=1`）。 */
 const FPS_TARGET = 60;
 /**
@@ -142,6 +166,21 @@ test.describe('性能（§16 Phase 5 受入基準④）', () => {
       expect(perf['triangles'], `${view} の三角形数`).toBeLessThanOrEqual(TRIANGLE_BUDGET);
       expect(perf['calls'], `${view} のドローコール`).toBeLessThanOrEqual(DRAW_CALL_BUDGET);
     }
+    /*
+     * **この門が盤を測っていることの自己検査**（3D-01 / Phase 7 Task 16）。
+     * ビューキューブは視点を変えても常に同じ形・同じ大きさで描かれるので、`gl.info` が
+     * ギズモ単体の残骸に戻ってしまうと3視点とも同じ値（280/30）になる。逆に盤を測れていれば、
+     * 盤全体が視野に入る `正面` と、1個のソケットへ寄って他が視錐台から外れる `ソケット拡大` で
+     * `calls` は必ず違う（実測 309 と 253）。HUD だけを測る退行が起きた瞬間にここが落ちる。
+     */
+    const frontCalls = byView['正面']?.['calls'];
+    const zoomCalls = byView['ソケット拡大']?.['calls'];
+    expect(typeof frontCalls, '正面 のドローコールが読めている').toBe('number');
+    expect(typeof zoomCalls, 'ソケット拡大 のドローコールが読めている').toBe('number');
+    expect(
+      frontCalls,
+      '正面 と ソケット拡大 のドローコールが同値＝盤ではなくビューキューブを測っている（3D-01）',
+    ).not.toBe(zoomCalls);
     const worst = {
       triangles: Math.max(...VIEWS.map((view) => byView[view]?.['triangles'] ?? 0)),
       calls: Math.max(...VIEWS.map((view) => byView[view]?.['calls'] ?? 0)),

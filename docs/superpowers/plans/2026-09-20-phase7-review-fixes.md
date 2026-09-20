@@ -777,10 +777,20 @@ apps/desktop/test/ladder-grid.test.tsx カーソルを1マス動かしたとき�
 
 **Steps:**
 
-- [ ] 1. `BoardScene.tsx` の `onCreated` で `gl.info.autoReset = false;` を立てる。`PerfProbe` の `useFrame` の**先頭**で `gl.info` を読んでから `gl.info.reset()` を呼ぶ。いまは自動リセットが効いて**ビューキューブだけの値**を測っている（3視点とも `calls` が 30 で同値なのがその証拠）。
-- [ ] 2. `e2e/perf.spec.ts` の `DRAW_CALL_BUDGET` / `TRIANGLE_BUDGET` を**盤を含む実測値**で取り直す。取り直した値と測り方をこのタスクの Steps に追記する。
-- [ ] 3. 退行検知を足す: 「視点プリセットを `正面` と `ソケット拡大` に切り替えたとき `calls` が**異なる**」ことを assert する。
-- [ ] 4. Plan 5 の性能記録に訂正を1行追記する（**レポート本体 `docs/reviews/**` は書き換えない**）。
+- [x] 1. `BoardScene.tsx` の `onCreated` で `gl.info.autoReset = false;` を立てる。`PerfProbe` の `useFrame` の**先頭**で `gl.info` を読んでから `gl.info.reset()` を呼ぶ。いまは自動リセットが効いて**ビューキューブだけの値**を測っている（3視点とも `calls` が 30 で同値なのがその証拠）。
+- [x] 2. `e2e/perf.spec.ts` の `DRAW_CALL_BUDGET` / `TRIANGLE_BUDGET` を**盤を含む実測値**で取り直す。取り直した値と測り方をこのタスクの Steps に追記する。
+  **2026-09-20 Task 16 実測**: worktree `OJT-wt-e2e`（`origin/main` c7eb950 に本タスクの差分だけを当ててビルド、`--use-gl=swiftshader`、1440×900、`playwright test e2e/perf.spec.ts` を foreground で2回）。モードB b-001 を開いた状態で、**2回とも完全に同じ値**:
+
+| 視点 | triangles（修正前 → 修正後） | calls（修正前 → 修正後） |
+|---|---|---|
+| 正面 | 280 → **50,364** | 30 → **309** |
+| 俯瞰 | 280 → **50,364** | 30 → **309** |
+| ソケット拡大 | 280 → **45,898** | 30 → **253** |
+| `worst` | 280 → **50,364** | 30 → **309** |
+
+  取り直した予算は `TRIANGLE_BUDGET = 200_000`（§15 の受入基準そのものの数を残す。実測 50,364 で4倍の余裕）／`DRAW_CALL_BUDGET = 120 → 340`（§15 に数字は無く Plan 5 決定表#17 が独自に置いた値。ギズモ単体の 30 に対して置かれていたので、実測 309 に約1割の余裕を足して取り直した）。
+- [x] 3. 退行検知を足す: 「視点プリセットを `正面` と `ソケット拡大` に切り替えたとき `calls` が**異なる**」ことを assert する。（`perf.spec.ts` の予算ループの直後。実測 309 ≠ 253。ギズモ単体に戻ると3視点とも同値になって落ちる）
+- [x] 4. Plan 5 の性能記録に訂正を1行追記する（**レポート本体 `docs/reviews/**` は書き換えない**）。（`docs/superpowers/plans/2026-09-19-phase5-schematic-editor-and-release.md` の性能節 2行に追記）
 
 **期待:** `pnpm --filter @ojt/desktop e2e perf` が盤を含む実測値で緑。3視点の `calls` が同値でないこと。
 
