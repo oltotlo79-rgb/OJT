@@ -10,7 +10,7 @@ import {
 } from '@playwright/test';
 import { closeOverflow, openOverflow } from './projection.js';
 import { gizmoLayoutForViewport } from '../src/renderer/three/ViewGizmo.js';
-import { cameraPose, type CameraPose } from '../src/renderer/three/camera.js';
+import { cameraPose, MIN_POLAR_ANGLE_RAD, type CameraPose } from '../src/renderer/three/camera.js';
 import { GIZMO_DRAG_RAD_PER_PX } from '../src/renderer/three/navigation.js';
 
 /**
@@ -159,6 +159,40 @@ async function expectPresetPressed(page: Page, label: string): Promise<void> {
   await closeOverflow(page);
 }
 
+/** ビューキューブを掴んで `dx`/`dy`[px] だけ引いて放す。 */
+async function dragGizmo(page: Page, dx: number, dy: number): Promise<void> {
+  const center = await gizmoCenter(page);
+  await page.mouse.move(center.x, center.y);
+  await page.mouse.down();
+  for (let step = 1; step <= 8; step += 1) {
+    await page.mouse.move(center.x + (dx * step) / 8, center.y + (dy * step) / 8);
+  }
+  await page.mouse.up();
+}
+
+/**
+ * `camera-readout` の値 → カメラ位置（注視点を原点とした `camera.up` 基準の球座標）。
+ * 極（極角0）では方位角をいくら変えてもここが動かない＝画が変わらない、という判定に使う。
+ */
+function cameraOffset(state: Camera): [number, number, number] {
+  const sin = Math.sin(state.polar);
+  return [
+    state.dist * sin * Math.sin(state.az),
+    state.dist * Math.cos(state.polar),
+    state.dist * sin * Math.cos(state.az),
+  ];
+}
+
+/** ワールドの上（0,1,0）から測った視点プリセットの極角[rad]。 */
+function worldPolarOf(pose: CameraPose): number {
+  const offset = [
+    pose.position[0] - pose.target[0],
+    pose.position[1] - pose.target[1],
+    pose.position[2] - pose.target[2],
+  ] as const;
+  return Math.acos(offset[1] / Math.hypot(offset[0], offset[1], offset[2]));
+}
+
 /**
  * 目に見える動きが止まるまでの粗い状態（角度 0.01rad ≒ 0.6°・距離 1mm 単位）。
  *
@@ -243,8 +277,11 @@ test.describe('Blender 風の3D操作（§12.2）', () => {
     const after = await camera(page);
     await shot(app, '21-nav-after-gizmo-drag');
 
-    // 200px 引いたので 200 × 0.36° ≒ 72°(1.257rad) 回る（符号は右へ引くと方位角が減る）
-    const turned = Math.abs(after.az - before.az);
+    /*
+     * 200px 引いたので 200 × 0.36° ≒ 72°(1.257rad) 回る。符号は 2026-09-20 の所有者決定で
+     * **右へ引くと方位角が増える**（カメラが指に付いてくる）に反転した（Task 19 Step 3/4）。
+     */
+    const turned = after.az - before.az;
     expect(turned).toBeGreaterThan(GIZMO_DRAG_RAD_PER_PX * 200 * 0.8);
     expect(turned).toBeLessThan(GIZMO_DRAG_RAD_PER_PX * 200 * 1.2);
     // 注視点は動かない（回転だけ）。距離も変わらない
@@ -258,6 +295,61 @@ test.describe('Blender 風の3D操作（§12.2）', () => {
      * 60fps の実機なら 0.6〜1.1 秒）。ここで見たいのは「いつか必ず止まる」こと。
      */
     expect(settled).toBeLessThan(5000);
+  });
+
+  /**
+   * 2026-09-20 の利用者報告「3D図で上から正面にキューブを回そうとすると回らない」の再現と回帰
+   * （Task 19 / 3D-15〜19）。Step 1 の実測（旧実装）:
+   *
+   * | 俯瞰から 200px | 極角 before → after |
+   * |---|---|
+   * | 下へ | 0.8897 → **0.0000**（極に張り付く） |
+   * | 上へ | 0.8897 → 1.5708（上限で丸め） |
+   * | 右へ | 方位角 −0.6627 → −1.9194 |
+   *
+   * 極角0は球座標の極なので、そこへ張り付くと方位角を変えてもカメラ位置が動かない
+   * （＝そのあとどちらへ引いても画が変わらない＝「回らない」）。
+   *
+   * 盤は13°の傾斜コンソールなので、**面直の「正面」視はワールドではほぼ真上**（極角 0.23rad）。
+   * つまり俯瞰（0.89rad）から正面へ回り込むのは**極角を減らす**向きで、2026-09-20 の所有者決定
+   * （カメラが指に付いてくる）では**キューブを上へ引く**動きにあたる。
+   */
+  test('俯瞰からキューブを縦に引くと指に付いて回り、正面へ回り込める', async () => {
+    await selectPreset(page, '俯瞰');
+    await page.waitForTimeout(800);
+    const top = await camera(page);
+    await shot(app, '30-nav-top-before-drag');
+
+    // 下へ引くとカメラも下へ回る（極角が増える）＝指に付いてくる
+    await dragGizmo(page, 0, 200);
+    await page.waitForTimeout(800);
+    const down = await camera(page);
+    expect(down.polar).toBeGreaterThan(top.polar);
+
+    // 上へ「正面の極角まで」引くと、正面（ワールドではほぼ真上）の視点へ回り込む
+    await selectPreset(page, '俯瞰');
+    await page.waitForTimeout(800);
+    const frontPolar = worldPolarOf(cameraPose('front'));
+    await dragGizmo(page, 0, -(top.polar - frontPolar) / GIZMO_DRAG_RAD_PER_PX);
+    await page.waitForTimeout(800);
+    const front = await camera(page);
+    expect(Math.abs(front.polar - frontPolar)).toBeLessThan(0.1);
+    await shot(app, '31-nav-top-to-front');
+
+    // 引きすぎても極（0）には張り付かず、そのまま横へ引けばカメラ位置が動く
+    await selectPreset(page, '俯瞰');
+    await page.waitForTimeout(800);
+    await dragGizmo(page, 0, -200);
+    await page.waitForTimeout(800);
+    const pole = await camera(page);
+    expect(pole.polar).toBeGreaterThanOrEqual(MIN_POLAR_ANGLE_RAD - 1e-6);
+    const before = cameraOffset(pole);
+    await dragGizmo(page, 200, 0);
+    await page.waitForTimeout(800);
+    const after = cameraOffset(await camera(page));
+    expect(
+      Math.hypot(after[0] - before[0], after[1] - before[1], after[2] - before[2]),
+    ).toBeGreaterThan(1);
   });
 
   test('中ドラッグで回転、Shift＋中ドラッグで平行移動、ホイールでズーム', async () => {

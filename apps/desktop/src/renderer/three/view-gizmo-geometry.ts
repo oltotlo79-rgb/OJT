@@ -1,5 +1,6 @@
 import { BufferGeometry, Float32BufferAttribute, Matrix4, Quaternion, Vector3 } from 'three';
 import { GIZMO_TARGETS } from './navigation.js';
+import { GIZMO_CHAMFER, GIZMO_FACE_SPAN } from './view-gizmo-layout.js';
 
 /**
  * ビューキューブの**形**の計算。設計仕様 §12.2 / 2026-09-19 の利用者要望
@@ -20,11 +21,11 @@ import { GIZMO_TARGETS } from './navigation.js';
  * three だけに依存し React には触れないので、単体テストからそのまま読める（§14.2）。
  */
 
-/** 面取りの深さ（一辺を1としたときの割合）。各軸でこの分だけ角を削る。 */
-export const GIZMO_CHAMFER = 0.12;
-
-/** 面（名札を焼く正方形）の一辺。 */
-export const GIZMO_FACE_SPAN = 1 - 2 * GIZMO_CHAMFER;
+/*
+ * 面取りの深さ（`GIZMO_CHAMFER`）と面の一辺（`GIZMO_FACE_SPAN`）は `view-gizmo-layout.ts` に
+ * 置く（HUD の外接円の半径もそこから求めるため。3D-16 の分割で依存の向きを
+ * 「layout ← geometry」に揃えた）。
+ */
 
 /** 辺の面取り1枚の寸法 [長辺, 短辺]。短辺は削った直角三角形の斜辺 = 深さ×√2。 */
 export const GIZMO_EDGE_FACET_SIZE: readonly [number, number] = [

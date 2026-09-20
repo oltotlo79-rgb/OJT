@@ -327,6 +327,13 @@ export const VIEW_TRANSITION_MS = 300;
 /**
  * 極角の下限[rad]。真上（極）ちょうどに置くとカメラの上方向（0,1,0）と視線が平行になり
  * 画が定まらないので、わずかに外す。
+ *
+ * **`BoardScene` の `<OrbitControls minPolarAngle={...}>` にも渡す**（Task 19 / 3D-15〜19）。
+ * three-stdlib の既定は 0（＝極そのもの）で、極ではカメラ位置が
+ * `target + (0, 距離, 0)` に固定され、方位角をいくら変えても動かない。ビューキューブを
+ * 引いてそこへ張り付くと、そのあとどちらへ引いても画が変わらなくなる
+ * （2026-09-20 の利用者報告「上から正面にキューブを回そうとすると回らない」。
+ * 実測は Task 19 Step 1: 俯瞰の極角 0.8897 → 下へ200px で 0.0000 に張り付く）。
  */
 export const MIN_POLAR_ANGLE_RAD = 0.02;
 
@@ -337,9 +344,15 @@ export const MIN_POLAR_ANGLE_RAD = 0.02;
  * 対応するプリセットが無い（プリセットを20個増やすのは筋が悪い）。距離と注視点は
  * 「いまの視点のまま」にして**向きだけ**その方向へ向け直す。
  *
- * 極角は `MAX_POLAR_ANGLE` に丸める。盤の裏側・真下へは回り込めないので、丸めずに置くと
- * `OrbitControls.update()` が次のフレームで引き戻して視点が落ち着かない（`cameraPose('bottom')`
- * と同じ理由）。下向きの辺・角は「許される範囲でいちばん低い位置から見上げる」視点になる。
+ * 極角は `[MIN_POLAR_ANGLE_RAD, MAX_POLAR_ANGLE - MIN_POLAR_ANGLE_RAD]` に丸める。盤の裏側・
+ * 真下へは回り込めないので、丸めずに置くと `OrbitControls.update()` が次のフレームで引き戻して
+ * 視点が落ち着かない（`cameraPose('bottom')` と同じ理由）。下向きの辺・角は「許される範囲で
+ * いちばん低い位置から見上げる」視点になる。
+ *
+ * 上下とも**下限・上限ちょうどには置かない**（Task 19 / 3D-15〜19）。真上（極角0）は球座標の
+ * 極で、そこでは方位角を変えてもカメラ位置が動かない（＝どちらへ引いても画が変わらない）。
+ * 上限ちょうども同じく片側のドラッグが死ぬので、`MIN_POLAR_ANGLE_RAD`（0.02rad ≒ 1.1°）だけ
+ * 内側に置いて、辺・角へスナップしたあとも**どちらの向きにも引ける**ようにする。
  */
 export function poseForDirection(
   direction: readonly [number, number, number],
@@ -352,7 +365,10 @@ export function poseForDirection(
       : ([direction[0] / length, direction[1] / length, direction[2] / length] as const);
   // three の `Spherical` と同じ取り方（+Y が極、方位角は +Z から +X へ）
   const azimuth = Math.atan2(x, z);
-  const polar = Math.min(MAX_POLAR_ANGLE, Math.max(MIN_POLAR_ANGLE_RAD, Math.acos(y)));
+  const polar = Math.min(
+    MAX_POLAR_ANGLE - MIN_POLAR_ANGLE_RAD,
+    Math.max(MIN_POLAR_ANGLE_RAD, Math.acos(y)),
+  );
   const sin = Math.sin(polar);
   return {
     position: [

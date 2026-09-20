@@ -905,14 +905,38 @@ pnpm --filter @ojt/desktop test
 
 **Steps:**
 
-- [ ] 1. **まず再現する**。worktree でアプリを起動し、`俯瞰` プリセットにしてからビューキューブを上下左右へ引き、`camera-readout` の値を記録する。本設計 §8.2 の仮説（`top` は極角ちょうど0＝極なので、下向きも水平も動かない）が正しいかを**実測で確かめ**、結果をこの Steps に追記する。
-- [ ] 2. **極を踏まないようにする**。`BoardScene.tsx` の `<OrbitControls>` に `minPolarAngle={MIN_POLAR_ANGLE_RAD}` を渡す。`camera.ts` の `poseForDirection()` と `CameraPresets.applyPose()` で、`top` の着地点を `MIN_POLAR_ANGLE_RAD`、面直プリセットの着地点を `MAX_POLAR_ANGLE - MIN_POLAR_ANGLE_RAD` にする。
-- [ ] 3. **向きを「カメラが指に付いてくる」に統一する**（**2026-09-20 の所有者決定: 上下・左右とも反転する**）。`navigation.ts` の `gizmoDragToSpherical()` を **`{ azimuth: +dx * k, polar: +dy * k }`** にする（下へ引いたらカメラが下へ回り `top` から `front` へ着く／右へ引いたらカメラが右へ回る）。上のコメント（「右へ引けば方位角が減り、下へ引けば極角が減る」）を新しい規則に書き直す。
-- [ ] 4. **左右の反転に伴う期待値をすべて直す**。`e2e/navigation.spec.ts:228-261`（水平ドラッグ）の期待値を反転させる。`test/view-gizmo.test.tsx` の方位角に関する既存アサーションも同様。本体仕様 §12.2 の「1000px で1回転」の記述はそのままでよいが、向きの説明があれば直す。**実機で「盤が指に付いてくる」ことを確かめ、結果をこの Steps に記録する。**
-- [ ] 5. **3D-15**: `onPointerDown` の先頭に `if (drag.current !== null) return;`（2本目のポインタで `dampingFactor: 1` を保存してしまい、盤の慣性が永久に失われるのを止める）。
-- [ ] 6. **3D-16**: `ViewGizmo.tsx`（1,080行）を `view-gizmo-layout.ts`（111-274行）／ `view-gizmo-paint.ts`（288-529行）／ `use-gizmo-drag.ts`（状態機械）に割る。JSX と配線だけを `ViewGizmo.tsx` に残す。
-- [ ] 7. **3D-19**: `navigation.ts` の非公開 `FACE_LABELS` を消し、`ViewGizmo.tsx` の `GIZMO_FACES` を唯一の源にする（本番が使う側がテストされていない状態を解消する）。
-- [ ] 8. 回帰テストを足す。
+- [x] 1. **まず再現する**。worktree でアプリを起動し、`俯瞰` プリセットにしてからビューキューブを上下左右へ引き、`camera-readout` の値を記録する。本設計 §8.2 の仮説（`top` は極角ちょうど0＝極なので、下向きも水平も動かない）が正しいかを**実測で確かめ**、結果をこの Steps に追記する。
+  - **実測（修正前・Electron 実機・モードB b-001・1280×800）**: `俯瞰` の着地点は **az −0.6627 / 極角 0.8897（51°）/ 距離 428**。200px ドラッグの結果は下表。
+
+    | 引いた向き | 極角 before → after | 方位角 before → after |
+    |---|---|---|
+    | 下へ | 0.8897 → **0.0000**（Δ−0.8897） | 変化なし |
+    | 上へ | 0.8897 → 1.5708（Δ+0.6811、上限で丸め） | 変化なし |
+    | 右へ | 変化なし | −0.6627 → −1.9194（Δ−1.2567） |
+    | 左へ | 変化なし | −0.6627 → +0.5939（Δ+1.2566） |
+
+  - **§8.2 の仮説は一部誤り**。`top` プリセットは極角ちょうど0ではなく **0.8897**（`cameraPose('top')` は真上ではなく左手前からの斜め俯瞰）。**真の原因は「下へ引くと極角が減る」符号**で、利用者が「上から正面へ」と下へ引くと極角0（＝球座標の極）へ**張り付き**、極ではカメラ位置が `target + (0, 距離, 0)` に固定されて方位角を変えても動かないため、そこから先はどちらへ引いても画が変わらない（＝「回らない」）。`minPolarAngle` 既定0がその張り付きを許していた。
+  - **もう一つの実測事実**: 盤は13°の傾斜コンソールなので、**面直の `正面` 視はワールドではほぼ真上**（ワールド上方向から測った極角 **0.23rad ＝ 13°**）。つまり「俯瞰（0.89）→ 正面（0.23）」は**極角を減らす**向きであり、所有者決定（カメラが指に付いてくる）では**キューブを上へ引く**動きにあたる。
+- [x] 2. **極を踏まないようにする**。`BoardScene.tsx` の `<OrbitControls>` に `minPolarAngle={MIN_POLAR_ANGLE_RAD}` を渡す。`camera.ts` の `poseForDirection()` と `CameraPresets.applyPose()` で、`top` の着地点を `MIN_POLAR_ANGLE_RAD`、面直プリセットの着地点を `MAX_POLAR_ANGLE - MIN_POLAR_ANGLE_RAD` にする。
+  - `<OrbitControls minPolarAngle={MIN_POLAR_ANGLE_RAD}>` を入れた（`BoardScene.tsx:783`）。`poseForDirection()` は上限も `MAX_POLAR_ANGLE - MIN_POLAR_ANGLE_RAD` に丸めるようにした（`camera.ts:363`。下限 `MIN_POLAR_ANGLE_RAD` は既存）。
+  - **逸脱**: `CameraPresets.applyPose()` で**面直プリセットを 1.1° 内側へずらすのはやめた**（`CameraPresets.tsx:87`）。Step 1 の実測どおり `top` は極角 0.8897 で極に居ないので、張り付きの原因は着地点ではなく符号であり、この項目の効果は「上限ちょうどで下方向のドラッグが 1.1° ぶんだけ動く」だけである。一方で面直視を 1.1° 傾けると `camera.ts:33-42` と `terminal-pick.test.ts`「面直の視点はちょうど極角 90°」が守っている不変条件（2026-09-19 の P.1/N.1 クリック不能の再発防止。当たり判定半径4mm に対し 3.6° のずれで外れていた）を崩す。よって**面直プリセットは極角ちょうど 90° のまま**とし、`view-gizmo.test.tsx` の28ケースでは「面直と `bottom` は下へ引く1方向だけ `MAX_POLAR_ANGLE` で止まる（§12.2 の『盤の水平面より下へ回り込ませない』そのもの）」と明記して固定した。
+- [x] 3. **向きを「カメラが指に付いてくる」に統一する**（**2026-09-20 の所有者決定: 上下・左右とも反転する**）。`navigation.ts` の `gizmoDragToSpherical()` を **`{ azimuth: +dx * k, polar: +dy * k }`** にする（下へ引いたらカメラが下へ回り `top` から `front` へ着く／右へ引いたらカメラが右へ回る）。上のコメント（「右へ引けば方位角が減り、下へ引けば極角が減る」）を新しい規則に書き直す。
+- [x] 4. **左右の反転に伴う期待値をすべて直す**。`e2e/navigation.spec.ts:228-261`（水平ドラッグ）の期待値を反転させる。`test/view-gizmo.test.tsx` の方位角に関する既存アサーションも同様。本体仕様 §12.2 の「1000px で1回転」の記述はそのままでよいが、向きの説明があれば直す。**実機で「盤が指に付いてくる」ことを確かめ、結果をこの Steps に記録する。**
+  - `e2e/navigation.spec.ts` の水平ドラッグは `Math.abs()` をやめて**符号ごと**（右へ引くと方位角が増える）検査するようにした。`test/view-gizmo.test.tsx` の方位角・極角のアサーション、`test/view-navigation.test.ts` の `gizmoDragToSpherical` の符号テストも反転させた。本体仕様 §12.2 に向きの記述は無く（「1000px で1回転」のみ）、直す箇所は無かった。
+  - **実測（修正後・同じ手順）**: `俯瞰`（az −0.6627 / 極角 0.8897）から 200px 引くと
+
+    | 引いた向き | 極角 before → after | 方位角 before → after |
+    |---|---|---|
+    | 下へ | 0.8897 → **1.5708**（Δ+0.6811。カメラが下＝指の向きへ回る） | 変化なし |
+    | 上へ | 0.8897 → **0.0200**（Δ−0.8697。極 0 ではなく `MIN_POLAR_ANGLE_RAD` で止まる） | 変化なし |
+    | 右へ | 変化なし | −0.6627 → **+0.5939**（Δ+1.2566。修正前と逆） |
+    | 左へ | 変化なし | −0.6627 → **−1.9194**（Δ−1.2567。修正前と逆） |
+
+  - `e2e/navigation.spec.ts` の新テストで、俯瞰から**上へ 105px**（0.8897−0.2257 を感度で割った量）引くと極角が `正面` のワールド極角（0.23rad）に収まること、**上へ 200px** 引いて上限まで行ってもそこから横へ引けばカメラ位置が動くこと（＝極に張り付かない）を実機で確認した。
+- [x] 5. **3D-15**: `onPointerDown` の先頭に `if (drag.current !== null) return;`（2本目のポインタで `dampingFactor: 1` を保存してしまい、盤の慣性が永久に失われるのを止める）。
+- [x] 6. **3D-16**: `ViewGizmo.tsx`（1,080行）を `view-gizmo-layout.ts`（111-274行）／ `view-gizmo-paint.ts`（288-529行）／ `use-gizmo-drag.ts`（状態機械）に割る。JSX と配線だけを `ViewGizmo.tsx` に残す。
+- [x] 7. **3D-19**: `navigation.ts` の非公開 `FACE_LABELS` を消し、`ViewGizmo.tsx` の `GIZMO_FACES` を唯一の源にする（本番が使う側がテストされていない状態を解消する）。
+- [x] 8. 回帰テストを足す。
 
 ```
 apps/desktop/test/view-gizmo.test.tsx

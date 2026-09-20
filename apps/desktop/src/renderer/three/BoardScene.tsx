@@ -47,6 +47,7 @@ import {
   MAX_CAMERA_DISTANCE_MM,
   MAX_POLAR_ANGLE,
   MIN_CAMERA_DISTANCE_MM,
+  MIN_POLAR_ANGLE_RAD,
 } from './camera.js';
 import { CameraPresets } from './CameraPresets.js';
 import {
@@ -779,6 +780,7 @@ function BoardContents({
         screenSpacePanning
         minDistance={MIN_CAMERA_DISTANCE_MM}
         maxDistance={MAX_CAMERA_DISTANCE_MM}
+        minPolarAngle={MIN_POLAR_ANGLE_RAD}
         maxPolarAngle={MAX_POLAR_ANGLE}
         onChange={writeReadout}
         ref={(instance) => {

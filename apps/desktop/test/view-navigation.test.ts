@@ -67,21 +67,30 @@ describe('middleButtonActionFor（中ボタンの割り当て）', () => {
 describe('gizmoDragToSpherical（キューブのドラッグ量 → 回転角）', () => {
   it('1000px 引くとちょうど1回転（Blender と同じ感度）', () => {
     expect(GIZMO_DRAG_RAD_PER_PX * 1000).toBeCloseTo(2 * Math.PI, 10);
-    expect(gizmoDragToSpherical(1000, 0).azimuth).toBeCloseTo(-2 * Math.PI, 10);
-    expect(gizmoDragToSpherical(0, 1000).polar).toBeCloseTo(-2 * Math.PI, 10);
+    expect(gizmoDragToSpherical(1000, 0).azimuth).toBeCloseTo(2 * Math.PI, 10);
+    expect(gizmoDragToSpherical(0, 1000).polar).toBeCloseTo(2 * Math.PI, 10);
   });
 
-  it('右へ引くと方位角が減り、下へ引くと極角が減る（OrbitControls の左ドラッグと同じ符号）', () => {
+  /*
+   * 2026-09-20 の所有者決定（Task 19 / 3D-15〜19）。上下・左右とも「カメラが指に付いてくる」に
+   * 揃えた。以前は両軸とも逆で、俯瞰から下へ引くと極角が減って真上（極）へ張り付き、
+   * そこから先はどちらへ引いても画が変わらなかった（利用者の「回らない」）。
+   */
+  it('右へ引くと方位角が増え、下へ引くと極角が増える（カメラが指に付いてくる）', () => {
     const right = gizmoDragToSpherical(120, 0);
-    expect(right.azimuth).toBeLessThan(0);
-    expect(right.polar).toBe(-0);
+    expect(right.azimuth).toBeGreaterThan(0);
+    expect(right.polar).toBe(0);
     const down = gizmoDragToSpherical(0, 120);
-    expect(down.polar).toBeLessThan(0);
+    expect(down.polar).toBeGreaterThan(0);
+    const up = gizmoDragToSpherical(0, -120);
+    expect(up.polar).toBeLessThan(0);
+    const left = gizmoDragToSpherical(-120, 0);
+    expect(left.azimuth).toBeLessThan(0);
   });
 
   it('移動量に比例し、感度を差し替えられる', () => {
-    expect(gizmoDragToSpherical(200, -100, 0.01)).toEqual({ azimuth: -2, polar: 1 });
-    expect(gizmoDragToSpherical(0, 0)).toEqual({ azimuth: -0, polar: -0 });
+    expect(gizmoDragToSpherical(200, -100, 0.01)).toEqual({ azimuth: 2, polar: -1 });
+    expect(gizmoDragToSpherical(0, 0)).toEqual({ azimuth: 0, polar: 0 });
   });
 });
 

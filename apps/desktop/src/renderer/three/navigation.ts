@@ -1,4 +1,5 @@
 import type { CameraPreset } from '../app/store-types.js';
+import { GIZMO_FACES } from './view-gizmo-layout.js';
 
 /**
  * Blender 風の3Dナビゲーションの純粋な計算。設計仕様 §12.2（2026-09-14 の利用者要望）。
@@ -112,15 +113,23 @@ export interface SphericalDelta {
 /**
  * キューブのドラッグ量[px] → 視点の回転量[rad]。
  *
- * 符号は `OrbitControls` の左ドラッグと揃える（右へ引けば方位角が減り、下へ引けば極角が減る）。
- * こうするとキューブを掴んで回したとおりに盤も回り、キューブ自身もカメラを映すので指に付いてくる。
+ * **カメラが指に付いてくる**向きに統一する（2026-09-20 の所有者決定）。
+ * 右へ引けばカメラが右へ回り（方位角が増え）、下へ引けばカメラが下へ回る（極角が増える）。
+ * 上下・左右で同じ比喩なので、どちらの軸も「引いた向きへ視点が動く」と覚えれば済む。
+ *
+ * 2026-09-20 までは両軸とも逆（`-dx` / `-dy`。`OrbitControls` の左ドラッグと同じ符号で、
+ * 「盤が指に付いてくる」向き）だった。これだと**俯瞰から下へ引くと極角が減って真上（極）へ
+ * 寄っていく**ため、利用者が「上から正面へ回そう」として下へ引くと、正面（極角が増える側）と
+ * 逆へ動いたうえ極で `clamp` に張り付いた。極では方位角を変えてもカメラ位置が動かないので、
+ * そこから先はどちらへ引いても画が変わらない（＝2026-09-20 の報告「回らない」）。
+ * 実測は Task 19 Step 1（俯瞰 極角0.8897 → 下へ200px で 0.0000 に張り付く）。
  */
 export function gizmoDragToSpherical(
   dx: number,
   dy: number,
   radPerPx: number = GIZMO_DRAG_RAD_PER_PX,
 ): SphericalDelta {
-  return { azimuth: -dx * radPerPx, polar: -dy * radPerPx };
+  return { azimuth: dx * radPerPx, polar: dy * radPerPx };
 }
 
 /** `value` を `[min, max]` に収める。 */
@@ -165,16 +174,6 @@ export const GIZMO_FACE_ORDER: readonly Extract<
   'right' | 'left' | 'top' | 'bottom' | 'front' | 'back'
 >[] = ['right', 'left', 'top', 'bottom', 'front', 'back'];
 
-/** 面 → 名札。 */
-const FACE_LABELS: Readonly<Record<(typeof GIZMO_FACE_ORDER)[number], string>> = {
-  right: '右',
-  left: '左',
-  top: '上',
-  bottom: '下',
-  front: '正面',
-  back: '背面',
-};
-
 /** 向き（各成分 -1/0/1）→ 当たり判定の名前。前後 → 上下 → 左右 の順に並べる。 */
 function gizmoTargetId(direction: readonly [number, number, number]): string {
   const parts: string[] = [];
@@ -215,7 +214,9 @@ export const GIZMO_TARGETS: readonly GizmoTarget[] = ((): readonly GizmoTarget[]
           id: gizmoTargetId(direction),
           kind: nonZero === 1 ? 'face' : nonZero === 2 ? 'edge' : 'corner',
           direction,
-          ...(face === undefined ? {} : { preset: face.preset, label: FACE_LABELS[face.preset] }),
+          // 名札は `view-gizmo-layout.ts` の `GIZMO_FACES` が唯一の源（3D-19。以前はここに
+          // 非公開の写しがあり、キューブに焼く名札とテストが見る名札が別物だった）
+          ...(face === undefined ? {} : { preset: face.preset, label: GIZMO_FACES[face.preset] }),
         });
       }
     }

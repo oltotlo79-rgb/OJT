@@ -108,17 +108,23 @@ const { chamferedFaceGeometry, GIZMO_FACETS } =
   await import('../src/renderer/three/view-gizmo-geometry.js');
 const {
   MAX_POLAR_ANGLE,
+  MIN_POLAR_ANGLE_RAD,
   poseForDirection,
   cameraPose,
   boardToWorld,
+  boardUp,
   plcViewRect,
   PLC_VIEW_ASPECT,
 } = await import('../src/renderer/three/camera.js');
+type CameraPoseLike = ReturnType<typeof cameraPose>;
 const { toScene } = await import('../src/renderer/three/coords.js');
 const { useStore } = await import('../src/renderer/app/store.js');
 
-/** 盤の `OrbitControls` の身代わり（ギズモが触る部分だけ）。 */
-function makeControls(): {
+/**
+ * 盤の `OrbitControls` の身代わり（ギズモが触る部分だけ）。
+ * `start` を渡すと押した時点の方位角・極角を差し替えられる（プリセットごとの検証に使う）。
+ */
+function makeControls(start: { azimuth?: number; polar?: number } = {}): {
   enabled: boolean;
   dampingFactor: number;
   target: Vec;
@@ -134,15 +140,16 @@ function makeControls(): {
   azimuthCalls: number[];
   polarCalls: number[];
 } {
-  let azimuth = 0;
-  let polar = Math.PI / 2 - 0.1;
+  let azimuth = start.azimuth ?? 0;
+  let polar = start.polar ?? Math.PI / 2 - 0.1;
   const azimuthCalls: number[] = [];
   const polarCalls: number[] = [];
   return {
     enabled: true,
     dampingFactor: 0.35,
     target: makeVec(0, 0, 0),
-    minPolarAngle: 0,
+    // 本物と同じ下限（`BoardScene` が `<OrbitControls minPolarAngle>` に渡す値。Task 19）
+    minPolarAngle: MIN_POLAR_ANGLE_RAD,
     maxPolarAngle: MAX_POLAR_ANGLE,
     mouseButtons: {},
     update: () => undefined,
@@ -177,8 +184,8 @@ function makeVec(x: number, y: number, z: number): Vec {
   return vec;
 }
 
-/** カメラの身代わり。 */
-function makeCamera(): {
+/** カメラの身代わり（`up` を渡すと盤面の上方向＝13°傾いた版になる）。 */
+function makeCamera(up: readonly [number, number, number] = [0, 1, 0]): {
   position: Vec;
   up: Vec;
   lookAt: () => void;
@@ -186,7 +193,7 @@ function makeCamera(): {
 } {
   return {
     position: makeVec(0, 0, 380),
-    up: makeVec(0, 1, 0),
+    up: makeVec(up[0], up[1], up[2]),
     lookAt: () => undefined,
     updateProjectionMatrix: () => undefined,
   };
@@ -246,11 +253,12 @@ function pointerDown(
   normal: { x: number; y: number; z: number } | null,
   at: { x: number; y: number } = { x: 200, y: 200 },
   source: ReactElement<Record<string, unknown>> = cubeGroup(),
+  pointerId = 7,
 ): void {
   const handler = source.props['onPointerDown'] as ((event: unknown) => void) | undefined;
   if (handler === undefined) throw new Error('onPointerDown が無い');
   handler({
-    nativeEvent: { pointerId: 7, clientX: at.x, clientY: at.y, button: 0, target: null },
+    nativeEvent: { pointerId, clientX: at.x, clientY: at.y, button: 0, target: null },
     stopPropagation: () => undefined,
     object: { name },
     face: normal === null ? null : { normal },
@@ -639,21 +647,26 @@ describe('キューブのドラッグ（1:1・慣性なし）', () => {
     firePointer('pointermove', { pointerId: 7, clientX: 300, clientY: 200 });
 
     // 1回の pointermove で 100px ぶんが**丸ごと**入る（遅れて追い付くのではない）
+    // 右へ引いたので方位角は**増える**（カメラが指に付いてくる。2026-09-20 の所有者決定）
     expect(controls.azimuthCalls).toHaveLength(1);
-    expect(controls.getAzimuthalAngle()).toBeCloseTo(before - 100 * GIZMO_DRAG_RAD_PER_PX, 12);
+    expect(controls.getAzimuthalAngle()).toBeCloseTo(before + 100 * GIZMO_DRAG_RAD_PER_PX, 12);
     expect(100 * GIZMO_DRAG_RAD_PER_PX * (180 / Math.PI)).toBeCloseTo(36, 6);
   });
 
   it('縦に引くと極角が動き、回り込めない範囲には丸める', () => {
     pointerDown(GIZMO_FACE_MESH_NAME, { x: 0, y: 0, z: 1 });
     const before = controls.getPolarAngle();
-    // 上へ5px（極角が増える向き。`maxPolarAngle` の内側に収まる範囲で見る）
+    // 上へ5px（カメラも上へ回る＝極角が減る。2026-09-20 の所有者決定）
     firePointer('pointermove', { pointerId: 7, clientX: 200, clientY: 195 });
-    expect(controls.getPolarAngle()).toBeCloseTo(before + 5 * GIZMO_DRAG_RAD_PER_PX, 12);
+    expect(controls.getPolarAngle()).toBeCloseTo(before - 5 * GIZMO_DRAG_RAD_PER_PX, 12);
 
-    // 下へ大きく引いても `maxPolarAngle` を超えない
+    // 下へ大きく引いても `maxPolarAngle` を超えない（盤の裏側へは回り込ませない）
     firePointer('pointermove', { pointerId: 7, clientX: 200, clientY: 2000 });
     expect(controls.getPolarAngle()).toBeLessThanOrEqual(MAX_POLAR_ANGLE);
+
+    // 上へ大きく引いても極（0）には張り付かない（`minPolarAngle`。Task 19 の本丸）
+    firePointer('pointermove', { pointerId: 7, clientX: 200, clientY: -2000 });
+    expect(controls.getPolarAngle()).toBeGreaterThanOrEqual(MIN_POLAR_ANGLE_RAD);
   });
 
   it('しきい値未満の震えでは回さない', () => {
@@ -894,5 +907,166 @@ describe('HUDは分割ビューの盤に重ならない（2026-09-20 の利用�
     expect(gizmoLayoutForViewport(420, 210)).toBeNull();
     expect(gizmoLayoutForViewport(461, 230)).toBeNull();
     expect(gizmoLayoutForViewport(614, 307)).not.toBeNull();
+  });
+});
+
+/**
+ * 2026-09-20 の利用者報告「3D図で上から正面にキューブを回そうとすると回らない」の回帰
+ * （Task 19 / 3D-15・3D-16・3D-19）。
+ *
+ * Step 1 の実測（本物の Electron・俯瞰プリセット）:
+ * - 俯瞰の極角は **0.8897rad（51°）**（本設計 §8.2 の仮説「`top` は極角ちょうど0」は誤り）
+ * - 旧実装で**下へ 200px** 引くと極角が 0.8897 → **0.0000**（＝極）に張り付き、
+ *   そこでは方位角を変えてもカメラ位置が `target + (0, 距離, 0)` から動かない＝「回らない」
+ *
+ * ここでは「どの視点から上下左右へ引いても必ず何かが動く」ことを7プリセット×4方向で縛る。
+ */
+describe('どの視点からでも上下左右に回せる（Task 19）', () => {
+  /** 視点 → `OrbitControls` が持つ極角（`camera.up` から測る。既定はその視点自身の上方向）。 */
+  function polarOf(pose: CameraPoseLike, up: readonly [number, number, number] = pose.up): number {
+    const offset = [
+      pose.position[0] - pose.target[0],
+      pose.position[1] - pose.target[1],
+      pose.position[2] - pose.target[2],
+    ] as const;
+    const radius = Math.hypot(offset[0], offset[1], offset[2]);
+    const upLength = Math.hypot(up[0], up[1], up[2]);
+    const dot = (offset[0] * up[0] + offset[1] * up[1] + offset[2] * up[2]) / (radius * upLength);
+    return Math.acos(Math.min(1, Math.max(-1, dot)));
+  }
+
+  /** 方位角・極角 → カメラ位置（`camera.up` を極とする球座標。three の `Spherical` と同じ）。 */
+  function positionOf(azimuth: number, polar: number, distance: number): [number, number, number] {
+    const sin = Math.sin(polar);
+    return [
+      distance * sin * Math.sin(azimuth),
+      distance * Math.cos(polar),
+      distance * sin * Math.cos(azimuth),
+    ];
+  }
+
+  /** その視点に居るキューブを掴み、`dx`/`dy` だけ引いて放す。 */
+  function dragFrom(
+    pose: CameraPoseLike,
+    drag: { dx: number; dy: number },
+  ): { start: number; polar: number; movedMm: number } {
+    const start = polarOf(pose);
+    const custom = makeControls({ polar: start });
+    cleanup();
+    harness.children = null;
+    harness.camera = makeCamera(pose.up);
+    render(<ViewGizmo controls={custom} />);
+    pointerDown(GIZMO_FACE_MESH_NAME, { x: 0, y: 0, z: 1 });
+    firePointer('pointermove', { pointerId: 7, clientX: 200 + drag.dx, clientY: 200 + drag.dy });
+    firePointer('pointerup', { pointerId: 7, clientX: 200 + drag.dx, clientY: 200 + drag.dy });
+    const distance = custom.getDistance();
+    const before = positionOf(0, start, distance);
+    const after = positionOf(custom.getAzimuthalAngle(), custom.getPolarAngle(), distance);
+    return {
+      start,
+      polar: custom.getPolarAngle(),
+      movedMm: Math.hypot(after[0] - before[0], after[1] - before[1], after[2] - before[2]),
+    };
+  }
+
+  const PRESETS = ['front', 'back', 'left', 'right', 'top', 'bottom', 'socket'] as const;
+  const DRAGS = [
+    { name: '上へ', dx: 0, dy: -200 },
+    { name: '下へ', dx: 0, dy: 200 },
+    { name: '左へ', dx: -200, dy: 0 },
+    { name: '右へ', dx: 200, dy: 0 },
+  ] as const;
+
+  for (const preset of PRESETS) {
+    for (const drag of DRAGS) {
+      it(`${preset} から${drag.name} 200px 引くと極角かカメラ位置が変わる`, () => {
+        const pose = cameraPose(preset);
+        const { start, polar, movedMm } = dragFrom(pose, drag);
+        if (start >= MAX_POLAR_ANGLE - 1e-9 && drag.dy > 0) {
+          /*
+           * 面直の視点（`front`/`back`/`left`/`right`/`socket`）と `bottom` は極角ちょうど 90°
+           * ＝「盤の水平面より下へは回り込ませない」（§12.2 / `MAX_POLAR_ANGLE`）の境目に居る。
+           * **下へ引く1方向だけ**は仕様どおり止まる（ここを 1.1° 内側へずらすと面直でなくなり、
+           * 2026-09-19 の P.1/N.1 クリック不能（`terminal-pick.test.ts`）が戻る）。
+           */
+          expect(polar).toBeCloseTo(MAX_POLAR_ANGLE, 12);
+          expect(movedMm).toBeLessThan(1e-9);
+          return;
+        }
+        expect(Math.abs(polar - start) > 1e-9 || movedMm > 1).toBe(true);
+        expect(polar).toBeGreaterThanOrEqual(MIN_POLAR_ANGLE_RAD - 1e-12);
+        expect(polar).toBeLessThanOrEqual(MAX_POLAR_ANGLE + 1e-12);
+      });
+    }
+  }
+
+  it('面直の視点は盤面の上方向（13°傾いた up）で測っても同じように回る', () => {
+    const front = cameraPose('front');
+    // 面直の視点の `up` は `boardUp()`（ワールドの (0,1,0) ではない）
+    expect(front.up).toEqual(boardUp());
+    expect(polarOf(front)).toBeCloseTo(MAX_POLAR_ANGLE, 12);
+    // 傾いた up のままでも、上へ引けば極角が減り、左右に引けばカメラ位置が動く
+    expect(dragFrom(front, { dx: 0, dy: -200 }).polar).toBeLessThan(MAX_POLAR_ANGLE - 1);
+    expect(dragFrom(front, { dx: 200, dy: 0 }).movedMm).toBeGreaterThan(1);
+  });
+
+  it('俯瞰から上へ引くと正面（ワールドではほぼ真上）の視点へ回り込める', () => {
+    const top = cameraPose('top');
+    const worldUp = [0, 1, 0] as const;
+    const start = polarOf(top);
+    // 盤は13°の傾斜コンソールなので、面直の「正面」視はワールドでは真上に近い（極角13°）。
+    // 俯瞰（51°）から正面へ回り込むのは**極角を減らす**向き＝キューブを上へ引く向き。
+    const frontPolar = polarOf(cameraPose('front'), worldUp);
+    expect(start).toBeCloseTo(0.89, 1);
+    expect(frontPolar).toBeCloseTo(0.23, 1);
+    const pixels = (start - frontPolar) / GIZMO_DRAG_RAD_PER_PX;
+    expect(dragFrom(top, { dx: 0, dy: -pixels }).polar).toBeCloseTo(frontPolar, 6);
+  });
+
+  it('上へ引き切っても極には張り付かず、そのまま左右に引けばカメラが動く（報告の本丸）', () => {
+    const top = cameraPose('top');
+    const custom = makeControls({ polar: polarOf(top) });
+    cleanup();
+    harness.children = null;
+    harness.camera = makeCamera(top.up);
+    render(<ViewGizmo controls={custom} />);
+
+    // 上へ 200px（極を通り越す量）引く
+    pointerDown(GIZMO_FACE_MESH_NAME, { x: 0, y: 0, z: 1 });
+    firePointer('pointermove', { pointerId: 7, clientX: 200, clientY: 0 });
+    firePointer('pointerup', { pointerId: 7, clientX: 200, clientY: 0 });
+    // 旧実装（下へ引くと極角が減る＋`minPolarAngle` 既定0）はここが 0 になっていた
+    expect(custom.getPolarAngle()).toBeCloseTo(MIN_POLAR_ANGLE_RAD, 12);
+
+    // そこから右へ引くと、方位角だけでなくカメラ位置も動く（極ちょうどなら動かない）
+    const distance = custom.getDistance();
+    const before = positionOf(custom.getAzimuthalAngle(), custom.getPolarAngle(), distance);
+    pointerDown(GIZMO_FACE_MESH_NAME, { x: 0, y: 0, z: 1 });
+    firePointer('pointermove', { pointerId: 7, clientX: 400, clientY: 200 });
+    firePointer('pointerup', { pointerId: 7, clientX: 400, clientY: 200 });
+    const after = positionOf(custom.getAzimuthalAngle(), custom.getPolarAngle(), distance);
+    expect(
+      Math.hypot(after[0] - before[0], after[1] - before[1], after[2] - before[2]),
+    ).toBeGreaterThan(1);
+  });
+});
+
+describe('2本目のポインタは無視する（3D-15）', () => {
+  it('2本目の pointerdown で慣性の保存値が汚れず、放したら 0.35 に戻る', () => {
+    expect(controls.dampingFactor).toBe(0.35);
+    pointerDown(GIZMO_FACE_MESH_NAME, { x: 0, y: 0, z: 1 });
+    expect(controls.dampingFactor).toBe(1);
+
+    // 2本目（別のポインタID）。ここで保存すると「元の値」が 1 になり、慣性が永久に失われる
+    pointerDown(GIZMO_FACE_MESH_NAME, { x: 0, y: 0, z: -1 }, { x: 300, y: 300 }, cubeGroup(), 9);
+    expect(controls.dampingFactor).toBe(1);
+    // 2本目を放しても1本目のドラッグは続く（ポインタIDが違う）
+    firePointer('pointerup', { pointerId: 9, clientX: 300, clientY: 300 });
+    expect(controls.dampingFactor).toBe(1);
+    expect(controls.enabled).toBe(false);
+
+    firePointer('pointerup', { pointerId: 7, clientX: 200, clientY: 200 });
+    expect(controls.dampingFactor).toBe(0.35);
+    expect(controls.enabled).toBe(true);
   });
 });
