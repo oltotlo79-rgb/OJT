@@ -288,6 +288,21 @@ describe('キー操作（§10.6 の割当表から引く）', () => {
     fireEvent.blur(grid());
     expect(useStore.getState().ladderFocused).toBe(false);
   });
+
+  /**
+   * 指摘 LE-13: `Tab`/`Shift+Tab` は罫線送りに使っており常に飲み込む。`role="application"` の
+   * このエディタは `Escape` だけがキーボードだけでの唯一の脱出口。
+   */
+  it('blurs the editor on Escape, the only keyboard way out (LE-13)', () => {
+    editor();
+    // `fireEvent.focus()` だけでは `document.activeElement` が動かず、後続の `blur()` が
+    // 何もしない（実 DOM の焦点が無い）ので、実際にフォーカスを移す
+    grid().focus();
+    expect(useStore.getState().ladderFocused).toBe(true);
+    fireEvent.keyDown(grid(), { key: 'Escape' });
+    expect(useStore.getState().ladderFocused).toBe(false);
+    expect(document.activeElement).not.toBe(grid());
+  });
 });
 
 /**
@@ -306,10 +321,10 @@ describe('4方言のキー割当が実際に効く（網羅。LE-1 / LE-8）', (
   /**
    * OMRON の `instruction`（命令入力）は Task 20 で実際に動かす予定で、それまでは
    * `ladderKeyToAction()` が `{type:'none'}` を返す（本設計 §5.7 / Phase 7 Task 3 step 4）。
-   * `online-edit` / `transfer` は Phase 7 Task 3 で `enabled:false` にするまでの間だけ、
-   * ここで一時的に除外する（Task 3 が終わると `entry.enabled === false` で自然に除外される）。
+   * `online-edit` / `transfer` は Phase 7 Task 3 で `enabled:false` にしたので、
+   * `entry.enabled === false` の除外で自然に外れる（もうここに挙げる必要は無い）。
    */
-  const NOT_YET_WIRED: ReadonlySet<string> = new Set(['instruction', 'online-edit', 'transfer']);
+  const NOT_YET_WIRED: ReadonlySet<string> = new Set(['instruction']);
 
   it.each(profiles)('every enabled shortcut row of $id maps to a non-none action', (profile) => {
     for (const entry of profile.shortcuts) {

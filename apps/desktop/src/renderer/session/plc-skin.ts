@@ -149,6 +149,23 @@ export function writeModeLabel(profile: DialectProfile): string {
 }
 
 /**
+ * 「モニタ開始」の名乗り。モニタが動いていないときの案内に埋め込む（§10.6）。指摘 LE-7
+ *
+ * どの方言も `shortcuts` に `monitor` の行を持たない（モニタは押しっぱなしで見るものであり、
+ * キーの割当を作らない設計）。以前は `shortcutKeyOf(profile, 'monitor') ?? 'F3'` で埋めていた
+ * ため、4方言とも存在しない `F3` を教えていた（`MonitorPanel.tsx` の `writeModeLabel()` と同型の
+ * 欠陥）。`shortcuts` に `monitor` 行があればそのキーを、無ければツールバーの
+ * `monitor-start` 項目名を返す。
+ */
+export function monitorStartLabel(profile: DialectProfile): string {
+  const key = profile.shortcuts.find((entry) => entry.action === 'monitor')?.keys;
+  if (key !== undefined) return key;
+  // 4方言とも `monitor-start` をツールバーに持つ（`test/plc-skin.test.ts` が見張る）ので、
+  // ここへは実際には倒れない
+  return toolbarItems(profile).find((item) => item.action === 'monitor-start')?.label ?? '';
+}
+
+/**
  * メーカー → 机上に置くPLC本体。§7.6
  * `@ojt/content` は `MODEL_OF_VENDOR`（メーカー→機種名の対応）を公開している（レビュー指摘
  * #10）が、ここで欲しいのは機種名ではなく本体定義（`PlcUnitDefinition`）そのものなので、

@@ -104,3 +104,46 @@ describe.each(cases)('%s プロファイルの不変条件', (_id, profile: Dial
     expect(profile.displayName).toContain('風');
   });
 });
+
+/** 半角ASCIIの1文字を対応する全角（U+FF01〜U+FF5E）へ変える。テスト用（NFKCの逆方向）。 */
+function toFullWidth(ascii: string): string {
+  return [...ascii]
+    .map((char) => {
+      const code = char.codePointAt(0);
+      if (code === undefined || code < 0x21 || code > 0x7e) return char;
+      return String.fromCodePoint(code + 0xfee0);
+    })
+    .join('');
+}
+
+/**
+ * 全角入力を読む（指摘 PD-1）。
+ *
+ * 4方言とも `trim()` ＋ `toUpperCase()` だけで全角を正規化せず、日本語IMEの既定入力
+ * （`Ｘ０`・`Ｋ３０`）を必ず弾いていた。`normalizeDeviceText()`（`NFKC` 正規化）を
+ * `parseDevice` / `parseTimerPreset` / `parseCounterPreset` の先頭に通すことで、各方言自身の
+ * 表記（三菱 `X0`・OMRON `0.00`・JTEKT `1X000`・シャープ `000000`）の全角版が読めるようになる。
+ */
+describe.each(cases)('%s: 全角入力（指摘 PD-1）', (_id, profile: DialectProfile) => {
+  it('parseDevice() reads the full-width form of the dialect notation', () => {
+    const text = profile.formatDevice(X(0));
+    expect(profile.parseDevice(toFullWidth(text))).toEqual(profile.parseDevice(text));
+  });
+
+  it('parseTimerPreset() reads the full-width form of the dialect notation', () => {
+    const preset = profile.timerPreset(3000, T(0));
+    expect(preset).not.toBeInstanceOf(Error);
+    if (preset instanceof Error) return;
+    expect(profile.parseTimerPreset(toFullWidth(preset.text), T(0))).toBe(
+      profile.parseTimerPreset(preset.text, T(0)),
+    );
+  });
+
+  it('parseCounterPreset() reads the full-width form of the dialect notation', () => {
+    const text = profile.counterPresetText?.(5);
+    if (text === undefined) return;
+    expect(profile.parseCounterPreset?.(toFullWidth(text))).toBe(
+      profile.parseCounterPreset?.(text),
+    );
+  });
+});

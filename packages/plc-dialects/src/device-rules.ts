@@ -31,6 +31,18 @@ export interface TimerRule {
   parse(text: string): number | undefined;
 }
 
+/**
+ * デバイス・設定値の入力文字列を正規化する。指摘 PD-1
+ *
+ * 4方言とも `trim()` ＋ `toUpperCase()` だけで全角を正規化せず、日本語IMEの既定入力
+ * （`Ｘ０`・`Ｋ３０`）を必ず弾いていた。`normalize('NFKC')` で全角英数字・記号を半角へ寄せてから
+ * 前後の空白を落とし大文字化する。4方言の `parseDevice` / `parseTimerPreset` /
+ * `parseCounterPreset` の先頭から呼ぶ。
+ */
+export function normalizeDeviceText(text: string): string {
+  return text.normalize('NFKC').trim().toUpperCase();
+}
+
 /** `DialectProfile.timerPreset` を作る。 */
 export function makeTimerPreset(
   rule: TimerRule,

@@ -12,6 +12,7 @@ import {
   deviceInRange,
   makeParseTimerPreset,
   makeTimerPreset,
+  normalizeDeviceText,
   type DeviceRuleSet,
   type TimerRule,
 } from './device-rules.js';
@@ -111,7 +112,8 @@ function parseOctal(digits: string, text: string): number | Error {
 /** 方言表記 → IRのデバイス。読めない表記は Error を返す（投げない）。§10.5 */
 function parseDevice(text: string): Device | Error {
   const trimmed = text.trim();
-  const upper = trimmed.toUpperCase();
+  // 指摘 PD-1: 全角の `Ｘ０` も読む。表示（エラー文言）は元の大小文字のまま残す
+  const upper = normalizeDeviceText(text);
   const timer = /^(TMR|CNT)([0-9]{1,5})$/u.exec(upper);
   if (timer !== null) {
     const index = parseOctal(timer[2] ?? '', trimmed);
@@ -125,7 +127,9 @@ function parseDevice(text: string): Device | Error {
     );
   }
   if (!/^[0-9]{1,6}$/u.test(upper)) {
-    return new Error(`読めないデバイス表記です（8進6桁のリレー番号）: ${trimmed}`);
+    return new Error(
+      `読めないデバイス表記です（8進6桁のリレー番号。全角で入力されていないか確認してください）: ${trimmed}`,
+    );
   }
   const special = SPECIAL_BY_NAME.get(upper.padStart(6, '0'));
   if (special !== undefined) return device('special', special);
@@ -148,8 +152,9 @@ const TIMER: TimerRule = {
   max: 9999,
   unitLabel: '0.1秒',
   format: (count) => String(count).padStart(4, '0'),
+  // 指摘 PD-1: 全角の `０１００` も読む
   parse: (text) => {
-    const matched = /^([0-9]{1,4})$/u.exec(text.trim());
+    const matched = /^([0-9]{1,4})$/u.exec(normalizeDeviceText(text));
     return matched === null ? undefined : Number(matched[1]);
   },
 };
@@ -175,7 +180,8 @@ function counterPresetText(preset: number): string {
 
 /** 10進4桁 → カウンタ設定値。§10.7 / Plan 4B の申し送り F-2 */
 function parseCounterPreset(text: string): number | Error {
-  const digits = /^([0-9]{1,4})$/u.exec(text.trim())?.[1];
+  // 指摘 PD-1: 全角も読む
+  const digits = /^([0-9]{1,4})$/u.exec(normalizeDeviceText(text))?.[1];
   if (digits === undefined) {
     return new Error(`カウンタ設定値は10進4桁で指定します: ${text}`);
   }

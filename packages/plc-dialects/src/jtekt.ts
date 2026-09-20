@@ -13,6 +13,7 @@ import {
   deviceInRange,
   makeParseTimerPreset,
   makeTimerPreset,
+  normalizeDeviceText,
   type DeviceRuleSet,
   type DeviceUse,
   type TimerRule,
@@ -101,12 +102,15 @@ function formatDevice(target: Device): string {
 /** 方言表記 → IRのデバイス。読めない表記は Error を返す（投げない）。§10.5 */
 function parseDevice(text: string): Device | Error {
   const trimmed = text.trim();
-  const upper = trimmed.toUpperCase();
+  // 指摘 PD-1: 全角の `１Ｘ０００` も読む。表示（エラー文言）は元の大小文字のまま残す
+  const upper = normalizeDeviceText(text);
   const special = SPECIAL_BY_NAME.get(upper);
   if (special !== undefined) return device('special', special);
   const matched = /^([0-9])([XYMTC])([0-9A-F]{1,3})$/u.exec(upper);
   if (matched === null) {
-    return new Error(`読めないデバイス表記です（<プログラム番号><種別><16進3桁>）: ${trimmed}`);
+    return new Error(
+      `読めないデバイス表記です（<プログラム番号><種別><16進3桁>。全角で入力されていないか確認してください）: ${trimmed}`,
+    );
   }
   if (Number(matched[1]) !== PROGRAM_NUMBER) {
     return new Error(
@@ -130,8 +134,9 @@ const TIMER: TimerRule = {
   max: 0xffff,
   unitLabel: '0.1秒',
   format: (count) => `H${count.toString(16).toUpperCase().padStart(4, '0')}`,
+  // 指摘 PD-1: 全角の `Ｈ０１００` も読む
   parse: (text) => {
-    const matched = /^H([0-9A-F]{1,4})$/u.exec(text.trim().toUpperCase());
+    const matched = /^H([0-9A-F]{1,4})$/u.exec(normalizeDeviceText(text));
     return matched === null ? undefined : parseInt(matched[1] ?? '', 16);
   },
 };
@@ -157,7 +162,8 @@ function counterPresetText(preset: number): string {
 
 /** `H` 表記 → カウンタ設定値。§10.7 / Plan 4B の申し送り F-2 */
 function parseCounterPreset(text: string): number | Error {
-  const digits = /^H([0-9A-F]{1,4})$/u.exec(text.trim().toUpperCase())?.[1];
+  // 指摘 PD-1: 全角も読む
+  const digits = /^H([0-9A-F]{1,4})$/u.exec(normalizeDeviceText(text))?.[1];
   if (digits === undefined) {
     return new Error(`カウンタ設定値は H<16進4桁> の形式です: ${text}`);
   }

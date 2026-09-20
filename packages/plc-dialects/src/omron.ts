@@ -12,6 +12,7 @@ import {
   deviceInRange,
   makeParseTimerPreset,
   makeTimerPreset,
+  normalizeDeviceText,
   type DeviceRuleSet,
   type TimerRule,
 } from './device-rules.js';
@@ -109,7 +110,9 @@ function parseChannelBit(
 ): { ch: number; bit: number } | Error {
   const matched = /^([0-9]{1,3})\.([0-9]{2})$/u.exec(text);
   if (matched === null) {
-    return new Error(`読めないデバイス表記です（${label}）: ${original}`);
+    return new Error(
+      `読めないデバイス表記です（${label}。全角で入力されていないか確認してください）: ${original}`,
+    );
   }
   const bit = Number(matched[2]);
   if (bit > BITS_PER_CH - 1) {
@@ -150,7 +153,8 @@ function prefixedDeviceError(prefix: 'T' | 'C', text: string): Error {
 /** 方言表記 → IRのデバイス。読めない表記は Error を返す（投げない）。§10.5 */
 function parseDevice(text: string): Device | Error {
   const trimmed = text.trim();
-  const upper = trimmed.toUpperCase();
+  // 指摘 PD-1: 全角の `Ｘ０` も読む。表示（エラー文言）は元の大小文字のまま残す
+  const upper = normalizeDeviceText(text);
   const special = SPECIAL_BY_NAME.get(upper);
   if (special !== undefined) return device('special', special);
   const numbered = /^([TC])([0-9]+)$/u.exec(upper);
@@ -199,8 +203,9 @@ const TIMER: TimerRule = {
   unitLabel: '0.1秒',
   format: (count) => `#${String(count).padStart(4, '0')}`,
   // `TIMX`（BIN）の `&` 表記も読む。書き出しは `TIM`（BCD）の `#` に揃える（§10.5）
+  // 指摘 PD-1: 全角の `＃０１００` も読む
   parse: (text) => {
-    const matched = /^[#&]([0-9]{1,5})$/u.exec(text.trim());
+    const matched = /^[#&]([0-9]{1,5})$/u.exec(normalizeDeviceText(text));
     return matched === null ? undefined : Number(matched[1]);
   },
 };
@@ -229,7 +234,8 @@ function counterPresetText(preset: number): string {
  * 書き出しは `#` に揃える（§10.5 / 意図的な差分#7）。Plan 4B の申し送り F-2
  */
 function parseCounterPreset(text: string): number | Error {
-  const digits = /^[#&]([0-9]{1,5})$/u.exec(text.trim())?.[1];
+  // 指摘 PD-1: 全角も読む
+  const digits = /^[#&]([0-9]{1,5})$/u.exec(normalizeDeviceText(text))?.[1];
   if (digits === undefined) {
     return new Error(`カウンタ設定値は #<10進4桁> の形式です: ${text}`);
   }
@@ -313,8 +319,27 @@ const SHORTCUTS: ShortcutTable = [
   { action: 'contact-nc', keys: '/', label: 'b接点', confirmed: true },
   { action: 'coil', keys: 'O', label: 'コイル', confirmed: true },
   { action: 'instruction', keys: 'I', label: '命令入力', confirmed: true },
-  { action: 'online-edit', keys: 'Ctrl+E', label: 'オンライン編集', confirmed: true },
-  { action: 'transfer', keys: 'Ctrl+Shift+E', label: '転送［PC → PLC］', confirmed: true },
+  /*
+   * 指摘 LE-8: この2行は `ladderKeyToAction()` で `{type:'none'}` になり何も起きないのに、
+   * 表は「使える」と表示していた。実際に動かすのは Task 20（`instruction` と併せて再検討）。
+   * ここでは押しても何も起きないことを表にも反映する。
+   */
+  {
+    action: 'online-edit',
+    keys: 'Ctrl+E',
+    label: 'オンライン編集',
+    confirmed: true,
+    enabled: false,
+    note: '本アプリはPLCと通信しないため、この操作はできません',
+  },
+  {
+    action: 'transfer',
+    keys: 'Ctrl+Shift+E',
+    label: '転送［PC → PLC］',
+    confirmed: true,
+    enabled: false,
+    note: '本アプリはPLCと通信しないため、この操作はできません',
+  },
   {
     action: 'hline',
     keys: 'W',

@@ -2,6 +2,7 @@ import type { JSX } from 'react';
 import type { ConvertIssues } from '../app/store-types.js';
 import { JA, ladderIssuePlace } from '../i18n/ja.js';
 import type { LadderCursor } from '../session/ladder.js';
+import { friendlyCompileMessage } from './ladder-errors.js';
 import styles from './ladder.module.css';
 
 /**
@@ -167,7 +168,8 @@ function toRow(
     key: `${source}-${String(index)}`,
     severity: 'error',
     label: source === 'structure' ? JA.ladder.structureError : JA.ladder.dialectError,
-    message: issue.message,
+    // 指摘 LE-9: 生の message が内部識別子（仕様節番号）を含むことがあるので読み替える
+    message: friendlyCompileMessage(issue.code, issue.message),
     cursor:
       issue.networkId === undefined || issue.row === undefined || issue.col === undefined
         ? undefined

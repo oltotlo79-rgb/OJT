@@ -152,6 +152,14 @@ export interface DialectProfile {
   /** 方言のタイマ設定表記 → ms。 */
   parseTimerPreset(text: string, device: Device): number | Error;
   /**
+   * タイマ設定値の丸め提案（§10.5「刻みに丸めますか？」）に使う時間単位[ms]。指摘 LE-6
+   *
+   * 三菱だけ番号帯でタイマの時間単位が変わる（`timerBaseMs()`）ので、丸めの計算にもそれを
+   * 使う必要がある。OMRON・JTEKT・シャープは一定（0.1秒刻み）なので実装せず、
+   * `ladder-cell.ts` 側の既定値（100ms）へ任意メンバとして倒す。三菱だけが実装する。
+   */
+  timerBaseMs?(device: Device): number;
+  /**
    * カウンタ設定値の方言表記（三菱 `K5` / OMRON `#0005` / JTEKT `H0005` / シャープ `0005`）。
    * 命令語リスト（§10.7）と 4B のカウンタ設定値欄が使う。タイマの `timerPreset` と対になる
    * （Plan 4B の申し送り F-2）。省略した方言は10進の数値そのままで書かれる。

@@ -320,16 +320,16 @@ packages/ladder-core/test/compile.test.ts
 
 **Steps:**
 
-- [ ] 1. **LE-4**: `ladder-cell.ts` の `timerPresetMs()` の判定順を `parseCounterPreset` と同じ「方言 → 素の数値」に入れ替える。いまは素の数値が先に当たるのでシャープ（4桁10進・0.1s刻み）で `0030` が 30ms と読まれ、往復で 1/100 に化ける。
-- [ ] 2. **LE-6**: `DialectProfile` に任意メンバ `timerBaseMs?(device: Device): number` を足し、三菱だけが実装する。`ladder-cell.ts` の丸め提示は `profile.timerBaseMs?.(device) ?? profile 既定の刻み` を使う。これで OMRON/JTEKT/シャープに**存在しない1ms刻みの丸め**を提示しなくなる。
-- [ ] 3. **LE-7**: `plc-skin.ts` に `monitorStartLabel(profile): string` を足す。`profile.shortcuts` に `monitor` 行があればそのキー、無ければ `profile.panels.toolbar` のモニタ項目名を返す。`MonitorPanel.tsx:81-84` の `?? 'F3'` を消す。
-- [ ] 4. **LE-8**: `omron.ts` の `instruction` は Task 20 で**実際に動かす**。`online-edit` / `transfer` の2行に `enabled: false` と `note`（「本アプリはPLCと通信しないため、この操作はできません」）を足す。
-- [ ] 5. **PD-1**: `device-rules.ts` に `normalizeDeviceText(text: string): string`（`text.normalize('NFKC').trim().toUpperCase()`）を置き、4方言の `parseDevice` / `parseTimerPreset` / `parseCounterPreset` の先頭から呼ぶ。全角の `Ｘ０` `Ｋ３０` が通るようになる。エラー文言に「全角で入力されています」の助言を足す。
-- [ ] 6. **PD-2**: `mitsubishi.ts` の `timerPreset()` と `timerErrorCode()` の条件式の二重実装を1本の述語に寄せる。
-- [ ] 7. **LE-12**: `DeviceInput.tsx` の `onKeyDown` の先頭に `if (event.nativeEvent.isComposing) return;` を足し、設定値欄・リセット欄にも同じハンドラを共有させる。
-- [ ] 8. **LE-13**: `session/ladder.ts` の `builtinAction()` に `Escape → { type: 'blur' }` を足し、`LadderEditor` が `blur()` する。`ShortcutHelp` に「Esc でエディタから出ます」の1行を足す。
-- [ ] 9. **LE-9**: `ladder-errors.ts` を作り、`CompileErrorCode` → 平易な日本語の写像を置く。`packages/ladder-core` の `edit.ts` / `compile.ts` が返す `code` を画面の直前でこの写像に通す。`§10.3` のような節番号と `n1 (0, 1)` のような内部識別子を画面に出さない。
-- [ ] 10. **LE-14**: `PlcSession.tsx:649-676` の `onSave` / `onLoad` / `applyWorkFile` の Promise に `.catch` を足し、トーストに落とす（`LadderWorkspace.exportIl()` と同じ形）。
+- [x] 1. **LE-4**: `ladder-cell.ts` の `timerPresetMs()` の判定順を `parseCounterPreset` と同じ「方言 → 素の数値」に入れ替える。いまは素の数値が先に当たるのでシャープ（4桁10進・0.1s刻み）で `0030` が 30ms と読まれ、往復で 1/100 に化ける。
+- [x] 2. **LE-6**: `DialectProfile` に任意メンバ `timerBaseMs?(device: Device): number` を足し、三菱だけが実装する。`ladder-cell.ts` の丸め提示は `profile.timerBaseMs?.(device) ?? profile 既定の刻み` を使う。これで OMRON/JTEKT/シャープに**存在しない1ms刻みの丸め**を提示しなくなる。
+- [x] 3. **LE-7**: `plc-skin.ts` に `monitorStartLabel(profile): string` を足す。`profile.shortcuts` に `monitor` 行があればそのキー、無ければ `profile.panels.toolbar` のモニタ項目名を返す。`MonitorPanel.tsx:81-84` の `?? 'F3'` を消す。
+- [x] 4. **LE-8**: `omron.ts` の `instruction` は Task 20 で**実際に動かす**。`online-edit` / `transfer` の2行に `enabled: false` と `note`（「本アプリはPLCと通信しないため、この操作はできません」）を足す。
+- [x] 5. **PD-1**: `device-rules.ts` に `normalizeDeviceText(text: string): string`（`text.normalize('NFKC').trim().toUpperCase()`）を置き、4方言の `parseDevice` / `parseTimerPreset` / `parseCounterPreset` の先頭から呼ぶ。全角の `Ｘ０` `Ｋ３０` が通るようになる。エラー文言に「全角で入力されています」の助言を足す。
+- [x] 6. **PD-2**: `mitsubishi.ts` の `timerPreset()` と `timerErrorCode()` の条件式の二重実装を1本の述語に寄せる。
+- [x] 7. **LE-12**: `DeviceInput.tsx` の `onKeyDown` の先頭に `if (event.nativeEvent.isComposing) return;` を足し、設定値欄・リセット欄にも同じハンドラを共有させる。
+- [x] 8. **LE-13**: `session/ladder.ts` の `builtinAction()` に `Escape → { type: 'blur' }` を足し、`LadderEditor` が `blur()` する。`ShortcutHelp` に「Esc でエディタから出ます」の1行を足す。
+- [x] 9. **LE-9**: `ladder-errors.ts` を作り、`CompileErrorCode` → 平易な日本語の写像を置く。`packages/ladder-core` の `edit.ts` / `compile.ts` が返す `code` を画面の直前でこの写像に通す。`§10.3` のような節番号と `n1 (0, 1)` のような内部識別子を画面に出さない。
+- [x] 10. **LE-14**: `PlcSession.tsx:649-676` の `onSave` / `onLoad` / `applyWorkFile` の Promise に `.catch` を足し、トーストに落とす（`LadderWorkspace.exportIl()` と同じ形）。
 
 **期待:**
 

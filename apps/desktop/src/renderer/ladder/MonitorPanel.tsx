@@ -11,6 +11,7 @@ import type { PlcCommandAction } from '../../worker/protocol.js';
 import { useStore } from '../app/store.js';
 import { JA, onOffLabel, plcInputSpecText, secondsLabel } from '../i18n/ja.js';
 import { shortcutKeyOf } from '../session/ladder.js';
+import { monitorStartLabel } from '../session/plc-skin.js';
 import { SidePanel } from './SidePanel.js';
 import styles from './ladder.module.css';
 
@@ -80,7 +81,8 @@ export function MonitorPanel({
           */}
           {mode === 'monitor'
             ? JA.ladder.monitorNoSnapshot
-            : JA.ladder.monitorOff(shortcutKeyOf(profile, 'monitor') ?? 'F3')}
+            : /* 指摘 LE-7: `?? 'F3'` は4方言に無いキーを教えていた。ツールバー項目名へ倒す */
+              JA.ladder.monitorOff(monitorStartLabel(profile))}
         </p>
       ) : (
         <>

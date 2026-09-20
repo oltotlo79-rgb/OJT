@@ -5,6 +5,7 @@ export {
   collectDevices,
   makeParseTimerPreset,
   makeTimerPreset,
+  normalizeDeviceText,
   type DevicePlace,
   type DeviceRuleSet,
   type DeviceUse,

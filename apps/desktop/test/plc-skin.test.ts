@@ -4,6 +4,7 @@ import { availableDialects, DIALECT_IDS, getDialect, type DialectId } from '@ojt
 import { describe, expect, it } from 'vitest';
 import {
   autoConvert,
+  monitorStartLabel,
   plcForVendor,
   plcUnitForVendor,
   PLC_STEP_KEYS,
@@ -111,6 +112,29 @@ describe('書込みモードの名乗り（§10.6 / レビュー I8）', () => {
     const label = writeModeLabel(getDialect('omron'));
     expect(label).not.toBe('F2');
     expect(label).toBe('オンライン編集');
+  });
+});
+
+/**
+ * 指摘 LE-7: どの方言も `shortcuts` に `monitor` の行を持たないので、以前の
+ * `shortcutKeyOf(profile, 'monitor') ?? 'F3'` は4方言とも存在しない `F3` を教えていた。
+ */
+describe('モニタ開始の名乗り（§10.6 / 指摘 LE-7）', () => {
+  it('never returns an empty label for any dialect', () => {
+    for (const profile of availableDialects()) {
+      expect(monitorStartLabel(profile), profile.id).not.toBe('');
+    }
+  });
+
+  it('names the real F3 shortcut where GX Works3風 keeps a monitor row (mitsubishi)', () => {
+    // 三菱（GX_STYLE_SHORTCUTS）は `monitor` 行を持つ本物の F3 なので、これは正しい
+    expect(monitorStartLabel(getDialect('mitsubishi'))).toBe('F3');
+  });
+
+  it('names the omron toolbar label, not the invented F3', () => {
+    const label = monitorStartLabel(getDialect('omron'));
+    expect(label).not.toBe('F3');
+    expect(label).toBe('モニタ開始');
   });
 });
 

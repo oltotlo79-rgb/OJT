@@ -3,6 +3,7 @@ import type { DialectProfile } from '@ojt/plc-dialects';
 import {
   useCallback,
   useMemo,
+  useRef,
   useState,
   type JSX,
   type KeyboardEvent as ReactKeyboardEvent,
@@ -87,6 +88,8 @@ export function LadderEditor({
   const mode = useStore((s) => s.ladderMode);
   const comments = useStore((s) => s.ladderComments);
   const [pending, setPending] = useState<Pending | undefined>(undefined);
+  /** 指摘 LE-13: `Escape` でここへフォーカスを手放す（`Tab` は罫線送りに使っており脱出口が無かった）。 */
+  const editorRef = useRef<HTMLDivElement | null>(null);
 
   /**
    * セルをクリックしてカーソルを動かす。`memo(LadderGrid)` を効かせるため、毎レンダーで
@@ -213,6 +216,10 @@ export function LadderEditor({
           // キー、無ければツールバーの項目名を方言から引く（Plan 4B Task 3 / レビュー I8）
           store.toast(JA.ladder.readOnly(writeModeLabel(profile)), 'error');
           break;
+        case 'blur':
+          // 指摘 LE-13: `Tab` を飲み込んだままにしない唯一の脱出口
+          editorRef.current?.blur();
+          break;
         default:
           break;
       }
@@ -227,6 +234,7 @@ export function LadderEditor({
 
   return (
     <div
+      ref={editorRef}
       className={styles.editor}
       data-testid="ladder-editor"
       data-mode={mode}

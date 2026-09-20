@@ -21,6 +21,7 @@ import { describe, expect, it } from 'vitest';
 import {
   applyLadderCell,
   applyOrContact,
+  applyRuleLine,
   clearLadderCell,
   emptyLadderHistory,
   hasLadderContent,
@@ -292,6 +293,22 @@ describe('applyLadderCell / clearLadderCell', () => {
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.message).toContain('範囲外');
+  });
+
+  /**
+   * 指摘 LE-9: `edit.ts` の `setVerticalLink()` は「罫線は空セル・横線・縦線の上にだけ
+   * 引けます: n1 (0, 0) は contact」のようにネットワークIDとセル座標を埋め込んで投げる。
+   * `guard()`（`session/ladder.ts`）はこれを `friendlyLadderErrorMessage()` に通して
+   * 内部識別子を追い出す。
+   */
+  it('replaces the raw internal-id message when a rule-line targets an occupied cell (LE-9)', () => {
+    const withContacts = program(network('n1', [[no(X(0))], [no(X(1))]]), endNetwork());
+    const result = applyRuleLine(withContacts, at('n1', 0, 0), 'down');
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.message).toContain('罫線は空セル・横線・縦線の上にだけ引けます');
+    expect(result.message).not.toContain('n1');
+    expect(result.message).not.toContain('contact');
   });
 });
 

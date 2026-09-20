@@ -646,6 +646,11 @@ export function PlcSession(): JSX.Element {
             store.toast(reasonOf(error), 'error');
             return;
           }
+          /*
+           * 指摘 LE-14: IPC 自体が失敗したとき（`.then` は main が正常に応答した場合しか
+           * 通らない）に `.catch` が無く、`unhandledrejection` から致命バナーに化けていた。
+           * `LadderWorkspace.exportIl()` と同じ形でトーストに落とす。
+           */
           void api
             .saveWorkFile({
               kind: 'manual',
@@ -656,6 +661,9 @@ export function PlcSession(): JSX.Element {
                 result.ok ? workFileSavedText(result.path) : result.message,
                 result.ok ? 'info' : 'error',
               );
+            })
+            .catch((error: unknown) => {
+              useStore.getState().toast(reasonOf(error), 'error');
             });
         }}
         onLoad={() => {
@@ -666,13 +674,21 @@ export function PlcSession(): JSX.Element {
             useStore.getState().toast(reasonOf(error), 'error');
             return;
           }
-          void api.loadWorkFile({ kind: 'manual' }).then((result) => {
-            if (!result.ok) {
-              if (!result.canceled) useStore.getState().toast(result.message, 'error');
-              return;
-            }
-            void applyWorkFile(result.file);
-          });
+          // 指摘 LE-14: 同上。読込の IPC と、読み込んだ後の `applyWorkFile()` の両方に付ける
+          void api
+            .loadWorkFile({ kind: 'manual' })
+            .then((result) => {
+              if (!result.ok) {
+                if (!result.canceled) useStore.getState().toast(result.message, 'error');
+                return;
+              }
+              void applyWorkFile(result.file).catch((error: unknown) => {
+                useStore.getState().toast(reasonOf(error), 'error');
+              });
+            })
+            .catch((error: unknown) => {
+              useStore.getState().toast(reasonOf(error), 'error');
+            });
         }}
         schematicVisible={false}
         onToggleSchematic={undefined}

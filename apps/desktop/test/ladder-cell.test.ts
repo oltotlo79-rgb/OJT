@@ -117,6 +117,35 @@ describe('timerPresetMs / roundSuggestionFor（§10.5）', () => {
   it('never rounds down to zero', () => {
     expect(roundSuggestionFor(30, T(0), profile)?.rounded).toBe(100);
   });
+
+  /**
+   * 指摘 LE-4: シャープは接頭辞を持たない10進4桁・0.1秒刻み（`0100` = 10秒）。以前は素の数字を
+   * ミリ秒として先に判定していたため `0100` が 100ms と読まれ、編集の往復で1/100に化けていた。
+   * 4方言すべてで `formForCell(cell) → buildCell()` の往復が元のセルと等しいことを縛る。
+   */
+  it('round-trips a timer preset through formForCell → buildCell in all four dialects (LE-4)', () => {
+    for (const dialect of [MITSUBISHI_FX5U, OMRON_CP1E, JTEKT_PC10G, SHARP_JW300]) {
+      const cell = { kind: 'timer' as const, type: 'TON' as const, device: T(0), presetMs: 10_000 };
+      const asForm = formForCell(cell, dialect);
+      const rebuilt = buildCell(asForm, dialect);
+      expect(rebuilt, dialect.id).toMatchObject({ kind: 'timer', presetMs: 10_000 });
+    }
+  });
+
+  it('reads the Sharp prefix-less notation before falling back to plain milliseconds (LE-4)', () => {
+    // シャープの `0100` は方言表記で10秒（100 × 0.1秒）。旧実装はこれを100msと誤読した
+    expect(timerPresetMs('0100', T(0), SHARP_JW300)).toBe(10_000);
+  });
+
+  /**
+   * 指摘 LE-6: 丸めの刻みは `profile.timerBaseMs?.(device)` から取る。実装しないOMRON等は
+   * 一定の0.1秒刻み（100ms）で、三菱の番号帯（T256以降は1ms）を誤って提示しない。
+   */
+  it('offers only the 0.1 s rounding for dialects without a per-range timerBaseMs (LE-6)', () => {
+    expect('timerBaseMs' in OMRON_CP1E).toBe(false);
+    const suggestion = roundSuggestionFor(155, T(0), OMRON_CP1E);
+    expect(suggestion?.baseMs).toBe(100);
+  });
 });
 
 describe('カウンタ設定値を方言へ寄せる（§10.5 / 申し送り F-2）', () => {

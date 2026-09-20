@@ -14,7 +14,15 @@ import {
   type Device,
   type DeviceKind,
 } from '@ojt/ladder-core';
-import { roundTimerPreset, timerBaseMs, type DialectProfile } from '@ojt/plc-dialects';
+import { roundTimerPreset, type DialectProfile } from '@ojt/plc-dialects';
+
+/**
+ * OMRON・JTEKT・シャープの既定のタイマ刻み（0.1秒＝100ms）。指摘 LE-6
+ *
+ * この3方言は `DialectProfile.timerBaseMs` を実装しない（一定刻みなので不要）。丸め提示は
+ * `profile.timerBaseMs?.(device) ?? DEFAULT_TIMER_BASE_MS` で、三菱だけ番号帯ごとの刻みを使う。
+ */
+const DEFAULT_TIMER_BASE_MS = 100;
 
 /**
  * デバイス入力欄の中身 ⇄ セル。設計仕様 §10.3 / §10.5。
@@ -74,6 +82,11 @@ function readDevice(text: string, profile: DialectProfile): Device | Error {
 /**
  * タイマ設定値を ms にする。§10.5
  * 方言表記（`K30`）と素のミリ秒（`3000`）の両方を受ける。
+ *
+ * 指摘 LE-4: 以前は素の数字を「ミリ秒」として**先に**判定していたため、接頭辞を持たない
+ * シャープ（0.1秒刻みの10進4桁。例: `0100` = 10秒）で `0100` が 100ms と誤読され、
+ * 編集の往復でタイマ設定値が黙って1/100に化けていた。`parseCounterPreset()` と同じく
+ * **方言を先に試し**、それが読めないときだけ素の数値へフォールバックする。
  */
 export function timerPresetMs(
   text: string,
@@ -82,12 +95,14 @@ export function timerPresetMs(
 ): number | Error {
   const trimmed = text.trim();
   if (trimmed.length === 0) return new Error('設定値を入力してください');
+  const parsed = profile.parseTimerPreset(trimmed, device);
+  if (typeof parsed === 'number') return parsed;
   if (/^[0-9]+$/u.test(trimmed)) {
     const ms = Number(trimmed);
     if (ms <= 0) return new Error('設定値は1以上にしてください');
     return ms;
   }
-  return profile.parseTimerPreset(trimmed, device);
+  return parsed;
 }
 
 /** 丸めの提案（§10.5 の「100ms 刻みに丸めますか？」）。丸めが要らなければ undefined。 */
@@ -97,14 +112,21 @@ export interface RoundSuggestion {
   rounded: number;
 }
 
-/** その番号帯で表せない ms に対して、丸め先を提案する。 */
+/**
+ * その番号帯で表せない ms に対して、丸め先を提案する。
+ *
+ * 指摘 LE-6: 以前は方言に関わらず三菱固有の `timerBaseMs()`（番号帯で1/10/100ms に変わる）を
+ * 使っていたため、OMRON/JTEKT/シャープでもこの機種に無い刻み（例: T256相当で「1ms刻みに
+ * 丸めますか」）を提示していた。丸めの刻みは `profile.timerBaseMs?.(device)` から取り、
+ * 実装しない方言（一定刻み）は既定の0.1秒刻みへ倒す。
+ */
 export function roundSuggestionFor(
   ms: number,
   device: Device,
   profile: DialectProfile,
 ): RoundSuggestion | undefined {
   if (!(profile.timerPreset(ms, device) instanceof Error)) return undefined;
-  const baseMs = timerBaseMs(device);
+  const baseMs = profile.timerBaseMs?.(device) ?? DEFAULT_TIMER_BASE_MS;
   return { ms, baseMs, rounded: roundTimerPreset(ms, baseMs) };
 }
 

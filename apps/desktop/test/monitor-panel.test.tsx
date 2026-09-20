@@ -63,6 +63,18 @@ describe('モニタ一覧（§10.7）', () => {
     expect(screen.getByTestId('monitor-no-snapshot')).toHaveTextContent('RUN');
   });
 
+  /**
+   * 指摘 LE-7: OMRON の `shortcuts` は `monitor` 行を持たない。以前は `?? 'F3'` で埋めていた
+   * ため、存在しないキーを教えていた。`monitorStartLabel()` はツールバー項目名へ倒す。
+   */
+  it('names the OMRON toolbar label, not the invented F3 (LE-7)', () => {
+    useStore.setState({ converted: true });
+    render(<MonitorPanel profile={OMRON_CP1E} unit={PLC_UNIT_CP1E} onPlc={vi.fn()} />);
+    const note = screen.getByTestId('monitor-no-snapshot');
+    expect(note).not.toHaveTextContent('F3');
+    expect(note).toHaveTextContent('モニタ開始');
+  });
+
   it('lists the devices with the dialect name and the unit terminal name (決定表#16)', () => {
     useStore.setState({
       plcMonitor: snapshot(),

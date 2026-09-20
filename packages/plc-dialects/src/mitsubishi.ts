@@ -9,6 +9,7 @@ import {
   type DeviceKind,
   type LadderProgram,
 } from '@ojt/ladder-core';
+import { normalizeDeviceText } from './device-rules.js';
 import type {
   DeviceRange,
   DialectError,
@@ -95,11 +96,16 @@ function formatDevice(target: Device): string {
 
 /** 方言表記 → IRのデバイス。読めない表記は Error を返す（投げない）。§10.5 */
 function parseDevice(text: string): Device | Error {
-  const trimmed = text.trim().toUpperCase();
+  // 指摘 PD-1: 全角の `Ｘ０` のような入力も NFKC で正規化してから読む
+  const trimmed = normalizeDeviceText(text);
   const special = SPECIAL_BY_NAME.get(trimmed);
   if (special !== undefined) return device('special', special);
   const matched = /^([XYMTC])([0-9]+)$/u.exec(trimmed);
-  if (matched === null) return new Error(`読めないデバイス表記です: ${text}`);
+  if (matched === null) {
+    return new Error(
+      `読めないデバイス表記です（全角で入力されていないか確認してください）: ${text}`,
+    );
+  }
   const prefix = matched[1] ?? '';
   const digits = matched[2] ?? '';
   const kind = (Object.keys(DEVICE_RANGES) as DeviceKind[]).find(
@@ -119,10 +125,20 @@ function parseDevice(text: string): Device | Error {
   return device(kind, index);
 }
 
+/**
+ * `ms` がそのタイマ番号の時間単位に合わない（割り切れない）か。§10.5
+ * 指摘 PD-2: `timerPreset()` と `timerErrorCode()` が同じ条件式を二重実装しており、
+ * 片方だけ直すと「文言は単位違反なのに `code` は範囲外」という食い違いが静かに入りうる。
+ * 1つの述語に寄せて両方から呼ぶ。
+ */
+function isTimerUnitMismatch(ms: number, base: number): boolean {
+  return !Number.isInteger(ms) || ms <= 0 || ms % base !== 0;
+}
+
 /** ms → `K` 表記。番号帯の単位で割り切れないと Error。§10.5 */
 function timerPreset(ms: number, timer: Device): TimerPresetText | Error {
   const base = timerBaseMs(timer);
-  if (!Number.isInteger(ms) || ms <= 0 || ms % base !== 0) {
+  if (isTimerUnitMismatch(ms, base)) {
     return new Error(
       `${formatDevice(timer)} は ${base}ms 単位で指定します（${ms}ms は指定できません）`,
     );
@@ -136,7 +152,8 @@ function timerPreset(ms: number, timer: Device): TimerPresetText | Error {
 
 /** `K` 表記 → ms。§10.5 */
 function parseTimerPreset(text: string, timer: Device): number | Error {
-  const matched = /^K([0-9]+)$/u.exec(text.trim().toUpperCase());
+  // 指摘 PD-1: 全角の `Ｋ３０` も読む
+  const matched = /^K([0-9]+)$/u.exec(normalizeDeviceText(text));
   const digits = matched?.[1];
   if (digits === undefined) return new Error(`タイマ設定値は K<数値> の形式です: ${text}`);
   const k = Number(digits);
@@ -160,7 +177,8 @@ function counterPresetText(preset: number): string {
 
 /** `K` 表記 → カウンタ設定値。§10.7 / Plan 4B の申し送り F-2 */
 function parseCounterPreset(text: string): number | Error {
-  const digits = /^K([0-9]+)$/u.exec(text.trim().toUpperCase())?.[1];
+  // 指摘 PD-1: 全角も読む
+  const digits = /^K([0-9]+)$/u.exec(normalizeDeviceText(text))?.[1];
   if (digits === undefined) return new Error(`カウンタ設定値は K<数値> の形式です: ${text}`);
   const preset = Number(digits);
   if (preset < MIN_K || preset > MAX_K) {
@@ -244,9 +262,7 @@ const ERROR_MESSAGES: Readonly<Record<string, string>> = {
  * 範囲外）ごとに文言を変えるが `code` までは持たないので、`checkCell` はここで再判定する。
  */
 function timerErrorCode(ms: number, timer: Device): 'timer-unit' | 'timer-range' {
-  const base = timerBaseMs(timer);
-  if (!Number.isInteger(ms) || ms <= 0 || ms % base !== 0) return 'timer-unit';
-  return 'timer-range';
+  return isTimerUnitMismatch(ms, timerBaseMs(timer)) ? 'timer-unit' : 'timer-range';
 }
 
 /** セルが参照するデバイスを列挙する（設定値の検査もここで行う）。 */
@@ -346,6 +362,8 @@ export const MITSUBISHI_FX5U: DialectProfile = {
   deviceRanges: DEVICE_RANGES,
   timerPreset,
   parseTimerPreset,
+  // 指摘 LE-6: 三菱だけ番号帯でタイマの時間単位が変わるので、丸め提案にもそれを使う
+  timerBaseMs,
   counterPresetText,
   parseCounterPreset,
   specialDevices: SPECIAL_DEVICES,

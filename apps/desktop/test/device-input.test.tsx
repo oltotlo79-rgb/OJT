@@ -139,3 +139,52 @@ describe('方言ごとの入力例とエラー（§10.5 / §16 Phase 4 受入基
     expect(onCommit).toHaveBeenCalledTimes(1);
   });
 });
+
+/**
+ * 指摘 LE-12: IME変換中の `Enter`（変換候補の確定）を編集の確定と取り違えていた。
+ * 設定値欄・リセット欄にも同じ `Enter`/`Escape`/`isComposing` ガードを共有させる。
+ */
+describe('入力欄のキー操作（指摘 LE-12）', () => {
+  it('ignores Enter while composing on the device field (does not commit)', () => {
+    const onCommit = vi.fn();
+    render(
+      <DeviceInput
+        initial={emptyCellForm('contact')}
+        profile={profile}
+        onCommit={onCommit}
+        onCancel={vi.fn()}
+      />,
+    );
+    fireEvent.change(screen.getByTestId('device-text'), { target: { value: 'X' } });
+    fireEvent.keyDown(screen.getByTestId('device-text'), { key: 'Enter', isComposing: true });
+    expect(onCommit).not.toHaveBeenCalled();
+  });
+
+  it('commits on Enter from the preset field, not just the device field', () => {
+    const onCommit = vi.fn();
+    render(
+      <DeviceInput
+        initial={{ ...emptyCellForm('output'), output: 'TON', deviceText: 'T0', presetText: 'K30' }}
+        profile={profile}
+        onCommit={onCommit}
+        onCancel={vi.fn()}
+      />,
+    );
+    fireEvent.keyDown(screen.getByTestId('preset-text'), { key: 'Enter' });
+    expect(onCommit).toHaveBeenCalledWith(expect.objectContaining({ kind: 'timer' }));
+  });
+
+  it('cancels on Escape from the reset-device field, not just the device field', () => {
+    const onCancel = vi.fn();
+    render(
+      <DeviceInput
+        initial={{ ...emptyCellForm('output'), output: 'CTU' }}
+        profile={profile}
+        onCommit={vi.fn()}
+        onCancel={onCancel}
+      />,
+    );
+    fireEvent.keyDown(screen.getByTestId('reset-text'), { key: 'Escape' });
+    expect(onCancel).toHaveBeenCalledTimes(1);
+  });
+});

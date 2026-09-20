@@ -132,6 +132,38 @@ describe('出力ウィンドウ（§10.6）', () => {
     expect(screen.getByTestId('convert-state')).toHaveTextContent('未変換');
   });
 
+  /**
+   * 指摘 LE-9: `packages/ladder-core` の生の message は仕様の節番号を含むことがある
+   * （`compile()` の `missing-end` は「END がありません（§10.3）」を返す）。訓練者には
+   * 意味の無い内部識別子なので、出力ウィンドウはこの写像に通した文言を出す。
+   */
+  it('replaces the raw missing-end message so the spec section number never reaches the screen (LE-9)', () => {
+    render(
+      <OutputWindow
+        issues={{
+          errors: [
+            {
+              source: 'structure' as const,
+              code: 'missing-end',
+              message: 'END がありません（§10.3）',
+            },
+          ],
+          warnings: [],
+          usage: undefined,
+          unused: undefined,
+        }}
+        converted={false}
+        convertKey="F4"
+        open
+        onJump={() => undefined}
+        onExport={() => undefined}
+        exportIssues={[]}
+      />,
+    );
+    expect(screen.getByTestId('output-row-0')).toHaveTextContent('END がありません');
+    expect(screen.getByTestId('output-row-0')).not.toHaveTextContent('§10.3');
+  });
+
   /** レビュー B2: 折りたたみの既定はスキンの `open` に従う。 */
   it('opens or closes the details from the open prop', () => {
     render(

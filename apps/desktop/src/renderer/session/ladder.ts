@@ -21,6 +21,7 @@ import {
   type Network,
 } from '@ojt/ladder-core';
 import type { DialectProfile, ShortcutEntry, ShortcutTable } from '@ojt/plc-dialects';
+import { friendlyLadderErrorMessage } from '../ladder/ladder-errors.js';
 
 /**
  * ラダー編集の純粋層。設計仕様 §10.3 / §10.6 / §10.7。
@@ -81,7 +82,13 @@ export type LadderAction =
   /** 表には載っているが Phase 3 では押せない項目（`enabled: false`）。 */
   | { type: 'disabled'; entry: ShortcutEntry }
   /** 読出し・モニタ中に編集操作を押した。 */
-  | { type: 'readOnly' };
+  | { type: 'readOnly' }
+  /**
+   * `Escape` でエディタから抜ける。指摘 LE-13
+   * `Tab`/`Shift+Tab` は罫線・接点送りに使っており常に飲み込む（`next-symbol`）ので、
+   * `role="application"` のこのエディタはキーボードだけでは抜け出せなかった。
+   */
+  | { type: 'blur' };
 
 /** キー入力のうちこの層が見る部分（DOM の型に依存させない）。 */
 export interface LadderKeyEvent {
@@ -227,6 +234,8 @@ function builtinAction(event: LadderKeyEvent): LadderAction {
   if (key === 'Tab') return { type: 'move', dRow: 0, dCol: event.shiftKey === true ? -1 : 1 };
   if (key === 'Enter') return { type: 'edit' };
   if (key === 'Delete' || key === 'Backspace') return { type: 'delete' };
+  // 指摘 LE-13: `Tab` を罫線送りに使っているので、`Escape` を唯一の脱出口にする
+  if (key === 'Escape') return { type: 'blur' };
   return { type: 'none' };
 }
 
@@ -332,7 +341,10 @@ function guard(run: () => LadderProgram): LadderEditResult {
   try {
     return { ok: true, program: run() };
   } catch (error) {
-    if (error instanceof LadderError) return { ok: false, message: error.message };
+    // 指摘 LE-9: `edit.ts` の生の message は内部識別子を含みうるので、画面へ出す前に読み替える
+    if (error instanceof LadderError) {
+      return { ok: false, message: friendlyLadderErrorMessage(error.message) };
+    }
     throw error;
   }
 }

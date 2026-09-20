@@ -1,6 +1,13 @@
 import { T, X, type Cell } from '@ojt/ladder-core';
 import type { DialectProfile } from '@ojt/plc-dialects';
-import { useEffect, useMemo, useRef, useState, type JSX } from 'react';
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type JSX,
+  type KeyboardEvent as ReactKeyboardEvent,
+} from 'react';
 import { JA, timerRoundPrompt } from '../i18n/ja.js';
 import {
   buildCell,
@@ -122,6 +129,20 @@ export function DeviceInput({
     onCommit(cell);
   };
 
+  /**
+   * 入力欄共通のキー操作。指摘 LE-12
+   *
+   * IME変換中の `Enter`（変換候補の確定）を編集の確定と取り違え、未確定の文字列のまま
+   * `parseDevice()` に渡って失敗していた。`isComposing` の間は何もしない。デバイス欄だけに
+   * あったこの対処を、設定値欄・リセット欄にも同じハンドラとして共有させる（それまでこの2欄は
+   * `Enter`/`Escape` を一切拾わず、`Enter` で確定できなかった）。
+   */
+  const onFieldKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>): void => {
+    if (event.nativeEvent.isComposing) return;
+    if (event.key === 'Enter') commit();
+    if (event.key === 'Escape') onCancel();
+  };
+
   return (
     <div
       className={styles.inputBox}
@@ -170,10 +191,7 @@ export function DeviceInput({
           onChange={(event) => {
             setForm({ ...form, deviceText: event.target.value });
           }}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter') commit();
-            if (event.key === 'Escape') onCancel();
-          }}
+          onKeyDown={onFieldKeyDown}
         />
         {form.target === 'output' && (form.output === 'TON' || form.output === 'CTU') ? (
           <input
@@ -184,6 +202,7 @@ export function DeviceInput({
             onChange={(event) => {
               setForm({ ...form, presetText: event.target.value });
             }}
+            onKeyDown={onFieldKeyDown}
           />
         ) : null}
         {form.target === 'output' && form.output === 'CTU' ? (
@@ -195,6 +214,7 @@ export function DeviceInput({
             onChange={(event) => {
               setForm({ ...form, resetText: event.target.value });
             }}
+            onKeyDown={onFieldKeyDown}
           />
         ) : null}
         <button
