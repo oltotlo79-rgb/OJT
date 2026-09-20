@@ -212,7 +212,7 @@ od -An -tx1 -N 8 apps/desktop/build/license.txt
 node -e "const fs=require('fs');const p='apps/desktop/build/license.txt';const b=fs.readFileSync(p);if(b[0]===0xEF&&b[1]===0xBB&&b[2]===0xBF){console.log('already BOM');process.exit(0)}fs.writeFileSync(p,Buffer.concat([Buffer.from([0xEF,0xBB,0xBF]),b]));console.log('BOM added')"
 ```
 
-- [ ] 3. `.gitattributes` の末尾に1行足す（git の改行正規化で BOM が剥がれるのを止める）。
+- [x] 3. `.gitattributes` の末尾に1行足す（git の改行正規化で BOM が剥がれるのを止める）。
 
 ```
 apps/desktop/build/license.txt -text
@@ -456,15 +456,15 @@ pnpm --filter @ojt/desktop test -- probe-markers
 
 **Steps:**
 
-- [ ] 1. **UI-01**: `InspectPartsSession.tsx:201` を `const tester = useStore.getState().tester;` に直す（購読値ではなく最新値を読む）。Ωレンジのまま部品を挿し替えるとプローブが Worker に再配置される不具合が止まる。
-- [ ] 2. **DS-1**: `store.ts:1504` の `switchDialect()` の `set({...})` に `sessionEpoch: get().sessionEpoch + 1,` を足す。表記切替後も Worker が旧機種のネットリストを回すのを止める。
-- [ ] 3. **UX-01**: `i18n/ja.ts` の `disabledReason.zeroAdjust` を**実際の条件**に直す（「アナログテスターのΩ／導通レンジのときだけ 0Ω 調整ができます」）。`docs/manual/04-mode-c1.md` の該当文も直す。
-- [ ] 4. **UX-03 ／ UX-06**: 押せないボタンを `disabled` から **`aria-disabled="true"` ＋ `.srOnly` の理由 ＋ 押したときのトースト**に揃える（Chromium は `disabled` な要素に `title` を出さない）。`global.css` に `button[aria-disabled='true'] { opacity: .45; cursor: default; }` を足す。対象は「判定」「元に戻す」「やり直し」。
-- [ ] 5. **UX-04**: `Session.tsx:664` 付近で `assembleView` を見て手順帯を差し替える（回路図エディタを開いているときに「部品装着 いまここ」を出さない）。
-- [ ] 6. **UX-22**: C2 の「故障の種別を選ぶ」窓に1行足す（「端子には『未配線』だけを出しています。断線・誤配線は電線を、部品不良は部品をクリックしてください」）。`docs/manual/05-mode-c2.md` にも対応表を足す。
-- [ ] 7. **UI-04**: `Session.tsx:362, 870` と `routeFailedLog()` を `wireLabel(wire)`（`CR1.9–PB1.2c の青線`）経由にする。状態オーバーレイと操作ログから `w-003` を消す。
-- [ ] 8. **UI-14**: `SchematicView` の `aria-label` を `onPickCell` の有無で分ける（単クリックで拡大しない画面に「クリックまたは Enter で拡大表示」と読み上げさせない）。
-- [ ] 9. テスト。`session.test.tsx`: 状態オーバーレイの文言が `w-\d{3}` に一致しないこと。`inspect-parts-flow.test.tsx`: Ωレンジ＋両プローブの状態で `setCheckPart('P2')` を起こしても `bridge.send` に `place-probe` が送られないこと。`store-plc.test.ts`: `switchDialect()` 前後で `sessionEpoch` が増え `problem.id` は変わらないこと。`toolbar.test.tsx`: `aria-disabled` のボタンを押すとトーストが1回出ること。
+- [x] 1. **UI-01**: `InspectPartsSession.tsx:201` を `const tester = useStore.getState().tester;` に直す（購読値ではなく最新値を読む）。Ωレンジのまま部品を挿し替えるとプローブが Worker に再配置される不具合が止まる。
+- [x] 2. **DS-1**: `store.ts:1504` の `switchDialect()` の `set({...})` に `sessionEpoch: get().sessionEpoch + 1,` を足す。表記切替後も Worker が旧機種のネットリストを回すのを止める。
+- [x] 3. **UX-01**: `i18n/ja.ts` の `disabledReason.zeroAdjust` を**実際の条件**に直す（「アナログテスターのΩ／導通レンジのときだけ 0Ω 調整ができます」）。`docs/manual/04-mode-c1.md` の該当文も直す。
+- [x] 4. **UX-03 ／ UX-06**: 押せないボタンを `disabled` から **`aria-disabled="true"` ＋ `.srOnly` の理由 ＋ 押したときのトースト**に揃える（Chromium は `disabled` な要素に `title` を出さない）。`global.css` に `button[aria-disabled='true'] { opacity: .45; cursor: default; }` を足す。対象は「判定」「元に戻す」「やり直し」。
+- [x] 5. **UX-04**: `Session.tsx:664` 付近で `assembleView` を見て手順帯を差し替える（回路図エディタを開いているときに「部品装着 いまここ」を出さない）。
+- [x] 6. **UX-22**: C2 の「故障の種別を選ぶ」窓に1行足す（「端子には『未配線』だけを出しています。断線・誤配線は電線を、部品不良は部品をクリックしてください」）。`docs/manual/05-mode-c2.md` にも対応表を足す。
+- [x] 7. **UI-04**: `Session.tsx:362, 870` と `routeFailedLog()` を `wireLabel(wire)`（`CR1.9–PB1.2c の青線`）経由にする。状態オーバーレイと操作ログから `w-003` を消す。
+- [x] 8. **UI-14**: `SchematicView` の `aria-label` を `onPickCell` の有無で分ける（単クリックで拡大しない画面に「クリックまたは Enter で拡大表示」と読み上げさせない）。
+- [x] 9. テスト。`session.test.tsx`: 状態オーバーレイの文言が `w-\d{3}` に一致しないこと。`inspect-parts-flow.test.tsx`: Ωレンジ＋両プローブの状態で `setCheckPart('P2')` を起こしても `bridge.send` に `place-probe` が送られないこと。`store-plc.test.ts`: `switchDialect()` 前後で `sessionEpoch` が増え `problem.id` は変わらないこと。`toolbar.test.tsx`: `aria-disabled` のボタンを押すとトーストが1回出ること。
 
 **期待:** 上記4本のテストが緑。`pnpm --filter @ojt/desktop test` 全件 pass。
 
