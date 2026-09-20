@@ -272,6 +272,12 @@ const PANELS: PanelLayout = {
   editor: 'ラダー編集エリア',
   output: 'ステータスバー',
   toolbar: ['JP1', 'DGR', 'MOB', 'STP', 'RDY', 'RUN', 'RES', 'モニタ開始', 'モニタ停止'],
+  /*
+   * PCwin は出力をステータスバーへ畳む構成で、**監視（ウォッチ）の独立した欄は公開資料で
+   * 確認できていない**ため名乗らない（名乗らないメーカーでは欄そのものを出さない。設計 §5.5）。
+   */
+  comment: 'コメント',
+  status: ['mode', 'plc-state', 'scan', 'device-count'],
 };
 
 /** 方言エラーの日本語文言。§10.5 の `errorMessages` */

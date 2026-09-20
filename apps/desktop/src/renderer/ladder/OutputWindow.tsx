@@ -29,6 +29,7 @@ export function OutputWindow({
   onJump,
   onExport,
   exportIssues,
+  title,
 }: {
   issues: ConvertIssues;
   converted: boolean;
@@ -47,7 +48,13 @@ export function OutputWindow({
   /** 書き出せなかった理由（`INSTRUCTION_LIST_MESSAGES` の文言＋平易な説明）。 */
   exportIssues: readonly string[];
   // --- /Plan 4B Task 9 ---
+  /**
+   * この欄の呼び名（Phase 7 設計 §5.5）。メーカーの言葉（`panels.output`。PCwin風は
+   * 「ステータスバー」）を呼び出し側から渡す。省略すると本アプリの既定の呼び名になる。
+   */
+  title?: string;
 }): JSX.Element {
+  const paneTitle = title ?? JA.ladder.output;
   const rows: Row[] = [
     ...issues.errors
       .filter((issue) => issue.source === 'structure')
@@ -66,7 +73,7 @@ export function OutputWindow({
   ];
   const unused = issues.unused;
   return (
-    <section className={styles.output} data-testid="output-window" aria-label={JA.ladder.output}>
+    <section className={styles.output} data-testid="output-window" aria-label={paneTitle}>
       {/*
         命令語リストの書き出し（§10.7 / Task 9）。`<summary>` の中に置くと押すたびに出力
         ウィンドウが畳まれる（押しボタンの click が `<details>` の開閉に食われる）ので、
@@ -97,7 +104,7 @@ export function OutputWindow({
       */}
       <details open={open} data-testid="output-details">
         <summary className={styles.outputHeader} data-testid="output-summary">
-          <h2>{JA.ladder.output}</h2>
+          <h2>{paneTitle}</h2>
           <span data-testid="convert-state" className={converted ? styles.okTag : styles.ngTag}>
             {/*
               「変換」を持たないメーカーでは、成功したときも「自動で変換されます」と添える

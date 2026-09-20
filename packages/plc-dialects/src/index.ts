@@ -37,6 +37,7 @@ export {
   type InstructionKey,
   type MonitorColors,
   type PanelLayout,
+  type PanelStatusItem,
   type ShortcutEntry,
   type ShortcutTable,
   type SymbolDrawing,

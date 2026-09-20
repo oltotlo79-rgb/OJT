@@ -1,6 +1,11 @@
 import { availableDialects, DIALECT_IDS, getDialect } from '@ojt/plc-dialects';
 import { describe, expect, it } from 'vitest';
-import { SKIN_THEMES, skinCssVars, skinThemeOf } from '../src/renderer/ladder/skins/index.js';
+import {
+  SKIN_THEMES,
+  skinCssVars,
+  skinThemeOf,
+  statusItemsOf,
+} from '../src/renderer/ladder/skins/index.js';
 
 describe('SkinTheme（利用者要求: 実物に近い回路入力画面 / §10.6 / §17.1）', () => {
   it('has one theme per dialect', () => {
@@ -51,20 +56,21 @@ describe('SkinTheme（利用者要求: 実物に近い回路入力画面 / §10.
     }
   });
 
+  /**
+   * Phase 7 設計 §5.5: ステータスバーの項目の源は `SkinTheme.statusItems`（見た目）から
+   * `DialectProfile.panels.status`（そのメーカーのツールの画面構成）へ移した。画面は
+   * `statusItemsOf()` を通して引くので、ここもそれで確かめる。
+   */
   it('lists the status bar items each tool shows', () => {
-    expect(skinThemeOf(getDialect('mitsubishi')).statusItems).toEqual([
-      'mode',
-      'network',
-      'overwrite',
-    ]);
-    expect(skinThemeOf(getDialect('omron')).statusItems).toEqual(['mode', 'plc-state', 'scan']);
-    expect(skinThemeOf(getDialect('jtekt')).statusItems).toEqual([
+    expect(statusItemsOf(getDialect('mitsubishi'))).toEqual(['mode', 'network', 'overwrite']);
+    expect(statusItemsOf(getDialect('omron'))).toEqual(['mode', 'plc-state', 'scan']);
+    expect(statusItemsOf(getDialect('jtekt'))).toEqual([
       'mode',
       'plc-state',
       'scan',
       'device-count',
     ]);
-    expect(skinThemeOf(getDialect('sharp')).statusItems).toEqual(['mode', 'network', 'plc-state']);
+    expect(statusItemsOf(getDialect('sharp'))).toEqual(['mode', 'network', 'plc-state']);
   });
 });
 

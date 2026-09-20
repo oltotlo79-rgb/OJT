@@ -46,6 +46,10 @@ export function ShortcutHelp({ profile }: { profile: DialectProfile }): JSX.Elem
       <p className={styles.sideNote} data-testid="shortcuts-note">
         {JA.ladder.shortcutNote}
       </p>
+      {/* この欄は畳まれていることが多いので、覆いで出す方法をここにも書く（指摘 PR-05） */}
+      <p className={styles.sideNote} data-testid="shortcuts-overlay-hint">
+        {JA.ladder.overlay.hint}
+      </p>
       {convertNote(profile) === undefined ? null : (
         <p className={styles.sideNote} data-testid="shortcuts-convert-note">
           {convertNote(profile)}

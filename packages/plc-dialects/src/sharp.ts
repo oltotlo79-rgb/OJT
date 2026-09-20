@@ -253,6 +253,10 @@ const PANELS: PanelLayout = {
   editor: 'ラダー編集',
   output: '出力ウィンドウ',
   toolbar: ['変換', 'PLCへの書込み', '運転／停止', 'モニタ開始', 'モニタ停止'],
+  // JW-300SP は監視したいリレーを登録して並べる（Phase 7 設計 §5.5）
+  comment: 'コメント',
+  watch: 'モニタ登録',
+  status: ['mode', 'network', 'plc-state'],
 };
 
 /** 方言エラーの日本語文言。§10.5 の `errorMessages` */

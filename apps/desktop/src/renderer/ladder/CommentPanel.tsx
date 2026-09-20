@@ -55,8 +55,14 @@ export function CommentPanel({
   );
   const full = Object.keys(comments).length >= DEVICE_COMMENT_COUNT_LIMIT;
   return (
-    // コメントは必要なときだけ開く枠なので、既定は畳んだ状態（#27）
-    <SidePanel title={JA.ladder.comments} testId="comment-panel">
+    // コメントは必要なときだけ開く枠なので、既定は畳んだ状態（#27）。
+    // 呼び名はメーカーごとに違う（CX-Programmer 風は「シンボル」。Phase 7 設計 §5.5）ので
+    // 方言から引き、名乗らないメーカーでは呼び出し側がこの欄そのものを出さない。
+    <SidePanel
+      title={profile.panels.comment ?? JA.ladder.comments}
+      label={JA.ladder.comments}
+      testId="comment-panel"
+    >
       {full ? (
         <p className={styles.sideNote} id={capId} data-testid="comment-cap">
           {commentCapText(DEVICE_COMMENT_COUNT_LIMIT)}

@@ -13,6 +13,7 @@ import { JA, onOffLabel, plcInputSpecText, secondsLabel } from '../i18n/ja.js';
 import { shortcutKeyOf } from '../session/ladder.js';
 import { monitorStartLabel } from '../session/plc-skin.js';
 import { SidePanel } from './SidePanel.js';
+import { onOffMark } from './WatchPanel.js';
 import styles from './ladder.module.css';
 
 /**
@@ -94,27 +95,39 @@ export function MonitorPanel({
               {JA.ladder.monitorStopped}
             </p>
           )}
-          <table className={styles.ioTable}>
+          {/*
+            この表は**使えるデバイスを全部**並べる「デバイス一覧」である。利用者が選んだ
+            デバイスだけを見たいときは、別の「監視」の欄を使う（Phase 7 設計 §5.5）。
+            ON／OFF は色だけに頼らず ■／□ の形でも示す（指摘 UX-14 ≡ UI-17）。
+          */}
+          <table className={styles.ioTable} data-testid="device-list">
+            <caption className={styles.sideNote}>{JA.ladder.deviceList}</caption>
             <tbody>
               {monitor.inputs.map((value, index) => (
                 <tr key={`x-${String(index)}`} data-testid={`monitor-input-${String(index)}`}>
                   <td>{profile.formatDevice(X(index))}</td>
                   <td>{terminal(unit.spec.inputs[index]?.name)}</td>
-                  <td>{onOffLabel(value)}</td>
+                  <td>
+                    {onOffMark(value)} {onOffLabel(value)}
+                  </td>
                 </tr>
               ))}
               {monitor.outputs.map((value, index) => (
                 <tr key={`y-${String(index)}`} data-testid={`monitor-output-${String(index)}`}>
                   <td>{profile.formatDevice(Y(index))}</td>
                   <td>{terminal(unit.spec.outputs[index]?.name)}</td>
-                  <td>{onOffLabel(value)}</td>
+                  <td>
+                    {onOffMark(value)} {onOffLabel(value)}
+                  </td>
                 </tr>
               ))}
               {Object.entries(monitor.internals).map(([index, value]) => (
                 <tr key={`m-${index}`} data-testid={`monitor-internal-${index}`}>
                   <td>{profile.formatDevice(M(Number(index)))}</td>
                   <td />
-                  <td>{onOffLabel(value)}</td>
+                  <td>
+                    {onOffMark(value)} {onOffLabel(value)}
+                  </td>
                 </tr>
               ))}
               {Object.entries(monitor.timers).map(([index, state]) => (
@@ -124,14 +137,18 @@ export function MonitorPanel({
                   <td>
                     {secondsLabel(state.elapsedMs)} / {secondsLabel(state.presetMs)}
                   </td>
-                  <td>{onOffLabel(state.on)}</td>
+                  <td>
+                    {onOffMark(state.on)} {onOffLabel(state.on)}
+                  </td>
                 </tr>
               ))}
               {Object.entries(monitor.counters).map(([index, state]) => (
                 <tr key={`c-${index}`} data-testid={`monitor-counter-${index}`}>
                   <td>{profile.formatDevice(C(Number(index)))}</td>
                   <td>{state.value}</td>
-                  <td>{onOffLabel(state.on)}</td>
+                  <td>
+                    {onOffMark(state.on)} {onOffLabel(state.on)}
+                  </td>
                 </tr>
               ))}
             </tbody>

@@ -1,4 +1,4 @@
-import type { DialectId, DialectProfile } from '@ojt/plc-dialects';
+import type { DialectId, DialectProfile, PanelStatusItem } from '@ojt/plc-dialects';
 import { skinMonitorColor } from '../../session/plc-skin.js';
 import { JTEKT_SKIN } from './jtekt.js';
 import { MITSUBISHI_SKIN } from './mitsubishi.js';
@@ -6,8 +6,18 @@ import { OMRON_SKIN } from './omron.js';
 import { SHARP_SKIN } from './sharp.js';
 import type { SkinTheme } from './types.js';
 
-export type { SkinCell, SkinColors, SkinLayout, SkinStatusItem, SkinTheme } from './types.js';
+export type { SkinCell, SkinColors, SkinLayout, SkinTheme } from './types.js';
 export { SKIN_ASSUMED } from './types.js';
+
+/**
+ * ステータスバーに出す項目。Phase 7 設計 §5.5
+ *
+ * 源は `DialectProfile.panels.status`（メーカーのツールの画面構成）に移した。名乗らない
+ * 方言はステータスバーに項目を出さない。型は方言側が持つので、ここは引き写すだけである。
+ */
+export function statusItemsOf(profile: DialectProfile): readonly PanelStatusItem[] {
+  return profile.panels.status ?? [];
+}
 
 /** 方言ID → スキンの見た目。§10.6 / 決定表#5 */
 export const SKIN_THEMES: Readonly<Record<DialectId, SkinTheme>> = {

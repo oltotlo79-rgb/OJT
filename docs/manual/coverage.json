@@ -112,11 +112,15 @@
     },
     {
       "testid": "cell-menu",
-      "internal": "空セルを右クリックして出す記号メニューの枠。中の項目で説明する"
+      "screen": "練習中（モードD）",
+      "label": "記号メニュー",
+      "section": "mode-d/ラダー図を描く"
     },
     {
       "testid": "cell-menu-{}",
-      "internal": "記号メニューの1項目。ツールバーの記号ボタンと同じ操作"
+      "screen": "練習中（モードD）",
+      "label": "記号メニュー",
+      "section": "mode-d/ラダー図を描く"
     },
     {
       "testid": "cell-{}",
@@ -273,6 +277,12 @@
       "section": "mode-d/ラダー図を描く"
     },
     {
+      "testid": "device-list",
+      "screen": "練習中（モードD）",
+      "label": "デバイス一覧",
+      "section": "mode-d/動きを見る"
+    },
+    {
       "testid": "device-text",
       "screen": "練習中（モードD）",
       "label": "デバイス",
@@ -298,7 +308,9 @@
     },
     {
       "testid": "direct-text",
-      "internal": "回路入力欄の1行入力（記号とデバイス）。親の「デバイスの入力」で説明済み"
+      "screen": "練習中（モードD）",
+      "label": "記号とデバイス",
+      "section": "mode-d/ラダー図を描く"
     },
     {
       "testid": "discard-confirm",
@@ -336,7 +348,9 @@
     },
     {
       "testid": "entry-comment",
-      "internal": "デバイスを確定したあとに続けて開くコメント欄。親の「デバイスコメント」で説明済み"
+      "screen": "練習中（モードD）",
+      "label": "コメント",
+      "section": "mode-d/ラダー図を描く"
     },
     {
       "testid": "error-banner",
@@ -744,7 +758,9 @@
     },
     {
       "testid": "no-output-{}",
-      "internal": "出力の無い回路ブロックの右端に出る赤い縦線。押す操作は無い"
+      "screen": "練習中（モードD）",
+      "label": "出力がありません",
+      "section": "mode-d/ラダー図を描く"
     },
     {
       "testid": "no-suspect",
@@ -859,6 +875,16 @@
       "screen": "練習中（モードD）",
       "label": "出力ウィンドウ",
       "section": "mode-d/変換する"
+    },
+    {
+      "testid": "overlay-shortcut-monitor",
+      "screen": "練習中（モードD）",
+      "label": "モニタ",
+      "section": "mode-d/キーの割り当て"
+    },
+    {
+      "testid": "overlay-shortcut-{}",
+      "internal": "早見表の1行。親の「キーの早見表」で説明済み"
     },
     {
       "testid": "palette-{}",
@@ -999,6 +1025,10 @@
       "screen": "練習中（モードD）",
       "label": "通電",
       "section": "mode-d/動きを見る"
+    },
+    {
+      "testid": "powered-outline",
+      "internal": "通電しているセルに重なる細い枠。親の通電表示で説明済み"
     },
     {
       "testid": "preset-down",
@@ -1417,6 +1447,24 @@
       "section": "troubleshooting/こう表示されたら"
     },
     {
+      "testid": "shortcut-overlay",
+      "screen": "練習中（モードD）",
+      "label": "キーの早見表",
+      "section": "mode-d/キーの割り当て"
+    },
+    {
+      "testid": "shortcut-overlay-close",
+      "screen": "練習中（モードD）",
+      "label": "閉じる",
+      "section": "mode-d/キーの割り当て"
+    },
+    {
+      "testid": "shortcut-overlay-note",
+      "screen": "練習中（モードD）",
+      "label": "この表はすべて実機マニュアル未確認のため本アプリの表記です（行ごとの断りは省いています）",
+      "section": "mode-d/キーの割り当て"
+    },
+    {
       "testid": "shortcut-{}",
       "internal": "キー割当表の1行。親のキー割当で説明済み"
     },
@@ -1445,6 +1493,12 @@
       "section": "mode-d/キーの割り当て"
     },
     {
+      "testid": "shortcuts-overlay-hint",
+      "screen": "練習中（モードD）",
+      "label": "Shift + ? でキーの早見表を開きます",
+      "section": "mode-d/キーの割り当て"
+    },
+    {
       "testid": "skin-assumed",
       "screen": "設定",
       "label": "画面の見た目の前提",
@@ -1461,6 +1515,12 @@
       "screen": "練習中（モードD）",
       "label": "タイトル帯",
       "section": "mode-d/別のメーカーの書き方に変える"
+    },
+    {
+      "testid": "skin-title-mode",
+      "screen": "練習中（モードD）",
+      "label": "モニタ",
+      "section": "mode-d/ラダー図を描く"
     },
     {
       "testid": "skin-title-note",
@@ -1572,7 +1632,9 @@
     },
     {
       "testid": "symbol-{}",
-      "internal": "ツールバーの記号ボタン。押すとキーと同じ回路入力欄が開く"
+      "screen": "練習中（モードD）",
+      "label": "記号",
+      "section": "mode-d/ラダー図を描く"
     },
     {
       "testid": "terminal-cancel",
@@ -1729,6 +1791,12 @@
       "section": "screens/画面の上の帯"
     },
     {
+      "testid": "toolbar-watch",
+      "screen": "練習中（モードD）",
+      "label": "監視",
+      "section": "mode-d/動きを見る"
+    },
+    {
       "testid": "toolbar-{}",
       "screen": "練習中（モードD）",
       "label": "変換",
@@ -1875,6 +1943,48 @@
       "screen": "練習中",
       "label": "警告",
       "section": "mode-b/うまくいかないとき"
+    },
+    {
+      "testid": "watch-add",
+      "screen": "練習中（モードD）",
+      "label": "監視に追加",
+      "section": "mode-d/動きを見る"
+    },
+    {
+      "testid": "watch-device",
+      "screen": "練習中（モードD）",
+      "label": "監視するデバイス",
+      "section": "mode-d/動きを見る"
+    },
+    {
+      "testid": "watch-empty",
+      "screen": "練習中（モードD）",
+      "label": "まだ何も登録していません。見たいデバイスを足すと、ここだけに並びます。",
+      "section": "mode-d/動きを見る"
+    },
+    {
+      "testid": "watch-error",
+      "internal": "打ち込んだ名前が読めなかった理由。デバイスごとに文が変わる"
+    },
+    {
+      "testid": "watch-panel",
+      "screen": "練習中（モードD）",
+      "label": "監視",
+      "section": "mode-d/動きを見る"
+    },
+    {
+      "testid": "watch-remove-{}",
+      "screen": "練習中（モードD）",
+      "label": "監視から外す",
+      "section": "mode-d/動きを見る"
+    },
+    {
+      "testid": "watch-row-{}",
+      "internal": "監視の表の1行。親の「監視」で説明済み"
+    },
+    {
+      "testid": "watch-table",
+      "internal": "監視の表そのもの。親の「監視」で説明済み"
     },
     {
       "testid": "workspace-main",
@@ -2069,7 +2179,7 @@
     {
       "key": "F8",
       "screen": "ラダー（三菱の書き方）",
-      "action": "応用命令（本アプリでは使いません）",
+      "action": "応用命令の欄を開く",
       "section": "mode-d/キーの割り当て"
     },
     {

@@ -1046,13 +1046,13 @@ apps/desktop/e2e/ladder-entry.spec.ts（新規）
 
 **Steps:**
 
-- [ ] 1. `PanelLayout` に `comment?: string` / `watch?: string` / `status?: readonly string[]` を足し、4方言で埋める（`SkinTheme.statusItems` の源をここへ移す）。
-- [ ] 2. **監視欄**: `MonitorPanel` を「デバイス一覧（全部）」と「監視（利用者が選んだデバイスだけ）」に分け、`WatchPanel.tsx` を作る。三菱系は `Shift+F3`、他はツールバーから開く。
-- [ ] 3. **モニタ中の見え方**: `SkinTheme.monitorStyle`（`'block'` / `'flow'`）はそのまま。**色だけに頼らない**（UX-14）ため、通電セルに細い実線の枠を重ね、デバイス一覧の ON に `■`／OFF に `□` を添える。
-- [ ] 4. **モード表示**: 「書込み」「読出し」「モニタ」をステータスバーとタイトルバーの両方に出す。キーは `monitorStartLabel(profile)` / `writeModeLabel(profile)` から引く。
-- [ ] 5. **PR-05**: `ShortcutOverlay.tsx` を作り、`Shift + ?` で全キー割当を覆いで出す（データ源は `profile.shortcuts`。`ShortcutHelp` と同じ）。`Esc` で閉じ、`pushModalLayer()` の作法に従う。
-- [ ] 6. **LE-18**: ペイン幅の実測を `window.resize` だけでなく `ResizeObserver` で追う（表示切替や `<details>` の開閉に追従する）。リポジトリ全体で `ResizeObserver` は0件なので、`renderer/app/use-element-size.ts` として共有化する。
-- [ ] 7. テスト。`skin-workspace.test.tsx`: 4スキンで `panels.comment` / `watch` / `status` に応じて欄が出る／出ないこと。`ladder-panels.test.tsx`: 監視欄にデバイスを足すと表に出ること。`shortcut-overlay.test.tsx`（新規）: `Shift+?` で開き `Esc` で閉じ、フォーカスが戻ること。
+- [x] 1. `PanelLayout` に `comment?: string` / `watch?: string` / `status?: readonly string[]` を足し、4方言で埋める（`SkinTheme.statusItems` の源をここへ移す）。
+- [x] 2. **監視欄**: `MonitorPanel` を「デバイス一覧（全部）」と「監視（利用者が選んだデバイスだけ）」に分け、`WatchPanel.tsx` を作る。三菱系は `Shift+F3`、他はツールバーから開く。
+- [x] 3. **モニタ中の見え方**: `SkinTheme.monitorStyle`（`'block'` / `'flow'`）はそのまま。**色だけに頼らない**（UX-14）ため、通電セルに細い実線の枠を重ね、デバイス一覧の ON に `■`／OFF に `□` を添える。
+- [x] 4. **モード表示**: 「書込み」「読出し」「モニタ」をステータスバーとタイトルバーの両方に出す。キーは `monitorStartLabel(profile)` / `writeModeLabel(profile)` から引く。
+- [x] 5. **PR-05**: `ShortcutOverlay.tsx` を作り、`Shift + ?` で全キー割当を覆いで出す（データ源は `profile.shortcuts`。`ShortcutHelp` と同じ）。`Esc` で閉じ、`pushModalLayer()` の作法に従う。
+- [x] 6. **LE-18**: ペイン幅の実測を `window.resize` だけでなく `ResizeObserver` で追う（表示切替や `<details>` の開閉に追従する）。リポジトリ全体で `ResizeObserver` は0件なので、`renderer/app/use-element-size.ts` として共有化する。
+- [x] 7. テスト。`skin-workspace.test.tsx`: 4スキンで `panels.comment` / `watch` / `status` に応じて欄が出る／出ないこと。`ladder-panels.test.tsx`: 監視欄にデバイスを足すと表に出ること。`shortcut-overlay.test.tsx`（新規）: `Shift+?` で開き `Esc` で閉じ、フォーカスが戻ること。
 
 **期待:** 4スキンの画面構成が方言の `panels` だけで決まり、スキンを切り替えると欄の並びと呼び名が変わること。
 

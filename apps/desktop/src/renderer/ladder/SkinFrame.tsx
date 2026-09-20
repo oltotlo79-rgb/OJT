@@ -1,9 +1,10 @@
-import type { DialectProfile } from '@ojt/plc-dialects';
+import type { DialectProfile, PanelStatusItem } from '@ojt/plc-dialects';
 import type { JSX } from 'react';
 import { useStore } from '../app/store.js';
 import { JA } from '../i18n/ja.js';
 import type { LadderEditorMode } from '../session/ladder.js';
-import type { SkinStatusItem, SkinTheme } from './skins/index.js';
+import { monitorStartLabel, writeModeLabel } from '../session/plc-skin.js';
+import { statusItemsOf, type SkinTheme } from './skins/index.js';
 import styles from './ladder.module.css';
 
 /**
@@ -15,7 +16,7 @@ import styles from './ladder.module.css';
  */
 
 /** ステータスバーの1項目。値はストアから引くので、新しい状態は増えない。 */
-function StatusItem({ item }: { item: SkinStatusItem }): JSX.Element {
+function StatusItem({ item }: { item: PanelStatusItem }): JSX.Element {
   const mode = useStore((s) => s.ladderMode);
   const running = useStore((s) => s.plcRunning);
   const scan = useStore((s) => s.plcMonitor?.scanCount);
@@ -64,9 +65,23 @@ export function SkinTitleBar({
   theme: SkinTheme;
   profile: DialectProfile;
 }): JSX.Element {
+  const mode = useStore((s) => s.ladderMode);
   return (
     <div className={styles.titleBar} data-testid="skin-title">
       <span className={styles.titleBarName}>{theme.titleBar}</span>
+      {/*
+        書込み／読出し／モニタは**ステータスバーとタイトルバーの両方**に出す（Phase 7 設計 §5.5）。
+        実機のツールはどちらにもモードを出しており、下端まで目を落とさずに今の状態が読める。
+        切り替えのキー（または押す場所）は方言から引く（前提#22 / 指摘 LE-7）。
+      */}
+      <span
+        className={styles.titleBarMode}
+        data-testid="skin-title-mode"
+        title={JA.ladder.modeKeysHint(writeModeLabel(profile), monitorStartLabel(profile))}
+        aria-label={`${JA.ladder.statusMode}: ${modeLabel(mode)}`}
+      >
+        {modeLabel(mode)}
+      </span>
       {/*
         型式込みの正式名は長いので折り返さず省略する（UI監査 2026-09-20 Blocking #1 /
         I22）。全文は `title` で読める。
@@ -90,11 +105,14 @@ export function SkinTitleBar({
   );
 }
 
-/** ステータスバー。項目はスキンが決める（決定表#7）。 */
-export function SkinStatusBar({ theme }: { theme: SkinTheme }): JSX.Element {
+/**
+ * ステータスバー。項目は**方言の画面構成**が決める（決定表#7 / Phase 7 設計 §5.5）。
+ * 以前の源だった `SkinTheme.statusItems` は `DialectProfile.panels.status` へ移した。
+ */
+export function SkinStatusBar({ profile }: { profile: DialectProfile }): JSX.Element {
   return (
     <div className={styles.statusBar} data-testid="skin-status" role="status">
-      {theme.statusItems.map((item) => (
+      {statusItemsOf(profile).map((item) => (
         <StatusItem key={item} item={item} />
       ))}
     </div>

@@ -7,7 +7,6 @@ export const MITSUBISHI_SKIN: SkinTheme = {
   id: 'mitsubishi',
   titleBar: 'MELSOFT GX Works3 風',
   layout: { treeWidthPx: 240, outputPane: 'window', outputHeightPx: 160 },
-  statusItems: ['mode', 'network', 'overwrite'],
   colors: {
     canvas: '#F7F8FA',
     grid: '#F7F8FA',

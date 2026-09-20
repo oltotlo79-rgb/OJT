@@ -10,21 +10,6 @@ import type { DialectId } from '@ojt/plc-dialects';
  * 実機と異なると分かったときの修正箇所は `ladder/skins/<メーカー>.ts` の1ファイルだけである。
  */
 
-/** ステータスバーに出す項目。 */
-export type SkinStatusItem =
-  /** 書込／読出／モニタ。 */
-  | 'mode'
-  /** RUN / STOP。 */
-  | 'plc-state'
-  /** スキャン回数と経過時間。 */
-  | 'scan'
-  /** いまカーソルがある回路ブロック。 */
-  | 'network'
-  /** 挿入／上書き。 */
-  | 'overwrite'
-  /** 使っているデバイス点数。 */
-  | 'device-count';
-
 /** スキンの配色。すべて `#RRGGBB`（大文字）。 */
 export interface SkinColors {
   /** 編集領域の背景。 */
@@ -167,7 +152,11 @@ export interface SkinTheme {
   /** タイトルバーの文字。**必ず「風」で終わる**（§15 / §17.1 の商標の扱い）。 */
   titleBar: string;
   layout: SkinLayout;
-  statusItems: readonly SkinStatusItem[];
+  /*
+   * ステータスバーの項目はここには無い。「どの項目を出すか」は見た目ではなくそのメーカーの
+   * ツールの画面構成なので、Phase 7 設計 §5.5 で `DialectProfile.panels.status` へ源を移した
+   * （二重管理を作らないため、ここには控えも置かない）。
+   */
   colors: SkinColors;
   cell: SkinCell;
   /** モニタ中の通電の見せ方。 */

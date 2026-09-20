@@ -307,6 +307,10 @@ const PANELS: PanelLayout = {
   editor: 'ラダー編集',
   output: '出力ウィンドウ',
   toolbar: ['オンライン編集', '転送［PC → PLC］', 'モニタ開始', 'モニタ停止', '運転／停止'],
+  // CX-Programmer はデバイスの名前とコメントを「シンボル」の表で持ち、監視は別窓である
+  comment: 'シンボル',
+  watch: 'ウォッチウィンドウ',
+  status: ['mode', 'plc-state', 'scan'],
 };
 
 /**

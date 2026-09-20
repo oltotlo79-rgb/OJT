@@ -137,6 +137,17 @@
   opacity: 0.2;
 }
 
+/*
+ * 通電中のセルに重ねる細い実線の枠（指摘 UX-14 ≡ UI-17）。色だけに頼らない手がかりとして、
+ * 4スキンとも（`monitorStyle` に関わらず）出す。色は通電色のトークンから引くので、設定で
+ * 通電色を変えるとこの枠も一緒に変わる。
+ */
+.poweredOutline {
+  fill: none;
+  stroke: var(--skin-powered);
+  stroke-width: 1;
+}
+
 /* 分岐の接合点（T字の黒丸）。 */
 .junction {
   stroke: none;
@@ -788,6 +799,21 @@ details[open] > .sideSummary::before {
  * `title` / `aria-label` で読める。文字ではなく印にしたことで、24px固定の帯を圧迫しない
  * （画面上11px未満の文字だったのもこれで解消する）。
  */
+/*
+ * 書込み／読出し／モニタの札（Phase 7 設計 §5.5）。ステータスバーだけでなくタイトルバーにも
+ * 出して、格子の上を見ているあいだも今のモードが読めるようにする。24px の帯を圧迫しないよう
+ * 小さな枠に収め、切り替えのキーは `title` で読む。
+ */
+.titleBarMode {
+  flex: 0 0 auto;
+  padding: 0 6px;
+  border: 1px solid rgb(255 255 255 / 60%);
+  border-radius: 3px;
+  font-size: 11px;
+  line-height: 16px;
+  white-space: nowrap;
+}
+
 .titleBarInfo {
   flex: 0 0 auto;
   display: inline-flex;
@@ -1077,3 +1103,71 @@ details[open] > .sideSummary::before {
   fill: var(--skin-error, #c62828);
 }
 /* --- /Phase 7 Task 21 --- */
+
+/* --- Phase 7 Task 22: 監視欄とキーの早見表（設計 §5.5 / 指摘 PR-05） --- */
+
+/* 監視に足すデバイスの入力欄（欄の呼び名・入力・ボタンを1行に収める）。 */
+.watchAdd {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 4px;
+}
+
+.watchLabel {
+  flex: 0 0 100%;
+  font-size: 11px;
+  color: var(--muted, #6b7280);
+}
+
+.watchAdd input {
+  flex: 1 1 80px;
+  min-width: 0;
+}
+
+/*
+ * キーの早見表の覆い（`Shift + ?`）。表記切替ダイアログ（`.notationOverlay`）と同じ重なり順・
+ * 同じ暗さにして、画面のどこで開いても同じ見え方にする。
+ */
+.overlayBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 45;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgb(0 0 0 / 40%);
+}
+
+.overlayPanel {
+  background: var(--skin-output, #fff);
+  border: 1px solid var(--ladder-line, #d5d8de);
+  border-radius: 6px;
+  box-shadow: 0 6px 24px rgb(0 0 0 / 35%);
+  color: var(--ladder-fg, #1a1d22);
+  max-height: 84vh;
+  overflow-y: auto;
+  padding: 12px 16px 16px;
+  width: min(640px, 100%);
+}
+
+.overlayHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.overlayTitle {
+  flex: 1 1 auto;
+  margin: 0;
+  font-size: 14px;
+}
+
+.overlayHead button {
+  flex: 0 0 auto;
+  min-width: 32px;
+  min-height: 32px;
+}
+/* --- /Phase 7 Task 22 --- */

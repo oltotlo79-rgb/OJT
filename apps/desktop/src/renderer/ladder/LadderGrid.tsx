@@ -510,6 +510,22 @@ const GridCell = memo(function GridCell({
           className={styles.poweredBlock}
         />
       ) : null}
+      {/*
+        指摘 UX-14 ≡ UI-17: 通電しているかが**色だけ**で示されていた（色覚に依らず読めない／
+        通電色を淡い色に設定すると誰にも読めない）。どのスキンでも、通っている記号に
+        **細い実線の枠**を重ねる。枠は色ではなく「ある／無い」で読めるので、色を変えても、
+        白黒で印刷しても残る。色は通電色のトークン（`--skin-powered`）から引く。
+      */}
+      {energised ? (
+        <rect
+          data-testid="powered-outline"
+          x={metrics.poweredBlock.x + 0.5}
+          y={metrics.poweredBlock.y + 0.5}
+          width={Math.max(0, metrics.poweredBlock.w - 1)}
+          height={Math.max(0, metrics.poweredBlock.h - 1)}
+          className={styles.poweredOutline}
+        />
+      ) : null}
       {conducting ? (
         <path d={metrics.leadFull} stroke={leftColor} className={wireClass} />
       ) : shape === undefined ? null : (
@@ -865,7 +881,9 @@ function LadderGridImpl({
   // 行番号は回路ブロックをまたいで通しで数える（実機のステップ番号の見え方に寄せる）
   let step = 0;
   return (
-    <div className={styles.gridScroll} data-testid="ladder-grid">
+    // 表示中の接点列数を DOM に出す（指摘 LE-18 のテストが「欄が細くなったら列が減る」ことを
+    // 見るための、副作用の無い観測用の値）
+    <div className={styles.gridScroll} data-testid="ladder-grid" data-cols={gridCols}>
       {program.networks.map((net, rungIndex) => {
         const startStep = step;
         step += net.rows;

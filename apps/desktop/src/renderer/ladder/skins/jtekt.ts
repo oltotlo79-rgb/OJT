@@ -9,7 +9,6 @@ export const JTEKT_SKIN: SkinTheme = {
   id: 'jtekt',
   titleBar: 'PCwin 風',
   layout: { treeWidthPx: 260, outputPane: 'status-bar', outputHeightPx: 150 },
-  statusItems: ['mode', 'plc-state', 'scan', 'device-count'],
   colors: {
     canvas: '#EDEFF2',
     grid: '#DCE0E6',

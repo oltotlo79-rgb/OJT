@@ -134,12 +134,48 @@ export interface MonitorColors {
   idle: string;
 }
 
-/** 画面構成（パネルの名称と並び）。§10.6 */
+/**
+ * ステータスバーに出す項目の識別子。Phase 7 設計 §5.5
+ *
+ * 以前は画面側（`ladder/skins/types.ts` の `SkinTheme.statusItems`）が持っていたが、
+ * 「どの項目を出すか」は見た目ではなく**そのメーカーのツールの画面構成**なので、
+ * 欄の呼び名（`tree` / `editor` / `output`）と同じ `panels` へ源を移した。
+ */
+export type PanelStatusItem =
+  /** 書込／読出／モニタ。 */
+  | 'mode'
+  /** RUN / STOP。 */
+  | 'plc-state'
+  /** スキャン回数と経過時間。 */
+  | 'scan'
+  /** いまカーソルがある回路ブロック。 */
+  | 'network'
+  /** 挿入／上書き。 */
+  | 'overwrite'
+  /** 使っているデバイス点数。 */
+  | 'device-count';
+
+/** 画面構成（パネルの名称と並び）。§10.6 / Phase 7 設計 §5.5 */
 export interface PanelLayout {
   tree: string;
   editor: string;
   output: string;
   toolbar: readonly string[];
+  /**
+   * デバイスコメント欄の呼び名。**省略した方言では欄を出さない**（Phase 7 設計 §5.5）。
+   * 実機のツールがデバイスコメントの一覧を独立した欄で持っているメーカーだけが名乗る。
+   */
+  comment?: string;
+  /**
+   * 監視（ウォッチ）欄の呼び名。**省略した方言では欄を出さない**（Phase 7 設計 §5.5）。
+   * 「デバイス一覧」（全部を並べる）とは別に、利用者が選んだデバイスだけを並べる欄である。
+   */
+  watch?: string;
+  /**
+   * ステータスバーに出す項目の並び。`SkinTheme.statusItems` の源をここへ移した
+   * （Phase 7 設計 §5.5）。省略した方言はステータスバーに項目を出さない。
+   */
+  status?: readonly PanelStatusItem[];
 }
 
 /** タイマ設定値の方言表記。 */

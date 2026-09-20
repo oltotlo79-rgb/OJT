@@ -246,6 +246,10 @@ const PANELS: PanelLayout = {
     'モニタ開始',
     'モニタ停止',
   ],
+  // GX Works3 はデバイスコメントの一覧とウォッチの欄を別々に持つ（Phase 7 設計 §5.5）
+  comment: 'デバイスコメント',
+  watch: 'ウォッチ',
+  status: ['mode', 'network', 'overwrite'],
 };
 
 /** 方言エラーの日本語文言。§10.5 の `errorMessages` */

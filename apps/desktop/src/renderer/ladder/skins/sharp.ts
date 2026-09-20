@@ -7,7 +7,6 @@ export const SHARP_SKIN: SkinTheme = {
   id: 'sharp',
   titleBar: 'JW-300SP 風',
   layout: { treeWidthPx: 220, outputPane: 'window', outputHeightPx: 150 },
-  statusItems: ['mode', 'network', 'plc-state'],
   colors: {
     canvas: '#F2F5F7',
     grid: '#F2F5F7',

@@ -12,19 +12,13 @@ import {
   type Network,
 } from '@ojt/ladder-core';
 import { instructionList, INSTRUCTION_LIST_MESSAGES, type DialectProfile } from '@ojt/plc-dialects';
-import {
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-  type JSX,
-} from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type JSX } from 'react';
 import type { PlcCommandAction } from '../../worker/protocol.js';
 import { ojtApi } from '../app/ojt-api.js';
 import { useStore } from '../app/store.js';
+import { useElementWidth } from '../app/use-element-size.js';
 import { JA } from '../i18n/ja.js';
+import { isModalOpen } from '../session/interaction.js';
 import { errorCellKeys, runConvert } from '../session/ladder-errors.js';
 import { nextNetworkId, shortcutKeyOf, type LadderEditorMode } from '../session/ladder.js';
 import {
@@ -43,7 +37,9 @@ import { NotationDialog } from './NotationDialog.js';
 import { OutputWindow } from './OutputWindow.js';
 import { ProjectTree } from './ProjectTree.js';
 import { ShortcutHelp } from './ShortcutHelp.js';
+import { ShortcutOverlay } from './ShortcutOverlay.js';
 import { SkinStatusBar, SkinTitleBar } from './SkinFrame.js';
+import { WatchPanel } from './WatchPanel.js';
 import { skinCssVars, skinThemeOf } from './skins/index.js';
 import styles from './ladder.module.css';
 
@@ -115,19 +111,21 @@ export function LadderWorkspace({
   /** 記号ボタン列（入口B）→ 回路入力欄。欄の状態は `LadderEditor` が持つ（設計 §5.3）。 */
   const entryRef = useRef<LadderEntryHandle | null>(null);
   const workspaceMainRef = useRef<HTMLDivElement>(null);
-  const [paneWidth, setPaneWidth] = useState<number | undefined>(undefined);
-  useLayoutEffect(() => {
-    const measure = (): void => {
-      const width = workspaceMainRef.current?.getBoundingClientRect().width;
-      setPaneWidth(width !== undefined && width > 0 ? width : undefined);
-    };
-    measure();
-    window.addEventListener('resize', measure);
-    return () => {
-      window.removeEventListener('resize', measure);
-    };
-  }, []);
+  /*
+   * 指摘 LE-18: 幅の実測が `window.resize` だけだったので、表示切替（ラダー／分割／盤）や
+   * 右の欄の `<details>` の開閉のように**窓の大きさが変わらない**変化に追従できず、接点の
+   * 列数が古いままコイル列が画面の外へ出ていた。`ResizeObserver` で欄そのものを見る
+   * （共有の `app/use-element-size.ts`）。
+   */
+  const paneWidth = useElementWidth(workspaceMainRef);
   const effectiveGridCols = fitGridCols(gridCols, paneWidth, theme.cell);
+  /** キーの早見表の覆い（`Shift + ?`。指摘 PR-05）。 */
+  const [overlayOpen, setOverlayOpen] = useState(false);
+  const closeOverlay = useCallback((): void => {
+    setOverlayOpen(false);
+  }, []);
+  /** ツールバーの「ウォッチ」を押すたびに増やす。畳んでいる監視欄を開かせる合図。 */
+  const [watchOpenKey, setWatchOpenKey] = useState(0);
   const io = useMemo(() => resolvePlcIo(problem.io), [problem]);
   /** 機種の端子名はここから引く（決定表#16）。課題の機種が未対応なら FX5U に倒す。 */
   const unit = useMemo(() => plcUnitFor(problem.plc.model) ?? PLC_UNIT_FX5U, [problem]);
@@ -143,6 +141,26 @@ export function LadderWorkspace({
   useEffect(() => {
     onPlcRef.current = onPlc;
   }, [onPlc]);
+
+  /*
+   * 指摘 PR-05: キー割当は右の欄（既定は畳んだ状態）にしか無く、格子を見ながら引けなかった。
+   * `Shift + ?` で全キーを覆いで出す。モーダルが開いているあいだは通さない（§8.2）。
+   * 打ち込んでいる最中の `?` を奪わないよう、入力欄・IME 変換中は素通しする。
+   */
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.key !== '?' || event.ctrlKey || event.altKey || event.metaKey) return;
+      if (event.isComposing || isModalOpen()) return;
+      const target = event.target;
+      if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) return;
+      event.preventDefault();
+      setOverlayOpen(true);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+    };
+  }, []);
 
   /**
    * 「変換」。成功したときだけ Worker へ載せる（H-1）。§10.6
@@ -486,6 +504,21 @@ export function LadderWorkspace({
         >
           {JA.ladder.notationTitle}
         </button>
+        {/*
+          監視（ウォッチ）欄を開く（Phase 7 設計 §5.5）。名乗らないメーカー（PCwin風）には
+          欄そのものが無いのでボタンも出さない。名前は方言の `panels.watch` から引く。
+        */}
+        {profile.panels.watch === undefined ? null : (
+          <button
+            type="button"
+            data-testid="toolbar-watch"
+            onClick={() => {
+              setWatchOpenKey((key) => key + 1);
+            }}
+          >
+            {profile.panels.watch}
+          </button>
+        )}
       </div>
 
       {/*
@@ -561,6 +594,8 @@ export function LadderWorkspace({
               }}
               onExport={exportIl}
               exportIssues={exportIssues}
+              // 欄の呼び名はメーカーの言葉（PCwin風は「ステータスバー」。設計 §5.5）
+              title={profile.panels.output}
             />
           </div>
         </div>
@@ -569,21 +604,31 @@ export function LadderWorkspace({
           {notationOpen ? <NotationDialog profile={profile} onClose={closeNotation} /> : null}
           {/* MERGE 注意 #12: モニタ一覧は `workspaceSide` の先頭（`IoTable` の前）。Task 9 */}
           <MonitorPanel profile={profile} unit={unit} onPlc={onPlc} />
+          {/*
+            監視（ウォッチ）欄。「デバイス一覧」（全部）と分けた片割れで、利用者が選んだ
+            デバイスだけを並べる（Phase 7 設計 §5.5）。名乗らないメーカーでは出ない。
+          */}
+          <WatchPanel profile={profile} openKey={watchOpenKey} />
           <IoTable io={io} profile={profile} unit={unit} />
-          <CommentPanel
-            program={program}
-            profile={profile}
-            comments={comments}
-            // `setDeviceComment` は上限（200件）で弾くと `false` を返すが、`CommentPanel` は
-            // 戻り値を見ない。上限に達したことは同パネルの常時表示の注記（`commentCapText()`）
-            // と `disabled` 済み入力欄の `aria-describedby` で伝わる（LE-16）
-            onChange={(device, text) => useStore.getState().setDeviceComment(device, text)}
-          />
+          {/* デバイスコメント欄も方言が名乗ったときだけ出す（呼び名も方言から引く） */}
+          {profile.panels.comment === undefined ? null : (
+            <CommentPanel
+              program={program}
+              profile={profile}
+              comments={comments}
+              // `setDeviceComment` は上限（200件）で弾くと `false` を返すが、`CommentPanel` は
+              // 戻り値を見ない。上限に達したことは同パネルの常時表示の注記（`commentCapText()`）
+              // と `disabled` 済み入力欄の `aria-describedby` で伝わる（LE-16）
+              onChange={(device, text) => useStore.getState().setDeviceComment(device, text)}
+            />
+          )}
           <ShortcutHelp profile={profile} />
         </div>
       </div>
 
-      <SkinStatusBar theme={theme} />
+      <SkinStatusBar profile={profile} />
+      {/* キーの早見表（`Shift + ?`。指摘 PR-05）。`Esc` で閉じ、押していた場所へ戻る */}
+      {overlayOpen ? <ShortcutOverlay profile={profile} onClose={closeOverlay} /> : null}
     </div>
   );
 }

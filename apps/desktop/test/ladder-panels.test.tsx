@@ -20,6 +20,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CommentPanel } from '../src/renderer/ladder/CommentPanel.js';
 import { IoTable } from '../src/renderer/ladder/IoTable.js';
 import { ShortcutHelp } from '../src/renderer/ladder/ShortcutHelp.js';
+import { WatchPanel } from '../src/renderer/ladder/WatchPanel.js';
+import { useStore } from '../src/renderer/app/store.js';
 
 afterEach(cleanup);
 
@@ -219,3 +221,103 @@ describe('キー割当表と端子名のスキン差（§10.6 / §10.1）', () =
     expect(screen.getByTestId('io-common')).toHaveTextContent('COM.A');
   });
 });
+
+// --- Phase 7 Task 22（監視欄とデバイス一覧。設計 §5.5 / 指摘 UX-14） ---
+describe('監視（ウォッチ）欄（設計 §5.5）', () => {
+  afterEach(() => {
+    useStore.setState({ plcMonitor: undefined });
+  });
+
+  it('shows nothing at all for a vendor that does not name a watch pane (PCwin風)', () => {
+    expect(JTEKT_PC10G.panels.watch).toBeUndefined();
+    const { container } = render(<WatchPanel profile={JTEKT_PC10G} />);
+    expect(container).toBeEmptyDOMElement();
+  });
+
+  it('starts empty and says so in words the trainee can act on', () => {
+    render(<WatchPanel profile={MITSUBISHI_FX5U} />);
+    expect(screen.getByTestId('watch-empty')).toHaveTextContent('まだ何も登録していません');
+    expect(screen.queryByTestId('watch-table')).toBeNull();
+  });
+
+  it('puts a device into the table when the trainee adds it', () => {
+    render(<WatchPanel profile={MITSUBISHI_FX5U} />);
+    fireEvent.change(screen.getByTestId('watch-device'), { target: { value: 'X0' } });
+    fireEvent.click(screen.getByTestId('watch-add'));
+    expect(screen.getByTestId('watch-row-X0')).toBeInTheDocument();
+    expect(screen.queryByTestId('watch-empty')).toBeNull();
+    // 打ち込んだ欄は空に戻る（続けて足せる）
+    expect(screen.getByTestId('watch-device')).toHaveValue('');
+  });
+
+  it('reads the device in the vendor’s own spelling (三菱の X10 は IR の X8)', () => {
+    render(<WatchPanel profile={MITSUBISHI_FX5U} />);
+    fireEvent.change(screen.getByTestId('watch-device'), { target: { value: 'X10' } });
+    fireEvent.keyDown(screen.getByTestId('watch-device'), { key: 'Enter' });
+    expect(screen.getByTestId('watch-row-X10')).toBeInTheDocument();
+  });
+
+  it('refuses a name it cannot read, and says why, without adding a row', () => {
+    render(<WatchPanel profile={MITSUBISHI_FX5U} />);
+    fireEvent.change(screen.getByTestId('watch-device'), { target: { value: 'ほげ' } });
+    fireEvent.click(screen.getByTestId('watch-add'));
+    expect(screen.getByTestId('watch-error')).toBeInTheDocument();
+    expect(screen.getByTestId('watch-empty')).toBeInTheDocument();
+  });
+
+  it('refuses the same device twice', () => {
+    render(<WatchPanel profile={MITSUBISHI_FX5U} />);
+    fireEvent.change(screen.getByTestId('watch-device'), { target: { value: 'Y0' } });
+    fireEvent.click(screen.getByTestId('watch-add'));
+    fireEvent.change(screen.getByTestId('watch-device'), { target: { value: 'Y0' } });
+    fireEvent.click(screen.getByTestId('watch-add'));
+    expect(screen.getByTestId('watch-error')).toHaveTextContent('もう登録されています');
+    expect(screen.getAllByTestId('watch-row-Y0')).toHaveLength(1);
+  });
+
+  it('drops the device again when the trainee takes it off the list', () => {
+    render(<WatchPanel profile={MITSUBISHI_FX5U} />);
+    fireEvent.change(screen.getByTestId('watch-device'), { target: { value: 'Y0' } });
+    fireEvent.click(screen.getByTestId('watch-add'));
+    fireEvent.click(screen.getByTestId('watch-remove-Y0'));
+    expect(screen.queryByTestId('watch-row-Y0')).toBeNull();
+  });
+
+  /** 指摘 UX-14 ≡ UI-17: ON／OFF を色だけでなく形（■／□）でも示す。 */
+  it('marks ON with ■ and OFF with □, not colour alone', () => {
+    useStore.setState({
+      plcMonitor: {
+        tMs: 0,
+        scanCount: 1,
+        inputs: [true],
+        outputs: [false],
+        internals: {},
+        timers: {},
+        counters: {},
+        powered: {},
+      },
+    });
+    render(<WatchPanel profile={MITSUBISHI_FX5U} />);
+    fireEvent.change(screen.getByTestId('watch-device'), { target: { value: 'X0' } });
+    fireEvent.click(screen.getByTestId('watch-add'));
+    fireEvent.change(screen.getByTestId('watch-device'), { target: { value: 'Y0' } });
+    fireEvent.click(screen.getByTestId('watch-add'));
+    expect(screen.getByTestId('watch-row-X0')).toHaveTextContent('■');
+    expect(screen.getByTestId('watch-row-Y0')).toHaveTextContent('□');
+  });
+
+  it('says — for a device the current snapshot does not carry', () => {
+    render(<WatchPanel profile={MITSUBISHI_FX5U} />);
+    fireEvent.change(screen.getByTestId('watch-device'), { target: { value: 'M0' } });
+    fireEvent.click(screen.getByTestId('watch-add'));
+    expect(screen.getByTestId('watch-row-M0')).toHaveTextContent('—');
+  });
+});
+
+describe('キーの早見表への案内（指摘 PR-05）', () => {
+  it('tells the trainee how to open the overlay from the key table pane', () => {
+    render(<ShortcutHelp profile={MITSUBISHI_FX5U} />);
+    expect(screen.getByTestId('shortcuts-overlay-hint')).toHaveTextContent('Shift + ?');
+  });
+});
+// --- /Phase 7 Task 22 ---

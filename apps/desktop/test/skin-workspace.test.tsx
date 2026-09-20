@@ -402,3 +402,124 @@ describe('表記切替の入口（§10.7 / Task 8）', () => {
   });
 });
 // --- /Plan 4B Task 8 ---
+
+// --- Phase 7 Task 22（ウィンドウ構成とモニタ表示。設計 §5.5 / 指摘 LE-18・PR-05・UX-14） ---
+describe('画面構成は方言の panels だけで決まる（設計 §5.5）', () => {
+  it('shows the comment pane under the name the vendor uses, in every skin that names one', () => {
+    for (const profile of [MITSUBISHI_FX5U, OMRON_CP1E, JTEKT_PC10G, SHARP_JW300]) {
+      cleanup();
+      workspace(profile);
+      const name = profile.panels.comment;
+      if (name === undefined) {
+        expect(screen.queryByTestId('comment-panel'), profile.id).toBeNull();
+        continue;
+      }
+      expect(screen.getByTestId('comment-panel-summary'), profile.id).toHaveTextContent(name);
+    }
+    // 呼び名がメーカーで変わっていること（飾りの旗になっていない）
+    expect(OMRON_CP1E.panels.comment).not.toBe(MITSUBISHI_FX5U.panels.comment);
+  });
+
+  it('shows the watch pane only where the vendor names one, under that name', () => {
+    for (const profile of [MITSUBISHI_FX5U, OMRON_CP1E, JTEKT_PC10G, SHARP_JW300]) {
+      cleanup();
+      workspace(profile);
+      const name = profile.panels.watch;
+      if (name === undefined) {
+        expect(screen.queryByTestId('watch-panel'), profile.id).toBeNull();
+        expect(screen.queryByTestId('toolbar-watch'), profile.id).toBeNull();
+        continue;
+      }
+      expect(screen.getByTestId('watch-panel-summary'), profile.id).toHaveTextContent(name);
+      expect(screen.getByTestId('toolbar-watch'), profile.id).toHaveTextContent(name);
+    }
+    // PCwin風（JTEKT）は監視の欄を名乗らない＝欄が出ない側の実例
+    expect(JTEKT_PC10G.panels.watch).toBeUndefined();
+  });
+
+  it('names the output pane the way the vendor does (PCwin風 は「ステータスバー」)', () => {
+    workspace(JTEKT_PC10G);
+    expect(screen.getByTestId('output-summary')).toHaveTextContent('ステータスバー');
+    cleanup();
+    workspace(MITSUBISHI_FX5U);
+    expect(screen.getByTestId('output-summary')).toHaveTextContent('出力ウィンドウ');
+  });
+
+  it('draws exactly the status items the vendor names, in order (源は panels.status)', () => {
+    for (const profile of [MITSUBISHI_FX5U, OMRON_CP1E, JTEKT_PC10G, SHARP_JW300]) {
+      cleanup();
+      workspace(profile);
+      const shown = Array.from(
+        screen.getByTestId('skin-status').querySelectorAll('[data-testid^="status-"]'),
+      ).map((item) => item.getAttribute('data-testid'));
+      expect(shown, profile.id).toEqual(
+        (profile.panels.status ?? []).map((item) => `status-${item}`),
+      );
+    }
+  });
+
+  it('puts 書込み／読出し／モニタ on the title bar as well as the status bar (設計 §5.5)', () => {
+    workspace(MITSUBISHI_FX5U);
+    expect(screen.getByTestId('skin-title-mode')).toHaveTextContent('書込');
+    expect(screen.getByTestId('status-mode')).toHaveTextContent('書込');
+    act(() => {
+      fireEvent.click(screen.getByTestId('toolbar-monitor-start'));
+    });
+    expect(screen.getByTestId('skin-title-mode')).toHaveTextContent('モニタ');
+    // 切り替えのキーは方言から引く（前提#22。F2／F3 を直書きしない）
+    const hint = screen.getByTestId('skin-title-mode').getAttribute('title') ?? '';
+    expect(hint).toContain(
+      MITSUBISHI_FX5U.shortcuts.find((entry) => entry.action === 'write-mode')?.keys,
+    );
+  });
+
+  /**
+   * 指摘 LE-18: 幅の実測が `window.resize` だけで、表示切替や `<details>` の開閉に追従
+   * しなかった。`ResizeObserver` で欄そのものを見るようにしたので、窓の大きさが変わらない
+   * まま欄だけが狭くなっても列数が取り直される。
+   */
+  it('re-measures the editing pane with a ResizeObserver, not only on window resize (LE-18)', () => {
+    const observed: Element[] = [];
+    let fire: (() => void) | undefined;
+    class FakeResizeObserver {
+      constructor(callback: () => void) {
+        fire = callback;
+      }
+      observe(element: Element): void {
+        observed.push(element);
+      }
+      disconnect(): void {
+        /* 何もしない */
+      }
+      unobserve(): void {
+        /* 何もしない */
+      }
+    }
+    vi.stubGlobal('ResizeObserver', FakeResizeObserver);
+    try {
+      workspace(MITSUBISHI_FX5U);
+      // 編集領域そのものを見ている（窓ではない）
+      expect(observed).toContain(screen.getByTestId('workspace-main'));
+      // 幅を細くして観測を1回起こすと、格子の列数が測り直される
+      vi.spyOn(screen.getByTestId('workspace-main'), 'getBoundingClientRect').mockReturnValue({
+        width: 320,
+        height: 400,
+        x: 0,
+        y: 0,
+        top: 0,
+        left: 0,
+        right: 320,
+        bottom: 400,
+        toJSON: () => ({}),
+      });
+      const before = screen.getByTestId('ladder-grid').getAttribute('data-cols');
+      act(() => {
+        fire?.();
+      });
+      expect(screen.getByTestId('ladder-grid').getAttribute('data-cols')).not.toBe(before);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});
+// --- /Phase 7 Task 22 ---

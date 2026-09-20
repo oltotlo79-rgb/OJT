@@ -514,3 +514,65 @@ describe('未変換と未完成の見え方（Phase 7 設計 §5.2 / §5.4）', 
     expect(screen.queryByTestId('no-output-n1')).toBeNull();
   });
 });
+
+// --- Phase 7 Task 22（色だけに頼らない通電表示。設計 §5.5 / 指摘 UX-14 ≡ UI-17） ---
+describe('通電の手がかりは色だけではない（指摘 UX-14 ≡ UI-17）', () => {
+  /** 1行目の X0 が閉じて左右とも通電している状態。 */
+  function energised(): void {
+    const bits = offBits(1).split('');
+    bits[0] = '1';
+    bits[1] = '1';
+    useStore.setState({ plcMonitor: monitorSnapshot({ n1: bits.join(''), n2: offBits(1) }) });
+  }
+
+  it('draws a thin solid outline over the energised cell in every skin', () => {
+    for (const profile of [MITSUBISHI_FX5U, OMRON_CP1E, SHARP_JW300]) {
+      cleanup();
+      energised();
+      render(
+        <LadderGrid
+          program={sample()}
+          {...base}
+          profile={profile}
+          theme={skinThemeOf(profile)}
+          mode="monitor"
+        />,
+      );
+      const outline = within(screen.getByTestId('cell-n1:0:0')).getByTestId('powered-outline');
+      // 枠は「ある／無い」で読める手がかりなので、塗りではなく線で描く
+      expect(outline.tagName.toLowerCase(), profile.id).toBe('rect');
+      expect(outline.getAttribute('width'), profile.id).not.toBe('0');
+    }
+  });
+
+  it('puts no outline on a cell that is not energised, and none at all outside monitor mode', () => {
+    energised();
+    render(<LadderGrid program={sample()} {...base} mode="monitor" />);
+    expect(within(screen.getByTestId('cell-n2:0:0')).queryByTestId('powered-outline')).toBeNull();
+    cleanup();
+    energised();
+    render(<LadderGrid program={sample()} {...base} />);
+    expect(screen.queryAllByTestId('powered-outline')).toHaveLength(0);
+  });
+
+  /**
+   * GX Works3 風は帯（`block`）、ほかはパワーフロー（`flow`）だが、**枠はどちらにも付く**。
+   * 帯を持たないスキンでも色以外の手がかりが残ることを確かめる。
+   */
+  it('keeps the outline on skins that have no powered block (flow style)', () => {
+    energised();
+    render(
+      <LadderGrid
+        program={sample()}
+        {...base}
+        profile={OMRON_CP1E}
+        theme={skinThemeOf(OMRON_CP1E)}
+        mode="monitor"
+      />,
+    );
+    const cell = within(screen.getByTestId('cell-n1:0:0'));
+    expect(cell.queryByTestId('powered-block')).toBeNull();
+    expect(cell.getByTestId('powered-outline')).toBeInTheDocument();
+  });
+});
+// --- /Phase 7 Task 22 ---

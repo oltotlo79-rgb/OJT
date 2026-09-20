@@ -1,4 +1,4 @@
-import type { JSX, ReactNode } from 'react';
+import { useEffect, useState, type JSX, type ReactNode } from 'react';
 import styles from './ladder.module.css';
 
 /**
@@ -14,6 +14,7 @@ export function SidePanel({
   testId,
   label,
   open = false,
+  openKey,
   children,
 }: {
   /** 見出し（`<summary>` に出す文字）。 */
@@ -27,11 +28,29 @@ export function SidePanel({
    * 開閉の状態は利用者が変えられるので、ここは**初期値**でしかない。
    */
   open?: boolean;
+  /**
+   * **外から開かせる**合図（Phase 7 Task 22）。値が変わるたびに枠を開く。ツールバーの
+   * 「ウォッチ」のように「その欄を出す」ことが目的のボタンから使う。開閉そのものは
+   * 変わらず利用者のもので、この値は初期値を上書きするのではなく「いま開け」と言うだけである。
+   */
+  openKey?: number | undefined;
   children: ReactNode;
 }): JSX.Element {
+  const [expanded, setExpanded] = useState(open);
+  useEffect(() => {
+    if (openKey === undefined) return;
+    setExpanded(true);
+  }, [openKey]);
   return (
     <section className={styles.side} aria-label={label ?? title} data-testid={testId}>
-      <details className={styles.sideGroup} open={open} data-testid={`${testId}-details`}>
+      <details
+        className={styles.sideGroup}
+        open={expanded}
+        onToggle={(event) => {
+          setExpanded(event.currentTarget.open);
+        }}
+        data-testid={`${testId}-details`}
+      >
         <summary className={styles.sideSummary} data-testid={`${testId}-summary`}>
           <h2 className={styles.sideTitle}>{title}</h2>
         </summary>

@@ -6,7 +6,6 @@ export const OMRON_SKIN: SkinTheme = {
   id: 'omron',
   titleBar: 'CX-Programmer 風',
   layout: { treeWidthPx: 220, outputPane: 'window', outputHeightPx: 140 },
-  statusItems: ['mode', 'plc-state', 'scan'],
   colors: {
     canvas: '#FFFFFF',
     grid: '#E3E8EE',
