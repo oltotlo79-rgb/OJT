@@ -15,8 +15,9 @@ PLCラダーの作成を、パソコン上の3D練習盤とシーケンス図エ
 - **回路図エディタ**: 有接点シーケンス回路をシーケンス図として描き、机上で検算してから
   3D盤の配線ガイドに従って配線する練習ができます。
 
-内蔵課題は複数モードにわたって同梱されており、追加のダウンロードなしにオフラインで
-練習を開始できます。
+内蔵課題は合計 **72題**（モード B 20 / C1 12 / C2 20 / D 20）を同梱しており、追加の
+ダウンロードなしにオフラインで練習を開始できます。各課題には級（3級／2級／1級）のほか、
+同じ級の中の難易度（1〜5）が付いています。
 
 ## ヘルプとPDF取扱説明書
 
@@ -67,22 +68,34 @@ PLCラダーの作成を、パソコン上の3D練習盤とシーケンス図エ
 
 ## 開発者向け
 
-このリポジトリは pnpm ワークスペースです（Node.js 22 以上）。
+このリポジトリは pnpm ワークスペースです（Node.js 22 以上。`.npmrc` の `engine-strict=true`
+により対応外の Node.js では `pnpm install` が失敗します）。開発の作法全般（生成物の扱い・
+`BASELINE` の下げ方・git の作法など）は `CONTRIBUTING.md` にまとめています。
 
 ```
 pnpm install
-pnpm -r test
-pnpm -r typecheck && pnpm lint
+pnpm verify              # = typecheck + lint + -r test。コミット前に1回通す
 pnpm --filter @ojt/desktop dev
 pnpm --filter @ojt/desktop build
 pnpm --filter @ojt/desktop e2e
 pnpm --filter @ojt/desktop dist
 ```
 
+**注意（`e2e` の直後に `dist` を走らせない）**: `pnpm --filter @ojt/desktop e2e` は
+`manual-shots.spec.ts` が追跡下の `docs/manual/images/` を**撮り直して上書き**します。
+`dist` はその画像を取扱説明書PDFへ焼き込むため、**`e2e` の後・`dist` の前には必ず
+`git status --short` が空であることを確認してください**（空でなければ
+`git checkout -- docs/manual` で撮り直し分を戻します）。空でないまま `dist` すると、
+コミットしたツリーではなく撮り直した図で配布物が作られます。`e2e` と `dist` は共有の
+作業ツリーではなく使い捨ての worktree で行ってください。詳しい手順は `CONTRIBUTING.md`
+「§6 `dist` の前に作業ツリーを清浄にする」を参照してください。
+
 ## ライセンスと商標
 
-本ソフトウェアは教育目的の社内利用を前提としたツールです。パッケージ名（`@ojt/*`）は
-社内の開発上の名称であり、利用者向けの製品名は「電気教育ツール」です。
+本ソフトウェアは教育目的の社内利用を前提としたツールです。利用条件は `LICENSE`
+（平易な日本語による社内利用条件。オープンソースライセンスではありません）を参照して
+ください。パッケージ名（`@ojt/*`）は社内の開発上の名称であり、利用者向けの製品名は
+「電気教育ツール」です。
 
 MELSEC / MELSEC iQ-F / MELSOFT / GX Works3 は三菱電機株式会社の商標または登録商標です。
 SYSMAC / CP1E / CP1L / CX-Programmer / CX-One はオムロン株式会社の商標または登録商標です。

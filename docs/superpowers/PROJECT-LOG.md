@@ -1,4 +1,11 @@
-# Phase 2 引き継ぎ（2026-09-14 シャットダウン時点）
+# PROJECT-LOG（開発の記録）
+
+**位置づけ**: このファイルは `docs/superpowers/handoff/2026-09-14-phase2-handoff.md` を
+改名したものである（QA-21。Phase 7 Task 33）。実態は Phase 2〜7 の作業ログ・事故記録・
+引き継ぎメモの集積であり、「Phase 2 引き継ぎ」という当初の名前が示す範囲を超えている。
+**今後の作業ログも本ファイルに追記する**（新しい `handoff/*.md` は作らない）。運用規約の
+正本は `CONTRIBUTING.md`、配布手順の正本は README とリリースノート（`docs/releases/*.md`）
+にあり、本ファイルは経緯・事故・申し送りの記録に特化する。
 
 `briefs/` に Task 17 ブリーフ（`brief-2a-g.md`）のほか、D2/E/F14-16/F15 の実装ブリーフ、
 停滞監視スクリプト（`longproc.sh`）、待機・監視メモ（`deferred.txt`, `agents.txt`）を同梱。
@@ -474,4 +481,13 @@ Phase 4〜6 は作業ツリーを複数エージェントで共有しており�
 
 利用者の明示の指示（2026-09-20 08:35「リリースまでして作業終了してね」）を受けて `v1.0.0` を公開した。対象コミットは `d004d7b`（取扱説明書の図の最終レビュー直し）で、タグはその直後のリリースノートのコミット（文書のみ）に打っている。検証はすべて専用 worktree `OJT-wt-release` で行い、`pnpm -r test` 265ファイル/3859件・`pnpm -r typecheck`・`pnpm lint` が無警告、Playwright 全E2E が **2回連続で 66件成功・1件スキップ**、`dist` と `check-dist.mjs` が成功（NSIS 117,438,886 バイト／ポータブル zip 159,347,929 バイト／同梱課題 28題／`app.asar`／`manual.pdf` 2,379,860 バイト・A4 67ページ・図17枚）。配布した実体（`release/win-unpacked`）と、`%TEMP%` に展開したポータブル版の両方を `_electron.launch` で起動し、ホーム画面の描画とモードB課題の起動を確認した。**チェックリスト 6（実機 内蔵GPU での 60fps 測定）・7（オフライン Windows 11 への NSIS インストールと課題の完走）・8b（「説明書（PDF）を開く」が OS 既定ビューアで開くこと）は実機と別端末が要るため未実施**で、`docs/releases/v1.0.0.md` の「未実施の確認」に明記した。画面品質の機械点検の残件は 25件（小さすぎる文字 24・折り返し 1、blocking 0）。
 
-**注意（E2E の副作用）**: `pnpm --filter @ojt/desktop e2e` は `manual-shots.spec.ts` で取扱説明書の図を**作業ツリーの `docs/manual/images/` に撮り直す**。`build-manual.mjs` はそのフォルダを `resources/manual/images/` へ複写し、`print-manual.mjs` がそこから PDF を刷るので、**E2E のあとに `dist` を走らせる前は `git checkout -- docs/manual` で撮り直し分を戻す**こと（戻さないと、タグ付けしたツリーではなく撮り直した図で PDF が焼ける）。今回の撮り直し分は PNG が数バイト、`shot-geometry.json` の実測矩形が1か所2px 違うだけで中身は同じだったが、再現性のため戻してから `dist` した。
+**注意（E2E の副作用。正本は README とリリース手順へ移した）**: この節はかつて本ファイルの
+最終行にしかなく、配布工程で最も見落としやすい注意だった（QA-21）。**正本は
+`README.md`「開発者向け」と `CONTRIBUTING.md`「リリース手順」に移してある**ので、そちらを
+参照すること。以下は当時の記述をそのまま残す参考記録: `pnpm --filter @ojt/desktop e2e` は
+`manual-shots.spec.ts` で取扱説明書の図を**作業ツリーの `docs/manual/images/` に撮り直す**。
+`build-manual.mjs` はそのフォルダを `resources/manual/images/` へ複写し、`print-manual.mjs`
+がそこから PDF を刷るので、**E2E のあとに `dist` を走らせる前は `git checkout -- docs/manual`
+で撮り直し分を戻す**こと（戻さないと、タグ付けしたツリーではなく撮り直した図で PDF が焼ける）。
+今回の撮り直し分は PNG が数バイト、`shot-geometry.json` の実測矩形が1か所2px 違うだけで
+中身は同じだったが、再現性のため戻してから `dist` した。
