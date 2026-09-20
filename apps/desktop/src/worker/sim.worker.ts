@@ -648,6 +648,14 @@ function handle(command: SimCommand): void {
       }
       break;
     }
+    default: {
+      // 網羅性ガード（DW-2）: `SimCommand` に新しい種別を足してこの switch へ対応を足し忘れると、
+      // ここが型エラーになって気付ける。実行時に未知の `type` が来たとき（tsc をすり抜けた値・
+      // 壊れたメッセージ）は黙って何もしないのではなく例外にし、`self.onmessage` の catch が
+      // `{ type: 'error' }` として renderer へ返す（§13 #6）。
+      command satisfies never;
+      throw new Error(`未知のコマンドです: ${String((command as { type: unknown }).type)}`);
+    }
   }
 }
 

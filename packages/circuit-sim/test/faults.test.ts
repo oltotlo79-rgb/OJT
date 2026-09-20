@@ -63,6 +63,18 @@ describe('faults', () => {
     expect(b2?.kind === 'contact' ? b2.fault : undefined).toBeUndefined();
   });
 
+  it('溶着は同じ組のもう一方の接点に既にある故障を上書きしない（CS-13）', () => {
+    const netlist = fixture();
+    // 先に b1（同じ組のもう一方）へ接触不良を入れておく。
+    injectFault(netlist, { partId: 'CR1', elementIndex: 1 }, 'contact-resistive');
+    // a1 を溶着させる。適用順で b1 の既存の故障が消えてはならない。
+    injectFault(netlist, { partId: 'CR1', elementIndex: 2 }, 'contact-welded');
+    const a1 = findElement(netlist, 'CR1:a1');
+    const b1 = findElement(netlist, 'CR1:b1');
+    expect(a1?.kind === 'contact' ? a1.fault : undefined).toEqual({ kind: 'welded' });
+    expect(b1?.kind === 'contact' ? b1.fault : undefined).toEqual({ kind: 'resistive', ohms: 500 });
+  });
+
   it('コイル断線・レアショート・ランプ断線（§5.1.3 / §5.4）', () => {
     const netlist = fixture();
     injectFault(netlist, { partId: 'CR1', elementIndex: 0 }, 'coil-layer-short');

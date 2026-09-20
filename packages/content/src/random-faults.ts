@@ -78,9 +78,18 @@ export interface ResolveFaultsOptions {
  * `fellBack` は「引き直しに失敗して `random.fallback` を使った」ことを表す（明示リストの課題と、
  * 引き直しで組合せを作れた場合は `false`）。2B は作業ファイルに残す解決結果がランダム生成か
  * フォールバックかを、これで区別できる。
+ *
+ * `seed`（CT-14）は実際に乱数へ使った種で、ランダム指定の課題を解決したときだけ値を持つ
+ * （明示 `faults` 配列の課題は乱数を使わないので `undefined`）。`seed` を渡さずに呼ぶと内部で
+ * `Date.now()` を使うため、再開時に同じ結果を再現するにはこの値を作業ファイルへ保存し、次回は
+ * `resolveFaults()` を呼び直さずに解決済みの `value` をそのまま渡すこと（`options.seed` に
+ * この値を渡しても、時計が動いた分だけ `spec.count` 超過の引き直しが起きれば別の結果になりうる
+ * ため、再現には `value` を渡す方式のみを使う）。この項目を型に持たせることで、呼び出し側が
+ * 種を保存し忘れたまま「保存した」つもりになる事故を防ぐ（コメントだけでは強制できなかった）。
  */
 export type ResolveFaultsResult =
-  { ok: true; value: FaultSpecData[]; fellBack: boolean } | { ok: false; errors: ProblemIssue[] };
+  | { ok: true; value: FaultSpecData[]; fellBack: boolean; seed: number | undefined }
+  | { ok: false; errors: ProblemIssue[] };
 
 /** 役割が割り当てられ、部品が装着されているソケットの部品ID（チェック用は除く）。§9.2 */
 function faultablePartIds(session: BoardSession): string[] {
@@ -202,7 +211,9 @@ export function resolveFaults(
   options: ResolveFaultsOptions = {},
 ): ResolveFaultsResult {
   const faults = problem.faults;
-  if (!isRandomFaults(faults)) return { ok: true, value: [...faults], fellBack: false };
+  if (!isRandomFaults(faults)) {
+    return { ok: true, value: [...faults], fellBack: false, seed: undefined };
+  }
   const spec: RandomFaultsData = faults.random;
   const unknown = spec.types.filter(
     (kind) => !(RANDOM_FAULT_KINDS as readonly FaultKind[]).includes(kind),
@@ -242,7 +253,8 @@ export function resolveFaults(
   const seedIsExplicit = options.seed !== undefined || spec.seed !== undefined;
   const maxMillis = options.maxMillis ?? (seedIsExplicit ? undefined : MAX_RANDOM_FAULT_MILLIS);
   const deadline = maxMillis === undefined ? undefined : Date.now() + maxMillis;
-  const random = mulberry32(options.seed ?? spec.seed ?? Date.now());
+  const seed = options.seed ?? spec.seed ?? Date.now();
+  const random = mulberry32(seed);
 
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     if (deadline !== undefined && Date.now() >= deadline) break;
@@ -278,7 +290,7 @@ export function resolveFaults(
     }
     if (!complete) continue;
     if (isUsable(problem, board, reference, candidate, expected.log, signals)) {
-      return { ok: true, value: candidate, fellBack: false };
+      return { ok: true, value: candidate, fellBack: false, seed };
     }
   }
   // 引き直しに失敗したときだけ通る道。`fallback` は課題データなので、ここではじめて
@@ -296,5 +308,5 @@ export function resolveFaults(
       ],
     };
   }
-  return { ok: true, value: fallback, fellBack: true };
+  return { ok: true, value: fallback, fellBack: true, seed };
 }

@@ -97,4 +97,23 @@ describe('内蔵C2課題', () => {
       expect(mismatchCount(problem, []), problem.id).toBe(0);
     }
   });
+
+  it('each explicit fault の wireId is a generated sw-NNN wire (SC-05)', () => {
+    // `sw-NNN` は回路図から生成順に振られる通し番号（schematic-core `assign.ts` の
+    // `chainWires()`）。回路図を編集すると番号が付け替わり得るので、課題データの
+    // `faults[].target.wireId` が実際に生成される集合に含まれていることをここで固定する。
+    for (const problem of BUILTIN_INSPECT_REPAIR_PROBLEMS) {
+      const built = buildReferenceSession(problem, JIPM_BOARD);
+      if (!built.ok) throw new Error(JSON.stringify(built.errors));
+      const generated = new Set<string>(built.value.session.wires.map((wire) => wire.id));
+      if (!Array.isArray(problem.faults)) continue; // ランダム故障はここでは扱わない（内蔵C2は全件明示リスト）
+      for (const fault of problem.faults) {
+        if ('wireId' in fault.target) {
+          expect(generated.has(fault.target.wireId), `${problem.id}: ${fault.target.wireId}`).toBe(
+            true,
+          );
+        }
+      }
+    }
+  });
 });

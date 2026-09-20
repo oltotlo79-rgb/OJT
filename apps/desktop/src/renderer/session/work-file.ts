@@ -25,7 +25,7 @@ import {
   type InspectPartAnswer,
   type SupportedProblem,
 } from '@ojt/content';
-import { IR_COLS, MAX_ROWS, type LadderProgram } from '@ojt/ladder-core';
+import { IR_COLS, MAX_ROWS, SPECIAL_INDEXES, type LadderProgram } from '@ojt/ladder-core';
 import { IMPLEMENTED_DIALECT_IDS, isDialectId } from '@ojt/plc-dialects';
 import { SCHEMATIC_FORMAT_VERSION, type SchematicDocument } from '@ojt/schematic-core';
 import { WORK_FILE_FORMAT_VERSION, type WorkFile } from '../../shared/ipc.js';
@@ -334,14 +334,22 @@ const CELL_KINDS = new Set([
   'empty',
 ]);
 
-/** デバイスとして読めるか。 */
+/**
+ * デバイスとして読めるか。§10.3
+ * PD-3: `kind === 'special'` のときは `SPECIAL_INDEXES`（常時ON／初期パルス／1秒クロックの3つ）
+ * だけを受け入れる。`ladder-core` の `device()` はこの制約を作る側で守っているが、作業ファイルは
+ * 信頼境界の外から来るので、ここで確かめずに通すと `SPECIAL_INDEXES.includes(index)` を前提に
+ * 「到達しない」とコメントされたランタイムの分岐へ壊れた番号のまま届いてしまう。
+ */
 function isDeviceLike(value: unknown): boolean {
   if (!isRecord(value)) return false;
   const kind = value['kind'];
   const index = value['index'];
   const kinds = ['input', 'output', 'internal', 'timer', 'counter', 'special'];
   if (typeof kind !== 'string' || !kinds.includes(kind)) return false;
-  return typeof index === 'number' && Number.isInteger(index) && index >= 0;
+  if (!(typeof index === 'number' && Number.isInteger(index) && index >= 0)) return false;
+  if (kind === 'special' && !SPECIAL_INDEXES.includes(index)) return false;
+  return true;
 }
 
 /** セルとして読めるか（`kind` ごとに要る項目だけ見る）。 */

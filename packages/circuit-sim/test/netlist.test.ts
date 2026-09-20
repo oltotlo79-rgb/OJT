@@ -14,6 +14,7 @@ import {
   NetlistError,
   removeWire,
   terminalId,
+  validateNetlist,
   wireCountAt,
 } from '../src/index.js';
 import { net, t, w } from './helpers/circuits.js';
@@ -80,5 +81,32 @@ describe('netlist', () => {
     expect(findPart(netlist, 'XX')).toBeUndefined();
     expect(findElement(netlist, 'PL1:load')?.kind).toBe('load');
     expect(findElement(netlist, 'nope')).toBeUndefined();
+  });
+
+  it('部品IDの重複を duplicate-part-id として報告する（CS-05）', () => {
+    // `findPart` は先勝ち、Map経由の読み手は後勝ちになりうるため、この不整合を validateNetlist が拾う。
+    const netlist = net([createPowerSupply('PS'), createPowerSupply('PS')], []);
+    const issues = validateNetlist(netlist);
+    expect(
+      issues.some(
+        (i) => i.kind === 'duplicate-part-id' && i.ownerKind === 'part' && i.ownerId === 'PS',
+      ),
+    ).toBe(true);
+  });
+
+  it('要素IDの重複を duplicate-element-id として報告する（部品IDが違っても検出する。CS-05）', () => {
+    const netlist = net([createPowerSupply('PS1'), createPowerSupply('PS2')], []);
+    const second = netlist.parts[1]?.elements[0];
+    if (second === undefined) throw new Error('PS2:source not found');
+    second.id = 'PS1:source'; // 別部品の要素IDと衝突させる
+    const issues = validateNetlist(netlist);
+    expect(
+      issues.some(
+        (i) =>
+          i.kind === 'duplicate-element-id' &&
+          i.ownerKind === 'element' &&
+          i.ownerId === 'PS1:source',
+      ),
+    ).toBe(true);
   });
 });

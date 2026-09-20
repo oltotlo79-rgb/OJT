@@ -517,6 +517,16 @@ function orderGroups(groups: readonly ChainGroup[]): ChainGroup[] | undefined {
  * - 残り1本の区間は鎖の端にしか置けない。
  *
  * 同じ組の端子が2つの節点に分かれていないことは `checkFixedBonds` が先に保証している。
+ *
+ * **電線IDの契約（SC-05）**: 生成する電線の `id` は `sw-NNN`（`wires.length + 1` から作る
+ * 生成順の通し番号。下の `wires.push` を参照）で、回路図の節点の並び・各節点内の端子の並びが
+ * 変わればNNNも変わる。課題JSON（モードC2）の `faults[].target.wireId` はこの `sw-NNN` を
+ * そのまま書いているので、**回路図（`schematic.rungs`）を1要素でも足す・消す・並び替えると、
+ * 既存の `wireId` が別の電線を指すようになりうる**（IDが存在しなくなるわけではないので
+ * エラーにはならず、静かに別の箇所へ故障が付け替わる）。回路図を編集したら、課題の
+ * `faults[].target.wireId` を実際に生成される集合（`buildReferenceSession()` が返す
+ * `session.wires` の `id`）から取り直すこと。内蔵C2課題はこの対応が壊れていないことを
+ * `packages/content/test/builtin-inspect-repair.test.ts` の固定テストで縛っている。
  */
 function chainWires(nets: Nets, roles: SocketRoles, color: WireColor): Outcome<WireSpec[]> {
   const fixedCount = fixedWireCounts(roles);

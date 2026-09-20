@@ -174,6 +174,23 @@ describe('Simulation Worker の基本動作（§4.3）', () => {
     h.advance(200);
     expect(h.snapshots.length).toBeGreaterThan(before);
   });
+
+  it('未知のコマンド種別は黙って無視せず、理由付きで断る（DW-2）', async () => {
+    const h = await boot();
+    h.send({ type: 'load', problemId: 'b-001', session: referenceSession() });
+    h.advance(100);
+    const before = h.snapshots.length;
+
+    // `SimCommand` に無い `type` を実行時に送る（tsc をすり抜けた壊れたメッセージを模す）。
+    h.send({ type: 'not-a-real-command' } as unknown as SimCommand);
+    expect(h.errors).toHaveLength(1);
+    expect(h.errors[0]?.message).toContain('未知のコマンドです');
+    expect(h.errors[0]?.fatal).toBe(false);
+
+    // 1件断られてもループは回り続ける。
+    h.advance(200);
+    expect(h.snapshots.length).toBeGreaterThan(before);
+  });
 });
 
 describe('追従ループの例外（§13 #6）', () => {

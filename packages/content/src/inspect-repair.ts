@@ -74,7 +74,7 @@ export function buildInspectRepairCircuit(
   const faults: ResolveFaultsResult =
     options.resolvedFaults === undefined
       ? resolveFaults(problem, board, options)
-      : { ok: true, value: [...options.resolvedFaults], fellBack: false };
+      : { ok: true, value: [...options.resolvedFaults], fellBack: false, seed: options.seed };
   if (!faults.ok) return faults;
   const session = built.value.session;
   const applied = applyFaults(session, faults.value, board);

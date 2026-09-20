@@ -390,7 +390,10 @@ export function stepTester(
     state.kind === 'analog' && Math.abs(reading.targetDeg - eased) < NEEDLE_SNAP_DEG
       ? reading.targetDeg
       : eased;
-  const rangeKey = `${state.mode}:${state.voltRange}`;
+  // CS-12: `kind`（digital/analog）と、モードに応じたレンジ（Ωは voltRange ではなく ohmRange）を
+  // 鍵に含める。voltRange だけだと、種別やΩレンジが変わっても同じ鍵になり、将来 OHM レンジでも
+  // `range-exceeded` を出すようにした瞬間に重複発行の抑制が誤って効いてしまう。
+  const rangeKey = `${state.kind}:${state.mode}:${state.mode === 'OHM' ? state.ohmRange : state.voltRange}`;
   if (reading.overRange && isNewRangeExceeded(sim, rangeKey, state.black, state.red)) {
     sim.events.emit({
       type: 'hazard',

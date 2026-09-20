@@ -17,6 +17,7 @@ import {
   NetlistError,
   removeWire as removeWireFromNetlist,
   resetNetlist,
+  validateNetlist,
 } from './netlist.js';
 import type { Nets, Netlist, Wire } from './netlist.js';
 import { clampPreset } from './parts.js';
@@ -140,11 +141,22 @@ export class Simulation {
    * `resetNetlist` でリセットしてから内部状態を組み立てる。これにより、他の `Simulation` が
    * 同じネットリストを操作した後でも、新しいインスタンスは解放・非通電の状態から始まる
    * （故障〈`fault`〉と `wire.open` は意図的に対象外。§5.4 の責務）。
+   *
+   * `validateNetlist()` に問題（未知の端子・電線IDの重複・自己ループ・部品IDの重複・
+   * 要素IDの重複）が1件でもあれば `SimulationError` を投げる（CS-09）。壊れた作業ファイルや
+   * 課題データから作ったネットリストをここで断ち、`findPart`／`findElement` の先勝ちと
+   * 内部 `Map` の後勝ちが食い違ったまま解いてしまうのを防ぐ（CS-05）。
    */
   constructor(netlist: Netlist, options: SimulationOptions = {}) {
     const tickMs = options.tickMs ?? TICK_MS;
     if (!(Number.isFinite(tickMs) && tickMs > 0)) {
       throw new SimulationError(`tickMs は有限の正の値が必要です: ${String(options.tickMs)}`);
+    }
+    const issues = validateNetlist(netlist);
+    if (issues.length > 0) {
+      throw new SimulationError(
+        `ネットリストが不正です: ${issues.map((issue) => issue.message).join('; ')}`,
+      );
     }
     this.netlist = netlist;
     this.tickMs = tickMs;
@@ -457,8 +469,13 @@ export class Simulation {
   /**
    * 1tick進める。節点数上限の超過や未知の端子など、内部で起きた `NetlistError` は
    * メッセージをそのままに `SimulationError` へ包み直して投げる（このクラスのエラー型を統一する）。
+   * `dtMs` はコンストラクタの `tickMs` と同じ検査（有限の正の値）を通す（CS-09）。非有限・0以下の
+   * `dtMs` を許すと `tMs`（非減少の前提。§5.2）が壊れ、`updateTimers` の経過時間計算も破綻する。
    */
   step(dtMs: number = this.tickMs): void {
+    if (!(Number.isFinite(dtMs) && dtMs > 0)) {
+      throw new SimulationError(`dtMs は有限の正の値が必要です: ${String(dtMs)}`);
+    }
     this.rethrowNetlistErrors(() => {
       this.syncSources();
       const nets = buildNets(this.netlist);
@@ -477,8 +494,14 @@ export class Simulation {
     });
   }
 
-  /** 指定時刻に達するまで進める。 */
+  /**
+   * 指定時刻に達するまで進める。`untilMs` が非有限（`Infinity`／`NaN`）だと Worker を
+   * 永久にブロックするため、`SimulationError` を投げて断る（CS-09）。
+   */
   run(untilMs: number): void {
+    if (!Number.isFinite(untilMs)) {
+      throw new SimulationError(`untilMs は有限の値が必要です: ${String(untilMs)}`);
+    }
     while (this.elapsedMs < untilMs) this.step();
   }
 

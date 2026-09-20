@@ -6,7 +6,13 @@ import {
 } from './elements.js';
 import type { ContactElement, Element, LoadElement } from './elements.js';
 import type { TerminalId } from './ids.js';
-import { findPart, findWire, knownTerminals } from './netlist.js';
+import {
+  exceedsWireLimit,
+  findPart,
+  findWire,
+  knownTerminals,
+  MAX_WIRES_PER_TERMINAL,
+} from './netlist.js';
 import type { Netlist } from './netlist.js';
 
 /** 故障の種別。§5.4 */
@@ -58,6 +64,10 @@ function asLoad(el: Element, ...kinds: LoadElement['load'][]): LoadElement {
 /**
  * 溶着した接点と同じ組のもう一方の接点を機械的に開く。§7.5 / ゴールデンケース#19
  * （鉄片が吸着したまま固まるため、a接点が溶着すると同じ組のb接点は開いたままになる）
+ *
+ * CS-13: もう一方の接点に既に故障（例: `contact-resistive`）が入っていたら**上書きしない**
+ * （`??=`）。無言で `{kind:'open'}` に差し替えると、2件の故障を同じ組へ注入したときの結果が
+ * 適用順に左右され、課題データが意図した故障が消えてしまう。
  */
 function openPairedContact(netlist: Netlist, welded: ContactElement): void {
   const part = findPart(netlist, welded.driverId);
@@ -65,7 +75,7 @@ function openPairedContact(netlist: Netlist, welded: ContactElement): void {
   for (const el of part.elements) {
     if (el.kind !== 'contact') continue;
     if (el.group !== welded.group || el.contact === welded.contact) continue;
-    el.fault = { kind: 'open' };
+    el.fault ??= { kind: 'open' };
   }
 }
 
@@ -102,7 +112,23 @@ export function injectFault(
         if (!knownTerminals(netlist).has(param)) {
           throw new FaultError(`誤配線先の端子 ${param} はどの部品にも存在しません`);
         }
+        // CS-14: 付け替え先が反対側の端子と同じだと、自己ループ電線（`validateNetlist` が
+        // 赤くなる状態）を故障注入自身が作ってしまう。
+        if (param === wire.from) {
+          throw new FaultError(
+            `誤配線先が電線 ${wire.id} の反対側の端子と同じです（自己ループ）: ${param}`,
+          );
+        }
+        const originalTo = wire.to;
         wire.to = param;
+        // CS-14: 付け替え先が既に本数上限（1端子2本）まで配線されていると、故障注入自身が
+        // 1端子3本を作ってしまう。上限を超えるなら付け替えを取り消して拒否する。
+        if (exceedsWireLimit(netlist, param)) {
+          wire.to = originalTo;
+          throw new FaultError(
+            `誤配線先の端子 ${param} は本数上限（${String(MAX_WIRES_PER_TERMINAL)}本）を超えます`,
+          );
+        }
       }
       return;
     }

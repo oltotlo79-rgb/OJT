@@ -323,6 +323,29 @@ describe('robustness: wire-misrouted の付け替え先端子の検証（Task8e 
     injectFault(netlist, { wireId: 'w2' }, 'wire-misrouted', terminalId('CR1', '9'));
     expect(findWire(netlist, 'w2')?.to).toBe('CR1.9');
   });
+
+  it('付け替え先が反対側の端子と同じ（自己ループ）だと FaultError（CS-14）', () => {
+    const netlist = misroutedFixture();
+    // w2 は PB1.a → CR1.14。反対側の端子（PB1.a）への付け替えは自己ループになる。
+    expect(() =>
+      injectFault(netlist, { wireId: 'w2' }, 'wire-misrouted', terminalId('PB1', 'a')),
+    ).toThrow(FaultError);
+    // 拒否されたら電線はそのまま（付け替え未反映）。
+    expect(findWire(netlist, 'w2')?.to).toBe('CR1.14');
+  });
+
+  it('付け替え先が既に本数上限（2本）まで配線されていると FaultError（CS-14）', () => {
+    const netlist = misroutedFixture();
+    // CR1.9 に電線を2本張って上限まで埋める。
+    netlist.wires.push(w('w4', 'CR1.9', 'PS.+'), w('w5', 'CR1.9', 'PS.-'));
+    expect(() =>
+      injectFault(netlist, { wireId: 'w2' }, 'wire-misrouted', terminalId('CR1', '9')),
+    ).toThrow(FaultError);
+    // 拒否されたら電線はそのまま（付け替え未反映）で、CR1.9 の本数も増えていない。
+    expect(findWire(netlist, 'w2')?.to).toBe('CR1.14');
+    const cr19 = t('CR1.9');
+    expect(netlist.wires.filter((wire) => wire.from === cr19 || wire.to === cr19)).toHaveLength(2);
+  });
 });
 
 describe('robustness: 数値faultへの非数値paramの拒否（Task8e #3）', () => {

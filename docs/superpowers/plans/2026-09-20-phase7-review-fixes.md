@@ -555,16 +555,16 @@ apps/desktop/test/release-content.test.ts に追記
 
 **Steps:**
 
-- [ ] 1. **CS-05**: `validateNetlist()` に部品ID・要素IDの重複検査を足す（`NetlistIssue.kind` に `duplicate-part-id` / `duplicate-element-id`）。
-- [ ] 2. **CS-09**: `step()` に `tickMs` と同じ検証（有限・正）、`run()` に有限性検査、コンストラクタで `validateNetlist()` を呼ぶ。
-- [ ] 3. **CS-12**: `range-exceeded` の重複判定キーに `kind`（digital/analog）と `ohmRange` を入れる。
-- [ ] 4. **CS-13**: `contact-welded` の注入が同じ組のもう一方の接点の既存故障を無言で上書きするのを止める（`??=` か `FaultError`）。
-- [ ] 5. **CS-14**: `wire-misrouted` に自己ループ検査と `exceedsWireLimit()` 検査を足す。
-- [ ] 6. **CT-13**: `FaultsSchema` の union に親エラー文言を与える（非判別 union で両枝ぶん報告されるのを止める）。
-- [ ] 7. **CT-14**: `ResolveFaultsResult` に `seed` を載せ、作業ファイルが `seed` を保存する形にする（再開のたびに別の故障になる契約を型で強制する）。
-- [ ] 8. **SC-05**: `assign.ts:542-549` の生成電線ID `sw-NNN` の契約を JSDoc に明記（「回路図を編集したら課題の `faults[].target.wireId` を取り直すこと」）。内蔵C2課題の `wireId` が実際に生成される集合に含まれることをテストで固定する。
-- [ ] 9. **DW-2**: `sim.worker.ts:446-651` の外側 `switch` の末尾に `default: command satisfies never; throw new Error(...)`。
-- [ ] 10. **PD-3**: `isDeviceLike()` に `kind === 'special'` のとき `SPECIAL_INDEXES.includes(index)` を足す。
+- [x] 1. **CS-05**: `validateNetlist()` に部品ID・要素IDの重複検査を足す（`NetlistIssue.kind` に `duplicate-part-id` / `duplicate-element-id`）。
+- [x] 2. **CS-09**: `step()` に `tickMs` と同じ検証（有限・正）、`run()` に有限性検査、コンストラクタで `validateNetlist()` を呼ぶ。
+- [x] 3. **CS-12**: `range-exceeded` の重複判定キーに `kind`（digital/analog）と `ohmRange` を入れる。
+- [x] 4. **CS-13**: `contact-welded` の注入が同じ組のもう一方の接点の既存故障を無言で上書きするのを止める（`??=` か `FaultError`）。
+- [x] 5. **CS-14**: `wire-misrouted` に自己ループ検査と `exceedsWireLimit()` 検査を足す。
+- [ ] 6. **CT-13**: `FaultsSchema` の union に親エラー文言を与える（非判別 union で両枝ぶん報告されるのを止める）。**Task 10 では未着手**（`packages/content/src/schema/faults.ts` はスキーマファイルのため対象外。Task 4 へ引き継ぐ）。
+- [x] 7. **CT-14**: `ResolveFaultsResult` に `seed` を載せ、作業ファイルが `seed` を保存する形にする（再開のたびに別の故障になる契約を型で強制する）。
+- [x] 8. **SC-05**: `assign.ts:542-549` の生成電線ID `sw-NNN` の契約を JSDoc に明記（「回路図を編集したら課題の `faults[].target.wireId` を取り直すこと」）。内蔵C2課題の `wireId` が実際に生成される集合に含まれることをテストで固定する。
+- [x] 9. **DW-2**: `sim.worker.ts:446-651` の外側 `switch` の末尾に `default: command satisfies never; throw new Error(...)`。
+- [x] 10. **PD-3**: `isDeviceLike()` に `kind === 'special'` のとき `SPECIAL_INDEXES.includes(index)` を足す。
 
 **期待:** レポート §5 Batch 2「追加すべきテスト」の該当行が緑。`pnpm -r test` 全件 pass。
 

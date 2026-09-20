@@ -16,6 +16,8 @@ import {
   IdError,
   partId,
   resetNetlist,
+  Simulation,
+  SimulationError,
   terminalId,
   toTerminalId,
   validateNetlist,
@@ -205,5 +207,37 @@ describe('guards', () => {
     for (const terminal of netsA.terminals) {
       expect(netsB.nodeOf(terminal)).toBe(netsA.nodeOf(terminal));
     }
+  });
+
+  it('Simulation のコンストラクタは validateNetlist の問題を SimulationError にする（CS-09 / CS-05）', () => {
+    // 未知の端子を参照する電線（既存の validateNetlist の検査そのもの）。
+    const brokenTerminal = net(
+      [createRelay4c('CR1')],
+      [createWire('w9', terminalId('CR1', '15'), terminalId('CR1', '9'))],
+    );
+    expect(() => new Simulation(brokenTerminal)).toThrow(SimulationError);
+
+    // 部品IDの重複（CS-05 でこのタスクが追加した検査）。
+    const duplicatePart = net([createPowerSupply('PS'), createPowerSupply('PS')], []);
+    expect(() => new Simulation(duplicatePart)).toThrow(SimulationError);
+
+    // 正常なネットリストは構築できる。
+    expect(() => new Simulation(sampleNetlist())).not.toThrow();
+  });
+
+  it('Simulation.step は非有限・0以下の dtMs を SimulationError にする（CS-09）', () => {
+    const sim = new Simulation(sampleNetlist());
+    expect(() => sim.step(-10)).toThrow(SimulationError);
+    expect(() => sim.step(Number.NaN)).toThrow(SimulationError);
+    expect(() => sim.step(0)).toThrow(SimulationError);
+    expect(() => sim.step(Number.POSITIVE_INFINITY)).toThrow(SimulationError);
+    expect(() => sim.step(10)).not.toThrow();
+  });
+
+  it('Simulation.run は非有限の untilMs を SimulationError にする（CS-09）', () => {
+    const sim = new Simulation(sampleNetlist());
+    expect(() => sim.run(Number.POSITIVE_INFINITY)).toThrow(SimulationError);
+    expect(() => sim.run(Number.NaN)).toThrow(SimulationError);
+    expect(() => sim.run(20)).not.toThrow();
   });
 });

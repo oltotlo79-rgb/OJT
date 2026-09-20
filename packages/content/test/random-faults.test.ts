@@ -40,6 +40,29 @@ describe('resolveFaults', () => {
     expect(resolved.value).toEqual(problem.faults);
   });
 
+  it('reports the seed actually used, and undefined for an explicit list (CT-14)', () => {
+    const explicit = parseInspectRepairOrThrow(inspectRepairProblemJson());
+    const explicitResolved = resolveFaults(explicit, JIPM_BOARD);
+    expect(explicitResolved.ok).toBe(true);
+    if (explicitResolved.ok) expect(explicitResolved.seed).toBeUndefined();
+
+    const random = problemWithRandom({
+      count: 1,
+      types: ['wire-open'],
+      fallback: FALLBACK,
+    });
+    const withOptionSeed = resolveFaults(random, JIPM_BOARD, { seed: 999 });
+    expect(withOptionSeed.ok).toBe(true);
+    if (withOptionSeed.ok) expect(withOptionSeed.seed).toBe(999);
+
+    const withProblemSeed = resolveFaults(
+      problemWithRandom({ count: 1, types: ['wire-open'], seed: 123, fallback: FALLBACK }),
+      JIPM_BOARD,
+    );
+    expect(withProblemSeed.ok).toBe(true);
+    if (withProblemSeed.ok) expect(withProblemSeed.seed).toBe(123);
+  });
+
   it('draws the requested number of faults from the given types', () => {
     const problem = problemWithRandom({
       count: 2,

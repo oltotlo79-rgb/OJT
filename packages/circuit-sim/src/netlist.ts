@@ -159,9 +159,14 @@ export function knownTerminals(netlist: Netlist): Set<TerminalId> {
 
 /** `validateNetlist` が報告する個々の問題。 */
 export interface NetlistIssue {
-  kind: 'unknown-terminal' | 'duplicate-wire-id' | 'self-loop-wire';
-  /** 問題の原因が電線か、部品本体と端子台を結ぶ0Ωリンクか。§6.4 */
-  ownerKind: 'wire' | 'link';
+  kind:
+    | 'unknown-terminal'
+    | 'duplicate-wire-id'
+    | 'self-loop-wire'
+    | 'duplicate-part-id'
+    | 'duplicate-element-id';
+  /** 問題の原因が電線か、部品本体と端子台を結ぶ0Ωリンクか、部品か、部品の要素か。§6.4 */
+  ownerKind: 'wire' | 'link' | 'part' | 'element';
   ownerId: string;
   terminal?: string;
   message: string;
@@ -172,6 +177,10 @@ export interface NetlistIssue {
  * (a) 電線→リンクの順（それぞれ配列順）に、`from`/`to` が全部品の端子集合に存在するか
  * (b) 電線IDの重複（2件目以降を報告）
  * (c) `from === to` の自己ループ電線
+ * (d) 部品IDの重複（2件目以降を報告）。CS-05: `findPart` は先勝ち、`Map` を経由する呼び出し元は
+ *     後勝ちになりうるため、重複した部品IDは検出時点で読み手によって別の部品を指してしまう。
+ * (e) 要素IDの重複（2件目以降を報告、全部品を通して検査）。同じ理由で `findElement` の結果が
+ *     壊れた作業ファイルの読み方によって変わりうる。
  */
 export function validateNetlist(netlist: Netlist): NetlistIssue[] {
   const issues: NetlistIssue[] = [];
@@ -223,6 +232,34 @@ export function validateNetlist(netlist: Netlist): NetlistIssue[] {
         ownerId: wire.id,
         message: `電線 ${wire.id} の両端が同じ端子です（自己ループ）: ${wire.from}`,
       });
+    }
+  }
+
+  const seenPartIds = new Set<string>();
+  for (const part of netlist.parts) {
+    if (seenPartIds.has(part.id)) {
+      issues.push({
+        kind: 'duplicate-part-id',
+        ownerKind: 'part',
+        ownerId: part.id,
+        message: `部品ID ${part.id} が重複しています`,
+      });
+    } else {
+      seenPartIds.add(part.id);
+    }
+  }
+
+  const seenElementIds = new Set<string>();
+  for (const el of allElements(netlist)) {
+    if (seenElementIds.has(el.id)) {
+      issues.push({
+        kind: 'duplicate-element-id',
+        ownerKind: 'element',
+        ownerId: el.id,
+        message: `要素ID ${el.id} が重複しています`,
+      });
+    } else {
+      seenElementIds.add(el.id);
     }
   }
 

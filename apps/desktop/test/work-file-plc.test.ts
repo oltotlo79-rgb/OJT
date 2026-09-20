@@ -121,6 +121,26 @@ describe('モードDの作業ファイル（§12.3 / 3A H-3）', () => {
     ).toBeUndefined();
   });
 
+  it('refuses a special device whose index is not 0/1/2, and accepts a valid one (PD-3)', () => {
+    // 1行分（IR_COLS=16列）を埋める。先頭セルだけ差し替え、残りは空セル。
+    const row = (first: Record<string, unknown>): Record<string, unknown>[] => [
+      first,
+      ...Array.from({ length: IR_COLS - 1 }, () => ({ kind: 'empty' })),
+    ];
+    const netWith = (index: number) => ({
+      id: 'n1',
+      rows: 1,
+      cols: IR_COLS,
+      cells: [row({ kind: 'contact', type: 'NO', device: { kind: 'special', index } })],
+    });
+    // SPECIAL_INDEXES（常時ON=0／初期パルス=1／1秒クロック=2）以外は拒む。
+    expect(toLadderProgram({ networks: [netWith(99)] })).toBeUndefined();
+    expect(toLadderProgram({ networks: [netWith(3)] })).toBeUndefined();
+    // 範囲内は読める。
+    expect(toLadderProgram({ networks: [netWith(0)] })).toBeDefined();
+    expect(toLadderProgram({ networks: [netWith(2)] })).toBeDefined();
+  });
+
   it('refuses comments that break the caps (§10.7)', () => {
     const net = { id: 'n1', rows: 1, cols: 16, cells: [[{ kind: 'empty' }]] };
     expect(toLadderProgram({ networks: [net], comments: { X0: 'あ'.repeat(33) } })).toBeUndefined();
