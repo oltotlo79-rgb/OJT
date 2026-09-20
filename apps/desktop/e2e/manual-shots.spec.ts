@@ -13,14 +13,8 @@ import {
   toSocketRoles,
 } from '@ojt/content';
 import { COIL_COL } from '@ojt/ladder-core';
-import {
-  _electron as electron,
-  expect,
-  test,
-  type ElectronApplication,
-  type Locator,
-  type Page,
-} from '@playwright/test';
+import { expect, test, type ElectronApplication, type Locator, type Page } from '@playwright/test';
+import { launchApp } from './app.js';
 import { finishedSize, overlayHtml, planCallouts } from '../scripts/annotate-shots.mjs';
 import { HELP_IMAGE_WIDTH } from '../scripts/manual-build.mjs';
 import {
@@ -89,13 +83,8 @@ const SHOTS = JSON.parse(readFileSync(join(MANUAL_DIR, 'shots.json'), 'utf8')) a
 /** 撮る大きさ。枠を除いた**中身**を 1280×800 にする（決定表#24）。 */
 const SHOT_SIZE = { width: 1280, height: 800 } as const;
 
-const CHROMIUM_FLAGS = [
-  '--use-gl=swiftshader',
-  '--use-angle=swiftshader',
-  '--enable-unsafe-swiftshader',
-  // 画面の倍率が 100% でないパソコンでも 1280×800 ちょうどで撮れるようにする
-  '--force-device-scale-factor=1',
-];
+/** 画面の倍率が 100% でないパソコンでも 1280×800 ちょうどで撮れるようにする。 */
+const EXTRA_FLAGS = ['--force-device-scale-factor=1'];
 
 /**
  * この spec だけの `userData`（`plc-vendors.spec.ts` と同じ流儀）。既定メーカーや
@@ -690,30 +679,12 @@ function plcPushButtonPoint(pbId: string, box: CanvasBox): { x: number; y: numbe
 test.describe.serial('取扱説明書の図', () => {
   test.beforeAll(async () => {
     rmSync(RAW_DIR, { recursive: true, force: true });
-    app = await electron.launch({
-      args: [
-        join(APP_ROOT, 'out', 'main', 'index.js'),
-        ...CHROMIUM_FLAGS,
-        `--user-data-dir=${USER_DATA_DIR}`,
-      ],
-      env: { ...process.env, NODE_ENV: 'production' },
-    });
-    page = await app.firstWindow();
-    await page.waitForLoadState('domcontentloaded');
-    await app.evaluate(({ BrowserWindow }) => {
-      const window = BrowserWindow.getAllWindows()[0];
-      if (window === undefined) throw new Error('ウィンドウがありません');
-      // 枠を除いた中身を 1280×800 にする（`setBounds` は枠を含むので使わない）
-      window.setContentSize(1280, 800);
-      window.show();
-      window.focus();
-    });
-    await page.waitForTimeout(1500);
-    const restore = page.getByTestId('restore-prompt');
-    if ((await restore.count()) > 0) {
-      await page.getByRole('button', { name: '復元しない' }).click();
-    }
-    await expect(page.getByTestId('mode-assemble')).toBeVisible({ timeout: 30_000 });
+    // 枠を除いた**中身**を 1280×800 にする（`setBounds` は枠を含むので使わない）
+    ({ app, page } = await launchApp({
+      contentSize: SHOT_SIZE,
+      userDataDir: USER_DATA_DIR,
+      extraFlags: EXTRA_FLAGS,
+    }));
   });
 
   test.afterAll(async () => {

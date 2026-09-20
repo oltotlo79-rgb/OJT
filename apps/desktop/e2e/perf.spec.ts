@@ -1,13 +1,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import {
-  _electron as electron,
-  expect,
-  test,
-  type ElectronApplication,
-  type Page,
-} from '@playwright/test';
+import { join } from 'node:path';
+import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
+import { launchApp, SHOT_DIR } from './app.js';
 import { selectView } from './projection.js';
 
 /**
@@ -19,15 +13,10 @@ import { selectView } from './projection.js';
  *
  * **このファイルの test は上から順に流す前提**（`polish.spec.ts` と同じ流儀。Batch E レビュー
  * Minor 5）。1本目が課題を開いた状態を2本目以降が引き継ぐので、`-g` で1本だけ流すと落ちる。
+ * そのため `test.describe.serial` にしてある（レビュー指摘 QA-03。`.serial` ならグループ全体が
+ * 再試行され、`retries: 1` の再試行が「前の test が作った画面」の無い状態で走らずに済む）。
  */
 
-const APP_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const SHOT_DIR = process.env['OJT_SHOT_DIR'] ?? join(APP_ROOT, 'screenshots');
-const CHROMIUM_FLAGS = [
-  '--use-gl=swiftshader',
-  '--use-angle=swiftshader',
-  '--enable-unsafe-swiftshader',
-];
 const WINDOW = { width: 1440, height: 900 } as const;
 
 /**
@@ -110,49 +99,36 @@ async function readMainRequests(target: ElectronApplication): Promise<string[]> 
 }
 
 test.beforeAll(async () => {
-  app = await electron.launch({
-    args: [join(APP_ROOT, 'out', 'main', 'index.js'), ...CHROMIUM_FLAGS],
-    env: { ...process.env, NODE_ENV: 'production' },
-  });
-  /*
-   * 通信の見張りは**起動直後・最初の遷移より前**に張る（Batch E レビュー I3）。
-   * `page.on('request')` は renderer の要求しか見えず、main プロセス（`net` / `session`）の
-   * 通信は出ない。`session.defaultSession.webRequest.onBeforeRequest` は両方を通るので、
-   * ここで掛けて main 側へ溜め、`readMainRequests()` で読む（`callback({})` で素通し）。
-   */
-  await app.evaluate(({ session }) => {
-    const store: string[] = [];
-    (globalThis as unknown as { __ojtHttpRequests?: string[] }).__ojtHttpRequests = store;
-    session.defaultSession.webRequest.onBeforeRequest((details, callback) => {
-      if (/^https?:/u.test(details.url)) store.push(details.url);
-      callback({});
-    });
-  });
-  page = await app.firstWindow();
-  page.on('request', (request) => {
-    if (/^https?:/u.test(request.url())) rendererRequests.push(request.url());
-  });
-  await page.waitForLoadState('domcontentloaded');
-  await app.evaluate(({ BrowserWindow }, size) => {
-    const window = BrowserWindow.getAllWindows()[0];
-    if (window === undefined) throw new Error('ウィンドウがありません');
-    window.setBounds({ x: 0, y: 0, width: size.width, height: size.height });
-    window.show();
-    window.focus();
-  }, WINDOW);
-  await page.waitForTimeout(1500);
-  const restore = page.getByTestId('restore-prompt');
-  if ((await restore.count()) > 0) {
-    await page.getByRole('button', { name: '復元しない' }).click();
-  }
-  await expect(page.getByTestId('mode-assemble')).toBeVisible({ timeout: 30_000 });
+  ({ app, page } = await launchApp({
+    window: WINDOW,
+    /*
+     * 通信の見張りは**起動直後・最初の遷移より前**に張る（Batch E レビュー I3）。
+     * `page.on('request')` は renderer の要求しか見えず、main プロセス（`net` / `session`）の
+     * 通信は出ない。`session.defaultSession.webRequest.onBeforeRequest` は両方を通るので、
+     * ここで掛けて main 側へ溜め、`readMainRequests()` で読む（`callback({})` で素通し）。
+     */
+    onLaunched: async (launched) => {
+      await launched.evaluate(({ session }) => {
+        const store: string[] = [];
+        (globalThis as unknown as { __ojtHttpRequests?: string[] }).__ojtHttpRequests = store;
+        session.defaultSession.webRequest.onBeforeRequest((details, callback) => {
+          if (/^https?:/u.test(details.url)) store.push(details.url);
+          callback({});
+        });
+      });
+      const first = await launched.firstWindow();
+      first.on('request', (request) => {
+        if (/^https?:/u.test(request.url())) rendererRequests.push(request.url());
+      });
+    },
+  }));
 });
 
 test.afterAll(async () => {
   await app.close();
 });
 
-test.describe('性能（§16 Phase 5 受入基準④）', () => {
+test.describe.serial('性能（§16 Phase 5 受入基準④）', () => {
   test('三角形数とドローコールが予算に収まる（正面・俯瞰・ソケット拡大）', async () => {
     await page.getByTestId('mode-assemble').click();
     await page.getByTestId('open-b-001').click();

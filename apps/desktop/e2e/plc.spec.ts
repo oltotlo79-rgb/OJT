@@ -1,6 +1,3 @@
-import { mkdirSync, writeFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { PLC_UNIT_FX5U, trySocketOf } from '@ojt/board-model';
 import {
   BUILTIN_PLC_PROBLEMS,
@@ -10,13 +7,8 @@ import {
   type PlcProblem,
 } from '@ojt/content';
 import { COIL_COL } from '@ojt/ladder-core';
-import {
-  _electron as electron,
-  expect,
-  test,
-  type ElectronApplication,
-  type Page,
-} from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
+import { launchApp, shot, type Launched } from './app.js';
 import {
   PLC_BOARD,
   plcBoardPoint,
@@ -38,13 +30,6 @@ import {
  *  ⑤PLC電源を盤のP/Nから取ると `plcPowerIndependent` エラーになる
  */
 
-const APP_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const SHOT_DIR = process.env['OJT_SHOT_DIR'] ?? join(APP_ROOT, 'screenshots');
-const CHROMIUM_FLAGS = [
-  '--use-gl=swiftshader',
-  '--use-angle=swiftshader',
-  '--enable-unsafe-swiftshader',
-];
 /** 他の E2E と同じ窓の大きさ（スクリーンショットを揃える）。 */
 const WINDOW = { width: 1440, height: 900 } as const;
 
@@ -66,40 +51,9 @@ const REFERENCE_WIRES: ReadonlyArray<readonly [string, string]> = plcWiringPlan(
   PLC_UNIT_FX5U,
 ).map((wire) => [String(wire.from), String(wire.to)] as const);
 
-async function shot(app: ElectronApplication, name: string): Promise<void> {
-  mkdirSync(SHOT_DIR, { recursive: true });
-  const base64 = await app.evaluate(async ({ BrowserWindow }) => {
-    const window = BrowserWindow.getAllWindows()[0];
-    if (window === undefined) throw new Error('ウィンドウがありません');
-    const image = await window.capturePage();
-    return image.toPNG().toString('base64');
-  });
-  writeFileSync(join(SHOT_DIR, `${name}.png`), Buffer.from(base64, 'base64'));
-}
-
-async function launch(): Promise<{ app: ElectronApplication; page: Page }> {
-  const app = await electron.launch({
-    args: [join(APP_ROOT, 'out', 'main', 'index.js'), ...CHROMIUM_FLAGS],
-    env: { ...process.env, NODE_ENV: 'production' },
-  });
-  const page = await app.firstWindow();
-  await page.waitForLoadState('domcontentloaded');
-  await app.evaluate(({ BrowserWindow }, size) => {
-    const window = BrowserWindow.getAllWindows()[0];
-    if (window === undefined) throw new Error('ウィンドウがありません');
-    window.setBounds({ x: 0, y: 0, width: size.width, height: size.height });
-    window.show();
-    window.focus();
-  }, WINDOW);
-  // 表示直後はコンポジタがまだフレームを出しておらず `capturePage()` が失敗することがある
-  await page.waitForTimeout(1500);
-  await expect(page.getByTestId('mode-plc')).toBeVisible({ timeout: 30_000 });
-  // 前回の実行が残した一時保存があると復元プロンプトが出るので、先に片付ける（§12.3）
-  const restore = page.getByTestId('restore-prompt');
-  if ((await restore.count()) > 0) {
-    await page.getByRole('button', { name: '復元しない' }).click();
-  }
-  return { app, page };
+/** ビルド済みの Electron を起こし、モードDのホームに立たせる（`e2e/app.ts`）。 */
+async function launch(): Promise<Launched> {
+  return launchApp({ window: WINDOW, home: 'mode-plc' });
 }
 
 /**

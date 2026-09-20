@@ -1,6 +1,5 @@
-import { mkdirSync, writeFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { mkdirSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { JIPM_BOARD, routeSession, type BoardSession, type Vec3 } from '@ojt/board-model';
 import {
   BUILTIN_INSPECT_PARTS_PROBLEMS,
@@ -12,13 +11,8 @@ import {
   type InspectPartsProblem,
   type InspectRepairProblem,
 } from '@ojt/content';
-import {
-  _electron as electron,
-  expect,
-  test,
-  type ElectronApplication,
-  type Page,
-} from '@playwright/test';
+import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
+import { APP_ROOT, launchApp, shot, type Launched } from './app.js';
 import {
   boardPoint,
   closeOverflow,
@@ -38,31 +32,11 @@ import {
  * （E2E は成果物を外から触るので `ja.ts` を読み込まない）。
  */
 
-const APP_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const SHOT_DIR = process.env['OJT_SHOT_DIR'] ?? join(APP_ROOT, 'screenshots');
-
-const CHROMIUM_FLAGS = [
-  '--use-gl=swiftshader',
-  '--use-angle=swiftshader',
-  '--enable-unsafe-swiftshader',
-];
-
 /** スクリーンショットの大きさ（`chart.spec.ts` と揃える）。 */
 const WINDOW = { width: 1280, height: 800 } as const;
 
 /** リレーの励磁が落ち着くまでの待ち[ms]（§9.1 手順①）。 */
 const SETTLE_MS = 600;
-
-async function shot(app: ElectronApplication, name: string): Promise<void> {
-  mkdirSync(SHOT_DIR, { recursive: true });
-  const base64 = await app.evaluate(async ({ BrowserWindow }) => {
-    const window = BrowserWindow.getAllWindows()[0];
-    if (window === undefined) throw new Error('ウィンドウがありません');
-    const image = await window.capturePage();
-    return image.toPNG().toString('base64');
-  });
-  writeFileSync(join(SHOT_DIR, `${name}.png`), Buffer.from(base64, 'base64'));
-}
 
 async function canvasBox(page: Page): Promise<CanvasBox> {
   const canvas = page.locator('[data-testid="viewport"] canvas');
@@ -72,31 +46,9 @@ async function canvasBox(page: Page): Promise<CanvasBox> {
   return box;
 }
 
-/** ビルド済みの Electron を起こし、復元プロンプトを片付けてホームに立たせる。 */
-async function launch(): Promise<{ app: ElectronApplication; page: Page }> {
-  const app = await electron.launch({
-    args: [join(APP_ROOT, 'out', 'main', 'index.js'), ...CHROMIUM_FLAGS],
-    env: { ...process.env, NODE_ENV: 'production' },
-  });
-  const page = await app.firstWindow();
-  await page.waitForLoadState('domcontentloaded');
-  // ウィンドウは `ready-to-show` まで非表示なので、明示的に出して大きさを固定する
-  await app.evaluate(({ BrowserWindow }, size) => {
-    const window = BrowserWindow.getAllWindows()[0];
-    if (window === undefined) throw new Error('ウィンドウがありません');
-    window.setBounds({ x: 0, y: 0, width: size.width, height: size.height });
-    window.show();
-    window.focus();
-  }, WINDOW);
-  const restore = page.getByTestId('restore-prompt');
-  const home = page.getByTestId('mode-assemble');
-  // 復元プロンプトが出るかどうかは前回の終わり方次第なので、どちらかが出るまで待つ（固定sleep禁止）
-  await expect(restore.or(home).first()).toBeVisible({ timeout: 15_000 });
-  if ((await restore.count()) > 0) {
-    await page.getByRole('button', { name: '復元しない' }).click();
-    await expect(home).toBeVisible();
-  }
-  return { app, page };
+/** ビルド済みの Electron を起こし、復元プロンプトを片付けてホームに立たせる（`e2e/app.ts`）。 */
+async function launch(): Promise<Launched> {
+  return launchApp({ window: WINDOW });
 }
 
 /**

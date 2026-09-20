@@ -1,12 +1,5 @@
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import {
-  _electron as electron,
-  expect,
-  test,
-  type ElectronApplication,
-  type Page,
-} from '@playwright/test';
+import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
+import { launchApp } from './app.js';
 
 /**
  * ヘルプと取扱説明書の E2E。§16 Phase 6 受入基準①②③⑥（Plan 6 Task 11）。
@@ -21,19 +14,12 @@ import {
  * **図は見ない**（Task 12 の仕事）。ここで確かめるのは「まだ撮っていない図が壊れた画像の
  * 枠として出ていないこと」（受入基準⑥）だけである。
  *
- * 起動の定型（`CHROMIUM_FLAGS`・窓の大きさ・復元プロンプトの片付け）と `goHome()` /
- * `setVendor()` は `plc-vendors.spec.ts` / `schematic.spec.ts` からそのまま写している。
- * 既存の spec は1行も触らない。画面の文言も `src/renderer/i18n/ja.ts` と
+ * 起動の定型は `e2e/app.ts` の `launchApp()` に1か所だけ置いてある（QA-12 / QA-13）。
+ * `goHome()` / `setVendor()` は `plc-vendors.spec.ts` / `schematic.spec.ts` と同じ流儀。画面の文言も `src/renderer/i18n/ja.ts` と
  * `src/renderer/help/manual-content.ts` からの**書き写し**で、E2E は成果物を外から触るだけに
  * する（`inspect.spec.ts` 冒頭の注記と同じ流儀）。
  */
 
-const APP_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const CHROMIUM_FLAGS = [
-  '--use-gl=swiftshader',
-  '--use-angle=swiftshader',
-  '--enable-unsafe-swiftshader',
-];
 /** 他の E2E と同じ窓の大きさ。 */
 const WINDOW = { width: 1440, height: 900 } as const;
 
@@ -257,26 +243,7 @@ async function setVendor(vendor: string): Promise<void> {
 }
 
 test.beforeAll(async () => {
-  app = await electron.launch({
-    args: [join(APP_ROOT, 'out', 'main', 'index.js'), ...CHROMIUM_FLAGS],
-    env: { ...process.env, NODE_ENV: 'production' },
-  });
-  page = await app.firstWindow();
-  await page.waitForLoadState('domcontentloaded');
-  await app.evaluate(({ BrowserWindow }, size) => {
-    const window = BrowserWindow.getAllWindows()[0];
-    if (window === undefined) throw new Error('ウィンドウがありません');
-    window.setBounds({ x: 0, y: 0, width: size.width, height: size.height });
-    window.show();
-    window.focus();
-  }, WINDOW);
-  await page.waitForTimeout(1500);
-  // 前回の実行が残した一時保存があると復元プロンプトが出るので、先に片付ける（§12.3）
-  const restore = page.getByTestId('restore-prompt');
-  if ((await restore.count()) > 0) {
-    await page.getByRole('button', { name: '復元しない' }).click();
-  }
-  await expect(page.getByTestId('mode-assemble')).toBeVisible({ timeout: 30_000 });
+  ({ app, page } = await launchApp({ window: WINDOW }));
 });
 
 test.afterAll(async () => {

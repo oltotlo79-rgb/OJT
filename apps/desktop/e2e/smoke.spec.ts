@@ -1,15 +1,7 @@
-import { mkdirSync, writeFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { JIPM_BOARD } from '@ojt/board-model';
 import { toTerminalId } from '@ojt/circuit-sim';
-import {
-  _electron as electron,
-  expect,
-  test,
-  type ElectronApplication,
-  type Page,
-} from '@playwright/test';
+import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
+import { launchApp, shot } from './app.js';
 import {
   boardPoint,
   SELF_HOLD_WIRES,
@@ -28,38 +20,12 @@ import {
  * ソフトウェアラスタライザで描かせる。GPU のある実機でも同じフラグで動く。
  */
 
-const APP_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const SHOT_DIR = process.env['OJT_SHOT_DIR'] ?? join(APP_ROOT, 'screenshots');
-
-const CHROMIUM_FLAGS = [
-  '--use-gl=swiftshader',
-  '--use-angle=swiftshader',
-  '--enable-unsafe-swiftshader',
-];
-
 /**
  * 内蔵課題 b-001 の固定配線（チェック用回路の既設配線）の本数。§6.3
  * 状態オーバーレイは「自分で張った電線 N 本（固定 M 本）」と出すので、
  * 期待値を作るときに総数と固定本数の両方が要る（UXレビュー #21）。
  */
 const FIXED_WIRES = 3;
-
-/**
- * スクリーンショットは `BrowserWindow.capturePage()` で撮る。
- * Playwright の `page.screenshot()` は Electron のウィンドウが他ウィンドウに隠れていると
- * `Unable to capture screenshot` で失敗することがあるが、`capturePage()` は
- * コンポジタから直接取るので隠れていても撮れる（WebGL の描画内容も入る）。
- */
-async function shot(app: ElectronApplication, name: string): Promise<void> {
-  mkdirSync(SHOT_DIR, { recursive: true });
-  const base64 = await app.evaluate(async ({ BrowserWindow }) => {
-    const window = BrowserWindow.getAllWindows()[0];
-    if (window === undefined) throw new Error('ウィンドウがありません');
-    const image = await window.capturePage();
-    return image.toPNG().toString('base64');
-  });
-  writeFileSync(join(SHOT_DIR, `${name}.png`), Buffer.from(base64, 'base64'));
-}
 
 async function canvasBox(page: Page): Promise<CanvasBox> {
   const canvas = page.locator('[data-testid="viewport"] canvas');
@@ -95,29 +61,7 @@ test.describe('モードB スモーク', () => {
   let page: Page;
 
   test.beforeAll(async () => {
-    app = await electron.launch({
-      args: [join(APP_ROOT, 'out', 'main', 'index.js'), ...CHROMIUM_FLAGS],
-      env: { ...process.env, NODE_ENV: 'production' },
-    });
-    page = await app.firstWindow();
-    await page.waitForLoadState('domcontentloaded');
-    // ウィンドウは `ready-to-show` まで非表示なので、スクリーンショットが撮れるよう
-    // 明示的に表示して大きさを固定する（Electron のページに setViewportSize は効かない）。
-    await app.evaluate(({ BrowserWindow }) => {
-      const window = BrowserWindow.getAllWindows()[0];
-      if (window === undefined) throw new Error('ウィンドウがありません');
-      window.setBounds({ x: 0, y: 0, width: 1440, height: 900 });
-      window.show();
-      window.focus();
-    });
-    // 表示直後はコンポジタがまだフレームを出しておらず `capturePage()` が
-    // `UnknownVizError` になることがあるので、最初の1フレームを待つ。
-    await page.waitForTimeout(1500);
-    // 前回の実行が残した一時保存があると復元プロンプトが出るので、先に片付ける（§12.3）
-    const restore = page.getByTestId('restore-prompt');
-    if ((await restore.count()) > 0) {
-      await page.getByRole('button', { name: '復元しない' }).click();
-    }
+    ({ app, page } = await launchApp());
   });
 
   test.afterAll(async () => {

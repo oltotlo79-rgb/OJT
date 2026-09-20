@@ -1,13 +1,5 @@
-import { mkdirSync, writeFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import {
-  _electron as electron,
-  expect,
-  test,
-  type ElectronApplication,
-  type Page,
-} from '@playwright/test';
+import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
+import { launchApp, shot } from './app.js';
 import { closeOverflow, openOverflow } from './projection.js';
 import { gizmoLayoutForViewport } from '../src/renderer/three/ViewGizmo.js';
 import { cameraPose, MIN_POLAR_ANGLE_RAD, type CameraPose } from '../src/renderer/three/camera.js';
@@ -23,15 +15,6 @@ import { GIZMO_DRAG_RAD_PER_PX } from '../src/renderer/three/navigation.js';
  * ソフトウェアラスタライザ（SwiftShader）の描画差に左右されない。
  */
 
-const APP_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const SHOT_DIR = process.env['OJT_SHOT_DIR'] ?? join(APP_ROOT, 'screenshots');
-
-const CHROMIUM_FLAGS = [
-  '--use-gl=swiftshader',
-  '--use-angle=swiftshader',
-  '--enable-unsafe-swiftshader',
-];
-
 /** カメラの状態（`cameraReadoutText()` が書く JSON）。 */
 interface Camera {
   az: number;
@@ -40,17 +23,6 @@ interface Camera {
   tx: number;
   ty: number;
   tz: number;
-}
-
-async function shot(app: ElectronApplication, name: string): Promise<void> {
-  mkdirSync(SHOT_DIR, { recursive: true });
-  const base64 = await app.evaluate(async ({ BrowserWindow }) => {
-    const window = BrowserWindow.getAllWindows()[0];
-    if (window === undefined) throw new Error('ウィンドウがありません');
-    const image = await window.capturePage();
-    return image.toPNG().toString('base64');
-  });
-  writeFileSync(join(SHOT_DIR, `${name}.png`), Buffer.from(base64, 'base64'));
 }
 
 /** いまのカメラの向き・距離・注視点。 */
@@ -230,25 +202,7 @@ test.describe('Blender 風の3D操作（§12.2）', () => {
   let page: Page;
 
   test.beforeAll(async () => {
-    app = await electron.launch({
-      args: [join(APP_ROOT, 'out', 'main', 'index.js'), ...CHROMIUM_FLAGS],
-      env: { ...process.env, NODE_ENV: 'production' },
-    });
-    page = await app.firstWindow();
-    await page.waitForLoadState('domcontentloaded');
-    await app.evaluate(({ BrowserWindow }) => {
-      const window = BrowserWindow.getAllWindows()[0];
-      if (window === undefined) throw new Error('ウィンドウがありません');
-      window.setBounds({ x: 0, y: 0, width: 1280, height: 800 });
-      window.show();
-      window.focus();
-    });
-    await page.waitForTimeout(1500);
-    // 前回の実行が残した一時保存の復元プロンプトを片付ける（§12.3）
-    const restore = page.getByTestId('restore-prompt');
-    if ((await restore.count()) > 0) {
-      await page.getByRole('button', { name: '復元しない' }).click();
-    }
+    ({ app, page } = await launchApp({ window: { width: 1280, height: 800 } }));
     await page.getByTestId('mode-assemble').click();
     await page.getByTestId('open-b-001').click();
     await expect(page.getByTestId('viewport')).toBeVisible();

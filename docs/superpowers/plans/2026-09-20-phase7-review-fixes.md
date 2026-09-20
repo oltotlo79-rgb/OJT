@@ -1283,14 +1283,14 @@ pnpm --filter @ojt/desktop e2e direct-manipulation
 
 **Steps:**
 
-- [ ] 1. **QA-13 ＋ QA-12**: `e2e/app.ts` を新設し、`CHROMIUM_FLAGS` / `launchApp()`（**`--user-data-dir=${mkdtempSync(...)}` 込み**）/ `shot()` / `dismissRestorePrompt()` を export する。12 spec の `beforeAll` を1行に置き換える（複写12箇所と spec 間の状態漏れが同時に消える）。`manual-shots.spec.ts` の `%PUBLIC%` だけは「撮影者のアカウント名が説明書に写り込まない」ためなので**現状維持**。
-- [ ] 2. **QA-02**: `playwright.config.ts` に `projects` を置き、`manual-shots.spec.ts` を**既定から外す**（`pnpm e2e` が追跡対象の図 約3MB を書き換え、その直後の `dist` が別物の PDF を焼くのを止める）。README とリリース手順チェックリストに注意の正本を移す（Task 33 と調整）。
-- [ ] 3. **QA-03**: `perf` / `polish` / `schematic` の `test.describe(` を `.serial(` にする（順序依存と `retries: 1` が噛み合っていない）。
-- [ ] 4. **QA-04**: `use: { trace: 'on-first-retry', screenshot: 'only-on-failure' }` ＋ `forbidOnly` ＋ CI 用 html reporter。
-- [ ] 5. **QA-26**: `ui-quality.spec.ts:1644` の残骸読み戻しを `OJT_UI_AUDIT_REUSE === '1'` 条件にする（指摘0件の理想的な実行でだけ壊れる不具合）。
-- [ ] 6. **QA-11**: 集計ループに4行足して `RATCHET:` の警告を実装する（「実測が基準より20%以上少なければ警告」はコメントだけで実装が無い）。
-- [ ] 7. **UX-27**: `MIN_FONT_PX` を **12**、`MIN_TARGET_PX` を **32** に上げ、上がった件数をそのまま新しい基準値に置く。`small-target` の基準値 126 は実測（0）まで下げる。
-- [ ] 8. `pnpm --filter @ojt/desktop e2e` を**2回**走らせ、2回とも同じ結果になること（状態漏れが無いこと）を確かめる。
+- [x] 1. **QA-13 ＋ QA-12**: `e2e/app.ts` を新設し、`CHROMIUM_FLAGS` / `launchApp()`（**`--user-data-dir=${mkdtempSync(...)}` 込み**）/ `shot()` / `dismissRestorePrompt()` を export する。12 spec の `beforeAll` を1行に置き換える（複写12箇所と spec 間の状態漏れが同時に消える）。`manual-shots.spec.ts` の `%PUBLIC%` だけは「撮影者のアカウント名が説明書に写り込まない」ためなので**現状維持**。
+- [x] 2. **QA-02**: `playwright.config.ts` に `projects` を置き、`manual-shots.spec.ts` を**既定から外す**（`pnpm e2e` が追跡対象の図 約3MB を書き換え、その直後の `dist` が別物の PDF を焼くのを止める）。README とリリース手順チェックリストに注意の正本を移す（Task 33 と調整）。
+- [x] 3. **QA-03**: `perf` / `polish` / `schematic` の `test.describe(` を `.serial(` にする（順序依存と `retries: 1` が噛み合っていない）。
+- [x] 4. **QA-04**: `use: { trace: 'on-first-retry', screenshot: 'only-on-failure' }` ＋ `forbidOnly` ＋ CI 用 html reporter。
+- [x] 5. **QA-26**: `ui-quality.spec.ts:1644` の残骸読み戻しを `OJT_UI_AUDIT_REUSE === '1'` 条件にする（指摘0件の理想的な実行でだけ壊れる不具合）。
+- [x] 6. **QA-11**: 集計ループに4行足して `RATCHET:` の警告を実装する（「実測が基準より20%以上少なければ警告」はコメントだけで実装が無い）。
+- [x] 7. **UX-27**: `MIN_FONT_PX` を **12**、`MIN_TARGET_PX` を **32** に上げ、上がった件数をそのまま新しい基準値に置く。`small-target` の基準値 126 は実測（0）まで下げる。
+- [x] 8. `pnpm --filter @ojt/desktop e2e` を**2回**走らせ、2回とも同じ結果になること（状態漏れが無いこと）を確かめる。
 
 **期待:**
 

@@ -1,17 +1,11 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 import { JIPM_BOARD } from '@ojt/board-model';
 import { toTerminalId } from '@ojt/circuit-sim';
 import { COIL_COL } from '@ojt/ladder-core';
-import {
-  _electron as electron,
-  expect,
-  test,
-  type ElectronApplication,
-  type Page,
-} from '@playwright/test';
+import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
+import { launchApp, SHOT_DIR, type Launched } from './app.js';
 import {
   boardPoint,
   closeOverflow,
@@ -35,7 +29,7 @@ import {
  *   ③ 重なり（見える葉要素どうしの矩形の交差。意図した重ね（ダイアログ・トースト・
  *      3D の HUD・絶対配置）は除く）
  *   ④ 変な改行（1行のはずの要素が 1.8 行以上／12文字以下の語の途中で折り返す）
- *   ⑤ 小さすぎ（文字 11px 未満／クリック対象 24×24px 未満）
+ *   ⑤ 小さすぎ（文字 12px 未満／クリック対象 32×32px 未満）
  *   ⑥ フォーカスリングの欠落（Tab で回して outline も box-shadow も付かない）
  *   ⑦ 3D キャンバスが単色のまま（描けていない）
  *
@@ -53,18 +47,10 @@ import {
  * 触るので `ja.ts` を読み込まない。`inspect.spec.ts` 冒頭の注記と同じ方針）。
  */
 
-const APP_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const SHOT_DIR = process.env['OJT_SHOT_DIR'] ?? join(APP_ROOT, 'screenshots');
 /** 点検結果の置き場（`%TEMP%\ui-audit`）。 */
 const AUDIT_DIR = join(process.env['TEMP'] ?? process.env['TMP'] ?? tmpdir(), 'ui-audit');
 const FINDINGS_PATH = join(AUDIT_DIR, 'findings.json');
 const SUMMARY_PATH = join(AUDIT_DIR, 'summary.json');
-
-const CHROMIUM_FLAGS = [
-  '--use-gl=swiftshader',
-  '--use-angle=swiftshader',
-  '--enable-unsafe-swiftshader',
-];
 
 /** 歩く窓の大きさ（利用者要求: 3種）。 */
 const SIZES: ReadonlyArray<{ width: number; height: number }> = [
@@ -89,10 +75,16 @@ const FIXED_WIRES = 3;
  * しきい値と基準値
  * ------------------------------------------------------------------------- */
 
-/** 読めないと判断する文字の大きさ[px]。 */
-const MIN_FONT_PX = 11;
-/** 押しにくいと判断するクリック対象の一辺[px]。 */
-const MIN_TARGET_PX = 24;
+/**
+ * 読めないと判断する文字の大きさ[px]（レビュー指摘 UX-27 で 11 → 12）。
+ * 12px は一般的なアクセシビリティ推奨の下限である。
+ */
+const MIN_FONT_PX = 12;
+/**
+ * 押しにくいと判断するクリック対象の一辺[px]（レビュー指摘 UX-27 で 24 → 32）。
+ * 32px は 2026-09-19 の所有者指示（「文字 ≥12px・ボタン ≥32px」）による。
+ */
+const MIN_TARGET_PX = 32;
 
 /**
  * 件数の上限（いまの実測値）。**修正が載ったら必ずこの数を実測値まで下げる**。
@@ -106,16 +98,23 @@ const BASELINE: Readonly<Record<string, number>> = {
   'page-overflow': 0,
   // 日本語が切れていないことは Plan 5 の完了条件そのものなので **0 のまま**（1件でも落とす）
   clip: 0,
-  // UI監査バッチE の実測（132 → 27）。畳んだ `<details>` の中身を `display: none` にしたぶん、
-  // 「描かれていないデバイスコメント欄が次の枠に食い込む」偽の重なりが消えた
-  overlap: 27,
+  // UI監査バッチE の実測（132 → 27）→ Phase 7 バッチF の直しで **0 件**（69画面・3サイズの実測）
+  overlap: 0,
   // UI監査バッチE の実測（94 → 0）。3D盤の名札は `three/label-declutter.ts` が重なる枚数だけ
   // 引っ込めるので、**どのペインの形でも 0 件**。1件でも出たら重なり取りが効いていない
   'hud-overlap': 0,
   duplicate: 0,
-  wrap: 30,
-  'small-text': 24,
-  'small-target': 126,
+  // 30 → 1（Phase 7 Task 30 の実測。1920×1080 の1件だけが残っている）
+  wrap: 1,
+  /*
+   * `small-text` / `small-target` は **Phase 7 Task 30（UX-27）でしきい値を上げた直後の実測**
+   * である（文字 11px → 12px、クリック対象 24px → 32px）。網の目を細かくしたので、
+   * 24 → 1,523 ／ 126 → 899 と一気に増えている。**これは「直すべき件数」であって合格点ではない**。
+   * 文字・ボタンの大きさを直すタスク（Task 24・26）が進むたびに、この数を実測まで下げること
+   * （下げ忘れは集計テストの `RATCHET:` が知らせる）。
+   */
+  'small-text': 1523,
+  'small-target': 899,
   focus: 0,
   canvas: 0,
 };
@@ -216,34 +215,10 @@ async function step(name: string, body: () => Promise<void>): Promise<void> {
  * アプリの起動と撮影
  * ------------------------------------------------------------------------- */
 
-interface Launched {
-  app: ElectronApplication;
-  page: Page;
-}
-
-async function launch(): Promise<Launched> {
-  const app = await electron.launch({
-    args: [join(APP_ROOT, 'out', 'main', 'index.js'), ...CHROMIUM_FLAGS],
-    env: { ...process.env, NODE_ENV: 'production' },
-  });
-  const page = await app.firstWindow();
-  await page.waitForLoadState('domcontentloaded');
-  await setBounds(app, SIZES[1] ?? { width: 1440, height: 900 });
-  await app.evaluate(({ BrowserWindow }) => {
-    const window = BrowserWindow.getAllWindows()[0];
-    if (window === undefined) throw new Error('ウィンドウがありません');
-    window.show();
-    window.focus();
-  });
-  await page.waitForTimeout(1500);
-  const restore = page.getByTestId('restore-prompt');
-  const home = page.getByTestId('mode-assemble');
-  await expect(restore.or(home).first()).toBeVisible({ timeout: 30_000 });
-  if ((await restore.count()) > 0) {
-    await page.getByRole('button', { name: '復元しない' }).click();
-    await expect(home).toBeVisible();
-  }
-  return { app, page };
+/** 点検の既定の窓の大きさで起こす（`e2e/app.ts`）。 */
+async function launch(userDataDir?: string): Promise<Launched> {
+  const window = SIZES[1] ?? { width: 1440, height: 900 };
+  return userDataDir === undefined ? launchApp({ window }) : launchApp({ window, userDataDir });
 }
 
 async function setBounds(
@@ -1592,7 +1567,12 @@ test.describe.serial('画面品質の機械点検', () => {
 
   test('起動時の復元カード', async () => {
     // 一時保存は 30 秒ごとなので、いったん課題を開いて待ち、閉じてから開き直す
-    const first = await launch();
+    /*
+     * `launchApp()` は起動ごとに使い捨ての `userData` を作る（QA-12）。この test だけは
+     * 「前回の一時保存が残っている状態」を作る必要があるので、2回の起動へ**同じ**フォルダを渡す。
+     */
+    const userDataDir = mkdtempSync(join(tmpdir(), 'ojt-ui-restore-'));
+    const first = await launch(userDataDir);
     try {
       await openProblem(first.page, 'mode-assemble', B_PROBLEM);
       await waitForBoard(first.page);
@@ -1606,20 +1586,12 @@ test.describe.serial('画面品質の機械点検', () => {
       await first.app.close();
     }
 
-    const app = await electron.launch({
-      args: [join(APP_ROOT, 'out', 'main', 'index.js'), ...CHROMIUM_FLAGS],
-      env: { ...process.env, NODE_ENV: 'production' },
+    const { app, page } = await launchApp({
+      window: SIZES[1] ?? { width: 1440, height: 900 },
+      userDataDir,
+      keepRestorePrompt: true,
     });
-    const page = await app.firstWindow();
     try {
-      await page.waitForLoadState('domcontentloaded');
-      await app.evaluate(({ BrowserWindow }) => {
-        const window = BrowserWindow.getAllWindows()[0];
-        if (window === undefined) throw new Error('ウィンドウがありません');
-        window.show();
-        window.focus();
-      });
-      await page.waitForTimeout(2000);
       const restore = page.getByTestId('restore-prompt');
       if ((await restore.count()) === 0) {
         notes.push('restore-prompt: 復元カードが出なかった（一時保存が無い）');
@@ -1629,6 +1601,7 @@ test.describe.serial('画面品質の機械点検', () => {
       await page.getByRole('button', { name: '復元しない' }).click();
     } finally {
       await app.close();
+      rmSync(userDataDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
     }
   });
 
@@ -1638,10 +1611,19 @@ test.describe.serial('画面品質の機械点検', () => {
 
   test('集計', () => {
     /*
-     * 溜めた指摘を集計する。`-g 集計` だけを流し直したときは `findings.json` から読む
-     * （基準値を書き換えたあと、全画面を歩き直さずに判定だけを確かめられるようにする）。
+     * 溜めた指摘を集計する。`OJT_UI_AUDIT_REUSE=1` を立てて `-g 集計` だけを流し直したときは
+     * `findings.json` から読む（基準値を書き換えたあと、全画面を歩き直さずに判定だけを
+     * 確かめられるようにする）。
+     *
+     * **環境変数で明示したときだけ読む**（レビュー指摘 QA-26）。`findings.size === 0` を
+     * 条件にすると、指摘が1件も出なかった理想的な実行で**前回の残骸**を読み込んでしまい、
+     * 直したはずの指摘が復活する（いちばん気付きにくい形で壊れる）。
      */
-    if (findings.size === 0 && existsSync(FINDINGS_PATH)) {
+    if (
+      process.env['OJT_UI_AUDIT_REUSE'] === '1' &&
+      findings.size === 0 &&
+      existsSync(FINDINGS_PATH)
+    ) {
       const saved: unknown = JSON.parse(readFileSync(FINDINGS_PATH, 'utf8'));
       if (Array.isArray(saved)) {
         for (const item of saved as Finding[]) findings.set(keyOf(item), item);
@@ -1687,7 +1669,13 @@ test.describe.serial('画面品質の機械点検', () => {
       .toBeLessThanOrEqual(BLOCKING_BASELINE);
     // ② そのほかは基準値以下（悪化させない）
     for (const [check, limit] of Object.entries(BASELINE)) {
-      expect.soft(byCheck[check] ?? 0, `${check} の件数が基準を超えた`).toBeLessThanOrEqual(limit);
+      const count = byCheck[check] ?? 0;
+      // 実測が基準より20%以上少なければ、基準値の下げ忘れとして警告する（レビュー指摘 QA-11）
+      if (limit > 0 && count <= limit * 0.8) {
+        console.log(`RATCHET: ${check} は基準 ${String(limit)} に対して実測 ${String(count)}。`);
+        console.log(`RATCHET:   BASELINE['${check}'] を ${String(count)} まで下げること`);
+      }
+      expect.soft(count, `${check} の件数が基準を超えた`).toBeLessThanOrEqual(limit);
     }
     // ③ 歩けなかった状態が増えていないこと（増えると網に穴が開く）
     expect

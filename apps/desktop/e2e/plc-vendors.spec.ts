@@ -1,17 +1,11 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 import { PLC_UNIT_JW300, PLC_UNIT_PC10G } from '@ojt/board-model';
 import { BUILTIN_PLC_PROBLEMS, toSocketRoles, type PlcProblem } from '@ojt/content';
 import { COIL_COL } from '@ojt/ladder-core';
-import {
-  _electron as electron,
-  expect,
-  test,
-  type ElectronApplication,
-  type Page,
-} from '@playwright/test';
+import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
+import { launchApp, settledShot, type Launched } from './app.js';
 import { plcTerminalPointFor, type CanvasBox } from './projection.js';
 
 /**
@@ -20,16 +14,8 @@ import { plcTerminalPointFor, type CanvasBox } from './projection.js';
  * 同じものを書き写している（E2E は成果物を外から触る）。
  *
  * **設定は `userData` に残る**ので、どのテストも最後に既定メーカーを三菱へ戻す（決定表#21）。
- * 戻さないと次に走る `plc.spec.ts`（FX5U 前提）が丸ごと落ちる。
  */
 
-const APP_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const SHOT_DIR = process.env['OJT_SHOT_DIR'] ?? join(APP_ROOT, 'screenshots');
-const CHROMIUM_FLAGS = [
-  '--use-gl=swiftshader',
-  '--use-angle=swiftshader',
-  '--enable-unsafe-swiftshader',
-];
 /** 他の E2E と同じ窓の大きさ（スクリーンショットを揃える）。 */
 const WINDOW = { width: 1440, height: 900 } as const;
 
@@ -42,77 +28,15 @@ const PROBLEM: PlcProblem = (() => {
 /** 課題の役割割当（3Dの物理端子へ直すのに使う）。 */
 const ROLES = toSocketRoles(PROBLEM.board.socketRoles);
 
-async function shot(app: ElectronApplication, page: Page, name: string): Promise<void> {
-  /*
-   * 画面を切り替えた直後に撮ると、コンポジタにはまだ**前の画面のフレーム**しか届いておらず
-   * `capturePage()` がそれを返す（スキンのはずの画像に課題一覧が写る）。3Dは
-   * `frameloop="demand"` なので初回の描画もひと呼吸遅れて届く（盤が真っ黒のまま写る）。
-   * 2フレーム描かせてから、`showBoardOnly()` と同じだけ待って撮る。
-   */
-  await page.evaluate(
-    async () =>
-      new Promise<void>((resolve) => {
-        requestAnimationFrame(() => {
-          requestAnimationFrame(() => {
-            resolve();
-          });
-        });
-      }),
-  );
-  await page.waitForTimeout(900);
-  // 3D を出している画面では、盤の1フレーム目が届くまで待つ（SwiftShader は遅い）
-  if ((await page.locator('[data-testid="viewport"] canvas').count()) > 0) {
-    await page.waitForTimeout(2500);
-  }
-  mkdirSync(SHOT_DIR, { recursive: true });
-  const base64 = await app.evaluate(async ({ BrowserWindow }) => {
-    const window = BrowserWindow.getAllWindows()[0];
-    if (window === undefined) throw new Error('ウィンドウがありません');
-    const image = await window.capturePage();
-    return image.toPNG().toString('base64');
-  });
-  writeFileSync(join(SHOT_DIR, `${name}.png`), Buffer.from(base64, 'base64'));
-}
-
 /**
- * この spec だけの `userData`（設定と一時保存の置き場）。**他の spec を汚さない**ため。
+ * ビルド済みの Electron を起こし、モードDのホームに立たせる（`e2e/app.ts`）。
  *
- * ここは4メーカーぶんのラダーを組むが、判定まで進まない test がある。判定を通らないと
- * 一時保存（§12.3）が残り、**次に走る `plc.spec.ts` が d-001 を開いた時点でそのラダーを
- * 引き継いでしまう**（Batch E: 「変換を通していないラダーでは判定できない」が、開いた
- * 直後なのに判定ボタンが押せる状態になって落ちた）。Electron は Chromium の
- * `--user-data-dir` をそのまま `app.getPath('userData')` に使うので、これ1行で分けられる。
- * 既定メーカーを三菱へ戻す後始末（決定表#21）はこの spec 自身のために残す。
+ * `launchApp()` は**起動ごとに使い捨ての `userData`** を作る（QA-12）ので、ここが4メーカー
+ * ぶんに組んだラダーの一時保存（§12.3）は次に走る `plc.spec.ts` へ漏れない。既定メーカーを
+ * 三菱へ戻す後始末（決定表#21）は、この spec 自身の中で続く test のために残してある。
  */
-const USER_DATA_DIR = mkdtempSync(join(tmpdir(), 'ojt-plc-vendors-'));
-
-async function launch(): Promise<{ app: ElectronApplication; page: Page }> {
-  const app = await electron.launch({
-    args: [
-      join(APP_ROOT, 'out', 'main', 'index.js'),
-      ...CHROMIUM_FLAGS,
-      `--user-data-dir=${USER_DATA_DIR}`,
-    ],
-    env: { ...process.env, NODE_ENV: 'production' },
-  });
-  const page = await app.firstWindow();
-  await page.waitForLoadState('domcontentloaded');
-  await app.evaluate(({ BrowserWindow }, size) => {
-    const window = BrowserWindow.getAllWindows()[0];
-    if (window === undefined) throw new Error('ウィンドウがありません');
-    window.setBounds({ x: 0, y: 0, width: size.width, height: size.height });
-    window.show();
-    window.focus();
-  }, WINDOW);
-  // 表示直後はコンポジタがまだフレームを出しておらず `capturePage()` が失敗することがある
-  await page.waitForTimeout(1500);
-  await expect(page.getByTestId('mode-plc')).toBeVisible({ timeout: 30_000 });
-  // 前回の実行が残した一時保存があると復元プロンプトが出るので、先に片付ける（§12.3）
-  const restore = page.getByTestId('restore-prompt');
-  if ((await restore.count()) > 0) {
-    await page.getByRole('button', { name: '復元しない' }).click();
-  }
-  return { app, page };
+async function launch(): Promise<Launched> {
+  return launchApp({ window: WINDOW, home: 'mode-plc' });
 }
 
 /**
@@ -298,7 +222,7 @@ test.describe('Phase 4 受入基準（4メーカー）', () => {
       );
       // 機種も CP1E になっている（決定表#9）
       await expect(page.getByTestId('plc-model')).toContainText('CP1E');
-      await shot(app, page, '41-omron-skin');
+      await settledShot(app, page, '41-omron-skin');
     });
   });
 
@@ -307,7 +231,7 @@ test.describe('Phase 4 受入基準（4メーカー）', () => {
       await openPlcProblem(page);
       await expect(page.getByTestId('ladder-workspace')).toHaveAttribute('data-skin', 'mitsubishi');
       await expect(page.getByTestId('skin-title')).toContainText('MELSOFT GX Works3 風');
-      await shot(app, page, '40-mitsubishi-skin');
+      await settledShot(app, page, '40-mitsubishi-skin');
       // X10（＝ IRの X(8)）と Y1 を置く
       await buildMinimalLadder(page, 'X10', 'Y1');
       await expect(page.getByTestId('cell-n1:0:0')).toContainText('X10');
@@ -316,7 +240,7 @@ test.describe('Phase 4 受入基準（4メーカー）', () => {
       await page.getByTestId('notation-to-omron').click();
       await expect(page.getByTestId('notation-change-0')).toContainText('0.08');
       await expect(page.getByTestId('notation-warning')).toContainText('配線');
-      await shot(app, page, '46-notation-dialog');
+      await settledShot(app, page, '46-notation-dialog');
       await page.getByTestId('notation-apply').click();
       // グリッドの表示が OMRON 表記になる（受入基準②）
       await expect(page.getByTestId('cell-n1:0:0')).toContainText('0.08');
@@ -331,7 +255,7 @@ test.describe('Phase 4 受入基準（4メーカー）', () => {
       await expect(page.getByTestId('ladder-workspace')).toHaveAttribute('data-skin', 'jtekt');
       await expect(page.getByTestId('skin-title')).toContainText('PCwin 風');
       await expect(page.getByTestId('plc-model')).toContainText('PC10G-1SP');
-      await shot(app, page, '42-jtekt-skin');
+      await settledShot(app, page, '42-jtekt-skin');
       // 3D: ラックの `IN-12` のCOM端子（`PLC.ICOM0`）へ盤の P1 から1本張る
       const box = await showBoardOnly(page);
       const from = plcTerminalPointFor(PLC_UNIT_PC10G, ROLES, 'P.1', box);
@@ -341,7 +265,7 @@ test.describe('Phase 4 受入基準（4メーカー）', () => {
       await expect(page.getByTestId('operation-log')).toContainText('PLC.ICOM0');
       // ラックのモジュール4枚の名札がDOMに出ている（`PlcRack` の `<Html>`。受入基準③）
       await expectRackModules(page, ['POWER1', 'PC10G-1SP', 'IN-12', 'OUT-12']);
-      await shot(app, page, '44-jtekt-rack');
+      await settledShot(app, page, '44-jtekt-rack');
       // 同番号（`1X010` と `1Y010`）を使うとバリデータがエラーを出す（4A 決定表#16）
       await page.getByTestId('view-ladder').click();
       await buildMinimalLadder(page, '1X010', '1Y010');
@@ -366,7 +290,7 @@ test.describe('Phase 4 受入基準（4メーカー）', () => {
       await expect(page.getByTestId('device-error')).toContainText('8進');
       // 入力欄は開いたまま（確定していない）
       await expect(page.getByTestId('device-input')).toBeVisible();
-      await shot(app, page, '43-sharp-skin');
+      await settledShot(app, page, '43-sharp-skin');
       // 開いたままのダイアログを畳んでから後始末へ入る
       await page.getByTestId('device-cancel').click();
       await expect(page.getByTestId('device-input')).toHaveCount(0);
@@ -387,7 +311,7 @@ test.describe('Phase 4 受入基準（4メーカー）', () => {
       await expect(page.getByTestId('operation-log')).toContainText('PLC.COM.A');
       // ラックのモジュール4枚の名札がDOMに出ている（受入基準⑤）
       await expectRackModules(page, ['JW-301PU', 'JW-312CU', 'JW-212NA', 'JW-214SA']);
-      await shot(app, page, '45-sharp-rack');
+      await settledShot(app, page, '45-sharp-rack');
     });
   });
 
@@ -404,7 +328,7 @@ test.describe('Phase 4 受入基準（4メーカー）', () => {
       await expect(
         page.getByTestId('toast').filter({ hasText: '命令語リストを保存しました' }),
       ).toBeVisible();
-      await shot(app, page, '47-instruction-list');
+      await settledShot(app, page, '47-instruction-list');
       const text = readFileSync(target, 'utf8');
       // シャープの命令名（§10.5 / 4A Task 4）で、CRLF 終端の UTF-8
       expect(text).toContain('STR');

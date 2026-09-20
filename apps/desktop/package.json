@@ -10,7 +10,8 @@
     "start": "electron out/main/index.js",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
-    "e2e": "playwright test",
+    "e2e": "playwright test --project=default",
+    "e2e:shots": "playwright test --project=manual-shots",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "dist": "node scripts/copy-content.mjs && node scripts/build-manual.mjs && electron scripts/print-manual.mjs && node scripts/build.mjs && electron-builder --config electron-builder.yml && node scripts/check-dist.mjs"
   },

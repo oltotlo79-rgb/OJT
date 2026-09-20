@@ -1,68 +1,24 @@
-import { mkdirSync, writeFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import {
-  _electron as electron,
-  expect,
-  test,
-  type ElectronApplication,
-  type Page,
-} from '@playwright/test';
+import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
+import { launchApp, settledShot } from './app.js';
 
 /**
  * 回路図エディタのE2E（§16 Phase 5 受入基準①②）と、2026-09-19 のUXレビュー #28 / #29。
  * 設計仕様 §11.4 / §8.3 / §15、Plan 5 決定表#1・#7・#9・#11・#12。
  *
- * 起動の定型（`CHROMIUM_FLAGS`・窓の大きさ・復元プロンプトの片付け）と `shot()` は
- * `polish.spec.ts` / `plc-vendors.spec.ts` からそのまま写している。既存の spec は1行も触らない
- * （MERGE 注意 #10）。画面の文言も `src/renderer/i18n/ja.ts` からの**書き写し**で、
+ * 起動の定型と `shot()` は `e2e/app.ts` に1か所だけ置いてある（QA-12 / QA-13）。画面の文言も `src/renderer/i18n/ja.ts` からの**書き写し**で、
  * E2E は成果物を外から触るだけにする（`inspect.spec.ts` 冒頭の注記と同じ流儀）。
  *
  * **このファイルの test は上から順に流す前提**（`polish.spec.ts` と同じ流儀。Batch E レビュー
  * Minor 5）。前の test が置いた画面の状態を次の test が引き継ぐので、`-g` で1本だけ流すと落ちる。
+ * そのため `test.describe.serial` にしてある（レビュー指摘 QA-03）。
  */
-
-const APP_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const SHOT_DIR = process.env['OJT_SHOT_DIR'] ?? join(APP_ROOT, 'screenshots');
-const CHROMIUM_FLAGS = [
-  '--use-gl=swiftshader',
-  '--use-angle=swiftshader',
-  '--enable-unsafe-swiftshader',
-];
-/** 他の E2E と同じ窓の大きさ（スクリーンショットを揃える）。 */
-const WINDOW = { width: 1440, height: 900 } as const;
 
 let app: ElectronApplication;
 let page: Page;
 
-/**
- * 画面を撮る。切り替えた直後はコンポジタに**前の画面のフレーム**しか届いていないので、
- * 2フレーム描かせてから待つ（`plc-vendors.spec.ts` と同じ）。3Dを出している画面では
- * `frameloop="demand"` の1枚目が SwiftShader で焼き上がるまでさらに待つ。
- */
+/** 画面が落ち着くのを待ってから撮る（`e2e/app.ts` の `settledShot()`）。 */
 async function shot(name: string): Promise<void> {
-  await page.evaluate(
-    async () =>
-      new Promise<void>((done) => {
-        requestAnimationFrame(() => {
-          requestAnimationFrame(() => {
-            done();
-          });
-        });
-      }),
-  );
-  await page.waitForTimeout(900);
-  if ((await page.locator('[data-testid="viewport"] canvas').count()) > 0) {
-    await page.waitForTimeout(2500);
-  }
-  mkdirSync(SHOT_DIR, { recursive: true });
-  const base64 = await app.evaluate(async ({ BrowserWindow }) => {
-    const window = BrowserWindow.getAllWindows()[0];
-    if (window === undefined) throw new Error('ウィンドウがありません');
-    const image = await window.capturePage();
-    return image.toPNG().toString('base64');
-  });
-  writeFileSync(join(SHOT_DIR, `${name}.png`), Buffer.from(base64, 'base64'));
+  await settledShot(app, page, name);
 }
 
 /** 配線ガイドで光っている盤の端子（`app/store.ts` の `setHighlight()` が書く窓）。 */
@@ -73,33 +29,14 @@ async function highlightedTerminals(): Promise<string[]> {
 }
 
 test.beforeAll(async () => {
-  app = await electron.launch({
-    args: [join(APP_ROOT, 'out', 'main', 'index.js'), ...CHROMIUM_FLAGS],
-    env: { ...process.env, NODE_ENV: 'production' },
-  });
-  page = await app.firstWindow();
-  await page.waitForLoadState('domcontentloaded');
-  await app.evaluate(({ BrowserWindow }, size) => {
-    const window = BrowserWindow.getAllWindows()[0];
-    if (window === undefined) throw new Error('ウィンドウがありません');
-    window.setBounds({ x: 0, y: 0, width: size.width, height: size.height });
-    window.show();
-    window.focus();
-  }, WINDOW);
-  await page.waitForTimeout(1500);
-  // 前回の実行が残した一時保存があると復元プロンプトが出るので、先に片付ける（§12.3）
-  const restore = page.getByTestId('restore-prompt');
-  if ((await restore.count()) > 0) {
-    await page.getByRole('button', { name: '復元しない' }).click();
-  }
-  await expect(page.getByTestId('mode-assemble')).toBeVisible({ timeout: 30_000 });
+  ({ app, page } = await launchApp());
 });
 
 test.afterAll(async () => {
   await app.close();
 });
 
-test.describe('回路図エディタ（§16 Phase 5 受入基準①②）', () => {
+test.describe.serial('回路図エディタ（§16 Phase 5 受入基準①②）', () => {
   /*
    * 描く回路は **b-001 の模範回路（`packages/content/src/builtin/assemble/b-001-self-hold.json`）
    * と同じ形**にする。段1が `pb-b PB2 → pb-a PB1 → coil CR1`、段2（`r1h`）が
@@ -202,7 +139,7 @@ test.describe('回路図エディタ（§16 Phase 5 受入基準①②）', () =
   });
 });
 
-test.describe('結果の疑い一覧とキーボード配線（UXレビュー #28 / #29）', () => {
+test.describe.serial('結果の疑い一覧とキーボード配線（UXレビュー #28 / #29）', () => {
   test('#28: 不合格の結果から疑わしい端子を盤で見られる', async () => {
     await page.getByTestId('assemble-view-board').click();
     await page.getByTestId('judge-button').click();

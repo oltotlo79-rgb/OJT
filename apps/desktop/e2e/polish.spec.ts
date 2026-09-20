@@ -1,64 +1,22 @@
-import { mkdirSync, writeFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import {
-  _electron as electron,
-  expect,
-  test,
-  type ElectronApplication,
-  type Page,
-} from '@playwright/test';
+import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
+import { launchApp, shot } from './app.js';
 import { closeOverflow, openOverflow, selectView } from './projection.js';
 
 /**
  * 仕上げ部分の E2E（設定画面・回路図ヒント・作業ファイルの保存）。
  * 設計仕様 §12.1 / §8.4 / §12.3 / §15。
+ *
+ * **この describe の test は上から順に流す前提**なので `test.describe.serial` にしてある
+ * （レビュー指摘 QA-03。`.serial` ならグループ全体が再試行され、`retries: 1` の再試行が
+ * 「前の test が作った画面」の無い状態で走らずに済む）。
  */
 
-const APP_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const SHOT_DIR = process.env['OJT_SHOT_DIR'] ?? join(APP_ROOT, 'screenshots');
-
-const CHROMIUM_FLAGS = [
-  '--use-gl=swiftshader',
-  '--use-angle=swiftshader',
-  '--enable-unsafe-swiftshader',
-];
-
-async function shot(app: ElectronApplication, name: string): Promise<void> {
-  mkdirSync(SHOT_DIR, { recursive: true });
-  const base64 = await app.evaluate(async ({ BrowserWindow }) => {
-    const window = BrowserWindow.getAllWindows()[0];
-    if (window === undefined) throw new Error('ウィンドウがありません');
-    const image = await window.capturePage();
-    return image.toPNG().toString('base64');
-  });
-  writeFileSync(join(SHOT_DIR, `${name}.png`), Buffer.from(base64, 'base64'));
-}
-
-test.describe('仕上げ', () => {
+test.describe.serial('仕上げ', () => {
   let app: ElectronApplication;
   let page: Page;
 
   test.beforeAll(async () => {
-    app = await electron.launch({
-      args: [join(APP_ROOT, 'out', 'main', 'index.js'), ...CHROMIUM_FLAGS],
-      env: { ...process.env, NODE_ENV: 'production' },
-    });
-    page = await app.firstWindow();
-    await page.waitForLoadState('domcontentloaded');
-    await app.evaluate(({ BrowserWindow }) => {
-      const window = BrowserWindow.getAllWindows()[0];
-      if (window === undefined) throw new Error('ウィンドウがありません');
-      window.setBounds({ x: 0, y: 0, width: 1440, height: 900 });
-      window.show();
-      window.focus();
-    });
-    await page.waitForTimeout(1500);
-    // 前回の実行が残した一時保存があると復元プロンプトが出るので、先に片付ける（§12.3）
-    const restore = page.getByTestId('restore-prompt');
-    if ((await restore.count()) > 0) {
-      await page.getByRole('button', { name: '復元しない' }).click();
-    }
+    ({ app, page } = await launchApp());
   });
 
   test.afterAll(async () => {
