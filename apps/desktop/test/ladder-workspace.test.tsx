@@ -175,6 +175,47 @@ describe('GX Works3風の枠（§10.6 / §17）', () => {
   });
 });
 
+/**
+ * 指摘 LE-3: END セルは上書き・削除できない。初期カーソルは `n1` の (0,0) で、`↓` を1回押すと
+ * END ネットワークの (0,0) に入る（END ネットワークは1行）。そこで `Delete` や記号キーを押すと、
+ * 以前は END が消えて `compile()` が missing-end を返し続け、二度と変換できなくなっていた。
+ */
+describe('END セルの保護（§10.3 / 指摘 LE-3・LC-1）', () => {
+  function moveCursorToEnd(): void {
+    useStore.getState().setLadderCursor({ networkId: 'end', row: 0, col: 0 });
+  }
+
+  it('keeps END alive against Delete', () => {
+    workspace();
+    moveCursorToEnd();
+    fireEvent.keyDown(screen.getByTestId('ladder-editor'), { key: 'Delete' });
+    const endNet = useStore.getState().ladder!.networks.find((n) => n.id === 'end')!;
+    expect(endNet.cells[0]![0]!.kind).toBe('end');
+    expect(useStore.getState().toasts.at(-1)?.text).toContain('END は消せません');
+  });
+
+  it('keeps END alive against a direct symbol key (F9: hline) and compile() still finds it', () => {
+    workspace();
+    moveCursorToEnd();
+    fireEvent.keyDown(screen.getByTestId('ladder-editor'), { key: 'F9' });
+    const endNet = useStore.getState().ladder!.networks.find((n) => n.id === 'end')!;
+    expect(endNet.cells[0]![0]!.kind).toBe('end');
+    // 変換してみても missing-end にならない（END は消えていない）
+    fireEvent.click(screen.getByTestId('toolbar-convert'));
+    expect(useStore.getState().converted).toBe(true);
+  });
+
+  it('keeps END alive against a device-input commit (F5: a-contact) landing on it', () => {
+    workspace();
+    moveCursorToEnd();
+    fireEvent.keyDown(screen.getByTestId('ladder-editor'), { key: 'F5' });
+    fireEvent.change(screen.getByTestId('device-text'), { target: { value: 'X0' } });
+    fireEvent.click(screen.getByTestId('device-commit'));
+    const endNet = useStore.getState().ladder!.networks.find((n) => n.id === 'end')!;
+    expect(endNet.cells[0]![0]!.kind).toBe('end');
+  });
+});
+
 describe('キー割当表（§12.1 / §17.1）', () => {
   it('shows every shortcut the profile declares', () => {
     render(<ShortcutHelp profile={MITSUBISHI_FX5U} />);

@@ -265,7 +265,7 @@ pnpm lint && pnpm typecheck
 
 **Steps:**
 
-- [ ] 1. **LE-1**: `session/ladder.ts` の `keyChord()`／`matchShortcut()` の手前に、末尾1文字のキーを大文字へ畳む関数を入れる。
+- [x] 1. **LE-1**: `session/ladder.ts` の `keyChord()`／`matchShortcut()` の手前に、末尾1文字のキーを大文字へ畳む関数を入れる。
 
 ```ts
 /**
@@ -282,11 +282,11 @@ export function foldKey(key: string): string {
 
 `keyChord()` の中で `event.key` を `foldKey(event.key)` に通し、`expandKeys()` の側でも表の末尾キーを `foldKey()` に通す（両端を畳まないと `/` のような記号が壊れる）。
 
-- [ ] 2. **LE-2**: `store.ts` の `undoLadderEdit()` / `redoLadderEdit()` で、復元したプログラムに合わせてカーソルを丸める。復元後の `networkId` が無ければ先頭のネットワークへ、`row`/`col` は `Math.min(row, rows-1)` / `Math.min(col, cols-1)` に丸める。あわせて `LadderEditor.tsx:152` 付近の `net.cells[row][col]` を `net.cells[row]?.[col]` にし、`undefined` のときは `edit` アクションを捨てる。
-- [ ] 3. **LE-3**: `session/ladder.ts` の `applyLadderCell()` / `clearLadderCell()` / `applyRuleLine()` の先頭に「対象セルが `end` なら何もせず `'end-locked'` を返す」を足す。`LadderEditor` はそれを受けてトーストを出す。文言は `i18n/ja.ts` に `JA.ladder.endLocked = 'END は消せません。ネットワークごと消すには「ネットワーク削除」を使います。'`。
-- [ ] 4. **LC-1**: `packages/ladder-core/src/compile.ts` に「END を含むネットワークに END 以外の中身があれば `after-end`」を足す（いまは `no-output` も抑止されるうえランタイムが `break` するので**一度も実行されない回路が「変換成功」になる**）。
-- [ ] 5. **LE-5**: `LadderEditor.tsx` の `onCommit` のカーソル送りを `const step = isBranch ? 2 : 1;` にし、OR接点の直後は「閉じ側の縦線の次」へ置く。
-- [ ] 6. テストを足す。
+- [x] 2. **LE-2**: `store.ts` の `undoLadderEdit()` / `redoLadderEdit()` で、復元したプログラムに合わせてカーソルを丸める。復元後の `networkId` が無ければ先頭のネットワークへ、`row`/`col` は `Math.min(row, rows-1)` / `Math.min(col, cols-1)` に丸める。あわせて `LadderEditor.tsx:152` 付近の `net.cells[row][col]` を `net.cells[row]?.[col]` にし、`undefined` のときは `edit` アクションを捨てる。
+- [x] 3. **LE-3**: `session/ladder.ts` の `applyLadderCell()` / `clearLadderCell()` / `applyRuleLine()` の先頭に「対象セルが `end` なら何もせず `'end-locked'` を返す」を足す。`LadderEditor` はそれを受けてトーストを出す。文言は `i18n/ja.ts` に `JA.ladder.endLocked = 'END は消せません。ネットワークごと消すには「ネットワーク削除」を使います。'`。
+- [x] 4. **LC-1**: `packages/ladder-core/src/compile.ts` に「END を含むネットワークに END 以外の中身があれば `after-end`」を足す（いまは `no-output` も抑止されるうえランタイムが `break` するので**一度も実行されない回路が「変換成功」になる**）。
+- [x] 5. **LE-5**: `LadderEditor.tsx` の `onCommit` のカーソル送りを `const step = isBranch ? 2 : 1;` にし、OR接点の直後は「閉じ側の縦線の次」へ置く。
+- [x] 6. テストを足す。
 
 ```
 apps/desktop/test/ladder-editor.test.tsx

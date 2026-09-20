@@ -351,6 +351,13 @@ export const JA = {
     modifications: '改造（故障箇所でない青線の削除）',
     noModification: '改造はありません。',
     terminal: '端子',
+    /*
+     * レビュー指摘 UX-22: 端子を選ぶと「未配線」しか選べず、訓練者が断線・誤配線・部品不良の
+     * 選び方が分からず迷っていた（`reportKindsFor()` は対象の種類で選べる種別を決めている）。
+     * 種別ポップオーバーに常時1行添えて先に説明する。
+     */
+    pickKindHint:
+      '端子には『未配線』だけを出しています。断線・誤配線は電線を、部品不良は部品をクリックしてください',
   },
   result: {
     title: '判定結果',
@@ -423,6 +430,13 @@ export const JA = {
     enlarge: '拡大',
     /** 拡大できることの案内（チャート本体の読み上げ名に添える）。 */
     openHint: 'クリックまたはEnterで拡大表示',
+    /**
+     * レビュー指摘 UI-14: `SchematicView` に `onPickCell` があるとき（モードC2の連動
+     * ハイライト中）は単クリックが「要素を選ぶ」に取られ拡大しない（Enter とダブルクリックは
+     * 変わらず拡大する）。それなのに `openHint` のまま読み上げると「クリックで拡大できる」
+     * という嘘の案内になる。
+     */
+    openHintPicking: 'Enterまたはダブルクリックで拡大表示',
     close: '閉じる',
     /** 拡大表示で積み上げる2段の見出し。 */
     expected: '期待（模範）',
@@ -627,6 +641,13 @@ export const JA = {
       // --- /Plan 4B Batch C 修正 #3 ---
     } as Readonly<Record<string, string>>,
     // --- /Plan 4B Task 9 ---
+    // --- Phase 7 Task 2 (LE-3) ---
+    /**
+     * END セルを消す・上書きしようとしたときの断り。`session/ladder.ts` は文言を持たない層
+     * なので合図の `'end-locked'` だけを返し、`LadderEditor` がここで文言を当てる。
+     */
+    endLocked: 'END は消せません。ネットワークごと消すには「ネットワーク削除」を使います。',
+    // --- /Phase 7 Task 2 (LE-3) ---
   },
   // --- /Plan 3B Task 4 ---
   // --- Plan 3B Task 10 ---
@@ -876,7 +897,12 @@ export const JA = {
   disabledReason: {
     undo: '元に戻せる操作がありません',
     redo: 'やり直せる操作がありません',
-    zeroAdjust: 'デジタルテスター、またはΩ／導通レンジのときだけ調整できます',
+    // レビュー指摘 UX-01: 実際の条件は `kind === 'analog' && isOhmSide`（アナログ かつ Ω／導通）。
+    // 旧文言は「デジタルテスター、または…」で条件が実装と逆だった。
+    zeroAdjust: 'アナログテスターのΩ／導通レンジのときだけ 0Ω 調整ができます',
+    // レビュー指摘 UX-03 / UX-06: 判定ボタンを `aria-disabled` に揃えるための既定文言
+    // （`judgeTitle` が渡らない画面の保険。通常はモードDの `judgeTitle` が具体的な理由を出す）。
+    judge: 'いまは判定できません',
   },
   /**
    * 波形の見比べの凡例（UXレビュー #7）。`result/ChartOverlay.tsx` の小さい重ね表示と
@@ -1215,9 +1241,14 @@ export function droppedTicksLog(ticks: number, occurrences: number = 1): string 
   return occurrences <= 1 ? base : `${base}（${occurrences} 回）`;
 }
 
-/** 拡大できるチャート本体の読み上げ名（`タイムチャート（仕様）: クリックまたはEnterで拡大表示`）。§7.7 */
-export function chartOpenerLabel(title: string): string {
-  return `${title}: ${JA.timeChart.openHint}`;
+/**
+ * 拡大できるチャート本体の読み上げ名（`タイムチャート（仕様）: クリックまたはEnterで拡大表示`）。§7.7
+ *
+ * `pickable` は `SchematicView` の `onPickCell` の有無（レビュー指摘 UI-14）。単クリックが
+ * 「要素を選ぶ」に取られ拡大しない画面では、拡大の手段が違う旨を読み上げる。
+ */
+export function chartOpenerLabel(title: string, pickable: boolean = false): string {
+  return `${title}: ${pickable ? JA.timeChart.openHintPicking : JA.timeChart.openHint}`;
 }
 
 /** 「拡大」ボタンの読み上げ名（`タイムチャート（仕様）を拡大`）。§7.7 */

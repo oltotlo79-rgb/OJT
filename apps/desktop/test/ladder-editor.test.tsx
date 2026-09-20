@@ -1,11 +1,21 @@
 import { BUILTIN_PLC_PROBLEMS } from '@ojt/content';
-import { cellAt, COIL_COL, X, Y, type Cell } from '@ojt/ladder-core';
-import { MITSUBISHI_FX5U, OMRON_CP1E } from '@ojt/plc-dialects';
+import { cellAt, COIL_COL, insertRow, X, Y, type Cell } from '@ojt/ladder-core';
+import {
+  JTEKT_PC10G,
+  MITSUBISHI_FX5U,
+  OMRON_CP1E,
+  SHARP_JW300,
+  type DialectProfile,
+} from '@ojt/plc-dialects';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useStore } from '../src/renderer/app/store.js';
 import { LadderEditor } from '../src/renderer/ladder/LadderEditor.js';
-import type { LadderEditorMode } from '../src/renderer/session/ladder.js';
+import {
+  expandKeys,
+  ladderKeyToAction,
+  type LadderEditorMode,
+} from '../src/renderer/session/ladder.js';
 
 const problem = BUILTIN_PLC_PROBLEMS[0]!;
 
@@ -184,6 +194,25 @@ describe('キー操作（§10.6 の割当表から引く）', () => {
     expect(net.rows).toBe(2);
     expect(cellAt(net, 1, 0)).toMatchObject({ device: Y(0) });
     expect(cellAt(net, 0, 1).kind).toBe('vline');
+    /*
+     * 指摘 LE-5: 確定後のカーソルは「閉じ側の縦線の次」（col 2）に置く。col 1（縦線の上）の
+     * ままだと、続けて記号を置いたときに縦線を上書きして下の行の分岐が孤立する。
+     */
+    expect(useStore.getState().ladderCursor).toEqual({ networkId: 'n1', row: 0, col: 2 });
+  });
+
+  it('does not throw on Enter after Ctrl+Z following a row insert and cursor move (LE-2)', () => {
+    editor();
+    const store = useStore.getState();
+    // 「行挿入」ボタン（`LadderWorkspace`）と同じ操作: n1 を2行にする
+    store.setLadder(insertRow(store.ladder!, 'n1', 1));
+    store.setLadderCursor({ networkId: 'n1', row: 1, col: 0 });
+    // `Ctrl+Z` で n1 は1行に戻るが、undo 前は `ladderCursor` が row:1 を指したままだった
+    fireEvent.keyDown(grid(), { key: 'z', ctrlKey: true });
+    expect(useStore.getState().ladder!.networks[0]!.rows).toBe(1);
+    expect(() => {
+      fireEvent.keyDown(grid(), { key: 'Enter' });
+    }).not.toThrow();
   });
 
   it('clears the cell on Delete and walks the history with Ctrl+Z / Ctrl+Y', () => {
@@ -228,15 +257,27 @@ describe('キー操作（§10.6 の割当表から引く）', () => {
   /**
    * レビュー I8: OMRON は `write-mode` のキー割当を持たない（決定表#12。実機はツールバーの
    * 「オンライン編集」）。以前の `?? 'F2'` は OMRON に無いキーを教えていた。
+   *
+   * 指摘 LE-1: このテストはもともと `{ key: 'C' }`（大文字）を送っていた。実ブラウザで `C`
+   * キーを押すと `KeyboardEvent.key` は小文字 `'c'` で来るので、大文字のイベントは実際には
+   * 起き得ない。大文字のままだと `matchShortcut()` の大小文字不一致（LE-1 本体）を覆い隠して
+   * しまうので、実ブラウザと同じ小文字に直す。
    */
   it('names the toolbar label, not the invented F2, under a skin with no write-mode key (I8)', () => {
     useStore.getState().setLadderMode('monitor');
     editor({ profile: OMRON_CP1E, gridCols: OMRON_CP1E.gridCols });
     // OMRON の a接点キーは `C`（モニタ中なので置けず、readOnly になる）
-    fireEvent.keyDown(grid(), { key: 'C' });
+    fireEvent.keyDown(grid(), { key: 'c' });
     const message = useStore.getState().toasts.at(-1)?.text ?? '';
     expect(message).not.toContain('F2');
     expect(message).toContain('オンライン編集');
+  });
+
+  it('opens the a-contact input on a lowercase key event under OMRON (LE-1)', () => {
+    editor({ profile: OMRON_CP1E, gridCols: OMRON_CP1E.gridCols });
+    // OMRON の a接点キーは表では 'C' だが、実ブラウザは小文字 'c' を送る
+    fireEvent.keyDown(grid(), { key: 'c' });
+    expect(screen.getByTestId('device-input')).toBeInTheDocument();
   });
 
   it('owns the keyboard only while focused (決定表#3)', () => {
@@ -246,5 +287,48 @@ describe('キー操作（§10.6 の割当表から引く）', () => {
     expect(useStore.getState().ladderFocused).toBe(true);
     fireEvent.blur(grid());
     expect(useStore.getState().ladderFocused).toBe(false);
+  });
+});
+
+/**
+ * 網羅検査（指摘 LE-1 / LE-8）: 4方言すべてで、キー割当表に `enabled !== false` として載っている
+ * 全行のキーが実際に `ladderKeyToAction()` で `none` 以外の操作へ写ること。表と実装がテストで
+ * 結ばれていなかったのが LE-1（OMRON のキーが1つも一致しない）の根本原因なので、二度と空けない。
+ */
+describe('4方言のキー割当が実際に効く（網羅。LE-1 / LE-8）', () => {
+  const profiles: readonly DialectProfile[] = [
+    MITSUBISHI_FX5U,
+    OMRON_CP1E,
+    JTEKT_PC10G,
+    SHARP_JW300,
+  ];
+
+  /**
+   * OMRON の `instruction`（命令入力）は Task 20 で実際に動かす予定で、それまでは
+   * `ladderKeyToAction()` が `{type:'none'}` を返す（本設計 §5.7 / Phase 7 Task 3 step 4）。
+   * `online-edit` / `transfer` は Phase 7 Task 3 で `enabled:false` にするまでの間だけ、
+   * ここで一時的に除外する（Task 3 が終わると `entry.enabled === false` で自然に除外される）。
+   */
+  const NOT_YET_WIRED: ReadonlySet<string> = new Set(['instruction', 'online-edit', 'transfer']);
+
+  it.each(profiles)('every enabled shortcut row of $id maps to a non-none action', (profile) => {
+    for (const entry of profile.shortcuts) {
+      if (entry.enabled === false || NOT_YET_WIRED.has(entry.action)) continue;
+      for (const chord of expandKeys(entry.keys)) {
+        const parts = chord.split('+');
+        const key = parts.pop() ?? '';
+        const action = ladderKeyToAction(
+          profile.shortcuts,
+          {
+            key,
+            ctrlKey: parts.includes('Ctrl'),
+            shiftKey: parts.includes('Shift'),
+            altKey: parts.includes('Alt'),
+          },
+          { cursor: { networkId: 'n1', row: 0, col: 0 }, mode: 'write' },
+        );
+        expect(action.type, `${profile.id} ${entry.action} (${chord})`).not.toBe('none');
+      }
+    }
   });
 });

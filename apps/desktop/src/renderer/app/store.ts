@@ -71,6 +71,7 @@ import {
 } from '../session/commands.js';
 import type { ToolMode } from '../session/interaction.js';
 import {
+  clampLadderCursor,
   emptyLadderHistory,
   initialLadder,
   pushLadder,
@@ -1508,31 +1509,41 @@ export const useStore = create<AppState>((set, get) => ({
       ladderHistory,
       converted: false,
       convertIssues: NO_CONVERT_ISSUES,
+      /*
+       * `openProblem()` は `problem.id` が変わらないので `sessionEpoch` を進めない。
+       * ここで進めないと、`[problemId, sessionEpoch]` で張り直す Session の Worker が
+       * 表記切替後も旧機種のネットリストのまま動き続ける（レビュー指摘 DS-1）。
+       */
+      sessionEpoch: get().sessionEpoch + 1,
     });
     get().toast(JA.plc.notationSwitched(getDialect(dialectId).displayName));
   },
   // --- /Plan 4B Task 8 ---
   undoLadderEdit: () => {
-    const { ladder, ladderHistory } = get();
+    const { ladder, ladderHistory, ladderCursor } = get();
     if (ladder === undefined) return false;
     const step = undoLadder(ladderHistory, ladder);
     if (step === undefined) return false;
     set({
       ladder: step.program,
       ladderHistory: step.history,
+      // 指摘 LE-2: 復元後のプログラムに合わせてカーソルを丸める（さもないと次の `Enter` で例外）
+      ladderCursor: clampLadderCursor(step.program, ladderCursor),
       converted: false,
       convertIssues: NO_CONVERT_ISSUES,
     });
     return true;
   },
   redoLadderEdit: () => {
-    const { ladder, ladderHistory } = get();
+    const { ladder, ladderHistory, ladderCursor } = get();
     if (ladder === undefined) return false;
     const step = redoLadder(ladderHistory, ladder);
     if (step === undefined) return false;
     set({
       ladder: step.program,
       ladderHistory: step.history,
+      // 指摘 LE-2: 同上（やり直しでも行数・ネットワーク数が変わりうる）
+      ladderCursor: clampLadderCursor(step.program, ladderCursor),
       converted: false,
       convertIssues: NO_CONVERT_ISSUES,
     });

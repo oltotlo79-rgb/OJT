@@ -312,7 +312,16 @@ export function compile(source: LadderProgram): CompileResult {
           if (endNetworkIndex < 0) endNetworkIndex = netIndex;
           continue;
         }
-        if (endNetworkIndex >= 0 && !hasEnd) {
+        /*
+         * 指摘 LC-1: END を含むネットワークの内側で END より後ろに置かれた中身も拒む。
+         * `!hasEnd` だけで判定すると、END セル自身を処理した時点で `hasEnd` が真になり、
+         * **同じネットワーク内で END のすぐあとに置かれた中身**（LE-3 の保護をすり抜けて
+         * 入った古い作業ファイル等）がここを素通りしてしまう（ランタイムは `net.isEnd` で
+         * `break` するので、一度も実行されない回路が「変換成功」と出ていた）。
+         * `endNetworkIndex` は END セルを見つけた瞬間に確定するので、これだけで
+         * 「END より後ろ」（同じネットワークの残りの列も、後続のネットワークも）を判定できる。
+         */
+        if (endNetworkIndex >= 0) {
           errors.push({
             code: 'after-end',
             networkId: net.id,

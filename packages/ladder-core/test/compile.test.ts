@@ -101,6 +101,23 @@ describe('compile', () => {
     expect(codes(result.errors)).toContain('after-end');
   });
 
+  /**
+   * 指摘 LC-1: END を含む**同じ**ネットワークの内側に END 以外の中身が置かれた場合。
+   * 以前は END セルを処理した時点で「このネットワークは既に END を見た」というフラグが立ち、
+   * 同じネットワーク内の残りのセルへの `after-end` 判定が素通りしていた（`no-output` も
+   * `hasEnd` で抑止される）。ランタイムは `net.isEnd` で `break` して回路を一度も実行しないので、
+   * このコイルは**一度も通電しないのに「変換成功」と出ていた**。
+   */
+  it('rejects a coil placed in the very network that holds END, not just a later one (LC-1)', () => {
+    // END を先頭列に、残りは横線で埋めてコイル列（15）に出力を置く（END と同居する回路）
+    const cells: Cell[] = [end(), ...Array.from({ length: IR_COLS - 2 }, () => hline()), out(Y(0))];
+    const mixed = program(network('end', [cells]));
+    const result = compile(mixed);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(codes(result.errors)).toContain('after-end');
+  });
+
   it('requires output cells in the coil column and forbids contacts there', () => {
     const wrongColumn = program(network('n1', [[no(X(0)), out(Y(0))]]), endNetwork());
     const a = compile(wrongColumn);

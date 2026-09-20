@@ -119,6 +119,24 @@ describe('keyChord / matchShortcut（決定表#12）', () => {
     expect(matchShortcut(TABLE, { key: 'Insert' })?.action).toBe('insert-toggle');
     expect(matchShortcut(TABLE, { key: 'Ins' })).toBeUndefined();
   });
+
+  /**
+   * 指摘 LE-1（Critical）: 実ブラウザで `C` キーを押すと `event.key` は小文字 `'c'` で来る
+   * （`Shift+C` なら大文字）。方言表は大文字で書いてあるので、大小文字を畳まないと
+   * OMRON のようなキー1文字割当のスキンでは1行も一致しない。
+   */
+  it('folds a single-letter key so a lowercase browser event still matches an uppercase table entry', () => {
+    const singleLetter: ShortcutTable = [
+      { action: 'contact-no', keys: 'C', label: 'a接点', confirmed: true },
+    ];
+    expect(matchShortcut(singleLetter, { key: 'c' })?.action).toBe('contact-no');
+    expect(matchShortcut(singleLetter, { key: 'C' })?.action).toBe('contact-no');
+  });
+
+  it('does not fold multi-character keys (function keys stay exact)', () => {
+    // `f5` のような入力は実ブラウザで起きない。機能キーは畳まない
+    expect(matchShortcut(TABLE, { key: 'f5' })).toBeUndefined();
+  });
 });
 
 describe('ladderKeyToAction', () => {
@@ -314,6 +332,22 @@ describe('applyOrContact（並列分岐）', () => {
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.message).toContain('コイル列');
+  });
+
+  /**
+   * 指摘 LE-5: `applyOrContact()` は閉じ側の縦線を `cursor.col + 1` に引く。`LadderEditor` の
+   * `onCommit` はこの直後にカーソルを送るが、+1（縦線の上）のままだと続けて記号を置いたときに
+   * 縦線を上書きして下の行の分岐が孤立する。+2（縦線の次）へ送れば空セルに着地する。
+   */
+  it('draws the closing vline one column right, so a 2-column cursor step lands past it', () => {
+    const result = applyOrContact(twoRungs(), at('n1', 0, 0), no(Y(0)));
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const net = result.program.networks[0]!;
+    const afterOneStep = moveCursor(result.program, at('n1', 0, 0), 0, 1);
+    expect(cellAt(net, afterOneStep.row, afterOneStep.col).kind).toBe('vline');
+    const afterTwoSteps = moveCursor(result.program, at('n1', 0, 0), 0, 2);
+    expect(cellAt(net, afterTwoSteps.row, afterTwoSteps.col).kind).not.toBe('vline');
   });
 });
 

@@ -1,4 +1,4 @@
-import { cellAt, hline, vline, type Cell } from '@ojt/ladder-core';
+import { hline, vline, type Cell } from '@ojt/ladder-core';
 import type { DialectProfile } from '@ojt/plc-dialects';
 import {
   useCallback,
@@ -100,7 +100,11 @@ export function LadderEditor({
   const commit = useCallback((result: LadderEditResult): void => {
     const store = useStore.getState();
     if (!result.ok) {
-      store.toast(result.message, 'error');
+      /*
+       * 指摘 LE-3: `session/ladder.ts` は END セルを保護したとき、文言を持たない層のまま
+       * 合図の `'end-locked'` を返す（session 層は i18n を知らない）。文言はここで当てる。
+       */
+      store.toast(result.message === 'end-locked' ? JA.ladder.endLocked : result.message, 'error');
       return;
     }
     store.setLadder(result.program);
@@ -149,7 +153,10 @@ export function LadderEditor({
         case 'edit': {
           const net = current.networks.find((n) => n.id === store.ladderCursor.networkId);
           if (net === undefined) break;
-          const cell = cellAt(net, store.ladderCursor.row, store.ladderCursor.col);
+          // 指摘 LE-2: undo 直後はカーソルが範囲外を指すことがある。`cellAt()` は範囲外で
+          // 例外を投げるので、ここは undefined を許して黙って諦める（丸めは store 側で行う）
+          const cell = net.cells[store.ladderCursor.row]?.[store.ladderCursor.col];
+          if (cell === undefined) break;
           if (cell.kind === 'empty' || cell.kind === 'hline' || cell.kind === 'vline') break;
           setPending({ kind: 'contact-no', form: formForCell(cell, profile), replace: true });
           break;
@@ -266,10 +273,18 @@ export function LadderEditor({
                 ? applyOrContact(current, store.ladderCursor, cell)
                 : applyLadderCell(current, store.ladderCursor, cell, insert),
             );
-            // 確定したらカーソルを1つ右へ送る（GX Works3 と同じ。続けて接点を並べられる）
+            /*
+             * 確定したらカーソルを右へ送る（GX Works3 と同じ。続けて接点を並べられる）。
+             * 指摘 LE-5: OR接点は `applyOrContact()` が「閉じ側の縦線」を `cursor.col + 1` に
+             * 引くので、常に+1だと縦線の上に乗ってしまい、続けて記号を置くとその縦線を
+             * 上書きして下の行の分岐が孤立する。OR接点のときだけ2列（縦線の次）へ送る。
+             */
+            const step = isBranch ? 2 : 1;
             const after = useStore.getState();
             if (after.ladder !== undefined) {
-              after.setLadderCursor(moveCursor(after.ladder, after.ladderCursor, 0, 1, gridCols));
+              after.setLadderCursor(
+                moveCursor(after.ladder, after.ladderCursor, 0, step, gridCols),
+              );
             }
             setPending(undefined);
           }}

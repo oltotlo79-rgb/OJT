@@ -148,24 +148,39 @@ const MODE_ACTIONS: Readonly<Record<string, LadderEditorMode>> = {
   'monitor-write': 'monitor',
 };
 
+/**
+ * キー名の畳み込み。`KeyboardEvent.key` は英字キーで `Shift` の有無により大小が変わるが、
+ * 方言のキー割当表（`C` / `O` / `I` など）は大文字で書いてある。1文字のキーだけ大文字へ
+ * 畳むことで、`c` でも `C` でも同じ行に当たるようにする。機能キー（`F5`）や
+ * `Escape` のような複数文字のキーは畳まない（`f5` のような入力は存在しない）。
+ * 指摘 LE-1（Critical）。
+ */
+export function foldKey(key: string): string {
+  return key.length === 1 ? key.toUpperCase() : key;
+}
+
 /** 押されたキーを、ショートカット表と同じ書式の文字列にする。 */
 export function keyChord(event: LadderKeyEvent): string {
   const parts: string[] = [];
   if (event.ctrlKey === true || event.metaKey === true) parts.push('Ctrl');
   if (event.shiftKey === true) parts.push('Shift');
   if (event.altKey === true) parts.push('Alt');
-  parts.push(event.key ?? '');
+  parts.push(foldKey(event.key ?? ''));
   return parts.join('+');
 }
 
-/** `keys` の文字列を照合できる形の一覧に展開する（`Ctrl+←↑↓→` → 4件、`Ins` → `Insert`）。 */
-function expandKeys(keys: string): string[] {
+/**
+ * `keys` の文字列を照合できる形の一覧に展開する（`Ctrl+←↑↓→` → 4件、`Ins` → `Insert`）。
+ * テスト（4方言の網羅検査。LE-1 / LE-8）が実イベントを組み立てるために export する。
+ */
+export function expandKeys(keys: string): string[] {
   const plus = keys.lastIndexOf('+');
   const prefix = plus < 0 ? '' : keys.slice(0, plus + 1);
   const tail = plus < 0 ? keys : keys.slice(plus + 1);
   const arrows = [...tail].filter((char) => ARROW_KEYS[char] !== undefined);
   if (arrows.length > 0) return arrows.map((char) => `${prefix}${ARROW_KEYS[char] ?? char}`);
-  return [`${prefix}${KEY_ALIASES[tail] ?? tail}`];
+  // 表の末尾キーも畳む（両端を畳まないと `C` の小文字イベントが `c` の1文字表記と一致しない。LE-1）
+  return [`${prefix}${foldKey(KEY_ALIASES[tail] ?? tail)}`];
 }
 
 /** キー入力に対応するショートカット表の行を探す。決定表#12 */
@@ -323,6 +338,24 @@ function guard(run: () => LadderProgram): LadderEditResult {
 }
 
 /**
+ * 指定位置のセルが END か。§10.3 / 指摘 LE-3
+ * END セルは上書き・削除ができず、消すと画面から復元する手段が無い（END を置く操作が無い）。
+ * `applyLadderCell()` / `clearLadderCell()` / `applyRuleLine()` の入口で使う。
+ */
+function isEndCellAtPos(
+  program: LadderProgram,
+  networkId: string,
+  row: number,
+  col: number,
+): boolean {
+  const net = findNetwork(program, networkId);
+  return net?.cells[row]?.[col]?.kind === 'end';
+}
+
+/** END セルを保護したときに返す結果（`LadderEditor` はこの `message` を見て文言を差し替える）。 */
+const END_LOCKED: LadderEditResult = { ok: false, message: 'end-locked' };
+
+/**
  * セルを置く。§10.6（`Ins` 挿入・上書きの切換。意図的な差分 #4 ／ レビュー指摘 B6）
  *
  * `insert` が真のときは、カーソルの列からコイル列の**1つ手前**までを右へ1つずらしてから置く
@@ -342,6 +375,8 @@ export function applyLadderCell(
   cell: Cell,
   insert = false,
 ): LadderEditResult {
+  // 指摘 LE-3: END セルは上書きできない（消すと画面から復元する手段が無い）
+  if (isEndCellAtPos(program, cursor.networkId, cursor.row, cursor.col)) return END_LOCKED;
   if (!insert || cursor.col >= COIL_COL) {
     return guard(() =>
       fillHlinesToCoil(
@@ -369,6 +404,8 @@ export function applyLadderCell(
 
 /** セルを空にする。 */
 export function clearLadderCell(program: LadderProgram, cursor: LadderCursor): LadderEditResult {
+  // 指摘 LE-3: END セルは削除できない
+  if (isEndCellAtPos(program, cursor.networkId, cursor.row, cursor.col)) return END_LOCKED;
   return guard(() => clearCell(program, cursor.networkId, cursor.row, cursor.col));
 }
 
@@ -381,10 +418,14 @@ export function applyRuleLine(
   if (direction === 'left' || direction === 'right') {
     const col = direction === 'right' ? cursor.col : cursor.col - 1;
     if (col < 0) return { ok: false, message: '左母線より左には横線を引けません' };
+    // 指摘 LE-3: 罫線の行き先が END セルなら拒否（END は横線でも上書きできない）
+    if (isEndCellAtPos(program, cursor.networkId, cursor.row, col)) return END_LOCKED;
     return guard(() => setCell(program, cursor.networkId, cursor.row, col, hline()));
   }
   const row = direction === 'down' ? cursor.row : cursor.row - 1;
   if (row < 0) return { ok: false, message: '先頭行より上には縦線を引けません' };
+  // 指摘 LE-3: 罫線の行き先が END セルなら拒否
+  if (isEndCellAtPos(program, cursor.networkId, row, cursor.col)) return END_LOCKED;
   return guard(() => setVerticalLink(program, cursor.networkId, row, cursor.col, true));
 }
 
@@ -492,6 +533,22 @@ export function emptyLadderHistory(): LadderHistory {
 export function pushLadder(history: LadderHistory, before: LadderProgram): LadderHistory {
   const done = [...history.done, before];
   return { done: done.slice(Math.max(0, done.length - LADDER_HISTORY_LIMIT)), undone: [] };
+}
+
+/**
+ * 復元されたプログラムに合わせてカーソルを丸める。指摘 LE-2
+ *
+ * `undoLadder()` / `redoLadder()` はプログラムだけを戻し、カーソルは見ない。復元後の
+ * ネットワークが無ければ先頭のネットワークへ、行・列は復元後の大きさに収まるよう丸める。
+ * これをしないと、行を挿入してからカーソルを動かし `Ctrl+Z` で戻ると、カーソルが範囲外の
+ * セルを指したまま残り、次の `Enter` で `cellAt()` が例外を投げてモード D 画面が使えなくなる。
+ */
+export function clampLadderCursor(program: LadderProgram, cursor: LadderCursor): LadderCursor {
+  const net = findNetwork(program, cursor.networkId) ?? program.networks[0];
+  if (net === undefined) return cursor;
+  const row = Math.min(cursor.row, net.rows - 1);
+  const col = Math.min(cursor.col, net.cols - 1);
+  return { networkId: net.id, row: Math.max(0, row), col: Math.max(0, col) };
 }
 
 /** 1手戻す。 */
