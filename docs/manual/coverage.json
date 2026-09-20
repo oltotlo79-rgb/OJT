@@ -523,6 +523,10 @@
       "section": "mode-b/「判定」を押す"
     },
     {
+      "testid": "judge-reason",
+      "internal": "判定ボタンが押せない理由の隠し文字（UI-03・UI-06）。中身は状況で変わる（『判定中…』か、モードごとの個別の理由）ので、ボタン自身の title と揃えて読み上げるだけの場所"
+    },
+    {
       "testid": "junction",
       "internal": "分岐の接合点の丸。親のラダー図で説明済み"
     },
@@ -855,6 +859,12 @@
     {
       "testid": "perf-readout",
       "internal": "性能の計測値。画面には出ず、試験だけが読む"
+    },
+    {
+      "testid": "pick-kind-hint",
+      "screen": "練習中（モードC2）",
+      "label": "端子には『未配線』だけを出しています。断線・誤配線は電線を、部品不良は部品をクリックしてください",
+      "section": "mode-c2/見つけたところを書き出す"
     },
     {
       "testid": "plc-guide",
@@ -1827,7 +1837,7 @@
     {
       "testid": "zero-disabled-reason",
       "screen": "テスター",
-      "label": "デジタルテスター、またはΩ／導通レンジのときだけ調整できます",
+      "label": "アナログテスターのΩ／導通レンジのときだけ 0Ω 調整ができます",
       "section": "mode-c1/テスターの使い方"
     },
     {

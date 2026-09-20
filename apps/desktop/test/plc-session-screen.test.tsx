@@ -4,9 +4,11 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useStore } from '../src/renderer/app/store.js';
 import { NO_CONVERT_ISSUES } from '../src/renderer/app/store-types.js';
+import { JA } from '../src/renderer/i18n/ja.js';
 import { SessionRoute } from '../src/renderer/screens/SessionRoute.js';
 import { bridge } from '../src/renderer/session/worker-bridge.js';
 import type * as BoardSceneModule from '../src/renderer/three/BoardScene.js';
+import type { OjtApi } from '../src/shared/ipc.js';
 
 /** 3D は happy-dom（このリポジトリのテスト環境）では描けないので `BoardScene` を差し替える。 */
 vi.mock('../src/renderer/three/BoardScene.js', async (importOriginal) => {
@@ -31,6 +33,17 @@ function currentSteps(): string[] {
     .map((el) => el.dataset.testid ?? '');
 }
 
+/** preload を差し替える（`session.test.tsx` と同じ形）。 */
+function setApi(api: Partial<OjtApi> | undefined): void {
+  if (api === undefined) delete window.ojt;
+  else window.ojt = api as OjtApi;
+}
+
+/** 保存・読込は「…」メニューの中に畳んである。 */
+function openToolbarOverflow(): void {
+  fireEvent.click(screen.getByTestId('toolbar-overflow-toggle'));
+}
+
 beforeEach(() => {
   sent.length = 0;
   vi.spyOn(bridge, 'start').mockImplementation(() => undefined);
@@ -45,6 +58,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+  setApi(undefined);
 });
 
 describe('モードDのセッション画面（§10.1 / §12.1）', () => {
@@ -81,7 +95,9 @@ describe('モードDのセッション画面（§10.1 / §12.1）', () => {
   it('refuses to judge an unconverted ladder and says why (H-1)', () => {
     render(<SessionRoute />);
     const judge = screen.getByTestId('judge-button');
-    expect(judge).toBeDisabled();
+    // UXレビュー #5 / UI-03・UI-06: `disabled` ではなく `aria-disabled`（title・トーストは保つ）
+    expect(judge).not.toBeDisabled();
+    expect(judge).toHaveAttribute('aria-disabled', 'true');
     expect(judge).toHaveAttribute('title', expect.stringContaining('変換'));
     expect(sent.filter((c) => (c as { type: string }).type === 'judgePlc')).toHaveLength(0);
   });
@@ -183,7 +199,7 @@ describe('モードDのセッション画面（§10.1 / §12.1）', () => {
     // ので、ボタン自体は押せる（Batch 4+5 レビュー M8 は維持する）。
     expect(currentSteps()).toEqual(['plc-step-run']);
     expect(useStore.getState().plcRunning).toBe(false);
-    expect(screen.getByTestId('judge-button')).not.toBeDisabled();
+    expect(screen.getByTestId('judge-button')).toHaveAttribute('aria-disabled', 'false');
 
     act(() => {
       useStore.getState().setPlcRunning(true);
@@ -242,12 +258,56 @@ describe('モードDのセッション画面（§10.1 / §12.1）', () => {
       { vendor: 'omron' },
     );
     render(<SessionRoute />);
-    expect(screen.getByTestId('judge-button')).toBeDisabled();
+    expect(screen.getByTestId('judge-button')).toHaveAttribute('aria-disabled', 'true');
     expect(screen.getByTestId('judge-button')).toHaveAttribute(
       'title',
       expect.stringContaining('CP1E-UNKNOWN'),
     );
     const toasts = useStore.getState().toasts.filter((t) => t.text.includes('CP1E-UNKNOWN'));
     expect(toasts).toHaveLength(1);
+  });
+});
+
+/**
+ * 指摘 LE-14: `onSave` / `onLoad` / `applyWorkFile` の Promise に `.catch` が無く、IPC の
+ * 一時失敗が `unhandledrejection` から致命バナーに化けていた（`LadderWorkspace.exportIl()` は
+ * 正しく `.catch` している）。main への IPC 自体が失敗した（Promise が reject する）ケースを
+ * 直接再現し、トーストに落ちることを確かめる。
+ */
+describe('保存・読込のIPC失敗（指摘 LE-14）', () => {
+  it('catches a rejected saveWorkFile instead of leaving an unhandled rejection', async () => {
+    const saveWorkFile = vi.fn().mockRejectedValue(new Error('IPCが失敗しました'));
+    setApi({ saveWorkFile });
+    render(<SessionRoute />);
+    openToolbarOverflow();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: JA.session.save }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(saveWorkFile).toHaveBeenCalledTimes(1);
+    const last = useStore.getState().toasts.at(-1);
+    expect(last?.text).toBe('IPCが失敗しました');
+    expect(last?.tone).toBe('error');
+  });
+
+  it('catches a rejected loadWorkFile instead of leaving an unhandled rejection', async () => {
+    const loadWorkFile = vi.fn().mockRejectedValue(new Error('IPCが失敗しました'));
+    setApi({ loadWorkFile });
+    render(<SessionRoute />);
+    openToolbarOverflow();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: JA.session.load }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(loadWorkFile).toHaveBeenCalledTimes(1);
+    const last = useStore.getState().toasts.at(-1);
+    expect(last?.text).toBe('IPCが失敗しました');
+    expect(last?.tone).toBe('error');
   });
 });

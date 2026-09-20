@@ -160,6 +160,7 @@ export function SchematicEditor({
   verifying,
   verified = false,
   boardWired = false,
+  showStepGuide = true,
   highlightCellIds,
   onEdit,
   onCursor,
@@ -182,6 +183,13 @@ export function SchematicEditor({
   verified?: boolean;
   /** 盤に電線を張ったか（手順帯に出す）。 */
   boardWired?: boolean;
+  /**
+   * このエディタ自身の手順帯（描く／検算／盤に配線）を出すか。既定は出す。
+   * `Session.tsx` が `assembleView === 'schematic'`（エディタだけを表示）のときは
+   * 上の帯を同じ3段に差し替えるので、ここでは出さずに二重表示を避ける（レビュー指摘 UX-04）。
+   * `並べて`（盤とエディタを両方表示）は上の帯が盤の4段のままなので、ここは出したままにする。
+   */
+  showStepGuide?: boolean;
   /** 配線ガイドで光らせる要素（Task 8 が渡す）。 */
   highlightCellIds?: readonly string[];
   /** 編集を1つ当てる。**受け入れられたら `true`**（断られたら分岐の指定は続ける）。 */
@@ -446,34 +454,46 @@ export function SchematicEditor({
         </div>
       </div>
 
-      <div className={styles.stepGuide} data-testid="schematic-step-guide">
-        <ol className={styles.stepList} aria-label={JA.stepGuide.label}>
-          {steps.map((step) => (
-            <li
-              key={step.key}
-              className={styles.step}
-              data-state={step.state}
-              data-testid={`schematic-step-${step.key}`}
-              {...(step.state === 'current' ? { 'aria-current': 'step' as const } : {})}
+      {showStepGuide ? (
+        <div className={styles.stepGuide} data-testid="schematic-step-guide">
+          <ol className={styles.stepList} aria-label={JA.stepGuide.label}>
+            {steps.map((step) => (
+              <li
+                key={step.key}
+                className={styles.step}
+                data-state={step.state}
+                data-testid={`schematic-step-${step.key}`}
+                {...(step.state === 'current' ? { 'aria-current': 'step' as const } : {})}
+              >
+                {step.label}
+              </li>
+            ))}
+          </ol>
+          {/* 分岐のあいだは「いま何をすればよいか」を分岐の案内に差し替える（決定表#24） */}
+          {branchHint === undefined ? (
+            <p className={styles.stepHint}>{schematicStepHint(currentStep)}</p>
+          ) : (
+            <p
+              className={styles.branchHint}
+              data-testid="branch-hint"
+              role="status"
+              aria-live="polite"
             >
-              {step.label}
-            </li>
-          ))}
-        </ol>
-        {/* 分岐のあいだは「いま何をすればよいか」を分岐の案内に差し替える（決定表#24） */}
-        {branchHint === undefined ? (
-          <p className={styles.stepHint}>{schematicStepHint(currentStep)}</p>
-        ) : (
-          <p
-            className={styles.branchHint}
-            data-testid="branch-hint"
-            role="status"
-            aria-live="polite"
-          >
-            {branchHint}
-          </p>
-        )}
-      </div>
+              {branchHint}
+            </p>
+          )}
+        </div>
+      ) : /*
+       * レビュー指摘 UX-04: `showStepGuide=false`（Session.tsx が上の帯を回路図の3段に
+       * 差し替え済み）のときは「済／いまここ」の帯を二重に出さない。ただし分岐の案内
+       * （`branchHint`）は「いまここ」の状態表示ではなく直後の操作を促す一時的な案内なので、
+       * 上の帯には無い情報として出し続ける。
+       */
+      branchHint === undefined ? null : (
+        <p className={styles.branchHint} data-testid="branch-hint" role="status" aria-live="polite">
+          {branchHint}
+        </p>
+      )}
 
       {/* 「全部消す」の確認（取り返しのつかない操作は必ず一度尋ねる）。§8.2 */}
       {clearAsk && onClear !== undefined ? (

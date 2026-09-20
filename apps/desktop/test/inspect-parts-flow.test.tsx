@@ -5,10 +5,11 @@ import {
   isAssembleProblem,
   type JudgeInspectPartsResult,
 } from '@ojt/content';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useStore } from '../src/renderer/app/store.js';
 import { renderRoute } from '../src/renderer/app/routes.js';
+import { dispatchTester } from '../src/renderer/panels/TesterPanel.js';
 import { InspectPartsSession } from '../src/renderer/screens/InspectPartsSession.js';
 import { SessionRoute } from '../src/renderer/screens/SessionRoute.js';
 import type { BridgeHandlers } from '../src/renderer/session/worker-bridge.js';
@@ -126,7 +127,8 @@ describe('判定の往復（judgeParts → inspectResult → 結果画面）', (
   it('判定中はボタンが無効になり2回目を送らない', () => {
     render(<InspectPartsSession />);
     fireEvent.click(screen.getByTestId('judge-button'));
-    expect(screen.getByTestId<HTMLButtonElement>('judge-button').disabled).toBe(true);
+    // UXレビュー #5 / UI-03・UI-06: 判定ボタンも `aria-disabled` に揃えた（`disabled` ではない）
+    expect(screen.getByTestId('judge-button')).toHaveAttribute('aria-disabled', 'true');
     fireEvent.click(screen.getByTestId('judge-button'));
     expect(sent.filter((c) => c['type'] === 'judgeParts')).toHaveLength(1);
   });
@@ -163,6 +165,39 @@ describe('判定の往復（judgeParts → inspectResult → 結果画面）', (
     expect(state.tester.black).toBeUndefined();
     expect(state.judge).toBeUndefined();
     expect(state.judging).toBe(false);
+  });
+});
+
+describe('部品の挿し替え時にテスターの状態を読み直す（レビュー指摘 UI-01）', () => {
+  it('Ωレンジ＋両プローブを置いた状態で部品を挿し替えても、外したはずの旧プローブを再送しない', () => {
+    if (C1 === undefined) return;
+    const first = C1.parts[0];
+    const second = C1.parts[1];
+    if (first === undefined || second === undefined) return;
+    render(<InspectPartsSession />);
+    act(() => {
+      useStore.getState().setCheckPart(first.id);
+    });
+    act(() => {
+      dispatchTester({ type: 'set-kind', kind: 'analog' });
+      dispatchTester({ type: 'set-mode', mode: 'OHM' });
+      dispatchTester({ type: 'place-probe', probe: 'black', terminal: toTerminalId('CHK.13') });
+      dispatchTester({ type: 'place-probe', probe: 'red', terminal: toTerminalId('CHK.14') });
+    });
+    expect(useStore.getState().tester.black).toBeDefined();
+    expect(useStore.getState().tester.red).toBeDefined();
+    sent.length = 0;
+    // Ωレンジのまま挿し替える。バグがあると外したはずの旧プローブが新しい盤へ再配置される
+    act(() => {
+      useStore.getState().setCheckPart(second.id);
+    });
+    expect(useStore.getState().tester.black).toBeUndefined();
+    expect(useStore.getState().tester.red).toBeUndefined();
+    const placeProbeSent = sent.some((c) => {
+      const action = c['action'] as { type?: string } | undefined;
+      return c['type'] === 'tester' && action?.type === 'place-probe';
+    });
+    expect(placeProbeSent).toBe(false);
   });
 });
 

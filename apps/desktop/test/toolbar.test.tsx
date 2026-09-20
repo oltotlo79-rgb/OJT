@@ -1,5 +1,6 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { useStore } from '../src/renderer/app/store.js';
 import { JA } from '../src/renderer/i18n/ja.js';
 import { Toolbar } from '../src/renderer/panels/Toolbar.js';
 import styles from '../src/renderer/panels/panels.module.css';
@@ -164,5 +165,89 @@ describe('「…」メニュー（UXレビュー #17: 視点・保存読込を�
     const scroll = document.querySelector(`.${styles.toolbarScroll}`);
     fireEvent.click(screen.getByTestId('toolbar-overflow-toggle'));
     expect(scroll?.contains(screen.getByTestId('judge-button'))).toBe(false);
+  });
+});
+
+/*
+ * UXレビュー #5 / UI-03・UI-06: `aria-disabled` は `disabled` と違ってクリックを止めない
+ * （ハンドラ側でガードする）ので、押しても無反応にはせず理由をトーストでも出す。
+ */
+describe('押せないボタンのトースト（UXレビュー #5 / UI-03・UI-06）', () => {
+  beforeEach(() => {
+    useStore.setState({ toasts: [] });
+  });
+
+  it('元に戻すが押せないときにクリックすると理由をトーストで1回出す', () => {
+    renderToolbar({ canUndo: false, canRedo: false });
+    fireEvent.click(screen.getByRole('button', { name: JA.session.undo }));
+    expect(
+      useStore.getState().toasts.filter((t) => t.text === JA.disabledReason.undo),
+    ).toHaveLength(1);
+  });
+
+  it('やり直しが押せないときにクリックすると理由をトーストで1回出す', () => {
+    renderToolbar({ canUndo: false, canRedo: false });
+    fireEvent.click(screen.getByRole('button', { name: JA.session.redo }));
+    expect(
+      useStore.getState().toasts.filter((t) => t.text === JA.disabledReason.redo),
+    ).toHaveLength(1);
+  });
+
+  it('判定ボタンが押せないときにクリックすると理由をトーストで1回出す', () => {
+    render(
+      <Toolbar
+        mode="wire"
+        wireColor="青"
+        allowedColors={['青', '白', '黄']}
+        camera="front"
+        canUndo={false}
+        canRedo={false}
+        judging={false}
+        judgeDisabled
+        judgeTitle="いまは判定できません（テスト）"
+        onMode={vi.fn()}
+        onWireColor={vi.fn()}
+        onCamera={vi.fn()}
+        onUndo={vi.fn()}
+        onRedo={vi.fn()}
+        onJudge={vi.fn()}
+        onBack={vi.fn()}
+        onSave={vi.fn()}
+        onLoad={vi.fn()}
+        schematicVisible={false}
+        onToggleSchematic={undefined}
+      />,
+    );
+    fireEvent.click(screen.getByTestId('judge-button'));
+    expect(
+      useStore.getState().toasts.filter((t) => t.text === 'いまは判定できません（テスト）'),
+    ).toHaveLength(1);
+  });
+
+  it('判定中にクリックすると「判定中…」を理由としてトーストで出す', () => {
+    render(
+      <Toolbar
+        mode="wire"
+        wireColor="青"
+        allowedColors={['青', '白', '黄']}
+        camera="front"
+        canUndo={false}
+        canRedo={false}
+        judging
+        onMode={vi.fn()}
+        onWireColor={vi.fn()}
+        onCamera={vi.fn()}
+        onUndo={vi.fn()}
+        onRedo={vi.fn()}
+        onJudge={vi.fn()}
+        onBack={vi.fn()}
+        onSave={vi.fn()}
+        onLoad={vi.fn()}
+        schematicVisible={false}
+        onToggleSchematic={undefined}
+      />,
+    );
+    fireEvent.click(screen.getByTestId('judge-button'));
+    expect(useStore.getState().toasts.filter((t) => t.text === JA.session.judging)).toHaveLength(1);
   });
 });

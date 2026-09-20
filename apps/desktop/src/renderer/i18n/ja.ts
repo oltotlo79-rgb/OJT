@@ -900,9 +900,6 @@ export const JA = {
     // レビュー指摘 UX-01: 実際の条件は `kind === 'analog' && isOhmSide`（アナログ かつ Ω／導通）。
     // 旧文言は「デジタルテスター、または…」で条件が実装と逆だった。
     zeroAdjust: 'アナログテスターのΩ／導通レンジのときだけ 0Ω 調整ができます',
-    // レビュー指摘 UX-03 / UX-06: 判定ボタンを `aria-disabled` に揃えるための既定文言
-    // （`judgeTitle` が渡らない画面の保険。通常はモードDの `judgeTitle` が具体的な理由を出す）。
-    judge: 'いまは判定できません',
   },
   /**
    * 波形の見比べの凡例（UXレビュー #7）。`result/ChartOverlay.tsx` の小さい重ね表示と

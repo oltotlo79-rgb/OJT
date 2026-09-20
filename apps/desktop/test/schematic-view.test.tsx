@@ -155,10 +155,12 @@ describe('クリックで拡大（タイムチャートと同じ作法）', () =
   it('連動ハイライトを使う画面では、図の単クリックは要素選択に譲る', () => {
     const onPickCell = vi.fn();
     render(<SchematicView document={docOf(C2)} onPickCell={onPickCell} />);
-    fireEvent.click(screen.getByRole('button', { name: /クリックまたはEnterで拡大表示/ }));
+    // レビュー指摘 UI-14: 単クリックで拡大しないので読み上げ名も違う（クリックとは言わない）
+    const opener = screen.getByRole('button', { name: /Enterまたはダブルクリックで拡大表示/ });
+    fireEvent.click(opener);
     expect(screen.queryByTestId('schematic-modal')).toBeNull();
     // 2度押しなら開く
-    fireEvent.doubleClick(screen.getByRole('button', { name: /クリックまたはEnterで拡大表示/ }));
+    fireEvent.doubleClick(opener);
     expect(screen.getByTestId('schematic-modal')).toBeTruthy();
   });
 

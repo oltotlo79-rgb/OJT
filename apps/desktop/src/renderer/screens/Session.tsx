@@ -23,6 +23,7 @@ import {
   referenceErrorText,
   routeFailedLog,
   wireCountText,
+  wireLabel,
   workFileSavedText,
 } from '../i18n/ja.js';
 import { ElapsedTimer } from '../panels/ElapsedTimer.js';
@@ -60,8 +61,14 @@ import {
   type PickAction,
   type PickHit,
 } from '../session/interaction.js';
+import { cellCount } from '../session/schematic-edit.js';
 import { buildSpecChart } from '../session/spec-chart.js';
-import { assembleStepHint, assembleSteps } from '../session/step-guide.js';
+import {
+  assembleStepHint,
+  assembleSteps,
+  schematicStepHint,
+  schematicSteps,
+} from '../session/step-guide.js';
 import { useViewportShortcuts } from '../session/viewport-keys.js';
 import {
   guideIndexFor,
@@ -359,7 +366,8 @@ export function Session(): JSX.Element {
             const failed = errors.find((e) => e.wireId === wire.id);
             if (failed !== undefined) {
               next.toast(`${JA.session.routeFailed}（${JA.routeReason[failed.reason]}）`, 'error');
-              next.addLog(routeFailedLog(wire.id, JA.routeReason[failed.reason]));
+              // レビュー指摘 UI-04: 操作ログにも内部ID（`w-003`）ではなく表示名を出す
+              next.addLog(routeFailedLog(wireLabel(wire), JA.routeReason[failed.reason]));
               return;
             }
             // 帯の空きスロットが尽きて他の電線と同じ位置に載った（3Dでは琥珀色で描かれる）
@@ -661,13 +669,44 @@ export function Session(): JSX.Element {
     0,
   );
   const fixedWireCount = session.wires.filter((w) => w.locked).length;
-  const steps = assembleSteps({
+  /*
+   * UXレビュー UX-04: 回路図エディタだけを出しているあいだ（`並べて` ではなく `schematic`）は、
+   * 上の帯も回路図の3段（描く／検算／盤に配線）に差し替える。盤のパネルが無いのに
+   * 「部品装着 いまここ」と言い続けると、新人は存在しないパネルを探すことになる。
+   * `並べて` は盤も見えているので、上の帯は盤の4段のまま（エディタ側の帯は別に出る）。
+   */
+  const showSchematicSteps = assembleView === 'schematic';
+  const schematicStepList = schematicSteps({
+    cellCount: schematicDoc === undefined ? 0 : cellCount(schematicDoc),
+    verified: verifyResult?.ok === true && verifyResult.passed,
+    boardWired: session.wires.some((w) => !w.locked),
+  });
+  const assembleStepList = assembleSteps({
     partsRemaining,
     wireCount: session.wires.length,
     fixedWireCount,
     powered,
   });
-  const currentStepKey = steps.find((step) => step.state === 'current')?.key;
+  const steps: ReadonlyArray<{
+    key: string;
+    label: string;
+    state: (typeof assembleStepList)[number]['state'];
+  }> = showSchematicSteps ? schematicStepList : assembleStepList;
+  const stepHint = showSchematicSteps
+    ? schematicStepHint(schematicStepList.find((step) => step.state === 'current')?.key)
+    : assembleStepHint(assembleStepList.find((step) => step.state === 'current')?.key);
+  /*
+   * レビュー指摘 UI-04: 状態オーバーレイの「選択中」が内部の電線ID（`w-003`）を
+   * そのまま出していた。両端の端子と色から組み立てた表示名にする（見つからない
+   * 古いIDだけ後退としてIDを出す）。
+   */
+  const selectedWireObj = session.wires.find((w) => w.id === selectedWire);
+  const selectedWireText =
+    selectedWire === undefined
+      ? ''
+      : selectedWireObj === undefined
+        ? selectedWire
+        : wireLabel(selectedWireObj);
 
   return (
     <>
@@ -847,7 +886,7 @@ export function Session(): JSX.Element {
           ))}
         </ol>
         <p className={styles.stepHint} data-testid="step-hint">
-          {assembleStepHint(currentStepKey)}
+          {stepHint}
         </p>
       </div>
 
@@ -867,7 +906,7 @@ export function Session(): JSX.Element {
               {pendingTerminal === undefined
                 ? JA.session.noTerminal
                 : `${JA.session.firstTerminal}: ${pendingTerminal}`}
-              {selectedWire === undefined ? '' : ` / ${JA.session.selection}: ${selectedWire}`}
+              {selectedWire === undefined ? '' : ` / ${JA.session.selection}: ${selectedWireText}`}
               {tripped ? ` / ${JA.session.tripped}` : ''}
               {webglLost ? ` / ${JA.error.webglLost}` : ''}
             </div>
@@ -890,6 +929,9 @@ export function Session(): JSX.Element {
               verifying={verifying}
               verified={verifyResult?.ok === true && verifyResult.passed}
               boardWired={session.wires.some((w) => !w.locked)}
+              // レビュー指摘 UX-04: `schematic`（エディタのみ表示）は上の帯をこの3段に差し替える
+              // ので、ここでは出さない。`split`（並べて）は上が盤の4段のままなのでここも出す。
+              showStepGuide={!showSchematicSteps}
               highlightCellIds={highlightCells}
               onEdit={(edit) => useStore.getState().applySchematicEdit(edit)}
               onCursor={(next) => {

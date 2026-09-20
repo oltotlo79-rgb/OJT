@@ -194,3 +194,33 @@ describe('モードBのビュー切替（Plan 5 決定表#1）', () => {
     expect(screen.queryAllByTestId(/^assemble-view-(board|split|schematic)$/u)).toHaveLength(3);
   });
 });
+
+/*
+ * レビュー指摘 UX-04: 回路図エディタだけを出しているあいだ、上の帯が「部品装着 いまここ」の
+ * ままだと、新人は存在しない部品パネルを探すことになる。`schematic` のときだけ上の帯を
+ * 回路図の3段に差し替え、エディタ自身の帯（二重表示）は消す。`split` は両方出す。
+ */
+describe('回路図エディタの手順帯との二重表示（レビュー指摘 UX-04）', () => {
+  it('盤だけのときは上の帯が盤の4段（部品装着 いまここ）', () => {
+    render(<Session />);
+    expect(screen.getByTestId('step-guide')).toHaveTextContent('部品装着');
+    expect(screen.getByTestId('step-parts')).toHaveAttribute('data-state', 'current');
+  });
+
+  it('回路図エディタだけのときは上の帯を回路図の3段に差し替え、エディタ自身の帯は出さない', () => {
+    render(<Session />);
+    fireEvent.click(screen.getByTestId('assemble-view-schematic'));
+    const topBand = screen.getByTestId('step-guide');
+    expect(topBand).toHaveTextContent('回路図を描く');
+    expect(topBand).not.toHaveTextContent('部品装着');
+    expect(screen.queryByTestId('schematic-step-guide')).toBeNull();
+  });
+
+  it('並べてのときは上の帯が盤の4段のまま、エディタ自身の帯も出す', () => {
+    render(<Session />);
+    fireEvent.click(screen.getByTestId('assemble-view-split'));
+    const topBand = screen.getByTestId('step-guide');
+    expect(topBand).toHaveTextContent('部品装着');
+    expect(screen.getByTestId('schematic-step-guide')).toHaveTextContent('回路図を描く');
+  });
+});

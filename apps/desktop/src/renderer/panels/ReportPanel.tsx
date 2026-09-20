@@ -46,6 +46,10 @@ export function ReportPanel({
           <span className={styles.popoverTitle}>
             {JA.inspectRepair.chooseKind}: {reportTargetLabel(pending, wires)}
           </span>
+          {/* レビュー指摘 UX-22: 端子では「未配線」しか選べない理由を先に説明する */}
+          <p className={styles.hint} data-testid="pick-kind-hint">
+            {JA.inspectRepair.pickKindHint}
+          </p>
           {reportKindsFor(pending).map((kind) => (
             <button
               key={kind}

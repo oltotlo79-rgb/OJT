@@ -158,6 +158,25 @@ describe('状態オーバーレイの電線カウント（UXレビュー #21）'
   });
 });
 
+describe('状態オーバーレイの選択中電線（レビュー指摘 UI-04）', () => {
+  it('内部の電線ID（w-003 など）を出さず、両端の端子と色から組み立てた表示名で示す', () => {
+    openSession();
+    act(() => {
+      scene.pick?.(terminalHit('P.1'));
+      scene.pick?.(terminalHit('TB_PB.2c'));
+    });
+    const wire = useStore.getState().session?.wires.at(-1);
+    expect(wire).toBeDefined();
+    if (wire === undefined) return;
+    act(() => {
+      useStore.getState().setSelectedWire(wire.id);
+    });
+    const text = screen.getByTestId('status-overlay').textContent ?? '';
+    expect(text).not.toMatch(/w-\d{3}/u);
+    expect(text).toContain(`${wire.from}–${wire.to} の${wire.color}線`);
+  });
+});
+
 describe('端子 → 端子の配線（§8.2）', () => {
   it('2つめの端子で電線が1本増え、Worker へ addWire を1回だけ送り、履歴も1つだけ積む', () => {
     openSession();
@@ -422,7 +441,9 @@ describe('判定（§8.2 / §13 #2）', () => {
     expect(useStore.getState().judging).toBe(true);
     const button = screen.getByTestId('judge-button');
     expect(button.textContent).toBe(JA.session.judging);
-    expect((button as HTMLButtonElement).disabled).toBe(true);
+    // UXレビュー #5 / UI-03・UI-06: 判定ボタンも `aria-disabled` に揃えた（`disabled` ではない）
+    expect(button).not.toBeDisabled();
+    expect(button).toHaveAttribute('aria-disabled', 'true');
     expect(sentOf('judge')).toHaveLength(1);
   });
 
@@ -440,7 +461,7 @@ describe('判定（§8.2 / §13 #2）', () => {
     expect(state.judge).toBeUndefined();
     expect(state.judging).toBe(false);
     expect(state.toasts.at(-1)?.text).toContain('模範回路が組めません');
-    expect(screen.getByTestId<HTMLButtonElement>('judge-button').disabled).toBe(false);
+    expect(screen.getByTestId('judge-button')).toHaveAttribute('aria-disabled', 'false');
   });
 
   it('Worker が落ちても「判定中…」のまま固まらない', () => {

@@ -2,7 +2,7 @@ import type { WireColor } from '@ojt/circuit-sim';
 import { useState, type JSX } from 'react';
 import { HelpButton } from '../help/HelpButton.js';
 import { JA } from '../i18n/ja.js';
-import type { CameraPreset } from '../app/store.js';
+import { useStore, type CameraPreset } from '../app/store.js';
 import type { ToolMode } from '../session/interaction.js';
 import styles from './panels.module.css';
 
@@ -104,6 +104,11 @@ export function Toolbar({
    * （レビュー指摘）。頻度の低い3群だけを畳み、線色・元に戻す・判定は常に1行目に残す。
    */
   const [overflowOpen, setOverflowOpen] = useState(false);
+  /*
+   * 判定ボタンが押せない理由。`judging`（往復待ち）を優先し、次に `judgeDisabled` の理由
+   * （`judgeTitle`。モードDだけが渡す）。どちらも無ければ押せる状態なので `undefined`。
+   */
+  const judgeReason = judging ? JA.session.judging : judgeDisabled ? judgeTitle : undefined;
   return (
     <div className={styles.toolbar} role="toolbar">
       {/*
@@ -163,7 +168,11 @@ export function Toolbar({
             aria-describedby={canUndo ? undefined : 'undo-reason'}
             title={canUndo ? undefined : JA.disabledReason.undo}
             onClick={() => {
-              if (!canUndo) return;
+              if (!canUndo) {
+                // UXレビュー #5 / UI-03・UI-06: 押しても無反応にはしない。理由をトーストでも出す
+                useStore.getState().toast(JA.disabledReason.undo, 'info');
+                return;
+              }
               onUndo();
             }}
           >
@@ -180,7 +189,10 @@ export function Toolbar({
             aria-describedby={canRedo ? undefined : 'redo-reason'}
             title={canRedo ? undefined : JA.disabledReason.redo}
             onClick={() => {
-              if (!canRedo) return;
+              if (!canRedo) {
+                useStore.getState().toast(JA.disabledReason.redo, 'info');
+                return;
+              }
               onRedo();
             }}
           >
@@ -270,16 +282,34 @@ export function Toolbar({
         </div>
         {children}
       </div>
+      {/*
+        UXレビュー #5 / UI-03・UI-06: 判定ボタンも 元に戻す／やり直し と同じ型に揃える。
+        `disabled` は Chromium が `title` もポインタイベントも配らないので使わない。
+        `judging`（往復待ち）と `judgeDisabled`（押させない理由がある。モードD: 未変換など）を
+        1つの `aria-disabled` にまとめ、押したときは理由をトーストでも出す。
+      */}
       <button
         type="button"
         className={styles.judgeButton}
         data-testid="judge-button"
-        disabled={judging || judgeDisabled}
+        aria-disabled={judging || judgeDisabled}
+        aria-describedby={judgeReason === undefined ? undefined : 'judge-reason'}
         {...(judgeTitle === undefined ? {} : { title: judgeTitle })}
-        onClick={onJudge}
+        onClick={() => {
+          if (judging || judgeDisabled) {
+            if (judgeReason !== undefined) useStore.getState().toast(judgeReason, 'info');
+            return;
+          }
+          onJudge();
+        }}
       >
         {judging ? JA.session.judging : JA.session.judge}
       </button>
+      {judgeReason === undefined ? null : (
+        <span className={styles.srOnly} id="judge-reason" data-testid="judge-reason">
+          {judgeReason}
+        </span>
+      )}
     </div>
   );
 }

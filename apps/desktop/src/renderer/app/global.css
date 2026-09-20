@@ -80,6 +80,16 @@ button:disabled {
   cursor: default;
 }
 
+/*
+ * UXレビュー UI-03 / UI-06: `aria-disabled` は `disabled` と違って `title` のツールチップと
+ * ポインタイベントを保つので、押せないボタン（判定・元に戻す・やり直し）はこちらへ寄せている。
+ * 見た目だけは `disabled` と揃える。
+ */
+button[aria-disabled='true'] {
+  opacity: 0.45;
+  cursor: default;
+}
+
 button[aria-pressed='true'] {
   background: var(--accent);
   color: #10151c;

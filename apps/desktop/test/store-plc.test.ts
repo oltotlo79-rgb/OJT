@@ -512,5 +512,23 @@ describe('switchDialect（表記切替。§10.7 / 決定表#11・#12）', () => 
     expect(useStore.getState().dialectId).toBe('sharp');
     expect(useStore.getState().problem).toBeUndefined();
   });
+
+  /*
+   * レビュー指摘 DS-1: `openProblem()` は `problem.id` が変わらないので `sessionEpoch` を
+   * 進めない。`Session` は Worker を `[problemId, sessionEpoch]` で張り直すので、進めないと
+   * 表記切替後も Worker が旧機種のネットリストのままになる。
+   */
+  it('bumps the session epoch on a dialect switch so the worker reloads, without changing the problem id', () => {
+    useStore.getState().openProblem(problem);
+    const before = useStore.getState();
+    const epoch = before.sessionEpoch;
+    const problemId = before.problem?.id;
+
+    useStore.getState().switchDialect('omron');
+
+    const after = useStore.getState();
+    expect(after.sessionEpoch).toBe(epoch + 1);
+    expect(after.problem?.id).toBe(problemId);
+  });
 });
 // --- /Plan 4B Task 8 ---

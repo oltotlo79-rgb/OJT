@@ -190,7 +190,7 @@ export function SchematicView({
         className={styles.paper}
         role="button"
         tabIndex={0}
-        aria-label={chartOpenerLabel(label)}
+        aria-label={chartOpenerLabel(label, onPickCell !== undefined)}
         onKeyDown={(event: ReactKeyboardEvent<HTMLDivElement>) => {
           if (event.key !== 'Enter' && event.key !== ' ') return;
           event.preventDefault();

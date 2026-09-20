@@ -104,6 +104,20 @@ describe('種別ポップオーバー（§9.2）', () => {
     expect(screen.queryByTestId('report-kind-wire-open')).toBeNull();
   });
 
+  // レビュー指摘 UX-22: 端子では「未配線」しか選べない理由を先に説明する
+  it('端子には「未配線」だけを出す理由を説明する', () => {
+    render(
+      <ReportPanel
+        reports={[]}
+        pending={{ terminalId: 'CR1.13' }}
+        onPick={vi.fn()}
+        onCancel={vi.fn()}
+        onRemove={vi.fn()}
+      />,
+    );
+    expect(screen.getByTestId('pick-kind-hint').textContent).toBe(JA.inspectRepair.pickKindHint);
+  });
+
   it('取消でポップオーバーを閉じる', () => {
     const onCancel = vi.fn();
     render(

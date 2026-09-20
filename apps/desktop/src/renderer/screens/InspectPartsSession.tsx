@@ -198,7 +198,13 @@ export function InspectPartsSession(): JSX.Element {
      * `WorkerBridge.send()` の no-op で捨てられていることがある。触っていれば送り直す
      * （Plan 2B レビュー B2）。
      */
-    const tester = store.tester;
+    /*
+     * `store`（`clearProbes()` 呼び出し前に取った `useStore.getState()`）はもう古い。
+     * `clearProbes()` は黒／赤プローブを外すが `store` はそれを知らないので、
+     * ここで読み直さないと外したはずの旧プローブが `replayTesterToWorker()` で
+     * 新しい盤へ再配置されてしまう（レビュー指摘 UI-01）。
+     */
+    const tester = useStore.getState().tester;
     const resendTester = (): void => {
       if (tester.mode !== 'off' || tester.zeroAdjusted) replayTesterToWorker(tester);
     };
