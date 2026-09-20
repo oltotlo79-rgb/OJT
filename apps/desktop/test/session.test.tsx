@@ -537,20 +537,27 @@ describe('作業ファイルの保存・読込（§12.3）', () => {
     expect(useStore.getState().toasts.at(-1)?.tone).toBe('error');
   });
 
-  it('「作業を読込」は manual で読み込み、結果を applyWorkFile へ渡す', async () => {
+  it('「作業を読込」は manual で読み込み、読んだ中身を当てにいく', async () => {
     const file = autosaveFile('b-001');
     const loadWorkFile = vi.fn().mockResolvedValue({ ok: true, file, path: 'C:/work.ojtw' });
-    setApi({ loadWorkFile });
+    /*
+     * 読込は `loadWorkFileAndApply()`（`work-file.ts`）に1本化してある（指摘 UI-05）ので、
+     * 同じ module 内の `applyWorkFile()` はモックでは捕まえられない。代わりに、当てる側が
+     * 最初に呼ぶ `readProblem()` を見て「読んだファイルがそのまま渡った」ことを確かめる。
+     */
+    const readProblem = vi.fn().mockResolvedValue(null);
+    setApi({ loadWorkFile, readProblem });
     openSession();
     openToolbarOverflow();
 
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: JA.session.load }));
       await Promise.resolve();
+      await Promise.resolve();
     });
 
     expect(loadWorkFile).toHaveBeenCalledWith({ kind: 'manual' });
-    expect(workFileMock.applyWorkFile).toHaveBeenCalledWith(file);
+    expect(readProblem).toHaveBeenCalledWith('b-001');
   });
 
   it('読込ダイアログを取り消しても失敗トーストは出さない', async () => {

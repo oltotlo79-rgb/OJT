@@ -336,7 +336,7 @@
 .plcLayout {
   /* `three/camera.ts` の `PLC_VIEW_ASPECT`。片方だけ変えない（`ladder-layout.test.tsx` が縛る） */
   --plc-aspect: 2;
-  /* ツールバー＋手順帯＋上下パディングの実測（1920×1080 で 94px）。少し余裕を見て 96px */
+  /* ツールバー＋手順の帯＋上下パディングの実測（1920×1080 で 94px）。少し余裕を見て 96px */
   --plc-chrome: 96px;
   --plc-pane-h: calc(100vh - var(--plc-chrome));
   /*
@@ -446,74 +446,9 @@
 }
 
 /*
- * 手順と状態の帯（2026-09-19 の利用者決定「分かりやすく直感的に」）。
- * ツールバーのすぐ下に置き、いまの手順・ラダーの書込／読出／モニタ・RUN/STOP を
- * 文字で出す。押せないボタンの理由もここに出す（`title` だけに頼らない）。
+ * モードDの状態チップ（手順の帯の中に並べる）。帯そのものの見た目は
+ * `panels/step-guide.module.css` が1本で持つ（指摘 UI-07）。
  */
-.plcGuide {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px 14px;
-  background: var(--panel);
-  border-bottom: 1px solid var(--line);
-  padding: 6px 10px;
-}
-
-.plcSteps {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-.plcStep {
-  display: flex;
-  align-items: baseline;
-  gap: 5px;
-  background: var(--panel-2);
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  color: var(--muted);
-  font-size: 12px;
-  line-height: 1.6;
-  padding: 3px 10px;
-}
-
-/* 手順の矢印（見出しの並びが順番であることを見せる） */
-.plcStep + .plcStep::before {
-  color: var(--muted);
-  content: '→';
-  margin-left: -4px;
-  margin-right: 2px;
-}
-
-.plcStep[data-state='current'] {
-  background: color-mix(in srgb, var(--accent) 18%, var(--panel-2));
-  border-color: var(--accent);
-  color: var(--text);
-  font-weight: 700;
-}
-
-.plcStep[data-state='done'] {
-  border-color: var(--ok);
-  color: var(--text);
-}
-
-.plcStepName {
-  white-space: nowrap;
-}
-
-.plcStepNote {
-  font-size: 11px;
-  font-weight: 400;
-  opacity: 0.85;
-  white-space: nowrap;
-}
-
 .plcStatus {
   display: flex;
   flex-wrap: wrap;
@@ -535,95 +470,9 @@
   color: var(--ok);
 }
 
-.plcHint {
-  color: var(--muted);
-  flex: 1 1 260px;
-  font-size: 12px;
-  line-height: 1.6;
-  margin: 0;
-}
-
 /* ツールバーへ差し込むボタン（押しやすい高さを確保する） */
 .plcToolButton {
   min-height: 32px;
-}
-
-/* --- UX pass 2026-09-19: B/C1/C2の手順帯 (#3) --- */
-/*
- * モードD の `.plcGuide` 系と見た目を揃えるための汎用エイリアス（クラス名はそのまま複製する。
- * `.plcGuide` 系はラダー担当が持つルールなので、ここでは新しい名前で同じ見た目だけを作る）。
- */
-.stepGuide {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px 14px;
-  background: var(--panel);
-  border-bottom: 1px solid var(--line);
-  /* 4pxグリッドに揃える（Plan 5 C/D レビュー M6）。`.boardFocus` が高さを合わせに来るので一緒に直す */
-  padding: 8px 12px;
-}
-
-.stepList {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-.step {
-  display: flex;
-  align-items: baseline;
-  gap: 5px;
-  background: var(--panel-2);
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  color: var(--muted);
-  font-size: 12px;
-  line-height: 1.6;
-  padding: 3px 10px;
-}
-
-/* 手順の矢印（見出しの並びが順番であることを見せる） */
-.step + .step::before {
-  color: var(--muted);
-  content: '→';
-  margin-left: -4px;
-  margin-right: 2px;
-}
-
-.step[data-state='current'] {
-  background: color-mix(in srgb, var(--accent) 18%, var(--panel-2));
-  border-color: var(--accent);
-  color: var(--text);
-  font-weight: 700;
-}
-
-.step[data-state='done'] {
-  border-color: var(--ok);
-  color: var(--text);
-}
-
-.stepName {
-  white-space: nowrap;
-}
-
-.stepNote {
-  font-size: 11px;
-  font-weight: 400;
-  opacity: 0.85;
-  white-space: nowrap;
-}
-
-.stepHint {
-  color: var(--muted);
-  flex: 1 1 260px;
-  font-size: 12px;
-  line-height: 1.6;
-  margin: 0;
 }
 
 /* ライブ記録の見出し行（UXレビュー #9）。開閉ボタンを右端に置く。 */
@@ -747,7 +596,7 @@
 /* --- Plan 5 Task 9: 結果画面から跳んできたときの帯（UXレビュー #28 / 決定表#11） --- */
 
 /*
- * 手順帯（`.stepGuide`）のすぐ上に出る1行。手順帯と同じ高さ・同じ余白にして、
+ * 手順の帯（`panels/step-guide.module.css`）のすぐ上に出る1行。帯と同じ高さ・同じ余白にして、
  * 帯が2本並んでも盤の見える面積が急に変わらないようにする。左の縦線で「案内」と区別する。
  */
 .boardFocus {
@@ -760,7 +609,7 @@
   border-bottom: 1px solid var(--line);
   border-left: 4px solid var(--accent);
   line-height: 1.6;
-  /* `.stepGuide` と同じ余白（4pxグリッド。Plan 5 C/D レビュー M6） */
+  /* 手順の帯と同じ余白（4pxグリッド。Plan 5 C/D レビュー M6） */
   padding: 8px 12px;
 }
 

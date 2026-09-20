@@ -9,6 +9,7 @@ import {
   type MouseEvent as ReactMouseEvent,
 } from 'react';
 import { createPortal } from 'react-dom';
+import { trapFocus } from '../app/focus-trap.js';
 import { chartEnlargeLabel, chartOpenerLabel, JA, schematicZoomText } from '../i18n/ja.js';
 import { pushModalLayer, topModalLayer } from '../session/interaction.js';
 import { SchematicSvg } from './SchematicSvg.js';
@@ -32,25 +33,6 @@ const ZOOM_STEPS = [1, 1.5, 2, 3] as const;
 
 /** モーダルを開いているあいだ本文のスクロールを止める（多重に開いても1回だけ戻す）。 */
 let overflowLockCount = 0;
-
-/** Tab をモーダルの中で回す。 */
-function trapFocus(panel: HTMLElement | null, event: KeyboardEvent): void {
-  if (panel === null) return;
-  const focusable = panel.querySelectorAll<HTMLElement>(
-    'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
-  );
-  const first = focusable[0];
-  const last = focusable[focusable.length - 1];
-  if (first === undefined || last === undefined) return;
-  const active = document.activeElement;
-  if (event.shiftKey && active === first) {
-    event.preventDefault();
-    last.focus();
-  } else if (!event.shiftKey && active === last) {
-    event.preventDefault();
-    first.focus();
-  }
-}
 
 /** 拡大表示の枠（`TimeChartView` の `ChartModal` と同じ作法）。§8.1 */
 function SchematicModal({

@@ -7,6 +7,7 @@ import {
 } from '@ojt/plc-dialects';
 import { useEffect, useRef, useState, type JSX } from 'react';
 import { DEFAULT_SETTINGS, type AppSettings, type AppSettingsResponse } from '../../shared/ipc.js';
+import { reasonOf } from '../app/errors.js';
 import { ojtApi } from '../app/ojt-api.js';
 import { useStore } from '../app/store.js';
 import { sounds } from '../audio/sounds.js';
@@ -29,11 +30,6 @@ export const TRADEMARK_NOTICE = JA.settings.trademarkNotice;
 
 /** 未確認事項の注記。§17.1 */
 export const ASSUMPTION_NOTICE = JA.settings.assumptionNotice;
-
-/** 例外から画面に出す1行を作る。 */
-function reasonOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
 
 /** 設定画面。 */
 export function Settings(): JSX.Element {

@@ -1,0 +1,80 @@
+/*
+ * 手順帯（どの画面でも同じ見た目）。設計仕様 §8.1（指摘 UI-07）。
+ *
+ * 2026-09-19 の利用者決定「分かりやすく直感的に」に対して、以前は markup 3実装・CSS 3実装で
+ * 見た目が3種類（水色のピル／琥珀の角丸／モードD版）に割れていた。ここが唯一の実装である。
+ * 色はすべてトークン（`global.css` の `--panel` / `--accent` / `--ok` など）から取る。
+ */
+
+.guide {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+  /* 4pxグリッドに揃える（Plan 5 C/D レビュー M6）。`.boardFocus` が高さを合わせに来る */
+  padding: 8px 12px;
+}
+
+.list {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.step {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+  padding: 3px 10px;
+}
+
+/* 手順の矢印（見出しの並びが順番であることを見せる） */
+.step + .step::before {
+  color: var(--muted);
+  content: '→';
+  margin-left: -4px;
+  margin-right: 2px;
+}
+
+.step[data-state='current'] {
+  background: color-mix(in srgb, var(--accent) 18%, var(--panel-2));
+  border-color: var(--accent);
+  color: var(--text);
+  font-weight: 700;
+}
+
+.step[data-state='done'] {
+  border-color: var(--ok);
+  color: var(--text);
+}
+
+.name {
+  white-space: nowrap;
+}
+
+.note {
+  font-size: 11px;
+  font-weight: 400;
+  opacity: 0.85;
+  white-space: nowrap;
+}
+
+.hint {
+  color: var(--muted);
+  flex: 1 1 260px;
+  font-size: 12px;
+  line-height: 1.6;
+  margin: 0;
+}

@@ -9,11 +9,9 @@ import { isAssembleProblem } from '@ojt/content';
 import type { BoardSession, MountableKind, SocketId } from '@ojt/board-model';
 import type { TerminalId } from '@ojt/circuit-sim';
 import { useCallback, useEffect, useMemo, useRef, useState, type JSX } from 'react';
-import { ojtApi } from '../app/ojt-api.js';
 import { nextAssembleView, schematicPolicy, useStore } from '../app/store.js';
 import type { AssembleViewMode } from '../app/store.js';
 import { NO_HIGHLIGHT } from '../app/store-types.js';
-import { sounds, soundsForSnapshot } from '../audio/sounds.js';
 import {
   failedLog,
   historyLog,
@@ -24,7 +22,6 @@ import {
   routeFailedLog,
   wireCountText,
   wireLabel,
-  workFileSavedText,
 } from '../i18n/ja.js';
 import { ElapsedTimer } from '../panels/ElapsedTimer.js';
 import { LogPanel } from '../panels/LogPanel.js';
@@ -33,6 +30,7 @@ import { PowerControls } from '../panels/PowerControls.js';
 import { ProblemPanel } from '../panels/ProblemPanel.js';
 import { TerminalListPanel } from '../panels/TerminalListPanel.js';
 import { liveChart, TimeChartPanel, TimeChartSvg } from '../panels/TimeChartPanel.js';
+import { StepGuide } from '../panels/StepGuide.js';
 import { Toolbar } from '../panels/Toolbar.js';
 import { ViewHint } from '../panels/ViewHint.js';
 import { WarningBanner } from '../panels/WarningBanner.js';
@@ -76,9 +74,15 @@ import {
   selectionFor,
   selectionForHover,
 } from '../session/wiring-guide.js';
-import { applyWorkFile, replayTesterToWorker, toWorkFile } from '../session/work-file.js';
+import {
+  loadWorkFileAndApply,
+  replayTesterToWorker,
+  saveCurrentWork,
+} from '../session/work-file.js';
+import { SoundEffects, useElapsedTicker } from '../session/use-session-runtime.js';
 import { bridge } from '../session/worker-bridge.js';
 import { BoardScene, safeRoutes } from '../three/BoardScene.js';
+import { NoProblem } from './NoProblem.js';
 import styles from './screens.module.css';
 
 /**
@@ -86,9 +90,6 @@ import styles from './screens.module.css';
  * ピック結果は `pickToAction()`（純粋関数）で操作に直し、盤操作は `commands.ts` の
  * コマンドを通して実行し、成功した変更だけを Worker に送る。
  */
-
-/** 経過時間の更新間隔[ms]。 */
-const ELAPSED_INTERVAL_MS = 200;
 
 /** ライブチャートの最小横軸長[ms]（開始直後に潰れないようにする）。 */
 const LIVE_MIN_DURATION_MS = 5000;
@@ -103,11 +104,6 @@ const ASSEMBLE_VIEWS: ReadonlyArray<readonly [AssembleViewMode, string, string]>
   ['split', JA.schematic.viewSplit, JA.schematic.viewSplitTitle],
   ['schematic', JA.schematic.viewSchematic, JA.schematic.viewSchematicTitle],
 ];
-
-/** 例外から画面に出す1行を作る。 */
-function reasonOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
 
 /**
  * ライブ記録のチャート。§8.2
@@ -154,22 +150,6 @@ function LivePanel(): JSX.Element {
       )}
     </section>
   );
-}
-
-/**
- * スナップショットの差分から効果音を鳴らす（§15: WebAudio の合成音のみ）。
- * `LivePanel` と同じ理由で `snapshot` の購読を専用の小さなコンポーネントへ分離する
- * （`Session` 本体で購読すると毎秒約30回、3Dビューポートを含む部分木ごと再描画されてしまう）。
- * 何も描かないので、盤を組み直す（＝再マウントする）たびに「直前の音」の記憶も一緒に消える。
- */
-function SoundEffects(): null {
-  const snapshot = useStore((s) => s.snapshot);
-  const previous = useRef<typeof snapshot | undefined>(undefined);
-  useEffect(() => {
-    for (const kind of soundsForSnapshot(previous.current, snapshot)) sounds.play(kind);
-    previous.current = snapshot;
-  }, [snapshot]);
-  return null;
 }
 
 /** セッション画面。 */
@@ -302,14 +282,7 @@ export function Session(): JSX.Element {
   }, [problemId, sessionEpoch]);
 
   // 経過時間を定期更新する（§8.1）
-  useEffect(() => {
-    const id = setInterval(() => {
-      useStore.getState().tickElapsed();
-    }, ELAPSED_INTERVAL_MS);
-    return () => {
-      clearInterval(id);
-    };
-  }, []);
+  useElapsedTicker();
 
   /** コマンド結果を反映する。失敗はトーストとログに残すだけで盤は変わらない。§8.2 */
   const apply = useCallback(<T,>(result: CommandResult<T>, after: () => void): void => {
@@ -579,19 +552,7 @@ export function Session(): JSX.Element {
    * （`Result` の「判定結果がありません」と同じ作り）。§12.1
    */
   if (problem === undefined || session === undefined) {
-    return (
-      <div className={styles.center}>
-        <p>{JA.session.noProblem}</p>
-        <button
-          type="button"
-          onClick={() => {
-            useStore.getState().abandonSession();
-          }}
-        >
-          {JA.result.toList}
-        </button>
-      </div>
-    );
+    return <NoProblem />;
   }
 
   const onPlug = (socketId: SocketId, kind: MountableKind): void => {
@@ -771,42 +732,9 @@ export function Session(): JSX.Element {
           useStore.getState().setRoute('list');
         }}
         onSave={() => {
-          const store = useStore.getState();
-          let api: ReturnType<typeof ojtApi>;
-          try {
-            api = ojtApi();
-          } catch (error) {
-            store.toast(reasonOf(error), 'error');
-            return;
-          }
-          void api
-            .saveWorkFile({
-              kind: 'manual',
-              file: toWorkFile(problem.id, session, store.elapsedMs, store.hazards.length),
-            })
-            .then((result) => {
-              store.toast(
-                result.ok ? workFileSavedText(result.path) : result.message,
-                result.ok ? 'info' : 'error',
-              );
-            });
+          saveCurrentWork(problem.id, session);
         }}
-        onLoad={() => {
-          let api: ReturnType<typeof ojtApi>;
-          try {
-            api = ojtApi();
-          } catch (error) {
-            useStore.getState().toast(reasonOf(error), 'error');
-            return;
-          }
-          void api.loadWorkFile({ kind: 'manual' }).then((result) => {
-            if (!result.ok) {
-              if (!result.canceled) useStore.getState().toast(result.message, 'error');
-              return;
-            }
-            void applyWorkFile(result.file);
-          });
-        }}
+        onLoad={loadWorkFileAndApply}
         schematicVisible={showSchematic}
         onToggleSchematic={
           policy?.toggleable
@@ -865,30 +793,7 @@ export function Session(): JSX.Element {
         いまどの手順にいるのかを文字でも出す（UXレビュー #3。決定表#7の理由から配線の中身には
         触れない。モードDの `.plcGuide` と同じ見た目を汎用クラス名 `.stepGuide` で再現する）。
       */}
-      <div className={styles.stepGuide} data-testid="step-guide">
-        <ol className={styles.stepList} aria-label={JA.stepGuide.label}>
-          {steps.map((step) => (
-            <li
-              key={step.key}
-              className={styles.step}
-              data-state={step.state}
-              data-testid={`step-${step.key}`}
-              {...(step.state === 'current' ? { 'aria-current': 'step' as const } : {})}
-            >
-              <span className={styles.stepName}>{step.label}</span>
-              {step.state === 'done' ? (
-                <span className={styles.stepNote}>{JA.stepGuide.done}</span>
-              ) : null}
-              {step.state === 'current' ? (
-                <span className={styles.stepNote}>{JA.stepGuide.current}</span>
-              ) : null}
-            </li>
-          ))}
-        </ol>
-        <p className={styles.stepHint} data-testid="step-hint">
-          {stepHint}
-        </p>
-      </div>
+      <StepGuide steps={steps} hint={stepHint} />
 
       <div className={styles.sessionLayout} data-view={assembleView}>
         {/*

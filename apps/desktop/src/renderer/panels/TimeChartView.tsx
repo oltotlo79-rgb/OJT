@@ -11,6 +11,7 @@ import {
   type RefObject,
 } from 'react';
 import { createPortal } from 'react-dom';
+import { trapFocus } from '../app/focus-trap.js';
 import { chartEnlargeLabel, chartOpenerLabel, JA } from '../i18n/ja.js';
 import { pushModalLayer, topModalLayer } from '../session/interaction.js';
 import {
@@ -376,32 +377,6 @@ export function ChartCanvas({
       <ChartCursor hostRef={hostRef} figure={figure} geom={geom} topY={topY} bottomY={bottomY} />
     </svg>
   );
-}
-
-/** モーダル内のフォーカスを外へ逃がさない（Tab の巡回）。 */
-function trapFocus(panel: HTMLElement | null, event: KeyboardEvent): void {
-  if (panel === null) return;
-  const list = Array.from(
-    panel.querySelectorAll<HTMLElement>(
-      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
-    ),
-  );
-  const first = list[0];
-  const last = list[list.length - 1];
-  if (first === undefined || last === undefined) return;
-  const active = document.activeElement;
-  const inside = active !== null && panel.contains(active);
-  if (event.shiftKey) {
-    if (!inside || active === first) {
-      event.preventDefault();
-      last.focus();
-    }
-    return;
-  }
-  if (!inside || active === last) {
-    event.preventDefault();
-    first.focus();
-  }
 }
 
 /**

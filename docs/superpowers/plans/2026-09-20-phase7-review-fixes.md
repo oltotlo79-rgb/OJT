@@ -587,10 +587,10 @@ apps/desktop/test/release-content.test.ts に追記
 
 **Steps:**
 
-- [ ] 1. **UI-05 を順に**: `errors.ts` に `reasonOf()` を1本化（8箇所の import 置換のみ）→ `use-session-runtime.ts` に `SoundEffects` と `useElapsedTicker()` → `StepGuide.tsx`（`steps` と `hint` を props に取る。3画面の各24行が1行になる）＋ `step-guide.module.css` 1本（**UI-07**。見た目を1種類に統一し、色をトークンへ寄せる）→ `work-file.ts` に `saveCurrentWork()` / `loadWorkFileAndApply()` → `NoProblem.tsx` → `ResultShell.tsx`（4結果画面を `children` だけにする。**UI-13** の `.stickyActions` 付け忘れがここで消える）。
-- [ ] 2. **UI-06**: `focus-trap.ts` に3実装を1本化する。**上位互換**にすること（`inside` 判定を持ち、`disabled` と `[hidden]` を除外する）。`TimeChartView` / `HelpDrawer` / `SchematicView` から使う。
-- [ ] 3. **DS-3**: `store.ts` を zustand のスライスパターンで4本に割る。`sessionFields()` を作り、`openProblem` / `restartSession` / `abandonSession` の初期値の源を1本化する。**`useStore` の型と公開面は変えない**（呼び出し側は無改修）。
-- [ ] 4. テスト。
+- [x] 1. **UI-05 を順に**: `errors.ts` に `reasonOf()` を1本化（8箇所の import 置換のみ）→ `use-session-runtime.ts` に `SoundEffects` と `useElapsedTicker()` → `StepGuide.tsx`（`steps` と `hint` を props に取る。3画面の各24行が1行になる）＋ `step-guide.module.css` 1本（**UI-07**。見た目を1種類に統一し、色をトークンへ寄せる）→ `work-file.ts` に `saveCurrentWork()` / `loadWorkFileAndApply()` → `NoProblem.tsx` → `ResultShell.tsx`（4結果画面を `children` だけにする。**UI-13** の `.stickyActions` 付け忘れがここで消える）。
+- [x] 2. **UI-06**: `focus-trap.ts` に3実装を1本化する。**上位互換**にすること（`inside` 判定を持ち、`disabled` と `[hidden]` を除外する）。`TimeChartView` / `HelpDrawer` / `SchematicView` から使う。
+- [x] 3. **DS-3**: `store.ts` を zustand のスライスパターンで4本に割る。`sessionFields()` を作り、`openProblem` / `restartSession` / `abandonSession` の初期値の源を1本化する。**`useStore` の型と公開面は変えない**（呼び出し側は無改修）。
+- [x] 4. テスト。
 
 ```
 apps/desktop/test/focus-trap.test.ts（新規）
@@ -603,7 +603,7 @@ apps/desktop/test/store.test.ts に追記
   - 4スライスの公開キーの和集合が分割前の AppState のキー集合と一致する
 ```
 
-- [ ] 5. `grep` で複製が消えたことを確かめる。
+- [x] 5. `grep` で複製が消えたことを確かめる。
 
 ```bash
 grep -rn "function reasonOf" apps/desktop/src | wc -l   # 期待: 1

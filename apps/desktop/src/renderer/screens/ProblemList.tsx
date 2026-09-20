@@ -1,5 +1,6 @@
 import { useEffect, useState, type JSX } from 'react';
 import { gradeLabel, JA, minutesLabel, problemCountText } from '../i18n/ja.js';
+import { reasonOf } from '../app/errors.js';
 import { ojtApi } from '../app/ojt-api.js';
 import { useStore, type ListMode } from '../app/store.js';
 import { HelpButton } from '../help/HelpButton.js';
@@ -14,11 +15,6 @@ type GradeFilter = 1 | 2 | 3 | undefined;
  *
  * preload が無い環境でも落ちない。`ojtApi()` が投げる理由をそのまま画面に出す（§13 #5）。
  */
-
-/** 例外から画面に出す1行を作る。 */
-function reasonOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
 
 /** 課題一覧画面。 */
 export function ProblemList(): JSX.Element {

@@ -1,17 +1,14 @@
 import { toNetlistTerminal } from '@ojt/board-model';
 import type { TerminalId } from '@ojt/circuit-sim';
 import { isInspectPartsProblem } from '@ojt/content';
-import { useCallback, useEffect, useRef, type JSX } from 'react';
-import { ojtApi } from '../app/ojt-api.js';
+import { useCallback, useEffect, type JSX } from 'react';
 import { checkSessionFor, useStore } from '../app/store.js';
-import { sounds, soundsForSnapshot } from '../audio/sounds.js';
 import {
   contactProbeLabel,
   JA,
   openedProblemLog,
   powerLog,
   referenceErrorText,
-  workFileSavedText,
 } from '../i18n/ja.js';
 import { CheckTrayPanel } from '../panels/CheckTrayPanel.js';
 import { DiagnosisHelp } from '../panels/DiagnosisHelp.js';
@@ -21,6 +18,7 @@ import { MarkSheetPanel } from '../panels/MarkSheetPanel.js';
 import { PowerControls } from '../panels/PowerControls.js';
 import { ProblemPanel } from '../panels/ProblemPanel.js';
 import { dispatchTester, TesterPanel } from '../panels/TesterPanel.js';
+import { StepGuide } from '../panels/StepGuide.js';
 import { Toolbar } from '../panels/Toolbar.js';
 import { ViewHint } from '../panels/ViewHint.js';
 import { WarningBanner } from '../panels/WarningBanner.js';
@@ -30,9 +28,15 @@ import { shouldIgnoreShortcut, type PickHit } from '../session/interaction.js';
 import { inspectPartsStepHint, inspectPartsSteps } from '../session/step-guide.js';
 import { testerPickToAction, testerShortcut } from '../session/tester.js';
 import { useViewportShortcuts } from '../session/viewport-keys.js';
-import { applyWorkFile, replayTesterToWorker, toWorkFile } from '../session/work-file.js';
+import {
+  loadWorkFileAndApply,
+  replayTesterToWorker,
+  saveCurrentWork,
+} from '../session/work-file.js';
+import { SoundEffects, useElapsedTicker } from '../session/use-session-runtime.js';
 import { bridge } from '../session/worker-bridge.js';
 import { BoardScene } from '../three/BoardScene.js';
+import { NoProblem } from './NoProblem.js';
 import styles from './screens.module.css';
 
 /**
@@ -45,29 +49,6 @@ import styles from './screens.module.css';
  * 3Dへ渡すハンドラはすべて `useCallback` で安定させる（§15。毎レンダーで作り直すと
  * `frameloop="demand"` が実質常時描画になる）。
  */
-
-/** 経過時間の更新間隔[ms]。 */
-const ELAPSED_INTERVAL_MS = 200;
-
-/** 例外から画面に出す1行を作る。 */
-function reasonOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
-/**
- * スナップショットの差分から効果音を鳴らす。§15
- * `Session`（モードB）と同じ理由で専用の小さなコンポーネントに切り出す
- * （この画面で `snapshot` をまるごと購読すると3Dごと毎秒約30回描き直される）。
- */
-function SoundEffects(): null {
-  const snapshot = useStore((s) => s.snapshot);
-  const previous = useRef<typeof snapshot | undefined>(undefined);
-  useEffect(() => {
-    for (const kind of soundsForSnapshot(previous.current, snapshot)) sounds.play(kind);
-    previous.current = snapshot;
-  }, [snapshot]);
-  return null;
-}
 
 /** プローブの置き場所ショートカット（コイル＋4組ぶんの a/b 接点）。§9.1 */
 function ProbeShortcuts(): JSX.Element {
@@ -233,14 +214,7 @@ export function InspectPartsSession(): JSX.Element {
   }, [problemId, sessionEpoch, checkPartId]);
 
   // 経過時間を定期更新する（§8.1）
-  useEffect(() => {
-    const id = setInterval(() => {
-      useStore.getState().tickElapsed();
-    }, ELAPSED_INTERVAL_MS);
-    return () => {
-      clearInterval(id);
-    };
-  }, []);
+  useElapsedTicker();
 
   /** 3Dへ渡すコールバックは安定させる。毎回作り直すとシーン全体が再構築される。§15 */
   const onHover = useCallback((id: TerminalId | undefined) => {
@@ -316,19 +290,7 @@ export function InspectPartsSession(): JSX.Element {
   }, []);
 
   if (problem === undefined || session === undefined) {
-    return (
-      <div className={styles.center}>
-        <p>{JA.session.noProblem}</p>
-        <button
-          type="button"
-          onClick={() => {
-            useStore.getState().abandonSession();
-          }}
-        >
-          {JA.result.toList}
-        </button>
-      </div>
-    );
+    return <NoProblem />;
   }
 
   /*
@@ -377,42 +339,9 @@ export function InspectPartsSession(): JSX.Element {
           useStore.getState().setRoute('list');
         }}
         onSave={() => {
-          const store = useStore.getState();
-          let api: ReturnType<typeof ojtApi>;
-          try {
-            api = ojtApi();
-          } catch (error) {
-            store.toast(reasonOf(error), 'error');
-            return;
-          }
-          void api
-            .saveWorkFile({
-              kind: 'manual',
-              file: toWorkFile(problem.id, session, store.elapsedMs, store.hazards.length),
-            })
-            .then((result) => {
-              store.toast(
-                result.ok ? workFileSavedText(result.path) : result.message,
-                result.ok ? 'info' : 'error',
-              );
-            });
+          saveCurrentWork(problem.id, session);
         }}
-        onLoad={() => {
-          let api: ReturnType<typeof ojtApi>;
-          try {
-            api = ojtApi();
-          } catch (error) {
-            useStore.getState().toast(reasonOf(error), 'error');
-            return;
-          }
-          void api.loadWorkFile({ kind: 'manual' }).then((result) => {
-            if (!result.ok) {
-              if (!result.canceled) useStore.getState().toast(result.message, 'error');
-              return;
-            }
-            void applyWorkFile(result.file);
-          });
-        }}
+        onLoad={loadWorkFileAndApply}
         schematicVisible={false}
         onToggleSchematic={undefined}
       >
@@ -437,30 +366,7 @@ export function InspectPartsSession(): JSX.Element {
       </Toolbar>
 
       {/* いまどの手順にいるのかを文字でも出す（UXレビュー #3）。決定表#7と同じ理由で測定値には触れない。 */}
-      <div className={styles.stepGuide} data-testid="step-guide">
-        <ol className={styles.stepList} aria-label={JA.stepGuide.label}>
-          {steps.map((step) => (
-            <li
-              key={step.key}
-              className={styles.step}
-              data-state={step.state}
-              data-testid={`step-${step.key}`}
-              {...(step.state === 'current' ? { 'aria-current': 'step' as const } : {})}
-            >
-              <span className={styles.stepName}>{step.label}</span>
-              {step.state === 'done' ? (
-                <span className={styles.stepNote}>{JA.stepGuide.done}</span>
-              ) : null}
-              {step.state === 'current' ? (
-                <span className={styles.stepNote}>{JA.stepGuide.current}</span>
-              ) : null}
-            </li>
-          ))}
-        </ol>
-        <p className={styles.stepHint} data-testid="step-hint">
-          {inspectPartsStepHint(currentStepKey)}
-        </p>
-      </div>
+      <StepGuide steps={steps} hint={inspectPartsStepHint(currentStepKey)} />
 
       <div className={styles.sessionLayout}>
         <div className={styles.viewport} data-testid="viewport">

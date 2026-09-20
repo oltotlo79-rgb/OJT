@@ -8,11 +8,17 @@ import {
   EMPTY_SNAPSHOT,
   RESTART_FALLBACK_ATTEMPTS,
   schematicPolicy,
+  sessionFields,
   sessionForProblem,
   TOAST_LIMIT,
   TOAST_TTL_MS,
   useStore,
+  type AppState,
 } from '../src/renderer/app/store.js';
+import { createLadderSlice } from '../src/renderer/app/store-ladder.js';
+import { createSchematicSlice } from '../src/renderer/app/store-schematic.js';
+import { createSessionSlice } from '../src/renderer/app/store-session.js';
+import { createUiSlice } from '../src/renderer/app/store-ui.js';
 
 const PROBLEM = BUILTIN_PROBLEMS.find((p) => p.id === 'b-003');
 
@@ -434,5 +440,93 @@ describe('schematicPolicy（§8.4: 級ごとの回路図ヒント）', () => {
       useStore.getState().openProblem(problem);
       expect(useStore.getState().schematicVisible, `${grade}級`).toBe(schematicPolicy(grade).shown);
     }
+  });
+});
+
+describe('ストアの4分割（指摘 DS-3）', () => {
+  /**
+   * 分割前の `AppState` が持っていた欄と操作の数。§12.1
+   * 4スライスの公開キーの和がこれと一致することを固定して、割り直しで欄が
+   * 迷子になる（どのスライスにも入らない／二重に入る）ことを止める。
+   */
+  const APP_STATE_KEY_COUNT = 144;
+
+  /** スライスを1つ組み立てて、公開するキーだけを取り出す（中身は呼ばない）。 */
+  function keysOf(
+    create: (
+      set: typeof useStore.setState,
+      get: typeof useStore.getState,
+      store: typeof useStore,
+    ) => object,
+  ): string[] {
+    return Object.keys(create(useStore.setState, useStore.getState, useStore));
+  }
+
+  it('4スライスの公開キーの和がストアのキー集合と一致する', () => {
+    const slices = [
+      keysOf(createSessionSlice),
+      keysOf(createSchematicSlice),
+      keysOf(createLadderSlice),
+      keysOf(createUiSlice),
+    ];
+    const union = new Set(slices.flat());
+    expect(union.size).toBe(slices.reduce((total, keys) => total + keys.length, 0));
+    expect([...union].sort()).toEqual(Object.keys(useStore.getState()).sort());
+    expect(union.size).toBe(APP_STATE_KEY_COUNT);
+  });
+});
+
+describe('sessionFields（課題を開く・やり直す・捨てるの初期値。指摘 DS-3）', () => {
+  /** いまの状態を「途中まで進めた」形に汚す。 */
+  function dirty(): void {
+    useStore.setState({
+      judging: true,
+      fatalError: 'こわれました',
+      webglLost: true,
+      pendingTerminal: toTerminalId('CR1.9'),
+      hoveredTerminal: toTerminalId('CR1.5'),
+      selectedWire: 'w-1',
+      selectedSocket: 'S1',
+      nextProbe: 'red',
+      answers: [{ partId: 'p1', answer: 'normal' }],
+      checkPartId: 'p1',
+      schematicOpenCount: 3,
+      assembleView: 'schematic',
+    });
+  }
+
+  /** `sessionFields()` が決める欄が、いま全部その値になっているか。 */
+  function expectFresh(): void {
+    const state = useStore.getState();
+    const fresh = sessionFields(state);
+    for (const [key, value] of Object.entries(fresh)) {
+      expect(state[key as keyof AppState], key).toEqual(value);
+    }
+  }
+
+  it('openProblem が同じ初期値から始める', () => {
+    expect(PROBLEM).toBeDefined();
+    if (PROBLEM === undefined) return;
+    dirty();
+    expect(useStore.getState().openProblem(PROBLEM)).toBe(true);
+    expectFresh();
+  });
+
+  it('restartSession が同じ初期値へ戻す', () => {
+    expect(PROBLEM).toBeDefined();
+    if (PROBLEM === undefined) return;
+    useStore.getState().openProblem(PROBLEM);
+    dirty();
+    useStore.getState().restartSession();
+    expectFresh();
+  });
+
+  it('abandonSession が同じ初期値へ戻す', () => {
+    expect(PROBLEM).toBeDefined();
+    if (PROBLEM === undefined) return;
+    useStore.getState().openProblem(PROBLEM);
+    dirty();
+    useStore.getState().abandonSession();
+    expectFresh();
   });
 });

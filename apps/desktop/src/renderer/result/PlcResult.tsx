@@ -1,11 +1,11 @@
 import type { JudgePlcResult, PlcProblem } from '@ojt/content';
 import type { JSX } from 'react';
-import { formatElapsed } from '../../worker/runtime.js';
-import { comparedSignalsText, elapsedSummaryText, JA } from '../i18n/ja.js';
+import { comparedSignalsText, JA } from '../i18n/ja.js';
 import { explainPowerCheck, failureReasons } from '../session/plc-explain.js';
 import { ChartOverlay } from './ChartOverlay.js';
 import { LadderIssueList } from './LadderIssueList.js';
 import { MismatchList } from './MismatchList.js';
+import { ResultShell } from './ResultShell.js';
 import { HazardList, StaticCheckList } from './StaticCheckList.js';
 import styles from './result.module.css';
 
@@ -35,91 +35,57 @@ export function PlcResult({
   const powerHelp = result.staticChecks.flatMap((check) => explainPowerCheck(check));
   const reasons = failureReasons(result);
   return (
-    <div className={styles.wrap}>
-      <div className={styles.scroll}>
-        <div className={styles.header}>
-          {/* 合否は画面を開いた瞬間に読み上げてほしい情報なので、支援技術にも伝える（§8.3） */}
-          <span
-            className={`${styles.verdict} ${styles.verdictBig} ${
-              result.passed ? styles.passed : styles.failed
-            }`}
-            data-testid="verdict"
-            role="status"
-            aria-live="polite"
-          >
-            {result.passed ? JA.result.passed : JA.result.failed}
-          </span>
-          <h1 className={styles.title}>
-            {JA.result.title}: {problem.title}
-          </h1>
-          <span data-testid="result-elapsed">
-            {JA.result.elapsed} {formatElapsed(elapsedMs)}（
-            {elapsedSummaryText(
-              elapsedMs,
-              problem.timeLimit.standardMin,
-              problem.timeLimit.cutoffMin,
-            )}
-            ）
-          </span>
-        </div>
-
-        {result.chatter.length === 0 ? null : (
-          <p className={styles.forbidden} data-testid="forbidden-warning">
-            {JA.result.forbidden}
-          </p>
+    <ResultShell
+      title={problem.title}
+      passed={result.passed}
+      elapsedMs={elapsedMs}
+      timeLimit={problem.timeLimit}
+      verdictBig
+      forbidden={result.chatter.length > 0}
+      onRetry={onRetry}
+      onBackToList={onBackToList}
+    >
+      {/* 合否のすぐ下に「なぜ」を置く。波形を読む前に、何を直せばよいかが分かるように */}
+      <div className={styles.why} data-testid="plc-why">
+        <h2>{JA.plc.why}</h2>
+        {reasons.length === 0 ? (
+          <p data-testid="plc-why-passed">{JA.plc.whyPassed}</p>
+        ) : (
+          <ol className={styles.reasons}>
+            {reasons.map((line) => (
+              <li key={line}>{line}</li>
+            ))}
+          </ol>
         )}
+        <p className={styles.detail} data-testid="compare-signals">
+          {comparedSignalsText(result.compareSignals)}
+        </p>
+      </div>
 
-        {/* 合否のすぐ下に「なぜ」を置く。波形を読む前に、何を直せばよいかが分かるように */}
-        <div className={styles.why} data-testid="plc-why">
-          <h2>{JA.plc.why}</h2>
-          {reasons.length === 0 ? (
-            <p data-testid="plc-why-passed">{JA.plc.whyPassed}</p>
-          ) : (
-            <ol className={styles.reasons}>
-              {reasons.map((line) => (
+      <div className={styles.grid}>
+        <LadderIssueList errors={result.ladderErrors} warnings={result.ladderWarnings} />
+        <ChartOverlay
+          expected={result.charts.expected}
+          actual={result.charts.actual}
+          mismatches={result.mismatches}
+        />
+        <MismatchList mismatches={result.mismatches} />
+        <StaticCheckList checks={result.staticChecks} />
+        {powerHelp.length === 0 ? null : (
+          <div className={styles.card} data-testid="plc-power-help">
+            <h2>{JA.staticCheck.plcPowerIndependent}</h2>
+            <ul>
+              {powerHelp.map((line) => (
                 <li key={line}>{line}</li>
               ))}
-            </ol>
-          )}
-          <p className={styles.detail} data-testid="compare-signals">
-            {comparedSignalsText(result.compareSignals)}
-          </p>
-        </div>
-
-        <div className={styles.grid}>
-          <LadderIssueList errors={result.ladderErrors} warnings={result.ladderWarnings} />
-          <ChartOverlay
-            expected={result.charts.expected}
-            actual={result.charts.actual}
-            mismatches={result.mismatches}
-          />
-          <MismatchList mismatches={result.mismatches} />
-          <StaticCheckList checks={result.staticChecks} />
-          {powerHelp.length === 0 ? null : (
-            <div className={styles.card} data-testid="plc-power-help">
-              <h2>{JA.staticCheck.plcPowerIndependent}</h2>
-              <ul>
-                {powerHelp.map((line) => (
-                  <li key={line}>{line}</li>
-                ))}
-              </ul>
-            </div>
-          )}
-          <HazardList
-            counts={result.hazardsByKind}
-            total={result.hazardCount + restoredHazardCount}
-          />
-        </div>
+            </ul>
+          </div>
+        )}
+        <HazardList
+          counts={result.hazardsByKind}
+          total={result.hazardCount + restoredHazardCount}
+        />
       </div>
-
-      <div className={styles.actions}>
-        <button type="button" onClick={onRetry}>
-          {JA.result.retry}
-        </button>
-        <button type="button" onClick={onBackToList}>
-          {JA.result.toList}
-        </button>
-      </div>
-    </div>
+    </ResultShell>
   );
 }

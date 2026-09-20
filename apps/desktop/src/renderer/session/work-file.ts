@@ -29,9 +29,15 @@ import { IR_COLS, MAX_ROWS, SPECIAL_INDEXES, type LadderProgram } from '@ojt/lad
 import { IMPLEMENTED_DIALECT_IDS, isDialectId } from '@ojt/plc-dialects';
 import { SCHEMATIC_FORMAT_VERSION, type SchematicDocument } from '@ojt/schematic-core';
 import { WORK_FILE_FORMAT_VERSION, type WorkFile } from '../../shared/ipc.js';
+import { reasonOf } from '../app/errors.js';
 import { ojtApi } from '../app/ojt-api.js';
 import { DEVICE_COMMENT_COUNT_LIMIT, DEVICE_COMMENT_LIMIT, useStore } from '../app/store.js';
-import { JA, workFileProblemMissingText, workFileRestoredLog } from '../i18n/ja.js';
+import {
+  JA,
+  workFileProblemMissingText,
+  workFileRestoredLog,
+  workFileSavedText,
+} from '../i18n/ja.js';
 import { cloneSession } from './commands.js';
 import { checkLoadFor } from './inspect-parts.js';
 import { circuitForJudge } from './inspect-repair.js';
@@ -424,11 +430,6 @@ export function toLadderProgram(
     program: { networks: networks as LadderProgram['networks'] },
     comments: comments === undefined ? {} : { ...comments },
   };
-}
-
-/** 例外から画面に出す1行を作る。 */
-function reasonOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }
 
 /**
@@ -854,4 +855,66 @@ export async function applyWorkFile(
   if (file.tester !== undefined) replayTesterToWorker(useStore.getState().tester);
   store.addLog(workFileRestoredLog(file.savedAt));
   return true;
+}
+
+/**
+ * いまの作業を作業ファイルへ保存する（ツールバーの「保存」）。§12.3（指摘 UI-05）
+ *
+ * 4つのセッション画面が同じ20行を写していた。IPC が使えない（`ojtApi()` が投げる）場合も、
+ * main が応答しない場合（指摘 LE-14: `.catch` が無く `unhandledrejection` から致命バナーに
+ * 化けていた）も、ここで1行のトーストに落とす。
+ */
+export function saveCurrentWork(problemId: string, session: BoardSession): void {
+  const store = useStore.getState();
+  let api: ReturnType<typeof ojtApi>;
+  try {
+    api = ojtApi();
+  } catch (error) {
+    store.toast(reasonOf(error), 'error');
+    return;
+  }
+  void api
+    .saveWorkFile({
+      kind: 'manual',
+      file: toWorkFile(problemId, session, store.elapsedMs, store.hazards.length),
+    })
+    .then((result) => {
+      store.toast(
+        result.ok ? workFileSavedText(result.path) : result.message,
+        result.ok ? 'info' : 'error',
+      );
+    })
+    .catch((error: unknown) => {
+      useStore.getState().toast(reasonOf(error), 'error');
+    });
+}
+
+/**
+ * 作業ファイルを選ばせて、いまの画面へ当てる（ツールバーの「読込」）。§12.3（指摘 UI-05）
+ *
+ * 取り消し（`canceled`）は失敗ではないので何も出さない。読み込んだ中身を当てる
+ * `applyWorkFile()` も約束を返すので、こちらにも受け皿を付ける（指摘 LE-14）。
+ */
+export function loadWorkFileAndApply(): void {
+  let api: ReturnType<typeof ojtApi>;
+  try {
+    api = ojtApi();
+  } catch (error) {
+    useStore.getState().toast(reasonOf(error), 'error');
+    return;
+  }
+  void api
+    .loadWorkFile({ kind: 'manual' })
+    .then((result) => {
+      if (!result.ok) {
+        if (!result.canceled) useStore.getState().toast(result.message, 'error');
+        return;
+      }
+      void applyWorkFile(result.file).catch((error: unknown) => {
+        useStore.getState().toast(reasonOf(error), 'error');
+      });
+    })
+    .catch((error: unknown) => {
+      useStore.getState().toast(reasonOf(error), 'error');
+    });
 }

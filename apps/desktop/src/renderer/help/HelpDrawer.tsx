@@ -8,6 +8,7 @@ import {
   type MouseEvent,
 } from 'react';
 import { createPortal } from 'react-dom';
+import { trapFocus } from '../app/focus-trap.js';
 import { tryOjtApi } from '../app/ojt-api.js';
 import { useStore } from '../app/store.js';
 import { helpHitCountText, JA } from '../i18n/ja.js';
@@ -30,26 +31,6 @@ import styles from './help.module.css';
 interface EnlargedFigure {
   name: string;
   alt: string;
-}
-
-/** 引き出しの中だけで `Tab` を回す（`SchematicModal` と同じ作法）。 */
-function trapFocus(panel: HTMLElement | null, event: KeyboardEvent): void {
-  if (panel === null) return;
-  const focusable = [
-    ...panel.querySelectorAll<HTMLElement>(
-      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
-    ),
-  ].filter((element) => !element.hasAttribute('disabled'));
-  const first = focusable[0];
-  const last = focusable[focusable.length - 1];
-  if (first === undefined || last === undefined) return;
-  if (event.shiftKey && document.activeElement === first) {
-    event.preventDefault();
-    last.focus();
-  } else if (!event.shiftKey && document.activeElement === last) {
-    event.preventDefault();
-    first.focus();
-  }
 }
 
 /** ヘルプの引き出し。 */

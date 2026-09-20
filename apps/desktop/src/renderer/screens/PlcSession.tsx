@@ -8,11 +8,9 @@ import {
 import type { TerminalId } from '@ojt/circuit-sim';
 import { isPlcProblem } from '@ojt/content';
 import { getDialect, type DialectProfile } from '@ojt/plc-dialects';
-import { useCallback, useEffect, useMemo, useRef, type JSX } from 'react';
+import { useCallback, useEffect, useMemo, type JSX } from 'react';
 import type { PlcCommandAction } from '../../worker/protocol.js';
-import { ojtApi } from '../app/ojt-api.js';
 import { useStore } from '../app/store.js';
-import { sounds, soundsForSnapshot } from '../audio/sounds.js';
 import {
   failedLog,
   historyLog,
@@ -22,7 +20,6 @@ import {
   referenceErrorText,
   routeFailedLog,
   wireCountText,
-  workFileSavedText,
 } from '../i18n/ja.js';
 import { LadderWorkspace } from '../ladder/LadderWorkspace.js';
 import { ElapsedTimer } from '../panels/ElapsedTimer.js';
@@ -30,6 +27,7 @@ import { LogPanel } from '../panels/LogPanel.js';
 import { PartsPanel } from '../panels/PartsPanel.js';
 import { PowerControls } from '../panels/PowerControls.js';
 import { ProblemPanel } from '../panels/ProblemPanel.js';
+import { StepGuide } from '../panels/StepGuide.js';
 import { Toolbar } from '../panels/Toolbar.js';
 import { ViewHint } from '../panels/ViewHint.js';
 import { WarningBanner } from '../panels/WarningBanner.js';
@@ -57,9 +55,11 @@ import { hasLadderContent, shortcutKeyOf, type LadderEditorMode } from '../sessi
 import { boardForProblem, canJudgePlc, plcBoardOf } from '../session/plc-session.js';
 import { autoConvert, skinGridCols, skinStepKeys, type PlcStepKey } from '../session/plc-skin.js';
 import { useViewportShortcuts } from '../session/viewport-keys.js';
-import { applyWorkFile, toWorkFile } from '../session/work-file.js';
+import { loadWorkFileAndApply, saveCurrentWork } from '../session/work-file.js';
+import { SoundEffects, useElapsedTicker } from '../session/use-session-runtime.js';
 import { bridge } from '../session/worker-bridge.js';
 import { BoardScene, safeRoutes } from '../three/BoardScene.js';
+import { NoProblem } from './NoProblem.js';
 import styles from './screens.module.css';
 
 /**
@@ -69,9 +69,6 @@ import styles from './screens.module.css';
  * キーの宛先はフォーカスで決まる（決定表#3）: エディタにフォーカスがある間は視点のショートカットも
  * 盤の `Delete` / `Esc` も動かさない。
  */
-
-/** 経過時間の更新間隔[ms]。 */
-const ELAPSED_INTERVAL_MS = 200;
 
 /** 手順の進み方（`done` 済み / `current` いまここ / `todo` これから / `anytime` いつでも）。 */
 type StepState = 'done' | 'current' | 'todo' | 'anytime';
@@ -131,22 +128,6 @@ function ladderModeLabel(mode: LadderEditorMode): string {
   if (mode === 'write') return JA.plc.modeWrite;
   if (mode === 'read') return JA.plc.modeRead;
   return JA.plc.modeMonitor;
-}
-
-/** 例外から画面に出す1行を作る。 */
-function reasonOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
-/** スナップショットの差分から効果音を鳴らす（他の画面と同じ理由で切り出す）。§15 */
-function SoundEffects(): null {
-  const snapshot = useStore((s) => s.snapshot);
-  const previous = useRef<typeof snapshot | undefined>(undefined);
-  useEffect(() => {
-    for (const kind of soundsForSnapshot(previous.current, snapshot)) sounds.play(kind);
-    previous.current = snapshot;
-  }, [snapshot]);
-  return null;
 }
 
 /** モードDのセッション画面。 */
@@ -241,15 +222,8 @@ export function PlcSession(): JSX.Element {
     };
   }, [problemId, sessionEpoch]);
 
-  // 経過時間（§8.1）
-  useEffect(() => {
-    const id = setInterval(() => {
-      useStore.getState().tickElapsed();
-    }, ELAPSED_INTERVAL_MS);
-    return () => {
-      clearInterval(id);
-    };
-  }, []);
+  // 経過時間を定期更新する（§8.1）
+  useElapsedTicker();
 
   /** 盤操作の結果を反映する（`InspectRepairSession` と同じ流儀）。§8.2 */
   const apply = useCallback(<T,>(result: CommandResult<T>, after: () => void): void => {
@@ -404,19 +378,7 @@ export function PlcSession(): JSX.Element {
   }, [problemId, modelKnown]);
 
   if (problem === undefined || session === undefined) {
-    return (
-      <div className={styles.center}>
-        <p>{JA.session.noProblem}</p>
-        <button
-          type="button"
-          onClick={() => {
-            useStore.getState().abandonSession();
-          }}
-        >
-          {JA.result.toList}
-        </button>
-      </div>
-    );
+    return <NoProblem />;
   }
 
   /**
@@ -638,58 +600,9 @@ export function PlcSession(): JSX.Element {
           useStore.getState().setRoute('list');
         }}
         onSave={() => {
-          const store = useStore.getState();
-          let api: ReturnType<typeof ojtApi>;
-          try {
-            api = ojtApi();
-          } catch (error) {
-            store.toast(reasonOf(error), 'error');
-            return;
-          }
-          /*
-           * 指摘 LE-14: IPC 自体が失敗したとき（`.then` は main が正常に応答した場合しか
-           * 通らない）に `.catch` が無く、`unhandledrejection` から致命バナーに化けていた。
-           * `LadderWorkspace.exportIl()` と同じ形でトーストに落とす。
-           */
-          void api
-            .saveWorkFile({
-              kind: 'manual',
-              file: toWorkFile(problem.id, session, store.elapsedMs, store.hazards.length),
-            })
-            .then((result) => {
-              store.toast(
-                result.ok ? workFileSavedText(result.path) : result.message,
-                result.ok ? 'info' : 'error',
-              );
-            })
-            .catch((error: unknown) => {
-              useStore.getState().toast(reasonOf(error), 'error');
-            });
+          saveCurrentWork(problem.id, session);
         }}
-        onLoad={() => {
-          let api: ReturnType<typeof ojtApi>;
-          try {
-            api = ojtApi();
-          } catch (error) {
-            useStore.getState().toast(reasonOf(error), 'error');
-            return;
-          }
-          // 指摘 LE-14: 同上。読込の IPC と、読み込んだ後の `applyWorkFile()` の両方に付ける
-          void api
-            .loadWorkFile({ kind: 'manual' })
-            .then((result) => {
-              if (!result.ok) {
-                if (!result.canceled) useStore.getState().toast(result.message, 'error');
-                return;
-              }
-              void applyWorkFile(result.file).catch((error: unknown) => {
-                useStore.getState().toast(reasonOf(error), 'error');
-              });
-            })
-            .catch((error: unknown) => {
-              useStore.getState().toast(reasonOf(error), 'error');
-            });
-        }}
+        onLoad={loadWorkFileAndApply}
         schematicVisible={false}
         onToggleSchematic={undefined}
       >
@@ -719,29 +632,12 @@ export function PlcSession(): JSX.Element {
         手順の判定材料はラダーの有無・変換済みか・RUN 中かの3つだけで、
         配線の中身（＝合否）には一切触れない（決定表#7）。
       */}
-      <div className={styles.plcGuide} data-testid="plc-guide">
-        <ol className={styles.plcSteps} aria-label={JA.plc.guide}>
-          {steps.map((step) => (
-            <li
-              key={step.key}
-              className={styles.plcStep}
-              data-state={step.state}
-              data-testid={`plc-step-${step.key}`}
-              {...(step.state === 'current' ? { 'aria-current': 'step' as const } : {})}
-            >
-              <span className={styles.plcStepName}>{step.label}</span>
-              {step.state === 'done' ? (
-                <span className={styles.plcStepNote}>{JA.plc.stepDone}</span>
-              ) : null}
-              {step.state === 'current' ? (
-                <span className={styles.plcStepNote}>{JA.plc.stepCurrent}</span>
-              ) : null}
-              {step.state === 'anytime' ? (
-                <span className={styles.plcStepNote}>{JA.plc.stepAnytime}</span>
-              ) : null}
-            </li>
-          ))}
-        </ol>
+      <StepGuide
+        steps={steps}
+        hint={stepHintText(currentStepKey, profile)}
+        label={JA.plc.guide}
+        testId={{ band: `plc-guide`, step: (key) => `plc-step-${key}`, hint: `plc-hint` }}
+      >
         <div className={styles.plcStatus}>
           <span className={styles.plcChip} data-testid="plc-ladder-mode">
             {JA.plc.statusLadder}: {ladderModeLabel(ladderMode)}
@@ -754,16 +650,7 @@ export function PlcSession(): JSX.Element {
             {JA.plc.statusPlc}: {plcRunning ? JA.plc.statusRunning : JA.plc.statusStopped}
           </span>
         </div>
-        {/*
-          UI監査 2026-09-20 Important #10 / I20: 以前はここに「判定できません: …」（押せない
-          理由）・いまの手順の案内・「変換」の無いメーカーの注記の最大3つを区切りなしで並べて
-          いたため、2文が続けて読めない状態になっていた。押せない理由は判定ボタンの `title`
-          （`judgeTitle`）で読めるので、帯には**いまの手順の案内だけ**を1行で出す。
-        */}
-        <p className={styles.plcHint} data-testid="plc-hint">
-          {stepHintText(currentStepKey, profile)}
-        </p>
-      </div>
+      </StepGuide>
 
       <div className={styles.plcLayout} data-testid="plc-session" data-view={view}>
         {view === 'board' ? null : (

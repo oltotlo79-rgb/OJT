@@ -1,16 +1,10 @@
 import type { Wire } from '@ojt/circuit-sim';
 import type { FaultSite, InspectRepairProblem, JudgeInspectRepairResult } from '@ojt/content';
 import type { JSX } from 'react';
-import { formatElapsed } from '../../worker/runtime.js';
-import {
-  elapsedSummaryText,
-  JA,
-  reportTargetLabel,
-  schematicOpenCountText,
-  wireLabel,
-} from '../i18n/ja.js';
+import { JA, reportTargetLabel, schematicOpenCountText, wireLabel } from '../i18n/ja.js';
 import { ChartOverlay } from './ChartOverlay.js';
 import { MismatchList } from './MismatchList.js';
+import { ResultShell } from './ResultShell.js';
 import { HazardList, StaticCheckList } from './StaticCheckList.js';
 import styles from './result.module.css';
 
@@ -73,125 +67,93 @@ export function InspectRepairResult({
 }): JSX.Element {
   const elapsedMs = result.elapsedMs ?? 0;
   return (
-    <div className={styles.wrap}>
-      <div className={styles.scroll}>
-        <div className={styles.header}>
-          <span
-            className={`${styles.verdict} ${result.passed ? styles.passed : styles.failed}`}
-            data-testid="verdict"
-            role="status"
-            aria-live="polite"
-          >
-            {result.passed ? JA.result.passed : JA.result.failed}
+    <ResultShell
+      title={problem.title}
+      passed={result.passed}
+      elapsedMs={elapsedMs}
+      timeLimit={problem.timeLimit}
+      forbidden={result.chatter.length > 0}
+      headerExtra={
+        problem.grade === 2 ? (
+          <span data-testid="schematic-open-count">
+            {schematicOpenCountText(schematicOpenCount)}
           </span>
-          <h1 className={styles.title}>
-            {JA.result.title}: {problem.title}
-          </h1>
-          <span data-testid="result-elapsed">
-            {JA.result.elapsed} {formatElapsed(elapsedMs)}（
-            {elapsedSummaryText(
-              elapsedMs,
-              problem.timeLimit.standardMin,
-              problem.timeLimit.cutoffMin,
+        ) : null
+      }
+      onRetry={onRetry}
+      onBackToList={onBackToList}
+    >
+      <div className={styles.grid}>
+        <div className={styles.card}>
+          <h2>{JA.inspectRepair.reports}</h2>
+          <p className={styles.detail}>{JA.inspectRepair.matched}</p>
+          <ul data-testid="matched-list">
+            {result.reports.matched.length === 0 ? (
+              <li>{JA.inspectRepair.none}</li>
+            ) : (
+              result.reports.matched.map((hit, index) => (
+                <li key={`m-${String(index)}`}>{siteLabel(hit.site, wires)}</li>
+              ))
             )}
-            ）
-          </span>
-          {problem.grade === 2 ? (
-            <span data-testid="schematic-open-count">
-              {schematicOpenCountText(schematicOpenCount)}
-            </span>
-          ) : null}
+          </ul>
+          <p className={styles.detail}>{JA.inspectRepair.missed}</p>
+          <ul data-testid="missed-list">
+            {result.reports.missed.length === 0 ? (
+              <li>{JA.inspectRepair.none}</li>
+            ) : (
+              result.reports.missed.map((site, index) => (
+                <li key={`x-${String(index)}`}>{siteLabel(site, wires)}</li>
+              ))
+            )}
+          </ul>
+          <p className={styles.detail}>{JA.inspectRepair.extra}</p>
+          <ul data-testid="extra-list">
+            {result.reports.extra.length === 0 ? (
+              <li>{JA.inspectRepair.none}</li>
+            ) : (
+              result.reports.extra.map((report, index) => (
+                <li key={`e-${String(index)}`}>
+                  {reportTargetLabel(report.target, wires)} — {JA.reportKind[report.kind]}
+                </li>
+              ))
+            )}
+          </ul>
         </div>
 
-        {result.chatter.length === 0 ? null : (
-          <p className={styles.forbidden} data-testid="forbidden-warning">
-            {JA.result.forbidden}
-          </p>
-        )}
+        <ChartOverlay
+          expected={result.charts.expected}
+          actual={result.charts.actual}
+          mismatches={result.mismatches}
+        />
+        <MismatchList mismatches={result.mismatches} />
+        <StaticCheckList checks={result.staticChecks} />
 
-        <div className={styles.grid}>
-          <div className={styles.card}>
-            <h2>{JA.inspectRepair.reports}</h2>
-            <p className={styles.detail}>{JA.inspectRepair.matched}</p>
-            <ul data-testid="matched-list">
-              {result.reports.matched.length === 0 ? (
-                <li>{JA.inspectRepair.none}</li>
-              ) : (
-                result.reports.matched.map((hit, index) => (
-                  <li key={`m-${String(index)}`}>{siteLabel(hit.site, wires)}</li>
-                ))
-              )}
-            </ul>
-            <p className={styles.detail}>{JA.inspectRepair.missed}</p>
-            <ul data-testid="missed-list">
-              {result.reports.missed.length === 0 ? (
-                <li>{JA.inspectRepair.none}</li>
-              ) : (
-                result.reports.missed.map((site, index) => (
-                  <li key={`x-${String(index)}`}>{siteLabel(site, wires)}</li>
-                ))
-              )}
-            </ul>
-            <p className={styles.detail}>{JA.inspectRepair.extra}</p>
-            <ul data-testid="extra-list">
-              {result.reports.extra.length === 0 ? (
-                <li>{JA.inspectRepair.none}</li>
-              ) : (
-                result.reports.extra.map((report, index) => (
-                  <li key={`e-${String(index)}`}>
-                    {reportTargetLabel(report.target, wires)} — {JA.reportKind[report.kind]}
-                  </li>
-                ))
-              )}
-            </ul>
-          </div>
-
-          <ChartOverlay
-            expected={result.charts.expected}
-            actual={result.charts.actual}
-            mismatches={result.mismatches}
-          />
-          <MismatchList mismatches={result.mismatches} />
-          <StaticCheckList checks={result.staticChecks} />
-
-          <div className={styles.card}>
-            <h2>{JA.inspectRepair.modifications}</h2>
-            <ul data-testid="modification-list">
-              {result.modifications.length === 0 ? (
-                <li>{JA.inspectRepair.noModification}</li>
-              ) : (
-                result.modifications.map((wireId) => (
-                  <li key={wireId}>{wireIdLabel(wireId, wires)}</li>
-                ))
-              )}
-            </ul>
-            <p className={styles.detail}>{JA.inspectRepair.addedWires}</p>
-            <ul data-testid="added-wire-list">
-              {result.addedWires.length === 0 ? (
-                <li>{JA.inspectRepair.none}</li>
-              ) : (
-                result.addedWires.map((wireId) => (
-                  <li key={wireId}>{wireIdLabel(wireId, wires)}</li>
-                ))
-              )}
-            </ul>
-          </div>
-
-          <HazardList
-            counts={result.hazardsByKind}
-            total={result.hazardCount + restoredHazardCount}
-          />
+        <div className={styles.card}>
+          <h2>{JA.inspectRepair.modifications}</h2>
+          <ul data-testid="modification-list">
+            {result.modifications.length === 0 ? (
+              <li>{JA.inspectRepair.noModification}</li>
+            ) : (
+              result.modifications.map((wireId) => (
+                <li key={wireId}>{wireIdLabel(wireId, wires)}</li>
+              ))
+            )}
+          </ul>
+          <p className={styles.detail}>{JA.inspectRepair.addedWires}</p>
+          <ul data-testid="added-wire-list">
+            {result.addedWires.length === 0 ? (
+              <li>{JA.inspectRepair.none}</li>
+            ) : (
+              result.addedWires.map((wireId) => <li key={wireId}>{wireIdLabel(wireId, wires)}</li>)
+            )}
+          </ul>
         </div>
-      </div>
 
-      <div className={`${styles.actions} ${styles.stickyActions}`}>
-        <button type="button" onClick={onRetry}>
-          {JA.result.retry}
-        </button>
-        <button type="button" onClick={onBackToList}>
-          {JA.result.toList}
-        </button>
+        <HazardList
+          counts={result.hazardsByKind}
+          total={result.hazardCount + restoredHazardCount}
+        />
       </div>
-    </div>
+    </ResultShell>
   );
 }

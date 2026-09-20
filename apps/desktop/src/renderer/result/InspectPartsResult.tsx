@@ -6,8 +6,8 @@ import {
   type PartTruth,
 } from '@ojt/content';
 import type { JSX } from 'react';
-import { formatElapsed } from '../../worker/runtime.js';
-import { correctCountText, elapsedSummaryText, JA, trayPartLabel } from '../i18n/ja.js';
+import { correctCountText, JA, trayPartLabel } from '../i18n/ja.js';
+import { ResultShell } from './ResultShell.js';
 import { HazardList } from './StaticCheckList.js';
 import styles from './result.module.css';
 
@@ -42,98 +42,73 @@ export function InspectPartsResult({
   const elapsedMs = result.elapsedMs ?? 0;
   const kindOf = new Map(problem.parts.map((p) => [p.id, p.kind] as const));
   return (
-    <div className={styles.wrap}>
-      <div className={styles.scroll}>
-        <div className={styles.header}>
-          <span
-            className={`${styles.verdict} ${result.passed ? styles.passed : styles.failed}`}
-            data-testid="verdict"
-            role="status"
-            aria-live="polite"
-          >
-            {result.passed ? JA.result.passed : JA.result.failed}
-          </span>
-          <h1 className={styles.title}>
-            {JA.result.title}: {problem.title}
-          </h1>
-          <span data-testid="correct-count">
-            {correctCountText(result.correctCount, result.total)}
-          </span>
-          <span data-testid="result-elapsed">
-            {JA.result.elapsed} {formatElapsed(elapsedMs)}（
-            {elapsedSummaryText(
-              elapsedMs,
-              problem.timeLimit.standardMin,
-              problem.timeLimit.cutoffMin,
-            )}
-            ）
-          </span>
-        </div>
-
-        <div className={styles.grid}>
-          <div className={styles.card}>
-            <h2>{JA.result.markSheet}</h2>
-            <table className={styles.table} data-testid="mark-result-table">
-              <thead>
-                <tr>
-                  <th />
-                  <th>{JA.inspectParts.part}</th>
-                  <th>{JA.result.yourAnswer}</th>
-                  <th>{JA.result.truth}</th>
-                  <th>{JA.result.truthReading}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {result.scores.map((score) => (
-                  <tr key={score.partId}>
-                    <td>
-                      <span className={score.correct ? styles.badgeOk : styles.badgeNg}>
-                        {score.correct ? JA.result.ok : JA.result.ng}
-                      </span>
-                    </td>
-                    <td>
-                      {(() => {
-                        const kind = kindOf.get(score.partId);
-                        // `problem.parts` に無い部品は種別が分からないので、
-                        // （リレー）と決め打ちせず素の partId を出す（レビュー指摘 M5）。
-                        return kind === undefined
-                          ? score.partId
-                          : trayPartLabel(score.partId, kind === 'timer-h3y4');
-                      })()}
-                    </td>
-                    <td data-testid={`answer-${score.partId}`}>
-                      {score.answer === undefined
-                        ? JA.result.unanswered
-                        : PART_TRUTH_LABELS[score.answer]}
-                    </td>
-                    <td>{PART_TRUTH_LABELS[score.truth]}</td>
-                    {/*
+    <ResultShell
+      title={problem.title}
+      passed={result.passed}
+      elapsedMs={elapsedMs}
+      timeLimit={problem.timeLimit}
+      headerExtra={
+        <span data-testid="correct-count">
+          {correctCountText(result.correctCount, result.total)}
+        </span>
+      }
+      onRetry={onRetry}
+      onBackToList={onBackToList}
+    >
+      <div className={styles.grid}>
+        <div className={styles.card}>
+          <h2>{JA.result.markSheet}</h2>
+          <table className={styles.table} data-testid="mark-result-table">
+            <thead>
+              <tr>
+                <th />
+                <th>{JA.inspectParts.part}</th>
+                <th>{JA.result.yourAnswer}</th>
+                <th>{JA.result.truth}</th>
+                <th>{JA.result.truthReading}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {result.scores.map((score) => (
+                <tr key={score.partId}>
+                  <td>
+                    <span className={score.correct ? styles.badgeOk : styles.badgeNg}>
+                      {score.correct ? JA.result.ok : JA.result.ng}
+                    </span>
+                  </td>
+                  <td>
+                    {(() => {
+                      const kind = kindOf.get(score.partId);
+                      // `problem.parts` に無い部品は種別が分からないので、
+                      // （リレー）と決め打ちせず素の partId を出す（レビュー指摘 M5）。
+                      return kind === undefined
+                        ? score.partId
+                        : trayPartLabel(score.partId, kind === 'timer-h3y4');
+                    })()}
+                  </td>
+                  <td data-testid={`answer-${score.partId}`}>
+                    {score.answer === undefined
+                      ? JA.result.unanswered
+                      : PART_TRUTH_LABELS[score.answer]}
+                  </td>
+                  <td>{PART_TRUTH_LABELS[score.truth]}</td>
+                  {/*
                       UXレビュー #23: 正解だけでなく「なぜそう見分けられるか」（期待される読み）
                       を1行添える。`DiagnosisHelp` の判定表と同じ `situation` 文言を使う。
                     */}
-                    <td className={styles.detail} data-testid={`reading-${score.partId}`}>
-                      {SITUATION_BY_TRUTH.get(score.truth) ?? ''}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <HazardList
-            counts={result.hazardsByKind}
-            total={result.hazardCount + restoredHazardCount}
-          />
+                  <td className={styles.detail} data-testid={`reading-${score.partId}`}>
+                    {SITUATION_BY_TRUTH.get(score.truth) ?? ''}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
+        <HazardList
+          counts={result.hazardsByKind}
+          total={result.hazardCount + restoredHazardCount}
+        />
       </div>
-
-      <div className={`${styles.actions} ${styles.stickyActions}`}>
-        <button type="button" onClick={onRetry}>
-          {JA.result.retry}
-        </button>
-        <button type="button" onClick={onBackToList}>
-          {JA.result.toList}
-        </button>
-      </div>
-    </div>
+    </ResultShell>
   );
 }

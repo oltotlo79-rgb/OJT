@@ -42,6 +42,7 @@ import {
   type PaletteItem,
   type SchematicHistory,
 } from '../session/schematic-edit.js';
+import { StepGuide } from '../panels/StepGuide.js';
 import { schematicStepHint, schematicSteps } from '../session/step-guide.js';
 import { SchematicPalette } from './SchematicPalette.js';
 import { SchematicSvg } from './SchematicSvg.js';
@@ -455,24 +456,14 @@ export function SchematicEditor({
       </div>
 
       {showStepGuide ? (
-        <div className={styles.stepGuide} data-testid="schematic-step-guide">
-          <ol className={styles.stepList} aria-label={JA.stepGuide.label}>
-            {steps.map((step) => (
-              <li
-                key={step.key}
-                className={styles.step}
-                data-state={step.state}
-                data-testid={`schematic-step-${step.key}`}
-                {...(step.state === 'current' ? { 'aria-current': 'step' as const } : {})}
-              >
-                {step.label}
-              </li>
-            ))}
-          </ol>
+        <StepGuide
+          steps={steps}
+          hint={branchHint === undefined ? schematicStepHint(currentStep) : undefined}
+          testId={{ band: `schematic-step-guide`, step: (key) => `schematic-step-${key}` }}
+          notes={false}
+        >
           {/* 分岐のあいだは「いま何をすればよいか」を分岐の案内に差し替える（決定表#24） */}
-          {branchHint === undefined ? (
-            <p className={styles.stepHint}>{schematicStepHint(currentStep)}</p>
-          ) : (
+          {branchHint === undefined ? null : (
             <p
               className={styles.branchHint}
               data-testid="branch-hint"
@@ -482,7 +473,7 @@ export function SchematicEditor({
               {branchHint}
             </p>
           )}
-        </div>
+        </StepGuide>
       ) : /*
        * レビュー指摘 UX-04: `showStepGuide=false`（Session.tsx が上の帯を回路図の3段に
        * 差し替え済み）のときは「済／いまここ」の帯を二重に出さない。ただし分岐の案内

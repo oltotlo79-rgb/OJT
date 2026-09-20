@@ -1,9 +1,9 @@
 import type { AssembleProblem, JudgeResult, WiringSuspect } from '@ojt/content';
 import type { JSX } from 'react';
-import { formatElapsed } from '../../worker/runtime.js';
-import { elapsedSummaryText, JA } from '../i18n/ja.js';
+import { elapsedSummaryText } from '../i18n/ja.js';
 import { ChartOverlay } from './ChartOverlay.js';
 import { MismatchList } from './MismatchList.js';
+import { ResultShell } from './ResultShell.js';
 import { HazardList, StaticCheckList } from './StaticCheckList.js';
 import { SuspectList } from './SuspectList.js';
 import styles from './result.module.css';
@@ -53,64 +53,35 @@ export function ResultView({
 }): JSX.Element {
   const elapsedMs = result.elapsedMs ?? 0;
   return (
-    <div className={styles.wrap}>
-      <div className={styles.scroll}>
-        <div className={styles.header}>
-          {/* 合否は画面を開いた瞬間に読み上げてほしい情報なので、支援技術にも伝える（§8.3） */}
-          <span
-            className={`${styles.verdict} ${result.passed ? styles.passed : styles.failed}`}
-            data-testid="verdict"
-            role="status"
-            aria-live="polite"
-          >
-            {result.passed ? JA.result.passed : JA.result.failed}
-          </span>
-          <h1 className={styles.title}>
-            {JA.result.title}: {problem.title}
-          </h1>
-          <span data-testid="result-elapsed">
-            {JA.result.elapsed} {formatElapsed(elapsedMs)}（
-            {elapsedSummary(elapsedMs, problem.timeLimit.standardMin, problem.timeLimit.cutoffMin)}
-            ）
-          </span>
-        </div>
-
-        {result.chatter.length === 0 ? null : (
-          <p className={styles.forbidden} data-testid="forbidden-warning">
-            {JA.result.forbidden}
-          </p>
+    <ResultShell
+      title={problem.title}
+      passed={result.passed}
+      elapsedMs={elapsedMs}
+      timeLimit={problem.timeLimit}
+      forbidden={result.chatter.length > 0}
+      onRetry={onRetry}
+      onBackToList={onBackToList}
+    >
+      <div className={styles.grid}>
+        <ChartOverlay
+          expected={result.charts.expected}
+          actual={result.charts.actual}
+          mismatches={result.mismatches}
+        />
+        <MismatchList mismatches={result.mismatches} />
+        {suspects === undefined || onShowOnBoard === undefined ? null : (
+          <SuspectList
+            suspects={suspects}
+            truncated={suspectsTruncated ?? 0}
+            onShowOnBoard={onShowOnBoard}
+          />
         )}
-
-        <div className={styles.grid}>
-          <ChartOverlay
-            expected={result.charts.expected}
-            actual={result.charts.actual}
-            mismatches={result.mismatches}
-          />
-          <MismatchList mismatches={result.mismatches} />
-          {suspects === undefined || onShowOnBoard === undefined ? null : (
-            <SuspectList
-              suspects={suspects}
-              truncated={suspectsTruncated ?? 0}
-              onShowOnBoard={onShowOnBoard}
-            />
-          )}
-          <StaticCheckList checks={result.staticChecks} />
-          <HazardList
-            counts={result.hazardsByKind}
-            total={result.hazardCount + restoredHazardCount}
-          />
-        </div>
+        <StaticCheckList checks={result.staticChecks} />
+        <HazardList
+          counts={result.hazardsByKind}
+          total={result.hazardCount + restoredHazardCount}
+        />
       </div>
-
-      <div className={`${styles.actions} ${styles.stickyActions}`}>
-        <button type="button" onClick={onRetry}>
-          {JA.result.retry}
-        </button>
-        <button type="button" onClick={onBackToList}>
-          {JA.result.toList}
-        </button>
-      </div>
-    </div>
+    </ResultShell>
   );
 }
