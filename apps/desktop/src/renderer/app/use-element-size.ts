@@ -26,20 +26,24 @@ export function useElementWidth(ref: RefObject<HTMLElement | null>): number | un
       setWidth(measured !== undefined && measured > 0 ? measured : undefined);
     };
     measure();
-    if (typeof ResizeObserver === 'undefined') {
-      // 古い環境向けの控え。窓の大きさが変わったときだけ測り直す（従来どおりの動き）
-      window.addEventListener('resize', measure);
-      return () => {
-        window.removeEventListener('resize', measure);
-      };
-    }
-    const observer = new ResizeObserver(() => {
-      measure();
-    });
+    /*
+     * 窓の大きさが変わったときの測り直しは**残す**。`ResizeObserver` が無い環境（古い jsdom）
+     * への控えであると同時に、観測器が用意されていても実寸を返さない試験環境で「窓が変わったら
+     * 測り直す」という従来の筋道を保つため。同じ値なら `setWidth` は再描画を起こさないので、
+     * 二重に測っても害はない。
+     */
+    window.addEventListener('resize', measure);
+    const observer =
+      typeof ResizeObserver === 'undefined'
+        ? undefined
+        : new ResizeObserver(() => {
+            measure();
+          });
     const element = ref.current;
-    if (element !== null) observer.observe(element);
+    if (observer !== undefined && element !== null) observer.observe(element);
     return () => {
-      observer.disconnect();
+      window.removeEventListener('resize', measure);
+      observer?.disconnect();
     };
   }, [ref]);
   return width;

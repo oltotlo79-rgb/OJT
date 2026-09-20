@@ -1819,6 +1819,10 @@
       "section": "mode-d/ラダー図を描く"
     },
     {
+      "testid": "unconverted-{}",
+      "internal": "未変換の回路ブロックの地に添える一言。親の「変換する」で説明済み"
+    },
+    {
       "testid": "undo-reason",
       "screen": "練習中",
       "label": "元に戻せる操作がありません",

@@ -13,7 +13,7 @@ import { memo, useMemo, useRef, type JSX } from 'react';
 import { useStore } from '../app/store.js';
 import { JA } from '../i18n/ja.js';
 import { counterPresetText } from '../session/ladder-cell.js';
-import type { LadderCursor, LadderEditorMode } from '../session/ladder.js';
+import { shortcutKeyOf, type LadderCursor, type LadderEditorMode } from '../session/ladder.js';
 import { skinMonitorColor } from '../session/plc-skin.js';
 import type { SkinCell, SkinTheme } from './skins/index.js';
 import {
@@ -688,6 +688,13 @@ const NetworkView = memo(function NetworkView({
   // ことを確かめるための、副作用の無い観測用カウンタ）。
   const renderCount = useRef(0);
   renderCount.current += 1;
+  /*
+   * 未変換であることを**灰色だけ**で示さない（指摘 UX-14 と同じ理由）。灰色の地の意味と
+   * 直し方（どのキーで変換するか）を言葉でも出す。キーは方言から引く（前提#22）。
+   */
+  const convertKey = shortcutKeyOf(profile, 'convert');
+  const unconvertedNote =
+    unconverted && convertKey !== undefined ? JA.ladder.entry.unconverted(convertKey) : undefined;
   return (
     <section
       className={styles.network}
@@ -711,6 +718,12 @@ const NetworkView = memo(function NetworkView({
             {JA.ladder.hiddenCells}
           </span>
         ) : null}
+        {/* 灰色の地が何を意味するかを言葉でも出す（色だけの符号化をやめる。指摘 UX-14） */}
+        {unconvertedNote === undefined ? null : (
+          <span className={styles.sideNote} data-testid={`unconverted-${net.id}`}>
+            {unconvertedNote}
+          </span>
+        )}
       </header>
       <svg
         className={styles.grid}
