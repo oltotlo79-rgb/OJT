@@ -1509,12 +1509,6 @@ export const useStore = create<AppState>((set, get) => ({
       ladderHistory,
       converted: false,
       convertIssues: NO_CONVERT_ISSUES,
-      /*
-       * `openProblem()` は `problem.id` が変わらないので `sessionEpoch` を進めない。
-       * ここで進めないと、`[problemId, sessionEpoch]` で張り直す Session の Worker が
-       * 表記切替後も旧機種のネットリストのまま動き続ける（レビュー指摘 DS-1）。
-       */
-      sessionEpoch: get().sessionEpoch + 1,
     });
     get().toast(JA.plc.notationSwitched(getDialect(dialectId).displayName));
   },
