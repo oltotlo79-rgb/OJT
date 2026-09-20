@@ -36,7 +36,7 @@ import {
 } from '../session/plc-skin.js';
 import { CommentPanel } from './CommentPanel.js';
 import { IoTable } from './IoTable.js';
-import { LadderEditor } from './LadderEditor.js';
+import { ENTRY_ITEMS, LadderEditor, SymbolIcon, type LadderEntryHandle } from './LadderEditor.js';
 import { fitGridCols } from './LadderGrid.js';
 import { MonitorPanel } from './MonitorPanel.js';
 import { NotationDialog } from './NotationDialog.js';
@@ -112,6 +112,8 @@ export function LadderWorkspace({
    * 余白の無い祖先）の実測幅から、コイル列を含めて画面に収まる接点列数を出す。
    * ウィンドウの大きさが変わるたびに測り直す（測れない・変わらないときは何もしない）。
    */
+  /** 記号ボタン列（入口B）→ 回路入力欄。欄の状態は `LadderEditor` が持つ（設計 §5.3）。 */
+  const entryRef = useRef<LadderEntryHandle | null>(null);
   const workspaceMainRef = useRef<HTMLDivElement>(null);
   const [paneWidth, setPaneWidth] = useState<number | undefined>(undefined);
   useLayoutEffect(() => {
@@ -486,6 +488,44 @@ export function LadderWorkspace({
         </button>
       </div>
 
+      {/*
+        入口B: 記号ボタン列（Phase 7 設計 §5.3 / 指摘 UX-02）。純正のツールバーと同じ並びで、
+        **ボタン名にはキーを併記する**（「a接点 (F5)」）。キーは方言表から引くので、
+        メーカーを切り替えると併記も変わる（OMRON は「a接点 (C)」）。アイコンは本アプリが
+        描く線画で、各社の図記号ビットマップ・アイコンは使わない（§17）。
+        JW-300SP 風だけは**格子へドラッグしても置ける**（設計 §5.2 の S8）。
+      */}
+      <div className={styles.symbolBar} role="group" aria-label={JA.ladder.entry.symbols}>
+        {ENTRY_ITEMS.map((item) => {
+          const key = item.actions
+            .map((action) => shortcutKeyOf(profile, action))
+            .find((found) => found !== undefined);
+          return (
+            <button
+              key={item.kind}
+              type="button"
+              data-testid={`symbol-${item.kind}`}
+              // キー操作・格子の入口と同じく、書込みモード以外は押させない（決定表#11）
+              disabled={ladderMode !== 'write'}
+              draggable={theme.dragPlace === true}
+              onDragStart={(event) => {
+                event.dataTransfer.setData('text/plain', item.kind);
+                event.dataTransfer.effectAllowed = 'copy';
+              }}
+              onClick={() => {
+                entryRef.current?.place(item.kind);
+              }}
+            >
+              <SymbolIcon kind={item.kind} />
+              {key === undefined ? item.label : JA.ladder.entry.withKey(item.label, key)}
+            </button>
+          );
+        })}
+        {theme.dragPlace === true ? (
+          <span className={styles.symbolHint}>{JA.ladder.entry.dragHint}</span>
+        ) : null}
+      </div>
+
       <div className={styles.workspaceBody}>
         <ProjectTree
           program={program}
@@ -497,6 +537,7 @@ export function LadderWorkspace({
         />
         <div className={styles.workspaceMain} ref={workspaceMainRef} data-testid="workspace-main">
           <LadderEditor
+            ref={entryRef}
             profile={profile}
             gridCols={effectiveGridCols}
             errorCells={errorCells}

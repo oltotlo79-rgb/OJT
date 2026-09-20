@@ -14,7 +14,8 @@ import {
   type Device,
   type DeviceKind,
 } from '@ojt/ladder-core';
-import { roundTimerPreset, type DialectProfile } from '@ojt/plc-dialects';
+import { roundTimerPreset, type DialectProfile, type InstructionKey } from '@ojt/plc-dialects';
+import { JA } from '../i18n/ja.js';
 
 /**
  * OMRON・JTEKT・シャープの既定のタイマ刻み（0.1秒＝100ms）。指摘 LE-6
@@ -237,4 +238,203 @@ export function formForCell(cell: Cell, profile: DialectProfile): CellForm {
     };
   }
   return base;
+}
+
+/* --- Phase 7 Task 21: 1行直接入力（設計 §5.3 / 指摘 PR-01） --- */
+
+/**
+ * 1行直接入力の解釈結果。
+ *
+ * `branch` は「OR接点として置く」印（`OR X1` のように並列の命令で書いたとき）。`LadderEditor`
+ * はこれを見て `applyOrContact()` に回す。`undefined` なら押したキー（`PlaceKind`）のまま。
+ */
+export interface DirectEntry {
+  form: CellForm;
+  branch?: boolean;
+}
+
+/** ニーモニック1語ぶんの意味（どの欄をどう埋めるか）。 */
+interface EntrySpec {
+  /** この命令が使う `InstructionKey`（応用命令欄の絞り込みに使う）。 */
+  key: InstructionKey;
+  target: CellForm['target'];
+  contact?: ContactForm;
+  output?: OutputForm;
+  /** 並列（OR）の命令か。 */
+  branch?: boolean;
+}
+
+/**
+ * `InstructionKey` → 入力欄の形。**並び順に意味がある**（先に書いたものが綴りの取り合いに
+ * 勝つ）。PCwin 風は `out` / `timer` / `counter` がどれも `OUT` なので、`OUT T0` は
+ * まず `out` として読み、デバイスがタイマなら下の {@link promoteByDevice} が TON へ寄せる。
+ */
+const ENTRY_SPECS: readonly EntrySpec[] = [
+  { key: 'ld', target: 'contact', contact: 'NO' },
+  { key: 'ldi', target: 'contact', contact: 'NC' },
+  { key: 'and', target: 'contact', contact: 'NO' },
+  { key: 'ani', target: 'contact', contact: 'NC' },
+  { key: 'or', target: 'contact', contact: 'NO', branch: true },
+  { key: 'ori', target: 'contact', contact: 'NC', branch: true },
+  { key: 'ldp', target: 'contact', contact: 'P' },
+  { key: 'ldf', target: 'contact', contact: 'F' },
+  { key: 'andp', target: 'contact', contact: 'P' },
+  { key: 'andf', target: 'contact', contact: 'F' },
+  { key: 'orp', target: 'contact', contact: 'P', branch: true },
+  { key: 'orf', target: 'contact', contact: 'F', branch: true },
+  { key: 'out', target: 'output', output: 'OUT' },
+  { key: 'set', target: 'output', output: 'SET' },
+  { key: 'rst', target: 'output', output: 'RST' },
+  { key: 'mc', target: 'output', output: 'MC' },
+  { key: 'mcr', target: 'output', output: 'MCR' },
+  { key: 'timer', target: 'output', output: 'TON' },
+  { key: 'counter', target: 'output', output: 'CTU' },
+];
+
+/**
+ * メーカーの綴りに関わらず受ける短い綴り。応用命令欄の断り文
+ * （`JA.ladder.entry.applicationUnsupported`）が挙げている6語をそのまま受けるためにある。
+ */
+const ENTRY_ALIASES: Readonly<Record<string, InstructionKey>> = {
+  SET: 'set',
+  RST: 'rst',
+  MC: 'mc',
+  MCR: 'mcr',
+  T: 'timer',
+  C: 'counter',
+};
+
+/** 応用命令欄（三菱 `F8` ／ OMRON `I`）が受ける命令。設計 §5.2 */
+const APPLICATION_KEYS: ReadonlySet<InstructionKey> = new Set<InstructionKey>([
+  'set',
+  'rst',
+  'mc',
+  'mcr',
+  'timer',
+  'counter',
+]);
+
+/** ニーモニックは最大3語（`OUT T` / `AND NOT` / `STR NOT` のように空白を含む綴りがある）。 */
+const MAX_MNEMONIC_WORDS = 3;
+
+/**
+ * 全角で打たれても読めるようにする（指摘 PD-1）。`NFKC` は全角英数と全角空白を半角へ畳む。
+ */
+export function normalizeEntryText(text: string): string {
+  return text.normalize('NFKC');
+}
+
+/** その方言の「綴り → 命令の意味」表。同じ綴りが重なったら **先に書いた命令が勝つ**。 */
+function entryTable(profile: DialectProfile): Map<string, EntrySpec> {
+  const table = new Map<string, EntrySpec>();
+  for (const spec of ENTRY_SPECS) {
+    const name = normalizeEntryText(profile.instructionNames[spec.key]).toUpperCase();
+    // 綴りが空（あり得ないが型の上では起こり得る）や既出のものは飛ばす
+    if (name.length === 0 || table.has(name)) continue;
+    table.set(name, spec);
+  }
+  for (const [alias, key] of Object.entries(ENTRY_ALIASES)) {
+    if (table.has(alias)) continue;
+    const spec = ENTRY_SPECS.find((item) => item.key === key);
+    if (spec !== undefined) table.set(alias, spec);
+  }
+  return table;
+}
+
+/** その方言で使える命令の綴り（応用命令欄の案内に出す）。 */
+export function applicationMnemonics(profile: DialectProfile): string[] {
+  return [...entryTable(profile)]
+    .filter(([, spec]) => APPLICATION_KEYS.has(spec.key))
+    .map(([name]) => name);
+}
+
+/**
+ * `OUT` で書かれた出力を、デバイスの種別でタイマ・カウンタへ寄せる。
+ *
+ * 三菱の `OUT T0 K30`（タイマの綴りは `OUT T`）や、`out` / `timer` / `counter` がすべて `OUT` の
+ * PCwin 風で「命令どおりに OUT を置いたらタイマに使えない」と断られるのを防ぐ。
+ */
+function promoteByDevice(
+  output: OutputForm,
+  deviceText: string,
+  profile: DialectProfile,
+): OutputForm {
+  if (output !== 'OUT') return output;
+  const device = profile.parseDevice(deviceText);
+  if (device instanceof Error) return output;
+  if (device.kind === 'timer') return 'TON';
+  if (device.kind === 'counter') return 'CTU';
+  return output;
+}
+
+/** 1行を語に割る（全角空白も区切りに数える）。 */
+function words(text: string): string[] {
+  return normalizeEntryText(text)
+    .split(/\s+/u)
+    .filter((word) => word.length > 0);
+}
+
+/**
+ * 1行直接入力を読む。設計 §5.3
+ *
+ * - `LD X0` のように**ニーモニック＋デバイス（＋設定値）**を空白で区切って書ける。綴りは
+ *   `profile.instructionNames` から引くので、シャープでは `STR 000000` になる。
+ * - **空白を含まない入力は「デバイスだけ」**と読み、記号は `base`（押したキーで決まった形）の
+ *   ままにする。
+ * - 語が多すぎるときは断る（黙って捨てない）。
+ *
+ * @param base 押したキー・ドロップダウンで決まっている入力欄の形
+ * @param only ここに挙げた命令だけを受ける（応用命令欄）。省略時はすべて受ける
+ */
+export function parseDirectEntry(
+  text: string,
+  base: CellForm,
+  profile: DialectProfile,
+  only?: ReadonlySet<InstructionKey>,
+): DirectEntry | Error {
+  const parts = words(text);
+  if (parts.length === 0) return new Error('デバイスを入力してください');
+  const table = entryTable(profile);
+  let spec: EntrySpec | undefined;
+  let rest = parts;
+  for (let take = Math.min(MAX_MNEMONIC_WORDS, parts.length); take >= 1; take -= 1) {
+    const found = table.get(parts.slice(0, take).join(' ').toUpperCase());
+    // 語が1つだけのときは「デバイスだけ」と読む（応用命令欄は命令が要るので `only` で許す）
+    if (found === undefined || (take === parts.length && only === undefined)) continue;
+    spec = found;
+    rest = parts.slice(take);
+    break;
+  }
+  if (only !== undefined && (spec === undefined || !only.has(spec.key))) {
+    return new Error(JA.ladder.entry.applicationUnsupported);
+  }
+  const form: CellForm = { ...base };
+  if (spec !== undefined) {
+    form.target = spec.target;
+    if (spec.contact !== undefined) form.contact = spec.contact;
+    if (spec.output !== undefined) form.output = spec.output;
+  }
+  form.deviceText = rest[0] ?? '';
+  if (form.target === 'output') {
+    form.output = promoteByDevice(form.output, form.deviceText, profile);
+  }
+  const takesPreset = form.target === 'output' && (form.output === 'TON' || form.output === 'CTU');
+  const takesReset = form.target === 'output' && form.output === 'CTU';
+  if (takesPreset && rest.length >= 2) form.presetText = rest[1] ?? '';
+  if (takesReset && rest.length >= 3) form.resetText = rest[2] ?? '';
+  const allowed = 1 + (takesPreset ? 1 : 0) + (takesReset ? 1 : 0);
+  if (rest.length > allowed) return new Error(JA.ladder.entry.tooManyWords);
+  return spec?.branch === true ? { form, branch: true } : { form };
+}
+
+/**
+ * 応用命令欄（三菱 `F8` ／ OMRON `I`）を読む。設計 §5.2
+ * 本アプリが解釈できる命令（SET / RST / MC / MCR / T / C）だけを受け、それ以外は1行で断る。
+ */
+export function parseApplicationEntry(
+  text: string,
+  base: CellForm,
+  profile: DialectProfile,
+): DirectEntry | Error {
+  return parseDirectEntry(text, base, profile, APPLICATION_KEYS);
 }

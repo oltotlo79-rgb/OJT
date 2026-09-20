@@ -26,6 +26,8 @@ export const JTEKT_SKIN: SkinTheme = {
     titleBarText: '#FFFFFF',
     statusBar: '#D8DCE2',
     output: '#F6F7F9',
+    // 未変換の回路ブロックの背景（`F4` が通ると `canvas` へ戻る）。一次資料未確認の △。§5.4
+    unconverted: '#D8DCE1',
   },
   /*
    * 46×36px。接点＝縦棒2本（高さ 14px＝セル高の 38.9%・間隔 8px＝縦棒の高さの 0.57・線 1.2px）、
@@ -59,6 +61,7 @@ export const JTEKT_SKIN: SkinTheme = {
   // 回路ブロックの先頭行にステップ番号（行の通し）を出す。△
   stepNumbering: 'step',
   commentLines: 1,
+  entryTitle: '回路入力',
   assumed: SKIN_ASSUMED,
   // キー割当表は GX Works3風の表を流用している（`packages/plc-dialects/src/jtekt.ts`）。レビュー I7
   keyMapAssumed: true,

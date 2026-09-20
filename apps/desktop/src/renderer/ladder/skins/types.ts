@@ -57,6 +57,15 @@ export interface SkinColors {
   statusBar: string;
   /** 出力ウィンドウの背景。 */
   output: string;
+  /**
+   * 変換していない回路ブロックの背景（`--skin-unconverted`）。Phase 7 設計 §5.4
+   *
+   * GX Works3 は未変換の回路を灰色の背景で示し、`F4`（変換）が通ると白へ戻る。
+   * 「変換」を持たないメーカー（`convertStep: false`）はこの表現を使わず、代わりに
+   * 出力の無いネットワークの右端に赤い縦線を出す（§5.2 の CX-Programmer 風）。
+   * **灰色そのものの色味は一次資料で確認できていない**ので `assumed` に載せる（§17.1）。
+   */
+  unconverted: string;
 }
 
 /**
@@ -175,6 +184,22 @@ export interface SkinTheme {
    * （箱がセルの高さをほぼ使い切るため。`LadderGrid` が判断する）。
    */
   commentLines: 0 | 1 | 2;
+  /**
+   * 回路入力欄の見出し（メーカーの言葉。Phase 7 設計 §5.3）。
+   * GX Works3 風は「回路入力」、CX-Programmer 風は「新規接点」。
+   */
+  entryTitle: string;
+  /**
+   * デバイスを確定すると**続けてコメント欄が開く**か（CX-Programmer 風。設計 §5.2 の S4）。
+   * 真のスキンでは、もう一度 `Enter` を押すとデバイスコメントごと確定する。省略時は偽。
+   */
+  entryCommentStep?: boolean;
+  /**
+   * ツールバーの記号ボタンを**格子へドラッグしても置ける**か（JW-300SP 風。設計 §5.2 の S8）。
+   * 「マウスのドラッグ＆ドロップでも回路要素を入れられる」と公開資料で確認できたスキンだけ真。
+   * 省略時は偽（押してから格子を選ぶ、ふつうの置き方だけ）。
+   */
+  dragPlace?: boolean;
   /** この見た目のうち §17.1 の前提である項目（設定画面とツールチップに出す）。 */
   assumed: readonly string[];
   /**

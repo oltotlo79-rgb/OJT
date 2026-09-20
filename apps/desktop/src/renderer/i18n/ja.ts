@@ -655,6 +655,50 @@ export const JA = {
      */
     shortcutSource: (source: string): string => `出典 ${source}`,
     // --- /Phase 7 Task 20 ---
+    // --- Phase 7 Task 21（回路入力の3つの入口と1行直接入力。設計 §5.3 / 指摘 UX-02・PR-01） ---
+    /**
+     * 回路入力欄。見出しの言葉はメーカーごとに違う（`SkinTheme.entryTitle`）ので、ここには
+     * どのメーカーでも通じる既定と、入口B（ツールバーの記号ボタン）・入口C（格子の右クリック）
+     * の言葉を置く。
+     */
+    entry: {
+      /** 記号とデバイスを1行で書く欄。 */
+      direct: '記号とデバイス',
+      /** その欄の書き方（入力例はメーカーの綴りから作るので、ここには書式だけ）。 */
+      directHelp: '命令とデバイスを空白で区切って書けます（デバイスだけでも置けます）',
+      /** 応用命令欄（三菱 `F8` ／ OMRON `I`）。 */
+      application: '応用命令',
+      applicationHelp: '命令とデバイスを空白で区切って書きます',
+      /** 本アプリが解釈できない命令。設計 §5.2 の文言そのまま。 */
+      applicationUnsupported:
+        'このアプリでは扱えない命令です（扱えるのは SET / RST / MC / MCR / T / C）',
+      /** 空白で区切った語が多すぎる。 */
+      tooManyWords: '入力が多すぎます（命令・デバイス・設定値の順に空白で区切ってください）',
+      /** デバイス確定のあとに続けて開くコメント欄（CX-Programmer 風。設計 §5.2 の S4）。 */
+      comment: 'コメント',
+      commentHelp: 'そのまま Enter で確定します',
+      /** ツールバーの記号ボタン列。 */
+      symbols: '記号',
+      /** ボタン名にはキーを併記する（「a接点 (F5)」）。 */
+      withKey: (label: string, key: string): string => `${label} (${key})`,
+      orContactNo: 'OR a接点',
+      orContactNc: 'OR b接点',
+      hline: '横線',
+      vline: '縦線',
+      delete: '削除',
+      /** 空セルの右クリックで出る記号メニュー。 */
+      menu: '記号メニュー',
+      /** ドラッグして置けるスキンの案内（JW-300SP 風。設計 §5.2 の S8）。 */
+      dragHint: '格子へドラッグしても置けます',
+      /** 出力の無い回路ブロックの右端の赤線（CX-Programmer 風。設計 §5.2 の S4）。 */
+      noOutput: '出力がありません',
+      /** 未変換の回路ブロックの灰色背景（「変換」のあるメーカーだけ）。 */
+      unconverted: (convertKey: string): string => `未変換です（${convertKey} で変換します）`,
+      /** 灰色背景は一次資料で確認できていない（`SkinTheme.assumed` に載せる）。§17.1 */
+      unconvertedAssumed:
+        '未変換の回路ブロックを灰色の背景で示す（実機の見え方は一次資料で確認できていない）',
+    },
+    // --- /Phase 7 Task 21 ---
   },
   // --- /Plan 3B Task 4 ---
   // --- Plan 3B Task 10 ---

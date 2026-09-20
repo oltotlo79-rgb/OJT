@@ -23,6 +23,8 @@ export const OMRON_SKIN: SkinTheme = {
     titleBarText: '#FFFFFF',
     statusBar: '#EAEEF2',
     output: '#FBFCFD',
+    // 未変換の回路ブロックの背景（`F4` が通ると `canvas` へ戻る）。一次資料未確認の △。§5.4
+    unconverted: '#E6E6E6',
   },
   /*
    * 52×48px。接点＝縦棒2本（高さ 18px＝セル高の 37.5%・間隔 10px＝縦棒の高さの 0.56・線 1.2px）、
@@ -59,5 +61,8 @@ export const OMRON_SKIN: SkinTheme = {
   // CX-Programmer は回路を「ラング」と呼び、左に**ラング番号**が並ぶ。△
   stepNumbering: 'rung',
   commentLines: 2,
+  entryTitle: '新規接点',
+  // デバイスを確定すると続けてコメント欄が開く（出典 S4）。設計 §5.2
+  entryCommentStep: true,
   assumed: SKIN_ASSUMED,
 };

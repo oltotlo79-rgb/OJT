@@ -111,6 +111,14 @@
       "section": "screens/部品を入れかえる"
     },
     {
+      "testid": "cell-menu",
+      "internal": "空セルを右クリックして出す記号メニューの枠。中の項目で説明する"
+    },
+    {
+      "testid": "cell-menu-{}",
+      "internal": "記号メニューの1項目。ツールバーの記号ボタンと同じ操作"
+    },
+    {
       "testid": "cell-{}",
       "internal": "格子の1マス。親のラダー図で説明済み"
     },
@@ -289,6 +297,10 @@
       "section": "mode-c1/不良の見分け方"
     },
     {
+      "testid": "direct-text",
+      "internal": "回路入力欄の1行入力（記号とデバイス）。親の「デバイスの入力」で説明済み"
+    },
+    {
       "testid": "discard-confirm",
       "screen": "全画面",
       "label": "いまの作業を破棄して別の課題の作業ファイルを開きますか？",
@@ -317,6 +329,10 @@
       "screen": "練習中",
       "label": "標準時間",
       "section": "screens/練習中の画面の並び"
+    },
+    {
+      "testid": "entry-comment",
+      "internal": "デバイスを確定したあとに続けて開くコメント欄。親の「デバイスコメント」で説明済み"
     },
     {
       "testid": "error-banner",
@@ -717,6 +733,10 @@
       "screen": "結果",
       "label": "動作は模範回路と一致しました。",
       "section": "screens/結果の画面"
+    },
+    {
+      "testid": "no-output-{}",
+      "internal": "出力の無い回路ブロックの右端に出る赤い縦線。押す操作は無い"
     },
     {
       "testid": "no-suspect",
@@ -1527,6 +1547,10 @@
       "screen": "練習中",
       "label": "これに交換",
       "section": "screens/部品を入れかえる"
+    },
+    {
+      "testid": "symbol-{}",
+      "internal": "ツールバーの記号ボタン。押すとキーと同じ回路入力欄が開く"
     },
     {
       "testid": "terminal-cancel",

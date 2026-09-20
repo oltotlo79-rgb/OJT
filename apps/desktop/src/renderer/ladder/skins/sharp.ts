@@ -1,3 +1,4 @@
+import { JA } from '../../i18n/ja.js';
 import type { SkinTheme } from './types.js';
 import { SKIN_ASSUMED } from './types.js';
 
@@ -23,6 +24,8 @@ export const SHARP_SKIN: SkinTheme = {
     titleBarText: '#FFFFFF',
     statusBar: '#DCE3E7',
     output: '#FAFCFD',
+    // 未変換の回路ブロックの背景（`F4` が通ると `canvas` へ戻る）。一次資料未確認の △。§5.4
+    unconverted: '#DDE2E5',
   },
   /*
    * 50×36px。接点＝縦棒2本（高さ 14px＝セル高の 38.9%・間隔 8px＝縦棒の高さの 0.57・線 1.2px）、
@@ -56,7 +59,11 @@ export const SHARP_SKIN: SkinTheme = {
   // 回路ブロックの先頭行にステップ番号（行の通し）を出す。△
   stepNumbering: 'step',
   commentLines: 1,
-  assumed: SKIN_ASSUMED,
+  entryTitle: '回路入力',
+  // JW-300SP は「マウスのドラッグ＆ドロップでも回路要素を入れられる」（出典 S8）。設計 §5.2
+  dragPlace: true,
+  // 未変換の灰色背景は一次資料で確認できていない（§17.1 / Phase 7 設計 §5.4）
+  assumed: [...SKIN_ASSUMED, JA.ladder.entry.unconvertedAssumed],
   // キー割当表は GX Works3風の表を流用している（`packages/plc-dialects/src/sharp.ts`）。レビュー I7
   keyMapAssumed: true,
 };

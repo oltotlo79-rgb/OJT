@@ -1,3 +1,4 @@
+import { JA } from '../../i18n/ja.js';
 import type { SkinTheme } from './types.js';
 import { SKIN_ASSUMED } from './types.js';
 
@@ -23,6 +24,8 @@ export const MITSUBISHI_SKIN: SkinTheme = {
     titleBarText: '#FFFFFF',
     statusBar: '#E6E9EE',
     output: '#FFFFFF',
+    // 未変換の回路ブロックの背景（`F4` が通ると `canvas` へ戻る）。一次資料未確認の △。§5.4
+    unconverted: '#DCDCDC',
   },
   /*
    * 48×34px。接点＝縦棒2本（高さ 12px＝セル高の 35.3%・間隔 6px＝縦棒の高さの 0.50・線 1.2px）、
@@ -59,5 +62,7 @@ export const MITSUBISHI_SKIN: SkinTheme = {
   // 回路ブロックの先頭行にステップ番号（行の通し）を出す。△
   stepNumbering: 'step',
   commentLines: 1,
-  assumed: SKIN_ASSUMED,
+  entryTitle: '回路入力',
+  // 未変換の灰色背景は一次資料で確認できていない（§17.1 / Phase 7 設計 §5.4）
+  assumed: [...SKIN_ASSUMED, JA.ladder.entry.unconvertedAssumed],
 };

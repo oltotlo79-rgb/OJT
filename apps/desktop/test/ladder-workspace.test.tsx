@@ -1,6 +1,6 @@
 import { BUILTIN_PLC_PROBLEMS } from '@ojt/content';
 import { out, Y } from '@ojt/ladder-core';
-import { MITSUBISHI_FX5U, OMRON_CP1E } from '@ojt/plc-dialects';
+import { MITSUBISHI_FX5U, OMRON_CP1E, SHARP_JW300 } from '@ojt/plc-dialects';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useStore } from '../src/renderer/app/store.js';
@@ -260,5 +260,65 @@ describe('キー割当表（§12.1 / §17.1）', () => {
     render(<ShortcutHelp profile={MITSUBISHI_FX5U} />);
     const headers = screen.getByTestId('shortcuts').querySelectorAll('thead th[scope="col"]');
     expect(headers.length).toBe(3);
+  });
+});
+
+/**
+ * Phase 7 Task 21: 入口B（ツールバーの記号ボタン列）。設計 §5.3 / 指摘 UX-02
+ * キーと同じ入口（回路入力欄）へ入り、**ボタン名にはキーを併記する**。
+ */
+describe('記号ボタン列（Phase 7 設計 §5.3 の入口B）', () => {
+  it('writes the dialect key next to every symbol button', () => {
+    workspace();
+    expect(screen.getByTestId('symbol-contact-no')).toHaveTextContent('a接点 (F5)');
+    expect(screen.getByTestId('symbol-contact-nc')).toHaveTextContent('b接点 (F6)');
+    expect(screen.getByTestId('symbol-coil')).toHaveTextContent('コイル（OUT） (F7)');
+    expect(screen.getByTestId('symbol-application')).toHaveTextContent('応用命令 (F8)');
+  });
+
+  it('follows the dialect when the maker changes (OMRON は1文字キー)', () => {
+    render(
+      <LadderWorkspace problem={problem} profile={OMRON_CP1E} gridCols={11} onPlc={vi.fn()} />,
+    );
+    expect(screen.getByTestId('symbol-contact-no')).toHaveTextContent('a接点 (C)');
+    // OMRON の「命令入力」は三菱の応用命令と同じ欄（`instruction` の行）
+    expect(screen.getByTestId('symbol-application')).toHaveTextContent('応用命令 (I)');
+  });
+
+  it('opens the same entry the key opens, and places through it', () => {
+    workspace();
+    fireEvent.click(screen.getByTestId('symbol-contact-no'));
+    expect(screen.getByTestId('device-input')).toBeInTheDocument();
+    fireEvent.change(screen.getByTestId('direct-text'), { target: { value: 'LD X0' } });
+    fireEvent.keyDown(screen.getByTestId('direct-text'), { key: 'Enter' });
+    const net = useStore.getState().ladder!.networks[0]!;
+    expect(net.cells[0]![0]).toMatchObject({ kind: 'contact', type: 'NO' });
+  });
+
+  it('places a rule line without opening the entry, and deletes with the 削除 button', () => {
+    workspace();
+    fireEvent.click(screen.getByTestId('symbol-hline'));
+    expect(screen.queryByTestId('device-input')).toBeNull();
+    expect(useStore.getState().ladder!.networks[0]!.cells[0]![0]).toMatchObject({ kind: 'hline' });
+    fireEvent.click(screen.getByTestId('symbol-delete'));
+    expect(useStore.getState().ladder!.networks[0]!.cells[0]![0]).toMatchObject({ kind: 'empty' });
+  });
+
+  it('disables the symbol buttons outside the write mode (決定表#11)', () => {
+    workspace();
+    act(() => {
+      useStore.getState().setLadderMode('monitor');
+    });
+    expect(screen.getByTestId('symbol-contact-no')).toBeDisabled();
+  });
+
+  it('lets only the JW-300SP style drag a symbol onto the grid (設計 §5.2 の S8)', () => {
+    render(
+      <LadderWorkspace problem={problem} profile={SHARP_JW300} gridCols={11} onPlc={vi.fn()} />,
+    );
+    expect(screen.getByTestId('symbol-contact-no')).toHaveAttribute('draggable', 'true');
+    cleanup();
+    workspace();
+    expect(screen.getByTestId('symbol-contact-no')).toHaveAttribute('draggable', 'false');
   });
 });

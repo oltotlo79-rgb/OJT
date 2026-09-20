@@ -7,10 +7,11 @@ import {
   SHARP_JW300,
   type DialectProfile,
 } from '@ojt/plc-dialects';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useStore } from '../src/renderer/app/store.js';
 import { LadderEditor } from '../src/renderer/ladder/LadderEditor.js';
+import { skinThemeOf } from '../src/renderer/ladder/skins/index.js';
 import {
   expandKeys,
   ladderKeyToAction,
@@ -333,6 +334,11 @@ describe('キー操作（§10.6 の割当表から引く）', () => {
     expect(screen.getByTestId('device-input')).toBeInTheDocument();
     fireEvent.change(screen.getByTestId('device-text'), { target: { value: '0.00' } });
     fireEvent.click(screen.getByTestId('device-commit'));
+    /*
+     * Phase 7 Task 21（設計 §5.2 の S4）: CX-Programmer 風はデバイスのあとに**コメント欄**が
+     * 続くので、置くまでにもう一度確定が要る（三菱系は1回で置く）。
+     */
+    fireEvent.click(screen.getByTestId('device-commit'));
     expect(net1()).toMatchObject({ kind: 'contact', type: 'NC' });
     useStore.getState().setLadderCursor({ networkId: 'n1', row: 0, col: 0 });
     fireEvent.keyDown(grid(), { key: '/' });
@@ -482,5 +488,140 @@ describe('4方言のキー割当が実際に効く（網羅。LE-1 / LE-8）', (
     expect(expandKeys('Ctrl+F9,Ctrl+←')).toEqual(['Ctrl+F9', 'Ctrl+ArrowLeft']);
     expect(expandKeys('F5')).toEqual(['F5']);
     expect(expandKeys('Ctrl+←↑↓→')).toHaveLength(4);
+  });
+});
+
+/**
+ * Phase 7 Task 21: 回路入力の3つの入口と1行直接入力（設計 §5.3 / 指摘 UX-02・PR-01）。
+ * 利用者要望3の中心（「F5でA接点が入力される」）を4方言ぶん縛る。
+ */
+describe('回路入力（Phase 7 設計 §5.3）', () => {
+  /** 方言ごとの「a接点のキー」「1行入力」「そのデバイスの綴り」。 */
+  const DIALECT_CASES: ReadonlyArray<{
+    profile: DialectProfile;
+    contactKey: string;
+    line: string;
+  }> = [
+    { profile: MITSUBISHI_FX5U, contactKey: 'F5', line: 'LD X0' },
+    // 実ブラウザの `KeyboardEvent.key` は小文字で来る（指摘 LE-1）
+    { profile: OMRON_CP1E, contactKey: 'c', line: 'LD 0.00' },
+    { profile: JTEKT_PC10G, contactKey: 'F5', line: 'LD 1X000' },
+    { profile: SHARP_JW300, contactKey: 'F5', line: 'STR 000000' },
+  ];
+
+  /** その方言で1つ目の接点を置き終えるまで（CX-Programmer 風は2段目のコメント欄がある）。 */
+  function confirmEntry(profile: DialectProfile): void {
+    if (skinThemeOf(profile).entryCommentStep === true) {
+      expect(screen.getByTestId('entry-comment')).toBeInTheDocument();
+      fireEvent.click(screen.getByTestId('device-commit'));
+    }
+  }
+
+  it('places an a-contact from the one-line entry in all four dialects (利用者要望3)', () => {
+    for (const { profile, contactKey, line } of DIALECT_CASES) {
+      cleanup();
+      useStore.getState().abandonSession();
+      useStore.getState().openProblem(problem);
+      editor({ profile, gridCols: profile.gridCols });
+      fireEvent.keyDown(grid(), { key: contactKey });
+      expect(screen.getByTestId('device-input'), profile.id).toBeInTheDocument();
+      fireEvent.change(screen.getByTestId('direct-text'), { target: { value: line } });
+      fireEvent.keyDown(screen.getByTestId('direct-text'), { key: 'Enter' });
+      confirmEntry(profile);
+      expect(net1(), profile.id).toMatchObject({ kind: 'contact', type: 'NO', device: X(0) });
+      expect(screen.queryByTestId('device-input'), profile.id).toBeNull();
+    }
+  });
+
+  it('reads a bare device as the device alone, keeping the symbol of the key that was pressed', () => {
+    editor();
+    fireEvent.keyDown(grid(), { key: 'F6' });
+    fireEvent.change(screen.getByTestId('direct-text'), { target: { value: 'X1' } });
+    fireEvent.keyDown(screen.getByTestId('direct-text'), { key: 'Enter' });
+    expect(net1()).toMatchObject({ kind: 'contact', type: 'NC', device: X(1) });
+  });
+
+  it('reads 全角 input and an OR mnemonic as a parallel contact (PD-1 / LE-5)', () => {
+    editor();
+    fireEvent.keyDown(grid(), { key: 'F5' });
+    fireEvent.change(screen.getByTestId('direct-text'), { target: { value: 'LD X0' } });
+    fireEvent.keyDown(screen.getByTestId('direct-text'), { key: 'Enter' });
+    useStore.getState().setLadderCursor({ networkId: 'n1', row: 0, col: 0 });
+    fireEvent.keyDown(grid(), { key: 'F5' });
+    // 全角で打たれても NFKC で読む（全角の `OR` ＋ 全角空白 ＋ 全角の `X1`）
+    fireEvent.change(screen.getByTestId('direct-text'), { target: { value: 'ＯＲ　Ｘ１' } });
+    fireEvent.keyDown(screen.getByTestId('direct-text'), { key: 'Enter' });
+    const net = useStore.getState().ladder!.networks[0]!;
+    // OR接点は下の行へ分岐する（`applyOrContact()`）
+    expect(cellAt(net, 1, 0)).toMatchObject({ kind: 'contact', type: 'NO', device: X(1) });
+  });
+
+  it('opens the application form on F8 and refuses an instruction the app cannot run (設計 §5.2)', () => {
+    editor();
+    useStore.getState().setLadderCursor({ networkId: 'n1', row: 0, col: COIL_COL });
+    fireEvent.keyDown(grid(), { key: 'F8' });
+    expect(screen.getByTestId('device-input')).toBeInTheDocument();
+    expect(screen.getByTestId('direct-text')).toHaveAccessibleName('応用命令');
+    fireEvent.change(screen.getByTestId('direct-text'), { target: { value: 'MOV' } });
+    fireEvent.click(screen.getByTestId('device-commit'));
+    expect(screen.getByTestId('device-error')).toHaveTextContent(
+      'このアプリでは扱えない命令です（扱えるのは SET / RST / MC / MCR / T / C）',
+    );
+    const net = useStore.getState().ladder!.networks[0]!;
+    expect(cellAt(net, 0, COIL_COL).kind).toBe('empty');
+    // 扱える命令は置ける
+    fireEvent.change(screen.getByTestId('direct-text'), { target: { value: 'SET Y0' } });
+    fireEvent.click(screen.getByTestId('device-commit'));
+    const after = useStore.getState().ladder!.networks[0]!;
+    expect(cellAt(after, 0, COIL_COL)).toMatchObject({ kind: 'coil', type: 'SET', device: Y(0) });
+  });
+
+  it('opens the comment field after the device in the CX-Programmer style (設計 §5.2 の S4)', () => {
+    editor({ profile: OMRON_CP1E, gridCols: OMRON_CP1E.gridCols });
+    fireEvent.keyDown(grid(), { key: 'c' });
+    fireEvent.change(screen.getByTestId('direct-text'), { target: { value: '0.00' } });
+    fireEvent.keyDown(screen.getByTestId('direct-text'), { key: 'Enter' });
+    // 1回目の Enter ではまだ置かれず、コメント欄が開く
+    expect(screen.getByTestId('entry-comment')).toBeInTheDocument();
+    expect(net1().kind).toBe('empty');
+    fireEvent.change(screen.getByTestId('entry-comment'), { target: { value: '運転押釦' } });
+    fireEvent.keyDown(screen.getByTestId('entry-comment'), { key: 'Enter' });
+    expect(net1()).toMatchObject({ kind: 'contact', type: 'NO', device: X(0) });
+    // 書いたコメントは既存のデバイスコメント欄と同じ置き場所へ入る（§10.7）
+    expect(useStore.getState().ladderComments['X0']).toBe('運転押釦');
+  });
+
+  it('opens the entry on a double click of an empty cell, never on a single click (入口C)', () => {
+    editor();
+    const cell = screen.getByTestId('cell-n1:0:1');
+    fireEvent.click(cell);
+    expect(screen.queryByTestId('device-input')).toBeNull();
+    expect(useStore.getState().ladderCursor).toEqual({ networkId: 'n1', row: 0, col: 1 });
+    fireEvent.doubleClick(cell);
+    expect(screen.getByTestId('device-input')).toBeInTheDocument();
+    fireEvent.change(screen.getByTestId('direct-text'), { target: { value: 'X0' } });
+    fireEvent.keyDown(screen.getByTestId('direct-text'), { key: 'Enter' });
+    const net = useStore.getState().ladder!.networks[0]!;
+    expect(cellAt(net, 0, 1)).toMatchObject({ kind: 'contact', type: 'NO', device: X(0) });
+  });
+
+  it('opens the symbol menu on a right click and places from it, with the key written on it (入口C)', () => {
+    editor();
+    fireEvent.contextMenu(screen.getByTestId('cell-n1:0:0'));
+    expect(screen.getByTestId('cell-menu')).toBeInTheDocument();
+    expect(screen.getByTestId('cell-menu-contact-no')).toHaveTextContent('a接点 (F5)');
+    fireEvent.click(screen.getByTestId('cell-menu-hline'));
+    expect(net1().kind).toBe('hline');
+    expect(screen.queryByTestId('cell-menu')).toBeNull();
+  });
+
+  it('refuses the entry outside the write mode, exactly as the keys do (決定表#11)', () => {
+    editor();
+    act(() => {
+      useStore.getState().setLadderMode('monitor');
+    });
+    fireEvent.doubleClick(screen.getByTestId('cell-n1:0:0'));
+    expect(screen.queryByTestId('device-input')).toBeNull();
+    expect(useStore.getState().toasts.at(-1)?.text).toContain('書込み');
   });
 });

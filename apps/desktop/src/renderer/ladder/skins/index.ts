@@ -57,6 +57,8 @@ export function skinCssVars(
     '--skin-title-text': theme.colors.titleBarText,
     '--skin-status-bar': theme.colors.statusBar,
     '--skin-output': theme.colors.output,
+    // 未変換の回路ブロックの背景（Phase 7 設計 §5.4。`convertStep` のあるメーカーだけが使う）
+    '--skin-unconverted': theme.colors.unconverted,
     '--skin-cell-w': `${String(theme.cell.widthPx)}px`,
     '--skin-cell-h': `${String(theme.cell.heightPx)}px`,
     '--skin-stroke': String(theme.cell.strokeWidth),

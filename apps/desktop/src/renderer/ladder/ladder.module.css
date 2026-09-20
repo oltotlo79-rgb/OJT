@@ -989,3 +989,91 @@ details[open] > .sideSummary::before {
   padding: 4px 8px;
 }
 /* --- /Plan 4B Task 9 --- */
+
+/* --- Phase 7 Task 21: 回路入力の3つの入口（設計 §5.3 / 指摘 UX-02・PR-01） --- */
+/* 1行直接入力とコメント欄は、ふつうのデバイス欄（92px）より長い文を書くので広く取る。 */
+.directInput {
+  flex: 1 1 220px;
+  min-width: 180px;
+}
+
+.inputHint {
+  color: #4a5560;
+  font-size: 11px;
+}
+
+/*
+ * ツールバーの記号ボタン列（入口B）。ツールバーの2段目として、同じ地の色の上に並べる。
+ * ボタンは「自分で描いた記号 ＋ 名前（キー）」なので、文字だけの行より少し高い。
+ */
+.symbolBar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+  padding: 3px 6px;
+  background: var(--skin-toolbar, #e4e7ec);
+  border-bottom: 1px solid var(--ladder-line);
+}
+
+.symbolBar button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  min-height: 26px;
+}
+
+.symbolIcon {
+  /* 記号は本アプリが描く線画（各社の図記号ビットマップは持たない。§17） */
+  display: block;
+  fill: none;
+  stroke: currentcolor;
+  stroke-width: 1.4;
+}
+
+.symbolHint {
+  color: #4a5560;
+  font-size: 11px;
+}
+
+/*
+ * 入口C: 空セルの右クリックで出る記号メニュー。格子の上に浮かせる（`position: fixed` で
+ * 押された場所に出す。スクロールの中でも位置がずれない）。
+ */
+.cellMenu {
+  position: fixed;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  min-width: 160px;
+  padding: 4px;
+  gap: 2px;
+  background: #fff;
+  border: 1px solid var(--ladder-line);
+  border-radius: 4px;
+  box-shadow: 0 6px 18px rgb(0 0 0 / 25%);
+}
+
+.cellMenu button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  justify-content: flex-start;
+  padding: 4px 8px;
+  min-height: 28px;
+  background: transparent;
+  border: 0;
+  text-align: left;
+}
+
+.cellMenu button:hover,
+.cellMenu button:focus-visible {
+  background: var(--skin-toolbar, #e4e7ec);
+}
+
+/* 出力の無い回路ブロックの右端に出す赤い縦線（CX-Programmer 風。設計 §5.2 の S4）。 */
+.noOutputMark {
+  fill: var(--skin-error, #c62828);
+}
+/* --- /Phase 7 Task 21 --- */

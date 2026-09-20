@@ -128,6 +128,38 @@ export function hasHiddenCells(net: Network, gridCols: number): boolean {
 }
 
 /**
+ * 出力（コイル・タイマ・カウンタ・MC/MCR・END）を持つセルの種別。
+ * CX-Programmer 風の「出力の無いネットワークに赤線」（Phase 7 設計 §5.2 の S4）が使う。
+ */
+const OUTPUT_CELL_KINDS: ReadonlySet<Cell['kind']> = new Set([
+  'coil',
+  'timer',
+  'counter',
+  'mc',
+  'mcr',
+  'end',
+]);
+
+/**
+ * その回路ブロックが**未完成**か（中身はあるのに出力が無い）。Phase 7 設計 §5.2 / §5.4
+ *
+ * 「変換」の段を持たないメーカー（`convertStep: false`）は、変換の指摘を待たずにその場で
+ * 未完成を示す（右端の赤い縦線）。まだ何も置いていない回路ブロックは「未完成」ではない
+ * （課題を開いた直後に全ブロックが赤くなると、赤が意味を失う）。
+ */
+export function networkNeedsOutput(net: Network): boolean {
+  let hasContent = false;
+  for (let row = 0; row < net.rows; row += 1) {
+    for (let col = 0; col <= COIL_COL; col += 1) {
+      const kind = cellAt(net, row, col).kind;
+      if (OUTPUT_CELL_KINDS.has(kind)) return false;
+      if (kind !== 'empty') hasContent = true;
+    }
+  }
+  return hasContent;
+}
+
+/**
  * その行の**見えない列が罫線だけで繋がっている**か（`applyLadderCell()` の自動の横線）。
  *
  * 真なら最後の接点列とコイルの間に導線を重ねて描き、回路が繋がっていることを見せる。
@@ -318,6 +350,29 @@ function SymbolLabels({
 }
 
 /**
+ * 格子から回路入力欄を開く入口（入口C。Phase 7 設計 §5.3）。
+ *
+ * **単クリックはカーソル移動のまま**にして（視点操作・選択と衝突させない）、空セルの
+ * **ダブルクリック**と**右クリックメニュー**を入口にする。`memo(GridCell)` を効かせるため、
+ * ここに入れる関数は呼び出し側で安定させること（毎レンダー作り直さない）。
+ */
+export interface GridEntry {
+  /** ダブルクリック（空セルなら記号を選ぶ欄、置いてあるセルならその編集）。 */
+  onOpen: (cursor: LadderCursor) => void;
+  /** 右クリック。画面座標（`clientX` / `clientY`）にメニューを出す。 */
+  onMenu: (cursor: LadderCursor, x: number, y: number) => void;
+  /** ツールバーの記号ボタンから格子へドロップした（JW-300SP 風。設計 §5.2 の S8）。 */
+  onDropSymbol: (cursor: LadderCursor, kind: string) => void;
+}
+
+/** 入口Cを渡されなかったとき（格子だけを描くとき）の何もしない入口。参照は固定。 */
+const NO_ENTRY: GridEntry = {
+  onOpen: () => undefined,
+  onMenu: () => undefined,
+  onDropSymbol: () => undefined,
+};
+
+/**
  * 1セルぶんの描画。
  *
  * **`memo` で包む（指摘 LE-10）**。以前はカーソル位置を `cursorKey`（文字列）として全セルに
@@ -344,6 +399,8 @@ const GridCell = memo(function GridCell({
   error,
   hasLinkBelow,
   onPick,
+  entry,
+  dragPlace,
 }: {
   cell: Cell;
   /** このセルにカーソルがあるか。 */
@@ -364,6 +421,10 @@ const GridCell = memo(function GridCell({
   error: boolean;
   hasLinkBelow: boolean;
   onPick: (cursor: LadderCursor) => void;
+  /** 入口C（ダブルクリック・右クリック・ドロップ）。参照は安定していること。 */
+  entry: GridEntry;
+  /** 記号ボタンを格子へドラッグして置けるスキンか（JW-300SP 風）。 */
+  dragPlace: boolean;
 }): JSX.Element {
   const cellKey = `${networkId}:${String(row)}:${String(col)}`;
   // 再描画回数を DOM に出す（LE-10 のテストが「選択が変わっていないセルは描き直さない」
@@ -403,6 +464,34 @@ const GridCell = memo(function GridCell({
       onClick={() => {
         onPick({ networkId, row, col });
       }}
+      /*
+       * 入口C（設計 §5.3）。単クリックはカーソル移動のままにして、ダブルクリックと
+       * 右クリックで回路入力欄へ入る。右クリックは OS のメニューを止めて自前の記号
+       * メニューを出す（`LadderEditor` が描く）。
+       */
+      onDoubleClick={() => {
+        entry.onOpen({ networkId, row, col });
+      }}
+      onContextMenu={(event) => {
+        event.preventDefault();
+        entry.onMenu({ networkId, row, col }, event.clientX, event.clientY);
+      }}
+      onDragOver={
+        dragPlace
+          ? (event) => {
+              // 既定では要素はドロップを受けないので、`preventDefault()` で受け口にする
+              event.preventDefault();
+            }
+          : undefined
+      }
+      onDrop={
+        dragPlace
+          ? (event) => {
+              event.preventDefault();
+              entry.onDropSymbol({ networkId, row, col }, event.dataTransfer.getData('text/plain'));
+            }
+          : undefined
+      }
     >
       {/* 当たり判定（透明の矩形。線だけだとクリックしづらい） */}
       <rect width={metrics.w} height={metrics.h} className={styles.cellHit} />
@@ -537,6 +626,9 @@ const NetworkView = memo(function NetworkView({
   rungIndex,
   cursor,
   onPickCell,
+  entry,
+  dragPlace,
+  unconverted,
 }: {
   net: Network;
   profile: DialectProfile;
@@ -555,6 +647,11 @@ const NetworkView = memo(function NetworkView({
   /** カーソル（**このネットワークにあるときだけ**渡る。無ければ `undefined`）。指摘 LE-10 */
   cursor: LadderCursor | undefined;
   onPickCell: (cursor: LadderCursor) => void;
+  /** 入口C（ダブルクリック・右クリック・ドロップ）。設計 §5.3 */
+  entry: GridEntry;
+  dragPlace: boolean;
+  /** まだ変換していない（`F4` が通っていない）。設計 §5.4 */
+  unconverted: boolean;
 }): JSX.Element {
   const bits = useStore((s) => (mode === 'monitor' ? (s.plcMonitor?.powered[net.id] ?? '') : ''));
   const on = (row: number, col: number): boolean => bits.charAt(row * IR_COLS + col) === '1';
@@ -580,6 +677,13 @@ const NetworkView = memo(function NetworkView({
       className={styles.network}
       data-testid={`network-${net.id}`}
       data-render-count={renderCount.current}
+      /*
+       * 未変換の回路ブロックは背景を灰にする（GX Works3 と同じ見せ方。設計 §5.4）。
+       * `F4`（変換）が通ると外れる。色は `--skin-unconverted`（スキンが決める）。
+       * 格子線は `.grid` の `background-image` なので、**地の色だけ**を差し替える。
+       */
+      data-unconverted={unconverted ? 'true' : undefined}
+      style={unconverted ? { backgroundColor: 'var(--skin-unconverted)' } : undefined}
     >
       <header className={styles.networkHeader}>
         <span className={styles.networkId}>{net.id}</span>
@@ -677,6 +781,8 @@ const NetworkView = memo(function NetworkView({
                       error={errorCells.has(key)}
                       hasLinkBelow={row + 1 < net.rows}
                       onPick={onPickCell}
+                      entry={entry}
+                      dragPlace={dragPlace}
                     />
                   );
                 })}
@@ -694,6 +800,21 @@ const NetworkView = memo(function NetworkView({
             );
           })}
         </g>
+        {/*
+          出力の無い回路ブロックの**右端に赤い縦線**（CX-Programmer 風。設計 §5.2 の S4）。
+          「変換」の段を持たないメーカーは、変換の指摘を待たずにその場で未完成を示す。
+        */}
+        {profile.convertStep || !networkNeedsOutput(net) ? null : (
+          <rect
+            data-testid={`no-output-${net.id}`}
+            role="img"
+            aria-label={JA.ladder.entry.noOutput}
+            x={metrics.stepGutter + RAIL_W + columns.length * metrics.w}
+            width={RIGHT_RAIL_W * 2}
+            height={net.rows * metrics.h}
+            className={styles.noOutputMark}
+          />
+        )}
       </svg>
     </section>
   );
@@ -710,6 +831,9 @@ function LadderGridImpl({
   errorCells,
   gridCols,
   onPickCell,
+  entry = NO_ENTRY,
+  dragPlace = false,
+  unconverted = false,
 }: {
   program: LadderProgram;
   profile: DialectProfile;
@@ -724,6 +848,15 @@ function LadderGridImpl({
   /** 表示する接点列数（設定で変えられる。§10.6） */
   gridCols: number;
   onPickCell: (cursor: LadderCursor) => void;
+  /**
+   * 入口C（ダブルクリック・右クリック・ドロップ）。設計 §5.3
+   * 省略すると何も起きない（格子だけを描くテストのため）。
+   */
+  entry?: GridEntry;
+  /** 記号ボタンを格子へドラッグして置けるスキンか（JW-300SP 風。設計 §5.2 の S8）。 */
+  dragPlace?: boolean;
+  /** まだ変換していない（「変換」を持つメーカーだけ灰色の背景にする。設計 §5.4）。 */
+  unconverted?: boolean;
 }): JSX.Element {
   // `NetworkView` は `memo` なので、寸法表と列の並びは毎レンダー作り直さない（指摘 LE-10）
   const metrics = useMemo(() => symbolMetrics(theme.cell), [theme.cell]);
@@ -753,6 +886,9 @@ function LadderGridImpl({
             rungIndex={rungIndex}
             cursor={cursor.networkId === net.id ? cursor : undefined}
             onPickCell={onPickCell}
+            entry={entry}
+            dragPlace={dragPlace}
+            unconverted={unconverted}
           />
         );
       })}

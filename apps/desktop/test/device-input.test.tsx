@@ -62,8 +62,14 @@ describe('DeviceInput の丸め確認（§10.5 Minor）', () => {
     );
     fireEvent.click(screen.getByTestId('device-commit'));
     fireEvent.click(screen.getByTestId('round-yes'));
+    /*
+     * Phase 7 Task 21: `onCommit` は**セルと添え物の2引数**になった（1行入力が `OR` で
+     * 書かれたか、CX-Programmer 風の2段目でコメントが書かれたかを渡す）。ここは三菱の
+     * ふつうの確定なので添え物は空である。
+     */
     expect(onCommit).toHaveBeenCalledWith(
       expect.objectContaining({ kind: 'timer', presetMs: 3100 }),
+      {},
     );
     expect(screen.queryByTestId('round-prompt')).toBeNull();
   });
@@ -171,7 +177,7 @@ describe('入力欄のキー操作（指摘 LE-12）', () => {
       />,
     );
     fireEvent.keyDown(screen.getByTestId('preset-text'), { key: 'Enter' });
-    expect(onCommit).toHaveBeenCalledWith(expect.objectContaining({ kind: 'timer' }));
+    expect(onCommit).toHaveBeenCalledWith(expect.objectContaining({ kind: 'timer' }), {});
   });
 
   it('cancels on Escape from the reset-device field, not just the device field', () => {

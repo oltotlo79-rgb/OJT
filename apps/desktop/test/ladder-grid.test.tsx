@@ -17,7 +17,7 @@ import {
   Y,
   type LadderProgram,
 } from '@ojt/ladder-core';
-import { MITSUBISHI_FX5U, OMRON_CP1E } from '@ojt/plc-dialects';
+import { MITSUBISHI_FX5U, OMRON_CP1E, SHARP_JW300 } from '@ojt/plc-dialects';
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useStore } from '../src/renderer/app/store.js';
@@ -440,5 +440,77 @@ describe('LadderGrid（§10.7）', () => {
     );
     render(<LadderGrid program={gapped} {...base} gridCols={2} />);
     expect(screen.queryByTestId('rung-to-coil-n1:0')).toBeNull();
+  });
+});
+
+/**
+ * Phase 7 Task 21: 未変換の見え方（設計 §5.4）と、出力の無い回路ブロックの印（§5.2 の S4）。
+ * どちらも**方言IDでは分岐せず**、「変換」の段を持つか（`convertStep`）だけで決まる。
+ */
+describe('未変換と未完成の見え方（Phase 7 設計 §5.2 / §5.4）', () => {
+  /** 接点だけを置いた（出力の無い）回路ブロック。 */
+  function unfinished(): LadderProgram {
+    return program(network('n1', [[no(X(0))]]), endNetwork());
+  }
+
+  it('greys the unconverted networks in the dialects that have a convert step (三菱・シャープ)', () => {
+    for (const profile of [MITSUBISHI_FX5U, SHARP_JW300]) {
+      cleanup();
+      render(
+        <LadderGrid
+          {...base}
+          program={sample()}
+          profile={profile}
+          theme={skinThemeOf(profile)}
+          gridCols={profile.gridCols}
+          unconverted
+        />,
+      );
+      const net = screen.getByTestId('network-n1');
+      expect(net, profile.id).toHaveAttribute('data-unconverted', 'true');
+      // 灰色はスキンの `--skin-unconverted`（地の色だけを差し替え、格子線は残す）
+      expect(net.getAttribute('style') ?? '', profile.id).toContain('var(--skin-unconverted)');
+    }
+  });
+
+  it('drops the grey once the convert step has passed', () => {
+    render(<LadderGrid {...base} program={sample()} unconverted={false} />);
+    const net = screen.getByTestId('network-n1');
+    expect(net).not.toHaveAttribute('data-unconverted');
+    expect(net.getAttribute('style') ?? '').not.toContain('--skin-unconverted');
+  });
+
+  it('draws the red line at the right edge of a network with no output (OMRON)', () => {
+    render(
+      <LadderGrid
+        {...base}
+        program={unfinished()}
+        profile={OMRON_CP1E}
+        theme={skinThemeOf(OMRON_CP1E)}
+        gridCols={OMRON_CP1E.gridCols}
+      />,
+    );
+    expect(screen.getByTestId('no-output-n1')).toBeInTheDocument();
+    expect(screen.getByTestId('no-output-n1')).toHaveAccessibleName('出力がありません');
+    // END の回路ブロックは END そのものが出力なので出ない
+    expect(screen.queryByTestId('no-output-end')).toBeNull();
+  });
+
+  it('drops the red line as soon as the network has an output (OMRON)', () => {
+    render(
+      <LadderGrid
+        {...base}
+        program={sample()}
+        profile={OMRON_CP1E}
+        theme={skinThemeOf(OMRON_CP1E)}
+        gridCols={OMRON_CP1E.gridCols}
+      />,
+    );
+    expect(screen.queryByTestId('no-output-n1')).toBeNull();
+  });
+
+  it('never draws the red line in the dialects that have a convert step (三菱)', () => {
+    render(<LadderGrid {...base} program={unfinished()} />);
+    expect(screen.queryByTestId('no-output-n1')).toBeNull();
   });
 });
