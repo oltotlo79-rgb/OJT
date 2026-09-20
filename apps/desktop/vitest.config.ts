@@ -12,5 +12,17 @@ export default defineConfig({
     environment: 'happy-dom',
     setupFiles: ['./test/setup.ts'],
     include: ['test/**/*.test.ts', 'test/**/*.test.tsx'],
+    // QA-10: 142ファイル/2,225テストが一度も測定されていなかった唯一の死角。閾値は置かない
+    // （前提C: `apps/desktop` に閾値は置かない設計）。可視化だけを入れ、実測値を
+    // `docs/releases/v1.1.0.md` に記録してからラチェット運用（実測−3pt）へ移す（Task 29 Step 5）。
+    coverage: {
+      provider: 'v8',
+      include: ['src/**/*.ts', 'src/**/*.tsx'],
+      reporter: ['text-summary', 'json-summary'],
+      // v8計装のオーバーヘッドで、既存のタイムアウト前提のテストが希に超過することがある
+      // （中身のバグではなく計測固有の負荷）。既定の `false` だと失敗時にレポートが
+      // 出ず「一度測る」ことそのものができないため、失敗があっても出す
+      reportOnFailure: true,
+    },
   },
 });

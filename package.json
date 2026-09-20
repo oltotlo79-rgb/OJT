@@ -4,14 +4,15 @@
   "type": "module",
   "packageManager": "pnpm@11.2.2",
   "engines": {
-    "node": ">=22"
+    "node": ">=22 <26"
   },
   "scripts": {
     "test": "pnpm -r test",
     "test:coverage": "pnpm -r test:coverage",
     "typecheck": "tsc -p tsconfig.json --noEmit && pnpm -r typecheck",
     "lint": "eslint .",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "verify": "pnpm typecheck && pnpm lint && pnpm -r test"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

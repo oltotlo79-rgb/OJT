@@ -83,6 +83,7 @@ async function main() {
  */
 app.whenReady().then(main).catch(onFailure);
 
+/** @param {unknown} error */
 function onFailure(error) {
   globalThis.process.stderr.write(`PDFの生成に失敗しました: ${String(error)}\n`);
   // BL-1: 上と同じ理由で `app.exit(1)` を使う（`app.quit()` は終了コードを無視する）。

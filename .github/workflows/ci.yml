@@ -1,0 +1,50 @@
+name: CI
+
+# 指摘 QA-01: 自動実行される品質ゲートが無く、日常のコミットが一切検査されていなかった。
+# ここでは秘密情報を一切使わない（署名やリリース公開は別の手動フロー）。
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  verify:
+    name: verify (typecheck / lint / test)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      # lockfile が package.json と同期していることを毎 push で検証する
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm verify
+
+  build-e2e:
+    name: build + e2e
+    needs: verify
+    runs-on: windows-latest
+    # ビルドと E2E は重いので、タグ付け（リリース）か手動起動のときだけ走らせる
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/')
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @ojt/desktop build
+      - run: pnpm --filter @ojt/desktop e2e
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: e2e-artifacts
+          path: |
+            apps/desktop/screenshots/**
+            apps/desktop/test-results/**
+          if-no-files-found: ignore

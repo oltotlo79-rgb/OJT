@@ -58,6 +58,22 @@ export default tseslint.config(
       'react-hooks/exhaustive-deps': 'warn',
     },
   },
-  // 素のJS（設定ファイル・ビルドスクリプト）は型情報を使うルールの対象外にする
-  { files: ['**/*.js', '**/*.mjs'], extends: [tseslint.configs.disableTypeChecked] },
+  // 素のJS（設定ファイル・ビルドスクリプト）は型情報を使うルールの対象外にする。
+  // ただし `apps/desktop/scripts/` の配布用スクリプト5本は対象外にしない
+  // （QA-14: 検査が最も薄いコードが配布物を作っていた）。残る4本
+  // （`annotate-shots` / `build-manual` / `feature-inventory` / `manual-build`）は
+  // 同名の手書き `*.d.mts` が型の正本で、`tsconfig.json` の TS プログラムには
+  // `*.mjs` 本体が root file として入らない（`.d.mts` に隠れる、TS の既定動作）ため、
+  // 型情報つき ESLint を当てると「project service に見つからない」で構文エラーになる。
+  {
+    files: ['**/*.js', '**/*.mjs'],
+    ignores: [
+      'apps/desktop/scripts/build.mjs',
+      'apps/desktop/scripts/check-dist.mjs',
+      'apps/desktop/scripts/copy-content.mjs',
+      'apps/desktop/scripts/dev.mjs',
+      'apps/desktop/scripts/print-manual.mjs',
+    ],
+    extends: [tseslint.configs.disableTypeChecked],
+  },
 );

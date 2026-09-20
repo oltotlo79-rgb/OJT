@@ -32,6 +32,7 @@ const UNPACKED = join(RELEASE, 'win-unpacked');
 const SOURCE_CONTENT = resolve(APP_ROOT, '../../packages/content/src/builtin');
 
 const out = globalThis.process.stdout;
+/** @param {string} message */
 const fail = (message) => {
   globalThis.process.stderr.write(`配布物の検査に失敗しました: ${message}\n`);
   globalThis.process.exitCode = 1;
@@ -42,6 +43,7 @@ const fail = (message) => {
  * NSIS インストーラは約107MB、ポータブルの zip は約147MB ある。`readFileSync()` で
  * 丸ごと Buffer に載せると、この検査のためだけに数百MBのヒープを掴む（`dist` は
  * electron-builder の直後に走るので、いちばんメモリが厳しい瞬間である）。
+ * @param {string} path
  */
 async function sha256Of(path) {
   const hash = createHash('sha256');
@@ -49,10 +51,30 @@ async function sha256Of(path) {
   return hash.digest('hex').toUpperCase();
 }
 
+/**
+ * `package.json` の `version` フィールドを取り出す。`JSON.parse()` の戻り値は `any` なので、
+ * 制御フローで絞り込んでから返す（JSDoc の `@type` キャストは checkJs 下の ESLint 型情報
+ * ルールに効かないため使わない）。
+ * @param {unknown} value
+ * @returns {string}
+ */
+function versionOf(value) {
+  if (
+    value !== null &&
+    typeof value === 'object' &&
+    'version' in value &&
+    typeof value.version === 'string'
+  ) {
+    return value.version;
+  }
+  throw new TypeError(`package.json に version がありません: ${JSON.stringify(value)}`);
+}
+
 if (!existsSync(RELEASE)) {
   fail(`${RELEASE} がありません（先に electron-builder を走らせてください）`);
 } else {
-  const version = JSON.parse(readFileSync(join(APP_ROOT, 'package.json'), 'utf8')).version;
+  const pkgRaw = readFileSync(join(APP_ROOT, 'package.json'), 'utf8');
+  const version = versionOf(JSON.parse(pkgRaw));
   const expected = [`電気教育ツール-${version}-x64.exe`, `電気教育ツール-${version}-x64.zip`];
   const rows = [];
 

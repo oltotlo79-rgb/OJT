@@ -1230,13 +1230,18 @@ pnpm --filter @ojt/desktop e2e direct-manipulation
 
 **Steps:**
 
-- [ ] 1. root の `package.json` に `"verify": "pnpm typecheck && pnpm lint && pnpm -r test"` を足す。
-- [ ] 2. `.github/workflows/ci.yml` を新設する。`windows-latest` で `pnpm/action-setup` ＋ `actions/setup-node`（`node-version-file: .nvmrc`, `cache: pnpm`）→ `pnpm install --frozen-lockfile` → `pnpm verify`。別ジョブ（`needs: verify`）で `build` → `e2e` を回し、`screenshots/` と `test-results/` を artifact に収集する。
-- [ ] 3. **QA-24**: root の `vitest.config.ts` / `vitest.workspace.ts` はどのスクリプトからも使われず、`--coverage` を付けると閾値なしで走る。**削除する**（残すなら root 経由を正にする）。どちらにしたかを Steps に記録する。
-- [ ] 4. **QA-23**: `.nvmrc` は 22 のまま（LTS）、`engines.node` を `">=22 <26"`、`.npmrc` に `engine-strict=true`。`scripts/build.mjs` / `dev.mjs` が Node 25 の不具合回避のために存在することを**その場のコメントに明記**する。
-- [ ] 5. **QA-10**: `apps/desktop` に `test:coverage`（v8 provider・**閾値なし**・`text-summary` ＋ `json-summary`）を足す。1度測って、その値をリリースノートに記録する（以降は実測 −3pt でラチェット）。
-- [ ] 6. **QA-14**: `apps/desktop/tsconfig.json` に `allowJs` / `checkJs` ＋ `include: ["scripts/**"]`、`eslint.config.js` の型情報ルールを `apps/desktop/scripts/**` に効かせる。`scripts/*.mjs` 8本（約880行）の型エラーを潰す。
-- [ ] 7. テスト: `scripts/*.d.mts` の宣言と `scripts/*.mjs` の `export` 名が集合として一致すること。
+- [x] 1. root の `package.json` に `"verify": "pnpm typecheck && pnpm lint && pnpm -r test"` を足す。
+- [x] 2. `.github/workflows/ci.yml` を新設する。`windows-latest` で `pnpm/action-setup` ＋ `actions/setup-node`（`node-version-file: .nvmrc`, `cache: pnpm`）→ `pnpm install --frozen-lockfile` → `pnpm verify`。別ジョブ（`needs: verify`）で `build` → `e2e` を回し、`screenshots/` と `test-results/` を artifact に収集する。
+- [x] 3. **QA-24**: root の `vitest.config.ts` / `vitest.workspace.ts` はどのスクリプトからも使われず、`--coverage` を付けると閾値なしで走る。**削除する**（残すなら root 経由を正にする）。どちらにしたかを Steps に記録する。
+  - **決定: 削除した**（`vitest.config.ts` / `vitest.workspace.ts` とも `git rm`）。root `tsconfig.json` の `include` からもこの2つを外した。副作用: `include` が `eslint.config.js` だけになり `tsc -p tsconfig.json` が `TS18003 No inputs were found` で落ちたため、root `tsconfig.json` に `"allowJs": true` を追加（`eslint.config.js` を実際に入力として数えるため。レビュー §QA-24 反証注記のとおり、この `include` は元々 `eslint.config.js` も指していたが `allowJs` が無く黙って対象外になっていた）。
+- [x] 4. **QA-23**: `.nvmrc` は 22 のまま（LTS）、`engines.node` を `">=22 <26"`、`.npmrc` に `engine-strict=true`。`scripts/build.mjs` / `dev.mjs` が Node 25 の不具合回避のために存在することを**その場のコメントに明記**する。
+  - `build.mjs` / `dev.mjs` は Task 29 着手前から Node 25 回避のコメントを持っていたため変更なし（確認のみ）。
+- [x] 5. **QA-10**: `apps/desktop` に `test:coverage`（v8 provider・**閾値なし**・`text-summary` ＋ `json-summary`）を足す。1度測って、その値をリリースノートに記録する（以降は実測 −3pt でラチェット）。
+  - 実測値は本ファイル末尾の「Task 29 実施メモ」に記録（`docs/releases/v1.1.0.md` は Task 38 がまだ作っていないため、Task 38 がそこから転記する）。
+- [x] 6. **QA-14**: `apps/desktop/tsconfig.json` に `allowJs` / `checkJs` ＋ `include: ["scripts/**"]`、`eslint.config.js` の型情報ルールを `apps/desktop/scripts/**` に効かせる。`scripts/*.mjs` 8本（約880行）の型エラーを潰す。
+  - `include` は `scripts/**` だと `TS5010`（再帰ワイルドカードで終われない）になるため `scripts/**/*.mjs` / `scripts/**/*.mts` の2行にした。型エラー3件（`check-dist.mjs` 2件・`print-manual.mjs` 1件）を JSDoc 注釈で解消。ESLint の型情報ルールは `annotate-shots.mjs` / `build-manual.mjs` / `feature-inventory.mjs` / `manual-build.mjs` の4本には**当てていない**（同名の手書き `*.d.mts` が型の正本で、TS はこの4本の `.mjs` 本体を root file としてプログラムに入れない＝`checkJs` の対象にもならない。型情報つき ESLint を当てると `project service` に見つからず構文エラーになるため、意図してこの4本だけ `disableTypeChecked` のまま残した）。残る5本（`build.mjs` / `check-dist.mjs` / `copy-content.mjs` / `dev.mjs` / `print-manual.mjs`）には型情報つき ESLint を当て、`check-dist.mjs` の `no-unsafe-assignment`/`no-unsafe-member-access` 1件を制御フローでの絞り込み（`versionOf()`）で解消（JSDoc `@type` キャストは checkJs 下のこの ESLint 版では効かないため使わなかった）。
+- [x] 7. テスト: `scripts/*.d.mts` の宣言と `scripts/*.mjs` の `export` 名が集合として一致すること。
+  - `apps/desktop/test/script-declarations.test.ts` を新設。4本の `.d.mts` すべてで一致を確認。
 
 **期待:** `pnpm verify` が GitHub Actions の必須チェックになり、`main` への push で必ず走ること。`pnpm install --frozen-lockfile` が通ること。
 
@@ -1834,6 +1839,23 @@ gh release view v1.1.0
 ```
 
 6. `docs/reviews/**` が**1文字も変わっていない**こと（`git log --oneline -- docs/reviews` が評価レポートを足した commit だけを示す）。
+
+---
+
+## Task 29 実施メモ（QA-10 の実測値・Task 38 が `docs/releases/v1.1.0.md` へ転記すること）
+
+`pnpm --filter @ojt/desktop test:coverage`（v8 provider、`apps/desktop/vitest.config.ts` の `coverage.include: ['src/**/*.ts','src/**/*.tsx']`）の初回実測値（2026-09-20、`reportOnFailure: true` を足した状態で測定）:
+
+| 指標 | 値 |
+|---|---:|
+| Lines | 84.24%（5,610 / 6,659） |
+| Statements | 82.59%（6,459 / 7,820） |
+| Functions | 82.5%（1,707 / 2,069） |
+| Branches | 80.36%（3,930 / 4,890） |
+
+測定メモ: v8 計装のオーバーヘッドで一部テスト（デフォルトの `testTimeout` に対して元々ぎりぎりの時間で通っていたもの）がまれにタイムアウトする（計装なしでは既知の禁止語1件（Task 12）以外すべて pass）。`coverage.reportOnFailure: true`（`apps/desktop/vitest.config.ts`）で、そのタイムアウトがあってもレポート自体は出るようにしてある。
+
+以降はこの実測値から **−3pt** をラチェット基準にする（本設計 §14.2）。
 
 ---
 
