@@ -84,9 +84,19 @@ export type InstructionKey =
  */
 export interface ShortcutEntry {
   action: string;
+  /**
+   * 割当キー。`Ctrl+←↑↓→` のように矢印をまとめて書けるほか、**カンマ区切りで複数の
+   * キー**を1行にまとめられる（`Ctrl+F9,Ctrl+←`）。展開は画面側の `expandKeys()` が行う。
+   * Phase 7 Task 20
+   */
   keys: string;
   label: string;
   confirmed: boolean;
+  /**
+   * この行の割当を実機で確認できた出典の記号（`docs/reference/ladder-skin-sources.md` の
+   * S1〜S8）。キー割当表が `confirmed` の印に添えて出す。§17.1 / Phase 7 設計 §5.7
+   */
+  source?: string;
   /**
    * Phase 3 のエディタで使えるか。既定は `true`。
    * `false` の項目は表に載せるが押しても何も起きない（UIは淡色で出す。§12.1）。

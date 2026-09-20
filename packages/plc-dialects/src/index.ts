@@ -12,7 +12,7 @@ export {
   type TimerRule,
 } from './device-rules.js';
 
-export { GX_STYLE_SHORTCUTS, withoutConvert } from './shortcuts.js';
+export { ASSUMED_KEY_NOTE, assumedTable, GX_STYLE_SHORTCUTS, withoutConvert } from './shortcuts.js';
 
 export {
   instructionList,

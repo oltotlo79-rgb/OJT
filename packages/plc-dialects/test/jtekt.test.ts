@@ -179,6 +179,8 @@ describe('PCwin風スキン（§10.6 / §17 #19）', () => {
     expect(profile.shortcuts).toHaveLength(GX_STYLE_SHORTCUTS.length - 1);
     expect(profile.shortcuts.find((s) => s.action === 'contact-no')?.keys).toBe('F5');
     expect(profile.shortcuts.find((s) => s.action === 'coil')?.keys).toBe('F7');
+    // Phase 7 Task 20: 借り物の表なので全行が △（実機マニュアル未確認）である
+    expect(profile.shortcuts.every((s) => !s.confirmed)).toBe(true);
   });
 
   it('uses the JTEKT monitor colour and the shared grid width (§10.6 の本アプリ既定)', () => {

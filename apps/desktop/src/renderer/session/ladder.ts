@@ -54,9 +54,22 @@ export interface LadderHistory {
 export type LadderEditResult =
   { ok: true; program: LadderProgram } | { ok: false; message: string };
 
-/** デバイス入力欄を開くセルの種別（`ShortcutEntry.action` と同じ語彙）。§10.6 */
+/**
+ * デバイス入力欄を開くセルの種別（`ShortcutEntry.action` と同じ語彙）。§10.6
+ * `pulse-rise` / `pulse-fall` は微分接点（`Shift+F7` / `Shift+F8`。Phase 7 §5.2）、
+ * `application` は応用命令欄（三菱 `F8` ／ OMRON `I`）。
+ */
 export type PlaceKind =
-  'contact-no' | 'contact-nc' | 'or-contact-no' | 'or-contact-nc' | 'coil' | 'hline' | 'vline';
+  | 'contact-no'
+  | 'contact-nc'
+  | 'or-contact-no'
+  | 'or-contact-nc'
+  | 'pulse-rise'
+  | 'pulse-fall'
+  | 'coil'
+  | 'application'
+  | 'hline'
+  | 'vline';
 
 /** キー入力から決まる操作。 */
 export type LadderAction =
@@ -67,6 +80,8 @@ export type LadderAction =
   | { type: 'place'; kind: PlaceKind }
   /** 罫線（`Ctrl+←↑↓→`）。 */
   | { type: 'ruleLine'; direction: 'left' | 'up' | 'down' | 'right' }
+  /** 罫線の削除（三菱 `Ctrl+F9` / `Ctrl+F10`、OMRON `Ctrl+←` / `Ctrl+↑`）。Phase 7 §5.2 */
+  | { type: 'deleteLine'; line: 'h' | 'v' }
   | { type: 'toggleNoNc' }
   | { type: 'togglePulse' }
   | { type: 'convert' }
@@ -142,9 +157,20 @@ const PLACE_KINDS: Readonly<Record<string, PlaceKind>> = {
   'contact-nc': 'contact-nc',
   'or-contact-no': 'or-contact-no',
   'or-contact-nc': 'or-contact-nc',
+  'pulse-rise': 'pulse-rise',
+  'pulse-fall': 'pulse-fall',
   coil: 'coil',
+  // 三菱系の「応用命令」（`F8`）と CX-Programmer風の「命令入力」（`I`）は同じ欄へ倒す
+  application: 'application',
+  instruction: 'application',
   hline: 'hline',
   vline: 'vline',
+};
+
+/** `action` → 消す罫線の向き。Phase 7 §5.2 */
+const DELETE_LINES: Readonly<Record<string, 'h' | 'v'>> = {
+  'delete-hline': 'h',
+  'delete-vline': 'v',
 };
 
 /** `action` → エディタのモード。`monitor-write` は Phase 3 では `monitor` と同じ（決定表#11）。 */
@@ -176,11 +202,8 @@ export function keyChord(event: LadderKeyEvent): string {
   return parts.join('+');
 }
 
-/**
- * `keys` の文字列を照合できる形の一覧に展開する（`Ctrl+←↑↓→` → 4件、`Ins` → `Insert`）。
- * テスト（4方言の網羅検査。LE-1 / LE-8）が実イベントを組み立てるために export する。
- */
-export function expandKeys(keys: string): string[] {
+/** 1つのキー表記（カンマを含まない）を展開する。 */
+function expandOneChord(keys: string): string[] {
   const plus = keys.lastIndexOf('+');
   const prefix = plus < 0 ? '' : keys.slice(0, plus + 1);
   const tail = plus < 0 ? keys : keys.slice(plus + 1);
@@ -188,6 +211,21 @@ export function expandKeys(keys: string): string[] {
   if (arrows.length > 0) return arrows.map((char) => `${prefix}${ARROW_KEYS[char] ?? char}`);
   // 表の末尾キーも畳む（両端を畳まないと `C` の小文字イベントが `c` の1文字表記と一致しない。LE-1）
   return [`${prefix}${foldKey(KEY_ALIASES[tail] ?? tail)}`];
+}
+
+/**
+ * `keys` の文字列を照合できる形の一覧に展開する（`Ctrl+←↑↓→` → 4件、`Ins` → `Insert`）。
+ *
+ * Phase 7 Task 20: **カンマ区切り**で複数のキーを1行にまとめられる（`Ctrl+F9,Ctrl+←`）。
+ * 実機で同じ操作に2つ以上のキーが割り当たっている行を、表の1行のまま扱うため。
+ * テスト（4方言の網羅検査。LE-1 / LE-8）が実イベントを組み立てるために export する。
+ */
+export function expandKeys(keys: string): string[] {
+  return keys
+    .split(',')
+    .map((part) => part.trim())
+    .filter((part) => part.length > 0)
+    .flatMap(expandOneChord);
 }
 
 /** キー入力に対応するショートカット表の行を探す。決定表#12 */
@@ -203,6 +241,15 @@ export function matchShortcut(
 export interface LadderKeyState {
   cursor: LadderCursor;
   mode: LadderEditorMode;
+  /**
+   * カーソルの下が接点か（Phase 7 §5.2 の OMRON `/`）。
+   *
+   * CX-Programmer風には三菱の `/`（a↔b の切換）にあたる行が無く、b接点キーの `/` が
+   * **既存の接点の上ではその場で a↔b を入れ替える**。「表に `toggle-no-nc` の行が無い方言
+   * では b接点キーが切換を兼ねる」という表の形から導ける規則にしてあるので、方言IDで
+   * 分岐していない（決定表#12: キー文字列も方言名もこの層に書かない）。省略時は偽。
+   */
+  cellIsContact?: boolean;
 }
 
 /** 編集を伴う操作か（読出し・モニタ中に断るもの）。 */
@@ -210,6 +257,7 @@ function isEditing(action: LadderAction): boolean {
   return (
     action.type === 'place' ||
     action.type === 'ruleLine' ||
+    action.type === 'deleteLine' ||
     action.type === 'toggleNoNc' ||
     action.type === 'togglePulse' ||
     action.type === 'edit' ||
@@ -254,7 +302,19 @@ export function ladderKeyToAction(
   } else {
     const place = PLACE_KINDS[entry.action];
     const mode = MODE_ACTIONS[entry.action];
-    if (place !== undefined) action = { type: 'place', kind: place };
+    const deleteLine = DELETE_LINES[entry.action];
+    if (place !== undefined) {
+      /*
+       * Phase 7 §5.2（OMRON の `/`）: b接点キーは、a↔b の切換の行を持たない方言でだけ
+       * 接点の上で切換を兼ねる。切換の行を持つ方言（三菱系の `/`）では素直に置く。
+       */
+      action =
+        place === 'contact-nc' &&
+        state.cellIsContact === true &&
+        !table.some((row) => row.action === 'toggle-no-nc')
+          ? { type: 'toggleNoNc' }
+          : { type: 'place', kind: place };
+    } else if (deleteLine !== undefined) action = { type: 'deleteLine', line: deleteLine };
     else if (mode !== undefined) {
       // `Shift+F3`（モニタ書込み）は `F3` と同じ動作だが、初回だけ注記を出すので印を付ける（決定表#11）
       action =
@@ -439,6 +499,34 @@ export function applyRuleLine(
   // 指摘 LE-3: 罫線の行き先が END セルなら拒否
   if (isEndCellAtPos(program, cursor.networkId, row, cursor.col)) return END_LOCKED;
   return guard(() => setVerticalLink(program, cursor.networkId, row, cursor.col, true));
+}
+
+/**
+ * 罫線を消す（三菱 `Ctrl+F9` / `Ctrl+F10`、OMRON `Ctrl+←` / `Ctrl+↑`）。Phase 7 §5.2
+ *
+ * 横線はカーソルのセルが横線のときだけ空にする。縦線はカーソルのセル（下向きの繋ぎ）を先に
+ * 見て、無ければ1つ上の行（上向きの繋ぎ）を見る。**記号のセルは消さない**（`Delete` の仕事で
+ * あり、罫線削除で回路が黙って消えるのを防ぐ）。
+ */
+export function removeRuleLine(
+  program: LadderProgram,
+  cursor: LadderCursor,
+  line: 'h' | 'v',
+): LadderEditResult {
+  const net = findNetwork(program, cursor.networkId);
+  if (net === undefined)
+    return { ok: false, message: `ネットワークがありません: ${cursor.networkId}` };
+  if (line === 'h') {
+    if (cellAt(net, cursor.row, cursor.col).kind !== 'hline') {
+      return { ok: false, message: 'ここには横線がありません' };
+    }
+    return guard(() => clearCell(program, cursor.networkId, cursor.row, cursor.col));
+  }
+  const row = cellAt(net, cursor.row, cursor.col).kind === 'vline' ? cursor.row : cursor.row - 1;
+  if (row < 0 || cellAt(net, row, cursor.col).kind !== 'vline') {
+    return { ok: false, message: 'ここには縦線がありません' };
+  }
+  return guard(() => setVerticalLink(program, cursor.networkId, row, cursor.col, false));
 }
 
 /**

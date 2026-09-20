@@ -20,6 +20,7 @@ import {
   clearLadderCell,
   ladderKeyToAction,
   moveCursor,
+  removeRuleLine,
   toggleNoNcAt,
   togglePulseAt,
   type LadderCursor,
@@ -46,10 +47,36 @@ const NEEDS_DEVICE: Readonly<Record<PlaceKind, boolean>> = {
   'contact-nc': true,
   'or-contact-no': true,
   'or-contact-nc': true,
+  'pulse-rise': true,
+  'pulse-fall': true,
   coil: true,
+  application: true,
   hline: false,
   vline: false,
 };
+
+/**
+ * 置く種別 → 入力欄の初期値（Phase 7 §5.2 のキー表）。
+ *
+ * 微分接点（`Shift+F7` / `Shift+F8`）は接点欄を `P` / `F` で、応用命令（`F8` / OMRON `I`）は
+ * 出力欄を `SET` で開く。「どの記号で開くか」だけを決め、実際に置くのは `DeviceInput` が
+ * 組み立てたセルである（欄の中で種別を変えてもよい）。
+ */
+const FORM_SEED: Readonly<Record<PlaceKind, Partial<CellForm>>> = {
+  'contact-no': {},
+  'contact-nc': { contact: 'NC' },
+  'or-contact-no': {},
+  'or-contact-nc': { contact: 'NC' },
+  'pulse-rise': { contact: 'P' },
+  'pulse-fall': { contact: 'F' },
+  coil: {},
+  application: { output: 'SET' },
+  hline: {},
+  vline: {},
+};
+
+/** 入力欄を「出力（コイル列）」として開く種別。 */
+const OUTPUT_KINDS: ReadonlySet<PlaceKind> = new Set<PlaceKind>(['coil', 'application']);
 
 /** 入力欄を開いたときに待っている置き場所。 */
 interface Pending {
@@ -120,9 +147,14 @@ export function LadderEditor({
       const store = useStore.getState();
       const current = store.ladder;
       if (current === undefined) return;
+      const atCursor = current.networks.find((n) => n.id === store.ladderCursor.networkId)?.cells[
+        store.ladderCursor.row
+      ]?.[store.ladderCursor.col];
       const action = ladderKeyToAction(profile.shortcuts, event, {
         cursor: store.ladderCursor,
         mode: store.ladderMode,
+        // Phase 7 §5.2: a↔b の切換の行を持たない方言では、b接点キーが接点の上で切換になる
+        cellIsContact: atCursor?.kind === 'contact',
       });
       if (action.type === 'none') return;
       event.preventDefault();
@@ -141,14 +173,10 @@ export function LadderEditor({
             );
             break;
           }
-          const target = action.kind === 'coil' ? 'output' : 'contact';
-          const form = emptyCellForm(target);
+          const target = OUTPUT_KINDS.has(action.kind) ? 'output' : 'contact';
           setPending({
             kind: action.kind,
-            form:
-              action.kind === 'contact-nc' || action.kind === 'or-contact-nc'
-                ? { ...form, contact: 'NC' }
-                : form,
+            form: { ...emptyCellForm(target), ...FORM_SEED[action.kind] },
             replace: false,
           });
           break;
@@ -166,6 +194,9 @@ export function LadderEditor({
         }
         case 'ruleLine':
           commit(applyRuleLine(current, store.ladderCursor, action.direction));
+          break;
+        case 'deleteLine':
+          commit(removeRuleLine(current, store.ladderCursor, action.line));
           break;
         case 'toggleNoNc':
           commit(toggleNoNcAt(current, store.ladderCursor));

@@ -16,7 +16,7 @@ import {
   type DeviceRuleSet,
   type TimerRule,
 } from './device-rules.js';
-import { GX_STYLE_SHORTCUTS } from './shortcuts.js';
+import { assumedTable, GX_STYLE_SHORTCUTS } from './shortcuts.js';
 import type {
   DeviceRange,
   DialectError,
@@ -285,7 +285,8 @@ export const SHARP_JW300: DialectProfile = {
   instructionNames: INSTRUCTION_NAMES,
   symbols: SYMBOLS,
   gridCols: 11,
-  shortcuts: GX_STYLE_SHORTCUTS,
+  // 一次資料でキー割当を確認できないので、流用した表の全行に断りを入れる（Phase 7 §5.2）
+  shortcuts: assumedTable(GX_STYLE_SHORTCUTS),
   convertStep: true,
   monitorColors: MONITOR_COLORS,
   panels: PANELS,

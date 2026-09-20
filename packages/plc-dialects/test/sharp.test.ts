@@ -19,7 +19,7 @@ import {
   type Cell,
 } from '@ojt/ladder-core';
 import { describe, expect, it } from 'vitest';
-import { getDialect, GX_STYLE_SHORTCUTS, SHARP_JW300 } from '../src/index.js';
+import { assumedTable, getDialect, GX_STYLE_SHORTCUTS, SHARP_JW300 } from '../src/index.js';
 
 function rung(...cells: Cell[]): Cell[] {
   const row = [...cells];
@@ -135,7 +135,15 @@ describe('シャープのバリデータと JW-300SP風スキン（§10.5 / §10
 
   it('keeps the conversion step and reuses the GX-style keys (§17.1 の前提)', () => {
     expect(profile.convertStep).toBe(true);
-    expect(profile.shortcuts).toBe(GX_STYLE_SHORTCUTS);
+    /*
+     * Phase 7 Task 20: 流用した表をそのまま出すと「この実機で確認できた」と読めてしまうので、
+     * `assumedTable()` を通して全行を △ ＋断りに落としてから使う。キーと操作の対応は
+     * 借り元と同じままであることをここで縛る。
+     */
+    expect(profile.shortcuts).toEqual(assumedTable(GX_STYLE_SHORTCUTS));
+    expect(profile.shortcuts.map((s) => `${s.action}:${s.keys}`)).toEqual(
+      GX_STYLE_SHORTCUTS.map((s) => `${s.action}:${s.keys}`),
+    );
     expect(profile.monitorColors.powered).toBe('#00A0C8');
     expect(profile.gridCols).toBe(11);
   });

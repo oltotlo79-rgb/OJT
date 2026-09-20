@@ -648,6 +648,13 @@ export const JA = {
      */
     endLocked: 'END は消せません。ネットワークごと消すには「ネットワーク削除」を使います。',
     // --- /Phase 7 Task 2 (LE-3) ---
+    // --- Phase 7 Task 20 (キー割当の出典) ---
+    /**
+     * キー割当表の備考に添える出典。記号（S1〜S8）は
+     * `docs/reference/ladder-skin-sources.md` の一覧を指す（§17.1 / Phase 7 設計 §5.7）。
+     */
+    shortcutSource: (source: string): string => `出典 ${source}`,
+    // --- /Phase 7 Task 20 ---
   },
   // --- /Plan 3B Task 4 ---
   // --- Plan 3B Task 10 ---

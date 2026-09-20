@@ -1,6 +1,6 @@
 import { BUILTIN_PLC_PROBLEMS } from '@ojt/content';
 import { out, Y } from '@ojt/ladder-core';
-import { MITSUBISHI_FX5U } from '@ojt/plc-dialects';
+import { MITSUBISHI_FX5U, OMRON_CP1E } from '@ojt/plc-dialects';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useStore } from '../src/renderer/app/store.js';
@@ -225,16 +225,28 @@ describe('キー割当表（§12.1 / §17.1）', () => {
     expect(screen.getByTestId('shortcut-contact-no')).toHaveTextContent('F5');
   });
 
-  it('marks the assumed bindings with the §12.1 notice', () => {
+  /**
+   * Phase 7 Task 20: 三菱の表で △（一次資料未確認）なのは微分接点の2行だけになった。
+   * 裏が取れた行には代わりに出典の記号（S1、S3 など）を添える。
+   */
+  it('marks the assumed bindings with the §12.1 notice and cites a source for the rest', () => {
     render(<ShortcutHelp profile={MITSUBISHI_FX5U} />);
-    expect(screen.getByTestId('shortcut-convert')).toHaveTextContent('本アプリの表記');
+    expect(screen.getByTestId('shortcut-pulse-rise')).toHaveTextContent('本アプリの表記');
     expect(screen.getByTestId('shortcut-contact-no')).not.toHaveTextContent('本アプリの表記');
+    expect(screen.getByTestId('shortcut-contact-no')).toHaveTextContent('出典 S1');
+    expect(screen.getByTestId('shortcut-convert')).toHaveTextContent('出典 S3');
   });
 
-  it('greys out and explains the entry Phase 3 cannot place', () => {
+  /** 指摘 LE-8: 三菱の表に「押しても効かない行」はもう1つも無い。 */
+  it('greys out only the rows that really do nothing', () => {
     render(<ShortcutHelp profile={MITSUBISHI_FX5U} />);
-    expect(screen.getByTestId('shortcut-application')).toHaveAttribute('data-enabled', 'false');
+    expect(screen.getByTestId('shortcut-application')).toHaveAttribute('data-enabled', 'true');
     expect(screen.getByTestId('shortcut-application')).toHaveTextContent('応用命令');
+    cleanup();
+    // CX-Programmer風のオンライン操作だけが淡色（本アプリは通信しない）
+    render(<ShortcutHelp profile={OMRON_CP1E} />);
+    expect(screen.getByTestId('shortcut-online-edit')).toHaveAttribute('data-enabled', 'false');
+    expect(screen.getByTestId('shortcut-online-edit')).toHaveTextContent('通信しない');
   });
 
   it('says the table is swapped with the vendor (Phase 4)', () => {

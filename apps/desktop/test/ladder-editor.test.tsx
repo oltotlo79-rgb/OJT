@@ -14,6 +14,7 @@ import { LadderEditor } from '../src/renderer/ladder/LadderEditor.js';
 import {
   expandKeys,
   ladderKeyToAction,
+  type LadderAction,
   type LadderEditorMode,
 } from '../src/renderer/session/ladder.js';
 
@@ -248,10 +249,95 @@ describe('キー操作（§10.6 の割当表から引く）', () => {
     expect(useStore.getState().toasts.at(-1)?.text).toContain('書込みモード');
   });
 
-  it('explains why F8 does nothing (§17.1)', () => {
+  /** Phase 7 Task 20 / 指摘 LE-8: `F8` は「応用命令」欄（SET/RST/MC/MCR/T/C）へつながった。 */
+  it('opens the application-instruction entry on F8 and places a SET coil', () => {
     editor();
+    useStore.getState().setLadderCursor({ networkId: 'n1', row: 0, col: COIL_COL });
     fireEvent.keyDown(grid(), { key: 'F8' });
-    expect(useStore.getState().toasts.at(-1)?.text).toContain('応用命令');
+    // 出力欄が SET で開く（欄の中で RST などへ変えられる）
+    expect(screen.getByTestId('output-kind')).toHaveValue('SET');
+    fireEvent.change(screen.getByTestId('device-text'), { target: { value: 'Y0' } });
+    fireEvent.click(screen.getByTestId('device-commit'));
+    const net = useStore.getState().ladder!.networks[0]!;
+    expect(cellAt(net, 0, COIL_COL)).toMatchObject({ kind: 'coil', type: 'SET', device: Y(0) });
+  });
+
+  /** Phase 7 §5.2: OMRON の `I`（命令入力）も同じ欄へ倒す（以前は何も起きなかった）。 */
+  it('opens the same entry on the OMRON instruction key (LE-8)', () => {
+    editor({ profile: OMRON_CP1E, gridCols: OMRON_CP1E.gridCols });
+    useStore.getState().setLadderCursor({ networkId: 'n1', row: 0, col: COIL_COL });
+    fireEvent.keyDown(grid(), { key: 'i' });
+    expect(screen.getByTestId('device-input')).toBeInTheDocument();
+    expect(screen.getByTestId('output-kind')).toHaveValue('SET');
+  });
+
+  /** Phase 7 §5.2: 立上り・立下りの微分接点（出典 S2）。 */
+  it('places a rising-edge contact on Shift+F7 and a falling-edge one on Shift+F8', () => {
+    editor();
+    fireEvent.keyDown(grid(), { key: 'F7', shiftKey: true });
+    fireEvent.change(screen.getByTestId('device-text'), { target: { value: 'X0' } });
+    fireEvent.click(screen.getByTestId('device-commit'));
+    expect(net1()).toMatchObject({ kind: 'contact', type: 'P', device: X(0) });
+    useStore.getState().setLadderCursor({ networkId: 'n1', row: 0, col: 1 });
+    fireEvent.keyDown(grid(), { key: 'F8', shiftKey: true });
+    fireEvent.change(screen.getByTestId('device-text'), { target: { value: 'X1' } });
+    fireEvent.click(screen.getByTestId('device-commit'));
+    const net = useStore.getState().ladder!.networks[0]!;
+    expect(cellAt(net, 0, 1)).toMatchObject({ kind: 'contact', type: 'F', device: X(1) });
+  });
+
+  /** Phase 7 §5.2: 罫線の削除（三菱 `Ctrl+F9` / `Ctrl+F10`、出典 S1）。 */
+  it('deletes a horizontal line on Ctrl+F9 and a vertical one on Ctrl+F10', () => {
+    editor();
+    fireEvent.keyDown(grid(), { key: 'F9' });
+    expect(net1().kind).toBe('hline');
+    fireEvent.keyDown(grid(), { key: 'F9', ctrlKey: true });
+    expect(net1().kind).toBe('empty');
+    // 縦線は下の行と繋ぐので、2行にしてから引いて消す
+    const store = useStore.getState();
+    store.setLadder(insertRow(store.ladder!, 'n1', 1));
+    fireEvent.keyDown(grid(), { key: 'ArrowDown', ctrlKey: true });
+    expect(net1().kind).toBe('vline');
+    fireEvent.keyDown(grid(), { key: 'F10', ctrlKey: true });
+    expect(net1().kind).toBe('empty');
+  });
+
+  it('refuses to delete a line where there is none, without touching the cell', () => {
+    editor();
+    fireEvent.keyDown(grid(), { key: 'F5' });
+    fireEvent.change(screen.getByTestId('device-text'), { target: { value: 'X0' } });
+    fireEvent.click(screen.getByTestId('device-commit'));
+    useStore.getState().setLadderCursor({ networkId: 'n1', row: 0, col: 0 });
+    fireEvent.keyDown(grid(), { key: 'F9', ctrlKey: true });
+    // 記号は罫線削除では消えない（消すのは `Delete` の仕事）
+    expect(net1()).toMatchObject({ kind: 'contact', device: X(0) });
+    expect(useStore.getState().toasts.at(-1)?.text).toContain('横線');
+  });
+
+  /** Phase 7 §5.2: CX-Programmer風の罫線は `Ctrl` ＋矢印（出典 S5）。 */
+  it('draws and deletes lines with Ctrl+arrows under the OMRON skin', () => {
+    editor({ profile: OMRON_CP1E, gridCols: OMRON_CP1E.gridCols });
+    fireEvent.keyDown(grid(), { key: 'ArrowRight', ctrlKey: true });
+    expect(net1().kind).toBe('hline');
+    fireEvent.keyDown(grid(), { key: 'ArrowLeft', ctrlKey: true });
+    expect(net1().kind).toBe('empty');
+  });
+
+  /**
+   * Phase 7 §5.2（出典 S4）: CX-Programmer風には a↔b の切換の行が無く、b接点キーの `/` が
+   * **接点の上ではその場で入れ替える**。三菱系は `/` が切換の行そのものなので変わらない。
+   */
+  it('flips an existing contact with the OMRON b-contact key, but opens the entry on an empty cell', () => {
+    editor({ profile: OMRON_CP1E, gridCols: OMRON_CP1E.gridCols });
+    fireEvent.keyDown(grid(), { key: '/' });
+    expect(screen.getByTestId('device-input')).toBeInTheDocument();
+    fireEvent.change(screen.getByTestId('device-text'), { target: { value: '0.00' } });
+    fireEvent.click(screen.getByTestId('device-commit'));
+    expect(net1()).toMatchObject({ kind: 'contact', type: 'NC' });
+    useStore.getState().setLadderCursor({ networkId: 'n1', row: 0, col: 0 });
+    fireEvent.keyDown(grid(), { key: '/' });
+    expect(net1()).toMatchObject({ kind: 'contact', type: 'NO' });
+    expect(screen.queryByTestId('device-input')).toBeNull();
   });
 
   /**
@@ -318,21 +404,14 @@ describe('4方言のキー割当が実際に効く（網羅。LE-1 / LE-8）', (
     SHARP_JW300,
   ];
 
-  /**
-   * OMRON の `instruction`（命令入力）は Task 20 で実際に動かす予定で、それまでは
-   * `ladderKeyToAction()` が `{type:'none'}` を返す（本設計 §5.7 / Phase 7 Task 3 step 4）。
-   * `online-edit` / `transfer` は Phase 7 Task 3 で `enabled:false` にしたので、
-   * `entry.enabled === false` の除外で自然に外れる（もうここに挙げる必要は無い）。
-   */
-  const NOT_YET_WIRED: ReadonlySet<string> = new Set(['instruction']);
-
-  it.each(profiles)('every enabled shortcut row of $id maps to a non-none action', (profile) => {
-    for (const entry of profile.shortcuts) {
-      if (entry.enabled === false || NOT_YET_WIRED.has(entry.action)) continue;
-      for (const chord of expandKeys(entry.keys)) {
-        const parts = chord.split('+');
-        const key = parts.pop() ?? '';
-        const action = ladderKeyToAction(
+  /** 表の1行のキーを実イベントの形へ起こして `ladderKeyToAction()` に通す。 */
+  function actionsOf(profile: DialectProfile, keys: string): Array<[string, LadderAction]> {
+    return expandKeys(keys).map((chord) => {
+      const parts = chord.split('+');
+      const key = parts.pop() ?? '';
+      return [
+        chord,
+        ladderKeyToAction(
           profile.shortcuts,
           {
             key,
@@ -341,9 +420,67 @@ describe('4方言のキー割当が実際に効く（網羅。LE-1 / LE-8）', (
             altKey: parts.includes('Alt'),
           },
           { cursor: { networkId: 'n1', row: 0, col: 0 }, mode: 'write' },
-        );
-        expect(action.type, `${profile.id} ${entry.action} (${chord})`).not.toBe('none');
+        ),
+      ];
+    });
+  }
+
+  /*
+   * Phase 7 Task 20（決定 D6）: 除外はもう1つも無い。表に `enabled !== false` で載っている行は
+   * 全部が実際に効く（OMRON の `instruction` も Task 20 で応用命令欄へつないだ）。
+   */
+  it.each(profiles)('every enabled shortcut row of $id actually does something', (profile) => {
+    for (const entry of profile.shortcuts) {
+      if (entry.enabled === false) continue;
+      for (const [chord, action] of actionsOf(profile, entry.keys)) {
+        const where = `${profile.id} ${entry.action} (${chord})`;
+        expect(action.type, where).not.toBe('none');
+        expect(action.type, where).not.toBe('disabled');
       }
     }
+  });
+
+  it.each(profiles)('says why each disabled row of $id does nothing', (profile) => {
+    for (const entry of profile.shortcuts) {
+      if (entry.enabled !== false) continue;
+      for (const [chord, action] of actionsOf(profile, entry.keys)) {
+        const where = `${profile.id} ${entry.action} (${chord})`;
+        expect(action.type, where).toBe('disabled');
+        if (action.type === 'disabled') {
+          expect((action.entry.note ?? '').trim().length, where).toBeGreaterThan(0);
+        }
+      }
+    }
+  });
+
+  /** 指摘 LE-1: 英字キーは大小文字を問わず当たる（実ブラウザは `c` を送る）。 */
+  it.each(profiles)('matches letter keys of $id in either case', (profile) => {
+    for (const entry of profile.shortcuts) {
+      for (const chord of expandKeys(entry.keys)) {
+        const parts = chord.split('+');
+        const key = parts.pop() ?? '';
+        if (!/^[A-Z]$/u.test(key)) continue;
+        const state = { cursor: { networkId: 'n1', row: 0, col: 0 }, mode: 'write' as const };
+        const modifiers = {
+          ctrlKey: parts.includes('Ctrl'),
+          shiftKey: parts.includes('Shift'),
+          altKey: parts.includes('Alt'),
+        };
+        const upper = ladderKeyToAction(profile.shortcuts, { key, ...modifiers }, state);
+        const lower = ladderKeyToAction(
+          profile.shortcuts,
+          { key: key.toLowerCase(), ...modifiers },
+          state,
+        );
+        expect(lower, `${profile.id} ${entry.action} (${chord})`).toEqual(upper);
+      }
+    }
+  });
+
+  /** Phase 7 Task 20 step 1: 1行に複数のキーをカンマ区切りで書ける。 */
+  it('expands a comma-separated key row into every chord it lists', () => {
+    expect(expandKeys('Ctrl+F9,Ctrl+←')).toEqual(['Ctrl+F9', 'Ctrl+ArrowLeft']);
+    expect(expandKeys('F5')).toEqual(['F5']);
+    expect(expandKeys('Ctrl+←↑↓→')).toHaveLength(4);
   });
 });

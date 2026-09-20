@@ -26,24 +26,37 @@ describe('GX Works3風スキン（§10.6）', () => {
     expect(keysOf('toggle-no-nc')).toBe('/');
   });
 
-  it('binds the rule-line keys and disables the one instruction Phase 3 cannot place (§10.7)', () => {
+  it('binds the rule-line and line-delete keys, and leaves no key inert (Phase 7 §5.2)', () => {
     const entry = (action: string): ShortcutEntry | undefined =>
       skin.shortcuts.find((s) => s.action === action);
     expect(entry('rule-line')?.keys).toBe('Ctrl+←↑↓→');
-    // 応用命令は IR にセル種別が無いので表には出すが押せない
-    expect(entry('application')?.enabled).toBe(false);
-    expect(entry('application')?.note).toContain('応用命令');
-    // それ以外は既定（`enabled` を書かない＝使える）
-    expect(skin.shortcuts.filter((s) => s.enabled === false)).toHaveLength(1);
+    // Phase 7 Task 20: 罫線の削除を足した（出典 S1）
+    expect(entry('delete-hline')?.keys).toBe('Ctrl+F9');
+    expect(entry('delete-vline')?.keys).toBe('Ctrl+F10');
+    // 微分接点（出典 S2。一次資料が個人の記事なので △）
+    expect(entry('pulse-rise')?.keys).toBe('Shift+F7');
+    expect(entry('pulse-fall')?.keys).toBe('Shift+F8');
+    expect(entry('pulse-rise')?.confirmed).toBe(false);
+    // 指摘 LE-8: 応用命令（`F8`）は「応用命令」欄へつながったので、効かない行はもう無い
+    expect(entry('application')?.enabled).toBeUndefined();
+    expect(skin.shortcuts.filter((s) => s.enabled === false)).toHaveLength(0);
   });
 
   it('marks which shortcuts come from a primary source and which are assumptions (§17.1)', () => {
-    const confirmed = skin.shortcuts.filter((s) => s.confirmed).map((s) => s.keys);
-    const assumed = skin.shortcuts.filter((s) => !s.confirmed).map((s) => s.keys);
-    expect(confirmed).toContain('F5');
-    expect(confirmed).toContain('F7');
-    expect(assumed).toContain('F4');
-    expect(assumed).toContain('F6');
+    const entry = (action: string): ShortcutEntry | undefined =>
+      skin.shortcuts.find((s) => s.action === action);
+    // 記号のキーは S1、モードのキーは S3 で裏が取れている（Phase 7 設計 §5.7）
+    for (const action of ['contact-no', 'contact-nc', 'coil', 'application', 'hline', 'vline']) {
+      expect(entry(action)?.confirmed, action).toBe(true);
+      expect(entry(action)?.source, action).toBe('S1');
+    }
+    for (const action of ['convert', 'write-mode', 'read-mode', 'monitor']) {
+      expect(entry(action)?.confirmed, action).toBe(true);
+      expect(entry(action)?.source, action).toBe('S3');
+    }
+    // 裏が取れていないのは微分接点の2行だけ（記事1本しか無いので △ のまま）
+    const assumed = skin.shortcuts.filter((s) => !s.confirmed).map((s) => s.action);
+    expect(assumed).toEqual(['pulse-rise', 'pulse-fall']);
   });
 
   it('names the instructions of §10.5 / §17 #21', () => {
@@ -61,7 +74,7 @@ describe('GX Works3風スキン（§10.6）', () => {
     expect(new Set(actions).size).toBe(actions.length);
     const keys = skin.shortcuts.map((s) => s.keys);
     expect(new Set(keys).size).toBe(keys.length);
-    expect(skin.shortcuts.filter((s) => s.enabled === false)).toHaveLength(1);
+    expect(skin.shortcuts.filter((s) => s.enabled === false)).toHaveLength(0);
     const skinText = [
       skin.panels.tree,
       skin.panels.editor,

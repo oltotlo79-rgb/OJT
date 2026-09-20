@@ -95,6 +95,48 @@ describe.each(cases)('%s プロファイルの不変条件', (_id, profile: Dial
     expect(profile.shortcuts.some((s) => s.action === 'convert')).toBe(profile.convertStep);
   });
 
+  /*
+   * Phase 7 Task 20（決定 D6）: キー割当表そのものの不変条件。
+   * 「キーが実際に効くか」は `ladderKeyToAction()` が `apps/desktop` にあるので
+   * `apps/desktop/test/ladder-editor.test.tsx` の網羅検査が見る（依存の向きが逆なので、
+   * このパッケージからは import できない）。ここは表の書き方だけを縛る。
+   */
+  it('backs every row with either a source or a note, and explains every disabled row', () => {
+    for (const entry of profile.shortcuts) {
+      // △（一次資料で裏が取れていない）の行は、出典か理由のどちらかを必ず持つ
+      if (!entry.confirmed) {
+        expect(
+          entry.note !== undefined || entry.source !== undefined,
+          `${profile.id}/${entry.action} に note も source もありません`,
+        ).toBe(true);
+      }
+      // ◎ の行の出典は S1〜S8 の記号（`docs/reference/ladder-skin-sources.md`）
+      if (entry.source !== undefined) expect(entry.source).toMatch(/^S[1-8]$/u);
+      // 押しても効かない行は、なぜ効かないのかを必ず書く（指摘 LE-8）
+      if (entry.enabled === false) {
+        expect((entry.note ?? '').trim().length, `${profile.id}/${entry.action}`).toBeGreaterThan(
+          0,
+        );
+      }
+    }
+  });
+
+  it('never claims a primary source for a key map borrowed from another vendor (§17.1)', () => {
+    // 流用した表（PCwin風・JW-300SP風）は全行が △ で、借り元の出典を自分の裏づけにしない
+    if (profile.id !== 'jtekt' && profile.id !== 'sharp') return;
+    for (const entry of profile.shortcuts) {
+      expect(entry.confirmed, `${profile.id}/${entry.action}`).toBe(false);
+      expect(entry.source, `${profile.id}/${entry.action}`).toBeUndefined();
+      expect(entry.note ?? '').toContain('本アプリの表記です');
+    }
+  });
+
+  it('never offers a monitor key it cannot back (指摘 LE-7)', () => {
+    // CX-Programmer風は実機の「モニタ」キーを確認できていないので、行そのものを作らない
+    if (profile.id !== 'omron') return;
+    expect(profile.shortcuts.some((s) => s.action === 'monitor')).toBe(false);
+  });
+
   it('names the panels and keeps the symbol drawings vendor-neutral (§17 / PLC調査資料 §6)', () => {
     expect(profile.panels.tree.trim().length).toBeGreaterThan(0);
     expect(profile.panels.editor.trim().length).toBeGreaterThan(0);

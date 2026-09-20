@@ -74,6 +74,8 @@ export function ShortcutHelp({ profile }: { profile: DialectProfile }): JSX.Elem
               entry.confirmed ? undefined : JA.settings.assumptionNotice,
               entry.note,
               APP_NOTES[entry.action],
+              // 出典の記号（S1〜S8）。どこで裏が取れた割当なのかを行ごとに示す（§17.1）
+              entry.source === undefined ? undefined : JA.ladder.shortcutSource(entry.source),
             ].filter((note): note is string => note !== undefined);
             return (
               <tr

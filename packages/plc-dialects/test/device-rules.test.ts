@@ -25,7 +25,12 @@ import {
   type DeviceRuleSet,
   type TimerRule,
 } from '../src/device-rules.js';
-import { GX_STYLE_SHORTCUTS, withoutConvert } from '../src/shortcuts.js';
+import {
+  ASSUMED_KEY_NOTE,
+  assumedTable,
+  GX_STYLE_SHORTCUTS,
+  withoutConvert,
+} from '../src/shortcuts.js';
 import { MITSUBISHI_FX5U } from '../src/index.js';
 
 function rung(...cells: Cell[]): Cell[] {
@@ -153,7 +158,25 @@ describe('GX Works3風キー割当の共有（§17 #19）', () => {
     const table = withoutConvert(GX_STYLE_SHORTCUTS);
     expect(table.some((s) => s.action === 'convert')).toBe(false);
     expect(table).toHaveLength(GX_STYLE_SHORTCUTS.length - 1);
-    expect(table.filter((s) => s.enabled === false)).toHaveLength(1);
+    // Phase 7 Task 20: 応用命令（`F8`）が使えるようになり、効かない行はもう1つも無い
+    expect(table.filter((s) => s.enabled === false)).toHaveLength(0);
+  });
+
+  /** Phase 7 Task 20 step 4: 借り物の表は △ ＋断りに落としてから出す（§17.1）。 */
+  it('turns a borrowed table into assumptions without dropping its key assignments', () => {
+    const table = assumedTable(GX_STYLE_SHORTCUTS);
+    expect(table).toHaveLength(GX_STYLE_SHORTCUTS.length);
+    for (const [index, entry] of table.entries()) {
+      const origin = GX_STYLE_SHORTCUTS[index]!;
+      expect(entry.action).toBe(origin.action);
+      expect(entry.keys).toBe(origin.keys);
+      expect(entry.confirmed).toBe(false);
+      // 借り元の出典は自分の裏づけにならないので外す
+      expect(entry.source).toBeUndefined();
+      expect(entry.note).toContain(ASSUMED_KEY_NOTE);
+      // もとの注記は消さずに残す（`enabled: false` の理由を落とさないため）
+      if (origin.note !== undefined) expect(entry.note).toContain(origin.note);
+    }
   });
 });
 

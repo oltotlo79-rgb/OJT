@@ -310,25 +310,100 @@ const PANELS: PanelLayout = {
 };
 
 /**
- * ショートカット表。§10.6
- * `confirmed: true` は PLC調査資料 §5-4 で確認できた割当（○）、`false` は §17.1 の前提方針で
- * 採用した割当（△）である。**「変換」は無い**（`convertStep: false`。決定表#5）。
+ * ショートカット表。§10.6 / Phase 7 設計 §5.2
+ *
+ * CX-Programmer風は三菱系と**構造からして違う**。ファンクションキーではなく1文字の
+ * ニーモニックキーで記号を置き、罫線は `Ctrl` ＋矢印で、**「変換」の段が無い**
+ * （`convertStep: false`。決定表#5 ／ 出典 S4）。三菱風に寄せると「忠実に再現」から遠ざかるので、
+ * 1文字キーを正とし、ファンクションキーは足さない。
+ *
+ * 英字キーは**大小文字を問わない**（実ブラウザは `c` を送る。指摘 LE-1 の `foldKey()`）。
+ * `confirmed: true` は一次資料で裏が取れた割当（◎）、`false` は個人の早見表や本アプリ独自の
+ * 割当（△）である。出典の記号は `docs/reference/ladder-skin-sources.md` の S4〜S6 を指す。
+ *
+ * **「モニタ」の行は作らない**（実機のキーを確認できていないので、存在しないキーを教えない。
+ * 案内はツールバーの項目名へ倒す＝`monitorStartLabel()`。指摘 LE-7）。
  */
 const SHORTCUTS: ShortcutTable = [
-  { action: 'contact-no', keys: 'C', label: 'a接点', confirmed: true },
-  { action: 'contact-nc', keys: '/', label: 'b接点', confirmed: true },
-  { action: 'coil', keys: 'O', label: 'コイル', confirmed: true },
-  { action: 'instruction', keys: 'I', label: '命令入力', confirmed: true },
+  { action: 'contact-no', keys: 'C', label: 'a接点', confirmed: true, source: 'S4' },
+  {
+    action: 'contact-nc',
+    keys: '/',
+    label: 'b接点',
+    confirmed: true,
+    source: 'S4',
+    note: '接点の上で押すと a接点・b接点を入れ替えます',
+  },
+  {
+    action: 'or-contact-no',
+    keys: 'W',
+    label: 'OR a接点',
+    confirmed: false,
+    source: 'S5',
+    note: '並列接点。公式マニュアルでは確認できず、個人の早見表に拠ります',
+  },
+  {
+    action: 'or-contact-nc',
+    keys: 'Shift+W',
+    label: 'OR b接点',
+    confirmed: false,
+    note: '一次資料に記載が無いため、OR a接点に合わせた本アプリの割当です',
+  },
+  { action: 'coil', keys: 'O', label: 'コイル', confirmed: true, source: 'S4' },
+  {
+    /*
+     * Phase 7 Task 20 step 3 / 指摘 LE-8: 以前はこの行のキーが `{type:'none'}` に落ちて
+     * 何も起きなかった。三菱の `F8`（応用命令）と同じ「命令入力」欄を開くようにした。
+     */
+    action: 'instruction',
+    keys: 'I',
+    label: '命令入力',
+    confirmed: true,
+    source: 'S4',
+    note: '本アプリが扱えるのは SET / RST / MC / MCR / T / C です',
+  },
+  {
+    action: 'hline',
+    keys: 'Ctrl+→',
+    label: '横線',
+    confirmed: false,
+    source: 'S5',
+    note: '公式マニュアルでは確認できず、個人の早見表に拠ります',
+  },
+  {
+    action: 'delete-hline',
+    keys: 'Ctrl+←',
+    label: '横線の削除',
+    confirmed: false,
+    source: 'S5',
+    note: '公式マニュアルでは確認できず、個人の早見表に拠ります',
+  },
+  {
+    action: 'vline',
+    keys: 'Ctrl+↓',
+    label: '縦線',
+    confirmed: false,
+    source: 'S5',
+    note: '公式マニュアルでは確認できず、個人の早見表に拠ります',
+  },
+  {
+    action: 'delete-vline',
+    keys: 'Ctrl+↑',
+    label: '縦線の削除',
+    confirmed: false,
+    source: 'S5',
+    note: '公式マニュアルでは確認できず、個人の早見表に拠ります',
+  },
   /*
-   * 指摘 LE-8: この2行は `ladderKeyToAction()` で `{type:'none'}` になり何も起きないのに、
-   * 表は「使える」と表示していた。実際に動かすのは Task 20（`instruction` と併せて再検討）。
-   * ここでは押しても何も起きないことを表にも反映する。
+   * 指摘 LE-8: この2行は押しても何も起きない。実機にある操作なので表からは落とさず、
+   * 「できません」と理由を添えて淡色で出す（Phase 7 Task 3 で `enabled: false` にした）。
    */
   {
     action: 'online-edit',
     keys: 'Ctrl+E',
     label: 'オンライン編集',
     confirmed: true,
+    source: 'S4',
     enabled: false,
     note: '本アプリはPLCと通信しないため、この操作はできません',
   },
@@ -337,22 +412,9 @@ const SHORTCUTS: ShortcutTable = [
     keys: 'Ctrl+Shift+E',
     label: '転送［PC → PLC］',
     confirmed: true,
+    source: 'S4',
     enabled: false,
     note: '本アプリはPLCと通信しないため、この操作はできません',
-  },
-  {
-    action: 'hline',
-    keys: 'W',
-    label: '横線',
-    confirmed: false,
-    note: 'PLC調査資料に横線の割当の記載が無いため、罫線描画の慣例的なキーを仮に当てた（§17.1）',
-  },
-  {
-    action: 'vline',
-    keys: 'L',
-    label: '縦線',
-    confirmed: false,
-    note: 'PLC調査資料に縦線の割当の記載が無いため、罫線描画の慣例的なキーを仮に当てた（§17.1）',
   },
 ];
 

@@ -925,12 +925,12 @@ apps/desktop/e2e/navigation.spec.ts
 
 **Steps:**
 
-- [ ] 1. `ShortcutEntry` に `source?: string` を足す（出典記号。`ShortcutHelp` が △ の行に添えて出す）。`keys` を**カンマ区切りで複数**受けられるようにし、`expandKeys()` が分解する。
-- [ ] 2. **GX Works3 系**（三菱・ジェイテクト・シャープ）: `application`（`F8`）の `enabled: false` を外す（行き先は Task 21 の応用命令欄）。`delete-hline`（`Ctrl+F9`）/ `delete-vline`（`Ctrl+F10`）/ `pulse-rise`（`Shift+F7`）/ `pulse-fall`（`Shift+F8`）を足す。`F5`〜`F9`・`Shift+F5/F6/F9`・`F4`・`F2`・`Shift+F2`・`F3` は `confirmed: true` ＋ `source: 'S1'`〜`'S3'` にする。
-- [ ] 3. **OMRON**: 本設計 §5.2 の表のとおり作り直す。`C` / `/` / `O` / `I` / `Ctrl+E` / `Ctrl+Shift+E` は `confirmed: true` ＋ `source`。`W`（OR a接点）/ `Ctrl+→←`（横線）/ `Ctrl+↓↑`（縦線）は `confirmed: false` ＋ `source: 'S5'`。`Shift+W`（OR b接点）は `confirmed: false` ＋ 本アプリ独自の `note`。**`monitor` の行は作らない**（存在しないキーを教えない。案内は `monitorStartLabel()` がツールバー項目名へ倒す）。`online-edit` / `transfer` は `enabled: false` ＋ `note`。
-- [ ] 4. **ジェイテクト・シャープ**: GX Works3 風の流用のまま、**全行に `confirmed: false` と `note`**（「実機マニュアル未確認のため本アプリの表記です」）を付ける。`SkinTheme.keyMapAssumed: true` は維持。
-- [ ] 5. `docs/reference/ladder-skin-sources.md` に S1〜S8 の URL と「何が確認できたか」「確認できなかったもの」を書く（本設計 §5.7 を転記）。**利用者が挙げた `e-sysnet.com/plc-6` はキー割当表ではなかったことも書く。**
-- [ ] 6. **網羅テスト**（決定 D6）を足す。
+- [x] 1. `ShortcutEntry` に `source?: string` を足す（出典記号。`ShortcutHelp` が △ の行に添えて出す）。`keys` を**カンマ区切りで複数**受けられるようにし、`expandKeys()` が分解する。
+- [x] 2. **GX Works3 系**（三菱・ジェイテクト・シャープ）: `application`（`F8`）の `enabled: false` を外す（行き先は Task 21 の応用命令欄）。`delete-hline`（`Ctrl+F9`）/ `delete-vline`（`Ctrl+F10`）/ `pulse-rise`（`Shift+F7`）/ `pulse-fall`（`Shift+F8`）を足す。`F5`〜`F9`・`Shift+F5/F6/F9`・`F4`・`F2`・`Shift+F2`・`F3` は `confirmed: true` ＋ `source: 'S1'`〜`'S3'` にする。
+- [x] 3. **OMRON**: 本設計 §5.2 の表のとおり作り直す。`C` / `/` / `O` / `I` / `Ctrl+E` / `Ctrl+Shift+E` は `confirmed: true` ＋ `source`。`W`（OR a接点）/ `Ctrl+→←`（横線）/ `Ctrl+↓↑`（縦線）は `confirmed: false` ＋ `source: 'S5'`。`Shift+W`（OR b接点）は `confirmed: false` ＋ 本アプリ独自の `note`。**`monitor` の行は作らない**（存在しないキーを教えない。案内は `monitorStartLabel()` がツールバー項目名へ倒す）。`online-edit` / `transfer` は `enabled: false` ＋ `note`。
+- [x] 4. **ジェイテクト・シャープ**: GX Works3 風の流用のまま、**全行に `confirmed: false` と `note`**（「実機マニュアル未確認のため本アプリの表記です」）を付ける。`SkinTheme.keyMapAssumed: true` は維持。
+- [x] 5. `docs/reference/ladder-skin-sources.md` に S1〜S8 の URL と「何が確認できたか」「確認できなかったもの」を書く（本設計 §5.7 を転記）。**利用者が挙げた `e-sysnet.com/plc-6` はキー割当表ではなかったことも書く。**
+- [x] 6. **網羅テスト**（決定 D6）を足す。
 
 ```
 packages/plc-dialects/test/dialects.test.ts

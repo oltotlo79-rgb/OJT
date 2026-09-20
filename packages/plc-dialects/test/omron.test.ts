@@ -18,7 +18,13 @@ import {
   type Cell,
 } from '@ojt/ladder-core';
 import { describe, expect, it } from 'vitest';
-import { getDialect, MAX_GRID_COLS, MIN_GRID_COLS, OMRON_CP1E } from '../src/index.js';
+import {
+  getDialect,
+  MAX_GRID_COLS,
+  MIN_GRID_COLS,
+  OMRON_CP1E,
+  type ShortcutEntry,
+} from '../src/index.js';
 
 function rung(...cells: Cell[]): Cell[] {
   const row = [...cells];
@@ -174,18 +180,53 @@ describe('OMRON CP1E のバリデータとスキン（§10.5 / §10.6）', () =>
     expect(profile.gridCols).toBeLessThanOrEqual(MAX_GRID_COLS);
   });
 
-  it('binds the CX-Programmer keys of PLC調査資料 §5-4 and has no conversion key', () => {
+  /** Phase 7 設計 §5.2 のキー表をそのまま縛る（出典 S4〜S6）。 */
+  it('binds the one-letter mnemonic keys of 設計 §5.2 and has no conversion key', () => {
     const keysOf = (action: string): string | undefined =>
       profile.shortcuts.find((s) => s.action === action)?.keys;
     expect(keysOf('contact-no')).toBe('C');
     expect(keysOf('contact-nc')).toBe('/');
+    expect(keysOf('or-contact-no')).toBe('W');
+    expect(keysOf('or-contact-nc')).toBe('Shift+W');
     expect(keysOf('coil')).toBe('O');
     expect(keysOf('instruction')).toBe('I');
     expect(keysOf('online-edit')).toBe('Ctrl+E');
     expect(keysOf('transfer')).toBe('Ctrl+Shift+E');
-    expect(keysOf('hline')).toBe('W');
-    expect(keysOf('vline')).toBe('L');
+    // 罫線は `Ctrl` ＋矢印。反対向きが削除（三菱のファンクションキーは足さない）
+    expect(keysOf('hline')).toBe('Ctrl+→');
+    expect(keysOf('delete-hline')).toBe('Ctrl+←');
+    expect(keysOf('vline')).toBe('Ctrl+↓');
+    expect(keysOf('delete-vline')).toBe('Ctrl+↑');
     expect(keysOf('convert')).toBeUndefined();
+    // 実機のキーを確認できていない「モニタ」の行は作らない（指摘 LE-7）
+    expect(keysOf('monitor')).toBeUndefined();
+    // ファンクションキーは1つも足さない（三菱風に寄せない。設計 §5.2）
+    expect(profile.shortcuts.filter((s) => /F\d/u.test(s.keys))).toHaveLength(0);
+  });
+
+  it('cites a source for the keys a primary document backs, and a note for the rest (§17.1)', () => {
+    const entry = (action: string): ShortcutEntry | undefined =>
+      profile.shortcuts.find((s) => s.action === action);
+    for (const action of ['contact-no', 'contact-nc', 'coil', 'instruction']) {
+      expect(entry(action)?.confirmed, action).toBe(true);
+      expect(entry(action)?.source, action).toBe('S4');
+    }
+    for (const action of ['or-contact-no', 'hline', 'vline', 'delete-hline', 'delete-vline']) {
+      expect(entry(action)?.confirmed, action).toBe(false);
+      expect(entry(action)?.source, action).toBe('S5');
+    }
+    // OR b接点だけは一次資料に無い本アプリの割当なので、出典ではなく断りを添える
+    expect(entry('or-contact-nc')?.confirmed).toBe(false);
+    expect(entry('or-contact-nc')?.source).toBeUndefined();
+    expect(entry('or-contact-nc')?.note).toContain('本アプリの割当');
+  });
+
+  it('keeps the two online operations visible but inert, with the reason (指摘 LE-8)', () => {
+    const off = profile.shortcuts.filter((s) => s.enabled === false).map((s) => s.action);
+    expect(off).toEqual(['online-edit', 'transfer']);
+    for (const action of off) {
+      expect(profile.shortcuts.find((s) => s.action === action)?.note).toContain('通信しない');
+    }
   });
 
   it('names the instructions of §10.5', () => {
