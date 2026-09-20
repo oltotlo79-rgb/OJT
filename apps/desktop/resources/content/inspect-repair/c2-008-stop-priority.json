@@ -4,6 +4,8 @@
   "mode": "inspect-repair",
   "title": "停止優先の起動・停止と警報表示の点検・修復",
   "grade": 1,
+  "difficulty": 5,
+  "tags": ["self-hold", "priority", "alarm", "fault-wire", "fault-part"],
   "description": "黒押ボタン（PB1）で運転（白ランプ PL1）、緑押ボタン（PB3）で警報（赤ランプ PL4）を自己保持し、黄押ボタン（PB2）で両方を停止する回路である。運転中かつ警報中は黄ランプ（PL2）も点灯する。現在はタイムチャートどおりに動作しない。回路図は与えられない。故障箇所を2つ指摘し、白線で修復または部品を交換しなさい。",
   "timeLimit": { "standardMin": 30, "cutoffMin": 50 },
   "board": {

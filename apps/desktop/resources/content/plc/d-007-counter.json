@@ -4,6 +4,8 @@
   "mode": "plc",
   "title": "PLC カウンタによる順次点灯（1級形式）",
   "grade": 1,
+  "difficulty": 5,
+  "tags": ["self-hold", "counter", "sequence"],
   "description": "黒（X0）を押した回数だけランプが増えていく回路をPLCで組みます。1回目で白（PL1）、2回目で黄（PL2）、3回目で緑（PL3）、4回目で赤（PL4）が点灯し、黄（X1）でカウンタをリセットして全消灯します。PLCの出力は必ず盤のリレーを介し、PLCの電源は壁コンセントから取ってください。",
   "timeLimit": { "standardMin": 50, "cutoffMin": 60 },
   "board": {

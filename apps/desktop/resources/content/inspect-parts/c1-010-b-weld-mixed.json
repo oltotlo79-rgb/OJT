@@ -1,0 +1,20 @@
+{
+  "formatVersion": 1,
+  "id": "c1-010",
+  "mode": "inspect-parts",
+  "title": "リレーの点検⑥（切れないb接点を含む混合）",
+  "grade": 1,
+  "difficulty": 4,
+  "tags": ["fault-part", "measure"],
+  "description": "トレイのリレー4個を点検しなさい。b接点の溶着は「励磁しても COM–NC が切れない」不良で、同じ組の a接点は機械的に開いたままになるため、a接点断線と読み違えやすい。同じ組の a接点と b接点を必ず組にして読み、励磁前後の変化で切り分けること。コイル断線・a接点断線・正常も混ざっている。",
+  "timeLimit": { "standardMin": 40, "cutoffMin": 60 },
+  "board": { "boardId": "board-jipm-std", "socketRoles": { "S7": "CHK" } },
+  "inventory": [],
+  "parts": [
+    { "id": "p1", "kind": "relay-my4n", "truth": "b-weld", "group": 1 },
+    { "id": "p2", "kind": "relay-my4n", "truth": "a-open", "group": 3 },
+    { "id": "p3", "kind": "relay-my4n", "truth": "normal" },
+    { "id": "p4", "kind": "relay-my4n", "truth": "coil-open" }
+  ],
+  "seed": 20260110
+}

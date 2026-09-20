@@ -47,14 +47,22 @@ function measure(problem: InspectPartsProblem, part: InspectPartData) {
   };
 }
 
-describe('内蔵C1課題（§7.9 4セット）', () => {
-  it('registers four sets with stable ids', () => {
-    expect(BUILTIN_INSPECT_PARTS_PROBLEMS).toHaveLength(4);
+describe('内蔵C1課題（§7.9 12セット）', () => {
+  it('registers twelve sets with stable ids', () => {
+    expect(BUILTIN_INSPECT_PARTS_PROBLEMS).toHaveLength(12);
     expect(BUILTIN_INSPECT_PARTS_PROBLEMS.map((p) => p.id)).toEqual([
       'c1-001',
       'c1-002',
       'c1-003',
       'c1-004',
+      'c1-005',
+      'c1-006',
+      'c1-007',
+      'c1-008',
+      'c1-009',
+      'c1-010',
+      'c1-011',
+      'c1-012',
     ]);
     for (const problem of BUILTIN_INSPECT_PARTS_PROBLEMS) {
       expect(problem.mode).toBe('inspect-parts');
@@ -81,11 +89,18 @@ describe('内蔵C1課題（§7.9 4セット）', () => {
     }
   });
 
-  it('covers all seven answer options across the four sets', () => {
+  it('covers all seven answer options across the twelve sets', () => {
     const seen = new Set(
       BUILTIN_INSPECT_PARTS_PROBLEMS.flatMap((p) => p.parts.map((part) => part.truth)),
     );
     expect(seen.size).toBe(7);
+  });
+
+  it('難しさが級の帯に収まる（§4.3 Phase 7）', () => {
+    for (const problem of BUILTIN_INSPECT_PARTS_PROBLEMS) {
+      const allowed = problem.grade === 3 ? [1, 2] : problem.grade === 2 ? [2, 3, 4] : [4, 5];
+      expect(allowed, `${problem.id}（${problem.grade}級）`).toContain(problem.difficulty);
+    }
   });
 
   it('自己整合: 全セットの全部品が判定表どおりの読値になる (§7.8 / §9.1)', () => {

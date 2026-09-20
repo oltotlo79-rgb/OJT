@@ -4,6 +4,8 @@
   "mode": "plc",
   "title": "PLC 順次点灯（1級形式）",
   "grade": 1,
+  "difficulty": 4,
+  "tags": ["self-hold", "multi-timer", "sequence"],
   "description": "黒（X0）で起動すると白ランプ（PL1）が点灯し、1秒ごとに黄（PL2）・緑（PL3）・赤（PL4）が順に点灯します。黄（X1）または緑（X2）で全消灯します。PLCの出力は必ず盤のリレーを介し、PLCの電源は壁コンセントから取ってください。",
   "timeLimit": { "standardMin": 50, "cutoffMin": 60 },
   "board": {

@@ -44,8 +44,8 @@ describe('builtin problems', () => {
     ).toThrow(BuiltinProblemError);
   });
 
-  it('ships 8 assemble problems (§7.9)', () => {
-    expect(BUILTIN_PROBLEMS).toHaveLength(8);
+  it('ships 20 assemble problems (§7.9)', () => {
+    expect(BUILTIN_PROBLEMS).toHaveLength(20);
     expect(BUILTIN_PROBLEMS.map((p) => p.id)).toEqual([
       'b-001',
       'b-002',
@@ -55,7 +55,26 @@ describe('builtin problems', () => {
       'b-006',
       'b-007',
       'b-008',
+      'b-009',
+      'b-010',
+      'b-011',
+      'b-012',
+      'b-013',
+      'b-014',
+      'b-015',
+      'b-016',
+      'b-017',
+      'b-018',
+      'b-019',
+      'b-020',
     ]);
+  });
+
+  it('orders difficulty within each grade (§4.3 Phase 7)', () => {
+    for (const problem of BUILTIN_PROBLEMS) {
+      const allowed = problem.grade === 3 ? [1, 2] : problem.grade === 2 ? [2, 3, 4] : [4, 5];
+      expect(allowed, `${problem.id}（${problem.grade}級）`).toContain(problem.difficulty);
+    }
   });
 
   it('covers every hint level (§8.4)', () => {

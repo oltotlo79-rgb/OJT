@@ -4,6 +4,8 @@
   "mode": "plc",
   "title": "PLC 自己保持回路（2級形式）",
   "grade": 2,
+  "difficulty": 2,
+  "tags": ["self-hold"],
   "description": "黒（X0）で運転を開始し、黄（X1）で停止する自己保持回路をPLCで組みます。運転中は白ランプ（PL1）が点灯します。黄（X1）を押している間、運転していなければ黄ランプ（PL2）が点灯し（停止確認）、緑（X2）を押している間だけ緑ランプ（PL3）が点灯します。PLCの出力は必ず盤のリレーを介し、PLCの電源は壁コンセントから取ってください。",
   "timeLimit": { "standardMin": 50, "cutoffMin": 60 },
   "board": {

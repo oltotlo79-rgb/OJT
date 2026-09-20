@@ -1,0 +1,19 @@
+{
+  "formatVersion": 1,
+  "id": "c1-008",
+  "mode": "inspect-parts",
+  "title": "タイマの点検②（時間は合っているのに出ない）",
+  "grade": 2,
+  "difficulty": 3,
+  "tags": ["fault-part", "timer", "measure"],
+  "description": "トレイのタイマ2個とリレー1個を点検しなさい。タイマのうち1個は設定時間どおりに限時動作するのに、a接点（限時動作瞬時復帰）が断線していて出力が出ない。赤押ボタン（PB4）を押し続けて設定時間が経過したところで COM–NO と COM–NC の導通を測り、「時間は合っているのに接点が閉じない」ことを確かめること。時間が合っていることだけで良品と判断してはならない。",
+  "timeLimit": { "standardMin": 30, "cutoffMin": 50 },
+  "board": { "boardId": "board-jipm-std", "socketRoles": { "S7": "CHK" } },
+  "inventory": [],
+  "parts": [
+    { "id": "p1", "kind": "timer-h3y4", "truth": "a-open", "group": 2 },
+    { "id": "p2", "kind": "timer-h3y4", "truth": "normal" },
+    { "id": "p3", "kind": "relay-my4n", "truth": "normal" }
+  ],
+  "seed": 20260108
+}

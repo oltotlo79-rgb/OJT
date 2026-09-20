@@ -122,17 +122,18 @@ describe('配布物のハードニング（Phase 7 Task 8 / QA-05 ≡ DM-5・QA-
 describe('同梱課題が4メーカーで成立する（決定表#19）', () => {
   /*
    * 件数は**等号**で縛る（Batch E レビュー I4）。下限（`toBeGreaterThanOrEqual`）だけだと
-   * 課題が1つ増えたときに `docs/releases/v1.0.0.md` の「合計 28題」とモード別の表だけが
-   * 静かに嘘になる。課題を増やしたらこの数とリリースノートの表を**両方**直すこと。
+   * 課題が1つ増えたときに次のリリースノートのモード別の表だけが静かに嘘になる。
+   * 課題を増やしたらこの数と、そのとき出すリリースノートの表を**両方**直すこと
+   * （`docs/releases/v1.0.0.md` の「合計 28題」は v1.0.0 が実際に同梱した数なので直さない）。
    */
-  it('ships exactly the builtin problems the release note lists (B 8 / C1 4 / C2 8 / D 8)', () => {
+  it('ships exactly the builtin problems the next release note must list (B 20 / C1 12 / C2 8 / D 8)', () => {
     expect({
       assemble: BUILTIN_ASSEMBLE_PROBLEMS.length,
       inspectParts: BUILTIN_INSPECT_PARTS_PROBLEMS.length,
       inspectRepair: BUILTIN_INSPECT_REPAIR_PROBLEMS.length,
       plc: BUILTIN_PLC_PROBLEMS.length,
       total: BUILTIN_ALL_PROBLEMS.length,
-    }).toEqual({ assemble: 8, inspectParts: 4, inspectRepair: 8, plc: 8, total: 28 });
+    }).toEqual({ assemble: 20, inspectParts: 12, inspectRepair: 8, plc: 8, total: 48 });
   });
 
   it.each(PLC_VENDORS.map((vendor, i) => [vendor, PLC_MODELS[i]] as const))(

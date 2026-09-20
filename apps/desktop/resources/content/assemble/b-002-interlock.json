@@ -4,6 +4,8 @@
   "mode": "assemble",
   "title": "インターロック回路（先行優先）",
   "grade": 3,
+  "difficulty": 2,
+  "tags": ["self-hold", "interlock", "priority"],
   "description": "黒押ボタン（PB1）で白ランプ（PL1）、黄押ボタン（PB2）で黄ランプ（PL2）を自己保持で点灯させなさい。先に点灯した側が優先し、他方は点灯しないこと。緑押ボタン（PB3）で両方を消灯すること。",
   "timeLimit": { "standardMin": 30, "cutoffMin": 50 },
   "board": {

@@ -4,6 +4,8 @@
   "mode": "inspect-parts",
   "title": "リレーの点検②（レアショートを見逃さない）",
   "grade": 2,
+  "difficulty": 3,
+  "tags": ["fault-part", "measure"],
   "description": "トレイのリレー4個を点検しなさい。レアショートのコイルは通常どおり励磁・復帰し、接点も正常に開閉するため、動作を見るだけでは正常品と区別できない。正常に見えた部品も必ずコイル抵抗を測り、正常値650Ωの85%（約552Ω）以下ならレアショートと判定すること。",
   "timeLimit": { "standardMin": 30, "cutoffMin": 50 },
   "board": { "boardId": "board-jipm-std", "socketRoles": { "S7": "CHK" } },

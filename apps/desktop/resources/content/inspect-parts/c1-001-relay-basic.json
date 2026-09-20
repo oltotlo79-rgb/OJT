@@ -4,6 +4,8 @@
   "mode": "inspect-parts",
   "title": "リレーの点検①（コイルと接点）",
   "grade": 2,
+  "difficulty": 2,
+  "tags": ["fault-part", "measure"],
   "description": "トレイのリレー4個を1個ずつチェック用ソケットに挿し、赤押ボタン（PB4）で励磁して良否を判定しなさい。手順は ①励磁して吸引するか ②励磁ON/OFFでのa接点・b接点の導通 ③コイル抵抗の測定（正常は約650Ω）の3つである。判定できたらマークシートに原因を1つだけ選ぶこと。",
   "timeLimit": { "standardMin": 30, "cutoffMin": 50 },
   "board": { "boardId": "board-jipm-std", "socketRoles": { "S7": "CHK" } },

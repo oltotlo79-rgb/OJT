@@ -1,0 +1,90 @@
+{
+  "formatVersion": 1,
+  "id": "b-014",
+  "mode": "assemble",
+  "title": "オフディレー消灯回路",
+  "grade": 2,
+  "difficulty": 3,
+  "tags": ["self-hold", "timer"],
+  "description": "黒押ボタン（PB1）を押すと白ランプ（PL1）が点灯し、押している間は点灯を続け、離してから2秒後に自動で消灯する回路を組みなさい。タイマ T1 は2秒に設定し、押している間はタイマが動かないようにすること（オンディレータイマで消灯を遅らせる）。タイムチャートの始まりと終わりは論理0とする。",
+  "timeLimit": { "standardMin": 30, "cutoffMin": 50 },
+  "board": {
+    "boardId": "board-jipm-std",
+    "socketRoles": { "S1": "CR1", "S2": "CR2", "S5": "T1", "S6": "T2", "S7": "CHK" }
+  },
+  "inventory": [
+    { "kind": "relay-my4n", "count": 2 },
+    { "kind": "timer-h3y4", "count": 2 }
+  ],
+  "schematic": {
+    "formatVersion": 1,
+    "id": "sch-b-014",
+    "title": "オフディレー消灯回路",
+    "orientation": "horizontal",
+    "rungs": [
+      {
+        "id": "r1",
+        "from": { "bus": "P" },
+        "to": { "bus": "N" },
+        "cells": [
+          { "kind": "pb-a", "id": "c01", "device": "PB1" },
+          { "kind": "coil", "id": "c02", "device": "CR1" }
+        ]
+      },
+      {
+        "id": "r2",
+        "from": { "bus": "P" },
+        "to": { "bus": "N" },
+        "cells": [
+          { "kind": "t-b", "id": "c03", "device": "T1" },
+          { "kind": "cr-a", "id": "c04", "device": "CR1" },
+          { "kind": "coil", "id": "c05", "device": "CR2" }
+        ]
+      },
+      {
+        "id": "r2h",
+        "from": { "rung": "r2", "node": 1 },
+        "to": { "rung": "r2", "node": 2 },
+        "cells": [{ "kind": "cr-a", "id": "c06", "device": "CR2" }]
+      },
+      {
+        "id": "r3",
+        "from": { "bus": "P" },
+        "to": { "bus": "N" },
+        "cells": [
+          { "kind": "cr-a", "id": "c07", "device": "CR2" },
+          { "kind": "cr-b", "id": "c08", "device": "CR1" },
+          { "kind": "coil", "id": "c09", "device": "T1", "presetMs": 2000 }
+        ]
+      },
+      {
+        "id": "r4",
+        "from": { "bus": "P" },
+        "to": { "bus": "N" },
+        "cells": [
+          { "kind": "cr-a", "id": "c10", "device": "CR2" },
+          { "kind": "lamp", "id": "c11", "device": "PL1" }
+        ]
+      }
+    ]
+  },
+  "operations": [
+    { "t": 500, "target": "PB1", "action": "press" },
+    { "t": 800, "target": "PB1", "action": "release" },
+    { "t": 4000, "target": "PB1", "action": "press" },
+    { "t": 4300, "target": "PB1", "action": "release" }
+  ],
+  "durationMs": 8000,
+  "judge": {
+    "tolerance": { "edgeMs": 200, "ratio": 0.1 },
+    "staticChecks": {
+      "wireColorRule": true,
+      "terminalLimit": true,
+      "unusedParts": true,
+      "forbiddenCircuit": true,
+      "coilPolarity": true,
+      "powerSequence": true
+    }
+  },
+  "hints": { "schematicVisible": false }
+}

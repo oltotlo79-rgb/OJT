@@ -4,6 +4,8 @@
   "mode": "assemble",
   "title": "早押し優先回路（3点）",
   "grade": 1,
+  "difficulty": 4,
+  "tags": ["self-hold", "interlock", "priority"],
   "description": "黒（PB1）・黄（PB2）・緑（PB3）の押ボタンのうち、最初に押された1つだけに対応するランプ（白 PL1／黄 PL2／緑 PL3）を自己保持で点灯させなさい。他の2つを押しても点灯しないこと。赤押ボタン（PB4）で全消灯すること。",
   "timeLimit": { "standardMin": 50, "cutoffMin": 60 },
   "board": {

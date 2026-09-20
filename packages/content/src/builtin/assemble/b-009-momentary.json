@@ -1,0 +1,49 @@
+{
+  "formatVersion": 1,
+  "id": "b-009",
+  "mode": "assemble",
+  "title": "押している間だけ点灯する回路",
+  "grade": 3,
+  "difficulty": 1,
+  "tags": [],
+  "description": "黒押ボタン（PB1）を押している間だけ白ランプ（PL1）を点灯させなさい。離したらすぐ消えること。リレーは使わず、押ボタンのa接点とランプだけで組む。タイムチャートの始まりと終わりは論理0とする。",
+  "timeLimit": { "standardMin": 20, "cutoffMin": 30 },
+  "board": { "boardId": "board-jipm-std", "socketRoles": { "S7": "CHK" } },
+  "inventory": [],
+  "schematic": {
+    "formatVersion": 1,
+    "id": "sch-b-009",
+    "title": "押している間だけ点灯する回路",
+    "orientation": "horizontal",
+    "rungs": [
+      {
+        "id": "r1",
+        "from": { "bus": "P" },
+        "to": { "bus": "N" },
+        "cells": [
+          { "kind": "pb-a", "id": "c01", "device": "PB1" },
+          { "kind": "lamp", "id": "c02", "device": "PL1" }
+        ]
+      }
+    ]
+  },
+  "operations": [
+    { "t": 500, "target": "PB1", "action": "press" },
+    { "t": 1500, "target": "PB1", "action": "release" },
+    { "t": 2500, "target": "PB1", "action": "press" },
+    { "t": 3000, "target": "PB1", "action": "release" }
+  ],
+  "durationMs": 4000,
+  "judge": {
+    "tolerance": { "edgeMs": 200, "ratio": 0.1 },
+    "staticChecks": {
+      "wireColorRule": true,
+      "terminalLimit": true,
+      "unusedParts": true,
+      "forbiddenCircuit": true,
+      "coilPolarity": true,
+      "powerSequence": true
+    }
+  },
+  "hints": { "schematicVisible": true }
+}

@@ -1,0 +1,18 @@
+{
+  "formatVersion": 1,
+  "id": "c1-005",
+  "mode": "inspect-parts",
+  "title": "リレーの点検⓪（a接点の断線を見つける）",
+  "grade": 2,
+  "difficulty": 2,
+  "tags": ["fault-part", "measure"],
+  "description": "トレイのリレー2個を1個ずつチェック用ソケットに挿し、赤押ボタン（PB4）で励磁して良否を判定しなさい。2個のうち1個は a接点が断線しており、励磁しても COM と NO の間が導通しない。コイルは正常なので吸引音も b接点の開閉も正常に見える。点検の最初の1題として、①励磁して吸引するか ②励磁ON/OFFでのa接点・b接点の導通 ③コイル抵抗（正常は約650Ω）の3つを順に確かめること。",
+  "timeLimit": { "standardMin": 20, "cutoffMin": 30 },
+  "board": { "boardId": "board-jipm-std", "socketRoles": { "S7": "CHK" } },
+  "inventory": [],
+  "parts": [
+    { "id": "p1", "kind": "relay-my4n", "truth": "normal" },
+    { "id": "p2", "kind": "relay-my4n", "truth": "a-open", "group": 1 }
+  ],
+  "seed": 20260105
+}

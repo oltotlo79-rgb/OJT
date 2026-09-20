@@ -4,6 +4,8 @@
   "mode": "inspect-repair",
   "title": "インターロック回路の点検・修復",
   "grade": 1,
+  "difficulty": 4,
+  "tags": ["interlock", "priority", "fault-wire", "fault-contact", "measure"],
   "description": "黒押ボタン（PB1）で白ランプ（PL1）、黄押ボタン（PB2）で黄ランプ（PL2）を自己保持で点灯させ、先に点灯した側を優先する回路である。緑押ボタン（PB3）で両方を消灯する。現在はタイムチャートどおりに動作しない。回路図は与えられない。故障箇所を2つ指摘し、白線で修復または部品を交換しなさい。",
   "timeLimit": { "standardMin": 30, "cutoffMin": 50 },
   "board": {

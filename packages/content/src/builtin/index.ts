@@ -19,10 +19,30 @@ import oneShot from './assemble/b-005-one-shot.json' with { type: 'json' };
 import flicker from './assemble/b-006-flicker.json' with { type: 'json' };
 import firstPress from './assemble/b-007-first-press.json' with { type: 'json' };
 import stopPriority from './assemble/b-008-stop-priority.json' with { type: 'json' };
+import momentary from './assemble/b-009-momentary.json' with { type: 'json' };
+import andLamp from './assemble/b-010-and-lamp.json' with { type: 'json' };
+import orLamp from './assemble/b-011-or-lamp.json' with { type: 'json' };
+import selfHoldStop from './assemble/b-012-self-hold-stop.json' with { type: 'json' };
+import twoHand from './assemble/b-013-two-hand.json' with { type: 'json' };
+import offDelay from './assemble/b-014-off-delay.json' with { type: 'json' };
+import mutualInterlock from './assemble/b-015-mutual-interlock.json' with { type: 'json' };
+import threeStep from './assemble/b-016-three-step.json' with { type: 'json' };
+import lastPress from './assemble/b-017-last-press.json' with { type: 'json' };
+import flickerAlarm from './assemble/b-018-flicker-alarm.json' with { type: 'json' };
+import conditionalHold from './assemble/b-019-conditional-hold.json' with { type: 'json' };
+import twoTimer from './assemble/b-020-two-timer.json' with { type: 'json' };
 import relayBasic from './inspect-parts/c1-001-relay-basic.json' with { type: 'json' };
 import layerShort from './inspect-parts/c1-002-layer-short.json' with { type: 'json' };
 import timerCheck from './inspect-parts/c1-003-timer.json' with { type: 'json' };
 import mixedCheck from './inspect-parts/c1-004-mixed.json' with { type: 'json' };
+import aOpenCheck from './inspect-parts/c1-005-a-open.json' with { type: 'json' };
+import weldOpenCheck from './inspect-parts/c1-006-weld-open.json' with { type: 'json' };
+import coilFaultCheck from './inspect-parts/c1-007-coil-fault.json' with { type: 'json' };
+import timerContactCheck from './inspect-parts/c1-008-timer-contact.json' with { type: 'json' };
+import mostlyNormalCheck from './inspect-parts/c1-009-mostly-normal.json' with { type: 'json' };
+import bWeldMixedCheck from './inspect-parts/c1-010-b-weld-mixed.json' with { type: 'json' };
+import relayTimerMixedCheck from './inspect-parts/c1-011-relay-timer-mixed.json' with { type: 'json' };
+import allTruthsCheck from './inspect-parts/c1-012-all-truths.json' with { type: 'json' };
 import c2SelfHold from './inspect-repair/c2-001-self-hold.json' with { type: 'json' };
 import c2SelfHoldContact from './inspect-repair/c2-002-self-hold-contact.json' with { type: 'json' };
 import c2OnDelay from './inspect-repair/c2-003-on-delay.json' with { type: 'json' };
@@ -41,7 +61,7 @@ import d007 from './plc/d-007-counter.json' with { type: 'json' };
 import d008 from './plc/d-008-stop-priority.json' with { type: 'json' };
 
 /**
- * 内蔵課題。設計仕様 §7.8 / §7.9（モードB 8題・モードC1 4セット・モードC2 8題）。
+ * 内蔵課題。設計仕様 §7.8 / §7.9（モードB 20題・モードC1 12セット・モードC2 8題・モードD 8題）。
  * JSONを直接読み、`parseProblem()` を通した結果だけを公開する。
  * 1件でも検証に落ちたら読み込み時に例外を投げるので、壊れた内蔵課題はビルド／テストで必ず落ちる。
  *
@@ -60,6 +80,18 @@ const BUILTIN_ASSEMBLE_JSON: readonly unknown[] = [
   flicker,
   firstPress,
   stopPriority,
+  momentary,
+  andLamp,
+  orLamp,
+  selfHoldStop,
+  twoHand,
+  offDelay,
+  mutualInterlock,
+  threeStep,
+  lastPress,
+  flickerAlarm,
+  conditionalHold,
+  twoTimer,
 ];
 
 /** 内蔵のモードC1課題のJSON。 */
@@ -68,6 +100,14 @@ const BUILTIN_INSPECT_PARTS_JSON: readonly unknown[] = [
   layerShort,
   timerCheck,
   mixedCheck,
+  aOpenCheck,
+  weldOpenCheck,
+  coilFaultCheck,
+  timerContactCheck,
+  mostlyNormalCheck,
+  bWeldMixedCheck,
+  relayTimerMixedCheck,
+  allTruthsCheck,
 ];
 
 /** 内蔵のモードC2課題のJSON。 */
@@ -126,14 +166,14 @@ export function ofMode<T extends SupportedProblem>(
   });
 }
 
-/** 内蔵のモードB課題（8題）。§7.9 */
+/** 内蔵のモードB課題（20題）。§7.9 */
 export const BUILTIN_ASSEMBLE_PROBLEMS: readonly AssembleProblem[] = ofMode(
   parseBuiltinProblems(BUILTIN_ASSEMBLE_JSON),
   isAssembleProblem,
   'モードB課題',
 );
 
-/** 内蔵のモードC1課題（4セット）。§7.9 */
+/** 内蔵のモードC1課題（12セット）。§7.9 */
 export const BUILTIN_INSPECT_PARTS_PROBLEMS: readonly InspectPartsProblem[] = ofMode(
   parseBuiltinProblems(BUILTIN_INSPECT_PARTS_JSON),
   isInspectPartsProblem,

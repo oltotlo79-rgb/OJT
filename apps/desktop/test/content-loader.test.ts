@@ -105,7 +105,7 @@ describe('builtinSet', () => {
     const resources = tempDir('ojt-resources-');
     const assemble = join(resources, 'content', 'assemble');
     mkdirSync(assemble, { recursive: true });
-    const partial = BUILTIN_ALL_PROBLEMS.slice(0, 8); // モードBの8題だけ（C1/C2が欠落）
+    const partial = BUILTIN_ALL_PROBLEMS.slice(0, 8); // モードBの最初の8題だけ（残りが欠落）
     for (const problem of partial) {
       writeFileSync(join(assemble, `${problem.id}.json`), JSON.stringify(problem), 'utf8');
     }
@@ -113,11 +113,11 @@ describe('builtinSet', () => {
     setResourcesPath(resources);
 
     const set = await builtinSet();
-    // 一覧が欠けたまま出ず、確実に焼き込みの28題へ落ちる
+    // 一覧が欠けたまま出ず、確実に焼き込みの48題へ落ちる
     expect(set.problems).toHaveLength(BUILTIN_ALL_PROBLEMS.length);
     expect(set.errors).toHaveLength(1);
     expect(set.errors[0]?.message).toContain('8件');
-    expect(set.errors[0]?.message).toContain('28件');
+    expect(set.errors[0]?.message).toContain('48件');
     expect(set.errors[0]?.message).toContain('内蔵した課題で起動します');
   });
 
@@ -360,8 +360,8 @@ describe('loadContent のモードB以外の扱い（Plan 2A Task 17: SupportedP
     expect(row?.source).toBe('user');
   });
 
-  it('内蔵課題は28題（モードB 8 / C1 4 / C2 8 / D 8）', () => {
-    expect(BUILTIN_ALL_PROBLEMS).toHaveLength(28);
+  it('内蔵課題は48題（モードB 20 / C1 12 / C2 8 / D 8）', () => {
+    expect(BUILTIN_ALL_PROBLEMS).toHaveLength(48);
   });
 });
 

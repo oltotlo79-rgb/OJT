@@ -1,0 +1,20 @@
+{
+  "formatVersion": 1,
+  "id": "c1-011",
+  "mode": "inspect-parts",
+  "title": "リレー2・タイマ2の混合点検",
+  "grade": 1,
+  "difficulty": 5,
+  "tags": ["fault-part", "timer", "measure"],
+  "description": "トレイのリレー2個とタイマ2個を点検しなさい。不良はリレー側に1個、タイマ側に1個あり、症状の出方が違う。リレー側はコイル抵抗でしか分からないレアショート、タイマ側は限時動作したあとに b接点が戻らない（断線したままの）不良である。リレーとタイマでは点検の待ち方が違う（タイマは設定時間が経つまで押し続ける）ので、手順を取り違えないこと。",
+  "timeLimit": { "standardMin": 40, "cutoffMin": 60 },
+  "board": { "boardId": "board-jipm-std", "socketRoles": { "S7": "CHK" } },
+  "inventory": [],
+  "parts": [
+    { "id": "p1", "kind": "relay-my4n", "truth": "coil-layer-short", "ratio": 0.7 },
+    { "id": "p2", "kind": "relay-my4n", "truth": "normal" },
+    { "id": "p3", "kind": "timer-h3y4", "truth": "b-open", "group": 2 },
+    { "id": "p4", "kind": "timer-h3y4", "truth": "normal" }
+  ],
+  "seed": 20260111
+}

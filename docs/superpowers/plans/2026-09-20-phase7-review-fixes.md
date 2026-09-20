@@ -664,16 +664,16 @@ grep -rn "cachedFaceTexture\|faceTextureCache" apps/desktop/src | wc -l   # 期�
 
 **Steps:**
 
-- [ ] 1. 既存の `b-001-self-hold.json` と `c1-001-relay-basic.json` を雛形として読む。盤の制約（リレー4・タイマ2・PB4・PL4・BZ任意）を超えないこと。
-- [ ] 2. B の12題を1題ずつ作る。各題で必ず守る不変条件は本設計 §4.5 の7項目。特に:
+- [x] 1. 既存の `b-001-self-hold.json` と `c1-001-relay-basic.json` を雛形として読む。盤の制約（リレー4・タイマ2・PB4・PL4・BZ任意）を超えないこと。
+- [x] 2. B の12題を1題ずつ作る。各題で必ず守る不変条件は本設計 §4.5 の7項目。特に:
   - `hints.schematicVisible === (grade === 3)`。
   - 操作列は**必ず全部を落としてから終わる**（`startsAndEndsLow()`）。
   - タイマの `presetMs` は 100ms 以外。
   - `durationMs >= 最後の操作時刻 + 10`。
   - 1題作るごとに `pnpm --filter @ojt/content validate src/builtin/assemble/<file>` で確かめる（Task 4 の CLI）。
-- [ ] 3. C1 の8題を作る。`PartTruth` 7種の網羅を12セット全体で保ち、**タイマに `coil-layer-short` を置かない**。各セットに `normal` を1つ以上混ぜる。
-- [ ] 4. `builtin/index.ts` に `import … with { type: 'json' }` を20行と配列への追加。
-- [ ] 5. テストの期待値を伸ばす。
+- [x] 3. C1 の8題を作る。`PartTruth` 7種の網羅を12セット全体で保ち、**タイマに `coil-layer-short` を置かない**。各セットに `normal` を1つ以上混ぜる。
+- [x] 4. `builtin/index.ts` に `import … with { type: 'json' }` を20行と配列への追加。
+- [x] 5. テストの期待値を伸ばす。
 
 ```
 packages/content/test/builtin.test.ts             toHaveLength(8)  → 20、ID一覧 b-001…b-020
@@ -683,8 +683,8 @@ apps/desktop/test/content-resources.test.ts       WIRED_FILES に20件、総数
 apps/desktop/test/content-loader.test.ts / problem-modes.test.ts  件数の文言と期待値
 ```
 
-- [ ] 6. **`builtin-discrimination.test.ts` に新題の判別ケースを足す**。少なくとも「b-013 両手押し」「b-015 相互インタロック」「b-017 後行優先」の3題について、**近いが誤った回路**を組んで不合格になることを確かめる（これが無いと「どんな回路でも通る課題」が混ざる）。
-- [ ] 7. `node apps/desktop/scripts/copy-content.mjs` を走らせて `apps/desktop/resources/content/` を更新し、**その差分も commit する**。
+- [x] 6. **`builtin-discrimination.test.ts` に新題の判別ケースを足す**。少なくとも「b-013 両手押し」「b-015 相互インタロック」「b-017 後行優先」の3題について、**近いが誤った回路**を組んで不合格になることを確かめる（これが無いと「どんな回路でも通る課題」が混ざる）。
+- [x] 7. `node apps/desktop/scripts/copy-content.mjs` を走らせて `apps/desktop/resources/content/` を更新し、**その差分も commit する**。
 
 **期待:**
 

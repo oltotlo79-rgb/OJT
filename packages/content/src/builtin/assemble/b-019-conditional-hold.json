@@ -1,0 +1,101 @@
+{
+  "formatVersion": 1,
+  "id": "b-019",
+  "mode": "assemble",
+  "title": "最低運転時間つき自己保持回路",
+  "grade": 1,
+  "difficulty": 5,
+  "tags": ["self-hold", "timer", "interlock"],
+  "description": "黒押ボタン（PB1）で運転を開始し、白ランプ（PL1）を自己保持で点灯させなさい。運転を始めてから3秒が経つまでは、黄押ボタン（PB2）を押しても停止しないこと。3秒が経ったら黄ランプ（PL2）を点灯させて「停止できる」ことを示し、そのあとの PB2 で停止すること。タイマ T1 は3秒に設定する。",
+  "timeLimit": { "standardMin": 50, "cutoffMin": 60 },
+  "board": {
+    "boardId": "board-jipm-std",
+    "socketRoles": { "S1": "CR1", "S2": "CR2", "S5": "T1", "S6": "T2", "S7": "CHK" }
+  },
+  "inventory": [
+    { "kind": "relay-my4n", "count": 2 },
+    { "kind": "timer-h3y4", "count": 2 }
+  ],
+  "schematic": {
+    "formatVersion": 1,
+    "id": "sch-b-019",
+    "title": "最低運転時間つき自己保持回路",
+    "orientation": "horizontal",
+    "rungs": [
+      {
+        "id": "r1",
+        "from": { "bus": "P" },
+        "to": { "bus": "N" },
+        "cells": [
+          { "kind": "cr-b", "id": "c01", "device": "CR2" },
+          { "kind": "pb-a", "id": "c02", "device": "PB1" },
+          { "kind": "coil", "id": "c03", "device": "CR1" }
+        ]
+      },
+      {
+        "id": "r1h",
+        "from": { "rung": "r1", "node": 1 },
+        "to": { "rung": "r1", "node": 2 },
+        "cells": [{ "kind": "cr-a", "id": "c04", "device": "CR1" }]
+      },
+      {
+        "id": "r2",
+        "from": { "bus": "P" },
+        "to": { "bus": "N" },
+        "cells": [
+          { "kind": "cr-a", "id": "c05", "device": "CR1" },
+          { "kind": "coil", "id": "c06", "device": "T1", "presetMs": 3000 }
+        ]
+      },
+      {
+        "id": "r3",
+        "from": { "bus": "P" },
+        "to": { "bus": "N" },
+        "cells": [
+          { "kind": "t-a", "id": "c07", "device": "T1" },
+          { "kind": "pb-a", "id": "c08", "device": "PB2" },
+          { "kind": "coil", "id": "c09", "device": "CR2" }
+        ]
+      },
+      {
+        "id": "r4",
+        "from": { "bus": "P" },
+        "to": { "bus": "N" },
+        "cells": [
+          { "kind": "cr-a", "id": "c10", "device": "CR1" },
+          { "kind": "lamp", "id": "c11", "device": "PL1" }
+        ]
+      },
+      {
+        "id": "r5",
+        "from": { "bus": "P" },
+        "to": { "bus": "N" },
+        "cells": [
+          { "kind": "t-a", "id": "c12", "device": "T1" },
+          { "kind": "lamp", "id": "c13", "device": "PL2" }
+        ]
+      }
+    ]
+  },
+  "operations": [
+    { "t": 500, "target": "PB1", "action": "press" },
+    { "t": 800, "target": "PB1", "action": "release" },
+    { "t": 1500, "target": "PB2", "action": "press" },
+    { "t": 1800, "target": "PB2", "action": "release" },
+    { "t": 4500, "target": "PB2", "action": "press" },
+    { "t": 4800, "target": "PB2", "action": "release" }
+  ],
+  "durationMs": 6500,
+  "judge": {
+    "tolerance": { "edgeMs": 200, "ratio": 0.1 },
+    "staticChecks": {
+      "wireColorRule": true,
+      "terminalLimit": true,
+      "unusedParts": true,
+      "forbiddenCircuit": true,
+      "coilPolarity": true,
+      "powerSequence": true
+    }
+  },
+  "hints": { "schematicVisible": false }
+}

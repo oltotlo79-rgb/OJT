@@ -4,6 +4,8 @@
   "mode": "inspect-parts",
   "title": "リレー・タイマの混合点検",
   "grade": 1,
+  "difficulty": 4,
+  "tags": ["fault-part", "timer", "measure"],
   "description": "トレイのリレー4個とタイマ2個を点検しなさい。良否の判定は部品ごとに独立している。接点の不良は4組のうちどれか1組にだけ入っているので、4組すべてを順に測ること。解答は組を問わず「a接点 溶着」のように原因だけを答える。",
   "timeLimit": { "standardMin": 30, "cutoffMin": 50 },
   "board": { "boardId": "board-jipm-std", "socketRoles": { "S7": "CHK" } },

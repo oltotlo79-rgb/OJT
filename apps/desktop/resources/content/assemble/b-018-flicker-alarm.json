@@ -1,0 +1,113 @@
+{
+  "formatVersion": 1,
+  "id": "b-018",
+  "mode": "assemble",
+  "title": "警報ブザー付き点滅回路",
+  "grade": 1,
+  "difficulty": 5,
+  "tags": ["self-hold", "multi-timer", "flicker", "alarm"],
+  "description": "黒押ボタン（PB1）で運転を開始し、白ランプ（PL1）を0.8秒間隔で点滅させると同時に、ブザー（BZ）を鳴らし続けなさい。黄押ボタン（PB2）で停止し、点滅とブザーの両方を止めること。タイマ2個だけで点滅を組むと実機では動作が不安定になるため、リレー CR2 を介して各タイマに0.1秒以上の休止を確保すること。タイマ T1・T2 はともに0.8秒に設定する。",
+  "timeLimit": { "standardMin": 50, "cutoffMin": 60 },
+  "board": {
+    "boardId": "board-jipm-std",
+    "socketRoles": { "S1": "CR1", "S2": "CR2", "S5": "T1", "S6": "T2", "S7": "CHK" },
+    "extraParts": ["BZ"]
+  },
+  "inventory": [
+    { "kind": "relay-my4n", "count": 2 },
+    { "kind": "timer-h3y4", "count": 2 }
+  ],
+  "schematic": {
+    "formatVersion": 1,
+    "id": "sch-b-018",
+    "title": "警報ブザー付き点滅回路",
+    "orientation": "horizontal",
+    "rungs": [
+      {
+        "id": "r1",
+        "from": { "bus": "P" },
+        "to": { "bus": "N" },
+        "cells": [
+          { "kind": "pb-b", "id": "c01", "device": "PB2" },
+          { "kind": "pb-a", "id": "c02", "device": "PB1" },
+          { "kind": "coil", "id": "c03", "device": "CR1" }
+        ]
+      },
+      {
+        "id": "r1h",
+        "from": { "rung": "r1", "node": 1 },
+        "to": { "rung": "r1", "node": 2 },
+        "cells": [{ "kind": "cr-a", "id": "c04", "device": "CR1" }]
+      },
+      {
+        "id": "ra",
+        "from": { "bus": "P" },
+        "to": { "bus": "N" },
+        "cells": [
+          { "kind": "cr-a", "id": "c05", "device": "CR1" },
+          { "kind": "cr-b", "id": "c06", "device": "CR2" },
+          { "kind": "coil", "id": "c07", "device": "T1", "presetMs": 800 }
+        ]
+      },
+      {
+        "id": "rb",
+        "from": { "rung": "ra", "node": 1 },
+        "to": { "bus": "N" },
+        "cells": [
+          { "kind": "cr-a", "id": "c08", "device": "CR2" },
+          { "kind": "coil", "id": "c09", "device": "T2", "presetMs": 800 }
+        ]
+      },
+      {
+        "id": "rc",
+        "from": { "rung": "ra", "node": 1 },
+        "to": { "bus": "N" },
+        "cells": [
+          { "kind": "t-b", "id": "c10", "device": "T2" },
+          { "kind": "t-a", "id": "c11", "device": "T1" },
+          { "kind": "coil", "id": "c12", "device": "CR2" }
+        ]
+      },
+      {
+        "id": "rch",
+        "from": { "rung": "rc", "node": 1 },
+        "to": { "rung": "rc", "node": 2 },
+        "cells": [{ "kind": "cr-a", "id": "c13", "device": "CR2" }]
+      },
+      {
+        "id": "rd",
+        "from": { "rung": "ra", "node": 1 },
+        "to": { "bus": "N" },
+        "cells": [
+          { "kind": "cr-a", "id": "c14", "device": "CR2" },
+          { "kind": "lamp", "id": "c15", "device": "PL1" }
+        ]
+      },
+      {
+        "id": "re",
+        "from": { "rung": "ra", "node": 1 },
+        "to": { "bus": "N" },
+        "cells": [{ "kind": "buzzer", "id": "c16", "device": "BZ" }]
+      }
+    ]
+  },
+  "operations": [
+    { "t": 500, "target": "PB1", "action": "press" },
+    { "t": 800, "target": "PB1", "action": "release" },
+    { "t": 6000, "target": "PB2", "action": "press" },
+    { "t": 6300, "target": "PB2", "action": "release" }
+  ],
+  "durationMs": 8000,
+  "judge": {
+    "tolerance": { "edgeMs": 200, "ratio": 0.1 },
+    "staticChecks": {
+      "wireColorRule": true,
+      "terminalLimit": true,
+      "unusedParts": true,
+      "forbiddenCircuit": true,
+      "coilPolarity": true,
+      "powerSequence": true
+    }
+  },
+  "hints": { "schematicVisible": false }
+}

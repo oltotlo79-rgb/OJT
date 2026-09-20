@@ -54,12 +54,32 @@ const WIRED_FILES: Readonly<Record<string, readonly string[]>> = {
     'b-006-flicker.json',
     'b-007-first-press.json',
     'b-008-stop-priority.json',
+    'b-009-momentary.json',
+    'b-010-and-lamp.json',
+    'b-011-or-lamp.json',
+    'b-012-self-hold-stop.json',
+    'b-013-two-hand.json',
+    'b-014-off-delay.json',
+    'b-015-mutual-interlock.json',
+    'b-016-three-step.json',
+    'b-017-last-press.json',
+    'b-018-flicker-alarm.json',
+    'b-019-conditional-hold.json',
+    'b-020-two-timer.json',
   ],
   'inspect-parts': [
     'c1-001-relay-basic.json',
     'c1-002-layer-short.json',
     'c1-003-timer.json',
     'c1-004-mixed.json',
+    'c1-005-a-open.json',
+    'c1-006-weld-open.json',
+    'c1-007-coil-fault.json',
+    'c1-008-timer-contact.json',
+    'c1-009-mostly-normal.json',
+    'c1-010-b-weld-mixed.json',
+    'c1-011-relay-timer-mixed.json',
+    'c1-012-all-truths.json',
   ],
   'inspect-repair': [
     'c2-001-self-hold.json',
@@ -95,7 +115,7 @@ describe('resources/content の複写（§7.8 / Phase 2 acceptance BLOCKER）', 
     expect(jsonFilesIn(shipped)).toEqual(jsonFilesIn(source));
   });
 
-  it('内蔵課題の総数（20題）と一致する（§7.9）', () => {
+  it('内蔵課題の総数（48題）と一致する（§7.9）', () => {
     const total = BUILTIN_MODES.reduce(
       (sum, mode) => sum + jsonFilesIn(join(SHIPPED_ROOT, mode)).length,
       0,
@@ -103,7 +123,7 @@ describe('resources/content の複写（§7.8 / Phase 2 acceptance BLOCKER）', 
     expect(total).toBe(BUILTIN_ALL_PROBLEMS.length);
   });
 
-  it('モードB内蔵課題の数（8題）と一致する（§7.9）', () => {
+  it('モードB内蔵課題の数（20題）と一致する（§7.9）', () => {
     expect(jsonFilesIn(join(SHIPPED_ROOT, 'assemble'))).toHaveLength(BUILTIN_PROBLEMS.length);
   });
 

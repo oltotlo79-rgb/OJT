@@ -1,0 +1,19 @@
+{
+  "formatVersion": 1,
+  "id": "c1-007",
+  "mode": "inspect-parts",
+  "title": "リレーの点検④（コイル断線とレアショートの見分け）",
+  "grade": 2,
+  "difficulty": 3,
+  "tags": ["fault-part", "measure"],
+  "description": "トレイのリレー3個を点検しなさい。コイルの不良は2種類ある。断線は励磁しても動かず、コイル抵抗が測定範囲を超える（∞）。レアショートは動作も接点も正常に見えるが、コイル抵抗が正常値650Ωの85%（約552Ω）以下に下がる。まず励磁して動くかどうかで断線を切り分け、動いた部品も必ずコイル抵抗を測ってレアショートを見逃さないこと。",
+  "timeLimit": { "standardMin": 30, "cutoffMin": 50 },
+  "board": { "boardId": "board-jipm-std", "socketRoles": { "S7": "CHK" } },
+  "inventory": [],
+  "parts": [
+    { "id": "p1", "kind": "relay-my4n", "truth": "coil-open" },
+    { "id": "p2", "kind": "relay-my4n", "truth": "coil-layer-short", "ratio": 0.6 },
+    { "id": "p3", "kind": "relay-my4n", "truth": "normal" }
+  ],
+  "seed": 20260107
+}

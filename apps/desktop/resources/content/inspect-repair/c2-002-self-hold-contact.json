@@ -4,6 +4,8 @@
   "mode": "inspect-repair",
   "title": "自己保持回路の点検・修復②（誤配線と接触不良）",
   "grade": 2,
+  "difficulty": 3,
+  "tags": ["self-hold", "fault-wire", "fault-contact", "measure"],
   "description": "自己保持回路が正しく動作しない。故障は電線の誤配線と部品の不良である。部品の不良は電圧・導通・抵抗の測定でしか見つからない。故障箇所を2つ指摘し、電線は白線で引き直し、不良部品はチェック用ソケットで良品を選んで交換しなさい。",
   "timeLimit": { "standardMin": 30, "cutoffMin": 50 },
   "board": {

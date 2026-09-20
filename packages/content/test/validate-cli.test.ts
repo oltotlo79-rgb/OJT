@@ -40,10 +40,10 @@ afterAll(() => {
 });
 
 describe('validate（課題を確かめる道具）', () => {
-  it('ends with 0 件の問題 and exit code 0 for the 28 built-in problems', () => {
+  it('ends with 0 件の問題 and exit code 0 for the 48 built-in problems', () => {
     const { code, out } = validate('src/builtin');
     expect(out).toContain('0 件の問題');
-    expect(out.split('\n').filter((line) => line.startsWith('合格'))).toHaveLength(28);
+    expect(out.split('\n').filter((line) => line.startsWith('合格'))).toHaveLength(48);
     expect(code).toBe(0);
   }, 600_000);
 

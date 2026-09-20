@@ -4,6 +4,8 @@
   "mode": "assemble",
   "title": "フリッカ回路（リレー併用）",
   "grade": 2,
+  "difficulty": 4,
+  "tags": ["self-hold", "multi-timer", "flicker"],
   "description": "黒押ボタン（PB1）で運転を開始し、白ランプ（PL1）を0.8秒間隔で点滅させなさい。黄押ボタン（PB2）で停止し消灯すること。タイマ2個だけで組むと実機では動作が不安定になるため、リレー CR2 を介して各タイマに0.1秒以上の休止を確保すること。",
   "timeLimit": { "standardMin": 30, "cutoffMin": 50 },
   "board": {

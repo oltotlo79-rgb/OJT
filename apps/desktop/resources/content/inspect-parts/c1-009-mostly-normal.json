@@ -1,0 +1,20 @@
+{
+  "formatVersion": 1,
+  "id": "c1-009",
+  "mode": "inspect-parts",
+  "title": "リレーの点検⑤（4個中3個は正常）",
+  "grade": 2,
+  "difficulty": 4,
+  "tags": ["fault-part", "measure"],
+  "description": "トレイのリレー4個を点検しなさい。不良は1個だけで、残る3個は正常である。「不良が必ず何個ある」と決めてかかると正常品を不良にしてしまうので、全部の部品について①励磁して吸引するか ②励磁ON/OFFでの4組すべてのa接点・b接点の導通 ③コイル抵抗（正常は約650Ω）を同じ手順で測り、根拠が取れたものだけを不良と答えること。",
+  "timeLimit": { "standardMin": 40, "cutoffMin": 60 },
+  "board": { "boardId": "board-jipm-std", "socketRoles": { "S7": "CHK" } },
+  "inventory": [],
+  "parts": [
+    { "id": "p1", "kind": "relay-my4n", "truth": "normal" },
+    { "id": "p2", "kind": "relay-my4n", "truth": "normal" },
+    { "id": "p3", "kind": "relay-my4n", "truth": "b-weld", "group": 4 },
+    { "id": "p4", "kind": "relay-my4n", "truth": "normal" }
+  ],
+  "seed": 20260109
+}

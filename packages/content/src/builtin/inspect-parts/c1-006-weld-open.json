@@ -1,0 +1,19 @@
+{
+  "formatVersion": 1,
+  "id": "c1-006",
+  "mode": "inspect-parts",
+  "title": "リレーの点検③（a接点溶着とb接点断線の見分け）",
+  "grade": 2,
+  "difficulty": 3,
+  "tags": ["fault-part", "measure"],
+  "description": "トレイのリレー3個を点検しなさい。a接点の溶着も b接点の断線も、励磁したあとの導通だけを見ると「a接点が閉じている／b接点が開いている」という同じ姿に見える。見分けるには**励磁していない状態**で測ること。a接点溶着は励磁前から COM–NO が導通し、b接点断線は励磁前から COM–NC が導通しない。必ず励磁前と励磁後の両方で4組すべてを測ること。",
+  "timeLimit": { "standardMin": 30, "cutoffMin": 50 },
+  "board": { "boardId": "board-jipm-std", "socketRoles": { "S7": "CHK" } },
+  "inventory": [],
+  "parts": [
+    { "id": "p1", "kind": "relay-my4n", "truth": "a-weld", "group": 1 },
+    { "id": "p2", "kind": "relay-my4n", "truth": "b-open", "group": 3 },
+    { "id": "p3", "kind": "relay-my4n", "truth": "normal" }
+  ],
+  "seed": 20260106
+}
