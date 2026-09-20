@@ -1292,6 +1292,19 @@ pnpm --filter @ojt/desktop e2e direct-manipulation
 - [x] 7. **UX-27**: `MIN_FONT_PX` を **12**、`MIN_TARGET_PX` を **32** に上げ、上がった件数をそのまま新しい基準値に置く。`small-target` の基準値 126 は実測（0）まで下げる。
 - [x] 8. `pnpm --filter @ojt/desktop e2e` を**2回**走らせ、2回とも同じ結果になること（状態漏れが無いこと）を確かめる。
 
+**実施の記録（2026-09-20）:**
+
+- 既定プロジェクトは 12 spec / 66 テスト、`manual-shots` プロジェクトは 1 spec / 7 テスト
+  （`playwright test --list --project=…` で確認）。撮り直しは `pnpm --filter @ojt/desktop e2e:shots`。
+- Step 7 の新しい基準値（69画面・3サイズの実測。`%TEMP%\ui-audit/summary.json`）:
+  `blocking 0` ／ `page-overflow 0` ／ `clip 0` ／ `overlap 27 → 0` ／ `hud-overlap 0` ／
+  `duplicate 0` ／ `wrap 30 → 1` ／ `small-text 24 → 1,523` ／ `small-target 126 → 899` ／
+  `focus 0` ／ `canvas 0`。**`small-text` / `small-target` が増えたのはしきい値を
+  11px→12px・24px→32px に上げたため**であり、これは「直すべき件数」である（Task 24・26 が下げる）。
+  歩けなかった状態は1件（`modeC1-hazard`）。
+- `launchApp()` は起動ごとに使い捨ての `userData` を作る（QA-12）。`ui-quality.spec.ts` の
+  「起動時の復元カード」だけは、2回の起動へ同じフォルダを渡して前回の一時保存を作っている。
+
 **期待:**
 
 ```bash
