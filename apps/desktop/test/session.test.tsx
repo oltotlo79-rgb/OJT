@@ -679,7 +679,7 @@ describe('効果音（§15）', () => {
     act(() => {
       workerMock.handlers?.onSnapshot({
         ...EMPTY_SNAPSHOT,
-        relays: { CR1: { contactsOn: false } },
+        relays: { CR1: { coilOn: false, coilVolts: 0, contactsOn: false } },
       });
     });
     play.mockClear();
@@ -687,7 +687,7 @@ describe('効果音（§15）', () => {
     act(() => {
       workerMock.handlers?.onSnapshot({
         ...EMPTY_SNAPSHOT,
-        relays: { CR1: { contactsOn: false } },
+        relays: { CR1: { coilOn: false, coilVolts: 0, contactsOn: false } },
       });
     });
     expect(play).not.toHaveBeenCalled();
@@ -695,7 +695,7 @@ describe('効果音（§15）', () => {
     act(() => {
       workerMock.handlers?.onSnapshot({
         ...EMPTY_SNAPSHOT,
-        relays: { CR1: { contactsOn: true } },
+        relays: { CR1: { coilOn: true, coilVolts: 24, contactsOn: true } },
       });
     });
     expect(play).toHaveBeenCalledWith('relay');
