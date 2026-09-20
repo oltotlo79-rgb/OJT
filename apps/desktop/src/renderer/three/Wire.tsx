@@ -74,6 +74,10 @@ export function wireBodyColor(
  * `routeWire()` が角をフィレット済みの折れ線で返すので、ここでは曲線で丸め直さず
  * **点をそのまま通す**（`curveType: 'catmullrom'` の `tension: 0` ＝ 直線補間）。
  * 勝手に丸めると直角配線の「整列して見える」利点が失われるため。
+ *
+ * 点が2つ未満の経路（空の経路）では**形を作る前に**空の管を返す。`CatmullRomCurve3` は
+ * 点が足りないと接線を求めるところで例外を投げ、描画中の例外は3Dシーンごと落とすためである
+ * （`safeRoutes()` が壊れた経路を落とす方針と同じ。レビュー指摘 3D-21）。
  */
 export function buildTubeGeometry(
   route: WireRoute,
@@ -84,6 +88,17 @@ export function buildTubeGeometry(
     const [x, y, z] = toScene(p);
     return new Vector3(x, y, z);
   });
+  const first = points[0];
+  if (points.length < 2) {
+    // 半径0・同じ点2つ＝頂点はすべて同じ場所に潰れるので、何も見えない管になる
+    const empty = new CatmullRomCurve3(
+      [first ?? new Vector3(), first ?? new Vector3()],
+      false,
+      'catmullrom',
+      0,
+    );
+    return new TubeGeometry(empty, 1, 0, radialSegments, false);
+  }
   const curve = new CatmullRomCurve3(points, false, 'catmullrom', 0);
   const segments = Math.max(8, points.length * SEGMENTS_PER_POINT);
   return new TubeGeometry(curve, segments, radiusMm, radialSegments, false);

@@ -2,7 +2,12 @@ import { createSession, JIPM_BOARD, routeSession, TASK2_SOCKET_ROLES } from '@oj
 import type { WireRoute } from '@ojt/board-model';
 import { cleanup, renderHook } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { routeSignature, useTubeGeometry, WIRE_RADIUS_MM } from '../src/renderer/three/Wire.js';
+import {
+  buildTubeGeometry,
+  routeSignature,
+  useTubeGeometry,
+  WIRE_RADIUS_MM,
+} from '../src/renderer/three/Wire.js';
 
 /**
  * 電線のチューブ形状の作り直しと解放（§15）。
@@ -43,6 +48,18 @@ describe('routeSignature', () => {
     if (first === undefined) throw new Error('折れ点がありません');
     moved.points = [{ ...first, x: first.x + 1 }, ...moved.points.slice(1)];
     expect(routeSignature(moved)).not.toBe(routeSignature(routeAt(0)));
+  });
+});
+
+describe('buildTubeGeometry', () => {
+  it('点の足りない経路では例外を投げず、何も見えない管を返す（3Dを落とさない）', () => {
+    for (const points of [[], [{ x: 10, y: 20, z: 0 }]]) {
+      const empty = buildTubeGeometry({ ...routeAt(0), points });
+      expect(empty.attributes['position']?.count ?? 0).toBeGreaterThan(0);
+      empty.computeBoundingSphere();
+      expect(empty.boundingSphere?.radius ?? -1).toBe(0);
+      empty.dispose();
+    }
   });
 });
 

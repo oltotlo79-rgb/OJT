@@ -751,6 +751,7 @@ function BoardContents({
             probes={{ black: probeBlack, red: probeRed }}
             highlightTerminals={highlightTerminals}
             roles={session.socketRoles}
+            board={board}
           />
         )}
       </group>

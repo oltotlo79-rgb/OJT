@@ -1,8 +1,12 @@
-import { DEFAULT_SOCKET_ROLES } from '@ojt/board-model';
+import { DEFAULT_SOCKET_ROLES, JIPM_BOARD, PLC_UNIT_FX5U, withPlcUnit } from '@ojt/board-model';
 import type { SocketRoles } from '@ojt/board-model';
 import { toTerminalId } from '@ojt/circuit-sim';
 import { describe, expect, it } from 'vitest';
-import { ProbeMarkers, probePositions } from '../src/renderer/three/ProbeMarkers.js';
+import {
+  highlightPositions,
+  ProbeMarkers,
+  probePositions,
+} from '../src/renderer/three/ProbeMarkers.js';
 import { visualSignature } from '../src/renderer/three/BoardScene.js';
 import { useStore } from '../src/renderer/app/store.js';
 import { NO_HIGHLIGHT } from '../src/renderer/app/store-types.js';
@@ -18,12 +22,15 @@ import { NO_HIGHLIGHT } from '../src/renderer/app/store-types.js';
  * 出荷している既定表（`DEFAULT_SOCKET_ROLES`）をそのまま使う。
  */
 const ROLES: SocketRoles = DEFAULT_SOCKET_ROLES;
+/** モードDの盤（机上のPLC本体・壁コンセントの端子を持つ派生盤）。§10.1 */
+const PLC_BOARD = withPlcUnit(JIPM_BOARD, PLC_UNIT_FX5U);
 
 describe('probePositions（§6.4 役割ID → 物理端子）', () => {
   it('役割IDのプローブを物理端子の座標へ写す', () => {
     const positions = probePositions(
       { black: toTerminalId('CHK.13'), red: toTerminalId('CHK.14') },
       ROLES,
+      JIPM_BOARD,
     );
     expect(positions).toHaveLength(2);
     expect(positions[0]?.side).toBe('black');
@@ -35,21 +42,31 @@ describe('probePositions（§6.4 役割ID → 物理端子）', () => {
   });
 
   it('未配置のプローブは出さない', () => {
-    expect(probePositions({ black: undefined, red: undefined }, ROLES)).toEqual([]);
+    expect(probePositions({ black: undefined, red: undefined }, ROLES, JIPM_BOARD)).toEqual([]);
   });
 
   it('盤に無い端子は黙って落とす（壊れた作業ファイルでも3Dが落ちない。§13 #8）', () => {
-    expect(probePositions({ black: toTerminalId('NOPE.99'), red: undefined }, ROLES)).toEqual([]);
+    expect(
+      probePositions({ black: toTerminalId('NOPE.99'), red: undefined }, ROLES, JIPM_BOARD),
+    ).toEqual([]);
   });
 
   it('端子ブロック（TB_PB.1a、役割を介さない物理端子）でも座標を出す', () => {
-    const positions = probePositions({ black: toTerminalId('TB_PB.1a'), red: undefined }, ROLES);
+    const positions = probePositions(
+      { black: toTerminalId('TB_PB.1a'), red: undefined },
+      ROLES,
+      JIPM_BOARD,
+    );
     expect(positions).toHaveLength(1);
     expect(positions[0]?.side).toBe('black');
   });
 
   it('本体端子（CHK.13、役割IDから物理端子へ写す）でも座標を出す', () => {
-    const positions = probePositions({ black: undefined, red: toTerminalId('CHK.13') }, ROLES);
+    const positions = probePositions(
+      { black: undefined, red: toTerminalId('CHK.13') },
+      ROLES,
+      JIPM_BOARD,
+    );
     expect(positions).toHaveLength(1);
     expect(positions[0]?.side).toBe('red');
   });
@@ -61,6 +78,7 @@ describe('ProbeMarkers（§9.3: レイキャストを受けない）', () => {
       probes: { black: toTerminalId('TB_PB.1a'), red: toTerminalId('CHK.13') },
       highlightTerminals: [],
       roles: ROLES,
+      board: JIPM_BOARD,
     }) as unknown as { props: { children: unknown[] } };
     const children = element.props.children.flat() as { props?: { name?: string } }[];
     const probeMeshes = children.filter(
@@ -73,6 +91,39 @@ describe('ProbeMarkers（§9.3: レイキャストを受けない）', () => {
       // no-op: 何も積まず、何も返さない
       expect((raycast as () => unknown)()).toBeUndefined();
     }
+  });
+});
+
+describe('モードDの盤の端子（§10.1 / 指摘 3D-07）', () => {
+  it('机上のPLC・壁コンセントの端子でもハイライトの座標を返す', () => {
+    const terminals = ['PLC.X0', 'OUTLET.L'];
+    // 既定の盤には机上の端子が無いので、盤を決め打ちすると黙って消える
+    expect(highlightPositions(terminals, ROLES, JIPM_BOARD)).toEqual([]);
+    const positions = highlightPositions(terminals, ROLES, PLC_BOARD);
+    expect(positions).toHaveLength(2);
+    // 机上（盤の右）の端子なので、盤の中の端子より右にある
+    const board = highlightPositions(['TB_PB.1a'], ROLES, PLC_BOARD)[0];
+    for (const pos of positions) expect(pos[0]).toBeGreaterThan(board?.[0] ?? 0);
+  });
+
+  it('プローブも描いている盤から座標を引く', () => {
+    expect(
+      probePositions({ black: toTerminalId('PLC.X0'), red: undefined }, ROLES, JIPM_BOARD),
+    ).toEqual([]);
+    expect(
+      probePositions({ black: toTerminalId('PLC.X0'), red: undefined }, ROLES, PLC_BOARD),
+    ).toHaveLength(1);
+  });
+
+  it('派生盤でもハイライトのメッシュが出る', () => {
+    const element = ProbeMarkers({
+      probes: { black: undefined, red: undefined },
+      highlightTerminals: ['PLC.X0', 'OUTLET.L'],
+      roles: ROLES,
+      board: PLC_BOARD,
+    }) as unknown as { props: { children: unknown[] } };
+    const children = element.props.children.flat() as { props?: { name?: string } }[];
+    expect(children.filter((child) => child?.props?.name === 'highlight-terminal')).toHaveLength(2);
   });
 });
 

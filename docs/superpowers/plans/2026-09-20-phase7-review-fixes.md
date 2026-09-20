@@ -422,12 +422,12 @@ packages/content/test/validate-cli.test.ts（新規）
 
 **Steps:**
 
-- [ ] 1. **BM-04 を先に**: `deskRouteIssues()` に検査を足し、**先にテストが落ちる状態**にする。検査は4つ。①同じ帯の2本が `MIN_CABLE_GAP_MM` 未満で並走していない ②同じレーンに2本以上載っていない ③幹線の x が `BOARD_WIDTH_MM` 未満に入っていない ④行ダクトの y が 0 以上でない。テストケースは「`P.1 → PLC.SS` と `N.1 → PLC.COM0` の2本」「同じ帯から `CHANNEL_LANE_COUNT + 1` 本」「机上配線19本」。
-- [ ] 2. **BM-01**: 引き出しのずらしを「その帯に出す机上電線の**実数**で中央そろえ」に変える。2本のときは ±(間隔/2)。
-- [ ] 3. **BM-02**: レーンが一巡したら走行高さを一段上げる `layer` を導入する（`lane = i % LANE_COUNT`, `layer = Math.floor(i / LANE_COUNT)`、高さ `Z0 + layer * LAYER_STEP_MM`）。
-- [ ] 4. **BM-03**: 幹線レーンにも上限と高さ段上げを入れる。
-- [ ] 5. **3D-07**: `ProbeMarkers` に `board: BoardDefinition` を prop で受け取らせ、`BoardScene.tsx:750` で渡す。モードDの `PLC.*` / `OUTLET.*` のハイライトが `catch` で黙って消えるのを止める。
-- [ ] 6. **3D-21**: `Wire.tsx` の `buildTubeGeometry()` の**冒頭**に `route.points.length < 2` のガードを移す（いまはジオメトリ生成の後にあるので空経路で3Dごと落ちる）。
+- [x] 1. **BM-04 を先に**: `deskRouteIssues()` に検査を足し、**先にテストが落ちる状態**にする。検査は4つ。①同じ帯の2本が `MIN_CABLE_GAP_MM` 未満で並走していない ②同じレーンに2本以上載っていない ③幹線の x が `BOARD_WIDTH_MM` 未満に入っていない ④行ダクトの y が 0 以上でない。テストケースは「`P.1 → PLC.SS` と `N.1 → PLC.COM0` の2本」「同じ帯から `CHANNEL_LANE_COUNT + 1` 本」「机上配線19本」。
+- [x] 2. **BM-01**: 引き出しのずらしを「その帯に出す机上電線の**実数**で中央そろえ」に変える。2本のときは ±(間隔/2)。
+- [x] 3. **BM-02**: レーンが一巡したら走行高さを一段上げる `layer` を導入する（`lane = i % LANE_COUNT`, `layer = Math.floor(i / LANE_COUNT)`、高さ `Z0 + layer * LAYER_STEP_MM`）。
+- [x] 4. **BM-03**: 幹線レーンにも上限と高さ段上げを入れる。
+- [x] 5. **3D-07**: `ProbeMarkers` に `board: BoardDefinition` を prop で受け取らせ、`BoardScene.tsx:750` で渡す。モードDの `PLC.*` / `OUTLET.*` のハイライトが `catch` で黙って消えるのを止める。
+- [x] 6. **3D-21**: `Wire.tsx` の `buildTubeGeometry()` の**冒頭**に `route.points.length < 2` のガードを移す（いまはジオメトリ生成の後にあるので空経路で3Dごと落ちる）。
 
 **期待:**
 

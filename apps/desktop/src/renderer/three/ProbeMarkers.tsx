@@ -1,5 +1,5 @@
-import { boardTerminalPos, JIPM_BOARD, toPhysicalTerminal } from '@ojt/board-model';
-import type { SocketRoles } from '@ojt/board-model';
+import { boardTerminalPos, toPhysicalTerminal } from '@ojt/board-model';
+import type { BoardDefinition, SocketRoles } from '@ojt/board-model';
 import type { TerminalId } from '@ojt/circuit-sim';
 import type { JSX } from 'react';
 import { HIGHLIGHT_COLOR, PROBE_COLORS } from '../session/colors.js';
@@ -15,6 +15,10 @@ import { sharedMaterial } from './materials.js';
  * ストアのプローブは**役割ID**（`CHK.13`）で持つ。3D盤は**物理端子**（`S7.13`）で描かれて
  * いるので、`toPhysicalTerminal()` で直してから座標を引く（§6.4）。壊れた作業ファイルなどで
  * 盤に無い端子が入っていても、例外を投げずに黙って落とす（§13 #8）。
+ *
+ * 座標は**描いている盤**（`board`）から引く。既定の盤に決め打ちすると、モードDの盤
+ * （`withPlcUnit()` で机上のPLC・壁コンセントの端子が足してある）で `PLC.X0` や `OUTLET.L`
+ * のハイライトが「盤に無い端子」として黙って消える（レビュー指摘 3D-07）。
  */
 
 /** プローブが浮く高さ[mm]（端子の当たり判定球より手前に出す）。 */
@@ -33,12 +37,13 @@ export interface ProbePlacement {
 
 /** 端子（役割ID）の3D座標を引く。盤に無ければ undefined。 */
 function scenePosOf(
+  board: BoardDefinition,
   roles: SocketRoles,
   terminal: TerminalId,
 ): [number, number, number] | undefined {
   try {
     const physical = toPhysicalTerminal(roles, terminal);
-    return toScene(boardTerminalPos(JIPM_BOARD, physical));
+    return toScene(boardTerminalPos(board, physical));
   } catch {
     // 盤に無い端子・形の壊れたIDは描かない（3Dシーンを落とさない）
     return undefined;
@@ -49,12 +54,13 @@ function scenePosOf(
 export function probePositions(
   probes: { black: TerminalId | undefined; red: TerminalId | undefined },
   roles: SocketRoles,
+  board: BoardDefinition,
 ): ProbePlacement[] {
   const out: ProbePlacement[] = [];
   for (const side of ['black', 'red'] as const) {
     const terminal = probes[side];
     if (terminal === undefined) continue;
-    const pos = scenePosOf(roles, terminal);
+    const pos = scenePosOf(board, roles, terminal);
     if (pos === undefined) continue;
     out.push({ side, pos });
   }
@@ -65,10 +71,11 @@ export function probePositions(
 export function highlightPositions(
   terminals: readonly string[],
   roles: SocketRoles,
+  board: BoardDefinition,
 ): Array<[number, number, number]> {
   const out: Array<[number, number, number]> = [];
   for (const terminal of terminals) {
-    const pos = scenePosOf(roles, terminal as TerminalId);
+    const pos = scenePosOf(board, roles, terminal as TerminalId);
     if (pos !== undefined) out.push(pos);
   }
   return out;
@@ -84,13 +91,16 @@ export function ProbeMarkers({
   probes,
   highlightTerminals,
   roles,
+  board,
 }: {
   probes: { black: TerminalId | undefined; red: TerminalId | undefined };
   highlightTerminals: readonly string[];
   roles: SocketRoles;
+  /** いま描いている盤（モードDでは机上のPLC・壁コンセントの端子を持つ派生盤）。 */
+  board: BoardDefinition;
 }): JSX.Element {
-  const placements = probePositions(probes, roles);
-  const highlights = highlightPositions(highlightTerminals, roles);
+  const placements = probePositions(probes, roles, board);
+  const highlights = highlightPositions(highlightTerminals, roles, board);
   return (
     <group name="probe-markers">
       {placements.map((placement) => (

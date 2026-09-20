@@ -3,18 +3,26 @@ import { describe, expect, it } from 'vitest';
 import {
   addWire,
   BOARD_RUN_Y_Z_MM,
+  BOARD_WIDTH_MM,
+  boardExitRunZ,
+  CHANNEL_LANE_COUNT,
   createSession,
   DESK_CORNER_RADIUS_MM,
   DESK_LANE_PITCH_MM,
   DESK_LIP_X_MM,
   DESK_MIN_CLEARANCE_MM,
   DESK_ROW_GAP_MM,
+  DESK_ROW_LANE_MAX,
   DESK_RUN_X_Z_MM,
   DESK_RUN_Y_Z_MM,
+  DESK_Z_LADDER_MM,
   deskDucts,
   deskObstacles,
   deskRouteIssues,
   deskRoutes,
+  deskRowLaneCount,
+  deskRunZ,
+  deskTrunkLaneCount,
   deskWires,
   JIPM_BOARD,
   PLC_UNIT_CP1E,
@@ -27,6 +35,7 @@ import {
   withPlcUnit,
   type BoardDefinition,
   type BoardSession,
+  type DeskLaneSlot,
   type DeskRoute,
   type PlcUnitDefinition,
   type Vec3,
@@ -220,8 +229,12 @@ describe('deskRoutes（§10.1 / §11.3）', () => {
   });
 
   it('separates the runs by direction so crossings never touch', () => {
-    // x方向とy方向で高さを分けてある（1.8mm ＞ 電線の直径1.6mm）
+    // x方向とy方向で高さを分けてある（どの段の差も 1.8mm ＞ 電線の直径1.6mm）
     expect(Math.abs(DESK_RUN_Y_Z_MM - DESK_RUN_X_Z_MM)).toBeCloseTo(1.8, 6);
+    for (let i = 1; i < DESK_Z_LADDER_MM.length; i += 1) {
+      expect((DESK_Z_LADDER_MM[i] ?? 0) - (DESK_Z_LADDER_MM[i - 1] ?? 0)).toBeCloseTo(1.8, 6);
+    }
+    const xSteps = DESK_Z_LADDER_MM.filter((_, i) => i % 2 === 0);
     const { board, session } = referenceSession(PLC_UNIT_FX5U);
     for (const route of deskRoutes(board, session)) {
       for (let i = 1; i < route.corners.length; i += 1) {
@@ -229,7 +242,8 @@ describe('deskRoutes（§10.1 / §11.3）', () => {
         const b = route.corners[i];
         if (a === undefined || b === undefined) continue;
         if (Math.abs(a.x - b.x) > 1e-6 && a.x > DESK_LIP_X_MM && b.x > DESK_LIP_X_MM) {
-          expect(a.z).toBeCloseTo(DESK_RUN_X_Z_MM, 6);
+          // x方向に走る区間は机上のはしごの偶数段にしか載らない（段が上がっても向きは守る）
+          expect(xSteps).toContain(a.z);
         }
       }
     }
@@ -339,6 +353,111 @@ describe('deskRoutes（§10.1 / §11.3）', () => {
     expect(deskRoutes(board, session).every((r) => !r.laneOverflow)).toBe(true);
   });
 
+  it('keeps two cables that leave the same terminal column a full clearance apart (BM-01)', () => {
+    const board = withPlcUnit(JIPM_BOARD, PLC_UNIT_FX5U);
+    const session = createSession(board, { roles: TASK1_SOCKET_ROLES });
+    // PLCのコモンを取るいちばん自然な2本。`P.1` と `N.1` は同じ列（x=20）に並んでいる
+    expect(addWire(session, board, t('P.1'), t('PLC.SS')).ok).toBe(true);
+    expect(addWire(session, board, t('N.1'), t('PLC.COM0')).ok).toBe(true);
+    const routes = deskRoutes(board, session);
+    expect(routes).toHaveLength(2);
+    expect(deskRouteIssues(routes, board, PLC_UNIT_FX5U)).toEqual([]);
+    // 引き出しの縦走りは、レーン番号のずらし（0.6mm）ではなく実数で中央そろえする
+    const leads = routes.map((route) => route.corners[2]?.x ?? Number.NaN).sort((a, b) => a - b);
+    expect(leads).toEqual([20 - DESK_MIN_CLEARANCE_MM / 2, 20 + DESK_MIN_CLEARANCE_MM / 2]);
+  });
+
+  it('lifts the ninth cable of one wiring channel onto the second layer (BM-02)', () => {
+    const board = withPlcUnit(JIPM_BOARD, PLC_UNIT_FX5U);
+    const session = createSession(board, { roles: TASK1_SOCKET_ROLES });
+    // `ch-mid` から机上へ出る端子を `CHANNEL_LANE_COUNT + 1` 本ぶん張る
+    const sources = [
+      'TB_PB.1c',
+      'TB_PB.1a',
+      'TB_PB.2c',
+      'TB_PB.2a',
+      'TB_PB.3c',
+      'TB_PB.3a',
+      'TB_PB.4c',
+      'TB_PB.4a',
+      'TB_PL.1+',
+    ];
+    expect(sources).toHaveLength(CHANNEL_LANE_COUNT + 1);
+    sources.forEach((source, i) => {
+      const input = PLC_UNIT_FX5U.spec.inputs[i]?.name ?? '';
+      expect(addWire(session, board, t(source), t(`PLC.${input}`)).ok).toBe(true);
+    });
+    const routes = deskRoutes(board, session);
+    expect(routes).toHaveLength(CHANNEL_LANE_COUNT + 1);
+    expect(deskRouteIssues(routes, board, PLC_UNIT_FX5U)).toEqual([]);
+    // 帯を走る行（縁を越える点の y と高さ）は9本とも別物で、9本目だけが2段目に載る
+    const runs = routes.map((route) => {
+      const p = route.corners.find((c) => Math.abs(c.x - DESK_LIP_X_MM) < 1e-6);
+      return { y: p?.y ?? Number.NaN, z: p?.z ?? Number.NaN };
+    });
+    expect(new Set(runs.map((r) => `${String(r.y)}/${String(r.z)}`)).size).toBe(
+      CHANNEL_LANE_COUNT + 1,
+    );
+    expect(new Set(runs.map((r) => r.y)).size).toBe(CHANNEL_LANE_COUNT);
+    expect(runs.filter((r) => Math.abs(r.z - boardExitRunZ('x', 1)) < 1e-6)).toHaveLength(1);
+    // 2段目に逃がせたので「他の電線と同じ場所に載った」警告は出ない
+    expect(routes.every((route) => !route.laneOverflow)).toBe(true);
+  });
+
+  it('keeps the trunk off the board and the rows on the desk with 19 cables (BM-03)', () => {
+    const board = withPlcUnit(JIPM_BOARD, PLC_UNIT_FX5U);
+    const session = createSession(board, { roles: TASK1_SOCKET_ROLES });
+    const wires: Array<[string, string]> = [
+      ['TB_PB.1a', 'PLC.X0'],
+      ['TB_PB.2a', 'PLC.X1'],
+      ['TB_PB.3a', 'PLC.X2'],
+      ['TB_PB.4a', 'PLC.X3'],
+      ['OUTLET.L', 'PLC.L'],
+      ['OUTLET.N', 'PLC.N'],
+      ['P.1', 'PLC.SS'],
+      ['PLC.SS', 'PLC.COM0'],
+      ['PLC.Y0', 'TB_PL.1+'],
+      ['PLC.Y1', 'TB_PL.1-'],
+      ['PLC.Y2', 'TB_PL.2+'],
+      ['PLC.Y3', 'TB_PL.2-'],
+      ['PLC.Y4', 'TB_PL.3+'],
+      ['PLC.Y5', 'TB_PL.3-'],
+      ['PLC.Y6', 'TB_PL.4+'],
+      ['PLC.Y7', 'TB_PL.4-'],
+      ['PLC.COM0', 'PLC.COM1'],
+      ['PLC.COM1', 'PLC.COM2'],
+      ['PLC.COM2', 'PLC.COM3'],
+    ];
+    expect(wires).toHaveLength(19);
+    for (const [from, to] of wires) {
+      expect(addWire(session, board, t(from), t(to)).ok).toBe(true);
+    }
+    const routes = deskRoutes(board, session);
+    expect(routes).toHaveLength(19);
+    expect(deskRouteIssues(routes, board, PLC_UNIT_FX5U)).toEqual([]);
+    const trunks = routes.flatMap((route) => route.slots.filter((s) => s.ductId === 'desk-trunk'));
+    const rows = routes.flatMap((route) => route.slots.filter((s) => s.ductId !== 'desk-trunk'));
+    expect(trunks).toHaveLength(19);
+    // 幹線は盤の外にとどまり、行ダクトは机の奥（y < 0）へはみ出さない
+    expect(trunks.every((slot) => slot.atMm >= BOARD_WIDTH_MM)).toBe(true);
+    expect(rows.every((slot) => slot.atMm >= 0)).toBe(true);
+    // 幹線のレーンが一巡したら段を上げるので、19本が別々の場所に載る
+    expect(new Set(trunks.map((s) => `${String(s.lane)}/${String(s.layer)}`)).size).toBe(19);
+    expect(trunks.some((slot) => slot.layer > 0)).toBe(true);
+  });
+
+  it('clamps a run height outside the ladder to the first step of that direction', () => {
+    expect(deskRunZ('x', 0)).toBe(DESK_RUN_X_Z_MM);
+    expect(deskRunZ('y', 1)).toBe(DESK_Z_LADDER_MM[3]);
+    expect(deskRunZ('x', 9)).toBe(DESK_RUN_X_Z_MM);
+    expect(boardExitRunZ('y', 9)).toBe(BOARD_RUN_Y_Z_MM);
+    // レーンの本数は盤の上・机の奥へはみ出さない範囲で決まる
+    expect(deskTrunkLaneCount(PLC_UNIT_FX5U)).toBe(18);
+    expect(deskRowLaneCount(13, -1)).toBe(6);
+    expect(deskRowLaneCount(0, -1)).toBe(1);
+    expect(deskRowLaneCount(206, 1)).toBe(DESK_ROW_LANE_MAX);
+  });
+
   it('spreads several cables in one terminal column and leaves the middle free', () => {
     // 1本だけの列は端子の真上をまっすぐ降ろす
     expect(screwStaggerMm(0, 1)).toBe(0);
@@ -407,6 +526,7 @@ describe('deskDucts / deskObstacles', () => {
       ],
       channelIds: [],
       ductIds: [],
+      slots: [],
       lanes: [],
       lane: 0,
       laneOverflow: false,
@@ -449,6 +569,55 @@ describe('deskDucts / deskObstacles', () => {
     expect(right?.zLoMm).toBe(0);
   });
 
+  it('reports a lane that two cables share, a trunk on the board and a row off the desk', () => {
+    const board = withPlcUnit(JIPM_BOARD, PLC_UNIT_FX5U);
+    const withSlots = (id: string, slots: DeskLaneSlot[]): DeskRoute => ({
+      wireId: id,
+      kind: 'channel',
+      color: '青',
+      corners: [],
+      points: [],
+      channelIds: [],
+      ductIds: [],
+      slots,
+      lanes: [],
+      lane: 0,
+      laneOverflow: false,
+      lengthMm: 0,
+    });
+    const good: DeskLaneSlot = { ductId: 'desk-trunk', lane: 0, layer: 0, atMm: 376 };
+    // 同じダクトの同じレーン・同じ段に2本
+    expect(
+      deskRouteIssues([withSlots('a', [good]), withSlots('b', [good])], board, PLC_UNIT_FX5U).join(
+        ' ',
+      ),
+    ).toContain('同じレーンに2本');
+    // 段が違えば重ならない
+    expect(
+      deskRouteIssues(
+        [withSlots('a', [good]), withSlots('b', [{ ...good, layer: 1 }])],
+        board,
+        PLC_UNIT_FX5U,
+      ),
+    ).toEqual([]);
+    // 幹線が盤の上（x < 盤幅）に載った
+    expect(
+      deskRouteIssues(
+        [withSlots('a', [{ ...good, atMm: BOARD_WIDTH_MM - 1 }])],
+        board,
+        PLC_UNIT_FX5U,
+      ).join(' '),
+    ).toContain('幹線が盤の上');
+    // 行ダクトが机の奥（y < 0）へはみ出した
+    expect(
+      deskRouteIssues(
+        [withSlots('a', [{ ductId: 'desk-row-top', lane: 9, layer: 0, atMm: -17.4 }])],
+        board,
+        PLC_UNIT_FX5U,
+      ).join(' '),
+    ).toContain('机の奥へはみ出して');
+  });
+
   it('reports two cables that run side by side too closely', () => {
     const board = withPlcUnit(JIPM_BOARD, PLC_UNIT_FX5U);
     const line = (id: string, y: number): DeskRoute => ({
@@ -462,6 +631,7 @@ describe('deskDucts / deskObstacles', () => {
       points: [],
       channelIds: [],
       ductIds: [],
+      slots: [],
       lanes: [],
       lane: 0,
       laneOverflow: false,

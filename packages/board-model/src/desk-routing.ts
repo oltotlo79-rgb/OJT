@@ -26,7 +26,6 @@ import {
   deskWires,
   entryChannelFor,
   filletCorners,
-  LEAD_OUT_STAGGER_MM,
   WIRE_DIAMETER_MM,
   type WireRoute,
 } from './routing.js';
@@ -48,13 +47,18 @@ import type { BoardSession } from './session.js';
  *    - PLC本体の端子: 端子 → 端子の列の**開いたカバーが空けた側**にある行ダクトまで垂直に立てる。
  *    - 壁コンセント: 端子 → コンセント板の下の行ダクト → 幹線。
  * 2. **幹線**（{@link DESK_TRUNK_GAP_MM} だけPLCの左に置いた縦のダクト）。電線1本に1レーンずつ
- *    割り当てるので、幹線の中で2本が重なることは無い。
+ *    割り当て、レーンを使い切ったら段を上げるので、幹線の中で2本が重なることは無い。
  * 3. もう一方の**引き込み**（1と同じ形を逆向きに）。
  *
  * 並走する電線は {@link DESK_LANE_PITCH_MM}（電線の直径＋1mm）ずつ横にずらして並べる。
  * 走る向きで高さを分けてあるので（x方向は {@link DESK_RUN_X_Z_MM}、y方向は
  * {@link DESK_RUN_Y_Z_MM}）、直交する区間どうしは必ず1.8mm離れ、直径1.6mmの管でも食い込まない。
  * 角は半径 {@link DESK_CORNER_RADIUS_MM} で丸める。
+ *
+ * どのダクトも**レーンは有限**である（幹線は盤に載らない範囲、行ダクトは机の奥（y<0）へ
+ * はみ出さない範囲、盤の配線帯は帯の幅）。レーンを使い切ったら走行高さを一段上げて
+ * （{@link deskRunZ} / {@link boardExitRunZ} の「レイヤ」）2段目に載せる。盤の中の経路器
+ * （`routing.ts` の `pickLane()`）と同じ考え方で、2本が同じ線上に重なることを防ぐ。§6.6
  *
  * 純関数・決定論（乱数も時刻も使わない）。並び順は「行ダクト → PLC端子のx → 端子の並び順 →
  * 電線ID」で決まるので、電線を1本足しても先に引いてある電線の絵は変わらない。
@@ -66,20 +70,62 @@ export const DESK_LANE_PITCH_MM = WIRE_DIAMETER_MM + 1;
 export const DESK_MIN_CLEARANCE_MM = 2;
 /** 机上の曲がり角のフィレット半径[mm]。 */
 export const DESK_CORNER_RADIUS_MM = 8;
-/** 机上でx方向に走る区間の高さ[mm]（盤の高さのはしご 2.4〜7.8 の上）。 */
-export const DESK_RUN_X_Z_MM = 9.6;
-/** 机上でy方向に走る区間の高さ[mm]（x方向と1.8mm離す）。 */
-export const DESK_RUN_Y_Z_MM = 11.4;
-/** 盤の上を走る区間の高さ[mm]（x方向）。盤の電線の第2レイヤと同じ段。 */
-export const BOARD_RUN_X_Z_MM = runZ('x', 1);
-/** 盤の上を走る区間の高さ[mm]（y方向）。 */
-export const BOARD_RUN_Y_Z_MM = runZ('y', 1);
+/**
+ * 机上を走る区間の高さの段[mm]（低いほうから）。盤のはしご（`WIRE_Z_LADDER_MM`、2.4〜7.8）の
+ * **上**に積んであり、x方向に走る区間は段0・2、y方向に走る区間は段1・3を使う。
+ * こうすると直交する区間どうしは必ず1.8mm以上離れるので、直径1.6mmの管でも食い込まない。
+ */
+export const DESK_Z_LADDER_MM = [9.6, 11.4, 13.2, 15.0] as const;
+/** 1本の机上ダクトが持つ高さのレイヤ数（レイヤ0＝はしごの下段、レイヤ1＝その2段上）。 */
+export const DESK_LAYER_COUNT = 2;
+/**
+ * 走る向きとレイヤから机上の走行高さ[mm]を求める（`board-jipm.ts` の `runZ()` の机上版）。
+ * はしごの段を**直に引く**ので、返る値は必ず {@link DESK_Z_LADDER_MM} の値そのものになる
+ * （足し算だと 9.6 + 3.6 が 13.200000000000001 になり、段の値からずれる）。
+ * レイヤがはしごの外なら、その向きのレイヤ0の高さに丸める。
+ */
+export function deskRunZ(axis: 'x' | 'y', layer: number): number {
+  const base = axis === 'x' ? 0 : 1;
+  return DESK_Z_LADDER_MM[base + layer * 2] ?? DESK_Z_LADDER_MM[base];
+}
+/** 机上でx方向に走る区間の高さ[mm]（レイヤ0）。 */
+export const DESK_RUN_X_Z_MM = DESK_Z_LADDER_MM[0];
+/** 机上でy方向に走る区間の高さ[mm]（レイヤ0。x方向と1.8mm離す）。 */
+export const DESK_RUN_Y_Z_MM = DESK_Z_LADDER_MM[1];
+/**
+ * 盤の上を走る（＝端子から盤の縁まで出る）区間の高さの段[mm]。
+ * レイヤ0は盤の電線の第2レイヤ（`runZ(軸, 1)`）、レイヤ1は机上のレイヤ0と同じ段で、
+ * 盤の中の電線（レイヤ0・1）の上を通る。
+ */
+export const BOARD_EXIT_Z_LADDER_MM = [
+  runZ('x', 1),
+  runZ('y', 1),
+  DESK_RUN_X_Z_MM,
+  DESK_RUN_Y_Z_MM,
+] as const;
+/** 盤の上を走る区間が持つ高さのレイヤ数。 */
+export const BOARD_EXIT_LAYER_COUNT = 2;
+/** 走る向きとレイヤから盤の上の走行高さ[mm]を求める。 */
+export function boardExitRunZ(axis: 'x' | 'y', layer: number): number {
+  const base = axis === 'x' ? 0 : 1;
+  return BOARD_EXIT_Z_LADDER_MM[base + layer * 2] ?? BOARD_EXIT_Z_LADDER_MM[base];
+}
+/** 盤の上を走る区間の高さ[mm]（x方向。レイヤ0）。盤の電線の第2レイヤと同じ段。 */
+export const BOARD_RUN_X_Z_MM = BOARD_EXIT_Z_LADDER_MM[0];
+/** 盤の上を走る区間の高さ[mm]（y方向。レイヤ0）。 */
+export const BOARD_RUN_Y_Z_MM = BOARD_EXIT_Z_LADDER_MM[1];
 /** 盤の右の縁を乗り越える位置[mm]（ここで高さを机上の段へ上げる）。 */
 export const DESK_LIP_X_MM = BOARD_WIDTH_MM + 6;
 /** 幹線ダクトの先頭レーンを、PLC本体の左端からどれだけ左に置くか[mm]。 */
 export const DESK_TRUNK_GAP_MM = 14;
-/** 上の行ダクトを、PLC本体の上端からどれだけ上に置くか[mm]。 */
-export const DESK_ROW_GAP_MM = 12;
+/**
+ * 上の行ダクトを、PLC本体の上端からどれだけ上に置くか[mm]。
+ *
+ * この行ダクトのレーンは本体から**遠ざかる向き**（机の奥。y の小さいほう）へ増えるので、
+ * ダクトの線と机の奥端（y = 0）のあいだがレーンの置き場になる。既定の本体位置（y = 18mm）で
+ * {@link DESK_ROW_LANE_MAX} の半分以上のレーンが入るよう、本体のすぐ上に寄せてある。
+ */
+export const DESK_ROW_GAP_MM = 5;
 /** 下ヒンジのカバーの列へ向かう行ダクトを、カバーの上端からどれだけ上に置くか[mm]。 */
 export const DESK_MID_GAP_MM = 3;
 /** 壁コンセントの行ダクトを、コンセント端子からどれだけ下に置くか[mm]（板の外）。 */
@@ -106,8 +152,63 @@ export function screwStaggerMm(index: number, total: number): number {
 export const DESK_SCREW_APPROACH_MM = 4;
 /** 同じネジ端子に集まる区間どうしを間隔の検査から外す半径[mm]。 */
 export const DESK_SCREW_MERGE_MM = 5;
+/** 1本の行ダクトに並べるレーンの本数の上限（盤の配線帯と同じ本数にそろえる）。 */
+export const DESK_ROW_LANE_MAX = CHANNEL_LANE_COUNT;
 
 const EPS = 1e-6;
+
+/**
+ * 幹線に並べられるレーンの本数。
+ * レーンはPLC本体から左へ伸びていくので、**盤の上**（x < {@link BOARD_WIDTH_MM}）に載らない
+ * 本数で打ち切る（載せると机上のケーブルが盤の中の配線と重なって見える）。
+ */
+export function deskTrunkLaneCount(unit: PlcUnitDefinition): number {
+  const room = unit.pos.x - DESK_TRUNK_GAP_MM - BOARD_WIDTH_MM;
+  return Math.max(1, Math.floor(room / DESK_LANE_PITCH_MM) + 1);
+}
+
+/**
+ * 1本の行ダクトに並べられるレーンの本数。
+ * @param baseY ダクトの線の y[mm]（レーン0の位置）。
+ * @param direction レーンが増える向き（−1: 机の奥へ、+1: 机の手前へ）。
+ *
+ * 奥へ増えるダクトは机の奥端（y = 0）を越えない本数に収める。手前へ増えるダクト
+ * （コンセントの行）は盤の外へ出ないので上限だけを掛ける。
+ */
+export function deskRowLaneCount(baseY: number, direction: 1 | -1): number {
+  if (direction > 0) return DESK_ROW_LANE_MAX;
+  return Math.max(1, Math.min(DESK_ROW_LANE_MAX, Math.floor(baseY / DESK_LANE_PITCH_MM) + 1));
+}
+
+/**
+ * 引き出し・レーンの割当（レーンを使い切ったら走行高さを一段上げる）。§6.6
+ * `routing.ts` の `slotAt()` と同じ考え方で、レーン → レイヤの順に埋める。
+ */
+function slotAt(
+  index: number,
+  laneCount: number,
+  layerCount: number,
+): { lane: number; layer: number; overflow: boolean } {
+  const cycle = Math.floor(index / laneCount);
+  return {
+    lane: index % laneCount,
+    layer: cycle % layerCount,
+    overflow: cycle >= layerCount,
+  };
+}
+
+/**
+ * 端子から机上へ引き出すときの横のずらし量[mm]。§6.6 / BM-01
+ *
+ * 引き出しの縦走りは端子から配線帯の行まで（最大28mm）続くので、**同じ列から机上へ出る
+ * 電線の実数**で中央そろえする（1本なら0、2本なら ±{@link DESK_MIN_CLEARANCE_MM}/2）。
+ * レーン番号（0〜7）でずらすと、2本しか出ていなくても隣り合うレーンの差（0.6mm）しか
+ * 開かず、直径1.6mmの管が食い込んで2本が1本に見えてしまう。
+ */
+export function leadOutStaggerMm(index: number, total: number): number {
+  if (total <= 1) return 0;
+  return (index - (total - 1) / 2) * DESK_MIN_CLEARANCE_MM;
+}
 
 /**
  * 机上のダクト（見えないガイド）。盤の {@link WiringChannel} の机上版で、
@@ -127,6 +228,21 @@ export interface DeskDuct {
 }
 
 /**
+ * 机上のダクトの中で1本の電線が占めた場所（{@link deskRouteIssues} が検査する）。
+ * 幹線は `desk-trunk` の1つ、行ダクトは端ごとに1つ持つ。
+ */
+export interface DeskLaneSlot {
+  /** ダクトのID。 */
+  ductId: string;
+  /** ダクトの中の横位置（0起点。ダクトの線から離れる向きへ {@link DESK_LANE_PITCH_MM} ずつ）。 */
+  lane: number;
+  /** 走行高さの段（0起点。高さは {@link deskRunZ}）。 */
+  layer: number;
+  /** ダクトの走行軸と直交する実際の座標[mm]（幹線は x、行ダクトは y）。 */
+  atMm: number;
+}
+
+/**
  * 机上へ渡る電線1本の経路。
  * {@link WireRoute} をそのまま満たすので、3D側は盤の電線と**同じ描画ヘルパ**に渡せる。
  */
@@ -135,6 +251,8 @@ export interface DeskRoute extends WireRoute {
   color: WireColor;
   /** 通った机上ダクトのID（通過順）。 */
   ductIds: string[];
+  /** 机上のダクトの中で占めた場所（通過順。幹線を含む）。 */
+  slots: DeskLaneSlot[];
 }
 
 /** 経路が避けるべき箱（PLCの筐体・開いた端子カバー・盤・コンセント板）。 */
@@ -313,6 +431,42 @@ interface Approach {
   /** 通ったダクト・配線帯のID。 */
   ductIds: string[];
   channelIds: string[];
+  /** この端が行ダクトで占めた場所（盤側の端は持たない）。 */
+  slots: DeskLaneSlot[];
+}
+
+/** 幹線のレーン割当（電線1本につき1つ）。 */
+interface TrunkSlot {
+  lane: number;
+  layer: number;
+  /** レーンの x[mm]。 */
+  xMm: number;
+  /** 幹線を走る高さ[mm]。 */
+  zMm: number;
+  overflow: boolean;
+}
+
+/** 行ダクトのレーン割当（端1つにつき1つ）。 */
+interface RowSlot {
+  ductId: string;
+  lane: number;
+  layer: number;
+  /** レーンの y[mm]。 */
+  yMm: number;
+  /** 行ダクトを走る高さ[mm]。 */
+  zMm: number;
+  /** 同じネジ端子に載る電線どうしのずらし量[mm]。 */
+  screwMm: number;
+  overflow: boolean;
+}
+
+/** 盤の配線帯のレーン割当（盤側の端を持つ電線だけ）。 */
+interface ChannelSlot {
+  lane: number;
+  layer: number;
+  /** 端子から引き出すときの横のずらし量[mm]。 */
+  leadMm: number;
+  overflow: boolean;
 }
 
 /** 経路を組み立てるのに要る、電線1本ぶんの割り当て。 */
@@ -324,125 +478,121 @@ interface Assignment {
   fromKind: EndKind;
   toKind: EndKind;
   /** 幹線のレーン（0起点。0がいちばんPLC寄り）。 */
-  lane: number;
-  /** 盤の配線帯のレーン（帯ごとに数えて、8本で一周する）。 */
-  channelLane: number;
-  /** 行ダクトのレーン（端ごと）。 */
-  fromRowLane: number;
-  toRowLane: number;
-  /** 同じネジ端子に載る電線どうしのずらし量[mm]（端ごと）。 */
-  fromScrew: number;
-  toScrew: number;
-  /** 配線帯のレーンが一周したか（UIが警告できる）。 */
+  trunk: TrunkSlot;
+  /** 盤の配線帯のレーン（盤側の端がある電線だけ）。 */
+  channel: ChannelSlot | undefined;
+  /** どこかのダクトでレーンを使い切り、他の電線と同じ場所に載った（UIが警告できる）。 */
   laneOverflow: boolean;
 }
 
-function trunkXOf(unit: PlcUnitDefinition, lane: number): number {
-  return unit.pos.x - DESK_TRUNK_GAP_MM - lane * DESK_LANE_PITCH_MM;
+/** 幹線のレーンを割り当てる（盤の上に載らない本数で一巡し、一巡したら高さを一段上げる）。 */
+function trunkSlotAt(unit: PlcUnitDefinition, index: number): TrunkSlot {
+  const slot = slotAt(index, deskTrunkLaneCount(unit), DESK_LAYER_COUNT);
+  return {
+    ...slot,
+    xMm: unit.pos.x - DESK_TRUNK_GAP_MM - slot.lane * DESK_LANE_PITCH_MM,
+    zMm: deskRunZ('y', slot.layer),
+  };
 }
 
 /** 盤の端子からの引き込み（配線帯の行に乗って、盤の右の縁を越える）。 */
 function boardApproach(
   board: BoardDefinition,
-  unit: PlcUnitDefinition,
   terminal: BoardTerminal,
   assignment: Assignment,
 ): Approach {
   const channel = boardExitChannel(board, terminal);
-  const trunkX = trunkXOf(unit, assignment.lane);
-  if (channel === undefined) {
+  const trunkX = assignment.trunk.xMm;
+  const slot = assignment.channel;
+  const layer = slot?.layer ?? 0;
+  const runX = boardExitRunZ('x', layer);
+  const runY = boardExitRunZ('y', layer);
+  // 盤を出てからの走行高さ。帯のレーンが一巡した電線は机上でも一段上を走る
+  const deskX = deskRunZ('x', layer);
+  if (channel === undefined || slot === undefined) {
     // 配線帯の無い盤（試験用の最小の盤など）。まっすぐ縁まで出て机上の高さへ上げる
     const corners = buildCorners(terminal.pos, [
-      to(DESK_LIP_X_MM, terminal.pos.y, BOARD_RUN_X_Z_MM),
-      rise(DESK_RUN_X_Z_MM),
-      to(trunkX, terminal.pos.y, DESK_RUN_X_Z_MM),
-      rise(DESK_RUN_Y_Z_MM),
+      to(DESK_LIP_X_MM, terminal.pos.y, runX),
+      rise(deskX),
+      to(trunkX, terminal.pos.y, deskX),
+      rise(assignment.trunk.zMm),
     ]);
-    return { corners, trunkY: terminal.pos.y, ductIds: [], channelIds: [] };
+    return { corners, trunkY: terminal.pos.y, ductIds: [], channelIds: [], slots: [] };
   }
-  const rowY = channel.at + channelLaneShift(channel, assignment.channelLane);
-  const leadX =
-    terminal.pos.x + (assignment.channelLane - (CHANNEL_LANE_COUNT - 1) / 2) * LEAD_OUT_STAGGER_MM;
+  const rowY = channel.at + channelLaneShift(channel, slot.lane);
+  const leadX = terminal.pos.x + slot.leadMm;
   const corners = buildCorners(terminal.pos, [
-    // 端子 → 盤面へ立ち下げ（レーンごとに横をずらして、同じネジから出る線を重ねない）
-    to(leadX, terminal.pos.y, BOARD_RUN_X_Z_MM),
+    // 端子 → 盤面へ立ち下げ（同じ列から出る電線どうしは中央そろえで横にずらす）
+    to(leadX, terminal.pos.y, runX),
     // 配線帯の行へ引き出す
-    to(leadX, rowY, BOARD_RUN_Y_Z_MM),
+    to(leadX, rowY, runY),
     // 行のまま盤の右の縁まで走る
-    to(DESK_LIP_X_MM, rowY, BOARD_RUN_X_Z_MM),
-    // 縁をゆるく乗り越えて机上の高さへ
-    rise(DESK_RUN_X_Z_MM),
-    to(trunkX, rowY, DESK_RUN_X_Z_MM),
-    rise(DESK_RUN_Y_Z_MM),
+    to(DESK_LIP_X_MM, rowY, runX),
+    // 縁をゆるく乗り越えて机上の高さへ（帯の段は机上の段へそのまま引き継ぐ）
+    rise(deskX),
+    to(trunkX, rowY, deskX),
+    rise(assignment.trunk.zMm),
   ]);
   return {
     corners,
     trunkY: rowY,
     ductIds: [`desk-exit-${channel.id}`],
     channelIds: [channel.id],
+    slots: [],
   };
 }
 
 /** PLC本体の端子への引き込み（行ダクトから端子のネジへ垂直に降ろす）。 */
-function plcApproach(
-  unit: PlcUnitDefinition,
-  terminal: BoardTerminal,
-  assignment: Assignment,
-  rowLane: number,
-  screw: number,
-): Approach {
-  const trunkX = trunkXOf(unit, assignment.lane);
-  const kind = plcRowKind(unit, terminal);
-  const rowY = plcRowBaseY(unit, terminal) - rowLane * DESK_LANE_PITCH_MM;
-  const dropX = terminal.pos.x + screw;
+function plcApproach(terminal: BoardTerminal, assignment: Assignment, row: RowSlot): Approach {
+  const trunkX = assignment.trunk.xMm;
+  const dropX = terminal.pos.x + row.screwMm;
   const corners = buildCorners(terminal.pos, [
     // ネジへは必ずまっすぐ降ろす（最後の数mmは列のずらしを戻した真上から入る）
     to(terminal.pos.x, terminal.pos.y - DESK_SCREW_APPROACH_MM, DESK_RUN_Y_Z_MM),
     // 列の中の自分の位置へ寄る（同じ列に何本降ろしても管が重ならない）
     to(dropX, terminal.pos.y - DESK_SCREW_APPROACH_MM, DESK_RUN_X_Z_MM),
     // 端子の列 → 行ダクト（開いたカバーが空けた側をまっすぐ立てる）
-    to(dropX, rowY, DESK_RUN_Y_Z_MM),
+    to(dropX, row.yMm, DESK_RUN_Y_Z_MM),
     // 行ダクト → 幹線
-    to(trunkX, rowY, DESK_RUN_X_Z_MM),
-    rise(DESK_RUN_Y_Z_MM),
+    to(trunkX, row.yMm, row.zMm),
+    rise(assignment.trunk.zMm),
   ]);
   return {
     corners,
-    trunkY: rowY,
-    ductIds: [kind === 'mid' ? 'desk-row-mid' : 'desk-row-top'],
+    trunkY: row.yMm,
+    ductIds: [row.ductId],
     channelIds: [],
+    slots: [{ ductId: row.ductId, lane: row.lane, layer: row.layer, atMm: row.yMm }],
   };
 }
 
 /** 壁コンセントからの引き込み（コンセント板の下の行ダクトを通って幹線へ）。 */
-function outletApproach(
-  unit: PlcUnitDefinition,
-  terminal: BoardTerminal,
-  assignment: Assignment,
-  rowLane: number,
-): Approach {
-  const trunkX = trunkXOf(unit, assignment.lane);
-  const rowY = OUTLET_ORIGIN_MM.y + DESK_OUTLET_GAP_MM + rowLane * DESK_LANE_PITCH_MM;
+function outletApproach(terminal: BoardTerminal, assignment: Assignment, row: RowSlot): Approach {
+  const trunkX = assignment.trunk.xMm;
   const corners = buildCorners(terminal.pos, [
-    to(terminal.pos.x, rowY, DESK_RUN_Y_Z_MM),
-    to(trunkX, rowY, DESK_RUN_X_Z_MM),
-    rise(DESK_RUN_Y_Z_MM),
+    to(terminal.pos.x, row.yMm, DESK_RUN_Y_Z_MM),
+    to(trunkX, row.yMm, row.zMm),
+    rise(assignment.trunk.zMm),
   ]);
-  return { corners, trunkY: rowY, ductIds: ['desk-outlet-row'], channelIds: [] };
+  return {
+    corners,
+    trunkY: row.yMm,
+    ductIds: [row.ductId],
+    channelIds: [],
+    slots: [{ ductId: row.ductId, lane: row.lane, layer: row.layer, atMm: row.yMm }],
+  };
 }
 
 function approachFor(
   board: BoardDefinition,
-  unit: PlcUnitDefinition,
   terminal: BoardTerminal,
   kind: EndKind,
   assignment: Assignment,
-  rowLane: number,
-  screw: number,
+  row: RowSlot,
 ): Approach {
-  if (kind === 'board') return boardApproach(board, unit, terminal, assignment);
-  if (kind === 'outlet') return outletApproach(unit, terminal, assignment, rowLane);
-  return plcApproach(unit, terminal, assignment, rowLane, screw);
+  if (kind === 'board') return boardApproach(board, terminal, assignment);
+  if (kind === 'outlet') return outletApproach(terminal, assignment, row);
+  return plcApproach(terminal, assignment, row);
 }
 
 /** 並び順を決める鍵（行ダクト → PLC端子のx → 端子の並び順 → 電線ID）。 */
@@ -513,6 +663,8 @@ export function deskRoutes(
   const channelLanes = new Map<string, number>();
   const columnSeen = new Map<string, number>();
   const columnTotal = new Map<string, number>();
+  const leadSeen = new Map<string, number>();
+  const leadTotal = new Map<string, number>();
   /**
    * 端子が降りてくる「列」の鍵。同じ x に何段も並ぶ端子（ラックの2列×9段）をまとめる。
    * 行ダクトも鍵に入れる — 一体形は入力側と出力側で**同じ x** の端子が向かい合うが、
@@ -520,22 +672,27 @@ export function deskRoutes(
    */
   const columnKey = (terminal: BoardTerminal, kind: EndKind): string =>
     `${kind === 'outlet' ? 'outlet' : plcRowKind(unit, terminal)}:${Math.round(terminal.pos.x * 10)}`;
+  /**
+   * 盤の端子が机上へ引き出す「列」の鍵（帯 ＋ 端子の x）。
+   * 引き出しの縦走りは同じ帯・同じ x の端子どうしでしか並走しないので、ずらし量は
+   * この列の実数で決める（{@link leadOutStaggerMm}）。
+   */
+  const leadKey = (terminal: BoardTerminal): string =>
+    `${boardExitChannel(board, terminal)?.id ?? ''}:${Math.round(terminal.pos.x * 10)}`;
   for (const entry of entries) {
     for (const [terminal, kind] of [
       [entry.from, entry.fromKind],
       [entry.to, entry.toKind],
     ] as const) {
-      if (kind === 'board') continue;
+      if (kind === 'board') {
+        const key = leadKey(terminal);
+        leadTotal.set(key, (leadTotal.get(key) ?? 0) + 1);
+        continue;
+      }
       const key = columnKey(terminal, kind);
       columnTotal.set(key, (columnTotal.get(key) ?? 0) + 1);
     }
   }
-  const rowLaneOf = (terminal: BoardTerminal, kind: EndKind): number => {
-    const duct = kind === 'outlet' ? 'outlet' : plcRowKind(unit, terminal);
-    const next = rowLanes.get(duct) ?? 0;
-    rowLanes.set(duct, next + 1);
-    return next;
-  };
   const screwOf = (terminal: BoardTerminal, kind: EndKind): number => {
     if (kind === 'board') return 0;
     const key = columnKey(terminal, kind);
@@ -544,21 +701,54 @@ export function deskRoutes(
     columnSeen.set(key, index + 1);
     return screwStaggerMm(index, total);
   };
+  const rowSlotOf = (terminal: BoardTerminal, kind: EndKind): RowSlot => {
+    const outlet = kind === 'outlet';
+    const duct = outlet ? 'outlet' : plcRowKind(unit, terminal);
+    const ductId = outlet ? 'desk-outlet-row' : duct === 'mid' ? 'desk-row-mid' : 'desk-row-top';
+    // コンセントの行は机の手前（y の大きいほう）へ、PLCの行は机の奥へレーンが増える
+    const direction = outlet ? 1 : -1;
+    const baseY = outlet ? OUTLET_ORIGIN_MM.y + DESK_OUTLET_GAP_MM : plcRowBaseY(unit, terminal);
+    const index = rowLanes.get(duct) ?? 0;
+    rowLanes.set(duct, index + 1);
+    const slot = slotAt(index, deskRowLaneCount(baseY, direction), DESK_LAYER_COUNT);
+    return {
+      ...slot,
+      ductId,
+      yMm: baseY + direction * slot.lane * DESK_LANE_PITCH_MM,
+      zMm: deskRunZ('x', slot.layer),
+      screwMm: screwOf(terminal, kind),
+    };
+  };
   /** 盤の配線帯のレーン。帯ごとに数えるので、帯が違えば同じ番号を使い回してよい。 */
-  const channelLaneOf = (terminal: BoardTerminal): { lane: number; overflow: boolean } => {
-    const channel = boardExitChannel(board, terminal);
-    const id = channel?.id ?? '';
+  const channelSlotOf = (terminal: BoardTerminal): ChannelSlot => {
+    const id = boardExitChannel(board, terminal)?.id ?? '';
     const index = channelLanes.get(id) ?? 0;
     channelLanes.set(id, index + 1);
-    return { lane: index % CHANNEL_LANE_COUNT, overflow: index >= CHANNEL_LANE_COUNT };
+    const slot = slotAt(index, CHANNEL_LANE_COUNT, BOARD_EXIT_LAYER_COUNT);
+    const key = leadKey(terminal);
+    const leadIndex = leadSeen.get(key) ?? 0;
+    leadSeen.set(key, leadIndex + 1);
+    return { ...slot, leadMm: leadOutStaggerMm(leadIndex, leadTotal.get(key) ?? 1) };
   };
 
   // 3. 経路を組み立てる
   const routes: DeskRoute[] = [];
-  entries.forEach((entry, lane) => {
+  const emptyRow: RowSlot = {
+    ductId: '',
+    lane: 0,
+    layer: 0,
+    yMm: 0,
+    zMm: DESK_RUN_X_Z_MM,
+    screwMm: 0,
+    overflow: false,
+  };
+  entries.forEach((entry, index) => {
     const boardEnd =
       entry.fromKind === 'board' ? entry.from : entry.toKind === 'board' ? entry.to : undefined;
-    const channel = boardEnd === undefined ? undefined : channelLaneOf(boardEnd);
+    const channel = boardEnd === undefined ? undefined : channelSlotOf(boardEnd);
+    const trunk = trunkSlotAt(unit, index);
+    const fromRow = entry.fromKind === 'board' ? emptyRow : rowSlotOf(entry.from, entry.fromKind);
+    const toRow = entry.toKind === 'board' ? emptyRow : rowSlotOf(entry.to, entry.toKind);
     const assignment: Assignment = {
       wireId: entry.wireId,
       color: entry.color,
@@ -566,34 +756,13 @@ export function deskRoutes(
       to: entry.to,
       fromKind: entry.fromKind,
       toKind: entry.toKind,
-      lane,
-      channelLane: channel?.lane ?? 0,
-      fromRowLane: 0,
-      toRowLane: 0,
-      fromScrew: 0,
-      toScrew: 0,
-      laneOverflow: channel?.overflow ?? false,
+      trunk,
+      channel,
+      laneOverflow:
+        (channel?.overflow ?? false) || trunk.overflow || fromRow.overflow || toRow.overflow,
     };
-    const fromRowLane = entry.fromKind === 'board' ? 0 : rowLaneOf(entry.from, entry.fromKind);
-    const toRowLane = entry.toKind === 'board' ? 0 : rowLaneOf(entry.to, entry.toKind);
-    const head = approachFor(
-      board,
-      unit,
-      entry.from,
-      entry.fromKind,
-      assignment,
-      fromRowLane,
-      screwOf(entry.from, entry.fromKind),
-    );
-    const tail = approachFor(
-      board,
-      unit,
-      entry.to,
-      entry.toKind,
-      assignment,
-      toRowLane,
-      screwOf(entry.to, entry.toKind),
-    );
+    const head = approachFor(board, entry.from, entry.fromKind, assignment, fromRow);
+    const tail = approachFor(board, entry.to, entry.toKind, assignment, toRow);
     const corners = dedupe([...head.corners, ...[...tail.corners].reverse()]);
     const points = filletCorners(corners, DESK_CORNER_RADIUS_MM);
     routes.push({
@@ -604,8 +773,13 @@ export function deskRoutes(
       corners,
       channelIds: [...new Set([...head.channelIds, ...tail.channelIds])],
       ductIds: [...new Set([...head.ductIds, 'desk-trunk', ...tail.ductIds])],
+      slots: [
+        ...head.slots,
+        { ductId: 'desk-trunk', lane: trunk.lane, layer: trunk.layer, atMm: trunk.xMm },
+        ...tail.slots,
+      ],
       lanes: [],
-      lane,
+      lane: trunk.lane,
       laneOverflow: assignment.laneOverflow,
       lengthMm: polylineLength(points),
     });
@@ -715,6 +889,9 @@ function nearShared(segment: Segment, shared: readonly Vec3[]): boolean {
  * 机上の経路の検査。§6.6 の不変条件の机上版。
  * - 並走する区間（同じ向き・同じ高さ）は {@link DESK_MIN_CLEARANCE_MM} 以上離れている。
  * - どの区間も {@link deskObstacles} の箱の中を通らない。
+ * - 1つのダクトの同じレーン・同じ段に2本が載っていない。
+ * - 幹線のレーンが盤の上（x < {@link BOARD_WIDTH_MM}）に載っていない。
+ * - 行ダクトのレーンが机の奥（y < 0）へはみ出していない。
  * 破れていれば人に読める理由を返す（空配列なら合格）。
  */
 export function deskRouteIssues(
@@ -724,6 +901,28 @@ export function deskRouteIssues(
 ): string[] {
   const issues: string[] = [];
   const obstacles = deskObstacles(board, unit);
+  const taken = new Map<string, string>();
+  for (const route of routes) {
+    for (const slot of route.slots) {
+      const key = `${slot.ductId}/${String(slot.lane)}/${String(slot.layer)}`;
+      const owner = taken.get(key);
+      if (owner !== undefined && owner !== route.wireId) {
+        issues.push(
+          `同じレーンに2本載っています（${slot.ductId} レーン${String(slot.lane)}・段${String(slot.layer)}）: ${owner} / ${route.wireId}`,
+        );
+      } else {
+        taken.set(key, route.wireId);
+      }
+      if (slot.ductId === 'desk-trunk' && slot.atMm < BOARD_WIDTH_MM - EPS) {
+        issues.push(`幹線が盤の上に載っています（x=${slot.atMm.toFixed(1)}mm）: ${route.wireId}`);
+      }
+      if (slot.ductId !== 'desk-trunk' && slot.atMm < -EPS) {
+        issues.push(
+          `行ダクトが机の奥へはみ出しています（y=${slot.atMm.toFixed(1)}mm）: ${route.wireId}`,
+        );
+      }
+    }
+  }
   const ends = new Map<string, Vec3[]>();
   for (const route of routes) {
     const first = route.corners[0];
