@@ -21,7 +21,7 @@ import {
   type Locator,
   type Page,
 } from '@playwright/test';
-import { finishedSize, overlayHtml } from '../scripts/annotate-shots.mjs';
+import { finishedSize, overlayHtml, planCallouts } from '../scripts/annotate-shots.mjs';
 import { HELP_IMAGE_WIDTH } from '../scripts/manual-build.mjs';
 import {
   GIZMO_BUTTON,
@@ -77,6 +77,8 @@ interface Shot {
 interface Geometry {
   crop?: Rect;
   callouts: Record<string, Rect>;
+  /** そのとき画面に出ていた**アプリの文字**の矩形（吹き出しを置いてはいけないところ）。 */
+  avoid: Rect[];
 }
 
 const SHOTS = JSON.parse(readFileSync(join(MANUAL_DIR, 'shots.json'), 'utf8')) as Record<
@@ -185,6 +187,116 @@ function widenRect(rect: Rect, minWidth: number): Rect {
   return clampRect({ x: rect.x - (minWidth - rect.w) / 2, y: rect.y, w: minWidth, h: rect.h });
 }
 
+/**
+ * いま画面に出ている**アプリの文字**の矩形をぜんぶ測る（2026-09-20 最終レビュー BL-1）。
+ *
+ * 吹き出しのラベルや丸数字がボタン名・見出し・説明文の上に乗ると、画面をまだ知らない
+ * 新入社員には「そういう名前の物がある」と読めてしまう。置いてはいけないところを
+ * **実測して** `shot-geometry.json` の `avoid` に残し、`planCallouts()` がそこを避ける。
+ *
+ * 測るのは行そのもの（`Range.getClientRects()`）なので、欄の枠ではなく字のある場所が入る。
+ * 入力欄と SVG の文字は行を取れないので外形を使う。画面に**本当に写っているか**は
+ * `elementFromPoint()` で見て、不透明な物の裏にある文字（窓の下の画面）は落とす。
+ * 薄い覆いごしに見えている文字は残す（読めてしまうので、その上にも置かない）。
+ */
+async function textRects(): Promise<Rect[]> {
+  const found = await page.evaluate(() => {
+    const out: Array<{ x: number; y: number; w: number; h: number }> = [];
+    const range = document.createRange();
+    /** 透けて見えるか（薄い覆い・背景の無い入れ物）。 */
+    const seeThrough = (node: Element): boolean => {
+      const color = getComputedStyle(node).backgroundColor;
+      const match = /^rgba?\(([^)]+)\)$/u.exec(color);
+      if (match?.[1] === undefined) return false;
+      const parts = match[1].split(',').map((part) => Number(part.trim()));
+      return (parts.length > 3 ? (parts[3] ?? 1) : 1) < 0.85;
+    };
+    /** `hit` から上へ、`element` を囲う所まで不透明な面があるか（＝裏に隠れているか）。 */
+    const buried = (hit: Element, element: Element): boolean => {
+      for (
+        let at: Element | null = hit;
+        at !== null && !at.contains(element);
+        at = at.parentElement
+      ) {
+        if (!seeThrough(at)) return true;
+      }
+      return false;
+    };
+    /** マウスを受け取らない物（札・HUD）は `elementFromPoint()` に出てこない。 */
+    const ignoresPointer = (element: Element): boolean => {
+      for (let at: Element | null = element; at !== null; at = at.parentElement) {
+        if (getComputedStyle(at).pointerEvents === 'none') return true;
+      }
+      return false;
+    };
+    const keep = (element: Element, box: DOMRect): void => {
+      const x = Math.max(0, box.left);
+      const y = Math.max(0, box.top);
+      const right = Math.min(window.innerWidth, box.right);
+      const bottom = Math.min(window.innerHeight, box.bottom);
+      if (right - x < 3 || bottom - y < 5) return;
+      const hit = document.elementFromPoint((x + right) / 2, (y + bottom) / 2);
+      if (hit === null) return;
+      if (!element.contains(hit) && !hit.contains(element)) {
+        if (!ignoresPointer(element) && buried(hit, element)) return;
+      }
+      out.push({
+        x: Math.floor(x),
+        y: Math.floor(y),
+        w: Math.ceil(right - x),
+        h: Math.ceil(bottom - y),
+      });
+    };
+    for (const element of document.body.querySelectorAll('*')) {
+      const style = getComputedStyle(element);
+      if (style.visibility === 'hidden' || style.display === 'none') continue;
+      if (Number(style.opacity) < 0.15) continue;
+      if (
+        element instanceof HTMLInputElement ||
+        element instanceof HTMLTextAreaElement ||
+        element instanceof HTMLSelectElement
+      ) {
+        keep(element, element.getBoundingClientRect());
+        continue;
+      }
+      if (element instanceof SVGTextElement || element instanceof SVGTSpanElement) {
+        keep(element, element.getBoundingClientRect());
+        continue;
+      }
+      for (const child of element.childNodes) {
+        if (child.nodeType !== Node.TEXT_NODE) continue;
+        if ((child.nodeValue ?? '').trim() === '') continue;
+        range.selectNodeContents(child);
+        for (const line of range.getClientRects()) keep(element, line);
+      }
+    }
+    return out;
+  });
+  // 同じところ・中に入っているだけのものは捨てる（`shot-geometry.json` を小さく保つ）
+  const kept: Rect[] = [];
+  for (const rect of [...found].sort((a, b) => b.w * b.h - a.w * a.h)) {
+    const covered = kept.some(
+      (other) =>
+        rect.x >= other.x &&
+        rect.y >= other.y &&
+        rect.x + rect.w <= other.x + other.w &&
+        rect.y + rect.h <= other.y + other.h,
+    );
+    if (!covered) kept.push(rect);
+  }
+  return kept.sort((a, b) => a.y - b.y || a.x - b.x);
+}
+
+/**
+ * トーストが消えるまで待つ（2026-09-20 最終レビュー IM-A）。
+ * 設定を保存した直後にホームやヘルプへ移ると「設定を保存しました」が右下に写り込み、
+ * その画面の説明のはずの図に関係ない文字が乗る（`help-drawer` では本文の行を隠していた）。
+ * 期限は4秒（`TOAST_TTL_MS`）で、掃除は 250ms ごとなので、待てば必ず消える。
+ */
+async function expectNoToast(): Promise<void> {
+  await expect(page.getByTestId('toast')).toHaveCount(0, { timeout: 20_000 });
+}
+
 /* ------------------------------------------------------------------ *
  * 撮る
  * ------------------------------------------------------------------ */
@@ -219,6 +331,18 @@ async function capturePage(): Promise<Buffer> {
     return image.toPNG().toString('base64');
   });
   return Buffer.from(base64, 'base64');
+}
+
+/**
+ * 矩形は**1行**にまとめて書く。`avoid` は1図あたり100件を超えるので、既定の整形では
+ * 矩形1つが6行になり、`shot-geometry.json` が1万行を超えて差分が読めなくなる。
+ */
+function toJson(value: unknown): string {
+  const text = JSON.stringify(value, null, 2).replace(
+    /\{\s+"x": (-?\d+),\s+"y": (-?\d+),\s+"w": (-?\d+),\s+"h": (-?\d+)\s+\}/gu,
+    '{ "x": $1, "y": $2, "w": $3, "h": $4 }',
+  );
+  return `${text}\n`;
 }
 
 /** PNG のヘッダ（IHDR）から寸法を読む。 */
@@ -292,6 +416,10 @@ async function shoot(
   );
 
   await settle();
+  // 図にトーストを写さない（IM-A）。消えるまで待ってから撮る
+  await expectNoToast();
+  // 置いてはいけないところ（アプリの文字）を、撮る直前の画面から測る（BL-1）
+  const avoid = await textRects();
   const png = await capturePage();
   const size = pngSize(png);
   expect(
@@ -303,10 +431,10 @@ async function shoot(
 
   const geometry: Geometry =
     crop === 'auto'
-      ? { crop: autoCrop(name, measured), callouts: measured }
-      : { callouts: measured };
+      ? { crop: autoCrop(name, measured), callouts: measured, avoid }
+      : { callouts: measured, avoid };
   // 測った矩形は素のPNGの隣にも残す（あとで「どこを指したか」を機械で追える）
-  writeFileSync(join(RAW_DIR, `${name}.json`), `${JSON.stringify(geometry, null, 2)}\n`, 'utf8');
+  writeFileSync(join(RAW_DIR, `${name}.json`), toJson(geometry), 'utf8');
   GEOMETRY[name] = geometry;
 }
 
@@ -1059,6 +1187,17 @@ test.describe.serial('取扱説明書の図', () => {
     const missing = names.filter((name) => GEOMETRY[name] === undefined);
     expect(missing, '撮れていない図があります').toEqual([]);
 
+    /*
+     * 先に17枚ぶんの置き方を組んでみる。置けない図があるときは**消す前に**落ちるので、
+     * 古い図が消えただけで終わる（`annotate()` の途中で落ちると図が1枚も残らない）。
+     */
+    for (const name of names) {
+      const shot = SHOTS[name];
+      const geometry = GEOMETRY[name];
+      if (shot === undefined || geometry === undefined) throw new Error(`${name} を撮れていません`);
+      planCallouts(shot, geometry, SHOT_SIZE);
+    }
+
     rmSync(OUT_DIR, { recursive: true, force: true });
     for (const name of names) await annotate(name);
 
@@ -1068,10 +1207,6 @@ test.describe.serial('取扱説明書の図', () => {
       const geometry = GEOMETRY[name];
       if (geometry !== undefined) ordered[name] = geometry;
     }
-    writeFileSync(
-      join(MANUAL_DIR, 'shot-geometry.json'),
-      `${JSON.stringify(ordered, null, 2)}\n`,
-      'utf8',
-    );
+    writeFileSync(join(MANUAL_DIR, 'shot-geometry.json'), toJson(ordered), 'utf8');
   });
 });

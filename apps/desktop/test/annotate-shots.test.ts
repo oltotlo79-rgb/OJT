@@ -173,8 +173,68 @@ describe('吹き出しの置き方', () => {
   });
 
   it('refuses to draw when a label has nowhere to go', () => {
-    const tiny = { crop: { x: 0, y: 0, w: 130, h: 70 }, callouts: GEOMETRY.callouts };
+    // ラベル（「ヘルプ」は 59px）より狭い窓。どこにも収まらないので組み立てを断る
+    const tiny = { crop: { x: 0, y: 0, w: 40, h: 70 }, callouts: GEOMETRY.callouts };
     expect(() => planCallouts(SHOT, tiny, SIZE)).toThrow('置く場所がありません');
+  });
+});
+
+/**
+ * アプリの文字を隠さない置き方（2026-09-20 最終レビュー BL-1）。
+ * `shot-geometry.json` の `avoid`（撮影のときに実測した文字の矩形）を避ける。
+ */
+describe('アプリの文字を避ける', () => {
+  it('moves the label off the app text', () => {
+    const plain = planCallouts(SHOT, GEOMETRY, SIZE);
+    const before = plain.marks[0];
+    expect(before).toBeDefined();
+    if (before === undefined) return;
+    // いま置いた場所を「アプリの文字」にすると、そこは使えなくなる
+    const avoid = [{ ...before.labelBox }];
+    const after = planCallouts(SHOT, { ...GEOMETRY, avoid }, SIZE).marks[0];
+    expect(after).toBeDefined();
+    if (after === undefined) return;
+    expect(after.labelBox).not.toEqual(before.labelBox);
+    expect(intersects(after.labelBox, avoid[0] as Rect)).toBe(false);
+    expect(after.labelCovers).toBe(0);
+  });
+
+  it('moves the circled number off the app text', () => {
+    const plain = planCallouts(SHOT, GEOMETRY, SIZE);
+    const before = plain.marks[0];
+    expect(before).toBeDefined();
+    if (before === undefined) return;
+    const avoid = [{ ...before.badgeBox }];
+    const after = planCallouts(SHOT, { ...GEOMETRY, avoid }, SIZE).marks[0];
+    expect(after).toBeDefined();
+    if (after === undefined) return;
+    expect(intersects(after.badgeBox, avoid[0] as Rect)).toBe(false);
+    expect(after.badgeCovers).toBe(0);
+  });
+
+  it('keeps the label away from another callout number', () => {
+    // ①のラベルは①の丸数字のほうが②の丸数字より近いこと（番号の取り違えを防ぐ）
+    const plan = planCallouts(SHOT, GEOMETRY, SIZE);
+    const [first, second] = plan.marks;
+    expect(first).toBeDefined();
+    expect(second).toBeDefined();
+    if (first === undefined || second === undefined) return;
+    const reach = (from: { x: number; y: number }): number =>
+      Math.hypot(
+        Math.max(first.labelBox.x - from.x, 0, from.x - (first.labelBox.x + first.labelBox.w)),
+        Math.max(first.labelBox.y - from.y, 0, from.y - (first.labelBox.y + first.labelBox.h)),
+      );
+    expect(reach(first.badge)).toBeLessThanOrEqual(reach(second.badge));
+  });
+
+  it('says how much text it had to cover when the whole picture is text', () => {
+    // 逃げ場が1つも無い図。黙って読めない図を作らず、隠した面積を残す
+    // （`manual-images.test.ts` の検査がこれを見て赤くなる）
+    const avoid = [{ x: 0, y: 0, w: 1280, h: 800 }];
+    const plan = planCallouts(SHOT, { ...GEOMETRY, avoid }, SIZE);
+    for (const mark of plan.marks) {
+      expect(mark.labelCovers, `${mark.mark} の被害が記録されていません`).toBeGreaterThan(0);
+    }
   });
 });
 

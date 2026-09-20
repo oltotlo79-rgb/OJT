@@ -18,6 +18,8 @@ export interface Rect {
 export interface ShotGeometry {
   crop?: Rect;
   callouts: Record<string, Rect>;
+  /** 撮影のときに実測した「アプリの文字」の矩形（吹き出しを置いてはいけないところ）。 */
+  avoid?: Rect[];
 }
 
 export interface Size {
@@ -34,11 +36,17 @@ export interface PlacedCallout {
   badge: { x: number; y: number };
   badgeBox: Rect;
   labelBox: Rect;
+  /** 丸数字がアプリの文字を隠している面積[px^2]（0 でなければ図が読めない）。 */
+  badgeCovers: number;
+  /** ラベルがアプリの文字を隠している面積[px^2]（同上）。 */
+  labelCovers: number;
 }
 
 export interface CalloutPlan {
   crop: Rect;
   frame: { w: number; h: number };
+  /** `avoid` を切り出した窓の中の座標へ直したもの（図の外のものは落としてある）。 */
+  avoid: Rect[];
   marks: PlacedCallout[];
 }
 

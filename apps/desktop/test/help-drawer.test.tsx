@@ -25,18 +25,33 @@ const helpCss = readFileSync(
 /** ヘルプの引き出し。取扱説明書 設計 §5.3 / §5.4。 */
 
 /*
- * 図の置き場所だけを差し替える（本文・章立ては生成物のまま）。
- * 図は Plan 6 Task 12 で初めて撮るので、いまの `MANUAL_IMAGES` は全部が空文字である。
- * 「撮れている図」と「まだ撮っていない図」の両方の見え方をいま縛っておかないと、
- * 図が入った日に初めて壊れていることが分かる（本プラン 決定表 P16・P17）。
+ * 図の置き場所（`MANUAL_IMAGES`）は**生成物のまま**を使う。17枚は撮り終えていて
+ * （`docs/manual/images/`）、束ねた URL は Vite が決めるので、ここで本物を見ておかないと
+ * この単体試験は figure を1つも本物で見ないまま緑になる（2026-09-20 最終レビュー IM-C）。
+ * 「まだ撮っていない図」の見え方（枠ごと畳む・ボタンを押させない）を見る試験のあいだだけ、
+ * `IMAGES.instead` で差し替える（本プラン 決定表 P16・P17）。
  */
 // `vi.mock` の工場は先頭へ巻き上げられるので、差し込む値も `vi.hoisted` で先に作る
 const SHOT = vi.hoisted(() => ({ small: 'small-home.png', full: 'full-home.png' }));
+type ManualImages = Readonly<Record<string, { small: string; full: string }>>;
+const IMAGES = vi.hoisted(
+  (): {
+    /** 生成物（`manual-content.ts`）が持っている本物の17件。 */
+    real: ManualImages;
+    /** 差し替え（入れなければ本物を使う）。 */
+    instead?: ManualImages;
+  } => ({ real: {} }),
+);
 
 vi.mock('../src/renderer/help/manual-content.js', async (importOriginal) => {
   const actual = await importOriginal<typeof ManualContent>();
-  // `home` だけ撮れている状態にする。`list` などは空のまま（＝まだ撮っていない図）
-  return { ...actual, MANUAL_IMAGES: { home: SHOT } };
+  IMAGES.real = actual.MANUAL_IMAGES;
+  return {
+    ...actual,
+    get MANUAL_IMAGES(): ManualImages {
+      return IMAGES.instead ?? IMAGES.real;
+    },
+  };
 });
 
 declare global {
@@ -67,6 +82,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   setApi(undefined);
+  delete IMAGES.instead;
   act(() => {
     useHelpStore.getState().closeHelp();
     useStore.setState({ toasts: [] });
@@ -329,13 +345,29 @@ describe('図（利用者の決定 2026-09-20）', () => {
     });
   });
 
+  it('has a real picture, in both sizes, for every figure the manual defines (IM-C)', () => {
+    const shots = JSON.parse(
+      readFileSync(
+        resolve(dirname(fileURLToPath(import.meta.url)), '../../../docs/manual/shots.json'),
+        'utf8',
+      ),
+    ) as Record<string, unknown>;
+    expect(Object.keys(IMAGES.real).sort()).toEqual(Object.keys(shots).sort());
+    for (const [name, image] of Object.entries(IMAGES.real)) {
+      expect(image.small, `${name} の縮小版がありません`).not.toBe('');
+      expect(image.full, `${name} の原寸がありません`).not.toBe('');
+    }
+  });
+
   it('fills in the reduced copy of every figure in the section', () => {
     render(<HelpDrawer onClose={() => undefined} />);
     const image = screen.getByTestId('help-prose').querySelector('img[data-manual-image="home"]');
     expect(image).not.toBeNull();
     expect(image?.getAttribute('loading')).toBe('lazy');
     expect(image?.getAttribute('width')).toBe('400');
-    expect(image?.getAttribute('src')).toBe(SHOT.small);
+    // 本物の図（`docs/manual/images/small/home.png` を束ねた URL）が入る
+    expect(image?.getAttribute('src')).toBe(IMAGES.real['home']?.small);
+    expect(image?.getAttribute('src')).not.toBe('');
   });
 
   it('opens the full size in an overlay when the figure is pressed', () => {
@@ -344,7 +376,12 @@ describe('図（利用者の決定 2026-09-20）', () => {
     expect(button).not.toBeNull();
     fireEvent.click(button as HTMLButtonElement);
     expect(screen.getByTestId('help-figure-modal')).toBeInTheDocument();
-    expect(screen.getByTestId('help-figure-full')).toHaveAttribute('src', SHOT.full);
+    // 原寸も本物（縮小版とは別の URL）
+    expect(screen.getByTestId('help-figure-full')).toHaveAttribute(
+      'src',
+      IMAGES.real['home']?.full ?? '',
+    );
+    expect(IMAGES.real['home']?.full).not.toBe(IMAGES.real['home']?.small);
   });
 
   it('closes the overlay with Escape, leaves the drawer open and gives the focus back', () => {
@@ -371,6 +408,8 @@ describe('図（利用者の決定 2026-09-20）', () => {
   });
 
   it('draws nothing for a figure that has not been taken yet', () => {
+    // まだ撮っていない図は無いので、`home` だけ撮れている状態を作って見る
+    IMAGES.instead = { home: SHOT };
     act(() => {
       useHelpStore.getState().showSection(UNSHOT_SECTION);
     });

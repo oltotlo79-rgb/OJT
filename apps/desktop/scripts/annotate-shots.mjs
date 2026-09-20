@@ -13,7 +13,14 @@
  * 丸数字は指すものの左上の角に置き、**ラベルは指すものの外**へ出して引き出し線で結ぶ。
  * ラベルどうし・ラベルと丸数字は重ねない。画面いっぱいの「欄」を指す吹き出しだけは
  * 外へ出す場所が無いので中に置くが、その場合でも**指すものの面積の1割**までしか隠さない。
- * どれも満たせないときは組み立てを断る（黙って読めない図を作らない）。
+ *
+ * **アプリの文字の上には置かない**（2026-09-20 最終レビュー BL-1）:
+ * 撮影のときに画面へ出ている文字の矩形をぜんぶ実測して、`shot-geometry.json` の
+ * `avoid` に入れてある。丸数字もラベルも、その矩形にかかる置き場所は落とす。
+ * 置き場所は「枠のすぐ外」から順に、最後は**図ぜんぶの格子**まで探すので、
+ * 文字の無いところ（3Dの画面・欄の余白・帯の空き）へ逃げられる。どうしても
+ * 置けないときだけ「隠す面積がいちばん小さいところ」へ置き、そのときは
+ * `manual-images.test.ts` が赤くなる（黙って読めない図を作らない）。
  */
 
 /** 丸数字。20個あれば足りる（1枚あたりの吹き出しは多くて6個）。 */
@@ -58,6 +65,24 @@ const GAP = 10;
 /** 中に置いてよい割合（指すものの面積のうち、ラベルが隠してよい上限）。 */
 const INSIDE_COVER_RATIO = 0.1;
 
+/** 置き場所を探す格子の刻み[px]（細かくするほど遅くなるだけで、絵はほとんど変わらない）。 */
+const GRID_STEP = 8;
+
+/** 最後の逃げ道で見る候補の数（近い順。全部見ると遅いだけで役に立たない）。 */
+const LAST_RESORT_LIMIT = 4000;
+
+/**
+ * アプリの文字との隙間[px]。丸数字とラベルには 2px の白い縁があるので、
+ * 矩形が触れていないだけでは字にかぶって見える。
+ */
+const TEXT_MARGIN = 3;
+
+/** 他の吹き出しの丸数字との隙間[px]。近すぎると、その番号のラベルに見える。 */
+const BADGE_MARGIN = 24;
+
+/** ラベルどうしの隙間[px]（縁どうしがくっつくと1枚の札に見える）。 */
+const LABEL_MARGIN = 6;
+
 function escapeHtml(text) {
   return String(text)
     .replace(/&/gu, '&amp;')
@@ -96,44 +121,158 @@ function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
 }
 
-/**
- * ラベルを置く候補（近いところから）。枠の外側（右・左・上・下）を先に試し、
- * 1段ずらした位置、最後に枠の中（丸数字のとなり）を試す。
- */
-function labelCandidates(box, badge, width) {
+/** どれか1つにでもかかるか。 */
+function hits(rect, list) {
+  return list.some((other) => intersects(rect, other));
+}
+
+/** 矩形を周りへ `by` px 広げる（触れているだけの置き方を落とすため）。 */
+function grow(rect, by) {
+  return { x: rect.x - by, y: rect.y - by, w: rect.w + by * 2, h: rect.h + by * 2 };
+}
+
+/** その矩形が隠してしまう面積の合計（重なった `avoid` を二重に数えるが、比べるには足りる）。 */
+function coveredArea(rect, avoid) {
+  let sum = 0;
+  for (const other of avoid) sum += overlapArea(rect, other);
+  return sum;
+}
+
+/** 点から矩形までの距離（中に入っていれば0）。 */
+function distanceTo(rect, point) {
+  const dx = Math.max(rect.x - point.x, 0, point.x - (rect.x + rect.w));
+  const dy = Math.max(rect.y - point.y, 0, point.y - (rect.y + rect.h));
+  return Math.hypot(dx, dy);
+}
+
+/** 切り出した窓の中の座標へ直し、窓の外のものは捨てる。 */
+function shiftRects(rects, crop, frame) {
   const out = [];
+  for (const rect of rects) {
+    const moved = { x: rect.x - crop.x, y: rect.y - crop.y, w: rect.w, h: rect.h };
+    if (moved.x + moved.w <= 0 || moved.y + moved.h <= 0) continue;
+    if (moved.x >= frame.w || moved.y >= frame.h) continue;
+    out.push(moved);
+  }
+  return out;
+}
+
+/**
+ * 丸数字を置く候補（枠の左上の角から近い順）。角・枠のすぐ外（上の辺・左の辺）・
+ * 枠のすぐ内側を並べる。どれも図の中に収まるよう丸めてある。
+ */
+function badgeCandidates(box, frame) {
+  const half = MARK_SIZE / 2;
+  const points = [
+    // 既定は角（これまでと同じ）
+    { x: box.x, y: box.y },
+    { x: box.x - half - 4, y: box.y },
+    { x: box.x + half, y: box.y - half - 4 },
+    { x: box.x - half - 4, y: box.y + box.h / 2 },
+  ];
+  const span = (from, to) => {
+    const out = [];
+    for (let at = from; at < to; at += 4) out.push(at);
+    out.push(to);
+    return out;
+  };
+  /*
+   * 4つの辺それぞれに沿って滑らせ、辺をまたぐ向きにも 4px きざみで動かす
+   * （外へ最大 `半径+16`px、内へ `半径+4`px）。辺の外も中も文字だらけでも、
+   * **行と行のあいだ**のような細い隙間なら、この細かさで見つけられる。
+   */
+  const offsets = [];
+  for (let at = -half - 16; at <= half + 4; at += 4) offsets.push(at);
+  for (const at of offsets) {
+    for (const x of span(box.x, box.x + box.w)) {
+      points.push({ x, y: box.y + at }, { x, y: box.y + box.h - at });
+    }
+    for (const y of span(box.y, box.y + box.h)) {
+      points.push({ x: box.x + at, y }, { x: box.x + box.w - at, y });
+    }
+  }
+  const corner = { x: box.x, y: box.y };
+  const seen = new Set();
+  const out = [];
+  for (const point of points) {
+    const rect = {
+      x: Math.round(clamp(point.x, half, frame.w - half) - half),
+      y: Math.round(clamp(point.y, half, frame.h - half) - half),
+      w: MARK_SIZE,
+      h: MARK_SIZE,
+    };
+    const key = `${String(rect.x)},${String(rect.y)}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(rect);
+  }
+  // 近い順（同じ距離なら先に作った順＝角・辺の順が残る。`sort` は安定）
+  return out.sort((a, b) => distanceTo(a, corner) - distanceTo(b, corner));
+}
+
+/**
+ * ラベルを置く候補（丸数字から近い順）。枠の外側（右・左・上・下）を先に並べ、
+ * そのあと**図ぜんぶの格子**を並べる。格子まで見るので、枠のまわりが文字で
+ * 埋まっていても「文字の無いところ」へ逃がせる。
+ */
+function labelCandidates(box, badge, width, frame) {
+  const seen = new Set();
+  const out = [];
+  const add = (x, y) => {
+    const rect = {
+      x: Math.round(clamp(x, 0, Math.max(0, frame.w - width))),
+      y: Math.round(clamp(y, 0, Math.max(0, frame.h - LABEL_HEIGHT))),
+      w: width,
+      h: LABEL_HEIGHT,
+    };
+    const key = `${String(rect.x)},${String(rect.y)}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push(rect);
+  };
   const midY = badge.y - LABEL_HEIGHT / 2;
   for (let step = 0; step < 3; step += 1) {
     const slide = step * (LABEL_HEIGHT + 6);
     const push = step * (width + 6);
-    out.push(
-      { x: box.x + box.w + GAP + push, y: midY },
-      { x: box.x - GAP - width - push, y: midY },
-      // 丸数字は枠の左上にあるので、上下へ出すときは丸数字のぶんだけ右へずらす
-      { x: box.x + MARK_SIZE, y: box.y - GAP - LABEL_HEIGHT - slide },
-      { x: box.x + MARK_SIZE, y: box.y + box.h + GAP + slide },
-      { x: box.x, y: box.y - GAP - LABEL_HEIGHT - slide },
-      { x: box.x, y: box.y + box.h + GAP + slide },
-      { x: box.x + box.w - width, y: box.y - GAP - LABEL_HEIGHT - slide },
-      { x: box.x + box.w - width, y: box.y + box.h + GAP + slide },
-    );
+    add(box.x + box.w + GAP + push, midY);
+    add(box.x - GAP - width - push, midY);
+    // 丸数字は枠の左上にあるので、上下へ出すときは丸数字のぶんだけ右へずらす
+    add(box.x + MARK_SIZE, box.y - GAP - LABEL_HEIGHT - slide);
+    add(box.x + MARK_SIZE, box.y + box.h + GAP + slide);
+    add(box.x, box.y - GAP - LABEL_HEIGHT - slide);
+    add(box.x, box.y + box.h + GAP + slide);
+    add(box.x + box.w - width, box.y - GAP - LABEL_HEIGHT - slide);
+    add(box.x + box.w - width, box.y + box.h + GAP + slide);
   }
   // 逃げ場が無い「欄」向け（枠の中。丸数字のとなり・下・上）
   const side = MARK_SIZE / 2 + 4;
-  out.push(
-    { x: badge.x + side, y: midY },
-    { x: badge.x - side - width, y: midY },
-    { x: badge.x + side, y: badge.y + side },
-    { x: badge.x + side, y: badge.y - side - LABEL_HEIGHT },
-    { x: badge.x - width / 2, y: badge.y + side },
-    { x: badge.x - width / 2, y: badge.y - side - LABEL_HEIGHT },
-  );
-  return out.map((point) => ({
-    x: Math.round(point.x),
-    y: Math.round(point.y),
-    w: width,
-    h: LABEL_HEIGHT,
-  }));
+  add(badge.x + side, midY);
+  add(badge.x - side - width, midY);
+  add(badge.x + side, badge.y + side);
+  add(badge.x + side, badge.y - side - LABEL_HEIGHT);
+  add(badge.x - width / 2, badge.y + side);
+  add(badge.x - width / 2, badge.y - side - LABEL_HEIGHT);
+  // 図ぜんぶの格子（アプリの文字を避けるための受け皿）
+  for (let y = 0; y + LABEL_HEIGHT <= frame.h; y += GRID_STEP) {
+    for (let x = 0; x + width <= frame.w; x += GRID_STEP) add(x, y);
+  }
+  return out.sort((a, b) => distanceTo(a, badge) - distanceTo(b, badge));
+}
+
+/** 条件を満たす候補のうち、アプリの文字を隠す面積がいちばん小さいもの。 */
+function leastCovered(candidates, avoid, accept) {
+  let best;
+  let bestCovered = Number.POSITIVE_INFINITY;
+  for (const rect of candidates.slice(0, LAST_RESORT_LIMIT)) {
+    if (!accept(rect)) continue;
+    const covered = coveredArea(rect, avoid);
+    if (covered < bestCovered) {
+      best = rect;
+      bestCovered = covered;
+      if (covered === 0) break;
+    }
+  }
+  return best;
 }
 
 /**
@@ -147,6 +286,8 @@ function labelCandidates(box, badge, width) {
 export function planCallouts(shot, geometry, size) {
   const crop = geometry.crop ?? { x: 0, y: 0, w: size.width, h: size.height };
   const frame = { w: crop.w, h: crop.h };
+  // アプリの文字（撮影のときに実測した矩形）。古い `shot-geometry.json` には無い
+  const avoid = shiftRects(geometry.avoid ?? [], crop, frame);
 
   // ①枠（丸数字は次の段で置く）
   const boxes = shot.callouts.map((callout) => {
@@ -178,70 +319,112 @@ export function planCallouts(shot, geometry, size) {
   /*
    * ②丸数字。既定は枠の左上の角。上下に重なった行（マークシートの見出し・解答済み・
    * 「不良原因」の列など）では、角に置くと**隣の行の文字**を隠してしまうので、
-   * 隣の枠にかからない場所（枠のすぐ左・すぐ上）へ逃がす。どれも駄目なら角へ戻す。
+   * 隣の枠にかからない場所（枠のすぐ左・すぐ上・辺に沿った位置）へ逃がす。
+   * 順に「アプリの文字も隣の枠も避ける」→「文字だけ避ける」→「隣の枠だけ避ける」と
+   * 緩めていき、どれも駄目なら角へ戻す（丸数字どうしは最後まで重ねない）。
    */
   const half = MARK_SIZE / 2;
   const taken = [];
   const marks = boxes.map((mark, index) => {
     const others = boxes.filter((_other, at) => at !== index).map((other) => other.box);
-    const candidates = [
-      { x: mark.box.x, y: mark.box.y },
-      { x: mark.box.x - half - 4, y: mark.box.y },
-      { x: mark.box.x + half, y: mark.box.y - half - 4 },
-      { x: mark.box.x - half - 4, y: mark.box.y + mark.box.h / 2 },
-    ];
-    const boxOf = (point) => ({
-      x: clamp(point.x, half, frame.w - half) - half,
-      y: clamp(point.y, half, frame.h - half) - half,
-      w: MARK_SIZE,
-      h: MARK_SIZE,
-    });
-    // 丸数字どうしは絶対に重ねない。隣の枠は、避けられるときだけ避ける
-    const free = (point) => !taken.some((other) => intersects(boxOf(point), other));
-    const clear = (point) =>
-      inside(boxOf(point), frame) &&
-      free(point) &&
-      !others.some((other) => intersects(boxOf(point), other));
-    const found = candidates.find(clear) ?? candidates.find(free) ?? candidates[0];
-    const badgeBox = boxOf(found);
+    const candidates = badgeCandidates(mark.box, frame);
+    const free = (rect) => !hits(grow(rect, 4), taken);
+    let badgeBox;
+    // 文字との隙間は空けたいが、帯のボタンが詰まっている図では隙間が取れない。
+    // 「隙間を空けて置く」→「触れない範囲まで詰めて置く」の順に緩める
+    for (const margin of [TEXT_MARGIN, 0]) {
+      const clearOfText = (rect) => !hits(grow(rect, margin), avoid);
+      const rules = [
+        (rect) => free(rect) && !hits(rect, others) && clearOfText(rect),
+        (rect) => free(rect) && clearOfText(rect),
+      ];
+      for (const rule of rules) {
+        badgeBox = candidates.find(rule);
+        if (badgeBox !== undefined) break;
+      }
+      if (badgeBox !== undefined) break;
+    }
+    badgeBox ??= candidates.find((rect) => free(rect) && !hits(rect, others));
+    badgeBox ??= candidates.find(free);
+    badgeBox ??= candidates.find((rect) => !hits(rect, taken));
+    badgeBox ??= candidates[0];
     taken.push(badgeBox);
     return {
       ...mark,
       badge: { x: badgeBox.x + half, y: badgeBox.y + half },
       badgeBox,
+      badgeCovers: coveredArea(badgeBox, avoid),
     };
   });
 
-  // ②ラベル（指すものの外へ。置けなければ、ほとんど隠さない範囲で中へ）
+  /*
+   * ③ラベル。順に緩めていく:
+   *   1. 指すものの外・他の枠にかからない・アプリの文字にかからない
+   *   2. 指すものの中（面積の1割まで）・他の枠にかからない・文字にかからない
+   *   3. 他の枠は諦める（画面いっぱいの欄が並ぶ図は、どこへ置いても隣の枠にかかる）
+   *   4. それでも駄目なら、文字を隠す面積がいちばん小さいところ（検査が赤くなる）
+   */
   const placed = [];
   for (const mark of marks) {
     const width = labelWidth(mark.label);
-    const others = marks.filter((other) => other.n !== mark.n);
+    const others = marks.filter((other) => other.n !== mark.n).map((other) => other.box);
+    const candidates = labelCandidates(mark.box, mark.badge, width, frame);
+    const space = (rect) =>
+      inside(rect, frame) &&
+      !marks.some(
+        (other) => other.n !== mark.n && intersects(grow(rect, BADGE_MARGIN), other.badgeBox),
+      ) &&
+      !intersects(rect, mark.badgeBox) &&
+      !placed.some((other) => intersects(grow(rect, LABEL_MARGIN), other.labelBox));
+    /*
+     * **自分の丸数字がいちばん近いこと**。他の番号のすぐ横に置くと、引き出し線を
+     * 目で追う前に「その番号のラベル」と読まれてしまう（`timechart` の①と③）。
+     */
+    const mine = (rect) =>
+      marks.every(
+        (other) =>
+          other.n === mark.n || distanceTo(rect, mark.badge) <= distanceTo(rect, other.badge),
+      );
+    const room = (rect) => space(rect) && mine(rect);
+    const spare = (rect) =>
+      overlapArea(rect, mark.box) <= mark.box.w * mark.box.h * INSIDE_COVER_RATIO;
+    const rulesFor = (margin) => {
+      const clear = (rect) => !hits(grow(rect, margin), avoid);
+      return [
+        (rect) => room(rect) && !hits(rect, others) && clear(rect) && !intersects(rect, mark.box),
+        (rect) => room(rect) && !hits(rect, others) && clear(rect) && spare(rect),
+        (rect) => room(rect) && clear(rect) && spare(rect),
+      ];
+    };
+    /*
+     * 近さを先に見る。「他の枠にかからない」を図ぜんぶで探すと、画面いっぱいの欄が
+     * 並ぶ図（`session-board`）でラベルが反対の端まで飛び、引き出し線が図を横切る。
+     * まず丸数字の近くで探し、近くに無いときだけ遠くまで広げる。
+     * 同じ近さなら「文字との隙間を空けた置き方」を先に選ぶ。
+     */
     let chosen;
-    for (const strict of [true, false]) {
-      for (const rect of labelCandidates(mark.box, mark.badge, width)) {
-        if (!inside(rect, frame)) continue;
-        if (marks.some((other) => intersects(rect, other.badgeBox))) continue;
-        if (placed.some((other) => intersects(rect, other.labelBox))) continue;
-        if (others.some((other) => intersects(rect, other.box))) continue;
-        if (strict) {
-          if (intersects(rect, mark.box)) continue;
-        } else if (overlapArea(rect, mark.box) > mark.box.w * mark.box.h * INSIDE_COVER_RATIO) {
-          continue;
+    for (const reach of [100, 200, 400, Number.POSITIVE_INFINITY]) {
+      const near = candidates.filter((rect) => distanceTo(rect, mark.badge) <= reach);
+      for (const margin of [TEXT_MARGIN, 0]) {
+        for (const rule of rulesFor(margin)) {
+          chosen = near.find(rule);
+          if (chosen !== undefined) break;
         }
-        chosen = rect;
-        break;
+        if (chosen !== undefined) break;
       }
       if (chosen !== undefined) break;
     }
+    chosen ??=
+      leastCovered(candidates, avoid, (rect) => space(rect) && spare(rect)) ??
+      leastCovered(candidates, avoid, space);
     if (chosen === undefined) {
       throw new Error(
         `吹き出しのラベルを置く場所がありません: ${mark.n}（${shot.caption}／${mark.label}）`,
       );
     }
-    placed.push({ ...mark, labelBox: chosen });
+    placed.push({ ...mark, labelBox: chosen, labelCovers: coveredArea(chosen, avoid) });
   }
-  return { crop, frame, marks: placed };
+  return { crop, frame, avoid, marks: placed };
 }
 
 /**

@@ -74,7 +74,7 @@
     "caption": "モードDのモニタ",
     "callouts": [
       { "n": 1, "label": "モニタ開始" },
-      { "n": 2, "label": "RUN" },
+      { "n": 2, "label": "RUN／STOP" },
       { "n": 3, "label": "デバイス初期化" },
       { "n": 4, "label": "スキャン回数" },
       { "n": 5, "label": "通電の色" }
