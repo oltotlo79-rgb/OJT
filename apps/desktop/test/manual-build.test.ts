@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildManual, chapterIdOf, plainText } from '../scripts/manual-build.mjs';
+import { buildManual, chapterIdOf, decodeFragment, plainText } from '../scripts/manual-build.mjs';
 
 /**
  * 正本（Markdown）の変換。取扱説明書 設計 §4.2。
@@ -189,5 +189,172 @@ describe('生成物', () => {
     expect(printHtml).toContain('id="toc"');
     expect(printHtml).toContain('data-section-id="intro/このアプリでできること"');
     expect(printHtml).toContain('<img src="images/home.png"');
+  });
+});
+
+/*
+ * ここから下は Task 34（説明書PDFの体裁ともくじのリンク）。Phase 7 設計 §6.2・§6.3。
+ * 番号・リンク・注意箱・版面は、どれも「読む人が迷わない」ための決まりなので機械で縛る。
+ */
+
+/** 2章ぶんの原稿（章番号・節番号・図番号の連番を見るため）。 */
+const TWO_CHAPTERS = [
+  { name: '00-intro.md', text: INTRO },
+  {
+    name: '01-setup.md',
+    text: [
+      '# パソコンに入れる',
+      '',
+      '## 入れかた',
+      '',
+      '手順は次のとおりです。',
+      '',
+      '![入れている途中の画面。](images/home.png)',
+      '',
+      '![入れ終わった画面。](images/list.png)',
+      '',
+      '## 消しかた',
+      '',
+      '> **注意** 設定も一緒に消えます。',
+      '',
+      '> **ヒント** 持ち運び版はフォルダごと消せます。',
+      '',
+      '> **やってはいけない** 動かしたまま消さないでください。',
+      '',
+      '> ここは引用です。注意箱ではありません。',
+      '',
+    ].join('\n'),
+  },
+];
+
+describe('章番号・節番号・図番号（設計 §6.2）', () => {
+  const { printHtml } = buildManual(TWO_CHAPTERS, '2026-09-20', undefined, 'v1.1.0');
+
+  it('numbers the chapters in order and puts the number inside the heading (so the bookmark shows it)', () => {
+    expect(printHtml).toContain('<span class="chapter-no">第1章</span> はじめに</h1>');
+    expect(printHtml).toContain('<span class="chapter-no">第2章</span> パソコンに入れる</h1>');
+  });
+
+  it('numbers the sections within their chapter', () => {
+    const numbers = [...printHtml.matchAll(/<h2[^>]*><span class="num">([\d.]+)<\/span>/gu)].map(
+      (match) => match[1],
+    );
+    expect(numbers).toEqual(['1.1', '1.2', '2.1', '2.2']);
+  });
+
+  it('numbers the figures within their chapter and writes the number into the caption', () => {
+    const captions = [
+      ...printHtml.matchAll(/<figcaption><span class="fig-no">([^<]+)<\/span>/gu),
+    ].map((match) => match[1]);
+    expect(captions).toEqual(['図 1-1', '図 2-1', '図 2-2']);
+    expect(printHtml).toContain('<span class="fig-no">図 2-2</span>入れ終わった画面。');
+  });
+
+  it('keeps the numbers out of the in-app help (the drawer has its own table of contents)', () => {
+    const { sections } = buildManual(TWO_CHAPTERS);
+    expect(sections[0]?.html).not.toContain('fig-no');
+    expect(sections[0]?.html).not.toContain('class="num"');
+  });
+});
+
+describe('もくじのリンクと見出しの id（設計 §6.3）', () => {
+  const { printHtml } = buildManual(TWO_CHAPTERS, '2026-09-20', undefined, 'v1.1.0');
+
+  it('makes every row of the table of contents a link', () => {
+    expect(printHtml).toContain('<a href="#ch-intro">');
+    expect(printHtml).toContain('<a href="#sec-intro--このアプリでできること">');
+    expect(printHtml).toContain('<span class="toc-no">第1章</span>');
+    expect(printHtml).toContain('<span class="toc-no">1.1</span>');
+    // 行末のリーダ（点線）
+    expect(printHtml).toContain('<span class="toc-leader"></span>');
+  });
+
+  it('gives every heading the id its link points at', () => {
+    const ids = new Set([...printHtml.matchAll(/ id="([^"]+)"/gu)].map((match) => match[1]));
+    const targets = [...printHtml.matchAll(/href="#([^"]+)"/gu)].map((match) =>
+      decodeFragment(match[1] ?? ''),
+    );
+    expect(targets.length).toBe(2 + 4);
+    expect(targets.filter((target) => !ids.has(target))).toEqual([]);
+  });
+
+  it('never gives two headings the same id', () => {
+    const ids = [...printHtml.matchAll(/ id="((?:sec|ch)-[^"]+)"/gu)].map((match) => match[1]);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it('refuses two headings that differ only in punctuation (they would share one id)', () => {
+    const text = '# はじめに\n\n## 電線をつなぐ・外す\n\nあ\n\n## 電線をつなぐ外す\n\nい\n';
+    expect(() => buildManual([{ name: '00-intro.md', text }])).toThrow('id が重なります');
+  });
+
+  it('lets the prose link to another section', () => {
+    const text = [
+      '# はじめに',
+      '',
+      '## 読む順番',
+      '',
+      'くわしくは [→ 1.2 つぎの節](#sec-intro--つぎの節) を見てください。',
+      '',
+      '## つぎの節',
+      '',
+      'ここです。',
+      '',
+    ].join('\n');
+    const built = buildManual([{ name: '00-intro.md', text }]);
+    expect(built.sections[0]?.html).toContain('href="#sec-intro--');
+  });
+
+  it('refuses a link that points at a heading that is not there', () => {
+    const text =
+      '# はじめに\n\n## 読む順番\n\n[→ 無い節](#sec-intro--ありません) を見てください。\n';
+    expect(() => buildManual([{ name: '00-intro.md', text }])).toThrow(
+      /本文のリンクの行き先がありません.*00-intro\.md/u,
+    );
+  });
+});
+
+describe('注意箱（設計 §6.2）', () => {
+  const built = buildManual(TWO_CHAPTERS, '2026-09-20', undefined, 'v1.1.0');
+
+  it('tells the three kinds apart by the first word', () => {
+    expect(built.printHtml).toContain('<blockquote class="notice notice-caution">');
+    expect(built.printHtml).toContain('<blockquote class="notice notice-tip">');
+    expect(built.printHtml).toContain('<blockquote class="notice notice-forbid">');
+  });
+
+  it('leaves an ordinary quotation alone', () => {
+    expect(built.printHtml).toContain('<blockquote>\n<p>ここは引用です。');
+  });
+
+  it('marks the boxes in the in-app help too, and never changes the plain text', () => {
+    const section = built.sections[3];
+    expect(section?.html).toContain('notice-caution');
+    expect(section?.text).toContain('注意 設定も一緒に消えます。');
+  });
+});
+
+describe('表紙と版面（設計 §6.2）', () => {
+  const { printHtml } = buildManual(TWO_CHAPTERS, '2026-09-20', undefined, 'v1.1.0');
+
+  it('prints the product name, the edition, the date, how to read it and the F1 line', () => {
+    expect(printHtml).toContain('<p class="cover-title">電気教育ツール</p>');
+    expect(printHtml).toContain('v1.1.0');
+    expect(printHtml).toContain('2026-09-20 発行');
+    expect(printHtml).toContain('この説明書の読み方');
+    expect(printHtml).toContain('<code>F1</code>');
+    // 表紙に見出しタグは使わない（しおりの先頭に表紙の行を出さないため）
+    expect(printHtml.slice(0, printHtml.indexOf('<nav id="toc">'))).not.toContain('<h1');
+  });
+
+  it('lays the page out the way the design table says', () => {
+    expect(printHtml).toContain('@page { size: A4; margin: 18mm 16mm 20mm; }');
+    expect(printHtml).toContain('max-width: 150mm');
+    expect(printHtml).toContain('font-size: 10.5pt');
+    expect(printHtml).toContain('line-height: 1.8');
+    expect(printHtml).toContain("font-family: 'Yu Gothic UI', 'Meiryo', sans-serif");
+    expect(printHtml).toContain('page-break-after: avoid');
+    expect(printHtml).toContain('thead { display: table-header-group; }');
+    expect(printHtml).toContain('page-break-inside: avoid');
   });
 });

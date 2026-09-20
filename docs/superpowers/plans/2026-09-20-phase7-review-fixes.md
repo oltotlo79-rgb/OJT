@@ -1572,14 +1572,14 @@ apps/desktop/test/ipc-surface.test.ts
 
 **Steps:**
 
-- [ ] 1. `anchorIdOf(id: string): string` を書く（章ID・節IDを URL に安全な形へ写す純関数。ASCII 化ではなく `encodeURIComponent` 可能な形で一意性を保つ）。`<h1 id="ch-…">` / `<h2 id="sec-…">` を出す。
-- [ ] 2. `<nav id="toc">` の各行を `<a href="#…">` にする。章は 11pt 太字、節は 10pt、行末にリーダ（点線）。
-- [ ] 3. 章番号（`第1章`〜`第15章`）と節番号（`1.1`）を**変換時に機械で振る**（正本の Markdown には書かない）。図番号（`図 3-2`）も同様にし、`figcaption` を「図 3-2 盤の画面」の形にする。
-- [ ] 4. `PRINT_CSS` を本設計 §6.2 の表のとおり書き直す。`@page { size: A4; margin: 18mm 16mm 20mm; }`、本文 `max-width: 150mm`、見出しに `page-break-after: avoid`、表の `thead` 繰り返し、注意箱3種、手順の `counter`。
-- [ ] 5. 表紙を作り直す（製品名28pt・版・発行日・「この説明書の読み方」3行・「困ったら `F1`」）。
-- [ ] 6. `print-manual.mjs` に `preferCSSPageSize: true`、`displayHeaderFooter: true`、`headerTemplate`（左に製品名、右に章題。`font-size: 9pt`、`margin: 0 16mm`）、`footerTemplate`（中央にノンブル）、`generateTaggedPDF: true` を足す。`generateDocumentOutline: true` は維持。
-- [ ] 7. 本文中の相互参照（`[→ 3.2 電線をつなぐ](#sec-…)`）を書けるようにし、**存在しないアンカーを指していたらテストで落とす**。
-- [ ] 8. テスト。
+- [x] 1. `anchorIdOf(id: string): string` を書く（章ID・節IDを URL に安全な形へ写す純関数。ASCII 化ではなく `encodeURIComponent` 可能な形で一意性を保つ）。`<h1 id="ch-…">` / `<h2 id="sec-…">` を出す。
+- [x] 2. `<nav id="toc">` の各行を `<a href="#…">` にする。章は 11pt 太字、節は 10pt、行末にリーダ（点線）。
+- [x] 3. 章番号（`第1章`〜`第15章`）と節番号（`1.1`）を**変換時に機械で振る**（正本の Markdown には書かない）。図番号（`図 3-2`）も同様にし、`figcaption` を「図 3-2 盤の画面」の形にする。
+- [x] 4. `PRINT_CSS` を本設計 §6.2 の表のとおり書き直す。`@page { size: A4; margin: 18mm 16mm 20mm; }`、本文 `max-width: 150mm`、見出しに `page-break-after: avoid`、表の `thead` 繰り返し、注意箱3種、手順の `counter`。
+- [x] 5. 表紙を作り直す（製品名28pt・版・発行日・「この説明書の読み方」3行・「困ったら `F1`」）。
+- [x] 6. `print-manual.mjs` に `preferCSSPageSize: true`、`displayHeaderFooter: true`、`headerTemplate`（左に製品名、右に章題。`font-size: 9pt`、`margin: 0 16mm`）、`footerTemplate`（中央にノンブル）、`generateTaggedPDF: true` を足す。`generateDocumentOutline: true` は維持。
+- [x] 7. 本文中の相互参照（`[→ 3.2 電線をつなぐ](#sec-…)`）を書けるようにし、**存在しないアンカーを指していたらテストで落とす**。
+- [x] 8. テスト。
 
 ```
 apps/desktop/test/manual-build.test.ts

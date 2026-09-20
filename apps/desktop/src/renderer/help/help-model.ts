@@ -1,5 +1,6 @@
 import type { SessionMode } from '../../shared/ipc.js';
 import type { AssembleViewMode } from '../app/store.js';
+import { anchorIdOf, chapterAnchorIdOf } from './anchor-id.mjs';
 import { MANUAL_CHAPTERS, MANUAL_SECTIONS, type ManualSection } from './manual-content.js';
 
 /**
@@ -199,23 +200,25 @@ export function adjacentSectionId(sectionId: string, direction: -1 | 1): string 
 }
 
 /**
- * 節ID を、本文中の相互参照リンクが使う断片識別子へ写す（取扱説明書 設計 §6.3・§6.4）。
+ * 節ID・章ID を、本文中の相互参照リンクが使う断片識別子へ写す（取扱説明書 設計 §6.3・§6.4）。
  * 例: `"mode-b/電線をつなぐ・外す"` → `"sec-mode-b--電線をつなぐ外す"`。
- * Task 34（説明書PDFのもくじリンク）は本文の見出しにもこの同じ関数で `id` を振るので、
- * PDF・アプリ内ヘルプのどちらでも同じ断片識別子になる。**Task 34 はこの関数を再利用し、
- * 別の変換を作り直さないこと**（そろえないとアプリ内リンクが節へ着地しなくなる）。
+ * 中身は `anchor-id.mjs`（素の JavaScript）にある。PDF を組む `scripts/manual-build.mjs` は
+ * 素の Node から走るので TypeScript を読めない。**同じ1本の関数**を両方から呼ぶことで、
+ * PDF とアプリ内ヘルプの `id` が食い違わないようにしてある（Task 34）。
  */
-export function anchorIdOf(sectionId: string): string {
-  const separator = sectionId.indexOf('/');
-  const chapterId = separator < 0 ? sectionId : sectionId.slice(0, separator);
-  const title = separator < 0 ? '' : sectionId.slice(separator + 1);
-  const safeTitle = title.replace(/[^\p{L}\p{N}]+/gu, '');
-  return `sec-${chapterId}--${safeTitle}`;
-}
+export { anchorIdOf, chapterAnchorIdOf };
 
-const ANCHOR_TO_SECTION_ID = new Map<string, string>(
-  MANUAL_SECTIONS.map((section) => [anchorIdOf(section.id), section.id]),
-);
+/*
+ * 章への相互参照（`#ch-…`）は、その章の最初の節へ着地させる。PDF では章の扉へ飛ぶが、
+ * アプリ内ヘルプには「章」を開く単位が無いためである（引き出しは節を出す）。
+ */
+const ANCHOR_TO_SECTION_ID = new Map<string, string>([
+  ...MANUAL_CHAPTERS.flatMap((chapter) => {
+    const first = chapter.sectionIds[0];
+    return first === undefined ? [] : [[chapterAnchorIdOf(chapter.id), first] as [string, string]];
+  }),
+  ...MANUAL_SECTIONS.map((section): [string, string] => [anchorIdOf(section.id), section.id]),
+]);
 
 /**
  * 断片識別子（`href="#…"` の `#` を除いた部分）から節IDを引く。

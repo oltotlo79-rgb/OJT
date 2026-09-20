@@ -9,6 +9,7 @@ import {
 } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import PACKAGE from '../package.json' with { type: 'json' };
 import { buildManual } from './manual-build.mjs';
 
 /**
@@ -27,6 +28,9 @@ const MANUAL_DIR = resolve(APP_ROOT, '../../docs/manual');
 const IMAGE_DIR = join(MANUAL_DIR, 'images');
 const OUT_DIR = join(APP_ROOT, 'resources', 'manual');
 const HELP_FILE = join(APP_ROOT, 'src', 'renderer', 'help', 'manual-content.ts');
+
+/** 表紙に出す版。配布物と同じ版数にするため `package.json` から読む（二重管理をしない）。 */
+const EDITION = `v${PACKAGE.version}`;
 
 const out = globalThis.process.stdout;
 
@@ -81,7 +85,7 @@ function main() {
    */
   const builtAt = new Date().toISOString().slice(0, 10);
   const available = availableImages(IMAGE_DIR);
-  const built = buildManual(files, builtAt, available);
+  const built = buildManual(files, builtAt, available, EDITION);
 
   mkdirSync(dirname(HELP_FILE), { recursive: true });
   writeFileSync(HELP_FILE, built.helpModule, 'utf8');

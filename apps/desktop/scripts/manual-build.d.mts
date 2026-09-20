@@ -32,8 +32,10 @@ export declare const HELP_IMAGE_WIDTH: number;
 export declare const PRODUCT_NAME: string;
 export declare function chapterIdOf(fileName: string): string;
 export declare function plainText(html: string): string;
+export declare function decodeFragment(fragment: string): string;
 export declare function buildManual(
   files: readonly ManualFile[],
   builtAt?: string,
   availableImages?: readonly string[],
+  edition?: string,
 ): BuiltManual;

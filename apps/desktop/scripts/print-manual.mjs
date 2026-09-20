@@ -1,7 +1,9 @@
-import { existsSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { app, BrowserWindow } from 'electron';
+import PACKAGE from '../package.json' with { type: 'json' };
+import { PRODUCT_NAME } from './manual-build.mjs';
 
 /**
  * 印刷用 HTML を PDF にする。取扱説明書 設計 §7.1 / 決定表#4・#26。
@@ -26,8 +28,30 @@ const PDF =
   globalThis.process.env['OJT_PRINT_MANUAL_PDF'] ??
   join(APP_ROOT, 'resources', 'manual', 'manual.pdf');
 
-/** A4・上下18mm・左右16mm（`printToPDF` の単位はインチ）。決定表#26 */
-const MARGINS = { marginType: 'custom', top: 0.71, bottom: 0.71, left: 0.63, right: 0.63 };
+/**
+ * A4・上 18mm・左右 16mm・下 20mm（`printToPDF` の単位はインチ）。決定表#26 ／ Phase 7 設計 §6.2。
+ * 版面は CSS の `@page` を正とする（`preferCSSPageSize`）が、柱とノンブルは Chromium が
+ * **この余白の中に**描くので、同じ値をここにも渡して場所を空けておく。
+ */
+const MARGINS = { marginType: 'custom', top: 0.709, bottom: 0.787, left: 0.63, right: 0.63 };
+
+/** 表紙・柱に出す版（`package.json` と二重管理しない）。 */
+const EDITION = `v${PACKAGE.version}`;
+
+/*
+ * 柱（ランニングヘッダ）とノンブル。Chromium の既定の差し込みは 8px で読めないので、
+ * 書体と大きさ（9pt）と左右の余白（16mm。本文の版面に合わせる）を明示する。
+ * 使えるのは Chromium が入れ替える 5 つの印（`date` `title` `url` `pageNumber` `totalPages`）
+ * だけで、**ページごとに変わる章題は差し込めない**ので、柱の右には版を出す。
+ */
+const HEADER_FOOTER_STYLE =
+  "font-family:'Yu Gothic UI','Meiryo',sans-serif;font-size:9pt;color:#4a5666;width:100%;margin:0 16mm;";
+const HEADER_TEMPLATE =
+  `<div style="${HEADER_FOOTER_STYLE}display:flex;justify-content:space-between;">` +
+  `<span>${PRODUCT_NAME} 取扱説明書</span><span>${EDITION}</span></div>`;
+const FOOTER_TEMPLATE =
+  `<div style="${HEADER_FOOTER_STYLE}text-align:center;">` +
+  '<span class="pageNumber"></span> / <span class="totalPages"></span></div>';
 
 /*
  * 配布の工程（`dist`）の途中で走るので、GPU は使わない。ビルド機にまともな GPU が
@@ -35,6 +59,37 @@ const MARGINS = { marginType: 'custom', top: 0.71, bottom: 0.71, left: 0.63, rig
  * 紙面は CPU のラスタライザでまったく同じに焼ける。
  */
 app.disableHardwareAcceleration();
+
+/**
+ * 印刷用 HTML の表紙から発行日（`YYYYMMDD`）を読む。無ければ `undefined`。
+ * @param {string} html
+ * @returns {string | undefined}
+ */
+function dayOf(html) {
+  const match = /<p class="cover-meta">(\d{4})-(\d{2})-(\d{2}) 発行<\/p>/u.exec(html);
+  return match === null ? undefined : `${match[1]}${match[2]}${match[3]}`;
+}
+
+/**
+ * PDF の `/CreationDate` と `/ModDate` を「その日の 00:00:00」に丸める。
+ *
+ * Chromium は焼いた**時刻**を秒まで書き込むので、同じ原稿から作った PDF が走らせるたびに
+ * 違うバイト列になり、配布物のチェックサムが毎回変わる（`build-manual.mjs` が生成日を
+ * 日付だけにしているのと同じ理由）。差し替えは**同じ桁数**にして、相互参照表（xref）の
+ * 位置がずれないようにする。
+ * @param {globalThis.Buffer} pdf
+ * @param {string | undefined} day
+ * @returns {globalThis.Buffer}
+ */
+function withStableDates(pdf, day) {
+  const stamped = pdf
+    .toString('latin1')
+    .replace(
+      /\/(CreationDate|ModDate)\s*\(D:(\d{8})\d{6}([^)]*)\)/gu,
+      (_all, key, own, zone) => `/${key} (D:${day ?? own}000000${zone})`,
+    );
+  return globalThis.Buffer.from(stamped, 'latin1');
+}
 
 async function main() {
   if (!existsSync(HTML)) {
@@ -61,14 +116,23 @@ async function main() {
     },
   });
   await window.loadFile(HTML);
-  const pdf = await window.webContents.printToPDF({
+  const printed = await window.webContents.printToPDF({
     pageSize: 'A4',
     landscape: false,
     printBackground: true,
     margins: MARGINS,
+    // 版面は CSS の `@page`（18mm 16mm 20mm）を正とする。Phase 7 設計 §6.2
+    preferCSSPageSize: true,
+    // 柱とノンブル（Phase 7 設計 §6.2）
+    displayHeaderFooter: true,
+    headerTemplate: HEADER_TEMPLATE,
+    footerTemplate: FOOTER_TEMPLATE,
     // 見出しから しおり を作る（長い説明書を紙でも画面でも引けるようにする）
     generateDocumentOutline: true,
+    // 読み上げソフトが見出し・表・図を構造として拾えるようにする（Phase 7 設計 §6.2）
+    generateTaggedPDF: true,
   });
+  const pdf = withStableDates(printed, dayOf(readFileSync(HTML, 'utf8')));
   writeFileSync(PDF, pdf);
   globalThis.process.stdout.write(
     `取扱説明書を書き出しました: ${PDF}（${String(Math.round(pdf.length / 1024))} KB）\n`,

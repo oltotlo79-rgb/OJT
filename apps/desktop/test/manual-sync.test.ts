@@ -2,7 +2,9 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { buildManual, plainText } from '../scripts/manual-build.mjs';
+import { buildManual, decodeFragment, plainText } from '../scripts/manual-build.mjs';
+import { anchorIdOf, chapterAnchorIdOf } from '../src/renderer/help/anchor-id.mjs';
+import { sectionIdForAnchor } from '../src/renderer/help/help-model.js';
 import {
   MANUAL_CHAPTERS,
   MANUAL_SECTIONS,
@@ -52,11 +54,15 @@ function availableImages(): string[] | undefined {
  */
 const plainOf = plainText;
 
-/** 印刷用 HTML から節ID・見出し・素の文を取り出す（生成物と同じ3つ）。 */
+/**
+ * 印刷用 HTML から節ID・見出し・素の文を取り出す（生成物と同じ3つ）。
+ * 見出しには Task 34 で `id`（`#sec-…`）と節番号（`<span class="num">3.2</span>`）が付いたので、
+ * どちらも読み飛ばして**見出しの文字だけ**を取り出す。
+ */
 function sectionsOfPrintHtml(html: string): Array<{ id: string; title: string; text: string }> {
   const out: Array<{ id: string; title: string; text: string }> = [];
   const pattern =
-    /<section class="manual-section" data-section-id="([^"]+)">\s*<h2>([\s\S]*?)<\/h2>([\s\S]*?)<\/section>/gu;
+    /<section class="manual-section" data-section-id="([^"]+)">\s*<h2[^>]*>(?:<span class="num">[^<]*<\/span> )?([\s\S]*?)<\/h2>([\s\S]*?)<\/section>/gu;
   let match = pattern.exec(html);
   while (match !== null) {
     const [, id, title, body] = match;
@@ -72,7 +78,7 @@ function sectionsOfPrintHtml(html: string): Array<{ id: string; title: string; t
 function imageNamesOfPrintHtml(html: string): Array<{ id: string; images: string[] }> {
   const out: Array<{ id: string; images: string[] }> = [];
   const pattern =
-    /<section class="manual-section" data-section-id="([^"]+)">\s*<h2>[\s\S]*?<\/h2>([\s\S]*?)<\/section>/gu;
+    /<section class="manual-section" data-section-id="([^"]+)">\s*<h2[^>]*>[\s\S]*?<\/h2>([\s\S]*?)<\/section>/gu;
   let match = pattern.exec(html);
   while (match !== null) {
     const [, id, body] = match;
@@ -128,6 +134,37 @@ describe('正本と生成物', () => {
       images: section.images,
     }));
     expect(fromPrintHtml).toEqual(printed);
+  });
+
+  /*
+   * Task 34: PDF の見出しの `id` と、アプリ内ヘルプが本文リンクを引くときの断片識別子は
+   * **同じ1本の関数**（`anchor-id.mjs`）から出る。ここが食い違うと、本文の相互参照が
+   * PDF では飛べてアプリでは何も起きない、という気づきにくい壊れ方をする。
+   */
+  it('gives the pdf headings and the in-app help exactly the same anchors', () => {
+    for (const section of MANUAL_SECTIONS) {
+      const anchor = anchorIdOf(section.id);
+      expect(built.printHtml, `${section.id} の見出しに id がありません`).toContain(
+        `<h2 id="${anchor}">`,
+      );
+      expect(sectionIdForAnchor(anchor), `#${anchor} がアプリ内で節に当たりません`).toBe(
+        section.id,
+      );
+    }
+    for (const chapter of MANUAL_CHAPTERS) {
+      const anchor = chapterAnchorIdOf(chapter.id);
+      expect(built.printHtml).toContain(`<h1 id="${anchor}">`);
+      expect(sectionIdForAnchor(anchor)).toBe(chapter.sectionIds[0]);
+    }
+  });
+
+  it('points every link in the printed manual at a heading that exists', () => {
+    const ids = new Set([...built.printHtml.matchAll(/ id="([^"]+)"/gu)].map((m) => m[1]));
+    const targets = [...built.printHtml.matchAll(/href="#([^"]+)"/gu)].map((m) =>
+      decodeFragment(m[1] ?? ''),
+    );
+    expect(targets.length).toBeGreaterThanOrEqual(MANUAL_SECTIONS.length);
+    expect(targets.filter((target) => !ids.has(target))).toEqual([]);
   });
 
   it('gives every section a unique id', () => {
