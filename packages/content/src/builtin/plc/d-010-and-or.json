@@ -1,0 +1,249 @@
+{
+  "formatVersion": 1,
+  "id": "d-010",
+  "mode": "plc",
+  "title": "PLC AND・OR の組合せ（2級形式）",
+  "grade": 2,
+  "difficulty": 2,
+  "tags": ["and-or"],
+  "description": "黒（X0）と黄（X1）の両方を押している間だけ白ランプ（PL1）が点灯し、どちらか一方でも押していれば黄ランプ（PL2）が点灯し、緑（X2）を押していて黒を押していないときだけ緑ランプ（PL3）が点灯する回路をPLCで組みます。PLCの出力は必ず盤のリレーを介し、PLCの電源は壁コンセントから取ってください。",
+  "timeLimit": {
+    "standardMin": 50,
+    "cutoffMin": 60
+  },
+  "board": {
+    "boardId": "board-jipm-std",
+    "socketRoles": {
+      "S1": "CR1",
+      "S2": "CR2",
+      "S3": "CR3",
+      "S4": "CR4",
+      "S7": "CHK"
+    }
+  },
+  "inventory": [
+    {
+      "kind": "relay-my4n",
+      "count": 4
+    }
+  ],
+  "plc": {
+    "vendor": "mitsubishi",
+    "model": "FX5U"
+  },
+  "io": {
+    "mode": "fixed",
+    "wiring": "sink",
+    "inputs": [
+      {
+        "x": 0,
+        "pb": "PB1"
+      },
+      {
+        "x": 1,
+        "pb": "PB2"
+      },
+      {
+        "x": 2,
+        "pb": "PB3"
+      }
+    ],
+    "outputs": [
+      {
+        "y": 0,
+        "cr": "CR1",
+        "pl": "PL1"
+      },
+      {
+        "y": 1,
+        "cr": "CR2",
+        "pl": "PL2"
+      },
+      {
+        "y": 2,
+        "cr": "CR3",
+        "pl": "PL3"
+      }
+    ]
+  },
+  "referenceLadder": {
+    "networks": [
+      {
+        "id": "n1",
+        "comment": "AND（両方押している間）",
+        "cells": [
+          [
+            {
+              "kind": "contact",
+              "type": "NO",
+              "device": {
+                "kind": "input",
+                "index": 0
+              }
+            },
+            {
+              "kind": "contact",
+              "type": "NO",
+              "device": {
+                "kind": "input",
+                "index": 1
+              }
+            },
+            {
+              "kind": "coil",
+              "type": "OUT",
+              "device": {
+                "kind": "output",
+                "index": 0
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "id": "n2",
+        "comment": "OR（どちらかを押している間）",
+        "cells": [
+          [
+            {
+              "kind": "contact",
+              "type": "NO",
+              "device": {
+                "kind": "input",
+                "index": 0
+              }
+            },
+            {
+              "kind": "vline"
+            },
+            {
+              "kind": "coil",
+              "type": "OUT",
+              "device": {
+                "kind": "output",
+                "index": 1
+              }
+            }
+          ],
+          [
+            {
+              "kind": "contact",
+              "type": "NO",
+              "device": {
+                "kind": "input",
+                "index": 1
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "id": "n3",
+        "comment": "緑を押していて黒を押していないとき",
+        "cells": [
+          [
+            {
+              "kind": "contact",
+              "type": "NO",
+              "device": {
+                "kind": "input",
+                "index": 2
+              }
+            },
+            {
+              "kind": "contact",
+              "type": "NC",
+              "device": {
+                "kind": "input",
+                "index": 0
+              }
+            },
+            {
+              "kind": "coil",
+              "type": "OUT",
+              "device": {
+                "kind": "output",
+                "index": 2
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "id": "end",
+        "cells": [
+          [
+            {
+              "kind": "end"
+            }
+          ]
+        ]
+      }
+    ],
+    "comments": {
+      "X0": "黒押ボタン",
+      "X1": "黄押ボタン",
+      "X2": "緑押ボタン",
+      "Y0": "AND 表示 PL1",
+      "Y1": "OR 表示 PL2",
+      "Y2": "緑のみ表示 PL3"
+    }
+  },
+  "wiringRequired": true,
+  "operations": [
+    {
+      "t": 500,
+      "target": "PB1",
+      "action": "press"
+    },
+    {
+      "t": 800,
+      "target": "PB1",
+      "action": "release"
+    },
+    {
+      "t": 1500,
+      "target": "PB2",
+      "action": "press"
+    },
+    {
+      "t": 1800,
+      "target": "PB2",
+      "action": "release"
+    },
+    {
+      "t": 2500,
+      "target": "PB1",
+      "action": "press"
+    },
+    {
+      "t": 2800,
+      "target": "PB2",
+      "action": "press"
+    },
+    {
+      "t": 3400,
+      "target": "PB2",
+      "action": "release"
+    },
+    {
+      "t": 3700,
+      "target": "PB1",
+      "action": "release"
+    },
+    {
+      "t": 4500,
+      "target": "PB3",
+      "action": "press"
+    },
+    {
+      "t": 4800,
+      "target": "PB3",
+      "action": "release"
+    }
+  ],
+  "durationMs": 6000,
+  "judge": {
+    "compareSignals": ["PL1", "PL2", "PL3"]
+  }
+}

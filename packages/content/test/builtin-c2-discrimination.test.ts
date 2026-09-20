@@ -12,8 +12,11 @@ import {
 import { judgeInspectRepair } from '../src/judge-inspect.js';
 
 /**
- * 内蔵C2課題8題の弁別テスト。設計仕様 §7.8 の自己整合テストにあたる。
+ * 内蔵C2課題20題の弁別テスト。設計仕様 §7.8 の自己整合テストにあたる。
  * 「正しく指摘して正しく修復すれば合格し、修復しなければ不合格になる」ことを全題で見張る。
+ *
+ * `c2-020` はランダム故障の課題（§7.5）なので、種を固定して解決する（`SEEDS`）。種を渡さないと
+ * `resolveFaults()` が `Date.now()` を使い、`REPAIRS` に書いた手順と食い違う。
  */
 
 /** 修復の1手。 */
@@ -63,7 +66,59 @@ const REPAIRS: Readonly<Record<string, readonly Repair[]>> = {
     { op: 'add', from: 'TB_PB.3a', to: 'CR2.14' },
     { op: 'replace', partId: 'CR1' },
   ],
+  'c2-009': [
+    { op: 'remove', wireId: 'sw-002' },
+    { op: 'add', from: 'TB_PB.1a', to: 'TB_PB.2c' },
+  ],
+  'c2-010': [
+    { op: 'remove', wireId: 'sw-004' },
+    { op: 'add', from: 'TB_PL.1+', to: 'TB_PB.2a' },
+  ],
+  'c2-011': [
+    { op: 'replace', partId: 'CR1' },
+    { op: 'remove', wireId: 'sw-008' },
+    { op: 'add', from: 'CR1.5', to: 'TB_PB.3a' },
+  ],
+  'c2-012': [
+    { op: 'replace', partId: 'CR2' },
+    { op: 'remove', wireId: 'sw-015' },
+    { op: 'add', from: 'CR2.2', to: 'TB_PL.2+' },
+  ],
+  'c2-013': [{ op: 'replace', partId: 'T1' }],
+  'c2-014': [{ op: 'replace', partId: 'CR2' }],
+  'c2-015': [
+    { op: 'remove', wireId: 'sw-021' },
+    { op: 'add', from: 'T1.7', to: 'T2.9' },
+    { op: 'replace', partId: 'T2' },
+  ],
+  'c2-016': [{ op: 'replace', partId: 'CR3' }],
+  'c2-017': [
+    { op: 'replace', partId: 'CR2' },
+    { op: 'remove', wireId: 'sw-024' },
+    { op: 'add', from: 'CR2.8', to: 'TB_PL.1+' },
+  ],
+  'c2-018': [
+    { op: 'remove', wireId: 'sw-019' },
+    { op: 'add', from: 'T1.6', to: 'TB_PL.2+' },
+    { op: 'replace', partId: 'CR1' },
+    { op: 'remove', wireId: 'sw-016' },
+    { op: 'add', from: 'T1.5', to: 'TB_PB.2c' },
+  ],
+  'c2-019': [{ op: 'replace', partId: 'T1' }],
+  // c2-020 はランダム故障。`SEEDS['c2-020']` で解決した3件（sw-007 断線・sw-006 断線・
+  // sw-004 誤配線）に対応する手順で、種を変えるとこの並びは合わなくなる。
+  'c2-020': [
+    { op: 'remove', wireId: 'sw-007' },
+    { op: 'add', from: 'CR1.9', to: 'TB_PB.3c' },
+    { op: 'remove', wireId: 'sw-006' },
+    { op: 'add', from: 'TB_PB.1c', to: 'CR1.9' },
+    { op: 'remove', wireId: 'sw-004' },
+    { op: 'add', from: 'CR2.10', to: 'CR1.11' },
+  ],
 };
+
+/** ランダム故障の課題で使う種（決定論のため。§7.5 / CT-04）。 */
+const SEEDS: Readonly<Record<string, number>> = { 'c2-020': 20260920 };
 
 /** 故障の在処から「正しい指摘」を組み立てる（訓練者が3D盤でクリックする内容と同じ）。§9.2 */
 function correctReports(circuit: RepairCircuit): FaultReport[] {
@@ -125,14 +180,15 @@ function repairsBySite(id: string, sites: readonly FaultSite[]): readonly Repair
 function circuitOf(id: string) {
   const problem = BUILTIN_INSPECT_REPAIR_PROBLEMS.find((p) => p.id === id);
   if (problem === undefined) throw new Error(`no problem ${id}`);
-  const built = buildInspectRepairCircuit(problem, JIPM_BOARD);
+  const seed = SEEDS[id];
+  const built = buildInspectRepairCircuit(problem, JIPM_BOARD, seed === undefined ? {} : { seed });
   if (!built.ok) throw new Error(JSON.stringify(built.errors));
   return { problem, circuit: built.value };
 }
 
-describe('内蔵C2課題8題（§7.9）', () => {
-  it('registers eight problems: four grade 2 and four grade 1', () => {
-    expect(BUILTIN_INSPECT_REPAIR_PROBLEMS).toHaveLength(8);
+describe('内蔵C2課題20題（§7.9）', () => {
+  it('registers twenty problems: ten grade 2 and ten grade 1', () => {
+    expect(BUILTIN_INSPECT_REPAIR_PROBLEMS).toHaveLength(20);
     expect(BUILTIN_INSPECT_REPAIR_PROBLEMS.map((p) => p.id)).toEqual([
       'c2-001',
       'c2-002',
@@ -142,12 +198,37 @@ describe('内蔵C2課題8題（§7.9）', () => {
       'c2-006',
       'c2-007',
       'c2-008',
+      'c2-009',
+      'c2-010',
+      'c2-011',
+      'c2-012',
+      'c2-013',
+      'c2-014',
+      'c2-015',
+      'c2-016',
+      'c2-017',
+      'c2-018',
+      'c2-019',
+      'c2-020',
     ]);
-    expect(BUILTIN_INSPECT_REPAIR_PROBLEMS.filter((p) => p.grade === 2)).toHaveLength(4);
-    expect(BUILTIN_INSPECT_REPAIR_PROBLEMS.filter((p) => p.grade === 1)).toHaveLength(4);
+    expect(BUILTIN_INSPECT_REPAIR_PROBLEMS.filter((p) => p.grade === 2)).toHaveLength(10);
+    expect(BUILTIN_INSPECT_REPAIR_PROBLEMS.filter((p) => p.grade === 1)).toHaveLength(10);
   });
 
-  it('covers wire and part faults across the eight problems (§5.4)', () => {
+  it('難しさが級の帯に収まる（§4.3 Phase 7）', () => {
+    for (const problem of BUILTIN_INSPECT_REPAIR_PROBLEMS) {
+      const allowed = problem.grade === 2 ? [2, 3, 4] : [4, 5];
+      expect(allowed, `${problem.id}（${problem.grade}級）`).toContain(problem.difficulty);
+    }
+  });
+
+  it('全20題ぶんの修復手順が書いてある（新題を黙って未検証にしない）', () => {
+    expect(Object.keys(REPAIRS).sort()).toEqual(
+      [...BUILTIN_INSPECT_REPAIR_PROBLEMS].map((p) => p.id).sort(),
+    );
+  });
+
+  it('covers wire and part faults across the twenty problems (§5.4)', () => {
     const kinds = new Set<string>();
     for (const problem of BUILTIN_INSPECT_REPAIR_PROBLEMS) {
       if (!Array.isArray(problem.faults)) continue;

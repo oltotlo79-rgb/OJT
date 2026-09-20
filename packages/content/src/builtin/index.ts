@@ -51,6 +51,18 @@ import c2Interlock from './inspect-repair/c2-005-interlock.json' with { type: 'j
 import c2Sequential from './inspect-repair/c2-006-sequential.json' with { type: 'json' };
 import c2Flicker from './inspect-repair/c2-007-flicker.json' with { type: 'json' };
 import c2StopPriority from './inspect-repair/c2-008-stop-priority.json' with { type: 'json' };
+import c2AndLamp from './inspect-repair/c2-009-and-lamp.json' with { type: 'json' };
+import c2OrLamp from './inspect-repair/c2-010-or-lamp.json' with { type: 'json' };
+import c2SelfHoldStop from './inspect-repair/c2-011-self-hold-stop.json' with { type: 'json' };
+import c2TwoHand from './inspect-repair/c2-012-two-hand.json' with { type: 'json' };
+import c2OffDelay from './inspect-repair/c2-013-off-delay.json' with { type: 'json' };
+import c2MutualInterlock from './inspect-repair/c2-014-mutual-interlock.json' with { type: 'json' };
+import c2ThreeStep from './inspect-repair/c2-015-three-step.json' with { type: 'json' };
+import c2LastPress from './inspect-repair/c2-016-last-press.json' with { type: 'json' };
+import c2FlickerAlarm from './inspect-repair/c2-017-flicker-alarm.json' with { type: 'json' };
+import c2ConditionalHold from './inspect-repair/c2-018-conditional-hold.json' with { type: 'json' };
+import c2TwoTimer from './inspect-repair/c2-019-two-timer.json' with { type: 'json' };
+import c2Random from './inspect-repair/c2-020-random.json' with { type: 'json' };
 import d001 from './plc/d-001-self-hold.json' with { type: 'json' };
 import d002 from './plc/d-002-interlock.json' with { type: 'json' };
 import d003 from './plc/d-003-on-delay.json' with { type: 'json' };
@@ -59,9 +71,21 @@ import d005 from './plc/d-005-sequential.json' with { type: 'json' };
 import d006 from './plc/d-006-flicker.json' with { type: 'json' };
 import d007 from './plc/d-007-counter.json' with { type: 'json' };
 import d008 from './plc/d-008-stop-priority.json' with { type: 'json' };
+import d009 from './plc/d-009-momentary.json' with { type: 'json' };
+import d010 from './plc/d-010-and-or.json' with { type: 'json' };
+import d011 from './plc/d-011-set-reset.json' with { type: 'json' };
+import d012 from './plc/d-012-edge-one-shot.json' with { type: 'json' };
+import d013 from './plc/d-013-off-delay.json' with { type: 'json' };
+import d014 from './plc/d-014-interlock.json' with { type: 'json' };
+import d015 from './plc/d-015-three-step.json' with { type: 'json' };
+import d016 from './plc/d-016-counter-steps.json' with { type: 'json' };
+import d017 from './plc/d-017-counter-alarm.json' with { type: 'json' };
+import d018 from './plc/d-018-clock-flicker.json' with { type: 'json' };
+import d019 from './plc/d-019-master-control.json' with { type: 'json' };
+import d020 from './plc/d-020-comprehensive.json' with { type: 'json' };
 
 /**
- * 内蔵課題。設計仕様 §7.8 / §7.9（モードB 20題・モードC1 12セット・モードC2 8題・モードD 8題）。
+ * 内蔵課題。設計仕様 §7.8 / §7.9（モードB 20題・モードC1 12セット・モードC2 20題・モードD 20題）。
  * JSONを直接読み、`parseProblem()` を通した結果だけを公開する。
  * 1件でも検証に落ちたら読み込み時に例外を投げるので、壊れた内蔵課題はビルド／テストで必ず落ちる。
  *
@@ -120,10 +144,43 @@ const BUILTIN_INSPECT_REPAIR_JSON: readonly unknown[] = [
   c2Sequential,
   c2Flicker,
   c2StopPriority,
+  c2AndLamp,
+  c2OrLamp,
+  c2SelfHoldStop,
+  c2TwoHand,
+  c2OffDelay,
+  c2MutualInterlock,
+  c2ThreeStep,
+  c2LastPress,
+  c2FlickerAlarm,
+  c2ConditionalHold,
+  c2TwoTimer,
+  c2Random,
 ];
 
 /** 内蔵のモードD課題のJSON。 */
-const BUILTIN_PLC_JSON: readonly unknown[] = [d001, d002, d003, d004, d005, d006, d007, d008];
+const BUILTIN_PLC_JSON: readonly unknown[] = [
+  d001,
+  d002,
+  d003,
+  d004,
+  d005,
+  d006,
+  d007,
+  d008,
+  d009,
+  d010,
+  d011,
+  d012,
+  d013,
+  d014,
+  d015,
+  d016,
+  d017,
+  d018,
+  d019,
+  d020,
+];
 
 /** 内蔵課題の検証に失敗したときに投げる。 */
 export class BuiltinProblemError extends Error {
@@ -180,14 +237,14 @@ export const BUILTIN_INSPECT_PARTS_PROBLEMS: readonly InspectPartsProblem[] = of
   'モードC1課題',
 );
 
-/** 内蔵のモードC2課題（8題）。§7.9 */
+/** 内蔵のモードC2課題（20題）。§7.9 */
 export const BUILTIN_INSPECT_REPAIR_PROBLEMS: readonly InspectRepairProblem[] = ofMode(
   parseBuiltinProblems(BUILTIN_INSPECT_REPAIR_JSON),
   isInspectRepairProblem,
   'モードC2課題',
 );
 
-/** 内蔵のモードD課題（8題）。§7.9 */
+/** 内蔵のモードD課題（20題）。§7.9 */
 export const BUILTIN_PLC_PROBLEMS: readonly PlcProblem[] = ofMode(
   parseBuiltinProblems(BUILTIN_PLC_JSON),
   isPlcProblem,
@@ -195,9 +252,10 @@ export const BUILTIN_PLC_PROBLEMS: readonly PlcProblem[] = ofMode(
 );
 
 /**
- * 課題一覧に載せる内蔵課題。
- * **Plan 2A ではモードBのままにしてある**（C1/C2を開始できる画面が入るのは Plan 2B のため）。
- * Plan 2B が `BUILTIN_ALL_PROBLEMS` に差し替えると同時に、モード別の課題一覧を入れる。
+ * モードB課題だけの別名（CT-09）。
+ * 課題一覧に載せるのは `BUILTIN_ALL_PROBLEMS`（Plan 2B でモード別の一覧が入った）であり、
+ * この名前は「モードBの1題が要る」テストと `apps/desktop` の複写枚数の検査が使っている。
+ * 中身は `BUILTIN_ASSEMBLE_PROBLEMS` と同じ配列で、増えるのもモードB課題だけである。
  */
 export const BUILTIN_PROBLEMS: readonly AssembleProblem[] = BUILTIN_ASSEMBLE_PROBLEMS;
 

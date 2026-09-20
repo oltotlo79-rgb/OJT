@@ -1,0 +1,227 @@
+{
+  "formatVersion": 1,
+  "id": "c2-019",
+  "mode": "inspect-repair",
+  "title": "2タイマ重ね合わせ回路の点検・修復",
+  "grade": 1,
+  "difficulty": 5,
+  "tags": ["multi-timer", "sequence", "fault-contact", "measure"],
+  "description": "黒押ボタン（PB1）で運転を開始し、運転中は黄ランプ（PL2）が点灯する回路である。運転開始から1.5秒後に白ランプ（PL1）が点灯し、その2秒後に白ランプだけが消灯する。現在は黄ランプは正常に点灯するのに、白ランプは薄暗く光るだけで点灯と認められない。回路図は与えられない。故障箇所を1つ指摘し、部品を交換しなさい。接点の不良は盤に電気を流したまま、DCVレンジで接点の両端の電圧を測って切り分けること。タイマは T1 を1.5秒、T2 を2秒に設定する。",
+  "timeLimit": {
+    "standardMin": 30,
+    "cutoffMin": 50
+  },
+  "board": {
+    "boardId": "board-jipm-std",
+    "socketRoles": {
+      "S1": "CR1",
+      "S2": "CR2",
+      "S5": "T1",
+      "S6": "T2",
+      "S7": "CHK"
+    }
+  },
+  "inventory": [
+    {
+      "kind": "relay-my4n",
+      "count": 2
+    },
+    {
+      "kind": "timer-h3y4",
+      "count": 2
+    }
+  ],
+  "schematic": {
+    "formatVersion": 1,
+    "id": "sch-c2-019",
+    "title": "起動遅れと動作時間の重ね合わせ（2タイマ）",
+    "orientation": "horizontal",
+    "rungs": [
+      {
+        "id": "r1",
+        "from": {
+          "bus": "P"
+        },
+        "to": {
+          "bus": "N"
+        },
+        "cells": [
+          {
+            "kind": "pb-b",
+            "id": "c01",
+            "device": "PB2"
+          },
+          {
+            "kind": "pb-a",
+            "id": "c02",
+            "device": "PB1"
+          },
+          {
+            "kind": "coil",
+            "id": "c03",
+            "device": "CR1"
+          }
+        ]
+      },
+      {
+        "id": "r1h",
+        "from": {
+          "rung": "r1",
+          "node": 1
+        },
+        "to": {
+          "rung": "r1",
+          "node": 2
+        },
+        "cells": [
+          {
+            "kind": "cr-a",
+            "id": "c04",
+            "device": "CR1"
+          }
+        ]
+      },
+      {
+        "id": "r2",
+        "from": {
+          "bus": "P"
+        },
+        "to": {
+          "bus": "N"
+        },
+        "cells": [
+          {
+            "kind": "cr-a",
+            "id": "c05",
+            "device": "CR1"
+          },
+          {
+            "kind": "coil",
+            "id": "c06",
+            "device": "T1",
+            "presetMs": 1500
+          }
+        ]
+      },
+      {
+        "id": "r3",
+        "from": {
+          "bus": "P"
+        },
+        "to": {
+          "bus": "N"
+        },
+        "cells": [
+          {
+            "kind": "t-a",
+            "id": "c07",
+            "device": "T1"
+          },
+          {
+            "kind": "coil",
+            "id": "c08",
+            "device": "T2",
+            "presetMs": 2000
+          }
+        ]
+      },
+      {
+        "id": "r4",
+        "from": {
+          "bus": "P"
+        },
+        "to": {
+          "bus": "N"
+        },
+        "cells": [
+          {
+            "kind": "t-a",
+            "id": "c09",
+            "device": "T1"
+          },
+          {
+            "kind": "t-b",
+            "id": "c10",
+            "device": "T2"
+          },
+          {
+            "kind": "lamp",
+            "id": "c11",
+            "device": "PL1"
+          }
+        ]
+      },
+      {
+        "id": "r5",
+        "from": {
+          "bus": "P"
+        },
+        "to": {
+          "bus": "N"
+        },
+        "cells": [
+          {
+            "kind": "cr-a",
+            "id": "c12",
+            "device": "CR1"
+          },
+          {
+            "kind": "lamp",
+            "id": "c13",
+            "device": "PL2"
+          }
+        ]
+      }
+    ]
+  },
+  "faults": [
+    {
+      "target": {
+        "partId": "T1",
+        "elementIndex": 4
+      },
+      "kind": "contact-resistive",
+      "ohms": 3000
+    }
+  ],
+  "operations": [
+    {
+      "t": 500,
+      "target": "PB1",
+      "action": "press"
+    },
+    {
+      "t": 800,
+      "target": "PB1",
+      "action": "release"
+    },
+    {
+      "t": 5500,
+      "target": "PB2",
+      "action": "press"
+    },
+    {
+      "t": 5800,
+      "target": "PB2",
+      "action": "release"
+    }
+  ],
+  "durationMs": 7000,
+  "judge": {
+    "tolerance": {
+      "edgeMs": 200,
+      "ratio": 0.1
+    },
+    "staticChecks": {
+      "wireColorRule": true,
+      "terminalLimit": true,
+      "unusedParts": true,
+      "forbiddenCircuit": true,
+      "coilPolarity": true,
+      "powerSequence": true
+    }
+  },
+  "hints": {
+    "schematicVisible": false
+  }
+}

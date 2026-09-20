@@ -113,11 +113,11 @@ describe('builtinSet', () => {
     setResourcesPath(resources);
 
     const set = await builtinSet();
-    // 一覧が欠けたまま出ず、確実に焼き込みの48題へ落ちる
+    // 一覧が欠けたまま出ず、確実に焼き込みの72題へ落ちる
     expect(set.problems).toHaveLength(BUILTIN_ALL_PROBLEMS.length);
     expect(set.errors).toHaveLength(1);
     expect(set.errors[0]?.message).toContain('8件');
-    expect(set.errors[0]?.message).toContain('48件');
+    expect(set.errors[0]?.message).toContain('72件');
     expect(set.errors[0]?.message).toContain('内蔵した課題で起動します');
   });
 
@@ -360,8 +360,8 @@ describe('loadContent のモードB以外の扱い（Plan 2A Task 17: SupportedP
     expect(row?.source).toBe('user');
   });
 
-  it('内蔵課題は48題（モードB 20 / C1 12 / C2 8 / D 8）', () => {
-    expect(BUILTIN_ALL_PROBLEMS).toHaveLength(48);
+  it('内蔵課題は72題（モードB 20 / C1 12 / C2 20 / D 20）', () => {
+    expect(BUILTIN_ALL_PROBLEMS).toHaveLength(72);
   });
 });
 

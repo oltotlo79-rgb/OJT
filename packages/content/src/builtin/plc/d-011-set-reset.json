@@ -1,0 +1,255 @@
+{
+  "formatVersion": 1,
+  "id": "d-011",
+  "mode": "plc",
+  "title": "PLC SET／RST による自己保持（2級形式）",
+  "grade": 2,
+  "difficulty": 3,
+  "tags": ["self-hold"],
+  "description": "黒（X0）で運転を開始し、黄（X1）で停止する自己保持回路を、SET 命令と RST 命令で組みます。運転中は白ランプ（PL1）が点灯し、停止中に黄（X1）を押している間は黄ランプ（PL2）が点灯します。緑（X2）を押している間だけ緑ランプ（PL3）が点灯します。PLCの出力は必ず盤のリレーを介し、PLCの電源は壁コンセントから取ってください。",
+  "timeLimit": {
+    "standardMin": 50,
+    "cutoffMin": 60
+  },
+  "board": {
+    "boardId": "board-jipm-std",
+    "socketRoles": {
+      "S1": "CR1",
+      "S2": "CR2",
+      "S3": "CR3",
+      "S4": "CR4",
+      "S7": "CHK"
+    }
+  },
+  "inventory": [
+    {
+      "kind": "relay-my4n",
+      "count": 4
+    }
+  ],
+  "plc": {
+    "vendor": "mitsubishi",
+    "model": "FX5U"
+  },
+  "io": {
+    "mode": "fixed",
+    "wiring": "sink",
+    "inputs": [
+      {
+        "x": 0,
+        "pb": "PB1"
+      },
+      {
+        "x": 1,
+        "pb": "PB2"
+      },
+      {
+        "x": 2,
+        "pb": "PB3"
+      }
+    ],
+    "outputs": [
+      {
+        "y": 0,
+        "cr": "CR1",
+        "pl": "PL1"
+      },
+      {
+        "y": 1,
+        "cr": "CR2",
+        "pl": "PL2"
+      },
+      {
+        "y": 2,
+        "cr": "CR3",
+        "pl": "PL3"
+      }
+    ]
+  },
+  "referenceLadder": {
+    "networks": [
+      {
+        "id": "n1",
+        "comment": "起動でセット",
+        "cells": [
+          [
+            {
+              "kind": "contact",
+              "type": "NO",
+              "device": {
+                "kind": "input",
+                "index": 0
+              }
+            },
+            {
+              "kind": "coil",
+              "type": "SET",
+              "device": {
+                "kind": "internal",
+                "index": 0
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "id": "n2",
+        "comment": "停止でリセット",
+        "cells": [
+          [
+            {
+              "kind": "contact",
+              "type": "NO",
+              "device": {
+                "kind": "input",
+                "index": 1
+              }
+            },
+            {
+              "kind": "coil",
+              "type": "RST",
+              "device": {
+                "kind": "internal",
+                "index": 0
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "id": "n3",
+        "comment": "運転表示",
+        "cells": [
+          [
+            {
+              "kind": "contact",
+              "type": "NO",
+              "device": {
+                "kind": "internal",
+                "index": 0
+              }
+            },
+            {
+              "kind": "coil",
+              "type": "OUT",
+              "device": {
+                "kind": "output",
+                "index": 0
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "id": "n4",
+        "comment": "停止確認表示",
+        "cells": [
+          [
+            {
+              "kind": "contact",
+              "type": "NC",
+              "device": {
+                "kind": "internal",
+                "index": 0
+              }
+            },
+            {
+              "kind": "contact",
+              "type": "NO",
+              "device": {
+                "kind": "input",
+                "index": 1
+              }
+            },
+            {
+              "kind": "coil",
+              "type": "OUT",
+              "device": {
+                "kind": "output",
+                "index": 1
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "id": "n5",
+        "comment": "点検灯",
+        "cells": [
+          [
+            {
+              "kind": "contact",
+              "type": "NO",
+              "device": {
+                "kind": "input",
+                "index": 2
+              }
+            },
+            {
+              "kind": "coil",
+              "type": "OUT",
+              "device": {
+                "kind": "output",
+                "index": 2
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "id": "end",
+        "cells": [
+          [
+            {
+              "kind": "end"
+            }
+          ]
+        ]
+      }
+    ],
+    "comments": {
+      "X0": "起動押ボタン（黒）",
+      "X1": "停止押ボタン（黄）",
+      "X2": "点検押ボタン（緑）",
+      "M0": "運転の保持",
+      "Y0": "運転表示灯 PL1"
+    }
+  },
+  "wiringRequired": true,
+  "operations": [
+    {
+      "t": 500,
+      "target": "PB1",
+      "action": "press"
+    },
+    {
+      "t": 800,
+      "target": "PB1",
+      "action": "release"
+    },
+    {
+      "t": 2000,
+      "target": "PB3",
+      "action": "press"
+    },
+    {
+      "t": 2300,
+      "target": "PB3",
+      "action": "release"
+    },
+    {
+      "t": 3500,
+      "target": "PB2",
+      "action": "press"
+    },
+    {
+      "t": 3800,
+      "target": "PB2",
+      "action": "release"
+    }
+  ],
+  "durationMs": 5500,
+  "judge": {
+    "compareSignals": ["PL1", "PL2", "PL3"]
+  }
+}

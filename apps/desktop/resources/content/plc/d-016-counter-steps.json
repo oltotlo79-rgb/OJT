@@ -1,0 +1,333 @@
+{
+  "formatVersion": 1,
+  "id": "d-016",
+  "mode": "plc",
+  "title": "PLC 押した回数で進む3段（1級形式）",
+  "grade": 1,
+  "difficulty": 4,
+  "tags": ["counter", "sequence", "flicker"],
+  "description": "黒（X0）を押した回数だけ段が進む回路をPLCで組みます。1回目で白ランプ（PL1）、2回目で黄ランプ（PL2）、3回目で緑ランプ（PL3）が点灯し、3回目まで進んだら赤ランプ（PL4）が1秒クロックで点滅します。黄（X1）で全カウンタをリセットして全消灯します。PLCの出力は必ず盤のリレーを介し、PLCの電源は壁コンセントから取ってください。",
+  "timeLimit": {
+    "standardMin": 50,
+    "cutoffMin": 60
+  },
+  "board": {
+    "boardId": "board-jipm-std",
+    "socketRoles": {
+      "S1": "CR1",
+      "S2": "CR2",
+      "S3": "CR3",
+      "S4": "CR4",
+      "S7": "CHK"
+    }
+  },
+  "inventory": [
+    {
+      "kind": "relay-my4n",
+      "count": 4
+    }
+  ],
+  "plc": {
+    "vendor": "mitsubishi",
+    "model": "FX5U"
+  },
+  "io": {
+    "mode": "fixed",
+    "wiring": "sink",
+    "inputs": [
+      {
+        "x": 0,
+        "pb": "PB1"
+      },
+      {
+        "x": 1,
+        "pb": "PB2"
+      },
+      {
+        "x": 2,
+        "pb": "PB3"
+      }
+    ],
+    "outputs": [
+      {
+        "y": 0,
+        "cr": "CR1",
+        "pl": "PL1"
+      },
+      {
+        "y": 1,
+        "cr": "CR2",
+        "pl": "PL2"
+      },
+      {
+        "y": 2,
+        "cr": "CR3",
+        "pl": "PL3"
+      },
+      {
+        "y": 3,
+        "cr": "CR4",
+        "pl": "PL4"
+      }
+    ]
+  },
+  "referenceLadder": {
+    "networks": [
+      {
+        "id": "n1",
+        "comment": "1回目で C0",
+        "cells": [
+          [
+            {
+              "kind": "contact",
+              "type": "NO",
+              "device": {
+                "kind": "input",
+                "index": 0
+              }
+            },
+            {
+              "kind": "counter",
+              "type": "CTU",
+              "device": {
+                "kind": "counter",
+                "index": 0
+              },
+              "preset": 1,
+              "resetDevice": {
+                "kind": "input",
+                "index": 1
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "id": "n2",
+        "comment": "2回目で C1",
+        "cells": [
+          [
+            {
+              "kind": "contact",
+              "type": "NO",
+              "device": {
+                "kind": "input",
+                "index": 0
+              }
+            },
+            {
+              "kind": "counter",
+              "type": "CTU",
+              "device": {
+                "kind": "counter",
+                "index": 1
+              },
+              "preset": 2,
+              "resetDevice": {
+                "kind": "input",
+                "index": 1
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "id": "n3",
+        "comment": "3回目で C2",
+        "cells": [
+          [
+            {
+              "kind": "contact",
+              "type": "NO",
+              "device": {
+                "kind": "input",
+                "index": 0
+              }
+            },
+            {
+              "kind": "counter",
+              "type": "CTU",
+              "device": {
+                "kind": "counter",
+                "index": 2
+              },
+              "preset": 3,
+              "resetDevice": {
+                "kind": "input",
+                "index": 1
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "id": "n4",
+        "comment": "1段目",
+        "cells": [
+          [
+            {
+              "kind": "contact",
+              "type": "NO",
+              "device": {
+                "kind": "counter",
+                "index": 0
+              }
+            },
+            {
+              "kind": "coil",
+              "type": "OUT",
+              "device": {
+                "kind": "output",
+                "index": 0
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "id": "n5",
+        "comment": "2段目",
+        "cells": [
+          [
+            {
+              "kind": "contact",
+              "type": "NO",
+              "device": {
+                "kind": "counter",
+                "index": 1
+              }
+            },
+            {
+              "kind": "coil",
+              "type": "OUT",
+              "device": {
+                "kind": "output",
+                "index": 1
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "id": "n6",
+        "comment": "3段目",
+        "cells": [
+          [
+            {
+              "kind": "contact",
+              "type": "NO",
+              "device": {
+                "kind": "counter",
+                "index": 2
+              }
+            },
+            {
+              "kind": "coil",
+              "type": "OUT",
+              "device": {
+                "kind": "output",
+                "index": 2
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "id": "n7",
+        "comment": "3段目まで進んだら点滅",
+        "cells": [
+          [
+            {
+              "kind": "contact",
+              "type": "NO",
+              "device": {
+                "kind": "counter",
+                "index": 2
+              }
+            },
+            {
+              "kind": "contact",
+              "type": "NO",
+              "device": {
+                "kind": "special",
+                "index": 2
+              }
+            },
+            {
+              "kind": "coil",
+              "type": "OUT",
+              "device": {
+                "kind": "output",
+                "index": 3
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "id": "end",
+        "cells": [
+          [
+            {
+              "kind": "end"
+            }
+          ]
+        ]
+      }
+    ],
+    "comments": {
+      "X0": "計数押ボタン（黒）",
+      "X1": "リセット押ボタン（黄）",
+      "C0": "1回目で動作",
+      "C2": "3回目で動作",
+      "SP2": "1秒クロック"
+    }
+  },
+  "wiringRequired": true,
+  "operations": [
+    {
+      "t": 500,
+      "target": "PB1",
+      "action": "press"
+    },
+    {
+      "t": 700,
+      "target": "PB1",
+      "action": "release"
+    },
+    {
+      "t": 1200,
+      "target": "PB1",
+      "action": "press"
+    },
+    {
+      "t": 1400,
+      "target": "PB1",
+      "action": "release"
+    },
+    {
+      "t": 1900,
+      "target": "PB1",
+      "action": "press"
+    },
+    {
+      "t": 2100,
+      "target": "PB1",
+      "action": "release"
+    },
+    {
+      "t": 4500,
+      "target": "PB2",
+      "action": "press"
+    },
+    {
+      "t": 4800,
+      "target": "PB2",
+      "action": "release"
+    }
+  ],
+  "durationMs": 6000,
+  "judge": {
+    "compareSignals": ["PL1", "PL2", "PL3", "PL4"]
+  }
+}

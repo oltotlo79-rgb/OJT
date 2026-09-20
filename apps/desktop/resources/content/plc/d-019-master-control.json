@@ -1,0 +1,322 @@
+{
+  "formatVersion": 1,
+  "id": "d-019",
+  "mode": "plc",
+  "title": "PLC MC／MCR による運転条件（1級形式）",
+  "grade": 1,
+  "difficulty": 5,
+  "tags": ["self-hold", "interlock"],
+  "description": "黒（X0）で運転を開始し、黄（X1）で停止する自己保持回路をPLCで組みます。運転中だけ有効になる区間を MC／MCR でまとめ、その中に「緑（X2）を押している間だけ白ランプ（PL1）が点灯する」「黄ランプ（PL2）が1秒クロックで点滅する」の2つを入れてください。運転中は緑ランプ（PL3）が点灯します。赤ランプ（PL4）は MC 区間の外に置き、運転していなくても緑（X2）を押している間は点灯します。PLCの出力は必ず盤のリレーを介し、PLCの電源は壁コンセントから取ってください。",
+  "timeLimit": {
+    "standardMin": 50,
+    "cutoffMin": 60
+  },
+  "board": {
+    "boardId": "board-jipm-std",
+    "socketRoles": {
+      "S1": "CR1",
+      "S2": "CR2",
+      "S3": "CR3",
+      "S4": "CR4",
+      "S7": "CHK"
+    }
+  },
+  "inventory": [
+    {
+      "kind": "relay-my4n",
+      "count": 4
+    }
+  ],
+  "plc": {
+    "vendor": "mitsubishi",
+    "model": "FX5U"
+  },
+  "io": {
+    "mode": "fixed",
+    "wiring": "sink",
+    "inputs": [
+      {
+        "x": 0,
+        "pb": "PB1"
+      },
+      {
+        "x": 1,
+        "pb": "PB2"
+      },
+      {
+        "x": 2,
+        "pb": "PB3"
+      }
+    ],
+    "outputs": [
+      {
+        "y": 0,
+        "cr": "CR1",
+        "pl": "PL1"
+      },
+      {
+        "y": 1,
+        "cr": "CR2",
+        "pl": "PL2"
+      },
+      {
+        "y": 2,
+        "cr": "CR3",
+        "pl": "PL3"
+      },
+      {
+        "y": 3,
+        "cr": "CR4",
+        "pl": "PL4"
+      }
+    ]
+  },
+  "referenceLadder": {
+    "networks": [
+      {
+        "id": "n1",
+        "comment": "運転の自己保持",
+        "cells": [
+          [
+            {
+              "kind": "contact",
+              "type": "NO",
+              "device": {
+                "kind": "input",
+                "index": 0
+              }
+            },
+            {
+              "kind": "vline"
+            },
+            {
+              "kind": "contact",
+              "type": "NC",
+              "device": {
+                "kind": "input",
+                "index": 1
+              }
+            },
+            {
+              "kind": "coil",
+              "type": "OUT",
+              "device": {
+                "kind": "internal",
+                "index": 0
+              }
+            }
+          ],
+          [
+            {
+              "kind": "contact",
+              "type": "NO",
+              "device": {
+                "kind": "internal",
+                "index": 0
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "id": "n2",
+        "comment": "運転中だけ有効な区間の始まり",
+        "cells": [
+          [
+            {
+              "kind": "contact",
+              "type": "NO",
+              "device": {
+                "kind": "internal",
+                "index": 0
+              }
+            },
+            {
+              "kind": "mc",
+              "device": {
+                "kind": "internal",
+                "index": 1
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "id": "n3",
+        "comment": "区間の中：点検灯",
+        "cells": [
+          [
+            {
+              "kind": "contact",
+              "type": "NO",
+              "device": {
+                "kind": "input",
+                "index": 2
+              }
+            },
+            {
+              "kind": "coil",
+              "type": "OUT",
+              "device": {
+                "kind": "output",
+                "index": 0
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "id": "n4",
+        "comment": "区間の中：点滅",
+        "cells": [
+          [
+            {
+              "kind": "contact",
+              "type": "NO",
+              "device": {
+                "kind": "special",
+                "index": 2
+              }
+            },
+            {
+              "kind": "coil",
+              "type": "OUT",
+              "device": {
+                "kind": "output",
+                "index": 1
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "id": "n5",
+        "comment": "区間の終わり",
+        "cells": [
+          [
+            {
+              "kind": "mcr",
+              "device": {
+                "kind": "internal",
+                "index": 1
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "id": "n6",
+        "comment": "運転中表示",
+        "cells": [
+          [
+            {
+              "kind": "contact",
+              "type": "NO",
+              "device": {
+                "kind": "internal",
+                "index": 0
+              }
+            },
+            {
+              "kind": "coil",
+              "type": "OUT",
+              "device": {
+                "kind": "output",
+                "index": 2
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "id": "n7",
+        "comment": "区間の外：いつでも点く点検灯",
+        "cells": [
+          [
+            {
+              "kind": "contact",
+              "type": "NO",
+              "device": {
+                "kind": "input",
+                "index": 2
+              }
+            },
+            {
+              "kind": "coil",
+              "type": "OUT",
+              "device": {
+                "kind": "output",
+                "index": 3
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "id": "end",
+        "cells": [
+          [
+            {
+              "kind": "end"
+            }
+          ]
+        ]
+      }
+    ],
+    "comments": {
+      "X0": "起動押ボタン（黒）",
+      "X1": "停止押ボタン（黄）",
+      "X2": "点検押ボタン（緑）",
+      "M0": "運転の自己保持",
+      "M1": "MC 区間",
+      "SP2": "1秒クロック"
+    }
+  },
+  "wiringRequired": true,
+  "operations": [
+    {
+      "t": 400,
+      "target": "PB3",
+      "action": "press"
+    },
+    {
+      "t": 700,
+      "target": "PB3",
+      "action": "release"
+    },
+    {
+      "t": 1200,
+      "target": "PB1",
+      "action": "press"
+    },
+    {
+      "t": 1500,
+      "target": "PB1",
+      "action": "release"
+    },
+    {
+      "t": 2200,
+      "target": "PB3",
+      "action": "press"
+    },
+    {
+      "t": 2500,
+      "target": "PB3",
+      "action": "release"
+    },
+    {
+      "t": 5000,
+      "target": "PB2",
+      "action": "press"
+    },
+    {
+      "t": 5300,
+      "target": "PB2",
+      "action": "release"
+    }
+  ],
+  "durationMs": 6500,
+  "judge": {
+    "compareSignals": ["PL1", "PL2", "PL3", "PL4"]
+  }
+}

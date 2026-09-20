@@ -1,0 +1,205 @@
+{
+  "formatVersion": 1,
+  "id": "c2-011",
+  "mode": "inspect-repair",
+  "title": "2箇所起動・停止優先回路の点検・修復",
+  "grade": 2,
+  "difficulty": 3,
+  "tags": ["self-hold", "priority", "fault-contact", "fault-wire", "measure"],
+  "description": "黒押ボタン（PB1）と緑押ボタン（PB3）のどちらからでも運転を開始でき、白ランプ（PL1）が自己保持で点灯する回路である。黄押ボタン（PB2）で停止する。現在はランプが点灯せず、緑押ボタンでは起動もしない。回路図を見ながら故障箇所を2つ指摘し、白線で修復または部品を交換しなさい。接点の不良は盤に電気を流したまま、DCVレンジで接点の両端の電圧を測って切り分けること。",
+  "timeLimit": {
+    "standardMin": 30,
+    "cutoffMin": 50
+  },
+  "board": {
+    "boardId": "board-jipm-std",
+    "socketRoles": {
+      "S1": "CR1",
+      "S2": "CR2",
+      "S7": "CHK"
+    }
+  },
+  "inventory": [
+    {
+      "kind": "relay-my4n",
+      "count": 2
+    }
+  ],
+  "schematic": {
+    "formatVersion": 1,
+    "id": "sch-c2-011",
+    "title": "2箇所からの起動と停止優先",
+    "orientation": "horizontal",
+    "rungs": [
+      {
+        "id": "r1",
+        "from": {
+          "bus": "P"
+        },
+        "to": {
+          "bus": "N"
+        },
+        "cells": [
+          {
+            "kind": "pb-b",
+            "id": "c01",
+            "device": "PB2"
+          },
+          {
+            "kind": "pb-a",
+            "id": "c02",
+            "device": "PB1"
+          },
+          {
+            "kind": "coil",
+            "id": "c03",
+            "device": "CR1"
+          }
+        ]
+      },
+      {
+        "id": "r1h",
+        "from": {
+          "rung": "r1",
+          "node": 1
+        },
+        "to": {
+          "rung": "r1",
+          "node": 2
+        },
+        "cells": [
+          {
+            "kind": "cr-a",
+            "id": "c04",
+            "device": "CR1"
+          }
+        ]
+      },
+      {
+        "id": "r1s",
+        "from": {
+          "rung": "r1",
+          "node": 1
+        },
+        "to": {
+          "rung": "r1",
+          "node": 2
+        },
+        "cells": [
+          {
+            "kind": "pb-a",
+            "id": "c05",
+            "device": "PB3"
+          }
+        ]
+      },
+      {
+        "id": "r2",
+        "from": {
+          "bus": "P"
+        },
+        "to": {
+          "bus": "N"
+        },
+        "cells": [
+          {
+            "kind": "cr-a",
+            "id": "c06",
+            "device": "CR1"
+          },
+          {
+            "kind": "lamp",
+            "id": "c07",
+            "device": "PL1"
+          }
+        ]
+      }
+    ]
+  },
+  "faults": [
+    {
+      "target": {
+        "partId": "CR1",
+        "elementIndex": 4
+      },
+      "kind": "contact-resistive",
+      "ohms": 3000
+    },
+    {
+      "target": {
+        "wireId": "sw-008"
+      },
+      "kind": "wire-open"
+    }
+  ],
+  "operations": [
+    {
+      "t": 500,
+      "target": "PB1",
+      "action": "press"
+    },
+    {
+      "t": 800,
+      "target": "PB1",
+      "action": "release"
+    },
+    {
+      "t": 2000,
+      "target": "PB2",
+      "action": "press"
+    },
+    {
+      "t": 2300,
+      "target": "PB2",
+      "action": "release"
+    },
+    {
+      "t": 3000,
+      "target": "PB3",
+      "action": "press"
+    },
+    {
+      "t": 3300,
+      "target": "PB3",
+      "action": "release"
+    },
+    {
+      "t": 4500,
+      "target": "PB2",
+      "action": "press"
+    },
+    {
+      "t": 4600,
+      "target": "PB1",
+      "action": "press"
+    },
+    {
+      "t": 4900,
+      "target": "PB1",
+      "action": "release"
+    },
+    {
+      "t": 5100,
+      "target": "PB2",
+      "action": "release"
+    }
+  ],
+  "durationMs": 7000,
+  "judge": {
+    "tolerance": {
+      "edgeMs": 200,
+      "ratio": 0.1
+    },
+    "staticChecks": {
+      "wireColorRule": true,
+      "terminalLimit": true,
+      "unusedParts": true,
+      "forbiddenCircuit": true,
+      "coilPolarity": true,
+      "powerSequence": true
+    }
+  },
+  "hints": {
+    "schematicVisible": true
+  }
+}

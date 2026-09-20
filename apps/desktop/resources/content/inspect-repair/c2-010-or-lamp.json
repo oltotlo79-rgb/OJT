@@ -1,0 +1,136 @@
+{
+  "formatVersion": 1,
+  "id": "c2-010",
+  "mode": "inspect-repair",
+  "title": "OR 条件の点灯回路の点検・修復",
+  "grade": 2,
+  "difficulty": 2,
+  "tags": ["and-or", "fault-wire"],
+  "description": "黒押ボタン（PB1）と黄押ボタン（PB2）のどちらかを押している間、白ランプ（PL1）が点灯する回路である。現在は黒では点灯するが黄では点灯しない。回路図を見ながら故障箇所を1つ指摘し、白線で修復しなさい。",
+  "timeLimit": {
+    "standardMin": 30,
+    "cutoffMin": 50
+  },
+  "board": {
+    "boardId": "board-jipm-std",
+    "socketRoles": {
+      "S7": "CHK"
+    }
+  },
+  "inventory": [],
+  "schematic": {
+    "formatVersion": 1,
+    "id": "sch-c2-010",
+    "title": "OR 条件の点灯回路",
+    "orientation": "horizontal",
+    "rungs": [
+      {
+        "id": "r1",
+        "from": {
+          "bus": "P"
+        },
+        "to": {
+          "bus": "N"
+        },
+        "cells": [
+          {
+            "kind": "pb-a",
+            "id": "c01",
+            "device": "PB1"
+          },
+          {
+            "kind": "lamp",
+            "id": "c02",
+            "device": "PL1"
+          }
+        ]
+      },
+      {
+        "id": "r1p",
+        "from": {
+          "bus": "P"
+        },
+        "to": {
+          "rung": "r1",
+          "node": 1
+        },
+        "cells": [
+          {
+            "kind": "pb-a",
+            "id": "c03",
+            "device": "PB2"
+          }
+        ]
+      }
+    ]
+  },
+  "faults": [
+    {
+      "target": {
+        "wireId": "sw-004"
+      },
+      "kind": "wire-misrouted",
+      "to": "TB_PB.3a"
+    }
+  ],
+  "operations": [
+    {
+      "t": 500,
+      "target": "PB1",
+      "action": "press"
+    },
+    {
+      "t": 1000,
+      "target": "PB1",
+      "action": "release"
+    },
+    {
+      "t": 1500,
+      "target": "PB2",
+      "action": "press"
+    },
+    {
+      "t": 2000,
+      "target": "PB2",
+      "action": "release"
+    },
+    {
+      "t": 2500,
+      "target": "PB1",
+      "action": "press"
+    },
+    {
+      "t": 2800,
+      "target": "PB2",
+      "action": "press"
+    },
+    {
+      "t": 3200,
+      "target": "PB1",
+      "action": "release"
+    },
+    {
+      "t": 3800,
+      "target": "PB2",
+      "action": "release"
+    }
+  ],
+  "durationMs": 5000,
+  "judge": {
+    "tolerance": {
+      "edgeMs": 200,
+      "ratio": 0.1
+    },
+    "staticChecks": {
+      "wireColorRule": true,
+      "terminalLimit": true,
+      "unusedParts": true,
+      "forbiddenCircuit": true,
+      "coilPolarity": true,
+      "powerSequence": true
+    }
+  },
+  "hints": {
+    "schematicVisible": true
+  }
+}

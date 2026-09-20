@@ -142,11 +142,11 @@ const CRLF = '\r\n';
  */
 const MODELS = Object.entries(MODEL_OF_VENDOR).map(([vendor, model]) => ({ vendor, model }));
 
-describe('内蔵モーD課題8題は4機種すべてで成立する（§16 Phase 4）', () => {
+describe('内蔵モーD課題20題は4機種すべてで成立する（§16 Phase 4）', () => {
   it.each(MODELS.map((m) => [m.model, m] as const))(
-    '%s で8題すべてが読めて模範が合格する',
+    '%s で20題すべてが読めて模範が合格する',
     (_model, plc) => {
-      expect(BUILTIN_PLC_PROBLEMS).toHaveLength(8);
+      expect(BUILTIN_PLC_PROBLEMS).toHaveLength(20);
       for (const problem of BUILTIN_PLC_PROBLEMS) {
         const swapped = PlcProblemSchema.parse({ ...problem, plc });
         const judged = judgePlcReference(swapped, JIPM_BOARD);
@@ -160,7 +160,7 @@ describe('内蔵モーD課題8題は4機種すべてで成立する（§16 Phase
   );
 
   it('模範ラダーはベンダ中立で、4方言すべてで変換が通る（受入基準②）', () => {
-    // TOYOPUC の「X と Y の同番号禁止」は **アドレス**で判定する（決定表#16）。8題はすべて
+    // TOYOPUC の「X と Y の同番号禁止」は **アドレス**で判定する（決定表#16）。20題はすべて
     // `X(0)`〜`X(2)` と `Y(0)`〜`Y(3)` を使うので、出力が `1Y010` から始まる限り衝突しない。
     // ここが `device-conflict` で落ちたら `jtekt.ts` の `OUTPUT_BASE` を疑う
     expect(availableDialects()).toHaveLength(4);

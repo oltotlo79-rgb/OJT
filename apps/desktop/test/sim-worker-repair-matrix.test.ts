@@ -17,12 +17,12 @@ import { circuitForJudge } from '../src/renderer/session/inspect-repair.js';
 import type { SimCommand, SimMessage, SimSnapshot } from '../src/worker/protocol.js';
 
 /**
- * モードC2の全内蔵課題（8題）を**本物の Worker モジュール**で回す（Plan 2B レビュー指摘。
+ * モードC2の全内蔵課題（20題）を**本物の Worker モジュール**で回す（Plan 2B レビュー指摘。
  * `sim-worker-repair.test.ts` は `c2-001` 1題しか回していなかった）。設計仕様 §9.2 / §16 受入③。
  *
  * 判定は模範回路と訓練者回路を並走させるので1呼びあたり実測 0.2〜0.85秒かかる（§8.3。M6）。
- * 8題ぶんの「全箇所修復して合格」だけを `describe.each` で回し、種別違い・改造の検証は
- * 1題（`c2-001`）だけで足りるので使い回さない（追加実行時間を約25秒以内に収める）。
+ * 20題ぶんの「全箇所修復して合格」だけを `describe.each` で回し、種別違い・改造の検証は
+ * 1題（`c2-001`）だけで足りるので使い回さない。
  */
 
 vi.setConfig({ testTimeout: 30_000 });
@@ -193,7 +193,10 @@ describe.each(BUILTIN_INSPECT_REPAIR_PROBLEMS.map((p) => [p.id, p] as const))(
         `${id} staticChecks`,
       ).toHaveLength(0);
       expect(value.passed, `${id} passed`).toBe(true);
-      expect(value.addedWires.length).toBeGreaterThan(0);
+      // 白線は「電線の故障1件につき1本」引き直す。部品の故障だけの課題（c2-013 など）は
+      // 交換だけで直るので0本になる（`toBeGreaterThan(0)` では部品専用の課題を落とす）。
+      const wireSites = circuit.applied.sites.filter((s) => s.wireId !== undefined);
+      expect(value.addedWires.length, `${id} addedWires`).toBe(wireSites.length);
     });
   },
 );

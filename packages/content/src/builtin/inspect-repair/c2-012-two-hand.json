@@ -1,0 +1,228 @@
+{
+  "formatVersion": 1,
+  "id": "c2-012",
+  "mode": "inspect-repair",
+  "title": "両手押し安全回路の点検・修復",
+  "grade": 2,
+  "difficulty": 3,
+  "tags": ["and-or", "interlock", "fault-part", "fault-wire"],
+  "description": "黒押ボタン（PB1）と黄押ボタン（PB2）の2つを押している間だけ白ランプ（PL1）が点灯し、片手だけ押している間は黄ランプ（PL2）が点灯する回路である。現在は白ランプが点灯せず、黄ランプの代わりに緑ランプ（PL3）が点灯する。回路図を見ながら故障箇所を2つ指摘し、白線で修復または部品を交換しなさい。",
+  "timeLimit": {
+    "standardMin": 30,
+    "cutoffMin": 50
+  },
+  "board": {
+    "boardId": "board-jipm-std",
+    "socketRoles": {
+      "S1": "CR1",
+      "S2": "CR2",
+      "S7": "CHK"
+    }
+  },
+  "inventory": [
+    {
+      "kind": "relay-my4n",
+      "count": 2
+    }
+  ],
+  "schematic": {
+    "formatVersion": 1,
+    "id": "sch-c2-012",
+    "title": "両手押し安全回路（片手押し表示つき）",
+    "orientation": "horizontal",
+    "rungs": [
+      {
+        "id": "r1",
+        "from": {
+          "bus": "P"
+        },
+        "to": {
+          "bus": "N"
+        },
+        "cells": [
+          {
+            "kind": "pb-a",
+            "id": "c01",
+            "device": "PB1"
+          },
+          {
+            "kind": "coil",
+            "id": "c02",
+            "device": "CR1"
+          }
+        ]
+      },
+      {
+        "id": "r2",
+        "from": {
+          "bus": "P"
+        },
+        "to": {
+          "bus": "N"
+        },
+        "cells": [
+          {
+            "kind": "pb-a",
+            "id": "c03",
+            "device": "PB2"
+          },
+          {
+            "kind": "coil",
+            "id": "c04",
+            "device": "CR2"
+          }
+        ]
+      },
+      {
+        "id": "r3",
+        "from": {
+          "bus": "P"
+        },
+        "to": {
+          "bus": "N"
+        },
+        "cells": [
+          {
+            "kind": "cr-a",
+            "id": "c05",
+            "device": "CR1"
+          },
+          {
+            "kind": "cr-a",
+            "id": "c06",
+            "device": "CR2"
+          },
+          {
+            "kind": "lamp",
+            "id": "c07",
+            "device": "PL1"
+          }
+        ]
+      },
+      {
+        "id": "r4",
+        "from": {
+          "bus": "P"
+        },
+        "to": {
+          "bus": "N"
+        },
+        "cells": [
+          {
+            "kind": "cr-a",
+            "id": "c08",
+            "device": "CR1"
+          },
+          {
+            "kind": "cr-b",
+            "id": "c09",
+            "device": "CR2"
+          },
+          {
+            "kind": "lamp",
+            "id": "c10",
+            "device": "PL2"
+          }
+        ]
+      },
+      {
+        "id": "r4p",
+        "from": {
+          "bus": "P"
+        },
+        "to": {
+          "rung": "r4",
+          "node": 2
+        },
+        "cells": [
+          {
+            "kind": "cr-a",
+            "id": "c11",
+            "device": "CR2"
+          },
+          {
+            "kind": "cr-b",
+            "id": "c12",
+            "device": "CR1"
+          }
+        ]
+      }
+    ]
+  },
+  "faults": [
+    {
+      "target": {
+        "partId": "CR2",
+        "elementIndex": 0
+      },
+      "kind": "coil-open"
+    },
+    {
+      "target": {
+        "wireId": "sw-015"
+      },
+      "kind": "wire-misrouted",
+      "to": "TB_PL.3+"
+    }
+  ],
+  "operations": [
+    {
+      "t": 500,
+      "target": "PB1",
+      "action": "press"
+    },
+    {
+      "t": 800,
+      "target": "PB1",
+      "action": "release"
+    },
+    {
+      "t": 1500,
+      "target": "PB2",
+      "action": "press"
+    },
+    {
+      "t": 1800,
+      "target": "PB2",
+      "action": "release"
+    },
+    {
+      "t": 2500,
+      "target": "PB1",
+      "action": "press"
+    },
+    {
+      "t": 3000,
+      "target": "PB2",
+      "action": "press"
+    },
+    {
+      "t": 3800,
+      "target": "PB2",
+      "action": "release"
+    },
+    {
+      "t": 4300,
+      "target": "PB1",
+      "action": "release"
+    }
+  ],
+  "durationMs": 6000,
+  "judge": {
+    "tolerance": {
+      "edgeMs": 200,
+      "ratio": 0.1
+    },
+    "staticChecks": {
+      "wireColorRule": true,
+      "terminalLimit": true,
+      "unusedParts": true,
+      "forbiddenCircuit": true,
+      "coilPolarity": true,
+      "powerSequence": true
+    }
+  },
+  "hints": {
+    "schematicVisible": true
+  }
+}

@@ -1,0 +1,412 @@
+{
+  "formatVersion": 1,
+  "id": "d-020",
+  "mode": "plc",
+  "title": "PLC 総合（カウンタ・タイマ・インタロック・警報）（1級形式）",
+  "grade": 1,
+  "difficulty": 5,
+  "tags": ["counter", "timer", "alarm", "interlock", "self-hold"],
+  "description": "黒（X0）で運転を開始し、黄（X1）で停止する停止優先の自己保持回路をPLCで組みます。運転中は白ランプ（PL1）が点灯し、運転開始から1.5秒後に黄ランプ（PL2）が加わります。運転中に緑（X2）を2回押すと警報になり、赤ランプ（PL4）が点灯すると同時に黄ランプは消え、緑ランプ（PL3）が1秒クロックで点滅します。警報とカウンタは黄（X1）で解除します。PLCの出力は必ず盤のリレーを介し、PLCの電源は壁コンセントから取ってください。",
+  "timeLimit": {
+    "standardMin": 50,
+    "cutoffMin": 60
+  },
+  "board": {
+    "boardId": "board-jipm-std",
+    "socketRoles": {
+      "S1": "CR1",
+      "S2": "CR2",
+      "S3": "CR3",
+      "S4": "CR4",
+      "S7": "CHK"
+    }
+  },
+  "inventory": [
+    {
+      "kind": "relay-my4n",
+      "count": 4
+    }
+  ],
+  "plc": {
+    "vendor": "mitsubishi",
+    "model": "FX5U"
+  },
+  "io": {
+    "mode": "fixed",
+    "wiring": "sink",
+    "inputs": [
+      {
+        "x": 0,
+        "pb": "PB1"
+      },
+      {
+        "x": 1,
+        "pb": "PB2"
+      },
+      {
+        "x": 2,
+        "pb": "PB3"
+      }
+    ],
+    "outputs": [
+      {
+        "y": 0,
+        "cr": "CR1",
+        "pl": "PL1"
+      },
+      {
+        "y": 1,
+        "cr": "CR2",
+        "pl": "PL2"
+      },
+      {
+        "y": 2,
+        "cr": "CR3",
+        "pl": "PL3"
+      },
+      {
+        "y": 3,
+        "cr": "CR4",
+        "pl": "PL4"
+      }
+    ]
+  },
+  "referenceLadder": {
+    "networks": [
+      {
+        "id": "n1",
+        "comment": "停止優先の自己保持",
+        "cells": [
+          [
+            {
+              "kind": "contact",
+              "type": "NO",
+              "device": {
+                "kind": "input",
+                "index": 0
+              }
+            },
+            {
+              "kind": "vline"
+            },
+            {
+              "kind": "contact",
+              "type": "NC",
+              "device": {
+                "kind": "input",
+                "index": 1
+              }
+            },
+            {
+              "kind": "coil",
+              "type": "OUT",
+              "device": {
+                "kind": "internal",
+                "index": 0
+              }
+            }
+          ],
+          [
+            {
+              "kind": "contact",
+              "type": "NO",
+              "device": {
+                "kind": "internal",
+                "index": 0
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "id": "n2",
+        "comment": "運転表示",
+        "cells": [
+          [
+            {
+              "kind": "contact",
+              "type": "NO",
+              "device": {
+                "kind": "internal",
+                "index": 0
+              }
+            },
+            {
+              "kind": "coil",
+              "type": "OUT",
+              "device": {
+                "kind": "output",
+                "index": 0
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "id": "n3",
+        "comment": "運転から1.5秒",
+        "cells": [
+          [
+            {
+              "kind": "contact",
+              "type": "NO",
+              "device": {
+                "kind": "internal",
+                "index": 0
+              }
+            },
+            {
+              "kind": "timer",
+              "type": "TON",
+              "device": {
+                "kind": "timer",
+                "index": 0
+              },
+              "presetMs": 1500
+            }
+          ]
+        ]
+      },
+      {
+        "id": "n4",
+        "comment": "2段目（警報中は出さない）",
+        "cells": [
+          [
+            {
+              "kind": "contact",
+              "type": "NO",
+              "device": {
+                "kind": "timer",
+                "index": 0
+              }
+            },
+            {
+              "kind": "contact",
+              "type": "NC",
+              "device": {
+                "kind": "internal",
+                "index": 1
+              }
+            },
+            {
+              "kind": "coil",
+              "type": "OUT",
+              "device": {
+                "kind": "output",
+                "index": 1
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "id": "n5",
+        "comment": "運転中に2回押すと警報",
+        "cells": [
+          [
+            {
+              "kind": "contact",
+              "type": "NO",
+              "device": {
+                "kind": "internal",
+                "index": 0
+              }
+            },
+            {
+              "kind": "contact",
+              "type": "NO",
+              "device": {
+                "kind": "input",
+                "index": 2
+              }
+            },
+            {
+              "kind": "counter",
+              "type": "CTU",
+              "device": {
+                "kind": "counter",
+                "index": 1
+              },
+              "preset": 2,
+              "resetDevice": {
+                "kind": "input",
+                "index": 1
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "id": "n6",
+        "comment": "警報をセット",
+        "cells": [
+          [
+            {
+              "kind": "contact",
+              "type": "NO",
+              "device": {
+                "kind": "counter",
+                "index": 1
+              }
+            },
+            {
+              "kind": "coil",
+              "type": "SET",
+              "device": {
+                "kind": "internal",
+                "index": 1
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "id": "n7",
+        "comment": "警報を解除",
+        "cells": [
+          [
+            {
+              "kind": "contact",
+              "type": "NO",
+              "device": {
+                "kind": "input",
+                "index": 1
+              }
+            },
+            {
+              "kind": "coil",
+              "type": "RST",
+              "device": {
+                "kind": "internal",
+                "index": 1
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "id": "n8",
+        "comment": "警報灯",
+        "cells": [
+          [
+            {
+              "kind": "contact",
+              "type": "NO",
+              "device": {
+                "kind": "internal",
+                "index": 1
+              }
+            },
+            {
+              "kind": "coil",
+              "type": "OUT",
+              "device": {
+                "kind": "output",
+                "index": 3
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "id": "n9",
+        "comment": "警報中の点滅",
+        "cells": [
+          [
+            {
+              "kind": "contact",
+              "type": "NO",
+              "device": {
+                "kind": "internal",
+                "index": 1
+              }
+            },
+            {
+              "kind": "contact",
+              "type": "NO",
+              "device": {
+                "kind": "special",
+                "index": 2
+              }
+            },
+            {
+              "kind": "coil",
+              "type": "OUT",
+              "device": {
+                "kind": "output",
+                "index": 2
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "id": "end",
+        "cells": [
+          [
+            {
+              "kind": "end"
+            }
+          ]
+        ]
+      }
+    ],
+    "comments": {
+      "X0": "起動押ボタン（黒）",
+      "X1": "停止・解除押ボタン（黄）",
+      "X2": "計数押ボタン（緑）",
+      "M0": "運転の自己保持",
+      "M1": "警報の保持",
+      "T0": "2段目まで 1.5秒",
+      "C1": "2回で警報",
+      "SP2": "1秒クロック"
+    }
+  },
+  "wiringRequired": true,
+  "operations": [
+    {
+      "t": 500,
+      "target": "PB1",
+      "action": "press"
+    },
+    {
+      "t": 800,
+      "target": "PB1",
+      "action": "release"
+    },
+    {
+      "t": 2500,
+      "target": "PB3",
+      "action": "press"
+    },
+    {
+      "t": 2700,
+      "target": "PB3",
+      "action": "release"
+    },
+    {
+      "t": 3200,
+      "target": "PB3",
+      "action": "press"
+    },
+    {
+      "t": 3400,
+      "target": "PB3",
+      "action": "release"
+    },
+    {
+      "t": 6000,
+      "target": "PB2",
+      "action": "press"
+    },
+    {
+      "t": 6300,
+      "target": "PB2",
+      "action": "release"
+    }
+  ],
+  "durationMs": 7500,
+  "judge": {
+    "compareSignals": ["PL1", "PL2", "PL3", "PL4"]
+  }
+}

@@ -1,0 +1,296 @@
+{
+  "formatVersion": 1,
+  "id": "c2-016",
+  "mode": "inspect-repair",
+  "title": "後着優先回路の点検・修復",
+  "grade": 1,
+  "difficulty": 4,
+  "tags": ["self-hold", "priority", "fault-contact", "measure"],
+  "description": "黒押ボタン（PB1）で白ランプ（PL1）、黄押ボタン（PB2）で黄ランプ（PL2）が自己保持で点灯し、あとから押したほうが勝つ回路である。現在は黒押ボタンを押しても白ランプが点灯しない。回路図は与えられない。故障箇所を1つ指摘し、部品を交換しなさい。接点の不良は盤に電気を流したまま、DCVレンジで接点の両端の電圧を測って切り分けること。",
+  "timeLimit": {
+    "standardMin": 30,
+    "cutoffMin": 50
+  },
+  "board": {
+    "boardId": "board-jipm-std",
+    "socketRoles": {
+      "S1": "CR1",
+      "S2": "CR2",
+      "S3": "CR3",
+      "S4": "CR4",
+      "S7": "CHK"
+    }
+  },
+  "inventory": [
+    {
+      "kind": "relay-my4n",
+      "count": 4
+    }
+  ],
+  "schematic": {
+    "formatVersion": 1,
+    "id": "sch-c2-016",
+    "title": "後着優先回路（あとから押したほうが勝つ）",
+    "orientation": "horizontal",
+    "rungs": [
+      {
+        "id": "r1",
+        "from": {
+          "bus": "P"
+        },
+        "to": {
+          "bus": "N"
+        },
+        "cells": [
+          {
+            "kind": "pb-a",
+            "id": "c01",
+            "device": "PB1"
+          },
+          {
+            "kind": "coil",
+            "id": "c02",
+            "device": "CR3"
+          }
+        ]
+      },
+      {
+        "id": "r2",
+        "from": {
+          "bus": "P"
+        },
+        "to": {
+          "bus": "N"
+        },
+        "cells": [
+          {
+            "kind": "pb-a",
+            "id": "c03",
+            "device": "PB2"
+          },
+          {
+            "kind": "coil",
+            "id": "c04",
+            "device": "CR4"
+          }
+        ]
+      },
+      {
+        "id": "r3",
+        "from": {
+          "bus": "P"
+        },
+        "to": {
+          "bus": "N"
+        },
+        "cells": [
+          {
+            "kind": "pb-b",
+            "id": "c05",
+            "device": "PB3"
+          },
+          {
+            "kind": "cr-b",
+            "id": "c06",
+            "device": "CR4"
+          },
+          {
+            "kind": "cr-a",
+            "id": "c07",
+            "device": "CR3"
+          },
+          {
+            "kind": "coil",
+            "id": "c08",
+            "device": "CR1"
+          }
+        ]
+      },
+      {
+        "id": "r3h",
+        "from": {
+          "rung": "r3",
+          "node": 2
+        },
+        "to": {
+          "rung": "r3",
+          "node": 3
+        },
+        "cells": [
+          {
+            "kind": "cr-a",
+            "id": "c09",
+            "device": "CR1"
+          }
+        ]
+      },
+      {
+        "id": "r4",
+        "from": {
+          "rung": "r3",
+          "node": 1
+        },
+        "to": {
+          "bus": "N"
+        },
+        "cells": [
+          {
+            "kind": "cr-b",
+            "id": "c10",
+            "device": "CR3"
+          },
+          {
+            "kind": "cr-a",
+            "id": "c11",
+            "device": "CR4"
+          },
+          {
+            "kind": "coil",
+            "id": "c12",
+            "device": "CR2"
+          }
+        ]
+      },
+      {
+        "id": "r4h",
+        "from": {
+          "rung": "r4",
+          "node": 1
+        },
+        "to": {
+          "rung": "r4",
+          "node": 2
+        },
+        "cells": [
+          {
+            "kind": "cr-a",
+            "id": "c13",
+            "device": "CR2"
+          }
+        ]
+      },
+      {
+        "id": "r5",
+        "from": {
+          "bus": "P"
+        },
+        "to": {
+          "bus": "N"
+        },
+        "cells": [
+          {
+            "kind": "cr-a",
+            "id": "c14",
+            "device": "CR1"
+          },
+          {
+            "kind": "lamp",
+            "id": "c15",
+            "device": "PL1"
+          }
+        ]
+      },
+      {
+        "id": "r6",
+        "from": {
+          "bus": "P"
+        },
+        "to": {
+          "bus": "N"
+        },
+        "cells": [
+          {
+            "kind": "cr-a",
+            "id": "c16",
+            "device": "CR2"
+          },
+          {
+            "kind": "lamp",
+            "id": "c17",
+            "device": "PL2"
+          }
+        ]
+      }
+    ]
+  },
+  "faults": [
+    {
+      "target": {
+        "partId": "CR3",
+        "elementIndex": 2
+      },
+      "kind": "contact-resistive",
+      "ohms": 1000
+    }
+  ],
+  "operations": [
+    {
+      "t": 500,
+      "target": "PB1",
+      "action": "press"
+    },
+    {
+      "t": 800,
+      "target": "PB1",
+      "action": "release"
+    },
+    {
+      "t": 2000,
+      "target": "PB2",
+      "action": "press"
+    },
+    {
+      "t": 2300,
+      "target": "PB2",
+      "action": "release"
+    },
+    {
+      "t": 3500,
+      "target": "PB1",
+      "action": "press"
+    },
+    {
+      "t": 3800,
+      "target": "PB1",
+      "action": "release"
+    },
+    {
+      "t": 5000,
+      "target": "PB2",
+      "action": "press"
+    },
+    {
+      "t": 5300,
+      "target": "PB2",
+      "action": "release"
+    },
+    {
+      "t": 6500,
+      "target": "PB3",
+      "action": "press"
+    },
+    {
+      "t": 6800,
+      "target": "PB3",
+      "action": "release"
+    }
+  ],
+  "durationMs": 8000,
+  "judge": {
+    "tolerance": {
+      "edgeMs": 200,
+      "ratio": 0.1
+    },
+    "staticChecks": {
+      "wireColorRule": true,
+      "terminalLimit": true,
+      "unusedParts": true,
+      "forbiddenCircuit": true,
+      "coilPolarity": true,
+      "powerSequence": true
+    }
+  },
+  "hints": {
+    "schematicVisible": false
+  }
+}

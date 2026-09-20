@@ -1,0 +1,123 @@
+{
+  "formatVersion": 1,
+  "id": "c2-009",
+  "mode": "inspect-repair",
+  "title": "AND 条件の点灯回路の点検・修復",
+  "grade": 2,
+  "difficulty": 2,
+  "tags": ["and-or", "fault-wire"],
+  "description": "黒押ボタン（PB1）と黄押ボタン（PB2）の両方を押している間だけ白ランプ（PL1）が点灯する回路である。現在は両方を押してもランプが点灯しない。回路図を見ながら故障箇所を1つ指摘し、白線で修復しなさい。",
+  "timeLimit": {
+    "standardMin": 30,
+    "cutoffMin": 50
+  },
+  "board": {
+    "boardId": "board-jipm-std",
+    "socketRoles": {
+      "S7": "CHK"
+    }
+  },
+  "inventory": [],
+  "schematic": {
+    "formatVersion": 1,
+    "id": "sch-c2-009",
+    "title": "AND 条件の点灯回路",
+    "orientation": "horizontal",
+    "rungs": [
+      {
+        "id": "r1",
+        "from": {
+          "bus": "P"
+        },
+        "to": {
+          "bus": "N"
+        },
+        "cells": [
+          {
+            "kind": "pb-a",
+            "id": "c01",
+            "device": "PB1"
+          },
+          {
+            "kind": "pb-a",
+            "id": "c02",
+            "device": "PB2"
+          },
+          {
+            "kind": "lamp",
+            "id": "c03",
+            "device": "PL1"
+          }
+        ]
+      }
+    ]
+  },
+  "faults": [
+    {
+      "target": {
+        "wireId": "sw-002"
+      },
+      "kind": "wire-open"
+    }
+  ],
+  "operations": [
+    {
+      "t": 500,
+      "target": "PB1",
+      "action": "press"
+    },
+    {
+      "t": 1000,
+      "target": "PB1",
+      "action": "release"
+    },
+    {
+      "t": 1500,
+      "target": "PB2",
+      "action": "press"
+    },
+    {
+      "t": 2000,
+      "target": "PB2",
+      "action": "release"
+    },
+    {
+      "t": 2500,
+      "target": "PB1",
+      "action": "press"
+    },
+    {
+      "t": 2800,
+      "target": "PB2",
+      "action": "press"
+    },
+    {
+      "t": 3500,
+      "target": "PB2",
+      "action": "release"
+    },
+    {
+      "t": 3800,
+      "target": "PB1",
+      "action": "release"
+    }
+  ],
+  "durationMs": 5000,
+  "judge": {
+    "tolerance": {
+      "edgeMs": 200,
+      "ratio": 0.1
+    },
+    "staticChecks": {
+      "wireColorRule": true,
+      "terminalLimit": true,
+      "unusedParts": true,
+      "forbiddenCircuit": true,
+      "coilPolarity": true,
+      "powerSequence": true
+    }
+  },
+  "hints": {
+    "schematicVisible": true
+  }
+}

@@ -862,12 +862,12 @@ apps/desktop/test/ladder-grid.test.tsx カーソルを1マス動かしたとき�
 
 **Steps:**
 
-- [ ] 1. C2 の12題を作る。元になる回路は Task 13 で作った B の新題を流用する（`schematic` をコピーして `faults` を足す）。**3級は禁止**、`hints.schematicVisible === (grade === 2)`。
-- [ ] 2. **`builtin-c2-discrimination.test.ts` の `REPAIRS` に新12題ぶんを手で書く**（どの電線・どの要素をどう直せば合格するか）。これが無いと新題は「報告＋修復で合格」「何もしなければ不合格」「1件見落とすと不合格」「2件のうち1件だけ直しても不合格」の4検査を素通りする。
-- [ ] 3. **`builtin-c2-dcv-observability.test.ts`** に、接触不良・接点不良を含む新題（c2-011 / c2-014 / c2-016 / c2-019）について「コイル励磁中／非励磁中の COM–NO / COM–NC 電圧で切り分けられる」検査を足す（2026-09-18 の利用者決定「C2 の接点故障はライブ DCV で診断する」）。
-- [ ] 4. D の12題を作る。PLC 側にリレー4・タイマ2の制約は無い。`io.inputs` は PB1〜PB4、`io.outputs` は PL1〜PL4（1級は4出力で最後が `CR4` 経由）。`referenceLadder` は `compile()` を通り、`judgePlcReference` が合格すること。
-- [ ] 5. **4方言すべてで通ることを確かめる**（`plc-cross-validation.test.ts`）。カウンタ課題（d-016 / d-017 / d-020）は OMRON の `#0005` 形式・JTEKT の `H0005` 形式・シャープの4桁10進で設定値が表現できる範囲に収める。
-- [ ] 6. `builtin/index.ts` に24行。テストの期待値を最終形に伸ばす。
+- [x] 1. C2 の12題を作る。元になる回路は Task 13 で作った B の新題を流用する（`schematic` をコピーして `faults` を足す）。**3級は禁止**、`hints.schematicVisible === (grade === 2)`。
+- [x] 2. **`builtin-c2-discrimination.test.ts` の `REPAIRS` に新12題ぶんを手で書く**（どの電線・どの要素をどう直せば合格するか）。これが無いと新題は「報告＋修復で合格」「何もしなければ不合格」「1件見落とすと不合格」「2件のうち1件だけ直しても不合格」の4検査を素通りする。
+- [x] 3. **`builtin-c2-dcv-observability.test.ts`** に、接触不良・接点不良を含む新題（c2-011 / c2-014 / c2-016 / c2-019）について「コイル励磁中／非励磁中の COM–NO / COM–NC 電圧で切り分けられる」検査を足す（2026-09-18 の利用者決定「C2 の接点故障はライブ DCV で診断する」）。
+- [x] 4. D の12題を作る。PLC 側にリレー4・タイマ2の制約は無い。`io.inputs` は PB1〜PB4、`io.outputs` は PL1〜PL4（1級は4出力で最後が `CR4` 経由）。`referenceLadder` は `compile()` を通り、`judgePlcReference` が合格すること。
+- [x] 5. **4方言すべてで通ることを確かめる**（`plc-cross-validation.test.ts`）。カウンタ課題（d-016 / d-017 / d-020）は OMRON の `#0005` 形式・JTEKT の `H0005` 形式・シャープの4桁10進で設定値が表現できる範囲に収める。
+- [x] 6. `builtin/index.ts` に24行。テストの期待値を最終形に伸ばす。
 
 ```
 packages/content/test/index.test.ts  「内蔵課題は72題（モードB 20 / C1 12 / C2 20 / D 20）」
@@ -876,7 +876,7 @@ builtin-plc.test.ts                  ID一覧 d-001…d-020、級の内訳（2�
 plc-cross-validation.test.ts         toHaveLength(8) → 20
 ```
 
-- [ ] 7. `node apps/desktop/scripts/copy-content.mjs` を走らせ、差分も commit する。
+- [x] 7. `node apps/desktop/scripts/copy-content.mjs` を走らせ、差分も commit する。
 
 **期待:**
 

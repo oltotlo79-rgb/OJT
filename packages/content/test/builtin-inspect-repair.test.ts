@@ -21,9 +21,16 @@ function referenceRun(problem: InspectRepairProblem) {
   return { run, signals: resolveCompareSignals(problem.judge, problem.board.extraParts ?? []) };
 }
 
+/**
+ * ランダム故障の課題で使う種。§7.5 の生成は種を渡さないと `Date.now()` を使うので、
+ * 回帰テストからは必ず種を固定する（CT-04）。
+ */
+const SEEDS: Readonly<Record<string, number>> = { 'c2-020': 20260920 };
+
 /** 指定した故障だけを入れた盤の不一致件数。 */
 function mismatchCount(problem: InspectRepairProblem, faultIndexes: readonly number[]): number {
-  const all = resolveFaults(problem, JIPM_BOARD);
+  const seed = SEEDS[problem.id];
+  const all = resolveFaults(problem, JIPM_BOARD, seed === undefined ? {} : { seed });
   if (!all.ok) throw new Error(JSON.stringify(all.errors));
   const chosen = faultIndexes.map((i) => all.value[i]).filter((f) => f !== undefined);
   const built = buildReferenceSession(problem, JIPM_BOARD);
@@ -55,20 +62,30 @@ describe('内蔵C2課題', () => {
     }
   });
 
-  it('gives every problem exactly two faults (§17.2 #4)', () => {
+  it('故障の数は1〜3件で、級が上がるほど増える（決定表#4「2箇所を基本とする」）', () => {
     for (const problem of BUILTIN_INSPECT_REPAIR_PROBLEMS) {
-      expect(Array.isArray(problem.faults), problem.id).toBe(true);
-      if (!Array.isArray(problem.faults)) continue;
-      expect(problem.faults, problem.id).toHaveLength(2);
+      const count = Array.isArray(problem.faults)
+        ? problem.faults.length
+        : problem.faults.random.count;
+      expect(count, problem.id).toBeGreaterThanOrEqual(1);
+      expect(count, problem.id).toBeLessThanOrEqual(3);
     }
   });
 
   it('builds the faulted board without a problem-data error (§13 #2)', () => {
     for (const problem of BUILTIN_INSPECT_REPAIR_PROBLEMS) {
-      const built = buildInspectRepairCircuit(problem, JIPM_BOARD);
+      const seed = SEEDS[problem.id];
+      const built = buildInspectRepairCircuit(
+        problem,
+        JIPM_BOARD,
+        seed === undefined ? {} : { seed },
+      );
       expect(built.ok, problem.id).toBe(true);
       if (!built.ok) continue;
-      expect(built.value.applied.sites, problem.id).toHaveLength(2);
+      const count = Array.isArray(problem.faults)
+        ? problem.faults.length
+        : problem.faults.random.count;
+      expect(built.value.applied.sites, problem.id).toHaveLength(count);
       expect(built.value.session.allowedColors, problem.id).toEqual(['白']);
     }
   });
@@ -85,16 +102,73 @@ describe('内蔵C2課題', () => {
   // まとめると136秒かかり、既定のテストタイムアウトを超えて落ちるため(Task 15 で
   // testTimeout/hookTimeout を180_000へ上げる対応と合わせて、個別化して報告も見やすくする)。
   for (const problem of BUILTIN_INSPECT_REPAIR_PROBLEMS) {
-    it(`${problem.id}: どちらか片方の故障だけでも模範と動作が食い違う (§7.5)`, () => {
-      expect(mismatchCount(problem, [0]), 'fault0').toBeGreaterThan(0);
-      expect(mismatchCount(problem, [1]), 'fault1').toBeGreaterThan(0);
-      expect(mismatchCount(problem, [0, 1]), 'both').toBeGreaterThan(0);
+    it(`${problem.id}: どの故障1件だけでも模範と動作が食い違う (§7.5)`, () => {
+      const seed = SEEDS[problem.id];
+      const all = resolveFaults(problem, JIPM_BOARD, seed === undefined ? {} : { seed });
+      expect(all.ok, problem.id).toBe(true);
+      if (!all.ok) return;
+      const indexes = all.value.map((_, i) => i);
+      for (const i of indexes) {
+        expect(mismatchCount(problem, [i]), `fault${String(i)}`).toBeGreaterThan(0);
+      }
+      expect(mismatchCount(problem, indexes), 'all').toBeGreaterThan(0);
     });
   }
+
+  /**
+   * ランダム故障（`c2-020`）は種ごとに別の組合せになる。`resolveFaults()` が保証するのは
+   * 「組合せ全体として模範と動作が違う」ことだけなので、**1件だけでも見つけられる**ことは
+   * 課題データ側（`random.types` を電線の故障に限ってある）で担保している。種を変えても
+   * その性質が崩れないことをここで見張る。
+   */
+  it('c2-020: どの種でも、引いた故障は1件ずつ単独で症状が出る（§7.5）', () => {
+    const problem = BUILTIN_INSPECT_REPAIR_PROBLEMS.find((p) => p.id === 'c2-020');
+    if (problem === undefined) throw new Error('c2-020 がありません');
+    for (const seed of [1, 7, 424242]) {
+      const all = resolveFaults(problem, JIPM_BOARD, { seed });
+      expect(all.ok, String(seed)).toBe(true);
+      if (!all.ok) continue;
+      expect(all.value, String(seed)).toHaveLength(3);
+      all.value.forEach((_, i) => {
+        const chosen = all.value[i];
+        const built = buildReferenceSession(problem, JIPM_BOARD);
+        if (!built.ok) throw new Error(JSON.stringify(built.errors));
+        const applied = applyFaults(built.value.session, chosen === undefined ? [] : [chosen]);
+        expect(applied.ok).toBe(true);
+        if (!applied.ok) return;
+        const circuit = {
+          session: built.value.session,
+          applied: applied.value,
+          initialWireIds: built.value.session.wires.map((w) => w.id),
+          initialWires: built.value.session.wires.map((w) => ({ ...w })),
+          cells: built.value.cells,
+        };
+        const { netlist } = repairNetlist(circuit, JIPM_BOARD);
+        const actual = runOperations(netlist, problem.operations, {
+          durationMs: problem.durationMs,
+        });
+        const reference = referenceRun(problem);
+        const diff = compareLogs(
+          reference.run.log,
+          actual.log,
+          reference.signals,
+          problem.judge.tolerance,
+        );
+        expect(diff.length, `seed=${String(seed)} fault${String(i)}`).toBeGreaterThan(0);
+      });
+    }
+  });
 
   it('故障を入れなければ模範と完全に一致する（基準回路の自己整合）', () => {
     for (const problem of BUILTIN_INSPECT_REPAIR_PROBLEMS) {
       expect(mismatchCount(problem, []), problem.id).toBe(0);
+    }
+  });
+
+  it('難しさが級の帯に収まる（§4.3 Phase 7）', () => {
+    for (const problem of BUILTIN_INSPECT_REPAIR_PROBLEMS) {
+      const allowed = problem.grade === 2 ? [2, 3, 4] : [4, 5];
+      expect(allowed, `${problem.id}（${problem.grade}級）`).toContain(problem.difficulty);
     }
   });
 

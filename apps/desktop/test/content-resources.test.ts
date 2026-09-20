@@ -90,6 +90,18 @@ const WIRED_FILES: Readonly<Record<string, readonly string[]>> = {
     'c2-006-sequential.json',
     'c2-007-flicker.json',
     'c2-008-stop-priority.json',
+    'c2-009-and-lamp.json',
+    'c2-010-or-lamp.json',
+    'c2-011-self-hold-stop.json',
+    'c2-012-two-hand.json',
+    'c2-013-off-delay.json',
+    'c2-014-mutual-interlock.json',
+    'c2-015-three-step.json',
+    'c2-016-last-press.json',
+    'c2-017-flicker-alarm.json',
+    'c2-018-conditional-hold.json',
+    'c2-019-two-timer.json',
+    'c2-020-random.json',
   ],
   plc: [
     'd-001-self-hold.json',
@@ -100,6 +112,18 @@ const WIRED_FILES: Readonly<Record<string, readonly string[]>> = {
     'd-006-flicker.json',
     'd-007-counter.json',
     'd-008-stop-priority.json',
+    'd-009-momentary.json',
+    'd-010-and-or.json',
+    'd-011-set-reset.json',
+    'd-012-edge-one-shot.json',
+    'd-013-off-delay.json',
+    'd-014-interlock.json',
+    'd-015-three-step.json',
+    'd-016-counter-steps.json',
+    'd-017-counter-alarm.json',
+    'd-018-clock-flicker.json',
+    'd-019-master-control.json',
+    'd-020-comprehensive.json',
   ],
 };
 
@@ -115,7 +139,7 @@ describe('resources/content の複写（§7.8 / Phase 2 acceptance BLOCKER）', 
     expect(jsonFilesIn(shipped)).toEqual(jsonFilesIn(source));
   });
 
-  it('内蔵課題の総数（48題）と一致する（§7.9）', () => {
+  it('内蔵課題の総数（72題）と一致する（§7.9）', () => {
     const total = BUILTIN_MODES.reduce(
       (sum, mode) => sum + jsonFilesIn(join(SHIPPED_ROOT, mode)).length,
       0,
