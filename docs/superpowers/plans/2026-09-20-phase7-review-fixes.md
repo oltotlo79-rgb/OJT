@@ -1298,10 +1298,13 @@ pnpm --filter @ojt/desktop e2e direct-manipulation
   （`playwright test --list --project=…` で確認）。撮り直しは `pnpm --filter @ojt/desktop e2e:shots`。
 - Step 7 の新しい基準値（69画面・3サイズの実測。`%TEMP%\ui-audit/summary.json`）:
   `blocking 0` ／ `page-overflow 0` ／ `clip 0` ／ `overlap 27 → 0` ／ `hud-overlap 0` ／
-  `duplicate 0` ／ `wrap 30 → 1` ／ `small-text 24 → 1,523` ／ `small-target 126 → 899` ／
-  `focus 0` ／ `canvas 0`。**`small-text` / `small-target` が増えたのはしきい値を
+  `duplicate 0` ／ `wrap 30 → 1` ／ `small-text 24 → 1,523` ／ `small-target 126 → 1,505` ／
+  `overlap 27 → 14` ／ `focus 0` ／ `canvas 0`（**2回の実測の大きい方**。2回のあいだに
+  Task 19・21・33 が landed して画面が変わり、1回目 1,523/899/overlap 0、2回目 1,419/1,505/overlap 14
+  だった）。**`small-text` / `small-target` が増えたのはしきい値を
   11px→12px・24px→32px に上げたため**であり、これは「直すべき件数」である（Task 24・26 が下げる）。
-  歩けなかった状態は1件（`modeC1-hazard`）。
+  歩けなかった状態は2回目で4件（`modeC1-hazard` と、Task 21 のデバイス入力欄が閉じない不具合で
+  歩けなかったモードD（OMRON）の3状態）。**その不具合が直ったら測り直すこと**（Task 37）。
 - `launchApp()` は起動ごとに使い捨ての `userData` を作る（QA-12）。`ui-quality.spec.ts` の
   「起動時の復元カード」だけは、2回の起動へ同じフォルダを渡して前回の一時保存を作っている。
 
