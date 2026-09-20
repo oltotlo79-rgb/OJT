@@ -8,6 +8,9 @@ import {
   checkPlcPowerIndependent,
   checkTwoStage,
   detectPlcWiring,
+  isPbA,
+  isPlcX,
+  isPlcY,
   usedInputCommons,
   type PlcCheckContext,
 } from '../src/plc-static-checks.js';
@@ -373,6 +376,31 @@ describe('usedInputCommons（§10.2 決定表: 使う点のコモン。レビュ
         ],
       }),
     ).toEqual(['ICOM0', 'ICOM1']);
+  });
+});
+
+describe('isPbA / isPlcX / isPlcY（CT-12: checkIoAssignment から出した述語の単体試験）', () => {
+  it('isPbA recognises only a push-button a-contact terminal id', () => {
+    expect(isPbA('TB_PB.1a')).toBe(true);
+    expect(isPbA('TB_PB.12a')).toBe(true);
+    expect(isPbA('TB_PB.1b')).toBe(false);
+    expect(isPbA('CR1.14')).toBe(false);
+  });
+
+  it('isPlcX / isPlcY recognise only that unit’s own input / output terminal ids', () => {
+    const unit = plcUnitFor('FX5U');
+    if (unit === undefined) throw new Error('FX5U が見つかりません');
+    const inputName = unit.spec.inputs[0]?.name;
+    const outputName = unit.spec.outputs[0]?.name;
+    if (inputName === undefined || outputName === undefined) {
+      throw new Error('FX5U の入出力が空です');
+    }
+    expect(isPlcX(unit, `PLC.${inputName}`)).toBe(true);
+    expect(isPlcX(unit, `PLC.${outputName}`)).toBe(false);
+    expect(isPlcY(unit, `PLC.${outputName}`)).toBe(true);
+    expect(isPlcY(unit, `PLC.${inputName}`)).toBe(false);
+    expect(isPlcX(unit, 'TB_PB.1a')).toBe(false);
+    expect(isPlcY(unit, 'TB_PB.1a')).toBe(false);
   });
 });
 

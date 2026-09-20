@@ -422,12 +422,14 @@ export function Session(): JSX.Element {
    * 模範回路へ落ちる側（`??` の右辺）は同じガードを通す。
    */
   const latestIndex = useRef(showSchematic ? hintGuideIndex : undefined);
-  latestIndex.current =
-    assembleView === 'board'
-      ? showSchematic
-        ? hintGuideIndex
-        : undefined
-      : (draftGuideIndex ?? (showSchematic ? hintGuideIndex : undefined));
+  useEffect(() => {
+    latestIndex.current =
+      assembleView === 'board'
+        ? showSchematic
+          ? hintGuideIndex
+          : undefined
+        : (draftGuideIndex ?? (showSchematic ? hintGuideIndex : undefined));
+  });
 
   /**
    * 3Dへ渡すコールバックは安定させる。毎回作り直すとシーン全体が再構築される。§15

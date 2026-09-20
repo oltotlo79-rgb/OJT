@@ -574,8 +574,9 @@ export function LadderWorkspace({
             program={program}
             profile={profile}
             comments={comments}
-            // `setDeviceComment` は上限（200件）で弾くと `false` を返す。戻り値をそのまま渡すと
-            // `CommentPanel` が理由をトーストに出す（Batch 1 レビュー M4 / Task 7 landed）
+            // `setDeviceComment` は上限（200件）で弾くと `false` を返すが、`CommentPanel` は
+            // 戻り値を見ない。上限に達したことは同パネルの常時表示の注記（`commentCapText()`）
+            // と `disabled` 済み入力欄の `aria-describedby` で伝わる（LE-16）
             onChange={(device, text) => useStore.getState().setDeviceComment(device, text)}
           />
           <ShortcutHelp profile={profile} />

@@ -90,8 +90,6 @@ export interface LoadElement {
   to: TerminalId;
   load: LoadKind;
   nominalOhms: number;
-  /** 極性を持つ（コイル）。true なら電圧の符号を見る。§5.3.1 の極性違反 */
-  polarized: boolean;
   fault?: LoadFault;
 }
 

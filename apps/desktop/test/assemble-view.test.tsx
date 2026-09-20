@@ -1,3 +1,5 @@
+// helpers/worker-bridge.js を他の import より前に置く（vi.mock のファクトリから参照するため）。
+import { workerBridgeMockModule, type WorkerBridgeMockState } from './helpers/worker-bridge.js';
 import { BUILTIN_ASSEMBLE_PROBLEMS } from '@ojt/content';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { createElement } from 'react';
@@ -13,17 +15,7 @@ import type * as BoardSceneModule from '../src/renderer/three/BoardScene.js';
  * この画面の側から確かめられるようにする。
  */
 
-const workerMock = vi.hoisted(() => ({
-  sent: [] as unknown[],
-  handlers: undefined as
-    | {
-        onSnapshot: (snapshot: unknown) => void;
-        onJudge: (message: unknown) => void;
-        onVerify?: (message: unknown) => void;
-        onError: (message: string, fatal: boolean) => void;
-      }
-    | undefined,
-}));
+const workerMock = vi.hoisted((): WorkerBridgeMockState => ({ sent: [], handlers: undefined }));
 
 vi.mock('../src/renderer/three/BoardScene.js', async () => {
   const actual = await vi.importActual<typeof BoardSceneModule>(
@@ -36,20 +28,7 @@ vi.mock('../src/renderer/three/BoardScene.js', async () => {
   };
 });
 
-vi.mock('../src/renderer/session/worker-bridge.js', () => ({
-  bridge: {
-    start: (handlers: NonNullable<typeof workerMock.handlers>) => {
-      workerMock.handlers = handlers;
-    },
-    send: (command: unknown) => {
-      workerMock.sent.push(command);
-    },
-    stop: () => {
-      workerMock.handlers = undefined;
-    },
-    running: true,
-  },
-}));
+vi.mock('../src/renderer/session/worker-bridge.js', () => workerBridgeMockModule(workerMock));
 
 const { Session } = await import('../src/renderer/screens/Session.js');
 const { useStore } = await import('../src/renderer/app/store.js');

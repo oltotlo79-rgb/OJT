@@ -272,6 +272,121 @@ export function checkPlcPowerIndependent(input: StaticCheckInput): StaticCheckRe
   );
 }
 
+/** 端子が押ボタンのa接点（`TB_PB.na`）か。§6.4 */
+export function isPbA(id: string): boolean {
+  return /^TB_PB\.\d+a$/.test(id);
+}
+
+/**
+ * 端子がその機種のPLC入力端子か。
+ * 端子名は機種で違う（三菱 `X0` / CP1E `0.00` / JW300 `A0` / TOYOPUC `Y1A`）ので、正規表現ではなく
+ * 機種仕様の端子集合で判定する（前提#19）。CT-12: 単体試験のためモジュール直下へ出した。
+ */
+export function isPlcX(unit: PlcUnitDefinition, id: string): boolean {
+  return unit.spec.inputs.some((input) => String(plcTerminal(input.name)) === id);
+}
+
+/** 端子がその機種のPLC出力端子か（`isPlcX` と対）。 */
+export function isPlcY(unit: PlcUnitDefinition, id: string): boolean {
+  return unit.spec.outputs.some((output) => String(plcTerminal(output.name)) === id);
+}
+
+/**
+ * 入力側の割付遵守（点ごとの配線先と、他の押ボタン・PLC入力端子との短絡）。§7.4 / §7.6
+ * CT-12: 93行の一本道だった `checkIoAssignment` を検査ごとの純関数に割った1つ。
+ */
+function checkInputWiring(nets: Nets, plc: PlcCheckContext): string[] {
+  const details: string[] = [];
+  for (const assigned of plc.io.inputs) {
+    const terminal = inputTerminal(plc.unit, assigned.x);
+    const expected = terminalId(PB_BLOCK_ID, `${assigned.pb.slice(2)}a`);
+    const net = netTerminals(nets, terminal);
+    if (!net.includes(expected)) {
+      details.push(`${terminal} は ${assigned.pb} のa接点（${expected}）に割り付けます`);
+      continue;
+    }
+    // 他の押ボタンのa接点・他のPLC入力端子が同じ節点に短絡していないか（例: X0とX1の短絡）
+    const pbCount = net.filter((id) => isPbA(String(id))).length;
+    const xCount = net.filter((id) => isPlcX(plc.unit, String(id))).length;
+    if (pbCount !== 1 || xCount !== 1) {
+      details.push(`${terminal} が別の押ボタンまたはPLC入力端子と短絡しています`);
+    }
+  }
+  return details;
+}
+
+/**
+ * 入力コモンの配線漏れ（**コモンごと**に1件で報告する）。§10.2
+ * 8点1コモンの機種は同じコモンに複数の使用点がぶら下がるので、点ごとのループの中で数えると
+ * 同じコモンの指摘が点の数だけ繰り返し出る（FX5U はコモンが1つしかないので、3点使えば3行同じ
+ * 指摘が出ていた。レビュー M7）。
+ */
+function checkInputCommons(nets: Nets, plc: PlcCheckContext): string[] {
+  const details: string[] = [];
+  for (const com of usedInputCommons(plc.unit, plc.io)) {
+    if (netTerminals(nets, plcTerminal(com)).length <= 1) {
+      details.push(`入力コモン（${plcTerminal(com)}）が配線されていません（受入基準③⑤）`);
+    }
+  }
+  return details;
+}
+
+/** 出力側の割付遵守（点ごとの配線先・短絡・出力コモン）。§7.4 / §7.6 */
+function checkOutputWiring(nets: Nets, plc: PlcCheckContext): string[] {
+  const details: string[] = [];
+  for (const output of plc.io.outputs) {
+    const terminal = outputTerminal(plc.unit, output.y);
+    const expected = terminalId(output.cr, '14');
+    const net = netTerminals(nets, terminal);
+    if (!net.includes(expected)) {
+      details.push(`${terminal} は ${output.cr} のコイル（${expected}）に割り付けます`);
+      continue;
+    }
+    // 他の出力リレーのコイル・他のPLC出力端子が同じ節点に短絡していないか
+    const coilCount = net.filter((id) => isRelayCoilId(String(id))).length;
+    const yCount = net.filter((id) => isPlcY(plc.unit, String(id))).length;
+    if (coilCount !== 1 || yCount !== 1) {
+      details.push(`${terminal} が別のリレーコイルまたはPLC出力端子と短絡しています`);
+    }
+    const outputCom = plc.unit.spec.outputs[output.y]?.com;
+    if (outputCom !== undefined && netTerminals(nets, plcTerminal(outputCom)).length <= 1) {
+      details.push(`${terminal} の出力コモン（${plcTerminal(outputCom)}）が配線されていません`);
+    }
+  }
+  return details;
+}
+
+/**
+ * 結線方式（シンク／ソース）の遵守。§10.2
+ * **使う点のコモン**だけで見る。課題が使わない群のコモン（`ICOM1` など）は模範配線でも浮いて
+ * いるので、数えると未配線と見分けがつかない。
+ */
+function checkWiringMethod(nets: Nets, plc: PlcCheckContext): string[] {
+  const commons = usedInputCommons(plc.unit, plc.io);
+  // 端子名は機種で違う（`S/S` / `COM` / `ICOM0` / `COM.A`）ので文言に直書きしない（引き渡し注記 H-1）
+  const commonLabel = commons.map((name) => String(plcTerminal(name))).join('・');
+  const wiring = detectPlcWiring(nets, plc.unit, commons);
+  if (wiring === undefined) {
+    return [`入力コモン（${commonLabel}）が盤のP側・N側のどちらにも配線されていません`];
+  }
+  if (wiring === 'mismatch') {
+    // コモンが1つだけの機種（FX5U の S/S、CP1E の COM）で mismatch になるのは、その1本自体が
+    // P側とN側を短絡しているということなので「すべて同じ側に揃えます」は意味を成さない。
+    // コモンが複数（ラック形）のときだけ、コモン同士の食い違いとして揃えるよう促す（レビュー M7）
+    return [
+      commons.length === 1
+        ? `入力コモン（${commonLabel}）でP側とN側を短絡しています`
+        : `入力コモン（${commonLabel}）のP側・N側が食い違っています（すべて同じ側に揃えます）`,
+    ];
+  }
+  if (wiring !== plc.io.wiring) {
+    return [
+      `入力コモン（${commonLabel}）の結線が課題の指定（${plc.io.wiring}）と違います（${wiring} になっています）`,
+    ];
+  }
+  return [];
+}
+
 /** I/O割付の遵守。§7.4 / §7.6 */
 export function checkIoAssignment(input: StaticCheckInput): StaticCheckResult {
   const plc = input.plc;
@@ -285,80 +400,12 @@ export function checkIoAssignment(input: StaticCheckInput): StaticCheckResult {
     };
   }
   const nets = buildNets(input.netlist);
-  const details: string[] = [];
-  const isPbA = (id: string): boolean => /^TB_PB\.\d+a$/.test(id);
-  // 端子名は機種で違う（三菱 `X0` / CP1E `0.00` / JW300 `A0` / TOYOPUC `Y1A`）ので、正規表現ではなく
-  // 機種仕様の端子集合で判定する（前提#19）
-  const inputIds = new Set(plc.unit.spec.inputs.map((input) => String(plcTerminal(input.name))));
-  const outputIds = new Set(
-    plc.unit.spec.outputs.map((output) => String(plcTerminal(output.name))),
-  );
-  const isPlcX = (id: string): boolean => inputIds.has(id);
-  const isPlcY = (id: string): boolean => outputIds.has(id);
-  for (const assigned of plc.io.inputs) {
-    const terminal = inputTerminal(plc.unit, assigned.x);
-    const expected = terminalId(PB_BLOCK_ID, `${assigned.pb.slice(2)}a`);
-    const net = netTerminals(nets, terminal);
-    if (!net.includes(expected)) {
-      details.push(`${terminal} は ${assigned.pb} のa接点（${expected}）に割り付けます`);
-      continue;
-    }
-    // 他の押ボタンのa接点・他のPLC入力端子が同じ節点に短絡していないか（例: X0とX1の短絡）
-    const pbCount = net.filter((id) => isPbA(String(id))).length;
-    const xCount = net.filter((id) => isPlcX(String(id))).length;
-    if (pbCount !== 1 || xCount !== 1) {
-      details.push(`${terminal} が別の押ボタンまたはPLC入力端子と短絡しています`);
-    }
-  }
-  // 入力コモンの配線漏れは**コモンごと**に1件で報告する。8点1コモンの機種は同じコモンに複数の
-  // 使用点がぶら下がるので、点ごとのループの中で数えると同じコモンの指摘が点の数だけ繰り返し出る
-  // （FX5U はコモンが1つしかないので、3点使えば3行同じ指摘が出ていた。レビュー M7）
-  for (const com of usedInputCommons(plc.unit, plc.io)) {
-    if (netTerminals(nets, plcTerminal(com)).length <= 1) {
-      details.push(`入力コモン（${plcTerminal(com)}）が配線されていません（受入基準③⑤）`);
-    }
-  }
-  for (const output of plc.io.outputs) {
-    const terminal = outputTerminal(plc.unit, output.y);
-    const expected = terminalId(output.cr, '14');
-    const net = netTerminals(nets, terminal);
-    if (!net.includes(expected)) {
-      details.push(`${terminal} は ${output.cr} のコイル（${expected}）に割り付けます`);
-      continue;
-    }
-    // 他の出力リレーのコイル・他のPLC出力端子が同じ節点に短絡していないか
-    const coilCount = net.filter((id) => isRelayCoilId(String(id))).length;
-    const yCount = net.filter((id) => isPlcY(String(id))).length;
-    if (coilCount !== 1 || yCount !== 1) {
-      details.push(`${terminal} が別のリレーコイルまたはPLC出力端子と短絡しています`);
-    }
-    const outputCom = plc.unit.spec.outputs[output.y]?.com;
-    if (outputCom !== undefined && netTerminals(nets, plcTerminal(outputCom)).length <= 1) {
-      details.push(`${terminal} の出力コモン（${plcTerminal(outputCom)}）が配線されていません`);
-    }
-  }
-  // 結線方式は**使う点のコモン**だけで見る。課題が使わない群のコモン（`ICOM1` など）は
-  // 模範配線でも浮いているので、数えると未配線と見分けがつかない
-  const commons = usedInputCommons(plc.unit, plc.io);
-  // 端子名は機種で違う（`S/S` / `COM` / `ICOM0` / `COM.A`）ので文言に直書きしない（引き渡し注記 H-1）
-  const commonLabel = commons.map((name) => String(plcTerminal(name))).join('・');
-  const wiring = detectPlcWiring(nets, plc.unit, commons);
-  if (wiring === undefined) {
-    details.push(`入力コモン（${commonLabel}）が盤のP側・N側のどちらにも配線されていません`);
-  } else if (wiring === 'mismatch') {
-    // コモンが1つだけの機種（FX5U の S/S、CP1E の COM）で mismatch になるのは、その1本自体が
-    // P側とN側を短絡しているということなので「すべて同じ側に揃えます」は意味を成さない。
-    // コモンが複数（ラック形）のときだけ、コモン同士の食い違いとして揃えるよう促す（レビュー M7）
-    details.push(
-      commons.length === 1
-        ? `入力コモン（${commonLabel}）でP側とN側を短絡しています`
-        : `入力コモン（${commonLabel}）のP側・N側が食い違っています（すべて同じ側に揃えます）`,
-    );
-  } else if (wiring !== plc.io.wiring) {
-    details.push(
-      `入力コモン（${commonLabel}）の結線が課題の指定（${plc.io.wiring}）と違います（${wiring} になっています）`,
-    );
-  }
+  const details: string[] = [
+    ...checkInputWiring(nets, plc),
+    ...checkInputCommons(nets, plc),
+    ...checkOutputWiring(nets, plc),
+    ...checkWiringMethod(nets, plc),
+  ];
   return result(
     'ioAssignment',
     details,

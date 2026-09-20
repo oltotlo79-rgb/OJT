@@ -74,8 +74,8 @@ export interface SymbolShape {
 /**
  * そのスキンの寸法で描いた記号と導線一式。
  *
- * **型と規則は下のモジュール定数と1対1で揃える**（レビュー B2）。`linkDown` は `LINK_DOWN` と
- * 同じく**セルの左辺**、`leadAcrossHidden` は同じ**2引数**、`shape()` は `symbolShape()` と
+ * **型と規則は下のモジュール関数と1対1で揃える**（レビュー B2）。`linkDown` は**セルの左辺**、
+ * `leadAcrossHidden` は `leadAcrossHidden()` と同じ**2引数**、`shape()` は `symbolShape()` と
  * 同じく**`undefined` を返さない**（知らない識別子は `?` 付きの接点に倒す）。
  */
 export interface SymbolMetrics {
@@ -94,7 +94,13 @@ export interface SymbolMetrics {
   leadLeft: string;
   leadRight: string;
   leadFull: string;
-  /** 下の行へ降りる縦リンク（`LINK_DOWN` と同じくセルの**左辺**）。 */
+  /**
+   * 下の行へ降りる縦リンク（セルの**左辺**）。§10.3
+   *
+   * 下端は `CELL_H` ではなく `CELL_H + WIRE_Y` にする。`vline` が繋ぐのは (row,col) → (row+1,col)
+   * で、次の行の桟は `WIRE_Y` だけ下にあるため、`CELL_H` で止めると桟の手前で線が切れて見える
+   * （レビュー指摘 B1。`<g>` は子を clip しないので、セルの外まで伸ばしてよい）。
+   */
   linkDown: string;
   /** 分岐の接合点（T字）に打つ点の半径[px]（⌀4px）。 */
   junctionR: number;
@@ -318,7 +324,7 @@ export function symbolMetrics(cell: SkinCell): SymbolMetrics {
     pulseGap,
     ...contactLead,
     leadFull: `M 0 ${wireY} L ${w} ${wireY}`,
-    // `LINK_DOWN` と同じ: セルの**左辺**を、次の行の桟（`h + wireY`）まで伸ばす
+    // セルの**左辺**を、次の行の桟（`h + wireY`）まで伸ばす（`linkDown` の JSDoc 参照）
     linkDown: `M 0 ${wireY} L 0 ${h + wireY}`,
     junctionR: JUNCTION_D / 2,
     labelY: barTop - LABEL_LIFT,
@@ -371,23 +377,8 @@ export const GX_CELL: SkinCell = {
   stepGutterPx: 24,
 };
 
-/** GX Works3風の寸法で組んだ一式。下の互換 export はすべてここから引く。 */
+/** GX Works3風の寸法で組んだ一式。`symbolShape()` / `leadAcrossHidden()` はここから引く。 */
 const GX = symbolMetrics(GX_CELL);
-
-/** 左のリード線（セルの左端から記号の左端まで）。 */
-export const LEAD_LEFT = GX.leadLeft;
-/** 右のリード線（記号の右端からセルの右端まで）。 */
-export const LEAD_RIGHT = GX.leadRight;
-/** セルを丸ごと横断する導線（`hline` / `vline`）。 */
-export const LEAD_FULL = GX.leadFull;
-/**
- * 縦線（セルの左辺で下の行と繋ぐ渡り）。§10.3
- *
- * 下端は `CELL_H` ではなく `CELL_H + WIRE_Y` にする。`vline` が繋ぐのは (row,col) → (row+1,col)
- * で、次の行の桟は `WIRE_Y` だけ下にあるため、`CELL_H` で止めると桟の手前で線が切れて見える
- * （レビュー指摘 B1。`<g>` は子を clip しないので、セルの外まで伸ばしてよい）。
- */
-export const LINK_DOWN = GX.linkDown;
 
 /** 識別子から線画を引く。知らない識別子は「?」付きの接点で描く。 */
 export function symbolShape(id: string): SymbolShape {

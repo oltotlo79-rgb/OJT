@@ -114,7 +114,7 @@ describe('スキン別の記号の寸法と形（決定表#6 / 利用者要求 2
       expect(metrics.shape('contact-nc').paths).toHaveLength(3);
       // 知らない識別子は `?` 付きの接点（landed の `symbolShape()` と同じ倒し方。`undefined` にしない）
       expect(metrics.shape('no-such-symbol').text, theme.id).toBe('?');
-      // 縦リンクはセルの**左辺**（landed の `LINK_DOWN` と同じ `M 0 …`）で、下端は `h + wireY`
+      // 縦リンクはセルの**左辺**（`M 0 …`）で、下端は `h + wireY`
       expect(metrics.linkDown, theme.id).toBe(
         `M 0 ${String(metrics.wireY)} L 0 ${String(metrics.h + metrics.wireY)}`,
       );

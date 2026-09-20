@@ -39,12 +39,10 @@ export interface BridgeHandlers {
 /** Worker を1本持ち、コマンド送信とメッセージ配送を行う。 */
 export class WorkerBridge {
   private worker: Worker | undefined;
-  private handlers: BridgeHandlers | undefined;
 
   /** Worker を起動して購読を始める。既に動いていれば作り直す（§13 #6 の復帰にも使う）。 */
   start(handlers: BridgeHandlers): void {
     this.stop();
-    this.handlers = handlers;
     const worker = new Worker(new URL('../../worker/sim.worker.ts', import.meta.url), {
       type: 'module',
       name: 'ojt-simulation',
@@ -79,7 +77,6 @@ export class WorkerBridge {
   stop(): void {
     this.worker?.terminate();
     this.worker = undefined;
-    this.handlers = undefined;
   }
 }
 

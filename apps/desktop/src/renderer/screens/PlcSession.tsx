@@ -635,7 +635,6 @@ export function PlcSession(): JSX.Element {
       <StepGuide
         steps={steps}
         hint={stepHintText(currentStepKey, profile)}
-        label={JA.plc.guide}
         testId={{ band: `plc-guide`, step: (key) => `plc-step-${key}`, hint: `plc-hint` }}
       >
         <div className={styles.plcStatus}>

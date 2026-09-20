@@ -271,7 +271,7 @@ export function PartsPanel({
                 onSelectSocket(socketId);
               }}
             >
-              {JA.session.select}
+              {JA.session.selection}
             </button>
           </div>
         );

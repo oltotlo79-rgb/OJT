@@ -58,16 +58,6 @@ import type { BoardSession } from './session.js';
 /** 電線の描画直径[mm]。§6.6 */
 export const WIRE_DIAMETER_MM = 1.6;
 /**
- * 並走する電線の並列オフセット幅[mm]。
- * @deprecated 盤定義側の {@link CHANNEL_LANE_PITCH_MM} に一本化した。別名として残してある。
- */
-export const WIRE_LANE_PITCH_MM = CHANNEL_LANE_PITCH_MM;
-/**
- * 並列オフセットの最大段数（1レイヤあたり）。
- * @deprecated 盤定義側の {@link CHANNEL_LANE_COUNT} に一本化した。別名として残してある。
- */
-export const MAX_WIRE_LANES = CHANNEL_LANE_COUNT;
-/**
  * 端子からの引き出しをレーン1本ぶんずらす量[mm]（レーン0が −2.1mm、レーン7が +2.1mm）。
  * 端子の当たり判定半径（4mm）より小さく、いちばん詰まった列の間隔（8mm）の内側に収まる。
  */

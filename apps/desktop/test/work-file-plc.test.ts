@@ -1,3 +1,6 @@
+// helpers/worker-bridge.js を他の import より前に置く（vi.mock のファクトリから参照するため。
+// 下の store.js / work-file.js が worker-bridge.js を読み込むより先に評価が終わっている必要がある）。
+import { workerBridgeMockModule, type WorkerBridgeMockState } from './helpers/worker-bridge.js';
 import { BUILTIN_PLC_PROBLEMS, isPlcProblem } from '@ojt/content';
 import { COIL_COL, IR_COLS, no, out, X, Y } from '@ojt/ladder-core';
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
@@ -15,19 +18,10 @@ import {
  * `applyWorkFile()` の往復テスト（I6b）だけ、`ojtApi()` と Worker ブリッジを差し替える
  * （`work-file.test.ts` と同じ流儀）。`restoreInspectState()` だけを呼ぶテストには要らない。
  */
-const bridgeMock = vi.hoisted(() => ({ sent: [] as unknown[] }));
+const bridgeMock = vi.hoisted((): WorkerBridgeMockState => ({ sent: [], handlers: undefined }));
 const apiState = vi.hoisted((): { readProblem: Mock } => ({ readProblem: vi.fn() }));
 
-vi.mock('../src/renderer/session/worker-bridge.js', () => ({
-  bridge: {
-    send: (command: unknown) => {
-      bridgeMock.sent.push(command);
-    },
-    start: () => {},
-    stop: () => {},
-    running: false,
-  },
-}));
+vi.mock('../src/renderer/session/worker-bridge.js', () => workerBridgeMockModule(bridgeMock));
 
 vi.mock('../src/renderer/app/ojt-api.js', () => ({
   ojtApi: () => ({ readProblem: apiState.readProblem }),

@@ -40,8 +40,9 @@ export function Settings(): JSX.Element {
   /**
    * サーバ側で確定した最新の設定（保存の度に更新。onChange の手元の編集では動かさない）。
    * `commitGridCols()` が「変わっていないのに保存」を避けるのに使う（レビュー指摘 #6）。
+   * 描画（JSX。300・352行）でも読むので ref ではなく state に置く（UI-11）。
    */
-  const savedRef = useRef<AppSettingsResponse | undefined>(undefined);
+  const [saved, setSaved] = useState<AppSettingsResponse | undefined>(undefined);
   /**
    * 直前に選んでいた上書き値（列数・通電色それぞれ）。§10.6 / レビュー指摘 #2
    * 「メーカーの既定に従う」を外すたびに毎回メーカーの値から上書きを始めると、外す→戻す→
@@ -58,7 +59,7 @@ export function Settings(): JSX.Element {
         .then(
           (fetched) => {
             setSettings(fetched);
-            savedRef.current = fetched;
+            setSaved(fetched);
           },
           (error: unknown) => {
             setLoadError(reasonOf(error));
@@ -93,16 +94,16 @@ export function Settings(): JSX.Element {
     const changesLadderSettings =
       'defaultVendor' in next || 'ladderGridCols' in next || 'monitorColor' in next;
     void api.setSettings(next).then(
-      (saved) => {
-        setSettings(saved);
-        savedRef.current = saved;
-        sounds.configure({ enabled: saved.soundEnabled, volume: saved.soundVolume });
+      (response) => {
+        setSettings(response);
+        setSaved(response);
+        sounds.configure({ enabled: response.soundEnabled, volume: response.soundVolume });
         if (changesLadderSettings) {
           // 設定画面にいる間もラダーへ即時反映する（§12.1）。起動直後の反映は App.tsx が担う。
           useStore.getState().applyLadderSettings({
-            gridCols: saved.ladderGridCols,
-            monitorColor: saved.monitorColor,
-            vendor: saved.defaultVendor,
+            gridCols: response.ladderGridCols,
+            monitorColor: response.monitorColor,
+            vendor: response.defaultVendor,
           });
         }
         if (options.silent !== true) toast(JA.settings.saved);
@@ -140,7 +141,7 @@ export function Settings(): JSX.Element {
      * （レビュー指摘 #1）。値そのものが同じでも新しいオブジェクトを渡して再描画させる。
      */
     setSettings({ ...settings, ladderGridCols: clamped });
-    if (clamped === savedRef.current?.ladderGridCols) return;
+    if (clamped === saved?.ladderGridCols) return;
     patch({ ladderGridCols: clamped });
   };
 
@@ -297,7 +298,7 @@ export function Settings(): JSX.Element {
                 type="checkbox"
                 // レビュー指摘 #1: draft（打鍵中の手元の値）ではなく保存済みの値で判定する。
                 // 空欄にしている最中の 0 相当の見た目に引きずられてチェックが動かないように。
-                checked={savedRef.current?.ladderGridCols === 0}
+                checked={saved?.ladderGridCols === 0}
                 data-testid="setting-grid-cols-auto"
                 onChange={(event) => {
                   // 外したときは、前回の上書き値があればそれを、無ければ「いまのメーカーの
@@ -349,7 +350,7 @@ export function Settings(): JSX.Element {
                 id="setting-monitor-color-auto"
                 type="checkbox"
                 // レビュー指摘 #1と同じ理由で保存済みの値を見る
-                checked={savedRef.current?.monitorColor.length === 0}
+                checked={saved?.monitorColor.length === 0}
                 data-testid="setting-monitor-color-auto"
                 onChange={(event) => {
                   // 外したときは、前回の上書き値があればそれを、無ければ「いま選んでいる

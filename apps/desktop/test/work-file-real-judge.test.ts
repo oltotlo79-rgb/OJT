@@ -1,3 +1,5 @@
+// helpers/worker-bridge.js を他の import より前に置く（vi.mock のファクトリから参照するため）。
+import { workerBridgeMockModule, type WorkerBridgeMockState } from './helpers/worker-bridge.js';
 import { JIPM_BOARD, type BoardSession } from '@ojt/board-model';
 import { wireId as toWireId } from '@ojt/circuit-sim';
 import {
@@ -19,19 +21,10 @@ import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
  * `parseWorkFile()` → `applyWorkFile()` → `judgeInspectRepair()` を素通りさせる。
  */
 
-const bridgeMock = vi.hoisted(() => ({ sent: [] as Array<Record<string, unknown>> }));
+const bridgeMock = vi.hoisted((): WorkerBridgeMockState => ({ sent: [], handlers: undefined }));
 const apiState = vi.hoisted((): { readProblem: Mock } => ({ readProblem: vi.fn() }));
 
-vi.mock('../src/renderer/session/worker-bridge.js', () => ({
-  bridge: {
-    send: (command: Record<string, unknown>) => {
-      bridgeMock.sent.push(command);
-    },
-    start: () => {},
-    stop: () => {},
-    running: true,
-  },
-}));
+vi.mock('../src/renderer/session/worker-bridge.js', () => workerBridgeMockModule(bridgeMock));
 
 vi.mock('../src/renderer/app/ojt-api.js', () => ({
   ojtApi: () => ({ readProblem: apiState.readProblem }),

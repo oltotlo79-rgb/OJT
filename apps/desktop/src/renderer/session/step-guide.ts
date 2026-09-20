@@ -118,18 +118,18 @@ export function inspectRepairSteps(input: {
 export function assembleStepHint(key: AssembleStepKey | undefined): string | undefined {
   if (key === 'parts') return JA.stepGuide.assemblePartsHint;
   if (key === 'wire') return JA.stepGuide.assembleWireHint;
-  if (key === 'power') return JA.stepGuide.assemblePowerHint;
-  if (key === 'judge') return JA.stepGuide.assembleJudgeHint;
+  if (key === 'power') return JA.stepGuide.powerHint;
+  if (key === 'judge') return JA.stepGuide.judgeHint;
   return undefined;
 }
 
 /** いまの手順にだけ効く1行の案内（モードC1）。 */
 export function inspectPartsStepHint(key: InspectPartsStepKey | undefined): string | undefined {
   if (key === 'plug') return JA.stepGuide.inspectPlugHint;
-  if (key === 'power') return JA.stepGuide.inspectPowerHint;
+  if (key === 'power') return JA.stepGuide.powerHint;
   if (key === 'measure') return JA.stepGuide.inspectMeasureHint;
   if (key === 'mark') return JA.stepGuide.inspectMarkHint;
-  if (key === 'judge') return JA.stepGuide.inspectJudgeHint;
+  if (key === 'judge') return JA.stepGuide.judgeHint;
   return undefined;
 }
 
@@ -137,7 +137,7 @@ export function inspectPartsStepHint(key: InspectPartsStepKey | undefined): stri
 export function inspectRepairStepHint(key: InspectRepairStepKey | undefined): string | undefined {
   if (key === 'report') return JA.stepGuide.repairReportHint;
   if (key === 'fix') return JA.stepGuide.repairFixHint;
-  if (key === 'judge') return JA.stepGuide.repairJudgeHint;
+  if (key === 'judge') return JA.stepGuide.judgeHint;
   return undefined;
 }
 

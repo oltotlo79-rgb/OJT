@@ -1,7 +1,6 @@
 import type { RoutingErrorReason } from '@ojt/board-model';
 import type { HazardKind, MismatchReason } from '@ojt/circuit-sim';
 import type { FaultReportKind, StaticCheckId } from '@ojt/content';
-import type { DialectId } from '@ojt/plc-dialects';
 import { MSG } from '../../shared/messages.js';
 import type { ProbeSide } from '../app/store-types.js';
 import type { BusSide, PinGroup } from '../session/socket-pins.js';
@@ -43,7 +42,6 @@ export const JA = {
     /** モードC2のモードカードの説明。§9.2 */
     inspectRepairDesc: '故障が入った盤を点検し、白線で修復する（モードC2）',
     plc: 'PLC',
-    comingSoon: '準備中',
     // --- Plan 3B Task 15 ---
     /** モードDのモードカードの説明。§10 */
     plcDesc: 'PLCでラダーを組み、盤と配線して動かす（モードD）',
@@ -54,8 +52,6 @@ export const JA = {
     title: '課題一覧',
     back: 'ホームへ戻る',
     grade: '級',
-    standard: '標準',
-    cutoff: '打切',
     minutes: '分',
     open: '開く',
     builtin: '内蔵',
@@ -108,8 +104,6 @@ export const JA = {
     vendor: '既定メーカー',
     vendorHelp:
       'モードDの課題を開いたときに使う機種（メーカー）です。課題の機種もこのメーカーに合わせて開きます。',
-    /** 実装が無いメーカーに添える注記（Phase 4 で4社すべて実装済み）。決定表#13 */
-    vendorUnimplemented: 'このメーカーはまだ対応していません',
     /** ラダーの表示列数。§10.6 */
     gridCols: 'ラダーの表示列数',
     /**
@@ -134,15 +128,6 @@ export const JA = {
     followVendorMonitorColor: '通電色はメーカーの既定に従う',
     // --- /Plan 4B Task 6 ---
     // --- /Plan 3B Task 16 ---
-    // --- Plan 3B final fix ---
-    /** メーカーの表示名（Phase 3 は三菱のみ実装。決定表#13）。最終レビュー指摘: `Settings.tsx` から移設。 */
-    vendorLabels: {
-      mitsubishi: '三菱電機',
-      jtekt: 'ジェイテクト',
-      omron: 'オムロン',
-      sharp: 'シャープ',
-    } satisfies Record<DialectId, string>,
-    // --- /Plan 3B final fix ---
   },
   session: {
     back: '課題一覧へ戻る',
@@ -184,12 +169,10 @@ export const JA = {
     timerPreset: 'タイマ設定',
     elapsed: '経過時間',
     log: '操作ログ',
-    warnings: '警告',
     /** 警告バナーを畳む。§5.6 */
     warnDismiss: '閉じる',
     problem: '課題',
     chart: 'タイムチャート（仕様）',
-    pickSocket: 'ソケットを選んでください',
     cancelWire: '配線を取り消しました',
     /** 経路器が経路を作れなかった（`RoutingError`）。盤とセッションはそのまま保つ。§6.6 */
     routeFailed: '配線の経路を作れませんでした',
@@ -231,11 +214,10 @@ export const JA = {
     powered: '通電中',
     unpowered: '無通電',
     wires: '電線',
-    wiresUnit: '本',
     noTerminal: '端子未選択',
     firstTerminal: '1本目',
+    /** UI-15: `select` という別名定義があったが同じ文字列なので統合した。 */
     selection: '選択',
-    select: '選択',
     /** 模範回路（仕様チャート・判定）を作れなかった。§7.7 / §8.3 */
     referenceError: '模範回路エラー',
     liveChart: 'ライブ記録',
@@ -265,8 +247,6 @@ export const JA = {
     /** つまみ（モード）の行のグループ名（a11y）。 */
     modeGroup: '測定モード',
     range: 'レンジ',
-    /** レンジ行のグループ名（a11y）。 */
-    rangeGroup: 'レンジ',
     /** デジタルはレンジつまみを持たない（§9.3）。 */
     autoRange: 'オートレンジ',
     zeroAdjust: '0Ω ADJ',
@@ -278,8 +258,6 @@ export const JA = {
     probeNone: '未配置',
     /** プローブを外す。 */
     lift: '外す',
-    /** 次に置くプローブ。§9.3 */
-    next: '次に置く',
     /** 3D盤の端子をクリックして置くことの案内。§9.3 */
     placeHint: '3D盤の端子をクリックするとプローブを置きます（黒 → 赤 の順）',
     /** 通電中にΩ／導通を当てたので測れない。§5.6 #1 */
@@ -544,8 +522,6 @@ export const JA = {
     scanCount: 'スキャン回数',
     run: 'RUN',
     stop: 'STOP',
-    /** ツールバーの RUN/STOP（盤だけを見ているときも押せる）。決定表#9b */
-    runStopTitle: 'PLCを RUN／STOP します（盤の表示中も押せます）',
     plcReset: 'デバイス初期化',
     // --- /Plan 3B Task 9 ---
     // --- Plan 3B fix (Batch 3) ---
@@ -707,7 +683,6 @@ export const JA = {
     outlet: '壁コンセント（AC100V）',
     /** 盤・PLC本体・壁コンセントを全部入れる視点。決定表#6 */
     viewPlc: '盤＋PLC',
-    unit: 'PLC本体',
     /**
      * 決定表#7の静的な1行。セッション中は**常に**出す（判定データではないので漏らしても構わない）。
      * Batch 4+5 レビュー B1: `ProblemPanel` の下と `IoTable` のキャプションの両方に出す。
@@ -732,8 +707,9 @@ export const JA = {
     /**
      * 画面の上段に出す手順の案内（2026-09-19 の利用者決定「分かりやすく直感的に」）。
      * 見出し語は GX Works3 の言い方に合わせる（内部の識別子は画面に出さない）。
+     * 見出し（`手順`）と「済」「いまここ」は Phase 7 Task 11 で `JA.stepGuide` へ集約した
+     * （`panels/StepGuide.tsx`）。`stepAnytime` だけはモードD専用の3つめの状態なので残す。
      */
-    guide: '手順',
     stepWire: '配線（3D盤）',
     stepLadder: 'ラダー作成',
     stepConvert: '変換',
@@ -741,8 +717,6 @@ export const JA = {
     stepJudge: '判定',
     /** 「配線」はいつでも行えるので完了印を出さない（決定表#7 に触れない）。 */
     stepAnytime: 'いつでも',
-    stepDone: '済',
-    stepCurrent: 'いまここ',
     /** いまの状態（ボタンの見た目だけに頼らず文字でも出す）。 */
     statusLadder: 'ラダー',
     statusPlc: 'PLC',
@@ -760,8 +734,6 @@ export const JA = {
     convertHint: '変換します',
     runHint: 'RUNにして運転を始めます（モニタで確認できます）',
     judgeHint: '判定ボタンで判定します',
-    /** 押せないボタンの理由を画面にも出す（`title` だけに頼らない）。 */
-    judgeBlocked: '判定できません',
     // --- Plan 4B Task 3 ---
     /** 「変換」のないスキンで、まだ変換が通っていないとき。決定表#3 */
     judgeAutoConverting: 'ラダーに直すところがあります（出力ウィンドウを確認してください）',
@@ -908,6 +880,16 @@ export const JA = {
     label: '手順',
     done: '済',
     current: 'いまここ',
+    /**
+     * 「判定」手順の案内。モードB/C1/C2で別名定義（`assembleJudgeHint` 等）が3つとも
+     * 同じ文字列だったので1本にした（UI-15）。
+     */
+    judgeHint: '判定ボタンで判定します。',
+    /**
+     * 電源投入手順の案内。モードB/C1の別名定義（`assemblePowerHint` / `inspectPowerHint`）が
+     * 同じ文字列だったので1本にした（UI-15）。
+     */
+    powerHint: 'ブレーカ → 電源スイッチの順に入れます。',
     /** モードB: 部品装着 → 配線 → 通電（ブレーカ→電源スイッチ）→ 判定 */
     assembleParts: '部品装着',
     assembleWire: '配線',
@@ -915,8 +897,6 @@ export const JA = {
     assembleJudge: '判定',
     assemblePartsHint: '部品パネルでソケットを選び、「装着」を押します。',
     assembleWireHint: '3D盤の端子を2つクリックして配線します。',
-    assemblePowerHint: 'ブレーカ → 電源スイッチの順に入れます。',
-    assembleJudgeHint: '判定ボタンで判定します。',
     /** モードC1: 部品を挿す → 通電 → 測る → マーク → 判定 */
     inspectPlug: '部品を挿す',
     inspectPower: '通電',
@@ -924,17 +904,14 @@ export const JA = {
     inspectMark: 'マーク',
     inspectJudge: '判定',
     inspectPlugHint: '部品トレイから部品を選び、チェック用ソケットに挿します。',
-    inspectPowerHint: 'ブレーカ → 電源スイッチの順に入れます。',
     inspectMeasureHint: 'テスターの黒・赤プローブを端子に当てて測ります。',
     inspectMarkHint: 'マークシートで不良原因を選びます。',
-    inspectJudgeHint: '判定ボタンで判定します。',
     /** モードC2: 指摘 → 修復 → 判定 */
     repairReport: '指摘',
     repairFix: '修復',
     repairJudge: '判定',
     repairReportHint: '3D盤の電線・端子・部品をクリックして故障の種別を選びます。',
     repairFixHint: '白線を張るか部品を交換して修復します。',
-    repairJudgeHint: '判定ボタンで判定します。',
     // --- Plan 5 Task 4 ---
     /** モードBの回路図エディタ: 描く → 検算 → 盤に配線（Plan 5 決定表#24） */
     schematicDraw: '回路図を描く',
@@ -1007,7 +984,6 @@ export const JA = {
     mode: 'モード',
     problem: '課題',
     elapsed: '経過時間',
-    savedAt: '保存時刻',
     /** 課題名がまだ引けていない（読み込み中）ときの仮の表示。 */
     unknownProblem: '（読み込み中…）',
   },
@@ -1047,8 +1023,6 @@ export const JA = {
     viewBoard: '盤',
     viewSplit: '並べて',
     viewSchematic: '回路図',
-    guide: '配線ガイド',
-    guideOff: '要素をクリックすると3D盤の端子が光ります',
     // 分岐（§11.1 の分岐点。自己保持回路に要る）
     branch: 'この段を分岐にする',
     branchCancel: '分岐をやめる',

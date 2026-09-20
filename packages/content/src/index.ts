@@ -246,6 +246,7 @@ export {
 export {
   buildTimeChart,
   defaultChartSignals,
+  formatSeconds,
   OUTPUT_LABELS,
   PB_LABELS,
   startsAndEndsLow,
@@ -276,6 +277,7 @@ export {
 
 export {
   MAX_RANDOM_FAULT_ATTEMPTS,
+  MAX_RANDOM_FAULT_MILLIS,
   RANDOM_FAULT_KINDS,
   resolveFaults,
   type ResolveFaultsOptions,

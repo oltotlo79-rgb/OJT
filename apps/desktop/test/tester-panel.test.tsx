@@ -1,3 +1,11 @@
+// `helpers/worker-bridge.js` は他のどの import よりも前に置く。TesterPanel.js（この下）が
+// `session/worker-bridge.js` を読み込む前に、この import 自体を評価し終える必要があるため
+// （vi.mock のファクトリがこのヘルパーを参照するので、順序が逆だと未初期化アクセスになる）。
+import {
+  resetWorkerBridgeMock,
+  workerBridgeMockModule,
+  type WorkerBridgeMockState,
+} from './helpers/worker-bridge.js';
 import { toTerminalId, voltRangesFor } from '@ojt/circuit-sim';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -9,18 +17,13 @@ import { TesterPanel } from '../src/renderer/panels/TesterPanel.js';
  * テスターパネル（Plan 2B Task 5）。設計仕様 §9.3。
  */
 
-const sent: unknown[] = [];
+// `vi.hoisted` は import より前に持ち上がるので、ここだけは素のオブジェクトリテラルで書く。
+const bridgeMock = vi.hoisted((): WorkerBridgeMockState => ({ sent: [], handlers: undefined }));
 
-vi.mock('../src/renderer/session/worker-bridge.js', () => ({
-  bridge: {
-    send: (command: unknown) => {
-      sent.push(command);
-    },
-  },
-}));
+vi.mock('../src/renderer/session/worker-bridge.js', () => workerBridgeMockModule(bridgeMock));
 
 beforeEach(() => {
-  sent.length = 0;
+  resetWorkerBridgeMock(bridgeMock);
   useStore.setState({
     tester: {
       kind: 'digital',
@@ -47,7 +50,10 @@ describe('つまみ（§9.3）', () => {
     render(<TesterPanel />);
     fireEvent.click(screen.getByRole('button', { name: 'DCV' }));
     expect(useStore.getState().tester.mode).toBe('DCV');
-    expect(sent).toContainEqual({ type: 'tester', action: { type: 'set-mode', mode: 'DCV' } });
+    expect(bridgeMock.sent).toContainEqual({
+      type: 'tester',
+      action: { type: 'set-mode', mode: 'DCV' },
+    });
     for (const label of ['OFF', 'DCV', 'ACV', 'Ω', '導通']) {
       expect(screen.getByRole('button', { name: label })).toBeTruthy();
     }
@@ -102,7 +108,7 @@ describe('種別とレンジ（§9.3）', () => {
     expect(zero.hasAttribute('disabled')).toBe(false);
     fireEvent.click(zero);
     expect(useStore.getState().tester.zeroAdjusted).toBe(true);
-    expect(sent).toContainEqual({ type: 'tester', action: { type: 'zero-adjust' } });
+    expect(bridgeMock.sent).toContainEqual({ type: 'tester', action: { type: 'zero-adjust' } });
   });
 
   it('0Ω調整はレンジを変えるとやり直しになる（§9.3）', () => {
@@ -158,7 +164,7 @@ describe('プローブ（§9.3）', () => {
     expect(screen.getByTestId('probe-black').textContent).toContain('CHK.13');
     fireEvent.click(screen.getByTestId('lift-black'));
     expect(useStore.getState().tester.black).toBeUndefined();
-    expect(sent).toContainEqual({
+    expect(bridgeMock.sent).toContainEqual({
       type: 'tester',
       action: { type: 'place-probe', probe: 'black', terminal: undefined },
     });

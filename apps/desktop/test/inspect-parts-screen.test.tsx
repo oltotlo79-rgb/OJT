@@ -1,3 +1,5 @@
+// helpers/worker-bridge.js を他の import より前に置く（vi.mock のファクトリから参照するため）。
+import { workerBridgeMockModule, type WorkerBridgeMockState } from './helpers/worker-bridge.js';
 import { toTerminalId } from '@ojt/circuit-sim';
 import { BUILTIN_INSPECT_PARTS_PROBLEMS } from '@ojt/content';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
@@ -11,30 +13,21 @@ import { testerShortcut } from '../src/renderer/session/tester.js';
  * 3D（`BoardScene`）は WebGL を要るので差し替え、`onPick` だけを取り出して検証する。
  */
 
-const mocks = vi.hoisted(() => ({
-  sent: [] as Array<Record<string, unknown>>,
-  picks: [] as Array<(hit: unknown) => void>,
-}));
+const bridgeMock = vi.hoisted((): WorkerBridgeMockState => ({ sent: [], handlers: undefined }));
+const picksMock = vi.hoisted(() => ({ picks: [] as Array<(hit: unknown) => void> }));
 
-vi.mock('../src/renderer/session/worker-bridge.js', () => ({
-  bridge: {
-    start: () => undefined,
-    stop: () => undefined,
-    send: (command: Record<string, unknown>) => {
-      mocks.sent.push(command);
-    },
-  },
-}));
+vi.mock('../src/renderer/session/worker-bridge.js', () => workerBridgeMockModule(bridgeMock));
 
 vi.mock('../src/renderer/three/BoardScene.js', () => ({
   BoardScene: ({ onPick }: { onPick: (hit: unknown) => void }) => {
-    mocks.picks.push(onPick);
+    picksMock.picks.push(onPick);
     return <div data-testid="board-canvas" />;
   },
   safeRoutes: () => ({ routes: [], errors: [] }),
 }));
 
-const { sent, picks } = mocks;
+const { sent } = bridgeMock;
+const { picks } = picksMock;
 
 const C1 = BUILTIN_INSPECT_PARTS_PROBLEMS[0];
 

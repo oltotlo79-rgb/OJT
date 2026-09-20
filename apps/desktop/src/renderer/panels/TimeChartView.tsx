@@ -129,7 +129,9 @@ function ChartCursor({
   // 依存に入れると listener を毎回張り直すことになるので、最新値は ref に逃がして依存からは外す
   // （`hostRef` と `geom` は安定しているので listener は初回だけ張ればよい）。
   const figureRef = useRef(figure);
-  figureRef.current = figure;
+  useEffect(() => {
+    figureRef.current = figure;
+  });
 
   useEffect(() => {
     const host = hostRef.current;

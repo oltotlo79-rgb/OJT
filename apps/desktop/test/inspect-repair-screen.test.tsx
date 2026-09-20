@@ -1,3 +1,5 @@
+// helpers/worker-bridge.js を他の import より前に置く（vi.mock のファクトリから参照するため）。
+import { workerBridgeMockModule, type WorkerBridgeMockState } from './helpers/worker-bridge.js';
 import { toTerminalId } from '@ojt/circuit-sim';
 import { BUILTIN_INSPECT_REPAIR_PROBLEMS } from '@ojt/content';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
@@ -12,8 +14,8 @@ import type * as SpecChartModule from '../src/renderer/session/spec-chart.js';
  * 3D（`BoardScene`）は WebGL が要るので差し替え、`onPick` だけを取り出して検証する。
  */
 
+const bridgeMock = vi.hoisted((): WorkerBridgeMockState => ({ sent: [], handlers: undefined }));
 const mocks = vi.hoisted(() => ({
-  sent: [] as Array<Record<string, unknown>>,
   picks: [] as Array<(hit: unknown) => void>,
   hovers: [] as Array<(id: unknown) => void>,
   forceSpecFail: false,
@@ -28,15 +30,7 @@ vi.mock('../src/renderer/session/spec-chart.js', async (importOriginal) => {
   };
 });
 
-vi.mock('../src/renderer/session/worker-bridge.js', () => ({
-  bridge: {
-    start: () => undefined,
-    stop: () => undefined,
-    send: (command: Record<string, unknown>) => {
-      mocks.sent.push(command);
-    },
-  },
-}));
+vi.mock('../src/renderer/session/worker-bridge.js', () => workerBridgeMockModule(bridgeMock));
 
 vi.mock('../src/renderer/three/BoardScene.js', () => ({
   BoardScene: ({
@@ -53,7 +47,8 @@ vi.mock('../src/renderer/three/BoardScene.js', () => ({
   safeRoutes: () => ({ routes: [], errors: [] }),
 }));
 
-const { sent, picks, hovers } = mocks;
+const { sent } = bridgeMock;
+const { picks, hovers } = mocks;
 
 const C2 = BUILTIN_INSPECT_REPAIR_PROBLEMS.find((p) => p.grade === 2);
 const C2_GRADE1 = BUILTIN_INSPECT_REPAIR_PROBLEMS.find((p) => p.grade === 1);

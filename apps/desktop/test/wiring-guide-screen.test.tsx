@@ -1,3 +1,5 @@
+// helpers/worker-bridge.js を他の import より前に置く（vi.mock のファクトリから参照するため）。
+import { workerBridgeMockModule, type WorkerBridgeMockState } from './helpers/worker-bridge.js';
 import { JIPM_BOARD, toPhysicalTerminal } from '@ojt/board-model';
 import { BUILTIN_ASSEMBLE_PROBLEMS, buildReferenceSession } from '@ojt/content';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
@@ -10,12 +12,15 @@ import type * as BoardSceneModule from '../src/renderer/three/BoardScene.js';
  *
  * 3Dビューポートは happy-dom では描けないので `BoardScene` を差し替える（`session.test.tsx`
  * と同じ作りに `onHover` の捕まえを足したもの。3D → 回路図の逆引きを確かめるため）。
- * Worker ブリッジも差し替える（差し替えないと本物の Worker を起こしにいく）。
+ * Worker ブリッジも差し替える（差し替えないと本物の Worker を起こしにいく）。このテストは
+ * 送信コマンド・ハンドラのどちらも見ないので、`bridgeMock` は使い捨ての状態でよい。
  */
 
 const scene = vi.hoisted(() => ({
   hover: undefined as ((id: unknown) => void) | undefined,
 }));
+
+const bridgeMock = vi.hoisted((): WorkerBridgeMockState => ({ sent: [], handlers: undefined }));
 
 vi.mock('../src/renderer/three/BoardScene.js', async () => {
   const actual = await vi.importActual<typeof BoardSceneModule>(
@@ -31,14 +36,7 @@ vi.mock('../src/renderer/three/BoardScene.js', async () => {
   };
 });
 
-vi.mock('../src/renderer/session/worker-bridge.js', () => ({
-  bridge: {
-    start: () => undefined,
-    send: () => undefined,
-    stop: () => undefined,
-    running: true,
-  },
-}));
+vi.mock('../src/renderer/session/worker-bridge.js', () => workerBridgeMockModule(bridgeMock));
 
 const { Session } = await import('../src/renderer/screens/Session.js');
 const { useStore } = await import('../src/renderer/app/store.js');

@@ -114,13 +114,6 @@ export function runZ(axis: 'x' | 'y', layer: number): number {
   const base = axis === 'x' ? 0 : 1;
   return WIRE_Z_LADDER_MM[base + layer * 2] ?? WIRE_Z_LADDER_MM[base];
 }
-/**
- * 電線が盤面上を走る高さ[mm]。
- * @deprecated 走行高さは向きとレイヤで決まるようになった。
- * x方向は {@link WIRE_RUN_X_Z_MM}、y方向は {@link WIRE_RUN_Y_Z_MM}、
- * 段の一覧は {@link WIRE_Z_LADDER_MM} を使うこと。
- */
-export const WIRE_RUN_Z_MM = WIRE_RUN_X_Z_MM;
 /** 1本の配線帯が持つレーンの数。§6.6 */
 export const CHANNEL_LANE_COUNT = 8;
 /** 配線帯のレーン間隔[mm]。§6.6 */

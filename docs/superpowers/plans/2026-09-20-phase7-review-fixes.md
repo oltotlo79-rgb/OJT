@@ -629,10 +629,10 @@ grep -rln "stepGuide\|手順帯" apps/desktop/src/renderer/**/*.module.css  # �
 > `sim.worker.ts` の `case 'reset'`、それを唯一送っていた `test/sim-worker.test.ts` の検査を削除した。
 > Task 12 はこの項目を飛ばしてよい（Task 10 の `default: command satisfies never` はそのまま残っている）。
 
-- [ ] 1. **死にコード・死にフィールド・非推奨エイリアス**を削る: `LoadElement.polarized`（CS-06。コメントを実装に合わせる）／バレルの export 漏れ2件（CS-10）と取りこぼし2件（CT-08）／`@deprecated` 3定数（BM-06）／`BUILTIN_PROBLEMS` の陳腐化コメント（CT-09）／`reset` コマンド（DW-3。テストごと削る）／`WorkerBridge.handlers`（DS-5）／`presetForDirection()`（3D-18。テスト5ケースを `gizmoTargetForDirection()` へ向け直す）／`receiveShadow`（3D-20）／互換 export 4本（LE-17）。
+- [x] 1. **死にコード・死にフィールド・非推奨エイリアス**を削る: `LoadElement.polarized`（CS-06。コメントを実装に合わせる）／バレルの export 漏れ2件（CS-10）と取りこぼし2件（CT-08）／`@deprecated` 3定数（BM-06）／`BUILTIN_PROBLEMS` の陳腐化コメント（CT-09）／`reset` コマンド（DW-3。テストごと削る）／`WorkerBridge.handlers`（DS-5）／`presetForDirection()`（3D-18。テスト5ケースを `gizmoTargetForDirection()` へ向け直す）／`receiveShadow`（3D-20）／互換 export 4本（LE-17）。
   - CT-09 done in Task 18 db313e1（`BUILTIN_PROBLEMS` の陳腐化コメントは書き換え済み。ここでは扱わない）。
-- [ ] 2. **3D-13**: 印字テクスチャのキャッシュ4方針（`AcFixtures` / `labels.ts` / `PartIndicator` / `Fixtures`）を `labels.ts` の実装に**一本化**し、鍵に接頭辞（`fixture:` / `socket:` / `part:`）を付ける。
-- [ ] 3. **3D-14**: `labels.ts` に `LABEL_FONT` 定数を置き `ctx.font` の5箇所を差し替える（文字幅表は Meiryo 実測なのに焼くときは `sans-serif` になっている）。開発時に `measureText()` と見積りを比べるアサートを足す。
+- [x] 2. **3D-13**: 印字テクスチャのキャッシュ4方針（`AcFixtures` / `labels.ts` / `PartIndicator` / `Fixtures`）を `labels.ts` の実装に**一本化**し、鍵に接頭辞（`fixture:` / `socket:` / `part:`）を付ける。Task 17 が landed 済み（`3bf8015`）なのでチェックのみ。
+- [x] 3. **3D-14**: `labels.ts` に `LABEL_FONT` 定数を置き `ctx.font` の5箇所を差し替える（文字幅表は Meiryo 実測なのに焼くときは `sans-serif` になっている）。開発時に `measureText()` と見積りを比べるアサートを足す。Task 17 が landed 済み（`3bf8015`）なのでチェックのみ。
 
 > **3D-13 / 3D-14 / 3D-18 / 3D-20 は Task 17 で済み（`3bf8015`）**: Step 2・3 はまるごと、Step 1 のうち
 > `presetForDirection()`（3D-18。`view-navigation.test.ts` の5ケースを `gizmoTargetForDirection()` へ
@@ -641,12 +641,12 @@ grep -rln "stepGuide\|手順帯" apps/desktop/src/renderer/**/*.module.css  # �
 > を `apps/desktop/src` で探すと `labels.ts` だけに当たる。**BoardScene の `reasonOf` も Task 17 で
 > 共有版（`app/errors.js`）へ寄せた**ので、`grep -rn "function reasonOf" apps/desktop/src` は1件になった。
 > Task 12 はこれらの項目を飛ばしてよい。
-- [ ] 4. **LE-16**: `CommentPanel.tsx` の JSDoc と実装の食い違い（3箇所中2箇所が矛盾）を実装に合わせて直す。
-- [ ] 5. **UI-11 ≡ LE-15**: 描画中に ref を読み書きしている6箇所を `useEffect` へ移す（`SchematicEditor.tsx:225-228` が正しい形）。
-- [ ] 6. **UI-15**: 未使用の日本語キー9件と別名定義8組を整理する。`i18n-keys.test.ts` を新設し、`JA` の全葉キーが `src` / `test` / `e2e` のどこかから参照されていることを検査する（再発防止）。
-- [ ] 7. **CT-12**: `checkIoAssignment`（93行の一本道）を検査ごとの純関数に割り、`isPbA` / `isPlcX` / `isPlcY` をモジュール直下へ出して単体テストを付ける。
-- [ ] 8. **CS-07（代替）**: `packages/circuit-sim/test/parts.test.ts` に「`createTimer4c` の要素の並びを**配列全体で**固定する」テストを足し、`parts.ts` の該当箇所の JSDoc に「**この並びは課題JSONの `faults[].target.elementIndex` の契約である。変えると内蔵C2課題と利用者の課題が別の故障になる**」と書く。**`elementId` への移行は行わない**（本設計 §3.2）。
-- [ ] 9. **QA-25**: `apps/desktop/test/helpers/worker-bridge.ts` を新設し、13ファイルの10〜14行の複写を畳む。`running` の値が違う版が混在しているので、**正しい既定を1つ決めて**全部をそれに揃える。
+- [x] 4. **LE-16**: `CommentPanel.tsx` の JSDoc と実装の食い違い（3箇所中2箇所が矛盾）を実装に合わせて直す。`LadderWorkspace.tsx:536-538` の同じ誤りも直した。
+- [x] 5. **UI-11 ≡ LE-15**: 描画中に ref を読み書きしている6箇所を `useEffect` へ移す（`SchematicEditor.tsx:225-228` が正しい形）。`HelpDrawer.tsx:156-157` は Task 32 の担当ファイルのため対象外（他5箇所は対応済み）。`ladder/LadderGrid.tsx:546-552` 相当は Task 15 の再構成でレンダー回数の観測用カウンタ（`data-render-count`。同一レンダー中に JSX へ出すため意図的に render 中へ書く）に置き換わっており、対象外と判断した。
+- [x] 6. **UI-15**: 未使用の日本語キー（現状17件。レポート時点の9件から他タスクの着地で増加）と別名定義（判定手順3件・電源投入手順2件・`select`/`selection`）を整理した。`i18n-keys.test.ts` を新設し、`JA` の全葉キーが `src` / `test` / `e2e` のどこかから参照されていることを検査する（再発防止）。
+- [x] 7. **CT-12**: `checkIoAssignment`（93行の一本道）を検査ごとの純関数に割り、`isPbA` / `isPlcX` / `isPlcY` をモジュール直下へ出して単体テストを付けた。
+- [x] 8. **CS-07（代替）**: `packages/circuit-sim/test/parts.test.ts` に「`createTimer4c` の要素の並びを**配列全体で**固定する」テストを足し、`parts.ts` の該当箇所の JSDoc に「**この並びは課題JSONの `faults[].target.elementIndex` の契約である。変えると内蔵C2課題と利用者の課題が別の故障になる**」と書いた。**`elementId` への移行は行わない**（本設計 §3.2）。
+- [x] 9. **QA-25**: `apps/desktop/test/helpers/worker-bridge.ts` を新設し、12ファイル（残る1件 `plc-session-screen.test.tsx` は `vi.mock` 複写ではなく実体 `bridge` への `vi.spyOn` なので対象外）の10〜14行の複写を畳んだ。`running` は既定 `true`（本番コードはどこも読まないため値自体は無害。明示していた6ファイル中4ファイルがこの値だった）に揃えた。
 
 **期待:**
 

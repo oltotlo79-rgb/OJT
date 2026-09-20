@@ -165,7 +165,6 @@ function coilElement(id: PartId): LoadElement {
     to: terminalId(id, String(SOCKET_COIL_MINUS_PIN)),
     load: 'coil',
     nominalOhms: COIL_OHMS,
-    polarized: true,
   };
 }
 
@@ -202,7 +201,14 @@ export function clampPreset(presetMs: number, rangeMaxMs: number): number {
   return Math.min(Math.max(presetMs, TIMER_MIN_PRESET_MS), effectiveRange);
 }
 
-/** H3Y-4相当のパワーオンディレータイマ（限時接点4c、瞬時接点なし）を作る。§5.3.2 */
+/**
+ * H3Y-4相当のパワーオンディレータイマ（限時接点4c、瞬時接点なし）を作る。§5.3.2
+ *
+ * **この並び（`elements`。コイル → b1/a1/b2/a2/b3/a3/b4/a4）は課題JSONの
+ * `faults[].target.elementIndex` の契約である**（CS-07）。ここを変えると、内蔵C2課題や
+ * 利用者が作った課題の故障注入先が別の要素を指すことになり、別の故障になる。並びの固定は
+ * `test/parts.test.ts` が配列全体で検査する。`elementId` 指定への移行は行わない（本設計 §3.2）。
+ */
 export function createTimer4c(
   id: PartId | string,
   presetMs: number,
@@ -279,7 +285,6 @@ export function createLamp(id: PartId | string, color: LampColor): Part {
     to: minus,
     load: 'lamp',
     nominalOhms: LAMP_OHMS,
-    polarized: false,
   };
   return {
     id: pid,
@@ -308,7 +313,6 @@ export function createBuzzer(id: PartId | string): Part {
     to: minus,
     load: 'buzzer',
     nominalOhms: BUZZER_OHMS,
-    polarized: false,
   };
   return {
     id: pid,

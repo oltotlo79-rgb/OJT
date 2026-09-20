@@ -123,7 +123,6 @@ export function createPlcUnit(id: PartId | string, spec: PlcUnitSpec): Part {
       to: terminal,
       load: 'plcInput',
       nominalOhms: input.ohms ?? inputOhms,
-      polarized: false,
     };
     elements.push(load);
     return { name: input.name, terminal, elementId };

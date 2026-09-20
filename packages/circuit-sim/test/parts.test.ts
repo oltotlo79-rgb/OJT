@@ -50,6 +50,30 @@ describe('parts', () => {
     expect(t1.meta.kind === 'timer-h3y4' ? t1.meta.resetGapMs : 0).toBe(100);
   });
 
+  it('タイマの要素の並びは配列全体で固定（CS-07: 課題JSONの faults[].target.elementIndex の契約）', () => {
+    // `parts.ts` の JSDoc（§5.3.2）が明記するとおり、この並びは内蔵C2課題・利用者課題の
+    // `faults[].target.elementIndex` が指す配列そのもの。並びを変えると別の故障になる。
+    const t1 = createTimer4c('T1', 3000);
+    expect(t1.elements).toHaveLength(9);
+    const coil = t1.elements[0];
+    expect(coil?.kind).toBe('load');
+    expect(coil?.from).toBe('T1.14');
+    expect(coil?.to).toBe('T1.13');
+    const contacts = t1.elements
+      .filter((e) => e.kind === 'contact')
+      .map((e) => `${e.id}:${e.from}-${e.to}`);
+    expect(contacts).toEqual([
+      'T1:b1:T1.9-T1.1',
+      'T1:a1:T1.9-T1.5',
+      'T1:b2:T1.10-T1.2',
+      'T1:a2:T1.10-T1.6',
+      'T1:b3:T1.11-T1.3',
+      'T1:a3:T1.11-T1.7',
+      'T1:b4:T1.12-T1.4',
+      'T1:a4:T1.12-T1.8',
+    ]);
+  });
+
   it('タイマ設定値はレンジに丸められる（§5.3.2）', () => {
     expect(clampPreset(50, 10_000)).toBe(100);
     expect(clampPreset(3000, 10_000)).toBe(3000);

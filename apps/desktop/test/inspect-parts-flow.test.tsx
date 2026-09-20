@@ -1,3 +1,5 @@
+// helpers/worker-bridge.js を他の import より前に置く（vi.mock のファクトリから参照するため）。
+import { workerBridgeMockModule, type WorkerBridgeMockState } from './helpers/worker-bridge.js';
 import { toTerminalId } from '@ojt/circuit-sim';
 import {
   BUILTIN_ALL_PROBLEMS,
@@ -12,7 +14,6 @@ import { renderRoute } from '../src/renderer/app/routes.js';
 import { dispatchTester } from '../src/renderer/panels/TesterPanel.js';
 import { InspectPartsSession } from '../src/renderer/screens/InspectPartsSession.js';
 import { SessionRoute } from '../src/renderer/screens/SessionRoute.js';
-import type { BridgeHandlers } from '../src/renderer/session/worker-bridge.js';
 
 /**
  * モードC1の判定往復とモードB乗り越え防止（Opus レビュー Plan 2B Task 8-11）。
@@ -21,24 +22,9 @@ import type { BridgeHandlers } from '../src/renderer/session/worker-bridge.js';
  * 今日どのテストも見ていない。
  */
 
-const mocks = vi.hoisted(() => ({
-  sent: [] as Array<Record<string, unknown>>,
-  handlers: undefined as BridgeHandlers | undefined,
-}));
+const mocks = vi.hoisted((): WorkerBridgeMockState => ({ sent: [], handlers: undefined }));
 
-vi.mock('../src/renderer/session/worker-bridge.js', () => ({
-  bridge: {
-    start: (next: BridgeHandlers) => {
-      mocks.handlers = next;
-    },
-    stop: () => {
-      mocks.handlers = undefined;
-    },
-    send: (command: Record<string, unknown>) => {
-      mocks.sent.push(command);
-    },
-  },
-}));
+vi.mock('../src/renderer/session/worker-bridge.js', () => workerBridgeMockModule(mocks));
 
 vi.mock('../src/renderer/three/BoardScene.js', () => ({
   BoardScene: () => <div data-testid="board-canvas" />,

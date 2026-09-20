@@ -39,7 +39,6 @@ describe('createPlcUnit', () => {
       to: 'PLC.X0',
       load: 'plcInput',
       nominalOhms: 4500,
-      polarized: false,
     });
   });
 

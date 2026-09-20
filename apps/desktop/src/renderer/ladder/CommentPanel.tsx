@@ -39,8 +39,9 @@ export function CommentPanel({
   profile: DialectProfile;
   comments: Record<string, string>;
   /**
-   * 呼び出し元が `store.setDeviceComment()` の戻り値をそのまま返す想定。`false`（上限で弾かれた）
-   * のときは本パネルがトーストを出す（Batch 1 レビュー M4）。
+   * 呼び出し元が `store.setDeviceComment()` の戻り値をそのまま返す想定。本パネルは戻り値を
+   * 見ない（呼び出しごとのトーストは出さない）。上限に達したことは `full`/`disabled` の状態
+   * から `commentCapText()`（常時表示の注記）と `aria-describedby` だけで伝える（74-77行）。
    */
   onChange: (device: string, text: string) => boolean | void;
 }): JSX.Element {

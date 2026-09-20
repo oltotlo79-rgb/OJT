@@ -287,7 +287,9 @@ export function InspectRepairSession(): JSX.Element {
   );
   /** 最新の索引（`onHover` は `useCallback([])` なので ref 経由で読む。§15） */
   const latestIndex = useRef(highlightIndex);
-  latestIndex.current = highlightIndex;
+  useEffect(() => {
+    latestIndex.current = highlightIndex;
+  });
 
   /**
    * 端子のホバー。§9.2 / 決定表#8

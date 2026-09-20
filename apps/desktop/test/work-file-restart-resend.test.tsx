@@ -1,3 +1,5 @@
+// helpers/worker-bridge.js を他の import より前に置く（vi.mock のファクトリから参照するため）。
+import { workerBridgeMockModule, type WorkerBridgeMockState } from './helpers/worker-bridge.js';
 import {
   BUILTIN_INSPECT_PARTS_PROBLEMS,
   BUILTIN_INSPECT_REPAIR_PROBLEMS,
@@ -20,18 +22,9 @@ import { useStore } from '../src/renderer/app/store.js';
  * （`work-file-inspect.test.ts` は `applyWorkFile()` 側の再送を確認済み）。
  */
 
-const mocks = vi.hoisted(() => ({ sent: [] as Array<Record<string, unknown>> }));
+const mocks = vi.hoisted((): WorkerBridgeMockState => ({ sent: [], handlers: undefined }));
 
-vi.mock('../src/renderer/session/worker-bridge.js', () => ({
-  bridge: {
-    start: () => undefined,
-    stop: () => undefined,
-    send: (command: Record<string, unknown>) => {
-      mocks.sent.push(command);
-    },
-    running: true,
-  },
-}));
+vi.mock('../src/renderer/session/worker-bridge.js', () => workerBridgeMockModule(mocks));
 
 vi.mock('../src/renderer/three/BoardScene.js', () => ({
   BoardScene: () => <div data-testid="board-canvas" />,
