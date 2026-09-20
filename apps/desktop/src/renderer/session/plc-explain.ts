@@ -5,15 +5,8 @@ import {
   type StaticCheckId,
   type StaticCheckResult,
 } from '@ojt/content';
-import {
-  checkReasonText,
-  JA,
-  ladderErrorSummary,
-  mismatchSentence,
-  moreMismatchesText,
-  signalLabel,
-} from '../i18n/ja.js';
-import { timeReadout } from '../panels/chart-scale.js';
+import { checkReasonText, JA, ladderErrorSummary, moreMismatchesText } from '../i18n/ja.js';
+import { mismatchLine } from '../result/verdict-summary.js';
 
 /**
  * モードDの判定結果を訓練者の言葉にする。設計仕様 §10.8 / 3A ハンドオフ注記 H-5 / 決定表#15c。
@@ -77,15 +70,15 @@ export function checkAdvice(id: StaticCheckId): string {
   return ADVICE[id] ?? JA.plc.adviceGeneric;
 }
 
-/** 差分1件を1文にする（`PL1 が 1.20 s で ON のはずが OFF でした（値違い）`）。 */
+/**
+ * 差分1件を1文にする（`白ランプ（PL1）が 1.20 s に点きませんでした。`）。
+ *
+ * Phase 7 Task 25（指摘 UX-11 / UX-12 / PR-03）: 判定器の語（`ON のはずが OFF`・`値違い`）と
+ * 内部の信号名（`PL1`）をやめ、**4モード共通の1行要約と同じ書式**（`result/verdict-summary.ts`）に
+ * 揃える。モードDの結果画面は合否の隣の要約とこの理由欄の両方でこの文を使う。
+ */
 export function mismatchReason(mismatch: Mismatch): string {
-  return mismatchSentence(
-    mismatch.signal,
-    timeReadout(mismatch.tMs),
-    signalLabel(mismatch.expected),
-    signalLabel(mismatch.actual),
-    JA.mismatchReason[mismatch.reason],
-  );
+  return mismatchLine(mismatch);
 }
 
 /**

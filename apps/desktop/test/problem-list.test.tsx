@@ -1,4 +1,4 @@
-import { BUILTIN_PROBLEMS } from '@ojt/content';
+import { BUILTIN_ALL_PROBLEMS, BUILTIN_PROBLEMS } from '@ojt/content';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { OjtApi, ProblemListPayload } from '../src/renderer/../shared/ipc.js';
@@ -19,7 +19,9 @@ const PAYLOAD: ProblemListPayload = {
       id: 'b-001',
       title: '自己保持回路',
       grade: 3,
-      description: '起動と停止',
+      difficulty: 1,
+      tags: ['self-hold'],
+      description: '起動と停止をする回路です。押しボタンで点灯を保持します。',
       standardMin: 30,
       cutoffMin: 50,
       mode: 'assemble',
@@ -45,7 +47,9 @@ const THREE_MODE_PAYLOAD: ProblemListPayload = {
       title: '自己保持回路',
       mode: 'assemble',
       grade: 3,
-      description: '起動と停止',
+      difficulty: 1,
+      tags: ['self-hold'],
+      description: '起動と停止をする回路です。押しボタンで点灯を保持します。',
       standardMin: 30,
       cutoffMin: 50,
       source: 'builtin',
@@ -55,6 +59,8 @@ const THREE_MODE_PAYLOAD: ProblemListPayload = {
       title: '部品点検セット1',
       mode: 'inspect-parts',
       grade: 2,
+      difficulty: 2,
+      tags: ['fault-part'],
       description: 'リレー・タイマの点検',
       standardMin: 20,
       cutoffMin: 30,
@@ -65,6 +71,8 @@ const THREE_MODE_PAYLOAD: ProblemListPayload = {
       title: '回路点検・修復1',
       mode: 'inspect-repair',
       grade: 2,
+      difficulty: 3,
+      tags: ['fault-wire'],
       description: '故障の指摘と白線修復',
       standardMin: 40,
       cutoffMin: 60,
@@ -75,6 +83,15 @@ const THREE_MODE_PAYLOAD: ProblemListPayload = {
   userDir: 'C:/dummy',
   userDirExists: true,
 };
+
+/**
+ * 級の絞り込みを「すべて」に戻す（指摘 UX-19 で**初めて開いたときの既定が3級**になったので、
+ * 級をまたいで数える検査はまずこれを押す）。
+ */
+function showAllGrades(): void {
+  const filter = screen.getByTestId('grade-filter');
+  fireEvent.click(within(filter).getByRole('button', { name: JA.problemListExtra.allGrades }));
+}
 
 beforeEach(() => {
   useStore.setState({ problems: undefined, toasts: [], route: 'list', listMode: undefined });
@@ -143,7 +160,9 @@ describe('ProblemList', () => {
             {
               id: 'u-001',
               title: '利用者課題',
-              grade: 2,
+              grade: 3,
+              difficulty: 2,
+              tags: [],
               description: '利用者フォルダ由来',
               standardMin: 20,
               cutoffMin: 30,
@@ -181,6 +200,8 @@ describe('ProblemList', () => {
               id: 'b-002',
               title: '1級課題',
               grade: 1,
+              difficulty: 5,
+              tags: ['interlock'],
               description: '1級',
               standardMin: 40,
               cutoffMin: 60,
@@ -192,6 +213,7 @@ describe('ProblemList', () => {
     });
     render(<ProblemList />);
     await screen.findByTestId('problem-table');
+    showAllGrades();
     expect(screen.getByTestId('problem-table').querySelectorAll('tbody tr')).toHaveLength(2);
 
     const filter = screen.getByTestId('grade-filter');
@@ -230,6 +252,8 @@ describe('ProblemList', () => {
               id: 'b-002',
               title: '2件目',
               grade: 3,
+              difficulty: 2,
+              tags: ['timer'],
               description: '2件目',
               standardMin: 30,
               cutoffMin: 50,
@@ -308,6 +332,7 @@ describe('モードで絞る（Plan 2B Task 17。§12.1）', () => {
     useStore.setState({ listMode: undefined });
     render(<ProblemList />);
     await screen.findByTestId('problem-table');
+    showAllGrades();
     expect(screen.getByTestId('problem-table').querySelectorAll('tbody tr')).toHaveLength(3);
   });
 
@@ -347,6 +372,8 @@ describe('モードで絞る（Plan 2B Task 17。§12.1）', () => {
               title: '自己保持回路',
               mode: 'assemble',
               grade: 3,
+              difficulty: 1,
+              tags: ['self-hold'],
               description: '起動と停止',
               standardMin: 30,
               cutoffMin: 50,
@@ -357,6 +384,8 @@ describe('モードで絞る（Plan 2B Task 17。§12.1）', () => {
               title: 'PLC 自己保持回路（2級形式）',
               mode: 'plc',
               grade: 2,
+              difficulty: 3,
+              tags: ['self-hold'],
               description: 'PLCでラダーを組んで動かす',
               standardMin: 50,
               cutoffMin: 60,
@@ -388,6 +417,177 @@ describe('モードで絞る（Plan 2B Task 17。§12.1）', () => {
     });
     expect(screen.queryByTestId('problem-table')).toBeNull();
     expect(screen.queryByText(JA.problemList.empty)).toBeNull();
+  });
+});
+
+/**
+ * 72題ぶんの学習導線（指摘 UX-18 / UX-19 / PR-09。Phase 7 Task 25）。
+ * 「行のどこを押しても開く」「言葉で探す」「3級が既定」「難しさ・学習テーマで絞る」を縛る。
+ */
+describe('学習導線（Phase 7 Task 25）', () => {
+  /** 内蔵課題をそのまま一覧行にした、本番と同じ規模（72題）の一覧。 */
+  function builtinPayload(): ProblemListPayload {
+    return {
+      problems: BUILTIN_ALL_PROBLEMS.map((problem) => ({
+        id: problem.id,
+        title: problem.title,
+        mode: problem.mode,
+        grade: problem.grade,
+        difficulty: problem.difficulty,
+        tags: problem.tags,
+        description: problem.description,
+        standardMin: problem.timeLimit.standardMin,
+        cutoffMin: problem.timeLimit.cutoffMin,
+        source: 'builtin' as const,
+      })),
+      errors: [],
+      userDir: 'C:/dummy',
+      userDirExists: true,
+    };
+  }
+
+  it('行のどこを押しても課題が開く（指摘 UX-18）', async () => {
+    let asked: string | undefined;
+    setApi({
+      listProblems: () => Promise.resolve(PAYLOAD),
+      readProblem: (id: string) => {
+        asked = id;
+        return Promise.resolve(null);
+      },
+    });
+    render(<ProblemList />);
+    const row = await screen.findByTestId('row-b-001');
+    fireEvent.click(row);
+    await waitFor(() => {
+      expect(asked).toBe('b-001');
+    });
+  });
+
+  it('キーボードでも行を開ける（Enter / Space。指摘 UX-18）', async () => {
+    const asked: string[] = [];
+    setApi({
+      listProblems: () => Promise.resolve(PAYLOAD),
+      readProblem: (id: string) => {
+        asked.push(id);
+        return Promise.resolve(null);
+      },
+    });
+    render(<ProblemList />);
+    const row = await screen.findByTestId('row-b-001');
+    expect(row.getAttribute('tabindex')).toBe('0');
+    fireEvent.keyDown(row, { key: 'Enter' });
+    fireEvent.keyDown(row, { key: ' ' });
+    // 関わりのないキーでは開かない
+    fireEvent.keyDown(row, { key: 'a' });
+    await waitFor(() => {
+      expect(asked).toEqual(['b-001', 'b-001']);
+    });
+  });
+
+  it('ID列は右端の補助列へ移り、課題名が先頭になる（指摘 UX-18）', async () => {
+    setApi({ listProblems: () => Promise.resolve(PAYLOAD) });
+    render(<ProblemList />);
+    const table = await screen.findByTestId('problem-table');
+    const headers = [...table.querySelectorAll('thead th')].map((th) => th.textContent);
+    expect(headers[0]).toBe(JA.problemList.columnTitle);
+    expect(headers.indexOf(JA.problemList.columnId)).toBeGreaterThan(0);
+    const cells = [...(table.querySelector('tbody tr')?.querySelectorAll('td') ?? [])];
+    expect(cells[0]?.textContent).toContain('自己保持回路');
+    expect(cells.at(-2)?.textContent).toBe('b-001');
+  });
+
+  it('行に課題文の先頭1文を薄字で添える（指摘 UX-19）', async () => {
+    setApi({ listProblems: () => Promise.resolve(PAYLOAD) });
+    render(<ProblemList />);
+    const row = await screen.findByTestId('row-b-001');
+    expect(row.textContent).toContain('起動と停止をする回路です。');
+    // 2文目までは出さない（行の高さを揃える）
+    expect(row.textContent).not.toContain('押しボタンで点灯を保持します。');
+  });
+
+  it('初めて開いたときは「3級（おすすめ）」が選ばれている（指摘 UX-19）', async () => {
+    setApi({ listProblems: () => Promise.resolve(builtinPayload()) });
+    useStore.setState({ listMode: 'assemble' });
+    render(<ProblemList />);
+    await screen.findByTestId('problem-table');
+    const filter = screen.getByTestId('grade-filter');
+    const recommended = within(filter).getByRole('button', {
+      name: `3級${JA.problemListExtra.recommended}`,
+    });
+    expect(recommended.getAttribute('aria-pressed')).toBe('true');
+    for (const row of screen.getByTestId('problem-table').querySelectorAll('tbody tr')) {
+      expect(row.textContent).toContain('3級');
+    }
+  });
+
+  it('3級形式が無いモード（回路点検・修復／PLC）では既定が「すべて」になる（0件の一覧を見せない）', async () => {
+    setApi({ listProblems: () => Promise.resolve(builtinPayload()) });
+    useStore.setState({ listMode: 'plc' });
+    render(<ProblemList />);
+    await screen.findByTestId('problem-table');
+    const filter = screen.getByTestId('grade-filter');
+    expect(
+      within(filter)
+        .getByRole('button', { name: JA.problemListExtra.allGrades })
+        .getAttribute('aria-pressed'),
+    ).toBe('true');
+    expect(screen.getByTestId('problem-table').querySelectorAll('tbody tr').length).toBeGreaterThan(
+      0,
+    );
+  });
+
+  it('言葉で探すと72題から絞り込める（指摘 PR-09）', async () => {
+    setApi({ listProblems: () => Promise.resolve(builtinPayload()) });
+    useStore.setState({ listMode: undefined });
+    render(<ProblemList />);
+    await screen.findByTestId('problem-table');
+    showAllGrades();
+    const before = screen.getByTestId('problem-table').querySelectorAll('tbody tr').length;
+    expect(before).toBe(BUILTIN_ALL_PROBLEMS.length);
+
+    fireEvent.change(screen.getByTestId('problem-search'), { target: { value: '自己保持' } });
+    const rows = [...screen.getByTestId('problem-table').querySelectorAll('tbody tr')];
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows.length).toBeLessThan(before);
+    // 課題名・課題文・IDのどれかに当たった課題だけが残る（`b-001` は課題名で当たる）
+    expect(screen.getByTestId('row-b-001')).toBeTruthy();
+    const ids = rows.map((row) => row.getAttribute('data-testid'));
+    for (const id of ids) {
+      const problem = BUILTIN_ALL_PROBLEMS.find((p) => `row-${p.id}` === id);
+      expect(`${problem?.title ?? ''}${problem?.description ?? ''}${problem?.id ?? ''}`).toContain(
+        '自己保持',
+      );
+    }
+  });
+
+  it('当たらない言葉のときは絞り込み0件と違う文言を出す（指摘 UX-18）', async () => {
+    setApi({ listProblems: () => Promise.resolve(builtinPayload()) });
+    render(<ProblemList />);
+    await screen.findByTestId('problem-table');
+    fireEvent.change(screen.getByTestId('problem-search'), {
+      target: { value: 'そのような課題はありません' },
+    });
+    expect(screen.getByText(JA.problemListExtra.searchEmpty)).toBeTruthy();
+    expect(screen.queryByText(JA.problemList.filterEmpty)).toBeNull();
+  });
+
+  it('難しさと学習テーマで絞り込める（Task 4 の課題データ）', async () => {
+    setApi({ listProblems: () => Promise.resolve(builtinPayload()) });
+    useStore.setState({ listMode: 'assemble' });
+    render(<ProblemList />);
+    await screen.findByTestId('problem-table');
+    showAllGrades();
+
+    fireEvent.change(screen.getByTestId('tag-filter'), { target: { value: 'timer' } });
+    const tagged = screen.getByTestId('problem-table').querySelectorAll('tbody tr').length;
+    expect(tagged).toBeGreaterThan(0);
+    expect(tagged).toBeLessThan(BUILTIN_ALL_PROBLEMS.length);
+
+    fireEvent.change(screen.getByTestId('tag-filter'), { target: { value: '' } });
+    fireEvent.change(screen.getByTestId('difficulty-filter'), { target: { value: '1' } });
+    const easy = [...screen.getByTestId('problem-table').querySelectorAll('tbody tr')];
+    expect(easy.length).toBeGreaterThan(0);
+    for (const row of easy) expect(row.textContent).toContain('難しさ 1');
   });
 });
 
@@ -434,7 +634,7 @@ describe('ホームのモードカード（Plan 2B Task 17。§12.1）', () => {
     expect(screen.queryByTestId('recent-problem')).toBeNull();
   });
 
-  it('一時保存があれば「最近の課題」に1行で出す（UXレビュー #19）', async () => {
+  it('一時保存があれば「続きから」のカードに出す（UXレビュー #19 / 指摘 UX-05）', async () => {
     setApi({
       loadWorkFile: () =>
         Promise.resolve({
@@ -453,12 +653,14 @@ describe('ホームのモードカード（Plan 2B Task 17。§12.1）', () => {
       readProblem: () => Promise.resolve(BUILTIN_PROBLEMS.find((p) => p.id === 'b-001') ?? null),
     });
     render(<Home />);
-    const recent = await screen.findByTestId('recent-problem');
-    expect(recent.textContent).toContain('自己保持回路');
-    expect(recent.textContent).toContain(JA.home.assemble);
+    // 「最近の課題」は押せるボタンになり、どの課題かはカードの本文に出る（指摘 UX-05）
+    await screen.findByTestId('recent-problem');
+    const card = screen.getByTestId('continue-card');
+    expect(card.textContent).toContain('自己保持回路');
+    expect(card.textContent).toContain(JA.home.assemble);
   });
 
-  it('一時保存が無ければ「最近の課題」は出さない', async () => {
+  it('一時保存が無ければ「続きから」の押しどころは出さない', async () => {
     setApi({
       loadWorkFile: () =>
         Promise.resolve({ ok: false, canceled: false, message: '一時保存がありません' }),

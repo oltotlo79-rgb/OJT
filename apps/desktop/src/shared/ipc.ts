@@ -1,4 +1,4 @@
-import type { ProblemLoadError, SupportedProblem } from '@ojt/content';
+import type { Difficulty, ProblemLoadError, ProblemTag, SupportedProblem } from '@ojt/content';
 import type { DialectId } from '@ojt/plc-dialects';
 import { problemIssueText } from './messages.js';
 
@@ -46,6 +46,13 @@ export interface ProblemSummary {
   /** 課題のモード（一覧をモード別に分けるのに使う）。§12.1 */
   mode: SessionMode;
   grade: 1 | 2 | 3;
+  /**
+   * 同じ級の中での難しさ（1=やさしい 〜 5=難しい）。§16 Phase 7 §4.3
+   * 一覧の絞り込みと並べ替えに使う（Phase 7 Task 25 / 指摘 PR-09）。
+   */
+  difficulty: Difficulty;
+  /** 学習テーマ（一覧の絞り込みに使う）。§16 Phase 7 §4.3 */
+  tags: readonly ProblemTag[];
   /** 課題文の先頭（一覧の説明）。 */
   description: string;
   standardMin: number;
@@ -300,6 +307,8 @@ export function toSummary(problem: SupportedProblem, source: 'builtin' | 'user')
     title: problem.title,
     mode: problem.mode,
     grade: problem.grade,
+    difficulty: problem.difficulty,
+    tags: problem.tags,
     description: problem.description,
     standardMin: problem.timeLimit.standardMin,
     cutoffMin: problem.timeLimit.cutoffMin,

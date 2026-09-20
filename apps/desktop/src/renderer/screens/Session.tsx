@@ -34,6 +34,7 @@ import { TerminalListPanel } from '../panels/TerminalListPanel.js';
 import { liveChart, TimeChartPanel, TimeChartSvg } from '../panels/TimeChartPanel.js';
 import { StepGuide } from '../panels/StepGuide.js';
 import { Toolbar } from '../panels/Toolbar.js';
+import { hintStages } from '../session/hints.js';
 import { ViewHint } from '../panels/ViewHint.js';
 import { WarningBanner } from '../panels/WarningBanner.js';
 import { SchematicEditor } from '../schematic/SchematicEditor.js';
@@ -751,6 +752,8 @@ export function Session(): JSX.Element {
         camera={camera}
         canUndo={history.done.length > 0}
         canRedo={history.undone.length > 0}
+        /* 段階的に開くヒント（指摘 PR-02）。1段目は手順帯がいま出している案内そのもの。 */
+        hints={hintStages({ grade: problem.grade, stepHint, tags: problem.tags })}
         viewSwitch={
           <>
             <span className={styles.toolLabelInline}>{JA.schematic.viewLabel}</span>

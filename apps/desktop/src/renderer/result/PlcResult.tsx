@@ -7,6 +7,7 @@ import { LadderIssueList } from './LadderIssueList.js';
 import { MismatchList } from './MismatchList.js';
 import { ResultShell } from './ResultShell.js';
 import { HazardList, StaticCheckList } from './StaticCheckList.js';
+import { verdictSummary } from './verdict-summary.js';
 import styles from './result.module.css';
 
 /**
@@ -16,6 +17,10 @@ import styles from './result.module.css';
  * ①合否（大きく・色つき）②なぜそうなったか（訓練者の言葉と直し方）③波形の見比べ
  * ④差分・静的チェック・危険操作、の順に並べる。内部の識別子は画面に出さず、
  * 用語は GX Works3 / 技能検定の言い方（`ja.ts`）に揃える。
+ *
+ * Phase 7 Task 25（指摘 PR-03）: 合否の隣の1行要約は4モードで同じ書式にする。
+ * PLCには「疑わしい配線」が無い（配線の差分を出せない）ので、`verdictSummary()` には
+ * 疑いを渡さず、症状の1文だけを出す。詳しい「なぜ」は下の `plc-why` が続きを書く。
  */
 export function PlcResult({
   problem,
@@ -34,6 +39,7 @@ export function PlcResult({
   const elapsedMs = result.elapsedMs ?? 0;
   const powerHelp = result.staticChecks.flatMap((check) => explainPowerCheck(check));
   const reasons = failureReasons(result);
+  const summary = verdictSummary(result);
   return (
     <ResultShell
       title={problem.title}
@@ -42,6 +48,7 @@ export function PlcResult({
       timeLimit={problem.timeLimit}
       verdictBig
       forbidden={result.chatter.length > 0}
+      summary={summary.text}
       onRetry={onRetry}
       onBackToList={onBackToList}
     >

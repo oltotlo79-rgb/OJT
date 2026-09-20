@@ -334,3 +334,54 @@
   padding-bottom: 8px;
 }
 /* --- /Plan 5 Task 9 --- */
+
+/* --- Phase 7 Task 25: 1行要約と「盤で直す」（指摘 UX-13 / PR-03） --- */
+
+/*
+ * 合否バッジのすぐ下に出す「まず何を直すか」の1行。差分一覧・静的チェック・疑わしい配線の
+ * どれから読めばよいかをここで決めてやるので、カード列より前・合否と同じ視線の流れに置く。
+ */
+.summary {
+  align-items: baseline;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--accent);
+  border-radius: 4px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  line-height: 1.7;
+  margin: 0 0 12px;
+  padding: 10px 12px;
+}
+
+.summaryLabel {
+  background: var(--accent);
+  border-radius: 4px;
+  color: #10141c;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 4px 8px;
+  white-space: nowrap;
+}
+
+/* 下端バーの「盤で直す」。次の一手なので「もう一度」より前・左端に置く。 */
+.fixButton {
+  font-weight: 700;
+}
+
+/* 1行要約が指している1件（疑わしい配線の先頭）。 */
+.suspectTop {
+  grid-template-columns: auto auto 1fr auto;
+}
+
+.suspectFirst {
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 700;
+  padding: 4px 8px;
+  white-space: nowrap;
+}
+/* --- /Phase 7 Task 25 --- */

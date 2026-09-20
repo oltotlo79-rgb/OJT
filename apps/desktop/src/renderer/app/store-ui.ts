@@ -82,6 +82,15 @@ export interface UiSlice {
    * 常に 0 のまま。結果画面に出し、C2の作業ファイルへ持たせる。
    */
   schematicOpenCount: number;
+  // --- Phase 7 Task 25 ---
+  /**
+   * 「ヒント」を何段まで開いたか（0=まだ押していない）。指摘 PR-02
+   * 段の中身は `session/hints.ts` が課題と手順から作る純関数で、ここは**開いた段数だけ**を持つ。
+   * 回路図ヒントの開閉回数（`schematicOpenCount`）と同じ扱いで結果画面に出し、
+   * 課題を開き直すたびに 0 へ戻る（`sessionFields()`）。
+   */
+  hintStage: number;
+  // --- /Phase 7 Task 25 ---
   // --- Plan 5 Task 7 ---
   /**
    * モードBのビュー（盤／並べて／回路図）。§11.4 / Plan 5 決定表#1
@@ -109,6 +118,11 @@ export interface UiSlice {
   toggleSchematic: () => void;
   /** 回路図ヒントを開いた回数をまるごと差し替える（作業ファイルからの復元。§12.3）。 */
   setSchematicOpenCount: (count: number) => void;
+  /**
+   * ヒントを1段開く（指摘 PR-02）。`max` はその級で開ける段数
+   * （`session/hints.ts` の `maxHintStage()`。1級形式は2段まで）で、そこで頭打ちにする。
+   */
+  revealHint: (max: number) => void;
   // --- Plan 5 Task 7 ---
   /** モードBのビューを切り替える。§11.4 / Plan 5 決定表#1 */
   setAssembleView: (view: AssembleViewMode) => void;
@@ -135,6 +149,7 @@ export const createUiSlice: StateCreator<AppState, [], [], UiSlice> = (set, get)
   cameraNonce: 0,
   schematicVisible: false,
   schematicOpenCount: 0,
+  hintStage: 0,
   // モードBは必ず盤から始まる（Plan 5 Task 7 / 決定表#1）
   assembleView: 'board',
   logLines: [],
@@ -167,6 +182,10 @@ export const createUiSlice: StateCreator<AppState, [], [], UiSlice> = (set, get)
   },
   setSchematicOpenCount: (schematicOpenCount) => {
     set({ schematicOpenCount });
+  },
+  revealHint: (max) => {
+    // 上限まで開いたあとに押しても増やさない（結果画面の回数が実際より多く出ないため）
+    set({ hintStage: Math.min(get().hintStage + 1, Math.max(0, max)) });
   },
   // --- Plan 5 Task 7 ---
   setAssembleView: (assembleView) => {

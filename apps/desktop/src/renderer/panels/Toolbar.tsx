@@ -3,6 +3,7 @@ import { useState, type JSX } from 'react';
 import { HelpButton } from '../help/HelpButton.js';
 import { JA } from '../i18n/ja.js';
 import { useStore, type CameraPreset } from '../app/store.js';
+import type { HintStage } from '../session/hints.js';
 import type { ToolMode } from '../session/interaction.js';
 import styles from './panels.module.css';
 
@@ -10,6 +11,10 @@ import styles from './panels.module.css';
  * 上部ツールバー。設計仕様 §8.1。
  * 線色／削除モード／元に戻す・やり直し／視点プリセット／作業の保存読込／回路図ヒントの開閉／判定を並べる。
  * 電源（ブレーカ・スイッチ）は `PowerControls` が描く。
+ *
+ * Phase 7 Task 25（指摘 PR-02）: 「ヒント」を置き、押すたびに1段ずつ開く。
+ * 段の中身は `session/hints.ts` の純関数が作り、開いた段数はストア（`hintStage`）が持つ。
+ * 何段まで開いたかは結果画面に「ヒントを使った回数」として出る。
  */
 
 /** 視点プリセットのボタン定義。§12.2 */
@@ -43,6 +48,7 @@ export function Toolbar({
   onBack,
   onSave,
   onLoad,
+  hints,
   schematicVisible,
   onToggleSchematic,
   children,
@@ -89,6 +95,11 @@ export function Toolbar({
   /** 作業ファイルの保存・読込。§12.3 */
   onSave: () => void;
   onLoad: () => void;
+  /**
+   * 段階的に開くヒント（指摘 PR-02）。`session/hints.ts` の `hintStages()` が作った並びを
+   * そのまま渡す。渡さない画面には「ヒント」を出さない。
+   */
+  hints?: readonly HintStage[] | undefined;
   /** 回路図ヒントがいま開いているか。§8.4 */
   schematicVisible: boolean;
   /**
@@ -109,6 +120,21 @@ export function Toolbar({
    * （`judgeTitle`。モードDだけが渡す）。どちらも無ければ押せる状態なので `undefined`。
    */
   const judgeReason = judging ? JA.session.judging : judgeDisabled ? judgeTitle : undefined;
+  /*
+   * ヒント（指摘 PR-02）。開いた段数はストアが持つ（結果画面が「ヒントを使った回数」として
+   * 読むのと、課題を開き直したときに 0 へ戻るのが同じ1か所で決まる）。
+   */
+  const hintStage = useStore((state) => state.hintStage);
+  const revealHint = useStore((state) => state.revealHint);
+  /*
+   * 開いた段数（`hintStage`）は**減らさない**（結果画面の「ヒントを使った回数」が実際より
+   * 少なく出てしまう）。畳むのは見た目だけなので、その状態は画面の中で持つ。
+   */
+  const [hintFolded, setHintFolded] = useState(false);
+  const stages = hints ?? [];
+  const allOpen = hintStage >= stages.length;
+  const hintShown = hintStage > 0 && !hintFolded;
+  const openStages = hintShown ? stages.slice(0, hintStage) : [];
   return (
     <div className={styles.toolbar} role="toolbar">
       {/*
@@ -280,6 +306,50 @@ export function Toolbar({
             </div>
           ) : null}
         </div>
+        {/*
+          ヒント（指摘 PR-02）。押すたびに1段ずつ開く。級で段数が変わる
+          （1級形式は回路図が出ないので第3段を作らない）ので、ここは並びの長さに従うだけ。
+        */}
+        {stages.length === 0 ? null : (
+          <div className={styles.hintHost}>
+            <button
+              type="button"
+              className={styles.hintToggle}
+              data-testid="hint-button"
+              aria-expanded={hintShown}
+              onClick={() => {
+                // 畳んでいたら開き直すだけ（段は増やさない）
+                if (hintFolded) {
+                  setHintFolded(false);
+                  return;
+                }
+                // 最後まで開いたら同じボタンで畳む（押しても何も起きない状態にしない）
+                if (allOpen) {
+                  setHintFolded(true);
+                  return;
+                }
+                revealHint(stages.length);
+              }}
+            >
+              {!hintShown ? JA.hint.label : allOpen ? JA.hint.close : JA.hint.more}
+            </button>
+            {openStages.length === 0 ? null : (
+              <div className={styles.hintPanel} data-testid="hint-panel" role="status">
+                {openStages.map((stage) => (
+                  <p key={stage.stage} className={styles.hintStage}>
+                    <span className={styles.hintStageTitle}>{stage.title}</span>
+                    {stage.text}
+                  </p>
+                ))}
+                {allOpen ? (
+                  <p className={styles.hintDone} data-testid="hint-done">
+                    {JA.hint.done}
+                  </p>
+                ) : null}
+              </div>
+            )}
+          </div>
+        )}
         {children}
       </div>
       {/*

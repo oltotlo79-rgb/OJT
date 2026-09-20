@@ -1,6 +1,7 @@
 import type { RoutingErrorReason } from '@ojt/board-model';
 import type { HazardKind, MismatchReason } from '@ojt/circuit-sim';
-import type { FaultReportKind, StaticCheckId } from '@ojt/content';
+import { OUTPUT_LABELS, PB_LABELS } from '@ojt/content';
+import type { FaultReportKind, ProblemTag, StaticCheckId } from '@ojt/content';
 import { MSG } from '../../shared/messages.js';
 import type { ProbeSide } from '../app/store-types.js';
 import type { BusSide, PinGroup } from '../session/socket-pins.js';
@@ -34,19 +35,31 @@ export const JA = {
   home: {
     title: 'モードを選ぶ',
     assemble: '回路組立',
-    assembleDesc: '有接点回路を盤上で配線して組み立てる（モードB）',
+    assembleDesc: '有接点回路を盤の上で配線して組み立てます',
     inspectParts: '部品点検',
     inspectRepair: '回路点検・修復',
     /** モードC1のモードカードの説明。§9.1 */
-    inspectPartsDesc: '不良のリレー・タイマをチェック用ソケットで点検する（モードC1）',
+    inspectPartsDesc: '不良のリレー・タイマをチェック用ソケットで点検します',
     /** モードC2のモードカードの説明。§9.2 */
-    inspectRepairDesc: '故障が入った盤を点検し、白線で修復する（モードC2）',
+    inspectRepairDesc: '故障が入った盤を点検し、白線で修復します',
     plc: 'PLC',
     // --- Plan 3B Task 15 ---
     /** モードDのモードカードの説明。§10 */
-    plcDesc: 'PLCでラダーを組み、盤と配線して動かす（モードD）',
+    plcDesc: 'PLCでラダーを組み、盤とつないで動かします',
     // --- /Plan 3B Task 15 ---
     settings: '設定',
+    // --- Phase 7 Task 25（指摘 UX-05 / UX-19 / UX-28）---
+    /** ホーム下段の「はじめての方はここから」の帯。 */
+    startHereTitle: 'はじめての方はここから',
+    startHereBody: 'まずは3級の「回路組立」から始めます。部品の付け方と配線の基本が身につきます。',
+    startHereButton: '3級の回路組立をひらく',
+    /** ホーム下段の「続きから」。 */
+    continueTitle: '続きから',
+    continueBody: '前回の続きを、そのまま開き直せます。',
+    continueButton: '続きから始める',
+    /** 続きが無いとき。 */
+    continueNone: '前回の続きはありません。上のモードから課題を選んでください。',
+    // --- /Phase 7 Task 25 ---
   },
   problemList: {
     title: '課題一覧',
@@ -103,7 +116,7 @@ export const JA = {
     /** 既定メーカーの選択欄。§10.5 / 決定表#13 */
     vendor: '既定メーカー',
     vendorHelp:
-      'モードDの課題を開いたときに使う機種（メーカー）です。課題の機種もこのメーカーに合わせて開きます。',
+      'PLCの課題を開いたときに使う機種（メーカー）です。課題の機種もこのメーカーに合わせて開きます。',
     /** ラダーの表示列数。§10.6 */
     gridCols: 'ラダーの表示列数',
     /**
@@ -402,6 +415,18 @@ export const JA = {
     backToResult: '結果へ戻る',
     fromResult: '結果から',
     // --- /Plan 5 Task 9 ---
+    // --- Phase 7 Task 25（指摘 UX-13 / PR-02 / PR-03）---
+    /** 合否バッジの隣の1行要約の呼び名（読み上げ用）。 */
+    summary: 'まず直すところ',
+    /** 画面末の「盤で直す」（1行要約が指した疑いを選んだ状態で盤へ戻る）。 */
+    fixOnBoard: '盤で直す',
+    /** 疑わしい配線の先頭に添える印（1行要約が指しているのはこの1件）。 */
+    suspectFirst: '最初に直す',
+    /** 合格したときの1行要約。 */
+    summaryPassed: '動作も配線の決まりも模範回路と一致しました。',
+    /** ヒントを何段まで開いたか（回路図ヒントの開閉回数と同じ扱い）。 */
+    hintsUsed: 'ヒントを使った回数',
+    // --- /Phase 7 Task 25 ---
   },
   /** タイムチャートの拡大表示と縦の補助線（Task CHART-UX）。§7.7 / §8.1 / §8.3 */
   timeChart: {
@@ -862,12 +887,17 @@ export const JA = {
     plcPowerIndependent: 'PLC電源の独立',
     ioAssignment: 'I/O割付',
   } satisfies Record<StaticCheckId, string>,
+  /**
+   * 差分の理由（指摘 UX-12）。判定器の語（「遷移が無い」「余分な遷移」「時刻ずれ」）を
+   * 訓練者の言葉に置き換えたもの。用語集に無い語を画面に出さないため、
+   * 「遷移」「値」のような判定器の言い回しは使わない。
+   */
   mismatchReason: {
-    timing: '時刻ずれ',
-    value: '値違い',
-    missing: '遷移が無い',
-    extra: '余分な遷移',
-    'unknown-signal': '比較対象の信号が模範回路に無い',
+    timing: '変化する時刻がずれています',
+    value: 'その時刻の点灯／消灯が逆です',
+    missing: '点く（切れる）はずの変化が起きていません',
+    extra: '起きないはずの変化が起きています',
+    'unknown-signal': '見比べる信号が模範回路にありません',
   } satisfies Record<MismatchReason, string>,
   /** 指摘の種別（`FaultReportKind`）。§9.2 */
   reportKind: {
@@ -1016,6 +1046,21 @@ export const JA = {
      */
     filterModeLabel: 'モード',
     filterGradeLabel: '級',
+    // --- Phase 7 Task 25（指摘 UX-18 / UX-19 / PR-09）---
+    /** 課題名・説明・IDから探す入力欄。72題から目的の課題に辿り着くための導線。 */
+    searchLabel: '課題を探す',
+    searchPlaceholder: '言葉で探す（例: 自己保持）',
+    /** 入力した言葉に当たる課題が無いとき。 */
+    searchEmpty: '入力した言葉に当たる課題がありません。別の言葉で探してください。',
+    /** 3級に添える案内。初めて開いたときはここが選ばれている。 */
+    recommended: '（おすすめ）',
+    /** 難しさの絞り込み（同じ級の中での並び）。 */
+    filterDifficultyLabel: '難しさ',
+    /** 学習テーマの絞り込み。 */
+    filterTagLabel: '学習テーマ',
+    /** 右端の補助列に移したID列の見出し（読み上げ用の長い名前）。 */
+    columnIdNote: '課題ID',
+    // --- /Phase 7 Task 25 ---
   },
   /**
    * 起動時の復元カード（UXレビュー #15）。`app/App.tsx`。
@@ -1198,6 +1243,53 @@ export const JA = {
     carryingMounted: 'ソケットの外で放すと取り外します',
   },
   // --- /Phase 7 Task 27 ---
+  // --- Phase 7 Task 25 ---
+  /**
+   * ヒント（指摘 PR-02）。上の帯の「ヒント」を押すたびに1段ずつ開く。
+   * 段の中身を組み立てるのは `session/hints.ts` の純関数で、ここは名前だけを持つ。
+   */
+  hint: {
+    label: 'ヒント',
+    /** 2段目以降を開くボタン（まだ開ける段があるとき）。 */
+    more: 'つぎのヒント',
+    /** これ以上の段が無いとき（1級形式は3段目を出さないので2段で終わる）。 */
+    done: 'ヒントはここまでです',
+    close: 'ヒントを閉じる',
+    stage1: 'いまの手順でやること',
+    stage2: 'この課題の考え方',
+    stage3: '次につなぐ1本',
+    /** 1段目の落としどころ（手順の案内が取れないとき）。 */
+    stepFallback: '手順帯の「いまここ」に出ている手順から進めてください。',
+    /** 2段目の落としどころ（学習テーマが付いていない課題）。 */
+    ideaFallback:
+      '課題文の動きを「押したとき」「離したとき」に分けて書き出すと、必要な接点が見えてきます。',
+    /** 3段目（回路図が見える級だけ）。答えそのものではなく、見るところまでを示す。 */
+    wire: '回路図を見て、まだ盤に張っていない線を1本だけ探し、その両端の端子をつなぎます。',
+    /** 1級形式で3段目を出さない理由。 */
+    grade1Note: '1級形式では回路図が示されないので、ここまでのヒントで考えます。',
+  },
+  /**
+   * 学習テーマごとの「考え方」（ヒントの2段目）。`@ojt/content` の `PROBLEM_TAGS` と1対1。
+   * 課題の答えではなく、その回路の型を思い出すための1行にする。
+   */
+  hintTag: {
+    'self-hold': '自己保持は、コイルのa接点を押ボタンと並列に入れて、離しても電流を保ちます。',
+    interlock: 'インタロックは、相手のコイルのb接点を自分の回路に直列に入れて同時動作を防ぎます。',
+    timer: 'タイマは、コイルに電流が流れ始めてから設定時間が経つと限時接点が働きます。',
+    'multi-timer': '多段タイマは、前のタイマの限時接点で次のタイマを動かして時間をつなぎます。',
+    counter: 'カウンタは、数える接点と、数え直すための復帰の2つを分けて考えます。',
+    priority: '優先は、先に入れたい側の接点を相手より前に置き、相手をb接点で切ります。',
+    sequence: '順次動作は、前の段のコイルのa接点を次の段の条件にして順番を作ります。',
+    flicker: '点滅は、2つのタイマで「点いている時間」と「消えている時間」を作って繰り返します。',
+    alarm: '警報は、異常の条件でブザーを鳴らし、停止の押ボタンで切れるようにします。',
+    'and-or': '接点の直並列は、直列が「かつ」、並列が「または」になります。',
+    'fault-wire': '電線の故障は、両端の端子にテスターを当てて導通があるかで見分けます。',
+    'fault-part': '部品の故障は、チェック用ソケットに挿し替えて、同じ動きが出るかで見分けます。',
+    'fault-contact':
+      '接触不良は、通電したまま電圧を測ると、つながっているはずの所に電圧が残ります。',
+    measure: '測るときは、電源を切って導通を見るのか、通電して電圧を見るのかを先に決めます。',
+  } satisfies Record<ProblemTag, string>,
+  // --- /Phase 7 Task 25 ---
 } as const;
 
 // --- Plan 6 Task 8 ---
@@ -1265,6 +1357,61 @@ export function signalLabel(value: unknown): string {
   if (typeof value === 'number') return value.toFixed(2);
   return '—';
 }
+
+// --- Phase 7 Task 25 ---
+/**
+ * 信号名の表示名（指摘 UX-11）。`PL1` のような内部の名前ではなく、盤の色に合わせた
+ * 呼び名（`白ランプ（PL1）`）にする。`@ojt/content` の表（チャートの信号名と同じ源）を引き、
+ * 表に無い名前はそのまま返す。
+ */
+export function outputSignalLabel(signal: string): string {
+  return OUTPUT_LABELS[signal] ?? PB_LABELS[signal] ?? signal;
+}
+
+/** 1行要約の差分の言い回し（`verdictMismatchText()` の型）。指摘 PR-03 */
+export type VerdictMismatchKind = 'on' | 'off' | 'timing' | 'extra' | 'unknown';
+
+/**
+ * 1行要約のうち「何が起きたか」の1文（指摘 UX-13 / PR-03）。
+ * `白ランプ（PL1）が 0.52 s に点きませんでした。` の形にする。
+ */
+export function verdictMismatchText(
+  label: string,
+  time: string,
+  kind: VerdictMismatchKind,
+): string {
+  if (kind === 'on') return `${label}が ${time} に点きませんでした。`;
+  if (kind === 'off') return `${label}が ${time} に消えませんでした。`;
+  if (kind === 'timing') return `${label}が変わる時刻が ${time} からずれました。`;
+  if (kind === 'extra') return `${label}に、模範回路には無い変化が ${time} に出ました。`;
+  return `${label}は模範回路に無い信号です。`;
+}
+
+/** 1行要約のうち「静的チェックで止まっている」ことの1文。指摘 PR-03 */
+export function verdictCheckText(title: string, detail: string): string {
+  return `${title}が守れていません（${detail}）。`;
+}
+
+/** 1行要約のうち「最初にどこを直すか」の1文。指摘 PR-03 */
+export function verdictFixFirstText(message: string): string {
+  return `まず「${JA.result.suspects}」の1件目（${message}）を直してください。`;
+}
+
+/** ヒントを何段まで開いたか（`ヒントを使った回数: 2`）。指摘 PR-02 */
+export function hintCountText(count: number): string {
+  return `${JA.result.hintsUsed}: ${String(count)}`;
+}
+
+/** 同じ級の中での難しさ（`難しさ 3`）。§16 Phase 7 §4.3 */
+export function difficultyLabel(level: number): string {
+  return `${JA.problemListExtra.filterDifficultyLabel} ${String(level)}`;
+}
+
+/** 級の絞り込みの表示（3級には「おすすめ」を添える）。指摘 UX-19 */
+export function gradeFilterLabel(grade: 1 | 2 | 3): string {
+  return grade === 3 ? `${gradeLabel(3)}${JA.problemListExtra.recommended}` : gradeLabel(grade);
+}
+// --- /Phase 7 Task 25 ---
 
 /** 入切の表示（`ON` / `OFF`）。§8.2 */
 export function onOffLabel(on: boolean): string {
@@ -1522,21 +1669,6 @@ export function plcInputSpecText(ohms: number, onAmps: number, offAmps: number):
 // --- /Plan 3B Task 9 ---
 
 // --- Plan 3B Task 13 ---
-/**
- * 差分1件を1文にする（`PL1 が 1.20 s で ON のはずが OFF でした（値違い）`）。§10.8
- * 時刻と値の整形は呼び出し側（`plc-explain.ts`）が済ませて渡す。i18n から描画側の
- * 整形関数（`timeReadout`）へ依存を伸ばさないため。
- */
-export function mismatchSentence(
-  signal: string,
-  time: string,
-  expected: string,
-  actual: string,
-  reason: string,
-): string {
-  return `${signal} が ${time} で ${expected} のはずが ${actual} でした（${reason}）`;
-}
-
 /** 変換エラーで判定が落ちたことの1文。§10.6 / 3A H-1 */
 export function ladderErrorSummary(count: number): string {
   return `ラダーの変換に失敗しています（${String(count)} 件）。まず変換の指摘を直してください。`;

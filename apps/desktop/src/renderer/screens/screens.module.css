@@ -650,3 +650,105 @@
   gap: 8px;
 }
 /* --- /Plan 6 Task 9 --- */
+
+/* --- Phase 7 Task 25: ホーム下段と課題一覧の導線（指摘 UX-05 / UX-18 / UX-19 / UX-28） --- */
+
+/*
+ * ホームの下半分（指摘 UX-28: 約400px が完全な空白だった）。
+ * 「はじめての方はここから」と「続きから」を2枚のカードで並べる。狭い幅では1列に落ちる。
+ */
+.homeBottom {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(260px, 1fr));
+  gap: 20px;
+  margin-top: 24px;
+  max-width: 900px;
+}
+
+@media (max-width: 640px) {
+  .homeBottom {
+    grid-template-columns: 1fr;
+  }
+}
+
+.homeCard {
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 18px 20px;
+}
+
+.homeCardTitle {
+  font-size: 16px;
+  margin: 0 0 6px;
+}
+
+.homeCardBody {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.7;
+  margin: 0 0 12px;
+}
+
+.homeCardButton {
+  font-size: 14px;
+  padding: 8px 14px;
+  text-align: left;
+}
+
+/* 言葉で探す入力欄（指摘 PR-09）。絞り込みの3段目に置く。 */
+.searchInput {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  color: inherit;
+  font-size: 13px;
+  min-width: 220px;
+  padding: 6px 8px;
+}
+
+.searchInput:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/*
+ * 行のどこを押しても課題が開く（指摘 UX-18）。押せることが見た目で分かるよう、
+ * カーソルと、置いたとき・キーボードで選んだときの背景を変える。
+ */
+.problemRow {
+  cursor: pointer;
+}
+
+.problemRow:hover {
+  background: var(--panel-2);
+}
+
+.problemRow:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* 課題文の先頭1文（指摘 UX-19）。題名の下に薄字で添える。 */
+.problemDesc {
+  color: var(--muted);
+  display: block;
+  font-size: 12px;
+  line-height: 1.5;
+  margin-top: 2px;
+}
+
+/* 右端へ移した課題ID（指摘 UX-18: 先頭列で最も目立つ位置を占めていた）。 */
+.problemId {
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+/* --- /Phase 7 Task 25 --- */
+
+/* 「続きから」のカードに出す最近の課題（モード・課題名・経過時間）。指摘 UX-05 */
+.homeCardRecent {
+  color: var(--fg);
+  display: block;
+  margin-top: 6px;
+}

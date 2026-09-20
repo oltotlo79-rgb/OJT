@@ -40,8 +40,15 @@ export function SuspectList({
             {JA.result.suspectNote}
           </p>
           <ul className={styles.suspectList}>
-            {suspects.map((suspect) => (
-              <li key={`${suspect.kind}:${suspect.terminals.join('-')}`} className={styles.suspect}>
+            {suspects.map((suspect, index) => (
+              <li
+                key={`${suspect.kind}:${suspect.terminals.join('-')}`}
+                className={index === 0 ? `${styles.suspect} ${styles.suspectTop}` : styles.suspect}
+              >
+                {/* 1行要約が指しているのはこの1件（指摘 UX-13 / PR-03）。並びの先頭に印を付ける。 */}
+                {index === 0 ? (
+                  <span className={styles.suspectFirst}>{JA.result.suspectFirst}</span>
+                ) : null}
                 <span
                   className={
                     suspect.kind === 'missing' ? styles.suspectMissing : styles.suspectExtra

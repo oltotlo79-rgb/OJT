@@ -37,6 +37,7 @@ import { ReportPanel } from '../panels/ReportPanel.js';
 import { dispatchTester, TesterPanel } from '../panels/TesterPanel.js';
 import { TimeChartPanel } from '../panels/TimeChartPanel.js';
 import { StepGuide } from '../panels/StepGuide.js';
+import { hintStages } from '../session/hints.js';
 import { Toolbar } from '../panels/Toolbar.js';
 import { ViewHint } from '../panels/ViewHint.js';
 import { WarningBanner } from '../panels/WarningBanner.js';
@@ -593,6 +594,12 @@ export function InspectRepairSession(): JSX.Element {
         camera={camera}
         canUndo={history.done.length > 0}
         canRedo={history.undone.length > 0}
+        /* 段階的に開くヒント（指摘 PR-02）。1段目は手順帯がいま出している案内そのもの。 */
+        hints={hintStages({
+          grade: problem.grade,
+          stepHint: inspectRepairStepHint(currentStepKey),
+          tags: problem.tags,
+        })}
         extraTools={
           <>
             <button

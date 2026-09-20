@@ -28,6 +28,7 @@ import { PartsPanel } from '../panels/PartsPanel.js';
 import { PowerControls } from '../panels/PowerControls.js';
 import { ProblemPanel } from '../panels/ProblemPanel.js';
 import { StepGuide } from '../panels/StepGuide.js';
+import { hintStages } from '../session/hints.js';
 import { Toolbar } from '../panels/Toolbar.js';
 import { ViewHint } from '../panels/ViewHint.js';
 import { WarningBanner } from '../panels/WarningBanner.js';
@@ -535,6 +536,12 @@ export function PlcSession(): JSX.Element {
         wireColor={wireColor}
         allowedColors={session.allowedColors}
         camera={camera}
+        /* 段階的に開くヒント（指摘 PR-02）。1段目は手順帯がいま出している案内そのもの。 */
+        hints={hintStages({
+          grade: problem.grade,
+          stepHint: stepHintText(currentStepKey, profile),
+          tags: problem.tags,
+        })}
         showPlcView
         canUndo={history.done.length > 0}
         canRedo={history.undone.length > 0}

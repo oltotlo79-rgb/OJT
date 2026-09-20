@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useStore } from '../src/renderer/app/store.js';
 import { JA } from '../src/renderer/i18n/ja.js';
 import { Toolbar } from '../src/renderer/panels/Toolbar.js';
+import { hintStages, type HintStage } from '../src/renderer/session/hints.js';
 import styles from '../src/renderer/panels/panels.module.css';
 
 /**
@@ -17,9 +18,12 @@ afterEach(() => {
   cleanup();
 });
 
-function renderToolbar(overrides: { canUndo?: boolean; canRedo?: boolean } = {}): void {
+function renderToolbar(
+  overrides: { canUndo?: boolean; canRedo?: boolean; hints?: readonly HintStage[] } = {},
+): void {
   render(
     <Toolbar
+      {...(overrides.hints === undefined ? {} : { hints: overrides.hints })}
       mode="wire"
       wireColor="青"
       allowedColors={['青', '白', '黄']}
@@ -249,5 +253,65 @@ describe('押せないボタンのトースト（UXレビュー #5 / UI-03・UI-
     );
     fireEvent.click(screen.getByTestId('judge-button'));
     expect(useStore.getState().toasts.filter((t) => t.text === JA.session.judging)).toHaveLength(1);
+  });
+});
+
+/**
+ * 段階的に開くヒント（指摘 PR-02。Phase 7 Task 25）。
+ * 「押すたびに1段ずつ」「級で段数が変わる」「開いた段数は結果画面へ残る」を縛る。
+ */
+describe('ヒント（指摘 PR-02）', () => {
+  beforeEach(() => {
+    useStore.setState({ hintStage: 0 });
+  });
+
+  it('ヒントを渡さない画面にはボタンを出さない', () => {
+    renderToolbar();
+    expect(screen.queryByTestId('hint-button')).toBeNull();
+  });
+
+  it('押すたびに1段ずつ開く（3級は3段）', () => {
+    const hints = hintStages({ grade: 3, stepHint: '配線します。', tags: ['self-hold'] });
+    renderToolbar({ hints });
+    const button = screen.getByTestId('hint-button');
+    expect(button.textContent).toBe(JA.hint.label);
+    expect(screen.queryByTestId('hint-panel')).toBeNull();
+
+    fireEvent.click(button);
+    expect(screen.getByTestId('hint-panel').textContent).toContain('配線します。');
+    expect(screen.getByTestId('hint-panel').textContent).not.toContain(JA.hint.wire);
+    expect(useStore.getState().hintStage).toBe(1);
+
+    fireEvent.click(button);
+    expect(screen.getByTestId('hint-panel').textContent).toContain(JA.hintTag['self-hold']);
+    fireEvent.click(button);
+    expect(screen.getByTestId('hint-panel').textContent).toContain(JA.hint.wire);
+    expect(screen.getByTestId('hint-done')).toBeTruthy();
+    expect(useStore.getState().hintStage).toBe(3);
+  });
+
+  it('1級形式では3段目が出ず、2段で終わる（回路図が与えられない級）', () => {
+    renderToolbar({ hints: hintStages({ grade: 1, tags: ['interlock'] }) });
+    const button = screen.getByTestId('hint-button');
+    fireEvent.click(button);
+    fireEvent.click(button);
+    expect(screen.getByTestId('hint-panel').textContent).toContain(JA.hint.grade1Note);
+    expect(screen.getByTestId('hint-panel').textContent).not.toContain(JA.hint.wire);
+    expect(screen.getByTestId('hint-done')).toBeTruthy();
+    expect(useStore.getState().hintStage).toBe(2);
+  });
+
+  it('最後まで開いたら畳めるが、使った回数は減らさない（結果画面に出る数）', () => {
+    renderToolbar({ hints: hintStages({ grade: 2 }) });
+    const button = screen.getByTestId('hint-button');
+    for (let i = 0; i < 3; i += 1) fireEvent.click(button);
+    expect(button.textContent).toBe(JA.hint.close);
+    fireEvent.click(button);
+    expect(screen.queryByTestId('hint-panel')).toBeNull();
+    expect(useStore.getState().hintStage).toBe(3);
+    // 畳んだあとに押すと開き直すだけ（段は増えない）
+    fireEvent.click(button);
+    expect(screen.getByTestId('hint-panel')).toBeTruthy();
+    expect(useStore.getState().hintStage).toBe(3);
   });
 });

@@ -237,6 +237,12 @@
       "section": "mode-d/ラダー図を描く"
     },
     {
+      "testid": "continue-card",
+      "screen": "ホーム",
+      "label": "続きから",
+      "section": "screens/ホームの画面"
+    },
+    {
       "testid": "convert-state",
       "screen": "練習中（モードD）",
       "label": "変換に成功しました",
@@ -305,6 +311,12 @@
       "screen": "練習中（モードC1）",
       "label": "チェック状況",
       "section": "mode-c1/不良の見分け方"
+    },
+    {
+      "testid": "difficulty-filter",
+      "screen": "課題一覧",
+      "label": "難しさ",
+      "section": "screens/課題をえらぶ"
     },
     {
       "testid": "direct-text",
@@ -381,6 +393,12 @@
       "screen": "結果",
       "label": "過剰指摘",
       "section": "mode-c2/「判定」を押す"
+    },
+    {
+      "testid": "fix-on-board",
+      "screen": "結果",
+      "label": "盤で直す",
+      "section": "screens/結果の画面"
     },
     {
       "testid": "forbidden-warning",
@@ -499,6 +517,22 @@
       "screen": "練習中（モードD）",
       "label": "表示列数の外にセルがあります",
       "section": "settings/ラダーの見た目"
+    },
+    {
+      "testid": "hint-button",
+      "screen": "練習中",
+      "label": "ヒント",
+      "section": "screens/画面の上の帯"
+    },
+    {
+      "testid": "hint-done",
+      "screen": "練習中",
+      "label": "ヒントはここまでです",
+      "section": "screens/画面の上の帯"
+    },
+    {
+      "testid": "hint-panel",
+      "internal": "開いたヒントの中身の枠。上の帯の「ヒント」で説明済み"
     },
     {
       "testid": "hover-hint",
@@ -1095,6 +1129,12 @@
       "section": "troubleshooting/こう表示されたら"
     },
     {
+      "testid": "problem-search",
+      "screen": "課題一覧",
+      "label": "課題を探す",
+      "section": "screens/課題をえらぶ"
+    },
+    {
       "testid": "problem-table",
       "screen": "課題一覧",
       "label": "課題名",
@@ -1229,6 +1269,12 @@
       "section": "screens/結果の画面"
     },
     {
+      "testid": "result-hints",
+      "screen": "結果",
+      "label": "ヒントを使った回数",
+      "section": "screens/結果の画面"
+    },
+    {
       "testid": "round-no",
       "screen": "練習中（モードD）",
       "label": "いいえ",
@@ -1245,6 +1291,10 @@
       "screen": "練習中（モードD）",
       "label": "はい",
       "section": "mode-d/ラダー図を描く"
+    },
+    {
+      "testid": "row-{}",
+      "internal": "課題一覧の1行そのもの。行のどこを押しても開くことは「課題をえらぶ」で説明済み"
     },
     {
       "testid": "rung-to-coil-{}:{}",
@@ -1361,6 +1411,10 @@
       "screen": "練習中",
       "label": "表示倍率",
       "section": "mode-c2/回路図と盤を行き来する"
+    },
+    {
+      "testid": "search-filter",
+      "internal": "絞り込みの3段目の枠。中の「課題を探す」「難しさ」「学習テーマ」で説明済み"
     },
     {
       "testid": "select-{}",
@@ -1555,6 +1609,18 @@
       "section": "screens/部品を入れかえる"
     },
     {
+      "testid": "start-here",
+      "screen": "ホーム",
+      "label": "はじめての方はここから",
+      "section": "screens/ホームの画面"
+    },
+    {
+      "testid": "start-here-open",
+      "screen": "ホーム",
+      "label": "3級の回路組立をひらく",
+      "section": "screens/ホームの画面"
+    },
+    {
       "testid": "static-check-{}",
       "screen": "結果",
       "label": "線色ルール",
@@ -1635,6 +1701,12 @@
       "screen": "練習中（モードD）",
       "label": "記号",
       "section": "mode-d/ラダー図を描く"
+    },
+    {
+      "testid": "tag-filter",
+      "screen": "課題一覧",
+      "label": "学習テーマ",
+      "section": "screens/課題をえらぶ"
     },
     {
       "testid": "terminal-cancel",
@@ -1867,7 +1939,7 @@
     {
       "testid": "vendor-note",
       "screen": "設定",
-      "label": "モードDの課題を開いたときに使う機種（メーカー）です",
+      "label": "PLCの課題を開いたときに使う機種（メーカー）です",
       "section": "settings/PLCの既定のメーカー"
     },
     {
@@ -1880,6 +1952,12 @@
       "testid": "verdict",
       "screen": "結果",
       "label": "合格",
+      "section": "screens/結果の画面"
+    },
+    {
+      "testid": "verdict-summary",
+      "screen": "結果",
+      "label": "まず直すところ",
       "section": "screens/結果の画面"
     },
     {

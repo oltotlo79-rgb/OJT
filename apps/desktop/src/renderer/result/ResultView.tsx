@@ -1,17 +1,22 @@
 import type { AssembleProblem, JudgeResult, WiringSuspect } from '@ojt/content';
 import type { JSX } from 'react';
-import { elapsedSummaryText } from '../i18n/ja.js';
+import { elapsedSummaryText, JA } from '../i18n/ja.js';
 import { ChartOverlay } from './ChartOverlay.js';
 import { MismatchList } from './MismatchList.js';
 import { ResultShell } from './ResultShell.js';
 import { HazardList, StaticCheckList } from './StaticCheckList.js';
 import { SuspectList } from './SuspectList.js';
+import { verdictSummary } from './verdict-summary.js';
 import styles from './result.module.css';
 
 /**
  * 結果画面。設計仕様 §8.3。
  * 合否／差分一覧／チャート重ね表示／静的チェック／危険操作／所要時間の6点を並べる。
  * チャタリングを検出していたら禁則回路の明示警告を出す。
+ *
+ * 指摘 UX-13 / PR-03: 不合格のときは合否のすぐ下に「まず何を直すか」の1行を出し、
+ * 下端バーに「盤で直す」を置く。押すと**その1件を選んだ状態で**盤へ戻る
+ * （`SuspectList` の「盤で見る」を先頭の疑いに対して呼ぶのと同じ道）。
  */
 
 /** 所要時間と標準・打切り時間の対比文。§8.3（文言そのものは `ja.ts` が持つ。§15） */
@@ -52,6 +57,12 @@ export function ResultView({
   onBackToList: () => void;
 }): JSX.Element {
   const elapsedMs = result.elapsedMs ?? 0;
+  /*
+   * 1行要約（指摘 UX-13 / PR-03）。疑わしい配線を渡されたモード（B）だけ
+   * 「まず『疑わしい配線』の1件目を直してください」まで書ける。
+   */
+  const summary = verdictSummary(result, suspects);
+  const fix = summary.fix;
   return (
     <ResultShell
       title={problem.title}
@@ -59,6 +70,21 @@ export function ResultView({
       elapsedMs={elapsedMs}
       timeLimit={problem.timeLimit}
       forbidden={result.chatter.length > 0}
+      summary={summary.text}
+      extraAction={
+        fix === undefined || onShowOnBoard === undefined ? null : (
+          <button
+            type="button"
+            className={styles.fixButton}
+            data-testid="fix-on-board"
+            onClick={() => {
+              onShowOnBoard(fix);
+            }}
+          >
+            {JA.result.fixOnBoard}
+          </button>
+        )
+      }
       onRetry={onRetry}
       onBackToList={onBackToList}
     >

@@ -261,6 +261,7 @@ export function sessionFields(
   | 'highlight'
   | 'boardFocus'
   | 'schematicOpenCount'
+  | 'hintStage'
   | 'assembleView'
 > {
   return {
@@ -290,6 +291,8 @@ export function sessionFields(
     boardFocus: undefined,
     // 回路図ヒントを開いた回数も数え直す（§8.4）
     schematicOpenCount: 0,
+    // 段階ヒントも閉じた状態から始める（Phase 7 Task 25 / 指摘 PR-02）
+    hintStage: 0,
     // 盤から始める（Plan 5 Task 7 / 決定表#1）
     assembleView: 'board',
   };

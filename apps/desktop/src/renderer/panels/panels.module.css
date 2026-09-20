@@ -626,3 +626,53 @@
   border-color: var(--accent);
   box-shadow: 0 0 0 2px var(--accent) inset;
 }
+/* --- Phase 7 Task 25: 段階的に開くヒント（指摘 PR-02） --- */
+.hintHost {
+  position: relative;
+}
+
+.hintToggle {
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+/*
+ * 開いた段は上の帯の下に浮かせる（帯の中で折り返すと判定ボタンが2行目へ落ちる。UI監査 I6）。
+ * 読ませる文なので幅を決めて折り返し、行間は本文と同じ 1.8 にする。
+ */
+.hintPanel {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 20;
+  background: var(--panel-2);
+  border: 1px solid var(--accent);
+  border-radius: 5px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+  max-width: 34em;
+  min-width: 22em;
+  padding: 10px 12px;
+}
+
+.hintStage {
+  line-height: 1.8;
+  margin: 0 0 8px;
+}
+
+.hintStage:last-child {
+  margin-bottom: 0;
+}
+
+.hintStageTitle {
+  color: var(--accent);
+  display: block;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.hintDone {
+  color: var(--muted);
+  font-size: 12px;
+  margin: 8px 0 0;
+}
+/* --- /Phase 7 Task 25 --- */

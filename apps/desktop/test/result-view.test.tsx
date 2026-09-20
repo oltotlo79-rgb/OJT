@@ -324,3 +324,107 @@ describe('結果画面のルート（§8.3 / §12.3）', () => {
     expect(screen.getByTestId('no-suspect')).toBeInTheDocument();
   });
 });
+
+/**
+ * 1行要約と「盤で直す」（指摘 UX-13 / PR-03。Phase 7 Task 25）。
+ * 「まず何を直すか」が合否のすぐ下に出て、下端バーからその1件へ跳べることを見る。
+ */
+describe('次の一手（指摘 UX-13 / PR-03）', () => {
+  it('合格したら合格の1行だけを出し、「盤で直す」は出さない', () => {
+    if (PROBLEM === undefined) return;
+    useStore.setState({
+      problem: PROBLEM,
+      session: reference(),
+      judge: judgeWith(),
+      restoredHazardCount: 0,
+    });
+    render(<Result />);
+    expect(screen.getByTestId('verdict-summary').textContent).toContain(JA.result.summaryPassed);
+    expect(screen.queryByTestId('fix-on-board')).toBeNull();
+  });
+
+  it('電線を1本外すと1行要約と「盤で直す」が出て、押すと盤へ跳ぶ（決定表#11 と同じ道）', () => {
+    if (PROBLEM === undefined) return;
+    const broken = reference();
+    const removedId = broken.wires.find((wire) => !wire.locked)?.id;
+    broken.wires = broken.wires.filter((wire) => wire.id !== removedId);
+    useStore.setState({
+      problem: PROBLEM,
+      session: broken,
+      judge: judgeWith((session) => {
+        session.wires = session.wires.filter((wire) => wire.id !== removedId);
+      }),
+      restoredHazardCount: 0,
+      route: 'result',
+      highlight: { cellIds: [], terminals: [], wireIds: [] },
+      boardFocus: undefined,
+    });
+    render(<Result />);
+    expect(screen.getByTestId('verdict').textContent).toBe('不合格');
+    const summary = screen.getByTestId('verdict-summary').textContent ?? '';
+    // 「まず『疑わしい配線』の1件目（…）を直してください」まで書く
+    expect(summary).toContain(JA.result.suspects);
+    const fix = screen.getByTestId('fix-on-board');
+    expect(fix.textContent).toBe(JA.result.fixOnBoard);
+    fix.click();
+    // 盤へ跳び、疑いの端子が光り、戻る導線（結果から）が立つ
+    expect(useStore.getState().route).toBe('session');
+    expect(useStore.getState().boardFocus?.from).toBe('result');
+    expect(useStore.getState().highlight.terminals.length).toBeGreaterThan(0);
+  });
+
+  it('疑わしい配線の先頭に「最初に直す」の印を付ける（1行要約が指している1件）', () => {
+    if (PROBLEM === undefined) return;
+    const broken = reference();
+    const removedId = broken.wires.find((wire) => !wire.locked)?.id;
+    broken.wires = broken.wires.filter((wire) => wire.id !== removedId);
+    useStore.setState({
+      problem: PROBLEM,
+      session: broken,
+      judge: judgeWith((session) => {
+        session.wires = session.wires.filter((wire) => wire.id !== removedId);
+      }),
+      restoredHazardCount: 0,
+    });
+    render(<Result />);
+    const items = screen.getByTestId('suspect-list').querySelectorAll('li');
+    expect(items.length).toBeGreaterThan(0);
+    expect(items[0]?.textContent).toContain(JA.result.suspectFirst);
+  });
+
+  it('ヒントを使った回数を結果画面に出す（指摘 PR-02。使っていなければ出さない）', () => {
+    if (PROBLEM === undefined) return;
+    useStore.setState({
+      problem: PROBLEM,
+      session: reference(),
+      judge: judgeWith(),
+      restoredHazardCount: 0,
+      hintStage: 0,
+    });
+    const first = render(<Result />);
+    expect(screen.queryByTestId('result-hints')).toBeNull();
+    first.unmount();
+
+    useStore.setState({ hintStage: 2 });
+    render(<Result />);
+    expect(screen.getByTestId('result-hints').textContent).toBe(`${JA.result.hintsUsed}: 2`);
+  });
+
+  it('差分一覧の信号名を盤の呼び名にする（指摘 UX-11）', () => {
+    if (PROBLEM === undefined) return;
+    const judge = judgeWith((session) => {
+      session.wires = session.wires.filter((wire) => wire.locked);
+    });
+    render(
+      <ResultView
+        problem={PROBLEM}
+        result={judge}
+        onRetry={() => undefined}
+        onBackToList={() => undefined}
+      />,
+    );
+    const table = screen.queryByTestId('mismatch-table');
+    if (table === null) return; // 差分が出ない判定なら見るものが無い
+    expect(table.textContent).toContain('白ランプ（PL1）');
+  });
+});

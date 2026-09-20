@@ -4,6 +4,8 @@ import { useStore, type ListMode } from '../app/store.js';
 import { tryOjtApi } from '../app/ojt-api.js';
 import { formatElapsed } from '../../worker/runtime.js';
 import { HelpButton } from '../help/HelpButton.js';
+import { applyWorkFile } from '../session/work-file.js';
+import type { WorkFile } from '../../shared/ipc.js';
 import styles from './screens.module.css';
 
 /**
@@ -11,6 +13,10 @@ import styles from './screens.module.css';
  * モードB（回路組立）・C1（部品点検）・C2（回路点検・修復）・D（PLC）の4つが並ぶ
  * （Plan 3B Task 15 で PLC も押せるようになった）。
  * 押したモードは `listMode` に残り、課題一覧はそれで絞り込まれる。
+ *
+ * Phase 7 Task 25（指摘 UX-05 / UX-19 / UX-28）: 空いていた下半分に
+ * 「はじめての方はここから」と「続きから」を置き、**「最近の課題」を押せるように**した。
+ * 押すと一時保存をそのまま開き直す（作業ファイルの読込と同じ道）。
  */
 
 /** モードの並び。§12.1 / §16 Phase 2（B・C1・C2 が動く） */
@@ -51,11 +57,13 @@ const MODES: ReadonlyArray<{
   },
 ];
 
-/** 「最近の課題」の一行に出す情報（UXレビュー #19）。 */
+/** 「最近の課題」の一行に出す情報（UXレビュー #19 / 指摘 UX-05）。 */
 interface RecentProblem {
   title: string;
   mode: 'assemble' | 'inspect-parts' | 'inspect-repair' | 'plc' | undefined;
   elapsedMs: number;
+  /** 押したときに開き直す一時保存そのもの（指摘 UX-05）。 */
+  file: WorkFile;
 }
 
 /** ホーム画面。 */
@@ -80,6 +88,7 @@ export function Home(): JSX.Element {
           title: problem.title,
           mode: result.file.mode,
           elapsedMs: result.file.elapsedMs,
+          file: result.file,
         });
       });
     });
@@ -135,12 +144,63 @@ export function Home(): JSX.Element {
           </button>
         ))}
       </div>
-      {recent === undefined ? null : (
-        <p className={styles.subtitle} data-testid="recent-problem">
-          {JA.recentProblem}: {sessionModeLabel(recent.mode)} {recent.title}（
-          {formatElapsed(recent.elapsedMs)}）
-        </p>
-      )}
+      {/*
+        ホーム下半分（指摘 UX-28: 一等地が約400px ぶん空いていた）。
+        左に「はじめての方はここから」（指摘 UX-19: どのモードから始めるかの案内が
+        どこにも無かった）、右に「続きから」（指摘 UX-05: 説明書は「すぐに開き直せます」と
+        書いているのに、最近の課題は文字で出ているだけで押せなかった）。
+      */}
+      <div className={styles.homeBottom}>
+        <section className={styles.homeCard} data-testid="start-here">
+          <h3 className={styles.homeCardTitle}>{JA.home.startHereTitle}</h3>
+          <p className={styles.homeCardBody}>{JA.home.startHereBody}</p>
+          <button
+            type="button"
+            className={styles.homeCardButton}
+            data-testid="start-here-open"
+            onClick={() => {
+              // 3級の既定は課題一覧側が決める（`problem-filter.ts` の `defaultGrade()`）
+              setListMode('assemble');
+              setRoute('list');
+            }}
+          >
+            {JA.home.startHereButton}
+          </button>
+        </section>
+        <section className={styles.homeCard} data-testid="continue-card">
+          <h3 className={styles.homeCardTitle}>{JA.home.continueTitle}</h3>
+          {recent === undefined ? (
+            <p className={styles.homeCardBody}>{JA.home.continueNone}</p>
+          ) : (
+            <>
+              <p className={styles.homeCardBody}>
+                {JA.home.continueBody}
+                <span className={styles.homeCardRecent}>
+                  {JA.recentProblem}: {sessionModeLabel(recent.mode)} {recent.title}（
+                  {formatElapsed(recent.elapsedMs)}）
+                </span>
+              </p>
+              <button
+                type="button"
+                className={styles.homeCardButton}
+                data-testid="recent-problem"
+                onClick={() => {
+                  /*
+                   * 一時保存をそのまま開き直す（`App.tsx` の復元と同じ道）。
+                   * いまの作業を捨てることになる場合は `applyWorkFile()` が確認欄を出す。
+                   * 読めなかった理由はトーストに出るので、ここでは受け皿だけ付ける（指摘 LE-14）。
+                   */
+                  void applyWorkFile(recent.file).catch(() => {
+                    // `applyWorkFile()` は理由をトーストに出して false を返す。ここでは握るだけ。
+                  });
+                }}
+              >
+                {JA.home.continueButton}
+              </button>
+            </>
+          )}
+        </section>
+      </div>
     </div>
   );
 }
