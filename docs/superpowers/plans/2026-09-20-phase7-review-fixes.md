@@ -633,7 +633,7 @@ grep -rln "stepGuide\|手順帯" apps/desktop/src/renderer/**/*.module.css  # �
 - [ ] 2. **3D-13**: 印字テクスチャのキャッシュ4方針（`AcFixtures` / `labels.ts` / `PartIndicator` / `Fixtures`）を `labels.ts` の実装に**一本化**し、鍵に接頭辞（`fixture:` / `socket:` / `part:`）を付ける。
 - [ ] 3. **3D-14**: `labels.ts` に `LABEL_FONT` 定数を置き `ctx.font` の5箇所を差し替える（文字幅表は Meiryo 実測なのに焼くときは `sans-serif` になっている）。開発時に `measureText()` と見積りを比べるアサートを足す。
 
-> **3D-13 / 3D-14 / 3D-18 / 3D-20 は Task 17 で済み（`<SHA17>`）**: Step 2・3 はまるごと、Step 1 のうち
+> **3D-13 / 3D-14 / 3D-18 / 3D-20 は Task 17 で済み（`3bf8015`）**: Step 2・3 はまるごと、Step 1 のうち
 > `presetForDirection()`（3D-18。`view-navigation.test.ts` の5ケースを `gizmoTargetForDirection()` へ
 > 向け直した）と `receiveShadow`（3D-20）も削除済み。印字テクスチャのキャッシュは `labels.ts` の
 > `bakeSharedTexture(namespace, key, bake)` 1つに畳んだので、`cachedFaceTexture` / `faceTextureCache`
