@@ -4,6 +4,8 @@
   "mode": "assemble",
   "title": "自己保持回路",
   "grade": 3,
+  "difficulty": 1,
+  "tags": ["self-hold"],
   "description": "黒押ボタン（PB1）で白ランプ（PL1）を点灯させ、離しても点灯を保持しなさい。黄押ボタン（PB2）で消灯すること。タイムチャートの始まりと終わりは論理0とする。",
   "timeLimit": { "standardMin": 30, "cutoffMin": 50 },
   "board": {

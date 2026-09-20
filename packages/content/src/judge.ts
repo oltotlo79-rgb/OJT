@@ -8,7 +8,7 @@ import {
   type Mismatch,
   type SignalLog,
 } from '@ojt/circuit-sim';
-import { buildReferenceSession, ASSEMBLE_WIRE_COLOR } from './reference.js';
+import { buildReferenceSession, ASSEMBLE_WIRE_COLOR, type SchematicProblem } from './reference.js';
 import { runOperations } from './runner.js';
 import { resolveCompareSignals } from './schema/judge.js';
 import type { AssembleProblem } from './schema/assemble.js';
@@ -157,7 +157,7 @@ export function findUnknownCompareSignalIssues(
  * UIは課題が要求する盤で作ったセッションを渡すこと。
  */
 export function judgeAssemble(
-  problem: AssembleProblem,
+  problem: SchematicProblem,
   board: BoardDefinition,
   traineeSession: BoardSession,
   options: JudgeOptions = {},
@@ -235,10 +235,12 @@ export function judgeAssemble(
 
 /**
  * 課題の模範回路を、その課題自身の操作列で判定にかける（自己整合テスト）。§7.8 / §14.1 #30
- * 内蔵課題はこれが全件合格することをCIで保証する。
+ * 内蔵課題はこれが全件合格することをCIで保証し、`scripts/validate.ts` は利用者が作った課題に
+ * 同じ検査をかける。モードC2の課題も**回路図＋操作列＋判定設定**の形はモードBと同じなので
+ * （`SchematicProblem`。CT-02 と同じ理由）、故障を入れる前の模範回路として同じ検査にかけられる。
  */
 export function judgeReference(
-  problem: AssembleProblem,
+  problem: SchematicProblem,
   board: BoardDefinition,
 ): JudgeAssembleResult {
   const reference = buildReferenceSession(problem, board);

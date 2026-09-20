@@ -196,11 +196,19 @@ export const RandomFaultsSchema = z
 /** ランダム故障の指定。 */
 export type RandomFaultsData = z.infer<typeof RandomFaultsSchema>;
 
-/** 課題の `faults`（明示リストまたはランダム）。§7.5 */
-export const FaultsSchema = z.union([
-  z.array(FaultSpecSchema).min(1),
-  z.strictObject({ random: RandomFaultsSchema }),
-]);
+/**
+ * 課題の `faults`（明示リストまたはランダム）。§7.5
+ *
+ * CT-13: 判別子の無い共用体なので、どちらの枝にも合わない値（`{}` や `{ random: 'x' }`）を渡すと
+ * zod は枝ごとの違反を両方とも並べ、課題一覧には「配列にしてください」と「random がありません」が
+ * 同時に出て、どちらが本当の理由なのか分からなくなる。共用体そのものに**1つの親メッセージ**を
+ * 与え、上位の違反1件が日本語で書き方を示すようにする（枝の中身は入れ子として残るので、
+ * 枝の内側の誤り＝配列の要素やランダム指定の項目の誤りは今までどおり場所つきで出る）。
+ */
+export const FaultsSchema = z.union(
+  [z.array(FaultSpecSchema).min(1), z.strictObject({ random: RandomFaultsSchema })],
+  { error: '故障は、故障の一覧（1件以上の配列）か `{ "random": … }` のどちらかで書きます' },
+);
 
 /** 課題の `faults`。 */
 export type FaultsData = z.infer<typeof FaultsSchema>;

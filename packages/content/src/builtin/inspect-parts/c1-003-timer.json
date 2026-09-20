@@ -4,6 +4,8 @@
   "mode": "inspect-parts",
   "title": "タイマの点検",
   "grade": 2,
+  "difficulty": 3,
+  "tags": ["fault-part", "timer", "measure"],
   "description": "トレイのタイマ4個を点検しなさい。タイマは赤押ボタン（PB4）を押し続けて設定時間が経過すると限時接点が反転する。反転したところで a接点・b接点の導通を測り、最後にコイル（電源）抵抗を測ること。b接点が溶着していると、そのa接点は機械的に開いたままになる。",
   "timeLimit": { "standardMin": 30, "cutoffMin": 50 },
   "board": { "boardId": "board-jipm-std", "socketRoles": { "S7": "CHK" } },

@@ -4,6 +4,8 @@
   "mode": "assemble",
   "title": "停止優先の起動・停止と警報表示",
   "grade": 1,
+  "difficulty": 5,
+  "tags": ["self-hold", "priority", "alarm"],
   "description": "黒押ボタン（PB1）で運転（白ランプ PL1）、緑押ボタン（PB3）で警報（赤ランプ PL4）を自己保持させ、黄押ボタン（PB2）で両方を停止させなさい。起動と停止を同時に押したときは停止を優先すること。運転中かつ警報中は黄ランプ（PL2）も点灯させること。この盤にはブザーが無いため、警報出力は赤ランプ（PL4）で代替する。",
   "timeLimit": { "standardMin": 50, "cutoffMin": 60 },
   "board": {

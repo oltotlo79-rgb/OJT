@@ -4,6 +4,8 @@
   "mode": "inspect-repair",
   "title": "自己保持回路の点検・修復①",
   "grade": 2,
+  "difficulty": 2,
+  "tags": ["self-hold", "fault-wire"],
   "description": "黒押ボタン（PB1）で白ランプ（PL1）が点灯し自己保持、黄押ボタン（PB2）で消灯する回路である。現在は正しく動作しない。回路図とタイムチャートを手がかりに故障箇所を2つ指摘し、白線で修復しなさい。故障箇所でない青線を外してはならない。",
   "timeLimit": { "standardMin": 30, "cutoffMin": 50 },
   "board": {

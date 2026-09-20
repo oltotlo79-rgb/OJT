@@ -23,6 +23,38 @@
           "enum": [1, 2, 3],
           "description": "想定級（3級・2級・1級）。ヒントの出し方を決めます。"
         },
+        "difficulty": {
+          "default": 3,
+          "description": "同じ級の中での難しさ（1=やさしい 〜 5=難しい）。省略すると 3 になります。",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 5
+        },
+        "tags": {
+          "default": [],
+          "description": "学習テーマ。課題一覧の絞り込みに使います。省略すると空になります。",
+          "maxItems": 6,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "self-hold",
+              "interlock",
+              "timer",
+              "multi-timer",
+              "counter",
+              "priority",
+              "sequence",
+              "flicker",
+              "alarm",
+              "and-or",
+              "fault-wire",
+              "fault-part",
+              "fault-contact",
+              "measure"
+            ]
+          }
+        },
         "description": {
           "type": "string",
           "description": "訓練者に示す課題文。"
@@ -443,6 +475,38 @@
           "enum": [1, 2, 3],
           "description": "想定級（3級・2級・1級）。ヒントの出し方を決めます。"
         },
+        "difficulty": {
+          "default": 3,
+          "description": "同じ級の中での難しさ（1=やさしい 〜 5=難しい）。省略すると 3 になります。",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 5
+        },
+        "tags": {
+          "default": [],
+          "description": "学習テーマ。課題一覧の絞り込みに使います。省略すると空になります。",
+          "maxItems": 6,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "self-hold",
+              "interlock",
+              "timer",
+              "multi-timer",
+              "counter",
+              "priority",
+              "sequence",
+              "flicker",
+              "alarm",
+              "and-or",
+              "fault-wire",
+              "fault-part",
+              "fault-contact",
+              "measure"
+            ]
+          }
+        },
         "description": {
           "type": "string",
           "description": "訓練者に示す課題文。"
@@ -638,6 +702,38 @@
           "type": "number",
           "enum": [1, 2, 3],
           "description": "想定級（3級・2級・1級）。ヒントの出し方を決めます。"
+        },
+        "difficulty": {
+          "default": 3,
+          "description": "同じ級の中での難しさ（1=やさしい 〜 5=難しい）。省略すると 3 になります。",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 5
+        },
+        "tags": {
+          "default": [],
+          "description": "学習テーマ。課題一覧の絞り込みに使います。省略すると空になります。",
+          "maxItems": 6,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "self-hold",
+              "interlock",
+              "timer",
+              "multi-timer",
+              "counter",
+              "priority",
+              "sequence",
+              "flicker",
+              "alarm",
+              "and-or",
+              "fault-wire",
+              "fault-part",
+              "fault-contact",
+              "measure"
+            ]
+          }
         },
         "description": {
           "type": "string",
@@ -1266,6 +1362,38 @@
           "type": "number",
           "enum": [1, 2, 3],
           "description": "想定級（3級・2級・1級）。ヒントの出し方を決めます。"
+        },
+        "difficulty": {
+          "default": 3,
+          "description": "同じ級の中での難しさ（1=やさしい 〜 5=難しい）。省略すると 3 になります。",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 5
+        },
+        "tags": {
+          "default": [],
+          "description": "学習テーマ。課題一覧の絞り込みに使います。省略すると空になります。",
+          "maxItems": 6,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "self-hold",
+              "interlock",
+              "timer",
+              "multi-timer",
+              "counter",
+              "priority",
+              "sequence",
+              "flicker",
+              "alarm",
+              "and-or",
+              "fault-wire",
+              "fault-part",
+              "fault-contact",
+              "measure"
+            ]
+          }
         },
         "description": {
           "type": "string",

@@ -8,6 +8,7 @@ import {
   type SocketRoles,
 } from '@ojt/board-model';
 import { z } from 'zod';
+import { DifficultySchema, MAX_PROBLEM_TAGS, ProblemTagSchema } from './difficulty.js';
 
 /**
  * 課題データの共通ヘッダ。設計仕様 §7.1。
@@ -147,6 +148,14 @@ export const ProblemHeaderShape = {
   id: ProblemIdSchema.describe('課題ID。課題フォルダの中で一意にします。'),
   title: z.string().min(1).describe('課題一覧に出す課題名。'),
   grade: GradeSchema.describe('想定級（3級・2級・1級）。ヒントの出し方を決めます。'),
+  difficulty: DifficultySchema.default(3).describe(
+    '同じ級の中での難しさ（1=やさしい 〜 5=難しい）。省略すると 3 になります。',
+  ),
+  tags: z
+    .array(ProblemTagSchema)
+    .max(MAX_PROBLEM_TAGS)
+    .default([])
+    .describe('学習テーマ。課題一覧の絞り込みに使います。省略すると空になります。'),
   description: z.string().describe('訓練者に示す課題文。'),
   timeLimit: TimeLimitSchema.describe('標準時間と打切り時間（分）。'),
   board: BoardRefSchema.describe('使う盤とソケットの役割割当。'),

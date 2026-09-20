@@ -1,4 +1,11 @@
 import { describe, expect, it } from 'vitest';
+import {
+  DifficultySchema,
+  MAX_PROBLEM_TAGS,
+  PROBLEM_TAG_LABELS,
+  PROBLEM_TAGS,
+  ProblemTagSchema,
+} from '../src/schema/difficulty.js';
 import { toProblemIssues } from '../src/schema/index.js';
 import {
   CONTENT_FORMAT_VERSION,
@@ -157,6 +164,65 @@ describe('ProblemHeaderSchema', () => {
       ProblemHeaderSchema.safeParse({ ...HEADER, board: { ...HEADER.board, extraPart: 'BZ' } })
         .success,
     ).toBe(false);
+  });
+});
+
+/**
+ * 難しさ（`difficulty`）と学習テーマ（`tags`）。§16 Phase 7 §4.3。
+ * どちらも既定値つきの任意項目なので、既存の課題ファイルは書き換えなくてもそのまま読める。
+ */
+describe('difficulty / tags（§16 Phase 7）', () => {
+  it('reads a header that writes neither field and fills in the defaults (3 / [])', () => {
+    const parsed = ProblemHeaderSchema.safeParse(HEADER);
+    expect(parsed.success).toBe(true);
+    if (!parsed.success) return;
+    expect(parsed.data.difficulty).toBe(3);
+    expect(parsed.data.tags).toEqual([]);
+  });
+
+  it('keeps the format version at 1 (既存の課題を読めなくしていないことの明示。決定 D3)', () => {
+    expect(CONTENT_FORMAT_VERSION).toBe(1);
+    expect(ProblemHeaderSchema.safeParse({ ...HEADER, formatVersion: 2 }).success).toBe(false);
+  });
+
+  it('keeps a difficulty that the file writes', () => {
+    const parsed = ProblemHeaderSchema.safeParse({ ...HEADER, difficulty: 5, tags: ['timer'] });
+    expect(parsed.success).toBe(true);
+    if (!parsed.success) return;
+    expect(parsed.data.difficulty).toBe(5);
+    expect(parsed.data.tags).toEqual(['timer']);
+  });
+
+  it('rejects a difficulty of 0 or 6 and a fractional one', () => {
+    expect(DifficultySchema.safeParse(1).success).toBe(true);
+    expect(DifficultySchema.safeParse(5).success).toBe(true);
+    expect(DifficultySchema.safeParse(0).success).toBe(false);
+    expect(DifficultySchema.safeParse(6).success).toBe(false);
+    expect(DifficultySchema.safeParse(2.5).success).toBe(false);
+    expect(ProblemHeaderSchema.safeParse({ ...HEADER, difficulty: 0 }).success).toBe(false);
+    expect(ProblemHeaderSchema.safeParse({ ...HEADER, difficulty: 6 }).success).toBe(false);
+  });
+
+  it('rejects a tag that is not in the vocabulary', () => {
+    expect(ProblemTagSchema.safeParse('self-hold').success).toBe(true);
+    expect(ProblemTagSchema.safeParse('自己保持').success).toBe(false);
+    expect(ProblemHeaderSchema.safeParse({ ...HEADER, tags: ['nope'] }).success).toBe(false);
+  });
+
+  it('rejects more than six tags', () => {
+    const seven = PROBLEM_TAGS.slice(0, MAX_PROBLEM_TAGS + 1);
+    expect(seven).toHaveLength(7);
+    expect(ProblemHeaderSchema.safeParse({ ...HEADER, tags: seven }).success).toBe(false);
+    expect(
+      ProblemHeaderSchema.safeParse({ ...HEADER, tags: PROBLEM_TAGS.slice(0, MAX_PROBLEM_TAGS) })
+        .success,
+    ).toBe(true);
+  });
+
+  it('gives every tag a Japanese label（画面と説明書が語を書き写さないため）', () => {
+    expect(PROBLEM_TAGS).toHaveLength(14);
+    expect(Object.keys(PROBLEM_TAG_LABELS).sort()).toEqual([...PROBLEM_TAGS].sort());
+    for (const tag of PROBLEM_TAGS) expect(PROBLEM_TAG_LABELS[tag].length).toBeGreaterThan(0);
   });
 });
 

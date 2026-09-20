@@ -359,12 +359,12 @@ pnpm --filter @ojt/desktop test -- ladder-cell ladder-panels plc-skin
 
 **Steps:**
 
-- [ ] 1. `difficulty.ts` に本設計 §4.3 の `DifficultySchema`（`z.int().min(1).max(5)`）と `ProblemTagSchema`（14値の `z.enum`）をそのまま書く。
-- [ ] 2. `ProblemHeaderShape` に `difficulty: DifficultySchema.default(3)` と `tags: z.array(ProblemTagSchema).max(6).default([])` を足す。**`CONTENT_FORMAT_VERSION` は 1 のまま**。`z.strictObject` なので JSON 側に書いても書かなくても通ることをテストで固定する。
-- [ ] 3. 既存28題に `difficulty` と `tags` を手で付ける。目安は 3級=1〜2 / 2級=2〜4 / 1級=4〜5。`tags` は本設計 §4.4 の表の「新しく効く軸」に対応させる。
-- [ ] 4. `packages/content/scripts/validate.ts` を書く。引数はファイルまたはフォルダ。やること: `parseProblem()` → モード別の自己整合検査（B/C2 は `judgeReference`、D は `judgePlcReference`、C1 は `expectedCheckReading` との突き合わせ）→ `startsAndEndsLow()` → 1件1行の日本語出力。終了コードは失敗件数。
-- [ ] 5. `package.json` に `"validate"` を足し、`docs/manual/10-authoring.md` に「作った課題を確かめる」節を足す（**指導者向けの平易な日本語**。禁止語リスト `style.json` に掛かることに注意）。
-- [ ] 6. テスト。
+- [x] 1. `difficulty.ts` に本設計 §4.3 の `DifficultySchema`（`z.int().min(1).max(5)`）と `ProblemTagSchema`（14値の `z.enum`）をそのまま書く。
+- [x] 2. `ProblemHeaderShape` に `difficulty: DifficultySchema.default(3)` と `tags: z.array(ProblemTagSchema).max(6).default([])` を足す。**`CONTENT_FORMAT_VERSION` は 1 のまま**。`z.strictObject` なので JSON 側に書いても書かなくても通ることをテストで固定する。
+- [x] 3. 既存28題に `difficulty` と `tags` を手で付ける。目安は 3級=1〜2 / 2級=2〜4 / 1級=4〜5。`tags` は本設計 §4.4 の表の「新しく効く軸」に対応させる。
+- [x] 4. `packages/content/scripts/validate.ts` を書く。引数はファイルまたはフォルダ。やること: `parseProblem()` → モード別の自己整合検査（B/C2 は `judgeReference`、D は `judgePlcReference`、C1 は `expectedCheckReading` との突き合わせ）→ `startsAndEndsLow()` → 1件1行の日本語出力。終了コードは失敗件数。
+- [x] 5. `package.json` に `"validate"` を足し、`docs/manual/10-authoring.md` に「作った課題を確かめる」節を足す（**指導者向けの平易な日本語**。禁止語リスト `style.json` に掛かることに注意）。
+- [x] 6. テスト。
 
 ```
 packages/content/test/schema.test.ts

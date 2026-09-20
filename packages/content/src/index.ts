@@ -25,6 +25,16 @@ export {
 } from './schema/common.js';
 
 export {
+  DifficultySchema,
+  MAX_PROBLEM_TAGS,
+  PROBLEM_TAG_LABELS,
+  PROBLEM_TAGS,
+  ProblemTagSchema,
+  type Difficulty,
+  type ProblemTag,
+} from './schema/difficulty.js';
+
+export {
   CellKindSchema,
   hasExactTimerRange,
   RungEndSchema,

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { toProblemIssues } from '../src/schema/index.js';
 import {
   FAULT_KINDS,
   FaultSpecSchema,
@@ -200,6 +201,32 @@ describe('FaultsSchema', () => {
 
   it('rejects an empty explicit list', () => {
     expect(FaultsSchema.safeParse([]).success).toBe(false);
+  });
+
+  /**
+   * CT-13: 判別子の無い共用体は、どちらの枝にも合わない値を渡すと枝ごとの違反を両方並べてしまう。
+   * 共用体そのものに親メッセージを持たせ、上位に出る違反を**1件だけ**にする。
+   */
+  it('reports one Japanese top level issue when the value fits neither form (CT-13)', () => {
+    for (const bad of [{}, { random: 'x' }, 42, 'faults']) {
+      const parsed = FaultsSchema.safeParse(bad);
+      expect(parsed.success, JSON.stringify(bad)).toBe(false);
+      if (parsed.success) continue;
+      expect(parsed.error.issues, JSON.stringify(bad)).toHaveLength(1);
+      const issue = parsed.error.issues[0];
+      expect(issue?.path, JSON.stringify(bad)).toEqual([]);
+      expect(issue?.message, JSON.stringify(bad)).toBe(
+        '故障は、故障の一覧（1件以上の配列）か `{ "random": … }` のどちらかで書きます',
+      );
+      expect(/[ぁ-んァ-ヶ一-龠]/u.test(issue?.message ?? ''), '日本語で出ること').toBe(true);
+    }
+  });
+
+  it('still reports where the mistake is inside a branch that was chosen', () => {
+    const parsed = FaultsSchema.safeParse([{ target: { wireId: 'sw-001' }, kind: 'nope' }]);
+    expect(parsed.success).toBe(false);
+    if (parsed.success) return;
+    expect(toProblemIssues(parsed.error).some((i) => i.path.includes('kind'))).toBe(true);
   });
 });
 
