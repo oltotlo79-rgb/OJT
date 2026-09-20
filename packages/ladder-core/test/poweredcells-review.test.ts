@@ -21,7 +21,16 @@ import {
   type LadderProgram,
   type Network,
   type PlcIoPort,
+  type PlcRuntime,
 } from '../src/index.js';
+
+/**
+ * 通電記録を `Record` として読む。`state()` の複製から `runtime.poweredCells`（その場の
+ * 見え方）へ移した（指摘 DW-1 ≡ LE-11 ③）ので、検査の書き方だけここで吸収する。
+ */
+function poweredOf(rt: PlcRuntime): Record<string, boolean> {
+  return Object.fromEntries(rt.poweredCells);
+}
 
 class Io implements PlcIoPort {
   inputs: boolean[];
@@ -129,9 +138,9 @@ describe('poweredCells vs a brute-force continuity evaluator', () => {
       if (!compiled.ok) continue;
       const io = new Io();
       for (let i = 0; i < 4; i += 1) io.inputs[i] = rng() < 0.5;
-      const rt = createPlcRuntime(compiled.program, { io, outputCount: 8 });
+      const rt = createPlcRuntime(compiled.program, { io, outputCount: 8, recordPowered: true });
       rt.scan();
-      const got = rt.state().poweredCells;
+      const got = poweredOf(rt);
       const want = bruteForcePowered(net, (cell) => {
         if (cell.kind !== 'contact') return false;
         const on = io.inputs[cell.device.index] ?? false;
@@ -154,17 +163,17 @@ describe('poweredCells vs a brute-force continuity evaluator', () => {
     ]);
     const c = compile(program(net, endNetwork()));
     if (!c.ok) throw new Error('compile');
-    const rt = createPlcRuntime(c.program, { io, outputCount: 4 });
+    const rt = createPlcRuntime(c.program, { io, outputCount: 4, recordPowered: true });
     io.inputs[0] = true;
     rt.scan();
-    const s = rt.state().poweredCells;
+    const s = poweredOf(rt);
     expect(s['n1:0:0']).toBe(true); // left of X0 = rail
     expect(s['n1:0:1']).toBe(true); // X0 closed -> left of X1 live
     expect(s['n1:0:2']).toBe(false); // X1 open
     expect(s[`n1:0:${COIL_COL}`]).toBe(false);
     io.inputs[1] = true;
     rt.scan();
-    expect(rt.state().poweredCells[`n1:0:${COIL_COL}`]).toBe(true);
+    expect(poweredOf(rt)[`n1:0:${COIL_COL}`]).toBe(true);
   });
 
   it('hand-checked OR branch (self-hold): the lower rung feeds the coil', () => {
@@ -181,14 +190,14 @@ describe('poweredCells vs a brute-force continuity evaluator', () => {
     ]);
     const c = compile(program(net, endNetwork()));
     if (!c.ok) throw new Error('compile');
-    const rt = createPlcRuntime(c.program, { io, outputCount: 4 });
+    const rt = createPlcRuntime(c.program, { io, outputCount: 4, recordPowered: true });
     io.inputs[0] = true;
     rt.scan();
     expect(rt.bit(Y(0))).toBe(true);
     io.inputs[0] = false;
     rt.scan();
     expect(rt.bit(Y(0))).toBe(true); // held by the branch
-    const s = rt.state().poweredCells;
+    const s = poweredOf(rt);
     expect(s['n1:1:0']).toBe(true); // Y0 contact's left edge is the rail
     expect(s['n1:1:1']).toBe(true); // Y0 closed
     expect(s['n1:0:1']).toBe(true); // the vline node is fed from below
@@ -206,9 +215,9 @@ describe('poweredCells vs a brute-force continuity evaluator', () => {
     ]);
     const c = compile(program(net, endNetwork()));
     if (!c.ok) throw new Error('compile');
-    const rt = createPlcRuntime(c.program, { io, outputCount: 4 });
+    const rt = createPlcRuntime(c.program, { io, outputCount: 4, recordPowered: true });
     rt.scan(); // both inputs OFF
-    const s = rt.state().poweredCells;
+    const s = poweredOf(rt);
     // The branch is dead. Before M4, (1,0) was reported live because every row's column-0
     // node is unioned onto the left rail in the Rails constructor; recordPoweredCells() now
     // reports `false` for an empty column-0 cell for display purposes even though the rail
@@ -226,7 +235,7 @@ describe('poweredCells vs a brute-force continuity evaluator', () => {
     ]);
     const c = compile(program(net, endNetwork()));
     if (!c.ok) throw new Error('compile');
-    const rt = createPlcRuntime(c.program, { io, outputCount: 4 });
+    const rt = createPlcRuntime(c.program, { io, outputCount: 4, recordPowered: true });
     io.inputs[1] = true;
     rt.scan();
     expect(rt.bit(Y(0))).toBe(true);
@@ -248,7 +257,7 @@ describe('poweredCells vs a brute-force continuity evaluator', () => {
     ]);
     const c = compile(program(net, endNetwork()));
     if (!c.ok) throw new Error('compile');
-    const rt = createPlcRuntime(c.program, { io, outputCount: 4 });
+    const rt = createPlcRuntime(c.program, { io, outputCount: 4, recordPowered: true });
     io.inputs[2] = true; // X2 only
     io.inputs[1] = true; // X1
     rt.scan();
@@ -267,17 +276,17 @@ describe('poweredCells refresh', () => {
     ]);
     const c = compile(program(net, endNetwork()));
     if (!c.ok) throw new Error('compile');
-    const rt = createPlcRuntime(c.program, { io, outputCount: 4 });
+    const rt = createPlcRuntime(c.program, { io, outputCount: 4, recordPowered: true });
     io.inputs[0] = true;
     rt.scan();
-    expect(rt.state().poweredCells[`n1:0:${COIL_COL}`]).toBe(true);
+    expect(poweredOf(rt)[`n1:0:${COIL_COL}`]).toBe(true);
     io.inputs[0] = false;
     rt.scan();
-    expect(rt.state().poweredCells[`n1:0:${COIL_COL}`]).toBe(false);
-    expect(Object.keys(rt.state().poweredCells)).toHaveLength(IR_COLS);
+    expect(poweredOf(rt)[`n1:0:${COIL_COL}`]).toBe(false);
+    expect(Object.keys(poweredOf(rt))).toHaveLength(IR_COLS);
   });
 
-  it('the snapshot is a copy (mutating it does not affect the runtime)', () => {
+  it('the snapshot arrays are copies (mutating them does not affect the runtime)', () => {
     const io = new Io();
     const c = compile(
       program(
@@ -288,14 +297,19 @@ describe('poweredCells refresh', () => {
       ),
     );
     if (!c.ok) throw new Error('compile');
-    const rt = createPlcRuntime(c.program, { io, outputCount: 4 });
+    const rt = createPlcRuntime(c.program, { io, outputCount: 4, recordPowered: true });
     rt.scan();
     const s = rt.state();
-    s.poweredCells['n1:0:0'] = false;
     s.outputs[0] = true;
     s.inputs[0] = true;
-    expect(rt.state().poweredCells['n1:0:0']).toBe(true);
     expect(rt.state().outputs[0]).toBe(false);
+    expect(rt.state().inputs[0]).toBe(false);
+    // 通電記録は `state()` の複製ではなく**その場の見え方**になった（指摘 DW-1 ≡ LE-11 ③）。
+    // 参照を持ち越すと次のスキャンの値が見える。
+    const live = rt.poweredCells;
+    io.inputs[0] = false;
+    rt.scan();
+    expect(live.get(`n1:0:${COIL_COL}`)).toBe(false);
   });
 });
 
@@ -328,7 +342,7 @@ describe('performance', () => {
     );
     const c = compile(p);
     if (!c.ok) throw new Error(JSON.stringify(c.errors));
-    const rt = createPlcRuntime(c.program, { io, outputCount: 16 });
+    const rt = createPlcRuntime(c.program, { io, outputCount: 16, recordPowered: true });
     const t0 = performance.now();
     for (let i = 0; i < 10_000; i += 1) {
       if (i % 100 === 0) io.inputs[0] = !io.inputs[0];

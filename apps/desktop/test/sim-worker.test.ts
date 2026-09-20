@@ -128,13 +128,9 @@ describe('Simulation Worker の基本動作（§4.3）', () => {
     expect(h.errors).toEqual([]);
   });
 
-  it('reset と2回目の load を受けても追従ループは1本のまま', async () => {
+  it('2回目の load を受けても追従ループは1本のまま', async () => {
     const h = await boot();
     h.send({ type: 'load', problemId: 'b-001', session: referenceSession() });
-    h.advance(100);
-    expect(vi.getTimerCount()).toBe(1);
-
-    h.send({ type: 'reset' });
     h.advance(100);
     expect(vi.getTimerCount()).toBe(1);
 

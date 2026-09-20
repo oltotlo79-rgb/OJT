@@ -66,7 +66,7 @@ let simulation: Simulation | undefined;
  * `load()` で盤を作り直す前に持ち越す危険操作。C1の手順は部品を1つずつ挿し替えて
  * 最後にまとめて判定するため、`new Simulation()` が作り直されるたびに前の部品で
  * 起きた `hazards()` を捨ててはいけない（§5.6 / §8.3。C2のUndo/Redoの再読込も同様）。
- * 新しいセッション（`sessionEpoch` ごとに新しい Worker）や `reset` コマンドでは空に戻す。
+ * 新しいセッション（`sessionEpoch` ごとに新しい Worker）では空に戻す。
  */
 let carriedHazards: HazardEvent[] = [];
 let session: BoardSession | undefined;
@@ -93,6 +93,13 @@ let testerReading: TesterReading = {
 let board: BoardDefinition = JIPM_BOARD;
 /** スキャンとtickの結合（モードDでラダーを載せている間だけ存在する）。§10.4 */
 let plcCoupling: PlcCoupling | undefined;
+/**
+ * タイマの設定値表（キーはタイマ番号）。`plc:load` のときだけ作り直す（指摘 DW-1 ≡ LE-11 ②）。
+ * 設定値はコンパイル済みラダーに焼かれていて走っても変わらないのに、以前は毎スナップショット
+ * （33ms）にプログラム全体を走査して作り直していた（上限構成で毎秒約36.8万セル）。
+ * `plcCoupling` を捨てるところでは必ずここも空に戻す（古いラダーの設定値を残さない）。
+ */
+let plcTimerPresets: Record<number, number> = {};
 /** PLCが RUN 中か。STOP の間はスキャンを回さない。§10.6 */
 let plcRunning = false;
 /** モニタ（`F3`）中か。true の間だけスナップショットに `plc` を載せる。決定表#5 */
@@ -144,6 +151,7 @@ function load(
   chatterCursor = 0;
   // 盤を作り直したらラダーの結合も捨てる（新しい `Simulation` を指していないため）。§10.4
   plcCoupling = undefined;
+  plcTimerPresets = {};
   plcRunning = false;
   plcMonitoring = false;
   /*
@@ -233,6 +241,10 @@ function loadLadder(sim: Simulation, source: LadderProgram): void {
   plcCoupling = createPlcCoupling(sim, compiled.program, {
     outputCount: board.plcUnit?.spec.outputs.length ?? 0,
   });
+  // 設定値表はラダーが変わったときだけ作り直す（指摘 DW-1 ≡ LE-11 ②）
+  plcTimerPresets = timerPresetsOf(compiled.program);
+  // 通電セルの記録はモニタを開いている間だけ（指摘 DW-1 ≡ LE-11 ①）
+  plcCoupling.runtime.setRecordPowered(plcMonitoring);
 }
 
 /**
@@ -259,18 +271,20 @@ function timerPresetsOf(program: CompiledProgram): Record<number, number> {
 
 function plcSnapshot(coupling: PlcCoupling): PlcMonitorSnapshot {
   const state = coupling.runtime.state();
+  // ランタイムの `Map` を直接読む（`state()` 越しに `Record` を作り直さない。指摘 DW-1 ③）
+  const cells = coupling.runtime.poweredCells;
   const powered: Record<string, string> = {};
   for (const net of coupling.runtime.program.networks) {
     if (net.isEnd) continue;
     let bits = '';
     for (let row = 0; row < net.rows; row += 1) {
       for (let col = 0; col < IR_COLS; col += 1) {
-        bits += state.poweredCells[`${net.id}:${row}:${col}`] === true ? '1' : '0';
+        bits += cells.get(`${net.id}:${row}:${col}`) === true ? '1' : '0';
       }
     }
     powered[net.id] = bits;
   }
-  const presets = timerPresetsOf(coupling.runtime.program);
+  const presets = plcTimerPresets;
   return {
     scanCount: state.scanCount,
     tMs: state.tMs,
@@ -489,16 +503,6 @@ function handle(command: SimCommand): void {
     case 'switch':
       sim.setSwitch(command.on);
       break;
-    case 'reset':
-      // 時刻・ログ・イベント・保護状態を初期化する（課題のやり直し）
-      sim.reset();
-      plcCoupling?.runtime.reset();
-      logCursor = 0;
-      hazardCursor = 0;
-      chatterCursor = 0;
-      carriedHazards = [];
-      start();
-      break;
     case 'resetTrip':
       // §5.1.1 の復帰手順そのもの: スイッチOFF → ブレーカOFF → ブレーカON → スイッチON
       sim.setSwitch(false);
@@ -536,6 +540,8 @@ function handle(command: SimCommand): void {
       }
       if (action.kind === 'monitor') {
         plcMonitoring = action.on;
+        // 通電セルの記録はモニタを開いている間だけ走らせる（指摘 DW-1 ≡ LE-11 ①）
+        plcCoupling?.runtime.setRecordPowered(action.on);
         break;
       }
       if (action.kind === 'reset') {

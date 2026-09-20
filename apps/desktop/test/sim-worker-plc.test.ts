@@ -250,6 +250,39 @@ describe('モニタのスナップショット（決定表#5）', () => {
     expect(snapshot?.timers[0]?.presetMs).toBe(3_000);
   });
 
+  it('rebuilds the preset table on every plc:load（指摘 DW-1 ②のキャッシュ）', async () => {
+    const h = await running(
+      program(network('n1', [rung(no(X(0)), ton(T(0), 3_000))]), endNetwork()),
+    );
+    h.send({ type: 'plc', action: { kind: 'monitor', on: true } });
+    h.advance(100);
+    expect(h.snapshots.at(-1)?.plc?.timers[0]?.presetMs).toBe(3_000);
+    // 2回目の `load` は設定値を書き換える。キャッシュが張りっぱなしなら古い 3,000 が残る
+    h.send({
+      type: 'plc',
+      action: {
+        kind: 'load',
+        program: program(network('n1', [rung(no(X(0)), ton(T(0), 500))]), endNetwork()),
+      },
+    });
+    h.advance(100);
+    expect(h.snapshots.at(-1)?.plc?.timers[0]?.presetMs).toBe(500);
+  });
+
+  it('records the powered cells only while the monitor is open（指摘 DW-1 ①）', async () => {
+    const h = await running();
+    // モニタを開く → 閉じる → もう一度開く。開いた直後から通電が見える
+    h.send({ type: 'plc', action: { kind: 'monitor', on: true } });
+    h.advance(100);
+    expect(h.snapshots.at(-1)?.plc?.powered['n1']?.[0]).toBe('1');
+    h.send({ type: 'plc', action: { kind: 'monitor', on: false } });
+    h.advance(100);
+    expect(h.snapshots.at(-1)?.plc).toBeUndefined();
+    h.send({ type: 'plc', action: { kind: 'monitor', on: true } });
+    h.advance(100);
+    expect(h.snapshots.at(-1)?.plc?.powered['n1']?.[0]).toBe('1');
+  });
+
   it('sizes outputs to the PLC unit output count instead of the default full length (レビュー指摘 I3)', async () => {
     const h = await running();
     h.send({ type: 'plc', action: { kind: 'monitor', on: true } });

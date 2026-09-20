@@ -162,16 +162,18 @@ function ChartCursor({
       setTMs(null);
       setSnapped(false);
     };
+    /*
+     * ポインタ系だけを見る（指摘 UI-10）。以前は `mousemove`／`mouseleave` も一緒に張って
+     * いたので、マウスを1回動かすたびに `getBoundingClientRect()`（強制レイアウト）を含む
+     * この計算が2回走っていた。ブラウザはポインタ操作に対して `pointermove` を必ず先に出し、
+     * マウス・ペン・指のどれでも同じように届く（Electron も同じ）。
+     */
     host.addEventListener('pointermove', onMove);
-    host.addEventListener('mousemove', onMove);
     host.addEventListener('pointerleave', onLeave);
-    host.addEventListener('mouseleave', onLeave);
     host.addEventListener('pointercancel', onLeave);
     return () => {
       host.removeEventListener('pointermove', onMove);
-      host.removeEventListener('mousemove', onMove);
       host.removeEventListener('pointerleave', onLeave);
-      host.removeEventListener('mouseleave', onLeave);
       host.removeEventListener('pointercancel', onLeave);
     };
   }, [hostRef, geom]);

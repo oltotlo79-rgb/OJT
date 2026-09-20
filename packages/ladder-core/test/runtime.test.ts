@@ -38,10 +38,18 @@ import {
 } from './helpers/programs.js';
 
 /** プログラムを変換してランタイムを作る（変換に失敗したらテストを落とす）。 */
-function boot(source: LadderProgram, io: TestIo): PlcRuntime {
+function boot(source: LadderProgram, io: TestIo, recordPowered = true): PlcRuntime {
   const compiled = compile(source);
   if (!compiled.ok) throw new Error(`変換に失敗しました: ${compiled.errors[0]?.message ?? ''}`);
-  return createPlcRuntime(compiled.program, { io });
+  return createPlcRuntime(compiled.program, { io, recordPowered });
+}
+
+/**
+ * 通電記録を `Record` として読む。`state()` の複製から `runtime.poweredCells`（その場の
+ * 見え方）へ移した（指摘 DW-1 ≡ LE-11 ③）ので、検査の書き方だけここで吸収する。
+ */
+function poweredOf(runtime: PlcRuntime): Record<string, boolean> {
+  return Object.fromEntries(runtime.poweredCells);
 }
 
 /** n スキャン進める。 */
@@ -266,7 +274,7 @@ describe('createPlcRuntime（状態・決定論）', () => {
     expect(runtime.tMs).toBe(0);
     expect(runtime.scanCount).toBe(0);
     expect(runtime.state().timers[0]?.elapsedMs ?? 0).toBe(0);
-    expect(runtime.state().poweredCells).toEqual({});
+    expect(runtime.poweredCells.size).toBe(0);
     // reset() は `writeOutputs()` も呼ぶので、外側（`Simulation`）のY接点も開く
     expect(io.outputs[0]).toBe(false);
   });
@@ -276,11 +284,11 @@ describe('createPlcRuntime（状態・決定論）', () => {
     const runtime = boot(selfHoldProgram(), io);
     runtime.scan();
     // X0 を押していないので、通電しているのは 0列目（X0のa接点）の左だけ
-    expect(runtime.state().poweredCells['n1:0:0']).toBe(true);
-    expect(runtime.state().poweredCells['n1:0:1']).toBe(false);
+    expect(poweredOf(runtime)['n1:0:0']).toBe(true);
+    expect(poweredOf(runtime)['n1:0:1']).toBe(false);
     io.press(0);
     runtime.scan();
-    const cells = runtime.state().poweredCells;
+    const cells = poweredOf(runtime);
     // 導通したので X0 の右（縦線）から右のコイル列まで通電する
     expect(cells['n1:0:1']).toBe(true);
     expect(cells[`n1:0:${COIL_COL}`]).toBe(true);
@@ -294,7 +302,7 @@ describe('createPlcRuntime（状態・決定論）', () => {
     io.press(0);
     io.press(1); // 停止（b接点が開く）
     runtime.scan();
-    const cells = runtime.state().poweredCells;
+    const cells = poweredOf(runtime);
     expect(cells['n1:0:1']).toBe(true); // X0 は導通している
     expect(cells['n1:0:3']).toBe(false); // X1 の b接点で切れる
     expect(cells[`n1:0:${COIL_COL}`]).toBe(false);
@@ -312,7 +320,7 @@ describe('createPlcRuntime（状態・決定論）', () => {
     );
     const runtime = boot(p, io);
     runtime.scan();
-    const cells = runtime.state().poweredCells;
+    const cells = poweredOf(runtime);
     // 行0は無条件導通（横線だけ）なので通電するが、行1は何も置かれていない
     // 空行で、左母線には実配線どおり繋がる（solve() は変えない）が、モニタ表示では
     // 浮いた青い節に見えないよう false を報告する。
@@ -334,6 +342,42 @@ describe('createPlcRuntime（状態・決定論）', () => {
       return io.history;
     };
     expect(run()).toEqual(run());
+  });
+
+  it('recordPowered: false でも出力・タイマ・カウンタの結果が同一（指摘 LE-11。決定論）', () => {
+    const run = (recordPowered: boolean): { history: boolean[][]; state: unknown } => {
+      const io = new TestIo();
+      const runtime = boot(counterProgram(), io, recordPowered);
+      for (let i = 0; i < 40; i += 1) {
+        if (i % 7 === 0) io.press(0);
+        if (i % 7 === 3) io.release(0);
+        if (i === 30) io.press(1);
+        if (i === 32) io.release(1);
+        runtime.scan();
+      }
+      return { history: io.history, state: runtime.state() };
+    };
+    const off = run(false);
+    const on = run(true);
+    expect(off.history).toEqual(on.history);
+    // `state()` は通電記録を持たないので、出力・タイマ・カウンタがそのまま比べられる
+    expect(off.state).toEqual(on.state);
+  });
+
+  it('recordPowered: false のあいだは通電セルを1件も作らない（指摘 DW-1 ①）', () => {
+    const io = new TestIo();
+    const runtime = boot(selfHoldProgram(), io, false);
+    io.press(0);
+    scans(runtime, 3);
+    expect(runtime.bit(Y(0))).toBe(true); // 実行そのものは変わらない
+    expect(runtime.poweredCells.size).toBe(0);
+    // モニタを開いたら次のスキャンから記録が始まる
+    runtime.setRecordPowered(true);
+    runtime.scan();
+    expect(poweredOf(runtime)[`n1:0:${COIL_COL}`]).toBe(true);
+    // 閉じたら捨てる（古い通電が次に開いた瞬間だけ見えるのを防ぐ）
+    runtime.setRecordPowered(false);
+    expect(runtime.poweredCells.size).toBe(0);
   });
 
   it('rejects a coil that writes an input device at compile time (coil-on-read-only-device)', () => {

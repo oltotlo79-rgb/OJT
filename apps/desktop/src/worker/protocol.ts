@@ -80,8 +80,6 @@ export type SimCommand =
    * ソケットの部品は `S3` のような物理IDで登録されるので、役割IDで指すと届かない（§6.4）。
    */
   | { type: 'setPreset'; partId: string; presetMs: number; session: BoardSession }
-  /** 時刻・ログ・イベント・保護状態を初期化する（課題のやり直し）。 */
-  | { type: 'reset' }
   /** 押ボタンを押す。 */
   | { type: 'press'; pbId: string }
   /** 押ボタンを離す。 */

@@ -94,6 +94,21 @@ import styles from './screens.module.css';
 /** ライブチャートの最小横軸長[ms]（開始直後に潰れないようにする）。 */
 const LIVE_MIN_DURATION_MS = 5000;
 
+/** ライブチャートの横軸長の量子[ms]（指摘 DS-2 ≡ UI-02）。 */
+const LIVE_DURATION_QUANTUM_MS = 500;
+
+/**
+ * ライブチャートの横軸長[ms]。`snapshot.tMs`（33msごとに変わる）をそのまま使うと、変化点が
+ * 1つも増えていなくても毎スナップショット＝毎秒約30回、`liveChart()` から `ChartCanvas` の
+ * `polyline` 文字列作りまでが丸ごと走り直す（指摘 DS-2 ≡ UI-02）。500ms に丸めて依存を粗くし、
+ * 再計算を最大でも毎秒2回に落とす。丸めは**切り上げ**なので、直近の変化点が軸からはみ出すことは
+ * ない（横軸は常に現在時刻以上）。
+ */
+export function liveDurationMs(tMs: number): number {
+  const quantised = Math.ceil(tMs / LIVE_DURATION_QUANTUM_MS) * LIVE_DURATION_QUANTUM_MS;
+  return Math.max(quantised, LIVE_MIN_DURATION_MS);
+}
+
 /**
  * ビュー切替のボタン定義（盤 → 並べて → 回路図）。§11.4 / Plan 5 決定表#1
  * `F2` の巡回順（`ASSEMBLE_VIEW_ORDER`）と同じ並びにしてある。`title` には押した先で何が
@@ -108,23 +123,25 @@ const ASSEMBLE_VIEWS: ReadonlyArray<readonly [AssembleViewMode, string, string]>
 /**
  * ライブ記録のチャート。§8.2
  * 毎秒約30回変わる `snapshot.tMs` をここで受けることで、`Session`（＝3Dビューポートを含む）を
- * 巻き添えで再描画しない（§15）。
+ * 巻き添えで再描画しない（§15）。受けるのは `liveDurationMs()` で 500ms に丸めた横軸長なので、
+ * この部品自身も毎秒2回までしか再描画されない（指摘 DS-2 ≡ UI-02）。
  *
  * UXレビュー #9: 何も起きていないうちは空のグラフを出さず折りたたんでおき、最初の変化点が
  * 記録されたら自動で開く。そのあとは訓練者が自分で畳み直せる（強制はしない）。
  */
-function LivePanel(): JSX.Element {
+export function LivePanel(): JSX.Element {
   const chartSpecs = useStore((s) => s.chartSpecs);
   const liveTransitions = useStore((s) => s.liveTransitions);
-  const tMs = useStore((s) => s.snapshot.tMs);
+  // セレクタの中で丸める。`tMs` そのものを購読すると 33ms ごとにこの部品が再描画される
+  const durationMs = useStore((s) => liveDurationMs(s.snapshot.tMs));
   const hasRecording = Object.keys(liveTransitions).length > 0;
   const [expanded, setExpanded] = useState(hasRecording);
   useEffect(() => {
     if (hasRecording) setExpanded(true);
   }, [hasRecording]);
   const live = useMemo(
-    () => liveChart(chartSpecs, liveTransitions, Math.max(tMs, LIVE_MIN_DURATION_MS)),
-    [chartSpecs, liveTransitions, tMs],
+    () => liveChart(chartSpecs, liveTransitions, durationMs),
+    [chartSpecs, liveTransitions, durationMs],
   );
   return (
     <section className={styles.panelLive} data-testid="live-panel">

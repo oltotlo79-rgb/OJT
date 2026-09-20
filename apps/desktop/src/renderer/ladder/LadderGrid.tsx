@@ -9,7 +9,7 @@ import {
   type Network,
 } from '@ojt/ladder-core';
 import { MIN_GRID_COLS, type DialectProfile } from '@ojt/plc-dialects';
-import { memo, useRef, type JSX } from 'react';
+import { memo, useMemo, useRef, type JSX } from 'react';
 import { useStore } from '../app/store.js';
 import { JA } from '../i18n/ja.js';
 import { counterPresetText } from '../session/ladder-cell.js';
@@ -317,12 +317,23 @@ function SymbolLabels({
   );
 }
 
-/** 1セルぶんの描画。 */
-function GridCell({
+/**
+ * 1セルぶんの描画。
+ *
+ * **`memo` で包む（指摘 LE-10）**。以前はカーソル位置を `cursorKey`（文字列）として全セルに
+ * 配っていたので、矢印キーを1回押すだけで全ネットワーク・全セルが再描画され、
+ * `profile.timerPreset()` と SVG のパス生成が毎回走っていた。受け取るのは「自分が選択されて
+ * いるか」の真偽値だけにしてあるので、カーソルが動いても**選択が変わった2セル**しか描き直さない。
+ * そのために props は真偽値・数値・安定した参照だけで組んである（`cell9` のような
+ * 毎レンダー新しくなるオブジェクトを渡さない）。
+ */
+const GridCell = memo(function GridCell({
   cell,
-  cursorKey,
-  cellKey,
-  cell9,
+  selected,
+  networkId,
+  row,
+  col,
+  colIndex,
   profile,
   theme,
   metrics,
@@ -335,9 +346,14 @@ function GridCell({
   onPick,
 }: {
   cell: Cell;
-  cellKey: string;
-  cursorKey: string;
-  cell9: { row: number; col: number; networkId: string };
+  /** このセルにカーソルがあるか。 */
+  selected: boolean;
+  networkId: string;
+  row: number;
+  /** 中間表現の列番号（カーソルが指すのはこちら）。 */
+  col: number;
+  /** 画面上の列位置（省略列があるので中間表現の列番号とは一致しない）。 */
+  colIndex: number;
   profile: DialectProfile;
   theme: SkinTheme;
   metrics: SymbolMetrics;
@@ -349,7 +365,11 @@ function GridCell({
   hasLinkBelow: boolean;
   onPick: (cursor: LadderCursor) => void;
 }): JSX.Element {
-  const selected = cellKey === cursorKey;
+  const cellKey = `${networkId}:${String(row)}:${String(col)}`;
+  // 再描画回数を DOM に出す（LE-10 のテストが「選択が変わっていないセルは描き直さない」
+  // ことを確かめるための、副作用の無い観測用カウンタ。`NetworkView` と同じ形）。
+  const renderCount = useRef(0);
+  renderCount.current += 1;
   const leftColor = leftOn ? colors.powered : colors.idle;
   const rightColor = rightOn ? colors.powered : colors.idle;
   const symbolId = symbolIdOf(cell, profile);
@@ -377,10 +397,11 @@ function GridCell({
       aria-selected={selected}
       data-error={error}
       data-powered={leftOn}
+      data-render-count={renderCount.current}
       className={styles.cell}
-      transform={`translate(${String(cell9.col * metrics.w)} ${String(cell9.row * metrics.h)})`}
+      transform={`translate(${String(colIndex * metrics.w)} ${String(row * metrics.h)})`}
       onClick={() => {
-        onPick({ networkId: cell9.networkId, row: cell9.row, col: cell9.col });
+        onPick({ networkId, row, col });
       }}
     >
       {/* 当たり判定（透明の矩形。線だけだとクリックしづらい） */}
@@ -486,7 +507,7 @@ function GridCell({
       {error ? <rect width={metrics.w} height={metrics.h} className={styles.errorCell} /> : null}
     </g>
   );
-}
+});
 
 /**
  * 1ネットワークぶんの描画。**`plcMonitor.powered[net.id]` をここで直接購読する**（決定表#5）。
@@ -496,8 +517,12 @@ function GridCell({
  * 新しいオブジェクトが届き、`memo(LadderGrid)` が効かずネットワークが何本あっても全部
  * 再描画されていた（Batch 2 レビュー D1）。ここでは文字列1本（`net.id` の分だけ）を購読するので、
  * 通電が変わったネットワークだけが再描画される。
+ *
+ * **`memo` で包む（指摘 LE-10）**。カーソルは「自分のネットワークにあるときだけ」受け取るので、
+ * 矢印キーで動かしても描き直すのは**カーソルが出ていったネットワークと入ってきたネットワーク
+ * の2本まで**になる（以前は `cursorKey` を全ネットワークに配っていたので全部描き直していた）。
  */
-function NetworkView({
+const NetworkView = memo(function NetworkView({
   net,
   profile,
   theme,
@@ -510,7 +535,7 @@ function NetworkView({
   width,
   startStep,
   rungIndex,
-  cursorKey,
+  cursor,
   onPickCell,
 }: {
   net: Network;
@@ -527,7 +552,8 @@ function NetworkView({
   startStep: number;
   /** この回路ブロックの通し番号（CX-Programmer風の「ラング番号」）。 */
   rungIndex: number;
-  cursorKey: string;
+  /** カーソル（**このネットワークにあるときだけ**渡る。無ければ `undefined`）。指摘 LE-10 */
+  cursor: LadderCursor | undefined;
   onPickCell: (cursor: LadderCursor) => void;
 }): JSX.Element {
   const bits = useStore((s) => (mode === 'monitor' ? (s.plcMonitor?.powered[net.id] ?? '') : ''));
@@ -540,7 +566,11 @@ function NetworkView({
   const monitorColor = useStore((s) => s.monitorColor);
   // 通電色の決め方は3箇所に散っていた（`skins/index.ts` / `ProjectTree.tsx` とここ）ので
   // `skinMonitorColor()` の1本に集める（レビュー M13）
-  const colors = { ...profile.monitorColors, powered: skinMonitorColor(profile, monitorColor) };
+  // `GridCell` は `memo` なので、渡す参照は毎レンダー作り直さない（指摘 LE-10）
+  const colors = useMemo(
+    () => ({ ...profile.monitorColors, powered: skinMonitorColor(profile, monitorColor) }),
+    [profile, monitorColor],
+  );
   // レンダー回数を DOM に出す（D1 のテストが「他ネットワークの通電が変わっても再描画されない」
   // ことを確かめるための、副作用の無い観測用カウンタ）。
   const renderCount = useRef(0);
@@ -623,10 +653,12 @@ function NetworkView({
                   return (
                     <GridCell
                       key={key}
-                      cellKey={key}
-                      cursorKey={cursorKey}
+                      selected={cursor?.row === row && cursor.col === col}
                       cell={cell}
-                      cell9={{ networkId: net.id, row, col: index }}
+                      networkId={net.id}
+                      row={row}
+                      col={col}
+                      colIndex={index}
                       profile={profile}
                       theme={theme}
                       metrics={metrics}
@@ -644,9 +676,7 @@ function NetworkView({
                       colors={colors}
                       error={errorCells.has(key)}
                       hasLinkBelow={row + 1 < net.rows}
-                      onPick={(picked) => {
-                        onPickCell({ ...picked, col });
-                      }}
+                      onPick={onPickCell}
                     />
                   );
                 })}
@@ -667,7 +697,7 @@ function NetworkView({
       </svg>
     </section>
   );
-}
+});
 
 /** ラダーのセルグリッド。 */
 function LadderGridImpl({
@@ -695,10 +725,10 @@ function LadderGridImpl({
   gridCols: number;
   onPickCell: (cursor: LadderCursor) => void;
 }): JSX.Element {
-  const metrics = symbolMetrics(theme.cell);
-  const columns = displayColumns(gridCols);
+  // `NetworkView` は `memo` なので、寸法表と列の並びは毎レンダー作り直さない（指摘 LE-10）
+  const metrics = useMemo(() => symbolMetrics(theme.cell), [theme.cell]);
+  const columns = useMemo(() => displayColumns(gridCols), [gridCols]);
   const width = metrics.stepGutter + RAIL_W + columns.length * metrics.w + RIGHT_RAIL_SPAN;
-  const cursorKey = `${cursor.networkId}:${String(cursor.row)}:${String(cursor.col)}`;
   // 行番号は回路ブロックをまたいで通しで数える（実機のステップ番号の見え方に寄せる）
   let step = 0;
   return (
@@ -721,7 +751,7 @@ function LadderGridImpl({
             width={width}
             startStep={startStep}
             rungIndex={rungIndex}
-            cursorKey={cursorKey}
+            cursor={cursor.networkId === net.id ? cursor : undefined}
             onPickCell={onPickCell}
           />
         );

@@ -6,6 +6,7 @@ import { emptyHistory, HISTORY_LIMIT } from '../src/renderer/session/commands.js
 import { droppedTicksLog, JA } from '../src/renderer/i18n/ja.js';
 import {
   EMPTY_SNAPSHOT,
+  MAX_LIVE_POINTS,
   RESTART_FALLBACK_ATTEMPTS,
   schematicPolicy,
   sessionFields,
@@ -101,6 +102,26 @@ describe('applySnapshot', () => {
     expect(live['PL1']).toEqual([{ tMs: 100, value: true }]);
     expect(live['CR1.coilV']).toBeUndefined();
     expect(live['NOT_IN_CHART']).toBeUndefined();
+  });
+
+  it('遷移点を数千件流しても上限で切り詰める（指摘 DS-2 ≡ UI-02）', () => {
+    if (PROBLEM === undefined) return;
+    useStore.getState().openProblem(PROBLEM);
+    // 0.8秒フリッカを30分回した相当（1信号あたり4,500点）を100件ずつ流し込む
+    for (let batch = 0; batch < 45; batch += 1) {
+      const logDelta = Array.from({ length: 100 }, (_unused, i) => {
+        const n = batch * 100 + i;
+        return { tMs: n * 400, signal: 'PL1', value: n % 2 === 0 };
+      });
+      useStore.getState().applySnapshot({ ...EMPTY_SNAPSHOT, tMs: 1_800_000, logDelta });
+    }
+    const points = useStore.getState().liveTransitions['PL1'];
+    expect(points).toBeDefined();
+    expect(points?.length).toBeLessThanOrEqual(MAX_LIVE_POINTS);
+    // 直近は1点も落とさない（最後に流した変化点がそのまま残る）
+    expect(points?.at(-1)).toEqual({ tMs: 4499 * 400, value: false });
+    // 切り詰めた先頭は必ず「false → true」の変化点（`toSegments()` の前提に揃える）
+    expect(points?.[0]?.value).toBe(true);
   });
 
   it('危険操作の差分を積み上げる（§5.6）', () => {

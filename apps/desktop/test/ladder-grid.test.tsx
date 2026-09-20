@@ -310,6 +310,48 @@ describe('LadderGrid（§10.7）', () => {
     expect(screen.getByTestId('network-n2').getAttribute('data-render-count')).not.toBe(n2Before);
   });
 
+  it('カーソルを1マス動かしても、選択が変わった2セル以外は再描画されない（指摘 LE-10）', () => {
+    const counts = (): Record<string, string | null> =>
+      Object.fromEntries(
+        screen
+          .getAllByRole('gridcell')
+          .map((el) => [
+            el.getAttribute('data-testid') ?? '',
+            el.getAttribute('data-render-count'),
+          ]),
+      );
+    // 同じプログラム・同じスキンのまま**カーソルだけ**動かす（実機の矢印キー1回ぶん）
+    const p = sample();
+    const view = render(
+      <LadderGrid program={p} {...base} cursor={{ networkId: 'n1', row: 0, col: 0 }} />,
+    );
+    const before = counts();
+    expect(Object.keys(before).length).toBeGreaterThan(20);
+    view.rerender(
+      <LadderGrid program={p} {...base} cursor={{ networkId: 'n1', row: 0, col: 1 }} />,
+    );
+    const after = counts();
+    const changed = Object.keys(after).filter((key) => after[key] !== before[key]);
+    expect(changed.sort()).toEqual(['cell-n1:0:0', 'cell-n1:0:1']);
+    // 選択そのものは動いている
+    expect(screen.getByTestId('cell-n1:0:1')).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByTestId('cell-n1:0:0')).toHaveAttribute('aria-selected', 'false');
+  });
+
+  it('カーソルが別ネットワークへ移っても、無関係なネットワークは再描画されない（指摘 LE-10）', () => {
+    const p = sample();
+    const view = render(
+      <LadderGrid program={p} {...base} cursor={{ networkId: 'n1', row: 0, col: 0 }} />,
+    );
+    const endBefore = screen.getByTestId('network-end').getAttribute('data-render-count');
+    const n1Before = screen.getByTestId('network-n1').getAttribute('data-render-count');
+    view.rerender(
+      <LadderGrid program={p} {...base} cursor={{ networkId: 'n2', row: 0, col: 0 }} />,
+    );
+    expect(screen.getByTestId('network-end').getAttribute('data-render-count')).toBe(endBefore);
+    expect(screen.getByTestId('network-n1').getAttribute('data-render-count')).not.toBe(n1Before);
+  });
+
   it('groups each row under role="row" under the grid (I4)', () => {
     render(<LadderGrid program={sample()} {...base} />);
     const grid = screen.getByRole('grid', { name: /n1/u });

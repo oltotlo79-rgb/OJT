@@ -43,6 +43,7 @@ export {
 
 export {
   EMPTY_SNAPSHOT,
+  MAX_LIVE_POINTS,
   RESTART_FALLBACK_ATTEMPTS,
   checkSessionFor,
   isInspectJudge,

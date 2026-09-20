@@ -80,6 +80,25 @@ describe('buildSpecChart のキャッシュ（§15）', () => {
     expect(rebuilt.ok).toBe(true);
   });
 
+  it('IDも版も同じまま中身を直したら作り直す（指摘 DS-6: 利用者課題フォルダのJSONを編集したとき）', () => {
+    if (SELF_HOLD === undefined) return;
+    const first = buildSpecChart(SELF_HOLD);
+    expect(first.ok).toBe(true);
+    // 利用者が JSON の操作列だけ直した状態（ID・版はそのまま）
+    const edited = {
+      ...SELF_HOLD,
+      durationMs: SELF_HOLD.durationMs + 1000,
+    };
+    expect(isSpecChartCached(edited)).toBe(false);
+    const rebuilt = buildSpecChart(edited);
+    expect(rebuilt).not.toBe(first);
+    expect(rebuilt.ok).toBe(true);
+    if (!rebuilt.ok) return;
+    expect(rebuilt.chart.durationMs).toBe(SELF_HOLD.durationMs + 1000);
+    // 元の課題のぶんは残っているので、開き直しても走らせ直さない
+    expect(buildSpecChart(SELF_HOLD)).toBe(first);
+  });
+
   it('課題ごとに別々に覚える', () => {
     if (SELF_HOLD === undefined || TIMER === undefined) return;
     expect(buildSpecChart(SELF_HOLD)).not.toBe(buildSpecChart(TIMER));

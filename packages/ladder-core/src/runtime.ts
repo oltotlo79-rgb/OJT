@@ -54,13 +54,6 @@ export interface PlcSnapshot {
   internals: Record<number, boolean>;
   timers: Record<number, PlcTimerState>;
   counters: Record<number, PlcCounterState>;
-  /**
-   * 直前のスキャンで**そのセルの左端の節点が左母線と繋がっていたか**。
-   * キーは `${networkId}:${row}:${col}`（`col` は 0 起点。コイル列は `COIL_COL`）。
-   * Plan 3B のラダーモニタが「通電している桟」を色分けするために使う（§10.7）。
-   * END ネットワークは実行しないので記録されない。
-   */
-  poweredCells: Record<string, boolean>;
 }
 
 /** ランタイム生成オプション。 */
@@ -75,6 +68,16 @@ export interface PlcRuntimeOptions {
    * プログラムがそれより大きい番号を書けば配列はその分まで伸びる。
    */
   outputCount?: number;
+  /**
+   * 通電セルを記録するか（既定 `false`）。指摘 DW-1 ≡ LE-11。
+   *
+   * 記録は**モニタ画面の色分けにしか使わない**（`poweredCells`）。それでも以前は常時
+   * 走っていたので、モニタを閉じたまま走らせても1スキャン（10ms）ごとに
+   * 「行 × 16列」ぶんの文字列キーを作って `Map` に書いていた（上限構成で毎秒約15万件）。
+   * 記録しない設定でも導通計算（`solve()`）と出力・タイマ・カウンタは一切変えないので、
+   * 決定論は落ちない（`test/runtime.test.ts` の「recordPowered: false でも結果が同一」）。
+   */
+  recordPowered?: boolean;
 }
 
 /** PLCランタイム。 */
@@ -95,6 +98,20 @@ export interface PlcRuntime {
   bit(device: Device): boolean;
   /** 状態のスナップショット（内部状態とは切り離したコピー）。 */
   state(): PlcSnapshot;
+  /**
+   * 直前のスキャンで**そのセルの左端の節点が左母線と繋がっていたか**。
+   * キーは `${networkId}:${row}:${col}`（`col` は 0 起点。コイル列は `COIL_COL`）。
+   * Plan 3B のラダーモニタが「通電している桟」を色分けするために使う（§10.7）。
+   * END ネットワークは実行しないので記録されない。
+   *
+   * `recordPowered` が真のときだけ中身が入る（既定は空）。**内部の `Map` をそのまま返す**
+   * 見え方で、スキャンのたびに作り直される。読む側は参照を持ち越さないこと
+   * （`state()` の複製を経由させると、モニタ中は毎スナップショット最大1,536件の
+   * `Record` を作って捨てることになる。指摘 DW-1 ≡ LE-11 ③）。
+   */
+  readonly poweredCells: ReadonlyMap<string, boolean>;
+  /** 通電セルの記録を切り替える（モニタの開閉に合わせる）。止めるときは記録を捨てる。 */
+  setRecordPowered(on: boolean): void;
 }
 
 /** 1ネットワークぶんの導通を解く器（union-find）。 */
@@ -150,7 +167,9 @@ class Runtime implements PlcRuntime {
   /** カウンタ入力の前回値（キーはカウンタ番号）。 */
   private readonly countEdges = new Map<number, boolean>();
   /** 直前のスキャンの通電状況（キーは `<ネットワークID>:<行>:<列>`）。Plan 3B のモニタ表示用。 */
-  private readonly poweredCells = new Map<string, boolean>();
+  readonly poweredCells = new Map<string, boolean>();
+  /** 通電セルを記録するか（モニタ中だけ真。指摘 DW-1 ≡ LE-11 ①）。 */
+  private recordPowered: boolean;
   /** MC/MCR の入れ子（成立していれば true）。 */
   private mcStack: boolean[] = [];
   private firstScan = true;
@@ -165,6 +184,13 @@ class Runtime implements PlcRuntime {
     this.scanMs = options.scanMs ?? SCAN_MS;
     const count = Math.max(options.outputCount ?? 0, program.outputCount);
     this.outputs = Array.from({ length: count }, () => false);
+    this.recordPowered = options.recordPowered ?? false;
+  }
+
+  setRecordPowered(on: boolean): void {
+    this.recordPowered = on;
+    // 止めたら記録は捨てる（次に開いたとき古い通電が1スキャンだけ見えるのを防ぐ）
+    if (!on) this.poweredCells.clear();
   }
 
   get tMs(): number {
@@ -222,8 +248,6 @@ class Runtime implements PlcRuntime {
     for (const [index, value] of this.timers) timers[index] = { ...value };
     const counters: Record<number, PlcCounterState> = {};
     for (const [index, value] of this.counters) counters[index] = { ...value };
-    const poweredCells: Record<string, boolean> = {};
-    for (const [key, value] of this.poweredCells) poweredCells[key] = value;
     return {
       scanCount: this.scans,
       tMs: this.elapsedMs,
@@ -232,7 +256,6 @@ class Runtime implements PlcRuntime {
       internals,
       timers,
       counters,
-      poweredCells,
     };
   }
 
@@ -276,8 +299,12 @@ class Runtime implements PlcRuntime {
    * 何も置かれていない空行（分岐の飾りのない行）の0列目まで通電と表示すると、
    * モニタに繋がっていない青い節が浮いて見える（KNOWN QUIRK）。そこで表示上だけ、
    * 0列目が空セルのときは `false` を記録する。導通計算（`solve()`）自体は変えない。
+   *
+   * モニタを開いていないときは**何も記録しない**（`recordPowered`。指摘 DW-1 ≡ LE-11 ①）。
+   * ここで作るキーは表示専用で、出力・タイマ・カウンタの計算には一切使わない。
    */
   private recordPoweredCells(net: CompiledNetwork, rails: Rails): void {
+    if (!this.recordPowered) return;
     for (let row = 0; row < net.rows; row += 1) {
       for (let col = 0; col < net.cols; col += 1) {
         const cell = net.cells[row]?.[col];

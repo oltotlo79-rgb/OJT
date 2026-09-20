@@ -1,11 +1,21 @@
 import { JIPM_BOARD } from '@ojt/board-model';
 import { BUILTIN_PROBLEMS, buildReferenceSession, judgeAssemble } from '@ojt/content';
 import type { TimeChart } from '@ojt/content';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { JSX } from 'react';
+import type * as TimeChartPanelModule from '../src/renderer/panels/TimeChartPanel.js';
+
+/*
+ * `liveChart()` が何回呼ばれたかを数えるためだけの差し替え（指摘 DS-2 ≡ UI-02）。
+ * 本物をそのまま包むので、このファイルの他の検査の挙動は変わらない。
+ */
+vi.mock('../src/renderer/panels/TimeChartPanel.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof TimeChartPanelModule>();
+  return { ...actual, liveChart: vi.fn(actual.liveChart) };
+});
 import { chartEnlargeLabel, chartOpenerLabel, JA } from '../src/renderer/i18n/ja.js';
 import {
   chartWidth,
@@ -18,7 +28,9 @@ import {
   timeReadout,
 } from '../src/renderer/panels/chart-scale.js';
 import { ChartCanvas, type ChartFigure } from '../src/renderer/panels/TimeChartView.js';
-import { TimeChartSvg } from '../src/renderer/panels/TimeChartPanel.js';
+import { liveChart, TimeChartSvg } from '../src/renderer/panels/TimeChartPanel.js';
+import { LivePanel, liveDurationMs } from '../src/renderer/screens/Session.js';
+import { EMPTY_SNAPSHOT, useStore } from '../src/renderer/app/store.js';
 import { ChartOverlay } from '../src/renderer/result/ChartOverlay.js';
 import { isModalOpen, shouldIgnoreShortcut } from '../src/renderer/session/interaction.js';
 
@@ -111,7 +123,7 @@ describe('カーソル線（§7.7）', () => {
     render(<TimeChartSvg chart={chart} title={TITLE} testId="chart-spec" />);
     const svg = screen.getByTestId('chart-spec');
     fakeRect(svg);
-    fireEvent.mouseMove(svg, {
+    fireEvent.pointerMove(svg, {
       clientX: msToX(505, chart.durationMs, SMALL_GEOMETRY),
       clientY: 30,
     });
@@ -119,7 +131,7 @@ describe('カーソル線（§7.7）', () => {
     expect(svg.textContent).toContain('0.50 s');
   });
 
-  it('ポインタが外れるとカーソルは消える', () => {
+  it('mousemove は見ない（ポインタ移動1回で計算も1回。指摘 UI-10）', () => {
     const chart = chartOf();
     render(<TimeChartSvg chart={chart} title={TITLE} testId="chart-spec" />);
     const svg = screen.getByTestId('chart-spec');
@@ -128,7 +140,19 @@ describe('カーソル線（§7.7）', () => {
       clientX: msToX(505, chart.durationMs, SMALL_GEOMETRY),
       clientY: 30,
     });
-    fireEvent.mouseLeave(svg);
+    expect(svg.querySelector('[data-guide="cursor"]')).toBeNull();
+  });
+
+  it('ポインタが外れるとカーソルは消える', () => {
+    const chart = chartOf();
+    render(<TimeChartSvg chart={chart} title={TITLE} testId="chart-spec" />);
+    const svg = screen.getByTestId('chart-spec');
+    fakeRect(svg);
+    fireEvent.pointerMove(svg, {
+      clientX: msToX(505, chart.durationMs, SMALL_GEOMETRY),
+      clientY: 30,
+    });
+    fireEvent.pointerLeave(svg);
     expect(svg.querySelector('[data-guide="cursor"]')).toBeNull();
   });
 });
@@ -380,7 +404,7 @@ describe('カーソルの再描画とチップ（§7.7 レビュー Minor 4）',
     });
     const before = canvasRenders;
     for (let i = 0; i < 5; i += 1) {
-      fireEvent.mouseMove(svg, {
+      fireEvent.pointerMove(svg, {
         clientX: msToX(1000 + i * 37, 5000, SMALL_GEOMETRY),
         clientY: 30,
       });
@@ -447,13 +471,13 @@ describe('吸い付き許容幅のクランプ（§7.7 レビュー Minor 7）',
     const offset = (clampedToleranceMs + pxBasedToleranceMs) / 2; // クランプ内には収まらないがpx基準なら収まる距離
     const t = 10000 + offset;
     const clientX = msToX(t, durationMs, SMALL_GEOMETRY) * scale;
-    fireEvent.mouseMove(svg, { clientX, clientY: 30 });
+    fireEvent.pointerMove(svg, { clientX, clientY: 30 });
     expect(svg.querySelector('[data-snapped]')?.getAttribute('data-snapped')).toBe('false');
 
     // クランプ内の距離なら吸い付く
     const near = 10000 + clampedToleranceMs / 2;
     const nearClientX = msToX(near, durationMs, SMALL_GEOMETRY) * scale;
-    fireEvent.mouseMove(svg, { clientX: nearClientX, clientY: 30 });
+    fireEvent.pointerMove(svg, { clientX: nearClientX, clientY: 30 });
     expect(svg.querySelector('[data-snapped]')?.getAttribute('data-snapped')).toBe('true');
   });
 });
@@ -490,5 +514,41 @@ describe('拡大ボタンと凡例の配置（UI監査 I10 / I11）', () => {
     const body = block(TIMECHART_CSS, '.modalBody');
     expect(body).toContain('display: flex');
     expect(body).toContain('flex-direction: column');
+  });
+});
+
+/**
+ * ライブチャートを組み直す回数（指摘 DS-2 ≡ UI-02）。
+ * `snapshot.tMs` は 33ms ごとに変わるので、そのまま `useMemo` の依存に入れると
+ * 変化点が1つも増えていなくても毎秒約30回、図全体が作り直される。
+ */
+describe('ライブチャートの組み直し（指摘 DS-2 ≡ UI-02）', () => {
+  it('横軸長は 500ms に丸める（切り上げ。最小は 5 秒）', () => {
+    expect(liveDurationMs(0)).toBe(5000);
+    expect(liveDurationMs(4999)).toBe(5000);
+    expect(liveDurationMs(5001)).toBe(5500);
+    expect(liveDurationMs(5500)).toBe(5500);
+    expect(liveDurationMs(5501)).toBe(6000);
+  });
+
+  it('snapshot.tMs を 33ms 刻みで15回進めても liveChart() は15回も呼ばれない', () => {
+    const spy = vi.mocked(liveChart);
+    act(() => {
+      useStore.setState({
+        chartSpecs: [{ name: 'PL1', label: '白ランプ（PL1）', kind: 'output' }],
+        liveTransitions: { PL1: [{ tMs: 10, value: true }] },
+        snapshot: { ...EMPTY_SNAPSHOT, tMs: 10_000 },
+      });
+    });
+    render(<LivePanel />);
+    spy.mockClear();
+    for (let i = 1; i <= 15; i += 1) {
+      act(() => {
+        useStore.setState({ snapshot: { ...EMPTY_SNAPSHOT, tMs: 10_000 + i * 33 } });
+      });
+    }
+    // 15回ぶんの 495ms は 500ms の量子1つぶんなので、組み直しは多くても1回で済む
+    expect(spy.mock.calls.length).toBeLessThan(15);
+    expect(spy.mock.calls.length).toBeLessThanOrEqual(1);
   });
 });

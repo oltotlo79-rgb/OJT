@@ -115,6 +115,35 @@ export const EMPTY_SNAPSHOT: SimSnapshot = {
  */
 export const RESTART_FALLBACK_ATTEMPTS = 2;
 
+/**
+ * ライブ記録の変化点を1信号あたり何点まで残すか（指摘 DS-2 ≡ UI-02）。§8.2
+ *
+ * `logLines` には `LOG_LIMIT`、操作履歴には `HISTORY_LIMIT` があるのに、ここだけ上限が無く
+ * 課題を開いている間ずっと伸び続けていた。0.8秒フリッカの課題（b-006系）を30分回すと
+ * 1信号あたり数千点になり、チャートを組み直すたびに全点を走ることになる。
+ *
+ * **間引きではなく切り詰め**にする（古い側を落とす）。間引くと「何回叩いたか」「チャタリングが
+ * 何度出たか」という**教材としての情報が消える**ので、残す区間の中身は1点も落とさない。
+ * 2,000点はフリッカ0.8秒なら約27分ぶんで、30分の課題でも直近が丸ごと残る。
+ */
+export const MAX_LIVE_POINTS = 2000;
+
+/**
+ * 変化点の列を上限まで切り詰める（古い側を落とす）。
+ *
+ * `toSegments()` は「最初の変化点の前は false」として描く。変化点は交互に並ぶので、残す先頭が
+ * `false`（＝その前が true）だともう1点落として先頭を `true` に揃える。こうすると切り詰めた
+ * 境目の直前の状態が実際と食い違わない（食い違うと、切れた先頭で波形が1段ずれて見える）。
+ */
+function trimLivePoints(
+  points: ReadonlyArray<{ tMs: number; value: boolean }>,
+): Array<{ tMs: number; value: boolean }> {
+  if (points.length <= MAX_LIVE_POINTS) return [...points];
+  let start = points.length - MAX_LIVE_POINTS;
+  if (points[start]?.value === false) start += 1;
+  return points.slice(start);
+}
+
 /** 判定結果（モードB／C1／C2／D）。§8.3 / §9.1 / §9.2 / §10.8 */
 export type AnyJudgeResult = JudgeResult | JudgeInspectResult | JudgePlcResult;
 
@@ -662,11 +691,20 @@ export const createSessionSlice: StateCreator<AppState, [], [], SessionSlice> = 
     const state = get();
     const names = new Set(state.chartSpecs.map((spec) => spec.name));
     let liveTransitions = state.liveTransitions;
+    const touched = new Set<string>();
     for (const entry of snapshot.logDelta) {
       if (!names.has(entry.signal) || typeof entry.value !== 'boolean') continue;
       if (liveTransitions === state.liveTransitions) liveTransitions = { ...liveTransitions };
       const points = liveTransitions[entry.signal] ?? [];
       liveTransitions[entry.signal] = [...points, { tMs: entry.tMs, value: entry.value }];
+      touched.add(entry.signal);
+    }
+    // 伸ばした信号だけ上限まで切り詰める（指摘 DS-2 ≡ UI-02）
+    for (const signal of touched) {
+      const points = liveTransitions[signal];
+      if (points !== undefined && points.length > MAX_LIVE_POINTS) {
+        liveTransitions[signal] = trimLivePoints(points);
+      }
     }
     const lastHazard = snapshot.hazardDelta.at(-1);
     set({

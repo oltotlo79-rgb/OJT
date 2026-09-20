@@ -625,6 +625,10 @@ grep -rln "stepGuide\|手順帯" apps/desktop/src/renderer/**/*.module.css  # �
 
 **Steps:**
 
+> **DW-3 は Task 15 で済み（<SHA>）**: `worker/protocol.ts` の `{ type: 'reset' }` と
+> `sim.worker.ts` の `case 'reset'`、それを唯一送っていた `test/sim-worker.test.ts` の検査を削除した。
+> Task 12 はこの項目を飛ばしてよい（Task 10 の `default: command satisfies never` はそのまま残っている）。
+
 - [ ] 1. **死にコード・死にフィールド・非推奨エイリアス**を削る: `LoadElement.polarized`（CS-06。コメントを実装に合わせる）／バレルの export 漏れ2件（CS-10）と取りこぼし2件（CT-08）／`@deprecated` 3定数（BM-06）／`BUILTIN_PROBLEMS` の陳腐化コメント（CT-09）／`reset` コマンド（DW-3。テストごと削る）／`WorkerBridge.handlers`（DS-5）／`presetForDirection()`（3D-18。テスト5ケースを `gizmoTargetForDirection()` へ向け直す）／`receiveShadow`（3D-20）／互換 export 4本（LE-17）。
 - [ ] 2. **3D-13**: 印字テクスチャのキャッシュ4方針（`AcFixtures` / `labels.ts` / `PartIndicator` / `Fixtures`）を `labels.ts` の実装に**一本化**し、鍵に接頭辞（`fixture:` / `socket:` / `part:`）を付ける。
 - [ ] 3. **3D-14**: `labels.ts` に `LABEL_FONT` 定数を置き `ctx.font` の5箇所を差し替える（文字幅表は Meiryo 実測なのに焼くときは `sans-serif` になっている）。開発時に `measureText()` と見積りを比べるアサートを足す。
@@ -746,12 +750,12 @@ pnpm --filter @ojt/desktop test -- content-resources content-loader problem-mode
 
 **Steps:**
 
-- [ ] 1. **DS-2 ≡ UI-02**: `MAX_LIVE_POINTS = 2000` の切り詰めを入れ、`Session.tsx:122-125` の依存を **500ms 量子化した `durationMs`** にする（いまは毎秒約30回チャート全体を組み直している）。
-- [ ] 2. **DW-1 ≡ LE-11**: `PlcRuntimeOptions` に `recordPowered?: boolean`（既定 `false`）を足し、Worker の `monitor` コマンドで切り替える。`timerPresetsOf()` の結果を `PlcCoupling` にキャッシュし `plc:load` 時だけ作り直す。`state()` の Map を直接読む。
-- [ ] 3. **LE-10**: `GridCell` を `memo` で包み、`cursorKey` の代わりに `selected: boolean` を渡す。`NetworkView` も `memo` にする（矢印キー1回で全ネットワーク・全セルが再描画されるのを止める）。
-- [ ] 4. **UI-10**: `TimeChartView.tsx:164-175` の `mousemove` / `mouseleave` の二重登録を削る（`pointermove` だけにする）。
-- [ ] 5. **DS-6**: `spec-chart.ts` のキャッシュ鍵に課題の版（`mtimeMs` か内容ハッシュ）を入れる。利用者課題フォルダの JSON を編集したら波形が更新されるようにする。
-- [ ] 6. テスト。
+- [x] 1. **DS-2 ≡ UI-02**: `MAX_LIVE_POINTS = 2000` の切り詰めを入れ、`Session.tsx:122-125` の依存を **500ms 量子化した `durationMs`** にする（いまは毎秒約30回チャート全体を組み直している）。
+- [x] 2. **DW-1 ≡ LE-11**: `PlcRuntimeOptions` に `recordPowered?: boolean`（既定 `false`）を足し、Worker の `monitor` コマンドで切り替える。`timerPresetsOf()` の結果を `PlcCoupling` にキャッシュし `plc:load` 時だけ作り直す。`state()` の Map を直接読む。
+- [x] 3. **LE-10**: `GridCell` を `memo` で包み、`cursorKey` の代わりに `selected: boolean` を渡す。`NetworkView` も `memo` にする（矢印キー1回で全ネットワーク・全セルが再描画されるのを止める）。
+- [x] 4. **UI-10**: `TimeChartView.tsx:164-175` の `mousemove` / `mouseleave` の二重登録を削る（`pointermove` だけにする）。
+- [x] 5. **DS-6**: `spec-chart.ts` のキャッシュ鍵に課題の版（`mtimeMs` か内容ハッシュ）を入れる。利用者課題フォルダの JSON を編集したら波形が更新されるようにする。
+- [x] 6. テスト。
 
 ```
 apps/desktop/test/store.test.ts        applySnapshot() に遷移点を数千件流しても liveTransitions[signal].length が上限以内
