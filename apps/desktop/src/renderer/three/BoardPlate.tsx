@@ -15,6 +15,12 @@ function noPick(): void {
   // 交差候補を積まない
 }
 
+/*
+ * 影は使っていない（`<Canvas>` に `shadows` が無く、`directionalLight` にも `castShadow` が
+ * 無い）。そのため盤の板の `receiveShadow` は**一度も効かない**ただの指定だった（3D-20）。
+ * 影を入れるなら、`BoardScene` の `<Canvas shadows>` と光源の `castShadow` から始めること。
+ */
+
 /** 盤面の板の厚み[mm]。 */
 const PLATE_THICKNESS_MM = 5;
 
@@ -37,7 +43,6 @@ export function BoardPlate({ board }: { board: BoardDefinition }): JSX.Element {
         material={plate}
         position={[0, 0, -PLATE_THICKNESS_MM / 2]}
         scale={[width, height, PLATE_THICKNESS_MM]}
-        receiveShadow
       />
       <mesh
         geometry={UNIT_BOX}

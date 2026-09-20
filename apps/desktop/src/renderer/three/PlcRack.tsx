@@ -11,7 +11,7 @@ import {
 } from './appearance.js';
 import { blockFaceTexture, faceRect, isSharedFaceTexture, roleColorsFor } from './labels.js';
 import { PlcFace, useLedState } from './PlcUnit.js';
-import { TerminalHit, terminalTooltip } from './TerminalHit.js';
+import { deskTerminalTooltip, TerminalField } from './TerminalField.js';
 import { toScene } from './coords.js';
 
 /**
@@ -125,7 +125,7 @@ export function PlcRack({
   /*
    * 機種を替えるとラックごと作り直される（Plan 4B Task 6）。`PlcUnit.tsx` と同じ理由
    * （I2: Plan 5 C/D レビュー）で、共有キャッシュの持ち物（`isSharedFaceTexture()`）は
-   * 破棄しない。寿命は `labels.ts` の `faceTextureCache` が持つ。
+   * 破棄しない。寿命は `labels.ts` の共有キャッシュが持つ。
    */
   useEffect(() => {
     return () => {
@@ -189,17 +189,21 @@ export function PlcRack({
           <meshBasicMaterial map={faceTexture} transparent depthWrite={false} />
         </mesh>
       )}
-      {terminals.map((terminal) => (
-        <TerminalHit
-          key={terminal.id}
-          terminal={terminal}
-          tooltip={terminalTooltip(terminal, terminal.label)}
-          hovered={hoveredTerminal === terminal.id}
-          pending={pendingTerminal === terminal.id}
-          onHover={onHoverTerminal}
-          onPick={onPickTerminal}
-        />
-      ))}
+      {/*
+        机上の端子も **`TerminalField` 1本**に畳む（3D-12）。`TerminalHit` は端子1個につき
+        `<group>` ＋ ネジ ＋ 当たり判定の3メッシュを作るので、FX5U の42点だけで約126個の
+        オブジェクト・約40ドローコールになっていた（決定表#13 の前提「十数個」が機種追加で
+        崩れている）。盤の端子と同じ `instancedMesh` 2本（ネジ＝見える／当たり判定＝不可視）に
+        まとめる。位置も当たり判定の大きさもこれまでと1mmも変えない。
+      */}
+      <TerminalField
+        terminals={terminals}
+        tooltipOf={deskTerminalTooltip}
+        hovered={hoveredTerminal}
+        pending={pendingTerminal}
+        onHover={onHoverTerminal}
+        onPick={onPickTerminal}
+      />
       <Html
         center
         style={LABEL_STYLE}

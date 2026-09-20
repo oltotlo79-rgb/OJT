@@ -6,6 +6,8 @@ import {
   COM_PIN_MARK,
   drawSocketFace,
   HEADER_MM,
+  LABEL_FONT,
+  labelFont,
   labelWidthMm,
   NUMBER_MM,
   PRINT_EDGE_MARGIN_MM,
@@ -647,5 +649,39 @@ describe('ソケットの面の印字は何にも重ならない（利用者指�
     for (const mark of [COM_PIN_MARK, 'a', 'b']) {
       expect(labelWidthMm(mark, ROLE_MM), mark).toBeLessThan(NUMBER_MM);
     }
+  });
+});
+
+/**
+ * 焼くときの書体は、字幅表を測った書体であること（レビュー指摘 3D-14）。
+ *
+ * `labelWidthMm()` の字幅表は **Meiryo の実測**（Windows の Chromium で `sans-serif` が
+ * 解決する先）なのに、焼くときの指定は `sans-serif` のままだった。`sans-serif` の解決先は
+ * OS と利用者の設定で変わるうえ、画面本体の書体は `Yu Gothic UI` を先頭に置いている。
+ * 「印字が重ならない」という不変条件が、テストからは見えない解決先まかせになっていた。
+ */
+describe('印字の書体（3D-14）', () => {
+  it('`LABEL_FONT` は字幅表を測った書体を名指しで先頭に置く', () => {
+    expect(LABEL_FONT.startsWith('Meiryo')).toBe(true);
+    // 解決できない環境のために総称名は残す
+    expect(LABEL_FONT.endsWith('sans-serif')).toBe(true);
+  });
+
+  it('`labelFont()` は太字・指定の高さ・`LABEL_FONT` を組み立てる', () => {
+    expect(labelFont(NUMBER_MM)).toBe(`700 ${NUMBER_MM * PX_PER_MM}px ${LABEL_FONT}`);
+  });
+
+  it('焼く5箇所はすべて `LABEL_FONT` で書く（`sans-serif` 単独は残っていない）', () => {
+    const { ctx, texts } = fakeContext();
+    const plate = plateOf(0);
+    drawSocketFace(ctx, plate.terminals, plate.originX, plate.originY);
+    expect(texts.length).toBeGreaterThan(0);
+    for (const entry of texts) {
+      expect(entry.font).toContain(LABEL_FONT);
+    }
+    // 見出し・番号・役割の3種の大きさがすべて `labelFont()` 経由で出ている
+    expect(new Set(texts.map((entry) => entry.font))).toEqual(
+      new Set([labelFont(HEADER_MM), labelFont(NUMBER_MM), labelFont(ROLE_MM)]),
+    );
   });
 });

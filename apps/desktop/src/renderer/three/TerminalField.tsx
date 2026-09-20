@@ -3,8 +3,7 @@ import { parseTerminalId, type TerminalId } from '@ojt/circuit-sim';
 import { Html } from '@react-three/drei';
 import { useThree, type ThreeEvent } from '@react-three/fiber';
 import { useEffect, useMemo, useRef, type JSX } from 'react';
-import type { InstancedMesh } from 'three';
-import { Color, Matrix4, MeshStandardMaterial, Quaternion, Vector3 } from 'three';
+import { Color, InstancedMesh, Matrix4, MeshStandardMaterial, Quaternion, Vector3 } from 'three';
 import {
   TERMINAL_HOVER_COLOR,
   TERMINAL_PENDING_COLOR,
@@ -12,6 +11,7 @@ import {
 } from '../session/colors.js';
 import { toScene } from './coords.js';
 import {
+  applyInstanceMatrices,
   INVISIBLE_MATERIAL,
   noPick,
   PICK_GEOMETRY,
@@ -21,6 +21,7 @@ import {
 import {
   HOVER_RING_GEOMETRY,
   terminalScrewAppearance,
+  terminalTooltip,
   TERMINAL_HOVER_EMISSIVE_INTENSITY,
 } from './TerminalHit.js';
 
@@ -46,6 +47,16 @@ import {
  * ツールチップも同じところで1個だけ出す（以前は端子ごとに条件分岐していた）。
  * 連動ハイライトはここでは描かない（`ProbeMarkers` の輪が受け持つ。決定表#14）。
  */
+
+/**
+ * 机上の端子（PLC本体・ラック・壁コンセント）のツールチップ。3D-12
+ * 盤定義の印字をそのまま見せる。**モジュール直下の関数**にしてあるのは、`TerminalField` の
+ * `tooltipOf` props を毎レンダー作り直さないため（新しい関数を渡すと R3F が差分を検出して
+ * `invalidate()` を呼び、絵が変わらないフレームでも描き直しになる。§15）。
+ */
+export function deskTerminalTooltip(terminal: BoardTerminal): string {
+  return terminalTooltip(terminal, terminal.label);
+}
 
 /** 端子の見た目の状態。 */
 export type TerminalState = 'plain' | 'hovered' | 'pending';
@@ -180,20 +191,14 @@ export function TerminalField({
   const matrices = useMemo(() => terminalFieldMatrices(terminals), [terminals]);
 
   useEffect(() => {
-    const screwMesh = screws.current;
-    const pickMesh = picks.current;
-    if (screwMesh === null || pickMesh === null) return;
-    matrices.screwMatrices.forEach((m, i) => screwMesh.setMatrixAt(i, m));
-    matrices.pickMatrices.forEach((m, i) => pickMesh.setMatrixAt(i, m));
-    screwMesh.instanceMatrix.needsUpdate = true;
-    pickMesh.instanceMatrix.needsUpdate = true;
     /*
-     * 外接球は**レイキャストの足切りと視錐台カリングの両方**に使われる（three の
-     * `InstancedMesh.raycast()` は外接球に当たらなければ即座に戻る）。行列を入れ替えたら
-     * 必ず作り直す。作り直さないと、端子が増えた（BZ）あとの端子が拾えなくなる。
+     * 行列を流し込み、外接球を作り直す（`applyInstanceMatrices()`）。外接球は
+     * **レイキャストの足切りと視錐台カリングの両方**に使われる（three の
+     * `InstancedMesh.raycast()` は外接球に当たらなければ即座に戻る）ので、行列を
+     * 入れ替えたら必ず作り直す。作り直さないと、端子が増えた（BZ）あとの端子が拾えなくなる。
      */
-    screwMesh.computeBoundingSphere();
-    pickMesh.computeBoundingSphere();
+    applyInstanceMatrices(screws.current, matrices.screwMatrices);
+    applyInstanceMatrices(picks.current, matrices.pickMatrices);
   }, [matrices]);
 
   /*
@@ -206,7 +211,8 @@ export function TerminalField({
    */
   useEffect(() => {
     const mesh = screws.current;
-    if (mesh === null) return;
+    // `<Canvas>` の外（DOM へ描く単体テスト）では ref に DOM 要素が来る（`materials.ts` 参照）
+    if (!(mesh instanceof InstancedMesh)) return;
     const color = new Color();
     terminals.forEach((terminal, i) => {
       color.set(terminalColorOf(terminalStateOf(terminal.id, { hovered, pending })));

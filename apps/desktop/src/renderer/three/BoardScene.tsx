@@ -29,6 +29,7 @@ import {
   type RefObject,
 } from 'react';
 import { useShallow } from 'zustand/react/shallow';
+import { reasonOf } from '../app/errors.js';
 import { useStore, type AppState } from '../app/store.js';
 import {
   buzzerDeviceName,
@@ -156,11 +157,6 @@ export function polarityTerminalLabel(
         ? buzzerDeviceName(BUZZER_ID)
         : undefined;
   return polarityTerminalTooltip({ part, mark: blockTerminalMark(terminal), deviceName, side });
-}
-
-/** 例外から1行の理由を作る。 */
-function reasonOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }
 
 /**

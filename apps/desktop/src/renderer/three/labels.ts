@@ -13,7 +13,13 @@ import {
   type TerminalRole,
 } from '@ojt/board-model';
 import { parseTerminalId } from '@ojt/circuit-sim';
-import { CanvasTexture, LinearFilter, SRGBColorSpace, type Texture } from 'three';
+import {
+  CanvasTexture,
+  LinearFilter,
+  LinearMipmapLinearFilter,
+  SRGBColorSpace,
+  type Texture,
+} from 'three';
 import { busSideMark, JA_PIN } from '../i18n/ja.js';
 import { SOCKET_BODY_COLOR } from '../session/colors.js';
 import {
@@ -108,7 +114,7 @@ export const HEADER_GAP_MM = 0.4;
 export const BAND_EDGE_MM = (SOCKET_BODY_WIDTH_MM - 3 * SOCKET_COL_PITCH_MM) / 2;
 
 /**
- * 半角1文字の送り幅[em]の表（`700 …px sans-serif`）。
+ * 半角1文字の送り幅[em]の表（`700 …px` ＋ `LABEL_FONT`）。
  *
  * 以前はどの半角文字も一律 `0.62em` という「やや大きめの概算」にしていたが、これは
  * **太字の大文字に対しては小さすぎる**。実測（下記）では `C`=0.688 / `O`=0.801 / `M`=0.908 で、
@@ -198,6 +204,58 @@ export function labelWidthMm(text: string, fontMm: number): number {
     units += code >= 0x2000 ? FULL_WIDTH_EM : (CHAR_WIDTH_EM.get(char) ?? UNKNOWN_HALF_WIDTH_EM);
   }
   return units * fontMm;
+}
+
+/**
+ * 印字に使う書体スタック。3D-14
+ *
+ * `CHAR_WIDTH_EM` は **Meiryo の実測**（Windows の Chromium で `sans-serif` が解決する先）
+ * なのに、焼くときの指定は `sans-serif` のままだった。`sans-serif` が何に解決するかは
+ * OS と利用者の設定で変わるうえ、画面本体の書体は `app/global.css` で `Yu Gothic UI` を
+ * 先頭に置いている。つまり「印字が重ならない」という不変条件が、テストからは見えない
+ * **解決先まかせ**になっていた（単体テストは同じ幅表から起こした期待値としか比べないので
+ * 食い違いを検出できない）。幅表を測った書体を**名指しで先頭に置く**ことで、
+ * 焼いた絵と `labelWidthMm()` の見積りが同じ前提に乗る。
+ */
+export const LABEL_FONT = 'Meiryo, "Yu Gothic UI", sans-serif';
+
+/** `ctx.font` に渡す文字列（太字・`fontMm` の高さ・`LABEL_FONT`）。焼く5箇所が共有する。 */
+export function labelFont(fontMm: number): string {
+  return `700 ${fontMm * PX_PER_MM}px ${LABEL_FONT}`;
+}
+
+/**
+ * 見積り（`labelWidthMm()`）と実測（`measureText()`）のずれの許容幅[割合]。
+ * 書体が入れ替わっても 2% 以内なら重なり判定の余白（`BLOCK_MARK_GAP_MM` = 1mm 等）に収まる。
+ */
+export const LABEL_WIDTH_TOLERANCE = 0.02;
+
+/**
+ * 開発時だけ、幅表の見積りを本物の `measureText()` と突き合わせる。3D-14
+ *
+ * 実環境（Chromium）でしか本当の字幅は分からないので、単体テストではなく**焼くその場**で
+ * 確かめる。ずれたら「幅表を測り直す必要がある」ことが開発中に必ず目に入る。
+ * 製品ビルドでは何もしない（`import.meta.env.DEV` が false）。
+ */
+export function assertLabelWidth(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  fontMm: number,
+): void {
+  if (!import.meta.env.DEV || text === '') return;
+  // 偽のキャンバス（単体テスト）も2Dの無い環境（`happy-dom`）も測れない。測れないなら黙る
+  if (typeof ctx.measureText !== 'function') return;
+  const measuredPx = ctx.measureText(text).width;
+  if (!Number.isFinite(measuredPx) || measuredPx === 0) return;
+  const estimatedPx = labelWidthMm(text, fontMm) * PX_PER_MM;
+  const drift = Math.abs(measuredPx - estimatedPx) / Math.max(1, estimatedPx);
+  if (drift <= LABEL_WIDTH_TOLERANCE) return;
+  // 開発時だけの気づき（製品ビルドには入らない）
+  console.warn(
+    `[labels] 字幅の見積りが実測と ${(drift * 100).toFixed(1)}% ずれています: ` +
+      `"${text}" 見積り ${estimatedPx.toFixed(1)}px / 実測 ${measuredPx.toFixed(1)}px ` +
+      `(${ctx.font})。CHAR_WIDTH_ROWS を測り直してください。`,
+  );
 }
 
 /** `fillText`（中央揃え・中央ベースライン）の外接矩形。 */
@@ -620,7 +678,14 @@ export function makeCanvasTexture(
   draw(ctx, widthPx, heightPx);
   const texture = new CanvasTexture(canvas);
   texture.colorSpace = SRGBColorSpace;
-  texture.minFilter = LinearFilter;
+  /*
+   * ミップを**使う**（3D-08）。`CanvasTexture` は `generateMipmaps` が既定 true なので
+   * ミップは作られているのに、`minFilter = LinearFilter` だと1枚も参照されない
+   * （容量 +33% を払ったまま、縮小したときに文字がちらつく）。`view-gizmo-textures.ts` が
+   * 先に同じ理由で `LinearMipmapLinearFilter` にしてある。拡大側は `magFilter` の
+   * `LinearFilter` のままでよい（ミップは縮小にしか効かない）。
+   */
+  texture.minFilter = LinearMipmapLinearFilter;
   texture.magFilter = LinearFilter;
   texture.needsUpdate = true;
   return texture;
@@ -699,7 +764,7 @@ export function faceKey(
     const ink = colors === undefined ? '' : colors[t.role];
     return `${(t.pos.x - originX).toFixed(2)},${(t.pos.y - originY).toFixed(2)},${terminalNumber(t)},${t.role},${mark},${ink}`;
   });
-  return `${prefix}|${widthMm.toFixed(2)}x${heightMm.toFixed(2)}|${parts.join('|')}`;
+  return `${prefix}:${widthMm.toFixed(2)}x${heightMm.toFixed(2)}|${parts.join('|')}`;
 }
 
 /**
@@ -719,6 +784,29 @@ export function cachedFaceTexture(
     cachedTextures.add(made);
   }
   return made;
+}
+
+/**
+ * 焼いたテクスチャの引き出しの名前空間。3D-13
+ *
+ * 以前は印字テクスチャのキャッシュが**4方針**あった（このファイル ／ `AcFixtures`（名前まで
+ * 衝突）／ `PartIndicator` ／ `Fixtures` はキャッシュ無し）。実装をこのファイルの1つに
+ * 畳んだうえで、鍵の先頭に必ず名前空間を置いて取り違えを型で防ぐ。
+ * `socket` / `block` は `faceKey()` が同じ接頭辞を付ける。
+ */
+export type FaceTextureNamespace = 'socket' | 'block' | 'fixture' | 'part';
+
+/**
+ * 名前空間つきの鍵で共有キャッシュに焼く（**このファイルの外から使う唯一の入口**）。3D-13
+ * 焼けなかった（`undefined`）ときは覚えないので、2Dキャンバスが後から使える環境になれば
+ * 次の呼び出しで焼き直す。
+ */
+export function bakeSharedTexture(
+  namespace: FaceTextureNamespace,
+  key: string,
+  bake: () => Texture | undefined,
+): Texture | undefined {
+  return cachedFaceTexture(`${namespace}:${key}`, bake);
 }
 
 /**
@@ -763,9 +851,11 @@ export function drawSocketFace(
     );
   }
 
-  ctx.font = `700 ${HEADER_MM * PX_PER_MM}px sans-serif`;
+  ctx.font = labelFont(HEADER_MM);
   for (const header of headers) {
     ctx.fillStyle = PIN_GROUP_COLOR[header.group];
+    // 開発時だけ、幅表の見積りが実環境の字幅と合っているかを確かめる（3D-14）
+    assertLabelWidth(ctx, header.text, HEADER_MM);
     ctx.fillText(header.text, header.cx * PX_PER_MM, header.cy * PX_PER_MM);
   }
 
@@ -774,7 +864,7 @@ export function drawSocketFace(
     const boxes = socketLabelBoxes(terminal, originX, originY);
     const x = (terminal.pos.x - originX) * PX_PER_MM;
     ctx.fillStyle = '#F2F2EE';
-    ctx.font = `700 ${NUMBER_MM * PX_PER_MM}px sans-serif`;
+    ctx.font = labelFont(NUMBER_MM);
     ctx.fillText(
       terminalNumber(terminal),
       x,
@@ -787,7 +877,8 @@ export function drawSocketFace(
      */
     const group = groupOfRole(terminal.role);
     ctx.fillStyle = group === undefined ? SOCKET_ROLE_COLOR[terminal.role] : PIN_GROUP_COLOR[group];
-    ctx.font = `700 ${ROLE_MM * PX_PER_MM}px sans-serif`;
+    ctx.font = labelFont(ROLE_MM);
+    assertLabelWidth(ctx, socketRoleMark(terminal), ROLE_MM);
     ctx.fillText(socketRoleMark(terminal), x, ((boxes.role.y0 + boxes.role.y1) / 2) * PX_PER_MM);
   }
 }
@@ -885,13 +976,13 @@ export function blockFaceTexture(
         const fontMm = blockMarkFontMm(mark);
         const x = (terminal.pos.x - rect.minX + offsetX) * PX_PER_MM;
         const y = (terminal.pos.y - rect.minY + offsetY) * PX_PER_MM;
-        ctx.font = `700 ${fontMm * PX_PER_MM}px sans-serif`;
+        ctx.font = labelFont(fontMm);
         ctx.fillStyle = colors[terminal.role];
         ctx.fillText(mark, x, y + BLOCK_MARK_OFFSET_MM * PX_PER_MM);
         // どちらの母線から来る端子かの印（`P(+)` / `N(−)`）。名前とは反対側の行に置く
         const polarity = blockPolarityMark(terminal);
         if (polarity !== undefined) {
-          ctx.font = `700 ${BLOCK_POLARITY_MM * PX_PER_MM}px sans-serif`;
+          ctx.font = labelFont(BLOCK_POLARITY_MM);
           ctx.fillText(polarity, x, y + BLOCK_POLARITY_OFFSET_MM * PX_PER_MM);
         }
       }

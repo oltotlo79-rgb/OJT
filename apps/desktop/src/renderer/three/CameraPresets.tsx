@@ -1,5 +1,5 @@
 import { useFrame, useThree } from '@react-three/fiber';
-import { useCallback, useEffect, useRef, type JSX } from 'react';
+import { useCallback, useEffect, useMemo, useRef, type JSX } from 'react';
 import { useStore } from '../app/store.js';
 import type { CameraPreset } from '../app/store-types.js';
 import { boardForProblem } from '../session/plc-session.js';
@@ -67,7 +67,14 @@ export function CameraPresets({
   // モードDで机上に載っている機種。`plc` プリセットの画角はこれで変わる（決定表#18）。
   // `boardForProblem()` はPLC課題以外・未対応機種では `undefined` を返すので、そのときは
   // 既定（FX5U）のまま（`cameraPose()` 側の既定）。
-  const plcUnit = useStore((state) => boardForProblem(state.problem).plcUnit);
+  /*
+   * `problem` を購読して `useMemo` で派生盤を作る（3D-11。`PlcSession.tsx:185` と同じ形）。
+   * セレクタの中で `boardForProblem()` を呼ぶと、zustand は `setState` のたび（模擬実行中は
+   * 毎秒30回）にセレクタを回すので、**その都度**派生盤と約180要素の端子配列を作って即捨てる。
+   * しかも返り値は毎回別オブジェクトなので、等値比較が効かずこの効果が必ず走り直す。
+   */
+  const problem = useStore((state) => state.problem);
+  const plcUnit = useMemo(() => boardForProblem(problem).plcUnit, [problem]);
   // 直近に反映した視点（次の遷移の `from`）。マウント直後は null。
   const currentPose = useRef<CameraPose | null>(null);
   const animation = useRef<PoseAnimation | null>(null);

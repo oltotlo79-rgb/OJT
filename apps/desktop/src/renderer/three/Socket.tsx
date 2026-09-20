@@ -8,13 +8,20 @@ import {
 } from '@ojt/board-model';
 import { parseTerminalId } from '@ojt/circuit-sim';
 import { Html } from '@react-three/drei';
-import { useMemo, type JSX } from 'react';
+import { useEffect, useMemo, useRef, type JSX } from 'react';
 import type { ThreeEvent } from '@react-three/fiber';
+import { Matrix4, Quaternion, Vector3, type InstancedMesh } from 'three';
 import { partKindLabel, socketPinTooltip } from '../i18n/ja.js';
 import { SOCKET_BODY_COLOR, SOCKET_LEVER_COLOR, SOCKET_SELECTED_COLOR } from '../session/colors.js';
 import { coilBusSide, pinGroup, pinPartners } from '../session/socket-pins.js';
 import { socketFaceTexture, SOCKET_PLATE_MARGIN_MM } from './labels.js';
-import { noPick, sharedMaterial, UNIT_BOX } from './materials.js';
+import {
+  applyInstanceMatrices,
+  noPick,
+  PIN_HOLE_GEOMETRY,
+  sharedMaterial,
+  UNIT_BOX,
+} from './materials.js';
 import { toScene } from './coords.js';
 
 /**
@@ -158,6 +165,65 @@ export function socketTerminalLabel(
   });
 }
 
+/** 差込穴の色（実物の黒い樹脂）。`sharedMaterial()` 越しに1個だけ作る。3D-02 */
+const PIN_HOLE_COLOR = '#0B0D10';
+
+/** 差込穴の姿勢（横倒しの円柱。`rotation={[Math.PI / 2, 0, 0]}` と同じ）。 */
+const PIN_HOLE_ROTATION = new Quaternion().setFromAxisAngle(new Vector3(1, 0, 0), Math.PI / 2);
+
+/**
+ * 差込穴（2列×7段）をまとめて描く。3D-02
+ *
+ * 以前は穴1個につき `<mesh>` ＋ JSX の子の `<cylinderGeometry>` ＋ `<meshStandardMaterial>` で、
+ * 8ソケット分で **112個のジオメトリ・112個のマテリアル・112ドローコール**になっていた。
+ * 形も色も 112 個すべて同じなので、共有ジオメトリ（`PIN_HOLE_GEOMETRY`）＋共有マテリアルの
+ * `instancedMesh` 1本に畳む（ソケット1個につき1ドローコール）。穴は `raycast={noPick}` の
+ * 純粋な飾りなので、当たり判定の作り直し（`computeBoundingSphere()`）も要らない。
+ */
+function PinHoles({
+  originX,
+  originY,
+  holes,
+}: {
+  originX: number;
+  originY: number;
+  holes: readonly { dx: number; dy: number }[];
+}): JSX.Element | null {
+  const mesh = useRef<InstancedMesh | null>(null);
+  const matrices = useMemo(
+    () =>
+      holes.map((hole) => {
+        const [x, y, z] = toScene({
+          x: originX + hole.dx,
+          y: originY + hole.dy,
+          z: BODY_HEIGHT_MM + 0.2,
+        });
+        // 半径1・高さ0.5の円柱を実寸へ伸ばす（高さは倒す前の局所Y軸なので1倍のまま）
+        return new Matrix4().compose(
+          new Vector3(x, y, z),
+          PIN_HOLE_ROTATION,
+          new Vector3(PIN_HOLE_RADIUS_MM, 1, PIN_HOLE_RADIUS_MM),
+        );
+      }),
+    [holes, originX, originY],
+  );
+  useEffect(() => {
+    applyInstanceMatrices(mesh.current, matrices);
+  }, [matrices]);
+  if (matrices.length === 0) return null;
+  return (
+    <instancedMesh
+      ref={mesh}
+      args={[
+        PIN_HOLE_GEOMETRY,
+        sharedMaterial(PIN_HOLE_COLOR, { roughness: 0.9 }),
+        matrices.length,
+      ]}
+      raycast={noPick}
+    />
+  );
+}
+
 /** ソケット1個（本体＋段付き端子ティア＋差込穴＋保持レバー＋印字）。 */
 export function Socket({
   socket,
@@ -216,22 +282,8 @@ export function Socket({
           onPickSocket(socket.id, occupied);
         }}
       />
-      {/* 差込穴（2列×7段。中央の差込領域に並ぶ） */}
-      {holes.map((hole, index) => (
-        <mesh
-          key={`hole-${index}`}
-          raycast={noPick}
-          position={toScene({
-            x: originX + hole.dx,
-            y: originY + hole.dy,
-            z: BODY_HEIGHT_MM + 0.2,
-          })}
-          rotation={[Math.PI / 2, 0, 0]}
-        >
-          <cylinderGeometry args={[PIN_HOLE_RADIUS_MM, PIN_HOLE_RADIUS_MM, 0.5, 8]} />
-          <meshStandardMaterial color="#0B0D10" roughness={0.9} />
-        </mesh>
-      ))}
+      {/* 差込穴（2列×7段。中央の差込領域に並ぶ）。共有ジオメトリ1個の `instancedMesh`。3D-02 */}
+      <PinHoles originX={originX} originY={originY} holes={holes} />
       {/* 段付きの端子ティア（奥端・手前端） */}
       {[0, 1].map((index) => {
         const y = index === 0 ? originY + TIER_DEPTH_MM / 2 : originY + length - TIER_DEPTH_MM / 2;

@@ -4,7 +4,7 @@ import { useMemo, type JSX } from 'react';
 import type { Texture } from 'three';
 import { BREAKER_COLOR, SUPPLY_BLOCK_COLOR } from '../session/colors.js';
 import { Breaker, PowerSwitch } from './AcFixtures.js';
-import { makeCanvasTexture, PX_PER_MM } from './labels.js';
+import { bakeSharedTexture, labelFont, makeCanvasTexture, PX_PER_MM } from './labels.js';
 import { sharedMaterial, UNIT_BOX } from './materials.js';
 import { toScene } from './coords.js';
 
@@ -109,24 +109,33 @@ export function findFixtureFootprint(
  * 固定機器1個ぶんの端子印字テクスチャ。
  * footprint の左上から `PLATE_MARGIN_MM` だけ外へ広げた矩形を板にするので、
  * 外形の端に載っている端子（`PS +24V` など）の印字も切れない。
+ *
+ * **共有キャッシュ越しに焼く**（3D-04 / 3D-13）。`PS` / `CB` / `SW` の3枚は文字も寸法も
+ * 機種で変わらないのに、以前はここだけ共有キャッシュを通さずマウントのたびに焼き、
+ * 解放の `useEffect` も無かった（672×736px ×2 ＋ 576×736px ＝ 約5.6MB。ミップ込みで約7.4MB）。
+ * 訓練は「1課題終わったら次」を繰り返す使い方なので、10回で 50MB 以上が積み上がっていた。
+ * `<meshBasicMaterial map={…}>` は R3F がマテリアルを解放するが、`Material.dispose()` は
+ * その `map` までは解放しない。鍵は `fixture:${kind}:${w}x${h}` で、アプリの寿命ぶん1枚で足りる。
  */
 function fixtureFaceTexture(
   terminals: readonly BoardTerminal[],
   footprint: Footprint,
 ): Texture | undefined {
   if (terminals.length === 0) return undefined;
-  return makeCanvasTexture(
-    footprint.w + PLATE_MARGIN_MM * 2,
-    footprint.h + PLATE_MARGIN_MM * 2,
-    (ctx) => {
-      ctx.font = `700 ${MARK_MM * PX_PER_MM}px sans-serif`;
-      for (const terminal of terminals) {
-        const x = (terminal.pos.x - footprint.x + PLATE_MARGIN_MM) * PX_PER_MM;
-        const y = (terminal.pos.y - footprint.y + PLATE_MARGIN_MM) * PX_PER_MM;
-        ctx.fillStyle = FIXTURE_MARK_COLOR[terminal.role] ?? '#1B1E23';
-        ctx.fillText(fixtureTerminalMark(terminal), x, y);
-      }
-    },
+  return bakeSharedTexture('fixture', `${footprint.kind}:${footprint.w}x${footprint.h}`, () =>
+    makeCanvasTexture(
+      footprint.w + PLATE_MARGIN_MM * 2,
+      footprint.h + PLATE_MARGIN_MM * 2,
+      (ctx) => {
+        ctx.font = labelFont(MARK_MM);
+        for (const terminal of terminals) {
+          const x = (terminal.pos.x - footprint.x + PLATE_MARGIN_MM) * PX_PER_MM;
+          const y = (terminal.pos.y - footprint.y + PLATE_MARGIN_MM) * PX_PER_MM;
+          ctx.fillStyle = FIXTURE_MARK_COLOR[terminal.role] ?? '#1B1E23';
+          ctx.fillText(fixtureTerminalMark(terminal), x, y);
+        }
+      },
+    ),
   );
 }
 

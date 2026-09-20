@@ -226,7 +226,7 @@ describe('リレーの動作表示（§5.3.1 / 利用者要望 2026-09-19）', (
     expect(relayIndicatorMaterial(true)).toBe(lit);
   });
 
-  it('励磁中はハローと点光源が増え、消灯中は何も足さない', () => {
+  it('点光源の本数は励磁状態によらず一定で、強度だけが変わる（3D-03）', () => {
     const socket = JIPM_BOARD.sockets[0];
     if (socket === undefined) throw new Error('no socket');
     const box = mountedBodyBox(socket);
@@ -251,11 +251,26 @@ describe('リレーの動作表示（§5.3.1 / 利用者要望 2026-09-19）', (
       />,
     );
 
-    const lights = (elements: ReactElement[]): number =>
-      elements.filter((element) => element.type === 'pointLight').length;
-    expect(lights(lit)).toBe(1);
-    expect(lights(dark)).toBe(0);
-    expect(lit.length).toBeGreaterThan(dark.length);
+    /*
+     * three の `WebGLPrograms` はプログラムのキャッシュ鍵に `numPointLights` を含むので、
+     * 点いたり消えたりで**本数**が変わると盤の全マテリアルが再コンパイルされる（3D-03）。
+     * 以前のテストはその性能上の問題（`lights(dark) === 0`）を仕様として固定していた。
+     */
+    const lights = (elements: ReactElement[]): ReactElement<{ intensity?: number }>[] =>
+      elements.filter(
+        (element): element is ReactElement<{ intensity?: number }> => element.type === 'pointLight',
+      );
+    expect(lights(lit)).toHaveLength(1);
+    expect(lights(dark)).toHaveLength(lights(lit).length);
+    expect(lights(lit)[0]?.props.intensity).toBeGreaterThan(0);
+    expect(lights(dark)[0]?.props.intensity).toBe(0);
+    /*
+     * 窓そのものの発光マテリアルは励磁で入れ替わる（`relayIndicatorMaterial()`）。
+     * ハローの板は焼いたテクスチャが要るので `happy-dom` では出ない（消灯中に描かないこと
+     * 自体は `Glow` の `lit` が受け持つ）。ここでは要素の数ではなくマテリアルの差で縛る。
+     */
+    expect(relayIndicatorMaterial(true)).not.toBe(relayIndicatorMaterial(false));
+    expect(lit.length).toBe(dark.length);
   });
 
   it('表示窓は本体の天面より上にあり、既定（正面）と俯瞰の視点から画角に入る', () => {
@@ -346,11 +361,11 @@ describe('タイマの動作表示（§5.3.2 / 利用者要望 2026-09-19）', (
     expect(timerDialAngleRad(0, range)).toBeCloseTo(-TIMER_DIAL_SWEEP_RAD / 2, 10);
   });
 
-  it('点灯しているLEDのぶんだけ点光源が増える', () => {
+  it('点光源の本数は点灯状態によらず一定で、強度だけが変わる（3D-03）', () => {
     const socket = JIPM_BOARD.sockets[0];
     if (socket === undefined) throw new Error('no socket');
     const box = mountedBodyBox(socket);
-    const lights = (powered: boolean, timedOut: boolean): number =>
+    const lights = (powered: boolean, timedOut: boolean): number[] =>
       collect(
         <PartIndicator
           kind="timer-h3y4"
@@ -360,11 +375,22 @@ describe('タイマの動作表示（§5.3.2 / 利用者要望 2026-09-19）', (
           presetMs={3_000}
           rangeMaxMs={10_000}
         />,
-      ).filter((element) => element.type === 'pointLight').length;
+      )
+        .filter(
+          (element): element is ReactElement<{ intensity?: number }> =>
+            element.type === 'pointLight',
+        )
+        .map((element) => element.props.intensity ?? 0);
 
-    expect(lights(false, false)).toBe(0);
-    expect(lights(true, false)).toBe(1);
-    expect(lights(true, true)).toBe(2);
+    // LED は2灯。どの状態でも点光源は2個のまま（本数が変わるとシェーダが再コンパイルされる）
+    expect(lights(false, false)).toHaveLength(2);
+    expect(lights(true, false)).toHaveLength(2);
+    expect(lights(true, true)).toHaveLength(2);
+    // 変わるのは強度だけ。POWER → UP の順に点いていく
+    expect(lights(false, false)).toEqual([0, 0]);
+    expect(lights(true, false)[0]).toBeGreaterThan(0);
+    expect(lights(true, false)[1]).toBe(0);
+    expect(lights(true, true).every((value) => value > 0)).toBe(true);
   });
 });
 

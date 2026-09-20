@@ -1,7 +1,10 @@
 import { JIPM_BOARD } from '@ojt/board-model';
+import { cleanup, render } from '@testing-library/react';
+import { createElement, type ReactNode } from 'react';
 import { Texture } from 'three';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  bakeSharedTexture,
   blockFaceTexture,
   cachedFaceTexture,
   clearFaceTextureCache,
@@ -13,6 +16,13 @@ import {
   socketFaceTexture,
   SOCKET_PLATE_MARGIN_MM,
 } from '../src/renderer/three/labels.js';
+
+/** `Fixture` は drei の `Html`（`Canvas` の中でしか使えない）を持つので素通しに差し替える。 */
+vi.mock('@react-three/drei', () => ({
+  Html: ({ children }: { children?: ReactNode }) => children,
+}));
+
+const { Fixture } = await import('../src/renderer/three/Fixtures.js');
 
 /** §15 の上限。 */
 const MAX_TEXTURE_PX = 2048;
@@ -157,5 +167,74 @@ describe('印字テクスチャの解像度（§15: 2048px 以下）', () => {
     const first = socketArgs(0);
     expect(Math.round(first.w * PX_PER_MM)).toBe(608);
     expect(Math.round(first.h * PX_PER_MM)).toBe(1344);
+  });
+});
+
+/**
+ * 固定機器（PS / CB / SW）の印字も共有キャッシュを通る（レビュー指摘 3D-04 / 3D-13）。
+ *
+ * 以前は `Fixtures.tsx` の `fixtureFaceTexture()` だけが `cachedFaceTexture()` を通さず
+ * マウントのたびに焼き、解放の `useEffect` も無かった（3枚で約5.6MB、ミップ込み約7.4MB）。
+ * 「課題を開く → 結果 → 別の課題」を10回で 50MB 以上が積み上がる形だった。
+ * あわせて、印字テクスチャのキャッシュが4方針あった状態（3D-13）を1つに畳んだことを、
+ * 「鍵に名前空間が付く」「テスト用のクリアで全部片付く」という2点で縛る。
+ */
+describe('固定機器の印字も共有キャッシュを通る（3D-04 / 3D-13）', () => {
+  afterEach(() => {
+    cleanup();
+  });
+
+  /** happy-dom は 2D コンテキストを返さないので、焼けるように偽物を挿す。 */
+  function stubCanvas2d(): void {
+    const ctx = {
+      clearRect: () => undefined,
+      fillText: () => undefined,
+      measureText: () => ({ width: 0 }),
+      fillStyle: '',
+      font: '',
+      textAlign: 'center',
+      textBaseline: 'middle',
+    };
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(
+      ctx as unknown as CanvasRenderingContext2D,
+    );
+  }
+
+  function renderSupply(): ReturnType<typeof render> {
+    return render(
+      createElement(Fixture, {
+        name: 'PS',
+        label: 'DC24V電源',
+        color: '#2A2F36',
+        kind: 'supply',
+        terminals: JIPM_BOARD.terminals.filter((t) => t.id.startsWith('PS.')),
+        footprints: JIPM_BOARD.footprints,
+        on: true,
+      }),
+    );
+  }
+
+  it('2回目のマウントで焼き直さない（アプリの寿命ぶん1枚で足りる）', () => {
+    stubCanvas2d();
+    renderSupply().unmount();
+    const afterFirst = faceTextureCacheSize();
+    expect(afterFirst).toBeGreaterThan(0);
+    renderSupply().unmount();
+    expect(faceTextureCacheSize()).toBe(afterFirst);
+    vi.restoreAllMocks();
+  });
+
+  it('焼いたものは共有キャッシュの持ち物になる（消費側が dispose() してはいけない）', () => {
+    const texture = bakeSharedTexture('fixture', 'supply:42x46', () => new Texture());
+    expect(isSharedFaceTexture(texture)).toBe(true);
+  });
+
+  it('名前空間が違えば別の絵として覚える（`socket` / `fixture` / `part`）', () => {
+    const namespaces = ['socket', 'block', 'fixture', 'part'] as const;
+    const made = namespaces.map((namespace) =>
+      bakeSharedTexture(namespace, 'same-key', () => new Texture()),
+    );
+    expect(new Set(made).size).toBe(namespaces.length);
+    expect(faceTextureCacheSize()).toBe(namespaces.length);
   });
 });

@@ -1,5 +1,4 @@
 import type { CameraPreset } from '../app/store-types.js';
-import { cameraPose } from './camera.js';
 
 /**
  * Blender 風の3Dナビゲーションの純粋な計算。設計仕様 §12.2（2026-09-14 の利用者要望）。
@@ -129,29 +128,6 @@ export function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
-/** ビューキューブの面が向く向き（キューブの局所軸＝ワールド軸）→ 視点プリセット。 */
-const FACE_VIEWS: ReadonlyArray<{ axis: 0 | 1 | 2; sign: 1 | -1; preset: CameraPreset }> = [
-  { axis: 0, sign: 1, preset: 'right' },
-  { axis: 0, sign: -1, preset: 'left' },
-  { axis: 1, sign: 1, preset: 'top' },
-  { axis: 1, sign: -1, preset: 'bottom' },
-  { axis: 2, sign: 1, preset: 'front' },
-  { axis: 2, sign: -1, preset: 'back' },
-];
-
-/** 方向で選べる視点（`socket` は寄りのプリセットなので向きでは選ばない）。 */
-const DIRECTIONAL_PRESETS: readonly CameraPreset[] = [
-  'front',
-  'back',
-  'left',
-  'right',
-  'top',
-  'bottom',
-];
-
-/** ある軸にほぼ沿っているとみなす成分の大きさ（＝キューブの面をクリックした）。 */
-const FACE_AXIS_THRESHOLD = 0.9;
-
 /** 3要素ベクトルを正規化する（長さ0なら 0 ベクトル）。 */
 function normalize(v: readonly [number, number, number]): [number, number, number] {
   const length = Math.hypot(v[0], v[1], v[2]);
@@ -159,44 +135,13 @@ function normalize(v: readonly [number, number, number]): [number, number, numbe
 }
 
 /**
- * ビューキューブで指した向き → 視点プリセット。§12.2
- *
- * 面（軸にほぼ沿った向き）は「その面から見る」プリセットに素直に対応させる。
- * 辺や角は斜めなので、**プリセットの実際の視線方向といちばん近いもの**を選ぶ
- * （左手前・上の角は俯瞰プリセットとほぼ同じ向きなので `top` になる）。
- * こうするとキューブのクリックとテンキー・ツールバーが同じ視点に着く。
- */
-export function presetForDirection(direction: readonly [number, number, number]): CameraPreset {
-  const [x, y, z] = normalize(direction);
-  const components = [x, y, z] as const;
-  for (const face of FACE_VIEWS) {
-    if (components[face.axis] * face.sign >= FACE_AXIS_THRESHOLD) return face.preset;
-  }
-  let best: CameraPreset = 'front';
-  let bestDot = -Infinity;
-  for (const preset of DIRECTIONAL_PRESETS) {
-    const pose = cameraPose(preset);
-    const [px, py, pz] = normalize([
-      pose.position[0] - pose.target[0],
-      pose.position[1] - pose.target[1],
-      pose.position[2] - pose.target[2],
-    ]);
-    const dot = px * x + py * y + pz * z;
-    if (dot > bestDot) {
-      bestDot = dot;
-      best = preset;
-    }
-  }
-  return best;
-}
-
-/**
  * ビューキューブの当たり判定1つ分（面6・辺12・角8 の計26）。§12.2
  * 2026-09-19 の利用者要望「blender のようにキューブを選択しサクサク動くようにしたい」。
  *
  * Blender のナビゲーションギズモと同じく、**面だけでなく辺と角も押せる**ようにする。
- * 以前は辺・角を押しても `presetForDirection()` が6つの面プリセットのどれかへ丸めていたので、
- * 斜め45°の視点には決して着けなかった。
+ * 以前は辺・角を押しても6つの面プリセットのどれかへ丸めていたので、
+ * 斜め45°の視点には決して着けなかった（その丸め役だった `presetForDirection()` は
+ * `gizmoTargetForDirection()` に置き換わり、3D-18 で削除した）。
  */
 export interface GizmoTarget {
   /** 当たり判定の名前（`front` / `front-top` / `front-top-right` など）。 */

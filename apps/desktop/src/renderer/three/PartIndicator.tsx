@@ -10,7 +10,7 @@ import {
   type Texture,
 } from 'three';
 import { JA_3D } from '../i18n/ja.js';
-import { makeCanvasTexture, PX_PER_MM } from './labels.js';
+import { bakeSharedTexture, labelFont, makeCanvasTexture, PX_PER_MM } from './labels.js';
 import { sharedMaterial, UNIT_BOX } from './materials.js';
 
 /**
@@ -149,49 +149,64 @@ export function timerDialCenter(box: MountedBodyBox): [number, number, number] {
   return [box.center[0], box.center[1] + box.height / 2 - TIMER_DIAL_RADIUS_MM - 3, box.topZ + 1];
 }
 
-/** ハローのテクスチャ（中心が白く外へ向かって透明になる円）。1枚だけ作って使い回す。§15 */
-let haloTexture: Texture | undefined | null = null;
+/** ハローのテクスチャの一辺[px]（にじみなので粗くてよい）。 */
+const HALO_TEXTURE_PX = 64;
 
+/**
+ * ハローのテクスチャ（中心が白く外へ向かって透明になる円）。1枚だけ作って使い回す。§15 / 3D-13
+ * 焼いた印字のキャッシュは `labels.ts` に**一本化**してあるので、
+ * ここも同じ引き出しに入れる（鍵の接頭辞は `part:`）。テストの `clearFaceTextureCache()` で
+ * まとめて片付く。
+ */
 function sharedHaloTexture(): Texture | undefined {
-  if (haloTexture !== null) return haloTexture;
-  const size = 64;
-  const canvas = document.createElement('canvas');
-  canvas.width = size;
-  canvas.height = size;
-  const ctx = canvas.getContext('2d');
-  if (ctx === null) {
-    haloTexture = undefined;
-    return undefined;
-  }
-  const gradient = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
-  gradient.addColorStop(0, 'rgba(255,255,255,0.85)');
-  gradient.addColorStop(0.45, 'rgba(255,255,255,0.25)');
-  gradient.addColorStop(1, 'rgba(255,255,255,0)');
-  ctx.fillStyle = gradient;
-  ctx.fillRect(0, 0, size, size);
-  const texture = new CanvasTexture(canvas);
-  texture.colorSpace = SRGBColorSpace;
-  texture.minFilter = LinearFilter;
-  texture.magFilter = LinearFilter;
-  texture.needsUpdate = true;
-  haloTexture = texture;
-  return texture;
+  return bakeSharedTexture('part', 'halo', () => {
+    const size = HALO_TEXTURE_PX;
+    const canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext('2d');
+    if (ctx === null) return undefined;
+    const gradient = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+    gradient.addColorStop(0, 'rgba(255,255,255,0.85)');
+    gradient.addColorStop(0.45, 'rgba(255,255,255,0.25)');
+    gradient.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, size, size);
+    const texture = new CanvasTexture(canvas);
+    texture.colorSpace = SRGBColorSpace;
+    texture.minFilter = LinearFilter;
+    texture.magFilter = LinearFilter;
+    texture.needsUpdate = true;
+    return texture;
+  });
 }
 
-/** 発光のにじみ（加算合成の板）＋弱い点光源。消灯中は何も描かない。 */
+/**
+ * 発光のにじみ（加算合成の板）＋弱い点光源。3D-03
+ *
+ * **点いていないときも点光源は置いたままにし、強度を0にする**。three の `WebGLPrograms` は
+ * プログラムのキャッシュ鍵に `numPointLights` を含むため、表示灯やリレーが点いたり消えたり
+ * するたびに本数が変われば**盤のすべての `MeshStandardMaterial` が再コンパイル**される
+ * （表示灯3〜4 ＋ 装着部品の表示灯3 が独立に増減するので組み合わせは数十通りになる）。
+ * 本数を固定すれば鍵は変わらない。板のほうは消灯中は描かない（強度0の光は絵に出ないが、
+ * 加算合成の板は色が乗ってしまうため）。
+ */
 function Glow({
   center,
   color,
   sizeMm,
+  lit,
 }: {
   center: [number, number, number];
   color: string;
   sizeMm: number;
+  /** 点いているか（消灯中は板を描かず、点光源の強度を0にする）。 */
+  lit: boolean;
 }): JSX.Element {
   const texture = sharedHaloTexture();
   return (
     <group name="indicator-glow">
-      {texture === undefined ? null : (
+      {texture === undefined || !lit ? null : (
         <mesh raycast={noPick} position={[center[0], center[1], center[2] + 0.6]}>
           <planeGeometry args={[sizeMm * HALO_SCALE, sizeMm * HALO_SCALE]} />
           <meshBasicMaterial
@@ -205,7 +220,7 @@ function Glow({
       )}
       <pointLight
         color={color}
-        intensity={GLOW_LIGHT_INTENSITY}
+        intensity={lit ? GLOW_LIGHT_INTENSITY : 0}
         distance={GLOW_LIGHT_DISTANCE_MM}
         position={[center[0], center[1], center[2] + 10]}
       />
@@ -236,23 +251,24 @@ function Bezel({
   );
 }
 
-/** タイマの天面の印字（`POWER` / `UP`）。文字は固定なので本体の寸法ごとに1枚だけ作って使い回す。 */
-const timerFaceTextures = new Map<string, Texture | undefined>();
+/** タイマの天面の印字の文字高さ[mm]。 */
+const TIMER_FACE_MARK_MM = 1.8;
 
+/**
+ * タイマの天面の印字（`POWER` / `UP`）。文字は固定なので本体の寸法ごとに1枚だけ焼いて使い回す。
+ * キャッシュは `labels.ts` に一本化（鍵の名前空間は `part`）。3D-13
+ */
 function sharedTimerFaceTexture(widthMm: number, heightMm: number): Texture | undefined {
-  const key = `${widthMm}x${heightMm}`;
-  const cached = timerFaceTextures.get(key);
-  if (cached !== undefined || timerFaceTextures.has(key)) return cached;
-  const texture = makeCanvasTexture(widthMm, heightMm, (ctx) => {
-    ctx.fillStyle = '#E8E4DA';
-    ctx.font = `700 ${1.8 * PX_PER_MM}px sans-serif`;
-    // LED の**手前**に呼び名を印字する（キャンバスの下＝盤の手前）
-    const y = (heightMm - FRONT_INSET_MM + 4.6) * PX_PER_MM;
-    ctx.fillText(JA_3D.timerPower, (widthMm / 2 - TIMER_LED_PITCH_MM / 2) * PX_PER_MM, y);
-    ctx.fillText(JA_3D.timerOut, (widthMm / 2 + TIMER_LED_PITCH_MM / 2) * PX_PER_MM, y);
-  });
-  timerFaceTextures.set(key, texture);
-  return texture;
+  return bakeSharedTexture('part', `timer-face:${widthMm}x${heightMm}`, () =>
+    makeCanvasTexture(widthMm, heightMm, (ctx) => {
+      ctx.fillStyle = '#E8E4DA';
+      ctx.font = labelFont(TIMER_FACE_MARK_MM);
+      // LED の**手前**に呼び名を印字する（キャンバスの下＝盤の手前）
+      const y = (heightMm - FRONT_INSET_MM + 4.6) * PX_PER_MM;
+      ctx.fillText(JA_3D.timerPower, (widthMm / 2 - TIMER_LED_PITCH_MM / 2) * PX_PER_MM, y);
+      ctx.fillText(JA_3D.timerOut, (widthMm / 2 + TIMER_LED_PITCH_MM / 2) * PX_PER_MM, y);
+    }),
+  );
 }
 
 /** リレーの動作表示（窓＋ハロー）。 */
@@ -279,9 +295,12 @@ function RelayIndicator({
         position={center}
         scale={[RELAY_WINDOW_MM.width, RELAY_WINDOW_MM.height, 1]}
       />
-      {energized ? (
-        <Glow center={center} color={RELAY_ON_COLOR} sizeMm={RELAY_WINDOW_MM.height} />
-      ) : null}
+      <Glow
+        center={center}
+        color={RELAY_ON_COLOR}
+        sizeMm={RELAY_WINDOW_MM.height}
+        lit={energized}
+      />
     </group>
   );
 }
@@ -331,13 +350,12 @@ function TimerIndicator({
               position={center}
               scale={[TIMER_LED_MM.width, TIMER_LED_MM.height, 1]}
             />
-            {state.lit ? (
-              <Glow
-                center={center}
-                color={state.led === 'power' ? POWER_ON_COLOR : OUT_ON_COLOR}
-                sizeMm={TIMER_LED_MM.height}
-              />
-            ) : null}
+            <Glow
+              center={center}
+              color={state.led === 'power' ? POWER_ON_COLOR : OUT_ON_COLOR}
+              sizeMm={TIMER_LED_MM.height}
+              lit={state.lit}
+            />
           </group>
         );
       })}

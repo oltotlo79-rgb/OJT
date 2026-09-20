@@ -16,6 +16,12 @@ const BEZEL = new CylinderGeometry(11, 11, 4, 24);
 /** 表示灯のレンズ（半球）。 */
 const LENS = new SphereGeometry(8.5, 20, 12, 0, Math.PI * 2, 0, Math.PI / 2);
 
+/**
+ * 点灯状態ごとの点光源の強度。3D-03
+ * 消灯は「点光源を外す」のではなく **強度0** にする（本数を変えないため。上のコメント参照）。
+ */
+const LAMP_LIGHT_INTENSITY: Readonly<Record<LampLevel, number>> = { off: 0, dim: 200, lit: 900 };
+
 /** 表示灯1個。 */
 export function Lamp({
   definition,
@@ -41,14 +47,19 @@ export function Lamp({
         rotation={[Math.PI / 2, 0, 0]}
         position={[0, 0, 3]}
       />
-      {level === 'off' ? null : (
-        <pointLight
-          color={color}
-          intensity={level === 'lit' ? 900 : 200}
-          distance={70}
-          position={[0, 0, 14]}
-        />
-      )}
+      {/*
+        点光源は**常に置き、強度だけ動かす**（3D-03）。three の `WebGLPrograms` はプログラムの
+        キャッシュ鍵に `numPointLights` を含むので、消灯・点灯で点光源が増減すると
+        **盤のすべての `MeshStandardMaterial` が再コンパイル**される。モードBの点滅回路では
+        本数が毎秒往復し、その組み合わせが初出のあいだコマ落ちする（§15）。
+        本数を固定すれば鍵は変わらず、見た目は `intensity` で同じように出る。
+      */}
+      <pointLight
+        color={color}
+        intensity={LAMP_LIGHT_INTENSITY[level] ?? 0}
+        distance={70}
+        position={[0, 0, 14]}
+      />
     </group>
   );
 }

@@ -26,7 +26,7 @@ import {
 // `plcFaceRect()` は landed のまま `labels.ts` の `faceRect()` を包む（4A H-7 の「残す2つ」）
 import { blockFaceTexture, faceRect, isSharedFaceTexture, roleColorsFor } from './labels.js';
 import { sharedMaterial, UNIT_BOX } from './materials.js';
-import { TerminalHit, terminalTooltip } from './TerminalHit.js';
+import { deskTerminalTooltip, TerminalField } from './TerminalField.js';
 import { toScene } from './coords.js';
 
 /**
@@ -271,7 +271,7 @@ export function PlcUnit({
   /*
    * 機種を替えると本体ごと作り直される（Plan 4B Task 6）。以前は古いテクスチャを毎回
    * `dispose()` していたが（M10）、Task 13 で `blockFaceTexture()` が共有キャッシュ
-   * （`labels.ts` の `faceTextureCache`）を返すようになった後もそのままだったため、
+   * （`labels.ts` の共有キャッシュ）を返すようになった後もそのままだったため、
    * 機種切替・WebGLロスト再構築・セッション離脱のたびに**他の消費先とも共有している**
    * テクスチャを破棄済みにしてしまっていた（I2: Plan 5 C/D レビュー）。寿命はキャッシュが
    * 持つので、共有キャッシュの持ち物（`isSharedFaceTexture()`）は破棄しない。
@@ -306,17 +306,21 @@ export function PlcUnit({
           <meshBasicMaterial map={faceTexture} transparent depthWrite={false} />
         </mesh>
       )}
-      {terminals.map((terminal) => (
-        <TerminalHit
-          key={terminal.id}
-          terminal={terminal}
-          tooltip={terminalTooltip(terminal, terminal.label)}
-          hovered={hoveredTerminal === terminal.id}
-          pending={pendingTerminal === terminal.id}
-          onHover={onHoverTerminal}
-          onPick={onPickTerminal}
-        />
-      ))}
+      {/*
+        机上の端子も **`TerminalField` 1本**に畳む（3D-12）。`TerminalHit` は端子1個につき
+        `<group>` ＋ ネジ ＋ 当たり判定の3メッシュを作るので、FX5U の42点だけで約126個の
+        オブジェクト・約40ドローコールになっていた（決定表#13 の前提「十数個」が機種追加で
+        崩れている）。盤の端子と同じ `instancedMesh` 2本（ネジ＝見える／当たり判定＝不可視）に
+        まとめる。位置も当たり判定の大きさもこれまでと1mmも変えない。
+      */}
+      <TerminalField
+        terminals={terminals}
+        tooltipOf={deskTerminalTooltip}
+        hovered={hoveredTerminal}
+        pending={pendingTerminal}
+        onHover={onHoverTerminal}
+        onPick={onPickTerminal}
+      />
       {/* 機種名は本体の上に1枚（`displayName`。銘板とは別物。ベンダーの画像は持たない。§17） */}
       <Html
         center

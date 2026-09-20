@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  applyLabelVisibility,
   DEFAULT_LABEL_RANK,
   LABEL_GAP_PX,
   pickVisibleLabels,
@@ -136,5 +137,44 @@ describe('実測の名札（1440×900 モードD・OMRON）', () => {
 
   it('全部消してしまわない（読めるものは読める状態で残す）', () => {
     expect(shown.length).toBeGreaterThanOrEqual(5);
+  });
+});
+
+/**
+ * 書き戻しは「前回と違うときだけ」（レビュー指摘 3D-22）。
+ *
+ * `LabelDeclutter` は**毎描画フレーム**走る。毎回 `visibility` を書くとレイアウトが汚れ、
+ * 次のフレームの `getBoundingClientRect()` が強制同期レイアウトを起こす。名札の顔ぶれが
+ * 落ち着いたあとは1枚も書かないことを縛る（「毎フレームでも §15 に響かない」という
+ * 以前のコメントは実測ではなく見積りだった）。
+ */
+describe('visibility の書き戻し（`applyLabelVisibility`）', () => {
+  function labels(count: number): HTMLElement[] {
+    return Array.from({ length: count }, () => document.createElement('span'));
+  }
+
+  it('初回は引っ込める名札だけ書く', () => {
+    const els = labels(3);
+    expect(applyLabelVisibility(els, [true, false, false])).toBe(2);
+    expect(els.map((el) => el.style.visibility)).toEqual(['', 'hidden', 'hidden']);
+  });
+
+  it('同じ結果なら2回目は1枚も書かない', () => {
+    const els = labels(3);
+    applyLabelVisibility(els, [true, false, true]);
+    expect(applyLabelVisibility(els, [true, false, true])).toBe(0);
+  });
+
+  it('変わった名札だけ書き直す', () => {
+    const els = labels(3);
+    applyLabelVisibility(els, [true, false, false]);
+    expect(applyLabelVisibility(els, [true, true, false])).toBe(1);
+    expect(els.map((el) => el.style.visibility)).toEqual(['', '', 'hidden']);
+  });
+
+  it('結果が足りない名札は出したままにする（既定は「出す」）', () => {
+    const els = labels(2);
+    expect(applyLabelVisibility(els, [])).toBe(0);
+    expect(els.map((el) => el.style.visibility)).toEqual(['', '']);
   });
 });

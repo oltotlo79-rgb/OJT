@@ -5,12 +5,12 @@ import type {
   SocketRole,
 } from '@ojt/board-model';
 import { Html } from '@react-three/drei';
-import { useMemo, type JSX } from 'react';
+import type { JSX } from 'react';
 import type { ThreeEvent } from '@react-three/fiber';
-import { BoxGeometry, EdgesGeometry, MeshStandardMaterial } from 'three';
+import { BoxGeometry, EdgesGeometry } from 'three';
 import { RELAY_BODY_COLOR, SOCKET_SELECTED_COLOR, TIMER_BODY_COLOR } from '../session/colors.js';
 import { JA_3D } from '../i18n/ja.js';
-import { UNIT_BOX } from './materials.js';
+import { sharedMaterial, UNIT_BOX } from './materials.js';
 import { PartIndicator, type MountedBodyBox } from './PartIndicator.js';
 import { toScene } from './coords.js';
 
@@ -127,6 +127,26 @@ export function MountedLabelContent({
   );
 }
 
+/**
+ * 装着部品の稜線（`EdgesGeometry`）。寸法ごとに1個だけ作って使い回す。3D-06
+ *
+ * 盤定義が別寸法のソケットを持つ余地を残すので `Map` にしてあるが、`JIPM_BOARD` では
+ * 8ソケットすべて `bodyMm` が同じなので実体は**1個**になる。`EdgesGeometry` は GPU
+ * バッファを持つので、部品の付け外しのたびに作り直すと解放されないまま積み上がる
+ * （中間の `BoxGeometry` は一度もアップロードされないので通常の GC で回収される）。
+ */
+const bodyEdgesCache = new Map<string, EdgesGeometry>();
+
+/** 本体の寸法に対応する稜線（無ければ作って覚える）。 */
+export function sharedBodyEdges(widthMm: number, heightMm: number): EdgesGeometry {
+  const key = `${widthMm}x${heightMm}`;
+  const found = bodyEdgesCache.get(key);
+  if (found !== undefined) return found;
+  const made = new EdgesGeometry(new BoxGeometry(widthMm, heightMm, BODY_HEIGHT_MM));
+  bodyEdgesCache.set(key, made);
+  return made;
+}
+
 /** 装着部品1個。 */
 export function MountedPart({
   socket,
@@ -153,22 +173,19 @@ export function MountedPart({
   const box = mountedBodyBox(socket);
   const { center, width, height } = box;
   const bodyColor = part.kind === 'relay-my4n' ? RELAY_BODY_COLOR : TIMER_BODY_COLOR;
-  const bodyMaterial = useMemo(
-    () =>
-      new MeshStandardMaterial({
-        color: bodyColor,
-        transparent: true,
-        opacity: BODY_OPACITY,
-        roughness: 0.5,
-        metalness: 0.2,
-      }),
-    [bodyColor],
-  );
-  // 稜線は本体の大きさに合わせて作る（ソケットごとに寸法は同じなので実質1個で済む）
-  const edges = useMemo(
-    () => new EdgesGeometry(new BoxGeometry(width, height, BODY_HEIGHT_MM)),
-    [width, height],
-  );
+  /*
+   * 本体のマテリアルと稜線は**共有する**（3D-06）。`useMemo` で作ったものを props で
+   * 渡していたため、R3F の自動解放（JSX の子として書いたものだけが対象）から漏れ、
+   * 部品を付け外しするたびに `MeshStandardMaterial` と `EdgesGeometry` が積み上がっていた。
+   * 色は2種（リレー／タイマ）、寸法は全ソケット共通なので、実体は各1個で足りる。
+   */
+  const bodyMaterial = sharedMaterial(bodyColor, {
+    transparent: true,
+    opacity: BODY_OPACITY,
+    roughness: 0.5,
+    metalness: 0.2,
+  });
+  const edges = sharedBodyEdges(width, height);
   return (
     <group name={`mounted-${socket.id}`}>
       {/* 本体の箱。ここだけがクリックを受け、押すとそのソケットが選ばれる（利用者要望 2026-09-19） */}

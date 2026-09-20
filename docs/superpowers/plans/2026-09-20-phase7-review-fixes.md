@@ -632,6 +632,14 @@ grep -rln "stepGuide\|手順帯" apps/desktop/src/renderer/**/*.module.css  # �
 - [ ] 1. **死にコード・死にフィールド・非推奨エイリアス**を削る: `LoadElement.polarized`（CS-06。コメントを実装に合わせる）／バレルの export 漏れ2件（CS-10）と取りこぼし2件（CT-08）／`@deprecated` 3定数（BM-06）／`BUILTIN_PROBLEMS` の陳腐化コメント（CT-09）／`reset` コマンド（DW-3。テストごと削る）／`WorkerBridge.handlers`（DS-5）／`presetForDirection()`（3D-18。テスト5ケースを `gizmoTargetForDirection()` へ向け直す）／`receiveShadow`（3D-20）／互換 export 4本（LE-17）。
 - [ ] 2. **3D-13**: 印字テクスチャのキャッシュ4方針（`AcFixtures` / `labels.ts` / `PartIndicator` / `Fixtures`）を `labels.ts` の実装に**一本化**し、鍵に接頭辞（`fixture:` / `socket:` / `part:`）を付ける。
 - [ ] 3. **3D-14**: `labels.ts` に `LABEL_FONT` 定数を置き `ctx.font` の5箇所を差し替える（文字幅表は Meiryo 実測なのに焼くときは `sans-serif` になっている）。開発時に `measureText()` と見積りを比べるアサートを足す。
+
+> **3D-13 / 3D-14 / 3D-18 / 3D-20 は Task 17 で済み（`<SHA17>`）**: Step 2・3 はまるごと、Step 1 のうち
+> `presetForDirection()`（3D-18。`view-navigation.test.ts` の5ケースを `gizmoTargetForDirection()` へ
+> 向け直した）と `receiveShadow`（3D-20）も削除済み。印字テクスチャのキャッシュは `labels.ts` の
+> `bakeSharedTexture(namespace, key, bake)` 1つに畳んだので、`cachedFaceTexture` / `faceTextureCache`
+> を `apps/desktop/src` で探すと `labels.ts` だけに当たる。**BoardScene の `reasonOf` も Task 17 で
+> 共有版（`app/errors.js`）へ寄せた**ので、`grep -rn "function reasonOf" apps/desktop/src` は1件になった。
+> Task 12 はこれらの項目を飛ばしてよい。
 - [ ] 4. **LE-16**: `CommentPanel.tsx` の JSDoc と実装の食い違い（3箇所中2箇所が矛盾）を実装に合わせて直す。
 - [ ] 5. **UI-11 ≡ LE-15**: 描画中に ref を読み書きしている6箇所を `useEffect` へ移す（`SchematicEditor.tsx:225-228` が正しい形）。
 - [ ] 6. **UI-15**: 未使用の日本語キー9件と別名定義8組を整理する。`i18n-keys.test.ts` を新設し、`JA` の全葉キーが `src` / `test` / `e2e` のどこかから参照されていることを検査する（再発防止）。
@@ -809,19 +817,31 @@ apps/desktop/test/ladder-grid.test.tsx カーソルを1マス動かしたとき�
 
 **Steps:**
 
-- [ ] 1. **3D-02**: `materials.ts` に `PIN_HOLE_GEOMETRY` を置き、差込穴112個を共有ジオメトリ1個＋共有マテリアル1個にする。
-- [ ] 2. **3D-03**: 点光源を**固定本数**にして `intensity` だけ動かす。`three-fidelity.test.tsx:349` の「点灯している LED のぶんだけ点光源が増える」を「**点光源の本数は点灯状態によらず一定で `intensity` だけが変わる**」に書き換える（いまのテストは性能上の問題を仕様として固定している）。
-- [ ] 3. **3D-04**: `Fixtures.tsx` の `fixtureFaceTexture()` を `labels.ts` の `cachedFaceTexture()` 越しにする（鍵 `fixture:${kind}:${w}x${h}`）。Task 12 の一本化と同じ鍵体系を使う。
-- [ ] 4. **3D-05**: `FixedWires` の `TubeGeometry` 20本を `useEffect` の cleanup で `dispose()` する。
-- [ ] 5. **3D-06**: `MountedPart` の `bodyMaterial` を `sharedMaterial(...)` に、`edges` をモジュール定数1個にする。
-- [ ] 6. **3D-08**: `labels.ts:621-626` の `minFilter` を `LinearMipmapLinearFilter` にする（1行。`view-gizmo-textures.ts:53-59` が正しい前例）。
-- [ ] 7. **3D-09**: `WirePickBody` の `<mesh>` に `visible={false}` を足し、**2箇所のコメントを訂正**する（`visible={false}` だとレイキャストが辿らない、という記述は事実と異なる。`TerminalHit` が反例）。
-- [ ] 8. **3D-11**: `CameraPresets.tsx:70` を `problem` 購読 ＋ `useMemo` にする。
-- [ ] 9. **3D-12**: `TerminalField` を `PlcUnit` / `PlcRack` / `Outlet` からも呼び、机上端子を1ドローコールに畳む。
-- [ ] 10. **3D-22**: `LabelDeclutter` の `visibility` 書き込みを「前回と違うときだけ」にする（毎フレームの強制同期レイアウトを止める）。
-- [ ] 11. テストはレポート §5 Batch 3「追加すべきテスト」の該当行をそのまま入れる（`fixed-wires.test.tsx` / `parts-swap.test.tsx` / `label-cache.test.ts` / `materials.test.ts` / `three-fidelity.test.tsx`）。
+- [x] 1. **3D-02**: `materials.ts` に `PIN_HOLE_GEOMETRY` を置き、差込穴112個を共有ジオメトリ1個＋共有マテリアル1個にする。
+- [x] 2. **3D-03**: 点光源を**固定本数**にして `intensity` だけ動かす。`three-fidelity.test.tsx:349` の「点灯している LED のぶんだけ点光源が増える」を「**点光源の本数は点灯状態によらず一定で `intensity` だけが変わる**」に書き換える（いまのテストは性能上の問題を仕様として固定している）。
+- [x] 3. **3D-04**: `Fixtures.tsx` の `fixtureFaceTexture()` を `labels.ts` の `cachedFaceTexture()` 越しにする（鍵 `fixture:${kind}:${w}x${h}`）。Task 12 の一本化と同じ鍵体系を使う。
+- [x] 4. **3D-05**: `FixedWires` の `TubeGeometry` 20本を `useEffect` の cleanup で `dispose()` する。
+- [x] 5. **3D-06**: `MountedPart` の `bodyMaterial` を `sharedMaterial(...)` に、`edges` をモジュール定数1個にする。
+- [x] 6. **3D-08**: `labels.ts:621-626` の `minFilter` を `LinearMipmapLinearFilter` にする（1行。`view-gizmo-textures.ts:53-59` が正しい前例）。
+- [x] 7. **3D-09**: `WirePickBody` の `<mesh>` に `visible={false}` を足し、**2箇所のコメントを訂正**する（`visible={false}` だとレイキャストが辿らない、という記述は事実と異なる。`TerminalHit` が反例）。
+- [x] 8. **3D-11**: `CameraPresets.tsx:70` を `problem` 購読 ＋ `useMemo` にする。
+- [x] 9. **3D-12**: `TerminalField` を `PlcUnit` / `PlcRack` / `Outlet` からも呼び、机上端子を1ドローコールに畳む。
+- [x] 10. **3D-22**: `LabelDeclutter` の `visibility` 書き込みを「前回と違うときだけ」にする（毎フレームの強制同期レイアウトを止める）。
+- [x] 11. テストはレポート §5 Batch 3「追加すべきテスト」の該当行をそのまま入れる（`fixed-wires.test.tsx` / `parts-swap.test.tsx` / `label-cache.test.ts` / `materials.test.ts` / `three-fidelity.test.tsx`）。
 
 **期待:** `pnpm --filter @ojt/desktop e2e perf` の `calls` と `triangles` が Task 16 の実測値より**下がっている**こと。課題を10回開き直したあとの `renderer.info.memory` が単調増加しないこと。
+
+**実測（`OJT-wt-e2e`・swiftshader・1440x900・b-001。3回走らせて正面・俯瞰は毎回同値）:**
+
+| 視点 | triangles（前 → 後） | calls（前 → 後） | geometries（前 → 後） |
+|---|---|---|---|
+| 正面 / 俯瞰 | 50,364 → **50,044** | 309 → **186** | 204 → **73** |
+| ソケット拡大 | 45,898 → 約46,540 | 253 → **150〜154** | 204 → **73** |
+
+予算（200,000 / 340）に対する最悪値は 50,044 / 186。ドローコールは**正面で 40% 減**（差込穴112＋貫通穴20＝132個の `mesh` が `instancedMesh` 9本に畳まれたぶん）、ジオメトリは 204 → 73 に減った（3D-02 / 3D-06 のメモリ側の効果）。テクスチャは 18 → 16（3D-04 / 3D-13 で固定機器の印字が共有キャッシュに入ったぶん）。
+
+ソケット拡大の値だけ走るたびに数十ゆれるのは、視点の補間が落ち着く前に測る回があるためで、Task 16 から変わっていない。
+三角形は正面・俯瞰では 320 減った（貫通穴の断面分割が 12 → 8 になったぶん。20個 × 16三角形）が、**ソケット拡大では 642 増えた**: 穴が `instancedMesh` 1本になったので視錐台カリングの粒度が「穴1個」から「ソケット1個」に粗くなり、寄りの視点で以前は落ちていた穴も描かれるようになったため。この視点でもドローコールは 102 減っているので差し引きで軽い。穴を `socketFaceTexture()` へ焼き込めば（レビュー 3D-02 の「踏み込む案」）両方 0 にできるが、穴の陰影が無くなって見た目が変わるので Task 27 へ送る。
 
 ---
 

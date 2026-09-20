@@ -19,6 +19,16 @@ vi.mock('@react-three/drei', () => ({
   Html: ({ children }: { children?: ReactNode }) => children,
 }));
 
+/*
+ * 机上の端子は `TerminalField`（`instancedMesh` 2本）が描くようになった（3D-12）ので、
+ * `useThree` も素通しにする（`<Canvas>` の外では本物が例外を投げる）。R3F の調停器を
+ * 通さないため ref には DOM 要素が来るが、`applyInstanceMatrices()` がそれを受け止める。
+ */
+vi.mock('@react-three/fiber', () => ({
+  useThree: (selector: (state: { invalidate: () => void }) => unknown) =>
+    selector({ invalidate: () => undefined }),
+}));
+
 // 印字テクスチャの焼き付けは**本物を呼びつつ**引数を見る（どの色表で焼いたか。B1）
 vi.mock('../src/renderer/three/labels.js', async (importOriginal) => {
   const actual = await importOriginal<typeof LabelsModule>();

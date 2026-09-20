@@ -194,6 +194,14 @@ function WirePickBody({
     <mesh
       geometry={geometry}
       material={INVISIBLE_MATERIAL}
+      /*
+       * `visible={false}` にしても three の `Raycaster` はこのメッシュを辿る（3D-09）。
+       * `Raycaster` が見るのは `layers` と `raycast()` だけで `visible` は見ない。
+       * 半透明のまま描いていたときは、削除モードの電線1本ごとにドローコールと
+       * 深度ソートを払っていた（`TerminalHit` / `TerminalField` の当たり判定球が
+       * 同じ形で `visible={false}` のまま拾えているのがその証拠である）。
+       */
+      visible={false}
       onClick={(event: ThreeEvent<MouseEvent>) => {
         event.stopPropagation();
         onPick(route.wireId, locked);
@@ -243,9 +251,9 @@ export function Wire({
       {/* 見た目の電線。クリックは常に下の当たり判定チューブに任せる */}
       <mesh geometry={geometry} material={material} raycast={noPick} />
       {/*
-        当たり判定だけの太いチューブ。`visible={false}` にすると three の `Raycaster` が
-        たどらないので、`INVISIBLE_MATERIAL`（`opacity: 0` / `depthWrite: false`）で
-        「見えないが交差候補にはなる」状態にする（`TerminalHit` の当たり判定球と同じ手）。
+        当たり判定だけの太いチューブ。`visible={false}` なので**描かれないが**、three の
+        `Raycaster` は `visible` を見ないのでクリックは拾える（`TerminalHit` /
+        `TerminalField` の当たり判定球と同じ手）。3D-09
       */}
       {pickable ? <WirePickBody route={route} locked={locked} onPick={onPick} /> : null}
       {ends.map((pos, index) => (

@@ -25,7 +25,10 @@ vi.mock('@react-three/drei', () => ({
 }));
 
 const { PartsPanel } = await import('../src/renderer/panels/PartsPanel.js');
-const { MountedPart } = await import('../src/renderer/three/MountedPart.js');
+const { MountedPart, mountedBodyBox, sharedBodyEdges } =
+  await import('../src/renderer/three/MountedPart.js');
+const { sharedMaterial } = await import('../src/renderer/three/materials.js');
+const { RELAY_BODY_COLOR, TIMER_BODY_COLOR } = await import('../src/renderer/session/colors.js');
 const { socketBodyMaterial } = await import('../src/renderer/three/Socket.js');
 const { runSwapPart } = await import('../src/renderer/session/commands.js');
 const { JA, JA_PARTS } = await import('../src/renderer/i18n/ja.js');
@@ -323,6 +326,41 @@ describe('3Dの装着部品のクリック（§8.2 / 利用者要望 2026-09-19�
     expect(darkColor).toBeTruthy();
     expect(litColor).toBeTruthy();
     expect(litColor).not.toBe(darkColor);
+  });
+
+  /**
+   * 本体のマテリアルと稜線は共有する（レビュー指摘 3D-06）。
+   * `useMemo` で作って props で渡していたので R3F の自動解放（JSX の子だけが対象）から漏れ、
+   * 部品を付け外しするたびに `MeshStandardMaterial` と `EdgesGeometry` が積み上がっていた。
+   */
+  it('本体のマテリアルは色ごとに1個を使い回す（3D-06）', () => {
+    if (socket === undefined) throw new Error('ソケットが無い');
+    const options = { transparent: true, opacity: 0.85, roughness: 0.5, metalness: 0.2 };
+    const relay = sharedMaterial(RELAY_BODY_COLOR, options);
+    expect(sharedMaterial(RELAY_BODY_COLOR, options)).toBe(relay);
+    // リレーとタイマは色が違うので別インスタンス（＝2個で足りる）
+    expect(sharedMaterial(TIMER_BODY_COLOR, options)).not.toBe(relay);
+  });
+
+  it('稜線は寸法ごとに1個を使い回す（3D-06）', () => {
+    const boxes = JIPM_BOARD.sockets.map((s) => mountedBodyBox(s));
+    const edges = boxes.map((box) => sharedBodyEdges(box.width, box.height));
+    // 盤の8ソケットは寸法が同じなので、稜線の実体は1個
+    expect(new Set(edges).size).toBe(1);
+    const first = boxes[0];
+    if (first === undefined) throw new Error('ソケットが無い');
+    expect(sharedBodyEdges(first.width, first.height)).toBe(edges[0]);
+  });
+
+  it('付け外しを繰り返しても稜線のインスタンスが増えない（3D-06）', () => {
+    if (socket === undefined) throw new Error('ソケットが無い');
+    const box = mountedBodyBox(socket);
+    const before = sharedBodyEdges(box.width, box.height);
+    renderMounted(false);
+    cleanup();
+    renderMounted(true);
+    cleanup();
+    expect(sharedBodyEdges(box.width, box.height)).toBe(before);
   });
 
   it('選択中のソケット本体は発光し、同じ状態なら同じマテリアルを使い回す', () => {

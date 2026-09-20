@@ -4,7 +4,7 @@ import { Html } from '@react-three/drei';
 import type { JSX } from 'react';
 import { JA } from '../i18n/ja.js';
 import { sharedMaterial, UNIT_BOX } from './materials.js';
-import { TerminalHit, terminalTooltip } from './TerminalHit.js';
+import { deskTerminalTooltip, TerminalField } from './TerminalField.js';
 import { toScene } from './coords.js';
 
 /** 壁コンセント（AC100V）。設計仕様 §10.1。 */
@@ -51,17 +51,21 @@ export function Outlet({
         position={center}
         scale={[PLATE_W_MM, PLATE_H_MM, PLATE_Z_MM]}
       />
-      {terminals.map((terminal) => (
-        <TerminalHit
-          key={terminal.id}
-          terminal={terminal}
-          tooltip={terminalTooltip(terminal, terminal.label)}
-          hovered={hoveredTerminal === terminal.id}
-          pending={pendingTerminal === terminal.id}
-          onHover={onHoverTerminal}
-          onPick={onPickTerminal}
-        />
-      ))}
+      {/*
+        机上の端子も **`TerminalField` 1本**に畳む（3D-12）。`TerminalHit` は端子1個につき
+        `<group>` ＋ ネジ ＋ 当たり判定の3メッシュを作るので、FX5U の42点だけで約126個の
+        オブジェクト・約40ドローコールになっていた（決定表#13 の前提「十数個」が機種追加で
+        崩れている）。盤の端子と同じ `instancedMesh` 2本（ネジ＝見える／当たり判定＝不可視）に
+        まとめる。位置も当たり判定の大きさもこれまでと1mmも変えない。
+      */}
+      <TerminalField
+        terminals={terminals}
+        tooltipOf={deskTerminalTooltip}
+        hovered={hoveredTerminal}
+        pending={pendingTerminal}
+        onHover={onHoverTerminal}
+        onPick={onPickTerminal}
+      />
       <Html
         center
         style={LABEL_STYLE}

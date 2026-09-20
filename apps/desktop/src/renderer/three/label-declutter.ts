@@ -95,6 +95,27 @@ function rankOf(el: HTMLElement): number {
 }
 
 /**
+ * 選んだ結果を DOM へ書き戻す（**前回と違う名札だけ**）。書き換えた枚数を返す。3D-22
+ *
+ * 純関数ではないが、`LabelDeclutter` の `useFrame` から切り出して export するのは、
+ * 「同じ結果なら2回目は1枚も書かない」ことを単体テストで縛れるようにするため
+ * （`LabelDeclutter` 自身は `<Canvas>` の中でしか動かせない）。
+ */
+export function applyLabelVisibility(
+  labels: readonly HTMLElement[],
+  visible: readonly boolean[],
+): number {
+  let written = 0;
+  labels.forEach((el, index) => {
+    const next = (visible[index] ?? true) ? '' : 'hidden';
+    if (el.style.visibility === next) return;
+    el.style.visibility = next;
+    written += 1;
+  });
+  return written;
+}
+
+/**
  * 名札の重なり取りを毎フレーム（正確には**視点か名札の顔ぶれが変わったフレームだけ**）行う。
  *
  * `<Canvas>` の**いちばん最後の子**として置くこと。drei の `<Html>` は同じ優先度の
@@ -120,15 +141,16 @@ export function LabelDeclutter(): null {
      * 決まることがある。視点を鍵にして省くと、その1回を取りこぼしたまま二度と測り直さず、
      * 名札が重なったまま残る（バッチEの実測: TOYOPUC のラックで全部重なったまま）。
      * `frameloop="demand"` なので走るのは**実際に描いたフレームだけ**、測るのは十数枚の
-     * `getBoundingClientRect()` なので、毎フレームでも性能目標 §15 に響かない。
+     * `getBoundingClientRect()` である。ただし**書き戻しは前回と違うときだけ**にする
+     * （3D-22）。毎フレーム `visibility` を書くと、そのたびにレイアウトが汚れ、次のフレームの
+     * `getBoundingClientRect()` が強制同期レイアウトを起こす。名札の顔ぶれが落ち着いた
+     * あとは書き込みが 0 件になるので、測るだけの安い処理に戻る。
      */
     // 測る（読み）をぜんぶ済ませてから `visibility` を書く
     const candidates = labels.map((el) => ({ rank: rankOf(el), rect: rectOf(el) }));
     const reserved = reservedEls.map(rectOf);
     const visible = pickVisibleLabels(candidates, reserved);
-    labels.forEach((el, index) => {
-      el.style.visibility = (visible[index] ?? true) ? '' : 'hidden';
-    });
+    applyLabelVisibility(labels, visible);
   });
   return null;
 }

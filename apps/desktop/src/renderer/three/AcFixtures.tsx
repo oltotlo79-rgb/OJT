@@ -3,7 +3,7 @@ import type { JSX } from 'react';
 import type { Texture } from 'three';
 import { DIN_RAIL_COLOR } from '../session/colors.js';
 import { JA_3D } from '../i18n/ja.js';
-import { makeCanvasTexture, PX_PER_MM } from './labels.js';
+import { bakeSharedTexture, labelFont, makeCanvasTexture, PX_PER_MM } from './labels.js';
 import { SCREW_GEOMETRY, sharedMaterial, UNIT_BOX } from './materials.js';
 import { toScene } from './coords.js';
 
@@ -47,6 +47,8 @@ const SHROUD_DROP_MM = 1.2;
 const MARK_CLEARANCE_MM = 1.5;
 /** ON / OFF の印字の文字高さ[mm]。 */
 const MARK_MM = 1.6;
+/** 銘板（緑のプレート）の定格表示の文字高さ[mm]。 */
+const RATING_MM = 2.6;
 /** 機器の外形から内側へ詰める量[mm]（ベース・本体の見切り）。 */
 const BODY_INSET_MM = 2;
 /** ハンドル／ロッカーの色（写真の濃いグレー）。 */
@@ -172,25 +174,23 @@ function ratingPlateRect(footprint: Footprint): { x: number; y: number; w: numbe
   };
 }
 
-/** 天面の印字テクスチャは文字が固定なので機器ごとに1枚だけ作って使い回す。§15 */
-const faceTextureCache = new Map<string, Texture | undefined>();
-
-function cachedFaceTexture(key: string, make: () => Texture | undefined): Texture | undefined {
-  if (faceTextureCache.has(key)) return faceTextureCache.get(key);
-  const texture = make();
-  faceTextureCache.set(key, texture);
-  return texture;
-}
+/*
+ * 天面の印字テクスチャは文字が固定なので機器ごとに1枚だけ作って使い回す。§15 / 3D-13
+ * 以前はこのファイルが**名前まで同じ**（焼いた絵の入れ物と、その取り出し関数）別の
+ * キャッシュを持っていた。所有権の印（`isSharedFaceTexture()`）が無く、焼けなかった
+ * `undefined` も永続的に覚え、テストの `clearFaceTextureCache()` の対象外だった。
+ * `labels.ts` の実装に一本化し、鍵に `fixture:` の接頭辞を付ける。
+ */
 
 /** ブレーカの天面の印字（ON / OFF ＋ 緑の銘板）。 */
 function breakerFaceTexture(footprint: Footprint): Texture | undefined {
-  return cachedFaceTexture(`breaker:${footprint.w}x${footprint.h}`, () =>
+  return bakeSharedTexture('fixture', `breaker:${footprint.w}x${footprint.h}`, () =>
     makeCanvasTexture(footprint.w, footprint.h, (ctx) => {
       const handleX = handleCenterX(footprint) * PX_PER_MM;
       const mark = markOffsetMm(BREAKER_HANDLE_MM.depth);
       // ON は奥（キャンバスの上）、OFF は手前。ハンドルはこの2つの印字のあいだで倒れる
       ctx.fillStyle = '#1B1E23';
-      ctx.font = `700 ${MARK_MM * PX_PER_MM}px sans-serif`;
+      ctx.font = labelFont(MARK_MM);
       ctx.fillText(JA_3D.on, handleX, (footprint.h / 2 - mark) * PX_PER_MM);
       ctx.fillText(JA_3D.off, handleX, (footprint.h / 2 + mark) * PX_PER_MM);
       // 銘板（写真の緑のプレート）。定格は §6.1 の「1A・AC一次側」から
@@ -204,7 +204,7 @@ function breakerFaceTexture(footprint: Footprint): Texture | undefined {
         plate.h * PX_PER_MM,
       );
       ctx.fillStyle = '#F3F6F2';
-      ctx.font = `700 ${2.6 * PX_PER_MM}px sans-serif`;
+      ctx.font = labelFont(RATING_MM);
       const lines = JA_3D.breakerRating.split(' ');
       const centerX = (plate.x + plate.w / 2) * PX_PER_MM;
       lines.forEach((line, index) => {
@@ -217,11 +217,11 @@ function breakerFaceTexture(footprint: Footprint): Texture | undefined {
 
 /** 電源スイッチの天面の印字（ON / OFF）。 */
 function switchFaceTexture(footprint: Footprint): Texture | undefined {
-  return cachedFaceTexture(`switch:${footprint.w}x${footprint.h}`, () =>
+  return bakeSharedTexture('fixture', `switch:${footprint.w}x${footprint.h}`, () =>
     makeCanvasTexture(footprint.w, footprint.h, (ctx) => {
       const mark = markOffsetMm(SWITCH_ROCKER_MM.depth);
       ctx.fillStyle = '#1B1E23';
-      ctx.font = `700 ${MARK_MM * PX_PER_MM}px sans-serif`;
+      ctx.font = labelFont(MARK_MM);
       ctx.fillText(JA_3D.on, (footprint.w / 2) * PX_PER_MM, (footprint.h / 2 - mark) * PX_PER_MM);
       ctx.fillText(JA_3D.off, (footprint.w / 2) * PX_PER_MM, (footprint.h / 2 + mark) * PX_PER_MM);
     }),

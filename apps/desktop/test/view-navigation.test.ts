@@ -23,7 +23,6 @@ import {
   middleButtonActionFor,
   middleButtonAssignmentFor,
   mouseButtonAssignment,
-  presetForDirection,
 } from '../src/renderer/three/navigation.js';
 import { viewKeyAction } from '../src/renderer/session/viewport-keys.js';
 
@@ -125,23 +124,35 @@ describe('viewKeyAction（キー → 視点）', () => {
   });
 });
 
-describe('presetForDirection（ビューキューブの面・辺・角 → 視点）', () => {
+/*
+ * 死んだ関数 `presetForDirection()` を削除し（3D-18）、その5ケースを後継の
+ * `gizmoTargetForDirection()` へ向け直したもの。面は**プリセットに素直に対応**し、
+ * 辺・角は**面へ丸めず**その辺・角そのものに着く（これが置き換えの目的だった）。
+ */
+describe('gizmoTargetForDirection（ビューキューブの面・辺・角 → 視点）', () => {
   it('6面はその方向のプリセットに素直に対応する', () => {
-    expect(presetForDirection([1, 0, 0])).toBe('right');
-    expect(presetForDirection([-1, 0, 0])).toBe('left');
-    expect(presetForDirection([0, 1, 0])).toBe('top');
-    expect(presetForDirection([0, -1, 0])).toBe('bottom');
-    expect(presetForDirection([0, 0, 1])).toBe('front');
-    expect(presetForDirection([0, 0, -1])).toBe('back');
+    expect(gizmoTargetForDirection([1, 0, 0]).preset).toBe('right');
+    expect(gizmoTargetForDirection([-1, 0, 0]).preset).toBe('left');
+    expect(gizmoTargetForDirection([0, 1, 0]).preset).toBe('top');
+    expect(gizmoTargetForDirection([0, -1, 0]).preset).toBe('bottom');
+    expect(gizmoTargetForDirection([0, 0, 1]).preset).toBe('front');
+    expect(gizmoTargetForDirection([0, 0, -1]).preset).toBe('back');
   });
 
-  it('左手前・上の角は俯瞰プリセット（実物写真と同じ向き）になる', () => {
-    expect(presetForDirection([-1, 1, 1])).toBe('top');
+  it('左手前・上の角は面へ丸めず、その角そのものに着く', () => {
+    const corner = gizmoTargetForDirection([-1, 1, 1]);
+    expect(corner.id).toBe('front-top-left');
+    expect(corner.kind).toBe('corner');
+    // 削除した旧実装はここを俯瞰（top）へ丸めていて、斜め45°には着けなかった
+    expect(corner.preset).toBeUndefined();
   });
 
-  it('辺は近いほうの視点に着く', () => {
-    // 右と手前のあいだの辺は、俯瞰でも下でもなく右か正面のどちらか
-    expect(['right', 'front']).toContain(presetForDirection([1, 0, 1]));
+  it('辺は近いほうの面ではなく、その辺に着く', () => {
+    // 右と手前のあいだの辺は right でも front でもなく front-right
+    const edge = gizmoTargetForDirection([1, 0, 1]);
+    expect(edge.id).toBe('front-right');
+    expect(edge.kind).toBe('edge');
+    expect(edge.preset).toBeUndefined();
   });
 });
 

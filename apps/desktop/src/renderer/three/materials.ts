@@ -3,9 +3,11 @@ import {
   BoxGeometry,
   CylinderGeometry,
   FrontSide,
+  InstancedMesh,
   MeshStandardMaterial,
   SphereGeometry,
   type Material,
+  type Matrix4,
   type Side,
 } from 'three';
 
@@ -28,6 +30,17 @@ export const UNIT_BOX = new BoxGeometry(1, 1, 1);
 export const LUG_GEOMETRY = new CylinderGeometry(2.5, 2.5, 0.9, 10, 1, true);
 
 /**
+ * 差込穴・盤面の貫通穴の円柱（**半径1・高さ0.5**で作り、使う側が `scale` で実寸にする）。3D-02
+ *
+ * 以前は `Socket` が `<cylinderGeometry args={[…]} />` を JSX の子として書いていたため、
+ * R3F が mesh ごとに新しいインスタンスを作り、8ソケット×14穴＝**112個の `CylinderGeometry` と
+ * 112個の `MeshStandardMaterial`**ができていた（`FixedWires` の貫通穴20個も同じ形）。
+ * このファイル冒頭の方針（形と色が同じものは1個を使い回す）に真っ向から反する。
+ * 使う側は `instancedMesh` に渡して**穴をまとめて1ドローコール**で描く。
+ */
+export const PIN_HOLE_GEOMETRY = new CylinderGeometry(1, 1, 0.5, 8);
+
+/**
  * レイキャストを受けない（飾りの板や輪がクリックを奪わないようにする）。
  * `Socket` / `TerminalBlock` / `TerminalField` が同じものを使う（同じ1行を3箇所に置かないため）。
  */
@@ -35,7 +48,16 @@ export function noPick(): void {
   // 交差候補を積まない
 }
 
-/** 当たり判定メッシュ用の透明マテリアル（見えないが raycast は拾う）。 */
+/**
+ * 当たり判定メッシュ用のマテリアル。3D-09
+ *
+ * 当たり判定のメッシュには**必ず `visible={false}` も付ける**こと。three の `Raycaster` は
+ * `visible` を見ない（`layers` と `raycast()` だけで絞る）ので、`visible={false}` にしても
+ * クリックは拾えるのに、描画からは丸ごと外れてドローコールも深度ソートも払わなくて済む
+ * （`TerminalHit` / `TerminalField` / `WirePickBody` はすべてこの形）。「`visible={false}` だと
+ * レイキャストが辿らない」というのは**事実ではない**。このマテリアルはその上で、
+ * 万一 `visible` を落とし忘れたときにも絵に出ないようにするための保険である。
+ */
 export const INVISIBLE_MATERIAL: Material = new MeshStandardMaterial({
   transparent: true,
   opacity: 0,
@@ -89,4 +111,26 @@ export function useLampMaterial(color: string, intensity: number): MeshStandardM
   );
   material.emissiveIntensity = intensity;
   return material;
+}
+
+/**
+ * `instancedMesh` の ref へ行列を流し込み、外接球を作り直す。3D-02 / 3D-12
+ *
+ * 外接球は**視錐台カリングとレイキャストの足切りの両方**に使われるので、行列を入れ替えたら
+ * 必ず作り直す（作らないと three が単位行列のまま＝原点に固まった球で計算し、盤を横から
+ * 見たときに丸ごと消える）。
+ *
+ * `<Canvas>` の**外**では ref に DOM 要素が入る（RTL の単体テストは R3F の調停器を通さず
+ * 素の DOM へ描くため）。その場合は何もせず `false` を返す。ここで受け止めておかないと、
+ * 3Dの部品を DOM に描いて確かめている既存のテストが `setMatrixAt is not a function` で落ちる。
+ */
+export function applyInstanceMatrices(
+  mesh: InstancedMesh | null,
+  matrices: readonly Matrix4[],
+): boolean {
+  if (!(mesh instanceof InstancedMesh)) return false;
+  matrices.forEach((matrix, index) => mesh.setMatrixAt(index, matrix));
+  mesh.instanceMatrix.needsUpdate = true;
+  mesh.computeBoundingSphere();
+  return true;
 }
