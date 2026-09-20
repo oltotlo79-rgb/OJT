@@ -625,7 +625,7 @@ grep -rln "stepGuide\|手順帯" apps/desktop/src/renderer/**/*.module.css  # �
 
 **Steps:**
 
-> **DW-3 は Task 15 で済み（<SHA>）**: `worker/protocol.ts` の `{ type: 'reset' }` と
+> **DW-3 は Task 15 で済み（`9e1e666`）**: `worker/protocol.ts` の `{ type: 'reset' }` と
 > `sim.worker.ts` の `case 'reset'`、それを唯一送っていた `test/sim-worker.test.ts` の検査を削除した。
 > Task 12 はこの項目を飛ばしてよい（Task 10 の `default: command satisfies never` はそのまま残っている）。
 
