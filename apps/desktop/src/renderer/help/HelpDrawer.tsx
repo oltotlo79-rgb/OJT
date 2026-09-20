@@ -6,6 +6,7 @@ import {
   useState,
   type JSX,
   type MouseEvent,
+  type ReactNode,
 } from 'react';
 import { createPortal } from 'react-dom';
 import { trapFocus } from '../app/focus-trap.js';
@@ -13,7 +14,15 @@ import { tryOjtApi } from '../app/ojt-api.js';
 import { useStore } from '../app/store.js';
 import { helpHitCountText, JA } from '../i18n/ja.js';
 import { pushModalLayer, topModalLayer } from '../session/interaction.js';
-import { MAX_HELP_HITS, searchManual, sectionById } from './help-model.js';
+import {
+  adjacentSectionId,
+  groupHitsByChapter,
+  MAX_HELP_HITS,
+  searchManual,
+  sectionById,
+  sectionIdForAnchor,
+  type HelpHit,
+} from './help-model.js';
 import { useHelpStore } from './help-store.js';
 import { MANUAL_CHAPTERS, MANUAL_IMAGES, MANUAL_SECTIONS } from './manual-content.js';
 import styles from './help.module.css';
@@ -31,6 +40,24 @@ import styles from './help.module.css';
 interface EnlargedFigure {
   name: string;
   alt: string;
+}
+
+/** 検索結果の抜粋。一致箇所（`excerptMatchStart`）だけ太字にする（設計 §6.4）。 */
+function renderExcerpt(hit: HelpHit): ReactNode {
+  if (hit.excerptMatchStart < 0 || hit.excerptMatchLength <= 0) return hit.excerpt;
+  const before = hit.excerpt.slice(0, hit.excerptMatchStart);
+  const match = hit.excerpt.slice(
+    hit.excerptMatchStart,
+    hit.excerptMatchStart + hit.excerptMatchLength,
+  );
+  const after = hit.excerpt.slice(hit.excerptMatchStart + hit.excerptMatchLength);
+  return (
+    <>
+      {before}
+      <strong>{match}</strong>
+      {after}
+    </>
+  );
 }
 
 /** ヘルプの引き出し。 */
@@ -53,8 +80,13 @@ export function HelpDrawer({ onClose }: { onClose: () => void }): JSX.Element {
   const searchResult = useMemo(() => searchManual(query, MAX_HELP_HITS + 1), [query]);
   const hitsCapped = searchResult.length > MAX_HELP_HITS;
   const hits = hitsCapped ? searchResult.slice(0, MAX_HELP_HITS) : searchResult;
+  // ヘルプ引き出し 設計 §6.4: 検索結果は章ごとにまとめる
+  const hitGroups = useMemo(() => groupHitsByChapter(hits), [hits]);
   /** 覆いで開いている図（利用者の決定 2026-09-20）。 */
   const [enlarged, setEnlarged] = useState<EnlargedFigure | undefined>(undefined);
+  // 設計 §6.4: 節の末尾に「← 前の節／次の節 →」。もくじの並び（章→節）をそのまま使う
+  const prevSectionId = section === undefined ? undefined : adjacentSectionId(section.id, -1);
+  const nextSectionId = section === undefined ? undefined : adjacentSectionId(section.id, 1);
 
   // IM-12: 節や検索語を切り替えたら、前の節でどこまで読んでいたかに関係なく本文の先頭を見せる
   useEffect(() => {
@@ -98,18 +130,36 @@ export function HelpDrawer({ onClose }: { onClose: () => void }): JSX.Element {
   });
 
   /*
-   * 図のボタンは生成物の HTML の中にあるので React の `onClick` を付けられない。
-   * 本文の囲みで1回だけ受けて、押された図の名前を拾う（`Enter` / `Space` も
-   * `<button>` なのでブラウザが `click` に直してくれる）。
+   * 図のボタンも本文中のリンクも生成物の HTML の中にあるので React の `onClick` を
+   * 付けられない。本文の囲みで1回だけ受けて、押された先を拾い分ける（`Enter` / `Space` も
+   * `<button>` / `<a>` なのでブラウザが `click` に直してくれる）。
    */
-  const onProseClick = useCallback((event: MouseEvent<HTMLDivElement>): void => {
-    const button = (event.target as HTMLElement).closest<HTMLElement>('button[data-manual-image]');
-    if (button === null) return;
-    const name = button.dataset['manualImage'];
-    if (name === undefined) return;
-    if ((MANUAL_IMAGES[name]?.full ?? '') === '') return;
-    setEnlarged({ name, alt: button.querySelector('img')?.alt ?? name });
-  }, []);
+  const onProseClick = useCallback(
+    (event: MouseEvent<HTMLDivElement>): void => {
+      const target = event.target as HTMLElement;
+      const button = target.closest<HTMLElement>('button[data-manual-image]');
+      if (button !== null) {
+        const name = button.dataset['manualImage'];
+        if (name === undefined) return;
+        if ((MANUAL_IMAGES[name]?.full ?? '') === '') return;
+        setEnlarged({ name, alt: button.querySelector('img')?.alt ?? name });
+        return;
+      }
+      /*
+       * 本文中の `<a href="#sec-…">`（Task 34 で入る）。§15 の外部通信なしを守るため
+       * 既定の遷移は常に止め、内部の節リンクだけ `showSection()` に流す。当たらないもの
+       * （外部URL・壊れたリンク）は止めるだけで何もしない。
+       */
+      const anchor = target.closest<HTMLAnchorElement>('a[href]');
+      if (anchor === null) return;
+      event.preventDefault();
+      const href = anchor.getAttribute('href') ?? '';
+      if (!href.startsWith('#')) return;
+      const targetSectionId = sectionIdForAnchor(href.slice(1));
+      if (targetSectionId !== undefined) showSection(targetSectionId);
+    },
+    [showSection],
+  );
 
   /*
    * 本文の囲みは**同じ要素を使い回す**（`useMemo`）。作り直すと React が `innerHTML` を
@@ -238,33 +288,42 @@ export function HelpDrawer({ onClose }: { onClose: () => void }): JSX.Element {
             data-testid="help-contents"
             aria-label={JA.help.contents}
           >
-            {MANUAL_CHAPTERS.map((chapter) => (
-              // Minor#6: 章を手で畳んだあと、同じ章の別の節へ跳んでも `open` の計算結果が
-              // 変わらないと React は DOM をそのままにする（畳んだままで aria-current が隠れる）。
-              // 節が変わるたびに key を変えて作り直し、毎回いまの節に合わせて開閉し直す。
-              <details
-                key={`${chapter.id}::${sectionId}`}
-                open={chapter.sectionIds.includes(sectionId)}
-              >
-                <summary>{chapter.title}</summary>
-                <ul>
-                  {chapter.sectionIds.map((id) => (
-                    <li key={id}>
-                      <button
-                        type="button"
-                        data-testid={`help-section-${id}`}
-                        aria-current={id === sectionId ? 'true' : undefined}
-                        onClick={() => {
-                          showSection(id);
-                        }}
-                      >
-                        {sectionById(id)?.title ?? id}
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              </details>
-            ))}
+            {/*
+             * 設計 §6.4: 幅が狭いとき（drawer が min(560px, 46vw) まで縮む
+             * 1280px 未満）は、もくじを `<details>` で畳めるようにして本文の幅を返す。
+             * 1280px 以上では `.contentsFold summary` を非表示にする（help.module.css）ので、
+             * 押す手立てが無いまま常に開いたまま。既定は開いた状態（従来どおりもくじが見える）。
+             */}
+            <details className={styles.contentsFold} open>
+              <summary>{JA.help.contents}</summary>
+              {MANUAL_CHAPTERS.map((chapter) => (
+                // Minor#6: 章を手で畳んだあと、同じ章の別の節へ跳んでも `open` の計算結果が
+                // 変わらないと React は DOM をそのままにする（畳んだままで aria-current が隠れる）。
+                // 節が変わるたびに key を変えて作り直し、毎回いまの節に合わせて開閉し直す。
+                <details
+                  key={`${chapter.id}::${sectionId}`}
+                  open={chapter.sectionIds.includes(sectionId)}
+                >
+                  <summary>{chapter.title}</summary>
+                  <ul>
+                    {chapter.sectionIds.map((id) => (
+                      <li key={id}>
+                        <button
+                          type="button"
+                          data-testid={`help-section-${id}`}
+                          aria-current={id === sectionId ? 'true' : undefined}
+                          onClick={() => {
+                            showSection(id);
+                          }}
+                        >
+                          {sectionById(id)?.title ?? id}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              ))}
+            </details>
           </nav>
           <div className={styles.article} ref={articleRef}>
             {query.trim() === '' ? (
@@ -273,29 +332,58 @@ export function HelpDrawer({ onClose }: { onClose: () => void }): JSX.Element {
                   {section?.title ?? ''}
                 </h2>
                 {prose}
+                {/* 設計 §6.4: 節の末尾に「← 前の節／次の節 →」と「この節をPDFで見る」 */}
+                <div className={styles.sectionNav}>
+                  <button
+                    type="button"
+                    disabled={prevSectionId === undefined}
+                    onClick={() => {
+                      if (prevSectionId !== undefined) showSection(prevSectionId);
+                    }}
+                  >
+                    {JA.help.prevSection}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={nextSectionId === undefined}
+                    onClick={() => {
+                      if (nextSectionId !== undefined) showSection(nextSectionId);
+                    }}
+                  >
+                    {JA.help.nextSection}
+                  </button>
+                </div>
+                <button type="button" className={styles.sectionPdf} onClick={openPdf}>
+                  {JA.help.viewSectionPdf}
+                </button>
               </>
             ) : hits.length === 0 ? (
               <p className={styles.empty}>{JA.help.searchEmpty}</p>
             ) : (
               <>
                 <p className={styles.hitCount}>{helpHitCountText(hits.length, hitsCapped)}</p>
-                <ul className={styles.hits}>
-                  {hits.map((hit) => (
-                    <li key={hit.sectionId}>
-                      <button
-                        type="button"
-                        data-testid="help-hit"
-                        onClick={() => {
-                          showSection(hit.sectionId);
-                        }}
-                      >
-                        <span className={styles.hitChapter}>{hit.chapterTitle}</span>
-                        <span className={styles.hitTitle}>{hit.title}</span>
-                        <span className={styles.hitExcerpt}>{hit.excerpt}</span>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
+                {/* 設計 §6.4: 検索結果を章ごとにまとめ、一致箇所を太字にする */}
+                {hitGroups.map((group) => (
+                  <div key={group.chapterTitle}>
+                    <h3 className={styles.hitChapterHeading}>{group.chapterTitle}</h3>
+                    <ul className={styles.hits}>
+                      {group.hits.map((hit) => (
+                        <li key={hit.sectionId}>
+                          <button
+                            type="button"
+                            data-testid="help-hit"
+                            onClick={() => {
+                              showSection(hit.sectionId);
+                            }}
+                          >
+                            <span className={styles.hitTitle}>{hit.title}</span>
+                            <span className={styles.hitExcerpt}>{renderExcerpt(hit)}</span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ))}
               </>
             )}
           </div>

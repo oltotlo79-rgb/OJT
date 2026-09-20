@@ -6,9 +6,14 @@ import { act, type JSX } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useStore } from '../src/renderer/app/store.js';
 import { HelpDrawer } from '../src/renderer/help/HelpDrawer.js';
-import { defaultSectionId, MAX_HELP_HITS, searchManual } from '../src/renderer/help/help-model.js';
+import {
+  anchorIdOf,
+  defaultSectionId,
+  MAX_HELP_HITS,
+  searchManual,
+} from '../src/renderer/help/help-model.js';
 import { useHelpStore } from '../src/renderer/help/help-store.js';
-import { MANUAL_SECTIONS } from '../src/renderer/help/manual-content.js';
+import { MANUAL_CHAPTERS, MANUAL_SECTIONS } from '../src/renderer/help/manual-content.js';
 import { useHelpHotkey } from '../src/renderer/help/use-help-hotkey.js';
 import { JA } from '../src/renderer/i18n/ja.js';
 import { isModalOpen } from '../src/renderer/session/interaction.js';
@@ -305,6 +310,110 @@ describe('閉じ方とキーボード（設計 §5.4）', () => {
   });
 });
 
+describe('幅と本文の読みやすさ（UX-21: 設計 §6.4）', () => {
+  it('narrows the drawer to at most 560px, or 46vw on a narrow window', () => {
+    expect(helpCss).toContain('width: min(560px, 46vw)');
+  });
+
+  it('folds the table of contents below 1280px, without moving the Minor#8 boundary', () => {
+    expect(helpCss).toContain('@media (max-width: 1279px)');
+    expect(helpCss).not.toContain('@media (max-width: 1280px)');
+  });
+
+  it('reads the body text at 14px / 1.85 line height, capped to a readable 34em width', () => {
+    const at = helpCss.indexOf('.prose {');
+    expect(at).toBeGreaterThanOrEqual(0);
+    const body = helpCss.slice(at, helpCss.indexOf('}', at));
+    expect(body).toMatch(/font-size:\s*0\.875rem/u);
+    expect(body).toMatch(/line-height:\s*1\.85/u);
+    expect(body).toMatch(/max-width:\s*34em/u);
+  });
+
+  it('sizes the section heading at 17px, in rem so it follows --ui-scale (Task 26)', () => {
+    const at = helpCss.indexOf('.sectionTitle {');
+    expect(at).toBeGreaterThanOrEqual(0);
+    const body = helpCss.slice(at, helpCss.indexOf('}', at));
+    expect(body).toMatch(/font-size:\s*1\.0625rem/u);
+  });
+});
+
+describe('前後の節への導線（UX-21: 設計 §6.4）', () => {
+  const flatOrder = MANUAL_CHAPTERS.flatMap((chapter) => chapter.sectionIds);
+  const first = flatOrder[0];
+  const second = flatOrder[1];
+  const last = flatOrder[flatOrder.length - 1];
+
+  it('moves to the next section in the table-of-contents order', () => {
+    render(<HelpDrawer onClose={() => undefined} />);
+    const at = flatOrder.indexOf(HOME_SECTION);
+    const nextId = flatOrder[at + 1];
+    expect(nextId).toBeDefined();
+    fireEvent.click(screen.getByRole('button', { name: JA.help.nextSection }));
+    expect(screen.getByTestId('help-section-title')).toHaveTextContent(
+      MANUAL_SECTIONS.find((section) => section.id === nextId)?.title ?? '(見つからず)',
+    );
+  });
+
+  it('moves to the previous section in the table-of-contents order', () => {
+    expect(second).toBeDefined();
+    expect(first).toBeDefined();
+    if (second === undefined || first === undefined) return;
+    act(() => {
+      useHelpStore.getState().showSection(second);
+    });
+    render(<HelpDrawer onClose={() => undefined} />);
+    fireEvent.click(screen.getByRole('button', { name: JA.help.prevSection }));
+    expect(screen.getByTestId('help-section-title')).toHaveTextContent(
+      MANUAL_SECTIONS.find((section) => section.id === first)?.title ?? '(見つからず)',
+    );
+  });
+
+  it('disables the previous button on the very first section and the next button on the very last', () => {
+    expect(first).toBeDefined();
+    expect(last).toBeDefined();
+    if (first === undefined || last === undefined) return;
+    act(() => {
+      useHelpStore.getState().showSection(first);
+    });
+    const view = render(<HelpDrawer onClose={() => undefined} />);
+    expect(screen.getByRole('button', { name: JA.help.prevSection })).toBeDisabled();
+    expect(screen.getByRole('button', { name: JA.help.nextSection })).not.toBeDisabled();
+    view.unmount();
+    act(() => {
+      useHelpStore.getState().showSection(last);
+    });
+    render(<HelpDrawer onClose={() => undefined} />);
+    expect(screen.getByRole('button', { name: JA.help.nextSection })).toBeDisabled();
+  });
+});
+
+describe('本文中のリンク（Task 34 で入る想定。設計 §6.3 の表・§6.4）', () => {
+  it('jumps to the target section when an internal #sec- link inside the prose is pressed', () => {
+    const target = MANUAL_SECTIONS[2];
+    expect(target).toBeDefined();
+    if (target === undefined) return;
+    render(<HelpDrawer onClose={() => undefined} />);
+    const anchor = document.createElement('a');
+    anchor.setAttribute('href', `#${anchorIdOf(target.id)}`);
+    anchor.textContent = 'リンク';
+    screen.getByTestId('help-prose').append(anchor);
+    fireEvent.click(anchor);
+    expect(screen.getByTestId('help-section-title')).toHaveTextContent(target.title);
+  });
+
+  it('does nothing (and never navigates) when an outside URL inside the prose is pressed (§15: no outside communication)', () => {
+    render(<HelpDrawer onClose={() => undefined} />);
+    const before = screen.getByTestId('help-section-title').textContent;
+    const anchor = document.createElement('a');
+    anchor.setAttribute('href', 'https://example.com/');
+    anchor.textContent = 'そと';
+    screen.getByTestId('help-prose').append(anchor);
+    const notCancelled = fireEvent.click(anchor);
+    expect(notCancelled).toBe(false);
+    expect(screen.getByTestId('help-section-title')).toHaveTextContent(before ?? '');
+  });
+});
+
 describe('説明書（PDF）を開く（設計 §9）', () => {
   it('asks the main process to open it', async () => {
     const openManual = vi.fn().mockResolvedValue({ ok: true, path: 'C:\\manual.pdf' });
@@ -466,7 +575,7 @@ describe('F1（決定表#16・#17）', () => {
 describe('文言（決定表#28）', () => {
   it('keeps every help string short enough to be chrome, never prose', () => {
     const keys = Object.keys(JA.help);
-    expect(keys).toHaveLength(12);
+    expect(keys).toHaveLength(15);
     for (const [key, value] of Object.entries(JA.help)) {
       expect(typeof value, `${key} は文字列であること`).toBe('string');
       expect((value as string).length, `JA.help.${key} が長すぎます`).toBeLessThanOrEqual(40);

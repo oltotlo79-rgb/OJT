@@ -1,6 +1,6 @@
 import type { SessionMode } from '../../shared/ipc.js';
 import type { AssembleViewMode } from '../app/store.js';
-import { MANUAL_SECTIONS, type ManualSection } from './manual-content.js';
+import { MANUAL_CHAPTERS, MANUAL_SECTIONS, type ManualSection } from './manual-content.js';
 
 /**
  * ヘルプの引き出しが使う純関数。取扱説明書 設計 §5.2 / 決定表#18・#19。
@@ -98,6 +98,13 @@ export interface HelpHit {
   title: string;
   chapterTitle: string;
   excerpt: string;
+  /**
+   * `excerpt` の中で実際に当たった文字列の開始位置（見つからなければ -1）。
+   * ヘルプ引き出し 設計 §6.4: 検索結果の一致箇所を太字にするのに使う。
+   */
+  excerptMatchStart: number;
+  /** 一致した文字列の長さ（`excerptMatchStart` が -1 のときは 0）。 */
+  excerptMatchLength: number;
 }
 
 /*
@@ -121,27 +128,100 @@ export function searchManual(query: string, limit: number = MAX_HELP_HITS): Help
     if (hits.length >= limit) break;
     const haystack = NORMALIZED_HAYSTACK.get(section.id) ?? '';
     if (!haystack.includes(needle)) continue;
+    const excerpt = excerptOf(section, query);
     hits.push({
       sectionId: section.id,
       title: section.title,
       chapterTitle: section.chapterTitle,
-      excerpt: excerptOf(section, query),
+      excerpt: excerpt.text,
+      excerptMatchStart: excerpt.matchStart,
+      excerptMatchLength: excerpt.matchLength,
     });
   }
   return hits;
 }
 
 /**
+ * 検索結果を章ごとにまとめる（ヘルプ引き出し 設計 §6.4: 「検索結果が20件のリストだけ」→
+ * 「章ごとにまとめ」）。`hits` は既に `MANUAL_SECTIONS`（章の順）で並んで来るので、
+ * 並べ替えず隣り合う同じ章をまとめるだけでよい。
+ */
+export function groupHitsByChapter(
+  hits: readonly HelpHit[],
+): ReadonlyArray<{ chapterTitle: string; hits: readonly HelpHit[] }> {
+  const groups: Array<{ chapterTitle: string; hits: HelpHit[] }> = [];
+  for (const hit of hits) {
+    const last = groups[groups.length - 1];
+    if (last !== undefined && last.chapterTitle === hit.chapterTitle) last.hits.push(hit);
+    else groups.push({ chapterTitle: hit.chapterTitle, hits: [hit] });
+  }
+  return groups;
+}
+
+/** 切り出した抜粋と、その中での一致位置。 */
+interface Excerpt {
+  text: string;
+  matchStart: number;
+  matchLength: number;
+}
+
+/**
  * 当たったところの前後を切り出す。
  * 正規化した文字列では元の位置がずれるので、**元の文**の上で素直に探し直す。
  * 元の文で見つからない（全角・半角の違いなどで正規化したときだけ当たった）ときは
- * 節の書き出しを返す。
+ * 節の書き出しを返す（一致位置は -1 になり、太字にしない）。
  */
-function excerptOf(section: ManualSection, query: string): string {
+function excerptOf(section: ManualSection, query: string): Excerpt {
   const trimmed = query.trim();
   const at = trimmed === '' ? -1 : section.text.indexOf(trimmed);
-  if (at < 0) return section.text.slice(0, EXCERPT_PAD * 2);
+  if (at < 0)
+    return { text: section.text.slice(0, EXCERPT_PAD * 2), matchStart: -1, matchLength: 0 };
   const from = Math.max(0, at - EXCERPT_PAD);
   const to = Math.min(section.text.length, at + trimmed.length + EXCERPT_PAD);
-  return `${from > 0 ? '…' : ''}${section.text.slice(from, to)}${to < section.text.length ? '…' : ''}`;
+  const prefix = from > 0 ? '…' : '';
+  const suffix = to < section.text.length ? '…' : '';
+  const text = `${prefix}${section.text.slice(from, to)}${suffix}`;
+  return { text, matchStart: prefix.length + (at - from), matchLength: trimmed.length };
+}
+
+/**
+ * 節の並び（章→節の順）の中で1つ前／後ろの節。ヘルプ引き出し 設計 §6.4:
+ * 「節の末尾に『← 前の節／次の節 →』」。`MANUAL_CHAPTERS[].sectionIds` の並びをそのまま使う。
+ */
+const FLAT_SECTION_ORDER: readonly string[] = MANUAL_CHAPTERS.flatMap(
+  (chapter) => chapter.sectionIds,
+);
+
+export function adjacentSectionId(sectionId: string, direction: -1 | 1): string | undefined {
+  const at = FLAT_SECTION_ORDER.indexOf(sectionId);
+  if (at < 0) return undefined;
+  return FLAT_SECTION_ORDER[at + direction];
+}
+
+/**
+ * 節ID を、本文中の相互参照リンクが使う断片識別子へ写す（取扱説明書 設計 §6.3・§6.4）。
+ * 例: `"mode-b/電線をつなぐ・外す"` → `"sec-mode-b--電線をつなぐ外す"`。
+ * Task 34（説明書PDFのもくじリンク）は本文の見出しにもこの同じ関数で `id` を振るので、
+ * PDF・アプリ内ヘルプのどちらでも同じ断片識別子になる。**Task 34 はこの関数を再利用し、
+ * 別の変換を作り直さないこと**（そろえないとアプリ内リンクが節へ着地しなくなる）。
+ */
+export function anchorIdOf(sectionId: string): string {
+  const separator = sectionId.indexOf('/');
+  const chapterId = separator < 0 ? sectionId : sectionId.slice(0, separator);
+  const title = separator < 0 ? '' : sectionId.slice(separator + 1);
+  const safeTitle = title.replace(/[^\p{L}\p{N}]+/gu, '');
+  return `sec-${chapterId}--${safeTitle}`;
+}
+
+const ANCHOR_TO_SECTION_ID = new Map<string, string>(
+  MANUAL_SECTIONS.map((section) => [anchorIdOf(section.id), section.id]),
+);
+
+/**
+ * 断片識別子（`href="#…"` の `#` を除いた部分）から節IDを引く。
+ * 本文中の `<a href="#sec-…">`（Task 34 で入る）を `HelpDrawer` の `onProseClick` が
+ * `showSection()` へ渡すのに使う。当たらなければ `undefined`（外部URLや壊れたリンク）。
+ */
+export function sectionIdForAnchor(fragment: string): string | undefined {
+  return ANCHOR_TO_SECTION_ID.get(fragment);
 }

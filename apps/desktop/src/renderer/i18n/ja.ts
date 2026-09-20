@@ -1097,6 +1097,10 @@ export const JA = {
     // 図（利用者の決定 2026-09-20）
     enlarge: '図を大きく見る',
     figureClose: '図を閉じる',
+    // UX-21: 節の末尾の導線（ヘルプ引き出し 設計 §6.4）
+    prevSection: '← 前の節',
+    nextSection: '次の節 →',
+    viewSectionPdf: 'この節をPDFで見る',
   },
   // --- /Plan 6 Task 8 ---
 } as const;

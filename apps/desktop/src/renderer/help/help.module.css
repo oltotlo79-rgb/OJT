@@ -25,7 +25,9 @@
 }
 
 .drawer {
-  width: 420px;
+  /* UX-21: 420px固定は1行16〜18字しか読めなかった。広い画面では560pxまで、
+     狭い画面では画面幅の46%までにして本文の実幅を確保する（設計 §6.4）。 */
+  width: min(560px, 46vw);
   max-width: 100vw;
   margin-top: var(--help-top);
   height: calc(100% - var(--help-top));
@@ -43,6 +45,27 @@
   .drawer {
     width: 100vw;
     border-left: none;
+  }
+}
+
+/*
+ * UX-21: 1280px 未満では引き出し自体が min(560px, 46vw) で縮み、固定148pxのもくじが
+ * 本文の実幅を圧迫する。もくじを上に畳めるようにし、本文に幅を返す（設計 §6.4）。
+ * 1279px を境にするのは Minor#8 と同じ理由（1280pxちょうどは「広い」側のまま）。
+ */
+@media (max-width: 1279px) {
+  .body {
+    grid-template-columns: 1fr;
+  }
+
+  .contents {
+    border-right: none;
+    border-bottom: 1px solid #cdd5e0;
+    max-height: 40vh;
+  }
+
+  .contentsFold > summary {
+    display: block;
   }
 }
 
@@ -139,23 +162,47 @@
   font-weight: 700;
 }
 
+/*
+ * 1280px 以上では畳む手立て（summary）自体を出さない。`open` は初期値のまま変わらないので、
+ * もくじは常に開いたまま見える（従来どおり）。1279px 以下だけ `summary` を出す（上の媒体クエリ）。
+ */
+.contentsFold > summary {
+  display: none;
+}
+
 .article {
   overflow: auto;
   padding: 16px;
   min-width: 0;
 }
 
+/* UX-21: 16px→17px。`--ui-scale`（Task 26）が掛かるよう rem にする（設計 §6.4）。 */
 .sectionTitle {
   margin: 0 0 12px;
-  font-size: 16px;
+  font-size: 1.0625rem;
 }
 
-/* 説明書の本文は読んで写せるようにする（`global.css` の `user-select: none` の例外）。 */
+/*
+ * 説明書の本文は読んで写せるようにする（`global.css` の `user-select: none` の例外）。
+ * UX-21: 13px/1.8 → 14px/1.85、`max-width: 34em` で1行を読みやすい長さに抑える。
+ * font-size は `--ui-scale`（Task 26）が掛かるよう rem にする（設計 §6.4）。
+ */
 .prose {
-  font-size: 13px;
-  line-height: 1.8;
+  font-size: 0.875rem;
+  line-height: 1.85;
+  max-width: 34em;
   overflow-wrap: anywhere;
   user-select: text;
+}
+
+/* Task 34 で本文に `<a href="#sec-…">` が入る。押せることが見た目で分かるようにしておく。 */
+.prose a {
+  color: #1e64ff;
+}
+
+.prose a:focus-visible {
+  outline: 2px solid #1e64ff;
+  outline-offset: 2px;
 }
 
 .prose table {
@@ -186,14 +233,41 @@
   margin: 12px 0;
 }
 
+/*
+ * UX-21: 押せることが分かる枠と虫めがねの印を出す（設計 §6.4）。
+ * 枠は既存どおり境界線、押すと濃くなる。印は右下の虫めがねバッジ（`::after`）。
+ */
 .prose :global(.manual-figure button) {
+  position: relative;
   display: block;
   padding: 0;
   border: 1px solid #9aa5b4;
-  border-radius: 0;
+  border-radius: 4px;
   background: none;
   cursor: zoom-in;
   max-width: 100%;
+}
+
+.prose :global(.manual-figure button:hover) {
+  border-color: #1e64ff;
+}
+
+.prose :global(.manual-figure button::after) {
+  content: '🔍';
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  line-height: 1;
+  background: rgb(20 24 31 / 72%);
+  color: #ffffff;
+  border-radius: 999px;
+  pointer-events: none;
 }
 
 .prose :global(.manual-figure button:focus-visible) {
@@ -279,9 +353,13 @@
   border-color: #1e64ff;
 }
 
-.hitChapter {
-  display: block;
+/* UX-21: 検索結果を章ごとにまとめる（設計 §6.4）。章の見出し。 */
+.hitChapterHeading {
+  margin: 16px 0 8px;
+  padding-top: 8px;
+  border-top: 1px solid #cdd5e0;
   font-size: 11px;
+  font-weight: 700;
   color: #3c4654;
 }
 
@@ -298,11 +376,34 @@
   overflow-wrap: anywhere;
 }
 
+/* UX-21: 検索結果の一致箇所を太字にする（設計 §6.4）。太字だけでなく地の色より濃くもする。 */
+.hitExcerpt strong {
+  color: #14181f;
+}
+
 .hitCount,
 .empty {
   font-size: 12px;
   color: #3c4654;
   margin: 0 0 8px;
+}
+
+/* UX-21: 節の末尾の「← 前の節／次の節 →」（設計 §6.4）。 */
+.sectionNav {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 24px;
+  padding-top: 12px;
+  border-top: 1px solid #cdd5e0;
+}
+
+/* UX-21: 節の末尾の「この節をPDFで見る」。帯の同じ操作（`help-open-pdf`）と同じ動作。 */
+.sectionPdf {
+  display: block;
+  width: 100%;
+  margin-top: 8px;
+  font-size: 0.75rem;
 }
 
 .footer {
@@ -317,6 +418,8 @@
 .contents button:focus-visible,
 .contents summary:focus-visible,
 .hits button:focus-visible,
+.sectionNav button:focus-visible,
+.sectionPdf:focus-visible,
 .searchRow input:focus-visible {
   outline: 2px solid #1e64ff;
   outline-offset: 2px;

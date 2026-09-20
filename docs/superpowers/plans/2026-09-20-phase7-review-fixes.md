@@ -1292,13 +1292,13 @@ worktree で `pnpm --filter @ojt/desktop dist` を**2回**走らせ、`manual.pd
 
 **Steps:**
 
-- [ ] 1. `.drawer` の幅を `min(560px, 46vw)` にする。1280px 未満ではもくじ（`.contents`）を畳む（`<details>`）。
-- [ ] 2. `.prose` を 14px / 1.85、`max-width: 34em`。見出し（`.sectionTitle`）を 17px。`--ui-scale`（Task 26）が効くよう `rem` にする。
-- [ ] 3. 節の末尾に「← 前の節 ／ 次の節 →」と「この節をPDFで見る」を置く。`MANUAL_CHAPTERS[].sectionIds` の並びをそのまま使う。
-- [ ] 4. 図の縮小版に「押すと大きくなる」ことが分かる枠と虫めがねの印を出す。
-- [ ] 5. 検索結果を章ごとにまとめ、一致箇所を太字にする（既存の `EXCERPT_PAD` の窓をそのまま使う）。
-- [ ] 6. 本文中の `<a href="#sec-…">`（Task 34 で入る）を `onProseClick` で拾い `showSection()` に流す。**外部 URL は開かない**（§15 の外部通信なし）。
-- [ ] 7. テスト: 幅とフォントの CSS 値／前後の節ボタンが並び順どおり／内部リンクを押すとその節へ移る／外部 URL を押しても何も起きない。
+- [x] 1. `.drawer` の幅を `min(560px, 46vw)` にする。1280px 未満ではもくじ（`.contents`）を畳む（`<details>`）。
+- [x] 2. `.prose` を 14px / 1.85、`max-width: 34em`。見出し（`.sectionTitle`）を 17px。`--ui-scale`（Task 26）が効くよう `rem` にする。
+- [x] 3. 節の末尾に「← 前の節 ／ 次の節 →」と「この節をPDFで見る」を置く。`MANUAL_CHAPTERS[].sectionIds` の並びをそのまま使う。
+- [x] 4. 図の縮小版に「押すと大きくなる」ことが分かる枠と虫めがねの印を出す。
+- [x] 5. 検索結果を章ごとにまとめ、一致箇所を太字にする（既存の `EXCERPT_PAD` の窓をそのまま使う）。
+- [x] 6. 本文中の `<a href="#sec-…">`（Task 34 で入る）を `onProseClick` で拾い `showSection()` に流す。**外部 URL は開かない**（§15 の外部通信なし）。
+- [x] 7. テスト: 幅とフォントの CSS 値／前後の節ボタンが並び順どおり／内部リンクを押すとその節へ移る／外部 URL を押しても何も起きない。
 
 **期待:** `pnpm --filter @ojt/desktop test -- help-drawer` 全件 pass。1行 34 字前後で読めること。
 
