@@ -3,7 +3,7 @@ import { Html } from '@react-three/drei';
 import { useMemo, type JSX } from 'react';
 import type { Texture } from 'three';
 import { BREAKER_COLOR, SUPPLY_BLOCK_COLOR } from '../session/colors.js';
-import { Breaker, PowerSwitch } from './AcFixtures.js';
+import { Breaker, PowerSwitch, type PowerFixtureHandlers } from './AcFixtures.js';
 import { bakeSharedTexture, labelFont, makeCanvasTexture, PX_PER_MM } from './labels.js';
 import { sharedMaterial, UNIT_BOX } from './materials.js';
 import { toScene } from './coords.js';
@@ -26,8 +26,8 @@ import { toScene } from './coords.js';
  */
 const LABEL_STYLE = { pointerEvents: 'none' } as const;
 
-/** 機器の高さ[mm]。 */
-const FIXTURE_HEIGHT_MM = 22;
+/** 機器の高さ[mm]（E2E も操作部の高さを引くために使う）。 */
+export const FIXTURE_HEIGHT_MM = 22;
 
 /**
  * DC24V電源（`supply`）の高さ[mm]。
@@ -172,6 +172,8 @@ export function Fixture({
   footprints,
   on,
   labelOffsetMm,
+  onToggle,
+  onHover,
 }: {
   name: string;
   label: string;
@@ -190,7 +192,7 @@ export function Fixture({
    * スイッチの名札どうしが重なるのを避けるために使う（`FIXTURE_LABEL_OFFSET_MM`）。
    */
   labelOffsetMm?: { x: number; y: number; z: number };
-}): JSX.Element | null {
+} & PowerFixtureHandlers): JSX.Element | null {
   const footprint = findFixtureFootprint(footprints, kind);
   const faceTexture = useMemo(
     () => (footprint === undefined ? undefined : fixtureFaceTexture(terminals, footprint)),
@@ -217,6 +219,8 @@ export function Fixture({
           color={color}
           heightMm={heightMm}
           on={on}
+          onToggle={onToggle}
+          onHover={onHover}
         />
       ) : kind === 'switch' ? (
         <PowerSwitch
@@ -225,6 +229,8 @@ export function Fixture({
           color={color}
           heightMm={heightMm}
           on={on}
+          onToggle={onToggle}
+          onHover={onHover}
         />
       ) : (
         <mesh

@@ -307,6 +307,10 @@
       "section": "workfile/保存した作業を読み込む"
     },
     {
+      "testid": "drag-ghost",
+      "internal": "運んでいる部品が指に付いてくる影。飾りなので読み上げにも出さない（`aria-hidden`）"
+    },
+    {
       "testid": "editor-pane",
       "screen": "練習中（モードB）",
       "label": "回路図エディタ",
@@ -481,6 +485,10 @@
       "screen": "練習中（モードD）",
       "label": "表示列数の外にセルがあります",
       "section": "settings/ラダーの見た目"
+    },
+    {
+      "testid": "hover-hint",
+      "internal": "3Dの下端に出る1行の予告。操作する要素ではなく、指している対象の説明そのもの"
     },
     {
       "testid": "il-issues",
@@ -869,6 +877,10 @@
       "screen": "練習中",
       "label": "通電中です。実機ではブレーカを切ってから部品を抜き差しします",
       "section": "screens/部品を入れかえる"
+    },
+    {
+      "testid": "parts-palette",
+      "internal": "在庫カードを囲む枠。押せるのは中のカード（`palette-{}`）で、枠自体は操作しない"
     },
     {
       "testid": "parts-panel",
@@ -1470,6 +1482,16 @@
       "testid": "socket-card-title",
       "screen": "練習中",
       "label": "リレー MY4N",
+      "section": "screens/部品を入れかえる"
+    },
+    {
+      "testid": "socket-list",
+      "internal": "ソケットのボタンを囲む枠。押せるのは中のボタン（`socket-list-{}`）"
+    },
+    {
+      "testid": "socket-list-{}",
+      "screen": "練習画面",
+      "label": "ソケット",
       "section": "screens/部品を入れかえる"
     },
     {

@@ -69,7 +69,9 @@ export function reportPickToAction(
         : { type: 'none' };
     case 'pushbutton':
       return { type: 'pressButton', pbId: hit.id };
+    // 電源の操作部は2Dの `PowerControls` が受け持つ（`session/tester.ts` の注記と同じ理由）
     case 'empty':
+    case 'fixture':
       return { type: 'none' };
   }
 }

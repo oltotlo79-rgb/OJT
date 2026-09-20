@@ -8,6 +8,7 @@ import {
   BREAKER_HANDLE_MM,
   BREAKER_HANDLE_TILT_RAD,
   breakerHandlePose,
+  PowerLever,
   PowerSwitch,
   SWITCH_ROCKER_MM,
   SWITCH_ROCKER_TILT_RAD,
@@ -57,6 +58,13 @@ function terminalsOf(partId: string): typeof JIPM_BOARD.terminals {
 const CB = footprintOf('breaker');
 const SW = footprintOf('switch');
 
+/**
+ * 展開しない関数コンポーネント（Phase 7 Task 27）。
+ * `PowerLever` は可動部を 150ms で補間するため `useRef` / `useFrame` を持ち、
+ * `Canvas` の外でただ呼び出すことができない。**要素のまま積んで props だけを見る**。
+ */
+const OPAQUE_COMPONENTS: ReadonlySet<unknown> = new Set([PowerLever]);
+
 /** 要素木を辿ってすべての要素を集める（関数コンポーネントは呼び出して展開する）。 */
 function collect(node: ReactNode, out: ReactElement[] = []): ReactElement[] {
   if (Array.isArray(node)) {
@@ -65,7 +73,7 @@ function collect(node: ReactNode, out: ReactElement[] = []): ReactElement[] {
   }
   if (!isValidElement(node)) return out;
   const element = node as ReactElement<{ children?: ReactNode }>;
-  if (typeof element.type === 'function') {
+  if (typeof element.type === 'function' && !OPAQUE_COMPONENTS.has(element.type)) {
     const renderFn = element.type as (props: unknown) => ReactNode;
     return collect(renderFn(element.props), out);
   }
@@ -140,7 +148,7 @@ describe('ブレーカの3D（§6.1 / 利用者要望 2026-09-19）', () => {
     }
   });
 
-  it('飾りのメッシュは1つもクリックを奪わない', () => {
+  it('飾りのメッシュは1つもクリックを奪わない（操作部だけが例外）', () => {
     const meshes = pickables(
       <Breaker
         footprint={CB}
@@ -148,10 +156,13 @@ describe('ブレーカの3D（§6.1 / 利用者要望 2026-09-19）', () => {
         color="#DCDCD6"
         heightMm={HEIGHT_MM}
         on
+        onToggle={() => undefined}
       />,
     );
     expect(meshes.length).toBeGreaterThan(5);
     for (const mesh of meshes) {
+      // 操作部（ハンドル窓）だけは押せる（Phase 7 Task 27）。それ以外は1つも奪わない
+      if (mesh.props['name'] === 'breaker-well') continue;
       const intersects: unknown[] = [];
       const raycast = mesh.props['raycast'];
       expect(typeof raycast).toBe('function');
@@ -196,7 +207,7 @@ describe('電源スイッチの3D（§6.1 / 利用者要望 2026-09-19）', () =
     }
   });
 
-  it('飾りのメッシュは1つもクリックを奪わない', () => {
+  it('飾りのメッシュは1つもクリックを奪わない（操作部だけが例外）', () => {
     const meshes = pickables(
       <PowerSwitch
         footprint={SW}
@@ -204,10 +215,12 @@ describe('電源スイッチの3D（§6.1 / 利用者要望 2026-09-19）', () =
         color="#DCDCD6"
         heightMm={HEIGHT_MM}
         on={false}
+        onToggle={() => undefined}
       />,
     );
     expect(meshes.length).toBeGreaterThan(4);
     for (const mesh of meshes) {
+      if (mesh.props['name'] === 'switch-well') continue;
       expect(typeof mesh.props['raycast']).toBe('function');
       expect(hasPointerHandler(mesh.props)).toBe(false);
     }

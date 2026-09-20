@@ -3,6 +3,7 @@ import {
   mountedKinds,
   remainingInventory,
   socketPartId,
+  toPhysicalTerminal,
   toSessionTerminal,
 } from '@ojt/board-model';
 import { isAssembleProblem } from '@ojt/content';
@@ -25,7 +26,8 @@ import {
 } from '../i18n/ja.js';
 import { ElapsedTimer } from '../panels/ElapsedTimer.js';
 import { LogPanel } from '../panels/LogPanel.js';
-import { PartsPanel } from '../panels/PartsPanel.js';
+import { DragGhost, PartsPanel } from '../panels/PartsPanel.js';
+import { HoverHint } from '../panels/HoverHint.js';
 import { PowerControls } from '../panels/PowerControls.js';
 import { ProblemPanel } from '../panels/ProblemPanel.js';
 import { TerminalListPanel } from '../panels/TerminalListPanel.js';
@@ -59,6 +61,7 @@ import {
   type PickAction,
   type PickHit,
 } from '../session/interaction.js';
+import { terminalLoads } from '../session/terminal-list.js';
 import { cellCount } from '../session/schematic-edit.js';
 import { buildSpecChart } from '../session/spec-chart.js';
 import {
@@ -186,6 +189,9 @@ export function Session(): JSX.Element {
   const pendingTerminal = useStore((s) => s.pendingTerminal);
   const selectedWire = useStore((s) => s.selectedWire);
   const selectedSocket = useStore((s) => s.selectedSocket);
+  // 直接操作の持ち物（Phase 7 Task 27）。運搬中のゴーストとパレットの押下状態に出る
+  const dragging = useStore((s) => s.dragging);
+  const hoveredTerminal = useStore((s) => s.hoveredTerminal);
   const camera = useStore((s) => s.camera);
   /*
    * スナップショットは毎秒約30枚届くが、この画面が見るのは電源まわりの真偽値だけ。
@@ -385,6 +391,43 @@ export function Session(): JSX.Element {
         case 'pressButton':
           bridge.send({ type: 'press', pbId: action.pbId });
           break;
+        /*
+         * 3Dのブレーカ／電源スイッチを押した（Phase 7 Task 27 / 利用者要望9）。
+         * 送るものは2Dの `PowerControls` と**1語も変えない**ので、手順違反
+         * （スイッチを先に入れる）はこれまでどおりエンジンが
+         * `power-sequence-violation` として危険操作に数える（§5.6 #5）。
+         */
+        case 'togglePower': {
+          const breaker = action.fixture === 'breaker';
+          const on = breaker ? !store.snapshot.breakerOn : !store.snapshot.switchOn;
+          bridge.send(breaker ? { type: 'breaker', on } : { type: 'switch', on });
+          store.addLog(powerLog(breaker ? JA.session.breaker : JA.session.switch, on));
+          break;
+        }
+        /* 運んできた部品を空きソケットへ落とした（履歴は装着1手）。設計 §7.3.3 */
+        case 'dropPart': {
+          const socketId = action.socketId;
+          apply(runPlug(current, socketId, action.kind), () => {
+            const next = useStore.getState().session;
+            if (next === undefined) return;
+            bridge.send({ type: 'plug', socketId, session: cloneSession(next) });
+            // 置いた先のカードを開く（次に何ができるかがそのまま見える）
+            useStore.getState().setSelectedSocket(socketId);
+          });
+          break;
+        }
+        /* つまんだ部品をソケットの外へ放した＝取り外し（履歴は取り外し1手）。設計 §7.3.2 */
+        case 'unplugPart': {
+          const socketId = action.socketId;
+          const partId = socketPartId(current.socketRoles, socketId);
+          apply(runUnplug(current, socketId), () => {
+            const next = useStore.getState().session;
+            if (next !== undefined) {
+              bridge.send({ type: 'unplug', partId, session: cloneSession(next) });
+            }
+          });
+          break;
+        }
       }
     },
     [apply],
@@ -492,6 +535,7 @@ export function Session(): JSX.Element {
   const onPick = useCallback(
     (hit: PickHit): void => {
       const store = useStore.getState();
+      const current = store.session;
       runAction(
         pickToAction(
           {
@@ -499,6 +543,13 @@ export function Session(): JSX.Element {
             pendingTerminal: store.pendingTerminal,
             selectedWire: store.selectedWire,
             wireColor: store.wireColor,
+            /*
+             * 直接操作の判断材料（Phase 7 Task 27）。端子の結線数は「2本で一杯です」を
+             * **指した時点で**予告するために（手は止めない。`intentOf()` の注記）、
+             * 運んでいるものは3Dのクリックを「落とす」に変えるために要る。
+             */
+            ...(current === undefined ? {} : { terminals: terminalLoads(JIPM_BOARD, current) }),
+            dragging: store.dragging,
           },
           hit,
         ),
@@ -691,6 +742,8 @@ export function Session(): JSX.Element {
   return (
     <>
       <SoundEffects />
+      {/* つまんで運んでいる部品の半透明のゴースト（画面の最前面。Phase 7 設計 §7.3.3） */}
+      <DragGhost dragging={dragging} />
       <Toolbar
         mode={mode}
         wireColor={wireColor}
@@ -835,6 +888,8 @@ export function Session(): JSX.Element {
               {webglLost ? ` / ${JA.error.webglLost}` : ''}
             </div>
             <ViewHint />
+            {/* いま指しているものと、押すと何が起きるか（Phase 7 設計 §7.3.4） */}
+            <HoverHint />
           </div>
         )}
 
@@ -914,6 +969,10 @@ export function Session(): JSX.Element {
             session={session}
             selectedSocket={selectedSocket}
             powered={powered}
+            carrying={dragging?.source === 'palette' ? dragging.kind : undefined}
+            onCarry={(kind) => {
+              useStore.getState().setDragging({ source: 'palette', kind });
+            }}
             onSelectSocket={(socketId) => {
               useStore.getState().setSelectedSocket(socketId);
             }}
@@ -927,7 +986,20 @@ export function Session(): JSX.Element {
             board={JIPM_BOARD}
             session={session}
             pendingTerminal={pendingTerminal}
+            /*
+             * 盤 → リストの向き（指摘 PR-11）。3Dは**物理**端子ID（`S1.9`）で指すので、
+             * 行の語彙（役割ID `CR1.9`）へ直してから渡す（§6.4）。
+             */
+            hoveredTerminal={
+              hoveredTerminal === undefined
+                ? undefined
+                : toSessionTerminal(session, hoveredTerminal)
+            }
             onPick={onPick}
+            onHover={(id) => {
+              // リスト → 盤の向き。盤のネジは物理IDで描かれているので戻す
+              onHover(id === undefined ? undefined : toPhysicalTerminal(session.socketRoles, id));
+            }}
             onCancel={() => {
               runAction(escapeToAction({ mode, pendingTerminal, selectedWire, wireColor }));
             }}

@@ -9,6 +9,7 @@ import {
   type SocketId,
 } from '@ojt/board-model';
 import { useEffect, useState, type JSX } from 'react';
+import type { DragPayload } from '../session/interaction.js';
 import {
   JA,
   JA_PARTS,
@@ -29,9 +30,15 @@ import styles from './panels.module.css';
  * パネルの先頭に出す形にした（UXレビュー指摘: 取り外しに気付けない／装着ボタンが理由も無く
  * 押せない）。カードが持つ状態は3つだけである。
  *
- * - 何も選んでいない → 何をすればよいかの一文だけ出す（`JA_PARTS.hint`）
+ * - 何も選んでいない → **ソケット一覧のボタン**（指摘 UX-08。以前は文章だけだった）
  * - 空きソケット     → 在庫の一覧と「装着」
  * - 装着済み         → 「取り外す」と「交換…」。交換を押すと在庫の一覧に変わる
+ *
+ * **2026-09-20（Phase 7 Task 27 / 指摘 UX-08 / 利用者要望9）**: パネルの先頭を**パレット**に
+ * した。在庫をカードで並べ、`pointerdown` でつまむと3D盤の空きソケットが光り、その上で放すと
+ * 装着される（運搬そのものは `BoardScene` と `store.dragging` が受け持つ）。カードを
+ * **押すだけ**でも選べるので、キーボードだけの利用者は「カード → ソケット」の2回押しで装着できる
+ * （§15 のアクセシビリティ: 既存の経路は1つも消さない）。
  *
  * 押せないボタンには必ず理由を添え、`aria-describedby` でボタンから指す（キーボードと
  * スクリーンリーダの利用者にも理由が届く）。
@@ -109,11 +116,149 @@ function PartRow({
   );
 }
 
+/**
+ * つまんで運んでいる部品のゴースト（半透明の付箋）。Phase 7 設計 §7.3.3。
+ * 3Dのキャンバスの上にも出したいので `position: fixed` で画面の最前面に置き、
+ * ポインタのイベントは一切受けない（下のソケットのホバーを奪わない）。
+ */
+export function DragGhost({ dragging }: { dragging: DragPayload | undefined }): JSX.Element | null {
+  const [point, setPoint] = useState<{ x: number; y: number } | undefined>(undefined);
+  useEffect(() => {
+    if (dragging === undefined) {
+      setPoint(undefined);
+      return undefined;
+    }
+    const onMove = (event: PointerEvent): void => {
+      setPoint({ x: event.clientX, y: event.clientY });
+    };
+    window.addEventListener('pointermove', onMove);
+    return () => {
+      window.removeEventListener('pointermove', onMove);
+    };
+  }, [dragging]);
+  if (dragging === undefined || point === undefined) return null;
+  return (
+    <div
+      className={styles.dragGhost}
+      data-testid="drag-ghost"
+      aria-hidden="true"
+      style={{ left: `${String(point.x)}px`, top: `${String(point.y)}px` }}
+    >
+      {catalogEntry(dragging.kind).displayName}
+    </div>
+  );
+}
+
+/**
+ * 在庫のパレット（つまんで運べるカード）。指摘 UX-08 / Phase 7 設計 §7.3.3。
+ * 残数0のカードは `aria-disabled` にして**理由を添える**（押せないのに理由が無い、を作らない）。
+ */
+function Palette({
+  items,
+  carrying,
+  onCarry,
+}: {
+  items: ReadonlyArray<{ kind: MountableKind; count: number }>;
+  carrying: MountableKind | undefined;
+  onCarry: (kind: MountableKind) => void;
+}): JSX.Element {
+  return (
+    <div className={styles.palette} data-testid="parts-palette">
+      <p className={styles.paletteTitle}>{JA_PARTS.paletteTitle}</p>
+      <div className={styles.paletteCards}>
+        {items.map((item) => {
+          const entry = catalogEntry(item.kind);
+          const empty = item.count <= 0;
+          return (
+            <button
+              key={item.kind}
+              type="button"
+              className={styles.paletteCard}
+              data-testid={`palette-${item.kind}`}
+              aria-disabled={empty}
+              aria-pressed={carrying === item.kind}
+              title={empty ? JA_PARTS.paletteEmptyReason : entry.displayName}
+              onPointerDown={() => {
+                if (!empty) onCarry(item.kind);
+              }}
+              onClick={() => {
+                // キーボード（Enter / Space）でも同じ「つまむ」に入れる
+                if (!empty) onCarry(item.kind);
+              }}
+            >
+              <span className={styles.partName}>{entry.displayName}</span>
+              <span className={styles.paletteCount}>
+                {JA.session.remaining} {item.count}
+              </span>
+              {empty ? (
+                <span className={styles.partReason}>{JA_PARTS.paletteEmptyReason}</span>
+              ) : null}
+            </button>
+          );
+        })}
+      </div>
+      <p className={styles.partsHint} data-testid="parts-hint">
+        {JA_PARTS.paletteHint}
+      </p>
+    </div>
+  );
+}
+
+/**
+ * ソケット一覧のボタン（指摘 UX-08）。以前はここが**文章だけ**で、最初の一手の入口が
+ * 3Dの当たり判定頼みだった。押すと3Dのクリックと同じ `onSelectSocket` が走る。
+ */
+function SocketList({
+  session,
+  selectedSocket,
+  onSelectSocket,
+}: {
+  session: BoardSession;
+  selectedSocket: SocketId | undefined;
+  onSelectSocket: (socketId: SocketId | undefined) => void;
+}): JSX.Element {
+  return (
+    <div className={styles.socketList} data-testid="socket-list">
+      <p className={styles.paletteTitle}>{JA_PARTS.socketListTitle}</p>
+      <div className={styles.socketListButtons}>
+        {SOCKET_IDS.map((socketId) => {
+          const role = session.socketRoles[socketId];
+          const part = session.mounted[socketId];
+          return (
+            <button
+              key={socketId}
+              type="button"
+              className={styles.socketListButton}
+              data-testid={`socket-list-${socketId}`}
+              aria-pressed={selectedSocket === socketId}
+              onClick={() => {
+                onSelectSocket(socketId);
+              }}
+            >
+              <span className={styles.socketListName}>
+                {socketId}
+                {role === undefined ? '' : `（${role}）`}
+              </span>
+              <span className={styles.socketListState}>
+                {part === undefined
+                  ? JA_PARTS.socketListEmpty
+                  : catalogEntry(part.kind).displayName}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 /** 部品パネル。 */
 export function PartsPanel({
   session,
   selectedSocket,
   powered,
+  carrying,
+  onCarry,
   onSelectSocket,
   onPlug,
   onUnplug,
@@ -124,6 +269,14 @@ export function PartsPanel({
   selectedSocket: SocketId | undefined;
   /** 通電中か（注意書きを出すためだけに使う。操作は止めない）。§5.3.5 */
   powered: boolean;
+  /** いまつまんでいる部品（パレットのカードの押下状態に出す）。Phase 7 設計 §7.3.3 */
+  carrying?: MountableKind | undefined;
+  /**
+   * カードをつまんだ（運搬を始める）。**渡さない画面ではパレットを出さない**
+   * （運べないのにカードだけ並ぶ「押しても何も起きない」を作らないため）。
+   * モードD（`PlcSession`）は盤の部品を入れ替えないので渡していない。
+   */
+  onCarry?: ((kind: MountableKind) => void) | undefined;
   onSelectSocket: (socketId: SocketId | undefined) => void;
   onPlug: (socketId: SocketId, kind: MountableKind) => void;
   onUnplug: (socketId: SocketId) => void;
@@ -148,10 +301,17 @@ export function PartsPanel({
     <section className={styles.panel} data-testid="parts-panel">
       <h2 className={styles.panelTitle}>{JA.session.parts}</h2>
 
+      {/* 在庫のパレット（つまんで盤へ運ぶ／押して選ぶ）。Phase 7 Task 27 */}
+      {onCarry === undefined ? null : (
+        <Palette items={remaining} carrying={carrying} onCarry={onCarry} />
+      )}
+
       {selectedSocket === undefined ? (
-        <p className={styles.partsHint} data-testid="parts-hint">
-          {JA_PARTS.hint}
-        </p>
+        <SocketList
+          session={session}
+          selectedSocket={selectedSocket}
+          onSelectSocket={onSelectSocket}
+        />
       ) : (
         <div className={styles.socketCard} data-testid="socket-card">
           <h3 className={styles.socketCardTitle} data-testid="socket-card-title">

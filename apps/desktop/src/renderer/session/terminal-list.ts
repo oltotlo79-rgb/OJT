@@ -6,6 +6,7 @@ import {
   type BoardTerminal,
 } from '@ojt/board-model';
 import { MAX_WIRES_PER_TERMINAL, parseTerminalId, type TerminalId } from '@ojt/circuit-sim';
+import type { TerminalLoad } from './interaction.js';
 
 /**
  * 端子リスト（キーボードで配線するための一覧）。UXレビュー #29（2026-09-19）。
@@ -87,6 +88,36 @@ export function terminalRows(
     if (row === undefined) continue;
     if (needle.length > 0 && !`${row.id}${row.label}${terminal.id}`.includes(needle)) continue;
     out.push(row);
+  }
+  return out;
+}
+
+/**
+ * 端子ごとの結線数（`intentOf()` / `legalTargets()` に渡す）。Phase 7 Task 27 / 設計 §7.3.1。
+ *
+ * **物理IDと役割IDの両方を入れる。** 3Dのピックは盤定義の物理ID（`S1.9`）で来るのに対し、
+ * 端子リストは役割ID（`CR1.9`）で来る（このファイル冒頭の注記）。片方しか入れないと、
+ * もう片方の入口では「2本で一杯」が見えず、断る理由を出せないまま `addWire()` まで
+ * 落ちてしまう。両方入れておけば、どちらの語彙で指しても同じ本数が引ける。
+ */
+export function terminalLoads(board: BoardDefinition, session: BoardSession): TerminalLoad[] {
+  const counts = new Map<string, number>();
+  for (const wire of session.wires) {
+    for (const end of [wire.from, wire.to]) {
+      counts.set(end, (counts.get(end) ?? 0) + 1);
+    }
+  }
+  const out: TerminalLoad[] = [];
+  const seen = new Set<string>();
+  for (const terminal of board.terminals) {
+    if (!terminal.wirable) continue;
+    const role = toSessionTerminal(session, terminal.id);
+    const count = counts.get(role) ?? 0;
+    for (const id of new Set<TerminalId>([terminal.id, role])) {
+      if (seen.has(id)) continue;
+      seen.add(id);
+      out.push({ id, wireCount: count });
+    }
   }
   return out;
 }

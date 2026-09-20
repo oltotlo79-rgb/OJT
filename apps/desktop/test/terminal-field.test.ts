@@ -75,10 +75,28 @@ describe('terminalStateOf（決定表#14）', () => {
   });
 
   it('has a colour for every state and does not reuse one', () => {
+    // Phase 7 Task 27 で「繋げる（緑）／繋げない（灰）」の2つが増えて5状態になった
     const colors = Object.values(TERMINAL_STATE_COLORS);
-    expect(colors).toHaveLength(3);
-    expect(new Set(colors).size).toBe(3);
+    expect(colors).toHaveLength(5);
+    expect(new Set(colors).size).toBe(5);
     expect(terminalColorOf('plain')).toBe(TERMINAL_STATE_COLORS.plain);
+  });
+
+  it('配線中はつなげる端子だけが緑、つなげない端子は灰に沈む（Phase 7 設計 §7.3.2）', () => {
+    const legal = new Set(['CR1.14']);
+    expect(terminalStateOf('CR1.14', { hovered: undefined, pending: undefined, legal })).toBe(
+      'legal',
+    );
+    expect(terminalStateOf('CR1.9', { hovered: undefined, pending: undefined, legal })).toBe(
+      'illegal',
+    );
+    // 配線待ちとホバーは可否より優先する（いま触っているものを見失わない）
+    expect(terminalStateOf('CR1.9', { hovered: 'CR1.9', pending: undefined, legal })).toBe(
+      'hovered',
+    );
+    expect(terminalStateOf('CR1.9', { hovered: undefined, pending: 'CR1.9', legal })).toBe(
+      'pending',
+    );
   });
 });
 

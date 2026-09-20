@@ -12,7 +12,12 @@ import { useEffect, useMemo, useRef, type JSX } from 'react';
 import type { ThreeEvent } from '@react-three/fiber';
 import { Matrix4, Quaternion, Vector3, type InstancedMesh } from 'three';
 import { partKindLabel, socketPinTooltip } from '../i18n/ja.js';
-import { SOCKET_BODY_COLOR, SOCKET_LEVER_COLOR, SOCKET_SELECTED_COLOR } from '../session/colors.js';
+import {
+  SOCKET_BODY_COLOR,
+  SOCKET_DROP_COLOR,
+  SOCKET_LEVER_COLOR,
+  SOCKET_SELECTED_COLOR,
+} from '../session/colors.js';
 import { coilBusSide, pinGroup, pinPartners } from '../session/socket-pins.js';
 import { socketFaceTexture, SOCKET_PLATE_MARGIN_MM } from './labels.js';
 import {
@@ -114,20 +119,47 @@ export function socketLeverFootprints(bodyMm: { width: number; length: number })
   );
 }
 
+/** ソケット本体の光り方。Phase 7 設計 §7.3.4「ホバー＝細い縁取り、選択＝太い縁取り」。 */
+export type SocketGlow = 'plain' | 'hovered' | 'selected' | 'droppable';
+
+/** 光り方ごとの発光の強さ（0 は光らない）。落とせるソケットがいちばん強い。 */
+export const SOCKET_GLOW_INTENSITY: Readonly<Record<SocketGlow, number>> = {
+  plain: 0,
+  hovered: 0.35,
+  selected: 0.6,
+  droppable: 0.9,
+};
+
 /**
- * ソケット本体（差込領域）のマテリアル。選択中は縁が光って見えるよう発光を足す。
- * 「いまどのソケットを触っているか」が3Dの側でも分かるようにするため（利用者要望 2026-09-19）。
- * `sharedMaterial()` は設定ごとに1個しか作らないので、選択の有無で2個に収まる（§15）。
+ * いまの状態の光り方（純関数。優先順を単体テストで縛る）。
+ * 運搬中は「ここに落とせる」がいちばん強い合図なので、選択やホバーより優先する。
  */
-export function socketBodyMaterial(selected: boolean): ReturnType<typeof sharedMaterial> {
-  return selected
-    ? sharedMaterial(SOCKET_BODY_COLOR, {
+export function socketGlowOf(state: {
+  selected: boolean;
+  hovered: boolean;
+  droppable: boolean;
+}): SocketGlow {
+  if (state.droppable) return 'droppable';
+  if (state.selected) return 'selected';
+  return state.hovered ? 'hovered' : 'plain';
+}
+
+/**
+ * ソケット本体（差込領域）のマテリアル。選択中・ホバー中・落とせるときに発光を足す。
+ * 「いまどのソケットを触っているか」が3Dの側でも分かるようにするため（利用者要望 2026-09-19 /
+ * Phase 7 設計 §7.3.4）。`sharedMaterial()` は設定ごとに1個しか作らないので、
+ * 光り方の4通りぶんに収まる（§15）。
+ */
+export function socketBodyMaterial(glow: SocketGlow): ReturnType<typeof sharedMaterial> {
+  const intensity = SOCKET_GLOW_INTENSITY[glow];
+  return intensity === 0
+    ? sharedMaterial(SOCKET_BODY_COLOR, { roughness: 0.55, metalness: 0.1 })
+    : sharedMaterial(SOCKET_BODY_COLOR, {
         roughness: 0.55,
         metalness: 0.1,
-        emissive: SOCKET_SELECTED_COLOR,
-        emissiveIntensity: 0.6,
-      })
-    : sharedMaterial(SOCKET_BODY_COLOR, { roughness: 0.55, metalness: 0.1 });
+        emissive: glow === 'droppable' ? SOCKET_DROP_COLOR : SOCKET_SELECTED_COLOR,
+        emissiveIntensity: intensity,
+      });
 }
 
 /**
@@ -230,20 +262,32 @@ export function Socket({
   role,
   occupied,
   selected,
+  hovered,
+  droppable,
   terminals,
   onPickSocket,
+  onHoverSocket,
+  onReleaseSocket,
 }: {
   socket: SocketDefinition;
   role: SocketRole | undefined;
   occupied: boolean;
   /** 部品パネルのカードがこのソケットを指しているか（本体を光らせる）。§8.2 */
   selected: boolean;
+  /** ポインタがこのソケットの上にあるか。Phase 7 設計 §7.3.4 */
+  hovered: boolean;
+  /** いま運んでいる部品をここへ落とせるか（強く光らせる）。Phase 7 設計 §7.3.3 */
+  droppable: boolean;
   /**
    * このソケットの端子（印字テクスチャの焼き付けに使う）。
    * **端子そのものは描かない**（`TerminalField` が盤の端子をまとめて1回で描く。決定表#13）。
    */
   terminals: readonly BoardTerminal[];
   onPickSocket: (socketId: SocketId, occupied: boolean) => void;
+  /** ポインタが入った／出た（ホバー予告とカーソルに使う）。 */
+  onHoverSocket: (socketId: SocketId | undefined) => void;
+  /** 運んでいるものをここで放した（`pointerup`）。Phase 7 設計 §7.3.3 */
+  onReleaseSocket: (socketId: SocketId, occupied: boolean) => void;
 }): JSX.Element {
   const { width, length } = socket.bodyMm;
   const originX = socket.origin.x;
@@ -273,13 +317,30 @@ export function Socket({
     <group name={`socket-${socket.id}`}>
       {/* 本体（中央の差込領域）。クリックで装着／取り外しUIを出す */}
       <mesh
+        name={`socket-body-${socket.id}`}
         geometry={UNIT_BOX}
-        material={socketBodyMaterial(selected)}
+        material={socketBodyMaterial(socketGlowOf({ selected, hovered, droppable }))}
         position={bodyCenter}
         scale={[width, length, BODY_HEIGHT_MM]}
         onClick={(event: ThreeEvent<MouseEvent>) => {
           event.stopPropagation();
           onPickSocket(socket.id, occupied);
+        }}
+        onPointerOver={(event: ThreeEvent<PointerEvent>) => {
+          event.stopPropagation();
+          onHoverSocket(socket.id);
+        }}
+        onPointerOut={() => {
+          onHoverSocket(undefined);
+        }}
+        /*
+         * 運んできた部品はここで放す（Phase 7 設計 §7.3.3）。`onClick` は
+         * 「同じ要素で押して放した」ときしか飛ばないので、パレットから運んできた
+         * ドラッグは `pointerup` でしか受け取れない。
+         */
+        onPointerUp={(event: ThreeEvent<PointerEvent>) => {
+          event.stopPropagation();
+          onReleaseSocket(socket.id, occupied);
         }}
       />
       {/* 差込穴（2列×7段。中央の差込領域に並ぶ）。共有ジオメトリ1個の `instancedMesh`。3D-02 */}

@@ -1190,16 +1190,16 @@ apps/desktop/e2e/ladder-entry.spec.ts（新規）
 
 **Steps:**
 
-- [ ] 1. **純関数を先に**: `interaction.ts` に `Intent` 型（本設計 §7.3.1 の union をそのまま）、`intentOf(state, hit)`、`legalTargets(state)`、`refuseMessageKey(reason)` を足す。既存の `pickToAction()` は `intentOf()` を呼ぶ薄い層にする。**この段階で `interaction-intent.test.ts` を全分岐ぶん書いて緑にする。**
-- [ ] 2. **ポインタの作法**: `BoardScene.tsx` に `INTERACT_DRAG_THRESHOLD_PX = 4` のしきい値、`setPointerCapture`、`Escape` の取消を入れる。始点が端子なら配線ドラッグ、盤の地なら視点回転。
-- [ ] 3. **電源**: `AcFixtures.tsx` のブレーカ・スイッチの**操作部だけ** `raycast={noPick}` を外し、`onClick` で `bridge.send({type:'breaker'|'switch', on})` を送る。レバーの傾きを 150ms で補間する。順序違反は既存の `power-sequence-violation` に載せる。
-- [ ] 4. **配線**: 始点のクリック／ドラッグ開始で `WirePreview` を出し、指先まで仮の電線を伸ばす。確定できる端子だけを光らせ、できない端子は灰のまま。`refuse` の理由を `HoverHint` に出す（「この端子はすでに2本です」）。クリック→クリックの既存経路は**そのまま残す**。
-- [ ] 5. **部品**: `PartsPanel` をパレットにする（在庫カード＋残数）。カードを `pointerdown` でつまみ、半透明のゴーストが付いてくる。3D の上でレイキャストしてソケットを求め、光らせる。`pointerup` で `runPlug()`。**クリックで選んでからソケットをクリックする経路も残す**（キーボード利用者のため）。装着部品をソケットの外へ放すと取り外し。
-- [ ] 6. **ホバー**: `Socket` / `MountedPart` / `Wire` に `hovered` を足し、縁取りで示す。カーソルを対象ごとに変える（`pointer` / `crosshair` / `grab` / `move`）。`HoverHint.tsx` を3Dペインの下端に置き、`aria-live="polite"` にも同じ文を出す。
-- [ ] 7. **PR-11**: 端子リストの行と3D の端子を**相互にハイライト**する（`setHovered` を両方向へ）。
-- [ ] 8. **UX-08**: 「部品」パネルの空状態（文章だけ）を、ソケット一覧のボタン（`S1（CR1）`…）に変える。押すと `setSelectedSocket` が走る。
-- [ ] 9. **undo**: 配線・装着・取り外し・電源の入切を既存の `pushCommand()` に載せる（`HISTORY_LIMIT = 50`）。
-- [ ] 10. テストは本設計 §7.5 の表のとおり。E2E は `e2e/projection.ts` で3D座標を画面座標に落として `page.mouse` で操作する。
+- [x] 1. **純関数を先に**: `interaction.ts` に `Intent` 型（本設計 §7.3.1 の union をそのまま）、`intentOf(state, hit)`、`legalTargets(state)`、`refuseMessageKey(reason)` を足す。既存の `pickToAction()` は `intentOf()` を呼ぶ薄い層にする。**この段階で `interaction-intent.test.ts` を全分岐ぶん書いて緑にする。**
+- [x] 2. **ポインタの作法**: `BoardScene.tsx` に `INTERACT_DRAG_THRESHOLD_PX = 4` のしきい値、`setPointerCapture`、`Escape` の取消を入れる。始点が端子なら配線ドラッグ、盤の地なら視点回転。
+- [x] 3. **電源**: `AcFixtures.tsx` のブレーカ・スイッチの**操作部だけ** `raycast={noPick}` を外し、`onClick` で `bridge.send({type:'breaker'|'switch', on})` を送る。レバーの傾きを 150ms で補間する。順序違反は既存の `power-sequence-violation` に載せる。
+- [x] 4. **配線**: 始点のクリック／ドラッグ開始で `WirePreview` を出し、指先まで仮の電線を伸ばす。確定できる端子だけを光らせ、できない端子は灰のまま。`refuse` の理由を `HoverHint` に出す（「この端子はすでに2本です」）。クリック→クリックの既存経路は**そのまま残す**。
+- [x] 5. **部品**: `PartsPanel` をパレットにする（在庫カード＋残数）。カードを `pointerdown` でつまみ、半透明のゴーストが付いてくる。3D の上でレイキャストしてソケットを求め、光らせる。`pointerup` で `runPlug()`。**クリックで選んでからソケットをクリックする経路も残す**（キーボード利用者のため）。装着部品をソケットの外へ放すと取り外し。
+- [x] 6. **ホバー**: `Socket` / `MountedPart` / `Wire` に `hovered` を足し、縁取りで示す。カーソルを対象ごとに変える（`pointer` / `crosshair` / `grab` / `move`）。`HoverHint.tsx` を3Dペインの下端に置き、`aria-live="polite"` にも同じ文を出す。
+- [x] 7. **PR-11**: 端子リストの行と3D の端子を**相互にハイライト**する（`setHovered` を両方向へ）。
+- [x] 8. **UX-08**: 「部品」パネルの空状態（文章だけ）を、ソケット一覧のボタン（`S1（CR1）`…）に変える。押すと `setSelectedSocket` が走る。
+- [x] 9. **undo**: 配線・装着・取り外し・電源の入切を既存の `pushCommand()` に載せる（`HISTORY_LIMIT = 50`）。
+- [x] 10. テストは本設計 §7.5 の表のとおり。E2E は `e2e/projection.ts` で3D座標を画面座標に落として `page.mouse` で操作する。
 
 **期待:**
 

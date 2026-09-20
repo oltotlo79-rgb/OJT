@@ -6,6 +6,8 @@ import { useEffect, useMemo, useRef, type JSX } from 'react';
 import { Color, InstancedMesh, Matrix4, MeshStandardMaterial, Quaternion, Vector3 } from 'three';
 import {
   TERMINAL_HOVER_COLOR,
+  TERMINAL_ILLEGAL_COLOR,
+  TERMINAL_LEGAL_COLOR,
   TERMINAL_PENDING_COLOR,
   TERMINAL_SCREW_COLOR,
 } from '../session/colors.js';
@@ -59,13 +61,15 @@ export function deskTerminalTooltip(terminal: BoardTerminal): string {
 }
 
 /** 端子の見た目の状態。 */
-export type TerminalState = 'plain' | 'hovered' | 'pending';
+export type TerminalState = 'plain' | 'hovered' | 'pending' | 'legal' | 'illegal';
 
 /** 状態ごとの色（`session/colors.ts` の値をそのまま使う）。 */
 export const TERMINAL_STATE_COLORS: Readonly<Record<TerminalState, string>> = {
   plain: TERMINAL_SCREW_COLOR,
   hovered: TERMINAL_HOVER_COLOR,
   pending: TERMINAL_PENDING_COLOR,
+  legal: TERMINAL_LEGAL_COLOR,
+  illegal: TERMINAL_ILLEGAL_COLOR,
 };
 
 /** 当たり判定の球を盤面から浮かせる量[mm]（`TerminalHit` と同じ）。 */
@@ -124,14 +128,25 @@ export function boardFieldTerminals(
   );
 }
 
-/** その端子の状態（配線待ち > ホバー > 平常）。 */
+/**
+ * その端子の状態（配線待ち > ホバー > 接続可否 > 平常）。
+ *
+ * `legal` を渡すと（＝配線中）、**つなげる端子だけ**が緑になり、つなげない端子は灰に沈む
+ * （Phase 7 設計 §7.3.2「確定できる端子だけを光らせ、できない端子は灰のまま」）。
+ * 渡さなければ従来どおり平常色になる。
+ */
 export function terminalStateOf(
   id: string,
-  state: { hovered: string | undefined; pending: string | undefined },
+  state: {
+    hovered: string | undefined;
+    pending: string | undefined;
+    legal?: ReadonlySet<string> | undefined;
+  },
 ): TerminalState {
   if (state.pending === id) return 'pending';
   if (state.hovered === id) return 'hovered';
-  return 'plain';
+  if (state.legal === undefined) return 'plain';
+  return state.legal.has(id) ? 'legal' : 'illegal';
 }
 
 /** 状態 → 色。 */
@@ -170,16 +185,25 @@ export function TerminalField({
   tooltipOf,
   hovered,
   pending,
+  legal,
   onHover,
   onPick,
+  onPress,
+  onRelease,
 }: {
   terminals: readonly BoardTerminal[];
   /** 端子 → ツールチップの文字列（`BoardScene` が役割IDを知っているので親が決める）。 */
   tooltipOf: (terminal: BoardTerminal) => string;
   hovered: string | undefined;
   pending: string | undefined;
+  /** 配線中に**つなげられる**端子の集合（配線していなければ undefined）。Phase 7 設計 §7.3.2 */
+  legal?: ReadonlySet<string> | undefined;
   onHover: (id: TerminalId | undefined) => void;
   onPick: (terminal: BoardTerminal) => void;
+  /** 端子を押し始めた（ドラッグ配線の始点の候補）。Phase 7 設計 §7.3.1 */
+  onPress?: ((terminal: BoardTerminal) => void) | undefined;
+  /** 端子の上で放した（ドラッグ配線の終点）。 */
+  onRelease?: ((terminal: BoardTerminal) => void) | undefined;
 }): JSX.Element | null {
   const screws = useRef<InstancedMesh | null>(null);
   const picks = useRef<InstancedMesh | null>(null);
@@ -215,12 +239,12 @@ export function TerminalField({
     if (!(mesh instanceof InstancedMesh)) return;
     const color = new Color();
     terminals.forEach((terminal, i) => {
-      color.set(terminalColorOf(terminalStateOf(terminal.id, { hovered, pending })));
+      color.set(terminalColorOf(terminalStateOf(terminal.id, { hovered, pending, legal })));
       mesh.setColorAt(i, color);
     });
     if (mesh.instanceColor !== null) mesh.instanceColor.needsUpdate = true;
     invalidate();
-  }, [terminals, hovered, pending, invalidate]);
+  }, [terminals, hovered, pending, legal, invalidate]);
 
   const hoveredTerminal = terminals.find((t) => t.id === hovered);
   if (count === 0) return null;
@@ -261,6 +285,23 @@ export function TerminalField({
           event.stopPropagation();
           const terminal = terminals[event.instanceId ?? -1];
           if (terminal !== undefined) onPick(terminal);
+        }}
+        /*
+         * 端子から端子へ**ドラッグ**して配線する（Phase 7 Task 27 / 利用者要望9）。
+         * 押し始めと放しを別に拾い、クリック（4px 未満）とドラッグの振り分けは
+         * `BoardScene` のしきい値が決める。クリック→クリックの経路はそのまま残る。
+         */
+        onPointerDown={(event: ThreeEvent<PointerEvent>) => {
+          const terminal = terminals[event.instanceId ?? -1];
+          if (terminal === undefined || onPress === undefined) return;
+          event.stopPropagation();
+          onPress(terminal);
+        }}
+        onPointerUp={(event: ThreeEvent<PointerEvent>) => {
+          const terminal = terminals[event.instanceId ?? -1];
+          if (terminal === undefined || onRelease === undefined) return;
+          event.stopPropagation();
+          onRelease(terminal);
         }}
       />
       {hoveredTerminal === undefined || hoveredScrew === undefined ? null : (

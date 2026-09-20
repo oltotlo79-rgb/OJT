@@ -94,3 +94,18 @@ export const LAMP_EMISSIVE: Readonly<Record<string, number>> = {
  * 端子のホバー色と同系にして「いま触っている所」の意味を揃える。
  */
 export const SOCKET_SELECTED_COLOR = '#39D0FF';
+
+/**
+ * 運んできた部品を「ここへ落とせる」ソケットの色（緑）。Phase 7 設計 §7.3.3 / §7.3.4。
+ * 「触っている所」（水色）と「置ける所」（緑）は意味が違うので色を分ける。
+ * 色だけに頼らないよう、発光の強さ（`SOCKET_GLOW_INTENSITY`）でも区別する。
+ */
+export const SOCKET_DROP_COLOR = '#3FBF6F';
+
+/**
+ * 配線中に「ここへ繋げられる」端子の色（緑）。Phase 7 設計 §7.3.2 / §7.3.4。
+ * 落とせるソケット（`SOCKET_DROP_COLOR`）と同じ緑にして、「置ける・繋げる」の意味をそろえる。
+ */
+export const TERMINAL_LEGAL_COLOR = '#3FBF6F';
+/** 配線中に繋げられない端子の色（灰に沈める）。色だけでなく**沈む**ことでも区別する。 */
+export const TERMINAL_ILLEGAL_COLOR = '#4A5058';

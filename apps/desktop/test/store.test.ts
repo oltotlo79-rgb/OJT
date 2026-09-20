@@ -469,8 +469,11 @@ describe('ストアの4分割（指摘 DS-3）', () => {
    * 分割前の `AppState` が持っていた欄と操作の数。§12.1
    * 4スライスの公開キーの和がこれと一致することを固定して、割り直しで欄が
    * 迷子になる（どのスライスにも入らない／二重に入る）ことを止める。
+   *
+   * 144 → 148: Phase 7 Task 27（3D盤の直接操作）で `dragging` / `hoverHint` と
+   * その差し替え（`setDragging` / `setHoverHint`）の4つが増えた。
    */
-  const APP_STATE_KEY_COUNT = 144;
+  const APP_STATE_KEY_COUNT = 148;
 
   /** スライスを1つ組み立てて、公開するキーだけを取り出す（中身は呼ばない）。 */
   function keysOf(

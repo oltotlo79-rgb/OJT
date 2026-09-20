@@ -71,8 +71,12 @@ describe('ソケットの差込穴は共有ジオメトリ1個・共有マテリ
         role="CR1"
         occupied={false}
         selected={false}
+        hovered={false}
+        droppable={false}
         terminals={terminals}
         onPickSocket={() => undefined}
+        onHoverSocket={() => undefined}
+        onReleaseSocket={() => undefined}
       />,
     );
   }

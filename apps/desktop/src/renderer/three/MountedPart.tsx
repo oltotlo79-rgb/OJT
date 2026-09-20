@@ -67,6 +67,11 @@ const BODY_OPACITY = 0.85;
 const EDGE_COLOR = '#C9D2DC';
 /** 選択中の稜線の色（部品パネルのカードが指しているソケット）。利用者要望 2026-09-19 */
 const SELECTED_EDGE_COLOR = SOCKET_SELECTED_COLOR;
+/**
+ * ホバー中の稜線の色（Phase 7 設計 §7.3.4「ホバー＝白の細い縁取り、選択＝太い縁取り」）。
+ * 選択（水色）とは別の白にして、「触っているだけ」と「選んである」を取り違えないようにする。
+ */
+const HOVERED_EDGE_COLOR = '#FFFFFF';
 /** ラベルを本体の上面からさらに浮かせる量[mm]（⑫/④ の印字に被せないため）。 */
 const LABEL_LIFT_MM = 4;
 
@@ -147,6 +152,15 @@ export function sharedBodyEdges(widthMm: number, heightMm: number): EdgesGeometr
   return made;
 }
 
+/**
+ * 稜線の色（選択中 > ホバー中 > 通常）。Phase 7 設計 §7.3.4
+ * 純関数にして「ホバーでも縁が変わる」ことを単体テストで縛れるようにする。
+ */
+export function mountedEdgeColor(state: { selected: boolean; hovered: boolean }): string {
+  if (state.selected) return SELECTED_EDGE_COLOR;
+  return state.hovered ? HOVERED_EDGE_COLOR : EDGE_COLOR;
+}
+
 /** 装着部品1個。 */
 export function MountedPart({
   socket,
@@ -155,7 +169,11 @@ export function MountedPart({
   energized,
   timedOut,
   selected,
+  hovered,
   onPickSocket,
+  onHoverSocket,
+  onPressPart,
+  onReleaseSocket,
 }: {
   socket: SocketDefinition;
   role: SocketRole;
@@ -166,8 +184,19 @@ export function MountedPart({
   timedOut: boolean;
   /** 部品パネルのカードがこのソケットを指しているか（稜線を光らせる）。§8.2 */
   selected: boolean;
+  /** ポインタが本体の上にあるか（稜線を細く光らせる）。Phase 7 設計 §7.3.4 */
+  hovered: boolean;
   /** 本体を押したときの通知（ソケット台座を押したときと同じ扱いにする）。§8.2 */
   onPickSocket: (socketId: SocketId, occupied: boolean) => void;
+  /** ポインタが入った／出た（ホバー予告とカーソルに使う）。 */
+  onHoverSocket: (socketId: SocketId | undefined) => void;
+  /**
+   * 本体を押し始めた（つまむ候補にする）。Phase 7 設計 §7.3.2
+   * ここではまだ運び始めない。4px 動いて初めて運搬になる（`BoardScene` のしきい値）。
+   */
+  onPressPart: (socketId: SocketId, kind: MountedPartData['kind']) => void;
+  /** 本体の上で放した（運んできたものを元のソケットへ戻す経路）。 */
+  onReleaseSocket: (socketId: SocketId, occupied: boolean) => void;
 }): JSX.Element {
   // 部品の外形はソケット本体（`bodyMm`）から作る。ソケットの差込領域に載る大きさ
   const box = mountedBodyBox(socket);
@@ -190,6 +219,7 @@ export function MountedPart({
     <group name={`mounted-${socket.id}`}>
       {/* 本体の箱。ここだけがクリックを受け、押すとそのソケットが選ばれる（利用者要望 2026-09-19） */}
       <mesh
+        name={`mounted-body-${socket.id}`}
         geometry={UNIT_BOX}
         material={bodyMaterial}
         position={center}
@@ -198,10 +228,26 @@ export function MountedPart({
           event.stopPropagation();
           onPickSocket(socket.id, true);
         }}
+        onPointerOver={(event: ThreeEvent<PointerEvent>) => {
+          event.stopPropagation();
+          onHoverSocket(socket.id);
+        }}
+        onPointerOut={() => {
+          onHoverSocket(undefined);
+        }}
+        /* つまんでソケットの外へ放すと取り外し（Phase 7 設計 §7.3.2。ゴミ箱は作らない） */
+        onPointerDown={(event: ThreeEvent<PointerEvent>) => {
+          event.stopPropagation();
+          onPressPart(socket.id, part.kind);
+        }}
+        onPointerUp={(event: ThreeEvent<PointerEvent>) => {
+          event.stopPropagation();
+          onReleaseSocket(socket.id, true);
+        }}
       />
       {/* 箱の輪郭。半透明のままでも「そこに部品が載っている」ことが分かるようにする */}
       <lineSegments geometry={edges} position={center} raycast={noPick}>
-        <lineBasicMaterial color={selected ? SELECTED_EDGE_COLOR : EDGE_COLOR} />
+        <lineBasicMaterial color={mountedEdgeColor({ selected, hovered })} />
       </lineSegments>
       {/* 動作表示（リレー＝動作表示窓、タイマ＝POWER/UP の2灯＋ダイヤル）。§5.3.1 / §5.3.2 */}
       <PartIndicator

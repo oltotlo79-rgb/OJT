@@ -1,6 +1,7 @@
 import type { BoardTerminal, Footprint } from '@ojt/board-model';
-import type { JSX } from 'react';
-import type { Texture } from 'three';
+import { useFrame, useThree, type ThreeEvent } from '@react-three/fiber';
+import { useRef, type JSX } from 'react';
+import type { Mesh, Texture } from 'three';
 import { DIN_RAIL_COLOR } from '../session/colors.js';
 import { JA_3D } from '../i18n/ja.js';
 import { bakeSharedTexture, labelFont, makeCanvasTexture, PX_PER_MM } from './labels.js';
@@ -18,8 +19,15 @@ import { toScene } from './coords.js';
  *
  * 外形は盤定義の `footprint`、ネジ端子カバーの位置は `board.terminals` の `pos` から取るので、
  * 盤定義（`board-jipm.ts`）の寸法・端子位置は一切変えずに見た目だけを作り込む。
- * AC一次側は配線も測定もしない（`wirable: false`）ため、**この中のメッシュは1つも
+ * AC一次側は配線も測定もしない（`wirable: false`）ため、**飾りのメッシュは1つも
  * レイキャストを受けない**（`raycast={noPick}`）。クリックは下の盤面へ抜ける。
+ *
+ * **2026-09-20（Phase 7 Task 27・利用者要望9「3D図をクリックして電源をON/OFFしたり」）**:
+ * 唯一の例外として**操作部**（ブレーカのハンドルとその窓／電源スイッチのロッカーとその窓）だけが
+ * `raycast={noPick}` を外してクリックを受ける。押すと `onToggle(次の状態)` が飛び、呼び出し側が
+ * `bridge.send({type:'breaker'|'switch', on})` を送る。手順違反（スイッチを先に入れる）は
+ * **止めない**。実機では起こせる操作であり、エンジンが `power-sequence-violation` として
+ * 危険操作に数える（§5.6 #5）。レバーの傾きは `LEVER_TWEEN_MS` で補間する。
  */
 
 /** レイキャストを受けない（クリックを下の盤面へ通す）。 */
@@ -92,10 +100,47 @@ export const SWITCH_ROCKER_TILT_RAD = (30 * Math.PI) / 180;
 /** 電源スイッチのロッカーの寸法[mm]（幅×奥行×厚み）。 */
 export const SWITCH_ROCKER_MM = { width: 13, depth: 6, height: 3.5 } as const;
 
+/**
+ * レバーが倒れきるまでの時間[ms]（Phase 7 設計 §7.3.2「レバーが倒れる（150ms）」）。
+ * 瞬間的に角度が変わると「自分が押したから動いた」ことが読み取れないので、
+ * 目で追える速さで倒す。倒れきる角度（`BREAKER_HANDLE_TILT_RAD` の2倍）をこの時間で割る。
+ */
+export const LEVER_TWEEN_MS = 150;
+
+/**
+ * 1フレームぶん角度を目標へ寄せる（純関数。補間の速さを単体テストで縛る）。
+ *
+ * `travelRad` は倒れきる角度の全幅で、この幅を `LEVER_TWEEN_MS` で渡りきる速さにする
+ * （ブレーカとスイッチで角度が違っても、倒れきるまでの時間は同じになる）。
+ */
+export function stepRotation(from: number, to: number, dtMs: number, travelRad: number): number {
+  const delta = to - from;
+  if (delta === 0) return to;
+  const step = (travelRad / LEVER_TWEEN_MS) * Math.max(0, dtMs);
+  return Math.abs(delta) <= step ? to : from + Math.sign(delta) * step;
+}
+
+/**
+ * `frameloop="demand"` では前のフレームからの間隔がいくらでも開くので、1フレームで
+ * 使う時間はここで頭打ちにする（無操作で1秒空いた直後に押すと一瞬で倒れてしまう）。
+ */
+const MAX_FRAME_MS = 33;
+
 /** 可動部の姿勢（シーン座標の位置＋X軸まわりの回転）。 */
 export interface HingePose {
   position: [number, number, number];
   rotationX: number;
+}
+
+/**
+ * 電源の操作部の当たり判定と入切（Phase 7 設計 §7.3.2）。
+ * `onToggle` を渡さない（モードDの机上盤など）ときは従来どおり飾りのままになる。
+ */
+export interface PowerFixtureHandlers {
+  /** 押された（引数は**次の**状態）。 */
+  onToggle?: ((on: boolean) => void) | undefined;
+  /** 操作部に入った／出た（ホバー予告とカーソルに使う）。 */
+  onHover?: ((entered: boolean) => void) | undefined;
 }
 
 /**
@@ -129,9 +174,12 @@ function hingeY(footprint: Footprint): number {
   return centerOf(footprint).y;
 }
 
-/** ブレーカのハンドルの中心と傾き。ON / OFF で**位置も角度も**変わる。 */
-export function breakerHandlePose(footprint: Footprint, on: boolean, heightMm: number): HingePose {
-  const rotationX = on ? -BREAKER_HANDLE_TILT_RAD : BREAKER_HANDLE_TILT_RAD;
+/** ブレーカのハンドルを**任意の角度**で置く（補間の途中も倒れきった姿も同じ式で出す）。 */
+export function breakerHandlePoseAt(
+  footprint: Footprint,
+  rotationX: number,
+  heightMm: number,
+): HingePose {
   return hingePose(
     { x: footprint.x + handleCenterX(footprint), y: hingeY(footprint), z: heightMm - 1.5 },
     BREAKER_HANDLE_MM.height / 2,
@@ -139,14 +187,37 @@ export function breakerHandlePose(footprint: Footprint, on: boolean, heightMm: n
   );
 }
 
-/** 電源スイッチのロッカーの中心と傾き。 */
-export function switchRockerPose(footprint: Footprint, on: boolean, heightMm: number): HingePose {
-  const rotationX = on ? -SWITCH_ROCKER_TILT_RAD : SWITCH_ROCKER_TILT_RAD;
+/** ブレーカのハンドルの中心と傾き。ON / OFF で**位置も角度も**変わる。 */
+export function breakerHandlePose(footprint: Footprint, on: boolean, heightMm: number): HingePose {
+  return breakerHandlePoseAt(footprint, breakerHandleTilt(on), heightMm);
+}
+
+/** ブレーカのハンドルの倒れきった角度。 */
+export function breakerHandleTilt(on: boolean): number {
+  return on ? -BREAKER_HANDLE_TILT_RAD : BREAKER_HANDLE_TILT_RAD;
+}
+
+/** 電源スイッチのロッカーを任意の角度で置く。 */
+export function switchRockerPoseAt(
+  footprint: Footprint,
+  rotationX: number,
+  heightMm: number,
+): HingePose {
   return hingePose(
     { x: centerOf(footprint).x, y: hingeY(footprint), z: heightMm - 1 },
     SWITCH_ROCKER_MM.height / 2,
     rotationX,
   );
+}
+
+/** 電源スイッチのロッカーの中心と傾き。 */
+export function switchRockerPose(footprint: Footprint, on: boolean, heightMm: number): HingePose {
+  return switchRockerPoseAt(footprint, switchRockerTilt(on), heightMm);
+}
+
+/** 電源スイッチのロッカーの倒れきった角度。 */
+export function switchRockerTilt(on: boolean): number {
+  return on ? -SWITCH_ROCKER_TILT_RAD : SWITCH_ROCKER_TILT_RAD;
 }
 
 /**
@@ -156,6 +227,24 @@ export function switchRockerPose(footprint: Footprint, on: boolean, heightMm: nu
  */
 function handleCenterX(footprint: Footprint): number {
   return Math.min(BODY_INSET_MM / 2 + BREAKER_HANDLE_MM.width / 2 + 1, footprint.w / 2);
+}
+
+/**
+ * 操作部（ハンドル窓／ロッカー窓）の中心（盤ローカル mm）。Phase 7 Task 27。
+ * E2E がここを `page.mouse` で押すので、**寸法の正本をこの1箇所にする**
+ * （`e2e/direct-manipulation.spec.ts` が座標を書き写すと、機器の形を直したとたんに外れる）。
+ */
+export function powerWellCenterMm(
+  footprint: Footprint,
+  kind: 'breaker' | 'switch',
+  heightMm: number,
+): { x: number; y: number; z: number } {
+  const center = centerOf(footprint);
+  return {
+    x: kind === 'breaker' ? footprint.x + handleCenterX(footprint) : center.x,
+    y: hingeY(footprint),
+    z: heightMm - 1,
+  };
 }
 
 /** ON / OFF の印字の奥行位置（機器の中心からの距離[mm]）。可動部の縁の外へ出す。 */
@@ -285,6 +374,97 @@ function ScrewShroud({
   );
 }
 
+/**
+ * ポインタのハンドラ（操作部だけが持つ）。`onToggle` が無ければ空になり、
+ * メッシュは `raycast={noPick}` の飾りに戻る（モードDの机上盤・スクリーンショット用途）。
+ */
+function powerHandlers(nextOn: boolean, handlers: PowerFixtureHandlers): Record<string, unknown> {
+  const { onToggle, onHover } = handlers;
+  if (onToggle === undefined) return { raycast: noPick };
+  return {
+    onClick: (event: ThreeEvent<MouseEvent>) => {
+      event.stopPropagation();
+      onToggle(nextOn);
+    },
+    ...(onHover === undefined
+      ? {}
+      : {
+          onPointerOver: (event: ThreeEvent<PointerEvent>) => {
+            event.stopPropagation();
+            onHover(true);
+          },
+          onPointerOut: () => {
+            onHover(false);
+          },
+        }),
+  };
+}
+
+/**
+ * 可動部（ブレーカのハンドル／電源スイッチのロッカー）。
+ *
+ * 角度は `LEVER_TWEEN_MS` かけて目標へ寄せる。React の状態にすると毎フレーム再描画に
+ * なるので、`useFrame` の中で mesh を直接動かし、動いているあいだだけ `invalidate()` を
+ * 要求する（`frameloop="demand"` を常時描画に変えない）。優先度は既定の0のまま
+ * （Task 16: 0 より小さい優先度の `useFrame` を足さない）。
+ */
+export function PowerLever({
+  name,
+  poseAt,
+  target,
+  travelRad,
+  scale,
+  color,
+  nextOn,
+  handlers,
+}: {
+  name: string;
+  /** 角度 → 可動部の姿勢。 */
+  poseAt: (rotationX: number) => HingePose;
+  /** 目標の角度[rad]。 */
+  target: number;
+  /** 倒れきる角度の全幅[rad]（補間の速さを決める）。 */
+  travelRad: number;
+  scale: [number, number, number];
+  color: string;
+  /** 押したときに渡す**次の**状態。 */
+  nextOn: boolean;
+  handlers: PowerFixtureHandlers;
+}): JSX.Element {
+  const mesh = useRef<Mesh | null>(null);
+  const current = useRef(target);
+  const invalidate = useThree((state) => state.invalidate);
+  useFrame((_, delta) => {
+    const node = mesh.current;
+    if (node === null || current.current === target) return;
+    const next = stepRotation(
+      current.current,
+      target,
+      Math.min(delta * 1000, MAX_FRAME_MS),
+      travelRad,
+    );
+    current.current = next;
+    const pose = poseAt(next);
+    node.position.set(pose.position[0], pose.position[1], pose.position[2]);
+    node.rotation.x = next;
+    // 倒れきるまで次のフレームを要求し続ける（倒れきったら要求が止まって描画も止まる）
+    invalidate();
+  });
+  const pose = poseAt(current.current);
+  return (
+    <mesh
+      ref={mesh}
+      name={name}
+      geometry={UNIT_BOX}
+      material={sharedMaterial(color, { roughness: 0.45, metalness: 0.15 })}
+      position={pose.position}
+      rotation={[current.current, 0, 0]}
+      scale={scale}
+      {...powerHandlers(nextOn, handlers)}
+    />
+  );
+}
+
 /** レールの座＋黒いベース（両機器で共通の足回り）。 */
 function SeatAndBase({ footprint }: { footprint: Footprint }): JSX.Element {
   const { x, y } = centerOf(footprint);
@@ -323,20 +503,22 @@ export function Breaker({
   color,
   heightMm,
   on,
+  onToggle,
+  onHover,
 }: {
   footprint: Footprint;
   terminals: readonly BoardTerminal[];
   color: string;
   heightMm: number;
   on: boolean;
-}): JSX.Element {
+} & PowerFixtureHandlers): JSX.Element {
   const { x, y } = centerOf(footprint);
   const poleWidth = (footprint.w - BODY_INSET_MM - POLE_SEAM_MM) / 2;
   const poleOffset = (poleWidth + POLE_SEAM_MM) / 2;
   const bodyDepth = footprint.h - BODY_INSET_MM;
   const bodyZ = (BASE_TOP_MM + heightMm) / 2;
-  const handle = breakerHandlePose(footprint, on, heightMm);
   const wellX = footprint.x + handleCenterX(footprint);
+  const handlers: PowerFixtureHandlers = { onToggle, onHover };
   return (
     <group name="breaker-body">
       <SeatAndBase footprint={footprint} />
@@ -363,22 +545,28 @@ export function Breaker({
         })}
         scale={[footprint.w - BODY_INSET_MM, 0.9, 0.6]}
       />
-      {/* ハンドル窓（凹み）と連動ハンドル。窓の色は ON で緑に変わる（項目4） */}
+      {/*
+        ハンドル窓（凹み）と連動ハンドル。窓の色は ON で緑に変わる（項目4）。
+        **この2枚だけがクリックを受ける**（Phase 7 Task 27）。窓も操作部に含めるのは、
+        倒れたハンドルは向こう側へ逃げるので、正面視では窓のほうが狙いやすいため。
+      */}
       <mesh
         name="breaker-well"
         geometry={UNIT_BOX}
         material={sharedMaterial(wellColorFor(on), { roughness: 0.8 })}
-        raycast={noPick}
         position={toScene({ x: wellX, y, z: heightMm - 1 })}
         scale={[BREAKER_HANDLE_MM.width + 2, BREAKER_HANDLE_MM.depth + 2, 1.6]}
+        {...powerHandlers(!on, handlers)}
       />
-      <mesh
-        geometry={UNIT_BOX}
-        material={sharedMaterial(HANDLE_COLOR, { roughness: 0.45, metalness: 0.15 })}
-        raycast={noPick}
-        position={handle.position}
-        rotation={[handle.rotationX, 0, 0]}
+      <PowerLever
+        name="breaker-handle"
+        poseAt={(rotationX) => breakerHandlePoseAt(footprint, rotationX, heightMm)}
+        target={breakerHandleTilt(on)}
+        travelRad={BREAKER_HANDLE_TILT_RAD * 2}
         scale={[BREAKER_HANDLE_MM.width, BREAKER_HANDLE_MM.depth, BREAKER_HANDLE_MM.height]}
+        color={HANDLE_COLOR}
+        nextOn={!on}
+        handlers={handlers}
       />
       {terminals.map((terminal) => (
         <ScrewShroud
@@ -409,15 +597,17 @@ export function PowerSwitch({
   color,
   heightMm,
   on,
+  onToggle,
+  onHover,
 }: {
   footprint: Footprint;
   terminals: readonly BoardTerminal[];
   color: string;
   heightMm: number;
   on: boolean;
-}): JSX.Element {
+} & PowerFixtureHandlers): JSX.Element {
   const { x, y } = centerOf(footprint);
-  const rocker = switchRockerPose(footprint, on, heightMm);
+  const handlers: PowerFixtureHandlers = { onToggle, onHover };
   return (
     <group name="switch-body">
       <SeatAndBase footprint={footprint} />
@@ -428,22 +618,25 @@ export function PowerSwitch({
         position={toScene({ x, y, z: (BASE_TOP_MM + heightMm) / 2 })}
         scale={[footprint.w - BODY_INSET_MM, footprint.h - BODY_INSET_MM, heightMm - BASE_TOP_MM]}
       />
-      {/* ロッカーを受ける黒い枠（実物の操作窓）。窓の色は ON で緑に変わる（項目4） */}
+      {/* ロッカーを受ける黒い枠（実物の操作窓）。窓の色は ON で緑に変わる（項目4）。
+          窓とロッカーの2枚だけがクリックを受ける（Phase 7 Task 27） */}
       <mesh
         name="switch-well"
         geometry={UNIT_BOX}
         material={sharedMaterial(wellColorFor(on), { roughness: 0.8 })}
-        raycast={noPick}
         position={toScene({ x, y, z: heightMm - 1 })}
         scale={[SWITCH_ROCKER_MM.width + 2.5, SWITCH_ROCKER_MM.depth + 2, 1.6]}
+        {...powerHandlers(!on, handlers)}
       />
-      <mesh
-        geometry={UNIT_BOX}
-        material={sharedMaterial(HANDLE_COLOR, { roughness: 0.4, metalness: 0.15 })}
-        raycast={noPick}
-        position={rocker.position}
-        rotation={[rocker.rotationX, 0, 0]}
+      <PowerLever
+        name="switch-rocker"
+        poseAt={(rotationX) => switchRockerPoseAt(footprint, rotationX, heightMm)}
+        target={switchRockerTilt(on)}
+        travelRad={SWITCH_ROCKER_TILT_RAD * 2}
         scale={[SWITCH_ROCKER_MM.width, SWITCH_ROCKER_MM.depth, SWITCH_ROCKER_MM.height]}
+        color={HANDLE_COLOR}
+        nextOn={!on}
+        handlers={handlers}
       />
       {terminals.map((terminal) => (
         <ScrewShroud

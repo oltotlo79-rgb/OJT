@@ -10,6 +10,11 @@ import styles from './panels.module.css';
  * 端子リスト（キーボードで配線する）。UXレビュー #29 / Plan 5 決定表#12。
  * 選ぶと `PickHit`（`kind: 'terminal'`）を親へ渡すだけで、**配線の規則は
  * `pickToAction()`（`session/interaction.ts`）がそのまま受け持つ**。
+ *
+ * **2026-09-20（Phase 7 Task 27 / 指摘 PR-11）**: 行と3D盤の端子を**相互に**光らせる。
+ * 行にカーソル（またはフォーカス）を置くと盤のネジが光り、盤の端子を指すと行が光る。
+ * どちらの向きも `store.hoveredTerminal` 1つで表すので、光が2箇所で食い違うことがない。
+ * 端子IDの語彙の差（役割 `CR1.9` と物理 `S1.9`）は呼び出し側（`Session`）が吸収する。
  */
 
 /** まとまりごとに並べ替える（部品IDの出現順）。 */
@@ -28,14 +33,20 @@ export function TerminalListPanel({
   board,
   session,
   pendingTerminal,
+  hoveredTerminal,
   onPick,
+  onHover,
   onCancel,
 }: {
   board: BoardDefinition;
   session: BoardSession;
   /** 配線1本目に選んだ端子（`store.pendingTerminal`）。 */
   pendingTerminal: TerminalId | undefined;
+  /** いま盤で指している端子（**役割ID**に直したもの）。指摘 PR-11 */
+  hoveredTerminal: TerminalId | undefined;
   onPick: (hit: PickHit) => void;
+  /** 行を指した／離れた（盤のネジを光らせる）。指摘 PR-11 */
+  onHover: (id: TerminalId | undefined) => void;
   onCancel: () => void;
 }): JSX.Element {
   const [query, setQuery] = useState('');
@@ -97,11 +108,26 @@ export function TerminalListPanel({
                   data-testid={`terminal-row-${row.id}`}
                   aria-pressed={pendingTerminal === row.id}
                   aria-disabled={unavailable}
+                  // 盤の端子を指しているあいだ、その行も光らせる（指摘 PR-11）
+                  data-hovered={hoveredTerminal === row.id}
                   {...(unavailable ? { 'aria-describedby': reasonId } : {})}
                   title={row.full ? JA.terminalList.full : row.label}
                   onClick={() => {
                     if (unavailable) return;
                     onPick({ kind: 'terminal', id: row.id, wirable: true, label: row.label });
+                  }}
+                  onPointerEnter={() => {
+                    onHover(row.id);
+                  }}
+                  onPointerLeave={() => {
+                    onHover(undefined);
+                  }}
+                  /* キーボードだけで辿るときも同じ光り方にする（Tab で盤の端子が光る） */
+                  onFocus={() => {
+                    onHover(row.id);
+                  }}
+                  onBlur={() => {
+                    onHover(undefined);
                   }}
                 >
                   <span className={styles.terminalName}>{row.label}</span>

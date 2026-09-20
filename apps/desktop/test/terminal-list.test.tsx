@@ -96,6 +96,8 @@ describe('TerminalListPanel（UXレビュー #29）', () => {
         board={JIPM_BOARD}
         session={session}
         pendingTerminal={undefined}
+        hoveredTerminal={undefined}
+        onHover={vi.fn()}
         onPick={vi.fn()}
         onCancel={vi.fn()}
       />,
@@ -112,6 +114,8 @@ describe('TerminalListPanel（UXレビュー #29）', () => {
         board={JIPM_BOARD}
         session={session}
         pendingTerminal={undefined}
+        hoveredTerminal={undefined}
+        onHover={vi.fn()}
         onPick={onPick}
         onCancel={vi.fn()}
       />,
@@ -137,6 +141,8 @@ describe('TerminalListPanel（UXレビュー #29）', () => {
         board={JIPM_BOARD}
         session={session}
         pendingTerminal={'CR1.14' as never}
+        hoveredTerminal={undefined}
+        onHover={vi.fn()}
         onPick={vi.fn()}
         onCancel={onCancel}
       />,
@@ -168,6 +174,8 @@ describe('TerminalListPanel（UXレビュー #29）', () => {
         board={JIPM_BOARD}
         session={full}
         pendingTerminal={undefined}
+        hoveredTerminal={undefined}
+        onHover={vi.fn()}
         onPick={vi.fn()}
         onCancel={vi.fn()}
       />,
@@ -194,6 +202,8 @@ describe('TerminalListPanel（UXレビュー #29）', () => {
         board={JIPM_BOARD}
         session={full}
         pendingTerminal={undefined}
+        hoveredTerminal={undefined}
+        onHover={vi.fn()}
         onPick={onPick}
         onCancel={vi.fn()}
       />,
@@ -227,6 +237,8 @@ describe('TerminalListPanel（UXレビュー #29）', () => {
         board={JIPM_BOARD}
         session={full}
         pendingTerminal={'P.1' as never}
+        hoveredTerminal={undefined}
+        onHover={vi.fn()}
         onPick={onPick}
         onCancel={vi.fn()}
       />,
@@ -243,6 +255,8 @@ describe('TerminalListPanel（UXレビュー #29）', () => {
         board={JIPM_BOARD}
         session={session}
         pendingTerminal={undefined}
+        hoveredTerminal={undefined}
+        onHover={vi.fn()}
         onPick={vi.fn()}
         onCancel={vi.fn()}
       />,
@@ -258,6 +272,8 @@ describe('TerminalListPanel（UXレビュー #29）', () => {
         board={JIPM_BOARD}
         session={session}
         pendingTerminal={undefined}
+        hoveredTerminal={undefined}
+        onHover={vi.fn()}
         onPick={vi.fn()}
         onCancel={vi.fn()}
       />,
@@ -274,6 +290,8 @@ describe('TerminalListPanel（UXレビュー #29）', () => {
         board={JIPM_BOARD}
         session={session}
         pendingTerminal={undefined}
+        hoveredTerminal={undefined}
+        onHover={vi.fn()}
         onPick={vi.fn()}
         onCancel={vi.fn()}
       />,

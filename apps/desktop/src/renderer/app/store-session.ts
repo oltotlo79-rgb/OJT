@@ -51,7 +51,7 @@ import {
   type CommandHistory,
   type SessionCommand,
 } from '../session/commands.js';
-import type { ToolMode } from '../session/interaction.js';
+import type { DragPayload, ToolMode } from '../session/interaction.js';
 import { boardForProblem } from '../session/plc-session.js';
 import { plcForVendor, plcUnitForVendor } from '../session/plc-skin.js';
 import { nextProbeAfter } from '../session/tester.js';
@@ -247,6 +247,8 @@ export function sessionFields(
   | 'hoveredTerminal'
   | 'selectedWire'
   | 'selectedSocket'
+  | 'dragging'
+  | 'hoverHint'
   | 'tester'
   | 'nextProbe'
   | 'circuit'
@@ -270,6 +272,9 @@ export function sessionFields(
     hoveredTerminal: undefined,
     selectedWire: undefined,
     selectedSocket: undefined,
+    // 直接操作の持ち物（Phase 7 Task 27）。課題を開き直したら必ず手放す
+    dragging: undefined,
+    hoverHint: undefined,
     tester: createTesterState(current.tester.kind),
     nextProbe: 'black',
     // 点検系（C1/C2）の持ち物。課題を開くときだけ `openProblem()` が引き当てた値で上書きする
@@ -357,6 +362,16 @@ export interface SessionSlice {
   hoveredTerminal: TerminalId | undefined;
   selectedWire: string | undefined;
   selectedSocket: SocketId | undefined;
+  /**
+   * つまんで運んでいるもの（部品パレットのカード／盤に載っている部品）。Phase 7 設計 §7.3.3
+   * 立っているあいだは3Dのクリックが「落とす」に変わる（`intentOf()` が最優先で見る）。
+   */
+  dragging: DragPayload | undefined;
+  /**
+   * 3Dペインの下端に出す1行の予告（`panels/HoverHint.tsx`）。Phase 7 設計 §7.3.4
+   * 「いま指しているものは何で、押すと何が起きるか」だけを持つ。`aria-live` にも同じ文が出る。
+   */
+  hoverHint: string | undefined;
   /** 判定を Worker へ送って結果待ちか（ツールバーの「判定」を二重に押させない）。§8.2 */
   judging: boolean;
 
@@ -393,6 +408,10 @@ export interface SessionSlice {
   setHovered: (terminal: TerminalId | undefined) => void;
   setSelectedWire: (wireId: string | undefined) => void;
   setSelectedSocket: (socketId: SocketId | undefined) => void;
+  /** つまんだ／放した（Phase 7 Task 27）。放すときは `undefined` を渡す。 */
+  setDragging: (dragging: DragPayload | undefined) => void;
+  /** ホバー予告の1行を差し替える（同じ文なら書かない）。 */
+  setHoverHint: (hint: string | undefined) => void;
   setJudging: (judging: boolean) => void;
   applySnapshot: (snapshot: SimSnapshot) => void;
   clearLive: () => void;
@@ -488,6 +507,8 @@ export const createSessionSlice: StateCreator<AppState, [], [], SessionSlice> = 
   hoveredTerminal: undefined,
   selectedWire: undefined,
   selectedSocket: undefined,
+  dragging: undefined,
+  hoverHint: undefined,
   judging: false,
 
   snapshot: EMPTY_SNAPSHOT,
@@ -683,6 +704,14 @@ export const createSessionSlice: StateCreator<AppState, [], [], SessionSlice> = 
   },
   setSelectedSocket: (selectedSocket) => {
     set({ selectedSocket });
+  },
+  setDragging: (dragging) => {
+    set({ dragging });
+  },
+  setHoverHint: (hoverHint) => {
+    // ホバーは毎秒何度も走るので、同じ文なら書かない（購読者の再描画を増やさない。§15）
+    if (get().hoverHint === hoverHint) return;
+    set({ hoverHint });
   },
   setJudging: (judging) => {
     set({ judging });

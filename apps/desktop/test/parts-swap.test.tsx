@@ -85,10 +85,12 @@ function renderPanel(
 }
 
 describe('部品カード: 何も選んでいないとき（§8.2 / 利用者要望 2026-09-19）', () => {
-  it('何をすればよいかの一文だけ出し、装着ボタンは出さない', () => {
+  it('ソケット一覧のボタンを出し、装着ボタンは出さない（指摘 UX-08）', () => {
     renderPanel(makeSession(), undefined);
 
-    expect(screen.getByTestId('parts-hint')).toHaveTextContent(JA_PARTS.hint);
+    // Phase 7 Task 27（UX-08）: 空状態は文章ではなくソケット一覧のボタンになった
+    expect(screen.getByTestId('socket-list')).toBeInTheDocument();
+    expect(screen.getByTestId('socket-list-S1')).toBeInTheDocument();
     expect(screen.queryByTestId('socket-card')).toBeNull();
     // 押せないボタンを並べるのではなく、そもそも出さない（UXレビュー指摘）
     expect(screen.queryByRole('button', { name: JA.session.mount })).toBeNull();
@@ -292,7 +294,11 @@ describe('3Dの装着部品のクリック（§8.2 / 利用者要望 2026-09-19�
         energized={false}
         timedOut={false}
         selected={selected}
+        hovered={false}
         onPickSocket={onPickSocket}
+        onHoverSocket={() => undefined}
+        onPressPart={() => undefined}
+        onReleaseSocket={() => undefined}
       />,
     );
     return { container, onPickSocket };
@@ -364,12 +370,13 @@ describe('3Dの装着部品のクリック（§8.2 / 利用者要望 2026-09-19�
   });
 
   it('選択中のソケット本体は発光し、同じ状態なら同じマテリアルを使い回す', () => {
-    const lit = socketBodyMaterial(true);
-    const dark = socketBodyMaterial(false);
+    // Phase 7 Task 27 で光り方が4通り（通常・ホバー・選択・落とせる）になった
+    const lit = socketBodyMaterial('selected');
+    const dark = socketBodyMaterial('plain');
 
     expect(lit.emissiveIntensity).toBeGreaterThan(0);
     expect(dark.emissiveIntensity).toBe(0);
     expect(lit).not.toBe(dark);
-    expect(socketBodyMaterial(true)).toBe(lit);
+    expect(socketBodyMaterial('selected')).toBe(lit);
   });
 });
