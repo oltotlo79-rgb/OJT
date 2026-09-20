@@ -19,6 +19,7 @@ import { fileURLToPath } from 'node:url';
  * ②`win-unpacked/resources/content/<mode>/*.json` が正本と同じ件数あること（§7.8）
  * ③`resources/app.asar` があること
  * ④`resources/manual.pdf` があって空でないこと（取扱説明書 設計 §7.3 / 決定表#27）
+ * ⑤`build/icon.ico` があってマルチサイズであること（Phase 7 Task 8 / 指摘 QA-06）
  * を確かめ、`release/artifacts.md`（ファイル名・バイト数・SHA256）を書き出す。
  *
  * **公開はしない**（タグ付けも GitHub Release もこのスクリプトの仕事ではない。決定表#22）。
@@ -122,6 +123,24 @@ if (!existsSync(RELEASE)) {
       rows.push({ name: 'resources/manual.pdf', size: bytes, sha256: await sha256Of(manual) });
       out.write(`取扱説明書 OK: ${bytes.toLocaleString('en-US')} バイト\n`);
     }
+  }
+
+  /*
+   * アプリのアイコン（QA-06）。無いと exe もショートカットもタスクバーも既定の
+   * Electron アイコンになる。`electron-builder` は黙って既定へ落とすだけで何も言わないので、
+   * **配布のたびにここで**「ある・マルチサイズである」ことを確かめる。
+   */
+  const icon = join(APP_ROOT, 'build', 'icon.ico');
+  if (!existsSync(icon)) {
+    fail(`アプリのアイコンがありません: ${icon}`);
+  } else {
+    const head = readFileSync(icon);
+    const count = head.length >= 6 && head.readUInt16LE(2) === 1 ? head.readUInt16LE(4) : 0;
+    if (count < 6) fail(`アプリのアイコンがマルチサイズではありません（${count} 枚）: ${icon}`);
+    // ICONDIR の幅は 1 バイトで、256px は 0 で表す
+    else if (!Array.from({ length: count }, (_, i) => head.readUInt8(6 + i * 16)).includes(0))
+      fail(`アプリのアイコンに 256px が入っていません: ${icon}`);
+    else out.write(`アプリのアイコン OK: ${count} 枚\n`);
   }
 
   const table = [

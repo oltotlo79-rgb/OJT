@@ -44,6 +44,15 @@ export default defineConfig({
       rollupOptions: {
         external: NODE_EXTERNALS,
         input: { index: resolve(import.meta.dirname, 'src/preload/index.ts') },
+        /*
+         * preload は **CommonJS の `.cjs`** で出す（Phase 7 Task 8 / 指摘 DM-4）。
+         * `webPreferences.sandbox: true` の renderer は preload を CommonJS としてしか
+         * 読み込めず、ESM の `.js` を指すと preload が丸ごと無視されて `window.ojt` が
+         * 生えない。拡張子を `.cjs` にするのは `apps/desktop/package.json` が
+         * `"type": "module"` だからで、`.js` のままでは Node が ESM として読もうとする。
+         * `src/main/index.ts` の `preload:` と**対で**直すこと。
+         */
+        output: { format: 'cjs', entryFileNames: 'index.cjs' },
       },
     },
   },

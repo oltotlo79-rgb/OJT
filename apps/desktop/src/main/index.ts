@@ -1,5 +1,5 @@
 import { join } from 'node:path';
-import { app, BrowserWindow, Menu, type WebContents } from 'electron';
+import { app, BrowserWindow, Menu, session, type WebContents } from 'electron';
 import { registerIpc } from './ipc.js';
 import { isAppUrl } from './navigation.js';
 
@@ -14,6 +14,14 @@ import { isAppUrl } from './navigation.js';
  * - 新しいウィンドウを開かせない（`setWindowOpenHandler` で常に `deny`）。
  * - 自分の画面以外への遷移を止める（`will-navigate`）。§1.2
  * - 上の2つは**あとから作られる WebContents にも**効くよう `web-contents-created` で仕掛ける。
+ *
+ * Phase 7 Task 8（指摘 DM-4 / DM-5 ≡ QA-05）でさらに締めた:
+ * - `sandbox: true`。renderer は OS のサンドボックスの中で動き、preload も Node の全体では
+ *   なく限られた API しか持たない（preload は CommonJS で読み込まれる。§後述）。
+ * - 権限要求（カメラ・マイク・通知・位置情報など）を**全部断る**。完全オフラインの
+ *   訓練ツールなので、renderer がこれらを欲しがる正当な場面が1つも無い。§1.2
+ * - `webviewTag` / `allowRunningInsecureContent` / `webSecurity` を明示する。いずれも
+ *   既定値と同じだが、**書いていないと既定値が変わったときに黙って緩む**。
  */
 
 /** 起動時のウィンドウ寸法（FHDで盤と右パネルが同時に見える大きさ）。§15 */
@@ -53,19 +61,29 @@ function createWindow(): BrowserWindow {
     title: '電気教育ツール',
     backgroundColor: '#1b1e24',
     webPreferences: {
-      preload: join(import.meta.dirname, '../preload/index.js'),
+      /*
+       * サンドボックス化した renderer は preload を **CommonJS** として読み込む。
+       * electron-vite の preload ビルドを `{ format: 'cjs', entryFileNames: 'index.cjs' }`
+       * にしてあるので、読み込み先も `.cjs`。**この2つは必ず対で直すこと**——片方だけ
+       * 直すと preload が読み込まれず `window.ojt` が生えないまま起動してしまう
+       * （`test/hardening.test.ts` が対になっていることを見ている）。
+       */
+      preload: join(import.meta.dirname, '../preload/index.cjs'),
       contextIsolation: true,
       nodeIntegration: false,
       /*
-       * `sandbox: true` にできない理由（1D1-e のレビュー指摘に対する記録）:
-       * electron-vite は preload を **ESM の `.js`** として出力するが、サンドボックス化した
-       * preload は CommonJS でしか読み込めないため、このままだと preload が丸ごと読み込まれず
-       * `window.ojt` が生えない。`.cjs` 出力へ切り替えて `sandbox: true` にする作業は
-       * 影響範囲（ビルド設定・E2E・配布）が本タスクの外なので **Plan 1D2 で扱う**。
-       * それまでの安全網として、renderer は `window.ojt` を直接触らず `app/ojt-api.ts` の
-       * `ojtApi()` を通し、preload が無い場合は日本語の理由付きで例外バナーに出す（§13 #5）。
+       * renderer を OS のサンドボックスに入れる（DM-4。所有者決定 2026-09-20 (a)）。
+       * preload は `electron` の `contextBridge` / `ipcRenderer` しか使っていないので、
+       * サンドボックスの中でもそのまま動く。Node の `fs` などが要る仕事は元から全部
+       * main 側（§4.3 の8チャネル）にある。
        */
-      sandbox: false,
+      sandbox: true,
+      /** `<webview>` は使わない。埋め込みブラウザの面をそもそも持たせない。 */
+      webviewTag: false,
+      /** 安全でない内容を混ぜて読ませない（既定と同じだが明示する）。 */
+      allowRunningInsecureContent: false,
+      /** 同一生成元ポリシーを切らない（既定と同じだが明示する）。 */
+      webSecurity: true,
     },
   });
   window.setMenuBarVisibility(false);
@@ -88,6 +106,14 @@ void app.whenReady().then(() => {
    * 開発者ツール用のショートカットも敢えて付け直さない（訓練者の誤操作を増やさない）。
    */
   Menu.setApplicationMenu(null);
+  /*
+   * 権限要求は一律で断る（DM-5 ≡ QA-05）。カメラ・マイク・位置情報・通知・クリップボード
+   * 読み取りなど、この訓練ツールが必要とするものは1つも無い。既定のハンドラは種類に
+   * よっては黙って許してしまうので、明示的に「全部 false」を置く。§1.2
+   */
+  session.defaultSession.setPermissionRequestHandler((_contents, _permission, callback) => {
+    callback(false);
+  });
   app.on('web-contents-created', (_event, contents) => {
     hardenWebContents(contents);
   });

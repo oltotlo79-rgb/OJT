@@ -41,10 +41,44 @@ win:
     - target: zip
       arch: [x64]
   artifactName: ${productName}-${version}-${arch}.${ext}
+  # アプリのアイコン。`directories.buildResources` の既定名と同じなので明示は要らないが、
+  # 無いと exe もショートカットもタスクバーも既定の Electron アイコンになる（QA-06）。
+  icon: build/icon.ico
+
+# 実行ファイルに焼き込む機能スイッチ（Electron Fuses）。指摘 DM-5 ≡ QA-05。
+# **アプリのコードからは戻せない**のが要点で、コードが乗っ取られても外れない。
+electronFuses:
+  # `ELECTRON_RUN_AS_NODE=1 電気教育ツール.exe script.js` で本体が汎用の Node として
+  # 動くのを止める（これが残っていると、署名もアンチウイルスの除外もそのまま使える
+  # 「持ち込みの Node」になってしまう）
+  runAsNode: false
+  # NODE_OPTIONS で任意のモジュールを先読みさせない
+  enableNodeOptionsEnvironmentVariable: false
+  # --inspect / --inspect-brk で main プロセスに繋がせない。
+  # **配布物の動作確認に効く**: Playwright の `_electron.launch()` は `--inspect=0` で
+  # main に繋ぐので、配布物には使えなくなる。`release/win-unpacked` を調べるときは
+  # `--remote-debugging-port=<port>` で起動して `chromium.connectOverCDP()` で繋ぐこと
+  # （E2E は `out/main/index.js` を素の Electron で起動するのでフューズの影響を受けない）
+  enableNodeCliInspectArguments: false
+  # app.asar 以外からアプリを読み込ませない（隣に app/ フォルダを置く差し替えを封じる）
+  onlyLoadAppFromAsar: true
+  # app.asar のハッシュを実行ファイル側に埋め、差し替えられていたら起動しない
+  enableEmbeddedAsarIntegrityValidation: true
+  # file:// のページの特権。**これだけは切れない**（Phase 7 Task 8 の実測、2026-09-20）。
+  # 本アプリの renderer は `loadFile()` で `app.asar` の中の `out/renderer/index.html` を
+  # file:// として読む。このフューズを false にすると asar の中のファイルが file:// から
+  # 読めなくなり、配布物が `ERR_FILE_NOT_FOUND` で真っ白になる（`win-unpacked` で確認済み）。
+  # 切るには renderer を独自スキーム（`protocol.handle('app', …)`）へ移す必要があり、
+  # `navigation.ts` の `isAppUrl()`・CSP・E2E まで波及するので本タスクの外に置く。
+  # ここを false にするときは**必ず配布物を起動して確かめる**こと。
+  grantFileProtocolExtraPrivileges: true
 
 nsis:
   oneClick: false
   perMachine: false # 管理者権限を要求しない（§15）
+  # 「すべてのユーザー」を選んでも UAC を立てない。README とリリースノートの
+  # 「管理者権限は不要」を設定側でも担保する（QA-18）
+  allowElevation: false
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: true
   createStartMenuShortcut: true

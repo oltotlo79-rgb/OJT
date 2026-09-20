@@ -486,12 +486,12 @@ pnpm --filter @ojt/desktop test -- probe-markers
 
 **Steps:**
 
-- [ ] 1. **DM-4**（**2026-09-20 の所有者決定: (a) 有効化する。(b) の据え置き案は採らない**）: `electron.vite.config.ts` の preload に `{ format: 'cjs', entryFileNames: 'index.cjs' }` を足し、`main/index.ts` の `webPreferences.sandbox` を `true` にする。`main/index.ts` の `preload` パスを `index.cjs` に合わせる。preload が Node API を使っていないことを確認する（使っていれば IPC 経由へ移す）。**worktree で `pnpm --filter @ojt/desktop dist` まで通し、配布物（`release/win-unpacked`）を起動して全画面が動くことを確かめてから commit する**（開発ビルドだけの確認では不十分。sandbox の効き方が違う）。`hardening.test.ts` に `sandbox: true` の検査を入れる（Step 6）。
-- [ ] 2. **DM-5 ≡ QA-05**: `app.whenReady()` 内に `session.defaultSession.setPermissionRequestHandler((_wc, _p, cb) => cb(false))` を足す。`webPreferences` に `webviewTag: false` / `allowRunningInsecureContent: false` / `webSecurity: true` を明示する。`electron-builder.yml` に `electronFuses:` を足す（`runAsNode: false` / `enableNodeOptionsEnvironmentVariable: false` / `enableNodeCliInspectArguments: false` / `onlyLoadAppFromAsar: true` / `enableEmbeddedAsarIntegrityValidation: true` / `grantFileProtocolExtraPrivileges: false`）。
-- [ ] 3. **DM-9**: `index.html` の CSP に `; base-uri 'none'; form-action 'none'; frame-src 'none'; frame-ancestors 'none'` を足す。
-- [ ] 4. **QA-06**: `apps/desktop/build/icon.ico` を1枚置く（16/32/48/64/128/256 のマルチサイズ。**盤とコンセントを想起させる本アプリ独自の図形**。ベンダーのアイコンは使わない）。`electron-builder.yml` の変更は不要。`check-dist.mjs` に存在チェックを足す。
-- [ ] 5. **QA-18**: `nsis:` に `allowElevation: false` を足す（README とリリースノートの「管理者権限は不要」を設定側で担保する）。
-- [ ] 6. **DM-7**: テスト2本を新設する。
+- [x] 1. **DM-4**（**2026-09-20 の所有者決定: (a) 有効化する。(b) の据え置き案は採らない**）: `electron.vite.config.ts` の preload に `{ format: 'cjs', entryFileNames: 'index.cjs' }` を足し、`main/index.ts` の `webPreferences.sandbox` を `true` にする。`main/index.ts` の `preload` パスを `index.cjs` に合わせる。preload が Node API を使っていないことを確認する（使っていれば IPC 経由へ移す）。**worktree で `pnpm --filter @ojt/desktop dist` まで通し、配布物（`release/win-unpacked`）を起動して全画面が動くことを確かめてから commit する**（開発ビルドだけの確認では不十分。sandbox の効き方が違う）。`hardening.test.ts` に `sandbox: true` の検査を入れる（Step 6）。
+- [x] 2. **DM-5 ≡ QA-05**: `app.whenReady()` 内に `session.defaultSession.setPermissionRequestHandler((_wc, _p, cb) => cb(false))` を足す。`webPreferences` に `webviewTag: false` / `allowRunningInsecureContent: false` / `webSecurity: true` を明示する。`electron-builder.yml` に `electronFuses:` を足す（`runAsNode: false` / `enableNodeOptionsEnvironmentVariable: false` / `enableNodeCliInspectArguments: false` / `onlyLoadAppFromAsar: true` / `enableEmbeddedAsarIntegrityValidation: true` / `grantFileProtocolExtraPrivileges: false`）。
+- [x] 3. **DM-9**: `index.html` の CSP に `; base-uri 'none'; form-action 'none'; frame-src 'none'; frame-ancestors 'none'` を足す。
+- [x] 4. **QA-06**: `apps/desktop/build/icon.ico` を1枚置く（16/32/48/64/128/256 のマルチサイズ。**盤とコンセントを想起させる本アプリ独自の図形**。ベンダーのアイコンは使わない）。`electron-builder.yml` の変更は不要。`check-dist.mjs` に存在チェックを足す。
+- [x] 5. **QA-18**: `nsis:` に `allowElevation: false` を足す（README とリリースノートの「管理者権限は不要」を設定側で担保する）。
+- [x] 6. **DM-7**: テスト2本を新設する。
 
 ```
 apps/desktop/test/hardening.test.ts

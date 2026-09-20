@@ -52,6 +52,71 @@ describe('配布物の版と設定（§15 / Plan 5 決定表#20）', () => {
     const firstLine = raw.subarray(3).toString('utf8').split(/\r?\n/)[0];
     expect(firstLine).toBe('電気教育ツール');
   });
+
+  /*
+   * Phase 7 Task 8（QA-06）。アイコンが無いとインストーラ・exe・ショートカット・
+   * タスクバーがすべて既定の Electron アイコンになる。署名もしていないので、
+   * SmartScreen の警告が出たときに「見覚えのない素性のアプリ」に見えてしまう。
+   * `electron-builder.yml` の変更は要らない（`buildResources: build` の `icon.ico` を拾う）。
+   */
+  it('ships an application icon (QA-06)', () => {
+    const icon = readFileSync(join(APP_ROOT, 'build', 'icon.ico'));
+    // ICONDIR: reserved=0 / type=1（アイコン） / count
+    expect(icon.readUInt16LE(0)).toBe(0);
+    expect(icon.readUInt16LE(2)).toBe(1);
+    const count = icon.readUInt16LE(4);
+    expect(count).toBeGreaterThanOrEqual(6);
+    // 0 は 256px を表す。Windows のインストーラと高DPIの一覧表示に要る
+    const sizes = Array.from({ length: count }, (_, i) => icon.readUInt8(6 + i * 16));
+    expect(sizes).toContain(0);
+    expect(sizes).toContain(16);
+    expect(sizes).toContain(32);
+    expect(sizes).toContain(48);
+    // マルチサイズなら必ずこの程度にはなる（1枚だけの手抜きを弾く）
+    expect(icon.byteLength).toBeGreaterThanOrEqual(4 * 1024);
+  });
+
+  it('checks that icon from the dist script (QA-06)', () => {
+    const script = readFileSync(join(APP_ROOT, 'scripts', 'check-dist.mjs'), 'utf8');
+    expect(script).toContain('icon.ico');
+  });
+});
+
+describe('配布物のハードニング（Phase 7 Task 8 / QA-05 ≡ DM-5・QA-18）', () => {
+  /*
+   * Electron Fuses。フューズは**配布する実行ファイルそのもの**を書き換えて機能を殺す
+   * ので、アプリのコードから戻すことができない。`runAsNode` を残したままだと
+   * `ELECTRON_RUN_AS_NODE=1 電気教育ツール.exe script.js` で本体が汎用の Node として
+   * 動き、`onlyLoadAppFromAsar` と `enableEmbeddedAsarIntegrityValidation` が無いと
+   * `app.asar` の差し替えが検出されない。
+   */
+  it.each([
+    ['runAsNode', 'false'],
+    ['enableNodeOptionsEnvironmentVariable', 'false'],
+    ['enableNodeCliInspectArguments', 'false'],
+    ['onlyLoadAppFromAsar', 'true'],
+    ['enableEmbeddedAsarIntegrityValidation', 'true'],
+  ])('blows the %s fuse to %s', (fuse, value) => {
+    expect(builderYml).toContain('electronFuses:');
+    expect(builderYml).toMatch(new RegExp(`^\\s+${fuse}:\\s*${value}\\s*(#.*)?$`, 'm'));
+  });
+
+  /*
+   * 6つ目の `grantFileProtocolExtraPrivileges` だけは **true のまま**である。
+   * renderer は `loadFile()` で `app.asar` の中の `index.html` を file:// として読むので、
+   * false にすると配布物が `ERR_FILE_NOT_FOUND` で起動しない（Phase 7 Task 8 で
+   * `release/win-unpacked` を実際に起動して確認した）。独自スキームへ移すまでは切れない。
+   * ここが false に変わったら**配布物が動かなくなる**ので、テストで固定して気づけるようにする。
+   */
+  it('keeps grantFileProtocolExtraPrivileges on (asar の中を file:// で読むため)', () => {
+    expect(builderYml).toMatch(/^\s+grantFileProtocolExtraPrivileges:\s*true\s*(#.*)?$/m);
+    expect(builderYml).toContain('ERR_FILE_NOT_FOUND');
+  });
+
+  it('never asks for administrator rights (QA-18。README の「管理者権限は不要」の担保)', () => {
+    expect(builderYml).toMatch(/^\s+allowElevation:\s*false\s*(#.*)?$/m);
+    expect(builderYml).toMatch(/^\s+perMachine:\s*false\s*(#.*)?$/m);
+  });
 });
 
 describe('同梱課題が4メーカーで成立する（決定表#19）', () => {

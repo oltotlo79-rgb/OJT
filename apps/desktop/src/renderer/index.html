@@ -2,9 +2,19 @@
 <html lang="ja">
   <head>
     <meta charset="UTF-8" />
+    <!--
+      CSP。設計仕様 §1.2（完全オフライン）／指摘 DM-9。
+      外へ出る先を1つも許さないので、どのディレクティブも `'self'` か `'none'` で閉じる。
+      `default-src` に落とさず**全部書く**のが要点で、落とすと「どれを意図して許したのか」が
+      読めなくなり、あとから1つ緩めたときに気づけない。
+
+      `frame-ancestors` は meta で配っても効かない（HTTPヘッダ専用。起動時にコンソールへ
+      その旨が1行出る）。それでも**意図の記録として残す**: 埋め込みを実際に止めているのは
+      `frame-src 'none'` と main の `setWindowOpenHandler`（常に deny）である。
+    -->
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; worker-src 'self' blob:"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; worker-src 'self' blob:; base-uri 'none'; form-action 'none'; frame-src 'none'; frame-ancestors 'none'"
     />
     <title>電気教育ツール</title>
   </head>
