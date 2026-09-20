@@ -630,6 +630,7 @@ grep -rln "stepGuide\|手順帯" apps/desktop/src/renderer/**/*.module.css  # �
 > Task 12 はこの項目を飛ばしてよい（Task 10 の `default: command satisfies never` はそのまま残っている）。
 
 - [ ] 1. **死にコード・死にフィールド・非推奨エイリアス**を削る: `LoadElement.polarized`（CS-06。コメントを実装に合わせる）／バレルの export 漏れ2件（CS-10）と取りこぼし2件（CT-08）／`@deprecated` 3定数（BM-06）／`BUILTIN_PROBLEMS` の陳腐化コメント（CT-09）／`reset` コマンド（DW-3。テストごと削る）／`WorkerBridge.handlers`（DS-5）／`presetForDirection()`（3D-18。テスト5ケースを `gizmoTargetForDirection()` へ向け直す）／`receiveShadow`（3D-20）／互換 export 4本（LE-17）。
+  - CT-09 done in Task 18 5ad4564（`BUILTIN_PROBLEMS` の陳腐化コメントは書き換え済み。ここでは扱わない）。
 - [ ] 2. **3D-13**: 印字テクスチャのキャッシュ4方針（`AcFixtures` / `labels.ts` / `PartIndicator` / `Fixtures`）を `labels.ts` の実装に**一本化**し、鍵に接頭辞（`fixture:` / `socket:` / `part:`）を付ける。
 - [ ] 3. **3D-14**: `labels.ts` に `LABEL_FONT` 定数を置き `ctx.font` の5箇所を差し替える（文字幅表は Meiryo 実測なのに焼くときは `sans-serif` になっている）。開発時に `measureText()` と見積りを比べるアサートを足す。
 
