@@ -1,16 +1,7 @@
-import { mkdtempSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { BUILTIN_PLC_PROBLEMS, type PlcProblem } from '@ojt/content';
 import { COIL_COL } from '@ojt/ladder-core';
-import {
-  _electron as electron,
-  expect,
-  test,
-  type ElectronApplication,
-  type Page,
-} from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
+import { launchApp, type Launched } from './app.js';
 
 /**
  * 回路入力の3つの入口（Phase 7 Task 21 / 設計 §5.3、指摘 UX-02・PR-01）のE2E。
@@ -22,12 +13,6 @@ import {
  * **設定は `userData` に残る**ので、どのテストも最後に既定メーカーを三菱へ戻す（決定表#21）。
  */
 
-const APP_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const CHROMIUM_FLAGS = [
-  '--use-gl=swiftshader',
-  '--use-angle=swiftshader',
-  '--enable-unsafe-swiftshader',
-];
 /** 他の E2E と同じ窓の大きさ。 */
 const WINDOW = { width: 1440, height: 900 } as const;
 
@@ -37,34 +22,12 @@ const PROBLEM: PlcProblem = (() => {
   return found;
 })();
 
-/** この spec だけの `userData`（他の spec を汚さない。`plc-vendors.spec.ts` と同じ流儀）。 */
-const USER_DATA_DIR = mkdtempSync(join(tmpdir(), 'ojt-ladder-entry-'));
-
-async function launch(): Promise<{ app: ElectronApplication; page: Page }> {
-  const app = await electron.launch({
-    args: [
-      join(APP_ROOT, 'out', 'main', 'index.js'),
-      ...CHROMIUM_FLAGS,
-      `--user-data-dir=${USER_DATA_DIR}`,
-    ],
-    env: { ...process.env, NODE_ENV: 'production' },
-  });
-  const page = await app.firstWindow();
-  await page.waitForLoadState('domcontentloaded');
-  await app.evaluate(({ BrowserWindow }, size) => {
-    const window = BrowserWindow.getAllWindows()[0];
-    if (window === undefined) throw new Error('ウィンドウがありません');
-    window.setBounds({ x: 0, y: 0, width: size.width, height: size.height });
-    window.show();
-    window.focus();
-  }, WINDOW);
-  await expect(page.getByTestId('mode-plc')).toBeVisible({ timeout: 30_000 });
-  // 前回の実行が残した一時保存があると復元プロンプトが出るので、先に片付ける（§12.3）
-  const restore = page.getByTestId('restore-prompt');
-  if ((await restore.count()) > 0) {
-    await page.getByRole('button', { name: '復元しない' }).click();
-  }
-  return { app, page };
+/**
+ * ビルド済みの Electron を起こし、モードDのホームに立たせる（`e2e/app.ts`）。
+ * `launchApp()` が起動ごとに使い捨ての `userData` を作るので、他の spec を汚さない（QA-12）。
+ */
+async function launch(): Promise<Launched> {
+  return launchApp({ window: WINDOW, home: 'mode-plc' });
 }
 
 /** どの画面からでもホームへ戻る（`plc-vendors.spec.ts` の `goHome()` と同じ）。 */
