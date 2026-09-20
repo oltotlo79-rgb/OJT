@@ -2,3 +2,4 @@ out/
 release/
 screenshots/
 test-results/
+playwright-report/
