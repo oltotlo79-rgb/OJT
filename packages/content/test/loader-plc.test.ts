@@ -24,9 +24,9 @@ function write(relative: string, value: unknown): void {
 }
 
 describe('loadProblemsFromDir / mergeProblemSets with a mode D problem', () => {
-  it('loads and merges a valid PLC problem alongside the built-ins', () => {
+  it('loads and merges a valid PLC problem alongside the built-ins', async () => {
     write('d-user.json', plcProblemJson({ id: 'd-user' }));
-    const user = loadProblemsFromDir(dir);
+    const user = await loadProblemsFromDir(dir);
     expect(user.errors).toEqual([]);
     expect(user.problems).toHaveLength(1);
     expect(isPlcProblem(user.problems[0]!)).toBe(true);
@@ -39,7 +39,7 @@ describe('loadProblemsFromDir / mergeProblemSets with a mode D problem', () => {
     expect(merged.errors).toEqual([]);
   });
 
-  it('a broken PLC problem reports reason "schema", never "unsupported-mode"', () => {
+  it('a broken PLC problem reports reason "schema", never "unsupported-mode"', async () => {
     /* eslint-disable @typescript-eslint/no-unused-vars -- 本体フィールドを落とすためだけの分割代入 */
     const {
       plc: _plc,
@@ -51,7 +51,7 @@ describe('loadProblemsFromDir / mergeProblemSets with a mode D problem', () => {
     });
     /* eslint-enable @typescript-eslint/no-unused-vars */
     write('d-bad.json', headerOnly);
-    const user = loadProblemsFromDir(dir);
+    const user = await loadProblemsFromDir(dir);
     expect(user.problems).toEqual([]);
     expect(user.errors).toHaveLength(1);
     expect(user.errors[0]?.reason).toBe('schema');
@@ -59,10 +59,10 @@ describe('loadProblemsFromDir / mergeProblemSets with a mode D problem', () => {
     expect(user.errors[0]?.id).toBe('d-bad');
   });
 
-  it('a user PLC problem can override a built-in id (the last write wins)', () => {
+  it('a user PLC problem can override a built-in id (the last write wins)', async () => {
     const first = BUILTIN_ALL_PROBLEMS[0]!;
     write('ov.json', plcProblemJson({ id: first.id }));
-    const user = loadProblemsFromDir(dir);
+    const user = await loadProblemsFromDir(dir);
     expect(user.errors).toEqual([]);
     const merged = mergeProblemSets({ problems: [...BUILTIN_ALL_PROBLEMS], errors: [] }, user);
     expect(merged.problems).toHaveLength(BUILTIN_ALL_PROBLEMS.length);

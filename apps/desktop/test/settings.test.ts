@@ -202,6 +202,20 @@ describe('writeSettings（レビュー指摘: renderer からの入力を信用�
     expect(saved.soundEnabled).toBe(false);
   });
 
+  it('userContentDir に相対パス／10万文字を渡すと拒否され既定が保たれること（DM-3）', () => {
+    const before = writeSettings({}).userContentDir;
+    expect(writeSettings({ userContentDir: 'relative/path' }).userContentDir).toBe(before);
+    expect(writeSettings({ userContentDir: 'あ'.repeat(100_000) }).userContentDir).toBe(before);
+    // 絶対パスかつ MAX_PATH（260）以内なら通る
+    const ok = join(electron.dir, 'problems');
+    expect(writeSettings({ userContentDir: ok }).userContentDir).toBe(ok);
+    // 絶対パスでも長すぎれば拒否する
+    const tooLong = join(electron.dir, 'x'.repeat(300));
+    expect(writeSettings({ userContentDir: tooLong }).userContentDir).toBe(ok);
+    // 空文字は「既定に戻す」なので通る
+    expect(writeSettings({ userContentDir: '' }).userContentDir).toBe('');
+  });
+
   it('defaults and clamps the PLC settings (§10.6 / Plan 4B 決定表#8)', () => {
     expect(DEFAULT_SETTINGS.defaultVendor).toBe('mitsubishi');
     // 0 と '' は「メーカーの既定に従う」（Plan 4B 決定表#8）

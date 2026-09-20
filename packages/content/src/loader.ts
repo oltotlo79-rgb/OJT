@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { readdir, readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { SupportedProblem } from './schema/index.js';
 import { parseProblem } from './schema/index.js';
@@ -12,8 +12,26 @@ import type { ProblemLoadError, ProblemSet } from './problem-set.js';
  * `ProblemLoadError` / `ProblemSet` は fs に触れない型なので `./problem-set.ts` に定義されている。
  * `@ojt/content/loader` の利用者（main プロセス）が型と実装を一箇所から取れるよう、ここで
  * 再エクスポートする（Task 1D1-b。`@ojt/content` のルートバレルは `./index.ts` も参照）。
+ *
+ * `node:fs/promises` を使う（Phase 7 Task 9 / レビュー DM-1 ≡ CT-06）: 同期の `readdirSync` /
+ * `readFileSync` / `statSync` は Electron の main プロセスで呼ぶと、そのファイルI/Oが終わるまで
+ * イベントループが止まる。利用者課題フォルダに数千〜数万件の `.json` を置かれても main が
+ * 固まらないよう、1ファイルごとに非同期で読む。
  */
 export type { ProblemLoadError, ProblemSet };
+
+/**
+ * 1ファイルの最大バイト数（読む前に断る）。§13 #9 / レビュー DM-1 ≡ CT-06
+ * 巨大な課題JSONをそのまま `JSON.parse()` すると main を長時間止める。
+ */
+export const MAX_PROBLEM_BYTES = 2 * 1024 * 1024;
+
+/**
+ * 1回の `loadProblemsFromDir()` で処理する `.json` ファイル数の上限。§13 #9 / レビュー DM-1 ≡ CT-06
+ * 上限に達したら以降のファイルは集めるのを打ち切り、打ち切った旨を `errors` に1件積む
+ * （1ファイルの失敗で他を止めない、という方針と同じく、集めた分はそのまま読み込む）。
+ */
+export const MAX_PROBLEM_FILES = 2000;
 
 /** 拡張子が `.json` のファイルか。 */
 function isJsonFile(name: string): boolean {
@@ -21,9 +39,10 @@ function isJsonFile(name: string): boolean {
 }
 
 /** そのパスがフォルダか（読めずに判定できないときは undefined）。 */
-function directoryCheck(full: string): boolean | undefined {
+async function directoryCheck(full: string): Promise<boolean | undefined> {
   try {
-    return statSync(full).isDirectory();
+    const info = await stat(full);
+    return info.isDirectory();
   } catch {
     return undefined;
   }
@@ -36,17 +55,25 @@ function directoryCheck(full: string): boolean | undefined {
  * どちらの階層でもフォルダは除く。`x.json` という名前のフォルダを課題ファイルと取り違えると
  * 読込時に意味の分からない失敗になるためで、1階層下のフォルダにはこれ以上降りない（§7.8）。
  * 1つのフォルダが読めなくても、そのフォルダだけを `read-error` にして残りは読み進める（§13 #9）。
+ *
+ * `MAX_PROBLEM_FILES` 件に達したら以降は集めず、打ち切った旨を `errors` に積む（DM-1 ≡ CT-06）。
  */
-function collectJsonFiles(dir: string, errors: ProblemLoadError[]): string[] {
+async function collectJsonFiles(dir: string, errors: ProblemLoadError[]): Promise<string[]> {
   const out: string[] = [];
-  for (const name of readdirSync(dir).sort()) {
+  let truncated = false;
+  const names = (await readdir(dir)).sort();
+  for (const name of names) {
+    if (out.length >= MAX_PROBLEM_FILES) {
+      truncated = true;
+      break;
+    }
     const full = join(dir, name);
-    const isDirectory = directoryCheck(full);
+    const isDirectory = await directoryCheck(full);
     if (isDirectory === undefined) continue;
     if (isDirectory) {
       let children: string[];
       try {
-        children = readdirSync(full).sort();
+        children = (await readdir(full)).sort();
       } catch (cause) {
         errors.push({
           file: full,
@@ -57,24 +84,66 @@ function collectJsonFiles(dir: string, errors: ProblemLoadError[]): string[] {
         continue;
       }
       for (const child of children) {
+        if (out.length >= MAX_PROBLEM_FILES) {
+          truncated = true;
+          break;
+        }
         const childPath = join(full, child);
-        if (isJsonFile(child) && directoryCheck(childPath) === false) out.push(childPath);
+        if (isJsonFile(child) && (await directoryCheck(childPath)) === false) out.push(childPath);
       }
     } else if (isJsonFile(name)) {
       out.push(full);
     }
   }
+  if (truncated) {
+    errors.push({
+      file: dir,
+      reason: 'read-error',
+      message: `課題ファイルが多すぎるため ${String(MAX_PROBLEM_FILES)} 件で打ち切りました`,
+      issues: [],
+    });
+  }
   return out;
 }
 
 /** UTF-8 の BOM。`JSON.parse()` は受け付けないので読んだ直後に落とす。§7.8 */
-const BOM = '\uFEFF';
+const BOM = '﻿';
 
-/** 1ファイルを読んで検証する。 */
-function loadOne(file: string, problems: SupportedProblem[], errors: ProblemLoadError[]): void {
+/**
+ * 1ファイルを読んで検証する。
+ * `seenIds` は同じフォルダ内で既に読めた課題IDの集合（CT-11: `problems.some(...)` の
+ * O(n²) 探索を `Set` に変える）。
+ */
+async function loadOne(
+  file: string,
+  problems: SupportedProblem[],
+  errors: ProblemLoadError[],
+  seenIds: Set<string>,
+): Promise<void> {
+  // 大きすぎるファイルは読む前に断る（DM-1 ≡ CT-06）。中身がJSONとして妥当かは確かめない
+  try {
+    const info = await stat(file);
+    if (info.size > MAX_PROBLEM_BYTES) {
+      errors.push({
+        file,
+        reason: 'read-error',
+        message: `課題ファイルが大きすぎます（上限 ${String(MAX_PROBLEM_BYTES)} バイト）: ${file}`,
+        issues: [],
+      });
+      return;
+    }
+  } catch (cause) {
+    errors.push({
+      file,
+      reason: 'read-error',
+      message: `ファイルを読めませんでした: ${String(cause)}`,
+      issues: [],
+    });
+    return;
+  }
   let text: string;
   try {
-    text = readFileSync(file, 'utf8');
+    text = await readFile(file, 'utf8');
   } catch (cause) {
     errors.push({
       file,
@@ -88,7 +157,7 @@ function loadOne(file: string, problems: SupportedProblem[], errors: ProblemLoad
   if (text.startsWith(BOM)) text = text.slice(BOM.length);
   // UTF-8 として解釈できないバイトは U+FFFD になる。Shift_JIS の課題ファイルを文字化けしたまま
   // 読み込むと課題文も部品名も壊れるので、読めた気にならずここで止める（§13 #1）
-  if (text.includes('\uFFFD')) {
+  if (text.includes('�')) {
     errors.push({
       file,
       reason: 'read-error',
@@ -120,7 +189,7 @@ function loadOne(file: string, problems: SupportedProblem[], errors: ProblemLoad
     });
     return;
   }
-  if (problems.some((p) => p.id === parsed.problem.id)) {
+  if (seenIds.has(parsed.problem.id)) {
     errors.push({
       file,
       reason: 'duplicate-id',
@@ -130,6 +199,7 @@ function loadOne(file: string, problems: SupportedProblem[], errors: ProblemLoad
     });
     return;
   }
+  seenIds.add(parsed.problem.id);
   problems.push(parsed.problem);
 }
 
@@ -137,12 +207,13 @@ function loadOne(file: string, problems: SupportedProblem[], errors: ProblemLoad
  * フォルダから課題を読み込む。§7.8
  * フォルダが無い場合は空の結果と `read-error` を1件返す（内蔵課題だけで動作を続ける。§13 #9）。
  */
-export function loadProblemsFromDir(dir: string): ProblemSet {
+export async function loadProblemsFromDir(dir: string): Promise<ProblemSet> {
   const problems: SupportedProblem[] = [];
   const errors: ProblemLoadError[] = [];
+  const seenIds = new Set<string>();
   let files: string[];
   try {
-    files = collectJsonFiles(dir, errors);
+    files = await collectJsonFiles(dir, errors);
   } catch (cause) {
     return {
       problems,
@@ -157,7 +228,7 @@ export function loadProblemsFromDir(dir: string): ProblemSet {
       ],
     };
   }
-  for (const file of files) loadOne(file, problems, errors);
+  for (const file of files) await loadOne(file, problems, errors, seenIds);
   return { problems, errors };
 }
 

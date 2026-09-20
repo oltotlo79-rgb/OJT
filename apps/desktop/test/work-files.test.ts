@@ -1,4 +1,12 @@
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -25,9 +33,16 @@ import { MSG } from '../src/shared/messages.js';
  *
  * アトミック書込（一時ファイル→rename）は `node:fs` を差し替えず、本物のファイルシステムに
  * 対する観測可能な違いで確かめる（`vi.spyOn()` は Vitest の ESM でモジュール名前空間が
- * 凍結されていて使えない）。あらかじめ `<target>.tmp` にゴミを置いておき、保存後に
- * それが消えて（rename で本体に化けて）いれば一時ファイル経由の書込を通ったとわかる。
- * 直接 `writeFileSync(target, ...)` するだけの実装なら、このゴミファイルには触れないまま残る。
+ * 凍結されていて使えない。`vi.mock('node:fs', ...)` も試したが、`fs-atomic.ts` 側の
+ * `node:fs` import までは差し替わらなかった——別モジュールを経由した Node 組込みモジュールの
+ * モックはこのプロジェクトの Vitest 設定では効かない）。あらかじめ `<target>.tmp` にゴミを
+ * 置いておき、保存後にそれが消えて（rename で本体に化けて）いれば一時ファイル経由の書込を
+ * 通ったとわかる。直接 `writeFileSync(target, ...)` するだけの実装なら、このゴミファイルには
+ * 触れないまま残る。
+ *
+ * `renameSync` の失敗（DM-6）も同じ流儀で、モックではなく**本物の失敗**で再現する:
+ * 保存先パスに**あらかじめ実在するフォルダ**を置いておくと、`rename(file, existingDir)` は
+ * Windows で実際に `EPERM` になる（他OSでも大抵 `EISDIR`/`ENOTEMPTY` になる）。
  */
 
 const electron = vi.hoisted(() => ({
@@ -505,5 +520,48 @@ describe('大きすぎる作業ファイル（1D2-a: 読む前に断る。§13 #
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.message).toBe(MSG.workFile.tooLarge);
+  });
+
+  it('保存側も大きすぎる作業ファイルは書かずに拒否する（DM-2）', async () => {
+    const filler = 'あ'.repeat(MAX_WORK_FILE_BYTES);
+    const result = await saveWorkFile(undefined, {
+      kind: 'autosave',
+      file: sampleFile({ savedAt: filler }),
+    });
+    expect(result).toEqual({ ok: false, canceled: false, message: MSG.workFile.tooLarge });
+    expect(existsSync(autosavePath())).toBe(false);
+  });
+});
+
+describe('saveWorkFile の入口検査（レビュー DM-2: renderer からの生入力を信用しない）', () => {
+  it('problemId が文字列でなければ書かずに拒否する', async () => {
+    const badFile = { ...sampleFile(), problemId: 42 } as unknown as WorkFile;
+    const result = await saveWorkFile(undefined, { kind: 'autosave', file: badFile });
+    expect(result).toEqual({ ok: false, canceled: false, message: MSG.workFile.badShape });
+    expect(existsSync(autosavePath())).toBe(false);
+  });
+
+  it('手動保存の既定ファイル名から `..` を落とす（パス脱出を許さない）', async () => {
+    electron.showSaveDialog.mockResolvedValue({ canceled: true });
+    await saveWorkFile(undefined, {
+      kind: 'manual',
+      file: sampleFile({ problemId: '../../evil' }),
+    });
+    const options = electron.showSaveDialog.mock.calls[0]?.[0] as
+      { defaultPath?: string } | undefined;
+    expect(options?.defaultPath).not.toContain('..');
+    expect(options?.defaultPath).toContain('evil.ojtw');
+  });
+});
+
+describe('アトミック書込の失敗（レビュー DM-6: renameSync が失敗しても .tmp を残さない）', () => {
+  it('rename が失敗したら一時ファイルを消してから失敗を返す', async () => {
+    // 保存先に実在するフォルダを置いておくと、rename(file, 既存のフォルダ) は本物の fs で失敗する
+    mkdirSync(autosavePath());
+
+    const result = await saveWorkFile(undefined, { kind: 'autosave', file: sampleFile() });
+
+    expect(result.ok).toBe(false);
+    expect(existsSync(`${autosavePath()}.tmp`)).toBe(false);
   });
 });

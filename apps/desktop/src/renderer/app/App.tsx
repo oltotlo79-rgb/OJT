@@ -127,8 +127,13 @@ export function App(): JSX.Element {
    * 作業中は30秒ごとに一時保存する（§12.3）。
    * Session 画面が持つ状態（課題・盤・経過時間・危険操作数）はすべてストアにあるので、
    * ここから直接読める。`route === 'session'` の間だけ動かす。
+   *
+   * 保存結果は `.then` で受け、**連続失敗2回目で1度だけ**トーストを出す（DS-4）。
+   * 毎回出すと訓練の邪魔になる一方、黙って失敗し続けるとクラッシュ時に何も残らない。
+   * 成功したら連続失敗のカウントを戻す。
    */
   useEffect(() => {
+    let consecutiveFailures = 0;
     const id = setInterval(() => {
       const api = tryApi();
       if (api === undefined) return;
@@ -136,7 +141,20 @@ export function App(): JSX.Element {
       // モードC1/C2はテスター・解答・指摘・故障も一緒に残す（§12.3。Plan 2B Task 17）
       const file = toInspectWorkFile();
       if (file === undefined) return;
-      void api.saveWorkFile({ kind: 'autosave', file });
+      const onSettled = (ok: boolean): void => {
+        if (ok) {
+          consecutiveFailures = 0;
+          return;
+        }
+        consecutiveFailures += 1;
+        if (consecutiveFailures === 2) {
+          useStore.getState().toast(JA.error.autosaveFailed, 'error');
+        }
+      };
+      void api.saveWorkFile({ kind: 'autosave', file }).then(
+        (result) => onSettled(result.ok),
+        () => onSettled(false),
+      );
     }, AUTOSAVE_INTERVAL_MS);
     return () => {
       clearInterval(id);

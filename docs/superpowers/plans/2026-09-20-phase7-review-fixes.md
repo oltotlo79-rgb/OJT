@@ -527,14 +527,14 @@ apps/desktop/test/release-content.test.ts に追記
 
 **Steps:**
 
-- [ ] 1. **DM-1 ≡ CT-06**: `packages/content/src/loader.ts` の `loadOne()` 冒頭に `statSync(file).size > MAX_PROBLEM_BYTES`（2 MiB）の足切り、`collectJsonFiles()` に件数上限（2,000）。`main/content-loader.ts` の `readContent()` の前に `readdirSync` の件数を数え `MAX_USER_PROBLEM_FILES`（200）で足切りし、§13 #9 の警告行を返す。**同期実行で main を止めないよう `fs/promises` に移す**。
-- [ ] 2. **CT-11**: `loadOne` の重複ID検査を `problems.some(...)`（O(n²)）から `Set` に変える。
-- [ ] 3. **DM-2**: `work-files.ts` の `saveWorkFile()` 冒頭に `text-files.ts` と同じ3点（型チェック・`safeFileName()`・`Buffer.byteLength(text) > MAX_WORK_FILE_BYTES`）。`safeFileName()` は `shared/` へ共有化する。
-- [ ] 4. **DM-3**: `settings.ts:66` を `dir.length === 0 || (isAbsolute(dir) && dir.length <= 260)` の条件付きにする。
-- [ ] 5. **DM-6**: `src/main/fs-atomic.ts` を新設し、`openSync → writeFileSync → fsyncSync → closeSync → renameSync`、`catch` で `rmSync(temp, { force: true })` にまとめる。`work-files.ts` / `settings.ts` / `text-files.ts` の3重複を置き換える。
-- [ ] 6. **DM-8**: `shared/messages.ts` に `errno` → 日本語の対応表（`ENOENT` / `EACCES` / `EPERM` / `ENOSPC` / `EBUSY` / `EMFILE` / 既定）を置く。生の `String(cause)` は `console.error` にだけ出す（利用者名入りの絶対パスをトーストに出さない）。
-- [ ] 7. **DS-4**: `App.tsx:137-140` の自動保存の `void` を `.then` で受け、**連続失敗2回目で1度だけ**トーストを出す。文言は `i18n/ja.ts`。
-- [ ] 8. テストはレポート §5 Batch 2「追加すべきテスト」の該当行をそのまま入れる（`settings.test.ts` / `work-files.test.ts` / `content-loader.test.ts` / `loader-io-errors.test.ts`）。
+- [x] 1. **DM-1 ≡ CT-06**: `packages/content/src/loader.ts` の `loadOne()` 冒頭に `statSync(file).size > MAX_PROBLEM_BYTES`（2 MiB）の足切り、`collectJsonFiles()` に件数上限（2,000）。`main/content-loader.ts` の `readContent()` の前に `readdirSync` の件数を数え `MAX_USER_PROBLEM_FILES`（200）で足切りし、§13 #9 の警告行を返す。**同期実行で main を止めないよう `fs/promises` に移す**。
+- [x] 2. **CT-11**: `loadOne` の重複ID検査を `problems.some(...)`（O(n²)）から `Set` に変える。
+- [x] 3. **DM-2**: `work-files.ts` の `saveWorkFile()` 冒頭に `text-files.ts` と同じ3点（型チェック・`safeFileName()`・`Buffer.byteLength(text) > MAX_WORK_FILE_BYTES`）。`safeFileName()` は `shared/` へ共有化する。
+- [x] 4. **DM-3**: `settings.ts:66` を `dir.length === 0 || (isAbsolute(dir) && dir.length <= 260)` の条件付きにする。
+- [x] 5. **DM-6**: `src/main/fs-atomic.ts` を新設し、`openSync → writeFileSync → fsyncSync → closeSync → renameSync`、`catch` で `rmSync(temp, { force: true })` にまとめる。`work-files.ts` / `settings.ts` / `text-files.ts` の3重複を置き換える。
+- [x] 6. **DM-8**: `shared/messages.ts` に `errno` → 日本語の対応表（`ENOENT` / `EACCES` / `EPERM` / `ENOSPC` / `EBUSY` / `EMFILE` / 既定）を置く。生の `String(cause)` は `console.error` にだけ出す（利用者名入りの絶対パスをトーストに出さない）。
+- [x] 7. **DS-4**: `App.tsx:137-140` の自動保存の `void` を `.then` で受け、**連続失敗2回目で1度だけ**トーストを出す。文言は `i18n/ja.ts`。
+- [x] 8. テストはレポート §5 Batch 2「追加すべきテスト」の該当行をそのまま入れる（`settings.test.ts` / `work-files.test.ts` / `content-loader.test.ts` / `loader-io-errors.test.ts`）。
 
 **期待:** 利用者課題フォルダに1万件の `.json` を置いても UI が1秒以内に応答し、警告行が出ること。`renameSync` をモックで失敗させても `.tmp` が残らないこと。
 

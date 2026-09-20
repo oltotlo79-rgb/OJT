@@ -1,8 +1,9 @@
-import { renameSync, writeFileSync } from 'node:fs';
-import { basename, join } from 'node:path';
+import { join } from 'node:path';
 import { app, dialog, type BrowserWindow } from 'electron';
 import type { SaveTextRequest, SaveTextResult } from '../shared/ipc.js';
-import { MSG, saveFailedText } from '../shared/messages.js';
+import { errnoText, MSG, saveFailedText } from '../shared/messages.js';
+import { safeFileName } from '../shared/safe-file-name.js';
+import { writeFileAtomic } from './fs-atomic.js';
 
 /**
  * テキストファイルの保存（命令語リスト）。設計仕様 §10.7 / §13 #7。
@@ -16,46 +17,6 @@ import { MSG, saveFailedText } from '../shared/messages.js';
  * 「黙って壊れた状態で開かない」の項で、上限の話ではない。
  */
 export const MAX_TEXT_BYTES = 2 * 1024 * 1024;
-
-/**
- * 既定のファイル名を安全にする（renderer からの生入力を信用しない）。§13 #7
- *
- * **順番が肝**（レビュー B4）: 先に区切りを `_` へ置換してから `basename()` を通すと、
- * `'../../evil/name.txt'` が `'.._.._evil_name.txt'` になって `..` が残り、
- * `defaultPath` に `..` が出たままになる（テストが落ちる）。`basename()` を**先**に通して
- * ディレクトリ部を捨て、残った名前から Windows で使えない文字と先頭の `.` を落とす。
- *
- *   `'../../evil/name.txt'` → basename `'name.txt'` → `'name.txt'`
- *   `'..'`                  → basename `'..'`       → 先頭の `.` が消えて空 → `'export.txt'`
- */
-function safeFileName(name: string): string {
-  const base = withoutControlChars(basename(name))
-    // Windows のファイル名に使えない文字（`/` `\` は `basename()` が既に落としている）
-    .replace(/[<>:"/\\|?*]/gu, '_')
-    // 先頭の `.` は隠しファイル・`.`／`..` になるので落とす
-    .replace(/^\.+/u, '')
-    .trim();
-  return base.length === 0 ? 'export.txt' : base;
-}
-
-/**
- * 制御文字（`\u0000`〜`\u001f`）を `_` にする。
- * 正規表現に直接書くと `no-control-regex` に触れるので、1文字ずつコードで見る。
- */
-function withoutControlChars(text: string): string {
-  return Array.from(text, (ch) => (ch.charCodeAt(0) < 0x20 ? '_' : ch)).join('');
-}
-
-/**
- * 一時ファイル→rename でアトミックに書く（`work-files.ts` の `writeFileAtomic` と同じ流儀。
- * §13 #8「黙って壊れた状態で開かない」——書き込みの途中で落ちても、利用者が Documents に
- * 見るのは書き切れた旧ファイルか書き切れた新ファイルのどちらかで、半端な中身は残らない）。
- */
-function writeTextAtomic(target: string, content: string): void {
-  const temp = `${target}.tmp`;
-  writeFileSync(temp, content, 'utf8');
-  renameSync(temp, target);
-}
 
 /** テキストを保存する。 */
 export async function saveTextFile(
@@ -94,13 +55,9 @@ export async function saveTextFile(
     return { ok: false, canceled: true, message: MSG.textFile.saveCanceled };
   }
   try {
-    writeTextAtomic(picked.filePath, request.text);
+    writeFileAtomic(picked.filePath, request.text);
     return { ok: true, path: picked.filePath };
-  } catch (error) {
-    return {
-      ok: false,
-      canceled: false,
-      message: saveFailedText(error instanceof Error ? error.message : String(error)),
-    };
+  } catch (cause) {
+    return { ok: false, canceled: false, message: saveFailedText(errnoText(cause)) };
   }
 }

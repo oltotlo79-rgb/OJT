@@ -42,6 +42,15 @@ export const MSG = {
      */
     countMismatch: (diskCount: number, builtinCount: number): string =>
       `同梱課題フォルダから読めた課題数（${String(diskCount)}件）が想定（${String(builtinCount)}件）と一致しません`,
+    // --- Phase 7 Task 9 ---
+    /**
+     * 利用者課題フォルダのファイル数が多すぎて読込を打ち切った。§13 #9 / レビュー DM-1 ≡ CT-06
+     * 1万件の `.json` を数え上げてから1件ずつ読む・検証するのは main を長時間止めるため、
+     * 件数だけ数えた時点で断り、内蔵課題のみで動作する。
+     */
+    tooManyUserFiles: (fileCount: number, max: number): string =>
+      `利用者課題フォルダのファイルが多すぎます（${String(fileCount)}件、上限${String(max)}件）。内蔵課題のみで動作します`,
+    // --- /Phase 7 Task 9 ---
   },
   settings: {
     /** 設定ファイルが読めなかった（既定値で動く）。§12.1 */
@@ -125,3 +134,41 @@ export function saveFailedText(reason: string): string {
 export function readFailedText(reason: string): string {
   return `ファイルを読めませんでした: ${reason}`;
 }
+
+// --- Phase 7 Task 9: DM-8 ---
+/**
+ * Node の `fs` エラーが持つ `code`（`ENOENT` 等）。フル型 `NodeJS.ErrnoException` を
+ * import すると main 限定の型が要るため、ここで見る形だけの最小の型にする。
+ */
+interface ErrnoLike {
+  code?: unknown;
+}
+
+/**
+ * よく起きる errno の日本語訳。§13 #7 / §13 #8 / レビュー DM-8
+ * ここに無い `code`・`code` を持たない例外は `ERRNO_TEXT_DEFAULT` に落とす。
+ */
+const ERRNO_TEXT: Readonly<Record<string, string>> = {
+  ENOENT: 'ファイルまたはフォルダが見つかりません',
+  EACCES: 'アクセス権限がありません',
+  EPERM: '操作が許可されていません',
+  ENOSPC: 'ディスクの空き容量が不足しています',
+  EBUSY: '他のプログラムがファイルを使用中です',
+  EMFILE: '同時に開けるファイルが多すぎます',
+};
+
+/** 既知の `code` を持たない fs エラーの既定の理由文。 */
+const ERRNO_TEXT_DEFAULT = '不明なエラーが発生しました';
+
+/**
+ * fs エラーの `cause` を日本語の理由文にする。**生の `cause`（絶対パスや利用者名を含みうる）は
+ * ここで `console.error` にだけ出し、戻り値（トーストに出る文言）には含めない**（レビュー DM-8）。
+ */
+export function errnoText(cause: unknown): string {
+  console.error(cause);
+  const code = (cause as ErrnoLike | undefined)?.code;
+  return typeof code === 'string' && code in ERRNO_TEXT
+    ? (ERRNO_TEXT[code] ?? ERRNO_TEXT_DEFAULT)
+    : ERRNO_TEXT_DEFAULT;
+}
+// --- /Phase 7 Task 9: DM-8 ---

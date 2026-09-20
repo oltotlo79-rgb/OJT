@@ -1,12 +1,5 @@
-import {
-  copyFileSync,
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  renameSync,
-  writeFileSync,
-} from 'node:fs';
-import { dirname, join } from 'node:path';
+import { copyFileSync, existsSync, readFileSync } from 'node:fs';
+import { isAbsolute, join } from 'node:path';
 import { app } from 'electron';
 import {
   IMPLEMENTED_DIALECT_IDS,
@@ -21,6 +14,7 @@ import {
   type AppSettingsResponse,
 } from '../shared/ipc.js';
 import { MSG } from '../shared/messages.js';
+import { writeFileAtomic } from './fs-atomic.js';
 
 /**
  * 設定の永続化。設計仕様 §12.1 / §4.3。
@@ -56,6 +50,13 @@ export function defaultUserContentDir(): string {
 }
 
 /**
+ * `userContentDir` に受け入れる絶対パスの最大文字数（Windows の `MAX_PATH`）。
+ * レビュー DM-3: 相対パス・桁違いに長い文字列をそのまま設定ファイルへ書くと、
+ * あとで読むあらゆる場所（`content-loader.ts` の `readdir` 等）に壊れた値が伝播する。
+ */
+export const MAX_USER_CONTENT_DIR_LENGTH = 260;
+
+/**
  * `patch` のうち `AppSettings` の4キーだけを型を確かめて `base` に重ねる（ホワイトリスト）。
  * 未知のキー・型の違う値は無視する。`base` 自体は書き換えない。
  */
@@ -63,7 +64,18 @@ function sanitizePatch(base: AppSettings, patch: unknown): AppSettings {
   const next = { ...base };
   if (typeof patch !== 'object' || patch === null) return next;
   const source = patch as Record<string, unknown>;
-  if (typeof source['userContentDir'] === 'string') next.userContentDir = source['userContentDir'];
+  /*
+   * 空文字（既定に戻す）か、絶対パスかつ `MAX_PATH` 以内のときだけ取り込む（レビュー DM-3）。
+   * 相対パスや万文字級の壊れた／作為的な値は黙って無視し、直前の値を保つ。
+   */
+  const userContentDir = source['userContentDir'];
+  if (
+    typeof userContentDir === 'string' &&
+    (userContentDir.length === 0 ||
+      (isAbsolute(userContentDir) && userContentDir.length <= MAX_USER_CONTENT_DIR_LENGTH))
+  ) {
+    next.userContentDir = userContentDir;
+  }
   if (typeof source['soundEnabled'] === 'boolean') next.soundEnabled = source['soundEnabled'];
   const volume = source['soundVolume'];
   if (typeof volume === 'number' && Number.isFinite(volume)) {
@@ -130,14 +142,6 @@ function migrateMonitorColor(settings: AppSettings, raw: unknown): boolean {
    */
   settings.monitorColor = '';
   return true;
-}
-
-/** 一時ファイル（`<target>.tmp`）→rename でアトミックに書く。`work-files.ts` と同じ理由。 */
-function writeFileAtomic(target: string, content: string): void {
-  mkdirSync(dirname(target), { recursive: true });
-  const temp = `${target}.tmp`;
-  writeFileSync(temp, content, 'utf8');
-  renameSync(temp, target);
 }
 
 /**

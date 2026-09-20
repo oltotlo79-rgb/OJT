@@ -1,5 +1,5 @@
-import { mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { readFileSync, rmSync, statSync } from 'node:fs';
+import { join } from 'node:path';
 import {
   app,
   dialog,
@@ -15,7 +15,9 @@ import {
   type WorkFileSaveRequest,
   type WorkFileSaveResult,
 } from '../shared/ipc.js';
-import { MSG, readFailedText, saveFailedText } from '../shared/messages.js';
+import { errnoText, MSG, readFailedText, saveFailedText } from '../shared/messages.js';
+import { safeFileName } from '../shared/safe-file-name.js';
+import { writeFileAtomic } from './fs-atomic.js';
 
 /**
  * 作業ファイルの保存／読込と一時保存。設計仕様 §12.3 / §13 #7 / §13 #8。
@@ -63,14 +65,6 @@ export const MAX_WORK_FILE_NETWORKS = 64;
 /** 一時保存のパス。§12.3 */
 export function autosavePath(): string {
   return join(app.getPath('userData'), 'autosave.json');
-}
-
-/** 一時ファイル→rename でアトミックに書く。 */
-function writeFileAtomic(target: string, content: string): void {
-  mkdirSync(dirname(target), { recursive: true });
-  const temp = `${target}.tmp`;
-  writeFileSync(temp, content, 'utf8');
-  renameSync(temp, target);
 }
 
 /**
@@ -249,16 +243,33 @@ async function showOpen(
     : dialog.showOpenDialog(window, options);
 }
 
-/** 作業ファイルを保存する。`manual` はダイアログで保存先を選ばせる。§12.3 / §13 #7 */
+/**
+ * 作業ファイルを保存する。`manual` はダイアログで保存先を選ばせる。§12.3 / §13 #7
+ *
+ * `request` は renderer からの生入力（IPC は実行時に型を強制しない）なので、`text-files.ts` の
+ * `saveTextFile()` と同じ3点を冒頭で確かめる（レビュー DM-2）:
+ * ①型（`problemId` が文字列か）②既定ファイル名を `safeFileName()` で無害化 ③大きさの上限。
+ */
 export async function saveWorkFile(
   window: BrowserWindow | undefined,
   request: WorkFileSaveRequest,
 ): Promise<WorkFileSaveResult> {
+  if (typeof request.file?.problemId !== 'string') {
+    return { ok: false, canceled: false, message: MSG.workFile.badShape };
+  }
+  const content = `${JSON.stringify(request.file, null, 2)}\n`;
+  if (Buffer.byteLength(content, 'utf8') > MAX_WORK_FILE_BYTES) {
+    return { ok: false, canceled: false, message: MSG.workFile.tooLarge };
+  }
   let target = autosavePath();
   if (request.kind === 'manual') {
     const picked = await showSave(window, {
       title: MSG.workFile.saveTitle,
-      defaultPath: join(app.getPath('documents'), `${request.file.problemId}.ojtw`),
+      // `problemId` は renderer からの生入力（例: `../../evil`）をそのまま使わない（DM-2）
+      defaultPath: join(
+        app.getPath('documents'),
+        safeFileName(`${request.file.problemId}.ojtw`, 'work-file.ojtw'),
+      ),
       filters: [{ name: MSG.workFile.filterName, extensions: ['ojtw'] }],
     });
     if (picked.canceled || picked.filePath === undefined) {
@@ -267,10 +278,10 @@ export async function saveWorkFile(
     target = picked.filePath;
   }
   try {
-    writeFileAtomic(target, `${JSON.stringify(request.file, null, 2)}\n`);
+    writeFileAtomic(target, content);
     return { ok: true, path: target };
   } catch (cause) {
-    return { ok: false, canceled: false, message: saveFailedText(String(cause)) };
+    return { ok: false, canceled: false, message: saveFailedText(errnoText(cause)) };
   }
 }
 
@@ -302,13 +313,13 @@ export async function loadWorkFile(
       return { ok: false, canceled: false, message: MSG.workFile.tooLarge };
     }
   } catch (cause) {
-    return { ok: false, canceled: false, message: readFailedText(String(cause)) };
+    return { ok: false, canceled: false, message: readFailedText(errnoText(cause)) };
   }
   let raw: unknown;
   try {
     raw = JSON.parse(readFileSync(target, 'utf8'));
   } catch (cause) {
-    return { ok: false, canceled: false, message: readFailedText(String(cause)) };
+    return { ok: false, canceled: false, message: readFailedText(errnoText(cause)) };
   }
   const parsed = parseWorkFile(raw);
   if (!parsed.ok) return { ok: false, canceled: false, message: parsed.message };

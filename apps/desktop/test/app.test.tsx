@@ -431,6 +431,51 @@ describe('30秒ごとの一時保存（§12.3）', () => {
     expect(request?.file.hazardCount).toBe(2);
   });
 
+  it('連続2回失敗したら1度だけ知らせる（DS-4）', async () => {
+    const saveWorkFile = vi.fn<(request: WorkFileSaveRequest) => Promise<WorkFileSaveResult>>(() =>
+      Promise.resolve({ ok: false, canceled: false, message: '失敗' }),
+    );
+    setApi({
+      getSettings: () => Promise.resolve(DEFAULT_SETTINGS),
+      loadWorkFile: () => Promise.resolve({ ok: false, canceled: false, message: '無し' }),
+      saveWorkFile,
+    });
+    useStore.setState({ route: 'session', problem: PROBLEM, session: sessionForProblem(PROBLEM) });
+    vi.useFakeTimers({ toFake: [...FAKE_TIMERS] });
+    render(<App />);
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    // トーストは既定で数秒後に期限切れで消えるので（TOAST_TTL_MS）、配列ではなく
+    // `toast()` アクションの呼び出し回数そのものを見る（30秒間隔の advance とは無関係にする）
+    const toastSpy = vi.spyOn(useStore.getState(), 'toast');
+
+    // 1回目の失敗ではまだ知らせない
+    await act(async () => {
+      vi.advanceTimersByTime(30_000);
+      await Promise.resolve();
+    });
+    expect(toastSpy).not.toHaveBeenCalled();
+
+    // 2回目の失敗で1度だけ知らせる
+    await act(async () => {
+      vi.advanceTimersByTime(30_000);
+      await Promise.resolve();
+    });
+    expect(saveWorkFile).toHaveBeenCalledTimes(2);
+    expect(toastSpy).toHaveBeenCalledTimes(1);
+    expect(toastSpy).toHaveBeenCalledWith(JA.error.autosaveFailed, 'error');
+
+    // 3回目の失敗では重ねて出さない
+    await act(async () => {
+      vi.advanceTimersByTime(30_000);
+      await Promise.resolve();
+    });
+    expect(saveWorkFile).toHaveBeenCalledTimes(3);
+    expect(toastSpy).toHaveBeenCalledTimes(1);
+  });
+
   it('セッション外では一時保存しない', async () => {
     const saveWorkFile = vi.fn<(request: WorkFileSaveRequest) => Promise<WorkFileSaveResult>>(() =>
       Promise.resolve({ ok: true, path: 'C:/autosave.json' }),

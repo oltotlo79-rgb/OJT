@@ -280,6 +280,8 @@ describe('schema/common.js exports', () => {
       'id',
       'title',
       'grade',
+      'difficulty',
+      'tags',
       'description',
       'timeLimit',
       'board',
@@ -290,6 +292,8 @@ describe('schema/common.js exports', () => {
       id: 'b-001',
       title: 'テスト用ヘッダ',
       grade: 3,
+      difficulty: 1,
+      tags: ['self-hold'],
       mode: 'assemble',
       description: 'テスト用',
       timeLimit: { standardMin: 30, cutoffMin: 50 },
@@ -415,7 +419,7 @@ describe('loader.js exports', () => {
 
   it('resolves from @ojt/content/loader and reports a read error / merges builtin with user problems', async () => {
     const { loadProblemsFromDir, mergeProblemSets } = await import('@ojt/content/loader');
-    const missing = loadProblemsFromDir(join(tmpdir(), 'ojt-content-index-test-missing-dir'));
+    const missing = await loadProblemsFromDir(join(tmpdir(), 'ojt-content-index-test-missing-dir'));
     expect(missing.problems).toEqual([]);
     expect(missing.errors[0]?.reason).toBe('read-error');
 

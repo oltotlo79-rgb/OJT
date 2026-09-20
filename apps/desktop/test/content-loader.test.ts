@@ -27,6 +27,7 @@ const {
   clearContentCache,
   CONTENT_CACHE_TTL_MS,
   loadContent,
+  MAX_USER_PROBLEM_FILES,
   probeUserDir,
   withTimeout,
 } = await import('../src/main/content-loader.js');
@@ -60,12 +61,12 @@ afterEach(() => {
 });
 
 describe('builtinSet', () => {
-  it('開発時は焼き込みの内蔵課題20題を返す（§7.9）', () => {
-    expect(builtinSet().problems).toHaveLength(BUILTIN_ALL_PROBLEMS.length);
-    expect(builtinSet().errors).toHaveLength(0);
+  it('開発時は焼き込みの内蔵課題20題を返す（§7.9）', async () => {
+    expect((await builtinSet()).problems).toHaveLength(BUILTIN_ALL_PROBLEMS.length);
+    expect((await builtinSet()).errors).toHaveLength(0);
   });
 
-  it('配布版は resources/content から同梱課題を読む（§7.8）', () => {
+  it('配布版は resources/content から同梱課題を読む（§7.8）', async () => {
     const resources = tempDir('ojt-resources-');
     const assemble = join(resources, 'content', 'assemble');
     mkdirSync(assemble, { recursive: true });
@@ -79,26 +80,26 @@ describe('builtinSet', () => {
     electron.packaged = true;
     setResourcesPath(resources);
 
-    const set = builtinSet();
+    const set = await builtinSet();
     expect(set.errors).toEqual([]);
     expect(set.problems).toHaveLength(BUILTIN_ALL_PROBLEMS.length);
     // ディスク側の内容がそのまま同梱課題になる（差し替えが効く）
     expect(set.problems.every((p) => p.title.startsWith('差し替え版'))).toBe(true);
   });
 
-  it('配布版でフォルダが空なら焼き込みに落として理由を残す（§13 #1）', () => {
+  it('配布版でフォルダが空なら焼き込みに落として理由を残す（§13 #1）', async () => {
     const resources = tempDir('ojt-resources-');
     mkdirSync(join(resources, 'content'), { recursive: true });
     electron.packaged = true;
     setResourcesPath(resources);
 
-    const set = builtinSet();
+    const set = await builtinSet();
     expect(set.problems).toHaveLength(BUILTIN_ALL_PROBLEMS.length);
     expect(set.errors).toHaveLength(1);
     expect(set.errors[0]?.message).toContain('内蔵した課題で起動します');
   });
 
-  it('配布版で件数が焼き込みと食い違えば焼き込みへ落とし、件数を理由に出す（Phase 2 acceptance BLOCKER）', () => {
+  it('配布版で件数が焼き込みと食い違えば焼き込みへ落とし、件数を理由に出す（Phase 2 acceptance BLOCKER）', async () => {
     // `dist` の複写漏れ（例: 一部モードフォルダしか複写されない）を模して、
     // 一部の課題しか置かれていない resources/content を用意する
     const resources = tempDir('ojt-resources-');
@@ -111,7 +112,7 @@ describe('builtinSet', () => {
     electron.packaged = true;
     setResourcesPath(resources);
 
-    const set = builtinSet();
+    const set = await builtinSet();
     // 一覧が欠けたまま出ず、確実に焼き込みの28題へ落ちる
     expect(set.problems).toHaveLength(BUILTIN_ALL_PROBLEMS.length);
     expect(set.errors).toHaveLength(1);
@@ -120,11 +121,11 @@ describe('builtinSet', () => {
     expect(set.errors[0]?.message).toContain('内蔵した課題で起動します');
   });
 
-  it('配布版でフォルダごと無くても起動できる（§13 #1）', () => {
+  it('配布版でフォルダごと無くても起動できる（§13 #1）', async () => {
     electron.packaged = true;
     setResourcesPath(join(tmpdir(), 'ojt-no-such-resources'));
 
-    const set = builtinSet();
+    const set = await builtinSet();
     expect(set.problems).toHaveLength(BUILTIN_ALL_PROBLEMS.length);
     expect(set.errors[0]?.message).toContain('同梱課題フォルダがありません');
   });
@@ -253,11 +254,12 @@ describe('probeUserDir（1D2-a: 到達できないフォルダで main を止め
 });
 
 describe('loadContent の所要時間（1D2-a: 大きなフォルダでも一覧が返る）', () => {
-  it('1000ファイルの利用者フォルダでも 20 秒以内に読み終える', async () => {
+  it('上限（200件）以内の利用者フォルダは全件読み終える', async () => {
     const dir = tempDir();
     const builtin = BUILTIN_ALL_PROBLEMS[0];
     if (builtin === undefined) return;
-    for (let i = 0; i < 1000; i += 1) {
+    const count = 150; // MAX_USER_PROBLEM_FILES（200）より少ない
+    for (let i = 0; i < count; i += 1) {
       writeFileSync(
         join(dir, `u-${String(i).padStart(4, '0')}.json`),
         JSON.stringify({ ...builtin, id: `u-${String(i).padStart(4, '0')}` }),
@@ -267,10 +269,45 @@ describe('loadContent の所要時間（1D2-a: 大きなフォルダでも一覧
     const started = Date.now();
     const { payload } = await loadContent(dir);
     const tookMs = Date.now() - started;
-    expect(payload.problems).toHaveLength(BUILTIN_ALL_PROBLEMS.length + 1000);
+    expect(payload.problems).toHaveLength(BUILTIN_ALL_PROBLEMS.length + count);
+    expect(payload.errors).toEqual([]);
     // 実測は数秒。極端に遅くなったら気づけるだけの緩い上限にする
     expect(tookMs).toBeLessThan(20_000);
   }, 60_000);
+});
+
+describe('利用者課題フォルダのファイル数の足切り（Phase 7 Task 9 / DM-1 ≡ CT-06）', () => {
+  it('上限（200件）を超えた.jsonを置いても1秒以内に応答し、警告行を返す（1件も読まない）', async () => {
+    const dir = tempDir();
+    // 中身を検証する前の readdir だけの足切りなので、中身は空でよい（実際に読めば固まる分量）
+    for (let i = 0; i < MAX_USER_PROBLEM_FILES + 1; i += 1) {
+      writeFileSync(join(dir, `u-${String(i).padStart(5, '0')}.json`), '{}', 'utf8');
+    }
+    const started = Date.now();
+    const { payload } = await loadContent(dir);
+    const tookMs = Date.now() - started;
+    expect(payload.problems).toHaveLength(BUILTIN_ALL_PROBLEMS.length);
+    expect(payload.errors).toHaveLength(1);
+    expect(payload.errors[0]?.message).toContain(String(MAX_USER_PROBLEM_FILES + 1));
+    expect(payload.errors[0]?.message).toContain(String(MAX_USER_PROBLEM_FILES));
+    expect(tookMs).toBeLessThan(1000);
+  }, 30_000);
+
+  it('ちょうど上限の件数は打ち切らず読み込む', async () => {
+    const dir = tempDir();
+    const builtin = BUILTIN_ALL_PROBLEMS[0];
+    if (builtin === undefined) return;
+    for (let i = 0; i < MAX_USER_PROBLEM_FILES; i += 1) {
+      writeFileSync(
+        join(dir, `u-${String(i).padStart(5, '0')}.json`),
+        JSON.stringify({ ...builtin, id: `u-${String(i).padStart(5, '0')}` }),
+        'utf8',
+      );
+    }
+    const { payload } = await loadContent(dir);
+    expect(payload.problems).toHaveLength(BUILTIN_ALL_PROBLEMS.length + MAX_USER_PROBLEM_FILES);
+    expect(payload.errors).toEqual([]);
+  }, 30_000);
 });
 
 describe('loadContent のモードB以外の扱い（Plan 2A Task 17: SupportedProblem の絞り込み）', () => {

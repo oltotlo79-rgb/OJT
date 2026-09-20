@@ -1,4 +1,4 @@
-import { stat } from 'node:fs/promises';
+import { readdir, stat } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { BUILTIN_ALL_PROBLEMS, type SupportedProblem } from '@ojt/content';
@@ -69,13 +69,13 @@ export function builtinContentDir(): string {
  *
  * 開発中（`!app.isPackaged`）は `resources/` がビルド成果物ではないので焼き込みをそのまま使う。
  */
-export function builtinSet(): ProblemSet {
+export async function builtinSet(): Promise<ProblemSet> {
   // Plan 2B: モードB 8題 ＋ C1 4セット ＋ C2 8題 の計20題すべてを一覧に載せる（§7.9）
   const bundled: ProblemSet = { problems: [...BUILTIN_ALL_PROBLEMS], errors: [] };
   if (!app.isPackaged) return bundled;
   const dir = builtinContentDir();
   if (!existsSync(dir)) return withFallbackNotice(bundled, dir, '同梱課題フォルダがありません');
-  const fromDisk = loadProblemsFromDir(dir);
+  const fromDisk = await loadProblemsFromDir(dir);
   if (fromDisk.problems.length === 0) {
     return withFallbackNotice(bundled, dir, '同梱課題フォルダから1題も読めませんでした');
   }
@@ -153,11 +153,47 @@ export async function probeUserDir(
   return withTimeout(probe, timeoutMs, MISSING);
 }
 
+/**
+ * 利用者課題フォルダの直下に置いてよいエントリ数の上限。§13 #9 / レビュー DM-1 ≡ CT-06
+ * 1件ずつ読む・zodで検証するのは main を長時間止めるので、その前に`readdir()`だけで
+ * 件数を数えて足切りする（`readdir()` 自体は中身を読まないので軽い）。
+ */
+export const MAX_USER_PROBLEM_FILES = 200;
+
+/**
+ * 利用者フォルダの課題を読む。件数が上限を超えていたら1件も読まず、警告だけを返す
+ * （DM-1 ≡ CT-06。§13 #9 の「利用者課題フォルダが存在しない」と同じ扱いの警告行にする）。
+ */
+async function readUserProblems(userDir: string, exists: boolean): Promise<ProblemSet> {
+  if (!exists) return { problems: [], errors: [] };
+  let fileCount: number;
+  try {
+    fileCount = (await readdir(userDir)).length;
+  } catch {
+    // 数えられなければ「無い」のと同じ扱いにする（`loadProblemsFromDir()` が改めて理由を返す）
+    return loadProblemsFromDir(userDir);
+  }
+  if (fileCount > MAX_USER_PROBLEM_FILES) {
+    return {
+      problems: [],
+      errors: [
+        {
+          file: userDir,
+          reason: 'read-error',
+          message: MSG.content.tooManyUserFiles(fileCount, MAX_USER_PROBLEM_FILES),
+          issues: [],
+        },
+      ],
+    };
+  }
+  return loadProblemsFromDir(userDir);
+}
+
 /** 内蔵課題と利用者フォルダを実際に読んで合流する（覚えている結果は見ない）。 */
-function readContent(userDir: string, exists: boolean): LoadedContent {
-  const builtin = builtinSet();
+async function readContent(userDir: string, exists: boolean): Promise<LoadedContent> {
+  const builtin = await builtinSet();
   const builtinIds = new Set(builtin.problems.map((p) => p.id));
-  const user: ProblemSet = exists ? loadProblemsFromDir(userDir) : { problems: [], errors: [] };
+  const user = await readUserProblems(userDir, exists);
   const merged = mergeProblemSets(builtin, user);
   const userIds = new Set(user.problems.map((p) => p.id));
   const byId = new Map(merged.problems.map((p) => [p.id, p] as const));
@@ -191,7 +227,7 @@ export async function loadContent(userDir: string): Promise<LoadedContent> {
   ) {
     return hit.content;
   }
-  const content = readContent(userDir, exists);
+  const content = await readContent(userDir, exists);
   cached = { dir: userDir, mtimeMs, atMs: now, content };
   return content;
 }
