@@ -5,6 +5,7 @@ import {
   DEFAULT_STATIC_CHECKS,
   defaultCompareSignals,
   JudgeSettingsSchema,
+  PlcJudgeSettingsSchema,
   resolveCompareSignals,
   STATIC_CHECK_IDS,
 } from '../src/schema/judge.js';
@@ -42,6 +43,31 @@ describe('JudgeSettingsSchema', () => {
     expect(JudgeSettingsSchema.safeParse({ staticChecks: { wireColor: false } }).success).toBe(
       false,
     );
+  });
+});
+
+describe('PlcJudgeSettingsSchema staticChecks defaults (CT-01)', () => {
+  it('keeps the PLC-only 3 checks true when the problem writes only one unrelated static check', () => {
+    const parsed = PlcJudgeSettingsSchema.parse({ staticChecks: { wireColorRule: false } });
+    expect(parsed.staticChecks.wireColorRule).toBe(false);
+    expect(parsed.staticChecks.twoStage).toBe(true);
+    expect(parsed.staticChecks.plcPowerIndependent).toBe(true);
+    expect(parsed.staticChecks.ioAssignment).toBe(true);
+  });
+
+  it('fills every PLC default when staticChecks is omitted entirely', () => {
+    const parsed = PlcJudgeSettingsSchema.parse({});
+    expect(parsed.staticChecks.twoStage).toBe(true);
+    expect(parsed.staticChecks.plcPowerIndependent).toBe(true);
+    expect(parsed.staticChecks.ioAssignment).toBe(true);
+  });
+
+  it('still fills mode-B defaults (twoStage etc. false) when JudgeSettingsSchema partially overrides', () => {
+    const parsed = JudgeSettingsSchema.parse({ staticChecks: { wireColorRule: false } });
+    expect(parsed.staticChecks.wireColorRule).toBe(false);
+    expect(parsed.staticChecks.twoStage).toBe(false);
+    expect(parsed.staticChecks.plcPowerIndependent).toBe(false);
+    expect(parsed.staticChecks.ioAssignment).toBe(false);
   });
 });
 

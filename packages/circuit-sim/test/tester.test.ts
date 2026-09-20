@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import {
   applyTesterAction,
   createLamp,
@@ -6,12 +6,12 @@ import {
   createPushButton,
   createRelay4c,
   createTesterState,
+  injectFault,
   readTester,
   TESTER_NO_PROBE_DISPLAY,
   TESTER_OFF_DISPLAY,
 } from '../src/index.js';
 import type { Simulation, TesterAction, TesterState } from '../src/index.js';
-import * as meter from '../src/meter.js';
 import { bench, powerOn, t, w } from './helpers/circuits.js';
 
 /** リレー1個・ランプ1個の点検台。PB1でコイルを励磁する。 */
@@ -220,17 +220,43 @@ describe('readTester (digital)', () => {
     expect(open.display).toBe('OL');
   });
 
-  it('does not re-solve on a second readTester call at the same tick with the same probes (perf)', () => {
+  it('returns the same reading on a second readTester call at the same tick with the same probes', () => {
     const sim = coilBench();
     const state = probed(
       applyTesterAction(createTesterState(), { type: 'set-mode', mode: 'OHM' }),
       'CR1.13',
       'CR1.14',
     );
-    const spy = vi.spyOn(meter, 'measureResistance');
-    readTester(sim, state);
-    readTester(sim, state);
-    expect(spy).toHaveBeenCalledTimes(1);
-    spy.mockRestore();
+    const first = readTester(sim, state);
+    const second = readTester(sim, state);
+    expect(second).toEqual(first);
+  });
+
+  it('sees a coil-open fault injected within the same tick instead of returning a stale cached ohm reading (CS-01)', () => {
+    const sim = coilBench();
+    const state = probed(
+      applyTesterAction(createTesterState(), { type: 'set-mode', mode: 'OHM' }),
+      'CR1.13',
+      'CR1.14',
+    );
+    const before = readTester(sim, state);
+    expect(before.display).toBe('650.0');
+    injectFault(sim.netlist, { partId: 'CR1', elementIndex: 0 }, 'coil-open');
+    const after = readTester(sim, state);
+    expect(after.display).toBe('OL');
+  });
+
+  it('sees a wire added within the same tick instead of returning a stale cached continuity reading (CS-01)', () => {
+    const sim = coilBench();
+    const state = probed(
+      applyTesterAction(createTesterState(), { type: 'set-mode', mode: 'CONT' }),
+      'CR1.1',
+      'CR1.5',
+    );
+    const before = readTester(sim, state);
+    expect(before.display).toBe('OL');
+    sim.addWire(w('w-cont', 'CR1.1', 'CR1.5'));
+    const after = readTester(sim, state);
+    expect(after.display).toBe('導通');
   });
 });

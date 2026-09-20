@@ -77,6 +77,26 @@ export const PLC_DEFAULT_STATIC_CHECKS: StaticChecksData = {
   ioAssignment: true,
 };
 
+/**
+ * `staticChecks` の入力用スキーマ。`StaticChecksSchema` と違い個別の `.default()` を
+ * 持たない（全項目が省略可）。`.default(staticDefaults)`（`StaticChecksSchema` 側の既定）は
+ * `staticChecks` キー自体が無いときにしか効かず、キーがあれば内側の個別既定（＝モードBの既定）が
+ * 使われてしまう。1件だけ書いた課題（例: `{"wireColorRule": false}`）でも省略した項目には
+ * **そのモードの既定**（PLC なら `PLC_DEFAULT_STATIC_CHECKS`）が入るよう、既定の持ち主を
+ * `judgeSettings()` 側 1箇所に寄せる（CT-01）。
+ */
+const StaticChecksInputSchema = z.strictObject({
+  wireColorRule: z.boolean().optional(),
+  terminalLimit: z.boolean().optional(),
+  unusedParts: z.boolean().optional(),
+  forbiddenCircuit: z.boolean().optional(),
+  coilPolarity: z.boolean().optional(),
+  powerSequence: z.boolean().optional(),
+  twoStage: z.boolean().optional(),
+  plcPowerIndependent: z.boolean().optional(),
+  ioAssignment: z.boolean().optional(),
+});
+
 /** 判定設定のスキーマを、静的チェックの既定を差し替えて作る。§7.4 */
 function judgeSettings(staticDefaults: StaticChecksData) {
   return z.strictObject({
@@ -85,7 +105,18 @@ function judgeSettings(staticDefaults: StaticChecksData) {
       edgeMs: DEFAULT_TOLERANCE.edgeMs,
       ratio: DEFAULT_TOLERANCE.ratio,
     }),
-    staticChecks: StaticChecksSchema.default(staticDefaults),
+    staticChecks: StaticChecksInputSchema.default({}).transform((v): StaticChecksData => {
+      // `{ ...staticDefaults, ...v }` は使わない。`v` の各項目は「省略可」であって
+      // `undefined` を明示的に持つ値ではないが、TSの spread はそれを区別できず
+      // `boolean | undefined` に広がってしまう（exactOptionalPropertyTypes）。
+      // 実際に指定された項目だけ既定を上書きする。
+      const merged = { ...staticDefaults };
+      for (const id of STATIC_CHECK_IDS) {
+        const value = v[id];
+        if (value !== undefined) merged[id] = value;
+      }
+      return merged;
+    }),
   });
 }
 

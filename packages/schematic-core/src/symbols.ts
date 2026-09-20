@@ -1,3 +1,4 @@
+import { parseTerminalId, type TerminalId } from '@ojt/circuit-sim';
 import {
   isLoadCell,
   type CellKind,
@@ -312,18 +313,41 @@ function deviceIndex(device: string): string {
 }
 
 /**
+ * 端子IDの末尾（`CR1.9` の `9`、`TB_PB.1c` の `1c`）を図の表記に直す。ハイフン(`-`)は
+ * 表示ではマイナス記号(`−`)に揃える（この関数を使わない既定経路の `${n}−` 等と同じ字体）。
+ */
+function terminalLabel(id: TerminalId): string {
+  const name = parseTerminalId(id).name;
+  return name.endsWith('-') ? `${name.slice(0, -1)}−` : name;
+}
+
+/**
  * 端子番号の一覧（要素ID → 左右の端子表記）。§11.3
  *
  * 割当の規則は `assignToBoard()` と同じ「文書順に出てきた接点へ組1〜組4を1つずつ」。
  * ここは**図に刷るための文字**だけを作るので盤には触れない（`assign.ts` と同じ結果に
  * なることは `test/symbols.test.ts` が `assignToBoard()` と突き合わせて確かめている）。
  * 組を使い切った5個目以降は番号を出さない（図が嘘をつくより無いほうがよい）。
+ *
+ * `override`（`assignToBoard()` の `physicalOverride` と同じ形）を渡すと、上書きされた要素は
+ * 自動採番ではなく**上書き先の実際の物理端子**をそのまま表記する（SC-02）。`assignToBoard()`
+ * も上書き対象は自動採番のカウンタを消費しない（`overrideGroup()` のJSDoc参照）ので、
+ * ここでも上書き対象は `used` カウンタへ触れない。`cell.id` が `constructor` 等の
+ * `Object.prototype` のキー名でも誤って拾わないよう `Object.hasOwn` で判定する（SC-01と同じ形）。
  */
-export function terminalMarks(doc: SchematicDocument): Map<string, TerminalMark> {
+export function terminalMarks(
+  doc: SchematicDocument,
+  override: Readonly<Record<string, readonly [TerminalId, TerminalId]>> = {},
+): Map<string, TerminalMark> {
   const out = new Map<string, TerminalMark>();
   const used = new Map<string, number>();
   for (const r of doc.rungs) {
     for (const cell of r.cells) {
+      const forced = Object.hasOwn(override, cell.id) ? override[cell.id] : undefined;
+      if (forced !== undefined) {
+        out.set(cell.id, { left: terminalLabel(forced[0]), right: terminalLabel(forced[1]) });
+        continue;
+      }
       let group = 0;
       if (usesContactGroup(cell)) {
         const count = used.get(cell.device) ?? 0;

@@ -1,5 +1,6 @@
-import { TIMER_RANGE_60S } from '@ojt/board-model';
+import { snapPresetToStep, TIMER_RANGE_60S } from '@ojt/board-model';
 import { TIMER_MIN_PRESET_MS } from '@ojt/circuit-sim';
+import { rangeLabel, timerRangeFor } from './assign.js';
 import {
   CELL_KIND_LABELS,
   createDocument,
@@ -168,7 +169,14 @@ function buildCell(id: string, draft: CellDraft, fallbackPresetMs: number): Sche
   };
 }
 
-/** 設定時間がレンジに収まるか（`validateDocument()` と同じ範囲）。§5.3.2 */
+/**
+ * 設定時間がレンジに収まるか（`validateDocument()` と同じ範囲）、かつそのレンジの刻みに合うか。§5.3.2
+ *
+ * 刻みの検査が無いと、レンジ内ではあるが刻みに合わない値（例 12345ms）をエディタが
+ * 置けてしまい、`assignToBoard()`（`mountedParts()` の `snapPresetToStep` 検算）まで進んで
+ * 初めて弾かれる（SC-03）。ここで先に同じ規則（`timerRangeFor` → `snapPresetToStep`）を
+ * 通すことで、編集の時点で検算と同じ結論になる。
+ */
 function presetProblem(presetMs: number): string | undefined {
   if (
     !Number.isInteger(presetMs) ||
@@ -176,6 +184,14 @@ function presetProblem(presetMs: number): string | undefined {
     presetMs > TIMER_RANGE_60S.maxMs
   ) {
     return `タイマの設定時間は ${TIMER_MIN_PRESET_MS}〜${TIMER_RANGE_60S.maxMs}ms の整数です: ${presetMs}`;
+  }
+  const range = timerRangeFor(presetMs);
+  /* c8 ignore next 3 -- 上のレンジ内チェックを通れば TIMER_RANGES の最大値以下なので必ず見つかる */
+  if (range === undefined) {
+    return `タイマの設定時間はどのタイマレンジにも収まりません: ${presetMs}`;
+  }
+  if (snapPresetToStep(presetMs, range) !== presetMs) {
+    return `タイマの設定時間 ${presetMs}ms はレンジ ${rangeLabel(range)} の刻み ${range.stepMs}ms に合いません`;
   }
   return undefined;
 }

@@ -354,53 +354,34 @@
               "additionalProperties": false
             },
             "staticChecks": {
-              "default": {
-                "wireColorRule": true,
-                "terminalLimit": true,
-                "unusedParts": true,
-                "forbiddenCircuit": true,
-                "coilPolarity": true,
-                "powerSequence": true,
-                "twoStage": false,
-                "plcPowerIndependent": false,
-                "ioAssignment": false
-              },
+              "default": {},
               "type": "object",
               "properties": {
                 "wireColorRule": {
-                  "default": true,
                   "type": "boolean"
                 },
                 "terminalLimit": {
-                  "default": true,
                   "type": "boolean"
                 },
                 "unusedParts": {
-                  "default": true,
                   "type": "boolean"
                 },
                 "forbiddenCircuit": {
-                  "default": true,
                   "type": "boolean"
                 },
                 "coilPolarity": {
-                  "default": true,
                   "type": "boolean"
                 },
                 "powerSequence": {
-                  "default": true,
                   "type": "boolean"
                 },
                 "twoStage": {
-                  "default": false,
                   "type": "boolean"
                 },
                 "plcPowerIndependent": {
-                  "default": false,
                   "type": "boolean"
                 },
                 "ioAssignment": {
-                  "default": false,
                   "type": "boolean"
                 }
               },
@@ -1196,53 +1177,34 @@
               "additionalProperties": false
             },
             "staticChecks": {
-              "default": {
-                "wireColorRule": true,
-                "terminalLimit": true,
-                "unusedParts": true,
-                "forbiddenCircuit": true,
-                "coilPolarity": true,
-                "powerSequence": true,
-                "twoStage": false,
-                "plcPowerIndependent": false,
-                "ioAssignment": false
-              },
+              "default": {},
               "type": "object",
               "properties": {
                 "wireColorRule": {
-                  "default": true,
                   "type": "boolean"
                 },
                 "terminalLimit": {
-                  "default": true,
                   "type": "boolean"
                 },
                 "unusedParts": {
-                  "default": true,
                   "type": "boolean"
                 },
                 "forbiddenCircuit": {
-                  "default": true,
                   "type": "boolean"
                 },
                 "coilPolarity": {
-                  "default": true,
                   "type": "boolean"
                 },
                 "powerSequence": {
-                  "default": true,
                   "type": "boolean"
                 },
                 "twoStage": {
-                  "default": false,
                   "type": "boolean"
                 },
                 "plcPowerIndependent": {
-                  "default": false,
                   "type": "boolean"
                 },
                 "ioAssignment": {
-                  "default": false,
                   "type": "boolean"
                 }
               },
@@ -1922,53 +1884,34 @@
               "additionalProperties": false
             },
             "staticChecks": {
-              "default": {
-                "wireColorRule": true,
-                "terminalLimit": true,
-                "unusedParts": true,
-                "forbiddenCircuit": true,
-                "coilPolarity": true,
-                "powerSequence": true,
-                "twoStage": true,
-                "plcPowerIndependent": true,
-                "ioAssignment": true
-              },
+              "default": {},
               "type": "object",
               "properties": {
                 "wireColorRule": {
-                  "default": true,
                   "type": "boolean"
                 },
                 "terminalLimit": {
-                  "default": true,
                   "type": "boolean"
                 },
                 "unusedParts": {
-                  "default": true,
                   "type": "boolean"
                 },
                 "forbiddenCircuit": {
-                  "default": true,
                   "type": "boolean"
                 },
                 "coilPolarity": {
-                  "default": true,
                   "type": "boolean"
                 },
                 "powerSequence": {
-                  "default": true,
                   "type": "boolean"
                 },
                 "twoStage": {
-                  "default": false,
                   "type": "boolean"
                 },
                 "plcPowerIndependent": {
-                  "default": false,
                   "type": "boolean"
                 },
                 "ioAssignment": {
-                  "default": false,
                   "type": "boolean"
                 }
               },

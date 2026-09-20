@@ -1,5 +1,5 @@
 import { toNetlist, type BoardDefinition, type BoardSession } from '@ojt/board-model';
-import { compareLogs, type ChatterEvent, type Mismatch, type SignalLog } from '@ojt/circuit-sim';
+import { compareLogs, type ChatterEvent, type Mismatch } from '@ojt/circuit-sim';
 import {
   compile,
   deviceLabel,
@@ -8,7 +8,12 @@ import {
   type CompileWarning,
   type LadderProgram,
 } from '@ojt/ladder-core';
-import { countHazards, type HazardCounts, type JudgeOptions } from './judge.js';
+import {
+  countHazards,
+  findUnknownCompareSignalIssues,
+  type HazardCounts,
+  type JudgeOptions,
+} from './judge.js';
 import { runPlcOperations } from './plc-io.js';
 import { buildPlcReferenceSession, PLC_WIRE_COLOR } from './plc-reference.js';
 import type { ProblemIssue } from './schema/index.js';
@@ -76,20 +81,6 @@ export function plcTimerMarkers(compiled: CompiledProgram): TimeChartMarker[] {
   return markers;
 }
 
-/** 比較信号が模範のログに無い（課題データの誤り）。§13 #2 */
-function unknownCompareSignals(compareSignals: readonly string[], log: SignalLog): ProblemIssue[] {
-  const recorded = new Set(log.signals());
-  const out: ProblemIssue[] = [];
-  compareSignals.forEach((signal, index) => {
-    if (recorded.has(signal)) return;
-    out.push({
-      path: `judge.compareSignals[${index}]`,
-      message: `比較信号 ${signal} は模範回路の記録にありません`,
-    });
-  });
-  return out;
-}
-
 /** モードDの判定を実行する。§10.8 */
 export function judgePlc(
   problem: PlcProblem,
@@ -110,7 +101,7 @@ export function judgePlc(
     { durationMs: problem.durationMs, outputCount },
   );
   const compareSignals = resolveCompareSignals(problem.judge, problem.board.extraParts ?? []);
-  const unknown = unknownCompareSignals(compareSignals, expectedRun.log);
+  const unknown = findUnknownCompareSignalIssues(compareSignals, expectedRun.log);
   if (unknown.length > 0) return { ok: false, errors: unknown };
 
   const compiled = compile(traineeLadder);

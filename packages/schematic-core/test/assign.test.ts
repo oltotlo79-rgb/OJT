@@ -579,4 +579,26 @@ describe('assign: 回路図 → 物理割当（§11.3）', () => {
       { socket: 'S5', role: 'T1', kind: 'timer-h3y4', presetMs: 100, rangeMaxMs: 10_000 },
     ]);
   });
+
+  it('要素IDが Object.prototype のキー名でも例外にならない（SC-01。physicalOverride 無し）', () => {
+    for (const poisoned of ['constructor', 'toString', 'valueOf', '__proto__', 'hasOwnProperty']) {
+      const doc = createDocument('x', 'プロトタイプ汚染', [
+        rung('r1', BUS_P, BUS_N, [pbA(poisoned, 'PB1'), coil('c2', 'CR1')]),
+        rung('r2', BUS_P, BUS_N, [crA('c3', 'CR1'), lamp('c4', 'PL1')]),
+      ]);
+      expect(() => assignToBoard(doc)).not.toThrow();
+      const result = assigned(assignToBoard(doc));
+      expect(result.cells.find((c) => c.cellId === poisoned)?.group).toBe(0);
+    }
+  });
+
+  it('要素IDが Object.prototype のキー名でも physicalOverride ありで例外にならない（SC-01）', () => {
+    const doc = createDocument('x', 'プロトタイプ汚染（override）', [
+      rung('r1', BUS_P, BUS_N, [pbA('constructor', 'PB1'), coil('c2', 'CR1')]),
+      rung('r2', BUS_P, BUS_N, [crA('c3', 'CR1'), lamp('c4', 'PL1')]),
+    ]);
+    expect(() =>
+      assignToBoard(doc, { physicalOverride: { c2: [t('CR1.14'), t('CR1.13')] } }),
+    ).not.toThrow();
+  });
 });

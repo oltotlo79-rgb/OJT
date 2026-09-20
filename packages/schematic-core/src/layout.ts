@@ -1,3 +1,4 @@
+import type { TerminalId } from '@ojt/circuit-sim';
 import type { CellKind, Rung, RungEnd, SchematicCell, SchematicDocument } from './document.js';
 import {
   contactShapes,
@@ -42,6 +43,12 @@ export interface LayoutOptions {
    * 既定は `false`。番号は `terminalMarks()` が `assignToBoard()` と同じ規則で決める。
    */
   terminalNumbers?: boolean;
+  /**
+   * `assignToBoard()` に渡すのと同じ `physicalOverride`。指定すると `terminalNumbers` が
+   * 刷る番号のうち上書きされた要素だけ、自動採番ではなく上書き先の実端子を表記する。
+   * 省略時は自動採番のみ（今までどおり）。図に刷る端子番号と判定が使う端子を一致させる（SC-02）。
+   */
+  physicalOverride?: Readonly<Record<string, readonly [TerminalId, TerminalId]>>;
 }
 
 /**
@@ -64,6 +71,7 @@ export const DEFAULT_LAYOUT_OPTIONS: Required<LayoutOptions> = {
   labelRise: SYMBOL_METRICS.labelRise,
   rungNumbers: false,
   terminalNumbers: false,
+  physicalOverride: {},
 };
 
 export {
@@ -280,7 +288,7 @@ export function layout(doc: SchematicDocument, options: LayoutOptions = {}): Sch
     r: o.symbolWidth * SYMBOL_METRICS.junctionRadius,
   });
 
-  const marks = o.terminalNumbers ? terminalMarks(doc) : undefined;
+  const marks = o.terminalNumbers ? terminalMarks(doc, o.physicalOverride) : undefined;
 
   doc.rungs.forEach((r, rowIndex) => {
     const y = rowOf(r.id);

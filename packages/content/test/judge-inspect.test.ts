@@ -199,6 +199,38 @@ describe('judgeInspectRepair', () => {
     expect(judged.value.charts.expected.signals.length).toBeGreaterThan(0);
   });
 
+  it('reports a dead reference circuit instead of a verdict, same as mode B (CT-02)', () => {
+    // 操作列を空にすると、PB1を一度も押さないのでCR1もPL1も1回も変化しない
+    // （模範回路そのものは正しく組めているが、実質動かない模範回路の別の作り方）。
+    const problem = parseInspectRepairOrThrow({
+      ...inspectRepairProblemJson(),
+      operations: [],
+    });
+    const built = buildInspectRepairCircuit(problem, JIPM_BOARD);
+    if (!built.ok) throw new Error(JSON.stringify(built.errors));
+    const judged = judgeInspectRepair(problem, JIPM_BOARD, built.value, CORRECT_REPORTS);
+    expect(judged.ok).toBe(false);
+    if (judged.ok) return;
+    expect(judged.errors[0]?.message).toBe(
+      '模範回路が動作しません（ランプ・コイルの変化がありません）',
+    );
+  });
+
+  it('reports a problem-data error (not a trainee failure) when compareSignals names a signal absent from the reference log (CT-02)', () => {
+    const problem = parseInspectRepairOrThrow({
+      ...inspectRepairProblemJson(),
+      judge: { compareSignals: ['PL9'] },
+    });
+    const built = buildInspectRepairCircuit(problem, JIPM_BOARD);
+    if (!built.ok) throw new Error(JSON.stringify(built.errors));
+    const judged = judgeInspectRepair(problem, JIPM_BOARD, built.value, CORRECT_REPORTS);
+    expect(judged.ok).toBe(false);
+    if (judged.ok) return;
+    expect(judged.errors).toEqual([
+      { path: 'judge.compareSignals[0]', message: '比較信号 PL9 は模範回路の記録にありません' },
+    ]);
+  });
+
   it('fails when the board still behaves differently from the reference', () => {
     const { problem, circuit } = repairCircuit();
     const judged = judgeInspectRepair(problem, JIPM_BOARD, circuit, CORRECT_REPORTS);

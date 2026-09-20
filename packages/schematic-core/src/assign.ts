@@ -311,7 +311,10 @@ function buildCellAssignments(
 
   for (const r of doc.rungs) {
     r.cells.forEach((cell, index) => {
-      const forced = override[cell.id];
+      // `cell.id` が `constructor` / `toString` / `__proto__` などだと素のオブジェクト参照
+      // `override[cell.id]` はプロトタイプ由来の値を返してしまう（SC-01）。自前キーの
+      // 有無で判定する。正規表現による ID 制限は `constructor` 等をすべて通すため無効。
+      const forced = Object.hasOwn(override, cell.id) ? override[cell.id] : undefined;
       let group = 0;
       if (forced !== undefined) {
         group = overrideGroup(cell, forced[0]);
@@ -562,13 +565,17 @@ function chainWires(nets: Nets, roles: SocketRoles, color: WireColor): Outcome<W
   return errors.length > 0 ? { ok: false, errors } : { ok: true, value: wires };
 }
 
-/** 設定時間が収まる最小のタイマレンジ。§5.3.2 */
-function timerRangeFor(presetMs: number): TimerRange | undefined {
+/**
+ * 設定時間が収まる最小のタイマレンジ。§5.3.2
+ * `edit.ts` の `presetProblem()` も同じ規則で刻み違反を検算前に弾く（SC-03。「PRESET_STEP_MS の
+ * 源を schematic-core に寄せる」の一環で、レンジ選択とレンジ表示名は1箇所からしか出さない）。
+ */
+export function timerRangeFor(presetMs: number): TimerRange | undefined {
   return [...TIMER_RANGES].sort((a, b) => a.maxMs - b.maxMs).find((r) => r.maxMs >= presetMs);
 }
 
 /** レンジの表示名（`0〜60s`）。 */
-function rangeLabel(range: TimerRange): string {
+export function rangeLabel(range: TimerRange): string {
   return range.id.replace('-', '〜');
 }
 

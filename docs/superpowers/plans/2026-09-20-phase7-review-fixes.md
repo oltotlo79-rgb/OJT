@@ -394,16 +394,16 @@ packages/content/test/validate-cli.test.ts（新規）
 
 **Steps:**
 
-- [ ] 1. **CS-01**: `tester.ts:285-314` の `cachedMeasure` / `ohmCache` を**削除**する。Worker 側の間引きが既に効いているので性能は落ちない。回帰テスト: 同一tickで `readTester(OHM)` → `injectFault(coil-open)` → `readTester` が `OL` になること。
-- [ ] 2. **CT-01**: `StaticChecksSchema` の各フィールドから個別の `.default()` を外し、`judgeSettings()` 側でモード既定（`DEFAULT_STATIC_CHECKS` / `PLC_DEFAULT_STATIC_CHECKS`）とマージする。回帰テスト: `PlcJudgeSettingsSchema.parse({ staticChecks: { wireColorRule: false } })` が PLC 3チェック（`twoStage` / `plcPowerIndependent` / `ioAssignment`）を `true` のまま返すこと。
-- [ ] 3. **SC-01 ／ SC-04**: `assign.ts:314` を `Object.hasOwn(override, cell.id) ? … : undefined` にする。`document.ts` の `DEVICE_PATTERNS[cell.kind]` と `CELL_KIND_LABELS` も同じ形にする。**正規表現によるID制限は入れない**（レポートの明示）。
-- [ ] 4. **SC-02**: `terminalMarks(doc, override?)` が `physicalOverride` を受け取れるようにし、`layout.ts:283` と `LayoutOptions` に受け渡し口を足す。図に刷る端子番号と判定が使う端子を一致させる。
-- [ ] 5. **SC-03**: `edit.ts` の `presetProblem()` に `snapPresetToStep` 検査を足し、`PRESET_STEP_MS` の源を `schematic-core` に寄せる。
-- [ ] 6. **CT-02**: `findUnknownCompareSignalIssues()` と `findDeadReferenceIssue()` を共通ヘルパに切り出し、B・C2・D の3判定から呼ぶ（`judge.ts` と `judge-plc.ts` は現在まったく同じ実装）。
-- [ ] 7. **CT-03**: `applyFaults()` の `targeted` を部品にも広げ、同じ部品に2つの部品故障がある課題を**課題エラー**にする。
-- [ ] 8. **CT-04**: `random-faults.ts:229-235` で `seed` が明示されているときは壁時計（`Date.now()`）の時間予算を外す。決定論（§5.2）を回復する。
-- [ ] 9. **CT-05**: `plc.ts:326-335` の検査を `resolveCompareSignals()` の**結果**に対して走らせる。
-- [ ] 10. テストはレポート §5 Batch 1「追加すべきテスト」の該当行をそのまま入れる。
+- [x] 1. **CS-01**: `tester.ts:285-314` の `cachedMeasure` / `ohmCache` を**削除**する。Worker 側の間引きが既に効いているので性能は落ちない。回帰テスト: 同一tickで `readTester(OHM)` → `injectFault(coil-open)` → `readTester` が `OL` になること。
+- [x] 2. **CT-01**: `StaticChecksSchema` の各フィールドから個別の `.default()` を外し、`judgeSettings()` 側でモード既定（`DEFAULT_STATIC_CHECKS` / `PLC_DEFAULT_STATIC_CHECKS`）とマージする。回帰テスト: `PlcJudgeSettingsSchema.parse({ staticChecks: { wireColorRule: false } })` が PLC 3チェック（`twoStage` / `plcPowerIndependent` / `ioAssignment`）を `true` のまま返すこと。
+- [x] 3. **SC-01 ／ SC-04**: `assign.ts:314` を `Object.hasOwn(override, cell.id) ? … : undefined` にする。`document.ts` の `DEVICE_PATTERNS[cell.kind]` と `CELL_KIND_LABELS` も同じ形にする。**正規表現によるID制限は入れない**（レポートの明示）。
+- [x] 4. **SC-02**: `terminalMarks(doc, override?)` が `physicalOverride` を受け取れるようにし、`layout.ts:283` と `LayoutOptions` に受け渡し口を足す。図に刷る端子番号と判定が使う端子を一致させる。
+- [x] 5. **SC-03**: `edit.ts` の `presetProblem()` に `snapPresetToStep` 検査を足し、`PRESET_STEP_MS` の源を `schematic-core` に寄せる。
+- [x] 6. **CT-02**: `findUnknownCompareSignalIssues()` と `findDeadReferenceIssue()` を共通ヘルパに切り出し、B・C2・D の3判定から呼ぶ（`judge.ts` と `judge-plc.ts` は現在まったく同じ実装）。
+- [x] 7. **CT-03**: `applyFaults()` の `targeted` を部品にも広げ、同じ部品に2つの部品故障がある課題を**課題エラー**にする。
+- [x] 8. **CT-04**: `random-faults.ts:229-235` で `seed` が明示されているときは壁時計（`Date.now()`）の時間予算を外す。決定論（§5.2）を回復する。
+- [x] 9. **CT-05**: `plc.ts:326-335` の検査を `resolveCompareSignals()` の**結果**に対して走らせる。
+- [x] 10. テストはレポート §5 Batch 1「追加すべきテスト」の該当行をそのまま入れる（デビエーションは実装報告を参照）。
 
 **期待:** `pnpm --filter @ojt/circuit-sim test` / `@ojt/content` / `@ojt/schematic-core` が全件 pass。カバレッジ90%を維持。
 

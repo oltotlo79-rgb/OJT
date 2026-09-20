@@ -1,6 +1,6 @@
 import { JIPM_BOARD } from '@ojt/board-model';
 import { compareLogs } from '@ojt/circuit-sim';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { buildInspectRepairCircuit, repairNetlist } from '../src/inspect-repair.js';
 import {
   MAX_RANDOM_FAULT_ATTEMPTS,
@@ -235,9 +235,10 @@ describe('resolveFaults', () => {
   it('exhausts an attempt and retries when there are fewer faultable parts than requested', () => {
     // このC2課題ではチェック用を除く部品はCR1だけなので、同じ種別で2件要求すると
     // 「別の部品を引けない」ため毎回そのアテンプトを捨てる（§7.5 の引き直し）。
+    // fallback は同じ部品に2つの部品故障を入れられない（CT-03）ので、部品故障1つ＋電線故障1つにする。
     const fallback = [
       { target: { partId: 'CR1', elementIndex: 0 }, kind: 'coil-open' },
-      { target: { partId: 'CR1', elementIndex: 0 }, kind: 'coil-open' },
+      { target: { wireId: 'sw-004' }, kind: 'wire-open' },
     ];
     const problem = problemWithRandom({ count: 2, types: ['coil-open'], seed: 8, fallback });
     const resolved = resolveFaults(problem, JIPM_BOARD, { maxAttempts: 3 });
@@ -305,6 +306,37 @@ describe('resolveFaults fallback validation (レビュー I4)', () => {
     if (!resolved.ok) return;
     expect(resolved.value).toEqual(FALLBACK);
     expect(resolved.fellBack).toBe(true);
+  });
+
+  it('does not apply the default wall-clock budget when a seed is explicit, so a slow machine gets the same result as a fast one (CT-04)', () => {
+    // 既定の壁時計予算（`options.maxMillis` を省略したときの `MAX_RANDOM_FAULT_MILLIS`）は
+    // `Date.now()` 依存なので、機械が遅いと同じ seed でも先に時間切れへ落ちてしまっていた。
+    // `Date.now()` を「1回目の呼び出し以降は既定予算をとうに超えた時刻」に固定し、
+    // 「遅い機械」を模しても、seed明示なら既定の壁時計予算そのものを適用しないので
+    // 通常どおり候補が引けて `fellBack: false` になることを確かめる。
+    const problem = problemWithRandom({
+      count: 2,
+      types: ['wire-open'],
+      seed: 12345,
+      fallback: [...FALLBACK, { target: { wireId: 'sw-005' }, kind: 'wire-open' }],
+    });
+    const now = vi.spyOn(Date, 'now');
+    let calls = 0;
+    // 1回目の呼び出し（デッドライン計算がもしあれば、そこ）は0msを返し、以後は既定予算を
+    // とうに超えた時刻を返す（＝「遅い機械」を模す）。seed明示ならデッドライン計算自体を
+    // 行わないため、このモックは1回も呼ばれないはず。
+    now.mockImplementation(() => {
+      calls += 1;
+      return calls === 1 ? 0 : MAX_RANDOM_FAULT_MILLIS * 10;
+    });
+    try {
+      const resolved = resolveFaults(problem, JIPM_BOARD);
+      expect(resolved.ok).toBe(true);
+      if (!resolved.ok) return;
+      expect(resolved.fellBack).toBe(false);
+    } finally {
+      now.mockRestore();
+    }
   });
 });
 

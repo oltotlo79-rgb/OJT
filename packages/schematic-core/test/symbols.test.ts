@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { TerminalId } from '@ojt/circuit-sim';
 import {
   assignToBoard,
   buzzer,
@@ -24,6 +25,10 @@ import {
   type Shape,
 } from '../src/index.js';
 import { flickerDoc, interlockDoc, onDelayDoc, selfHoldDoc } from './helpers/docs.js';
+
+function t(id: string): TerminalId {
+  return id as TerminalId;
+}
 
 /**
  * 図記号の作り（`symbols.ts`）と、図として破綻していないことの構造検査。
@@ -468,6 +473,38 @@ describe('端子番号（§11.3）', () => {
         expect(String(cell.right).split('.')[1], cell.cellId).toBe(mark.right.replace('−', '-'));
       }
     }
+  });
+
+  it('physicalOverride を与えても terminalMarks() と assignToBoard().cells の端子が一致する（SC-02）', () => {
+    // 自己保持回路のCR1接点2個は既定では組1・組2。c5 を組4（⑫⑧）へ付け替える
+    // （`assign.test.ts` の「physicalOverride が既定規則より優先される」と同じ上書き）。
+    const doc = selfHoldDoc();
+    const physicalOverride = { c5: [t('CR1.12'), t('CR1.8')] } as const;
+    const assigned = assignToBoard(doc, { physicalOverride });
+    expect(assigned.ok).toBe(true);
+    if (!assigned.ok) return;
+    const marks = terminalMarks(doc, physicalOverride);
+    for (const cell of assigned.cells) {
+      const mark = marks.get(cell.cellId);
+      expect(mark, cell.cellId).toBeDefined();
+      if (mark === undefined) continue;
+      expect(String(cell.left).split('.')[1], cell.cellId).toBe(mark.left.replace('−', '-'));
+      expect(String(cell.right).split('.')[1], cell.cellId).toBe(mark.right.replace('−', '-'));
+    }
+    // 上書き対象そのものが上書き先の端子（組4＝⑫⑧）を表示している
+    expect(marks.get('c5')).toEqual({ left: '12', right: '8' });
+    // override を渡さない呼び出しは今までどおり自動採番（組2＝⑩⑥）のまま
+    expect(terminalMarks(doc).get('c5')).toEqual({ left: '10', right: '6' });
+  });
+
+  it('要素IDが Object.prototype のキー名でも terminalMarks() は例外にならない（SC-01と同じ形）', () => {
+    const doc = createDocument('x', 'プロトタイプ汚染', [
+      rung('r1', BUS_P, BUS_N, [pbA('constructor', 'PB1'), coil('c2', 'CR1')]),
+      rung('r2', BUS_P, BUS_N, [crA('c3', 'CR1'), lamp('c4', 'PL1')]),
+    ]);
+    expect(() => terminalMarks(doc)).not.toThrow();
+    const marks = terminalMarks(doc);
+    expect(marks.get('constructor')).toEqual({ left: '1c', right: '1a' });
   });
 
   it('接点を5個使う機器の5個目には番号を出さない（嘘の番号を刷らない）', () => {

@@ -3,7 +3,7 @@ import { TICK_MS } from '@ojt/circuit-sim';
 import { compile, deviceLabel } from '@ojt/ladder-core';
 import { z } from 'zod';
 import { ProblemHeaderShape } from './common.js';
-import { PlcJudgeSettingsSchema } from './judge.js';
+import { PlcJudgeSettingsSchema, resolveCompareSignals } from './judge.js';
 import { LadderProgramSchema } from './ladder.js';
 import { DurationMsSchema, lastOperationMs, OperationListSchema } from './operations.js';
 
@@ -323,12 +323,24 @@ export const PlcProblemSchema = z
         });
       }
     });
-    (problem.judge.compareSignals ?? []).forEach((signal, index) => {
+    /**
+     * `problem.judge.compareSignals` ではなく `resolveCompareSignals()` の**結果**を見る（CT-05）。
+     * `compareSignals` を省略した課題は判定時に盤の出力部品すべて（既定 `PL1`〜`PL4`）が対象になる
+     * （`schema/judge.ts` の `resolveCompareSignals()`）。生の `problem.judge.compareSignals` だけを
+     * 見ていると、省略した課題では既定の `PL4` などがI/O割付に無くても検査をすり抜け、判定や
+     * 配線の段になって初めて崩れる。省略時（明示の配列が無い）は `judge.compareSignals` 全体を
+     * 指す（配列の要素が実在しないため）。
+     */
+    const compareSignals = resolveCompareSignals(problem.judge, problem.board.extraParts ?? []);
+    compareSignals.forEach((signal, index) => {
       // PL 以外の信号（`BZ` などボードの追加部品）はI/O割付の対象外なのでここでは見ない。
       if (/^PL\d+$/u.test(signal) && !mappedPl.has(signal)) {
         ctx.addIssue({
           code: 'custom',
-          path: ['judge', 'compareSignals', index],
+          path:
+            problem.judge.compareSignals === undefined
+              ? ['judge', 'compareSignals']
+              : ['judge', 'compareSignals', index],
           message: `比較信号 ${signal} はI/O割付にありません`,
         });
       }

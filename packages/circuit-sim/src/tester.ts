@@ -1,13 +1,6 @@
 import { TICK_MS } from './elements.js';
 import type { TerminalId } from './ids.js';
-import {
-  continuity,
-  measureAcVolts,
-  measureResistance,
-  measureVoltage,
-  type ContinuityReading,
-  type OhmReading,
-} from './meter.js';
+import { continuity, measureAcVolts, measureResistance, measureVoltage } from './meter.js';
 import { getRangeExceeded, setRangeExceeded } from './meter-state.js';
 import type { Simulation } from './simulation.js';
 
@@ -272,48 +265,6 @@ function voltReading(state: TesterState, volts: number, display: string): Tester
 }
 
 /**
- * readTester() のΩ／導通の再計算を避けるキャッシュ。`Simulation` インスタンスをキーにした
- * `WeakMap` なので、セッションをまたいで古い結果が残ることはない。tick・プローブ配置・
- * レンジ種別のどれかが変わったら破棄する（この3つが同じなら回路の状態も同じなので、
- * 再度フルの回路解析をする必要が無い）。
- *
- * **キャッシュの副作用への注意:** `measureResistance()` / `continuity()` は活線を検出すると
- * `ohm-on-live` を発行する副作用を持つ（§5.6 #1）が、同じプローブ配置のまま活線が続く間は
- * 2回目以降を呼んでも `isNewLiveExposure()` が再発行を防ぐので、キャッシュでヒットして
- * 呼び出し自体を省いても観測できる挙動は変わらない。
- */
-interface OhmCacheEntry {
-  tMs: number;
-  black: TerminalId;
-  red: TerminalId;
-  kind: 'OHM' | 'CONT';
-  reading: OhmReading | ContinuityReading;
-}
-const ohmCache = new WeakMap<Simulation, OhmCacheEntry>();
-
-function cachedMeasure<T extends OhmReading | ContinuityReading>(
-  sim: Simulation,
-  black: TerminalId,
-  red: TerminalId,
-  kind: 'OHM' | 'CONT',
-  measure: () => T,
-): T {
-  const cached = ohmCache.get(sim);
-  if (
-    cached !== undefined &&
-    cached.kind === kind &&
-    cached.tMs === sim.tMs &&
-    cached.black === black &&
-    cached.red === red
-  ) {
-    return cached.reading as T;
-  }
-  const reading = measure();
-  ohmCache.set(sim, { tMs: sim.tMs, black, red, kind, reading });
-  return reading;
-}
-
-/**
  * いまの状態で1回測る。§9.3
  * プローブが両方置かれていなければ測定しない（`----`）。Ω／導通は `meter.ts` の制約
  * （プローブ間1V以上なら測定拒否＋`ohm-on-live`）をそのまま受ける（§5.5 / §5.6 #1）。
@@ -333,7 +284,7 @@ export function readTester(sim: Simulation, state: TesterState): TesterReading {
     return voltReading(state, reading.volts, reading.display);
   }
   if (state.mode === 'OHM') {
-    const reading = cachedMeasure(sim, black, red, 'OHM', () => measureResistance(sim, black, red));
+    const reading = measureResistance(sim, black, red);
     if (reading.live) return blankReading(state, TESTER_NO_PROBE_DISPLAY, true);
     if (state.kind === 'digital') {
       return {
@@ -359,7 +310,7 @@ export function readTester(sim: Simulation, state: TesterState): TesterReading {
       conductive: false,
     };
   }
-  const reading = cachedMeasure(sim, black, red, 'CONT', () => continuity(sim, black, red));
+  const reading = continuity(sim, black, red);
   if (reading.live) return blankReading(state, TESTER_NO_PROBE_DISPLAY, true);
   const shown = withZeroAdjustError(reading.ohms, state.zeroAdjusted);
   return {

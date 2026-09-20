@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   applyEdit,
+  assignToBoard,
   at,
   crA,
   crB,
@@ -445,6 +446,42 @@ describe('applyEdit: 断る場面', () => {
         draft: { kind: 'coil', device: 'T1', presetMs: 1500.5 },
       }),
     ).toEqual({ ok: false, message: `${RANGE}: 1500.5` });
+  });
+
+  it('refuses a timer preset that is in range but off the timer range step, wherever it comes from (SC-03)', () => {
+    // 12345ms はレンジ内（100〜60000ms）だが、選ばれるレンジ（0〜60秒・500ms刻み）の
+    // 刻みに合わない。`assignToBoard()` の検算まで進んで初めて落ちていた値（レビュー指摘）。
+    const doc = createDocument('d', 't', [rung('r1', BUS_P, BUS_N, [coil('c1', 'T1', 3000)])]);
+    expect(applyEdit(doc, { kind: 'setPreset', cellId: 'c1', presetMs: 12345 })).toEqual({
+      ok: false,
+      message: 'タイマの設定時間 12345ms はレンジ 0〜60s の刻み 500ms に合いません',
+    });
+    expect(
+      applyEdit(doc, {
+        kind: 'replaceCell',
+        cellId: 'c1',
+        draft: { kind: 'coil', device: 'T1', presetMs: 12345 },
+      }),
+    ).toEqual({
+      ok: false,
+      message: 'タイマの設定時間 12345ms はレンジ 0〜60s の刻み 500ms に合いません',
+    });
+    expect(
+      applyEdit(emptySchematic('d', 't'), {
+        kind: 'insertCell',
+        rungId: 'r1',
+        index: 0,
+        draft: { kind: 'coil', device: 'T1', presetMs: 12345 },
+      }),
+    ).toEqual({
+      ok: false,
+      message: 'タイマの設定時間 12345ms はレンジ 0〜60s の刻み 500ms に合いません',
+    });
+    // 刻みに合う値（12500ms）はエディタを通り、assignToBoard() の検算にも通る
+    const snapped = applyEdit(doc, { kind: 'setPreset', cellId: 'c1', presetMs: 12_500 });
+    expect(snapped.ok && snapped.doc.rungs[0]?.cells[0]?.presetMs).toBe(12_500);
+    if (!snapped.ok) return;
+    expect(assignToBoard(snapped.doc).ok).toBe(true);
   });
 
   it('refuses every edit that names a rung that is not there', () => {

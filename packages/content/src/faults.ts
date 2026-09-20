@@ -131,6 +131,10 @@ export function applyFaults(
   const draft: Wire[] = session.wires.map((w) => ({ ...w }));
   // 同じ電線を2回指定させない（レビュー指摘 M3）。許すと `sites` に同じ電線が並び、訓練者が
   // 1回指摘しただけでは合格できない／未配線と断線が同じ電線に同居する、といった課題になる。
+  // 部品も同じ理由で2回指定させない（CT-03）。`FaultReport.target` は部品を `partId` だけで
+  // 指す（どの要素かは区別しない）ので、同じ部品に2件の部品故障を入れると
+  // `injectPartFaults()` が後勝ちで上書きし、訓練者は片方の故障を原理的に指摘し得ない。
+  // 電線IDと部品IDは別の名前空間なので、鍵に `wire:`/`part:` を付けて衝突を避ける。
   const targeted = new Set<string>();
 
   faults.forEach((spec, index) => {
@@ -139,6 +143,15 @@ export function applyFaults(
       const target = spec.target;
       /* c8 ignore next -- スキーマが wireId ターゲットに部品系 kind を許さないため到達しない */
       if ('wireId' in target) return; // スキーマが弾くので到達しないが型のための番人
+      const key = `part:${target.partId}`;
+      if (targeted.has(key)) {
+        errors.push({
+          path: `faults[${index}].target.partId`,
+          message: `同じ部品に複数の故障は入れられません: ${target.partId}`,
+        });
+        return;
+      }
+      targeted.add(key);
       partFaults.push(spec);
       sites.push({
         kind: spec.kind,
@@ -152,14 +165,15 @@ export function applyFaults(
     const target = spec.target;
     /* c8 ignore next -- 同上、スキーマが弾くため到達しない */
     if (!('wireId' in target)) return; // 同上
-    if (targeted.has(target.wireId)) {
+    const wireKey = `wire:${target.wireId}`;
+    if (targeted.has(wireKey)) {
       errors.push({
         path: `faults[${index}].target.wireId`,
         message: `同じ電線に複数の故障は入れられません: ${target.wireId}`,
       });
       return;
     }
-    targeted.add(target.wireId);
+    targeted.add(wireKey);
     const position = draft.findIndex((w) => w.id === target.wireId);
     const wire = position < 0 ? undefined : draft[position];
     if (wire === undefined) {

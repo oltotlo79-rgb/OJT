@@ -73,10 +73,14 @@ export interface JudgeResult {
 export type JudgeAssembleResult =
   { ok: true; value: JudgeResult } | { ok: false; errors: ProblemIssue[] };
 
-/** 模範回路のログで見張るべき信号（ランプの点灯・コイルの励磁）。§13 #2 */
-function liveSignalsOf(problem: AssembleProblem): string[] {
+/**
+ * 模範回路のログで見張るべき信号（ランプの点灯・コイルの励磁）。§13 #2
+ * `AssembleProblem` と `InspectRepairProblem` はどちらも `schema/schematic.ts` の
+ * `SchematicDocumentSchema` をそのまま使うので同じ形（CT-02。`judge-inspect.ts` からも呼ぶ）。
+ */
+export function liveSignalsOf(schematic: AssembleProblem['schematic']): string[] {
   const names: string[] = [];
-  for (const r of problem.schematic.rungs) {
+  for (const r of schematic.rungs) {
     for (const cell of r.cells) {
       if (cell.kind === 'lamp') names.push(cell.device);
       else if (cell.kind === 'coil') names.push(`${cell.device}.coil`);
@@ -96,13 +100,17 @@ function hasTransition(log: SignalLog, signal: string): boolean {
  * `assignToBoard()` の検査（1端子2本・接点組の不足など）はすべて通ってしまうのに、
  * そのコイル本来の端子（例: `CR1.13`）がどこにも配線されず宙に浮き、永久に励磁されない。
  * ランプもコイルもログ上1回も変化しない模範回路は、判定を進める前にここで弾く。
+ *
+ * `liveSignals` は呼び出し側が用意する（B・C2は `liveSignalsOf(problem.schematic)`）。
+ * モードB・C2の判定から共通で呼ぶ（CT-02）。
  */
-function findDeadReferenceIssue(
-  problem: AssembleProblem,
+export function findDeadReferenceIssue(
+  liveSignals: readonly string[],
   log: SignalLog,
 ): ProblemIssue | undefined {
-  const live = liveSignalsOf(problem);
-  if (live.length === 0 || live.some((signal) => hasTransition(log, signal))) return undefined;
+  if (liveSignals.length === 0 || liveSignals.some((signal) => hasTransition(log, signal))) {
+    return undefined;
+  }
   return {
     path: 'schematic',
     message: '模範回路が動作しません（ランプ・コイルの変化がありません）',
@@ -115,8 +123,11 @@ function findDeadReferenceIssue(
  * その信号を1度も記録しないので `compareLogs()` が `unknown-signal` の不一致を返し、
  * **訓練者が不合格になってしまう**。訓練者の回路とは関係の無い課題データの誤りなので、
  * 判定を進める前に課題一覧のエラー（§13 #2）として返す。
+ *
+ * モードB・C2・D の3判定から共通で呼ぶ（CT-02。以前は `judge.ts` と `judge-plc.ts` に
+ * まったく同じ実装が重複しており、`judge-inspect.ts`＝モードC2だけがこの検査を欠いていた）。
  */
-function findUnknownCompareSignalIssues(
+export function findUnknownCompareSignalIssues(
   compareSignals: readonly string[],
   log: SignalLog,
 ): ProblemIssue[] {
@@ -157,7 +168,7 @@ export function judgeAssemble(
   const expectedRun = runOperations(reference.value.netlist, problem.operations, {
     durationMs: problem.durationMs,
   });
-  const deadReference = findDeadReferenceIssue(problem, expectedRun.log);
+  const deadReference = findDeadReferenceIssue(liveSignalsOf(problem.schematic), expectedRun.log);
   if (deadReference !== undefined) return { ok: false, errors: [deadReference] };
 
   const compareSignals = resolveCompareSignals(problem.judge, problem.board.extraParts ?? []);

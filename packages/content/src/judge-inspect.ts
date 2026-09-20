@@ -8,7 +8,14 @@ import {
   REPAIR_WIRE_COLOR,
   type RepairCircuit,
 } from './inspect-repair.js';
-import { countHazards, type HazardCounts, type JudgeOptions } from './judge.js';
+import {
+  countHazards,
+  findDeadReferenceIssue,
+  findUnknownCompareSignalIssues,
+  liveSignalsOf,
+  type HazardCounts,
+  type JudgeOptions,
+} from './judge.js';
 import { buildReferenceSession } from './reference.js';
 import { runOperations } from './runner.js';
 import { resolveCompareSignals } from './schema/judge.js';
@@ -172,7 +179,17 @@ export function judgeInspectRepair(
   const expectedRun = runOperations(reference.value.netlist, problem.operations, {
     durationMs: problem.durationMs,
   });
+  /**
+   * 模範回路が実質的に動かない・比較信号の指定が模範回路に無い、を判定を進める前に課題エラーで
+   * 弾く（CT-02）。`judge.ts`（モードB）と同じ共通ヘルパ。以前はC2だけこの検査が無く、
+   * 課題データの誤りで訓練者が不合格になり得た。
+   */
+  const deadReference = findDeadReferenceIssue(liveSignalsOf(problem.schematic), expectedRun.log);
+  if (deadReference !== undefined) return { ok: false, errors: [deadReference] };
+
   const compareSignals = resolveCompareSignals(problem.judge, problem.board.extraParts ?? []);
+  const unknownSignals = findUnknownCompareSignalIssues(compareSignals, expectedRun.log);
+  if (unknownSignals.length > 0) return { ok: false, errors: unknownSignals };
 
   const built = repairNetlist(circuit, board);
   if (built.errors.length > 0) return { ok: false, errors: built.errors };

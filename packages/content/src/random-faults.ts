@@ -66,6 +66,9 @@ export interface ResolveFaultsOptions {
   /**
    * 引き直しに使ってよい時間の上限（ミリ秒。既定 `MAX_RANDOM_FAULT_MILLIS`）。
    * 超えたら回数超過とまったく同じ扱いで `random.fallback` を使う。0にすると即フォールバックする。
+   * **`seed` が明示されている（このオプションか課題の `random.seed`）ときは、この既定を
+   * 省略した呼び出しでは既定の時間予算そのものを適用しない**（CT-04。§5.2の決定論を保つため）。
+   * それでも時間で打ち切りたいときはこのオプションを明示すること（既定に頼らない）。
    */
   maxMillis?: number;
 }
@@ -227,12 +230,22 @@ export function resolveFaults(
   const partIds = faultablePartIds(built.value.session);
   const spares = spareTerminals(built.value.session);
   const maxAttempts = options.maxAttempts ?? MAX_RANDOM_FAULT_ATTEMPTS;
-  const maxMillis = options.maxMillis ?? MAX_RANDOM_FAULT_MILLIS;
-  const deadline = Date.now() + maxMillis;
+  /**
+   * 既定の壁時計予算（`options.maxMillis` を明示していないとき）は、`seed` が明示されている
+   * （`options.seed` か課題の `random.seed`）ときは適用しない（CT-04）。実行時間は機械の速さに
+   * 依存するため、同じ seed でも遅い機械では既定の5秒予算に先に当たって `fallback` に落ち、
+   * 速い機械では正しい組合せが引ける——という非決定論が起きていた（§5.2「同じseedからは
+   * 必ず同じ結果」が破れる）。`maxAttempts`（回数）だけで打ち切れば、同じ seed からは
+   * 常に同じ試行列・同じ結論になる。`options.maxMillis` を明示したとき（「時間予算切れ」の
+   * 検証など）はその指定を優先する。
+   */
+  const seedIsExplicit = options.seed !== undefined || spec.seed !== undefined;
+  const maxMillis = options.maxMillis ?? (seedIsExplicit ? undefined : MAX_RANDOM_FAULT_MILLIS);
+  const deadline = maxMillis === undefined ? undefined : Date.now() + maxMillis;
   const random = mulberry32(options.seed ?? spec.seed ?? Date.now());
 
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-    if (Date.now() >= deadline) break;
+    if (deadline !== undefined && Date.now() >= deadline) break;
     const candidate: FaultSpecData[] = [];
     const takenWires = new Set<string>();
     const takenParts = new Set<string>();

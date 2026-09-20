@@ -141,6 +141,28 @@ describe('PlcProblemSchema（§7.6）', () => {
     expect(PlcProblemSchema.safeParse(sameRelay).success).toBe(false);
   });
 
+  it('rejects an omitted compareSignals whose board-default (PL2〜PL4) is missing from the I/O map (CT-05)', () => {
+    // `judge.compareSignals` を省略すると判定時は盤の出力部品すべて（既定 PL1〜PL4）が対象になる
+    // （`resolveCompareSignals()`）。I/O割付が PL1 しか持たない課題は、明示すればスキーマ違反に
+    // なるのに省略すると読込を素通りしていた（修正前）。
+    const omitted = plcProblemJson({ judge: {} });
+    const parsed = PlcProblemSchema.safeParse(omitted);
+    expect(parsed.success).toBe(false);
+    if (parsed.success) return;
+    const messages = parsed.error.issues.map((i) => i.message);
+    expect(messages).toContain('比較信号 PL2 はI/O割付にありません');
+    expect(messages).toContain('比較信号 PL3 はI/O割付にありません');
+    expect(messages).toContain('比較信号 PL4 はI/O割付にありません');
+    // 省略時はJSONに実在する配列要素が無いので、要素の添字ではなく `judge.compareSignals` 全体を指す
+    expect(parsed.error.issues[0]?.path).toEqual(['judge', 'compareSignals']);
+  });
+
+  it('still accepts an explicit compareSignals subset even when the board defaults would not fit the I/O map', () => {
+    // 明示リストは今までどおりリストの分だけしか見ない（§7.4）
+    const explicit = plcProblemJson({ judge: { compareSignals: ['PL1'] } });
+    expect(PlcProblemSchema.safeParse(explicit).success).toBe(true);
+  });
+
   it('refuses PB4 because the check circuit already occupies TB_PB.4c (§6.3)', () => {
     const withPb4 = plcProblemJson({
       io: {

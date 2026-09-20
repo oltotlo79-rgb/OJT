@@ -238,6 +238,24 @@ describe('document: 展開接続図の文書モデル（§11.1）', () => {
     expect(validateDocument(doc).map((e) => e.message)).toContain('未知の要素種別です: relay');
   });
 
+  it('Object.prototype のキー名を種別に持つ要素も「未知の要素種別」として弾く（SC-04）', () => {
+    // `validateDocument()` は公開APIで作りかけの文書にも直接呼ばれるため、`cell.kind` に
+    // `constructor` 等のプロトタイプ由来のキー名が実行時に来ても、DEVICE_PATTERNS から
+    // 関数などプロトタイプ由来の値を拾わず、例外にならずに「未知の要素種別」で弾く。
+    for (const poisoned of ['constructor', 'toString', 'valueOf', 'hasOwnProperty']) {
+      const doc = createDocument('x', 'プロトタイプ種別', [
+        rung('r1', BUS_P, BUS_N, [
+          { kind: poisoned as unknown as 'coil', id: 'c1', device: 'CR1' },
+          coil('c2', 'CR1'),
+        ]),
+      ]);
+      expect(() => validateDocument(doc)).not.toThrow();
+      expect(validateDocument(doc).map((e) => e.message)).toContain(
+        `未知の要素種別です: ${poisoned}`,
+      );
+    }
+  });
+
   it('母線につながらない段を弾く（つないでも電流の流れない死んだ回路）', () => {
     // 互いの内部節点を指し合う2段。循環参照ではない（resolveEnd は内部節点で止まる）が、
     // どちらもP母線に届かないので、割当も配線も通るのに全く動かない回路になる

@@ -202,6 +202,33 @@ describe('applyFaults (part faults)', () => {
     expect(applied.value.sites[0]?.report).toBe('part-defect');
     expect(applied.value.sites[0]?.partId).toBe('CR1');
   });
+
+  it('refuses two faults on the same part, even at different elements (CT-03)', () => {
+    // `FaultReport.target` は部品を partId だけで指す（要素を区別しない）ので、同じ部品に
+    // 2件の部品故障を入れると訓練者は片方を原理的に指摘できない（`elementIndex` が違っても同じ）。
+    const applied = applyFaults(session(), [
+      { target: { partId: 'CR1', elementIndex: 0 }, kind: 'coil-open' },
+      { target: { partId: 'CR1', elementIndex: 2 }, kind: 'contact-welded' },
+    ]);
+    expect(applied.ok).toBe(false);
+    if (applied.ok) return;
+    expect(applied.errors).toEqual([
+      {
+        path: 'faults[1].target.partId',
+        message: '同じ部品に複数の故障は入れられません: CR1',
+      },
+    ]);
+  });
+
+  it('still allows one fault each on two different parts', () => {
+    const applied = applyFaults(session(), [
+      { target: { partId: 'CR1', elementIndex: 0 }, kind: 'coil-open' },
+      { target: { partId: 'CR2', elementIndex: 0 }, kind: 'coil-open' },
+    ]);
+    expect(applied.ok).toBe(true);
+    if (!applied.ok) return;
+    expect(applied.value.partFaults).toHaveLength(2);
+  });
 });
 
 describe('faultParam', () => {

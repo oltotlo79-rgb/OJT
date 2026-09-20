@@ -379,13 +379,25 @@ function checkResolvedEnds(
 }
 
 function checkCell(cell: SchematicCell, cellPath: string, errors: DocumentError[]): void {
-  const pattern = DEVICE_PATTERNS[cell.kind];
+  // `cell.kind` は型では `CellKind` だが、`validateDocument()` は公開APIで作りかけの
+  // 文書にも直接呼ばれる（`SchematicEditor.tsx`）ため、実行時には検証前の任意の文字列が
+  // 来うる。`DEVICE_PATTERNS['constructor']` のようにプロトタイプ由来の値を拾わないよう
+  // 自前キーの有無で判定する（SC-04。SC-01 と同じ形）。
+  const pattern = Object.hasOwn(DEVICE_PATTERNS, cell.kind)
+    ? DEVICE_PATTERNS[cell.kind]
+    : undefined;
   if (pattern === undefined) {
     errors.push({ path: cellPath, message: `未知の要素種別です: ${String(cell.kind)}` });
   } else if (!pattern.test(cell.device)) {
+    // この時点で `cell.kind` は `pattern`（`DEVICE_PATTERNS[cell.kind]`）が own キーとして
+    // 見つかったことで確定済みだが、`CELL_KIND_LABELS` へのアクセスも同じ形にそろえる
+    // （プラン指示のとおり。SC-04）。
+    const label = Object.hasOwn(CELL_KIND_LABELS, cell.kind)
+      ? CELL_KIND_LABELS[cell.kind]
+      : String(cell.kind);
     errors.push({
       path: cellPath,
-      message: `${CELL_KIND_LABELS[cell.kind]} に使えない機器名です: ${cell.device}`,
+      message: `${label} に使えない機器名です: ${cell.device}`,
     });
   }
   if (cell.kind === 'coil' && cell.device.startsWith('T')) {
