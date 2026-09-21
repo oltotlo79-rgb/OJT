@@ -71,10 +71,10 @@ OJT_SHOT_DIR=<出力先> pnpm --filter @ojt/desktop exec playwright test e2e/ui-
 `pnpm --filter @ojt/desktop e2e:shots` は `manual-shots` プロジェクトを実行し、追跡対象の
 `docs/manual/images/` と `docs/manual/shot-geometry.json` を更新する。
 
-1. 専用 worktree でソースを確定する。
+1. `OJT/.worktrees/phase7` でソースを確定する。
 2. `e2e` で動作を検証する。既定では撮影は走らない。
 3. `e2e:shots` を行った場合は、画像を確認して意図した差分を明示的にコミットする。
-   撮影を配布に含めない場合は、元の作業を消さず清浄な別 worktree から配布する。
+   撮影を配布に含めない場合も元の作業を消さず、差分の扱いを確定してから配布する。
 4. `git status --short` が空であることを確かめてから `dist` を実行する。
 
 `dist` はコミットされた図からPDFを作る。ソースと図の版が異なる配布物を作らないこと。
@@ -96,19 +96,17 @@ OJT_SHOT_DIR=<出力先> pnpm --filter @ojt/desktop exec playwright test e2e/ui-
 
 **代わりにすること**:
 
-- 並行して進む作業は**worktree**で行う（`git worktree add --detach <path> origin/main`）。
-  共有ツリーが必要なとき以外は共有ツリーで長時間の作業をしない。
+- 作業は既存の `OJT/.worktrees/phase7` で行う。共有ツリーの未保存変更を保護し、
+  作業ごとにworktreeを増やさない。
 - 共有ツリーでコミットするときは**対象パスを明示**する
   （`git commit --only -- <paths>`）。ステージ前に `git diff origin/main -- <file>` で
   自分の差分だけかを確認する。
-- 共有ツリーが fast-forward できない（他が同じファイルを書き換え中）ときは
-  `git format-patch` でパッチを作り、使い捨ての worktree で `origin/main` を取得して
-  `git am`（または `git apply --index --3way`）してからコミットし、`push origin HEAD:main`
-  したのち worktree を `git worktree remove --force` で片付ける。
+- 共有ツリーが fast-forward できないときも未保存変更を消さない。既存worktreeで
+  `origin/main` との差分を確認して必要なコミットを統合し、`push origin HEAD:main` する。
 - ビルド・E2E・`dist`（§6）は必ず worktree で行う。
 - push は `git push origin main` に頼らず、`git fetch origin` で最新化してから
   `git status -sb` を見て `ahead N, behind 0` のときだけ直接 push し、それ以外は上記の
-  patch 経由で land させる。
+  統合手順を踏む。
 
 ## 8. パッケージ構成
 
@@ -125,13 +123,14 @@ OJT_SHOT_DIR=<出力先> pnpm --filter @ojt/desktop exec playwright test e2e/ui-
 ## 9. リリース手順（`apps/desktop/package.json` の `version` を上げるとき）
 
 1. `git fetch origin` して `main` を最新化する。
-2. `pnpm install --frozen-lockfile` → `pnpm verify` が無警告で通ること。
+2. `pnpm install --frozen-lockfile` → `pnpm verify` が成功すること。残る依存ライブラリの
+   警告は原因と影響をリリース記録へ明記し、未解決の検査失敗を無視しない。
 3. `pnpm --filter @ojt/content validate src/builtin` が0件の問題であること。
-4. **使い捨ての worktree**で `pnpm --filter @ojt/desktop build` → `pnpm --filter @ojt/desktop e2e`
+4. **既存のOJT内worktree**で `pnpm --filter @ojt/desktop build` → `pnpm --filter @ojt/desktop e2e`
    を2回連続グリーンで確認する（既定のE2Eは図を撮り直さない。§6）。
 5. **`git status --short` が空であることを確認してから**、同じ worktree で
-   `pnpm --filter @ojt/desktop dist` を実行する（§6。空でなければ `git checkout -- docs/manual`
-   で戻してから実行する）。`release/artifacts.md` が生成されることを確認する。
+   `pnpm --filter @ojt/desktop dist` を実行する（§6。差分があれば内容を確認して確定し、
+   一括で破棄しない）。`release/artifacts.md` が生成されることを確認する。
    続けて `pnpm --filter @ojt/desktop e2e:packaged` を実行する。配布EXEを1つだけ別フォルダへ置き、
    一時userDataとCDPで課題・3D判定・ヘルプ・PLC・終了時の展開物削除を確認する。
    `check-dist` は旧版混入・内蔵課題の内容違い・asarの欠損や不要依存・PDF形式・保護設定を拒否する。

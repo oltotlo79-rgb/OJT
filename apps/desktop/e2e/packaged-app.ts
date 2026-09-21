@@ -4,7 +4,7 @@ import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } fro
 import { rm } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { chromium, type Browser, type Page } from '@playwright/test';
 import { APP_ROOT, CHROMIUM_FLAGS } from './app.js';
@@ -21,7 +21,9 @@ export async function launchPortable(): Promise<PackagedApp> {
   const pkg = JSON.parse(readFileSync(join(APP_ROOT, 'package.json'), 'utf8')) as {
     version: string;
   };
-  const root = mkdtempSync(join(tmpdir(), 'ojt-portable-e2e-'));
+  // TEMPの区切りが「/」でも、作成先と削除範囲の比較を同じ絶対パスに揃える。
+  const tempRoot = resolve(tmpdir());
+  const root = mkdtempSync(join(tempRoot, 'ojt-portable-e2e-'));
   const received = join(root, 'received');
   const userData = join(root, 'profile');
   mkdirSync(received);
@@ -49,7 +51,7 @@ export async function launchPortable(): Promise<PackagedApp> {
         stdio: 'ignore',
       });
     }
-    if (dirname(root) !== tmpdir()) throw new Error('一時データの削除範囲が違います');
+    if (dirname(root) !== tempRoot) throw new Error('一時データの削除範囲が違います');
     if (childClosed) await childClosed;
     await browser?.close().catch(() => {});
     await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
