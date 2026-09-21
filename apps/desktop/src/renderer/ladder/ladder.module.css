@@ -18,7 +18,7 @@
   /* 右の折りたたみ列の幅。`workspaceBody` の3列目（#27） */
   --ladder-side-w: 200px;
   /* 左のプロジェクトツリーの上限幅。回路コメントが長くてもここより広げない（#27） */
-  --ladder-tree-w: 140px;
+  --ladder-tree-w: max(140px, 9rem);
 
   display: flex;
   flex-direction: column;
@@ -738,7 +738,7 @@ details[open] > .sideSummary::before {
  */
 @media (max-width: 1599px) {
   .workspace {
-    --ladder-tree-w: 116px;
+    --ladder-tree-w: max(116px, 8rem);
   }
 
   .workspaceBody {
@@ -1252,9 +1252,7 @@ details[open] > .sideSummary::before {
 .treeRoot,
 .treeDocument {
   display: block;
-  overflow: hidden;
   white-space: nowrap;
-  text-overflow: ellipsis;
 }
 .treeList button {
   max-width: 100%;

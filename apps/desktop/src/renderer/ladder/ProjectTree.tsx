@@ -34,13 +34,13 @@ export function ProjectTree({
       style={{ '--tree-current': currentColor } as CSSProperties}
     >
       <p className={styles.treeRoot} title={profile.panels.tree}>
-        {profile.panels.tree}
+        {JA.ladder.nativeTree[profile.id]}
       </p>
       {/* a11y: ネットワーク一覧は木構造として読み上げる（Batch 3 レビュー M8） */}
       <ul className={styles.treeList} role="tree" aria-label={JA.ladder.treeProgram}>
         <li role="treeitem" aria-expanded="true">
           <span className={styles.treeDocument} title={documentName(profile.id)}>
-            {documentName(profile.id)}
+            {JA.ladder.nativeProgram[profile.id]}
           </span>
           <ul role="group">
             {program.networks.map((net, index) => (

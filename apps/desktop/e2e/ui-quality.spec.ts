@@ -956,6 +956,13 @@ async function stop(
       });
     }
     record(list);
+    // --grep で一部だけ実行しても、集計を通らず文字切れ等が見逃されないようにする。
+    expect
+      .soft(
+        list.filter((finding) => finding.severity === 'blocking' || BASELINE[finding.check] === 0),
+        `${screen} ${key}`,
+      )
+      .toEqual([]);
   }
   if (options.focus === true) {
     record(await auditFocus(page, screen, sizeKey(SIZES[1] ?? { width: 1440, height: 900 })));

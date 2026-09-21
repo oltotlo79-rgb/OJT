@@ -497,6 +497,18 @@ export const JA = {
       jtekt: 'プログラム1 — PROC000',
       sharp: 'メイン [ラダー]',
     },
+    nativeTree: {
+      mitsubishi: 'ナビゲーション',
+      omron: 'プロジェクト',
+      jtekt: 'プロジェクト',
+      sharp: 'プロジェクト',
+    },
+    nativeProgram: {
+      mitsubishi: 'MAIN',
+      omron: 'プログラム1',
+      jtekt: 'プログラム1',
+      sharp: 'メイン',
+    },
     nativeEdit: '編集',
     nativeRead: '読取専用',
     nativeCheck: 'プログラムチェック',
