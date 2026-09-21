@@ -73,8 +73,11 @@ export function checkPlan(files, packages) {
   const checks = [{ cwd: '.', args: ['--test', 'scripts/check-push.test.mjs'], node: true }];
   for (const workspace of [...packages.map((name) => `packages/${name}`), 'apps/desktop']) {
     const relevant = source.filter((path) => path.startsWith(`${workspace}/`));
-    if (workspace === 'apps/desktop')
+    if (workspace === 'apps/desktop') {
+      // Electron 44 の初回取得を複数の Vitest worker が同時に開始しないよう直列化する。
+      checks.push({ cwd: workspace, args: ['-e', "require('electron')"], node: true });
       relevant.push(...MANUAL_GATES.map((path) => `${workspace}/${path}`));
+    }
     if (configuration) checks.push({ cwd: workspace, args: ['run'] });
     else if (relevant.length || shared.length) {
       checks.push({

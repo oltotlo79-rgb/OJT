@@ -50,7 +50,10 @@ test('共有エンジンの変更は各パッケージと画面の依存関係�
   const plan = checkPlan([file], ['ladder-core', 'plc-dialects']);
   for (const check of plan.filter((row) => !row.node))
     assert.ok(check.args.includes(`../../${file}`));
-  assert.equal(plan.length, 4);
+  assert.deepEqual(
+    plan.filter((row) => !row.node).map((row) => row.cwd),
+    ['packages/ladder-core', 'packages/plc-dialects', 'apps/desktop'],
+  );
 });
 
 test('依存関係・テスト設定の変更では関連判定だけに頼らない', () => {
