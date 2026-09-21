@@ -37,6 +37,26 @@ describe('loadProblemsFromDir', () => {
     expect(set.errors).toEqual([]);
   });
 
+  it('counts only JSON files across both levels and keeps the accepted prefix', async () => {
+    mkdirSync(join(dir, 'a'));
+    write('a/1.json', { ...selfHoldProblemJson(), id: 'b-101' });
+    write('2.json', { ...selfHoldProblemJson(), id: 'b-102' });
+    write('notes.txt', 'ignored');
+    const limited = await loadProblemsFromDir(dir, { maxFiles: 1 });
+    expect(limited.problems).toHaveLength(1);
+    expect(limited.errors).toHaveLength(1);
+    const exact = await loadProblemsFromDir(dir, { maxFiles: 2 });
+    expect(exact.problems).toHaveLength(2);
+    expect(exact.errors).toEqual([]);
+  });
+
+  it.each([0, -1, 1.5, 2001, Number.NaN])(
+    'rejects an invalid file budget: %s',
+    async (maxFiles) => {
+      await expect(loadProblemsFromDir(dir, { maxFiles })).rejects.toThrow(RangeError);
+    },
+  );
+
   it('keeps loading after a broken file and reports the reason', async () => {
     write('broken.json', '{ "oops"');
     write('good.json', { ...selfHoldProblemJson(), id: 'b-103' });

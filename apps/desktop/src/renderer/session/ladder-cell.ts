@@ -18,14 +18,6 @@ import { roundTimerPreset, type DialectProfile, type InstructionKey } from '@ojt
 import { JA } from '../i18n/ja.js';
 
 /**
- * OMRON・JTEKT・シャープの既定のタイマ刻み（0.1秒＝100ms）。指摘 LE-6
- *
- * この3方言は `DialectProfile.timerBaseMs` を実装しない（一定刻みなので不要）。丸め提示は
- * `profile.timerBaseMs?.(device) ?? DEFAULT_TIMER_BASE_MS` で、三菱だけ番号帯ごとの刻みを使う。
- */
-const DEFAULT_TIMER_BASE_MS = 100;
-
-/**
  * デバイス入力欄の中身 ⇄ セル。設計仕様 §10.3 / §10.5。
  * React を知らない純粋層で、方言の読み書き（`parseDevice` / `parseTimerPreset`）は
  * すべて `DialectProfile` に任せる（Phase 4 でメーカーが増えてもここは変わらない）。
@@ -118,8 +110,7 @@ export interface RoundSuggestion {
  *
  * 指摘 LE-6: 以前は方言に関わらず三菱固有の `timerBaseMs()`（番号帯で1/10/100ms に変わる）を
  * 使っていたため、OMRON/JTEKT/シャープでもこの機種に無い刻み（例: T256相当で「1ms刻みに
- * 丸めますか」）を提示していた。丸めの刻みは `profile.timerBaseMs?.(device)` から取り、
- * 実装しない方言（一定刻み）は既定の0.1秒刻みへ倒す。
+ * 丸めますか」）を提示していた。丸めの刻みは `profile.timerBaseMs(device)` から取る。
  */
 export function roundSuggestionFor(
   ms: number,
@@ -127,7 +118,7 @@ export function roundSuggestionFor(
   profile: DialectProfile,
 ): RoundSuggestion | undefined {
   if (!(profile.timerPreset(ms, device) instanceof Error)) return undefined;
-  const baseMs = profile.timerBaseMs?.(device) ?? DEFAULT_TIMER_BASE_MS;
+  const baseMs = profile.timerBaseMs(device);
   return { ms, baseMs, rounded: roundTimerPreset(ms, baseMs) };
 }
 

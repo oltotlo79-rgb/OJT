@@ -17,6 +17,7 @@ afterEach(() => {
 });
 
 beforeEach(() => {
+  useStore.setState({ toasts: [] });
   useStore.getState().abandonSession();
   useStore.getState().openProblem(problem);
 });
@@ -95,6 +96,14 @@ describe('GX Works3風の枠（§10.6 / §17）', () => {
     useStore.getState().setLadderCursor({ networkId: 'n2', row: 0, col: 0 });
     fireEvent.click(screen.getByTestId('toolbar-delete-network'));
     expect(useStore.getState().ladder?.networks.map((n) => n.id)).toEqual(['n1', 'end']);
+  });
+
+  it('explains a row-limit error without exposing the internal network id', () => {
+    workspace();
+    for (let i = 0; i < 20; i += 1) fireEvent.click(screen.getByTestId('toolbar-insert-row'));
+    const text = useStore.getState().toasts.at(-1)?.text ?? '';
+    expect(text).toContain('20行');
+    expect(text).not.toContain('n1');
   });
 
   it('inserts and deletes rows inside a network', () => {

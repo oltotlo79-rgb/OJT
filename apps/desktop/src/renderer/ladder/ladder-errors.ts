@@ -1,4 +1,5 @@
 import type { CompileErrorCode } from '@ojt/ladder-core';
+import { JA } from '../i18n/ja.js';
 
 /**
  * 変換・編集エラーの生の文言から、内部識別子を追い出す。設計仕様 §10.6。指摘 LE-9
@@ -38,6 +39,18 @@ export function friendlyCompileMessage(code: string, message: string): string {
 export function friendlyLadderErrorMessage(message: string): string {
   if (message.includes('罫線は空セル・横線・縦線の上にだけ引けます')) {
     return '罫線は空セル・横線・縦線の上にだけ引けます（接点やコイルの上には引けません）。';
+  }
+  if (message.includes('行数が上限')) return JA.ladder.editError.rowLimit;
+  if (message.includes('最後の行は削除できません')) return JA.ladder.editError.lastRow;
+  if (message.includes('最終行') && message.includes('罫線'))
+    return JA.ladder.editError.lastRowLine;
+  if (message.startsWith('ネットワークIDが重複')) return JA.ladder.editError.duplicate;
+  if (message.startsWith('ネットワークがありません')) return JA.ladder.editError.missing;
+  if (message.startsWith('ネットワークを位置') || message.includes('には挿入できません')) {
+    return JA.ladder.editError.insertion;
+  }
+  if (message.startsWith('ネットワーク ') && /に[行列] /u.test(message)) {
+    return JA.ladder.editError.selection;
   }
   return message;
 }

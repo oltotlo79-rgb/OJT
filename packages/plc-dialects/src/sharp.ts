@@ -282,6 +282,7 @@ export const SHARP_JW300: DialectProfile = {
   deviceRanges: DEVICE_RANGES,
   timerPreset,
   parseTimerPreset,
+  timerBaseMs: () => TIMER.baseMs,
   counterPresetText,
   parseCounterPreset,
   specialDevices: SPECIAL_DEVICES,

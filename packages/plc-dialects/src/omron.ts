@@ -445,6 +445,7 @@ export const OMRON_CP1E: DialectProfile = {
   deviceRanges: DEVICE_RANGES,
   timerPreset,
   parseTimerPreset,
+  timerBaseMs: () => TIMER.baseMs,
   counterPresetText,
   parseCounterPreset,
   specialDevices: SPECIAL_DEVICES,

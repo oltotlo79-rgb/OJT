@@ -304,6 +304,7 @@ export const JTEKT_PC10G: DialectProfile = {
   deviceRanges: DEVICE_RANGES,
   timerPreset,
   parseTimerPreset,
+  timerBaseMs: () => TIMER.baseMs,
   counterPresetText,
   parseCounterPreset,
   specialDevices: SPECIAL_DEVICES,

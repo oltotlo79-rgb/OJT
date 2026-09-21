@@ -118,6 +118,18 @@ describe('compile', () => {
     expect(codes(result.errors)).toContain('after-end');
   });
 
+  it('rejects content before END in the same network (B+C I3)', () => {
+    const result = compile(program(network('mixed', [rung(no(X(0)), out(Y(0))), [end()]])));
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.errors).toContainEqual(
+      expect.objectContaining({ code: 'after-end', row: 0, col: 0 }),
+    );
+    expect(result.errors).toContainEqual(
+      expect.objectContaining({ code: 'after-end', row: 0, col: IR_COLS - 1 }),
+    );
+  });
+
   it('requires output cells in the coil column and forbids contacts there', () => {
     const wrongColumn = program(network('n1', [[no(X(0)), out(Y(0))]]), endNetwork());
     const a = compile(wrongColumn);

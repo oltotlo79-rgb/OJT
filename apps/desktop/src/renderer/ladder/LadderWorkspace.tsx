@@ -41,6 +41,7 @@ import { ShortcutOverlay } from './ShortcutOverlay.js';
 import { SkinStatusBar, SkinTitleBar } from './SkinFrame.js';
 import { WatchPanel } from './WatchPanel.js';
 import { skinCssVars, skinThemeOf } from './skins/index.js';
+import { friendlyLadderErrorMessage } from './ladder-errors.js';
 import styles from './ladder.module.css';
 
 /**
@@ -286,7 +287,7 @@ export function LadderWorkspace({
         return true;
       } catch (error) {
         if (!(error instanceof LadderError)) throw error;
-        store.toast(error.message, 'error');
+        store.toast(friendlyLadderErrorMessage(error.message), 'error');
         return false;
       }
     },

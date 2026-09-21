@@ -15,6 +15,7 @@ import {
   Y,
   type Cell,
 } from '@ojt/ladder-core';
+import { friendlyLadderErrorMessage } from '../src/renderer/ladder/ladder-errors.js';
 import { MITSUBISHI_FX5U } from '@ojt/plc-dialects';
 import { describe, expect, it } from 'vitest';
 import { errorCellKeys, runConvert, unusedDevices } from '../src/renderer/session/ladder-errors.js';
@@ -107,5 +108,23 @@ describe('unusedDevices（§10.8。表示のみ。決定表#15b）', () => {
     // Y0 は書くだけで読まないので `neverRead` には出る。ここで見たいのは `neverWritten` が
     // 空であること（SP が「未使用」扱いされないこと）
     expect(result.issues.unused).toEqual({ neverRead: ['Y0'], neverWritten: [] });
+  });
+});
+
+// B+C I1: 全編集経路の診断を画面向けに直す。
+describe('friendlyLadderErrorMessage', () => {
+  it.each([
+    'ネットワークがありません: hidden-id',
+    'ネットワーク hidden-id に行 90 はありません',
+    'ネットワーク hidden-id に列 90 はありません',
+    'ネットワーク hidden-id の最終行（2）の下には罫線を引けません',
+    'ネットワーク hidden-id の行 90 には挿入できません',
+    'ネットワーク hidden-id の行数が上限（20）を超えます',
+    'ネットワーク hidden-id の最後の行は削除できません',
+    'ネットワークを位置 90 には挿入できません',
+    'ネットワークIDが重複しています: hidden-id',
+  ])('removes internal coordinates and offers recovery: %s', (message) => {
+    expect(friendlyLadderErrorMessage(message)).not.toMatch(/hidden-id|90/u);
+    expect(friendlyLadderErrorMessage(message)).not.toBe(message);
   });
 });

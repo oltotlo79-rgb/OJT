@@ -277,21 +277,40 @@ describe('loadContent の所要時間（1D2-a: 大きなフォルダでも一覧
 });
 
 describe('利用者課題フォルダのファイル数の足切り（Phase 7 Task 9 / DM-1 ≡ CT-06）', () => {
-  it('上限（200件）を超えた.jsonを置いても1秒以内に応答し、警告行を返す（1件も読まない）', async () => {
+  it('サブフォルダも合算し、上限の200件は残して超過を警告する', async () => {
     const dir = tempDir();
-    // 中身を検証する前の readdir だけの足切りなので、中身は空でよい（実際に読めば固まる分量）
+    const builtin = BUILTIN_ALL_PROBLEMS[0]!;
+    mkdirSync(join(dir, 'a'));
+    mkdirSync(join(dir, 'b'));
     for (let i = 0; i < MAX_USER_PROBLEM_FILES + 1; i += 1) {
-      writeFileSync(join(dir, `u-${String(i).padStart(5, '0')}.json`), '{}', 'utf8');
+      const id = `u-${String(i).padStart(5, '0')}`;
+      writeFileSync(
+        join(dir, i < 100 ? 'a' : 'b', `${id}.json`),
+        JSON.stringify({ ...builtin, id }),
+        'utf8',
+      );
     }
-    const started = Date.now();
     const { payload } = await loadContent(dir);
-    const tookMs = Date.now() - started;
-    expect(payload.problems).toHaveLength(BUILTIN_ALL_PROBLEMS.length);
+    expect(payload.problems).toHaveLength(BUILTIN_ALL_PROBLEMS.length + MAX_USER_PROBLEM_FILES);
     expect(payload.errors).toHaveLength(1);
-    expect(payload.errors[0]?.message).toContain(String(MAX_USER_PROBLEM_FILES + 1));
     expect(payload.errors[0]?.message).toContain(String(MAX_USER_PROBLEM_FILES));
-    expect(tookMs).toBeLessThan(1000);
+    expect(payload.errors[0]?.message).toContain('打ち切りました');
   }, 30_000);
+
+  it('READMEやメモは課題の件数に数えない', async () => {
+    const dir = tempDir();
+    for (let i = 0; i < MAX_USER_PROBLEM_FILES + 1; i += 1) {
+      writeFileSync(join(dir, `${String(i)}.txt`), 'memo', 'utf8');
+    }
+    writeFileSync(
+      join(dir, 'u-900.json'),
+      JSON.stringify({ ...BUILTIN_ALL_PROBLEMS[0], id: 'u-900' }),
+      'utf8',
+    );
+    const { payload } = await loadContent(dir);
+    expect(payload.problems).toHaveLength(BUILTIN_ALL_PROBLEMS.length + 1);
+    expect(payload.errors).toEqual([]);
+  });
 
   it('ちょうど上限の件数は打ち切らず読み込む', async () => {
     const dir = tempDir();

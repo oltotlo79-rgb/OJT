@@ -58,15 +58,23 @@ async function directoryCheck(full: string): Promise<boolean | undefined> {
  *
  * `MAX_PROBLEM_FILES` 件に達したら以降は集めず、打ち切った旨を `errors` に積む（DM-1 ≡ CT-06）。
  */
-async function collectJsonFiles(dir: string, errors: ProblemLoadError[]): Promise<string[]> {
+async function collectJsonFiles(
+  dir: string,
+  errors: ProblemLoadError[],
+  maxFiles: number,
+): Promise<string[]> {
   const out: string[] = [];
   let truncated = false;
+  const add = (file: string): boolean => {
+    if (out.length === maxFiles) {
+      truncated = true;
+      return false;
+    }
+    out.push(file);
+    return true;
+  };
   const names = (await readdir(dir)).sort();
   for (const name of names) {
-    if (out.length >= MAX_PROBLEM_FILES) {
-      truncated = true;
-      break;
-    }
     const full = join(dir, name);
     const isDirectory = await directoryCheck(full);
     if (isDirectory === undefined) continue;
@@ -84,22 +92,20 @@ async function collectJsonFiles(dir: string, errors: ProblemLoadError[]): Promis
         continue;
       }
       for (const child of children) {
-        if (out.length >= MAX_PROBLEM_FILES) {
-          truncated = true;
-          break;
-        }
         const childPath = join(full, child);
-        if (isJsonFile(child) && (await directoryCheck(childPath)) === false) out.push(childPath);
+        if (isJsonFile(child) && (await directoryCheck(childPath)) === false && !add(childPath))
+          break;
       }
-    } else if (isJsonFile(name)) {
-      out.push(full);
+      if (truncated) break;
+    } else if (isJsonFile(name) && !add(full)) {
+      break;
     }
   }
   if (truncated) {
     errors.push({
       file: dir,
       reason: 'read-error',
-      message: `課題ファイルが多すぎるため ${String(MAX_PROBLEM_FILES)} 件で打ち切りました`,
+      message: `課題ファイルが多すぎるため ${String(maxFiles)} 件で打ち切りました。残りは別のフォルダに移して開いてください`,
       issues: [],
     });
   }
@@ -207,13 +213,20 @@ async function loadOne(
  * フォルダから課題を読み込む。§7.8
  * フォルダが無い場合は空の結果と `read-error` を1件返す（内蔵課題だけで動作を続ける。§13 #9）。
  */
-export async function loadProblemsFromDir(dir: string): Promise<ProblemSet> {
+export async function loadProblemsFromDir(
+  dir: string,
+  options: { maxFiles?: number } = {},
+): Promise<ProblemSet> {
+  const maxFiles = options.maxFiles ?? MAX_PROBLEM_FILES;
+  if (!Number.isInteger(maxFiles) || maxFiles < 1 || maxFiles > MAX_PROBLEM_FILES) {
+    throw new RangeError(`maxFiles must be between 1 and ${String(MAX_PROBLEM_FILES)}`);
+  }
   const problems: SupportedProblem[] = [];
   const errors: ProblemLoadError[] = [];
   const seenIds = new Set<string>();
   let files: string[];
   try {
-    files = await collectJsonFiles(dir, errors);
+    files = await collectJsonFiles(dir, errors, maxFiles);
   } catch (cause) {
     return {
       problems,

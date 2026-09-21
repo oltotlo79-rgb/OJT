@@ -8,10 +8,12 @@ import {
   createTesterState,
   injectFault,
   readTester,
+  stepTester,
   TESTER_NO_PROBE_DISPLAY,
   TESTER_OFF_DISPLAY,
 } from '../src/index.js';
 import type { Simulation, TesterAction, TesterState } from '../src/index.js';
+import { getRangeExceeded } from '../src/meter-state.js';
 import { bench, powerOn, t, w } from './helpers/circuits.js';
 
 /** リレー1個・ランプ1個の点検台。PB1でコイルを励磁する。 */
@@ -258,5 +260,16 @@ describe('readTester (digital)', () => {
     sim.addWire(w('w-cont', 'CR1.1', 'CR1.5'));
     const after = readTester(sim, state);
     expect(after.display).toBe('導通');
+  });
+});
+
+describe('stepTester range identity (CS-12)', () => {
+  it('tracks the actual meter kind and resistance range', () => {
+    const sim = coilBench();
+    const state = { ...createTesterState('analog'), mode: 'OHM' as const, ohmRange: 1000 as const };
+    stepTester(sim, state);
+    expect(getRangeExceeded(sim)?.rangeKey).toBe('analog:OHM:1000');
+    stepTester(sim, { ...state, kind: 'digital', ohmRange: 10 });
+    expect(getRangeExceeded(sim)?.rangeKey).toBe('digital:OHM:10');
   });
 });

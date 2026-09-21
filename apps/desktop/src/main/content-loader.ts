@@ -1,4 +1,4 @@
-import { readdir, stat } from 'node:fs/promises';
+import { stat } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { BUILTIN_ALL_PROBLEMS, type SupportedProblem } from '@ojt/content';
@@ -153,40 +153,14 @@ export async function probeUserDir(
   return withTimeout(probe, timeoutMs, MISSING);
 }
 
-/**
- * 利用者課題フォルダの直下に置いてよいエントリ数の上限。§13 #9 / レビュー DM-1 ≡ CT-06
- * 1件ずつ読む・zodで検証するのは main を長時間止めるので、その前に`readdir()`だけで
- * 件数を数えて足切りする（`readdir()` 自体は中身を読まないので軽い）。
- */
+/** 利用者課題の上限。直下とモード別サブフォルダを合わせて数える。 */
 export const MAX_USER_PROBLEM_FILES = 200;
 
-/**
- * 利用者フォルダの課題を読む。件数が上限を超えていたら1件も読まず、警告だけを返す
- * （DM-1 ≡ CT-06。§13 #9 の「利用者課題フォルダが存在しない」と同じ扱いの警告行にする）。
- */
+/** 上限までの課題は読み込み、超過は一覧に警告する（B+C I4）。 */
 async function readUserProblems(userDir: string, exists: boolean): Promise<ProblemSet> {
-  if (!exists) return { problems: [], errors: [] };
-  let fileCount: number;
-  try {
-    fileCount = (await readdir(userDir)).length;
-  } catch {
-    // 数えられなければ「無い」のと同じ扱いにする（`loadProblemsFromDir()` が改めて理由を返す）
-    return loadProblemsFromDir(userDir);
-  }
-  if (fileCount > MAX_USER_PROBLEM_FILES) {
-    return {
-      problems: [],
-      errors: [
-        {
-          file: userDir,
-          reason: 'read-error',
-          message: MSG.content.tooManyUserFiles(fileCount, MAX_USER_PROBLEM_FILES),
-          issues: [],
-        },
-      ],
-    };
-  }
-  return loadProblemsFromDir(userDir);
+  return exists
+    ? loadProblemsFromDir(userDir, { maxFiles: MAX_USER_PROBLEM_FILES })
+    : { problems: [], errors: [] };
 }
 
 /** 内蔵課題と利用者フォルダを実際に読んで合流する（覚えている結果は見ない）。 */

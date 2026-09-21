@@ -42,15 +42,6 @@ export const MSG = {
      */
     countMismatch: (diskCount: number, builtinCount: number): string =>
       `同梱課題フォルダから読めた課題数（${String(diskCount)}件）が想定（${String(builtinCount)}件）と一致しません`,
-    // --- Phase 7 Task 9 ---
-    /**
-     * 利用者課題フォルダのファイル数が多すぎて読込を打ち切った。§13 #9 / レビュー DM-1 ≡ CT-06
-     * 1万件の `.json` を数え上げてから1件ずつ読む・検証するのは main を長時間止めるため、
-     * 件数だけ数えた時点で断り、内蔵課題のみで動作する。
-     */
-    tooManyUserFiles: (fileCount: number, max: number): string =>
-      `利用者課題フォルダのファイルが多すぎます（${String(fileCount)}件、上限${String(max)}件）。内蔵課題のみで動作します`,
-    // --- /Phase 7 Task 9 ---
   },
   settings: {
     /** 設定ファイルが読めなかった（既定値で動く）。§12.1 */

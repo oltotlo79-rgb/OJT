@@ -299,7 +299,8 @@ export function compile(source: LadderProgram): CompileResult {
       return;
     }
     const outputs: CompiledOutput[] = [];
-    let hasEnd = false;
+    const hasEnd = net.cells.some((line) => line.some((cell) => cell.kind === 'end'));
+    if (hasEnd && endNetworkIndex < 0) endNetworkIndex = netIndex;
     let hasContent = false;
 
     for (let row = 0; row < net.rows; row += 1) {
@@ -308,18 +309,11 @@ export function compile(source: LadderProgram): CompileResult {
         if (cell.kind === 'empty') continue;
         hasContent = true;
         if (cell.kind === 'end') {
-          hasEnd = true;
-          if (endNetworkIndex < 0) endNetworkIndex = netIndex;
           continue;
         }
         /*
-         * 指摘 LC-1: END を含むネットワークの内側で END より後ろに置かれた中身も拒む。
-         * `!hasEnd` だけで判定すると、END セル自身を処理した時点で `hasEnd` が真になり、
-         * **同じネットワーク内で END のすぐあとに置かれた中身**（LE-3 の保護をすり抜けて
-         * 入った古い作業ファイル等）がここを素通りしてしまう（ランタイムは `net.isEnd` で
-         * `break` するので、一度も実行されない回路が「変換成功」と出ていた）。
-         * `endNetworkIndex` は END セルを見つけた瞬間に確定するので、これだけで
-         * 「END より後ろ」（同じネットワークの残りの列も、後続のネットワークも）を判定できる。
+         * ランタイムは END を含むネットワーク全体を実行しない。
+         * セルの走査順に関係なく、同居する回路と後続ネットワークを拒む（LC-1 / B+C I3）。
          */
         if (endNetworkIndex >= 0) {
           errors.push({
@@ -327,7 +321,7 @@ export function compile(source: LadderProgram): CompileResult {
             networkId: net.id,
             row,
             col,
-            message: 'END より後ろにはプログラムを書けません',
+            message: 'END と同じ回路ブロックや、その後ろにはプログラムを書けません',
           });
           continue;
         }

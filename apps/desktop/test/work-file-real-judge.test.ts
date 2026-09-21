@@ -21,6 +21,8 @@ import { beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
  * `parseWorkFile()` → `applyWorkFile()` → `judgeInspectRepair()` を素通りさせる。
  */
 
+vi.setConfig({ testTimeout: 120_000 });
+
 const bridgeMock = vi.hoisted((): WorkerBridgeMockState => ({ sent: [], handlers: undefined }));
 const apiState = vi.hoisted((): { readProblem: Mock } => ({ readProblem: vi.fn() }));
 

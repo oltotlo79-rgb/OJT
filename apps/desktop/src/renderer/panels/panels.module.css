@@ -676,3 +676,11 @@
   margin: 8px 0 0;
 }
 /* --- /Phase 7 Task 25 --- */
+
+/* 判定対象の報告欄に添える案内。 */
+.hint {
+  color: var(--muted);
+  font-size: 0.875rem;
+  line-height: 1.65;
+  margin: 0 0 0.75rem;
+}

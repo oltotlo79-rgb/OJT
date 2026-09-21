@@ -137,15 +137,15 @@ describe('timerPresetMs / roundSuggestionFor（§10.5）', () => {
     expect(timerPresetMs('0100', T(0), SHARP_JW300)).toBe(10_000);
   });
 
-  /**
-   * 指摘 LE-6: 丸めの刻みは `profile.timerBaseMs?.(device)` から取る。実装しないOMRON等は
-   * 一定の0.1秒刻み（100ms）で、三菱の番号帯（T256以降は1ms）を誤って提示しない。
-   */
-  it('offers only the 0.1 s rounding for dialects without a per-range timerBaseMs (LE-6)', () => {
-    expect('timerBaseMs' in OMRON_CP1E).toBe(false);
-    const suggestion = roundSuggestionFor(155, T(0), OMRON_CP1E);
-    expect(suggestion?.baseMs).toBe(100);
-  });
+  it.each([OMRON_CP1E, JTEKT_PC10G, SHARP_JW300])(
+    'uses the timer rule of $id for rounding (LE-6)',
+    (dialect) => {
+      const suggestion = roundSuggestionFor(155, T(0), dialect);
+      expect(suggestion?.baseMs).toBe(100);
+      expect(suggestion?.rounded).toBe(200);
+      expect(dialect.timerPreset(suggestion!.rounded, T(0))).not.toBeInstanceOf(Error);
+    },
+  );
 });
 
 describe('カウンタ設定値を方言へ寄せる（§10.5 / 申し送り F-2）', () => {
