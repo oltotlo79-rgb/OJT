@@ -11,6 +11,8 @@ import { useStore, type Route } from './store.js';
 import { formatElapsed, formatSavedAt } from '../../worker/runtime.js';
 import styles from './app.module.css';
 import { applyUiPreferences } from './ui-preferences.js';
+import { TourOverlay } from '../tour/TourOverlay.js';
+import { useTourStore } from '../tour/tour-store.js';
 
 /**
  * アプリの外枠。設計仕様 §12.1 / §13 #5 / §12.3 / §15。
@@ -108,6 +110,7 @@ export function App(): JSX.Element {
     if (api === undefined) return;
     void api.getSettings().then(
       (settings) => {
+        useTourStore.getState().initialize(settings.tourDone);
         applyUiPreferences(settings);
         sounds.configure({ enabled: settings.soundEnabled, volume: settings.soundVolume });
         useStore.getState().applyLadderSettings({
@@ -319,6 +322,7 @@ export function App(): JSX.Element {
         中に置くと、引き出しの中で例外が出たときに引き出しごと消えてバナーまで消える。
       */}
       <HelpRoot />
+      <TourOverlay />
       <div className={styles.toasts}>
         {toasts.map((toast) => (
           <div

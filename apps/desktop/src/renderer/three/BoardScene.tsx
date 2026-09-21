@@ -90,6 +90,7 @@ import { Wire } from './Wire.js';
 import { WireDragLayer } from './WirePreview.js';
 import { toScene } from './coords.js';
 import { observeWebGlContext } from './webgl-context.js';
+import { tourRotationChanged, useTourStore } from '../tour/tour-store.js';
 
 /**
  * 3D盤のシーン。設計仕様 §6.5 / §8.1 / §12.2 / §15。
@@ -445,6 +446,7 @@ function BoardContents({
   // 運んでいるもの（部品パレットのカード／盤に載っている部品）。Phase 7 設計 §7.3.3
   const dragging = useStore((s) => s.dragging);
   const [controls, setControls] = useState<OrbitControlsLike | null>(null);
+  const rotationStart = useRef<readonly [number, number] | undefined>(undefined);
   /** ポインタが乗っているソケット（ホバーの縁取りと落とし先の判定）。 */
   const [hoveredSocket, setHoveredSocket] = useState<SocketId | undefined>(undefined);
   /** ポインタが乗っている電源の操作部。 */
@@ -1154,6 +1156,24 @@ function BoardContents({
       */}
       <OrbitControls
         makeDefault
+        onStart={() => {
+          rotationStart.current =
+            controls === null
+              ? undefined
+              : [controls.getAzimuthalAngle(), controls.getPolarAngle()];
+        }}
+        onEnd={() => {
+          if (
+            controls !== null &&
+            rotationStart.current !== undefined &&
+            tourRotationChanged(rotationStart.current, [
+              controls.getAzimuthalAngle(),
+              controls.getPolarAngle(),
+            ])
+          )
+            useTourStore.getState().advance('rotate');
+          rotationStart.current = undefined;
+        }}
         enableDamping
         dampingFactor={ORBIT_FEEL.dampingFactor}
         rotateSpeed={ORBIT_FEEL.rotateSpeed}
@@ -1210,7 +1230,15 @@ function BoardSceneImpl({
   const setWebglLost = useStore((s) => s.setWebglLost);
   const webglLost = useStore((s) => s.webglLost);
   const detachContext = useRef<(() => void) | undefined>(undefined);
-  useEffect(() => () => detachContext.current?.(), []);
+  const tourCanvas = useRef<HTMLCanvasElement | null>(null);
+  useEffect(
+    () => () => {
+      detachContext.current?.();
+      if (useTourStore.getState().canvas === tourCanvas.current)
+        useTourStore.getState().setCanvas(null);
+    },
+    [],
+  );
   const readoutRef = useRef<HTMLDivElement | null>(null);
   const perfRef = useRef<HTMLDivElement | null>(null);
 
@@ -1271,6 +1299,8 @@ function BoardSceneImpl({
           guardedPick({ kind: 'empty' });
         }}
         onCreated={({ gl }) => {
+          tourCanvas.current = gl.domElement;
+          useTourStore.getState().setCanvas(gl.domElement);
           /*
            * 3D-01: `gl.info` の自動リセットを止める。止めないと、ビューキューブ（drei の `Hud`）が
            * 1フレームに2回呼ぶ `gl.render()` の2回目で数値が上書きされ、性能の門は**ギズモ単体の

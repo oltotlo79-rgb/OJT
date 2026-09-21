@@ -17,6 +17,7 @@ import { JA } from '../i18n/ja.js';
 import { SKIN_THEMES } from '../ladder/skins/index.js';
 import styles from './screens.module.css';
 import { applyUiPreferences } from '../app/ui-preferences.js';
+import { useTourStore } from '../tour/tour-store.js';
 
 /**
  * 設定画面。設計仕様 §12.1 / §15。
@@ -186,6 +187,21 @@ export function Settings(): JSX.Element {
               {settings.warning}
             </p>
           )}
+          <section className={styles.settingRow}>
+            <span>{JA.tour.title}</span>
+            <button
+              type="button"
+              data-testid="setting-restart-tour"
+              onClick={() => {
+                useTourStore.getState().request();
+                useStore.getState().setListMode('assemble');
+                setRoute('list');
+                toast(JA.tour.ready);
+              }}
+            >
+              {JA.settings.restartTour}
+            </button>
+          </section>
           <section className={styles.settingRow}>
             <label htmlFor="user-dir">{JA.settings.userContentDir}</label>
             <input

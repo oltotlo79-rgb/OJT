@@ -30,8 +30,34 @@ export function focusablesIn(panel: HTMLElement): HTMLElement[] {
  * パネルの外にフォーカスがあるときも中へ引き戻すので、開いた直後に何も
  * フォーカスしていない場合でも1回の `Tab` で中に入る。飛び先が1つも無ければ何もしない。
  */
-export function trapFocus(panel: HTMLElement | null, event: KeyboardEvent): void {
+export function trapFocus(
+  panel: HTMLElement | null,
+  event: KeyboardEvent,
+  allowedRoots: readonly HTMLElement[] = [],
+): void {
   if (panel === null) return;
+  // 操作ガイドでは、案内カードと現在の練習対象の間を巡回できるようにする。
+  if (allowedRoots.length > 0) {
+    const elements = [
+      ...new Set(
+        [panel, ...allowedRoots].flatMap((root) => [
+          ...(root.matches(FOCUSABLE_SELECTOR) ? [root] : []),
+          ...focusablesIn(root),
+        ]),
+      ),
+    ].filter((element) => !element.hasAttribute('disabled') && element.getClientRects().length > 0);
+    if (elements.length === 0) return;
+    const index = elements.indexOf(document.activeElement as HTMLElement);
+    const next =
+      index < 0
+        ? event.shiftKey
+          ? elements.length - 1
+          : 0
+        : (index + (event.shiftKey ? -1 : 1) + elements.length) % elements.length;
+    event.preventDefault();
+    elements[next]?.focus();
+    return;
+  }
   const focusables = focusablesIn(panel);
   const first = focusables[0];
   const last = focusables[focusables.length - 1];

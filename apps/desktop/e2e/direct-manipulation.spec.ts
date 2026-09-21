@@ -1,16 +1,10 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
+import { launchApp } from './app.js';
 import { JIPM_BOARD } from '@ojt/board-model';
 import { toTerminalId } from '@ojt/circuit-sim';
-import {
-  _electron as electron,
-  expect,
-  test,
-  type ElectronApplication,
-  type Page,
-} from '@playwright/test';
+import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import { powerWellCenterMm } from '../src/renderer/three/AcFixtures.js';
 import { findFixtureFootprint, FIXTURE_HEIGHT_MM } from '../src/renderer/three/Fixtures.js';
 import { boardPoint, terminalPoint, wireCountText, type CanvasBox } from './projection.js';
@@ -27,17 +21,11 @@ import { boardPoint, terminalPoint, wireCountText, type CanvasBox } from './proj
  * 課題を2本目以降が引き継ぐ。
  */
 
-const APP_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 /**
  * スクリーンショットの置き場。**既定は一時フォルダ**にする（QA-02: `e2e` が追跡対象の
  * `screenshots/` を書き換えると、その直後の `dist` が別物の PDF を焼いてしまう）。
  */
 const SHOT_DIR = process.env['OJT_SHOT_DIR'] ?? join(tmpdir(), 'shots-p7-27');
-const CHROMIUM_FLAGS = [
-  '--use-gl=swiftshader',
-  '--use-angle=swiftshader',
-  '--enable-unsafe-swiftshader',
-];
 
 /** 内蔵課題 b-001 の固定配線（チェック用回路の既設配線）の本数。§6.3 */
 const FIXED_WIRES = 3;
@@ -107,24 +95,7 @@ test.describe.serial('3D盤の直接操作（利用者要望9）', () => {
   let page: Page;
 
   test.beforeAll(async () => {
-    app = await electron.launch({
-      args: [join(APP_ROOT, 'out', 'main', 'index.js'), ...CHROMIUM_FLAGS],
-      env: { ...process.env, NODE_ENV: 'production' },
-    });
-    page = await app.firstWindow();
-    await page.waitForLoadState('domcontentloaded');
-    await app.evaluate(({ BrowserWindow }) => {
-      const window = BrowserWindow.getAllWindows()[0];
-      if (window === undefined) throw new Error('ウィンドウがありません');
-      window.setBounds({ x: 0, y: 0, width: 1440, height: 900 });
-      window.show();
-      window.focus();
-    });
-    await page.waitForTimeout(1500);
-    const restore = page.getByTestId('restore-prompt');
-    if ((await restore.count()) > 0) {
-      await page.getByRole('button', { name: '復元しない' }).click();
-    }
+    ({ app, page } = await launchApp());
     await page.getByTestId('mode-assemble').click();
     await page.getByTestId('open-b-001').click();
     await expect(page.getByTestId('viewport')).toBeVisible();

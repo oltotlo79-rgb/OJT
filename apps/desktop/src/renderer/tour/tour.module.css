@@ -1,0 +1,77 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 110;
+  pointer-events: none;
+}
+.shade {
+  position: absolute;
+  inset: 0;
+  background: rgb(6 15 30 / 58%);
+  pointer-events: auto;
+}
+.card {
+  position: absolute;
+  left: 16px;
+  bottom: 16px;
+  width: min(560px, calc(100vw - 32px));
+  box-sizing: border-box;
+  padding: 16px 20px;
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--accent);
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgb(0 0 0 / 30%);
+  pointer-events: auto;
+  font-size: max(13px, 0.8125rem);
+}
+.heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--muted);
+}
+.count {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.progress {
+  display: flex;
+  gap: 5px;
+  margin: 8px 0 12px;
+}
+.progress span {
+  flex: 1;
+  height: 3px;
+  border-radius: 3px;
+  background: var(--line);
+}
+.progress span[data-done='true'] {
+  background: var(--accent);
+}
+.card h2 {
+  font-size: 1rem;
+  margin: 0 0 6px;
+}
+.card p {
+  margin: 0;
+  line-height: 1.65;
+}
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+}
+.actions button {
+  min-height: 32px;
+  padding: 4px 12px;
+  white-space: nowrap;
+  font: inherit;
+}
+.actions kbd {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: max(12px, 0.75rem);
+}

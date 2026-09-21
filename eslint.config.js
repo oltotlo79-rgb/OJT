@@ -47,6 +47,24 @@ export default tseslint.config(
     },
   },
   // React のフック規則（`apps/desktop` の renderer だけが React を使う）。
+  {
+    files: ['apps/desktop/e2e/**/*.spec.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            {
+              name: '@playwright/test',
+              importNames: ['_electron'],
+              message:
+                '利用者の設定を保護するため、起動は一時userDataを作るapp.tsのlaunchAppを使ってください。',
+            },
+          ],
+        },
+      ],
+    },
+  },
   // `rules-of-hooks` は破れば必ずバグになるので error、`exhaustive-deps` は
   // 「意図して依存を外す」場面（Worker の張り直しなど）があるので warn にし、
   // 外すときは理由付きの `eslint-disable-next-line` を必ず添える。

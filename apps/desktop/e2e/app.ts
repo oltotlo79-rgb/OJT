@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -65,6 +65,8 @@ export interface LaunchOptions {
   home?: string;
   /** 復元プロンプトを片付けない（復元カードそのものを見るとき）。 */
   keepRestorePrompt?: boolean;
+  /** 初回ガイドそのものを検査するときだけ有効にする。通常は保存済み状態から始める。 */
+  firstRunGuide?: boolean;
 }
 
 export interface Launched {
@@ -87,6 +89,11 @@ process.on('exit', () => {
 export async function launchApp(options: LaunchOptions = {}): Promise<Launched> {
   const userDataDir = options.userDataDir ?? mkdtempSync(join(tmpdir(), 'ojt-e2e-'));
   if (options.userDataDir === undefined) ownedUserDataDirs.push(userDataDir);
+  const settings = join(userDataDir, 'settings.json');
+  if (options.firstRunGuide !== true && !existsSync(settings)) {
+    mkdirSync(userDataDir, { recursive: true });
+    writeFileSync(settings, JSON.stringify({ tourDone: true }), 'utf8');
+  }
   const app = await electron.launch({
     args: [
       join(APP_ROOT, 'out', 'main', 'index.js'),

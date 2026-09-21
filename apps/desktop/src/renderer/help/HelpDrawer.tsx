@@ -27,6 +27,7 @@ import {
 import { useHelpStore } from './help-store.js';
 import { MANUAL_CHAPTERS, MANUAL_IMAGES, MANUAL_SECTIONS } from './manual-content.js';
 import styles from './help.module.css';
+import { useTourStore } from '../tour/tour-store.js';
 
 /**
  * 取扱説明書の引き出し。取扱説明書 設計 §5.3 / §5.4。
@@ -278,6 +279,20 @@ export function HelpDrawer({ onClose }: { onClose: () => void }): JSX.Element {
       >
         <div className={styles.header}>
           <span className={styles.title}>{JA.help.title}</span>
+          <button
+            type="button"
+            data-testid="help-restart-tour"
+            onClick={() => {
+              useTourStore.getState().request();
+              const state = useStore.getState();
+              if (state.route === 'session' && state.problem?.mode === 'assemble')
+                state.setAssembleView('board');
+              else state.toast(JA.tour.ready);
+              onClose();
+            }}
+          >
+            {JA.settings.restartTour}
+          </button>
           <button type="button" data-testid="help-open-pdf" onClick={openPdf}>
             {JA.help.openPdf}
           </button>

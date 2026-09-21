@@ -26,6 +26,38 @@ export { MSG, readFailedText, saveFailedText } from '../../shared/messages.js';
 
 /** 画面文言。 */
 export const JA = {
+  tour: {
+    title: '3分操作ガイド',
+    progress: (step: number): string => `${step} / 5`,
+    later: 'あとで',
+    rotateKeyboard: '向きを変える',
+    never: '次回から表示しない',
+    ready: '回路組立の課題を開くと、操作ガイドが始まります。',
+    saveFailed:
+      '案内を閉じましたが、表示設定を保存できませんでした。次回起動時に再び表示されることがあります。',
+    steps: {
+      rotate: {
+        title: '盤を回してみましょう',
+        body: '盤の何もないところをつかんで動かします。向きが変わったら、マウスを離してください。',
+      },
+      mount: {
+        title: '部品をソケットに置きます',
+        body: '右の部品カードをつかみ、盤の空きソケットへ運びます。カードとソケットを順番に押しても置けます。',
+      },
+      wire: {
+        title: '端子どうしをつなぎます',
+        body: '盤の端子を1つ押し、別の端子を押します。端子から端子へドラッグしてもつながります。',
+      },
+      power: {
+        title: '電気を流してみましょう',
+        body: '①ブレーカ、②電源スイッチの順で入れます。盤の操作部でも、上の帯のボタンでも操作できます。',
+      },
+      judge: {
+        title: '判定で確かめます',
+        body: '右上の「判定」を押すと、足りない配線や動作を確認できます。途中の回路でも判定でき、結果を見て作業へ戻れます。',
+      },
+    },
+  },
   /** main プロセスが返す文言（実体は `src/shared/messages.ts`）。§15 */
   main: MSG,
   app: {
@@ -88,6 +120,7 @@ export const JA = {
   },
   /** 設定画面。§12.1 / §15 */
   settings: {
+    restartTour: '案内をもう一度見る',
     invalidUserDir:
       '課題フォルダは260文字以内の絶対パスで指定してください。空欄にすると既定に戻ります。',
     skinEvidence: 'この見た目の根拠（指導員向け）',

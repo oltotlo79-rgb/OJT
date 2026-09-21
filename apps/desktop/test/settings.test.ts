@@ -46,6 +46,14 @@ function onDisk(): Record<string, unknown> {
 }
 
 describe('readSettings（未設定は既定値）', () => {
+  it('ガイドの完了状態だけを型検査して保存し、起動をまたいで読み戻す', () => {
+    expect(readSettings().tourDone).toBe(false);
+    writeSettings({ tourDone: true });
+    expect(onDisk()['tourDone']).toBe(true);
+    expect(readSettings().tourDone).toBe(true);
+    writeSettings({ tourDone: 'false' });
+    expect(readSettings().tourDone).toBe(true);
+  });
   it('ファイルが無ければ既定値を返し、利用者フォルダは既定パスに解決する', () => {
     const settings = readSettings();
     expect(settings.soundEnabled).toBe(DEFAULT_SETTINGS.soundEnabled);
@@ -122,6 +130,7 @@ describe('writeSettings（レビュー指摘: renderer からの入力を信用�
       restorePrompt: false,
     });
     expect(saved).toEqual({
+      tourDone: false,
       uiScale: 1,
       contrast: 'normal',
       userContentDir: 'C:/problems',
@@ -143,6 +152,7 @@ describe('writeSettings（レビュー指摘: renderer からの入力を信用�
     expect(raw['evilKey']).toBeUndefined();
     expect(Object.keys(raw).sort()).toEqual(
       [
+        'tourDone',
         'uiScale',
         'contrast',
         'defaultVendor',

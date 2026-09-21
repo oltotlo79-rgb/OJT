@@ -505,6 +505,12 @@
       "internal": "本文そのものの目印。画面に別の操作は無い"
     },
     {
+      "testid": "help-restart-tour",
+      "screen": "操作ガイド",
+      "label": "案内をもう一度見る",
+      "section": "mode-b/3分操作ガイド"
+    },
+    {
       "testid": "help-search",
       "screen": "全画面",
       "label": "言葉で探す",
@@ -1491,6 +1497,12 @@
       "section": "settings/PLCの既定のメーカー"
     },
     {
+      "testid": "setting-restart-tour",
+      "screen": "操作ガイド",
+      "label": "案内をもう一度見る",
+      "section": "mode-b/3分操作ガイド"
+    },
+    {
       "testid": "setting-restore-prompt",
       "screen": "設定",
       "label": "起動時に前回の作業の復元を確認する",
@@ -1881,6 +1893,30 @@
       "screen": "練習中（モードD）",
       "label": "変換",
       "section": "mode-d/変換する"
+    },
+    {
+      "testid": "tour-guide",
+      "screen": "操作ガイド",
+      "label": "3分操作ガイド",
+      "section": "mode-b/3分操作ガイド"
+    },
+    {
+      "testid": "tour-later",
+      "screen": "操作ガイド",
+      "label": "あとで",
+      "section": "mode-b/3分操作ガイド"
+    },
+    {
+      "testid": "tour-never",
+      "screen": "操作ガイド",
+      "label": "次回から表示しない",
+      "section": "mode-b/3分操作ガイド"
+    },
+    {
+      "testid": "tour-rotate",
+      "screen": "操作ガイド",
+      "label": "向きを変える",
+      "section": "mode-b/3分操作ガイド"
     },
     {
       "testid": "tray-{}",

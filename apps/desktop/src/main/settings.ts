@@ -81,6 +81,7 @@ function sanitizePatch(base: AppSettings, patch: unknown): AppSettings {
   const next = { ...base };
   if (typeof patch !== 'object' || patch === null) return next;
   const source = patch as Record<string, unknown>;
+  if (typeof source['tourDone'] === 'boolean') next.tourDone = source['tourDone'];
   if (isUiScale(source['uiScale'])) next.uiScale = source['uiScale'];
   if (source['contrast'] === 'normal' || source['contrast'] === 'high')
     next.contrast = source['contrast'];

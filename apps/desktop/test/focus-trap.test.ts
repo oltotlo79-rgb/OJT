@@ -35,6 +35,25 @@ function tab(shiftKey = false): KeyboardEvent {
 }
 
 describe('trapFocus（UI-06）', () => {
+  it('操作ガイドと明示した練習対象だけをTabで巡回する', () => {
+    const { outside, panel: host } = mount('<button id="close">閉じる</button>');
+    const action = document.createElement('button');
+    action.id = 'practice';
+    document.body.append(action);
+    const close = host.querySelector<HTMLElement>('#close')!;
+    for (const element of [action, close])
+      Object.defineProperty(element, 'getClientRects', {
+        value: () => [new DOMRect(0, 0, 80, 32)],
+      });
+    close.focus();
+    trapFocus(host, tab(), [action]);
+    expect(document.activeElement).toBe(action);
+    trapFocus(host, tab(), [action]);
+    expect(document.activeElement).toBe(close);
+    outside.focus();
+    trapFocus(host, tab(true), [action]);
+    expect(document.activeElement).toBe(action);
+  });
   it('フォーカスがパネルの外にあるとき Tab で内側の先頭へ戻る', () => {
     const { outside, panel: host } = mount('<button id="a">A</button><button id="b">B</button>');
     outside.focus();
