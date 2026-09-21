@@ -445,6 +445,7 @@ function BoardContents({
   const cameraNonce = useStore((s) => s.cameraNonce);
   // 運んでいるもの（部品パレットのカード／盤に載っている部品）。Phase 7 設計 §7.3.3
   const dragging = useStore((s) => s.dragging);
+  const replaying = useStore((s) => s.replay !== undefined);
   const [controls, setControls] = useState<OrbitControlsLike | null>(null);
   const rotationStart = useRef<readonly [number, number] | undefined>(undefined);
   /** ポインタが乗っているソケット（ホバーの縁取りと落とし先の判定）。 */
@@ -467,10 +468,11 @@ function BoardContents({
       pendingTerminal: pending,
       selectedWire,
       wireColor: useStore.getState().wireColor,
+      replaying,
       terminals: loads,
       dragging,
     }),
-    [mode, pending, selectedWire, loads, dragging],
+    [mode, pending, selectedWire, loads, dragging, replaying],
   );
   /**
    * 配線中に**つなげられる**端子の集合（配線していなければ undefined ＝ 光らせ分けをしない）。
@@ -728,6 +730,7 @@ function BoardContents({
 
   const onPressTerminal = useCallback(
     (terminal: BoardTerminal): void => {
+      if (useStore.getState().replay !== undefined) return;
       press.current = { ...press.current, terminal, part: undefined, started: false };
       // 端子の上から引いたら**視点は回さない**（設計 §7.3.1）。放すまで軌道操作を黙らせる
       if (controls !== null) controls.enabled = dragKindOf(press.current) === 'view';
@@ -737,6 +740,7 @@ function BoardContents({
 
   const onPressPart = useCallback(
     (socketId: SocketId, kind: MountableKind): void => {
+      if (useStore.getState().replay !== undefined) return;
       press.current = {
         ...press.current,
         terminal: undefined,

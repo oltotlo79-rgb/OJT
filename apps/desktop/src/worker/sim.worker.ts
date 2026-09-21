@@ -1,3 +1,5 @@
+import { lampsOf, relaysOf, timersOf, plcSnapshot, timerPresetsOf } from './snapshot.js';
+import { createReplay, type ReplayEngine } from './replay.js';
 import {
   JIPM_BOARD,
   plcUnitFor,
@@ -37,18 +39,14 @@ import {
   type FaultSpecData,
   type PlcCoupling,
 } from '@ojt/content';
-import { compile, IR_COLS, type CompiledProgram, type LadderProgram } from '@ojt/ladder-core';
-import type { PlcMonitorSnapshot } from '../renderer/app/store-types.js';
+import { compile, type LadderProgram } from '@ojt/ladder-core';
 import { planTicks } from './runtime.js';
 import {
   SNAPSHOT_INTERVAL_MS,
-  type LampSnapshot,
-  type RelaySnapshot,
   type SimCommand,
   type SimMessage,
   type SimSnapshot,
   type TesterSnapshot,
-  type TimerSnapshot,
 } from './protocol.js';
 
 /**
@@ -62,6 +60,8 @@ import {
  */
 
 let simulation: Simulation | undefined;
+let replay: ReplayEngine | undefined;
+let replayBefore: SimSnapshot | undefined;
 /**
  * `load()` で盤を作り直す前に持ち越す危険操作。C1の手順は部品を1つずつ挿し替えて
  * 最後にまとめて判定するため、`new Simulation()` が作り直されるたびに前の部品で
@@ -180,39 +180,6 @@ function partFor(next: BoardSession, socketId: SocketId): Part | undefined {
     : createTimer4c(id, mounted.presetMs, mounted.rangeMaxMs);
 }
 
-function lampsOf(sim: Simulation): Record<string, LampSnapshot> {
-  const out: Record<string, LampSnapshot> = {};
-  for (const [id, runtime] of Object.entries(sim.state().lamps)) {
-    out[id] = { level: runtime.level, volts: runtime.volts };
-  }
-  return out;
-}
-
-function relaysOf(sim: Simulation): Record<string, RelaySnapshot> {
-  const out: Record<string, RelaySnapshot> = {};
-  for (const [id, runtime] of Object.entries(sim.state().relays)) {
-    out[id] = {
-      coilOn: runtime.coilOn,
-      contactsOn: runtime.contactsOn,
-      coilVolts: runtime.coilVolts,
-    };
-  }
-  return out;
-}
-
-function timersOf(sim: Simulation): Record<string, TimerSnapshot> {
-  const out: Record<string, TimerSnapshot> = {};
-  for (const [id, runtime] of Object.entries(sim.state().timers)) {
-    out[id] = {
-      powered: runtime.powered,
-      elapsedMs: runtime.elapsedMs,
-      presetMs: runtime.presetMs,
-      timedOut: runtime.timedOut,
-    };
-  }
-  return out;
-}
-
 /** 直近の読値と針の角度をスナップショットの形にする。§9.3 */
 function testerSnapshot(): TesterSnapshot {
   return {
@@ -257,53 +224,6 @@ function loadLadder(sim: Simulation, source: LadderProgram): void {
  * タイマの設定値（`presetMs`）。ランタイムの `PlcTimerState` は経過だけを持つので、
  * コンパイル済みラダーのタイマセルから読む（決定表#5 / Batch 3 レビュー M4）。
  */
-function timerPresetsOf(program: CompiledProgram): Record<number, number> {
-  const presets: Record<number, number> = {};
-  for (const net of program.networks) {
-    for (const row of net.cells) {
-      for (const cell of row) {
-        if (cell.kind === 'timer') presets[cell.device.index] = cell.presetMs;
-      }
-    }
-  }
-  return presets;
-}
-
-function plcSnapshot(coupling: PlcCoupling): PlcMonitorSnapshot {
-  const state = coupling.runtime.state();
-  // ランタイムの `Map` を直接読む（`state()` 越しに `Record` を作り直さない。指摘 DW-1 ③）
-  const cells = coupling.runtime.poweredCells;
-  const powered: Record<string, string> = {};
-  for (const net of coupling.runtime.program.networks) {
-    if (net.isEnd) continue;
-    let bits = '';
-    for (let row = 0; row < net.rows; row += 1) {
-      for (let col = 0; col < IR_COLS; col += 1) {
-        bits += cells.get(`${net.id}:${row}:${col}`) === true ? '1' : '0';
-      }
-    }
-    powered[net.id] = bits;
-  }
-  const presets = plcTimerPresets;
-  return {
-    scanCount: state.scanCount,
-    tMs: state.tMs,
-    powered,
-    inputs: [...state.inputs],
-    outputs: [...state.outputs],
-    internals: { ...state.internals },
-    timers: Object.fromEntries(
-      Object.entries(state.timers).map(([index, value]) => [
-        index,
-        { ...value, presetMs: presets[Number(index)] ?? 0 },
-      ]),
-    ),
-    counters: Object.fromEntries(
-      Object.entries(state.counters).map(([index, value]) => [index, { ...value }]),
-    ),
-  };
-}
-
 function buildSnapshot(sim: Simulation): SimSnapshot {
   const state = sim.state();
   const entries = sim.log.entries();
@@ -331,7 +251,9 @@ function buildSnapshot(sim: Simulation): SimSnapshot {
     chatterDelta,
     tester: testerSnapshot(),
     // モニタ中だけ載せる（決定表#5）
-    ...(plcMonitoring && plcCoupling !== undefined ? { plc: plcSnapshot(plcCoupling) } : {}),
+    ...(plcMonitoring && plcCoupling !== undefined
+      ? { plc: plcSnapshot(plcCoupling, plcTimerPresets) }
+      : {}),
     droppedTicks,
   };
 }
@@ -452,6 +374,30 @@ function start(): void {
 }
 
 function handle(command: SimCommand): void {
+  if (command.type === 'replay') {
+    if (command.action === 'start') {
+      // 元のSimulationを変更しない。作成に失敗した場合もライブ側は動き続ける。
+      const next = createReplay(command.source);
+      const first = next.frame(0);
+      if (replay === undefined && simulation !== undefined)
+        replayBefore = buildSnapshot(simulation);
+      stopLoop();
+      replay = next;
+      post({ type: 'replayFrame', index: 0, snapshot: first });
+    } else if (command.action === 'step') {
+      if (replay === undefined) throw new Error('見直しを開始してください');
+      post({ type: 'replayFrame', index: command.index, snapshot: replay.frame(command.index) });
+    } else {
+      replay = undefined;
+      if (replayBefore !== undefined) post({ type: 'snapshot', snapshot: replayBefore });
+      replayBefore = undefined;
+      if (simulation !== undefined) resumeLoop();
+    }
+    return;
+  }
+  // 別画面や古いショートカットから届いても、見直し中は元の作業を変更できない。
+  if (replay !== undefined)
+    throw new Error('見直し中は編集できません。結果へ戻って終了してください。');
   if (command.type === 'load') {
     load(command.session, command.partFaults ?? [], command.plcModel);
     start();

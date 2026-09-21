@@ -97,8 +97,9 @@ export function toWorkFile(
  * 課題も盤も無ければ `undefined`（保存できる状態にない）。
  */
 export function toInspectWorkFile(): WorkFile | undefined {
-  const { problem, session, elapsedMs, hazards } = useStore.getState();
-  if (problem === undefined || session === undefined) return undefined;
+  const { problem, session, elapsedMs, hazards, replay } = useStore.getState();
+  // 判定後の見直しを「未完了の作業」として復元対象へ戻さない。手動保存も同じ入口で止める。
+  if (replay !== undefined || problem === undefined || session === undefined) return undefined;
   return toWorkFile(problem.id, session, elapsedMs, hazards.length);
 }
 

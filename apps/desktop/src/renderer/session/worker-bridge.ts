@@ -8,6 +8,7 @@ import type { SimCommand, SimMessage, SimSnapshot } from '../../worker/protocol.
 
 /** ブリッジの購読先。 */
 export interface BridgeHandlers {
+  onReplay?: (message: Extract<SimMessage, { type: 'replayFrame' }>) => void;
   onSnapshot: (snapshot: SimSnapshot) => void;
   onJudge: (message: Extract<SimMessage, { type: 'judgeResult' }>) => void;
   /**
@@ -49,7 +50,9 @@ export class WorkerBridge {
     });
     worker.onmessage = (event: MessageEvent<SimMessage>) => {
       const message = event.data;
-      if (message.type === 'snapshot') handlers.onSnapshot(message.snapshot);
+      if (this.worker !== worker) return;
+      if (message.type === 'replayFrame') handlers.onReplay?.(message);
+      else if (message.type === 'snapshot') handlers.onSnapshot(message.snapshot);
       else if (message.type === 'judgeResult') handlers.onJudge(message);
       else if (message.type === 'inspectResult') handlers.onInspect?.(message);
       else if (message.type === 'plcResult') handlers.onPlc?.(message);

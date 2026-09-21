@@ -295,3 +295,33 @@ describe('load の失敗（§13 #5）', () => {
     expect(h.snapshots).toHaveLength(before);
   });
 });
+
+it('見直し中の全編集を拒否し、停止で元の時刻・押ボタン・危険操作へ戻る', async () => {
+  if (B001 === undefined) throw new Error('problem');
+  const h = await boot();
+  const session = referenceSession();
+  h.send({ type: 'load', problemId: B001.id, session });
+  h.send({ type: 'breaker', on: true });
+  h.advance(200);
+  h.send({ type: 'replay', action: 'start', source: { mode: 'assemble', problem: B001, session } });
+  const count = h.snapshots.length;
+  h.send({ type: 'press', pbId: 'PB1' });
+  h.send({ type: 'switch', on: true });
+  h.send({ type: 'load', problemId: B001.id, session });
+  h.advance(5000);
+  expect(h.snapshots).toHaveLength(count);
+  expect(h.errors).toHaveLength(3);
+  h.send({ type: 'replay', action: 'step', index: 1 });
+  expect(h.posted.filter((m) => m.type === 'replayFrame')).toHaveLength(2);
+  h.send({ type: 'replay', action: 'stop' });
+  expect(h.snapshots.at(-1)).toMatchObject({
+    tMs: 200,
+    breakerOn: true,
+    switchOn: false,
+    buttons: { PB1: false },
+    hazardDelta: [],
+  });
+  h.advance(100);
+  expect(h.snapshots.at(-1)?.tMs).toBeLessThanOrEqual(300);
+  expect(h.snapshots.at(-1)?.tMs).toBeGreaterThan(200);
+});

@@ -90,6 +90,7 @@ export interface TerminalLoad {
  * 本数も知らないので、渡さなければ「運んでいない・本数は分からない」として従来どおり動く。
  */
 export interface InteractionState {
+  replaying?: boolean;
   mode: ToolMode;
   /** 配線1本目に選んだ端子（未選択は undefined）。§8.2 */
   pendingTerminal: TerminalId | undefined;
@@ -310,6 +311,7 @@ export function legalTargets(state: InteractionState): readonly TerminalId[] {
  * モードで破らないようにするため。
  */
 export function intentOf(state: InteractionState, hit: PickHit): Intent {
+  if (state.replaying === true) return { type: 'none' };
   const carried = state.dragging;
   if (carried !== undefined) return dropIntent(carried, hit);
   // 電源の操作部はモードに関わらず押せる（実物の盤と同じ）

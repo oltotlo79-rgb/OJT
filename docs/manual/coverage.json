@@ -1229,6 +1229,52 @@
       "section": "mode-c2/直す"
     },
     {
+      "testid": "replay-bar",
+      "screen": "結果の見直し",
+      "label": "動きを見直す",
+      "section": "screens/動きを見直す"
+    },
+    {
+      "testid": "replay-mismatch",
+      "screen": "結果の見直し",
+      "label": "▲ この区間",
+      "section": "screens/動きを見直す"
+    },
+    {
+      "testid": "replay-next",
+      "screen": "結果の見直し",
+      "label": "次へ",
+      "section": "screens/動きを見直す"
+    },
+    {
+      "testid": "replay-open",
+      "screen": "結果の見直し",
+      "label": "動きを見直す",
+      "section": "screens/動きを見直す"
+    },
+    {
+      "testid": "replay-prev",
+      "screen": "結果の見直し",
+      "label": "前へ",
+      "section": "screens/動きを見直す"
+    },
+    {
+      "testid": "replay-restart",
+      "screen": "結果の見直し",
+      "label": "最初から",
+      "section": "screens/動きを見直す"
+    },
+    {
+      "testid": "replay-stop",
+      "screen": "結果の見直し",
+      "label": "結果へ戻る",
+      "section": "screens/動きを見直す"
+    },
+    {
+      "testid": "replay-viewport",
+      "internal": "編集を含まない見直し専用の3D表示領域"
+    },
+    {
       "testid": "report-cancel",
       "screen": "練習中（モードC2）",
       "label": "取消",

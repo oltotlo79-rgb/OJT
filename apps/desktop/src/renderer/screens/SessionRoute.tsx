@@ -1,3 +1,4 @@
+import { ReplayScreen } from './ReplayScreen.js';
 import type { JSX } from 'react';
 import { useStore } from '../app/store.js';
 import { JA } from '../i18n/ja.js';
@@ -17,6 +18,8 @@ import styles from './screens.module.css';
  */
 export function SessionRoute(): JSX.Element {
   const mode = useStore((s) => s.problem?.mode);
+  const replaying = useStore((s) => s.replay !== undefined);
+  if (replaying) return <ReplayScreen />;
   switch (mode) {
     case 'assemble':
       return <Session />;

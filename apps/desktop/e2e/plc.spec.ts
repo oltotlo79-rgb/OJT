@@ -327,6 +327,17 @@ test.describe('モードD（PLC）', () => {
       // ③ 判定で合格する
       await page.getByTestId('judge-button').click();
       await expect(page.getByTestId('verdict')).toHaveText('合格', { timeout: 30_000 });
+      await page.getByTestId('replay-open').click();
+      await expect(page.getByTestId('replay-bar')).toHaveAttribute('aria-busy', 'false');
+      await expect(page.getByTestId('ladder-grid')).toBeVisible();
+      await expect(page.getByTestId('toolbar-plc-run')).toHaveCount(0);
+      await page.getByTestId('replay-next').click();
+      await expect(page.getByTestId('replay-bar')).toHaveAttribute('aria-busy', 'false');
+      await expect(page.getByTestId('replay-mismatch')).toHaveCount(0);
+      await shot(app, 'replay-plc');
+      await page.getByTestId('replay-stop').click();
+      await expect(page.getByTestId('verdict')).toHaveText('合格');
+
       // 受入基準③は「モードDの3チェックすべて OK」。1件の文字列が出ているだけでは足りない
       for (const id of ['twoStage', 'plcPowerIndependent', 'ioAssignment']) {
         await expect(page.getByTestId(`static-check-${id}`)).toContainText('OK');

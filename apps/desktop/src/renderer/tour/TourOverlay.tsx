@@ -192,6 +192,14 @@ export function TourOverlay(): JSX.Element | null {
     });
   }, [step, close]);
 
-  if (step === null || canvas === null || webglLost || helpOpen || route !== 'session') return null;
+  if (
+    step === null ||
+    canvas === null ||
+    webglLost ||
+    helpOpen ||
+    route !== 'session' ||
+    useStore.getState().replay !== undefined
+  )
+    return null;
   return <Guide step={step} onClose={close} />;
 }

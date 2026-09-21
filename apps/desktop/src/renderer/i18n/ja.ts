@@ -26,6 +26,29 @@ export { MSG, readFailedText, saveFailedText } from '../../shared/messages.js';
 
 /** 画面文言。 */
 export const JA = {
+  replay: {
+    title: '動きを見直す',
+    previous: '前へ',
+    next: '次へ',
+    restart: '最初から',
+    stop: '結果へ戻る',
+    power: 'ブレーカ → 電源スイッチの順に通電',
+    press: 'を押す',
+    release: 'を離す',
+    count: (index: number, total: number) => `${index} / ${total} 歩`,
+    seconds: (ms: number) => `${Number((ms / 1000).toFixed(2))}秒`,
+    expected: '期待する動き',
+    on: 'ON',
+    off: 'OFF',
+    noExpectation: '期待する動きは結果の波形で確認できます。',
+    mismatch: (count: number, note: string) => `▲ この区間に${count}件の違い：${note}`,
+    frame: '盤・モニタはこの区間の終了時の状態です。',
+    readonly: '見直し中は編集できません。「結果へ戻る」で終了できます。',
+    first: '最初の区間です。',
+    last: '最後の区間です。',
+    loading: '動きを計算しています…',
+    cannotReplay: '判定できた回路で動きを見直せます。先に変換エラーを直してください。',
+  },
   tour: {
     title: '3分操作ガイド',
     progress: (step: number): string => `${step} / 5`,

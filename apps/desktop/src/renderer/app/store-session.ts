@@ -1,3 +1,4 @@
+import type { ReplayState } from '../session/replay.js';
 import {
   createSession,
   JIPM_BOARD,
@@ -239,6 +240,7 @@ export function sessionFields(
   current: Pick<AppState, 'tester'>,
 ): Pick<
   AppState,
+  | 'replay'
   | 'judge'
   | 'judging'
   | 'fatalError'
@@ -265,6 +267,7 @@ export function sessionFields(
   | 'assembleView'
 > {
   return {
+    replay: undefined,
     judge: undefined,
     judging: false,
     fatalError: undefined,
@@ -300,6 +303,7 @@ export function sessionFields(
 
 /** 課題・盤・シミュレーションの状態と操作。 */
 export interface SessionSlice {
+  replay: ReplayState | undefined;
   problem: SupportedProblem | undefined;
   session: BoardSession | undefined;
   history: CommandHistory;
@@ -514,6 +518,7 @@ export const createSessionSlice: StateCreator<AppState, [], [], SessionSlice> = 
   hoverHint: undefined,
   judging: false,
 
+  replay: undefined,
   snapshot: EMPTY_SNAPSHOT,
   hazards: [],
   chatters: [],

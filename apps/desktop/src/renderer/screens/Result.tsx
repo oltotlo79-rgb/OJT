@@ -1,3 +1,4 @@
+import { ReplayEntry } from '../result/ReplayEntry.js';
 import { JIPM_BOARD } from '@ojt/board-model';
 import {
   isAssembleProblem,
@@ -49,6 +50,7 @@ export function Result(): JSX.Element {
   return (
     <>
       <div className={`${styles.screenHeader} ${styles.resultHeader}`}>
+        <ReplayEntry />
         <HelpButton />
       </div>
       <ResultBody />

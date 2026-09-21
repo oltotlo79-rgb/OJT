@@ -47,8 +47,17 @@ export const SNAPSHOT_INTERVAL_MS = 33;
 /** 追従ループが1回で取り返す tick 数の上限（= 200ms 相当）。 */
 export const MAX_CATCHUP_TICKS = 20;
 
+/** 提出した回路の複製。C2は解決済みの故障だけを使い、抽選し直さない。 */
+export type ReplaySource =
+  | { mode: 'assemble'; problem: AssembleProblem; session: BoardSession }
+  | { mode: 'inspect-repair'; problem: InspectRepairProblem; circuit: RepairCircuit }
+  | { mode: 'plc'; problem: PlcProblem; session: BoardSession; ladder: LadderProgram };
+
 /** renderer → worker のコマンド。 */
 export type SimCommand =
+  | { type: 'replay'; action: 'start'; source: ReplaySource }
+  | { type: 'replay'; action: 'step'; index: number }
+  | { type: 'replay'; action: 'stop' }
   /**
    * 課題を開く。ネットリストを作り直し、電源OFF・t=0 から回し始める。
    * `partFaults` があれば `toNetlist()` の直後に注入する（C1/C2。§5.4）。部品の故障は
@@ -251,6 +260,7 @@ export type PlcOutcome =
 
 /** worker → renderer のメッセージ。 */
 export type SimMessage =
+  | { type: 'replayFrame'; index: number; snapshot: SimSnapshot }
   | { type: 'snapshot'; snapshot: SimSnapshot }
   | { type: 'judgeResult'; result: JudgeAssembleResult }
   | { type: 'inspectResult'; result: InspectOutcome }

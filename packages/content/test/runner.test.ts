@@ -2,7 +2,12 @@ import { JIPM_BOARD } from '@ojt/board-model';
 import { Simulation, terminalId } from '@ojt/circuit-sim';
 import { describe, expect, it } from 'vitest';
 import { buildReferenceSession } from '../src/reference.js';
-import { powerUp, runOperations } from '../src/runner.js';
+import {
+  createOperationPlayback,
+  operationWindows,
+  powerUp,
+  runOperations,
+} from '../src/runner.js';
 import { parseOrThrow, selfHoldProblemJson } from './helpers/problems.js';
 
 function referenceNetlist() {
@@ -122,5 +127,56 @@ describe('powerUp', () => {
     simulation.setSwitch(true);
     simulation.setBreaker(true);
     expect(simulation.events.countOf('power-sequence-violation')).toBe(2);
+  });
+});
+
+describe('採点と見直しの共通実行器', () => {
+  it('小刻みに止めても操作・tick・ログが一括採点と一致する', () => {
+    const first = referenceNetlist();
+    const second = referenceNetlist();
+    const ticks: number[] = [];
+    const simulation = new Simulation(second.netlist);
+    const playback = createOperationPlayback(simulation, second.problem.operations, {
+      durationMs: second.problem.durationMs,
+      beforeTick: (_sim, t) => {
+        ticks.push(t);
+      },
+    });
+    for (let t = 0; t <= second.problem.durationMs; t += 50) playback.advanceUntil(t);
+    const last = playback.advanceUntil(second.problem.durationMs + 5000);
+    const full = runOperations(first.netlist, first.problem.operations, {
+      durationMs: first.problem.durationMs,
+    });
+    expect(last.log.entries()).toEqual(full.log.entries());
+    expect(last.events.hazards()).toEqual(full.events.hazards());
+    expect(last.lastTickMs).toBe(full.lastTickMs);
+    expect(new Set(ticks).size).toBe(ticks.length);
+    expect(playback.advanceUntil(0).lastTickMs).toBe(full.lastTickMs);
+  });
+  it.each([0, -10, NaN, Infinity])('無効なtick=%sを拒否して無限ループを防ぐ', (tickMs) => {
+    expect(() =>
+      createOperationPlayback(new Simulation(referenceNetlist().netlist), [], {
+        durationMs: 100,
+        tickMs,
+      }),
+    ).toThrow();
+  });
+  it.each([-1, NaN, Infinity])('無効な再生時刻=%sを拒否する', (until) => {
+    const playback = createOperationPlayback(new Simulation(referenceNetlist().netlist), [], {
+      durationMs: 100,
+    });
+    expect(() => playback.advanceUntil(until)).toThrow();
+  });
+  it('無操作と開始前の通電区間・同時操作・終端を正しく区切る', () => {
+    expect(operationWindows([], 100)).toEqual([{ fromMs: 0, toMs: 100, operations: [] }]);
+    const ops = [
+      { t: 5, target: 'PB1', action: 'press' },
+      { t: 10, target: 'PB2', action: 'press' },
+      { t: 100, target: 'PB1', action: 'release' },
+    ] as const;
+    expect(operationWindows(ops, 100)).toEqual([
+      { fromMs: 0, toMs: 10, operations: [] },
+      { fromMs: 10, toMs: 100, operations: ops.slice(0, 2) },
+    ]);
   });
 });

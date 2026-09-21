@@ -239,6 +239,10 @@ export {
   powerUp,
   runOperations,
   runOperationsOn,
+  createOperationPlayback,
+  operationWindows,
+  type OperationPlayback,
+  type OperationWindow,
   type RunOptions,
   type RunResult,
 } from './runner.js';
