@@ -3,9 +3,9 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { JIPM_BOARD } from '@ojt/board-model';
 import { toTerminalId } from '@ojt/circuit-sim';
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import { SHOT_DIR } from './app.js';
-import { launchPortable } from './packaged-app.js';
+import { launchPortable, type PackagedApp } from './packaged-app.js';
 import {
   boardPoint,
   SELF_HOLD_WIRES,
@@ -13,6 +13,14 @@ import {
   terminalPoint,
   wireCountText,
 } from './projection.js';
+
+function resourcesDirectory(page: Page): string {
+  const url = fileURLToPath(page.url());
+  expect(url).toMatch(/app\.asar/);
+  const resources = url.split(/app\.asar[/\\]/)[0];
+  if (!resources) throw new Error('同梱ファイルの場所を取得できません');
+  return resources.replace(/[/\\]$/, '');
+}
 
 /** distの後に e2e:packaged で実行。ユーザーの設定やインストール先を使わない。 */
 test('EXE1個から初回ガイド・72課題・回路の合格・ヘルプ・PLCと終了時の後始末を確認する', async () => {
@@ -27,11 +35,8 @@ test('EXE1個から初回ガイド・72課題・回路の合格・ヘルプ・PL
     await expect(page.getByTestId('mode-assemble')).toBeVisible({ timeout: 30_000 });
     expect(readdirSync(app.received)).toHaveLength(1);
     expect(readdirSync(app.received)[0]).toMatch(/-Portable\.exe$/);
-    const url = fileURLToPath(page.url());
-    expect(url).toMatch(/app\.asar/);
-    const resources = url.split(/app\.asar[/\\]/)[0];
-    if (!resources) throw new Error('同梱ファイルの場所を取得できません');
-    extracted = dirname(resources.replace(/[/\\]$/, ''));
+    const resources = resourcesDirectory(page);
+    extracted = dirname(resources);
     expect(readFileSync(join(resources, 'manual.pdf')).subarray(0, 5).toString()).toBe('%PDF-');
     const counts = await page.evaluate(async () => {
       if (!window.ojt) throw new Error('配布版のpreloadが読み込まれていません');
@@ -101,4 +106,39 @@ test('EXE1個から初回ガイド・72課題・回路の合格・ヘルプ・PL
       message: `終了後に一時展開先が残っています: ${extracted}`,
     })
     .toBe(false);
+});
+
+test('同じEXEの展開先は起動ごとに変わり、片方を閉じても他方の課題を壊さない', async () => {
+  const first = await launchPortable();
+  let second: PackagedApp | undefined;
+  let third: PackagedApp | undefined;
+  let secondDir: string | undefined;
+  let thirdDir: string | undefined;
+  try {
+    await expect(first.page.getByTestId('mode-assemble')).toBeVisible();
+    const firstDir = dirname(resourcesDirectory(first.page));
+    await first.close();
+    await expect.poll(() => existsSync(firstDir)).toBe(false);
+    second = await launchPortable();
+    await expect(second.page.getByTestId('mode-assemble')).toBeVisible();
+    secondDir = dirname(resourcesDirectory(second.page));
+    // まず順に起動して検査する。固定名へ戻る回帰でも上書きのダイアログを出さずに拒否する。
+    expect(secondDir).not.toBe(firstDir);
+    third = await launchPortable();
+    await expect(third.page.getByTestId('mode-assemble')).toBeVisible();
+    thirdDir = dirname(resourcesDirectory(third.page));
+    expect(thirdDir).not.toBe(secondDir);
+    await second.close();
+    await expect.poll(() => existsSync(secondDir!)).toBe(false);
+    expect(existsSync(thirdDir)).toBe(true);
+    await third.page.getByTestId('mode-assemble').click();
+    await third.page.getByTestId('open-b-001').click();
+    await expect(third.page.locator('[data-testid="viewport"] canvas')).toBeVisible();
+  } finally {
+    await third?.close();
+    await second?.close();
+    await first.close();
+  }
+  if (!thirdDir) throw new Error('同時起動の検査が完了していません');
+  await expect.poll(() => existsSync(thirdDir)).toBe(false);
 });

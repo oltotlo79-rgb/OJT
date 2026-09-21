@@ -85,8 +85,10 @@ nsis:
   createStartMenuShortcut: true
   shortcutName: 電気教育ツール
 
-# 公式 PortableOptions に従う。毎回専用の一時フォルダへ展開し、終了後に片付ける。
+# 起動ごとに専用の一時フォルダへ展開し、終了後に片付ける。
 # https://www.electron.build/docs/api/app-builder-lib.interface.portableoptions/
+# 26.15.3の展開先判定と終了直後のロックをpatches/で補修している。
+# 更新時もportable.spec.tsで別起動の展開先・同時起動・個別の終了を実物検査する。
 portable:
   artifactName: DenkiKyoikuTool-${version}-${arch}-Portable.${ext}
   unpackDirName: false

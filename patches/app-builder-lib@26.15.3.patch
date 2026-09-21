@@ -1,0 +1,32 @@
+--- a/out/targets/nsis/NsisTarget.js
++++ b/out/targets/nsis/NsisTarget.js
+@@ -243,7 +243,7 @@
+             const { unpackDirName, requestExecutionLevel, splashImage } = options;
+             defines.REQUEST_EXECUTION_LEVEL = requestExecutionLevel || "user";
+             // https://github.com/electron-userland/electron-builder/issues/5764
+-            if (typeof unpackDirName === "string" || !unpackDirName) {
++            if (typeof unpackDirName === "string" || unpackDirName !== false) {
+                 defines.UNPACK_DIR_NAME = unpackDirName || (0, builder_util_1.generateKsuid)();
+             }
+             if (splashImage != null) {
+--- a/templates/nsis/portable.nsi
++++ b/templates/nsis/portable.nsi
+@@ -87,5 +87,17 @@
+   SetErrorLevel $0
+ 
+   SetOutPath $EXEDIR
+-	RMDir /r $INSTDIR
++  ; Electron's GPU/utility processes can release their image handles just after ExecWait.
++  ; Retry only this launch's extraction directory, for at most ten seconds.
++  StrCpy $R1 0
++portable_cleanup_retry:
++  ClearErrors
++  RMDir /r $INSTDIR
++  IfErrors portable_cleanup_wait portable_cleanup_done
++portable_cleanup_wait:
++  IntOp $R1 $R1 + 1
++  IntCmp $R1 40 portable_cleanup_done 0 portable_cleanup_done
++  Sleep 250
++  Goto portable_cleanup_retry
++portable_cleanup_done:
+ SectionEnd
