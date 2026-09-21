@@ -39,7 +39,7 @@ test('画面・文言・説明書の変更で必須照合が選ばれ、修正�
     'apps/desktop/test/settings-plc.test.tsx',
   ]) {
     const plan = checkPlan([file], []);
-    const app = plan.find((check) => check.cwd === 'apps/desktop');
+    const app = plan.find((check) => check.cwd === 'apps/desktop' && !check.node);
     for (const gate of MANUAL_GATES) assert.ok(app.args.includes(`../../apps/desktop/${gate}`));
     if (file.startsWith('apps/')) assert.ok(app.args.includes(`../../${file}`));
   }

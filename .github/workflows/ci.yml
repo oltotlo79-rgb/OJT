@@ -23,6 +23,8 @@ jobs:
       # lockfile が package.json と同期していることを毎 push で検証する
       - run: pnpm install --frozen-lockfile
       - run: pnpm test:push-gate
+      # Electron の初回取得を並列テストより先に完了させる。
+      - run: pnpm --filter @ojt/desktop exec node -e "require('electron')"
       - run: pnpm verify
 
   build-e2e:
