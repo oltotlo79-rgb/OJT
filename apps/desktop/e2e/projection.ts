@@ -252,6 +252,7 @@ export async function openOverflow(page: Page): Promise<void> {
  * 上端に被さり、盤の上側の端子やビューキューブのクリックを奪う。
  */
 export async function closeOverflow(page: Page): Promise<void> {
+  if (!(await page.getByTestId('toolbar-overflow-toggle').isVisible())) return;
   const panel = page.getByTestId('toolbar-overflow');
   if ((await panel.count()) > 0) {
     await page.getByTestId('toolbar-overflow-toggle').click();

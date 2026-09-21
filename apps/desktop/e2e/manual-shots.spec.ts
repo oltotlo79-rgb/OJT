@@ -700,7 +700,7 @@ test.describe.serial('取扱説明書の図', () => {
     await shoot(
       'session-board',
       {
-        1: await rectOf(page.locator('div[role="toolbar"]').first(), 0),
+        1: await rectOf(page.getByTestId('session-toolbar'), 0),
         2: await rectOf(page.getByTestId('step-guide'), 0),
         3: await rectOf(page.getByTestId('viewport'), 0),
         4: await rectOf(page.locator('[class*="rightPanel"]').first(), 0),

@@ -39,6 +39,11 @@ export function ElapsedTimer({ limit }: { limit: TimeLimit }): JSX.Element {
   return (
     <section className={styles.panel}>
       <h2 className={styles.panelTitle}>{JA.session.elapsed}</h2>
+      <p className={styles.timeRemaining} role="status" aria-live="off">
+        {elapsedMs >= limit.cutoffMin * 60_000
+          ? JA.session.cutoffNotice
+          : `${JA.session.remainingTime} ${formatElapsed(limit.cutoffMin * 60_000 - elapsedMs)}`}
+      </p>
       <div className={styles.elapsed}>
         <span className={styles.elapsedValue} data-testid="elapsed">
           {formatElapsed(elapsedMs)}

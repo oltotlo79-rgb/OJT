@@ -770,6 +770,19 @@
 .settingsBody {
   max-width: 760px;
 }
+.assumptions {
+  margin: 16px 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 12px;
+}
+.assumptions summary {
+  font-size: 13px;
+}
+.assumptions .subtitle {
+  margin: 8px 0;
+  font-size: 12px;
+}
 .inspectionNote {
   margin: 8px 0 4px;
   font-size: 12px;

@@ -44,6 +44,16 @@ function RouteView({ route }: { route: Route }): JSX.Element {
 
 /** アプリ本体。 */
 export function App(): JSX.Element {
+  useEffect(() => {
+    const resume = (): void => sounds.resume();
+    // Rechecking a running context is cheap and also handles a later OS audio suspension.
+    window.addEventListener('pointerdown', resume, true);
+    window.addEventListener('keydown', resume, true);
+    return () => {
+      window.removeEventListener('pointerdown', resume, true);
+      window.removeEventListener('keydown', resume, true);
+    };
+  }, []);
   const route = useStore((s) => s.route);
   const toasts = useStore((s) => s.toasts);
   const fatalError = useStore((s) => s.fatalError);

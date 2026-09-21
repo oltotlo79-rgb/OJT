@@ -89,6 +89,7 @@ import { ViewGizmo } from './ViewGizmo.js';
 import { Wire } from './Wire.js';
 import { WireDragLayer } from './WirePreview.js';
 import { toScene } from './coords.js';
+import { observeWebGlContext } from './webgl-context.js';
 
 /**
  * 3D盤のシーン。設計仕様 §6.5 / §8.1 / §12.2 / §15。
@@ -1207,6 +1208,9 @@ function BoardSceneImpl({
 }): JSX.Element {
   const [generation, setGeneration] = useState(0);
   const setWebglLost = useStore((s) => s.setWebglLost);
+  const webglLost = useStore((s) => s.webglLost);
+  const detachContext = useRef<(() => void) | undefined>(undefined);
+  useEffect(() => () => detachContext.current?.(), []);
   const readoutRef = useRef<HTMLDivElement | null>(null);
   const perfRef = useRef<HTMLDivElement | null>(null);
 
@@ -1243,6 +1247,20 @@ function BoardSceneImpl({
 
   return (
     <>
+      {webglLost ? (
+        <div className="webgl-notice" role="alert">
+          <p>{JA.error.webglLost}</p>
+          <button
+            type="button"
+            onClick={() => {
+              setWebglLost(false);
+              setGeneration((value) => value + 1);
+            }}
+          >
+            {JA.error.webglRetry}
+          </button>
+        </div>
+      ) : null}
       <Canvas
         key={generation}
         frameloop="demand"
@@ -1259,24 +1277,9 @@ function BoardSceneImpl({
            * 値**しか測らない。止めたぶんは `PerfProbe` が毎フレーム自分で戻す。
            */
           configurePerfCounters(gl);
-          const canvas = gl.domElement;
-          canvas.addEventListener(
-            'webglcontextlost',
-            (event) => {
-              event.preventDefault();
-              setWebglLost(true);
-              setGeneration((value) => value + 1);
-            },
-            { once: true },
-          );
-          canvas.addEventListener(
-            'webglcontextrestored',
-            () => {
-              setWebglLost(false);
-            },
-            { once: true },
-          );
+          detachContext.current?.();
           setWebglLost(false);
+          detachContext.current = observeWebGlContext(gl.domElement, setWebglLost);
         }}
       >
         <BoardContents

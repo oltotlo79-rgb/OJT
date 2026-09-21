@@ -43,7 +43,7 @@ const RESERVED_SELECTOR =
   '[data-testid="status-overlay"], [data-testid="view-hint"], .terminal-tooltip';
 
 /** 名札そのもの。 */
-const LABEL_SELECTOR = '.block-label';
+export const LABEL_SELECTOR = '.block-label, .socket-label, .part-label';
 
 /** 隙間ぶん膨らませても交わるか。 */
 function overlaps(a: LabelRect, b: LabelRect, gapPx: number): boolean {

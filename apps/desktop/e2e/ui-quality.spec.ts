@@ -324,7 +324,7 @@ const OVERLAY_SELECTORS: readonly string[] = [
  * ここに入るものどうしの重なりは `hud-overlap`（blocking）として出す。
  */
 const HUD_SELECTOR =
-  '[data-testid="viewport"] .block-label, [data-testid="viewport"] .terminal-tooltip, [data-testid="status-overlay"], [data-testid="view-hint"]';
+  '[data-testid="viewport"] .socket-label, [data-testid="viewport"] .part-label, [data-testid="viewport"] .block-label, [data-testid="viewport"] .terminal-tooltip, [data-testid="status-overlay"], [data-testid="view-hint"]';
 
 /** 押せるもの（重なり・当たり判定の大きさで見る対象）。 */
 const INTERACTIVE_SELECTOR =
@@ -956,6 +956,10 @@ async function openProblem(page: Page, modeTestId: string, problemId: string): P
   await goHome(page);
   await page.getByTestId(modeTestId).click();
   await expect(page.getByTestId('problem-table')).toBeVisible();
+  await page
+    .getByTestId('grade-filter')
+    .getByRole('button', { name: 'すべて', exact: true })
+    .click();
   await expect(page.getByTestId(`open-${problemId}`)).toBeVisible();
   await page.getByTestId(`open-${problemId}`).click();
 }
@@ -1137,6 +1141,7 @@ test.describe.serial('画面品質の機械点検', () => {
         }
         await panel.scrollIntoViewIfNeeded();
         // 役割ID（`CR1`）で絞ると一覧が出る
+        await page.getByTestId('terminal-list-summary').click();
         await page.getByTestId('terminal-search').fill('CR1');
         await page.waitForTimeout(300);
         await stop(app, page, 'modeB-terminal-list', { three: true });
@@ -1306,7 +1311,9 @@ test.describe.serial('画面品質の機械点検', () => {
         // すでにΩを選んでいると押し直しても変化イベントが出ないので、いったん OFF へ落とす
         await page.getByRole('button', { name: 'OFF', exact: true }).click();
         await page.getByRole('button', { name: 'Ω', exact: true }).click();
-        await page.getByTestId('probe-target-coil').click();
+        const box = await canvasBox(page);
+        await clickTerminal(page, box, 'N.1');
+        await clickTerminal(page, box, 'P.1');
         // 帯は6秒で自動的に畳むので、出なくても撮るところまでは進む
         await page
           .getByTestId('hazard-banner')
@@ -1436,6 +1443,8 @@ test.describe.serial('画面品質の機械点検', () => {
     await expect(page.getByTestId('device-input')).toBeVisible();
     await page.getByTestId('device-text').fill(text);
     await page.getByTestId('device-commit').click();
+    if (await page.getByTestId('entry-comment').isVisible())
+      await page.getByTestId('entry-comment').press('Enter');
     await expect(page.getByTestId('device-input')).toHaveCount(0);
   }
 

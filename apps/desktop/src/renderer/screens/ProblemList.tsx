@@ -143,7 +143,7 @@ export function ProblemList(): JSX.Element {
               ] as ReadonlyArray<readonly [ListMode, string]>
             ).map(([mode, label]) => (
               <button
-                key={label}
+                key={mode ?? 'all'}
                 type="button"
                 aria-pressed={listMode === mode}
                 onClick={() => {
@@ -166,7 +166,7 @@ export function ProblemList(): JSX.Element {
               ] as ReadonlyArray<readonly [GradeFilter, string]>
             ).map(([value, label]) => (
               <button
-                key={label}
+                key={value ?? 'all'}
                 type="button"
                 aria-pressed={grade === value}
                 onClick={() => {

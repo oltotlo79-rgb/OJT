@@ -34,8 +34,21 @@ export function ViewHint(): JSX.Element {
         ?
       </button>
       {open ? (
-        <div className={styles.hint} data-testid="view-hint">
-          {JA.session.viewHint}
+        <div className={styles.hint} data-testid="view-hint" aria-label={JA.session.viewHint}>
+          <dl>
+            <div>
+              <dt>{JA.viewControls.mouse}</dt>
+              <dd>{JA.viewControls.mouseHelp}</dd>
+            </div>
+            <div>
+              <dt>{JA.viewControls.keyboard}</dt>
+              <dd>{JA.viewControls.keyboardHelp}</dd>
+            </div>
+            <div>
+              <dt>{JA.viewControls.cube}</dt>
+              <dd>{JA.viewControls.cubeHelp}</dd>
+            </div>
+          </dl>
         </div>
       ) : null}
     </div>

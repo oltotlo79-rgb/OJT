@@ -1,3 +1,4 @@
+import { CollapsiblePanel } from '../panels/CollapsiblePanel.js';
 import {
   JIPM_BOARD,
   mountedKinds,
@@ -9,7 +10,7 @@ import {
 import { isAssembleProblem } from '@ojt/content';
 import type { BoardSession, MountableKind, SocketId } from '@ojt/board-model';
 import type { TerminalId } from '@ojt/circuit-sim';
-import { useCallback, useEffect, useMemo, useRef, useState, type JSX } from 'react';
+import { useCallback, useEffect, useMemo, useRef, type JSX } from 'react';
 import { nextAssembleView, schematicPolicy, useStore } from '../app/store.js';
 import type { AssembleViewMode } from '../app/store.js';
 import { NO_HIGHLIGHT } from '../app/store-types.js';
@@ -139,37 +140,18 @@ export function LivePanel(): JSX.Element {
   // セレクタの中で丸める。`tMs` そのものを購読すると 33ms ごとにこの部品が再描画される
   const durationMs = useStore((s) => liveDurationMs(s.snapshot.tMs));
   const hasRecording = Object.keys(liveTransitions).length > 0;
-  const [expanded, setExpanded] = useState(hasRecording);
-  useEffect(() => {
-    if (hasRecording) setExpanded(true);
-  }, [hasRecording]);
   const live = useMemo(
     () => liveChart(chartSpecs, liveTransitions, durationMs),
     [chartSpecs, liveTransitions, durationMs],
   );
   return (
-    <section className={styles.panelLive} data-testid="live-panel">
-      <div className={styles.liveHeader}>
-        <h2 className={styles.liveTitle}>{JA.session.liveChart}</h2>
-        <button
-          type="button"
-          data-testid="live-toggle"
-          aria-expanded={expanded}
-          onClick={() => {
-            setExpanded((next) => !next);
-          }}
-        >
-          {expanded ? JA.liveCollapse.collapse : JA.liveCollapse.expand}
-        </button>
-      </div>
-      {expanded ? (
-        <TimeChartSvg chart={live} title={JA.session.liveChart} />
-      ) : (
-        <p className={styles.liveEmptyHint} data-testid="live-empty-hint">
-          {JA.liveCollapse.empty}
-        </p>
-      )}
-    </section>
+    <CollapsiblePanel
+      title={JA.session.liveChart}
+      testId="live-panel"
+      summary={hasRecording ? JA.liveCollapse.expand : JA.liveCollapse.empty}
+    >
+      <TimeChartSvg chart={live} title={JA.session.liveChart} />
+    </CollapsiblePanel>
   );
 }
 
@@ -207,7 +189,6 @@ export function Session(): JSX.Element {
   const chatters = useStore((s) => s.chatters);
   const logLines = useStore((s) => s.logLines);
   const judging = useStore((s) => s.judging);
-  const webglLost = useStore((s) => s.webglLost);
   const schematicVisible = useStore((s) => s.schematicVisible);
   // --- Plan 5 Task 7: 回路図エディタ（§11.4 / 決定表#1） ---
   const assembleView = useStore((s) => s.assembleView);
@@ -888,7 +869,6 @@ export function Session(): JSX.Element {
                 : `${JA.session.firstTerminal}: ${pendingTerminal}`}
               {selectedWire === undefined ? '' : ` / ${JA.session.selection}: ${selectedWireText}`}
               {tripped ? ` / ${JA.session.tripped}` : ''}
-              {webglLost ? ` / ${JA.error.webglLost}` : ''}
             </div>
             <ViewHint />
             {/* いま指しているものと、押すと何が起きるか（Phase 7 設計 §7.3.4） */}
@@ -984,6 +964,28 @@ export function Session(): JSX.Element {
             onSwap={onSwap}
             onPreset={onPreset}
           />
+
+          {showSchematic ? (
+            <CollapsiblePanel
+              title={JA.session.schematicHint}
+              testId="schematic-hint"
+              open
+              collapsible={problem.grade !== 3}
+            >
+              <div className={styles.schematicBox}>
+                <SchematicView
+                  document={problem.schematic}
+                  title={JA.session.schematicHint}
+                  highlightCellIds={highlightCells}
+                  onPickCell={onPickHintCell}
+                />
+              </div>
+            </CollapsiblePanel>
+          ) : null}
+          {spec !== undefined && spec.ok ? <TimeChartPanel chart={spec.chart} /> : null}
+          {spec !== undefined && !spec.ok ? (
+            <p data-testid="reference-error">{referenceErrorText(spec.errors)}</p>
+          ) : null}
           {/* --- Plan 5 Task 10: 端子リストによるキーボード配線（UXレビュー #29 / 決定表#12） --- */}
           <TerminalListPanel
             board={JIPM_BOARD}
@@ -1008,23 +1010,6 @@ export function Session(): JSX.Element {
             }}
           />
           {/* --- /Plan 5 Task 10 --- */}
-          {showSchematic ? (
-            <section className={styles.panelLive} data-testid="schematic-hint">
-              <h2 className={styles.liveTitle}>{JA.session.schematicHint}</h2>
-              <div className={styles.schematicBox}>
-                <SchematicView
-                  document={problem.schematic}
-                  title={JA.session.schematicHint}
-                  highlightCellIds={highlightCells}
-                  onPickCell={onPickHintCell}
-                />
-              </div>
-            </section>
-          ) : null}
-          {spec !== undefined && spec.ok ? <TimeChartPanel chart={spec.chart} /> : null}
-          {spec !== undefined && !spec.ok ? (
-            <p data-testid="reference-error">{referenceErrorText(spec.errors)}</p>
-          ) : null}
           <LivePanel />
         </div>
 

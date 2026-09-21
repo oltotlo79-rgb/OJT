@@ -52,6 +52,25 @@ afterEach(() => {
 });
 
 describe('設定の読み込み（§12.1）', () => {
+  it('変更していないフォルダ・音量・色を確定しても保存と通知を繰り返さない', async () => {
+    const { setSettings } = apiWith({ ...DEFAULT_SETTINGS, monitorColor: '#123456' });
+    await renderSettings();
+    fireEvent.blur(screen.getByTestId('setting-user-dir'));
+    fireEvent.blur(screen.getByTestId('setting-sound-volume'));
+    fireEvent.blur(screen.getByTestId('setting-monitor-color'));
+    expect(setSettings).not.toHaveBeenCalled();
+    expect(useStore.getState().toasts).toHaveLength(0);
+  });
+
+  it('相対パスは保存せず、直し方を伝える', async () => {
+    const { setSettings } = apiWith(DEFAULT_SETTINGS);
+    await renderSettings();
+    fireEvent.change(screen.getByTestId('setting-user-dir'), { target: { value: '../tasks' } });
+    fireEvent.blur(screen.getByTestId('setting-user-dir'));
+    expect(setSettings).not.toHaveBeenCalled();
+    expect(useStore.getState().toasts.at(-1)?.text).toBe(JA.settings.invalidUserDir);
+  });
+
   it('入力欄に getSettings の値がそのまま出る', async () => {
     apiWith({
       ...DEFAULT_SETTINGS,

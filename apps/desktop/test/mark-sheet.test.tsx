@@ -1,5 +1,5 @@
 import { BUILTIN_INSPECT_PARTS_PROBLEMS, PART_TRUTHS } from '@ojt/content';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CheckTrayPanel } from '../src/renderer/panels/CheckTrayPanel.js';
 import { DiagnosisHelp } from '../src/renderer/panels/DiagnosisHelp.js';
@@ -13,6 +13,7 @@ const C1 = BUILTIN_INSPECT_PARTS_PROBLEMS[0];
 
 afterEach(() => {
   cleanup();
+  vi.unstubAllGlobals();
 });
 
 describe('CheckTrayPanel（§9.1 トレイ）', () => {
@@ -65,6 +66,46 @@ describe('MarkSheetPanel（§9.1 回答 / §17.2 #5）', () => {
     for (const truth of PART_TRUTHS) {
       expect(screen.getByTestId(`answer-${first.id}-${truth}`)).toBeTruthy();
     }
+  });
+
+  it('広い欄は部品を行・原因を列にし、狭くすると同じ回答のカードへ切り替わる', () => {
+    if (C1 === undefined) throw new Error('fixture');
+    let resize: ResizeObserverCallback | undefined;
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        constructor(callback: ResizeObserverCallback) {
+          resize = callback;
+        }
+        observe() {}
+        disconnect() {}
+      },
+    );
+    const first = C1.parts[0];
+    if (first === undefined) throw new Error('fixture');
+    render(
+      <MarkSheetPanel
+        problem={C1}
+        answers={[{ partId: first.id, answer: 'coil-open' }]}
+        onAnswer={vi.fn()}
+      />,
+    );
+    const setWidth = (width: number): void => {
+      act(() =>
+        resize?.([{ contentRect: { width } } as ResizeObserverEntry], {} as ResizeObserver),
+      );
+    };
+    setWidth(900);
+    expect(screen.getAllByRole('columnheader')).toHaveLength(PART_TRUTHS.length + 1);
+    expect(screen.getAllByRole('rowheader')).toHaveLength(C1.parts.length);
+    expect(screen.getAllByRole('radio')).toHaveLength(C1.parts.length * PART_TRUTHS.length);
+    expect(screen.getByTestId<HTMLInputElement>(`answer-${first.id}-coil-open`).checked).toBe(true);
+    setWidth(380);
+    expect(screen.queryByRole('table')).toBeNull();
+    expect(screen.getByTestId<HTMLInputElement>(`answer-${first.id}-coil-open`).checked).toBe(true);
+    expect(screen.getByTestId('mark-sheet').querySelectorAll('details')).toHaveLength(
+      C1.parts.length,
+    );
   });
 
   it('選ぶと onAnswer が呼ばれる', () => {

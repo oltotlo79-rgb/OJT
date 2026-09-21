@@ -1,3 +1,4 @@
+import { CollapsiblePanel } from './CollapsiblePanel.js';
 import {
   catalogEntry,
   mountedKinds,
@@ -298,9 +299,13 @@ export function PartsPanel({
     : undefined;
 
   return (
-    <section className={styles.panel} data-testid="parts-panel">
-      <h2 className={styles.panelTitle}>{JA.session.parts}</h2>
-
+    <CollapsiblePanel
+      title={JA.session.parts}
+      testId="parts-panel"
+      summary={JA_PARTS.paletteTitle}
+      open
+      openKey={selectedSocket}
+    >
       {/* 在庫のパレット（つまんで盤へ運ぶ／押して選ぶ）。Phase 7 Task 27 */}
       {onCarry === undefined ? null : (
         <Palette items={remaining} carrying={carrying} onCarry={onCarry} />
@@ -452,6 +457,6 @@ export function PartsPanel({
           />
         );
       })}
-    </section>
+    </CollapsiblePanel>
   );
 }

@@ -88,10 +88,11 @@ export class SoundPlayer {
     };
   }
 
-  /** 使い終わったら閉じる。 */
-  close(): void {
-    void this.context?.close();
-    this.context = undefined;
+  /** 最初のクリック／キー操作でブラウザの音声待機を解除する。 */
+  resume(): void {
+    if (!this.enabled) return;
+    const context = this.ensureContext();
+    if (context?.state === 'suspended') void context.resume().catch(() => undefined);
   }
 
   private ensureContext(): AudioContext | undefined {

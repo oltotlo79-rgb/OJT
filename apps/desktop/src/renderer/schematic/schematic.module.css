@@ -160,8 +160,21 @@
 .keyHint {
   flex-shrink: 0;
   margin: 8px 0 0;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--paper-muted);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+}
+.keyHint > div {
+  display: flex;
+  gap: 4px;
+}
+.keyHint dt {
+  font-weight: 700;
+}
+.keyHint dd {
+  margin: 0;
 }
 
 /* --- 設定時間の欄（タイマコイルにカーソルがあるときだけ出る）。レビュー B1 --- */

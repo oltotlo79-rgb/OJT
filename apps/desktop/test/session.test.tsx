@@ -410,7 +410,8 @@ describe('キーボードのショートカット（§8.2）', () => {
     // 既定では「?」だけで、押ボタンを覆う帯は出さない
     expect(screen.queryByTestId('view-hint')).toBeNull();
     fireEvent.click(screen.getByTestId('view-hint-toggle'));
-    expect(screen.getByTestId('view-hint').textContent).toBe(JA.session.viewHint);
+    expect(screen.getByTestId('view-hint').querySelectorAll('dt')).toHaveLength(3);
+    expect(screen.getByTestId('view-hint')).toHaveTextContent(JA.viewControls.mouseHelp);
   });
 });
 
@@ -511,6 +512,7 @@ describe('作業ファイルの保存・読込（§12.3）', () => {
     }).not.toThrow();
     expect(useStore.getState().toasts.at(-1)?.tone).toBe('error');
 
+    openToolbarOverflow();
     expect(() => {
       fireEvent.click(screen.getByRole('button', { name: JA.session.load }));
     }).not.toThrow();
@@ -590,6 +592,7 @@ describe('回路図ヒント（§8.4: 3級=常時／2級=開閉可・初期は�
 
     fireEvent.click(toggle);
     expect(screen.getByTestId('schematic-hint')).toBeTruthy();
+    openToolbarOverflow();
     expect(screen.getByTestId('toggle-schematic').textContent).toBe(JA.session.hideSchematic);
 
     fireEvent.click(screen.getByTestId('toggle-schematic'));
@@ -635,32 +638,16 @@ describe('右パネルの並び（UXレビュー #9: 課題 → 部品 → 回�
   });
 });
 
-describe('ライブ記録の折りたたみ（UXレビュー #9）', () => {
-  it('最初は折りたたまれ、記録が始まると自動で開く', () => {
+describe('ライブ記録の折りたたみ', () => {
+  it('記録開始後も利用者が開くまで畳み、作業面を動かさない', () => {
     openSession();
-    expect(screen.getByTestId('live-empty-hint')).toBeTruthy();
-    expect(screen.getByTestId('live-toggle')).toHaveAttribute('aria-expanded', 'false');
-
-    act(() => {
-      useStore.setState({
-        liveTransitions: { PB1: [{ tMs: 0, value: true }] },
-      });
-    });
-    expect(screen.queryByTestId('live-empty-hint')).toBeNull();
-    expect(screen.getByTestId('live-toggle')).toHaveAttribute('aria-expanded', 'true');
-  });
-
-  it('開いたあとも訓練者が自分で畳み直せる', () => {
-    openSession();
+    expect(screen.getByTestId('live-panel-details')).not.toHaveAttribute('open');
     act(() => {
       useStore.setState({ liveTransitions: { PB1: [{ tMs: 0, value: true }] } });
     });
-    expect(screen.getByTestId('live-toggle')).toHaveAttribute('aria-expanded', 'true');
-    act(() => {
-      fireEvent.click(screen.getByTestId('live-toggle'));
-    });
-    expect(screen.getByTestId('live-toggle')).toHaveAttribute('aria-expanded', 'false');
-    expect(screen.getByTestId('live-empty-hint')).toBeTruthy();
+    expect(screen.getByTestId('live-panel-details')).not.toHaveAttribute('open');
+    fireEvent.click(screen.getByTestId('live-panel-summary'));
+    expect(screen.getByTestId('live-panel-details')).toHaveAttribute('open');
   });
 });
 

@@ -1,6 +1,7 @@
+import { CollapsiblePanel } from './CollapsiblePanel.js';
 import type { TimeChart, TimeChartSegment, TimeChartSignalSpec } from '@ojt/content';
 import { useMemo, type JSX } from 'react';
-import { JA } from '../i18n/ja.js';
+import { JA, secondsLabel } from '../i18n/ja.js';
 import {
   edgeTimes,
   operationEdgeTimes,
@@ -123,9 +124,13 @@ export function TimeChartSvg({
 /** 右パネルのタイムチャート。 */
 export function TimeChartPanel({ chart }: { chart: TimeChart }): JSX.Element {
   return (
-    <section className={styles.panel}>
-      <h2 className={styles.panelTitle}>{JA.session.chart}</h2>
+    <CollapsiblePanel
+      title={JA.session.chart}
+      testId="chart-panel"
+      summary={secondsLabel(chart.durationMs)}
+      open
+    >
       <TimeChartSvg chart={chart} title={JA.session.chart} testId="chart-spec" />
-    </section>
+    </CollapsiblePanel>
   );
 }

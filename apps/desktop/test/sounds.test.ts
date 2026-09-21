@@ -148,7 +148,8 @@ function fakeAudioContext() {
     destination: {},
     createGain: vi.fn(fakeGainNode),
     createOscillator: vi.fn(fakeOscillatorNode),
-    close: vi.fn(() => Promise.resolve()),
+    state: 'suspended',
+    resume: vi.fn(() => Promise.resolve()),
   };
 }
 
@@ -165,11 +166,11 @@ describe('SoundPlayer', () => {
     }).not.toThrow();
   });
 
-  it('close() を呼んでも AudioContext が無ければ投げない', () => {
+  it('resume() を呼んでも AudioContext が無ければ投げない', () => {
     vi.stubGlobal('AudioContext', undefined);
     const player = new SoundPlayer();
     expect(() => {
-      player.close();
+      player.resume();
     }).not.toThrow();
   });
 
@@ -265,12 +266,14 @@ describe('SoundPlayer', () => {
       expect(ctor).toHaveBeenCalledTimes(1);
     });
 
-    it('close() のあとは次の play() で AudioContext を作り直す', () => {
+    it('最初のジェスチャで待機中のAudioContextを再開し使い回す', () => {
       const player = new SoundPlayer();
       player.play('relay');
-      player.close();
+      player.resume();
       player.play('relay');
-      expect(ctor).toHaveBeenCalledTimes(2);
+      expect(ctor).toHaveBeenCalledTimes(1);
+      const context = ctor.mock.results[0]?.value as ReturnType<typeof fakeAudioContext>;
+      expect(context.resume).toHaveBeenCalledTimes(1);
     });
   });
 });

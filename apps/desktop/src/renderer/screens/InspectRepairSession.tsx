@@ -1,3 +1,4 @@
+import { CollapsiblePanel } from '../panels/CollapsiblePanel.js';
 import {
   JIPM_BOARD,
   socketPartId,
@@ -738,8 +739,12 @@ export function InspectRepairSession(): JSX.Element {
             置くのと同じ理由の裏返しで、C2はテスターで測る前に回路図を見る流れが多い）。
           */}
           {showSchematic ? (
-            <section className={styles.panelLive} data-testid="schematic-hint">
-              <h2 className={styles.liveTitle}>{JA.session.schematicHint}</h2>
+            <CollapsiblePanel
+              title={JA.session.schematicHint}
+              testId="schematic-hint"
+              open
+              collapsible={problem.grade !== 3}
+            >
               <div className={styles.schematicBox}>
                 <SchematicView
                   document={problem.schematic}
@@ -750,7 +755,7 @@ export function InspectRepairSession(): JSX.Element {
                   }}
                 />
               </div>
-            </section>
+            </CollapsiblePanel>
           ) : null}
           <TesterPanel />
           <RepairPanel

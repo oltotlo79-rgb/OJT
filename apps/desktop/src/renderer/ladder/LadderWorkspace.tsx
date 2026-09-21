@@ -517,7 +517,7 @@ export function LadderWorkspace({
               setWatchOpenKey((key) => key + 1);
             }}
           >
-            {profile.panels.watch}
+            {JA.ladder.showPanel(profile.panels.watch)}
           </button>
         )}
       </div>

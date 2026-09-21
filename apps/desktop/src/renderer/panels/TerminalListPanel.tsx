@@ -1,3 +1,4 @@
+import { CollapsiblePanel } from './CollapsiblePanel.js';
 import type { BoardDefinition, BoardSession } from '@ojt/board-model';
 import type { TerminalId } from '@ojt/circuit-sim';
 import { useMemo, useState, type JSX } from 'react';
@@ -52,8 +53,11 @@ export function TerminalListPanel({
   const [query, setQuery] = useState('');
   const rows = useMemo(() => terminalRows(board, session, query), [board, session, query]);
   return (
-    <section className={styles.terminalList} data-testid="terminal-list">
-      <h2 className={styles.panelTitle}>{JA.terminalList.title}</h2>
+    <CollapsiblePanel
+      title={JA.terminalList.title}
+      testId="terminal-list"
+      summary={JA.terminalList.search}
+    >
       <p className={styles.terminalHint}>{JA.terminalList.hint}</p>
       <input
         type="search"
@@ -143,6 +147,6 @@ export function TerminalListPanel({
           </div>
         ))}
       </div>
-    </section>
+    </CollapsiblePanel>
   );
 }

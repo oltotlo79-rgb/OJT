@@ -561,7 +561,17 @@ export function SchematicEditor({
           <p className={styles.cursorLine} data-testid="schematic-cursor">
             {`${JA.schematic.cursor}: ${cursorText(doc, cursor)}`}
           </p>
-          <p className={styles.keyHint}>{JA.schematic.keyHint}</p>
+          <dl className={styles.keyHint}>
+            {JA.schematic.keyHint.split('　').map((entry) => {
+              const [keys, action] = entry.split('＝');
+              return (
+                <div key={keys}>
+                  <dt>{keys}</dt>
+                  <dd>{action}</dd>
+                </div>
+              );
+            })}
+          </dl>
         </div>
       </div>
 

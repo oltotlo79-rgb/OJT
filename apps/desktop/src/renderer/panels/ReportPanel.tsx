@@ -1,6 +1,6 @@
 import type { Wire } from '@ojt/circuit-sim';
 import type { FaultReport, FaultReportKind } from '@ojt/content';
-import type { JSX } from 'react';
+import { useEffect, useRef, type JSX } from 'react';
 import { JA, reportTargetLabel } from '../i18n/ja.js';
 import { reportKindsFor } from '../session/inspect-repair.js';
 import type { ReportTarget } from '../session/interaction.js';
@@ -36,13 +36,24 @@ export function ReportPanel({
   onCancel: () => void;
   onRemove: (index: number) => void;
 }): JSX.Element {
+  const pendingRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (pending !== undefined)
+      pendingRef.current?.querySelector<HTMLButtonElement>('button')?.focus();
+  }, [pending]);
   return (
     <section className={styles.panel} data-testid="report-panel">
       <h2 className={styles.title}>
         {JA.inspectRepair.reports}（<span data-testid="report-count">{reports.length}</span>）
       </h2>
       {pending === undefined ? null : (
-        <div className={styles.popover} data-testid="report-popover">
+        <div
+          className={styles.popover}
+          data-testid="report-popover"
+          ref={pendingRef}
+          role="status"
+          aria-live="polite"
+        >
           <span className={styles.popoverTitle}>
             {JA.inspectRepair.chooseKind}: {reportTargetLabel(pending, wires)}
           </span>

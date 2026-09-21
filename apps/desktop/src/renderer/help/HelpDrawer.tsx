@@ -5,6 +5,7 @@ import {
   useRef,
   useState,
   type JSX,
+  type CSSProperties,
   type MouseEvent,
   type ReactNode,
 } from 'react';
@@ -70,6 +71,22 @@ export function HelpDrawer({ onClose }: { onClose: () => void }): JSX.Element {
   const closeRef = useRef<HTMLButtonElement>(null);
   const proseRef = useRef<HTMLDivElement>(null);
   const articleRef = useRef<HTMLDivElement>(null);
+  const [top, setTop] = useState(56);
+  useEffect(() => {
+    const toolbar = document.querySelector('[data-testid="session-toolbar"]');
+    const anchor = toolbar ?? document.querySelector('[data-testid="open-help"]');
+    const measure = (): void =>
+      setTop(Math.max(56, (anchor?.getBoundingClientRect().bottom ?? 48) + 8));
+    measure();
+    const observer =
+      typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(measure);
+    if (anchor !== null) observer?.observe(anchor);
+    window.addEventListener('resize', measure);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener('resize', measure);
+    };
+  }, []);
 
   // Minor#7: 節IDが目次と噛み合わないとき（§9 のフォールバック）は目次の最初の節を出す
   const section = sectionById(sectionId) ?? MANUAL_SECTIONS[0];
@@ -242,6 +259,7 @@ export function HelpDrawer({ onClose }: { onClose: () => void }): JSX.Element {
   return createPortal(
     <div
       className={styles.backdrop}
+      style={{ '--help-top': `${String(top)}px` } as CSSProperties}
       role="presentation"
       data-testid="help-backdrop"
       onClick={onClose}

@@ -435,6 +435,7 @@ test.describe('ヘルプ（§16 Phase 6 受入基準①②③⑥）', () => {
       await page.keyboard.press('Escape');
       await expect(page.getByTestId('help-drawer')).toBeHidden();
     } finally {
+      if (await page.getByTestId('help-drawer').isVisible()) await page.keyboard.press('Escape');
       await setWindow(WINDOW.width, WINDOW.height);
       await goHome();
     }

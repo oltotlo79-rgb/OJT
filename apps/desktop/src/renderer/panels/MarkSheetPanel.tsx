@@ -5,7 +5,7 @@ import {
   type InspectPartsProblem,
   type PartTruth,
 } from '@ojt/content';
-import type { JSX } from 'react';
+import { useEffect, useRef, useState, type JSX } from 'react';
 import { answeredText, JA, trayPartLabel } from '../i18n/ja.js';
 import { answeredCount, markSheetRows } from '../session/inspect-parts.js';
 import styles from './tester.module.css';
@@ -25,55 +25,90 @@ export function MarkSheetPanel({
   onAnswer: (partId: string, answer: PartTruth) => void;
 }): JSX.Element {
   const rows = markSheetRows(problem, answers);
+  const host = useRef<HTMLElement>(null);
+  const [compact, setCompact] = useState(true);
+  useEffect(() => {
+    if (host.current === null || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(([entry]) => {
+      if (entry !== undefined) setCompact(entry.contentRect.width < 680);
+    });
+    observer.observe(host.current);
+    return () => observer.disconnect();
+  }, []);
+  const option = (
+    partId: string,
+    truth: PartTruth,
+    partLabel: string,
+    answer: PartTruth | undefined,
+  ): JSX.Element => (
+    <label key={truth} className={styles.markOption}>
+      <input
+        type="radio"
+        name={`mark-${partId}`}
+        data-testid={`answer-${partId}-${truth}`}
+        aria-label={`${partLabel} ${PART_TRUTH_LABELS[truth]}`}
+        checked={answer === truth}
+        onChange={() => onAnswer(partId, truth)}
+      />
+      {compact ? PART_TRUTH_LABELS[truth] : null}
+    </label>
+  );
   return (
-    <section className={styles.panel} data-testid="mark-sheet">
+    <section className={styles.panel} data-testid="mark-sheet" ref={host}>
       <h2 className={styles.title}>{JA.inspectParts.markSheet}</h2>
       <p className={styles.label} data-testid="answered-count">
         {answeredText(answeredCount(problem, answers), problem.parts.length)}
       </p>
-      <table className={styles.markTable}>
-        <thead>
-          <tr>
-            <th>{JA.inspectParts.part}</th>
-            <th>{JA.inspectParts.cause}</th>
-          </tr>
-        </thead>
-        <tbody>
+      {compact ? (
+        <div className={styles.markCards} aria-label={JA.inspectParts.cause}>
           {rows.map((row) => {
-            const partLabel = trayPartLabel(row.partId, row.kind === 'timer-h3y4');
+            const label = trayPartLabel(row.partId, row.kind === 'timer-h3y4');
             return (
-              <tr key={row.partId}>
-                <td>{partLabel}</td>
-                <td>
-                  {/*
-                    UI監査 I16: 7択を縦一列の13pxラジオで並べていたため、当たり判定が小さく
-                    （small-target）、狭い列幅で「レアショート」が語の途中で折り返していた
-                    （wrap）。横並びのチップへ変え、チップ自身の当たり判定を広げ、
-                    ラベルは折り返さない1行にする。
-                  */}
-                  <div className={styles.markOptions}>
-                    {PART_TRUTHS.map((truth) => (
-                      <label key={truth} className={styles.markOption}>
-                        <input
-                          type="radio"
-                          name={`mark-${row.partId}`}
-                          data-testid={`answer-${row.partId}-${truth}`}
-                          aria-label={`${partLabel} ${PART_TRUTH_LABELS[truth]}`}
-                          checked={row.answer === truth}
-                          onChange={() => {
-                            onAnswer(row.partId, truth);
-                          }}
-                        />
-                        {PART_TRUTH_LABELS[truth]}
-                      </label>
-                    ))}
-                  </div>
-                </td>
-              </tr>
+              <details key={row.partId} open>
+                <summary>
+                  {label}
+                  <span>
+                    {row.answer === undefined
+                      ? JA.inspectParts.unanswered
+                      : PART_TRUTH_LABELS[row.answer]}
+                  </span>
+                </summary>
+                <div className={styles.markOptions}>
+                  {PART_TRUTHS.map((truth) => option(row.partId, truth, label, row.answer))}
+                </div>
+              </details>
             );
           })}
-        </tbody>
-      </table>
+        </div>
+      ) : (
+        <div className={styles.markScroll}>
+          <table className={styles.markTable}>
+            <thead>
+              <tr>
+                <th scope="col">{JA.inspectParts.part}</th>
+                {PART_TRUTHS.map((truth) => (
+                  <th key={truth} scope="col">
+                    {PART_TRUTH_LABELS[truth]}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row) => {
+                const partLabel = trayPartLabel(row.partId, row.kind === 'timer-h3y4');
+                return (
+                  <tr key={row.partId}>
+                    <th scope="row">{partLabel}</th>
+                    {PART_TRUTHS.map((truth) => (
+                      <td key={truth}>{option(row.partId, truth, partLabel, row.answer)}</td>
+                    ))}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
     </section>
   );
 }

@@ -118,13 +118,14 @@ export function MountedLabelContent({
     <>
       <span
         className={part.kind === 'relay-my4n' ? 'part-label' : 'part-label timer'}
+        data-label-rank={2}
         title={energized ? JA_3D.running : undefined}
       >
         {mountedLabel(role, part)}
       </span>
       {/* 励磁中だけ出す札。ランプの点灯と同じ情報を文字でも読めるようにする（§8.2） */}
       {energized ? (
-        <span className="part-label" style={RUNNING_STYLE}>
+        <span className="part-label" data-label-rank={2} style={RUNNING_STYLE}>
           {JA_3D.running}
         </span>
       ) : null}

@@ -201,6 +201,45 @@
   font-size: 11px;
 }
 
+.markScroll {
+  max-height: 420px;
+  overflow: auto;
+}
+.markTable thead th {
+  position: sticky;
+  top: 0;
+  background: var(--panel-2);
+  z-index: 1;
+  font-size: 12px;
+}
+.markTable td {
+  text-align: center;
+}
+.markCards {
+  display: grid;
+  gap: 8px;
+}
+.markCards details {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px;
+}
+.markCards summary {
+  font-weight: 700;
+  font-size: 13px;
+}
+.markCards summary span {
+  float: right;
+  color: var(--muted);
+  font-size: 12px;
+}
+.markCards .markOptions {
+  padding-top: 8px;
+}
+.markOption {
+  min-height: 32px;
+}
+
 /*
  * 折りたたみヘルプ（判定表。§9.1）。
  * `<summary>` は既定で1行ぶん（16px）の高さしか無く、当たり判定が24px未満だった

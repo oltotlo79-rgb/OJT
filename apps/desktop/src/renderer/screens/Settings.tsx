@@ -1,3 +1,4 @@
+import { validUserContentDir } from '../../shared/settings-validation.js';
 import {
   availableDialects,
   getDialect,
@@ -82,6 +83,15 @@ export function Settings(): JSX.Element {
    * つまみを動かすたびに「設定を保存しました」が5件並んで画面が埋まっていた）。
    */
   const patch = (next: Partial<AppSettings>, options: { silent?: boolean } = {}): void => {
+    if (
+      saved !== undefined &&
+      Object.entries(next).every(([key, value]) => saved[key as keyof AppSettings] === value)
+    )
+      return;
+    if (next.userContentDir !== undefined && !validUserContentDir(next.userContentDir)) {
+      toast(JA.settings.invalidUserDir, 'error');
+      return;
+    }
     let api: ReturnType<typeof ojtApi>;
     try {
       api = ojtApi();
@@ -274,18 +284,21 @@ export function Settings(): JSX.Element {
             <p className={styles.subtitle} data-testid="vendor-note">
               {JA.settings.vendorHelp}
             </p>
-            <p className={styles.subtitle} data-testid="vendor-assumption">
-              {ASSUMPTION_NOTICE}
-            </p>
-            {/* いま選んでいるスキンの見た目のうち、何が前提なのかを出す（§17.1 / 4A H-5） */}
-            <ul className={styles.subtitle} data-testid="skin-assumed">
-              {(isDialectId(settings.defaultVendor)
-                ? SKIN_THEMES[settings.defaultVendor].assumed
-                : []
-              ).map((note) => (
-                <li key={note}>{note}</li>
-              ))}
-            </ul>
+            <details className={styles.assumptions}>
+              <summary>{JA.settings.skinEvidence}</summary>
+              <p className={styles.subtitle} data-testid="vendor-assumption">
+                {ASSUMPTION_NOTICE}
+              </p>
+              {/* いま選んでいるスキンの見た目のうち、何が前提なのかを出す（§17.1 / 4A H-5） */}
+              <ul className={styles.subtitle} data-testid="skin-assumed">
+                {(isDialectId(settings.defaultVendor)
+                  ? SKIN_THEMES[settings.defaultVendor].assumed
+                  : []
+                ).map((note) => (
+                  <li key={note}>{note}</li>
+                ))}
+              </ul>
+            </details>
 
             <section className={styles.settingRow}>
               {/* レビュー指摘 #8: 列数・通電色のどちらを指すか分かる文言にする（同じ文言だと

@@ -1,5 +1,7 @@
+import { validUserContentDir, MAX_USER_CONTENT_DIR_LENGTH } from '../shared/settings-validation.js';
+export { MAX_USER_CONTENT_DIR_LENGTH };
 import { copyFileSync, existsSync, readFileSync } from 'node:fs';
-import { isAbsolute, join } from 'node:path';
+import { join } from 'node:path';
 import { app } from 'electron';
 import {
   IMPLEMENTED_DIALECT_IDS,
@@ -66,7 +68,6 @@ export function defaultUserContentDir(): string {
  * レビュー DM-3: 相対パス・桁違いに長い文字列をそのまま設定ファイルへ書くと、
  * あとで読むあらゆる場所（`content-loader.ts` の `readdir` 等）に壊れた値が伝播する。
  */
-export const MAX_USER_CONTENT_DIR_LENGTH = 260;
 
 /**
  * `patch` のうち `AppSettings` の4キーだけを型を確かめて `base` に重ねる（ホワイトリスト）。
@@ -81,11 +82,7 @@ function sanitizePatch(base: AppSettings, patch: unknown): AppSettings {
    * 相対パスや万文字級の壊れた／作為的な値は黙って無視し、直前の値を保つ。
    */
   const userContentDir = source['userContentDir'];
-  if (
-    typeof userContentDir === 'string' &&
-    (userContentDir.length === 0 ||
-      (isAbsolute(userContentDir) && userContentDir.length <= MAX_USER_CONTENT_DIR_LENGTH))
-  ) {
+  if (typeof userContentDir === 'string' && validUserContentDir(userContentDir)) {
     next.userContentDir = userContentDir;
   }
   if (typeof source['soundEnabled'] === 'boolean') next.soundEnabled = source['soundEnabled'];

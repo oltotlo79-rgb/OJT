@@ -1,5 +1,5 @@
 import type { WireColor } from '@ojt/circuit-sim';
-import { useState, type JSX } from 'react';
+import { useEffect, useRef, useState, type JSX } from 'react';
 import { HelpButton } from '../help/HelpButton.js';
 import { JA } from '../i18n/ja.js';
 import { useStore, type CameraPreset } from '../app/store.js';
@@ -115,6 +115,33 @@ export function Toolbar({
    * （レビュー指摘）。頻度の低い3群だけを畳み、線色・元に戻す・判定は常に1行目に残す。
    */
   const [overflowOpen, setOverflowOpen] = useState(false);
+  const [wide, setWide] = useState(() => window.innerWidth >= 1440);
+  const overflowRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const resize = (): void => setWide(window.innerWidth >= 1440);
+    window.addEventListener('resize', resize);
+    return () => window.removeEventListener('resize', resize);
+  }, []);
+  useEffect(() => {
+    if (!overflowOpen) return;
+    const outside = (event: PointerEvent): void => {
+      if (event.target instanceof Node && !overflowRef.current?.contains(event.target))
+        setOverflowOpen(false);
+    };
+    const escape = (event: KeyboardEvent): void => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      event.stopPropagation();
+      setOverflowOpen(false);
+      overflowRef.current?.querySelector<HTMLButtonElement>('button')?.focus();
+    };
+    document.addEventListener('pointerdown', outside);
+    document.addEventListener('keydown', escape, true);
+    return () => {
+      document.removeEventListener('pointerdown', outside);
+      document.removeEventListener('keydown', escape, true);
+    };
+  }, [overflowOpen]);
   /*
    * 判定ボタンが押せない理由。`judging`（往復待ち）を優先し、次に `judgeDisabled` の理由
    * （`judgeTitle`。モードDだけが渡す）。どちらも無ければ押せる状態なので `undefined`。
@@ -136,7 +163,12 @@ export function Toolbar({
   const hintShown = hintStage > 0 && !hintFolded;
   const openStages = hintShown ? stages.slice(0, hintStage) : [];
   return (
-    <div className={styles.toolbar} role="toolbar">
+    <div
+      className={styles.toolbar}
+      role="group"
+      aria-label={JA.toolbarOverflow.label}
+      data-testid="session-toolbar"
+    >
       {/*
         判定ボタン以外の道具はすべてここに入れる。狭い幅ではこの枠の中だけが複数行に
         折り返し、判定ボタンは `.judgeButton` の `margin-left: auto` で常に右端に留まる
@@ -241,9 +273,11 @@ export function Toolbar({
           パネルを `.overflowHost`（`position: relative`）でくくり、パネルはその真下に
           浮かせる（`.toolbarScroll` の折り返しの1項目に混ぜない）。
         */}
-        <div className={styles.overflowHost}>
+        <div className={styles.overflowHost} ref={overflowRef} data-wide={wide}>
           <button
             type="button"
+            hidden={wide}
+            aria-haspopup="true"
             className={styles.overflowToggle}
             data-testid="toolbar-overflow-toggle"
             aria-expanded={overflowOpen}
@@ -254,8 +288,15 @@ export function Toolbar({
           >
             ⋯
           </button>
-          {overflowOpen ? (
-            <div className={styles.overflowPanel} data-testid="toolbar-overflow">
+          {overflowOpen || wide ? (
+            <div
+              className={wide ? styles.inlineTools : styles.overflowPanel}
+              data-testid="toolbar-overflow"
+              onClick={(event) => {
+                if (event.target instanceof Element && event.target.closest('button'))
+                  setOverflowOpen(false);
+              }}
+            >
               <div className={styles.toolGroup}>
                 <span className={styles.toolLabel}>{JA.toolbarOverflow.view}</span>
                 {VIEWS.map((view) => (
@@ -364,6 +405,7 @@ export function Toolbar({
         className={styles.judgeButton}
         data-testid="judge-button"
         aria-disabled={judging || judgeDisabled}
+        aria-busy={judging}
         aria-describedby={judgeReason === undefined ? undefined : 'judge-reason'}
         {...(judgeTitle === undefined ? {} : { title: judgeTitle })}
         onClick={() => {
@@ -374,6 +416,7 @@ export function Toolbar({
           onJudge();
         }}
       >
+        {judging ? <span className={styles.spinner} aria-hidden="true" /> : null}
         {judging ? JA.session.judging : JA.session.judge}
       </button>
       {judgeReason === undefined ? null : (

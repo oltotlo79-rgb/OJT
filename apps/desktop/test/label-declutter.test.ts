@@ -3,10 +3,18 @@ import {
   applyLabelVisibility,
   DEFAULT_LABEL_RANK,
   LABEL_GAP_PX,
+  LABEL_SELECTOR,
   pickVisibleLabels,
   type LabelCandidate,
   type LabelRect,
 } from '../src/renderer/three/label-declutter.js';
+
+it('ソケット・部品・機器の名札を同じ重なり処理に含める', () => {
+  const host = document.createElement('div');
+  host.innerHTML =
+    '<span class="socket-label"></span><span class="part-label timer"></span><span class="block-label"></span>';
+  expect(host.querySelectorAll(LABEL_SELECTOR)).toHaveLength(3);
+});
 
 /**
  * 3D盤の名札の重なり取り（UI監査バッチE / デザイン規則「なにも重ならない」）。

@@ -1,3 +1,4 @@
+import { CollapsiblePanel } from './CollapsiblePanel.js';
 import type { SupportedProblem } from '@ojt/content';
 import type { JSX } from 'react';
 import { gradeLabel, JA } from '../i18n/ja.js';
@@ -11,12 +12,16 @@ import styles from './panels.module.css';
 /** 課題文の表示。 */
 export function ProblemPanel({ problem }: { problem: SupportedProblem }): JSX.Element {
   return (
-    <section className={styles.panel}>
-      <h2 className={styles.panelTitle}>{JA.session.problem}</h2>
+    <CollapsiblePanel
+      title={JA.session.problem}
+      testId="problem-panel"
+      summary={gradeLabel(problem.grade)}
+      open
+    >
       <p className={styles.problemTitle}>
         {problem.title}（{gradeLabel(problem.grade)}）
       </p>
       <p className={styles.problemText}>{problem.description}</p>
-    </section>
+    </CollapsiblePanel>
   );
 }

@@ -8,6 +8,7 @@ import { useStore } from '../src/renderer/app/store.js';
 import { LadderWorkspace } from '../src/renderer/ladder/LadderWorkspace.js';
 import { SKIN_THEMES } from '../src/renderer/ladder/skins/index.js';
 import styles from '../src/renderer/ladder/ladder.module.css';
+import panelStyles from '../src/renderer/panels/panels.module.css';
 
 /**
  * ラダーの枠の文字色（2026-09-19 UXレビュー #1 Blocking）。
@@ -195,8 +196,11 @@ describe('ラダーの枠の文字色（UXレビュー #1）', () => {
 
     for (const testId of ['monitor-panel', 'io-table', 'comment-panel', 'shortcuts']) {
       const panel = screen.getByTestId(testId);
-      expect(panel.className, testId).toContain(styles.side);
-      expect(panel.querySelector('h2')?.className, testId).toContain(styles.sideTitle);
+      expect(panel.className, testId).toContain(panelStyles.disclosure);
+      expect(panel).toHaveAttribute('data-skin', 'plc');
+      expect(panel.querySelector('h2')?.parentElement?.className, testId).toContain(
+        panelStyles.disclosureSummary,
+      );
     }
   });
 

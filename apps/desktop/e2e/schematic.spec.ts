@@ -162,6 +162,7 @@ test.describe.serial('結果の疑い一覧とキーボード配線（UXレビ�
     await page.getByRole('button', { name: 'もう一度' }).click();
     await expect(page.getByTestId('viewport')).toBeVisible();
     const before = await page.getByTestId('status-overlay').textContent();
+    await page.getByTestId('terminal-list-summary').click();
     await page.getByTestId('terminal-search').fill('CR1');
     await page.getByTestId('terminal-row-CR1.14').focus();
     await page.keyboard.press('Enter');

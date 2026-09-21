@@ -390,7 +390,7 @@ export function Socket({
         position={[bodyCenter[0], bodyCenter[1] + length / 2 + 5, TIER_HEIGHT_MM]}
         zIndexRange={[10, 0]}
       >
-        <span className="socket-label">
+        <span className="socket-label" data-label-rank={3}>
           {role ?? '予備'}
           <small>{socket.id}</small>
         </span>

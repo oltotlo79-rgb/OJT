@@ -86,6 +86,9 @@ export const JA = {
   },
   /** 設定画面。§12.1 / §15 */
   settings: {
+    invalidUserDir:
+      '課題フォルダは260文字以内の絶対パスで指定してください。空欄にすると既定に戻ります。',
+    skinEvidence: 'この見た目の根拠（指導員向け）',
     userContentDir: '利用者課題フォルダ',
     soundEnabled: '効果音',
     soundVolume: '音量',
@@ -227,6 +230,8 @@ export const JA = {
     powered: '通電中',
     unpowered: '無通電',
     tripState: '保護動作',
+    remainingTime: '打切り時間まで',
+    cutoffNotice: '打切り時間を過ぎました。練習は続けられます。',
     wires: '電線',
     noTerminal: '端子未選択',
     firstTerminal: '1本目',
@@ -295,6 +300,7 @@ export const JA = {
     markSheet: 'マークシート（不良原因を選ぶ）',
     part: '部品',
     cause: '不良原因',
+    unanswered: '未回答',
     answered: '解答済み',
     /** 判定表ヘルプの見出し。§9.1 */
     help: '判定表（切り分けの手順）',
@@ -724,6 +730,7 @@ export const JA = {
     onMark: '■',
     offMark: '□',
     /** 監視（ウォッチ）欄。呼び名はメーカーごとに違う（`panels.watch`）。 */
+    showPanel: (name: string): string => `${name}を開く`,
     watch: {
       /** `panels.watch` を名乗らないメーカー向けの既定（そのときは欄そのものを出さない）。 */
       title: '監視',
@@ -924,6 +931,7 @@ export const JA = {
     'footprint-crossing': '部品の上を避けて通せません',
   } satisfies Record<RoutingErrorReason, string>,
   error: {
+    webglRetry: '3D画面を再表示',
     banner: '予期しないエラーが発生しました',
     reset: 'セッションをリセット',
     /**
@@ -938,7 +946,7 @@ export const JA = {
      * 故障入りの盤・点検する部品は作り直せないので、課題を捨てて一覧へ戻ったことを伝える。
      */
     boardAbandoned: '盤を作り直せないため課題一覧へ戻りました',
-    webglLost: '表示を作り直しています',
+    webglLost: '3D表示が中断しました。再表示して作業を続けられます。',
     workerError: 'シミュレーションでエラーが発生しました',
     /** preload が読み込まれていない（`window.ojt` が無い）。§4.3 */
     preloadMissing: 'プリロードが読み込まれていません',
@@ -1035,7 +1043,6 @@ export const JA = {
   liveCollapse: {
     empty: 'まだ記録がありません（通電して操作すると記録が始まります）',
     expand: '開く',
-    collapse: '折りたたむ',
   },
   /** 電源操作の順番（UXレビュー #10）。`panels/PowerControls.tsx`。 */
   powerStep: {
@@ -1043,6 +1050,14 @@ export const JA = {
     switch: '② 電源スイッチ',
   },
   /** 視点操作の早見表の開閉ボタン（UXレビュー #14）。`panels/ViewHint.tsx`。 */
+  viewControls: {
+    mouse: 'マウス',
+    mouseHelp: '空白をドラッグで回転。Shift＋中／右ドラッグで移動。ホイールで拡大。',
+    keyboard: 'キー',
+    keyboardHelp: 'テンキー1・3・7で正面・右・上。Ctrlで反対側。Homeで全体へ。',
+    cube: 'キューブ',
+    cubeHelp: '面・辺・角を押すと視点を切替。つかんで動かすと自由に回転。',
+  },
   viewHintToggle: '視点操作の早見表',
   /**
    * 課題一覧（UXレビュー #12 / #20）。`screens/ProblemList.tsx`。

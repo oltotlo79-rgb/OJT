@@ -142,6 +142,27 @@ describe('押せない理由（UXレビュー #5 / UI監査 I6）', () => {
 });
 
 describe('「…」メニュー（UXレビュー #17: 視点・保存読込を畳んで1280px幅でも判定を1行目に残す）', () => {
+  it('Escapeはメニューを閉じ、開いたボタンへ戻す', () => {
+    renderToolbar();
+    const trigger = screen.getByTestId('toolbar-overflow-toggle');
+    fireEvent.click(trigger);
+    screen.getByRole('button', { name: JA.session.save }).focus();
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByTestId('toolbar-overflow')).toBeNull();
+    expect(trigger).toHaveFocus();
+  });
+
+  it('外側のクリックと項目の実行で閉じる', () => {
+    renderToolbar();
+    const trigger = screen.getByTestId('toolbar-overflow-toggle');
+    fireEvent.click(trigger);
+    fireEvent.pointerDown(document.body);
+    expect(screen.queryByTestId('toolbar-overflow')).toBeNull();
+    fireEvent.click(trigger);
+    fireEvent.click(screen.getByRole('button', { name: JA.session.viewFront }));
+    expect(screen.queryByTestId('toolbar-overflow')).toBeNull();
+  });
+
   it('既定では畳まれていて、視点・保存読込のボタンは出さない', () => {
     renderToolbar();
     expect(screen.getByTestId('toolbar-overflow-toggle')).toHaveAttribute('aria-expanded', 'false');

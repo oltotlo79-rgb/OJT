@@ -1095,22 +1095,22 @@ apps/desktop/e2e/ladder-entry.spec.ts（新規）
 
 **Steps:**
 
-- [ ] 1. **PR-08 ／ UX-07**: `panels/CollapsiblePanel.tsx` を作り（モードDの `SidePanel` を共通化）、右の欄を `<details>` に揃える。既定は 課題＝開く／部品＝開く／回路図ヒント＝級の規則どおり／タイムチャート＝開く／**端子リスト＝畳む**／ライブ記録＝畳む。並びは 課題→部品→回路図ヒント→タイムチャート→端子リスト→ライブ記録。畳んだ見出しに要点を添える。
-- [ ] 2. **UX-10 ／ 3D-10**: `.socket-label` / `.part-label` を **12px** に上げ、`label-declutter` の `LABEL_SELECTOR` / `HUD_SELECTOR` に2クラスを足し `data-label-rank` を付ける。`e2e/ui-quality.spec.ts` の `HUD_SELECTOR` にも足す。**本体仕様 §8.2 と §12 の「画面上10px相当以上」は 2026-09-20 の所有者決定で既に「12px相当以上」に改訂済み**なので、実装をその記述に合わせるだけでよい（新たな仕様変更ではない）。
-- [ ] 3. **UI-03**: 「⋯」メニューを `Esc` ・外側 `pointerdown` ・項目の `onClick` で閉じる。`aria-haspopup="true"` を足す。
-- [ ] 4. **UX-25**: 1440px 以上では保存・読込・視点を「⋯」から**出したままにする**。
-- [ ] 5. **UI-09**: 設定に `patchIfChanged(key, value)` を足し、変わっていないのに保存してトーストを出すのをやめる。`userContentDir` に入力検証（Task 9 の main 側と同じ条件）。
-- [ ] 6. **UX-16**: 設定のスキン注記7項目を `<details>`「この見た目の根拠（指導員向け）」に畳む（既定は畳む）。
-- [ ] 7. **UI-12**: `role="toolbar"` に `aria-label` と roving tabindex を足す（または `role` を外す）。
-- [ ] 8. **UI-18**: `AudioContext` を最初のジェスチャで `resume()` する。死んだ `close()` を削除する。
-- [ ] 9. **UI-19**: 絞り込みボタンの `key` を表示ラベルから安定値に変える。
-- [ ] 10. **UI-21**: 指摘種別のポップオーバーに `role="status"` / `aria-live` とフォーカス移動を足す。
-- [ ] 11. **UX-15**: 視点操作の早見表を `nowrap` ＋ `ellipsis` の1行から、マウス／キーボード／ビューキューブの3段カード（12px）にする。
-- [ ] 12. **UX-20**: C1 のマークシートを「部品＝行・不良原因＝列」の表にし、列見出しを固定する。狭い幅では部品ごとの `<details>`。
-- [ ] 13. **UX-23**: 回路図エディタのキー早見表を 11px のベタ1行から `<dl>` にする。
-- [ ] 14. **UX-30 ／ PR-10**: 判定中に不定進捗を出す。練習タイマーに残り時間と打切りの知らせを足す。
-- [ ] 15. **3D-17**: WebGL コンテキスト喪失の告知を4画面すべてに出し、`key` を同時に変えて即座にフラグが落ちるのを止める。
-- [ ] 16. テスト。`toolbar.test.tsx`（Esc・外側・項目で閉じる）／`settings-screen.test.tsx`（変更なしで blur しても IPC が飛ばない）／`label-declutter.test.ts`（2クラスが対象でランク順に譲る）／`marksheet.test.tsx`（表の行列と列見出しの固定）。
+- [x] 1. **PR-08 ／ UX-07**: `panels/CollapsiblePanel.tsx` を作り（モードDの `SidePanel` を共通化）、右の欄を `<details>` に揃える。既定は 課題＝開く／部品＝開く／回路図ヒント＝級の規則どおり／タイムチャート＝開く／**端子リスト＝畳む**／ライブ記録＝畳む。並びは 課題→部品→回路図ヒント→タイムチャート→端子リスト→ライブ記録。畳んだ見出しに要点を添える。
+- [x] 2. **UX-10 ／ 3D-10**: `.socket-label` / `.part-label` を **12px** に上げ、`label-declutter` の `LABEL_SELECTOR` / `HUD_SELECTOR` に2クラスを足し `data-label-rank` を付ける。`e2e/ui-quality.spec.ts` の `HUD_SELECTOR` にも足す。**本体仕様 §8.2 と §12 の「画面上10px相当以上」は 2026-09-20 の所有者決定で既に「12px相当以上」に改訂済み**なので、実装をその記述に合わせるだけでよい（新たな仕様変更ではない）。
+- [x] 3. **UI-03**: 「⋯」メニューを `Esc` ・外側 `pointerdown` ・項目の `onClick` で閉じる。`aria-haspopup="true"` を足す。
+- [x] 4. **UX-25**: 1440px 以上では保存・読込・視点を「⋯」から**出したままにする**。
+- [x] 5. **UI-09**: 設定に `patchIfChanged(key, value)` を足し、変わっていないのに保存してトーストを出すのをやめる。`userContentDir` に入力検証（Task 9 の main 側と同じ条件）。
+- [x] 6. **UX-16**: 設定のスキン注記7項目を `<details>`「この見た目の根拠（指導員向け）」に畳む（既定は畳む）。
+- [x] 7. **UI-12**: `role="toolbar"` に `aria-label` と roving tabindex を足す（または `role` を外す）。
+- [x] 8. **UI-18**: `AudioContext` を最初のジェスチャで `resume()` する。死んだ `close()` を削除する。
+- [x] 9. **UI-19**: 絞り込みボタンの `key` を表示ラベルから安定値に変える。
+- [x] 10. **UI-21**: 指摘種別のポップオーバーに `role="status"` / `aria-live` とフォーカス移動を足す。
+- [x] 11. **UX-15**: 視点操作の早見表を `nowrap` ＋ `ellipsis` の1行から、マウス／キーボード／ビューキューブの3段カード（12px）にする。
+- [x] 12. **UX-20**: C1 のマークシートを「部品＝行・不良原因＝列」の表にし、列見出しを固定する。狭い幅では部品ごとの `<details>`。
+- [x] 13. **UX-23**: 回路図エディタのキー早見表を 11px のベタ1行から `<dl>` にする。
+- [x] 14. **UX-30 ／ PR-10**: 判定中に不定進捗を出す。練習タイマーに残り時間と打切りの知らせを足す。
+- [x] 15. **3D-17**: WebGL コンテキスト喪失の告知を4画面すべてに出し、`key` を同時に変えて即座にフラグが落ちるのを止める。
+- [x] 16. テスト。`toolbar.test.tsx`（Esc・外側・項目で閉じる）／`settings-screen.test.tsx`（変更なしで blur しても IPC が飛ばない）／`label-declutter.test.ts`（2クラスが対象でランク順に譲る）／`marksheet.test.tsx`（表の行列と列見出しの固定）。
 
 **期待:** `e2e/ui-quality.spec.ts` の `blocking` 0件。1280×800 ではみ出し0件。
 
