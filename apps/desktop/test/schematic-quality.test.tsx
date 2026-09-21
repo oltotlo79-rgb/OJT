@@ -96,16 +96,19 @@ function redraw(problem: typeof flicker, presetMs?: number): SchematicDocument {
 }
 
 describe('設定時間（レビュー B1: `setPreset` が無いと b-006 は絶対に通らない）', () => {
-  it('passes 検算 only once the timer coils are set to 0.8 s', () => {
-    // 置いたまま（既定の 3.0 秒）では点滅が合わず不合格になる
-    const asPlaced = verifySchematic(flicker, JIPM_BOARD, redraw(flicker));
-    expect(asPlaced.ok).toBe(true);
-    if (asPlaced.ok) expect(asPlaced.passed).toBe(false);
-    // 設定時間の欄で 0.8 秒にすると合格する（受入基準の「b-006 が描ける」）
-    const asSet = verifySchematic(flicker, JIPM_BOARD, redraw(flicker, 800));
-    expect(asSet.ok).toBe(true);
-    if (asSet.ok) expect(asSet.passed).toBe(true);
-  });
+  // 実際に点滅回路を最後まで動かすため、計装時も条件別に検証できる予算を設ける。
+  it.each([
+    { label: '配置直後の既定値では不合格', preset: undefined, passed: false },
+    { label: '0.8秒へ設定すると合格', preset: 800, passed: true },
+  ])(
+    '$label',
+    ({ preset, passed }) => {
+      const result = verifySchematic(flicker, JIPM_BOARD, redraw(flicker, preset));
+      expect(result.ok).toBe(true);
+      if (result.ok) expect(result.passed).toBe(passed);
+    },
+    30_000,
+  );
 });
 
 describe('当たり矩形の作り直し（レビュー I7）', () => {

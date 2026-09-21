@@ -122,6 +122,7 @@ function assertFrames(source: ReplaySource, chart: TimeChart): void {
 }
 
 describe('実際の採点と再生の一致・元の作業の保護', () => {
+  // 採点と全区間の再生で実エンジンを複数回動かす。計装込みの予算はこの3件だけに適用する。
   it('モードBの配線不足を含む提出物で一致する', () => {
     const problem = BUILTIN_PROBLEMS[0]!;
     const built = buildReferenceSession(problem, JIPM_BOARD);
@@ -155,7 +156,7 @@ describe('実際の採点と再生の一致・元の作業の保護', () => {
       replay: undefined,
     });
     stopReplay();
-  });
+  }, 30_000);
   it('モードC2は解決済みの故障を同じまま再生する', () => {
     const problem = BUILTIN_INSPECT_REPAIR_PROBLEMS[0]!;
     const built = buildInspectRepairCircuit(problem, JIPM_BOARD);
@@ -166,7 +167,7 @@ describe('実際の採点と再生の一致・元の作業の保護', () => {
       { mode: 'inspect-repair', problem, circuit: built.value },
       judge.value.charts.actual,
     );
-  });
+  }, 30_000);
   it('モードDのスキャンとタイマも採点と一致する', () => {
     const problem = BUILTIN_PLC_PROBLEMS[2]!;
     const built = buildPlcReferenceSession(problem, JIPM_BOARD);
@@ -177,7 +178,7 @@ describe('実際の採点と再生の一致・元の作業の保護', () => {
     const source = { mode: 'plc', problem, session: built.value.session, ladder } as const;
     assertFrames(source, judge.value.charts.actual);
     expect(createReplay(source).frame(0).plc).toBeDefined();
-  });
+  }, 30_000);
   it('未判定では開始しない', () => {
     expect(startReplay()).toBe(false);
   });

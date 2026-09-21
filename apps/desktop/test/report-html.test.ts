@@ -91,23 +91,28 @@ describe('1枚の結果HTML', () => {
     expect(html).toContain('>90<');
     expect(html).toContain('>12<');
   });
-  it('C1・C2・PLCにもモードごとの採点情報が入る', () => {
+  it('C1の採点情報が入る', () => {
     const c1 = BUILTIN_INSPECT_PARTS_PROBLEMS[0]!;
     const r1 = judgeInspectParts(c1, []);
     expect(resultReportHtml({ ...input, problem: c1, result: r1 })).toContain('マークシート採点');
+  });
+  // C2とPLCは実際の採点を行う統合検証。モードを分け、計装時の実行時間を確保する。
+  it('C2の採点情報が入る', () => {
     const c2 = BUILTIN_INSPECT_REPAIR_PROBLEMS[0]!;
     const builtC2 = buildInspectRepairCircuit(c2, JIPM_BOARD);
     if (!builtC2.ok) throw new Error('circuit');
     const r2 = judgeInspectRepair(c2, JIPM_BOARD, builtC2.value, []);
     if (!r2.ok) throw new Error('judge');
     expect(resultReportHtml({ ...input, problem: c2, result: r2.value })).toContain('見逃し');
+  }, 30_000);
+  it('PLCの採点情報が入る', () => {
     const plc = BUILTIN_PLC_PROBLEMS[0]!;
     const builtPlc = buildPlcReferenceSession(plc, JIPM_BOARD);
     if (!builtPlc.ok) throw new Error('plc');
     const r3 = judgePlc(plc, JIPM_BOARD, builtPlc.value.session, plc.referenceLadder);
     if (!r3.ok) throw new Error('judge');
     expect(resultReportHtml({ ...input, problem: plc, result: r3.value })).toContain('PLC');
-  });
+  }, 30_000);
   it('今回の開始日時は時間を復元しても変わらず、別の課題で更新される', () => {
     const now = vi.spyOn(Date, 'now').mockReturnValue(1_000_000);
     useStore.getState().openProblem(problem);
