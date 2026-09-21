@@ -15,7 +15,7 @@ describe('説明書の発行日', () => {
     for (const value of ['', '2026-02-30', '2026-9-2', 'tomorrow'])
       expect(() => manualDate('.', value)).toThrow('OJT_MANUAL_DATE');
   });
-  it('Gitのないソースでは当日、履歴があれば同じコミット日を使う', () => {
+  it('Gitの履歴がないソースでは当日、履歴があれば同じコミット日を使う', () => {
     const root = mkdtempSync(join(tmpdir(), 'ojt-manual-date-'));
     roots.push(root);
     const env = Object.fromEntries(
@@ -45,8 +45,9 @@ describe('説明書の発行日', () => {
           stdio: 'ignore',
         },
       );
-    expect(manualDate(root, undefined, new Date('2026-09-22'))).toBe('2026-09-22');
+    // TEMPが別リポジトリの内側でも、親の履歴・設定を検証へ持ち込まない。
     git('init');
+    expect(manualDate(root, undefined, new Date('2026-09-22'))).toBe('2026-09-22');
     git('commit', '--allow-empty', '-m', '日付検証');
     const child = join(root, 'sub');
     mkdirSync(child);

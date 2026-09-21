@@ -9,6 +9,20 @@ import {
 } from 'node:fs';
 import { dirname } from 'node:path';
 
+/** Windowsでファイルの解放が遅れた場合だけ、最大350ms待つ。本体は消さない。 */
+function replaceFile(temp: string, target: string): void {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      renameSync(temp, target);
+      return;
+    } catch (cause) {
+      const code = (cause as NodeJS.ErrnoException).code;
+      if (attempt === 3 || (code !== 'EPERM' && code !== 'EBUSY')) throw cause;
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 50 * 2 ** attempt);
+    }
+  }
+}
+
 /**
  * アトミックな書込の1本化。設計仕様 §13 #7 / §13 #8 / レビュー DM-6。
  *
@@ -37,7 +51,7 @@ export function writeFileAtomic(target: string, content: string | Uint8Array): v
     } finally {
       closeSync(fd);
     }
-    renameSync(temp, target);
+    replaceFile(temp, target);
   } catch (cause) {
     try {
       rmSync(temp, { force: true });
