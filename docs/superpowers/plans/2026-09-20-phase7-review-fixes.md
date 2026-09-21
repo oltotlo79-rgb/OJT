@@ -1331,11 +1331,11 @@ git status --short
 
 **Steps:**
 
-- [ ] 1. **QA-15 ＋ QA-09**: `check-dist.mjs` を「検査関数を export するモジュール」＋「薄い入口」に割る。検査を足す: asar の目次（`out/main/index.js` の有無・`node_modules` の混入）、PDF の `%PDF-` マジックバイト、同梱 JSON の**内容**比較、成果物のサイズ下限。`check-dist.test.ts` で偽の release ツリーを `mkdtempSync` で組み、5ケース（全部揃う／PDF欠損／PDF 0バイト／課題が1件足りない／旧版が残っている）を実行する。
-- [ ] 2. **QA-08**: `electron.vite.config.ts` の `OJT_PACKAGES`（4本）をやめ、`package.json` の `dependencies` から `@ojt/*` を抽出する。`release-manual.test.ts` に「同集合であること」の検査を足す。
-- [ ] 3. **QA-19**: `copy-content.mjs` に「ターゲット側の**余分な**モードフォルダを消す」3行を足し、`check-dist.mjs` にモード集合の等号チェックを足す。`copy-content.test.ts` で「正本に無いモードフォルダ」を仕込み、それが消えることを確かめる。
-- [ ] 4. **QA-16**: PDF の生成日を `OJT_MANUAL_DATE` 環境変数 → `git log -1 --format=%cs` → 今日 の順に決める。`manual-build.test.ts` に「同じ `files` と同じ `builtAt` を渡した2回の `buildManual()` がバイト単位で同一」「`builtAt` を渡さなければ表紙に日付が出ない」を足す。**同じコミットから同じ SHA256 の PDF が焼けるようにする。**
-- [ ] 5. **QA-17**: `artifactName` を ASCII（`DenkiKyoikuTool-${version}-${arch}.${ext}`）にする。インストール後の実行ファイル名（`productName`）は日本語のまま変えない。README とリリースノートの対応表を不要にする。
+- [x] 1. **QA-15 ＋ QA-09**: `check-dist.mjs` を「検査関数を export するモジュール」＋「薄い入口」に割る。検査を足す: asar の目次（`out/main/index.js` の有無・`node_modules` の混入）、PDF の `%PDF-` マジックバイト、同梱 JSON の**内容**比較、成果物のサイズ下限。`check-dist.test.ts` で偽の release ツリーを `mkdtempSync` で組み、5ケース（全部揃う／PDF欠損／PDF 0バイト／課題が1件足りない／旧版が残っている）を実行する。
+- [x] 2. **QA-08**: `electron.vite.config.ts` の `OJT_PACKAGES`（4本）をやめ、`package.json` の `dependencies` から `@ojt/*` を抽出する。`release-manual.test.ts` に「同集合であること」の検査を足す。
+- [x] 3. **QA-19**: `copy-content.mjs` に「ターゲット側の**余分な**モードフォルダを消す」3行を足し、`check-dist.mjs` にモード集合の等号チェックを足す。`copy-content.test.ts` で「正本に無いモードフォルダ」を仕込み、それが消えることを確かめる。
+- [x] 4. **QA-16**: PDF の生成日を `OJT_MANUAL_DATE` 環境変数 → `git log -1 --format=%cs` → 今日 の順に決める。`manual-build.test.ts` に「同じ `files` と同じ `builtAt` を渡した2回の `buildManual()` がバイト単位で同一」「`builtAt` を渡さなければ表紙に日付が出ない」を足す。**同じコミットから同じ SHA256 の PDF が焼けるようにする。**
+- [x] 5. **QA-17**: `artifactName` を ASCII（`DenkiKyoikuTool-${version}-${arch}.${ext}`）にする。インストール後の実行ファイル名（`productName`）は日本語のまま変えない。README とリリースノートの対応表を不要にする。
 
 **期待:**
 
@@ -1346,6 +1346,8 @@ pnpm --filter @ojt/desktop test -- check-dist copy-content release-manual manual
 worktree で `pnpm --filter @ojt/desktop dist` を**2回**走らせ、`manual.pdf` の SHA256 が一致すること。
 
 ---
+
+実施記録（2026-09-22）: 利用者の単一EXE指定に従いzipをportableへ変更。ASCII名は衝突を防ぐためSetup / Portableを区別する。コミット02182baからdistを2回実行し、PDFのSHA256は両方 `1A1BAFA2FAB056A2A564D48499595F2D2A506F7F1823876171E3C6F6FD20D82B`。配布検査2回成功、関連188件成功。独立フォルダのEXE1個から72課題・3D通電/判定・ヘルプ・PLCをCDPで検査し、終了後の展開物消去も確認。配布版E2Eを専用projectとして保存した。
 
 ## Task 32: ヘルプ引き出しの読みやすさ
 

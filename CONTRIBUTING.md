@@ -127,6 +127,10 @@ OJT_SHOT_DIR=<出力先> pnpm --filter @ojt/desktop exec playwright test e2e/ui-
 5. **`git status --short` が空であることを確認してから**、同じ worktree で
    `pnpm --filter @ojt/desktop dist` を実行する（§6。空でなければ `git checkout -- docs/manual`
    で戻してから実行する）。`release/artifacts.md` が生成されることを確認する。
+   続けて `pnpm --filter @ojt/desktop e2e:packaged` を実行する。配布EXEを1つだけ別フォルダへ置き、
+   一時userDataとCDPで課題・3D判定・ヘルプ・PLC・終了時の展開物削除を確認する。
+   `check-dist` は旧版混入・内蔵課題の内容違い・asarの欠損や不要依存・PDF形式・保護設定を拒否する。
+   PDFの発行日は `OJT_MANUAL_DATE`（YYYY-MM-DD）→最新コミットの日→Gitがない場合だけ当日の順。
 6. `docs/releases/<version>.md` にリリースノートを書き、「やっていないこと」を明記する。
 7. 利用者の明示の指示がある場合に限り `git tag` と GitHub Release を行う（タグ付け・公開は
    明示の指示があるタスクのみが行う）。

@@ -33,7 +33,8 @@ export default defineConfig({
    *   pnpm --filter @ojt/desktop e2e:shots   図の撮り直し（撮ったら `git status docs/manual` を確認）
    */
   projects: [
-    { name: 'default', testIgnore: ['**/manual-shots.spec.ts'] },
+    { name: 'default', testIgnore: ['**/manual-shots.spec.ts', '**/portable.spec.ts'] },
     { name: 'manual-shots', testMatch: ['**/manual-shots.spec.ts'] },
+    { name: 'packaged', testMatch: ['**/portable.spec.ts'] },
   ],
 });
