@@ -1,11 +1,34 @@
-import { mkdirSync, readFileSync, readdirSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { expect, test } from '@playwright/test';
+import { expect, test, type ElectronApplication } from '@playwright/test';
 import { JIPM_BOARD } from '@ojt/board-model';
 import { terminalId } from '@ojt/circuit-sim';
 import { BUILTIN_PROBLEMS, buildReferenceSession, judgeAssemble } from '@ojt/content';
 import { resultReportHtml } from '../src/renderer/result/report-html.js';
 import { launchApp, SHOT_DIR, shot } from './app.js';
+
+function freshOutput(): string {
+  const parent = join(SHOT_DIR, 'result-reports');
+  mkdirSync(parent, { recursive: true });
+  return mkdtempSync(join(parent, 'run-'));
+}
+
+async function watchReportErrors(application: ElectronApplication): Promise<void> {
+  application.process().stderr?.on('data', (data: Buffer) => process.stderr.write(data));
+  await application.evaluate(({ app }) => {
+    app.on('web-contents-created', (_event, contents) => {
+      contents.on('did-fail-load', (_event, code, description, url) => {
+        console.error('Report load failed', { code, description, url });
+      });
+      const print = contents.printToPDF.bind(contents);
+      contents.printToPDF = (options) =>
+        print(options).catch((error: unknown) => {
+          console.error('Report print failed', String(error));
+          throw error;
+        });
+    });
+  });
+}
 
 for (const [mode, id] of [
   ['assemble', 'b-001'],
@@ -17,9 +40,9 @@ for (const [mode, id] of [
     const { app, page, userDataDir } = await launchApp({
       contentSize: { width: 1280, height: 800 },
     });
-    const output = join(SHOT_DIR, 'result-reports');
-    mkdirSync(output, { recursive: true });
+    const output = freshOutput();
     try {
+      await watchReportErrors(app);
       await page.getByTestId(`mode-${mode}`).click();
       await page.getByTestId(`open-${id}`).click();
       if (mode === 'plc') {
@@ -51,6 +74,7 @@ for (const [mode, id] of [
           dialog.showSaveDialog = () => Promise.resolve({ canceled: false, filePath });
         }, target);
         await save.click();
+        await expect.poll(() => existsSync(target), { timeout: 35_000 }).toBe(true);
         await expect(save).toBeEnabled();
         const saved = readFileSync(target);
         if (extension === 'pdf') {
@@ -114,8 +138,8 @@ test('長い課題名・最大件数の差分と配線候補もA4の1枚に収�
   });
   const { app, page } = await launchApp();
   try {
-    const filePath = join(SHOT_DIR, 'result-reports', 'long-report.pdf');
-    mkdirSync(join(SHOT_DIR, 'result-reports'), { recursive: true });
+    await watchReportErrors(app);
+    const filePath = join(freshOutput(), 'long-report.pdf');
     await app.evaluate(({ dialog }, target) => {
       dialog.showSaveDialog = () => Promise.resolve({ canceled: false, filePath: target });
     }, filePath);

@@ -1,6 +1,7 @@
 import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const state = vi.hoisted(() => ({
@@ -148,6 +149,8 @@ describe('結果の明示的な書き出し', () => {
       detail: { url: string },
       cb: typeof allow,
     ) => void;
+    network({ url: pathToFileURL(state.paths[0]!).href }, allow);
+    expect(allow).toHaveBeenLastCalledWith({ cancel: false });
     for (const url of [
       'https://example.invalid',
       'file:///C:/secret.txt',

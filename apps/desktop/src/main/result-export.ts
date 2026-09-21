@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { extname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -24,7 +24,8 @@ async function reportPdf(html: string): Promise<Uint8Array> {
   let window: BrowserWindow | undefined;
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
-    const source = join(temp, 'report.html');
+    // WindowsのTEMPが8.3形式でも、Chromiumと同じ実体のパスで1ファイルだけ許可する。
+    const source = join(await realpath(temp), 'report.html');
     await writeFile(source, html, 'utf8');
     window = new BrowserWindow({
       show: false,
