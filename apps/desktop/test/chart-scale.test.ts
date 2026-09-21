@@ -1,7 +1,9 @@
 import type { TimeChart } from '@ojt/content';
 import { describe, expect, it } from 'vitest';
 import {
+  chartWidth,
   edgeTimes,
+  fitChartGeometry,
   LARGE_GEOMETRY,
   msToX,
   nearestSnap,
@@ -13,6 +15,19 @@ import {
   timeReadout,
   xToMs,
 } from '../src/renderer/panels/chart-scale.js';
+
+describe('表示幅に合わせるチャート', () => {
+  it.each([264, 400, 900])('%ipxでも文字を12px以上に保ち、時間座標を往復できる', (width) => {
+    for (const scale of [0.9, 1, 1.15, 1.3]) {
+      const geom = fitChartGeometry(SMALL_GEOMETRY, width, scale);
+      expect(geom.labelFont).toBeGreaterThanOrEqual(12);
+      expect(geom.tickFont).toBeGreaterThanOrEqual(12);
+      expect(geom.plotWidth).toBeGreaterThanOrEqual(80);
+      expect(chartWidth(geom)).toBe(Math.max(width, geom.labelWidth + geom.rightPad + 80));
+      expect(xToMs(msToX(2345, 5000, geom), 5000, geom)).toBeCloseTo(2345);
+    }
+  });
+});
 
 /**
  * タイムチャートの目盛・補助線の純粋関数（Task CHART-UX）。設計仕様 §7.7 / §8.3。

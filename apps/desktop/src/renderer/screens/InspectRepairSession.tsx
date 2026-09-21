@@ -1,3 +1,4 @@
+import { togglePowerFixture } from '../session/power-toggle.js';
 import { CollapsiblePanel } from '../panels/CollapsiblePanel.js';
 import {
   JIPM_BOARD,
@@ -211,6 +212,9 @@ export function InspectRepairSession(): JSX.Element {
       const current = store.session;
       if (current === undefined) return;
       switch (action.type) {
+        case 'togglePower':
+          togglePowerFixture(action.fixture);
+          break;
         case 'beginWire':
           store.setPending(action.from);
           break;
@@ -337,6 +341,10 @@ export function InspectRepairSession(): JSX.Element {
         hit.kind === 'terminal'
           ? { ...hit, id: toNetlistTerminal(current.socketRoles, hit.id) }
           : hit;
+      if (mapped.kind === 'fixture') {
+        runAction({ type: 'togglePower', fixture: mapped.fixture });
+        return;
+      }
       if (store.mode === 'tester') {
         runAction(
           testerPickToAction(

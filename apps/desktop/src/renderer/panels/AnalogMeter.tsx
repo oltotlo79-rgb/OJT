@@ -1,6 +1,8 @@
 import { NEEDLE_FULL_SCALE_DEG, ohmNeedleDeg, type AnalogOhmRange } from '@ojt/circuit-sim';
-import type { JSX } from 'react';
+import { useRef, type JSX } from 'react';
 import { useStore } from '../app/store.js';
+import { useElementWidth } from '../app/use-element-size.js';
+import { useUiScale } from '../app/ui-preferences.js';
 import { JA } from '../i18n/ja.js';
 import styles from './tester.module.css';
 
@@ -89,40 +91,56 @@ export function ohmScaleTicks(range: AnalogOhmRange): ScaleTick[] {
 }
 
 /** 目盛1本ぶんの線と数字。 */
-function Tick({ tick }: { tick: ScaleTick }): JSX.Element {
+function Tick({
+  tick,
+  fontSize,
+  labelled,
+}: {
+  tick: ScaleTick;
+  fontSize: number;
+  labelled: boolean;
+}): JSX.Element {
   const outer = needleTip(tick.deg, PIVOT_X, PIVOT_Y, TICK_OUTER_R);
   const inner = needleTip(tick.deg, PIVOT_X, PIVOT_Y, TICK_INNER_R);
   const label = needleTip(tick.deg, PIVOT_X, PIVOT_Y, LABEL_R);
   return (
     <g>
       <line x1={outer.x} y1={outer.y} x2={inner.x} y2={inner.y} stroke="#23262B" strokeWidth={1} />
-      <text
-        x={label.x}
-        y={label.y}
-        fill="#23262B"
-        fontSize={7}
-        textAnchor="middle"
-        dominantBaseline="middle"
-      >
-        {tick.label}
-      </text>
+      {labelled ? (
+        <text
+          x={label.x}
+          y={label.y}
+          fill="#23262B"
+          fontSize={fontSize}
+          textAnchor="middle"
+          dominantBaseline="middle"
+        >
+          {tick.label}
+        </text>
+      ) : null}
     </g>
   );
 }
 
 /** アナログ計器。 */
 export function AnalogMeter(): JSX.Element {
+  const host = useRef<SVGSVGElement | null>(null);
+  const width = useElementWidth(host) ?? WIDTH;
+  const scale = useUiScale();
+  const fontSize = (12 * Math.max(1, scale) * WIDTH) / width;
   const mode = useStore((s) => s.tester.mode);
   const voltRange = useStore((s) => s.tester.voltRange);
   const ohmRange = useStore((s) => s.tester.ohmRange);
   const needleDeg = useStore((s) => s.snapshot.tester.needleDeg);
   const ticks =
     mode === 'OHM' || mode === 'CONT' ? ohmScaleTicks(ohmRange) : voltScaleTicks(voltRange);
+  const labelled = readableMeterLabels(ticks, fontSize);
   const tip = needleTip(needleDeg, PIVOT_X, PIVOT_Y, NEEDLE_R);
   const arcStart = needleTip(0, PIVOT_X, PIVOT_Y, TICK_OUTER_R);
   const arcEnd = needleTip(NEEDLE_FULL_SCALE_DEG, PIVOT_X, PIVOT_Y, TICK_OUTER_R);
   return (
     <svg
+      ref={host}
       className={styles.meter}
       viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
       role="img"
@@ -135,8 +153,13 @@ export function AnalogMeter(): JSX.Element {
         stroke="#23262B"
         strokeWidth={1.2}
       />
-      {ticks.map((tick) => (
-        <Tick key={`${tick.label}-${String(tick.deg)}`} tick={tick} />
+      {ticks.map((tick, index) => (
+        <Tick
+          key={`${tick.label}-${String(tick.deg)}`}
+          tick={tick}
+          fontSize={fontSize}
+          labelled={labelled.has(index)}
+        />
       ))}
       <line
         data-testid="analog-needle"
@@ -152,4 +175,28 @@ export function AnalogMeter(): JSX.Element {
       <circle cx={PIVOT_X} cy={PIVOT_Y} r={3.2} fill="#23262B" />
     </svg>
   );
+}
+
+/** 目盛線は残し、密集する端の数字だけを間引く。両端の0・∞／最大値を優先する。 */
+export function readableMeterLabels(ticks: readonly ScaleTick[], fontSize: number): Set<number> {
+  const shown = new Set<number>();
+  const occupied: Array<{ x: number; y: number; halfWidth: number }> = [];
+  const order = [...new Set([0, ticks.length - 1, ...ticks.map((_tick, index) => index)])];
+  for (const index of order) {
+    const tick = ticks[index];
+    if (tick === undefined) continue;
+    const position = needleTip(tick.deg, PIVOT_X, PIVOT_Y, LABEL_R);
+    const halfWidth = (tick.label.length * fontSize * 0.62) / 2;
+    if (
+      occupied.some(
+        (other) =>
+          Math.abs(other.x - position.x) < other.halfWidth + halfWidth + 3 &&
+          Math.abs(other.y - position.y) < fontSize + 2,
+      )
+    )
+      continue;
+    occupied.push({ ...position, halfWidth });
+    shown.add(index);
+  }
+  return shown;
 }

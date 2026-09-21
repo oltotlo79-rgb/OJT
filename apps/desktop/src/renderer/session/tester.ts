@@ -63,14 +63,10 @@ export function testerPickToAction(state: TesterPickState, hit: PickHit): PickAc
       return state.black === undefined && state.red === undefined
         ? { type: 'none' }
         : { type: 'liftProbe', probe: 'both' };
-    /*
-     * 電源の操作部（Phase 7 Task 27 で3Dから押せるようになった）は、点検（C1/C2）では
-     * 2Dの `PowerControls` が受け持つ。この画面には入切の経路が無いので、`BoardScene` は
-     * テスター／指摘モードでは操作部にハンドラを渡さない（＝この枝には来ない）。
-     */
+    case 'fixture':
+      return { type: 'togglePower', fixture: hit.fixture };
     case 'wire':
     case 'socket':
-    case 'fixture':
       return { type: 'none' };
   }
 }

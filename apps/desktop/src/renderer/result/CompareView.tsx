@@ -79,8 +79,6 @@ export function CompareView({
   useEffect(() => {
     const previous = document.activeElement;
     const layer = pushModalLayer();
-    const overflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
     close.current?.focus();
     const onKey = (event: KeyboardEvent): void => {
       if (topModalLayer() !== layer.depth) return;
@@ -93,7 +91,6 @@ export function CompareView({
     return () => {
       window.removeEventListener('keydown', onKey);
       layer.release();
-      document.body.style.overflow = overflow;
       if (previous instanceof HTMLElement && previous.isConnected) previous.focus();
     };
   }, [onClose]);

@@ -37,7 +37,7 @@ const harness: {
   /** `useFrame` に渡した優先度。0 より大きいと R3F は自動描画をやめる（バッチE）。 */
   framePriority: number;
   gl: { domElement: { style: { cursor: string } } };
-  /** キャンバスの CSS px 幅・高さ。既定は HUD が既定の96pxで出る広さ（900px以上）。 */
+  /** キャンバスの CSS px 幅・高さ。既定は HUD が既定の72pxで出る広さ（900px以上）。 */
   size: { width: number; height: number };
 } = vi.hoisted(() => ({
   children: null,
@@ -306,8 +306,8 @@ afterEach(() => {
 });
 
 describe('ビューキューブの形と当たり判定（§12.2）', () => {
-  it('キューブは 96px で、面のメッシュ1つと辺・角20個の当たり判定を持つ（計26箇所）', () => {
-    expect(GIZMO_SIZE).toBe(96);
+  it('キューブは 72px で、面のメッシュ1つと辺・角20個の当たり判定を持つ（計26箇所）', () => {
+    expect(GIZMO_SIZE).toBe(72);
     expect(cubeGroup().props['scale']).toEqual([GIZMO_SIZE, GIZMO_SIZE, GIZMO_SIZE]);
 
     const meshes = elements().filter((element) => element.type === 'mesh');
@@ -426,7 +426,7 @@ describe('座標軸の三脚は撤去（2026-09-20 の利用者指摘「重な�
 });
 
 describe('HUD の大きさはキャンバス幅で決まる（2026-09-20 の利用者指摘「重なってるし」）', () => {
-  it('900px以上は96px、600〜900px未満は64px、600px未満は隠す', () => {
+  it('900px以上は72px、600〜900px未満は64px、600px未満は隠す', () => {
     expect(gizmoLayoutForViewport(GIZMO_WIDE_VIEWPORT_PX)?.size).toBe(GIZMO_SIZE);
     expect(gizmoLayoutForViewport(1280)?.size).toBe(GIZMO_SIZE);
     expect(gizmoLayoutForViewport(GIZMO_WIDE_VIEWPORT_PX - 1)?.size).toBe(GIZMO_SIZE_NARROW);
@@ -869,9 +869,9 @@ describe('HUDは分割ビューの盤に重ならない（2026-09-20 の利用�
     expect(intersects).toBe(false);
   });
 
-  it('96pxキューブが出るぎりぎりの幅（900px）でも、HUDは左上の角のすぐ内側に収まる', () => {
+  it('72pxキューブが出るぎりぎりの幅（900px）でも、HUDは左上の角のすぐ内側に収まる', () => {
     /*
-     * 96pxキューブが出るのは幅900px以上のペイン＝**モードB/C の3Dペイン**だけ
+     * 72pxキューブが出るのは幅900px以上のペイン＝**モードB/C の3Dペイン**だけ
      * （モードDの3Dペインは `--plc-board-max: 32vw` の上限があり、1920×1080 でも 614px）。
      * そこで高さもモードBのペインの形（おおむね 16:10）で取る。
      * UI監査バッチE以前はここを `900 / PLC_VIEW_ASPECT`（= 1200px）で作っていたが、

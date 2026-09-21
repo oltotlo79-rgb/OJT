@@ -238,10 +238,12 @@ export function MountedPart({
         }}
         /* つまんでソケットの外へ放すと取り外し（Phase 7 設計 §7.3.2。ゴミ箱は作らない） */
         onPointerDown={(event: ThreeEvent<PointerEvent>) => {
+          if (event.button !== 0) return;
           event.stopPropagation();
           onPressPart(socket.id, part.kind);
         }}
         onPointerUp={(event: ThreeEvent<PointerEvent>) => {
+          if (event.button !== 0) return;
           event.stopPropagation();
           onReleaseSocket(socket.id, true);
         }}

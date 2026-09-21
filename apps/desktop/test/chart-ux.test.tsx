@@ -24,7 +24,6 @@ import {
   operationEdgeTimes,
   SMALL_GEOMETRY,
   SNAP_TOLERANCE_PX,
-  tickPositions,
   timeReadout,
 } from '../src/renderer/panels/chart-scale.js';
 import { ChartCanvas, type ChartFigure } from '../src/renderer/panels/TimeChartView.js';
@@ -99,13 +98,11 @@ function judgeResult() {
 }
 
 describe('縦の補助線（§7.7）', () => {
-  it('目盛線と操作エッジの破線を立てる', () => {
+  it('300pxの波形には読める間隔の6本の目盛と全操作エッジを立てる', () => {
     const chart = chartOf();
     render(<TimeChartSvg chart={chart} title={TITLE} testId="chart-spec" />);
     const svg = screen.getByTestId('chart-spec');
-    expect(svg.querySelectorAll('[data-guide="tick"]')).toHaveLength(
-      tickPositions(chart.durationMs).length,
-    );
+    expect(svg.querySelectorAll('[data-guide="tick"]')).toHaveLength(6);
     expect(svg.querySelectorAll('[data-guide="edge"]')).toHaveLength(
       operationEdgeTimes(chart).length,
     );

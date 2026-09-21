@@ -105,8 +105,8 @@ const BASELINE: Readonly<Record<string, number>> = {
   duplicate: 0,
   wrap: 0,
   // 残る縮小SVG内の文字とチェック欄は追加レビューで修正し、実測値をさらに下げる。
-  'small-text': 72,
-  'small-target': 89,
+  'small-text': 0,
+  'small-target': 0,
   focus: 0,
   canvas: 0,
 };
@@ -791,6 +791,24 @@ async function auditDom(page: Page): Promise<RawFinding[]> {
       if (info.inViewport) continue;
       if (!info.el.matches(cfg.interactive)) continue;
       if (info.rect.width >= cfg.minTargetPx && info.rect.height >= cfg.minTargetPx) continue;
+      // ラジオ・チェック欄は関連付いたラベル全体でも操作できる。
+      // 見た目を巨大化させず、実際に反応する領域の寸法を評価する。
+      if (
+        info.el instanceof HTMLInputElement &&
+        (info.el.type === 'radio' || info.el.type === 'checkbox')
+      ) {
+        const hasLargeLabel = [...(info.el.labels ?? [])].some((label) => {
+          const box = label.getBoundingClientRect();
+          const style = getComputedStyle(label);
+          return (
+            style.visibility !== 'hidden' &&
+            style.pointerEvents !== 'none' &&
+            box.width >= cfg.minTargetPx &&
+            box.height >= cfg.minTargetPx
+          );
+        });
+        if (hasLargeLabel) continue;
+      }
       out.push({
         check: 'small-target',
         selector: describe(info.el),
@@ -1338,6 +1356,16 @@ test.describe.serial('画面品質の機械点検', () => {
       await step('マークシート', async () => {
         const sheet = page.getByTestId('mark-sheet');
         await sheet.scrollIntoViewIfNeeded();
+        // 小さい丸の外でも、ラベルの文字を押せば回答が選ばれることを実操作で検査する。
+        const option = sheet
+          .locator('label')
+          .filter({ has: page.locator('input[type="radio"]') })
+          .first();
+        const radio = option.locator('input[type="radio"]');
+        const labelBox = await option.boundingBox();
+        if (labelBox === null) throw new Error('回答ラベルが表示されていません');
+        await option.click({ position: { x: labelBox.width - 8, y: labelBox.height / 2 } });
+        await expect(radio).toBeChecked();
         await page.waitForTimeout(400);
         await stop(app, page, 'modeC1-mark-sheet');
       });

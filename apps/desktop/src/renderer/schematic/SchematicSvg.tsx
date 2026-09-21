@@ -8,7 +8,9 @@ import {
   type Shape,
   type ShapeRole,
 } from '@ojt/schematic-core';
-import { useMemo, type JSX } from 'react';
+import { useMemo, useRef, type JSX } from 'react';
+import { useElementSize } from '../app/use-element-size.js';
+import { useUiScale } from '../app/ui-preferences.js';
 
 /**
  * 回路図（展開接続図）の読取専用レンダラ。設計仕様 §11.2。
@@ -431,6 +433,9 @@ export function SchematicSvg({
    */
   fit?: boolean;
 }): JSX.Element {
+  const host = useRef<SVGSVGElement | null>(null);
+  const size = useElementSize(host);
+  const uiScale = useUiScale();
   const result = useMemo(() => layout(doc, SCHEMATIC_LAYOUT), [doc]);
   // 最小寸法の床は編集モード（`onPickSlot` を渡したとき）だけに敷く。読取専用のヒント・
   // 拡大表示はヒント欄の実寸に合わせた縮尺のまま変えない（B1・スキーマティックコア担当の指摘）。
@@ -451,8 +456,14 @@ export function SchematicSvg({
     [doc, onPickSlot],
   );
   const [vx, vy, vw, vh] = view;
+  const displayScale = size === undefined ? undefined : Math.min(size.width / vw, size.height / vh);
+  const minimumFont =
+    displayScale === undefined || displayScale <= 0
+      ? 0
+      : (12.1 * Math.max(1, uiScale)) / displayScale;
   return (
     <svg
+      ref={host}
       viewBox={view.join(' ')}
       role="img"
       aria-label={doc.title}
@@ -482,10 +493,20 @@ export function SchematicSvg({
       />
       {result.shapes.flatMap((shape, index) =>
         renderShape(
-          shape,
+          // 空の編集面では母線間が狭い。文字を潰さず、余白のある外側へ見出しを逃がす。
+          shape.kind === 'text' &&
+            onPickSlot !== undefined &&
+            (busLabelSizeByIndex.get(index) ?? Infinity) < minimumFont
+            ? { ...shape, anchor: shape.anchor === 'end' ? 'start' : 'end' }
+            : shape,
           index,
           shape.cellId !== undefined && highlighted.has(shape.cellId),
-          busLabelSizeByIndex.get(index),
+          shape.kind === 'text'
+            ? Math.max(
+                minimumFont,
+                busLabelSizeByIndex.get(index) ?? TEXT_STYLE[shape.role]?.size ?? LABEL_FONT_SIZE,
+              )
+            : undefined,
         ),
       )}
       {/*

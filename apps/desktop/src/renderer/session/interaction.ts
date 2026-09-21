@@ -210,37 +210,48 @@ export function isTypingTarget(target: unknown): boolean {
  * 盤のショートカットへ通してしまうと、拡大表示を Esc で閉じたつもりが電線の選択も解除される、
  * `3` で後ろの3Dビューが「ソケット拡大」へ飛ぶ、といった取り違えが起きる。
  */
-let modalLayers = 0;
+const modalLayers = new Set<number>();
+let nextModalDepth = 0;
+let previousBodyOverflow = '';
 
 /**
  * モーダルを1枚積む。`depth` はこの1枚の重なり順（一番外側が1）、`release()` を呼ぶと下ろす
- * （`useEffect` の後始末から呼ぶ）。数で持つのは、モーダルの上にモーダルが出ても取りこぼさないため。
+ * （`useEffect` の後始末から呼ぶ）。親が先に閉じても、残る窓の順序を変えない。
+ * 本文のスクロール止めもここで共有し、最後の1枚が閉じたときだけ元の値へ戻す。
  *
  * `depth` はモーダルが2枚重なったときに Esc が**上の1枚だけ**を閉じるために要る
  * （`topModalLayer()` と比べて自分が最上段でなければキー入力を無視する）。
  */
 export function pushModalLayer(): { depth: number; release: () => void } {
-  modalLayers += 1;
-  const depth = modalLayers;
+  if (modalLayers.size === 0 && typeof document !== 'undefined') {
+    previousBodyOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+  }
+  const depth = ++nextModalDepth;
+  modalLayers.add(depth);
   let released = false;
   return {
     depth,
     release: () => {
       if (released) return;
       released = true;
-      modalLayers = Math.max(0, modalLayers - 1);
+      modalLayers.delete(depth);
+      if (modalLayers.size === 0) {
+        nextModalDepth = 0;
+        if (typeof document !== 'undefined') document.body.style.overflow = previousBodyOverflow;
+      }
     },
   };
 }
 
 /** モーダルが開いているか。§8.2 */
 export function isModalOpen(): boolean {
-  return modalLayers > 0;
+  return modalLayers.size > 0;
 }
 
 /** 一番上に積まれているモーダルの重なり順（積んでいなければ0）。§8.2 */
 export function topModalLayer(): number {
-  return modalLayers;
+  return [...modalLayers].at(-1) ?? 0;
 }
 
 /**

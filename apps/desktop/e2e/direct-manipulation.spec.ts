@@ -7,7 +7,13 @@ import { toTerminalId } from '@ojt/circuit-sim';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import { powerWellCenterMm } from '../src/renderer/three/AcFixtures.js';
 import { findFixtureFootprint, FIXTURE_HEIGHT_MM } from '../src/renderer/three/Fixtures.js';
-import { boardPoint, terminalPoint, wireCountText, type CanvasBox } from './projection.js';
+import {
+  boardPoint,
+  plcBoardPoint,
+  terminalPoint,
+  wireCountText,
+  type CanvasBox,
+} from './projection.js';
 
 /**
  * 3D盤の直接操作（Phase 7 Task 27 / 指摘 UX-08・PR-11 / 利用者要望9）。
@@ -50,10 +56,17 @@ async function canvasBox(page: Page): Promise<CanvasBox> {
 }
 
 /** 電源の操作部（ハンドル窓／ロッカー窓）が来るページ座標。寸法の正本は `AcFixtures.tsx`。 */
-function powerPoint(kind: 'breaker' | 'switch', box: CanvasBox): { x: number; y: number } {
+function powerPoint(
+  kind: 'breaker' | 'switch',
+  box: CanvasBox,
+  plc = false,
+): { x: number; y: number } {
   const footprint = findFixtureFootprint(JIPM_BOARD.footprints, kind);
   if (footprint === undefined) throw new Error(`機器の外形がありません: ${kind}`);
-  return boardPoint(powerWellCenterMm(footprint, kind, FIXTURE_HEIGHT_MM), box);
+  return (plc ? plcBoardPoint : boardPoint)(
+    powerWellCenterMm(footprint, kind, FIXTURE_HEIGHT_MM),
+    box,
+  );
 }
 
 /** ソケット本体（差込領域）の中央が来るページ座標。 */
@@ -222,4 +235,85 @@ test.describe.serial('3D盤の直接操作（利用者要望9）', () => {
     await page.waitForTimeout(500);
     expect(await readout.textContent()).toBe(before);
   });
+
+  test('配線中のポインタ中断とアプリ切替を取り消し、次の視点操作ができる', async () => {
+    const box = await canvasBox(page);
+    const from = terminalPoint(toTerminalId('P.1'), box);
+    for (const event of ['pointercancel', 'blur']) {
+      await page.mouse.move(from.x, from.y);
+      await page.mouse.down();
+      await page.mouse.move(from.x + 70, from.y + 35, { steps: 5 });
+      await expect(page.getByTestId('status-overlay')).toContainText('1本目');
+      await page.evaluate((kind) => {
+        window.dispatchEvent(kind === 'pointercancel' ? new PointerEvent(kind) : new Event(kind));
+      }, event);
+      await page.mouse.up();
+      await expect(page.getByTestId('status-overlay')).toContainText('端子未選択');
+      await expect(page.getByTestId('status-overlay')).toContainText(
+        wireCountText(FIXED_WIRES + 1, FIXED_WIRES),
+      );
+    }
+    const before = await page.getByTestId('camera-readout').textContent();
+    await dragTo(
+      page,
+      { x: box.x + 20, y: box.y + box.height - 70 },
+      { x: box.x + 60, y: box.y + box.height - 40 },
+    );
+    await expect(page.getByTestId('camera-readout')).not.toHaveText(before ?? '');
+  });
 });
+
+for (const [mode, id] of [
+  ['inspect-parts', 'c1-001'],
+  ['inspect-repair', 'c2-001'],
+  ['plc', 'd-001'],
+] as const) {
+  test(`${mode}でも3Dの電源操作がツールバーへ反映される`, async () => {
+    const { app, page } = await launchApp();
+    try {
+      await app.evaluate(({ BrowserWindow }) =>
+        BrowserWindow.getAllWindows()[0]?.setContentSize(1440, 900),
+      );
+      await page.getByTestId(`mode-${mode}`).click();
+      await page.getByTestId(`open-${id}`).click();
+      if (mode === 'plc') await page.getByTestId('view-board').click();
+      await expect(page.getByTestId('camera-readout')).toBeAttached();
+      await page.waitForTimeout(800);
+      const box = await canvasBox(page);
+      for (const fixture of ['breaker', 'switch'] as const) {
+        const point = powerPoint(fixture, box, mode === 'plc');
+        await page.mouse.click(point.x, point.y);
+        await expect(page.getByTestId(`power-${fixture}`)).toHaveAttribute('aria-pressed', 'true');
+      }
+      for (const fixture of ['switch', 'breaker'] as const) {
+        const point = powerPoint(fixture, box, mode === 'plc');
+        await page.mouse.click(point.x, point.y);
+        await expect(page.getByTestId(`power-${fixture}`)).toHaveAttribute('aria-pressed', 'false');
+      }
+      if (mode === 'plc') {
+        const card = page.getByTestId('palette-relay-my4n');
+        await card.scrollIntoViewIfNeeded();
+        const cardBox = await card.boundingBox();
+        const socket = JIPM_BOARD.sockets[0];
+        if (cardBox === null || socket === undefined) throw new Error('部品の置き場所がありません');
+        const point = plcBoardPoint(
+          {
+            x: socket.origin.x + socket.bodyMm.width / 2,
+            y: socket.origin.y + socket.bodyMm.length / 2,
+            z: 9,
+          },
+          box,
+        );
+        await dragTo(
+          page,
+          { x: cardBox.x + cardBox.width / 2, y: cardBox.y + cardBox.height / 2 },
+          point,
+        );
+        await expect(page.getByTestId('operation-log')).toContainText('S1 に リレー MY4N を装着');
+        await expect(page.getByTestId('socket-card-status')).toContainText('S1');
+      }
+    } finally {
+      await app.close();
+    }
+  });
+}

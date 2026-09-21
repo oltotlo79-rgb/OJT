@@ -292,12 +292,14 @@ export function TerminalField({
          * `BoardScene` のしきい値が決める。クリック→クリックの経路はそのまま残る。
          */
         onPointerDown={(event: ThreeEvent<PointerEvent>) => {
+          if (event.button !== 0) return;
           const terminal = terminals[event.instanceId ?? -1];
           if (terminal === undefined || onPress === undefined) return;
           event.stopPropagation();
           onPress(terminal);
         }}
         onPointerUp={(event: ThreeEvent<PointerEvent>) => {
+          if (event.button !== 0) return;
           const terminal = terminals[event.instanceId ?? -1];
           if (terminal === undefined || onRelease === undefined) return;
           event.stopPropagation();

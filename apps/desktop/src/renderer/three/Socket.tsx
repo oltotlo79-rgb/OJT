@@ -339,6 +339,7 @@ export function Socket({
          * ドラッグは `pointerup` でしか受け取れない。
          */
         onPointerUp={(event: ThreeEvent<PointerEvent>) => {
+          if (event.button !== 0) return;
           event.stopPropagation();
           onReleaseSocket(socket.id, occupied);
         }}

@@ -1,3 +1,4 @@
+import { togglePowerFixture } from '../session/power-toggle.js';
 import { CollapsiblePanel } from '../panels/CollapsiblePanel.js';
 import {
   JIPM_BOARD,
@@ -380,10 +381,7 @@ export function Session(): JSX.Element {
          * `power-sequence-violation` として危険操作に数える（§5.6 #5）。
          */
         case 'togglePower': {
-          const breaker = action.fixture === 'breaker';
-          const on = breaker ? !store.snapshot.breakerOn : !store.snapshot.switchOn;
-          bridge.send(breaker ? { type: 'breaker', on } : { type: 'switch', on });
-          store.addLog(powerLog(breaker ? JA.session.breaker : JA.session.switch, on));
+          togglePowerFixture(action.fixture);
           break;
         }
         /* 運んできた部品を空きソケットへ落とした（履歴は装着1手）。設計 §7.3.3 */

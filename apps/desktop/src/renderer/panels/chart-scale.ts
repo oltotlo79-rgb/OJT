@@ -41,16 +41,16 @@ export interface ChartGeometry {
 
 /** 右パネル・結果画面に埋め込む小さいチャート。従来の寸法をそのまま引き継ぐ。 */
 export const SMALL_GEOMETRY: ChartGeometry = {
-  labelWidth: 92,
+  labelWidth: 136,
   plotWidth: 300,
-  rowHeight: 22,
-  amplitude: 12,
-  labelFont: 9,
-  tickFont: 9,
+  rowHeight: 28,
+  amplitude: 14,
+  labelFont: 12,
+  tickFont: 12,
   rightPad: 26,
   topPad: 6,
-  axisHeight: 16,
-  labelStride: 2,
+  axisHeight: 24,
+  labelStride: 1,
   maxEdgeLines: 10,
 };
 
@@ -192,6 +192,24 @@ export function xToMs(x: number, durationMs: number, geom: ChartGeometry): numbe
 /** チャート1枚の viewBox 幅。 */
 export function chartWidth(geom: ChartGeometry): number {
   return geom.labelWidth + geom.plotWidth + geom.rightPad;
+}
+
+/** 字を縮めず波形の幅を合わせる。幅の小さい欄では目盛の本数を描画側で減らす。 */
+export function fitChartGeometry(base: ChartGeometry, width?: number, scale = 1): ChartGeometry {
+  const labelWidth = base.labelWidth * scale;
+  const rightPad = base.rightPad * scale;
+  return {
+    ...base,
+    labelWidth,
+    rightPad,
+    plotWidth: Math.max(80, (width ?? chartWidth(base) * scale) - labelWidth - rightPad),
+    labelFont: Math.max(12, base.labelFont * scale),
+    tickFont: Math.max(12, base.tickFont * scale),
+    rowHeight: Math.max(24, base.rowHeight * scale),
+    amplitude: base.amplitude * scale,
+    axisHeight: base.axisHeight * scale,
+    topPad: base.topPad * scale,
+  };
 }
 
 /** 行数から viewBox の高さを求める（時間軸の帯を含む）。 */

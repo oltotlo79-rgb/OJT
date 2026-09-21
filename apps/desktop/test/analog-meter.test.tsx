@@ -1,11 +1,12 @@
 import { NEEDLE_FULL_SCALE_DEG } from '@ojt/circuit-sim';
 import { cleanup, render, screen } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useStore } from '../src/renderer/app/store.js';
 import {
   AnalogMeter,
   needleTip,
   ohmScaleTicks,
+  readableMeterLabels,
   voltScaleTicks,
 } from '../src/renderer/panels/AnalogMeter.js';
 
@@ -15,6 +16,7 @@ import {
 
 afterEach(() => {
   cleanup();
+  vi.restoreAllMocks();
 });
 
 describe('needleTip（扇の写像）', () => {
@@ -113,11 +115,33 @@ describe('AnalogMeter の描画', () => {
   });
 
   it('Ωレンジでは倍率つきの目盛になる', () => {
+    // happy-domに実レイアウトはない。右パネルの計器と同じ幅で文字を計測する。
+    vi.spyOn(SVGElement.prototype, 'getBoundingClientRect').mockReturnValue(
+      new DOMRect(0, 0, 264, 143),
+    );
     useStore.setState({
       tester: { ...useStore.getState().tester, mode: 'OHM', ohmRange: 1000 },
     });
     render(<AnalogMeter />);
     expect(screen.getByTestId('analog-meter').textContent).toContain('∞');
     expect(screen.getByTestId('analog-meter').textContent).toContain('20000');
+  });
+
+  it('狭い計器でも全目盛線を保ち、両端を残して密集する数字を間引く', () => {
+    const ticks = ohmScaleTicks(1000);
+    const shown = readableMeterLabels(ticks, 12);
+    expect(shown.has(0)).toBe(true);
+    expect(shown.has(ticks.length - 1)).toBe(true);
+    expect(shown.size).toBeLessThan(ticks.length);
+    useStore.setState({ tester: { ...useStore.getState().tester, mode: 'OHM', ohmRange: 1000 } });
+    render(<AnalogMeter />);
+    const svg = screen.getByTestId('analog-meter');
+    expect(svg.querySelectorAll('g > line')).toHaveLength(ticks.length);
+    expect(svg.querySelectorAll('text')).toHaveLength(shown.size);
+    expect(
+      [...svg.querySelectorAll('text')].every(
+        (node) => Number(node.getAttribute('font-size')) >= 12,
+      ),
+    ).toBe(true);
   });
 });

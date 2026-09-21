@@ -1,3 +1,4 @@
+import { togglePowerFixture } from '../session/power-toggle.js';
 import { toNetlistTerminal } from '@ojt/board-model';
 import type { TerminalId } from '@ojt/circuit-sim';
 import { isInspectPartsProblem } from '@ojt/content';
@@ -247,6 +248,9 @@ export function InspectPartsSession(): JSX.Element {
       mapped,
     );
     switch (action.type) {
+      case 'togglePower':
+        togglePowerFixture(action.fixture);
+        break;
       case 'placeProbe':
         dispatchTester({ type: 'place-probe', probe: action.probe, terminal: action.terminal });
         break;

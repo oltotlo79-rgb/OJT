@@ -740,7 +740,13 @@ function BoardContents({
 
   const onPressPart = useCallback(
     (socketId: SocketId, kind: MountableKind): void => {
-      if (useStore.getState().replay !== undefined) return;
+      const store = useStore.getState();
+      if (
+        store.replay !== undefined ||
+        store.problem?.mode === 'inspect-parts' ||
+        store.problem?.mode === 'inspect-repair'
+      )
+        return;
       press.current = {
         ...press.current,
         terminal: undefined,
@@ -877,14 +883,26 @@ function BoardContents({
       // 配線そのものの取り消し（`cancelWire`）は `Session` の Escape が受け持つ
       finish(true);
     };
+    const onCancel = (): void => {
+      // OSによる中断・アプリ切替では配線の仮選択だけ取り消す。
+      // 部品の運搬へ empty を送ると取り外しになるため、元の部品はそのまま残す。
+      if (press.current.started && press.current.terminal !== undefined) {
+        onDragPick({ kind: 'empty' });
+      }
+      finish(true);
+    };
     window.addEventListener('pointerdown', onDown, true);
     window.addEventListener('pointermove', onMove, true);
     window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onCancel);
+    window.addEventListener('blur', onCancel);
     window.addEventListener('keydown', onKey);
     return () => {
       window.removeEventListener('pointerdown', onDown, true);
       window.removeEventListener('pointermove', onMove, true);
       window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onCancel);
+      window.removeEventListener('blur', onCancel);
       window.removeEventListener('keydown', onKey);
     };
   }, [controls, onDragPick, gl]);
@@ -975,10 +993,8 @@ function BoardContents({
               : { labelOffsetMm: FIXTURE_LABEL_OFFSET_MM[fixture.id] })}
             {
               /*
-              電源の操作部を押せるようにするのは組立（モードB/D）だけ。点検（C1/C2）は
-              テスターと指摘が3Dのクリックを使っており、入切は2Dの `PowerControls` が
-              受け持つ（`session/tester.ts` の注記）。渡さなければ従来どおりの飾りに戻る。
-            */ ...(mode === 'tester' || mode === 'report'
+              電源は4モード共通。見直し中だけ操作を停止する。
+            */ ...(replaying
                 ? {}
                 : fixture.kind === 'breaker'
                   ? { onToggle: onToggleBreaker, onHover: onHoverBreaker }

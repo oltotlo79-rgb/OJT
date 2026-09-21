@@ -1,6 +1,7 @@
 import { useThree } from '@react-three/fiber';
 import { useEffect } from 'react';
 import { UI_PREFERENCES_EVENT } from '../app/ui-preferences.js';
+import { gizmoLayoutForViewport } from './view-gizmo-layout.js';
 
 /**
  * 3D盤の上に載る名札（drei の `<Html>` で出す `.block-label`）の**重なり取り**。
@@ -67,6 +68,7 @@ export function pickVisibleLabels(
   labels: readonly LabelCandidate[],
   reserved: readonly LabelRect[] = [],
   gapPx: number = LABEL_GAP_PX,
+  bounds?: LabelRect,
 ): boolean[] {
   const visible = labels.map(() => false);
   const taken: LabelRect[] = reserved.filter(isDrawn).map((rect) => ({ ...rect }));
@@ -75,6 +77,15 @@ export function pickVisibleLabels(
     .sort((a, b) => a.label.rank - b.label.rank || a.index - b.index);
   for (const { label, index } of ordered) {
     if (!isDrawn(label.rect)) continue;
+    if (
+      bounds !== undefined &&
+      isDrawn(bounds) &&
+      (label.rect.l < bounds.l ||
+        label.rect.t < bounds.t ||
+        label.rect.r > bounds.r ||
+        label.rect.b > bounds.b)
+    )
+      continue;
     if (taken.some((rect) => overlaps(rect, label.rect, gapPx))) continue;
     taken.push(label.rect);
     visible[index] = true;
@@ -125,7 +136,17 @@ export function observeLabelLayout(scope: Element): () => void {
     const labels = [...scope.querySelectorAll<HTMLElement>(LABEL_SELECTOR)];
     const candidates = labels.map((el) => ({ rank: rankOf(el), rect: rectOf(el) }));
     const reserved = [...scope.querySelectorAll<HTMLElement>(RESERVED_SELECTOR)].map(rectOf);
-    applyLabelVisibility(labels, pickVisibleLabels(candidates, reserved));
+    const bounds = rectOf(scope);
+    const gizmo = gizmoLayoutForViewport(bounds.r - bounds.l, bounds.b - bounds.t);
+    if (gizmo !== null) {
+      reserved.push({
+        l: bounds.l + gizmo.margin[0] - gizmo.plateRadius,
+        r: bounds.l + gizmo.margin[0] + gizmo.plateRadius,
+        t: bounds.t + gizmo.margin[1] - gizmo.plateRadius,
+        b: bounds.t + gizmo.margin[1] + gizmo.plateRadius,
+      });
+    }
+    applyLabelVisibility(labels, pickVisibleLabels(candidates, reserved, LABEL_GAP_PX, bounds));
   };
   const schedule = (): void => {
     if (frame === 0) frame = requestAnimationFrame(measure);
@@ -156,7 +177,9 @@ export function LabelDeclutter(): null {
   useEffect(() => {
     const canvas = gl.domElement;
     return observeLabelLayout(
-      canvas.closest('[data-testid="viewport"]') ?? canvas.ownerDocument.body,
+      canvas.closest('[data-testid="viewport"], [data-testid="replay-viewport"]') ??
+        canvas.parentElement ??
+        canvas.ownerDocument.body,
     );
   }, [gl]);
   return null;

@@ -43,7 +43,7 @@ export const GIZMO_FACE_SPAN = 1 - 2 * GIZMO_CHAMFER;
  * 効くのと同じ空間）ので、**この値はそのまま CSS ピクセル**になる。実際の描画解像度は
  * `Canvas` の `dpr` が面倒を見るため、高DPI環境でも見た目の大きさは変わらない。
  */
-export const GIZMO_SIZE = 96;
+export const GIZMO_SIZE = 72;
 
 /**
  * 狭いキャンバス（`GIZMO_MIN_VIEWPORT_PX` 〜 `GIZMO_WIDE_VIEWPORT_PX` 未満）でのキューブの
@@ -52,7 +52,7 @@ export const GIZMO_SIZE = 96;
  */
 export const GIZMO_SIZE_NARROW = 64;
 
-/** これ以上の幅[px]ならキューブを `GIZMO_SIZE`（96px）で出す。 */
+/** これ以上の幅[px]ならキューブを `GIZMO_SIZE`（72px）で出す。 */
 export const GIZMO_WIDE_VIEWPORT_PX = 900;
 
 /**
@@ -85,7 +85,7 @@ function gizmoCubeRadiusPx(size: number): number {
 }
 
 /** ボタン（⌂ / ⟳）の1辺[px]。押しやすさのため 24px 以上にする（UXレビュー #4）。 */
-const GIZMO_BUTTON_SIZE_PX = 28;
+const GIZMO_BUTTON_SIZE_PX = 32;
 
 /** ボタン（⌂ / ⟳）の置き場所と大きさ[px]。 */
 export const GIZMO_BUTTON = {
@@ -162,7 +162,7 @@ export interface GizmoLayout {
  * 「3Dのキューブと赤、青、緑の骨組みがある意味は？…重なってるし」への対応の一環で、
  * モードD「分割」のような狭い3Dペインでキューブが盤の絵に重ならないようにする。
  *
- * - `GIZMO_WIDE_VIEWPORT_PX`（900px）以上: 既定の `GIZMO_SIZE`（96px）
+ * - `GIZMO_WIDE_VIEWPORT_PX`（900px）以上: 既定の `GIZMO_SIZE`（72px）
  * - `GIZMO_MIN_VIEWPORT_PX`（600px）〜900px未満: `GIZMO_SIZE_NARROW`（64px）
  * - 600px未満: `null`（隠す）。視点プリセットはツールバー・テンキーからそのまま押せる
  *
@@ -188,11 +188,11 @@ export function gizmoLayoutForViewport(widthPx: number, heightPx?: number): Gizm
   };
 }
 
-/** 既定（キャンバス幅900px以上・96px）のときの下地の丸の半径[px]。 */
+/** 既定（キャンバス幅900px以上・72px）のときの下地の丸の半径[px]。 */
 export const GIZMO_PLATE_RADIUS = gizmoPlateRadiusPx(GIZMO_SIZE);
 
 /**
- * 既定（キャンバス幅900px以上・96px）のときのビューポートの角から**キューブ中心**までの
+ * 既定（キャンバス幅900px以上・72px）のときのビューポートの角から**キューブ中心**までの
  * 余白[px]。`margin` は中心の位置なので、下地の上端は `margin[1] - GIZMO_PLATE_RADIUS`。
  */
 export const GIZMO_MARGIN: [number, number] = gizmoMarginPx(GIZMO_SIZE);

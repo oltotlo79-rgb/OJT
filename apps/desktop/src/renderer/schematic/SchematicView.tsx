@@ -31,9 +31,6 @@ import styles from './schematic-view.module.css';
 /** 拡大表示の倍率の段階（等倍＝紙の幅いっぱい）。 */
 const ZOOM_STEPS = [1, 1.5, 2, 3] as const;
 
-/** モーダルを開いているあいだ本文のスクロールを止める（多重に開いても1回だけ戻す）。 */
-let overflowLockCount = 0;
-
 /** 拡大表示の枠（`TimeChartView` の `ChartModal` と同じ作法）。§8.1 */
 function SchematicModal({
   title,
@@ -49,13 +46,11 @@ function SchematicModal({
 
   useEffect(() => {
     const { depth, release } = pushModalLayer();
-    overflowLockCount += 1;
-    document.body.style.overflow = 'hidden';
     closeRef.current?.focus();
     const onKey = (event: KeyboardEvent): void => {
+      if (depth !== topModalLayer()) return;
       if (event.key === 'Escape') {
         // 上に別のモーダルが乗っているときは、そちらに任せる
-        if (depth !== topModalLayer()) return;
         event.preventDefault();
         onClose();
         return;
@@ -65,8 +60,6 @@ function SchematicModal({
     window.addEventListener('keydown', onKey);
     return () => {
       window.removeEventListener('keydown', onKey);
-      overflowLockCount = Math.max(0, overflowLockCount - 1);
-      if (overflowLockCount === 0) document.body.style.overflow = '';
       release();
     };
   }, [onClose]);

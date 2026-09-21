@@ -280,8 +280,8 @@
 .settingRow input[type='checkbox'] {
   accent-color: var(--accent);
   color-scheme: dark;
-  height: 24px;
-  width: 24px;
+  height: 32px;
+  width: 32px;
 }
 
 .settingRow input[type='range'] {
@@ -347,25 +347,31 @@
   --plc-board-w: max(420px, min(var(--plc-board-max), calc(var(--plc-aspect) * var(--plc-pane-h))));
 
   display: grid;
-  grid-template-columns: var(--plc-board-w) minmax(0, 1fr) 300px;
+  grid-template-columns: var(--plc-board-w) minmax(0, 1fr);
   gap: 8px;
   padding: 8px;
   min-height: 0;
   flex: 1 1 auto;
 }
 
-/*
- * 分割のときだけ、3Dペインの高さも `--plc-aspect` の箱に丸める。縦に伸ばしても中身は
- * 大きくならず黒が増えるだけなので、伸ばさずに縦中央へ置く。
- *
- * UI監査バッチE: 高さは `max-height` ではなく **`height` で決める**。`align-self: center` は
- * 「行いっぱいに伸ばす」のをやめさせるので、`max-height` だけでは高さが中身なり（`.viewport`
- * の中は絶対配置の重ね物ばかりなので実測 150px）まで潰れ、盤がほとんど描かれていなかった。
- * `max-height: 100%` は行より高くならないための保険（ウィンドウの最小高さでも
- * `--plc-board-w ÷ --plc-aspect` は行に収まるので、ふだんは効かない）。
- */
+/* 盤の直下に課題・部品欄を配置し、残りの幅を純正ソフトの編集面へ渡す。
+ * 左列は盤と道具、右列はラダー。3Dの縦横比はカメラと共通で保つ。 */
+.plcLayout[data-view='split'] {
+  grid-template-rows: calc(var(--plc-board-w) / var(--plc-aspect)) minmax(0, 1fr);
+}
+
+.plcLayout[data-view='split'] > [data-testid='ladder-workspace'] {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+}
+
+.plcLayout[data-view='split'] > .plcRight {
+  grid-column: 1;
+  grid-row: 2;
+}
+
 .plcLayout[data-view='split'] > .viewport {
-  align-self: center;
+  align-self: start;
   height: calc(var(--plc-board-w) / var(--plc-aspect));
   max-height: 100%;
 }
@@ -396,13 +402,12 @@
 
 /*
  * 狭い画面では分割をやめて1列に積む（2026-09-18 の利用者決定。決定表#10）。
- * 420 + 582 + 300px の3列 + 列間ギャップ2本（8px×2）+ 左右パディング（8px×2）で
- * 必要な幅は 1318px。境界は利用者決定どおり 1279px に据え置く。
+ * 課題・部品を盤の下へ移したあとも、境界は利用者決定どおり1279pxに据え置く。
  *
  * 2026-09-19 UXレビュー #27: 以前は `split` のとき3Dを `display: none` で消していたため、
  * 狭い画面では盤がまったく見えなかった。いまは**ラダーが上・3Dが下**（`.viewport` の
  * `grid-row: 1` をここだけ 2 にする）で、それぞれ自分の高さを持たせて積む。
- * 3列ぶんの高さが1列に伸びるので、この幅では `.plcLayout` 自身を縦スクロールにする。
+ * ラダー・盤・道具を縦に積むので、この幅では `.plcLayout` 自身を縦スクロールにする。
  */
 @media (max-width: 1279px) {
   .plcLayout,
@@ -416,6 +421,16 @@
   /* ラダー（上）→ 3D（下）→ 課題・部品・ログ、の順で高さを配る */
   .plcLayout[data-view='split'] {
     grid-template-rows: clamp(560px, 70vh, 760px) clamp(300px, 38vh, 560px) auto;
+  }
+
+  .plcLayout[data-view='split'] > [data-testid='ladder-workspace'] {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .plcLayout[data-view='split'] > .plcRight {
+    grid-column: 1;
+    grid-row: 3;
   }
 
   .plcLayout[data-view='ladder'] {
@@ -750,7 +765,7 @@
 
 /* 「続きから」のカードに出す最近の課題（モード・課題名・経過時間）。指摘 UX-05 */
 .homeCardRecent {
-  color: var(--fg);
+  color: var(--text);
   display: block;
   margin-top: 6px;
 }

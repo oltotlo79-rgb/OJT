@@ -1,3 +1,4 @@
+import { togglePowerFixture } from '../session/power-toggle.js';
 import {
   plcUnitFor,
   socketPartId,
@@ -148,6 +149,7 @@ export function PlcSession(): JSX.Element {
   const ladder = useStore((s) => s.ladder);
   const plcRunning = useStore((s) => s.plcRunning);
   const selectedSocket = useStore((s) => s.selectedSocket);
+  const dragging = useStore((s) => s.dragging);
   const powered = useStore((s) => s.snapshot.powered);
   const tripped = useStore((s) => s.snapshot.tripped);
   const breakerOn = useStore((s) => s.snapshot.breakerOn);
@@ -250,6 +252,25 @@ export function PlcSession(): JSX.Element {
       const current = store.session;
       if (current === undefined) return;
       switch (action.type) {
+        case 'togglePower':
+          togglePowerFixture(action.fixture);
+          break;
+        case 'dropPart':
+          apply(runPlug(current, action.socketId, action.kind), () => {
+            const next = useStore.getState().session;
+            if (next === undefined) return;
+            bridge.send({ type: 'plug', socketId: action.socketId, session: cloneSession(next) });
+            useStore.getState().setSelectedSocket(action.socketId);
+          });
+          break;
+        case 'unplugPart':
+          apply(runUnplug(current, action.socketId), () => {
+            const next = useStore.getState().session;
+            if (next === undefined) return;
+            const partId = socketPartId(current.socketRoles, action.socketId);
+            bridge.send({ type: 'unplug', partId, session: cloneSession(next) });
+          });
+          break;
         case 'beginWire':
           store.setPending(action.from);
           break;
@@ -324,6 +345,8 @@ export function PlcSession(): JSX.Element {
             pendingTerminal: store.pendingTerminal,
             selectedWire: store.selectedWire,
             wireColor: store.wireColor,
+            dragging: store.dragging,
+            replaying: store.replay !== undefined,
           },
           mapped,
         ),
@@ -705,6 +728,8 @@ export function PlcSession(): JSX.Element {
             session={session}
             selectedSocket={selectedSocket}
             powered={powered}
+            carrying={dragging?.source === 'palette' ? dragging.kind : undefined}
+            onCarry={(kind) => useStore.getState().setDragging({ source: 'palette', kind })}
             onSelectSocket={(socketId) => {
               useStore.getState().setSelectedSocket(socketId);
             }}

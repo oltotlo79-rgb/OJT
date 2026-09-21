@@ -12,11 +12,14 @@ import {
 } from 'react';
 import { createPortal } from 'react-dom';
 import { trapFocus } from '../app/focus-trap.js';
+import { useElementWidth } from '../app/use-element-size.js';
+import { useUiScale } from '../app/ui-preferences.js';
 import { chartEnlargeLabel, chartOpenerLabel, JA } from '../i18n/ja.js';
 import { pushModalLayer, topModalLayer } from '../session/interaction.js';
 import {
   chartHeight,
   chartWidth,
+  fitChartGeometry,
   LARGE_GEOMETRY,
   msToX,
   nearestSnap,
@@ -214,7 +217,7 @@ function ChartCursor({
 /** チャート1枚のSVG（補助線つき）。 */
 export function ChartCanvas({
   figure,
-  geom,
+  geom: baseGeom,
   title,
   testId,
   className,
@@ -226,16 +229,21 @@ export function ChartCanvas({
   className?: string | undefined;
 }): JSX.Element {
   const hostRef = useRef<SVGSVGElement | null>(null);
+  const availableWidth = useElementWidth(hostRef);
+  const scale = useUiScale();
+  const geom = fitChartGeometry(baseGeom, availableWidth, scale);
   const width = chartWidth(geom);
   const height = chartHeight(figure.rows.length, geom);
   const topY = geom.topPad;
   const bottomY = geom.topPad + figure.rows.length * geom.rowHeight + 4;
-  const step = niceTickStep(figure.durationMs);
-  const ticks = tickPositions(figure.durationMs);
+  const maxTicks = Math.min(12, Math.max(2, Math.floor(geom.plotWidth / (58 * scale)) + 1));
+  const step = niceTickStep(figure.durationMs, maxTicks);
+  const ticks = tickPositions(figure.durationMs, maxTicks);
   return (
     <svg
       ref={hostRef}
       className={className}
+      style={{ minWidth: geom.labelWidth + geom.rightPad + 80 }}
       viewBox={`0 0 ${width} ${height}`}
       role="img"
       aria-label={title}
@@ -384,14 +392,6 @@ export function ChartCanvas({
 }
 
 /**
- * 開いているモーダルの本文スクロール止めの重なり数。§8.1
- * モーダルが2枚重なったとき、内側が先に閉じても外側がまだ `overflow: hidden` を要る。
- * 個々のモーダルが「自分が開く前の値」を覚えて戻す方式だと、2枚目が先に片付くと
- * 1枚目の分もろとも戻ってしまうので、開いている枚数で持って0枚になったときだけ戻す。
- */
-let overflowLockCount = 0;
-
-/**
  * 拡大表示のモーダル。§8.1
  * ポータルで `document.body` に出すので、右パネルの `overflow` に切り取られない。
  * 開いているあいだは `pushModalLayer()` で盤のショートカット（Esc／Delete／視点の数字キー）を
@@ -415,12 +415,10 @@ function ChartModal({
 
   useEffect(() => {
     const { depth, release } = pushModalLayer();
-    overflowLockCount += 1;
-    document.body.style.overflow = 'hidden';
     closeRef.current?.focus();
     const onKey = (event: KeyboardEvent): void => {
+      if (depth !== topModalLayer()) return;
       if (event.key === 'Escape') {
-        if (depth !== topModalLayer()) return;
         event.preventDefault();
         onClose();
         return;
@@ -430,8 +428,6 @@ function ChartModal({
     window.addEventListener('keydown', onKey);
     return () => {
       window.removeEventListener('keydown', onKey);
-      overflowLockCount = Math.max(0, overflowLockCount - 1);
-      if (overflowLockCount === 0) document.body.style.overflow = '';
       release();
     };
   }, [onClose]);

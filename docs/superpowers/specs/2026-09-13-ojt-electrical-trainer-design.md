@@ -155,8 +155,8 @@ graph TD
 
 | 実行単位 | 担当 | 通信 |
 |---|---|---|
-| Electron main | 課題フォルダの読込、作業ファイルの保存/読込、設定の永続化、ウィンドウ管理 | preload 経由の IPC。チャネルは `content:list` / `content:read` / `workfile:save` / `workfile:load` / `settings:get` / `settings:set` の6本のみ |
-| preload | `contextBridge` で上記6本だけを renderer に公開。`nodeIntegration` は無効、`contextIsolation` は有効 | — |
+| Electron main | 課題フォルダの読込、作業ファイルの保存/読込、設定の永続化、ウィンドウ管理 | preload 経由の IPC。チャネルは `content:list` / `content:read` / `workfile:save` / `workfile:load` / `settings:get` / `settings:set` / `file:saveText` / `manual:open` / `result:export` の9本のみ |
+| preload | `contextBridge` で上記9本だけを renderer に公開。`nodeIntegration` は無効、`contextIsolation` は有効 | — |
 | renderer（React + Three.js） | 画面描画、3D操作、エディタUI、結果表示 | Worker へコマンド送信、Worker から状態スナップショット受信 |
 | Simulation Worker（Web Worker） | `circuit-sim` ＋ `ladder-core` ランタイムを10ms周期で実行 | `postMessage`。コマンド: `load` / `addWire` / `removeWire` / `mountPart` / `unmountPart` / `setActuator` / `setTimerPreset` / `breaker` / `switch` / `injectFault` / `measure` / `loadLadder` / `run` / `pause` / `reset` / `judge`。`setPower` は廃止し、電源投入・遮断の順序判定（§5.3.5）のために `breaker`（ブレーカ開閉）と `switch`（電源スイッチ開閉）の2コマンドに分離する。通知: `snapshot`（既定 50ms ごと＝5tickに1回にまとめて送出）、`judgeResult`（判定の並走結果） |
 

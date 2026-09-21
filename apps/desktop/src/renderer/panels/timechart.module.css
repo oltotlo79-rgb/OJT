@@ -10,7 +10,7 @@
    * ボタンの高さ（`.enlargeButton` の `height`）と揃える（UI監査バッチF: ボタンを24pxへ
    * 広げたのに合わせないと、ボタンの下端がチャート本体に被る＝overlap になる）。
    */
-  padding-top: 24px;
+  padding-top: 32px;
 }
 
 /* チャート本体（クリック／Enter で拡大）。UXレビュー #4: クリック領域は最低でも32px確保する。 */
@@ -19,6 +19,7 @@
   display: block;
   border-radius: 4px;
   min-height: 32px;
+  overflow-x: auto;
 }
 
 .opener:focus-visible {
@@ -46,7 +47,7 @@
   display: inline-flex;
   align-items: center;
   gap: 2px;
-  height: 24px;
+  height: 32px;
   padding: 0 6px;
   font-size: max(12px, 0.75rem);
   line-height: 1;
@@ -208,5 +209,5 @@
   margin: auto;
   width: 100%;
   height: auto;
-  max-height: 100%;
+  flex-shrink: 0;
 }

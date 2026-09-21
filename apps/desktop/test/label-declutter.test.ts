@@ -31,6 +31,12 @@ function box(x: number, y: number, w: number, h: number): LabelRect {
   return { l: x, t: y, r: x + w, b: y + h };
 }
 
+it('盤の境界で切れる名札を出さず、表示領域に戻ったら再表示する', () => {
+  const label = [{ rank: 1, rect: box(350, 50, 120, 20) }];
+  expect(pickVisibleLabels(label, [], 2, box(0, 0, 420, 210))).toEqual([false]);
+  expect(pickVisibleLabels(label, [], 2, box(0, 0, 600, 300))).toEqual([true]);
+});
+
 describe('名札の重なり取り（`pickVisibleLabels`）', () => {
   it('離れている名札はぜんぶ出す', () => {
     const labels: LabelCandidate[] = [

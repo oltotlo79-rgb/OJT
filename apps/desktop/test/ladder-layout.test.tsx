@@ -43,8 +43,8 @@ const LADDER_CSS = declarations(read('src/renderer/ladder/ladder.module.css'));
 const SCREENS_CSS = declarations(read('src/renderer/screens/screens.module.css'));
 
 /* --- CSS に書いた寸法（変えたら両方を直す） --- */
-/** `.plcLayout` の左右パディング＋列間ギャップ2本。 */
-const LAYOUT_GUTTERS = 8 * 2 + 8 * 2;
+/** `.plcLayout` の左右パディング＋列間ギャップ1本。 */
+const LAYOUT_GUTTERS = 8 * 2 + 8;
 /** 右の縦列（課題・部品・ログ）。 */
 const RIGHT_COL = 300;
 /** `--plc-chrome`: ツールバー＋手順帯＋上下パディング。 */
@@ -85,7 +85,7 @@ function boardWidth(vw: number, vh: number): number {
 /** 分割表示で、ラダーの**格子**に残る幅。 */
 function gridWidth(vw: number, vh: number): number {
   const narrow = vw <= SINGLE_PANE_MAX;
-  const lanes = vw - LAYOUT_GUTTERS + (narrow ? 16 : 0) - (narrow ? 0 : RIGHT_COL);
+  const lanes = vw - LAYOUT_GUTTERS + (narrow ? 8 : 0);
   // 1列に落ちた画面ではラダーが幅いっぱい（3Dは下の行）
   const workspace = (narrow ? vw - 16 : lanes - boardWidth(vw, vh)) - 1;
   // 1600px 未満は折りたたみ列を編集画面の下の帯へ回すので、横には取られない
@@ -188,7 +188,7 @@ describe('折りたたみ列（UXレビュー #27）', () => {
 });
 
 describe('分割レイアウトの列（UXレビュー #27）', () => {
-  it('格子に幅を渡す3列になっている', () => {
+  it('盤と道具の左列・ラダーの右列に幅を分ける', () => {
     expect(LADDER_CSS).toMatch(
       /\.workspaceBody\s*\{[^}]*grid-template-columns:\s*auto minmax\(0, 1fr\) var\(--ladder-side-w\)/u,
     );
@@ -202,9 +202,9 @@ describe('分割レイアウトの列（UXレビュー #27）', () => {
     expect(SCREENS_CSS).toContain(`--plc-board-max: ${String(BOARD_MAX_VW * 100)}vw`);
     expect(SCREENS_CSS).toContain(`max(${String(BOARD_MIN)}px, min(var(--plc-board-max)`);
     expect(SCREENS_CSS).toMatch(
-      /\.plcLayout\s*\{[^}]*grid-template-columns:\s*var\(--plc-board-w\) minmax\(0, 1fr\) 300px/u,
+      /\.plcLayout\s*\{[^}]*grid-template-columns:\s*var\(--plc-board-w\) minmax\(0, 1fr\);/u,
     );
-    // 縦に伸ばしても中身は大きくならないので、比の箱に丸めて縦中央へ置く
+    // 縦に伸ばしても中身は大きくならないので、比の箱に丸めて上端へ置き、下を課題・部品欄に使う
     //
     // UI監査バッチE: 丸めは `max-height` ではなく `height` で行う。`align-self: center` は
     // 行いっぱいへの伸長をやめさせるので、`max-height` だけだと高さが中身なり（実測 150px）まで
@@ -259,28 +259,28 @@ describe('分割レイアウトの列（UXレビュー #27）', () => {
 
   it('代表的な画面サイズで格子に残る幅（スクリーンショット確認の目標値）', () => {
     const need = gridNeeded(11);
-    // 12列（接点11＋コイル1）で 621px。1920×1080 の格子 633px に収まる
+    // 12列（接点11＋コイル1）で 621px。1920×1080 の格子 941px に収まる
     expect(need).toBe(621);
-    expect(need).toBeLessThanOrEqual(633);
+    expect(need).toBeLessThanOrEqual(gridWidth(1920, 1080));
 
-    // 1920×1080: 3D 614px / ラダー枠 974px / 格子 633px → 横スクロールなし
+    // 1920×1080: 3D 614px / ラダー枠 1281px / 格子 941px → 横スクロールなし
     expect(Math.round(boardWidth(1920, 1080))).toBe(614);
-    expect(Math.round(gridWidth(1920, 1080))).toBe(633);
+    expect(Math.round(gridWidth(1920, 1080))).toBe(941);
     expect(gridWidth(1920, 1080)).toBeGreaterThanOrEqual(need);
 
-    // 1440×900: 3D 461px / 格子 530px（4列ぶん足りないが、直す前の 195px から 2.7 倍）
+    // 1440×900: 3D 461px / 格子 838px → 既定11列が収まる
     expect(Math.round(boardWidth(1440, 900))).toBe(461);
-    expect(Math.round(gridWidth(1440, 900))).toBe(530);
+    expect(Math.round(gridWidth(1440, 900))).toBe(838);
 
-    // 1280×800（分割の下限。1279px 以下は1列）: 3D 420px / 格子 411px
+    // 1280×800（分割の下限。1279px 以下は1列）: 3D 420px / 格子 719px
     expect(Math.round(boardWidth(1280, 800))).toBe(420);
-    expect(Math.round(gridWidth(1280, 800))).toBe(411);
+    expect(Math.round(gridWidth(1280, 800))).toBe(719);
 
     // 1279×800（1列。ラダーが幅いっぱい）: 格子 1146px → 横スクロールなし
     expect(Math.round(gridWidth(1279, 800))).toBe(1146);
     expect(gridWidth(1279, 800)).toBeGreaterThanOrEqual(need);
 
-    // どの幅でも直す前より広い（1920 で 435px → 633px、1280 で 66px → 411px）
+    // どの幅でも直す前より広い（1920 で 435px → 941px、1280 で 66px → 719px）
     for (const [vw, vh] of [
       [1920, 1080],
       [1440, 900],
@@ -297,7 +297,7 @@ describe('分割レイアウトの列（UXレビュー #27）', () => {
  *   - B2: 1280×800 で1列に積まれたとき、`.plcLayout` の行の高さは十分でも `.workspace` の
  *     中（ツールバーの折返し・出力ウィンドウの高さ次第）で格子が約35pxまで潰れ、編集できなく
  *     なっていた。`.gridScroll` に**5行ぶん**の下限（`min-height`）を持たせて防ぐ。
- *   - B6: 1440×900 の分割表示では格子（`gridWidth(1440,900)` ＝ 530px、既定11列に要る
+ *   - B6: 旧レイアウトの1440×900では格子（530px、既定11列に要る
  *     621px に届かない）が横スクロールになり、置いたコイルが画面外に出ていた。ペインの実測幅に
  *     収まる接点列数まで削り、コイル列を常に画面内に収める（`fitGridCols()`）。
  */
@@ -310,7 +310,7 @@ describe('モードDが編集不能にならない下限（UI監査 2026-09-20 B
 
   it('fitGridCols shrinks the contact columns just enough to keep the coil column on screen (Blocking #6)', () => {
     const cell = { stepGutterPx: 24, widthPx: CELL_W };
-    // 1440×900 相当（分割表示の格子幅 ≈ 530px。上の `gridWidth(1440, 900)` と同じ値）では
+    // 狭い編集ペイン（旧レイアウト相当の530px）では
     // 既定の11列（コイル込み12列 ＝ 621px）が入りきらないので削る。
     const at1440 = fitGridCols(11, 530, cell);
     expect(at1440).toBeLessThan(11);
@@ -318,7 +318,7 @@ describe('モードDが編集不能にならない下限（UI監査 2026-09-20 B
     // 削った列数でもコイル列ぶん＋母線・行番号欄が530pxに収まる
     expect(24 + 3 + (at1440 + 1) * CELL_W + 2 + 16).toBeLessThanOrEqual(530);
 
-    // 1920×1080 相当（格子幅 633px）では既定のまま収まるので削らない
+    // 格子幅633px以上では既定のまま収まるので削らない
     expect(fitGridCols(11, 633, cell)).toBe(11);
 
     // 実測できない（jsdom の既定である0、または未測定）ときは既定の列数のまま
