@@ -25,7 +25,13 @@ import {
   type InspectPartAnswer,
   type SupportedProblem,
 } from '@ojt/content';
-import { IR_COLS, MAX_ROWS, SPECIAL_INDEXES, type LadderProgram } from '@ojt/ladder-core';
+import {
+  DRAFT_SYMBOLS,
+  IR_COLS,
+  MAX_ROWS,
+  SPECIAL_INDEXES,
+  type LadderProgram,
+} from '@ojt/ladder-core';
 import { IMPLEMENTED_DIALECT_IDS, isDialectId } from '@ojt/plc-dialects';
 import { SCHEMATIC_FORMAT_VERSION, type SchematicDocument } from '@ojt/schematic-core';
 import { WORK_FILE_FORMAT_VERSION, type WorkFile } from '../../shared/ipc.js';
@@ -338,6 +344,7 @@ const CELL_KINDS = new Set([
   'hline',
   'vline',
   'empty',
+  'draft',
 ]);
 
 /**
@@ -363,6 +370,11 @@ function isCellLike(value: unknown): boolean {
   if (!isRecord(value)) return false;
   const kind = value['kind'];
   if (typeof kind !== 'string' || !CELL_KINDS.has(kind)) return false;
+  if (kind === 'draft')
+    return (
+      typeof value['symbol'] === 'string' &&
+      (DRAFT_SYMBOLS as readonly string[]).includes(value['symbol'])
+    );
   if (kind === 'end' || kind === 'hline' || kind === 'vline' || kind === 'empty') return true;
   if (!isDeviceLike(value['device'])) return false;
   if (kind === 'timer') {

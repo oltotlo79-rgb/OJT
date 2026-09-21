@@ -17,7 +17,7 @@ import {
   type Cell,
 } from '@ojt/ladder-core';
 import { describe, expect, it } from 'vitest';
-import { getDialect, GX_STYLE_SHORTCUTS, JTEKT_PC10G } from '../src/index.js';
+import { getDialect, JTEKT_PC10G } from '../src/index.js';
 
 function rung(...cells: Cell[]): Cell[] {
   const row = [...cells];
@@ -176,9 +176,9 @@ describe('PCwin風スキン（§10.6 / §17 #19）', () => {
   it('is a screen editor: no conversion step and no conversion key', () => {
     expect(profile.convertStep).toBe(false);
     expect(profile.shortcuts.some((s) => s.action === 'convert')).toBe(false);
-    expect(profile.shortcuts).toHaveLength(GX_STYLE_SHORTCUTS.length - 1);
-    expect(profile.shortcuts.find((s) => s.action === 'contact-no')?.keys).toBe('F5');
-    expect(profile.shortcuts.find((s) => s.action === 'coil')?.keys).toBe('F7');
+    expect(profile.shortcuts).toHaveLength(0);
+    expect(profile.shortcuts.find((s) => s.action === 'contact-no')).toBeUndefined();
+    expect(profile.shortcuts.find((s) => s.action === 'coil')).toBeUndefined();
     // Phase 7 Task 20: 借り物の表なので全行が △（実機マニュアル未確認）である
     expect(profile.shortcuts.every((s) => !s.confirmed)).toBe(true);
   });

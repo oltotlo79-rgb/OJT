@@ -18,10 +18,9 @@ describe('4方言が揃っている（§16 Phase 4）', () => {
     expect(profiles.map((p) => p.id)).toEqual([...DIALECT_IDS]);
   });
 
-  it('requires the conversion step in the Mitsubishi and Sharp skins only (§10.6)', () => {
-    // 変換ありは GX Works3風 と JW-300SP風 の2つ。CX-Programmer風・PCwin風は画面編集で完結する
+  it('GX Works3のみ編集後の変換を要求し、他社のプログラムチェックとは区別する', () => {
     const withConvert = profiles.filter((p) => p.convertStep).map((p) => p.id);
-    expect(withConvert.sort()).toEqual(['mitsubishi', 'sharp']);
+    expect(withConvert).toEqual(['mitsubishi']);
   });
 
   it('gives every skin its own monitor colour (§10.6 の本アプリ既定)', () => {
@@ -91,8 +90,9 @@ describe.each(cases)('%s プロファイルの不変条件', (_id, profile: Dial
     const keys = profile.shortcuts.map((s) => s.keys);
     expect(new Set(actions).size).toBe(actions.length);
     expect(new Set(keys).size).toBe(keys.length);
-    // 「変換」の行は convertStep のスキンにしか無い（決定表#5）
-    expect(profile.shortcuts.some((s) => s.action === 'convert')).toBe(profile.convertStep);
+    // CX-Programmerは自動検査に加えてF7の明示的なチェックを持つ（W446-E1-23 p161）。
+    if (profile.convertStep)
+      expect(profile.shortcuts.some((s) => s.action === 'convert')).toBe(true);
   });
 
   /*
@@ -123,7 +123,7 @@ describe.each(cases)('%s プロファイルの不変条件', (_id, profile: Dial
 
   it('never claims a primary source for a key map borrowed from another vendor (§17.1)', () => {
     // 流用した表（PCwin風・JW-300SP風）は全行が △ で、借り元の出典を自分の裏づけにしない
-    if (profile.id !== 'jtekt' && profile.id !== 'sharp') return;
+    if (profile.id !== 'jtekt') return;
     for (const entry of profile.shortcuts) {
       expect(entry.confirmed, `${profile.id}/${entry.action}`).toBe(false);
       expect(entry.source, `${profile.id}/${entry.action}`).toBeUndefined();
@@ -132,9 +132,9 @@ describe.each(cases)('%s プロファイルの不変条件', (_id, profile: Dial
   });
 
   it('never offers a monitor key it cannot back (指摘 LE-7)', () => {
-    // CX-Programmer風は実機の「モニタ」キーを確認できていないので、行そのものを作らない
+    // W446-E1-23 p162でCtrl+Mが確認できた。F3の流用には戻さない。
     if (profile.id !== 'omron') return;
-    expect(profile.shortcuts.some((s) => s.action === 'monitor')).toBe(false);
+    expect(profile.shortcuts.find((s) => s.action === 'monitor-toggle')?.keys).toBe('Ctrl+M');
   });
 
   it('names the panels and keeps the symbol drawings vendor-neutral (§17 / PLC調査資料 §6)', () => {

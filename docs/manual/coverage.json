@@ -773,6 +773,26 @@
       "section": "mode-b/部品をのせる"
     },
     {
+      "testid": "native-document",
+      "internal": "編集中のプログラム名を表示する見出しで、独立した操作ではない。"
+    },
+    {
+      "testid": "native-item-{}",
+      "screen": "練習中（モードD）",
+      "label": "編集",
+      "section": "mode-d/ラダー図を描く"
+    },
+    {
+      "testid": "native-menu-popup",
+      "internal": "メーカーのメニュー項目をまとめる枠。各操作はnative-itemで説明する。"
+    },
+    {
+      "testid": "native-menu-{}",
+      "screen": "練習中（モードD）",
+      "label": "編集",
+      "section": "mode-d/ラダー図を描く"
+    },
+    {
       "testid": "network-{}",
       "screen": "練習中（モードD）",
       "label": "回路ブロック",
@@ -1533,7 +1553,7 @@
     {
       "testid": "shortcut-overlay-note",
       "screen": "練習中（モードD）",
-      "label": "この表はすべて実機マニュアル未確認のため本アプリの表記です（行ごとの断りは省いています）",
+      "label": "PCwinの編集キーは資料未確認のため割り当てていません。記号ボタンから入力してください。",
       "section": "mode-d/キーの割り当て"
     },
     {
@@ -1839,30 +1859,6 @@
       "section": "mode-c2/回路を点検して直す"
     },
     {
-      "testid": "toolbar-delete-network",
-      "screen": "練習中（モードD）",
-      "label": "回路ブロック削除",
-      "section": "mode-d/ラダー図を描く"
-    },
-    {
-      "testid": "toolbar-delete-row",
-      "screen": "練習中（モードD）",
-      "label": "行削除",
-      "section": "mode-d/ラダー図を描く"
-    },
-    {
-      "testid": "toolbar-insert-network",
-      "screen": "練習中（モードD）",
-      "label": "回路ブロック挿入",
-      "section": "mode-d/ラダー図を描く"
-    },
-    {
-      "testid": "toolbar-insert-row",
-      "screen": "練習中（モードD）",
-      "label": "行挿入",
-      "section": "mode-d/ラダー図を描く"
-    },
-    {
       "testid": "toolbar-notation",
       "screen": "練習中（モードD）",
       "label": "表記切替",
@@ -1881,22 +1877,10 @@
       "section": "screens/画面の上の帯"
     },
     {
-      "testid": "toolbar-watch",
-      "screen": "練習中（モードD）",
-      "label": "監視",
-      "section": "mode-d/動きを見る"
-    },
-    {
       "testid": "toolbar-{}",
       "screen": "練習中（モードD）",
       "label": "変換",
       "section": "mode-d/変換する"
-    },
-    {
-      "testid": "toolbar-{}-{}",
-      "screen": "練習中（モードD）",
-      "label": "実機の操作パネルの項目",
-      "section": "mode-d/別のメーカーの書き方に変える"
     },
     {
       "testid": "tray-{}",

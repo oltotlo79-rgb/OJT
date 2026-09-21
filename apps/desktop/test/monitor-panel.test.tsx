@@ -72,7 +72,7 @@ describe('モニタ一覧（§10.7）', () => {
     render(<MonitorPanel profile={OMRON_CP1E} unit={PLC_UNIT_CP1E} onPlc={vi.fn()} />);
     const note = screen.getByTestId('monitor-no-snapshot');
     expect(note).not.toHaveTextContent('F3');
-    expect(note).toHaveTextContent('モニタ開始');
+    expect(note).toHaveTextContent('Ctrl+M');
   });
 
   it('lists the devices with the dialect name and the unit terminal name (決定表#16)', () => {

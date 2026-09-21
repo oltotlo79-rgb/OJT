@@ -28,6 +28,12 @@ import { toolbarItems } from '../src/renderer/session/plc-skin.js';
 
 const problem = BUILTIN_PLC_PROBLEMS[0]!;
 
+function nativeItem(action: string, menu = 'edit'): HTMLElement {
+  if (!screen.queryByTestId(`native-item-${action}`))
+    fireEvent.click(screen.getByTestId(`native-menu-${menu}`));
+  return screen.getByTestId(`native-item-${action}`);
+}
+
 afterEach(() => {
   cleanup();
 });
@@ -54,18 +60,15 @@ describe('スキンごとのツールバー（§10.6 / §16 Phase 4 受入基準
    * UI監査 2026-09-20 Important #9: `vendor-only`（押しても何も起きない実機だけの項目。
    * 決定表#4）はもう出さない。出るのは実際に動く項目の分だけ、スキンが名乗る順のまま。
    */
-  it('draws exactly the labels the skin names, minus the vendor-only decorations, in order', () => {
+  it('常設コマンドを6個以内に絞り、メーカー固有の呼び名を残す', () => {
     for (const profile of [MITSUBISHI_FX5U, OMRON_CP1E, JTEKT_PC10G, SHARP_JW300]) {
       cleanup();
       workspace(profile);
-      const expectedLabels = toolbarItems(profile)
-        .filter((item) => item.action !== 'vendor-only')
-        .map((item) => item.label);
-      const labels = screen
-        .getAllByTestId(/^toolbar-/u)
-        .map((button) => button.textContent)
-        .slice(0, expectedLabels.length);
-      expect(labels, profile.id).toEqual(expectedLabels);
+      expect(screen.getAllByTestId(/^toolbar-/u).length).toBeLessThanOrEqual(6);
+      for (const item of toolbarItems(profile).filter((item) =>
+        ['convert', 'download', 'monitor-start', 'monitor-stop'].includes(item.action),
+      ))
+        expect(screen.getByTestId(`toolbar-${item.action}`)).toHaveTextContent(item.label);
     }
   });
 
@@ -81,20 +84,20 @@ describe('スキンごとのツールバー（§10.6 / §16 Phase 4 受入基準
     expect(screen.getByTestId('toolbar-convert')).toHaveTextContent('変換');
     cleanup();
     workspace(SHARP_JW300);
-    expect(screen.getByTestId('toolbar-convert')).toHaveTextContent('変換');
+    expect(screen.getByTestId('toolbar-convert')).toHaveTextContent('プログラムチェック');
   });
 
   it('drops the PCwin-only decorations instead of showing dead buttons (UI監査 2026-09-20 Important #9)', () => {
     workspace(JTEKT_PC10G);
     expect(screen.queryByTestId('toolbar-vendor-only')).toBeNull();
     expect(screen.queryByTestId('toolbar-vendor-only-1')).toBeNull();
-    for (const label of ['JP1', 'DGR', 'MOB', 'RDY']) {
+    for (const label of ['JPI', 'DOR', 'MOR', 'RDY']) {
       expect(screen.queryByText(label)).toBeNull();
     }
     // 実際に動く項目（STP／RUN／RES）はそのまま出る
-    expect(screen.getByTestId('toolbar-plc-stop')).toHaveTextContent('STP');
+    expect(nativeItem('plc-stop', 'cpu')).toHaveTextContent('STP');
     expect(screen.getByTestId('toolbar-plc-run')).toHaveTextContent('RUN');
-    expect(screen.getByTestId('toolbar-plc-reset')).toHaveTextContent('RES');
+    expect(nativeItem('plc-reset', 'cpu')).toHaveTextContent('RES');
   });
 
   /**
@@ -134,13 +137,9 @@ describe('スキンごとのツールバー（§10.6 / §16 Phase 4 受入基準
       fireEvent.click(screen.getByTestId('toolbar-plc-run'));
     });
     expect(onPlc).toHaveBeenCalledWith({ kind: 'run', on: true });
-    act(() => {
-      fireEvent.click(screen.getByTestId('toolbar-plc-stop'));
-    });
+    fireEvent.click(nativeItem('plc-stop', 'cpu'));
     expect(onPlc).toHaveBeenCalledWith({ kind: 'run', on: false });
-    act(() => {
-      fireEvent.click(screen.getByTestId('toolbar-plc-reset'));
-    });
+    fireEvent.click(nativeItem('plc-reset', 'cpu'));
     expect(onPlc).toHaveBeenCalledWith({ kind: 'reset' });
   });
 
@@ -182,14 +181,14 @@ describe('スキンごとのツールバー（§10.6 / §16 Phase 4 受入基準
       });
       expect(useStore.getState().ladderMode).toBe('monitor');
       // モニタ中は編集の入口（回路ブロック操作ボタン）が閉じている
-      expect(screen.getByTestId('toolbar-insert-network')).toBeDisabled();
+      expect(nativeItem('insert-network')).toBeDisabled();
 
       act(() => {
         fireEvent.click(screen.getByTestId('toolbar-monitor-stop'));
       });
       // 直したバグ: 以前はここで `read` のままになり、二度と `write` へ戻す手段が無かった
       expect(useStore.getState().ladderMode).toBe('write');
-      expect(screen.getByTestId('toolbar-insert-network')).not.toBeDisabled();
+      expect(nativeItem('insert-network')).not.toBeDisabled();
     },
   );
 
@@ -265,7 +264,7 @@ describe('スキンの枠（利用者要求: 実物に近い画面）', () => {
   it('shows the status items each tool shows', () => {
     workspace(MITSUBISHI_FX5U);
     expect(screen.getByTestId('status-mode')).toHaveTextContent('書込');
-    expect(screen.getByTestId('status-network')).toHaveTextContent('n1');
+    expect(screen.getByTestId('status-network')).toHaveTextContent('回路 1');
     expect(screen.getByTestId('status-overwrite')).toBeInTheDocument();
     expect(screen.queryByTestId('status-scan')).toBeNull();
     cleanup();
@@ -349,9 +348,10 @@ describe('キーの文字列を文言に埋め込まない（前提#22 / 決定�
 
   it('names the write-mode key of the current skin when an edit is refused', () => {
     workspace(MITSUBISHI_FX5U);
+    const insertion = nativeItem('insert-network');
     act(() => {
       useStore.getState().setLadderMode('read');
-      fireEvent.click(screen.getByTestId('toolbar-insert-network'));
+      fireEvent.click(insertion);
     });
     const key = getDialect('mitsubishi').shortcuts.find((s) => s.action === 'write-mode')?.keys;
     expect(useStore.getState().toasts.at(-1)?.text).toContain(key);
@@ -362,15 +362,15 @@ describe('キーの文字列を文言に埋め込まない（前提#22 / 決定�
    * 「オンライン編集」で、ファンクションキーではない）。`?? 'F2'` は OMRON に無いキーを
    * 教えてしまっていた。ツールバーの項目名へ倒れることを確かめる。
    */
-  it('names the toolbar label, not the invented F2, when the skin has no write-mode key (I8)', () => {
+  it('OMRONの編集キーF2を公式資料どおり案内する', () => {
     workspace(OMRON_CP1E);
+    const insertion = nativeItem('insert-network');
     act(() => {
       useStore.getState().setLadderMode('read');
-      fireEvent.click(screen.getByTestId('toolbar-insert-network'));
+      fireEvent.click(insertion);
     });
     const message = useStore.getState().toasts.at(-1)?.text ?? '';
-    expect(message).not.toContain('F2');
-    expect(message).toContain('オンライン編集');
+    expect(message).toContain('F2');
   });
 });
 
@@ -431,7 +431,7 @@ describe('画面構成は方言の panels だけで決まる（設計 §5.5）',
         continue;
       }
       expect(screen.getByTestId('watch-panel-summary'), profile.id).toHaveTextContent(name);
-      expect(screen.getByTestId('toolbar-watch'), profile.id).toHaveTextContent(name);
+      expect(nativeItem('watch', 'view'), profile.id).toHaveTextContent(name);
     }
     // PCwin風（JTEKT）は監視の欄を名乗らない＝欄が出ない側の実例
     expect(JTEKT_PC10G.panels.watch).toBeUndefined();

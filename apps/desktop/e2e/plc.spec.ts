@@ -188,7 +188,8 @@ async function moveToCoil(page: Page, networkId: string, fromCol: number): Promi
 
 /** 回路ブロックを1つ足す（カーソルは新しいブロックの先頭へ移る）。 */
 async function insertNetwork(page: Page, expectedId: string): Promise<void> {
-  await page.getByTestId('toolbar-insert-network').click();
+  await page.getByTestId('native-menu-edit').click();
+  await page.getByTestId('native-item-insert-network').click();
   await expectCursorAt(page, `${expectedId}:0:0`);
 }
 

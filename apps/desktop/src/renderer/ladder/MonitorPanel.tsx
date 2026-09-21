@@ -37,7 +37,7 @@ export function MonitorPanel({
   const converted = useStore((s) => s.converted);
   const terminal = (name: string | undefined): string => `PLC.${name ?? ''}`;
   /** 「変換」のキー。無いスキン（`convertStep: false`）では `undefined`。決定表#3 */
-  const convertKey = shortcutKeyOf(profile, 'convert');
+  const convertKey = profile.convertStep ? shortcutKeyOf(profile, 'convert') : undefined;
   return (
     // RUN/STOP とデバイスの状態は作業中いつでも見たいので、既定は開いた状態（#27）
     <SidePanel title={JA.ladder.monitor} testId="monitor-panel" open>

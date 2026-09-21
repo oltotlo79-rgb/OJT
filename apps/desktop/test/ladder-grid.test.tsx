@@ -89,7 +89,7 @@ describe('スキンの寸法（利用者要求: 実物に近い画面）', () =>
         gridCols={OMRON_CP1E.gridCols}
       />,
     );
-    const svg = screen.getByRole('grid', { name: /n1/u });
+    const svg = screen.getByRole('grid', { name: '回路 1' });
     // OMRON は 52×48（I/Oコメント2行ぶん背が高い）。接点11列＋コイル列1
     // ＋左母線3px＋右母線2px＋行番号欄24px（利用者要求 2026-09-20 2回目で母線と欄を細くした）
     expect(svg.getAttribute('height')).toBe('48');
@@ -166,7 +166,7 @@ describe('スキンの寸法（利用者要求: 実物に近い画面）', () =>
 describe('LadderGrid（§10.7）', () => {
   it('draws every network with its id, comment and END', () => {
     render(<LadderGrid program={sample()} {...base} />);
-    expect(screen.getByTestId('network-n1')).toHaveTextContent('n1');
+    expect(screen.getByTestId('network-n1')).toHaveTextContent('回路 1');
     expect(screen.getByTestId('network-n1')).toHaveTextContent('運転');
     expect(screen.getByTestId('network-end')).toBeInTheDocument();
     expect(screen.getByTestId('cell-end:0:0')).toBeInTheDocument();
@@ -354,7 +354,7 @@ describe('LadderGrid（§10.7）', () => {
 
   it('groups each row under role="row" under the grid (I4)', () => {
     render(<LadderGrid program={sample()} {...base} />);
-    const grid = screen.getByRole('grid', { name: /n1/u });
+    const grid = screen.getByRole('grid', { name: '回路 1' });
     const rows = within(grid).getAllByRole('row');
     expect(rows).toHaveLength(1);
     expect(within(rows[0] as HTMLElement).getByTestId('cell-n1:0:0')).toBeInTheDocument();

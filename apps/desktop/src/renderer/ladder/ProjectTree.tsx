@@ -4,6 +4,7 @@ import type { CSSProperties, JSX } from 'react';
 import { useStore } from '../app/store.js';
 import { JA } from '../i18n/ja.js';
 import { skinMonitorColor } from '../session/plc-skin.js';
+import { documentName } from './native-layout.js';
 import styles from './ladder.module.css';
 
 /**
@@ -32,13 +33,17 @@ export function ProjectTree({
       // 選択中のネットワークの色は方言（＋設定の上書き）から引く（CSS に直書きしない。レビュー Minor）
       style={{ '--tree-current': currentColor } as CSSProperties}
     >
-      <p className={styles.treeRoot}>{JA.ladder.treeProgram}</p>
+      <p className={styles.treeRoot} title={profile.panels.tree}>
+        {profile.panels.tree}
+      </p>
       {/* a11y: ネットワーク一覧は木構造として読み上げる（Batch 3 レビュー M8） */}
       <ul className={styles.treeList} role="tree" aria-label={JA.ladder.treeProgram}>
         <li role="treeitem" aria-expanded="true">
-          {JA.ladder.treeMain}
+          <span className={styles.treeDocument} title={documentName(profile.id)}>
+            {documentName(profile.id)}
+          </span>
           <ul role="group">
-            {program.networks.map((net) => (
+            {program.networks.map((net, index) => (
               <li key={net.id} role="treeitem">
                 <button
                   type="button"
@@ -48,7 +53,9 @@ export function ProjectTree({
                     onPick(net.id);
                   }}
                 >
-                  {net.id}
+                  {net.cells.some((row) => row.some((cell) => cell.kind === 'end'))
+                    ? profile.instructionNames.end
+                    : JA.ladder.circuitNumber(index)}
                   {net.comment === undefined ? '' : `（${net.comment}）`}
                 </button>
               </li>

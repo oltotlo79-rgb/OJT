@@ -619,7 +619,8 @@ async function moveToCoil(networkId: string, fromCol: number): Promise<void> {
 }
 
 async function insertNetwork(expectedId: string): Promise<void> {
-  await page.getByTestId('toolbar-insert-network').click();
+  await page.getByTestId('native-menu-edit').click();
+  await page.getByTestId('native-item-insert-network').click();
   await expectCursorAt(`${expectedId}:0:0`);
 }
 

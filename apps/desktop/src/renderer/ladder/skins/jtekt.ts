@@ -62,6 +62,6 @@ export const JTEKT_SKIN: SkinTheme = {
   commentLines: 1,
   entryTitle: '回路入力',
   assumed: SKIN_ASSUMED,
-  // キー割当表は GX Works3風の表を流用している（`packages/plc-dialects/src/jtekt.ts`）。レビュー I7
+  // キー未確認のため、マウスからの入力を案内する。三菱のキーは流用しない。
   keyMapAssumed: true,
 };

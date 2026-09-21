@@ -193,6 +193,22 @@ function cellLabels(
   profile: DialectProfile,
 ): { device: string; preset: string; mnemonic: string } {
   const names = profile.instructionNames;
+  if (cell.kind === 'draft') {
+    const mnemonic = {
+      NO: '',
+      NC: '',
+      P: '',
+      F: '',
+      OUT: '',
+      SET: names.set,
+      RST: names.rst,
+      TON: names.timer,
+      CTU: names.counter,
+      MC: names.mc,
+      MCR: names.mcr,
+    }[cell.symbol];
+    return { device: '', preset: '', mnemonic };
+  }
   if (cell.kind === 'contact') {
     return { device: profile.formatDevice(cell.device), preset: '', mnemonic: '' };
   }
@@ -233,6 +249,22 @@ function cellLabels(
 function symbolIdOf(cell: Cell, profile: DialectProfile): string | undefined {
   const symbols = profile.symbols;
   switch (cell.kind) {
+    case 'draft': {
+      const map = {
+        NO: symbols.no,
+        NC: symbols.nc,
+        P: symbols.rise,
+        F: symbols.fall,
+        OUT: symbols.coil,
+        SET: symbols.set,
+        RST: symbols.rst,
+        TON: symbols.timer,
+        CTU: symbols.counter,
+        MC: MC_SYMBOL_ID,
+        MCR: MCR_SYMBOL_ID,
+      };
+      return map[cell.symbol];
+    }
     case 'contact': {
       /*
        * 実機ではb接点で使う特殊デバイス（シャープの `007366`＝常時ON。4A H-4 / §17 #22）。
@@ -457,6 +489,8 @@ const GridCell = memo(function GridCell({
       role="gridcell"
       aria-selected={selected}
       data-error={error}
+      aria-label={cell.kind === 'draft' ? JA.ladder.incompleteSymbol : undefined}
+      data-incomplete={cell.kind === 'draft' || undefined}
       data-powered={leftOn}
       data-render-count={renderCount.current}
       className={styles.cell}
@@ -709,7 +743,7 @@ const NetworkView = memo(function NetworkView({
       style={unconverted ? { backgroundColor: 'var(--skin-unconverted)' } : undefined}
     >
       <header className={styles.networkHeader}>
-        <span className={styles.networkId}>{net.id}</span>
+        <span className={styles.networkId}>{JA.ladder.circuitNumber(rungIndex)}</span>
         {net.comment === undefined ? null : (
           <span className={styles.networkComment}>{net.comment}</span>
         )}
@@ -731,7 +765,7 @@ const NetworkView = memo(function NetworkView({
         height={net.rows * metrics.h}
         viewBox={`0 0 ${String(width)} ${String(net.rows * metrics.h)}`}
         role="grid"
-        aria-label={`${JA.ladder.network} ${net.id}`}
+        aria-label={JA.ladder.circuitNumber(rungIndex)}
       >
         {/*
           左の行番号欄（4社とも回路の左に番号が並ぶ。§10.6 の画面構成）。番号は**回路ブロックの

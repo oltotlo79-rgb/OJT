@@ -3,8 +3,9 @@ import type { ShortcutEntry, ShortcutTable } from './profile.js';
 /**
  * GX Works3風のキー割当表。設計仕様 §10.6 / §17 #19 / Phase 7 設計 §5.2。
  *
- * PCwin風（JTEKT）と JW-300SP風（シャープ）は一次資料が未確認のため**この表を流用する**のが
- * §17.1 の前提方針である。ただし流用した表はそのまま出さず、`assumedTable()` で全行を
+ * メーカー間で割当表を流用しない。JW-300SPは同ファイル末尾の公式表、PCwinは
+ * 未確認のキーを割り当てず、マウス入力から利用する。
+ *
  * `confirmed: false` ＋ 注記に落としてから使う（Phase 7 Task 20 step 4）。
  *
  * `confirmed: true` は一次資料で裏が取れた割当（◎）、`false` は §17.1 の前提方針で採用した
@@ -99,3 +100,21 @@ export function assumedTable(table: ShortcutTable): ShortcutTable {
     return entry.enabled === undefined ? assumed : { ...assumed, enabled: entry.enabled };
   });
 }
+
+/** JW-300SPユーザーズマニュアル 2-78〜112・2-193・3-3〜6（S8）。 */
+export const SHARP_SHORTCUTS: ShortcutTable = [
+  { action: 'contact-no', keys: 'S', label: 'A接点', confirmed: true, source: 'S8' },
+  { action: 'contact-nc', keys: 'D', label: 'B接点', confirmed: true, source: 'S8' },
+  { action: 'coil', keys: 'X', label: 'コイル', confirmed: true, source: 'S8' },
+  { action: 'pulse-rise', keys: 'P', label: 'P接点', confirmed: true, source: 'S8' },
+  { action: 'pulse-fall', keys: 'N', label: 'N接点', confirmed: true, source: 'S8' },
+  { action: 'set-coil', keys: 'E', label: 'セットコイル', confirmed: true, source: 'S8' },
+  { action: 'reset-coil', keys: 'R', label: 'リセットコイル', confirmed: true, source: 'S8' },
+  { action: 'timer', keys: 'V', label: 'TMR', confirmed: true, source: 'S8' },
+  { action: 'counter', keys: 'C', label: 'CNT', confirmed: true, source: 'S8' },
+  { action: 'application', keys: 'B', label: '応用命令', confirmed: true, source: 'S8' },
+  { action: 'or-contact-no', keys: 'G', label: 'OR＋', confirmed: true, source: 'S8' },
+  { action: 'insert-network', keys: 'L', label: '回路追加', confirmed: true, source: 'S8' },
+  { action: 'undo', keys: 'F11', label: '元に戻す', confirmed: true, source: 'S8' },
+  { action: 'help', keys: 'F1', label: 'ヘルプ', confirmed: true, source: 'S8' },
+];

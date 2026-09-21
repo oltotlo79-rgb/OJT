@@ -44,7 +44,7 @@ describe('ツールバーの項目 → 操作（§10.6 / 決定表#2）', () => 
       const actions = new Set(toolbarItems(profile).map((item) => item.action));
       /*
        * PCwin風の `panels.toolbar`（4A `jtekt.ts` L257 の9項目）には転送の項目が無く、
-       * `JP1` / `DGR` / `MOB` / `RDY` は本アプリでは動かない（決定表#4）。そのスキンで
+       * `JPI` / `DOR` / `MOR` / `RDY` は本アプリでは動かない（決定表#4）。そのスキンで
        * プログラムをPLCへ載せるのは自動変換（決定表#3）の役目である。
        */
       expect(actions.has('download') || autoConvert(profile), profile.id).toBe(true);
@@ -60,7 +60,7 @@ describe('ツールバーの項目 → 操作（§10.6 / 決定表#2）', () => 
   it('marks the PCwin-only buttons as inert (決定表#4)', () => {
     const jtekt = toolbarItems(getDialect('jtekt'));
     expect(jtekt.filter((item) => item.action === 'vendor-only').map((item) => item.label)).toEqual(
-      ['JP1', 'DGR', 'MOB', 'RDY'],
+      ['JPI', 'DOR', 'MOR', 'RDY'],
     );
     expect(jtekt.find((item) => item.label === 'RUN')?.action).toBe('plc-run');
     expect(jtekt.find((item) => item.label === 'STP')?.action).toBe('plc-stop');
@@ -79,7 +79,7 @@ describe('変換の要否（§10.6 / 決定表#3）', () => {
     expect(skinStepKeys(getDialect('mitsubishi'))).toEqual([...PLC_STEP_KEYS]);
     expect(skinStepKeys(getDialect('omron'))).toEqual(['wire', 'ladder', 'run', 'judge']);
     expect(skinStepKeys(getDialect('jtekt'))).toEqual(['wire', 'ladder', 'run', 'judge']);
-    expect(skinStepKeys(getDialect('sharp'))).toEqual([...PLC_STEP_KEYS]);
+    expect(skinStepKeys(getDialect('sharp'))).toEqual(['wire', 'ladder', 'run', 'judge']);
   });
 });
 
@@ -108,10 +108,9 @@ describe('書込みモードの名乗り（§10.6 / レビュー I8）', () => {
     expect(writeModeLabel(getDialect('mitsubishi'))).toBe('F2');
   });
 
-  it('falls back to the toolbar label where the dialect has no write-mode key (OMRON)', () => {
+  it('OMRONの読取専用編集はW446-E1-23 p161で確認したF2を表示する', () => {
     const label = writeModeLabel(getDialect('omron'));
-    expect(label).not.toBe('F2');
-    expect(label).toBe('オンライン編集');
+    expect(label).toBe('F2');
   });
 });
 
@@ -131,10 +130,10 @@ describe('モニタ開始の名乗り（§10.6 / 指摘 LE-7）', () => {
     expect(monitorStartLabel(getDialect('mitsubishi'))).toBe('F3');
   });
 
-  it('names the omron toolbar label, not the invented F3', () => {
+  it('OMRONの監視切替はCtrl+Mを表示する', () => {
     const label = monitorStartLabel(getDialect('omron'));
     expect(label).not.toBe('F3');
-    expect(label).toBe('モニタ開始');
+    expect(label).toBe('Ctrl+M');
   });
 });
 

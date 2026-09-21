@@ -14,6 +14,10 @@ import {
 import { instructionList, INSTRUCTION_LIST_MESSAGES, type DialectProfile } from '@ojt/plc-dialects';
 import { useCallback, useEffect, useMemo, useRef, useState, type JSX } from 'react';
 import type { PlcCommandAction } from '../../worker/protocol.js';
+import { useHelpStore } from '../help/help-store.js';
+import { loadWorkFileAndApply, saveCurrentWork } from '../session/work-file.js';
+import { NativeMenuBar, type NativeMenuItem } from './NativeMenuBar.js';
+import { NATIVE_MENU_ORDER, documentName, type NativeMenuId } from './native-layout.js';
 import { ojtApi } from '../app/ojt-api.js';
 import { useStore } from '../app/store.js';
 import { useElementWidth } from '../app/use-element-size.js';
@@ -92,6 +96,8 @@ export function LadderWorkspace({
   const monitorColor = useStore((s) => s.monitorColor);
   /** 表記切替ダイアログ（§10.7 / Task 8）。 */
   const [notationOpen, setNotationOpen] = useState(false);
+  const [treeVisible, setTreeVisible] = useState(true);
+  const [outputOpenKey, setOutputOpenKey] = useState(0);
   const closeNotation = useCallback((): void => {
     setNotationOpen(false);
   }, []);
@@ -391,6 +397,181 @@ export function LadderWorkspace({
         },
       ];
 
+  const editCommand = (command: string): void => {
+    const state = useStore.getState();
+    const source = state.ladder;
+    if (source === undefined) return;
+    const at = state.ladderCursor;
+    if (command === 'undo' || command === 'redo') {
+      if (state.ladderMode !== 'write') {
+        state.toast(JA.ladder.readOnly(writeModeLabel(profile)), 'error');
+        return;
+      }
+      if (command === 'undo') state.undoLadderEdit();
+      else state.redoLadderEdit();
+    } else if (command === 'insert-network' || command === 'insert-network-above') {
+      const id = nextNetworkId(source);
+      const index =
+        command === 'insert-network-above'
+          ? Math.max(
+              0,
+              source.networks.findIndex((net) => net.id === at.networkId),
+            )
+          : insertIndexFor(source, at.networkId);
+      if (edit(() => insertNetwork(source, index, network(id, [[empty()]]))))
+        state.setLadderCursor({ networkId: id, row: 0, col: 0 });
+    } else if (command === 'delete-network') {
+      if (
+        isEndNetwork(
+          source.networks.find((net) => net.id === at.networkId) ?? source.networks[0]!,
+        ) ||
+        source.networks.length <= 2
+      )
+        return;
+      const next = source.networks.find((net) => net.id !== at.networkId);
+      if (next && edit(() => deleteNetwork(source, at.networkId)))
+        state.setLadderCursor({ networkId: next.id, row: 0, col: 0 });
+    } else if (command === 'insert-row') edit(() => insertRow(source, at.networkId, at.row + 1));
+    else if (command === 'delete-row') {
+      if (edit(() => deleteRow(source, at.networkId, at.row)))
+        state.setLadderCursor({ ...at, row: Math.max(0, at.row - 1) });
+    }
+  };
+  const operation = (
+    id: string,
+    label: string,
+    run: () => void,
+    key?: string,
+    disabled?: boolean,
+  ): NativeMenuItem => ({ id, label, run, key, disabled });
+  const files = [
+    operation(
+      'save-work',
+      JA.session.save,
+      () => {
+        const session = useStore.getState().session;
+        if (session) saveCurrentWork(problem.id, session);
+      },
+      'Ctrl+S',
+    ),
+    operation('open-work', JA.session.load, loadWorkFileAndApply),
+    operation('export-il', JA.ladder.exportIl, exportIl),
+  ];
+  const edits = [
+    operation(
+      'undo',
+      JA.session.undo,
+      () => {
+        editCommand('undo');
+      },
+      'Ctrl+Z',
+      ladderMode !== 'write',
+    ),
+    operation(
+      'redo',
+      JA.session.redo,
+      () => {
+        editCommand('redo');
+      },
+      'Ctrl+Y',
+      ladderMode !== 'write',
+    ),
+    operation(
+      'write-mode',
+      JA.ladder.nativeEdit,
+      () => changeMode('write'),
+      shortcutKeyOf(profile, 'write-mode'),
+    ),
+    operation(
+      'read-mode',
+      JA.ladder.nativeRead,
+      () => changeMode('read'),
+      shortcutKeyOf(profile, 'read-mode'),
+    ),
+    ...[
+      ['insert-network', JA.ladder.insertNetwork],
+      ['delete-network', JA.ladder.deleteNetwork],
+      ['insert-row', JA.ladder.insertRow],
+      ['delete-row', JA.ladder.deleteRow],
+    ].map(([id, label]) =>
+      operation(
+        id!,
+        label!,
+        () => editCommand(id!),
+        shortcutKeyOf(profile, id!),
+        ladderMode !== 'write' ||
+          (id === 'delete-network' &&
+            (program.networks.length <= 2 ||
+              currentNetwork === undefined ||
+              isEndNetwork(currentNetwork))),
+      ),
+    ),
+  ];
+  const check = operation(
+    'convert',
+    profile.convertStep ? profile.panels.toolbar[0]! : JA.ladder.nativeCheck,
+    () => convert(),
+    shortcutKeyOf(profile, 'convert'),
+  );
+  const online = items
+    .filter((item) => !['convert', 'convert-all', 'write-mode', 'read-mode'].includes(item.action))
+    .map((item) =>
+      operation(
+        item.action,
+        item.action === 'plc-run' ? (plcRunning ? JA.ladder.stop : JA.ladder.run) : item.label,
+        () => onToolbar(item.action),
+        shortcutKeyOf(profile, item.action === 'monitor-start' ? 'monitor' : item.action),
+      ),
+    );
+  const views = [
+    {
+      ...operation('tree', profile.panels.tree, () => setTreeVisible((visible) => !visible)),
+      checked: treeVisible,
+    },
+    operation('output', profile.panels.output, () => setOutputOpenKey((value) => value + 1)),
+    ...(profile.panels.watch
+      ? [operation('watch', profile.panels.watch, () => setWatchOpenKey((value) => value + 1))]
+      : []),
+  ];
+  const symbols = ENTRY_ITEMS.map((item) =>
+    operation(
+      `symbol-${item.kind}`,
+      item.label,
+      () => entryRef.current?.place(item.kind),
+      item.actions.map((action) => shortcutKeyOf(profile, action)).find(Boolean),
+      ladderMode !== 'write',
+    ),
+  );
+  const menus = NATIVE_MENU_ORDER[profile.id].map((id) => {
+    const groups: Partial<Record<NativeMenuId, readonly NativeMenuItem[]>> = {
+      file: files,
+      project: files,
+      edit: [
+        ...edits,
+        ...(profile.id === 'omron' ? [] : symbols),
+        ...(profile.id === 'sharp' ? [check] : []),
+      ],
+      insert: symbols,
+      convert: [check],
+      plc: [check, ...online],
+      program: [check],
+      online,
+      cpu: online,
+      monitor: online.filter((item) => item.id.startsWith('monitor')),
+      view: views,
+      window: views,
+      tools: [
+        operation('notation', JA.ladder.notationTitle, () => setNotationOpen(true)),
+        operation('keys', JA.ladder.nativeKeys, () => setOverlayOpen(true)),
+      ],
+      help: [operation('help', JA.help.title, () => useHelpStore.getState().openHelp('plc'), 'F1')],
+    };
+    return { id, label: JA.ladder.nativeMenus[id], items: groups[id] ?? [] };
+  });
+  const quickItems = items.filter((item) =>
+    ['convert', 'download', 'monitor-start', 'monitor-stop', 'plc-run'].includes(item.action),
+  );
+
   return (
     <div
       className={styles.workspace}
@@ -402,124 +583,37 @@ export function LadderWorkspace({
       style={cssVars}
     >
       <SkinTitleBar theme={theme} profile={profile} />
-      {/*
-        ロービングフォーカスは実装していないので `role="toolbar"` を名乗らない
-        （Batch 3 レビュー M8。ただの押しボタンの集まりとして `role="group"` にする）
-      */}
+      <NativeMenuBar menus={menus} />
       <div className={styles.toolbar} role="group" aria-label={JA.ladder.title}>
-        {items.map((item, index) => {
-          // `map` 自身の添字で「最初の1件」を決める（レビュー M10。`item.index` は
-          // `panels.toolbar` 側の位置で、`toolbarItems()` が意味の無い項目を落とすと配列の
-          // 添字とずれうる）
-          const first = items.findIndex((other) => other.action === item.action) === index;
-          return (
-            <button
-              key={`${item.action}-${String(item.index)}`}
-              type="button"
-              // その action の**最初の1つ**は位置なし（既存テストと E2E がこの名前で引く）、
-              // 2つ目以降は位置つき（jtekt は `plc-reset` と別に `RES` のような重複があり得る）
-              data-testid={
-                first ? `toolbar-${item.action}` : `toolbar-${item.action}-${String(item.index)}`
-              }
-              data-action={item.action}
-              aria-pressed={item.action === 'plc-run' ? plcRunning : undefined}
-              onClick={() => {
-                onToolbar(item.action);
-              }}
-            >
-              {item.label}
-            </button>
-          );
-        })}
+        {quickItems.map((item) => (
+          <button
+            key={item.action}
+            type="button"
+            data-testid={`toolbar-${item.action}`}
+            data-action={item.action}
+            aria-pressed={item.action === 'plc-run' ? plcRunning : undefined}
+            onClick={() => onToolbar(item.action)}
+          >
+            <span className={styles.commandMark} aria-hidden="true">
+              {item.action === 'convert'
+                ? '✓'
+                : item.action === 'download'
+                  ? '↓'
+                  : item.action === 'plc-run'
+                    ? plcRunning
+                      ? '■'
+                      : '▶'
+                    : item.action === 'monitor-start'
+                      ? '◉'
+                      : '□'}
+            </span>
+            {item.action === 'plc-run' ? (plcRunning ? JA.ladder.stop : JA.ladder.run) : item.label}
+          </button>
+        ))}
         <span className={styles.toolbarGap} />
-        {/*
-          回路ブロック・行の操作はショートカット表に無いのでボタンで出す（決定表#12）。
-          キー入力の編集と同じく、書込みモード（F2）以外は押させない（Batch 3 レビュー I1）
-        */}
-        <button
-          type="button"
-          data-testid="toolbar-insert-network"
-          disabled={ladderMode !== 'write'}
-          onClick={() => {
-            const id = nextNetworkId(program);
-            const index = insertIndexFor(program, cursor.networkId);
-            if (edit(() => insertNetwork(program, index, network(id, [[empty()]])))) {
-              useStore.getState().setLadderCursor({ networkId: id, row: 0, col: 0 });
-            }
-          }}
-        >
-          {JA.ladder.insertNetwork}
-        </button>
-        <button
-          type="button"
-          data-testid="toolbar-delete-network"
-          // END は消させない（消すと `missing-end` になり、画面から戻す手段が無い）
-          disabled={
-            ladderMode !== 'write' ||
-            program.networks.length <= 2 ||
-            currentNetwork === undefined ||
-            isEndNetwork(currentNetwork)
-          }
-          onClick={() => {
-            if (!edit(() => deleteNetwork(program, cursor.networkId))) return;
-            const first = program.networks[0];
-            if (first !== undefined) {
-              useStore.getState().setLadderCursor({ networkId: first.id, row: 0, col: 0 });
-            }
-          }}
-        >
-          {JA.ladder.deleteNetwork}
-        </button>
-        <button
-          type="button"
-          data-testid="toolbar-insert-row"
-          disabled={ladderMode !== 'write'}
-          onClick={() => {
-            edit(() => insertRow(program, cursor.networkId, cursor.row + 1));
-          }}
-        >
-          {JA.ladder.insertRow}
-        </button>
-        <button
-          type="button"
-          data-testid="toolbar-delete-row"
-          disabled={ladderMode !== 'write'}
-          onClick={() => {
-            if (!edit(() => deleteRow(program, cursor.networkId, cursor.row))) return;
-            useStore.getState().setLadderCursor({ ...cursor, row: Math.max(0, cursor.row - 1) });
-          }}
-        >
-          {JA.ladder.deleteRow}
-        </button>
-        {/*
-          表記切替（§10.7 / Task 8）。メーカーごとの操作表（`TOOLBAR_ACTIONS_BY_DIALECT`）は
-          実機のツールバーの写しなので、本アプリだけの操作はその後ろに並べる（決定表#2）。
-          読出し・モニタ中でも押せる（プログラムは書き換わらないため。4A H-2）。
-        */}
-        <button
-          type="button"
-          data-testid="toolbar-notation"
-          onClick={() => {
-            setNotationOpen(true);
-          }}
-        >
+        <button type="button" data-testid="toolbar-notation" onClick={() => setNotationOpen(true)}>
           {JA.ladder.notationTitle}
         </button>
-        {/*
-          監視（ウォッチ）欄を開く（Phase 7 設計 §5.5）。名乗らないメーカー（PCwin風）には
-          欄そのものが無いのでボタンも出さない。名前は方言の `panels.watch` から引く。
-        */}
-        {profile.panels.watch === undefined ? null : (
-          <button
-            type="button"
-            data-testid="toolbar-watch"
-            onClick={() => {
-              setWatchOpenKey((key) => key + 1);
-            }}
-          >
-            {JA.ladder.showPanel(profile.panels.watch)}
-          </button>
-        )}
       </div>
 
       {/*
@@ -564,17 +658,34 @@ export function LadderWorkspace({
         ) : null}
       </div>
 
-      <div className={styles.workspaceBody}>
-        <ProjectTree
-          program={program}
-          profile={profile}
-          currentNetworkId={cursor.networkId}
-          onPick={(networkId) => {
-            useStore.getState().setLadderCursor({ networkId, row: 0, col: 0 });
-          }}
-        />
+      <div className={styles.workspaceBody} data-tree={treeVisible}>
+        <div className={styles.treeContainer} hidden={!treeVisible}>
+          <ProjectTree
+            program={program}
+            profile={profile}
+            currentNetworkId={cursor.networkId}
+            onPick={(networkId) => {
+              useStore.getState().setLadderCursor({ networkId, row: 0, col: 0 });
+            }}
+          />
+        </div>
         <div className={styles.workspaceMain} ref={workspaceMainRef} data-testid="workspace-main">
+          <div className={styles.documentBar} data-testid="native-document">
+            <span>{documentName(profile.id)}</span>
+          </div>
           <LadderEditor
+            onCommand={(command) => {
+              if (
+                ['insert-network', 'insert-network-above', 'insert-row', 'delete-row'].includes(
+                  command,
+                )
+              )
+                editCommand(command);
+              else if (command === 'plc-run') {
+                onPlc({ kind: 'run', on: true });
+                useStore.getState().setPlcRunning(true);
+              } else if (command === 'plc-stop' || command === 'download') onToolbar(command);
+            }}
             ref={entryRef}
             profile={profile}
             gridCols={effectiveGridCols}
@@ -589,9 +700,10 @@ export function LadderWorkspace({
             }
           >
             <OutputWindow
+              openKey={outputOpenKey}
               issues={issues}
               converted={converted}
-              convertKey={shortcutKeyOf(profile, 'convert')}
+              convertKey={profile.convertStep ? shortcutKeyOf(profile, 'convert') : undefined}
               // PCwin風（`status-bar`）は畳んだまま。ほかは開いたまま（レビュー B2）
               open={theme.layout.outputPane === 'window'}
               onJump={(next) => {

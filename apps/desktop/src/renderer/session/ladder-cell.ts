@@ -1,5 +1,6 @@
 import {
   ctu,
+  isDraftOutput,
   fall,
   mc,
   mcr,
@@ -192,6 +193,11 @@ export function buildCell(form: CellForm, profile: DialectProfile): Cell | Error
 
 /** 既存のセルを入力欄の形にする（`Enter` での編集）。 */
 export function formForCell(cell: Cell, profile: DialectProfile): CellForm {
+  if (cell.kind === 'draft') {
+    return isDraftOutput(cell.symbol)
+      ? { ...emptyCellForm('output'), output: cell.symbol as OutputForm }
+      : { ...emptyCellForm('contact'), contact: cell.symbol as ContactForm };
+  }
   if (cell.kind === 'contact') {
     return {
       ...emptyCellForm('contact'),

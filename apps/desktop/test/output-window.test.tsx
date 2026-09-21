@@ -73,7 +73,7 @@ describe('出力ウィンドウ（§10.6）', () => {
         exportIssues={[]}
       />,
     );
-    expect(screen.getByTestId('output-row-0')).toHaveTextContent('n1');
+    expect(screen.getByTestId('output-row-0')).not.toHaveTextContent('n1');
     expect(screen.getByTestId('output-row-0')).toHaveTextContent('1 行');
     expect(screen.getByTestId('output-row-0')).toHaveTextContent('3 列');
   });

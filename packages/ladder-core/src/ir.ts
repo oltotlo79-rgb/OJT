@@ -53,6 +53,25 @@ export type ContactType = 'NO' | 'NC' | 'P' | 'F';
 /** コイル種別。§10.3 */
 export type CoilType = 'OUT' | 'SET' | 'RST';
 
+/** JW-300SPの記号先行入力。アドレス未入力の記号も編集・保存・取消できる。 */
+export const DRAFT_SYMBOLS = [
+  'NO',
+  'NC',
+  'P',
+  'F',
+  'OUT',
+  'SET',
+  'RST',
+  'TON',
+  'CTU',
+  'MC',
+  'MCR',
+] as const;
+export type DraftSymbol = (typeof DRAFT_SYMBOLS)[number];
+export function isDraftOutput(symbol: DraftSymbol): boolean {
+  return !(['NO', 'NC', 'P', 'F'] as readonly string[]).includes(symbol);
+}
+
 /** セル。§10.3 */
 export type Cell =
   | { kind: 'contact'; type: ContactType; device: Device }
@@ -64,7 +83,8 @@ export type Cell =
   | { kind: 'end' }
   | { kind: 'hline' }
   | { kind: 'vline' }
-  | { kind: 'empty' };
+  | { kind: 'empty' }
+  | { kind: 'draft'; symbol: DraftSymbol };
 
 /** 出力位置に置くセル（コイル列に置く）。 */
 export type OutputCell = Extract<Cell, { kind: 'coil' | 'timer' | 'counter' | 'mc' | 'mcr' }>;

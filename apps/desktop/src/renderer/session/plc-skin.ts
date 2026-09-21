@@ -1,3 +1,4 @@
+import { JA } from '../i18n/ja.js';
 import { PLC_UNITS, type PlcUnitDefinition } from '@ojt/board-model';
 import { resolvePlcIo, type PlcProblem } from '@ojt/content';
 import {
@@ -46,7 +47,7 @@ export type ToolbarAction =
  * 方言ID → ツールバーの項目の意味。**`profile.panels.toolbar` と同じ並び・同じ長さ**である。
  * 位置ではなくこの表で引くことで、項目数が方言ごとに違っても取り違えない（決定表#2）。
  *
- * 【本アプリの前提】PCwin風の `JP1` / `DGR` / `MOB` / `RDY` は実機の操作パネルの項目で、
+ * 【本アプリの前提】PCwin風の `JPI` / `DOR` / `MOR` / `RDY` は実機の操作パネルの項目で、
  * 本アプリには対応する機能が無い（PLC調査資料 J-10 未確認）。`vendor-only` として淡色で出す。
  */
 export const TOOLBAR_ACTIONS_BY_DIALECT: Readonly<Record<DialectId, readonly ToolbarAction[]>> = {
@@ -61,7 +62,7 @@ export const TOOLBAR_ACTIONS_BY_DIALECT: Readonly<Record<DialectId, readonly Too
     'monitor-start',
     'monitor-stop',
   ],
-  // JP1／DGR／MOB／STP／RDY／RUN／RES／モニタ開始／モニタ停止
+  // JPI／DOR／MOR／STP／RDY／RUN／RES／モニタ開始／モニタ停止
   jtekt: [
     'vendor-only',
     'vendor-only',
@@ -134,31 +135,21 @@ export function skinMonitorColor(profile: DialectProfile, setting: string): stri
   return setting.length > 0 ? setting : profile.monitorColors.powered;
 }
 
-/**
- * 「書込みモード」の名乗り。読出し専用中に編集を断るメッセージに埋め込む（§10.6）。
- *
- * OMRON（CX-Programmer風）はキー割当表に `write-mode` の行を持たない（実機はツールバーの
- * 「オンライン編集」操作で、専用のファンクションキーが無い）。以前は `shortcutKeyOf(...) ?? 'F2'`
- * で埋めていたため、OMRON にも無い `F2` を教えていた（レビュー I8）。キーが無ければツールバーの
- * 項目名（`toolbarItems()` の `write-mode` のラベル）へ、それも無ければ `'F2'` へ倒す。
- */
+/** 編集へ戻る実在のキー、なければ編集メニューの名前を返す。 */
 export function writeModeLabel(profile: DialectProfile): string {
   const key = profile.shortcuts.find((entry) => entry.action === 'write-mode')?.keys;
   if (key !== undefined) return key;
-  return toolbarItems(profile).find((item) => item.action === 'write-mode')?.label ?? 'F2';
+  return (
+    toolbarItems(profile).find((item) => item.action === 'write-mode')?.label ??
+    JA.ladder.nativeEdit
+  );
 }
 
-/**
- * 「モニタ開始」の名乗り。モニタが動いていないときの案内に埋め込む（§10.6）。指摘 LE-7
- *
- * どの方言も `shortcuts` に `monitor` の行を持たない（モニタは押しっぱなしで見るものであり、
- * キーの割当を作らない設計）。以前は `shortcutKeyOf(profile, 'monitor') ?? 'F3'` で埋めていた
- * ため、4方言とも存在しない `F3` を教えていた（`MonitorPanel.tsx` の `writeModeLabel()` と同型の
- * 欠陥）。`shortcuts` に `monitor` 行があればそのキーを、無ければツールバーの
- * `monitor-start` 項目名を返す。
- */
+/** 確認済みのモニタキー（OMRONはCtrl+M）、なければコマンドの名前を返す。 */
 export function monitorStartLabel(profile: DialectProfile): string {
-  const key = profile.shortcuts.find((entry) => entry.action === 'monitor')?.keys;
+  const key = profile.shortcuts.find(
+    (entry) => entry.action === 'monitor' || entry.action === 'monitor-toggle',
+  )?.keys;
   if (key !== undefined) return key;
   // 4方言とも `monitor-start` をツールバーに持つ（`test/plc-skin.test.ts` が見張る）ので、
   // ここへは実際には倒れない

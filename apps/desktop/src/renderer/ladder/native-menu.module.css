@@ -1,0 +1,70 @@
+.bar {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 0;
+  min-height: 32px;
+  overflow-x: auto;
+  background: var(--skin-toolbar, #f2f2f2);
+  border-bottom: 1px solid #b8c1cc;
+}
+.bar button {
+  flex: 0 0 auto;
+  min-width: 32px;
+  padding: 3px 9px;
+  color: #192533;
+  border: 1px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  font-size: max(12px, 0.75rem);
+  white-space: nowrap;
+}
+.bar button[aria-expanded='true'],
+.bar button:hover:not(:disabled) {
+  color: #152941;
+  background: #d9e8f9;
+  border-color: #7496b8;
+}
+.popup {
+  position: fixed;
+  z-index: 60;
+  min-width: 264px;
+  max-width: min(360px, calc(100vw - 16px));
+  max-height: 65vh;
+  padding: 4px;
+  overflow: auto;
+  border: 1px solid #9faaba;
+  background: #fafafa;
+  color: #152941;
+  box-shadow: 3px 5px 12px #0004;
+}
+.popup button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 32px;
+  padding: 4px 7px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  font-size: max(12px, 0.8125rem);
+  white-space: nowrap;
+}
+.popup button:hover:not(:disabled),
+.popup button:focus-visible {
+  background: #d9e8f9;
+  outline: 1px solid #7496b8;
+  outline-offset: -1px;
+}
+.check {
+  width: 14px;
+  flex: 0 0 14px;
+}
+.popup kbd {
+  margin-left: auto;
+  padding-left: 16px;
+  font: inherit;
+  color: #4f6074;
+}

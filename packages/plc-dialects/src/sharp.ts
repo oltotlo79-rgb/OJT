@@ -16,7 +16,7 @@ import {
   type DeviceRuleSet,
   type TimerRule,
 } from './device-rules.js';
-import { assumedTable, GX_STYLE_SHORTCUTS } from './shortcuts.js';
+import { SHARP_SHORTCUTS } from './shortcuts.js';
 import type {
   DeviceRange,
   DialectError,
@@ -251,11 +251,11 @@ const MONITOR_COLORS: MonitorColors = { powered: '#00A0C8', idle: '#6B7280' };
 const PANELS: PanelLayout = {
   tree: 'プロジェクトツリー',
   editor: 'ラダー編集',
-  output: '出力ウィンドウ',
-  toolbar: ['変換', 'PLCへの書込み', '運転／停止', 'モニタ開始', 'モニタ停止'],
+  output: 'メッセージウィンドウ',
+  toolbar: ['プログラムチェック', 'PLCへの書込み', '運転／停止', 'モニタ開始', 'モニタ停止'],
   // JW-300SP は監視したいリレーを登録して並べる（Phase 7 設計 §5.5）
   comment: 'コメント',
-  watch: 'モニタ登録',
+  watch: '任意多点モニタ',
   status: ['mode', 'network', 'plc-state'],
 };
 
@@ -291,8 +291,9 @@ export const SHARP_JW300: DialectProfile = {
   symbols: SYMBOLS,
   gridCols: 11,
   // 一次資料でキー割当を確認できないので、流用した表の全行に断りを入れる（Phase 7 §5.2）
-  shortcuts: assumedTable(GX_STYLE_SHORTCUTS),
-  convertStep: true,
+  shortcuts: SHARP_SHORTCUTS,
+  convertStep: false,
+  symbolFirst: true,
   monitorColors: MONITOR_COLORS,
   panels: PANELS,
   validate,

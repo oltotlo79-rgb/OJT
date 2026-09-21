@@ -40,40 +40,28 @@
    `C17777`／基本命令は `STR` `STR NOT` `AND` `AND NOT` `OR` `OR NOT` `OUT`、追加命令に
    `STR POS` `STR NEG` など。
 
-## キー割当の出典 S1〜S8（Phase 7 Task 20。2026-09-20 に確認）
+## 公式資料による再確認（2026-09-21）
 
-`DialectProfile.shortcuts` の各行が持つ `source` はこの記号を指す。キー割当表（`ShortcutHelp`）は
-`出典 S1` の形で行ごとに出す。上の表（#1〜#7）は**画面の形と配置**の出典で、こちらは
-**キー割当**の出典である（別物なので番号体系を分けてある）。
+画面の図・キー表・操作手順を直接確認した。下記の確認結果は上段の旧調査に優先する。メーカー資料の画像や本文は製品・リポジトリに同梱しない。
 
-| 記号 | 出典 | 何が確認できたか |
+| 記号 | 公式資料・版 | 確認箇所と実装への反映 |
 |---|---|---|
-| S1 | `https://ecdtejun.work/archives/972` | 三菱: `F5`/`F6`/`Shift+F5`/`Shift+F6`/`F7`/`F8`/`F9`/`Shift+F9`/`Ctrl+F9`/`Ctrl+F10` |
-| S2 | `https://denkisekkeijin.com/software/gxworks2/gxworks2_base_ladder/` | 三菱: 同じ表（独立した記述）、`Shift+F7`/`Shift+F8` のパルス、回路入力ウィンドウにデバイス名を半角で打って `Enter` |
-| S3 | `https://plckouza.com/st2/st2_3.html` / `st2_5.html` | 三菱: `F4`＝変換、`F2`＝書込み、`Shift+F2`＝読出し、`F3`＝モニタ、モニタ中は通電部が塗りつぶし |
-| S4 | `https://plckouza.com/st2/st2_8.html` | OMRON: `C`/`/`/`O`/`I`、`Ctrl+E`、アドレス欄 `Enter` → コメント欄 `Enter`、出力の無いブロックの右端に赤線、変換の段が無い |
-| S5 | `https://scrapbox.io/backman2225626-02655577/CX-Programmer` ほか個人の早見表 | OMRON: `W`（並列接点）、`Ctrl+←→`（横線）、`Ctrl+↑↓`（縦線） |
-| S6 | `https://www.softech.co.jp/mm_140903_plc.htm` | 各社比較: 直列接点は三菱 `F5` / OMRON `C`、コイルは三菱 `F7` / OMRON `O` |
-| S7 | `https://www.jtekt.co.jp/data/Tp/Catalog/CAT-M2067-1_PCwin.pdf` | PCwin が LD・SFC・FBD を扱うこと（画像PDFのため本文は読めない） |
-| S8 | `https://jp.sharp/sms/plc/jw-300sp/jw-300sp.html` | JW-300SP: シンボル名／アドレスの2モード、行間ステートメント、マウスのドラッグ＆ドロップでの回路要素挿入、トラブルシューティング画面 |
+| S1 / S2 / S3 | [三菱電機 GX Works3 Operating Manual SH-081215ENG-AN](https://dl.mitsubishielectric.com/dl/fa/document/manual/plc/sh081215eng/sh081215engan.pdf) | 印刷p51（PDF p53）のメニュー順、濃紺の左ナビゲーション、白い編集面、文書タブ、出力欄。[公式トレーニングテキスト JY997D69701-A](https://dl.mitsubishielectric.com/dl/fa/document/schooltext/school_text/jy997d69701/jy997d69701a.pdf) 3-10〜3-12のF5/F6/F7・並列接点・罫線、3-16のF4変換、3-30のF2編集も確認。最新版ATの日本語資料は会員認証が必要で、ANと区別する。 |
+| S4 / S5 | [OMRON CX-Programmer Operation Manual W446-E1-23](https://files.omron.eu/downloads/latest/manual/en/w446_cx-programmer_operation_manual_en.pdf)（2023-07） | 印刷p10（PDF p58）のメニュー順、白いツリー、青いデバイス文字、紫の選択枠、黄色いラング見出し。印刷p160–162（PDF p208–210）のClassicモードのキー表。 |
+| S6 | 各社比較の旧補助資料 | 最新の割当を決める根拠には使わない。 |
+| S7 | [JTEKT PCwin公式カタログ CAT-M2067-1](https://www.jtekt.co.jp/data/Tp/Catalog/CAT-M2067-1_PCwin.pdf) | p2–3のメニュー、左プロジェクトツリー、青い文書タイトル、白いラダー、ステップ欄。モニタ項目の読取り誤りをJPI / DOR / MORへ訂正。 |
+| S8 | [SHARP JW-300SPユーザーズマニュアル 第3版](https://jp.sharp/sms/pdf/plc/jw-300sp/m_300sp_3.pdf)（Ver1.2、2004-05） | 第2章の8メニュー、2-193（PDF p215）のキー表、3-3〜3-4（PDF p229–230）の記号先行入力、2-112のプログラムチェック、2-129〜131の各ウィンドウ。 |
 
-### 確認できなかったもの
+### 今回訂正した操作
 
-`confirmed: false` のまま `note` を付けて出す（§17.1 の方針どおり実装は止めない）。
+- OMRON: 並列b接点は **X**。Ctrl+← / Ctrl+↑は左・上への作図であり削除ではない。H / V / Uなどの別名も対応する。F2が編集、Shift+F2が読取、Ctrl+Mがモニタ切替、Ctrl+TがPLCへの転送。Ctrl+E / Ctrl+Shift+Eはオンライン編集の開始／送信であり、通常の一括転送と区別する。Classicモードを対象とし、Smart Inputの割当とは混在させない。
+- SHARP: **S / D / X**でa接点・b接点・コイル。P / Nが微分接点、E / RがSET / RST、V / CがTMR / CNT、Bが応用命令、GがOR+、Lが回路追加。まず未入力の記号を置き、Enterでアドレスを入力する。複数の記号を先に配置できる。F4を三菱の変換として流用しない。検査は編集メニューのプログラムチェック。
+- JTEKT: [PCwin公式操作マニュアル](https://toyoda.jtekt.co.jp/data/Tp/Torisetu/t-a35-68-n_PCwin.pdf)は認証が必要で、キー割当を確認できていない。三菱の表の流用を廃止し、未確認の専用キーは割り当てない。記号ボタン・右クリック・ダブルクリックで編集する。
 
-- 三菱・OMRON の**モニタ中の通電色の具体値**（「塗りつぶし」という記述までは取れたが色名は
-  取れない）。本アプリの既定（三菱=青 `#1E64FF` / OMRON=緑 `#2FA02C` / ジェイテクト=橙 /
-  シャープ=水色）は**本アプリ独自**のままとする。
-- 三菱の**未変換回路の灰色背景**。
-- 三菱・OMRON の**既定の背景色・格子色・カーソル色・書体**（三菱は「表示→色およびフォント」で
-  利用者が変えられることまでは確認できた）。
-- **PCwin と JW-300SP のキー割当・入力ダイアログ・ウィンドウ構成・モニタ色は一切確認できない**。
-  PCwin の公式マニュアル（`T-A35` / `T-A50`）は**ログイン必須**であることを実地で確認した。
-  JW-300SP のマニュアル PDF は公開されているが 10.5MB の画像PDFで本文を機械抽出できない。
-  この2方言は GX Works3風の表を流用し、`assumedTable()` が全行を `confirmed: false` ＋
-  「実機マニュアル未確認のため本アプリの表記です」に落としてから出す。
-- 利用者が挙げた `e-sysnet.com/plc-6`（上の表の #2）は**キー割当表ではなく「ラダー図の
-  表現方法（図記号）」の解説ページ**だった。記号の形の出典としては使えるが、**キー割当の
-  出典としては使えない**。
-- OMRON の `Shift+W`（OR b接点）は一次資料に記載が無く、`W`（OR a接点）に合わせた
-  **本アプリの割当**である。
+### 確認範囲と訓練用の制約
+
+メニュー順・確認済みキー・入力の順序は上記の公式資料に基づく。色の数値、フォント、ピクセル寸法はOS・テーマ・倍率で変化するため同一値を保証しない。読みやすさのため32pxの操作領域と12px以上の文字を保つ。
+
+全ソフトの全機能を実装しているわけではない。実PLCへのオンライン接続、通信設定、機種設定、PCwinのME-NET/CADなどは訓練対象外として無効表示する。SHARPのHによる接点なし並列など、対応していない固有機能を別の操作に勝手に割り当てない。実機の命令ステップ数と、本アプリの回路行数表示は同一ではない。
+
+`native-plc.test.tsx` が公式キー、記号先行入力、未完成回路の実行拒否を検査する。画面操作のE2Eはメーカー別の実際の入口を使い、4社すべてにF5/F7を送る旧検査は廃止した。

@@ -142,7 +142,8 @@ describe('折りたたみ列（UXレビュー #27）', () => {
   it('ウォッチは要求したときだけ開き、初期カウンタ0では開かない', () => {
     workspace();
     expect(screen.getByTestId('watch-panel-details')).not.toHaveAttribute('open');
-    fireEvent.click(screen.getByTestId('toolbar-watch'));
+    fireEvent.click(screen.getByTestId('native-menu-view'));
+    fireEvent.click(screen.getByTestId('native-item-watch'));
     expect(screen.getByTestId('watch-panel-details')).toHaveAttribute('open');
   });
 

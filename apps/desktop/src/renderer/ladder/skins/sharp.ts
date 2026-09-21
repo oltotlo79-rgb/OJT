@@ -8,18 +8,18 @@ export const SHARP_SKIN: SkinTheme = {
   titleBar: 'JW-300SP 風',
   layout: { treeWidthPx: 220, outputPane: 'window', outputHeightPx: 150 },
   colors: {
-    canvas: '#F2F5F7',
-    grid: '#F2F5F7',
+    canvas: '#FFFFFF',
+    grid: '#FFFFFF',
     rail: '#2C3E50',
     symbol: '#102A3C',
     device: '#102A3C',
     preset: '#546A79',
     comment: '#00647A',
-    cursor: '#00A0C8',
+    cursor: '#BE1020',
     error: '#B03A3A',
     powered: '#00A0C8',
     toolbar: '#E7ECEF',
-    titleBar: '#1E6F86',
+    titleBar: '#123A84',
     titleBarText: '#FFFFFF',
     statusBar: '#DCE3E7',
     output: '#FAFCFD',
@@ -36,9 +36,9 @@ export const SHARP_SKIN: SkinTheme = {
    *     …… `F-40` ＝ END で各プログラムブロックの最終アドレスに入る／デバイス番号は6桁
    *     （8進表記、0〜7）／タイマ `T00000`〜`T17777`・カウンタ `C00000`〜`C17777`／基本命令は
    *     `STR` `STR NOT` `AND` `AND NOT` `OR` `OR NOT` `OUT`、追加命令に `STR POS` `STR NEG` など。
-   * **4スキンでいちばん裏づけが薄い**（△）: 接点・コイルの実際の描画形状（丸か括弧か・線の
-   * 太さ）と編集画面の格子・行間隔・コメント位置は、公開資料の画像がOCRできず確認できて
-   * いない。形は利用者の指示（出力は丸）と三菱の記号表の比に合わせている。§17.1
+   * 2026-09-21追補: 公開 JW-300SP 操作マニュアル（出典 S8）の図と本文を確認。
+   * 白い編集面・水色の選択セル・赤いカーソル線・左ツリー・下部メッセージ欄に合わせる。
+   * S/D/Xで記号を先に置き、Enterでアドレス入力する。F4は変換キーではない。
    */
   cell: {
     widthPx: 50,
@@ -58,11 +58,11 @@ export const SHARP_SKIN: SkinTheme = {
   // 回路ブロックの先頭行にステップ番号（行の通し）を出す。△
   stepNumbering: 'step',
   commentLines: 1,
-  entryTitle: '回路入力',
+  entryTitle: '入力ダイアログ',
   // JW-300SP は「マウスのドラッグ＆ドロップでも回路要素を入れられる」（出典 S8）。設計 §5.2
   dragPlace: true,
   // 未変換の灰色背景は一次資料で確認できていない（§17.1 / Phase 7 設計 §5.4）
   assumed: [...SKIN_ASSUMED, JA.ladder.entry.unconvertedAssumed],
-  // キー割当表は GX Works3風の表を流用している（`packages/plc-dialects/src/sharp.ts`）。レビュー I7
-  keyMapAssumed: true,
+  // S8の公式キー表による。三菱の割当は流用しない。
+  keyMapAssumed: false,
 };

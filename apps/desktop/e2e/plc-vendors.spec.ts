@@ -153,10 +153,12 @@ async function commitDevice(page: Page, text: string): Promise<void> {
 async function buildMinimalLadder(page: Page, contact: string, coil: string): Promise<void> {
   // 3Dを触ったあとでも同じところから組めるよう、カーソルを先頭セルへ戻しておく
   await page.getByTestId('cell-n1:0:0').click();
-  await key(page, 'F5');
+  await page.getByTestId('symbol-contact-no').click();
+  if (await page.locator('[data-incomplete="true"]').count()) await key(page, 'Enter');
   await commitDevice(page, contact);
   await page.getByTestId(`cell-n1:0:${String(COIL_COL)}`).click();
-  await key(page, 'F7');
+  await page.getByTestId('symbol-coil').click();
+  if (await page.locator('[data-incomplete="true"]').count()) await key(page, 'Enter');
   await commitDevice(page, coil);
 }
 
@@ -283,7 +285,8 @@ test.describe('Phase 4 受入基準（4メーカー）', () => {
       await openPlcProblem(page);
       await expect(page.getByTestId('ladder-workspace')).toHaveAttribute('data-skin', 'sharp');
       await expect(page.getByTestId('skin-title')).toContainText('JW-300SP 風');
-      await key(page, 'F5');
+      await page.getByTestId('symbol-contact-no').click();
+      if (await page.locator('[data-incomplete="true"]').count()) await key(page, 'Enter');
       await expect(page.getByTestId('device-text')).toHaveAttribute('placeholder', '000000');
       await page.getByTestId('device-text').fill('000008');
       await page.getByTestId('device-commit').click();

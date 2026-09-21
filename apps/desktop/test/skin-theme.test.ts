@@ -28,24 +28,22 @@ describe('SkinTheme（利用者要求: 実物に近い回路入力画面 / §10.
   });
 
   it('gives every theme a full, distinct colour set', () => {
-    const canvases = new Set<string>();
     for (const theme of Object.values(SKIN_THEMES)) {
       for (const [key, value] of Object.entries(theme.colors)) {
         expect(value, `${theme.id}.${key}`).toMatch(/^#[0-9A-F]{6}$/u);
       }
-      canvases.add(theme.colors.canvas);
       expect(theme.cell.widthPx).toBeGreaterThanOrEqual(40);
       expect(theme.cell.heightPx).toBeGreaterThanOrEqual(30);
       expect(theme.assumed.length).toBeGreaterThan(0);
     }
-    // 4スキンが見分けられること（背景がすべて同じなら「忠実に」の要求を満たさない）
-    expect(canvases.size).toBe(4);
+    // 公式画面が同じ白地なら、差別化のために色を変えない。
+    expect(SKIN_THEMES.omron.colors.canvas).toBe('#FFFFFF');
+    expect(SKIN_THEMES.sharp.colors.canvas).toBe('#FFFFFF');
   });
 
   it('matches the powered colour to the dialect (§10.6)', () => {
     for (const profile of availableDialects()) {
       expect(skinThemeOf(profile).colors.powered, profile.id).toBe(profile.monitorColors.powered);
-      expect(skinThemeOf(profile).colors.cursor, profile.id).toBe(profile.monitorColors.powered);
     }
   });
 

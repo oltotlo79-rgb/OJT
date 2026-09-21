@@ -125,23 +125,16 @@ describe('Shift + ? の早見表（指摘 PR-05）', () => {
    * Task 20 の申し送り: PCwin風・JW-300SP風は表そのものを借りていて**全行が △** なので、
    * 行ごとに同じ断りを22回並べず、表の上に1回だけ出す。
    */
-  it('says the borrowed table is assumed once, not on all 22 rows (JTEKT / SHARP)', () => {
-    for (const profile of [JTEKT_PC10G, SHARP_JW300]) {
+  it('PCwinだけは未確認キーを割り当てず、マウス入力を案内する', () => {
+    workspace(JTEKT_PC10G);
+    pressHelpKey();
+    expect(screen.getByTestId('shortcut-overlay-note')).toHaveTextContent('割り当てていません');
+    expect(screen.queryByTestId('overlay-shortcut-contact-no')).toBeNull();
+    for (const profile of [MITSUBISHI_FX5U, OMRON_CP1E, SHARP_JW300]) {
       cleanup();
       workspace(profile);
       pressHelpKey();
-      expect(screen.getByTestId('shortcut-overlay-note'), profile.id).toHaveTextContent(
-        '本アプリの表記です',
-      );
-      expect(screen.getByTestId('overlay-shortcut-contact-no'), profile.id).not.toHaveTextContent(
-        '本アプリの表記です',
-      );
-    }
-    for (const profile of [MITSUBISHI_FX5U, OMRON_CP1E]) {
-      cleanup();
-      workspace(profile);
-      pressHelpKey();
-      expect(screen.queryByTestId('shortcut-overlay-note'), profile.id).toBeNull();
+      expect(screen.queryByTestId('shortcut-overlay-note')).toBeNull();
     }
   });
 

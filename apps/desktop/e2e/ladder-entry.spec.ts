@@ -166,9 +166,9 @@ const CASES: readonly DialectCase[] = [
   {
     vendor: 'jtekt',
     skinTitle: 'PCwin 風',
-    contactKey: 'F5',
-    coilKey: 'F7',
-    contactButton: 'a接点 (F5)',
+    contactKey: '',
+    coilKey: '',
+    contactButton: 'a接点',
     /*
      * PC10G は入力と出力が同じアドレス空間にあり、`1X010` と `1Y010` は**同じアドレス**に
      * なる（`plc-vendors.spec.ts` ③ がその機種エラーを見ている）。ここは変換が通ることを
@@ -184,16 +184,15 @@ const CASES: readonly DialectCase[] = [
   {
     vendor: 'sharp',
     skinTitle: 'JW-300SP 風',
-    contactKey: 'F5',
-    coilKey: 'F7',
-    contactButton: 'a接点 (F5)',
+    contactKey: 's',
+    coilKey: 'x',
+    contactButton: 'a接点 (S)',
     // シャープのニーモニックは `STR`（`instructionNames.ld`）
     contactLine: 'STR 000000',
     contactText: '000000',
     coilLine: 'OUT 000020',
     coilText: '000020',
-    convertKey: 'F4',
-    convertText: '変換に成功しました',
+    convertText: '変換に成功しました（自動で変換されます）',
     commentStep: false,
   },
 ];
@@ -213,7 +212,12 @@ test.describe('回路入力の入口（Phase 7 Task 21 / 利用者要望3）', (
 
         // 入口A: キー → 1行入力 → Enter で a接点が現れる（利用者要望3の中心）
         await page.getByTestId('cell-n1:0:0').click();
-        await key(page, item.contactKey);
+        if (item.contactKey) await key(page, item.contactKey);
+        else await page.getByTestId('symbol-contact-no').click();
+        if (item.vendor === 'sharp') {
+          await expect(page.getByTestId('cell-n1:0:0')).toHaveAttribute('data-incomplete', 'true');
+          await key(page, 'Enter');
+        }
         await expect(page.getByTestId('device-input')).toBeVisible();
         await enterLine(page, item.contactLine, item.commentStep);
         const contactCell = page.getByTestId('cell-n1:0:0');
@@ -227,7 +231,9 @@ test.describe('回路入力の入口（Phase 7 Task 21 / 利用者要望3）', (
 
         // コイルを置く
         await page.getByTestId(`cell-n1:0:${String(COIL_COL)}`).click();
-        await key(page, item.coilKey);
+        if (item.coilKey) await key(page, item.coilKey);
+        else await page.getByTestId('symbol-coil').click();
+        if (item.vendor === 'sharp') await key(page, 'Enter');
         await enterLine(page, item.coilLine, item.commentStep);
         await expect(page.getByTestId(`cell-n1:0:${String(COIL_COL)}`)).toContainText(
           item.coilText,

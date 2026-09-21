@@ -1452,22 +1452,6 @@ test.describe.serial('画面品質の機械点検', () => {
     await page.getByTestId('ladder-editor').press(name);
   }
 
-  /**
-   * その方言の「a接点」「コイル」のキーを**キー割当表から読む**。
-   * CX-Programmer風は `C` / `O`、GX Works3風は `F5` / `F7` と割当が違うので、
-   * 書き下すとメーカーを足すたびに落ちる（`plc-dialects` の `SHORTCUTS`）。
-   */
-  async function ladderKeys(page: Page): Promise<readonly [string, string]> {
-    const contact = await page
-      .getByTestId('shortcut-contact-no')
-      .locator('td')
-      .first()
-      .textContent();
-    const coil = await page.getByTestId('shortcut-coil').locator('td').first().textContent();
-    if (contact === null || coil === null) throw new Error('キー割当表を読めません');
-    return [contact.trim(), coil.trim()];
-  }
-
   async function commitDevice(page: Page, text: string): Promise<void> {
     await expect(page.getByTestId('device-input')).toBeVisible();
     await page.getByTestId('device-text').fill(text);
@@ -1513,15 +1497,15 @@ test.describe.serial('画面品質の機械点検', () => {
         });
 
         let devices: readonly [string, string] = ['X10', 'Y0'];
-        let keys: readonly [string, string] = ['F5', 'F7'];
         await step(`modeD-${vendor}-ladder-written`, async () => {
           devices = await ioDevices(page);
-          keys = await ladderKeys(page);
           await page.getByTestId('cell-n1:0:0').click();
-          await ladderKey(page, keys[0]);
+          await page.getByTestId('symbol-contact-no').click();
+          if (vendor === 'sharp') await ladderKey(page, 'Enter');
           await commitDevice(page, devices[0]);
           await page.getByTestId(`cell-n1:0:${String(COIL_COL)}`).click();
-          await ladderKey(page, keys[1]);
+          await page.getByTestId('symbol-coil').click();
+          if (vendor === 'sharp') await ladderKey(page, 'Enter');
           await commitDevice(page, devices[1]);
           const convert = page.getByTestId('toolbar-convert');
           if ((await convert.count()) > 0) await convert.first().click();
@@ -1581,7 +1565,7 @@ test.describe.serial('画面品質の機械点検', () => {
             await page.waitForTimeout(800);
             // 「もう一度」でラダーも初期状態へ戻るので、壊す前に組み直す
             await page.getByTestId('cell-n1:0:0').click();
-            await ladderKey(page, keys[0]);
+            await page.getByTestId('symbol-contact-no').click();
             await commitDevice(page, devices[0]);
           });
         }

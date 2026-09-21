@@ -332,11 +332,13 @@ describe('キー操作（§10.6 の割当表から引く）', () => {
   });
 
   /** Phase 7 §5.2: CX-Programmer風の罫線は `Ctrl` ＋矢印（出典 S5）。 */
-  it('draws and deletes lines with Ctrl+arrows under the OMRON skin', () => {
+  it('OMRONのCtrl+矢印は描線、Deleteは削除として動作する（W446-E1-23 p161）', () => {
     editor({ profile: OMRON_CP1E, gridCols: OMRON_CP1E.gridCols });
     fireEvent.keyDown(grid(), { key: 'ArrowRight', ctrlKey: true });
     expect(net1().kind).toBe('hline');
     fireEvent.keyDown(grid(), { key: 'ArrowLeft', ctrlKey: true });
+    expect(net1().kind).toBe('hline');
+    fireEvent.keyDown(grid(), { key: 'Delete' });
     expect(net1().kind).toBe('empty');
   });
 
@@ -371,14 +373,13 @@ describe('キー操作（§10.6 の割当表から引く）', () => {
    * 起き得ない。大文字のままだと `matchShortcut()` の大小文字不一致（LE-1 本体）を覆い隠して
    * しまうので、実ブラウザと同じ小文字に直す。
    */
-  it('names the toolbar label, not the invented F2, under a skin with no write-mode key (I8)', () => {
+  it('OMRONの編集開始は一次資料で確認したF2を案内する', () => {
     useStore.getState().setLadderMode('monitor');
     editor({ profile: OMRON_CP1E, gridCols: OMRON_CP1E.gridCols });
     // OMRON の a接点キーは `C`（モニタ中なので置けず、readOnly になる）
     fireEvent.keyDown(grid(), { key: 'c' });
     const message = useStore.getState().toasts.at(-1)?.text ?? '';
-    expect(message).not.toContain('F2');
-    expect(message).toContain('オンライン編集');
+    expect(message).toContain('F2');
   });
 
   it('opens the a-contact input on a lowercase key event under OMRON (LE-1)', () => {
@@ -521,8 +522,8 @@ describe('回路入力（Phase 7 設計 §5.3）', () => {
     { profile: MITSUBISHI_FX5U, contactKey: 'F5', line: 'LD X0' },
     // 実ブラウザの `KeyboardEvent.key` は小文字で来る（指摘 LE-1）
     { profile: OMRON_CP1E, contactKey: 'c', line: 'LD 0.00' },
-    { profile: JTEKT_PC10G, contactKey: 'F5', line: 'LD 1X000' },
-    { profile: SHARP_JW300, contactKey: 'F5', line: 'STR 000000' },
+    { profile: JTEKT_PC10G, contactKey: '', line: 'LD 1X000' },
+    { profile: SHARP_JW300, contactKey: 's', line: 'STR 000000' },
   ];
 
   /** その方言で1つ目の接点を置き終えるまで（CX-Programmer 風は2段目のコメント欄がある）。 */
@@ -539,7 +540,9 @@ describe('回路入力（Phase 7 設計 §5.3）', () => {
       useStore.getState().abandonSession();
       useStore.getState().openProblem(problem);
       editor({ profile, gridCols: profile.gridCols });
-      fireEvent.keyDown(grid(), { key: contactKey });
+      if (contactKey) fireEvent.keyDown(grid(), { key: contactKey });
+      else fireEvent.doubleClick(screen.getByTestId('cell-n1:0:0'));
+      if (profile.symbolFirst === true) fireEvent.keyDown(grid(), { key: 'Enter' });
       expect(screen.getByTestId('device-input'), profile.id).toBeInTheDocument();
       fireEvent.change(screen.getByTestId('direct-text'), { target: { value: line } });
       fireEvent.keyDown(screen.getByTestId('direct-text'), { key: 'Enter' });

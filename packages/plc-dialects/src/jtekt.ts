@@ -18,7 +18,6 @@ import {
   type DeviceUse,
   type TimerRule,
 } from './device-rules.js';
-import { assumedTable, GX_STYLE_SHORTCUTS, withoutConvert } from './shortcuts.js';
 import type {
   DeviceRange,
   DialectError,
@@ -271,7 +270,7 @@ const PANELS: PanelLayout = {
   tree: 'プロジェクトツリー（プログラム／データファイル／パラメータ／LD／SFC）',
   editor: 'ラダー編集エリア',
   output: 'ステータスバー',
-  toolbar: ['JP1', 'DGR', 'MOB', 'STP', 'RDY', 'RUN', 'RES', 'モニタ開始', 'モニタ停止'],
+  toolbar: ['JPI', 'DOR', 'MOR', 'STP', 'RDY', 'RUN', 'RES', 'モニタ開始', 'モニタ停止'],
   /*
    * PCwin は出力をステータスバーへ畳む構成で、**監視（ウォッチ）の独立した欄は公開資料で
    * 確認できていない**ため名乗らない（名乗らないメーカーでは欄そのものを出さない。設計 §5.5）。
@@ -312,7 +311,8 @@ export const JTEKT_PC10G: DialectProfile = {
   symbols: SYMBOLS,
   gridCols: 11,
   // 一次資料でキー割当を確認できないので、流用した表の全行に断りを入れる（Phase 7 §5.2）
-  shortcuts: assumedTable(withoutConvert(GX_STYLE_SHORTCUTS)),
+  // 公開一次資料で未確認のGXキーは割り当てない。記号ボタン・Enterで入力する。
+  shortcuts: [],
   convertStep: false,
   monitorColors: MONITOR_COLORS,
   panels: PANELS,

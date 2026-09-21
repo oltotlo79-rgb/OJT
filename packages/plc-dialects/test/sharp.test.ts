@@ -19,7 +19,7 @@ import {
   type Cell,
 } from '@ojt/ladder-core';
 import { describe, expect, it } from 'vitest';
-import { assumedTable, getDialect, GX_STYLE_SHORTCUTS, SHARP_JW300 } from '../src/index.js';
+import { getDialect, SHARP_JW300 } from '../src/index.js';
 
 function rung(...cells: Cell[]): Cell[] {
   const row = [...cells];
@@ -133,19 +133,12 @@ describe('シャープのバリデータと JW-300SP風スキン（§10.5 / §10
     expect(profile.validate(c).map((e) => e.code)).toEqual(['counter-range']);
   });
 
-  it('keeps the conversion step and reuses the GX-style keys (§17.1 の前提)', () => {
-    expect(profile.convertStep).toBe(true);
-    /*
-     * Phase 7 Task 20: 流用した表をそのまま出すと「この実機で確認できた」と読めてしまうので、
-     * `assumedTable()` を通して全行を △ ＋断りに落としてから使う。キーと操作の対応は
-     * 借り元と同じままであることをここで縛る。
-     */
-    expect(profile.shortcuts).toEqual(assumedTable(GX_STYLE_SHORTCUTS));
-    expect(profile.shortcuts.map((s) => `${s.action}:${s.keys}`)).toEqual(
-      GX_STYLE_SHORTCUTS.map((s) => `${s.action}:${s.keys}`),
-    );
-    expect(profile.monitorColors.powered).toBe('#00A0C8');
-    expect(profile.gridCols).toBe(11);
+  it('JW-300SP公式2-193・3-3の記号先行入力を使う', () => {
+    expect(profile.convertStep).toBe(false);
+    expect(profile.symbolFirst).toBe(true);
+    expect(profile.shortcuts.find((row) => row.action === 'contact-no')?.keys).toBe('S');
+    expect(profile.shortcuts.find((row) => row.action === 'coil')?.keys).toBe('X');
+    expect(profile.shortcuts.every((row) => row.confirmed && row.source === 'S8')).toBe(true);
   });
 
   it('names the instructions confirmed in PLC調査資料 §4-C (§17 #10)', () => {

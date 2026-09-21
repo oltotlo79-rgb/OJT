@@ -68,8 +68,30 @@ export type PlaceKind =
   | 'pulse-fall'
   | 'coil'
   | 'application'
+  | 'timer'
+  | 'counter'
+  | 'set-coil'
+  | 'reset-coil'
   | 'hline'
   | 'vline';
+
+export type NativeLadderCommand =
+  | 'insert-network'
+  | 'insert-network-above'
+  | 'insert-row'
+  | 'delete-row'
+  | 'plc-run'
+  | 'plc-stop'
+  | 'download';
+const NATIVE_COMMANDS: readonly string[] = [
+  'insert-network',
+  'insert-network-above',
+  'insert-row',
+  'delete-row',
+  'plc-run',
+  'plc-stop',
+  'download',
+];
 
 /** キー入力から決まる操作。 */
 export type LadderAction =
@@ -85,6 +107,7 @@ export type LadderAction =
   | { type: 'toggleNoNc' }
   | { type: 'togglePulse' }
   | { type: 'convert' }
+  | { type: 'command'; command: NativeLadderCommand }
   /** `monitorWrite` は `Shift+F3`（モニタ書込み）で押されたことを示す。決定表#11 */
   | { type: 'setMode'; mode: LadderEditorMode; monitorWrite?: true }
   | { type: 'toggleInsert' }
@@ -160,6 +183,10 @@ const PLACE_KINDS: Readonly<Record<string, PlaceKind>> = {
   'pulse-rise': 'pulse-rise',
   'pulse-fall': 'pulse-fall',
   coil: 'coil',
+  timer: 'timer',
+  counter: 'counter',
+  'set-coil': 'set-coil',
+  'reset-coil': 'reset-coil',
   // 三菱系の「応用命令」（`F8`）と CX-Programmer風の「命令入力」（`I`）は同じ欄へ倒す
   application: 'application',
   instruction: 'application',
@@ -234,7 +261,14 @@ export function matchShortcut(
   event: LadderKeyEvent,
 ): ShortcutEntry | undefined {
   const chord = keyChord(event);
-  return table.find((entry) => expandKeys(entry.keys).includes(chord));
+  const exact = table.find((entry) => expandKeys(entry.keys).includes(chord));
+  if (exact) return exact;
+  // 記号自身にShiftが含まれる配列（USキーボードの | など）でも文字の割当を解決する。
+  if (event.shiftKey && event.key?.length === 1 && /[^a-zA-Z0-9]/u.test(event.key)) {
+    const symbol = keyChord({ ...event, shiftKey: false });
+    return table.find((entry) => expandKeys(entry.keys).includes(symbol));
+  }
+  return undefined;
 }
 
 /** `ladderKeyToAction` が見る画面状態。 */
@@ -264,7 +298,11 @@ function isEditing(action: LadderAction): boolean {
     action.type === 'delete' ||
     action.type === 'undo' ||
     action.type === 'redo' ||
-    action.type === 'toggleInsert'
+    action.type === 'toggleInsert' ||
+    (action.type === 'command' &&
+      ['insert-network', 'insert-network-above', 'insert-row', 'delete-row'].includes(
+        action.command,
+      ))
   );
 }
 
@@ -309,9 +347,7 @@ export function ladderKeyToAction(
        * 接点の上で切換を兼ねる。切換の行を持つ方言（三菱系の `/`）では素直に置く。
        */
       action =
-        place === 'contact-nc' &&
-        state.cellIsContact === true &&
-        !table.some((row) => row.action === 'toggle-no-nc')
+        place === 'contact-nc' && state.cellIsContact === true && entry.onContact === 'invert'
           ? { type: 'toggleNoNc' }
           : { type: 'place', kind: place };
     } else if (deleteLine !== undefined) action = { type: 'deleteLine', line: deleteLine };
@@ -324,7 +360,13 @@ export function ladderKeyToAction(
     } else if (entry.action === 'rule-line') {
       const direction = ARROW_DIRECTION[event.key ?? ''];
       action = direction === undefined ? { type: 'none' } : { type: 'ruleLine', direction };
-    } else if (entry.action === 'toggle-no-nc') action = { type: 'toggleNoNc' };
+    } else if (entry.action === 'line-up') action = { type: 'ruleLine', direction: 'up' };
+    else if (entry.action === 'monitor-toggle')
+      action = { type: 'setMode', mode: state.mode === 'monitor' ? 'write' : 'monitor' };
+    else if (NATIVE_COMMANDS.includes(entry.action))
+      action = { type: 'command', command: entry.action as NativeLadderCommand };
+    else if (entry.action === 'undo') action = { type: 'undo' };
+    else if (entry.action === 'toggle-no-nc') action = { type: 'toggleNoNc' };
     else if (entry.action === 'toggle-pulse') action = { type: 'togglePulse' };
     else if (entry.action === 'convert') action = { type: 'convert' };
     else if (entry.action === 'insert-toggle') action = { type: 'toggleInsert' };

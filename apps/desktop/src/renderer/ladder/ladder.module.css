@@ -1227,3 +1227,122 @@ details[open] > .sideSummary::before {
 .workspaceBody {
   overflow: hidden;
 }
+
+/* 公開操作マニュアルのウィンドウ構成。寸法は文字サイズと訓練画面の幅に追従する。 */
+.treeContainer {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  background: #fff;
+}
+.treeContainer[hidden] {
+  display: none;
+}
+.tree {
+  height: 100%;
+  box-sizing: border-box;
+}
+.treeRoot {
+  white-space: nowrap;
+  padding: 4px 0 8px;
+}
+.treeList > li {
+  overflow-wrap: anywhere;
+}
+.treeRoot,
+.treeDocument {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.treeList button {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.workspace[data-skin='mitsubishi'] .treeContainer,
+.workspace[data-skin='mitsubishi'] .tree {
+  background: #334760;
+  color: #fff;
+}
+.workspace[data-skin='mitsubishi'] .treeRoot,
+.workspace[data-skin='mitsubishi'] .treeList button {
+  color: #fff;
+}
+.workspace[data-skin='mitsubishi'] .treeList button[aria-current='true'] {
+  background: #1e6daf;
+  color: #fff;
+}
+.workspaceBody[data-tree='false'] {
+  grid-template-columns: minmax(0, 1fr) var(--ladder-side-w);
+}
+.documentBar {
+  flex: 0 0 auto;
+  display: flex;
+  min-height: 27px;
+  background: #dce2eb;
+  border-bottom: 1px solid #a8b3c4;
+  font-size: max(12px, 0.75rem);
+}
+.documentBar span {
+  padding: 5px 12px;
+  background: #fff;
+  border-right: 1px solid #a8b3c4;
+}
+.workspace[data-skin='jtekt'] .documentBar,
+.workspace[data-skin='sharp'] .documentBar {
+  background: #164086;
+  color: #fff;
+}
+.workspace[data-skin='jtekt'] .documentBar span,
+.workspace[data-skin='sharp'] .documentBar span {
+  background: transparent;
+}
+.workspace[data-skin='omron'] .networkHeader {
+  background: #ffffb8;
+  color: #111;
+}
+.workspace[data-skin='omron'] .networkComment {
+  color: #111;
+}
+.workspace[data-skin='sharp'] .cursor {
+  fill: #00d8e8;
+  fill-opacity: 0.22;
+  stroke-width: 2;
+}
+.workspace[data-skin='sharp'] .cursorInner {
+  display: none;
+}
+.cell[data-incomplete='true'] .cellHit {
+  fill: #fff7cc;
+}
+.commandMark {
+  display: inline-block;
+  width: 18px;
+  color: #174879;
+  text-align: center;
+}
+.toolbar button {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+.symbolBar {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+}
+.symbolCaption,
+.symbolHint {
+  display: none;
+}
+.symbolBar button {
+  min-width: 34px;
+  justify-content: center;
+  flex: 0 0 auto;
+}
+@media (max-width: 1599px) {
+  .workspaceBody[data-tree='false'] {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

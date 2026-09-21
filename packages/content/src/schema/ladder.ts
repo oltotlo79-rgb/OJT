@@ -1,5 +1,6 @@
 import {
   COIL_COL,
+  DRAFT_SYMBOLS,
   IR_COLS,
   MAX_COUNTER_PRESET,
   MAX_ROWS,
@@ -84,6 +85,7 @@ export const CellSchema = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('hline') }),
   z.strictObject({ kind: z.literal('vline') }),
   z.strictObject({ kind: z.literal('empty') }),
+  z.strictObject({ kind: z.literal('draft'), symbol: z.enum(DRAFT_SYMBOLS) }),
 ]);
 
 /** セル。 */

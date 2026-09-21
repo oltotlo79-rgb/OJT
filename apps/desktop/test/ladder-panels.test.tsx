@@ -178,7 +178,7 @@ describe('I/Oテーブル（§7.6 / 決定表#7 / #16）', () => {
 describe('キー割当表と端子名のスキン差（§10.6 / §10.1）', () => {
   it('drops the 変換 row where the skin has no convert step', () => {
     render(<ShortcutHelp profile={OMRON_CP1E} />);
-    expect(screen.queryByTestId('shortcut-convert')).toBeNull();
+    expect(screen.getByTestId('shortcut-convert')).toHaveTextContent('プログラムチェック');
     expect(screen.getByTestId('shortcuts-convert-note')).toHaveTextContent('変換');
     cleanup();
     render(<ShortcutHelp profile={MITSUBISHI_FX5U} />);
@@ -200,12 +200,14 @@ describe('キー割当表と端子名のスキン差（§10.6 / §10.1）', () =
   });
 
   it('flags the whole key map as borrowed for skins that reuse the GX Works3 table (I7)', () => {
-    for (const profile of [JTEKT_PC10G, SHARP_JW300]) {
+    for (const profile of [JTEKT_PC10G]) {
       cleanup();
       render(<ShortcutHelp profile={profile} />);
-      expect(screen.getByTestId('shortcuts-keymap-note'), profile.id).toHaveTextContent('キー割当');
+      expect(screen.getByTestId('shortcuts-keymap-note'), profile.id).toHaveTextContent(
+        '割り当てていません',
+      );
     }
-    for (const profile of [MITSUBISHI_FX5U, OMRON_CP1E]) {
+    for (const profile of [MITSUBISHI_FX5U, OMRON_CP1E, SHARP_JW300]) {
       cleanup();
       render(<ShortcutHelp profile={profile} />);
       expect(screen.queryByTestId('shortcuts-keymap-note'), profile.id).toBeNull();

@@ -11,6 +11,12 @@ import { toolbarItems } from '../src/renderer/session/plc-skin.js';
 
 const problem = BUILTIN_PLC_PROBLEMS[0]!;
 
+function nativeItem(action: string, menu = 'edit'): HTMLElement {
+  if (!screen.queryByTestId(`native-item-${action}`))
+    fireEvent.click(screen.getByTestId(`native-menu-${menu}`));
+  return screen.getByTestId(`native-item-${action}`);
+}
+
 // このリポジトリの UI テストの流儀（`globals: false` なので自動クリーンアップは効かない）。
 afterEach(() => {
   cleanup();
@@ -37,12 +43,13 @@ describe('GX Works3風の枠（§10.6 / §17）', () => {
     expect(screen.getByTestId('output-window')).toHaveAccessibleName(MITSUBISHI_FX5U.panels.output);
   });
 
-  it('lists the toolbar items the skin names', () => {
+  it('よく使う操作は道具列、補助操作はメーカーのメニューに置く', () => {
     workspace();
-    for (const label of MITSUBISHI_FX5U.panels.toolbar) {
-      // `name` に文字列を渡すと完全一致なので「変換」と「全変換」を取り違えない
-      expect(screen.getByRole('button', { name: label })).toBeInTheDocument();
-    }
+    for (const action of ['convert', 'download', 'monitor-start', 'monitor-stop', 'plc-run'])
+      expect(screen.getByTestId(`toolbar-${action}`)).toBeInTheDocument();
+    expect(nativeItem('insert-network')).toBeInTheDocument();
+    fireEvent.keyDown(screen.getByTestId('native-menu-popup'), { key: 'Escape' });
+    expect(nativeItem('output', 'view')).toHaveTextContent(MITSUBISHI_FX5U.panels.output);
   });
 
   it('has one action per toolbar label, so the position mapping never falls through (Batch 3 レビュー M2)', () => {
@@ -91,16 +98,16 @@ describe('GX Works3風の枠（§10.6 / §17）', () => {
 
   it('adds and removes networks with buttons, not invented keys (決定表#12)', () => {
     workspace();
-    fireEvent.click(screen.getByTestId('toolbar-insert-network'));
+    fireEvent.click(nativeItem('insert-network'));
     expect(useStore.getState().ladder?.networks.map((n) => n.id)).toEqual(['n1', 'n2', 'end']);
     useStore.getState().setLadderCursor({ networkId: 'n2', row: 0, col: 0 });
-    fireEvent.click(screen.getByTestId('toolbar-delete-network'));
+    fireEvent.click(nativeItem('delete-network'));
     expect(useStore.getState().ladder?.networks.map((n) => n.id)).toEqual(['n1', 'end']);
   });
 
   it('explains a row-limit error without exposing the internal network id', () => {
     workspace();
-    for (let i = 0; i < 20; i += 1) fireEvent.click(screen.getByTestId('toolbar-insert-row'));
+    for (let i = 0; i < 20; i += 1) fireEvent.click(nativeItem('insert-row'));
     const text = useStore.getState().toasts.at(-1)?.text ?? '';
     expect(text).toContain('20行');
     expect(text).not.toContain('n1');
@@ -108,9 +115,9 @@ describe('GX Works3風の枠（§10.6 / §17）', () => {
 
   it('inserts and deletes rows inside a network', () => {
     workspace();
-    fireEvent.click(screen.getByTestId('toolbar-insert-row'));
+    fireEvent.click(nativeItem('insert-row'));
     expect(useStore.getState().ladder?.networks[0]?.rows).toBe(2);
-    fireEvent.click(screen.getByTestId('toolbar-delete-row'));
+    fireEvent.click(nativeItem('delete-row'));
     expect(useStore.getState().ladder?.networks[0]?.rows).toBe(1);
   });
 
@@ -123,13 +130,13 @@ describe('GX Works3風の枠（§10.6 / §17）', () => {
       'toolbar-insert-row',
       'toolbar-delete-row',
     ]) {
-      expect(screen.getByTestId(testId)).toBeDisabled();
+      expect(nativeItem(testId.replace('toolbar-', ''))).toBeDisabled();
     }
   });
 
   it('bails and toasts when the toolbar edit runs outside write mode, exactly as the keyboard readOnly gate does (I1)', () => {
     workspace();
-    const button = screen.getByTestId('toolbar-delete-row');
+    const button = nativeItem('delete-row');
     expect(button).not.toBeDisabled();
     const before = useStore.getState().ladder;
     const count = useStore.getState().toasts.length;
@@ -152,7 +159,7 @@ describe('GX Works3風の枠（§10.6 / §17）', () => {
 
   it('jumps the cursor from the project tree', () => {
     workspace();
-    fireEvent.click(screen.getByTestId('toolbar-insert-network'));
+    fireEvent.click(nativeItem('insert-network'));
     fireEvent.click(screen.getByTestId('tree-network-n2'));
     expect(useStore.getState().ladderCursor).toEqual({ networkId: 'n2', row: 0, col: 0 });
   });
@@ -255,7 +262,9 @@ describe('キー割当表（§12.1 / §17.1）', () => {
     // CX-Programmer風のオンライン操作だけが淡色（本アプリは通信しない）
     render(<ShortcutHelp profile={OMRON_CP1E} />);
     expect(screen.getByTestId('shortcut-online-edit')).toHaveAttribute('data-enabled', 'false');
-    expect(screen.getByTestId('shortcut-online-edit')).toHaveTextContent('通信しない');
+    expect(screen.getByTestId('shortcut-online-edit')).toHaveTextContent(
+      '実機へのオンライン編集を行いません',
+    );
   });
 
   it('says the table is swapped with the vendor (Phase 4)', () => {

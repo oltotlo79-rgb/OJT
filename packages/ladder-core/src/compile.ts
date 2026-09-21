@@ -29,6 +29,7 @@ export const MAX_COUNTER_PRESET = 32_767;
 
 /** 変換エラーの種別。 */
 export type CompileErrorCode =
+  | 'incomplete-symbol'
   | 'empty-program'
   | 'grid-shape'
   | 'missing-end'
@@ -307,6 +308,16 @@ export function compile(source: LadderProgram): CompileResult {
       for (let col = 0; col < net.cols; col += 1) {
         const cell = cellAt(net, row, col);
         if (cell.kind === 'empty') continue;
+        if (cell.kind === 'draft') {
+          errors.push({
+            code: 'incomplete-symbol',
+            networkId: net.id,
+            row,
+            col,
+            message: 'アドレスが未入力です。記号を選んで Enter で入力してください。',
+          });
+          continue;
+        }
         hasContent = true;
         if (cell.kind === 'end') {
           continue;

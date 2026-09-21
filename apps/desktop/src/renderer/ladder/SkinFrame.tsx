@@ -21,6 +21,9 @@ function StatusItem({ item }: { item: PanelStatusItem }): JSX.Element {
   const running = useStore((s) => s.plcRunning);
   const scan = useStore((s) => s.plcMonitor?.scanCount);
   const networkId = useStore((s) => s.ladderCursor.networkId);
+  const networkIndex = useStore(
+    (s) => s.ladder?.networks.findIndex((net) => net.id === networkId) ?? -1,
+  );
   const insertMode = useStore((s) => s.insertMode);
   const usage = useStore((s) => s.convertIssues.usage);
   const text = ((): string => {
@@ -32,7 +35,7 @@ function StatusItem({ item }: { item: PanelStatusItem }): JSX.Element {
       case 'scan':
         return `${JA.ladder.statusScan}: ${scan === undefined ? '—' : String(scan)}`;
       case 'network':
-        return `${JA.ladder.statusNetwork}: ${networkId}`;
+        return networkIndex < 0 ? '—' : JA.ladder.circuitNumber(networkIndex);
       case 'overwrite':
         return `${JA.ladder.statusOverwrite}: ${
           insertMode === 'insert' ? JA.ladder.statusInsert : JA.ladder.statusOverwriteMode

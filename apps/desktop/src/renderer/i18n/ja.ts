@@ -465,8 +465,46 @@ export const JA = {
   // --- Plan 3B Task 4 ---
   /** ラダーエディタ（GX Works3風スキン）。§10.6 / §10.7 */
   ladder: {
+    nativeMenuLabel: 'PLCソフトのメニュー',
+    nativeMenuName: (name: string): string => `${name}メニュー`,
+    nativeUnavailable: 'この訓練では使用しない機能です',
+    nativeMenus: {
+      project: 'プロジェクト',
+      file: 'ファイル',
+      edit: '編集',
+      find: '検索',
+      convert: '変換',
+      view: '表示',
+      online: 'オンライン',
+      diagnostics: '診断',
+      tools: 'ツール',
+      window: 'ウィンドウ',
+      help: 'ヘルプ',
+      insert: '挿入',
+      plc: 'PLC',
+      program: 'プログラム',
+      cpu: 'CPU',
+      monitor: 'モニタ',
+      connection: '接続',
+      menet: 'ME-NET',
+      options: 'オプション',
+      cad: 'CAD',
+      block: 'ブロック',
+    },
+    nativeDocument: {
+      mitsubishi: 'MAIN [プログラム本体]',
+      omron: '新規プログラム1 — セクション1',
+      jtekt: 'プログラム1 — PROC000',
+      sharp: 'メイン [ラダー]',
+    },
+    nativeEdit: '編集',
+    nativeRead: '読取専用',
+    nativeCheck: 'プログラムチェック',
+    nativeKeys: 'キー操作一覧',
+    circuitNumber: (index: number): string => `回路 ${String(index + 1)}`,
+    incompleteSymbol: 'アドレス未入力 — Enterで入力',
+
     title: 'ラダーエディタ',
-    network: '回路ブロック',
     /** 表示列数を超えた位置にセルがある。§10.6 */
     hiddenCells: '表示列数の外にセルがあります（設定でラダーの表示列数を増やしてください）',
     // --- Plan 3B Task 5 ---
@@ -537,7 +575,6 @@ export const JA = {
     // --- Plan 3B Task 8 ---
     /** ナビゲーションウィンドウ（プロジェクトツリー）。§10.6 */
     treeProgram: 'プログラム',
-    treeMain: 'MAIN',
     /** キー割当表。§12.1 / §17.1 */
     shortcuts: 'キー割当',
     /**
@@ -590,7 +627,6 @@ export const JA = {
     statusMode: 'モード',
     statusPlcState: 'PLC',
     statusScan: 'スキャン',
-    statusNetwork: '回路ブロック',
     statusOverwrite: '入力',
     statusDeviceCount: 'デバイス点数',
     statusInsert: '挿入',
@@ -609,7 +645,8 @@ export const JA = {
      * とは別に、PCwin風・JW-300SP風のように**表そのもの**を GX Works3風から借りているスキンで
      * 一度だけ出す（`SkinTheme.keyMapAssumed`）。
      */
-    keyMapAssumedNote: 'キー割当は実機マニュアル未確認のため本アプリの表記です',
+    keyMapAssumedNote:
+      'PCwinの編集キーは資料未確認のため割り当てていません。記号ボタンから入力してください。',
     // --- /Plan 4B review fixes (Batch: skin stream) ---
     // --- Plan 4B Task 8 ---
     /** 表記切替（§10.7 / 決定表#11・#12）。 */
@@ -740,7 +777,6 @@ export const JA = {
     onMark: '■',
     offMark: '□',
     /** 監視（ウォッチ）欄。呼び名はメーカーごとに違う（`panels.watch`）。 */
-    showPanel: (name: string): string => `${name}を開く`,
     watch: {
       /** `panels.watch` を名乗らないメーカー向けの既定（そのときは欄そのものを出さない）。 */
       title: '監視',
@@ -766,7 +802,7 @@ export const JA = {
       byButton: (label: string): string => `上の帯の「${label}」を押します`,
       /** 表そのものを別メーカーから借りているスキン（PCwin風・JW-300SP風。レビュー I7）。 */
       assumedTable:
-        'この表はすべて実機マニュアル未確認のため本アプリの表記です（行ごとの断りは省いています）',
+        'PCwinの編集キーは資料未確認のため割り当てていません。記号ボタンから入力してください。',
     },
     // --- /Phase 7 Task 22 ---
   },

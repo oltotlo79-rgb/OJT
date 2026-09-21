@@ -1,4 +1,4 @@
-import { deviceLabel, hline, vline, type Cell } from '@ojt/ladder-core';
+import { COIL_COL, deviceLabel, hline, vline, type Cell } from '@ojt/ladder-core';
 import type { DialectProfile } from '@ojt/plc-dialects';
 import {
   useCallback,
@@ -31,6 +31,7 @@ import {
   type LadderEditResult,
   type LadderEditorMode,
   type PlaceKind,
+  type NativeLadderCommand,
 } from '../session/ladder.js';
 import { writeModeLabel } from '../session/plc-skin.js';
 import { DeviceInput } from './DeviceInput.js';
@@ -56,6 +57,10 @@ const NEEDS_DEVICE: Readonly<Record<PlaceKind, boolean>> = {
   'pulse-fall': true,
   coil: true,
   application: true,
+  timer: true,
+  counter: true,
+  'set-coil': true,
+  'reset-coil': true,
   hline: false,
   vline: false,
 };
@@ -76,12 +81,23 @@ const FORM_SEED: Readonly<Record<PlaceKind, Partial<CellForm>>> = {
   'pulse-fall': { contact: 'F' },
   coil: {},
   application: { output: 'SET' },
+  timer: { output: 'TON' },
+  counter: { output: 'CTU' },
+  'set-coil': { output: 'SET' },
+  'reset-coil': { output: 'RST' },
   hline: {},
   vline: {},
 };
 
 /** 入力欄を「出力（コイル列）」として開く種別。 */
-const OUTPUT_KINDS: ReadonlySet<PlaceKind> = new Set<PlaceKind>(['coil', 'application']);
+const OUTPUT_KINDS: ReadonlySet<PlaceKind> = new Set<PlaceKind>([
+  'coil',
+  'application',
+  'timer',
+  'counter',
+  'set-coil',
+  'reset-coil',
+]);
 
 /**
  * 記号ボタン・右クリックメニューが扱う操作（Phase 7 設計 §5.3 の入口B・入口C）。
@@ -132,6 +148,10 @@ export function SymbolIcon({ kind }: { kind: EntryKind }): JSX.Element {
     'pulse-fall': 'M1 7h7M16 7h7M8 2v10M16 2v10M10 5l2 4 2-4',
     coil: 'M1 7h6M17 7h6',
     application: 'M1 7h4M19 7h4M8 2h-2v10h2M16 2h2v10h-2',
+    timer: 'M2 2h20v10H2zM8 4h8M12 4v6',
+    counter: 'M2 2h20v10H2zM16 4h-7v6h7',
+    'set-coil': 'M16 3H8v4h8v4H8',
+    'reset-coil': 'M8 12V2h8v5H8l8 5',
     hline: 'M1 7h22',
     vline: 'M12 1v12M1 7h22',
     delete: 'M4 3l16 8M20 3L4 11',
@@ -178,6 +198,7 @@ export function LadderEditor({
   errorCells,
   onConvert,
   onModeChange,
+  onCommand,
   ref,
 }: {
   profile: DialectProfile;
@@ -191,6 +212,7 @@ export function LadderEditor({
   onConvert: () => void;
   /** 書込み／読出し／モニタが変わった（Worker へモニタの開始停止を伝える）。§10.6 */
   onModeChange: (mode: LadderEditorMode) => void;
+  onCommand?: (command: NativeLadderCommand) => void;
   /** 記号ボタン列（入口B）から呼ぶ取っ手。React 19 は `ref` をただの props として受ける。 */
   ref?: Ref<LadderEntryHandle>;
 }): JSX.Element {
@@ -268,6 +290,23 @@ export function LadderEditor({
         return;
       }
       const target = OUTPUT_KINDS.has(kind) ? 'output' : 'contact';
+      const form = { ...emptyCellForm(target), ...FORM_SEED[kind] };
+      if (profile.symbolFirst === true) {
+        const draft: Cell = {
+          kind: 'draft',
+          symbol: target === 'output' ? form.output : form.contact,
+        };
+        const where = target === 'output' ? { ...cursor, col: COIL_COL } : cursor;
+        const branch = kind === 'or-contact-no' || kind === 'or-contact-nc';
+        const result = branch
+          ? applyOrContact(current, where, draft)
+          : applyLadderCell(current, where, draft, store.insertMode === 'insert');
+        if (commit(result)) {
+          store.setLadderCursor(branch ? { ...where, row: where.row + 1 } : where);
+          editorRef.current?.focus({ preventScroll: true });
+        }
+        return;
+      }
       setPending({
         kind,
         form: { ...emptyCellForm(target), ...FORM_SEED[kind] },
@@ -296,7 +335,9 @@ export function LadderEditor({
         cell.kind === 'hline' ||
         cell.kind === 'vline'
       ) {
-        runPlace('contact-no', cursor);
+        if (profile.symbolFirst === true) {
+          setPending({ kind: 'contact-no', form: emptyCellForm('contact'), replace: true });
+        } else runPlace('contact-no', cursor);
         return;
       }
       if (store.ladderMode !== 'write') {
@@ -408,6 +449,9 @@ export function LadderEditor({
         case 'redo':
           if (!store.redoLadderEdit()) store.toast(JA.ladder.nothingToRedo);
           break;
+        case 'command':
+          onCommand?.(action.command);
+          break;
         case 'convert':
           onConvert();
           break;
@@ -450,7 +494,7 @@ export function LadderEditor({
           break;
       }
     },
-    [commit, gridCols, onConvert, onModeChange, profile, runPlace],
+    [commit, gridCols, onCommand, onConvert, onModeChange, profile, runPlace],
   );
 
   /** 見た目（セル寸法・コメント行数）はスキンが持つ（Plan 4B 決定表#6）。 */

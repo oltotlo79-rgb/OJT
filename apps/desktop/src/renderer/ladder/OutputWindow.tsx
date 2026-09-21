@@ -1,5 +1,6 @@
-import type { JSX } from 'react';
+import { useEffect, useRef, type JSX } from 'react';
 import type { ConvertIssues } from '../app/store-types.js';
+import { useStore } from '../app/store.js';
 import { JA, ladderIssuePlace } from '../i18n/ja.js';
 import type { LadderCursor } from '../session/ladder.js';
 import { friendlyCompileMessage } from './ladder-errors.js';
@@ -26,6 +27,7 @@ export function OutputWindow({
   converted,
   convertKey,
   open,
+  openKey = 0,
   onJump,
   onExport,
   exportIssues,
@@ -41,6 +43,7 @@ export function OutputWindow({
    * ステータスバーの1行だけを見せて畳んでおく。
    */
   open: boolean;
+  openKey?: number;
   onJump: (cursor: LadderCursor) => void;
   // --- Plan 4B Task 9 ---
   /** 命令語リストの書き出し（§10.7 / 決定表#14）。 */
@@ -54,21 +57,33 @@ export function OutputWindow({
    */
   title?: string;
 }): JSX.Element {
+  const networks = useStore((state) => state.ladder?.networks);
+  const displayNetwork = (id?: string): string | undefined => {
+    if (id === undefined) return undefined;
+    const index = networks?.findIndex((network) => network.id === id) ?? -1;
+    return index < 0 ? '' : JA.ladder.circuitNumber(index);
+  };
+  const details = useRef<HTMLDetailsElement>(null);
+  const previousKey = useRef(openKey);
+  useEffect(() => {
+    if (previousKey.current !== openKey && details.current) details.current.open = true;
+    previousKey.current = openKey;
+  }, [openKey]);
   const paneTitle = title ?? JA.ladder.output;
   const rows: Row[] = [
     ...issues.errors
       .filter((issue) => issue.source === 'structure')
-      .map((issue, index) => toRow(issue, 'structure', index)),
+      .map((issue, index) => toRow(issue, 'structure', index, displayNetwork(issue.networkId))),
     ...issues.errors
       .filter((issue) => issue.source === 'dialect')
-      .map((issue, index) => toRow(issue, 'dialect', index)),
+      .map((issue, index) => toRow(issue, 'dialect', index, displayNetwork(issue.networkId))),
     ...issues.warnings.map((warning, index) => ({
       key: `w-${String(index)}`,
       severity: 'warning' as const,
       label: JA.ladder.doubleCoil,
       message: warning.message,
       cursor: { networkId: warning.networkId, row: warning.row, col: warning.col },
-      place: ladderIssuePlace(warning.networkId, warning.row, warning.col),
+      place: ladderIssuePlace(displayNetwork(warning.networkId), warning.row, warning.col),
     })),
   ];
   const unused = issues.unused;
@@ -102,7 +117,7 @@ export function OutputWindow({
         （`window` のスキンは開いたまま。変換の結果はいちばん見せたい情報。PCwin風だけは
         ステータスバー1行に畳んでおく。レビュー B2）。畳めばその高さがそのまま格子に戻る。
       */}
-      <details open={open} data-testid="output-details">
+      <details ref={details} open={open} data-testid="output-details">
         <summary className={styles.outputHeader} data-testid="output-summary">
           <h2>{paneTitle}</h2>
           <span data-testid="convert-state" className={converted ? styles.okTag : styles.ngTag}>
@@ -170,6 +185,7 @@ function toRow(
   issue: ConvertIssues['errors'][number],
   source: 'structure' | 'dialect',
   index: number,
+  networkLabel: string | undefined,
 ): Row {
   return {
     key: `${source}-${String(index)}`,
@@ -181,6 +197,6 @@ function toRow(
       issue.networkId === undefined || issue.row === undefined || issue.col === undefined
         ? undefined
         : { networkId: issue.networkId, row: issue.row, col: issue.col },
-    place: ladderIssuePlace(issue.networkId, issue.row, issue.col),
+    place: ladderIssuePlace(networkLabel, issue.row, issue.col),
   };
 }

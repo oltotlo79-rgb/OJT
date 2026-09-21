@@ -92,6 +92,8 @@ export interface ShortcutEntry {
   keys: string;
   label: string;
   confirmed: boolean;
+  /** CX-Programmerの / は既存の接点上では反転になる。 */
+  onContact?: 'invert';
   /**
    * この行の割当を実機で確認できた出典の記号（`docs/reference/ladder-skin-sources.md` の
    * S1〜S8）。キー割当表が `confirmed` の印に添えて出す。§17.1 / Phase 7 設計 §5.7
@@ -229,6 +231,8 @@ export interface DialectProfile {
   shortcuts: ShortcutTable;
   /** 「変換」操作を要求するか。§10.6 */
   convertStep: boolean;
+  /** JW-300SP: 記号を先に配置し、Enterでアドレスを入力する。 */
+  symbolFirst?: boolean;
   monitorColors: MonitorColors;
   panels: PanelLayout;
   /** 方言に依る検査（デバイス範囲・タイマ単位・番号重複）。§10.8 */

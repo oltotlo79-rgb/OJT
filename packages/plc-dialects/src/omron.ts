@@ -313,112 +313,77 @@ const PANELS: PanelLayout = {
   status: ['mode', 'plc-state', 'scan'],
 };
 
-/**
- * ショートカット表。§10.6 / Phase 7 設計 §5.2
- *
- * CX-Programmer風は三菱系と**構造からして違う**。ファンクションキーではなく1文字の
- * ニーモニックキーで記号を置き、罫線は `Ctrl` ＋矢印で、**「変換」の段が無い**
- * （`convertStep: false`。決定表#5 ／ 出典 S4）。三菱風に寄せると「忠実に再現」から遠ざかるので、
- * 1文字キーを正とし、ファンクションキーは足さない。
- *
- * 英字キーは**大小文字を問わない**（実ブラウザは `c` を送る。指摘 LE-1 の `foldKey()`）。
- * `confirmed: true` は一次資料で裏が取れた割当（◎）、`false` は個人の早見表や本アプリ独自の
- * 割当（△）である。出典の記号は `docs/reference/ladder-skin-sources.md` の S4〜S6 を指す。
- *
- * **「モニタ」の行は作らない**（実機のキーを確認できていないので、存在しないキーを教えない。
- * 案内はツールバーの項目名へ倒す＝`monitorStartLabel()`。指摘 LE-7）。
- */
+/** CX-Programmer Classic Mode。公式 W446-E1-23, p160–162（S4）。 */
 const SHORTCUTS: ShortcutTable = [
   { action: 'contact-no', keys: 'C', label: 'a接点', confirmed: true, source: 'S4' },
   {
     action: 'contact-nc',
     keys: '/',
-    label: 'b接点',
+    label: 'b接点／接点反転',
+    onContact: 'invert',
     confirmed: true,
     source: 'S4',
-    note: '接点の上で押すと a接点・b接点を入れ替えます',
   },
-  {
-    action: 'or-contact-no',
-    keys: 'W',
-    label: 'OR a接点',
-    confirmed: false,
-    source: 'S5',
-    note: '並列接点。公式マニュアルでは確認できず、個人の早見表に拠ります',
-  },
-  {
-    action: 'or-contact-nc',
-    keys: 'Shift+W',
-    label: 'OR b接点',
-    confirmed: false,
-    note: '一次資料に記載が無いため、OR a接点に合わせた本アプリの割当です',
-  },
+  { action: 'or-contact-no', keys: 'W', label: 'OR a接点', confirmed: true, source: 'S4' },
+  { action: 'or-contact-nc', keys: 'X', label: 'OR b接点', confirmed: true, source: 'S4' },
   { action: 'coil', keys: 'O', label: 'コイル', confirmed: true, source: 'S4' },
+  { action: 'instruction', keys: 'I', label: '命令入力', confirmed: true, source: 'S4' },
+  { action: 'hline', keys: 'H,-', label: '横線', confirmed: true, source: 'S4' },
+  { action: 'vline', keys: 'V,|', label: '縦線（下）', confirmed: true, source: 'S4' },
+  { action: 'line-up', keys: 'U', label: '縦線（上）', confirmed: true, source: 'S4' },
+  { action: 'rule-line', keys: 'Ctrl+←↑↓→', label: '罫線を引く', confirmed: true, source: 'S4' },
+  { action: 'insert-network', keys: 'R', label: '下にラングを挿入', confirmed: true, source: 'S4' },
   {
-    /*
-     * Phase 7 Task 20 step 3 / 指摘 LE-8: 以前はこの行のキーが `{type:'none'}` に落ちて
-     * 何も起きなかった。三菱の `F8`（応用命令）と同じ「命令入力」欄を開くようにした。
-     */
-    action: 'instruction',
-    keys: 'I',
-    label: '命令入力',
+    action: 'insert-network-above',
+    keys: 'Shift+R',
+    label: '上にラングを挿入',
     confirmed: true,
     source: 'S4',
-    note: '本アプリが扱えるのは SET / RST / MC / MCR / T / C です',
+  },
+  { action: 'insert-row', keys: 'Ctrl+Alt+↓', label: '行を挿入', confirmed: true, source: 'S4' },
+  { action: 'delete-row', keys: 'Ctrl+Alt+↑', label: '行を削除', confirmed: true, source: 'S4' },
+  {
+    action: 'convert',
+    keys: 'F7,Ctrl+F7',
+    label: 'プログラムチェック',
+    confirmed: true,
+    source: 'S4',
+  },
+  { action: 'monitor-toggle', keys: 'Ctrl+M', label: 'モニタ切替', confirmed: true, source: 'S4' },
+  {
+    action: 'write-mode',
+    keys: 'F2',
+    label: '読取専用モードの編集開始',
+    confirmed: true,
+    source: 'S4',
   },
   {
-    action: 'hline',
-    keys: 'Ctrl+→',
-    label: '横線',
-    confirmed: false,
-    source: 'S5',
-    note: '公式マニュアルでは確認できず、個人の早見表に拠ります',
+    action: 'read-mode',
+    keys: 'Shift+F2',
+    label: '読取専用モードで格納',
+    confirmed: true,
+    source: 'S4',
   },
-  {
-    action: 'delete-hline',
-    keys: 'Ctrl+←',
-    label: '横線の削除',
-    confirmed: false,
-    source: 'S5',
-    note: '公式マニュアルでは確認できず、個人の早見表に拠ります',
-  },
-  {
-    action: 'vline',
-    keys: 'Ctrl+↓',
-    label: '縦線',
-    confirmed: false,
-    source: 'S5',
-    note: '公式マニュアルでは確認できず、個人の早見表に拠ります',
-  },
-  {
-    action: 'delete-vline',
-    keys: 'Ctrl+↑',
-    label: '縦線の削除',
-    confirmed: false,
-    source: 'S5',
-    note: '公式マニュアルでは確認できず、個人の早見表に拠ります',
-  },
-  /*
-   * 指摘 LE-8: この2行は押しても何も起きない。実機にある操作なので表からは落とさず、
-   * 「できません」と理由を添えて淡色で出す（Phase 7 Task 3 で `enabled: false` にした）。
-   */
+  { action: 'plc-stop', keys: 'Ctrl+1', label: 'プログラムモード', confirmed: true, source: 'S4' },
+  { action: 'plc-run', keys: 'Ctrl+4', label: '運転モード', confirmed: true, source: 'S4' },
+  { action: 'download', keys: 'Ctrl+T', label: '転送［PC → PLC］', confirmed: true, source: 'S4' },
   {
     action: 'online-edit',
     keys: 'Ctrl+E',
-    label: 'オンライン編集',
+    label: 'オンライン編集開始',
     confirmed: true,
     source: 'S4',
     enabled: false,
-    note: '本アプリはPLCと通信しないため、この操作はできません',
+    note: '本アプリは実機へのオンライン編集を行いません',
   },
   {
-    action: 'transfer',
+    action: 'online-send',
     keys: 'Ctrl+Shift+E',
-    label: '転送［PC → PLC］',
+    label: 'オンライン編集の転送',
     confirmed: true,
     source: 'S4',
     enabled: false,
-    note: '本アプリはPLCと通信しないため、この操作はできません',
+    note: '本アプリは実機へのオンライン編集を行いません',
   },
 ];
 
