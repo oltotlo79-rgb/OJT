@@ -638,6 +638,8 @@
  * 結果の見出しと同じ左端にそろうようにする。
  */
 .resultHeader {
+  justify-content: flex-end;
+  flex-wrap: wrap;
   margin-bottom: 0;
   padding: 8px 24px 0;
 }

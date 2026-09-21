@@ -21,6 +21,7 @@ export interface ReplayState {
   steps: readonly ReplayStep[];
   index: number;
   busy: boolean;
+  openedAtMs: number;
   before: { snapshot: SimSnapshot; plcMonitor: PlcMonitorSnapshot | undefined };
 }
 
@@ -100,6 +101,7 @@ export function startReplay(): boolean {
   useStore.setState({
     route: 'session',
     replay: {
+      openedAtMs: Date.now(),
       source: structuredClone(source),
       steps: replaySteps(
         source.problem.operations,
@@ -118,5 +120,11 @@ export function startReplay(): boolean {
 export function stopReplay(): void {
   const replay = useStore.getState().replay;
   if (replay === undefined) return;
-  useStore.setState({ ...replay.before, replay: undefined, route: 'result' });
+  const startedAtMs = useStore.getState().startedAtMs;
+  useStore.setState({
+    ...replay.before,
+    startedAtMs: startedAtMs === 0 ? 0 : startedAtMs + Math.max(0, Date.now() - replay.openedAtMs),
+    replay: undefined,
+    route: 'result',
+  });
 }

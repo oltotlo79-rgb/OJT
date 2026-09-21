@@ -481,6 +481,7 @@ export function EnlargeableChart({
   figure,
   largeFigure,
   largeGeom = LARGE_GEOMETRY,
+  smallGeom = SMALL_GEOMETRY,
   testId,
   smallClassName,
   legend,
@@ -489,6 +490,7 @@ export function EnlargeableChart({
   figure: ChartFigure;
   largeFigure?: ChartFigure | undefined;
   largeGeom?: ChartGeometry | undefined;
+  smallGeom?: ChartGeometry | undefined;
   testId?: string | undefined;
   smallClassName?: string | undefined;
   /**
@@ -534,7 +536,7 @@ export function EnlargeableChart({
       >
         <ChartCanvas
           figure={figure}
-          geom={SMALL_GEOMETRY}
+          geom={smallGeom}
           title={title}
           testId={testId}
           className={smallClassName}

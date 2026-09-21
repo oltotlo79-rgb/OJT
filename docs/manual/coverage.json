@@ -225,6 +225,48 @@
       "internal": "コメント欄の1行。親のデバイスコメントで説明済み"
     },
     {
+      "testid": "compare-chart",
+      "screen": "結果の比較",
+      "label": "模範と見くらべる",
+      "section": "screens/模範と見くらべる"
+    },
+    {
+      "testid": "compare-close",
+      "screen": "結果の比較",
+      "label": "閉じる",
+      "section": "screens/模範と見くらべる"
+    },
+    {
+      "testid": "compare-dialog",
+      "screen": "結果の比較",
+      "label": "模範と見くらべる",
+      "section": "screens/模範と見くらべる"
+    },
+    {
+      "testid": "compare-differences",
+      "screen": "結果の比較",
+      "label": "▲ 違いが出た時刻",
+      "section": "screens/模範と見くらべる"
+    },
+    {
+      "testid": "compare-open",
+      "screen": "結果の比較",
+      "label": "模範と見くらべる",
+      "section": "screens/模範と見くらべる"
+    },
+    {
+      "testid": "compare-reference",
+      "screen": "結果の比較",
+      "label": "模範の回路図と自分の配線",
+      "section": "screens/模範と見くらべる"
+    },
+    {
+      "testid": "compare-reference-hidden",
+      "screen": "結果の比較",
+      "label": "この課題では模範回路図・模範ラダーを表示しません。波形の違いから考えてください。",
+      "section": "screens/模範と見くらべる"
+    },
+    {
       "testid": "compare-signals",
       "screen": "結果",
       "label": "見比べた信号",

@@ -26,6 +26,22 @@ export { MSG, readFailedText, saveFailedText } from '../../shared/messages.js';
 
 /** 画面文言。 */
 export const JA = {
+  compare: {
+    title: '模範と見くらべる',
+    close: '閉じる',
+    expected: '模範（破線）',
+    actual: '自分（実線）',
+    legend: '同じ時間軸で、上が模範（破線）・下が自分（実線）。帯のある区間を見比べてください。',
+    differences: '▲ 違いが出た時刻',
+    matched: '許容差を超える違いはありません。',
+    tolerance: (edgeMs: number, ratio: number) =>
+      `判定と同じ許容差：${edgeMs}ms または直前の区間の${ratio * 100}%の大きい方。`,
+    actualTime: (ms: number) => `自分の変化：${Number((ms / 1000).toFixed(2))}秒`,
+    connections: '模範の回路図と自分の配線',
+    schematic: '模範の回路図',
+    wiring: '自分の配線との差',
+    noReference: 'この課題では模範回路図・模範ラダーを表示しません。波形の違いから考えてください。',
+  },
   replay: {
     title: '動きを見直す',
     previous: '前へ',

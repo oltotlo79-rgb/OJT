@@ -15,7 +15,7 @@ import {
   type TimeChart,
 } from '@ojt/content';
 import { terminalId, type Mismatch } from '@ojt/circuit-sim';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { replaySteps, startReplay, stopReplay } from '../src/renderer/session/replay.js';
 import { createReplay } from '../src/worker/replay.js';
 import { useStore } from '../src/renderer/app/store.js';
@@ -35,6 +35,7 @@ const mismatch: Mismatch = {
   reason: 'value',
 };
 afterEach(() => {
+  vi.restoreAllMocks();
   useStore.getState().abandonSession();
 });
 
@@ -134,12 +135,18 @@ describe('実際の採点と再生の一致・元の作業の保護', () => {
     );
     useStore.getState().openProblem(problem);
     useStore.setState({ session: built.value.session, judge: judge.value, elapsedMs: 12345 });
+    useStore.setState({ startedAtMs: Date.now() - 12345 });
     const before = useStore.getState();
     expect(startReplay()).toBe(true);
     expect(toInspectWorkFile()).toBeUndefined();
     expect(startReplay()).toBe(false);
     useStore.setState({ snapshot: createReplay(useStore.getState().replay!.source).frame(0) });
+    const enteredAt = useStore.getState().replay!.openedAtMs;
+    vi.spyOn(Date, 'now').mockReturnValue(enteredAt + 60_000);
     stopReplay();
+    useStore.getState().tickElapsed();
+    expect(useStore.getState().elapsedMs).toBeLessThan(12400);
+    useStore.setState({ elapsedMs: 12345 });
     expect(useStore.getState()).toMatchObject({
       session: before.session,
       judge: before.judge,
