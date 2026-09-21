@@ -96,22 +96,25 @@ describe('PDF を開く（設計 §9）', () => {
   });
 });
 
-describe('チャネル（§4.3 からの意図的な差分）', () => {
-  it('has exactly eight channels and the eighth is the manual', () => {
-    expect(Object.keys(IPC_CHANNELS)).toHaveLength(8);
+describe('説明書のチャネルと既存機能の維持（§4.3）', () => {
+  // 全体の本数・重複・登録漏れは ipc-surface.test.ts だけで検査する。
+  // 各機能のテストに昔の本数を重複して持たせない。
+  it('keeps the fixed manual channel', () => {
     expect(IPC_CHANNELS.manualOpen).toBe('manual:open');
   });
 
-  it('keeps the seven channels that were there before', () => {
-    expect(Object.values(IPC_CHANNELS)).toEqual([
-      'content:list',
-      'content:read',
-      'workfile:save',
-      'workfile:load',
-      'settings:get',
-      'settings:set',
-      'file:saveText',
-      'manual:open',
-    ]);
+  it('keeps the existing content, work, settings and manual channels', () => {
+    expect(Object.values(IPC_CHANNELS)).toEqual(
+      expect.arrayContaining([
+        'content:list',
+        'content:read',
+        'workfile:save',
+        'workfile:load',
+        'settings:get',
+        'settings:set',
+        'file:saveText',
+        'manual:open',
+      ]),
+    );
   });
 });

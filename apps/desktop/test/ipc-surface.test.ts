@@ -41,5 +41,6 @@ describe('main が受け付ける IPC は §4.3 の9本だけ（DM-7）', () => 
 
   it('still counts nine channels (足すときは §4.3 と preload も直すこと)', () => {
     expect(Object.values(IPC_CHANNELS)).toHaveLength(9);
+    expect(IPC_CHANNELS.resultExport).toBe('result:export');
   });
 });
