@@ -11,7 +11,7 @@ import { MODEL_OF_VENDOR, PlcProblemSchema } from '../src/schema/plc.js';
 import { ladderWith, plcProblemJson } from './helpers/plc.js';
 
 /**
- * `PlcProblemSchema` のクロスフィールド検証（レビュー #2）と、内蔵モードD課題8題の
+ * `PlcProblemSchema` のクロスフィールド検証（レビュー #2）と、内蔵モードD課題20題の
  * 4機種クロス検証（§16 Phase 4 / 決定表#14）。
  * 模範ラダー・操作列・判定設定は、すべてI/O割付にある点だけを扱えるようにする
  * （模範ラダーの参照するX/Y、操作列のPB、`judge.compareSignals` のPL）。
@@ -142,22 +142,26 @@ const CRLF = '\r\n';
  */
 const MODELS = Object.entries(MODEL_OF_VENDOR).map(([vendor, model]) => ({ vendor, model }));
 
-describe('内蔵モーD課題20題は4機種すべてで成立する（§16 Phase 4）', () => {
-  it.each(MODELS.map((m) => [m.model, m] as const))(
-    '%s で20題すべてが読めて模範が合格する',
-    (_model, plc) => {
-      expect(BUILTIN_PLC_PROBLEMS).toHaveLength(20);
-      for (const problem of BUILTIN_PLC_PROBLEMS) {
-        const swapped = PlcProblemSchema.parse({ ...problem, plc });
-        const judged = judgePlcReference(swapped, JIPM_BOARD);
-        expect(judged.ok, `${problem.id} / ${plc.model}`).toBe(true);
-        if (!judged.ok) continue;
-        expect(judged.value.mismatches, `${problem.id} / ${plc.model}`).toEqual([]);
-        expect(judged.value.staticChecks.filter((c) => !c.ok)).toEqual([]);
-        expect(judged.value.passed).toBe(true);
-      }
-    },
-  );
+describe('内蔵モードD課題20題は4機種すべてで成立する（§16 Phase 4）', () => {
+  it('検証対象は20題・4機種から欠けない', () => {
+    expect(BUILTIN_PLC_PROBLEMS).toHaveLength(20);
+    expect(MODELS).toHaveLength(4);
+  });
+  // 20題を1件にまとめると、計装時に合計時間だけで失敗して課題を特定できない。
+  // 全80通りを独立させ、各課題の採点・静的検査の期待値は維持する。
+  it.each(
+    MODELS.flatMap((plc) =>
+      BUILTIN_PLC_PROBLEMS.map((problem) => ({ model: plc.model, id: problem.id, plc, problem })),
+    ),
+  )('$model / $id が読めて模範が合格する', ({ plc, problem }) => {
+    const swapped = PlcProblemSchema.parse({ ...problem, plc });
+    const judged = judgePlcReference(swapped, JIPM_BOARD);
+    expect(judged.ok, `${problem.id} / ${plc.model}`).toBe(true);
+    if (!judged.ok) return;
+    expect(judged.value.mismatches, `${problem.id} / ${plc.model}`).toEqual([]);
+    expect(judged.value.staticChecks.filter((c) => !c.ok)).toEqual([]);
+    expect(judged.value.passed).toBe(true);
+  });
 
   it('模範ラダーはベンダ中立で、4方言すべてで変換が通る（受入基準②）', () => {
     // TOYOPUC の「X と Y の同番号禁止」は **アドレス**で判定する（決定表#16）。20題はすべて

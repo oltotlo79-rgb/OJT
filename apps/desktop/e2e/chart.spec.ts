@@ -1,6 +1,6 @@
 import { JIPM_BOARD } from '@ojt/board-model';
 import { toTerminalId } from '@ojt/circuit-sim';
-import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
+import { expect, test, type ElectronApplication, type Locator, type Page } from '@playwright/test';
 import { launchApp, shot } from './app.js';
 import { boardPoint, SELF_HOLD_WIRES, terminalPoint, type CanvasBox } from './projection.js';
 
@@ -17,6 +17,27 @@ import { boardPoint, SELF_HOLD_WIRES, terminalPoint, type CanvasBox } from './pr
 const SPEC_CHART = 'タイムチャート（仕様）: クリックまたはEnterで拡大表示';
 /** 結果画面の重ね表示の読み上げ名。 */
 const OVERLAY_CHART = 'チャート重ね表示（薄色＝模範／濃色＝訓練者）: クリックまたはEnterで拡大表示';
+
+/** 目盛数は画面幅で変わる。実際の文字同士の間隔を検証する。 */
+async function readableTicks(chart: Locator): Promise<number> {
+  const ticks = chart.locator('[data-guide="tick"]');
+  const count = await ticks.count();
+  expect(count).toBeGreaterThanOrEqual(2);
+  const labels = await ticks.evaluateAll((lines) =>
+    lines.flatMap((line) => {
+      const label = line.parentElement?.querySelector('text');
+      if (!label) return [];
+      const rect = label.getBoundingClientRect();
+      return [{ left: rect.left, right: rect.right, text: label.textContent }];
+    }),
+  );
+  expect(labels.length).toBeGreaterThanOrEqual(2);
+  expect(labels[0]?.text).toBe('0.0 s');
+  for (let index = 1; index < labels.length; index += 1) {
+    expect(labels[index]!.left - labels[index - 1]!.right).toBeGreaterThanOrEqual(4);
+  }
+  return count;
+}
 
 async function canvasBox(page: Page): Promise<CanvasBox> {
   const canvas = page.locator('[data-testid="viewport"] canvas');
@@ -95,7 +116,7 @@ test.describe.serial('タイムチャートの拡大表示', () => {
     // ② 小さいチャートに縦の補助線（目盛線・操作の破線）が立っている（§7.7）
     const spec = page.getByTestId('chart-spec');
     await expect(spec).toBeVisible();
-    expect(await spec.locator('[data-guide="tick"]').count()).toBeGreaterThanOrEqual(5);
+    const smallTicks = await readableTicks(spec);
     expect(await spec.locator('[data-guide="edge"]').count()).toBeGreaterThan(0);
     await shot(app, 'after-01-session-chart');
 
@@ -104,6 +125,7 @@ test.describe.serial('タイムチャートの拡大表示', () => {
     const modal = page.getByTestId('chart-modal');
     await expect(modal).toBeVisible();
     await expect(page.getByTestId('chart-spec-large')).toBeVisible();
+    expect(await readableTicks(page.getByTestId('chart-spec-large'))).toBeGreaterThan(smallTicks);
     await page.waitForTimeout(300);
     await shot(app, 'after-02-session-enlarged');
 

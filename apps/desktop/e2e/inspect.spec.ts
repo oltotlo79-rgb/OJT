@@ -262,8 +262,11 @@ test.describe.serial('モードC1 部品点検（§16 Phase 2 受入基準①②
 
   /** トレイの部品を挿し、通電して、コイル抵抗を読む。 */
   async function readCoilOf(partId: string): Promise<string> {
+    const label = await page.getByTestId(`tray-${partId}`).locator('span').first().innerText();
+    expect(label).toMatch(/[①-⑳].*(リレー|タイマ)/);
     await page.getByTestId(`plug-${partId}`).click();
-    await expect(page.getByTestId('status-overlay')).toContainText(`点検中: ${partId}`);
+    await expect(page.getByTestId('status-overlay')).toContainText(`点検中: ${label}`);
+    await expect(page.getByTestId('status-overlay')).not.toContainText(partId);
     // 挿し替えは `load` の送り直し＝新しい Simulation なので、電源は入れ直す（§5.4 / §9.1 ⓪）
     await powerOn(page);
     return measureCoil();

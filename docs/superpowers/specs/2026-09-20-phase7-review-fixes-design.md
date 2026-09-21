@@ -1012,7 +1012,7 @@ export function refuseMessageKey(reason: RefuseReason): string;
 | ③ | 内蔵課題が 72 題（B 20 / C1 12 / C2 20 / D 20）あり、すべて模範解が自身の判定に合格する | §4＋`packages/content/test/builtin*.test.ts` |
 | ④ | 4方言すべてで、キー割当表に `enabled` で載っている全行のキーを押すと、そのとおりの操作が起きる | §5.2 の網羅テスト＋`e2e/ladder-entry.spec.ts` |
 | ⑤ | 3D盤でブレーカを押すと通電し、部品をパレットからソケットへ運べ、端子から端子へドラッグで配線できる | §7＋`e2e/direct-manipulation.spec.ts` |
-| ⑥ | 俯瞰の視点からビューキューブを下へ引くと正面へ回り込める | §8＋`e2e/navigation.spec.ts` |
+| ⑥ | 俯瞰の視点からビューキューブを上へ約105px引くと正面へ回り込める（§8の実測訂正に従う） | §8＋`e2e/navigation.spec.ts` |
 | ⑦ | 説明書 PDF のもくじを押すとその章・節へ飛び、PDF のしおりに全章が並び、チュートリアル章が全72題を索引している | §6.3・§6.5＋`manual-pdf.test.ts`／`manual-problem-index.test.ts` |
 | ⑧ | 初回にモードBを開くと5枚の案内が出て、操作すると進み、設定から出し直せる | §7.3.5＋`test/tour.test.tsx` |
 

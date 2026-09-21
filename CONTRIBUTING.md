@@ -13,7 +13,8 @@ pnpm verify                    # typecheck / lint / 全テスト。リリース�
 `.npmrc` の `engine-strict=true` と `package.json` の `engines.node`（`>=22 <26`）により、
 対応外の Node.js では `pnpm install` 自体が失敗する。CI（`.github/workflows/ci.yml`）は
 `push`/`pull_request` のたびに `pnpm install --frozen-lockfile && pnpm verify` を走らせる
-（`verify` ジョブ）。ビルド＋E2E（`build-e2e` ジョブ）はタグ付けか手動起動のときだけ走る。
+（`verify` ジョブ）。続くビルド＋E2E（`build-e2e` ジョブ）も毎回実行し、画面変更に伴う
+古い文言・操作手順の取り残しを検出する。`v*` タグと手動起動でも両ジョブを実行する。
 
 ## 2. push 前の自動ゲート
 
