@@ -18,6 +18,7 @@ import { selectView } from './projection.js';
  */
 
 const WINDOW = { width: 1440, height: 900 } as const;
+const HARDWARE = process.env['OJT_PERF_TARGET'] === '1';
 
 /**
  * 性能の予算（§15 / Plan 5 決定表#17）。GPU に依らない値だけを自動で縛る。
@@ -101,6 +102,13 @@ async function readMainRequests(target: ElectronApplication): Promise<string[]> 
 test.beforeAll(async () => {
   ({ app, page } = await launchApp({
     window: WINDOW,
+    ...(HARDWARE
+      ? {
+          graphics: 'hardware' as const,
+          contentSize: { width: 1920, height: 1080 },
+          extraFlags: ['--force-device-scale-factor=1'],
+        }
+      : {}),
     /*
      * 通信の見張りは**起動直後・最初の遷移より前**に張る（Batch E レビュー I3）。
      * `page.on('request')` は renderer の要求しか見えず、main プロセス（`net` / `session`）の
@@ -180,11 +188,71 @@ test.describe.serial('性能（§16 Phase 5 受入基準④）', () => {
   });
 
   test('実機では60fpsを保つ（OJT_PERF_TARGET=1 のときだけ）', async () => {
-    test.skip(process.env['OJT_PERF_TARGET'] !== '1', '内蔵GPU実機でのみ確認する（決定表#17）');
+    test.skip(!HARDWARE, '内蔵GPU実機でのみ確認する（決定表#17）');
+    const renderer = await page.locator('[data-testid="viewport"] canvas').evaluate((canvas) => {
+      const gl = (canvas as HTMLCanvasElement).getContext('webgl2');
+      const debug = gl?.getExtension('WEBGL_debug_renderer_info');
+      if (!gl || !debug) throw new Error('実際の描画装置を取得できません');
+      return String(gl.getParameter(debug.UNMASKED_RENDERER_WEBGL));
+    });
+    expect(renderer, '実機指定でソフトウェア描画に戻ってはいけません').not.toMatch(
+      /swiftshader|llvmpipe|software|basic render/iu,
+    );
+    const byView: Record<string, { fps: number; frames: number; elapsedMs: number }> = {};
     for (const view of VIEWS) {
       await selectView(page, view);
-      await page.waitForTimeout(1200);
-      expect((await readPerf(page))['fps']).toBeGreaterThanOrEqual(FPS_TARGET);
+      await readSettledPerf(page);
+      const box = await page.locator('[data-testid="viewport"] canvas').boundingBox();
+      if (!box) throw new Error('盤の表示領域を取得できません');
+      // 静止中の古いfpsを読まず、回転している間の累計フレーム数と実時間を測る。
+      const samplesPromise = page.evaluate(
+        () =>
+          new Promise<Array<{ at: number; total: number }>>((done) => {
+            const node = document.querySelector('[data-testid="perf-readout"]');
+            if (!node) throw new Error('描画枚数を取得できません');
+            const samples: Array<{ at: number; total: number }> = [];
+            const observer = new MutationObserver(() => {
+              samples.push({
+                at: performance.now(),
+                total: Number(node.getAttribute('data-total-frames')),
+              });
+            });
+            observer.observe(node, { attributes: true, attributeFilter: ['data-total-frames'] });
+            setTimeout(() => {
+              observer.disconnect();
+              done(samples);
+            }, 3000);
+          }),
+      );
+      await page.mouse.move(box.x + 30, box.y + box.height * 0.7);
+      await page.mouse.down({ button: 'middle' });
+      let samples: Awaited<typeof samplesPromise>;
+      try {
+        for (let step = 0; step < 150; step++) {
+          await page.mouse.move(box.x + 30 + Math.sin(step / 12) * 14, box.y + box.height * 0.7);
+          await page.waitForTimeout(20);
+        }
+        samples = await samplesPromise;
+      } finally {
+        await page.mouse.up({ button: 'middle' });
+      }
+      expect(samples.length, `${view} の連続描画サンプル数`).toBeGreaterThanOrEqual(8);
+      const first = samples[0]!,
+        last = samples.at(-1)!;
+      const frames = last.total - first.total,
+        elapsedMs = last.at - first.at;
+      byView[view] = { fps: (frames * 1000) / elapsedMs, frames, elapsedMs };
+    }
+    mkdirSync(SHOT_DIR, { recursive: true });
+    writeFileSync(
+      join(SHOT_DIR, 'perf-hardware.json'),
+      JSON.stringify({ renderer, size: [1920, 1080], byView }, null, 2),
+    );
+    for (const [view, value] of Object.entries(byView)) {
+      // 60Hz画面の59.94Hzと時刻の量子化を含むため、合否は1fps単位。実測小数は上の記録へ残す。
+      expect(Math.round(value.fps), `${view}: ${String(value.fps)} fps`).toBeGreaterThanOrEqual(
+        FPS_TARGET,
+      );
     }
   });
 

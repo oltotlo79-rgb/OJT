@@ -48,6 +48,8 @@ export interface WindowSize {
 export const DEFAULT_WINDOW: WindowSize = { width: 1440, height: 900 };
 
 export interface LaunchOptions {
+  /** 実機の性能測定だけはソフトウェア描画を強制しない。 */
+  graphics?: 'software' | 'hardware';
   /** 窓の大きさ（枠を含む `setBounds`）。既定は `DEFAULT_WINDOW`。 */
   window?: WindowSize;
   /** 枠を**除いた**中身の大きさで合わせる（取扱説明書の図。`window` より優先）。 */
@@ -97,7 +99,7 @@ export async function launchApp(options: LaunchOptions = {}): Promise<Launched> 
   const app = await electron.launch({
     args: [
       join(APP_ROOT, 'out', 'main', 'index.js'),
-      ...CHROMIUM_FLAGS,
+      ...(options.graphics === 'hardware' ? [] : CHROMIUM_FLAGS),
       ...(options.extraFlags ?? []),
       `--user-data-dir=${userDataDir}`,
     ],
