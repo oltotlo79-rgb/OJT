@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
+import { assertRealIdentity, checkOutgoingIdentities } from './check-git-identity.mjs';
 import {
   changedFiles,
   checkEnvironment,
@@ -82,15 +83,18 @@ test('検査失敗・プロセス起動失敗を成功に扱わず、その時�
 test('送信する全差分を検査し、未コミット・未追跡コード・別コミットは拒否する', () => {
   const root = mkdtempSync(join(tmpdir(), 'ojt-push-gate-'));
   const git = (...args) =>
-    execFileSync('git', args, {
-      cwd: root,
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'pipe'],
-    }).trim();
+    execFileSync(
+      'git',
+      ['-c', 'user.name=Gate test', '-c', 'user.email=gate@example.invalid', ...args],
+      {
+        cwd: root,
+        env: checkEnvironment(globalThis.process.env),
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'pipe'],
+      },
+    ).trim();
   try {
     git('init');
-    git('config', 'user.name', 'Gate test');
-    git('config', 'user.email', 'gate@example.invalid');
     const commit = (name) => {
       writeFileSync(join(root, name), name);
       git('add', '--', name);
@@ -135,16 +139,19 @@ test('実際のgit pushをフックが拒否し、送信先のコミットが変
   const remote = join(temp, 'remote.git');
   mkdirSync(root);
   const git = (...args) =>
-    execFileSync('git', args, {
-      cwd: root,
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'pipe'],
-    }).trim();
+    execFileSync(
+      'git',
+      ['-c', 'user.name=Gate test', '-c', 'user.email=gate@example.invalid', ...args],
+      {
+        cwd: root,
+        env: checkEnvironment(globalThis.process.env),
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'pipe'],
+      },
+    ).trim();
   try {
     git('init');
     git('init', '--bare', remote);
-    git('config', 'user.name', 'Gate test');
-    git('config', 'user.email', 'gate@example.invalid');
     writeFileSync(join(root, 'sample.txt'), 'before');
     git('add', '--', 'sample.txt');
     git('commit', '-m', '最初の版');
@@ -157,17 +164,185 @@ test('実際のgit pushをフックが拒否し、送信先のコミットが変
       join(root, '.githooks/pre-push'),
     );
     copyFileSync(join(import.meta.dirname, 'check-push.mjs'), join(root, 'scripts/check-push.mjs'));
-    git('add', '--', '.githooks/pre-push', 'scripts/check-push.mjs');
+    copyFileSync(
+      join(import.meta.dirname, 'check-git-identity.mjs'),
+      join(root, 'scripts/check-git-identity.mjs'),
+    );
+    git(
+      'add',
+      '--',
+      '.githooks/pre-push',
+      'scripts/check-push.mjs',
+      'scripts/check-git-identity.mjs',
+    );
     git('commit', '-m', '検査ゲートを追加');
     git('config', 'core.hooksPath', '.githooks');
     writeFileSync(join(root, 'sample.txt'), '検査対象と送信内容が違う');
     const result = spawnSync('git', ['push', remote, 'HEAD:refs/heads/main'], {
       cwd: root,
+      env: checkEnvironment(globalThis.process.env),
       encoding: 'utf8',
     });
     assert.notEqual(result.status, 0);
     assert.match(result.stderr, /未コミット変更/u);
     assert.equal(git('--git-dir', remote, 'rev-parse', 'refs/heads/main'), before);
+  } finally {
+    rmSync(temp, { recursive: true, force: true });
+  }
+});
+
+test('テスト用名義を拒否し、通常の名義とGitHub非公開メールは許可する', () => {
+  for (const [name, email] of [
+    ['Gate test', 'gate@example.invalid'],
+    ['Test User', 'test@example.com'],
+    ['name', 'person@fixture.test'],
+  ])
+    assert.throws(() => assertRealIdentity(name, email), /Git名義/u);
+  assert.doesNotThrow(() => assertRealIdentity('開発者', '123+developer@users.noreply.github.com'));
+});
+
+test('テストのGit環境が親を指していても親の設定・HEAD・インデックスを変更しない', () => {
+  const temp = mkdtempSync(join(tmpdir(), 'ojt-git-isolation-'));
+  const parent = join(temp, 'parent');
+  const fixture = join(temp, 'fixture');
+  mkdirSync(parent);
+  mkdirSync(fixture);
+  const git = (root, args, env = checkEnvironment(globalThis.process.env)) =>
+    execFileSync('git', args, {
+      cwd: root,
+      env,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+  try {
+    git(parent, ['init']);
+    const before = ['config', 'HEAD'].map((file) =>
+      readFileSync(join(parent, '.git', file), 'utf8'),
+    );
+    const poisoned = {
+      ...globalThis.process.env,
+      GIT_DIR: join(parent, '.git'),
+      GIT_WORK_TREE: parent,
+      GIT_INDEX_FILE: join(parent, '.git', 'index'),
+      GIT_CONFIG_COUNT: '1',
+      GIT_CONFIG_KEY_0: 'user.name',
+      GIT_CONFIG_VALUE_0: 'Gate test',
+    };
+    const isolated = checkEnvironment(poisoned);
+    git(fixture, ['init'], isolated);
+    writeFileSync(join(fixture, 'sample.txt'), 'fixture');
+    git(fixture, ['add', '--', 'sample.txt'], isolated);
+    git(
+      fixture,
+      [
+        '-c',
+        'user.name=Gate test',
+        '-c',
+        'user.email=gate@example.invalid',
+        'commit',
+        '-m',
+        '検査用',
+      ],
+      isolated,
+    );
+    assert.deepEqual(
+      ['config', 'HEAD'].map((file) => readFileSync(join(parent, '.git', file), 'utf8')),
+      before,
+    );
+    assert.equal(git(parent, ['status', '--porcelain']).trim(), '');
+    assert.doesNotMatch(
+      readFileSync(join(fixture, '.git', 'config'), 'utf8'),
+      /Gate test|gate@example/u,
+    );
+  } finally {
+    rmSync(temp, { recursive: true, force: true });
+  }
+});
+
+test('名義ゲートが実コミットとpushを止め、両方のHEADを保つ', () => {
+  const temp = mkdtempSync(join(tmpdir(), 'ojt-identity-gate-'));
+  const root = join(temp, 'work');
+  const remote = join(temp, 'remote.git');
+  mkdirSync(root);
+  const env = checkEnvironment(globalThis.process.env);
+  const git = (...args) =>
+    execFileSync(
+      'git',
+      [
+        '-c',
+        'user.name=開発者',
+        '-c',
+        'user.email=123+developer@users.noreply.github.com',
+        ...args,
+      ],
+      { cwd: root, env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] },
+    ).trim();
+  try {
+    git('init');
+    git('init', '--bare', remote);
+    writeFileSync(join(root, 'sample.txt'), 'before');
+    git('add', '--', 'sample.txt');
+    git('commit', '-m', '開始');
+    const before = git('rev-parse', 'HEAD');
+    git('push', remote, 'HEAD:refs/heads/main');
+    mkdirSync(join(root, '.githooks'));
+    mkdirSync(join(root, 'scripts'));
+    for (const file of ['pre-commit', 'pre-push'])
+      copyFileSync(join(import.meta.dirname, '../.githooks', file), join(root, '.githooks', file));
+    for (const file of ['check-git-identity.mjs', 'check-push.mjs'])
+      copyFileSync(join(import.meta.dirname, file), join(root, 'scripts', file));
+    git(
+      'add',
+      '--',
+      '.githooks/pre-commit',
+      '.githooks/pre-push',
+      'scripts/check-git-identity.mjs',
+      'scripts/check-push.mjs',
+    );
+    // まだフックの無い過去コミットも、送信時に検知する。
+    git(
+      '-c',
+      'user.name=Gate test',
+      '-c',
+      'user.email=gate@example.invalid',
+      'commit',
+      '-m',
+      '検査用名義',
+    );
+    const badHead = git('rev-parse', 'HEAD');
+    assert.throws(
+      () => checkOutgoingIdentities(root, `refs/heads/test ${badHead} refs/heads/main ${before}`),
+      /テスト用/u,
+    );
+    git('config', 'core.hooksPath', '.githooks');
+    writeFileSync(join(root, 'sample.txt'), 'changed');
+    git('add', '--', 'sample.txt');
+    const result = spawnSync(
+      'git',
+      [
+        '-c',
+        'user.name=Gate test',
+        '-c',
+        'user.email=gate@example.invalid',
+        'commit',
+        '-m',
+        '拒否される',
+      ],
+      { cwd: root, env, encoding: 'utf8' },
+    );
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /テスト用/u);
+    assert.equal(git('rev-parse', 'HEAD'), badHead);
+    git('commit', '-m', '正しい名義で保存');
+    const push = spawnSync('git', ['push', remote, 'HEAD:refs/heads/main'], {
+      cwd: root,
+      env,
+      encoding: 'utf8',
+    });
+    assert.notEqual(push.status, 0);
+    assert.match(push.stderr, /テスト用/u);
+    assert.equal(git('--git-dir', remote, 'rev-parse', 'refs/heads/main'), before);
+    // 現在の名義が正常でも送信範囲内の誤名義を見逃さないことを上で確認した。
   } finally {
     rmSync(temp, { recursive: true, force: true });
   }

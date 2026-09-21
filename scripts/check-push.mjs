@@ -3,6 +3,7 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { checkOutgoingIdentities } from './check-git-identity.mjs';
 
 const ROOT = resolve(import.meta.dirname, '..');
 const ZERO = /^0+$/u;
@@ -110,8 +111,10 @@ export function checkEnvironment(environment) {
 }
 
 function main() {
-  const files = changedFiles(ROOT, readFileSync(0, 'utf8'));
+  const input = readFileSync(0, 'utf8');
+  const files = changedFiles(ROOT, input);
   if (files === null) return;
+  checkOutgoingIdentities(ROOT, input);
   for (const gate of MANUAL_GATES) {
     if (!existsSync(resolve(ROOT, 'apps/desktop', gate))) {
       throw new Error(`必須の検査がありません: ${gate}`);

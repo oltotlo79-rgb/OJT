@@ -136,3 +136,12 @@ OJT_SHOT_DIR=<出力先> pnpm --filter @ojt/desktop exec playwright test e2e/ui-
 各社製品名・ロゴ・画面キャプチャは同梱・複製しない（README「ライセンスと商標」、設計仕様
 `docs/superpowers/specs/2026-09-13-ojt-electrical-trainer-design.md` §17参照）。純正ツールの
 外観はカタログの寸法・一般に知られた特徴から再現し、写真やスクリーンショットの複製はしない。
+
+
+### Git 名義の保護
+
+- `pre-commit` は実際に使われる author / committer の両方を調べ、`Gate test` や `.invalid` などのテスト用名義を拒否する。
+- `pre-push` は今回送信する**全コミット**の author / committer を検査する。現在の設定だけを直しても、送信範囲に誤名義が残っていれば送信できない。
+- テスト用リポジトリには `user.name` / `user.email` を永続設定しない。`git -c` により1回のプロセス内だけで指定し、子プロセスへ渡す環境から `GIT_*` を除く。
+- 親リポジトリを指す環境変数を意図的に与えても、親の設定・HEAD・インデックスが変わらないことを回帰テストで確認する。実際の commit / push の拒否と送信先 HEAD の不変も確認する。
+- 正しい個人名義は利用者の既存設定を使う。自動で書き換えない。フックを `--no-verify` で省略しない。
