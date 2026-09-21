@@ -22,6 +22,7 @@ jobs:
           cache: pnpm
       # lockfile が package.json と同期していることを毎 push で検証する
       - run: pnpm install --frozen-lockfile
+      - run: pnpm test:push-gate
       - run: pnpm verify
 
   build-e2e:

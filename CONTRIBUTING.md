@@ -7,7 +7,7 @@
 
 ```bash
 pnpm install --frozen-lockfile   # lockfile が package.json と同期していることを確認する
-pnpm verify                      # typecheck / lint / -r test。コミット前に必ず1回通す
+pnpm verify                    # typecheck / lint / 全テスト。リリース前に実行する
 ```
 
 `.npmrc` の `engine-strict=true` と `package.json` の `engines.node`（`>=22 <26`）により、
@@ -15,12 +15,15 @@ pnpm verify                      # typecheck / lint / -r test。コミット前�
 `push`/`pull_request` のたびに `pnpm install --frozen-lockfile && pnpm verify` を走らせる
 （`verify` ジョブ）。ビルド＋E2E（`build-e2e` ジョブ）はタグ付けか手動起動のときだけ走る。
 
-## 2. コミット前に `pnpm verify`
+## 2. push 前の自動ゲート
 
-`pnpm verify` は `pnpm typecheck && pnpm lint && pnpm -r test` の別名である。個々のパッケージ
-だけを直したときは `pnpm --filter <pkg> test` で当該分だけ先に確かめてよいが、**コミット前には
-必ず一度 `pnpm verify` をルートで実行**すること。カバレッジ実測が要るときは
-`pnpm --filter @ojt/desktop test:coverage`（`vitest run --coverage`）を使う。
+`pnpm install` の `prepare` で追跡済みの `.githooks/pre-push` を設定する。既存の独自フックがあれば上書きせず停止する。CIではローカルフックを設定しない。
+
+通常の `git push` は送信する全コミットの差分を読み、Vitest の import 依存関係から関連テストを自動選択する。操作要素の一覧、画面文言と説明書、原稿と生成済みヘルプ、用語、課題データ、翻訳キーの検査は毎回実行する。依存関係やテスト設定を変えた場合は全テストに広げる。
+
+1件でも失敗したら push を中止する。未コミット変更や未追跡の実装・テスト・説明書がある場合も、検査した内容と送信する内容が食い違うため中止する。生成物を自動で直したり、失敗を無視したりする経路は設けない。`--no-verify` でこのゲートを迂回しないこと。
+
+ゲート自体の「差分漏れ・検査漏れ・失敗の握りつぶし」は `pnpm test:push-gate` で検証し、CIでも実行する。通常の作業中は関連テスト、リリース前は `pnpm verify` と必要なE2E・配布物検査を行う。コミットメッセージは変更内容が分かる日本語で書く。
 
 ## 3. 生成物の扱い（手で直さない）
 

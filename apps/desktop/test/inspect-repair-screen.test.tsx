@@ -97,7 +97,9 @@ describe('画面の骨格（§9.2）', () => {
     expect(toggle.getAttribute('aria-pressed')).toBe('false');
     fireEvent.click(toggle);
     expect(screen.getByTestId('schematic-hint')).toBeTruthy();
-    expect(toggle.getAttribute('aria-pressed')).toBe('true');
+    expect(screen.getByTestId('toolbar-overflow-toggle')).toHaveAttribute('aria-expanded', 'false');
+    openToolbarOverflow();
+    expect(screen.getByTestId('toggle-schematic')).toHaveAttribute('aria-pressed', 'true');
   });
 
   it('回路図ヒントを開くたびにストアの開いた回数が増える（§8.4）', () => {
@@ -107,9 +109,13 @@ describe('画面の骨格（§9.2）', () => {
     const toggle = screen.getByTestId('toggle-schematic');
     fireEvent.click(toggle); // 開く: 1
     expect(useStore.getState().schematicOpenCount).toBe(1);
-    fireEvent.click(toggle); // 閉じる: 増えない
+    openToolbarOverflow();
+    fireEvent.click(screen.getByTestId('toggle-schematic')); // 閉じる: 増えない
+    expect(screen.queryByTestId('schematic-hint')).toBeNull();
     expect(useStore.getState().schematicOpenCount).toBe(1);
-    fireEvent.click(toggle); // 開く: 2
+    openToolbarOverflow();
+    fireEvent.click(screen.getByTestId('toggle-schematic')); // 開く: 2
+    expect(screen.getByTestId('schematic-hint')).toBeInTheDocument();
     expect(useStore.getState().schematicOpenCount).toBe(2);
   });
 

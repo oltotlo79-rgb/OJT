@@ -129,6 +129,7 @@ describe('設定画面のPLC項目（§12.1 / §10.6 / 決定表#13）', () => {
 
   /** レビュー指摘 #5: 「既定に戻す」がPLCの3キーを既定値へ戻し、保存済みトーストを出す。 */
   it('resets the PLC group to the defaults and toasts', async () => {
+    installOjt({ defaultVendor: 'omron', ladderGridCols: 9, monitorColor: '#123456' });
     render(<Settings />);
     const resetButton = await screen.findByTestId('setting-plc-reset');
     fireEvent.click(resetButton);
@@ -140,6 +141,14 @@ describe('設定画面のPLC項目（§12.1 / §10.6 / 決定表#13）', () => {
       });
     });
     expect(useStore.getState().toasts.map((t) => t.text)).toContain(JA.settings.saved);
+  });
+
+  it('既定のまま戻しても保存要求や通知を増やさない', async () => {
+    render(<Settings />);
+    const resetButton = await screen.findByTestId('setting-plc-reset');
+    await act(() => fireEvent.click(resetButton));
+    expect(saved).toHaveLength(0);
+    expect(useStore.getState().toasts).toHaveLength(0);
   });
 
   it('pushes the values into the store so the ladder follows', () => {
@@ -371,6 +380,7 @@ describe('「メーカーの既定に従う」（§10.6 / 決定表#8）', () =>
   });
 
   it('writes "" and 0 when the group is reset', async () => {
+    installOjt({ ladderGridCols: 13, monitorColor: '#123456' });
     render(<Settings />);
     fireEvent.click(await screen.findByTestId('setting-plc-reset'));
     await waitFor(() => {

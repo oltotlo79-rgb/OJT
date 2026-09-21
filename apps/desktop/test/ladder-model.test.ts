@@ -278,7 +278,8 @@ describe('applyLadderCell / clearLadderCell', () => {
     const result = applyLadderCell(twoRungs(), at('n1', 9, 0), no(X(0)));
     expect(result.ok).toBe(false);
     if (result.ok) return;
-    expect(result.message).toContain('行 9');
+    expect(result.message).toBe('選択していたマスがありません。編集するマスを選び直してください。');
+    expect(result.message).not.toContain('n1');
   });
 
   it('clears a cell', () => {

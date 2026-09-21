@@ -25,7 +25,18 @@ describe('ViewHint', () => {
 
     fireEvent.click(toggle);
     expect(toggle).toHaveAttribute('aria-expanded', 'true');
-    expect(screen.getByTestId('view-hint').textContent).toBe(JA.session.viewHint);
+    const hint = screen.getByTestId('view-hint');
+    expect(hint).toHaveAttribute('aria-label', JA.session.viewHint);
+    expect([...hint.querySelectorAll('dt')].map((term) => term.textContent)).toEqual([
+      JA.viewControls.mouse,
+      JA.viewControls.keyboard,
+      JA.viewControls.cube,
+    ]);
+    expect([...hint.querySelectorAll('dd')].map((description) => description.textContent)).toEqual([
+      JA.viewControls.mouseHelp,
+      JA.viewControls.keyboardHelp,
+      JA.viewControls.cubeHelp,
+    ]);
 
     fireEvent.click(toggle);
     expect(toggle).toHaveAttribute('aria-expanded', 'false');

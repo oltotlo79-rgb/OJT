@@ -1,0 +1,3 @@
+#!/bin/sh
+# 失敗時は Git 自体が送信を中止する。検査対象は送信するコミットの差分。
+exec node scripts/check-push.mjs

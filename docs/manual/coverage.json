@@ -157,6 +157,12 @@
       "section": "screens/タイムチャートの読み方"
     },
     {
+      "testid": "chart-panel",
+      "screen": "練習中",
+      "label": "タイムチャート（仕様）",
+      "section": "screens/タイムチャートの読み方"
+    },
+    {
       "testid": "chart-spec",
       "screen": "練習中",
       "label": "タイムチャート（仕様）",
@@ -639,21 +645,9 @@
       "section": "mode-c1/テスターの使い方"
     },
     {
-      "testid": "live-empty-hint",
-      "screen": "練習中（モードB）",
-      "label": "まだ記録がありません",
-      "section": "screens/タイムチャートの読み方"
-    },
-    {
       "testid": "live-panel",
       "screen": "練習中（モードB）",
       "label": "ライブ記録",
-      "section": "screens/タイムチャートの読み方"
-    },
-    {
-      "testid": "live-toggle",
-      "screen": "練習中（モードB）",
-      "label": "折りたたむ",
       "section": "screens/タイムチャートの読み方"
     },
     {
@@ -1129,6 +1123,12 @@
       "section": "troubleshooting/こう表示されたら"
     },
     {
+      "testid": "problem-panel",
+      "screen": "練習中",
+      "label": "課題",
+      "section": "screens/練習中の画面の並び"
+    },
+    {
       "testid": "problem-search",
       "screen": "課題一覧",
       "label": "課題を探す",
@@ -1426,6 +1426,12 @@
       "testid": "session-back",
       "screen": "練習中",
       "label": "課題一覧へ戻る",
+      "section": "screens/画面の上の帯"
+    },
+    {
+      "testid": "session-toolbar",
+      "screen": "練習中",
+      "label": "その他の操作",
       "section": "screens/画面の上の帯"
     },
     {
@@ -2491,6 +2497,10 @@
       "section": "troubleshooting/こう表示されたら"
     },
     {
+      "key": "JA.error.webglRetry",
+      "section": "troubleshooting/こう表示されたら"
+    },
+    {
       "key": "JA.error.workerError",
       "section": "troubleshooting/こう表示されたら"
     },
@@ -2676,10 +2686,6 @@
     },
     {
       "key": "MSG.content.countMismatch",
-      "section": "troubleshooting/こう表示されたら"
-    },
-    {
-      "key": "MSG.content.tooManyUserFiles",
       "section": "troubleshooting/こう表示されたら"
     },
     {

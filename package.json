@@ -12,7 +12,10 @@
     "typecheck": "tsc -p tsconfig.json --noEmit && pnpm -r typecheck",
     "lint": "eslint .",
     "format": "prettier --write .",
-    "verify": "pnpm typecheck && pnpm lint && pnpm -r test"
+    "verify": "pnpm typecheck && pnpm lint && pnpm -r test",
+    "prepare": "node scripts/install-hooks.mjs",
+    "check:push": "node scripts/check-push.mjs",
+    "test:push-gate": "node --test scripts/check-push.test.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
