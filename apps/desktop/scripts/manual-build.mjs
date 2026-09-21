@@ -353,10 +353,14 @@ a { color: var(--accent); }
 }
 
 /* 表と囲み */
-table { border-collapse: collapse; width: 100%; margin: 12px 0; page-break-inside: avoid; font-size: 10pt; }
+table { border-collapse: collapse; width: 100%; margin: 12px 0; page-break-inside: auto; font-size: 10pt; line-height: 1.55; }
 thead { display: table-header-group; }
-th, td { border: 1px solid var(--rule); padding: 6px 8px; text-align: left; vertical-align: top; }
+tr { page-break-inside: avoid; }
+th, td { border: 1px solid var(--rule); padding: 5px 7px; text-align: left; vertical-align: top; }
 th { background: var(--tint); }
+table[data-manual-table="problem-index"] { font-size: 9pt; }
+table[data-manual-table="problem-index"] :is(th, td) { padding: 5px; }
+table[data-manual-table="problem-index"] :is(th, td):nth-child(-n+4) { white-space: nowrap; }
 code { background: var(--tint); padding: 1px 4px; border-radius: 3px; font-family: 'Consolas', monospace; font-size: 9.5pt; }
 pre { background: var(--tint); border-left: 3px solid var(--hair); padding: 10px 12px; overflow-wrap: anywhere; white-space: pre-wrap; font-size: 9.5pt; line-height: 1.6; page-break-inside: avoid; }
 
@@ -541,7 +545,10 @@ export function buildManual(files, builtAt = '', availableImages = undefined, ed
         throw new Error(`同じ章に同じ見出しが2つあります: ${file.name} / ${raw.title}`);
       }
       seen.add(raw.title);
-      const rendered = withNotices(md.render(raw.body.join('\n')));
+      let rendered = withNotices(md.render(raw.body.join('\n')));
+      if (chapterId === 'tutorial-features' && raw.title === '課題の索引') {
+        rendered = rendered.replace('<table>', '<table data-manual-table="problem-index">');
+      }
       const helpHtml = toHelpHtml(rendered);
       /*
        * IM-10: 図は必ず「段落に図が1つだけ」の形でなければならない（`FIGURE_PARAGRAPH`）。

@@ -219,6 +219,11 @@
   background: var(--paper-fill);
 }
 
+.prose table[data-manual-table='problem-index'] :is(th, td):nth-child(-n + 4) {
+  white-space: nowrap;
+  padding-inline: 5px;
+}
+
 .prose code {
   background: var(--paper-fill);
   padding: 0 4px;

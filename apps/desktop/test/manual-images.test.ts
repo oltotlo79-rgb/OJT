@@ -76,7 +76,7 @@ function overlapArea(a: Rect, b: Rect): number {
   return width <= 0 || height <= 0 ? 0 : width * height;
 }
 
-/** 17図ぶんの置き方（`overlayHtml()` が描くのと同じ計算）。 */
+/** 全図の置き方（`overlayHtml()` が描くのと同じ計算）。 */
 function planOf(name: string): ReturnType<typeof planCallouts> {
   const shot = SHOTS[name];
   const geometry = GEOMETRY[name];
@@ -94,7 +94,7 @@ const names = Object.keys(SHOTS).sort();
 
 describe('図はすべて本アプリの実画面（決定表#24b）', () => {
   it('has exactly the files the manual defines', () => {
-    expect(files.map((name) => name.replace(/\.png$/u, ''))).toEqual(names);
+    expect(files.map((name) => name.replace(/\.png$/u, '')).sort()).toEqual(names);
   });
 
   it('gives every figure a place for its callouts', () => {

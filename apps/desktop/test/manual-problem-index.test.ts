@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { buildManual } from '../scripts/manual-build.mjs';
 
 const manual = resolve(dirname(fileURLToPath(import.meta.url)), '../../../docs/manual');
 const source = readFileSync(resolve(manual, '14-tutorial-features.md'), 'utf8');
@@ -19,6 +20,15 @@ const rows = source
 const modes = { assemble: 'B', 'inspect-parts': 'C1', 'inspect-repair': 'C2', plc: 'D' } as const;
 
 describe('全課題を1回ずつ探せる索引', () => {
+  it('印刷とヘルプで索引を識別し、IDを途中で折り返さない列にする', () => {
+    const built = buildManual([{ name: '14-tutorial-features.md', text: source }]);
+    expect(built.printHtml).toContain('<table data-manual-table="problem-index">');
+    expect(built.sections.find((section) => section.id.endsWith('/課題の索引'))?.html).toContain(
+      '<table data-manual-table="problem-index">',
+    );
+    expect(built.printHtml).toContain(':nth-child(-n+4) { white-space: nowrap; }');
+    expect(built.printHtml).toContain('tr { page-break-inside: avoid; }');
+  });
   it('同梱課題のIDを過不足・重複なく掲載する', () => {
     expect(rows.map((row) => row[0]).sort()).toEqual(BUILTIN_ALL_PROBLEMS.map((p) => p.id).sort());
   });

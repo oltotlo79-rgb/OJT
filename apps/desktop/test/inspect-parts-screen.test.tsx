@@ -65,6 +65,9 @@ describe('部品の挿抜（§9.1）', () => {
     render(<InspectPartsSession />);
     fireEvent.click(screen.getByTestId(`plug-${first.id}`));
     expect(useStore.getState().checkPartId).toBe(first.id);
+    expect(screen.getByTestId('status-overlay').textContent).toContain('点検中: ①リレー MY4N');
+    expect(screen.getByTestId('status-overlay').textContent).not.toContain(first.id);
+    expect(useStore.getState().logLines.at(-1)?.text).toBe('点検中: ①リレー MY4N');
     const load = sent.filter((c) => c['type'] === 'load').at(-1);
     expect(load).toBeDefined();
     expect((load?.['session'] as { mounted: Record<string, unknown> }).mounted['S7']).toBeDefined();

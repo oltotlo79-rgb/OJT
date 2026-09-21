@@ -1,5 +1,7 @@
+import { readdirSync, readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
-import { launchApp } from './app.js';
+import { APP_ROOT, launchApp } from './app.js';
 
 /**
  * ヘルプと取扱説明書の E2E。§16 Phase 6 受入基準①②③⑥（Plan 6 Task 11）。
@@ -24,24 +26,14 @@ import { launchApp } from './app.js';
 const WINDOW = { width: 1440, height: 900 } as const;
 
 /**
- * もくじに出る章の並び（`help/manual-content.ts` の `MANUAL_CHAPTERS` からの書き写し）。
- * 受入基準③の「もくじに全13章が正本の順で出ている」はこの配列との完全一致で見る。
+ * 正本から章の並びを拾い、ビルド済みの画面と照合する。
+ * 章の追加時に、手書きの期待値だけ古いまま残ることを防ぐ。
  */
-const CHAPTER_TITLES = [
-  'はじめに',
-  'パソコンに入れる',
-  '画面の見方',
-  '回路を組み立てる（モードB）',
-  '部品を点検する（モードC1）',
-  '回路を点検して直す（モードC2）',
-  'PLCでプログラムを作る（モードD）',
-  '回路図を描いて確かめる',
-  '作業を保存する・続きからやる',
-  '設定',
-  '指導者向け: 課題の作り方と配り方',
-  '用語集',
-  '困ったときは',
-] as const;
+const MANUAL_DIR = resolve(APP_ROOT, '../../docs/manual');
+const CHAPTER_TITLES = readdirSync(MANUAL_DIR)
+  .filter((name) => /^\d{2}-.+\.md$/u.test(name))
+  .sort()
+  .map((name) => readFileSync(resolve(MANUAL_DIR, name), 'utf8').split(/\r?\n/u)[0]!.slice(2));
 
 /** 画面 → 最初に出る節の見出し（`help/help-model.ts` の `HELP_SECTION_BY_SCREEN`）。 */
 const HOME_SECTION = 'このアプリでできること';
@@ -369,7 +361,7 @@ test.describe('ヘルプ（§16 Phase 6 受入基準①②③⑥）', () => {
     await expect(drawer).toBeHidden();
   });
 
-  test('受入基準③: もくじに全13章が正本の順で出る', async () => {
+  test('受入基準③: もくじに全章が正本の順で出る', async () => {
     await goHome();
     await page.getByTestId('open-help').click();
     await expect(page.getByTestId('help-drawer')).toBeVisible();
@@ -397,6 +389,27 @@ test.describe('ヘルプ（§16 Phase 6 受入基準①②③⑥）', () => {
 
     await page.keyboard.press('Escape');
     await expect(page.getByTestId('help-drawer')).toBeHidden();
+  });
+
+  test('課題索引の全72個のIDが途中で折り返されない', async () => {
+    await goHome();
+    await setWindow(1280, 800);
+    await page.getByTestId('open-help').click();
+    await showSection(CHAPTER_TITLES.length - 1, 'tutorial-features/課題の索引');
+    const ids = page.locator('[data-manual-table="problem-index"] tbody tr td:first-child');
+    await expect(ids).toHaveCount(72);
+    const broken = await ids.evaluateAll((cells) =>
+      cells.flatMap((cell) => {
+        const range = document.createRange();
+        range.selectNodeContents(cell);
+        return range.getClientRects().length === 1 ? [] : [cell.textContent];
+      }),
+    );
+    expect(broken).toEqual([]);
+    const prose = page.getByTestId('help-prose');
+    expect(await prose.evaluate((node) => node.scrollWidth <= node.clientWidth + 1)).toBe(true);
+    await page.keyboard.press('Escape');
+    await setWindow(WINDOW.width, WINDOW.height);
   });
 
   test('受入基準③: 引き出しは「判定」を覆わず、横スクロールも出さない', async () => {

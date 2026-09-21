@@ -10,6 +10,7 @@ import {
   openedProblemLog,
   powerLog,
   referenceErrorText,
+  trayPartLabel,
 } from '../i18n/ja.js';
 import { CheckTrayPanel } from '../panels/CheckTrayPanel.js';
 import { DiagnosisHelp } from '../panels/DiagnosisHelp.js';
@@ -212,7 +213,10 @@ export function InspectPartsSession(): JSX.Element {
       partFaults: loaded.partFaults,
     });
     resendTester();
-    store.addLog(`${JA.inspectParts.mounted}: ${checkPartId}`);
+    const part = current.parts.find((item) => item.id === checkPartId);
+    store.addLog(
+      `${JA.inspectParts.mounted}: ${trayPartLabel(checkPartId, part?.kind === 'timer-h3y4')}`,
+    );
   }, [problemId, sessionEpoch, checkPartId]);
 
   // 経過時間を定期更新する（§8.1）
@@ -388,7 +392,7 @@ export function InspectPartsSession(): JSX.Element {
             {powered ? JA.session.powered : JA.session.unpowered} /{' '}
             {checkPartId === undefined
               ? JA.inspectParts.tray
-              : `${JA.inspectParts.mounted}: ${checkPartId}`}
+              : `${JA.inspectParts.mounted}: ${trayPartLabel(checkPartId, problem.parts.find((part) => part.id === checkPartId)?.kind === 'timer-h3y4')}`}
             {tripped ? ` / ${JA.session.tripped}` : ''}
           </div>
           <ViewHint />

@@ -15,8 +15,11 @@ import {
 import { COIL_COL } from '@ojt/ladder-core';
 import { expect, test, type ElectronApplication, type Locator, type Page } from '@playwright/test';
 import { launchApp } from './app.js';
+import { powerWellCenterMm } from '../src/renderer/three/AcFixtures.js';
+import { findFixtureFootprint, FIXTURE_HEIGHT_MM } from '../src/renderer/three/Fixtures.js';
 import { finishedSize, overlayHtml, planCallouts } from '../scripts/annotate-shots.mjs';
 import { HELP_IMAGE_WIDTH } from '../scripts/manual-build.mjs';
+import { optimizePng } from '../scripts/optimize-png.mjs';
 import {
   GIZMO_BUTTON,
   GIZMO_GRID_PX,
@@ -95,10 +98,7 @@ const EXTRA_FLAGS = ['--force-device-scale-factor=1'];
  * 実際のパスを画面に出すので、既定の `…¥Users¥〈Windowsのアカウント名〉¥AppData¥…` で
  * 撮ると、配る取扱説明書に撮影した人のアカウント名が載ってしまう。
  */
-const USER_DATA_DIR = join(
-  process.env['PUBLIC'] ?? mkdtempSync(join(tmpdir(), 'ojt-')),
-  '電気教育ツール',
-);
+let userDataDir: string | undefined;
 
 /** 測った矩形の置き場（撮り終わったあとで `shot-geometry.json` にまとめる）。 */
 const GEOMETRY: Record<string, Geometry> = {};
@@ -124,7 +124,7 @@ function clampRect(rect: Rect): Rect {
 
 /** 要素の矩形を測る（`pad` だけ外へ広げる）。 */
 async function rectOf(locator: Locator, pad = 4): Promise<Rect> {
-  await expect(locator).toBeVisible();
+  await expectOnScreen(locator);
   const box = await locator.boundingBox();
   if (box === null) throw new Error('矩形を取得できませんでした');
   return clampRect({
@@ -160,7 +160,26 @@ async function expectOnScreen(locator: Locator): Promise<void> {
     const y = rect.top + rect.height / 2;
     if (x < 0 || y < 0 || x > window.innerWidth || y > window.innerHeight) return false;
     const hit = document.elementFromPoint(x, y);
-    return hit !== null && (element.contains(hit) || hit.contains(element));
+    if (hit === null) return false;
+    if (element.contains(hit) || hit.contains(element)) return true;
+    // 固定位置のダイアログは祖先のスクロール枠を抜けるので、実際のヒットを優先する。
+    if (getComputedStyle(element).pointerEvents !== 'none') return false;
+    for (let parent = element.parentElement; parent !== null; parent = parent.parentElement) {
+      const style = getComputedStyle(parent);
+      const bounds = parent.getBoundingClientRect();
+      if (
+        /(auto|scroll|hidden|clip)/u.test(style.overflowX) &&
+        (x < bounds.left || x > bounds.right)
+      )
+        return false;
+      if (
+        /(auto|scroll|hidden|clip)/u.test(style.overflowY) &&
+        (y < bounds.top || y > bounds.bottom)
+      )
+        return false;
+    }
+    // 3Dの札・早見表は盤の操作を遮らない pointer-events:none の表示要素。
+    return true;
   });
   expect(shown, '画面に写っていません（親の overflow で隠れています）').toBe(true);
 }
@@ -366,7 +385,7 @@ function autoCrop(name: string, callouts: Record<string, Rect>): Rect {
   // 札は枠の左上から 14px はみ出すので、そのぶんと読みやすさの余白を足す
   const pad = 44;
   const minWidth = 620;
-  const minHeight = 400;
+  const minHeight = 320;
   let width = Math.min(SHOT_SIZE.width, Math.max(minWidth, right - left + pad * 2));
   let height = Math.min(SHOT_SIZE.height, Math.max(minHeight, bottom - top + pad * 2));
   width = Math.round(width);
@@ -500,8 +519,28 @@ async function annotate(name: string): Promise<void> {
     { htmlPath, size, small, scale: HELP_IMAGE_WIDTH / size.width },
   );
 
-  writeFileSync(join(OUT_DIR, `${name}.png`), Buffer.from(shots.full, 'base64'));
-  writeFileSync(join(SMALL_DIR, `${name}.png`), Buffer.from(shots.small, 'base64'));
+  const full = optimizePng(Buffer.from(shots.full, 'base64'));
+  const reduced = optimizePng(Buffer.from(shots.small, 'base64'));
+  // 保存前にElectron自身で復号し、全画素が一致することを確かめる。容量のために画質を落とさない。
+  const unchanged = await app.evaluate(
+    ({ nativeImage }, images) =>
+      images.every(([a, b]) => {
+        if (a === undefined || b === undefined) return false;
+        const source = nativeImage.createFromBuffer(Buffer.from(a, 'base64'));
+        const compressed = nativeImage.createFromBuffer(Buffer.from(b, 'base64'));
+        return (
+          JSON.stringify(source.getSize()) === JSON.stringify(compressed.getSize()) &&
+          source.toBitmap().equals(compressed.toBitmap())
+        );
+      }),
+    [
+      [shots.full, full.toString('base64')],
+      [shots.small, reduced.toString('base64')],
+    ],
+  );
+  expect(unchanged, `${name} の圧縮で画素が変わっています`).toBe(true);
+  writeFileSync(join(OUT_DIR, `${name}.png`), full);
+  writeFileSync(join(SMALL_DIR, `${name}.png`), reduced);
 }
 
 /* ------------------------------------------------------------------ *
@@ -628,16 +667,34 @@ async function insertNetwork(expectedId: string): Promise<void> {
 async function buildReferenceLadder(): Promise<void> {
   await expectCursorAt('n1:0:0');
   await ladderKey('F5');
+  await page.getByTestId('device-text').fill('X0');
+  await shoot(
+    'plc-contact-input',
+    {
+      1: await rectOf(page.getByTestId('device-text')),
+      2: await rectOf(page.getByTestId('device-commit')),
+    },
+    'auto',
+  );
   await commitDevice('X0');
   await ladderKey('ArrowLeft');
   await ladderKey('Shift+F5');
   await commitDevice('Y0');
   await expect(page.getByTestId('cell-n1:1:0')).toBeVisible();
-  await ladderKey('ArrowRight');
+  await expectCursorAt('n1:0:2');
   await ladderKey('F6');
   await commitDevice('X1');
   await moveToCoil('n1', 3);
   await ladderKey('F7');
+  await page.getByTestId('device-text').fill('Y0');
+  await shoot(
+    'plc-coil-input',
+    {
+      1: await rectOf(page.getByTestId('output-kind')),
+      2: await rectOf(page.getByTestId('device-text')),
+    },
+    'auto',
+  );
   await commitDevice('Y0');
 
   await insertNetwork('n2');
@@ -679,18 +736,23 @@ function plcPushButtonPoint(pbId: string, box: CanvasBox): { x: number; y: numbe
 
 test.describe.serial('取扱説明書の図', () => {
   test.beforeAll(async () => {
+    // テストの列挙だけでは一時フォルダを作らない。実行workerが作成・後始末を担当する。
+    userDataDir = mkdtempSync(join(process.env['PUBLIC'] ?? tmpdir(), '電気教育ツール-説明書-'));
     rmSync(RAW_DIR, { recursive: true, force: true });
     // 枠を除いた**中身**を 1280×800 にする（`setBounds` は枠を含むので使わない）
     ({ app, page } = await launchApp({
       contentSize: SHOT_SIZE,
-      userDataDir: USER_DATA_DIR,
+      userDataDir,
       extraFlags: EXTRA_FLAGS,
     }));
   });
 
   test.afterAll(async () => {
-    await app.close();
-    rmSync(USER_DATA_DIR, { recursive: true, force: true });
+    try {
+      await app?.close();
+    } finally {
+      if (userDataDir !== undefined) rmSync(userDataDir, { recursive: true, force: true });
+    }
   });
 
   test('モードB: 練習の画面・ビューキューブ・カード・札・結果・タイムチャート', async () => {
@@ -738,6 +800,28 @@ test.describe.serial('取扱説明書の図', () => {
     await page.getByTestId('view-hint-toggle').click();
     await expect(page.getByTestId('view-hint')).toHaveCount(0);
 
+    // 実際に部品を運んでいる途中を撮る。キャンセル後にカードの操作を続ける。
+    const palette = page.getByTestId('palette-relay-my4n');
+    const paletteBox = await palette.boundingBox();
+    if (paletteBox === null) throw new Error('部品パレットが見つかりません');
+    const socketPoint = boardPoint(socketBodyPoint(), box);
+    await page.mouse.move(
+      paletteBox.x + paletteBox.width / 2,
+      paletteBox.y + paletteBox.height / 2,
+    );
+    await page.mouse.down();
+    await page.mouse.move(socketPoint.x, socketPoint.y, { steps: 12 });
+    await shoot(
+      'parts-palette',
+      {
+        1: await rectOf(palette),
+        2: rectAt(socketPoint, 52),
+      },
+      'full',
+    );
+    await page.keyboard.press('Escape');
+    await page.mouse.up();
+
     // --- socket-card: ソケットのカード（部品が乗っている状態） ---
     await page.mouse.click(
       boardPoint(socketBodyPoint(), box).x,
@@ -770,13 +854,55 @@ test.describe.serial('取扱説明書の図', () => {
     await page.mouse.move(box.x + box.width / 2, box.y + box.height - 8);
 
     // --- judge-result / timechart: 配線して通電して判定する ---
-    for (const [from, to] of SELF_HOLD_WIRES) {
+    const firstWire = SELF_HOLD_WIRES[0];
+    if (firstWire === undefined) throw new Error('配線の見本がありません');
+    const start = terminalPoint(toTerminalId(firstWire[0]), box);
+    const end = terminalPoint(toTerminalId(firstWire[1]), box);
+    await page.mouse.move(start.x, start.y);
+    await page.mouse.down();
+    await page.mouse.move(end.x, end.y, { steps: 12 });
+    await shoot('wire-drag', { 1: rectAt(start, 34), 2: rectAt(end, 34) }, 'auto');
+    await page.mouse.up();
+    for (const [from, to] of SELF_HOLD_WIRES.slice(1)) {
       const a = terminalPoint(toTerminalId(from), box);
       const b = terminalPoint(toTerminalId(to), box);
       await page.mouse.click(a.x, a.y);
       await page.mouse.click(b.x, b.y);
     }
+    const powerRects = (['breaker', 'switch'] as const).map((kind) => {
+      const footprint = findFixtureFootprint(JIPM_BOARD.footprints, kind);
+      if (footprint === undefined) throw new Error(`電源部品がありません: ${kind}`);
+      return rectAt(boardPoint(powerWellCenterMm(footprint, kind, FIXTURE_HEIGHT_MM), box), 46);
+    });
+    await shoot('power-controls', { 1: powerRects[0]!, 2: powerRects[1]! }, 'auto');
     await powerOn();
+    const pb = JIPM_BOARD.pushButtons[0];
+    const lamp = JIPM_BOARD.lamps[0];
+    if (pb === undefined || lamp === undefined) throw new Error('押しボタン・ランプがありません');
+    const pushPoint = boardPoint({ ...pb.pos, z: 4.5 }, box);
+    await page.mouse.move(pushPoint.x, pushPoint.y);
+    await page.mouse.down();
+    await page.waitForTimeout(500);
+    await page.mouse.up();
+    await shoot(
+      'pushbutton',
+      {
+        1: rectAt(pushPoint, 40),
+        2: rectAt(boardPoint({ ...lamp.pos, z: 4.5 }, box), 40),
+      },
+      'auto',
+    );
+    const overflow = page.getByTestId('toolbar-overflow-toggle');
+    if (await overflow.isVisible()) await overflow.click();
+    await shoot(
+      'workfile-menu',
+      {
+        1: await rectOf(page.getByRole('button', { name: '作業を保存', exact: true })),
+        2: await rectOf(page.getByRole('button', { name: '作業を読込', exact: true })),
+      },
+      'auto',
+    );
+    await page.keyboard.press('Escape');
     await page.getByTestId('judge-button').click();
     await expect(page.getByTestId('verdict')).toBeVisible({ timeout: 60_000 });
     await expect(page.getByTestId('verdict')).toHaveText('合格');
@@ -796,6 +922,38 @@ test.describe.serial('取扱説明書の図', () => {
       'full',
     );
 
+    await shoot(
+      'result-export',
+      {
+        1: await rectOf(page.getByTestId('result-export')),
+        2: await rectOf(page.getByTestId('result-elapsed')),
+      },
+      'full',
+    );
+    await page.getByTestId('compare-open').click();
+    const compare = page.getByTestId('compare-dialog');
+    await expect(compare).toBeVisible();
+    const compareLabels = compare.locator('[data-role="row-label"]');
+    await shoot(
+      'result-compare',
+      {
+        1: await rectOf(compareLabels.filter({ hasText: '模範' }).first()),
+        2: await rectOf(compareLabels.filter({ hasText: '自分' }).first()),
+      },
+      'full',
+    );
+    await page.getByTestId('compare-close').click();
+    await page.getByTestId('replay-open').click();
+    await expect(page.getByTestId('replay-bar')).toHaveAttribute('aria-busy', 'false');
+    await shoot(
+      'result-replay',
+      {
+        1: await rectOf(page.getByTestId('replay-bar'), 0),
+        2: await rectOf(page.getByTestId('replay-next')),
+      },
+      'full',
+    );
+    await page.getByTestId('replay-stop').click();
     await page.getByTestId('chart-enlarge-button').first().click();
     await expect(page.getByTestId('chart-modal')).toBeVisible();
     const large = page.getByTestId('chart-overlay-large');
@@ -865,8 +1023,15 @@ test.describe.serial('取扱説明書の図', () => {
     const first = problem.parts[0];
     expect(first, 'C1課題に部品がありません').toBeDefined();
     if (first === undefined) return;
+    await shoot(
+      'c1-tray',
+      {
+        1: await rectOf(page.getByTestId('check-tray').locator('h2')),
+        2: await rectOf(page.getByTestId(`plug-${first.id}`)),
+      },
+      'auto',
+    );
     await page.getByTestId(`plug-${first.id}`).click();
-    await powerOn();
     /*
      * アナログに切り替える。デジタルはオートレンジで**レンジのつまみを持たない**
      * （`panels/TesterPanel.tsx` の `kind === 'digital'` の枝）ので、`shots.json` の
@@ -889,6 +1054,28 @@ test.describe.serial('取扱説明書の図', () => {
       'auto',
     );
 
+    await page.getByTestId('probe-target-a1').scrollIntoViewIfNeeded();
+    await shoot(
+      'tester-probes',
+      {
+        1: await rectOf(page.getByTestId('probe-shortcuts').locator('p').first()),
+        2: await rectOf(page.getByTestId('probe-target-a1')),
+      },
+      'auto',
+    );
+    // 抵抗測定は無通電で行う。
+    await page.getByRole('button', { name: '0Ω ADJ', exact: true }).click();
+    await page
+      .getByRole('img', { name: 'アナログテスターの目盛', exact: true })
+      .scrollIntoViewIfNeeded();
+    await shoot(
+      'tester-analog',
+      {
+        1: await rectOf(page.getByRole('img', { name: 'アナログテスターの目盛', exact: true })),
+        2: await rectOf(page.getByRole('button', { name: '0Ω ADJ', exact: true })),
+      },
+      'auto',
+    );
     for (const part of problem.parts) {
       await page.getByTestId(`answer-${part.id}-${part.truth}`).click();
     }
@@ -909,16 +1096,26 @@ test.describe.serial('取扱説明書の図', () => {
 
     const markSheet = page.getByTestId('mark-sheet');
     await expectOnScreen(markSheet.locator('h2'));
-    await expectOnScreen(markSheet.locator('th').nth(1));
+    await expectOnScreen(markSheet.locator('details').first().locator('label').first());
     await expectOnScreen(page.getByTestId('answered-count'));
     await shoot(
       'c1-marksheet',
       {
         1: await rectOf(markSheet.locator('h2')),
-        2: await rectOf(markSheet.locator('th').nth(1)),
+        2: await rectOf(markSheet.locator('details').first().locator('label').first()),
         3: await rectOf(page.getByTestId('answered-count')),
       },
       'auto',
+    );
+    await page.getByTestId('judge-button').click();
+    await expect(page.getByTestId('mark-result-table')).toBeVisible();
+    await shoot(
+      'c1-result',
+      {
+        1: await rectOf(page.getByTestId('mark-result-table'), 0),
+        2: await rectOf(page.getByTestId('result-resume')),
+      },
+      'full',
     );
   });
 
@@ -931,6 +1128,17 @@ test.describe.serial('取扱説明書の図', () => {
     const box = await waitForBoard();
     const roles = toSocketRoles(problem.board.socketRoles);
 
+    await page.getByRole('button', { name: 'デジタル', exact: true }).click();
+    await page.getByRole('button', { name: 'DCV', exact: true }).click();
+    await page.getByTestId('probe-red').scrollIntoViewIfNeeded();
+    await shoot(
+      'c2-tester',
+      {
+        1: await rectOf(page.getByTestId('tester-modes')),
+        2: await rectOf(page.getByTestId('probe-black')),
+      },
+      'auto',
+    );
     await page.getByTestId('tool-report').click();
 
     // 1件だけ登録して「指摘一覧」に中身を作る
@@ -944,6 +1152,7 @@ test.describe.serial('取扱説明書の図', () => {
     const secondTerminal = roleTerminalPoint(roles, 'CR1.13', box);
     await page.mouse.click(secondTerminal.x, secondTerminal.y);
     await expect(page.getByTestId('report-popover')).toBeVisible();
+    await page.getByTestId('report-list').scrollIntoViewIfNeeded();
 
     await shoot(
       'c2-repair',
@@ -956,6 +1165,21 @@ test.describe.serial('取扱説明書の図', () => {
       'auto',
     );
     await page.getByTestId('report-cancel').click();
+    await page.getByRole('button', { name: '白', exact: true }).click();
+    const repairFrom = roleTerminalPoint(roles, 'CR1.6', box);
+    const repairTo = roleTerminalPoint(roles, 'TB_PL.1+', box);
+    await page.mouse.click(repairFrom.x, repairFrom.y);
+    await page.mouse.click(repairTo.x, repairTo.y);
+    await expect(page.getByTestId('added-wires')).not.toHaveText('なし');
+    await page.getByTestId('removed-wires').scrollIntoViewIfNeeded();
+    await shoot(
+      'c2-repair-complete',
+      {
+        1: await rectOf(page.getByTestId('added-wires').locator('xpath=preceding-sibling::p[1]')),
+        2: await rectOf(page.getByTestId('removed-wires').locator('xpath=preceding-sibling::p[1]')),
+      },
+      'auto',
+    );
   });
 
   test('モードD: ラダー・表記の切替・モニタ', async () => {
@@ -1004,6 +1228,15 @@ test.describe.serial('取扱説明書の図', () => {
     await page.getByTestId('notation-cancel').click();
     await expect(dialog).toHaveCount(0);
 
+    await page.getByTestId('io-outlet-note').scrollIntoViewIfNeeded();
+    await shoot(
+      'plc-io-wiring',
+      {
+        1: await rectOf(page.getByTestId('io-table').locator('summary')),
+        2: await rectOf(page.getByTestId('io-outlet-note')),
+      },
+      'auto',
+    );
     // --- plc-monitor: 変換 → 配線 → モニタ → RUN → 通電 ---
     await ladderKey('F4');
     await expect(page.getByTestId('convert-state')).toHaveText('変換に成功しました');
@@ -1080,6 +1313,58 @@ test.describe.serial('取扱説明書の図', () => {
     );
   });
 
+  test('メーカーごとの編集画面', async () => {
+    await page.getByTestId('toolbar-monitor-start').click();
+    for (const vendor of ['omron', 'jtekt', 'sharp']) {
+      await page.getByTestId('toolbar-notation').click();
+      await page.getByTestId(`notation-to-${vendor}`).click();
+      await page.getByTestId('notation-apply').click();
+      await expect(page.getByTestId('notation-dialog')).toHaveCount(0);
+      await page.getByTestId('cell-n1:0:0').click();
+      await shoot(
+        `plc-vendor-${vendor}`,
+        {
+          1: await rectOf(page.getByTestId('skin-title').locator('span').first()),
+          2: await rectOf(page.getByTestId('ladder-grid'), 0),
+        },
+        'full',
+      );
+    }
+  });
+
+  test('タイマ設定と初回ガイド', async () => {
+    await openProblem('mode-assemble', 'b-003');
+    await waitForBoard();
+    await page.getByTestId('socket-list-S5').click();
+    await page.getByTestId('mount-timer-h3y4').click();
+    const number = page.getByRole('spinbutton', { name: /T1.*数値/u });
+    await number.fill('3');
+    await number.blur();
+    const dial = number.locator('xpath=..');
+    await shoot(
+      'timer-preset',
+      {
+        1: await rectOf(dial.locator('span').first()),
+        2: await rectOf(number),
+      },
+      'auto',
+    );
+    await goHome();
+    await page.getByTestId('open-settings').click();
+    await page.getByTestId('setting-restart-tour').click();
+    await page.getByTestId('open-b-001').click();
+    await expect(page.getByTestId('tour-guide')).toBeVisible();
+    await shoot(
+      'tour-first',
+      {
+        1: await rectOf(page.getByText('3分操作ガイド', { exact: true })),
+        2: await rectOf(page.getByTestId('tour-later')),
+      },
+      'full',
+    );
+    await page.getByTestId('tour-later').click();
+  });
+
   test('設定・ホーム・課題一覧・ヘルプ', async () => {
     // --- settings ---
     await goHome();
@@ -1090,12 +1375,23 @@ test.describe.serial('取扱説明書の図', () => {
      * （`main/settings.ts` の `defaultUserContentDir()`。`--user-data-dir` では変わらない）で、
      * そのまま撮ると配る説明書に撮影した人のアカウント名が載る。共有の場所へ入れ直してから撮る。
      */
-    const userDir = join(USER_DATA_DIR, '課題');
-    mkdirSync(userDir, { recursive: true });
+    const userDir = join(
+      process.env['PUBLIC'] ?? 'C:/Users/Public',
+      '電気教育ツール',
+      '利用者課題',
+    );
     await page.getByTestId('setting-user-dir').fill(userDir);
     await page.getByTestId('setting-user-dir').blur();
     await expect(page.getByTestId('toast')).toContainText('設定を保存しました');
     await expect(page.getByTestId('setting-user-dir')).toHaveValue(userDir);
+    await shoot(
+      'settings-accessibility',
+      {
+        1: await rectOf(page.getByTestId('setting-ui-scale')),
+        2: await rectOf(page.getByTestId('setting-contrast')),
+      },
+      'auto',
+    );
     await page.getByTestId('setting-vendor').scrollIntoViewIfNeeded();
     await page.waitForTimeout(400);
     await shoot(
@@ -1160,7 +1456,7 @@ test.describe.serial('取扱説明書の図', () => {
     expect(missing, '撮れていない図があります').toEqual([]);
 
     /*
-     * 先に17枚ぶんの置き方を組んでみる。置けない図があるときは**消す前に**落ちるので、
+     * 先に全図ぶんの置き方を組んでみる。置けない図があるときは**消す前に**落ちるので、
      * 古い図が消えただけで終わる（`annotate()` の途中で落ちると図が1枚も残らない）。
      */
     for (const name of names) {

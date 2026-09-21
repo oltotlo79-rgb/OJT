@@ -24,8 +24,8 @@ export default defineConfig({
   /*
    * **`manual-shots.spec.ts` を既定から外す**（レビュー指摘 QA-02）。
    *
-   * この spec は取扱説明書の図を撮り直すので、git 追跡下の `docs/manual/images/`（PNG 52枚・
-   * 約3MB）と `docs/manual/shot-geometry.json` を丸ごと書き換える。README が案内する順
+   * この spec は取扱説明書の図を撮り直すので、git 追跡下の `docs/manual/images/`（原寸と縮小版）
+   * と `docs/manual/shot-geometry.json` を丸ごと書き換える。README が案内する順
    * （`e2e` → `dist`）で流すと、**タグ付けしたツリーではなく撮り直した図で配布物が焼かれる**。
    * 撮影は SwiftShader の実描画なのでバイト列は毎回変わる。
    *
