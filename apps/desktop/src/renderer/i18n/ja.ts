@@ -439,6 +439,31 @@ export const JA = {
     pickKindHint:
       '端子には『未配線』だけを出しています。断線・誤配線は電線を、部品不良は部品をクリックしてください',
   },
+  report: {
+    export: 'この結果を書き出す',
+    exporting: '書き出し中…',
+    saved: '結果を書き出しました',
+    title: '練習結果レポート',
+    started: '開始（今回）',
+    startedNote:
+      '開始は今回課題を開いた日時。所要時間は復元した作業を含み、動きの見直し中を除きます。',
+    unknown: '記録なし',
+    checkDetails: '判定結果の詳細を確認してください。',
+    failedParts: '部品の判定に見直す箇所があります。',
+    passedParts: 'すべての部品を正しく判定できました。',
+    faultReports: '故障の指摘',
+    matched: '一致',
+    missed: '見逃し',
+    extra: '余分な指摘',
+    repairs: '修復の確認',
+    modifications: '改造',
+    addedWires: '追加した電線',
+    ladderErrors: 'ラダーの変換エラー',
+    schematicHints: '回路図ヒント',
+    referenceOnly: '危険操作の回数・所要時間・ヒントの使用は参考表示です。',
+    footer: '今回の判定の要約です。すべての差分と直し方はアプリの結果画面で確認できます。',
+    redacted: '（表示省略）',
+  },
   result: {
     title: '判定結果',
     passed: '合格',
@@ -1545,7 +1570,9 @@ export function verdictMismatchText(
 
 /** 1行要約のうち「静的チェックで止まっている」ことの1文。指摘 PR-03 */
 export function verdictCheckText(title: string, detail: string): string {
-  return `${title}が守れていません（${detail}）。`;
+  return detail.trim() === ''
+    ? `${title}が守れていません。`
+    : `${title}が守れていません（${detail}）。`;
 }
 
 /** 1行要約のうち「最初にどこを直すか」の1文。指摘 PR-03 */

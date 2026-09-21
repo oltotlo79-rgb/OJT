@@ -1,3 +1,4 @@
+import { PAPER_TOKENS } from '../src/shared/paper-style.mjs';
 import MarkdownIt from 'markdown-it';
 import { anchorIdOf, chapterAnchorIdOf } from '../src/renderer/help/anchor-id.mjs';
 
@@ -269,18 +270,7 @@ function helpModuleOf(chapters, sections, files, availableImages) {
  */
 const PRINT_CSS = `
 @page { size: A4; margin: 18mm 16mm 20mm; }
-:root {
-  color-scheme: light;
-  --ink: #14181f;
-  --sub: #4a5666;
-  --rule: #9aa5b4;
-  --hair: #c7d0db;
-  --tint: #eef2f7;
-  --accent: #1f5fa8;
-  --caution: #a4660b;
-  --tip: #1f5fa8;
-  --forbid: #b3261e;
-}
+${PAPER_TOKENS}
 * { box-sizing: border-box; }
 body {
   margin: 0 auto;

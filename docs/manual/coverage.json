@@ -1383,6 +1383,12 @@
       "section": "screens/結果の画面"
     },
     {
+      "testid": "result-export",
+      "screen": "結果",
+      "label": "この結果を書き出す",
+      "section": "screens/この結果を書き出す"
+    },
+    {
       "testid": "result-hints",
       "screen": "結果",
       "label": "ヒントを使った回数",
@@ -2834,6 +2840,30 @@
     },
     {
       "key": "MSG.manual.openFailed",
+      "section": "troubleshooting/こう表示されたら"
+    },
+    {
+      "key": "MSG.resultExport.invalid",
+      "section": "troubleshooting/こう表示されたら"
+    },
+    {
+      "key": "MSG.resultExport.busy",
+      "section": "troubleshooting/こう表示されたら"
+    },
+    {
+      "key": "MSG.resultExport.saveTitle",
+      "section": "troubleshooting/こう表示されたら"
+    },
+    {
+      "key": "MSG.resultExport.pdfFilter",
+      "section": "troubleshooting/こう表示されたら"
+    },
+    {
+      "key": "MSG.resultExport.htmlFilter",
+      "section": "troubleshooting/こう表示されたら"
+    },
+    {
+      "key": "MSG.resultExport.extension",
       "section": "troubleshooting/こう表示されたら"
     }
   ]

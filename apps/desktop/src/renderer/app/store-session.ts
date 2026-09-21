@@ -389,6 +389,8 @@ export interface SessionSlice {
   chartSpecs: TimeChartSignalSpec[];
   /** ライブのタイムチャート用の遷移点（信号名 → 変化点の列）。§8.2 */
   liveTransitions: Record<string, Array<{ tMs: number; value: boolean }>>;
+  /** 今回課題を開いた実日時。所要時間の計算には使わない。 */
+  sessionOpenedAtMs: number;
   startedAtMs: number;
   elapsedMs: number;
   /**
@@ -524,6 +526,7 @@ export const createSessionSlice: StateCreator<AppState, [], [], SessionSlice> = 
   chatters: [],
   chartSpecs: [],
   liveTransitions: {},
+  sessionOpenedAtMs: 0,
   startedAtMs: 0,
   elapsedMs: 0,
   restoredHazardCount: 0,
@@ -657,6 +660,7 @@ export const createSessionSlice: StateCreator<AppState, [], [], SessionSlice> = 
       reportedDroppedTicks: 0,
       droppedTicksNotice: undefined,
       schematicVisible,
+      sessionOpenedAtMs: Date.now(),
       startedAtMs: Date.now(),
       elapsedMs: 0,
       restoredHazardCount: 0,
@@ -961,6 +965,7 @@ export const createSessionSlice: StateCreator<AppState, [], [], SessionSlice> = 
       restartAttempts: 0,
       pendingWorkFile: undefined,
       logLines: [],
+      sessionOpenedAtMs: 0,
       startedAtMs: 0,
       elapsedMs: 0,
       restoredHazardCount: 0,

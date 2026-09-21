@@ -26,7 +26,7 @@ import { dirname } from 'node:path';
  * 一時ファイルを `rmSync(temp, { force: true })` で片付けてから例外を投げ直す（呼び出し側の
  * `.tmp` 残留テストが緑になる条件。DM-6）。
  */
-export function writeFileAtomic(target: string, content: string): void {
+export function writeFileAtomic(target: string, content: string | Uint8Array): void {
   mkdirSync(dirname(target), { recursive: true });
   const temp = `${target}.tmp`;
   try {

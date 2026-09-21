@@ -105,3 +105,19 @@ describe('renderer の CSP（DM-9）', () => {
     expect(csp).not.toContain('https://');
   });
 });
+
+describe('結果PDFの印刷窓も権限を持たない', () => {
+  const source = readFileSync(join(APP_ROOT, 'src/main/result-export.ts'), 'utf8');
+  it.each([
+    'javascript: false',
+    'contextIsolation: true',
+    'nodeIntegration: false',
+    'sandbox: true',
+    'setPermissionRequestHandler',
+    'setPermissionCheckHandler',
+    'onBeforeRequest',
+    "script-src 'none'",
+  ])('%s が印刷専用窓にもある', (needle) => {
+    expect(source).toContain(needle);
+  });
+});

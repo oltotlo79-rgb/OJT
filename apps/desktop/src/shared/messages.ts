@@ -10,6 +10,14 @@
 
 /** main プロセスの文言。 */
 export const MSG = {
+  resultExport: {
+    invalid: '結果の書き出し内容を読み取れませんでした。判定し直してください。',
+    busy: '結果を書き出しています。完了するまでお待ちください。',
+    saveTitle: 'この結果を書き出す',
+    pdfFilter: 'PDF文書',
+    htmlFilter: 'HTML文書',
+    extension: '保存するファイル名の末尾を .pdf または .html にしてください。',
+  },
   workFile: {
     /** 作業ファイルの中身がオブジェクトでない。§13 #8 */
     badShape: '作業ファイルの形式が不正です',
@@ -146,6 +154,7 @@ const ERRNO_TEXT: Readonly<Record<string, string>> = {
   ENOSPC: 'ディスクの空き容量が不足しています',
   EBUSY: '他のプログラムがファイルを使用中です',
   EMFILE: '同時に開けるファイルが多すぎます',
+  ETIMEDOUT: '処理が時間内に完了しませんでした。もう一度お試しください',
 };
 
 /** 既知の `code` を持たない fs エラーの既定の理由文。 */

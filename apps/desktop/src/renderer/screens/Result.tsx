@@ -1,5 +1,6 @@
 import { CompareEntry } from '../result/CompareView.js';
 import { ReplayEntry } from '../result/ReplayEntry.js';
+import { ExportEntry } from '../result/ExportEntry.js';
 import { JIPM_BOARD } from '@ojt/board-model';
 import {
   isAssembleProblem,
@@ -53,6 +54,7 @@ export function Result(): JSX.Element {
       <div className={`${styles.screenHeader} ${styles.resultHeader}`}>
         <ReplayEntry />
         <CompareEntry />
+        <ExportEntry />
         <HelpButton />
       </div>
       <ResultBody />

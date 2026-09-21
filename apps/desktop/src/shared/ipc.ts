@@ -5,12 +5,13 @@ import { problemIssueText } from './messages.js';
 /**
  * main ⇄ renderer の IPC 契約。設計仕様 §4.3。
  * チャネルは `content:list` / `content:read` / `workfile:save` / `workfile:load` /
- * `settings:get` / `settings:set` / `file:saveText` / `manual:open` の **8本のみ**。
- * preload はこの8本だけを `window.ojt` に出す。
+ * `settings:get` / `settings:set` / `file:saveText` / `manual:open` / `result:export` の **9本のみ**。
+ * preload はこの9本だけを `window.ojt` に出す。
  */
 
 /**
- * IPCチャネル名（この8本以外を足さない。§4.3）。
+ * IPCチャネル名（この9本以外を足さない。§4.3）。
+ * Phase 7で利用者が結果を1回書き出す `result:export` を追加（Task 41）。
  * Phase 4 で `file:saveText` を足して7本になった（Plan 4B 意図的な差分 #1）。
  * 命令語リストの保存（§10.7「ファイル出力先は利用者が選ぶ」）には保存ダイアログが要り、
  * renderer からはダイアログを開けないためである。
@@ -28,6 +29,7 @@ export const IPC_CHANNELS = {
   textfileSave: 'file:saveText',
   // --- Plan 6 Task 7 ---
   manualOpen: 'manual:open',
+  resultExport: 'result:export',
   // --- /Plan 6 Task 7 ---
 } as const;
 
@@ -273,6 +275,8 @@ export interface OjtApi {
   // --- Plan 6 Task 7 ---
   /** 同梱の取扱説明書（PDF）を OS の既定ビューアで開く。取扱説明書 設計 §8 */
   openManual: () => Promise<OpenManualResult>;
+  /** 利用者が選んだ場所へ今回の結果だけを書き出す。履歴は持たない。 */
+  exportResult: (request: ResultExportRequest) => Promise<ResultExportResult>;
   // --- /Plan 6 Task 7 ---
 }
 
@@ -324,3 +328,10 @@ export function toSummary(problem: SupportedProblem, source: 'builtin' | 'user')
     source,
   };
 }
+
+/** 1 MiBまでの外部参照のない結果HTML。保存先はmainのダイアログで選ぶ。 */
+export interface ResultExportRequest {
+  html: string;
+  suggestedName: string;
+}
+export type ResultExportResult = { ok: true; canceled: boolean } | { ok: false; message: string };

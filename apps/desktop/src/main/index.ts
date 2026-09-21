@@ -5,7 +5,7 @@ import { isAppUrl } from './navigation.js';
 
 /**
  * Electron main。設計仕様 §4.3 / §12。
- * `nodeIntegration` は無効、`contextIsolation` は有効。renderer には preload の6チャネルだけを渡す。
+ * `nodeIntegration` は無効、`contextIsolation` は有効。renderer には preload の9チャネルだけを渡す。
  * 完全オフライン（§1.2）のため、外部URLの読込は一切しない。
  *
  * 1D2-a のレビュー指摘を受けた強化:
@@ -75,7 +75,7 @@ function createWindow(): BrowserWindow {
        * renderer を OS のサンドボックスに入れる（DM-4。所有者決定 2026-09-20 (a)）。
        * preload は `electron` の `contextBridge` / `ipcRenderer` しか使っていないので、
        * サンドボックスの中でもそのまま動く。Node の `fs` などが要る仕事は元から全部
-       * main 側（§4.3 の8チャネル）にある。
+       * main 側（§4.3 の9チャネル）にある。
        */
       sandbox: true,
       /** `<webview>` は使わない。埋め込みブラウザの面をそもそも持たせない。 */

@@ -6,6 +6,8 @@ import {
   type OjtApi,
   type OpenManualResult,
   type ProblemListPayload,
+  type ResultExportRequest,
+  type ResultExportResult,
   type SaveTextRequest,
   type SaveTextResult,
   type WorkFileLoadRequest,
@@ -16,11 +18,13 @@ import {
 
 /**
  * preload。設計仕様 §4.3。
- * `contextBridge` で §4.3 の8チャネルだけを `window.ojt` として公開する。
+ * `contextBridge` で §4.3 の9チャネルだけを `window.ojt` として公開する。
  * `ipcRenderer` そのものは決して露出しない。
  */
 
 const api: OjtApi = {
+  exportResult: (request: ResultExportRequest) =>
+    ipcRenderer.invoke(IPC_CHANNELS.resultExport, request) as Promise<ResultExportResult>,
   listProblems: () => ipcRenderer.invoke(IPC_CHANNELS.contentList) as Promise<ProblemListPayload>,
   readProblem: (id: string) => ipcRenderer.invoke(IPC_CHANNELS.contentRead, id),
   saveWorkFile: (request: WorkFileSaveRequest) =>
