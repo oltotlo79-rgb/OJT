@@ -1,12 +1,21 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { JIPM_BOARD } from '@ojt/board-model';
+import { toTerminalId } from '@ojt/circuit-sim';
 import { expect, test } from '@playwright/test';
 import { SHOT_DIR } from './app.js';
 import { launchPortable } from './packaged-app.js';
+import {
+  boardPoint,
+  SELF_HOLD_WIRES,
+  selectView,
+  terminalPoint,
+  wireCountText,
+} from './projection.js';
 
 /** distの後に e2e:packaged で実行。ユーザーの設定やインストール先を使わない。 */
-test('EXE1個から72課題・3D判定・ヘルプ・PLCを開き、終了時に展開物を片付ける', async () => {
+test('EXE1個から初回ガイド・72課題・回路の合格・ヘルプ・PLCと終了時の後始末を確認する', async () => {
   const app = await launchPortable();
   let extracted: string | undefined;
   try {
@@ -36,6 +45,32 @@ test('EXE1個から72課題・3D判定・ヘルプ・PLCを開き、終了時に
     await page.getByTestId('mode-assemble').click();
     await page.getByTestId('open-b-001').click();
     await expect(page.locator('[data-testid="viewport"] canvas')).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByTestId('tour-guide')).toHaveAttribute('data-step', 'rotate');
+    await page.getByTestId('tour-later').click();
+    await selectView(page, '正面');
+    const box = await page.locator('[data-testid="viewport"] canvas').boundingBox();
+    if (!box) throw new Error('配布版の3D表示の位置を取得できません');
+    const socket = JIPM_BOARD.sockets[0]!;
+    const center = boardPoint(
+      {
+        x: socket.origin.x + socket.bodyMm.width / 2,
+        y: socket.origin.y + socket.bodyMm.length / 2,
+        z: 9,
+      },
+      box,
+    );
+    await page.mouse.click(center.x, center.y);
+    await expect(page.getByText('S1（CR1）を選択中')).toBeVisible();
+    await page.getByRole('button', { name: '装着', exact: true }).first().click();
+    await expect(page.getByTestId('operation-log')).toContainText('S1 に リレー MY4N を装着');
+    // ストアへ模範解を注入せず、実際の端子クリックだけで回路を完成させる。
+    for (const pair of SELF_HOLD_WIRES) {
+      for (const terminal of pair) {
+        const point = terminalPoint(toTerminalId(terminal), box);
+        await page.mouse.click(point.x, point.y);
+      }
+    }
+    await expect(page.getByTestId('status-overlay')).toContainText(wireCountText(12, 3));
     await page.getByTestId('power-breaker').click();
     await page.getByTestId('power-switch').click();
     await expect(page.getByTestId('status-overlay')).toContainText('通電中');
@@ -44,6 +79,9 @@ test('EXE1個から72課題・3D判定・ヘルプ・PLCを開き、終了時に
     await page.keyboard.press('Escape');
     await page.getByTestId('judge-button').click();
     await expect(page.getByTestId('verdict')).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByTestId('verdict')).toHaveText('合格');
+    await expect(page.getByTestId('no-mismatch')).toBeVisible();
+    await page.screenshot({ path: join(SHOT_DIR, 'portable-result-pass.png') });
     await page.getByRole('button', { name: '課題一覧へ', exact: true }).click();
     await page.getByRole('button', { name: 'ホームへ戻る', exact: true }).click();
     await page.getByTestId('mode-plc').click();

@@ -152,29 +152,37 @@ describe('採点と同じ波形比較', () => {
       'unknown-signal',
     );
   });
-  it('実際のB・C2・Dの判定結果にある差分と完全一致する', () => {
-    const b = BUILTIN_PROBLEMS[0]!;
-    const built = buildReferenceSession(b, JIPM_BOARD);
-    if (!built.ok) throw new Error('reference');
-    built.value.session.wires.pop();
-    const bj = judgeAssemble(b, JIPM_BOARD, built.value.session);
-    if (!bj.ok) throw new Error('judge');
-    const c = BUILTIN_INSPECT_REPAIR_PROBLEMS[0]!;
-    const circuit = buildInspectRepairCircuit(c, JIPM_BOARD);
-    if (!circuit.ok) throw new Error('circuit');
-    const cj = judgeInspectRepair(c, JIPM_BOARD, circuit.value, []);
-    if (!cj.ok) throw new Error('judge');
-    const d = BUILTIN_PLC_PROBLEMS[2]!;
-    const plc = buildPlcReferenceSession(d, JIPM_BOARD);
-    if (!plc.ok) throw new Error('plc');
-    plc.value.session.wires.pop();
-    const dj = judgePlc(d, JIPM_BOARD, plc.value.session, d.referenceLadder);
-    if (!dj.ok) throw new Error('judge');
-    for (const [problem, result] of [
-      [b, bj.value],
-      [c, cj.value],
-      [d, dj.value],
-    ] as const) {
+  // 実エンジンの採点を含む統合検証。全件並列実行やカバレッジ計装時も
+  // 各モードの失敗を識別できるよう分離し、この検証だけに実行予算を設ける。
+  it.each(['B', 'C2', 'D'] as const)(
+    '実際の%sの判定結果にある差分と完全一致する',
+    (mode) => {
+      const [problem, result] = (() => {
+        if (mode === 'B') {
+          const b = BUILTIN_PROBLEMS[0]!;
+          const built = buildReferenceSession(b, JIPM_BOARD);
+          if (!built.ok) throw new Error('reference');
+          built.value.session.wires.pop();
+          const bj = judgeAssemble(b, JIPM_BOARD, built.value.session);
+          if (!bj.ok) throw new Error('judge');
+          return [b, bj.value] as const;
+        }
+        if (mode === 'C2') {
+          const c = BUILTIN_INSPECT_REPAIR_PROBLEMS[0]!;
+          const circuit = buildInspectRepairCircuit(c, JIPM_BOARD);
+          if (!circuit.ok) throw new Error('circuit');
+          const cj = judgeInspectRepair(c, JIPM_BOARD, circuit.value, []);
+          if (!cj.ok) throw new Error('judge');
+          return [c, cj.value] as const;
+        }
+        const d = BUILTIN_PLC_PROBLEMS[2]!;
+        const plc = buildPlcReferenceSession(d, JIPM_BOARD);
+        if (!plc.ok) throw new Error('plc');
+        plc.value.session.wires.pop();
+        const dj = judgePlc(d, JIPM_BOARD, plc.value.session, d.referenceLadder);
+        if (!dj.ok) throw new Error('judge');
+        return [d, dj.value] as const;
+      })();
       expect(
         compareCharts(
           result.charts.expected,
@@ -182,8 +190,9 @@ describe('採点と同じ波形比較', () => {
           problem.judge.tolerance,
         ).flatMap((row) => row.differences),
       ).toEqual(result.mismatches);
-    }
-  });
+    },
+    30_000,
+  );
 });
 
 describe('模範の開示範囲', () => {

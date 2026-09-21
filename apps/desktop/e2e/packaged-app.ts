@@ -26,10 +26,7 @@ export async function launchPortable(): Promise<PackagedApp> {
   const userData = join(root, 'profile');
   mkdirSync(received);
   mkdirSync(userData);
-  writeFileSync(
-    join(userData, 'settings.json'),
-    JSON.stringify({ tourDone: true, restorePrompt: false }),
-  );
+  writeFileSync(join(userData, 'settings.json'), JSON.stringify({ restorePrompt: false }));
   const name = 'DenkiKyoikuTool-' + pkg.version + '-x64-Portable.exe';
   const exe = join(received, name);
   let browser: Browser | undefined;
