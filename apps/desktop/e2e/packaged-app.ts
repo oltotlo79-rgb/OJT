@@ -37,12 +37,9 @@ export async function launchPortable(): Promise<PackagedApp> {
     if (closed) return;
     closed = true;
     const context = browser?.contexts()[0];
-    const page = context?.pages()[0];
-    if (context && page) {
-      const cdp = await context.newCDPSession(page).catch(() => undefined);
-      await cdp?.send('Browser.close').catch(() => {});
-    }
-    await browser?.close().catch(() => {});
+    // Chromium自体の終了命令ではなく、利用者と同じく画面を閉じる。
+    // Electronのwindow-all-closed → app.quitを通し、NSISのExecWaitへ戻す。
+    await Promise.all(context?.pages().map((page) => page.close()) ?? []);
     // exitより後のcloseを待つ。同期削除でイベントループを塞ぐとWindowsのEXEハンドルが残る。
     if (childClosed) await Promise.race([childClosed, delay(15_000)]);
     if (child?.exitCode === null && child.pid) {
@@ -54,6 +51,7 @@ export async function launchPortable(): Promise<PackagedApp> {
     }
     if (dirname(root) !== tmpdir()) throw new Error('一時データの削除範囲が違います');
     if (childClosed) await childClosed;
+    await browser?.close().catch(() => {});
     await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
   };
   try {

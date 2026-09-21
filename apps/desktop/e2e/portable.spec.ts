@@ -95,5 +95,10 @@ test('EXE1個から初回ガイド・72課題・回路の合格・ヘルプ・PL
     await app.close();
   }
   if (!extracted) throw new Error('展開先の検査が完了していません');
-  await expect.poll(() => existsSync(extracted), { timeout: 10_000 }).toBe(false);
+  await expect
+    .poll(() => existsSync(extracted), {
+      timeout: 10_000,
+      message: `終了後に一時展開先が残っています: ${extracted}`,
+    })
+    .toBe(false);
 });
