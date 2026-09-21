@@ -8,6 +8,7 @@ import {
   type ElectronApplication,
   type Page,
 } from '@playwright/test';
+import { captureReady } from './capture.js';
 
 /**
  * E2E の起動の定型（レビュー指摘 QA-12 / QA-13）。
@@ -152,12 +153,14 @@ export async function dismissRestorePrompt(
  */
 export async function shot(app: ElectronApplication, name: string): Promise<void> {
   mkdirSync(SHOT_DIR, { recursive: true });
-  const base64 = await app.evaluate(async ({ BrowserWindow }) => {
-    const window = BrowserWindow.getAllWindows()[0];
-    if (window === undefined) throw new Error('ウィンドウがありません');
-    const image = await window.capturePage();
-    return image.toPNG().toString('base64');
-  });
+  const base64 = await captureReady(() =>
+    app.evaluate(async ({ BrowserWindow }) => {
+      const window = BrowserWindow.getAllWindows()[0];
+      if (window === undefined) throw new Error('ウィンドウがありません');
+      const image = await window.capturePage();
+      return image.toPNG().toString('base64');
+    }),
+  );
   writeFileSync(join(SHOT_DIR, `${name}.png`), Buffer.from(base64, 'base64'));
 }
 

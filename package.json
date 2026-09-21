@@ -15,7 +15,9 @@
     "verify": "pnpm typecheck && pnpm lint && pnpm -r test",
     "prepare": "node scripts/install-hooks.mjs",
     "check:push": "node scripts/check-push.mjs",
-    "test:push-gate": "node --test scripts/check-push.test.mjs"
+    "test:push-gate": "node --test scripts/check-push.test.mjs",
+    "test:release-gate": "node --test scripts/publish-release.test.mjs",
+    "release:publish": "node scripts/publish-release.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

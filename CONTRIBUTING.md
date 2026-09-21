@@ -138,6 +138,10 @@ OJT_SHOT_DIR=<出力先> pnpm --filter @ojt/desktop exec playwright test e2e/ui-
 6. `docs/releases/<version>.md` にリリースノートを書き、「やっていないこと」を明記する。
 7. 利用者の明示の指示がある場合に限り `git tag` と GitHub Release を行う（タグ付け・公開は
    明示の指示があるタスクのみが行う）。
+   タグは注釈付きで作り、GitHub Releaseはまず下書きにして検証済みEXEを添付する。
+   mainとタグの**対象SHAの最新CIが両方完了・成功してから** `pnpm release:publish` で公開する。
+   このコマンドは古いSHAの成功、同じSHAの古い成功、実行中・失敗・中断、添付EXEの
+   SHA256不一致を拒否する。公開済み版・既存タグは上書きせず、新しい版で修正する。
 
 ## 10. 商標・画像の扱い
 

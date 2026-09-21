@@ -74,7 +74,13 @@ export function checkPlan(files, packages) {
     ),
   );
   const shared = source.filter((path) => path.startsWith('packages/'));
-  const checks = [{ cwd: '.', args: ['--test', 'scripts/check-push.test.mjs'], node: true }];
+  const checks = [
+    {
+      cwd: '.',
+      args: ['--test', 'scripts/check-push.test.mjs', 'scripts/publish-release.test.mjs'],
+      node: true,
+    },
+  ];
   for (const workspace of [...packages.map((name) => `packages/${name}`), 'apps/desktop']) {
     const relevant = source.filter((path) => path.startsWith(`${workspace}/`));
     if (workspace === 'apps/desktop') {

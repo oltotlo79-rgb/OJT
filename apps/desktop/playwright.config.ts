@@ -11,14 +11,12 @@ export default defineConfig({
   expect: { timeout: 20_000 },
   fullyParallel: false,
   workers: 1,
-  // `capturePage()` の直後だとコンポジタがまだ準備できておらず `UnknownVizError` に
-  // なることがまれにある（既知のflake）。1回だけ自動再試行する。
-  retries: 1,
+  // 撮影準備の待機はcaptureReadyに限定。操作・判定の失敗を再実行で隠さない。
+  retries: 0,
   // `test.only` の置き忘れが CI をすり抜けないようにする（レビュー指摘 QA-04）
   forbidOnly: process.env['CI'] !== undefined,
-  // 失敗したときに原因が読めるように残す（QA-04）。`retries: 1` があるので
-  // `on-first-retry` の追加コストはほぼゼロ。`test-results/` は `.gitignore` 済み。
-  use: { trace: 'on-first-retry', screenshot: 'only-on-failure' },
+  // 初回の失敗から操作履歴を残す。`test-results/` は `.gitignore` 済み。
+  use: { trace: 'retain-on-failure', screenshot: 'only-on-failure' },
   reporter: process.env['CI'] !== undefined ? [['list'], ['html', { open: 'never' }]] : [['list']],
   outputDir: './test-results',
   /*
