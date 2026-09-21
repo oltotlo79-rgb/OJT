@@ -48,7 +48,7 @@
   gap: 2px;
   height: 24px;
   padding: 0 6px;
-  font-size: 11px;
+  font-size: max(12px, 0.75rem);
   line-height: 1;
   white-space: nowrap;
   overflow: hidden;
@@ -172,7 +172,7 @@
 }
 
 .modalTitle {
-  font-size: 16px;
+  font-size: 1rem;
   margin: 0;
 }
 
@@ -181,7 +181,7 @@
   border: 1px solid var(--line);
   border-radius: 4px;
   color: var(--text);
-  font-size: 18px;
+  font-size: 1.125rem;
   line-height: 1;
   padding: 2px 10px;
 }

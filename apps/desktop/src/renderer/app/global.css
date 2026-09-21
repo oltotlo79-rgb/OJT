@@ -1,6 +1,7 @@
 /* アプリ全体の素のCSS。設計仕様 §12。CSSフレームワークは使わない。 */
 
 :root {
+  --ui-scale: 1;
   --bg: #141820;
   --panel: #1e232d;
   --panel-2: #262c38;
@@ -30,6 +31,10 @@
   box-sizing: border-box;
 }
 
+html {
+  font-size: calc(16px * var(--ui-scale));
+}
+
 html,
 body,
 #root {
@@ -40,7 +45,7 @@ body,
 body {
   background: var(--bg);
   color: var(--text);
-  font-size: 14px;
+  font-size: max(12px, 0.875rem);
   overflow: hidden;
   user-select: none;
   /*
@@ -136,7 +141,7 @@ button[aria-pressed='true'] {
   border: 1px solid var(--accent);
   border-radius: 3px;
   color: var(--text);
-  font-size: 12px;
+  font-size: max(12px, 0.75rem);
   padding: 2px 6px;
   white-space: nowrap;
   pointer-events: none;
@@ -154,7 +159,7 @@ button[aria-pressed='true'] {
   color: #10151c;
   background: rgba(231, 235, 242, 0.85);
   border-radius: 2px;
-  font-size: 12px;
+  font-size: max(12px, 0.75rem);
   font-weight: 700;
   padding: 1px 4px;
   white-space: nowrap;
@@ -165,7 +170,7 @@ button[aria-pressed='true'] {
   background: rgba(231, 235, 242, 0.6);
   font-weight: 400;
   /* UXレビュー: 画面上11px未満の文字は禁止（§バインディングのデザイン規則）。10px→11px */
-  font-size: 12px;
+  font-size: max(12px, 0.75rem);
 }
 
 .part-label {
@@ -174,4 +179,17 @@ button[aria-pressed='true'] {
 
 .part-label.timer {
   background: rgba(232, 194, 42, 0.95);
+}
+
+/* 補助説明と細線も背景から判別できる高コントラスト設定。 */
+:root[data-contrast='high'] {
+  --bg: #080f19;
+  --panel: #111e2e;
+  --panel-2: #203147;
+  --text: #ffffff;
+  --muted: #d0dceb;
+  --line: #91a6bf;
+  --accent: #6cddff;
+  --paper-muted: #243245;
+  --paper-rule: #64748b;
 }

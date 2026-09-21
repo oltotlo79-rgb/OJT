@@ -10,6 +10,7 @@ import { renderRoute } from './routes.js';
 import { useStore, type Route } from './store.js';
 import { formatElapsed, formatSavedAt } from '../../worker/runtime.js';
 import styles from './app.module.css';
+import { applyUiPreferences } from './ui-preferences.js';
 
 /**
  * アプリの外枠。設計仕様 §12.1 / §13 #5 / §12.3 / §15。
@@ -107,6 +108,7 @@ export function App(): JSX.Element {
     if (api === undefined) return;
     void api.getSettings().then(
       (settings) => {
+        applyUiPreferences(settings);
         sounds.configure({ enabled: settings.soundEnabled, volume: settings.soundVolume });
         useStore.getState().applyLadderSettings({
           gridCols: settings.ladderGridCols,

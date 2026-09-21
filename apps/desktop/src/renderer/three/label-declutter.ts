@@ -1,4 +1,6 @@
-import { useFrame, useThree } from '@react-three/fiber';
+import { useThree } from '@react-three/fiber';
+import { useEffect } from 'react';
+import { UI_PREFERENCES_EVENT } from '../app/ui-preferences.js';
 
 /**
  * 3D盤の上に載る名札（drei の `<Html>` で出す `.block-label`）の**重なり取り**。
@@ -10,8 +12,8 @@ import { useFrame, useThree } from '@react-three/fiber';
  * なり、やがてぶつかる。モードB「並べて」とモードDの3Dペインがちょうどその形で、
  * `span.block-label ∩ span.block-label`／`∩ status-overlay` が致命 100 件超を占めていた。
  *
- * 直し方は「小さくする」ではなく「**入らないものは出さない**」。11px を下回る名札を作ると
- * デザイン規則（画面上 11px 以上）に反するので、大きさは変えずに、重なる名札を
+ * 直し方は「小さくする」ではなく「**入らないものは出さない**」。12px を下回る名札を作ると
+ * デザイン規則（画面上 12px 以上）に反するので、大きさは変えずに、重なる名札を
  * `visibility: hidden` で引っ込める。どれを残すかは `data-label-rank`（小さいほど残る）で、
  * 機種名 → 壁コンセント → 固定機器 → 端子台 → 銘板・モジュール名、の順に譲る。
  * 引っ込めた名札も**レイアウトは残る**（`visibility`）ので、次のフレームでも同じ判定になり、
@@ -115,42 +117,47 @@ export function applyLabelVisibility(
   return written;
 }
 
-/**
- * 名札の重なり取りを毎フレーム（正確には**視点か名札の顔ぶれが変わったフレームだけ**）行う。
- *
- * `<Canvas>` の**いちばん最後の子**として置くこと。drei の `<Html>` は同じ優先度の
- * `useFrame` で名札の位置を書くので、最後に登録されたこの効果はその**後**に走る
- * （`frameloop="demand"` なので、止まっている間は1度も走らない）。
- */
+/** DOM上の配置が確定したあとに測る。描画が止まっていても名札の追加・文字拡大に追随する。 */
+export function observeLabelLayout(scope: Element): () => void {
+  let frame = 0;
+  const measure = (): void => {
+    frame = 0;
+    const labels = [...scope.querySelectorAll<HTMLElement>(LABEL_SELECTOR)];
+    const candidates = labels.map((el) => ({ rank: rankOf(el), rect: rectOf(el) }));
+    const reserved = [...scope.querySelectorAll<HTMLElement>(RESERVED_SELECTOR)].map(rectOf);
+    applyLabelVisibility(labels, pickVisibleLabels(candidates, reserved));
+  };
+  const schedule = (): void => {
+    if (frame === 0) frame = requestAnimationFrame(measure);
+  };
+  // Htmlのtransformが書かれたあとに計測。自分のvisibility書込による再通知は差分0で止まる。
+  const mutation = new MutationObserver(schedule);
+  mutation.observe(scope, {
+    childList: true,
+    subtree: true,
+    attributes: true,
+    attributeFilter: ['style', 'class'],
+    characterData: true,
+  });
+  const resize = new ResizeObserver(schedule);
+  resize.observe(scope);
+  window.addEventListener(UI_PREFERENCES_EVENT, schedule);
+  schedule();
+  return () => {
+    mutation.disconnect();
+    resize.disconnect();
+    cancelAnimationFrame(frame);
+    window.removeEventListener(UI_PREFERENCES_EVENT, schedule);
+  };
+}
+
 export function LabelDeclutter(): null {
   const gl = useThree((state) => state.gl);
-  useFrame(() => {
-    /*
-     * 探す範囲は**3Dビューポートそのもの**にする（`e2e/ui-quality.spec.ts` の `HUD_SELECTOR`
-     * と同じ範囲）。drei の `<Html>` がどの入れ物へ描き出すかは版で変わる
-     * （`gl.domElement.parentNode` の一段上に置かれることがあり、キャンバスの親だけを見ると
-     * 名札が1枚も見つからない）ので、キャンバスの親には頼らない。
-     */
+  useEffect(() => {
     const canvas = gl.domElement;
-    const scope = canvas.closest('[data-testid="viewport"]') ?? canvas.ownerDocument.body;
-    const labels = [...scope.querySelectorAll<HTMLElement>(LABEL_SELECTOR)];
-    const reservedEls = [...scope.querySelectorAll<HTMLElement>(RESERVED_SELECTOR)];
-    /*
-     * 「視点が変わったフレームだけ測る」という近道は取らない。drei の `<Html>` が名札を
-     * 最初に置くのは**マウント後の何フレームか先**で、カメラも大きさも変わらないまま位置だけが
-     * 決まることがある。視点を鍵にして省くと、その1回を取りこぼしたまま二度と測り直さず、
-     * 名札が重なったまま残る（バッチEの実測: TOYOPUC のラックで全部重なったまま）。
-     * `frameloop="demand"` なので走るのは**実際に描いたフレームだけ**、測るのは十数枚の
-     * `getBoundingClientRect()` である。ただし**書き戻しは前回と違うときだけ**にする
-     * （3D-22）。毎フレーム `visibility` を書くと、そのたびにレイアウトが汚れ、次のフレームの
-     * `getBoundingClientRect()` が強制同期レイアウトを起こす。名札の顔ぶれが落ち着いた
-     * あとは書き込みが 0 件になるので、測るだけの安い処理に戻る。
-     */
-    // 測る（読み）をぜんぶ済ませてから `visibility` を書く
-    const candidates = labels.map((el) => ({ rank: rankOf(el), rect: rectOf(el) }));
-    const reserved = reservedEls.map(rectOf);
-    const visible = pickVisibleLabels(candidates, reserved);
-    applyLabelVisibility(labels, visible);
-  });
+    return observeLabelLayout(
+      canvas.closest('[data-testid="viewport"]') ?? canvas.ownerDocument.body,
+    );
+  }, [gl]);
   return null;
 }

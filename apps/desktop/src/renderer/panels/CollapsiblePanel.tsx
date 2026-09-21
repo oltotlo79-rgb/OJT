@@ -1,4 +1,4 @@
-import { useEffect, useState, type JSX, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type JSX, type ReactNode } from 'react';
 import styles from './panels.module.css';
 
 /** 課題・道具・PLC補助欄で共通の、キーボードでも開閉できるパネル。 */
@@ -24,8 +24,10 @@ export function CollapsiblePanel({
   children: ReactNode;
 }): JSX.Element {
   const [expanded, setExpanded] = useState(open);
+  const previousOpenKey = useRef(openKey);
   useEffect(() => {
-    if (openKey !== undefined) setExpanded(true);
+    if (openKey !== undefined && openKey !== previousOpenKey.current) setExpanded(true);
+    previousOpenKey.current = openKey;
   }, [openKey]);
   return (
     <section

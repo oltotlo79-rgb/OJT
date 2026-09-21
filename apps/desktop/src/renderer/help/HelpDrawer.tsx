@@ -322,7 +322,14 @@ export function HelpDrawer({ onClose }: { onClose: () => void }): JSX.Element {
                   key={`${chapter.id}::${sectionId}`}
                   open={chapter.sectionIds.includes(sectionId)}
                 >
-                  <summary>{chapter.title}</summary>
+                  <summary>
+                    <span>{chapter.title.split('（')[0]}</span>
+                    {chapter.title.includes('（') ? (
+                      <span
+                        className={styles.chapterSuffix}
+                      >{`（${chapter.title.split('（').slice(1).join('（')}`}</span>
+                    ) : null}
+                  </summary>
                   <ul>
                     {chapter.sectionIds.map((id) => (
                       <li key={id}>

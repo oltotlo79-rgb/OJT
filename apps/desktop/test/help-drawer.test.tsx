@@ -311,29 +311,29 @@ describe('閉じ方とキーボード（設計 §5.4）', () => {
 });
 
 describe('幅と本文の読みやすさ（UX-21: 設計 §6.4）', () => {
-  it('narrows the drawer to at most 560px, or 46vw on a narrow window', () => {
-    expect(helpCss).toContain('width: min(560px, 46vw)');
+  it('reserves a readable paper width while keeping the workspace visible', () => {
+    expect(helpCss).toContain('width: min(880px, 72vw)');
   });
 
-  it('folds the table of contents below 1280px, without moving the Minor#8 boundary', () => {
-    expect(helpCss).toContain('@media (max-width: 1279px)');
+  it('folds the contents when the guide uses the full narrow viewport', () => {
+    expect(helpCss).toContain('@media (max-width: 1099px)');
     expect(helpCss).not.toContain('@media (max-width: 1280px)');
   });
 
-  it('reads the body text at 14px / 1.85 line height, capped to a readable 34em width', () => {
-    const at = helpCss.indexOf('.prose {');
+  it('reads the body text at 15px / 1.95 line height, capped to a readable 40em width', () => {
+    const at = helpCss.lastIndexOf('.prose {');
     expect(at).toBeGreaterThanOrEqual(0);
     const body = helpCss.slice(at, helpCss.indexOf('}', at));
-    expect(body).toMatch(/font-size:\s*0\.875rem/u);
-    expect(body).toMatch(/line-height:\s*1\.85/u);
-    expect(body).toMatch(/max-width:\s*34em/u);
+    expect(body).toMatch(/font-size:\s*0\.9375rem/u);
+    expect(body).toMatch(/line-height:\s*1\.95/u);
+    expect(body).toMatch(/max-width:\s*40em/u);
   });
 
-  it('sizes the section heading at 17px, in rem so it follows --ui-scale (Task 26)', () => {
-    const at = helpCss.indexOf('.sectionTitle {');
+  it('sizes the section heading at 24px, in rem so it follows --ui-scale (Task 26)', () => {
+    const at = helpCss.lastIndexOf('.sectionTitle {');
     expect(at).toBeGreaterThanOrEqual(0);
     const body = helpCss.slice(at, helpCss.indexOf('}', at));
-    expect(body).toMatch(/font-size:\s*1\.0625rem/u);
+    expect(body).toMatch(/font-size:\s*1\.5rem/u);
   });
 });
 

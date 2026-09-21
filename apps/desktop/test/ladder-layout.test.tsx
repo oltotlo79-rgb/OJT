@@ -134,9 +134,16 @@ describe('折りたたみ列（UXレビュー #27）', () => {
       expect(screen.getByTestId(testId), testId).toHaveAttribute('open');
     }
     // 必要になってから開く枠
-    for (const testId of ['comment-panel-details', 'shortcuts-details']) {
+    for (const testId of ['watch-panel-details', 'comment-panel-details', 'shortcuts-details']) {
       expect(screen.getByTestId(testId), testId).not.toHaveAttribute('open');
     }
+  });
+
+  it('ウォッチは要求したときだけ開き、初期カウンタ0では開かない', () => {
+    workspace();
+    expect(screen.getByTestId('watch-panel-details')).not.toHaveAttribute('open');
+    fireEvent.click(screen.getByTestId('toolbar-watch'));
+    expect(screen.getByTestId('watch-panel-details')).toHaveAttribute('open');
   });
 
   it('出力ウィンドウも畳めるが、既定は開いたまま', () => {

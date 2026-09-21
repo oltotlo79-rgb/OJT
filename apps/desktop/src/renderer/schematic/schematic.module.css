@@ -20,7 +20,7 @@
 
 .editorTitle {
   margin: 0;
-  font-size: 14px;
+  font-size: max(12px, 0.875rem);
   color: var(--text);
 }
 
@@ -37,7 +37,7 @@
   min-height: 32px;
   /* 余白は 4px 刻みに揃える（Batch E レビュー Minor 6）。高さは `min-height` が決める。 */
   padding: 4px 12px;
-  font-size: 12px;
+  font-size: max(12px, 0.75rem);
   color: var(--text);
   background: var(--panel-2);
   border: 1px solid var(--line);
@@ -77,7 +77,7 @@
 .branchHint {
   margin: 0;
   padding: 4px 8px;
-  font-size: 12px;
+  font-size: max(12px, 0.75rem);
   font-weight: 700;
   color: var(--ink-on-accent);
   background: var(--accent);
@@ -105,7 +105,7 @@
 .issuesTitle,
 .paletteGroupName {
   margin: 0;
-  font-size: 12px;
+  font-size: max(12px, 0.75rem);
   color: var(--muted);
 }
 
@@ -160,7 +160,7 @@
 .keyHint {
   flex-shrink: 0;
   margin: 8px 0 0;
-  font-size: 12px;
+  font-size: max(12px, 0.75rem);
   color: var(--paper-muted);
   display: flex;
   flex-wrap: wrap;
@@ -193,7 +193,7 @@
 }
 
 .presetLabel {
-  font-size: 12px;
+  font-size: max(12px, 0.75rem);
   font-weight: 700;
   color: var(--paper-ink);
 }
@@ -202,7 +202,7 @@
 .presetStep {
   min-width: 32px;
   min-height: 32px;
-  font-size: 14px;
+  font-size: max(12px, 0.875rem);
   color: var(--paper-ink);
   background: var(--paper);
   border: 1px solid var(--paper-rule);
@@ -220,7 +220,7 @@
   min-height: 32px;
   /* 余白は 4px 刻みに揃える（Batch E レビュー Minor 6）。`box-sizing: border-box` なので幅は不変。 */
   padding: 4px 8px;
-  font-size: 13px;
+  font-size: max(12px, 0.8125rem);
   color: var(--paper-ink);
   background: var(--paper);
   border: 1px solid var(--paper-rule);
@@ -234,13 +234,13 @@
 }
 
 .presetValue {
-  font-size: 13px;
+  font-size: max(12px, 0.8125rem);
   font-weight: 700;
   color: var(--paper-ink);
 }
 
 .presetHint {
-  font-size: 11px;
+  font-size: max(12px, 0.75rem);
   color: var(--paper-muted);
 }
 
@@ -248,7 +248,7 @@
 .cursorLine {
   flex-shrink: 0;
   margin: 8px 0 0;
-  font-size: 12px;
+  font-size: max(12px, 0.75rem);
   font-weight: 700;
   color: var(--paper-ink);
 }
@@ -262,7 +262,7 @@
   margin: 0;
   /* 余白は 4px 刻みに揃える（Batch E レビュー Minor 6）。 */
   padding: 4px 8px;
-  font-size: 12px;
+  font-size: max(12px, 0.75rem);
   color: var(--ink-on-accent);
   background: var(--warn);
   border-radius: 4px;
@@ -272,7 +272,7 @@
 .clearNo {
   min-height: 32px;
   padding: 4px 12px;
-  font-size: 12px;
+  font-size: max(12px, 0.75rem);
   border-radius: 4px;
   cursor: pointer;
 }
@@ -304,7 +304,7 @@
 .issueList {
   margin: 4px 0 0;
   padding-left: 16px;
-  font-size: 12px;
+  font-size: max(12px, 0.75rem);
   color: var(--danger-text);
 }
 
@@ -316,13 +316,13 @@
 .issueListNeutral {
   margin: 4px 0 0;
   padding-left: 16px;
-  font-size: 12px;
+  font-size: max(12px, 0.75rem);
   color: var(--muted);
 }
 
 .issuesOk {
   margin: 4px 0 0;
-  font-size: 12px;
+  font-size: max(12px, 0.75rem);
   color: var(--success-text);
 }
 
@@ -355,6 +355,6 @@
 
 .verifyNote {
   margin: 0;
-  font-size: 12px;
+  font-size: max(12px, 0.75rem);
   color: var(--muted);
 }

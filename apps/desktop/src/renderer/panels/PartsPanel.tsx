@@ -302,7 +302,7 @@ export function PartsPanel({
     <CollapsiblePanel
       title={JA.session.parts}
       testId="parts-panel"
-      summary={JA_PARTS.paletteTitle}
+      summary={JA_PARTS.socketListTitle}
       open
       openKey={selectedSocket}
     >

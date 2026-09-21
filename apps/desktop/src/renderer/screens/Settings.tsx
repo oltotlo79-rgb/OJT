@@ -1,4 +1,4 @@
-import { validUserContentDir } from '../../shared/settings-validation.js';
+import { isUiScale, validUserContentDir } from '../../shared/settings-validation.js';
 import {
   availableDialects,
   getDialect,
@@ -16,6 +16,7 @@ import { HelpButton } from '../help/HelpButton.js';
 import { JA } from '../i18n/ja.js';
 import { SKIN_THEMES } from '../ladder/skins/index.js';
 import styles from './screens.module.css';
+import { applyUiPreferences } from '../app/ui-preferences.js';
 
 /**
  * 設定画面。設計仕様 §12.1 / §15。
@@ -61,6 +62,7 @@ export function Settings(): JSX.Element {
           (fetched) => {
             setSettings(fetched);
             setSaved(fetched);
+            applyUiPreferences(fetched);
           },
           (error: unknown) => {
             setLoadError(reasonOf(error));
@@ -107,6 +109,7 @@ export function Settings(): JSX.Element {
       (response) => {
         setSettings(response);
         setSaved(response);
+        applyUiPreferences(response);
         sounds.configure({ enabled: response.soundEnabled, volume: response.soundVolume });
         if (changesLadderSettings) {
           // 設定画面にいる間もラダーへ即時反映する（§12.1）。起動直後の反映は App.tsx が担う。
@@ -202,6 +205,38 @@ export function Settings(): JSX.Element {
             {JA.settings.userContentHelp}
           </p>
 
+          <section className={styles.settingRow}>
+            <label htmlFor="ui-scale">{JA.settings.uiScale}</label>
+            <select
+              id="ui-scale"
+              data-testid="setting-ui-scale"
+              value={settings.uiScale}
+              onChange={(event) => {
+                const value = Number(event.target.value);
+                if (isUiScale(value)) patch({ uiScale: value });
+              }}
+            >
+              <option value={0.9}>{JA.settings.scaleSmall}</option>
+              <option value={1}>{JA.settings.scaleNormal}</option>
+              <option value={1.15}>{JA.settings.scaleLarge}</option>
+              <option value={1.3}>{JA.settings.scaleExtraLarge}</option>
+            </select>
+          </section>
+          <section className={styles.settingRow}>
+            <label htmlFor="contrast">{JA.settings.contrast}</label>
+            <select
+              id="contrast"
+              data-testid="setting-contrast"
+              value={settings.contrast}
+              onChange={(event) => {
+                const value = event.target.value;
+                if (value === 'normal' || value === 'high') patch({ contrast: value });
+              }}
+            >
+              <option value="normal">{JA.settings.contrastNormal}</option>
+              <option value="high">{JA.settings.contrastHigh}</option>
+            </select>
+          </section>
           <section className={styles.settingRow}>
             <label htmlFor="sound-enabled">{JA.settings.soundEnabled}</label>
             <input

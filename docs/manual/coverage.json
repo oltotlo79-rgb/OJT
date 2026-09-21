@@ -1435,6 +1435,12 @@
       "section": "screens/画面の上の帯"
     },
     {
+      "testid": "setting-contrast",
+      "screen": "設定",
+      "label": "見やすさ",
+      "section": "settings/設定の画面"
+    },
+    {
       "testid": "setting-grid-cols",
       "screen": "設定",
       "label": "ラダーの表示列数",
@@ -1481,6 +1487,12 @@
       "screen": "設定",
       "label": "音量",
       "section": "settings/音"
+    },
+    {
+      "testid": "setting-ui-scale",
+      "screen": "設定",
+      "label": "文字と UI の大きさ",
+      "section": "settings/設定の画面"
     },
     {
       "testid": "setting-user-dir",

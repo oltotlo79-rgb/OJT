@@ -1161,12 +1161,12 @@ apps/desktop/e2e/ladder-entry.spec.ts（新規）
 
 **Steps:**
 
-- [ ] 1. `AppSettings` に `uiScale: 0.9 | 1.0 | 1.15 | 1.3`（既定 1.0）と `contrast: 'normal' | 'high'`（既定 `'normal'`）を足す。main 側で値域を検証する。
-- [ ] 2. `:root` に `--ui-scale` を置き、`html { font-size: calc(16px * var(--ui-scale)) }`。主要パネルの px を `rem` にする（**まず注記・表・パネル見出し**。3Dの名札は `label-declutter` の基準寸法に掛ける）。
-- [ ] 3. `[data-contrast="high"]` の上書きテーマを足す（`--muted` を明るくし、模範波形・注記・補助線を 4.5:1 以上に上げる）。
-- [ ] 4. 設定画面に「文字と UI の大きさ: 小（90%）／標準（100%）／大（115%）／特大（130%）」と「見やすさ: 標準／高コントラスト」を足す。
-- [ ] 5. ヘルプ引き出し（Task 32）にも `--ui-scale` が効くことを確かめる。
-- [ ] 6. テスト。`settings-ui-scale.test.tsx`（4段階が保存され `--ui-scale` が変わる）／`contrast.test.ts`（高コントラストで `--muted` のコントラスト比が 4.5:1 以上）／`e2e/ui-quality.spec.ts` に**「特大」での1周**を足し、はみ出し0件を担保する。
+- [x] 1. `AppSettings` に `uiScale: 0.9 | 1.0 | 1.15 | 1.3`（既定 1.0）と `contrast: 'normal' | 'high'`（既定 `'normal'`）を足す。main 側で値域を検証する。
+- [x] 2. `:root` に `--ui-scale` を置き、`html { font-size: calc(16px * var(--ui-scale)) }`。主要パネルの px を `rem` にする（**まず注記・表・パネル見出し**。3Dの名札は `label-declutter` の基準寸法に掛ける）。
+- [x] 3. `[data-contrast="high"]` の上書きテーマを足す（`--muted` を明るくし、模範波形・注記・補助線を 4.5:1 以上に上げる）。
+- [x] 4. 設定画面に「文字と UI の大きさ: 小（90%）／標準（100%）／大（115%）／特大（130%）」と「見やすさ: 標準／高コントラスト」を足す。
+- [x] 5. ヘルプ引き出し（Task 32）にも `--ui-scale` が効くことを確かめる。
+- [x] 6. テスト。`settings-ui-scale.test.tsx`（4段階が保存され `--ui-scale` が変わる）／`contrast.test.ts`（高コントラストで `--muted` のコントラスト比が 4.5:1 以上）／`e2e/ui-quality.spec.ts` に**「特大」での1周**を足し、はみ出し0件を担保する。
 
 **期待:** 文字サイズ「特大」で 1280×800 を1周してはみ出し0件。
 

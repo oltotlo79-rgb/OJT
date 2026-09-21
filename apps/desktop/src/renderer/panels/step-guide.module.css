@@ -35,7 +35,7 @@
   border: 1px solid var(--line);
   border-radius: 12px;
   color: var(--muted);
-  font-size: 12px;
+  font-size: max(12px, 0.75rem);
   line-height: 1.6;
   padding: 3px 10px;
 }
@@ -65,7 +65,7 @@
 }
 
 .note {
-  font-size: 11px;
+  font-size: max(12px, 0.75rem);
   font-weight: 400;
   opacity: 0.85;
   white-space: nowrap;
@@ -74,7 +74,7 @@
 .hint {
   color: var(--muted);
   flex: 1 1 260px;
-  font-size: 12px;
+  font-size: max(12px, 0.75rem);
   line-height: 1.6;
   margin: 0;
 }

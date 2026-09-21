@@ -94,7 +94,7 @@
 
 .restoreCardDetail dt {
   color: var(--muted);
-  font-size: 12px;
+  font-size: max(12px, 0.75rem);
 }
 
 .restoreCardDetail dd {

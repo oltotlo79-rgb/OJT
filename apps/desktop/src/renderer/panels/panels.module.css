@@ -39,7 +39,7 @@
 
 .toolLabel {
   color: var(--muted);
-  font-size: 12px;
+  font-size: max(12px, 0.75rem);
   margin-right: 2px;
 }
 
@@ -53,7 +53,7 @@
   background: var(--ok);
   color: #10151c;
   border-color: var(--ok);
-  font-size: 15px;
+  font-size: 0.9375rem;
   font-weight: 700;
   padding: 8px 18px;
 }
@@ -68,19 +68,19 @@
 
 .panelTitle {
   color: var(--muted);
-  font-size: 12px;
+  font-size: max(12px, 0.75rem);
   font-weight: 700;
   margin: 0 0 6px;
 }
 
 .problemTitle {
-  font-size: 15px;
+  font-size: 0.9375rem;
   font-weight: 700;
   margin: 0 0 4px;
 }
 
 .problemText {
-  font-size: 13px;
+  font-size: max(12px, 0.8125rem);
   line-height: 1.6;
   margin: 0;
   white-space: pre-wrap;
@@ -97,7 +97,7 @@
 
 .partName {
   flex: 1;
-  font-size: 13px;
+  font-size: max(12px, 0.8125rem);
 }
 
 .mountedRow {
@@ -157,7 +157,7 @@
  * 下部パネルごと膨らんで3Dビューポートが縮む（`screens.module.css` の `.sessionLayout` 参照）。
  */
 .logList {
-  font-size: 12px;
+  font-size: max(12px, 0.75rem);
   line-height: 1.5;
   height: 120px;
   overflow-y: auto;
@@ -167,7 +167,7 @@
 
 .warnList {
   color: var(--warn);
-  font-size: 12px;
+  font-size: max(12px, 0.75rem);
   margin: 4px 0 0;
   padding-left: 16px;
 }
@@ -179,7 +179,7 @@
 }
 
 .elapsedValue {
-  font-size: 18px;
+  font-size: 1.125rem;
   font-variant-numeric: tabular-nums;
   font-weight: 700;
 }
@@ -223,7 +223,7 @@
 
 .chartRowLabel {
   fill: var(--muted);
-  font-size: 9px;
+  font-size: max(12px, 0.75rem);
 }
 
 .chartLine {
@@ -250,7 +250,7 @@
  */
 .partsHint {
   color: var(--muted);
-  font-size: 12px;
+  font-size: max(12px, 0.75rem);
   line-height: 1.6;
   margin: 0;
 }
@@ -264,14 +264,14 @@
 }
 
 .socketCardTitle {
-  font-size: 13px;
+  font-size: max(12px, 0.8125rem);
   font-weight: 700;
   margin: 0 0 2px;
 }
 
 .socketCardStatus {
   color: var(--muted);
-  font-size: 11px;
+  font-size: max(12px, 0.75rem);
   margin: 0 0 6px;
 }
 
@@ -284,7 +284,7 @@
 .partReason {
   color: var(--muted);
   flex-basis: 100%;
-  font-size: 11px;
+  font-size: max(12px, 0.75rem);
   line-height: 1.5;
   margin: 2px 0 0;
 }
@@ -293,7 +293,7 @@
 /* --- UX pass 2026-09-19 (#5): 押せない理由の一行表示 --- */
 .disabledReason {
   color: var(--muted);
-  font-size: 11px;
+  font-size: max(12px, 0.75rem);
   line-height: 1.5;
 }
 /* --- /UX pass 2026-09-19 (#5) --- */
@@ -343,7 +343,7 @@
   flex-wrap: wrap;
   gap: 10px;
   color: var(--muted);
-  font-size: 11px;
+  font-size: max(12px, 0.75rem);
 }
 
 .legendItem {
@@ -392,7 +392,7 @@
 
 .terminalHint {
   color: var(--muted);
-  font-size: 12px;
+  font-size: max(12px, 0.75rem);
   line-height: 1.6;
   margin: 0 0 8px;
 }
@@ -413,7 +413,7 @@
   border-left: 4px solid var(--accent);
   padding: 4px 8px;
   margin: 0 0 8px;
-  font-size: 12px;
+  font-size: max(12px, 0.75rem);
 }
 
 .terminalGroups {
@@ -434,7 +434,7 @@
 .terminalGroupName {
   flex: 0 0 100%;
   color: var(--muted);
-  font-size: 11px;
+  font-size: max(12px, 0.75rem);
   font-weight: 700;
 }
 
@@ -443,7 +443,7 @@
   align-items: center;
   gap: 4px;
   padding: 4px 8px;
-  min-height: 28px;
+  min-height: 32px;
 }
 
 .terminalRow:focus-visible {
@@ -462,12 +462,12 @@
 }
 
 .terminalName {
-  font-size: 12px;
+  font-size: max(12px, 0.75rem);
 }
 
 .terminalCount {
   color: var(--muted);
-  font-size: 11px;
+  font-size: max(12px, 0.75rem);
 }
 
 /*
@@ -503,7 +503,7 @@
 
 .paletteTitle {
   color: var(--muted);
-  font-size: 11px;
+  font-size: max(12px, 0.75rem);
   font-weight: 700;
   margin: 0 0 6px;
 }
@@ -542,7 +542,7 @@
 
 .paletteCount {
   color: var(--muted);
-  font-size: 11px;
+  font-size: max(12px, 0.75rem);
 }
 
 /** 運んでいる部品のゴースト（画面の最前面。ポインタは一切受けない）。 */
@@ -555,7 +555,7 @@
   color: #10151c;
   border-radius: 4px;
   padding: 3px 8px;
-  font-size: 12px;
+  font-size: max(12px, 0.75rem);
   font-weight: 700;
   opacity: 0.85;
 }
@@ -587,13 +587,13 @@
 }
 
 .socketListName {
-  font-size: 12px;
+  font-size: max(12px, 0.75rem);
   font-weight: 700;
 }
 
 .socketListState {
   color: var(--muted);
-  font-size: 11px;
+  font-size: max(12px, 0.75rem);
 }
 
 /**
@@ -611,7 +611,7 @@
   border-radius: 4px;
   background: rgba(16, 21, 28, 0.82);
   color: var(--text);
-  font-size: 12px;
+  font-size: max(12px, 0.75rem);
   line-height: 1.5;
   pointer-events: none;
 }
@@ -666,13 +666,13 @@
 .hintStageTitle {
   color: var(--accent);
   display: block;
-  font-size: 12px;
+  font-size: max(12px, 0.75rem);
   font-weight: 700;
 }
 
 .hintDone {
   color: var(--muted);
-  font-size: 12px;
+  font-size: max(12px, 0.75rem);
   margin: 8px 0 0;
 }
 /* --- /Phase 7 Task 25 --- */
@@ -680,7 +680,7 @@
 /* 判定対象の報告欄に添える案内。 */
 .hint {
   color: var(--muted);
-  font-size: 0.875rem;
+  font-size: max(12px, 0.875rem);
   line-height: 1.65;
   margin: 0 0 0.75rem;
 }
@@ -689,7 +689,7 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  font-size: 12px;
+  font-size: max(12px, 0.75rem);
   white-space: nowrap;
   color: var(--text);
 }
@@ -710,18 +710,19 @@
   cursor: pointer;
   min-height: 40px;
   padding: 8px 12px;
-  font-size: 12px;
+  font-size: max(12px, 0.75rem);
 }
 .disclosureSummary h2 {
   display: inline;
-  font-size: 13px;
+  font-size: max(12px, 0.8125rem);
   margin: 0;
 }
 .disclosureMeta {
-  margin-left: 8px;
+  display: block;
+  margin: 3px 0 0 14px;
   color: var(--muted);
   font-weight: 400;
-  font-size: 12px;
+  font-size: max(12px, 0.75rem);
 }
 .disclosure details[open] > summary {
   border-bottom: 1px solid var(--line);
@@ -739,6 +740,10 @@
   --muted: var(--ladder-fg-faint);
   --line: var(--ladder-line);
 }
+.disclosure[data-skin='plc'] .disclosureSummary {
+  min-height: 32px;
+  padding: 6px 8px;
+}
 .inlineTools {
   display: flex;
   flex-wrap: wrap;
@@ -749,7 +754,7 @@
 }
 .timeRemaining {
   margin: 0 0 8px;
-  font-size: 12px;
+  font-size: max(12px, 0.75rem);
   color: var(--muted);
 }
 .spinner {

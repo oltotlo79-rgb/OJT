@@ -114,12 +114,12 @@ export function WatchPanel({
   };
 
   return (
-    // 「いま見たいデバイスだけ」を置く欄なので、既定は開いた状態にする（見るために作る欄）
+    // 空のウォッチで編集面を塞がない。デバイスがある時か、開く操作をした時だけ展開する。
     <SidePanel
       title={title}
       label={JA.ladder.watch.title}
       testId="watch-panel"
-      open
+      open={devices.length > 0}
       openKey={openKey}
     >
       <div className={styles.watchAdd}>

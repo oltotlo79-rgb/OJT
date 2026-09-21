@@ -122,6 +122,8 @@ describe('writeSettings（レビュー指摘: renderer からの入力を信用�
       restorePrompt: false,
     });
     expect(saved).toEqual({
+      uiScale: 1,
+      contrast: 'normal',
       userContentDir: 'C:/problems',
       soundEnabled: false,
       soundVolume: 0.25,
@@ -141,6 +143,8 @@ describe('writeSettings（レビュー指摘: renderer からの入力を信用�
     expect(raw['evilKey']).toBeUndefined();
     expect(Object.keys(raw).sort()).toEqual(
       [
+        'uiScale',
+        'contrast',
         'defaultVendor',
         'ladderGridCols',
         'monitorColor',
@@ -338,5 +342,21 @@ describe('旧い設定ファイルの移行（Plan 4B 決定表#8 / レビュー
     expect(onDisk()['monitorColorMigrated']).toBe(true);
     // 次回の読込でも青のまま。移行が再武装されて勝手に消されることはない
     expect(readSettings().monitorColor).toBe('#1E64FF');
+  });
+});
+
+describe('表示設定の保存境界', () => {
+  it.each([0.9, 1, 1.15, 1.3] as const)('倍率%sは保存して再読込できる', (uiScale) => {
+    writeSettings({ uiScale, contrast: 'high' });
+    expect(readSettings().uiScale).toBe(uiScale);
+    expect(onDisk()['contrast']).toBe('high');
+  });
+  it('未知の倍率・型・見やすさは直前の値を保つ', () => {
+    writeSettings({ uiScale: 1.15, contrast: 'high' });
+    for (const uiScale of [0, -1, 10, 1.14, '1.3', null]) {
+      writeSettings({ uiScale, contrast: 'custom' });
+      expect(readSettings().uiScale).toBe(1.15);
+      expect(readSettings().contrast).toBe('high');
+    }
   });
 });

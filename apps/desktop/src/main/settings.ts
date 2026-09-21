@@ -1,4 +1,8 @@
-import { validUserContentDir, MAX_USER_CONTENT_DIR_LENGTH } from '../shared/settings-validation.js';
+import {
+  isUiScale,
+  validUserContentDir,
+  MAX_USER_CONTENT_DIR_LENGTH,
+} from '../shared/settings-validation.js';
 export { MAX_USER_CONTENT_DIR_LENGTH };
 import { copyFileSync, existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -77,6 +81,9 @@ function sanitizePatch(base: AppSettings, patch: unknown): AppSettings {
   const next = { ...base };
   if (typeof patch !== 'object' || patch === null) return next;
   const source = patch as Record<string, unknown>;
+  if (isUiScale(source['uiScale'])) next.uiScale = source['uiScale'];
+  if (source['contrast'] === 'normal' || source['contrast'] === 'high')
+    next.contrast = source['contrast'];
   /*
    * 空文字（既定に戻す）か、絶対パスかつ `MAX_PATH` 以内のときだけ取り込む（レビュー DM-3）。
    * 相対パスや万文字級の壊れた／作為的な値は黙って無視し、直前の値を保つ。

@@ -10,7 +10,7 @@
 
 .title {
   color: var(--muted);
-  font-size: 12px;
+  font-size: max(12px, 0.75rem);
   font-weight: 700;
   margin: 0 0 6px;
 }
@@ -22,7 +22,7 @@
   border-radius: 4px;
   color: #7dffb2;
   font-family: 'Consolas', 'Courier New', monospace;
-  font-size: 22px;
+  font-size: 1.375rem;
   font-variant-numeric: tabular-nums;
   letter-spacing: 1px;
   padding: 6px 10px;
@@ -32,7 +32,7 @@
 /* 読値の単位（Ω／V）。生値の `display` はそのまま保つので別要素に添える。 */
 .unit {
   color: var(--muted);
-  font-size: 12px;
+  font-size: max(12px, 0.75rem);
   margin-left: 4px;
 }
 
@@ -46,13 +46,13 @@
 
 .label {
   color: var(--muted);
-  font-size: 11px;
+  font-size: max(12px, 0.75rem);
   min-width: 56px;
 }
 
 .note {
   color: var(--warn);
-  font-size: 11px;
+  font-size: max(12px, 0.75rem);
   margin: 4px 0 0;
 }
 
@@ -78,7 +78,7 @@
 
 .hint {
   color: var(--muted);
-  font-size: 11px;
+  font-size: max(12px, 0.75rem);
   margin: 6px 0 0;
 }
 
@@ -94,7 +94,7 @@
 /* マークシート（§9.1） */
 .markTable {
   border-collapse: collapse;
-  font-size: 12px;
+  font-size: max(12px, 0.75rem);
   width: 100%;
 }
 
@@ -127,7 +127,7 @@
   align-items: center;
   gap: 4px;
   /* 当たり判定はラベル全体（チップ）にする。ラジオ自体は既定の見た目のまま小さくてよい */
-  min-height: 24px;
+  min-height: 32px;
   padding: 2px 8px 2px 4px;
   border: 1px solid var(--line);
   border-radius: 12px;
@@ -162,7 +162,7 @@
 
 .trayName {
   flex: 1;
-  font-size: 13px;
+  font-size: max(12px, 0.8125rem);
 }
 
 /* いまチェック用ソケットに挿している部品 */
@@ -176,7 +176,7 @@
   align-items: baseline;
   gap: 6px;
   border-bottom: 1px solid var(--line);
-  font-size: 12px;
+  font-size: max(12px, 0.75rem);
   padding: 3px 0;
 }
 
@@ -198,7 +198,7 @@
 
 .popoverTitle {
   color: var(--muted);
-  font-size: 11px;
+  font-size: max(12px, 0.75rem);
 }
 
 .markScroll {
@@ -210,7 +210,7 @@
   top: 0;
   background: var(--panel-2);
   z-index: 1;
-  font-size: 12px;
+  font-size: max(12px, 0.75rem);
 }
 .markTable td {
   text-align: center;
@@ -226,12 +226,12 @@
 }
 .markCards summary {
   font-weight: 700;
-  font-size: 13px;
+  font-size: max(12px, 0.8125rem);
 }
 .markCards summary span {
   float: right;
   color: var(--muted);
-  font-size: 12px;
+  font-size: max(12px, 0.75rem);
 }
 .markCards .markOptions {
   padding-top: 8px;
@@ -248,15 +248,15 @@
 .help summary {
   display: flex;
   align-items: center;
-  min-height: 24px;
+  min-height: 32px;
   color: var(--muted);
   cursor: pointer;
-  font-size: 12px;
+  font-size: max(12px, 0.75rem);
 }
 
 .helpTable {
   border-collapse: collapse;
-  font-size: 11px;
+  font-size: max(12px, 0.75rem);
   margin-top: 6px;
   width: 100%;
 }

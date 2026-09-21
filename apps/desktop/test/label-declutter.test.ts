@@ -1,10 +1,11 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   applyLabelVisibility,
   DEFAULT_LABEL_RANK,
   LABEL_GAP_PX,
   LABEL_SELECTOR,
   pickVisibleLabels,
+  observeLabelLayout,
   type LabelCandidate,
   type LabelRect,
 } from '../src/renderer/three/label-declutter.js';
@@ -185,4 +186,51 @@ describe('visibility の書き戻し（`applyLabelVisibility`）', () => {
     expect(applyLabelVisibility(els, [])).toBe(0);
     expect(els.map((el) => el.style.visibility)).toEqual(['', '']);
   });
+});
+
+it('描画後に遅れて追加された名札もDOM更新だけで重なりを解消する', async () => {
+  const host = document.createElement('div');
+  document.body.append(host);
+  const frames: FrameRequestCallback[] = [];
+  vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
+    frames.push(callback);
+    return frames.length;
+  });
+  vi.stubGlobal('cancelAnimationFrame', () => undefined);
+  vi.stubGlobal(
+    'ResizeObserver',
+    class {
+      observe() {}
+      disconnect() {}
+    },
+  );
+  const stop = observeLabelLayout(host);
+  try {
+    frames.shift()?.(0);
+    for (const rank of [1, 3]) {
+      const label = document.createElement('span');
+      label.className = 'socket-label';
+      label.dataset['labelRank'] = String(rank);
+      label.getBoundingClientRect = () => ({
+        left: 0,
+        top: 0,
+        right: 80,
+        bottom: 20,
+        width: 80,
+        height: 20,
+        x: 0,
+        y: 0,
+        toJSON: () => ({}),
+      });
+      host.append(label);
+    }
+    await Promise.resolve();
+    frames.shift()?.(16);
+    expect((host.children[0] as HTMLElement).style.visibility).toBe('');
+    expect((host.children[1] as HTMLElement).style.visibility).toBe('hidden');
+  } finally {
+    stop();
+    host.remove();
+    vi.unstubAllGlobals();
+  }
 });

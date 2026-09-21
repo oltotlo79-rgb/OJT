@@ -47,8 +47,36 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  document.documentElement.style.removeProperty('--ui-scale');
+  delete document.documentElement.dataset['contrast'];
   vi.restoreAllMocks();
   setApi(undefined);
+});
+
+describe('画面の大きさと見やすさ', () => {
+  it.each([0.9, 1, 1.15, 1.3] as const)('%s倍を保存してルートへ即時反映する', async (scale) => {
+    const { setSettings } = apiWith({ ...DEFAULT_SETTINGS, uiScale: scale === 1 ? 1.3 : 1 });
+    await renderSettings();
+    await act(() =>
+      fireEvent.change(screen.getByTestId('setting-ui-scale'), {
+        target: { value: String(scale) },
+      }),
+    );
+    expect(setSettings).toHaveBeenLastCalledWith({ uiScale: scale });
+    expect(document.documentElement.style.getPropertyValue('--ui-scale')).toBe(String(scale));
+    expect(screen.getByTestId<HTMLSelectElement>('setting-ui-scale').value).toBe(String(scale));
+  });
+  it('保存済みの見やすさを読み込み、標準へ戻せる', async () => {
+    const { setSettings } = apiWith({ ...DEFAULT_SETTINGS, contrast: 'high', uiScale: 1.3 });
+    await renderSettings();
+    expect(document.documentElement.dataset['contrast']).toBe('high');
+    expect(document.documentElement.style.getPropertyValue('--ui-scale')).toBe('1.3');
+    await act(() =>
+      fireEvent.change(screen.getByTestId('setting-contrast'), { target: { value: 'normal' } }),
+    );
+    expect(setSettings).toHaveBeenLastCalledWith({ contrast: 'normal' });
+    expect(document.documentElement.dataset['contrast']).toBe('normal');
+  });
 });
 
 describe('設定の読み込み（§12.1）', () => {

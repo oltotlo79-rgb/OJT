@@ -27,6 +27,8 @@
   background: #eef0f4;
   border-right: 1px solid var(--ladder-line);
   color: var(--ladder-fg);
+  container-type: inline-size;
+  overflow: auto;
 }
 
 /*
@@ -64,7 +66,7 @@
   display: flex;
   gap: 8px;
   align-items: baseline;
-  font-size: 11px;
+  font-size: max(12px, 0.75rem);
   color: #444;
   border-bottom: 1px solid var(--ladder-line);
   padding: 2px 4px;
@@ -166,7 +168,7 @@
 }
 
 .symbolText {
-  font-size: 11px;
+  font-size: max(12px, 0.75rem);
   font-weight: 700;
 }
 
@@ -175,11 +177,11 @@
  * 設定値・命令語・コメントはその補助なので1〜3px 小さい。
  */
 .deviceText {
-  font-size: 11px;
+  font-size: max(12px, 0.75rem);
 }
 
 .presetText {
-  font-size: 9px;
+  font-size: max(12px, 0.75rem);
   fill: var(--skin-preset, #555);
 }
 
@@ -201,7 +203,7 @@
  * （画面上11px未満の文字は禁止）に合わせ、10px → 11px にした。
  */
 .frameText {
-  font-size: 11px;
+  font-size: max(12px, 0.75rem);
   font-weight: 700;
 }
 
@@ -210,7 +212,7 @@
  * 方言があるので、箱の内寸（セル幅 − 4px）に収まる 9px にする。
  */
 .boxOperandText {
-  font-size: 9px;
+  font-size: max(12px, 0.75rem);
 }
 
 /*
@@ -219,7 +221,7 @@
  */
 .stepText {
   text-anchor: end;
-  font-size: 11px;
+  font-size: max(12px, 0.75rem);
   fill: var(--skin-preset, #555);
 }
 
@@ -306,13 +308,13 @@
   min-width: 0;
   padding: 2px 4px;
   /* UI監査 2026-09-20: クリック対象は24px以上（デザイン規則）。デバイスコメント欄などが未達だった */
-  min-height: 24px;
+  min-height: 32px;
 }
 
 .inputError {
   margin: 4px 0 0;
   color: #b3261e;
-  font-size: 12px;
+  font-size: max(12px, 0.75rem);
 }
 
 .inputRound {
@@ -320,7 +322,7 @@
   display: flex;
   gap: 6px;
   align-items: center;
-  font-size: 12px;
+  font-size: max(12px, 0.75rem);
 }
 /* --- /Plan 3B Task 5 --- */
 
@@ -329,7 +331,7 @@
   border-top: 1px solid var(--ladder-line);
   background: var(--skin-output, #fff);
   color: var(--ladder-fg);
-  font-size: 12px;
+  font-size: max(12px, 0.75rem);
 }
 
 /*
@@ -350,7 +352,7 @@
 
 .outputHeader h2 {
   color: var(--ladder-fg);
-  font-size: 12px;
+  font-size: max(12px, 0.75rem);
   margin: 0;
 }
 
@@ -372,7 +374,7 @@ details:not([open]) > .outputBody {
   color: var(--ladder-fg-muted);
   content: '▸';
   flex: 0 0 auto;
-  font-size: 10px;
+  font-size: max(12px, 0.75rem);
 }
 
 details[open] > .outputHeader::before,
@@ -478,7 +480,7 @@ details[open] > .sideSummary::before {
 .side {
   border-top: 1px solid var(--ladder-line);
   color: var(--ladder-fg);
-  font-size: 12px;
+  font-size: max(12px, 0.75rem);
   min-width: 0;
 }
 
@@ -518,7 +520,7 @@ details[open] > .sideSummary::before {
 .sideTitle {
   color: var(--ladder-fg);
   display: inline;
-  font-size: 12px;
+  font-size: max(12px, 0.75rem);
   margin: 0;
 }
 
@@ -655,7 +657,7 @@ details[open] > .sideSummary::before {
   background: #fff;
   border-right: 1px solid var(--ladder-line);
   color: var(--ladder-fg);
-  font-size: 12px;
+  font-size: max(12px, 0.75rem);
   max-width: var(--ladder-tree-w);
   min-width: 92px;
   overflow: auto;
@@ -694,7 +696,7 @@ details[open] > .sideSummary::before {
    * `n1` のような短い名前は高さだけ24pxにしても幅が16pxしか無かった（UI監査バッチF /
    * `small-target` 71件のほぼ全部がこの1行）ので、幅にも `min-width` を足す。
    */
-  min-height: 24px;
+  min-height: 32px;
   min-width: 24px;
   display: flex;
   align-items: center;
@@ -741,7 +743,7 @@ details[open] > .sideSummary::before {
 
   .workspaceBody {
     grid-template-columns: auto minmax(0, 1fr);
-    grid-template-rows: minmax(0, 1fr) auto;
+    grid-template-rows: minmax(180px, 1fr) minmax(0, 150px);
   }
 
   .workspaceSide {
@@ -752,10 +754,10 @@ details[open] > .sideSummary::before {
     flex-wrap: wrap;
     grid-column: 1 / -1;
     grid-row: 2;
-    max-height: 34vh;
+    max-height: 150px;
   }
 
-  .side {
+  .workspaceSide > [data-skin='plc'] {
     border-top: 0;
     flex: 1 1 240px;
   }
@@ -768,7 +770,7 @@ details[open] > .sideSummary::before {
   gap: 8px;
   height: 24px;
   padding: 0 8px;
-  font-size: 12px;
+  font-size: max(12px, 0.75rem);
   background: var(--skin-title-bar, #2f4a73);
   color: var(--skin-title-text, #fff);
 }
@@ -809,7 +811,7 @@ details[open] > .sideSummary::before {
   padding: 0 6px;
   border: 1px solid rgb(255 255 255 / 60%);
   border-radius: 3px;
-  font-size: 11px;
+  font-size: max(12px, 0.75rem);
   line-height: 16px;
   white-space: nowrap;
 }
@@ -824,7 +826,7 @@ details[open] > .sideSummary::before {
   margin-left: auto;
   border: 1px solid rgb(255 255 255 / 60%);
   border-radius: 50%;
-  font-size: 11px;
+  font-size: max(12px, 0.75rem);
   font-style: italic;
   line-height: 1;
   cursor: default;
@@ -836,7 +838,7 @@ details[open] > .sideSummary::before {
   gap: 16px;
   height: 24px;
   padding: 0 8px;
-  font-size: 11px;
+  font-size: max(12px, 0.75rem);
   background: var(--skin-status-bar, #e6e9ee);
   border-top: 1px solid rgb(0 0 0 / 12%);
   color: var(--ladder-fg);
@@ -923,7 +925,7 @@ details[open] > .sideSummary::before {
   flex: 0 0 auto;
   min-width: 32px;
   min-height: 32px;
-  font-size: 16px;
+  font-size: 1rem;
   line-height: 1;
 }
 
@@ -961,11 +963,11 @@ details[open] > .sideSummary::before {
 /* 押せない選択肢は理由を添えて淡色にする（`title` だけに頼らない） */
 .notationReason {
   color: var(--ladder-fg-muted, #555);
-  font-size: 11px;
+  font-size: max(12px, 0.75rem);
 }
 
 .notationSection {
-  font-size: 12px;
+  font-size: max(12px, 0.75rem);
   font-weight: 700;
   margin: 12px 0 4px;
 }
@@ -974,13 +976,13 @@ details[open] > .sideSummary::before {
   background: #fff3e6;
   border-left: 3px solid #b34700;
   color: #7a3000;
-  font-size: 12px;
+  font-size: max(12px, 0.75rem);
   margin: 0 0 8px;
   padding: 8px;
 }
 
 .notationErrors {
-  font-size: 12px;
+  font-size: max(12px, 0.75rem);
   color: var(--skin-error, #d14343);
   margin: 4px 0;
   padding-left: 16px;
@@ -1025,7 +1027,7 @@ details[open] > .sideSummary::before {
 
 .inputHint {
   color: #4a5560;
-  font-size: 11px;
+  font-size: max(12px, 0.75rem);
 }
 
 /*
@@ -1047,7 +1049,46 @@ details[open] > .sideSummary::before {
   align-items: center;
   gap: 4px;
   padding: 2px 6px;
-  min-height: 26px;
+  min-height: 32px;
+}
+
+/* 明るい編集面に合わせた32pxの道具列。文字を大きな暗色ボタンで囲まない。 */
+.toolbar button,
+.symbolBar button {
+  color: var(--ladder-fg);
+  background: #fafbfc;
+  border: 1px solid #bdc5cf;
+  border-radius: 3px;
+  padding: 4px 7px;
+  font-size: max(12px, 0.75rem);
+  min-height: 32px;
+  white-space: nowrap;
+}
+.toolbar button:hover:not(:disabled),
+.symbolBar button:hover:not(:disabled) {
+  background: #dceafb;
+  border-color: #7398c7;
+}
+.toolbar button:disabled,
+.symbolBar button:disabled {
+  background: #edf0f3;
+  color: #647080;
+}
+.toolbar,
+.symbolBar,
+.titleBar,
+.statusBar {
+  flex-shrink: 0;
+}
+@container (max-width: 760px) {
+  .symbolCaption,
+  .symbolHint {
+    display: none;
+  }
+  .symbolBar button {
+    justify-content: center;
+    min-width: 36px;
+  }
 }
 
 .symbolIcon {
@@ -1060,7 +1101,7 @@ details[open] > .sideSummary::before {
 
 .symbolHint {
   color: #4a5560;
-  font-size: 11px;
+  font-size: max(12px, 0.75rem);
 }
 
 /*
@@ -1087,7 +1128,7 @@ details[open] > .sideSummary::before {
   gap: 6px;
   justify-content: flex-start;
   padding: 4px 8px;
-  min-height: 28px;
+  min-height: 32px;
   background: transparent;
   border: 0;
   text-align: left;
@@ -1117,7 +1158,7 @@ details[open] > .sideSummary::before {
 
 .watchLabel {
   flex: 0 0 100%;
-  font-size: 11px;
+  font-size: max(12px, 0.75rem);
   color: var(--muted, #6b7280);
 }
 
@@ -1162,7 +1203,7 @@ details[open] > .sideSummary::before {
 .overlayTitle {
   flex: 1 1 auto;
   margin: 0;
-  font-size: 14px;
+  font-size: max(12px, 0.875rem);
 }
 
 .overlayHead button {
@@ -1171,3 +1212,18 @@ details[open] > .sideSummary::before {
   min-height: 32px;
 }
 /* --- /Phase 7 Task 22 --- */
+
+.ioTable {
+  table-layout: auto;
+}
+.ioTable th,
+.ioTable td {
+  white-space: nowrap;
+  overflow-wrap: normal;
+}
+.treeList button {
+  min-width: 32px;
+}
+.workspaceBody {
+  overflow: hidden;
+}

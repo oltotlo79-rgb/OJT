@@ -95,30 +95,18 @@ const MIN_TARGET_PX = 32;
  * 下げ忘れを防ぐため、**実測が基準より 20% 以上少なければ集計テストが警告を出す**。
  */
 const BASELINE: Readonly<Record<string, number>> = {
+  'editor-space': 0,
   'page-overflow': 0,
   // 日本語が切れていないことは Plan 5 の完了条件そのものなので **0 のまま**（1件でも落とす）
   clip: 0,
-  // UI監査バッチE の実測（132 → 27）→ Phase 7 Task 30 の実測（69画面・3サイズ）で 14 件
-  overlap: 14,
-  // UI監査バッチE の実測（94 → 0）。3D盤の名札は `three/label-declutter.ts` が重なる枚数だけ
-  // 引っ込めるので、**どのペインの形でも 0 件**。1件でも出たら重なり取りが効いていない
+  // Task 24・26後の全画面監査（3サイズ、4社PLC、130%表示）で重なり・折り返し0件。
+  overlap: 0,
   'hud-overlap': 0,
   duplicate: 0,
-  // 30 → 1（Phase 7 Task 30 の実測。1920×1080 の1件だけが残っている）
-  wrap: 1,
-  /*
-   * `small-text` / `small-target` は **Phase 7 Task 30（UX-27）でしきい値を上げた直後の実測**
-   * である（文字 11px → 12px、クリック対象 24px → 32px）。網の目を細かくしたので、
-   * 24 → 1,523 ／ 126 → 1,505 と一気に増えている。**これは「直すべき件数」であって合格点ではない**。
-   * 文字・ボタンの大きさを直すタスク（Task 24・26）が進むたびに、この数を実測まで下げること
-   * （下げ忘れは集計テストの `RATCHET:` が知らせる）。
-   *
-   * 値は**2回の実測の大きい方**である（1回目 1,523 / 899、2回目 1,419 / 1,505。2回のあいだに
-   * Task 19・21・33 が landed して画面が変わった）。2回目は Task 21 のデバイス入力欄が閉じない
-   * 不具合でモードD（OMRON）の3状態を歩けていないので、**その不具合が直ったら測り直すこと**。
-   */
-  'small-text': 1523,
-  'small-target': 1505,
+  wrap: 0,
+  // 残る縮小SVG内の文字とチェック欄は追加レビューで修正し、実測値をさらに下げる。
+  'small-text': 72,
+  'small-target': 89,
   focus: 0,
   canvas: 0,
 };
@@ -146,6 +134,7 @@ const MAX_NOTES = 6;
  * ------------------------------------------------------------------------- */
 
 type CheckName =
+  | 'editor-space'
   | 'page-overflow'
   | 'clip'
   | 'overlap'
@@ -491,7 +480,8 @@ async function auditDom(page: Page): Promise<RawFinding[]> {
         tag === 'style' ||
         tag === 'template' ||
         style.display === 'none' ||
-        style.visibility === 'hidden';
+        style.visibility === 'hidden' ||
+        !el.checkVisibility();
       // 位置が固定のものは祖先のスクロールに付いていかないので、切り抜きは画面だけ
       const parentClip: Clip =
         position === 'fixed' ? screenClip : (clipMap.get(parent ?? el) ?? screenClip);
@@ -719,6 +709,24 @@ async function auditDom(page: Page): Promise<RawFinding[]> {
         Number.parseFloat(info.style.borderBottomWidth);
       const content = info.rect.height - (Number.isFinite(frame) ? frame : 0);
       if (content < lineHeight * 1.8) continue;
+      // 最小クリック高を改行と誤認しない。実際の文字の行が複数あるときだけ報告する。
+      const textWalker = document.createTreeWalker(info.el, NodeFilter.SHOW_TEXT);
+      const textRects: DOMRect[] = [];
+      let textNode = textWalker.nextNode();
+      while (textNode !== null) {
+        if ((textNode.nodeValue ?? '').trim() !== '') {
+          const range = document.createRange();
+          range.selectNodeContents(textNode);
+          textRects.push(...Array.from(range.getClientRects()));
+          range.detach();
+        }
+        textNode = textWalker.nextNode();
+      }
+      const textHeight =
+        Math.max(...textRects.map((rect) => rect.bottom)) -
+        Math.min(...textRects.map((rect) => rect.top));
+      if (!Number.isFinite(textHeight) || textHeight < lineHeight * 1.8) continue;
+
       wraps += 1;
       out.push({
         check: 'wrap',
@@ -914,6 +922,27 @@ async function stop(
     const stats = await capture(app, `ui-${screen}-${key}`, canvasArg);
     const raw = await auditDom(page);
     const list: Finding[] = raw.map((item) => ({ ...item, screen, size: key }));
+    if (/^modeD-.+-ladder$/u.test(screen)) {
+      const editor = await page.getByTestId('workspace-main').boundingBox();
+      // スクロールする中身のmin-heightだけでは、外枠が潰れて見えない不具合を検出できない。
+      if (editor === null || editor.height < 180 || editor.width < 240) {
+        list.push({
+          screen,
+          size: key,
+          check: 'editor-space',
+          selector: '[data-testid="workspace-main"]',
+          text: 'ラダー編集面',
+          severity: 'blocking',
+          rect: {
+            x: editor?.x ?? 0,
+            y: editor?.y ?? 0,
+            w: editor?.width ?? 0,
+            h: editor?.height ?? 0,
+          },
+          detail: 'ラダー編集面は幅240px・高さ180px以上を確保する',
+        });
+      }
+    }
     if (stats !== null && stats.distinct <= 2 && stats.spread < 3 && canvasArg !== null) {
       list.push({
         screen,
@@ -1621,6 +1650,69 @@ test.describe.serial('画面品質の機械点検', () => {
   /* ----------------------------------------------------------------------- *
    * ⑧ 集計と判定
    * ----------------------------------------------------------------------- */
+
+  test('特大130%・高コントラストで1280×800の全モードとヘルプを操作できる', async () => {
+    const { app, page } = await launch();
+    const measured: Array<{ screen: string; findings: RawFinding[] }> = [];
+    try {
+      await app.evaluate(({ BrowserWindow }) =>
+        BrowserWindow.getAllWindows()[0]?.setContentSize(1280, 800),
+      );
+      await page.getByTestId('open-settings').click();
+      await page.getByTestId('setting-ui-scale').selectOption('1.3');
+      await expect
+        .poll(() =>
+          page.evaluate(() => document.documentElement.style.getPropertyValue('--ui-scale')),
+        )
+        .toBe('1.3');
+      await page.getByTestId('setting-contrast').selectOption('high');
+      await expect(page.locator('html')).toHaveAttribute('data-contrast', 'high');
+      const inspect = async (screen: string): Promise<void> => {
+        const findings = await auditDom(page);
+        measured.push({ screen, findings });
+        expect
+          .soft(
+            findings.filter((finding) => finding.severity === 'blocking'),
+            screen,
+          )
+          .toEqual([]);
+        expect
+          .soft(
+            await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth),
+            screen,
+          )
+          .toBe(false);
+      };
+      await inspect('settings');
+      await goHome(page);
+      await inspect('home');
+      for (const [mode, problem] of [
+        ['assemble', B_PROBLEM],
+        ['inspect-parts', C1_PROBLEM],
+        ['inspect-repair', C2_PROBLEM],
+        ['plc', D_PROBLEM],
+      ] as const) {
+        await goHome(page);
+        await page.getByTestId(`mode-${mode}`).click();
+        await inspect(`list-${mode}`);
+        await page
+          .getByTestId('grade-filter')
+          .getByRole('button', { name: 'すべて', exact: true })
+          .click();
+        await page.getByTestId(`open-${problem}`).click();
+        await waitForBoard(page);
+        await inspect(mode);
+        await page.getByTestId('open-help').click();
+        await expect(page.getByTestId('help-drawer')).toBeVisible();
+        await inspect(`help-${mode}`);
+        await page.keyboard.press('Escape');
+      }
+    } finally {
+      mkdirSync(AUDIT_DIR, { recursive: true });
+      writeFileSync(join(AUDIT_DIR, 'scale130.json'), JSON.stringify(measured, null, 2), 'utf8');
+      await app.close();
+    }
+  });
 
   test('集計', () => {
     /*

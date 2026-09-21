@@ -186,8 +186,12 @@ export interface WorkFileLoadRequest {
 export type WorkFileLoadResult =
   { ok: true; file: WorkFile; path: string } | { ok: false; canceled: boolean; message: string };
 
+export const UI_SCALES = [0.9, 1, 1.15, 1.3] as const;
+
 /** アプリ設定。§12.1 */
 export interface AppSettings {
+  uiScale: (typeof UI_SCALES)[number];
+  contrast: 'normal' | 'high';
   /** 利用者課題フォルダ。空文字なら既定（`%APPDATA%/電気教育ツール/content`）。§7.8 */
   userContentDir: string;
   /** 効果音のON/OFF。§15 */
@@ -237,6 +241,8 @@ export const LEGACY_MONITOR_COLOR = '#1E64FF';
 
 /** 設定の既定値。 */
 export const DEFAULT_SETTINGS: AppSettings = {
+  uiScale: 1,
+  contrast: 'normal',
   userContentDir: '',
   soundEnabled: true,
   soundVolume: 0.5,

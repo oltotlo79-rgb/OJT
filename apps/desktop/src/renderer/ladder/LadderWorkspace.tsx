@@ -539,6 +539,8 @@ export function LadderWorkspace({
               key={item.kind}
               type="button"
               data-testid={`symbol-${item.kind}`}
+              title={key === undefined ? item.label : JA.ladder.entry.withKey(item.label, key)}
+              aria-label={key === undefined ? item.label : JA.ladder.entry.withKey(item.label, key)}
               // キー操作・格子の入口と同じく、書込みモード以外は押させない（決定表#11）
               disabled={ladderMode !== 'write'}
               draggable={theme.dragPlace === true}
@@ -551,7 +553,9 @@ export function LadderWorkspace({
               }}
             >
               <SymbolIcon kind={item.kind} />
-              {key === undefined ? item.label : JA.ladder.entry.withKey(item.label, key)}
+              <span className={styles.symbolCaption}>
+                {key === undefined ? item.label : JA.ladder.entry.withKey(item.label, key)}
+              </span>
             </button>
           );
         })}
