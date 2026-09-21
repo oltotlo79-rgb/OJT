@@ -20,18 +20,24 @@ afterEach(() => {
 /** 実ファイルを共有削除不可で開く。組込fsのモックで成功を装わない。 */
 async function holdFile() {
   const ready = join(root, 'ready');
+  const release = join(root, 'release');
   const child = spawn(
     'powershell.exe',
     [
       '-NoProfile',
       '-NonInteractive',
       '-Command',
-      '$file = [System.IO.File]::Open($env:OJT_LOCK_TARGET, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::Read); try { [System.IO.File]::WriteAllText($env:OJT_LOCK_READY, "ready"); [Console]::ReadLine() | Out-Null; Start-Sleep -Milliseconds 100 } finally { $file.Dispose() }',
+      '$file = [System.IO.File]::Open($env:OJT_LOCK_TARGET, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::Read); try { [System.IO.File]::WriteAllText($env:OJT_LOCK_READY, "ready"); while (-not [System.IO.File]::Exists($env:OJT_LOCK_RELEASE)) { Start-Sleep -Milliseconds 1 }; Start-Sleep -Milliseconds 100 } finally { $file.Dispose() }',
     ],
     {
       windowsHide: true,
-      stdio: ['pipe', 'ignore', 'pipe'],
-      env: { ...process.env, OJT_LOCK_TARGET: target, OJT_LOCK_READY: ready },
+      stdio: ['ignore', 'ignore', 'pipe'],
+      env: {
+        ...process.env,
+        OJT_LOCK_TARGET: target,
+        OJT_LOCK_READY: ready,
+        OJT_LOCK_RELEASE: release,
+      },
     },
   );
   const closed = once(child, 'close');
@@ -39,12 +45,14 @@ async function holdFile() {
     await expect.poll(() => existsSync(ready), { timeout: 3000 }).toBe(true);
     expect(() => renameSync(target, join(root, 'must-not-move'))).toThrow();
   } catch (error) {
-    child.stdin.end('\n');
+    writeFileSync(release, 'release');
     await closed;
     throw error;
   }
   return {
-    release: () => child.stdin.end('\n'),
+    // 同期保存がイベントループを止める前に、解放指示を必ず相手へ届ける。
+    // stdin.endではNode 22のパイプ書込が未完了のままAtomics.waitへ入る場合がある。
+    release: () => writeFileSync(release, 'release'),
     closed,
   };
 }
