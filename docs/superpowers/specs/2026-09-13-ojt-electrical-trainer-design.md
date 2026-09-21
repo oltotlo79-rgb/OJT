@@ -1211,7 +1211,7 @@ TOYOPUC のデバイス範囲は PLC調査資料 §3-B の「TOYOPUC-PC10G『PC1
 | 結合 | Vitest | 課題JSON読込 → ネットリスト生成 → シミュレーション → 判定 の一連を、内蔵課題全件で実行する |
 | 純粋関数 | Vitest | `resolvePick`、`layout`、自動経路生成、アナログ針の振れ角計算、テスター読値の丸め |
 | UI | Vitest ＋ Testing Library | 右パネル・結果画面・マークシートパネルの状態遷移 |
-| E2E | Playwright（Electron） | ①起動→課題選択→配線→通電→判定→結果（Phase 1） ②C2で故障を指摘して修復し合格（Phase 2） ③PLCでラダーを組んで配線して合格（Phase 3） ④作業ファイルの保存→再起動→読込（Phase 2） ⑤方言切替・回路図エディタ・ヘルプ・性能・UI品質など Phase 4〜7 で追加した specs。2026-09-20（Phase 7 Task 33）時点で **12 spec／67テスト**（66件成功・1スキップ）（Task 37 で再確認） |
+| E2E | Playwright（Electron） | ①起動→課題選択→配線→通電→判定→結果（Phase 1） ②C2で故障を指摘して修復し合格（Phase 2） ③PLCでラダーを組んで配線して合格（Phase 3） ④作業ファイルの保存→再起動→読込（Phase 2） ⑤方言切替・回路図エディタ・ヘルプ・性能・UI品質など Phase 4〜7 で追加した specs。2026-09-22（Phase 7 Task 37）時点で既定プロジェクトは **18 spec／92テスト**（91件成功・実機専用1件除外）を2回連続で確認。実機性能4件・配布EXE2件・説明書撮影9件は別途実行 |
 | カバレッジ | Vitest のカバレッジ計測 | `circuit-sim` / `ladder-core` / `schematic-core` / `content` は行・分岐とも **90%以上**（各パッケージが存在するフェーズ以降で適用。`ladder-core` は Phase 3 以降）。`apps/desktop` は目標を設けず、上記E2E4本の通過をもって可とする |
 
 ### 14.3 開発プロセス規則

@@ -38,6 +38,7 @@ export async function launchPortable(): Promise<PackagedApp> {
   const close = async (): Promise<void> => {
     if (closed) return;
     closed = true;
+    let forced = false;
     const context = browser?.contexts()[0];
     // Chromium自体の終了命令ではなく、利用者と同じく画面を閉じる。
     // Electronのwindow-all-closed → app.quitを通し、NSISのExecWaitへ戻す。
@@ -45,6 +46,7 @@ export async function launchPortable(): Promise<PackagedApp> {
     // exitより後のcloseを待つ。同期削除でイベントループを塞ぐとWindowsのEXEハンドルが残る。
     if (childClosed) await Promise.race([childClosed, delay(15_000)]);
     if (child?.exitCode === null && child.pid) {
+      forced = true;
       // この起動で作ったプロセスだけを終了する。他のElectronアプリに触れない。
       execFileSync('taskkill', ['/PID', String(child.pid), '/T', '/F'], {
         windowsHide: true,
@@ -55,6 +57,10 @@ export async function launchPortable(): Promise<PackagedApp> {
     if (childClosed) await childClosed;
     await browser?.close().catch(() => {});
     await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+    // 強制終了は検証プロセスの後始末専用。製品の正常終了に数えない。
+    if (forced || (child && child.exitCode !== 0)) {
+      throw new Error(`配布EXEが正常終了していません（終了コード: ${String(child?.exitCode)}）`);
+    }
   };
   try {
     copyFileSync(join(APP_ROOT, 'release', name), exe);
