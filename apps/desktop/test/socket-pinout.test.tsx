@@ -297,21 +297,18 @@ describe('コイルの極性（⑭ = P(+) / ⑬ = N(−)）', () => {
     }
   });
 
-  /*
-   * UI監査バッチE（2026-09-20）: 印は 9px で描いていたため、図の拡大率
-   * （`max-width: 216px` ÷ `viewBox` の 184 ＝ 1.17 倍）を掛けても画面上 10.6px にしかならず、
-   * 「画面上 11px 未満の文字は作らない」というデザイン規則を3つの画面サイズすべてで
-   * 外していた（`e2e/ui-quality.spec.ts` の `small-text` が 33 件）。番号と同じ 11px にする。
-   */
-  it('印の文字は番号と同じ 11px（画面上 11px 未満を作らない）', () => {
-    expect(PINOUT_CSS).toMatch(/\.polarity\s*\{[^}]*font-size:\s*11px/u);
-    expect(PINOUT_CSS).toMatch(/\.pinNumber\s*\{[^}]*font-size:\s*11px/u);
+  // Task 26: 文字倍率に追随し、小表示でも12pxを下回らない。番号と極性は同じ大きさ。
+  it('印と番号は12pxを下限に文字倍率へ追随する', () => {
+    const fontOf = (selector: string): string | undefined =>
+      new RegExp(`\\.${selector}\\s*\\{[^}]*font-size:\\s*([^;]+)`, 'u').exec(PINOUT_CSS)?.[1];
+    expect(fontOf('polarity')).toBe(fontOf('pinNumber'));
+    expect(fontOf('polarity')).toBe('max(12px, 0.75rem)');
     // 図は `viewBox` の比のまま拡大され、縮むのは幅が 184px を切る画面だけ（部品カードは 216px）
     expect(PINOUT_CSS).toMatch(/max-width:\s*216px/u);
     expect(216 / PINOUT_VIEW.w).toBeGreaterThanOrEqual(1);
   });
 
-  it('11px に上げた印が段4の帯にも `viewBox` の下端にもぶつからない', () => {
+  it('極性の印が段4の帯にも `viewBox` の下端にもぶつからない', () => {
     render(<SocketPinout />);
     const row = SOCKET_PIN_GRID[3];
     if (row === undefined) throw new Error('段4がありません');

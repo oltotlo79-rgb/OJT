@@ -62,10 +62,8 @@
  * 色はコイルの色（`PIN_GROUP_COLOR.coil`）ではなく地の文字色にする。色は見分けの補助で、
  * どちらが P かは**言葉**が持つ（`session/socket-pins.ts` の方針）。
  *
- * UI監査バッチE: 9px だと図の拡大率（216 ÷ 184 = 1.17 倍）を掛けても画面上 10.6px にしかならず、
- * 「11px 未満の文字は禁止」というデザイン規則に届いていなかった（33件）。番号（`.pinNumber`）と
- * 同じ 11px に上げ、ぶつからないよう `SocketPinout.tsx` の `POLARITY_DY` と `viewBox` の高さを
- * 一段下げてある（帯の下端と印の上端で3単位ぶん空く）。
+ * Task 26: 番号と同じ12pxを下限に文字倍率へ追随する。
+ * `SocketPinout.tsx` の `POLARITY_DY` と `viewBox` の高さで帯との間隔を確保する。
  */
 .polarity {
   fill: var(--text);
