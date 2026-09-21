@@ -506,7 +506,10 @@ export const JA = {
     standardMark: '標準時間',
     cutoffMark: '打切り時間',
     chartOverlay: 'チャート重ね表示（薄色＝模範／濃色＝訓練者）',
+    resume: '作業へ戻る',
+    resumeNote: '配線・部品・解答を残して作業を続けます。',
     retry: 'もう一度',
+    retryNote: '盤と解答を最初から作り直します。PLCのラダーは残ります。',
     toList: '課題一覧へ',
     /** 判定結果が無いのに結果画面が開かれたとき。§12.1 */
     noResult: '判定結果がありません。',

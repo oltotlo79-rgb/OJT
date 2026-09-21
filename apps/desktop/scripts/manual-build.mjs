@@ -69,7 +69,13 @@ function withNotices(html) {
  * 図には章ごとの通し番号（`図 3-2`）を振る。`counter` は章の中で持ち回る入れ物。
  */
 function toPrintHtml(html, chapterNo, counter) {
-  return html.replace(FIGURE_PARAGRAPH, (_all, src, alt) => {
+  // 図を挟んだ手順の開始番号を、印刷用の丸数字にも引き継ぐ。
+  const numbered = html.replace(
+    /<ol start="(\d+)">/gu,
+    (_all, start) =>
+      `<ol start="${start}" style="counter-reset: step ${String(Number(start) - 1)}">`,
+  );
+  return numbered.replace(FIGURE_PARAGRAPH, (_all, src, alt) => {
     counter.n += 1;
     const label = `図 ${String(chapterNo)}-${String(counter.n)}`;
     return (

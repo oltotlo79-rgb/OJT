@@ -10,13 +10,14 @@ import {
   type JudgeInspectRepairResult,
   type JudgePlcResult,
 } from '@ojt/content';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 import { InspectPartsResult } from '../src/renderer/result/InspectPartsResult.js';
 import { InspectRepairResult } from '../src/renderer/result/InspectRepairResult.js';
 import { PlcResult } from '../src/renderer/result/PlcResult.js';
 import { ResultView } from '../src/renderer/result/ResultView.js';
 import { JA } from '../src/renderer/i18n/ja.js';
+import { useStore } from '../src/renderer/app/store.js';
 
 /**
  * 4つの結果画面の外殻（`ResultShell`）。設計仕様 §8.3（指摘 UI-13）。
@@ -25,7 +26,10 @@ import { JA } from '../src/renderer/i18n/ja.js';
  * いま、4画面とも同じ下端バーになっていることをここで固定する（次に画面が増えても外れない）。
  */
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  useStore.getState().abandonSession();
+});
 
 const NO_HAZARDS = {
   'ohm-on-live': 0,
@@ -162,6 +166,34 @@ function screens(): ReadonlyArray<readonly [string, () => void]> {
 }
 
 describe('結果画面の外殻（UI-13）', () => {
+  for (const [index, [name, mount]] of screens().entries()) {
+    it(`${name}: 作業へ戻ると盤・解答・履歴・危険操作を保持して続けられる`, () => {
+      const problem = [B, C1, C2, D][index];
+      if (problem === undefined) throw new Error('課題がありません');
+      useStore.getState().openProblem(problem);
+      useStore.setState({ route: 'result', restoredHazardCount: 3, hintStage: 2 });
+      const before = useStore.getState();
+      mount();
+      fireEvent.click(screen.getByTestId('result-resume'));
+      const after = useStore.getState();
+      expect(after.route).toBe('session');
+      for (const key of [
+        'session',
+        'ladder',
+        'answers',
+        'tester',
+        'history',
+        'reports',
+        'restoredHazardCount',
+        'hintStage',
+        'sessionEpoch',
+        'startedAtMs',
+        'resolvedFaults',
+      ] as const) {
+        expect(after[key], key).toEqual(before[key]);
+      }
+    });
+  }
   for (const [name, mount] of screens()) {
     it(`${name}: 下端の操作バーが .stickyActions を持つ`, () => {
       mount();

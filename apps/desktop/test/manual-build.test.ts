@@ -30,6 +30,27 @@ function build() {
 }
 
 describe('説明書の再現性', () => {
+  it('図の後の手順番号をヘルプと印刷の両方で継続する', () => {
+    const built = buildManual([
+      {
+        name: '13-tutorial.md',
+        text: [
+          '# 練習',
+          '',
+          '## 配線',
+          '',
+          '1. 始点を選ぶ。',
+          '',
+          '![端子の図。](images/home.png)',
+          '',
+          '2. 終点を選ぶ。',
+          '',
+        ].join('\n'),
+      },
+    ]);
+    expect(built.printHtml).toContain('<ol start="2" style="counter-reset: step 1">');
+    expect(built.sections[0]?.html).toContain('<ol start="2">');
+  });
   it('同じ原稿と発行日から同じHTML・ヘルプを作る', () => {
     const files = [{ name: '00-intro.md', text: INTRO }];
     expect(buildManual(files, '2026-09-20')).toEqual(buildManual(files, '2026-09-20'));

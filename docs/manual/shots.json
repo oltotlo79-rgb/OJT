@@ -2,150 +2,641 @@
   "c1-marksheet": {
     "caption": "マークシート",
     "callouts": [
-      { "n": 1, "label": "マークシート（不良原因を選ぶ）" },
-      { "n": 2, "label": "不良原因" },
-      { "n": 3, "label": "解答済み" }
+      {
+        "n": 1,
+        "label": "マークシート（不良原因を選ぶ）"
+      },
+      {
+        "n": 2,
+        "label": "不良原因"
+      },
+      {
+        "n": 3,
+        "label": "解答済み"
+      }
+    ]
+  },
+  "c1-result": {
+    "caption": "部品点検の判定結果",
+    "callouts": [
+      {
+        "n": 1,
+        "label": "マークシート採点"
+      },
+      {
+        "n": 2,
+        "label": "作業へ戻る"
+      }
     ]
   },
   "c1-tester": {
     "caption": "チェック用ソケットとテスター",
     "callouts": [
-      { "n": 1, "label": "測定モード" },
-      { "n": 2, "label": "レンジ" },
-      { "n": 3, "label": "黒プローブ" },
-      { "n": 4, "label": "赤プローブ" }
+      {
+        "n": 1,
+        "label": "測定モード"
+      },
+      {
+        "n": 2,
+        "label": "レンジ"
+      },
+      {
+        "n": 3,
+        "label": "黒プローブ"
+      },
+      {
+        "n": 4,
+        "label": "赤プローブ"
+      }
+    ]
+  },
+  "c1-tray": {
+    "caption": "点検する部品を選ぶ",
+    "callouts": [
+      {
+        "n": 1,
+        "label": "部品トレイ"
+      },
+      {
+        "n": 2,
+        "label": "チェック用ソケットに挿す"
+      }
     ]
   },
   "c2-repair": {
     "caption": "モードC2の指摘の欄",
     "callouts": [
-      { "n": 1, "label": "指摘" },
-      { "n": 2, "label": "故障の種別を選ぶ" },
-      { "n": 3, "label": "指摘一覧" },
-      { "n": 4, "label": "光っている端子" }
+      {
+        "n": 1,
+        "label": "指摘"
+      },
+      {
+        "n": 2,
+        "label": "故障の種別を選ぶ"
+      },
+      {
+        "n": 3,
+        "label": "指摘一覧"
+      },
+      {
+        "n": 4,
+        "label": "光っている端子"
+      }
+    ]
+  },
+  "c2-repair-complete": {
+    "caption": "修復した配線を確認する",
+    "callouts": [
+      {
+        "n": 1,
+        "label": "追加した白線"
+      },
+      {
+        "n": 2,
+        "label": "外した青線"
+      }
+    ]
+  },
+  "c2-tester": {
+    "caption": "回路をテスターで調べる",
+    "callouts": [
+      {
+        "n": 1,
+        "label": "測定モード"
+      },
+      {
+        "n": 2,
+        "label": "黒プローブ"
+      }
     ]
   },
   "help-drawer": {
     "caption": "ヘルプの引き出し",
     "callouts": [
-      { "n": 1, "label": "言葉で探す" },
-      { "n": 2, "label": "もくじ" },
-      { "n": 3, "label": "説明書（PDF）を開く" },
-      { "n": 4, "label": "閉じる" }
+      {
+        "n": 1,
+        "label": "言葉で探す"
+      },
+      {
+        "n": 2,
+        "label": "もくじ"
+      },
+      {
+        "n": 3,
+        "label": "説明書（PDF）を開く"
+      },
+      {
+        "n": 4,
+        "label": "閉じる"
+      }
     ]
   },
   "home": {
     "caption": "ホームの画面",
     "callouts": [
-      { "n": 1, "label": "回路組立" },
-      { "n": 2, "label": "設定" },
-      { "n": 3, "label": "ヘルプ" }
+      {
+        "n": 1,
+        "label": "回路組立"
+      },
+      {
+        "n": 2,
+        "label": "設定"
+      },
+      {
+        "n": 3,
+        "label": "ヘルプ"
+      }
     ]
   },
   "judge-result": {
     "caption": "結果の画面",
     "callouts": [
-      { "n": 1, "label": "差分一覧" },
-      { "n": 2, "label": "静的チェック" },
-      { "n": 3, "label": "危険操作" },
-      { "n": 4, "label": "所要時間" },
-      { "n": 5, "label": "合否" }
+      {
+        "n": 1,
+        "label": "差分一覧"
+      },
+      {
+        "n": 2,
+        "label": "静的チェック"
+      },
+      {
+        "n": 3,
+        "label": "危険操作"
+      },
+      {
+        "n": 4,
+        "label": "所要時間"
+      },
+      {
+        "n": 5,
+        "label": "合否"
+      }
     ]
   },
   "list": {
     "caption": "課題一覧",
     "callouts": [
-      { "n": 1, "label": "すべて" },
-      { "n": 2, "label": "課題名" },
-      { "n": 3, "label": "ホームへ戻る" }
+      {
+        "n": 1,
+        "label": "すべて"
+      },
+      {
+        "n": 2,
+        "label": "課題名"
+      },
+      {
+        "n": 3,
+        "label": "ホームへ戻る"
+      }
+    ]
+  },
+  "parts-palette": {
+    "caption": "リレーをソケットへ運ぶ",
+    "callouts": [
+      {
+        "n": 1,
+        "label": "部品"
+      },
+      {
+        "n": 2,
+        "label": "CR1"
+      }
+    ]
+  },
+  "plc-coil-input": {
+    "caption": "出力のデバイスを入力する",
+    "callouts": [
+      {
+        "n": 1,
+        "label": "出力の種別"
+      },
+      {
+        "n": 2,
+        "label": "デバイス"
+      }
+    ]
+  },
+  "plc-contact-input": {
+    "caption": "接点のデバイスを入力する",
+    "callouts": [
+      {
+        "n": 1,
+        "label": "デバイス"
+      },
+      {
+        "n": 2,
+        "label": "確定"
+      }
+    ]
+  },
+  "plc-io-wiring": {
+    "caption": "PLCと盤の入出力配線",
+    "callouts": [
+      {
+        "n": 1,
+        "label": "I/O割付"
+      },
+      {
+        "n": 2,
+        "label": "PLC電源は壁コンセント（AC100V）から取ります。"
+      }
     ]
   },
   "plc-ladder": {
     "caption": "モードDのラダー編集",
     "callouts": [
-      { "n": 1, "label": "手順" },
-      { "n": 2, "label": "変換" },
-      { "n": 3, "label": "書込み" },
-      { "n": 4, "label": "モニタ開始" },
-      { "n": 5, "label": "判定" }
+      {
+        "n": 1,
+        "label": "手順"
+      },
+      {
+        "n": 2,
+        "label": "変換"
+      },
+      {
+        "n": 3,
+        "label": "書込み"
+      },
+      {
+        "n": 4,
+        "label": "モニタ開始"
+      },
+      {
+        "n": 5,
+        "label": "判定"
+      }
     ]
   },
   "plc-monitor": {
     "caption": "モードDのモニタ",
     "callouts": [
-      { "n": 1, "label": "モニタ開始" },
-      { "n": 2, "label": "RUN／STOP" },
-      { "n": 3, "label": "デバイス初期化" },
-      { "n": 4, "label": "スキャン回数" },
-      { "n": 5, "label": "通電の色" }
+      {
+        "n": 1,
+        "label": "モニタ開始"
+      },
+      {
+        "n": 2,
+        "label": "RUN／STOP"
+      },
+      {
+        "n": 3,
+        "label": "デバイス初期化"
+      },
+      {
+        "n": 4,
+        "label": "スキャン回数"
+      },
+      {
+        "n": 5,
+        "label": "通電の色"
+      }
     ]
   },
   "plc-notation": {
     "caption": "表記の切替",
     "callouts": [
-      { "n": 1, "label": "表記切替" },
-      { "n": 2, "label": "デバイスの書き方" },
-      { "n": 3, "label": "この表記に切り替える" }
+      {
+        "n": 1,
+        "label": "表記切替"
+      },
+      {
+        "n": 2,
+        "label": "デバイスの書き方"
+      },
+      {
+        "n": 3,
+        "label": "この表記に切り替える"
+      }
+    ]
+  },
+  "plc-vendor-jtekt": {
+    "caption": "ジェイテクトのラダー画面",
+    "callouts": [
+      {
+        "n": 1,
+        "label": "PCwin"
+      },
+      {
+        "n": 2,
+        "label": "ラダー図"
+      }
+    ]
+  },
+  "plc-vendor-omron": {
+    "caption": "オムロンのラダー画面",
+    "callouts": [
+      {
+        "n": 1,
+        "label": "CX-Programmer"
+      },
+      {
+        "n": 2,
+        "label": "ラダー図"
+      }
+    ]
+  },
+  "plc-vendor-sharp": {
+    "caption": "シャープのラダー画面",
+    "callouts": [
+      {
+        "n": 1,
+        "label": "JW-300SP"
+      },
+      {
+        "n": 2,
+        "label": "ラダー図"
+      }
+    ]
+  },
+  "power-controls": {
+    "caption": "ブレーカと電源スイッチ",
+    "callouts": [
+      {
+        "n": 1,
+        "label": "ブレーカ"
+      },
+      {
+        "n": 2,
+        "label": "電源スイッチ"
+      }
+    ]
+  },
+  "pushbutton": {
+    "caption": "押しボタンで動きを確かめる",
+    "callouts": [
+      {
+        "n": 1,
+        "label": "黒の押しボタン"
+      },
+      {
+        "n": 2,
+        "label": "白ランプ"
+      }
+    ]
+  },
+  "result-compare": {
+    "caption": "模範と自分の動きを見比べる",
+    "callouts": [
+      {
+        "n": 1,
+        "label": "模範（破線）"
+      },
+      {
+        "n": 2,
+        "label": "自分（実線）"
+      }
+    ]
+  },
+  "result-export": {
+    "caption": "結果レポートを書き出す",
+    "callouts": [
+      {
+        "n": 1,
+        "label": "この結果を書き出す"
+      },
+      {
+        "n": 2,
+        "label": "所要時間"
+      }
+    ]
+  },
+  "result-replay": {
+    "caption": "判定時の動きを見直す",
+    "callouts": [
+      {
+        "n": 1,
+        "label": "動きを見直す"
+      },
+      {
+        "n": 2,
+        "label": "次へ"
+      }
     ]
   },
   "schematic-editor": {
     "caption": "回路図エディタ",
     "callouts": [
-      { "n": 1, "label": "パレット" },
-      { "n": 2, "label": "段を追加" },
-      { "n": 3, "label": "段を削除" },
-      { "n": 4, "label": "全部消す" },
-      { "n": 5, "label": "回路図の指摘" }
+      {
+        "n": 1,
+        "label": "パレット"
+      },
+      {
+        "n": 2,
+        "label": "段を追加"
+      },
+      {
+        "n": 3,
+        "label": "段を削除"
+      },
+      {
+        "n": 4,
+        "label": "全部消す"
+      },
+      {
+        "n": 5,
+        "label": "回路図の指摘"
+      }
     ]
   },
   "session-board": {
     "caption": "モードBの練習中の画面",
     "callouts": [
-      { "n": 1, "label": "上の帯" },
-      { "n": 2, "label": "手順" },
-      { "n": 3, "label": "3Dの画面" },
-      { "n": 4, "label": "右の欄" },
-      { "n": 5, "label": "下の欄" }
+      {
+        "n": 1,
+        "label": "上の帯"
+      },
+      {
+        "n": 2,
+        "label": "手順"
+      },
+      {
+        "n": 3,
+        "label": "3Dの画面"
+      },
+      {
+        "n": 4,
+        "label": "右の欄"
+      },
+      {
+        "n": 5,
+        "label": "下の欄"
+      }
     ]
   },
   "session-terminal": {
     "caption": "端子にマウスを乗せたときの札",
     "callouts": [
-      { "n": 1, "label": "札" },
-      { "n": 2, "label": "端子の番号" }
+      {
+        "n": 1,
+        "label": "札"
+      },
+      {
+        "n": 2,
+        "label": "端子の番号"
+      }
     ]
   },
   "settings": {
     "caption": "設定の画面",
     "callouts": [
-      { "n": 1, "label": "利用者課題フォルダ" },
-      { "n": 2, "label": "効果音" },
-      { "n": 3, "label": "既定メーカー" }
+      {
+        "n": 1,
+        "label": "利用者課題フォルダ"
+      },
+      {
+        "n": 2,
+        "label": "効果音"
+      },
+      {
+        "n": 3,
+        "label": "既定メーカー"
+      }
+    ]
+  },
+  "settings-accessibility": {
+    "caption": "文字の大きさと配色を選ぶ",
+    "callouts": [
+      {
+        "n": 1,
+        "label": "文字と UI の大きさ"
+      },
+      {
+        "n": 2,
+        "label": "見やすさ"
+      }
     ]
   },
   "socket-card": {
     "caption": "ソケットのカード",
     "callouts": [
-      { "n": 1, "label": "選択中" },
-      { "n": 2, "label": "取り外す" },
-      { "n": 3, "label": "交換…" }
+      {
+        "n": 1,
+        "label": "選択中"
+      },
+      {
+        "n": 2,
+        "label": "取り外す"
+      },
+      {
+        "n": 3,
+        "label": "交換…"
+      }
+    ]
+  },
+  "tester-analog": {
+    "caption": "アナログテスターで抵抗を読む",
+    "callouts": [
+      {
+        "n": 1,
+        "label": "アナログテスターの目盛"
+      },
+      {
+        "n": 2,
+        "label": "0Ω ADJ"
+      }
+    ]
+  },
+  "tester-probes": {
+    "caption": "測る端子の組を選ぶ",
+    "callouts": [
+      {
+        "n": 1,
+        "label": "プローブを当てる"
+      },
+      {
+        "n": 2,
+        "label": "1組 a接点"
+      }
     ]
   },
   "timechart": {
     "caption": "タイムチャートを大きく出したところ",
     "callouts": [
-      { "n": 1, "label": "信号の名前" },
-      { "n": 2, "label": "縦の合わせ線" },
-      { "n": 3, "label": "期待（模範）" }
+      {
+        "n": 1,
+        "label": "信号の名前"
+      },
+      {
+        "n": 2,
+        "label": "縦の合わせ線"
+      },
+      {
+        "n": 3,
+        "label": "期待（模範）"
+      }
+    ]
+  },
+  "timer-preset": {
+    "caption": "タイマの時間を合わせる",
+    "callouts": [
+      {
+        "n": 1,
+        "label": "タイマ設定"
+      },
+      {
+        "n": 2,
+        "label": "秒"
+      }
+    ]
+  },
+  "tour-first": {
+    "caption": "初回ガイドの操作案内",
+    "callouts": [
+      {
+        "n": 1,
+        "label": "3分操作ガイド"
+      },
+      {
+        "n": 2,
+        "label": "あとで"
+      }
     ]
   },
   "view-cube": {
     "caption": "ビューキューブと2つの丸ボタン",
     "callouts": [
-      { "n": 1, "label": "ビューキューブ" },
-      { "n": 2, "label": "全体表示" },
-      { "n": 3, "label": "傾きを戻す" },
-      { "n": 4, "label": "視点操作の早見表" }
+      {
+        "n": 1,
+        "label": "ビューキューブ"
+      },
+      {
+        "n": 2,
+        "label": "全体表示"
+      },
+      {
+        "n": 3,
+        "label": "傾きを戻す"
+      },
+      {
+        "n": 4,
+        "label": "視点操作の早見表"
+      }
+    ]
+  },
+  "wire-drag": {
+    "caption": "端子どうしをドラッグでつなぐ",
+    "callouts": [
+      {
+        "n": 1,
+        "label": "始点の端子"
+      },
+      {
+        "n": 2,
+        "label": "終点の端子"
+      }
+    ]
+  },
+  "workfile-menu": {
+    "caption": "作業ファイルの保存と読込",
+    "callouts": [
+      {
+        "n": 1,
+        "label": "作業を保存"
+      },
+      {
+        "n": 2,
+        "label": "作業を読込"
+      }
     ]
   }
 }

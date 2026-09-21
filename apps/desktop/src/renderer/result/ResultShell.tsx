@@ -56,6 +56,7 @@ export function ResultShell({
 }): JSX.Element {
   // 開いたヒントの段数（4画面とも同じ出し方なので外殻が読む）。指摘 PR-02
   const hintStage = useStore((state) => state.hintStage);
+  const canResume = useStore((state) => state.problem !== undefined && state.session !== undefined);
   return (
     <div className={styles.wrap}>
       <div className={styles.scroll}>
@@ -107,8 +108,22 @@ export function ResultShell({
 
       {/* 下端の操作バー（4画面とも同じ。`.stickyActions` の付け忘れをここで断つ）。UI-13 */}
       <div className={`${styles.actions} ${styles.stickyActions}`}>
+        {canResume ? (
+          <button
+            type="button"
+            data-testid="result-resume"
+            title={JA.result.resumeNote}
+            onClick={() => {
+              const store = useStore.getState();
+              store.setBoardFocus(undefined);
+              store.setRoute('session');
+            }}
+          >
+            {JA.result.resume}
+          </button>
+        ) : null}
         {extraAction}
-        <button type="button" onClick={onRetry}>
+        <button type="button" onClick={onRetry} title={JA.result.retryNote}>
           {JA.result.retry}
         </button>
         <button type="button" onClick={onBackToList}>

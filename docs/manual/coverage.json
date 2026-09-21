@@ -340,7 +340,7 @@
       "testid": "device-text",
       "screen": "練習中（モードD）",
       "label": "デバイス",
-      "section": "mode-d/ラダー図を描く"
+      "section": "tutorial-features/ラダーの記号を置く"
     },
     {
       "testid": "diagnosis-help",
@@ -550,7 +550,7 @@
       "testid": "help-restart-tour",
       "screen": "操作ガイド",
       "label": "案内をもう一度見る",
-      "section": "mode-b/3分操作ガイド"
+      "section": "tutorial-features/初回ガイドの出し直し"
     },
     {
       "testid": "help-search",
@@ -1166,7 +1166,7 @@
       "testid": "probe-target-{}",
       "screen": "練習中（モードC1）",
       "label": "1組 a接点",
-      "section": "mode-c1/テスターの使い方"
+      "section": "tutorial-features/テスターの使い方"
     },
     {
       "testid": "probe-{}",
@@ -1395,6 +1395,12 @@
       "section": "screens/結果の画面"
     },
     {
+      "testid": "result-resume",
+      "screen": "結果",
+      "label": "作業へ戻る",
+      "section": "screens/結果の画面"
+    },
+    {
       "testid": "round-no",
       "screen": "練習中（モードD）",
       "label": "いいえ",
@@ -1558,7 +1564,7 @@
       "testid": "setting-contrast",
       "screen": "設定",
       "label": "見やすさ",
-      "section": "settings/設定の画面"
+      "section": "tutorial-features/設定"
     },
     {
       "testid": "setting-grid-cols",
@@ -1594,7 +1600,7 @@
       "testid": "setting-restart-tour",
       "screen": "操作ガイド",
       "label": "案内をもう一度見る",
-      "section": "mode-b/3分操作ガイド"
+      "section": "tutorial-features/初回ガイドの出し直し"
     },
     {
       "testid": "setting-restore-prompt",
@@ -1618,7 +1624,7 @@
       "testid": "setting-ui-scale",
       "screen": "設定",
       "label": "文字と UI の大きさ",
-      "section": "settings/設定の画面"
+      "section": "tutorial-features/設定"
     },
     {
       "testid": "setting-user-dir",
@@ -1992,19 +1998,19 @@
       "testid": "tour-guide",
       "screen": "操作ガイド",
       "label": "3分操作ガイド",
-      "section": "mode-b/3分操作ガイド"
+      "section": "tutorial-features/初回ガイドの出し直し"
     },
     {
       "testid": "tour-later",
       "screen": "操作ガイド",
       "label": "あとで",
-      "section": "mode-b/3分操作ガイド"
+      "section": "tutorial-features/初回ガイドの出し直し"
     },
     {
       "testid": "tour-never",
       "screen": "操作ガイド",
       "label": "次回から表示しない",
-      "section": "mode-b/3分操作ガイド"
+      "section": "tutorial-features/初回ガイドの出し直し"
     },
     {
       "testid": "tour-rotate",
@@ -2126,7 +2132,7 @@
       "testid": "view-hint-toggle",
       "screen": "練習中",
       "label": "視点操作の早見表",
-      "section": "screens/3Dの見かたと動かしかた"
+      "section": "tutorial-features/3Dの見かた"
     },
     {
       "testid": "view-plc",
@@ -2238,7 +2244,7 @@
       "key": "F1",
       "screen": "全画面",
       "action": "ヘルプを開く・閉じる",
-      "section": "screens/画面の上の帯"
+      "section": "tutorial-features/ヘルプと説明書"
     },
     {
       "key": "Esc",
@@ -2274,13 +2280,13 @@
       "key": "Home",
       "screen": "練習中",
       "action": "盤ぜんたいを見る",
-      "section": "screens/3Dの見かたと動かしかた"
+      "section": "tutorial-features/3Dの見かた"
     },
     {
       "key": "テンキーの1・3・7",
       "screen": "練習中",
       "action": "正面・右・上から見る（Ctrl を足すと反対側）",
-      "section": "screens/3Dの見かたと動かしかた"
+      "section": "tutorial-features/3Dの見かた"
     },
     {
       "key": "Delete",
@@ -2292,7 +2298,7 @@
       "key": "Enter",
       "screen": "練習中",
       "action": "端子リストでえらんだ端子を決める（2つで電線が1本つながります）",
-      "section": "mode-b/電線をつなぐ・外す"
+      "section": "tutorial-features/端子をつなぐ"
     },
     {
       "key": "F2",
@@ -2474,61 +2480,61 @@
       "name": "左ボタンでドラッグ",
       "screen": "3Dビュー",
       "action": "盤を回す",
-      "section": "screens/3Dの見かたと動かしかた"
+      "section": "tutorial-features/3Dの見かた"
     },
     {
       "name": "中ボタン・右ボタンでドラッグ",
       "screen": "3Dビュー",
       "action": "盤を回す",
-      "section": "screens/3Dの見かたと動かしかた"
+      "section": "tutorial-features/3Dの見かた"
     },
     {
       "name": "Shift を押しながら中ボタン・右ボタンでドラッグ",
       "screen": "3Dビュー",
       "action": "盤を平行に動かす",
-      "section": "screens/3Dの見かたと動かしかた"
+      "section": "tutorial-features/3Dの見かた"
     },
     {
       "name": "Ctrl を押しながら中ボタン・右ボタンでドラッグ",
       "screen": "3Dビュー",
       "action": "近づく・遠ざかる",
-      "section": "screens/3Dの見かたと動かしかた"
+      "section": "tutorial-features/3Dの見かた"
     },
     {
       "name": "ホイールを回す",
       "screen": "3Dビュー",
       "action": "ポインタの位置へ近づく・遠ざかる",
-      "section": "screens/3Dの見かたと動かしかた"
+      "section": "tutorial-features/3Dの見かた"
     },
     {
       "name": "ビューキューブをドラッグする",
       "screen": "3Dビュー",
       "action": "指についてくるように盤を回す",
-      "section": "screens/3Dの見かたと動かしかた"
+      "section": "tutorial-features/3Dの見かた"
     },
     {
       "name": "ビューキューブの面をクリックする",
       "screen": "3Dビュー",
       "action": "その向きから見る",
-      "section": "screens/3Dの見かたと動かしかた"
+      "section": "tutorial-features/3Dの見かた"
     },
     {
       "name": "ビューキューブの辺や角をクリックする",
       "screen": "3Dビュー",
       "action": "ななめから見る",
-      "section": "screens/3Dの見かたと動かしかた"
+      "section": "tutorial-features/3Dの見かた"
     },
     {
       "name": "ビューキューブの「⌂」を押す",
       "screen": "3Dビュー",
       "action": "盤ぜんたいが入る見え方へ戻す",
-      "section": "screens/3Dの見かたと動かしかた"
+      "section": "tutorial-features/3Dの見かた"
     },
     {
       "name": "ビューキューブの「⟳」を押す",
       "screen": "3Dビュー",
       "action": "いまの向きのまま傾きを戻す",
-      "section": "screens/3Dの見かたと動かしかた"
+      "section": "tutorial-features/3Dの見かた"
     },
     {
       "name": "端子にマウスを乗せる",
@@ -2556,9 +2562,9 @@
     },
     {
       "name": "タイマのつまみをドラッグする",
-      "screen": "3Dビュー",
+      "screen": "部品",
       "action": "時間を決める",
-      "section": "mode-b/タイマの時間を決める"
+      "section": "tutorial-features/タイマの設定"
     },
     {
       "name": "3Dの押しボタンを押したままにする",
@@ -2587,14 +2593,38 @@
     {
       "name": "ラダーの格子をクリックする",
       "screen": "ラダー",
-      "action": "その場所にデバイスを入れる欄が出る",
-      "section": "mode-d/ラダー図を描く"
+      "action": "書き込む場所を選ぶ",
+      "section": "tutorial-features/ラダーの記号を置く"
     },
     {
       "name": "図をクリックする（または Enter を押す）",
       "screen": "練習中・結果",
       "action": "タイムチャートや回路図を大きく開く",
       "section": "screens/タイムチャートの読み方"
+    },
+    {
+      "name": "端子から端子へドラッグする",
+      "screen": "3Dビュー",
+      "action": "電線を1本つなぐ",
+      "section": "tutorial-features/端子をつなぐ"
+    },
+    {
+      "name": "部品パレットからソケットへドラッグする",
+      "screen": "3Dビュー",
+      "action": "部品を装着する",
+      "section": "tutorial-features/部品を置く・外す・交換する"
+    },
+    {
+      "name": "3Dのブレーカ・電源スイッチをクリックする",
+      "screen": "3Dビュー",
+      "action": "盤の電源を入切する",
+      "section": "tutorial-features/電源の入れ方と順序"
+    },
+    {
+      "name": "ラダーの格子をダブルクリックする",
+      "screen": "ラダー",
+      "action": "記号とデバイスの入力欄を開く",
+      "section": "tutorial-features/ラダーの記号を置く"
     }
   ],
   "messages": [
