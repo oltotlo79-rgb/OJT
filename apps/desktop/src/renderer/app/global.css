@@ -11,6 +11,18 @@
   --ok: #3fa34d;
   --ng: #d64545;
   --warn: #e8c22a;
+  --ink-on-accent: #10151c;
+  --danger-text: #ffb4b4;
+  --success-text: #9fd6a8;
+  --paper: #ffffff;
+  --paper-ink: #14181f;
+  --paper-muted: #3c4654;
+  --paper-rule: #9aa5b4;
+  --paper-fill: #eef2f7;
+  --paper-accent: #1e64ff;
+  --wire-blue: #3b82f6;
+  --wire-white: #f3f4f6;
+  --wire-yellow: #facc15;
   font-family: 'Yu Gothic UI', 'Meiryo', system-ui, sans-serif;
 }
 

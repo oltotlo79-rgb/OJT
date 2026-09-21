@@ -142,6 +142,7 @@ test.describe.serial('タイムチャートの拡大表示', () => {
     // 1本目は結果画面で終わるので、必ずホームへ戻してから始める
     await goHome(page);
     await page.getByTestId('mode-assemble').click();
+    await page.getByRole('button', { name: '1級', exact: true }).click();
     await page.getByTestId('open-b-007').click();
     await expect(page.getByTestId('viewport')).toBeVisible();
     await expect

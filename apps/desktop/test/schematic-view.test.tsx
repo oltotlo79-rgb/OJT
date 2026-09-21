@@ -53,12 +53,7 @@ describe('紙に収まる（幅いっぱい・縦横比そのまま・切り落�
 
   it('viewBoxOf は図形すべてを包み、余白は上下左右そろえる', () => {
     const shapes = layout(docOf(B), SCHEMATIC_LAYOUT).shapes;
-    const [minX, minY, width, height] = viewBoxOf(shapes, 0, 0).split(' ').map(Number) as [
-      number,
-      number,
-      number,
-      number,
-    ];
+    const [minX, minY, width, height] = viewBoxOf(shapes, 0, 0);
     for (const s of shapes) {
       if (s.kind !== 'line') continue;
       expect(Math.min(s.x1, s.x2)).toBeGreaterThanOrEqual(minX);
@@ -67,7 +62,7 @@ describe('紙に収まる（幅いっぱい・縦横比そのまま・切り落�
       expect(Math.max(s.y1, s.y2)).toBeLessThanOrEqual(minY + height);
     }
     // 図形が無くても落ちない
-    expect(viewBoxOf([], 10, 20)).toBe('0 0 10 20');
+    expect(viewBoxOf([], 10, 20)).toEqual([0, 0, 10, 20]);
   });
 
   it('SVG は幅いっぱいで縦横比を保ち、白い紙を敷く', () => {

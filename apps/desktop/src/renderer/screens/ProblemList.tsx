@@ -116,9 +116,7 @@ export function ProblemList(): JSX.Element {
         </button>
         <HelpButton />
       </div>
-      <h1 className={styles.title} style={{ marginTop: 12 }}>
-        {JA.problemList.title}
-      </h1>
+      <h1 className={`${styles.title} ${styles.pageTitle}`}>{JA.problemList.title}</h1>
       {listError !== undefined ? (
         <p className={styles.errorBox} data-testid="problem-list-error">
           {JA.problemList.listFailed}: {listError}
@@ -340,7 +338,7 @@ export function ProblemList(): JSX.Element {
 
       {listError !== undefined || problems === undefined || problems.errors.length === 0 ? null : (
         <div className={styles.errorBox} data-testid="problem-errors">
-          <h2 style={{ fontSize: 14, margin: '0 0 6px' }}>{JA.problemList.errorsTitle}</h2>
+          <h2 className={styles.groupTitle}>{JA.problemList.errorsTitle}</h2>
           <ul>
             {problems.errors.map((error) => (
               <li key={error.file}>

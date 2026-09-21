@@ -139,7 +139,8 @@
  * 見比べる主役は「訓練者がどう動いたか」なので、太く濃い線をそちらに割り当てる。
  */
 .overlayExpected {
-  stroke: rgba(231, 235, 242, 0.38);
+  stroke: var(--muted);
+  stroke-dasharray: 6 4;
   stroke-width: 1.5;
   fill: none;
 }
@@ -174,7 +175,7 @@
 }
 
 .legendExpected {
-  border-top: 1.5px solid rgba(231, 235, 242, 0.6);
+  border-top: 2px dashed var(--muted);
 }
 
 .legendActual {

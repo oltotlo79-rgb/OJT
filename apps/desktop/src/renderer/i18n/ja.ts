@@ -226,6 +226,7 @@ export const JA = {
     noProblem: '課題が選ばれていません。',
     powered: '通電中',
     unpowered: '無通電',
+    tripState: '保護動作',
     wires: '電線',
     noTerminal: '端子未選択',
     firstTerminal: '1本目',

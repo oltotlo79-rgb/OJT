@@ -44,6 +44,10 @@ test.describe.serial('仕上げ', () => {
   test('2級課題では回路図ヒントを開閉でき、3級課題では常時出ている（§8.4）', async () => {
     // b-004 は2級課題。開閉でき、初期は閉じている
     await page.getByTestId('mode-assemble').click();
+    await page
+      .getByTestId('grade-filter')
+      .getByRole('button', { name: 'すべて', exact: true })
+      .click();
     await page.getByTestId('open-b-004').click();
     await expect(page.getByTestId('viewport')).toBeVisible();
     await page.waitForTimeout(800);

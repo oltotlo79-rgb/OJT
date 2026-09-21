@@ -164,6 +164,7 @@ export function Toolbar({
                   onMode('wire');
                 }}
               >
+                <span className={styles.wireSwatch} data-color={color} aria-hidden="true" />
                 {color}
               </button>
             ))}

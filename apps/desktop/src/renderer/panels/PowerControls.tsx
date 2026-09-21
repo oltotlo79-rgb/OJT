@@ -32,10 +32,10 @@ export function PowerControls({
   const nextStep = tripped ? undefined : !breakerOn ? 'breaker' : !switchOn ? 'switch' : undefined;
   return (
     <div className={`${styles.toolGroup} ${styles.power}`}>
-      <span
-        className={`${styles.led} ${tripped ? styles.ledTrip : powered ? styles.ledOn : ''}`}
-        aria-label={powered ? JA.session.powered : JA.session.unpowered}
-      />
+      <span className={`${styles.powerState} ${tripped ? styles.tripState : ''}`} role="status">
+        <span aria-hidden="true">{tripped ? '▲' : powered ? '●' : '○'}</span>
+        {tripped ? JA.session.tripState : powered ? JA.session.powered : JA.session.unpowered}
+      </span>
       <button
         type="button"
         className={nextStep === 'breaker' ? styles.nextStep : undefined}

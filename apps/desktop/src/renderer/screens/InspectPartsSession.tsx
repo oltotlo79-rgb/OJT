@@ -55,7 +55,7 @@ import styles from './screens.module.css';
 function ProbeShortcuts(): JSX.Element {
   return (
     <div data-testid="probe-shortcuts">
-      <p className={styles.subtitle} style={{ margin: '6px 0 2px', fontSize: 11 }}>
+      <p className={`${styles.subtitle} ${styles.inspectionNote}`}>
         {JA.inspectParts.probeShortcut}
       </p>
       {probeTargets().map((target) => {

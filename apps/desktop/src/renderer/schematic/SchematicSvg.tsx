@@ -183,9 +183,9 @@ export function viewBoxOf(
   width: number,
   height: number,
   minSize?: { width: number; height: number },
-): string {
+): readonly [number, number, number, number] {
   const first = shapes[0];
-  if (first === undefined) return `0 0 ${width} ${height}`;
+  if (first === undefined) return [0, 0, width, height];
   let [x1, y1, x2, y2] = boundsOf(first);
   for (const shape of shapes) {
     const b = boundsOf(shape);
@@ -203,7 +203,7 @@ export function viewBoxOf(
   const h = Math.max(contentH, minSize?.height ?? 0);
   const extraX = (w - contentW) / 2;
   const extraY = (h - contentH) / 2;
-  return `${round(x1 - VIEW_PAD - extraX)} ${round(y1 - VIEW_PAD - extraY)} ${round(w)} ${round(h)}`;
+  return [round(x1 - VIEW_PAD - extraX), round(y1 - VIEW_PAD - extraY), round(w), round(h)];
 }
 
 /**
@@ -450,10 +450,10 @@ export function SchematicSvg({
     () => (onPickSlot === undefined ? [] : slotRects(doc, SCHEMATIC_LAYOUT)),
     [doc, onPickSlot],
   );
-  const [vx, vy, vw, vh] = view.split(' ').map(Number) as [number, number, number, number];
+  const [vx, vy, vw, vh] = view;
   return (
     <svg
-      viewBox={view}
+      viewBox={view.join(' ')}
       role="img"
       aria-label={doc.title}
       data-testid={testId}

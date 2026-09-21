@@ -33,6 +33,15 @@ function renderPower(overrides: {
 }
 
 describe('番号付きラベル', () => {
+  it.each([
+    [{ powered: false }, '○無通電'],
+    [{ powered: true }, '●通電中'],
+    [{ powered: true, tripped: true }, '▲保護動作'],
+  ] as const)('電源状態を色に頼らず区別できる: %s', (state, label) => {
+    renderPower(state);
+    expect(screen.getByRole('status')).toHaveTextContent(label);
+  });
+
   it('①ブレーカ／②電源スイッチの順番を文字で出す', () => {
     renderPower({});
     expect(screen.getByTestId('power-breaker')).toHaveTextContent(JA.powerStep.breaker);

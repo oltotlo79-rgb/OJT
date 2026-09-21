@@ -752,3 +752,25 @@
   display: block;
   margin-top: 6px;
 }
+
+.sectionTitle {
+  font-size: 18px;
+}
+.pageTitle {
+  margin-top: 12px;
+}
+.groupTitle {
+  font-size: 14px;
+  margin: 0 0 8px;
+}
+.settingsGroupTitle {
+  font-size: 14px;
+  margin: 16px 0 8px;
+}
+.settingsBody {
+  max-width: 760px;
+}
+.inspectionNote {
+  margin: 8px 0 4px;
+  font-size: 12px;
+}

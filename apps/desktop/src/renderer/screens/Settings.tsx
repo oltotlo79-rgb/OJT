@@ -159,9 +159,7 @@ export function Settings(): JSX.Element {
         </button>
         <HelpButton />
       </div>
-      <h1 className={styles.title} style={{ marginTop: 12 }}>
-        {JA.home.settings}
-      </h1>
+      <h1 className={`${styles.title} ${styles.pageTitle}`}>{JA.home.settings}</h1>
       {loadError !== undefined ? (
         <p className={styles.errorBox} data-testid="settings-error">
           {JA.settings.loadFailed}: {loadError}
@@ -169,7 +167,7 @@ export function Settings(): JSX.Element {
       ) : settings === undefined ? (
         <p className={styles.subtitle}>{JA.problemList.loading}</p>
       ) : (
-        <div style={{ maxWidth: 760 }}>
+        <div className={styles.settingsBody}>
           {settings.warning === undefined ? null : (
             <p className={styles.errorBox} data-testid="settings-warning">
               {settings.warning}
@@ -244,7 +242,7 @@ export function Settings(): JSX.Element {
           </section>
 
           <section data-testid="plc-settings">
-            <h2 style={{ fontSize: 14, margin: '16px 0 6px' }}>{JA.settings.plcGroup}</h2>
+            <h2 className={styles.settingsGroupTitle}>{JA.settings.plcGroup}</h2>
 
             <section className={styles.settingRow}>
               <label htmlFor="setting-vendor">{JA.settings.vendor}</label>
@@ -412,7 +410,7 @@ export function Settings(): JSX.Element {
             この節では商標注記だけにする。
           */}
           <section className={styles.about} data-testid="about">
-            <h2 style={{ fontSize: 14, margin: '0 0 6px' }}>{JA.settings.about}</h2>
+            <h2 className={styles.groupTitle}>{JA.settings.about}</h2>
             <p>{TRADEMARK_NOTICE}</p>
           </section>
         </div>

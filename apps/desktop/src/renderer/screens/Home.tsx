@@ -123,9 +123,7 @@ export function Home(): JSX.Element {
           </button>
         </div>
       </div>
-      <h2 className={styles.title} style={{ fontSize: 18 }}>
-        {JA.home.title}
-      </h2>
+      <h2 className={`${styles.title} ${styles.sectionTitle}`}>{JA.home.title}</h2>
       <div className={styles.modeGrid}>
         {MODES.map((mode) => (
           <button

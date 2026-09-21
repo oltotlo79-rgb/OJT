@@ -684,3 +684,33 @@
   line-height: 1.65;
   margin: 0 0 0.75rem;
 }
+
+.powerState {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  white-space: nowrap;
+  color: var(--text);
+}
+.tripState {
+  color: var(--warn);
+}
+.wireSwatch {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  margin-right: 6px;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  vertical-align: -1px;
+}
+.wireSwatch[data-color='青'] {
+  background: var(--wire-blue);
+}
+.wireSwatch[data-color='白'] {
+  background: var(--wire-white);
+}
+.wireSwatch[data-color='黄'] {
+  background: var(--wire-yellow);
+}
