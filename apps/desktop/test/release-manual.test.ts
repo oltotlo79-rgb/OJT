@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { OJT_PACKAGES } from '../electron.vite.config.js';
 
 /** 説明書 PDF が配布物に入ること。取扱説明書 設計 §7.2 / §7.3 / 決定表#6・#27。 */
 
@@ -12,7 +13,6 @@ const pkg = JSON.parse(readFileSync(join(APP_ROOT, 'package.json'), 'utf8')) as 
   devDependencies: Record<string, string>;
 };
 const builderYml = readFileSync(join(APP_ROOT, 'electron-builder.yml'), 'utf8');
-const checkDist = readFileSync(join(APP_ROOT, 'scripts', 'check-dist.mjs'), 'utf8');
 
 describe('ビルドの順番（設計 §7.2）', () => {
   it('builds the manual, then the pdf, then the app, then checks the artefacts', () => {
@@ -38,35 +38,31 @@ describe('ビルドの順番（設計 §7.2）', () => {
 });
 
 describe('同梱（設計 §7.3 / 決定表#6）', () => {
-  it('ships the pdf next to the bundled problems, for both the installer and the zip', () => {
+  it('PDFをインストーラと単一EXEの両方へ同梱する', () => {
     expect(builderYml).toContain('from: resources/manual/manual.pdf');
     expect(builderYml).toContain('to: manual.pdf');
-    // 既存の同梱物と配布形態は変えない
     expect(builderYml).toContain('from: resources/content');
     expect(builderYml).toContain('target: nsis');
-    expect(builderYml).toContain('target: zip');
+    expect(builderYml).toContain('target: portable');
+    expect(builderYml).toContain(
+      'artifactName: DenkiKyoikuTool-${version}-${arch}-Portable.${ext}',
+    );
+    expect(builderYml).toContain('artifactName: DenkiKyoikuTool-${version}-${arch}-Setup.${ext}');
   });
 
-  it('checks the pdf in the packaged build', () => {
-    /*
-     * Minor#1: `manual.pdf` という文字だけを探すと、ヘッダのコメントに1回書いてあるだけで
-     * 検査の本体を消しても通ってしまう。実際に「無い」「空」を弾く分岐そのものがあることを見る。
-     */
-    expect(checkDist).toContain('!existsSync(manual)');
-    expect(checkDist).toContain('resources/manual.pdf がありません');
-    expect(checkDist).toContain('bytes === 0');
-    expect(checkDist).toContain('resources/manual.pdf が空です');
-  });
-
-  it('records a sha256 for the pdf in artifacts.md, not just its byte count', () => {
-    // Minor#1: `artifacts.md` の SHA256 列は未検査だった。ハッシュを計算して表に積む行があることを見る
-    expect(checkDist).toContain('sha256Of(manual)');
-    expect(checkDist).toContain('SHA256');
-    expect(checkDist).toContain('r.sha256');
-  });
+  // PDF欠損・形式・SHA256は check-dist.test.ts で検査関数を実行して確認する。
 });
 
 describe('依存（設計 §12 の差分#6）', () => {
+  it('全ワークスペース依存をmainへバンドルする', () => {
+    expect([...OJT_PACKAGES].sort()).toEqual(
+      Object.keys(pkg.dependencies)
+        .filter((name) => name.startsWith('@ojt/'))
+        .sort(),
+    );
+    expect(OJT_PACKAGES).toContain('@ojt/ladder-core');
+    expect(OJT_PACKAGES).toContain('@ojt/plc-dialects');
+  });
   it('adds the markdown reader for the build only', () => {
     expect(pkg.devDependencies['markdown-it']).toBeDefined();
     expect(pkg.dependencies['markdown-it']).toBeUndefined();

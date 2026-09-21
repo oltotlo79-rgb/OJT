@@ -66,6 +66,12 @@ importers:
         specifier: workspace:*
         version: link:../../packages/schematic-core
     devDependencies:
+      '@electron/asar':
+        specifier: 3.4.1
+        version: 3.4.1
+      '@electron/fuses':
+        specifier: 1.8.0
+        version: 1.8.0
       '@playwright/test':
         specifier: 1.63.0
         version: 1.63.0

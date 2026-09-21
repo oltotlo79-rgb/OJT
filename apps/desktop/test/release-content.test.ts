@@ -32,9 +32,9 @@ describe('配布物の版と設定（§15 / Plan 5 決定表#20）', () => {
     expect(pkg.scripts['dist']).toContain('copy-content.mjs');
   });
 
-  it('still ships NSIS and the portable zip with no auto-update (§15)', () => {
+  it('インストーラと単一EXEを自動更新なしで配布する', () => {
     expect(builderYml).toContain('target: nsis');
-    expect(builderYml).toContain('target: zip');
+    expect(builderYml).toContain('target: portable');
     expect(builderYml).toContain('publish: null');
     expect(builderYml).toContain('productName: 電気教育ツール');
   });
@@ -77,7 +77,7 @@ describe('配布物の版と設定（§15 / Plan 5 決定表#20）', () => {
   });
 
   it('checks that icon from the dist script (QA-06)', () => {
-    const script = readFileSync(join(APP_ROOT, 'scripts', 'check-dist.mjs'), 'utf8');
+    const script = readFileSync(join(APP_ROOT, 'scripts', 'inspect-dist.mjs'), 'utf8');
     expect(script).toContain('icon.ico');
   });
 });

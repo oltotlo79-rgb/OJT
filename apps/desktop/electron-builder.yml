@@ -1,5 +1,5 @@
 # 配布パッケージ。設計仕様 §15。
-# NSISインストーラ（管理者権限不要）とポータブル版（zip展開のみ）の2形態を作る。
+# NSISインストーラと単一EXEのポータブル版を作る（ともに管理者権限不要）。
 # コード署名はしない（SmartScreen の回避手順は README とインストーラ説明画面に日本語で書く）。
 appId: jp.ojt.electrical-trainer
 productName: 電気教育ツール
@@ -38,9 +38,9 @@ win:
   target:
     - target: nsis
       arch: [x64]
-    - target: zip
+    - target: portable
       arch: [x64]
-  artifactName: ${productName}-${version}-${arch}.${ext}
+  artifactName: DenkiKyoikuTool-${version}-${arch}.${ext}
   # アプリのアイコン。`directories.buildResources` の既定名と同じなので明示は要らないが、
   # 無いと exe もショートカットもタスクバーも既定の Electron アイコンになる（QA-06）。
   icon: build/icon.ico
@@ -74,6 +74,7 @@ electronFuses:
   grantFileProtocolExtraPrivileges: true
 
 nsis:
+  artifactName: DenkiKyoikuTool-${version}-${arch}-Setup.${ext}
   oneClick: false
   perMachine: false # 管理者権限を要求しない（§15）
   # 「すべてのユーザー」を選んでも UAC を立てない。README とリリースノートの
@@ -83,6 +84,13 @@ nsis:
   createDesktopShortcut: true
   createStartMenuShortcut: true
   shortcutName: 電気教育ツール
+
+# 公式 PortableOptions に従う。毎回専用の一時フォルダへ展開し、終了後に片付ける。
+# https://www.electron.build/docs/api/app-builder-lib.interface.portableoptions/
+portable:
+  artifactName: DenkiKyoikuTool-${version}-${arch}-Portable.${ext}
+  unpackDirName: false
+  requestExecutionLevel: user
 
 # 完全オフライン。自動更新の設定は持たない（§15）。
 publish: null

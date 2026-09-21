@@ -88,6 +88,8 @@ export default tseslint.config(
     ignores: [
       'apps/desktop/scripts/build.mjs',
       'apps/desktop/scripts/check-dist.mjs',
+      'apps/desktop/scripts/inspect-dist.mjs',
+      'apps/desktop/scripts/manual-date.mjs',
       'apps/desktop/scripts/copy-content.mjs',
       'apps/desktop/scripts/dev.mjs',
       'apps/desktop/scripts/print-manual.mjs',

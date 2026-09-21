@@ -29,6 +29,17 @@ function build() {
   return buildManual([{ name: '00-intro.md', text: INTRO }]);
 }
 
+describe('説明書の再現性', () => {
+  it('同じ原稿と発行日から同じHTML・ヘルプを作る', () => {
+    const files = [{ name: '00-intro.md', text: INTRO }];
+    expect(buildManual(files, '2026-09-20')).toEqual(buildManual(files, '2026-09-20'));
+    expect(buildManual(files, '2026-09-20').printHtml).toContain('2026-09-20 発行');
+  });
+  it('発行日の指定がなければ表紙に勝手な日付を入れない', () => {
+    expect(build().printHtml).not.toMatch(/\d{4}-\d{2}-\d{2} 発行/);
+  });
+});
+
 describe('章とファイル名', () => {
   it('takes the chapter id from the file name', () => {
     expect(chapterIdOf('04-mode-c1.md')).toBe('mode-c1');

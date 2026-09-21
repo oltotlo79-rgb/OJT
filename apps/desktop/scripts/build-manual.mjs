@@ -11,6 +11,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import PACKAGE from '../package.json' with { type: 'json' };
 import { buildManual } from './manual-build.mjs';
+import { manualDate } from './manual-date.mjs';
 
 /**
  * 取扱説明書の正本から生成物を作る。取扱説明書 設計 §4.1 / §7.2。
@@ -83,7 +84,7 @@ function main() {
    * 生成日は「日付だけ」にする。時刻まで入れると、同じ原稿から作った PDF が
    * 走らせるたびに違うバイト列になり、配布物のチェックサムが毎回変わる。
    */
-  const builtAt = new Date().toISOString().slice(0, 10);
+  const builtAt = manualDate(APP_ROOT);
   const available = availableImages(IMAGE_DIR);
   const built = buildManual(files, builtAt, available, EDITION);
 

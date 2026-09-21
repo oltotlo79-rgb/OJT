@@ -2,6 +2,7 @@ import { builtinModules } from 'node:module';
 import { resolve } from 'node:path';
 import react from '@vitejs/plugin-react';
 import { defineConfig, externalizeDepsPlugin } from 'electron-vite';
+import PACKAGE from './package.json' with { type: 'json' };
 
 /**
  * electron-vite の3ビルド（main / preload / renderer）。設計仕様 §4.3。
@@ -14,12 +15,9 @@ import { defineConfig, externalizeDepsPlugin } from 'electron-vite';
  * （Electron 実行ファイルのパスを返すだけの CLI ヘルパ）がバンドルされてしまい、
  * main プロセスが `app` を持たないオブジェクトを掴んでウィンドウを1枚も作らなくなる。
  */
-const OJT_PACKAGES = [
-  '@ojt/circuit-sim',
-  '@ojt/board-model',
-  '@ojt/schematic-core',
-  '@ojt/content',
-];
+export const OJT_PACKAGES = Object.keys(PACKAGE.dependencies).filter((name) =>
+  name.startsWith('@ojt/'),
+);
 
 /** main / preload で必ず外部化するもの（Electron 本体と Node 組み込みモジュール）。 */
 const NODE_EXTERNALS = [
