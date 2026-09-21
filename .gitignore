@@ -13,3 +13,4 @@ Thumbs.db
 apps/desktop/resources/manual/
 docs/スクリーンショット*.png
 apps/desktop/.manual-raw/
+.worktrees/

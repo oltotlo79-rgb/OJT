@@ -81,6 +81,10 @@ OJT_SHOT_DIR=<出力先> pnpm --filter @ojt/desktop exec playwright test e2e/ui-
 
 ## 7. git の作法（**違反すると他タスクの作業が消える**）
 
+作業場所は元のOJTフォルダ内に限定する（`AGENTS.md`）。worktreeが必要な場合も
+`OJT/.worktrees/phase7` を再利用し、親のgit-projectsに兄弟フォルダを増やさない。
+不要になった作業フォルダは未反映の変更と未保存ファイルを確認して片付ける。
+
 2026-09-19 に `git stash` で並行作業中の変更が失われた事故があった。このリポジトリは複数の
 自動化エージェントが同時に同じ作業ツリーを触ることがあるため、以下は**常に禁止**である。
 
