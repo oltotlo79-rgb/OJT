@@ -1907,6 +1907,33 @@
                             },
                             "required": ["kind"],
                             "additionalProperties": false
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "kind": {
+                                "type": "string",
+                                "const": "draft"
+                              },
+                              "symbol": {
+                                "type": "string",
+                                "enum": [
+                                  "NO",
+                                  "NC",
+                                  "P",
+                                  "F",
+                                  "OUT",
+                                  "SET",
+                                  "RST",
+                                  "TON",
+                                  "CTU",
+                                  "MC",
+                                  "MCR"
+                                ]
+                              }
+                            },
+                            "required": ["kind", "symbol"],
+                            "additionalProperties": false
                           }
                         ]
                       }
