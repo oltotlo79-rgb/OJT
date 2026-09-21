@@ -4,7 +4,32 @@ import { copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { changedFiles, checkPlan, executeChecks, MANUAL_GATES } from './check-push.mjs';
+import {
+  changedFiles,
+  checkEnvironment,
+  checkPlan,
+  executeChecks,
+  MANUAL_GATES,
+} from './check-push.mjs';
+
+// このファイルだけを Git hook から直接実行した場合も、親のリポジトリには触れない。
+for (const key of Object.keys(globalThis.process.env)) {
+  if (key.startsWith('GIT_')) delete globalThis.process.env[key];
+}
+
+test('Git hook固有の環境を子のテストから除き、通常の実行環境を保つ', () => {
+  assert.deepEqual(
+    checkEnvironment({
+      GIT_DIR: 'parent',
+      GIT_WORK_TREE: 'parent',
+      GIT_INDEX_FILE: 'parent-index',
+      GIT_CONFIG_COUNT: '1',
+      PATH: 'bin',
+      TEMP: 'tmp',
+    }),
+    { PATH: 'bin', TEMP: 'tmp' },
+  );
+});
 
 test('画面・文言・説明書の変更で必須照合が選ばれ、修正したテストも含まれる', () => {
   for (const file of [

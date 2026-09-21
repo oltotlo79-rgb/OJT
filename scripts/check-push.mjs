@@ -101,6 +101,11 @@ export function executeChecks(checks, execute) {
   }
 }
 
+/** Git hook の GIT_DIR / INDEX_FILE 等をテスト用の別リポジトリへ漏らさない。 */
+export function checkEnvironment(environment) {
+  return Object.fromEntries(Object.entries(environment).filter(([key]) => !key.startsWith('GIT_')));
+}
+
 function main() {
   const files = changedFiles(ROOT, readFileSync(0, 'utf8'));
   if (files === null) return;
@@ -122,7 +127,7 @@ function main() {
     return spawnSync(globalThis.process.execPath, args, {
       cwd: resolve(ROOT, check.cwd),
       stdio: ['ignore', 'inherit', 'inherit'],
-      env: { ...globalThis.process.env, DEBUG_PRINT_LIMIT: '500' },
+      env: { ...checkEnvironment(globalThis.process.env), DEBUG_PRINT_LIMIT: '500' },
     }).status;
   });
 }
