@@ -394,6 +394,11 @@ describe('「メーカーの既定に従う」（§10.6 / 決定表#8）', () =>
 
   it('shows the assumption note of the current skin', async () => {
     render(<Settings />);
-    expect(await screen.findByTestId('skin-assumed')).toHaveTextContent('画面の配色');
+    expect(await screen.findByTestId('skin-assumed')).toHaveTextContent(
+      'メニュー順・入力手順・画面構成は公式資料で確認',
+    );
+    expect(screen.getByTestId('skin-assumed')).toHaveTextContent(
+      'PCwinの編集キーは未確認のため割り当てず',
+    );
   });
 });
