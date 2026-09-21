@@ -23,8 +23,15 @@ const pkg = JSON.parse(readFileSync(join(APP_ROOT, 'package.json'), 'utf8')) as 
 const builderYml = readFileSync(join(APP_ROOT, 'electron-builder.yml'), 'utf8');
 
 describe('配布物の版と設定（§15 / Plan 5 決定表#20）', () => {
-  it('is version 1.0.0', () => {
-    expect(pkg.version).toBe('1.0.0');
+  it('配布版の版数をREADMEの入手先とリリース記録へ揃える', () => {
+    expect(pkg.version).toMatch(/^\d+\.\d+\.\d+$/);
+    const root = resolve(APP_ROOT, '../..');
+    expect(readFileSync(join(root, 'README.md'), 'utf8')).toContain(
+      `https://github.com/oltotlo79-rgb/OJT/releases/tag/v${pkg.version}`,
+    );
+    expect(readFileSync(join(root, 'docs/releases', `v${pkg.version}.md`), 'utf8')).toContain(
+      `# 電気教育ツール v${pkg.version}`,
+    );
   });
 
   it('runs the artefact check after electron-builder', () => {
