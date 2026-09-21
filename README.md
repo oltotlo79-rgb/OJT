@@ -77,18 +77,15 @@ pnpm install
 pnpm verify              # = typecheck + lint + -r test。コミット前に1回通す
 pnpm --filter @ojt/desktop dev
 pnpm --filter @ojt/desktop build
-pnpm --filter @ojt/desktop e2e
+pnpm --filter @ojt/desktop e2e          # 動作検証（図の撮り直しを含まない）
+pnpm --filter @ojt/desktop e2e:shots    # 取扱説明書の図を撮り直す
 pnpm --filter @ojt/desktop dist
 ```
 
-**注意（`e2e` の直後に `dist` を走らせない）**: `pnpm --filter @ojt/desktop e2e` は
-`manual-shots.spec.ts` が追跡下の `docs/manual/images/` を**撮り直して上書き**します。
-`dist` はその画像を取扱説明書PDFへ焼き込むため、**`e2e` の後・`dist` の前には必ず
-`git status --short` が空であることを確認してください**（空でなければ
-`git checkout -- docs/manual` で撮り直し分を戻します）。空でないまま `dist` すると、
-コミットしたツリーではなく撮り直した図で配布物が作られます。`e2e` と `dist` は共有の
-作業ツリーではなく使い捨ての worktree で行ってください。詳しい手順は `CONTRIBUTING.md`
-「§6 `dist` の前に作業ツリーを清浄にする」を参照してください。
+**配布前の確認**: 既定の `e2e` は取扱説明書の図を書き換えません。
+図を撮り直すのは `e2e:shots` だけです。意図した撮影結果は確認・コミットしてから配布物へ入れます。
+`dist` の直前に `git status --short` が空であることを確かめてください。
+`e2e:shots` と `dist` は専用の worktree で行います。詳しくは `CONTRIBUTING.md` §6を参照してください。
 
 ## ライセンスと商標
 

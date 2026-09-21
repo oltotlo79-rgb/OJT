@@ -34,6 +34,7 @@ import {
 } from '../session/ladder.js';
 import { writeModeLabel } from '../session/plc-skin.js';
 import { DeviceInput } from './DeviceInput.js';
+import { friendlyLadderErrorMessage } from './ladder-errors.js';
 import { LadderGrid, type GridEntry } from './LadderGrid.js';
 import { skinThemeOf } from './skins/index.js';
 import styles from './ladder.module.css';
@@ -215,18 +216,29 @@ export function LadderEditor({
   }, []);
 
   /** 編集結果をストアへ入れる（失敗は理由をトーストに出す）。 */
-  const commit = useCallback((result: LadderEditResult): void => {
+  const commit = useCallback((result: LadderEditResult): boolean => {
     const store = useStore.getState();
     if (!result.ok) {
       /*
        * 指摘 LE-3: `session/ladder.ts` は END セルを保護したとき、文言を持たない層のまま
        * 合図の `'end-locked'` を返す（session 層は i18n を知らない）。文言はここで当てる。
        */
-      store.toast(result.message === 'end-locked' ? JA.ladder.endLocked : result.message, 'error');
-      return;
+      store.toast(
+        result.message === 'end-locked'
+          ? JA.ladder.endLocked
+          : friendlyLadderErrorMessage(result.message),
+        'error',
+      );
+      return false;
     }
     store.setLadder(result.program);
+    return true;
   }, []);
+
+  const closeInput = (): void => {
+    setPending(undefined);
+    editorRef.current?.focus({ preventScroll: true });
+  };
 
   /**
    * 記号を置く（3つの入口の合流点。設計 §5.3）。
@@ -526,13 +538,15 @@ export function LadderEditor({
           application={pending.kind === 'application'}
           // CX-Programmer 風はデバイスのあとにコメント欄が続く（設計 §5.2 の S4）
           commentStep={theme.entryCommentStep === true}
-          onCancel={() => {
-            setPending(undefined);
-          }}
+          onCancel={closeInput}
           onCommit={(cell, extra) => {
             const store = useStore.getState();
             const current = store.ladder;
             if (current === undefined) return;
+            if (store.ladderMode !== 'write') {
+              store.toast(JA.ladder.readOnly(writeModeLabel(profile)), 'error');
+              return;
+            }
             /*
              * OR接点として置くか。押したキー（`or-*`）だけでなく、1行入力に並列の命令
              * （`OR X1`）を書いたときも分岐にする（設計 §5.3）。
@@ -543,11 +557,12 @@ export function LadderEditor({
               pending.kind === 'or-contact-nc';
             // `Enter` での編集は挿入モードでも置き換える（右のセルをずらさない。D2）
             const insert = !pending.replace && store.insertMode === 'insert';
-            commit(
+            const committed = commit(
               isBranch
                 ? applyOrContact(current, store.ladderCursor, cell)
                 : applyLadderCell(current, store.ladderCursor, cell, insert),
             );
+            if (!committed) return;
             /*
              * 確定したらカーソルを右へ送る（GX Works3 と同じ。続けて接点を並べられる）。
              * 指摘 LE-5: OR接点は `applyOrContact()` が「閉じ側の縦線」を `cursor.col + 1` に
@@ -568,7 +583,7 @@ export function LadderEditor({
                 moveCursor(after.ladder, after.ladderCursor, 0, step, gridCols),
               );
             }
-            setPending(undefined);
+            closeInput();
           }}
         />
       )}

@@ -1,6 +1,5 @@
 import { findBoardTerminal, JIPM_BOARD, type BoardTerminal } from '@ojt/board-model';
 import { toTerminalId } from '@ojt/circuit-sim';
-import type { ReactElement } from 'react';
 import {
   BoxGeometry,
   Group,
@@ -28,7 +27,7 @@ import {
 } from '../src/renderer/three/camera.js';
 import { toScene } from '../src/renderer/three/coords.js';
 import { PICK_GEOMETRY } from '../src/renderer/three/materials.js';
-import { TerminalHit } from '../src/renderer/three/TerminalHit.js';
+import { terminalFieldMatrices } from '../src/renderer/three/TerminalField.js';
 
 /**
  * 端子のクリックが本当に当たるか（2026-09-19 の不具合）。設計仕様 §6.5 / §8.2 / §12.2。
@@ -89,37 +88,12 @@ function poseShiftMm(a: CameraPose, b: CameraPose): number {
   );
 }
 
-/** `TerminalHit` が描く当たり判定メッシュ（`onClick` を持つ唯一のメッシュ）の props を取り出す。 */
-function pickBodyProps(terminal: BoardTerminal): {
-  position: [number, number, number];
-  scale: number;
-} {
-  const element = TerminalHit({
-    terminal,
-    tooltip: terminal.label,
-    hovered: false,
-    pending: false,
-    onHover: () => undefined,
-    onPick: () => undefined,
-  });
-  const children = (element.props as { children?: unknown }).children;
-  const list = (Array.isArray(children) ? children : [children]).filter(
-    (child): child is ReactElement => child !== null && typeof child === 'object',
-  );
-  const body = list.find((child) => (child.props as { onClick?: unknown }).onClick !== undefined);
-  if (body === undefined) throw new Error('当たり判定メッシュが見つかりません');
-  const props = body.props as { position: [number, number, number]; scale: number };
-  return { position: props.position, scale: props.scale };
-}
-
-/** 端子1個ぶんの当たり判定球（`TerminalHit` と同じ位置・大きさ）。 */
+/** 本番で使うインスタンス行列で当たり判定を検証する。 */
 function pickMesh(terminal: BoardTerminal): Mesh {
-  const { position, scale } = pickBodyProps(terminal);
-  const base = toScene(terminal.pos);
+  const matrix = terminalFieldMatrices([terminal]).pickMatrices[0]!;
   const mesh = new Mesh(PICK_GEOMETRY, new MeshBasicMaterial());
   mesh.name = `pick-${terminal.id}`;
-  mesh.position.set(base[0] + position[0], base[1] + position[1], base[2] + position[2]);
-  mesh.scale.setScalar(scale);
+  matrix.decompose(mesh.position, mesh.quaternion, mesh.scale);
   return mesh;
 }
 

@@ -221,6 +221,10 @@ export function DeviceInput({
    */
   const onFieldKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>): void => {
     if (event.nativeEvent.isComposing) return;
+    if (event.key === 'Enter' || event.key === 'Escape') {
+      event.preventDefault();
+      event.stopPropagation();
+    }
     if (event.key === 'Enter') commit();
     if (event.key === 'Escape') onCancel();
   };

@@ -192,7 +192,10 @@ async function expectHelpOpensHere(sectionTitle: string): Promise<void> {
 async function showSection(chapterIndex: number, sectionId: string): Promise<void> {
   const button = page.getByTestId(`help-section-${sectionId}`);
   if (!(await button.isVisible())) {
-    await page.locator('[data-testid="help-contents"] summary').nth(chapterIndex).click();
+    await page
+      .locator('[data-testid="help-contents"] details details > summary')
+      .nth(chapterIndex)
+      .click();
   }
   await expect(button).toBeVisible();
   await button.click();
@@ -340,7 +343,7 @@ test.describe('ヘルプ（§16 Phase 6 受入基準①②③⑥）', () => {
     await page.getByTestId('help-search').fill('自己保持');
     const hits = page.getByTestId('help-hit');
     await expect(hits.first()).toBeVisible();
-    const hitTitle = await hits.first().locator('span').nth(1).innerText();
+    const hitTitle = await hits.first().locator('span').first().innerText();
     await hits.first().click();
     await expect(page.getByTestId('help-section-title')).toHaveText(hitTitle);
     await expect(page.getByTestId('help-prose')).toContainText('自己保持');
@@ -370,9 +373,9 @@ test.describe('ヘルプ（§16 Phase 6 受入基準①②③⑥）', () => {
     await goHome();
     await page.getByTestId('open-help').click();
     await expect(page.getByTestId('help-drawer')).toBeVisible();
-    await expect(page.locator('[data-testid="help-contents"] summary')).toHaveText([
-      ...CHAPTER_TITLES,
-    ]);
+    await expect(
+      page.locator('[data-testid="help-contents"] details details > summary'),
+    ).toHaveText([...CHAPTER_TITLES]);
     // もくじから節へ跳べる（この節は図を載せている節でもある）
     await showSection(2, 'screens/ホームの画面');
     await expect(page.getByTestId('help-section-title')).toHaveText('ホームの画面');

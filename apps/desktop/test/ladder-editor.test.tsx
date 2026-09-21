@@ -64,6 +64,19 @@ beforeEach(() => {
 });
 
 describe('キー操作（§10.6 の割当表から引く）', () => {
+  it('keeps a failed input open and preserves the cursor for correction', () => {
+    editor();
+    act(() => useStore.getState().setLadderCursor({ networkId: 'end', row: 0, col: 0 }));
+    fireEvent.keyDown(grid(), { key: 'F5' });
+    fireEvent.change(screen.getByTestId('device-text'), { target: { value: 'X0' } });
+    fireEvent.click(screen.getByTestId('device-commit'));
+    expect(screen.getByTestId('device-input')).toBeInTheDocument();
+    expect(useStore.getState().ladderCursor).toEqual({ networkId: 'end', row: 0, col: 0 });
+    fireEvent.keyDown(screen.getByTestId('device-text'), { key: 'Escape' });
+    expect(screen.queryByTestId('device-input')).toBeNull();
+    expect(grid()).toHaveFocus();
+  });
+
   it('opens the device input on F5 and places an a-contact', () => {
     editor();
     fireEvent.keyDown(grid(), { key: 'F5' });
@@ -72,6 +85,9 @@ describe('キー操作（§10.6 の割当表から引く）', () => {
     fireEvent.click(screen.getByTestId('device-commit'));
     expect(net1()).toMatchObject({ kind: 'contact', type: 'NO', device: X(0) });
     expect(screen.queryByTestId('device-input')).toBeNull();
+    expect(grid()).toHaveFocus();
+    fireEvent.keyDown(grid(), { key: 'ArrowRight' });
+    expect(useStore.getState().ladderCursor.col).toBe(2);
   });
 
   it('places a coil on F7 at the coil column', () => {

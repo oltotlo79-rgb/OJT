@@ -1,6 +1,8 @@
+import { cleanup, render } from '@testing-library/react';
+import { TerminalField } from '../src/renderer/three/TerminalField.js';
 import { JIPM_BOARD, type BoardTerminal } from '@ojt/board-model';
 import { isValidElement, type ReactElement, type ReactNode } from 'react';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   TERMINAL_HOVER_COLOR,
   TERMINAL_PENDING_COLOR,
@@ -11,10 +13,16 @@ import {
   HOVER_RING_GEOMETRY,
   HOVER_RING_INNER_MM,
   HOVER_RING_OUTER_MM,
-  TerminalHit,
   TERMINAL_HOVER_EMISSIVE_INTENSITY,
   terminalScrewAppearance,
 } from '../src/renderer/three/TerminalHit.js';
+
+vi.mock('@react-three/fiber', () => ({
+  useThree: (select: (state: { invalidate: () => void }) => unknown) =>
+    select({ invalidate: () => undefined }),
+}));
+vi.mock('@react-three/drei', () => ({ Html: () => null }));
+afterEach(cleanup);
 
 /**
  * 端子のホバー表示（項目3）。
@@ -49,16 +57,23 @@ const terminal: BoardTerminal = firstTerminal;
 const noop = (): void => undefined;
 
 function meshesOf(hovered: boolean, pending: boolean): ReactElement<Record<string, unknown>>[] {
-  return collect(
-    <TerminalHit
-      terminal={terminal}
-      tooltip="CR1 ⑨ COM"
-      hovered={hovered}
-      pending={pending}
-      onHover={noop}
-      onPick={noop}
-    />,
-  ).filter((element): element is ReactElement<Record<string, unknown>> => element.type === 'mesh');
+  let meshes: ReactElement<Record<string, unknown>>[] = [];
+  function Capture(): null {
+    const node = TerminalField({
+      terminals: [terminal],
+      tooltipOf: () => 'CR1 ⑨ COM',
+      hovered: hovered ? terminal.id : undefined,
+      pending: pending ? terminal.id : undefined,
+      onHover: noop,
+      onPick: noop,
+    });
+    meshes = collect(node).filter(
+      (element): element is ReactElement<Record<string, unknown>> => element.type === 'mesh',
+    );
+    return null;
+  }
+  render(<Capture />);
+  return meshes;
 }
 
 describe('端子のホバー表示（項目3: 通常ズームでも気づける見た目にする）', () => {
@@ -87,8 +102,8 @@ describe('端子のホバー表示（項目3: 通常ズームでも気づける�
     const hoveredMeshes = meshesOf(true, false);
 
     expect(idleMeshes.some((mesh) => mesh.props['geometry'] === HOVER_RING_GEOMETRY)).toBe(false);
-    // ホバーで増えるのは輪の1枚だけ（ネジ・当たり判定球は元からある）
-    expect(hoveredMeshes.length).toBe(idleMeshes.length + 1);
+    // ホバー中は発光ネジと輪を重ねる（通常のネジはインスタンス描画）
+    expect(hoveredMeshes.length).toBe(idleMeshes.length + 2);
 
     const ring = hoveredMeshes.find((mesh) => mesh.props['geometry'] === HOVER_RING_GEOMETRY);
     expect(ring).toBeDefined();

@@ -226,8 +226,9 @@ async function buildReferenceLadder(page: Page): Promise<void> {
   await key(page, 'Shift+F5');
   await commitDevice(page, 'Y0');
   await expect(page.getByTestId('cell-n1:1:0')).toBeVisible();
+  // OR接点の確定で閉じ側の罫線を越えて2列目へ進んでいる（LE-5）。
+  await expectCursorAt(page, 'n1:0:2');
   // n1: /X1（b接点）→ 横線 → コイル Y0
-  await key(page, 'ArrowRight');
   await key(page, 'F6');
   await commitDevice(page, 'X1');
   await moveToCoil(page, 'n1', 3);

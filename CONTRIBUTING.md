@@ -63,26 +63,17 @@ OJT_SHOT_DIR=<出力先> pnpm --filter @ojt/desktop exec playwright test e2e/ui-
 
 ## 6. `dist` の前に作業ツリーを清浄にする（QA-02。最重要）
 
-`pnpm --filter @ojt/desktop e2e` は `manual-shots.spec.ts` で取扱説明書の図を**追跡下の
-`docs/manual/images/` に上書きして撮り直す**（SwiftShader の実描画なのでバイト列は毎回
-変わりうる）。`node apps/desktop/scripts/build-manual.mjs` がそのフォルダを
-`resources/manual/images/` へ複写し、`print-manual.mjs` がそこから `manual.pdf` を焼く。
+既定の `pnpm --filter @ojt/desktop e2e` は動作検証だけを行い、取扱説明書の図を書き換えない。
+`pnpm --filter @ojt/desktop e2e:shots` は `manual-shots` プロジェクトを実行し、追跡対象の
+`docs/manual/images/` と `docs/manual/shot-geometry.json` を更新する。
 
-**したがって、`e2e` を先に走らせてから `dist` を走らせると、タグ付けしたツリーではなく
-撮り直した図で配布物が作られる。** 規則:
+1. 専用 worktree でソースを確定する。
+2. `e2e` で動作を検証する。既定では撮影は走らない。
+3. `e2e:shots` を行った場合は、画像を確認して意図した差分を明示的にコミットする。
+   撮影を配布に含めない場合は、元の作業を消さず清浄な別 worktree から配布する。
+4. `git status --short` が空であることを確かめてから `dist` を実行する。
 
-- `pnpm --filter @ojt/desktop e2e` と `pnpm --filter @ojt/desktop dist` は**必ず使い捨ての
-  worktree**（`git worktree add --detach <path> origin/main`）で行う。共有ツリーでは走らせない
-  （前提D）。
-- `dist` を走らせる直前は必ず `git status --short` が**空**であることを確認する。空でなければ、
-  `e2e` の撮り直しが残っている可能性がある。`git checkout -- docs/manual` で戻してから
-  `dist` する。
-- 手順の順番は「①ソース確定 → ② `e2e` で検証（撮り直しが出ても構わない） → ③ 作業ツリーを
-  戻す（`git status --short` が空になるまで） → ④ `dist`」。逆順（`e2e` の直後にそのまま
-  `dist`）にしない。
-
-この節が**正本**である（旧・`docs/superpowers/handoff/2026-09-14-phase2-handoff.md` の
-最終行にしかなかった注意を移した。QA-21）。README「開発者向け」にも同じ要旨を短く載せている。
+`dist` はコミットされた図からPDFを作る。ソースと図の版が異なる配布物を作らないこと。
 
 ## 7. git の作法（**違反すると他タスクの作業が消える**）
 
@@ -129,8 +120,7 @@ OJT_SHOT_DIR=<出力先> pnpm --filter @ojt/desktop exec playwright test e2e/ui-
 2. `pnpm install --frozen-lockfile` → `pnpm verify` が無警告で通ること。
 3. `pnpm --filter @ojt/content validate src/builtin` が0件の問題であること。
 4. **使い捨ての worktree**で `pnpm --filter @ojt/desktop build` → `pnpm --filter @ojt/desktop e2e`
-   を2回連続グリーンで確認する（§6のとおり、この時点で `docs/manual/images/` が撮り直される
-   ことがある）。
+   を2回連続グリーンで確認する（既定のE2Eは図を撮り直さない。§6）。
 5. **`git status --short` が空であることを確認してから**、同じ worktree で
    `pnpm --filter @ojt/desktop dist` を実行する（§6。空でなければ `git checkout -- docs/manual`
    で戻してから実行する）。`release/artifacts.md` が生成されることを確認する。

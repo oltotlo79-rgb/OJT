@@ -986,7 +986,7 @@ function BoardContents({
         {/*
           盤の端子はここで**まとめて1回**描く（§15 / 決定表#13）。ソケット・端子台は
           筐体と印字だけを描き、端子は持たない。机上の端子（PLC本体・壁コンセント）は
-          `PlcUnit` / `PlcRack` / `Outlet` が従来どおり `TerminalHit` で描く。
+          `PlcUnit` / `PlcRack` / `Outlet` はそれぞれ `TerminalField` で描く。
         */}
         <TerminalField
           terminals={fieldTerminals}
