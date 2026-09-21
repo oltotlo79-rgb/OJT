@@ -15,10 +15,12 @@ import { describe, expect, it } from 'vitest';
 const APP_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const SCRIPTS_DIR = join(APP_ROOT, 'scripts');
 
-/** `export declare const NAME` / `export declare function NAME(` から値の export 名を拾う。 */
+/** 宣言ファイルでは declare を省略できる。どちらの書式からも値の export 名を拾う。 */
 function valueExportNamesInDeclaration(source: string): Set<string> {
   const names = new Set<string>();
-  for (const m of source.matchAll(/^export declare (?:const|function)\s+([A-Za-z_$][\w$]*)/gm)) {
+  for (const m of source.matchAll(
+    /^export (?:declare )?(?:const|function)\s+([A-Za-z_$][\w$]*)/gm,
+  )) {
     const name = m[1];
     if (name !== undefined) names.add(name);
   }
@@ -38,6 +40,24 @@ function exportNamesInImplementation(source: string): Set<string> {
 const declarationFiles = readdirSync(SCRIPTS_DIR).filter((name) => name.endsWith('.d.mts'));
 
 describe('scripts/*.d.mts と scripts/*.mjs の export 名（QA-14 の副産物）', () => {
+  it('declare の有無にかかわらず公開関数と定数を拾い、型と非公開宣言を除く', () => {
+    const source = [
+      'export function plain(): void;',
+      'export declare function explicit(): void;',
+      'export const count: number;',
+      'export declare const limit: number;',
+      'export interface Shape {}',
+      'export type Name = string;',
+      'declare function internal(): void;',
+    ].join('\n');
+    expect([...valueExportNamesInDeclaration(source)].sort()).toEqual([
+      'count',
+      'explicit',
+      'limit',
+      'plain',
+    ]);
+  });
+
   it('宣言ファイルが scripts/ に少なくとも1本はある', () => {
     expect(declarationFiles.length).toBeGreaterThan(0);
   });

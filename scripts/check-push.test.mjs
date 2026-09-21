@@ -46,6 +46,17 @@ test('画面・文言・説明書の変更で必須照合が選ばれ、修正�
   }
 });
 
+test('動的に読み込まれるスクリプトと宣言の変更でもexport照合を必ず実行する', () => {
+  for (const file of [
+    'apps/desktop/scripts/style-tokens.mjs',
+    'apps/desktop/scripts/style-tokens.d.mts',
+  ]) {
+    const checks = checkPlan([file], []);
+    const app = checks.find((check) => check.cwd === 'apps/desktop' && !check.node);
+    assert.ok(app?.args.includes('../../apps/desktop/test/script-declarations.test.ts'));
+  }
+});
+
 test('共有エンジンの変更は各パッケージと画面の依存関係まで検査する', () => {
   const file = 'packages/ladder-core/src/edit.ts';
   const plan = checkPlan([file], ['ladder-core', 'plc-dialects']);

@@ -7,7 +7,9 @@ import { checkOutgoingIdentities } from './check-git-identity.mjs';
 
 const ROOT = resolve(import.meta.dirname, '..');
 const ZERO = /^0+$/u;
+// ファイルを動的に読む検査は related の依存解決に出ないため必ず走らせる。
 export const MANUAL_GATES = [
+  'test/script-declarations.test.ts',
   'test/style-tokens.test.ts',
   'test/feature-inventory.test.ts',
   'test/manual-coverage.test.ts',
