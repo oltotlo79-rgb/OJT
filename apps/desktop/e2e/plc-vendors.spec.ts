@@ -146,6 +146,9 @@ async function commitDevice(page: Page, text: string): Promise<void> {
   await expect(page.getByTestId('device-input')).toBeVisible();
   await page.getByTestId('device-text').fill(text);
   await page.getByTestId('device-commit').click();
+  // CX-Programmerはデバイス確定後にコメント欄を続けて確定する。
+  if (await page.getByTestId('entry-comment').isVisible())
+    await page.getByTestId('entry-comment').press('Enter');
   await expect(page.getByTestId('device-input')).toHaveCount(0);
 }
 
@@ -203,6 +206,41 @@ async function withVendor(
 }
 
 test.describe('Phase 4 受入基準（4メーカー）', () => {
+  for (const [vendor, input, canonical] of [
+    ['mitsubishi', 'SM400', 'SM400'],
+    ['jtekt', 'V4', 'V004'],
+    ['omron', 'P_On', 'P_On'],
+    ['sharp', '007366', '007366'],
+  ] as const) {
+    test(`${vendor}: 特殊接点の直接入力と用途選択を1280px画面で操作できる`, async () => {
+      await withVendor(vendor, async (page, app) => {
+        await app.evaluate(({ BrowserWindow }) => {
+          BrowserWindow.getAllWindows()[0]?.setSize(1280, 800);
+        });
+        await openPlcProblem(page);
+        await page.getByTestId('cell-n1:0:0').click();
+        await page.getByTestId('symbol-contact-no').click();
+        if (await page.locator('[data-incomplete="true"]').count()) await key(page, 'Enter');
+        await commitDevice(page, input);
+        await expect(page.getByTestId('cell-n1:0:0')).toContainText(canonical);
+        await page.getByTestId('cell-n1:0:0').click();
+        await key(page, 'Enter');
+        await page.getByTestId('special-contact-select').selectOption('1');
+        await expect(page.getByTestId('special-contact-note')).toContainText('最初の1スキャン');
+        const geometry = await page.getByTestId('device-input').evaluate((element) => ({
+          right: element.getBoundingClientRect().right,
+          width: window.innerWidth,
+          scroll: element.scrollWidth,
+          client: element.clientWidth,
+        }));
+        expect(geometry.right).toBeLessThanOrEqual(geometry.width);
+        expect(geometry.scroll).toBeLessThanOrEqual(geometry.client + 1);
+        await settledShot(app, page, `special-input-${vendor}`);
+        await page.getByTestId('device-cancel').click();
+      });
+    });
+  }
+
   test('① OMRON を選ぶと CX-Programmer風で開き「変換」ボタンが出ない', async () => {
     await withVendor('omron', async (page, app) => {
       await openPlcProblem(page);

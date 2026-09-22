@@ -179,7 +179,7 @@ function checkDevice(
 ): void {
   if (target.kind === 'special') {
     if (rules.specialDevices[target.index] !== undefined) return;
-    // device() が SP0〜SP2 以外を作らせず、この器を使う3方言とも SPECIAL_DEVICES がその3つを
+    // device() が SP0〜SP3 以外を作らせず、この器を使う3方言とも SPECIAL_DEVICES がその4つを
     // すべて定義しているため、ここから先には到達しない（防御的）
     /* c8 ignore next 8 */
     const range = rules.deviceRanges.special;

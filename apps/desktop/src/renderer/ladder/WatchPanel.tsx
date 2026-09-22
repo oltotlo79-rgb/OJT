@@ -45,9 +45,14 @@ export function watchValueOf(monitor: PlcMonitorSnapshot | undefined, device: De
         ? { on: undefined, text: JA.ladder.watch.noValue }
         : { on, text: onOffLabel(on) };
     }
-    case 'internal':
-    case 'special': {
+    case 'internal': {
       const on = monitor.internals[device.index];
+      return on === undefined
+        ? { on: undefined, text: JA.ladder.watch.noValue }
+        : { on, text: onOffLabel(on) };
+    }
+    case 'special': {
+      const on = monitor.specials?.[device.index];
       return on === undefined
         ? { on: undefined, text: JA.ladder.watch.noValue }
         : { on, text: onOffLabel(on) };

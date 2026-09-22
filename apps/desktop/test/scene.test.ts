@@ -250,34 +250,20 @@ describe('interpolatePose（視点プリセットとギズモの遷移で共有�
     expect(interpolatePose(from, to, 1)).toEqual(to);
   });
 
-  it('t が増えるほど position・target・up の各成分が from → to の向きに単調に変化する', () => {
-    const samples = [0, 0.2, 0.4, 0.6, 0.8, 1].map((t) => interpolatePose(from, to, t));
-    const pickers: Array<(pose: CameraPose) => number> = [
-      (pose) => pose.position[0],
-      (pose) => pose.position[1],
-      (pose) => pose.position[2],
-      (pose) => pose.target[0],
-      (pose) => pose.target[1],
-      (pose) => pose.target[2],
-      (pose) => pose.up[0],
-      (pose) => pose.up[1],
-      (pose) => pose.up[2],
-    ];
-    for (const pick of pickers) {
-      const values = samples.map(pick);
-      const first = values[0];
-      const last = values.at(-1);
-      if (first === undefined || last === undefined) continue;
-      const direction = Math.sign(last - first);
-      for (let i = 1; i < values.length; i += 1) {
-        const prev = values[i - 1];
-        const next = values[i];
-        if (prev === undefined || next === undefined) continue;
-        const delta = next - prev;
-        if (direction === 0) expect(delta).toBeCloseTo(0, 9);
-        else if (direction > 0) expect(delta).toBeGreaterThanOrEqual(-1e-9);
-        else expect(delta).toBeLessThanOrEqual(1e-9);
-      }
+  it('反対側への切替中も距離を保ち、カメラの上方向がゼロにならない', () => {
+    const start: CameraPose = { position: [0, 0, 100], target: [0, 0, 0], up: [0, 1, 0] };
+    const end: CameraPose = { position: [0, 0, -100], target: [0, 0, 0], up: [0, -1, 0] };
+    let previous = start.position;
+    for (let step = 1; step < 100; step += 1) {
+      const pose = interpolatePose(start, end, step / 100);
+      expect(Math.hypot(...pose.position)).toBeCloseTo(100, 8);
+      expect(Math.hypot(...pose.up)).toBeCloseTo(1, 8);
+      expect(pose.up.reduce((sum, value, i) => sum + value * pose.position[i]!, 0)).toBeCloseTo(
+        0,
+        8,
+      );
+      expect(Math.hypot(...pose.position.map((value, i) => value - previous[i]!))).toBeLessThan(10);
+      previous = pose.position;
     }
   });
 });

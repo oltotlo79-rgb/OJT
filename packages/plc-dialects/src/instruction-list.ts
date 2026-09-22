@@ -1,3 +1,4 @@
+import { nativeContact } from './native-contact.js';
 import {
   COIL_COL,
   compile,
@@ -349,6 +350,7 @@ interface Emit {
 
 /** 接点1つを命令語にする。 */
 function contactEmit(cell: ContactCell, at: 'ld' | 'and' | 'or', profile: DialectProfile): Emit {
+  cell = nativeContact(cell, profile);
   const key = CONTACT_KEYS[at][cell.type];
   return { mnemonic: profile.instructionNames[key], operand: profile.formatDevice(cell.device) };
 }

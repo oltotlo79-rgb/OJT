@@ -291,6 +291,8 @@ export function gizmoTargetById(id: string): GizmoTarget | undefined {
 
 /** E2E へ出すカメラの状態（隠し要素 `camera-readout` の中身）。 */
 export interface CameraReadout {
+  position?: readonly [number, number, number];
+  up?: readonly [number, number, number];
   /** 方位角[rad]。 */
   azimuth: number;
   /** 極角[rad]。 */
@@ -320,6 +322,10 @@ export function cameraReadoutText(readout: CameraReadout): string {
     tx: round(readout.target[0], 2),
     ty: round(readout.target[1], 2),
     tz: round(readout.target[2], 2),
+    ...(readout.position === undefined
+      ? {}
+      : { position: readout.position.map((v) => round(v, 4)) }),
+    ...(readout.up === undefined ? {} : { up: readout.up.map((v) => round(v, 6)) }),
   });
 }
 

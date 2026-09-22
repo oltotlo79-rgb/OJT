@@ -5,7 +5,6 @@ import {
   MAX_CAMERA_DISTANCE_MM,
   MAX_POLAR_ANGLE,
   MIN_CAMERA_DISTANCE_MM,
-  MIN_POLAR_ANGLE_RAD,
   poseForDirection,
 } from '../src/renderer/three/camera.js';
 import {
@@ -199,7 +198,7 @@ describe('cameraPose（Blender 風に増えた視点）', () => {
     const radius = Math.hypot(bottom.position[0], bottom.position[1], bottom.position[2]);
     // 極角は上方向 (0,1,0) からの角。上限を超えると `update()` で丸められてしまう
     expect(Math.acos(bottom.position[1] / radius)).toBeCloseTo(MAX_POLAR_ANGLE, 10);
-    expect(bottom.up).toEqual([0, 1, 0]);
+    expect(bottom.up).toEqual([0, 0, 1]);
   });
 
   it('どの視点も距離制限の内側にある（寄りすぎ・離れすぎで丸められない）', () => {
@@ -278,16 +277,16 @@ describe('poseForDirection（辺・角の45°視点。2026-09-19 の利用者要
       expect(Math.hypot(position[0], position[1], position[2])).toBeCloseTo(380, 6);
       const horizontal = target.direction[0] !== 0 || target.direction[2] !== 0;
       if (horizontal) {
-        // 水平成分の向きは必ず一致する（上下は極角の上限・下限で丸めることがある）
+        // 水平方向・上下方向とも指定した向きへ回る
         expect(Math.sign(Math.round(position[0] * 1e6))).toBe(Math.sign(target.direction[0]));
         expect(Math.sign(Math.round(position[2] * 1e6))).toBe(Math.sign(target.direction[2]));
       }
       // 上向きの箇所は必ず注視点より上から見る
-      if (target.direction[1] > 0) expect(position[1]).toBeGreaterThan(0);
+      expect(Math.sign(position[1])).toBe(Math.sign(target.direction[1]));
     }
   });
 
-  it('真上の面は注視点のほぼ真上（極の直前まで）に着く', () => {
+  it('真上の面は注視点の真上に着く', () => {
     const top = at([0, 1, 0]);
     expect(top[1]).toBeGreaterThan(379);
     expect(Math.hypot(top[0], top[2])).toBeLessThan(10);
@@ -301,16 +300,17 @@ describe('poseForDirection（辺・角の45°視点。2026-09-19 の利用者要
     expect(corner[0]).toBeCloseTo(corner[2], 6);
   });
 
-  it('下向きは極角の上限で丸める（OrbitControls に引き戻されない）', () => {
+  it('下向きの面・辺・角もその方向へ正確に着く', () => {
     for (const direction of [
       [0, -1, 0],
       [0, -1, 1],
       [-1, -1, -1],
     ] as const) {
       const position = at(direction);
-      const polar = Math.acos(position[1] / Math.hypot(...position));
-      expect(polar).toBeLessThanOrEqual(MAX_POLAR_ANGLE + 1e-9);
-      expect(polar).toBeGreaterThanOrEqual(MIN_POLAR_ANGLE_RAD - 1e-9);
+      const length = Math.hypot(...direction);
+      direction.forEach((value, index) =>
+        expect(position[index]).toBeCloseTo((value * 380) / length, 9),
+      );
     }
   });
 
@@ -322,7 +322,8 @@ describe('poseForDirection（辺・角の45°視点。2026-09-19 の利用者要
     ).toBeCloseTo(200, 6);
     expect(pose.position[1]).toBeGreaterThan(-20);
     expect(pose.position[2]).toBeGreaterThan(30);
-    expect(pose.up).toEqual([0, 1, 0]);
+    expect(pose.up[1]).toBeCloseTo(Math.SQRT1_2);
+    expect(pose.up[2]).toBeCloseTo(-Math.SQRT1_2);
   });
 });
 

@@ -4,7 +4,7 @@ import {
   FX5U_ON_AMPS,
   type PlcUnitDefinition,
 } from '@ojt/board-model';
-import { C, M, T, X, Y } from '@ojt/ladder-core';
+import { C, M, SP, T, X, Y } from '@ojt/ladder-core';
 import type { DialectProfile } from '@ojt/plc-dialects';
 import type { JSX } from 'react';
 import type { PlcCommandAction } from '../../worker/protocol.js';
@@ -130,6 +130,17 @@ export function MonitorPanel({
                   </td>
                 </tr>
               ))}
+              {Object.entries(monitor.specials ?? {})
+                .filter(([index]) => !profile.specialInverted?.includes(Number(index)))
+                .map(([index, value]) => (
+                  <tr key={`sp-${index}`} data-testid={`monitor-special-${index}`}>
+                    <td>{profile.formatDevice(SP(Number(index)))}</td>
+                    <td>特殊接点</td>
+                    <td>
+                      {onOffMark(value)} {onOffLabel(value)}
+                    </td>
+                  </tr>
+                ))}
               {Object.entries(monitor.timers).map(([index, state]) => (
                 <tr key={`t-${index}`} data-testid={`monitor-timer-${index}`}>
                   <td>{profile.formatDevice(T(Number(index)))}</td>

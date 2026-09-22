@@ -113,6 +113,8 @@ export interface PlcMonitorSnapshot {
   inputs: boolean[];
   outputs: boolean[];
   internals: Record<number, boolean>;
+  /** 特殊リレーは内部リレーと別に運ぶ。同番号M0の値と混同しない。 */
+  specials?: Record<number, boolean>;
   /**
    * `presetMs` はコンパイル済みラダーのタイマセルから取る（Batch 3 レビュー M4）。
    * ランタイムの `PlcTimerState` 自体は設定値を持たないので、Worker 側で合成する。

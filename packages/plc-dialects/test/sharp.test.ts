@@ -70,7 +70,7 @@ describe('シャープ JW300 のリレー番号（§10.5 / 前提表）', () => 
     expect(profile.parseDevice('001000')).toEqual(M(0));
     expect(profile.parseDevice('TMR00000')).toEqual(T(0));
     expect(profile.parseDevice('cnt00011')).toEqual(C(9));
-    expect(profile.parseDevice('007366')).toEqual(SP(0));
+    expect(profile.parseDevice('007366')).toEqual(SP(3));
     expect(profile.parseDevice('20')).toEqual(Y(0));
   });
 

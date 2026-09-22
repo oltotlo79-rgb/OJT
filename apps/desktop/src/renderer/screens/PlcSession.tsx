@@ -561,6 +561,8 @@ export function PlcSession(): JSX.Element {
         camera={camera}
         /* 段階的に開くヒント（指摘 PR-02）。1段目は手順帯がいま出している案内そのもの。 */
         hints={hintStages({
+          mode: 'plc',
+          profile,
           grade: problem.grade,
           stepHint: stepHintText(currentStepKey, profile),
           tags: problem.tags,

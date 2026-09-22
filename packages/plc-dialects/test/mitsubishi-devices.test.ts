@@ -22,10 +22,10 @@ describe('三菱 FX5U のデバイス表記（§10.5）', () => {
   });
 
   it('maps the three special devices to the FX numbers (§10.5 / §17 #22)', () => {
-    expect(profile.formatDevice(SP(0))).toBe('M8000');
-    expect(profile.formatDevice(SP(1))).toBe('M8002');
-    expect(profile.formatDevice(SP(2))).toBe('M8013');
-    expect(profile.specialDevices).toEqual({ 0: 'M8000', 1: 'M8002', 2: 'M8013' });
+    expect(profile.formatDevice(SP(0))).toBe('SM400');
+    expect(profile.formatDevice(SP(1))).toBe('SM402');
+    expect(profile.formatDevice(SP(2))).toBe('SM412');
+    expect(profile.specialDevices).toEqual({ 0: 'SM400', 1: 'SM402', 2: 'SM412', 3: 'SM401' });
   });
 
   it('parses the dialect notation back into IR devices', () => {

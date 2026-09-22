@@ -1,6 +1,7 @@
 import {
   device,
   SPECIAL_ALWAYS_ON,
+  SPECIAL_ALWAYS_OFF,
   SPECIAL_CLOCK_1S,
   SPECIAL_FIRST_SCAN,
   type Device,
@@ -57,7 +58,7 @@ const DEVICE_RANGES: Readonly<Record<DeviceKind, DeviceRange>> = {
   internal: { radix: 16, prefix: '1M', min: 0, max: 0x7ff },
   timer: { radix: 16, prefix: '1T', min: 0, max: 0x1ff },
   counter: { radix: 16, prefix: '1C', min: 0, max: 0x1ff },
-  special: { radix: 10, prefix: 'SP', min: 0, max: 2 },
+  special: { radix: 10, prefix: 'SP', min: 0, max: 3 },
 };
 
 /** 種別を表す1文字（プログラム番号の次の桁）。 */
@@ -71,8 +72,9 @@ const KIND_LETTER: Readonly<Record<string, DeviceKind>> = {
 
 /** 特殊デバイス番号 → TOYOPUC の実デバイス名。§17 #22 の前提割当 */
 const SPECIAL_DEVICES: Readonly<Record<number, string>> = {
-  [SPECIAL_ALWAYS_ON]: '1V00',
-  [SPECIAL_FIRST_SCAN]: '1V01',
+  [SPECIAL_ALWAYS_OFF]: 'V005',
+  [SPECIAL_ALWAYS_ON]: 'V004',
+  [SPECIAL_FIRST_SCAN]: 'V006',
   [SPECIAL_CLOCK_1S]: 'V072',
 };
 
@@ -80,6 +82,32 @@ const SPECIAL_DEVICES: Readonly<Record<number, string>> = {
 const SPECIAL_BY_NAME = new Map<string, number>(
   Object.entries(SPECIAL_DEVICES).map(([index, name]) => [name.toUpperCase(), Number(index)]),
 );
+
+// プログラム1の省略形とゼロ埋め、旧版の独自表記を入力時だけ受け付ける。
+for (const [name, index] of Object.entries({
+  V4: 0,
+  V04: 0,
+  '1V04': 0,
+  '1V004': 0,
+  'P1-V004': 0,
+  V5: 3,
+  V05: 3,
+  '1V05': 3,
+  '1V005': 3,
+  'P1-V005': 3,
+  V6: 1,
+  V06: 1,
+  '1V06': 1,
+  '1V006': 1,
+  'P1-V006': 1,
+  V72: 2,
+  '1V72': 2,
+  '1V072': 2,
+  'P1-V072': 2,
+  '1V00': 0,
+  '1V01': 1,
+}))
+  SPECIAL_BY_NAME.set(name, index);
 
 /** IRの通し番号 → この機種のアドレス（出力だけ `OUTPUT_BASE` ぶんずらす）。決定表#16 */
 function addressOf(target: Device): number {
@@ -89,7 +117,7 @@ function addressOf(target: Device): number {
 /** IRのデバイス → 方言表記（16進3桁・大文字）。§10.5 */
 function formatDevice(target: Device): string {
   if (target.kind === 'special') {
-    // device() が SP0〜SP2 以外を作らせず、SPECIAL_DEVICES がその3つを定義しているため
+    // device() が SP0〜SP3 以外を作らせず、SPECIAL_DEVICES がその4つを定義しているため
     // `??` の右側には到達しない（防御的）
     /* c8 ignore next */
     return SPECIAL_DEVICES[target.index] ?? `SP${target.index}`;

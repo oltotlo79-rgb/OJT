@@ -317,6 +317,7 @@ export function Socket({
     <group name={`socket-${socket.id}`}>
       {/* 本体（中央の差込領域）。クリックで装着／取り外しUIを出す */}
       <mesh
+        castShadow
         name={`socket-body-${socket.id}`}
         geometry={UNIT_BOX}
         material={socketBodyMaterial(socketGlowOf({ selected, hovered, droppable }))}

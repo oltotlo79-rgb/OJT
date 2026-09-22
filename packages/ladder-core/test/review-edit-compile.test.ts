@@ -301,7 +301,7 @@ describe('compile() errors: codes, positions and Japanese messages', () => {
   it('device() guards', () => {
     expect(() => device('input', -1)).toThrow(LadderError);
     expect(() => device('input', 1.5)).toThrow(LadderError);
-    expect(() => device('special', 3)).toThrow(/SP0／SP1／SP2/u);
+    expect(() => device('special', 99)).toThrow(/SP0／SP1／SP2／SP3/u);
   });
 
   it('SET/RST are excluded from the double-coil warning but OUT+SET on the same device is not flagged', () => {

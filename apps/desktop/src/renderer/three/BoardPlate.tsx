@@ -16,9 +16,7 @@ function noPick(): void {
 }
 
 /*
- * 影は使っていない（`<Canvas>` に `shadows` が無く、`directionalLight` にも `castShadow` が
- * 無い）。そのため盤の板の `receiveShadow` は**一度も効かない**ただの指定だった（3D-20）。
- * 影を入れるなら、`BoardScene` の `<Canvas shadows>` と光源の `castShadow` から始めること。
+ * 主光源の影を盤面で受ける。ネジ・穴は共有ジオメトリのまま描き、影を落とす物体を部品に絞る。
  */
 
 /** 盤面の板の厚み[mm]。 */
@@ -38,6 +36,7 @@ export function BoardPlate({ board }: { board: BoardDefinition }): JSX.Element {
   return (
     <group name="board-console">
       <mesh
+        receiveShadow
         geometry={UNIT_BOX}
         raycast={noPick}
         material={plate}

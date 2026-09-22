@@ -1,6 +1,7 @@
 import type { WireColor } from '@ojt/circuit-sim';
 import { useEffect, useRef, useState, type JSX } from 'react';
 import { HelpButton } from '../help/HelpButton.js';
+import { useHelpStore } from '../help/help-store.js';
 import { JA } from '../i18n/ja.js';
 import { useStore, type CameraPreset } from '../app/store.js';
 import type { HintStage } from '../session/hints.js';
@@ -383,6 +384,19 @@ export function Toolbar({
                     {stage.text}
                   </p>
                 ))}
+                <button
+                  type="button"
+                  data-testid="hint-explanation"
+                  onClick={() => {
+                    useHelpStore.setState({
+                      open: true,
+                      sectionId: 'tutorial-features/予測して、測って、確かめる',
+                      query: '',
+                    });
+                  }}
+                >
+                  考え方と確認手順を読む
+                </button>
                 {allOpen ? (
                   <p className={styles.hintDone} data-testid="hint-done">
                     {JA.hint.done}

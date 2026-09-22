@@ -105,7 +105,7 @@ describe('instructionList（§10.7 / §16 Phase 4 受入基準⑥）', () => {
     // 接点の無い行は「常時ON」を読む。シャープの `007366` は**b接点**で常時ONなので
     // `STR NOT` で読む（`specialInverted`。§10.5 / §17 #22 / 4B 引き渡し H-4）
     const p = program(network('n1', [rung(hline(), out(Y(0)))]), endNetwork());
-    expect(mnemonics(MITSUBISHI_FX5U, p)).toEqual(['LD M8000', 'OUT Y0', 'END']);
+    expect(mnemonics(MITSUBISHI_FX5U, p)).toEqual(['LD SM400', 'OUT Y0', 'END']);
     expect(mnemonics(OMRON_CP1E, p)).toEqual(['LD P_On', 'OUT 100.00', 'END']);
     expect(mnemonics(SHARP_JW300, p)).toEqual(['STR NOT 007366', 'OUT 000020', 'F-40']);
   });

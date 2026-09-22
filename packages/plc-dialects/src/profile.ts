@@ -217,10 +217,10 @@ export interface DialectProfile {
    */
   parseCounterPreset?(text: string): number | Error;
   instructionNames: Readonly<Record<InstructionKey, string>>;
-  /** 特殊デバイス番号（`SP0`〜`SP2`）→ 実デバイス名。§10.3 / §10.5 */
+  /** 特殊デバイス番号（`SP0`〜`SP3`）→ 実デバイス名。§10.3 / §10.5 */
   specialDevices: Readonly<Record<number, string>>;
   /**
-   * 実機ではb接点で使う特殊デバイスの番号（シャープの `007366`＝常時ON。§10.5 / §17 #22）。
+   * 実機ではb接点で使う特殊デバイスの番号（シャープの `007366`のb接点＝常時ON。§10.5 / §17 #22）。
    * 4B のエディタはここに載っている番号の接点をb接点として描く。IRとランタイムは関知しない
    * （IRの `SP0` は常時ONという意味そのもので、表示だけが方言に依る）。
    */

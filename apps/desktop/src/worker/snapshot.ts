@@ -74,6 +74,7 @@ export function plcSnapshot(
     inputs: [...state.inputs],
     outputs: [...state.outputs],
     internals: { ...state.internals },
+    specials: { ...state.specials },
     timers: Object.fromEntries(
       Object.entries(state.timers).map(([index, value]) => [
         index,

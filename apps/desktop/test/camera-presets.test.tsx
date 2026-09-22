@@ -1,5 +1,6 @@
 import { PLC_UNIT_FX5U, PLC_UNIT_JW300 } from '@ojt/board-model';
 import { BUILTIN_PLC_PROBLEMS } from '@ojt/content';
+import { Vector3 } from 'three';
 import { cleanup, render } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -13,8 +14,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
  */
 
 interface FakeCamera {
-  up: { set: (x: number, y: number, z: number) => void };
-  position: { set: (x: number, y: number, z: number) => void; value: [number, number, number] };
+  up: Vector3;
+  position: {
+    x: number;
+    y: number;
+    z: number;
+    set: (x: number, y: number, z: number) => void;
+    value: [number, number, number];
+  };
   lookAt: (x: number, y: number, z: number) => void;
   updateProjectionMatrix: () => void;
 }
@@ -66,9 +73,18 @@ let controlsTargets: Array<[number, number, number]>;
 function makeCamera(): FakeCamera {
   const value: [number, number, number] = [0, 0, 0];
   return {
-    up: { set: () => undefined },
+    up: new Vector3(0, 1, 0),
     position: {
       value,
+      get x() {
+        return value[0];
+      },
+      get y() {
+        return value[1];
+      },
+      get z() {
+        return value[2];
+      },
       set: (x, y, z) => {
         value[0] = x;
         value[1] = y;
@@ -84,8 +100,13 @@ function makeCamera(): FakeCamera {
 }
 
 const controls = {
+  enabled: true,
   target: {
+    x: 0,
+    y: 0,
+    z: 0,
     set: (x: number, y: number, z: number) => {
+      Object.assign(controls.target, { x, y, z });
       controlsTargets.push([x, y, z]);
     },
   },
@@ -102,6 +123,7 @@ function runFrame(stepMs = 0): void {
 }
 
 beforeEach(() => {
+  controls.enabled = true;
   positions = [];
   targets = [];
   controlsTargets = [];
@@ -119,6 +141,32 @@ afterEach(() => {
 });
 
 describe('CameraPresets', () => {
+  it('自由回転後のプリセットは実際の位置から始まり、昔の位置へ跳ばない', () => {
+    const view = render(<CameraPresets preset="front" nonce={0} controls={controls} />);
+    const camera = harness.camera as FakeCamera;
+    camera.position.set(60, -300, 40);
+    camera.up.set(0, 0, 1);
+    controls.target.set(5, 6, 7);
+    view.rerender(<CameraPresets preset="front" nonce={1} controls={controls} />);
+    runFrame(0);
+    expect(positions.at(-1)).toEqual([60, -300, 40]);
+    expect(controlsTargets.at(-1)).toEqual([5, 6, 7]);
+    runFrame(400);
+    expect(positions.at(-1)).toEqual(expectedPose('front').position);
+  });
+
+  it('補間中にキューブをつかむと、放した後も古い補間を再開しない', () => {
+    const view = render(<CameraPresets preset="front" nonce={0} controls={controls} />);
+    view.rerender(<CameraPresets preset="top" nonce={1} controls={controls} />);
+    runFrame(50);
+    controls.enabled = false;
+    const count = positions.length;
+    runFrame(50);
+    controls.enabled = true;
+    runFrame(400);
+    expect(positions).toHaveLength(count);
+  });
+
   it('マウント直後はプリセットの視点を補間せずそのまま当てる', () => {
     render(<CameraPresets preset="front" nonce={0} controls={controls} />);
     const pose = expectedPose('front');

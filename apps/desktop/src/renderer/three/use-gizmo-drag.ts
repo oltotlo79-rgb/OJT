@@ -1,11 +1,8 @@
 import { useCallback, useEffect, useRef } from 'react';
 import type { ThreeEvent } from '@react-three/fiber';
-import {
-  clamp,
-  GIZMO_DRAG_THRESHOLD_PX,
-  gizmoDragToSpherical,
-  type OrbitControlsLike,
-} from './navigation.js';
+import { GIZMO_DRAG_THRESHOLD_PX, type OrbitControlsLike } from './navigation.js';
+import type { CameraPose } from './camera.js';
+import { freeOrbitPose } from './free-orbit.js';
 import { targetIdOf } from './view-gizmo-paint.js';
 
 /**
@@ -15,9 +12,8 @@ import { targetIdOf } from './view-gizmo-paint.js';
  * 「押す → 引く → 放す」の間に起きること（慣性の退避と復帰・盤側の操作の停止・ポインタの捕捉・
  * しきい値・クリックとの切り分け）が1箇所にまとまるので、回帰テストから素直に駆動できる。
  *
- * 押した時点の角度を覚えておき、**そこからの絶対値**で `setAzimuthalAngle()` /
- * `setPolarAngle()` を呼ぶ（1回ごとの差分を足し込まない）。ドラッグ中は `dampingFactor` を
- * 1 にしてあるので `update()` 1回で目標へ届く（指に 1:1 で付いてくる）。
+ * 押した時点の位置・上方向を保持し、画面の縦横軸まわりの回転を絶対ドラッグ量から求める。
+ * カメラの上方向も同時に回すことで、極・裏面でも角度制限に引っかからない。
  */
 
 /** 進行中のキューブのドラッグ。 */
@@ -26,9 +22,9 @@ interface GizmoDrag {
   /** 押した位置（ページ座標）。 */
   x: number;
   y: number;
-  /** 押した時点のカメラの方位角・極角[rad]。ドラッグ量はここからの絶対値で足す。 */
-  azimuth: number;
-  polar: number;
+  /** 押した時点のカメラ姿勢。位置・上方向を一緒に回す。 */
+  pose: CameraPose;
+  enabled: boolean;
   /** 押した時点の慣性の強さ（放したら戻す）。 */
   dampingFactor: number;
   /** 押した先の当たり判定（クリックで放したときのスナップ先）。 */
@@ -53,6 +49,8 @@ export interface GizmoDragWiring {
   onTap: (id: string) => void;
   /** 掴んだ瞬間（進行中のスナップを打ち切る）。 */
   onGrab: () => void;
+  readPose: () => CameraPose;
+  applyPose: (pose: CameraPose) => void;
 }
 
 /** `useGizmoDrag()` が返すもの。 */
@@ -70,6 +68,8 @@ export function useGizmoDrag({
   idleCursor,
   onTap,
   onGrab,
+  readPose,
+  applyPose,
 }: GizmoDragWiring): GizmoDragHandle {
   const drag = useRef<GizmoDrag | null>(null);
 
@@ -84,7 +84,7 @@ export function useGizmoDrag({
       drag.current = null;
       // 慣性と盤側の操作を元に戻す
       controls.dampingFactor = current.dampingFactor;
-      controls.enabled = true;
+      controls.enabled = current.enabled;
       setCursor(idleCursor());
       if (current.capture !== null) {
         try {
@@ -101,16 +101,7 @@ export function useGizmoDrag({
       const dy = event.clientY - current.y;
       if (!current.moved && Math.hypot(dx, dy) < GIZMO_DRAG_THRESHOLD_PX) return;
       current.moved = true;
-      const delta = gizmoDragToSpherical(dx, dy);
-      /*
-       * 押した時点の角度からの**絶対値**で指定する（1回ごとの差分を足し込まない）。
-       * `setAzimuthalAngle()` は目標との差を `OrbitControls` の内部の回転量に入れて `update()` を
-       * 呼ぶ。ドラッグ中は `dampingFactor` を 1 にしてあるので、その1回で目標へ届く（1:1）。
-       */
-      controls.setAzimuthalAngle(current.azimuth + delta.azimuth);
-      controls.setPolarAngle(
-        clamp(current.polar + delta.polar, controls.minPolarAngle, controls.maxPolarAngle),
-      );
+      applyPose(freeOrbitPose(current.pose, dx, dy));
       invalidate();
     };
     const onUp = (event: PointerEvent): void => {
@@ -121,20 +112,26 @@ export function useGizmoDrag({
        * 動かさずに放した＝クリック。押した先の視点へ動かす（ストアへ書くのはここ1回だけ。
        * ポインタを動かしているあいだは1度も書かない＝再描画も起きない。§15）。
        */
-      if (!current.moved && current.targetId !== null) onTap(current.targetId);
+      if (event.type === 'pointerup' && !current.moved && current.targetId !== null)
+        onTap(current.targetId);
       invalidate();
+    };
+    const onBlur = (): void => {
+      if (drag.current !== null) finish(drag.current);
     };
     window.addEventListener('pointermove', onMove, true);
     window.addEventListener('pointerup', onUp, true);
     window.addEventListener('pointercancel', onUp, true);
+    window.addEventListener('blur', onBlur);
     return () => {
       window.removeEventListener('pointermove', onMove, true);
       window.removeEventListener('pointerup', onUp, true);
       window.removeEventListener('pointercancel', onUp, true);
+      window.removeEventListener('blur', onBlur);
       // ドラッグの途中で消えても慣性と盤の操作を止めたままにしない
       if (drag.current !== null) finish(drag.current);
     };
-  }, [controls, idleCursor, invalidate, onTap, setCursor]);
+  }, [controls, idleCursor, invalidate, onTap, setCursor, applyPose]);
 
   const onPointerDown = useCallback(
     (event: ThreeEvent<PointerEvent>): void => {
@@ -161,13 +158,17 @@ export function useGizmoDrag({
       }
       // 途中のスナップは掴んだ時点で打ち切る（指の動きが最優先）
       onGrab();
+      // 前の盤ドラッグの慣性を消化してから基準姿勢を記録する。
+      const dampingFactor = controls.dampingFactor;
+      controls.dampingFactor = 1;
+      controls.update();
       drag.current = {
         pointerId: native.pointerId,
         x: native.clientX,
         y: native.clientY,
-        azimuth: controls.getAzimuthalAngle(),
-        polar: controls.getPolarAngle(),
-        dampingFactor: controls.dampingFactor,
+        pose: readPose(),
+        enabled: controls.enabled,
+        dampingFactor,
         targetId: targetIdOf(event),
         moved: false,
         capture,
@@ -184,7 +185,7 @@ export function useGizmoDrag({
       setCursor('grabbing');
       invalidate();
     },
-    [controls, invalidate, onGrab, setCursor],
+    [controls, invalidate, onGrab, setCursor, readPose],
   );
 
   const isDragging = useCallback((): boolean => drag.current !== null, []);

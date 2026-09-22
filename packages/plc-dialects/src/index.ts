@@ -1,3 +1,4 @@
+export { nativeContact } from './native-contact.js';
 export { convert, type ConvertError, type ConvertResult } from './convert.js';
 
 export {

@@ -1,6 +1,7 @@
 import {
   device,
   SPECIAL_ALWAYS_ON,
+  SPECIAL_ALWAYS_OFF,
   SPECIAL_CLOCK_1S,
   SPECIAL_FIRST_SCAN,
   type Device,
@@ -60,11 +61,12 @@ const DEVICE_RANGES: Readonly<Record<DeviceKind, DeviceRange>> = {
   internal: { radix: 10, prefix: 'W', min: 0, max: WORK_POINTS - 1 },
   timer: { radix: 10, prefix: 'T', min: 0, max: 255 },
   counter: { radix: 10, prefix: 'C', min: 0, max: 255 },
-  special: { radix: 10, prefix: 'SP', min: 0, max: 2 },
+  special: { radix: 10, prefix: 'SP', min: 0, max: 3 },
 };
 
 /** 特殊デバイス番号 → CP1E の実デバイス名。§10.5 / §17 #22 */
 const SPECIAL_DEVICES: Readonly<Record<number, string>> = {
+  [SPECIAL_ALWAYS_OFF]: 'P_Off',
   [SPECIAL_ALWAYS_ON]: 'P_On',
   [SPECIAL_FIRST_SCAN]: 'A200.11',
   [SPECIAL_CLOCK_1S]: 'P_1s',
@@ -75,11 +77,16 @@ const SPECIAL_BY_NAME = new Map<string, number>(
   Object.entries(SPECIAL_DEVICES).map(([index, name]) => [name.toUpperCase(), Number(index)]),
 );
 
+SPECIAL_BY_NAME.set('P_FIRST_CYCLE', SPECIAL_FIRST_SCAN);
+SPECIAL_BY_NAME.set('CF113', SPECIAL_ALWAYS_ON);
+SPECIAL_BY_NAME.set('CF114', SPECIAL_ALWAYS_OFF);
+SPECIAL_BY_NAME.set('CF102', SPECIAL_CLOCK_1S);
+
 /** IRのデバイス → 方言表記。§10.5 */
 function formatDevice(target: Device): string {
   switch (target.kind) {
     case 'special':
-      // device() が SP0〜SP2 以外を作らせず、SPECIAL_DEVICES がその3つを定義しているため
+      // device() が SP0〜SP3 以外を作らせず、SPECIAL_DEVICES がその4つを定義しているため
       // `??` の右側には到達しない（防御的）
       /* c8 ignore next */
       return SPECIAL_DEVICES[target.index] ?? `SP${target.index}`;

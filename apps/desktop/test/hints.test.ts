@@ -1,4 +1,5 @@
 import { PROBLEM_TAGS } from '@ojt/content';
+import { getDialect } from '@ojt/plc-dialects';
 import { describe, expect, it } from 'vitest';
 import { JA } from '../src/renderer/i18n/ja.js';
 import { hintStages, ideaText, maxHintStage } from '../src/renderer/session/hints.js';
@@ -9,6 +10,25 @@ import { hintStages, ideaText, maxHintStage } from '../src/renderer/session/hint
  */
 
 describe('hintStages（段の作り方）', () => {
+  it('測定とPLCでは、それぞれの確認手順を案内する', () => {
+    expect(hintStages({ grade: 2, mode: 'inspect-parts' })[2]?.text).toContain('無通電');
+    expect(hintStages({ grade: 2, mode: 'inspect-repair' })[2]?.text).toContain('電源を切り');
+    expect(hintStages({ grade: 2, mode: 'plc' })[2]?.text).toContain('入力→接点→出力');
+    expect(hintStages({ grade: 1, mode: 'plc' })).toHaveLength(2);
+  });
+  it('PLC点滅のヒントは選んだメーカーのクロック番号を使う', () => {
+    expect(
+      hintStages({ grade: 2, mode: 'plc', tags: ['flicker'], profile: getDialect('mitsubishi') })[1]
+        ?.text,
+    ).toContain('SM412');
+    expect(
+      hintStages({ grade: 2, mode: 'plc', tags: ['flicker'], profile: getDialect('jtekt') })[1]
+        ?.text,
+    ).toContain('V072');
+    expect(
+      hintStages({ grade: 2, mode: 'plc', tags: ['flicker'], texts: ['課題固有の説明'] })[1]?.text,
+    ).toBe('課題固有の説明');
+  });
   it('3級は3段、1級は2段（回路図が与えられない級だから）', () => {
     expect(hintStages({ grade: 3 })).toHaveLength(3);
     expect(hintStages({ grade: 2 })).toHaveLength(3);

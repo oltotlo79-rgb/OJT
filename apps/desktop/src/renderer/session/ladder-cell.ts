@@ -15,7 +15,12 @@ import {
   type Device,
   type DeviceKind,
 } from '@ojt/ladder-core';
-import { roundTimerPreset, type DialectProfile, type InstructionKey } from '@ojt/plc-dialects';
+import {
+  nativeContact,
+  roundTimerPreset,
+  type DialectProfile,
+  type InstructionKey,
+} from '@ojt/plc-dialects';
 import { JA } from '../i18n/ja.js';
 
 /**
@@ -199,6 +204,7 @@ export function formForCell(cell: Cell, profile: DialectProfile): CellForm {
       : { ...emptyCellForm('contact'), contact: cell.symbol as ContactForm };
   }
   if (cell.kind === 'contact') {
+    cell = nativeContact(cell, profile);
     return {
       ...emptyCellForm('contact'),
       contact: cell.type,

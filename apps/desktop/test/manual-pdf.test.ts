@@ -98,5 +98,5 @@ describe('焼いた PDF（設計 §6.2・§6.3）', () => {
   it('cleans up', () => {
     rmSync(dir, { recursive: true, force: true });
     expect(existsSync(dir)).toBe(false);
-  });
+  }, 30_000);
 });

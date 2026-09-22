@@ -22,12 +22,15 @@ export const SPECIAL_ALWAYS_ON = 0;
 export const SPECIAL_FIRST_SCAN = 1;
 /** 1秒クロックの特殊デバイス番号（M8013 相当）。§10.3 */
 export const SPECIAL_CLOCK_1S = 2;
+/** 常時OFF。既存作業ファイルの番号0〜2を変更せず追加する。 */
+export const SPECIAL_ALWAYS_OFF = 3;
 
-/** 特殊デバイス番号の一覧（この3つ以外は使わない）。§10.3 */
+/** 特殊デバイス番号の一覧（この4つ以外は使わない）。§10.3 */
 export const SPECIAL_INDEXES: readonly number[] = [
   SPECIAL_ALWAYS_ON,
   SPECIAL_FIRST_SCAN,
   SPECIAL_CLOCK_1S,
+  SPECIAL_ALWAYS_OFF,
 ];
 
 /** IRの組み立てに失敗したときに投げる。 */
@@ -113,13 +116,13 @@ export const DEVICE_PREFIX: Readonly<Record<DeviceKind, string>> = {
   special: 'SP',
 };
 
-/** デバイスを作る。番号は0以上の整数、特殊デバイスは `SPECIAL_INDEXES` の3つだけ。 */
+/** デバイスを作る。番号は0以上の整数、特殊デバイスは `SPECIAL_INDEXES` の4つだけ。 */
 export function device(kind: DeviceKind, index: number): Device {
   if (!Number.isInteger(index) || index < 0) {
     throw new LadderError(`デバイス番号は0以上の整数です: ${DEVICE_PREFIX[kind]}${index}`);
   }
   if (kind === 'special' && !SPECIAL_INDEXES.includes(index)) {
-    throw new LadderError(`特殊デバイスは SP0／SP1／SP2 のみです: SP${index}`);
+    throw new LadderError(`特殊デバイスは SP0／SP1／SP2／SP3 のみです: SP${index}`);
   }
   return { kind, index };
 }

@@ -57,8 +57,8 @@ describe('JTEKT TOYOPUC PC10G-1SP のデバイス表記（§10.5 / PLC調査資�
   });
 
   it('maps the three special devices (§17 #22 の前提割当)', () => {
-    expect(profile.formatDevice(SP(0))).toBe('1V00');
-    expect(profile.formatDevice(SP(1))).toBe('1V01');
+    expect(profile.formatDevice(SP(0))).toBe('V004');
+    expect(profile.formatDevice(SP(1))).toBe('V006');
     expect(profile.formatDevice(SP(2))).toBe('V072');
     expect(profile.specialInverted).toBeUndefined();
   });

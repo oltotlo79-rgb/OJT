@@ -37,9 +37,9 @@ describe.each(cases)('%s プロファイルの不変条件', (_id, profile: Dial
     expect(profile.gridCols).toBeLessThanOrEqual(MAX_GRID_COLS);
   });
 
-  it('maps the three special devices of §10.3', () => {
-    expect(Object.keys(profile.specialDevices).sort()).toEqual(['0', '1', '2']);
-    for (const index of [0, 1, 2]) {
+  it('maps the four special devices', () => {
+    expect(Object.keys(profile.specialDevices).sort()).toEqual(['0', '1', '2', '3']);
+    for (const index of [0, 1, 2, 3]) {
       expect(profile.formatDevice(SP(index)).length).toBeGreaterThan(0);
     }
     for (const index of profile.specialInverted ?? []) {
@@ -48,10 +48,25 @@ describe.each(cases)('%s プロファイルの不変条件', (_id, profile: Dial
   });
 
   it('round-trips every device kind through formatDevice and parseDevice (§10.7 表記切替)', () => {
-    const samples: Device[] = [X(0), X(1), Y(0), Y(1), M(0), T(0), C(0), SP(0), SP(1), SP(2)];
+    const samples: Device[] = [
+      X(0),
+      X(1),
+      Y(0),
+      Y(1),
+      M(0),
+      T(0),
+      C(0),
+      SP(0),
+      SP(1),
+      SP(2),
+      SP(3),
+    ];
     for (const target of samples) {
       const text = profile.formatDevice(target);
-      expect(profile.parseDevice(text), `${profile.id}: ${text}`).toEqual(target);
+      // JWの旧SP0（常時ON）は007366のb接点として表示する。番号自体は常時OFF。
+      const native =
+        profile.id === 'sharp' && target.kind === 'special' && target.index === 0 ? SP(3) : target;
+      expect(profile.parseDevice(text), `${profile.id}: ${text}`).toEqual(native);
     }
   });
 

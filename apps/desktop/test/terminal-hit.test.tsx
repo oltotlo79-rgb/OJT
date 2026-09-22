@@ -114,7 +114,8 @@ describe('端子のホバー表示（項目3: 通常ズームでも気づける�
   });
 
   it('輪はネジよりはっきり大きい', () => {
-    const screwRadius = (SCREW_GEOMETRY.parameters as { radiusTop: number }).radiusTop;
+    SCREW_GEOMETRY.computeBoundingBox();
+    const screwRadius = SCREW_GEOMETRY.boundingBox!.max.x;
     expect(HOVER_RING_INNER_MM).toBeGreaterThan(screwRadius);
     // ネジの直径（3.6mm）よりも輪の外径のほうが大きい＝ネジを一回り超えて包む
     expect(HOVER_RING_OUTER_MM).toBeGreaterThan(screwRadius * 2);

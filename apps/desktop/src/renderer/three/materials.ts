@@ -2,6 +2,9 @@ import { useMemo } from 'react';
 import {
   BoxGeometry,
   CylinderGeometry,
+  ExtrudeGeometry,
+  Path,
+  Shape,
   FrontSide,
   InstancedMesh,
   MeshStandardMaterial,
@@ -18,7 +21,41 @@ import {
  */
 
 /** ネジ端子の見た目（半径 1.8mm・高さ 1.6mm の円柱）。 */
-export const SCREW_GEOMETRY = new CylinderGeometry(1.8, 1.8, 1.6, 12);
+export const SCREW_GEOMETRY = (() => {
+  const head = new Shape();
+  head.absarc(0, 0, 1.8, 0, Math.PI * 2, false);
+  const slot = new Path();
+  const points = [
+    [-0.3, -1.3],
+    [-0.3, -0.3],
+    [-1.3, -0.3],
+    [-1.3, 0.3],
+    [-0.3, 0.3],
+    [-0.3, 1.3],
+    [0.3, 1.3],
+    [0.3, 0.3],
+    [1.3, 0.3],
+    [1.3, -0.3],
+    [0.3, -0.3],
+    [0.3, -1.3],
+  ] as const;
+  slot.moveTo(...points[0]);
+  for (const point of points.slice(1)) slot.lineTo(point[0], point[1]);
+  slot.closePath();
+  head.holes.push(slot);
+  const geometry = new ExtrudeGeometry(head, {
+    depth: 1.4,
+    bevelEnabled: true,
+    bevelSize: 0.1,
+    bevelThickness: 0.1,
+    bevelSegments: 1,
+    steps: 1,
+    curveSegments: 6,
+  });
+  geometry.translate(0, 0, -0.7);
+  geometry.rotateX(-Math.PI / 2);
+  return geometry;
+})();
 
 /** 端子の当たり判定球（実際の半径は `pickRadiusMm` でスケールする）。§6.5 */
 export const PICK_GEOMETRY = new SphereGeometry(1, 10, 8);

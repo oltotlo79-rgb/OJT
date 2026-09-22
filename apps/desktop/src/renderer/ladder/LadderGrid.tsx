@@ -1,3 +1,4 @@
+import { nativeContact } from '@ojt/plc-dialects';
 import {
   cellAt,
   COIL_COL,
@@ -210,7 +211,11 @@ function cellLabels(
     return { device: '', preset: '', mnemonic };
   }
   if (cell.kind === 'contact') {
-    return { device: profile.formatDevice(cell.device), preset: '', mnemonic: '' };
+    return {
+      device: profile.formatDevice(nativeContact(cell, profile).device),
+      preset: '',
+      mnemonic: '',
+    };
   }
   if (cell.kind === 'coil') {
     return {
@@ -266,18 +271,10 @@ function symbolIdOf(cell: Cell, profile: DialectProfile): string | undefined {
       return map[cell.symbol];
     }
     case 'contact': {
-      /*
-       * 実機ではb接点で使う特殊デバイス（シャープの `007366`＝常時ON。4A H-4 / §17 #22）。
-       * IRの `SP0` は「常時ON」という意味そのもので、a接点で描くと実機の見た目と食い違う。
-       * 判定・ランタイムには一切効かない**表示だけ**の話である。
-       */
-      const inverted =
-        cell.device.kind === 'special' &&
-        (profile.specialInverted ?? []).includes(cell.device.index);
-      if (cell.type === 'NO') return inverted ? symbols.nc : symbols.no;
-      if (cell.type === 'NC') return inverted ? symbols.no : symbols.nc;
-      // 微分接点（`P` / `F`）は反転しない（立上り／立下りそのものが向きを持つ）
-      return cell.type === 'P' ? symbols.rise : symbols.fall;
+      const native = nativeContact(cell, profile);
+      if (native.type === 'NO') return symbols.no;
+      if (native.type === 'NC') return symbols.nc;
+      return native.type === 'P' ? symbols.rise : symbols.fall;
     }
     case 'coil':
       return cell.type === 'OUT' ? symbols.coil : cell.type === 'SET' ? symbols.set : symbols.rst;

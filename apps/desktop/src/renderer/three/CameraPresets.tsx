@@ -12,13 +12,11 @@ import { cameraPose, interpolatePose, VIEW_TRANSITION_MS, type CameraPose } from
  * 変える（既定の `(0,1,0)` のままだと視線とほぼ平行になり画が回ってしまう）。
  *
  * プリセットの切り替えは瞬間移動させず、`interpolatePose()`（`camera.ts`）で ~300ms の
- * ease-out 補間を掛ける（§12.2「視点プリセットとギズモのスナップは同じ短い補間で遷移」。
- * ギズモ（`ViewGizmo`）のクリックは drei の `GizmoHelper` が内部で角速度一定の短い補間を
- * 自前で行うので実装は共有できないが、遷移時間を揃えることで体感を合わせる）。
+ * ease-out補間を掛ける。キューブの辺・角のスナップも同じ補間と所要時間を使う。
  *
  * `frameloop="demand"` の下で動かすため、補間中は `useFrame` の中で毎フレーム `invalidate()`
  * を呼んで次のフレームを要求し、`t = 1` に達したら呼ぶのをやめてループを自己終結させる
- * （`OrbitControls` の慣性や drei `GizmoHelper` の `tweenCamera` と同じ考え方）。
+ * （`OrbitControls` の慣性と同じ考え方）。
  * マウント直後（および `OrbitControls` 接続前）は補間せず即座に反映する。
  */
 
@@ -30,7 +28,8 @@ const TRANSITION_MS = VIEW_TRANSITION_MS;
 
 /** `OrbitControls` のうちこの層が使う部分。 */
 export interface ControlsLike {
-  target: { set: (x: number, y: number, z: number) => void };
+  enabled?: boolean;
+  target: { x: number; y: number; z: number; set: (x: number, y: number, z: number) => void };
   update: () => void;
 }
 
@@ -116,14 +115,26 @@ export function CameraPresets({
       animation.current = null;
       applyPose(to);
     } else {
-      animation.current = { from: currentPose.current, to, startMs: performance.now() };
+      // キューブや盤面で動かした現在位置から始める。前回のプリセットへ跳ばさない。
+      const target = controls?.target;
+      const from: CameraPose = {
+        position: [camera.position.x, camera.position.y, camera.position.z],
+        up: [camera.up.x, camera.up.y, camera.up.z],
+        target: target === undefined ? currentPose.current.target : [target.x, target.y, target.z],
+      };
+      animation.current = { from, to, startMs: performance.now() };
     }
     invalidate();
     // `aspect` はペインのリサイズ（例: ビュー切替・ウィンドウのリサイズ）のたびに変わりうる。
     // 変わったら視点を組み直して、常にそのペインいっぱいに盤を収め直す。
-  }, [preset, nonce, plcUnit, aspect, applyPose, invalidate]);
+  }, [preset, nonce, plcUnit, aspect, applyPose, invalidate, camera, controls]);
 
   useFrame(() => {
+    // キューブ操作をプリセットの補間で上書きしない。
+    if (controls?.enabled === false) {
+      animation.current = null;
+      return;
+    }
     const anim = animation.current;
     if (anim === null) return;
     const t = Math.min(1, (performance.now() - anim.startMs) / TRANSITION_MS);

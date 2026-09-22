@@ -8,10 +8,11 @@ import {
 } from '@ojt/board-model';
 import type { PlcUnitDefinition } from '@ojt/board-model';
 import type { CameraPreset } from '../app/store-types.js';
+import { Matrix4, Quaternion, Vector3 } from 'three';
 
 /**
  * 盤の傾きと視点プリセットの純粋な計算。設計仕様 §6.5 / §12.2。
- * React も three も使わないので、単体テストからも E2E の射影計算からも読める。
+ * Reactに依存せず、単体テストからもE2Eの射影計算からも読める。
  */
 
 /** カメラの垂直視野角[度]。`BoardScene` の `Canvas` に渡す値。 */
@@ -23,24 +24,8 @@ export const MIN_CAMERA_DISTANCE_MM = 90;
 /** カメラが離れられる最長距離[mm]。 */
 export const MAX_CAMERA_DISTANCE_MM = 1200;
 
-/**
- * 仰角（極角）の上限[rad]。盤の裏側・真下へ回り込ませない。§12.2
- *
- * `OrbitControls` は `update()` のたびに極角をこの値へ丸めるので、**プリセットの視点も
- * この範囲に収まっていなければならない**（超えた視点を置くと、次のフレームで引き戻される）。
- * `cameraPose('bottom')` がちょうどこの角度を使うのはそのため。
- *
- * ちょうど 90°（`Math.PI / 2`）にする。極角は `OrbitControls` が **`camera.up` から**
- * 測る（three-stdlib `OrbitControls.update()` の `quat.setFromUnitVectors(object.up, up)`）
- * ので、面直の視点（`front` / `back` / `socket` / `plc`。`up` は `boardUp()`）はどれも
- * 極角ちょうど 90° に来る。以前の `Math.PI * 0.48`（86.4°）だと**正面視そのものが範囲外**で、
- * `update()` が毎回カメラを 3.6° 引き戻していた。見た目には気づきにくいが、面直でなくなるため
- * 端子の射影が画面の端ほど大きくずれ、盤の左上隅にある DC24V 供給端子 `P.1` では
- * ずれが当たり判定の半径（4mm ≒ 9px）を超えてクリックが当たらなくなっていた
- * （2026-09-19 のスクリーンショット確認で判明）。90° は「盤の水平面より下へ回り込ませない」
- * という本来の意図そのもので、面直の視点を範囲内に収めつつ裏側は禁じたままにできる。
- */
-export const MAX_POLAR_ANGLE = Math.PI / 2;
+/** 盤の裏側も含む全方向。キューブは上方向も回すため極で止まらない。 */
+export const MAX_POLAR_ANGLE = Math.PI;
 
 /** ソケット段の中心の盤モデル y[mm]。盤定義のソケット原点と本体寸法から求める（ハードコードしない）。 */
 export const SOCKET_ROW_CENTER_MM = ((): number => {
@@ -268,17 +253,7 @@ export function cameraPose(preset: CameraPreset, options: CameraPoseOptions = {}
     case 'left':
       return { position: [-faceDistance, 0, 0], target: [0, 0, 0], up: boardUp() };
     case 'bottom':
-      // 極角の上限ちょうど（＝許される範囲でいちばん低い位置）に置く。これより下は
-      // `OrbitControls` が `update()` で引き戻すので、視点が落ち着かない。§12.2
-      return {
-        position: [
-          0,
-          faceDistance * Math.cos(MAX_POLAR_ANGLE),
-          faceDistance * Math.sin(MAX_POLAR_ANGLE),
-        ],
-        target: [0, 0, 0],
-        up: [0, 1, 0],
-      };
+      return { position: [0, -faceDistance, 0], target: [0, 0, 0], up: [0, 0, 1] };
     case 'top':
       return {
         position: [-w * 0.62, h * 1.1, h * 1.05],
@@ -324,17 +299,7 @@ export function cameraPose(preset: CameraPreset, options: CameraPoseOptions = {}
  */
 export const VIEW_TRANSITION_MS = 300;
 
-/**
- * 極角の下限[rad]。真上（極）ちょうどに置くとカメラの上方向（0,1,0）と視線が平行になり
- * 画が定まらないので、わずかに外す。
- *
- * **`BoardScene` の `<OrbitControls minPolarAngle={...}>` にも渡す**（Task 19 / 3D-15〜19）。
- * three-stdlib の既定は 0（＝極そのもの）で、極ではカメラ位置が
- * `target + (0, 距離, 0)` に固定され、方位角をいくら変えても動かない。ビューキューブを
- * 引いてそこへ張り付くと、そのあとどちらへ引いても画が変わらなくなる
- * （2026-09-20 の利用者報告「上から正面にキューブを回そうとすると回らない」。
- * 実測は Task 19 Step 1: 俯瞰の極角 0.8897 → 下へ200px で 0.0000 に張り付く）。
- */
+/** 盤面の通常ドラッグ用の極角下限。キューブは姿勢全体を回すためこの制限を受けない。 */
 export const MIN_POLAR_ANGLE_RAD = 0.02;
 
 /**
@@ -344,15 +309,7 @@ export const MIN_POLAR_ANGLE_RAD = 0.02;
  * 対応するプリセットが無い（プリセットを20個増やすのは筋が悪い）。距離と注視点は
  * 「いまの視点のまま」にして**向きだけ**その方向へ向け直す。
  *
- * 極角は `[MIN_POLAR_ANGLE_RAD, MAX_POLAR_ANGLE - MIN_POLAR_ANGLE_RAD]` に丸める。盤の裏側・
- * 真下へは回り込めないので、丸めずに置くと `OrbitControls.update()` が次のフレームで引き戻して
- * 視点が落ち着かない（`cameraPose('bottom')` と同じ理由）。下向きの辺・角は「許される範囲で
- * いちばん低い位置から見上げる」視点になる。
- *
- * 上下とも**下限・上限ちょうどには置かない**（Task 19 / 3D-15〜19）。真上（極角0）は球座標の
- * 極で、そこでは方位角を変えてもカメラ位置が動かない（＝どちらへ引いても画が変わらない）。
- * 上限ちょうども同じく片側のドラッグが死ぬので、`MIN_POLAR_ANGLE_RAD`（0.02rad ≒ 1.1°）だけ
- * 内側に置いて、辺・角へスナップしたあとも**どちらの向きにも引ける**ようにする。
+ * 真下を含む全26方向にそのまま置く。上方向を視線と直交させ、極でも姿勢を定める。
  */
 export function poseForDirection(
   direction: readonly [number, number, number],
@@ -363,21 +320,14 @@ export function poseForDirection(
     length === 0
       ? [0, 0, 1]
       : ([direction[0] / length, direction[1] / length, direction[2] / length] as const);
-  // three の `Spherical` と同じ取り方（+Y が極、方位角は +Z から +X へ）
-  const azimuth = Math.atan2(x, z);
-  const polar = Math.min(
-    MAX_POLAR_ANGLE - MIN_POLAR_ANGLE_RAD,
-    Math.max(MIN_POLAR_ANGLE_RAD, Math.acos(y)),
-  );
-  const sin = Math.sin(polar);
+  const reference = Math.abs(y) > 0.99 ? [0, 0, 1] : [0, 1, 0];
+  const dot = x * reference[0]! + y * reference[1]! + z * reference[2]!;
+  const up = [reference[0]! - dot * x, reference[1]! - dot * y, reference[2]! - dot * z];
+  const upLength = Math.hypot(...up);
   return {
-    position: [
-      target[0] + distance * sin * Math.sin(azimuth),
-      target[1] + distance * Math.cos(polar),
-      target[2] + distance * sin * Math.cos(azimuth),
-    ],
-    target: [target[0], target[1], target[2]],
-    up: [0, 1, 0],
+    position: [target[0] + distance * x, target[1] + distance * y, target[2] + distance * z],
+    target: [...target],
+    up: [up[0]! / upLength, up[1]! / upLength, up[2]! / upLength],
   };
 }
 
@@ -402,15 +352,33 @@ function lerp3(
 
 /**
  * 2つの視点を ease-out で補間する純粋関数。§12.2「視点プリセットとギズモのスナップは
- * 同じ短い補間で遷移」。`t = 0` で `from` に、`t = 1` で `to` に一致し、その間は各成分が
- * 単調に変化する（イージングは内部で完結するので、呼び出し側は経過時間から求めた
+ * 同じ短い補間で遷移」。`t = 0` で `from` に、`t = 1` で `to` に一致し、その間は姿勢が球面上を滑らかに変化する（イージングは内部で完結するので、呼び出し側は経過時間から求めた
  * 線形の `t`（0→1）を渡すだけでよい）。`CameraPresets` が `useFrame` から毎フレーム呼ぶ。
  */
 export function interpolatePose(from: CameraPose, to: CameraPose, t: number): CameraPose {
   const eased = easeOutCubic(t);
+  if (eased === 0) return from;
+  if (eased === 1) return to;
+  // 位置の直線補間は反対側へ移る途中で盤の中心を横切り、upもゼロになる。
+  // 姿勢は球面補間、距離と注視点は線形補間にして、真下から戻るときも連続させる。
+  const orientation = (pose: CameraPose): Quaternion =>
+    new Quaternion().setFromRotationMatrix(
+      new Matrix4().lookAt(
+        new Vector3(...pose.position),
+        new Vector3(...pose.target),
+        new Vector3(...pose.up),
+      ),
+    );
+  const rotation = orientation(from).slerp(orientation(to), eased);
+  const distance = (pose: CameraPose): number =>
+    Math.hypot(...pose.position.map((value, i) => value - pose.target[i]!));
+  const radius = distance(from) + (distance(to) - distance(from)) * eased;
+  const target = lerp3(from.target, to.target, eased);
+  const position = new Vector3(0, 0, radius).applyQuaternion(rotation).add(new Vector3(...target));
+  const up = new Vector3(0, 1, 0).applyQuaternion(rotation);
   return {
-    position: lerp3(from.position, to.position, eased),
-    target: lerp3(from.target, to.target, eased),
-    up: lerp3(from.up, to.up, eased),
+    position: position.toArray(),
+    target,
+    up: up.toArray(),
   };
 }

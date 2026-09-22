@@ -605,6 +605,7 @@ export function InspectRepairSession(): JSX.Element {
         canRedo={history.undone.length > 0}
         /* 段階的に開くヒント（指摘 PR-02）。1段目は手順帯がいま出している案内そのもの。 */
         hints={hintStages({
+          mode: 'inspect-repair',
           grade: problem.grade,
           stepHint: inspectRepairStepHint(currentStepKey),
           tags: problem.tags,

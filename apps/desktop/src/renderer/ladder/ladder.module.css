@@ -1030,6 +1030,30 @@ details[open] > .sideSummary::before {
   font-size: max(12px, 0.75rem);
 }
 
+.specialContacts {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--ladder-line);
+  font-size: max(12px, 0.75rem);
+  line-height: 1.6;
+}
+
+.specialContacts label {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  white-space: nowrap;
+}
+
+.specialContacts span {
+  flex: 1 1 260px;
+  min-width: 0;
+}
+
 /*
  * ツールバーの記号ボタン列（入口B）。ツールバーの2段目として、同じ地の色の上に並べる。
  * ボタンは「自分で描いた記号 ＋ 名前（キー）」なので、文字だけの行より少し高い。

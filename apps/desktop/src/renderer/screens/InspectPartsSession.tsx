@@ -315,6 +315,7 @@ export function InspectPartsSession(): JSX.Element {
   const currentStepKey = steps.find((step) => step.state === 'current')?.key;
   // 段階的に開くヒント（指摘 PR-02）。1段目は手順帯がいま出している案内そのもの。
   const hints = hintStages({
+    mode: 'inspect-parts',
     grade: problem.grade,
     stepHint: inspectPartsStepHint(currentStepKey),
     tags: problem.tags,

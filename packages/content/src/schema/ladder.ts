@@ -41,7 +41,7 @@ export const DeviceSchema = z
     index: z.int().min(0).max(65_535),
   })
   .refine((d) => d.kind !== 'special' || SPECIAL_INDEXES.includes(d.index), {
-    message: `特殊デバイスは ${SPECIAL_INDEXES.join('／')} のみです（常時ON／初期パルス／1秒クロック）`,
+    message: `特殊デバイスは ${SPECIAL_INDEXES.join('／')} のみです（常時ON／初期パルス／1秒クロック／常時OFF）`,
     path: ['index'],
   });
 
@@ -172,8 +172,8 @@ export const DeviceCommentsSchema = z
     z
       .string()
       .regex(
-        /^(?:X\d{1,4}|Y\d{1,4}|M\d{1,4}|T\d{1,4}|C\d{1,5}|SP[0-2])$/u,
-        'デバイス表示名は `X0` / `M1` / `T0` / `SP0`〜`SP2` の形です（桁数は機種の番号帯に収まる範囲）',
+        /^(?:X\d{1,4}|Y\d{1,4}|M\d{1,4}|T\d{1,4}|C\d{1,5}|SP[0-3])$/u,
+        'デバイス表示名は `X0` / `M1` / `T0` / `SP0`〜`SP3` の形です（桁数は機種の番号帯に収まる範囲）',
       ),
     z.string().min(1).max(MAX_DEVICE_COMMENT_LENGTH),
   )

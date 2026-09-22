@@ -21,6 +21,7 @@ import {
   type OutputForm,
 } from '../session/ladder-cell.js';
 import styles from './ladder.module.css';
+import { SPECIAL_CONTACT_LESSONS, specialContactChoices } from '../session/special-contacts.js';
 
 /**
  * 回路入力欄。設計仕様 §10.5 / §10.7、Phase 7 設計 §5.3（指摘 UX-02 / PR-01）。
@@ -107,6 +108,12 @@ export function DeviceInput({
   const [comment, setComment] = useState('');
   const firstRef = useRef<HTMLInputElement | null>(null);
   const commentRef = useRef<HTMLInputElement | null>(null);
+  const specialChoices = specialContactChoices(profile);
+  const enteredDevice = profile.parseDevice(direct.trim().split(/\s+/u).at(-1) || form.deviceText);
+  const specialLesson =
+    !(enteredDevice instanceof Error) && enteredDevice.kind === 'special'
+      ? SPECIAL_CONTACT_LESSONS[enteredDevice.index]
+      : undefined;
 
   useEffect(() => {
     firstRef.current?.focus();
@@ -333,6 +340,42 @@ export function DeviceInput({
               {JA.inspectRepair.cancel}
             </button>
           </div>
+          {form.target === 'contact' ? (
+            <div className={styles.specialContacts}>
+              <label>
+                特殊接点
+                <select
+                  data-testid="special-contact-select"
+                  value=""
+                  onChange={(event) => {
+                    const choice = specialChoices.find(
+                      (item) => String(item.index) === event.target.value,
+                    );
+                    if (choice === undefined) return;
+                    setDirect('');
+                    setForm({ ...form, deviceText: choice.name, contact: choice.contact });
+                    setError(undefined);
+                    firstRef.current?.focus();
+                  }}
+                >
+                  <option value="">用途から選ぶ</option>
+                  {specialChoices.map((choice) => (
+                    <option key={choice.index} value={choice.index}>
+                      {choice.name} · {choice.title}
+                      {choice.contact === 'NC' ? '（b接点）' : ''}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {specialLesson === undefined ? (
+                <span>{specialChoices[0]?.name}などの番号を直接入力することもできます。</span>
+              ) : (
+                <span data-testid="special-contact-note" role="note" aria-label="特殊接点の説明">
+                  {specialLesson.title}：{specialLesson.text}
+                </span>
+              )}
+            </div>
+          ) : null}
         </>
       ) : (
         /*

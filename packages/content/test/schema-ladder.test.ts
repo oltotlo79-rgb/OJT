@@ -123,9 +123,9 @@ describe('DeviceSchema / CellSchema', () => {
     expect(DeviceSchema.safeParse({ kind: 'relay', index: 0 }).success).toBe(false);
   });
 
-  it('allows only SP0〜SP2 for special devices (§10.3)', () => {
+  it('allows only SP0〜SP3 for special devices (§10.3)', () => {
     expect(DeviceSchema.safeParse({ kind: 'special', index: 2 }).success).toBe(true);
-    expect(DeviceSchema.safeParse({ kind: 'special', index: 3 }).success).toBe(false);
+    expect(DeviceSchema.safeParse({ kind: 'special', index: 3 }).success).toBe(true);
   });
 
   it('requires the timer preset to be a multiple of the scan period (§10.4)', () => {

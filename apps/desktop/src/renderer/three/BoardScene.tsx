@@ -455,6 +455,7 @@ function BoardContents({
   /** ドラッグ配線の始点（世界座標。仮の電線を伸ばす元）。 */
   const [wireDragFrom, setWireDragFrom] = useState<BoardTerminal | undefined>(undefined);
   const gl = useThree((state) => state.gl);
+  const glCamera = useThree((state) => state.camera);
 
   /** 端子ごとの結線数（「2本で一杯」の判断と、つなげる端子の光らせ分けに使う）。§7.3.1 */
   const loads = useMemo(
@@ -693,8 +694,10 @@ function BoardContents({
       polar: controls.getPolarAngle(),
       distance: controls.getDistance(),
       target: [controls.target.x, controls.target.y, controls.target.z],
+      position: [glCamera.position.x, glCamera.position.y, glCamera.position.z],
+      up: [glCamera.up.x, glCamera.up.y, glCamera.up.z],
     });
-  }, [controls, readoutRef]);
+  }, [controls, readoutRef, glCamera]);
   useEffect(writeReadout, [writeReadout]);
 
   /* ---------------------------------------------------------------------- *
@@ -969,8 +972,21 @@ function BoardContents({
       <Invalidator />
       <PerfProbe nodeRef={perfRef} />
       <color attach="background" args={['#141820']} />
-      <ambientLight intensity={0.8} />
-      <directionalLight position={[220, 520, 420]} intensity={1.6} />
+      <ambientLight intensity={0.65} />
+      <directionalLight
+        position={[220, 520, 420]}
+        intensity={1.8}
+        castShadow
+        shadow-mapSize={[1024, 1024]}
+        shadow-camera-left={-500}
+        shadow-camera-right={500}
+        shadow-camera-top={500}
+        shadow-camera-bottom={-500}
+        shadow-camera-near={1}
+        shadow-camera-far={1800}
+        shadow-bias={-0.0002}
+        shadow-normalBias={0.4}
+      />
       <directionalLight position={[-320, 180, 360]} intensity={0.6} />
       {/* 盤は傾斜コンソール。盤ローカル（+Z が盤面の法線）を机の上に寝かせて手前に起こす。§6.5 */}
       <group rotation={[BOARD_TILT_RAD, 0, 0]}>
@@ -1310,6 +1326,7 @@ function BoardSceneImpl({
         </div>
       ) : null}
       <Canvas
+        shadows
         key={generation}
         frameloop="demand"
         dpr={[1, 1.5]}

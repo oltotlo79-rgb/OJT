@@ -1,4 +1,5 @@
 import type { ProblemTag } from '@ojt/content';
+import type { DialectProfile } from '@ojt/plc-dialects';
 import { JA } from '../i18n/ja.js';
 
 /**
@@ -30,6 +31,8 @@ export interface HintStage {
 
 /** ヒントを組み立てるのに要るもの。 */
 export interface HintInput {
+  readonly mode?: 'assemble' | 'inspect-parts' | 'inspect-repair' | 'plc';
+  readonly profile?: DialectProfile;
   /** 想定級（ヒントの出し方が変わる。§8.4）。 */
   readonly grade: 1 | 2 | 3;
   /** 手順帯がいま出している案内（無ければ落としどころの1行にする）。 */
@@ -57,7 +60,11 @@ export function hintStages(input: HintInput): readonly HintStage[] {
   const stages: HintStage[] = [
     { stage: 1, title: JA.hint.stage1, text: input.stepHint ?? JA.hint.stepFallback },
   ];
-  const idea = input.texts?.[0] ?? ideaText(input.tags);
+  let idea = input.texts?.[0] ?? ideaText(input.tags);
+  if (input.texts?.[0] === undefined && input.mode === 'plc' && input.tags?.includes('flicker')) {
+    const clock = input.profile?.specialDevices[2] ?? '1秒クロック';
+    idea = `${clock}は0.5秒ON・0.5秒OFFです。a接点とb接点を別の出力に使うと交互に点灯します。クロックだけを出力条件にせず、運転を許可する接点も直列に入れます。`;
+  }
   /*
    * 1級形式は回路図が出ないので第3段が作れない。第2段の末尾でそのことを言い切り、
    * 「押しても何も起きない」ボタンを残さないようにする（押せない理由を必ず文字で出す。UX-05）。
@@ -68,7 +75,20 @@ export function hintStages(input: HintInput): readonly HintStage[] {
     text: input.grade === 1 ? `${idea} ${JA.hint.grade1Note}` : idea,
   });
   if (input.grade !== 1) {
-    stages.push({ stage: 3, title: JA.hint.stage3, text: input.texts?.[1] ?? JA.hint.wire });
+    const next =
+      input.mode === 'plc'
+        ? '入力→接点→出力の順にモニタで追います。入力がONなのに接点の先がOFFなら論理条件を、出力がONなのにランプが消えているならPLC出力から盤のリレーまでの配線を確認します。'
+        : input.mode === 'inspect-parts'
+          ? '無通電でコイルの抵抗とa接点・b接点の導通を記録します。次に検査用ソケットで通電し、接点が反転するか比べます。抵抗が正常でも接点が動かなければ、コイルとは別の故障を考えます。'
+          : input.mode === 'inspect-repair'
+            ? '通電時のDC電圧をN基準で電源側から負荷側へ追います。電圧が途切れる区間を絞ったら電源を切り、その区間の導通を確認します。測定結果を記録してから修復します。'
+            : JA.hint.wire;
+    stages.push({
+      stage: 3,
+      title:
+        input.mode === undefined || input.mode === 'assemble' ? JA.hint.stage3 : '次に確かめること',
+      text: input.texts?.[1] ?? next,
+    });
   }
   return stages;
 }

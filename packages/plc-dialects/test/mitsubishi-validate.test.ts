@@ -89,7 +89,7 @@ describe('三菱バリデータ（§10.5 固有バリデーション / §10.8）
   });
 
   it('reports a special device this model does not map (§10.5)', () => {
-    // `SP()` は SP0〜SP2 しか作らないが、ファイルから読んだIRには未対応番号が混じりうる
+    // `SP()` は SP0〜SP3 しか作らないが、ファイルから読んだIRには未対応番号が混じりうる
     const unsupported: Cell = {
       kind: 'contact',
       type: 'NO',
@@ -99,7 +99,7 @@ describe('三菱バリデータ（§10.5 固有バリデーション / §10.8）
     const errors = profile.validate(p);
     expect(errors.map((e) => e.code)).toEqual(['special-unsupported']);
     expect(errors[0]?.message).toContain('SP9');
-    expect(errors[0]?.message).toContain('SP0〜SP2');
+    expect(errors[0]?.message).toContain('SP0〜SP3');
   });
 
   it('has a Japanese message for every error code it can raise', () => {

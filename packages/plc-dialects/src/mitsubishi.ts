@@ -2,6 +2,7 @@ import {
   device,
   deviceLabel,
   SPECIAL_ALWAYS_ON,
+  SPECIAL_ALWAYS_OFF,
   SPECIAL_CLOCK_1S,
   SPECIAL_FIRST_SCAN,
   type Cell,
@@ -71,21 +72,35 @@ const DEVICE_RANGES: Readonly<Record<DeviceKind, DeviceRange>> = {
   internal: { radix: 10, prefix: 'M', min: 0, max: 7_999 },
   timer: { radix: 10, prefix: 'T', min: 0, max: 7_999 },
   counter: { radix: 10, prefix: 'C', min: 0, max: 32_767 },
-  // 特殊デバイスはIR側の通し番号（`SP0`〜`SP2`）の範囲。実デバイス名は `SPECIAL_DEVICES` が持つ
-  special: { radix: 10, prefix: 'SP', min: 0, max: 2 },
+  // 特殊デバイスはIR側の通し番号（`SP0`〜`SP3`）の範囲。実デバイス名は `SPECIAL_DEVICES` が持つ
+  special: { radix: 10, prefix: 'SP', min: 0, max: 3 },
 };
 
-/** 特殊デバイス番号 → FX の実デバイス名。§10.5 / §17 #22 */
+/** 特殊デバイス番号 → FX5の実デバイス名。出典: docs/superpowers/handoff/2026-09-22-education-review.md */
 const SPECIAL_DEVICES: Readonly<Record<number, string>> = {
-  [SPECIAL_ALWAYS_ON]: 'M8000',
-  [SPECIAL_FIRST_SCAN]: 'M8002',
-  [SPECIAL_CLOCK_1S]: 'M8013',
+  [SPECIAL_ALWAYS_OFF]: 'SM401',
+  [SPECIAL_ALWAYS_ON]: 'SM400',
+  [SPECIAL_FIRST_SCAN]: 'SM402',
+  [SPECIAL_CLOCK_1S]: 'SM412',
 };
 
 /** 実デバイス名 → 特殊デバイス番号（`parseDevice` 用の逆引き）。 */
 const SPECIAL_BY_NAME = new Map<string, number>(
   Object.entries(SPECIAL_DEVICES).map(([index, name]) => [name, Number(index)]),
 );
+
+// FX5の互換エリアと旧版アプリの入力表記。表示はFX5のSMへ正規化する。
+for (const [name, index] of Object.entries({
+  SM8000: 0,
+  SM8001: 3,
+  SM8002: 1,
+  SM8013: 2,
+  M8000: 0,
+  M8001: 3,
+  M8002: 1,
+  M8013: 2,
+}))
+  SPECIAL_BY_NAME.set(name, index);
 
 /** IRのデバイス → 方言表記。X/Y は8進。§10.5 */
 function formatDevice(target: Device): string {
@@ -313,7 +328,7 @@ function checkCell(
   }
   for (const target of devices) {
     if (target.kind === 'special') {
-      // device() が SP0〜SP2 以外を作らせず、SPECIAL_DEVICES がその3つを定義しているため、
+      // device() が SP0〜SP3 以外を作らせず、SPECIAL_DEVICES がその4つを定義しているため、
       // この分岐には到達しない（防御的）
       /* c8 ignore next 10 */
       if (SPECIAL_DEVICES[target.index] === undefined) {

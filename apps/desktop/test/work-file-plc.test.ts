@@ -115,7 +115,7 @@ describe('モードDの作業ファイル（§12.3 / 3A H-3）', () => {
     ).toBeUndefined();
   });
 
-  it('refuses a special device whose index is not 0/1/2, and accepts a valid one (PD-3)', () => {
+  it('refuses a special device whose index is not 0/1/2/3, and accepts a valid one (PD-3)', () => {
     // 1行分（IR_COLS=16列）を埋める。先頭セルだけ差し替え、残りは空セル。
     const row = (first: Record<string, unknown>): Record<string, unknown>[] => [
       first,
@@ -129,7 +129,7 @@ describe('モードDの作業ファイル（§12.3 / 3A H-3）', () => {
     });
     // SPECIAL_INDEXES（常時ON=0／初期パルス=1／1秒クロック=2）以外は拒む。
     expect(toLadderProgram({ networks: [netWith(99)] })).toBeUndefined();
-    expect(toLadderProgram({ networks: [netWith(3)] })).toBeUndefined();
+    expect(toLadderProgram({ networks: [netWith(3)] })).toBeDefined();
     // 範囲内は読める。
     expect(toLadderProgram({ networks: [netWith(0)] })).toBeDefined();
     expect(toLadderProgram({ networks: [netWith(2)] })).toBeDefined();

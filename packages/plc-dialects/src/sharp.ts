@@ -1,6 +1,7 @@
 import {
   device,
   SPECIAL_ALWAYS_ON,
+  SPECIAL_ALWAYS_OFF,
   SPECIAL_CLOCK_1S,
   SPECIAL_FIRST_SCAN,
   type Device,
@@ -62,7 +63,7 @@ const DEVICE_RANGES: Readonly<Record<DeviceKind, DeviceRange>> = {
   internal: { radix: 8, prefix: '', min: 0, max: INTERNAL_POINTS - 1 },
   timer: { radix: 8, prefix: 'TMR', min: 0, max: TIMER_MAX },
   counter: { radix: 8, prefix: 'CNT', min: 0, max: TIMER_MAX },
-  special: { radix: 10, prefix: 'SP', min: 0, max: 2 },
+  special: { radix: 10, prefix: 'SP', min: 0, max: 3 },
 };
 
 /** リレー種別 → 先頭番号。 */
@@ -74,6 +75,7 @@ const RELAY_BASE: Readonly<Record<'input' | 'output' | 'internal', number>> = {
 
 /** 特殊デバイス番号 → JW の実リレー番号。§10.5 / §17 #22 */
 const SPECIAL_DEVICES: Readonly<Record<number, string>> = {
+  [SPECIAL_ALWAYS_OFF]: '007366',
   [SPECIAL_ALWAYS_ON]: '007366',
   [SPECIAL_FIRST_SCAN]: '007362',
   [SPECIAL_CLOCK_1S]: '007364',
@@ -84,11 +86,14 @@ const SPECIAL_BY_NAME = new Map<string, number>(
   Object.entries(SPECIAL_DEVICES).map(([index, name]) => [name, Number(index)]),
 );
 
+// 007366そのものはOFF。旧IRのSP0は表示時にb接点へ反転する。
+SPECIAL_BY_NAME.set('007366', SPECIAL_ALWAYS_OFF);
+
 /** IRのデバイス → 方言表記。§10.5 */
 function formatDevice(target: Device): string {
   switch (target.kind) {
     case 'special':
-      // device() が SP0〜SP2 以外を作らせず、SPECIAL_DEVICES がその3つを定義しているため
+      // device() が SP0〜SP3 以外を作らせず、SPECIAL_DEVICES がその4つを定義しているため
       // `??` の右側には到達しない（防御的）
       /* c8 ignore next */
       return SPECIAL_DEVICES[target.index] ?? `SP${target.index}`;

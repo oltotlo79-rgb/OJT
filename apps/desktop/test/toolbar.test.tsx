@@ -1,3 +1,5 @@
+import { useHelpStore } from '../src/renderer/help/help-store.js';
+import { sectionById } from '../src/renderer/help/help-model.js';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useStore } from '../src/renderer/app/store.js';
@@ -300,6 +302,12 @@ describe('ヒント（指摘 PR-02）', () => {
 
     fireEvent.click(button);
     expect(screen.getByTestId('hint-panel').textContent).toContain('配線します。');
+    fireEvent.click(screen.getByTestId('hint-explanation'));
+    expect(useHelpStore.getState().open).toBe(true);
+    expect(sectionById(useHelpStore.getState().sectionId)?.title).toBe(
+      '予測して、測って、確かめる',
+    );
+    useHelpStore.getState().closeHelp();
     expect(screen.getByTestId('hint-panel').textContent).not.toContain(JA.hint.wire);
     expect(useStore.getState().hintStage).toBe(1);
 

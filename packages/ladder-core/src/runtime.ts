@@ -3,6 +3,7 @@ import {
   cellAt,
   COIL_COL,
   SPECIAL_ALWAYS_ON,
+  SPECIAL_ALWAYS_OFF,
   SPECIAL_CLOCK_1S,
   SPECIAL_FIRST_SCAN,
   type Cell,
@@ -52,6 +53,8 @@ export interface PlcSnapshot {
   inputs: boolean[];
   outputs: boolean[];
   internals: Record<number, boolean>;
+  /** 直前に実行したスキャンで接点が参照した特殊リレー。 */
+  specials: Record<number, boolean>;
   timers: Record<number, PlcTimerState>;
   counters: Record<number, PlcCounterState>;
 }
@@ -232,11 +235,12 @@ class Runtime implements PlcRuntime {
         return this.counters.get(device.index)?.on ?? false;
       case 'special':
         if (device.index === SPECIAL_ALWAYS_ON) return true;
+        if (device.index === SPECIAL_ALWAYS_OFF) return false;
         if (device.index === SPECIAL_FIRST_SCAN) return this.firstScan;
         if (device.index === SPECIAL_CLOCK_1S) {
           return Math.floor(this.elapsedMs / (CLOCK_PERIOD_MS / 2)) % 2 === 0;
         }
-        /* c8 ignore next -- `device()` が SP0〜SP2 以外を作らせないので到達しない。§10.3 */
+        /* c8 ignore next -- `device()` が SP0〜SP3 以外を作らせないので到達しない。§10.3 */
         return false;
     }
   }
@@ -254,6 +258,13 @@ class Runtime implements PlcRuntime {
       inputs: [...this.inputs],
       outputs: [...this.outputs],
       internals,
+      specials: {
+        [SPECIAL_ALWAYS_ON]: true,
+        [SPECIAL_ALWAYS_OFF]: false,
+        [SPECIAL_FIRST_SCAN]: this.scans <= 1,
+        [SPECIAL_CLOCK_1S]:
+          Math.floor(Math.max(0, this.elapsedMs - this.scanMs) / (CLOCK_PERIOD_MS / 2)) % 2 === 0,
+      },
       timers,
       counters,
     };

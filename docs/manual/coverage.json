@@ -585,6 +585,12 @@
       "section": "screens/画面の上の帯"
     },
     {
+      "testid": "hint-explanation",
+      "screen": "練習中",
+      "label": "考え方と確認手順を読む",
+      "section": "tutorial-features/予測して、測って、確かめる"
+    },
+    {
       "testid": "hint-panel",
       "internal": "開いたヒントの中身の枠。上の帯の「ヒント」で説明済み"
     },
@@ -803,6 +809,12 @@
       "screen": "練習中（モードD）",
       "label": "入力回路",
       "section": "mode-d/入出力の割り付け"
+    },
+    {
+      "testid": "monitor-special-{}",
+      "screen": "PLC",
+      "section": "mode-d/特殊接点を使う",
+      "label": "特殊接点"
     },
     {
       "testid": "monitor-stopped",
@@ -1757,6 +1769,18 @@
       "screen": "練習画面",
       "label": "ソケット",
       "section": "screens/部品を入れかえる"
+    },
+    {
+      "testid": "special-contact-note",
+      "screen": "PLC",
+      "section": "mode-d/特殊接点を使う",
+      "label": "特殊接点の説明"
+    },
+    {
+      "testid": "special-contact-select",
+      "screen": "PLC",
+      "label": "特殊接点",
+      "section": "mode-d/特殊接点を使う"
     },
     {
       "testid": "start-here",

@@ -356,6 +356,15 @@ export function ViewGizmo({ controls }: { controls: OrbitControlsLike | null }):
     snap.current = null;
   }, []);
 
+  const readPose = useCallback(
+    (): CameraPose => ({
+      position: [camera.position.x, camera.position.y, camera.position.z],
+      up: [camera.up.x, camera.up.y, camera.up.z],
+      target: [controls?.target.x ?? 0, controls?.target.y ?? 0, controls?.target.z ?? 0],
+    }),
+    [camera, controls],
+  );
+
   /** 押す→引く→放すの状態機械（`use-gizmo-drag.ts`）。 */
   const { onPointerDown, isDragging } = useGizmoDrag({
     controls,
@@ -364,6 +373,8 @@ export function ViewGizmo({ controls }: { controls: OrbitControlsLike | null }):
     idleCursor,
     onTap: snapTo,
     onGrab: cancelSnap,
+    readPose,
+    applyPose,
   });
 
   /** ホバー表示を差し替える（同じなら何もしない＝ポインタが動くたびの再描画を避ける）。 */

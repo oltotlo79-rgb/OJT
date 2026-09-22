@@ -220,6 +220,7 @@ export function MountedPart({
     <group name={`mounted-${socket.id}`}>
       {/* 本体の箱。ここだけがクリックを受け、押すとそのソケットが選ばれる（利用者要望 2026-09-19） */}
       <mesh
+        castShadow
         name={`mounted-body-${socket.id}`}
         geometry={UNIT_BOX}
         material={bodyMaterial}
