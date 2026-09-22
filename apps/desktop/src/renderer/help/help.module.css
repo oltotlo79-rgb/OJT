@@ -110,7 +110,8 @@
 .body {
   flex: 1;
   display: grid;
-  grid-template-columns: 200px minmax(0, 1fr);
+  /* 文字拡大時も目次だけ固定幅にせず、短い節名が途中で割れるのを防ぐ。 */
+  grid-template-columns: calc(200px * var(--ui-scale, 1)) minmax(0, 1fr);
   min-height: 0;
 }
 

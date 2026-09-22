@@ -5,7 +5,7 @@ import { JIPM_BOARD } from '@ojt/board-model';
 import { toTerminalId } from '@ojt/circuit-sim';
 import { COIL_COL } from '@ojt/ladder-core';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
-import { launchApp, SHOT_DIR, type Launched } from './app.js';
+import { launchApp, settleFrames, SHOT_DIR, type Launched } from './app.js';
 import { captureReady } from './capture.js';
 import {
   boardPoint,
@@ -329,6 +329,7 @@ const INTERACTIVE_SELECTOR =
 const ONE_LINE_SELECTOR = [
   'button',
   'th',
+  '[data-testid="problem-table"] td:not(:first-child)',
   'summary',
   '[role="button"]',
   '[role="tab"]',
@@ -1690,11 +1691,17 @@ test.describe.serial('画面品質の機械点検', () => {
       await page.getByTestId('setting-contrast').selectOption('high');
       await expect(page.locator('html')).toHaveAttribute('data-contrast', 'high');
       const inspect = async (screen: string): Promise<void> => {
+        await settleFrames(page);
+        await capture(app, `ui-${screen}-1280x800-scale130`, null);
         const findings = await auditDom(page);
         measured.push({ screen, findings });
+        // 拡大表示も全体集計へ含める。別ファイルだけに残して成功と報告しない。
+        record(findings.map((item) => ({ ...item, screen, size: '1280x800-scale130' })));
         expect
           .soft(
-            findings.filter((finding) => finding.severity === 'blocking'),
+            findings.filter(
+              (finding) => finding.severity === 'blocking' || BASELINE[finding.check] === 0,
+            ),
             screen,
           )
           .toEqual([]);
@@ -1716,6 +1723,7 @@ test.describe.serial('画面品質の機械点検', () => {
       ] as const) {
         await goHome(page);
         await page.getByTestId(`mode-${mode}`).click();
+        await expect(page.getByTestId('problem-table')).toBeVisible();
         await inspect(`list-${mode}`);
         await page
           .getByTestId('grade-filter')

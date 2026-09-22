@@ -83,6 +83,12 @@
   text-align: left;
 }
 
+.problemTable th,
+.problemTable td:not(:first-child) {
+  /* 時間の表題や「難しさ 1」を分断せず、長い課題名・説明の列で折り返す。 */
+  white-space: nowrap;
+}
+
 .tag {
   background: var(--panel-2);
   border: 1px solid var(--line);
