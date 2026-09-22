@@ -6,6 +6,7 @@ import { toTerminalId } from '@ojt/circuit-sim';
 import { COIL_COL } from '@ojt/ladder-core';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import { launchApp, SHOT_DIR, type Launched } from './app.js';
+import { captureReady } from './capture.js';
 import {
   boardPoint,
   closeOverflow,
@@ -239,37 +240,39 @@ async function capture(
   canvas: { rect: Rect; cssWidth: number } | null,
 ): Promise<{ distinct: number; spread: number } | null> {
   mkdirSync(SHOT_DIR, { recursive: true });
-  const shot = await app.evaluate(async ({ BrowserWindow }, arg) => {
-    const window = BrowserWindow.getAllWindows()[0];
-    if (window === undefined) throw new Error('ウィンドウがありません');
-    const image = await window.capturePage();
-    const png = image.toPNG().toString('base64');
-    if (arg === null) return { png, stats: null };
-    const size = image.getSize();
-    const bitmap = image.toBitmap();
-    const scale = arg.cssWidth > 0 ? size.width / arg.cssWidth : 1;
-    const seen = new Set<number>();
-    let min = 255;
-    let max = 0;
-    const steps = 32;
-    for (let iy = 0; iy < steps; iy += 1) {
-      for (let ix = 0; ix < steps; ix += 1) {
-        const px = Math.round((arg.rect.x + ((ix + 0.5) / steps) * arg.rect.w) * scale);
-        const py = Math.round((arg.rect.y + ((iy + 0.5) / steps) * arg.rect.h) * scale);
-        if (px < 0 || py < 0 || px >= size.width || py >= size.height) continue;
-        const offset = (py * size.width + px) * 4;
-        // Electron の `toBitmap()` は BGRA 並び
-        const b = bitmap[offset] ?? 0;
-        const g = bitmap[offset + 1] ?? 0;
-        const r = bitmap[offset + 2] ?? 0;
-        seen.add(((r >> 3) << 10) | ((g >> 3) << 5) | (b >> 3));
-        const lum = 0.299 * r + 0.587 * g + 0.114 * b;
-        if (lum < min) min = lum;
-        if (lum > max) max = lum;
+  const shot = await captureReady(() =>
+    app.evaluate(async ({ BrowserWindow }, arg) => {
+      const window = BrowserWindow.getAllWindows()[0];
+      if (window === undefined) throw new Error('ウィンドウがありません');
+      const image = await window.capturePage();
+      const png = image.toPNG().toString('base64');
+      if (arg === null) return { png, stats: null };
+      const size = image.getSize();
+      const bitmap = image.toBitmap();
+      const scale = arg.cssWidth > 0 ? size.width / arg.cssWidth : 1;
+      const seen = new Set<number>();
+      let min = 255;
+      let max = 0;
+      const steps = 32;
+      for (let iy = 0; iy < steps; iy += 1) {
+        for (let ix = 0; ix < steps; ix += 1) {
+          const px = Math.round((arg.rect.x + ((ix + 0.5) / steps) * arg.rect.w) * scale);
+          const py = Math.round((arg.rect.y + ((iy + 0.5) / steps) * arg.rect.h) * scale);
+          if (px < 0 || py < 0 || px >= size.width || py >= size.height) continue;
+          const offset = (py * size.width + px) * 4;
+          // Electron の `toBitmap()` は BGRA 並び
+          const b = bitmap[offset] ?? 0;
+          const g = bitmap[offset + 1] ?? 0;
+          const r = bitmap[offset + 2] ?? 0;
+          seen.add(((r >> 3) << 10) | ((g >> 3) << 5) | (b >> 3));
+          const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+          if (lum < min) min = lum;
+          if (lum > max) max = lum;
+        }
       }
-    }
-    return { png, stats: { distinct: seen.size, spread: Math.round(max - min) } };
-  }, canvas);
+      return { png, stats: { distinct: seen.size, spread: Math.round(max - min) } };
+    }, canvas),
+  );
   writeFileSync(join(SHOT_DIR, `${name}.png`), Buffer.from(shot.png, 'base64'));
   return shot.stats;
 }
