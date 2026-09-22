@@ -125,13 +125,13 @@ test.describe('モードB スモーク', () => {
     await page.waitForTimeout(600);
 
     // ⑥ ブレーカ → 電源スイッチ の順に通電（§5.3.5）
-    await page.getByRole('button', { name: 'ブレーカ' }).click();
-    await page.getByRole('button', { name: '電源スイッチ' }).click();
+    await page.getByTestId('power-breaker').click();
+    await page.getByTestId('power-switch').click();
     await expect(page.getByTestId('status-overlay')).toContainText('通電中');
     await shot(app, '06-powered');
 
     // ⑦ 判定 → 結果画面（§8.3 / §16 Phase 1 受入基準②）
-    await page.getByRole('button', { name: '判定' }).click();
+    await page.getByTestId('judge-button').click();
     await expect(page.getByTestId('verdict')).toBeVisible();
     await expect(page.getByTestId('verdict')).toHaveText('合格');
     await expect(page.getByTestId('chart-overlay')).toBeVisible();
@@ -151,7 +151,7 @@ test.describe('モードB スモーク', () => {
       await clickTerminal(page, retryBox, to);
     }
     await expect(page.getByTestId('status-overlay')).toContainText(wireCountText(8, FIXED_WIRES));
-    await page.getByRole('button', { name: '判定' }).click();
+    await page.getByTestId('judge-button').click();
     await expect(page.getByTestId('verdict')).toHaveText('不合格');
     await expect(page.getByTestId('mismatch-table')).toBeVisible();
     await shot(app, '08-result-fail');

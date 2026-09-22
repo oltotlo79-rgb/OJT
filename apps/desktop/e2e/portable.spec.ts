@@ -53,6 +53,7 @@ test('EXE1個から初回ガイド・216課題・回路の合格・ヘルプ・P
     await page.getByTestId('mode-assemble').click();
     await page.getByTestId('open-b-001').click();
     await expect(page.locator('[data-testid="viewport"] canvas')).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByTestId('status-overlay')).toContainText(wireCountText(0, 0));
     await expect(page.getByTestId('tour-guide')).toHaveAttribute('data-step', 'rotate');
     await page.getByTestId('tour-later').click();
     await selectView(page, '正面');
@@ -78,7 +79,9 @@ test('EXE1個から初回ガイド・216課題・回路の合格・ヘルプ・P
         await page.mouse.click(point.x, point.y);
       }
     }
-    await expect(page.getByTestId('status-overlay')).toContainText(wireCountText(12, 3));
+    await expect(page.getByTestId('status-overlay')).toContainText(
+      wireCountText(SELF_HOLD_WIRES.length, 0),
+    );
     await page.getByTestId('power-breaker').click();
     await page.getByTestId('power-switch').click();
     await expect(page.getByTestId('status-overlay')).toContainText('通電中');

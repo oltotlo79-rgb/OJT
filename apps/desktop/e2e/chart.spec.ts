@@ -143,9 +143,9 @@ test.describe.serial('タイムチャートの拡大表示', () => {
       await clickTerminal(page, box, from);
       await clickTerminal(page, box, to);
     }
-    await page.getByRole('button', { name: 'ブレーカ' }).click();
-    await page.getByRole('button', { name: '電源スイッチ' }).click();
-    await page.getByRole('button', { name: '判定' }).click();
+    await page.getByTestId('power-breaker').click();
+    await page.getByTestId('power-switch').click();
+    await page.getByTestId('judge-button').click();
     await expect(page.getByTestId('chart-overlay')).toBeVisible();
     await shot(app, 'after-03-result-overlay');
 
