@@ -28,7 +28,8 @@ const sha256 = (bytes: Buffer): string => createHash('sha256').update(bytes).dig
 
 function bake(dir: string, name: string): Buffer {
   const pdf = join(dir, name);
-  const result = spawnSync(electronPath, [PRINT], {
+  // 並列の印刷検査と既定のElectronプロファイルを共有しない。
+  const result = spawnSync(electronPath, [PRINT, `--user-data-dir=${join(dir, 'profile')}`], {
     cwd: APP_ROOT,
     env: { ...globalThis.process.env, OJT_PRINT_MANUAL_PDF: pdf },
     encoding: 'utf8',

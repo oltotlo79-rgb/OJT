@@ -92,18 +92,6 @@ function withStableDates(pdf, day) {
 }
 
 async function main() {
-  if (!existsSync(HTML)) {
-    globalThis.process.stderr.write(
-      `印刷用HTMLがありません: ${HTML}（先に node scripts/build-manual.mjs を走らせてください）\n`,
-    );
-    /*
-     * BL-1: `app.quit()` は Electron 44.3.0 で `process.exitCode` を無視する（実測: 0 で
-     * 終わる）。`dist` は `&&` 連結（`package.json`）なので、これでは印刷の失敗が次工程へ
-     * そのまま通ってしまう。`app.exit(1)` は指定した終了コードで**確実に**プロセスを終える。
-     */
-    app.exit(1);
-    return;
-  }
   const window = new BrowserWindow({
     show: false,
     width: 1280,
@@ -145,7 +133,16 @@ async function main() {
  * `then(main, onError)` にすると `main()` 自身が投げた例外を拾えず、`dist` が
  * 終わらないプロセスの前で止まる。`catch` を後ろに置いて両方を1箇所で受ける。
  */
-app.whenReady().then(main).catch(onFailure);
+// 入力の欠落には画面もプロファイルも不要。Chromiumの初期化を待たずに失敗させる。
+// BL-1: app.quit() は process.exitCode を無視するため、app.exit(1)を使う。
+if (!existsSync(HTML)) {
+  globalThis.process.stderr.write(
+    `印刷用HTMLがありません: ${HTML}（先に node scripts/build-manual.mjs を走らせてください）\n`,
+  );
+  app.exit(1);
+} else {
+  app.whenReady().then(main).catch(onFailure);
+}
 
 /** @param {unknown} error */
 function onFailure(error) {

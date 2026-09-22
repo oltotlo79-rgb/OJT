@@ -32,7 +32,7 @@ describe('print-manual.mjs の終了コード（BL-1）', () => {
     const dir = mkdtempSync(join(tmpdir(), 'ojt-print-manual-'));
     try {
       const missingHtml = join(dir, 'manual.html');
-      const result = spawnSync(electronPath, [SCRIPT], {
+      const result = spawnSync(electronPath, [SCRIPT, `--user-data-dir=${join(dir, 'profile')}`], {
         cwd: APP_ROOT,
         env: {
           ...globalThis.process.env,
@@ -42,8 +42,9 @@ describe('print-manual.mjs の終了コード（BL-1）', () => {
         encoding: 'utf8',
         timeout: 60_000,
       });
-      expect(result.status).not.toBe(0);
-      expect(result.status).not.toBeNull();
+      expect(result.error).toBeUndefined();
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain(`印刷用HTMLがありません: ${missingHtml}`);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
