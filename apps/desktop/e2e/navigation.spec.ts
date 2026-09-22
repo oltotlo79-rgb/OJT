@@ -35,7 +35,7 @@ async function camera(page: Page): Promise<Camera> {
 }
 
 /** 回転基準に依存する極角ではなく、実カメラの位置・上方向・注視点を照合する。 */
-async function expectCameraPreset(page: Page, preset: 'front' | 'back' | 'top'): Promise<void> {
+async function expectCameraPreset(page: Page, preset: 'front' | 'back' | 'top' | 'bottom'): Promise<void> {
   const box = await canvasBox(page);
   const expected = cameraPose(preset, { aspect: box.w / box.h });
   await expect.poll(async () => {
@@ -280,9 +280,13 @@ test.describe('Blender 風の3D操作（§12.2）', () => {
 
   test('盤面は左右中ドラッグで角度を保って移動し、ホイールで拡大できる', async () => {
     test.setTimeout(120_000);
-    for (const key of ['Numpad1', 'Numpad7', 'Control+Numpad7']) {
+    for (const [key, preset] of [
+      ['Numpad1', 'front'],
+      ['Numpad7', 'top'],
+      ['Control+Numpad7', 'bottom'],
+    ] as const) {
       await page.keyboard.press(key);
-      await page.waitForTimeout(700);
+      await expectCameraPreset(page, preset);
       const box = await canvasBox(page);
       const x = box.x + box.w - 80;
       const y = box.y + box.h - 100;

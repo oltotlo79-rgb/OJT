@@ -195,7 +195,13 @@ interface HoverFade {
 }
 
 /** 左上のビューキューブ。`GIZMO_MIN_VIEWPORT_PX` 未満の幅では何も描かない。 */
-export function ViewGizmo({ controls }: { controls: OrbitControlsLike | null }): JSX.Element {
+export function ViewGizmo({
+  controls,
+  onPoseApplied,
+}: {
+  controls: OrbitControlsLike | null;
+  onPoseApplied?: () => void;
+}): JSX.Element {
   const invalidate = useThree((state) => state.invalidate);
   const camera = useThree((state) => state.camera);
   const gl = useThree((state) => state.gl);
@@ -321,8 +327,9 @@ export function ViewGizmo({ controls }: { controls: OrbitControlsLike | null }):
       controls.target.set(...pose.target);
       controls.update();
       camera.updateProjectionMatrix();
+      onPoseApplied?.();
     },
-    [camera, controls],
+    [camera, controls, onPoseApplied],
   );
 
   /** 押した先の視点へ動かす。面はストアのプリセット、辺・角は45°の斜め視点。 */

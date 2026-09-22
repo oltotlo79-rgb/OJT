@@ -1212,8 +1212,13 @@ function BoardContents({
           setControls(instance);
         }}
       />
-      <CameraPresets preset={camera} nonce={cameraNonce} controls={controls} />
-      <ViewGizmo controls={controls} />
+      <CameraPresets
+        preset={camera}
+        nonce={cameraNonce}
+        controls={controls}
+        onPoseApplied={writeReadout}
+      />
+      <ViewGizmo controls={controls} onPoseApplied={writeReadout} />
       {/*
         名札の重なり取り（UI監査バッチE）。drei の `<Html>` が名札を置いた**後**に走らせたいので、
         `useFrame` の登録が一番最後になるよう、必ずこの位置（最後の子）に置く。

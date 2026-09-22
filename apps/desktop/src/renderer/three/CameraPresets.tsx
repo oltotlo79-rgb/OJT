@@ -51,10 +51,12 @@ export function CameraPresets({
   preset,
   nonce,
   controls,
+  onPoseApplied,
 }: {
   preset: CameraPreset;
   nonce: number;
   controls: ControlsLike | null;
+  onPoseApplied?: () => void;
 }): JSX.Element | null {
   const camera = useThree((state) => state.camera);
   const invalidate = useThree((state) => state.invalidate);
@@ -94,8 +96,11 @@ export function CameraPresets({
       }
       camera.updateProjectionMatrix();
       currentPose.current = pose;
+      // 最終フレームは姿勢が同じでも up の表現だけ変わる場合がある。
+      // OrbitControls の change 通知だけでは、その実値を取りこぼす。
+      onPoseApplied?.();
     },
-    [camera, controls],
+    [camera, controls, onPoseApplied],
   );
 
   // 高さ0（マウント直後・非表示パネルなど）で割ると `Infinity`/`NaN` になるので、そのときは

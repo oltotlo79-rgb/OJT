@@ -141,6 +141,26 @@ afterEach(() => {
 });
 
 describe('CameraPresets', () => {
+  it('change 通知がなくても補間完了後の実際の上方向を通知し、待機中は更新しない', () => {
+    const camera = harness.camera as FakeCamera;
+    const upValues: number[][] = [];
+    const onPoseApplied = () => upValues.push(camera.up.toArray());
+    const view = render(
+      <CameraPresets preset="front" nonce={0} controls={controls} onPoseApplied={onPoseApplied} />,
+    );
+    view.rerender(
+      <CameraPresets preset="top" nonce={1} controls={controls} onPoseApplied={onPoseApplied} />,
+    );
+    // controls.update は通知を出さない。最後の直前は視線に直交する up になる。
+    runFrame(299);
+    expect(upValues.at(-1)?.[0]).toBeGreaterThan(0.3);
+    runFrame(1);
+    expect(upValues.at(-1)).toEqual([0, 1, 0]);
+    const completed = upValues.length;
+    runFrame(100);
+    expect(upValues).toHaveLength(completed);
+  });
+
   it('自由回転後のプリセットは実際の位置から始まり、昔の位置へ跳ばない', () => {
     const view = render(<CameraPresets preset="front" nonce={0} controls={controls} />);
     const camera = harness.camera as FakeCamera;
