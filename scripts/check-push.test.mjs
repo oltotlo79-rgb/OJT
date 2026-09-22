@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -91,7 +92,7 @@ test('検査失敗・プロセス起動失敗を成功に扱わず、その時�
   }
 });
 
-test('送信する全差分を検査し、未コミット・未追跡コード・別コミットは拒否する', () => {
+test('送信する全差分を検査し、未コミット・未追跡コード・別コミットは拒否する', async () => {
   const root = mkdtempSync(join(tmpdir(), 'ojt-push-gate-'));
   const git = (...args) =>
     execFileSync(
@@ -140,11 +141,11 @@ test('送信する全差分を検査し、未コミット・未追跡コード�
     assert.equal(changedFiles(root, deletion), null);
   } finally {
     // このテストで作成した一時ディレクトリだけを解放する。
-    rmSync(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 });
+    await rm(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 });
   }
 });
 
-test('実際のgit pushをフックが拒否し、送信先のコミットが変わらない', () => {
+test('実際のgit pushをフックが拒否し、送信先のコミットが変わらない', async () => {
   const temp = mkdtempSync(join(tmpdir(), 'ojt-hook-reject-'));
   const root = join(temp, 'work');
   const remote = join(temp, 'remote.git');
@@ -198,7 +199,7 @@ test('実際のgit pushをフックが拒否し、送信先のコミットが変
     assert.match(result.stderr, /未コミット変更/u);
     assert.equal(git('--git-dir', remote, 'rev-parse', 'refs/heads/main'), before);
   } finally {
-    rmSync(temp, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 });
+    await rm(temp, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 });
   }
 });
 
@@ -212,7 +213,7 @@ test('テスト用名義を拒否し、通常の名義とGitHub非公開メー�
   assert.doesNotThrow(() => assertRealIdentity('開発者', '123+developer@users.noreply.github.com'));
 });
 
-test('テストのGit環境が親を指していても親の設定・HEAD・インデックスを変更しない', () => {
+test('テストのGit環境が親を指していても親の設定・HEAD・インデックスを変更しない', async () => {
   const temp = mkdtempSync(join(tmpdir(), 'ojt-git-isolation-'));
   const parent = join(temp, 'parent');
   const fixture = join(temp, 'fixture');
@@ -266,11 +267,11 @@ test('テストのGit環境が親を指していても親の設定・HEAD・イ�
       /Gate test|gate@example/u,
     );
   } finally {
-    rmSync(temp, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 });
+    await rm(temp, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 });
   }
 });
 
-test('名義ゲートが実コミットとpushを止め、両方のHEADを保つ', () => {
+test('名義ゲートが実コミットとpushを止め、両方のHEADを保つ', async () => {
   const temp = mkdtempSync(join(tmpdir(), 'ojt-identity-gate-'));
   const root = join(temp, 'work');
   const remote = join(temp, 'remote.git');
@@ -355,6 +356,6 @@ test('名義ゲートが実コミットとpushを止め、両方のHEADを保つ
     assert.equal(git('--git-dir', remote, 'rev-parse', 'refs/heads/main'), before);
     // 現在の名義が正常でも送信範囲内の誤名義を見逃さないことを上で確認した。
   } finally {
-    rmSync(temp, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 });
+    await rm(temp, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 });
   }
 });

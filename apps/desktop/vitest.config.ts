@@ -12,6 +12,9 @@ export default defineConfig({
     environment: 'happy-dom',
     setupFiles: ['./test/setup.ts'],
     include: ['test/**/*.test.ts', 'test/**/*.test.tsx'],
+    // 216課題の実ファイル読込・画面生成を含む。Windowsの全体実行では約7秒かかる
+    // 検査があるため15秒を上限とする。操作応答や描画性能の個別基準は変更しない。
+    testTimeout: 15_000,
     // QA-10: 142ファイル/2,225テストが一度も測定されていなかった唯一の死角。閾値は置かない
     // （前提C: `apps/desktop` に閾値は置かない設計）。可視化だけを入れ、実測値を
     // `docs/releases/v1.1.0.md` に記録してからラチェット運用（実測−3pt）へ移す（Task 29 Step 5）。

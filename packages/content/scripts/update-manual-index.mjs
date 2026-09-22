@@ -35,14 +35,13 @@ for (const [mode, label] of Object.entries({
       learning = p.title.includes('開始時だけ')
         ? '条件成立時の一定時間出力'
         : '条件成立が続いた後の出力';
-      caution = '短押しを繰り返しても計時を累積しない';
+      caution = '短押し後の再計時を確認';
     } else {
-      learning =
-        mode === 'plc' ? '3入力の論理条件をラダーへ変換' : '3入力の論理条件を接点回路へ変換';
+      learning = mode === 'plc' ? '論理条件のラダー化' : '論理条件の接点回路化';
       caution = '同時押し・解除を含む8通りを確認する';
     }
     rows.push(
-      existing.get(p.id) ??
+      (!name.endsWith('-practice.json') ? existing.get(p.id) : undefined) ??
         `| ${p.id} | ${label} | ${p.grade} | ${p.difficulty} | ${p.title} | ${learning} | ${caution} |`,
     );
   }
