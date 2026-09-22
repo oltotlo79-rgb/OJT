@@ -140,7 +140,7 @@ test('送信する全差分を検査し、未コミット・未追跡コード�
     assert.equal(changedFiles(root, deletion), null);
   } finally {
     // このテストで作成した一時ディレクトリだけを解放する。
-    rmSync(root, { recursive: true, force: true });
+    rmSync(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 });
   }
 });
 
@@ -198,7 +198,7 @@ test('実際のgit pushをフックが拒否し、送信先のコミットが変
     assert.match(result.stderr, /未コミット変更/u);
     assert.equal(git('--git-dir', remote, 'rev-parse', 'refs/heads/main'), before);
   } finally {
-    rmSync(temp, { recursive: true, force: true });
+    rmSync(temp, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 });
   }
 });
 
@@ -266,7 +266,7 @@ test('テストのGit環境が親を指していても親の設定・HEAD・イ�
       /Gate test|gate@example/u,
     );
   } finally {
-    rmSync(temp, { recursive: true, force: true });
+    rmSync(temp, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 });
   }
 });
 
@@ -355,6 +355,6 @@ test('名義ゲートが実コミットとpushを止め、両方のHEADを保つ
     assert.equal(git('--git-dir', remote, 'rev-parse', 'refs/heads/main'), before);
     // 現在の名義が正常でも送信範囲内の誤名義を見逃さないことを上で確認した。
   } finally {
-    rmSync(temp, { recursive: true, force: true });
+    rmSync(temp, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 });
   }
 });
