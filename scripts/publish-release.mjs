@@ -10,7 +10,7 @@ const ROOT = resolve(import.meta.dirname, '..');
 export function requireSuccessfulCI(runs, sha, tag) {
   for (const branch of ['main', tag]) {
     const latest = runs
-      .filter((run) => run.headSha === sha && run.headBranch === branch && run.event === 'push')
+      .filter((run) => run.headSha === sha && run.headBranch === branch)
       .sort((a, b) => b.databaseId - a.databaseId)[0];
     if (!latest || latest.status !== 'completed' || latest.conclusion !== 'success') {
       throw new Error(

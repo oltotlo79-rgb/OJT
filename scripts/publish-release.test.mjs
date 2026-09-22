@@ -17,6 +17,17 @@ test('公開するSHAのmainとタグが両方成功したときだけ許可す�
   assert.doesNotThrow(() => requireSuccessfulCI([green('main'), green(tag)], sha, tag));
 });
 
+test('新しい手動CIの失敗も古いpush成功で見逃さない', () => {
+  const manual = { ...green('main', 2), event: 'workflow_dispatch', conclusion: 'failure' };
+  assert.throws(() => requireSuccessfulCI([green('main'), green(tag), manual], sha, tag));
+});
+
+test('手動CIが完了した場合も最新実行の結果で判断する', () => {
+  const old = { ...green('main'), conclusion: 'failure' };
+  const manual = { ...green('main', 2), event: 'workflow_dispatch' };
+  assert.doesNotThrow(() => requireSuccessfulCI([old, green(tag), manual], sha, tag));
+});
+
 for (const conclusion of ['failure', 'cancelled', 'skipped', null]) {
   test(`古い成功があっても最新の${conclusion}を見逃さない`, () => {
     const latest = { ...green('main', 2), conclusion };
