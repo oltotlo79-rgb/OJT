@@ -1,5 +1,8 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { spawn } from 'node:child_process';
+import { once } from 'node:events';
 import { dirname, join } from 'node:path';
+import { setTimeout as delay } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 import { JIPM_BOARD } from '@ojt/board-model';
 import { toTerminalId } from '@ojt/circuit-sim';
@@ -141,4 +144,69 @@ test('同じEXEの展開先は起動ごとに変わり、片方を閉じても�
   }
   if (!thirdDir) throw new Error('同時起動の検査が完了していません');
   await expect.poll(() => existsSync(thirdDir)).toBe(false);
+});
+
+/** Windowsの読取ハンドルで削除だけを拒否する。対象はこの検査が起動したEXEだけ。 */
+async function holdAgainstDeletion(path: string): Promise<() => Promise<void>> {
+  const script = [
+    "$ErrorActionPreference = 'Stop'",
+    `$held = [IO.File]::Open('${path.replace(/'/gu, "''")}', [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::ReadWrite)`,
+    'try { [Console]::Out.WriteLine("locked"); [void][Console]::In.ReadLine() } finally { $held.Dispose() }',
+  ].join('\n');
+  const holder = spawn(
+    'powershell.exe',
+    [
+      '-NoProfile',
+      '-NonInteractive',
+      '-EncodedCommand',
+      Buffer.from(script, 'utf16le').toString('base64'),
+    ],
+    { windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] },
+  );
+  const stopped = once(holder, 'close');
+  let errorOutput = '';
+  holder.stderr.on('data', (chunk: Buffer) => {
+    errorOutput += chunk.toString();
+  });
+  let released = false;
+  const release = async (): Promise<void> => {
+    if (released) return;
+    released = true;
+    holder.stdin.end('\n');
+    await stopped;
+  };
+  try {
+    const ready = await Promise.race([
+      once(holder.stdout, 'data').then(([chunk]) => String(chunk).trim()),
+      stopped.then(() => {
+        throw new Error(`検証用の読取ハンドルを開けません: ${errorOutput}`);
+      }),
+      delay(10_000).then(() => {
+        throw new Error('検証用の読取ハンドルの準備が終わりません');
+      }),
+    ]);
+    expect(ready).toBe('locked');
+    return release;
+  } catch (error) {
+    await release();
+    throw error;
+  }
+}
+
+test('終了後もEXEが13秒間使用中なら解放を待ち、一時展開先を残さない', async () => {
+  const app = await launchPortable();
+  let release: (() => Promise<void>) | undefined;
+  try {
+    await expect(app.page.getByTestId('mode-assemble')).toBeVisible();
+    const extracted = dirname(resourcesDirectory(app.page));
+    release = await holdAgainstDeletion(join(extracted, '電気教育ツール.exe'));
+    // 旧版の10秒の再試行では残る条件を、実際のWindowsハンドルで再現する。
+    const unlock = delay(13_000).then(release);
+    await app.close();
+    await unlock;
+    expect(existsSync(extracted), 'ロックを解放した後も展開先が残っています').toBe(false);
+  } finally {
+    await release?.();
+    await app.close();
+  }
 });

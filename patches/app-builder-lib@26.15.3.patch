@@ -17,7 +17,7 @@
    SetOutPath $EXEDIR
 -	RMDir /r $INSTDIR
 +  ; Electron's GPU/utility processes can release their image handles just after ExecWait.
-+  ; Retry only this launch's extraction directory, for at most ten seconds.
++  ; Retry only this launch's extraction directory, for at most sixty seconds.
 +  StrCpy $R1 0
 +portable_cleanup_retry:
 +  ClearErrors
@@ -25,7 +25,7 @@
 +  IfErrors portable_cleanup_wait portable_cleanup_done
 +portable_cleanup_wait:
 +  IntOp $R1 $R1 + 1
-+  IntCmp $R1 40 portable_cleanup_done 0 portable_cleanup_done
++  IntCmp $R1 240 portable_cleanup_done 0 portable_cleanup_done
 +  Sleep 250
 +  Goto portable_cleanup_retry
 +portable_cleanup_done:

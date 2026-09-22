@@ -44,7 +44,8 @@ export async function launchPortable(): Promise<PackagedApp> {
     // Electronのwindow-all-closed → app.quitを通し、NSISのExecWaitへ戻す。
     await Promise.all(context?.pages().map((page) => page.close()) ?? []);
     // exitより後のcloseを待つ。同期削除でイベントループを塞ぐとWindowsのEXEハンドルが残る。
-    if (childClosed) await Promise.race([childClosed, delay(15_000)]);
+    // 配布側のファイル解放待ち（最大60秒）が終わる前に強制終了しない。
+    if (childClosed) await Promise.race([childClosed, delay(75_000)]);
     if (child?.exitCode === null && child.pid) {
       forced = true;
       // この起動で作ったプロセスだけを終了する。他のElectronアプリに触れない。
