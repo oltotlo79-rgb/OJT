@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { requireMatchingAssets, requireSuccessfulCI } from './publish-release.mjs';
+import {
+  fetchRelease,
+  requireIdenticalReleaseSource,
+  requireMatchingAssets,
+  requireSuccessfulCI,
+} from './publish-release.mjs';
 
 const sha = 'abc';
 const tag = 'v1.1.1';
@@ -11,6 +16,52 @@ const green = (headBranch, databaseId = 1) => ({
   event: 'push',
   status: 'completed',
   conclusion: 'success',
+});
+
+test('タグの製品と最新公開ツールのそれぞれのCI成功を必須にする', () => {
+  const tagged = { ...green(tag), headSha: 'tag-source' };
+  assert.doesNotThrow(() => requireSuccessfulCI([green('main'), tagged], sha, tag, 'tag-source'));
+  assert.throws(() => requireSuccessfulCI([green('main'), green(tag)], sha, tag, 'tag-source'));
+  assert.throws(() =>
+    requireSuccessfulCI(
+      [{ ...green('main'), headSha: 'tag-source' }, tagged],
+      sha,
+      tag,
+      'tag-source',
+    ),
+  );
+});
+
+test('タグ以降の変更は公開ツールの2ファイルだけを許可する', () => {
+  assert.doesNotThrow(() => requireIdenticalReleaseSource([]));
+  assert.doesNotThrow(() =>
+    requireIdenticalReleaseSource([
+      'scripts/publish-release.mjs',
+      'scripts/publish-release.test.mjs',
+    ]),
+  );
+  for (const file of [
+    'apps/desktop/src/main/index.ts',
+    'apps/desktop/package.json',
+    'pnpm-lock.yaml',
+    '.github/workflows/ci.yml',
+    'docs/manual/index.md',
+    'scripts/other.mjs',
+  ])
+    assert.throws(() => requireIdenticalReleaseSource(['scripts/publish-release.mjs', file]));
+});
+
+test('下書き取得に対応したCLIを使い、添付のハッシュと状態を保つ', () => {
+  const release = {
+    isDraft: true,
+    assets: [{ name: 'Setup.exe', digest: 'sha256:abc', state: 'uploaded' }],
+  };
+  const result = fetchRelease((command, args) => {
+    assert.equal(command, 'gh');
+    assert.deepEqual(args, ['release', 'view', tag, '--json', 'isDraft,assets']);
+    return JSON.stringify(release);
+  }, tag);
+  assert.deepEqual(result, { draft: true, assets: release.assets });
 });
 
 test('公開するSHAのmainとタグが両方成功したときだけ許可する', () => {
