@@ -306,7 +306,8 @@ describe('目次のリンクと見出しの id（設計 §6.3）', () => {
     const targets = [...printHtml.matchAll(/href="#([^"]+)"/gu)].map((match) =>
       decodeFragment(match[1] ?? ''),
     );
-    expect(targets.length).toBe(2 + 4);
+    // 目次6本に加え、章の入口から最初の節へ移動する4本がある。
+    expect(targets.length).toBe(2 + 4 + 4);
     expect(targets.filter((target) => !ids.has(target))).toEqual([]);
   });
 
@@ -381,7 +382,7 @@ describe('表紙と版面（設計 §6.2）', () => {
 
   it('lays the page out the way the design table says', () => {
     expect(printHtml).toContain('@page { size: A4; margin: 18mm 16mm 20mm; }');
-    expect(printHtml).toContain('max-width: 150mm');
+    expect(printHtml).toContain('max-width: 178mm');
     expect(printHtml).toContain('font-size: 10.5pt');
     expect(printHtml).toContain('line-height: 1.8');
     expect(printHtml).toContain("font-family: 'Yu Gothic UI', 'Meiryo', sans-serif");

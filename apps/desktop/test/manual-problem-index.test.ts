@@ -26,7 +26,11 @@ describe('全課題を1回ずつ探せる索引', () => {
     expect(built.sections.find((section) => section.id.endsWith('/課題の索引'))?.html).toContain(
       '<table data-manual-table="problem-index">',
     );
-    expect(built.printHtml).toContain(':nth-child(-n+4) { white-space: nowrap; }');
+    const printed = new DOMParser().parseFromString(built.printHtml, 'text/html');
+    const index = printed.querySelector('table[data-manual-table="problem-index"]')!;
+    expect(index.querySelectorAll('tbody tr')).toHaveLength(BUILTIN_ALL_PROBLEMS.length);
+    for (const row of index.querySelectorAll('tr')) expect(row.children).toHaveLength(4);
+    expect(built.printHtml).toMatch(/\.problem-id \{[^}]*white-space: nowrap;/u);
     expect(built.printHtml).toContain('tr { page-break-inside: avoid; }');
   });
   it('同梱課題のIDを過不足・重複なく掲載する', () => {

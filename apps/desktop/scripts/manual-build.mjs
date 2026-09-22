@@ -1,4 +1,4 @@
-import { PAPER_TOKENS } from '../src/shared/paper-style.mjs';
+import { PRINT_CSS } from './manual-print-style.mjs';
 import MarkdownIt from 'markdown-it';
 import { anchorIdOf, chapterAnchorIdOf } from '../src/renderer/help/anchor-id.mjs';
 
@@ -70,7 +70,7 @@ function withNotices(html) {
  */
 function toPrintHtml(html, chapterNo, counter) {
   // 図を挟んだ手順の開始番号を、印刷用の丸数字にも引き継ぐ。
-  const numbered = html.replace(
+  const numbered = printProblemIndex(html).replace(
     /<ol start="(\d+)">/gu,
     (_all, start) =>
       `<ol start="${start}" style="counter-reset: step ${String(Number(start) - 1)}">`,
@@ -82,6 +82,25 @@ function toPrintHtml(html, chapterNo, counter) {
       `<figure><img src="${src}" alt="${alt}">` +
       `<figcaption><span class="fig-no">${label}</span>${alt}</figcaption></figure>`
     );
+  });
+}
+
+/** 細い7列を、識別情報・題名・学ぶこと・確認事項の4列へ組み直す。全セルの内容を保持する。 */
+function printProblemIndex(html) {
+  return html.replace(/<table data-manual-table="problem-index">[\s\S]*?<\/table>/gu, (table) => {
+    return table.replace(/<tr>([\s\S]*?)<\/tr>/gu, (row, body) => {
+      const tag = body.includes('<th>') ? 'th' : 'td';
+      const cells = [...body.matchAll(new RegExp(`<${tag}>([\\s\\S]*?)</${tag}>`, 'gu'))].map(
+        (cell) => cell[1],
+      );
+      if (cells.length !== 7) throw new Error('課題索引は7項目で記述してください。');
+      const [id, mode, grade, difficulty, title, learning, caution] = cells;
+      const key =
+        tag === 'th'
+          ? `<span class="index-key">${id}</span><span class="index-level-heading">${mode} ${grade} ${difficulty}</span>`
+          : `<span class="problem-id">${id}</span><span class="problem-level"><span class="mode">${mode}</span> <span class="grade">${grade}</span> <span class="difficulty">${difficulty}</span></span>`;
+      return `<tr><${tag}>${key}</${tag}><${tag}>${title}</${tag}><${tag}>${learning}</${tag}><${tag}>${caution}</${tag}></tr>`;
+    });
   });
 }
 
@@ -267,188 +286,80 @@ function helpModuleOf(chapters, sections, files, availableImages) {
   ].join('\n');
 }
 
-/**
- * 印刷用の CSS（PDF の見た目）。Phase 7 設計 §6.2 の表のとおり。
- *
- * 紙の体裁で効くのは4つ。① 版面（`@page`）と1行の字数、② 見出しの段差、
- * ③ ページの切れ目（見出しの直後で切らない・図と表を割らない）、④ 注意箱と手順の印。
- * 地色は薄く、罫は細くする（家庭用のプリンタで刷ってもつぶれない）。
- */
-const PRINT_CSS = `
-@page { size: A4; margin: 18mm 16mm 20mm; }
-${PAPER_TOKENS}
-* { box-sizing: border-box; }
-body {
-  margin: 0 auto;
-  max-width: 150mm;
-  font-family: 'Yu Gothic UI', 'Meiryo', sans-serif;
-  font-size: 10.5pt;
-  line-height: 1.8;
-  color: var(--ink);
-  word-break: normal;
-  overflow-wrap: anywhere;
-  -webkit-print-color-adjust: exact;
-  print-color-adjust: exact;
-}
-h1, h2, h3 { letter-spacing: .02em; page-break-after: avoid; break-after: avoid; }
-
-/* 表紙 */
-.cover { height: 250mm; display: flex; flex-direction: column; page-break-after: always; }
-.cover-band { height: 5mm; background: var(--accent); margin-bottom: 44mm; }
-.cover-kind { margin: 0 0 6px; font-size: 12pt; color: var(--sub); letter-spacing: .3em; }
-.cover-title { font-size: 28pt; margin: 0; line-height: 1.3; font-weight: 700; }
-.cover-rule { width: 60mm; height: 2px; background: var(--ink); margin: 10mm 0; }
-.cover-meta { margin: 0; font-size: 11pt; color: var(--sub); }
-.cover-howto { margin-top: auto; border: 1px solid var(--hair); background: #fafcff; padding: 10px 14px; }
-.cover-howto-title { font-size: 12pt; font-weight: 700; margin: 0 0 6px; }
-.cover-howto ol { margin: 0; padding-left: 20px; font-size: 10pt; color: var(--sub); }
-.cover-howto ol > li { margin: 2px 0; }
-.cover-help { margin: 8px 0 0; font-size: 10pt; color: var(--sub); }
-
-/* 目次 */
-#toc { page-break-after: always; }
-#toc > h1 { font-size: 20pt; margin: 0 0 8mm; padding-bottom: 8px; border-bottom: 2px solid var(--ink); }
-#toc ol { list-style: none; margin: 0; padding: 0; }
-#toc a { color: inherit; text-decoration: none; display: flex; align-items: baseline; }
-#toc .toc-chapter > a { font-size: 11pt; font-weight: 700; margin-top: 10px; }
-#toc .toc-sections { padding-left: 14mm; }
-#toc .toc-sections a { font-size: 10pt; color: var(--sub); }
-#toc .toc-no { flex: none; min-width: 16mm; }
-#toc .toc-sections .toc-no { min-width: 12mm; }
-#toc .toc-text { flex: none; }
-#toc .toc-leader { flex: 1 1 auto; border-bottom: 1px dotted var(--rule); margin: 0 4px 4px; }
-
-/* 章・節・見出し */
-.manual-chapter { page-break-before: always; }
-/* 章番号は h1 の中に置く。しおり（PDF outline）にも「第1章 …」と出るようにするため。 */
-.chapter-no { font-size: 13pt; color: var(--accent); margin-right: 8px; }
-.manual-chapter > h1 { font-size: 20pt; margin: 0 0 20px; padding-bottom: 8px; border-bottom: 2px solid var(--ink); }
-.manual-section { margin-bottom: 18px; }
-.manual-section > h2 { font-size: 14pt; background: var(--tint); border-left: 4px solid var(--accent); padding: 7px 12px; margin: 22px 0 12px; }
-.manual-section > h2 .num { color: var(--accent); margin-right: 6px; }
-h3 { font-size: 12pt; border-left: 3px solid var(--rule); padding-left: 8px; margin: 16px 0 8px; }
-p { margin: 8px 0; }
-ul { margin: 8px 0; padding-left: 22px; }
-li { margin: 4px 0; }
-a { color: var(--accent); }
-
-/* 手順（丸数字風の連番） */
-.manual-section ol { counter-reset: step; list-style: none; margin: 10px 0; padding-left: 26px; }
-.manual-section ol > li { position: relative; margin: 6px 0; }
-.manual-section ol > li::before {
-  counter-increment: step;
-  content: counter(step);
-  position: absolute;
-  left: -26px;
-  top: .3em;
-  width: 17px;
-  height: 17px;
-  line-height: 17px;
-  text-align: center;
-  border-radius: 50%;
-  background: var(--accent);
-  color: #fff;
-  font-size: 8.5pt;
-  font-weight: 700;
-}
-
-/* 表と囲み */
-table { border-collapse: collapse; width: 100%; margin: 12px 0; page-break-inside: auto; font-size: 10pt; line-height: 1.55; }
-thead { display: table-header-group; }
-tr { page-break-inside: avoid; }
-th, td { border: 1px solid var(--rule); padding: 5px 7px; text-align: left; vertical-align: top; }
-th { background: var(--tint); }
-table[data-manual-table="problem-index"] { font-size: 9pt; }
-table[data-manual-table="problem-index"] :is(th, td) { padding: 5px; }
-table[data-manual-table="problem-index"] :is(th, td):nth-child(-n+4) { white-space: nowrap; }
-code { background: var(--tint); padding: 1px 4px; border-radius: 3px; font-family: 'Consolas', monospace; font-size: 9.5pt; }
-pre { background: var(--tint); border-left: 3px solid var(--hair); padding: 10px 12px; overflow-wrap: anywhere; white-space: pre-wrap; font-size: 9.5pt; line-height: 1.6; page-break-inside: avoid; }
-
-/* 図 */
-figure { margin: 14px 0; page-break-inside: avoid; text-align: center; }
-figure img { max-width: 100%; border: 1px solid var(--rule); }
-figcaption { font-size: 9pt; color: var(--sub); margin-top: 5px; text-align: center; }
-figcaption .fig-no { font-weight: 700; color: var(--ink); margin-right: 6px; }
-
-/* 注意箱（3種） */
-blockquote { margin: 12px 0; padding: 8px 12px; border-left: 4px solid var(--rule); background: #f6f8fb; page-break-inside: avoid; }
-blockquote p { margin: 4px 0; }
-blockquote.notice { position: relative; padding-left: 40px; }
-blockquote.notice::before {
-  position: absolute;
-  left: 12px;
-  top: 10px;
-  width: 18px;
-  height: 18px;
-  line-height: 18px;
-  text-align: center;
-  border-radius: 50%;
-  color: #fff;
-  font-size: 10pt;
-  font-weight: 700;
-}
-.notice-caution { border-left-color: var(--caution); background: #fdf7ec; }
-.notice-caution::before { content: '!'; background: var(--caution); }
-.notice-tip { border-left-color: var(--tip); background: #eef4fb; }
-.notice-tip::before { content: 'i'; background: var(--tip); }
-.notice-forbid { border-left-color: var(--forbid); background: #fdf0ef; }
-.notice-forbid::before { content: '\\00d7'; background: var(--forbid); }
-.notice > p:first-child > strong:first-child { display: block; margin-bottom: 2px; }
-.notice-caution > p:first-child > strong:first-child { color: var(--caution); }
-.notice-tip > p:first-child > strong:first-child { color: var(--tip); }
-.notice-forbid > p:first-child > strong:first-child { color: var(--forbid); }
-`.trim();
-
 /** 表紙（1ページ目）。Phase 7 設計 §6.2。 */
 function coverOf(builtAt, edition, escape) {
   return [
     '<div class="cover">',
-    '<div class="cover-band"></div>',
+    '<div class="cover-hero">',
+    '<p class="cover-kicker">ELECTRICAL TRAINING / OPERATION GUIDE</p>',
     '<p class="cover-kind">取扱説明書</p>',
     `<p class="cover-title">${escape(PRODUCT_NAME)}</p>`,
-    '<div class="cover-rule"></div>',
+    '<p class="cover-message">触って、測って、理解する。</p>',
+    '<svg class="cover-art" viewBox="0 0 640 145" fill="none" aria-hidden="true">',
+    '<g stroke="#46d4e7" stroke-width="2"><path d="M12 25H130L180 75H320L365 30H550M12 120H215L260 75M320 75L370 125H625"/><path d="M12 60H85L120 95H160M430 30L465 65H625" opacity=".4"/>',
+    '<circle cx="12" cy="25" r="7"/><circle cx="12" cy="120" r="7"/><circle cx="320" cy="75" r="10"/><circle cx="550" cy="30" r="7"/><circle cx="625" cy="125" r="7"/><circle cx="625" cy="65" r="7"/></g>',
+    '<g fill="#b2f0f7"><circle cx="180" cy="75" r="4"/><circle cx="260" cy="75" r="4"/><circle cx="430" cy="30" r="4"/></g></svg>',
+    '<div class="cover-meta-row">',
     ...(edition === '' ? [] : [`<p class="cover-meta">${escape(edition)}</p>`]),
     ...(builtAt === '' ? [] : [`<p class="cover-meta">${escape(builtAt)} 発行</p>`]),
+    '</div></div>',
+    '<div class="cover-modes">',
+    ...[
+      ['B', '回路組立'],
+      ['C1', '部品点検'],
+      ['C2', '回路点検・修復'],
+      ['D', 'PLC'],
+    ].map(([mode, label]) => `<div class="cover-mode"><b>${mode}</b><span>${label}</span></div>`),
+    '</div>',
     '<div class="cover-howto">',
     '<p class="cover-howto-title">この説明書の読み方</p>',
     '<ol>',
-    '<li>初めて使う方は「はじめに」から順に読んでください。</li>',
-    '<li>使い方だけ知りたい方は、目次の行を押すとその節へ飛べます。</li>',
-    '<li>言葉が分からないときは、うしろの「用語集」を引いてください。</li>',
+    '<li>初めての方は「はじめに」から、操作の流れをつかみます。</li>',
+    '<li>目的が決まっている方は、目次の項目を押して本文へ移動します。</li>',
+    '<li>操作中に迷ったら「機能別の操作」、用語は「用語集」で確認します。</li>',
     '</ol>',
     '</div>',
-    '<p class="cover-help">困ったら <code>F1</code> を押してください。いま開いている画面の説明が、アプリの中に出ます。</p>',
+    '<p class="cover-help"><code>F1</code> いつでも、今開いている画面の説明をアプリ内に表示できます。</p>',
     '</div>',
   ];
 }
 
 /** 目次（2ページ目以降）。章・節の行はリンクで、行末に点線のリーダを引く。 */
 function tocOf(chapters, byId, escape) {
-  const parts = ['<nav id="toc">', '<h1>目次</h1>', '<ol class="toc-chapters">'];
-  chapters.forEach((chapter, index) => {
-    const chapterNo = index + 1;
-    parts.push('<li class="toc-chapter">');
+  const parts = ['<nav id="toc">'];
+  // 1ページ8章・左右4章ずつ。長い最終章だけが3ページ目に残るのを防ぐ。
+  for (let start = 0; start < chapters.length; start += 8) {
     parts.push(
-      `<a href="#${chapterAnchorIdOf(chapter.id)}">` +
-        `<span class="toc-no">第${String(chapterNo)}章</span>` +
-        `<span class="toc-text">${escape(chapter.title)}</span>` +
-        '<span class="toc-leader"></span></a>',
+      '<div class="toc-spread">',
+      start === 0 ? '<h1>目次</h1>' : '<p class="toc-title">目次 / 続き</p>',
+      '<p class="toc-intro">知りたい操作から、すぐに本文へ。項目を押すと移動します。</p>',
+      '<div class="toc-grid">',
     );
-    parts.push('<ol class="toc-sections">');
-    chapter.sectionIds.forEach((id, sectionIndex) => {
-      const section = byId.get(id);
-      if (section === undefined) return;
-      parts.push(
-        `<li><a href="#${anchorIdOf(id)}">` +
-          `<span class="toc-no">${String(chapterNo)}.${String(sectionIndex + 1)}</span>` +
-          `<span class="toc-text">${escape(section.title)}</span>` +
-          '<span class="toc-leader"></span></a></li>',
-      );
-    });
-    parts.push('</ol>');
-    parts.push('</li>');
-  });
-  parts.push('</ol>', '</nav>');
+    for (let col = 0; col < 2; col++) {
+      parts.push('<ol class="toc-chapters">');
+      chapters.slice(start + col * 4, start + col * 4 + 4).forEach((chapter, offset) => {
+        const chapterNo = start + col * 4 + offset + 1;
+        parts.push(
+          '<li class="toc-chapter">',
+          `<a href="#${chapterAnchorIdOf(chapter.id)}"><span class="toc-no">第${chapterNo}章</span>` +
+            `<span class="toc-text">${escape(chapter.title)}</span><span class="toc-leader"></span></a>`,
+          '<ol class="toc-sections">',
+        );
+        chapter.sectionIds.forEach((id, sectionIndex) => {
+          const section = byId.get(id);
+          if (section === undefined) return;
+          parts.push(
+            `<li><a href="#${anchorIdOf(id)}"><span class="toc-no">${chapterNo}.${sectionIndex + 1}</span>` +
+              `<span class="toc-text">${escape(section.title)}</span><span class="toc-leader"></span></a></li>`,
+          );
+        });
+        parts.push('</ol></li>');
+      });
+      parts.push('</ol>');
+    }
+    parts.push('</div></div>');
+  }
+  parts.push('</nav>');
   return parts;
 }
 
@@ -472,9 +383,16 @@ function printHtmlOf(chapters, sections, builtAt, edition) {
     const chapterNo = index + 1;
     parts.push(`<div class="manual-chapter" data-chapter-id="${escape(chapter.id)}">`);
     parts.push(
+      '<div class="chapter-opening">',
       `<h1 id="${chapterAnchorIdOf(chapter.id)}">` +
         `<span class="chapter-no">第${String(chapterNo)}章</span> ${escape(chapter.title)}</h1>`,
     );
+    parts.push('<div class="chapter-route">');
+    for (const id of chapter.sectionIds.slice(0, 3)) {
+      const section = byId.get(id);
+      if (section) parts.push(`<a href="#${anchorIdOf(id)}">${escape(section.title)}</a>`);
+    }
+    parts.push('</div></div>');
     chapter.sectionIds.forEach((id, sectionIndex) => {
       const section = byId.get(id);
       if (section === undefined) return;

@@ -26,19 +26,17 @@ for (const [mode, label] of Object.entries({
     let learning;
     let caution;
     if (mode === 'inspect-parts') {
-      learning = '抵抗・励磁・接点状態の比較';
-      caution = '正常品と比較し、全接点群を確認する';
+      learning = '抵抗・励磁・接点の比較';
+      caution = '正常品と比べて全接点群を確認';
     } else if (mode === 'inspect-repair') {
       learning = '電圧測定による故障の切り分け';
-      caution = '修復後に全ての入力条件を再確認する';
+      caution = '修復後に入力条件を再確認';
     } else if (p.tags.includes('timer')) {
-      learning = p.title.includes('開始時だけ')
-        ? '条件成立時の一定時間出力'
-        : '条件成立が続いた後の出力';
+      learning = p.title.includes('開始時だけ') ? '一定時間のパルス出力' : '条件継続後の出力';
       caution = '短押し後の再計時を確認';
     } else {
       learning = mode === 'plc' ? '論理条件のラダー化' : '論理条件の接点回路化';
-      caution = '同時押し・解除を含む8通りを確認する';
+      caution = '入力8通りの動作を確認';
     }
     rows.push(
       (!name.endsWith('-practice.json') ? existing.get(p.id) : undefined) ??
