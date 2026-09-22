@@ -188,6 +188,7 @@ describe('固定機器の印字も共有キャッシュを通る（3D-04 / 3D-13
   function stubCanvas2d(): void {
     const ctx = {
       clearRect: () => undefined,
+      fillRect: () => undefined,
       fillText: () => undefined,
       measureText: () => ({ width: 0 }),
       fillStyle: '',

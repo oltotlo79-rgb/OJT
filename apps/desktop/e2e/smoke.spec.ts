@@ -21,11 +21,11 @@ import {
  */
 
 /**
- * 内蔵課題 b-001 の固定配線（チェック用回路の既設配線）の本数。§6.3
+ * 組立課題に点検用の固定配線を追加しない。
  * 状態オーバーレイは「自分で張った電線 N 本（固定 M 本）」と出すので、
  * 期待値を作るときに総数と固定本数の両方が要る（UXレビュー #21）。
  */
-const FIXED_WIRES = 3;
+const FIXED_WIRES = 0;
 
 async function canvasBox(page: Page): Promise<CanvasBox> {
   const canvas = page.locator('[data-testid="viewport"] canvas');
@@ -82,7 +82,7 @@ test.describe('モードB スモーク', () => {
     // ③ 課題を開く → 3D盤（§8.1）
     await page.getByTestId('open-b-001').click();
     await expect(page.getByTestId('viewport')).toBeVisible();
-    await expect(page.getByTestId('status-overlay')).toContainText(wireCountText(3, FIXED_WIRES));
+    await expect(page.getByTestId('status-overlay')).toContainText(wireCountText(0, FIXED_WIRES));
     // WebGL の初期化とシーンの1フレーム目を待つ
     await expect
       .poll(async () => page.locator('[data-testid="viewport"] canvas').count(), {
@@ -107,7 +107,7 @@ test.describe('モードB スモーク', () => {
       await clickTerminal(page, box, from);
       await clickTerminal(page, box, to);
     }
-    await expect(page.getByTestId('status-overlay')).toContainText(wireCountText(12, FIXED_WIRES));
+    await expect(page.getByTestId('status-overlay')).toContainText(wireCountText(9, FIXED_WIRES));
     await shot(app, '05-wired');
 
     // ⑤-1 配線帯で束になって直角に走る様子をソケット拡大で1枚撮る（§6.6）
@@ -150,7 +150,7 @@ test.describe('モードB スモーク', () => {
       await clickTerminal(page, retryBox, from);
       await clickTerminal(page, retryBox, to);
     }
-    await expect(page.getByTestId('status-overlay')).toContainText(wireCountText(11, FIXED_WIRES));
+    await expect(page.getByTestId('status-overlay')).toContainText(wireCountText(8, FIXED_WIRES));
     await page.getByRole('button', { name: '判定' }).click();
     await expect(page.getByTestId('verdict')).toHaveText('不合格');
     await expect(page.getByTestId('mismatch-table')).toBeVisible();

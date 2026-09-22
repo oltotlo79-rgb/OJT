@@ -1,5 +1,7 @@
 import {
   JIPM_BOARD,
+  createSession,
+  toNetlist,
   N_RAIL_ID,
   P_RAIL_ID,
   pinRole,
@@ -175,17 +177,9 @@ describe('コイルとランプの極性（利用者指摘 2026-09-20）', () =>
   });
 
   it('②盤の既設配線（チェック用回路）も ⑭ が P 側・⑬ が N 側である（§6.3）', () => {
-    const netlist = buildReferenceSession(
-      BUILTIN_ASSEMBLE_PROBLEMS[0] ??
-        (() => {
-          throw new Error('モードB課題がありません');
-        })(),
-      JIPM_BOARD,
-    );
-    if (!netlist.ok) throw new Error('模範回路が組めません');
-    // CHK ソケットは既設配線だけでつながっている（課題の配線は触らない）
-    expect(sideOf(reachable(netlist.value.netlist, 'CHK.14' as TerminalId))).toBe('P');
-    expect(sideOf(reachable(netlist.value.netlist, 'CHK.13' as TerminalId))).toBe('N');
+    const netlist = toNetlist(createSession(JIPM_BOARD, { includeCheckWires: true }), JIPM_BOARD);
+    expect(sideOf(reachable(netlist, 'CHK.14' as TerminalId))).toBe('P');
+    expect(sideOf(reachable(netlist, 'CHK.13' as TerminalId))).toBe('N');
   });
 
   it('③内蔵課題すべての模範回路で、コイルの ⑭ が P に・⑬ が N に着く（反例なし）', () => {

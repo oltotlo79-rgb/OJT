@@ -43,7 +43,7 @@
 /* 手順の矢印（見出しの並びが順番であることを見せる） */
 .step + .step::before {
   color: var(--muted);
-  content: '→';
+  content: '·';
   margin-left: -4px;
   margin-right: 2px;
 }

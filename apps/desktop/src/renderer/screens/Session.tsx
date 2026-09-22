@@ -7,6 +7,7 @@ import {
   socketPartId,
   toPhysicalTerminal,
   toSessionTerminal,
+  toNetlistTerminal,
 } from '@ojt/board-model';
 import { isAssembleProblem } from '@ojt/content';
 import type { BoardSession, MountableKind, SocketId } from '@ojt/board-model';
@@ -29,6 +30,9 @@ import {
 import { ElapsedTimer } from '../panels/ElapsedTimer.js';
 import { LogPanel } from '../panels/LogPanel.js';
 import { DragGhost, PartsPanel } from '../panels/PartsPanel.js';
+import { dispatchTester, TesterPanel } from '../panels/TesterPanel.js';
+import { testerPickToAction, testerShortcut } from '../session/tester.js';
+import { focusWorkPanel } from '../session/workflow.js';
 import { HoverHint } from '../panels/HoverHint.js';
 import { PowerControls } from '../panels/PowerControls.js';
 import { ProblemPanel } from '../panels/ProblemPanel.js';
@@ -280,7 +284,14 @@ export function Session(): JSX.Element {
      * つまみを触っていなければ既定のままでよいので、無駄な再送はしない。
      */
     const tester = store.tester;
-    if (tester.mode !== 'off' || tester.zeroAdjusted) replayTesterToWorker(tester);
+    if (
+      tester.mode !== 'off' ||
+      tester.zeroAdjusted ||
+      tester.kind !== 'digital' ||
+      tester.black !== undefined ||
+      tester.red !== undefined
+    )
+      replayTesterToWorker(tester);
     store.addLog(openedProblemLog(current.title));
     return () => {
       bridge.stop();
@@ -354,6 +365,16 @@ export function Session(): JSX.Element {
               next.toast(JA.session.laneOverflow, 'info');
             }
           });
+          break;
+        case 'placeProbe':
+          dispatchTester({ type: 'place-probe', probe: action.probe, terminal: action.terminal });
+          break;
+        case 'liftProbe':
+          for (const side of action.probe === 'both'
+            ? (['black', 'red'] as const)
+            : [action.probe]) {
+            dispatchTester({ type: 'place-probe', probe: side, terminal: undefined });
+          }
           break;
         case 'selectWire':
           store.setSelectedWire(action.wireId);
@@ -516,6 +537,17 @@ export function Session(): JSX.Element {
     (hit: PickHit): void => {
       const store = useStore.getState();
       const current = store.session;
+      if (store.mode === 'tester' && current !== undefined) {
+        runAction(
+          testerPickToAction(
+            { black: store.tester.black, red: store.tester.red, next: store.nextProbe },
+            hit.kind === 'terminal'
+              ? { ...hit, id: toNetlistTerminal(current.socketRoles, hit.id) }
+              : hit,
+          ),
+        );
+        return;
+      }
       runAction(
         pickToAction(
           {
@@ -568,6 +600,19 @@ export function Session(): JSX.Element {
        */
       if (event.target instanceof Element && event.target.closest('[data-editor-pane]') !== null) {
         return;
+      }
+      if (store.mode === 'tester') {
+        const shortcut = testerShortcut(event.key);
+        if (shortcut !== undefined) {
+          event.preventDefault();
+          if (shortcut.type === 'next-probe') store.setNextProbe(shortcut.probe);
+          else if (shortcut.type === 'zero-adjust') dispatchTester({ type: 'zero-adjust' });
+          else {
+            runAction({ type: 'liftProbe', probe: 'both' });
+            store.setNextProbe('black');
+          }
+          return;
+        }
       }
       const state = {
         mode: store.mode,
@@ -755,6 +800,16 @@ export function Session(): JSX.Element {
             </span>
           </>
         }
+        extraTools={
+          <button
+            type="button"
+            aria-pressed={mode === 'tester'}
+            data-testid="assemble-tester"
+            onClick={() => useStore.getState().setMode(mode === 'tester' ? 'wire' : 'tester')}
+          >
+            測定
+          </button>
+        }
         onMode={(next) => {
           useStore.getState().setMode(next);
         }}
@@ -847,7 +902,24 @@ export function Session(): JSX.Element {
         いまどの手順にいるのかを文字でも出す（UXレビュー #3。決定表#7の理由から配線の中身には
         触れない。モードDの `.plcGuide` と同じ見た目を汎用クラス名 `.stepGuide` で再現する）。
       */}
-      <StepGuide steps={steps} hint={stepHint} />
+      <StepGuide
+        steps={steps}
+        hint={stepHint}
+        actions={{
+          parts: () => {
+            useStore.getState().setMode('wire');
+            useStore.getState().setAssembleView('board');
+            useStore.getState().setSelectedSocket(undefined);
+            focusWorkPanel('parts-panel');
+          },
+          wire: () => {
+            useStore.getState().setAssembleView('board');
+            useStore.getState().setMode('wire');
+          },
+          power: () => focusWorkPanel('power-breaker'),
+          judge: () => focusWorkPanel('judge-button'),
+        }}
+      />
 
       <div className={styles.sessionLayout} data-view={assembleView}>
         {/*
@@ -946,6 +1018,7 @@ export function Session(): JSX.Element {
         */}
         <div className={styles.rightPanel}>
           <ProblemPanel problem={problem} />
+          {mode === 'tester' ? <TesterPanel /> : null}
           <PartsPanel
             session={session}
             selectedSocket={selectedSocket}
@@ -986,6 +1059,7 @@ export function Session(): JSX.Element {
           ) : null}
           {/* --- Plan 5 Task 10: 端子リストによるキーボード配線（UXレビュー #29 / 決定表#12） --- */}
           <TerminalListPanel
+            measuring={mode === 'tester'}
             board={JIPM_BOARD}
             session={session}
             pendingTerminal={pendingTerminal}

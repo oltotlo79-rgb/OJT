@@ -193,3 +193,17 @@ button[aria-pressed='true'] {
   --paper-muted: #243245;
   --paper-rule: #64748b;
 }
+
+.fixture-state {
+  display: inline-block;
+  margin-left: 5px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: #303943;
+  color: #fff;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.fixture-state[data-on='true'] {
+  background: #167147;
+}

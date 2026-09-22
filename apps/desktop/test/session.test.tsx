@@ -138,6 +138,32 @@ describe('状態オーバーレイの電線カウント（UXレビュー #21）'
   });
 });
 
+describe('組立中の直接測定', () => {
+  it('実端子を黒・赤で測定し、空白クリックでは保持、Escで両方を外す', () => {
+    openSession();
+    fireEvent.click(screen.getByTestId('assemble-tester'));
+    fireEvent.keyDown(window, { key: 'b' });
+    act(() => scene.pick?.(terminalHit('N.1')));
+    fireEvent.keyDown(window, { key: 'r' });
+    act(() => scene.pick?.(terminalHit('P.1')));
+    expect(useStore.getState().tester).toMatchObject({ black: 'N.1', red: 'P.1' });
+    act(() => scene.pick?.({ kind: 'empty' }));
+    expect(useStore.getState().tester).toMatchObject({ black: 'N.1', red: 'P.1' });
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(useStore.getState().tester.black).toBeUndefined();
+    expect(useStore.getState().tester.red).toBeUndefined();
+    expect(useStore.getState().nextProbe).toBe('black');
+    expect(sentOf('tester')).toContainEqual({
+      type: 'tester',
+      action: { type: 'place-probe', probe: 'black', terminal: undefined },
+    });
+    expect(sentOf('tester')).toContainEqual({
+      type: 'tester',
+      action: { type: 'place-probe', probe: 'red', terminal: undefined },
+    });
+  });
+});
+
 describe('状態オーバーレイの選択中電線（レビュー指摘 UI-04）', () => {
   it('内部の電線ID（w-003 など）を出さず、両端の端子と色から組み立てた表示名で示す', () => {
     openSession();

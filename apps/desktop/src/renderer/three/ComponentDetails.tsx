@@ -66,7 +66,7 @@ export function sharedHousing(w: number, h: number, depth: number): BufferGeomet
   const key = `${w}/${h}/${depth}`;
   const found = housingCache.get(key);
   if (found) return found;
-  const inset = 0.7;
+  const inset = Math.min(0.7, w / 4, h / 4, depth / 4);
   const x = w / 2 - inset;
   const y = h / 2 - inset;
   const s = new Shape();

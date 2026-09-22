@@ -11,7 +11,7 @@ import type { PickAction, PickHit } from './interaction.js';
  * その順序を既定にしつつ、パネルのボタンで明示的に選び直せる逃げ道も残す。
  *
  * §9.3 の「配置済みプローブはドラッグで付け替える」は、**クリックで外す → クリックで置く**
- * に置き換えた。3Dビューポートでのドラッグは `OrbitControls` の回転と取り合いになり、
+ * に置き換えた。3Dビューポートでのドラッグは `OrbitControls` の平行移動と取り合いになり、
  * 端子1個（当たり判定4mm）を掴んだまま別の端子へ運ぶ操作は内蔵GPUの画面では現実的でない。
  */
 
@@ -44,7 +44,7 @@ export function probeSideAt(state: TesterPickState, terminal: TerminalId): Probe
  * ピック結果をテスターの操作に変換する。§9.3
  * - 端子: 既にプローブが載っていれば外し、載っていなければ `next` の側を置く
  * - 押ボタン: 押す（§9.1 は赤PBで励磁しながら測る手順を要求する）
- * - 空クリック: 置いてあるプローブを両方外す
+ * - 空クリック: 配置を保持する（解除は明示操作またはEsc）
  * - 電線・ソケット: 何もしない（テスターは測るだけで盤を変えない）
  *
  * **`terminal.wirable` は見ない。** 配線できない本体側の端子（`CHK.9` など既設配線済みの
@@ -60,9 +60,7 @@ export function testerPickToAction(state: TesterPickState, hit: PickHit): PickAc
     case 'pushbutton':
       return { type: 'pressButton', pbId: hit.id };
     case 'empty':
-      return state.black === undefined && state.red === undefined
-        ? { type: 'none' }
-        : { type: 'liftProbe', probe: 'both' };
+      return { type: 'none' };
     case 'fixture':
       return { type: 'togglePower', fixture: hit.fixture };
     case 'wire':

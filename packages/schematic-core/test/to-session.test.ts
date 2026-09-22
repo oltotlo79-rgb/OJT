@@ -35,8 +35,8 @@ describe('to-session: 回路図 → 盤セッション → ネットリスト �
   it('割当どおりに装着と配線が入る（§11.3）', () => {
     const session = build(selfHoldDoc());
     expect(session.mounted.S1).toEqual({ kind: 'relay-my4n' });
-    // 既設の配線（青）3本 ＋ 生成した9本
-    expect(session.wires).toHaveLength(12);
+    // 回路図の9本だけ。部品点検用のチェック回路は自動追加しない。
+    expect(session.wires).toHaveLength(9);
     expect(session.wires.filter((w) => !w.locked)).toHaveLength(9);
     expect(session.allowedColors).toEqual(['青']);
   });

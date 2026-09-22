@@ -57,11 +57,11 @@ describe('terminalRows', () => {
 
   it('counts the wires at each terminal and marks the full ones', () => {
     const rows = terminalRows(JIPM_BOARD, session);
-    // チェック用回路の既設配線（`P.1 → TB_PB.4c`）が P.1 を1本使っている（§6.3）
-    expect(rows.find((r) => r.id === toTerminalId('P.1'))?.wireCount).toBe(1);
+    // 組立課題は配線ゼロから始まる。
+    expect(rows.find((r) => r.id === toTerminalId('P.1'))?.wireCount).toBe(0);
     expect(rows.find((r) => r.id === toTerminalId('P.1'))?.full).toBe(false);
-    // 既設配線は役割ベースの端子IDで張られているので、CHK 側も数えられている
-    expect(rows.find((r) => r.id === toTerminalId('CHK.14'))?.wireCount).toBe(1);
+    // チェック用ソケットにも自動配線は追加しない。
+    expect(rows.find((r) => r.id === toTerminalId('CHK.14'))?.wireCount).toBe(0);
   });
 
   it('filters by the search text over both the id and the label', () => {
@@ -160,7 +160,15 @@ describe('TerminalListPanel（UXレビュー #29）', () => {
    */
   it('marks the terminals that already hold two wires as aria-disabled, not disabled (I3)', () => {
     const full = sessionForProblem(problem);
-    // `P.1` は既設配線で1本、ここで1本足して満杯にする
+    full.wires.push({
+      id: wireId('w-first'),
+      from: toTerminalId('P.1'),
+      to: toTerminalId('TB_PB.1c'),
+      color: '青',
+      locked: false,
+      open: false,
+    });
+    // 空のP端子に2本接続して満杯にする。
     full.wires.push({
       id: wireId('w-x'),
       from: 'P.1' as never,
@@ -188,6 +196,14 @@ describe('TerminalListPanel（UXレビュー #29）', () => {
 
   it('does not call onPick when a full terminal row is clicked, and keeps the reason reachable (I3)', () => {
     const full = sessionForProblem(problem);
+    full.wires.push({
+      id: wireId('w-first'),
+      from: toTerminalId('P.1'),
+      to: toTerminalId('TB_PB.1c'),
+      color: '青',
+      locked: false,
+      open: false,
+    });
     full.wires.push({
       id: wireId('w-x'),
       from: 'P.1' as never,
@@ -221,8 +237,55 @@ describe('TerminalListPanel（UXレビュー #29）', () => {
     );
   });
 
+  it('測定中は電線が2本つながった端子も選べる', () => {
+    const full = sessionForProblem(problem);
+    full.wires.push(
+      {
+        id: wireId('measure-1'),
+        from: toTerminalId('P.1'),
+        to: toTerminalId('CR1.14'),
+        color: '青',
+        locked: false,
+        open: false,
+      },
+      {
+        id: wireId('measure-2'),
+        from: toTerminalId('P.1'),
+        to: toTerminalId('TB_PB.1c'),
+        color: '青',
+        locked: false,
+        open: false,
+      },
+    );
+    const onPick = vi.fn();
+    render(
+      <TerminalListPanel
+        board={JIPM_BOARD}
+        session={full}
+        measuring
+        pendingTerminal={undefined}
+        hoveredTerminal={undefined}
+        onHover={vi.fn()}
+        onPick={onPick}
+        onCancel={vi.fn()}
+      />,
+    );
+    const row = screen.getByTestId('terminal-row-P.1');
+    expect(row).toHaveAttribute('aria-disabled', 'false');
+    fireEvent.click(row);
+    expect(onPick).toHaveBeenCalledWith(expect.objectContaining({ id: 'P.1' }));
+  });
+
   it('still lets the trainee cancel the pending terminal even if it is now full', () => {
     const full = sessionForProblem(problem);
+    full.wires.push({
+      id: wireId('w-first'),
+      from: toTerminalId('P.1'),
+      to: toTerminalId('TB_PB.1c'),
+      color: '青',
+      locked: false,
+      open: false,
+    });
     full.wires.push({
       id: wireId('w-x'),
       from: 'P.1' as never,

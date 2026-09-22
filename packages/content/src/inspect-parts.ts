@@ -315,7 +315,11 @@ export function buildCheckCircuit(
     return { ok: false, errors: [{ path: 'parts', message: `部品が見つかりません: ${partId}` }] };
   }
   const roles = toSocketRoles(problem.board.socketRoles);
-  const session = createSession(board, { roles, inventory: [{ kind: part.kind, count: 1 }] });
+  const session = createSession(board, {
+    includeCheckWires: true,
+    roles,
+    inventory: [{ kind: part.kind, count: 1 }],
+  });
   const mounted = plug(
     session,
     CHECK_SOCKET_ID,

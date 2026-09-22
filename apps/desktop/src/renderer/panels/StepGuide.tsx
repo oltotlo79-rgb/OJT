@@ -63,7 +63,11 @@ export function StepGuide({
 }): JSX.Element {
   return (
     <div className={styles.guide} data-testid={testId?.band ?? `step-guide`}>
-      <ol className={styles.list} aria-label={label}>
+      <ol
+        className={styles.list}
+        aria-label={label}
+        title={actions === undefined ? undefined : '作業順は自由です。項目を押すと道具へ移動します'}
+      >
         {steps.map((step) => {
           const note = notes ? noteOf(step.state) : undefined;
           const action = actions?.[step.key];
@@ -81,7 +85,12 @@ export function StepGuide({
                   {note === undefined ? null : <span className={styles.note}>{note}</span>}
                 </>
               ) : (
-                <button type="button" className={styles.action} onClick={action}>
+                <button
+                  type="button"
+                  className={styles.action}
+                  aria-label={`${step.label}へ移動`}
+                  onClick={action}
+                >
                   <span className={styles.name}>{step.label}</span>
                   {note === undefined ? null : <span className={styles.note}>{note}</span>}
                 </button>

@@ -611,7 +611,7 @@
 
 /**
  * 3Dペインの下端の1行（ホバー予告）。設計 §7.3.4。
- * 盤の絵に被せるので背景を敷いて読めるようにし、ポインタは通す（下の端子を隠さない）。
+ * 盤の外に操作帯を置く。高さを保ち、配線・測定の途中で端子を動かさない。
  */
 .hoverHint {
   position: absolute;
@@ -626,7 +626,7 @@
   color: var(--text);
   font-size: max(12px, 0.75rem);
   line-height: 1.5;
-  pointer-events: none;
+  pointer-events: auto;
 }
 
 /** 何も指していないとき（最初の一手の案内）は控えめに出す。 */
@@ -819,4 +819,43 @@
 }
 .wireSwatch[data-color='黄'] {
   background: var(--wire-yellow);
+}
+
+/* 3D上で配線の接続先や次のプローブを迷わず選ぶためのコンパクトな操作帯。 */
+.hoverHint {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  pointer-events: auto;
+}
+.hoverHint > span {
+  flex: 1 1 190px;
+}
+.hoverHint button {
+  min-height: 32px;
+  min-width: 32px;
+  padding: 2px 8px;
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+.inlineReading {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+}
+.inlineReading > output {
+  font-size: 16px;
+  padding: 0 4px;
+  margin: 0;
+  min-width: 62px;
+}
+.inlineReading > p {
+  display: none;
+}
+
+/* 配線開始・測定切替で操作帯の高さを変えない。端子がポインタの下から動くのを防ぐ。 */
+.hoverHint {
+  min-height: 40px;
+  box-sizing: border-box;
 }

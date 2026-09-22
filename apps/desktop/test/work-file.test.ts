@@ -1,3 +1,4 @@
+import { toTerminalId } from '@ojt/circuit-sim';
 // helpers/worker-bridge.js を他の import より前に置く（vi.mock のファクトリから参照するため）。
 import { workerBridgeMockModule, type WorkerBridgeMockState } from './helpers/worker-bridge.js';
 import { wireId } from '@ojt/circuit-sim';
@@ -79,6 +80,26 @@ afterEach(() => {
 });
 
 describe('toWorkFile（§12.3）', () => {
+  it('組立中のテスター設定とプローブも保存・復元してWorkerへ再送する', async () => {
+    useStore.getState().openProblem(PROBLEM);
+    useStore.getState().applyTester({ type: 'set-mode', mode: 'DCV' });
+    useStore
+      .getState()
+      .applyTester({ type: 'place-probe', probe: 'black', terminal: toTerminalId('N.1') });
+    useStore
+      .getState()
+      .applyTester({ type: 'place-probe', probe: 'red', terminal: toTerminalId('P.1') });
+    const file = toWorkFile(PROBLEM.id, SESSION, 0, 0);
+    expect(file.tester).toMatchObject({ mode: 'DCV', black: 'N.1', red: 'P.1' });
+    apiState.readProblem.mockResolvedValue(PROBLEM);
+    expect(await applyWorkFile(file)).toBe(true);
+    expect(useStore.getState().tester).toMatchObject({ mode: 'DCV', black: 'N.1', red: 'P.1' });
+    expect(bridgeMock.sent).toContainEqual({
+      type: 'tester',
+      action: { type: 'place-probe', probe: 'red', terminal: 'P.1' },
+    });
+  });
+
   it('現在の状態を作業ファイルの形にする', () => {
     const before = Date.now();
     const file = toWorkFile('b-001', SESSION, 12_345, 3);
@@ -290,9 +311,14 @@ describe('別の課題を読むときの確認（§12.3）', () => {
   function workingOn(problemId: string): void {
     if (PROBLEM === undefined) throw new Error('b-001 が見つかりません');
     const session = sessionForProblem(PROBLEM);
-    const fixed = session.wires[0];
-    if (fixed === undefined) throw new Error('既設配線がありません');
-    session.wires.push({ ...fixed, id: wireId('w-001'), locked: false });
+    session.wires.push({
+      id: wireId('w-001'),
+      from: toTerminalId('P.1'),
+      to: toTerminalId('TB_PB.1c'),
+      color: '青',
+      locked: false,
+      open: false,
+    });
     useStore.setState({ problem: { ...PROBLEM, id: problemId }, session });
   }
 

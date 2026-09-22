@@ -168,11 +168,11 @@ describe('inspectRepairSteps（モードC2: 指摘 → 修復 → 判定）', ()
     ).toBe('current');
   });
 
-  it('does not treat a repair with no report as fix-done (no wiring diagnosis, just order)', () => {
-    // 指摘なしで先に電線を触っても「修復」扱いにしない（手順の順番だけを見る）
+  it('指摘前でも修復操作の実施状態は保持する', () => {
+    // 修復してから指摘する順序にも対応する。未提出の指摘は引き続き案内する。
     const steps = inspectRepairSteps({ reportCount: 0, requiredReportCount: 1, repaired: true });
     expect(steps.find((s) => s.key === 'report')?.state).toBe('current');
-    expect(steps.find((s) => s.key === 'fix')?.state).toBe('todo');
+    expect(steps.find((s) => s.key === 'fix')?.state).toBe('done');
   });
 
   it('gives a hint only for the current step', () => {

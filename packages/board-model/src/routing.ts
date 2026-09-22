@@ -868,10 +868,15 @@ export function routeWire(
   const endLane = endRun?.lane ?? 0;
   const startDx = startRun?.channel.axis === 'x' ? leadOutOffset(startLane) : 0;
   const endDx = endRun?.channel.axis === 'x' ? leadOutOffset(endLane) : 0;
-  const startX = first.x + startDx;
-  const endX = last.x + endDx;
+  const supplyExit = (t: BoardTerminal, dx: number): number | undefined =>
+    /^(P|N)\./.test(t.id) ? t.pos.x - 12 + dx : undefined;
+  const startSupplyX = startRun?.channel.axis === 'x' ? supplyExit(a, startDx) : undefined;
+  const endSupplyX = endRun?.channel.axis === 'x' ? supplyExit(b, endDx) : undefined;
+  const startX = startSupplyX ?? first.x + startDx;
+  const endX = endSupplyX ?? last.x + endDx;
   // 端子 → 盤面へ立ち下げ → 帯へ引き出す → 帯を走る → 目的端子の列へ → 端子
   const steps: RouteStep[] = [
+    ...(startSupplyX === undefined ? [] : [toStep(startX, a.pos.y, 10)]),
     toStep(startX, a.pos.y, runZ('x', startLane % WIRE_LAYER_COUNT)),
     toStep(startX, first.y, runZ('y', startLane % WIRE_LAYER_COUNT)),
   ];
@@ -883,7 +888,10 @@ export function routeWire(
     steps.push(toStep(x, p.y, channelZ(traversal.channel, traversal.layer)));
   });
   steps.push(toStep(endX, b.pos.y, runZ('y', endLane % WIRE_LAYER_COUNT)));
-  steps.push(toStep(b.pos.x, b.pos.y, runZ('x', endLane % WIRE_LAYER_COUNT)));
+  if (endSupplyX !== undefined) steps.push(riseStep(10));
+  steps.push(
+    toStep(b.pos.x, b.pos.y, endSupplyX === undefined ? runZ('x', endLane % WIRE_LAYER_COUNT) : 10),
+  );
   steps.push(riseStep(b.pos.z));
 
   const corners = buildCorners(a.pos, steps);

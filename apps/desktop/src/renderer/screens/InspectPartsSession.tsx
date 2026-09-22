@@ -20,6 +20,8 @@ import { MarkSheetPanel } from '../panels/MarkSheetPanel.js';
 import { PowerControls } from '../panels/PowerControls.js';
 import { ProblemPanel } from '../panels/ProblemPanel.js';
 import { dispatchTester, TesterPanel } from '../panels/TesterPanel.js';
+import { HoverHint } from '../panels/HoverHint.js';
+import { focusWorkPanel } from '../session/workflow.js';
 import { StepGuide } from '../panels/StepGuide.js';
 import { hintStages } from '../session/hints.js';
 import { Toolbar } from '../panels/Toolbar.js';
@@ -383,7 +385,20 @@ export function InspectPartsSession(): JSX.Element {
       </Toolbar>
 
       {/* いまどの手順にいるのかを文字でも出す（UXレビュー #3）。決定表#7と同じ理由で測定値には触れない。 */}
-      <StepGuide steps={steps} hint={inspectPartsStepHint(currentStepKey)} />
+      <StepGuide
+        steps={steps}
+        hint={inspectPartsStepHint(currentStepKey)}
+        actions={{
+          plug: () => focusWorkPanel('check-tray'),
+          power: () => focusWorkPanel('power-breaker'),
+          measure: () => {
+            useStore.getState().setMode('tester');
+            focusWorkPanel('tester-panel');
+          },
+          mark: () => focusWorkPanel('mark-sheet'),
+          judge: () => focusWorkPanel('judge-button'),
+        }}
+      />
 
       <div className={styles.sessionLayout}>
         <div className={styles.viewport} data-testid="viewport">
@@ -397,6 +412,7 @@ export function InspectPartsSession(): JSX.Element {
             {tripped ? ` / ${JA.session.tripped}` : ''}
           </div>
           <ViewHint />
+          <HoverHint />
         </div>
 
         <div className={styles.rightPanel}>

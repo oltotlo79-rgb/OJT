@@ -118,6 +118,8 @@ export interface BoardSession {
 
 /** セッション生成オプション。 */
 export interface SessionOptions {
+  /** 部品点検用のチェック回路を追加する。組立・PLCは false を指定する。 */
+  includeCheckWires?: boolean;
   roles?: SocketRoles;
   allowedColors?: readonly WireColor[];
   extraParts?: readonly PartId[];
@@ -143,7 +145,7 @@ export function createSession(board: BoardDefinition, options: SessionOptions = 
   const roles = options.roles ?? DEFAULT_SOCKET_ROLES;
   const roleErrors = validateSocketRoles(roles);
   if (roleErrors.length > 0) throw new SessionError(roleErrors.join(' / '));
-  const wires: Wire[] = board.fixedWires.map((fw) =>
+  const wires: Wire[] = (options.includeCheckWires === false ? [] : board.fixedWires).map((fw) =>
     createWire(
       fw.id,
       toNetlistTerminal(roles, resolveEndpoint(fw.from)),

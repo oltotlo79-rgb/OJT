@@ -1,17 +1,15 @@
 import type { BoardTerminal, Footprint } from '@ojt/board-model';
 import { Html } from '@react-three/drei';
-import { useMemo, type JSX } from 'react';
-import type { Texture } from 'three';
+import type { JSX } from 'react';
 import { BREAKER_COLOR, SUPPLY_BLOCK_COLOR } from '../session/colors.js';
 import { Breaker, PowerSwitch, type PowerFixtureHandlers } from './AcFixtures.js';
-import { bakeSharedTexture, labelFont, makeCanvasTexture, PX_PER_MM } from './labels.js';
-import { sharedMaterial, UNIT_BOX } from './materials.js';
+import { SupplyUnit } from './SupplyUnit.js';
 import { toScene } from './coords.js';
 
 /**
  * 盤に固定された機器（DC24V電源・ブレーカ・電源スイッチ）。設計仕様 §6.1 / §6.5 / §12.2。
  * 実物写真では上段左に DC24V の端子台、上段右にブレーカが載る。
- * いずれも訓練者は配線できない（`wirable: false`）ので、当たり判定は持たせず見た目だけ描く。
+ * P/N出力端子は配線・測定に使い、ブレーカとスイッチの操作部は入切できる。
  *
  * 外形は `board.footprints`（`kind: 'supply' | 'breaker' | 'switch'`）から取る。以前は
  * 端子の外接矩形＋固定余白から箱を作っていたが、それだと配線の経路生成が避ける「占有領域」
@@ -40,19 +38,8 @@ export const FIXTURE_HEIGHT_MM = 22;
  */
 const SUPPLY_HEIGHT_MM = 5;
 
-/** 端子印字の文字高さ[mm]。機器の名称のみで数値・記号が短いので、端子台の役割文字より少し大きくする。 */
-const MARK_MM = 4;
-
-/** 印字の板をネジの頭より上に浮かせる量[mm]。 */
+/** 名札の高さ。端子本体と出線を隠さない位置に置く。 */
 const LABEL_LIFT_MM = 1.4;
-
-/**
- * 印字の板を機器の外形より外へ広げる量[mm]（四方）。
- * `PS +24V` の端子は占有領域の左端（x=12）にあり、板を外形ぴったりにすると `+24V` が半分切れる。
- */
-const PLATE_MARGIN_MM = 8;
-
-/** DC24V電源の印字の板の高さ[mm]（P/N 端子台の印字より上に出す）。 */
 const SUPPLY_LABEL_Z_MM = 11;
 
 /** 名札を機器の手前側へ降ろす量[mm]（外形の手前端からの距離）。 */
@@ -76,18 +63,6 @@ export const FIXTURE_LABEL_OFFSET_MM: Readonly<
   SW: { x: 20, y: 16, z: 20 },
 };
 
-/** 端子の印字色（極性は色でも区別する。§12.2「極性 +/− は色でも区別」）。CB/SW の `ac` は黒。 */
-const FIXTURE_MARK_COLOR: Readonly<Partial<Record<BoardTerminal['role'], string>>> = {
-  '+': '#D14343',
-  '-': '#2E6BD6',
-  ac: '#1B1E23',
-};
-
-/** レイキャストを受けない。 */
-function noPick(): void {
-  // 交差候補を積まない
-}
-
 /**
  * 端子の印字文字列。盤定義の `label`（`PS +24V` のように「機器プレフィックス＋半角スペース＋名称」の形）
  * から機器プレフィックスを除いた名称だけを返す（`PS +24V` → `+24V`、`CB 1` → `1`）。
@@ -103,40 +78,6 @@ export function findFixtureFootprint(
   kind: Footprint['kind'],
 ): Footprint | undefined {
   return footprints.find((footprint) => footprint.kind === kind);
-}
-
-/**
- * 固定機器1個ぶんの端子印字テクスチャ。
- * footprint の左上から `PLATE_MARGIN_MM` だけ外へ広げた矩形を板にするので、
- * 外形の端に載っている端子（`PS +24V` など）の印字も切れない。
- *
- * **共有キャッシュ越しに焼く**（3D-04 / 3D-13）。`PS` / `CB` / `SW` の3枚は文字も寸法も
- * 機種で変わらないのに、以前はここだけ共有キャッシュを通さずマウントのたびに焼き、
- * 解放の `useEffect` も無かった（672×736px ×2 ＋ 576×736px ＝ 約5.6MB。ミップ込みで約7.4MB）。
- * 訓練は「1課題終わったら次」を繰り返す使い方なので、10回で 50MB 以上が積み上がっていた。
- * `<meshBasicMaterial map={…}>` は R3F がマテリアルを解放するが、`Material.dispose()` は
- * その `map` までは解放しない。鍵は `fixture:${kind}:${w}x${h}` で、アプリの寿命ぶん1枚で足りる。
- */
-function fixtureFaceTexture(
-  terminals: readonly BoardTerminal[],
-  footprint: Footprint,
-): Texture | undefined {
-  if (terminals.length === 0) return undefined;
-  return bakeSharedTexture('fixture', `${footprint.kind}:${footprint.w}x${footprint.h}`, () =>
-    makeCanvasTexture(
-      footprint.w + PLATE_MARGIN_MM * 2,
-      footprint.h + PLATE_MARGIN_MM * 2,
-      (ctx) => {
-        ctx.font = labelFont(MARK_MM);
-        for (const terminal of terminals) {
-          const x = (terminal.pos.x - footprint.x + PLATE_MARGIN_MM) * PX_PER_MM;
-          const y = (terminal.pos.y - footprint.y + PLATE_MARGIN_MM) * PX_PER_MM;
-          ctx.fillStyle = FIXTURE_MARK_COLOR[terminal.role] ?? '#1B1E23';
-          ctx.fillText(fixtureTerminalMark(terminal), x, y);
-        }
-      },
-    ),
-  );
 }
 
 /**
@@ -194,23 +135,13 @@ export function Fixture({
   labelOffsetMm?: { x: number; y: number; z: number };
 } & PowerFixtureHandlers): JSX.Element | null {
   const footprint = findFixtureFootprint(footprints, kind);
-  const faceTexture = useMemo(
-    () => (footprint === undefined ? undefined : fixtureFaceTexture(terminals, footprint)),
-    [terminals, footprint],
-  );
   if (terminals.length === 0 || footprint === undefined) return null;
   const heightMm = kind === 'supply' ? SUPPLY_HEIGHT_MM : FIXTURE_HEIGHT_MM;
-  const labelPlateZ = kind === 'supply' ? SUPPLY_LABEL_Z_MM : heightMm + LABEL_LIFT_MM;
-  const center = toScene({
-    x: footprint.x + footprint.w / 2,
-    y: footprint.y + footprint.h / 2,
-    z: heightMm / 2,
-  });
   return (
     <group name={`fixture-${name}`}>
       {/*
         ブレーカと電源スイッチは実物（写真右上）に寄せて作り込む（利用者要望 2026-09-19）。
-        DC24V電源は端子台が上に載るだけの低い台なので、これまでどおり単純な箱で描く。
+        DC24V出力部は、ネジ・金属座金・絶縁壁と出線口が見える端子台にする。
       */}
       {kind === 'breaker' ? (
         <Breaker
@@ -233,22 +164,7 @@ export function Fixture({
           onHover={onHover}
         />
       ) : (
-        <mesh
-          geometry={UNIT_BOX}
-          material={sharedMaterial(color, { roughness: 0.6, metalness: 0.15 })}
-          raycast={noPick}
-          position={center}
-          scale={[footprint.w, footprint.h, heightMm]}
-        />
-      )}
-      {/* 端子の名前の印字（常時表示）。§12.2 */}
-      {faceTexture === undefined ? null : (
-        <mesh raycast={noPick} position={[center[0], center[1], labelPlateZ]}>
-          <planeGeometry
-            args={[footprint.w + PLATE_MARGIN_MM * 2, footprint.h + PLATE_MARGIN_MM * 2]}
-          />
-          <meshBasicMaterial map={faceTexture} transparent depthWrite={false} />
-        </mesh>
+        <SupplyUnit footprint={footprint} />
       )}
       {/*
         名札は機器の**手前側**に置く。以前は機器の真上に置いていたため、盤の上端に並ぶ
@@ -265,6 +181,11 @@ export function Fixture({
         {/* 名札の優先度（`label-declutter.ts`）。固定機器は端子台より先に残す */}
         <span className="block-label" data-label-rank={3}>
           {label}
+          {kind === 'supply' ? null : (
+            <strong className="fixture-state" data-on={on}>
+              {on ? '入 ON' : '切 OFF'}
+            </strong>
+          )}
         </span>
       </Html>
     </group>

@@ -961,3 +961,27 @@
     max-width: none;
   }
 }
+
+/* 状態文はキャンバスの外へ分離し、電源機器を覆わない。 */
+.viewport {
+  display: flex;
+  flex-direction: column;
+}
+.viewport > [data-testid='board-canvas'] {
+  flex: 1 1 0%;
+  min-height: 0;
+}
+.statusOverlay {
+  position: static;
+  order: -1;
+  flex: 0 0 auto;
+  margin: 4px 8px 0;
+  width: fit-content;
+  max-width: calc(100% - 16px);
+}
+
+.viewport > [data-testid='hover-hint'] {
+  position: static;
+  flex: 0 0 auto;
+  margin: 4px 8px 8px;
+}

@@ -10,7 +10,8 @@ import {
 } from '@ojt/board-model';
 import type { TerminalId } from '@ojt/circuit-sim';
 import {
-  assignToBoard,
+  assignToBoard as assignBareBoard,
+  type AssignOptions,
   at,
   BUS_N,
   BUS_P,
@@ -31,6 +32,11 @@ import {
   type SchematicDocument,
 } from '../src/index.js';
 import { flickerDoc, onDelayDoc, selfHoldDoc } from './helpers/docs.js';
+
+/** 旧作業ファイルなどチェック回路付き盤への割当も引き続き検証する。 */
+function assignToBoard(doc: SchematicDocument, options: AssignOptions = {}): AssignResult {
+  return assignBareBoard(doc, { ...options, includeCheckWires: true });
+}
 
 function t(id: string): TerminalId {
   return id as TerminalId;

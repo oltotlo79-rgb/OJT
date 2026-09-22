@@ -1,3 +1,4 @@
+import { createSession as createCheckSession } from '@ojt/board-model';
 import { JIPM_BOARD, toNetlist } from '@ojt/board-model';
 import { findPart, loadOhms } from '@ojt/circuit-sim';
 import { describe, expect, it } from 'vitest';
@@ -108,7 +109,8 @@ describe('applyFaults (wire faults)', () => {
   });
 
   it('refuses to fault the pre-installed check circuit wiring (§6.3)', () => {
-    const applied = applyFaults(session(), [{ target: { wireId: 'fw-chk-2' }, kind: 'wire-open' }]);
+    const check = createCheckSession(JIPM_BOARD, { includeCheckWires: true });
+    const applied = applyFaults(check, [{ target: { wireId: 'fw-chk-2' }, kind: 'wire-open' }]);
     expect(applied.ok).toBe(false);
     if (applied.ok) return;
     expect(applied.errors[0]?.message).toContain('既設配線');

@@ -38,6 +38,8 @@ import { RepairPanel, type MountedPartRow } from '../panels/RepairPanel.js';
 import { ReportPanel } from '../panels/ReportPanel.js';
 import { dispatchTester, TesterPanel } from '../panels/TesterPanel.js';
 import { TimeChartPanel } from '../panels/TimeChartPanel.js';
+import { HoverHint } from '../panels/HoverHint.js';
+import { focusWorkPanel } from '../session/workflow.js';
 import { StepGuide } from '../panels/StepGuide.js';
 import { hintStages } from '../session/hints.js';
 import { Toolbar } from '../panels/Toolbar.js';
@@ -703,7 +705,21 @@ export function InspectRepairSession(): JSX.Element {
       </Toolbar>
 
       {/* いまどの手順にいるのかを文字でも出す（UXレビュー #3）。決定表#7と同じ理由で合否には触れない。 */}
-      <StepGuide steps={guideSteps} hint={inspectRepairStepHint(currentStepKey)} />
+      <StepGuide
+        steps={guideSteps}
+        hint={inspectRepairStepHint(currentStepKey)}
+        actions={{
+          report: () => {
+            useStore.getState().setMode('report');
+            focusWorkPanel('report-panel');
+          },
+          fix: () => {
+            useStore.getState().setMode('wire');
+            focusWorkPanel('repair-panel');
+          },
+          judge: () => focusWorkPanel('judge-button'),
+        }}
+      />
 
       <div className={styles.sessionLayout}>
         <div className={styles.viewport} data-testid="viewport">
@@ -716,6 +732,7 @@ export function InspectRepairSession(): JSX.Element {
             {tripped ? ` / ${JA.session.tripped}` : ''}
           </div>
           <ViewHint />
+          <HoverHint />
         </div>
 
         <div className={styles.rightPanel}>

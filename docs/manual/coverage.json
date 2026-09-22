@@ -51,6 +51,12 @@
       "section": "mode-c1/答えを書き込む"
     },
     {
+      "testid": "assemble-tester",
+      "screen": "練習中",
+      "label": "測定",
+      "section": "screens/練習中の画面の並び"
+    },
+    {
       "testid": "assemble-view-key",
       "screen": "練習中（モードB）",
       "label": "F2",
@@ -1239,6 +1245,18 @@
       "section": "mode-d/ラダー図を描く"
     },
     {
+      "testid": "quick-probe-clear",
+      "screen": "練習中",
+      "label": "両方外す",
+      "section": "screens/練習中の画面の並び"
+    },
+    {
+      "testid": "quick-probe-{}",
+      "screen": "練習中",
+      "label": "黒",
+      "section": "screens/練習中の画面の並び"
+    },
+    {
       "testid": "rail-{}",
       "internal": "母線の縦線。親のラダー図で説明済み"
     },
@@ -2247,6 +2265,12 @@
     {
       "testid": "watch-table",
       "internal": "監視の表そのもの。親の「監視」で説明済み"
+    },
+    {
+      "testid": "wire-cancel-inline",
+      "screen": "練習中",
+      "label": "取消",
+      "section": "screens/練習中の画面の並び"
     },
     {
       "testid": "workspace-main",

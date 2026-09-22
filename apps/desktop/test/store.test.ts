@@ -61,7 +61,7 @@ describe('sessionForProblem', () => {
     const session = sessionForProblem(PROBLEM);
     expect(session.allowedColors).toEqual(['青']);
     expect(session.socketRoles).toEqual(PROBLEM.board.socketRoles);
-    expect(session.wires.every((w) => w.locked)).toBe(true);
+    expect(session.wires).toEqual([]);
   });
 });
 

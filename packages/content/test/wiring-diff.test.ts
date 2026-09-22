@@ -1,3 +1,4 @@
+import { createSession as createCheckSession } from '@ojt/board-model';
 import { addWire, createSession, JIPM_BOARD, plug, removeWire } from '@ojt/board-model';
 import { toTerminalId, type TerminalId } from '@ojt/circuit-sim';
 import { describe, expect, it } from 'vitest';
@@ -68,6 +69,7 @@ describe('wiringSuspects（UXレビュー #28）', () => {
     // 先頭（P.1 に繋がる非lockedの電線）を1本外すと、その疑いの wireIds に fw-chk-1 が
     // 紛れ込んでいた（訓練者は変更できない電線なので、光らせても直しようが無い）。
     const { session } = referenceSession();
+    session.wires.push(...createCheckSession(JIPM_BOARD, { includeCheckWires: true }).wires);
     const busP = toTerminalId('P.1');
     const lockedIds = new Set<string>(session.wires.filter((w) => w.locked).map((w) => w.id));
     expect(lockedIds.has('fw-chk-1')).toBe(true);

@@ -48,6 +48,7 @@ export function toSession(
   }
 
   const session = createSession(board, {
+    includeCheckWires: options.includeCheckWires === true,
     roles: assignment.roles,
     allowedColors: [color],
     extraParts,

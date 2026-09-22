@@ -81,6 +81,8 @@ export interface AssignError {
 
 /** 割当オプション。 */
 export interface AssignOptions {
+  /** チェック回路付きの既存盤を扱う場合だけ指定。通常の回路図は配線ゼロから構成する。 */
+  includeCheckWires?: boolean;
   /** ソケットの役割割当。省略すると既定の割当（8ソケットに7役割）。§6.1 */
   roles?: SocketRoles;
   /** 生成する電線の色。既定は青（モードB・D）、モードC2は白。§8.1 / §11.3 */
@@ -678,8 +680,10 @@ export function assignToBoard(doc: SchematicDocument, options: AssignOptions = {
 
   // SC-06: 既設配線の索引は1回の割当で使い回す（以前は checkFixedBonds／chainWires が
   // それぞれ作り直しており、正味3回組み直していた）。
-  const fixedCount = fixedWireCounts(roles);
-  const bonds = fixedBondKeys(roles);
+  const fixedCount =
+    options.includeCheckWires === true ? fixedWireCounts(roles) : new Map<TerminalId, number>();
+  const bonds =
+    options.includeCheckWires === true ? fixedBondKeys(roles) : new Map<TerminalId, string>();
 
   const bondErrors = checkFixedBonds(built.value, bonds);
   if (bondErrors.length > 0) return { ok: false, errors: bondErrors };

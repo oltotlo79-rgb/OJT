@@ -1,6 +1,7 @@
 import type { JSX } from 'react';
 import { useStore } from '../app/store.js';
 import { JA } from '../i18n/ja.js';
+import { dispatchTester, TesterReadout } from './TesterPanel.js';
 import styles from './panels.module.css';
 
 /**
@@ -16,16 +17,58 @@ import styles from './panels.module.css';
  */
 export function HoverHint(): JSX.Element {
   const hint = useStore((s) => s.hoverHint);
-  const text = hint ?? JA.hoverHint.idle;
+  const mode = useStore((s) => s.mode);
+  const pending = useStore((s) => s.pendingTerminal);
+  const next = useStore((s) => s.nextProbe);
+  const text =
+    mode === 'tester'
+      ? `端子をクリックして${next === 'black' ? '黒' : '赤'}プローブを配置`
+      : pending === undefined
+        ? (hint ?? JA.hoverHint.idle)
+        : `${pending} → 接続先の端子をクリック`;
   return (
-    <p
-      className={styles.hoverHint}
-      data-testid="hover-hint"
-      data-idle={hint === undefined}
-      role="status"
-      aria-live="polite"
-    >
-      {text}
-    </p>
+    <div className={styles.hoverHint} data-testid="hover-hint" data-idle={hint === undefined}>
+      <span role="status" aria-live="polite">
+        {text}
+      </span>
+      {pending === undefined ? null : (
+        <button
+          type="button"
+          data-testid="wire-cancel-inline"
+          onClick={() => useStore.getState().setPending(undefined)}
+        >
+          取消
+        </button>
+      )}
+      {mode !== 'tester' ? null : (
+        <>
+          <div className={styles.inlineReading}>
+            <TesterReadout compact />
+          </div>
+          {(['black', 'red'] as const).map((side) => (
+            <button
+              key={side}
+              type="button"
+              data-testid={`quick-probe-${side}`}
+              aria-pressed={next === side}
+              onClick={() => useStore.getState().setNextProbe(side)}
+            >
+              {side === 'black' ? '黒' : '赤'}
+            </button>
+          ))}
+          <button
+            type="button"
+            data-testid="quick-probe-clear"
+            onClick={() => {
+              dispatchTester({ type: 'place-probe', probe: 'black', terminal: undefined });
+              dispatchTester({ type: 'place-probe', probe: 'red', terminal: undefined });
+              useStore.getState().setNextProbe('black');
+            }}
+          >
+            両方外す
+          </button>
+        </>
+      )}
+    </div>
   );
 }

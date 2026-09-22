@@ -163,7 +163,7 @@ describe('PlcProblemSchema（§7.6）', () => {
     expect(PlcProblemSchema.safeParse(explicit).success).toBe(true);
   });
 
-  it('refuses PB4 because the check circuit already occupies TB_PB.4c (§6.3)', () => {
+  it('チェック回路のないPLC盤ではPB4も入力に割り付けられる', () => {
     const withPb4 = plcProblemJson({
       io: {
         mode: 'fixed',
@@ -174,9 +174,9 @@ describe('PlcProblemSchema（§7.6）', () => {
         outputs: [{ y: 0, cr: 'CR1', pl: 'PL1' }],
       },
     });
-    expect(PlcProblemSchema.safeParse(withPb4).success).toBe(false);
-    // 入力は3点までしか無い（PB1〜PB3）
-    expect(PlcInputMapSchema.shape.pb.options).toEqual(['PB1', 'PB2', 'PB3']);
+    expect(PlcProblemSchema.safeParse(withPb4).success).toBe(true);
+    // 明示割付では4つの押ボタンを使用できる。
+    expect(PlcInputMapSchema.shape.pb.options).toEqual(['PB1', 'PB2', 'PB3', 'PB4']);
   });
 });
 

@@ -28,7 +28,7 @@ import { resolvePlcIo, type PlcProblem, type ResolvedPlcIo } from './schema/plc.
  *
  * PLC端子は展開接続図（§11.1）の語彙に無いので、モードDの模範回路は回路図ではなく
  * **I/O割付から生成する**。生成規則は §10.2 の配線ルールそのままで、母線は §11.3 の
- * 渡り配線（鎖状）で分配する（`P.1` / `N.1` はチェック用回路の既設配線で各1本埋まっている。§6.3）。
+ * 渡り配線（鎖状）で分配する（1端子2本以内に収める）。
  */
 
 /** モードDの新規配線に使う線色（青）。§10.2 */
@@ -169,7 +169,7 @@ export function plcWiringPlan(
  * 押ボタンのコモン（`TB_PB.{n}c`）に**既設の固定配線**が来ている押ボタンは、母線の鎖を通すと
  * 端子が2本を超えるか、P と N を短絡してしまうため PLC入力に使えない。既定の盤では
  * `fw-chk-1: P.1 → TB_PB.4c`（チェック用回路）がこれに当たるので `PB4` が弾かれる。
- * `PlcInputMapSchema` も `PB4` を受け付けないが、盤の既設配線が変わってもここで必ず捕まる。
+ * 通常のPLC盤は未配線だが、既設回路を含む旧保存データでもここで衝突を検出する。
  */
 export function plcWiringPlanIssues(io: ResolvedPlcIo, session: BoardSession): ProblemIssue[] {
   const locked = new Set<string>();
@@ -227,6 +227,7 @@ export function buildPlcReferenceSession(
   const roles = toSocketRoles(problem.board.socketRoles);
   const io = resolvePlcIo(problem.io);
   const session = createSession(plcBoard, {
+    includeCheckWires: false,
     roles,
     allowedColors: [PLC_WIRE_COLOR],
     inventory: problem.inventory,

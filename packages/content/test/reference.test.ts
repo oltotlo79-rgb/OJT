@@ -18,8 +18,8 @@ describe('buildReferenceSession', () => {
     if (!built.ok) return;
     expect(built.value.session.mounted.S1).toEqual({ kind: 'relay-my4n' });
     expect(built.value.roles.S1).toBe('CR1');
-    // 既設の固定配線3本（チェック用回路。青・locked。§6.3）＋ 回路図から起こした配線
-    expect(built.value.session.wires.filter((w) => w.locked)).toHaveLength(3);
+    // 回路図の配線だけを起こし、チェック回路は付加しない。
+    expect(built.value.session.wires.filter((w) => w.locked)).toHaveLength(0);
     expect(built.value.session.wires.filter((w) => !w.locked).length).toBeGreaterThan(0);
     expect(built.value.netlist.parts.some((p) => p.id === 'CR1')).toBe(true);
   });

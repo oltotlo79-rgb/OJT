@@ -52,6 +52,7 @@ export function dispatchTester(action: TesterAction): void {
  * 別要素に添えて出す。`OL` / `----` / `OFF` は測れていないので単位を出さない（レビュー指摘）。
  */
 function testerUnit(mode: TesterMode, display: string): string {
+  if (/[VΩ]$/.test(display.trim())) return '';
   const blank =
     display === 'OL' || display === TESTER_NO_PROBE_DISPLAY || display === TESTER_OFF_DISPLAY;
   if (mode === 'OHM') return blank ? '' : 'Ω';
@@ -63,9 +64,15 @@ function testerUnit(mode: TesterMode, display: string): string {
  * 表示器（読値）。`snapshot.tester` だけを購読する。§15
  * アナログの針は `AnalogMeter`（Task 6）が描く。ここは文字だけを出す。
  */
-export function TesterReadout(): JSX.Element {
+export function TesterReadout({ compact = false }: { compact?: boolean } = {}): JSX.Element {
   const reading = useStore((s) => s.snapshot.tester);
   const unit = testerUnit(reading.mode, reading.display);
+  if (compact)
+    return (
+      <output aria-label="測定値">
+        {reading.display} {unit}
+      </output>
+    );
   return (
     <>
       <div className={styles.readout} data-testid="tester-readout" role="status" aria-live="off">
@@ -107,6 +114,7 @@ function ProbeRow({ side }: { side: ProbeSide }): JSX.Element {
         data-testid={`probe-${side}`}
         aria-pressed={next === side}
         onClick={() => {
+          useStore.getState().setMode('tester');
           useStore.getState().setNextProbe(side);
         }}
       >

@@ -1,3 +1,4 @@
+import { createSession as createCheckSession } from '@ojt/board-model';
 import { JIPM_BOARD, wireCountAtTerminal } from '@ojt/board-model';
 import { MAX_WIRES_PER_TERMINAL } from '@ojt/circuit-sim';
 import { describe, expect, it } from 'vitest';
@@ -84,6 +85,9 @@ describe('plcWiringPlan（§10.2 / §11.3）', () => {
     // `PlcInputMapSchema` は PB4 を受け付けないので、見張りの動作確認は文字列経由で直に渡す
     const pb4 = 'PB4' as string as PlcInputMapData['pb'];
     const withPb4: ResolvedPlcIo = { ...io, inputs: [{ x: 3, pb: pb4 }] };
+    built.value.session.wires.push(
+      ...createCheckSession(JIPM_BOARD, { includeCheckWires: true }).wires,
+    );
     const issues = plcWiringPlanIssues(withPb4, built.value.session);
     expect(issues).toHaveLength(1);
     expect(issues[0]?.path).toBe('io.inputs[0].pb');

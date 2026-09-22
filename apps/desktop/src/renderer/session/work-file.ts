@@ -213,6 +213,7 @@ function inspectFieldsFor(problemId: string): Partial<WorkFile> {
    */
   return {
     mode: 'assemble',
+    tester: savedTester(state.tester),
     ...(state.schematicDoc === undefined ? {} : { schematic: state.schematicDoc }),
   };
 }

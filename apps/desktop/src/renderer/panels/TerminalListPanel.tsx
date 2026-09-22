@@ -34,6 +34,7 @@ export function TerminalListPanel({
   board,
   session,
   pendingTerminal,
+  measuring = false,
   hoveredTerminal,
   onPick,
   onHover,
@@ -41,6 +42,8 @@ export function TerminalListPanel({
 }: {
   board: BoardDefinition;
   session: BoardSession;
+  /** 測定では電線2本の端子も選べる。 */
+  measuring?: boolean;
   /** 配線1本目に選んだ端子（`store.pendingTerminal`）。 */
   pendingTerminal: TerminalId | undefined;
   /** いま盤で指している端子（**役割ID**に直したもの）。指摘 PR-11 */
@@ -102,7 +105,7 @@ export function TerminalListPanel({
                * いま1本目として選んでいる端子自身（`pendingTerminal === row.id`）は
                * 取り消せるよう、満杯でも押せるままにする（既存の挙動）。
                */
-              const unavailable = row.full && pendingTerminal !== row.id;
+              const unavailable = !measuring && row.full && pendingTerminal !== row.id;
               const reasonId = `terminal-full-reason-${row.id}`;
               return (
                 <button
@@ -115,7 +118,7 @@ export function TerminalListPanel({
                   // 盤の端子を指しているあいだ、その行も光らせる（指摘 PR-11）
                   data-hovered={hoveredTerminal === row.id}
                   {...(unavailable ? { 'aria-describedby': reasonId } : {})}
-                  title={row.full ? JA.terminalList.full : row.label}
+                  title={unavailable ? JA.terminalList.full : row.label}
                   onClick={() => {
                     if (unavailable) return;
                     onPick({ kind: 'terminal', id: row.id, wirable: true, label: row.label });

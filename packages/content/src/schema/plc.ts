@@ -76,22 +76,10 @@ export const PlcIoModeSchema = z.enum(['fixed', 'free']);
 /** 入力コモンの結線。§10.2 */
 export const PlcWiringSchema = z.enum(['sink', 'source']);
 
-/**
- * 入力1点の割付（`x` は入力番号、`pb` は押ボタン）。§7.6
- *
- * `PB4` は**チェック用回路の押ボタン**である。盤には §6.3 の既設固定配線
- * `fw-chk-1: P.1 → TB_PB.4c` があり、`TB_PB.4c` は既に1本埋まっている。ここへ模範配線の
- * N側（または `source` ならP側）の鎖を通すと端子が2本を超えるか、P と N を短絡してしまうため、
- * PLC入力に使えるのは `PB1` / `PB2` / `PB3` の3点だけである（1級形式でも入力3点・出力4点）。
- */
+/** 入力1点の割付。PLC盤は未配線から始まるのでPB4も使用できる。 */
 export const PlcInputMapSchema = z.strictObject({
   x: z.int().min(0).max(15),
-  pb: z.enum(['PB1', 'PB2', 'PB3'], {
-    error: (issue) =>
-      issue.input === 'PB4'
-        ? 'PB4 はチェック用回路の押ボタンです。TB_PB.4c は既設固定配線 fw-chk-1 が使用中のため、PLC入力には割り当てられません（§6.3）'
-        : undefined,
-  }),
+  pb: z.enum(['PB1', 'PB2', 'PB3', 'PB4']),
 });
 
 /** 出力1点の割付（`y` は出力番号、`cr` は中継リレー、`pl` は表示灯）。§7.6 / §10.2 */
@@ -120,7 +108,7 @@ export const DEFAULT_PLC_IO: {
   inputs: readonly PlcInputMapData[];
   outputs: readonly PlcOutputMapData[];
 } = {
-  // PB4 はチェック用回路の押ボタンなので入力に使わない（`PlcInputMapSchema` の注記）
+  // 既定教材はPB1〜PB3を使う。利用者課題ではPB4も割り付けられる。
   inputs: [
     { x: 0, pb: 'PB1' },
     { x: 1, pb: 'PB2' },

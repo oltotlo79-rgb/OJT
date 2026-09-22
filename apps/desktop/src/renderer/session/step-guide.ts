@@ -51,8 +51,8 @@ export function assembleSteps(input: {
   powered: boolean;
 }): ReadonlyArray<GuideStep<AssembleStepKey>> {
   const partsDone = input.partsRemaining <= 0;
-  const wireDone = partsDone && input.wireCount > input.fixedWireCount;
-  const powerDone = wireDone && input.powered;
+  const wireDone = input.wireCount > input.fixedWireCount;
+  const powerDone = input.powered;
   return sequentialSteps([
     { key: 'parts', label: JA.stepGuide.assembleParts, done: partsDone },
     { key: 'wire', label: JA.stepGuide.assembleWire, done: wireDone },
@@ -76,9 +76,9 @@ export function inspectPartsSteps(input: {
   answered: boolean;
 }): ReadonlyArray<GuideStep<InspectPartsStepKey>> {
   const plugDone = input.plugged;
-  const powerDone = plugDone && input.powered;
-  const measureDone = powerDone && input.probed;
-  const markDone = measureDone && input.answered;
+  const powerDone = input.powered;
+  const measureDone = input.probed;
+  const markDone = input.answered;
   return sequentialSteps([
     { key: 'plug', label: JA.stepGuide.inspectPlug, done: plugDone },
     { key: 'power', label: JA.stepGuide.inspectPower, done: powerDone },
@@ -106,7 +106,7 @@ export function inspectRepairSteps(input: {
   repaired: boolean;
 }): ReadonlyArray<GuideStep<InspectRepairStepKey>> {
   const reportDone = input.reportCount >= Math.max(1, input.requiredReportCount);
-  const fixDone = reportDone && input.repaired;
+  const fixDone = input.repaired;
   return sequentialSteps([
     { key: 'report', label: JA.stepGuide.repairReport, done: reportDone },
     { key: 'fix', label: JA.stepGuide.repairFix, done: fixDone },

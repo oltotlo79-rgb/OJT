@@ -34,8 +34,8 @@ import {
  */
 const SHOT_DIR = process.env['OJT_SHOT_DIR'] ?? join(tmpdir(), 'shots-p7-27');
 
-/** 内蔵課題 b-001 の固定配線（チェック用回路の既設配線）の本数。§6.3 */
-const FIXED_WIRES = 3;
+/** 組立課題に点検用の固定配線を追加しない。 */
+const FIXED_WIRES = 0;
 
 async function shot(app: ElectronApplication, name: string): Promise<void> {
   mkdirSync(SHOT_DIR, { recursive: true });

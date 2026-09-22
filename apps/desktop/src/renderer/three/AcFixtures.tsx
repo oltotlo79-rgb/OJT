@@ -1,7 +1,8 @@
 import type { BoardTerminal, Footprint } from '@ojt/board-model';
 import { useFrame, useThree, type ThreeEvent } from '@react-three/fiber';
 import { useRef, type JSX } from 'react';
-import type { Mesh, Texture } from 'three';
+import type { Group, Texture } from 'three';
+import { sharedHousing } from './ComponentDetails.js';
 import { DIN_RAIL_COLOR } from '../session/colors.js';
 import { JA_3D } from '../i18n/ja.js';
 import { bakeSharedTexture, labelFont, makeCanvasTexture, PX_PER_MM } from './labels.js';
@@ -50,11 +51,11 @@ const SHROUD_COLOR = '#2A2D33';
  */
 const SHROUD_DEPTH_MM = 5;
 /** ネジ端子カバーの天面を本体の天面より下げる量[mm]（ハンドル帯を高く見せる）。 */
-const SHROUD_DROP_MM = 1.2;
+const SHROUD_DROP_MM = 6;
 /** ON / OFF の印字を可動部の縁から離す量[mm]。 */
 const MARK_CLEARANCE_MM = 1.5;
 /** ON / OFF の印字の文字高さ[mm]。 */
-const MARK_MM = 1.6;
+const MARK_MM = 2.4;
 /** 銘板（緑のプレート）の定格表示の文字高さ[mm]。 */
 const RATING_MM = 2.6;
 /** 機器の外形から内側へ詰める量[mm]（ベース・本体の見切り）。 */
@@ -94,11 +95,11 @@ const FACE_LIFT_MM = 0.5;
  */
 export const BREAKER_HANDLE_TILT_RAD = (32 * Math.PI) / 180;
 /** ブレーカのハンドルの寸法[mm]（幅×奥行×高さ）。 */
-export const BREAKER_HANDLE_MM = { width: 13, depth: 4.5, height: 6 } as const;
+export const BREAKER_HANDLE_MM = { width: 11, depth: 4.5, height: 9 } as const;
 /** 電源スイッチのロッカーの倒れ角[rad]。ブレーカと同じ理由で 25° を超える角度まで広げる（項目4）。 */
 export const SWITCH_ROCKER_TILT_RAD = (30 * Math.PI) / 180;
 /** 電源スイッチのロッカーの寸法[mm]（幅×奥行×厚み）。 */
-export const SWITCH_ROCKER_MM = { width: 13, depth: 6, height: 3.5 } as const;
+export const SWITCH_ROCKER_MM = { width: 12, depth: 12, height: 4 } as const;
 
 /**
  * レバーが倒れきるまでの時間[ms]（Phase 7 設計 §7.3.2「レバーが倒れる（150ms）」）。
@@ -431,7 +432,7 @@ export function PowerLever({
   nextOn: boolean;
   handlers: PowerFixtureHandlers;
 }): JSX.Element {
-  const mesh = useRef<Mesh | null>(null);
+  const mesh = useRef<Group | null>(null);
   const current = useRef(target);
   const invalidate = useThree((state) => state.invalidate);
   useFrame((_, delta) => {
@@ -451,17 +452,43 @@ export function PowerLever({
     invalidate();
   });
   const pose = poseAt(current.current);
+  const rocker = name === 'switch-rocker';
+  const marking = rocker
+    ? bakeSharedTexture('fixture', 'rocker-io-v2', () =>
+        makeCanvasTexture(scale[0], scale[1], (ctx) => {
+          ctx.fillStyle = '#fff';
+          ctx.font = labelFont(3.5);
+          ctx.fillText('I', (scale[0] / 2) * PX_PER_MM, 3 * PX_PER_MM);
+          ctx.fillText('O', (scale[0] / 2) * PX_PER_MM, (scale[1] - 3) * PX_PER_MM);
+        }),
+      )
+    : undefined;
   return (
-    <mesh
-      ref={mesh}
-      name={name}
-      geometry={UNIT_BOX}
-      material={sharedMaterial(color, { roughness: 0.45, metalness: 0.15 })}
-      position={pose.position}
-      rotation={[current.current, 0, 0]}
-      scale={scale}
-      {...powerHandlers(nextOn, handlers)}
-    />
+    <group ref={mesh} name={name} position={pose.position} rotation={[current.current, 0, 0]}>
+      <mesh
+        geometry={sharedHousing(...scale)}
+        material={sharedMaterial(rocker ? '#313a42' : color, { roughness: 0.36, metalness: 0.08 })}
+        {...powerHandlers(nextOn, handlers)}
+      />
+      {rocker
+        ? null
+        : [-1.4, 0, 1.4].map((y) => (
+            <mesh
+              key={y}
+              geometry={UNIT_BOX}
+              position={[0, y, scale[2] / 2 + 0.15]}
+              scale={[scale[0] - 1.2, 0.45, 0.3]}
+              raycast={noPick}
+              material={sharedMaterial('#5e666c', { roughness: 0.52 })}
+            />
+          ))}
+      {marking === undefined ? null : (
+        <mesh position={[0, 0, scale[2] / 2 + 0.03]} raycast={noPick}>
+          <planeGeometry args={[scale[0], scale[1]]} />
+          <meshBasicMaterial map={marking} transparent depthWrite={false} />
+        </mesh>
+      )}
+    </group>
   );
 }
 
@@ -515,7 +542,7 @@ export function Breaker({
   const { x, y } = centerOf(footprint);
   const poleWidth = (footprint.w - BODY_INSET_MM - POLE_SEAM_MM) / 2;
   const poleOffset = (poleWidth + POLE_SEAM_MM) / 2;
-  const bodyDepth = footprint.h - BODY_INSET_MM;
+  const bodyDepth = 16;
   const bodyZ = (BASE_TOP_MM + heightMm) / 2;
   const wellX = footprint.x + handleCenterX(footprint);
   const handlers: PowerFixtureHandlers = { onToggle, onHover };
@@ -526,11 +553,10 @@ export function Breaker({
       {[-poleOffset, poleOffset].map((offset) => (
         <mesh
           key={offset}
-          geometry={UNIT_BOX}
-          material={sharedMaterial(color, { roughness: 0.55, metalness: 0.1 })}
+          geometry={sharedHousing(poleWidth, bodyDepth, heightMm - BASE_TOP_MM)}
+          material={sharedMaterial(color, { roughness: 0.58, metalness: 0.02 })}
           raycast={noPick}
           position={toScene({ x: x + offset, y, z: bodyZ })}
-          scale={[poleWidth, bodyDepth, heightMm - BASE_TOP_MM]}
         />
       ))}
       {/* 写真の青いライン（本体を横切る化粧）。ハンドル窓と手前のカバーのあいだに入れる */}
@@ -612,11 +638,14 @@ export function PowerSwitch({
     <group name="switch-body">
       <SeatAndBase footprint={footprint} />
       <mesh
-        geometry={UNIT_BOX}
-        material={sharedMaterial(color, { roughness: 0.55, metalness: 0.1 })}
+        geometry={sharedHousing(
+          footprint.w - BODY_INSET_MM,
+          footprint.h - BODY_INSET_MM,
+          heightMm - BASE_TOP_MM,
+        )}
+        material={sharedMaterial(color, { roughness: 0.65, metalness: 0.03 })}
         raycast={noPick}
         position={toScene({ x, y, z: (BASE_TOP_MM + heightMm) / 2 })}
-        scale={[footprint.w - BODY_INSET_MM, footprint.h - BODY_INSET_MM, heightMm - BASE_TOP_MM]}
       />
       {/* ロッカーを受ける黒い枠（実物の操作窓）。窓の色は ON で緑に変わる（項目4）。
           窓とロッカーの2枚だけがクリックを受ける（Phase 7 Task 27） */}
@@ -625,7 +654,7 @@ export function PowerSwitch({
         geometry={UNIT_BOX}
         material={sharedMaterial(wellColorFor(on), { roughness: 0.8 })}
         position={toScene({ x, y, z: heightMm - 1 })}
-        scale={[SWITCH_ROCKER_MM.width + 2.5, SWITCH_ROCKER_MM.depth + 2, 1.6]}
+        scale={[SWITCH_ROCKER_MM.width + 3, SWITCH_ROCKER_MM.depth + 3, 2]}
         {...powerHandlers(!on, handlers)}
       />
       <PowerLever

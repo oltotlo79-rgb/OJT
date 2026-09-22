@@ -104,9 +104,9 @@ describe('testerPickToAction（§9.3）', () => {
     });
   });
 
-  it('空クリックは両方のプローブを外す', () => {
+  it('空クリックでは配置したプローブを保持する', () => {
     const s = state({ black: S7_13, red: S7_14 });
-    expect(testerPickToAction(s, { kind: 'empty' })).toEqual({ type: 'liftProbe', probe: 'both' });
+    expect(testerPickToAction(s, { kind: 'empty' })).toEqual({ type: 'none' });
   });
 
   it('プローブが1本も載っていなければ空クリックは何もしない', () => {

@@ -172,6 +172,7 @@ export function isPlcJudge(result: AnyJudgeResult): result is JudgePlcResult {
  */
 export function checkSessionFor(problem: InspectPartsProblem): BoardSession {
   return createSession(JIPM_BOARD, {
+    includeCheckWires: true,
     roles: toSocketRoles(problem.board.socketRoles),
     allowedColors: [],
     extraParts: [],
@@ -220,6 +221,7 @@ export function sessionForProblem(problem: SupportedProblem): BoardSession {
    * `boardForProblem()` が `JIPM_BOARD` をそのまま返すので挙動は変わらない。
    */
   return createSession(boardForProblem(problem), {
+    includeCheckWires: problem.mode === 'inspect-parts',
     roles: toSocketRoles(problem.board.socketRoles),
     allowedColors: ['青'],
     extraParts: (problem.board.extraParts ?? []).map((name) => partId(name)),

@@ -6,6 +6,7 @@ import {
   BUILTIN_PROBLEMS,
 } from '@ojt/content';
 import { cleanup, render } from '@testing-library/react';
+import { toTerminalId } from '@ojt/circuit-sim';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useStore } from '../src/renderer/app/store.js';
 
@@ -59,6 +60,21 @@ describe('画面マウント時のテスター再送（Plan 2B レビュー B2�
     useStore.getState().openProblem(MODE_B);
     render(<Session />);
     expect(testerActionsOf(mocks.sent)).toEqual([]);
+  });
+
+  it('モードBもつまみOFFで置いたプローブをWorker再起動後に戻す', () => {
+    if (MODE_B === undefined) throw new Error('b-001がありません');
+    useStore.getState().openProblem(MODE_B);
+    useStore
+      .getState()
+      .applyTester({ type: 'place-probe', probe: 'black', terminal: toTerminalId('N.1') });
+    render(<Session />);
+    const load = mocks.sent.findIndex((c) => c['type'] === 'load');
+    const placement = mocks.sent.findIndex(
+      (c) => c['type'] === 'tester' && (c['action'] as { type: string }).type === 'place-probe',
+    );
+    expect(load).toBeGreaterThanOrEqual(0);
+    expect(placement).toBeGreaterThan(load);
   });
 
   it('モードC1は load のあとにいまのテスター状態を送り直す', () => {

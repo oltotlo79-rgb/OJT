@@ -1,3 +1,4 @@
+import { createSession as createCheckSession } from '@ojt/board-model';
 import { JIPM_BOARD, plug, toNetlist, type BoardSession } from '@ojt/board-model';
 import { createWire, SignalLog, terminalId, type HazardEvent } from '@ojt/circuit-sim';
 import { describe, expect, it } from 'vitest';
@@ -80,6 +81,7 @@ describe('checkWireColorRule', () => {
 
   it('ignores the pre-installed fixed wiring whatever colour it has (§6.3)', () => {
     const input = inputFor(selfHoldProblemJson());
+    input.session.wires.push(...createCheckSession(JIPM_BOARD, { includeCheckWires: true }).wires);
     const locked = input.session.wires.find((w) => w.locked);
     if (locked === undefined) throw new Error('no locked wire');
     expect(locked.color).toBe('青');

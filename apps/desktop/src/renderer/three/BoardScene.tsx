@@ -1081,7 +1081,7 @@ function BoardContents({
           );
         })}
 
-        {BLOCK_PARTS.map((block) => (
+        {BLOCK_PARTS.filter((block) => block.key !== 'PN').map((block) => (
           <TerminalBlock
             key={block.key}
             name={block.key}

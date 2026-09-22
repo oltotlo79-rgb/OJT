@@ -130,8 +130,8 @@ export function pushButtonPoint(pbId: string, box: CanvasBox): { x: number; y: n
  * 内蔵課題 b-001「自己保持回路」の模範配線（9本）。
  * `buildReferenceSession()` が生成する配線と同じ組み合わせを、**物理**端子IDで書き下したもの。
  *
- * P/N 供給端子は `P.1` / `N.1` の各1点しかなく、うち1本はチェック用の固定配線が使うので、
- * 訓練者が母線から直接取れるのは各1本だけ（§6.1）。母線は**渡り配線**で分配する
+ * P/N 供給端子は `P.1` / `N.1` の各1点。1端子2本以内に収めるため、
+ * 母線は**渡り配線**で分配する
  * （`P.1 → TB_PB.2c → S1.10`、`N.1 → S1.13 → TB_PL.1-` の鎖）。
  */
 export const SELF_HOLD_WIRES: ReadonlyArray<readonly [string, string]> = [
