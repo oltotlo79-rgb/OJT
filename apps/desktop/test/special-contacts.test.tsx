@@ -138,6 +138,23 @@ describe('メーカーの特殊接点を入力して実行する', () => {
     }
   });
 
+  it('未実行とリセット直後の特殊接点は未測定で、最初のスキャンで初期パルスを観測する', () => {
+    const runtime = boot(no(SP(1)));
+    for (let run = 0; run < 2; run += 1) {
+      const before = { ...runtime.state(), timers: {}, powered: {} };
+      expect(before.scanCount).toBe(0);
+      for (const index of [0, 1, 2, 3])
+        expect(watchValueOf(before, SP(index)).on).toBeUndefined();
+      runtime.scan();
+      expect(runtime.state().specials[1]).toBe(true);
+      expect(runtime.state().outputs[0]).toBe(true);
+      runtime.scan();
+      expect(runtime.state().specials[1]).toBe(false);
+      expect(runtime.state().outputs[0]).toBe(false);
+      runtime.reset();
+    }
+  });
+
   it('接点入力の用途一覧からSM400を選び、その意味を確認して確定できる', () => {
     const onCommit = vi.fn();
     render(

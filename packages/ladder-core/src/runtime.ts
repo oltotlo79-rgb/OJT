@@ -258,13 +258,17 @@ class Runtime implements PlcRuntime {
       inputs: [...this.inputs],
       outputs: [...this.outputs],
       internals,
-      specials: {
-        [SPECIAL_ALWAYS_ON]: true,
-        [SPECIAL_ALWAYS_OFF]: false,
-        [SPECIAL_FIRST_SCAN]: this.scans <= 1,
-        [SPECIAL_CLOCK_1S]:
-          Math.floor(Math.max(0, this.elapsedMs - this.scanMs) / (CLOCK_PERIOD_MS / 2)) % 2 === 0,
-      },
+      // 起動・リセット直後には実行済みスキャンがない。未実行の初期パルスをONと表示しない。
+      specials:
+        this.scans === 0
+          ? {}
+          : {
+              [SPECIAL_ALWAYS_ON]: true,
+              [SPECIAL_ALWAYS_OFF]: false,
+              [SPECIAL_FIRST_SCAN]: this.scans === 1,
+              [SPECIAL_CLOCK_1S]:
+                Math.floor((this.elapsedMs - this.scanMs) / (CLOCK_PERIOD_MS / 2)) % 2 === 0,
+            },
       timers,
       counters,
     };
