@@ -34,6 +34,18 @@ async function camera(page: Page): Promise<Camera> {
   return JSON.parse(text) as Camera;
 }
 
+/** 回転基準に依存する極角ではなく、実カメラの位置・上方向・注視点を照合する。 */
+async function expectCameraPreset(page: Page, preset: 'front' | 'back' | 'top'): Promise<void> {
+  const box = await canvasBox(page);
+  const expected = cameraPose(preset, { aspect: box.w / box.h });
+  await expect.poll(async () => {
+    const state = await camera(page);
+    const actual = [...state.position, ...state.up, state.tx, state.ty, state.tz];
+    const target = [...expected.position, ...expected.up, ...expected.target];
+    return Math.max(...actual.map((value, index) => Math.abs(value - target[index]!)));
+  }).toBeLessThan(0.01);
+}
+
 /** 3Dキャンバスの矩形。 */
 async function canvasBox(page: Page): Promise<{ x: number; y: number; w: number; h: number }> {
   const box = await page.locator('[data-testid="viewport"] canvas').boundingBox();
@@ -306,37 +318,30 @@ test.describe('Blender 風の3D操作（§12.2）', () => {
 
   test('テンキーで視点が切り替わる（1/3/7 と Ctrl、Home で全体）', async () => {
     await selectPreset(page, '正面');
-    await page.waitForTimeout(600);
-    const front = await camera(page);
+    await expectCameraPreset(page, 'front');
 
     await page.keyboard.press('Numpad7');
     await page.waitForTimeout(700);
     await expectPresetPressed(page, '俯瞰');
-    const top = await camera(page);
-    expect(top.polar).toBeLessThan(front.polar);
+    await expectCameraPreset(page, 'top');
     await shot(app, '25-nav-numpad7-top');
 
     await page.keyboard.press('Numpad1');
     await page.waitForTimeout(700);
     await expectPresetPressed(page, '正面');
-    const backToFront = await camera(page);
-    expect(backToFront.az).toBeCloseTo(front.az, 1);
+    await expectCameraPreset(page, 'front');
 
-    // Ctrl＋テンキー1は裏側（方位角がほぼ 180° 反対）
+    // Ctrl＋テンキー1は裏側。回転の基準軸によらず同じ実座標へ戻る。
     await page.keyboard.press('Control+Numpad1');
     await page.waitForTimeout(700);
-    const back = await camera(page);
-    const turn = Math.abs(Math.abs(back.az - backToFront.az) - Math.PI);
-    expect(turn).toBeLessThan(0.2);
+    await expectCameraPreset(page, 'back');
     await shot(app, '26-nav-ctrl-numpad1-back');
 
     // Home は盤全体（正面）へ戻す
     await page.keyboard.press('Home');
     await page.waitForTimeout(700);
     await expectPresetPressed(page, '正面');
-    const home = await camera(page);
-    expect(home.az).toBeCloseTo(front.az, 1);
-    expect(home.dist).toBeCloseTo(front.dist, 0);
+    await expectCameraPreset(page, 'front');
     await shot(app, '27-nav-home-front');
   });
 
@@ -382,7 +387,7 @@ test.describe('Blender 風の3D操作（§12.2）', () => {
    */
   test('キューブの「上」の面を押すと俯瞰プリセットへ移る', async () => {
     await selectPreset(page, '正面');
-    await page.waitForTimeout(700);
+    await expectCameraPreset(page, 'front');
     const front = await camera(page);
 
     const center = await gizmoCenter(page);
@@ -392,8 +397,10 @@ test.describe('Blender 風の3D操作（§12.2）', () => {
     await page.waitForTimeout(900);
 
     await expectPresetPressed(page, '俯瞰');
-    const top = await camera(page);
-    expect(top.polar).toBeLessThan(front.polar);
+    // 360°回転ではcamera.upも変わる。OrbitControls内部の極角は、その基準軸が
+    // 異なる姿勢同士で大小比較できない。実カメラの位置・上方向・注視点を検査する。
+    await expectCameraPreset(page, 'top');
+    expect((await camera(page)).position).not.toEqual(front.position);
     await shot(app, '29-nav-cube-top-face');
   });
 });
