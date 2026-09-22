@@ -14,7 +14,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   vi.restoreAllMocks();
-  rmSync(root, { recursive: true, force: true });
+  rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
 });
 
 /** 実ファイルを共有削除不可で開く。組込fsのモックで成功を装わない。 */
@@ -71,7 +71,9 @@ async function holdFile() {
           if (spawnError) throw spawnError;
           return existsSync(ready);
         },
-        { timeout: 10_000 },
+        // Windows CIの混雑時はPowerShellの起動だけで10秒を超える。
+        // 実ロックの準備を待つ上限であり、製品の保存時の350ms上限は変えない。
+        { timeout: 30_000, message: '保存検査の前提となる実ファイルのロックが準備できない' },
       )
       .toBe(true);
     expect(() => renameSync(target, join(root, 'must-not-move'))).toThrow();
@@ -116,7 +118,7 @@ describe.runIf(process.platform === 'win32')(
       } finally {
         await lock.stop();
       }
-    }, 30_000);
+    }, 60_000);
 
     it('保持が続けば打ち切り、元の内容を残して失敗を通知する', async () => {
       const lock = await holdFile();
@@ -132,6 +134,6 @@ describe.runIf(process.platform === 'win32')(
       // 解放後の次の保存は通常どおり成功する。
       writeFileAtomic(target, '再保存');
       expect(readFileSync(target, 'utf8')).toBe('再保存');
-    }, 30_000);
+    }, 60_000);
   },
 );
