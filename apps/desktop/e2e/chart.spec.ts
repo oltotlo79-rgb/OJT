@@ -138,7 +138,8 @@ test.describe.serial('タイムチャートの拡大表示', () => {
     const box = await canvasBox(page);
     const edge = boardPoint(socketEdgePoint(), box);
     await page.mouse.click(edge.x, edge.y);
-    await page.getByRole('button', { name: '装着' }).first().click();
+    await page.getByTestId('mount-relay-my4n').click();
+    await expect(page.getByTestId('operation-log')).toContainText('S1 に リレー MY4N を装着');
     for (const [from, to] of SELF_HOLD_WIRES) {
       await clickTerminal(page, box, from);
       await clickTerminal(page, box, to);

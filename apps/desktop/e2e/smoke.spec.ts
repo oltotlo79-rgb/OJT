@@ -98,7 +98,7 @@ test.describe('モードB スモーク', () => {
     const socketEdge = boardPoint(socketEdgePoint(), box);
     await page.mouse.click(socketEdge.x, socketEdge.y);
     await expect(page.getByText('S1（CR1）を選択中')).toBeVisible();
-    await page.getByRole('button', { name: '装着' }).first().click();
+    await page.getByTestId('mount-relay-my4n').click();
     await expect(page.getByTestId('operation-log')).toContainText('S1 に リレー MY4N を装着');
     await shot(app, '04-relay-mounted');
 
@@ -145,7 +145,7 @@ test.describe('モードB スモーク', () => {
     const retryBox = await canvasBox(page);
     const edge = boardPoint(socketEdgePoint(), retryBox);
     await page.mouse.click(edge.x, edge.y);
-    await page.getByRole('button', { name: '装着' }).first().click();
+    await page.getByTestId('mount-relay-my4n').click();
     for (const [from, to] of SELF_HOLD_WIRES.slice(0, -1)) {
       await clickTerminal(page, retryBox, from);
       await clickTerminal(page, retryBox, to);

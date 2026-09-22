@@ -1171,7 +1171,7 @@ test.describe.serial('画面品質の機械点検', () => {
       });
 
       await step('部品カード（装着済み）', async () => {
-        await page.getByRole('button', { name: '装着', exact: true }).first().click();
+        await page.getByTestId('mount-relay-my4n').click();
         await expect(page.getByTestId('card-swap')).toBeVisible();
         await stop(app, page, 'modeB-parts-mounted', { three: true });
       });
@@ -1267,7 +1267,7 @@ test.describe.serial('画面品質の機械点検', () => {
       // 途中までしか配線しないで判定 → 不合格＋疑わしい配線
       const edge = boardPoint(socketEdgePoint(), box);
       await page.mouse.click(edge.x, edge.y);
-      await page.getByRole('button', { name: '装着', exact: true }).first().click();
+      await page.getByTestId('mount-relay-my4n').click();
       for (const [from, to] of SELF_HOLD_WIRES.slice(0, 5)) {
         await clickTerminal(page, box, from);
         await clickTerminal(page, box, to);
@@ -1300,7 +1300,7 @@ test.describe.serial('画面品質の機械点検', () => {
         const retryBox = await canvasBox(page);
         const socket = boardPoint(socketEdgePoint(), retryBox);
         await page.mouse.click(socket.x, socket.y);
-        await page.getByRole('button', { name: '装着', exact: true }).first().click();
+        await page.getByTestId('mount-relay-my4n').click();
         for (const [from, to] of SELF_HOLD_WIRES) {
           await clickTerminal(page, retryBox, from);
           await clickTerminal(page, retryBox, to);
@@ -1644,7 +1644,7 @@ test.describe.serial('画面品質の機械点検', () => {
       const box = await canvasBox(first.page);
       const edge = boardPoint(socketEdgePoint(), box);
       await first.page.mouse.click(edge.x, edge.y);
-      await first.page.getByRole('button', { name: '装着', exact: true }).first().click();
+      await first.page.getByTestId('mount-relay-my4n').click();
       // 自動保存（30秒間隔）を1回またぐ
       await first.page.waitForTimeout(33_000);
     } finally {

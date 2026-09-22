@@ -1264,7 +1264,7 @@ test.describe.serial('取扱説明書の図', () => {
         box,
       );
       await page.mouse.click(point.x, point.y);
-      await page.getByRole('button', { name: '装着' }).first().click();
+      await page.getByTestId('mount-relay-my4n').click();
       await expect(page.getByTestId('operation-log')).toContainText(
         `${socketId} に リレー MY4N を装着`,
       );

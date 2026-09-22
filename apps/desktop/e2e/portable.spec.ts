@@ -70,7 +70,7 @@ test('EXE1個から初回ガイド・216課題・回路の合格・ヘルプ・P
     );
     await page.mouse.click(center.x, center.y);
     await expect(page.getByText('S1（CR1）を選択中')).toBeVisible();
-    await page.getByRole('button', { name: '装着', exact: true }).first().click();
+    await page.getByTestId('mount-relay-my4n').click();
     await expect(page.getByTestId('operation-log')).toContainText('S1 に リレー MY4N を装着');
     // ストアへ模範解を注入せず、実際の端子クリックだけで回路を完成させる。
     for (const pair of SELF_HOLD_WIRES) {
