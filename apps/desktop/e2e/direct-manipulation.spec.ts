@@ -93,6 +93,7 @@ async function dragTo(
   to: { x: number; y: number },
   options: { pauseAt?: number } = {},
 ): Promise<void> {
+  await page.keyboard.down('Alt');
   await page.mouse.move(from.x, from.y);
   await page.mouse.down();
   const steps = 8;
@@ -104,6 +105,7 @@ async function dragTo(
     if (options.pauseAt === step) await page.waitForTimeout(250);
   }
   await page.mouse.up();
+  await page.keyboard.up('Alt');
 }
 
 test.describe.serial('3D盤の直接操作（利用者要望9）', () => {
@@ -193,6 +195,7 @@ test.describe.serial('3D盤の直接操作（利用者要望9）', () => {
     await expect(page.getByTestId('drag-ghost')).toBeVisible();
     await shot(app, '02a-part-dragging');
     await page.mouse.up();
+    await page.keyboard.up('Alt');
   });
 
   test('③ 端子から端子へドラッグすると電線が1本増える', async () => {
@@ -204,6 +207,7 @@ test.describe.serial('3D盤の直接操作（利用者要望9）', () => {
     const to = terminalPoint(toTerminalId('TB_PB.2c'), box);
 
     // 途中まで引いて、仮の電線と「つなげる端子（緑）」が出ている1枚を撮る
+    await page.keyboard.down('Alt');
     await page.mouse.move(from.x, from.y);
     await page.mouse.down();
     for (let step = 1; step <= 5; step += 1) {
@@ -222,6 +226,7 @@ test.describe.serial('3D盤の直接操作（利用者要望9）', () => {
       );
     }
     await page.mouse.up();
+    await page.keyboard.up('Alt');
 
     await expect(page.getByTestId('status-overlay')).toContainText(
       wireCountText(FIXED_WIRES + 1, FIXED_WIRES),
@@ -229,7 +234,7 @@ test.describe.serial('3D盤の直接操作（利用者要望9）', () => {
     await expect(page.getByTestId('status-overlay')).toContainText('端子未選択');
   });
 
-  test('③ 端子の上から引いても視点は回らない（配線が優先する）', async () => {
+  test('③ Alt＋端子ドラッグでは視点を動かさず配線する', async () => {
     const readout = page.getByTestId('camera-readout');
     const before = await readout.textContent();
     const box = await canvasBox(page);
@@ -243,6 +248,7 @@ test.describe.serial('3D盤の直接操作（利用者要望9）', () => {
     const box = await canvasBox(page);
     const from = terminalPoint(toTerminalId('P.1'), box);
     for (const event of ['pointercancel', 'blur']) {
+      await page.keyboard.down('Alt');
       await page.mouse.move(from.x, from.y);
       await page.mouse.down();
       await page.mouse.move(from.x + 70, from.y + 35, { steps: 5 });
@@ -251,6 +257,7 @@ test.describe.serial('3D盤の直接操作（利用者要望9）', () => {
         window.dispatchEvent(kind === 'pointercancel' ? new PointerEvent(kind) : new Event(kind));
       }, event);
       await page.mouse.up();
+      await page.keyboard.up('Alt');
       await expect(page.getByTestId('status-overlay')).toContainText('端子未選択');
       await expect(page.getByTestId('status-overlay')).toContainText(
         wireCountText(FIXED_WIRES + 1, FIXED_WIRES),
@@ -278,6 +285,10 @@ for (const [mode, id] of [
         BrowserWindow.getAllWindows()[0]?.setContentSize(1440, 900),
       );
       await page.getByTestId(`mode-${mode}`).click();
+      await page
+        .getByTestId('grade-filter')
+        .getByRole('button', { name: 'すべて', exact: true })
+        .click();
       await page.getByTestId(`open-${id}`).click();
       if (mode === 'plc') await page.getByTestId('view-board').click();
       await expect(page.getByTestId('camera-readout')).toBeAttached();

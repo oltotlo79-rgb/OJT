@@ -18,7 +18,7 @@ import {
 import { parseTerminalId, type LampLevel, type TerminalId } from '@ojt/circuit-sim';
 import { OrbitControls } from '@react-three/drei';
 import { Canvas, useThree } from '@react-three/fiber';
-import { MOUSE } from 'three';
+import { MOUSE, TOUCH } from 'three';
 import {
   memo,
   useCallback,
@@ -90,7 +90,7 @@ import { Wire } from './Wire.js';
 import { WireDragLayer } from './WirePreview.js';
 import { toScene } from './coords.js';
 import { observeWebGlContext } from './webgl-context.js';
-import { tourRotationChanged, useTourStore } from '../tour/tour-store.js';
+import { useTourStore } from '../tour/tour-store.js';
 
 /**
  * 3D盤のシーン。設計仕様 §6.5 / §8.1 / §12.2 / §15。
@@ -447,7 +447,6 @@ function BoardContents({
   const dragging = useStore((s) => s.dragging);
   const replaying = useStore((s) => s.replay !== undefined);
   const [controls, setControls] = useState<OrbitControlsLike | null>(null);
-  const rotationStart = useRef<readonly [number, number] | undefined>(undefined);
   /** ポインタが乗っているソケット（ホバーの縁取りと落とし先の判定）。 */
   const [hoveredSocket, setHoveredSocket] = useState<SocketId | undefined>(undefined);
   /** ポインタが乗っている電源の操作部。 */
@@ -655,11 +654,9 @@ function BoardContents({
     const apply = (shift: boolean, ctrl: boolean): void => {
       // three は修飾キーで回転と平行移動を入れ替えるので、左右の割り当ても打ち消して入れ直す
       const held = shift || ctrl;
-      controls.mouseButtons.LEFT = MOUSE_FOR_ACTION[mouseButtonAssignment('rotate', held)];
+      controls.mouseButtons.LEFT = MOUSE_FOR_ACTION[mouseButtonAssignment('pan', held)];
       /*
-       * 右ボタンは中ボタンの別名にする（2026-09-19 の利用者要望）。中ボタンの無いマウスや
-       * ノートPCのタッチパッドでも「押して引けば回る」を成立させるため、素＝回転 /
-       * Shift＝平行移動 / Ctrl＝ズーム を中ボタンとまったく同じ表にする。
+       * 左・中・右とも画面平面を移動する。キューブだけが回転を担当する。
        */
       controls.mouseButtons.RIGHT = MOUSE_FOR_ACTION[middleButtonAssignmentFor({ shift, ctrl })];
       controls.mouseButtons.MIDDLE = MOUSE_FOR_ACTION[middleButtonAssignmentFor({ shift, ctrl })];
@@ -720,6 +717,7 @@ function BoardContents({
     moved: boolean;
     /** 押し始めがキャンバスの上だったか（パレットのカードから始めた運搬と区別する）。 */
     onCanvas: boolean;
+    editDrag: boolean;
   }>({
     x: 0,
     y: 0,
@@ -729,11 +727,12 @@ function BoardContents({
     consumed: false,
     moved: false,
     onCanvas: false,
+    editDrag: false,
   });
 
   const onPressTerminal = useCallback(
     (terminal: BoardTerminal): void => {
-      if (useStore.getState().replay !== undefined) return;
+      if (!press.current.editDrag || useStore.getState().replay !== undefined) return;
       press.current = { ...press.current, terminal, part: undefined, started: false };
       // 端子の上から引いたら**視点は回さない**（設計 §7.3.1）。放すまで軌道操作を黙らせる
       if (controls !== null) controls.enabled = dragKindOf(press.current) === 'view';
@@ -745,6 +744,7 @@ function BoardContents({
     (socketId: SocketId, kind: MountableKind): void => {
       const store = useStore.getState();
       if (
+        !press.current.editDrag ||
         store.replay !== undefined ||
         store.problem?.mode === 'inspect-parts' ||
         store.problem?.mode === 'inspect-repair'
@@ -825,6 +825,7 @@ function BoardContents({
         consumed: false,
         moved: false,
         onCanvas: false,
+        editDrag: false,
       };
       if (controls !== null) controls.enabled = true;
       setWireDragFrom(undefined);
@@ -840,6 +841,7 @@ function BoardContents({
         consumed: false,
         moved: false,
         onCanvas: event.target === gl.domElement,
+        editDrag: event.button === 0 && event.altKey,
       };
     };
     const onMove = (event: PointerEvent): void => {
@@ -972,10 +974,12 @@ function BoardContents({
       <Invalidator />
       <PerfProbe nodeRef={perfRef} />
       <color attach="background" args={['#141820']} />
-      <ambientLight intensity={0.65} />
+      <ambientLight intensity={0.35} />
+      <hemisphereLight args={['#e5efff', '#4b4841', 0.75]} />
       <directionalLight
         position={[220, 520, 420]}
         intensity={1.8}
+        color="#fff5e9"
         castShadow
         shadow-mapSize={[1024, 1024]}
         shadow-camera-left={-500}
@@ -1174,12 +1178,11 @@ function BoardContents({
       <WireDragLayer from={wireDragOrigin} legal={legalSet !== undefined} />
 
       {/*
-        操作は Blender に合わせる（§12.2 / 2026-09-14・2026-09-19 の利用者要望）。
-        左ドラッグ・中ドラッグ・右ドラッグ＝軌道回転、Shift＋中／右ドラッグ＝平行移動、
-        Ctrl＋中／右ドラッグ・ホイール＝ズーム。`zoomToCursor` でホイールは
+        2026-09-22の利用者要望: 盤面は平行移動、回転はキューブに集約する。
+        左・中・右ドラッグは修飾キーによらず平行移動、ホイールはズーム。`zoomToCursor` でホイールは
         ポインタの指す位置へ寄る（Blender と同じ）。ボタンの割り当ては上の効果が入れる。
         `screenSpacePanning` は Blender と同じ画面平面の平行移動。
-        `maxPolarAngle` で盤の裏側へ回り込まないようにし、注視点は盤の中心に固定する。
+        キューブの姿勢制御は真上・真下を越える回転を保持する。
         慣性（ダンピング）あり（§12.2「慣性（ダンピング）あり」）。`frameloop="demand"` と
         矛盾しない: drei の `OrbitControls` は内部の three-stdlib コントロールが発火する
         `change` イベントのたびに自分で `invalidate()` を呼ぶ
@@ -1192,25 +1195,9 @@ function BoardContents({
       */}
       <OrbitControls
         makeDefault
-        onStart={() => {
-          rotationStart.current =
-            controls === null
-              ? undefined
-              : [controls.getAzimuthalAngle(), controls.getPolarAngle()];
-        }}
-        onEnd={() => {
-          if (
-            controls !== null &&
-            rotationStart.current !== undefined &&
-            tourRotationChanged(rotationStart.current, [
-              controls.getAzimuthalAngle(),
-              controls.getPolarAngle(),
-            ])
-          )
-            useTourStore.getState().advance('rotate');
-          rotationStart.current = undefined;
-        }}
         enableDamping
+        enableRotate={false}
+        touches={{ ONE: TOUCH.PAN, TWO: TOUCH.DOLLY_PAN }}
         dampingFactor={ORBIT_FEEL.dampingFactor}
         rotateSpeed={ORBIT_FEEL.rotateSpeed}
         zoomSpeed={ORBIT_FEEL.zoomSpeed}
@@ -1229,7 +1216,7 @@ function BoardContents({
       <ViewGizmo controls={controls} />
       {/*
         名札の重なり取り（UI監査バッチE）。drei の `<Html>` が名札を置いた**後**に走らせたいので、
-        `useFrame` の登録がいちばん最後になるよう、必ずこの位置（最後の子）に置く。
+        `useFrame` の登録が一番最後になるよう、必ずこの位置（最後の子）に置く。
       */}
       <LabelDeclutter />
     </>

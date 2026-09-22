@@ -61,7 +61,7 @@ afterEach(() => {
 });
 
 describe('builtinSet', () => {
-  it('開発時は焼き込みの内蔵課題20題を返す（§7.9）', async () => {
+  it('開発時は焼き込みの内蔵課題60題を返す（§7.9）', async () => {
     expect((await builtinSet()).problems).toHaveLength(BUILTIN_ALL_PROBLEMS.length);
     expect((await builtinSet()).errors).toHaveLength(0);
   });
@@ -113,11 +113,11 @@ describe('builtinSet', () => {
     setResourcesPath(resources);
 
     const set = await builtinSet();
-    // 一覧が欠けたまま出ず、確実に焼き込みの72題へ落ちる
+    // 一覧が欠けたまま出ず、確実に焼き込みの216題へ落ちる
     expect(set.problems).toHaveLength(BUILTIN_ALL_PROBLEMS.length);
     expect(set.errors).toHaveLength(1);
     expect(set.errors[0]?.message).toContain('8件');
-    expect(set.errors[0]?.message).toContain('72件');
+    expect(set.errors[0]?.message).toContain(`${BUILTIN_ALL_PROBLEMS.length}件`);
     expect(set.errors[0]?.message).toContain('内蔵した課題で起動します');
   });
 
@@ -367,7 +367,7 @@ describe('loadContent のモードB以外の扱い（Plan 2A Task 17: SupportedP
 
     const { payload, byId } = await loadContent(dir);
 
-    // 内蔵20題に利用者フォルダのC1課題が足され、byId からも引ける
+    // 内蔵60題に利用者フォルダのC1課題が足され、byId からも引ける
     expect(payload.problems).toHaveLength(BUILTIN_ALL_PROBLEMS.length + 1);
     expect(byId.size).toBe(BUILTIN_ALL_PROBLEMS.length + 1);
     expect(byId.get('x-c1')?.mode).toBe('inspect-parts');
@@ -379,8 +379,8 @@ describe('loadContent のモードB以外の扱い（Plan 2A Task 17: SupportedP
     expect(row?.source).toBe('user');
   });
 
-  it('内蔵課題は72題（モードB 20 / C1 12 / C2 20 / D 20）', () => {
-    expect(BUILTIN_ALL_PROBLEMS).toHaveLength(72);
+  it('内蔵課題は216題（モードB 60 / C1 36 / C2 60 / D 60）', () => {
+    expect(BUILTIN_ALL_PROBLEMS).toHaveLength(216);
   });
 });
 

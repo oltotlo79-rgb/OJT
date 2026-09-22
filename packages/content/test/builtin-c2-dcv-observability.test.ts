@@ -18,6 +18,51 @@ import { powerUp } from '../src/runner.js';
 import type { FaultSpecData } from '../src/schema/faults.js';
 import type { Operation } from '../src/schema/operations.js';
 
+const expandedContactProblems = BUILTIN_INSPECT_REPAIR_PROBLEMS.filter(
+  (p) =>
+    Number(p.id.split('-')[1]) >= 21 &&
+    Array.isArray(p.faults) &&
+    p.faults.some((f) => f.kind.startsWith('contact-')),
+);
+
+describe('追加した接点故障も盤上の電圧で切り分けられる', () => {
+  it('追加した全20件の接点故障を検査対象に含む', () => {
+    expect(expandedContactProblems).toHaveLength(20);
+  });
+  it.each(expandedContactProblems)(
+    '$id: 操作列の中で故障接点の両端電圧に有意差がある',
+    (problem) => {
+      const { netlist: faulty, fault } = faultedNetlist(problem.id, 0);
+      if (!('partId' in fault.target)) throw new Error('接点の対象がありません');
+      const { com, no } = contactTerminals(fault.target.partId, fault.target.elementIndex);
+      const healthySim = new Simulation(healthyNetlist(problem.id));
+      const faultySim = new Simulation(faulty);
+      powerUp(healthySim);
+      powerUp(faultySim);
+      let cursor = 0;
+      let maximumDifference = 0;
+      for (let t = 0; t < problem.durationMs; t += 100) {
+        while (problem.operations[cursor] && problem.operations[cursor]!.t <= t) {
+          const operation = problem.operations[cursor++]!;
+          for (const sim of [healthySim, faultySim]) {
+            if (operation.action === 'press') sim.press(operation.target);
+            else sim.release(operation.target);
+          }
+        }
+        healthySim.run(t + 100);
+        faultySim.run(t + 100);
+        const healthy = measureVoltage(healthySim, toTerminalId(no), toTerminalId(com));
+        const defective = measureVoltage(faultySim, toTerminalId(no), toTerminalId(com));
+        maximumDifference = Math.max(maximumDifference, Math.abs(healthy.volts - defective.volts));
+      }
+      expect(
+        maximumDifference,
+        '健康な接点と比べて測定値が変化しない故障を出題しない',
+      ).toBeGreaterThan(5);
+    },
+  );
+});
+
 /**
  * 製品判断（2026-09-18、ユーザー）: モードC2では、訓練者は接点の故障
  * （`contact-resistive` / `contact-open` / `contact-welded`）を部品を外して調べるのではなく、

@@ -79,7 +79,7 @@ describe('通し練習を最後まで読める構成', () => {
         (block) =>
           !block.startsWith('課題の索引') && !block.startsWith('予測して、測って、確かめる'),
       );
-    const learning = source.split('## 予測して、測って、確かめる')[1]?.split('## 3Dの見かた')[0];
+    const learning = source.split('## 予測して、測って、確かめる')[1]?.split('## 3Dの見方')[0];
     expect(learning).toContain('測定例：リレーが動かない');
     expect(learning).toContain('動作例：自己保持の読み方');
     expect(learning).toContain('練習の振り返り');

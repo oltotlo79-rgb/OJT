@@ -37,7 +37,7 @@ const CHAPTER_TITLES = readdirSync(MANUAL_DIR)
 
 /** 画面 → 最初に出る節の見出し（`help/help-model.ts` の `HELP_SECTION_BY_SCREEN`）。 */
 const HOME_SECTION = 'このアプリでできること';
-const LIST_SECTION = '課題をえらぶ';
+const LIST_SECTION = '課題を選ぶ';
 const SETTINGS_SECTION = '設定の画面';
 const ASSEMBLE_SECTION = '回路を組み立てる';
 const SCHEMATIC_SECTION = '回路図を描く';
@@ -177,7 +177,7 @@ async function expectHelpOpensHere(sectionTitle: string): Promise<void> {
 }
 
 /**
- * もくじから節へ跳ぶ。
+ * 目次から節へ跳ぶ。
  * 章は**いまの節が入っている章だけ**が開いているので（`HelpDrawer` の `<details open>`）、
  * 畳んである章はまず見出しを押して開く。`chapterIndex` は `CHAPTER_TITLES` の位置。
  */
@@ -214,6 +214,10 @@ async function openProblem(modeKey: string, problemId: string): Promise<void> {
   await goHome();
   await page.getByTestId(`mode-${modeKey}`).click();
   await expect(page.getByTestId('problem-table')).toBeVisible();
+  await page
+    .getByTestId('grade-filter')
+    .getByRole('button', { name: 'すべて', exact: true })
+    .click();
   await page.getByTestId(`open-${problemId}`).click();
 }
 
@@ -257,6 +261,10 @@ test.describe('ヘルプ（§16 Phase 6 受入基準①②③⑥）', () => {
 
     await page.getByTestId('mode-assemble').click();
     await expect(page.getByTestId('problem-table')).toBeVisible();
+    await page
+      .getByTestId('grade-filter')
+      .getByRole('button', { name: 'すべて', exact: true })
+      .click();
     await expectHelpOpensHere(LIST_SECTION);
     await page.getByRole('button', { name: 'ホームへ戻る', exact: true }).click();
     await expect(page.getByTestId('mode-plc')).toBeVisible();
@@ -361,14 +369,14 @@ test.describe('ヘルプ（§16 Phase 6 受入基準①②③⑥）', () => {
     await expect(drawer).toBeHidden();
   });
 
-  test('受入基準③: もくじに全章が正本の順で出る', async () => {
+  test('受入基準③: 目次に全章が正本の順で出る', async () => {
     await goHome();
     await page.getByTestId('open-help').click();
     await expect(page.getByTestId('help-drawer')).toBeVisible();
     await expect(
       page.locator('[data-testid="help-contents"] details details > summary'),
     ).toHaveText([...CHAPTER_TITLES]);
-    // もくじから節へ跳べる（この節は図を載せている節でもある）
+    // 目次から節へ跳べる（この節は図を載せている節でもある）
     await showSection(2, 'screens/ホームの画面');
     await expect(page.getByTestId('help-section-title')).toHaveText('ホームの画面');
 
@@ -391,13 +399,13 @@ test.describe('ヘルプ（§16 Phase 6 受入基準①②③⑥）', () => {
     await expect(page.getByTestId('help-drawer')).toBeHidden();
   });
 
-  test('課題索引の全72個のIDが途中で折り返されない', async () => {
+  test('課題索引の全216個のIDが途中で折り返されない', async () => {
     await goHome();
     await setWindow(1280, 800);
     await page.getByTestId('open-help').click();
     await showSection(CHAPTER_TITLES.length - 1, 'tutorial-features/課題の索引');
     const ids = page.locator('[data-manual-table="problem-index"] tbody tr td:first-child');
-    await expect(ids).toHaveCount(72);
+    await expect(ids).toHaveCount(216);
     const broken = await ids.evaluateAll((cells) =>
       cells.flatMap((cell) => {
         const range = document.createRange();
@@ -417,7 +425,7 @@ test.describe('ヘルプ（§16 Phase 6 受入基準①②③⑥）', () => {
     await expect(page.getByTestId('viewport')).toBeVisible();
 
     try {
-      // 1280×800（いちばん狭い想定。設計仕様 §11 の最小幅）
+      // 1280×800（一番狭い想定。設計仕様 §11 の最小幅）
       await setWindow(1280, 800);
       await page.getByTestId('open-help').click();
       await expect(page.getByTestId('help-drawer')).toBeVisible();

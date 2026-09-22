@@ -1,3 +1,9 @@
+import {
+  EXTRA_ASSEMBLE,
+  EXTRA_INSPECT_PARTS,
+  EXTRA_INSPECT_REPAIR,
+  EXTRA_PLC,
+} from './expanded.js';
 import type { AssembleProblem } from '../schema/assemble.js';
 import {
   isAssembleProblem,
@@ -116,6 +122,7 @@ const BUILTIN_ASSEMBLE_JSON: readonly unknown[] = [
   flickerAlarm,
   conditionalHold,
   twoTimer,
+  ...EXTRA_ASSEMBLE,
 ];
 
 /** 内蔵のモードC1課題のJSON。 */
@@ -132,6 +139,7 @@ const BUILTIN_INSPECT_PARTS_JSON: readonly unknown[] = [
   bWeldMixedCheck,
   relayTimerMixedCheck,
   allTruthsCheck,
+  ...EXTRA_INSPECT_PARTS,
 ];
 
 /** 内蔵のモードC2課題のJSON。 */
@@ -156,6 +164,7 @@ const BUILTIN_INSPECT_REPAIR_JSON: readonly unknown[] = [
   c2ConditionalHold,
   c2TwoTimer,
   c2Random,
+  ...EXTRA_INSPECT_REPAIR,
 ];
 
 /** 内蔵のモードD課題のJSON。 */
@@ -180,6 +189,7 @@ const BUILTIN_PLC_JSON: readonly unknown[] = [
   d018,
   d019,
   d020,
+  ...EXTRA_PLC,
 ];
 
 /** 内蔵課題の検証に失敗したときに投げる。 */
@@ -223,28 +233,28 @@ export function ofMode<T extends SupportedProblem>(
   });
 }
 
-/** 内蔵のモードB課題（20題）。§7.9 */
+/** 内蔵のモードB課題（60題）。§7.9 */
 export const BUILTIN_ASSEMBLE_PROBLEMS: readonly AssembleProblem[] = ofMode(
   parseBuiltinProblems(BUILTIN_ASSEMBLE_JSON),
   isAssembleProblem,
   'モードB課題',
 );
 
-/** 内蔵のモードC1課題（12セット）。§7.9 */
+/** 内蔵のモードC1課題（36セット）。§7.9 */
 export const BUILTIN_INSPECT_PARTS_PROBLEMS: readonly InspectPartsProblem[] = ofMode(
   parseBuiltinProblems(BUILTIN_INSPECT_PARTS_JSON),
   isInspectPartsProblem,
   'モードC1課題',
 );
 
-/** 内蔵のモードC2課題（20題）。§7.9 */
+/** 内蔵のモードC2課題（60題）。§7.9 */
 export const BUILTIN_INSPECT_REPAIR_PROBLEMS: readonly InspectRepairProblem[] = ofMode(
   parseBuiltinProblems(BUILTIN_INSPECT_REPAIR_JSON),
   isInspectRepairProblem,
   'モードC2課題',
 );
 
-/** 内蔵のモードD課題（20題）。§7.9 */
+/** 内蔵のモードD課題（60題）。§7.9 */
 export const BUILTIN_PLC_PROBLEMS: readonly PlcProblem[] = ofMode(
   parseBuiltinProblems(BUILTIN_PLC_JSON),
   isPlcProblem,

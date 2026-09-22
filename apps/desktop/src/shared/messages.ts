@@ -68,7 +68,7 @@ export const MSG = {
   // --- Plan 6 Task 7 ---
   /** 同梱の取扱説明書（PDF）。取扱説明書 設計 §9 */
   manual: {
-    missing: '説明書（PDF）が見つかりません。この画面のもくじから同じ内容を読めます。',
+    missing: '説明書（PDF）が見つかりません。この画面の目次から同じ内容を読めます。',
     openFailed: (detail: string): string => `説明書（PDF）を開けませんでした: ${detail}`,
   },
   // --- /Plan 6 Task 7 ---

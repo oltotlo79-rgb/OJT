@@ -1,5 +1,5 @@
 import type { WireColor } from '@ojt/circuit-sim';
-import { useEffect, useRef, useState, type JSX } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState, type JSX } from 'react';
 import { HelpButton } from '../help/HelpButton.js';
 import { useHelpStore } from '../help/help-store.js';
 import { JA } from '../i18n/ja.js';
@@ -159,10 +159,49 @@ export function Toolbar({
    * 少なく出てしまう）。畳むのは見た目だけなので、その状態は画面の中で持つ。
    */
   const [hintFolded, setHintFolded] = useState(false);
+  const hintHost = useRef<HTMLDivElement>(null);
+  const hintButton = useRef<HTMLButtonElement>(null);
+  const hintId = useId();
+  const [hintPosition, setHintPosition] = useState({ left: 12, top: 60 });
   const stages = hints ?? [];
   const allOpen = hintStage >= stages.length;
   const hintShown = hintStage > 0 && !hintFolded;
   const openStages = hintShown ? stages.slice(0, hintStage) : [];
+  useLayoutEffect(() => {
+    if (!hintShown) return;
+    const place = (): void => {
+      const bounds = hintButton.current?.getBoundingClientRect();
+      if (!bounds) return;
+      const width = Math.min(440, window.innerWidth - 24);
+      setHintPosition({
+        left: Math.max(12, Math.min(bounds.left, window.innerWidth - width - 12)),
+        top: bounds.bottom + 8,
+      });
+    };
+    place();
+    window.addEventListener('resize', place);
+    return () => window.removeEventListener('resize', place);
+  }, [hintShown]);
+  useEffect(() => {
+    if (!hintShown) return;
+    const outside = (event: PointerEvent): void => {
+      if (event.target instanceof Node && !hintHost.current?.contains(event.target))
+        setHintFolded(true);
+    };
+    const escape = (event: KeyboardEvent): void => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      event.stopPropagation();
+      setHintFolded(true);
+      hintButton.current?.focus();
+    };
+    document.addEventListener('pointerdown', outside);
+    document.addEventListener('keydown', escape, true);
+    return () => {
+      document.removeEventListener('pointerdown', outside);
+      document.removeEventListener('keydown', escape, true);
+    };
+  }, [hintShown]);
   return (
     <div
       className={styles.toolbar}
@@ -354,40 +393,69 @@ export function Toolbar({
           （1級形式は回路図が出ないので第3段を作らない）ので、ここは並びの長さに従うだけ。
         */}
         {stages.length === 0 ? null : (
-          <div className={styles.hintHost}>
+          <div className={styles.hintHost} ref={hintHost}>
             <button
               type="button"
               className={styles.hintToggle}
               data-testid="hint-button"
+              ref={hintButton}
               aria-expanded={hintShown}
+              aria-controls={hintId}
               onClick={() => {
-                // 畳んでいたら開き直すだけ（段は増やさない）
-                if (hintFolded) {
-                  setHintFolded(false);
-                  return;
-                }
-                // 最後まで開いたら同じボタンで畳む（押しても何も起きない状態にしない）
-                if (allOpen) {
+                if (hintShown) {
                   setHintFolded(true);
                   return;
                 }
-                revealHint(stages.length);
+                setHintFolded(false);
+                if (hintStage === 0) revealHint(stages.length);
               }}
             >
-              {!hintShown ? JA.hint.label : allOpen ? JA.hint.close : JA.hint.more}
+              {hintShown ? JA.hint.close : JA.hint.label}
             </button>
             {openStages.length === 0 ? null : (
-              <div className={styles.hintPanel} data-testid="hint-panel" role="status">
+              <div
+                className={styles.hintPanel}
+                data-testid="hint-panel"
+                role="dialog"
+                aria-label={JA.hint.label}
+                id={hintId}
+                style={{ ...hintPosition, maxHeight: `calc(100dvh - ${hintPosition.top + 12}px)` }}
+              >
+                <div className={styles.hintHeader}>
+                  <strong>
+                    {JA.hint.label} {hintStage} / {stages.length}
+                  </strong>
+                  <button
+                    type="button"
+                    data-testid="hint-close"
+                    onClick={() => {
+                      setHintFolded(true);
+                      hintButton.current?.focus();
+                    }}
+                  >
+                    {JA.hint.close}
+                  </button>
+                </div>
                 {openStages.map((stage) => (
                   <p key={stage.stage} className={styles.hintStage}>
                     <span className={styles.hintStageTitle}>{stage.title}</span>
                     {stage.text}
                   </p>
                 ))}
+                {!allOpen ? (
+                  <button
+                    type="button"
+                    data-testid="hint-next"
+                    onClick={() => revealHint(stages.length)}
+                  >
+                    {JA.hint.more}
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   data-testid="hint-explanation"
                   onClick={() => {
+                    setHintFolded(true);
                     useHelpStore.setState({
                       open: true,
                       sectionId: 'tutorial-features/予測して、測って、確かめる',

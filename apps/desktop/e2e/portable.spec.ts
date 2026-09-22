@@ -23,7 +23,7 @@ function resourcesDirectory(page: Page): string {
 }
 
 /** distの後に e2e:packaged で実行。ユーザーの設定やインストール先を使わない。 */
-test('EXE1個から初回ガイド・72課題・回路の合格・ヘルプ・PLCと終了時の後始末を確認する', async () => {
+test('EXE1個から初回ガイド・216課題・回路の合格・ヘルプ・PLCと終了時の後始末を確認する', async () => {
   const app = await launchPortable();
   let extracted: string | undefined;
   try {
@@ -46,7 +46,7 @@ test('EXE1個から初回ガイド・72課題・回路の合格・ヘルプ・PL
         return out;
       }, {});
     });
-    expect(counts).toEqual({ assemble: 20, 'inspect-parts': 12, 'inspect-repair': 20, plc: 20 });
+    expect(counts).toEqual({ assemble: 60, 'inspect-parts': 36, 'inspect-repair': 60, plc: 60 });
     await page.getByTestId('mode-assemble').click();
     await page.getByTestId('open-b-001').click();
     await expect(page.locator('[data-testid="viewport"] canvas')).toBeVisible({ timeout: 30_000 });

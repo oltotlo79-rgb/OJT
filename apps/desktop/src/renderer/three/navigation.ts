@@ -45,24 +45,20 @@ export interface OrbitControlsLike {
 export type MiddleDragAction = 'rotate' | 'pan' | 'dolly';
 
 /**
- * 中ボタンドラッグの割り当て。Blender と同じく
- * 中＝回転／Shift＋中＝平行移動／Ctrl＋中＝ズーム（ドリー）。
+ * 中ボタンドラッグの割り当て。
+ * 盤面は修飾キーの有無によらず平行移動する。回転はキューブ、拡大はホイールに分ける。
  *
  * 両方押されているときは**平行移動**にする（Blender では Ctrl+Shift+中がまた別の操作だが、
  * この盤では使い道が無く、誤って視点の距離が飛ぶより画が平行に動くほうが立て直しやすい）。
  * three の `OrbitControls` には修飾キー付きのボタン割り当てが無いので、
  * `keydown` / `keyup` のたびにこの関数で `mouseButtons.MIDDLE` を差し替える（`BoardScene`）。
  */
-export function middleButtonActionFor({
-  shift,
-  ctrl,
-}: {
+export function middleButtonActionFor(_modifiers: {
   shift: boolean;
   ctrl: boolean;
 }): MiddleDragAction {
-  if (shift) return 'pan';
-  if (ctrl) return 'dolly';
-  return 'rotate';
+  void _modifiers;
+  return 'pan';
 }
 
 /**
@@ -266,7 +262,7 @@ export const GIZMO_HIT_BOXES: readonly GizmoHitBox[] = GIZMO_TARGETS.filter(
 });
 
 /**
- * 指した向き → 26個のうちいちばん近い当たり判定。§12.2
+ * 指した向き → 26個のうち一番近い当たり判定。§12.2
  * 面の法線（`event.face.normal`）からでも、辺・角の箱の向きからでも引ける。
  */
 export function gizmoTargetForDirection(direction: readonly [number, number, number]): GizmoTarget {
@@ -319,9 +315,9 @@ export function cameraReadoutText(readout: CameraReadout): string {
     az: round(readout.azimuth, 4),
     polar: round(readout.polar, 4),
     dist: round(readout.distance, 2),
-    tx: round(readout.target[0], 2),
-    ty: round(readout.target[1], 2),
-    tz: round(readout.target[2], 2),
+    tx: round(readout.target[0], 4),
+    ty: round(readout.target[1], 4),
+    tz: round(readout.target[2], 4),
     ...(readout.position === undefined
       ? {}
       : { position: readout.position.map((v) => round(v, 4)) }),

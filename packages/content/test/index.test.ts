@@ -531,9 +531,9 @@ describe('judge.js exports', () => {
 });
 
 describe('builtin/index.js exports', () => {
-  it('exposes exactly the twenty locked builtin assemble problems (§7.9)', () => {
+  it('exposes exactly the sixty builtin assemble problems (§7.9)', () => {
     expect(BUILTIN_PROBLEMS).toBe(BUILTIN_ASSEMBLE_PROBLEMS);
-    expect(BUILTIN_PROBLEMS).toHaveLength(20);
+    expect(BUILTIN_PROBLEMS).toHaveLength(60);
     expect(findBuiltinProblem('b-001')?.id).toBe('b-001');
     expect(findBuiltinProblem('nope')).toBeUndefined();
     expect(() => parseBuiltinProblems([{ mode: 'assemble' }])).toThrow(BuiltinProblemError);
@@ -562,10 +562,10 @@ describe('Phase 2A の公開API（バレル経由）', () => {
   });
 
   it('exposes the built-in C1 and C2 problems (§7.9)', () => {
-    expect(BUILTIN_INSPECT_PARTS_PROBLEMS).toHaveLength(12);
-    expect(BUILTIN_INSPECT_REPAIR_PROBLEMS).toHaveLength(20);
+    expect(BUILTIN_INSPECT_PARTS_PROBLEMS).toHaveLength(36);
+    expect(BUILTIN_INSPECT_REPAIR_PROBLEMS).toHaveLength(60);
     // モードB 20 ＋ C1 12 ＋ C2 20 ＋ D 20
-    expect(BUILTIN_ALL_PROBLEMS).toHaveLength(72);
+    expect(BUILTIN_ALL_PROBLEMS).toHaveLength(216);
   });
 
   it('exposes the C1 domain: check circuit, diagnosis table and thresholds (§9.1)', () => {
@@ -632,9 +632,9 @@ describe('Phase 2A の公開API（バレル経由）', () => {
 });
 
 describe('Phase 3 の公開API（バレル経由。Task 20）', () => {
-  it('内蔵課題は72題（モードB 20 / C1 12 / C2 20 / D 20）', () => {
-    expect(BUILTIN_ALL_PROBLEMS).toHaveLength(72);
-    expect(BUILTIN_PLC_PROBLEMS).toHaveLength(20);
+  it('内蔵課題は216題（モードB 60 / C1 36 / C2 60 / D 60）', () => {
+    expect(BUILTIN_ALL_PROBLEMS).toHaveLength(216);
+    expect(BUILTIN_PLC_PROBLEMS).toHaveLength(60);
   });
 
   it('exposes the ladder schema pieces (schema/ladder.js)', () => {

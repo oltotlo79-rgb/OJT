@@ -666,6 +666,10 @@ export function PlcSession(): JSX.Element {
       */}
       <StepGuide
         steps={steps}
+        actions={{
+          wire: () => useStore.getState().setLadderView('board'),
+          ladder: () => useStore.getState().setLadderView('ladder'),
+        }}
         hint={stepHintText(currentStepKey, profile)}
         testId={{ band: `plc-guide`, step: (key) => `plc-step-${key}`, hint: `plc-hint` }}
       >

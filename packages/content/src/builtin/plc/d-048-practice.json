@@ -1,0 +1,393 @@
+{
+  "formatVersion": 1,
+  "id": "d-048",
+  "mode": "plc",
+  "title": "PLC 二条件成立と第三入力禁止・継続確認後に点灯",
+  "grade": 1,
+  "difficulty": 4,
+  "tags": ["and-or", "timer", "sequence"],
+  "description": "PB1とPB2を押し、PB3を放している間、タイマT1を励磁します。条件が1秒続いたらPL1を点灯し、待機中のPL2を消灯します。途中で条件が外れたら両方を消灯し、経過時間をリセットしてください。再成立では最初から計時します。 PL3は条件成立中に点灯し、PL4はPB3を押している間だけ1秒クロックで点滅させます。常時ONとクロックは別の特殊接点なので、メーカー別の特殊接点一覧で確認してください。 各出力は盤のリレーを介して接続し、PLC電源は壁コンセントから取ります。",
+  "timeLimit": {
+    "standardMin": 40,
+    "cutoffMin": 60
+  },
+  "board": {
+    "boardId": "board-jipm-std",
+    "socketRoles": {
+      "S1": "CR1",
+      "S2": "CR2",
+      "S3": "CR3",
+      "S7": "CHK",
+      "S4": "CR4"
+    }
+  },
+  "inventory": [
+    {
+      "kind": "relay-my4n",
+      "count": 4
+    }
+  ],
+  "plc": {
+    "vendor": "mitsubishi",
+    "model": "FX5U"
+  },
+  "io": {
+    "mode": "fixed",
+    "wiring": "sink",
+    "inputs": [
+      {
+        "x": 0,
+        "pb": "PB1"
+      },
+      {
+        "x": 1,
+        "pb": "PB2"
+      },
+      {
+        "x": 2,
+        "pb": "PB3"
+      }
+    ],
+    "outputs": [
+      {
+        "y": 0,
+        "cr": "CR1",
+        "pl": "PL1"
+      },
+      {
+        "y": 1,
+        "cr": "CR2",
+        "pl": "PL2"
+      },
+      {
+        "y": 2,
+        "cr": "CR3",
+        "pl": "PL3"
+      },
+      {
+        "y": 3,
+        "cr": "CR4",
+        "pl": "PL4"
+      }
+    ]
+  },
+  "referenceLadder": {
+    "networks": [
+      {
+        "id": "term0",
+        "comment": "成立条件1",
+        "cells": [
+          [
+            {
+              "kind": "contact",
+              "type": "NO",
+              "device": {
+                "kind": "input",
+                "index": 0
+              }
+            },
+            {
+              "kind": "contact",
+              "type": "NO",
+              "device": {
+                "kind": "input",
+                "index": 1
+              }
+            },
+            {
+              "kind": "contact",
+              "type": "NC",
+              "device": {
+                "kind": "input",
+                "index": 2
+              }
+            },
+            {
+              "kind": "coil",
+              "type": "OUT",
+              "device": {
+                "kind": "internal",
+                "index": 0
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "id": "condition",
+        "comment": "条件の並列結合",
+        "cells": [
+          [
+            {
+              "kind": "contact",
+              "type": "NO",
+              "device": {
+                "kind": "internal",
+                "index": 0
+              }
+            },
+            {
+              "kind": "coil",
+              "type": "OUT",
+              "device": {
+                "kind": "internal",
+                "index": 10
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "id": "timing",
+        "comment": "条件が途切れたら計時をリセット",
+        "cells": [
+          [
+            {
+              "kind": "contact",
+              "type": "NO",
+              "device": {
+                "kind": "internal",
+                "index": 10
+              }
+            },
+            {
+              "kind": "timer",
+              "type": "TON",
+              "device": {
+                "kind": "timer",
+                "index": 0
+              },
+              "presetMs": 1000
+            }
+          ]
+        ]
+      },
+      {
+        "id": "output",
+        "comment": "課題の出力",
+        "cells": [
+          [
+            {
+              "kind": "contact",
+              "type": "NO",
+              "device": {
+                "kind": "internal",
+                "index": 10
+              }
+            },
+            {
+              "kind": "contact",
+              "type": "NO",
+              "device": {
+                "kind": "timer",
+                "index": 0
+              }
+            },
+            {
+              "kind": "coil",
+              "type": "OUT",
+              "device": {
+                "kind": "output",
+                "index": 0
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "id": "waiting",
+        "comment": "待機または経過表示",
+        "cells": [
+          [
+            {
+              "kind": "contact",
+              "type": "NO",
+              "device": {
+                "kind": "internal",
+                "index": 10
+              }
+            },
+            {
+              "kind": "contact",
+              "type": "NC",
+              "device": {
+                "kind": "timer",
+                "index": 0
+              }
+            },
+            {
+              "kind": "coil",
+              "type": "OUT",
+              "device": {
+                "kind": "output",
+                "index": 1
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "id": "conditionLamp",
+        "comment": "条件成立表示",
+        "cells": [
+          [
+            {
+              "kind": "contact",
+              "type": "NO",
+              "device": {
+                "kind": "internal",
+                "index": 10
+              }
+            },
+            {
+              "kind": "coil",
+              "type": "OUT",
+              "device": {
+                "kind": "output",
+                "index": 2
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "id": "clock",
+        "comment": "PB3を押す間は1秒クロックで点滅",
+        "cells": [
+          [
+            {
+              "kind": "contact",
+              "type": "NO",
+              "device": {
+                "kind": "input",
+                "index": 2
+              }
+            },
+            {
+              "kind": "contact",
+              "type": "NO",
+              "device": {
+                "kind": "special",
+                "index": 2
+              }
+            },
+            {
+              "kind": "coil",
+              "type": "OUT",
+              "device": {
+                "kind": "output",
+                "index": 3
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "id": "end",
+        "cells": [
+          [
+            {
+              "kind": "end"
+            }
+          ]
+        ]
+      }
+    ],
+    "comments": {
+      "X0": "入力PB1",
+      "X1": "入力PB2",
+      "X2": "入力PB3",
+      "M10": "条件成立",
+      "Y0": "判定対象PL1",
+      "T0": "継続時間1秒",
+      "SP2": "1秒クロック"
+    }
+  },
+  "wiringRequired": true,
+  "operations": [
+    {
+      "t": 200,
+      "target": "PB1",
+      "action": "press"
+    },
+    {
+      "t": 200,
+      "target": "PB2",
+      "action": "press"
+    },
+    {
+      "t": 800,
+      "target": "PB1",
+      "action": "release"
+    },
+    {
+      "t": 800,
+      "target": "PB2",
+      "action": "release"
+    },
+    {
+      "t": 1100,
+      "target": "PB1",
+      "action": "press"
+    },
+    {
+      "t": 1100,
+      "target": "PB2",
+      "action": "press"
+    },
+    {
+      "t": 1700,
+      "target": "PB1",
+      "action": "release"
+    },
+    {
+      "t": 1700,
+      "target": "PB2",
+      "action": "release"
+    },
+    {
+      "t": 2600,
+      "target": "PB1",
+      "action": "press"
+    },
+    {
+      "t": 4400,
+      "target": "PB2",
+      "action": "press"
+    },
+    {
+      "t": 6200,
+      "target": "PB1",
+      "action": "release"
+    },
+    {
+      "t": 8000,
+      "target": "PB3",
+      "action": "press"
+    },
+    {
+      "t": 9800,
+      "target": "PB1",
+      "action": "press"
+    },
+    {
+      "t": 11600,
+      "target": "PB2",
+      "action": "release"
+    },
+    {
+      "t": 13400,
+      "target": "PB1",
+      "action": "release"
+    },
+    {
+      "t": 15200,
+      "target": "PB3",
+      "action": "release"
+    }
+  ],
+  "durationMs": 17600,
+  "judge": {
+    "compareSignals": ["PL1", "PL2", "PL3", "PL4"]
+  }
+}

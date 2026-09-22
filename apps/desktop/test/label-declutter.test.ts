@@ -102,7 +102,7 @@ describe('名札の重なり取り（`pickVisibleLabels`）', () => {
     ]);
   });
 
-  it('既定の優先度は「いちばん譲る」', () => {
+  it('既定の優先度は「一番譲る」', () => {
     expect(DEFAULT_LABEL_RANK).toBeGreaterThan(6);
   });
 });

@@ -261,7 +261,26 @@ const TIMER_FACE_MARK_MM = 1.8;
 function sharedTimerFaceTexture(widthMm: number, heightMm: number): Texture | undefined {
   return bakeSharedTexture('part', `timer-face:${widthMm}x${heightMm}`, () =>
     makeCanvasTexture(widthMm, heightMm, (ctx) => {
-      ctx.fillStyle = '#E8E4DA';
+      ctx.fillStyle = '#26313b';
+      ctx.strokeStyle = '#46535e';
+      ctx.lineWidth = 0.16 * PX_PER_MM;
+      const dialX = widthMm / 2;
+      const dialY = TIMER_DIAL_RADIUS_MM + 3;
+      for (let tick = 0; tick <= 10; tick += 1) {
+        const angle = -TIMER_DIAL_SWEEP_RAD / 2 + (tick * TIMER_DIAL_SWEEP_RAD) / 10;
+        const inner = TIMER_DIAL_RADIUS_MM + 0.6;
+        const outer = inner + (tick % 5 === 0 ? 1.7 : 1);
+        ctx.beginPath();
+        ctx.moveTo(
+          (dialX + Math.sin(angle) * inner) * PX_PER_MM,
+          (dialY - Math.cos(angle) * inner) * PX_PER_MM,
+        );
+        ctx.lineTo(
+          (dialX + Math.sin(angle) * outer) * PX_PER_MM,
+          (dialY - Math.cos(angle) * outer) * PX_PER_MM,
+        );
+        ctx.stroke();
+      }
       ctx.font = labelFont(TIMER_FACE_MARK_MM);
       // LED の**手前**に呼び名を印字する（キャンバスの下＝盤の手前）
       const y = (heightMm - FRONT_INSET_MM + 4.6) * PX_PER_MM;

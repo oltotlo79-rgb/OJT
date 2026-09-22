@@ -108,3 +108,17 @@ describe('用語集', () => {
     expect(explanation.length, `用語集の「${term}」の説明が短すぎます`).toBeGreaterThanOrEqual(20);
   });
 });
+
+it('説明書の基本用語は自然な漢字表記を保つ', () => {
+  expect(wholeProse()).not.toMatch(/もくじ|まん中|課題をえらぶ|見かた|部品をのせ|こわれ|まちがい/u);
+});
+
+it('3Dの導入と実習の両方でキューブ回転・平行移動・Alt配線を案内する', () => {
+  for (const name of ['02-screens.md', '13-tutorial-modes.md', '14-tutorial-features.md']) {
+    const prose = readFileSync(join(MANUAL_DIR, name), 'utf8');
+    expect(prose, name).toMatch(/キューブ[\s\S]*回転/u);
+    expect(prose, name).toMatch(/角度を保ったまま|角度を保って/u);
+    expect(prose, name).toContain('Alt');
+    expect(prose, name).not.toMatch(/空白を左ドラッグして回転|裏側や真下には回り込め/u);
+  }
+});

@@ -32,13 +32,13 @@ import { viewKeyAction } from '../src/renderer/session/viewport-keys.js';
  */
 
 describe('middleButtonActionFor（中ボタンの割り当て）', () => {
-  it('修飾キーなしは回転（Blender の中ドラッグ）', () => {
-    expect(middleButtonActionFor({ shift: false, ctrl: false })).toBe('rotate');
+  it('修飾キーなしで平行移動する', () => {
+    expect(middleButtonActionFor({ shift: false, ctrl: false })).toBe('pan');
   });
 
-  it('Shift で平行移動、Ctrl でズーム', () => {
+  it('修飾キーがあっても角度を保った平行移動にする', () => {
     expect(middleButtonActionFor({ shift: true, ctrl: false })).toBe('pan');
-    expect(middleButtonActionFor({ shift: false, ctrl: true })).toBe('dolly');
+    expect(middleButtonActionFor({ shift: false, ctrl: true })).toBe('pan');
   });
 
   it('両方押されていたら平行移動（距離が飛ぶより立て直しやすい）', () => {
@@ -55,10 +55,10 @@ describe('middleButtonActionFor（中ボタンの割り当て）', () => {
     expect(mouseButtonAssignment('dolly', true)).toBe('dolly');
   });
 
-  it('中ボタンに入れる値は 素＝回転 / Shift＝回転（＝平行移動になる）/ Ctrl＝ズーム', () => {
-    expect(middleButtonAssignmentFor({ shift: false, ctrl: false })).toBe('rotate');
+  it('threeの修飾キーによる反転を補正し、常に平行移動になる割当を返す', () => {
+    expect(middleButtonAssignmentFor({ shift: false, ctrl: false })).toBe('pan');
     expect(middleButtonAssignmentFor({ shift: true, ctrl: false })).toBe('rotate');
-    expect(middleButtonAssignmentFor({ shift: false, ctrl: true })).toBe('dolly');
+    expect(middleButtonAssignmentFor({ shift: false, ctrl: true })).toBe('rotate');
     expect(middleButtonAssignmentFor({ shift: true, ctrl: true })).toBe('rotate');
   });
 });
@@ -235,7 +235,7 @@ describe('ビューキューブの26箇所（面6・辺12・角8）。2026-09-19
     expect(gizmoTargetById('top')?.label).toBe('上');
   });
 
-  it('指した向きからいちばん近い箇所を引ける（面の法線・辺・角）', () => {
+  it('指した向きから一番近い箇所を引ける（面の法線・辺・角）', () => {
     expect(gizmoTargetForDirection([0, 0, 1]).id).toBe('front');
     expect(gizmoTargetForDirection([0, 0, 1]).preset).toBe('front');
     expect(gizmoTargetForDirection([-1, 0, 0]).id).toBe('left');
@@ -339,8 +339,8 @@ describe('cameraReadoutText（E2E へ出すカメラの状態）', () => {
       az: 0.1235,
       polar: 1.2346,
       dist: 346.79,
-      tx: 1.23,
-      ty: -2.35,
+      tx: 1.234,
+      ty: -2.345,
       tz: 0,
     });
   });

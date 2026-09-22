@@ -70,7 +70,7 @@ describe('F1（決定表#17）', () => {
       useStore.getState().setRoute('list');
     });
     fireEvent.keyDown(window, { key: 'F1' });
-    expect(screen.getByTestId('help-section-title')).toHaveTextContent('課題をえらぶ');
+    expect(screen.getByTestId('help-section-title')).toHaveTextContent('課題を選ぶ');
   });
 });
 

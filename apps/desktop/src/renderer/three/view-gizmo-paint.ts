@@ -49,7 +49,7 @@ export const GIZMO_COLORS = {
 } as const;
 
 /** 下地の透け具合（明るい盤の上でもキューブが浮くぎりぎりの濃さ）。 */
-export const GIZMO_PLATE_OPACITY = 0.6;
+export const GIZMO_PLATE_OPACITY = 0.25;
 
 /** 面のメッシュの名前（当たり判定の箱と区別する）。 */
 export const GIZMO_FACE_MESH_NAME = 'view-cube-faces';

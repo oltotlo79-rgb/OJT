@@ -266,53 +266,42 @@ test.describe('Blender 風の3D操作（§12.2）', () => {
     await shot(app, '31-nav-full-orbit-return');
   });
 
-  test('中ドラッグで回転、Shift＋中ドラッグで平行移動、ホイールでズーム', async () => {
-    await selectPreset(page, '正面');
-    await page.waitForTimeout(600);
-    const box = await canvasBox(page);
-    const cx = box.x + box.w / 2;
-    const cy = box.y + box.h / 2;
-
-    /*
-     * ここは「効いているか」だけを見るので、慣性が完全に減衰し切るのは待たない
-     * （減衰はフレーム単位で、SwiftShader では実時間が数秒掛かる。§15 の注記）。
-     */
-    // 中ドラッグ＝回転
-    const beforeOrbit = await camera(page);
-    await page.mouse.move(cx, cy);
-    await page.mouse.down({ button: 'middle' });
-    for (let step = 1; step <= 6; step += 1) await page.mouse.move(cx + step * 20, cy);
-    await page.mouse.up({ button: 'middle' });
-    await page.waitForTimeout(700);
-    const afterOrbit = await camera(page);
-    expect(Math.abs(afterOrbit.az - beforeOrbit.az)).toBeGreaterThan(0.2);
-    expect(afterOrbit.tx).toBeCloseTo(beforeOrbit.tx, 1);
-    await shot(app, '22-nav-middle-drag-orbit');
-
-    // Shift＋中ドラッグ＝平行移動（注視点が動く）
-    await page.keyboard.down('Shift');
-    await page.mouse.move(cx, cy);
-    await page.mouse.down({ button: 'middle' });
-    for (let step = 1; step <= 6; step += 1) await page.mouse.move(cx + step * 17, cy);
-    await page.mouse.up({ button: 'middle' });
-    await page.keyboard.up('Shift');
-    await page.waitForTimeout(700);
-    const afterPan = await camera(page);
-    const moved = Math.hypot(
-      afterPan.tx - afterOrbit.tx,
-      afterPan.ty - afterOrbit.ty,
-      afterPan.tz - afterOrbit.tz,
-    );
-    expect(moved).toBeGreaterThan(5);
-    await shot(app, '23-nav-shift-middle-pan');
-
-    // ホイール＝ズーム（注視点までの距離が縮む）
-    await page.mouse.move(cx, cy);
-    await page.mouse.wheel(0, -600);
-    await page.waitForTimeout(700);
-    const afterZoom = await camera(page);
-    expect(afterZoom.dist).toBeLessThan(afterPan.dist - 10);
-    await shot(app, '24-nav-wheel-zoom');
+  test('盤面は左右中ドラッグで角度を保って移動し、ホイールで拡大できる', async () => {
+    test.setTimeout(120_000);
+    for (const key of ['Numpad1', 'Numpad7', 'Control+Numpad7']) {
+      await page.keyboard.press(key);
+      await page.waitForTimeout(700);
+      const box = await canvasBox(page);
+      const x = box.x + box.w - 80;
+      const y = box.y + box.h - 100;
+      for (const button of ['left', 'right', 'middle'] as const) {
+        const before = await camera(page);
+        await page.mouse.move(x, y);
+        await page.mouse.down({ button });
+        await page.mouse.move(x - 80, y - 35, { steps: 8 });
+        await page.mouse.up({ button });
+        await page.waitForTimeout(800);
+        const after = await camera(page);
+        const beforeTarget = [before.tx, before.ty, before.tz];
+        const afterTarget = [after.tx, after.ty, after.tz];
+        expect(Math.hypot(...afterTarget.map((v, i) => v - beforeTarget[i]!))).toBeGreaterThan(5);
+        for (let i = 0; i < 3; i += 1) {
+          expect(after.position[i]! - afterTarget[i]!).toBeCloseTo(
+            before.position[i]! - beforeTarget[i]!,
+            2,
+          );
+          expect(after.up[i]).toBeCloseTo(before.up[i]!, 4);
+        }
+        expect(after.dist).toBeCloseTo(before.dist, 2);
+        await expect(page.getByTestId('status-overlay')).toContainText('端子未選択');
+      }
+      const beforeZoom = await camera(page);
+      await page.mouse.move(box.x + box.w / 2, box.y + box.h / 2);
+      await page.mouse.wheel(0, -300);
+      await page.waitForTimeout(700);
+      expect((await camera(page)).dist).toBeLessThan(beforeZoom.dist - 10);
+    }
+    await shot(app, '24-nav-pan-wheel-zoom');
   });
 
   test('テンキーで視点が切り替わる（1/3/7 と Ctrl、Home で全体）', async () => {
@@ -367,11 +356,11 @@ test.describe('Blender 風の3D操作（§12.2）', () => {
     await shot(app, '28-nav-cube-face-click');
   });
 
-  test('視点を回したドラッグでは端子を拾わない（配線が始まらない）', async () => {
+  test('視点を移動したドラッグでは端子を拾わない（配線が始まらない）', async () => {
     await selectPreset(page, '正面');
     await page.waitForTimeout(700);
     const box = await canvasBox(page);
-    // 盤の真ん中あたり（端子が並ぶ帯）から左ドラッグで回す
+    // 盤の真ん中あたり（端子が並ぶ帯）から左ドラッグで移動する
     const x = box.x + box.w / 2;
     const y = box.y + box.h / 2;
     await page.mouse.move(x, y);

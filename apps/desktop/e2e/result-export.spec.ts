@@ -44,6 +44,10 @@ for (const [mode, id] of [
     try {
       await watchReportErrors(app);
       await page.getByTestId(`mode-${mode}`).click();
+      await page
+        .getByTestId('grade-filter')
+        .getByRole('button', { name: 'すべて', exact: true })
+        .click();
       await page.getByTestId(`open-${id}`).click();
       if (mode === 'plc') {
         await page.getByTestId('view-ladder').click();

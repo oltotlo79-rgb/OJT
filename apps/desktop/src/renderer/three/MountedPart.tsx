@@ -10,7 +10,8 @@ import type { ThreeEvent } from '@react-three/fiber';
 import { BoxGeometry, EdgesGeometry } from 'three';
 import { RELAY_BODY_COLOR, SOCKET_SELECTED_COLOR, TIMER_BODY_COLOR } from '../session/colors.js';
 import { JA_3D } from '../i18n/ja.js';
-import { sharedMaterial, UNIT_BOX } from './materials.js';
+import { sharedMaterial } from './materials.js';
+import { ComponentDetails, RELAY_SHELL, sharedHousing } from './ComponentDetails.js';
 import { PartIndicator, type MountedBodyBox } from './PartIndicator.js';
 import { toScene } from './coords.js';
 
@@ -62,7 +63,7 @@ const SOCKET_TOP_Z_MM = 9;
  * （レビュー指摘: 装着したリレーがほとんど見えない）。本体は端子のティアを避けて置いてあるので、
  * 0.85 まで上げて深度も書き、代わりに稜線を描いて箱として認識できるようにする。
  */
-const BODY_OPACITY = 0.85;
+const BODY_OPACITY = 1;
 /** 稜線の色（暗い本体の輪郭を盤の上で見せる）。 */
 const EDGE_COLOR = '#C9D2DC';
 /** 選択中の稜線の色（部品パネルのカードが指しているソケット）。利用者要望 2026-09-19 */
@@ -209,23 +210,25 @@ export function MountedPart({
    * 部品を付け外しするたびに `MeshStandardMaterial` と `EdgesGeometry` が積み上がっていた。
    * 色は2種（リレー／タイマ）、寸法は全ソケット共通なので、実体は各1個で足りる。
    */
-  const bodyMaterial = sharedMaterial(bodyColor, {
-    transparent: true,
-    opacity: BODY_OPACITY,
-    roughness: 0.5,
-    metalness: 0.2,
-  });
+  const bodyMaterial =
+    part.kind === 'relay-my4n'
+      ? RELAY_SHELL
+      : sharedMaterial(bodyColor, {
+          transparent: false,
+          opacity: BODY_OPACITY,
+          roughness: 0.5,
+          metalness: 0.05,
+        });
   const edges = sharedBodyEdges(width, height);
   return (
     <group name={`mounted-${socket.id}`}>
       {/* 本体の箱。ここだけがクリックを受け、押すとそのソケットが選ばれる（利用者要望 2026-09-19） */}
       <mesh
-        castShadow
+        castShadow={part.kind !== 'relay-my4n'}
         name={`mounted-body-${socket.id}`}
-        geometry={UNIT_BOX}
+        geometry={sharedHousing(width, height, BODY_HEIGHT_MM)}
         material={bodyMaterial}
         position={center}
-        scale={[width, height, BODY_HEIGHT_MM]}
         onClick={(event: ThreeEvent<MouseEvent>) => {
           event.stopPropagation();
           onPickSocket(socket.id, true);
@@ -248,6 +251,13 @@ export function MountedPart({
           event.stopPropagation();
           onReleaseSocket(socket.id, true);
         }}
+      />
+      <ComponentDetails
+        relay={part.kind === 'relay-my4n'}
+        energized={energized}
+        width={width}
+        height={height}
+        center={center}
       />
       {/* 箱の輪郭。半透明のままでも「そこに部品が載っている」ことが分かるようにする */}
       <lineSegments geometry={edges} position={center} raycast={noPick}>

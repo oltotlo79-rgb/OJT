@@ -16,6 +16,10 @@ for (const [mode, id] of [
     });
     try {
       await page.getByTestId(`mode-${mode}`).click();
+      await page
+        .getByTestId('grade-filter')
+        .getByRole('button', { name: 'すべて', exact: true })
+        .click();
       await page.getByTestId(`open-${id}`).click();
       if (mode === 'assemble') {
         await page.getByTestId('socket-list-S1').click();

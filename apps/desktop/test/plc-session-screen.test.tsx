@@ -62,6 +62,19 @@ afterEach(() => {
 });
 
 describe('モードDのセッション画面（§10.1 / §12.1）', () => {
+  it('手順帯の配線・ラダー作成から表示を切り替え、編集中の回路を保持する', () => {
+    useStore.getState().setLadderView('ladder');
+    render(<SessionRoute />);
+    const ladder = useStore.getState().ladder;
+    fireEvent.click(screen.getByTestId('plc-step-wire').querySelector('button')!);
+    expect(useStore.getState().ladderView).toBe('board');
+    expect(screen.getByTestId('board-canvas')).toBeVisible();
+    expect(screen.queryByTestId('ladder-workspace')).toBeNull();
+    fireEvent.click(screen.getByTestId('plc-step-ladder').querySelector('button')!);
+    expect(useStore.getState().ladderView).toBe('ladder');
+    expect(screen.getByTestId('ladder-workspace')).toBeVisible();
+    expect(useStore.getState().ladder).toBe(ladder);
+  });
   it('routes a PLC problem to its own screen', () => {
     render(<SessionRoute />);
     expect(screen.getByTestId('plc-session')).toBeInTheDocument();

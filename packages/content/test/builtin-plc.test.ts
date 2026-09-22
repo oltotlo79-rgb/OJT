@@ -8,32 +8,13 @@ import { resolveCompareSignals } from '../src/schema/judge.js';
 import { buildTimeChart, defaultChartSignals, startsAndEndsLow } from '../src/timechart.js';
 
 describe('内蔵モードD課題（§7.9）', () => {
-  it('has the twenty built-in mode D problems (2級形式10題＋1級形式10題)', () => {
-    expect(BUILTIN_PLC_PROBLEMS.map((p) => p.id)).toEqual([
-      'd-001',
-      'd-002',
-      'd-003',
-      'd-004',
-      'd-005',
-      'd-006',
-      'd-007',
-      'd-008',
-      'd-009',
-      'd-010',
-      'd-011',
-      'd-012',
-      'd-013',
-      'd-014',
-      'd-015',
-      'd-016',
-      'd-017',
-      'd-018',
-      'd-019',
-      'd-020',
-    ]);
-    expect(BUILTIN_PLC_PROBLEMS.filter((p) => p.grade === 2)).toHaveLength(10);
-    expect(BUILTIN_PLC_PROBLEMS.filter((p) => p.grade === 1)).toHaveLength(10);
-    // 同梱の20題は三菱で出題するが、IRはベンダ中立で4機種すべてで成立する
+  it('has the sixty built-in mode D problems (2級形式30題＋1級形式30題)', () => {
+    expect(BUILTIN_PLC_PROBLEMS.map((p) => p.id)).toEqual(
+      Array.from({ length: 60 }, (_, i) => `d-${String(i + 1).padStart(3, '0')}`),
+    );
+    expect(BUILTIN_PLC_PROBLEMS.filter((p) => p.grade === 2)).toHaveLength(30);
+    expect(BUILTIN_PLC_PROBLEMS.filter((p) => p.grade === 1)).toHaveLength(30);
+    // 同梱の60題は三菱で出題するが、IRはベンダ中立で4機種すべてで成立する
     // （`plc-cross-validation.test.ts` が機種を差し替えて確かめている。決定表#14）
     expect(BUILTIN_PLC_PROBLEMS.every((p) => p.plc.model === 'FX5U')).toBe(true);
     expect(BUILTIN_PLC_PROBLEMS.every((p) => p.wiringRequired)).toBe(true);
@@ -50,7 +31,7 @@ describe('内蔵モードD課題（§7.9）', () => {
 
   it('uses three inputs and four outputs in the 1級 form (調査資料 §1.1)', () => {
     const grade1 = BUILTIN_PLC_PROBLEMS.filter((p) => p.grade === 1);
-    expect(grade1).toHaveLength(10);
+    expect(grade1).toHaveLength(30);
     for (const problem of grade1) {
       expect(problem.io.inputs).toHaveLength(3);
       expect(problem.io.outputs).toHaveLength(4);

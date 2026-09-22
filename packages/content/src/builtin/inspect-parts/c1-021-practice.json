@@ -1,0 +1,45 @@
+{
+  "formatVersion": 1,
+  "id": "c1-021",
+  "mode": "inspect-parts",
+  "title": "コイル抵抗と吸引動作・接点群2",
+  "grade": 2,
+  "difficulty": 3,
+  "tags": ["fault-part", "measure"],
+  "description": "部品を一つずつ点検し、正常か故障かを判定してください。重点は「コイル抵抗と吸引動作」です。接点群2を含む全ての接点を、無励磁時と励磁時で比較します。見た目や並び順では判断せず、コイル抵抗、吸引、a接点、b接点の順に測定結果を記録してください。タイマは設定時間が経過してから接点を判定します。",
+  "timeLimit": {
+    "standardMin": 40,
+    "cutoffMin": 60
+  },
+  "board": {
+    "boardId": "board-jipm-std",
+    "socketRoles": {
+      "S7": "CHK"
+    }
+  },
+  "inventory": [],
+  "parts": [
+    {
+      "id": "p1",
+      "kind": "relay-my4n",
+      "truth": "coil-open"
+    },
+    {
+      "id": "p2",
+      "kind": "timer-h3y4",
+      "truth": "normal"
+    },
+    {
+      "id": "p3",
+      "kind": "relay-my4n",
+      "truth": "coil-layer-short",
+      "ratio": 0.55
+    },
+    {
+      "id": "p4",
+      "kind": "relay-my4n",
+      "truth": "normal"
+    }
+  ],
+  "seed": 2026092208
+}

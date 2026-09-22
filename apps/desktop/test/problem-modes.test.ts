@@ -38,9 +38,9 @@ describe('toSummary（§12.1）', () => {
     expect(toSummary(problem, 'user').mode).toBe('inspect-repair');
   });
 
-  it('内蔵72題すべてが行にできる（§7.9。モードB 20 / C1 12 / C2 20 / D 20）', () => {
+  it('内蔵216題すべてが行にできる（§7.9。モードB 60 / C1 36 / C2 60 / D 60）', () => {
     const rows = BUILTIN_ALL_PROBLEMS.map((p) => toSummary(p, 'builtin'));
-    expect(rows).toHaveLength(72);
+    expect(rows).toHaveLength(216);
     const modes = new Set<SessionMode>(rows.map((r) => r.mode));
     expect([...modes].sort()).toEqual(['assemble', 'inspect-parts', 'inspect-repair', 'plc']);
   });

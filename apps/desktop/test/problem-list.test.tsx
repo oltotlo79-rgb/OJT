@@ -322,9 +322,9 @@ describe('ProblemList', () => {
 });
 
 /**
- * 内蔵20題すべてが一覧行にできることは `test/content-loader.test.ts`（Task 1）の
+ * 内蔵60題すべてが一覧行にできることは `test/content-loader.test.ts`（Task 1）の
  * `BUILTIN_ALL_PROBLEMS` 直接テストで確かめ済みなので、ここでは3モードの絞り込みだけを見る
- * （実際の20題を使うUIテストは `listMode` の組合せごとに遅く壊れやすい）。
+ * （実際の60題を使うUIテストは `listMode` の組合せごとに遅く壊れやすい）。
  */
 describe('モードで絞る（Plan 2B Task 17。§12.1）', () => {
   it('「すべて」なら3モードの3行が並ぶ', async () => {
@@ -421,11 +421,11 @@ describe('モードで絞る（Plan 2B Task 17。§12.1）', () => {
 });
 
 /**
- * 72題ぶんの学習導線（指摘 UX-18 / UX-19 / PR-09。Phase 7 Task 25）。
+ * 216題ぶんの学習導線（指摘 UX-18 / UX-19 / PR-09。Phase 7 Task 25）。
  * 「行のどこを押しても開く」「言葉で探す」「3級が既定」「難しさ・学習テーマで絞る」を縛る。
  */
 describe('学習導線（Phase 7 Task 25）', () => {
-  /** 内蔵課題をそのまま一覧行にした、本番と同じ規模（72題）の一覧。 */
+  /** 内蔵課題をそのまま一覧行にした、本番と同じ規模（216題）の一覧。 */
   function builtinPayload(): ProblemListPayload {
     return {
       problems: BUILTIN_ALL_PROBLEMS.map((problem) => ({
@@ -536,7 +536,7 @@ describe('学習導線（Phase 7 Task 25）', () => {
     );
   });
 
-  it('言葉で探すと72題から絞り込める（指摘 PR-09）', async () => {
+  it('言葉で探すと216題から絞り込める（指摘 PR-09）', async () => {
     setApi({ listProblems: () => Promise.resolve(builtinPayload()) });
     useStore.setState({ listMode: undefined });
     render(<ProblemList />);

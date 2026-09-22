@@ -506,7 +506,7 @@ describe('sessionFields（課題を開く・やり直す・捨てるの初期値
   function dirty(): void {
     useStore.setState({
       judging: true,
-      fatalError: 'こわれました',
+      fatalError: '壊れました',
       webglLost: true,
       pendingTerminal: toTerminalId('CR1.9'),
       hoveredTerminal: toTerminalId('CR1.5'),

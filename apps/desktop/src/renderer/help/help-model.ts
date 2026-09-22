@@ -25,7 +25,7 @@ export type HelpScreenId =
 /** 画面ごとに最初に開く節。取扱説明書 設計 §5.2 の表。 */
 export const HELP_SECTION_BY_SCREEN: Readonly<Record<HelpScreenId, string>> = {
   home: 'intro/このアプリでできること',
-  list: 'screens/課題をえらぶ',
+  list: 'screens/課題を選ぶ',
   settings: 'settings/設定の画面',
   assemble: 'mode-b/回路を組み立てる',
   schematic: 'schematic/回路図を描く',

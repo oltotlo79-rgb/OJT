@@ -141,6 +141,17 @@ test.describe.serial('性能（§16 Phase 5 受入基準④）', () => {
     await page.getByTestId('mode-assemble').click();
     await page.getByTestId('open-b-001').click();
     await expect(page.getByTestId('viewport')).toBeVisible();
+    // 内部構造を持つリレーとタイマを装着した状態でも描画予算を守る。
+    for (const [socket, kind] of [
+      ['S1', 'relay-my4n'],
+      ['S2', 'relay-my4n'],
+      ['S5', 'timer-h3y4'],
+      ['S6', 'timer-h3y4'],
+    ] as const) {
+      await page.getByTestId(`socket-list-${socket}`).click();
+      await page.getByTestId(`mount-${kind}`).click();
+      await page.getByTestId('socket-list-back').click();
+    }
     // 視点プリセットは「…」の中（UXレビュー #17。`projection.ts` の `selectView()`）
     const byView: Record<string, Record<string, number>> = {};
     for (const view of VIEWS) {

@@ -1,5 +1,7 @@
 import type { BoardDefinition } from '@ojt/board-model';
 import type { JSX } from 'react';
+import { BoxGeometry, BufferGeometry, CylinderGeometry, Float32BufferAttribute } from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { BOARD_PLATE_COLOR, CONSOLE_SIDE_COLOR } from '../session/colors.js';
 import { sharedMaterial, UNIT_BOX } from './materials.js';
 
@@ -22,17 +24,94 @@ function noPick(): void {
 /** 盤面の板の厚み[mm]。 */
 const PLATE_THICKNESS_MM = 5;
 
+const consoleDetails = new Map<
+  string,
+  { body: BufferGeometry; rim: BufferGeometry; feet: BufferGeometry }
+>();
+function detailsFor(
+  width: number,
+  height: number,
+  front: number,
+  rear: number,
+): { body: BufferGeometry; rim: BufferGeometry; feet: BufferGeometry } {
+  const key = `${width}/${height}/${front}/${rear}`;
+  const cached = consoleDetails.get(key);
+  if (cached) return cached;
+  const w = width / 2 - 1;
+  const h = height / 2 - 1;
+  const z = -PLATE_THICKNESS_MM;
+  const body = new BufferGeometry();
+  body.setAttribute(
+    'position',
+    new Float32BufferAttribute(
+      [
+        -w,
+        -h,
+        z,
+        w,
+        -h,
+        z,
+        w,
+        h,
+        z,
+        -w,
+        h,
+        z,
+        -w,
+        -h,
+        z - front,
+        w,
+        -h,
+        z - front,
+        w,
+        h,
+        z - rear,
+        -w,
+        h,
+        z - rear,
+      ],
+      3,
+    ),
+  );
+  body.setIndex([
+    0, 1, 2, 0, 2, 3, 4, 7, 6, 4, 6, 5, 0, 4, 5, 0, 5, 1, 3, 2, 6, 3, 6, 7, 0, 3, 7, 0, 7, 4, 1, 5,
+    6, 1, 6, 2,
+  ]);
+  const flatBody = body.toNonIndexed();
+  body.dispose();
+  flatBody.computeVertexNormals();
+  const rimParts = [
+    new BoxGeometry(width, 3, 3).translate(0, -h, 0),
+    new BoxGeometry(width, 3, 3).translate(0, h, 0),
+    new BoxGeometry(3, height, 3).translate(-w, 0, 0),
+    new BoxGeometry(3, height, 3).translate(w, 0, 0),
+  ];
+  const footParts = [-1, 1].flatMap((x) =>
+    [-1, 1].map((y) => {
+      const localY = y * height * 0.4;
+      const bottom = z - front - (rear - front) * ((localY + h) / (2 * h));
+      return new CylinderGeometry(8, 10, 5, 16)
+        .rotateX(Math.PI / 2)
+        .translate(x * width * 0.4, localY, bottom - 2);
+    }),
+  );
+  const rim = mergeGeometries(rimParts, false);
+  const feet = mergeGeometries(footParts, false);
+  for (const geometry of [...rimParts, ...footParts]) geometry.dispose();
+  if (!rim || !feet) throw new Error('盤の外装を作成できませんでした');
+  const details = { body: flatBody, rim, feet };
+  consoleDetails.set(key, details);
+  return details;
+}
+
 /** 盤面と筐体。 */
 export function BoardPlate({ board }: { board: BoardDefinition }): JSX.Element {
   const width = board.sizeMm.width;
   const height = board.sizeMm.height;
   const { frontHeightMm, rearHeightMm } = board.console;
-  // 盤面の下に「奥ほど深い」箱を積んで楔形を作る。傾斜は盤グループの回転が担うので、
-  // ここでは平均の高さを持つ箱を1つ置き、さらに奥側に立ち上がりを足す。
-  const bodyHeight = (frontHeightMm + rearHeightMm) / 2;
-  const riserHeight = rearHeightMm - frontHeightMm;
-  const plate = sharedMaterial(BOARD_PLATE_COLOR, { metalness: 0.05, roughness: 0.65 });
-  const side = sharedMaterial(CONSOLE_SIDE_COLOR, { metalness: 0.05, roughness: 0.8 });
+  const details = detailsFor(width, height, frontHeightMm, rearHeightMm);
+  const plate = sharedMaterial(BOARD_PLATE_COLOR, { metalness: 0.14, roughness: 0.58 });
+  const side = sharedMaterial(CONSOLE_SIDE_COLOR, { metalness: 0.18, roughness: 0.55 });
   return (
     <group name="board-console">
       <mesh
@@ -43,23 +122,16 @@ export function BoardPlate({ board }: { board: BoardDefinition }): JSX.Element {
         position={[0, 0, -PLATE_THICKNESS_MM / 2]}
         scale={[width, height, PLATE_THICKNESS_MM]}
       />
+      <mesh geometry={details.body} raycast={noPick} material={side} />
       <mesh
-        geometry={UNIT_BOX}
+        geometry={details.rim}
+        material={sharedMaterial('#86929b', { metalness: 0.65, roughness: 0.3 })}
         raycast={noPick}
-        material={side}
-        position={[0, 0, -PLATE_THICKNESS_MM - bodyHeight / 2]}
-        scale={[width - 2, height - 2, bodyHeight]}
       />
       <mesh
-        geometry={UNIT_BOX}
+        geometry={details.feet}
+        material={sharedMaterial('#252c32', { roughness: 0.95 })}
         raycast={noPick}
-        material={side}
-        position={[
-          0,
-          height / 2 - riserHeight / 4,
-          -PLATE_THICKNESS_MM - bodyHeight - riserHeight / 4,
-        ]}
-        scale={[width - 2, riserHeight / 2, riserHeight / 2]}
       />
     </group>
   );

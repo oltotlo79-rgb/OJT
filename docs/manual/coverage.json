@@ -102,13 +102,13 @@
       "testid": "card-swap",
       "screen": "練習中",
       "label": "交換…",
-      "section": "screens/部品を入れかえる"
+      "section": "screens/部品を入れ替える"
     },
     {
       "testid": "card-unmount",
       "screen": "練習中",
       "label": "取り外す",
-      "section": "screens/部品を入れかえる"
+      "section": "screens/部品を入れ替える"
     },
     {
       "testid": "cell-menu",
@@ -276,7 +276,7 @@
       "testid": "contact-diagnosis-hint",
       "screen": "練習中（モードC2）",
       "label": "接点の不良は通電した状態でボタンを操作しながら電圧を測ると判別できます",
-      "section": "mode-c2/あやしい電線の見つけ方"
+      "section": "mode-c2/疑わしい電線の見つけ方"
     },
     {
       "testid": "contact-kind",
@@ -364,7 +364,7 @@
       "testid": "difficulty-filter",
       "screen": "課題一覧",
       "label": "難しさ",
-      "section": "screens/課題をえらぶ"
+      "section": "screens/課題を選ぶ"
     },
     {
       "testid": "direct-text",
@@ -462,7 +462,7 @@
       "testid": "grade-filter",
       "screen": "課題一覧",
       "label": "3級",
-      "section": "screens/課題をえらぶ"
+      "section": "screens/課題を選ぶ"
     },
     {
       "testid": "grid-cols-help",
@@ -501,7 +501,7 @@
     {
       "testid": "help-contents",
       "screen": "全画面",
-      "label": "もくじ",
+      "label": "目次",
       "section": "screens/画面の上の帯"
     },
     {
@@ -564,7 +564,7 @@
     },
     {
       "testid": "help-section-{}",
-      "internal": "もくじの1行ずつの目印。もくじそのものを説明済み"
+      "internal": "目次の1行ずつの目印。目次そのものを説明済み"
     },
     {
       "testid": "hidden-cells-{}",
@@ -579,6 +579,12 @@
       "section": "screens/画面の上の帯"
     },
     {
+      "testid": "hint-close",
+      "screen": "練習中",
+      "label": "ヒントを閉じる",
+      "section": "screens/画面の上の帯"
+    },
+    {
       "testid": "hint-done",
       "screen": "練習中",
       "label": "ヒントはここまでです",
@@ -589,6 +595,12 @@
       "screen": "練習中",
       "label": "考え方と確認手順を読む",
       "section": "tutorial-features/予測して、測って、確かめる"
+    },
+    {
+      "testid": "hint-next",
+      "screen": "練習中",
+      "label": "次のヒント",
+      "section": "screens/画面の上の帯"
     },
     {
       "testid": "hint-panel",
@@ -744,7 +756,7 @@
       "testid": "mode-filter",
       "screen": "課題一覧",
       "label": "すべて",
-      "section": "screens/課題をえらぶ"
+      "section": "screens/課題を選ぶ"
     },
     {
       "testid": "mode-{}",
@@ -830,7 +842,7 @@
       "testid": "mount-{}",
       "screen": "練習中",
       "label": "装着",
-      "section": "mode-b/部品をのせる"
+      "section": "mode-b/部品を載せる"
     },
     {
       "testid": "native-document",
@@ -948,7 +960,7 @@
       "testid": "open-{}",
       "screen": "課題一覧",
       "label": "開く",
-      "section": "screens/課題をえらぶ"
+      "section": "screens/課題を選ぶ"
     },
     {
       "testid": "operation-log",
@@ -1004,13 +1016,13 @@
       "testid": "parts-hint",
       "screen": "練習中",
       "label": "装着・取り外し・交換ができます",
-      "section": "screens/部品を入れかえる"
+      "section": "screens/部品を入れ替える"
     },
     {
       "testid": "parts-live-note",
       "screen": "練習中",
       "label": "通電中です。実機ではブレーカを切ってから部品を抜き差しします",
-      "section": "screens/部品を入れかえる"
+      "section": "screens/部品を入れ替える"
     },
     {
       "testid": "parts-palette",
@@ -1020,7 +1032,7 @@
       "testid": "parts-panel",
       "screen": "練習中",
       "label": "部品",
-      "section": "mode-b/部品をのせる"
+      "section": "mode-b/部品を載せる"
     },
     {
       "testid": "perf-readout",
@@ -1212,13 +1224,13 @@
       "testid": "problem-search",
       "screen": "課題一覧",
       "label": "課題を探す",
-      "section": "screens/課題をえらぶ"
+      "section": "screens/課題を選ぶ"
     },
     {
       "testid": "problem-table",
       "screen": "課題一覧",
       "label": "課題名",
-      "section": "screens/課題をえらぶ"
+      "section": "screens/課題を選ぶ"
     },
     {
       "testid": "project-tree",
@@ -1432,7 +1444,7 @@
     },
     {
       "testid": "row-{}",
-      "internal": "課題一覧の1行そのもの。行のどこを押しても開くことは「課題をえらぶ」で説明済み"
+      "internal": "課題一覧の1行そのもの。行のどこを押しても開くことは「課題を選ぶ」で説明済み"
     },
     {
       "testid": "rung-to-coil-{}:{}",
@@ -1558,7 +1570,7 @@
       "testid": "select-{}",
       "screen": "練習中",
       "label": "選択",
-      "section": "screens/部品を入れかえる"
+      "section": "screens/部品を入れ替える"
     },
     {
       "testid": "session-back",
@@ -1746,29 +1758,35 @@
       "testid": "socket-card",
       "screen": "練習中",
       "label": "ソケット",
-      "section": "screens/部品を入れかえる"
+      "section": "screens/部品を入れ替える"
     },
     {
       "testid": "socket-card-status",
       "screen": "練習中",
       "label": "選択中",
-      "section": "screens/部品を入れかえる"
+      "section": "screens/部品を入れ替える"
     },
     {
       "testid": "socket-card-title",
       "screen": "練習中",
       "label": "リレー MY4N",
-      "section": "screens/部品を入れかえる"
+      "section": "screens/部品を入れ替える"
     },
     {
       "testid": "socket-list",
       "internal": "ソケットのボタンを囲む枠。押せるのは中のボタン（`socket-list-{}`）"
     },
     {
+      "testid": "socket-list-back",
+      "screen": "練習画面",
+      "label": "ソケット一覧へ",
+      "section": "screens/部品を入れ替える"
+    },
+    {
       "testid": "socket-list-{}",
       "screen": "練習画面",
       "label": "ソケット",
-      "section": "screens/部品を入れかえる"
+      "section": "screens/部品を入れ替える"
     },
     {
       "testid": "special-contact-note",
@@ -1785,13 +1803,13 @@
     {
       "testid": "start-here",
       "screen": "ホーム",
-      "label": "はじめての方はここから",
+      "label": "初めての方はここから",
       "section": "screens/ホームの画面"
     },
     {
       "testid": "start-here-open",
       "screen": "ホーム",
-      "label": "3級の回路組立をひらく",
+      "label": "3級の回路組立を開く",
       "section": "screens/ホームの画面"
     },
     {
@@ -1862,13 +1880,13 @@
       "testid": "swap-cancel",
       "screen": "練習中",
       "label": "交換をやめる",
-      "section": "screens/部品を入れかえる"
+      "section": "screens/部品を入れ替える"
     },
     {
       "testid": "swap-{}",
       "screen": "練習中",
       "label": "これに交換",
-      "section": "screens/部品を入れかえる"
+      "section": "screens/部品を入れ替える"
     },
     {
       "testid": "symbol-{}",
@@ -1880,7 +1898,7 @@
       "testid": "tag-filter",
       "screen": "課題一覧",
       "label": "学習テーマ",
-      "section": "screens/課題をえらぶ"
+      "section": "screens/課題を選ぶ"
     },
     {
       "testid": "terminal-cancel",
@@ -2150,19 +2168,19 @@
       "testid": "view-hint",
       "screen": "練習中",
       "label": "キューブをドラッグ＝回転",
-      "section": "screens/3Dの見かたと動かしかた"
+      "section": "screens/3Dの見方と動かし方"
     },
     {
       "testid": "view-hint-toggle",
       "screen": "練習中",
       "label": "視点操作の早見表",
-      "section": "tutorial-features/3Dの見かた"
+      "section": "tutorial-features/3Dの見方"
     },
     {
       "testid": "view-plc",
       "screen": "練習中（モードD）",
       "label": "盤＋PLC",
-      "section": "screens/3Dの見かたと動かしかた"
+      "section": "screens/3Dの見方と動かし方"
     },
     {
       "testid": "view-switch",
@@ -2180,7 +2198,7 @@
       "testid": "viewport",
       "screen": "練習中",
       "label": "3Dの盤",
-      "section": "screens/3Dの見かたと動かしかた"
+      "section": "screens/3Dの見方と動かし方"
     },
     {
       "testid": "warning-list",
@@ -2286,31 +2304,31 @@
       "key": "1",
       "screen": "練習中",
       "action": "正面から見る",
-      "section": "screens/3Dの見かたと動かしかた"
+      "section": "screens/3Dの見方と動かし方"
     },
     {
       "key": "2",
       "screen": "練習中",
       "action": "上から見る",
-      "section": "screens/3Dの見かたと動かしかた"
+      "section": "screens/3Dの見方と動かし方"
     },
     {
       "key": "3",
       "screen": "練習中",
       "action": "ソケットを大きく見る",
-      "section": "screens/3Dの見かたと動かしかた"
+      "section": "screens/3Dの見方と動かし方"
     },
     {
       "key": "Home",
       "screen": "練習中",
-      "action": "盤ぜんたいを見る",
-      "section": "tutorial-features/3Dの見かた"
+      "action": "盤全体を見る",
+      "section": "tutorial-features/3Dの見方"
     },
     {
       "key": "テンキーの1・3・7",
       "screen": "練習中",
       "action": "正面・右・上から見る（Ctrl を足すと反対側）",
-      "section": "tutorial-features/3Dの見かた"
+      "section": "tutorial-features/3Dの見方"
     },
     {
       "key": "Delete",
@@ -2453,13 +2471,13 @@
     {
       "key": "/",
       "screen": "ラダー（三菱の書き方）",
-      "action": "a接点とb接点を入れかえる",
+      "action": "a接点とb接点を入れ替える",
       "section": "mode-d/キーの割り当て"
     },
     {
       "key": "Alt+/",
       "screen": "ラダー（三菱の書き方）",
-      "action": "立上り・立下りとセット・リセットを入れかえる",
+      "action": "立上り・立下りとセット・リセットを入れ替える",
       "section": "mode-d/キーの割り当て"
     },
     {
@@ -2503,68 +2521,68 @@
     {
       "name": "左ボタンでドラッグ",
       "screen": "3Dビュー",
-      "action": "盤を回す",
-      "section": "tutorial-features/3Dの見かた"
+      "action": "角度を保って盤を平行に動かす",
+      "section": "tutorial-features/3Dの見方"
     },
     {
       "name": "中ボタン・右ボタンでドラッグ",
       "screen": "3Dビュー",
-      "action": "盤を回す",
-      "section": "tutorial-features/3Dの見かた"
+      "action": "角度を保って盤を平行に動かす",
+      "section": "tutorial-features/3Dの見方"
     },
     {
       "name": "Shift を押しながら中ボタン・右ボタンでドラッグ",
       "screen": "3Dビュー",
       "action": "盤を平行に動かす",
-      "section": "tutorial-features/3Dの見かた"
+      "section": "tutorial-features/3Dの見方"
     },
     {
       "name": "Ctrl を押しながら中ボタン・右ボタンでドラッグ",
       "screen": "3Dビュー",
-      "action": "近づく・遠ざかる",
-      "section": "tutorial-features/3Dの見かた"
+      "action": "盤を平行に動かす",
+      "section": "tutorial-features/3Dの見方"
     },
     {
       "name": "ホイールを回す",
       "screen": "3Dビュー",
       "action": "ポインタの位置へ近づく・遠ざかる",
-      "section": "tutorial-features/3Dの見かた"
+      "section": "tutorial-features/3Dの見方"
     },
     {
       "name": "ビューキューブをドラッグする",
       "screen": "3Dビュー",
       "action": "指についてくるように盤を回す",
-      "section": "tutorial-features/3Dの見かた"
+      "section": "tutorial-features/3Dの見方"
     },
     {
       "name": "ビューキューブの面をクリックする",
       "screen": "3Dビュー",
       "action": "その向きから見る",
-      "section": "tutorial-features/3Dの見かた"
+      "section": "tutorial-features/3Dの見方"
     },
     {
       "name": "ビューキューブの辺や角をクリックする",
       "screen": "3Dビュー",
-      "action": "ななめから見る",
-      "section": "tutorial-features/3Dの見かた"
+      "action": "斜めから見る",
+      "section": "tutorial-features/3Dの見方"
     },
     {
       "name": "ビューキューブの「⌂」を押す",
       "screen": "3Dビュー",
-      "action": "盤ぜんたいが入る見え方へ戻す",
-      "section": "tutorial-features/3Dの見かた"
+      "action": "盤全体が入る見え方へ戻す",
+      "section": "tutorial-features/3Dの見方"
     },
     {
       "name": "ビューキューブの「⟳」を押す",
       "screen": "3Dビュー",
       "action": "いまの向きのまま傾きを戻す",
-      "section": "tutorial-features/3Dの見かた"
+      "section": "tutorial-features/3Dの見方"
     },
     {
       "name": "端子にマウスを乗せる",
       "screen": "3Dビュー",
       "action": "端子の名前と役割の札が出る",
-      "section": "screens/端子にさわると出る札"
+      "section": "screens/端子に触れると出る札"
     },
     {
       "name": "端子をクリックしてから別の端子をクリックする",
@@ -2575,14 +2593,14 @@
     {
       "name": "電線をクリックする",
       "screen": "3Dビュー",
-      "action": "その電線をえらぶ（Delete で外せます）",
+      "action": "その電線を選ぶ（Delete で外せます）",
       "section": "mode-b/電線をつなぐ・外す"
     },
     {
       "name": "ソケットをクリックする",
       "screen": "3Dビュー",
-      "action": "部品をのせる・外す・入れかえるカードが出る",
-      "section": "screens/部品を入れかえる"
+      "action": "部品を載せる・外す・入れ替えるカードが出る",
+      "section": "screens/部品を入れ替える"
     },
     {
       "name": "タイマのつまみをドラッグする",
@@ -2627,7 +2645,7 @@
       "section": "screens/タイムチャートの読み方"
     },
     {
-      "name": "端子から端子へドラッグする",
+      "name": "Altを押しながら端子から端子へドラッグする",
       "screen": "3Dビュー",
       "action": "電線を1本つなぐ",
       "section": "tutorial-features/端子をつなぐ"

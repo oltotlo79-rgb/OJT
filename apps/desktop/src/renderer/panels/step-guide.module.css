@@ -64,6 +64,29 @@
   white-space: nowrap;
 }
 
+.step:has(.action) {
+  padding: 0;
+}
+
+.action {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  min-height: 32px;
+  padding: 3px 10px;
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.action:hover {
+  background: color-mix(in srgb, var(--accent) 18%, var(--panel-2));
+}
+
 .note {
   font-size: max(12px, 0.75rem);
   font-weight: 400;

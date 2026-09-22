@@ -43,6 +43,7 @@ export function StepGuide({
   label = JA.stepGuide.label,
   testId,
   notes = true,
+  actions,
   children,
 }: {
   /** 手順の並びと現在地（`session/step-guide.ts` が組み立てる）。 */
@@ -55,6 +56,8 @@ export function StepGuide({
   testId?: StepGuideIds;
   /** 「済」「いまここ」の注記を出すか（回路図エディタの細い帯では出さない）。 */
   notes?: boolean;
+  /** 移動できる手順だけを実際のボタンとして表示する。 */
+  actions?: Readonly<Record<string, (() => void) | undefined>>;
   /** 帯に並べる追加の表示（モードDの状態チップ、回路図の分岐案内）。 */
   children?: ReactNode;
 }): JSX.Element {
@@ -63,6 +66,7 @@ export function StepGuide({
       <ol className={styles.list} aria-label={label}>
         {steps.map((step) => {
           const note = notes ? noteOf(step.state) : undefined;
+          const action = actions?.[step.key];
           return (
             <li
               key={step.key}
@@ -71,8 +75,17 @@ export function StepGuide({
               data-testid={testId?.step(step.key) ?? `step-${step.key}`}
               {...(step.state === 'current' ? { 'aria-current': 'step' as const } : {})}
             >
-              <span className={styles.name}>{step.label}</span>
-              {note === undefined ? null : <span className={styles.note}>{note}</span>}
+              {action === undefined ? (
+                <>
+                  <span className={styles.name}>{step.label}</span>
+                  {note === undefined ? null : <span className={styles.note}>{note}</span>}
+                </>
+              ) : (
+                <button type="button" className={styles.action} onClick={action}>
+                  <span className={styles.name}>{step.label}</span>
+                  {note === undefined ? null : <span className={styles.note}>{note}</span>}
+                </button>
+              )}
             </li>
           );
         })}

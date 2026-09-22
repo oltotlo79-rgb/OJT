@@ -15,6 +15,7 @@ import {
   JA,
   JA_PARTS,
   mountedPartLabel,
+  partKindLabel,
   socketCardTitle,
   socketSelectedLabel,
   timerDialLabel,
@@ -232,6 +233,7 @@ function SocketList({
               className={styles.socketListButton}
               data-testid={`socket-list-${socketId}`}
               aria-pressed={selectedSocket === socketId}
+              title={part === undefined ? undefined : catalogEntry(part.kind).displayName}
               onClick={() => {
                 onSelectSocket(socketId);
               }}
@@ -241,9 +243,7 @@ function SocketList({
                 {role === undefined ? '' : `（${role}）`}
               </span>
               <span className={styles.socketListState}>
-                {part === undefined
-                  ? JA_PARTS.socketListEmpty
-                  : catalogEntry(part.kind).displayName}
+                {part === undefined ? JA_PARTS.socketListEmpty : partKindLabel(part.kind)}
               </span>
             </button>
           );
@@ -319,9 +319,22 @@ export function PartsPanel({
         />
       ) : (
         <div className={styles.socketCard} data-testid="socket-card">
-          <h3 className={styles.socketCardTitle} data-testid="socket-card-title">
-            {socketCardTitle(selectedSocket, session.socketRoles[selectedSocket], kindOf(mounted))}
-          </h3>
+          <div className={styles.socketCardHeader}>
+            <h3 className={styles.socketCardTitle} data-testid="socket-card-title">
+              {socketCardTitle(
+                selectedSocket,
+                session.socketRoles[selectedSocket],
+                kindOf(mounted),
+              )}
+            </h3>
+            <button
+              type="button"
+              data-testid="socket-list-back"
+              onClick={() => onSelectSocket(undefined)}
+            >
+              {JA_PARTS.backToSockets}
+            </button>
+          </div>
           {/* どのソケットを触っているかの控え（E2E もこの一文で選択を確かめている） */}
           <p className={styles.socketCardStatus} data-testid="socket-card-status">
             {socketSelectedLabel(selectedSocket, session.socketRoles[selectedSocket])}

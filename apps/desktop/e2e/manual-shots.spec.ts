@@ -578,6 +578,10 @@ async function openProblem(modeTestId: string, problemId: string): Promise<void>
   await goHome();
   await page.getByTestId(modeTestId).click();
   await expect(page.getByTestId('problem-table')).toBeVisible();
+  await page
+    .getByTestId('grade-filter')
+    .getByRole('button', { name: 'すべて', exact: true })
+    .click();
   await page.getByTestId(`open-${problemId}`).click();
 }
 
@@ -858,11 +862,13 @@ test.describe.serial('取扱説明書の図', () => {
     if (firstWire === undefined) throw new Error('配線の見本がありません');
     const start = terminalPoint(toTerminalId(firstWire[0]), box);
     const end = terminalPoint(toTerminalId(firstWire[1]), box);
+    await page.keyboard.down('Alt');
     await page.mouse.move(start.x, start.y);
     await page.mouse.down();
     await page.mouse.move(end.x, end.y, { steps: 12 });
     await shoot('wire-drag', { 1: rectAt(start, 34), 2: rectAt(end, 34) }, 'auto');
     await page.mouse.up();
+    await page.keyboard.up('Alt');
     for (const [from, to] of SELF_HOLD_WIRES.slice(1)) {
       const a = terminalPoint(toTerminalId(from), box);
       const b = terminalPoint(toTerminalId(to), box);
@@ -1436,6 +1442,10 @@ test.describe.serial('取扱説明書の図', () => {
     // --- list ---
     await page.getByTestId('mode-assemble').click();
     await expect(page.getByTestId('problem-table')).toBeVisible();
+    await page
+      .getByTestId('grade-filter')
+      .getByRole('button', { name: 'すべて', exact: true })
+      .click();
     await shoot(
       'list',
       {

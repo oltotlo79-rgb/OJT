@@ -1,0 +1,324 @@
+{
+  "formatVersion": 1,
+  "id": "c2-060",
+  "mode": "inspect-repair",
+  "title": "一入力だけの選択・開始時だけ点灯の故障診断",
+  "grade": 1,
+  "difficulty": 4,
+  "tags": ["and-or", "timer", "sequence", "fault-part", "measure"],
+  "description": "三つのボタンのうち一つだけを押している間、タイマT1を励磁します。条件が1秒続いたら最初に点灯したPL1を消灯し、PL2を点灯します。途中で条件が外れたら両方を消灯し、経過時間をリセットしてください。再成立では最初から計時します。 PB1・PB2・PB3はCR1・CR2・CR3で受け、各リレーの接点を使って条件を構成します。全8通りの入力状態で、予測した点灯条件と実際の動作を照合してください。 現在は指定どおり動きません。電源から負荷へ電圧を追い、故障部品を指摘して交換してください。交換前に電源を切り、交換後は全入力条件と再始動を確認します。",
+  "timeLimit": {
+    "standardMin": 40,
+    "cutoffMin": 60
+  },
+  "board": {
+    "boardId": "board-jipm-std",
+    "socketRoles": {
+      "S1": "CR1",
+      "S2": "CR2",
+      "S3": "CR3",
+      "S7": "CHK",
+      "S5": "T1"
+    }
+  },
+  "inventory": [
+    {
+      "kind": "relay-my4n",
+      "count": 3
+    },
+    {
+      "kind": "timer-h3y4",
+      "count": 1
+    }
+  ],
+  "schematic": {
+    "formatVersion": 1,
+    "id": "sch-c2-060",
+    "title": "一入力だけの選択・開始時だけ点灯",
+    "orientation": "horizontal",
+    "rungs": [
+      {
+        "id": "input1",
+        "from": {
+          "bus": "P"
+        },
+        "to": {
+          "bus": "N"
+        },
+        "cells": [
+          {
+            "kind": "pb-a",
+            "id": "c1",
+            "device": "PB1"
+          },
+          {
+            "kind": "coil",
+            "id": "c2",
+            "device": "CR1"
+          }
+        ]
+      },
+      {
+        "id": "input2",
+        "from": {
+          "bus": "P"
+        },
+        "to": {
+          "bus": "N"
+        },
+        "cells": [
+          {
+            "kind": "pb-a",
+            "id": "c3",
+            "device": "PB2"
+          },
+          {
+            "kind": "coil",
+            "id": "c4",
+            "device": "CR2"
+          }
+        ]
+      },
+      {
+        "id": "input3",
+        "from": {
+          "bus": "P"
+        },
+        "to": {
+          "bus": "N"
+        },
+        "cells": [
+          {
+            "kind": "pb-a",
+            "id": "c5",
+            "device": "PB3"
+          },
+          {
+            "kind": "coil",
+            "id": "c6",
+            "device": "CR3"
+          }
+        ]
+      },
+      {
+        "id": "condition",
+        "from": {
+          "bus": "P"
+        },
+        "to": {
+          "bus": "N"
+        },
+        "cells": [
+          {
+            "kind": "cr-a",
+            "id": "c8",
+            "device": "CR1"
+          },
+          {
+            "kind": "cr-b",
+            "id": "c9",
+            "device": "CR2"
+          },
+          {
+            "kind": "cr-b",
+            "id": "c10",
+            "device": "CR3"
+          },
+          {
+            "kind": "coil",
+            "id": "c7",
+            "device": "T1",
+            "presetMs": 1000
+          }
+        ]
+      },
+      {
+        "id": "branch0",
+        "from": {
+          "bus": "P"
+        },
+        "to": {
+          "rung": "condition",
+          "node": 3
+        },
+        "cells": [
+          {
+            "kind": "cr-b",
+            "id": "c11",
+            "device": "CR1"
+          },
+          {
+            "kind": "cr-a",
+            "id": "c12",
+            "device": "CR2"
+          },
+          {
+            "kind": "cr-b",
+            "id": "c13",
+            "device": "CR3"
+          }
+        ]
+      },
+      {
+        "id": "branch1",
+        "from": {
+          "bus": "P"
+        },
+        "to": {
+          "rung": "condition",
+          "node": 3
+        },
+        "cells": [
+          {
+            "kind": "cr-b",
+            "id": "c14",
+            "device": "CR1"
+          },
+          {
+            "kind": "cr-b",
+            "id": "c15",
+            "device": "CR2"
+          },
+          {
+            "kind": "cr-a",
+            "id": "c16",
+            "device": "CR3"
+          }
+        ]
+      },
+      {
+        "id": "output",
+        "from": {
+          "rung": "condition",
+          "node": 3
+        },
+        "to": {
+          "bus": "N"
+        },
+        "cells": [
+          {
+            "kind": "t-b",
+            "id": "c17",
+            "device": "T1"
+          },
+          {
+            "kind": "lamp",
+            "id": "c18",
+            "device": "PL1"
+          }
+        ]
+      },
+      {
+        "id": "status",
+        "from": {
+          "rung": "condition",
+          "node": 3
+        },
+        "to": {
+          "bus": "N"
+        },
+        "cells": [
+          {
+            "kind": "t-a",
+            "id": "c19",
+            "device": "T1"
+          },
+          {
+            "kind": "lamp",
+            "id": "c20",
+            "device": "PL2"
+          }
+        ]
+      }
+    ]
+  },
+  "operations": [
+    {
+      "t": 200,
+      "target": "PB1",
+      "action": "press"
+    },
+    {
+      "t": 800,
+      "target": "PB1",
+      "action": "release"
+    },
+    {
+      "t": 1100,
+      "target": "PB1",
+      "action": "press"
+    },
+    {
+      "t": 1700,
+      "target": "PB1",
+      "action": "release"
+    },
+    {
+      "t": 2600,
+      "target": "PB1",
+      "action": "press"
+    },
+    {
+      "t": 4400,
+      "target": "PB2",
+      "action": "press"
+    },
+    {
+      "t": 6200,
+      "target": "PB1",
+      "action": "release"
+    },
+    {
+      "t": 8000,
+      "target": "PB3",
+      "action": "press"
+    },
+    {
+      "t": 9800,
+      "target": "PB1",
+      "action": "press"
+    },
+    {
+      "t": 11600,
+      "target": "PB2",
+      "action": "release"
+    },
+    {
+      "t": 13400,
+      "target": "PB1",
+      "action": "release"
+    },
+    {
+      "t": 15200,
+      "target": "PB3",
+      "action": "release"
+    }
+  ],
+  "durationMs": 17600,
+  "judge": {
+    "tolerance": {
+      "edgeMs": 200,
+      "ratio": 0.1
+    },
+    "staticChecks": {
+      "wireColorRule": true,
+      "terminalLimit": true,
+      "unusedParts": true,
+      "forbiddenCircuit": true,
+      "coilPolarity": true,
+      "powerSequence": true
+    }
+  },
+  "hints": {
+    "schematicVisible": false
+  },
+  "faults": [
+    {
+      "kind": "contact-welded",
+      "target": {
+        "partId": "T1",
+        "elementIndex": 1
+      }
+    }
+  ]
+}

@@ -57,7 +57,7 @@ afterEach(() => {
 });
 
 describe('ホーム下段（指摘 UX-28）', () => {
-  it('「はじめての方はここから」の帯から回路組立の一覧へ入れる（指摘 UX-19）', () => {
+  it('「初めての方はここから」の帯から回路組立の一覧へ入れる（指摘 UX-19）', () => {
     render(<Home />);
     const band = screen.getByTestId('start-here');
     expect(band.textContent).toContain(JA.home.startHereTitle);

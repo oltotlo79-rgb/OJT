@@ -73,7 +73,7 @@ function setApi(api: Partial<OjtApi> | undefined): void {
 
 /** 図のある節（縮小版が入る）と、図がまだ無い節。 */
 const SHOT_SECTION = 'screens/ホームの画面';
-const UNSHOT_SECTION = 'screens/課題をえらぶ';
+const UNSHOT_SECTION = 'screens/課題を選ぶ';
 
 /** ホーム画面から開いたときに出る節（設計 §5.2 の表）。 */
 const HOME_SECTION = defaultSectionId('home');
@@ -237,7 +237,7 @@ describe('閉じ方とキーボード（設計 §5.4）', () => {
     render(<HelpDrawer onClose={onClose} />);
     fireEvent.keyDown(window, { key: 'Escape', isComposing: true });
     expect(onClose).not.toHaveBeenCalled();
-    // 通常の `Esc` はいつもどおり効く（番人のせいで壊れていないこと）
+    // 通常の `Esc` はいつもどおり効く（番人載せいで壊れていないこと）
     fireEvent.keyDown(window, { key: 'Escape' });
     expect(onClose).toHaveBeenCalledTimes(1);
   });

@@ -324,7 +324,7 @@ describe('ビューキューブの形と当たり判定（§12.2）', () => {
   );
 
   it('キューブは 72px で、面のメッシュ1つと辺・角20個の当たり判定を持つ（計26箇所）', () => {
-    expect(GIZMO_SIZE).toBe(72);
+    expect(GIZMO_SIZE).toBe(56);
     expect(cubeGroup().props['scale']).toEqual([GIZMO_SIZE, GIZMO_SIZE, GIZMO_SIZE]);
 
     const meshes = elements().filter((element) => element.type === 'mesh');
@@ -353,7 +353,7 @@ describe('ビューキューブの形と当たり判定（§12.2）', () => {
     ]);
   });
 
-  it('辺・角の箱はふだん見えない（指したときだけ光る）', () => {
+  it('辺・角の箱は通常見えない（指したときだけ光る）', () => {
     const hitMaterials = elements().filter(
       (element) => element.type === 'meshBasicMaterial' && element.props['visible'] === false,
     );
@@ -415,7 +415,7 @@ describe('角を落としたキューブの見た目（2026-09-19「シンプル
     if (material === undefined) throw new Error('下地のマテリアルが無い');
     expect(material.props['color']).toBe(GIZMO_COLORS.plate);
     expect(material.props['transparent']).toBe(true);
-    expect(material.props['opacity']).toBeCloseTo(0.6, 10);
+    expect(material.props['opacity']).toBeCloseTo(0.25, 10);
     expect(material.props['depthWrite']).toBe(false);
     // 下地はビューポートの外へはみ出さない（`margin` は中心の位置）
     expect(GIZMO_MARGIN[0]).toBeGreaterThan(GIZMO_PLATE_RADIUS);
@@ -443,7 +443,7 @@ describe('座標軸の三脚は撤去（2026-09-20 の利用者指摘「重な�
 });
 
 describe('HUD の大きさはキャンバス幅で決まる（2026-09-20 の利用者指摘「重なってるし」）', () => {
-  it('900px以上は72px、600〜900px未満は64px、600px未満は隠す', () => {
+  it('900px以上は56px、600〜900px未満は48px、600px未満は隠す', () => {
     expect(gizmoLayoutForViewport(GIZMO_WIDE_VIEWPORT_PX)?.size).toBe(GIZMO_SIZE);
     expect(gizmoLayoutForViewport(1280)?.size).toBe(GIZMO_SIZE);
     expect(gizmoLayoutForViewport(GIZMO_WIDE_VIEWPORT_PX - 1)?.size).toBe(GIZMO_SIZE_NARROW);
@@ -464,7 +464,7 @@ describe('HUD の大きさはキャンバス幅で決まる（2026-09-20 の利�
     }
   });
 
-  it('狭いキャンバス（64px）はキューブが既定より小さく、ボタンはキューブのすぐ下に来る', () => {
+  it('狭いキャンバス（48px）はキューブが既定より小さく、ボタンはキューブのすぐ下に来る', () => {
     const wide = gizmoLayoutForViewport(GIZMO_WIDE_VIEWPORT_PX);
     const narrow = gizmoLayoutForViewport(GIZMO_MIN_VIEWPORT_PX);
     if (wide === null || narrow === null) throw new Error('layout is null');
@@ -493,7 +493,7 @@ describe('HUD の大きさはキャンバス幅で決まる（2026-09-20 の利�
     expect(gizmoLayoutForViewport(GIZMO_WIDE_VIEWPORT_PX, footprint - 1)).toBeNull();
 
     // モードB「並べて」の1280px幅・縦2段積みで3Dペインが約200px台まで潰れる場合
-    expect(gizmoLayoutForViewport(1280, 210)).toBeNull();
+    expect(gizmoLayoutForViewport(1280, 140)).toBeNull();
     // 高さを渡さない（省略）既存の呼び出しは、幅だけの既定の挙動のまま変わらない
     expect(gizmoLayoutForViewport(1280)?.size).toBe(GIZMO_SIZE);
   });
@@ -509,7 +509,7 @@ describe('⌂ と ⟳ のボタン', () => {
       expect(scale[1]).toBeGreaterThanOrEqual(24);
     }
     expect(byPrefix(GIZMO_TIP_PREFIX)).toHaveLength(2);
-    // ツールチップはふだん出さない
+    // ツールチップは通常出さない
     for (const tip of byPrefix(GIZMO_TIP_PREFIX)) expect(tip.props['visible']).toBe(false);
   });
 

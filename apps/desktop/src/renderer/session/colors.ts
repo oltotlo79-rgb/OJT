@@ -43,7 +43,7 @@ export const PUSH_BUTTON_COLORS: Readonly<Record<string, string>> = {
  * 筐体は白〜ベージュ、ソケットは黒本体＋黄色レバー、端子台は白、DINレールは銀。
  */
 export const BOARD_PLATE_COLOR = '#E6E4DE';
-export const CONSOLE_SIDE_COLOR = '#D6D3CB';
+export const CONSOLE_SIDE_COLOR = '#526575';
 export const DIN_RAIL_COLOR = '#B8BCC2';
 export const SOCKET_BODY_COLOR = '#23262B';
 export const SOCKET_LEVER_COLOR = '#E8B21E';
@@ -51,7 +51,7 @@ export const TERMINAL_SCREW_COLOR = '#9AA0A6';
 export const TERMINAL_BLOCK_COLOR = '#F1EFE9';
 export const TERMINAL_BLOCK_CAP_COLOR = '#2B2E33';
 export const RELAY_BODY_COLOR = '#3A3F45';
-export const TIMER_BODY_COLOR = '#4A4038';
+export const TIMER_BODY_COLOR = '#D8D4C5';
 /** 上部左のDC24V端子台と、上部右のブレーカの色。 */
 export const SUPPLY_BLOCK_COLOR = '#2B2E33';
 export const BREAKER_COLOR = '#DCDCD6';

@@ -1,0 +1,208 @@
+{
+  "formatVersion": 1,
+  "id": "b-027",
+  "mode": "assemble",
+  "title": "共通停止付き二地点操作",
+  "grade": 3,
+  "difficulty": 2,
+  "tags": ["and-or", "interlock"],
+  "description": "PB3を放し、PB1かPB2を押している間、白ランプPL1を点灯してください。その他の状態では消灯します。 PB1・PB2・PB3はCR1・CR2・CR3で受け、各リレーの接点を使って条件を構成します。全8通りの入力状態で、予測した点灯条件と実際の動作を照合してください。",
+  "timeLimit": {
+    "standardMin": 25,
+    "cutoffMin": 60
+  },
+  "board": {
+    "boardId": "board-jipm-std",
+    "socketRoles": {
+      "S1": "CR1",
+      "S2": "CR2",
+      "S3": "CR3",
+      "S7": "CHK"
+    }
+  },
+  "inventory": [
+    {
+      "kind": "relay-my4n",
+      "count": 3
+    }
+  ],
+  "schematic": {
+    "formatVersion": 1,
+    "id": "sch-b-027",
+    "title": "共通停止付き二地点操作",
+    "orientation": "horizontal",
+    "rungs": [
+      {
+        "id": "input1",
+        "from": {
+          "bus": "P"
+        },
+        "to": {
+          "bus": "N"
+        },
+        "cells": [
+          {
+            "kind": "pb-a",
+            "id": "c1",
+            "device": "PB1"
+          },
+          {
+            "kind": "coil",
+            "id": "c2",
+            "device": "CR1"
+          }
+        ]
+      },
+      {
+        "id": "input2",
+        "from": {
+          "bus": "P"
+        },
+        "to": {
+          "bus": "N"
+        },
+        "cells": [
+          {
+            "kind": "pb-a",
+            "id": "c3",
+            "device": "PB2"
+          },
+          {
+            "kind": "coil",
+            "id": "c4",
+            "device": "CR2"
+          }
+        ]
+      },
+      {
+        "id": "input3",
+        "from": {
+          "bus": "P"
+        },
+        "to": {
+          "bus": "N"
+        },
+        "cells": [
+          {
+            "kind": "pb-a",
+            "id": "c5",
+            "device": "PB3"
+          },
+          {
+            "kind": "coil",
+            "id": "c6",
+            "device": "CR3"
+          }
+        ]
+      },
+      {
+        "id": "condition",
+        "from": {
+          "bus": "P"
+        },
+        "to": {
+          "bus": "N"
+        },
+        "cells": [
+          {
+            "kind": "cr-a",
+            "id": "c8",
+            "device": "CR1"
+          },
+          {
+            "kind": "cr-b",
+            "id": "c9",
+            "device": "CR3"
+          },
+          {
+            "kind": "lamp",
+            "id": "c7",
+            "device": "PL1"
+          }
+        ]
+      },
+      {
+        "id": "branch0",
+        "from": {
+          "bus": "P"
+        },
+        "to": {
+          "rung": "condition",
+          "node": 2
+        },
+        "cells": [
+          {
+            "kind": "cr-a",
+            "id": "c10",
+            "device": "CR2"
+          },
+          {
+            "kind": "cr-b",
+            "id": "c11",
+            "device": "CR3"
+          }
+        ]
+      }
+    ]
+  },
+  "operations": [
+    {
+      "t": 600,
+      "target": "PB1",
+      "action": "press"
+    },
+    {
+      "t": 1500,
+      "target": "PB2",
+      "action": "press"
+    },
+    {
+      "t": 2400,
+      "target": "PB1",
+      "action": "release"
+    },
+    {
+      "t": 3300,
+      "target": "PB3",
+      "action": "press"
+    },
+    {
+      "t": 4200,
+      "target": "PB1",
+      "action": "press"
+    },
+    {
+      "t": 5100,
+      "target": "PB2",
+      "action": "release"
+    },
+    {
+      "t": 6000,
+      "target": "PB1",
+      "action": "release"
+    },
+    {
+      "t": 6900,
+      "target": "PB3",
+      "action": "release"
+    }
+  ],
+  "durationMs": 8400,
+  "judge": {
+    "tolerance": {
+      "edgeMs": 200,
+      "ratio": 0.1
+    },
+    "staticChecks": {
+      "wireColorRule": true,
+      "terminalLimit": true,
+      "unusedParts": true,
+      "forbiddenCircuit": true,
+      "coilPolarity": true,
+      "powerSequence": true
+    }
+  },
+  "hints": {
+    "schematicVisible": true
+  }
+}

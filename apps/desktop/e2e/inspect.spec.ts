@@ -81,6 +81,10 @@ async function openProblem(page: Page, modeTestId: string, problemId: string): P
   await goHome(page);
   await page.getByTestId(modeTestId).click();
   await expect(page.getByTestId('problem-table')).toBeVisible();
+  await page
+    .getByTestId('grade-filter')
+    .getByRole('button', { name: 'すべて', exact: true })
+    .click();
   await expect(page.getByTestId(`open-${problemId}`)).toBeVisible();
   await page.getByTestId(`open-${problemId}`).click();
 }
@@ -308,6 +312,10 @@ test.describe.serial('モードC1 部品点検（§16 Phase 2 受入基準①②
     await goHome(page);
     await page.getByTestId('mode-inspect-parts').click();
     await expect(page.getByTestId('problem-table')).toBeVisible();
+    await page
+      .getByTestId('grade-filter')
+      .getByRole('button', { name: 'すべて', exact: true })
+      .click();
     await expect(page.getByTestId(`open-${basic.id}`)).toBeVisible();
     await expect(page.getByTestId('open-b-001')).toHaveCount(0);
     await shot(app, '10-c1-problem-list');

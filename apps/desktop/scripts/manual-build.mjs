@@ -305,7 +305,7 @@ h1, h2, h3 { letter-spacing: .02em; page-break-after: avoid; break-after: avoid;
 .cover-howto ol > li { margin: 2px 0; }
 .cover-help { margin: 8px 0 0; font-size: 10pt; color: var(--sub); }
 
-/* もくじ */
+/* 目次 */
 #toc { page-break-after: always; }
 #toc > h1 { font-size: 20pt; margin: 0 0 8mm; padding-bottom: 8px; border-bottom: 2px solid var(--ink); }
 #toc ol { list-style: none; margin: 0; padding: 0; }
@@ -412,8 +412,8 @@ function coverOf(builtAt, edition, escape) {
     '<div class="cover-howto">',
     '<p class="cover-howto-title">この説明書の読み方</p>',
     '<ol>',
-    '<li>はじめて使う方は「はじめに」から順に読んでください。</li>',
-    '<li>使い方だけ知りたい方は、もくじの行を押すとその節へ飛べます。</li>',
+    '<li>初めて使う方は「はじめに」から順に読んでください。</li>',
+    '<li>使い方だけ知りたい方は、目次の行を押すとその節へ飛べます。</li>',
     '<li>言葉が分からないときは、うしろの「用語集」を引いてください。</li>',
     '</ol>',
     '</div>',
@@ -422,9 +422,9 @@ function coverOf(builtAt, edition, escape) {
   ];
 }
 
-/** もくじ（2ページ目以降）。章・節の行はリンクで、行末に点線のリーダを引く。 */
+/** 目次（2ページ目以降）。章・節の行はリンクで、行末に点線のリーダを引く。 */
 function tocOf(chapters, byId, escape) {
-  const parts = ['<nav id="toc">', '<h1>もくじ</h1>', '<ol class="toc-chapters">'];
+  const parts = ['<nav id="toc">', '<h1>目次</h1>', '<ol class="toc-chapters">'];
   chapters.forEach((chapter, index) => {
     const chapterNo = index + 1;
     parts.push('<li class="toc-chapter">');
@@ -452,7 +452,7 @@ function tocOf(chapters, byId, escape) {
   return parts;
 }
 
-/** 印刷用の HTML（表紙 ＋ もくじ ＋ 全章）。 */
+/** 印刷用の HTML（表紙 ＋ 目次 ＋ 全章）。 */
 function printHtmlOf(chapters, sections, builtAt, edition) {
   const byId = new Map(sections.map((section) => [section.id, section]));
   const escape = (text) => md.utils.escapeHtml(text);
@@ -583,7 +583,7 @@ export function buildManual(files, builtAt = '', availableImages = undefined, ed
   }
   /*
    * 断片識別子は記号を落として作る（`anchor-id.mjs`）ので、記号だけが違う見出しが
-   * 同じ `id` になりうる。そうなるともくじの2行が同じところへ飛ぶ（読む人は気づけない）。
+   * 同じ `id` になりうる。そうなると目次の2行が同じところへ飛ぶ（読む人は気づけない）。
    */
   const anchors = new Set();
   for (const chapter of chapters) {

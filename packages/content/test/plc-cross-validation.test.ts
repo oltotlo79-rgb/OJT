@@ -11,7 +11,7 @@ import { MODEL_OF_VENDOR, PlcProblemSchema } from '../src/schema/plc.js';
 import { ladderWith, plcProblemJson } from './helpers/plc.js';
 
 /**
- * `PlcProblemSchema` のクロスフィールド検証（レビュー #2）と、内蔵モードD課題20題の
+ * `PlcProblemSchema` のクロスフィールド検証（レビュー #2）と、内蔵モードD課題60題の
  * 4機種クロス検証（§16 Phase 4 / 決定表#14）。
  * 模範ラダー・操作列・判定設定は、すべてI/O割付にある点だけを扱えるようにする
  * （模範ラダーの参照するX/Y、操作列のPB、`judge.compareSignals` のPL）。
@@ -142,12 +142,12 @@ const CRLF = '\r\n';
  */
 const MODELS = Object.entries(MODEL_OF_VENDOR).map(([vendor, model]) => ({ vendor, model }));
 
-describe('内蔵モードD課題20題は4機種すべてで成立する（§16 Phase 4）', () => {
-  it('検証対象は20題・4機種から欠けない', () => {
-    expect(BUILTIN_PLC_PROBLEMS).toHaveLength(20);
+describe('内蔵モードD課題60題は4機種すべてで成立する（§16 Phase 4）', () => {
+  it('検証対象は60題・4機種から欠けない', () => {
+    expect(BUILTIN_PLC_PROBLEMS).toHaveLength(60);
     expect(MODELS).toHaveLength(4);
   });
-  // 20題を1件にまとめると、計装時に合計時間だけで失敗して課題を特定できない。
+  // 60題を1件にまとめると、計装時に合計時間だけで失敗して課題を特定できない。
   // 全80通りを独立させ、各課題の採点・静的検査の期待値は維持する。
   it.each(
     MODELS.flatMap((plc) =>
@@ -164,7 +164,7 @@ describe('内蔵モードD課題20題は4機種すべてで成立する（§16 P
   });
 
   it('模範ラダーはベンダ中立で、4方言すべてで変換が通る（受入基準②）', () => {
-    // TOYOPUC の「X と Y の同番号禁止」は **アドレス**で判定する（決定表#16）。20題はすべて
+    // TOYOPUC の「X と Y の同番号禁止」は **アドレス**で判定する（決定表#16）。60題はすべて
     // `X(0)`〜`X(2)` と `Y(0)`〜`Y(3)` を使うので、出力が `1Y010` から始まる限り衝突しない。
     // ここが `device-conflict` で落ちたら `jtekt.ts` の `OUTPUT_BASE` を疑う
     expect(availableDialects()).toHaveLength(4);

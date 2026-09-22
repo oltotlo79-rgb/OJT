@@ -306,7 +306,7 @@ describe('SchematicEditor: 分岐（受入基準①）', () => {
     const own = screen.getByTestId('schematic-svg').querySelector('[data-slot="r2#0"]');
     if (own === null) return;
     fireEvent.click(own);
-    expect(props.onRefuse).toHaveBeenCalledWith(expect.stringContaining('ほかの段の節点'));
+    expect(props.onRefuse).toHaveBeenCalledWith(expect.stringContaining('他の段の節点'));
     expect(props.onEdit).not.toHaveBeenCalled();
     expect(screen.getByTestId('branch-hint')).toHaveTextContent('分岐の始点');
   });

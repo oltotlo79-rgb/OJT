@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { launchApp, shot } from './app.js';
+import { gizmoLayoutForViewport } from '../src/renderer/three/ViewGizmo.js';
 
 test('初回の5手順を実操作で進み、完了を再起動後も保持する', async () => {
   const { app, page, userDataDir } = await launchApp({
@@ -14,9 +15,13 @@ test('初回の5手順を実操作で進み、完了を再起動後も保持す�
     await shot(app, 'tour-01-rotate');
     const box = await page.locator('[data-testid=viewport] canvas').boundingBox();
     if (box === null) throw new Error('3D表示がありません');
-    await page.mouse.move(box.x + box.width * 0.8, box.y + 20);
+    const layout = gizmoLayoutForViewport(box.width);
+    if (!layout) throw new Error('キューブが表示されていません');
+    const x = box.x + layout.margin[0];
+    const y = box.y + layout.margin[1];
+    await page.mouse.move(x, y);
     await page.mouse.down();
-    await page.mouse.move(box.x + box.width * 0.8 + 60, box.y + 50, { steps: 12 });
+    await page.mouse.move(x + 60, y + 30, { steps: 12 });
     await page.mouse.up();
     await expect(guide).toHaveAttribute('data-step', 'mount');
     await page.getByTestId('socket-list-S1').click();

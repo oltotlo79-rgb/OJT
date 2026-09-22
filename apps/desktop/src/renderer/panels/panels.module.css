@@ -263,6 +263,19 @@
   margin-bottom: 8px;
 }
 
+.socketCardHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.socketCardHeader button {
+  flex-shrink: 0;
+  white-space: nowrap;
+  font-size: 12px;
+  padding: 4px 8px;
+}
 .socketCardTitle {
   font-size: max(12px, 0.8125rem);
   font-weight: 700;
@@ -641,17 +654,29 @@
  * 読ませる文なので幅を決めて折り返し、行間は本文と同じ 1.8 にする。
  */
 .hintPanel {
-  position: absolute;
-  top: calc(100% + 4px);
-  left: 0;
-  z-index: 20;
+  position: fixed;
+  z-index: 30;
   background: var(--panel-2);
   border: 1px solid var(--accent);
   border-radius: 5px;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
-  max-width: 34em;
-  min-width: 22em;
+  width: min(440px, calc(100vw - 24px));
+  box-sizing: border-box;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 10px 12px;
+}
+
+.hintHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.hintPanel button {
+  margin: 0 6px 6px 0;
 }
 
 .hintStage {

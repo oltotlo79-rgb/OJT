@@ -49,6 +49,8 @@ export interface GizmoDragWiring {
   onTap: (id: string) => void;
   /** 掴んだ瞬間（進行中のスナップを打ち切る）。 */
   onGrab: () => void;
+  /** 実際に回転して放したときだけ通知する（クリックや中断では通知しない）。 */
+  onRotateComplete?: () => void;
   readPose: () => CameraPose;
   applyPose: (pose: CameraPose) => void;
 }
@@ -68,6 +70,7 @@ export function useGizmoDrag({
   idleCursor,
   onTap,
   onGrab,
+  onRotateComplete,
   readPose,
   applyPose,
 }: GizmoDragWiring): GizmoDragHandle {
@@ -114,6 +117,7 @@ export function useGizmoDrag({
        */
       if (event.type === 'pointerup' && !current.moved && current.targetId !== null)
         onTap(current.targetId);
+      if (event.type === 'pointerup' && current.moved) onRotateComplete?.();
       invalidate();
     };
     const onBlur = (): void => {
@@ -131,7 +135,7 @@ export function useGizmoDrag({
       // ドラッグの途中で消えても慣性と盤の操作を止めたままにしない
       if (drag.current !== null) finish(drag.current);
     };
-  }, [controls, idleCursor, invalidate, onTap, setCursor, applyPose]);
+  }, [controls, idleCursor, invalidate, onTap, setCursor, applyPose, onRotateComplete]);
 
   const onPointerDown = useCallback(
     (event: ThreeEvent<PointerEvent>): void => {

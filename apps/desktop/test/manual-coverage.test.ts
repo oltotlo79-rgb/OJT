@@ -46,7 +46,7 @@ const PROCEDURE_SECTIONS = [
   'tutorial-modes/回路を点検して直す（モードC2）',
   'tutorial-modes/PLCでプログラムを作る（モードD）',
   'tutorial-modes/うまくいかないときの戻り道',
-  'tutorial-features/3Dの見かた',
+  'tutorial-features/3Dの見方',
   'tutorial-features/端子をつなぐ',
   'tutorial-features/部品を置く・外す・交換する',
   'tutorial-features/タイマの設定',

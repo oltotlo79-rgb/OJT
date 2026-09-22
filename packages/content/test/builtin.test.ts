@@ -45,29 +45,10 @@ describe('builtin problems', () => {
   });
 
   it('ships 20 assemble problems (§7.9)', () => {
-    expect(BUILTIN_PROBLEMS).toHaveLength(20);
-    expect(BUILTIN_PROBLEMS.map((p) => p.id)).toEqual([
-      'b-001',
-      'b-002',
-      'b-003',
-      'b-004',
-      'b-005',
-      'b-006',
-      'b-007',
-      'b-008',
-      'b-009',
-      'b-010',
-      'b-011',
-      'b-012',
-      'b-013',
-      'b-014',
-      'b-015',
-      'b-016',
-      'b-017',
-      'b-018',
-      'b-019',
-      'b-020',
-    ]);
+    expect(BUILTIN_PROBLEMS).toHaveLength(60);
+    expect(BUILTIN_PROBLEMS.map((p) => p.id)).toEqual(
+      Array.from({ length: 60 }, (_, i) => `b-${String(i + 1).padStart(3, '0')}`),
+    );
   });
 
   it('orders difficulty within each grade (§4.3 Phase 7)', () => {

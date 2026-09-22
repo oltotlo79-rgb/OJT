@@ -1,3 +1,4 @@
+import { useTourStore } from '../tour/tour-store.js';
 import { GizmoHelper } from '@react-three/drei';
 import { useFrame, useThree, type ThreeEvent } from '@react-three/fiber';
 import {
@@ -365,6 +366,8 @@ export function ViewGizmo({ controls }: { controls: OrbitControlsLike | null }):
     [camera, controls],
   );
 
+  const completeRotation = useCallback(() => useTourStore.getState().advance('rotate'), []);
+
   /** 押す→引く→放すの状態機械（`use-gizmo-drag.ts`）。 */
   const { onPointerDown, isDragging } = useGizmoDrag({
     controls,
@@ -373,6 +376,7 @@ export function ViewGizmo({ controls }: { controls: OrbitControlsLike | null }):
     idleCursor,
     onTap: snapTo,
     onGrab: cancelSnap,
+    onRotateComplete: completeRotation,
     readPose,
     applyPose,
   });
@@ -527,7 +531,7 @@ export function ViewGizmo({ controls }: { controls: OrbitControlsLike | null }):
           ))}
         </group>
 
-        {/* 辺12・角8の当たり判定。ふだんは見えず、指したときだけ光る（Blender と同じ） */}
+        {/* 辺12・角8の当たり判定。通常は見えず、指したときだけ光る（Blender と同じ） */}
         {GIZMO_HIT_BOXES.map((box) => (
           <mesh
             key={box.id}

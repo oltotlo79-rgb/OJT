@@ -308,12 +308,14 @@ describe('ヒント（指摘 PR-02）', () => {
       '予測して、測って、確かめる',
     );
     useHelpStore.getState().closeHelp();
+    expect(screen.queryByTestId('hint-panel')).toBeNull();
+    fireEvent.click(button);
     expect(screen.getByTestId('hint-panel').textContent).not.toContain(JA.hint.wire);
     expect(useStore.getState().hintStage).toBe(1);
 
-    fireEvent.click(button);
+    fireEvent.click(screen.getByTestId('hint-next'));
     expect(screen.getByTestId('hint-panel').textContent).toContain(JA.hintTag['self-hold']);
-    fireEvent.click(button);
+    fireEvent.click(screen.getByTestId('hint-next'));
     expect(screen.getByTestId('hint-panel').textContent).toContain(JA.hint.wire);
     expect(screen.getByTestId('hint-done')).toBeTruthy();
     expect(useStore.getState().hintStage).toBe(3);
@@ -323,7 +325,7 @@ describe('ヒント（指摘 PR-02）', () => {
     renderToolbar({ hints: hintStages({ grade: 1, tags: ['interlock'] }) });
     const button = screen.getByTestId('hint-button');
     fireEvent.click(button);
-    fireEvent.click(button);
+    fireEvent.click(screen.getByTestId('hint-next'));
     expect(screen.getByTestId('hint-panel').textContent).toContain(JA.hint.grade1Note);
     expect(screen.getByTestId('hint-panel').textContent).not.toContain(JA.hint.wire);
     expect(screen.getByTestId('hint-done')).toBeTruthy();
@@ -333,7 +335,8 @@ describe('ヒント（指摘 PR-02）', () => {
   it('最後まで開いたら畳めるが、使った回数は減らさない（結果画面に出る数）', () => {
     renderToolbar({ hints: hintStages({ grade: 2 }) });
     const button = screen.getByTestId('hint-button');
-    for (let i = 0; i < 3; i += 1) fireEvent.click(button);
+    fireEvent.click(button);
+    for (let i = 0; i < 2; i += 1) fireEvent.click(screen.getByTestId('hint-next'));
     expect(button.textContent).toBe(JA.hint.close);
     fireEvent.click(button);
     expect(screen.queryByTestId('hint-panel')).toBeNull();
@@ -342,5 +345,24 @@ describe('ヒント（指摘 PR-02）', () => {
     fireEvent.click(button);
     expect(screen.getByTestId('hint-panel')).toBeTruthy();
     expect(useStore.getState().hintStage).toBe(3);
+  });
+
+  it('第1段でも閉じる・Escape・外側クリックで閉じ、再表示しても段数を増やさない', () => {
+    renderToolbar({ hints: hintStages({ grade: 2 }) });
+    const button = screen.getByTestId('hint-button');
+    for (const close of [
+      () => fireEvent.click(screen.getByTestId('hint-close')),
+      () => fireEvent.keyDown(document, { key: 'Escape' }),
+      () => fireEvent.pointerDown(document.body),
+      () => fireEvent.click(button),
+    ]) {
+      fireEvent.click(button);
+      expect(screen.getByTestId('hint-panel')).toBeTruthy();
+      expect(useStore.getState().hintStage).toBe(1);
+      close();
+      expect(screen.queryByTestId('hint-panel')).toBeNull();
+      expect(button).toHaveAttribute('aria-expanded', 'false');
+      expect(useStore.getState().hintStage).toBe(1);
+    }
   });
 });
