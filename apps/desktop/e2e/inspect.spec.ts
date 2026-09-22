@@ -232,18 +232,18 @@ test.describe.serial('モードC1 部品点検（§16 Phase 2 受入基準①②
   const layer = requireProblem(BUILTIN_INSPECT_PARTS_PROBLEMS, 1, 'C1');
 
   /**
-   * 読値が落ち着くまで待つ（アナログ針の励磁・減衰は物理時間で進むので、値が2回連続で
-   * 同じになるまでポーリングする。固定 `waitForTimeout` は速いマシンでは無駄に長く、
-   * 遅いマシンでは足りずに flake する）。
+   * 期待する読値に切り替わり、2回連続で同じになるまで待つ。
+   * 操作前のOLを2回読んだだけでは、Workerが押下を処理した証拠にならない。
+   * 時間を固定で延ばしたりテスト全体を再実行したりせず、期待する状態への遷移を検査する。
    */
-  async function stableReadout(): Promise<string> {
+  async function stableReadout(expected: string): Promise<string> {
     const readout = page.getByTestId('tester-readout');
     let previous: string | null = null;
     await expect
       .poll(
         async () => {
           const current = await readout.textContent();
-          const stable = current !== null && current === previous;
+          const stable = current !== null && current.includes(expected) && current === previous;
           previous = current;
           return stable;
         },
@@ -254,14 +254,14 @@ test.describe.serial('モードC1 部品点検（§16 Phase 2 受入基準①②
   }
 
   /** チェック用ソケットのコイル端子をΩレンジで測る（`probe-target-coil` で2本まとめて置く）。 */
-  async function measureCoil(): Promise<string> {
+  async function measureCoil(expected: string): Promise<string> {
     await page.getByRole('button', { name: 'Ω', exact: true }).click();
     await page.getByTestId('probe-target-coil').click();
-    return stableReadout();
+    return stableReadout(expected);
   }
 
   /** トレイの部品を挿し、通電して、コイル抵抗を読む。 */
-  async function readCoilOf(partId: string): Promise<string> {
+  async function readCoilOf(partId: string, expected: string): Promise<string> {
     const label = await page.getByTestId(`tray-${partId}`).locator('span').first().innerText();
     expect(label).toMatch(/[①-⑳].*(リレー|タイマ)/);
     await page.getByTestId(`plug-${partId}`).click();
@@ -269,7 +269,7 @@ test.describe.serial('モードC1 部品点検（§16 Phase 2 受入基準①②
     await expect(page.getByTestId('status-overlay')).not.toContainText(partId);
     // 挿し替えは `load` の送り直し＝新しい Simulation なので、電源は入れ直す（§5.4 / §9.1 ⓪）
     await powerOn(page);
-    return measureCoil();
+    return measureCoil(expected);
   }
 
   /** マークシートに全問正解を入れて判定する（`shotName` を渡すと解答後に1枚撮る）。 */
@@ -323,7 +323,7 @@ test.describe.serial('モードC1 部品点検（§16 Phase 2 受入基準①②
     const normalId = partWith(basic, 'normal');
     expect(normalId).toBeDefined();
     if (normalId !== undefined) {
-      expect(await readCoilOf(normalId)).toContain('650.0');
+      expect(await readCoilOf(normalId, '650.0')).toContain('650.0');
       await expect(page.getByTestId('tester-unit')).toHaveText('Ω');
       await page.getByTestId(`eject-${normalId}`).click();
     }
@@ -332,7 +332,7 @@ test.describe.serial('モードC1 部品点検（§16 Phase 2 受入基準①②
     const openId = partWith(basic, 'coil-open');
     expect(openId).toBeDefined();
     if (openId !== undefined) {
-      expect(await readCoilOf(openId)).toContain('OL');
+      expect(await readCoilOf(openId, 'OL')).toContain('OL');
       await expect(page.getByTestId('tester-unit')).toHaveCount(0);
       await shot(app, '12-c1-coil-open');
       await page.getByTestId(`eject-${openId}`).click();
@@ -352,7 +352,7 @@ test.describe.serial('モードC1 部品点検（§16 Phase 2 受入基準①②
     expect(shortId).toBeDefined();
     if (shortId !== undefined) {
       // 正常値 650Ω の85%（552.5Ω）を下回るので、動作が正常でもレアショートと分かる（§9.1 補足）
-      expect(await readCoilOf(shortId)).toContain('422.5');
+      expect(await readCoilOf(shortId, '422.5')).toContain('422.5');
       await shot(app, '13-c1-layer-short');
       await page.getByTestId(`eject-${shortId}`).click();
     }
@@ -430,15 +430,15 @@ test.describe.serial('モードC1 部品点検（§16 Phase 2 受入基準①②
       await page.getByTestId(`plug-${normalId}`).click();
       await powerOn(page);
       await measureA1();
-      expect(await stableReadout()).toContain('OL');
+      expect(await stableReadout('OL')).toContain('OL');
 
       await page.mouse.move(pb4.x, pb4.y);
       await page.mouse.down();
-      expect(await stableReadout()).toContain('導通');
+      expect(await stableReadout('導通')).toContain('導通');
       await shot(app, '18-c1-pb4-continuity');
 
       await page.mouse.up();
-      expect(await stableReadout()).toContain('OL');
+      expect(await stableReadout('OL')).toContain('OL');
       await page.getByTestId(`eject-${normalId}`).click();
     }
 
@@ -449,11 +449,11 @@ test.describe.serial('モードC1 部品点検（§16 Phase 2 受入基準①②
       await page.getByTestId(`plug-${openId}`).click();
       await powerOn(page);
       await measureA1();
-      expect(await stableReadout()).toContain('OL');
+      expect(await stableReadout('OL')).toContain('OL');
 
       await page.mouse.move(pb4.x, pb4.y);
       await page.mouse.down();
-      expect(await stableReadout()).toContain('OL');
+      expect(await stableReadout('OL')).toContain('OL');
       await page.mouse.up();
       await page.getByTestId(`eject-${openId}`).click();
     }
