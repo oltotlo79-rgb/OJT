@@ -7,7 +7,10 @@ import { manualDate } from '../scripts/manual-date.mjs';
 
 const roots: string[] = [];
 afterEach(() => {
-  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+  // Windowsでは終了直後のGit一時ファイルを掴んでいる場合がある。
+  // 上限を設けて解除を待ち、最後まで削除できなければ検査を失敗させる。
+  for (const root of roots.splice(0))
+    rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
 });
 describe('説明書の発行日', () => {
   it('指定日を優先し、不正な日付を黙って当日へ置換しない', () => {
