@@ -110,7 +110,7 @@ function rankOf(el: HTMLElement): number {
 /**
  * 選んだ結果を DOM へ書き戻す（**前回と違う名札だけ**）。書き換えた枚数を返す。3D-22
  *
- * 純関数ではないが、`LabelDeclutter` の `useFrame` から切り出して export するのは、
+ * 純関数ではないが、`LabelDeclutter` のDOM監視から切り出して export するのは、
  * 「同じ結果なら2回目は1枚も書かない」ことを単体テストで縛れるようにするため
  * （`LabelDeclutter` 自身は `<Canvas>` の中でしか動かせない）。
  */
@@ -128,11 +128,9 @@ export function applyLabelVisibility(
   return written;
 }
 
-/** DOM上の配置が確定したあとに測る。描画が止まっていても名札の追加・文字拡大に追随する。 */
+/** DOM更新・リサイズの通知中に測り、次の描画より前に名札の重なりを解消する。 */
 export function observeLabelLayout(scope: Element): () => void {
-  let frame = 0;
   const measure = (): void => {
-    frame = 0;
     const labels = [...scope.querySelectorAll<HTMLElement>(LABEL_SELECTOR)];
     const candidates = labels.map((el) => ({ rank: rankOf(el), rect: rectOf(el) }));
     const reserved = [...scope.querySelectorAll<HTMLElement>(RESERVED_SELECTOR)].map(rectOf);
@@ -148,11 +146,10 @@ export function observeLabelLayout(scope: Element): () => void {
     }
     applyLabelVisibility(labels, pickVisibleLabels(candidates, reserved, LABEL_GAP_PX, bounds));
   };
-  const schedule = (): void => {
-    if (frame === 0) frame = requestAnimationFrame(measure);
-  };
-  // Htmlのtransformが書かれたあとに計測。自分のvisibility書込による再通知は差分0で止まる。
-  const mutation = new MutationObserver(schedule);
+  // Htmlのtransform変更はMutationObserverへ一括通知される。ここで測ることで、
+  // RAFへ遅延した計測と次の投影更新が競合し、1フレームだけ重なる事象を防ぐ。
+  // 自分のvisibility書込による再通知は、差分0なので追加の更新を起こさない。
+  const mutation = new MutationObserver(measure);
   mutation.observe(scope, {
     childList: true,
     subtree: true,
@@ -160,15 +157,14 @@ export function observeLabelLayout(scope: Element): () => void {
     attributeFilter: ['style', 'class'],
     characterData: true,
   });
-  const resize = new ResizeObserver(schedule);
+  const resize = new ResizeObserver(measure);
   resize.observe(scope);
-  window.addEventListener(UI_PREFERENCES_EVENT, schedule);
-  schedule();
+  window.addEventListener(UI_PREFERENCES_EVENT, measure);
+  measure();
   return () => {
     mutation.disconnect();
     resize.disconnect();
-    cancelAnimationFrame(frame);
-    window.removeEventListener(UI_PREFERENCES_EVENT, schedule);
+    window.removeEventListener(UI_PREFERENCES_EVENT, measure);
   };
 }
 

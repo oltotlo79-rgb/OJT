@@ -194,7 +194,7 @@ describe('visibility の書き戻し（`applyLabelVisibility`）', () => {
   });
 });
 
-it('描画後に遅れて追加された名札もDOM更新だけで重なりを解消する', async () => {
+it('遅れて追加された名札は次の描画フレームを待たず重なりを解消する', async () => {
   const host = document.createElement('div');
   document.body.append(host);
   const frames: FrameRequestCallback[] = [];
@@ -231,9 +231,53 @@ it('描画後に遅れて追加された名札もDOM更新だけで重なりを�
       host.append(label);
     }
     await Promise.resolve();
-    frames.shift()?.(16);
     expect((host.children[0] as HTMLElement).style.visibility).toBe('');
     expect((host.children[1] as HTMLElement).style.visibility).toBe('hidden');
+  } finally {
+    stop();
+    host.remove();
+    vi.unstubAllGlobals();
+  }
+});
+
+it('リサイズ後に名札の投影位置が変わっても、次フレームより前に隠し直す', async () => {
+  const host = document.createElement('div');
+  host.innerHTML = '<span class="block-label">POWER1</span><span class="block-label">IN-12</span>';
+  document.body.append(host);
+  const labels = [...host.querySelectorAll<HTMLElement>('.block-label')];
+  let secondLeft = 160;
+  labels.forEach((label, index) => {
+    label.getBoundingClientRect = () => {
+      const left = index === 0 ? 50 : secondLeft;
+      return new DOMRect(left, 200, 100, 29);
+    };
+  });
+  const frames: FrameRequestCallback[] = [];
+  vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
+    frames.push(callback);
+    return frames.length;
+  });
+  vi.stubGlobal('cancelAnimationFrame', () => undefined);
+  vi.stubGlobal(
+    'ResizeObserver',
+    class {
+      observe() {}
+      disconnect() {}
+    },
+  );
+  const stop = observeLabelLayout(host);
+  try {
+    frames.shift()?.(0);
+    expect(labels.map((label) => label.style.visibility)).toEqual(['', '']);
+    secondLeft = 141;
+    labels[1]!.style.transform = 'translateX(-19px)';
+    await Promise.resolve();
+    // 9pxの重なりを、requestAnimationFrameを進める前に解消する。
+    expect(labels.map((label) => label.style.visibility)).toEqual(['', 'hidden']);
+    secondLeft = 160;
+    labels[1]!.style.transform = 'translateX(0px)';
+    await Promise.resolve();
+    expect(labels.map((label) => label.style.visibility)).toEqual(['', '']);
   } finally {
     stop();
     host.remove();

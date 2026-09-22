@@ -39,6 +39,48 @@ async function launch(): Promise<Launched> {
   return launchApp({ window: WINDOW, home: 'mode-plc' });
 }
 
+test('TOYOPUCの名札はウィンドウを連続でリサイズしてもフレーム間で重ならない', async () => {
+  const { app, page } = await launch();
+  try {
+    await setVendor(page, 'jtekt');
+    await openPlcProblem(page);
+    await expect(page.locator('[data-testid="viewport"] .block-label').first()).toBeAttached();
+    for (const width of [1280, 1920, 1440, 1280, 1920, 1280]) {
+      await app.evaluate(({ BrowserWindow }, nextWidth) => {
+        BrowserWindow.getAllWindows()[0]?.setBounds({ x: 0, y: 0, width: nextWidth, height: 800 });
+      }, width);
+      const overlaps = await page.evaluate(async () => {
+        const found: string[] = [];
+        for (let frame = 0; frame < 12; frame += 1) {
+          await new Promise<void>((resolve) => {
+            requestAnimationFrame(() => queueMicrotask(resolve));
+          });
+          const labels = [
+            ...document.querySelectorAll<HTMLElement>(
+              '[data-testid="viewport"] .block-label, [data-testid="viewport"] .socket-label, [data-testid="viewport"] .part-label',
+            ),
+          ].filter((label) => getComputedStyle(label).visibility === 'visible');
+          for (let i = 0; i < labels.length; i += 1) {
+            const a = labels[i]!;
+            const ar = a.getBoundingClientRect();
+            if (!ar.width || !ar.height) continue;
+            for (const b of labels.slice(i + 1)) {
+              const br = b.getBoundingClientRect();
+              const x = Math.min(ar.right, br.right) - Math.max(ar.left, br.left);
+              const y = Math.min(ar.bottom, br.bottom) - Math.max(ar.top, br.top);
+              if (x >= 2 && y >= 2) found.push(`${frame}: ${a.textContent} / ${b.textContent}`);
+            }
+          }
+        }
+        return found;
+      });
+      expect(overlaps, `幅${width}pxで投影更新中の名札が重なっている`).toEqual([]);
+    }
+  } finally {
+    await app.close();
+  }
+});
+
 /**
  * どの画面からでもホームへ戻る（`inspect.spec.ts` の `goHome()` と同じ流儀）。
  * 既定メーカーの後始末（決定表#21）は設定画面でしかできないので、**課題を開いたままでも**

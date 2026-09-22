@@ -13,7 +13,7 @@ test('組立は配線ゼロから開始し、P端子から配線・測定・作�
     await page.waitForTimeout(400);
     const box = await canvas.boundingBox();
     if (!box) throw new Error('盤面が表示されていません');
-    await settledShot(app, page, 'v1.4.0-power-blank');
+    await settledShot(app, page, 'v1.4.1-power-blank');
     const supply = terminalPoint('P.1' as Parameters<typeof terminalPoint>[0], box);
     await page.mouse.click(supply.x, supply.y);
     await expect(page.getByTestId('wire-cancel-inline')).toBeVisible();
@@ -24,7 +24,7 @@ test('組立は配線ゼロから開始し、P端子から配線・測定・作�
     const target = terminalPoint('TB_PB.1c' as Parameters<typeof terminalPoint>[0], box);
     await page.mouse.click(target.x, target.y);
     await expect(page.getByTestId('status-overlay')).toContainText('自分で張った電線 1 本');
-    await settledShot(app, page, 'v1.4.0-power-wired');
+    await settledShot(app, page, 'v1.4.1-power-wired');
     // 端子からの出線を実描画で確認できる拡大図。
     await page.mouse.move(supply.x, supply.y);
     for (let i = 0; i < 10; i += 1) {
@@ -32,7 +32,7 @@ test('組立は配線ゼロから開始し、P端子から配線・測定・作�
       await page.waitForTimeout(30);
     }
     await page.waitForTimeout(350);
-    await settledShot(app, page, 'v1.4.0-supply-detail');
+    await settledShot(app, page, 'v1.4.1-supply-detail');
     await page.keyboard.press('Home');
     await page.getByTestId('assemble-tester').click();
     await expect.poll(async () => (await canvas.boundingBox())?.height).toBe(box.height);
@@ -48,7 +48,7 @@ test('組立は配線ゼロから開始し、P端子から配線・測定・作�
     await expect(page.getByTestId('tester-readout')).toContainText('24');
     await page.mouse.click(box.x + box.width - 30, box.y + box.height / 2);
     await expect(page.getByTestId('tester-readout')).toContainText('24');
-    await settledShot(app, page, 'v1.4.0-direct-measurement');
+    await settledShot(app, page, 'v1.4.1-direct-measurement');
     await page.getByTestId('step-wire').getByRole('button').click();
     await expect(page.getByTestId('assemble-tester')).toHaveAttribute('aria-pressed', 'false');
     await page.getByTestId('step-parts').getByRole('button').click();
@@ -60,13 +60,13 @@ test('組立は配線ゼロから開始し、P端子から配線・測定・作�
       await page.waitForTimeout(30);
     }
     await page.waitForTimeout(350);
-    await settledShot(app, page, 'v1.4.0-switch-detail-on');
+    await settledShot(app, page, 'v1.4.1-switch-detail-on');
     await page.getByTestId('power-switch').click();
     await page.getByTestId('power-breaker').click();
-    await settledShot(app, page, 'v1.4.0-switch-detail-off');
+    await settledShot(app, page, 'v1.4.1-switch-detail-off');
     await page.keyboard.press('2');
     await page.waitForTimeout(400);
-    await settledShot(app, page, 'v1.4.0-power-perspective');
+    await settledShot(app, page, 'v1.4.1-power-perspective');
   } finally {
     await app.close();
   }
