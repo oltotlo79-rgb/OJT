@@ -29,6 +29,6 @@ describe('builtin problems under plain Node ESM', () => {
     );
     expect(result.stderr).not.toContain('ERR_IMPORT_ATTRIBUTE_MISSING');
     expect(result.status).toBe(0);
-    expect(result.stdout).toBe('60');
+    expect(result.stdout).toBe('90');
   });
 });

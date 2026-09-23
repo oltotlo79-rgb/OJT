@@ -163,7 +163,7 @@ describe('例外バナー（§13 #5）', () => {
     expect(state.session).toBeUndefined();
   });
 
-  it('2回目のリセットでは盤を作り直して知らせる', () => {
+  it('2回目の復旧でも編集した盤を保持する', () => {
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
     useStore.setState({ problem: PROBLEM, session: sessionForProblem(PROBLEM), route: 'session' });
     const original = useStore.getState().session;
@@ -174,8 +174,8 @@ describe('例外バナー（§13 #5）', () => {
     expect(useStore.getState().session).toBe(original);
 
     fireEvent.click(screen.getByTestId('error-reset'));
-    expect(useStore.getState().session).not.toBe(original);
-    expect(useStore.getState().toasts.at(-1)?.text).toBe(JA.error.boardReset);
+    expect(useStore.getState().session).toBe(original);
+    expect(useStore.getState().sessionEpoch).toBeGreaterThan(0);
   });
 
   it('非同期の未捕捉例外もバナーに出る', () => {
@@ -418,7 +418,7 @@ describe('30秒ごとの一時保存（§12.3）', () => {
     });
 
     await act(async () => {
-      vi.advanceTimersByTime(30_000);
+      vi.advanceTimersByTime(31_200);
       await Promise.resolve();
     });
 
@@ -431,10 +431,11 @@ describe('30秒ごとの一時保存（§12.3）', () => {
     expect(request?.file.hazardCount).toBe(2);
   });
 
-  it('連続2回失敗したら1度だけ知らせる（DS-4）', async () => {
-    const saveWorkFile = vi.fn<(request: WorkFileSaveRequest) => Promise<WorkFileSaveResult>>(() =>
-      Promise.resolve({ ok: false, canceled: false, message: '失敗' }),
-    );
+  it('初回の保存失敗を表示し、ボタンで再試行できる', async () => {
+    const saveWorkFile = vi
+      .fn<(request: WorkFileSaveRequest) => Promise<WorkFileSaveResult>>()
+      .mockResolvedValueOnce({ ok: false, canceled: false, message: '書込先が利用できません' })
+      .mockResolvedValue({ ok: true, path: 'C:/autosave.json' });
     setApi({
       getSettings: () => Promise.resolve(DEFAULT_SETTINGS),
       loadWorkFile: () => Promise.resolve({ ok: false, canceled: false, message: '無し' }),
@@ -446,34 +447,19 @@ describe('30秒ごとの一時保存（§12.3）', () => {
     await act(async () => {
       await Promise.resolve();
     });
-
-    // トーストは既定で数秒後に期限切れで消えるので（TOAST_TTL_MS）、配列ではなく
-    // `toast()` アクションの呼び出し回数そのものを見る（30秒間隔の advance とは無関係にする）
-    const toastSpy = vi.spyOn(useStore.getState(), 'toast');
-
-    // 1回目の失敗ではまだ知らせない
     await act(async () => {
-      vi.advanceTimersByTime(30_000);
-      await Promise.resolve();
+      await vi.advanceTimersByTimeAsync(31_200);
     });
-    expect(toastSpy).not.toHaveBeenCalled();
-
-    // 2回目の失敗で1度だけ知らせる
+    expect(saveWorkFile).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('button', { name: '自動保存失敗 — 再試行' }).title).toBe(
+      '書込先が利用できません',
+    );
     await act(async () => {
-      vi.advanceTimersByTime(30_000);
+      fireEvent.click(screen.getByRole('button', { name: '自動保存失敗 — 再試行' }));
       await Promise.resolve();
     });
     expect(saveWorkFile).toHaveBeenCalledTimes(2);
-    expect(toastSpy).toHaveBeenCalledTimes(1);
-    expect(toastSpy).toHaveBeenCalledWith(JA.error.autosaveFailed, 'error');
-
-    // 3回目の失敗では重ねて出さない
-    await act(async () => {
-      vi.advanceTimersByTime(30_000);
-      await Promise.resolve();
-    });
-    expect(saveWorkFile).toHaveBeenCalledTimes(3);
-    expect(toastSpy).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId('autosave-status').textContent).toContain('自動保存済み');
   });
 
   it('セッション外では一時保存しない', async () => {
@@ -493,7 +479,7 @@ describe('30秒ごとの一時保存（§12.3）', () => {
     });
 
     await act(async () => {
-      vi.advanceTimersByTime(30_000);
+      vi.advanceTimersByTime(31_200);
       await Promise.resolve();
     });
 

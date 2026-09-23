@@ -24,7 +24,12 @@ export const LOG_LIMIT = 200;
  * 級ごとの回路図ヒントの扱い。設計仕様 §8.4。
  * 3級は常時表示（開閉させない）、2級は開閉可で初期は閉じる、1級は出さない。
  */
-export function schematicPolicy(grade: 1 | 2 | 3): { shown: boolean; toggleable: boolean } {
+export function schematicPolicy(
+  grade: 1 | 2 | 3,
+  policy: 'task' | 'always' | 'off' = 'task',
+): { shown: boolean; toggleable: boolean } {
+  if (policy === 'always') return { shown: true, toggleable: true };
+  if (policy === 'off') return { shown: false, toggleable: false };
   if (grade === 3) return { shown: true, toggleable: false };
   if (grade === 2) return { shown: false, toggleable: true };
   return { shown: false, toggleable: false };

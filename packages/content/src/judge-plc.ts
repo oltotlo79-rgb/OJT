@@ -9,7 +9,7 @@ import {
   type LadderProgram,
 } from '@ojt/ladder-core';
 import {
-  countHazards,
+  hazardSummary,
   findUnknownCompareSignalIssues,
   type HazardCounts,
   type JudgeOptions,
@@ -107,7 +107,10 @@ export function judgePlc(
   const compiled = compile(traineeLadder);
   const ladderWarnings = compiled.warnings;
   const sessionHazards = options.sessionHazards ?? [];
-  const chartSignals = defaultChartSignals(compareSignals);
+  const chartSignals = defaultChartSignals(
+    compareSignals,
+    problem.operations.map((operation) => operation.target),
+  );
   const markers = plcTimerMarkers(referenceProgram);
   const expectedChart = buildTimeChart(expectedRun.log, chartSignals, problem.durationMs, markers);
 
@@ -120,8 +123,7 @@ export function judgePlc(
         passed: false,
         mismatches: [],
         staticChecks: [],
-        hazardCount: sessionHazards.length,
-        hazardsByKind: countHazards(sessionHazards),
+        ...hazardSummary(options),
         chatter: [],
         ...(options.elapsedMs === undefined ? {} : { elapsedMs: options.elapsedMs }),
         // 実測波形は無い（走らせていない）ので空のチャートを返す
@@ -171,8 +173,7 @@ export function judgePlc(
       passed: mismatches.length === 0 && staticChecks.every((c) => c.ok),
       mismatches,
       staticChecks,
-      hazardCount: sessionHazards.length,
-      hazardsByKind: countHazards(sessionHazards),
+      ...hazardSummary(options),
       chatter: [...chatter],
       ...(options.elapsedMs === undefined ? {} : { elapsedMs: options.elapsedMs }),
       charts: {

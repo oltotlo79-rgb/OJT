@@ -488,7 +488,11 @@ export function ViewGizmo({
   if (layout === null) return <></>;
 
   return (
-    <GizmoHelper alignment="top-left" margin={layout.margin} renderPriority={1}>
+    <GizmoHelper
+      alignment={preset === 'plc' ? 'bottom-right' : 'top-left'}
+      margin={layout.margin}
+      renderPriority={1}
+    >
       {/* HUD は本体シーンと別なので、ここに置く光はギズモだけを照らす */}
       <ambientLight intensity={GIZMO_LIGHT.ambient} />
       <directionalLight intensity={GIZMO_LIGHT.key} position={GIZMO_LIGHT.keyPosition} />

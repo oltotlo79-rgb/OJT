@@ -19,6 +19,13 @@ export interface StaticCheckResult {
   ok: boolean;
   message: string;
   details: string[];
+  issues?: readonly {
+    code: string;
+    terminals: readonly string[];
+    wireIds: readonly string[];
+    expected: string;
+    observed: string;
+  }[];
 }
 
 /**

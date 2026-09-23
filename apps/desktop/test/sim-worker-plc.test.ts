@@ -9,6 +9,8 @@ import {
 } from '@ojt/content';
 import {
   COIL_COL,
+  M,
+  set as setCoil,
   empty,
   endNetwork,
   hline,
@@ -360,5 +362,98 @@ describe('モードDの判定（§10.8 / H-4）', () => {
     expect(result?.ok).toBe(true);
     if (result === undefined || !result.ok) throw new Error('judgePlc did not return ok');
     expect(result.value.hazardCount).toBeGreaterThan(0);
+  });
+});
+
+describe('レビュー改善：スキャン診断・強制・保持', () => {
+  it('手動20スキャンと連続200msで入力・出力・時間が一致する', async () => {
+    const stepped = await running();
+    stepped.send({ type: 'plc', action: { kind: 'monitor', on: true } });
+    stepped.send({ type: 'plc', action: { kind: 'pause', on: true } });
+    stepped.send({ type: 'press', pbId: 'PB1' });
+    for (let i = 0; i < 20; i++) stepped.send({ type: 'plc', action: { kind: 'step' } });
+    const manual = stepped.snapshots.at(-1)!;
+    stepped.advance(1000);
+    expect(stepped.snapshots.at(-1)?.tMs).toBe(manual.tMs);
+    vi.clearAllTimers();
+    const continuous = await running();
+    continuous.send({ type: 'plc', action: { kind: 'monitor', on: true } });
+    continuous.send({ type: 'press', pbId: 'PB1' });
+    continuous.advance(200);
+    continuous.send({ type: 'plc', action: { kind: 'pause', on: true } });
+    continuous.advance(40);
+    const auto = continuous.snapshots.at(-1)!;
+    expect(auto.plc?.outputs).toEqual(manual.plc?.outputs);
+    expect(auto.plc?.inputs).toEqual(manual.plc?.inputs);
+    expect(auto.plc?.scanCount).toBe(manual.plc?.scanCount);
+    expect(auto.lamps).toEqual(manual.lamps);
+  });
+
+  it('STOPではSETした内部値を保持し、リセットで初期化する', async () => {
+    const ladder = program(
+      network('latch', [rung(no(X(0)), setCoil(M(0)))]),
+      network('output', [rung(no(M(0)), out(Y(0)))]),
+      endNetwork(),
+    );
+    const h = await running(ladder);
+    h.send({ type: 'plc', action: { kind: 'monitor', on: true } });
+    h.send({ type: 'press', pbId: 'PB1' });
+    h.advance(100);
+    h.send({ type: 'release', pbId: 'PB1' });
+    h.advance(100);
+    expect(h.snapshots.at(-1)?.plc?.outputs[0]).toBe(true);
+    h.send({ type: 'plc', action: { kind: 'run', on: false } });
+    h.advance(100);
+    expect(h.snapshots.at(-1)?.plc?.outputs[0]).toBe(false);
+    h.send({ type: 'plc', action: { kind: 'run', on: true } });
+    h.advance(100);
+    expect(h.snapshots.at(-1)?.plc?.outputs[0]).toBe(true);
+    h.send({ type: 'plc', action: { kind: 'reset' } });
+    h.send({ type: 'plc', action: { kind: 'run', on: true } });
+    h.advance(100);
+    expect(h.snapshots.at(-1)?.plc?.outputs[0]).toBe(false);
+  });
+
+  it('出力ONで停止し、固定課題では強制入力を拒否する', async () => {
+    const h = await running();
+    h.send({ type: 'plc', action: { kind: 'break', condition: { device: Y(0), value: true } } });
+    h.send({ type: 'press', pbId: 'PB1' });
+    h.advance(150);
+    expect(h.snapshots.at(-1)?.plcDebug?.paused).toBe(true);
+    const stopped = h.snapshots.at(-1)?.tMs;
+    h.advance(500);
+    expect(h.snapshots.at(-1)?.tMs).toBe(stopped);
+    h.send({ type: 'plc', action: { kind: 'force', index: 0, value: true } });
+    expect(h.errors.at(-1)?.message).toContain('自由割付');
+  });
+
+  it('自由課題の強制値は表示され、採点を止め、STOPで解除する', async () => {
+    const h = await boot();
+    h.send({
+      type: 'load',
+      problemId: plcProblem().id,
+      session: referenceSession(),
+      plcModel: 'FX5U',
+      allowPlcForcing: true,
+    });
+    h.send({ type: 'plc', action: { kind: 'load', program: simpleLadder() } });
+    h.send({ type: 'plc', action: { kind: 'force', index: 0, value: true } });
+    h.send({ type: 'plc', action: { kind: 'run', on: true } });
+    h.send({ type: 'plc', action: { kind: 'monitor', on: true } });
+    h.advance(100);
+    expect(h.snapshots.at(-1)?.plc?.inputs[0]).toBe(true);
+    expect(h.snapshots.at(-1)?.plcDebug?.forcedInputs).toEqual({ 0: true });
+    h.send({
+      type: 'judgePlc',
+      problem: plcProblem(),
+      session: referenceSession(),
+      ladder: simpleLadder(),
+      elapsedMs: 0,
+    });
+    expect(h.plcResults).toHaveLength(0);
+    expect(h.errors.at(-1)?.message).toContain('強制をすべて解除');
+    h.send({ type: 'plc', action: { kind: 'run', on: false } });
+    h.advance(100);
+    expect(h.snapshots.at(-1)?.plcDebug?.forcedInputs).toEqual({});
   });
 });

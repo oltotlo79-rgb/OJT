@@ -58,6 +58,7 @@ const MANUAL_DIR = resolve(APP_ROOT, '../../docs/manual');
 const RAW_DIR = join(APP_ROOT, '.manual-raw');
 const OUT_DIR = join(MANUAL_DIR, 'images');
 const SMALL_DIR = join(OUT_DIR, 'small');
+const ANNOTATE_ONLY = process.env['OJT_MANUAL_ANNOTATE_ONLY'] === '1';
 
 interface Rect {
   x: number;
@@ -94,9 +95,8 @@ const EXTRA_FLAGS = ['--force-device-scale-factor=1'];
  * 一時保存・最近の課題をここに閉じ込めるので、**他の spec と利用者の設定を汚さない**。
  * 既定メーカー（三菱）を戻す後始末も、このフォルダを捨てるだけで済む。
  *
- * 置き場所は**共有（`%PUBLIC%`）**にする。設定画面と課題一覧は「利用者課題フォルダ」の
- * 実際のパスを画面に出すので、既定の `…¥Users¥〈Windowsのアカウント名〉¥AppData¥…` で
- * 撮ると、配る取扱説明書に撮影した人のアカウント名が載ってしまう。
+ * 置き場所は実行時の一時フォルダ。撮影する設定の表示パスは、実在の個人名を
+ * 含まない例へ変更する（この例のフォルダへのファイル作成は行わない）。
  */
 let userDataDir: string | undefined;
 
@@ -741,8 +741,16 @@ function plcPushButtonPoint(pbId: string, box: CanvasBox): { x: number; y: numbe
 test.describe.serial('取扱説明書の図', () => {
   test.beforeAll(async () => {
     // テストの列挙だけでは一時フォルダを作らない。実行workerが作成・後始末を担当する。
-    userDataDir = mkdtempSync(join(process.env['PUBLIC'] ?? tmpdir(), '電気教育ツール-説明書-'));
-    rmSync(RAW_DIR, { recursive: true, force: true });
+    userDataDir = mkdtempSync(join(tmpdir(), '電気教育ツール-説明書-'));
+    if (ANNOTATE_ONLY) {
+      // 注釈の配置だけを直すときは、同時に撮った原寸PNGと実測矩形を再利用する。
+      Object.assign(
+        GEOMETRY,
+        JSON.parse(readFileSync(join(MANUAL_DIR, 'shot-geometry.json'), 'utf8')),
+      );
+    } else {
+      rmSync(RAW_DIR, { recursive: true, force: true });
+    }
     // 枠を除いた**中身**を 1280×800 にする（`setBounds` は枠を含むので使わない）
     ({ app, page } = await launchApp({
       contentSize: SHOT_SIZE,
@@ -753,6 +761,19 @@ test.describe.serial('取扱説明書の図', () => {
 
   test.afterAll(async () => {
     try {
+      // 仕上げは同じ窓を静的な撮影用HTMLへ遷移させる。終了前保存の応答はアプリに
+      // あるため、静的HTMLのまま close せず、通常の画面へ戻して終了を検査する。
+      if (page?.url().endsWith('.overlay.html')) {
+        await app.evaluate(
+          async ({ BrowserWindow }, entry) => {
+            await BrowserWindow.getAllWindows()[0]?.loadFile(entry);
+          },
+          join(APP_ROOT, 'out', 'renderer', 'index.html'),
+        );
+        await expect(
+          page.getByTestId('mode-assemble').or(page.getByTestId('restore-prompt')).first(),
+        ).toBeVisible();
+      }
       await app?.close();
     } finally {
       if (userDataDir !== undefined) rmSync(userDataDir, { recursive: true, force: true });
@@ -1234,11 +1255,15 @@ test.describe.serial('取扱説明書の図', () => {
     await page.getByTestId('notation-cancel').click();
     await expect(dialog).toHaveCount(0);
 
-    await page.getByTestId('io-outlet-note').scrollIntoViewIfNeeded();
+    // 下段の150pxの表示領域に、見出しから電源の案内までを揃えて写す。
+    // 案内だけを中央へ送ると、同時に写したい見出しが上へ隠れる。
+    await page
+      .getByTestId('io-table-summary')
+      .evaluate((element) => element.scrollIntoView({ block: 'start', inline: 'nearest' }));
     await shoot(
       'plc-io-wiring',
       {
-        1: await rectOf(page.getByTestId('io-table').locator('summary')),
+        1: await rectOf(page.getByTestId('io-table-summary')),
         2: await rectOf(page.getByTestId('io-outlet-note')),
       },
       'auto',

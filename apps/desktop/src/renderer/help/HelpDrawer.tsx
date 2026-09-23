@@ -95,9 +95,15 @@ export function HelpDrawer({ onClose }: { onClose: () => void }): JSX.Element {
    * IM-12: 上限（`MAX_HELP_HITS`）ちょうどで打ち切られたのか、まだ先に当たりが
    * あったのに丸められたのかを見分けるため、上限より1件多く取ってから切り詰める。
    */
-  const searchResult = useMemo(() => searchManual(query, MAX_HELP_HITS + 1), [query]);
-  const hitsCapped = searchResult.length > MAX_HELP_HITS;
-  const hits = hitsCapped ? searchResult.slice(0, MAX_HELP_HITS) : searchResult;
+  const mode = useStore((state) => state.problem?.mode);
+  const [shown, setShown] = useState({ query: '', limit: MAX_HELP_HITS });
+  const limit = shown.query === query ? shown.limit : MAX_HELP_HITS;
+  const searchResult = useMemo(
+    () => searchManual(query, Number.POSITIVE_INFINITY, mode),
+    [query, mode],
+  );
+  const hitsCapped = searchResult.length > limit;
+  const hits = hitsCapped ? searchResult.slice(0, limit) : searchResult;
   // ヘルプ引き出し 設計 §6.4: 検索結果は章ごとにまとめる
   const hitGroups = useMemo(() => groupHitsByChapter(hits), [hits]);
   /** 覆いで開いている図（利用者の決定 2026-09-20）。 */
@@ -311,6 +317,7 @@ export function HelpDrawer({ onClose }: { onClose: () => void }): JSX.Element {
             placeholder={JA.help.searchPlaceholder}
             value={query}
             onChange={(event) => {
+              setShown({ query: event.target.value, limit: MAX_HELP_HITS });
               setQuery(event.target.value);
             }}
           />
@@ -424,6 +431,14 @@ export function HelpDrawer({ onClose }: { onClose: () => void }): JSX.Element {
                     </ul>
                   </div>
                 ))}
+                {hitsCapped && (
+                  <button
+                    type="button"
+                    onClick={() => setShown({ query, limit: limit + MAX_HELP_HITS })}
+                  >
+                    続きを表示（残り{searchResult.length - limit}件）
+                  </button>
+                )}
               </>
             )}
           </div>

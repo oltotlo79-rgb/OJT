@@ -82,6 +82,7 @@ function computeSpecChart(problem: SchematicProblem): SpecChartResult {
   });
   const specs = defaultChartSignals(
     resolveCompareSignals(problem.judge, problem.board.extraParts ?? []),
+    problem.operations.map((operation) => operation.target),
   );
   return {
     ok: true,

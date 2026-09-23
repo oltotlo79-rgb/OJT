@@ -2,7 +2,7 @@ import { CollapsiblePanel } from './CollapsiblePanel.js';
 import type { BoardDefinition, BoardSession } from '@ojt/board-model';
 import type { TerminalId } from '@ojt/circuit-sim';
 import { useMemo, useState, type JSX } from 'react';
-import { JA, terminalNoMatchText } from '../i18n/ja.js';
+import { JA, terminalNoMatchText, terminalFullText } from '../i18n/ja.js';
 import type { PickHit } from '../session/interaction.js';
 import { terminalRows, type TerminalRow } from '../session/terminal-list.js';
 import styles from './panels.module.css';
@@ -118,7 +118,11 @@ export function TerminalListPanel({
                   // 盤の端子を指しているあいだ、その行も光らせる（指摘 PR-11）
                   data-hovered={hoveredTerminal === row.id}
                   {...(unavailable ? { 'aria-describedby': reasonId } : {})}
-                  title={unavailable ? JA.terminalList.full : row.label}
+                  title={
+                    unavailable
+                      ? terminalFullText(session.boardProfile?.rules.maxWiresPerTerminal ?? 2)
+                      : row.label
+                  }
                   onClick={() => {
                     if (unavailable) return;
                     onPick({ kind: 'terminal', id: row.id, wirable: true, label: row.label });
@@ -138,10 +142,12 @@ export function TerminalListPanel({
                   }}
                 >
                   <span className={styles.terminalName}>{row.label}</span>
-                  <span className={styles.terminalCount}>{row.wireCount}/2</span>
+                  <span className={styles.terminalCount}>
+                    {row.wireCount}/{session.boardProfile?.rules.maxWiresPerTerminal ?? 2}
+                  </span>
                   {unavailable ? (
                     <span className={styles.srOnly} id={reasonId} data-testid={reasonId}>
-                      {JA.terminalList.full}
+                      {terminalFullText(session.boardProfile?.rules.maxWiresPerTerminal ?? 2)}
                     </span>
                   ) : null}
                 </button>

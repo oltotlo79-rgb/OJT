@@ -1,4 +1,4 @@
-import { JIPM_BOARD, type BoardDefinition } from '@ojt/board-model';
+import { withBoardProfile, JIPM_BOARD, type BoardDefinition } from '@ojt/board-model';
 import {
   isPlcProblem,
   plcBoardFor,
@@ -19,7 +19,7 @@ import type { LadderProgram } from '@ojt/ladder-core';
  */
 export function plcBoardOf(problem: SupportedProblem): BoardDefinition | undefined {
   if (!isPlcProblem(problem)) return undefined;
-  return plcBoardFor(problem, JIPM_BOARD);
+  return plcBoardFor(problem, withBoardProfile(JIPM_BOARD, problem.board.profile));
 }
 
 /**
@@ -28,7 +28,7 @@ export function plcBoardOf(problem: SupportedProblem): BoardDefinition | undefin
  */
 export function boardForProblem(problem: SupportedProblem | undefined): BoardDefinition {
   if (problem === undefined) return JIPM_BOARD;
-  return plcBoardOf(problem) ?? JIPM_BOARD;
+  return plcBoardOf(problem) ?? withBoardProfile(JIPM_BOARD, problem.board.profile);
 }
 
 /** 課題のI/O割付（既定割付の穴埋め済み）。モードD以外は `undefined`。§7.6 */

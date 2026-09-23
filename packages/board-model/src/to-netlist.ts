@@ -21,6 +21,7 @@ import {
 import { OUTLET_ID, PLC_PART_ID, SOCKET_IDS, type BoardDefinition } from './board-jipm.js';
 import { socketPartId, type SocketRoles } from './roles.js';
 import { SessionError, type BoardSession } from './session.js';
+import { withBoardProfile } from './profiles.js';
 
 /**
  * 盤セッション → circuit-sim のネットリスト。設計仕様 §6.4 / §4.4。
@@ -70,9 +71,9 @@ function railPart(id: string, count: number): Part {
   return createTerminalOnlyPart(id, terminals);
 }
 
-function pushButtonBlockPart(): Part {
+function pushButtonBlockPart(count: number): Part {
   const terminals: TerminalId[] = [];
-  for (let n = 1; n <= 4; n += 1) {
+  for (let n = 1; n <= count; n += 1) {
     for (const sign of ['c', 'a', 'b'] as const) {
       terminals.push(terminalId(PB_BLOCK_ID, `${n}${sign}`));
     }
@@ -80,9 +81,9 @@ function pushButtonBlockPart(): Part {
   return createTerminalOnlyPart(PB_BLOCK_ID, terminals);
 }
 
-function lampBlockPart(): Part {
+function lampBlockPart(count: number): Part {
   const terminals: TerminalId[] = [];
-  for (let n = 1; n <= 4; n += 1) {
+  for (let n = 1; n <= count; n += 1) {
     for (const sign of ['+', '-'] as const) {
       terminals.push(terminalId(PL_BLOCK_ID, `${n}${sign}`));
     }
@@ -105,6 +106,7 @@ function lampBlockPart(): Part {
  * 黙って壊れたネットリストを作るより早く落とす）。
  */
 export function toNetlist(session: BoardSession, board: BoardDefinition): Netlist {
+  board = withBoardProfile(board, session.boardProfile);
   if (session.boardId !== board.id) {
     throw new SessionError(`このセッションの盤ではありません: ${session.boardId} ≠ ${board.id}`);
   }
@@ -112,8 +114,16 @@ export function toNetlist(session: BoardSession, board: BoardDefinition): Netlis
   parts.push(createPowerSupply(POWER_SUPPLY_ID));
   parts.push(railPart(P_RAIL_ID, board.supplyTerminalCount));
   parts.push(railPart(N_RAIL_ID, board.supplyTerminalCount));
-  parts.push(pushButtonBlockPart());
-  parts.push(lampBlockPart());
+  parts.push(pushButtonBlockPart(board.pushButtons.length));
+  parts.push(lampBlockPart(board.lamps.length));
+  const auxiliary = board.terminals.filter((terminal) => terminal.id.startsWith('TB_AUX.'));
+  if (auxiliary.length > 0)
+    parts.push(
+      createTerminalOnlyPart(
+        'TB_AUX',
+        auxiliary.map((terminal) => terminal.id),
+      ),
+    );
   for (const pb of board.pushButtons) parts.push(createPushButton(pb.id));
   for (const lamp of board.lamps) parts.push(createLamp(lamp.id, lamp.color));
   if (session.extraParts.includes(partId(BUZZER_ID))) parts.push(createBuzzer(BUZZER_ID));
@@ -146,7 +156,12 @@ export function toNetlist(session: BoardSession, board: BoardDefinition): Netlis
   // 落ちてしまうので、フィールドをそのまま写す。
   const wires: Wire[] = session.wires.map((w) => ({ ...w }));
 
-  return createNetlist(parts, wires, links);
+  return {
+    ...createNetlist(parts, wires, links),
+    ...(session.boardProfile === undefined
+      ? {}
+      : { maxWiresPerTerminal: session.boardProfile.rules.maxWiresPerTerminal }),
+  };
 }
 
 /**

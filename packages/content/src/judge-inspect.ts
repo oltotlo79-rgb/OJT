@@ -9,7 +9,7 @@ import {
   type RepairCircuit,
 } from './inspect-repair.js';
 import {
-  countHazards,
+  hazardSummary,
   findDeadReferenceIssue,
   findUnknownCompareSignalIssues,
   liveSignalsOf,
@@ -119,15 +119,13 @@ export function judgeInspectParts(
     return { partId: part.id, truth: part.truth, answer, correct: answer === part.truth };
   });
   const correctCount = scores.filter((s) => s.correct).length;
-  const sessionHazards = options.sessionHazards ?? [];
   return {
     mode: 'inspect-parts',
     passed: correctCount === scores.length,
     correctCount,
     total: scores.length,
     scores,
-    hazardCount: sessionHazards.length,
-    hazardsByKind: countHazards(sessionHazards),
+    ...hazardSummary(options),
     ...(options.elapsedMs === undefined ? {} : { elapsedMs: options.elapsedMs }),
   };
 }
@@ -218,8 +216,7 @@ export function judgeInspectRepair(
    * セッションと再生の両方に出てしまい、足すと訓練者の実際の操作回数より多くなる。
    * 静的チェック（`powerSequence`）には再生ぶんも合わせて渡す（`judge.ts` と同じ扱い）。
    */
-  const sessionHazards = options.sessionHazards ?? [];
-  const checkedHazards = [...sessionHazards, ...actualRun.events.hazards()];
+  const checkedHazards = [...(options.sessionHazards ?? []), ...actualRun.events.hazards()];
   const chatter = actualRun.events.chatters();
   const staticChecks = runStaticChecks(
     {
@@ -234,7 +231,10 @@ export function judgeInspectRepair(
     problem.judge.staticChecks,
   );
 
-  const chartSignals = defaultChartSignals(compareSignals);
+  const chartSignals = defaultChartSignals(
+    compareSignals,
+    problem.operations.map((operation) => operation.target),
+  );
   const markers = timerMarkers(reference.value.netlist);
   const charts = {
     expected: buildTimeChart(expectedRun.log, chartSignals, problem.durationMs, markers),
@@ -257,8 +257,7 @@ export function judgeInspectRepair(
       staticChecks,
       modifications,
       addedWires: addedWireIds(circuit, circuit.session),
-      hazardCount: sessionHazards.length,
-      hazardsByKind: countHazards(sessionHazards),
+      ...hazardSummary(options),
       chatter: [...chatter],
       ...(options.elapsedMs === undefined ? {} : { elapsedMs: options.elapsedMs }),
       charts,

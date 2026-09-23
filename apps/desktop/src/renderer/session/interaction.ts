@@ -80,6 +80,7 @@ export interface TerminalLoad {
   id: TerminalId;
   /** いまその端子に繋がっている電線の本数（既設配線も数える）。§6.6 */
   wireCount: number;
+  wireLimit?: number;
 }
 
 /**
@@ -298,7 +299,10 @@ function wireCountOf(state: InteractionState, id: TerminalId): number {
 
 /** その端子はもう2本つながっているか（§6.6 の上限）。 */
 export function isTerminalFull(state: InteractionState, id: TerminalId): boolean {
-  return wireCountOf(state, id) >= MAX_WIRES_PER_TERMINAL;
+  return (
+    wireCountOf(state, id) >=
+    (state.terminals?.find((row) => row.id === id)?.wireLimit ?? MAX_WIRES_PER_TERMINAL)
+  );
 }
 
 /**
@@ -309,7 +313,9 @@ export function isTerminalFull(state: InteractionState, id: TerminalId): boolean
 export function legalTargets(state: InteractionState): readonly TerminalId[] {
   const pending = state.pendingTerminal;
   return (state.terminals ?? [])
-    .filter((row) => row.id !== pending && row.wireCount < MAX_WIRES_PER_TERMINAL)
+    .filter(
+      (row) => row.id !== pending && row.wireCount < (row.wireLimit ?? MAX_WIRES_PER_TERMINAL),
+    )
     .map((row) => row.id);
 }
 

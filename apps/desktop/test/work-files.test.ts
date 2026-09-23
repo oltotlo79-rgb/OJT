@@ -1,3 +1,5 @@
+import { createSession, JIPM_BOARD } from '@ojt/board-model';
+import { empty, network } from '@ojt/ladder-core';
 import {
   existsSync,
   mkdirSync,
@@ -49,6 +51,7 @@ const electron = vi.hoisted(() => ({
   userDataDir: '',
   showSaveDialog: vi.fn(),
   showOpenDialog: vi.fn(),
+  showMessageBox: vi.fn(),
 }));
 
 vi.mock('electron', () => ({
@@ -61,6 +64,7 @@ vi.mock('electron', () => ({
   dialog: {
     showSaveDialog: electron.showSaveDialog,
     showOpenDialog: electron.showOpenDialog,
+    showMessageBox: electron.showMessageBox,
   },
 }));
 
@@ -68,7 +72,7 @@ function sampleFile(overrides: Partial<WorkFile> = {}): WorkFile {
   return {
     formatVersion: WORK_FILE_FORMAT_VERSION,
     problemId: 'b-001',
-    session: { wires: [], socketRoles: {} },
+    session: createSession(JIPM_BOARD),
     elapsedMs: 1234,
     hazardCount: 2,
     savedAt: '2026-09-14T00:00:00.000Z',
@@ -84,6 +88,7 @@ beforeEach(() => {
   electron.userDataDir = dir;
   electron.showSaveDialog.mockReset();
   electron.showOpenDialog.mockReset();
+  electron.showMessageBox.mockReset();
 });
 
 afterEach(() => {
@@ -143,15 +148,24 @@ describe('parseWorkFile（§13 #8: 未知のバージョンは読み込まない
       locked: false,
       open: false,
     }));
-    const result = parseWorkFile(sampleFile({ session: { wires, socketRoles: {} } }));
+    const result = parseWorkFile(sampleFile({ session: { ...createSession(JIPM_BOARD), wires } }));
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.message).toBe(MSG.workFile.tooManyWires);
   });
 
   it('上限ちょうどの本数は読める', () => {
-    const wires = Array.from({ length: MAX_WORK_FILE_WIRES }, (_, i) => ({ id: `w-${i}` }));
-    expect(parseWorkFile(sampleFile({ session: { wires, socketRoles: {} } })).ok).toBe(true);
+    const wires = Array.from({ length: MAX_WORK_FILE_WIRES }, (_, i) => ({
+      id: `w-${i}`,
+      from: 'CR1.13',
+      to: 'CR1.14',
+      color: '青',
+      locked: false,
+      open: false,
+    }));
+    expect(parseWorkFile(sampleFile({ session: { ...createSession(JIPM_BOARD), wires } })).ok).toBe(
+      true,
+    );
   });
 });
 
@@ -278,7 +292,7 @@ describe('parseWorkFile のモード固有の項目（§12.3 / §13 #8）', () =
     },
   );
 
-  it('並びでない任意項目は落とす（読めない形のまま renderer へ渡さない）', () => {
+  it('解答配列の形が壊れていれば読み込み全体を拒否する', () => {
     const result = parseWorkFile(
       sampleFile({
         answers: 'x',
@@ -286,11 +300,7 @@ describe('parseWorkFile のモード固有の項目（§12.3 / §13 #8）', () =
         checkPartId: 42,
       } as unknown as Partial<WorkFile>),
     );
-    expect(result.ok).toBe(true);
-    if (!result.ok) return;
-    expect(result.file.answers).toBeUndefined();
-    expect(result.file.tester).toBeUndefined();
-    expect(result.file.checkPartId).toBeUndefined();
+    expect(result.ok).toBe(false);
   });
 
   /**
@@ -337,11 +347,11 @@ describe('parseWorkFile のモード固有の項目（§12.3 / §13 #8）', () =
     const base = {
       formatVersion: 1,
       problemId: 'd-001',
-      session: { socketRoles: {}, wires: [] },
+      session: createSession(JIPM_BOARD),
       mode: 'plc',
       dialectId: 'mitsubishi',
       converted: true,
-      ladder: { networks: [{ id: 'n1', rows: 1, cols: 16, cells: [[{ kind: 'empty' }]] }] },
+      ladder: { networks: [network('n1', [[empty()]])] },
     };
     const ok = parseWorkFile(base);
     expect(ok.ok).toBe(true);
@@ -374,12 +384,10 @@ describe('parseWorkFile のモード固有の項目（§12.3 / §13 #8）', () =
     if (!ok.ok) return;
     expect(ok.file.schematic).toEqual(draft);
 
-    // 形の違う下書きは無かったことにする（読込そのものは断らない）
+    // 下書きが壊れていれば、消失を防ぐためファイル全体を拒否する
     for (const bad of ['x', 42, [], null]) {
       const result = parseWorkFile(sampleFile({ schematic: bad }));
-      expect(result.ok).toBe(true);
-      if (!result.ok) continue;
-      expect(result.file.schematic).toBeUndefined();
+      expect(result.ok).toBe(false);
     }
   });
   // --- /Plan 5 Task 6 ---
@@ -462,6 +470,62 @@ describe('saveWorkFile / loadWorkFile（一時保存。§12.3）', () => {
 });
 
 describe('saveWorkFile / loadWorkFile（手動。§13 #7）', () => {
+  it('旧版の65ブロックは全データを保全して64＋1に救出でき、原本は変更しない', async () => {
+    const source = join(electron.userDataDir, 'old.ojtw');
+    const networks = Array.from({ length: 65 }, (_, index) => ({
+      ...network(`n${index}`, [Array.from({ length: 16 }, () => empty())]),
+    }));
+    const original = JSON.stringify(sampleFile({ mode: 'plc', ladder: { networks } }));
+    writeFileSync(source, original, 'utf8');
+    electron.showOpenDialog.mockResolvedValueOnce({ canceled: false, filePaths: [source] });
+    electron.showMessageBox.mockResolvedValueOnce({ response: 0 });
+    electron.showOpenDialog.mockResolvedValueOnce({
+      canceled: false,
+      filePaths: [electron.userDataDir],
+    });
+    const result = await loadWorkFile(undefined, { kind: 'manual' });
+    expect(result.ok).toBe(false);
+    const folder = readdirSync(electron.userDataDir).find((name) =>
+      name.startsWith('ojt-recovery-'),
+    );
+    expect(folder).toBeDefined();
+    if (folder === undefined) throw new Error('救出先がありません');
+    const destination = join(electron.userDataDir, folder);
+    expect(readFileSync(join(destination, 'original.ojtw'), 'utf8')).toBe(original);
+    expect(readFileSync(source, 'utf8')).toBe(original);
+    const recovered = ['part-001.ojtw', 'part-002.ojtw'].map((name) => {
+      const part: unknown = JSON.parse(readFileSync(join(destination, name), 'utf8'));
+      expect(parseWorkFile(part).ok).toBe(true);
+      return (part as { ladder: { networks: unknown[] } }).ladder.networks;
+    });
+    expect(recovered.map((rows) => rows.length)).toEqual([64, 1]);
+    expect(recovered.flat()).toEqual(networks);
+    expect(readFileSync(join(destination, 'README.txt'), 'utf8')).toContain(
+      '元と同じ動作・採点を保証しません',
+    );
+  });
+
+  it('旧作業の救出を取り消すとコピーを作らず、元データを維持する', async () => {
+    const source = join(electron.userDataDir, 'old.ojtw');
+    const original = JSON.stringify(
+      sampleFile({
+        mode: 'plc',
+        ladder: {
+          networks: Array.from({ length: 65 }, (_, index) =>
+            network(`n${index}`, [Array.from({ length: 16 }, () => empty())]),
+          ),
+        },
+      }),
+    );
+    writeFileSync(source, original, 'utf8');
+    electron.showOpenDialog.mockResolvedValueOnce({ canceled: false, filePaths: [source] });
+    electron.showMessageBox.mockResolvedValueOnce({ response: 1 });
+    const result = await loadWorkFile(undefined, { kind: 'manual' });
+    expect(result).toMatchObject({ ok: false, message: MSG.workFile.tooManyNetworks });
+    expect(readdirSync(electron.userDataDir)).toEqual(['old.ojtw']);
+    expect(readFileSync(source, 'utf8')).toBe(original);
+  });
+
   it('保存ダイアログを取り消したら保存しない', async () => {
     electron.showSaveDialog.mockResolvedValue({ canceled: true });
     const result = await saveWorkFile(undefined, { kind: 'manual', file: sampleFile() });

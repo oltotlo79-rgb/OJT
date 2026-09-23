@@ -32,7 +32,10 @@ export default defineConfig({
     build: {
       rollupOptions: {
         external: NODE_EXTERNALS,
-        input: { index: resolve(import.meta.dirname, 'src/main/index.ts') },
+        input: {
+          index: resolve(import.meta.dirname, 'src/main/index.ts'),
+          'definition-worker': resolve(import.meta.dirname, 'src/main/definition-worker.ts'),
+        },
       },
     },
   },

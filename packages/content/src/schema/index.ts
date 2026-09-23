@@ -192,7 +192,35 @@ export function parseProblem(json: unknown): ParseProblemResult {
         : mode === 'plc'
           ? PlcProblemSchema.safeParse(json)
           : AssembleProblemSchema.safeParse(json);
-  if (parsed.success) return { ok: true, problem: parsed.data };
+  if (parsed.success) {
+    const problem = parsed.data,
+      profile = problem.board.profile;
+    const issues: ProblemIssue[] = [];
+    if (profile !== undefined && problem.mode !== 'assemble')
+      issues.push({
+        path: 'board.profile',
+        message:
+          '自由練習用の拡張盤は回路組立で使用します。点検・PLC課題には標準盤を指定してください。',
+      });
+    if ('operations' in problem)
+      problem.operations.forEach((operation, index) => {
+        if (Number(operation.target.slice(2)) > 4 + (profile?.extraPushButtons ?? 0))
+          issues.push({
+            path: `operations[${index}].target`,
+            message: `${operation.target} はこの盤にありません。拡張盤の押ボタン数を確認してください。`,
+          });
+      });
+    if (issues.length > 0)
+      return {
+        ok: false,
+        reason: 'schema',
+        message: '盤設定と課題が一致しません',
+        issues,
+        id: problem.id,
+        mode: problem.mode,
+      };
+    return { ok: true, problem };
+  }
   return {
     ok: false,
     reason: 'schema',

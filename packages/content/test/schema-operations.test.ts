@@ -21,7 +21,7 @@ describe('OperationSchema', () => {
   });
 
   it('rejects an unknown target or action', () => {
-    expect(OperationSchema.safeParse({ t: 0, target: 'PB5', action: 'press' }).success).toBe(false);
+    expect(OperationSchema.safeParse({ t: 0, target: 'PB9', action: 'press' }).success).toBe(false);
     expect(OperationSchema.safeParse({ t: 0, target: 'PB1', action: 'hold' }).success).toBe(false);
   });
 

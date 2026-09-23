@@ -24,6 +24,8 @@ export function ExportEntry(): JSX.Element | null {
           ? wiringSuspects(problem, JIPM_BOARD, state.session)
           : undefined;
       const html = resultReportHtml({
+        measurements: state.measurements,
+        diagnosisNotes: state.diagnosisNotes,
         problem,
         result: judge,
         sessionOpenedAtMs: state.sessionOpenedAtMs,

@@ -230,13 +230,7 @@ export function readSettingsResponse(): AppSettingsResponse {
  */
 export function writeSettings(patch: unknown): AppSettings {
   const { settings, corrupt } = loadSettings();
-  if (corrupt) {
-    try {
-      copyFileSync(settingsPath(), corruptSettingsPath());
-    } catch {
-      // 控えを取れなくても保存自体は続ける（既定値で動けることのほうが大事）
-    }
-  }
+  if (corrupt) copyFileSync(settingsPath(), corruptSettingsPath());
   const next = sanitizePatch(settings, patch);
   const path = settingsPath();
   writeFileAtomic(path, `${JSON.stringify(next, null, 2)}\n`);

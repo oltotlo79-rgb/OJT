@@ -1,7 +1,9 @@
+import { useRuntimeConnection } from '../session/use-runtime-connection.js';
+import { boardForProblem } from '../session/plc-session.js';
+import { WireListPanel } from '../panels/WireListPanel.js';
 import { togglePowerFixture } from '../session/power-toggle.js';
 import { CollapsiblePanel } from '../panels/CollapsiblePanel.js';
 import {
-  JIPM_BOARD,
   mountedKinds,
   remainingInventory,
   socketPartId,
@@ -20,7 +22,6 @@ import {
   failedLog,
   historyLog,
   JA,
-  openedProblemLog,
   powerLog,
   referenceErrorText,
   routeFailedLog,
@@ -84,11 +85,7 @@ import {
   selectionFor,
   selectionForHover,
 } from '../session/wiring-guide.js';
-import {
-  loadWorkFileAndApply,
-  replayTesterToWorker,
-  saveCurrentWork,
-} from '../session/work-file.js';
+import { loadWorkFileAndApply, saveCurrentWork } from '../session/work-file.js';
 import { SoundEffects, useElapsedTicker } from '../session/use-session-runtime.js';
 import { bridge } from '../session/worker-bridge.js';
 import { BoardScene, safeRoutes } from '../three/BoardScene.js';
@@ -171,6 +168,7 @@ export function Session(): JSX.Element {
     s.problem !== undefined && isAssembleProblem(s.problem) ? s.problem : undefined,
   );
   const session = useStore((s) => s.session);
+  const boardDefinition = useMemo(() => boardForProblem(problem), [problem]);
   const history = useStore((s) => s.history);
   const mode = useStore((s) => s.mode);
   const wireColor = useStore((s) => s.wireColor);
@@ -207,8 +205,6 @@ export function Session(): JSX.Element {
   /** 結果画面の「盤で見る」で跳んできたか。§8.3 / UXレビュー #28 / 決定表#11 */
   const boardFocus = useStore((s) => s.boardFocus);
   const restoredHazardCount = useStore((s) => s.restoredHazardCount);
-  const problemId = problem?.id;
-  const sessionEpoch = useStore((s) => s.sessionEpoch);
 
   /*
    * 回路図ヒントの出し方は級で決まる（§8.4）。3級は常時表示で開閉ボタンを出さない、
@@ -218,7 +214,10 @@ export function Session(): JSX.Element {
    * 出しているか」を見て初めてハイライトを許すため。ここで漏らすと、1級（回路図を一切出さない）
    * や2級で閉じているあいだも、盤の端子にホバーするだけで模範回路の答えが輪で漏れてしまう。
    */
-  const policy = problem === undefined ? undefined : schematicPolicy(problem.grade);
+  const policy =
+    problem === undefined
+      ? undefined
+      : schematicPolicy(problem.grade, problem.board.profile?.rules.hintPolicy);
   const showSchematic =
     policy !== undefined && (policy.toggleable ? schematicVisible : policy.shown);
 
@@ -228,75 +227,7 @@ export function Session(): JSX.Element {
    * 例外バナーの「セッションをリセット」）に `problemId` が変わらず、この効果が張り直されないため。
    * 張り直されないと盤だけが作り直され、Worker は古いネットリストを回し続けて食い違う（§13 #5 / #6）。
    */
-  useEffect(() => {
-    const store = useStore.getState();
-    const current = store.problem;
-    const currentSession = store.session;
-    /*
-     * ここで見る `store.problem` は3モードの共用体のまま（絞り込み済みの `problem` は
-     * 依存配列に載せた `problemId` としてしか使わない）。モードB以外が届いたときに
-     * そのまま `load` を送ると、画面は「課題が選ばれていません」なのに Worker だけが
-     * 動き出す（Plan 2B Batch 1 レビュー）。振り分けの `SessionRoute`（Task 10）が入るまでの
-     * 安全網として、この画面が描けない課題では Worker を起こさない。
-     */
-    if (current === undefined || currentSession === undefined || !isAssembleProblem(current)) {
-      return;
-    }
-    bridge.start({
-      onSnapshot: (next) => {
-        useStore.getState().applySnapshot(next);
-      },
-      onJudge: (message) => {
-        const state = useStore.getState();
-        state.setJudging(false);
-        if (message.result.ok) {
-          state.setJudge(message.result.value);
-          state.setRoute('result');
-        } else {
-          state.toast(referenceErrorText(message.result.errors.map((e) => e.message)), 'error');
-        }
-      },
-      // 検算の結果（Plan 5 Task 6 の `verify` コマンドの返り）。§11.4
-      onVerify: (message) => {
-        useStore.getState().setVerifyResult(message.result);
-      },
-      onError: (text, fatal) => {
-        const state = useStore.getState();
-        // 判定の往復中に落ちたら「判定中…」のまま固まるので、必ず戻す（§8.2）
-        state.setJudging(false);
-        /*
-         * 検算も同じ（レビュー I5）。`setVerifyResult()` は届かないので `verifying` が下りず、
-         * 「検算中…」のままボタンが戻らなくなる。§11.4
-         */
-        state.setVerifying(false);
-        const line = `${JA.error.workerError}: ${text}`;
-        // 追従ループが止まったら（§13 #6）トーストでは気づけない。バナーを出して立て直させる
-        if (fatal) state.setFatalError(line);
-        else state.toast(line, 'error');
-        state.addLog(line);
-      },
-    });
-    bridge.send({ type: 'load', problemId: current.id, session: cloneSession(currentSession) });
-    /*
-     * Worker を起こし直した直後は、盤の `load` でつまみ・レンジ・0Ω調整が既定に戻っている
-     * （クラッシュ復帰など、この効果が張られる前に `applyWorkFile()` が送った再送が
-     * `WorkerBridge.send()` の no-op で捨てられている場合がある。Plan 2B レビュー B2）。
-     * つまみを触っていなければ既定のままでよいので、無駄な再送はしない。
-     */
-    const tester = store.tester;
-    if (
-      tester.mode !== 'off' ||
-      tester.zeroAdjusted ||
-      tester.kind !== 'digital' ||
-      tester.black !== undefined ||
-      tester.red !== undefined
-    )
-      replayTesterToWorker(tester);
-    store.addLog(openedProblemLog(current.title));
-    return () => {
-      bridge.stop();
-    };
-  }, [problemId, sessionEpoch]);
+  useRuntimeConnection('assemble');
 
   // 経過時間を定期更新する（§8.1）
   useElapsedTicker();
@@ -342,7 +273,7 @@ export function Session(): JSX.Element {
           break;
         case 'completeWire':
           store.setPending(undefined);
-          apply(runAddWire(current, action.from, action.to, action.color, JIPM_BOARD), () => {
+          apply(runAddWire(current, action.from, action.to, action.color, boardDefinition), () => {
             const next = useStore.getState();
             const wire = next.session?.wires.at(-1);
             if (wire === undefined) return;
@@ -352,7 +283,7 @@ export function Session(): JSX.Element {
             // 電気的な接続は既に成立しているので、盤の状態は戻さない（描けないのは見た目だけ）。
             const board = next.session;
             if (board === undefined) return;
-            const { routes, errors } = safeRoutes(JIPM_BOARD, board);
+            const { routes, errors } = safeRoutes(boardDefinition, board);
             const failed = errors.find((e) => e.wireId === wire.id);
             if (failed !== undefined) {
               next.toast(`${JA.session.routeFailed}（${JA.routeReason[failed.reason]}）`, 'error');
@@ -431,7 +362,7 @@ export function Session(): JSX.Element {
         }
       }
     },
-    [apply],
+    [apply, boardDefinition],
   );
 
   /**
@@ -443,16 +374,16 @@ export function Session(): JSX.Element {
     () =>
       problem === undefined || session === undefined
         ? undefined
-        : guideIndexFor({ doc: schematicDoc, problem, board: JIPM_BOARD, session }),
-    [schematicDoc, problem, session],
+        : guideIndexFor({ doc: schematicDoc, problem, board: boardDefinition, session }),
+    [schematicDoc, problem, session, boardDefinition],
   );
   /** 配線ガイドの索引（課題の模範回路＝回路図ヒント用）。`doc: undefined` で模範回路に落ちる。 */
   const hintGuideIndex = useMemo(
     () =>
       problem === undefined || session === undefined
         ? undefined
-        : guideIndexFor({ doc: undefined, problem, board: JIPM_BOARD, session }),
-    [problem, session],
+        : guideIndexFor({ doc: undefined, problem, board: boardDefinition, session }),
+    [problem, session, boardDefinition],
   );
 
   /**
@@ -560,14 +491,16 @@ export function Session(): JSX.Element {
              * **指した時点で**予告するために（手は止めない。`intentOf()` の注記）、
              * 運んでいるものは3Dのクリックを「落とす」に変えるために要る。
              */
-            ...(current === undefined ? {} : { terminals: terminalLoads(JIPM_BOARD, current) }),
+            ...(current === undefined
+              ? {}
+              : { terminals: terminalLoads(boardDefinition, current) }),
             dragging: store.dragging,
           },
           hit,
         ),
       );
     },
-    [runAction],
+    [runAction, boardDefinition],
   );
 
   /*
@@ -777,7 +710,15 @@ export function Session(): JSX.Element {
         canUndo={history.done.length > 0}
         canRedo={history.undone.length > 0}
         /* 段階的に開くヒント（指摘 PR-02）。1段目は手順帯がいま出している案内そのもの。 */
-        hints={hintStages({ grade: problem.grade, stepHint, tags: problem.tags })}
+        hints={
+          problem.board.profile?.rules.hintPolicy === 'off'
+            ? []
+            : hintStages({
+                grade: problem.board.profile?.rules.hintPolicy === 'always' ? 3 : problem.grade,
+                stepHint,
+                tags: problem.tags,
+              })
+        }
         viewSwitch={
           <>
             <span className={styles.toolLabelInline}>{JA.schematic.viewLabel}</span>
@@ -881,7 +822,8 @@ export function Session(): JSX.Element {
       {boardFocus === undefined ? null : (
         <div className={styles.boardFocus} data-testid="board-focus">
           <span>
-            {JA.result.fromResult}: {boardFocus.text}
+            {boardFocus.from === 'result' ? JA.result.fromResult : '選択した対象'}:{' '}
+            {boardFocus.text}
           </span>
           <button
             type="button"
@@ -890,10 +832,10 @@ export function Session(): JSX.Element {
               const store = useStore.getState();
               store.setBoardFocus(undefined);
               store.setHighlight(NO_HIGHLIGHT);
-              store.setRoute('result');
+              if (boardFocus.from === 'result') store.setRoute('result');
             }}
           >
-            {JA.result.backToResult}
+            {boardFocus.from === 'result' ? JA.result.backToResult : '強調表示を解除'}
           </button>
         </div>
       )}
@@ -930,7 +872,13 @@ export function Session(): JSX.Element {
         {assembleView === 'schematic' ? null : (
           <div className={styles.viewport} data-testid="viewport">
             <WarningBanner />
-            <BoardScene onPick={onPick} onHover={onHover} onPress={onPress} onRelease={onRelease} />
+            <BoardScene
+              board={boardDefinition}
+              onPick={onPick}
+              onHover={onHover}
+              onPress={onPress}
+              onRelease={onRelease}
+            />
             <div className={styles.statusOverlay} data-testid="status-overlay">
               {powered ? JA.session.powered : JA.session.unpowered} /{' '}
               {wireCountText(session.wires.length, fixedWireCount)} /{' '}
@@ -954,7 +902,7 @@ export function Session(): JSX.Element {
           <div className={styles.editorPane} data-editor-pane data-testid="editor-pane">
             <SchematicEditor
               problem={problem}
-              board={JIPM_BOARD}
+              board={boardDefinition}
               document={schematicDoc}
               cursor={schematicCursor}
               history={schematicHistory}
@@ -1060,7 +1008,7 @@ export function Session(): JSX.Element {
           {/* --- Plan 5 Task 10: 端子リストによるキーボード配線（UXレビュー #29 / 決定表#12） --- */}
           <TerminalListPanel
             measuring={mode === 'tester'}
-            board={JIPM_BOARD}
+            board={boardDefinition}
             session={session}
             pendingTerminal={pendingTerminal}
             /*
@@ -1082,6 +1030,7 @@ export function Session(): JSX.Element {
             }}
           />
           {/* --- /Plan 5 Task 10 --- */}
+          <WireListPanel board={boardDefinition} />
           <LivePanel />
         </div>
 

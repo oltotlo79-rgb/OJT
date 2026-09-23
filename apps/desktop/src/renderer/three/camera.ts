@@ -192,6 +192,7 @@ export function boardUp(): [number, number, number] {
 
 /** 視点の付帯条件（機種と実際のビューポートの縦横比）。 */
 export interface CameraPoseOptions {
+  boardWidth?: number;
   /** モードDで机上に置いている本体。省くと FX5U（決定表#18）。 */
   plcUnit?: PlcUnitDefinition;
   /**
@@ -224,8 +225,8 @@ const FACE_DISTANCE_MARGIN = 1.05;
  * - `bottom`（下）: 盤を下から見上げる。ただし `MAX_POLAR_ANGLE` より下へは回り込めないので
  *   「許される範囲でいちばん低い位置から見上げる」視点になる（2026-09-14 の利用者要望の注記）
  */
-export function cameraPose(preset: CameraPreset, options: CameraPoseOptions = {}): CameraPose {
-  const w = BOARD_WIDTH_MM;
+function baseCameraPose(preset: CameraPreset, options: CameraPoseOptions): CameraPose {
+  const w = options.boardWidth ?? BOARD_WIDTH_MM;
   const h = BOARD_HEIGHT_MM;
   // 視野角38°・横基準。盤の幅330mmが収まるには距離 ≥ 165/(tan(19°)×aspect) 必要で、
   // 16:10 のビューポート（aspect 1.6）なら 305mm。1割の余白を足した w × 1.05 を面直視の距離にする。
@@ -265,7 +266,7 @@ export function cameraPose(preset: CameraPreset, options: CameraPoseOptions = {}
       const rect = plcViewRect(options.plcUnit ?? PLC_UNIT_FX5U);
       const distance = fitDistanceMm(rect.w, rect.h, options.aspect ?? PLC_VIEW_ASPECT);
       const center: [number, number, number] = [
-        rect.x + rect.w / 2 - w / 2,
+        rect.x + rect.w / 2 - BOARD_WIDTH_MM / 2,
         h / 2 - (rect.y + rect.h / 2),
         0,
       ];
@@ -280,7 +281,7 @@ export function cameraPose(preset: CameraPreset, options: CameraPoseOptions = {}
       const rect = SOCKET_VIEW_RECT;
       const distance = fitDistanceMm(rect.w, rect.h, options.aspect ?? SOCKET_VIEW_ASPECT);
       const center: [number, number, number] = [
-        rect.x + rect.w / 2 - w / 2,
+        rect.x + rect.w / 2 - BOARD_WIDTH_MM / 2,
         h / 2 - (rect.y + rect.h / 2),
         0,
       ];
@@ -380,5 +381,17 @@ export function interpolatePose(from: CameraPose, to: CameraPose, t: number): Ca
     position: position.toArray(),
     target,
     up: up.toArray(),
+  };
+}
+
+/** 追加盤も標準盤と同じ座標原点で配置し、全体表示の中心だけ広がった盤へ移す。 */
+export function cameraPose(preset: CameraPreset, options: CameraPoseOptions = {}): CameraPose {
+  const pose = baseCameraPose(preset, options);
+  if (preset === 'socket' || preset === 'plc') return pose;
+  const dx = ((options.boardWidth ?? BOARD_WIDTH_MM) - BOARD_WIDTH_MM) / 2;
+  return {
+    ...pose,
+    position: [pose.position[0] + dx, pose.position[1], pose.position[2]],
+    target: [pose.target[0] + dx, pose.target[1], pose.target[2]],
   };
 }

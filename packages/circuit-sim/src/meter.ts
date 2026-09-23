@@ -72,7 +72,7 @@ export function measureVoltage(sim: Simulation, black: TerminalId, red: Terminal
 
 /** ACVレンジ。AC一次側は測定対象外なので常に 0.00V を返す（実機の操作感のためレンジだけ存在する）。§5.5 */
 export function measureAcVolts(): VoltReading {
-  return { volts: 0, display: formatVolts(0) };
+  return { volts: Number.NaN, display: 'ACV未対応' };
 }
 
 /** `VoltReading.display` を作る。符号付き小数点2桁 + 単位。 */

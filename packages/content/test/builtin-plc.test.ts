@@ -8,20 +8,20 @@ import { resolveCompareSignals } from '../src/schema/judge.js';
 import { buildTimeChart, defaultChartSignals, startsAndEndsLow } from '../src/timechart.js';
 
 describe('内蔵モードD課題（§7.9）', () => {
-  it('has the sixty built-in mode D problems (2級形式30題＋1級形式30題)', () => {
+  it('has the ninety built-in mode D problems (2級40題＋1級50題)', () => {
     expect(BUILTIN_PLC_PROBLEMS.map((p) => p.id)).toEqual(
-      Array.from({ length: 60 }, (_, i) => `d-${String(i + 1).padStart(3, '0')}`),
+      Array.from({ length: 90 }, (_, i) => `d-${String(i + 1).padStart(3, '0')}`),
     );
-    expect(BUILTIN_PLC_PROBLEMS.filter((p) => p.grade === 2)).toHaveLength(30);
-    expect(BUILTIN_PLC_PROBLEMS.filter((p) => p.grade === 1)).toHaveLength(30);
+    expect(BUILTIN_PLC_PROBLEMS.filter((p) => p.grade === 2)).toHaveLength(40);
+    expect(BUILTIN_PLC_PROBLEMS.filter((p) => p.grade === 1)).toHaveLength(50);
     // 同梱の60題は三菱で出題するが、IRはベンダ中立で4機種すべてで成立する
     // （`plc-cross-validation.test.ts` が機種を差し替えて確かめている。決定表#14）
-    expect(BUILTIN_PLC_PROBLEMS.every((p) => p.plc.model === 'FX5U')).toBe(true);
+    expect(BUILTIN_PLC_PROBLEMS.slice(0, 60).every((p) => p.plc.model === 'FX5U')).toBe(true);
     expect(BUILTIN_PLC_PROBLEMS.every((p) => p.wiringRequired)).toBe(true);
   });
 
   it('uses three inputs and three outputs in the 2級 form (調査資料 §1.1)', () => {
-    for (const problem of BUILTIN_PLC_PROBLEMS.filter((p) => p.grade === 2)) {
+    for (const problem of BUILTIN_PLC_PROBLEMS.slice(0, 60).filter((p) => p.grade === 2)) {
       expect(problem.io.inputs).toHaveLength(3);
       expect(problem.io.outputs).toHaveLength(3);
       // PB4 はチェック用回路の押ボタンなので入力には使わない（§6.3）
@@ -30,7 +30,7 @@ describe('内蔵モードD課題（§7.9）', () => {
   });
 
   it('uses three inputs and four outputs in the 1級 form (調査資料 §1.1)', () => {
-    const grade1 = BUILTIN_PLC_PROBLEMS.filter((p) => p.grade === 1);
+    const grade1 = BUILTIN_PLC_PROBLEMS.slice(0, 60).filter((p) => p.grade === 1);
     expect(grade1).toHaveLength(30);
     for (const problem of grade1) {
       expect(problem.io.inputs).toHaveLength(3);

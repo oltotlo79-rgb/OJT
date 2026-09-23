@@ -97,8 +97,8 @@ describe('OhmReading.rawOhms', () => {
 });
 
 describe('VoltReading.display', () => {
-  it('符号なし0Vは "0.00 V"（ACVレンジ）', () => {
-    expect(measureAcVolts().display).toBe('0.00 V');
+  it('未対応のACVは数値の0Vと区別する', () => {
+    expect(measureAcVolts().display).toBe('ACV未対応');
   });
 
   it('非通電回路は "0.00 V"', () => {

@@ -1,6 +1,7 @@
 import type { SocketId } from '@ojt/board-model';
 import type { JSX } from 'react';
 import { JA, mountedPartLabel } from '../i18n/ja.js';
+import { focusDiagnosticTarget } from '../session/diagnostic-navigation.js';
 import styles from './tester.module.css';
 
 /** 装着済み部品1個（交換の対象）。 */
@@ -41,16 +42,34 @@ export function RepairPanel({
       <h2 className={styles.title}>{JA.inspectRepair.repair}</h2>
       <p className={styles.label}>{JA.inspectRepair.addedWires}</p>
       <p className={styles.reportTarget} data-testid="added-wires">
-        {addedWires.length === 0 ? JA.inspectRepair.none : addedWires.join(' / ')}
+        {addedWires.length === 0
+          ? JA.inspectRepair.none
+          : addedWires.map((wireId) => (
+              <button key={wireId} type="button" onClick={() => focusDiagnosticTarget({ wireId })}>
+                {wireId}
+              </button>
+            ))}
       </p>
       <p className={styles.label}>{JA.inspectRepair.removedWires}</p>
       <p className={styles.reportTarget} data-testid="removed-wires">
-        {removedWires.length === 0 ? JA.inspectRepair.none : removedWires.join(' / ')}
+        {removedWires.length === 0
+          ? JA.inspectRepair.none
+          : removedWires.map((wireId) => (
+              <button key={wireId} type="button" onClick={() => focusDiagnosticTarget({ wireId })}>
+                {wireId} の元の端子
+              </button>
+            ))}
       </p>
       <p className={styles.label}>{JA.inspectRepair.parts}</p>
       {mountedParts.map((part) => (
         <div key={part.partId} className={styles.trayRow}>
-          <span className={styles.trayName}>{mountedPartLabel(part.partId, part.isTimer)}</span>
+          <button
+            type="button"
+            className={styles.trayName}
+            onClick={() => focusDiagnosticTarget({ partId: part.partId })}
+          >
+            {mountedPartLabel(part.partId, part.isTimer)} を表示
+          </button>
           <button
             type="button"
             data-testid={`replace-${part.partId}`}

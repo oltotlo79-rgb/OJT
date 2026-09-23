@@ -7,6 +7,7 @@ import {
   isOutputCell,
   LadderError,
   MAX_ROWS,
+  MAX_NETWORKS,
   vline,
   type Cell,
   type LadderProgram,
@@ -139,6 +140,8 @@ export function insertNetwork(
   atIndex: number,
   net: Network,
 ): LadderProgram {
+  if (program.networks.length >= MAX_NETWORKS)
+    throw new LadderError(`回路ブロックは${MAX_NETWORKS}個までです`);
   if (!Number.isInteger(atIndex) || atIndex < 0 || atIndex > program.networks.length) {
     throw new LadderError(`ネットワークを位置 ${atIndex} には挿入できません`);
   }

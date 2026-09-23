@@ -7,7 +7,6 @@ import { droppedTicksLog, JA } from '../src/renderer/i18n/ja.js';
 import {
   EMPTY_SNAPSHOT,
   MAX_LIVE_POINTS,
-  RESTART_FALLBACK_ATTEMPTS,
   schematicPolicy,
   sessionFields,
   sessionForProblem,
@@ -16,6 +15,7 @@ import {
   useStore,
   type AppState,
 } from '../src/renderer/app/store.js';
+import { createDiagnosisSlice } from '../src/renderer/app/store-diagnosis.js';
 import { createLadderSlice } from '../src/renderer/app/store-ladder.js';
 import { createSchematicSlice } from '../src/renderer/app/store-schematic.js';
 import { createSessionSlice } from '../src/renderer/app/store-session.js';
@@ -325,7 +325,7 @@ describe('restartSession / resetSession（§13 #5）', () => {
    * 1D2-a のレビュー指摘: 盤そのもの（保存データ由来の壊れた電線など）が原因で落ちていると、
    * 盤を残す `restartSession()` を何度押しても同じ例外で落ち続け、画面から抜け出せなかった。
    */
-  it('2回続けてリセットしたら盤を作り直し、知らせを出す', () => {
+  it('何度復旧しても盤と履歴を失わない', () => {
     if (PROBLEM === undefined) return;
     useStore.getState().openProblem(PROBLEM);
     const original = useStore.getState().session;
@@ -343,11 +343,10 @@ describe('restartSession / resetSession（§13 #5）', () => {
     useStore.getState().restartSession();
 
     const state = useStore.getState();
-    expect(RESTART_FALLBACK_ATTEMPTS).toBe(2);
-    expect(state.session).not.toBe(original);
-    expect(state.history.done).toHaveLength(0);
-    expect(state.restartAttempts).toBe(0);
-    expect(state.toasts.at(-1)?.text).toBe(JA.error.boardReset);
+    expect(state.session).toBe(original);
+    expect(state.history.done).toHaveLength(1);
+    expect(state.restartAttempts).toBe(2);
+    expect(state.toasts).toHaveLength(0);
   });
 
   it('画面を描けたら連続リセットの数は 0 に戻る', () => {
@@ -464,17 +463,17 @@ describe('schematicPolicy（§8.4: 級ごとの回路図ヒント）', () => {
   });
 });
 
-describe('ストアの4分割（指摘 DS-3）', () => {
+describe('ストアの5分割（指摘 DS-3）', () => {
   /**
    * 分割前の `AppState` が持っていた欄と操作の数。§12.1
-   * 4スライスの公開キーの和がこれと一致することを固定して、割り直しで欄が
+   * 5スライスの公開キーの和がこれと一致することを固定して、割り直しで欄が
    * 迷子になる（どのスライスにも入らない／二重に入る）ことを止める。
    *
    * 144 → 148: Phase 7 Task 27（3D盤の直接操作）で `dragging` / `hoverHint` と
    * その差し替え（`setDragging` / `setHoverHint`）の4つが増えた。
    * 148 → 150: Phase 7 Task 25（指摘 PR-02）で `hintStage` と `revealHint` の2つが増えた。
    */
-  const APP_STATE_KEY_COUNT = 152;
+  const APP_STATE_KEY_COUNT = 160;
 
   /** スライスを1つ組み立てて、公開するキーだけを取り出す（中身は呼ばない）。 */
   function keysOf(
@@ -487,12 +486,13 @@ describe('ストアの4分割（指摘 DS-3）', () => {
     return Object.keys(create(useStore.setState, useStore.getState, useStore));
   }
 
-  it('4スライスの公開キーの和がストアのキー集合と一致する', () => {
+  it('5スライスの公開キーの和がストアのキー集合と一致する', () => {
     const slices = [
       keysOf(createSessionSlice),
       keysOf(createSchematicSlice),
       keysOf(createLadderSlice),
       keysOf(createUiSlice),
+      keysOf(createDiagnosisSlice),
     ];
     const union = new Set(slices.flat());
     expect(union.size).toBe(slices.reduce((total, keys) => total + keys.length, 0));
@@ -537,13 +537,20 @@ describe('sessionFields（課題を開く・やり直す・捨てるの初期値
     expectFresh();
   });
 
-  it('restartSession が同じ初期値へ戻す', () => {
+  it('restartSession は実行時エラーだけを消し、作業とヒント履歴を保持する', () => {
     expect(PROBLEM).toBeDefined();
     if (PROBLEM === undefined) return;
     useStore.getState().openProblem(PROBLEM);
     dirty();
     useStore.getState().restartSession();
-    expectFresh();
+    const state = useStore.getState();
+    expect(state.fatalError).toBeUndefined();
+    expect(state.webglLost).toBe(false);
+    expect(state.judging).toBe(false);
+    expect(state.pendingTerminal).toBeUndefined();
+    expect(state.selectedWire).toBe('w-1');
+    expect(state.answers).toEqual([{ partId: 'p1', answer: 'normal' }]);
+    expect(state.schematicOpenCount).toBe(3);
   });
 
   it('abandonSession が同じ初期値へ戻す', () => {

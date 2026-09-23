@@ -1,5 +1,6 @@
 import {
   MOUNTABLE_KINDS,
+  TRAINING_CHECK_IDS,
   SOCKET_IDS,
   SOCKET_ROLES,
   validateSocketRoles,
@@ -122,6 +123,25 @@ export const ExtraPartSchema = z.enum(['BZ']);
 
 /** 課題が使う盤の指定。§7.1 */
 export const BoardRefSchema = z.strictObject({
+  profile: z
+    .strictObject({
+      id: z.literal('expanded'),
+      terminalPairs: z.int().min(0).max(8),
+      extraPushButtons: z.int().min(0).max(4),
+      extraLamps: z.int().min(0).max(4),
+      rules: z.strictObject({
+        id: z.literal('free'),
+        allowedColors: z
+          .array(z.enum(['青', '白', '黄']))
+          .min(1)
+          .max(3),
+        maxWiresPerTerminal: z.literal([2, 3, 4]),
+        allowedParts: z.array(z.enum(MOUNTABLE_KINDS)).max(MOUNTABLE_KINDS.length).optional(),
+        hintPolicy: z.enum(['task', 'always', 'off']).optional(),
+        staticChecks: z.partialRecord(z.enum(TRAINING_CHECK_IDS), z.boolean()).optional(),
+      }),
+    })
+    .optional(),
   boardId: z.string().min(1),
   socketRoles: SocketRolesSchema,
   extraParts: z.array(ExtraPartSchema).optional(),

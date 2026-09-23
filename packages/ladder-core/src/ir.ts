@@ -14,6 +14,8 @@ export const IR_COLS = 16;
 export const COIL_COL = IR_COLS - 1;
 
 /** 1ネットワークの最大行数（本アプリ既定）。 */
+export const MAX_NETWORKS = 64;
+
 export const MAX_ROWS = 12;
 
 /** 常時ONの特殊デバイス番号（三菱の M8000 相当）。§10.3 */

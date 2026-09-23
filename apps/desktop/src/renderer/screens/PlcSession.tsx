@@ -1,3 +1,10 @@
+import { useRuntimeConnection } from '../session/use-runtime-connection.js';
+import { TerminalListPanel } from '../panels/TerminalListPanel.js';
+import { TesterPanel, dispatchTester } from '../panels/TesterPanel.js';
+import { testerPickToAction } from '../session/tester.js';
+import { IoTable } from '../ladder/IoTable.js';
+import { BoardFocusNotice } from '../panels/BoardFocusNotice.js';
+import { WireListPanel } from '../panels/WireListPanel.js';
 import { togglePowerFixture } from '../session/power-toggle.js';
 import {
   plcUnitFor,
@@ -7,21 +14,12 @@ import {
   type SocketId,
 } from '@ojt/board-model';
 import type { TerminalId } from '@ojt/circuit-sim';
-import { isPlcProblem } from '@ojt/content';
+import { isPlcProblem, resolvePlcIo } from '@ojt/content';
 import { getDialect, type DialectProfile } from '@ojt/plc-dialects';
 import { useCallback, useEffect, useMemo, type JSX } from 'react';
 import type { PlcCommandAction } from '../../worker/protocol.js';
 import { useStore } from '../app/store.js';
-import {
-  failedLog,
-  historyLog,
-  JA,
-  openedProblemLog,
-  powerLog,
-  referenceErrorText,
-  routeFailedLog,
-  wireCountText,
-} from '../i18n/ja.js';
+import { failedLog, historyLog, JA, powerLog, routeFailedLog, wireCountText } from '../i18n/ja.js';
 import { LadderWorkspace } from '../ladder/LadderWorkspace.js';
 import { ElapsedTimer } from '../panels/ElapsedTimer.js';
 import { LogPanel } from '../panels/LogPanel.js';
@@ -148,6 +146,9 @@ export function PlcSession(): JSX.Element {
   const converted = useStore((s) => s.converted);
   const ladder = useStore((s) => s.ladder);
   const plcRunning = useStore((s) => s.plcRunning);
+  const debug = useStore((state) => state.snapshot.plcDebug);
+  const pendingTerminal = useStore((state) => state.pendingTerminal);
+  const hoveredTerminal = useStore((state) => state.hoveredTerminal);
   const selectedSocket = useStore((s) => s.selectedSocket);
   const dragging = useStore((s) => s.dragging);
   const powered = useStore((s) => s.snapshot.powered);
@@ -161,7 +162,6 @@ export function PlcSession(): JSX.Element {
   const restoredHazardCount = useStore((s) => s.restoredHazardCount);
   const dialectId = useStore((s) => s.dialectId);
   const problemId = problem?.id;
-  const sessionEpoch = useStore((s) => s.sessionEpoch);
 
   const profile = useMemo(() => getDialect(dialectId), [dialectId]);
   /** 表示列数は設定画面の値。`0` なら方言の既定（§10.6 / 決定表#8）。 */
@@ -177,53 +177,7 @@ export function PlcSession(): JSX.Element {
   }, []);
 
   /** Worker を起こし、PLC本体つきの盤を読ませる。§10.1 */
-  useEffect(() => {
-    const store = useStore.getState();
-    const current = store.problem;
-    const currentSession = store.session;
-    if (current === undefined || !isPlcProblem(current) || currentSession === undefined) {
-      return undefined;
-    }
-    bridge.start({
-      onSnapshot: (next) => {
-        const state = useStore.getState();
-        state.applySnapshot(next);
-        // モニタ中でないときは毎フレーム `undefined` を入れ直さない（§15）
-        if (next.plc !== undefined || state.plcMonitor !== undefined) state.setPlcMonitor(next.plc);
-      },
-      onJudge: () => {
-        // モードDでは届かない（モードBの判定結果）
-      },
-      onPlc: (message) => {
-        const state = useStore.getState();
-        state.setJudging(false);
-        if (message.result.ok) {
-          state.setJudge(message.result.value);
-          state.setRoute('result');
-        } else {
-          state.toast(referenceErrorText(message.result.errors.map((e) => e.message)), 'error');
-        }
-      },
-      onError: (text, fatal) => {
-        const state = useStore.getState();
-        state.setJudging(false);
-        const line = `${JA.error.workerError}: ${text}`;
-        if (fatal) state.setFatalError(line);
-        else state.toast(line, 'error');
-        state.addLog(line);
-      },
-    });
-    bridge.send({
-      type: 'load',
-      problemId: current.id,
-      session: cloneSession(currentSession),
-      plcModel: current.plc.model,
-    });
-    store.addLog(openedProblemLog(current.title));
-    return () => {
-      bridge.stop();
-    };
-  }, [problemId, sessionEpoch]);
+  useRuntimeConnection('plc');
 
   // 経過時間を定期更新する（§8.1）
   useElapsedTicker();
@@ -293,6 +247,13 @@ export function PlcSession(): JSX.Element {
             }
           });
           break;
+        case 'placeProbe':
+          dispatchTester({ type: 'place-probe', probe: action.probe, terminal: action.terminal });
+          break;
+        case 'liftProbe':
+          for (const side of action.probe === 'both' ? (['black', 'red'] as const) : [action.probe])
+            dispatchTester({ type: 'place-probe', probe: side, terminal: undefined });
+          break;
         case 'selectWire':
           store.setSelectedWire(action.wireId);
           break;
@@ -338,6 +299,15 @@ export function PlcSession(): JSX.Element {
         hit.kind === 'terminal'
           ? { ...hit, id: toNetlistTerminal(current.socketRoles, hit.id) }
           : hit;
+      if (store.mode === 'tester') {
+        runAction(
+          testerPickToAction(
+            { black: store.tester.black, red: store.tester.red, next: store.nextProbe },
+            mapped,
+          ),
+        );
+        return;
+      }
       runAction(
         pickToAction(
           {
@@ -537,6 +507,7 @@ export function PlcSession(): JSX.Element {
       problemId: problem.id,
       session: cloneSession(step.session),
       plcModel: problem.plc.model,
+      allowPlcForcing: problem.io.mode === 'free',
     });
     // 盤を読み直すとスキャン結合も捨てられるので、変換済みのラダーを載せ直す（§10.4）
     const after = useStore.getState();
@@ -657,6 +628,15 @@ export function PlcSession(): JSX.Element {
           }}
         />
       </Toolbar>
+      <BoardFocusNotice />
+      {debug !== undefined && Object.keys(debug.forcedInputs).length > 0 && (
+        <div role="alert" style={{ padding: 8, background: '#66480d' }}>
+          診断用入力の強制中：実際の配線とは異なる入力で運転しています。
+          <button type="button" onClick={() => onPlc({ kind: 'clearForces' })}>
+            強制をすべて解除
+          </button>
+        </div>
+      )}
 
       {/*
         いまどの手順にいるのか・いまの状態は何か・次に何をすればよいのかを、
@@ -744,6 +724,21 @@ export function PlcSession(): JSX.Element {
             onSwap={onSwap}
             onPreset={onPreset}
           />
+          {view === 'board' && board.plcUnit !== undefined && (
+            <IoTable io={resolvePlcIo(problem.io)} profile={profile} unit={board.plcUnit} />
+          )}
+          <TerminalListPanel
+            board={board}
+            session={session}
+            pendingTerminal={pendingTerminal}
+            hoveredTerminal={hoveredTerminal}
+            measuring={mode === 'tester'}
+            onPick={onPick}
+            onHover={onHover}
+            onCancel={() => useStore.getState().setPending(undefined)}
+          />
+          <TesterPanel />
+          <WireListPanel board={board} />
           <ElapsedTimer limit={problem.timeLimit} />
           <LogPanel
             lines={logLines}

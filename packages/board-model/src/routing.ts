@@ -792,7 +792,7 @@ export function routeWire(
 ): WireRoute {
   const a = terminalOf(board, wire, wire.from);
   const b = terminalOf(board, wire, wire.to);
-  if (options.exitOverride === undefined) {
+  if (options.exitOverride === undefined && (options.viaChannelIds?.length ?? 0) === 0) {
     const direct = directRunRoute(board, wire, a, b, existingRoutes);
     if (direct !== undefined) return direct;
   }
@@ -808,10 +808,28 @@ export function routeWire(
 
   const entryA = { channel: chA, along: alongOf(chA, a.pos.x, a.pos.y) };
   const entryB = { channel: chB, along: alongOf(chB, b.pos.x, b.pos.y) };
-  const graph = buildChannelGraph(board.wiringChannels, [entryA, entryB]);
+  const via = (options.viaChannelIds ?? []).map((id) => {
+    const channel = board.wiringChannels.find((candidate) => candidate.id === id);
+    if (channel === undefined)
+      throw new RoutingError(`指定した配線帯がありません: ${id}`, wire.id, 'unreachable');
+    return { channel, along: (channel.from + channel.to) / 2 };
+  });
+  const graph = buildChannelGraph(board.wiringChannels, [entryA, ...via, entryB]);
   const pa = pointOn(chA, entryA.along);
   const pb = pointOn(chB, entryB.along);
-  const path = shortestPath(graph.edges, key(pa.x, pa.y), key(pb.x, pb.y));
+  const stops = [pa, ...via.map((entry) => pointOn(entry.channel, entry.along)), pb];
+  let path: { keys: string[]; channelIds: string[] } | undefined = { keys: [], channelIds: [] };
+  for (let index = 1; index < stops.length; index += 1) {
+    const from = stops[index - 1]!,
+      to = stops[index]!;
+    const segment = shortestPath(graph.edges, key(from.x, from.y), key(to.x, to.y));
+    if (segment === undefined) {
+      path = undefined;
+      break;
+    }
+    path.keys.push(...(path.keys.length === 0 ? segment.keys : segment.keys.slice(1)));
+    path.channelIds.push(...segment.channelIds);
+  }
   if (path === undefined) {
     throw new RoutingError(
       `配線帯がつながっていません: ${wire.from} → ${wire.to}`,
@@ -920,6 +938,7 @@ export function routeWire(
 
 /** 経路生成のオプション。 */
 export interface RouteOptions {
+  viaChannelIds?: readonly string[];
   /** 端子ごとに引き出し向きを強制する（既設ハーネスを写真どおり手前へ出すのに使う）。 */
   exitOverride?: Readonly<Record<string, 'rear' | 'front'>>;
   /**
@@ -967,7 +986,7 @@ export function routeSession(board: BoardDefinition, session: BoardSession): Wir
           to: toPhysicalTerminal(session.socketRoles, wire.to),
         },
         routes,
-        { channelById },
+        { channelById, ...(session.wireRoutePreferences?.[wire.id] ?? {}) },
       ),
     );
   }

@@ -22,21 +22,14 @@ export const LUG_COLOR = '#B9A46A';
  */
 export const WIRE_OUTLINE_COLOR = '#23272E';
 
-/** 表示灯の色（`schematic-core` の `LAMP_FILL` と同値）。§5.3.4 */
-export const LAMP_COLORS: Readonly<Record<string, string>> = {
-  PL1: '#FFFFFF',
-  PL2: '#F2C230',
-  PL3: '#3FA34D',
-  PL4: '#D64545',
-};
-
-/** 押ボタンの色。§5.3.3 */
-export const PUSH_BUTTON_COLORS: Readonly<Record<string, string>> = {
-  PB1: '#1A1A1A',
-  PB2: '#F2C230',
-  PB3: '#3FA34D',
-  PB4: '#D64545',
-};
+/** ボタン・表示灯の定義色。追加部品でもIDに依存せず課題の定義を反映する。 */
+export const FACE_COLORS = {
+  黒: '#1A1A1A',
+  白: '#FFFFFF',
+  黄: '#F2C230',
+  緑: '#3FA34D',
+  赤: '#D64545',
+} as const;
 
 /**
  * 盤・部品の基本色（実物写真に合わせる）。

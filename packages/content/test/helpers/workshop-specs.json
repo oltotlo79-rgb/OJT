@@ -1,0 +1,461 @@
+{
+  "b-061": {
+    "terms": [[1, 2, 3, 4]],
+    "timerMode": "none",
+    "presetMs": 500,
+    "secondary": false
+  },
+  "b-062": {
+    "terms": [
+      [1, 2],
+      [3, 4]
+    ],
+    "timerMode": "none",
+    "presetMs": 1500,
+    "secondary": false
+  },
+  "b-063": {
+    "terms": [
+      [1, 2, -3],
+      [1, 2, 4]
+    ],
+    "timerMode": "none",
+    "presetMs": 2500,
+    "secondary": false
+  },
+  "b-064": {
+    "terms": [
+      [1, -2, 3, -4],
+      [-1, 2, -3, 4]
+    ],
+    "timerMode": "none",
+    "presetMs": 500,
+    "secondary": false
+  },
+  "b-065": {
+    "terms": [[1, -2, -3, -4]],
+    "timerMode": "none",
+    "presetMs": 1500,
+    "secondary": false
+  },
+  "b-066": {
+    "terms": [
+      [1, 3],
+      [2, -4]
+    ],
+    "timerMode": "none",
+    "presetMs": 2500,
+    "secondary": false
+  },
+  "b-067": {
+    "terms": [
+      [1, 2, 3],
+      [2, 3, 4]
+    ],
+    "timerMode": "none",
+    "presetMs": 500,
+    "secondary": false
+  },
+  "b-068": {
+    "terms": [
+      [1, -2, 3],
+      [1, -3, 4]
+    ],
+    "timerMode": "none",
+    "presetMs": 1500,
+    "secondary": false
+  },
+  "b-069": {
+    "terms": [[1, 2, 3, 4]],
+    "timerMode": "none",
+    "presetMs": 2500,
+    "secondary": true
+  },
+  "b-070": {
+    "terms": [
+      [1, 2],
+      [3, 4]
+    ],
+    "timerMode": "none",
+    "presetMs": 500,
+    "secondary": true
+  },
+  "b-071": {
+    "terms": [
+      [1, 2, -3],
+      [1, 2, 4]
+    ],
+    "timerMode": "none",
+    "presetMs": 1500,
+    "secondary": true
+  },
+  "b-072": {
+    "terms": [
+      [1, -2, 3, -4],
+      [-1, 2, -3, 4]
+    ],
+    "timerMode": "none",
+    "presetMs": 2500,
+    "secondary": true
+  },
+  "b-073": {
+    "terms": [[1, -2, -3, -4]],
+    "timerMode": "none",
+    "presetMs": 500,
+    "secondary": true
+  },
+  "b-074": {
+    "terms": [
+      [1, 3],
+      [2, -4]
+    ],
+    "timerMode": "none",
+    "presetMs": 1500,
+    "secondary": true
+  },
+  "b-075": {
+    "terms": [
+      [1, 2, 3],
+      [2, 3, 4]
+    ],
+    "timerMode": "delay",
+    "presetMs": 2500,
+    "secondary": false
+  },
+  "b-076": {
+    "terms": [
+      [1, -2, 3],
+      [1, -3, 4]
+    ],
+    "timerMode": "delay",
+    "presetMs": 500,
+    "secondary": false
+  },
+  "b-077": {
+    "terms": [[1, 2, 3, 4]],
+    "timerMode": "delay",
+    "presetMs": 1500,
+    "secondary": false
+  },
+  "b-078": {
+    "terms": [
+      [1, 2],
+      [3, 4]
+    ],
+    "timerMode": "delay",
+    "presetMs": 2500,
+    "secondary": false
+  },
+  "b-079": {
+    "terms": [
+      [1, 2, -3],
+      [1, 2, 4]
+    ],
+    "timerMode": "delay",
+    "presetMs": 500,
+    "secondary": false
+  },
+  "b-080": {
+    "terms": [
+      [1, -2, 3, -4],
+      [-1, 2, -3, 4]
+    ],
+    "timerMode": "delay",
+    "presetMs": 1500,
+    "secondary": false
+  },
+  "b-081": {
+    "terms": [[1, -2, -3, -4]],
+    "timerMode": "pulse",
+    "presetMs": 2500,
+    "secondary": false
+  },
+  "b-082": {
+    "terms": [
+      [1, 3],
+      [2, -4]
+    ],
+    "timerMode": "pulse",
+    "presetMs": 500,
+    "secondary": false
+  },
+  "b-083": {
+    "terms": [
+      [1, 2, 3],
+      [2, 3, 4]
+    ],
+    "timerMode": "pulse",
+    "presetMs": 1500,
+    "secondary": false
+  },
+  "b-084": {
+    "terms": [
+      [1, -2, 3],
+      [1, -3, 4]
+    ],
+    "timerMode": "pulse",
+    "presetMs": 2500,
+    "secondary": false
+  },
+  "b-085": {
+    "terms": [[1, 2, 3, 4]],
+    "timerMode": "pulse",
+    "presetMs": 500,
+    "secondary": false
+  },
+  "b-086": {
+    "terms": [
+      [1, 2],
+      [3, 4]
+    ],
+    "timerMode": "pulse",
+    "presetMs": 1500,
+    "secondary": false
+  },
+  "d-061": {
+    "terms": [[1, 2, 3, 4]],
+    "timerMode": "none",
+    "presetMs": 500,
+    "secondary": true
+  },
+  "d-062": {
+    "terms": [
+      [1, 2],
+      [3, 4]
+    ],
+    "timerMode": "none",
+    "presetMs": 1500,
+    "secondary": true
+  },
+  "d-063": {
+    "terms": [
+      [1, 2, -3],
+      [1, 2, 4]
+    ],
+    "timerMode": "none",
+    "presetMs": 2500,
+    "secondary": true
+  },
+  "d-064": {
+    "terms": [
+      [1, -2, 3, -4],
+      [-1, 2, -3, 4]
+    ],
+    "timerMode": "none",
+    "presetMs": 500,
+    "secondary": true
+  },
+  "d-065": {
+    "terms": [[1, -2, -3, -4]],
+    "timerMode": "none",
+    "presetMs": 1500,
+    "secondary": true
+  },
+  "d-066": {
+    "terms": [
+      [1, 3],
+      [2, -4]
+    ],
+    "timerMode": "none",
+    "presetMs": 2500,
+    "secondary": true
+  },
+  "d-067": {
+    "terms": [
+      [1, 2, 3],
+      [2, 3, 4]
+    ],
+    "timerMode": "none",
+    "presetMs": 500,
+    "secondary": true
+  },
+  "d-068": {
+    "terms": [
+      [1, -2, 3],
+      [1, -3, 4]
+    ],
+    "timerMode": "none",
+    "presetMs": 1500,
+    "secondary": true
+  },
+  "d-069": {
+    "terms": [[1, 2, 3, 4]],
+    "timerMode": "none",
+    "presetMs": 2500,
+    "secondary": true
+  },
+  "d-070": {
+    "terms": [
+      [1, 2],
+      [3, 4]
+    ],
+    "timerMode": "none",
+    "presetMs": 500,
+    "secondary": true
+  },
+  "d-071": {
+    "terms": [
+      [1, 2, -3],
+      [1, 2, 4]
+    ],
+    "timerMode": "delay",
+    "presetMs": 1500,
+    "secondary": false
+  },
+  "d-072": {
+    "terms": [
+      [1, -2, 3, -4],
+      [-1, 2, -3, 4]
+    ],
+    "timerMode": "delay",
+    "presetMs": 2500,
+    "secondary": false
+  },
+  "d-073": {
+    "terms": [[1, -2, -3, -4]],
+    "timerMode": "delay",
+    "presetMs": 500,
+    "secondary": false
+  },
+  "d-074": {
+    "terms": [
+      [1, 3],
+      [2, -4]
+    ],
+    "timerMode": "delay",
+    "presetMs": 1500,
+    "secondary": false
+  },
+  "d-075": {
+    "terms": [
+      [1, 2, 3],
+      [2, 3, 4]
+    ],
+    "timerMode": "delay",
+    "presetMs": 2500,
+    "secondary": false
+  },
+  "d-076": {
+    "terms": [
+      [1, -2, 3],
+      [1, -3, 4]
+    ],
+    "timerMode": "delay",
+    "presetMs": 500,
+    "secondary": false
+  },
+  "d-077": {
+    "terms": [[1, 2, 3, 4]],
+    "timerMode": "delay",
+    "presetMs": 1500,
+    "secondary": false
+  },
+  "d-078": {
+    "terms": [
+      [1, 2],
+      [3, 4]
+    ],
+    "timerMode": "delay",
+    "presetMs": 2500,
+    "secondary": false
+  },
+  "d-079": {
+    "terms": [
+      [1, 2, -3],
+      [1, 2, 4]
+    ],
+    "timerMode": "delay",
+    "presetMs": 500,
+    "secondary": false
+  },
+  "d-080": {
+    "terms": [
+      [1, -2, 3, -4],
+      [-1, 2, -3, 4]
+    ],
+    "timerMode": "delay",
+    "presetMs": 1500,
+    "secondary": false
+  },
+  "d-081": {
+    "terms": [[1, -2, -3, -4]],
+    "timerMode": "pulse",
+    "presetMs": 2500,
+    "secondary": false
+  },
+  "d-082": {
+    "terms": [
+      [1, 3],
+      [2, -4]
+    ],
+    "timerMode": "pulse",
+    "presetMs": 500,
+    "secondary": false
+  },
+  "d-083": {
+    "terms": [
+      [1, 2, 3],
+      [2, 3, 4]
+    ],
+    "timerMode": "pulse",
+    "presetMs": 1500,
+    "secondary": false
+  },
+  "d-084": {
+    "terms": [
+      [1, -2, 3],
+      [1, -3, 4]
+    ],
+    "timerMode": "pulse",
+    "presetMs": 2500,
+    "secondary": false
+  },
+  "d-085": {
+    "terms": [[1, 2, 3, 4]],
+    "timerMode": "pulse",
+    "presetMs": 500,
+    "secondary": false
+  },
+  "d-086": {
+    "terms": [
+      [1, 2],
+      [3, 4]
+    ],
+    "timerMode": "pulse",
+    "presetMs": 1500,
+    "secondary": false
+  },
+  "d-087": {
+    "terms": [
+      [1, 2, -3],
+      [1, 2, 4]
+    ],
+    "timerMode": "pulse",
+    "presetMs": 2500,
+    "secondary": false
+  },
+  "d-088": {
+    "terms": [
+      [1, -2, 3, -4],
+      [-1, 2, -3, 4]
+    ],
+    "timerMode": "pulse",
+    "presetMs": 500,
+    "secondary": false
+  },
+  "d-089": {
+    "terms": [[1, -2, -3, -4]],
+    "timerMode": "pulse",
+    "presetMs": 1500,
+    "secondary": false
+  },
+  "d-090": {
+    "terms": [
+      [1, 3],
+      [2, -4]
+    ],
+    "timerMode": "pulse",
+    "presetMs": 2500,
+    "secondary": false
+  }
+}

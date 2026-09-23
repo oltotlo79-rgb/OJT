@@ -63,7 +63,7 @@ function toRow(session: BoardSession, terminal: BoardTerminal): TerminalRow | un
     label: socket ? `${part} ${terminal.label}` : terminal.label,
     group: part,
     wireCount: count,
-    full: count >= MAX_WIRES_PER_TERMINAL,
+    full: count >= (session.boardProfile?.rules.maxWiresPerTerminal ?? MAX_WIRES_PER_TERMINAL),
   };
 }
 
@@ -116,7 +116,13 @@ export function terminalLoads(board: BoardDefinition, session: BoardSession): Te
     for (const id of new Set<TerminalId>([terminal.id, role])) {
       if (seen.has(id)) continue;
       seen.add(id);
-      out.push({ id, wireCount: count });
+      out.push({
+        id,
+        wireCount: count,
+        ...(session.boardProfile === undefined
+          ? {}
+          : { wireLimit: session.boardProfile.rules.maxWiresPerTerminal }),
+      });
     }
   }
   return out;

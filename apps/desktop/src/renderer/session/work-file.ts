@@ -1,23 +1,18 @@
-import {
-  JIPM_BOARD,
-  MOUNTABLE_KINDS,
-  SOCKET_IDS,
-  toPhysicalTerminal,
-  validateSocketRoles,
-  type BoardSession,
-} from '@ojt/board-model';
+import { parseWorkFile } from '../../shared/work-file-codec.js';
+import type { BoardSession } from '@ojt/board-model';
 import {
   ANALOG_OHM_RANGES,
   createTesterState,
   type TerminalId,
   type TesterState,
-  type WireColor,
 } from '@ojt/circuit-sim';
 import {
   isInspectPartsProblem,
   isInspectRepairProblem,
   isPlcProblem,
   PART_TRUTHS,
+  FaultSpecSchema,
+  parseProblem,
   replacePart,
   type FaultReport,
   type FaultReportKind,
@@ -25,19 +20,27 @@ import {
   type InspectPartAnswer,
   type SupportedProblem,
 } from '@ojt/content';
-import {
-  DRAFT_SYMBOLS,
-  IR_COLS,
-  MAX_ROWS,
-  SPECIAL_INDEXES,
-  type LadderProgram,
-} from '@ojt/ladder-core';
 import { IMPLEMENTED_DIALECT_IDS, isDialectId } from '@ojt/plc-dialects';
-import { SCHEMATIC_FORMAT_VERSION, type SchematicDocument } from '@ojt/schematic-core';
 import { WORK_FILE_FORMAT_VERSION, type WorkFile } from '../../shared/ipc.js';
 import { reasonOf } from '../app/errors.js';
 import { ojtApi } from '../app/ojt-api.js';
-import { DEVICE_COMMENT_COUNT_LIMIT, DEVICE_COMMENT_LIMIT, useStore } from '../app/store.js';
+import { createAppStore, useStore } from '../app/store.js';
+import {
+  isRecord,
+  toSession,
+  toSchematicDoc,
+  toLadderProgram,
+} from '../../shared/work-file-schema.js';
+export {
+  MAX_RESTORED_WIRES,
+  MAX_RESTORED_RUNGS,
+  MAX_RESTORED_NETWORKS,
+  toSession,
+  toSchematicDoc,
+  toLadderProgram,
+} from '../../shared/work-file-schema.js';
+import { boardForProblem } from './plc-session.js';
+import { plcForVendor } from './plc-skin.js';
 import {
   JA,
   workFileProblemMissingText,
@@ -54,18 +57,6 @@ import { bridge } from './worker-bridge.js';
  * 作業ファイルの組み立てと復元。設計仕様 §12.3 / §13 #8。
  * 手動読込（セッション画面）と起動時の一時保存からの復帰（アプリ外枠）で共用する。
  */
-
-/** 作業ファイルに載せてよい電線の本数の上限（main の `parseWorkFile()` と同じ値）。§13 #8 */
-export const MAX_RESTORED_WIRES = 200;
-
-/**
- * 線色のパレット。`Record<WireColor, true>` にしておくと、エンジンに色が増えたときに
- * この表を直すまで `tsc` が落ちる（画面に知らない色がすり抜けない）。§6.6
- */
-const WIRE_COLOR_SET = { 青: true, 白: true, 黄: true } satisfies Record<WireColor, true>;
-
-/** 盤に実在する端子IDの集合（物理端子ID）。§6.4 */
-const BOARD_TERMINALS = new Set<string>(JIPM_BOARD.terminals.map((t) => t.id));
 
 /**
  * 現在の状態を作業ファイルの形にする。§12.3
@@ -89,6 +80,18 @@ export function toWorkFile(
     hazardCount,
     savedAt: new Date().toISOString(),
     ...inspectFieldsFor(problemId),
+    ...(useStore.getState().problem?.id === problemId
+      ? {
+          problemSnapshot: useStore.getState().problem!,
+          learningProgress: {
+            hintStage: useStore.getState().hintStage,
+            schematicOpenCount: useStore.getState().schematicOpenCount,
+          },
+          watchDevices: useStore.getState().watchDevices,
+          measurements: useStore.getState().measurements,
+          diagnosisNotes: useStore.getState().diagnosisNotes,
+        }
+      : {}),
   };
 }
 
@@ -100,7 +103,13 @@ export function toInspectWorkFile(): WorkFile | undefined {
   const { problem, session, elapsedMs, hazards, replay } = useStore.getState();
   // 判定後の見直しを「未完了の作業」として復元対象へ戻さない。手動保存も同じ入口で止める。
   if (replay !== undefined || problem === undefined || session === undefined) return undefined;
-  return toWorkFile(problem.id, session, elapsedMs, hazards.length);
+  return toWorkFile(
+    problem.id,
+    session,
+    elapsedMs,
+    useStore.getState().restoredHazardCount +
+      Math.max(useStore.getState().sessionHazardCount, hazards.length),
+  );
 }
 
 /** プローブの端子IDとして受け入れる文字数の上限（main の検証と同じ値）。§12.3 */
@@ -187,6 +196,7 @@ function inspectFieldsFor(problemId: string): Partial<WorkFile> {
   if (isPlcProblem(problem)) {
     return {
       mode: 'plc',
+      tester: savedTester(state.tester),
       dialectId: state.dialectId,
       converted: state.converted,
       /*
@@ -219,250 +229,36 @@ function inspectFieldsFor(problemId: string): Partial<WorkFile> {
 }
 
 // --- Plan 5 Task 6 ---
-/** 下書きとして受け入れる段の本数の上限（盤に載る回路図は十数段。桁違いなら壊れている）。 */
-export const MAX_RESTORED_RUNGS = 64;
-
-/**
- * 作業ファイルの下書きを文書として読む。形が違えば `undefined`（下書き無しで開く）。§13 #8
- * 中身の妥当性は見ない（作りかけの下書きも復元する。決定表#3）。段と要素の形だけを確かめ、
- * 壊れていれば黙って下書き無しで開く（読込そのものは断らない）。
- */
-export function toSchematicDoc(raw: unknown): SchematicDocument | undefined {
-  if (!isRecord(raw)) return undefined;
-  if (raw['formatVersion'] !== SCHEMATIC_FORMAT_VERSION) return undefined;
-  if (raw['orientation'] !== 'horizontal') return undefined;
-  if (typeof raw['id'] !== 'string' || typeof raw['title'] !== 'string') return undefined;
-  const rungs = raw['rungs'];
-  if (!Array.isArray(rungs) || rungs.length > MAX_RESTORED_RUNGS) return undefined;
-  for (const rung of rungs as readonly unknown[]) {
-    if (!isRecord(rung) || typeof rung['id'] !== 'string') return undefined;
-    const cells = rung['cells'];
-    if (!Array.isArray(cells)) return undefined;
-    for (const cell of cells as readonly unknown[]) {
-      if (!isRecord(cell) || typeof cell['id'] !== 'string' || typeof cell['device'] !== 'string') {
-        return undefined;
-      }
-    }
-  }
-  return raw as unknown as SchematicDocument;
-}
-// --- /Plan 5 Task 6 ---
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
+/** 保存時刻・経過時間を除いた永続作業全体を比較し、同じ課題への巻戻しも検出する。 */
+export function persistentWorkKey(file: WorkFile): string {
+  const content: Partial<WorkFile> = { ...file };
+  delete content.savedAt;
+  delete content.elapsedMs;
+  return JSON.stringify(content);
 }
 
-function isWireColor(value: unknown): value is WireColor {
-  return typeof value === 'string' && Object.hasOwn(WIRE_COLOR_SET, value);
+let savedWorkKey: string | undefined;
+export function markWorkSaved(file: WorkFile): void {
+  savedWorkKey = persistentWorkKey(file);
 }
-
-/**
- * 端子IDが盤に実在するか。§6.4
- * 保存データは役割ベース（`CR1.13`）で持つので、割当表で物理端子ID（`S1.13`）に直してから照合する。
- * 形式が壊れていれば `toPhysicalTerminal()` が投げるので、その場合も「盤に無い」として扱う。
- */
-function isBoardTerminal(roles: BoardSession['socketRoles'], value: unknown): boolean {
-  if (typeof value !== 'string' || value.length === 0) return false;
-  let physical: TerminalId;
-  try {
-    physical = toPhysicalTerminal(roles, value as TerminalId);
-  } catch {
-    return false;
-  }
-  return BOARD_TERMINALS.has(physical);
-}
-
-/** 装着状態が読めるか（種別はカタログにあるか、タイマの設定値は有限か）。§7.1 */
-function isMountedPart(value: unknown): boolean {
-  if (!isRecord(value)) return false;
-  const kind = value['kind'];
-  if (typeof kind !== 'string') return false;
-  if (!(MOUNTABLE_KINDS as readonly string[]).includes(kind)) return false;
-  const preset = value['presetMs'];
-  if (preset !== undefined && (typeof preset !== 'number' || !Number.isFinite(preset)))
-    return false;
-  const range = value['rangeMaxMs'];
-  if (range !== undefined && (typeof range !== 'number' || !Number.isFinite(range))) return false;
-  return true;
-}
-
-/**
- * 作業ファイルの `session` を `BoardSession` として読む（形が違えば undefined）。§13 #8
- *
- * 上端の形だけでなく**要素ひとつひとつ**を確かめる（1D2-a のレビュー指摘）。
- * `wires` に文字列が1つ混ざっているだけで経路器・3Dシーンが描画中に `TypeError` で落ち、
- * 例外バナーからも戻れなくなるため、盤に載せる前にここで断る。
- *
- * 名前が同じでも `@ojt/schematic-core` の `toSession(doc, board, options)`
- * （回路図 → 盤セッション。`{ ok, session, assignment } | { ok: false, errors }` を返す）とは別物。
- * このモジュールは保存した JSON を読み戻すだけで、割当も配線もしない。
- */
-export function toSession(raw: unknown): BoardSession | undefined {
-  if (!isRecord(raw)) return undefined;
-  const source = raw;
-
-  // 役割割当（`socketRoles`）は電線の端子IDを物理端子へ直すのに使うので最初に確かめる
-  const roles = source['socketRoles'];
-  if (!isRecord(roles)) return undefined;
-  if (validateSocketRoles(roles).length > 0) return undefined;
-  const socketRoles = roles as BoardSession['socketRoles'];
-
-  const wires = source['wires'];
-  if (!Array.isArray(wires)) return undefined;
-  if (wires.length > MAX_RESTORED_WIRES) return undefined;
-  for (const wire of wires) {
-    if (!isRecord(wire)) return undefined;
-    if (typeof wire['id'] !== 'string' || wire['id'].length === 0) return undefined;
-    if (!isWireColor(wire['color'])) return undefined;
-    if (!isBoardTerminal(socketRoles, wire['from'])) return undefined;
-    if (!isBoardTerminal(socketRoles, wire['to'])) return undefined;
-  }
-
-  const mounted = source['mounted'];
-  if (mounted !== undefined) {
-    if (!isRecord(mounted)) return undefined;
-    for (const [socket, part] of Object.entries(mounted)) {
-      if (part === undefined) continue;
-      if (!(SOCKET_IDS as readonly string[]).includes(socket)) return undefined;
-      if (!isMountedPart(part)) return undefined;
-    }
-  }
-
-  return source as unknown as BoardSession;
-}
-
-/** 作業ファイルに載せられるネットワーク数の上限（main の `MAX_WORK_FILE_NETWORKS` と同じ値）。 */
-export const MAX_RESTORED_NETWORKS = 64;
-
-/** IR のセル種別（この語彙以外は読み込まない）。§10.3 */
-const CELL_KINDS = new Set([
-  'contact',
-  'coil',
-  'timer',
-  'counter',
-  'mc',
-  'mcr',
-  'end',
-  'hline',
-  'vline',
-  'empty',
-  'draft',
-]);
-
-/**
- * デバイスとして読めるか。§10.3
- * PD-3: `kind === 'special'` のときは `SPECIAL_INDEXES`（常時ON／初期パルス／1秒クロックの3つ）
- * だけを受け入れる。`ladder-core` の `device()` はこの制約を作る側で守っているが、作業ファイルは
- * 信頼境界の外から来るので、ここで確かめずに通すと `SPECIAL_INDEXES.includes(index)` を前提に
- * 「到達しない」とコメントされたランタイムの分岐へ壊れた番号のまま届いてしまう。
- */
-function isDeviceLike(value: unknown): boolean {
-  if (!isRecord(value)) return false;
-  const kind = value['kind'];
-  const index = value['index'];
-  const kinds = ['input', 'output', 'internal', 'timer', 'counter', 'special'];
-  if (typeof kind !== 'string' || !kinds.includes(kind)) return false;
-  if (!(typeof index === 'number' && Number.isInteger(index) && index >= 0)) return false;
-  if (kind === 'special' && !SPECIAL_INDEXES.includes(index)) return false;
-  return true;
-}
-
-/** セルとして読めるか（`kind` ごとに要る項目だけ見る）。 */
-function isCellLike(value: unknown): boolean {
-  if (!isRecord(value)) return false;
-  const kind = value['kind'];
-  if (typeof kind !== 'string' || !CELL_KINDS.has(kind)) return false;
-  if (kind === 'draft')
-    return (
-      typeof value['symbol'] === 'string' &&
-      (DRAFT_SYMBOLS as readonly string[]).includes(value['symbol'])
-    );
-  if (kind === 'end' || kind === 'hline' || kind === 'vline' || kind === 'empty') return true;
-  if (!isDeviceLike(value['device'])) return false;
-  if (kind === 'timer') {
-    const preset = value['presetMs'];
-    return typeof preset === 'number' && Number.isInteger(preset) && preset > 0;
-  }
-  if (kind === 'counter') {
-    const preset = value['preset'];
-    if (!(typeof preset === 'number' && Number.isInteger(preset) && preset > 0)) return false;
-    return isDeviceLike(value['resetDevice']);
-  }
-  if (kind === 'contact') return ['NO', 'NC', 'P', 'F'].includes(String(value['type']));
-  if (kind === 'coil') return ['OUT', 'SET', 'RST'].includes(String(value['type']));
-  return true;
-}
-
-/** デバイスコメントとして読めるか（§10.7 の上限を守る）。 */
-function isCommentsLike(value: unknown): value is Record<string, string> {
-  if (!isRecord(value)) return false;
-  const entries = Object.entries(value);
-  if (entries.length > DEVICE_COMMENT_COUNT_LIMIT) return false;
-  return entries.every(
-    ([key, text]) =>
-      /^(X|Y|M|T|C|SP)\d+$/u.test(key) &&
-      typeof text === 'string' &&
-      text.length > 0 &&
-      text.length <= DEVICE_COMMENT_LIMIT,
-  );
-}
-
-/**
- * 作業ファイルの `ladder` を IR として読む（形が違えば undefined）。§13 #8 / 3A H-3
- *
- * `toSession()` と同じ流儀で**要素ひとつひとつ**を確かめる。壊れたセルが1つ混ざっているだけで
- * ラダーエディタも `compile()` も描画中に落ち、例外バナーからも戻れなくなるため。
- */
-export function toLadderProgram(
-  raw: unknown,
-): { program: LadderProgram; comments: Record<string, string> } | undefined {
-  if (!isRecord(raw)) return undefined;
-  const networks = raw['networks'];
-  if (!Array.isArray(networks)) return undefined;
-  if (networks.length === 0 || networks.length > MAX_RESTORED_NETWORKS) return undefined;
-  const seen = new Set<string>();
-  for (const net of networks) {
-    if (!isRecord(net)) return undefined;
-    const id = net['id'];
-    if (typeof id !== 'string' || id.length === 0 || seen.has(id)) return undefined;
-    seen.add(id);
-    const cells = net['cells'];
-    if (!Array.isArray(cells)) return undefined;
-    if (cells.length === 0 || cells.length > MAX_ROWS) return undefined;
-    if (net['rows'] !== cells.length) return undefined;
-    if (net['cols'] !== IR_COLS) return undefined;
-    for (const row of cells) {
-      if (!Array.isArray(row) || row.length !== IR_COLS) return undefined;
-      if (!row.every(isCellLike)) return undefined;
-    }
-    const comment = net['comment'];
-    if (comment !== undefined && typeof comment !== 'string') return undefined;
-  }
-  const comments = raw['comments'];
-  if (comments !== undefined && !isCommentsLike(comments)) return undefined;
-  return {
-    program: { networks: networks as LadderProgram['networks'] },
-    comments: comments === undefined ? {} : { ...comments },
-  };
-}
-
-/**
- * いまの作業を捨ててよいか確認が要るか。§12.3
- * **別の課題**の作業ファイルを開くときで、いまの盤に訓練者が張った電線か操作履歴が
- * あるときだけ。同じ課題の続きを読むぶんには確認しない（元々その課題を作業していたのだから
- * 驚きが無い）。
- *
- * モードDはラダーも見る（Batch 4+5 レビュー B2）: 盤に何も配線していなくても、ラダーの
- * 編集履歴があるか中身（`hasLadderContent()`）があれば、それを読み込みで黙って捨てさせない。
- */
 export function needsDiscardConfirm(file: WorkFile): boolean {
-  const { problem, session, history, ladderHistory, ladder } = useStore.getState();
-  if (problem === undefined || session === undefined) return false;
-  if (problem.id === file.problemId) return false;
+  const current = toInspectWorkFile();
+  if (current === undefined) return false;
+  const key = persistentWorkKey(current);
+  if (key === persistentWorkKey(file) || key === savedWorkKey) return false;
+  const state = useStore.getState();
   return (
-    session.wires.some((wire) => !wire.locked) ||
-    history.done.length > 0 ||
-    (isPlcProblem(problem) && (ladderHistory.done.length > 0 || hasLadderContent(ladder)))
+    state.session!.wires.some((w) => !w.locked) ||
+    state.history.done.length > 0 ||
+    state.answers.length > 0 ||
+    state.reports.length > 0 ||
+    state.measurements.length > 0 ||
+    state.diagnosisNotes.length > 0 ||
+    state.hintStage > 0 ||
+    state.schematicOpenCount > 0 ||
+    state.watchDevices.length > 0 ||
+    state.schematicHistory.done.length > 0 ||
+    (isPlcProblem(state.problem!) && hasLadderContent(state.ladder))
   );
 }
 
@@ -592,12 +388,7 @@ export function replayTesterToWorker(tester: TesterState): void {
 
 /** 故障1件として読めるか（`FaultSpecData` の形だけを見る）。§5.2 / §13 #8 */
 function isFaultSpec(value: unknown): value is FaultSpecData {
-  if (!isRecord(value)) return false;
-  if (typeof value['kind'] !== 'string') return false;
-  const target = value['target'];
-  if (!isRecord(target)) return false;
-  if (typeof target['wireId'] === 'string') return true;
-  return typeof target['partId'] === 'string' && typeof target['elementIndex'] === 'number';
+  return FaultSpecSchema.safeParse(value).success;
 }
 
 /**
@@ -654,8 +445,12 @@ function isAnswerFor(value: unknown, partIds: ReadonlySet<string>): value is Ins
  * 呼び直させない（Plan 2A I-4）。種だけを保存して引き直すと、`random.seed` の無い課題は
  * 内部で `Date.now()` を使うため初回と別の故障になってしまう。
  */
-export function restoreInspectState(problem: SupportedProblem, state: InspectWorkState): boolean {
-  const store = useStore.getState();
+export function restoreInspectState(
+  problem: SupportedProblem,
+  state: InspectWorkState,
+  target = useStore,
+): boolean {
+  const store = target.getState();
   if (state.mode !== undefined && state.mode !== problem.mode) return false;
 
   if (isPlcProblem(problem)) {
@@ -685,6 +480,8 @@ export function restoreInspectState(problem: SupportedProblem, state: InspectWor
       return false;
     }
     if (parsed !== undefined) store.restoreLadder(parsed.program, parsed.comments);
+    const tester = toSavedTester(state.tester);
+    if (tester !== undefined) store.setTester(testerStateFrom(tester));
     return true;
   }
 
@@ -728,7 +525,7 @@ export function restoreInspectState(problem: SupportedProblem, state: InspectWor
      */
     if (Array.isArray(state.replacedPartIds)) {
       for (const partId of state.replacedPartIds.slice(0, MAX_RESTORED_ENTRIES)) {
-        const circuit = useStore.getState().circuit;
+        const circuit = target.getState().circuit;
         if (typeof partId !== 'string' || circuit === undefined) continue;
         store.setCircuit(replacePart(circuit, partId));
       }
@@ -781,8 +578,9 @@ export function restoreInspectState(problem: SupportedProblem, state: InspectWor
 function loadPayloadFor(
   problem: SupportedProblem,
   saved: BoardSession,
+  target = useStore,
 ): { session: BoardSession; partFaults?: readonly FaultSpecData[]; plcModel?: string } {
-  const state = useStore.getState();
+  const state = target.getState();
   if (isInspectPartsProblem(problem)) {
     const partId = state.checkPartId;
     if (partId === undefined) return { session: state.session ?? saved };
@@ -816,6 +614,12 @@ export async function applyWorkFile(
   options: { confirmed?: boolean } = {},
 ): Promise<boolean> {
   const store = useStore.getState();
+  const checked = parseWorkFile(file);
+  if (!checked.ok) {
+    store.toast(checked.message, 'error');
+    return false;
+  }
+  file = checked.file;
   if (options.confirmed !== true && needsDiscardConfirm(file)) {
     store.setPendingWorkFile(file);
     return false;
@@ -827,13 +631,41 @@ export async function applyWorkFile(
     store.toast(reasonOf(error), 'error');
     return false;
   }
-  const problem = await api.readProblem(file.problemId);
+  let problem = await api.readProblem(file.problemId);
+  if (file.problemSnapshot !== undefined) {
+    const checked = parseProblem(file.problemSnapshot);
+    if (!checked.ok || checked.problem.id !== file.problemId) {
+      store.toast(JA.session.badSession, 'error');
+      return false;
+    }
+    if (problem !== null && JSON.stringify(problem) !== JSON.stringify(checked.problem))
+      store.toast('課題の定義が更新されています。保存時の課題条件で復元します。', 'info');
+    problem = checked.problem;
+  }
+  if (problem !== null && isPlcProblem(problem) && file.dialectId !== undefined) {
+    if (!isDialectId(file.dialectId) || !IMPLEMENTED_DIALECT_IDS.includes(file.dialectId)) {
+      store.toast(
+        '保存された表記には対応していないため、課題に記録された機種で復元します。',
+        'info',
+      );
+      file = { ...file, dialectId: problem.plc.vendor };
+    }
+    const effective = plcForVendor(problem, file.dialectId as typeof problem.plc.vendor);
+    if (effective === undefined) {
+      store.toast(JA.session.badWorkFileMode, 'error');
+      return false;
+    }
+    problem = effective;
+  }
   if (problem === null) {
     store.toast(workFileProblemMissingText(file.problemId), 'error');
     return false;
   }
-  const session = toSession(file.session);
-  if (session === undefined) {
+  const session = problem === null ? undefined : toSession(file.session, boardForProblem(problem));
+  if (
+    session === undefined ||
+    (session.plcAssignment !== undefined && (!isPlcProblem(problem) || problem.io.mode !== 'free'))
+  ) {
     store.toast(JA.session.badSession, 'error');
     return false;
   }
@@ -841,33 +673,64 @@ export async function applyWorkFile(
    * 課題を開き直し、モード固有の状態（テスター・解答・指摘・故障・交換）を戻す。
    * 戻せないファイル（モード違い・C2の故障欠け）は**開かずに**断る（§13 #8）。
    */
-  if (!restoreInspectState(problem, file)) {
+  if (
+    (file.schematic !== undefined && toSchematicDoc(file.schematic) === undefined) ||
+    (file.ladder !== undefined && toLadderProgram(file.ladder) === undefined)
+  ) {
+    store.toast(JA.session.badSession, 'error');
+    return false;
+  }
+  const candidate = createAppStore();
+  candidate.setState(
+    Object.fromEntries(
+      Object.entries(useStore.getState()).filter(([, value]) => typeof value !== 'function'),
+    ),
+  );
+  if (!restoreInspectState(problem, file, candidate)) {
     store.toast(JA.session.badWorkFileMode, 'error');
     return false;
   }
-  const payload = loadPayloadFor(problem, session);
-  store.setSession(cloneSession(payload.session));
+  const payload = loadPayloadFor(problem, session, candidate);
+  candidate.getState().setSession(cloneSession(payload.session));
   /*
    * C2は回路が持つ盤も復元後のものに差し替える。セッション画面は張り直しのたびに
    * `circuit.session` を Worker へ読ませるので、ここを開始時の盤のままにすると、
    * 画面の3D（訓練者の白線あり）と Worker の盤（白線なし）が食い違う。
    * `applied` / `initialWireIds` / `cells` は開始時のまま（`circuitForJudge()` と同じ差し替え）。
    */
-  const restored = useStore.getState().circuit;
+  const restored = candidate.getState().circuit;
   if (isInspectRepairProblem(problem) && restored !== undefined) {
-    store.setCircuit(circuitForJudge(restored, cloneSession(payload.session)));
+    candidate.getState().setCircuit(circuitForJudge(restored, cloneSession(payload.session)));
   }
-  store.restoreProgress(file.elapsedMs, file.hazardCount);
+  candidate.getState().restoreProgress(file.elapsedMs, file.hazardCount);
+  if (file.learningProgress !== undefined) candidate.setState(file.learningProgress);
+  candidate.setState({
+    measurements: file.measurements ?? [],
+    diagnosisNotes: file.diagnosisNotes ?? [],
+  });
+  if (file.watchDevices !== undefined) candidate.setState({ watchDevices: file.watchDevices });
+  useStore.setState(
+    Object.fromEntries(
+      Object.entries(candidate.getState()).filter(([, value]) => typeof value !== 'function'),
+    ),
+  );
   bridge.send({
     type: 'load',
     problemId: problem.id,
     session: cloneSession(payload.session),
     ...(payload.partFaults === undefined ? {} : { partFaults: payload.partFaults }),
-    ...(payload.plcModel === undefined ? {} : { plcModel: payload.plcModel }),
+    ...(payload.plcModel === undefined
+      ? {}
+      : {
+          plcModel: payload.plcModel,
+          allowPlcForcing: isPlcProblem(problem) && problem.io.mode === 'free',
+        }),
   });
   // つまみは `load` のあとに送り直す（`load` が Worker 側のテスターを既定へ戻すため）。I-3
   if (file.tester !== undefined) replayTesterToWorker(useStore.getState().tester);
   store.addLog(workFileRestoredLog(file.savedAt));
+  const restoredFile = toInspectWorkFile();
+  if (restoredFile !== undefined) markWorkSaved(restoredFile);
   return true;
 }
 
@@ -887,12 +750,19 @@ export function saveCurrentWork(problemId: string, session: BoardSession): void 
     store.toast(reasonOf(error), 'error');
     return;
   }
+  const file = toWorkFile(
+    problemId,
+    session,
+    store.elapsedMs,
+    store.restoredHazardCount + Math.max(store.sessionHazardCount, store.hazards.length),
+  );
   void api
     .saveWorkFile({
       kind: 'manual',
-      file: toWorkFile(problemId, session, store.elapsedMs, store.hazards.length),
+      file,
     })
     .then((result) => {
+      if (result.ok) markWorkSaved(file);
       store.toast(
         result.ok ? workFileSavedText(result.path) : result.message,
         result.ok ? 'info' : 'error',

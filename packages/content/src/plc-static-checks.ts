@@ -1,11 +1,11 @@
+import { PB_BLOCK_ID, PL_BLOCK_ID, PLC_PART_ID, type PlcUnitDefinition } from '@ojt/board-model';
 import {
-  OUTLET_ID,
-  PB_BLOCK_ID,
-  PL_BLOCK_ID,
-  PLC_PART_ID,
-  type PlcUnitDefinition,
-} from '@ojt/board-model';
-import { buildNets, terminalId, type Nets, type TerminalId } from '@ojt/circuit-sim';
+  buildNets,
+  checkPlcSupply,
+  terminalId,
+  type Nets,
+  type TerminalId,
+} from '@ojt/circuit-sim';
 import type { PlcCheckContext, StaticCheckInput, StaticCheckResult } from './static-check-types.js';
 
 // 型は `static-check-types.ts` に置いてある。呼び出し側の import 先を増やさないため再エクスポートする
@@ -236,7 +236,7 @@ export function checkTwoStage(input: StaticCheckInput): StaticCheckResult {
     'twoStage',
     details,
     'PLC出力 → 盤のリレー → 表示灯の2段結線になっています',
-    'PLCの出力を表示灯へ直結しています（盤のリレーを介してください）',
+    'PLC出力・中継リレー・表示灯の接続を確認してください',
   );
 }
 
@@ -249,27 +249,33 @@ export function checkPlcPowerIndependent(input: StaticCheckInput): StaticCheckRe
   const plc = input.plc;
   if (plc === undefined) return missingContext('plcPowerIndependent');
   const nets = buildNets(input.netlist);
-  const details: string[] = [];
-  for (const name of plc.unit.spec.acPower) {
-    const terminal = plcTerminal(name);
-    const terminals = netTerminals(nets, terminal);
-    const fromBoard = terminals.filter((id) =>
-      BOARD_POWER_PREFIXES.some((prefix) => id.startsWith(prefix)),
-    );
-    if (fromBoard.length > 0) {
-      details.push(`${terminal} が盤の電源（${fromBoard.join('・')}）に繋がっています`);
-      continue;
-    }
-    if (!terminals.some((id) => id.startsWith(`${OUTLET_ID}.`))) {
-      details.push(`${terminal} が壁コンセントに配線されていません`);
-    }
-  }
-  return result(
-    'plcPowerIndependent',
-    details,
-    'PLCの電源は盤から独立しています',
-    'PLCの電源を盤から取っています（壁コンセントに配線してください）',
-  );
+  const status = checkPlcSupply(nets, [
+    plcTerminal(plc.unit.spec.acPower[0]),
+    plcTerminal(plc.unit.spec.acPower[1]),
+  ]);
+  return {
+    ...result(
+      'plcPowerIndependent',
+      status.issues.map((issue) => issue.message),
+      'PLCの電源は正しく独立配線されています',
+      'PLCの電源配線を確認してください',
+    ),
+    ...(status.ready
+      ? {}
+      : {
+          issues: status.issues.map((issue) => ({
+            code: `plc-power-${issue.code}`,
+            terminals: issue.terminals,
+            wireIds: input.session.wires
+              .filter(
+                (wire) => issue.terminals.includes(wire.from) || issue.terminals.includes(wire.to),
+              )
+              .map((wire) => wire.id),
+            expected: 'PLC L→OUTLET.L、PLC N→OUTLET.N（別の接続点）',
+            observed: issue.message,
+          })),
+        }),
+  };
 }
 
 /** 端子が押ボタンのa接点（`TB_PB.na`）か。§6.4 */

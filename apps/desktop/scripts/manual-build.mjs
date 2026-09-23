@@ -327,8 +327,29 @@ function coverOf(builtAt, edition, escape) {
 /** 目次（2ページ目以降）。章・節の行はリンクで、行末に点線のリーダを引く。 */
 function tocOf(chapters, byId, escape) {
   const parts = ['<nav id="toc">'];
-  // 1ページ8章・左右4章ずつ。長い最終章だけが3ページ目に残るのを防ぐ。
-  for (let start = 0; start < chapters.length; start += 8) {
+  // 節が増えた章を固定4章ずつ割り付けると、片列だけ次ページへはみ出し、
+  // 章の順序が1,2,3,5,6,7→4,8になる。文字の折返しと節数で列を区切る。
+  // 9ptの目次行と上下余白に合わせ、A4の1列へ34行相当まで収める。
+  const widthOf = (text) =>
+    [...text].reduce((sum, char) => sum + (/^[\x20-\x7e]$/u.test(char) ? 0.5 : 1), 0);
+  const columns = [[]];
+  let used = 0;
+  chapters.forEach((chapter, index) => {
+    const weight =
+      2 +
+      Math.max(0, Math.ceil(widthOf(chapter.title) / 18) - 1) +
+      chapter.sectionIds.reduce(
+        (sum, id) => sum + Math.max(1, Math.ceil(widthOf(byId.get(id)?.title ?? '') / 22)),
+        0,
+      );
+    if (used > 0 && used + weight > 34) {
+      columns.push([]);
+      used = 0;
+    }
+    columns.at(-1).push({ chapter, chapterNo: index + 1 });
+    used += weight;
+  });
+  for (let start = 0; start < columns.length; start += 2) {
     parts.push(
       '<div class="toc-spread">',
       start === 0 ? '<h1>目次</h1>' : '<p class="toc-title">目次 / 続き</p>',
@@ -337,8 +358,7 @@ function tocOf(chapters, byId, escape) {
     );
     for (let col = 0; col < 2; col++) {
       parts.push('<ol class="toc-chapters">');
-      chapters.slice(start + col * 4, start + col * 4 + 4).forEach((chapter, offset) => {
-        const chapterNo = start + col * 4 + offset + 1;
+      (columns[start + col] ?? []).forEach(({ chapter, chapterNo }) => {
         parts.push(
           '<li class="toc-chapter">',
           `<a href="#${chapterAnchorIdOf(chapter.id)}"><span class="toc-no">第${chapterNo}章</span>` +

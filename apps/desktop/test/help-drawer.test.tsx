@@ -205,6 +205,22 @@ describe('検索（設計 §5.3）', () => {
     expect(screen.getByText(`${String(count)} 件見つかりました`)).toBeInTheDocument();
   });
 
+  it('続きから全検索結果に到達でき、検索語を変えると最初の20件へ戻る', () => {
+    render(<HelpDrawer onClose={() => undefined} />);
+    const query = screen.getByTestId('help-search');
+    fireEvent.change(query, { target: { value: 'の' } });
+    const total = searchManual('の', Number.POSITIVE_INFINITY).length;
+    expect(total).toBeGreaterThan(MAX_HELP_HITS);
+    while (screen.queryByRole('button', { name: /^続きを表示/ })) {
+      fireEvent.click(screen.getByRole('button', { name: /^続きを表示/ }));
+    }
+    expect(screen.getAllByTestId('help-hit')).toHaveLength(total);
+    fireEvent.change(query, { target: { value: '自己保持' } });
+    expect(screen.getAllByTestId('help-hit')).toHaveLength(searchManual('自己保持').length);
+    fireEvent.change(query, { target: { value: 'の' } });
+    expect(screen.getAllByTestId('help-hit')).toHaveLength(MAX_HELP_HITS);
+  });
+
   it("resets the article's scroll position when the section or the search word changes (IM-12)", () => {
     render(<HelpDrawer onClose={() => undefined} />);
     // `.article`（スクロールする囲み）は `help-section-title` の親。React はこの枠を

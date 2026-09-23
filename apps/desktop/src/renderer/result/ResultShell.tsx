@@ -1,3 +1,4 @@
+import { MeasurementPanel } from '../panels/MeasurementPanel.js';
 import type { JSX, ReactNode } from 'react';
 import { formatElapsed } from '../../worker/runtime.js';
 import { useStore } from '../app/store.js';
@@ -104,6 +105,7 @@ export function ResultShell({
         ) : null}
 
         {children}
+        <MeasurementPanel readOnly />
       </div>
 
       {/* 下端の操作バー（4画面とも同じ。`.stickyActions` の付け忘れをここで断つ）。UI-13 */}

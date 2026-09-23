@@ -80,6 +80,85 @@
         "board": {
           "type": "object",
           "properties": {
+            "profile": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "const": "expanded"
+                },
+                "terminalPairs": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 8
+                },
+                "extraPushButtons": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 4
+                },
+                "extraLamps": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 4
+                },
+                "rules": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "const": "free"
+                    },
+                    "allowedColors": {
+                      "minItems": 1,
+                      "maxItems": 3,
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "enum": ["青", "白", "黄"]
+                      }
+                    },
+                    "maxWiresPerTerminal": {
+                      "type": "number",
+                      "enum": [2, 3, 4]
+                    },
+                    "allowedParts": {
+                      "maxItems": 2,
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "enum": ["relay-my4n", "timer-h3y4"]
+                      }
+                    },
+                    "hintPolicy": {
+                      "type": "string",
+                      "enum": ["task", "always", "off"]
+                    },
+                    "staticChecks": {
+                      "type": "object",
+                      "propertyNames": {
+                        "type": "string",
+                        "enum": [
+                          "wireColorRule",
+                          "terminalLimit",
+                          "unusedParts",
+                          "forbiddenCircuit",
+                          "coilPolarity",
+                          "powerSequence"
+                        ]
+                      },
+                      "additionalProperties": {
+                        "type": "boolean"
+                      }
+                    }
+                  },
+                  "required": ["id", "allowedColors", "maxWiresPerTerminal"],
+                  "additionalProperties": false
+                }
+              },
+              "required": ["id", "terminalPairs", "extraPushButtons", "extraLamps", "rules"],
+              "additionalProperties": false
+            },
             "boardId": {
               "type": "string",
               "minLength": 1
@@ -334,7 +413,7 @@
               },
               "target": {
                 "type": "string",
-                "enum": ["PB1", "PB2", "PB3", "PB4"]
+                "enum": ["PB1", "PB2", "PB3", "PB4", "PB5", "PB6", "PB7", "PB8"]
               },
               "action": {
                 "type": "string",
@@ -532,6 +611,85 @@
         "board": {
           "type": "object",
           "properties": {
+            "profile": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "const": "expanded"
+                },
+                "terminalPairs": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 8
+                },
+                "extraPushButtons": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 4
+                },
+                "extraLamps": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 4
+                },
+                "rules": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "const": "free"
+                    },
+                    "allowedColors": {
+                      "minItems": 1,
+                      "maxItems": 3,
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "enum": ["青", "白", "黄"]
+                      }
+                    },
+                    "maxWiresPerTerminal": {
+                      "type": "number",
+                      "enum": [2, 3, 4]
+                    },
+                    "allowedParts": {
+                      "maxItems": 2,
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "enum": ["relay-my4n", "timer-h3y4"]
+                      }
+                    },
+                    "hintPolicy": {
+                      "type": "string",
+                      "enum": ["task", "always", "off"]
+                    },
+                    "staticChecks": {
+                      "type": "object",
+                      "propertyNames": {
+                        "type": "string",
+                        "enum": [
+                          "wireColorRule",
+                          "terminalLimit",
+                          "unusedParts",
+                          "forbiddenCircuit",
+                          "coilPolarity",
+                          "powerSequence"
+                        ]
+                      },
+                      "additionalProperties": {
+                        "type": "boolean"
+                      }
+                    }
+                  },
+                  "required": ["id", "allowedColors", "maxWiresPerTerminal"],
+                  "additionalProperties": false
+                }
+              },
+              "required": ["id", "terminalPairs", "extraPushButtons", "extraLamps", "rules"],
+              "additionalProperties": false
+            },
             "boardId": {
               "type": "string",
               "minLength": 1
@@ -760,6 +918,85 @@
         "board": {
           "type": "object",
           "properties": {
+            "profile": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "const": "expanded"
+                },
+                "terminalPairs": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 8
+                },
+                "extraPushButtons": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 4
+                },
+                "extraLamps": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 4
+                },
+                "rules": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "const": "free"
+                    },
+                    "allowedColors": {
+                      "minItems": 1,
+                      "maxItems": 3,
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "enum": ["青", "白", "黄"]
+                      }
+                    },
+                    "maxWiresPerTerminal": {
+                      "type": "number",
+                      "enum": [2, 3, 4]
+                    },
+                    "allowedParts": {
+                      "maxItems": 2,
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "enum": ["relay-my4n", "timer-h3y4"]
+                      }
+                    },
+                    "hintPolicy": {
+                      "type": "string",
+                      "enum": ["task", "always", "off"]
+                    },
+                    "staticChecks": {
+                      "type": "object",
+                      "propertyNames": {
+                        "type": "string",
+                        "enum": [
+                          "wireColorRule",
+                          "terminalLimit",
+                          "unusedParts",
+                          "forbiddenCircuit",
+                          "coilPolarity",
+                          "powerSequence"
+                        ]
+                      },
+                      "additionalProperties": {
+                        "type": "boolean"
+                      }
+                    }
+                  },
+                  "required": ["id", "allowedColors", "maxWiresPerTerminal"],
+                  "additionalProperties": false
+                }
+              },
+              "required": ["id", "terminalPairs", "extraPushButtons", "extraLamps", "rules"],
+              "additionalProperties": false
+            },
             "boardId": {
               "type": "string",
               "minLength": 1
@@ -1221,7 +1458,7 @@
               },
               "target": {
                 "type": "string",
-                "enum": ["PB1", "PB2", "PB3", "PB4"]
+                "enum": ["PB1", "PB2", "PB3", "PB4", "PB5", "PB6", "PB7", "PB8"]
               },
               "action": {
                 "type": "string",
@@ -1420,6 +1657,85 @@
         "board": {
           "type": "object",
           "properties": {
+            "profile": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "const": "expanded"
+                },
+                "terminalPairs": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 8
+                },
+                "extraPushButtons": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 4
+                },
+                "extraLamps": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 4
+                },
+                "rules": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "const": "free"
+                    },
+                    "allowedColors": {
+                      "minItems": 1,
+                      "maxItems": 3,
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "enum": ["青", "白", "黄"]
+                      }
+                    },
+                    "maxWiresPerTerminal": {
+                      "type": "number",
+                      "enum": [2, 3, 4]
+                    },
+                    "allowedParts": {
+                      "maxItems": 2,
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "enum": ["relay-my4n", "timer-h3y4"]
+                      }
+                    },
+                    "hintPolicy": {
+                      "type": "string",
+                      "enum": ["task", "always", "off"]
+                    },
+                    "staticChecks": {
+                      "type": "object",
+                      "propertyNames": {
+                        "type": "string",
+                        "enum": [
+                          "wireColorRule",
+                          "terminalLimit",
+                          "unusedParts",
+                          "forbiddenCircuit",
+                          "coilPolarity",
+                          "powerSequence"
+                        ]
+                      },
+                      "additionalProperties": {
+                        "type": "boolean"
+                      }
+                    }
+                  },
+                  "required": ["id", "allowedColors", "maxWiresPerTerminal"],
+                  "additionalProperties": false
+                }
+              },
+              "required": ["id", "terminalPairs", "extraPushButtons", "extraLamps", "rules"],
+              "additionalProperties": false
+            },
             "boardId": {
               "type": "string",
               "minLength": 1
@@ -1533,7 +1849,7 @@
             },
             "inputs": {
               "minItems": 1,
-              "maxItems": 3,
+              "maxItems": 4,
               "type": "array",
               "items": {
                 "type": "object",
@@ -1987,7 +2303,7 @@
               },
               "target": {
                 "type": "string",
-                "enum": ["PB1", "PB2", "PB3", "PB4"]
+                "enum": ["PB1", "PB2", "PB3", "PB4", "PB5", "PB6", "PB7", "PB8"]
               },
               "action": {
                 "type": "string",

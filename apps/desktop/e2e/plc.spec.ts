@@ -396,10 +396,14 @@ test.describe('モードD（PLC）', () => {
       await expect(check).toContainText('エラー');
       // 節点としては盤の P.1 に繋がっている旨の詳細が出る（CR3.9 / TB_PL.3- の鎖の末端。レビュー指摘 #8）
       await expect(check).toContainText('P.');
-      // 2つの文言の出し分けと「未配線でも動く」説明が出る（3A H-5）
+      // 接続先を特定し、「未接続」という矛盾した案内と重複しない。
+      await expect(check).toContainText('N.');
+      await expect(check).not.toContainText('が未接続');
+      await expect(check.getByRole('button', { name: '関連する端子・配線を表示' })).toHaveCount(2);
+      // 正しい壁コンセントからの給電と、未配線では運転できないことを説明する。
       const help = page.getByTestId('plc-power-help');
       await expect(help).toContainText('壁コンセント');
-      await expect(help).toContainText('未配線でも動作します');
+      await expect(help).toContainText('未配線では運転できません');
       await shot(app, '35-plc-power');
     } finally {
       await app.close();

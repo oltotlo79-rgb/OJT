@@ -27,7 +27,7 @@ describe('explainPowerCheck（3A H-5 / 決定表#15c）', () => {
     });
     expect(lines[0]).toContain('壁コンセント');
     expect(lines[0]).toContain('盤');
-    expect(lines.at(-1)).toContain('未配線でも動作します');
+    expect(lines.at(-1)).toContain('未配線では運転できません');
   });
 
   it('未配線の場合を見分ける', () => {
@@ -39,7 +39,7 @@ describe('explainPowerCheck（3A H-5 / 決定表#15c）', () => {
     });
     expect(lines[0]).toContain('2本配線');
     expect(lines[0]).not.toContain('盤から');
-    expect(lines.at(-1)).toContain('未配線でも動作します');
+    expect(lines.at(-1)).toContain('未配線では運転できません');
   });
 
   it('両方起きていれば両方言う', () => {
@@ -56,6 +56,20 @@ describe('explainPowerCheck（3A H-5 / 決定表#15c）', () => {
     expect(explainPowerCheck({ id: 'twoStage', ok: false, message: '', details: ['x'] })).toEqual(
       [],
     );
+  });
+
+  it.each(['same-net', 'wrong-source'])('原因 %s を未配線と誤って説明しない', (code) => {
+    const lines = explainPowerCheck({
+      id: 'plcPowerIndependent',
+      ok: false,
+      message: '電源配線を確認してください',
+      details: ['PLC.L と PLC.N の接続異常'],
+      issues: [
+        { code: `plc-power-${code}`, terminals: [], wireIds: [], expected: '', observed: '' },
+      ],
+    });
+    expect(lines[0]).toContain(code === 'same-net' ? '短絡' : '接続先が違います');
+    expect(lines.join('')).not.toContain('電源が未配線です');
   });
 });
 

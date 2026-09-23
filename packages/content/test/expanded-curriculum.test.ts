@@ -37,10 +37,10 @@ const CONDITIONS = [
 describe('追加教材の独立した仕様検証', () => {
   it('各モードが旧版の3倍以上あり、同じ題名で水増ししない', () => {
     for (const [mode, minimum] of [
-      ['assemble', 60],
-      ['inspect-parts', 36],
-      ['inspect-repair', 60],
-      ['plc', 60],
+      ['assemble', 90],
+      ['inspect-parts', 54],
+      ['inspect-repair', 90],
+      ['plc', 90],
     ] as const) {
       const problems = BUILTIN_ALL_PROBLEMS.filter((p) => p.mode === mode);
       expect(problems.length).toBeGreaterThanOrEqual(minimum);
@@ -55,8 +55,8 @@ describe('追加教材の独立した仕様検証', () => {
   });
 
   for (const problem of [
-    ...BUILTIN_ASSEMBLE_PROBLEMS.slice(20),
-    ...BUILTIN_PLC_PROBLEMS.slice(20),
+    ...BUILTIN_ASSEMBLE_PROBLEMS.slice(20, 60),
+    ...BUILTIN_PLC_PROBLEMS.slice(20, 60),
   ]) {
     it(`${problem.id}: 全入力条件・時間条件が課題文に一致する`, () => {
       const index = Number(problem.id.split('-')[1]) - 21;

@@ -657,6 +657,11 @@ test.describe.serial('モードC2 回路点検・修復（§16 Phase 2 受入基
     await openOverflow(page);
     await page.getByRole('button', { name: '作業を読込', exact: true }).click();
     await closeOverflow(page);
+    // 同じ課題でも現在の盤と保存した盤が異なる場合は、読込前に確認する。
+    const confirm = page.getByTestId('discard-confirm');
+    await expect(confirm).toBeVisible();
+    await confirm.getByRole('button', { name: '保存せず開く', exact: true }).click();
+    await expect(confirm).toHaveCount(0);
     await expect(page.getByTestId('status-overlay')).toContainText(
       wireCountText(before + 1, fixedWires),
     );

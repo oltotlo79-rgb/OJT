@@ -57,6 +57,70 @@ function scans(runtime: PlcRuntime, count: number): void {
   for (let i = 0; i < count; i += 1) runtime.scan();
 }
 
+describe('直近スキャンの診断情報', () => {
+  it('上流の内部リレー更新を同じスキャンの下流で使用した順序を示す', () => {
+    const io = new TestIo();
+    const runtime = boot(onDelayProgram(20), io);
+    io.press(0);
+    runtime.scan();
+    const trace = runtime.diagnostics();
+    expect(trace.scanCount).toBe(1);
+    expect(trace.inputs[0]).toBe(true);
+    expect(trace.networks.map((net) => net.networkId)).toEqual(['n1', 'n2', 'n3']);
+    expect(trace.networks[0]?.writes[0]).toMatchObject({
+      device: M(0),
+      before: 'OFF',
+      after: 'ON',
+    });
+    expect(trace.networks[1]?.writes[0]).toMatchObject({
+      device: T(0),
+      before: '0 ms / OFF',
+      after: '10 ms / OFF',
+    });
+    runtime.scan();
+    expect(runtime.diagnostics().outputs[0]).toBe(true);
+    expect(trace.outputs[0]).toBe(false);
+    expect(runtime.diagnostics().networks).toHaveLength(3);
+    runtime.setRecordPowered(false);
+    runtime.scan();
+    expect(runtime.diagnostics().networks).toEqual([]);
+  });
+
+  it('STOPでタイマ値を保持し、入力OFFによるリセットと全初期化を区別する', () => {
+    const io = new TestIo();
+    const runtime = boot(onDelayProgram(50), io);
+    io.press(0);
+    runtime.scan();
+    runtime.scan();
+    runtime.stop();
+    expect(runtime.state().timers[0]?.elapsedMs).toBe(20);
+    io.press(1);
+    runtime.scan();
+    expect(runtime.diagnostics().resets['timer:0']?.reason).toBe('タイマの入力条件OFF');
+    expect(runtime.state().timers[0]?.elapsedMs).toBe(0);
+    runtime.reset();
+    expect(runtime.diagnostics().resets['timer:0']).toEqual({
+      reason: '全メモリ初期化',
+      scanCount: 0,
+    });
+  });
+
+  it('カウンタのリセット接点ONを診断に残す', () => {
+    const io = new TestIo();
+    const runtime = boot(counterProgram(), io);
+    io.press(0);
+    runtime.scan();
+    expect(runtime.state().counters[0]?.value).toBe(1);
+    io.press(1);
+    runtime.scan();
+    expect(runtime.state().counters[0]?.value).toBe(0);
+    expect(runtime.diagnostics().resets['counter:0']).toEqual({
+      reason: 'カウンタのリセット接点ON',
+      scanCount: 2,
+    });
+  });
+});
+
 describe('createPlcRuntime（自己保持・インターロック・停止優先）', () => {
   it('holds Y0 after X0 is released and drops it on X1 (§14.1 #5 相当)', () => {
     const io = new TestIo();

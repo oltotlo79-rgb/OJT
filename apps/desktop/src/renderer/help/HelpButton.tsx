@@ -1,3 +1,4 @@
+import { TutorialVideoButton } from './TutorialVideo.js';
 import type { JSX } from 'react';
 import { useStore } from '../app/store.js';
 import { JA } from '../i18n/ja.js';
@@ -19,16 +20,19 @@ export function HelpButton({ className }: { className?: string }): JSX.Element {
   const mode = useStore((s) => s.problem?.mode);
   const assembleView = useStore((s) => s.assembleView);
   return (
-    <button
-      type="button"
-      className={className}
-      data-testid="open-help"
-      title={JA.help.shortcutHint}
-      onClick={() => {
-        openHelp(currentHelpScreen(route, mode, assembleView));
-      }}
-    >
-      {JA.help.open}
-    </button>
+    <>
+      {route === 'session' && mode && <TutorialVideoButton mode={mode} />}
+      <button
+        type="button"
+        className={className}
+        data-testid="open-help"
+        title={JA.help.shortcutHint}
+        onClick={() => {
+          openHelp(currentHelpScreen(route, mode, assembleView));
+        }}
+      >
+        {JA.help.open}
+      </button>
+    </>
   );
 }

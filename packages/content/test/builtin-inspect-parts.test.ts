@@ -49,9 +49,9 @@ function measure(problem: InspectPartsProblem, part: InspectPartData) {
 
 describe('内蔵C1課題（§7.9 36セット）', () => {
   it('registers twelve sets with stable ids', () => {
-    expect(BUILTIN_INSPECT_PARTS_PROBLEMS).toHaveLength(36);
+    expect(BUILTIN_INSPECT_PARTS_PROBLEMS).toHaveLength(54);
     expect(BUILTIN_INSPECT_PARTS_PROBLEMS.map((p) => p.id)).toEqual(
-      Array.from({ length: 36 }, (_, i) => `c1-${String(i + 1).padStart(3, '0')}`),
+      Array.from({ length: 54 }, (_, i) => `c1-${String(i + 1).padStart(3, '0')}`),
     );
     for (const problem of BUILTIN_INSPECT_PARTS_PROBLEMS) {
       expect(problem.mode).toBe('inspect-parts');

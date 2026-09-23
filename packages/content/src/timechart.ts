@@ -62,8 +62,13 @@ export const OUTPUT_LABELS: Readonly<Record<string, string>> = {
 };
 
 /** 押ボタン4点を上段、比較対象の出力を下段に並べた既定の信号指定。§7.7 */
-export function defaultChartSignals(compareSignals: readonly string[]): TimeChartSignalSpec[] {
-  const inputs: TimeChartSignalSpec[] = Object.keys(PB_LABELS).map((name) => ({
+export function defaultChartSignals(
+  compareSignals: readonly string[],
+  operatedInputs: readonly string[] = [],
+): TimeChartSignalSpec[] {
+  const inputs: TimeChartSignalSpec[] = [
+    ...new Set([...Object.keys(PB_LABELS), ...operatedInputs]),
+  ].map((name) => ({
     name,
     label: PB_LABELS[name] ?? name,
     kind: 'input',

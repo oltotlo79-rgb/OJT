@@ -1,0 +1,596 @@
+{
+  "c2-061": {
+    "faults": [
+      {
+        "kind": "wire-open",
+        "target": {
+          "wireId": "sw-018"
+        }
+      }
+    ],
+    "originalWire": {
+      "id": "sw-018",
+      "from": "CR4.5",
+      "to": "TB_PL.1+",
+      "color": "青",
+      "locked": false,
+      "open": false
+    }
+  },
+  "c2-062": {
+    "faults": [
+      {
+        "kind": "wire-missing",
+        "target": {
+          "wireId": "sw-017"
+        }
+      }
+    ],
+    "originalWire": {
+      "id": "sw-017",
+      "from": "CR2.5",
+      "to": "TB_PL.1+",
+      "color": "青",
+      "locked": false,
+      "open": false
+    }
+  },
+  "c2-063": {
+    "faults": [
+      {
+        "kind": "wire-misrouted",
+        "target": {
+          "wireId": "sw-018"
+        },
+        "to": "TB_PL.4+"
+      }
+    ],
+    "originalWire": {
+      "id": "sw-018",
+      "from": "CR3.1",
+      "to": "TB_PL.1+",
+      "color": "青",
+      "locked": false,
+      "open": false
+    }
+  },
+  "c2-064": {
+    "faults": [
+      {
+        "kind": "coil-open",
+        "target": {
+          "partId": "CR1",
+          "elementIndex": 0
+        }
+      }
+    ],
+    "originalWire": {
+      "id": "sw-019",
+      "from": "CR4.1",
+      "to": "TB_PL.1+",
+      "color": "青",
+      "locked": false,
+      "open": false
+    }
+  },
+  "c2-065": {
+    "faults": [
+      {
+        "kind": "wire-open",
+        "target": {
+          "wireId": "sw-018"
+        }
+      },
+      {
+        "kind": "coil-open",
+        "target": {
+          "partId": "CR2",
+          "elementIndex": 0
+        }
+      }
+    ],
+    "originalWire": {
+      "id": "sw-018",
+      "from": "CR4.1",
+      "to": "TB_PL.1+",
+      "color": "青",
+      "locked": false,
+      "open": false
+    }
+  },
+  "c2-066": {
+    "faults": [
+      {
+        "kind": "wire-open",
+        "target": {
+          "wireId": "sw-017"
+        }
+      }
+    ],
+    "originalWire": {
+      "id": "sw-017",
+      "from": "CR3.5",
+      "to": "TB_PL.1+",
+      "color": "青",
+      "locked": false,
+      "open": false
+    }
+  },
+  "c2-067": {
+    "faults": [
+      {
+        "kind": "wire-missing",
+        "target": {
+          "wireId": "sw-018"
+        }
+      }
+    ],
+    "originalWire": {
+      "id": "sw-018",
+      "from": "CR3.5",
+      "to": "TB_PL.1+",
+      "color": "青",
+      "locked": false,
+      "open": false
+    }
+  },
+  "c2-068": {
+    "faults": [
+      {
+        "kind": "wire-misrouted",
+        "target": {
+          "wireId": "sw-018"
+        },
+        "to": "TB_PL.4+"
+      }
+    ],
+    "originalWire": {
+      "id": "sw-018",
+      "from": "CR3.5",
+      "to": "TB_PL.1+",
+      "color": "青",
+      "locked": false,
+      "open": false
+    }
+  },
+  "c2-069": {
+    "faults": [
+      {
+        "kind": "coil-open",
+        "target": {
+          "partId": "CR1",
+          "elementIndex": 0
+        }
+      }
+    ],
+    "originalWire": {
+      "id": "sw-020",
+      "from": "CR4.5",
+      "to": "TB_PL.1+",
+      "color": "青",
+      "locked": false,
+      "open": false
+    }
+  },
+  "c2-070": {
+    "faults": [
+      {
+        "kind": "wire-open",
+        "target": {
+          "wireId": "sw-019"
+        }
+      },
+      {
+        "kind": "coil-open",
+        "target": {
+          "partId": "CR2",
+          "elementIndex": 0
+        }
+      }
+    ],
+    "originalWire": {
+      "id": "sw-019",
+      "from": "CR2.5",
+      "to": "TB_PL.1+",
+      "color": "青",
+      "locked": false,
+      "open": false
+    }
+  },
+  "c2-071": {
+    "faults": [
+      {
+        "kind": "wire-open",
+        "target": {
+          "wireId": "sw-020"
+        }
+      }
+    ],
+    "originalWire": {
+      "id": "sw-020",
+      "from": "CR3.1",
+      "to": "TB_PL.1+",
+      "color": "青",
+      "locked": false,
+      "open": false
+    }
+  },
+  "c2-072": {
+    "faults": [
+      {
+        "kind": "wire-missing",
+        "target": {
+          "wireId": "sw-021"
+        }
+      }
+    ],
+    "originalWire": {
+      "id": "sw-021",
+      "from": "CR4.1",
+      "to": "TB_PL.1+",
+      "color": "青",
+      "locked": false,
+      "open": false
+    }
+  },
+  "c2-073": {
+    "faults": [
+      {
+        "kind": "wire-misrouted",
+        "target": {
+          "wireId": "sw-020"
+        },
+        "to": "TB_PL.4+"
+      }
+    ],
+    "originalWire": {
+      "id": "sw-020",
+      "from": "CR4.1",
+      "to": "TB_PL.1+",
+      "color": "青",
+      "locked": false,
+      "open": false
+    }
+  },
+  "c2-074": {
+    "faults": [
+      {
+        "kind": "coil-open",
+        "target": {
+          "partId": "CR1",
+          "elementIndex": 0
+        }
+      }
+    ],
+    "originalWire": {
+      "id": "sw-019",
+      "from": "CR3.5",
+      "to": "TB_PL.1+",
+      "color": "青",
+      "locked": false,
+      "open": false
+    }
+  },
+  "c2-075": {
+    "faults": [
+      {
+        "kind": "wire-open",
+        "target": {
+          "wireId": "sw-026"
+        }
+      },
+      {
+        "kind": "coil-open",
+        "target": {
+          "partId": "CR2",
+          "elementIndex": 0
+        }
+      }
+    ],
+    "originalWire": {
+      "id": "sw-026",
+      "from": "T1.5",
+      "to": "TB_PL.1+",
+      "color": "青",
+      "locked": false,
+      "open": false
+    }
+  },
+  "c2-076": {
+    "faults": [
+      {
+        "kind": "wire-open",
+        "target": {
+          "wireId": "sw-026"
+        }
+      }
+    ],
+    "originalWire": {
+      "id": "sw-026",
+      "from": "T1.5",
+      "to": "TB_PL.1+",
+      "color": "青",
+      "locked": false,
+      "open": false
+    }
+  },
+  "c2-077": {
+    "faults": [
+      {
+        "kind": "wire-missing",
+        "target": {
+          "wireId": "sw-023"
+        }
+      }
+    ],
+    "originalWire": {
+      "id": "sw-023",
+      "from": "T1.5",
+      "to": "TB_PL.1+",
+      "color": "青",
+      "locked": false,
+      "open": false
+    }
+  },
+  "c2-078": {
+    "faults": [
+      {
+        "kind": "wire-misrouted",
+        "target": {
+          "wireId": "sw-024"
+        },
+        "to": "TB_PL.4+"
+      }
+    ],
+    "originalWire": {
+      "id": "sw-024",
+      "from": "T1.5",
+      "to": "TB_PL.1+",
+      "color": "青",
+      "locked": false,
+      "open": false
+    }
+  },
+  "c2-079": {
+    "faults": [
+      {
+        "kind": "coil-open",
+        "target": {
+          "partId": "CR1",
+          "elementIndex": 0
+        }
+      }
+    ],
+    "originalWire": {
+      "id": "sw-026",
+      "from": "T1.5",
+      "to": "TB_PL.1+",
+      "color": "青",
+      "locked": false,
+      "open": false
+    }
+  },
+  "c2-080": {
+    "faults": [
+      {
+        "kind": "wire-open",
+        "target": {
+          "wireId": "sw-028"
+        }
+      },
+      {
+        "kind": "coil-open",
+        "target": {
+          "partId": "CR2",
+          "elementIndex": 0
+        }
+      }
+    ],
+    "originalWire": {
+      "id": "sw-028",
+      "from": "T1.5",
+      "to": "TB_PL.1+",
+      "color": "青",
+      "locked": false,
+      "open": false
+    }
+  },
+  "c2-081": {
+    "faults": [
+      {
+        "kind": "wire-open",
+        "target": {
+          "wireId": "sw-023"
+        }
+      }
+    ],
+    "originalWire": {
+      "id": "sw-023",
+      "from": "T1.1",
+      "to": "TB_PL.1+",
+      "color": "青",
+      "locked": false,
+      "open": false
+    }
+  },
+  "c2-082": {
+    "faults": [
+      {
+        "kind": "wire-missing",
+        "target": {
+          "wireId": "sw-024"
+        }
+      }
+    ],
+    "originalWire": {
+      "id": "sw-024",
+      "from": "T1.1",
+      "to": "TB_PL.1+",
+      "color": "青",
+      "locked": false,
+      "open": false
+    }
+  },
+  "c2-083": {
+    "faults": [
+      {
+        "kind": "wire-misrouted",
+        "target": {
+          "wireId": "sw-026"
+        },
+        "to": "TB_PL.4+"
+      }
+    ],
+    "originalWire": {
+      "id": "sw-026",
+      "from": "T1.1",
+      "to": "TB_PL.1+",
+      "color": "青",
+      "locked": false,
+      "open": false
+    }
+  },
+  "c2-084": {
+    "faults": [
+      {
+        "kind": "coil-open",
+        "target": {
+          "partId": "CR1",
+          "elementIndex": 0
+        }
+      }
+    ],
+    "originalWire": {
+      "id": "sw-026",
+      "from": "T1.1",
+      "to": "TB_PL.1+",
+      "color": "青",
+      "locked": false,
+      "open": false
+    }
+  },
+  "c2-085": {
+    "faults": [
+      {
+        "kind": "wire-open",
+        "target": {
+          "wireId": "sw-023"
+        }
+      },
+      {
+        "kind": "coil-open",
+        "target": {
+          "partId": "CR2",
+          "elementIndex": 0
+        }
+      }
+    ],
+    "originalWire": {
+      "id": "sw-023",
+      "from": "T1.1",
+      "to": "TB_PL.1+",
+      "color": "青",
+      "locked": false,
+      "open": false
+    }
+  },
+  "c2-086": {
+    "faults": [
+      {
+        "kind": "wire-open",
+        "target": {
+          "wireId": "sw-024"
+        }
+      }
+    ],
+    "originalWire": {
+      "id": "sw-024",
+      "from": "T1.1",
+      "to": "TB_PL.1+",
+      "color": "青",
+      "locked": false,
+      "open": false
+    }
+  },
+  "c2-087": {
+    "faults": [
+      {
+        "kind": "wire-missing",
+        "target": {
+          "wireId": "sw-013"
+        }
+      }
+    ],
+    "originalWire": {
+      "id": "sw-013",
+      "from": "CR2.1",
+      "to": "TB_PL.1+",
+      "color": "青",
+      "locked": false,
+      "open": false
+    }
+  },
+  "c2-088": {
+    "faults": [
+      {
+        "kind": "wire-misrouted",
+        "target": {
+          "wireId": "sw-014"
+        },
+        "to": "TB_PL.4+"
+      }
+    ],
+    "originalWire": {
+      "id": "sw-014",
+      "from": "CR2.1",
+      "to": "TB_PL.1+",
+      "color": "青",
+      "locked": false,
+      "open": false
+    }
+  },
+  "c2-089": {
+    "faults": [
+      {
+        "kind": "coil-open",
+        "target": {
+          "partId": "CR1",
+          "elementIndex": 0
+        }
+      }
+    ],
+    "originalWire": {
+      "id": "sw-014",
+      "from": "CR3.5",
+      "to": "TB_PL.1+",
+      "color": "青",
+      "locked": false,
+      "open": false
+    }
+  },
+  "c2-090": {
+    "faults": [
+      {
+        "kind": "wire-open",
+        "target": {
+          "wireId": "sw-014"
+        }
+      },
+      {
+        "kind": "coil-open",
+        "target": {
+          "partId": "CR2",
+          "elementIndex": 0
+        }
+      }
+    ],
+    "originalWire": {
+      "id": "sw-014",
+      "from": "CR3.5",
+      "to": "TB_PL.1+",
+      "color": "青",
+      "locked": false,
+      "open": false
+    }
+  }
+}

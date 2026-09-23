@@ -24,9 +24,10 @@ import type {
   RepairCircuit,
   VerifyResult,
 } from '@ojt/content';
-import type { LadderProgram } from '@ojt/ladder-core';
+import type { Device, LadderProgram } from '@ojt/ladder-core';
+import type { PlcPowerStatus } from '@ojt/circuit-sim';
 import type { SchematicDocument } from '@ojt/schematic-core';
-import type { PlcMonitorSnapshot } from '../renderer/app/store-types.js';
+import type { PlcMonitorSnapshot } from '../shared/plc-monitor.js';
 
 /**
  * renderer ⇄ Simulation Worker のプロトコル。設計仕様 §4.3。
@@ -74,6 +75,7 @@ export type SimCommand =
        * 変わらないので、`BoardSession` の照合も既存のコマンドもそのまま通る。
        */
       plcModel?: string;
+      allowPlcForcing?: boolean;
     }
   /** 電線を1本張る（`Simulation` に差分適用するのでリレー／タイマの状態は保たれる）。 */
   | { type: 'addWire'; wire: Wire }
@@ -164,6 +166,11 @@ export type SimCommand =
 
 /** `plc` コマンドの中身。 */
 export type PlcCommandAction =
+  | { kind: 'pause'; on: boolean }
+  | { kind: 'step' }
+  | { kind: 'break'; condition: { device: Device; value: boolean } | null }
+  | { kind: 'force'; index: number; value: boolean | null }
+  | { kind: 'clearForces' }
   /** 変換済みのラダーを載せる（`compile()` は Worker 側で行う）。 */
   | { kind: 'load'; program: LadderProgram }
   /** RUN/STOP。`false` で `runtime.reset()` を呼び、Y接点を開く。 */
@@ -199,6 +206,11 @@ export interface TimerSnapshot {
  * `TesterReading`（Plan 2A）に、worker が積分している針の現在角度 `needleDeg` を添えたもの。
  */
 export interface TesterSnapshot {
+  /** この読値の計算に使用したプローブ。UI変更直後の古い読値の記録を防ぐ。 */
+  black?: string | undefined;
+  red?: string | undefined;
+  voltRange?: number;
+  ohmRange?: number;
   kind: TesterKind;
   mode: TesterMode;
   /** 読値の生値（DCV/ACVは[V]、Ω／導通は[Ω]）。測定できないときは NaN。 */
@@ -219,6 +231,14 @@ export interface TesterSnapshot {
 
 /** 約30fpsで送る状態スナップショット。ログ・イベントは前回送出からの差分のみ。§4.3 */
 export interface SimSnapshot {
+  plcDebug?: {
+    supply: PlcPowerStatus;
+    paused: boolean;
+    running: boolean;
+    condition: { device: Device; value: boolean } | null;
+    forcedInputs: Record<number, boolean>;
+    allowForcing: boolean;
+  };
   tMs: number;
   breakerOn: boolean;
   switchOn: boolean;
@@ -233,6 +253,7 @@ export interface SimSnapshot {
   logDelta: LogEntry[];
   /** 前回送出以降に発行された危険操作。§5.6 */
   hazardDelta: HazardEvent[];
+  hazardTotal?: number;
   /** 前回送出以降に検出したチャタリング。§5.3.2 */
   chatterDelta: ChatterEvent[];
   /** テスターの読値と針（約30fpsで送る。tick ごとの更新は worker の中で行う）。§9.3 */

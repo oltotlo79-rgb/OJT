@@ -1,6 +1,5 @@
-import { findTimerRange, DEFAULT_TIMER_RANGE } from '@ojt/board-model';
-import { TIMER_MIN_PRESET_MS } from '@ojt/circuit-sim';
-import type { JSX } from 'react';
+import { findTimerRange, DEFAULT_TIMER_RANGE, snapPresetToStep } from '@ojt/board-model';
+import { useState, type JSX } from 'react';
 import { JA } from '../i18n/ja.js';
 import styles from './panels.module.css';
 
@@ -29,13 +28,25 @@ export function TimerDial({
 }): JSX.Element {
   const range = findTimerRange(rangeMaxMs) ?? DEFAULT_TIMER_RANGE;
   const stepSeconds = range.stepMs / 1000;
+  const [draft, setDraft] = useState<string | undefined>();
+  const commit = (): void => {
+    if (draft !== undefined && draft.trim() !== '' && Number.isFinite(Number(draft))) {
+      onChange(
+        snapPresetToStep(
+          Math.min(range.maxMs, Math.max(range.stepMs, secondsToMs(Number(draft)))),
+          range,
+        ),
+      );
+    }
+    setDraft(undefined);
+  };
   return (
     <div className={styles.dial}>
       <span className={styles.toolLabel}>{label}</span>
       <input
         type="range"
         aria-label={`${label} ${JA.session.slider}`}
-        min={TIMER_MIN_PRESET_MS / 1000}
+        min={stepSeconds}
         max={range.maxMs / 1000}
         step={stepSeconds}
         value={presetMs / 1000}
@@ -46,12 +57,17 @@ export function TimerDial({
       <input
         type="number"
         aria-label={`${label} ${JA.session.numberInput}`}
-        min={TIMER_MIN_PRESET_MS / 1000}
+        min={stepSeconds}
         max={range.maxMs / 1000}
         step={stepSeconds}
-        value={presetMs / 1000}
+        value={draft ?? String(presetMs / 1000)}
         onChange={(event) => {
-          onChange(secondsToMs(Number(event.target.value)));
+          setDraft(event.target.value);
+        }}
+        onBlur={commit}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter') commit();
+          if (event.key === 'Escape') setDraft(undefined);
         }}
       />
       <span>{JA.session.seconds}</span>

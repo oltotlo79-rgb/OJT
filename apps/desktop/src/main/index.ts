@@ -1,5 +1,6 @@
 import { join } from 'node:path';
-import { app, BrowserWindow, Menu, session, type WebContents } from 'electron';
+import { app, BrowserWindow, Menu, session, ipcMain, dialog, type WebContents } from 'electron';
+import { IPC_CHANNELS } from '../shared/ipc.js';
 import { registerIpc } from './ipc.js';
 import { isAppUrl } from './navigation.js';
 
@@ -23,6 +24,16 @@ import { isAppUrl } from './navigation.js';
  * - `webviewTag` / `allowRunningInsecureContent` / `webSecurity` を明示する。いずれも
  *   既定値と同じだが、**書いていないと既定値が変わったときに黙って緩む**。
  */
+
+if (process.env['OJT_RECORDING'] === '1') {
+  for (const flag of [
+    'disable-background-timer-throttling',
+    'disable-renderer-backgrounding',
+    'disable-backgrounding-occluded-windows',
+  ])
+    app.commandLine.appendSwitch(flag);
+  app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion');
+}
 
 /** 起動時のウィンドウ寸法（FHDで盤と右パネルが同時に見える大きさ）。§15 */
 const WINDOW_WIDTH = 1440;
@@ -69,6 +80,7 @@ function createWindow(): BrowserWindow {
        * （`test/hardening.test.ts` が対になっていることを見ている）。
        */
       preload: join(import.meta.dirname, '../preload/index.cjs'),
+      backgroundThrottling: process.env['OJT_RECORDING'] !== '1',
       contextIsolation: true,
       nodeIntegration: false,
       /*
@@ -85,6 +97,41 @@ function createWindow(): BrowserWindow {
       /** 同一生成元ポリシーを切らない（既定と同じだが明示する）。 */
       webSecurity: true,
     },
+  });
+  let mayClose = false;
+  let token = 0;
+  let waiting = false;
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  const ready = (event: Electron.IpcMainEvent, answer: unknown, ok: unknown): void => {
+    if (event.sender !== window.webContents || answer !== token || !waiting) return;
+    waiting = false;
+    clearTimeout(timeout);
+    if (ok === true) {
+      mayClose = true;
+      window.close();
+    }
+  };
+  ipcMain.on(IPC_CHANNELS.closeReady, ready);
+  window.on('close', (event) => {
+    if (mayClose || window.webContents.isDestroyed()) return;
+    event.preventDefault();
+    if (waiting) return;
+    waiting = true;
+    token += 1;
+    window.webContents.send(IPC_CHANNELS.closeRequest, token);
+    timeout = setTimeout(() => {
+      waiting = false;
+      void dialog.showMessageBox(window, {
+        type: 'error',
+        message: '作業の保存を確認できないため、終了を中止しました。',
+        detail: 'アプリの応答を確認し、作業ファイルを保存してから終了してください。',
+        buttons: ['作業に戻る'],
+      });
+    }, 15_000);
+  });
+  window.on('closed', () => {
+    clearTimeout(timeout);
+    ipcMain.removeListener(IPC_CHANNELS.closeReady, ready);
   });
   window.setMenuBarVisibility(false);
   window.on('ready-to-show', () => {

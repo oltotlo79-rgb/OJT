@@ -20,6 +20,23 @@ import {
 import { net, t, w } from './helpers/circuits.js';
 
 describe('netlist', () => {
+  it('繰り返し計算した後の断線・接続先変更・追加リンクを次の節点計算へ反映する', () => {
+    const netlist = net(
+      [createPowerSupply('PS'), createLamp('PL1', '白')],
+      [w('w1', 'PS.+', 'PL1.+')],
+    );
+    for (let i = 0; i < 100; i++)
+      expect(buildNets(netlist).nodeOf(t('PS.+'))).toBe(buildNets(netlist).nodeOf(t('PL1.+')));
+    const wire = netlist.wires[0]!;
+    wire.open = true;
+    expect(buildNets(netlist).nodeOf(t('PS.+'))).not.toBe(buildNets(netlist).nodeOf(t('PL1.+')));
+    wire.open = false;
+    wire.to = t('PL1.-');
+    expect(buildNets(netlist).nodeOf(t('PS.+'))).toBe(buildNets(netlist).nodeOf(t('PL1.-')));
+    expect(buildNets(netlist).nodeOf(t('PS.+'))).not.toBe(buildNets(netlist).nodeOf(t('PL1.+')));
+    netlist.links.push(createTerminalBlockLink('changed', t('PL1.+'), t('PS.-')));
+    expect(buildNets(netlist).nodeOf(t('PL1.+'))).toBe(buildNets(netlist).nodeOf(t('PS.-')));
+  });
   it('電線とリンクが端子を同一節点に併合する（§5.1）', () => {
     const netlist = net(
       [createPowerSupply('PS'), createLamp('PL1', '白')],

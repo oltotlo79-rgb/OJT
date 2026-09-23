@@ -1,3 +1,4 @@
+import type { BoardProfile } from './profiles.js';
 import {
   clampPreset,
   createWire,
@@ -100,6 +101,19 @@ export type MountedPart =
 
 /** 盤セッション。 */
 export interface BoardSession {
+  boardProfile?: BoardProfile;
+  plcAssignment?: {
+    mode: 'free';
+    wiring: 'sink' | 'source';
+    inputs: readonly { x: number; pb: 'PB1' | 'PB2' | 'PB3' | 'PB4' }[];
+    outputs: readonly {
+      y: number;
+      cr: 'CR1' | 'CR2' | 'CR3' | 'CR4';
+      pl: 'PL1' | 'PL2' | 'PL3' | 'PL4';
+    }[];
+  };
+  wireAnnotations?: Record<string, { label: string; note: string }>;
+  wireRoutePreferences?: Record<string, { viaChannelIds: readonly string[] }>;
   boardId: string;
   socketRoles: SocketRoles;
   /** 物理ソケットID → 装着状態。未装着のソケットはキーを持たない。 */
@@ -156,12 +170,18 @@ export function createSession(board: BoardDefinition, options: SessionOptions = 
   );
   return {
     boardId: board.id,
+    ...(board.profile === undefined ? {} : { boardProfile: structuredClone(board.profile) }),
     socketRoles: roles,
     mounted: {},
     wires,
-    allowedColors: options.allowedColors ?? DEFAULT_ALLOWED_COLORS,
+    allowedColors:
+      options.allowedColors ?? board.profile?.rules.allowedColors ?? DEFAULT_ALLOWED_COLORS,
     extraParts: options.extraParts ?? [],
-    inventory: options.inventory ?? DEFAULT_INVENTORY,
+    inventory: (options.inventory ?? DEFAULT_INVENTORY).filter(
+      (item) =>
+        board.profile?.rules.allowedParts === undefined ||
+        board.profile.rules.allowedParts.includes(item.kind),
+    ),
     wireSeq: 1,
   };
 }
@@ -203,6 +223,12 @@ export function plug(
     return fail('socket-occupied', `${socketId} には既に部品が装着されています`);
   }
   const entry = catalogEntry(kind);
+  if (
+    session.boardProfile?.rules.allowedParts !== undefined &&
+    !session.boardProfile.rules.allowedParts.includes(kind)
+  ) {
+    return fail('inventory-exhausted', `${entry.displayName} はこの訓練ルールでは使えません`);
+  }
   const remaining = remainingInventory(session.inventory, mountedKinds(session));
   const left = remaining.find((r) => r.kind === kind)?.count ?? 0;
   if (left <= 0) {
@@ -308,11 +334,9 @@ function checkTerminal(
   if (found.optional && !session.extraParts.includes(owner)) {
     return fail('terminal-unavailable', `盤に載っていない部品の端子です: ${id}`);
   }
-  if (wireCountAtTerminal(session, id) >= MAX_WIRES_PER_TERMINAL) {
-    return fail(
-      'terminal-overload',
-      `1つの端子に接続できるのは${MAX_WIRES_PER_TERMINAL}本までです: ${id}`,
-    );
+  const wireLimit = session.boardProfile?.rules.maxWiresPerTerminal ?? MAX_WIRES_PER_TERMINAL;
+  if (wireCountAtTerminal(session, id) >= wireLimit) {
+    return fail('terminal-overload', `1つの端子に接続できるのは${wireLimit}本までです: ${id}`);
   }
   return ok(id);
 }
@@ -434,5 +458,7 @@ export function removeWire(session: BoardSession, wireId: string): Result<Wire> 
     return fail('locked-wire', 'チェック用回路の既設配線（青）は変更できません');
   }
   session.wires.splice(index, 1);
+  if (session.wireAnnotations !== undefined) delete session.wireAnnotations[wireId];
+  if (session.wireRoutePreferences !== undefined) delete session.wireRoutePreferences[wireId];
   return ok(wire);
 }

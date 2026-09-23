@@ -213,3 +213,5 @@ export {
   type TesterReading,
   type TesterState,
 } from './tester.js';
+
+export { checkPlcSupply, type PlcPowerStatus, type PlcPowerIssue } from './plc-power.js';

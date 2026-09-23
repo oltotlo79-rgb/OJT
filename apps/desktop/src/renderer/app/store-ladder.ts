@@ -1,6 +1,11 @@
 import { plcUnitFor } from '@ojt/board-model';
-import { isPlcProblem, type SupportedProblem } from '@ojt/content';
-import { COIL_COL, type LadderProgram } from '@ojt/ladder-core';
+import {
+  MAX_DEVICE_COMMENTS,
+  MAX_DEVICE_COMMENT_LENGTH,
+  isPlcProblem,
+  type SupportedProblem,
+} from '@ojt/content';
+import { COIL_COL, type Device, type LadderProgram } from '@ojt/ladder-core';
 import {
   getDialect,
   IMPLEMENTED_DIALECT_IDS,
@@ -33,10 +38,10 @@ import type { AppState } from './store.js';
  */
 
 /** デバイスコメント1件の長さの上限（`@ojt/content` の `MAX_DEVICE_COMMENT_LENGTH` と同じ値）。§10.7 */
-export const DEVICE_COMMENT_LIMIT = 32;
+export const DEVICE_COMMENT_LIMIT = MAX_DEVICE_COMMENT_LENGTH;
 
 /** デバイスコメントの件数の上限（`@ojt/content` の `MAX_DEVICE_COMMENTS` と同じ値）。§10.7 */
-export const DEVICE_COMMENT_COUNT_LIMIT = 200;
+export const DEVICE_COMMENT_COUNT_LIMIT = MAX_DEVICE_COMMENTS;
 
 /** 画面の分割。決定表#10 */
 export type LadderViewMode = 'ladder' | 'split' | 'board';
@@ -46,6 +51,7 @@ export function plcFields(
   problem?: SupportedProblem,
 ): Pick<
   LadderSlice,
+  | 'watchDevices'
   | 'ladder'
   | 'ladderComments'
   | 'ladderHistory'
@@ -65,6 +71,7 @@ export function plcFields(
     // モードD以外では `undefined`（3Dだけの画面がラダーを持たない）
     ladder: isPlc ? initialLadder() : undefined,
     ladderComments: {},
+    watchDevices: [],
     ladderHistory: emptyLadderHistory(),
     ladderCursor: { networkId: 'n1', row: 0, col: 0 },
     ladderMode: 'write',
@@ -81,6 +88,8 @@ export function plcFields(
 
 /** モードDの状態と操作。 */
 export interface LadderSlice {
+  watchDevices: readonly Device[];
+  setWatchDevices: (devices: readonly Device[]) => void;
   // --- /Plan 5 Task 6 ---
 
   /** 訓練者のラダー（モードDのみ）。§10.3 */
@@ -200,6 +209,7 @@ export const createLadderSlice: StateCreator<AppState, [], [], LadderSlice> = (s
       ...(current === undefined ? {} : { ladderHistory: pushLadder(get().ladderHistory, current) }),
     });
   },
+  setWatchDevices: (devices) => set({ watchDevices: devices }),
   restoreLadder: (program, comments) => {
     set({
       ladder: program,

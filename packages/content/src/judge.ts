@@ -1,4 +1,9 @@
-import { toNetlist, type BoardDefinition, type BoardSession } from '@ojt/board-model';
+import {
+  withBoardProfile,
+  toNetlist,
+  type BoardDefinition,
+  type BoardSession,
+} from '@ojt/board-model';
 import {
   compareLogs,
   HAZARD_KINDS,
@@ -44,6 +49,19 @@ export interface JudgeOptions {
   elapsedMs?: number;
   /** セッション中（判定の再生以外）に記録した危険操作。§5.6 */
   sessionHazards?: readonly HazardEvent[];
+  /** 長時間ライブの累積件数。詳細配列を間引いても件数を失わない。 */
+  sessionHazardCounts?: HazardCounts;
+}
+
+export function hazardSummary(options: JudgeOptions): {
+  hazardCount: number;
+  hazardsByKind: HazardCounts;
+} {
+  const hazardsByKind = options.sessionHazardCounts ?? countHazards(options.sessionHazards ?? []);
+  return {
+    hazardCount: Object.values(hazardsByKind).reduce((sum, count) => sum + count, 0),
+    hazardsByKind,
+  };
 }
 
 /** 判定結果。§7.4 / §8.3 */
@@ -162,6 +180,7 @@ export function judgeAssemble(
   traineeSession: BoardSession,
   options: JudgeOptions = {},
 ): JudgeAssembleResult {
+  board = withBoardProfile(board, problem.board.profile);
   const reference = buildReferenceSession(problem, board);
   if (!reference.ok) return reference;
 
@@ -172,6 +191,9 @@ export function judgeAssemble(
   if (deadReference !== undefined) return { ok: false, errors: [deadReference] };
 
   const compareSignals = resolveCompareSignals(problem.judge, problem.board.extraParts ?? []);
+  if (problem.judge.compareSignals === undefined && problem.board.profile !== undefined)
+    for (const lamp of board.lamps)
+      if (!compareSignals.includes(lamp.id)) compareSignals.push(lamp.id);
   const unknownSignals = findUnknownCompareSignalIssues(compareSignals, expectedRun.log);
   if (unknownSignals.length > 0) return { ok: false, errors: unknownSignals };
 
@@ -204,12 +226,15 @@ export function judgeAssemble(
       log: actualRun.log,
       hazards: checkedHazards,
       chatters: chatter,
-      allowedColors: [ASSEMBLE_WIRE_COLOR],
+      allowedColors: problem.board.profile?.rules.allowedColors ?? [ASSEMBLE_WIRE_COLOR],
     },
     problem.judge.staticChecks,
   );
 
-  const chartSignals = defaultChartSignals(compareSignals);
+  const chartSignals = defaultChartSignals(
+    compareSignals,
+    problem.operations.map((operation) => operation.target),
+  );
   const markers = timerMarkers(reference.value.netlist);
   const charts = {
     expected: buildTimeChart(expectedRun.log, chartSignals, problem.durationMs, markers),
@@ -223,8 +248,7 @@ export function judgeAssemble(
       passed: mismatches.length === 0 && staticChecks.every((c) => c.ok),
       mismatches,
       staticChecks,
-      hazardCount: sessionHazards.length,
-      hazardsByKind: countHazards(sessionHazards),
+      ...hazardSummary(options),
       chatter: [...chatter],
       ...(options.elapsedMs === undefined ? {} : { elapsedMs: options.elapsedMs }),
       charts,
@@ -243,6 +267,7 @@ export function judgeReference(
   problem: SchematicProblem,
   board: BoardDefinition,
 ): JudgeAssembleResult {
+  board = withBoardProfile(board, problem.board.profile);
   const reference = buildReferenceSession(problem, board);
   if (!reference.ok) return reference;
   return judgeAssemble(problem, board, reference.value.session);

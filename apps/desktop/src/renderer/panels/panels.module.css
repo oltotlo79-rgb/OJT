@@ -334,9 +334,11 @@
 }
 
 .overflowPanel {
-  position: absolute;
-  top: calc(100% + 4px);
-  left: 0;
+  position: fixed;
+  width: max-content;
+  max-width: calc(100vw - 16px);
+  max-height: calc(100vh - 16px);
+  overflow: auto;
   z-index: 20;
   display: flex;
   flex-direction: column;
@@ -347,6 +349,9 @@
   padding: 8px;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
   white-space: nowrap;
+}
+.overflowPanel .toolGroup {
+  flex-wrap: wrap;
 }
 /* --- /UX pass 2026-09-19 (#17) --- */
 
@@ -858,4 +863,32 @@
 .hoverHint {
   min-height: 40px;
   box-sizing: border-box;
+}
+
+/* 記録・診断フォームは狭い右欄でもラベルと入力欄を縦に並べる。 */
+.formField {
+  display: grid;
+  gap: 6px;
+  margin-block: 10px;
+  min-width: 0;
+}
+.formField :is(input, textarea, select) {
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 6px 8px;
+  font: inherit;
+}
+.formField textarea {
+  min-height: 64px;
+  resize: vertical;
+}
+.formGroup {
+  min-width: 0;
+  border: 1px solid var(--line);
+  margin: 12px 0 0;
+  border-radius: 6px;
 }

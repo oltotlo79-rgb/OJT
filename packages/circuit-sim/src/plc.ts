@@ -171,6 +171,7 @@ export function createPlcUnit(id: PartId | string, spec: PlcUnitSpec): Part {
       onAmps,
       offAmps,
       power: spec.power.map(term),
+      acPower: [term(spec.acPower[0]), term(spec.acPower[1])],
     },
   };
 }

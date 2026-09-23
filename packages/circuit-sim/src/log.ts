@@ -62,6 +62,13 @@ export class SignalLog {
     return this.recorded;
   }
 
+  /** ライブ配信用。直近値を保持して変化検出を続け、送信済み詳細を解放する。採点再生では使わない。 */
+  drain(): LogEntry[] {
+    const entries = this.recorded.splice(0);
+    this.bySignal.clear();
+    return entries;
+  }
+
   /** 記録されている信号名の一覧（初出順）。 */
   signals(): string[] {
     return [...this.last.keys()];

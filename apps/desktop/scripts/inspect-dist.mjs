@@ -137,8 +137,13 @@ export async function inspectRelease(appRoot) {
     for (const required of [
       'package.json',
       'out/main/index.js',
+      'out/main/definition-worker.js',
       'out/preload/index.cjs',
       'out/renderer/index.html',
+      ...['assembly', 'parts', 'repair', 'plc'].flatMap((mode) => [
+        `out/renderer/tutorials/${mode}.webm`,
+        `out/renderer/tutorials/${mode}.vtt`,
+      ]),
     ]) {
       if (
         !entries.includes(required) ||

@@ -14,6 +14,7 @@ import {
   toPhysicalTerminal,
   validateSocketRoles,
   type MountableKind,
+  type BoardDefinition,
   type SocketId,
   type SocketRole,
   type SocketRoles,
@@ -81,6 +82,7 @@ export interface AssignError {
 
 /** 割当オプション。 */
 export interface AssignOptions {
+  board?: BoardDefinition;
   /** チェック回路付きの既存盤を扱う場合だけ指定。通常の回路図は配線ゼロから構成する。 */
   includeCheckWires?: boolean;
   /** ソケットの役割割当。省略すると既定の割当（8ソケットに7役割）。§6.1 */
@@ -222,10 +224,14 @@ function overrideGroup(cell: SchematicCell, left: TerminalId): number {
 }
 
 /** 上書き端子が盤にあって配線できるか。 */
-function terminalProblem(roles: SocketRoles, id: TerminalId): string | undefined {
+function terminalProblem(
+  roles: SocketRoles,
+  id: TerminalId,
+  board: BoardDefinition,
+): string | undefined {
   let found;
   try {
-    found = findBoardTerminal(JIPM_BOARD, toPhysicalTerminal(roles, id));
+    found = findBoardTerminal(board, toPhysicalTerminal(roles, id));
   } catch {
     return `盤に無い端子です: ${id}`;
   }
@@ -239,6 +245,7 @@ function checkOverride(
   doc: SchematicDocument,
   roles: SocketRoles,
   override: Readonly<Record<string, readonly [TerminalId, TerminalId]>>,
+  board: BoardDefinition,
 ): AssignError[] {
   const errors: AssignError[] = [];
   const cellIds = new Set(doc.rungs.flatMap((r) => r.cells.map((c) => c.id)));
@@ -256,7 +263,7 @@ function checkOverride(
       continue;
     }
     for (const id of terminals) {
-      const problem = terminalProblem(roles, id);
+      const problem = terminalProblem(roles, id, board);
       if (problem !== undefined) errors.push({ path: cellId, message: problem });
     }
   }
@@ -672,11 +679,19 @@ export function assignToBoard(doc: SchematicDocument, options: AssignOptions = {
   }
 
   const override = options.physicalOverride ?? {};
-  const overrideErrors = checkOverride(doc, roles, override);
+  const board = options.board ?? JIPM_BOARD;
+  const overrideErrors = checkOverride(doc, roles, override, board);
   if (overrideErrors.length > 0) return { ok: false, errors: overrideErrors };
 
   const built = buildCellAssignments(doc, override);
   if (!built.ok) return built;
+  const missingTerminals = built.value.cells.flatMap((cell) =>
+    [cell.left, cell.right].flatMap((terminal) => {
+      const message = terminalProblem(roles, terminal, board);
+      return message === undefined ? [] : [{ path: cell.cellId, message }];
+    }),
+  );
+  if (missingTerminals.length > 0) return { ok: false, errors: missingTerminals };
 
   // SC-06: 既設配線の索引は1回の割当で使い回す（以前は checkFixedBonds／chainWires が
   // それぞれ作り直しており、正味3回組み直していた）。

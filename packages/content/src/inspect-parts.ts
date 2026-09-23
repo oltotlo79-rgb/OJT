@@ -131,7 +131,7 @@ export const DIAGNOSIS_TABLE: readonly DiagnosisRow[] = [
   {
     situation: '動作も接点も正常 ＋ コイル抵抗が正常の85%以下（本アプリの既定は約420Ω）',
     cause: 'coil-layer-short',
-    note: `${LAYER_SHORT_NOTE_TITLE}しきい値は正常値650Ωの85%（＝約552Ω）。これ以下をレアショートとする（本アプリの既定。§17 #7）。`,
+    note: `${LAYER_SHORT_NOTE_TITLE}しきい値は正常値650Ωの85%（＝約552Ω）。これ以下をレアショートとする（本アプリの判定基準）。`,
   },
 ];
 

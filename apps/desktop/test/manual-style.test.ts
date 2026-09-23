@@ -104,7 +104,7 @@ describe('用語集', () => {
     const row = rows.find((cells) => cells.includes(term));
     expect(row, `用語集に「${term}」の行がありません`).toBeDefined();
     const cells = (row ?? '').match(/<td>([\s\S]*?)<\/td>/gu) ?? [];
-    const explanation = (cells[cells.length - 1] ?? '').replace(/<[^>]+>/gu, '').trim();
+    const explanation = (cells[2] ?? '').replace(/<[^>]+>/gu, '').trim();
     expect(explanation.length, `用語集の「${term}」の説明が短すぎます`).toBeGreaterThanOrEqual(20);
   });
 });

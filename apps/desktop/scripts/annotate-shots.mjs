@@ -344,6 +344,26 @@ export function planCallouts(shot, geometry, size) {
       }
       if (badgeBox !== undefined) break;
     }
+    // 入力欄の周囲が説明文で埋まっている場合は、近傍の余白まで探す。
+    // 番号を文字に重ねる前に、対象から100px以内の読める位置へ逃がす。
+    if (badgeBox === undefined) {
+      const nearby = [];
+      for (let y = 0; y + MARK_SIZE <= frame.h; y += GRID_STEP) {
+        for (let x = 0; x + MARK_SIZE <= frame.w; x += GRID_STEP) {
+          const point = { x: x + half, y: y + half };
+          if (distanceTo(mark.box, point) <= 100) nearby.push({ x, y, w: MARK_SIZE, h: MARK_SIZE });
+        }
+      }
+      nearby.sort(
+        (a, b) =>
+          distanceTo(mark.box, { x: a.x + half, y: a.y + half }) -
+          distanceTo(mark.box, { x: b.x + half, y: b.y + half }),
+      );
+      for (const margin of [TEXT_MARGIN, 0]) {
+        badgeBox = nearby.find((rect) => free(rect) && !hits(grow(rect, margin), avoid));
+        if (badgeBox !== undefined) break;
+      }
+    }
     badgeBox ??= candidates.find((rect) => free(rect) && !hits(rect, others));
     badgeBox ??= candidates.find(free);
     badgeBox ??= candidates.find((rect) => !hits(rect, taken));
@@ -448,6 +468,16 @@ export function overlayHtml(imageUrl, shot, geometry, size) {
     leaders.push(
       `<line x1="${mark.badge.x}" y1="${mark.badge.y}" x2="${to.x}" y2="${to.y}"></line>`,
     );
+    if (distanceTo(mark.box, mark.badge) > MARK_SIZE / 2) {
+      // 余白へ逃がした番号と実際の対象を線で結び、対応を曖昧にしない。
+      const target = {
+        x: clamp(mark.badge.x, mark.box.x, mark.box.x + mark.box.w),
+        y: clamp(mark.badge.y, mark.box.y, mark.box.y + mark.box.h),
+      };
+      leaders.push(
+        `<line x1="${mark.badge.x}" y1="${mark.badge.y}" x2="${target.x}" y2="${target.y}"></line>`,
+      );
+    }
     parts.push(
       `<div class="box" style="left:${mark.box.x}px;top:${mark.box.y}px;width:${mark.box.w}px;height:${mark.box.h}px"></div>`,
       `<div class="num" style="left:${mark.badgeBox.x}px;top:${mark.badgeBox.y}px">${mark.mark}</div>`,

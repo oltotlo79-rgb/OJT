@@ -22,6 +22,7 @@ export interface Wire {
 
 /** 回路エンジンが解く対象のデータ構造。§5.1 */
 export interface Netlist {
+  maxWiresPerTerminal?: number;
   parts: Part[];
   wires: Wire[];
   /** 部品本体と端子台の間の既設0Ωリンク。§6.4 */
@@ -140,12 +141,12 @@ export function wireCountAt(netlist: Netlist, terminal: TerminalId): number {
 
 /** その端子が本数上限（2本）を超えているか。§6.6 */
 export function exceedsWireLimit(netlist: Netlist, terminal: TerminalId): boolean {
-  return wireCountAt(netlist, terminal) > MAX_WIRES_PER_TERMINAL;
+  return wireCountAt(netlist, terminal) > (netlist.maxWiresPerTerminal ?? MAX_WIRES_PER_TERMINAL);
 }
 
 /** その端子にこれ以上電線を追加できるか（本数上限未満）。§6.6 */
 export function canAddWire(netlist: Netlist, terminal: TerminalId): boolean {
-  return wireCountAt(netlist, terminal) < MAX_WIRES_PER_TERMINAL;
+  return wireCountAt(netlist, terminal) < (netlist.maxWiresPerTerminal ?? MAX_WIRES_PER_TERMINAL);
 }
 
 /** ネットリストに存在する全端子の集合（全部品の `terminals` の和集合）。`validateNetlist` と故障注入の両方で使う。 */
@@ -281,7 +282,15 @@ export interface Nets {
  * 電線と0Ωリンクで端子を併合し、節点を作る（union-find）。
  * `wire-open` の電線は併合しない（断線）。§5.1 / §5.4
  */
+const netCache = new WeakMap<Netlist, { signature: string; nets: Nets }>();
 export function buildNets(netlist: Netlist): Nets {
+  const signature = JSON.stringify([
+    netlist.parts.map((part) => [part.terminals, part.elements.map((el) => [el.from, el.to])]),
+    netlist.wires.map((wire) => [wire.from, wire.to, wire.open]),
+    netlist.links.map((link) => [link.from, link.to]),
+  ]);
+  const cached = netCache.get(netlist);
+  if (cached?.signature === signature) return cached.nets;
   const index = new Map<string, number>();
   const parent: number[] = [];
   const order: TerminalId[] = [];
@@ -345,7 +354,7 @@ export function buildNets(netlist: Netlist): Nets {
     else bucket.push(t);
   });
 
-  return {
+  const nets: Nets = {
     nodeCount: members.size,
     terminals: order,
     hasTerminal: (t) => nodeOfTerminal.has(t),
@@ -356,4 +365,6 @@ export function buildNets(netlist: Netlist): Nets {
     },
     terminalsOf: (node) => members.get(node) ?? [],
   };
+  netCache.set(netlist, { signature, nets });
+  return nets;
 }

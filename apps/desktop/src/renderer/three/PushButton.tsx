@@ -2,7 +2,7 @@ import type { PushButtonDefinition } from '@ojt/board-model';
 import type { JSX } from 'react';
 import type { ThreeEvent } from '@react-three/fiber';
 import { CylinderGeometry } from 'three';
-import { PUSH_BUTTON_COLORS } from '../session/colors.js';
+import { FACE_COLORS } from '../session/colors.js';
 import { sharedMaterial } from './materials.js';
 import { toScene } from './coords.js';
 
@@ -32,7 +32,7 @@ export function PushButton({
   onRelease: (pbId: string) => void;
 }): JSX.Element {
   const pos = toScene({ ...definition.pos, z: 0 });
-  const color = PUSH_BUTTON_COLORS[definition.id] ?? '#888888';
+  const color = FACE_COLORS[definition.color];
   return (
     <group position={pos} name={`pb-${definition.id}`}>
       <mesh

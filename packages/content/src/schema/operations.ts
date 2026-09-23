@@ -8,7 +8,16 @@ import { z } from 'zod';
  */
 
 /** 操作対象の押ボタン。§5.3.3 */
-export const OperationTargetSchema = z.enum(['PB1', 'PB2', 'PB3', 'PB4']);
+export const OperationTargetSchema = z.enum([
+  'PB1',
+  'PB2',
+  'PB3',
+  'PB4',
+  'PB5',
+  'PB6',
+  'PB7',
+  'PB8',
+]);
 
 /** 操作対象。 */
 export type OperationTarget = z.infer<typeof OperationTargetSchema>;

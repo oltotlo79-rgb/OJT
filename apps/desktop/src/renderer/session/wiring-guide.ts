@@ -41,7 +41,10 @@ export interface GuideInput {
  */
 export function guideIndexFor(input: GuideInput): HighlightIndex | undefined {
   if (input.doc !== undefined) {
-    const assigned = assignToBoard(input.doc, { roles: input.session.socketRoles });
+    const assigned = assignToBoard(input.doc, {
+      roles: input.session.socketRoles,
+      board: input.board,
+    });
     if (!assigned.ok) return undefined;
     return buildHighlightIndex(assigned.cells, input.session);
   }

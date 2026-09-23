@@ -31,7 +31,7 @@ import { describe, expect, it } from 'vitest';
 import { availableDialects, instructionList } from '../src/index.js';
 
 /**
- * 内蔵モードD課題60題（`@ojt/content` の `src/builtin/plc/d-001`〜`d-020`、Task 18 db313e1で
+ * 内蔵モードD課題90題（`@ojt/content` の `src/builtin/plc/d-001`〜`d-020`、Task 18 db313e1で
  * 8題から20題に拡張）が4方言すべてで命令語リストに書き出せることを確かめる（レビュー M5(a)）。
  *
  * `@ojt/plc-dialects` の `package.json` は `@ojt/ladder-core` にしか依存しない（決定表#7）ので、
@@ -183,12 +183,12 @@ function loadBuiltinPrograms(): readonly (readonly [string, LadderProgram])[] {
   });
 }
 
-describe('内蔵モードD課題60題の命令語リスト（§16 Phase 4 / レビュー M5(a)）', () => {
+describe('内蔵モードD課題90題の命令語リスト（§16 Phase 4 / レビュー M5(a)）', () => {
   const programs = loadBuiltinPrograms();
 
-  // 内蔵モードD課題は d-001〜d-060 の60題（`packages/content/src/builtin/plc/`、Task 18 db313e1）。
-  it('finds all 60 built-in PLC problems', () => {
-    expect(programs).toHaveLength(60);
+  // 内蔵モードD課題は d-001〜d-090 の90題（`packages/content/src/builtin/plc/`、Task 18 db313e1）。
+  it('finds all 90 built-in PLC problems', () => {
+    expect(programs).toHaveLength(90);
   });
 
   it.each(programs)('%s は4方言すべてで errors:[]・CRLF・連番ステップになる', (_name, p) => {

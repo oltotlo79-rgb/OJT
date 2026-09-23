@@ -127,8 +127,8 @@ const BASELINE: Readonly<Record<string, number>> = {
  */
 const BLOCKING_BASELINE = 0;
 
-/** 歩けなかった状態のメモ。多すぎると網として意味が無いので上限を置く。 */
-const MAX_NOTES = 6;
+/** 操作が完了しなかった状態を成功扱いしない。最後まで歩き、集計で1件でも失敗にする。 */
+const MAX_NOTES = 0;
 
 /* ------------------------------------------------------------------------- *
  * 指摘の型と溜め場
@@ -1183,10 +1183,10 @@ test.describe.serial('画面品質の機械点検', () => {
         await page.getByTestId('swap-cancel').click();
       });
 
-      await step('配線の途中（1本目の端子を選んだ状態）', async () => {
+      await step('配線の途中（始点の端子を選んだ状態）', async () => {
         box = await canvasBox(page);
         await clickTerminal(page, box, 'P.1');
-        await expect(page.getByTestId('status-overlay')).toContainText('1本目');
+        await expect(page.getByTestId('status-overlay')).toContainText('始点: P.1');
         await stop(app, page, 'modeB-wire-pending', { three: true });
         await page.keyboard.press('Escape');
       });
@@ -1504,13 +1504,15 @@ test.describe.serial('画面品質の機械点検', () => {
    * いちばん小さいラダーに使うデバイス名を **I/O割付表から読む**。
    * 綴りはメーカーごとに違う（`X10` / `0.08` / `1X010` / `000000`）ので、書き下すと
    * 機種を足すたびに落ちる。割付表の1行目は `profile.formatDevice()` が出した
-   * 「そのメーカーの綴り」そのものなので、ここから引けば4社とも同じ手順で組める。
+   * 「そのメーカーの綴り」なので、ここから引けば4社とも同じ手順で組める。
+   * 現在値（— / ● ON / ○ OFF）は番地の後ろへ空白を挟んで表示されるため分ける。
    */
   async function ioDevices(page: Page): Promise<readonly [string, string]> {
     const contact = await page.getByTestId('io-input-0').locator('td').first().textContent();
     const coil = await page.getByTestId('io-output-0').locator('td').first().textContent();
     if (contact === null || coil === null) throw new Error('I/O割付表からデバイス名を読めません');
-    return [contact.trim(), coil.trim()];
+    const address = (value: string): string => value.trim().split(/\s+/u)[0] ?? '';
+    return [address(contact), address(coil)];
   }
 
   for (const vendor of ['mitsubishi', 'omron', 'jtekt', 'sharp'] as const) {

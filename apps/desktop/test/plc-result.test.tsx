@@ -137,7 +137,7 @@ describe('モードDの結果画面（§10.8）', () => {
     );
     const panel = screen.getByTestId('plc-power-help');
     expect(panel).toHaveTextContent('壁コンセント');
-    expect(panel).toHaveTextContent('未配線でも動作します');
+    expect(panel).toHaveTextContent('未配線では運転できません');
   });
 
   it('変換エラーは何よりも上に出す（H-1）', () => {

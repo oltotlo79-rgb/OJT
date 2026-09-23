@@ -55,6 +55,10 @@ class Matrix {
     this.cells = new Float64Array(size * size);
   }
 
+  clear(): void {
+    this.cells.fill(0);
+  }
+
   get(row: number, col: number): number {
     return this.cells[row * this.size + col] ?? 0;
   }
@@ -77,6 +81,11 @@ class Matrix {
   }
   /* v8 ignore stop */
 }
+
+const workspaces = new WeakMap<
+  Netlist,
+  { full: Matrix; inject: Float64Array; reduced: Matrix; rhs: Float64Array }
+>();
 
 /** ガウス消去（部分ピボット選択）。特異な列は解を0として続行する。 */
 function gaussSolve(a: Matrix, b: Float64Array): Float64Array {
@@ -154,8 +163,19 @@ export function solve(netlist: Netlist, nets: Nets, options: SolveOptions = {}):
   const elements = allElements(netlist);
   const reference = n === 0 ? 0 : pickReference(elements, nets, options.reference);
 
-  const full = new Matrix(n);
-  const inject = new Float64Array(n);
+  let scratch = workspaces.get(netlist);
+  if (scratch === undefined || scratch.full.size !== n) {
+    scratch = {
+      full: new Matrix(n),
+      inject: new Float64Array(n),
+      reduced: new Matrix(Math.max(0, n - 1)),
+      rhs: new Float64Array(Math.max(0, n - 1)),
+    };
+    workspaces.set(netlist, scratch);
+  }
+  const { full, inject } = scratch;
+  full.clear();
+  inject.fill(0);
   for (let i = 0; i < n; i += 1) full.add(i, i, LEAK_SIEMENS);
 
   const stampConductance = (from: number, to: number, g: number): void => {
@@ -195,8 +215,10 @@ export function solve(netlist: Netlist, nets: Nets, options: SolveOptions = {}):
   const nodeOfRow: number[] = [];
   for (let i = 0; i < n; i += 1) if (i !== reference) nodeOfRow.push(i);
   const m = nodeOfRow.length;
-  const a = new Matrix(m);
-  const b = new Float64Array(m);
+  const a = scratch.reduced;
+  const b = scratch.rhs;
+  a.clear();
+  b.fill(0);
   for (let r = 0; r < m; r += 1) {
     const nodeR = at(nodeOfRow, r);
     b[r] = at(inject, nodeR);

@@ -2,6 +2,7 @@ import { JA } from '../i18n/ja.js';
 import { PLC_UNITS, type PlcUnitDefinition } from '@ojt/board-model';
 import { resolvePlcIo, type PlcProblem } from '@ojt/content';
 import {
+  getDialect,
   MAX_GRID_COLS,
   MIN_GRID_COLS,
   type DialectId,
@@ -191,7 +192,12 @@ export function fitsPlcUnit(problem: PlcProblem, unit: PlcUnitDefinition): boole
 export function plcForVendor(problem: PlcProblem, vendor: DialectId): PlcProblem | undefined {
   if (problem.plc.vendor === vendor) return problem;
   const unit = plcUnitForVendor(vendor);
-  if (unit === undefined || !fitsPlcUnit(problem, unit)) return undefined;
+  if (
+    unit === undefined ||
+    !fitsPlcUnit(problem, unit) ||
+    getDialect(vendor).validate(problem.referenceLadder).length > 0
+  )
+    return undefined;
   /*
    * `DialectId` と `@ojt/content` の `PLC_VENDORS` / `PLC_MODELS` は同じ4つの文字列だが
    * 別々に宣言されている。両者が揃っていることは `test/plc-skin.test.ts` の

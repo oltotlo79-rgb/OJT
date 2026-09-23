@@ -1,3 +1,4 @@
+import type { BoardProfile } from './profiles.js';
 import {
   partId,
   terminalId,
@@ -391,6 +392,7 @@ export interface PlcUnitDefinition {
 
 /** 盤の定義データ。 */
 export interface BoardDefinition {
+  profile?: BoardProfile;
   id: string;
   displayName: string;
   sizeMm: { width: number; height: number; depth: number };

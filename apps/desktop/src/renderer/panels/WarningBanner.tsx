@@ -15,7 +15,7 @@ import styles from './warning.module.css';
  */
 export function WarningBanner(): JSX.Element | null {
   const banner = useStore((s) => s.hazardBanner);
-  const count = useStore((s) => s.hazards.length);
+  const count = useStore((s) => Math.max(s.sessionHazardCount, s.hazards.length));
   const restored = useStore((s) => s.restoredHazardCount);
   if (banner === undefined) return null;
   return (

@@ -152,6 +152,9 @@ importers:
       '@ojt/ladder-core':
         specifier: workspace:*
         version: link:../ladder-core
+      '@ojt/plc-dialects':
+        specifier: workspace:*
+        version: link:../plc-dialects
       '@ojt/schematic-core':
         specifier: workspace:*
         version: link:../schematic-core
@@ -159,9 +162,6 @@ importers:
         specifier: 4.6.0
         version: 4.6.0
     devDependencies:
-      '@ojt/plc-dialects':
-        specifier: workspace:*
-        version: link:../plc-dialects
       ajv:
         specifier: ^8.20.0
         version: 8.20.0

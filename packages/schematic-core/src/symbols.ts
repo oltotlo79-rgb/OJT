@@ -93,6 +93,10 @@ export const LAMP_FILL: Readonly<Record<string, string>> = {
   PL2: '#F2C230',
   PL3: '#3FA34D',
   PL4: '#D64545',
+  PL5: '#3FA34D',
+  PL6: '#3FA34D',
+  PL7: '#3FA34D',
+  PL8: '#3FA34D',
 };
 
 /** 押ボタンの操作子を描く種別。 */

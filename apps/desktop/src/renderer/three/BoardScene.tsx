@@ -1,19 +1,15 @@
+import { safeRoutes } from '../session/wire-routes.js';
+export { safeRoutes } from '../session/wire-routes.js';
 import {
   BUZZER_ID,
   JIPM_BOARD,
   OUTLET_ID,
   PL_BLOCK_ID,
   PLC_PART_ID,
-  routeSession,
-  routeWire,
-  RoutingError,
-  toPhysicalTerminal,
   type BoardDefinition,
-  type BoardSession,
   type BoardTerminal,
   type MountableKind,
   type SocketId,
-  type WireRoute,
 } from '@ojt/board-model';
 import { parseTerminalId, type LampLevel, type TerminalId } from '@ojt/circuit-sim';
 import { OrbitControls } from '@react-three/drei';
@@ -30,7 +26,6 @@ import {
   type RefObject,
 } from 'react';
 import { useShallow } from 'zustand/react/shallow';
-import { reasonOf } from '../app/errors.js';
 import { useStore, type AppState } from '../app/store.js';
 import {
   buzzerDeviceName,
@@ -185,12 +180,14 @@ const BLOCK_PARTS: ReadonlyArray<{
 }> = [
   { key: 'TB_PL', ids: ['TB_PL'], label: 'ランプ用端子台' },
   { key: 'TB_PB', ids: ['TB_PB'], label: '押ボタン用端子台' },
+  { key: 'TB_PL_EXT', ids: ['TB_PL'], label: '追加表示灯' },
+  { key: 'TB_PB_EXT', ids: ['TB_PB'], label: '追加押ボタン' },
+  { key: 'TB_AUX', ids: ['TB_AUX'], label: '中継端子台（同じ番号のa-bは内部接続）' },
   // 奥は盤の上端で、DC24V電源の名札と左上の状態オーバーレイが居る。右下へ逃がす（§8.1）
   { key: 'PN', ids: ['P', 'N'], label: 'DC24V端子台', labelOffsetMm: { x: 46, y: 6 } },
 ];
 
 /** DINレールを敷く機器のまとまり（ソケット群と端子台群）。実物写真のとおり。§6.5 */
-const RAIL_GROUPS: readonly string[][] = [['TB_PL'], ['TB_PB'], ['P', 'N']];
 
 /**
  * 極性を持つ端子のツールチップ（`TB_PL PL1+: 白ランプ PL1 の P(+)側`）。極性が無い端子は undefined。
@@ -236,43 +233,6 @@ export function polarityTerminalLabel(
  * 描画のたびに同じ例外が出て例外バナーからも戻れなくなる。**どんな例外でも**1本ぶんの
  * 失敗として畳み、`invalid-terminal`（＝盤に無い端子）として理由を返す。
  */
-export function safeRoutes(
-  board: BoardDefinition,
-  session: BoardSession | undefined,
-): { routes: WireRoute[]; errors: RoutingError[] } {
-  if (session === undefined) return { routes: [], errors: [] };
-  if (!Array.isArray(session.wires)) return { routes: [], errors: [] };
-  try {
-    return { routes: routeSession(board, session), errors: [] };
-  } catch {
-    // 1本ずつやり直して、解けた電線だけでも描く（理由は下の loop が集める）
-  }
-  const routes: WireRoute[] = [];
-  const errors: RoutingError[] = [];
-  for (const [index, wire] of session.wires.entries()) {
-    const wireId = typeof wire?.id === 'string' ? wire.id : `w-?${index}`;
-    try {
-      routes.push(
-        routeWire(
-          board,
-          {
-            id: wire.id,
-            from: toPhysicalTerminal(session.socketRoles, wire.from),
-            to: toPhysicalTerminal(session.socketRoles, wire.to),
-          },
-          routes,
-        ),
-      );
-    } catch (error) {
-      errors.push(
-        error instanceof RoutingError
-          ? error
-          : new RoutingError(reasonOf(error), wireId, 'invalid-terminal'),
-      );
-    }
-  }
-  return { routes, errors };
-}
 
 /**
  * 見た目が変わったときだけ再描画を要求する。§15
@@ -519,7 +479,13 @@ function BoardContents({
     for (const group of BLOCK_PARTS) {
       out.set(
         group.key,
-        board.terminals.filter((t) => group.ids.some((id) => t.id.startsWith(`${id}.`))),
+        board.terminals.filter(
+          (t) =>
+            group.ids.some((id) => t.id.startsWith(`${id}.`)) &&
+            (group.key.startsWith('TB_PL') || group.key.startsWith('TB_PB')
+              ? Number(t.id.split('.')[1]?.slice(0, -1)) > 4 === group.key.endsWith('_EXT')
+              : true),
+        ),
       );
     }
     return out;
@@ -543,16 +509,13 @@ function BoardContents({
   /** DINレールを敷く端子のまとまり（これもメモ化して同一性を保つ）。 */
   const railTerminals = useMemo(
     () => [
-      ...RAIL_GROUPS.map((ids) => ({
-        key: ids.join('-'),
-        terminals: board.terminals.filter((t) => ids.some((id) => t.id.startsWith(`${id}.`))),
-      })),
+      ...BLOCK_PARTS.map((group) => ({ key: group.key, terminals: blocks.get(group.key) ?? [] })),
       ...board.sockets.map((socket) => ({
         key: `rail-${socket.id}`,
         terminals: board.terminals.filter((t) => t.id.startsWith(`${socket.id}.`)),
       })),
     ],
-    [board],
+    [board, blocks],
   );
 
   /** 机上の端子（PLC本体・壁コンセント）。同一性を保つためメモ化する。§15 */

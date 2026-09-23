@@ -1,7 +1,7 @@
 import type { ChatterEvent, HazardEvent } from '@ojt/circuit-sim';
 import type { JSX } from 'react';
 import { JA, restoredHazardsText } from '../i18n/ja.js';
-import type { LogLine } from '../app/store.js';
+import { useStore, type LogLine } from '../app/store.js';
 import styles from './panels.module.css';
 
 /**
@@ -25,6 +25,7 @@ export function LogPanel({
    */
   restoredHazardCount?: number;
 }): JSX.Element {
+  const total = useStore((state) => state.sessionHazardCount);
   return (
     <section className={styles.panel}>
       <h2 className={styles.panelTitle}>
@@ -35,6 +36,11 @@ export function LogPanel({
           <li key={line.id}>{line.text}</li>
         ))}
       </ul>
+      {total > hazards.length && (
+        <p className={styles.hint}>
+          危険操作は累計 {total + restoredHazardCount} 回です。詳細は直近200件を表示しています。
+        </p>
+      )}
       {hazards.length === 0 && chatters.length === 0 && restoredHazardCount === 0 ? null : (
         <ul className={styles.warnList} data-testid="warning-list">
           {restoredHazardCount === 0 ? null : (

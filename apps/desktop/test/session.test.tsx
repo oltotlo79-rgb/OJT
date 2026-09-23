@@ -1,3 +1,4 @@
+import { createSession } from '@ojt/board-model';
 // helpers/worker-bridge.js を他の import より前に置く（vi.mock のファクトリから参照するため）。
 import { workerBridgeMockModule, type WorkerBridgeMockState } from './helpers/worker-bridge.js';
 import { JIPM_BOARD, remainingInventory, mountedKinds } from '@ojt/board-model';
@@ -77,7 +78,7 @@ function autosaveFile(problemId: string, overrides: Partial<WorkFile> = {}): Wor
   return {
     formatVersion: 1,
     problemId,
-    session: { wires: [], socketRoles: {} },
+    session: createSession(JIPM_BOARD, { includeCheckWires: false }),
     elapsedMs: 0,
     hazardCount: 0,
     savedAt: '2026-09-14T09:00:00.000Z',

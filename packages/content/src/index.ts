@@ -398,3 +398,5 @@ export {
   type WiringSuspect,
   type WiringSuspectReport,
 } from './wiring-diff.js';
+
+export { validateDefinition, type DefinitionValidation } from './definition-validation.js';

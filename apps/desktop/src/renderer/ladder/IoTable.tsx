@@ -4,6 +4,10 @@ import { X, Y } from '@ojt/ladder-core';
 import type { DialectProfile } from '@ojt/plc-dialects';
 import { Fragment, type JSX, type ReactNode } from 'react';
 import { JA } from '../i18n/ja.js';
+import { useStore } from '../app/store.js';
+import { focusIo } from '../session/plc-assignment.js';
+import { focusWiring } from '../session/wire-edit.js';
+import { IoAssignmentEditor } from './IoAssignmentEditor.js';
 import { SidePanel } from './SidePanel.js';
 import styles from './ladder.module.css';
 
@@ -27,15 +31,14 @@ function terminalNode(name: string): ReactNode {
 /**
  * I/O割付表。設計仕様 §7.6 / §10.2。
  *
- * **課題が与えた割付だけ**を出す。いまの配線がその割付どおりかどうかは**出さない**
- * （`ioAssignment` / `twoStage` は判定時の静的チェックで、セッション中に漏らすと
- *  §16 Phase 3 の受入基準④⑤が体験として成立しない。決定表#7）。
+ * 課題の固定割付、または学習者が編集した自由割付を出す。モニタ中は入力・出力の
+ * 実測状態を添え、行から現物・ラダーを追跡できる。配線全体の合否は判定時に検査する。
  *
  * 「ラダーのデバイス名」は方言（`profile.formatDevice`）から、「PLC本体の端子名」は機種
  * （`unit.spec`）から引く。三菱では両方とも8進で一致するが、根拠が違う（決定表#16）。
  */
 export function IoTable({
-  io,
+  io: specifiedIo,
   profile,
   unit,
 }: {
@@ -43,6 +46,10 @@ export function IoTable({
   profile: DialectProfile;
   unit: PlcUnitDefinition;
 }): JSX.Element {
+  const assignment = useStore((state) => state.session?.plcAssignment);
+  const monitor = useStore((state) => state.plcMonitor);
+  const supply = useStore((state) => state.snapshot.plcDebug?.supply);
+  const io = specifiedIo.mode === 'free' && assignment !== undefined ? assignment : specifiedIo;
   /**
    * PLC本体の端子名。割付が機種の点数を超えて `unit.spec` に無いときは `undefined` を返し、
    * 呼び出し側が「—」＋注記行を出す（`?? ''` で `PLC.` だけを出していたのを直す。M3）。
@@ -83,7 +90,17 @@ export function IoTable({
             const terminal = inputTerminal(input.x);
             return (
               <tr key={`in-${String(index)}`} data-testid={`io-input-${String(index)}`}>
-                <td>{profile.formatDevice(X(input.x))}</td>
+                <td>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      focusIo(X(input.x), [`PLC.${terminal ?? ''}`, `TB_PB.${input.pb.slice(2)}a`])
+                    }
+                  >
+                    {profile.formatDevice(X(input.x))}{' '}
+                    {monitor === undefined ? '—' : monitor.inputs[input.x] ? '● ON' : '○ OFF'}
+                  </button>
+                </td>
                 <td>
                   {terminal === undefined
                     ? JA.ladder.ioTerminalUnknown
@@ -97,7 +114,21 @@ export function IoTable({
             const terminal = outputTerminal(output.y);
             return (
               <tr key={`out-${String(index)}`} data-testid={`io-output-${String(index)}`}>
-                <td>{profile.formatDevice(Y(output.y))}</td>
+                <td>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      focusIo(Y(output.y), [
+                        `PLC.${terminal ?? ''}`,
+                        `${output.cr}.14`,
+                        `TB_PL.${output.pl.slice(2)}+`,
+                      ])
+                    }
+                  >
+                    {profile.formatDevice(Y(output.y))}{' '}
+                    {monitor === undefined ? '—' : monitor.outputs[output.y] ? '● ON' : '○ OFF'}
+                  </button>
+                </td>
                 <td>
                   {terminal === undefined
                     ? JA.ladder.ioTerminalUnknown
@@ -111,6 +142,27 @@ export function IoTable({
           })}
         </tbody>
       </table>
+      <p className={styles.sideNote}>
+        デバイスを押すと端子・接続線・ラダーの使用箇所を表示します。値はモニタ中に更新されます。
+      </p>
+      {supply !== undefined && (
+        <div role="status" data-testid="plc-supply-status" className={styles.sideNote}>
+          {supply.ready ? (
+            'PLC電源：接続正常'
+          ) : (
+            <details>
+              <summary>電源の確認（{supply.issues.length}件）</summary>
+              <p>PLC電源が正しく接続されていません。</p>
+              {supply.issues.map((issue, index) => (
+                <button type="button" key={index} onClick={() => focusWiring(issue.terminals)}>
+                  {issue.message}（端子を表示）
+                </button>
+              ))}
+            </details>
+          )}
+        </div>
+      )}
+      <IoAssignmentEditor io={io} profile={profile} unit={unit} />
       {unknown ? (
         <p className={styles.sideNote} data-testid="io-terminal-note">
           {JA.ladder.ioTerminalNote}

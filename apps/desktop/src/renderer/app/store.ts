@@ -1,4 +1,5 @@
-import { create } from 'zustand';
+import { createDiagnosisSlice, type DiagnosisSlice } from './store-diagnosis.js';
+import { create, type StateCreator, type StoreApi, type UseBoundStore } from 'zustand';
 import { createLadderSlice, type LadderSlice } from './store-ladder.js';
 import { createSchematicSlice, type SchematicSlice } from './store-schematic.js';
 import { createSessionSlice, type SessionSlice } from './store-session.js';
@@ -44,7 +45,6 @@ export {
 export {
   EMPTY_SNAPSHOT,
   MAX_LIVE_POINTS,
-  RESTART_FALLBACK_ATTEMPTS,
   checkSessionFor,
   isInspectJudge,
   isPlcJudge,
@@ -77,12 +77,16 @@ export {
  * 画面状態のすべて。4スライスの和である（指摘 DS-3）。
  * 割る前の `AppState` と同じ形で、欄も操作も1つも増減していない。
  */
-export interface AppState extends SessionSlice, SchematicSlice, LadderSlice, UiSlice {}
+export interface AppState
+  extends DiagnosisSlice, SessionSlice, SchematicSlice, LadderSlice, UiSlice {}
 
 /** アプリ全体のストア（4スライスを束ねるだけ）。 */
-export const useStore = create<AppState>((...args) => ({
+const appState: StateCreator<AppState> = (...args) => ({
   ...createSessionSlice(...args),
+  ...createDiagnosisSlice(...args),
   ...createSchematicSlice(...args),
   ...createLadderSlice(...args),
   ...createUiSlice(...args),
-}));
+});
+export const createAppStore = (): UseBoundStore<StoreApi<AppState>> => create<AppState>(appState);
+export const useStore = createAppStore();

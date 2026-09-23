@@ -1,0 +1,92 @@
+{
+  "formatVersion": 1,
+  "id": "b-087",
+  "mode": "assemble",
+  "title": "拡張盤の1組の押ボタン・表示灯",
+  "grade": 3,
+  "difficulty": 1,
+  "tags": [],
+  "description": "自由練習用拡張盤です。PB5を押す間だけPL5を点灯してください。中継端子台TB_AUXの同じ番号のa–bは内部接続です。負荷への途中に中継端子を入れ、両側を測定して電圧が変わらないことを確認できます。",
+  "timeLimit": {
+    "standardMin": 20,
+    "cutoffMin": 30
+  },
+  "board": {
+    "boardId": "board-jipm-std",
+    "socketRoles": {
+      "S7": "CHK"
+    },
+    "profile": {
+      "id": "expanded",
+      "terminalPairs": 4,
+      "extraPushButtons": 1,
+      "extraLamps": 1,
+      "rules": {
+        "id": "free",
+        "allowedColors": ["青", "白", "黄"],
+        "maxWiresPerTerminal": 4
+      }
+    }
+  },
+  "inventory": [],
+  "schematic": {
+    "formatVersion": 1,
+    "id": "sch-b-087",
+    "title": "拡張盤の1組の押ボタン・表示灯",
+    "orientation": "horizontal",
+    "rungs": [
+      {
+        "id": "r0",
+        "from": {
+          "bus": "P"
+        },
+        "to": {
+          "bus": "N"
+        },
+        "cells": [
+          {
+            "id": "pb0",
+            "kind": "pb-a",
+            "device": "PB5"
+          },
+          {
+            "id": "pl0",
+            "kind": "lamp",
+            "device": "PL5"
+          }
+        ]
+      }
+    ]
+  },
+  "operations": [
+    {
+      "t": 600,
+      "target": "PB5",
+      "action": "press"
+    },
+    {
+      "t": 1300,
+      "target": "PB5",
+      "action": "release"
+    }
+  ],
+  "durationMs": 2500,
+  "judge": {
+    "tolerance": {
+      "edgeMs": 200,
+      "ratio": 0.1
+    },
+    "staticChecks": {
+      "wireColorRule": true,
+      "terminalLimit": true,
+      "unusedParts": true,
+      "forbiddenCircuit": true,
+      "coilPolarity": true,
+      "powerSequence": true
+    },
+    "compareSignals": ["PL5"]
+  },
+  "hints": {
+    "schematicVisible": true
+  }
+}

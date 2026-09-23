@@ -1,3 +1,10 @@
+import {
+  measurementDisplay,
+  measurementSetting,
+  measurementTime,
+  type MeasurementRecord,
+  type DiagnosisNote,
+} from '../../shared/diagnosis.js';
 import type { SupportedProblem, WiringSuspect } from '@ojt/content';
 import { PAPER_TOKENS } from '../../shared/paper-style.mjs';
 import { formatElapsed } from '../../worker/runtime.js';
@@ -7,6 +14,8 @@ import { mismatchLine, verdictSummary } from './verdict-summary.js';
 
 /** 必要な情報だけを投影する。利用者名・保存場所・作業ファイルそのものは受け取らない。 */
 export interface ReportInput {
+  measurements?: readonly MeasurementRecord[];
+  diagnosisNotes?: readonly DiagnosisNote[];
   problem: Pick<SupportedProblem, 'id' | 'title' | 'grade' | 'difficulty' | 'mode'>;
   result: AnyJudgeResult;
   sessionOpenedAtMs: number;
@@ -70,6 +79,9 @@ dd { margin: 1mm 0 0; font-size: 11pt; font-weight: 600; }
 h2 { font-size: 11pt; margin: 0 0 2mm; padding-bottom: 1mm; border-bottom: 1px solid var(--hair); }
 .count { font-weight: 400; color: var(--sub); font-size: 9pt; }
 section { margin-top: 3mm; break-inside: avoid; }
+section.records { break-inside: auto; }
+.records p { break-inside: avoid; }
+.records strong { display: inline-block; max-width: 100%; }
 ul { margin: 0; padding-left: 5mm; }
 li { margin: .5mm 0; }
 .checks { display: grid; grid-template-columns: repeat(2, 1fr); list-style: none; padding: 0; gap: 1mm 5mm; }
@@ -78,7 +90,7 @@ li { margin: .5mm 0; }
 footer { margin-top: 3mm; border-top: 1px solid var(--hair); padding-top: 2mm; color: var(--sub); font-size: 8.5pt; }
 `;
 
-/** A4 1枚の要約。長い自由文と一覧は上限を設け、総件数と詳細の参照先を必ず残す。 */
+/** 基本結果はA4 1枚の要約。測定・診断記録は必要に応じて続くページへ出力する。 */
 export function resultReportHtml(input: ReportInput): string {
   const { problem, result } = input;
   const modes = {
@@ -152,5 +164,8 @@ export function resultReportHtml(input: ReportInput): string {
 <div class="verdict"><span class="badge ${result.passed ? '' : 'failed'}">${text(result.passed ? JA.result.passed : JA.result.failed)}</span><p class="summary">${text(summary, 120)}</p></div>
 <dl>${pair(JA.report.started, started)}${pair(JA.result.elapsed, formatElapsed(result.elapsedMs ?? 0))}${pair(JA.result.hazards, `${count(result.hazardCount + input.restoredHazardCount)} ${JA.result.times}`)}${pair(JA.result.hintsUsed, `${count(input.hintStage)} ${JA.result.times}`)}${pair(JA.report.schematicHints, `${count(input.schematicOpenCount)} ${JA.result.times}`)}</dl>
 <p class="note">${text(JA.report.startedNote)}</p><p class="note">${text(JA.report.referenceOnly)}</p>
-${details}<footer>${text(JA.report.footer)}</footer></body></html>`;
+${details}
+${(input.measurements?.length ?? 0) === 0 ? '' : `<section class="records"><h2>自分の測定記録</h2>${input.measurements!.map((record) => `<p>測定 #${input.measurements!.indexOf(record) + 1} ／ ${text(measurementTime(record.at))} ／ ${text(measurementSetting(record))}${record.partId === undefined ? '' : ` ／ 対象部品 ${text(record.partId)}`} ／ 黒: ${text(record.black)} 赤: ${text(record.red)} ／ <strong>${text(measurementDisplay(record))}</strong> ／ ${record.powered ? '通電中' : '電源OFF'}<br>${text(record.note, 1000)}</p>`).join('')}</section>`}
+${(input.diagnosisNotes?.length ?? 0) === 0 ? '' : `<section class="records"><h2>診断メモ</h2>${input.diagnosisNotes!.map((note) => `<p>${text(note.target)}<br>予測: ${text(note.prediction, 1000)}<br>判断: ${text(note.conclusion, 1000)}<br>関連測定: ${note.measurementIds.map((id) => `#${(input.measurements ?? []).findIndex((record) => record.id === id) + 1}`).join('、') || 'なし'}</p>`).join('')}</section>`}
+<footer>${text(JA.report.footer)}</footer></body></html>`;
 }

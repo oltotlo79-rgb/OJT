@@ -43,6 +43,8 @@ export interface PlcCouplingOptions {
   scanMs?: number;
   /** シミュレーションの tick 周期[ms]。`scanMs` の既定値として使う。既定 `TICK_MS`（10）。 */
   tickMs?: number;
+  /** 自由診断専用。採点・模範再生には渡さない。 */
+  inputOverrides?: ReadonlyMap<number, boolean>;
 }
 
 /** スキャンと tick の結合。 */
@@ -58,14 +60,33 @@ export function createPlcCoupling(
   program: CompiledProgram,
   options: PlcCouplingOptions = {},
 ): PlcCoupling {
+  const io = createSimulationIoPort(sim, options.partId ?? PLC_PART_ID);
   const runtime = createPlcRuntime(program, {
-    io: createSimulationIoPort(sim, options.partId ?? PLC_PART_ID),
+    io:
+      options.inputOverrides === undefined
+        ? io
+        : {
+            readInputs: () => {
+              const values = [...io.readInputs()];
+              for (const [index, value] of options.inputOverrides!) values[index] = value;
+              return values;
+            },
+            writeOutputs: (values) => io.writeOutputs(values),
+          },
     scanMs: options.scanMs ?? options.tickMs ?? TICK_MS,
     ...(options.outputCount === undefined ? {} : { outputCount: options.outputCount }),
   });
+  let wasPowered = true;
   return {
     runtime,
     beforeTick: () => {
+      const powered = sim.plcPowerStatus(options.partId ?? PLC_PART_ID).ready;
+      if (!powered) {
+        if (wasPowered) runtime.reset();
+        wasPowered = false;
+        return;
+      }
+      wasPowered = true;
       runtime.scan();
     },
   };

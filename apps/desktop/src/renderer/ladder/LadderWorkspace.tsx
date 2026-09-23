@@ -34,6 +34,7 @@ import {
 } from '../session/plc-skin.js';
 import { CommentPanel } from './CommentPanel.js';
 import { IoTable } from './IoTable.js';
+import { PlcDebugPanel } from './PlcDebugPanel.js';
 import { ENTRY_ITEMS, LadderEditor, SymbolIcon, type LadderEntryHandle } from './LadderEditor.js';
 import { fitGridCols } from './LadderGrid.js';
 import { MonitorPanel } from './MonitorPanel.js';
@@ -721,6 +722,7 @@ export function LadderWorkspace({
           {notationOpen ? <NotationDialog profile={profile} onClose={closeNotation} /> : null}
           {/* MERGE 注意 #12: モニタ一覧は `workspaceSide` の先頭（`IoTable` の前）。Task 9 */}
           <MonitorPanel profile={profile} unit={unit} onPlc={onPlc} />
+          <PlcDebugPanel profile={profile} unit={unit} onPlc={onPlc} />
           {/*
             監視（ウォッチ）欄。「デバイス一覧」（全部）と分けた片割れで、利用者が選んだ
             デバイスだけを並べる（Phase 7 設計 §5.5）。名乗らないメーカーでは出ない。

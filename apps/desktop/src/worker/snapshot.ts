@@ -1,7 +1,7 @@
 import type { Simulation } from '@ojt/circuit-sim';
 import type { PlcCoupling } from '@ojt/content';
 import { IR_COLS, type CompiledProgram } from '@ojt/ladder-core';
-import type { PlcMonitorSnapshot } from '../renderer/app/store-types.js';
+import type { PlcMonitorSnapshot } from '../shared/plc-monitor.js';
 import type { LampSnapshot, RelaySnapshot, TimerSnapshot } from './protocol.js';
 
 export function lampsOf(sim: Simulation): Record<string, LampSnapshot> {
@@ -68,6 +68,14 @@ export function plcSnapshot(
     powered[net.id] = bits;
   }
   return {
+    diagnostics: coupling.runtime.diagnostics(),
+    counterPresets: Object.fromEntries(
+      coupling.runtime.program.networks.flatMap((net) =>
+        net.outputs.flatMap((output) =>
+          output.cell.kind === 'counter' ? [[output.cell.device.index, output.cell.preset]] : [],
+        ),
+      ),
+    ),
     scanCount: state.scanCount,
     tMs: state.tMs,
     powered,

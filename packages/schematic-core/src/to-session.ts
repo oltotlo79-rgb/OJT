@@ -38,7 +38,7 @@ export function toSession(
   board: BoardDefinition,
   options: ToSessionOptions = {},
 ): ToSessionResult {
-  const assignment = assignToBoard(doc, options);
+  const assignment = assignToBoard(doc, { ...options, board });
   if (!assignment.ok) return { ok: false, errors: assignment.errors };
 
   const color: WireColor = options.color ?? '青';
@@ -50,7 +50,7 @@ export function toSession(
   const session = createSession(board, {
     includeCheckWires: options.includeCheckWires === true,
     roles: assignment.roles,
-    allowedColors: [color],
+    allowedColors: board.profile?.rules.allowedColors ?? [color],
     extraParts,
     ...(options.inventory !== undefined ? { inventory: options.inventory } : {}),
   });

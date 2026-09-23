@@ -97,6 +97,7 @@ export type PartMeta =
       offAmps: number;
       /** 電源端子（電気的には解かない）。§4.4 */
       power: readonly TerminalId[];
+      acPower: readonly [TerminalId, TerminalId];
     };
 
 /** 部品インスタンス。端子集合と電気的実体（要素集合）からなる。§5.1 */

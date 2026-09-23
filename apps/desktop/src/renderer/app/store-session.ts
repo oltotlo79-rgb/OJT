@@ -108,15 +108,6 @@ export const EMPTY_SNAPSHOT: SimSnapshot = {
 };
 
 /**
- * 例外バナーの「セッションをリセット」を続けて何回試したら盤そのものを作り直すか。§13 #5
- *
- * `restartSession()` は作業保持を優先して盤を残すが、盤の中身（保存データ由来の壊れた電線など）
- * が原因で落ちている場合は何度押しても同じ例外で落ちる（レビュー指摘: 詰み）。
- * 2回目からは課題から盤を作り直し、それでも駄目なら「課題一覧へ戻る」で抜けられるようにする。
- */
-export const RESTART_FALLBACK_ATTEMPTS = 2;
-
-/**
  * ライブ記録の変化点を1信号あたり何点まで残すか（指摘 DS-2 ≡ UI-02）。§8.2
  *
  * `logLines` には `LOG_LIMIT`、操作履歴には `HISTORY_LIMIT` があるのに、ここだけ上限が無く
@@ -223,7 +214,7 @@ export function sessionForProblem(problem: SupportedProblem): BoardSession {
   return createSession(boardForProblem(problem), {
     includeCheckWires: problem.mode === 'inspect-parts',
     roles: toSocketRoles(problem.board.socketRoles),
-    allowedColors: ['青'],
+    allowedColors: problem.board.profile?.rules.allowedColors ?? ['青'],
     extraParts: (problem.board.extraParts ?? []).map((name) => partId(name)),
     inventory: problem.inventory,
   });
@@ -232,7 +223,7 @@ export function sessionForProblem(problem: SupportedProblem): BoardSession {
 /**
  * 課題を開く・やり直す・捨てるときに**必ず**戻す欄。§8.3 / §13 #5（指摘 DS-3）
  *
- * `openProblem()` / `restartSession()` / `abandonSession()` の3箇所が同じ初期値を逐語で
+ * `openProblem()` / `resetSession()` / `abandonSession()` の3箇所が同じ初期値を逐語で
  * 書き写していたため、欄が増えるたびにどれかへ足し忘れる形だった（レビュー指摘 DS-3）。
  * ここを源にして3箇所とも展開し、違う値にしたい欄だけを後ろで上書きする。
  *
@@ -242,6 +233,8 @@ export function sessionFields(
   current: Pick<AppState, 'tester'>,
 ): Pick<
   AppState,
+  | 'measurements'
+  | 'diagnosisNotes'
   | 'replay'
   | 'judge'
   | 'judging'
@@ -269,6 +262,8 @@ export function sessionFields(
   | 'assembleView'
 > {
   return {
+    measurements: [],
+    diagnosisNotes: [],
     replay: undefined,
     judge: undefined,
     judging: false,
@@ -317,7 +312,7 @@ export interface SessionSlice {
   sessionEpoch: number;
   /**
    * 最後に画面を描けてから「セッションをリセット」を続けて押した回数。§13 #5
-   * `ErrorBoundary` が子を描けたら 0 に戻る。{@link RESTART_FALLBACK_ATTEMPTS} 回目で盤を作り直す。
+   * `ErrorBoundary` が子を描けたら0に戻る。復旧回数によって永続作業を破棄しない。
    */
   restartAttempts: number;
   /**
@@ -386,6 +381,7 @@ export interface SessionSlice {
 
   snapshot: SimSnapshot;
   hazards: HazardEvent[];
+  sessionHazardCount: number;
   chatters: ChatterEvent[];
   /** ライブのタイムチャートに並べる信号。§7.7 */
   chartSpecs: TimeChartSignalSpec[];
@@ -480,8 +476,7 @@ export interface SessionSlice {
    * 盤（`session`）と操作履歴は**残したまま**、ライブ記録・判定結果・エラー表示だけを捨てて
    * 世代番号を進める。セッション画面はそれを見て Worker を立て直し、いまの盤を `load` し直す。
    *
-   * ただし {@link RESTART_FALLBACK_ATTEMPTS} 回続けて押されたときは、盤そのものが描けない
-   * 状態だと判断して課題から作り直す（レビュー指摘: 壊れた盤だと何度押しても同じ例外で落ちる）。
+   * 繰り返しても盤・故障情報・解答は保持する。作業の破棄は明示的なやり直し操作だけで行う。
    */
   restartSession: () => void;
   /**
@@ -525,6 +520,7 @@ export const createSessionSlice: StateCreator<AppState, [], [], SessionSlice> = 
   replay: undefined,
   snapshot: EMPTY_SNAPSHOT,
   hazards: [],
+  sessionHazardCount: 0,
   chatters: [],
   chartSpecs: [],
   liveTransitions: {},
@@ -620,14 +616,20 @@ export const createSessionSlice: StateCreator<AppState, [], [], SessionSlice> = 
        * 初期表示は決めない。2級は**開閉できて初期は閉じる**、1級はそもそも出さない
        * （`schematicPolicy()` はモードBと同じ規則。C2に3級は無いので shown は常に false）。
        */
-      schematicVisible = schematicPolicy(problem.grade).shown;
+      schematicVisible = schematicPolicy(
+        problem.grade,
+        problem.board.profile?.rules.hintPolicy,
+      ).shown;
     } else if (isInspectPartsProblem(problem)) {
       // C1は配線しないので線色パレットは空（`checkSessionFor()` が決める）。§9.1
       session = checkSessionFor(problem);
     } else {
       session = sessionForProblem(problem);
       // 回路図ヒントの出し方は級だけで決まる（§8.4）
-      schematicVisible = schematicPolicy(problem.grade).shown;
+      schematicVisible = schematicPolicy(
+        problem.grade,
+        problem.board.profile?.rules.hintPolicy,
+      ).shown;
     }
     /*
      * モードDの「もう一度」はラダーを残す（Batch 4+5 レビュー I4）。`plcFields()` が書き込む
@@ -652,11 +654,15 @@ export const createSessionSlice: StateCreator<AppState, [], [], SessionSlice> = 
       wireColor,
       snapshot: EMPTY_SNAPSHOT,
       hazards: [],
+      sessionHazardCount: 0,
       chatters: [],
       // C1は波形を比べないのでライブチャートも要らない。モードBとC2は同じ式で信号を決める
       chartSpecs: isInspectPartsProblem(problem)
         ? []
-        : defaultChartSignals(resolveCompareSignals(problem.judge, problem.board.extraParts ?? [])),
+        : defaultChartSignals(
+            resolveCompareSignals(problem.judge, problem.board.extraParts ?? []),
+            problem.operations.map((operation) => operation.target),
+          ),
       liveTransitions: {},
       logLines: [],
       reportedDroppedTicks: 0,
@@ -753,14 +759,18 @@ export const createSessionSlice: StateCreator<AppState, [], [], SessionSlice> = 
     set({
       snapshot,
       liveTransitions,
+      sessionHazardCount: Math.max(
+        state.sessionHazardCount,
+        snapshot.hazardTotal ?? state.sessionHazardCount + snapshot.hazardDelta.length,
+      ),
       hazards:
         snapshot.hazardDelta.length === 0
           ? state.hazards
-          : [...state.hazards, ...snapshot.hazardDelta],
+          : [...state.hazards, ...snapshot.hazardDelta].slice(-200),
       chatters:
         snapshot.chatterDelta.length === 0
           ? state.chatters
-          : [...state.chatters, ...snapshot.chatterDelta],
+          : [...state.chatters, ...snapshot.chatterDelta].slice(-200),
       // 危険操作は帯で知らせる（§5.6 / §13）。同じtickに複数出たら最後の1件を出す
       ...(lastHazard === undefined
         ? {}
@@ -779,6 +789,7 @@ export const createSessionSlice: StateCreator<AppState, [], [], SessionSlice> = 
       snapshot: EMPTY_SNAPSHOT,
       liveTransitions: {},
       hazards: [],
+      sessionHazardCount: 0,
       chatters: [],
       reportedDroppedTicks: 0,
       droppedTicksNotice: undefined,
@@ -903,53 +914,32 @@ export const createSessionSlice: StateCreator<AppState, [], [], SessionSlice> = 
     set({ sessionEpoch: get().sessionEpoch + 1 });
   },
   restartSession: () => {
-    const attempts = get().restartAttempts + 1;
-    const problem = get().problem;
-    get().clearLive();
+    const current = get();
+    current.clearLive();
     set({
-      /*
-       * 課題を開く・やり直す・捨てるで共通の初期値（指摘 DS-3）。C1/C2 の持ち物（故障・
-       * マークシート・指摘）・テスター・選択・盤のビュー・回路図ヒントの回数はここで戻る。
-       */
-      ...sessionFields(get()),
-      sessionEpoch: get().sessionEpoch + 1,
-      restartAttempts: attempts,
-      /*
-       * 検算の結果は盤を作り直したら古いので落とす。**下書きそのものは残す**（§11.4）。
-       * `restartSession()` は課題から離れるわけではなく、描画の立て直しでラダーを残すのと
-       * 同じ理由（§13 #5。ここで消すと机上の作業だけが元に戻せずに失われる）。
-       */
+      replay: undefined,
+      judge: undefined,
+      judging: false,
+      fatalError: undefined,
+      webglLost: false,
+      pendingTerminal: undefined,
+      hoveredTerminal: undefined,
+      dragging: undefined,
+      hoverHint: undefined,
+      pendingReport: undefined,
       verifying: false,
       verifyResult: undefined,
       verifyingDoc: undefined,
-      /*
-       * 盤は作り直すがラダーは残す（§13 #5。レビュー指摘 B3）。`restartSession()` は課題から
-       * 離れるわけではないので `plcFields()` は混ぜない（混ぜると訓練者が組んだラダーが
-       * 最初のやり直しで消える）。Worker は `load` で作り直されるので、「変換済み」「モニタ」
-       * 「RUN」の3つだけを落として画面と Worker を揃える
-       */
       converted: false,
       convertIssues: NO_CONVERT_ISSUES,
       plcMonitor: undefined,
       plcRunning: false,
       ladderMode: 'write',
+      sessionEpoch: current.sessionEpoch + 1,
+      restartAttempts: current.restartAttempts + 1,
+      restoredHazardCount:
+        current.restoredHazardCount + Math.max(current.sessionHazardCount, current.hazards.length),
     });
-    // 1回目は作業保持を優先して盤を残す。2回目は盤そのものが描けないとみて作り直す（§13 #5）
-    if (attempts < RESTART_FALLBACK_ATTEMPTS || problem === undefined) return;
-    /*
-     * 最後の手段は**モードBにしか効かない**。`sessionForProblem()` が作るのは素の盤
-     * （青の新規配線・故障なし・在庫つき）で、C1なら点検すべき部品が消え、C2なら故障の無い盤に
-     * なってしまう（＝課題として成立しないまま「再開しました」と言うことになる）。上の `set()` で
-     * 故障（`circuit` / `resolvedFaults`）は既に手放しているので、点検系は課題を捨てて一覧へ戻す。
-     * §13 #5 / Plan 2B Batch 1 レビューの Minor
-     */
-    if (!isAssembleProblem(problem)) {
-      get().abandonSession();
-      get().toast(JA.error.boardAbandoned, 'info');
-      return;
-    }
-    set({ session: sessionForProblem(problem), history: emptyHistory(), restartAttempts: 0 });
-    get().toast(JA.error.boardReset, 'info');
   },
   abandonSession: () => {
     get().clearLive();

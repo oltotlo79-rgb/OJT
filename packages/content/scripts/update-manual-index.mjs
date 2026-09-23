@@ -36,7 +36,10 @@ for (const [mode, label] of Object.entries({
       caution = '短押し後の再計時を確認';
     } else {
       learning = mode === 'plc' ? '論理条件のラダー化' : '論理条件の接点回路化';
-      caution = '入力8通りの動作を確認';
+      caution =
+        p.id.endsWith('workshop') || Number(p.id.split('-')[1]) >= 61
+          ? '全入力条件の動作を確認'
+          : '入力8通りの動作を確認';
     }
     rows.push(
       (!name.endsWith('-practice.json') ? existing.get(p.id) : undefined) ??

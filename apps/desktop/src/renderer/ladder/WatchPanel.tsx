@@ -91,7 +91,8 @@ export function WatchPanel({
 }): JSX.Element | null {
   const title = profile.panels.watch;
   const monitor = useStore((s) => s.plcMonitor);
-  const [devices, setDevices] = useState<readonly Device[]>([]);
+  const devices = useStore((s) => s.watchDevices);
+  const setDevices = useStore((s) => s.setWatchDevices);
   const [text, setText] = useState('');
   const [error, setError] = useState<string | undefined>(undefined);
   // 名乗らないメーカーでは欄そのものを出さない（設計 §5.5）

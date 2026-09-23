@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { app, BrowserWindow } from 'electron';
@@ -141,6 +141,13 @@ if (!existsSync(HTML)) {
   );
   app.exit(1);
 } else {
+  // ビルド専用のChromiumプロファイルを成果物の作業領域に閉じ込める。
+  // 検査が --user-data-dir を指定している場合は、その隔離先を優先する。
+  if (!app.commandLine.hasSwitch('user-data-dir')) {
+    const profile = join(APP_ROOT, 'resources', 'manual', '.print-profile');
+    mkdirSync(profile, { recursive: true });
+    app.setPath('userData', profile);
+  }
   app.whenReady().then(main).catch(onFailure);
 }
 

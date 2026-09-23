@@ -1,3 +1,6 @@
+import { useRuntimeConnection } from '../session/use-runtime-connection.js';
+import { BoardFocusNotice } from '../panels/BoardFocusNotice.js';
+import { WireListPanel } from '../panels/WireListPanel.js';
 import { togglePowerFixture } from '../session/power-toggle.js';
 import { CollapsiblePanel } from '../panels/CollapsiblePanel.js';
 import {
@@ -23,7 +26,6 @@ import {
   failedLog,
   historyLog,
   JA,
-  openedProblemLog,
   powerLog,
   referenceErrorText,
   routeFailedLog,
@@ -70,11 +72,7 @@ import { inspectRepairStepHint, inspectRepairSteps } from '../session/step-guide
 import { testerPickToAction, testerShortcut } from '../session/tester.js';
 import { useViewportShortcuts } from '../session/viewport-keys.js';
 import { sameSelection, selectionFor, selectionForHover } from '../session/wiring-guide.js';
-import {
-  loadWorkFileAndApply,
-  replayTesterToWorker,
-  saveCurrentWork,
-} from '../session/work-file.js';
+import { loadWorkFileAndApply, saveCurrentWork } from '../session/work-file.js';
 import { SoundEffects, useElapsedTicker } from '../session/use-session-runtime.js';
 import { bridge } from '../session/worker-bridge.js';
 import { BoardScene, safeRoutes } from '../three/BoardScene.js';
@@ -121,8 +119,6 @@ export function InspectRepairSession(): JSX.Element {
   const schematicVisible = useStore((s) => s.schematicVisible);
   const highlightCells = useStore((s) => s.highlight.cellIds);
   const restoredHazardCount = useStore((s) => s.restoredHazardCount);
-  const problemId = problem?.id;
-  const sessionEpoch = useStore((s) => s.sessionEpoch);
 
   // 視点のショートカットは Session / InspectPartsSession と共通のフックに任せる（§12.2）
   useViewportShortcuts({ enabled: session !== undefined });
@@ -131,60 +127,7 @@ export function InspectRepairSession(): JSX.Element {
    * Worker を起こし、**故障入りの**盤を読ませる。§9.2 / §5.4
    * 部品の故障はネットリスト変換のたびに入れ直す必要があるので、盤と一緒に `partFaults` を送る。
    */
-  useEffect(() => {
-    const store = useStore.getState();
-    const current = store.problem;
-    const currentCircuit = store.circuit;
-    // この画面が描けない課題では Worker を起こさない（`SessionRoute` の振り分けの安全網）
-    if (current === undefined || !isInspectRepairProblem(current) || currentCircuit === undefined) {
-      return undefined;
-    }
-    bridge.start({
-      onSnapshot: (next) => {
-        useStore.getState().applySnapshot(next);
-      },
-      onJudge: () => {
-        // モードC2では届かない（モードBの判定結果）
-      },
-      onInspect: (message) => {
-        // C1（`judgeParts`）と同じ `inspectResult` で返る。判別は `result.value.mode`
-        const state = useStore.getState();
-        state.setJudging(false);
-        if (message.result.ok) {
-          state.setJudge(message.result.value);
-          state.setRoute('result');
-        } else {
-          state.toast(referenceErrorText(message.result.errors.map((e) => e.message)), 'error');
-        }
-      },
-      onError: (text, fatal) => {
-        const state = useStore.getState();
-        // 判定の往復中に落ちたら「判定中…」のまま固まるので、必ず戻す（§8.2）
-        state.setJudging(false);
-        const line = `${JA.error.workerError}: ${text}`;
-        if (fatal) state.setFatalError(line);
-        else state.toast(line, 'error');
-        state.addLog(line);
-      },
-    });
-    bridge.send({
-      type: 'load',
-      problemId: current.id,
-      session: cloneSession(currentCircuit.session),
-      partFaults: currentCircuit.applied.partFaults,
-    });
-    /*
-     * Worker を起こし直した直後は、盤の `load` でつまみ・レンジ・0Ω調整が既定に戻っている
-     * （クラッシュ復帰など、この効果が張られる前に `applyWorkFile()` が送った再送が
-     * `WorkerBridge.send()` の no-op で捨てられている場合がある。Plan 2B レビュー B2）。
-     */
-    const tester = store.tester;
-    if (tester.mode !== 'off' || tester.zeroAdjusted) replayTesterToWorker(tester);
-    store.addLog(openedProblemLog(current.title));
-    return () => {
-      bridge.stop();
-    };
-  }, [problemId, sessionEpoch]);
+  useRuntimeConnection('inspect-repair');
 
   // 経過時間を定期更新する（§8.1）
   useElapsedTicker();
@@ -313,7 +256,7 @@ export function InspectRepairSession(): JSX.Element {
   const onHover = useCallback((id: TerminalId | undefined) => {
     const store = useStore.getState();
     store.setHovered(id);
-    if (!store.schematicVisible) return;
+    if (!store.schematicVisible || store.boardFocus !== undefined) return;
     const current = store.session;
     const next =
       current === undefined || id === undefined
@@ -703,6 +646,7 @@ export function InspectRepairSession(): JSX.Element {
           }}
         />
       </Toolbar>
+      <BoardFocusNotice />
 
       {/* いまどの手順にいるのかを文字でも出す（UXレビュー #3）。決定表#7と同じ理由で合否には触れない。 */}
       <StepGuide
@@ -784,6 +728,7 @@ export function InspectRepairSession(): JSX.Element {
             </CollapsiblePanel>
           ) : null}
           <TesterPanel />
+          <WireListPanel board={JIPM_BOARD} />
           <RepairPanel
             addedWires={addedWireLabels}
             removedWires={removedWires}

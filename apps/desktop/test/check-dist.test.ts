@@ -52,8 +52,13 @@ async function fixture() {
   copyFileSync(resolve(import.meta.dirname, '../build/icon.ico'), join(app, 'build/icon.ico'));
   put(join(src, 'package.json'), '{"version":"1.1.0"}');
   put(join(src, 'out/main/index.js'), 'console.log("app");');
+  put(join(src, 'out/main/definition-worker.js'), 'export {};');
   put(join(src, 'out/preload/index.cjs'), 'module.exports = {};');
   put(join(src, 'out/renderer/index.html'), '<html lang="ja"></html>');
+  for (const mode of ['assembly', 'parts', 'repair', 'plc']) {
+    put(join(src, `out/renderer/tutorials/${mode}.webm`), 'fixture-video');
+    put(join(src, `out/renderer/tutorials/${mode}.vtt`), 'WEBVTT\n');
+  }
   const pack = () => createPackage(src, join(resources, 'app.asar'));
   await pack();
   return { app, release, resources, src, pack };
@@ -100,18 +105,27 @@ describe('配布物を実際に検査するゲート', () => {
       expect((await inspectRelease(f.app)).errors.join('\n')).toMatch(/旧版/);
     },
   );
-  it.each(['missing-main', 'node_modules', 'old-version', 'external-dependency'])(
-    'asarの%sを拒否する',
-    async (kind) => {
-      const f = await fixture();
-      if (kind === 'missing-main') rmSync(join(f.src, 'out/main/index.js'));
-      else if (kind === 'node_modules') put(join(f.src, 'node_modules/zod/index.js'), 'test');
-      else if (kind === 'old-version') put(join(f.src, 'package.json'), '{"version":"1.0.0"}');
-      else put(join(f.src, 'out/main/index.js'), 'const plc = require("@ojt/ladder-core");');
-      await f.pack();
-      expect((await inspectRelease(f.app)).errors.join('\n')).toMatch(/app.asar/);
-    },
-  );
+  it.each([
+    'missing-main',
+    'missing-definition-worker',
+    'missing-video',
+    'missing-caption',
+    'node_modules',
+    'old-version',
+    'external-dependency',
+  ])('asarの%sを拒否する', async (kind) => {
+    const f = await fixture();
+    if (kind === 'missing-main') rmSync(join(f.src, 'out/main/index.js'));
+    else if (kind === 'missing-definition-worker')
+      rmSync(join(f.src, 'out/main/definition-worker.js'));
+    else if (kind === 'missing-video') rmSync(join(f.src, 'out/renderer/tutorials/assembly.webm'));
+    else if (kind === 'missing-caption') rmSync(join(f.src, 'out/renderer/tutorials/plc.vtt'));
+    else if (kind === 'node_modules') put(join(f.src, 'node_modules/zod/index.js'), 'test');
+    else if (kind === 'old-version') put(join(f.src, 'package.json'), '{"version":"1.0.0"}');
+    else put(join(f.src, 'out/main/index.js'), 'const plc = require("@ojt/ladder-core");');
+    await f.pack();
+    expect((await inspectRelease(f.app)).errors.join('\n')).toMatch(/app.asar/);
+  });
   it('小さいEXEと壊れたアイコンを例外で打ち切らず両方報告する', async () => {
     const f = await fixture();
     put(join(f.release, artifactNames('1.1.0')[0]!), 'MZ');

@@ -26,11 +26,20 @@ vi.mock('electron', () => ({
 
 const { registerIpc } = await import('../src/main/ipc.js');
 
-describe('main が受け付ける IPC は §4.3 の9本だけ（DM-7）', () => {
+describe('main の IPC 契約（呼出10本と終了ハンドシェイク2本）', () => {
   it('registers exactly the channels in IPC_CHANNELS', () => {
     handled.channels = [];
     registerIpc();
-    expect([...handled.channels].sort()).toEqual([...Object.values(IPC_CHANNELS)].sort());
+    expect([...handled.channels].sort()).toEqual(
+      Object.values(IPC_CHANNELS)
+        .filter(
+          (channel) =>
+            ![IPC_CHANNELS.closeRequest, IPC_CHANNELS.closeReady].includes(
+              channel as typeof IPC_CHANNELS.closeRequest,
+            ),
+        )
+        .sort(),
+    );
   });
 
   it('registers each channel only once', () => {
@@ -39,8 +48,8 @@ describe('main が受け付ける IPC は §4.3 の9本だけ（DM-7）', () => 
     expect(new Set(handled.channels).size).toBe(handled.channels.length);
   });
 
-  it('still counts nine channels (足すときは §4.3 と preload も直すこと)', () => {
-    expect(Object.values(IPC_CHANNELS)).toHaveLength(9);
+  it('defines ten invocation channels and two close events', () => {
+    expect(Object.values(IPC_CHANNELS)).toHaveLength(12);
     expect(IPC_CHANNELS.resultExport).toBe('result:export');
   });
 });

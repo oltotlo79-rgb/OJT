@@ -1,3 +1,4 @@
+import { BOARD_WIDTH_MM } from '@ojt/board-model';
 import type { BoardDefinition } from '@ojt/board-model';
 import type { JSX } from 'react';
 import { BoxGeometry, BufferGeometry, CylinderGeometry, Float32BufferAttribute } from 'three';
@@ -113,7 +114,7 @@ export function BoardPlate({ board }: { board: BoardDefinition }): JSX.Element {
   const plate = sharedMaterial(BOARD_PLATE_COLOR, { metalness: 0.14, roughness: 0.58 });
   const side = sharedMaterial(CONSOLE_SIDE_COLOR, { metalness: 0.18, roughness: 0.55 });
   return (
-    <group name="board-console">
+    <group name="board-console" position={[(width - BOARD_WIDTH_MM) / 2, 0, 0]}>
       <mesh
         receiveShadow
         geometry={UNIT_BOX}

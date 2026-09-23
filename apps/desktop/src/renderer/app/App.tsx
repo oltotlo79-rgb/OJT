@@ -1,3 +1,4 @@
+import { startAutosave, useAutosaveStatus, flushAutosave } from '../session/autosave.js';
 import { useEffect, useState, type JSX } from 'react';
 import type { OjtApi, WorkFile } from '../../shared/ipc.js';
 import { sounds } from '../audio/sounds.js';
@@ -8,6 +9,7 @@ import { ErrorBoundary } from './ErrorBoundary.js';
 import { tryOjtApi } from './ojt-api.js';
 import { renderRoute } from './routes.js';
 import { useStore, type Route } from './store.js';
+import { exportDiagnostics } from '../session/diagnostic-export.js';
 import { formatElapsed, formatSavedAt } from '../../worker/runtime.js';
 import styles from './app.module.css';
 import { applyUiPreferences } from './ui-preferences.js';
@@ -28,7 +30,6 @@ import { useTourStore } from '../tour/tour-store.js';
 const TOAST_SWEEP_MS = 250;
 
 /** 一時保存の間隔[ms]。§12.3 */
-const AUTOSAVE_INTERVAL_MS = 30_000;
 
 /** `window.ojt` を取り出す。preload が無ければ `undefined`（呼び出し側は黙って諦める）。 */
 function tryApi(): OjtApi | undefined {
@@ -147,34 +148,8 @@ export function App(): JSX.Element {
    * 毎回出すと訓練の邪魔になる一方、黙って失敗し続けるとクラッシュ時に何も残らない。
    * 成功したら連続失敗のカウントを戻す。
    */
-  useEffect(() => {
-    let consecutiveFailures = 0;
-    const id = setInterval(() => {
-      const api = tryApi();
-      if (api === undefined) return;
-      if (useStore.getState().route !== 'session') return;
-      // モードC1/C2はテスター・解答・指摘・故障も一緒に残す（§12.3。Plan 2B Task 17）
-      const file = toInspectWorkFile();
-      if (file === undefined) return;
-      const onSettled = (ok: boolean): void => {
-        if (ok) {
-          consecutiveFailures = 0;
-          return;
-        }
-        consecutiveFailures += 1;
-        if (consecutiveFailures === 2) {
-          useStore.getState().toast(JA.error.autosaveFailed, 'error');
-        }
-      };
-      void api.saveWorkFile({ kind: 'autosave', file }).then(
-        (result) => onSettled(result.ok),
-        () => onSettled(false),
-      );
-    }, AUTOSAVE_INTERVAL_MS);
-    return () => {
-      clearInterval(id);
-    };
-  }, []);
+  useEffect(() => startAutosave(), []);
+  const autosave = useAutosaveStatus();
 
   // 未捕捉例外を拾って例外バナーに出す（§13 #5）。描画中の例外は `ErrorBoundary` が拾う
   useEffect(() => {
@@ -212,11 +187,54 @@ export function App(): JSX.Element {
 
   return (
     <div className={styles.shell}>
+      {problemId === undefined ? null : (
+        <div
+          role="status"
+          data-testid="autosave-status"
+          style={{
+            position: 'fixed',
+            bottom: 4,
+            right: 12,
+            zIndex: 20,
+            background: 'var(--panel-bg, #202630)',
+            padding: '2px 8px',
+            borderRadius: 4,
+            fontSize: 12,
+          }}
+        >
+          {autosave.state === 'saving' ? (
+            '自動保存中…'
+          ) : autosave.state === 'pending' ? (
+            '自動保存待ち'
+          ) : autosave.state === 'failed' ? (
+            <button
+              title={autosave.message}
+              onClick={() => {
+                void flushAutosave();
+              }}
+            >
+              自動保存失敗 — 再試行
+            </button>
+          ) : autosave.state === 'saved' ? (
+            `自動保存済み ${new Date(autosave.at!).toLocaleTimeString('ja-JP')}`
+          ) : (
+            '自動保存を準備しています'
+          )}
+        </div>
+      )}
       {fatalError === undefined ? null : (
         <div className={styles.banner} role="alert" data-testid="error-banner">
           <span>
             {JA.error.banner}: {fatalError}
           </span>
+          <button
+            type="button"
+            onClick={() => {
+              void exportDiagnostics();
+            }}
+          >
+            診断記録を保存
+          </button>
           <button
             type="button"
             data-testid="error-reset"
@@ -244,6 +262,28 @@ export function App(): JSX.Element {
       {pendingWorkFile === undefined ? null : (
         <div className={styles.restorePrompt} role="dialog" data-testid="discard-confirm">
           <span>{JA.session.discardTitle}</span>
+          <button
+            type="button"
+            onClick={() => {
+              const current = toInspectWorkFile();
+              if (current === undefined) return;
+              void tryApi()
+                ?.saveWorkFile({ kind: 'manual', file: current })
+                .then(async (result) => {
+                  if (!result.ok) {
+                    if (!result.canceled) useStore.getState().toast(result.message, 'error');
+                    return;
+                  }
+                  useStore.getState().setPendingWorkFile(undefined);
+                  await applyWorkFile(pendingWorkFile, { confirmed: true });
+                })
+                .catch((error: unknown) => {
+                  useStore.getState().toast(String(error), 'error');
+                });
+            }}
+          >
+            保存して開く
+          </button>
           <button
             type="button"
             onClick={() => {

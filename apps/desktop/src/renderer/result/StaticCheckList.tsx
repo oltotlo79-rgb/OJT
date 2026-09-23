@@ -2,6 +2,8 @@ import type { HazardCounts, StaticCheckResult } from '@ojt/content';
 import type { HazardKind } from '@ojt/circuit-sim';
 import type { JSX } from 'react';
 import { JA } from '../i18n/ja.js';
+import { useStore } from '../app/store.js';
+import { focusWiring } from '../session/wire-edit.js';
 import styles from './result.module.css';
 
 /**
@@ -24,7 +26,27 @@ export function StaticCheckList({ checks }: { checks: readonly StaticCheckResult
               <span>{JA.staticCheck[check.id]}</span>
               <span className={styles.detail}>{check.message}</span>
             </div>
-            {check.details.length === 0 ? null : (
+            {check.issues !== undefined && check.issues.length > 0 ? (
+              <ul className={styles.detail}>
+                {check.issues.map((issue, index) => (
+                  <li key={index}>
+                    <p>現在の状態：{issue.observed}</p>
+                    <p>確認する状態：{issue.expected}</p>
+                    {issue.terminals.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          focusWiring(issue.terminals, issue.wireIds);
+                          useStore.getState().setRoute('session');
+                        }}
+                      >
+                        関連する端子・配線を表示
+                      </button>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            ) : check.details.length === 0 ? null : (
               <ul className={styles.detail}>
                 {check.details.map((detail, index) => (
                   <li key={index}>{detail}</li>

@@ -6,6 +6,7 @@ import {
   type WorkFileSaveRequest,
 } from '../shared/ipc.js';
 import { loadContent } from './content-loader.js';
+import { authorContent } from './authoring.js';
 import { openManual } from './manual.js';
 import { exportResult } from './result-export.js';
 import { readSettings, readSettingsResponse, writeSettings } from './settings.js';
@@ -19,6 +20,9 @@ import { loadWorkFile, saveWorkFile } from './work-files.js';
 
 /** §4.3 の9チャネルを登録する。 */
 export function registerIpc(): void {
+  ipcMain.handle(IPC_CHANNELS.contentAuthor, (event, request: unknown) =>
+    authorContent(BrowserWindow.fromWebContents(event.sender) ?? undefined, request),
+  );
   /*
    * 課題一覧と課題1件。`loadContent()` は結果を1件だけ覚えているので、
    * 一覧の直後に来る `content:read` は読み直しにならない（§7.8）。

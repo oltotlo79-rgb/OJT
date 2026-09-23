@@ -59,6 +59,25 @@ export interface PlcSnapshot {
   counters: Record<number, PlcCounterState>;
 }
 
+/** 診断モニタ中だけ記録する直近1スキャン。全履歴は蓄積しない。 */
+export interface PlcNetworkTrace {
+  networkId: string;
+  writes: Array<{
+    device: Device;
+    instruction: string;
+    powered: boolean;
+    before: string;
+    after: string;
+  }>;
+}
+export interface PlcDiagnostics {
+  scanCount: number;
+  inputs: boolean[];
+  networks: PlcNetworkTrace[];
+  outputs: boolean[];
+  resets: Record<string, { reason: string; scanCount: number }>;
+}
+
 /** ランタイム生成オプション。 */
 export interface PlcRuntimeOptions {
   io: PlcIoPort;
@@ -92,11 +111,14 @@ export interface PlcRuntime {
   readonly scanCount: number;
   /** 1スキャン実行する。 */
   scan(): void;
+  diagnostics(): PlcDiagnostics;
   /**
-   * 全デバイスと時刻を初期化する（RUN停止・リセット相当）。§10.4
+   * 全デバイスと時刻を初期化する（リセット相当。STOPでは保持）。§10.4
    * 落とした出力は `io.writeOutputs()` で外側にも書き出すので、`Simulation` のY接点も開く。
    */
   reset(): void;
+  /** STOP: 出力をOFFにし、内部リレー・タイマ・カウンタを保持する。 */
+  stop(): void;
   /** デバイスの現在値。 */
   bit(device: Device): boolean;
   /** 状態のスナップショット（内部状態とは切り離したコピー）。 */
@@ -178,6 +200,28 @@ class Runtime implements PlcRuntime {
   private firstScan = true;
   private elapsedMs = 0;
   private scans = 0;
+  private scanTrace: PlcNetworkTrace[] = [];
+  private readonly resetReasons = new Map<string, { reason: string; scanCount: number }>();
+
+  diagnostics(): PlcDiagnostics {
+    return {
+      scanCount: this.scans,
+      inputs: [...this.inputs],
+      outputs: [...this.outputs],
+      networks: structuredClone(this.scanTrace),
+      resets: Object.fromEntries([...this.resetReasons].map(([id, info]) => [id, { ...info }])),
+    };
+  }
+  private resetReason(device: Device, reason: string): void {
+    this.resetReasons.set(`${device.kind}:${device.index}`, { reason, scanCount: this.scans + 1 });
+  }
+  private deviceValue(device: Device): string {
+    if (device.kind === 'timer')
+      return `${this.timers.get(device.index)?.elapsedMs ?? 0} ms / ${this.bit(device) ? 'ON' : 'OFF'}`;
+    if (device.kind === 'counter')
+      return `${this.counters.get(device.index)?.value ?? 0} 回 / ${this.bit(device) ? 'ON' : 'OFF'}`;
+    return this.bit(device) ? 'ON' : 'OFF';
+  }
 
   constructor(
     readonly program: CompiledProgram,
@@ -193,7 +237,10 @@ class Runtime implements PlcRuntime {
   setRecordPowered(on: boolean): void {
     this.recordPowered = on;
     // 止めたら記録は捨てる（次に開いたとき古い通電が1スキャンだけ見えるのを防ぐ）
-    if (!on) this.poweredCells.clear();
+    if (!on) {
+      this.poweredCells.clear();
+      this.scanTrace = [];
+    }
   }
 
   get tMs(): number {
@@ -202,6 +249,12 @@ class Runtime implements PlcRuntime {
 
   get scanCount(): number {
     return this.scans;
+  }
+
+  stop(): void {
+    this.outputs.fill(false);
+    this.poweredCells.clear();
+    this.io.writeOutputs([...this.outputs]);
   }
 
   reset(): void {
@@ -217,6 +270,17 @@ class Runtime implements PlcRuntime {
     this.firstScan = true;
     this.elapsedMs = 0;
     this.scans = 0;
+    this.scanTrace = [];
+    this.resetReasons.clear();
+    for (const net of this.program.networks)
+      for (const output of net.outputs) {
+        const cell = output.cell;
+        if ('device' in cell && (cell.device.kind === 'timer' || cell.device.kind === 'counter'))
+          this.resetReasons.set(`${cell.device.kind}:${cell.device.index}`, {
+            reason: '全メモリ初期化',
+            scanCount: 0,
+          });
+      }
     // 出力を落としたことを外側（`Simulation`）にも伝える。§10.4
     this.io.writeOutputs([...this.outputs]);
   }
@@ -279,6 +343,7 @@ class Runtime implements PlcRuntime {
     this.inputs = [...this.io.readInputs()];
     this.mcStack = [];
     this.poweredCells.clear();
+    this.scanTrace = [];
     // ② ネットワークを上から順に実行
     for (const net of this.program.networks) {
       if (net.isEnd) break;
@@ -299,10 +364,24 @@ class Runtime implements PlcRuntime {
   private runNetwork(net: CompiledNetwork): void {
     const rails = this.solve(net);
     this.recordPoweredCells(net, rails);
+    const trace: PlcNetworkTrace | undefined = this.recordPowered
+      ? { networkId: net.id, writes: [] }
+      : undefined;
     for (const output of net.outputs) {
       const powered = rails.poweredAt(output.row, COIL_COL);
-      this.applyOutput(output.cell, powered);
+      const cell = output.cell;
+      const before = trace !== undefined && 'device' in cell ? this.deviceValue(cell.device) : '';
+      this.applyOutput(cell, powered);
+      if (trace !== undefined && 'device' in cell)
+        trace.writes.push({
+          device: { ...cell.device },
+          instruction: cell.kind === 'coil' ? cell.type : cell.kind === 'timer' ? 'TON' : 'CTU',
+          powered,
+          before,
+          after: this.deviceValue(cell.device),
+        });
     }
+    if (trace !== undefined) this.scanTrace.push(trace);
   }
 
   /**
@@ -393,6 +472,7 @@ class Runtime implements PlcRuntime {
     if (cell.kind === 'timer') {
       const state = this.timerState(cell.device.index);
       if (!active || !powered) {
+        this.resetReason(cell.device, active ? 'タイマの入力条件OFF' : 'MC区間が不成立');
         state.elapsedMs = 0;
         state.on = false;
         return;
@@ -404,6 +484,7 @@ class Runtime implements PlcRuntime {
     // カウンタ: リセットが優先、条件の立上りで加算。§10.4
     const state = this.counterState(cell.device.index);
     if (this.bit(cell.resetDevice)) {
+      this.resetReason(cell.device, 'カウンタのリセット接点ON');
       state.value = 0;
       state.on = false;
       this.countEdges.set(cell.device.index, powered);
@@ -426,6 +507,8 @@ class Runtime implements PlcRuntime {
 
   /** SET/RST（タイマ・カウンタへの RST は経過・計数も戻す）。 */
   private setOrReset(device: Device, on: boolean): void {
+    if (!on && (device.kind === 'timer' || device.kind === 'counter'))
+      this.resetReason(device, 'RST命令が成立');
     if (device.kind === 'timer') {
       const state = this.timerState(device.index);
       state.on = on;

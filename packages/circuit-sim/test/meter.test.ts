@@ -23,7 +23,7 @@ describe('meter', () => {
     sim.run(50);
     expect(measureVoltage(sim, t('PS.-'), t('PS.+')).volts).toBeCloseTo(23.996, 2);
     expect(measureVoltage(sim, t('PS.+'), t('PS.-')).volts).toBeCloseTo(-23.996, 2);
-    expect(measureAcVolts().volts).toBe(0);
+    expect(measureAcVolts().volts).toBeNaN();
   });
 
   it('無通電のコイル抵抗は650Ω（調査資料 §6.3）', () => {

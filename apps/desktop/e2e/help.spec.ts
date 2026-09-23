@@ -6,7 +6,7 @@ import { APP_ROOT, launchApp } from './app.js';
 /**
  * ヘルプと取扱説明書の E2E。§16 Phase 6 受入基準①②③⑥（Plan 6 Task 11）。
  *
- * **「説明書（PDF）を開く」は押さない**（Plan 6 決定表 P9）。押すと OS の既定の PDF
+ * **「説明書全体をPDFで開く」は押さない**（Plan 6 決定表 P9）。押すと OS の既定の PDF
  * ビューアが本当に起動し、CI でもレビュー中でも閉じられない。ここが確かめるのは
  * 「どの画面のヘルプにもボタンが出ていて押せること」までで、`shell.openPath()` の3分岐
  * （開けた・PDFが無い・OSが拒んだ）は `test/manual-ipc.test.ts` が縛る。同梱 PDF そのもの
@@ -157,9 +157,9 @@ async function expectHelpOpensHere(sectionTitle: string): Promise<void> {
   await expect(title).toHaveText(sectionTitle);
   // 開いた直後の焦点は引き出しの「閉じる」（読み始める場所が毎回同じになる）
   await expect(page.getByTestId('help-close')).toBeFocused();
-  // ③ 「説明書（PDF）を開く」はどの画面のヘルプにもあって押せる（**押さない**）
+  // ③ 「説明書全体をPDFで開く」はどの画面のヘルプにもあって押せる（**押さない**）
   await expect(page.getByTestId('help-open-pdf')).toBeEnabled();
-  await expect(page.getByTestId('help-open-pdf')).toHaveText('説明書（PDF）を開く');
+  await expect(page.getByTestId('help-open-pdf')).toHaveText('説明書全体をPDFで開く');
   // ⑥ まだ撮っていない図は枠ごと出ない
   expect(await figureProblems()).toEqual([]);
   // ① もう一度 `F1` で閉じて、開くのに使ったところへ焦点が戻る
@@ -399,13 +399,13 @@ test.describe('ヘルプ（§16 Phase 6 受入基準①②③⑥）', () => {
     await expect(page.getByTestId('help-drawer')).toBeHidden();
   });
 
-  test('課題索引の全216個のIDが途中で折り返されない', async () => {
+  test('課題索引の全324個のIDが途中で折り返されない', async () => {
     await goHome();
     await setWindow(1280, 800);
     await page.getByTestId('open-help').click();
     await showSection(CHAPTER_TITLES.length - 1, 'tutorial-features/課題の索引');
     const ids = page.locator('[data-manual-table="problem-index"] tbody tr td:first-child');
-    await expect(ids).toHaveCount(216);
+    await expect(ids).toHaveCount(324);
     const broken = await ids.evaluateAll((cells) =>
       cells.flatMap((cell) => {
         const range = document.createRange();
@@ -541,7 +541,7 @@ test.describe('ヘルプ（§16 Phase 6 受入基準①②③⑥）', () => {
       await page.evaluate(() => document.activeElement?.getAttribute('data-manual-image') ?? null),
     ).toBe(name);
 
-    // 「説明書（PDF）を開く」は出ていて押せる。**押さない**（決定表 P9）
+    // 「説明書全体をPDFで開く」は出ていて押せる。**押さない**（決定表 P9）
     await expect(page.getByTestId('help-open-pdf')).toBeVisible();
     await expect(page.getByTestId('help-open-pdf')).toBeEnabled();
     await page.keyboard.press('Escape');

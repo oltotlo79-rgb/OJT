@@ -1,0 +1,425 @@
+{
+  "formatVersion": 1,
+  "id": "d-072",
+  "mode": "plc",
+  "title": "PLC 交互の入力組合せ・シャープ JW300（基本ベース＋JW-301PU＋JW-312CU＋JW-212NA＋JW-214SA）・2.5秒確認",
+  "grade": 1,
+  "difficulty": 4,
+  "tags": ["and-or", "interlock"],
+  "description": "PB1とPB3だけ、またはPB2とPB4だけを押している間を成立条件とします。成立中に2.5秒を計時し、経過後はPL1、経過前はPL2を点灯します。条件が外れたら計時をリセットして消灯してください。 I/O表の番号と入力方式を確認し、出力は中継リレーを介して表示灯を駆動します。PLC電源、入力COM、出力COMをそれぞれ確認してください。",
+  "timeLimit": {
+    "standardMin": 40,
+    "cutoffMin": 60
+  },
+  "board": {
+    "boardId": "board-jipm-std",
+    "socketRoles": {
+      "S1": "CR1",
+      "S2": "CR2",
+      "S3": "CR3",
+      "S7": "CHK",
+      "S4": "CR4"
+    }
+  },
+  "inventory": [
+    {
+      "kind": "relay-my4n",
+      "count": 4
+    }
+  ],
+  "plc": {
+    "vendor": "sharp",
+    "model": "JW-300"
+  },
+  "io": {
+    "mode": "fixed",
+    "wiring": "source",
+    "inputs": [
+      {
+        "x": 8,
+        "pb": "PB1"
+      },
+      {
+        "x": 9,
+        "pb": "PB2"
+      },
+      {
+        "x": 10,
+        "pb": "PB3"
+      },
+      {
+        "x": 11,
+        "pb": "PB4"
+      }
+    ],
+    "outputs": [
+      {
+        "y": 6,
+        "cr": "CR1",
+        "pl": "PL1"
+      },
+      {
+        "y": 7,
+        "cr": "CR2",
+        "pl": "PL2"
+      }
+    ]
+  },
+  "referenceLadder": {
+    "networks": [
+      {
+        "id": "term0",
+        "cells": [
+          [
+            {
+              "kind": "contact",
+              "type": "NO",
+              "device": {
+                "kind": "input",
+                "index": 8
+              }
+            },
+            {
+              "kind": "contact",
+              "type": "NC",
+              "device": {
+                "kind": "input",
+                "index": 9
+              }
+            },
+            {
+              "kind": "contact",
+              "type": "NO",
+              "device": {
+                "kind": "input",
+                "index": 10
+              }
+            },
+            {
+              "kind": "contact",
+              "type": "NC",
+              "device": {
+                "kind": "input",
+                "index": 11
+              }
+            },
+            {
+              "kind": "coil",
+              "type": "OUT",
+              "device": {
+                "kind": "internal",
+                "index": 0
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "id": "term1",
+        "cells": [
+          [
+            {
+              "kind": "contact",
+              "type": "NC",
+              "device": {
+                "kind": "input",
+                "index": 8
+              }
+            },
+            {
+              "kind": "contact",
+              "type": "NO",
+              "device": {
+                "kind": "input",
+                "index": 9
+              }
+            },
+            {
+              "kind": "contact",
+              "type": "NC",
+              "device": {
+                "kind": "input",
+                "index": 10
+              }
+            },
+            {
+              "kind": "contact",
+              "type": "NO",
+              "device": {
+                "kind": "input",
+                "index": 11
+              }
+            },
+            {
+              "kind": "coil",
+              "type": "OUT",
+              "device": {
+                "kind": "internal",
+                "index": 1
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "id": "condition",
+        "cells": [
+          [
+            {
+              "kind": "contact",
+              "type": "NO",
+              "device": {
+                "kind": "internal",
+                "index": 0
+              }
+            },
+            {
+              "kind": "vline"
+            },
+            {
+              "kind": "coil",
+              "type": "OUT",
+              "device": {
+                "kind": "internal",
+                "index": 10
+              }
+            }
+          ],
+          [
+            {
+              "kind": "contact",
+              "type": "NO",
+              "device": {
+                "kind": "internal",
+                "index": 1
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "id": "timer",
+        "cells": [
+          [
+            {
+              "kind": "contact",
+              "type": "NO",
+              "device": {
+                "kind": "internal",
+                "index": 10
+              }
+            },
+            {
+              "kind": "timer",
+              "type": "TON",
+              "device": {
+                "kind": "timer",
+                "index": 0
+              },
+              "presetMs": 2500
+            }
+          ]
+        ]
+      },
+      {
+        "id": "output",
+        "cells": [
+          [
+            {
+              "kind": "contact",
+              "type": "NO",
+              "device": {
+                "kind": "internal",
+                "index": 10
+              }
+            },
+            {
+              "kind": "contact",
+              "type": "NO",
+              "device": {
+                "kind": "timer",
+                "index": 0
+              }
+            },
+            {
+              "kind": "coil",
+              "type": "OUT",
+              "device": {
+                "kind": "output",
+                "index": 6
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "id": "status",
+        "cells": [
+          [
+            {
+              "kind": "contact",
+              "type": "NO",
+              "device": {
+                "kind": "internal",
+                "index": 10
+              }
+            },
+            {
+              "kind": "contact",
+              "type": "NC",
+              "device": {
+                "kind": "timer",
+                "index": 0
+              }
+            },
+            {
+              "kind": "coil",
+              "type": "OUT",
+              "device": {
+                "kind": "output",
+                "index": 7
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "id": "end",
+        "cells": [
+          [
+            {
+              "kind": "end"
+            }
+          ]
+        ]
+      }
+    ]
+  },
+  "wiringRequired": true,
+  "operations": [
+    {
+      "t": 300,
+      "target": "PB1",
+      "action": "press"
+    },
+    {
+      "t": 300,
+      "target": "PB2",
+      "action": "press"
+    },
+    {
+      "t": 300,
+      "target": "PB3",
+      "action": "press"
+    },
+    {
+      "t": 300,
+      "target": "PB4",
+      "action": "press"
+    },
+    {
+      "t": 500,
+      "target": "PB1",
+      "action": "release"
+    },
+    {
+      "t": 500,
+      "target": "PB2",
+      "action": "release"
+    },
+    {
+      "t": 500,
+      "target": "PB3",
+      "action": "release"
+    },
+    {
+      "t": 500,
+      "target": "PB4",
+      "action": "release"
+    },
+    {
+      "t": 1200,
+      "target": "PB1",
+      "action": "press"
+    },
+    {
+      "t": 4300,
+      "target": "PB2",
+      "action": "press"
+    },
+    {
+      "t": 7400,
+      "target": "PB1",
+      "action": "release"
+    },
+    {
+      "t": 10500,
+      "target": "PB3",
+      "action": "press"
+    },
+    {
+      "t": 13600,
+      "target": "PB1",
+      "action": "press"
+    },
+    {
+      "t": 16700,
+      "target": "PB2",
+      "action": "release"
+    },
+    {
+      "t": 19800,
+      "target": "PB1",
+      "action": "release"
+    },
+    {
+      "t": 22900,
+      "target": "PB4",
+      "action": "press"
+    },
+    {
+      "t": 26000,
+      "target": "PB1",
+      "action": "press"
+    },
+    {
+      "t": 29100,
+      "target": "PB2",
+      "action": "press"
+    },
+    {
+      "t": 32200,
+      "target": "PB1",
+      "action": "release"
+    },
+    {
+      "t": 35300,
+      "target": "PB3",
+      "action": "release"
+    },
+    {
+      "t": 38400,
+      "target": "PB1",
+      "action": "press"
+    },
+    {
+      "t": 41500,
+      "target": "PB2",
+      "action": "release"
+    },
+    {
+      "t": 44600,
+      "target": "PB1",
+      "action": "release"
+    },
+    {
+      "t": 47700,
+      "target": "PB4",
+      "action": "release"
+    }
+  ],
+  "durationMs": 51300,
+  "judge": {
+    "compareSignals": ["PL1", "PL2"]
+  }
+}

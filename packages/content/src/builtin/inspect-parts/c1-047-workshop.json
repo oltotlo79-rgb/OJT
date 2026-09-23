@@ -1,0 +1,58 @@
+{
+  "formatVersion": 1,
+  "id": "c1-047",
+  "mode": "inspect-parts",
+  "title": "リレー・タイマの混在点検・実習5",
+  "grade": 2,
+  "difficulty": 3,
+  "tags": ["fault-part", "measure"],
+  "description": "抵抗値だけで判断せず、コイル、無励磁時のa/b接点、励磁後のa/b接点の順に点検してください。正常な部品も含みます。各部品で異なる接点組を調べ、測定記録に予測と判断を残してください。タイマは設定時間を待ち、励磁直後の未動作を断線と誤判定しないようにします。",
+  "timeLimit": {
+    "standardMin": 30,
+    "cutoffMin": 50
+  },
+  "board": {
+    "boardId": "board-jipm-std",
+    "socketRoles": {
+      "S7": "CHK"
+    }
+  },
+  "inventory": [],
+  "parts": [
+    {
+      "id": "p1",
+      "kind": "timer-h3y4",
+      "truth": "normal"
+    },
+    {
+      "id": "p2",
+      "kind": "relay-my4n",
+      "truth": "coil-open"
+    },
+    {
+      "id": "p3",
+      "kind": "relay-my4n",
+      "truth": "coil-layer-short",
+      "ratio": 0.7
+    },
+    {
+      "id": "p4",
+      "kind": "relay-my4n",
+      "truth": "a-open",
+      "group": 3
+    },
+    {
+      "id": "p5",
+      "kind": "timer-h3y4",
+      "truth": "a-weld",
+      "group": 4
+    },
+    {
+      "id": "p6",
+      "kind": "relay-my4n",
+      "truth": "b-open",
+      "group": 1
+    }
+  ],
+  "seed": 2026092310
+}

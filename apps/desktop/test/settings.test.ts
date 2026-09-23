@@ -1,4 +1,12 @@
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -25,8 +33,14 @@ vi.mock('electron', () => ({
   },
 }));
 
-const { settingsPath, defaultUserContentDir, readSettings, readSettingsResponse, writeSettings } =
-  await import('../src/main/settings.js');
+const {
+  settingsPath,
+  corruptSettingsPath,
+  defaultUserContentDir,
+  readSettings,
+  readSettingsResponse,
+  writeSettings,
+} = await import('../src/main/settings.js');
 const { MSG } = await import('../src/shared/messages.js');
 
 const created: string[] = [];
@@ -118,6 +132,23 @@ describe('BOM と壊れたファイル（1D2-a のレビュー指摘）', () => 
     writeSettings({ soundEnabled: false });
     writeSettings({ soundVolume: 0.2 });
     expect(readdirSync(electron.dir)).toEqual(['settings.json']);
+  });
+
+  it('控えの作成に失敗した場合は元ファイルと警告を保持し、保存成功にしない', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-09-23T12:34:56.000Z'));
+    try {
+      const broken = '{ 元の設定';
+      writeFileSync(settingsPath(), broken, 'utf8');
+      // 同名のディレクトリを用意して、実際のコピー失敗を発生させる。
+      mkdirSync(corruptSettingsPath());
+      expect(() => writeSettings({ soundEnabled: false })).toThrow();
+      expect(readFileSync(settingsPath(), 'utf8')).toBe(broken);
+      expect(readSettingsResponse().warning).toBe(MSG.settings.corrupt);
+      expect(readSettings().soundEnabled).toBe(DEFAULT_SETTINGS.soundEnabled);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

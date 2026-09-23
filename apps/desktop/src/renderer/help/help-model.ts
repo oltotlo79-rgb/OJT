@@ -121,39 +121,52 @@ const NORMALIZED_HAYSTACK = new Map<string, string>(
  * 見出しと本文の素の文に対する部分一致。
  * 当たった位置の前後を切り出して一覧に出す。
  */
-export function searchManual(query: string, limit: number = MAX_HELP_HITS): HelpHit[] {
-  const needle = normalize(query);
-  if (needle === '') return [];
-  const hits: HelpHit[] = [];
-  for (const section of MANUAL_SECTIONS) {
-    if (hits.length >= limit) break;
-    const haystack = NORMALIZED_HAYSTACK.get(section.id) ?? '';
-    if (!haystack.includes(needle)) continue;
-    const excerpt = excerptOf(section, query);
-    hits.push({
-      sectionId: section.id,
-      title: section.title,
-      chapterTitle: section.chapterTitle,
-      excerpt: excerpt.text,
-      excerptMatchStart: excerpt.matchStart,
-      excerptMatchLength: excerpt.matchLength,
+export function searchManual(
+  query: string,
+  limit: number = MAX_HELP_HITS,
+  mode?: SessionMode,
+): HelpHit[] {
+  const needles = query.normalize('NFKC').trim().split(/\s+/u).map(normalize).filter(Boolean);
+  if (needles.length === 0) return [];
+  return MANUAL_SECTIONS.filter((section) =>
+    needles.every((needle) => (NORMALIZED_HAYSTACK.get(section.id) ?? '').includes(needle)),
+  )
+    .map((section) => ({
+      section,
+      score: needles.reduce(
+        (score, needle) => score + (normalize(section.title).includes(needle) ? 10 : 0),
+        mode !== undefined &&
+          section.id.startsWith(`${HELP_SECTION_BY_SCREEN[mode].split('/')[0]}/`)
+          ? 3
+          : 0,
+      ),
+    }))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit)
+    .map(({ section }) => {
+      const excerpt = excerptOf(
+        section,
+        needles.find((needle) => normalize(section.text).includes(needle)) ?? needles[0]!,
+      );
+      return {
+        sectionId: section.id,
+        title: section.title,
+        chapterTitle: section.chapterTitle,
+        excerpt: excerpt.text,
+        excerptMatchStart: excerpt.matchStart,
+        excerptMatchLength: excerpt.matchLength,
+      };
     });
-  }
-  return hits;
 }
 
-/**
- * 検索結果を章ごとにまとめる（ヘルプ引き出し 設計 §6.4: 「検索結果が20件のリストだけ」→
- * 「章ごとにまとめ」）。`hits` は既に `MANUAL_SECTIONS`（章の順）で並んで来るので、
- * 並べ替えず隣り合う同じ章をまとめるだけでよい。
- */
+/** 検索の優先順を保ち、最初に現れた章の順に結果をまとめる。 */
 export function groupHitsByChapter(
   hits: readonly HelpHit[],
 ): ReadonlyArray<{ chapterTitle: string; hits: readonly HelpHit[] }> {
   const groups: Array<{ chapterTitle: string; hits: HelpHit[] }> = [];
   for (const hit of hits) {
-    const last = groups[groups.length - 1];
-    if (last !== undefined && last.chapterTitle === hit.chapterTitle) last.hits.push(hit);
+    const last = groups.find((group) => group.chapterTitle === hit.chapterTitle);
+    if (last !== undefined) last.hits.push(hit);
     else groups.push({ chapterTitle: hit.chapterTitle, hits: [hit] });
   }
   return groups;
@@ -166,23 +179,36 @@ interface Excerpt {
   matchLength: number;
 }
 
-/**
- * 当たったところの前後を切り出す。
- * 正規化した文字列では元の位置がずれるので、**元の文**の上で素直に探し直す。
- * 元の文で見つからない（全角・半角の違いなどで正規化したときだけ当たった）ときは
- * 節の書き出しを返す（一致位置は -1 になり、太字にしない）。
- */
+/** 正規化した文字と元の文字の位置を対応付け、一致箇所を含む抜粋を返す。 */
 function excerptOf(section: ManualSection, query: string): Excerpt {
-  const trimmed = query.trim();
-  const at = trimmed === '' ? -1 : section.text.indexOf(trimmed);
-  if (at < 0)
-    return { text: section.text.slice(0, EXCERPT_PAD * 2), matchStart: -1, matchLength: 0 };
-  const from = Math.max(0, at - EXCERPT_PAD);
-  const to = Math.min(section.text.length, at + trimmed.length + EXCERPT_PAD);
+  const source = section.text;
+  let normalized = '';
+  const starts: number[] = [],
+    ends: number[] = [];
+  let offset = 0;
+  for (const character of source) {
+    const mapped = normalize(character);
+    normalized += mapped;
+    for (let index = 0; index < mapped.length; index += 1) {
+      starts.push(offset);
+      ends.push(offset + character.length);
+    }
+    offset += character.length;
+  }
+  const needle = normalize(query),
+    match = normalized.indexOf(needle);
+  if (match < 0 || needle === '')
+    return { text: source.slice(0, EXCERPT_PAD * 2), matchStart: -1, matchLength: 0 };
+  const at = starts[match]!,
+    end = ends[match + needle.length - 1]!;
+  const from = Math.max(0, at - EXCERPT_PAD),
+    to = Math.min(source.length, end + EXCERPT_PAD);
   const prefix = from > 0 ? '…' : '';
-  const suffix = to < section.text.length ? '…' : '';
-  const text = `${prefix}${section.text.slice(from, to)}${suffix}`;
-  return { text, matchStart: prefix.length + (at - from), matchLength: trimmed.length };
+  return {
+    text: prefix + source.slice(from, to) + (to < source.length ? '…' : ''),
+    matchStart: prefix.length + at - from,
+    matchLength: end - at,
+  };
 }
 
 /**

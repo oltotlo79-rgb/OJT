@@ -1,0 +1,30 @@
+{
+  "assembly": {
+    "durationSec": 120.92,
+    "bytes": 12057310,
+    "width": 1600,
+    "height": 900,
+    "captionCount": 18
+  },
+  "parts": {
+    "durationSec": 171.04,
+    "bytes": 16422327,
+    "width": 1600,
+    "height": 900,
+    "captionCount": 17
+  },
+  "repair": {
+    "durationSec": 150.64,
+    "bytes": 14602761,
+    "width": 1600,
+    "height": 900,
+    "captionCount": 11
+  },
+  "plc": {
+    "durationSec": 297.09000000000003,
+    "bytes": 38081131,
+    "width": 1600,
+    "height": 900,
+    "captionCount": 20
+  }
+}

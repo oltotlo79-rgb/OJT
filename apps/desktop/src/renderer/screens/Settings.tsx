@@ -18,6 +18,7 @@ import { SKIN_THEMES } from '../ladder/skins/index.js';
 import styles from './screens.module.css';
 import { applyUiPreferences } from '../app/ui-preferences.js';
 import { useTourStore } from '../tour/tour-store.js';
+import { ProblemAuthoring } from '../panels/ProblemAuthoring.js';
 
 /**
  * 設定画面。設計仕様 §12.1 / §15。
@@ -220,6 +221,10 @@ export function Settings(): JSX.Element {
           <p className={styles.subtitle} data-testid="user-dir-help">
             {JA.settings.userContentHelp}
           </p>
+          <ProblemAuthoring
+            directory={settings.userContentDir}
+            onDirectory={(directory) => patch({ userContentDir: directory })}
+          />
 
           <section className={styles.settingRow}>
             <label htmlFor="ui-scale">{JA.settings.uiScale}</label>

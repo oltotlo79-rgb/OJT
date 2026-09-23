@@ -1,0 +1,225 @@
+{
+  "formatVersion": 1,
+  "id": "b-090",
+  "mode": "assemble",
+  "title": "拡張盤の4組の押ボタン・表示灯",
+  "grade": 3,
+  "difficulty": 1,
+  "tags": [],
+  "description": "自由練習用拡張盤です。PB5を押す間だけPL5を点灯、PB6を押す間だけPL6を点灯、PB7を押す間だけPL7を点灯、PB8を押す間だけPL8を点灯してください。中継端子台TB_AUXの同じ番号のa–bは内部接続です。負荷への途中に中継端子を入れ、両側を測定して電圧が変わらないことを確認できます。",
+  "timeLimit": {
+    "standardMin": 20,
+    "cutoffMin": 30
+  },
+  "board": {
+    "boardId": "board-jipm-std",
+    "socketRoles": {
+      "S7": "CHK"
+    },
+    "profile": {
+      "id": "expanded",
+      "terminalPairs": 4,
+      "extraPushButtons": 4,
+      "extraLamps": 4,
+      "rules": {
+        "id": "free",
+        "allowedColors": ["青", "白", "黄"],
+        "maxWiresPerTerminal": 4
+      }
+    }
+  },
+  "inventory": [],
+  "schematic": {
+    "formatVersion": 1,
+    "id": "sch-b-090",
+    "title": "拡張盤の4組の押ボタン・表示灯",
+    "orientation": "horizontal",
+    "rungs": [
+      {
+        "id": "r0",
+        "from": {
+          "bus": "P"
+        },
+        "to": {
+          "bus": "N"
+        },
+        "cells": [
+          {
+            "id": "pb0",
+            "kind": "pb-a",
+            "device": "PB5"
+          },
+          {
+            "id": "pl0",
+            "kind": "lamp",
+            "device": "PL5"
+          }
+        ]
+      },
+      {
+        "id": "r1",
+        "from": {
+          "bus": "P"
+        },
+        "to": {
+          "bus": "N"
+        },
+        "cells": [
+          {
+            "id": "pb1",
+            "kind": "pb-a",
+            "device": "PB6"
+          },
+          {
+            "id": "pl1",
+            "kind": "lamp",
+            "device": "PL6"
+          }
+        ]
+      },
+      {
+        "id": "r2",
+        "from": {
+          "bus": "P"
+        },
+        "to": {
+          "bus": "N"
+        },
+        "cells": [
+          {
+            "id": "pb2",
+            "kind": "pb-a",
+            "device": "PB7"
+          },
+          {
+            "id": "pl2",
+            "kind": "lamp",
+            "device": "PL7"
+          }
+        ]
+      },
+      {
+        "id": "r3",
+        "from": {
+          "bus": "P"
+        },
+        "to": {
+          "bus": "N"
+        },
+        "cells": [
+          {
+            "id": "pb3",
+            "kind": "pb-a",
+            "device": "PB8"
+          },
+          {
+            "id": "pl3",
+            "kind": "lamp",
+            "device": "PL8"
+          }
+        ]
+      }
+    ]
+  },
+  "operations": [
+    {
+      "t": 600,
+      "target": "PB5",
+      "action": "press"
+    },
+    {
+      "t": 1300,
+      "target": "PB6",
+      "action": "press"
+    },
+    {
+      "t": 2000,
+      "target": "PB5",
+      "action": "release"
+    },
+    {
+      "t": 2700,
+      "target": "PB7",
+      "action": "press"
+    },
+    {
+      "t": 3400,
+      "target": "PB5",
+      "action": "press"
+    },
+    {
+      "t": 4100,
+      "target": "PB6",
+      "action": "release"
+    },
+    {
+      "t": 4800,
+      "target": "PB5",
+      "action": "release"
+    },
+    {
+      "t": 5500,
+      "target": "PB8",
+      "action": "press"
+    },
+    {
+      "t": 6200,
+      "target": "PB5",
+      "action": "press"
+    },
+    {
+      "t": 6900,
+      "target": "PB6",
+      "action": "press"
+    },
+    {
+      "t": 7600,
+      "target": "PB5",
+      "action": "release"
+    },
+    {
+      "t": 8300,
+      "target": "PB7",
+      "action": "release"
+    },
+    {
+      "t": 9000,
+      "target": "PB5",
+      "action": "press"
+    },
+    {
+      "t": 9700,
+      "target": "PB6",
+      "action": "release"
+    },
+    {
+      "t": 10400,
+      "target": "PB5",
+      "action": "release"
+    },
+    {
+      "t": 11100,
+      "target": "PB8",
+      "action": "release"
+    }
+  ],
+  "durationMs": 12300,
+  "judge": {
+    "tolerance": {
+      "edgeMs": 200,
+      "ratio": 0.1
+    },
+    "staticChecks": {
+      "wireColorRule": true,
+      "terminalLimit": true,
+      "unusedParts": true,
+      "forbiddenCircuit": true,
+      "coilPolarity": true,
+      "powerSequence": true
+    },
+    "compareSignals": ["PL5", "PL6", "PL7", "PL8"]
+  },
+  "hints": {
+    "schematicVisible": true
+  }
+}

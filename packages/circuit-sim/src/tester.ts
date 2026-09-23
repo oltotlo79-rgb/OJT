@@ -281,7 +281,7 @@ export function readTester(sim: Simulation, state: TesterState): TesterReading {
   }
   if (state.mode === 'ACV') {
     const reading = measureAcVolts();
-    return voltReading(state, reading.volts, reading.display);
+    return blankReading(state, reading.display);
   }
   if (state.mode === 'OHM') {
     const reading = measureResistance(sim, black, red);

@@ -23,6 +23,23 @@ import {
  */
 
 const api: OjtApi = {
+  authorContent: (request) => ipcRenderer.invoke(IPC_CHANNELS.contentAuthor, request),
+  onCloseRequest: (handler) => {
+    const listener = (_event: Electron.IpcRendererEvent, token: number): void => {
+      void handler().then(
+        (ok) => {
+          ipcRenderer.send(IPC_CHANNELS.closeReady, token, ok);
+        },
+        () => {
+          ipcRenderer.send(IPC_CHANNELS.closeReady, token, false);
+        },
+      );
+    };
+    ipcRenderer.on(IPC_CHANNELS.closeRequest, listener);
+    return () => {
+      ipcRenderer.removeListener(IPC_CHANNELS.closeRequest, listener);
+    };
+  },
   exportResult: (request: ResultExportRequest) =>
     ipcRenderer.invoke(IPC_CHANNELS.resultExport, request) as Promise<ResultExportResult>,
   listProblems: () => ipcRenderer.invoke(IPC_CHANNELS.contentList) as Promise<ProblemListPayload>,

@@ -1,17 +1,11 @@
+import { useRuntimeConnection } from '../session/use-runtime-connection.js';
 import { togglePowerFixture } from '../session/power-toggle.js';
 import { toNetlistTerminal } from '@ojt/board-model';
 import type { TerminalId } from '@ojt/circuit-sim';
 import { isInspectPartsProblem } from '@ojt/content';
 import { useCallback, useEffect, type JSX } from 'react';
 import { checkSessionFor, useStore } from '../app/store.js';
-import {
-  contactProbeLabel,
-  JA,
-  openedProblemLog,
-  powerLog,
-  referenceErrorText,
-  trayPartLabel,
-} from '../i18n/ja.js';
+import { contactProbeLabel, JA, powerLog, referenceErrorText, trayPartLabel } from '../i18n/ja.js';
 import { CheckTrayPanel } from '../panels/CheckTrayPanel.js';
 import { DiagnosisHelp } from '../panels/DiagnosisHelp.js';
 import { ElapsedTimer } from '../panels/ElapsedTimer.js';
@@ -125,43 +119,7 @@ export function InspectPartsSession(): JSX.Element {
    * Worker を起こして購読する。モードBと同じく `[problemId, sessionEpoch]` で張り直す。
    * 盤そのものの送信（`load`）は下の効果が `checkPartId` も見て行う。
    */
-  useEffect(() => {
-    const store = useStore.getState();
-    const current = store.problem;
-    // この画面が描けない課題では Worker を起こさない（`SessionRoute` の振り分けの安全網）
-    if (current === undefined || !isInspectPartsProblem(current)) return undefined;
-    bridge.start({
-      onSnapshot: (next) => {
-        useStore.getState().applySnapshot(next);
-      },
-      onJudge: () => {
-        // モードC1では届かない（モードBの判定結果）
-      },
-      onInspect: (message) => {
-        const state = useStore.getState();
-        state.setJudging(false);
-        if (message.result.ok) {
-          state.setJudge(message.result.value);
-          state.setRoute('result');
-        } else {
-          state.toast(referenceErrorText(message.result.errors.map((e) => e.message)), 'error');
-        }
-      },
-      onError: (text, fatal) => {
-        const state = useStore.getState();
-        // 判定の往復中に落ちたら「判定中…」のまま固まるので、必ず戻す（§8.2）
-        state.setJudging(false);
-        const line = `${JA.error.workerError}: ${text}`;
-        if (fatal) state.setFatalError(line);
-        else state.toast(line, 'error');
-        state.addLog(line);
-      },
-    });
-    store.addLog(openedProblemLog(current.title));
-    return () => {
-      bridge.stop();
-    };
-  }, [problemId, sessionEpoch]);
+  useRuntimeConnection('inspect-parts');
 
   /*
    * チェック用ソケットの中身が変わるたびに盤を作り直して `load` を送る。§9.1

@@ -27,7 +27,7 @@ export const TIMER_RANGE_10S: TimerRange = {
   id: '0-10s',
   maxMs: TIMER_RANGE_10S_MS,
   stepMs: 100,
-  label: '0〜10秒（0.1秒刻み）',
+  label: '0.1〜10秒（0.1秒刻み）',
 };
 
 /** 0〜60秒レンジ（0.5秒刻み）。§5.3.2 */
@@ -35,7 +35,7 @@ export const TIMER_RANGE_60S: TimerRange = {
   id: '0-60s',
   maxMs: TIMER_RANGE_60S_MS,
   stepMs: 500,
-  label: '0〜60秒（0.5秒刻み）',
+  label: '0.5〜60秒（0.5秒刻み）',
 };
 
 /** 選択できるタイマレンジ（既定は 0〜10s）。§5.3.2 */

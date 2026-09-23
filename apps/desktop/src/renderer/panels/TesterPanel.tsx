@@ -1,3 +1,4 @@
+import { MeasurementPanel } from './MeasurementPanel.js';
 import {
   ANALOG_OHM_RANGES,
   TESTER_NO_PROBE_DISPLAY,
@@ -52,7 +53,7 @@ export function dispatchTester(action: TesterAction): void {
  * 別要素に添えて出す。`OL` / `----` / `OFF` は測れていないので単位を出さない（レビュー指摘）。
  */
 function testerUnit(mode: TesterMode, display: string): string {
-  if (/[VΩ]$/.test(display.trim())) return '';
+  if (/[VΩ]$/.test(display.trim()) || display === 'ACV未対応') return '';
   const blank =
     display === 'OL' || display === TESTER_NO_PROBE_DISPLAY || display === TESTER_OFF_DISPLAY;
   if (mode === 'OHM') return blank ? '' : 'Ω';
@@ -255,6 +256,7 @@ export function TesterPanel({ children }: { children?: JSX.Element }): JSX.Eleme
       {/* プローブの置き場所ショートカット（モードC1）はプローブ欄の隣に出す。§9.1 */}
       {children}
       <p className={styles.hint}>{JA.tester.placeHint}</p>
+      <MeasurementPanel />
     </section>
   );
 }

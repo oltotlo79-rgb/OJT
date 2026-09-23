@@ -1,3 +1,6 @@
+import type { MeasurementRecord, DiagnosisNote } from './diagnosis.js';
+import type { AuthoringRequest, AuthoringResult } from './authoring.js';
+import type { Device } from '@ojt/ladder-core';
 import type { Difficulty, ProblemLoadError, ProblemTag, SupportedProblem } from '@ojt/content';
 import type { DialectId } from '@ojt/plc-dialects';
 import { problemIssueText } from './messages.js';
@@ -20,6 +23,9 @@ import { problemIssueText } from './messages.js';
  * renderer から任意のパスを開かせる余地を型の上で持たない。
  */
 export const IPC_CHANNELS = {
+  contentAuthor: 'content:author',
+  closeRequest: 'app:close-request',
+  closeReady: 'app:close-ready',
   contentList: 'content:list',
   contentRead: 'content:read',
   workfileSave: 'workfile:save',
@@ -94,6 +100,11 @@ export const WORK_FILE_FORMAT_VERSION = 1;
  */
 export interface WorkFile {
   formatVersion: number;
+  measurements?: readonly MeasurementRecord[];
+  diagnosisNotes?: readonly DiagnosisNote[];
+  problemSnapshot?: SupportedProblem;
+  learningProgress?: { hintStage: number; schematicOpenCount: number };
+  watchDevices?: readonly Device[];
   problemId: string;
   /** `BoardSession` をそのまま JSON にしたもの。 */
   session: unknown;
@@ -262,6 +273,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
 
 /** preload が `window.ojt` に公開する型付きAPI。§4.3 */
 export interface OjtApi {
+  authorContent?: (request: AuthoringRequest) => Promise<AuthoringResult>;
+  onCloseRequest?: (handler: () => Promise<boolean>) => () => void;
   listProblems: () => Promise<ProblemListPayload>;
   readProblem: (id: string) => Promise<SupportedProblem | null>;
   saveWorkFile: (request: WorkFileSaveRequest) => Promise<WorkFileSaveResult>;

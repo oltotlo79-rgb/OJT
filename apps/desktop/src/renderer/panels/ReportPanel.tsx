@@ -4,6 +4,7 @@ import { useEffect, useRef, type JSX } from 'react';
 import { JA, reportTargetLabel } from '../i18n/ja.js';
 import { reportKindsFor } from '../session/inspect-repair.js';
 import type { ReportTarget } from '../session/interaction.js';
+import { focusDiagnosticTarget } from '../session/diagnostic-navigation.js';
 import styles from './tester.module.css';
 
 /**
@@ -89,7 +90,13 @@ export function ReportPanel({
         ) : (
           reports.map((report, index) => (
             <div key={`${String(index)}-${report.kind}`} className={styles.reportRow}>
-              <span className={styles.reportTarget}>{reportTargetLabel(report.target, wires)}</span>
+              <button
+                type="button"
+                className={styles.reportTarget}
+                onClick={() => focusDiagnosticTarget(report.target)}
+              >
+                {reportTargetLabel(report.target, wires)} を表示
+              </button>
               <span>{JA.reportKind[report.kind]}</span>
               <button
                 type="button"

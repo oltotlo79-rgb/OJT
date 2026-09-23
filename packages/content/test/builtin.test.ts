@@ -45,9 +45,9 @@ describe('builtin problems', () => {
   });
 
   it('ships 20 assemble problems (§7.9)', () => {
-    expect(BUILTIN_PROBLEMS).toHaveLength(60);
+    expect(BUILTIN_PROBLEMS).toHaveLength(90);
     expect(BUILTIN_PROBLEMS.map((p) => p.id)).toEqual(
-      Array.from({ length: 60 }, (_, i) => `b-${String(i + 1).padStart(3, '0')}`),
+      Array.from({ length: 90 }, (_, i) => `b-${String(i + 1).padStart(3, '0')}`),
     );
   });
 

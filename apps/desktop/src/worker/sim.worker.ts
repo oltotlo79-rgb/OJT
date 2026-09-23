@@ -1,3 +1,4 @@
+import { withBoardProfile } from '@ojt/board-model';
 import { lampsOf, relaysOf, timersOf, plcSnapshot, timerPresetsOf } from './snapshot.js';
 import { createReplay, type ReplayEngine } from './replay.js';
 import {
@@ -23,13 +24,14 @@ import {
   TICK_MS,
   type ChatterEvent,
   type HazardEvent,
-  type LogEntry,
   type Part,
   type TesterReading,
   type TesterState,
 } from '@ojt/circuit-sim';
 import {
   createPlcCoupling,
+  countHazards,
+  type HazardCounts,
   injectPartFaults,
   judgeAssemble,
   judgeInspectParts,
@@ -39,7 +41,7 @@ import {
   type FaultSpecData,
   type PlcCoupling,
 } from '@ojt/content';
-import { compile, type LadderProgram } from '@ojt/ladder-core';
+import { compile, type Device, type LadderProgram } from '@ojt/ladder-core';
 import { planTicks } from './runtime.js';
 import {
   SNAPSHOT_INTERVAL_MS,
@@ -69,12 +71,22 @@ let replayBefore: SimSnapshot | undefined;
  * 新しいセッション（`sessionEpoch` ごとに新しい Worker）では空に戻す。
  */
 let carriedHazards: HazardEvent[] = [];
+let carriedHazardCounts: HazardCounts = countHazards([]);
+function sessionHazardOptions(sim: Simulation): {
+  sessionHazards: HazardEvent[];
+  sessionHazardCounts: HazardCounts;
+} {
+  const totals = sim.events.hazardTotals();
+  for (const kind of Object.keys(totals) as (keyof HazardCounts)[])
+    totals[kind] += carriedHazardCounts[kind];
+  const representatives = new Map(
+    [...carriedHazards, ...sim.events.representativeHazards()].map((event) => [event.kind, event]),
+  );
+  return { sessionHazards: [...representatives.values()], sessionHazardCounts: totals };
+}
 let session: BoardSession | undefined;
 let baselineMs = 0;
 let lastSnapshotMs = 0;
-let logCursor = 0;
-let hazardCursor = 0;
-let chatterCursor = 0;
 let droppedTicks = 0;
 /** テスターの状態（つまみ・レンジ・プローブ・針）。§9.3 */
 let tester: TesterState = createTesterState();
@@ -102,6 +114,10 @@ let plcCoupling: PlcCoupling | undefined;
 let plcTimerPresets: Record<number, number> = {};
 /** PLCが RUN 中か。STOP の間はスキャンを回さない。§10.6 */
 let plcRunning = false;
+let plcPaused = false;
+let plcBreak: { device: Device; value: boolean } | null = null;
+let allowPlcForcing = false;
+const forcedInputs = new Map<number, boolean>();
 /** モニタ（`F3`）中か。true の間だけスナップショットに `plc` を載せる。決定表#5 */
 let plcMonitoring = false;
 /** 直近の `stepTester()` 実測からの経過tick数。§9.3 / 前提D */
@@ -125,34 +141,40 @@ function load(
   partFaults: readonly FaultSpecData[] = [],
   plcModel?: string,
 ): void {
-  session = next;
   /*
    * モードDは机上のPLC本体と壁コンセントを持つ派生盤で解く（§10.1）。`withPlcUnit()` は
    * `id` を変えないので、`BoardSession.boardId` の照合も既存の差分コマンドもそのまま通る。
    * 未対応の機種はここで断る（renderer は課題の `plc.model` をそのまま送ってくる）。
    */
+  let nextBoard: BoardDefinition;
   if (plcModel === undefined) {
-    board = JIPM_BOARD;
+    nextBoard = withBoardProfile(JIPM_BOARD, next.boardProfile);
   } else {
     const unit = plcUnitFor(plcModel);
     if (unit === undefined) throw new Error(`未対応のPLC機種です: ${plcModel}`);
-    board = withPlcUnit(JIPM_BOARD, unit);
+    nextBoard = withPlcUnit(withBoardProfile(JIPM_BOARD, next.boardProfile), unit);
   }
-  const netlist = toNetlist(next, board);
+  const netlist = toNetlist(next, nextBoard);
   const issues = injectPartFaults(netlist, partFaults);
   if (issues.length > 0) {
     throw new Error(issues.map((i) => `${i.path}: ${i.message}`).join(' / '));
   }
-  carriedHazards =
-    simulation === undefined ? [] : [...carriedHazards, ...simulation.events.hazards()];
+  if (simulation !== undefined) {
+    post({ type: 'snapshot', snapshot: buildSnapshot(simulation) });
+    const history = sessionHazardOptions(simulation);
+    carriedHazards = history.sessionHazards;
+    carriedHazardCounts = history.sessionHazardCounts;
+  }
+  session = next;
+  board = nextBoard;
   simulation = new Simulation(netlist, { tickMs: TICK_MS });
-  logCursor = 0;
-  hazardCursor = 0;
-  chatterCursor = 0;
   // 盤を作り直したらラダーの結合も捨てる（新しい `Simulation` を指していないため）。§10.4
   plcCoupling = undefined;
   plcTimerPresets = {};
   plcRunning = false;
+  plcPaused = false;
+  plcBreak = null;
+  forcedInputs.clear();
   plcMonitoring = false;
   /*
    * 盤を作り直したらプローブは外す（前の盤の端子IDは新しいネットリストに無いかもしれない）。
@@ -183,6 +205,14 @@ function partFor(next: BoardSession, socketId: SocketId): Part | undefined {
 /** 直近の読値と針の角度をスナップショットの形にする。§9.3 */
 function testerSnapshot(): TesterSnapshot {
   return {
+    ...(!testerDirty
+      ? {
+          black: tester.black,
+          red: tester.red,
+          voltRange: tester.voltRange,
+          ohmRange: tester.ohmRange,
+        }
+      : {}),
     kind: testerReading.kind,
     mode: testerReading.mode,
     value: testerReading.value,
@@ -206,6 +236,7 @@ function loadLadder(sim: Simulation, source: LadderProgram): void {
     throw new Error(compiled.errors.map((e) => e.message).join(' / '));
   }
   plcCoupling = createPlcCoupling(sim, compiled.program, {
+    inputOverrides: forcedInputs,
     outputCount: board.plcUnit?.spec.outputs.length ?? 0,
   });
   // 設定値表はラダーが変わったときだけ作り直す（指摘 DW-1 ≡ LE-11 ②）
@@ -226,15 +257,14 @@ function loadLadder(sim: Simulation, source: LadderProgram): void {
  */
 function buildSnapshot(sim: Simulation): SimSnapshot {
   const state = sim.state();
-  const entries = sim.log.entries();
-  const logDelta: LogEntry[] = entries.slice(logCursor).map((e) => ({ ...e }));
-  logCursor = entries.length;
-  const hazards = sim.events.hazards();
-  const hazardDelta: HazardEvent[] = hazards.slice(hazardCursor).map((e) => ({ ...e }));
-  hazardCursor = hazards.length;
-  const chatters = sim.events.chatters();
-  const chatterDelta: ChatterEvent[] = chatters.slice(chatterCursor).map((e) => ({ ...e }));
-  chatterCursor = chatters.length;
+  const logDelta = sim.log.drain();
+  const events = sim.events.drain();
+  const hazardDelta = events.filter((event): event is HazardEvent => event.type === 'hazard');
+  const chatterDelta = events.filter((event): event is ChatterEvent => event.type === 'chatter');
+  const hazardTotal = Object.values(sessionHazardOptions(sim).sessionHazardCounts).reduce(
+    (sum, count) => sum + count,
+    0,
+  );
   return {
     tMs: state.tMs,
     breakerOn: state.breakerOn,
@@ -248,8 +278,21 @@ function buildSnapshot(sim: Simulation): SimSnapshot {
     timers: timersOf(sim),
     logDelta,
     hazardDelta,
+    hazardTotal,
     chatterDelta,
     tester: testerSnapshot(),
+    ...(board.plcUnit === undefined
+      ? {}
+      : {
+          plcDebug: {
+            supply: sim.plcPowerStatus('PLC'),
+            paused: plcPaused,
+            running: plcRunning,
+            condition: plcBreak,
+            forcedInputs: Object.fromEntries(forcedInputs),
+            allowForcing: allowPlcForcing,
+          },
+        }),
     // モニタ中だけ載せる（決定表#5）
     ...(plcMonitoring && plcCoupling !== undefined
       ? { plc: plcSnapshot(plcCoupling, plcTimerPresets) }
@@ -306,6 +349,7 @@ function loop(): void {
      * `range-exceeded` は実測した tick の `sim.events` に流れる（`hazardDelta` にそのまま乗る）。
      */
     for (let i = 0; i < plan.ticks; i += 1) {
+      if (plcPaused) continue;
       /*
        * 1 tick ＝ 1 スキャン（§10.4 / 3A 決定表#4）。順序は
        * 「①`runtime.scan()` が `sim.plcInputs()` で入力を読む（＝直前のtickの解）
@@ -314,6 +358,12 @@ function loop(): void {
        */
       if (plcRunning && plcCoupling !== undefined) plcCoupling.beforeTick(sim, sim.tMs);
       sim.step(TICK_MS);
+      if (
+        plcRunning &&
+        plcBreak !== null &&
+        plcCoupling?.runtime.bit(plcBreak.device) === plcBreak.value
+      )
+        plcPaused = true;
       ticksSinceTesterMeasure += 1;
       const measurable =
         tester.mode !== 'off' && tester.black !== undefined && tester.red !== undefined;
@@ -400,6 +450,7 @@ function handle(command: SimCommand): void {
     throw new Error('見直し中は編集できません。結果へ戻って終了してください。');
   if (command.type === 'load') {
     load(command.session, command.partFaults ?? [], command.plcModel);
+    allowPlcForcing = command.allowPlcForcing === true;
     start();
     return;
   }
@@ -468,18 +519,60 @@ function handle(command: SimCommand): void {
       break;
     case 'plc': {
       const action = command.action;
+      if (action.kind === 'pause') {
+        if (plcCoupling === undefined)
+          throw new Error('ラダーを変換してから一時停止してください。');
+        plcPaused = action.on;
+        break;
+      }
+      if (action.kind === 'step') {
+        if (plcCoupling === undefined)
+          throw new Error('ラダーを変換してから1スキャン実行してください。');
+        if (!sim.plcPowerStatus('PLC').ready) throw new Error('PLC電源の配線を確認してください。');
+        plcPaused = true;
+        plcRunning = true;
+        plcMonitoring = true;
+        plcCoupling.runtime.setRecordPowered(true);
+        plcCoupling.beforeTick(sim, sim.tMs);
+        sim.step(TICK_MS);
+        testerDirty = true;
+        post({ type: 'snapshot', snapshot: buildSnapshot(sim) });
+        break;
+      }
+      if (action.kind === 'break') {
+        plcBreak = action.condition;
+        break;
+      }
+      if (action.kind === 'clearForces') {
+        forcedInputs.clear();
+        break;
+      }
+      if (action.kind === 'force') {
+        if (!allowPlcForcing) throw new Error('入力の強制は自由割付の課題でのみ使用できます。');
+        if (
+          !Number.isInteger(action.index) ||
+          action.index < 0 ||
+          action.index >= (board.plcUnit?.spec.inputs.length ?? 0)
+        )
+          throw new Error('この機種にない入力番号です。');
+        if (action.value === null) forcedInputs.delete(action.index);
+        else forcedInputs.set(action.index, action.value);
+        break;
+      }
       if (action.kind === 'load') {
         loadLadder(sim, action.program);
         break;
       }
       if (action.kind === 'run') {
         plcRunning = action.on;
+        plcPaused = false;
         if (!action.on) {
           /*
-           * STOP はPLCのデバイスを初期化する。`runtime.reset()` は `io.writeOutputs()` も
-           * 呼ぶので（3A 引渡し表）Y接点が開く。盤に反映するために1tick進める。
+           * STOPは内部値を保持し、`runtime.stop()`でY出力だけをOFFにする。
+           * 盤のリレー・ランプにも反映するため1tick進める。
            */
-          plcCoupling?.runtime.reset();
+          plcCoupling?.runtime.stop();
+          forcedInputs.clear();
           sim.step(TICK_MS);
         }
         break;
@@ -491,6 +584,10 @@ function handle(command: SimCommand): void {
         break;
       }
       if (action.kind === 'reset') {
+        plcRunning = false;
+        plcPaused = false;
+        plcBreak = null;
+        forcedInputs.clear();
         plcCoupling?.runtime.reset();
         sim.step(TICK_MS);
         break;
@@ -499,6 +596,10 @@ function handle(command: SimCommand): void {
       break;
     }
     case 'judgePlc': {
+      if (forcedInputs.size > 0)
+        throw new Error(
+          '入力の強制をすべて解除してから判定してください。判定には実際の配線からの入力を使用します。',
+        );
       /*
        * 模範と訓練者の2回ぶんを最後まで回すので 0.3〜1 秒かかる（H-4）。判定中にループを
        * 回したままにすると `MAX_CATCHUP_TICKS`（200ms相当）の窓を超え、訓練者が何もして
@@ -508,7 +609,7 @@ function handle(command: SimCommand): void {
       try {
         const outcome = judgePlc(command.problem, JIPM_BOARD, command.session, command.ladder, {
           elapsedMs: command.elapsedMs,
-          sessionHazards: [...carriedHazards, ...sim.events.hazards()],
+          ...sessionHazardOptions(sim),
         });
         post({
           type: 'plcResult',
@@ -532,7 +633,7 @@ function handle(command: SimCommand): void {
       try {
         const result = judgeAssemble(command.problem, JIPM_BOARD, command.session, {
           elapsedMs: command.elapsedMs,
-          sessionHazards: [...carriedHazards, ...sim.events.hazards()],
+          ...sessionHazardOptions(sim),
         });
         post({ type: 'judgeResult', result });
       } finally {
@@ -566,7 +667,7 @@ function handle(command: SimCommand): void {
        */
       const result = judgeInspectParts(command.problem, command.answers, {
         elapsedMs: command.elapsedMs,
-        sessionHazards: [...carriedHazards, ...sim.events.hazards()],
+        ...sessionHazardOptions(sim),
       });
       post({ type: 'inspectResult', result: { ok: true, value: result } });
       break;
@@ -586,7 +687,7 @@ function handle(command: SimCommand): void {
           command.reports,
           {
             elapsedMs: command.elapsedMs,
-            sessionHazards: [...carriedHazards, ...sim.events.hazards()],
+            ...sessionHazardOptions(sim),
           },
         );
         post({

@@ -1,3 +1,4 @@
+import { withBoardProfile } from '@ojt/board-model';
 import {
   SOCKET_ROLES,
   toNetlist,
@@ -132,6 +133,7 @@ export function buildSchematicSession(
   doc: SchematicDocument,
   options: BuildSchematicSessionOptions = {},
 ): ToSessionResult {
+  board = withBoardProfile(board, problem.board.profile);
   const useOverride = options.useProblemOverride ?? doc === problem.schematic;
   const override = useOverride ? toPhysicalOverride(problem.physicalOverride) : undefined;
   return toSession(doc, board, {
@@ -151,6 +153,7 @@ export function buildReferenceSession(
   problem: SchematicProblem,
   board: BoardDefinition,
 ): ReferenceResult {
+  board = withBoardProfile(board, problem.board.profile);
   if (problem.board.boardId !== board.id) {
     return {
       ok: false,

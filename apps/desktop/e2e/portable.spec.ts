@@ -9,6 +9,7 @@ import { toTerminalId } from '@ojt/circuit-sim';
 import { expect, test, type Page } from '@playwright/test';
 import { SHOT_DIR } from './app.js';
 import { launchPortable, type PackagedApp } from './packaged-app.js';
+import { verifyTutorials } from './tutorial-checks.js';
 import {
   boardPoint,
   SELF_HOLD_WIRES,
@@ -26,7 +27,7 @@ function resourcesDirectory(page: Page): string {
 }
 
 /** distの後に e2e:packaged で実行。ユーザーの設定やインストール先を使わない。 */
-test('EXE1個から初回ガイド・216課題・回路の合格・ヘルプ・PLCと終了時の後始末を確認する', async () => {
+test('EXE1個から初回ガイド・324課題・回路の合格・ヘルプ・PLCと終了時の後始末を確認する', async () => {
   const app = await launchPortable();
   let extracted: string | undefined;
   try {
@@ -49,7 +50,20 @@ test('EXE1個から初回ガイド・216課題・回路の合格・ヘルプ・P
         return out;
       }, {});
     });
-    expect(counts).toEqual({ assemble: 60, 'inspect-parts': 36, 'inspect-repair': 60, plc: 60 });
+    expect(counts).toEqual({ assemble: 90, 'inspect-parts': 54, 'inspect-repair': 90, plc: 90 });
+    await verifyTutorials(page);
+    // 配布物のasar内からも課題検証Workerを起動できることを確かめる。
+    await page.getByTestId('open-settings').click();
+    await page.getByTestId('problem-authoring-summary').click();
+    const authoring = page.getByTestId('problem-authoring');
+    await authoring.getByLabel('複製元の課題').selectOption('b-087');
+    await authoring.getByRole('button', { name: '課題を複製', exact: true }).click();
+    await authoring
+      .getByRole('button', { name: '課題を検証（模範の自己判定）', exact: true })
+      .click();
+    await expect(authoring.getByRole('status')).toContainText('検証合格', { timeout: 65_000 });
+    await page.screenshot({ path: join(SHOT_DIR, 'portable-authoring-validated.png') });
+    await page.getByRole('button', { name: 'ホームへ戻る', exact: true }).click();
     await page.getByTestId('mode-assemble').click();
     await page.getByTestId('open-b-001').click();
     await expect(page.locator('[data-testid="viewport"] canvas')).toBeVisible({ timeout: 30_000 });

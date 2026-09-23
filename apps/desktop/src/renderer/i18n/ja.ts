@@ -185,8 +185,7 @@ export const JA = {
      */
     userContentHelp:
       '利用者課題フォルダに置いた課題ファイルは同梱課題と合流し、同じIDなら利用者側が優先されます。' +
-      'インストール先の resources/content/assemble/ が同梱課題の実体なので、' +
-      'そこからコピーして書き換えると雛形として使えます（消してもアプリ内蔵の課題で起動します）。',
+      '下の「課題の導入・作成」で内蔵課題を複製・編集・検証して課題ファイルとして保存できます。',
     /** 商標注記。§15 */
     trademarkNotice:
       'MELSEC / MELSEC iQ-F / MELSOFT / GX Works3 は三菱電機株式会社、SYSMAC / CP1E / CP1L / ' +
@@ -286,8 +285,8 @@ export const JA = {
     restoreYes: '復元する',
     restoreNo: '復元しない',
     /** 別の課題の作業ファイルを読むと、いまの作業が失われることの確認。§12.3 */
-    discardTitle: 'いまの作業を破棄して別の課題の作業ファイルを開きますか？',
-    discardYes: '続行',
+    discardTitle: 'いまの未保存の作業を破棄して、作業ファイルを開きますか？',
+    discardYes: '保存せず開く',
     discardNo: '取消',
     /** 作業ファイルの盤の状態が読めなかった（要素まで検査して断った）。§13 #8 */
     badSession: '作業ファイルの盤の状態が読めません',
@@ -316,7 +315,7 @@ export const JA = {
     cutoffNotice: '打切り時間を過ぎました。練習は続けられます。',
     wires: '電線',
     noTerminal: '端子未選択',
-    firstTerminal: '1本目',
+    firstTerminal: '始点',
     /** UI-15: `select` という別名定義があったが同じ文字列なので統合した。 */
     selection: '選択',
     /** 模範回路（仕様チャート・判定）を作れなかった。§7.7 / §8.3 */
@@ -483,7 +482,7 @@ export const JA = {
      * このアプリの合否には影響しない（§17.2 #3）。
      */
     mistakes: '危険操作',
-    mistakesSuffix: '（減点）',
+    mistakesSuffix: '（記録）',
     /** モードC1の正解数（§9.1 判定の「n/m 正解」）。 */
     correct: '正解',
     /** 訓練者の解答。§9.1 */
@@ -1004,9 +1003,11 @@ export const JA = {
       'PLCの電源は壁コンセント（AC100V）から取ります。試験用盤のAC100V・DC24VをPLCの電源に使うことはできません。',
     /** H-5: 壁コンセントへ未配線。決定表#15c */
     powerUnwired: 'PLCの電源が未配線です。壁コンセントの L と N へ2本配線してください。',
+    powerShorted: 'PLCの電源端子同士が短絡しています。LとNを別々の接続点へ配線し直してください。',
+    powerWrongSource: 'PLCの電源接続先が違います。Lは壁コンセントのL、NはNへ接続してください。',
     /** H-5: どちらの場合も添える説明。 */
     powerSimNote:
-      '本アプリのPLCは PLC.L / PLC.N が未配線でも動作します（AC電源は電気的に解かないため）。ラダーどおりに動いていても、このチェックは不合格になります。',
+      'PLCの電源端子が壁コンセントのL・Nに正しく接続され、盤が通電しているときだけスキャンが進みます。電源端子同士の短絡、盤のP・Nからの給電、未配線では運転できません。',
     /**
      * 不合格理由の1行に添える短い助言（`plc-power-help` カードの詳しい説明とは別物にする。
      * Batch 4+5 レビュー M11: `explainPowerCheck()[0]` の使い回しをやめる）。
@@ -1098,12 +1099,10 @@ export const JA = {
      */
     toList: '課題一覧へ戻る',
     /** 2回目のリセットで盤を作り直したときの知らせ。§13 #5 */
-    boardReset: '作業を初期化して再開しました',
     /**
      * 点検系（C1/C2）で2回目のリセットまで来たときの知らせ。§13 #5
      * 故障入りの盤・点検する部品は作り直せないので、課題を捨てて一覧へ戻ったことを伝える。
      */
-    boardAbandoned: '盤を作り直せないため課題一覧へ戻りました',
     webglLost: '3D表示が中断しました。再表示して作業を続けられます。',
     workerError: 'シミュレーションでエラーが発生しました',
     /** preload が読み込まれていない（`window.ojt` が無い）。§4.3 */
@@ -1115,7 +1114,6 @@ export const JA = {
      * 30秒ごとの自動保存が連続2回失敗したときの知らせ（1度だけ出す）。§12.3
      * 毎回出すと訓練の邪魔になるため、2回目で気づけるだけの頻度にする（App.tsx）。
      */
-    autosaveFailed: '自動保存に失敗しました。作業ファイルを手動で保存することをおすすめします',
     // --- /Phase 7 Task 9: DS-4 ---
   },
   // --- UX pass 2026-09-19 ---
@@ -1358,10 +1356,9 @@ export const JA = {
     title: '端子リスト（キーボード配線）',
     hint: 'Tab で端子を移動し、Enter で選びます。2つ選ぶと電線が1本つながります。',
     search: '端子を探す',
-    pending: '1本目',
+    pending: '始点',
     cancel: '取り消す',
-    // 上限は §6.6（1端子2本まで）。訓練者が読む文字列に節番号は出さない（M4: Plan 5 C/D レビュー）
-    full: 'この端子には既に2本つながっています',
+    full: 'この端子には既に{count}本つながっています',
   },
   // --- /Plan 5 Task 10 ---
   // --- Plan 6 Task 8 ---
@@ -1378,7 +1375,7 @@ export const JA = {
     searchLabel: '言葉で探す',
     searchPlaceholder: '例: 自己保持',
     searchEmpty: '見つかりませんでした。別の言葉で探してください。',
-    openPdf: '説明書（PDF）を開く',
+    openPdf: '説明書全体をPDFで開く',
     // IM-8: 正本は `MSG.manual.missing`（main が返す文言と1語1句そろえる。§9 決定表）
     pdfMissing: MSG.manual.missing,
     shortcutHint: 'F1 でいつでも開けます',
@@ -1388,7 +1385,7 @@ export const JA = {
     // UX-21: 節の末尾の導線（ヘルプ引き出し 設計 §6.4）
     prevSection: '← 前の節',
     nextSection: '次の節 →',
-    viewSectionPdf: 'この節をPDFで見る',
+    viewSectionPdf: '説明書全体をPDFで開く',
   },
   // --- /Plan 6 Task 8 ---
 
@@ -1398,7 +1395,7 @@ export const JA = {
    * 「押しても何も起きない」を無くすための文なので、**理由と次の一手**を必ず書く。
    */
   refuse: {
-    terminalFull: 'この端子はすでに2本つながっています。別の端子へつないでください',
+    terminalFull: 'この端子は接続できる本数の上限に達しています。別の端子へつないでください',
     notWirable: 'この端子には配線できません（本体側は既設配線済みです）',
     lockedWire: 'チェック用回路の既設配線（青）は変更できません',
     socketOccupied: 'このソケットにはすでに部品が載っています。先に取り外してください',
@@ -1418,7 +1415,7 @@ export const JA = {
     switchOff: '電源スイッチを切ります',
     socketEmpty: '空きソケットです。部品をここへ運ぶか、押して部品を選びます',
     socketMounted: '押すと部品カードが開きます。Alt＋ドラッグで外へ運ぶと取り外せます',
-    wireBegin: '押すと配線の1本目になります',
+    wireBegin: '押すと配線の始点になります',
     wireFinish: 'ここで放すと電線が1本つながります',
     pushButton: '押している間だけ接点が動きます',
     /** 運搬中（パレットの部品を運んでいる）。 */
@@ -1680,7 +1677,7 @@ export function elapsedSummaryText(
  * `occurrences` が2以上のときだけ「（n 回）」を添える（初回の1件だけなら今まで通りの文言）。
  */
 export function droppedTicksLog(ticks: number, occurrences: number = 1): string {
-  const base = `ウィンドウが隠れていた間の ${ticks} tick を省略しました`;
+  const base = `処理の遅れにより ${ticks} tick を省略しました`;
   return occurrences <= 1 ? base : `${base}（${occurrences} 回）`;
 }
 
@@ -1726,6 +1723,10 @@ export function schematicOpenCountText(count: number): string {
  */
 export function terminalNoMatchText(query: string): string {
   return `「${query}」に一致する端子がありません（盤の印字「S1」でも役割名「CR1」でも探せます）`;
+}
+
+export function terminalFullText(count: number): string {
+  return JA.terminalList.full.replace('{count}', String(count));
 }
 
 /**

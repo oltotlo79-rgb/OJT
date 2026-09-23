@@ -1,4 +1,10 @@
 import {
+  WORKSHOP_ASSEMBLE,
+  WORKSHOP_INSPECT_PARTS,
+  WORKSHOP_INSPECT_REPAIR,
+  WORKSHOP_PLC,
+} from './workshop.js';
+import {
   EXTRA_ASSEMBLE,
   EXTRA_INSPECT_PARTS,
   EXTRA_INSPECT_REPAIR,
@@ -123,6 +129,7 @@ const BUILTIN_ASSEMBLE_JSON: readonly unknown[] = [
   conditionalHold,
   twoTimer,
   ...EXTRA_ASSEMBLE,
+  ...WORKSHOP_ASSEMBLE,
 ];
 
 /** 内蔵のモードC1課題のJSON。 */
@@ -140,6 +147,7 @@ const BUILTIN_INSPECT_PARTS_JSON: readonly unknown[] = [
   relayTimerMixedCheck,
   allTruthsCheck,
   ...EXTRA_INSPECT_PARTS,
+  ...WORKSHOP_INSPECT_PARTS,
 ];
 
 /** 内蔵のモードC2課題のJSON。 */
@@ -165,6 +173,7 @@ const BUILTIN_INSPECT_REPAIR_JSON: readonly unknown[] = [
   c2TwoTimer,
   c2Random,
   ...EXTRA_INSPECT_REPAIR,
+  ...WORKSHOP_INSPECT_REPAIR,
 ];
 
 /** 内蔵のモードD課題のJSON。 */
@@ -190,6 +199,7 @@ const BUILTIN_PLC_JSON: readonly unknown[] = [
   d019,
   d020,
   ...EXTRA_PLC,
+  ...WORKSHOP_PLC,
 ];
 
 /** 内蔵課題の検証に失敗したときに投げる。 */

@@ -26,20 +26,25 @@ export function isBoardFedDetail(detail: string): boolean {
 /**
  * `plcPowerIndependent` が落ちた理由を訓練者の言葉にする。3A H-5 / 決定表#15c。
  *
- * 落ち方は2種類ある: ①PLCの電源を**盤から**取っている（§10.1 の違反）②壁コンセントへ
- * **配線していない**（手順の欠落）。どちらなのかは `details` に出てくる**端子IDの形**で見分ける。
- * 文言そのもので判定すると `@ojt/content` 側の言い回しが変わった瞬間に静かに壊れる。
- *
- * さらに、どちらの場合も「本アプリのPLCは `PLC.L` / `PLC.N` が未配線でも動く」ことを必ず添える。
- * 添えないと「回路は正しく動いているのにチェックだけ赤い」と見え、理由が分からないまま終わる。
+ * 構造化した原因コードで盤電源・未配線・短絡・接続先違いを区別する。
+ * 旧形式の結果だけは `details` に出てくる端子IDの形で見分ける。
+ * 正しい電源接続がライブ実行にも必要なことを添える。
  */
 export function explainPowerCheck(check: StaticCheckResult): string[] {
   if (check.id !== 'plcPowerIndependent' || check.ok) return [];
   const lines: string[] = [];
-  if (check.details.some((detail) => isBoardFedDetail(detail))) lines.push(JA.plc.powerFromBoard);
-  if (check.details.some((detail) => !isBoardFedDetail(detail))) lines.push(JA.plc.powerUnwired);
+  if (check.issues !== undefined && check.issues.length > 0) {
+    const codes = new Set(check.issues.map((issue) => issue.code));
+    if (codes.has('plc-power-board-power')) lines.push(JA.plc.powerFromBoard);
+    if (codes.has('plc-power-missing')) lines.push(JA.plc.powerUnwired);
+    if (codes.has('plc-power-same-net')) lines.push(JA.plc.powerShorted);
+    if (codes.has('plc-power-wrong-source')) lines.push(JA.plc.powerWrongSource);
+  } else {
+    if (check.details.some((detail) => isBoardFedDetail(detail))) lines.push(JA.plc.powerFromBoard);
+    if (check.details.some((detail) => !isBoardFedDetail(detail))) lines.push(JA.plc.powerUnwired);
+  }
   // 指摘の中身が読めなくても、少なくとも1行は出す
-  if (lines.length === 0) lines.push(JA.plc.powerUnwired);
+  if (lines.length === 0) lines.push(JA.plc.advicePlcPowerIndependent);
   lines.push(JA.plc.powerSimNote);
   return lines;
 }

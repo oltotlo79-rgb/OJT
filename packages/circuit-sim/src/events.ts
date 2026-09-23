@@ -58,6 +58,8 @@ export type EventListener = (event: SimEvent) => void;
 export class EventBus {
   private readonly listeners: EventListener[] = [];
   private readonly recorded: SimEvent[] = [];
+  private readonly totals = new Map<HazardKind, number>();
+  private readonly representatives = new Map<HazardKind, HazardEvent>();
 
   /** 購読する。戻り値を呼ぶと解除される。 */
   on(listener: EventListener): () => void {
@@ -71,6 +73,10 @@ export class EventBus {
   /** 発行する。 */
   emit(event: SimEvent): void {
     this.recorded.push(event);
+    if (event.type === 'hazard') {
+      this.totals.set(event.kind, (this.totals.get(event.kind) ?? 0) + 1);
+      this.representatives.set(event.kind, event);
+    }
     for (const listener of [...this.listeners]) listener(event);
   }
 
@@ -96,11 +102,27 @@ export class EventBus {
 
   /** 指定種別の危険操作の発生回数。結果画面の「危険操作回数」に使う。§7.4 */
   countOf(kind: HazardKind): number {
-    return this.hazards(kind).length;
+    return this.totals.get(kind) ?? 0;
+  }
+
+  /** ライブ配信用。累積件数と種別ごとの代表例は保持する。 */
+  drain(): SimEvent[] {
+    return this.recorded.splice(0);
+  }
+  hazardTotals(): Record<HazardKind, number> {
+    return Object.fromEntries(HAZARD_KINDS.map((kind) => [kind, this.countOf(kind)])) as Record<
+      HazardKind,
+      number
+    >;
+  }
+  representativeHazards(): HazardEvent[] {
+    return [...this.representatives.values()];
   }
 
   /** 記録を消す。 */
   clear(): void {
     this.recorded.length = 0;
+    this.totals.clear();
+    this.representatives.clear();
   }
 }

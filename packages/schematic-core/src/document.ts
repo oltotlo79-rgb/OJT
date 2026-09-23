@@ -67,14 +67,14 @@ export interface DocumentError {
 }
 
 export const DEVICE_PATTERNS: Readonly<Record<CellKind, RegExp>> = {
-  'pb-a': /^PB[1-4]$/,
-  'pb-b': /^PB[1-4]$/,
+  'pb-a': /^PB[1-8]$/,
+  'pb-b': /^PB[1-8]$/,
   'cr-a': /^CR[1-4]$/,
   'cr-b': /^CR[1-4]$/,
   't-a': /^T[12]$/,
   't-b': /^T[12]$/,
   coil: /^(CR[1-4]|T[12])$/,
-  lamp: /^PL[1-4]$/,
+  lamp: /^PL[1-8]$/,
   buzzer: /^BZ$/,
 };
 

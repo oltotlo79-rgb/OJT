@@ -1,8 +1,19 @@
 // helpers/worker-bridge.js を他の import より前に置く（vi.mock のファクトリから参照するため。
 // 下の store.js / work-file.js が worker-bridge.js を読み込むより先に評価が終わっている必要がある）。
 import { workerBridgeMockModule, type WorkerBridgeMockState } from './helpers/worker-bridge.js';
-import { BUILTIN_PLC_PROBLEMS, isPlcProblem } from '@ojt/content';
-import { COIL_COL, IR_COLS, no, out, X, Y } from '@ojt/ladder-core';
+import { BUILTIN_PLC_PROBLEMS, isPlcProblem, parseProblem } from '@ojt/content';
+import {
+  COIL_COL,
+  IR_COLS,
+  no,
+  out,
+  hline,
+  X,
+  Y,
+  program,
+  network,
+  endNetwork,
+} from '@ojt/ladder-core';
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { useStore } from '../src/renderer/app/store.js';
 import { applyLadderCell } from '../src/renderer/session/ladder.js';
@@ -418,10 +429,23 @@ describe('復元時の機種フォールバック（§7.6 / 決定表#9・#24 / 
         inputs: [{ x: 0, pb: 'PB1' as const }],
         outputs: [{ y: 12, cr: 'CR1' as const, pl: 'PL1' as const }],
       },
+      operations: [
+        { t: 1000, target: 'PB1' as const, action: 'press' as const },
+        { t: 2000, target: 'PB1' as const, action: 'release' as const },
+      ],
+      referenceLadder: program(
+        network('n1', [
+          [no(X(0)), ...Array.from({ length: COIL_COL - 1 }, () => hline()), out(Y(12))],
+        ]),
+        endNetwork(),
+      ),
+      judge: { ...problem.judge, compareSignals: ['PL1'] },
     };
     useStore
       .getState()
       .applyLadderSettings({ gridCols: 0, monitorColor: '', vendor: 'mitsubishi' });
+    const validated = parseProblem(unhostable);
+    expect(validated.ok, JSON.stringify(validated)).toBe(true);
     useStore.getState().openProblem(unhostable);
     const file = toWorkFile(unhostable.id, useStore.getState().session!, 0, 0);
     const savedWireCount = useStore.getState().session!.wires.length;

@@ -1,3 +1,4 @@
+import { getDialect } from '@ojt/plc-dialects';
 import { plcUnitFor } from '@ojt/board-model';
 import { TICK_MS } from '@ojt/circuit-sim';
 import { compile, deviceLabel } from '@ojt/ladder-core';
@@ -146,7 +147,7 @@ export const PlcIoSchema = z
   .strictObject({
     mode: PlcIoModeSchema.describe('`fixed` は割付を課題が固定し静的チェックで検証します。'),
     wiring: PlcWiringSchema.default('sink').describe('入力コモンの結線（シンク／ソース）。'),
-    inputs: z.array(PlcInputMapSchema).min(1).max(3).optional(),
+    inputs: z.array(PlcInputMapSchema).min(1).max(4).optional(),
     outputs: z.array(PlcOutputMapSchema).min(1).max(4).optional(),
   })
   .superRefine((io, ctx) => {
@@ -238,6 +239,9 @@ export const PlcProblemSchema = z
         path: ['durationMs'],
         message: `判定区間長（${problem.durationMs}ms）は最後の操作（${last}ms）より少なくとも1tick（${TICK_MS}ms）長くする必要があります`,
       });
+    }
+    for (const issue of getDialect(problem.plc.vendor).validate(problem.referenceLadder)) {
+      ctx.addIssue({ code: 'custom', path: ['referenceLadder'], message: issue.message });
     }
     const compiled = compile(problem.referenceLadder);
     if (!compiled.ok) {

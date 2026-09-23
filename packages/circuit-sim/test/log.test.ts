@@ -7,6 +7,37 @@ function values(pairs: Array<[string, SignalValue]>): Map<string, SignalValue> {
 }
 
 describe('log', () => {
+  it('ライブ配信で10万回変化しても送信済み詳細を保持せず、変化前の現在値は失わない', () => {
+    const log = new SignalLog();
+    let received = 0;
+    for (let i = 0; i < 100_000; i++) {
+      log.record(
+        i * 10,
+        values([
+          ['PL1', i % 2 === 0],
+          ['PL2', i % 3 === 0],
+        ]),
+      );
+      if (i % 100 === 99) {
+        const delta = log.drain();
+        received += delta.length;
+        expect(delta.length).toBeLessThanOrEqual(200);
+        expect(log.entries()).toHaveLength(0);
+        expect(log.transitions('PL1')).toHaveLength(0);
+        expect(
+          log.record(
+            i * 10,
+            values([
+              ['PL1', i % 2 === 0],
+              ['PL2', i % 3 === 0],
+            ]),
+          ),
+        ).toEqual([]);
+      }
+    }
+    expect(received).toBeGreaterThan(100_000);
+    expect(log.signals().sort()).toEqual(['PL1', 'PL2']);
+  });
   it('変化点だけを記録する（ランレングス、§5.7）', () => {
     const log = new SignalLog();
     expect(log.record(0, values([['PL1', false]]))).toEqual(['PL1']);

@@ -1,3 +1,4 @@
+import { TutorialLibrary } from '../help/TutorialVideo.js';
 import { useEffect, useState, type JSX } from 'react';
 import { JA, sessionModeLabel } from '../i18n/ja.js';
 import { useStore, type ListMode } from '../app/store.js';
@@ -220,6 +221,7 @@ export function Home(): JSX.Element {
         どこにも無かった）、右に「続きから」（指摘 UX-05: 説明書は「すぐに開き直せます」と
         書いているのに、最近の課題は文字で出ているだけで押せなかった）。
       */}
+        <TutorialLibrary />
         <div className={styles.homeBottom}>
           <section className={styles.homeCard} data-testid="continue-card">
             <h3 className={styles.homeCardTitle}>{JA.home.continueTitle}</h3>

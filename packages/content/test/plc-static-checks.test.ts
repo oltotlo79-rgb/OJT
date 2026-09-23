@@ -226,6 +226,9 @@ describe('plcPowerIndependent（§10.1 / §7.4）', () => {
     const result = checkPlcPowerIndependent(checkInput(circuit, context(circuit)));
     expect(result.ok).toBe(false);
     expect(result.details.join('')).toContain('盤');
+    expect(result.details.join('')).toContain('P.1');
+    expect(result.issues).toHaveLength(1);
+    expect(result.issues?.[0]?.code).toBe('plc-power-board-power');
   });
 
   it('fails when the PLC power is not wired at all', () => {

@@ -1,3 +1,7 @@
+import { parseWorkFile } from '../shared/work-file-codec.js';
+export { parseWorkFile } from '../shared/work-file-codec.js';
+import { MAX_NETWORKS } from '@ojt/ladder-core';
+import { MAX_RESTORED_WIRES } from '../shared/work-file-schema.js';
 import { readFileSync, rmSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import {
@@ -8,8 +12,6 @@ import {
   type SaveDialogOptions,
 } from 'electron';
 import {
-  WORK_FILE_FORMAT_VERSION,
-  type WorkFile,
   type WorkFileLoadRequest,
   type WorkFileLoadResult,
   type WorkFileSaveRequest,
@@ -18,6 +20,7 @@ import {
 import { errnoText, MSG, readFailedText, saveFailedText } from '../shared/messages.js';
 import { safeFileName } from '../shared/safe-file-name.js';
 import { writeFileAtomic } from './fs-atomic.js';
+import { rescueOversizedWorkFile } from './work-file-rescue.js';
 
 /**
  * 作業ファイルの保存／読込と一時保存。設計仕様 §12.3 / §13 #7 / §13 #8。
@@ -36,7 +39,7 @@ import { writeFileAtomic } from './fs-atomic.js';
 export const MAX_WORK_FILE_BYTES = 5 * 1024 * 1024;
 
 /** 読み込める電線の本数の上限（renderer の `toSession()` と同じ値）。§13 #8 */
-export const MAX_WORK_FILE_WIRES = 200;
+export const MAX_WORK_FILE_WIRES = MAX_RESTORED_WIRES;
 
 /**
  * C1/C2 の並び（解答・指摘・故障・交換した部品）に載せられる要素数の上限。§13 #8
@@ -60,7 +63,7 @@ export const MAX_SCHEMATIC_OPEN_COUNT = 10_000;
 export const MAX_PROBE_TERMINAL_ID_LENGTH = 32;
 
 /** 作業ファイルに載せられるネットワーク数の上限（`LadderProgramSchema` と同じ値）。§10.3 */
-export const MAX_WORK_FILE_NETWORKS = 64;
+export const MAX_WORK_FILE_NETWORKS = MAX_NETWORKS;
 
 /** 一時保存のパス。§12.3 */
 export function autosavePath(): string {
@@ -76,140 +79,6 @@ export function autosavePath(): string {
  * その項目だけ落とす（`tester` オブジェクト自体は残す。壊れているのは探針の位置だけなので、
  * つまみ・レンジ・0Ω調整まで道連れにして読込を断る理由はない）。
  */
-function sanitizedTester(tester: Record<string, unknown>): Record<string, unknown> {
-  const out: Record<string, unknown> = { ...tester };
-  for (const key of ['black', 'red'] as const) {
-    const value = tester[key];
-    const ok =
-      typeof value === 'string' && value.length > 0 && value.length <= MAX_PROBE_TERMINAL_ID_LENGTH;
-    if (!ok) delete out[key];
-  }
-  return out;
-}
-
-/** 作業ファイルの検証。未知の `formatVersion` は読み込まない。§13 #8 */
-export function parseWorkFile(
-  raw: unknown,
-): { ok: true; file: WorkFile } | { ok: false; message: string } {
-  if (typeof raw !== 'object' || raw === null) {
-    return { ok: false, message: MSG.workFile.badShape };
-  }
-  const source = raw as Record<string, unknown>;
-  const version = source['formatVersion'];
-  // 正の整数でなければ「形式バージョンが無い」と同じ扱いにする（0・負数・NaN・小数を含む）
-  if (typeof version !== 'number' || !Number.isInteger(version) || version < 1) {
-    return { ok: false, message: MSG.workFile.missingVersion };
-  }
-  if (version > WORK_FILE_FORMAT_VERSION) {
-    return { ok: false, message: MSG.workFile.tooNew };
-  }
-  if (
-    typeof source['problemId'] !== 'string' ||
-    typeof source['session'] !== 'object' ||
-    source['session'] === null
-  ) {
-    return { ok: false, message: MSG.workFile.missingFields };
-  }
-  /*
-   * 本数の上限はここでも見る。中身の妥当性（端子が盤にあるか等）は renderer の `toSession()` が
-   * 盤の定義を見て確かめるが、「そもそも桁が違う」ものは盤に渡す前に main で断る。
-   */
-  const wires = (source['session'] as Record<string, unknown>)['wires'];
-  if (Array.isArray(wires) && wires.length > MAX_WORK_FILE_WIRES) {
-    return { ok: false, message: MSG.workFile.tooManyWires };
-  }
-  /*
-   * C1/C2 の項目（Plan 2B Task 17）は**任意**なので、あれば写し、無ければ付けない
-   * （`exactOptionalPropertyTypes` の下では `undefined` を代入できない）。
-   * main は盤も課題も知らないので、ここで見るのは「モードが知っている3つか」と
-   * 「並びの長さが桁違いでないか」だけにする。中身は renderer が課題と突き合わせて確かめる。
-   */
-  const optional: Partial<WorkFile> = {};
-  const mode = source['mode'];
-  if (mode !== undefined) {
-    if (
-      mode !== 'assemble' &&
-      mode !== 'inspect-parts' &&
-      mode !== 'inspect-repair' &&
-      mode !== 'plc'
-    ) {
-      // 知らないモードは「読める形に見えて中身が別物」なので、黙って落とさず断る（§13 #8）
-      return { ok: false, message: MSG.workFile.unknownMode };
-    }
-    optional.mode = mode;
-  }
-  if (typeof source['dialectId'] === 'string') optional.dialectId = source['dialectId'];
-  if (typeof source['converted'] === 'boolean') optional.converted = source['converted'];
-  /*
-   * ラダーは「オブジェクトで `networks` が配列、64本以下」だけ見る。中身（セルの語彙・行数）は
-   * IR を知っている renderer の `toLadderProgram()` が確かめる（`session` と同じ分担）。§13 #8
-   */
-  const ladder = source['ladder'];
-  if (ladder !== undefined) {
-    if (typeof ladder !== 'object' || ladder === null) {
-      return { ok: false, message: MSG.workFile.badLadder };
-    }
-    const networks = (ladder as Record<string, unknown>)['networks'];
-    if (!Array.isArray(networks)) return { ok: false, message: MSG.workFile.badLadder };
-    if (networks.length > MAX_WORK_FILE_NETWORKS) {
-      return { ok: false, message: MSG.workFile.tooManyNetworks };
-    }
-    optional.ladder = ladder;
-  }
-  /*
-   * モードBの回路図エディタの下書き（Plan 5 決定表#23）。main は回路図の文法を知らないので
-   * 「オブジェクトであること」だけを見て素通しする（`session` / `ladder` と同じ分担で、
-   * 段と要素の形は renderer の `toSchematicDoc()` が確かめる）。形が違えば**黙って落とす**
-   * ＝下書き無しで開く（読込そのものは断らない）。§11.4 / §13 #8
-   */
-  const schematic = source['schematic'];
-  if (typeof schematic === 'object' && schematic !== null && !Array.isArray(schematic)) {
-    optional.schematic = schematic;
-  }
-  if (typeof source['checkPartId'] === 'string') optional.checkPartId = source['checkPartId'];
-  if (typeof source['faultSeed'] === 'number') optional.faultSeed = source['faultSeed'];
-  /*
-   * 回路図を開いた回数（§8.4）。負数・NaN・小数・桁違いは「無かった」ことにして戻す
-   * （読込そのものは断らない。0以上の整数だけを、上限で切り詰めて受け入れる）。
-   */
-  const schematicOpenCount = source['schematicOpenCount'];
-  if (
-    typeof schematicOpenCount === 'number' &&
-    Number.isInteger(schematicOpenCount) &&
-    schematicOpenCount >= 0
-  ) {
-    optional.schematicOpenCount = Math.min(schematicOpenCount, MAX_SCHEMATIC_OPEN_COUNT);
-  }
-  if (
-    typeof source['tester'] === 'object' &&
-    source['tester'] !== null &&
-    !Array.isArray(source['tester'])
-  ) {
-    optional.tester = sanitizedTester(source['tester'] as Record<string, unknown>);
-  }
-  for (const key of ['answers', 'reports', 'resolvedFaults', 'replacedPartIds'] as const) {
-    const value = source[key];
-    if (value === undefined) continue;
-    if (!Array.isArray(value)) continue;
-    if (value.length > MAX_WORK_FILE_ENTRIES) {
-      return { ok: false, message: MSG.workFile.tooManyEntries };
-    }
-    optional[key] = value;
-  }
-  return {
-    ok: true,
-    file: {
-      formatVersion: version,
-      problemId: source['problemId'],
-      session: source['session'],
-      elapsedMs: typeof source['elapsedMs'] === 'number' ? source['elapsedMs'] : 0,
-      hazardCount: typeof source['hazardCount'] === 'number' ? source['hazardCount'] : 0,
-      savedAt: typeof source['savedAt'] === 'string' ? source['savedAt'] : '',
-      ...optional,
-    },
-  };
-}
-
 /** 一時保存を消す（「復元しない」を選んだとき）。§12.3 */
 export function clearAutosave(): void {
   try {
@@ -257,7 +126,9 @@ export async function saveWorkFile(
   if (typeof request.file?.problemId !== 'string') {
     return { ok: false, canceled: false, message: MSG.workFile.badShape };
   }
-  const content = `${JSON.stringify(request.file, null, 2)}\n`;
+  const parsed = parseWorkFile(request.file);
+  if (!parsed.ok) return { ok: false, canceled: false, message: parsed.message };
+  const content = `${JSON.stringify(parsed.file, null, 2)}\n`;
   if (Buffer.byteLength(content, 'utf8') > MAX_WORK_FILE_BYTES) {
     return { ok: false, canceled: false, message: MSG.workFile.tooLarge };
   }
@@ -316,12 +187,20 @@ export async function loadWorkFile(
     return { ok: false, canceled: false, message: readFailedText(errnoText(cause)) };
   }
   let raw: unknown;
+  let originalText: string;
   try {
-    raw = JSON.parse(readFileSync(target, 'utf8'));
+    originalText = readFileSync(target, 'utf8');
+    raw = JSON.parse(originalText.replace(/^\uFEFF/u, ''));
   } catch (cause) {
     return { ok: false, canceled: false, message: readFailedText(errnoText(cause)) };
   }
   const parsed = parseWorkFile(raw);
-  if (!parsed.ok) return { ok: false, canceled: false, message: parsed.message };
+  if (!parsed.ok) {
+    const message =
+      parsed.message === MSG.workFile.tooManyNetworks
+        ? await rescueOversizedWorkFile(window, raw, originalText)
+        : parsed.message;
+    return { ok: false, canceled: false, message };
+  }
   return { ok: true, file: parsed.file, path: target };
 }

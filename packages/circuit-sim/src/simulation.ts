@@ -1,3 +1,4 @@
+import { checkPlcSupply, type PlcPowerStatus } from './plc-power.js';
 import { applyPowerAction, isPowerOn, setButtonPressed, RESET_SEQUENCE } from './actuators.js';
 import type { PowerDevice, PowerSwitches } from './actuators.js';
 import { isContactClosed, loadOhms, TICK_MS } from './elements.js';
@@ -391,10 +392,15 @@ export class Simulation {
    * 書いた値は次の `step()` の `solve()` から効く（Y接点は `driver: 'external'` なので
    * `applyContacts()` は触らない）。
    */
+  plcPowerStatus(partId: string): PlcPowerStatus {
+    return checkPlcSupply(buildNets(this.netlist), this.plcOf(partId).meta.acPower);
+  }
+
   setPlcOutputs(partId: string, values: readonly boolean[]): void {
     const { meta, runtime } = this.plcOf(partId);
+    const powered = this.plcPowerStatus(partId).ready;
     meta.outputs.forEach((channel, index) => {
-      const on = values[index] ?? false;
+      const on = powered && (values[index] ?? false);
       runtime.outputs[index] = on;
       const el = findElement(this.netlist, channel.elementId);
       if (el !== undefined && el.kind === 'contact') el.energized = on;

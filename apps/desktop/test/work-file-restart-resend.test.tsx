@@ -55,11 +55,16 @@ function testerActionsOf(sent: Array<Record<string, unknown>>): unknown[] {
 }
 
 describe('画面マウント時のテスター再送（Plan 2B レビュー B2）', () => {
-  it('モードBはテスターを触っていなければ何も送り直さない', () => {
+  it('モードBは未操作のテスターも共通の初期設定でWorkerと一致させる', () => {
     if (MODE_B === undefined) return;
     useStore.getState().openProblem(MODE_B);
     render(<Session />);
-    expect(testerActionsOf(mocks.sent)).toEqual([]);
+    expect(testerActionsOf(mocks.sent)).toEqual([
+      'set-kind',
+      'set-mode',
+      'set-volt-range',
+      'set-ohm-range',
+    ]);
   });
 
   it('モードBもつまみOFFで置いたプローブをWorker再起動後に戻す', () => {

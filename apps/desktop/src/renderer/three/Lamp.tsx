@@ -2,7 +2,7 @@ import type { LampDefinition } from '@ojt/board-model';
 import type { LampLevel } from '@ojt/circuit-sim';
 import type { JSX } from 'react';
 import { CylinderGeometry, SphereGeometry } from 'three';
-import { LAMP_COLORS, LAMP_EMISSIVE } from '../session/colors.js';
+import { FACE_COLORS, LAMP_EMISSIVE } from '../session/colors.js';
 import { sharedMaterial, useLampMaterial } from './materials.js';
 import { toScene } from './coords.js';
 
@@ -31,7 +31,7 @@ export function Lamp({
   level: LampLevel;
 }): JSX.Element {
   const pos = toScene({ ...definition.pos, z: 0 });
-  const color = LAMP_COLORS[definition.id] ?? '#CCCCCC';
+  const color = FACE_COLORS[definition.color];
   const material = useLampMaterial(color, LAMP_EMISSIVE[level] ?? 0);
   return (
     <group position={pos} name={`pl-${definition.id}`}>

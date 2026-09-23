@@ -217,7 +217,7 @@ test.describe.serial('3D盤の直接操作（利用者要望9）', () => {
       );
     }
     await page.waitForTimeout(400);
-    await expect(page.getByTestId('status-overlay')).toContainText('1本目');
+    await expect(page.getByTestId('status-overlay')).toContainText('始点: P.1');
     await shot(app, '03-wire-preview');
     for (let step = 6; step <= 8; step += 1) {
       await page.mouse.move(
@@ -252,7 +252,7 @@ test.describe.serial('3D盤の直接操作（利用者要望9）', () => {
       await page.mouse.move(from.x, from.y);
       await page.mouse.down();
       await page.mouse.move(from.x + 70, from.y + 35, { steps: 5 });
-      await expect(page.getByTestId('status-overlay')).toContainText('1本目');
+      await expect(page.getByTestId('status-overlay')).toContainText('始点: P.1');
       await page.evaluate((kind) => {
         window.dispatchEvent(kind === 'pointercancel' ? new PointerEvent(kind) : new Event(kind));
       }, event);

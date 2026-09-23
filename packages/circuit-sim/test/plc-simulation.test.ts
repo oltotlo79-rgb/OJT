@@ -8,8 +8,8 @@ import {
   injectFault,
   type Simulation,
 } from '../src/index.js';
-import { bench, powerOn, w } from './helpers/circuits.js';
-import { tinySpec } from './helpers/plc.js';
+import { powerOn, w } from './helpers/circuits.js';
+import { tinySpec, poweredPlcBench } from './helpers/plc.js';
 
 /**
  * 盤（DC24V・PB1・CR1・PL1）＋ PLC のシンク結線。§10.2
@@ -18,7 +18,7 @@ import { tinySpec } from './helpers/plc.js';
  * - 2段結線: `PS.+ → CR1.9`、`CR1.5 → PL1.+`、`PL1.- → PS.-`
  */
 function plcBench(): Simulation {
-  return bench(
+  return poweredPlcBench(
     [
       createPowerSupply('PS'),
       createPushButton('PB1'),
@@ -77,7 +77,7 @@ describe('PLC入力の読み取り', () => {
   });
 
   it('reads the same ON state with source wiring (§10.2 はどちらでもよい)', () => {
-    const sim = bench(
+    const sim = poweredPlcBench(
       [createPowerSupply('PS'), createPushButton('PB1'), createPlcUnit('PLC', tinySpec())],
       [w('w1', 'PS.-', 'PLC.SS'), w('w2', 'PLC.X0', 'PB1.a'), w('w3', 'PB1.c', 'PS.+')],
     );

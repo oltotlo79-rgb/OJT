@@ -47,6 +47,7 @@ export function checkWireColorRule(input: StaticCheckInput): StaticCheckResult {
 
 /** 1端子2本まで。§7.4 / §6.6 */
 export function checkTerminalLimit(input: StaticCheckInput): StaticCheckResult {
+  const limit = input.session.boardProfile?.rules.maxWiresPerTerminal ?? MAX_WIRES_PER_TERMINAL;
   const seen = new Set<TerminalId>();
   const details: string[] = [];
   for (const wire of input.session.wires) {
@@ -54,8 +55,8 @@ export function checkTerminalLimit(input: StaticCheckInput): StaticCheckResult {
       if (seen.has(terminal)) continue;
       seen.add(terminal);
       const count = wireCountAtTerminal(input.session, terminal);
-      if (count > MAX_WIRES_PER_TERMINAL) {
-        details.push(`${terminal}: ${count}本（上限は${MAX_WIRES_PER_TERMINAL}本）`);
+      if (count > limit) {
+        details.push(`${terminal}: ${count}本（上限は${limit}本）`);
       }
     }
   }
@@ -63,7 +64,7 @@ export function checkTerminalLimit(input: StaticCheckInput): StaticCheckResult {
     'terminalLimit',
     details,
     '1端子あたりの本数は規定内です',
-    '1端子に3本以上つながっている箇所があります',
+    `1端子に上限の${limit}本を超えてつながっている箇所があります`,
   );
 }
 
@@ -196,9 +197,111 @@ export function runStaticChecks(
   enabled: StaticChecksData,
 ): StaticCheckResult[] {
   const out: StaticCheckResult[] = [];
+  const checks: StaticChecksData = {
+    ...enabled,
+    ...input.session.boardProfile?.rules.staticChecks,
+  };
   for (const id of STATIC_CHECK_IDS) {
-    if (!enabled[id]) continue;
-    out.push(CHECKS[id](input));
+    if (!checks[id]) continue;
+    const checked = CHECKS[id](input);
+    if (!checked.ok && checked.issues === undefined) {
+      const terminals = checkTargets(id, input);
+      checked.issues = [
+        {
+          code: id,
+          terminals,
+          wireIds: input.session.wires
+            .filter((wire) => terminals.includes(wire.from) || terminals.includes(wire.to))
+            .map((wire) => wire.id),
+          expected:
+            id === 'terminalLimit'
+              ? `1端子${input.session.boardProfile?.rules.maxWiresPerTerminal ?? 2}本まで`
+              : expectedFor(id),
+          observed: checked.details.join(' / '),
+        },
+      ];
+    }
+    out.push(checked);
   }
   return out;
+}
+
+function expectedFor(id: StaticCheckId): string {
+  const expectations: Record<StaticCheckId, string> = {
+    wireColorRule: '課題に指定された線色',
+    terminalLimit: '1端子2本まで',
+    unusedParts: '使用する部品だけを装着',
+    forbiddenCircuit: 'リレーを介して安定した動作にする',
+    coilPolarity: 'コイル14番が＋、13番が−',
+    powerSequence: 'ONはブレーカ→スイッチ、OFFはスイッチ→ブレーカ',
+    twoStage: 'PLC出力→リレーコイル→接点→表示灯',
+    plcPowerIndependent: '独立したL・Nへの配線',
+    ioAssignment: '指定I/O端子・入力COM・出力COMへの接続',
+  };
+  return expectations[id];
+}
+
+/** 表示文を解析せず、検査で使った構造データから案内先を作る。 */
+function checkTargets(id: StaticCheckId, input: StaticCheckInput): string[] {
+  const wires = input.session.wires;
+  if (id === 'wireColorRule')
+    return [
+      ...new Set(
+        wires
+          .filter(
+            (wire) =>
+              !wire.locked &&
+              !input.preexistingWireIds?.has(wire.id) &&
+              !input.allowedColors.includes(wire.color),
+          )
+          .flatMap((wire) => [wire.from, wire.to]),
+      ),
+    ];
+  if (id === 'terminalLimit')
+    return [...new Set(wires.flatMap((wire) => [wire.from, wire.to]))].filter(
+      (terminal) =>
+        wireCountAtTerminal(input.session, terminal) >
+        (input.session.boardProfile?.rules.maxWiresPerTerminal ?? MAX_WIRES_PER_TERMINAL),
+    );
+  if (id === 'powerSequence') return ['CB.1', 'SW.1'];
+  if (id === 'coilPolarity')
+    return input.netlist.parts
+      .filter((part) =>
+        input.log
+          .transitions(`${part.id}.coilV`)
+          .some((entry) => typeof entry.value === 'number' && entry.value <= -PICKUP_VOLTS),
+      )
+      .flatMap((part) => [`${part.id}.13`, `${part.id}.14`]);
+  if (id === 'unusedParts')
+    return SOCKET_IDS.flatMap((socket) => {
+      const part = socketPartId(input.session.socketRoles, socket);
+      return input.session.mounted[socket] !== undefined &&
+        input.session.socketRoles[socket] !== 'CHK' &&
+        !wires.some((wire) => wire.from.startsWith(`${part}.`) || wire.to.startsWith(`${part}.`))
+        ? [`${part}.13`, `${part}.14`]
+        : [];
+    });
+  if (id === 'forbiddenCircuit')
+    return [...new Set(input.chatters.map((event) => visibleChatterSignal(event.signal)))].flatMap(
+      (part) => [`${part}.13`, `${part}.14`],
+    );
+  const plc = input.plc;
+  if (plc === undefined) return [];
+  return [
+    ...new Set([
+      ...plc.io.inputs.flatMap((input) => [
+        `PLC.${plc.unit.spec.inputs[input.x]?.name ?? ''}`,
+        `TB_PB.${input.pb.slice(2)}a`,
+      ]),
+      ...plc.unit.spec.inputCommons.map((name) => `PLC.${name}`),
+      ...plc.io.outputs.flatMap((output) => [
+        `PLC.${plc.unit.spec.outputs[output.y]?.name ?? ''}`,
+        `PLC.${plc.unit.spec.outputs[output.y]?.com ?? ''}`,
+        `${output.cr}.14`,
+        `${output.cr}.13`,
+        `${output.cr}.5`,
+        `TB_PL.${output.pl.slice(2)}+`,
+      ]),
+    ]),
+  ];
 }

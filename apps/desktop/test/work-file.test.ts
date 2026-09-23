@@ -39,7 +39,6 @@ const { toWorkFile, toSession, applyWorkFile, needsDiscardConfirm, MAX_RESTORED_
   await import('../src/renderer/session/work-file.js');
 const { useStore, sessionForProblem } = await import('../src/renderer/app/store.js');
 const { WORK_FILE_FORMAT_VERSION } = await import('../src/shared/ipc.js');
-const { JA } = await import('../src/renderer/i18n/ja.js');
 
 const PROBLEM = BUILTIN_PROBLEMS.find((p) => p.id === 'b-001');
 if (PROBLEM === undefined) throw new Error('b-001 が見つかりません');
@@ -330,7 +329,7 @@ describe('別の課題を読むときの確認（§12.3）', () => {
     expect(needsDiscardConfirm(file)).toBe(true);
     expect(await applyWorkFile(file)).toBe(false);
 
-    expect(useStore.getState().pendingWorkFile).toBe(file);
+    expect(useStore.getState().pendingWorkFile).toEqual(file);
     expect(useStore.getState().problem?.id).toBe('b-001');
     expect(apiState.readProblem).not.toHaveBeenCalled();
   });
@@ -346,11 +345,11 @@ describe('別の課題を読むときの確認（§12.3）', () => {
     expect(bridgeMock.sent).toHaveLength(1);
   });
 
-  it('同じ課題の続きなら確認しない', async () => {
+  it('同じ課題でも未保存の編集があれば確認する', async () => {
     workingOn('b-001');
     apiState.readProblem.mockResolvedValue(PROBLEM);
-    expect(needsDiscardConfirm(sampleFile({ problemId: 'b-001' }))).toBe(false);
-    expect(await applyWorkFile(sampleFile({ problemId: 'b-001' }))).toBe(true);
+    expect(needsDiscardConfirm(sampleFile({ problemId: 'b-001' }))).toBe(true);
+    expect(await applyWorkFile(sampleFile({ problemId: 'b-001' }))).toBe(false);
   });
 
   it('まだ何も配線していなければ確認しない', () => {
@@ -369,7 +368,7 @@ describe('壊れた盤の状態（1D2-a）', () => {
     apiState.readProblem.mockResolvedValue(PROBLEM);
     const ok = await applyWorkFile(sampleFile({ session: { ...SESSION, wires: ['not-a-wire'] } }));
     expect(ok).toBe(false);
-    expect(useStore.getState().toasts[0]?.text).toBe(JA.session.badSession);
+    expect(useStore.getState().toasts[0]?.text).toBe('作業ファイルの形式が不正です');
     expect(useStore.getState().problem).toBeUndefined();
   });
 });

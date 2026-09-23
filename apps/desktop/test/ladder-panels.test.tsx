@@ -16,7 +16,7 @@ import {
 } from '@ojt/ladder-core';
 import { JTEKT_PC10G, MITSUBISHI_FX5U, OMRON_CP1E, SHARP_JW300 } from '@ojt/plc-dialects';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CommentPanel } from '../src/renderer/ladder/CommentPanel.js';
 import { IoTable } from '../src/renderer/ladder/IoTable.js';
 import { ShortcutHelp } from '../src/renderer/ladder/ShortcutHelp.js';
@@ -24,6 +24,7 @@ import { WatchPanel } from '../src/renderer/ladder/WatchPanel.js';
 import { useStore } from '../src/renderer/app/store.js';
 
 afterEach(cleanup);
+beforeEach(() => useStore.setState({ watchDevices: [] }));
 
 // 既存の「I/Oテーブル」describe と同じ課題の割付を、方言・機種をまたいで使う（Task 5）。
 const IO = resolvePlcIo(BUILTIN_PLC_PROBLEMS[0]!.io);

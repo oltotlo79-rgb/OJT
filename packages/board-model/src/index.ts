@@ -310,3 +310,13 @@ export {
   type WireRoute,
   type WireRouteKind,
 } from './routing.js';
+export {
+  withBoardProfile,
+  boardFromProfile,
+  isBoardProfile,
+  STANDARD_TRAINING_RULES,
+  FREE_TRAINING_RULES,
+  TRAINING_CHECK_IDS,
+  type BoardProfile,
+  type TrainingRuleProfile,
+} from './profiles.js';

@@ -75,7 +75,8 @@ export function CameraPresets({
    * しかも返り値は毎回別オブジェクトなので、等値比較が効かずこの効果が必ず走り直す。
    */
   const problem = useStore((state) => state.problem);
-  const plcUnit = useMemo(() => boardForProblem(problem).plcUnit, [problem]);
+  const board = useMemo(() => boardForProblem(problem), [problem]);
+  const plcUnit = board.plcUnit;
   // 直近に反映した視点（次の遷移の `from`）。マウント直後は null。
   const currentPose = useRef<CameraPose | null>(null);
   const animation = useRef<PoseAnimation | null>(null);
@@ -111,6 +112,7 @@ export function CameraPresets({
     // 値そのものは使わない。「同じプリセットを押し直した」ことを効果に伝えるためだけの依存。
     void nonce;
     const to = cameraPose(preset, {
+      boardWidth: board.sizeMm.width,
       ...(plcUnit === undefined ? {} : { plcUnit }),
       ...(aspect === undefined ? {} : { aspect }),
     });
@@ -132,7 +134,7 @@ export function CameraPresets({
     invalidate();
     // `aspect` はペインのリサイズ（例: ビュー切替・ウィンドウのリサイズ）のたびに変わりうる。
     // 変わったら視点を組み直して、常にそのペインいっぱいに盤を収め直す。
-  }, [preset, nonce, plcUnit, aspect, applyPose, invalidate, camera, controls]);
+  }, [preset, nonce, plcUnit, board.sizeMm.width, aspect, applyPose, invalidate, camera, controls]);
 
   useFrame(() => {
     // キューブ操作をプリセットの補間で上書きしない。

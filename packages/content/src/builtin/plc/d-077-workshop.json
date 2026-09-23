@@ -1,0 +1,365 @@
+{
+  "formatVersion": 1,
+  "id": "d-077",
+  "mode": "plc",
+  "title": "PLC 四つの許可がそろう運転・三菱 MELSEC iQ-F FX5U-32MR/ES・1.5秒確認",
+  "grade": 1,
+  "difficulty": 4,
+  "tags": ["and-or", "interlock"],
+  "description": "PB1・PB2・PB3・PB4をすべて押している間を成立条件とします。成立中に1.5秒を計時し、経過後はPL1、経過前はPL2を点灯します。条件が外れたら計時をリセットして消灯してください。 I/O表の番号と入力方式を確認し、出力は中継リレーを介して表示灯を駆動します。PLC電源、入力COM、出力COMをそれぞれ確認してください。",
+  "timeLimit": {
+    "standardMin": 40,
+    "cutoffMin": 60
+  },
+  "board": {
+    "boardId": "board-jipm-std",
+    "socketRoles": {
+      "S1": "CR1",
+      "S2": "CR2",
+      "S3": "CR3",
+      "S7": "CHK",
+      "S4": "CR4"
+    }
+  },
+  "inventory": [
+    {
+      "kind": "relay-my4n",
+      "count": 4
+    }
+  ],
+  "plc": {
+    "vendor": "mitsubishi",
+    "model": "FX5U"
+  },
+  "io": {
+    "mode": "fixed",
+    "wiring": "sink",
+    "inputs": [
+      {
+        "x": 4,
+        "pb": "PB1"
+      },
+      {
+        "x": 5,
+        "pb": "PB2"
+      },
+      {
+        "x": 6,
+        "pb": "PB3"
+      },
+      {
+        "x": 7,
+        "pb": "PB4"
+      }
+    ],
+    "outputs": [
+      {
+        "y": 3,
+        "cr": "CR1",
+        "pl": "PL1"
+      },
+      {
+        "y": 4,
+        "cr": "CR2",
+        "pl": "PL2"
+      }
+    ]
+  },
+  "referenceLadder": {
+    "networks": [
+      {
+        "id": "term0",
+        "cells": [
+          [
+            {
+              "kind": "contact",
+              "type": "NO",
+              "device": {
+                "kind": "input",
+                "index": 4
+              }
+            },
+            {
+              "kind": "contact",
+              "type": "NO",
+              "device": {
+                "kind": "input",
+                "index": 5
+              }
+            },
+            {
+              "kind": "contact",
+              "type": "NO",
+              "device": {
+                "kind": "input",
+                "index": 6
+              }
+            },
+            {
+              "kind": "contact",
+              "type": "NO",
+              "device": {
+                "kind": "input",
+                "index": 7
+              }
+            },
+            {
+              "kind": "coil",
+              "type": "OUT",
+              "device": {
+                "kind": "internal",
+                "index": 0
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "id": "condition",
+        "cells": [
+          [
+            {
+              "kind": "contact",
+              "type": "NO",
+              "device": {
+                "kind": "internal",
+                "index": 0
+              }
+            },
+            {
+              "kind": "coil",
+              "type": "OUT",
+              "device": {
+                "kind": "internal",
+                "index": 10
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "id": "timer",
+        "cells": [
+          [
+            {
+              "kind": "contact",
+              "type": "NO",
+              "device": {
+                "kind": "internal",
+                "index": 10
+              }
+            },
+            {
+              "kind": "timer",
+              "type": "TON",
+              "device": {
+                "kind": "timer",
+                "index": 0
+              },
+              "presetMs": 1500
+            }
+          ]
+        ]
+      },
+      {
+        "id": "output",
+        "cells": [
+          [
+            {
+              "kind": "contact",
+              "type": "NO",
+              "device": {
+                "kind": "internal",
+                "index": 10
+              }
+            },
+            {
+              "kind": "contact",
+              "type": "NO",
+              "device": {
+                "kind": "timer",
+                "index": 0
+              }
+            },
+            {
+              "kind": "coil",
+              "type": "OUT",
+              "device": {
+                "kind": "output",
+                "index": 3
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "id": "status",
+        "cells": [
+          [
+            {
+              "kind": "contact",
+              "type": "NO",
+              "device": {
+                "kind": "internal",
+                "index": 10
+              }
+            },
+            {
+              "kind": "contact",
+              "type": "NC",
+              "device": {
+                "kind": "timer",
+                "index": 0
+              }
+            },
+            {
+              "kind": "coil",
+              "type": "OUT",
+              "device": {
+                "kind": "output",
+                "index": 4
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "id": "end",
+        "cells": [
+          [
+            {
+              "kind": "end"
+            }
+          ]
+        ]
+      }
+    ]
+  },
+  "wiringRequired": true,
+  "operations": [
+    {
+      "t": 300,
+      "target": "PB1",
+      "action": "press"
+    },
+    {
+      "t": 300,
+      "target": "PB2",
+      "action": "press"
+    },
+    {
+      "t": 300,
+      "target": "PB3",
+      "action": "press"
+    },
+    {
+      "t": 300,
+      "target": "PB4",
+      "action": "press"
+    },
+    {
+      "t": 500,
+      "target": "PB1",
+      "action": "release"
+    },
+    {
+      "t": 500,
+      "target": "PB2",
+      "action": "release"
+    },
+    {
+      "t": 500,
+      "target": "PB3",
+      "action": "release"
+    },
+    {
+      "t": 500,
+      "target": "PB4",
+      "action": "release"
+    },
+    {
+      "t": 1200,
+      "target": "PB1",
+      "action": "press"
+    },
+    {
+      "t": 3300,
+      "target": "PB2",
+      "action": "press"
+    },
+    {
+      "t": 5400,
+      "target": "PB1",
+      "action": "release"
+    },
+    {
+      "t": 7500,
+      "target": "PB3",
+      "action": "press"
+    },
+    {
+      "t": 9600,
+      "target": "PB1",
+      "action": "press"
+    },
+    {
+      "t": 11700,
+      "target": "PB2",
+      "action": "release"
+    },
+    {
+      "t": 13800,
+      "target": "PB1",
+      "action": "release"
+    },
+    {
+      "t": 15900,
+      "target": "PB4",
+      "action": "press"
+    },
+    {
+      "t": 18000,
+      "target": "PB1",
+      "action": "press"
+    },
+    {
+      "t": 20100,
+      "target": "PB2",
+      "action": "press"
+    },
+    {
+      "t": 22200,
+      "target": "PB1",
+      "action": "release"
+    },
+    {
+      "t": 24300,
+      "target": "PB3",
+      "action": "release"
+    },
+    {
+      "t": 26400,
+      "target": "PB1",
+      "action": "press"
+    },
+    {
+      "t": 28500,
+      "target": "PB2",
+      "action": "release"
+    },
+    {
+      "t": 30600,
+      "target": "PB1",
+      "action": "release"
+    },
+    {
+      "t": 32700,
+      "target": "PB4",
+      "action": "release"
+    }
+  ],
+  "durationMs": 35300,
+  "judge": {
+    "compareSignals": ["PL1", "PL2"]
+  }
+}

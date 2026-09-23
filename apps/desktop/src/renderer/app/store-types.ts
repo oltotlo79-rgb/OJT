@@ -93,7 +93,7 @@ export const NO_HIGHLIGHT: HighlightSelection = { cellIds: [], terminals: [], wi
  * `text` は帯に出す1行（「CR1.14（CR1）と P.1（P）がつながっていません」）。
  */
 export interface BoardFocus {
-  from: 'result';
+  from: 'result' | 'diagnosis';
   text: string;
 }
 // --- /Plan 5 Task 9 ---
@@ -105,23 +105,7 @@ export interface BoardFocus {
  * 千数百個の真偽値が新しいオブジェクトで届き、セレクタの比較も毎回その数だけ走る。
  * ネットワーク1本＝行を連ねた `'0110…'` の**文字列1本**に畳むと、比較も購読も文字列1本で済む。
  */
-export interface PlcMonitorSnapshot {
-  scanCount: number;
-  tMs: number;
-  /** ネットワークID → 「行 × 16列」を連ねた `'0'`/`'1'` の文字列。ENDネットワークは入らない。 */
-  powered: Record<string, string>;
-  inputs: boolean[];
-  outputs: boolean[];
-  internals: Record<number, boolean>;
-  /** 特殊リレーは内部リレーと別に運ぶ。同番号M0の値と混同しない。 */
-  specials?: Record<number, boolean>;
-  /**
-   * `presetMs` はコンパイル済みラダーのタイマセルから取る（Batch 3 レビュー M4）。
-   * ランタイムの `PlcTimerState` 自体は設定値を持たないので、Worker 側で合成する。
-   */
-  timers: Record<number, { elapsedMs: number; on: boolean; presetMs: number }>;
-  counters: Record<number, { value: number; on: boolean }>;
-}
+export type { PlcMonitorSnapshot } from '../../shared/plc-monitor.js';
 
 /**
  * 出力ウィンドウの1行（`ConvertError` を画面の語彙に直したもの）。

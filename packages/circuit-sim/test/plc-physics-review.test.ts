@@ -11,8 +11,8 @@ import {
   type PlcUnitSpec,
   type Simulation,
 } from '../src/index.js';
-import { bench, powerOn, t, w } from './helpers/circuits.js';
-import { tinySpec } from './helpers/plc.js';
+import { powerOn, t, w } from './helpers/circuits.js';
+import { tinySpec, poweredPlcBench } from './helpers/plc.js';
 
 /**
  * Physics regression tests lifted from the Opus review of Plan 3A batches A-C
@@ -25,7 +25,7 @@ import { tinySpec } from './helpers/plc.js';
  */
 
 function plcBench(): Simulation {
-  return bench(
+  return poweredPlcBench(
     [
       createPowerSupply('PS'),
       createPushButton('PB1'),
@@ -61,7 +61,7 @@ describe('hysteresis approached from BELOW (X input)', () => {
 describe('sink vs source wiring give identical |inputAmps|', () => {
   it('agree to 9 decimal places', () => {
     const sink = plcBench();
-    const source = bench(
+    const source = poweredPlcBench(
       [createPowerSupply('PS'), createPushButton('PB1'), createPlcUnit('PLC', tinySpec())],
       [w('w1', 'PS.-', 'PLC.SS'), w('w2', 'PLC.X0', 'PB1.a'), w('w3', 'PB1.c', 'PS.+')],
     );
@@ -97,7 +97,7 @@ describe('setPlcOutputs timing', () => {
 
 describe('a short across a Y contact trips an overcurrent hazard', () => {
   it('COM0 -> Y0 wired straight together (closing Y0 shorts the rails)', () => {
-    const sim = bench(
+    const sim = poweredPlcBench(
       [createPowerSupply('PS'), createPlcUnit('PLC', tinySpec())],
       [w('w1', 'PS.+', 'PLC.COM0'), w('w2', 'PLC.Y0', 'PS.-')],
     );
@@ -135,7 +135,7 @@ describe('COM isolation', () => {
   });
 
   it('Y1 on an unwired COM1 drives nothing even when Y1 is commanded ON', () => {
-    const sim = bench(
+    const sim = poweredPlcBench(
       [createPowerSupply('PS'), createRelay4c('CR1'), createPlcUnit('PLC', twoComSpec())],
       [
         w('w1', 'PS.+', 'PLC.COM0'), // only COM0 is wired

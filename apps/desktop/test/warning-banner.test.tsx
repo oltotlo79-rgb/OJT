@@ -56,7 +56,7 @@ describe('WarningBanner', () => {
     expect(screen.getByTestId('mistake-count').textContent).toContain('2');
   });
 
-  it('「ミス」ではなく技能検定の用語「危険操作」＋減点の注記を出す（UXレビュー #26）', () => {
+  it('「ミス」ではなく技能検定の用語「危険操作」＋記録の注記を出す（UXレビュー #26）', () => {
     useStore.setState({
       hazardBanner: {
         kind: 'ohm-on-live',
@@ -67,7 +67,7 @@ describe('WarningBanner', () => {
     });
     render(<WarningBanner />);
     const count = screen.getByTestId('mistake-count');
-    expect(count.textContent).toBe('危険操作 1 回（減点）');
+    expect(count.textContent).toBe('危険操作 1 回（記録）');
     expect(count.textContent).not.toContain('ミス');
   });
 

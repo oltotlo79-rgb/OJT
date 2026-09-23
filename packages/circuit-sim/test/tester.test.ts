@@ -170,7 +170,7 @@ describe('readTester (digital)', () => {
     expect(readTester(sim, reversed).value).toBeCloseTo(-24, 1);
   });
 
-  it('always reads 0.00 V on ACV (§5.5)', () => {
+  it('does not report unsupported ACV as zero volts', () => {
     const sim = coilBench();
     powerOn(sim);
     sim.run(100);
@@ -179,7 +179,7 @@ describe('readTester (digital)', () => {
       'PS.-',
       'PS.+',
     );
-    expect(readTester(sim, state).display).toBe('0.00 V');
+    expect(readTester(sim, state).display).toBe('ACV未対応');
   });
 
   it('reads the coil resistance with 0.1 ohm resolution while the circuit is dead', () => {

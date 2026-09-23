@@ -84,34 +84,37 @@ describe('内蔵モードD課題の弁別（§16 Phase 3 の受入基準）', ()
     expect(judged.value.mismatches.length).toBeGreaterThan(0);
   });
 
-  it.each(CASES)('%s: Y0 をランプへ直結すると twoStage で落ちる（受入基準④）', (_id, problem) => {
-    const built = buildPlcReferenceSession(problem, JIPM_BOARD);
-    if (!built.ok) throw new Error('模範回路を組めません');
-    const { session, board } = built.value;
-    const coil = session.wires.find((w) => String(w.from) === 'PLC.Y0');
-    expect(removeWire(session, coil?.id ?? '').ok).toBe(true);
-    const lamp = session.wires.find((w) => String(w.to) === 'TB_PL.1+');
-    expect(removeWire(session, lamp?.id ?? '').ok).toBe(true);
-    expect(addWire(session, board, t('PLC.Y0'), t('TB_PL.1+')).ok).toBe(true);
-    const judged = judgePlc(problem, JIPM_BOARD, session, problem.referenceLadder);
-    expect(judged.ok).toBe(true);
-    if (!judged.ok) return;
-    expect(judged.value.staticChecks.find((c) => c.id === 'twoStage')?.ok).toBe(false);
-    expect(judged.value.passed).toBe(false);
-  });
+  it.each(CASES)(
+    '%s: 割付出力をランプへ直結すると twoStage で落ちる（受入基準④）',
+    (_id, problem) => {
+      const built = buildPlcReferenceSession(problem, JIPM_BOARD);
+      if (!built.ok) throw new Error('模範回路を組めません');
+      const { session, board, io, unit } = built.value;
+      const y = `PLC.${unit.spec.outputs[io.outputs[0]!.y]!.name}`;
+      const coil = session.wires.find((w) => String(w.from) === y);
+      expect(removeWire(session, coil?.id ?? '').ok).toBe(true);
+      const lamp = session.wires.find((w) => String(w.to) === 'TB_PL.1+');
+      expect(removeWire(session, lamp?.id ?? '').ok).toBe(true);
+      expect(addWire(session, board, t(y), t('TB_PL.1+')).ok).toBe(true);
+      const judged = judgePlc(problem, JIPM_BOARD, session, problem.referenceLadder);
+      expect(judged.ok).toBe(true);
+      if (!judged.ok) return;
+      expect(judged.value.staticChecks.find((c) => c.id === 'twoStage')?.ok).toBe(false);
+      expect(judged.value.passed).toBe(false);
+    },
+  );
 
   it.each(CASES)(
     '%s: PLC電源を盤から取ると plcPowerIndependent で落ちる（受入基準⑤）',
     (_id, problem) => {
       const built = buildPlcReferenceSession(problem, JIPM_BOARD);
       if (!built.ok) throw new Error('模範回路を組めません');
-      const { session, board, io } = built.value;
-      const wire = session.wires.find((w) => String(w.to) === 'PLC.L');
+      const { session, board, io, unit } = built.value;
+      const l = `PLC.${unit.spec.acPower[0]}`;
+      const wire = session.wires.find((w) => String(w.to) === l);
       expect(removeWire(session, wire?.id ?? '').ok).toBe(true);
       // 鎖の末端（3点課題なら CR3.9、1級の4点課題なら CR4.9）だけが1本空いている（§6.6）
-      expect(addWire(session, board, t(`${io.outputs.at(-1)?.cr ?? 'CR3'}.9`), t('PLC.L')).ok).toBe(
-        true,
-      );
+      expect(addWire(session, board, t(`${io.outputs.at(-1)?.cr ?? 'CR3'}.9`), t(l)).ok).toBe(true);
       const judged = judgePlc(problem, JIPM_BOARD, session, problem.referenceLadder);
       expect(judged.ok).toBe(true);
       if (!judged.ok) return;

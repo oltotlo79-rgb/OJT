@@ -30,7 +30,16 @@ export const HISTORY_LIMIT = 50;
 /** コマンド1件。 */
 export interface SessionCommand {
   /** 操作の種別（ログ表示用）。 */
-  kind: 'addWire' | 'removeWire' | 'plug' | 'unplug' | 'setPreset' | 'replacePart';
+  kind:
+    | 'plcAssignment'
+    | 'reconnectWire'
+    | 'wireMetadata'
+    | 'addWire'
+    | 'removeWire'
+    | 'plug'
+    | 'unplug'
+    | 'setPreset'
+    | 'replacePart';
   /** 操作の説明（操作ログに出す文）。§8.1 */
   label: string;
   before: BoardSession;
@@ -59,7 +68,19 @@ export function emptyHistory(): CommandHistory {
 export function cloneSession(session: BoardSession): BoardSession {
   return {
     ...session,
+    ...(session.boardProfile === undefined
+      ? {}
+      : { boardProfile: structuredClone(session.boardProfile) }),
     mounted: { ...session.mounted },
+    ...(session.plcAssignment === undefined
+      ? {}
+      : { plcAssignment: structuredClone(session.plcAssignment) }),
+    ...(session.wireAnnotations === undefined
+      ? {}
+      : { wireAnnotations: structuredClone(session.wireAnnotations) }),
+    ...(session.wireRoutePreferences === undefined
+      ? {}
+      : { wireRoutePreferences: structuredClone(session.wireRoutePreferences) }),
     wires: session.wires.map((w) => ({ ...w })),
     allowedColors: [...session.allowedColors],
     extraParts: [...session.extraParts],

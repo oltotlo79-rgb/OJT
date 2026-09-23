@@ -140,7 +140,7 @@ describe('同梱課題が4メーカーで成立する（決定表#19）', () => 
       inspectRepair: BUILTIN_INSPECT_REPAIR_PROBLEMS.length,
       plc: BUILTIN_PLC_PROBLEMS.length,
       total: BUILTIN_ALL_PROBLEMS.length,
-    }).toEqual({ assemble: 60, inspectParts: 36, inspectRepair: 60, plc: 60, total: 216 });
+    }).toEqual({ assemble: 90, inspectParts: 54, inspectRepair: 90, plc: 90, total: 324 });
   });
 
   it.each(PLC_VENDORS.map((vendor, i) => [vendor, PLC_MODELS[i]] as const))(

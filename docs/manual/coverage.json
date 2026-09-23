@@ -69,6 +69,12 @@
       "section": "schematic/この機能でやること"
     },
     {
+      "testid": "autosave-status",
+      "screen": "練習・設定",
+      "label": "自動保存待ち",
+      "section": "workfile/自動保存と通常終了"
+    },
+    {
       "testid": "back-to-result",
       "screen": "練習中（モードB）",
       "label": "結果へ戻る",
@@ -381,7 +387,7 @@
     {
       "testid": "discard-confirm",
       "screen": "全画面",
-      "label": "いまの作業を破棄して別の課題の作業ファイルを開きますか？",
+      "label": "いまの未保存の作業を破棄して、作業ファイルを開きますか？",
       "section": "workfile/保存した作業を読み込む"
     },
     {
@@ -545,7 +551,7 @@
     {
       "testid": "help-open-pdf",
       "screen": "全画面",
-      "label": "説明書（PDF）を開く",
+      "label": "説明書全体をPDFで開く",
       "section": "screens/画面の上の帯"
     },
     {
@@ -621,6 +627,12 @@
       "screen": "練習中（モードD）",
       "label": "書き出せなかった指摘",
       "section": "mode-d/命令の一覧を書き出す"
+    },
+    {
+      "testid": "io-assignment-editor",
+      "screen": "練習・設定",
+      "label": "自由割付の編集",
+      "section": "mode-d/自由課題のI/O割付を変える"
     },
     {
       "testid": "io-common",
@@ -739,6 +751,16 @@
       "screen": "結果",
       "label": "言い当てた故障",
       "section": "mode-c2/「判定」を押す"
+    },
+    {
+      "testid": "measurement-panel",
+      "screen": "練習・設定",
+      "label": "測定記録・診断メモ",
+      "section": "mode-c2/測定値と判断を残す"
+    },
+    {
+      "testid": "measurement-record",
+      "internal": "親パネルの記録・接続一覧にある1行。対象や値は課題ごとに変わる。"
     },
     {
       "testid": "mismatch-table",
@@ -1051,6 +1073,12 @@
       "section": "mode-c2/見つけたところを書き出す"
     },
     {
+      "testid": "plc-debug",
+      "screen": "練習・設定",
+      "label": "スキャン診断",
+      "section": "mode-d/スキャンを止めて原因を追う"
+    },
+    {
       "testid": "plc-guide",
       "screen": "練習中（モードD）",
       "label": "手順",
@@ -1115,6 +1143,12 @@
       "screen": "練習中（モードD）",
       "label": "配線（3D盤）",
       "section": "mode-d/PLCの課題を進める"
+    },
+    {
+      "testid": "plc-supply-status",
+      "screen": "練習・設定",
+      "label": "PLC電源",
+      "section": "mode-d/PLCの電源状態とI/Oを調べる"
     },
     {
       "testid": "plc-why",
@@ -1205,6 +1239,12 @@
       "section": "mode-c1/テスターの使い方"
     },
     {
+      "testid": "problem-authoring",
+      "screen": "練習・設定",
+      "label": "課題の導入・作成",
+      "section": "authoring/アプリの画面から課題を作る"
+    },
+    {
       "testid": "problem-count",
       "internal": "絞り込み結果の件数を添えるだけの補助表示。表そのもので節は説明済み"
     },
@@ -1269,6 +1309,12 @@
       "screen": "ホーム",
       "label": "最近の課題",
       "section": "screens/ホームの画面"
+    },
+    {
+      "testid": "record-measurement",
+      "screen": "練習・設定",
+      "label": "今の測定値を記録",
+      "section": "mode-c2/測定値と判断を残す"
     },
     {
       "testid": "redo-reason",
@@ -1937,7 +1983,7 @@
     {
       "testid": "terminal-pending",
       "screen": "練習中",
-      "label": "1本目",
+      "label": "始点",
       "section": "mode-b/電線をつなぐ・外す"
     },
     {
@@ -2089,6 +2135,18 @@
       "section": "mode-d/ラダー図を描く"
     },
     {
+      "testid": "tutorial-player",
+      "screen": "ホーム・練習",
+      "label": "課題を解く動画",
+      "section": "screens/動画で操作を学ぶ"
+    },
+    {
+      "testid": "tutorial-{}",
+      "screen": "ホーム・練習",
+      "label": "課題を解く動画",
+      "section": "screens/動画で操作を学ぶ"
+    },
+    {
       "testid": "unconverted-{}",
       "internal": "未変換の回路ブロックの地に添える一言。親の「変換する」で説明済み"
     },
@@ -2119,7 +2177,7 @@
     {
       "testid": "user-dir-help",
       "screen": "設定",
-      "label": "そこからコピーして書き換えると雛形として使えます",
+      "label": "課題の導入・作成",
       "section": "settings/自分で作った課題を読み込む"
     },
     {
@@ -2271,6 +2329,16 @@
       "screen": "練習中",
       "label": "取消",
       "section": "screens/練習中の画面の並び"
+    },
+    {
+      "testid": "wire-list",
+      "screen": "練習・設定",
+      "label": "電線一覧",
+      "section": "mode-b/電線一覧で接続を探す・直す"
+    },
+    {
+      "testid": "wire-row-{}",
+      "internal": "親パネルの記録・接続一覧にある1行。対象や値は課題ごとに変わる。"
     },
     {
       "testid": "workspace-main",
@@ -2707,14 +2775,6 @@
       "section": "troubleshooting/こう表示されたら"
     },
     {
-      "key": "JA.error.boardReset",
-      "section": "troubleshooting/こう表示されたら"
-    },
-    {
-      "key": "JA.error.boardAbandoned",
-      "section": "troubleshooting/こう表示されたら"
-    },
-    {
       "key": "JA.error.webglLost",
       "section": "troubleshooting/こう表示されたら"
     },
@@ -2732,10 +2792,6 @@
     },
     {
       "key": "JA.error.rootMissing",
-      "section": "troubleshooting/こう表示されたら"
-    },
-    {
-      "key": "JA.error.autosaveFailed",
       "section": "troubleshooting/こう表示されたら"
     },
     {
