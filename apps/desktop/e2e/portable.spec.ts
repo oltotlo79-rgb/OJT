@@ -1,7 +1,9 @@
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, readdirSync } from 'node:fs';
+import { rm } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
+import { tmpdir } from 'node:os';
 import { setTimeout as delay } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 import { JIPM_BOARD } from '@ojt/board-model';
@@ -96,6 +98,11 @@ test('EXE1個から初回ガイド・324課題・回路の合格・ヘルプ・P
     await expect(page.getByTestId('status-overlay')).toContainText(
       wireCountText(SELF_HOLD_WIRES.length, 0),
     );
+    await page.getByTestId('session-back').click();
+    await page.getByTestId('resume-current-work').click();
+    await expect(page.getByTestId('status-overlay')).toContainText(
+      wireCountText(SELF_HOLD_WIRES.length, 0),
+    );
     await page.getByTestId('power-breaker').click();
     await page.getByTestId('power-switch').click();
     await expect(page.getByTestId('status-overlay')).toContainText('通電中');
@@ -111,6 +118,10 @@ test('EXE1個から初回ガイド・324課題・回路の合格・ヘルプ・P
     await page.getByRole('button', { name: 'ホームへ戻る', exact: true }).click();
     await page.getByTestId('mode-plc').click();
     await page.getByTestId('open-d-001').click();
+    await page
+      .getByTestId('problem-change-confirm')
+      .getByRole('button', { name: '保存せず進む', exact: true })
+      .click();
     await expect(page.getByTestId('plc-session')).toBeVisible();
     await page.getByTestId('view-ladder').click();
     await expect(page.getByTestId('ladder-workspace')).toBeVisible();
@@ -126,6 +137,62 @@ test('EXE1個から初回ガイド・324課題・回路の合格・ヘルプ・P
       message: `終了後に一時展開先が残っています: ${extracted}`,
     })
     .toBe(false);
+});
+
+test('課題下書きと模範編集を配布EXEで保持し、終了直前の変更も再起動で復元する', async () => {
+  const tempRoot = resolve(tmpdir());
+  const userDataDir = mkdtempSync(join(tempRoot, 'ojt-portable-authoring-'));
+  if (dirname(userDataDir) !== tempRoot) throw new Error('検査プロファイルの削除範囲が違います');
+  let app: PackagedApp | undefined;
+  const draftText = '{ "unfinished": "終了直前の未完成JSON"';
+  try {
+    app = await launchPortable({ userDataDir });
+    const page = app.page;
+    await page.getByTestId('open-settings').click();
+    await page.getByTestId('problem-authoring-summary').click();
+    const authoring = page.getByTestId('problem-authoring');
+    await authoring.getByLabel('複製元の課題').selectOption('d-061');
+    await authoring.getByRole('button', { name: '課題を複製', exact: true }).click();
+    await authoring.getByLabel('課題名', { exact: true }).fill('配布EXEの下書き確認');
+    await authoring.getByTestId('author-reference-open').click();
+    const reference = page.getByTestId('author-reference-editor');
+    await reference.getByTestId('cell-term0:0:0').dblclick();
+    await reference.getByTestId('direct-text').fill('LDI X0');
+    await expect(
+      reference.getByRole('button', { name: '編集を終える', exact: true }),
+    ).toBeDisabled();
+    await reference.getByTestId('device-commit').click();
+    await reference.getByRole('button', { name: '課題全体を検証', exact: true }).click();
+    await expect(reference).toContainText('検証合格', { timeout: 65_000 });
+    await page.screenshot({ path: join(SHOT_DIR, 'portable-reference-ladder.png') });
+    await reference.getByRole('button', { name: '編集を終える', exact: true }).click();
+    await page.getByRole('button', { name: 'ホームへ戻る', exact: true }).click();
+    await page.getByTestId('open-settings').click();
+    await page.getByTestId('problem-authoring-summary').click();
+    await expect(authoring.getByLabel('課題名', { exact: true })).toHaveValue(
+      '配布EXEの下書き確認',
+    );
+    await authoring
+      .getByText('詳細JSONを編集（高度な設定・データ形式の修正）', { exact: true })
+      .click();
+    await authoring.getByLabel('課題定義JSON').fill(draftText);
+    await expect(authoring.getByLabel('課題名', { exact: true })).toHaveCount(0);
+    await expect(authoring.getByRole('status')).toContainText('編集中の内容は下書きへ保存');
+    // 自動保存の1秒待ちを挟まず、通常終了時の書込待ちを検査する。
+    await app.close();
+    const saved = JSON.parse(readFileSync(join(userDataDir, 'authoring-draft.json'), 'utf8')) as {
+      text: string;
+    };
+    expect(saved.text).toBe(draftText);
+    app = await launchPortable({ userDataDir });
+    await app.page.getByTestId('open-settings').click();
+    await app.page.getByTestId('problem-authoring-summary').click();
+    await expect(app.page.getByLabel('課題定義JSON')).toHaveValue(draftText);
+    await app.page.screenshot({ path: join(SHOT_DIR, 'portable-draft-restored.png') });
+  } finally {
+    await app?.close();
+    await rm(userDataDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+  }
 });
 
 test('同じEXEの展開先は起動ごとに変わり、片方を閉じても他方の課題を壊さない', async () => {

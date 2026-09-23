@@ -172,14 +172,18 @@ export function SchematicEditor({
   onPickCell,
   onRefuse,
   onNotice,
+  keyboardModalDepth,
+  verifyLabel,
 }: {
-  problem: AssembleProblem;
+  problem: Pick<AssembleProblem, 'board'>;
   board: BoardDefinition;
   document: SchematicDocument;
   cursor: EditorCursor;
   history: SchematicHistory;
   /** 検算の往復中（ボタンを止める）。 */
   verifying: boolean;
+  keyboardModalDepth?: () => number;
+  verifyLabel?: string;
   /** 直近の検算に合格しているか（手順帯に出す）。 */
   verified?: boolean;
   /** 盤に電線を張ったか（手順帯に出す）。 */
@@ -279,10 +283,13 @@ export function SchematicEditor({
      * 設定時間の数値欄に打ち込んだキーは格子へ通さない（決定表#25）。
      * 通すと `3` の打鍵で要素が置かれ、`Delete` で要素が消える（盤と同じ取り違え。§8.2）。
      */
-    const ignore = shouldIgnoreShortcut({
-      target: event.target,
-      isComposing: event.nativeEvent.isComposing,
-    });
+    const ignore = shouldIgnoreShortcut(
+      {
+        target: event.target,
+        isComposing: event.nativeEvent.isComposing,
+      },
+      keyboardModalDepth?.(),
+    );
     if (ignore) return;
     if (event.key.startsWith('Arrow')) {
       event.preventDefault();
@@ -447,10 +454,10 @@ export function SchematicEditor({
             className={styles.verifyButton}
             data-testid="verify-button"
             disabled={verifying || issues.length > 0}
-            title={verifyTitle}
+            title={verifyLabel ?? verifyTitle}
             onClick={onVerify}
           >
-            {verifying ? JA.schematic.verifying : JA.schematic.verify}
+            {verifying ? JA.schematic.verifying : (verifyLabel ?? JA.schematic.verify)}
           </button>
         </div>
       </div>

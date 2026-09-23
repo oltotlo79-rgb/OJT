@@ -7,6 +7,10 @@ import { useStore } from '../src/renderer/app/store.js';
 import { JA } from '../src/renderer/i18n/ja.js';
 import { Home } from '../src/renderer/screens/Home.js';
 import { ProblemList } from '../src/renderer/screens/ProblemList.js';
+import {
+  changeProblemFilters,
+  useProblemFilters,
+} from '../src/renderer/screens/problem-list-state.js';
 
 /**
  * 課題一覧の表示テスト（§12.1 / §13 #5）。
@@ -94,6 +98,7 @@ function showAllGrades(): void {
 }
 
 beforeEach(() => {
+  useProblemFilters.setState({ modes: {} });
   useStore.setState({ problems: undefined, toasts: [], route: 'list', listMode: undefined });
   setApi(undefined);
 });
@@ -425,6 +430,38 @@ describe('モードで絞る（Plan 2B Task 17。§12.1）', () => {
  * 「行のどこを押しても開く」「言葉で探す」「3級が既定」「難しさ・学習テーマで絞る」を縛る。
  */
 describe('学習導線（Phase 7 Task 25）', () => {
+  it('一覧へ戻ったときに検索・級を保持し、リセットで初期表示へ戻せる', async () => {
+    setApi({ listProblems: () => Promise.resolve(builtinPayload()) });
+    useStore.setState({ listMode: 'inspect-parts' });
+    const first = render(<ProblemList />);
+    await screen.findByTestId('problem-table');
+    showAllGrades();
+    fireEvent.change(screen.getByTestId('problem-search'), { target: { value: 'c1-001' } });
+    expect(screen.getByTestId('open-c1-001')).toBeVisible();
+    first.unmount();
+    render(<ProblemList />);
+    await screen.findByTestId('problem-table');
+    expect(screen.getByTestId('problem-search')).toHaveValue('c1-001');
+    expect(screen.getByTestId('open-c1-001')).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: '絞り込みをリセット' }));
+    expect(screen.getByTestId('problem-search')).toHaveValue('');
+  });
+
+  it('初心者向けの入口は以前の検索語・難しさを解除して3級を開く', () => {
+    changeProblemFilters('assemble', {
+      search: 'ない課題',
+      difficulty: 5,
+      gradePick: { grade: 1 },
+    });
+    render(<Home />);
+    fireEvent.click(screen.getByTestId('start-here-open'));
+    expect(useProblemFilters.getState().modes['assemble']).toMatchObject({
+      search: '',
+      difficulty: undefined,
+      gradePick: { grade: 3 },
+    });
+    expect(useStore.getState().route).toBe('list');
+  });
   /** 内蔵課題をそのまま一覧行にした、本番と同じ規模（216題）の一覧。 */
   function builtinPayload(): ProblemListPayload {
     return {

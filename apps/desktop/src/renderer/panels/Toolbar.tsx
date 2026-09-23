@@ -161,10 +161,19 @@ export function Toolbar({
     };
   }, [overflowOpen]);
   /*
-   * 判定ボタンが押せない理由。`judging`（往復待ち）を優先し、次に `judgeDisabled` の理由
+   * 判定ボタンが押せない理由。異常終了時の復帰案内を優先し、次に `judging` と `judgeDisabled` の理由
    * （`judgeTitle`。モードDだけが渡す）。どちらも無ければ押せる状態なので `undefined`。
    */
-  const judgeReason = judging ? JA.session.judging : judgeDisabled ? judgeTitle : undefined;
+  const fatalError = useStore((state) => state.fatalError);
+  const judgeBlocked = fatalError !== undefined || judging || judgeDisabled;
+  const judgeReason =
+    fatalError !== undefined
+      ? 'シミュレーションが停止しています。上部の「セッションをリセット」で再開してください。'
+      : judging
+        ? JA.session.judging
+        : judgeDisabled
+          ? judgeTitle
+          : undefined;
   /*
    * ヒント（指摘 PR-02）。開いた段数はストアが持つ（結果画面が「ヒントを使った回数」として
    * 読むのと、課題を開き直したときに 0 へ戻るのが同じ1か所で決まる）。
@@ -505,12 +514,12 @@ export function Toolbar({
         type="button"
         className={styles.judgeButton}
         data-testid="judge-button"
-        aria-disabled={judging || judgeDisabled}
+        aria-disabled={judgeBlocked}
         aria-busy={judging}
         aria-describedby={judgeReason === undefined ? undefined : 'judge-reason'}
-        {...(judgeTitle === undefined ? {} : { title: judgeTitle })}
+        {...(judgeReason === undefined ? {} : { title: judgeReason })}
         onClick={() => {
-          if (judging || judgeDisabled) {
+          if (judgeBlocked) {
             if (judgeReason !== undefined) useStore.getState().toast(judgeReason, 'info');
             return;
           }

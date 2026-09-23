@@ -38,7 +38,7 @@ PLCラダーの作成を、パソコン上の3D練習盤とシーケンス図エ
 
 ## 入手と導入
 
-**[v1.5.0をダウンロード](https://github.com/oltotlo79-rgb/OJT/releases/tag/v1.5.0)**
+**[v1.6.0をダウンロード](https://github.com/oltotlo79-rgb/OJT/releases/tag/v1.6.0)**
 — 保存・復旧とPLC電源の判定を修正し、配線編集・I/O割付・スキャン診断・測定記録・課題作成・108課題・解答動画を追加しました。
 
 配布物は次の2種類です。用途に応じて使い分けてください。
@@ -52,7 +52,7 @@ PLCラダーの作成を、パソコン上の3D練習盤とシーケンス図エ
 
 配布物は `pnpm --filter @ojt/desktop dist` で `apps/desktop/release/` に生成されます
 （`release/artifacts.md` にファイル名・サイズ・SHA256 の一覧が書き出されます）。
-変更点・確認結果・制約は[リリースノート](docs/releases/v1.5.0.md)をご覧ください。
+変更点・確認結果・制約は[リリースノート](docs/releases/v1.6.0.md)をご覧ください。
 
 配布版の確認は `pnpm --filter @ojt/desktop e2e:packaged` で行います。単一EXEのコピーを
 別フォルダから起動し、一時的な設定だけで課題・3D・PLCを検査します。

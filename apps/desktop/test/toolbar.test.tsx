@@ -18,10 +18,16 @@ import styles from '../src/renderer/panels/panels.module.css';
 
 afterEach(() => {
   cleanup();
+  useStore.setState({ fatalError: undefined });
 });
 
 function renderToolbar(
-  overrides: { canUndo?: boolean; canRedo?: boolean; hints?: readonly HintStage[] } = {},
+  overrides: {
+    canUndo?: boolean;
+    canRedo?: boolean;
+    hints?: readonly HintStage[];
+    onJudge?: () => void;
+  } = {},
 ): void {
   render(
     <Toolbar
@@ -38,7 +44,7 @@ function renderToolbar(
       onCamera={vi.fn()}
       onUndo={vi.fn()}
       onRedo={vi.fn()}
-      onJudge={vi.fn()}
+      onJudge={overrides.onJudge ?? vi.fn()}
       onBack={vi.fn()}
       onSave={vi.fn()}
       onLoad={vi.fn()}
@@ -78,6 +84,16 @@ describe('ツールバーの構造（§8.1）', () => {
 });
 
 describe('押せない理由（UXレビュー #5 / UI監査 I6）', () => {
+  it('シミュレーション異常の後は判定を開始せず、復帰操作を案内する', () => {
+    const onJudge = vi.fn();
+    useStore.setState({ fatalError: 'simulation stopped' });
+    renderToolbar({ onJudge });
+    const button = screen.getByTestId('judge-button');
+    expect(button).toHaveAttribute('aria-disabled', 'true');
+    expect(button).toHaveAttribute('title', expect.stringContaining('セッションをリセット'));
+    fireEvent.click(button);
+    expect(onJudge).not.toHaveBeenCalled();
+  });
   /*
    * UI監査 I6: 以前は理由を常時1行で表示しており、幅の1/4を占めて1280pxでは
    * ①ブレーカ②電源スイッチが2行目へ落ちていた。いまは `disabled` ではなく `aria-disabled`

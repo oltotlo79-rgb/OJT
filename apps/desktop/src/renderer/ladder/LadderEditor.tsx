@@ -193,14 +193,18 @@ export interface LadderEntryHandle {
 
 /** ラダーエディタ。 */
 export function LadderEditor({
+  editorStore: useEditorStore = useStore,
   profile,
   gridCols,
   errorCells,
   onConvert,
   onModeChange,
   onCommand,
+  onHelp,
+  onEntryActiveChange,
   ref,
 }: {
+  editorStore?: typeof useStore;
   profile: DialectProfile;
   gridCols: number;
   /**
@@ -213,15 +217,20 @@ export function LadderEditor({
   /** 書込み／読出し／モニタが変わった（Worker へモニタの開始停止を伝える）。§10.6 */
   onModeChange: (mode: LadderEditorMode) => void;
   onCommand?: (command: NativeLadderCommand) => void;
+  onHelp?: () => void;
+  onEntryActiveChange?: (active: boolean) => void;
   /** 記号ボタン列（入口B）から呼ぶ取っ手。React 19 は `ref` をただの props として受ける。 */
   ref?: Ref<LadderEntryHandle>;
 }): JSX.Element {
-  const program = useStore((s) => s.ladder);
-  const cursor = useStore((s) => s.ladderCursor);
-  const mode = useStore((s) => s.ladderMode);
-  const comments = useStore((s) => s.ladderComments);
-  const converted = useStore((s) => s.converted);
+  const program = useEditorStore((s) => s.ladder);
+  const cursor = useEditorStore((s) => s.ladderCursor);
+  const mode = useEditorStore((s) => s.ladderMode);
+  const comments = useEditorStore((s) => s.ladderComments);
+  const converted = useEditorStore((s) => s.converted);
   const [pending, setPending] = useState<Pending | undefined>(undefined);
+  useEffect(() => {
+    onEntryActiveChange?.(pending !== undefined);
+  }, [pending, onEntryActiveChange]);
   /** 右クリックで出す記号メニュー（入口C）。画面座標に浮かせる。設計 §5.3 */
   const [menu, setMenu] = useState<{ cursor: LadderCursor; x: number; y: number } | undefined>(
     undefined,
@@ -233,29 +242,35 @@ export function LadderEditor({
    * セルをクリックしてカーソルを動かす。`memo(LadderGrid)` を効かせるため、毎レンダーで
    * 新しい関数を渡さない（Batch 2 レビュー）。
    */
-  const onPickCell = useCallback((next: LadderCursor): void => {
-    useStore.getState().setLadderCursor(next);
-  }, []);
+  const onPickCell = useCallback(
+    (next: LadderCursor): void => {
+      useEditorStore.getState().setLadderCursor(next);
+    },
+    [useEditorStore],
+  );
 
   /** 編集結果をストアへ入れる（失敗は理由をトーストに出す）。 */
-  const commit = useCallback((result: LadderEditResult): boolean => {
-    const store = useStore.getState();
-    if (!result.ok) {
-      /*
-       * 指摘 LE-3: `session/ladder.ts` は END セルを保護したとき、文言を持たない層のまま
-       * 合図の `'end-locked'` を返す（session 層は i18n を知らない）。文言はここで当てる。
-       */
-      store.toast(
-        result.message === 'end-locked'
-          ? JA.ladder.endLocked
-          : friendlyLadderErrorMessage(result.message),
-        'error',
-      );
-      return false;
-    }
-    store.setLadder(result.program);
-    return true;
-  }, []);
+  const commit = useCallback(
+    (result: LadderEditResult): boolean => {
+      const store = useEditorStore.getState();
+      if (!result.ok) {
+        /*
+         * 指摘 LE-3: `session/ladder.ts` は END セルを保護したとき、文言を持たない層のまま
+         * 合図の `'end-locked'` を返す（session 層は i18n を知らない）。文言はここで当てる。
+         */
+        store.toast(
+          result.message === 'end-locked'
+            ? JA.ladder.endLocked
+            : friendlyLadderErrorMessage(result.message),
+          'error',
+        );
+        return false;
+      }
+      store.setLadder(result.program);
+      return true;
+    },
+    [useEditorStore],
+  );
 
   const closeInput = (): void => {
     setPending(undefined);
@@ -271,7 +286,7 @@ export function LadderEditor({
    */
   const runPlace = useCallback(
     (kind: EntryKind, at?: LadderCursor): void => {
-      const store = useStore.getState();
+      const store = useEditorStore.getState();
       const current = store.ladder;
       if (current === undefined) return;
       if (store.ladderMode !== 'write') {
@@ -313,7 +328,7 @@ export function LadderEditor({
         replace: false,
       });
     },
-    [commit, profile],
+    [commit, profile, useEditorStore],
   );
 
   /**
@@ -322,7 +337,7 @@ export function LadderEditor({
    */
   const openAt = useCallback(
     (cursor: LadderCursor): void => {
-      const store = useStore.getState();
+      const store = useEditorStore.getState();
       const current = store.ladder;
       if (current === undefined) return;
       store.setLadderCursor(cursor);
@@ -346,7 +361,7 @@ export function LadderEditor({
       }
       setPending({ kind: 'contact-no', form: formForCell(cell, profile), replace: true });
     },
-    [profile, runPlace],
+    [profile, runPlace, useEditorStore],
   );
 
   /** 入口C の入口一式（`memo(LadderGrid)` を効かせるため参照を固定する）。 */
@@ -354,7 +369,7 @@ export function LadderEditor({
     () => ({
       onOpen: openAt,
       onMenu: (cursor, x, y) => {
-        useStore.getState().setLadderCursor(cursor);
+        useEditorStore.getState().setLadderCursor(cursor);
         setMenu({ cursor, x, y });
       },
       onDropSymbol: (cursor, kind) => {
@@ -362,7 +377,7 @@ export function LadderEditor({
         if (item !== undefined) runPlace(item.kind, cursor);
       },
     }),
-    [openAt, runPlace],
+    [openAt, runPlace, useEditorStore],
   );
 
   /** 記号ボタン列（入口B）は `place()` を呼ぶだけ（欄の状態はこの部品が持つ）。 */
@@ -392,7 +407,7 @@ export function LadderEditor({
     (event: ReactKeyboardEvent<HTMLDivElement>): void => {
       // 入力欄に打ち込んでいる間は盤・ラダーのショートカットを動かさない（§8.2 と同じ規則）
       if (isTypingTarget(event.target) || event.nativeEvent.isComposing) return;
-      const store = useStore.getState();
+      const store = useEditorStore.getState();
       const current = store.ladder;
       if (current === undefined) return;
       const atCursor = current.networks.find((n) => n.id === store.ladderCursor.networkId)?.cells[
@@ -477,7 +492,8 @@ export function LadderEditor({
           // 手前で既に呼んである）と併せて、伝播の経路が変わっても `defaultPrevented` で弾ける。
           event.preventDefault();
           event.stopPropagation();
-          useHelpStore.getState().openHelp('plc');
+          if (onHelp !== undefined) onHelp();
+          else useHelpStore.getState().openHelp('plc');
           break;
         case 'disabled':
           store.toast(action.entry.note ?? action.entry.label, 'error');
@@ -494,7 +510,17 @@ export function LadderEditor({
           break;
       }
     },
-    [commit, gridCols, onCommand, onConvert, onModeChange, profile, runPlace],
+    [
+      commit,
+      gridCols,
+      onCommand,
+      onConvert,
+      onModeChange,
+      onHelp,
+      profile,
+      runPlace,
+      useEditorStore,
+    ],
   );
 
   /** 見た目（セル寸法・コメント行数）はスキンが持つ（Plan 4B 決定表#6）。 */
@@ -513,12 +539,12 @@ export function LadderEditor({
       tabIndex={0}
       onKeyDown={onKeyDown}
       onFocus={() => {
-        useStore.getState().setLadderFocused(true);
+        useEditorStore.getState().setLadderFocused(true);
       }}
       onBlur={(event) => {
         // 入力欄（子要素）へフォーカスが移っただけならエディタは手放さない
         if (event.currentTarget.contains(event.relatedTarget)) return;
-        useStore.getState().setLadderFocused(false);
+        useEditorStore.getState().setLadderFocused(false);
       }}
     >
       <LadderGrid
@@ -584,7 +610,7 @@ export function LadderEditor({
           commentStep={theme.entryCommentStep === true}
           onCancel={closeInput}
           onCommit={(cell, extra) => {
-            const store = useStore.getState();
+            const store = useEditorStore.getState();
             const current = store.ladder;
             if (current === undefined) return;
             if (store.ladderMode !== 'write') {
@@ -619,9 +645,9 @@ export function LadderEditor({
              * 既存の `CommentPanel` と同じ置き場所（`ladderComments`）へ入れる。
              */
             if (extra.comment !== undefined && 'device' in cell) {
-              useStore.getState().setDeviceComment(deviceLabel(cell.device), extra.comment);
+              useEditorStore.getState().setDeviceComment(deviceLabel(cell.device), extra.comment);
             }
-            const after = useStore.getState();
+            const after = useEditorStore.getState();
             if (after.ladder !== undefined) {
               after.setLadderCursor(
                 moveCursor(after.ladder, after.ladderCursor, 0, step, gridCols),

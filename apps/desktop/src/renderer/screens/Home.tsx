@@ -1,4 +1,6 @@
 import { TutorialLibrary } from '../help/TutorialVideo.js';
+import { ResumeWorkCard } from '../app/ProblemNavigation.js';
+import { changeProblemFilters, DEFAULT_PROBLEM_FILTERS } from './problem-list-state.js';
 import { useEffect, useState, type JSX } from 'react';
 import { JA, sessionModeLabel } from '../i18n/ja.js';
 import { useStore, type ListMode } from '../app/store.js';
@@ -109,6 +111,7 @@ interface RecentProblem {
 
 /** ホーム画面。 */
 export function Home(): JSX.Element {
+  const currentProblem = useStore((s) => s.problem);
   const setRoute = useStore((s) => s.setRoute);
   const setListMode = useStore((s) => s.setListMode);
   /**
@@ -165,6 +168,7 @@ export function Home(): JSX.Element {
             </button>
           </div>
         </div>
+        <ResumeWorkCard />
         <section className={styles.homeHero} data-testid="start-here">
           <h3 className={styles.homeCardTitle}>{JA.home.startHereTitle}</h3>
           <p className={styles.heroTitle}>{JA.home.heroTitle}</p>
@@ -174,8 +178,12 @@ export function Home(): JSX.Element {
             className={styles.homeCardButton}
             data-testid="start-here-open"
             onClick={() => {
-              // 3級の既定は課題一覧側が決める（`problem-filter.ts` の `defaultGrade()`）
+              // 初心者向けの入口は、以前の検索条件にかかわらず3級を表示する。
               setListMode('assemble');
+              changeProblemFilters('assemble', {
+                ...DEFAULT_PROBLEM_FILTERS,
+                gradePick: { grade: 3 },
+              });
               setRoute('list');
             }}
           >
@@ -223,39 +231,41 @@ export function Home(): JSX.Element {
       */}
         <TutorialLibrary />
         <div className={styles.homeBottom}>
-          <section className={styles.homeCard} data-testid="continue-card">
-            <h3 className={styles.homeCardTitle}>{JA.home.continueTitle}</h3>
-            {recent === undefined ? (
-              <p className={styles.homeCardBody}>{JA.home.continueNone}</p>
-            ) : (
-              <>
-                <p className={styles.homeCardBody}>
-                  {JA.home.continueBody}
-                  <span className={styles.homeCardRecent}>
-                    {JA.recentProblem}: {sessionModeLabel(recent.mode)} {recent.title}（
-                    {formatElapsed(recent.elapsedMs)}）
-                  </span>
-                </p>
-                <button
-                  type="button"
-                  className={styles.homeCardButton}
-                  data-testid="recent-problem"
-                  onClick={() => {
-                    /*
-                     * 一時保存をそのまま開き直す（`App.tsx` の復元と同じ道）。
-                     * いまの作業を捨てることになる場合は `applyWorkFile()` が確認欄を出す。
-                     * 読めなかった理由はトーストに出るので、ここでは受け皿だけ付ける（指摘 LE-14）。
-                     */
-                    void applyWorkFile(recent.file).catch(() => {
-                      // `applyWorkFile()` は理由をトーストに出して false を返す。ここでは握るだけ。
-                    });
-                  }}
-                >
-                  {JA.home.continueButton}
-                </button>
-              </>
-            )}
-          </section>
+          {currentProblem === undefined && (
+            <section className={styles.homeCard} data-testid="continue-card">
+              <h3 className={styles.homeCardTitle}>{JA.home.continueTitle}</h3>
+              {recent === undefined ? (
+                <p className={styles.homeCardBody}>{JA.home.continueNone}</p>
+              ) : (
+                <>
+                  <p className={styles.homeCardBody}>
+                    {JA.home.continueBody}
+                    <span className={styles.homeCardRecent}>
+                      {JA.recentProblem}: {sessionModeLabel(recent.mode)} {recent.title}（
+                      {formatElapsed(recent.elapsedMs)}）
+                    </span>
+                  </p>
+                  <button
+                    type="button"
+                    className={styles.homeCardButton}
+                    data-testid="recent-problem"
+                    onClick={() => {
+                      /*
+                       * 一時保存をそのまま開き直す（`App.tsx` の復元と同じ道）。
+                       * いまの作業を捨てることになる場合は `applyWorkFile()` が確認欄を出す。
+                       * 読めなかった理由はトーストに出るので、ここでは受け皿だけ付ける（指摘 LE-14）。
+                       */
+                      void applyWorkFile(recent.file).catch(() => {
+                        // `applyWorkFile()` は理由をトーストに出して false を返す。ここでは握るだけ。
+                      });
+                    }}
+                  >
+                    {JA.home.continueButton}
+                  </button>
+                </>
+              )}
+            </section>
+          )}
         </div>
       </div>
     </div>

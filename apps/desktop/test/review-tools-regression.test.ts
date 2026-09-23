@@ -10,6 +10,7 @@ import {
 } from '@ojt/content';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createAppStore, EMPTY_SNAPSHOT, useStore } from '../src/renderer/app/store.js';
+import { useAuthoringDraft } from '../src/renderer/session/authoring-draft.js';
 import { reconnectWire, commitWireEdit } from '../src/renderer/session/wire-edit.js';
 import { planPlcAssignment } from '../src/renderer/session/plc-assignment.js';
 import { boardForProblem } from '../src/renderer/session/plc-session.js';
@@ -164,6 +165,25 @@ describe('測定記録の取得時点', () => {
 });
 
 describe('自動保存の順序と終了通知', () => {
+  it('課題作成の回路入力が未確定なら通常終了を止め、確定後は終了できる', async () => {
+    api.saveWorkFile.mockResolvedValue({ ok: true });
+    let close: (() => Promise<boolean>) | undefined;
+    api.onCloseRequest.mockImplementation((listener: () => Promise<boolean>) => {
+      close = listener;
+      return () => undefined;
+    });
+    const stop = startAutosave();
+    try {
+      useAuthoringDraft.setState({ referenceInputPending: true });
+      expect(await close!()).toBe(false);
+      expect(useStore.getState().toasts.at(-1)?.text).toContain('未確定');
+      useAuthoringDraft.setState({ referenceInputPending: false });
+      expect(await close!()).toBe(true);
+    } finally {
+      useAuthoringDraft.setState({ referenceInputPending: false });
+      stop();
+    }
+  });
   it('保存中に進んだ編集を必ず後続保存し、終了は最新保存の成功を待つ', async () => {
     vi.useFakeTimers();
     let finish: ((value: { ok: true }) => void) | undefined;

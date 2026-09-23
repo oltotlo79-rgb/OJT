@@ -70,6 +70,10 @@ test.describe.serial('仕上げ', () => {
     // b-001 は3級課題。常時表示で、開閉ボタンそのものが出ない
     await page.getByTestId('session-back').click();
     await page.getByTestId('open-b-001').click();
+    await page
+      .getByTestId('problem-change-confirm')
+      .getByRole('button', { name: '保存せず進む', exact: true })
+      .click();
     await expect(page.getByTestId('viewport')).toBeVisible();
     await page.waitForTimeout(800);
     await expect(page.getByTestId('schematic-hint')).toBeVisible();

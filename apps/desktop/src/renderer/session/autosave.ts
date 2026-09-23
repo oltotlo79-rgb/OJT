@@ -2,6 +2,7 @@ import { useSyncExternalStore } from 'react';
 import { useStore, type AppState } from '../app/store.js';
 import { ojtApi, tryOjtApi } from '../app/ojt-api.js';
 import { toInspectWorkFile } from './work-file.js';
+import { flushAuthoringDraft, useAuthoringDraft } from './authoring-draft.js';
 
 type SaveStatus = {
   state: 'idle' | 'pending' | 'saving' | 'saved' | 'failed';
@@ -97,6 +98,7 @@ export function startAutosave(): () => void {
   const stopClosing = tryOjtApi()?.onCloseRequest?.(async () => {
     revision += 1;
     const ok = await flushAutosave();
+    const draftOk = await flushAuthoringDraft();
     if (!ok)
       useStore
         .getState()
@@ -104,7 +106,22 @@ export function startAutosave(): () => void {
           '自動保存に失敗したため終了を中止しました。保存表示から再試行するか、作業ファイルを保存してください。',
           'error',
         );
-    return ok;
+    if (!draftOk)
+      useStore
+        .getState()
+        .toast(
+          '課題下書きの保存に失敗したため終了を中止しました。設定の「課題の導入・作成」で再試行してください。',
+          'error',
+        );
+    const inputPending = useAuthoringDraft.getState().referenceInputPending;
+    if (inputPending)
+      useStore
+        .getState()
+        .toast(
+          '課題作成の回路入力欄に未確定の内容があります。「確定」または「取消」で入力欄を閉じてから終了してください。',
+          'warn',
+        );
+    return ok && draftOk && !inputPending;
   });
   return () => {
     stop();

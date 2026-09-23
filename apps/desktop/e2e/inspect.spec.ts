@@ -86,7 +86,16 @@ async function openProblem(page: Page, modeTestId: string, problemId: string): P
     .getByRole('button', { name: 'すべて', exact: true })
     .click();
   await expect(page.getByTestId(`open-${problemId}`)).toBeVisible();
-  await page.getByTestId(`open-${problemId}`).click();
+  if ((await page.getByTestId(`open-${problemId}`).textContent()) === '再開') {
+    await page
+      .getByTestId('current-work')
+      .getByRole('button', { name: '最初からやり直す…', exact: true })
+      .click();
+  } else await page.getByTestId(`open-${problemId}`).click();
+  const change = page.getByTestId('problem-change-confirm');
+  await expect(change.or(page.getByTestId('viewport'))).toBeVisible();
+  if (await change.isVisible())
+    await change.getByRole('button', { name: '保存せず進む', exact: true }).click();
 }
 
 /** WebGL の初期化とシーンの1フレーム目を待つ。 */

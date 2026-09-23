@@ -55,10 +55,11 @@ import {
 
 const APP_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const MANUAL_DIR = resolve(APP_ROOT, '../../docs/manual');
-const RAW_DIR = join(APP_ROOT, '.manual-raw');
+const RAW_DIR = process.env['OJT_MANUAL_RAW_DIR'] ?? join(APP_ROOT, '.manual-raw');
 const OUT_DIR = join(MANUAL_DIR, 'images');
 const SMALL_DIR = join(OUT_DIR, 'small');
 const ANNOTATE_ONLY = process.env['OJT_MANUAL_ANNOTATE_ONLY'] === '1';
+const REFRESH_ONLY = process.env['OJT_MANUAL_REFRESH_ONLY'] === '1';
 
 interface Rect {
   x: number;
@@ -583,6 +584,9 @@ async function openProblem(modeTestId: string, problemId: string): Promise<void>
     .getByRole('button', { name: 'すべて', exact: true })
     .click();
   await page.getByTestId(`open-${problemId}`).click();
+  const change = page.getByTestId('problem-change-confirm');
+  if (await change.isVisible())
+    await change.getByRole('button', { name: '保存せず進む', exact: true }).click();
 }
 
 /** WebGL の初期化とシーンの1フレーム目を待つ。 */
@@ -742,7 +746,7 @@ test.describe.serial('取扱説明書の図', () => {
   test.beforeAll(async () => {
     // テストの列挙だけでは一時フォルダを作らない。実行workerが作成・後始末を担当する。
     userDataDir = mkdtempSync(join(tmpdir(), '電気教育ツール-説明書-'));
-    if (ANNOTATE_ONLY) {
+    if (ANNOTATE_ONLY || REFRESH_ONLY) {
       // 注釈の配置だけを直すときは、同時に撮った原寸PNGと実測矩形を再利用する。
       Object.assign(
         GEOMETRY,
@@ -1397,6 +1401,7 @@ test.describe.serial('取扱説明書の図', () => {
   });
 
   test('設定・ホーム・課題一覧・ヘルプ', async () => {
+    await openProblem('mode-assemble', 'b-001');
     // --- settings ---
     await goHome();
     await page.getByTestId('open-settings').click();
@@ -1437,7 +1442,7 @@ test.describe.serial('取扱説明書の図', () => {
 
     // --- home（「最近の課題」が入った状態） ---
     await goHome();
-    await expect(page.getByTestId('recent-problem')).toBeVisible();
+    await expect(page.getByTestId('current-work')).toBeVisible();
     await shoot(
       'home',
       {
@@ -1483,6 +1488,45 @@ test.describe.serial('取扱説明書の図', () => {
       'full',
     );
     await goHome();
+  });
+
+  test('課題作成の回路図・模範ラダー', async () => {
+    await goHome();
+    await page.getByTestId('open-settings').click();
+    await page.getByTestId('problem-authoring-summary').click();
+    const authoring = page.getByTestId('problem-authoring');
+    await authoring.getByLabel('複製元の課題').selectOption('b-087');
+    await authoring.getByRole('button', { name: '課題を複製', exact: true }).click();
+    await authoring.getByTestId('author-reference-open').click();
+    const editor = page.getByTestId('author-reference-editor');
+    await editor.evaluate((element) => {
+      element.scrollTop = 0;
+    });
+    await shoot(
+      'authoring-schematic',
+      {
+        1: await rectOf(editor.getByTestId('schematic-palette')),
+        2: await rectOf(editor.getByTestId('add-rung-button')),
+      },
+      'full',
+    );
+    await editor.getByRole('button', { name: '編集を終える', exact: true }).click();
+    await authoring.getByLabel('複製元の課題').selectOption('d-061');
+    await authoring.getByRole('button', { name: '課題を複製', exact: true }).click();
+    await authoring.getByRole('button', { name: '置き換える', exact: true }).click();
+    await authoring.getByTestId('author-reference-open').click();
+    await editor.evaluate((element) => {
+      element.scrollTop = 0;
+    });
+    await shoot(
+      'authoring-ladder',
+      {
+        1: await rectOf(editor.getByRole('button', { name: '回路ブロックを追加', exact: true })),
+        2: await rectOf(editor.getByTestId('cell-term0:0:0')),
+      },
+      'full',
+    );
+    await editor.getByRole('button', { name: '編集を終える', exact: true }).click();
   });
 
   test('吹き出しを描き込んで仕上げる', async () => {

@@ -15,12 +15,14 @@ import styles from './app.module.css';
 import { applyUiPreferences } from './ui-preferences.js';
 import { TourOverlay } from '../tour/TourOverlay.js';
 import { useTourStore } from '../tour/tour-store.js';
+import { ProblemChangeDialog } from './ProblemNavigation.js';
+import { startAuthoringDraft } from '../session/authoring-draft.js';
 
 /**
  * アプリの外枠。設計仕様 §12.1 / §13 #5 / §12.3 / §15。
  * 未捕捉例外は上部の例外バナーで知らせ、「セッションをリセット」で復帰できるようにする。
  * 起動時は設定を読み、効果音に反映したうえで、一時保存が残っていれば復元を確認する。
- * 作業中は30秒ごとに一時保存する。
+ * 自動保存の開始・状態表示・通常終了前の保存確認はsession/autosaveへ委ねる。
  *
  * バナーとトーストは `ErrorBoundary` の**外**に置く。中に置くと、描画中に例外が出たときに
  * バナーごと消えてしまい、訓練者には真っ黒な画面しか残らない（§13 #5 の要件が満たせない）。
@@ -28,8 +30,6 @@ import { useTourStore } from '../tour/tour-store.js';
 
 /** 期限切れトーストを掃除する間隔[ms]。 */
 const TOAST_SWEEP_MS = 250;
-
-/** 一時保存の間隔[ms]。§12.3 */
 
 /** `window.ojt` を取り出す。preload が無ければ `undefined`（呼び出し側は黙って諦める）。 */
 function tryApi(): OjtApi | undefined {
@@ -139,16 +139,9 @@ export function App(): JSX.Element {
     );
   }, []);
 
-  /*
-   * 作業中は30秒ごとに一時保存する（§12.3）。
-   * Session 画面が持つ状態（課題・盤・経過時間・危険操作数）はすべてストアにあるので、
-   * ここから直接読める。`route === 'session'` の間だけ動かす。
-   *
-   * 保存結果は `.then` で受け、**連続失敗2回目で1度だけ**トーストを出す（DS-4）。
-   * 毎回出すと訓練の邪魔になる一方、黙って失敗し続けるとクラッシュ時に何も残らない。
-   * 成功したら連続失敗のカウントを戻す。
-   */
+  // 自動保存の購読と状態表示。変更後の保存・チェックポイント・失敗処理はautosave側で管理する。
   useEffect(() => startAutosave(), []);
+  useEffect(() => startAuthoringDraft(), []);
   const autosave = useAutosaveStatus();
 
   // 未捕捉例外を拾って例外バナーに出す（§13 #5）。描画中の例外は `ErrorBoundary` が拾う
@@ -362,6 +355,7 @@ export function App(): JSX.Element {
         中に置くと、引き出しの中で例外が出たときに引き出しごと消えてバナーまで消える。
       */}
       <HelpRoot />
+      <ProblemChangeDialog />
       <TourOverlay />
       <div className={styles.toasts}>
         {toasts.map((toast) => (

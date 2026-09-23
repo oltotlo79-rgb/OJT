@@ -263,11 +263,18 @@ export function topModalLayer(): number {
  * 入力欄に宛てられたキーと、IME の変換中（`isComposing`）、
  * そしてモーダルが開いているあいだ（`isModalOpen()`）は盤へ通さない。
  */
-export function shouldIgnoreShortcut(event: {
-  target: unknown;
-  isComposing?: boolean | undefined;
-}): boolean {
-  return isModalOpen() || event.isComposing === true || isTypingTarget(event.target);
+export function shouldIgnoreShortcut(
+  event: {
+    target: unknown;
+    isComposing?: boolean | undefined;
+  },
+  allowedModalDepth?: number,
+): boolean {
+  return (
+    (isModalOpen() && topModalLayer() !== allowedModalDepth) ||
+    event.isComposing === true ||
+    isTypingTarget(event.target)
+  );
 }
 
 /**

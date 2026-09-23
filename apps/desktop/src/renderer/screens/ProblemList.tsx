@@ -1,5 +1,12 @@
 import { PROBLEM_TAG_LABELS, type Difficulty, type ProblemTag } from '@ojt/content';
-import { useEffect, useMemo, useState, type JSX, type KeyboardEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type JSX, type KeyboardEvent } from 'react';
+import { ResumeWorkCard } from '../app/ProblemNavigation.js';
+import { requestOpenProblem } from '../session/problem-navigation.js';
+import {
+  changeProblemFilters,
+  DEFAULT_PROBLEM_FILTERS,
+  useProblemFilters,
+} from './problem-list-state.js';
 import {
   difficultyLabel,
   gradeFilterLabel,
@@ -43,18 +50,25 @@ export function ProblemList(): JSX.Element {
   const setListMode = useStore((s) => s.setListMode);
   const setProblems = useStore((s) => s.setProblems);
   const setRoute = useStore((s) => s.setRoute);
-  const openProblem = useStore((s) => s.openProblem);
+  const currentProblemId = useStore((s) => s.problem?.id);
+  const opening = useRef(0);
+  useEffect(
+    () => () => {
+      opening.current += 1;
+    },
+    [],
+  );
   const toast = useStore((s) => s.toast);
   const [listError, setListError] = useState<string | undefined>(undefined);
-  /**
-   * 級の絞り込み（UXレビュー #12 / 指摘 UX-19）。モードの絞り込みと同じくホーム由来ではないので
-   * 画面内だけで持つ。**まだ触っていないあいだ**（`undefined`）は「3級（おすすめ）」を既定にし、
-   * 訓練者が一度でも押したらその選択をそのまま使う（「すべて」にも戻せる）。
-   */
-  const [gradePick, setGradePick] = useState<{ grade: GradeFilter } | undefined>(undefined);
-  const [difficulty, setDifficulty] = useState<Difficulty | undefined>(undefined);
-  const [tag, setTag] = useState<ProblemTag | undefined>(undefined);
-  const [search, setSearch] = useState('');
+  const { gradePick, difficulty, tag, search } = useProblemFilters(
+    (s) => s.modes[listMode ?? 'all'] ?? DEFAULT_PROBLEM_FILTERS,
+  );
+  const setGradePick = (gradePick: { grade: GradeFilter }): void =>
+    changeProblemFilters(listMode, { gradePick });
+  const setDifficulty = (difficulty: Difficulty | undefined): void =>
+    changeProblemFilters(listMode, { difficulty });
+  const setTag = (tag: ProblemTag | undefined): void => changeProblemFilters(listMode, { tag });
+  const setSearch = (search: string): void => changeProblemFilters(listMode, { search });
 
   useEffect(() => {
     try {
@@ -69,16 +83,18 @@ export function ProblemList(): JSX.Element {
   }, [setProblems]);
 
   const open = (id: string): void => {
+    const request = ++opening.current;
     try {
       void ojtApi()
         .readProblem(id)
         .then(
           (problem) => {
+            if (request !== opening.current) return;
             if (problem === null) {
               toast(`${JA.problemList.loadFailed}: ${id}`, 'error');
               return;
             }
-            openProblem(problem);
+            requestOpenProblem(problem);
           },
           (error: unknown) => {
             toast(`${JA.problemList.loadFailed}: ${reasonOf(error)}`, 'error');
@@ -117,6 +133,7 @@ export function ProblemList(): JSX.Element {
         <HelpButton />
       </div>
       <h1 className={`${styles.title} ${styles.pageTitle}`}>{JA.problemList.title}</h1>
+      <ResumeWorkCard />
       {listError !== undefined ? (
         <p className={styles.errorBox} data-testid="problem-list-error">
           {JA.problemList.listFailed}: {listError}
@@ -182,6 +199,12 @@ export function ProblemList(): JSX.Element {
             言葉で探す・難しさ・学習テーマを1行にまとめ、絞り込みの段が縦に伸びないようにする。
           */}
           <div className={styles.modeFilter} data-testid="search-filter">
+            <button
+              type="button"
+              onClick={() => changeProblemFilters(listMode, DEFAULT_PROBLEM_FILTERS)}
+            >
+              絞り込みをリセット
+            </button>
             <label className={styles.filterLabel} htmlFor="problem-search">
               {JA.problemListExtra.searchLabel}:
             </label>
@@ -317,7 +340,7 @@ export function ProblemList(): JSX.Element {
                               openThis();
                             }}
                           >
-                            {JA.problemList.open}
+                            {currentProblemId === problem.id ? '再開' : JA.problemList.open}
                           </button>
                         </td>
                       </tr>

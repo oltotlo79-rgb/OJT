@@ -57,11 +57,20 @@ export class WorkerBridge {
       else if (message.type === 'inspectResult') handlers.onInspect?.(message);
       else if (message.type === 'plcResult') handlers.onPlc?.(message);
       else if (message.type === 'verifyResult') handlers.onVerify?.(message);
-      else handlers.onError(message.message, message.fatal);
+      else {
+        if (message.fatal) this.stop();
+        handlers.onError(message.message, message.fatal);
+      }
     };
     worker.onerror = (event: ErrorEvent) => {
       // Worker そのものが落ちた。ループは確実に止まっているので致命扱い（§13 #6）
-      handlers.onError(event.message, true);
+      if (this.worker !== worker) return;
+      this.stop();
+      handlers.onError(
+        event.message?.trim() ||
+          '原因の詳細を取得できませんでした。「診断記録を保存」で記録を残し、「セッションをリセット」で再開してください。',
+        true,
+      );
     };
     this.worker = worker;
   }

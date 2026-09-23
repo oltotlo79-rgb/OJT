@@ -171,14 +171,12 @@ describe('モードD のキー割当（§10.6）', () => {
 });
 
 describe('設定の説明文（§12.1）', () => {
-  const section = () => textOf('settings/設定の画面');
-
   it.each([
-    ['userContentHelp', JA.settings.userContentHelp],
-    ['vendorHelp', JA.settings.vendorHelp],
-    ['monitorColorHelp', JA.settings.monitorColorHelp],
-  ])('writes %s into the manual word for word', (_name, text) => {
-    expect(section()).toContain(text);
+    ['userContentHelp', '設定の画面', JA.settings.userContentHelp],
+    ['vendorHelp', 'PLCの既定のメーカー', JA.settings.vendorHelp],
+    ['monitorColorHelp', 'ラダーの見た目', JA.settings.monitorColorHelp],
+  ])('writes %s into its manual section word for word', (_name, section, text) => {
+    expect(textOf(`settings/${section}`)).toContain(text);
   });
 
   /*
@@ -187,7 +185,7 @@ describe('設定の説明文（§12.1）', () => {
    * `gridColsHelp()` を呼び、逐語一致を求める（説明書側にその注記はもう無い）。
    */
   it('writes the ladder column hint word for word (11, the number the manual quotes)', () => {
-    expect(section()).toContain(JA.settings.gridColsHelp(11));
+    expect(textOf('settings/ラダーの見た目')).toContain(JA.settings.gridColsHelp(11));
   });
 });
 

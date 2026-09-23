@@ -167,6 +167,10 @@ test.describe.serial('タイムチャートの拡大表示', () => {
     await page.getByTestId('mode-assemble').click();
     await page.getByRole('button', { name: '1級', exact: true }).click();
     await page.getByTestId('open-b-007').click();
+    await page
+      .getByTestId('problem-change-confirm')
+      .getByRole('button', { name: '保存せず進む', exact: true })
+      .click();
     await expect(page.getByTestId('viewport')).toBeVisible();
     await expect
       .poll(async () => page.locator('[data-testid="viewport"] canvas').count(), {

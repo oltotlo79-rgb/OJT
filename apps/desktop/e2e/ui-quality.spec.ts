@@ -1020,6 +1020,10 @@ async function openProblem(page: Page, modeTestId: string, problemId: string): P
     .click();
   await expect(page.getByTestId(`open-${problemId}`)).toBeVisible();
   await page.getByTestId(`open-${problemId}`).click();
+  const confirmation = page.getByTestId('problem-change-confirm');
+  await expect(confirmation.or(page.getByTestId('viewport'))).toBeVisible();
+  if (await confirmation.isVisible())
+    await confirmation.getByRole('button', { name: '保存せず進む', exact: true }).click();
 }
 
 async function waitForBoard(page: Page): Promise<void> {

@@ -1,0 +1,52 @@
+.dialog {
+  width: min(1320px, calc(100vw - 32px));
+  max-width: calc(100vw - 32px);
+  max-height: calc(100vh - 32px);
+  box-sizing: border-box;
+  color: var(--text, #e5e9f0);
+  background: var(--panel, #1b2331);
+  border: 1px solid var(--border, #626c7e);
+  border-radius: 10px;
+  padding: 18px;
+  overflow: auto;
+}
+.dialog::backdrop {
+  background: #0009;
+}
+.dialog h2 {
+  margin: 0 0 8px;
+}
+.dialog p {
+  margin: 8px 0;
+}
+.toolbar {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.toolbar button {
+  min-height: 36px;
+}
+.editor {
+  min-width: 0;
+  min-height: 360px;
+  margin-block: 12px;
+}
+.footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border, #626c7e);
+}
+.status {
+  padding: 8px 10px;
+  border: 1px solid var(--border, #626c7e);
+  border-radius: 5px;
+  overflow-wrap: anywhere;
+}
+.issues {
+  max-height: 150px;
+  overflow: auto;
+}

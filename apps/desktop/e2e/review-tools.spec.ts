@@ -181,6 +181,19 @@ test('GUIで拡張盤を複製・編集・模範検証・保存し、追加端�
     await authoring.getByLabel('課題名', { exact: true }).fill('追加端子の検証課題');
     await authoring.getByLabel('1端子の最大本数', { exact: true }).selectOption('3');
     await authoring.getByLabel('ヒントの出し方', { exact: true }).selectOption('off');
+    await authoring.getByLabel('追加押ボタン数（PB5〜）', { exact: true }).fill('2');
+    await authoring.getByText('操作列（2件）', { exact: true }).click();
+    await authoring.getByLabel('操作列 1 押ボタン', { exact: true }).selectOption('PB6');
+    await authoring.getByLabel('操作列 2 押ボタン', { exact: true }).selectOption('PB6');
+    await authoring.getByTestId('author-reference-open').click();
+    const reference = page.getByTestId('author-reference-editor');
+    await reference.getByTestId('palette-pb-a:PB6').click();
+    await reference.locator('[data-slot="r0#0"]').click();
+    await reference.getByRole('button', { name: '元に戻す', exact: true }).click();
+    await reference.getByRole('button', { name: 'やり直し', exact: true }).click();
+    await shot(app, 'v160-authoring-schematic');
+    await reference.getByRole('button', { name: '編集を終える', exact: true }).click();
+    await expect(authoring.getByLabel('課題定義JSON')).toHaveValue(/"device": "PB6"/u);
     await authoring
       .getByRole('button', { name: '課題を検証（模範の自己判定）', exact: true })
       .click();
@@ -203,8 +216,8 @@ test('GUIで拡張盤を複製・編集・模範検証・保存し、追加端�
     await expect(page.locator('[data-testid="viewport"] canvas')).toBeVisible();
     await page.getByTestId('terminal-list-summary').click();
     for (const [from, to] of [
-      ['P.1', 'TB_PB.5c'],
-      ['TB_PB.5a', 'TB_AUX.1a'],
+      ['P.1', 'TB_PB.6c'],
+      ['TB_PB.6a', 'TB_AUX.1a'],
       ['TB_AUX.1b', 'TB_PL.5+'],
       ['TB_PL.5-', 'N.1'],
     ]) {

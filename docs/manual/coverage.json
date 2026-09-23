@@ -1,6 +1,22 @@
 {
   "controls": [
     {
+      "testid": "{}-details",
+      "internal": "横の枠の中身の入れ物。親の見出しで説明済み"
+    },
+    {
+      "testid": "{}-large",
+      "screen": "練習中",
+      "label": "拡大表示",
+      "section": "screens/タイムチャートの読み方"
+    },
+    {
+      "testid": "{}-summary",
+      "screen": "練習中（モードD）",
+      "label": "見出しを押すと畳めます",
+      "section": "mode-d/PLCの課題を進める"
+    },
+    {
       "testid": "about",
       "screen": "設定",
       "label": "このアプリについて",
@@ -57,16 +73,34 @@
       "section": "screens/練習中の画面の並び"
     },
     {
+      "testid": "assemble-view-{}",
+      "screen": "練習中（モードB）",
+      "label": "並べて",
+      "section": "schematic/この機能でやること"
+    },
+    {
       "testid": "assemble-view-key",
       "screen": "練習中（モードB）",
       "label": "F2",
       "section": "schematic/この機能でやること"
     },
     {
-      "testid": "assemble-view-{}",
-      "screen": "練習中（モードB）",
-      "label": "並べて",
-      "section": "schematic/この機能でやること"
+      "testid": "author-reference-editor",
+      "screen": "課題作成・再開",
+      "label": "模範",
+      "section": "authoring/画面から課題を作る"
+    },
+    {
+      "testid": "author-reference-open",
+      "screen": "課題作成・再開",
+      "label": "模範",
+      "section": "authoring/画面から課題を作る"
+    },
+    {
+      "testid": "authoring-draft-status",
+      "screen": "課題作成・再開",
+      "label": "課題下書き保存済み",
+      "section": "settings/課題作成の下書き"
     },
     {
       "testid": "autosave-status",
@@ -123,6 +157,10 @@
       "section": "screens/部品を入れ替える"
     },
     {
+      "testid": "cell-{}",
+      "internal": "格子の1マス。親のラダー図で説明済み"
+    },
+    {
       "testid": "cell-menu",
       "screen": "練習中（モードD）",
       "label": "記号メニュー",
@@ -133,10 +171,6 @@
       "screen": "練習中（モードD）",
       "label": "記号メニュー",
       "section": "mode-d/ラダー図を描く"
-    },
-    {
-      "testid": "cell-{}",
-      "internal": "格子の1マス。親のラダー図で説明済み"
     },
     {
       "testid": "chart-backdrop",
@@ -211,6 +245,10 @@
       "section": "schematic/回路図を描く"
     },
     {
+      "testid": "comment-{}",
+      "internal": "コメント欄の1行。親のデバイスコメントで説明済み"
+    },
+    {
       "testid": "comment-cap",
       "screen": "練習中（モードD）",
       "label": "新しい欄は入力できません",
@@ -231,10 +269,6 @@
       "screen": "練習中（モードD）",
       "label": "デバイスコメント",
       "section": "mode-d/ラダー図を描く"
-    },
-    {
-      "testid": "comment-{}",
-      "internal": "コメント欄の1行。親のデバイスコメントで説明済み"
     },
     {
       "testid": "compare-chart",
@@ -313,6 +347,12 @@
       "screen": "結果",
       "label": "正解",
       "section": "mode-c1/「判定」を押す"
+    },
+    {
+      "testid": "current-work",
+      "screen": "課題作成・再開",
+      "label": "作業中",
+      "section": "screens/課題を選ぶ"
     },
     {
       "testid": "cursor-inner",
@@ -479,7 +519,7 @@
     {
       "testid": "grid-cols-help",
       "screen": "設定",
-      "label": "ラダー編集画面の接点列の数",
+      "label": "表示列数",
       "section": "settings/ラダーの見た目"
     },
     {
@@ -571,12 +611,12 @@
       "section": "screens/画面の上の帯"
     },
     {
-      "testid": "help-section-title",
-      "internal": "本文の見出しの目印。画面に別の操作は無い"
-    },
-    {
       "testid": "help-section-{}",
       "internal": "目次の1行ずつの目印。目次そのものを説明済み"
+    },
+    {
+      "testid": "help-section-title",
+      "internal": "本文の見出しの目印。画面に別の操作は無い"
     },
     {
       "testid": "hidden-cells-{}",
@@ -781,16 +821,16 @@
       "section": "mode-b/うまくいかないとき"
     },
     {
-      "testid": "mode-filter",
-      "screen": "課題一覧",
-      "label": "すべて",
-      "section": "screens/課題を選ぶ"
-    },
-    {
       "testid": "mode-{}",
       "screen": "ホーム",
       "label": "回路組立",
       "section": "screens/ホームの画面"
+    },
+    {
+      "testid": "mode-filter",
+      "screen": "課題一覧",
+      "label": "すべて",
+      "section": "screens/課題を選ぶ"
     },
     {
       "testid": "modification-list",
@@ -801,7 +841,7 @@
     {
       "testid": "monitor-color-help",
       "screen": "設定",
-      "label": "モニタ中に通電しているセルへ塗る色です",
+      "label": "通電色",
       "section": "settings/ラダーの見た目"
     },
     {
@@ -883,14 +923,14 @@
       "section": "mode-d/ラダー図を描く"
     },
     {
-      "testid": "native-menu-popup",
-      "internal": "メーカーのメニュー項目をまとめる枠。各操作はnative-itemで説明する。"
-    },
-    {
       "testid": "native-menu-{}",
       "screen": "練習中（モードD）",
       "label": "編集",
       "section": "mode-d/ラダー図を描く"
+    },
+    {
+      "testid": "native-menu-popup",
+      "internal": "メーカーのメニュー項目をまとめる枠。各操作はnative-itemで説明する。"
     },
     {
       "testid": "network-{}",
@@ -973,6 +1013,12 @@
       "section": "mode-d/別のメーカーの書き方に変える"
     },
     {
+      "testid": "open-{}",
+      "screen": "課題一覧",
+      "label": "開く",
+      "section": "screens/課題を選ぶ"
+    },
+    {
       "testid": "open-help",
       "screen": "全画面",
       "label": "ヘルプ",
@@ -983,12 +1029,6 @@
       "screen": "ホーム",
       "label": "設定",
       "section": "screens/ホームの画面"
-    },
-    {
-      "testid": "open-{}",
-      "screen": "課題一覧",
-      "label": "開く",
-      "section": "screens/課題を選ぶ"
     },
     {
       "testid": "operation-log",
@@ -1025,14 +1065,14 @@
       "section": "mode-d/変換する"
     },
     {
+      "testid": "overlay-shortcut-{}",
+      "internal": "早見表の1行。親の「キーの早見表」で説明済み"
+    },
+    {
       "testid": "overlay-shortcut-monitor",
       "screen": "練習中（モードD）",
       "label": "モニタ",
       "section": "mode-d/キーの割り当て"
-    },
-    {
-      "testid": "overlay-shortcut-{}",
-      "internal": "早見表の1行。親の「キーの早見表」で説明済み"
     },
     {
       "testid": "palette-{}",
@@ -1221,6 +1261,12 @@
       "section": "schematic/設定時間を決める"
     },
     {
+      "testid": "probe-{}",
+      "screen": "テスター",
+      "label": "黒プローブ",
+      "section": "mode-c1/テスターの使い方"
+    },
+    {
       "testid": "probe-shortcuts",
       "screen": "練習中（モードC1）",
       "label": "プローブを当てる",
@@ -1233,16 +1279,16 @@
       "section": "tutorial-features/テスターの使い方"
     },
     {
-      "testid": "probe-{}",
-      "screen": "テスター",
-      "label": "黒プローブ",
-      "section": "mode-c1/テスターの使い方"
-    },
-    {
       "testid": "problem-authoring",
       "screen": "練習・設定",
       "label": "課題の導入・作成",
       "section": "authoring/アプリの画面から課題を作る"
+    },
+    {
+      "testid": "problem-change-confirm",
+      "screen": "課題作成・再開",
+      "label": "保存して進む",
+      "section": "screens/課題を選ぶ"
     },
     {
       "testid": "problem-count",
@@ -1285,15 +1331,15 @@
       "section": "mode-d/ラダー図を描く"
     },
     {
-      "testid": "quick-probe-clear",
-      "screen": "練習中",
-      "label": "両方外す",
-      "section": "screens/練習中の画面の並び"
-    },
-    {
       "testid": "quick-probe-{}",
       "screen": "練習中",
       "label": "黒",
+      "section": "screens/練習中の画面の並び"
+    },
+    {
+      "testid": "quick-probe-clear",
+      "screen": "練習中",
+      "label": "両方外す",
       "section": "screens/練習中の画面の並び"
     },
     {
@@ -1489,6 +1535,12 @@
       "section": "screens/結果の画面"
     },
     {
+      "testid": "resume-current-work",
+      "screen": "課題作成・再開",
+      "label": "続きから再開",
+      "section": "screens/課題を選ぶ"
+    },
+    {
       "testid": "round-no",
       "screen": "練習中（モードD）",
       "label": "いいえ",
@@ -1591,15 +1643,15 @@
       "section": "schematic/設定時間を決める"
     },
     {
-      "testid": "schematic-step-guide",
-      "screen": "回路図",
-      "label": "手順",
-      "section": "schematic/この機能でやること"
-    },
-    {
       "testid": "schematic-step-{}",
       "screen": "回路図",
       "label": "検算する",
+      "section": "schematic/この機能でやること"
+    },
+    {
+      "testid": "schematic-step-guide",
+      "screen": "回路図",
+      "label": "手順",
       "section": "schematic/この機能でやること"
     },
     {
@@ -1739,6 +1791,10 @@
       "section": "troubleshooting/こう表示されたら"
     },
     {
+      "testid": "shortcut-{}",
+      "internal": "キー割当表の1行。親のキー割当で説明済み"
+    },
+    {
       "testid": "shortcut-overlay",
       "screen": "練習中（モードD）",
       "label": "キーの早見表",
@@ -1755,10 +1811,6 @@
       "screen": "練習中（モードD）",
       "label": "PCwinの編集キーは資料未確認のため割り当てていません。記号ボタンから入力してください。",
       "section": "mode-d/キーの割り当て"
-    },
-    {
-      "testid": "shortcut-{}",
-      "internal": "キー割当表の1行。親のキー割当で説明済み"
     },
     {
       "testid": "shortcuts",
@@ -1841,15 +1893,15 @@
       "internal": "ソケットのボタンを囲む枠。押せるのは中のボタン（`socket-list-{}`）"
     },
     {
-      "testid": "socket-list-back",
-      "screen": "練習画面",
-      "label": "ソケット一覧へ",
-      "section": "screens/部品を入れ替える"
-    },
-    {
       "testid": "socket-list-{}",
       "screen": "練習画面",
       "label": "ソケット",
+      "section": "screens/部品を入れ替える"
+    },
+    {
+      "testid": "socket-list-back",
+      "screen": "練習画面",
+      "label": "ソケット一覧へ",
       "section": "screens/部品を入れ替える"
     },
     {
@@ -1889,16 +1941,26 @@
       "section": "screens/結果の画面"
     },
     {
+      "testid": "status-{}",
+      "screen": "練習中（モードD）",
+      "label": "スキャン",
+      "section": "mode-d/ラダー図を描く"
+    },
+    {
       "testid": "status-overlay",
       "screen": "練習中",
       "label": "通電中",
       "section": "screens/練習中の画面の並び"
     },
     {
-      "testid": "status-{}",
-      "screen": "練習中（モードD）",
-      "label": "スキャン",
-      "section": "mode-d/ラダー図を描く"
+      "testid": "step-{}",
+      "screen": "練習中",
+      "label": "部品装着",
+      "section": "screens/練習中の画面の並び"
+    },
+    {
+      "testid": "step-{}:{}",
+      "internal": "行番号の数字。親のラダー図で説明済み"
     },
     {
       "testid": "step-guide",
@@ -1911,16 +1973,6 @@
       "screen": "練習中",
       "label": "3D盤の端子を2つクリックして配線します。",
       "section": "screens/練習中の画面の並び"
-    },
-    {
-      "testid": "step-{}",
-      "screen": "練習中",
-      "label": "部品装着",
-      "section": "screens/練習中の画面の並び"
-    },
-    {
-      "testid": "step-{}:{}",
-      "internal": "行番号の数字。親のラダー図で説明済み"
     },
     {
       "testid": "suspect-list",
@@ -1941,15 +1993,15 @@
       "section": "mode-b/うまくいかないとき"
     },
     {
-      "testid": "swap-cancel",
-      "screen": "練習中",
-      "label": "交換をやめる",
-      "section": "screens/部品を入れ替える"
-    },
-    {
       "testid": "swap-{}",
       "screen": "練習中",
       "label": "これに交換",
+      "section": "screens/部品を入れ替える"
+    },
+    {
+      "testid": "swap-cancel",
+      "screen": "練習中",
+      "label": "交換をやめる",
       "section": "screens/部品を入れ替える"
     },
     {
@@ -2077,6 +2129,12 @@
       "section": "mode-c2/回路を点検して直す"
     },
     {
+      "testid": "toolbar-{}",
+      "screen": "練習中（モードD）",
+      "label": "変換",
+      "section": "mode-d/変換する"
+    },
+    {
       "testid": "toolbar-notation",
       "screen": "練習中（モードD）",
       "label": "表記切替",
@@ -2093,12 +2151,6 @@
       "screen": "練習中",
       "label": "その他の操作",
       "section": "screens/画面の上の帯"
-    },
-    {
-      "testid": "toolbar-{}",
-      "screen": "練習中（モードD）",
-      "label": "変換",
-      "section": "mode-d/変換する"
     },
     {
       "testid": "tour-guide",
@@ -2135,13 +2187,13 @@
       "section": "mode-d/ラダー図を描く"
     },
     {
-      "testid": "tutorial-player",
+      "testid": "tutorial-{}",
       "screen": "ホーム・練習",
-      "label": "課題を解く動画",
+      "label": "基本例題の動画",
       "section": "screens/動画で操作を学ぶ"
     },
     {
-      "testid": "tutorial-{}",
+      "testid": "tutorial-player",
       "screen": "ホーム・練習",
       "label": "課題を解く動画",
       "section": "screens/動画で操作を学ぶ"
@@ -2195,7 +2247,7 @@
     {
       "testid": "vendor-note",
       "screen": "設定",
-      "label": "PLCの課題を開いたときに使う機種（メーカー）です",
+      "label": "メーカー",
       "section": "settings/PLCの既定のメーカー"
     },
     {
@@ -2241,6 +2293,12 @@
       "section": "schematic/「検算」で確かめる"
     },
     {
+      "testid": "view-{}",
+      "screen": "練習中（モードD）",
+      "label": "分割",
+      "section": "mode-d/PLCの課題を進める"
+    },
+    {
       "testid": "view-hint",
       "screen": "練習中",
       "label": "キューブをドラッグ＝回転",
@@ -2263,12 +2321,6 @@
       "screen": "練習中",
       "label": "表示",
       "section": "screens/画面の上の帯"
-    },
-    {
-      "testid": "view-{}",
-      "screen": "練習中（モードD）",
-      "label": "分割",
-      "section": "mode-d/PLCの課題を進める"
     },
     {
       "testid": "viewport",
@@ -2355,22 +2407,6 @@
       "screen": "テスター",
       "label": "調整済",
       "section": "mode-c1/テスターの使い方"
-    },
-    {
-      "testid": "{}-details",
-      "internal": "横の枠の中身の入れ物。親の見出しで説明済み"
-    },
-    {
-      "testid": "{}-large",
-      "screen": "練習中",
-      "label": "拡大表示",
-      "section": "screens/タイムチャートの読み方"
-    },
-    {
-      "testid": "{}-summary",
-      "screen": "練習中（モードD）",
-      "label": "見出しを押すと畳めます",
-      "section": "mode-d/PLCの課題を進める"
     }
   ],
   "keys": [

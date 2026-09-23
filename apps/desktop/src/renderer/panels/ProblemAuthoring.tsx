@@ -1,18 +1,21 @@
 import { useEffect, useMemo, useState, type JSX } from 'react';
-import {
-  FAULT_KINDS,
-  PART_TRUTHS,
-  PART_TRUTH_LABELS,
-  type DefinitionValidation,
-} from '@ojt/content';
+import { FAULT_KINDS, PART_TRUTHS, PART_TRUTH_LABELS } from '@ojt/content';
 import { FREE_TRAINING_RULES, MOUNTABLE_KINDS, TRAINING_CHECK_IDS } from '@ojt/board-model';
 import type { AuthoringRequest } from '../../shared/authoring.js';
 import type { ProblemSummary } from '../../shared/ipc.js';
 import { isRecord } from '../../shared/work-file-schema.js';
 import { ojtApi, tryOjtApi } from '../app/ojt-api.js';
 import { CollapsiblePanel } from './CollapsiblePanel.js';
+import { AuthoringReferenceEditor } from './AuthoringReferenceEditor.js';
+import { readAuthoringReference, type AuthoringReference } from '../session/authoring-reference.js';
 import { JA } from '../i18n/ja.js';
 import styles from './problem-authoring.module.css';
+import {
+  editAuthoringText,
+  flushAuthoringDraft,
+  retryAuthoringDraft,
+  useAuthoringDraft,
+} from '../session/authoring-draft.js';
 
 type Row = Record<string, unknown>;
 const OPTION_LABELS: Readonly<Record<string, string>> = {
@@ -143,14 +146,28 @@ export function ProblemAuthoring({
   onDirectory: (directory: string) => void;
 }): JSX.Element {
   const [problems, setProblems] = useState<readonly ProblemSummary[]>([]);
-  const [templateId, setTemplateId] = useState('');
-  const [text, setText] = useState('');
-  const [savedText, setSavedText] = useState('');
-  const [validation, setValidation] = useState<DefinitionValidation>();
-  const [message, setMessage] = useState('');
-  const [busy, setBusy] = useState(false);
+  const {
+    templateId,
+    text,
+    savedText,
+    validation,
+    message,
+    busy,
+    savedDirectory,
+    persistence,
+    persistenceMessage,
+    savedAt,
+  } = useAuthoringDraft();
+  const setTemplateId = (templateId: string): void => useAuthoringDraft.setState({ templateId });
+  const setMessage = (message: string): void => useAuthoringDraft.setState({ message });
+  const setBusy = (busy: boolean): void => useAuthoringDraft.setState({ busy });
   const [replacement, setReplacement] = useState<AuthoringRequest>();
-  const [savedDirectory, setSavedDirectory] = useState('');
+  const [discardDraft, setDiscardDraft] = useState(false);
+  const [referenceEditor, setReferenceEditor] = useState<{
+    reference: AuthoringReference;
+    definition: Row;
+    originalText: string;
+  }>();
   useEffect(() => {
     let disposed = false;
     const api = tryOjtApi();
@@ -175,11 +192,7 @@ export function ProblemAuthoring({
       return undefined;
     }
   }, [text]);
-  const edit = (next: string): void => {
-    setText(next);
-    setValidation(undefined);
-    setMessage('未保存の変更があります。保存前に検証してください。');
-  };
+  const edit = editAuthoringText;
   const patch = (changes: Row): void => {
     if (definition !== undefined) edit(JSON.stringify({ ...definition, ...changes }, null, 2));
   };
@@ -191,6 +204,7 @@ export function ProblemAuthoring({
       return;
     }
     setBusy(true);
+    const requestedRevision = useAuthoringDraft.getState().revision;
     setMessage(
       request.action === 'validate' || request.action === 'save'
         ? '模範の自己判定を実行しています…'
@@ -198,21 +212,26 @@ export function ProblemAuthoring({
     );
     try {
       const result = await api(request);
-      if (result.validation !== undefined) setValidation(result.validation);
+      if (useAuthoringDraft.getState().revision !== requestedRevision) {
+        setMessage(
+          '処理中に編集内容が変わりました。現在の下書きを保持しました。もう一度検証してください。',
+        );
+        return;
+      }
+      if (result.validation !== undefined)
+        useAuthoringDraft.setState({ validation: result.validation });
       if (!result.ok) {
         setMessage(result.message);
         return;
       }
       if (result.text !== undefined) {
-        setText(result.text);
-        setSavedText(request.action === 'open' ? result.text : '');
-        setValidation(undefined);
+        editAuthoringText(result.text);
+        useAuthoringDraft.setState({ savedText: request.action === 'open' ? result.text : '' });
       }
       if (request.action === 'choose-directory' && result.directory !== undefined)
         onDirectory(result.directory);
       if (result.path !== undefined) {
-        setSavedText(text);
-        setSavedDirectory(result.directory ?? '');
+        useAuthoringDraft.setState({ savedText: text, savedDirectory: result.directory ?? '' });
       }
       setMessage(
         result.path !== undefined
@@ -253,7 +272,75 @@ export function ProblemAuthoring({
       testId="problem-authoring"
       summary="複製・編集・模範検証・JSON配布"
     >
-      <fieldset disabled={busy} className={styles.form}>
+      <p aria-live="polite" data-testid="authoring-draft-status">
+        {persistence === 'loading'
+          ? '課題下書きを読み込んでいます…'
+          : persistence === 'failed'
+            ? '課題下書きの保存を確認できません'
+            : persistence === 'saving'
+              ? '課題下書きを保存中…'
+              : persistence === 'pending'
+                ? '課題下書きの保存待ち'
+                : text && savedAt
+                  ? `課題下書き保存済み ${new Date(savedAt).toLocaleTimeString('ja-JP')}`
+                  : '編集中の課題は下書きとして自動保存します。'}
+      </p>
+      {persistenceMessage && <p role="alert">{persistenceMessage}</p>}
+      {persistence === 'failed' && (
+        <button
+          type="button"
+          onClick={() => {
+            void retryAuthoringDraft();
+          }}
+        >
+          下書きの保存を再試行
+        </button>
+      )}
+      {text && (
+        <>
+          <p>
+            下書きは、このPCで編集を続けるための控えです。配布する課題は「検証してJSONを保存」で書き出します。
+          </p>
+          <button
+            type="button"
+            disabled={persistence === 'loading'}
+            onClick={() => {
+              void flushAuthoringDraft();
+            }}
+          >
+            下書きを今すぐ保存
+          </button>
+          <button type="button" disabled={busy} onClick={() => setDiscardDraft(true)}>
+            下書きを破棄…
+          </button>
+        </>
+      )}
+      {discardDraft && (
+        <div role="alert">
+          <p>このPCの課題作成の下書きを空にしますか？</p>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => {
+              editAuthoringText('');
+              useAuthoringDraft.setState({
+                savedText: '',
+                savedDirectory: '',
+                templateId: '',
+                message: '課題下書きを空にしました。',
+              });
+              setDiscardDraft(false);
+              void flushAuthoringDraft();
+            }}
+          >
+            下書きを破棄する
+          </button>
+          <button type="button" onClick={() => setDiscardDraft(false)}>
+            取消
+          </button>
+        </div>
+      )}
+      <fieldset disabled={busy || persistence === 'loading'} className={styles.form}>
         <p>
           内蔵課題を複製して変更し、模範の自己判定に合格してから保存します。JSONを渡すだけで、ほかのPCにも課題を追加できます。
         </p>
@@ -516,6 +603,7 @@ export function ProblemAuthoring({
             <label>
               操作・達成条件の説明
               <textarea
+                aria-label="操作・達成条件の説明"
                 rows={4}
                 value={fieldText(definition['description'] ?? '')}
                 onChange={(event) => patch({ description: event.target.value })}
@@ -628,8 +716,25 @@ export function ProblemAuthoring({
         )}
         {text && (
           <>
+            {definition !== undefined &&
+              ['assemble', 'inspect-repair', 'plc'].includes(fieldText(definition['mode'])) && (
+                <p>
+                  <button
+                    type="button"
+                    data-testid="author-reference-open"
+                    onClick={() => {
+                      const reference = readAuthoringReference(definition);
+                      if (typeof reference === 'string') setMessage(reference);
+                      else setReferenceEditor({ reference, definition, originalText: text });
+                    }}
+                  >
+                    {definition['mode'] === 'plc' ? '模範ラダーを編集' : '模範回路図を編集'}
+                  </button>
+                  記号を選んで編集できます。途中の回路も下書きに保存します。
+                </p>
+              )}
             <details open={definition === undefined}>
-              <summary>詳細JSONを編集（回路図・ラダー・ランダム故障など）</summary>
+              <summary>詳細JSONを編集（高度な設定・データ形式の修正）</summary>
               <textarea
                 aria-label="課題定義JSON"
                 rows={16}
@@ -673,6 +778,24 @@ export function ProblemAuthoring({
         <button type="button" onClick={() => onDirectory(savedDirectory)}>
           保存先を利用者課題フォルダに設定する
         </button>
+      )}
+      {referenceEditor !== undefined && (
+        <AuthoringReferenceEditor
+          reference={referenceEditor.reference}
+          onChange={(changes) =>
+            editAuthoringText(
+              JSON.stringify({ ...referenceEditor.definition, ...changes }, null, 2),
+            )
+          }
+          onVerify={() => {
+            void act({ action: 'validate', text: useAuthoringDraft.getState().text });
+          }}
+          onClose={() => setReferenceEditor(undefined)}
+          onCancel={() => {
+            editAuthoringText(referenceEditor.originalText);
+            setReferenceEditor(undefined);
+          }}
+        />
       )}
     </CollapsiblePanel>
   );

@@ -111,7 +111,7 @@ function item(kind: CellKind, device: string, group: string): PaletteItem {
  * `board.socketRoles` は課題スキーマ（`BoardRefSchema`）の**必須項目**なので、
  * 「割当が無いときは全役割」という分岐は存在しない。
  */
-function assignedRoles(problem: AssembleProblem): SocketRole[] {
+function assignedRoles(problem: Pick<AssembleProblem, 'board'>): SocketRole[] {
   const used = new Set(
     Object.values(problem.board.socketRoles).filter(
       (role): role is SocketRole => role !== undefined,
@@ -125,7 +125,10 @@ function assignedRoles(problem: AssembleProblem): SocketRole[] {
  * ソケットの役割は課題の `board.socketRoles`、押ボタン・表示灯は盤の定義、
  * ブザーは課題の `board.extraParts` にあるときだけ。
  */
-export function paletteFor(problem: AssembleProblem, board: BoardDefinition): PaletteItem[] {
+export function paletteFor(
+  problem: Pick<AssembleProblem, 'board'>,
+  board: BoardDefinition,
+): PaletteItem[] {
   const out: PaletteItem[] = [];
   for (const pb of board.pushButtons) {
     out.push(item('pb-a', pb.id, GROUP_PB), item('pb-b', pb.id, GROUP_PB));

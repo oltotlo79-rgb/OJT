@@ -7,6 +7,7 @@ import { isRecord } from '../shared/work-file-schema.js';
 import { builtinSet, clearContentCache, loadContent } from './content-loader.js';
 import { readSettings } from './settings.js';
 import { writeFileAtomic } from './fs-atomic.js';
+import { loadAuthoringDraft, saveAuthoringDraft } from './authoring-drafts.js';
 
 /** 選択ダイアログで利用者が指定したJSON／設定済み課題フォルダだけを扱う。 */
 export async function authorContent(
@@ -15,6 +16,8 @@ export async function authorContent(
 ): Promise<AuthoringResult> {
   const fail = (message: string): AuthoringResult => ({ ok: false, message });
   if (!isRecord(request)) return fail('課題作成の要求を読めません。');
+  if (request['action'] === 'draft-load') return loadAuthoringDraft();
+  if (request['action'] === 'draft-save') return saveAuthoringDraft(request['draft']);
   const directory = readSettings().userContentDir;
   try {
     if (request['action'] === 'choose-directory') {

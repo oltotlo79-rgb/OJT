@@ -132,9 +132,9 @@ export function TutorialVideoButton({ mode }: { mode: TutorialMode }): JSX.Eleme
         type="button"
         data-testid={`tutorial-${mode}`}
         onClick={() => setOpen(true)}
-        title={`${TUTORIALS[mode].title}の操作例`}
+        title={`${TUTORIALS[mode].problem}の操作例です。選択中の課題と異なる場合があります。`}
       >
-        ▶ 課題を解く動画を見る
+        ▶ 基本例題の動画（{TUTORIALS[mode].problem.split(' ')[0]}）
       </button>
       {open && <Player mode={mode} onClose={() => setOpen(false)} />}
     </>
@@ -148,6 +148,7 @@ export function TutorialLibrary(): JSX.Element {
         {(Object.keys(TUTORIALS) as TutorialMode[]).map((mode) => (
           <article key={mode}>
             <h3>{TUTORIALS[mode].title}</h3>
+            <p>{TUTORIALS[mode].problem}</p>
             <p>{TUTORIALS[mode].topic}</p>
             <p>{durationLabel(mode)}・音声なし</p>
             <TutorialVideoButton mode={mode} />

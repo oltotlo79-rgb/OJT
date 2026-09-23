@@ -626,6 +626,20 @@
       }
     ]
   },
+  "authoring-schematic": {
+    "caption": "課題作成の模範回路図エディタ。",
+    "callouts": [
+      { "n": 1, "label": "記号パレット" },
+      { "n": 2, "label": "段を追加" }
+    ]
+  },
+  "authoring-ladder": {
+    "caption": "課題作成の模範ラダーエディタ。",
+    "callouts": [
+      { "n": 1, "label": "回路ブロックを追加" },
+      { "n": 2, "label": "編集するセル" }
+    ]
+  },
   "workfile-menu": {
     "caption": "作業ファイルの保存と読込",
     "callouts": [
