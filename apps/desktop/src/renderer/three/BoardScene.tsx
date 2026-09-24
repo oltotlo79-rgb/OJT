@@ -1083,7 +1083,12 @@ function BoardContents({
                * どちらが勝つかがファイルをまたいで散らばる。
                */
               selected={selectedWire === route.wireId || highlightWires.includes(route.wireId)}
-              pickable={mode === 'delete' || mode === 'report'}
+              /*
+               * 配線モードでも自分で張った電線は押して選べる（Delete で外す。取扱説明書
+               * 「電線をつなぐ・外す」）。固定配線は配線モードでは選ばないので当たり判定を作らない。
+               */
+              pickable={mode === 'delete' || mode === 'report' || (mode === 'wire' && !wire.locked)}
+              yieldsToParts={mode === 'wire'}
               onPick={pickWire}
             />
           );

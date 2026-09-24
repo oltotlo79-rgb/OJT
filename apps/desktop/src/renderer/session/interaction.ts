@@ -195,14 +195,38 @@ function hasSelection(state: InteractionState): boolean {
 const TYPING_TAGS: ReadonlySet<string> = new Set(['INPUT', 'TEXTAREA', 'SELECT']);
 
 /**
+ * 文字を打ち込まない `<input>` の種類。電線一覧のチェックボックスを押したあとも `Delete` が
+ * 盤へ届くように、これらは入力欄として扱わない（2026-09-24 利用者報告「Deleteで外れない」）。
+ */
+const NON_TYPING_INPUT_TYPES: ReadonlySet<string> = new Set([
+  'checkbox',
+  'radio',
+  'button',
+  'submit',
+  'reset',
+  'color',
+  'file',
+  'range',
+]);
+
+/**
  * そのイベントの宛先が「文字を打ち込む欄」か。§8.2
  * DOM の型に依存させないためダックタイピングで見る（`interaction.ts` は純粋な層）。
  */
 export function isTypingTarget(target: unknown): boolean {
   if (target === null || typeof target !== 'object') return false;
-  const element = target as { tagName?: unknown; isContentEditable?: unknown };
+  const element = target as { tagName?: unknown; isContentEditable?: unknown; type?: unknown };
   if (element.isContentEditable === true) return true;
-  return typeof element.tagName === 'string' && TYPING_TAGS.has(element.tagName.toUpperCase());
+  if (typeof element.tagName !== 'string') return false;
+  const tagName = element.tagName.toUpperCase();
+  if (
+    tagName === 'INPUT' &&
+    typeof element.type === 'string' &&
+    NON_TYPING_INPUT_TYPES.has(element.type.toLowerCase())
+  ) {
+    return false;
+  }
+  return TYPING_TAGS.has(tagName);
 }
 
 /**
@@ -282,8 +306,9 @@ export function shouldIgnoreShortcut(
  * - 削除モード: 電線を拾ったら選択（実際の削除は Delete キー。§8.2）、`locked` なら拒否、
  *   空間クリックは選択解除、それ以外は何もしない
  * - 配線モード: 端子 → 端子 で配線、同じ端子を2度押したら取り消し、空間クリックで取り消し。
- *   電線のクリック選択は削除モード限定なので、配線モードでは電線を拾っても何もしない
- *   （配線中でも取り消し扱いにはしない。§8.2「配線モードでは端子クリックを優先」）
+ *   配線中でなければ電線のクリックで選択できる（Delete で外す）。端子と重なった所では
+ *   3D側（`Wire.tsx`）が端子を優先するので、ここに届く電線は「電線だけを指した」ときに限る。
+ *   配線中に電線を拾っても取り消し扱いにはしない（§8.2「配線モードでは端子クリックを優先」）
  */
 export function pickToAction(state: InteractionState, hit: PickHit): PickAction {
   return toPickAction(intentOf(state, hit));
@@ -353,7 +378,6 @@ export function intentOf(state: InteractionState, hit: PickHit): Intent {
         : { type: 'selectWire', wireId: hit.id };
     }
     if (hit.kind === 'pushbutton') return { type: 'pressButton', pbId: hit.id };
-    // 電線の選択は削除モードにしかないので、選択解除もここに置く（配線モード側では死に枝だった）
     if (hit.kind === 'empty' && hasSelection(state)) return { type: 'selectWire', wireId: '' };
     return { type: 'none' };
   }
@@ -375,7 +399,13 @@ export function intentOf(state: InteractionState, hit: PickHit): Intent {
       return { type: 'completeWire', from: pending, to: hit.id, color: state.wireColor };
     }
     case 'wire':
-      return { type: 'none' };
+      /*
+       * 取扱説明書「電線をつなぐ・外す」のとおり、配線モードでも電線を押せば選べる
+       * （2026-09-24 利用者報告「配線を選択してDeleteを押しても外れない」）。
+       * 固定配線は黙って見送る（理由の表示は削除モードで押したときだけ）。
+       */
+      if (state.pendingTerminal !== undefined || hit.locked) return { type: 'none' };
+      return { type: 'selectWire', wireId: hit.id };
     case 'socket':
       if (state.pendingTerminal !== undefined) return { type: 'cancelWire' };
       return hit.occupied
@@ -386,7 +416,8 @@ export function intentOf(state: InteractionState, hit: PickHit): Intent {
         ? { type: 'pressButton', pbId: hit.id }
         : { type: 'cancelWire' };
     case 'empty':
-      return state.pendingTerminal === undefined ? { type: 'none' } : { type: 'cancelWire' };
+      if (state.pendingTerminal !== undefined) return { type: 'cancelWire' };
+      return hasSelection(state) ? { type: 'selectWire', wireId: '' } : { type: 'none' };
   }
 }
 
@@ -467,19 +498,25 @@ export function hoverHintFor(
   return hintForIntent(intentOf(state, hit), power);
 }
 
-/** Esc キーの扱い（配線中なら取り消し、削除モードで電線を選んでいれば選択解除）。§8.2 */
+/** Esc キーの扱い（配線中なら取り消し、電線を選んでいれば選択解除）。§8.2 */
 export function escapeToAction(state: InteractionState): PickAction {
   if (state.pendingTerminal !== undefined) return { type: 'cancelWire' };
-  if (state.mode === 'delete' && hasSelection(state)) return { type: 'selectWire', wireId: '' };
+  if (hasSelection(state)) return { type: 'selectWire', wireId: '' };
   return { type: 'none' };
 }
 
-/** Delete キーの扱い（削除モードで電線を選んでいれば削除。電線選択は削除モード限定。§8.2 / §12.2） */
+/**
+ * Delete キーの扱い（電線を選んでいれば削除）。§8.2 / §12.2
+ *
+ * 電線は3Dのクリック（削除モード・配線モード）と電線一覧（どのモードでも）から選べる。
+ * 以前は削除モードのときしか外さなかったため、一覧や配線モードで選んで Delete を押しても
+ * 何も起きなかった（2026-09-24 利用者報告）。選択が見えているなら、モードを問わず外す。
+ */
 export function deleteKeyToAction(
   state: InteractionState,
   lockedWireIds: readonly string[],
 ): PickAction {
-  if (state.mode !== 'delete') return { type: 'none' };
+  if (state.replaying === true) return { type: 'none' };
   const id = state.selectedWire;
   if (id === undefined || id.length === 0) return { type: 'none' };
   if (lockedWireIds.includes(id)) return { type: 'reject', message: LOCKED_WIRE_MESSAGE };

@@ -67,8 +67,15 @@ describe('pickToAction（配線モード）', () => {
     });
   });
 
-  it('電線をクリックしても何も起きない（配線モードは端子クリックを優先する。§8.2）', () => {
+  it('電線をクリックすると選択する（取扱説明書「電線をつなぐ・外す」。端子との重なりは3D側で端子を優先する）', () => {
     expect(pickToAction(state(), { kind: 'wire', id: 'w-001', locked: false })).toEqual({
+      type: 'selectWire',
+      wireId: 'w-001',
+    });
+  });
+
+  it('固定配線をクリックしても配線モードでは何も起きない（削除モードだけが理由を出す）', () => {
+    expect(pickToAction(state(), { kind: 'wire', id: 'fw-chk-1', locked: true })).toEqual({
       type: 'none',
     });
   });
@@ -104,9 +111,10 @@ describe('pickToAction（配線モード）', () => {
     });
   });
 
-  it('配線モードの空間クリックは選択解除にならない（電線選択は削除モード限定。§12.2）', () => {
+  it('配線モードでも空間クリックで電線の選択を外す', () => {
     expect(pickToAction(state({ selectedWire: 'w-001' }), { kind: 'empty' })).toEqual({
-      type: 'none',
+      type: 'selectWire',
+      wireId: '',
     });
   });
 
@@ -169,8 +177,11 @@ describe('キーボード', () => {
       wireId: '',
     });
     expect(escapeToAction(state({ mode: 'delete' }))).toEqual({ type: 'none' });
-    // 配線モードでは電線を選べないので、選択解除も起きない
-    expect(escapeToAction(state({ selectedWire: 'w-001' }))).toEqual({ type: 'none' });
+    // 配線モードでも電線を選べるので、Esc で選択を外せる
+    expect(escapeToAction(state({ selectedWire: 'w-001' }))).toEqual({
+      type: 'selectWire',
+      wireId: '',
+    });
   });
 
   it('Delete は削除モードで選択中の電線を削除する', () => {
@@ -193,8 +204,21 @@ describe('キーボード', () => {
     expect(deleteKeyToAction(state({ mode: 'delete' }), [])).toEqual({ type: 'none' });
   });
 
-  it('Delete は配線モードでは無視される（電線が選択されていても）。§12.2', () => {
-    expect(deleteKeyToAction(state({ selectedWire: 'w-002' }), [])).toEqual({ type: 'none' });
+  it('Delete は配線モードでも選択中の電線を削除する（電線一覧・3Dのどちらで選んでも外れる）', () => {
+    expect(deleteKeyToAction(state({ selectedWire: 'w-002' }), [])).toEqual({
+      type: 'removeWire',
+      wireId: 'w-002',
+    });
+    expect(deleteKeyToAction(state({ selectedWire: 'fw-chk-2' }), ['fw-chk-2'])).toEqual({
+      type: 'reject',
+      message: LOCKED_WIRE_MESSAGE,
+    });
+  });
+
+  it('Delete は見直し（再生）中は何もしない', () => {
+    expect(deleteKeyToAction(state({ selectedWire: 'w-002', replaying: true }), [])).toEqual({
+      type: 'none',
+    });
   });
 });
 
@@ -224,6 +248,24 @@ describe('shouldIgnoreShortcut（入力中はショートカットを止める�
     expect(shouldIgnoreShortcut({ target: tag('BODY') })).toBe(false);
     expect(shouldIgnoreShortcut({ target: tag('BUTTON') })).toBe(false);
     expect(shouldIgnoreShortcut({ target: null })).toBe(false);
+  });
+
+  it('チェックボックスなど文字を打たない入力部品に宛てたキーは通す（電線一覧で選んだあとも Delete が効く）', () => {
+    for (const type of [
+      'checkbox',
+      'radio',
+      'button',
+      'submit',
+      'reset',
+      'color',
+      'file',
+      'range',
+    ]) {
+      expect(shouldIgnoreShortcut({ target: { tagName: 'INPUT', type } }), type).toBe(false);
+    }
+    for (const type of ['text', 'search', 'number', 'password', '']) {
+      expect(shouldIgnoreShortcut({ target: { tagName: 'INPUT', type } }), type).toBe(true);
+    }
   });
 
   it('isTypingTarget は単体でも使える（宛先の判定だけ）', () => {

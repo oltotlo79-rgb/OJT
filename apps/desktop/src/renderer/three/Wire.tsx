@@ -24,8 +24,9 @@ import { toScene } from './coords.js';
  * （直角経路が壊れ、直交する電線どうしが食い込む）。`lanes[i].span` は帯の占有記録なので
  * 描画には使わない。
  *
- * ピックは**削除モードのときだけ**受ける。配線モードでは端子より手前を通る電線が
- * 端子のクリックを奪ってしまい、配線できない端子が出るため（§8.2 の操作性を優先）。
+ * ピックは削除・指摘モードと、配線モードの編集できる電線で受ける。配線モードでは端子より
+ * 手前を通る電線が端子のクリックを奪わないよう、同じ点に端子・部品があればそちらへ譲る
+ * （`yieldsToParts`。§8.2 の操作性を優先）。
  */
 
 /** チューブの半径[mm]（描画直径 1.6mm の半分。§6.6）。 */
@@ -175,18 +176,23 @@ function WireOutline({ route }: { route: WireRoute }): JSX.Element {
   );
 }
 
+/** 電線の当たり判定チューブに付ける目印（`yieldsToParts` の判定に使う）。 */
+const WIRE_PICK_MARK = 'wirePick';
+
 /**
- * 当たり判定だけの太いチューブ。削除モードのときだけ組み込まれる。
- * 別のコンポーネントにしてあるのは、配線モードでは形を**作らない**ためで、
+ * 当たり判定だけの太いチューブ。削除モード・指摘モードと、配線モードの自分で張った電線に
+ * だけ組み込まれる。別のコンポーネントにしてあるのは、要らないときは形を**作らない**ためで、
  * 外れたときにフックの後始末がそのまま `dispose()` になる。
  */
 function WirePickBody({
   route,
   locked,
+  yieldsToParts,
   onPick,
 }: {
   route: WireRoute;
   locked: boolean;
+  yieldsToParts: boolean;
   onPick: (wireId: string, locked: boolean) => void;
 }): JSX.Element {
   const geometry = useTubeGeometry(route, WIRE_PICK_RADIUS_MM, PICK_RADIAL_SEGMENTS);
@@ -202,7 +208,19 @@ function WirePickBody({
        * 同じ形で `visible={false}` のまま拾えているのがその証拠である）。
        */
       visible={false}
+      userData={{ [WIRE_PICK_MARK]: true }}
       onClick={(event: ThreeEvent<MouseEvent>) => {
+        /*
+         * 配線モードでは端子・ソケット・押ボタンなどを優先する（§8.2「端子クリックを優先」）。
+         * 電線は端子の上で終わるので、端子を押したつもりの点にも当たり判定チューブが重なる。
+         * 同じ点に電線以外の操作対象があれば、ここでは拾わずにイベントをそちらへ流す。
+         */
+        if (
+          yieldsToParts &&
+          event.intersections.some((hit) => hit.object.userData[WIRE_PICK_MARK] !== true)
+        ) {
+          return;
+        }
         event.stopPropagation();
         onPick(route.wireId, locked);
       }}
@@ -217,14 +235,17 @@ export function Wire({
   locked,
   selected,
   pickable,
+  yieldsToParts = false,
   onPick,
 }: {
   route: WireRoute;
   color: WireColor;
   locked: boolean;
   selected: boolean;
-  /** 削除モードのときだけ true。§8.2 */
+  /** 削除・指摘モードと、配線モードの編集できる電線で true。§8.2 */
   pickable: boolean;
+  /** 配線モード: 同じ点にある端子・部品へクリックを譲る。 */
+  yieldsToParts?: boolean;
   onPick: (wireId: string, locked: boolean) => void;
 }): JSX.Element | null {
   const geometry = useTubeGeometry(route);
@@ -255,7 +276,9 @@ export function Wire({
         `Raycaster` は `visible` を見ないのでクリックは拾える（`TerminalHit` /
         `TerminalField` の当たり判定球と同じ手）。3D-09
       */}
-      {pickable ? <WirePickBody route={route} locked={locked} onPick={onPick} /> : null}
+      {pickable ? (
+        <WirePickBody route={route} locked={locked} yieldsToParts={yieldsToParts} onPick={onPick} />
+      ) : null}
       {ends.map((pos, index) => (
         <mesh
           key={`${route.wireId}-lug-${index}`}
