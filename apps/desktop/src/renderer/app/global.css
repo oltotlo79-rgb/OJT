@@ -194,12 +194,15 @@ button[aria-pressed='true'] {
 }
 
 .probe-label-black {
+  /* 棒の先の左上に置く（札の右下の角が棒の先に来る）。赤は右上。隣の端子の札と重ならない */
+  transform: translate(calc(-100% - 4px), -100%);
   background: #15181c;
   border-color: #f4f6fa;
   color: #f4f6fa;
 }
 
 .probe-label-red {
+  transform: translate(4px, -100%);
   background: #d6262b;
   border-color: #ffd5d6;
   color: #ffffff;

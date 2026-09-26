@@ -240,8 +240,12 @@ export function ProbePen({ placement }: { placement: ProbePlacement }): JSX.Elem
         >
           <cylinderGeometry args={[GRIP_RADIUS_MM * 1.05, GRIP_RADIUS_MM * 1.05, 1.6, 14]} />
         </mesh>
+        {/*
+          札は棒の先から外側へ寄せる（黒は左、赤は右）。隣り合う端子（コイル⑬・⑭など）に
+          2本を当てたとき、中央寄せのままだと赤の札が黒の札の上に重なって読めなかった
+          （2026-09-26 点検修復の動画の確認で発見）。
+        */}
         <Html
-          center
           position={[0, 0, gripEnd + 4]}
           distanceFactor={260}
           zIndexRange={[30, 20]}
