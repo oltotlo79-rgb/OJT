@@ -767,7 +767,10 @@ export const JA = {
     notationPick: 'どのメーカーの表記にしますか？',
     notationPickFirst: 'メーカーを選ぶと、切替後の書き方をここに一覧で出します。',
     notationWarning:
-      '機種も切り替わるため、盤の配線はやり直しになります（ラダーとデバイスコメントは残ります）。',
+      '机上のPLC本体も切り替わります。PLC本体・壁コンセントにつないだ電線は外れます（盤内の配線・部品・ラダー・デバイスコメントは残ります）。',
+    /** 切り替えると何が外れ、何が残るか（いまの盤から数える。2026-09-26）。 */
+    notationCarry: (summary: { dropped: number; kept: number; parts: number }): string =>
+      `机上のPLC本体も切り替わります。PLC本体・壁コンセントへの配線${summary.dropped}本は外れます。盤内の配線${summary.kept}本・部品${summary.parts}個・ラダー・デバイスコメントは残ります。`,
     notationFrom: 'いまの表記',
     notationTo: '切替後',
     /** 一覧の見出し。 */
@@ -1041,6 +1044,17 @@ export const JA = {
     // --- Plan 4B Task 8 ---
     /** 表記切替が終わったことを伝える（§10.7 / 決定表#12）。 */
     notationSwitched: (name: string): string => `${name} の表記に切り替えました`,
+    /** メーカー（機種）を切り替えた結果。盤の中の作業は残し、PLC本体への配線だけ外す（2026-09-26）。 */
+    vendorSwitched: (
+      name: string,
+      summary: { dropped: number; kept: number; parts: number },
+    ): string =>
+      summary.dropped === 0
+        ? `${name} に切り替えました。盤内の配線${summary.kept}本と部品${summary.parts}個はそのままです`
+        : `${name} に切り替えました。盤内の配線${summary.kept}本と部品${summary.parts}個はそのままです。PLC本体・コンセントへの配線${summary.dropped}本を張り直してください`,
+    /** 3D表示でも出す「メーカーを切り替える」ボタン（2026-09-26 利用者報告）。 */
+    switchVendor: 'メーカーを切り替える',
+    switchVendorHint: 'ラダーの表記と机上のPLC本体を、別のメーカーのものに替えます',
     // --- /Plan 4B Task 8 ---
   },
   // --- /Plan 3B Task 10 ---

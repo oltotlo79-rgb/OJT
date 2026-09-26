@@ -16,11 +16,12 @@ import {
 import type { TerminalId } from '@ojt/circuit-sim';
 import { isPlcProblem, resolvePlcIo } from '@ojt/content';
 import { getDialect, type DialectProfile } from '@ojt/plc-dialects';
-import { useCallback, useEffect, useMemo, type JSX } from 'react';
+import { useCallback, useEffect, useMemo, useState, type JSX } from 'react';
 import type { PlcCommandAction } from '../../worker/protocol.js';
 import { useStore } from '../app/store.js';
 import { failedLog, historyLog, JA, powerLog, routeFailedLog, wireCountText } from '../i18n/ja.js';
 import { LadderWorkspace } from '../ladder/LadderWorkspace.js';
+import { NotationDialog } from '../ladder/NotationDialog.js';
 import { ElapsedTimer } from '../panels/ElapsedTimer.js';
 import { LogPanel } from '../panels/LogPanel.js';
 import { PartsPanel } from '../panels/PartsPanel.js';
@@ -167,6 +168,15 @@ export function PlcSession(): JSX.Element {
   const problemId = problem?.id;
 
   const profile = useMemo(() => getDialect(dialectId), [dialectId]);
+  /**
+   * 「メーカーを切り替える」の確認画面。ラダー作業領域の「表記切替」と同じ画面を、盤だけを
+   * 出している表示からも開けるようにする（2026-09-26 利用者報告「3D図の画面の時に各メーカーの
+   * シーケンサーを切り替えることができない」）。
+   */
+  const [vendorDialogOpen, setVendorDialogOpen] = useState(false);
+  const closeVendorDialog = useCallback((): void => {
+    setVendorDialogOpen(false);
+  }, []);
   /** 表示列数は設定画面の値。`0` なら方言の既定（§10.6 / 決定表#8）。 */
   const gridColsSetting = useStore((s) => s.ladderGridCols);
   const board = useMemo(() => boardForProblem(problem), [problem]);
@@ -715,9 +725,28 @@ export function PlcSession(): JSX.Element {
             {JA.plc.outletNote}
           </p>
           {/* 3Dの本体と同じ機種であることを字でも見せる（決定表#9。既定メーカーで差し替わる） */}
-          <p className={styles.plcOutletNote} data-testid="plc-model">
-            {JA.plc.modelLabel}: {plcUnitFor(problem.plc.model)?.displayName ?? problem.plc.model}
-          </p>
+          <div className={styles.plcModelRow}>
+            <p className={styles.plcOutletNote} data-testid="plc-model">
+              {JA.plc.modelLabel}: {plcUnitFor(problem.plc.model)?.displayName ?? problem.plc.model}
+            </p>
+            <button
+              type="button"
+              data-testid="switch-vendor"
+              title={JA.plc.switchVendorHint}
+              onClick={() => {
+                setVendorDialogOpen(true);
+              }}
+            >
+              {JA.plc.switchVendor}
+            </button>
+          </div>
+          {vendorDialogOpen ? (
+            <NotationDialog
+              profile={profile}
+              onClose={closeVendorDialog}
+              title={JA.plc.switchVendor}
+            />
+          ) : null}
           {/*
             モードDもリレーはソケットへ装着してから `CRn.14` へ配線する（§10.2 の2段結線）。
             `onPlug` / `onUnplug` / `onPreset` は `Session.tsx` の3つをそのまま写す。

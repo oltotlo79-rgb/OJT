@@ -28,6 +28,8 @@ import {
   type LadderEditorMode,
   type LadderHistory,
 } from '../session/ladder.js';
+import { carryOverBoard, carrySummary } from '../session/dialect-carry.js';
+import { boardForProblem } from '../session/plc-session.js';
 import { plcForVendor, plcUnitForVendor } from '../session/plc-skin.js';
 import { NO_CONVERT_ISSUES, type ConvertIssues, type PlcMonitorSnapshot } from './store-types.js';
 import type { AppState } from './store.js';
@@ -327,10 +329,23 @@ export const createLadderSlice: StateCreator<AppState, [], [], LadderSlice> = (s
     /*
      * `openProblem()` が方言 → 機種 → 盤・履歴・ログ・計時を作り直す。**`vendor` を必ず渡す**
      * （渡さないと `defaultVendor` に戻され、切り替えたはずの方言が元へ戻る。決定表#24）。
-     * ラダー・デバイスコメント・取り消しスタックだけ持ち越す（決定表#11・#12）。
+     * ラダー・デバイスコメント・取り消しスタックを持ち越す（決定表#11・#12）。
+     *
+     * 盤の作業も持ち越す（2026-09-26 利用者報告「3D図の画面の時に各メーカーのシーケンサーを
+     * 切り替えることができない」への対応で、3D画面からも切り替えられるようにした）。PLC本体と
+     * 壁コンセントの端子は機種で名前が変わるので、そこへつながる電線だけ外し、盤の中の電線と
+     * 装着した部品は新しい機種の盤へ載せ直す（`carryOverBoard()`）。
      */
+    const previousSession = get().session;
+    const summary = previousSession === undefined ? undefined : carrySummary(previousSession);
     if (!get().openProblem(swapped, { vendor: dialectId })) return;
+    const fresh = get().session;
+    const session =
+      previousSession === undefined || fresh === undefined
+        ? fresh
+        : carryOverBoard(previousSession, fresh, boardForProblem(swapped));
     set({
+      ...(session === undefined ? {} : { session }),
       ladder,
       ladderComments,
       ladderHistory,
@@ -343,7 +358,11 @@ export const createLadderSlice: StateCreator<AppState, [], [], LadderSlice> = (s
        */
       sessionEpoch: get().sessionEpoch + 1,
     });
-    get().toast(JA.plc.notationSwitched(getDialect(dialectId).displayName));
+    get().toast(
+      summary === undefined
+        ? JA.plc.notationSwitched(getDialect(dialectId).displayName)
+        : JA.plc.vendorSwitched(getDialect(dialectId).displayName, summary),
+    );
   },
   // --- /Plan 4B Task 8 ---
   undoLadderEdit: () => {

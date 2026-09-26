@@ -1,4 +1,4 @@
-import { plcUnitFor } from '@ojt/board-model';
+import { addWire, plcUnitFor, plug } from '@ojt/board-model';
 import { terminalId } from '@ojt/circuit-sim';
 import {
   BUILTIN_ASSEMBLE_PROBLEMS,
@@ -530,5 +530,41 @@ describe('switchDialect（表記切替。§10.7 / 決定表#11・#12）', () => 
     expect(after.sessionEpoch).toBe(epoch + 1);
     expect(after.problem?.id).toBe(problemId);
   });
+
+  it('keeps the wiring inside the board and the mounted parts, and drops only the PLC wires (2026-09-26)', () => {
+    useStore.getState().openProblem(problem);
+    const board = boardForProblem(problem);
+    const session = useStore.getState().session!;
+    const mounted = plug(session, 'S1', 'relay-my4n');
+    expect(mounted.ok).toBe(true);
+    // 盤の中の2本と、PLC本体・コンセントへの2本
+    for (const [from, to] of [
+      ['P.1', 'CR1.9'],
+      ['N.1', 'CR1.13'],
+      ['TB_PB.1a', 'PLC.X0'],
+      ['OUTLET.L', 'PLC.L'],
+    ] as const) {
+      expect(addWire(session, board, terminalId(...split(from)), terminalId(...split(to))).ok).toBe(
+        true,
+      );
+    }
+    useStore.getState().setSession(session);
+
+    useStore.getState().switchDialect('omron');
+
+    const after = useStore.getState().session!;
+    const ends = after.wires.filter((w) => !w.locked).map((w) => `${w.from}-${w.to}`);
+    expect(ends).toEqual(['P.1-CR1.9', 'N.1-CR1.13']);
+    expect(after.mounted.S1?.kind).toBe('relay-my4n');
+    // 結果の知らせに、残した本数と張り直す本数が出る
+    expect(useStore.getState().toasts.at(-1)?.text).toContain('盤内の配線2本と部品1個');
+    expect(useStore.getState().toasts.at(-1)?.text).toContain('2本を張り直してください');
+  });
 });
 // --- /Plan 4B Task 8 ---
+
+/** `P.1` → `['P', '1']`（`terminalId()` へ渡す形）。 */
+function split(id: string): [string, string] {
+  const dot = id.indexOf('.');
+  return [id.slice(0, dot), id.slice(dot + 1)];
+}

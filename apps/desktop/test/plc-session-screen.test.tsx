@@ -249,6 +249,29 @@ describe('モードDのセッション画面（§10.1 / §12.1）', () => {
     expect(screen.getByTestId('plc-model')).toHaveTextContent('FX5U');
   });
 
+  /** 2026-09-26 利用者報告「3D図の画面の時に各メーカーのシーケンサーを切り替えることができない」 */
+  it('lets the trainee switch the maker from the board-only view as well', () => {
+    render(<SessionRoute />);
+    act(() => {
+      useStore.getState().setLadderView('board');
+    });
+    expect(screen.queryByTestId('ladder-editor')).toBeNull();
+    act(() => {
+      screen.getByTestId('switch-vendor').click();
+    });
+    expect(screen.getByTestId('notation-dialog')).toHaveAccessibleName('メーカーを切り替える');
+    act(() => {
+      screen.getByTestId('notation-to-omron').click();
+    });
+    expect(screen.getByTestId('notation-warning')).toHaveTextContent('盤内の配線0本');
+    act(() => {
+      screen.getByTestId('notation-apply').click();
+    });
+    expect(useStore.getState().dialectId).toBe('omron');
+    expect(screen.getByTestId('plc-model')).toHaveTextContent('CP1E');
+    expect(screen.queryByTestId('notation-dialog')).toBeNull();
+  });
+
   it('shows the problem statement and the parts panel（リレーを装着する）', () => {
     render(<SessionRoute />);
     expect(screen.getByText(titlePattern)).toBeInTheDocument();

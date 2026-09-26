@@ -10,6 +10,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type JSX } from 'rea
 import { useStore } from '../app/store.js';
 import { JA } from '../i18n/ja.js';
 import { pushModalLayer, topModalLayer } from '../session/interaction.js';
+import { carrySummary } from '../session/dialect-carry.js';
 import { plcForVendor, plcUnitForVendor } from '../session/plc-skin.js';
 import styles from './ladder.module.css';
 
@@ -36,12 +37,20 @@ interface NotationChoice {
 export function NotationDialog({
   profile,
   onClose,
+  title = JA.ladder.notationTitle,
 }: {
   profile: DialectProfile;
   onClose: () => void;
+  /** 見出し（3D表示の「メーカーを切り替える」から開いたときはその名前にする）。 */
+  title?: string;
 }): JSX.Element {
   const program = useStore((s) => s.ladder);
   const problem = useStore((s) => s.problem);
+  const session = useStore((s) => s.session);
+  const summary = useMemo(
+    () => (session === undefined ? undefined : carrySummary(session)),
+    [session],
+  );
   const [target, setTarget] = useState<DialectId | undefined>(undefined);
   const panelRef = useRef<HTMLDivElement | null>(null);
 
@@ -138,12 +147,12 @@ export function NotationDialog({
         className={styles.notation}
         role="dialog"
         aria-modal="true"
-        aria-label={JA.ladder.notationTitle}
+        aria-label={title}
         data-testid="notation-dialog"
         tabIndex={-1}
       >
         <div className={styles.notationHead}>
-          <h2 className={styles.sideTitle}>{JA.ladder.notationTitle}</h2>
+          <h2 className={styles.sideTitle}>{title}</h2>
           <button
             type="button"
             className={styles.notationClose}
@@ -188,7 +197,7 @@ export function NotationDialog({
         ) : (
           <>
             <p className={styles.notationWarn} data-testid="notation-warning">
-              {JA.ladder.notationWarning}
+              {summary === undefined ? JA.ladder.notationWarning : JA.ladder.notationCarry(summary)}
             </p>
             <h3 className={styles.notationSection}>{JA.ladder.notationDevices}</h3>
             <table className={styles.ioTable}>
