@@ -46,10 +46,14 @@ const GEOMETRY = JSON.parse(readFileSync(join(MANUAL_DIR, 'shot-geometry.json'),
 const MAX_BYTES = 300 * 1024;
 /** 縮小版1枚あたりの上限（利用者の決定 2026-09-20）。 */
 const MAX_SMALL_BYTES = 80 * 1024;
-/** 原寸フォルダ合計の上限。 */
-const MAX_TOTAL_BYTES = 6 * 1024 * 1024;
-/** 縮小版フォルダ合計の上限。 */
-const MAX_SMALL_TOTAL_BYTES = 1.5 * 1024 * 1024;
+/**
+ * 原寸フォルダ合計の上限。v1.7.0 で図を42枚から72枚へ増やした（2026-09-26 利用者指示
+ * 「取扱説明書とヘルプの内容ももっと画像を増やして」）ため、6MB から 10MB へ広げた。
+ * 1枚あたりの上限（300KB）はそのまま。
+ */
+const MAX_TOTAL_BYTES = 10 * 1024 * 1024;
+/** 縮小版フォルダ合計の上限（同じ理由で 1.5MB から 3MB へ）。 */
+const MAX_SMALL_TOTAL_BYTES = 3 * 1024 * 1024;
 /** アプリ内ヘルプが本文に出す幅。 */
 const HELP_IMAGE_WIDTH = 400;
 /** 撮った大きさ。 */

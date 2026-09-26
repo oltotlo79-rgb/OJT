@@ -1,6 +1,78 @@
 {
   "controls": [
     {
+      "testid": "detail-review-{}",
+      "screen": "結果（モードC2）",
+      "label": "実際の故障の内容は",
+      "section": "mode-c2/「判定」を押す"
+    },
+    {
+      "testid": "plc-show-chart",
+      "screen": "練習中（モードD）",
+      "label": "タイムチャートを見る",
+      "section": "mode-d/タイムチャートを見る"
+    },
+    {
+      "testid": "probe-label-{}",
+      "screen": "テスター",
+      "label": "黒",
+      "section": "mode-c2/テスターを当てた場所を3D図で確かめる"
+    },
+    {
+      "testid": "report-detail-{}",
+      "screen": "練習中（モードC2）",
+      "label": "コイルの断線（励磁しない）",
+      "section": "mode-c2/見つけたところを書き出す"
+    },
+    {
+      "testid": "report-kind-part-defect",
+      "screen": "練習中（モードC2）",
+      "label": "部品不良（内容は分からない）",
+      "section": "mode-c2/見つけたところを書き出す"
+    },
+    {
+      "testid": "report-kind-text-{}",
+      "screen": "練習中（モードC2）",
+      "label": "部品不良",
+      "section": "mode-c2/見つけたところを書き出す"
+    },
+    {
+      "testid": "report-part-{}",
+      "screen": "練習中（モードC2）",
+      "label": "この部品の故障を指摘",
+      "section": "mode-c2/見つけたところを書き出す"
+    },
+    {
+      "testid": "report-popover-target",
+      "screen": "練習中（モードC2）",
+      "label": "端子",
+      "section": "mode-c2/見つけたところを書き出す"
+    },
+    {
+      "testid": "switch-vendor",
+      "screen": "練習中（モードD）",
+      "label": "メーカーを切り替える",
+      "section": "mode-d/機種を変える"
+    },
+    {
+      "testid": "tutorial-vendor-{}",
+      "screen": "ホーム・練習",
+      "label": "三菱電機 FX5U",
+      "section": "screens/動画で操作を学ぶ"
+    },
+    {
+      "testid": "wire-limit-close",
+      "screen": "練習中",
+      "label": "閉じる",
+      "section": "mode-b/電線をつなぐ・外す"
+    },
+    {
+      "testid": "wire-limit-notice",
+      "screen": "練習中",
+      "label": "注意：1つの端子に接続できる電線は2本までです",
+      "section": "mode-b/電線をつなぐ・外す"
+    },
+    {
       "testid": "{}-details",
       "internal": "横の枠の中身の入れ物。親の見出しで説明済み"
     },
@@ -1009,7 +1081,7 @@
     {
       "testid": "notation-warning",
       "screen": "練習中（モードD）",
-      "label": "機種も切り替わるため、盤の配線はやり直しになります",
+      "label": "机上のPLC本体も切り替わります",
       "section": "mode-d/別のメーカーの書き方に変える"
     },
     {
@@ -1483,7 +1555,7 @@
     {
       "testid": "report-popover",
       "screen": "練習中（モードC2）",
-      "label": "故障の種別を選ぶ",
+      "label": "この場所の故障を指摘する",
       "section": "mode-c2/見つけたところを書き出す"
     },
     {

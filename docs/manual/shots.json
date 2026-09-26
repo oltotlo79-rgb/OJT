@@ -1,4 +1,73 @@
 {
+  "authoring-ladder": {
+    "caption": "課題作成の模範ラダーエディタ。",
+    "callouts": [
+      {
+        "n": 1,
+        "label": "回路ブロックを追加"
+      },
+      {
+        "n": 2,
+        "label": "編集するセル"
+      }
+    ]
+  },
+  "authoring-schematic": {
+    "caption": "課題作成の模範回路図エディタ。",
+    "callouts": [
+      {
+        "n": 1,
+        "label": "記号パレット"
+      },
+      {
+        "n": 2,
+        "label": "段を追加"
+      }
+    ]
+  },
+  "b-first-wire": {
+    "caption": "1つ目の端子を選んだところ",
+    "callouts": [
+      {
+        "n": 1,
+        "label": "始点"
+      },
+      {
+        "n": 2,
+        "label": "下の1行の案内"
+      },
+      {
+        "n": 3,
+        "label": "選んだ端子"
+      }
+    ]
+  },
+  "b-select-wire": {
+    "caption": "電線を選んだところ",
+    "callouts": [
+      {
+        "n": 1,
+        "label": "一覧で選んだ電線の行"
+      },
+      {
+        "n": 2,
+        "label": "「選択:」の表示"
+      }
+    ]
+  },
+  "c1-diagnosis": {
+    "caption": "画面の中の判定表",
+    "callouts": [
+      {
+        "n": 1,
+        "label": "判定表（切り分けの手順）"
+      },
+      {
+        "n": 2,
+        "label": "チェック状況"
+      }
+    ]
+  },
   "c1-marksheet": {
     "caption": "マークシート",
     "callouts": [
@@ -13,6 +82,19 @@
       {
         "n": 3,
         "label": "解答済み"
+      }
+    ]
+  },
+  "c1-probe-pens": {
+    "caption": "3D図に立つテスターの棒と端子名の札",
+    "callouts": [
+      {
+        "n": 1,
+        "label": "黒プローブの札"
+      },
+      {
+        "n": 2,
+        "label": "赤プローブの札"
       }
     ]
   },
@@ -63,6 +145,40 @@
       }
     ]
   },
+  "c2-measurement": {
+    "caption": "測定値を記録する",
+    "callouts": [
+      {
+        "n": 1,
+        "label": "測定の目的・気付いたこと"
+      },
+      {
+        "n": 2,
+        "label": "今の測定値を記録"
+      },
+      {
+        "n": 3,
+        "label": "記録した1行"
+      }
+    ]
+  },
+  "c2-probe-pens": {
+    "caption": "3D図に立つテスターの棒と端子名の札",
+    "callouts": [
+      {
+        "n": 1,
+        "label": "黒プローブの札"
+      },
+      {
+        "n": 2,
+        "label": "赤プローブの札"
+      },
+      {
+        "n": 3,
+        "label": "テスターの表示"
+      }
+    ]
+  },
   "c2-repair": {
     "caption": "モードC2の指摘の欄",
     "callouts": [
@@ -72,7 +188,7 @@
       },
       {
         "n": 2,
-        "label": "故障の種別を選ぶ"
+        "label": "この場所の故障を指摘する"
       },
       {
         "n": 3,
@@ -94,6 +210,83 @@
       {
         "n": 2,
         "label": "外した青線"
+      }
+    ]
+  },
+  "c2-report-from-list": {
+    "caption": "電線一覧からも同じ小窓を開けます",
+    "callouts": [
+      {
+        "n": 1,
+        "label": "選んだ電線の行"
+      },
+      {
+        "n": 2,
+        "label": "この電線の故障を指摘"
+      }
+    ]
+  },
+  "c2-report-part": {
+    "caption": "部品を押すと、故障の内容まで選べます",
+    "callouts": [
+      {
+        "n": 1,
+        "label": "押した部品"
+      },
+      {
+        "n": 2,
+        "label": "故障の内容の一覧"
+      },
+      {
+        "n": 3,
+        "label": "部品不良（内容は分からない）"
+      }
+    ]
+  },
+  "c2-report-wire": {
+    "caption": "3D図で電線を押すと、その横に指摘の小窓が出ます",
+    "callouts": [
+      {
+        "n": 1,
+        "label": "指摘"
+      },
+      {
+        "n": 2,
+        "label": "押した電線"
+      },
+      {
+        "n": 3,
+        "label": "小窓"
+      }
+    ]
+  },
+  "c2-result-detail": {
+    "caption": "結果の画面の「言い当てた故障」と講評",
+    "callouts": [
+      {
+        "n": 1,
+        "label": "言い当てた故障"
+      },
+      {
+        "n": 2,
+        "label": "内容の講評"
+      }
+    ]
+  },
+  "c2-schematic": {
+    "caption": "回路図ヒントと、光っている盤の端子",
+    "callouts": [
+      {
+        "n": 1,
+        "label": "回路図ヒント"
+      },
+      {
+        "n": 2,
+        "label": "押した記号"
+      },
+      {
+        "n": 3,
+        "label": "光っている端子"
       }
     ]
   },
@@ -145,6 +338,19 @@
       {
         "n": 3,
         "label": "ヘルプ"
+      }
+    ]
+  },
+  "home-tutorials": {
+    "caption": "ホームの「動画で操作を学ぶ」",
+    "callouts": [
+      {
+        "n": 1,
+        "label": "PLCの動画のカード"
+      },
+      {
+        "n": 2,
+        "label": "基本例題の動画"
       }
     ]
   },
@@ -229,6 +435,129 @@
       }
     ]
   },
+  "plc-convert": {
+    "caption": "変換に成功したときの出力ウィンドウ",
+    "callouts": [
+      {
+        "n": 1,
+        "label": "変換"
+      },
+      {
+        "n": 2,
+        "label": "変換に成功しました"
+      }
+    ]
+  },
+  "plc-convert-auto": {
+    "caption": "変換の操作が無いメーカーの出力ウィンドウ",
+    "callouts": [
+      {
+        "n": 1,
+        "label": "変換に成功しました（自動で変換されます）"
+      },
+      {
+        "n": 2,
+        "label": "出力の欄の見出し"
+      }
+    ]
+  },
+  "plc-desk-jtekt": {
+    "caption": "ジェイテクト PC10G への配線",
+    "callouts": [
+      {
+        "n": 1,
+        "label": "PLCの電源端子"
+      },
+      {
+        "n": 2,
+        "label": "入力のコモン"
+      },
+      {
+        "n": 3,
+        "label": "入力端子"
+      },
+      {
+        "n": 4,
+        "label": "出力端子"
+      }
+    ]
+  },
+  "plc-desk-mitsubishi": {
+    "caption": "三菱 FX5U への配線",
+    "callouts": [
+      {
+        "n": 1,
+        "label": "PLCの電源端子"
+      },
+      {
+        "n": 2,
+        "label": "入力のコモン"
+      },
+      {
+        "n": 3,
+        "label": "入力端子"
+      },
+      {
+        "n": 4,
+        "label": "出力端子"
+      }
+    ]
+  },
+  "plc-desk-omron": {
+    "caption": "オムロン CP1E への配線",
+    "callouts": [
+      {
+        "n": 1,
+        "label": "PLCの電源端子"
+      },
+      {
+        "n": 2,
+        "label": "入力のコモン"
+      },
+      {
+        "n": 3,
+        "label": "入力端子"
+      },
+      {
+        "n": 4,
+        "label": "出力端子"
+      }
+    ]
+  },
+  "plc-desk-sharp": {
+    "caption": "シャープ JW300 への配線",
+    "callouts": [
+      {
+        "n": 1,
+        "label": "PLCの電源端子"
+      },
+      {
+        "n": 2,
+        "label": "入力のコモン"
+      },
+      {
+        "n": 3,
+        "label": "入力端子"
+      },
+      {
+        "n": 4,
+        "label": "出力端子"
+      }
+    ]
+  },
+  "plc-io-power": {
+    "caption": "I/O割付のPLC電源と入出力の値",
+    "callouts": [
+      {
+        "n": 1,
+        "label": "PLC電源"
+      },
+      {
+        "n": 2,
+        "label": "入力・出力の現在値"
+      }
+    ]
+  },
   "plc-io-wiring": {
     "caption": "PLCと盤の入出力配線",
     "callouts": [
@@ -239,6 +568,19 @@
       {
         "n": 2,
         "label": "PLC電源は壁コンセント（AC100V）から取ります。"
+      }
+    ]
+  },
+  "plc-keymap": {
+    "caption": "キーの早見表",
+    "callouts": [
+      {
+        "n": 1,
+        "label": "キーの早見表"
+      },
+      {
+        "n": 2,
+        "label": "閉じる"
       }
     ]
   },
@@ -292,6 +634,19 @@
       }
     ]
   },
+  "plc-mount-relay": {
+    "caption": "PLCの課題でソケットにリレーを載せる",
+    "callouts": [
+      {
+        "n": 1,
+        "label": "押したソケット"
+      },
+      {
+        "n": 2,
+        "label": "リレーの装着ボタン"
+      }
+    ]
+  },
   "plc-notation": {
     "caption": "表記の切替",
     "callouts": [
@@ -306,6 +661,79 @@
       {
         "n": 3,
         "label": "この表記に切り替える"
+      }
+    ]
+  },
+  "plc-run-lamps": {
+    "caption": "RUN中の盤",
+    "callouts": [
+      {
+        "n": 1,
+        "label": "白ランプ"
+      },
+      {
+        "n": 2,
+        "label": "黒の押しボタン"
+      }
+    ]
+  },
+  "plc-scan-debug": {
+    "caption": "スキャン診断で1スキャンずつ進める",
+    "callouts": [
+      {
+        "n": 1,
+        "label": "スキャン診断"
+      },
+      {
+        "n": 2,
+        "label": "1スキャン実行（10 ms）"
+      },
+      {
+        "n": 3,
+        "label": "連続実行へ戻る"
+      }
+    ]
+  },
+  "plc-show-chart": {
+    "caption": "PLCの課題の仕様のタイムチャート",
+    "callouts": [
+      {
+        "n": 1,
+        "label": "タイムチャートを見る"
+      },
+      {
+        "n": 2,
+        "label": "タイムチャート（仕様）"
+      }
+    ]
+  },
+  "plc-special-contact": {
+    "caption": "特殊接点を用途から選ぶ",
+    "callouts": [
+      {
+        "n": 1,
+        "label": "用途から選ぶ"
+      },
+      {
+        "n": 2,
+        "label": "特殊接点の説明"
+      }
+    ]
+  },
+  "plc-switch-vendor": {
+    "caption": "盤を見たままメーカーを切り替える",
+    "callouts": [
+      {
+        "n": 1,
+        "label": "機種"
+      },
+      {
+        "n": 2,
+        "label": "メーカーを切り替える"
+      },
+      {
+        "n": 3,
+        "label": "外れる配線と残るものの知らせ"
       }
     ]
   },
@@ -523,6 +951,19 @@
       }
     ]
   },
+  "terminal-list": {
+    "caption": "端子リストでキーボードからつなぐ",
+    "callouts": [
+      {
+        "n": 1,
+        "label": "端子を探す"
+      },
+      {
+        "n": 2,
+        "label": "端子の行"
+      }
+    ]
+  },
   "tester-analog": {
     "caption": "アナログテスターで抵抗を読む",
     "callouts": [
@@ -592,6 +1033,23 @@
       }
     ]
   },
+  "tutorial-player": {
+    "caption": "PLCの動画",
+    "callouts": [
+      {
+        "n": 1,
+        "label": "メーカーの並び"
+      },
+      {
+        "n": 2,
+        "label": "動画"
+      },
+      {
+        "n": 3,
+        "label": "再生速度"
+      }
+    ]
+  },
   "view-cube": {
     "caption": "ビューキューブと2つの丸ボタン",
     "callouts": [
@@ -626,18 +1084,34 @@
       }
     ]
   },
-  "authoring-schematic": {
-    "caption": "課題作成の模範回路図エディタ。",
+  "wire-limit-notice": {
+    "caption": "3本目をつなごうとしたときの注意文",
     "callouts": [
-      { "n": 1, "label": "記号パレット" },
-      { "n": 2, "label": "段を追加" }
+      {
+        "n": 1,
+        "label": "注意文"
+      },
+      {
+        "n": 2,
+        "label": "2本つながっている端子"
+      }
     ]
   },
-  "authoring-ladder": {
-    "caption": "課題作成の模範ラダーエディタ。",
+  "wire-list-edit": {
+    "caption": "電線一覧で電線を探して選ぶ",
     "callouts": [
-      { "n": 1, "label": "回路ブロックを追加" },
-      { "n": 2, "label": "編集するセル" }
+      {
+        "n": 1,
+        "label": "検索の欄"
+      },
+      {
+        "n": 2,
+        "label": "選んだ電線の行"
+      },
+      {
+        "n": 3,
+        "label": "接続先を変更"
+      }
     ]
   },
   "workfile-menu": {

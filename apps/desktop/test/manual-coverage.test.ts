@@ -131,7 +131,7 @@ function rendererSourceHaystack(): string {
  * 「既定に戻す」）だが、次の testid だけは**押しても見えても文字が無い場所の名前**か
  * **中身が実行時に決まる欄の呼び名**を `label` に書いている（`role="presentation"` の
  * 覆い、`error` の中身がゾッドやライブラリの実行結果になる欄、折りたたみの `<summary>` の
- * 呼び名など）。実測でこの14件だけは renderer のソースのどこにも逐語で存在しない
+ * 呼び名など）。実測でこの13件だけは renderer のソースのどこにも逐語で存在しない
  * （`internal` の理由文と同じ「説明のための言葉」で、画面のliteralな文字ではない）。
  * 消してはいけない情報なので、ここに明記したうえで別扱いにする（節への一致は
  * 上の「writes the on-screen label…」がすべての行に対して変わらず見ている）。
@@ -147,7 +147,6 @@ const DESCRIPTIVE_NOT_LITERAL_LABELS: ReadonlySet<string> = new Set([
   'output-summary', // 出力ウィンドウの折りたたみ `<summary>` の呼び名
   '{}-summary', // 同上（IDが課題ごとに変わる折りたたみの呼び名）
   'plc-session', // モードDの画面全体の呼び名
-  'report-list', // 指摘一覧の欄の呼び名（中身は指摘ごとに違う）
   'schematic-enlarge-button', // `aria-label` が `${title}を${JA.timeChart.enlarge}` の組み立てで、逐語の1本の文字列としてはソースに現れない
   'skin-assumed', // 前提の一覧欄の呼び名
   'skin-title', // タイトル帯の呼び名（中身はメーカーごとに違う機種名）
@@ -193,7 +192,7 @@ describe('操作要素（決定表#22）', () => {
   });
 
   it('keeps the descriptive-label exception list from silently growing', () => {
-    // 説明用（逐語ではない）と断った14件以外は、必ずソースのどこかにリテラルで実在すること。
+    // 説明用（逐語ではない）と断った13件以外は、必ずソースのどこかにリテラルで実在すること。
     const haystack = rendererSourceHaystack();
     const stillDescriptive = [...DESCRIPTIVE_NOT_LITERAL_LABELS].filter((testid) => {
       const row = COVERAGE.controls.find((r) => r.testid === testid);

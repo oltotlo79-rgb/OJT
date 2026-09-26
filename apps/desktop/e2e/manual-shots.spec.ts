@@ -2,12 +2,21 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { JIPM_BOARD, PLC_UNIT_FX5U, trySocketOf } from '@ojt/board-model';
+import {
+  JIPM_BOARD,
+  PLC_UNIT_FX5U,
+  plcUnitFor,
+  routeSession,
+  trySocketOf,
+  type BoardSession,
+  type PlcUnitDefinition,
+} from '@ojt/board-model';
 import { toTerminalId } from '@ojt/circuit-sim';
 import {
   BUILTIN_INSPECT_PARTS_PROBLEMS,
   BUILTIN_INSPECT_REPAIR_PROBLEMS,
   BUILTIN_PLC_PROBLEMS,
+  buildInspectRepairCircuit,
   plcWiringPlan,
   resolvePlcIo,
   toSocketRoles,
@@ -27,9 +36,12 @@ import {
 } from '../src/renderer/three/ViewGizmo.js';
 import {
   boardPoint,
+  closeOverflow,
+  openOverflow,
   PLC_BOARD,
   plcBoardPoint,
   plcTerminalPoint,
+  plcTerminalPointFor,
   roleTerminalPoint,
   SELF_HOLD_WIRES,
   terminalPoint,
@@ -738,6 +750,94 @@ function plcPushButtonPoint(pbId: string, box: CanvasBox): { x: number; y: numbe
   return plcBoardPoint({ x: definition.pos.x, y: definition.pos.y, z: 4.5 }, box);
 }
 
+/** 折りたたみの欄（`<details>`）を開く（閉じていれば見出しを押す）。 */
+async function openPanel(testId: string): Promise<void> {
+  if ((await page.getByTestId(`${testId}-details`).getAttribute('open')) === null)
+    await page.getByTestId(`${testId}-summary`).click();
+}
+
+/** 折りたたみの欄を閉じる。 */
+async function closePanel(testId: string): Promise<void> {
+  if ((await page.getByTestId(`${testId}-details`).getAttribute('open')) !== null)
+    await page.getByTestId(`${testId}-summary`).click();
+}
+
+/** 盤の電源を切る（電源スイッチ → ブレーカ。§5.3.5）。 */
+async function powerOff(): Promise<void> {
+  const supply = page.getByTestId('power-switch');
+  if ((await supply.getAttribute('aria-pressed')) === 'true') await supply.click();
+  const breaker = page.getByTestId('power-breaker');
+  if ((await breaker.getAttribute('aria-pressed')) === 'true') await breaker.click();
+}
+
+/**
+ * モードC2: 3D図で電線を押し、指摘の小窓がその電線を指すまで点を変えて試す
+ * （`inspect.spec.ts` の `findWirePoint()` と同じ手）。押せた点を返す。
+ */
+async function clickWireFor(
+  session: BoardSession,
+  wireId: string,
+  box: CanvasBox,
+): Promise<{ x: number; y: number }> {
+  const wire = session.wires.find((w) => w.id === wireId);
+  const route = routeSession(JIPM_BOARD, session).find((r) => r.wireId === wireId);
+  if (wire === undefined || route === undefined) throw new Error(`電線 ${wireId} がありません`);
+  const candidates: Array<{ point: { x: number; y: number; z: number }; length: number }> = [];
+  for (let index = 0; index + 1 < route.corners.length; index += 1) {
+    const a = route.corners[index];
+    const b = route.corners[index + 1];
+    if (a === undefined || b === undefined) continue;
+    const length = Math.hypot(b.x - a.x, b.y - a.y, b.z - a.z);
+    for (const t of [0.5, 0.35, 0.65]) {
+      candidates.push({
+        point: { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t, z: a.z + (b.z - a.z) * t },
+        length,
+      });
+    }
+  }
+  candidates.sort((p, q) => q.length - p.length);
+  const label = `${String(wire.from)}–${String(wire.to)} の${wire.color}線`;
+  const popover = page.getByTestId('report-popover');
+  for (const { point } of candidates) {
+    const screen = boardPoint(point, box);
+    if (screen.x < box.x || screen.x > box.x + box.width) continue;
+    if (screen.y < box.y || screen.y > box.y + box.height) continue;
+    await page.mouse.click(screen.x, screen.y);
+    await page.waitForTimeout(150);
+    if ((await popover.count()) === 0) continue;
+    if (((await popover.textContent()) ?? '').includes(label)) return screen;
+    await page.getByTestId('report-cancel').click();
+  }
+  throw new Error(`3D盤で電線 ${wireId} を押せませんでした`);
+}
+
+/** モードDの机上のPLC（任意の機種）へ電線を1本張る。 */
+async function plcDeskWire(
+  unit: PlcUnitDefinition,
+  box: CanvasBox,
+  from: string,
+  to: string,
+): Promise<void> {
+  const a = plcTerminalPointFor(unit, PLC_ROLES, from, box);
+  const b = plcTerminalPointFor(unit, PLC_ROLES, to, box);
+  await page.mouse.click(a.x, a.y);
+  await page.mouse.click(b.x, b.y);
+  await page.waitForTimeout(80);
+}
+
+/** 机上のPLCへの配線の図（電源・入力のコモン・入力・出力の端子を指す）。 */
+async function shootDesk(name: string, unit: PlcUnitDefinition, box: CanvasBox): Promise<void> {
+  const plan = plcWiringPlan(PLC_IO, unit).map((w) => [String(w.from), String(w.to)] as const);
+  const power = plan.find(([from]) => from === 'OUTLET.L')?.[1];
+  const common = plan.find(([from]) => from === 'P.1')?.[1];
+  const input = plan.find(([from]) => from === 'TB_PB.1a')?.[1];
+  const output = plan.find(([, to]) => to === 'CR1.14')?.[0];
+  if (power === undefined || common === undefined || input === undefined || output === undefined)
+    throw new Error(`${unit.model} の配線の見本が足りません`);
+  const at = (id: string): Rect => rectAt(plcTerminalPointFor(unit, PLC_ROLES, id, box), 30);
+  await shoot(name, { 1: at(power), 2: at(common), 3: at(input), 4: at(output) }, 'auto');
+}
+
 /* ------------------------------------------------------------------ *
  * 撮影
  * ------------------------------------------------------------------ */
@@ -786,7 +886,7 @@ test.describe.serial('取扱説明書の図', () => {
 
   test('モードB: 練習の画面・ビューキューブ・カード・札・結果・タイムチャート', async () => {
     await openProblem('mode-assemble', 'b-001');
-    const box = await waitForBoard();
+    let box = await waitForBoard();
 
     // --- session-board: 画面をどう読むか（上の帯・手順・3D・右・下） ---
     await shoot(
@@ -900,6 +1000,83 @@ test.describe.serial('取扱説明書の図', () => {
       await page.mouse.click(a.x, a.y);
       await page.mouse.click(b.x, b.y);
     }
+
+    // --- b-first-wire: 1つ目の端子を選ぶと、左上に「始点」、下の1行に次の操作が出る ---
+    const overlay = page.getByTestId('status-overlay');
+    const freePoint = terminalPoint(toTerminalId('TB_PL.2+'), box);
+    await page.mouse.click(freePoint.x, freePoint.y);
+    await expect(overlay).toContainText('始点: TB_PL.2+');
+    await expect(page.getByTestId('hover-hint')).toContainText('接続先の端子をクリック');
+    await shoot(
+      'b-first-wire',
+      {
+        1: await rectOf(overlay),
+        2: await rectOf(page.getByTestId('hover-hint')),
+        3: rectAt(freePoint, 34),
+      },
+      'auto',
+    );
+    await page.keyboard.press('Escape');
+    await expect(overlay).toContainText('端子未選択');
+
+    // --- wire-limit-notice: 2本つながった端子へ3本目をつなごうとする ---
+    const counts = new Map<string, number>();
+    for (const ends of SELF_HOLD_WIRES) {
+      for (const id of ends) counts.set(id, (counts.get(id) ?? 0) + 1);
+    }
+    const fullTerminal = [...counts].find(([, n]) => n >= 2)?.[0];
+    if (fullTerminal === undefined) throw new Error('2本つながった端子がありません');
+    const fullPoint = terminalPoint(toTerminalId(fullTerminal), box);
+    await page.mouse.click(fullPoint.x, fullPoint.y);
+    const notice = page.getByTestId('wire-limit-notice');
+    await expect(notice).toBeVisible();
+    await shoot('wire-limit-notice', { 1: await rectOf(notice), 2: rectAt(fullPoint, 34) }, 'auto');
+    await page.getByTestId('wire-limit-close').click();
+    await expect(notice).toHaveCount(0);
+
+    // --- terminal-list: 端子リスト（キーボード配線） ---
+    await openPanel('terminal-list');
+    await page.getByTestId('terminal-search').fill('CR1');
+    const terminalRow = page.locator('[data-testid^="terminal-row-"]').first();
+    await expect(terminalRow).toBeVisible();
+    await terminalRow.scrollIntoViewIfNeeded();
+    await shoot(
+      'terminal-list',
+      {
+        1: await rectOf(page.getByTestId('terminal-search')),
+        2: await rectOf(terminalRow),
+      },
+      'auto',
+    );
+    await page.getByTestId('terminal-search').fill('');
+    await closePanel('terminal-list');
+
+    // --- b-select-wire / wire-list-edit: 電線一覧で1本選ぶ（3Dでも光り、Deleteで外せる） ---
+    await openPanel('wire-list');
+    const wireRow = page.locator('[data-testid^="wire-row-"]').first();
+    await wireRow.click();
+    await expect(overlay).toContainText('選択:');
+    await wireRow.scrollIntoViewIfNeeded();
+    await shoot('b-select-wire', { 1: await rectOf(wireRow), 2: await rectOf(overlay) }, 'auto');
+    const wireSearch = page.getByLabel('電線・端子・線番を検索', { exact: true });
+    const editButton = page.getByRole('button', { name: '接続先を変更', exact: true });
+    // 検索欄を右の欄の上端まで送ると、検索・選んだ行・「接続先を変更」が1画面に収まる
+    await wireSearch.evaluate((element) => element.scrollIntoView({ block: 'start' }));
+    await shoot(
+      'wire-list-edit',
+      {
+        1: await rectOf(wireSearch),
+        2: await rectOf(wireRow),
+        3: await rectOf(editButton),
+      },
+      'auto',
+    );
+    await page.keyboard.press('Escape');
+    await closePanel('wire-list');
+    // 一覧で選ぶと上に「…を確認します」の帯が出て3Dの位置が下がる。帯を閉じて測り直す
+    const clearFocus = page.getByRole('button', { name: '強調表示を解除', exact: true });
+    if (await clearFocus.isVisible()) await clearFocus.click();
+    box = await waitForBoard();
     const powerRects = (['breaker', 'switch'] as const).map((kind) => {
       const footprint = findFixtureFootprint(JIPM_BOARD.footprints, kind);
       if (footprint === undefined) throw new Error(`電源部品がありません: ${kind}`);
@@ -1085,6 +1262,18 @@ test.describe.serial('取扱説明書の図', () => {
       'auto',
     );
 
+    // --- c1-probe-pens: 3D図に立つテスターの棒と端子名の札 ---
+    await expect(page.getByTestId('probe-label-black')).toBeVisible();
+    await expect(page.getByTestId('probe-label-red')).toBeVisible();
+    await shoot(
+      'c1-probe-pens',
+      {
+        1: await rectOf(page.getByTestId('probe-label-black')),
+        2: await rectOf(page.getByTestId('probe-label-red')),
+      },
+      'auto',
+    );
+
     await page.getByTestId('probe-target-a1').scrollIntoViewIfNeeded();
     await shoot(
       'tester-probes',
@@ -1107,6 +1296,23 @@ test.describe.serial('取扱説明書の図', () => {
       },
       'auto',
     );
+    // --- c1-diagnosis: 画面の中の判定表 ---
+    const diagnosis = page.getByTestId('diagnosis-help');
+    await diagnosis.locator('summary').scrollIntoViewIfNeeded();
+    if ((await diagnosis.getAttribute('open')) === null) await diagnosis.locator('summary').click();
+    const diagnosisHead = page.getByTestId('diagnosis-table').locator('tr').first();
+    await expect(diagnosisHead).toBeVisible();
+    await diagnosis.locator('summary').scrollIntoViewIfNeeded();
+    await shoot(
+      'c1-diagnosis',
+      {
+        1: await rectOf(diagnosis.locator('summary')),
+        2: await rectOf(diagnosisHead),
+      },
+      'auto',
+    );
+    await diagnosis.locator('summary').click();
+
     for (const part of problem.parts) {
       await page.getByTestId(`answer-${part.id}-${part.truth}`).click();
     }
@@ -1156,8 +1362,12 @@ test.describe.serial('取扱説明書の図', () => {
     if (problem === undefined) return;
     await openProblem('mode-inspect-repair', problem.id);
     await expect(page.getByTestId('report-panel')).toBeVisible();
-    const box = await waitForBoard();
+    let box = await waitForBoard();
     const roles = toSocketRoles(problem.board.socketRoles);
+    const built = buildInspectRepairCircuit(problem, JIPM_BOARD);
+    if (!built.ok) throw new Error(JSON.stringify(built.errors));
+    const brokenWire = built.value.applied.sites.find((site) => site.kind === 'wire-open')?.wireId;
+    if (brokenWire === undefined) throw new Error('断線の故障がありません');
 
     await page.getByRole('button', { name: 'デジタル', exact: true }).click();
     await page.getByRole('button', { name: 'DCV', exact: true }).click();
@@ -1170,14 +1380,133 @@ test.describe.serial('取扱説明書の図', () => {
       },
       'auto',
     );
+
+    // --- c2-probe-pens: 3Dの端子へ棒を当てる（黒 → 赤の順）。棒と端子名の札が立つ ---
+    await page.getByTestId('tool-tester').click();
+    for (const id of ['N.1', 'CR1.14']) {
+      const point = roleTerminalPoint(roles, id, box);
+      await page.mouse.click(point.x, point.y);
+      await page.waitForTimeout(200);
+    }
+    await expect(page.getByTestId('probe-label-black')).toBeVisible();
+    await expect(page.getByTestId('probe-label-red')).toBeVisible();
+    await page.getByTestId('tester-readout').scrollIntoViewIfNeeded();
+    await shoot(
+      'c2-probe-pens',
+      {
+        1: await rectOf(page.getByTestId('probe-label-black')),
+        2: await rectOf(page.getByTestId('probe-label-red')),
+        3: await rectOf(page.getByTestId('tester-readout')),
+      },
+      'auto',
+    );
+
+    // --- c2-measurement: 今の測定値を記録する ---
+    await openPanel('measurement-panel');
+    const purpose = page.getByTestId('measurement-panel').getByLabel('測定の目的・気付いたこと');
+    await purpose.fill('コイル＋までの電圧を確かめる');
+    await page.getByTestId('record-measurement').click();
+    const record = page.getByTestId('measurement-record').last();
+    await expect(record).toContainText('コイル＋までの電圧を確かめる');
+    await page.getByTestId('record-measurement').scrollIntoViewIfNeeded();
+    await shoot(
+      'c2-measurement',
+      {
+        1: await rectOf(purpose),
+        2: await rectOf(page.getByTestId('record-measurement')),
+        3: await rectOf(record),
+      },
+      'auto',
+    );
+    await closePanel('measurement-panel');
+
+    // --- c2-schematic: 回路図ヒントの記号を押すと、盤の対応する端子が光る ---
+    await openOverflow(page);
+    await page.getByTestId('toggle-schematic').click();
+    await closeOverflow(page);
+    const schematic = page.getByTestId('schematic-svg');
+    await expect(schematic).toBeVisible();
+    // 右の欄を「回路図ヒント」の見出しが上に来るまで送り、CR1のコイルの記号（c03）を押す
+    const schematicHeading = page.getByTestId('schematic-hint').getByText('回路図ヒント').first();
+    await schematicHeading.evaluate((element) => element.scrollIntoView({ block: 'start' }));
+    const coilCell = schematic.locator('[data-cell]').filter({ hasText: 'CR1' }).first();
+    await coilCell.click();
+    await page.waitForTimeout(500);
+    await shoot(
+      'c2-schematic',
+      {
+        1: await rectOf(schematicHeading),
+        2: await rectOf(coilCell, 8),
+        3: rectAt(roleTerminalPoint(roles, 'CR1.14', box), 40),
+      },
+      'full',
+    );
+    await openOverflow(page);
+    await page.getByTestId('toggle-schematic').click();
+    await closeOverflow(page);
+    await expect(schematic).toHaveCount(0);
+
     await page.getByTestId('tool-report').click();
 
-    // 1件だけ登録して「指摘一覧」に中身を作る
+    // --- c2-report-wire: 3D図で断線した電線を押すと、その横に小窓が出る ---
+    const wirePoint = await clickWireFor(built.value.session, brokenWire, box);
+    await shoot(
+      'c2-report-wire',
+      {
+        1: await rectOf(page.getByTestId('tool-report')),
+        2: rectAt(wirePoint, 30),
+        3: await rectOf(page.getByTestId('report-popover'), 0),
+      },
+      'auto',
+    );
+    await page.getByTestId('report-kind-wire-open').click();
+    await expect(page.getByTestId('report-count')).toHaveText('1');
+
+    // --- c2-report-from-list: 電線一覧からも同じ小窓を開ける ---
+    await openPanel('wire-list');
+    const brokenRow = page.getByTestId(`wire-row-${brokenWire}`);
+    await brokenRow.click();
+    const reportFromList = page.getByRole('button', { name: 'この電線の故障を指摘', exact: true });
+    // 押すと小窓が開き、電線の選択は小窓へ移る（ボタンは消える）。押す前の一覧を撮る。
+    // 行を右の欄の上端まで送ると、その下の「この電線の故障を指摘」まで1画面に収まる
+    await brokenRow.evaluate((element) => element.scrollIntoView({ block: 'start' }));
+    await expectOnScreen(reportFromList);
+    await shoot(
+      'c2-report-from-list',
+      { 1: await rectOf(brokenRow), 2: await rectOf(reportFromList) },
+      'auto',
+    );
+    await reportFromList.click();
+    await expect(page.getByTestId('report-popover')).toBeVisible();
+    await page.getByTestId('report-cancel').click();
+    await closePanel('wire-list');
+    // 一覧で選ぶと上に「…を確認します」の帯が出て3Dの位置が下がる。帯を閉じて測り直す
+    const clearFocus = page.getByRole('button', { name: '強調表示を解除', exact: true });
+    if (await clearFocus.isVisible()) await clearFocus.click();
+    box = await waitForBoard();
+
+    // --- c2-report-part: 部品を押すと、故障の内容まで選べる ---
+    const partPoint = boardPoint(socketBodyPoint(), box);
+    await page.mouse.click(partPoint.x, partPoint.y);
+    await expect(page.getByTestId('report-kind-part-defect')).toBeVisible();
+    const firstDetail = page.locator('[data-testid^="report-detail-"]').first();
+    await shoot(
+      'c2-report-part',
+      {
+        1: rectAt(partPoint, 52),
+        2: await rectOf(firstDetail.locator('xpath=..'), 0),
+        3: await rectOf(page.getByTestId('report-kind-part-defect')),
+      },
+      'auto',
+    );
+    await page.getByTestId('report-cancel').click();
+
+    // 端子を1件登録して「指摘一覧」に中身を作る
     const firstTerminal = roleTerminalPoint(roles, 'CR1.9', box);
     await page.mouse.click(firstTerminal.x, firstTerminal.y);
     await expect(page.getByTestId('report-popover')).toBeVisible();
     await page.locator('[data-testid^="report-kind-"]').first().click();
-    await expect(page.getByTestId('report-count')).toHaveText('1');
+    await expect(page.getByTestId('report-count')).toHaveText('2');
 
     // 2件目を選びかけた状態（種別の窓が開き、選んだ端子が光っている）で撮る
     const secondTerminal = roleTerminalPoint(roles, 'CR1.13', box);
@@ -1211,11 +1540,59 @@ test.describe.serial('取扱説明書の図', () => {
       },
       'auto',
     );
+
+    // --- c2-result-detail: 部品不良を内容まで選んで指摘し、判定の講評を撮る ---
+    const partCase = BUILTIN_INSPECT_REPAIR_PROBLEMS.flatMap((candidate) => {
+      const result = buildInspectRepairCircuit(candidate, JIPM_BOARD);
+      if (!result.ok) return [];
+      const site = result.value.applied.sites.find(
+        (s) => s.report === 'part-defect' && s.partId !== undefined,
+      );
+      return site === undefined || site.partId === undefined
+        ? []
+        : [{ problem: candidate, partId: site.partId, detail: site.kind }];
+    })[0];
+    if (partCase === undefined) throw new Error('部品不良の内蔵C2課題がありません');
+    await openProblem('mode-inspect-repair', partCase.problem.id);
+    await waitForBoard();
+    const partButton = page.getByTestId(`report-part-${partCase.partId}`);
+    await partButton.scrollIntoViewIfNeeded();
+    await partButton.click();
+    await page.getByTestId(`report-detail-${partCase.detail}`).click();
+    await expect(page.getByTestId('report-count')).toHaveText('1');
+    await page.getByTestId('judge-button').click();
+    await expect(page.getByTestId('verdict')).toBeVisible({ timeout: 60_000 });
+    const review = page.getByTestId('detail-review-0');
+    await review.scrollIntoViewIfNeeded();
+    await expect(review).toBeVisible();
+    await shoot(
+      'c2-result-detail',
+      {
+        1: await rectOf(page.getByTestId('matched-list'), 0),
+        2: await rectOf(review),
+      },
+      'auto',
+    );
   });
 
   test('モードD: ラダー・表記の切替・モニタ', async () => {
     await openProblem('mode-plc', PLC_PROBLEM.id);
     await expect(page.getByTestId('plc-session')).toBeVisible();
+
+    // --- plc-show-chart: 手順の帯の「タイムチャートを見る」で仕様のチャートへ移る ---
+    await page.getByTestId('plc-show-chart').click();
+    await page.waitForTimeout(600);
+    const chartTitle = page.getByTestId('chart-panel').getByText('タイムチャート（仕様）').first();
+    await expect(chartTitle).toBeVisible();
+    await shoot(
+      'plc-show-chart',
+      {
+        1: await rectOf(page.getByTestId('plc-show-chart')),
+        2: await rectOf(chartTitle),
+      },
+      'full',
+    );
+
     await page.getByTestId('view-ladder').click();
     await expect(page.getByTestId('plc-session')).toHaveAttribute('data-view', 'ladder');
     await expect(page.getByTestId('ladder-editor')).toBeVisible();
@@ -1275,6 +1652,50 @@ test.describe.serial('取扱説明書の図', () => {
     // --- plc-monitor: 変換 → 配線 → モニタ → RUN → 通電 ---
     await ladderKey('F4');
     await expect(page.getByTestId('convert-state')).toHaveText('変換に成功しました');
+    // 回路が4段になり、出力ウィンドウは格子の下へ送られている。見える所まで送って撮る
+    await page.getByTestId('convert-state').scrollIntoViewIfNeeded();
+    await shoot(
+      'plc-convert',
+      {
+        1: await rectOf(page.getByTestId('toolbar-convert')),
+        2: await rectOf(page.getByTestId('convert-state')),
+      },
+      'auto',
+    );
+
+    // --- plc-keymap: キーの早見表（? で開く） ---
+    await page.getByTestId('ladder-editor').press('?');
+    const keymap = page.getByTestId('shortcut-overlay');
+    await expect(keymap).toBeVisible();
+    await shoot(
+      'plc-keymap',
+      {
+        1: await rectOf(keymap.getByText('キーの早見表').first()),
+        2: await rectOf(page.getByTestId('shortcut-overlay-close')),
+      },
+      'auto',
+    );
+    await page.getByTestId('shortcut-overlay-close').click();
+    await expect(keymap).toHaveCount(0);
+
+    // --- plc-special-contact: 特殊接点を用途から選ぶ（確定せずに閉じる） ---
+    await page.getByTestId('cell-n3:0:1').click();
+    await ladderKey('F5');
+    await expect(page.getByTestId('device-input')).toBeVisible();
+    const special = page.getByTestId('special-contact-select');
+    await special.selectOption({ index: 1 });
+    await expect(page.getByTestId('special-contact-note')).toBeVisible();
+    await shoot(
+      'plc-special-contact',
+      {
+        1: await rectOf(special),
+        2: await rectOf(page.getByTestId('special-contact-note')),
+      },
+      'auto',
+    );
+    await page.getByTestId('device-cancel').click();
+    await expect(page.getByTestId('device-input')).toHaveCount(0);
+    await expect(page.getByTestId('convert-state')).toHaveText('変換に成功しました');
 
     await page.getByTestId('view-board').click();
     await expect(page.getByTestId('plc-session')).toHaveAttribute('data-view', 'board');
@@ -1293,6 +1714,15 @@ test.describe.serial('取扱説明書の図', () => {
         box,
       );
       await page.mouse.click(point.x, point.y);
+      if (output === PLC_IO.outputs[0]) {
+        await expect(page.getByTestId('mount-relay-my4n')).toBeVisible();
+        await page.getByTestId('mount-relay-my4n').scrollIntoViewIfNeeded();
+        await shoot(
+          'plc-mount-relay',
+          { 1: rectAt(point, 52), 2: await rectOf(page.getByTestId('mount-relay-my4n')) },
+          'auto',
+        );
+      }
       await page.getByTestId('mount-relay-my4n').click();
       await expect(page.getByTestId('operation-log')).toContainText(
         `${socketId} に リレー MY4N を装着`,
@@ -1301,6 +1731,7 @@ test.describe.serial('取扱説明書の図', () => {
     for (const [from, to] of PLC_REFERENCE_WIRES) {
       await plcWire(box, from, to);
     }
+    await shootDesk('plc-desk-mitsubishi', PLC_UNIT_FX5U, box);
 
     await page.getByTestId('view-split').click();
     await expect(page.getByTestId('plc-session')).toHaveAttribute('data-view', 'split');
@@ -1311,6 +1742,41 @@ test.describe.serial('取扱説明書の図', () => {
     await expect(page.getByTestId('toolbar-plc-run')).toHaveAttribute('aria-pressed', 'true');
     await powerOn();
     await expect(page.getByTestId('monitor-scan')).toBeVisible({ timeout: 30_000 });
+
+    // --- plc-io-power: I/O割付のPLC電源と入出力の値 ---
+    const supplyStatus = page.getByTestId('plc-supply-status');
+    await expect(supplyStatus).toContainText('接続正常');
+    const lastOutput = page.getByTestId(`io-output-${String(PLC_IO.outputs.length - 1)}`);
+    await supplyStatus.evaluate((element) => element.scrollIntoView({ block: 'end' }));
+    await shoot(
+      'plc-io-power',
+      { 1: await rectOf(supplyStatus), 2: await rectOf(lastOutput) },
+      'auto',
+    );
+
+    // --- plc-scan-debug: 一時停止して1スキャンずつ進める ---
+    await openPanel('plc-debug');
+    await page.getByRole('button', { name: '一時停止', exact: true }).click();
+    const stepScan = page.getByRole('button', { name: '1スキャン実行（10 ms）', exact: true });
+    const resumeScan = page.getByRole('button', { name: '連続実行へ戻る', exact: true });
+    await stepScan.click();
+    await resumeScan.scrollIntoViewIfNeeded();
+    // 下段の欄は高さが小さく、見出しは上へ隠れる。欄の中の「一時停止中」の表示を指す
+    const pausedNote = page
+      .getByTestId('plc-debug')
+      .getByText('一時停止中', { exact: false })
+      .first();
+    await shoot(
+      'plc-scan-debug',
+      {
+        1: await rectOf(pausedNote),
+        2: await rectOf(stepScan),
+        3: await rectOf(resumeScan),
+      },
+      'auto',
+    );
+    await resumeScan.click();
+    await closePanel('plc-debug');
 
     // 黒ボタン（X0）を1回押すと自己保持が入り、ラダーに通電の色が出る（d-001 の n1）
     await page.getByTestId('view-board').click();
@@ -1326,6 +1792,16 @@ test.describe.serial('取扱説明書の図', () => {
     await page.waitForTimeout(600);
     await page.mouse.up();
     await page.waitForTimeout(600);
+    const whiteLamp = PLC_BOARD.lamps[0];
+    if (whiteLamp === undefined) throw new Error('ランプが定義されていません');
+    await shoot(
+      'plc-run-lamps',
+      {
+        1: rectAt(plcBoardPoint({ ...whiteLamp.pos, z: 4.5 }, boardBox), 40),
+        2: rectAt(pb1, 40),
+      },
+      'auto',
+    );
 
     await page.getByTestId('view-ladder').click();
     await expect(page.getByTestId('plc-session')).toHaveAttribute('data-view', 'ladder');
@@ -1348,13 +1824,46 @@ test.describe.serial('取扱説明書の図', () => {
     );
   });
 
-  test('メーカーごとの編集画面', async () => {
+  test('メーカーごとの編集画面と机上の配線', async () => {
     await page.getByTestId('toolbar-monitor-start').click();
-    for (const vendor of ['omron', 'jtekt', 'sharp']) {
-      await page.getByTestId('toolbar-notation').click();
-      await page.getByTestId(`notation-to-${vendor}`).click();
-      await page.getByTestId('notation-apply').click();
-      await expect(page.getByTestId('notation-dialog')).toHaveCount(0);
+    // 机上の電線を張り替えるので、先に盤の電源を切る（通電中に配線しない）
+    await powerOff();
+    const models = { omron: 'CP1E', jtekt: 'PC10G-1SP', sharp: 'JW-300' } as const;
+    for (const vendor of ['omron', 'jtekt', 'sharp'] as const) {
+      const unit = plcUnitFor(models[vendor]);
+      if (unit === undefined) throw new Error(`${models[vendor]} の定義がありません`);
+      if (vendor === 'omron') {
+        // --- plc-switch-vendor: 盤を見たまま「メーカーを切り替える」 ---
+        await page.getByTestId('view-board').click();
+        await expect(page.getByTestId('plc-session')).toHaveAttribute('data-view', 'board');
+        // 窓を開くと後ろの欄は操作できなくなる（重なり判定に掛かる）ので、先に測っておく
+        await page.getByTestId('switch-vendor').scrollIntoViewIfNeeded();
+        const modelRect = await rectOf(page.getByTestId('plc-model'));
+        const switchRect = await rectOf(page.getByTestId('switch-vendor'));
+        await page.getByTestId('switch-vendor').click();
+        await page.getByTestId('notation-to-omron').click();
+        const warning = page.getByTestId('notation-warning');
+        await expect(warning).toContainText('机上のPLC本体も切り替わります');
+        await shoot(
+          'plc-switch-vendor',
+          {
+            1: modelRect,
+            2: switchRect,
+            3: await rectOf(warning),
+          },
+          'full',
+        );
+        await page.getByTestId('notation-apply').click();
+        await expect(page.getByTestId('notation-dialog')).toHaveCount(0);
+      } else {
+        await page.getByTestId('toolbar-notation').click();
+        await page.getByTestId(`notation-to-${vendor}`).click();
+        await page.getByTestId('notation-apply').click();
+        await expect(page.getByTestId('notation-dialog')).toHaveCount(0);
+      }
+      // 切り替えると課題を開き直すので、表示は既定（分割）へ戻る。ラダーだけの表示にする
+      await page.getByTestId('view-ladder').click();
+      await expect(page.getByTestId('plc-session')).toHaveAttribute('data-view', 'ladder');
       await page.getByTestId('cell-n1:0:0').click();
       await shoot(
         `plc-vendor-${vendor}`,
@@ -1364,6 +1873,36 @@ test.describe.serial('取扱説明書の図', () => {
         },
         'full',
       );
+      if (vendor === 'omron') {
+        await expect(page.getByTestId('convert-state')).toHaveText(
+          '変換に成功しました（自動で変換されます）',
+        );
+        await page.getByTestId('convert-state').scrollIntoViewIfNeeded();
+        await shoot(
+          'plc-convert-auto',
+          {
+            1: await rectOf(page.getByTestId('convert-state')),
+            2: await rectOf(page.getByTestId('output-summary').locator('h2')),
+          },
+          'auto',
+        );
+      }
+      // --- plc-desk-*: 切り替えると外れる机上の電線だけを、その機種の端子名で張り直す ---
+      await page.getByTestId('view-board').click();
+      await expect(page.getByTestId('plc-session')).toHaveAttribute('data-view', 'board');
+      // 視点を「盤＋PLC」にそろえる（1280px 幅では視点のボタンは「…」の中にある）
+      await openOverflow(page);
+      await page.getByTestId('view-plc').click();
+      await closeOverflow(page);
+      const box = await waitForBoard();
+      for (const wire of plcWiringPlan(PLC_IO, unit)) {
+        const from = String(wire.from);
+        const to = String(wire.to);
+        const desk = [from, to].some((id) => id.startsWith('PLC.') || id.startsWith('OUTLET.'));
+        if (desk) await plcDeskWire(unit, box, from, to);
+      }
+      await shootDesk(`plc-desk-${vendor}`, unit, box);
+      await page.getByTestId('view-ladder').click();
     }
   });
 
@@ -1388,6 +1927,10 @@ test.describe.serial('取扱説明書の図', () => {
     await page.getByTestId('open-settings').click();
     await page.getByTestId('setting-restart-tour').click();
     await page.getByTestId('open-b-001').click();
+    // 直前に開いていた b-003（タイマを載せた作業）から移るときは確認が出る
+    const change = page.getByTestId('problem-change-confirm');
+    if (await change.isVisible())
+      await change.getByRole('button', { name: '保存せず進む', exact: true }).click();
     await expect(page.getByTestId('tour-guide')).toBeVisible();
     await shoot(
       'tour-first',
@@ -1452,6 +1995,43 @@ test.describe.serial('取扱説明書の図', () => {
       },
       'full',
     );
+
+    // --- home-tutorials / tutorial-player: PLCの動画はメーカーを切り替えて見られる ---
+    const plcTutorial = page.getByTestId('tutorial-plc');
+    const plcCard = plcTutorial.locator('xpath=ancestor::article[1]');
+    await plcCard.scrollIntoViewIfNeeded();
+    await shoot(
+      'home-tutorials',
+      { 1: await rectOf(plcCard, 0), 2: await rectOf(plcTutorial) },
+      'auto',
+    );
+    await plcTutorial.click();
+    const player = page.getByTestId('tutorial-player');
+    await expect(player).toBeVisible();
+    const video = player.locator('video');
+    await expect
+      .poll(() => video.evaluate((element: HTMLVideoElement) => element.readyState))
+      .toBeGreaterThanOrEqual(2);
+    // 冒頭（課題と説明の吹き出し）の1コマで撮る。途中の細かい盤の絵は PNG が大きくなる
+    await video.evaluate((element: HTMLVideoElement) => {
+      element.currentTime = 3;
+    });
+    await page.waitForTimeout(1000);
+    // 窓は画面の高さをわずかに超えるので、下端（再生速度）まで送ってから撮る
+    await player.evaluate((element) => {
+      element.scrollTop = element.scrollHeight;
+    });
+    await shoot(
+      'tutorial-player',
+      {
+        1: await rectOf(player.getByRole('group', { name: 'メーカーを選ぶ', exact: true })),
+        2: await rectOf(video, 0),
+        3: await rectOf(player.getByRole('combobox', { name: '動画の再生速度', exact: true })),
+      },
+      'auto',
+    );
+    await page.keyboard.press('Escape');
+    await expect(player).toHaveCount(0);
 
     // --- help-drawer ---
     await page.getByTestId('open-help').click();

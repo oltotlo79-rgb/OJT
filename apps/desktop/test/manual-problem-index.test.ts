@@ -53,7 +53,7 @@ describe('全課題を1回ずつ探せる索引', () => {
 });
 
 describe('通し練習を最後まで読める構成', () => {
-  it('4モードの全40手順に図が付き、番号が連続する', () => {
+  it('4モードの全41手順に図が付き、番号が連続する', () => {
     const modesSource = readFileSync(resolve(manual, '13-tutorial-modes.md'), 'utf8');
     const blocks = modesSource
       .split(/^## /mu)
@@ -67,7 +67,8 @@ describe('通し練習を最後まで読める構成', () => {
       const steps = [
         ...block.matchAll(/^(\d+)\. \*\*[^\n]+\n([\s\S]*?)(?=^\d+\. \*\*|$(?![\s\S]))/gmu),
       ];
-      const expected = [9, 9, 10, 12][index]!;
+      // PLCは v1.7.0 で「仕様のタイムチャートを見る」の手順を足して13手順
+      const expected = [9, 9, 10, 13][index]!;
       expect(steps).toHaveLength(expected);
       expect(steps.map((step) => Number(step[1]))).toEqual(
         Array.from({ length: expected }, (_, i) => i + 1),
