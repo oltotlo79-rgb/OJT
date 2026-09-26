@@ -63,10 +63,14 @@ export function RepairPanel({
       </p>
       <p className={styles.label}>{JA.inspectRepair.parts}</p>
       {mountedParts.map((part) => (
-        <div key={part.partId} className={styles.trayRow}>
+        /*
+         * 部品名の「…を表示」を1行目、「この部品の故障を指摘」「交換」を2行目に置く。3つを1行に
+         * 並べると、右の欄の幅では部品名のボタンが語の途中で2行に割れた（2026-09-26 画面品質の点検）。
+         */
+        <div key={part.partId} className={styles.repairPartRow}>
           <button
             type="button"
-            className={styles.trayName}
+            className={styles.repairPartName}
             onClick={() => focusDiagnosticTarget({ partId: part.partId })}
           >
             {mountedPartLabel(part.partId, part.isTimer)} を表示

@@ -165,6 +165,26 @@
   font-size: max(12px, 0.8125rem);
 }
 
+/* 点検修復の「装着部品」の1行。部品名を上の段、指摘・交換を下の段に折り返す */
+.repairPartRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  border-bottom: 1px solid var(--line);
+  padding: 4px 0;
+}
+
+.repairPartRow > button {
+  white-space: nowrap;
+}
+
+.repairPartName {
+  flex: 1 1 100%;
+  text-align: left;
+  font-size: max(12px, 0.8125rem);
+}
+
 /* いまチェック用ソケットに挿している部品 */
 .trayActive {
   background: rgba(57, 208, 255, 0.12);
