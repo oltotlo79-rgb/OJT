@@ -1,0 +1,72 @@
+{
+  "formatVersion": 1,
+  "id": "c1-064",
+  "mode": "inspect-parts",
+  "title": "全故障種の最終確認",
+  "grade": 1,
+  "difficulty": 4,
+  "tags": [
+    "fault-part",
+    "measure"
+  ],
+  "description": "部品を一つずつチェック用ソケットに挿して点検し、正常か故障かを判定してください。重点は「全故障種の最終確認」です。コイル抵抗、無励磁時と励磁時のa接点・b接点の順に測り、測定記録に予測と判断を残します。タイマは設定時間がたってから限時接点を確かめ、励磁直後の未動作を故障と取り違えないこと。",
+  "timeLimit": {
+    "standardMin": 30,
+    "cutoffMin": 50
+  },
+  "board": {
+    "boardId": "board-jipm-std",
+    "socketRoles": {
+      "S7": "CHK"
+    }
+  },
+  "inventory": [],
+  "parts": [
+    {
+      "id": "p1",
+      "kind": "relay-my4n",
+      "truth": "coil-open"
+    },
+    {
+      "id": "p2",
+      "kind": "timer-h3y4",
+      "truth": "a-open",
+      "group": 4
+    },
+    {
+      "id": "p3",
+      "kind": "relay-my4n",
+      "truth": "a-weld",
+      "group": 3
+    },
+    {
+      "id": "p4",
+      "kind": "relay-my4n",
+      "truth": "b-open",
+      "group": 2
+    },
+    {
+      "id": "p5",
+      "kind": "timer-h3y4",
+      "truth": "b-weld",
+      "group": 1
+    },
+    {
+      "id": "p6",
+      "kind": "relay-my4n",
+      "truth": "coil-layer-short",
+      "ratio": 0.8
+    },
+    {
+      "id": "p7",
+      "kind": "relay-my4n",
+      "truth": "normal"
+    },
+    {
+      "id": "p8",
+      "kind": "timer-h3y4",
+      "truth": "normal"
+    }
+  ],
+  "seed": 2026092609
+}

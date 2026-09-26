@@ -44,10 +44,10 @@ describe('builtin problems', () => {
     ).toThrow(BuiltinProblemError);
   });
 
-  it('ships 20 assemble problems (§7.9)', () => {
-    expect(BUILTIN_PROBLEMS).toHaveLength(90);
+  it('ships 100 assemble problems (§7.9 / v1.7.0 で10題追加)', () => {
+    expect(BUILTIN_PROBLEMS).toHaveLength(100);
     expect(BUILTIN_PROBLEMS.map((p) => p.id)).toEqual(
-      Array.from({ length: 90 }, (_, i) => `b-${String(i + 1).padStart(3, '0')}`),
+      Array.from({ length: 100 }, (_, i) => `b-${String(i + 1).padStart(3, '0')}`),
     );
   });
 

@@ -10,6 +10,7 @@ import {
   EXTRA_INSPECT_REPAIR,
   EXTRA_PLC,
 } from './expanded.js';
+import { V17_ASSEMBLE, V17_INSPECT_PARTS, V17_INSPECT_REPAIR, V17_PLC } from './v17.js';
 import type { AssembleProblem } from '../schema/assemble.js';
 import {
   isAssembleProblem,
@@ -130,6 +131,7 @@ const BUILTIN_ASSEMBLE_JSON: readonly unknown[] = [
   twoTimer,
   ...EXTRA_ASSEMBLE,
   ...WORKSHOP_ASSEMBLE,
+  ...V17_ASSEMBLE,
 ];
 
 /** 内蔵のモードC1課題のJSON。 */
@@ -148,6 +150,7 @@ const BUILTIN_INSPECT_PARTS_JSON: readonly unknown[] = [
   allTruthsCheck,
   ...EXTRA_INSPECT_PARTS,
   ...WORKSHOP_INSPECT_PARTS,
+  ...V17_INSPECT_PARTS,
 ];
 
 /** 内蔵のモードC2課題のJSON。 */
@@ -174,6 +177,7 @@ const BUILTIN_INSPECT_REPAIR_JSON: readonly unknown[] = [
   c2Random,
   ...EXTRA_INSPECT_REPAIR,
   ...WORKSHOP_INSPECT_REPAIR,
+  ...V17_INSPECT_REPAIR,
 ];
 
 /** 内蔵のモードD課題のJSON。 */
@@ -200,6 +204,7 @@ const BUILTIN_PLC_JSON: readonly unknown[] = [
   d020,
   ...EXTRA_PLC,
   ...WORKSHOP_PLC,
+  ...V17_PLC,
 ];
 
 /** 内蔵課題の検証に失敗したときに投げる。 */

@@ -45,7 +45,7 @@ describe('task.schema.json（ajv strict / draft 2020-12）', () => {
     const validate = ajv.compile(schema);
     const dir = join(import.meta.dirname, '..', 'src', 'builtin', 'assemble');
     const files = readdirSync(dir).filter((f) => f.endsWith('.json'));
-    expect(files).toHaveLength(90);
+    expect(files).toHaveLength(100);
     for (const file of files) {
       const json: unknown = JSON.parse(readFileSync(join(dir, file), 'utf8'));
       const ok = validate(json);

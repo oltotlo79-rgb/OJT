@@ -1,0 +1,56 @@
+{
+  "formatVersion": 1,
+  "id": "c1-060",
+  "mode": "inspect-parts",
+  "title": "溶着と導通不良の組合せ",
+  "grade": 2,
+  "difficulty": 3,
+  "tags": [
+    "fault-part",
+    "measure"
+  ],
+  "description": "部品を一つずつチェック用ソケットに挿して点検し、正常か故障かを判定してください。重点は「溶着と導通不良の組合せ」です。コイル抵抗、無励磁時と励磁時のa接点・b接点の順に測り、測定記録に予測と判断を残します。",
+  "timeLimit": {
+    "standardMin": 30,
+    "cutoffMin": 50
+  },
+  "board": {
+    "boardId": "board-jipm-std",
+    "socketRoles": {
+      "S7": "CHK"
+    }
+  },
+  "inventory": [],
+  "parts": [
+    {
+      "id": "p1",
+      "kind": "relay-my4n",
+      "truth": "a-weld",
+      "group": 1
+    },
+    {
+      "id": "p2",
+      "kind": "relay-my4n",
+      "truth": "b-weld",
+      "group": 2
+    },
+    {
+      "id": "p3",
+      "kind": "relay-my4n",
+      "truth": "normal"
+    },
+    {
+      "id": "p4",
+      "kind": "relay-my4n",
+      "truth": "a-open",
+      "group": 3
+    },
+    {
+      "id": "p5",
+      "kind": "relay-my4n",
+      "truth": "b-open",
+      "group": 4
+    }
+  ],
+  "seed": 2026092605
+}

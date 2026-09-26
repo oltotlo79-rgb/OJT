@@ -1,0 +1,248 @@
+{
+  "formatVersion": 1,
+  "id": "d-096",
+  "mode": "plc",
+  "title": "PLC 長押しで始動する安全起動",
+  "grade": 2,
+  "difficulty": 3,
+  "tags": [
+    "self-hold",
+    "timer"
+  ],
+  "description": "誤操作を防ぐため、黒押ボタン（PB1）を1秒以上押し続けたときだけ運転を始め、白ランプ（PL1）を自己保持で点灯させなさい（タイマで押している時間を測る）。1秒に満たない短い押し方では始動しないこと。押している間（運転していないとき）は黄ランプ（PL2）を点灯させて長押し中であることを示す。黄押ボタン（PB2）で停止する。 入力は X0＝黒（PB1）・X1＝黄（PB2）・X2＝緑（PB3）、出力は盤のリレー（CR1〜）を介して表示灯を点けます。PLCの電源は壁コンセントから取ってください。",
+  "timeLimit": {
+    "standardMin": 40,
+    "cutoffMin": 60
+  },
+  "board": {
+    "boardId": "board-jipm-std",
+    "socketRoles": {
+      "S1": "CR1",
+      "S2": "CR2",
+      "S7": "CHK"
+    }
+  },
+  "inventory": [
+    {
+      "kind": "relay-my4n",
+      "count": 2
+    }
+  ],
+  "plc": {
+    "vendor": "jtekt",
+    "model": "PC10G-1SP"
+  },
+  "io": {
+    "mode": "fixed",
+    "wiring": "source",
+    "inputs": [
+      {
+        "x": 0,
+        "pb": "PB1"
+      },
+      {
+        "x": 1,
+        "pb": "PB2"
+      },
+      {
+        "x": 2,
+        "pb": "PB3"
+      }
+    ],
+    "outputs": [
+      {
+        "y": 0,
+        "cr": "CR1",
+        "pl": "PL1"
+      },
+      {
+        "y": 1,
+        "cr": "CR2",
+        "pl": "PL2"
+      }
+    ]
+  },
+  "referenceLadder": {
+    "networks": [
+      {
+        "id": "n1",
+        "cells": [
+          [
+            {
+              "kind": "contact",
+              "type": "NO",
+              "device": {
+                "kind": "input",
+                "index": 0
+              }
+            },
+            {
+              "kind": "timer",
+              "type": "TON",
+              "device": {
+                "kind": "timer",
+                "index": 0
+              },
+              "presetMs": 1000
+            }
+          ]
+        ]
+      },
+      {
+        "id": "n2",
+        "cells": [
+          [
+            {
+              "kind": "contact",
+              "type": "NO",
+              "device": {
+                "kind": "timer",
+                "index": 0
+              }
+            },
+            {
+              "kind": "vline"
+            },
+            {
+              "kind": "contact",
+              "type": "NC",
+              "device": {
+                "kind": "input",
+                "index": 1
+              }
+            },
+            {
+              "kind": "coil",
+              "type": "OUT",
+              "device": {
+                "kind": "internal",
+                "index": 0
+              }
+            }
+          ],
+          [
+            {
+              "kind": "contact",
+              "type": "NO",
+              "device": {
+                "kind": "internal",
+                "index": 0
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "id": "n3",
+        "cells": [
+          [
+            {
+              "kind": "contact",
+              "type": "NO",
+              "device": {
+                "kind": "internal",
+                "index": 0
+              }
+            },
+            {
+              "kind": "coil",
+              "type": "OUT",
+              "device": {
+                "kind": "output",
+                "index": 0
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "id": "n4",
+        "cells": [
+          [
+            {
+              "kind": "contact",
+              "type": "NO",
+              "device": {
+                "kind": "input",
+                "index": 0
+              }
+            },
+            {
+              "kind": "contact",
+              "type": "NC",
+              "device": {
+                "kind": "internal",
+                "index": 0
+              }
+            },
+            {
+              "kind": "coil",
+              "type": "OUT",
+              "device": {
+                "kind": "output",
+                "index": 1
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "id": "end",
+        "cells": [
+          [
+            {
+              "kind": "end"
+            }
+          ]
+        ]
+      }
+    ],
+    "comments": {
+      "X0": "起動（黒・長押し）",
+      "X1": "停止（黄）",
+      "T0": "長押し1秒",
+      "Y0": "運転表示 PL1",
+      "Y1": "長押し中 PL2"
+    }
+  },
+  "wiringRequired": true,
+  "operations": [
+    {
+      "t": 500,
+      "target": "PB1",
+      "action": "press"
+    },
+    {
+      "t": 900,
+      "target": "PB1",
+      "action": "release"
+    },
+    {
+      "t": 2000,
+      "target": "PB1",
+      "action": "press"
+    },
+    {
+      "t": 3300,
+      "target": "PB1",
+      "action": "release"
+    },
+    {
+      "t": 4500,
+      "target": "PB2",
+      "action": "press"
+    },
+    {
+      "t": 4800,
+      "target": "PB2",
+      "action": "release"
+    }
+  ],
+  "durationMs": 6000,
+  "judge": {
+    "compareSignals": [
+      "PL1",
+      "PL2"
+    ]
+  }
+}

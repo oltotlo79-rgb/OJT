@@ -76,7 +76,7 @@ describe('追加実習の操作と期待動作', () => {
   });
   for (const problem of [
     ...BUILTIN_ASSEMBLE_PROBLEMS.slice(60, 86),
-    ...BUILTIN_PLC_PROBLEMS.slice(60),
+    ...BUILTIN_PLC_PROBLEMS.slice(60, 90),
   ]) {
     it(`${problem.id}: 四入力の全16状態と時間条件を満たす`, () => {
       const spec = specs[problem.id]!;
@@ -131,7 +131,7 @@ describe('追加実習の操作と期待動作', () => {
     });
   }
 
-  for (const problem of BUILTIN_ASSEMBLE_PROBLEMS.slice(86)) {
+  for (const problem of BUILTIN_ASSEMBLE_PROBLEMS.slice(86, 90)) {
     it(`${problem.id}: 追加PB/PLは中継端子経由でも採点・電圧が一致する`, () => {
       const board = boardFromProfile(problem.board.profile);
       const built = buildReferenceSession(problem, board);

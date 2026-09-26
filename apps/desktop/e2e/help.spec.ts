@@ -399,13 +399,13 @@ test.describe('ヘルプ（§16 Phase 6 受入基準①②③⑥）', () => {
     await expect(page.getByTestId('help-drawer')).toBeHidden();
   });
 
-  test('課題索引の全324個のIDが途中で折り返されない', async () => {
+  test('課題索引の全364個のIDが途中で折り返されない', async () => {
     await goHome();
     await setWindow(1280, 800);
     await page.getByTestId('open-help').click();
     await showSection(CHAPTER_TITLES.length - 1, 'tutorial-features/課題の索引');
     const ids = page.locator('[data-manual-table="problem-index"] tbody tr td:first-child');
-    await expect(ids).toHaveCount(324);
+    await expect(ids).toHaveCount(364);
     const broken = await ids.evaluateAll((cells) =>
       cells.flatMap((cell) => {
         const range = document.createRange();

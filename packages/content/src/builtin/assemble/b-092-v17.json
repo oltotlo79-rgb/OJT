@@ -1,0 +1,257 @@
+{
+  "formatVersion": 1,
+  "id": "b-092",
+  "mode": "assemble",
+  "title": "運転時間タイマによる自動停止と終了表示",
+  "grade": 2,
+  "difficulty": 3,
+  "tags": [
+    "self-hold",
+    "timer"
+  ],
+  "description": "黒押ボタン（PB1）で運転を始め、白ランプ（PL1）を点灯させなさい。運転はタイマT1（2秒）で自動的に止め、止まったら黄ランプ（PL2）で「運転終了」を表示し続けること。黄押ボタン（PB2）は運転中なら停止、終了表示中なら表示の消去に使う。途中でPB2を押して止めたときは終了表示を出さない。",
+  "timeLimit": {
+    "standardMin": 40,
+    "cutoffMin": 60
+  },
+  "board": {
+    "boardId": "board-jipm-std",
+    "socketRoles": {
+      "S1": "CR1",
+      "S2": "CR2",
+      "S5": "T1",
+      "S7": "CHK"
+    }
+  },
+  "inventory": [
+    {
+      "kind": "relay-my4n",
+      "count": 2
+    },
+    {
+      "kind": "timer-h3y4",
+      "count": 1
+    }
+  ],
+  "schematic": {
+    "formatVersion": 1,
+    "id": "sch-b-092",
+    "title": "運転時間タイマによる自動停止と終了表示",
+    "orientation": "horizontal",
+    "rungs": [
+      {
+        "id": "r1",
+        "from": {
+          "bus": "P"
+        },
+        "to": {
+          "bus": "N"
+        },
+        "cells": [
+          {
+            "kind": "pb-b",
+            "id": "c01",
+            "device": "PB2"
+          },
+          {
+            "kind": "t-b",
+            "id": "c02",
+            "device": "T1"
+          },
+          {
+            "kind": "pb-a",
+            "id": "c03",
+            "device": "PB1"
+          },
+          {
+            "kind": "coil",
+            "id": "c04",
+            "device": "CR1"
+          }
+        ]
+      },
+      {
+        "id": "r1h",
+        "from": {
+          "rung": "r1",
+          "node": 2
+        },
+        "to": {
+          "rung": "r1",
+          "node": 3
+        },
+        "cells": [
+          {
+            "kind": "cr-a",
+            "id": "c05",
+            "device": "CR1"
+          }
+        ]
+      },
+      {
+        "id": "r2",
+        "from": {
+          "bus": "P"
+        },
+        "to": {
+          "bus": "N"
+        },
+        "cells": [
+          {
+            "kind": "cr-a",
+            "id": "c06",
+            "device": "CR1"
+          },
+          {
+            "kind": "coil",
+            "id": "c07",
+            "device": "T1",
+            "presetMs": 2000
+          }
+        ]
+      },
+      {
+        "id": "r3",
+        "from": {
+          "bus": "P"
+        },
+        "to": {
+          "bus": "N"
+        },
+        "cells": [
+          {
+            "kind": "cr-a",
+            "id": "c08",
+            "device": "CR1"
+          },
+          {
+            "kind": "lamp",
+            "id": "c09",
+            "device": "PL1"
+          }
+        ]
+      },
+      {
+        "id": "r4",
+        "from": {
+          "rung": "r1",
+          "node": 1
+        },
+        "to": {
+          "bus": "N"
+        },
+        "cells": [
+          {
+            "kind": "t-a",
+            "id": "c10",
+            "device": "T1"
+          },
+          {
+            "kind": "coil",
+            "id": "c11",
+            "device": "CR2"
+          }
+        ]
+      },
+      {
+        "id": "r4h",
+        "from": {
+          "rung": "r1",
+          "node": 1
+        },
+        "to": {
+          "rung": "r4",
+          "node": 1
+        },
+        "cells": [
+          {
+            "kind": "cr-a",
+            "id": "c12",
+            "device": "CR2"
+          }
+        ]
+      },
+      {
+        "id": "r5",
+        "from": {
+          "bus": "P"
+        },
+        "to": {
+          "bus": "N"
+        },
+        "cells": [
+          {
+            "kind": "cr-a",
+            "id": "c13",
+            "device": "CR2"
+          },
+          {
+            "kind": "lamp",
+            "id": "c14",
+            "device": "PL2"
+          }
+        ]
+      }
+    ]
+  },
+  "operations": [
+    {
+      "t": 500,
+      "target": "PB1",
+      "action": "press"
+    },
+    {
+      "t": 800,
+      "target": "PB1",
+      "action": "release"
+    },
+    {
+      "t": 3500,
+      "target": "PB2",
+      "action": "press"
+    },
+    {
+      "t": 3800,
+      "target": "PB2",
+      "action": "release"
+    },
+    {
+      "t": 4500,
+      "target": "PB1",
+      "action": "press"
+    },
+    {
+      "t": 4800,
+      "target": "PB1",
+      "action": "release"
+    },
+    {
+      "t": 5500,
+      "target": "PB2",
+      "action": "press"
+    },
+    {
+      "t": 5800,
+      "target": "PB2",
+      "action": "release"
+    }
+  ],
+  "durationMs": 7000,
+  "judge": {
+    "tolerance": {
+      "edgeMs": 200,
+      "ratio": 0.1
+    },
+    "staticChecks": {
+      "wireColorRule": true,
+      "terminalLimit": true,
+      "unusedParts": true,
+      "forbiddenCircuit": true,
+      "coilPolarity": true,
+      "powerSequence": true
+    }
+  },
+  "hints": {
+    "schematicVisible": false
+  }
+}

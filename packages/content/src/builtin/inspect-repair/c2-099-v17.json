@@ -1,0 +1,307 @@
+{
+  "formatVersion": 1,
+  "id": "c2-099",
+  "title": "停止後の再起動禁止（3秒）の故障診断",
+  "grade": 1,
+  "difficulty": 4,
+  "tags": [
+    "self-hold",
+    "timer",
+    "interlock",
+    "fault-part",
+    "measure"
+  ],
+  "description": "黒押ボタン（PB1）で運転を始め、白ランプ（PL1）を自己保持で点灯させなさい。黄押ボタン（PB2）で停止したら、そこから3秒間（タイマT1）は再起動を受け付けず、その間は黄ランプ（PL2）で「再起動待ち」を表示すること。3秒たったらPL2を消し、PB1で再び起動できるようにする。タイマの接点で自分のコイルを直接切らず、リレー（CR3）を介して待ち状態を解くこと。 現在は指定どおり動きません。通電して押ボタンを操作しながら電圧を測り、故障箇所を3D図の中か一覧から指摘して修復してください（部品不良は故障の内容も選べます）。修復後は全ての操作を確かめます。",
+  "timeLimit": {
+    "standardMin": 50,
+    "cutoffMin": 60
+  },
+  "board": {
+    "boardId": "board-jipm-std",
+    "socketRoles": {
+      "S1": "CR1",
+      "S2": "CR2",
+      "S3": "CR3",
+      "S5": "T1",
+      "S7": "CHK"
+    }
+  },
+  "inventory": [
+    {
+      "kind": "relay-my4n",
+      "count": 3
+    },
+    {
+      "kind": "timer-h3y4",
+      "count": 1
+    }
+  ],
+  "mode": "inspect-repair",
+  "schematic": {
+    "formatVersion": 1,
+    "id": "sch-c2-099",
+    "title": "停止後の再起動禁止（3秒）",
+    "orientation": "horizontal",
+    "rungs": [
+      {
+        "id": "r1",
+        "from": {
+          "bus": "P"
+        },
+        "to": {
+          "bus": "N"
+        },
+        "cells": [
+          {
+            "kind": "pb-b",
+            "id": "c01",
+            "device": "PB2"
+          },
+          {
+            "kind": "cr-b",
+            "id": "c02",
+            "device": "CR2"
+          },
+          {
+            "kind": "pb-a",
+            "id": "c03",
+            "device": "PB1"
+          },
+          {
+            "kind": "coil",
+            "id": "c04",
+            "device": "CR1"
+          }
+        ]
+      },
+      {
+        "id": "r1h",
+        "from": {
+          "rung": "r1",
+          "node": 1
+        },
+        "to": {
+          "rung": "r1",
+          "node": 3
+        },
+        "cells": [
+          {
+            "kind": "cr-a",
+            "id": "c05",
+            "device": "CR1"
+          }
+        ]
+      },
+      {
+        "id": "r2",
+        "from": {
+          "bus": "P"
+        },
+        "to": {
+          "bus": "N"
+        },
+        "cells": [
+          {
+            "kind": "pb-a",
+            "id": "c06",
+            "device": "PB2"
+          },
+          {
+            "kind": "coil",
+            "id": "c07",
+            "device": "CR2"
+          }
+        ]
+      },
+      {
+        "id": "r2h",
+        "from": {
+          "bus": "P"
+        },
+        "to": {
+          "rung": "r2",
+          "node": 1
+        },
+        "cells": [
+          {
+            "kind": "cr-a",
+            "id": "c08",
+            "device": "CR2"
+          },
+          {
+            "kind": "cr-b",
+            "id": "c09",
+            "device": "CR3"
+          }
+        ]
+      },
+      {
+        "id": "r3",
+        "from": {
+          "bus": "P"
+        },
+        "to": {
+          "bus": "N"
+        },
+        "cells": [
+          {
+            "kind": "cr-a",
+            "id": "c10",
+            "device": "CR2"
+          },
+          {
+            "kind": "coil",
+            "id": "c11",
+            "device": "T1",
+            "presetMs": 3000
+          }
+        ]
+      },
+      {
+        "id": "r3c",
+        "from": {
+          "bus": "P"
+        },
+        "to": {
+          "bus": "N"
+        },
+        "cells": [
+          {
+            "kind": "t-a",
+            "id": "c12",
+            "device": "T1"
+          },
+          {
+            "kind": "coil",
+            "id": "c13",
+            "device": "CR3"
+          }
+        ]
+      },
+      {
+        "id": "r4",
+        "from": {
+          "bus": "P"
+        },
+        "to": {
+          "bus": "N"
+        },
+        "cells": [
+          {
+            "kind": "cr-a",
+            "id": "c14",
+            "device": "CR1"
+          },
+          {
+            "kind": "lamp",
+            "id": "c15",
+            "device": "PL1"
+          }
+        ]
+      },
+      {
+        "id": "r5",
+        "from": {
+          "bus": "P"
+        },
+        "to": {
+          "bus": "N"
+        },
+        "cells": [
+          {
+            "kind": "cr-a",
+            "id": "c16",
+            "device": "CR2"
+          },
+          {
+            "kind": "lamp",
+            "id": "c17",
+            "device": "PL2"
+          }
+        ]
+      }
+    ]
+  },
+  "operations": [
+    {
+      "t": 500,
+      "target": "PB1",
+      "action": "press"
+    },
+    {
+      "t": 800,
+      "target": "PB1",
+      "action": "release"
+    },
+    {
+      "t": 1500,
+      "target": "PB2",
+      "action": "press"
+    },
+    {
+      "t": 1800,
+      "target": "PB2",
+      "action": "release"
+    },
+    {
+      "t": 2500,
+      "target": "PB1",
+      "action": "press"
+    },
+    {
+      "t": 2800,
+      "target": "PB1",
+      "action": "release"
+    },
+    {
+      "t": 5000,
+      "target": "PB1",
+      "action": "press"
+    },
+    {
+      "t": 5300,
+      "target": "PB1",
+      "action": "release"
+    },
+    {
+      "t": 6000,
+      "target": "PB2",
+      "action": "press"
+    },
+    {
+      "t": 6300,
+      "target": "PB2",
+      "action": "release"
+    }
+  ],
+  "durationMs": 9500,
+  "judge": {
+    "tolerance": {
+      "edgeMs": 200,
+      "ratio": 0.1
+    },
+    "staticChecks": {
+      "wireColorRule": true,
+      "terminalLimit": true,
+      "unusedParts": true,
+      "forbiddenCircuit": true,
+      "coilPolarity": true,
+      "powerSequence": true,
+      "twoStage": false,
+      "plcPowerIndependent": false,
+      "ioAssignment": false
+    }
+  },
+  "hints": {
+    "schematicVisible": false
+  },
+  "faults": [
+    {
+      "kind": "coil-open",
+      "target": {
+        "partId": "T1",
+        "elementIndex": 0
+      }
+    }
+  ]
+}

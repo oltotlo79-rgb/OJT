@@ -63,7 +63,7 @@ describe('resources/content の複写（§7.8 / Phase 2 acceptance BLOCKER）', 
     expect(jsonFilesIn(shipped)).toEqual(jsonFilesIn(source));
   });
 
-  it('内蔵課題の総数（324題）と一致する（§7.9）', () => {
+  it('内蔵課題の総数（364題）と一致する（§7.9）', () => {
     const total = BUILTIN_MODES.reduce(
       (sum, mode) => sum + jsonFilesIn(join(SHIPPED_ROOT, mode)).length,
       0,

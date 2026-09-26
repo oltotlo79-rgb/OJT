@@ -1,0 +1,82 @@
+{
+  "c2-091": [
+    {
+      "op": "replace",
+      "partId": "CR1"
+    }
+  ],
+  "c2-092": [
+    {
+      "op": "remove",
+      "wireId": "sw-021"
+    },
+    {
+      "op": "add",
+      "from": "CR2.6",
+      "to": "TB_PL.2+"
+    }
+  ],
+  "c2-093": [
+    {
+      "op": "replace",
+      "partId": "T1"
+    }
+  ],
+  "c2-094": [
+    {
+      "op": "replace",
+      "partId": "CR2"
+    }
+  ],
+  "c2-095": [
+    {
+      "op": "add",
+      "from": "CR2.6",
+      "to": "TB_PL.2+"
+    }
+  ],
+  "c2-096": [
+    {
+      "op": "replace",
+      "partId": "T1"
+    }
+  ],
+  "c2-097": [
+    {
+      "op": "remove",
+      "wireId": "sw-012"
+    },
+    {
+      "op": "add",
+      "from": "TB_PB.3a",
+      "to": "TB_PL.2+"
+    }
+  ],
+  "c2-098": [
+    {
+      "op": "replace",
+      "partId": "CR1"
+    }
+  ],
+  "c2-099": [
+    {
+      "op": "replace",
+      "partId": "T1"
+    }
+  ],
+  "c2-100": [
+    {
+      "op": "remove",
+      "wireId": "sw-017"
+    },
+    {
+      "op": "add",
+      "from": "T2.14",
+      "to": "TB_PL.1+"
+    },
+    {
+      "op": "replace",
+      "partId": "T2"
+    }
+  ]
+}

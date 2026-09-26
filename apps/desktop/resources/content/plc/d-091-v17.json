@@ -1,0 +1,300 @@
+{
+  "formatVersion": 1,
+  "id": "d-091",
+  "mode": "plc",
+  "title": "PLC 非常停止の保持と復帰",
+  "grade": 2,
+  "difficulty": 3,
+  "tags": [
+    "self-hold",
+    "interlock"
+  ],
+  "description": "黒押ボタン（PB1）で運転を始め、白ランプ（PL1）を自己保持で点灯させなさい。緑押ボタン（PB3）を非常停止とみなし、押されたら運転を止めて黄ランプ（PL2）を点灯し続けること（非常停止の状態を保持する）。非常停止の間はPB1を押しても運転できない。黄押ボタン（PB2）で運転の停止と非常停止の復帰を行う。 入力は X0＝黒（PB1）・X1＝黄（PB2）・X2＝緑（PB3）、出力は盤のリレー（CR1〜）を介して表示灯を点けます。PLCの電源は壁コンセントから取ってください。",
+  "timeLimit": {
+    "standardMin": 40,
+    "cutoffMin": 60
+  },
+  "board": {
+    "boardId": "board-jipm-std",
+    "socketRoles": {
+      "S1": "CR1",
+      "S2": "CR2",
+      "S7": "CHK"
+    }
+  },
+  "inventory": [
+    {
+      "kind": "relay-my4n",
+      "count": 2
+    }
+  ],
+  "plc": {
+    "vendor": "mitsubishi",
+    "model": "FX5U"
+  },
+  "io": {
+    "mode": "fixed",
+    "wiring": "sink",
+    "inputs": [
+      {
+        "x": 0,
+        "pb": "PB1"
+      },
+      {
+        "x": 1,
+        "pb": "PB2"
+      },
+      {
+        "x": 2,
+        "pb": "PB3"
+      }
+    ],
+    "outputs": [
+      {
+        "y": 0,
+        "cr": "CR1",
+        "pl": "PL1"
+      },
+      {
+        "y": 1,
+        "cr": "CR2",
+        "pl": "PL2"
+      }
+    ]
+  },
+  "referenceLadder": {
+    "networks": [
+      {
+        "id": "n1",
+        "cells": [
+          [
+            {
+              "kind": "contact",
+              "type": "NO",
+              "device": {
+                "kind": "input",
+                "index": 0
+              }
+            },
+            {
+              "kind": "vline"
+            },
+            {
+              "kind": "contact",
+              "type": "NC",
+              "device": {
+                "kind": "input",
+                "index": 1
+              }
+            },
+            {
+              "kind": "contact",
+              "type": "NC",
+              "device": {
+                "kind": "internal",
+                "index": 1
+              }
+            },
+            {
+              "kind": "coil",
+              "type": "OUT",
+              "device": {
+                "kind": "internal",
+                "index": 0
+              }
+            }
+          ],
+          [
+            {
+              "kind": "contact",
+              "type": "NO",
+              "device": {
+                "kind": "internal",
+                "index": 0
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "id": "n2",
+        "cells": [
+          [
+            {
+              "kind": "contact",
+              "type": "NO",
+              "device": {
+                "kind": "input",
+                "index": 2
+              }
+            },
+            {
+              "kind": "vline"
+            },
+            {
+              "kind": "contact",
+              "type": "NC",
+              "device": {
+                "kind": "input",
+                "index": 1
+              }
+            },
+            {
+              "kind": "coil",
+              "type": "OUT",
+              "device": {
+                "kind": "internal",
+                "index": 1
+              }
+            }
+          ],
+          [
+            {
+              "kind": "contact",
+              "type": "NO",
+              "device": {
+                "kind": "internal",
+                "index": 1
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "id": "n3",
+        "cells": [
+          [
+            {
+              "kind": "contact",
+              "type": "NO",
+              "device": {
+                "kind": "internal",
+                "index": 0
+              }
+            },
+            {
+              "kind": "coil",
+              "type": "OUT",
+              "device": {
+                "kind": "output",
+                "index": 0
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "id": "n4",
+        "cells": [
+          [
+            {
+              "kind": "contact",
+              "type": "NO",
+              "device": {
+                "kind": "internal",
+                "index": 1
+              }
+            },
+            {
+              "kind": "coil",
+              "type": "OUT",
+              "device": {
+                "kind": "output",
+                "index": 1
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "id": "end",
+        "cells": [
+          [
+            {
+              "kind": "end"
+            }
+          ]
+        ]
+      }
+    ],
+    "comments": {
+      "X0": "運転（黒）",
+      "X1": "停止・復帰（黄）",
+      "X2": "非常停止（緑）",
+      "M0": "運転",
+      "M1": "非常停止中",
+      "Y0": "運転表示 PL1",
+      "Y1": "非常停止表示 PL2"
+    }
+  },
+  "wiringRequired": true,
+  "operations": [
+    {
+      "t": 500,
+      "target": "PB1",
+      "action": "press"
+    },
+    {
+      "t": 800,
+      "target": "PB1",
+      "action": "release"
+    },
+    {
+      "t": 1500,
+      "target": "PB3",
+      "action": "press"
+    },
+    {
+      "t": 1800,
+      "target": "PB3",
+      "action": "release"
+    },
+    {
+      "t": 2500,
+      "target": "PB1",
+      "action": "press"
+    },
+    {
+      "t": 2800,
+      "target": "PB1",
+      "action": "release"
+    },
+    {
+      "t": 3500,
+      "target": "PB2",
+      "action": "press"
+    },
+    {
+      "t": 3800,
+      "target": "PB2",
+      "action": "release"
+    },
+    {
+      "t": 4500,
+      "target": "PB1",
+      "action": "press"
+    },
+    {
+      "t": 4800,
+      "target": "PB1",
+      "action": "release"
+    },
+    {
+      "t": 5500,
+      "target": "PB2",
+      "action": "press"
+    },
+    {
+      "t": 5800,
+      "target": "PB2",
+      "action": "release"
+    }
+  ],
+  "durationMs": 6500,
+  "judge": {
+    "compareSignals": [
+      "PL1",
+      "PL2"
+    ]
+  }
+}

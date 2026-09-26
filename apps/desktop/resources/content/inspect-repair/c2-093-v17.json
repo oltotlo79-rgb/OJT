@@ -1,0 +1,230 @@
+{
+  "formatVersion": 1,
+  "id": "c2-093",
+  "title": "起動待ち表示つきの遅延起動の故障診断",
+  "grade": 2,
+  "difficulty": 3,
+  "tags": [
+    "self-hold",
+    "timer",
+    "fault-part",
+    "measure"
+  ],
+  "description": "黒押ボタン（PB1）を押すと起動準備に入り、黄ランプ（PL2）で「起動待ち」を表示しなさい。1.5秒後（タイマT1）にPL2を消して白ランプ（PL1）を点灯させる。黄押ボタン（PB2）でいつでも停止でき、起動待ちの途中で止めたときはPL1を点灯させないこと。 現在は指定どおり動きません。通電して押ボタンを操作しながら電圧を測り、故障箇所を3D図の中か一覧から指摘して修復してください（部品不良は故障の内容も選べます）。修復後は全ての操作を確かめます。",
+  "timeLimit": {
+    "standardMin": 40,
+    "cutoffMin": 60
+  },
+  "board": {
+    "boardId": "board-jipm-std",
+    "socketRoles": {
+      "S1": "CR1",
+      "S5": "T1",
+      "S7": "CHK"
+    }
+  },
+  "inventory": [
+    {
+      "kind": "relay-my4n",
+      "count": 1
+    },
+    {
+      "kind": "timer-h3y4",
+      "count": 1
+    }
+  ],
+  "mode": "inspect-repair",
+  "schematic": {
+    "formatVersion": 1,
+    "id": "sch-c2-093",
+    "title": "起動待ち表示つきの遅延起動",
+    "orientation": "horizontal",
+    "rungs": [
+      {
+        "id": "r1",
+        "from": {
+          "bus": "P"
+        },
+        "to": {
+          "bus": "N"
+        },
+        "cells": [
+          {
+            "kind": "pb-b",
+            "id": "c01",
+            "device": "PB2"
+          },
+          {
+            "kind": "pb-a",
+            "id": "c02",
+            "device": "PB1"
+          },
+          {
+            "kind": "coil",
+            "id": "c03",
+            "device": "CR1"
+          }
+        ]
+      },
+      {
+        "id": "r1h",
+        "from": {
+          "rung": "r1",
+          "node": 1
+        },
+        "to": {
+          "rung": "r1",
+          "node": 2
+        },
+        "cells": [
+          {
+            "kind": "cr-a",
+            "id": "c04",
+            "device": "CR1"
+          }
+        ]
+      },
+      {
+        "id": "r2",
+        "from": {
+          "bus": "P"
+        },
+        "to": {
+          "bus": "N"
+        },
+        "cells": [
+          {
+            "kind": "cr-a",
+            "id": "c05",
+            "device": "CR1"
+          },
+          {
+            "kind": "coil",
+            "id": "c06",
+            "device": "T1",
+            "presetMs": 1500
+          }
+        ]
+      },
+      {
+        "id": "r3",
+        "from": {
+          "bus": "P"
+        },
+        "to": {
+          "bus": "N"
+        },
+        "cells": [
+          {
+            "kind": "t-a",
+            "id": "c07",
+            "device": "T1"
+          },
+          {
+            "kind": "lamp",
+            "id": "c08",
+            "device": "PL1"
+          }
+        ]
+      },
+      {
+        "id": "r4",
+        "from": {
+          "bus": "P"
+        },
+        "to": {
+          "bus": "N"
+        },
+        "cells": [
+          {
+            "kind": "cr-a",
+            "id": "c09",
+            "device": "CR1"
+          },
+          {
+            "kind": "t-b",
+            "id": "c10",
+            "device": "T1"
+          },
+          {
+            "kind": "lamp",
+            "id": "c11",
+            "device": "PL2"
+          }
+        ]
+      }
+    ]
+  },
+  "operations": [
+    {
+      "t": 500,
+      "target": "PB1",
+      "action": "press"
+    },
+    {
+      "t": 800,
+      "target": "PB1",
+      "action": "release"
+    },
+    {
+      "t": 3000,
+      "target": "PB2",
+      "action": "press"
+    },
+    {
+      "t": 3300,
+      "target": "PB2",
+      "action": "release"
+    },
+    {
+      "t": 4000,
+      "target": "PB1",
+      "action": "press"
+    },
+    {
+      "t": 4300,
+      "target": "PB1",
+      "action": "release"
+    },
+    {
+      "t": 4800,
+      "target": "PB2",
+      "action": "press"
+    },
+    {
+      "t": 5100,
+      "target": "PB2",
+      "action": "release"
+    }
+  ],
+  "durationMs": 6500,
+  "judge": {
+    "tolerance": {
+      "edgeMs": 200,
+      "ratio": 0.1
+    },
+    "staticChecks": {
+      "wireColorRule": true,
+      "terminalLimit": true,
+      "unusedParts": true,
+      "forbiddenCircuit": true,
+      "coilPolarity": true,
+      "powerSequence": true,
+      "twoStage": false,
+      "plcPowerIndependent": false,
+      "ioAssignment": false
+    }
+  },
+  "hints": {
+    "schematicVisible": true
+  },
+  "faults": [
+    {
+      "kind": "contact-open",
+      "target": {
+        "partId": "T1",
+        "elementIndex": 2
+      }
+    }
+  ]
+}

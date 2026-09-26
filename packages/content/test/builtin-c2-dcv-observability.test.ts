@@ -26,8 +26,8 @@ const expandedContactProblems = BUILTIN_INSPECT_REPAIR_PROBLEMS.filter(
 );
 
 describe('追加した接点故障も盤上の電圧で切り分けられる', () => {
-  it('追加した全20件の接点故障を検査対象に含む', () => {
-    expect(expandedContactProblems).toHaveLength(20);
+  it('追加した全23件の接点故障を検査対象に含む（v1.7.0 の3件を含む）', () => {
+    expect(expandedContactProblems).toHaveLength(23);
   });
   it.each(expandedContactProblems)(
     '$id: 操作列の中で故障接点の両端電圧に有意差がある',

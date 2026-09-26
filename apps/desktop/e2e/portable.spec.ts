@@ -29,7 +29,7 @@ function resourcesDirectory(page: Page): string {
 }
 
 /** distの後に e2e:packaged で実行。ユーザーの設定やインストール先を使わない。 */
-test('EXE1個から初回ガイド・324課題・回路の合格・ヘルプ・PLCと終了時の後始末を確認する', async () => {
+test('EXE1個から初回ガイド・364課題・回路の合格・ヘルプ・PLCと終了時の後始末を確認する', async () => {
   const app = await launchPortable();
   let extracted: string | undefined;
   try {
@@ -52,7 +52,7 @@ test('EXE1個から初回ガイド・324課題・回路の合格・ヘルプ・P
         return out;
       }, {});
     });
-    expect(counts).toEqual({ assemble: 90, 'inspect-parts': 54, 'inspect-repair': 90, plc: 90 });
+    expect(counts).toEqual({ assemble: 100, 'inspect-parts': 64, 'inspect-repair': 100, plc: 100 });
     await verifyTutorials(page);
     // 配布物のasar内からも課題検証Workerを起動できることを確かめる。
     await page.getByTestId('open-settings').click();

@@ -1,0 +1,285 @@
+{
+  "formatVersion": 1,
+  "id": "d-098",
+  "mode": "plc",
+  "title": "PLC 両手同時押しで始動する自己保持",
+  "grade": 2,
+  "difficulty": 2,
+  "tags": [
+    "self-hold",
+    "and-or"
+  ],
+  "description": "黒押ボタン（PB1）と緑押ボタン（PB3）を両方押したときだけ運転を始め、白ランプ（PL1）を自己保持で点灯させなさい。片方だけを押しても始動しないこと。止まっているときに片方だけを押している間は、黄ランプ（PL2）で「片手押し」を警告する。黄押ボタン（PB2）で停止する。 入力は X0＝黒（PB1）・X1＝黄（PB2）・X2＝緑（PB3）、出力は盤のリレー（CR1〜）を介して表示灯を点けます。PLCの電源は壁コンセントから取ってください。",
+  "timeLimit": {
+    "standardMin": 40,
+    "cutoffMin": 60
+  },
+  "board": {
+    "boardId": "board-jipm-std",
+    "socketRoles": {
+      "S1": "CR1",
+      "S2": "CR2",
+      "S7": "CHK"
+    }
+  },
+  "inventory": [
+    {
+      "kind": "relay-my4n",
+      "count": 2
+    }
+  ],
+  "plc": {
+    "vendor": "sharp",
+    "model": "JW-300"
+  },
+  "io": {
+    "mode": "fixed",
+    "wiring": "source",
+    "inputs": [
+      {
+        "x": 0,
+        "pb": "PB1"
+      },
+      {
+        "x": 1,
+        "pb": "PB2"
+      },
+      {
+        "x": 2,
+        "pb": "PB3"
+      }
+    ],
+    "outputs": [
+      {
+        "y": 0,
+        "cr": "CR1",
+        "pl": "PL1"
+      },
+      {
+        "y": 1,
+        "cr": "CR2",
+        "pl": "PL2"
+      }
+    ]
+  },
+  "referenceLadder": {
+    "networks": [
+      {
+        "id": "n1",
+        "cells": [
+          [
+            {
+              "kind": "contact",
+              "type": "NO",
+              "device": {
+                "kind": "input",
+                "index": 0
+              }
+            },
+            {
+              "kind": "contact",
+              "type": "NO",
+              "device": {
+                "kind": "input",
+                "index": 2
+              }
+            },
+            {
+              "kind": "vline"
+            },
+            {
+              "kind": "contact",
+              "type": "NC",
+              "device": {
+                "kind": "input",
+                "index": 1
+              }
+            },
+            {
+              "kind": "coil",
+              "type": "OUT",
+              "device": {
+                "kind": "internal",
+                "index": 0
+              }
+            }
+          ],
+          [
+            {
+              "kind": "contact",
+              "type": "NO",
+              "device": {
+                "kind": "internal",
+                "index": 0
+              }
+            },
+            {
+              "kind": "hline"
+            }
+          ]
+        ]
+      },
+      {
+        "id": "n2",
+        "cells": [
+          [
+            {
+              "kind": "contact",
+              "type": "NO",
+              "device": {
+                "kind": "internal",
+                "index": 0
+              }
+            },
+            {
+              "kind": "coil",
+              "type": "OUT",
+              "device": {
+                "kind": "output",
+                "index": 0
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "id": "n3",
+        "cells": [
+          [
+            {
+              "kind": "contact",
+              "type": "NO",
+              "device": {
+                "kind": "input",
+                "index": 0
+              }
+            },
+            {
+              "kind": "contact",
+              "type": "NC",
+              "device": {
+                "kind": "input",
+                "index": 2
+              }
+            },
+            {
+              "kind": "vline"
+            },
+            {
+              "kind": "contact",
+              "type": "NC",
+              "device": {
+                "kind": "internal",
+                "index": 0
+              }
+            },
+            {
+              "kind": "coil",
+              "type": "OUT",
+              "device": {
+                "kind": "output",
+                "index": 1
+              }
+            }
+          ],
+          [
+            {
+              "kind": "contact",
+              "type": "NO",
+              "device": {
+                "kind": "input",
+                "index": 2
+              }
+            },
+            {
+              "kind": "contact",
+              "type": "NC",
+              "device": {
+                "kind": "input",
+                "index": 0
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "id": "end",
+        "cells": [
+          [
+            {
+              "kind": "end"
+            }
+          ]
+        ]
+      }
+    ],
+    "comments": {
+      "X0": "起動（黒）",
+      "X1": "停止（黄）",
+      "X2": "起動（緑）",
+      "M0": "運転",
+      "Y0": "運転表示 PL1",
+      "Y1": "片手押し警告 PL2"
+    }
+  },
+  "wiringRequired": true,
+  "operations": [
+    {
+      "t": 500,
+      "target": "PB1",
+      "action": "press"
+    },
+    {
+      "t": 800,
+      "target": "PB1",
+      "action": "release"
+    },
+    {
+      "t": 1500,
+      "target": "PB3",
+      "action": "press"
+    },
+    {
+      "t": 1800,
+      "target": "PB3",
+      "action": "release"
+    },
+    {
+      "t": 2500,
+      "target": "PB1",
+      "action": "press"
+    },
+    {
+      "t": 2600,
+      "target": "PB3",
+      "action": "press"
+    },
+    {
+      "t": 2900,
+      "target": "PB3",
+      "action": "release"
+    },
+    {
+      "t": 3000,
+      "target": "PB1",
+      "action": "release"
+    },
+    {
+      "t": 4000,
+      "target": "PB2",
+      "action": "press"
+    },
+    {
+      "t": 4300,
+      "target": "PB2",
+      "action": "release"
+    }
+  ],
+  "durationMs": 5500,
+  "judge": {
+    "compareSignals": [
+      "PL1",
+      "PL2"
+    ]
+  }
+}

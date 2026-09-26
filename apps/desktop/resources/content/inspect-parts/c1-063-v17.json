@@ -1,0 +1,60 @@
+{
+  "formatVersion": 1,
+  "id": "c1-063",
+  "mode": "inspect-parts",
+  "title": "b接点だけの不良を探す",
+  "grade": 1,
+  "difficulty": 4,
+  "tags": [
+    "fault-part",
+    "measure"
+  ],
+  "description": "部品を一つずつチェック用ソケットに挿して点検し、正常か故障かを判定してください。重点は「b接点だけの不良を探す」です。コイル抵抗、無励磁時と励磁時のa接点・b接点の順に測り、測定記録に予測と判断を残します。",
+  "timeLimit": {
+    "standardMin": 30,
+    "cutoffMin": 50
+  },
+  "board": {
+    "boardId": "board-jipm-std",
+    "socketRoles": {
+      "S7": "CHK"
+    }
+  },
+  "inventory": [],
+  "parts": [
+    {
+      "id": "p1",
+      "kind": "relay-my4n",
+      "truth": "normal"
+    },
+    {
+      "id": "p2",
+      "kind": "relay-my4n",
+      "truth": "b-open",
+      "group": 1
+    },
+    {
+      "id": "p3",
+      "kind": "relay-my4n",
+      "truth": "normal"
+    },
+    {
+      "id": "p4",
+      "kind": "relay-my4n",
+      "truth": "b-weld",
+      "group": 4
+    },
+    {
+      "id": "p5",
+      "kind": "relay-my4n",
+      "truth": "b-open",
+      "group": 3
+    },
+    {
+      "id": "p6",
+      "kind": "relay-my4n",
+      "truth": "normal"
+    }
+  ],
+  "seed": 2026092608
+}

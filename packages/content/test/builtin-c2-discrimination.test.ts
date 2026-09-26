@@ -1,5 +1,6 @@
 import workshopRepairs from './helpers/workshop-repair-steps.json';
 import expandedRepairs from './helpers/expanded-repairs.json';
+import v17Repairs from './helpers/v17-repairs.json';
 import { addWire, JIPM_BOARD, removeWire } from '@ojt/board-model';
 import { toTerminalId } from '@ojt/circuit-sim';
 import { describe, expect, it } from 'vitest';
@@ -31,6 +32,7 @@ type Repair =
 const REPAIRS: Readonly<Record<string, readonly Repair[]>> = {
   ...(workshopRepairs as Readonly<Record<string, readonly Repair[]>>),
   ...(expandedRepairs as Readonly<Record<string, readonly Repair[]>>),
+  ...(v17Repairs as Readonly<Record<string, readonly Repair[]>>),
   'c2-001': [
     { op: 'remove', wireId: 'sw-005' },
     { op: 'add', from: 'TB_PB.1a', to: 'CR1.14' },
@@ -190,14 +192,14 @@ function circuitOf(id: string) {
   return { problem, circuit: built.value };
 }
 
-describe('内蔵C2課題90題（§7.9）', () => {
-  it('registers ninety problems: forty-five grade 2 and forty-five grade 1', () => {
-    expect(BUILTIN_INSPECT_REPAIR_PROBLEMS).toHaveLength(90);
+describe('内蔵C2課題100題（§7.9 / v1.7.0 で10題追加）', () => {
+  it('registers a hundred problems: fifty-two grade 2 and forty-eight grade 1', () => {
+    expect(BUILTIN_INSPECT_REPAIR_PROBLEMS).toHaveLength(100);
     expect(BUILTIN_INSPECT_REPAIR_PROBLEMS.map((p) => p.id)).toEqual(
-      Array.from({ length: 90 }, (_, i) => `c2-${String(i + 1).padStart(3, '0')}`),
+      Array.from({ length: 100 }, (_, i) => `c2-${String(i + 1).padStart(3, '0')}`),
     );
-    expect(BUILTIN_INSPECT_REPAIR_PROBLEMS.filter((p) => p.grade === 2)).toHaveLength(45);
-    expect(BUILTIN_INSPECT_REPAIR_PROBLEMS.filter((p) => p.grade === 1)).toHaveLength(45);
+    expect(BUILTIN_INSPECT_REPAIR_PROBLEMS.filter((p) => p.grade === 2)).toHaveLength(52);
+    expect(BUILTIN_INSPECT_REPAIR_PROBLEMS.filter((p) => p.grade === 1)).toHaveLength(48);
   });
 
   it('難しさが級の帯に収まる（§4.3 Phase 7）', () => {
@@ -207,7 +209,7 @@ describe('内蔵C2課題90題（§7.9）', () => {
     }
   });
 
-  it('全90題ぶんの修復手順が書いてある（新題を黙って未検証にしない）', () => {
+  it('全100題ぶんの修復手順が書いてある（新題を黙って未検証にしない）', () => {
     expect(Object.keys(REPAIRS).sort()).toEqual(
       [...BUILTIN_INSPECT_REPAIR_PROBLEMS].map((p) => p.id).sort(),
     );

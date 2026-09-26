@@ -1,0 +1,317 @@
+{
+  "formatVersion": 1,
+  "id": "d-099",
+  "mode": "plc",
+  "title": "PLC 停止後の再起動禁止（3秒）",
+  "grade": 1,
+  "difficulty": 4,
+  "tags": [
+    "self-hold",
+    "timer",
+    "interlock"
+  ],
+  "description": "黒押ボタン（PB1）で運転を始め、白ランプ（PL1）を自己保持で点灯させなさい。黄押ボタン（PB2）で停止したら、そこから3秒間（タイマT1）は再起動を受け付けず、その間は黄ランプ（PL2）で「再起動待ち」を表示すること。3秒たったらPL2を消し、PB1で再び起動できるようにする。タイマの接点で自分のコイルを直接切らず、リレー（CR3）を介して待ち状態を解くこと。 入力は X0＝黒（PB1）・X1＝黄（PB2）・X2＝緑（PB3）、出力は盤のリレー（CR1〜）を介して表示灯を点けます。PLCの電源は壁コンセントから取ってください。",
+  "timeLimit": {
+    "standardMin": 50,
+    "cutoffMin": 60
+  },
+  "board": {
+    "boardId": "board-jipm-std",
+    "socketRoles": {
+      "S1": "CR1",
+      "S2": "CR2",
+      "S7": "CHK"
+    }
+  },
+  "inventory": [
+    {
+      "kind": "relay-my4n",
+      "count": 2
+    }
+  ],
+  "plc": {
+    "vendor": "mitsubishi",
+    "model": "FX5U"
+  },
+  "io": {
+    "mode": "fixed",
+    "wiring": "sink",
+    "inputs": [
+      {
+        "x": 0,
+        "pb": "PB1"
+      },
+      {
+        "x": 1,
+        "pb": "PB2"
+      },
+      {
+        "x": 2,
+        "pb": "PB3"
+      }
+    ],
+    "outputs": [
+      {
+        "y": 0,
+        "cr": "CR1",
+        "pl": "PL1"
+      },
+      {
+        "y": 1,
+        "cr": "CR2",
+        "pl": "PL2"
+      }
+    ]
+  },
+  "referenceLadder": {
+    "networks": [
+      {
+        "id": "n1",
+        "cells": [
+          [
+            {
+              "kind": "contact",
+              "type": "NO",
+              "device": {
+                "kind": "input",
+                "index": 0
+              }
+            },
+            {
+              "kind": "contact",
+              "type": "NC",
+              "device": {
+                "kind": "internal",
+                "index": 1
+              }
+            },
+            {
+              "kind": "vline"
+            },
+            {
+              "kind": "contact",
+              "type": "NC",
+              "device": {
+                "kind": "input",
+                "index": 1
+              }
+            },
+            {
+              "kind": "coil",
+              "type": "OUT",
+              "device": {
+                "kind": "internal",
+                "index": 0
+              }
+            }
+          ],
+          [
+            {
+              "kind": "contact",
+              "type": "NO",
+              "device": {
+                "kind": "internal",
+                "index": 0
+              }
+            },
+            {
+              "kind": "hline"
+            }
+          ]
+        ]
+      },
+      {
+        "id": "n2",
+        "cells": [
+          [
+            {
+              "kind": "contact",
+              "type": "NO",
+              "device": {
+                "kind": "input",
+                "index": 1
+              }
+            },
+            {
+              "kind": "vline"
+            },
+            {
+              "kind": "contact",
+              "type": "NC",
+              "device": {
+                "kind": "timer",
+                "index": 0
+              }
+            },
+            {
+              "kind": "coil",
+              "type": "OUT",
+              "device": {
+                "kind": "internal",
+                "index": 1
+              }
+            }
+          ],
+          [
+            {
+              "kind": "contact",
+              "type": "NO",
+              "device": {
+                "kind": "internal",
+                "index": 1
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "id": "n3",
+        "cells": [
+          [
+            {
+              "kind": "contact",
+              "type": "NO",
+              "device": {
+                "kind": "internal",
+                "index": 1
+              }
+            },
+            {
+              "kind": "timer",
+              "type": "TON",
+              "device": {
+                "kind": "timer",
+                "index": 0
+              },
+              "presetMs": 3000
+            }
+          ]
+        ]
+      },
+      {
+        "id": "n4",
+        "cells": [
+          [
+            {
+              "kind": "contact",
+              "type": "NO",
+              "device": {
+                "kind": "internal",
+                "index": 0
+              }
+            },
+            {
+              "kind": "coil",
+              "type": "OUT",
+              "device": {
+                "kind": "output",
+                "index": 0
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "id": "n5",
+        "cells": [
+          [
+            {
+              "kind": "contact",
+              "type": "NO",
+              "device": {
+                "kind": "internal",
+                "index": 1
+              }
+            },
+            {
+              "kind": "coil",
+              "type": "OUT",
+              "device": {
+                "kind": "output",
+                "index": 1
+              }
+            }
+          ]
+        ]
+      },
+      {
+        "id": "end",
+        "cells": [
+          [
+            {
+              "kind": "end"
+            }
+          ]
+        ]
+      }
+    ],
+    "comments": {
+      "X0": "起動（黒）",
+      "X1": "停止（黄）",
+      "T0": "再起動禁止3秒",
+      "M1": "再起動待ち",
+      "Y0": "運転表示 PL1",
+      "Y1": "再起動待ち PL2"
+    }
+  },
+  "wiringRequired": true,
+  "operations": [
+    {
+      "t": 500,
+      "target": "PB1",
+      "action": "press"
+    },
+    {
+      "t": 800,
+      "target": "PB1",
+      "action": "release"
+    },
+    {
+      "t": 1500,
+      "target": "PB2",
+      "action": "press"
+    },
+    {
+      "t": 1800,
+      "target": "PB2",
+      "action": "release"
+    },
+    {
+      "t": 2500,
+      "target": "PB1",
+      "action": "press"
+    },
+    {
+      "t": 2800,
+      "target": "PB1",
+      "action": "release"
+    },
+    {
+      "t": 5000,
+      "target": "PB1",
+      "action": "press"
+    },
+    {
+      "t": 5300,
+      "target": "PB1",
+      "action": "release"
+    },
+    {
+      "t": 6000,
+      "target": "PB2",
+      "action": "press"
+    },
+    {
+      "t": 6300,
+      "target": "PB2",
+      "action": "release"
+    }
+  ],
+  "durationMs": 9500,
+  "judge": {
+    "compareSignals": [
+      "PL1",
+      "PL2"
+    ]
+  }
+}

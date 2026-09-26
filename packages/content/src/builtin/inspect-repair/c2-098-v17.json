@@ -1,0 +1,192 @@
+{
+  "formatVersion": 1,
+  "id": "c2-098",
+  "title": "両手同時押しで始動する自己保持の故障診断",
+  "grade": 2,
+  "difficulty": 3,
+  "tags": [
+    "self-hold",
+    "and-or",
+    "fault-part",
+    "measure"
+  ],
+  "description": "黒押ボタン（PB1）と緑押ボタン（PB3）を両方押したときだけ運転を始め、白ランプ（PL1）を自己保持で点灯させなさい。片方だけを押しても始動しないこと。黄押ボタン（PB2）で停止する。 現在は指定どおり動きません。通電して押ボタンを操作しながら電圧を測り、故障箇所を3D図の中か一覧から指摘して修復してください（部品不良は故障の内容も選べます）。修復後は全ての操作を確かめます。",
+  "timeLimit": {
+    "standardMin": 40,
+    "cutoffMin": 60
+  },
+  "board": {
+    "boardId": "board-jipm-std",
+    "socketRoles": {
+      "S1": "CR1",
+      "S7": "CHK"
+    }
+  },
+  "inventory": [
+    {
+      "kind": "relay-my4n",
+      "count": 1
+    }
+  ],
+  "mode": "inspect-repair",
+  "schematic": {
+    "formatVersion": 1,
+    "id": "sch-c2-098",
+    "title": "両手同時押しで始動する自己保持",
+    "orientation": "horizontal",
+    "rungs": [
+      {
+        "id": "r1",
+        "from": {
+          "bus": "P"
+        },
+        "to": {
+          "bus": "N"
+        },
+        "cells": [
+          {
+            "kind": "pb-b",
+            "id": "c01",
+            "device": "PB2"
+          },
+          {
+            "kind": "pb-a",
+            "id": "c02",
+            "device": "PB1"
+          },
+          {
+            "kind": "pb-a",
+            "id": "c03",
+            "device": "PB3"
+          },
+          {
+            "kind": "coil",
+            "id": "c04",
+            "device": "CR1"
+          }
+        ]
+      },
+      {
+        "id": "r1h",
+        "from": {
+          "rung": "r1",
+          "node": 1
+        },
+        "to": {
+          "rung": "r1",
+          "node": 3
+        },
+        "cells": [
+          {
+            "kind": "cr-a",
+            "id": "c05",
+            "device": "CR1"
+          }
+        ]
+      },
+      {
+        "id": "r2",
+        "from": {
+          "bus": "P"
+        },
+        "to": {
+          "bus": "N"
+        },
+        "cells": [
+          {
+            "kind": "cr-a",
+            "id": "c06",
+            "device": "CR1"
+          },
+          {
+            "kind": "lamp",
+            "id": "c07",
+            "device": "PL1"
+          }
+        ]
+      }
+    ]
+  },
+  "operations": [
+    {
+      "t": 500,
+      "target": "PB1",
+      "action": "press"
+    },
+    {
+      "t": 800,
+      "target": "PB1",
+      "action": "release"
+    },
+    {
+      "t": 1500,
+      "target": "PB3",
+      "action": "press"
+    },
+    {
+      "t": 1800,
+      "target": "PB3",
+      "action": "release"
+    },
+    {
+      "t": 2500,
+      "target": "PB1",
+      "action": "press"
+    },
+    {
+      "t": 2600,
+      "target": "PB3",
+      "action": "press"
+    },
+    {
+      "t": 2900,
+      "target": "PB3",
+      "action": "release"
+    },
+    {
+      "t": 3000,
+      "target": "PB1",
+      "action": "release"
+    },
+    {
+      "t": 4000,
+      "target": "PB2",
+      "action": "press"
+    },
+    {
+      "t": 4300,
+      "target": "PB2",
+      "action": "release"
+    }
+  ],
+  "durationMs": 5500,
+  "judge": {
+    "tolerance": {
+      "edgeMs": 200,
+      "ratio": 0.1
+    },
+    "staticChecks": {
+      "wireColorRule": true,
+      "terminalLimit": true,
+      "unusedParts": true,
+      "forbiddenCircuit": true,
+      "coilPolarity": true,
+      "powerSequence": true,
+      "twoStage": false,
+      "plcPowerIndependent": false,
+      "ioAssignment": false
+    }
+  },
+  "hints": {
+    "schematicVisible": true
+  },
+  "faults": [
+    {
+      "kind": "contact-welded",
+      "target": {
+        "partId": "CR1",
+        "elementIndex": 2
+      }
+    }
+  ]
+}

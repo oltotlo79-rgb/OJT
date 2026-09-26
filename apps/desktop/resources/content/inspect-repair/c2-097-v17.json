@@ -1,0 +1,202 @@
+{
+  "formatVersion": 1,
+  "id": "c2-097",
+  "title": "運転中の一時停止の故障診断",
+  "grade": 2,
+  "difficulty": 3,
+  "tags": [
+    "self-hold",
+    "fault-part",
+    "measure"
+  ],
+  "description": "黒押ボタン（PB1）で運転を始め、白ランプ（PL1）を点灯させなさい（運転状態は自己保持）。緑押ボタン（PB3）を押している間は一時停止としてPL1を消し、黄ランプ（PL2）を点灯させる。PB3を離したら運転を再開すること。黄押ボタン（PB2）で運転を終了する。運転していないときにPB3を押してもPL2は点灯しない。 現在は指定どおり動きません。通電して押ボタンを操作しながら電圧を測り、故障箇所を3D図の中か一覧から指摘して修復してください（部品不良は故障の内容も選べます）。修復後は全ての操作を確かめます。",
+  "timeLimit": {
+    "standardMin": 30,
+    "cutoffMin": 60
+  },
+  "board": {
+    "boardId": "board-jipm-std",
+    "socketRoles": {
+      "S1": "CR1",
+      "S7": "CHK"
+    }
+  },
+  "inventory": [
+    {
+      "kind": "relay-my4n",
+      "count": 1
+    }
+  ],
+  "mode": "inspect-repair",
+  "schematic": {
+    "formatVersion": 1,
+    "id": "sch-c2-097",
+    "title": "運転中の一時停止",
+    "orientation": "horizontal",
+    "rungs": [
+      {
+        "id": "r1",
+        "from": {
+          "bus": "P"
+        },
+        "to": {
+          "bus": "N"
+        },
+        "cells": [
+          {
+            "kind": "pb-b",
+            "id": "c01",
+            "device": "PB2"
+          },
+          {
+            "kind": "pb-a",
+            "id": "c02",
+            "device": "PB1"
+          },
+          {
+            "kind": "coil",
+            "id": "c03",
+            "device": "CR1"
+          }
+        ]
+      },
+      {
+        "id": "r1h",
+        "from": {
+          "rung": "r1",
+          "node": 1
+        },
+        "to": {
+          "rung": "r1",
+          "node": 2
+        },
+        "cells": [
+          {
+            "kind": "cr-a",
+            "id": "c04",
+            "device": "CR1"
+          }
+        ]
+      },
+      {
+        "id": "r2",
+        "from": {
+          "bus": "P"
+        },
+        "to": {
+          "bus": "N"
+        },
+        "cells": [
+          {
+            "kind": "cr-a",
+            "id": "c05",
+            "device": "CR1"
+          },
+          {
+            "kind": "pb-b",
+            "id": "c06",
+            "device": "PB3"
+          },
+          {
+            "kind": "lamp",
+            "id": "c07",
+            "device": "PL1"
+          }
+        ]
+      },
+      {
+        "id": "r3",
+        "from": {
+          "rung": "r2",
+          "node": 1
+        },
+        "to": {
+          "bus": "N"
+        },
+        "cells": [
+          {
+            "kind": "pb-a",
+            "id": "c08",
+            "device": "PB3"
+          },
+          {
+            "kind": "lamp",
+            "id": "c09",
+            "device": "PL2"
+          }
+        ]
+      }
+    ]
+  },
+  "operations": [
+    {
+      "t": 500,
+      "target": "PB1",
+      "action": "press"
+    },
+    {
+      "t": 800,
+      "target": "PB1",
+      "action": "release"
+    },
+    {
+      "t": 1500,
+      "target": "PB3",
+      "action": "press"
+    },
+    {
+      "t": 2500,
+      "target": "PB3",
+      "action": "release"
+    },
+    {
+      "t": 3500,
+      "target": "PB2",
+      "action": "press"
+    },
+    {
+      "t": 3800,
+      "target": "PB2",
+      "action": "release"
+    },
+    {
+      "t": 4500,
+      "target": "PB3",
+      "action": "press"
+    },
+    {
+      "t": 5000,
+      "target": "PB3",
+      "action": "release"
+    }
+  ],
+  "durationMs": 6000,
+  "judge": {
+    "tolerance": {
+      "edgeMs": 200,
+      "ratio": 0.1
+    },
+    "staticChecks": {
+      "wireColorRule": true,
+      "terminalLimit": true,
+      "unusedParts": true,
+      "forbiddenCircuit": true,
+      "coilPolarity": true,
+      "powerSequence": true,
+      "twoStage": false,
+      "plcPowerIndependent": false,
+      "ioAssignment": false
+    }
+  },
+  "hints": {
+    "schematicVisible": true
+  },
+  "faults": [
+    {
+      "kind": "wire-open",
+      "target": {
+        "wireId": "sw-012"
+      }
+    }
+  ]
+}
