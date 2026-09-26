@@ -140,10 +140,9 @@ export async function inspectRelease(appRoot) {
       'out/main/definition-worker.js',
       'out/preload/index.cjs',
       'out/renderer/index.html',
-      ...['assembly', 'parts', 'repair', 'plc'].flatMap((mode) => [
-        `out/renderer/tutorials/${mode}.webm`,
-        `out/renderer/tutorials/${mode}.vtt`,
-      ]),
+      ...['assembly', 'parts', 'repair', 'plc', 'plc-jtekt', 'plc-omron', 'plc-sharp'].flatMap(
+        (mode) => [`out/renderer/tutorials/${mode}.webm`, `out/renderer/tutorials/${mode}.vtt`],
+      ),
     ]) {
       if (
         !entries.includes(required) ||

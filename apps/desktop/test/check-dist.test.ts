@@ -55,7 +55,15 @@ async function fixture() {
   put(join(src, 'out/main/definition-worker.js'), 'export {};');
   put(join(src, 'out/preload/index.cjs'), 'module.exports = {};');
   put(join(src, 'out/renderer/index.html'), '<html lang="ja"></html>');
-  for (const mode of ['assembly', 'parts', 'repair', 'plc']) {
+  for (const mode of [
+    'assembly',
+    'parts',
+    'repair',
+    'plc',
+    'plc-jtekt',
+    'plc-omron',
+    'plc-sharp',
+  ]) {
     put(join(src, `out/renderer/tutorials/${mode}.webm`), 'fixture-video');
     put(join(src, `out/renderer/tutorials/${mode}.vtt`), 'WEBVTT\n');
   }
@@ -119,7 +127,8 @@ describe('配布物を実際に検査するゲート', () => {
     else if (kind === 'missing-definition-worker')
       rmSync(join(f.src, 'out/main/definition-worker.js'));
     else if (kind === 'missing-video') rmSync(join(f.src, 'out/renderer/tutorials/assembly.webm'));
-    else if (kind === 'missing-caption') rmSync(join(f.src, 'out/renderer/tutorials/plc.vtt'));
+    else if (kind === 'missing-caption')
+      rmSync(join(f.src, 'out/renderer/tutorials/plc-sharp.vtt'));
     else if (kind === 'node_modules') put(join(f.src, 'node_modules/zod/index.js'), 'test');
     else if (kind === 'old-version') put(join(f.src, 'package.json'), '{"version":"1.0.0"}');
     else put(join(f.src, 'out/main/index.js'), 'const plc = require("@ojt/ladder-core");');

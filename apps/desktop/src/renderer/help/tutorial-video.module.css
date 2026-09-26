@@ -72,3 +72,12 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+/* PLCの動画のメーカー切替（2026-09-26）。押しているメーカーの色は global.css の aria-pressed に従う */
+.vendors {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  font-size: 14px;
+}

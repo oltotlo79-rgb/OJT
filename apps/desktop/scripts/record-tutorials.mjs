@@ -6,16 +6,25 @@ import process from 'node:process';
 import console from 'node:console';
 import { fileURLToPath, URL } from 'node:url';
 import { _electron as electron, expect } from '@playwright/test';
-import { JIPM_BOARD, PLC_UNIT_FX5U } from '@ojt/board-model';
-import { BUILTIN_PLC_PROBLEMS, plcWiringPlan, resolvePlcIo, toSocketRoles } from '@ojt/content';
+import { JIPM_BOARD, plcUnitFor, routeSession } from '@ojt/board-model';
+import {
+  BUILTIN_INSPECT_REPAIR_PROBLEMS,
+  BUILTIN_PLC_PROBLEMS,
+  buildInspectRepairCircuit,
+  plcWiringPlan,
+  resolvePlcIo,
+  toSocketRoles,
+} from '@ojt/content';
 import { toTerminalId } from '@ojt/circuit-sim';
+import { COIL_COL } from '@ojt/ladder-core';
+import { getDialect } from '@ojt/plc-dialects';
 import {
   boardPoint,
   terminalPoint,
   pushButtonPoint,
   SELF_HOLD_WIRES,
-  plcBoardPoint,
-  plcTerminalPoint,
+  plcBoardPointFor,
+  plcTerminalPointFor,
 } from '../e2e/projection.ts';
 
 const appRoot = fileURLToPath(new URL('../', import.meta.url));
@@ -25,17 +34,27 @@ const root = dirname(
     encoding: 'utf8',
   }).trim(),
 );
-const runDir = join(root, 'release/verification/review-fixes-2026-09-23/tutorials');
+const runDir = join(root, 'release/verification/v1.7.0/tutorials');
 const destination = join(appRoot, 'src/renderer/public/tutorials');
 mkdirSync(runDir, { recursive: true });
 mkdirSync(destination, { recursive: true });
 const mode = process.argv[2] ?? 'assembly';
+/*
+ * PLCの動画はメーカーごと（`plc` は三菱、`plc-jtekt` / `plc-omron` / `plc-sharp`）。
+ * 既定メーカーを設定に入れて起動するので、課題はそのメーカーの機種で開く。
+ */
+const plcVendor =
+  mode === 'plc' ? 'mitsubishi' : mode.startsWith('plc-') ? mode.slice('plc-'.length) : undefined;
 const dry = process.env.OJT_TUTORIAL_DRY === '1';
 const dataDir = join(runDir, `${mode}-${Date.now()}`);
 mkdirSync(dataDir, { recursive: true });
 writeFileSync(
   join(dataDir, 'settings.json'),
-  JSON.stringify({ tourDone: true, soundEnabled: false }),
+  JSON.stringify({
+    tourDone: true,
+    soundEnabled: false,
+    ...(plcVendor === undefined ? {} : { defaultVendor: plcVendor }),
+  }),
 );
 const app = await electron.launch({
   args: [
@@ -368,6 +387,53 @@ async function voltageWhileStarting(expected) {
     await page.mouse.up();
   }
 }
+/**
+ * 3D図で電線を押す（指摘の小窓が、その電線を指して開くまで）。
+ * 押す点は電線の経路の長い区間の中ほどから選ぶ（端の圧着端子や交差する電線に当たりにくい）。
+ * 収録の画面の大きさと視点は毎回同じなので、ふつうは最初の点で当たる。
+ * @param {string} wireId
+ */
+async function clickWire(wireId) {
+  const problem = BUILTIN_INSPECT_REPAIR_PROBLEMS.find((p) => p.id === 'c2-001');
+  if (!problem) throw new Error('C2-001がありません');
+  const built = buildInspectRepairCircuit(problem, JIPM_BOARD);
+  if (!built.ok) throw new Error(JSON.stringify(built.errors));
+  const session = built.value.session;
+  const wire = session.wires.find((w) => w.id === wireId);
+  const route = routeSession(JIPM_BOARD, session).find((r) => r.wireId === wireId);
+  if (!wire || !route) throw new Error(`電線 ${wireId} がありません`);
+  /** @type {Array<{p: {x: number; y: number; z: number}; length: number}>} */
+  const candidates = [];
+  for (let i = 0; i + 1 < route.corners.length; i += 1) {
+    const a = route.corners[i],
+      b = route.corners[i + 1];
+    if (!a || !b) continue;
+    const length = Math.hypot(b.x - a.x, b.y - a.y, b.z - a.z);
+    for (const t of [0.5, 0.35, 0.65])
+      candidates.push({
+        p: { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t, z: a.z + (b.z - a.z) * t },
+        length,
+      });
+  }
+  candidates.sort((a, b) => b.length - a.length);
+  const label = `${String(wire.from)}–${String(wire.to)} の${wire.color}線`;
+  const box = await canvas();
+  const popover = page.getByTestId('report-popover');
+  let attempts = 0;
+  for (const { p } of candidates) {
+    const screen = boardPoint(p, box);
+    if (screen.x < box.x || screen.x > box.x + box.width) continue;
+    if (screen.y < box.y || screen.y > box.y + box.height) continue;
+    attempts += 1;
+    await point(screen);
+    if ((await popover.count()) > 0 && ((await popover.textContent()) ?? '').includes(label)) {
+      console.log(`電線 ${wireId} を ${attempts} 回目の点で押せました`);
+      return;
+    }
+    if ((await popover.count()) > 0) await page.getByTestId('report-cancel').click();
+  }
+  throw new Error(`3D図で電線 ${wireId} を押せませんでした`);
+}
 async function repair() {
   await bubble('回路点検・修復：自己保持回路の故障2箇所を、測定結果から絞り込んで直します。', 3600);
   await openExercise('inspect-repair', 'c2-001');
@@ -379,7 +445,10 @@ async function repair() {
   );
   await testerMode('DCV');
   await probes('N.1', 'TB_PB.1a');
-  await bubble('黒をN、赤をPB1のa接点出力へ。PB1を押したとき、約24Vが出るか確認します。', 3600);
+  await bubble(
+    '黒をN、赤をPB1のa接点出力へ。当てた場所は3D図のプローブと端子名の札で分かります。PB1を押したとき、約24Vが出るか確認します。',
+    4600,
+  );
   await voltageWhileStarting('24.');
   await probes('N.1', 'S1.14');
   await bubble(
@@ -399,14 +468,30 @@ async function repair() {
     4300,
   );
   await testerMode('OFF');
+  await bubble(
+    '故障の場所を指摘します。上の「指摘」を選び、3D図で断線している電線（PB1のa接点からCR1⑭への青線）を直接押します。',
+    4600,
+  );
+  await click(page.getByTestId('tool-report'));
+  await clickWire('sw-005');
+  await expect(page.getByTestId('report-popover')).toBeVisible();
+  await bubble(
+    '押した場所の横に小窓が出ます。電線なら断線・誤配線、端子なら未配線、部品なら部品不良とその内容を選べます。ここでは「断線」です。',
+    5200,
+  );
+  await click(page.getByTestId('report-kind-wire-open'));
+  await expect(page.getByTestId('report-count')).toHaveText('1');
+  await bubble(
+    '同じ指摘は右の電線一覧からもできます。電線を選んで「この電線の故障を指摘」を押すと、同じ小窓が開きます。3Dで押しにくい電線に便利です。',
+    5000,
+  );
   await expand('wire-list');
   await click(page.getByTestId('wire-row-sw-005'));
   await click(page.getByRole('button', { name: 'この電線の故障を指摘', exact: true }));
-  await click(page.getByTestId('report-kind-wire-open'));
-  await bubble(
-    '断線した線を指摘しました。故障した青線だけを外し、同じ両端を白線でつなぎ直します。',
-    3600,
-  );
+  await expect(page.getByTestId('report-popover')).toBeVisible();
+  await bubble('この電線はもう指摘してあるので、ここでは「取消」で閉じます。', 2800);
+  await click(page.getByTestId('report-cancel'));
+  await bubble('指摘できました。故障した青線だけを外し、同じ両端を白線でつなぎ直します。', 3400);
   await click(page.getByRole('checkbox', { name: '選択 sw-005', exact: true }));
   await click(page.getByRole('button', { name: '選択した電線を削除（Undo可）', exact: true }));
   await click(page.getByRole('button', { name: '白', exact: true }));
@@ -430,9 +515,16 @@ async function repair() {
   await recordMeasurement('CR1⑥は24VだがPL1＋は0V。両端をつなぐ電線が未配線。');
   await power(false);
   await testerMode('OFF');
+  await bubble(
+    '線が無い場所は、端子を押して指摘します。「指摘」を選び、3D図でPL1の＋端子を押して「未配線」を選びます。',
+    4200,
+  );
   await click(page.getByTestId('tool-report'));
   await point(terminalPoint(toTerminalId('TB_PL.1+'), await canvas()));
+  await expect(page.getByTestId('report-popover')).toBeVisible();
+  await pause(1200);
   await click(page.getByTestId('report-kind-wire-missing'));
+  await expect(page.getByTestId('report-count')).toHaveText('2');
   await bubble(
     'PL1の＋端子を「未配線」として指摘しました。電源OFFのまま、CR1⑥からPL1＋へ白線を追加します。',
     4000,
@@ -466,79 +558,226 @@ async function device(value) {
   await page.getByTestId('device-text').fill('');
   await page.keyboard.type(value, { delay: dry ? 10 : 160 });
   await click(page.getByTestId('device-commit'));
+  // CX-Programmer風は、デバイスを確定すると続けてコメント欄が開く（Enter で確定する）
+  const comment = page.getByTestId('entry-comment');
+  if (await comment.isVisible()) {
+    await pause(500);
+    await comment.press('Enter');
+  }
   await expect(page.getByTestId('device-input')).toHaveCount(0);
 }
-async function addNetwork() {
+
+/**
+ * PLC動画のメーカー別の台本（2026-09-26 利用者指示「他メーカーのPLCでも同様にチュートリアルの
+ * 動画を作成して（他メーカーのシーケンサーでは配線も変わるため）」）。
+ *
+ * 同じ課題 D-001 を、各メーカーの端子名・デバイス表記・入力操作で最後まで解く。デバイスの綴りは
+ * 方言の `formatDevice()`、端子名と配線の順は `plcWiringPlan()` から取るので、表記を台本に
+ * 書き写さない。キー割当の無いPCwin風（JTEKT）は記号ボタンで置く。
+ * @type {Record<string, {
+ *   model: string;
+ *   tool: string;
+ *   keys: Record<'contact-no' | 'contact-nc' | 'or-contact-no' | 'coil', string> | undefined;
+ *   networkKey: string | undefined;
+ *   convertKey: string | undefined;
+ *   notation: string;
+ *   entry: string;
+ * }>}
+ */
+const PLC_VENDORS = {
+  mitsubishi: {
+    model: 'FX5U',
+    tool: '三菱電機 FX5U（GX Works3風）',
+    keys: { 'contact-no': 'F5', 'contact-nc': 'F6', 'or-contact-no': 'Shift+F5', coil: 'F7' },
+    networkKey: undefined,
+    convertKey: 'F4',
+    notation: '',
+    entry: '',
+  },
+  jtekt: {
+    model: 'PC10G-1SP',
+    tool: 'JTEKT TOYOPUC PC10G（PCwin風）',
+    keys: undefined,
+    networkKey: undefined,
+    convertKey: undefined,
+    notation:
+      'TOYOPUCのデバイスは「プログラム番号＋種類＋16進3桁」です。入力の端子X0は1X000、出力の端子Y10は1Y010と書きます。',
+    entry:
+      'PCwin風にはキーの割当がありません。置きたいマスを押してから、上の記号ボタン（a接点・b接点・OR・コイル）を押して置きます。',
+  },
+  omron: {
+    model: 'CP1E',
+    tool: 'OMRON CP1E（CX-Programmer風）',
+    keys: { 'contact-no': 'C', 'contact-nc': '/', 'or-contact-no': 'W', coil: 'O' },
+    networkKey: 'R',
+    convertKey: undefined,
+    notation:
+      'CP1Eのデバイスは「チャネル.ビット」です。入力は0.00から、出力は100.00から始まり、本体の端子の名前と同じです。',
+    entry:
+      'キーはCでa接点、/でb接点、WでOR接点、Oでコイルです。番号を確定するとコメント欄が開くので、Enterで閉じます。',
+  },
+  sharp: {
+    model: 'JW-300',
+    tool: 'シャープ JW300（JW-300SP風）',
+    keys: { 'contact-no': 'S', 'contact-nc': 'D', 'or-contact-no': 'G', coil: 'X' },
+    networkKey: 'L',
+    convertKey: undefined,
+    notation:
+      'JW300のリレー番号は8進6桁です。入力の端子A0は000000、出力の端子C0は000020と書きます。端子名と番号が違う点に注意します。',
+    entry:
+      'JW-300SP風は先に記号を置き、Enterで番号を入れます。キーはSでA接点、DでB接点、GでOR接点、Xでコイル、Lで回路の追加です。',
+  },
+};
+
+/**
+ * 記号を1つ置く（キーの割当があるメーカーはキー、無いメーカーは記号ボタン）。
+ * @param {typeof PLC_VENDORS[string]} vendor
+ * @param {'contact-no' | 'contact-nc' | 'or-contact-no' | 'coil'} kind
+ */
+async function placeSymbol(vendor, kind) {
+  if (vendor.keys === undefined) await click(page.getByTestId(`symbol-${kind}`));
+  else await ladderKey(vendor.keys[kind]);
+  // 置いただけで番号の入力が開かないスキン（下書きのマス）は Enter で開く
+  if ((await page.getByTestId('device-input').count()) === 0) await ladderKey('Enter');
+  await expect(page.getByTestId('device-input')).toBeVisible();
+}
+/** @param {string} id */
+async function cell(id) {
+  await click(page.getByTestId(`cell-${id}`));
+}
+/** @param {typeof PLC_VENDORS[string]} vendor */
+async function addNetwork(vendor) {
+  if (vendor.networkKey !== undefined) {
+    await ladderKey(vendor.networkKey);
+    return;
+  }
   await click(page.getByTestId('native-menu-edit'));
   await click(page.getByTestId('native-item-insert-network'));
 }
-async function plc() {
+
+/** @param {string} vendorId */
+async function plc(vendorId) {
+  const vendor = PLC_VENDORS[vendorId];
+  if (vendor === undefined) throw new Error(`メーカーの台本がありません: ${vendorId}`);
   const problem = BUILTIN_PLC_PROBLEMS[0];
   if (!problem) throw new Error('PLC課題がありません');
+  const unit = plcUnitFor(vendor.model);
+  if (unit === undefined) throw new Error(`PLC本体の定義がありません: ${vendor.model}`);
+  const dialect = getDialect(/** @type {import('@ojt/plc-dialects').DialectId} */ (vendorId));
+  /** @param {'input' | 'output'} kind @param {number} index */
+  const dev = (kind, index) => dialect.formatDevice({ kind, index });
   const roles = toSocketRoles(problem.board.socketRoles),
     io = resolvePlcIo(problem.io);
+  const coil = String(COIL_COL);
   await bubble(
-    'PLC：I/O表を確認して配線し、自己保持・停止確認・点検灯のラダーを入力して合格まで進めます。',
-    4400,
-  );
-  await openExercise('plc', problem.id);
-  await bubble(
-    'X0で運転を開始し、X1で停止します。Y0の接点をX0と並列に置き、ボタンを離しても出力を保持します。',
-    4300,
-  );
-  await ladderKey('F5');
-  await click(page.getByTestId('device-text'));
-  await page.keyboard.type('X9', { delay: 150 });
-  await click(page.getByTestId('device-commit'));
-  await expect(page.getByTestId('device-error')).toBeVisible();
-  await bubble(
-    'X9と入力してエラーになりました。三菱のX・Yは8進表記です。I/O表の起動入力はX0なので、番号を直します。',
+    `PLC（${vendor.tool}）：I/O表を確認して配線し、自己保持・停止確認・点検灯のラダーを入力して合格まで進めます。`,
     4600,
   );
-  await device('X0');
-  await ladderKey('ArrowLeft');
-  await ladderKey('Shift+F5');
-  await device('Y0');
+  await openExercise('plc', problem.id);
+  await expect(page.getByTestId('plc-model')).toContainText(unit.displayName);
   await bubble(
-    '自己保持の分岐の後ろにX1のb接点を置きます。停止ボタンを押したときは保持回路も切れる配置です。',
+    'まず仕様のタイムチャートを確認します。上の「タイムチャートを見る」を押すと、左の欄の仕様のチャートへ移ります。',
+    3800,
+  );
+  await click(page.getByTestId('plc-show-chart'));
+  await pause(1200);
+  await click(page.getByTestId('chart-panel').getByTestId('chart-enlarge-button').first());
+  await expect(page.getByTestId('chart-modal')).toBeVisible();
+  await bubble(
+    '「拡大」で大きく表示できます。PB1を押すとPL1が点き、PB2で消えるまで続く――この動きをラダーで作ります。',
+    4600,
+  );
+  await page.keyboard.press('Escape');
+  await expect(page.getByTestId('chart-modal')).toHaveCount(0);
+  await pause(500);
+  await bubble(
+    `${dev('input', 0)}で運転を開始し、${dev('input', 1)}で停止します。${dev('output', 0)}の接点を${dev('input', 0)}と並列に置き、ボタンを離しても出力を保持します。`,
+    4600,
+  );
+  if (vendorId === 'mitsubishi') {
+    await ladderKey('F5');
+    await click(page.getByTestId('device-text'));
+    await page.keyboard.type('X9', { delay: dry ? 10 : 150 });
+    await click(page.getByTestId('device-commit'));
+    await expect(page.getByTestId('device-error')).toBeVisible();
+    await bubble(
+      'X9と入力してエラーになりました。三菱のX・Yは8進表記です。I/O表の起動入力はX0なので、番号を直します。',
+      4600,
+    );
+    await device('X0');
+    await ladderKey('ArrowLeft');
+    await ladderKey('Shift+F5');
+    await device('Y0');
+  } else {
+    await bubble(vendor.notation, 4800);
+    await bubble(vendor.entry, 4600);
+    await cell('n1:0:0');
+    await placeSymbol(vendor, 'contact-no');
+    await device(dev('input', 0));
+    await cell('n1:0:0');
+    await placeSymbol(vendor, 'or-contact-no');
+    await device(dev('output', 0));
+    // OR接点は閉じ側の縦線を右隣の列に引く。縦線の上に置かないよう、その次の列から続ける
+    await cell('n1:0:2');
+  }
+  await bubble(
+    `自己保持の分岐の後ろに${dev('input', 1)}のb接点を置きます。停止ボタンを押したときは保持回路も切れる配置です。`,
     4000,
   );
-  await ladderKey('F6');
-  await device('X1');
-  await click(page.getByTestId('cell-n1:0:15'));
-  await ladderKey('F7');
-  await device('Y0');
-  await bubble('2段目は停止確認灯です。Y0がOFF、かつX1がONのときにY1をONにします。', 3500);
-  await addNetwork();
-  await ladderKey('F6');
-  await device('Y0');
-  await ladderKey('F5');
-  await device('X1');
-  await click(page.getByTestId('cell-n2:0:15'));
-  await ladderKey('F7');
-  await device('Y1');
-  await bubble('3段目は点検灯。X2を押している間だけY2がONになる回路を作ります。', 3300);
-  await addNetwork();
-  await ladderKey('F5');
-  await device('X2');
-  await click(page.getByTestId('cell-n3:0:15'));
-  await ladderKey('F7');
-  await device('Y2');
+  await placeSymbol(vendor, 'contact-nc');
+  await device(dev('input', 1));
+  await cell(`n1:0:${coil}`);
+  await placeSymbol(vendor, 'coil');
+  await device(dev('output', 0));
   await bubble(
-    'F4で変換し、入力の誤りや未接続がないか確認します。変換が通ってから配線を進めます。',
-    3200,
+    `2段目は停止確認灯です。${dev('output', 0)}がOFF、かつ${dev('input', 1)}がONのときに${dev('output', 1)}をONにします。`,
+    3800,
   );
-  await ladderKey('F4');
-  await expect(page.getByTestId('convert-state')).toHaveText('変換に成功しました');
+  await addNetwork(vendor);
+  await placeSymbol(vendor, 'contact-nc');
+  await device(dev('output', 0));
+  await placeSymbol(vendor, 'contact-no');
+  await device(dev('input', 1));
+  await cell(`n2:0:${coil}`);
+  await placeSymbol(vendor, 'coil');
+  await device(dev('output', 1));
+  await bubble(
+    `3段目は点検灯。${dev('input', 2)}を押している間だけ${dev('output', 2)}がONになる回路を作ります。`,
+    3500,
+  );
+  await addNetwork(vendor);
+  await placeSymbol(vendor, 'contact-no');
+  await device(dev('input', 2));
+  await cell(`n3:0:${coil}`);
+  await placeSymbol(vendor, 'coil');
+  await device(dev('output', 2));
+  if (vendor.convertKey !== undefined) {
+    await bubble(
+      `${vendor.convertKey}で変換し、入力の誤りや未接続がないか確認します。変換が通ってから配線を進めます。`,
+      3400,
+    );
+    await ladderKey(vendor.convertKey);
+    await expect(page.getByTestId('convert-state')).toHaveText('変換に成功しました');
+  } else {
+    await expect(page.getByTestId('convert-state')).toHaveText(
+      '変換に成功しました（自動で変換されます）',
+    );
+    await bubble(
+      'このメーカーのツールには「変換」の操作がありません。入力するたびに自動で変換され、下の欄に結果が出ます。',
+      4200,
+    );
+  }
   await click(page.getByTestId('view-board'));
   await pause(1200);
+  const outputs = [0, 1, 2].map((i) => dev('output', i)).join('・');
   await bubble(
-    'Y0・Y1・Y2は中継リレーCR1〜CR3を動かします。ランプをPLC出力へ直接つながず、リレー3個を載せます。',
+    `${outputs}は中継リレーCR1〜CR3を動かします。ランプをPLC出力へ直接つながず、リレー3個を載せます。`,
     4200,
   );
   for (const socket of JIPM_BOARD.sockets.slice(0, 3)) {
     await point(
-      plcBoardPoint(
+      plcBoardPointFor(
+        unit,
         {
           x: socket.origin.x + socket.bodyMm.width / 2,
           y: socket.origin.y + socket.bodyMm.length / 2,
@@ -549,36 +788,58 @@ async function plc() {
     );
     await click(page.getByTestId('mount-relay-my4n'));
   }
-  const unordered = plcWiringPlan(io, PLC_UNIT_FX5U);
+  const unordered = plcWiringPlan(io, unit);
   const plan = [
     ...unordered.filter((w) => String(w.from).startsWith('OUTLET.')),
     ...unordered.filter((w) => !String(w.from).startsWith('OUTLET.')),
   ];
+  /** 端子の表示名（本体に印字された名前。`PLC.SS` は `S/S`）。 @param {string} id */
+  const name = (id) =>
+    unit.terminals.find((t) => String(t.id) === id)?.label ?? id.replace(/^PLC\./u, '');
+  const supply = plan
+    .filter((w) => String(w.from).startsWith('OUTLET.'))
+    .map((w) => name(String(w.to)));
+  const inputs = io.inputs.map((_, i) =>
+    name(String(plan.find((w) => String(w.from) === `TB_PB.${i + 1}a`)?.to ?? '')),
+  );
+  const inputCommonId = String(plan.find((w) => String(w.from) === 'P.1')?.to ?? '');
+  const inputCommon = name(inputCommonId);
+  const outputCommon = name(String(plan.find((w) => String(w.from) === inputCommonId)?.to ?? ''));
+  const firstOutput = name(String(plan.find((w) => String(w.to) === 'CR1.14')?.from ?? ''));
   for (const [i, w] of plan.entries()) {
+    const from = String(w.from),
+      to = String(w.to);
     if (i === 0)
       await bubble(
-        'まずPLC電源を壁コンセントのL・Nへ。盤の24V電源P・Nとは区別して接続します。',
-        3500,
+        `まずPLC本体の電源端子（${supply.join('・')}）を壁コンセントのL・Nへ。盤の24V電源P・Nとは別の系統です。`,
+        4200,
       );
-    else if (i === 2)
+    else if (from === 'TB_PB.1a')
       await bubble(
-        'I/O表の入力方式はシンクです。入力COMと押ボタン側の戻り線を、表に従って配線します。',
-        3600,
+        `押ボタンPB1〜PB3のa接点を、I/O表どおり入力端子 ${inputs.join('・')} へつなぎます。端子名はメーカーごとに違います。`,
+        4200,
       );
-    else if (String(w.to).includes('CR1.14'))
+    else if (to === 'CR1.14')
       await bubble(
-        'Y0からCR1のコイル＋へ。コイル−はNへ戻し、接点側はP → リレー接点 → PL1 → Nとつなぎます。',
-        4100,
+        `出力 ${firstOutput} からCR1のコイル＋（⑭）へ。CR2・CR3も同じ順に、出力の番号を1つずつ進めてつなぎます。`,
+        4000,
       );
-    else if (String(w.to).includes('CR2.14'))
+    else if (from === 'CR1.5')
+      await bubble('CR1〜CR3のa接点（⑤）から、ランプPL1〜PL3の＋へつなぎます。', 3200);
+    else if (from === 'P.1')
       await bubble(
-        '同じ考え方で、Y1はCR2と停止確認灯PL2へつなぎます。端子名を見て1本ずつ確認します。',
-        3400,
+        `I/O表の入力方式はシンクです。入力の共通端子 ${inputCommon} へPをつなぎ、押ボタンの共通側はNへ戻します。`,
+        4200,
       );
-    else if (String(w.to).includes('CR3.14'))
-      await bubble('Y2はCR3と点検灯PL3へ。電源の渡り配線も、1端子2本までに収めます。', 3200);
-    await point(plcTerminalPoint(roles, String(w.from), await canvas()));
-    await point(plcTerminalPoint(roles, String(w.to), await canvas()));
+    else if (from === inputCommonId)
+      await bubble(
+        `出力の共通端子 ${outputCommon} にもPを渡し、そこからリレー接点の共通（⑨）へ送ります。1端子の電線は2本までです。`,
+        4300,
+      );
+    else if (from === 'N.1')
+      await bubble('Nは押ボタンの共通、CR1〜CR3のコイル−（⑬）、ランプの−へ順に渡します。', 3400);
+    await point(plcTerminalPointFor(unit, roles, from, await canvas()));
+    await point(plcTerminalPointFor(unit, roles, to, await canvas()));
     await expect(page.getByTestId('status-overlay')).toContainText(`自分で張った電線 ${i + 1} 本`);
   }
   await bubble(
@@ -590,14 +851,6 @@ async function plc() {
   await pause(800);
   await click(page.getByTestId('toolbar-monitor-start'));
   await click(page.getByTestId('toolbar-plc-run'));
-  await expand('plc-debug');
-  await click(page.getByRole('button', { name: '一時停止', exact: true }));
-  await bubble(
-    '原因を詳しく追うときは「1スキャン実行」を使えます。入力 → 演算 → 出力を10msずつ進めて確認できます。',
-    4300,
-  );
-  await click(page.getByRole('button', { name: '1スキャン実行（10 ms）', exact: true }));
-  await click(page.getByRole('button', { name: '連続実行へ戻る', exact: true }));
   await click(page.getByTestId('view-board'));
   await pause(700);
   for (const [id, message] of [
@@ -608,7 +861,11 @@ async function plc() {
     await bubble(message ?? '', 3200);
     const definition = JIPM_BOARD.pushButtons.find((pb) => pb.id === id);
     if (!definition) throw new Error('PBがありません');
-    const p = plcBoardPoint({ x: definition.pos.x, y: definition.pos.y, z: 4.5 }, await canvas());
+    const p = plcBoardPointFor(
+      unit,
+      { x: definition.pos.x, y: definition.pos.y, z: 4.5 },
+      await canvas(),
+    );
     await move(p.x, p.y);
     await page.mouse.down();
     await pause(1800);
@@ -622,7 +879,7 @@ async function plc() {
   await click(page.getByTestId('judge-button'));
   await expect(page.getByTestId('verdict')).toHaveText('合格', { timeout: 60000 });
   await bubble(
-    '合格です。入力が入らないときはCOMと電源、出力ONでも点灯しないときはコイルからランプまでの経路を順に調べましょう。',
+    `合格です。入力が入らないときは共通端子 ${inputCommon} と電源、出力ONでも点灯しないときはコイルからランプまでの経路を順に調べましょう。`,
     5500,
   );
 }
@@ -689,7 +946,7 @@ try {
   if (mode === 'assembly') await assembly();
   else if (mode === 'parts') await parts();
   else if (mode === 'repair') await repair();
-  else if (mode === 'plc') await plc();
+  else if (plcVendor !== undefined) await plc(plcVendor);
   else throw new Error(`収録シナリオが未定義です: ${mode}`);
   await page.screenshot({ path: join(runDir, `${mode}-passed.png`) });
   contentEndSec = (Date.now() - start) / 1000;
