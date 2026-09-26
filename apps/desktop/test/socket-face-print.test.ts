@@ -1,4 +1,10 @@
-import { BLOCK_PITCH_MM, JIPM_BOARD, PL_BLOCK_ID, type BoardTerminal } from '@ojt/board-model';
+import {
+  BLOCK_PITCH_MM,
+  JIPM_BOARD,
+  PL_BLOCK_ID,
+  WIRE_DIAMETER_MM,
+  type BoardTerminal,
+} from '@ojt/board-model';
 import { toTerminalId } from '@ojt/circuit-sim';
 import { describe, expect, it } from 'vitest';
 import {
@@ -37,7 +43,10 @@ import { SOCKET_BODY_COLOR } from '../src/renderer/session/colors.js';
 import {
   LEVER_TOP_Z_MM,
   socketLeverFootprints,
+  socketStepSections,
+  SOCKET_STEP_HEIGHTS_MM,
   SOCKET_PRINT_Z_MM,
+  SOCKET_WIRE_CLEARANCE_MM,
 } from '../src/renderer/three/Socket.js';
 
 /**
@@ -630,6 +639,19 @@ describe('ソケットの面の印字は何にも重ならない（利用者指�
     expect(covered.map((header) => header.text)).toContain(JA_PIN.group.com);
     // だから板はレバーの天面より高くなければならない（低いとレバーが見出しを塗り潰す）
     expect(SOCKET_PRINT_Z_MM).toBeGreaterThan(LEVER_TOP_Z_MM);
+  });
+
+  it('ソケットは奥・手前とも外側から中央へ階段状で、電線は印字面より上に出る', () => {
+    const sections = socketStepSections(JIPM_BOARD.sockets[0]!.bodyMm.length);
+    expect(sections.map((item) => item.height)).toEqual([
+      SOCKET_STEP_HEIGHTS_MM[0],
+      SOCKET_STEP_HEIGHTS_MM[1],
+      SOCKET_STEP_HEIGHTS_MM[2],
+      SOCKET_STEP_HEIGHTS_MM[1],
+      SOCKET_STEP_HEIGHTS_MM[0],
+    ]);
+    expect(sections.reduce((total, item) => total + item.depth, 0)).toBe(76);
+    expect(SOCKET_WIRE_CLEARANCE_MM).toBeGreaterThan(WIRE_DIAMETER_MM / 2);
   });
 
   it('文字幅の見積もりは実際に焼かれる幅と一致する（太字の大文字を小さく数えない）', () => {

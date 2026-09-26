@@ -264,6 +264,7 @@ export function TerminalField({
         ref={picks}
         args={[PICK_GEOMETRY, INVISIBLE_MATERIAL, count]}
         visible={false}
+        userData={{ terminalPick: true }}
         onPointerOver={(event: ThreeEvent<PointerEvent>) => {
           event.stopPropagation();
           const terminal = terminals[event.instanceId ?? -1];

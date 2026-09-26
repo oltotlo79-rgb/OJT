@@ -90,7 +90,10 @@ describe('ソケットの差込穴は共有ジオメトリ1個・共有マテリ
 
   it('穴は `instancedMesh` 1本に畳まれる', () => {
     const { container } = renderSocket();
-    expect(container.querySelectorAll('instancedMesh')).toHaveLength(1);
+    expect(container.querySelectorAll('instancedMesh[name="socket-pin-holes"]')).toHaveLength(1);
+    expect(container.querySelectorAll('instancedMesh[name="socket-terminal-pads"]')).toHaveLength(
+      1,
+    );
   });
 
   it('共有ジオメトリは半径1で作られ、マテリアルも使い回される', () => {

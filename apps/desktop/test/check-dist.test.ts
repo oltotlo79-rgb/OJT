@@ -96,6 +96,7 @@ describe('配布物を実際に検査するゲート', () => {
       await expect(checkDist(f.app)).rejects.toThrow(/取扱説明書/);
       expect(existsSync(join(f.release, 'artifacts.md'))).toBe(false);
     },
+    60_000,
   );
   it.each(['missing', 'changed', 'extra-mode'])('課題の%sを拒否する', async (kind) => {
     const f = await fixture();

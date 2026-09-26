@@ -13,6 +13,7 @@ import { JA_3D } from '../i18n/ja.js';
 import { sharedMaterial } from './materials.js';
 import { ComponentDetails, RELAY_SHELL, sharedHousing } from './ComponentDetails.js';
 import { PartIndicator, type MountedBodyBox } from './PartIndicator.js';
+import { SOCKET_BODY_TOP_Z_MM } from './Socket.js';
 import { toScene } from './coords.js';
 
 /**
@@ -55,8 +56,6 @@ const BODY_HEIGHT_MM = 34;
 const BODY_INSET_MM = 2;
 /** ネジ端子ティアを避けるため、奥行方向に余計に詰める量[mm]。 */
 const SOCKET_TIER_MARGIN_MM = 18;
-/** ソケット本体の上面の高さ[mm]（`Socket.tsx` の `BODY_HEIGHT_MM` と合わせる）。 */
-const SOCKET_TOP_Z_MM = 9;
 /**
  * 本体の不透明度。
  * 0.5 ＋ `depthWrite: false` では盤の暗い色に溶けて「装着したかどうか」が見分けられなかった
@@ -96,9 +95,9 @@ export function mountedBodyBox(socket: SocketDefinition): MountedBodyBox {
   const center = toScene({
     x: socket.origin.x + socket.bodyMm.width / 2,
     y: socket.origin.y + socket.bodyMm.length / 2,
-    z: SOCKET_TOP_Z_MM + BODY_HEIGHT_MM / 2,
+    z: SOCKET_BODY_TOP_Z_MM + BODY_HEIGHT_MM / 2,
   });
-  return { center, width, height, topZ: SOCKET_TOP_Z_MM + BODY_HEIGHT_MM };
+  return { center, width, height, topZ: SOCKET_BODY_TOP_Z_MM + BODY_HEIGHT_MM };
 }
 
 /**
@@ -276,7 +275,7 @@ export function MountedPart({
         center
         style={LABEL_STYLE}
         distanceFactor={300}
-        position={[center[0], center[1], SOCKET_TOP_Z_MM + BODY_HEIGHT_MM + LABEL_LIFT_MM]}
+        position={[center[0], center[1], SOCKET_BODY_TOP_Z_MM + BODY_HEIGHT_MM + LABEL_LIFT_MM]}
         zIndexRange={[12, 0]}
       >
         <MountedLabelContent role={role} part={part} energized={energized} />

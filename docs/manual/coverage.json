@@ -2537,6 +2537,12 @@
       "section": "mode-b/電線をつなぐ・外す"
     },
     {
+      "key": "Backspace",
+      "screen": "練習中",
+      "action": "えらんだ電線を外す",
+      "section": "mode-b/電線をつなぐ・外す"
+    },
+    {
       "key": "Enter",
       "screen": "練習中",
       "action": "端子リストでえらんだ端子を決める（2つで電線が1本つながります）",

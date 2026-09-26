@@ -1,0 +1,14 @@
+{
+  "c2-101": [
+    {
+      "op": "replace",
+      "partId": "CR2"
+    }
+  ],
+  "c2-102": [
+    {
+      "op": "replace",
+      "partId": "T1"
+    }
+  ]
+}

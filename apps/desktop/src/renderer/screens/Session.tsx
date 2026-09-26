@@ -470,7 +470,7 @@ export function Session(): JSX.Element {
    */
   useViewportShortcuts({ enabled: session !== undefined });
 
-  // キーボード操作（Esc で配線取消、Delete で電線削除。§8.2）
+  // キーボード操作（Esc で配線取消、Delete / Backspace で電線削除。§8.2）
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
       // 入力欄で打鍵中・IME変換中は盤のショートカットを動かさない（§8.2）
@@ -515,13 +515,13 @@ export function Session(): JSX.Element {
         wireColor: store.wireColor,
       };
       if (event.key === 'Escape') runAction(escapeToAction(state));
-      else if (event.key === 'Delete') {
-        runAction(
-          deleteKeyToAction(
-            state,
-            current.wires.filter((w) => w.locked).map((w) => w.id),
-          ),
+      else if (event.key === 'Delete' || event.key === 'Backspace') {
+        const action = deleteKeyToAction(
+          state,
+          current.wires.filter((w) => w.locked).map((w) => w.id),
         );
+        if (action.type !== 'none') event.preventDefault();
+        runAction(action);
       }
     };
     window.addEventListener('keydown', onKey);

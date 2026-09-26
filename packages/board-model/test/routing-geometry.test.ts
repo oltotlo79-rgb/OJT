@@ -16,9 +16,12 @@ import {
   routeFixedLinks,
   routeWire,
   RoutingError,
+  SOCKET_LEAD_X_OFFSET_Z_MM,
+  SOCKET_WIRE_LEAD_Z_MM,
   validateBoard,
   WIRE_DIAMETER_MM,
   WIRE_LAYER_COUNT,
+  WIRE_LAYER_STEP_MM,
   WIRE_Z_LADDER_MM,
   type BoardDefinition,
   type Vec3,
@@ -230,17 +233,14 @@ describe('routing: 高さのはしごとレーンのスロット（Task 9b）', 
     // 帯の中の走行は上の段（6.0mm）に載っている
     const midRun = segmentsOf(last).find((s) => s.axis === 'x' && s.hi - s.lo > 100);
     expect(midRun?.a.z).toBeCloseTo(WIRE_Z_LADDER_MM[2], 6);
-    // 引き出し（y方向・4.2mm）から帯（6.0mm）へ上がる、z だけ動く点がある
+    // ソケット外まで表面を走ってから帯に下りる。高さの変更は z だけの辺にする
     const hops = segmentsOf(last).filter(
       (s) =>
         s.axis === 'z' &&
-        Math.min(s.a.z, s.b.z) > WIRE_Z_LADDER_MM[0] &&
-        Math.max(s.a.z, s.b.z) < 8,
+        (Math.abs(s.a.z - WIRE_Z_LADDER_MM[2]) < EPS ||
+          Math.abs(s.b.z - WIRE_Z_LADDER_MM[2]) < EPS),
     );
     expect(hops.length).toBeGreaterThanOrEqual(2);
-    for (const hop of hops) {
-      expect(Math.abs(hop.hi - hop.lo)).toBeCloseTo(WIRE_Z_LADDER_MM[2] - WIRE_Z_LADDER_MM[1], 6);
-    }
   });
 
   it('渡り線の段は配線帯に入らず、x区間が離れていれば段0を使い回す', () => {
@@ -318,6 +318,30 @@ describe('routing: 高さのはしごとレーンのスロット（Task 9b）', 
     ];
     const allowed = new Set<number>([
       ...WIRE_Z_LADDER_MM,
+      ...Array.from(
+        { length: 16 },
+        (_, level) => Math.round((SOCKET_WIRE_LEAD_Z_MM + level * WIRE_LAYER_STEP_MM) * 10) / 10,
+      ),
+      ...Array.from(
+        { length: 16 },
+        (_, level) =>
+          Math.round(
+            (SOCKET_WIRE_LEAD_Z_MM + level * WIRE_LAYER_STEP_MM + SOCKET_LEAD_X_OFFSET_Z_MM) * 10,
+          ) / 10,
+      ),
+      ...Array.from(
+        { length: 16 },
+        (_, level) => Math.round((WIRE_Z_LADDER_MM[1] + level * WIRE_LAYER_STEP_MM) * 10) / 10,
+      ),
+      ...Array.from(
+        { length: 16 },
+        (_, level) => Math.round((10 + level * WIRE_LAYER_STEP_MM) * 10) / 10,
+      ),
+      ...Array.from(
+        { length: 16 },
+        (_, level) =>
+          Math.round((10 + level * WIRE_LAYER_STEP_MM + SOCKET_LEAD_X_OFFSET_Z_MM) * 10) / 10,
+      ),
       ...board.terminals.map((term) => term.pos.z),
       0, // 盤面（既設ハーネスが貫通する高さ）
     ]);

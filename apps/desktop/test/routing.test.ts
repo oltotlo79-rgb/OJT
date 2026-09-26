@@ -9,10 +9,13 @@ import {
   routeSession,
   routeWire,
   RoutingError,
+  SOCKET_LEAD_X_OFFSET_Z_MM,
   TASK2_SOCKET_ROLES,
   toPhysicalTerminal,
   validateBoard,
   WIRE_Z_LADDER_MM,
+  WIRE_LAYER_STEP_MM,
+  SOCKET_WIRE_LEAD_Z_MM,
   type WireRoute,
 } from '@ojt/board-model';
 import { createWire, toTerminalId } from '@ojt/circuit-sim';
@@ -39,6 +42,26 @@ function session() {
  */
 const ALLOWED_CORNER_Z = new Set<number>([
   ...WIRE_Z_LADDER_MM,
+  ...Array.from({ length: 16 }, (_, level) => SOCKET_WIRE_LEAD_Z_MM + level * WIRE_LAYER_STEP_MM),
+  ...Array.from(
+    { length: 16 },
+    (_, level) =>
+      Math.round(
+        (SOCKET_WIRE_LEAD_Z_MM + SOCKET_LEAD_X_OFFSET_Z_MM + level * WIRE_LAYER_STEP_MM) * 10,
+      ) / 10,
+  ),
+  ...Array.from(
+    { length: 16 },
+    (_, level) => Math.round((WIRE_Z_LADDER_MM[1] + level * WIRE_LAYER_STEP_MM) * 10) / 10,
+  ),
+  ...Array.from(
+    { length: 16 },
+    (_, level) => Math.round((10 + level * WIRE_LAYER_STEP_MM) * 10) / 10,
+  ),
+  ...Array.from(
+    { length: 16 },
+    (_, level) => Math.round((11.8 + level * WIRE_LAYER_STEP_MM) * 10) / 10,
+  ),
   ...JIPM_BOARD.terminals.map((t) => t.pos.z),
   0,
 ]);
@@ -79,6 +102,9 @@ describe('routeWire（直角配線・部品回避）', () => {
     );
     expect(isManhattan(route.corners)).toBe(true);
     expect(crossesFootprint(JIPM_BOARD, route)).toBe(false);
+    const terminal = JIPM_BOARD.terminals.find((t) => String(t.id) === 'S1.10');
+    expect(route.points.at(-1)).toEqual(terminal?.pos);
+    expect(route.corners.some((p) => p.z === SOCKET_WIRE_LEAD_Z_MM)).toBe(true);
   });
 
   it('純粋にy方向だけ渡る経路は x方向の段（2.4mm）を1度も通らない', () => {

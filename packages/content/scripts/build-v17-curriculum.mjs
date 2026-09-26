@@ -1,6 +1,5 @@
 /**
- * v1.7.0 の追加教材（2026-09-26 利用者指示「各問題も増やせる余地があればもう少し増やして」／
- * 同日の決定「各モード+10題」）。組立・部品点検・点検修復・PLC に10題ずつ足す。
+ * v1.7.0 の追加教材（各モード10題）と v1.8.0 の追加練習（各モード2題）。
  *
  * 既存の題材（論理条件の組合せ・継続確認・先行/後着優先など）と重ならないよう、実務でよく使う
  * 「寸動と連続運転」「運転時間での自動停止」「警報の確認とブザー停止」「長押し起動」「一時停止」
@@ -33,7 +32,9 @@ function put(problem) {
   const parsed = parseProblem(problem);
   if (!parsed.ok)
     throw new Error(`${problem.id}: ${JSON.stringify(parsed.issues ?? parsed, null, 2)}`);
-  const file = `${problem.id}-v17.json`;
+  const newExercise =
+    Number(problem.id.split('-')[1]) > (problem.mode === 'inspect-parts' ? 64 : 100);
+  const file = `${problem.id}-${newExercise ? 'v18' : 'v17'}.json`;
   writeFileSync(join(base, problem.mode, file), JSON.stringify(problem, null, 2) + '\n');
   modes[problem.mode].push({ id: problem.id, file });
   return parsed.problem;
@@ -938,6 +939,57 @@ const TOPICS = [
   },
 ];
 
+// v1.8.0: 一度だけの操作では見落としやすい復帰と再実行を、同じ盤で続けて確認する。
+TOPICS.push(
+  {
+    ...clone(TOPICS[0]),
+    key: 'emergency-recovery-repeat',
+    title: '非常停止を二度行った後の復帰と再起動',
+    difficulty: 4,
+    description:
+      '黒押ボタン（PB1）で運転し、緑押ボタン（PB3）で非常停止を保持して赤ランプ（PL4）を点灯させなさい。非常停止中はPB1を押しても再起動できない。黄押ボタン（PB2）で復帰したら再起動できることを、二度の非常停止と復帰で確認する。最後はPB2で通常停止する。',
+    presses: [
+      [500, 'PB1'],
+      [1500, 'PB3'],
+      [2500, 'PB1'],
+      [3500, 'PB2'],
+      [4500, 'PB1'],
+      [5500, 'PB3'],
+      [6500, 'PB1'],
+      [7500, 'PB2'],
+      [8500, 'PB1'],
+      [9500, 'PB2'],
+    ],
+    durationMs: 10500,
+    ladder: {
+      ...clone(TOPICS[0].ladder),
+      plcDescription:
+        '黒押ボタン（PB1）で運転し、緑押ボタン（PB3）で非常停止を保持して黄ランプ（PL2）を点灯させなさい。非常停止中はPB1で再起動できない。黄押ボタン（PB2）で復帰したら再起動できることを、二度の非常停止と復帰で確認する。最後はPB2で通常停止する。',
+    },
+    learning: '非常停止の繰り返しと復帰後の再起動',
+    caution: '各停止中の起動禁止と二度目の復帰を確認',
+  },
+  {
+    ...clone(TOPICS[1]),
+    key: 'auto-stop-repeat',
+    title: '二回の自動停止と手動停止の区別',
+    difficulty: 4,
+    description:
+      '黒押ボタン（PB1）で運転し、タイマT1（2秒）で自動停止したら黄ランプ（PL2）で終了を保持しなさい。黄押ボタン（PB2）で表示を消してもう一度自動停止を行う。三回目は2秒より前にPB2で手動停止し、終了表示が出ないことを確かめる。',
+    presses: [
+      [500, 'PB1'],
+      [3500, 'PB2'],
+      [4500, 'PB1'],
+      [7500, 'PB2'],
+      [8500, 'PB1'],
+      [9500, 'PB2'],
+    ],
+    durationMs: 10500,
+    learning: '自動停止後の再実行と手動停止の区別',
+    caution: '三回目の手動停止では終了表示が出ないことを確認',
+  },
+);
+
 /** 組立の課題の骨格。 */
 function assembleOf(topic, id) {
   const roles = {};
@@ -971,7 +1023,7 @@ function assembleOf(topic, id) {
   };
 }
 
-// --- 組立（B-091〜100） ---
+// --- 組立（B-091〜102） ---
 const assembled = [];
 TOPICS.forEach((topic, i) => {
   const problem = put(assembleOf(topic, idOf('b', 91 + i)));
@@ -985,7 +1037,7 @@ TOPICS.forEach((topic, i) => {
   assembled.push(problem);
 });
 
-// --- 点検修復（C2-091〜100）。同じ回路に故障を入れる ---
+// --- 点検修復（C2-091〜102）。同じ回路に故障を入れる ---
 /** 故障の入れ方（部品の故障は交換、電線の故障は外して白線で張り直す）。 */
 const FAULTS = [
   { kind: 'coil-open', partId: 'CR1' },
@@ -998,6 +1050,8 @@ const FAULTS = [
   { kind: 'contact-welded', partId: 'CR1', contact: 'cr-a' },
   { kind: 'coil-open', partId: 'T1' },
   { kind: 'wire-open', end: 'TB_PL.1+', also: { kind: 'coil-open', partId: 'T2' } },
+  { kind: 'contact-welded', partId: 'CR2', contact: 'cr-b' },
+  { kind: 'coil-open', partId: 'T1' },
 ];
 const repairs = {};
 /** その部品の、回路図で最初に使った接点の要素番号（コイル0・組1のb=1・組1のa=2）。 */
@@ -1071,7 +1125,7 @@ assembled.forEach((source, i) => {
   repairs[p.id] = steps;
 });
 
-// --- PLC（D-091〜100）。同じ動作をラダーで作る。4メーカーを順に使う ---
+// --- PLC（D-091〜102）。同じ動作をラダーで作る。4メーカーを順に使う ---
 const VENDORS = [
   ['mitsubishi', 'FX5U'],
   ['jtekt', 'PC10G-1SP'],
@@ -1131,7 +1185,7 @@ TOPICS.forEach((topic, i) => {
   }
 });
 
-// --- 部品点検（C1-055〜064） ---
+// --- 部品点検（C1-055〜066） ---
 const C1_SETS = [
   ['接点組4まで確かめる点検', 3, ['normal', 'a-open', 'normal', 'b-weld'], [4, undefined, 4]],
   [
@@ -1181,6 +1235,19 @@ const C1_SETS = [
     [4, 3, 2, 1],
     'mixed',
   ],
+  [
+    '断線と溶着の再点検',
+    2,
+    ['normal', 'coil-open', 'a-weld', 'normal', 'b-open', 'normal'],
+    [1, 3],
+  ],
+  [
+    'タイマとリレーの混合不良を調べる',
+    1,
+    ['normal', 'a-open', 'coil-layer-short', 'b-weld', 'coil-open', 'normal', 'b-open'],
+    [2, 4, 1],
+    'mixed',
+  ],
 ];
 C1_SETS.forEach(([name, grade, truths, groups, kinds], i) => {
   let g = 0;
@@ -1216,17 +1283,33 @@ C1_SETS.forEach(([name, grade, truths, groups, kinds], i) => {
 });
 
 // --- 静的 import 一覧と、検査用の修復手順 ---
-let imports =
-  '// build-v17-curriculum.mjs から生成。教材の条件は同スクリプトを編集してください。\n';
-for (const [mode, list] of Object.entries(modes))
-  for (const { id, file } of list)
-    imports += `import ${id.replaceAll('-', '_')} from './${mode}/${file}' with { type: 'json' };\n`;
-for (const [mode, list] of Object.entries(modes))
-  imports += `export const V17_${mode.replaceAll('-', '_').toUpperCase()} = [${list.map((e) => e.id.replaceAll('-', '_')).join(', ')}];\n`;
-writeFileSync(join(base, 'v17.ts'), imports);
+for (const version of ['v17', 'v18']) {
+  let imports = `// build-v17-curriculum.mjs から生成。教材の条件は同スクリプトを編集してください。\n`;
+  for (const [mode, list] of Object.entries(modes))
+    for (const { id, file } of list.filter((entry) => entry.file.endsWith(`-${version}.json`)))
+      imports += `import ${id.replaceAll('-', '_')} from './${mode}/${file}' with { type: 'json' };\n`;
+  for (const [mode, list] of Object.entries(modes))
+    imports += `export const ${version.toUpperCase()}_${mode.replaceAll('-', '_').toUpperCase()} = [${list
+      .filter((entry) => entry.file.endsWith(`-${version}.json`))
+      .map((entry) => entry.id.replaceAll('-', '_'))
+      .join(', ')}];\n`;
+  writeFileSync(join(base, `${version}.ts`), imports);
+}
 writeFileSync(
   fileURLToPath(new globalThis.URL('../test/helpers/v17-repairs.json', import.meta.url)),
-  JSON.stringify(repairs, null, 2) + '\n',
+  JSON.stringify(
+    Object.fromEntries(Object.entries(repairs).filter(([id]) => Number(id.split('-')[1]) <= 100)),
+    null,
+    2,
+  ) + '\n',
+);
+writeFileSync(
+  fileURLToPath(new globalThis.URL('../test/helpers/v18-repairs.json', import.meta.url)),
+  JSON.stringify(
+    Object.fromEntries(Object.entries(repairs).filter(([id]) => Number(id.split('-')[1]) > 100)),
+    null,
+    2,
+  ) + '\n',
 );
 
 // 説明書の課題索引を更新し、追加分の「学ぶこと・注意」をこの教材の言葉で書く

@@ -149,6 +149,32 @@ export function WireListPanel({ board }: { board: BoardDefinition }): JSX.Elemen
       >
         選択した電線を削除（Undo可）
       </button>
+      {wire !== undefined && !wire.locked && (
+        <button
+          type="button"
+          disabled={powered}
+          onClick={() => {
+            const after = cloneSession(session);
+            const result = removeWire(after, wire.id);
+            if (!result.ok) {
+              useStore.getState().toast(result.message, 'error');
+              return;
+            }
+            commitWireEdit({
+              ok: true,
+              value: after,
+              command: {
+                kind: 'removeWire',
+                label: `電線 ${wire.id} を削除`,
+                before: cloneSession(session),
+                after,
+              },
+            });
+          }}
+        >
+          この電線を外す（Delete / Backspace）
+        </button>
+      )}
       {isRepair && wire !== undefined && !wire.locked && (
         <button
           type="button"

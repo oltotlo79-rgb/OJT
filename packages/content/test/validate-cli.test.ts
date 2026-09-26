@@ -40,12 +40,12 @@ afterAll(() => {
 });
 
 describe('validate（課題を確かめる道具）', () => {
-  it('ends with 0 件の問題 and exit code 0 for the 72 built-in problems', () => {
+  it('ends with 0 件の問題 and exit code 0 for the 372 built-in problems', () => {
     const { code, out } = validate('src/builtin');
     expect(out).toContain('0 件の問題');
-    expect(out.split('\n').filter((line) => line.startsWith('合格'))).toHaveLength(364);
+    expect(out.split('\n').filter((line) => line.startsWith('合格'))).toHaveLength(372);
     expect(code).toBe(0);
-  }, 600_000);
+  }, 900_000);
 
   it('exits non zero with a Japanese reason for a file that is not valid JSON', () => {
     const file = join(dir, 'broken.json');

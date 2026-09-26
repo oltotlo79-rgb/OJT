@@ -144,7 +144,7 @@ describe('v1.7.0 の追加教材（組立）', () => {
 
 describe('v1.7.0 の追加教材（PLC。4メーカーを順に使う）', () => {
   it('D-091〜100 は4メーカーの機種を順に使う', () => {
-    const models = BUILTIN_PLC_PROBLEMS.slice(90).map((p) => p.plc.model);
+    const models = BUILTIN_PLC_PROBLEMS.slice(90, 100).map((p) => p.plc.model);
     expect(models).toEqual([
       'FX5U',
       'PC10G-1SP',
@@ -227,7 +227,7 @@ describe('v1.7.0 の追加教材（PLC。4メーカーを順に使う）', () =>
 
 describe('v1.7.0 の追加教材（部品点検）', () => {
   it('C1-055〜064 は正常品と故障品を混ぜ、接点の故障には接点組を指定する', () => {
-    const added = BUILTIN_INSPECT_PARTS_PROBLEMS.slice(54);
+    const added = BUILTIN_INSPECT_PARTS_PROBLEMS.slice(54, 64);
     expect(added.map((p) => p.id)).toEqual(
       Array.from({ length: 10 }, (_, i) => `c1-${String(55 + i).padStart(3, '0')}`),
     );

@@ -53,7 +53,7 @@ async function wireOnce(page: Page, box: CanvasBox): Promise<void> {
   await expect(page.getByTestId('status-overlay')).toContainText(wireCountText(1, 0));
 }
 
-test.describe.serial('電線を選んで Delete で外す（2026-09-24 利用者報告）', () => {
+test.describe.serial('電線を選んで Delete / Backspace で外す', () => {
   let app: ElectronApplication;
   let page: Page;
 
@@ -73,33 +73,34 @@ test.describe.serial('電線を選んで Delete で外す（2026-09-24 利用者
     await app.close();
   });
 
-  test('配線モードのまま3Dの電線を押して選び、Delete で外せる', async () => {
+  test('配線モードのまま3Dの電線を押して選び、Delete と Backspace で外せる', async () => {
     const box = await canvasBox(page);
-    await wireOnce(page, box);
     const overlay = page.getByTestId('status-overlay');
-    let selected = false;
-    for (const point of wireCandidates(box)) {
-      if (point.x < box.x || point.x > box.x + box.width) continue;
-      if (point.y < box.y || point.y > box.y + box.height) continue;
-      await page.mouse.click(point.x, point.y);
-      await page.waitForTimeout(150);
-      const text = (await overlay.textContent()) ?? '';
-      // 端子の近くを押して配線の始点になったら取り消して次の点へ
-      if (text.includes('始点:')) {
-        await page.keyboard.press('Escape');
-        continue;
+    for (const key of ['Delete', 'Backspace']) {
+      await wireOnce(page, box);
+      let selected = false;
+      for (const point of wireCandidates(box)) {
+        if (point.x < box.x || point.x > box.x + box.width) continue;
+        if (point.y < box.y || point.y > box.y + box.height) continue;
+        await page.mouse.click(point.x, point.y);
+        await page.waitForTimeout(150);
+        const text = (await overlay.textContent()) ?? '';
+        // 端子の近くを押して配線の始点になったら取り消して次の点へ
+        if (text.includes('始点:')) {
+          await page.keyboard.press('Escape');
+          continue;
+        }
+        if (text.includes('選択:')) {
+          selected = true;
+          break;
+        }
       }
-      if (text.includes('選択:')) {
-        selected = true;
-        break;
-      }
+      expect(selected, '3Dで電線を選べませんでした').toBe(true);
+      await expect(overlay).toContainText('端子未選択');
+      await page.keyboard.press(key);
+      await expect(overlay).toContainText(wireCountText(0, 0));
+      await expect(overlay).not.toContainText('選択:');
     }
-    expect(selected, '3Dで電線を選べませんでした').toBe(true);
-    // 端子を押しても配線が始まる（電線の当たり判定が端子を横取りしない）
-    await expect(overlay).toContainText('端子未選択');
-    await page.keyboard.press('Delete');
-    await expect(overlay).toContainText(wireCountText(0, 0));
-    await expect(overlay).not.toContainText('選択:');
   });
 
   test('電線が付いた端子を押すと、電線ではなく端子が選ばれる', async () => {
@@ -121,6 +122,10 @@ test.describe.serial('電線を選んで Delete で外す（2026-09-24 利用者
     await row.click();
     await expect(overlay).toContainText('選択:');
     await page.keyboard.press('Delete');
+    await expect(overlay).toContainText(wireCountText(0, 0));
+    await wireOnce(page, await canvasBox(page));
+    await row.click();
+    await page.getByRole('button', { name: 'この電線を外す（Delete / Backspace）' }).click();
     await expect(overlay).toContainText(wireCountText(0, 0));
   });
 });

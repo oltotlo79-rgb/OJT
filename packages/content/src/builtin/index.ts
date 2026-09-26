@@ -11,6 +11,7 @@ import {
   EXTRA_PLC,
 } from './expanded.js';
 import { V17_ASSEMBLE, V17_INSPECT_PARTS, V17_INSPECT_REPAIR, V17_PLC } from './v17.js';
+import { V18_ASSEMBLE, V18_INSPECT_PARTS, V18_INSPECT_REPAIR, V18_PLC } from './v18.js';
 import type { AssembleProblem } from '../schema/assemble.js';
 import {
   isAssembleProblem,
@@ -132,6 +133,7 @@ const BUILTIN_ASSEMBLE_JSON: readonly unknown[] = [
   ...EXTRA_ASSEMBLE,
   ...WORKSHOP_ASSEMBLE,
   ...V17_ASSEMBLE,
+  ...V18_ASSEMBLE,
 ];
 
 /** 内蔵のモードC1課題のJSON。 */
@@ -151,6 +153,7 @@ const BUILTIN_INSPECT_PARTS_JSON: readonly unknown[] = [
   ...EXTRA_INSPECT_PARTS,
   ...WORKSHOP_INSPECT_PARTS,
   ...V17_INSPECT_PARTS,
+  ...V18_INSPECT_PARTS,
 ];
 
 /** 内蔵のモードC2課題のJSON。 */
@@ -178,6 +181,7 @@ const BUILTIN_INSPECT_REPAIR_JSON: readonly unknown[] = [
   ...EXTRA_INSPECT_REPAIR,
   ...WORKSHOP_INSPECT_REPAIR,
   ...V17_INSPECT_REPAIR,
+  ...V18_INSPECT_REPAIR,
 ];
 
 /** 内蔵のモードD課題のJSON。 */
@@ -205,6 +209,7 @@ const BUILTIN_PLC_JSON: readonly unknown[] = [
   ...EXTRA_PLC,
   ...WORKSHOP_PLC,
   ...V17_PLC,
+  ...V18_PLC,
 ];
 
 /** 内蔵課題の検証に失敗したときに投げる。 */

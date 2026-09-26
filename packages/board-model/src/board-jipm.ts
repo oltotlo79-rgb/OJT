@@ -69,6 +69,8 @@ export const SOCKET_PIN_HOLE_ROW_PITCH_MM = 5;
 export const BLOCK_PITCH_MM = 9;
 /** ソケットのネジ端子の盤面からの高さ[mm]。 */
 export const SOCKET_TERMINAL_Z_MM = 10;
+/** ソケットの印字面より上で、圧着端子から外縁まで電線を見せる高さ[mm]。 */
+export const SOCKET_WIRE_LEAD_Z_MM = 14;
 /** 端子台のネジ端子の盤面からの高さ[mm]。 */
 export const BLOCK_TERMINAL_Z_MM = 8;
 /** PB／PL本体端子の盤面からの高さ[mm]（盤の裏側にあるため負）。§6.4 */

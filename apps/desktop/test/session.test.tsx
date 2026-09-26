@@ -377,6 +377,7 @@ describe('キーボードのショートカット（§8.2）', () => {
     act(() => {
       fireEvent.keyDown(input, { key: '3' });
       fireEvent.keyDown(input, { key: 'Delete' });
+      fireEvent.keyDown(input, { key: 'Backspace' });
       fireEvent.keyDown(input, { key: 'Escape' });
     });
 
@@ -392,6 +393,22 @@ describe('キーボードのショートカット（§8.2）', () => {
       fireEvent.keyDown(document.body, { key: '2', isComposing: true });
     });
     expect(useStore.getState().cameraNonce).toBe(before);
+  });
+
+  it('3Dで選んだ電線を Backspace で外し、Workerにも削除を送る', () => {
+    openSession();
+    act(() => {
+      scene.pick?.(terminalHit('P.1'));
+      scene.pick?.(terminalHit('TB_PB.2c'));
+    });
+    const wire = useStore.getState().session?.wires.find((item) => !item.locked);
+    expect(wire).toBeDefined();
+    act(() => scene.pick?.({ kind: 'wire', id: wire!.id, locked: false }));
+    expect(useStore.getState().selectedWire).toBe(wire!.id);
+    fireEvent.keyDown(document.body, { key: 'Backspace' });
+    expect(useStore.getState().session?.wires.some((item) => item.id === wire!.id)).toBe(false);
+    expect(useStore.getState().selectedWire).toBeUndefined();
+    expect(sentOf('removeWire')).toHaveLength(1);
   });
 
   it('入力欄の外なら 1 / 2 / 3 で視点が変わる', () => {

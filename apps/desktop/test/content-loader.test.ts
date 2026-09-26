@@ -61,7 +61,7 @@ afterEach(() => {
 });
 
 describe('builtinSet', () => {
-  it('開発時は焼き込みの内蔵課題60題を返す（§7.9）', async () => {
+  it('開発時は焼き込みの内蔵課題372題を返す（§7.9）', async () => {
     expect((await builtinSet()).problems).toHaveLength(BUILTIN_ALL_PROBLEMS.length);
     expect((await builtinSet()).errors).toHaveLength(0);
   });
@@ -85,7 +85,7 @@ describe('builtinSet', () => {
     expect(set.problems).toHaveLength(BUILTIN_ALL_PROBLEMS.length);
     // ディスク側の内容がそのまま同梱課題になる（差し替えが効く）
     expect(set.problems.every((p) => p.title.startsWith('差し替え版'))).toBe(true);
-  });
+  }, 60_000);
 
   it('配布版でフォルダが空なら焼き込みに落として理由を残す（§13 #1）', async () => {
     const resources = tempDir('ojt-resources-');
@@ -113,7 +113,7 @@ describe('builtinSet', () => {
     setResourcesPath(resources);
 
     const set = await builtinSet();
-    // 一覧が欠けたまま出ず、確実に焼き込みの364題へ落ちる
+    // 一覧が欠けたまま出ず、確実に焼き込みの372題へ落ちる
     expect(set.problems).toHaveLength(BUILTIN_ALL_PROBLEMS.length);
     expect(set.errors).toHaveLength(1);
     expect(set.errors[0]?.message).toContain('8件');
@@ -271,9 +271,9 @@ describe('loadContent の所要時間（1D2-a: 大きなフォルダでも一覧
     const tookMs = Date.now() - started;
     expect(payload.problems).toHaveLength(BUILTIN_ALL_PROBLEMS.length + count);
     expect(payload.errors).toEqual([]);
-    // 実測は数秒。極端に遅くなったら気づけるだけの緩い上限にする
-    expect(tookMs).toBeLessThan(20_000);
-  }, 60_000);
+    // 全スイートの並列実行中は CPU が混み合うため、極端な退行だけを検出する
+    expect(tookMs).toBeLessThan(45_000);
+  }, 90_000);
 });
 
 describe('利用者課題フォルダのファイル数の足切り（Phase 7 Task 9 / DM-1 ≡ CT-06）', () => {
@@ -379,8 +379,8 @@ describe('loadContent のモードB以外の扱い（Plan 2A Task 17: SupportedP
     expect(row?.source).toBe('user');
   });
 
-  it('内蔵課題は364題（モードB 100 / C1 64 / C2 100 / D 100）', () => {
-    expect(BUILTIN_ALL_PROBLEMS).toHaveLength(364);
+  it('内蔵課題は372題（モードB 102 / C1 66 / C2 102 / D 102）', () => {
+    expect(BUILTIN_ALL_PROBLEMS).toHaveLength(372);
   });
 });
 

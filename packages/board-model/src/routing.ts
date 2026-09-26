@@ -9,7 +9,9 @@ import {
   HARNESS_PITCH_MM,
   isOffBoardTerminal,
   runZ,
+  SOCKET_WIRE_LEAD_Z_MM,
   WIRE_LAYER_COUNT,
+  WIRE_LAYER_STEP_MM,
   WIRE_RUN_X_Z_MM,
   WIRE_RUN_Y_Z_MM,
   type BoardDefinition,
@@ -68,6 +70,9 @@ export const WIRE_FILLET_RADIUS_MM = 6;
 export const WIRE_FILLET_SEGMENTS = 3;
 /** 同じ列の隣り合う端子を直結する渡り線が、列から張り出す距離[mm]。 */
 export const DIRECT_JOG_MM = 5;
+/** ソケット表面の横走行を縦走行から離す高さ[mm]。 */
+export const SOCKET_LEAD_X_OFFSET_Z_MM = 1.8;
+const tenthMm = (value: number): number => Math.round(value * 10) / 10;
 /** 渡り線が使える張り出しの段数。これを超えるぶんは配線帯の経路にする。 */
 export const MAX_DIRECT_JOG_LEVELS = 3;
 
@@ -571,6 +576,66 @@ function ownerOf(id: TerminalId): string {
   return dot < 0 ? id : id.slice(0, dot);
 }
 
+/** ソケットの端子から出る電線を、本体の外で低い配線層へ下ろす位置。 */
+function socketLeadExitY(board: BoardDefinition, terminal: BoardTerminal): number | undefined {
+  const socket = board.sockets.find((item) => item.id === ownerOf(terminal.id));
+  if (socket === undefined) return undefined;
+  const clearance = WIRE_DIAMETER_MM;
+  return terminal.exit === 'rear'
+    ? socket.origin.y - clearance
+    : socket.origin.y + socket.bodyMm.length + clearance;
+}
+
+/** 同じソケットの同じ列から出る既存線を数え、端子付近の高さを分ける。 */
+function socketLeadLevel(
+  board: BoardDefinition,
+  terminal: BoardTerminal,
+  existingRoutes: readonly WireRoute[],
+): number {
+  const socket = board.sockets.find((item) => item.id === ownerOf(terminal.id));
+  if (socket === undefined) return 0;
+  const front = terminal.exit === 'front';
+  let count = 0;
+  for (const route of existingRoutes) {
+    if (route.kind === 'harness') continue;
+    for (const end of [route.corners[0], route.corners[route.corners.length - 1]]) {
+      if (end === undefined || Math.abs(end.x - terminal.pos.x) > EPS) continue;
+      if (end.y < socket.origin.y || end.y > socket.origin.y + socket.bodyMm.length) continue;
+      if (end.y > socket.origin.y + socket.bodyMm.length / 2 === front) count += 1;
+    }
+  }
+  return count;
+}
+
+/** 同じ端子に既に接続された線の本数。端子直後を同じ高さで重ねないために使う。 */
+function terminalUseLevel(terminal: BoardTerminal, existingRoutes: readonly WireRoute[]): number {
+  let count = 0;
+  for (const route of existingRoutes) {
+    if (route.kind === 'harness') continue;
+    for (const end of [route.corners[0], route.corners[route.corners.length - 1]]) {
+      if (end !== undefined && vecEquals(end, terminal.pos, EPS)) count += 1;
+    }
+  }
+  return count;
+}
+
+function reusedTerminalLeadZ(
+  terminal: BoardTerminal,
+  existingRoutes: readonly WireRoute[],
+): number {
+  return tenthMm(10 + terminalUseLevel(terminal, existingRoutes) * WIRE_LAYER_STEP_MM);
+}
+
+function socketLeadZ(
+  board: BoardDefinition,
+  terminal: BoardTerminal,
+  existingRoutes: readonly WireRoute[],
+): number {
+  return tenthMm(
+    SOCKET_WIRE_LEAD_Z_MM + socketLeadLevel(board, terminal, existingRoutes) * WIRE_LAYER_STEP_MM,
+  );
+}
+
 /** 渡り線が x 方向に占める範囲（渡り線には必ず折れ点があるので、範囲は空にならない）。 */
 function directRunXSpan(route: WireRoute): { lo: number; hi: number } {
   const xs = route.corners.map((c) => c.x);
@@ -634,10 +699,18 @@ function directRunRoute(
   const jogY = a.pos.y + dir * (DIRECT_JOG_MM + level * CHANNEL_LANE_PITCH_MM);
   if (jogEntersChannelBand(board, lo, hi, a.pos.y, jogY)) return undefined;
 
+  const socketLead = socketLeadExitY(board, a) !== undefined;
+  const reused = Math.max(terminalUseLevel(a, existingRoutes), terminalUseLevel(b, existingRoutes));
+  const raised = socketLead || reused > 0;
+  const jogZ = socketLead
+    ? Math.max(socketLeadZ(board, a, existingRoutes), socketLeadZ(board, b, existingRoutes))
+    : reused > 0
+      ? tenthMm(10 + reused * WIRE_LAYER_STEP_MM)
+      : WIRE_RUN_Y_Z_MM;
   const corners = buildCorners(a.pos, [
-    toStep(a.pos.x, jogY, WIRE_RUN_Y_Z_MM),
-    toStep(b.pos.x, jogY, WIRE_RUN_X_Z_MM),
-    toStep(b.pos.x, b.pos.y, WIRE_RUN_Y_Z_MM),
+    toStep(a.pos.x, jogY, jogZ),
+    toStep(b.pos.x, jogY, raised ? tenthMm(jogZ + SOCKET_LEAD_X_OFFSET_Z_MM) : WIRE_RUN_X_Z_MM),
+    toStep(b.pos.x, b.pos.y, jogZ),
     riseStep(b.pos.z),
   ]);
   const points = filletCorners(corners, WIRE_FILLET_RADIUS_MM);
@@ -671,10 +744,22 @@ function sameNodeRoute(
   wire: RoutableWire,
   a: BoardTerminal,
   b: BoardTerminal,
+  existingRoutes: readonly WireRoute[],
 ): WireRoute {
+  const socketSurface =
+    socketLeadExitY(board, a) !== undefined || socketLeadExitY(board, b) !== undefined;
+  const reused = Math.max(terminalUseLevel(a, existingRoutes), terminalUseLevel(b, existingRoutes));
+  const surface = socketSurface || reused > 0;
+  const surfaceZ = socketSurface
+    ? Math.max(socketLeadZ(board, a, existingRoutes), socketLeadZ(board, b, existingRoutes))
+    : tenthMm(10 + reused * WIRE_LAYER_STEP_MM);
   const corners = buildCorners(a.pos, [
-    toStep(b.pos.x, a.pos.y, WIRE_RUN_X_Z_MM),
-    toStep(b.pos.x, b.pos.y, WIRE_RUN_Y_Z_MM),
+    toStep(
+      b.pos.x,
+      a.pos.y,
+      surface ? tenthMm(surfaceZ + SOCKET_LEAD_X_OFFSET_Z_MM) : WIRE_RUN_X_Z_MM,
+    ),
+    toStep(b.pos.x, b.pos.y, surface ? surfaceZ : WIRE_RUN_Y_Z_MM),
     riseStep(b.pos.z),
   ]);
   const points = filletCorners(corners, WIRE_FILLET_RADIUS_MM);
@@ -838,7 +923,7 @@ export function routeWire(
     );
   }
   // 両端が同じ節点に出るなら、帯まで下りて折り返さずまっすぐ渡す
-  if (path.channelIds.length === 0) return sameNodeRoute(board, wire, a, b);
+  if (path.channelIds.length === 0) return sameNodeRoute(board, wire, a, b, existingRoutes);
 
   const channelById = options.channelById ?? channelByIdOf(board.wiringChannels);
   const { traversals, edgeTraversal } = buildTraversals(path, graph.nodes, channelById);
@@ -890,14 +975,39 @@ export function routeWire(
     /^(P|N)\./.test(t.id) ? t.pos.x - 12 + dx : undefined;
   const startSupplyX = startRun?.channel.axis === 'x' ? supplyExit(a, startDx) : undefined;
   const endSupplyX = endRun?.channel.axis === 'x' ? supplyExit(b, endDx) : undefined;
+  const startReused = terminalUseLevel(a, existingRoutes) > 0;
+  const endReused = terminalUseLevel(b, existingRoutes) > 0;
   const startX = startSupplyX ?? first.x + startDx;
   const endX = endSupplyX ?? last.x + endDx;
-  // 端子 → 盤面へ立ち下げ → 帯へ引き出す → 帯を走る → 目的端子の列へ → 端子
-  const steps: RouteStep[] = [
-    ...(startSupplyX === undefined ? [] : [toStep(startX, a.pos.y, 10)]),
-    toStep(startX, a.pos.y, runZ('x', startLane % WIRE_LAYER_COUNT)),
-    toStep(startX, first.y, runZ('y', startLane % WIRE_LAYER_COUNT)),
-  ];
+  // ソケットの上では高い位置を保ち、外縁を出てから低い配線層へ下ろす。
+  // 端子位置で直ちに下げると樹脂本体の中に線が埋まり、端子と離れて見える。
+  const startLeadY = socketLeadExitY(board, a);
+  const endLeadY = socketLeadExitY(board, b);
+  const startLeadLevel = socketLeadLevel(board, a, existingRoutes);
+  const endLeadLevel = socketLeadLevel(board, b, existingRoutes);
+  const startLeadZ = socketLeadZ(board, a, existingRoutes);
+  const endLeadZ = socketLeadZ(board, b, existingRoutes);
+  const startLeadRunZ = tenthMm(WIRE_RUN_Y_Z_MM + startLeadLevel * WIRE_LAYER_STEP_MM);
+  const endLeadRunZ = tenthMm(WIRE_RUN_Y_Z_MM + endLeadLevel * WIRE_LAYER_STEP_MM);
+  const steps: RouteStep[] =
+    startLeadY === undefined
+      ? [
+          toStep(
+            startX,
+            a.pos.y,
+            startSupplyX !== undefined || startReused
+              ? reusedTerminalLeadZ(a, existingRoutes)
+              : runZ('x', startLane % WIRE_LAYER_COUNT),
+          ),
+          toStep(startX, first.y, runZ('y', startLane % WIRE_LAYER_COUNT)),
+        ]
+      : [
+          riseStep(startLeadZ),
+          toStep(startX, a.pos.y, tenthMm(startLeadZ + SOCKET_LEAD_X_OFFSET_Z_MM)),
+          toStep(startX, startLeadY, startLeadZ),
+          riseStep(startLeadRunZ),
+          toStep(startX, first.y, startLeadRunZ),
+        ];
   positions.forEach((p, index) => {
     const traversal = traversalOf(index - 1);
     if (traversal === undefined) return;
@@ -905,11 +1015,32 @@ export function routeWire(
     const x = index === positions.length - 1 ? endX : p.x;
     steps.push(toStep(x, p.y, channelZ(traversal.channel, traversal.layer)));
   });
-  steps.push(toStep(endX, b.pos.y, runZ('y', endLane % WIRE_LAYER_COUNT)));
-  if (endSupplyX !== undefined) steps.push(riseStep(10));
   steps.push(
-    toStep(b.pos.x, b.pos.y, endSupplyX === undefined ? runZ('x', endLane % WIRE_LAYER_COUNT) : 10),
+    toStep(
+      endX,
+      endLeadY ?? b.pos.y,
+      endLeadY === undefined ? runZ('y', endLane % WIRE_LAYER_COUNT) : endLeadRunZ,
+    ),
   );
+  if (endLeadY !== undefined) {
+    steps.push(
+      riseStep(endLeadZ),
+      toStep(endX, b.pos.y, endLeadZ),
+      toStep(b.pos.x, b.pos.y, tenthMm(endLeadZ + SOCKET_LEAD_X_OFFSET_Z_MM)),
+    );
+  } else {
+    if (endSupplyX !== undefined || endReused)
+      steps.push(riseStep(reusedTerminalLeadZ(b, existingRoutes)));
+    steps.push(
+      toStep(
+        b.pos.x,
+        b.pos.y,
+        endSupplyX === undefined && !endReused
+          ? runZ('x', endLane % WIRE_LAYER_COUNT)
+          : reusedTerminalLeadZ(b, existingRoutes),
+      ),
+    );
+  }
   steps.push(riseStep(b.pos.z));
 
   const corners = buildCorners(a.pos, steps);

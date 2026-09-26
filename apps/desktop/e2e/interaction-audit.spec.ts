@@ -11,7 +11,13 @@ import { BUILTIN_PLC_PROBLEMS, toSocketRoles } from '@ojt/content';
 import type { TerminalId } from '@ojt/circuit-sim';
 import { expect, test, type Page } from '@playwright/test';
 import { launchApp } from './app.js';
-import { boardPoint, plcBoardPointFor, plcTerminalPointFor, type CanvasBox } from './projection.js';
+import {
+  boardPoint,
+  plcBoardPointFor,
+  plcTerminalPointFor,
+  terminalPoint,
+  type CanvasBox,
+} from './projection.js';
 
 /**
  * 操作の総点検（2026-09-26 利用者指示「実際に選択しても配線されない、削除できない、動作しない部分
@@ -42,6 +48,30 @@ async function canvasBox(page: Page): Promise<CanvasBox> {
   if (box === null) throw new Error('キャンバスの矩形を取得できませんでした');
   return box;
 }
+
+test('回路組立: 使用中のソケットと端子台の全端子を3Dから始点に選べる', async () => {
+  const { app, page } = await launchApp({ window: WINDOW });
+  try {
+    await page.getByTestId('mode-assemble').click();
+    await page.getByTestId('open-b-001').click();
+    await page.waitForTimeout(1500);
+    const box = await canvasBox(page);
+    const overlay = page.getByTestId('status-overlay');
+    const terminals = JIPM_BOARD.terminals.filter(
+      (terminal) => terminal.wirable && /^(?:P|N|TB_PB|TB_PL|S1|S7)\./.test(String(terminal.id)),
+    );
+    expect(terminals).toHaveLength(50);
+    for (const terminal of terminals) {
+      const point = terminalPoint(terminal.id, box);
+      await page.mouse.click(point.x, point.y);
+      await expect(overlay, String(terminal.id)).toContainText('始点:');
+      await page.keyboard.press('Escape');
+      await expect(overlay).toContainText('端子未選択');
+    }
+  } finally {
+    await app.close();
+  }
+});
 
 /** 既定メーカーを設定した状態で PLC の課題を開き、盤だけの表示にする。 */
 async function openPlcBoard(vendor: string): Promise<{ page: Page; close: () => Promise<void> }> {

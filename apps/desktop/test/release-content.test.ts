@@ -133,14 +133,14 @@ describe('同梱課題が4メーカーで成立する（決定表#19）', () => 
    * 課題を増やしたらこの数と、そのとき出すリリースノートの表を**両方**直すこと
    * （`docs/releases/v1.0.0.md` の「合計 28題」は v1.0.0 が実際に同梱した数なので直さない）。
    */
-  it('ships exactly the builtin problems the next release note must list (B 60 / C1 36 / C2 60 / D 60)', () => {
+  it('ships exactly the builtin problems the next release note must list (B 102 / C1 66 / C2 102 / D 102)', () => {
     expect({
       assemble: BUILTIN_ASSEMBLE_PROBLEMS.length,
       inspectParts: BUILTIN_INSPECT_PARTS_PROBLEMS.length,
       inspectRepair: BUILTIN_INSPECT_REPAIR_PROBLEMS.length,
       plc: BUILTIN_PLC_PROBLEMS.length,
       total: BUILTIN_ALL_PROBLEMS.length,
-    }).toEqual({ assemble: 100, inspectParts: 64, inspectRepair: 100, plc: 100, total: 364 });
+    }).toEqual({ assemble: 102, inspectParts: 66, inspectRepair: 102, plc: 102, total: 372 });
   });
 
   it.each(PLC_VENDORS.map((vendor, i) => [vendor, PLC_MODELS[i]] as const))(

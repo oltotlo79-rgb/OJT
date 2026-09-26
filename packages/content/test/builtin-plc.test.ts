@@ -8,11 +8,11 @@ import { resolveCompareSignals } from '../src/schema/judge.js';
 import { buildTimeChart, defaultChartSignals, startsAndEndsLow } from '../src/timechart.js';
 
 describe('内蔵モードD課題（§7.9）', () => {
-  it('has the hundred built-in mode D problems (2級47題＋1級53題。v1.7.0 で10題追加)', () => {
+  it('has 102 built-in mode D problems (2級49題＋1級53題)', () => {
     expect(BUILTIN_PLC_PROBLEMS.map((p) => p.id)).toEqual(
-      Array.from({ length: 100 }, (_, i) => `d-${String(i + 1).padStart(3, '0')}`),
+      Array.from({ length: 102 }, (_, i) => `d-${String(i + 1).padStart(3, '0')}`),
     );
-    expect(BUILTIN_PLC_PROBLEMS.filter((p) => p.grade === 2)).toHaveLength(47);
+    expect(BUILTIN_PLC_PROBLEMS.filter((p) => p.grade === 2)).toHaveLength(49);
     expect(BUILTIN_PLC_PROBLEMS.filter((p) => p.grade === 1)).toHaveLength(53);
     // 同梱の60題は三菱で出題するが、IRはベンダ中立で4機種すべてで成立する
     // （`plc-cross-validation.test.ts` が機種を差し替えて確かめている。決定表#14）

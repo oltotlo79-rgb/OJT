@@ -1,5 +1,7 @@
 import {
   socketPinHoleOffsets,
+  SOCKET_TERMINAL_Z_MM,
+  SOCKET_WIRE_LEAD_Z_MM,
   type BoardTerminal,
   type MountableKind,
   type SocketDefinition,
@@ -46,15 +48,10 @@ const LABEL_STYLE = { pointerEvents: 'none' } as const;
 
 /** ネジ端子ティアの奥行[mm]（2段ぶん＋余白）。 */
 const TIER_DEPTH_MM = 20;
-/**
- * ティアの高さ[mm]。
- * ネジ端子は盤面から `SOCKET_TERMINAL_Z_MM`（10mm）にあり、ネジ頭の円柱は 9.2〜10.8mm を占める。
- * 以前の 11mm はネジ頭をまるごと飲み込んでしまい、ホバー色（水色）も配線待ち色（橙）も
- * 画面に出てこなかった（レビュー指摘）。ネジ頭が 1.8mm 突き出す 9mm にする。
- */
-export const TIER_HEIGHT_MM = 9;
-/** 本体（差込領域）の高さ[mm]。 */
-const BODY_HEIGHT_MM = 9;
+/** 外側から中央へ上がる2段の端子台と、中央の差込領域の高さ[mm]。 */
+export const SOCKET_STEP_HEIGHTS_MM = [5.8, 7.8, 9.8] as const;
+/** 中央の差込領域の高さ[mm]。装着部品の底面もこの高さに合わせる。 */
+export const SOCKET_BODY_TOP_Z_MM = SOCKET_STEP_HEIGHTS_MM[2];
 /** 印字の板をネジの頭より上に浮かせる量[mm]（ネジに隠れないようにする）。 */
 const LABEL_LIFT_MM = 2;
 /** 保持レバーの幅[mm]。 */
@@ -64,7 +61,7 @@ const LEVER_SPAN_RATIO = 0.6;
 /** 保持レバーの厚み[mm]。 */
 const LEVER_HEIGHT_MM = 2.5;
 /** 保持レバーの中心の高さ[mm]。 */
-const LEVER_CENTER_Z_MM = BODY_HEIGHT_MM + 1;
+const LEVER_CENTER_Z_MM = SOCKET_BODY_TOP_Z_MM + 1;
 /** 保持レバーの天面の高さ[mm]。 */
 export const LEVER_TOP_Z_MM = LEVER_CENTER_Z_MM + LEVER_HEIGHT_MM / 2;
 /** 差込穴の半径[mm]。 */
@@ -90,9 +87,12 @@ const PRINT_CLEARANCE_MM = 0.5;
  * 斜めから見たときのネジと番号のずれ（視差）はほぼ変わらない。
  */
 export const SOCKET_PRINT_Z_MM = Math.max(
-  TIER_HEIGHT_MM + LABEL_LIFT_MM,
+  SOCKET_STEP_HEIGHTS_MM[1] + LABEL_LIFT_MM,
   LEVER_TOP_Z_MM + PRINT_CLEARANCE_MM,
 );
+
+/** 端子の上の電線が印字板・レバーを抜けて見えるための間隔。 */
+export const SOCKET_WIRE_CLEARANCE_MM = SOCKET_WIRE_LEAD_Z_MM - SOCKET_PRINT_Z_MM;
 
 /**
  * 保持レバー2本が印字の板の上に落とす影（板の左上を原点とする mm）。
@@ -228,7 +228,7 @@ function PinHoles({
         const [x, y, z] = toScene({
           x: originX + hole.dx,
           y: originY + hole.dy,
-          z: BODY_HEIGHT_MM + 0.2,
+          z: SOCKET_BODY_TOP_Z_MM + 0.2,
         });
         // 半径1・高さ0.5の円柱を実寸へ伸ばす（高さは倒す前の局所Y軸なので1倍のまま）
         return new Matrix4().compose(
@@ -246,11 +246,73 @@ function PinHoles({
   return (
     <instancedMesh
       ref={mesh}
+      name="socket-pin-holes"
       args={[
         PIN_HOLE_GEOMETRY,
         sharedMaterial(PIN_HOLE_COLOR, { roughness: 0.9 }),
         matrices.length,
       ]}
+      raycast={noPick}
+    />
+  );
+}
+
+/** 外側の低い段、内側の段、中央の差込部を連続した5区間に分ける。 */
+export function socketStepSections(length: number): Array<{
+  offsetY: number;
+  depth: number;
+  height: number;
+}> {
+  const halfTier = TIER_DEPTH_MM / 2;
+  return [
+    { offsetY: halfTier / 2, depth: halfTier, height: SOCKET_STEP_HEIGHTS_MM[0] },
+    { offsetY: halfTier * 1.5, depth: halfTier, height: SOCKET_STEP_HEIGHTS_MM[1] },
+    {
+      offsetY: length / 2,
+      depth: length - TIER_DEPTH_MM * 2,
+      height: SOCKET_BODY_TOP_Z_MM,
+    },
+    {
+      offsetY: length - halfTier * 1.5,
+      depth: halfTier,
+      height: SOCKET_STEP_HEIGHTS_MM[1],
+    },
+    { offsetY: length - halfTier / 2, depth: halfTier, height: SOCKET_STEP_HEIGHTS_MM[0] },
+  ];
+}
+
+/** 段を低くしてもネジ頭が宙に浮かないよう、端子ごとの小さな座をまとめて描く。 */
+function TerminalPads({
+  socket,
+  terminals,
+}: {
+  socket: SocketDefinition;
+  terminals: readonly BoardTerminal[];
+}): JSX.Element | null {
+  const mesh = useRef<InstancedMesh | null>(null);
+  const matrices = useMemo(() => {
+    const sections = socketStepSections(socket.bodyMm.length);
+    return terminals.map((terminal) => {
+      const localY = terminal.pos.y - socket.origin.y;
+      const section = sections.find((item) => Math.abs(localY - item.offsetY) <= item.depth / 2);
+      const base = section?.height ?? SOCKET_STEP_HEIGHTS_MM[1];
+      const height = SOCKET_TERMINAL_Z_MM - 0.8 - base;
+      return new Matrix4().compose(
+        new Vector3(...toScene({ x: terminal.pos.x, y: terminal.pos.y, z: base + height / 2 })),
+        new Quaternion(),
+        new Vector3(4, 4, height),
+      );
+    });
+  }, [socket, terminals]);
+  useEffect(() => {
+    applyInstanceMatrices(mesh.current, matrices);
+  }, [matrices]);
+  if (matrices.length === 0) return null;
+  return (
+    <instancedMesh
+      ref={mesh}
+      name="socket-terminal-pads"
+      args={[UNIT_BOX, sharedMaterial('#4A5563', { roughness: 0.55 }), matrices.length]}
       raycast={noPick}
     />
   );
@@ -311,56 +373,42 @@ export function Socket({
   );
   const holes = useMemo(() => socketPinHoleOffsets(), []);
 
-  const bodyCenter = toScene({ x: centerX, y: centerY, z: BODY_HEIGHT_MM / 2 });
+  const bodyCenter = toScene({ x: centerX, y: centerY, z: SOCKET_BODY_TOP_Z_MM / 2 });
+  const bodyEvents = {
+    onClick: (event: ThreeEvent<MouseEvent>): void => {
+      event.stopPropagation();
+      onPickSocket(socket.id, occupied);
+    },
+    onPointerOver: (event: ThreeEvent<PointerEvent>): void => {
+      event.stopPropagation();
+      onHoverSocket(socket.id);
+    },
+    onPointerOut: (): void => onHoverSocket(undefined),
+    onPointerUp: (event: ThreeEvent<PointerEvent>): void => {
+      if (event.button !== 0) return;
+      event.stopPropagation();
+      onReleaseSocket(socket.id, occupied);
+    },
+  };
 
   return (
     <group name={`socket-${socket.id}`}>
-      {/* 本体（中央の差込領域）。クリックで装着／取り外しUIを出す */}
-      <mesh
-        castShadow
-        name={`socket-body-${socket.id}`}
-        geometry={UNIT_BOX}
-        material={socketBodyMaterial(socketGlowOf({ selected, hovered, droppable }))}
-        position={bodyCenter}
-        scale={[width, length, BODY_HEIGHT_MM]}
-        onClick={(event: ThreeEvent<MouseEvent>) => {
-          event.stopPropagation();
-          onPickSocket(socket.id, occupied);
-        }}
-        onPointerOver={(event: ThreeEvent<PointerEvent>) => {
-          event.stopPropagation();
-          onHoverSocket(socket.id);
-        }}
-        onPointerOut={() => {
-          onHoverSocket(undefined);
-        }}
-        /*
-         * 運んできた部品はここで放す（Phase 7 設計 §7.3.3）。`onClick` は
-         * 「同じ要素で押して放した」ときしか飛ばないので、パレットから運んできた
-         * ドラッグは `pointerup` でしか受け取れない。
-         */
-        onPointerUp={(event: ThreeEvent<PointerEvent>) => {
-          if (event.button !== 0) return;
-          event.stopPropagation();
-          onReleaseSocket(socket.id, occupied);
-        }}
-      />
+      {/* 5区間で階段状の外形を作る。どの段も押せるので装着操作は維持する。 */}
+      {socketStepSections(length).map((section, index) => (
+        <mesh
+          key={`step-${index}`}
+          castShadow
+          name={index === 2 ? `socket-body-${socket.id}` : `socket-step-${socket.id}-${index}`}
+          geometry={UNIT_BOX}
+          material={socketBodyMaterial(socketGlowOf({ selected, hovered, droppable }))}
+          position={toScene({ x: centerX, y: originY + section.offsetY, z: section.height / 2 })}
+          scale={[width, section.depth, section.height]}
+          {...bodyEvents}
+        />
+      ))}
+      <TerminalPads socket={socket} terminals={terminals} />
       {/* 差込穴（2列×7段。中央の差込領域に並ぶ）。共有ジオメトリ1個の `instancedMesh`。3D-02 */}
       <PinHoles originX={originX} originY={originY} holes={holes} />
-      {/* 段付きの端子ティア（奥端・手前端） */}
-      {[0, 1].map((index) => {
-        const y = index === 0 ? originY + TIER_DEPTH_MM / 2 : originY + length - TIER_DEPTH_MM / 2;
-        return (
-          <mesh
-            key={`tier-${index}`}
-            geometry={UNIT_BOX}
-            material={sharedMaterial(SOCKET_BODY_COLOR, { roughness: 0.5, metalness: 0.12 })}
-            raycast={noPick}
-            position={toScene({ x: centerX, y, z: TIER_HEIGHT_MM / 2 })}
-            scale={[width, TIER_DEPTH_MM, TIER_HEIGHT_MM]}
-          />
-        );
-      })}
       {/* 保持レバー（実物は黄色。中央の差込領域の両端） */}
       {[0, 1].map((index) => {
         const y =
@@ -389,7 +437,7 @@ export function Socket({
         center
         style={LABEL_STYLE}
         distanceFactor={280}
-        position={[bodyCenter[0], bodyCenter[1] + length / 2 + 5, TIER_HEIGHT_MM]}
+        position={[bodyCenter[0], bodyCenter[1] + length / 2 + 5, SOCKET_BODY_TOP_Z_MM]}
         zIndexRange={[10, 0]}
       >
         <span className="socket-label" data-label-rank={3}>

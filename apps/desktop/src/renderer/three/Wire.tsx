@@ -213,11 +213,12 @@ export function WirePickBody({
         /*
          * 配線モードでは端子・ソケット・押ボタンなどを優先する（§8.2「端子クリックを優先」）。
          * 電線は端子の上で終わるので、端子を押したつもりの点にも当たり判定チューブが重なる。
-         * 同じ点に電線以外の操作対象があれば、ここでは拾わずにイベントをそちらへ流す。
+         * 端子の当たり判定があるときだけ譲る。ソケット本体まで含めると、
+         * ソケットの上を通る渡り線が選択不能になる。
          */
         if (
           yieldsToParts &&
-          event.intersections.some((hit) => hit.object.userData[WIRE_PICK_MARK] !== true)
+          event.intersections.some((hit) => hit.object.userData['terminalPick'] === true)
         ) {
           return;
         }

@@ -2,6 +2,7 @@ import {
   routeSession,
   routeWire,
   RoutingError,
+  isOffBoardTerminal,
   toPhysicalTerminal,
   type BoardDefinition,
   type BoardSession,
@@ -26,6 +27,7 @@ export function safeRoutes(
   for (const [index, wire] of session.wires.entries()) {
     const wireId = typeof wire?.id === 'string' ? wire.id : `w-?${index}`;
     try {
+      if (isOffBoardTerminal(wire.from) || isOffBoardTerminal(wire.to)) continue;
       routes.push(
         routeWire(
           board,

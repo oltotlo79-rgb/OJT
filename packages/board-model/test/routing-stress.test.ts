@@ -262,6 +262,7 @@ describe('routing: スロットの実測ガード（Task 9c）', () => {
     const random = prng(20260914);
     const clashes: string[] = [];
     const crossings: string[] = [];
+    const merges: string[] = [];
     let runs = 0;
     let examinedCrossings = 0;
     let wires = 0;
@@ -276,11 +277,13 @@ describe('routing: スロットの実測ガード（Task 9c）', () => {
       wires += routes.length;
       runs += bandRuns(routes).length;
       clashes.push(...slotClashes(routes).map((m) => `#${batch} ${m}`));
+      merges.push(...collinearMerges(routes).map((m) => `#${batch} ${m}`));
       const crossed = tubeCrossings(routes);
       examinedCrossings += crossed.examined;
       crossings.push(...crossed.bad.map((m) => `#${batch} ${m}`));
     }
     expect(clashes).toEqual([]);
+    expect(merges).toEqual([]);
     expect(crossings).toEqual([]);
     // 判定が空振りしていないことの担保
     expect(wires).toBeGreaterThan(500);
@@ -306,7 +309,7 @@ describe('routing: スロットの実測ガード（Task 9c）', () => {
 
   it('端子からの引き出しは、同じ列・同じネジでも1本の管に見えない（レーンごとにずらす）', () => {
     // Task 9b の時点では自己保持8か所・フリッカ8か所が重なって1本に見えていた
-    expect(collinearMerges(routeAll(SELF_HOLD_WIRING)).length).toBeLessThanOrEqual(1);
-    expect(collinearMerges(routeAll(FLICKER_WIRING)).length).toBeLessThanOrEqual(1);
+    expect(collinearMerges(routeAll(SELF_HOLD_WIRING))).toEqual([]);
+    expect(collinearMerges(routeAll(FLICKER_WIRING))).toEqual([]);
   });
 });

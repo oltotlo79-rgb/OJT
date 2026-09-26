@@ -1,6 +1,7 @@
 import workshopRepairs from './helpers/workshop-repair-steps.json';
 import expandedRepairs from './helpers/expanded-repairs.json';
 import v17Repairs from './helpers/v17-repairs.json';
+import v18Repairs from './helpers/v18-repairs.json';
 import { addWire, JIPM_BOARD, removeWire } from '@ojt/board-model';
 import { toTerminalId } from '@ojt/circuit-sim';
 import { describe, expect, it } from 'vitest';
@@ -15,7 +16,7 @@ import {
 import { judgeInspectRepair } from '../src/judge-inspect.js';
 
 /**
- * 内蔵C2課題90題の弁別テスト。設計仕様 §7.8 の自己整合テストにあたる。
+ * 内蔵C2課題102題の弁別テスト。設計仕様 §7.8 の自己整合テストにあたる。
  * 「正しく指摘して正しく修復すれば合格し、修復しなければ不合格になる」ことを全題で見張る。
  *
  * `c2-020` はランダム故障の課題（§7.5）なので、種を固定して解決する（`SEEDS`）。種を渡さないと
@@ -33,6 +34,7 @@ const REPAIRS: Readonly<Record<string, readonly Repair[]>> = {
   ...(workshopRepairs as Readonly<Record<string, readonly Repair[]>>),
   ...(expandedRepairs as Readonly<Record<string, readonly Repair[]>>),
   ...(v17Repairs as Readonly<Record<string, readonly Repair[]>>),
+  ...(v18Repairs as Readonly<Record<string, readonly Repair[]>>),
   'c2-001': [
     { op: 'remove', wireId: 'sw-005' },
     { op: 'add', from: 'TB_PB.1a', to: 'CR1.14' },
@@ -192,13 +194,13 @@ function circuitOf(id: string) {
   return { problem, circuit: built.value };
 }
 
-describe('内蔵C2課題100題（§7.9 / v1.7.0 で10題追加）', () => {
-  it('registers a hundred problems: fifty-two grade 2 and forty-eight grade 1', () => {
-    expect(BUILTIN_INSPECT_REPAIR_PROBLEMS).toHaveLength(100);
+describe('内蔵C2課題102題（§7.9）', () => {
+  it('registers 102 problems: 54 grade 2 and 48 grade 1', () => {
+    expect(BUILTIN_INSPECT_REPAIR_PROBLEMS).toHaveLength(102);
     expect(BUILTIN_INSPECT_REPAIR_PROBLEMS.map((p) => p.id)).toEqual(
-      Array.from({ length: 100 }, (_, i) => `c2-${String(i + 1).padStart(3, '0')}`),
+      Array.from({ length: 102 }, (_, i) => `c2-${String(i + 1).padStart(3, '0')}`),
     );
-    expect(BUILTIN_INSPECT_REPAIR_PROBLEMS.filter((p) => p.grade === 2)).toHaveLength(52);
+    expect(BUILTIN_INSPECT_REPAIR_PROBLEMS.filter((p) => p.grade === 2)).toHaveLength(54);
     expect(BUILTIN_INSPECT_REPAIR_PROBLEMS.filter((p) => p.grade === 1)).toHaveLength(48);
   });
 
@@ -209,7 +211,7 @@ describe('内蔵C2課題100題（§7.9 / v1.7.0 で10題追加）', () => {
     }
   });
 
-  it('全100題ぶんの修復手順が書いてある（新題を黙って未検証にしない）', () => {
+  it('全102題ぶんの修復手順が書いてある（新題を黙って未検証にしない）', () => {
     expect(Object.keys(REPAIRS).sort()).toEqual(
       [...BUILTIN_INSPECT_REPAIR_PROBLEMS].map((p) => p.id).sort(),
     );

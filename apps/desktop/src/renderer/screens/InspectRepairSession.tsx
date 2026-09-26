@@ -390,13 +390,13 @@ export function InspectRepairSession(): JSX.Element {
         selectedWire: store.selectedWire,
         wireColor: store.wireColor,
       };
-      if (event.key === 'Delete') {
-        runAction(
-          deleteKeyToAction(
-            state,
-            current.wires.filter((w) => w.locked).map((w) => w.id),
-          ),
+      if (event.key === 'Delete' || event.key === 'Backspace') {
+        const action = deleteKeyToAction(
+          state,
+          current.wires.filter((w) => w.locked).map((w) => w.id),
         );
+        if (action.type !== 'none') event.preventDefault();
+        runAction(action);
         return;
       }
       if (store.mode === 'tester' || store.mode === 'report') {
