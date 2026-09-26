@@ -30,7 +30,6 @@ import {
   PLC_UNIT_JW300,
   PLC_UNIT_PC10G,
   plcCoverAt,
-  screwStaggerMm,
   SUPPLY_EXIT_MM,
   SUPPLY_EXIT_Z_MM,
   TASK1_SOCKET_ROLES,
@@ -179,9 +178,16 @@ describe('deskRoutes（§10.1 / §11.3）', () => {
   );
 
   it.each(UNITS.map((unit) => [unit.model, unit] as const))(
-    'enters the PLC terminal rows from the side the open cover has vacated (%s)',
+    'enters each PLC terminal straight from the duct on its own side (%s)',
     (_model, unit) => {
       const { board, session } = referenceSession(unit);
+      const middle = unit.pos.y + unit.sizeMm.height / 2;
+      // ラックの電源部（入出力の表示灯を持たないモジュール）だけは上から入る
+      const power = unit.modules?.find(
+        (m) => !m.appearance.leds.some((led) => led.group === 'input' || led.group === 'output'),
+      );
+      const inPower = (x: number): boolean =>
+        power !== undefined && x >= power.pos.x && x <= power.pos.x + power.sizeMm.width;
       let checked = 0;
       for (const route of deskRoutes(board, session)) {
         const n = route.corners.length;
@@ -191,10 +197,12 @@ describe('deskRoutes（§10.1 / §11.3）', () => {
         ] as const) {
           if (end === undefined || approach === undefined) continue;
           if (plcCoverAt(unit, end) === undefined) continue;
-          // 端子に入る最後の区間は必ず真上から降りてくる
-          // （下ヒンジのカバーは手前へ倒れて本体の下をふさぐので、下から入れない）
+          // 端子に入る最後の区間は必ずまっすぐ。一体形の上半分は上から、下半分とラックは下から入る
+          // （本体の前面の表示灯の帯を横切らない。2026-09-26 利用者報告）
           expect(approach.x).toBeCloseTo(end.x, 6);
-          expect(approach.y).toBeLessThan(end.y);
+          const fromBelow = unit.form === 'rack' ? !inPower(end.x) : end.y >= middle;
+          if (fromBelow) expect(approach.y).toBeGreaterThan(end.y);
+          else expect(approach.y).toBeLessThan(end.y);
           checked += 1;
         }
       }
@@ -202,21 +210,22 @@ describe('deskRoutes（§10.1 / §11.3）', () => {
     },
   );
 
-  it('keeps every cable out of the band the open bottom cover sweeps (FX5U)', () => {
+  it('never runs a cable across the display band between the terminal blocks (FX5U)', () => {
     const { board, session } = referenceSession(PLC_UNIT_FX5U);
-    const box = deskObstacles(board, PLC_UNIT_FX5U).find((b) => b.id.includes('output-cover'));
-    expect(box).toBeDefined();
-    if (box === undefined) return;
-    // 開いた出力カバーは手前（z > 0）へ倒れてくるので、その帯には1点も置かない
+    const covers = PLC_UNIT_FX5U.appearance.covers;
+    const bandTop = PLC_UNIT_FX5U.pos.y + (covers[0]?.rect.y ?? 0) + (covers[0]?.rect.h ?? 0);
+    const bandBottom = PLC_UNIT_FX5U.pos.y + (covers[1]?.rect.y ?? 0);
+    expect(bandBottom).toBeGreaterThan(bandTop);
     for (const route of deskRoutes(board, session)) {
-      for (const p of route.corners) {
-        const inside =
-          p.x > box.rect.x &&
-          p.x < box.rect.x + box.rect.w &&
-          p.y > box.rect.y &&
-          p.y < box.rect.y + box.rect.h &&
-          p.z > box.zLoMm;
-        expect(inside).toBe(false);
+      for (let i = 1; i < route.corners.length; i += 1) {
+        const a = route.corners[i - 1];
+        const b = route.corners[i];
+        if (a === undefined || b === undefined) continue;
+        const overUnit =
+          Math.max(a.x, b.x) > PLC_UNIT_FX5U.pos.x &&
+          Math.min(a.x, b.x) < PLC_UNIT_FX5U.pos.x + PLC_UNIT_FX5U.sizeMm.width;
+        const inBand = Math.max(a.y, b.y) > bandTop && Math.min(a.y, b.y) < bandBottom;
+        expect(overUnit && inBand, `${route.wireId} の区間${i}`).toBe(false);
       }
     }
   });
@@ -266,9 +275,7 @@ describe('deskRoutes（§10.1 / §11.3）', () => {
       const ends = [route.corners[0], route.corners[route.corners.length - 1]];
       const onBoard = route.corners.filter(
         (p) =>
-          p.x < board.sizeMm.width &&
-          !ends.includes(p) &&
-          Math.abs(p.z - SUPPLY_EXIT_Z_MM) > 1e-6,
+          p.x < board.sizeMm.width && !ends.includes(p) && Math.abs(p.z - SUPPLY_EXIT_Z_MM) > 1e-6,
       );
       expect(onBoard.every((p) => p.z <= BOARD_RUN_Y_Z_MM + 1e-6)).toBe(true);
     }
@@ -341,8 +348,8 @@ describe('deskRoutes（§10.1 / §11.3）', () => {
     expect(addWire(session, board, t('PLC.SS'), t('PLC.COM0')).ok).toBe(true);
     const route = deskRoutes(board, session)[0];
     expect(route).toBeDefined();
-    // 入力側（上ヒンジ）と出力側（下ヒンジ）は別の行ダクトに入る
-    expect(route?.ductIds).toEqual(['desk-row-top', 'desk-trunk', 'desk-row-mid']);
+    // 入力側（上半分）は本体の上、出力側（下半分）は本体の下の行ダクトに入る
+    expect(route?.ductIds).toEqual(['desk-row-top', 'desk-trunk', 'desk-row-bottom']);
     expect(route?.channelIds).toEqual([]);
   });
 
@@ -468,20 +475,53 @@ describe('deskRoutes（§10.1 / §11.3）', () => {
     expect(deskRowLaneCount(206, 1)).toBe(DESK_ROW_LANE_MAX);
   });
 
-  it('spreads several cables in one terminal column and leaves the middle free', () => {
-    // 1本だけの列は端子の真上をまっすぐ降ろす
-    expect(screwStaggerMm(0, 1)).toBe(0);
-    // 2本以上なら真ん中を空けて外へ振り分ける（ネジの直前の区間と食い違わない）
-    expect([0, 1, 2, 3].map((i) => screwStaggerMm(i, 4))).toEqual([-2, 2, -4, 4]);
+  it('centres two cables on one screw so both clear the staggered neighbours (FX5U SS)', () => {
+    const board = withPlcUnit(JIPM_BOARD, PLC_UNIT_FX5U);
+    const session = createSession(board, { roles: TASK1_SOCKET_ROLES });
+    // SS は千鳥の内側の列。外側の列の N・24V の間（半ピッチ 4.5mm）へ2本降ろす
+    expect(addWire(session, board, t('P.1'), t('PLC.SS')).ok).toBe(true);
+    expect(addWire(session, board, t('PLC.SS'), t('PLC.X0')).ok).toBe(true);
+    const routes = deskRoutes(board, session);
+    expect(deskRouteIssues(routes, board, PLC_UNIT_FX5U)).toEqual([]);
+    const ss = board.terminals.find((term) => String(term.id) === 'PLC.SS');
+    const drops = routes
+      .flatMap((route) => [route.corners[route.corners.length - 3], route.corners[2]])
+      .filter((p): p is Vec3 => p !== undefined && ss !== undefined && p.y === ss.pos.y - 4)
+      .map((p) => p.x);
+    expect(drops.length).toBeGreaterThan(0);
   });
+
+  it.each([PLC_UNIT_PC10G, PLC_UNIT_JW300].map((unit) => [unit.model, unit] as const))(
+    'brings rack cables up from below beside the lower screws of the same column (%s)',
+    (_model, unit) => {
+      const board = withPlcUnit(JIPM_BOARD, unit);
+      const session = createSession(board, { roles: TASK1_SOCKET_ROLES });
+      // 同じ列の上から下まで、1段おきに盤の押ボタン端子台からつなぐ
+      const column = unit.terminals
+        .filter(
+          (term) =>
+            term.pos.x ===
+            unit.terminals.find((u) => u.id.includes('X1') || u.id.includes('A1'))?.pos.x,
+        )
+        .sort((a, b) => a.pos.y - b.pos.y);
+      expect(column.length).toBeGreaterThanOrEqual(5);
+      const targets = ['TB_PB.1a', 'TB_PB.2a', 'TB_PB.3a', 'TB_PB.4a', 'TB_PL.1+'];
+      column.slice(0, targets.length).forEach((term, i) => {
+        expect(addWire(session, board, t(targets[i] ?? ''), term.id).ok).toBe(true);
+      });
+      const routes = deskRoutes(board, session);
+      expect(deskRouteIssues(routes, board, unit)).toEqual([]);
+      for (const route of routes) expect(route.ductIds).toContain('desk-row-bottom');
+    },
+  );
 
   it.each(UNITS.map((unit) => [unit.model, unit] as const))(
     'leads the P cable sideways so it never passes over the N screw below it (%s)',
     (_model, unit) => {
       // 2026-09-26 利用者報告「左上のP,Nの配線をするとPからの配線がNの端子と重なって表示する」
       const { board, session } = referenceSession(unit);
-      const n = board.terminals.find((term) => term.id === 'N.1');
-      const p = board.terminals.find((term) => term.id === 'P.1');
+      const n = board.terminals.find((term) => String(term.id) === 'N.1');
+      const p = board.terminals.find((term) => String(term.id) === 'P.1');
       expect(n).toBeDefined();
       expect(p).toBeDefined();
       if (n === undefined || p === undefined) return;
@@ -515,16 +555,18 @@ describe('deskDucts / deskObstacles', () => {
     expect(trunk?.at).toBeLessThan(PLC_UNIT_FX5U.pos.x);
     const top = ducts.find((d) => d.id === 'desk-row-top');
     expect(top?.at).toBe(PLC_UNIT_FX5U.pos.y - DESK_ROW_GAP_MM);
-    // 一体形は上（入力側）と中ほど（出力側）の2本、ラックは上の1本だけ
+    // 一体形は上（入力側）と下（出力側）の2本。ラックも電源部だけ上、入出力は下（表示灯の帯を覆わない）
     expect(ducts.filter((d) => d.id.startsWith('desk-row-')).map((d) => d.id)).toEqual([
       'desk-row-top',
-      'desk-row-mid',
+      'desk-row-bottom',
     ]);
+    const bottom = ducts.find((d) => d.id === 'desk-row-bottom');
+    expect(bottom?.at).toBeGreaterThan(PLC_UNIT_FX5U.pos.y + PLC_UNIT_FX5U.sizeMm.height);
     expect(
       deskDucts(board, PLC_UNIT_PC10G)
         .filter((d) => d.id.startsWith('desk-row-'))
         .map((d) => d.id),
-    ).toEqual(['desk-row-top']);
+    ).toEqual(['desk-row-top', 'desk-row-bottom']);
   });
 
   it('puts the bodies and the board behind the terminal face', () => {
@@ -694,4 +736,57 @@ describe('deskDucts / deskObstacles', () => {
     );
     expect(deskRouteIssues([line('a', 150), line('b', 153)], board, PLC_UNIT_FX5U)).toEqual([]);
   });
+});
+
+describe('机上配線の総当たり（2026-09-26 利用者報告「貫通・重なり」）', () => {
+  const boardEnds = [
+    'P.1',
+    'N.1',
+    'TB_PB.1a',
+    'TB_PB.2c',
+    'TB_PB.4b',
+    'TB_PL.1+',
+    'TB_PL.4-',
+    'CR1.14',
+    'CR1.13',
+    'CR2.5',
+    'CR3.9',
+    'CR4.1',
+    'OUTLET.L',
+    'OUTLET.N',
+  ];
+
+  it.each(UNITS.map((unit) => [unit.model, unit] as const))(
+    'routes one cable from representative board terminals to every PLC terminal cleanly (%s)',
+    (_model, unit) => {
+      const board = withPlcUnit(JIPM_BOARD, unit);
+      const problems: string[] = [];
+      for (const from of boardEnds) {
+        for (const terminal of unit.terminals) {
+          const session = createSession(board, { roles: TASK1_SOCKET_ROLES });
+          if (!addWire(session, board, t(from), terminal.id).ok) continue;
+          const issues = deskRouteIssues(deskRoutes(board, session), board, unit);
+          if (issues.length > 0)
+            problems.push(`${from} → ${String(terminal.id)}: ${issues.join(' / ')}`);
+        }
+      }
+      expect(problems).toEqual([]);
+    },
+  );
+
+  it.each(UNITS.map((unit) => [unit.model, unit] as const))(
+    'routes two cables on every PLC terminal without touching a neighbour (%s)',
+    (_model, unit) => {
+      const board = withPlcUnit(JIPM_BOARD, unit);
+      const problems: string[] = [];
+      for (const terminal of unit.terminals) {
+        const session = createSession(board, { roles: TASK1_SOCKET_ROLES });
+        if (!addWire(session, board, t('TB_PB.1a'), terminal.id).ok) continue;
+        if (!addWire(session, board, terminal.id, t('TB_PL.1+')).ok) continue;
+        const issues = deskRouteIssues(deskRoutes(board, session), board, unit);
+        if (issues.length > 0) problems.push(`${String(terminal.id)}: ${issues.join(' / ')}`);
+      }
+      expect(problems).toEqual([]);
+    },
+  );
 });

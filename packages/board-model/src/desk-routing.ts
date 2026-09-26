@@ -18,7 +18,6 @@ import {
   coverOpenReachMm,
   coverOpenRiseMm,
   OUTLET_ORIGIN_MM,
-  plcCoverAt,
   plcFaces,
   type PlcFacePlacement,
 } from './plc-unit.js';
@@ -44,7 +43,9 @@ import type { BoardSession } from './session.js';
  * 1. **引き込み**（端から幹線まで）
  *    - 盤の端子: 端子 → 盤面へ立ち下げ → 最寄りの水平配線帯の行 → その行のまま**盤の右の縁**を
  *      越えて机上へ出る。縁のところで高さを一段持ち上げる（`rise`。ゆるい乗り越え）。
- *    - PLC本体の端子: 端子 → 端子の列の**開いたカバーが空けた側**にある行ダクトまで垂直に立てる。
+ *    - PLC本体の端子: 端子 → 本体の上か下の行ダクトまで垂直に立てる（一体形は上半分の端子を上、
+ *      下半分の端子を下から。ラック形はすべて下から）。本体の前面（表示灯の帯）は横切らず、
+ *      縦走りは他の端子のネジから {@link DESK_SCREW_CLEAR_MM} 以上離す（{@link planPlcDrops}）。
  *    - 壁コンセント: 端子 → コンセント板の下の行ダクト → 幹線。
  * 2. **幹線**（{@link DESK_TRUNK_GAP_MM} だけPLCの左に置いた縦のダクト）。電線1本に1レーンずつ
  *    割り当て、レーンを使い切ったら段を上げるので、幹線の中で2本が重なることは無い。
@@ -126,28 +127,20 @@ export const DESK_TRUNK_GAP_MM = 14;
  * {@link DESK_ROW_LANE_MAX} の半分以上のレーンが入るよう、本体のすぐ上に寄せてある。
  */
 export const DESK_ROW_GAP_MM = 5;
-/** 下ヒンジのカバーの列へ向かう行ダクトを、カバーの上端からどれだけ上に置くか[mm]。 */
-export const DESK_MID_GAP_MM = 3;
 /** 壁コンセントの行ダクトを、コンセント端子からどれだけ下に置くか[mm]（板の外）。 */
 export const DESK_OUTLET_GAP_MM = 16;
 /**
- * 同じ列へ降りる電線どうしの横のずらし量[mm]。
- * 端子の列（ラックは2列×9段）は同じ x に何段も並ぶので、そこへ降ろす管が重ならないよう
- * 列の中で {@link DESK_MIN_CLEARANCE_MM} ずつ横にずらす。同じネジに2本載るときも同じ値で分かれる。
+ * 同じネジへ降りる電線どうしの横のずらし量[mm]（{@link DESK_MIN_CLEARANCE_MM} と同じ）。
+ * 同じネジに2本載るときは、この間隔で中央そろえにして降ろす。
  */
 export const DESK_SCREW_STAGGER_MM = DESK_MIN_CLEARANCE_MM;
 /**
- * 列の中の横位置[mm]（0起点の順番と、その列に降りる本数 → ずらし量）。
- *
- * その列に1本しか降りないなら端子の真上をまっすぐ降ろす（0）。2本以上なら
- * `−2, +2, −4, +4, …` と外へ振り分け、**真ん中は空けておく**。ネジの直前の区間は必ず端子の
- * 真上を通るので、そこに別の電線を重ねると管が食い込むためである。
+ * 電線の中心線と、その電線が載らない端子のネジの中心との最小距離[mm]。
+ * これより近いと、正面から見て電線が他の端子に重なって見える（2026-09-26 利用者報告
+ * 「Pからの配線がNの端子と重なって表示する」）。一体形の千鳥配置（ピッチ9mm・半ピッチ4.5mm）の
+ * 内側の列へ2本降ろしても（±1mm）守れる値にしてある。
  */
-export function screwStaggerMm(index: number, total: number): number {
-  if (total <= 1) return 0;
-  const step = Math.floor(index / 2) + 1;
-  return (index % 2 === 0 ? -1 : 1) * step * DESK_SCREW_STAGGER_MM;
-}
+export const DESK_SCREW_CLEAR_MM = 3;
 /** ネジの直前でまっすぐ降ろす長さ[mm]（列の中のずらしをここで戻す）。 */
 export const DESK_SCREW_APPROACH_MM = 4;
 /** 同じネジ端子に集まる区間どうしを間隔の検査から外す半径[mm]。 */
@@ -159,6 +152,9 @@ const EPS = 1e-6;
 
 /** 開いた端子カバーの板厚の半分[mm]（3Dの `COVER_THICKNESS_MM` 1mm の半分）。 */
 const COVER_PLATE_HALF_MM = 0.5;
+
+/** リレーソケットの物理端子（`S1.5` など）。 */
+const SOCKET_TERMINAL_RE = /^S\d+\./u;
 
 /** 電源のP・N端子（縦に並ぶので横へ逃がしてから下ろす）。 */
 const SUPPLY_TERMINAL_RE = /^(P|N)\./u;
@@ -363,38 +359,100 @@ function endKindOf(id: TerminalId): EndKind {
   return String(id).startsWith(`${PLC_PART_ID}.`) ? 'plc' : 'board';
 }
 
+/** PLC本体のどちら側の行ダクトから端子へ入るか。 */
+type PlcSide = 'top' | 'bottom';
+
 /**
- * PLCの端子へ立てる行ダクトの y[mm]。§10.1 / 決定表#16
+ * その端子へ入る側。§10.1 / 決定表#16（2026-09-26 改訂）
  *
- * 端子カバーは**開いた状態**で描く（`three/appearance.ts` の `coverOpenPose()`）。
- * 上ヒンジのカバーは盤面より**奥**（z < 0）へ倒れるので、その列は本体の上から降ろして入れる。
- * 下ヒンジのカバーは**手前**（z > 0）へ倒れて本体の下をふさぐので、その列は上（本体の中ほど、
- * カバーの上端のすぐ上）から入れる。どちらも「カバーが空けた側」から端子に入る。
+ * - 一体形（FX5U・CP1E）は本体の**上半分**の端子を上の行ダクトから、**下半分**の端子を下の
+ *   行ダクトから入れる（実機でも入力の列は上のダクト、出力の列は下のダクトへ配線する）。
+ *   以前は下段へ本体の中ほど（表示灯の帯）を横切って入れていたため、電線が本体を貫いて見えた
+ *   （2026-09-26 利用者報告「配線がシーケンサの部分を貫通する」）。
+ * - ラック形は端子台が縦に長く、上から入れると上端の表示灯の帯を電線が覆う。実機と同じく
+ *   入出力モジュールは**下の行ダクト**から入れる（表示灯の無い電源部だけ上から）。
  */
-function plcRowBaseY(unit: PlcUnitDefinition, terminal: BoardTerminal): number {
-  const hit = plcCoverAt(unit, terminal.pos);
-  if (hit !== undefined && hit.cover.hinge === 'bottom') {
-    return hit.face.origin.y + hit.cover.rect.y - DESK_MID_GAP_MM;
+function plcSideOf(unit: PlcUnitDefinition, terminal: BoardTerminal): PlcSide {
+  if (unit.form === 'rack') {
+    // 入出力の表示灯を持たないモジュール（電源部）の端子だけは上から入れる（上端の帯に表示灯が
+    // 無いので覆うものが無い）。下の行ダクトは盤から出てくる電線の行に挟まれて本数に限りがある
+    const module = unit.modules?.find(
+      (m) => terminal.pos.x >= m.pos.x && terminal.pos.x <= m.pos.x + m.sizeMm.width,
+    );
+    const hasPointLeds =
+      module?.appearance.leds.some((led) => led.group === 'input' || led.group === 'output') ??
+      true;
+    return hasPointLeds ? 'bottom' : 'top';
   }
-  return unit.pos.y - DESK_ROW_GAP_MM;
+  return terminal.pos.y < unit.pos.y + unit.sizeMm.height / 2 ? 'top' : 'bottom';
 }
 
-/** その端子が使う行ダクトの種類（上ヒンジの列は本体の上、下ヒンジの列は本体の中ほど）。 */
-function plcRowKind(unit: PlcUnitDefinition, terminal: BoardTerminal): 'top' | 'mid' {
-  return plcCoverAt(unit, terminal.pos)?.cover.hinge === 'bottom' ? 'mid' : 'top';
+/** 下の行ダクトに最低限ほしいレーンの本数（これより狭い隙間は使わない）。 */
+const DESK_BOTTOM_MIN_LANES = 5;
+
+/**
+ * 行ダクトの線の y[mm]（レーン0の位置）と、手前へ並べられるレーンの本数。
+ *
+ * 上は本体のすぐ上（レーンは机の奥へ増える）。下は本体のすぐ下から探し始め、
+ * **盤から机上へ出てくる電線の行**（盤の水平配線帯の y ＋ そのレーン）と重ならない隙間に置く。
+ * 盤から出た電線は幹線まで横へ走るので、同じ y に下の行ダクトを置くと、幹線の手前で2本が
+ * 重なって1本に見えてしまう。
+ */
+function plcSideBand(
+  board: BoardDefinition,
+  unit: PlcUnitDefinition,
+  side: PlcSide,
+): { baseY: number; lanes: number } {
+  if (side === 'top') {
+    const baseY = unit.pos.y - DESK_ROW_GAP_MM;
+    return { baseY, lanes: deskRowLaneCount(baseY, -1) };
+  }
+  // 寝かせた下のカバーの上（z 0.5mm以下）を机上の高さ（9.6mm以上）で越えるので、板は避けなくてよい
+  const start = unit.pos.y + unit.sizeMm.height + DESK_ROW_GAP_MM;
+  const exits = board.wiringChannels
+    .filter((channel) => channel.axis === 'x')
+    .map((channel) => {
+      const end = channel.at + channelLaneShift(channel, CHANNEL_LANE_COUNT - 1);
+      return {
+        lo: Math.min(channel.at, end) - DESK_MIN_CLEARANCE_MM,
+        hi: Math.max(channel.at, end) + DESK_MIN_CLEARANCE_MM,
+      };
+    })
+    .sort((a, b) => a.lo - b.lo);
+  const need = (DESK_BOTTOM_MIN_LANES - 1) * DESK_LANE_PITCH_MM;
+  let baseY = start;
+  for (const band of exits) {
+    if (band.hi <= baseY) continue;
+    if (band.lo >= baseY + need) break;
+    baseY = Math.max(baseY, band.hi);
+  }
+  const next = exits.find((band) => band.lo >= baseY);
+  const room = next === undefined ? Number.POSITIVE_INFINITY : next.lo - baseY;
+  const lanes = Math.max(
+    1,
+    Math.min(DESK_ROW_LANE_MAX, Math.floor(room / DESK_LANE_PITCH_MM + EPS) + 1),
+  );
+  return { baseY, lanes };
+}
+
+/** 行ダクトの線の y[mm]（レーン0の位置）。 */
+function plcSideBaseY(board: BoardDefinition, unit: PlcUnitDefinition, side: PlcSide): number {
+  return plcSideBand(board, unit, side).baseY;
+}
+
+/** 行ダクトのID。 */
+function plcSideDuctId(side: PlcSide): string {
+  return side === 'top' ? 'desk-row-top' : 'desk-row-bottom';
 }
 
 /** 机上のダクトの骨組み（UI・テストが「どこを通す設計か」を読むためのもの）。 */
 export function deskDucts(board: BoardDefinition, unit: PlcUnitDefinition): DeskDuct[] {
-  const rows = new Map<number, string>();
-  for (const terminal of unit.terminals) {
-    const y = plcRowBaseY(unit, terminal);
-    if (!rows.has(y)) rows.set(y, plcRowKind(unit, terminal));
-  }
+  const sides = new Set(unit.terminals.map((terminal) => plcSideOf(unit, terminal)));
   const ducts: DeskDuct[] = [];
-  for (const [at, kind] of [...rows].sort((a, b) => a[0] - b[0])) {
+  for (const side of (['top', 'bottom'] as const).filter((s) => sides.has(s))) {
+    const at = plcSideBaseY(board, unit, side);
     ducts.push({
-      id: kind === 'mid' ? 'desk-row-mid' : 'desk-row-top',
+      id: plcSideDuctId(side),
       axis: 'x',
       at,
       from: unit.pos.x - DESK_TRUNK_GAP_MM,
@@ -465,8 +523,8 @@ interface RowSlot {
   yMm: number;
   /** 行ダクトを走る高さ[mm]。 */
   zMm: number;
-  /** 同じネジ端子に載る電線どうしのずらし量[mm]。 */
-  screwMm: number;
+  /** 行ダクトのある向き（−1: 本体の上、+1: 本体の下・コンセントの下）。 */
+  side: -1 | 1;
   overflow: boolean;
 }
 
@@ -559,16 +617,24 @@ function boardApproach(
   };
 }
 
-/** PLC本体の端子への引き込み（行ダクトから端子のネジへ垂直に降ろす）。 */
-function plcApproach(terminal: BoardTerminal, assignment: Assignment, row: RowSlot): Approach {
+/**
+ * PLC本体の端子への引き込み（行ダクトから端子のネジへ垂直に降ろす）。
+ * @param dropX 行ダクトから降ろす縦走りの x[mm]（{@link planPlcDrops} が他のネジを避けて決める）。
+ */
+function plcApproach(
+  terminal: BoardTerminal,
+  assignment: Assignment,
+  row: RowSlot,
+  dropX: number,
+): Approach {
   const trunkX = assignment.trunk.xMm;
-  const dropX = terminal.pos.x + row.screwMm;
+  const approachY = terminal.pos.y + row.side * DESK_SCREW_APPROACH_MM;
   const corners = buildCorners(terminal.pos, [
-    // ネジへは必ずまっすぐ降ろす（最後の数mmは列のずらしを戻した真上から入る）
-    to(terminal.pos.x, terminal.pos.y - DESK_SCREW_APPROACH_MM, DESK_RUN_Y_Z_MM),
-    // 列の中の自分の位置へ寄る（同じ列に何本降ろしても管が重ならない）
-    to(dropX, terminal.pos.y - DESK_SCREW_APPROACH_MM, DESK_RUN_X_Z_MM),
-    // 端子の列 → 行ダクト（開いたカバーが空けた側をまっすぐ立てる）
+    // ネジへは必ずまっすぐ降ろす（最後の数mmは縦走りのずらしを戻した真上から入る）
+    to(terminal.pos.x, approachY, DESK_RUN_Y_Z_MM),
+    // 縦走りの位置へ寄る（他のネジの上を通らず、同じ列の電線どうしも重ならない）
+    to(dropX, approachY, DESK_RUN_X_Z_MM),
+    // 端子の列 → 行ダクト（上半分は本体の上へ、下半分は本体の下へ立てる）
     to(dropX, row.yMm, DESK_RUN_Y_Z_MM),
     // 行ダクト → 幹線
     to(trunkX, row.yMm, row.zMm),
@@ -606,10 +672,11 @@ function approachFor(
   kind: EndKind,
   assignment: Assignment,
   row: RowSlot,
+  dropX: number,
 ): Approach {
   if (kind === 'board') return boardApproach(board, terminal, assignment);
   if (kind === 'outlet') return outletApproach(terminal, assignment, row);
-  return plcApproach(terminal, assignment, row);
+  return plcApproach(terminal, assignment, row, dropX);
 }
 
 /** 並び順を決める鍵（行ダクト → PLC端子のx → 端子の並び順 → 電線ID）。 */
@@ -619,8 +686,141 @@ function sortKeyOf(
   pair: string,
 ): [number, number, number, string] {
   const index = unit.terminals.findIndex((t) => t.id === anchor.id);
-  const duct = plcRowKind(unit, anchor) === 'mid' ? 1 : 0;
+  const duct = plcSideOf(unit, anchor) === 'bottom' ? 1 : 0;
   return [duct, anchor.pos.x, index < 0 ? 0 : index, pair];
+}
+
+/** 縦走りを決めるPLC側の端1つ。 */
+interface PlcDropEnd {
+  /** `${電線の並び順}:${from|to}`。 */
+  key: string;
+  terminal: BoardTerminal;
+  /** 行ダクトのレーンの y[mm]（縦走りの始まり）。 */
+  rowY: number;
+  /** 行ダクトのある向き（−1: 本体の上、+1: 本体の下）。 */
+  side: -1 | 1;
+}
+
+/** 決まった縦走り1本（他の縦走りとの間隔の検査に使う）。 */
+interface PlacedRun {
+  x: number;
+  yLo: number;
+  yHi: number;
+}
+
+/** 点と区間（平面）の距離[mm]。 */
+function pointSegmentDistance(
+  p: { x: number; y: number },
+  a: { x: number; y: number },
+  b: { x: number; y: number },
+): number {
+  const dx = Math.max(Math.min(a.x, b.x) - p.x, 0, p.x - Math.max(a.x, b.x));
+  const dy = Math.max(Math.min(a.y, b.y) - p.y, 0, p.y - Math.max(a.y, b.y));
+  return Math.hypot(dx, dy);
+}
+
+/** 縦走りの横位置の候補[mm]（0, −0.5, +0.5, −1, +1, … ±12）。小さいずらしから試す。 */
+const DROP_OFFSETS_MM: readonly number[] = [
+  0,
+  ...Array.from({ length: 24 }, (_unused, i) => (i + 1) * 0.5).flatMap((d) => [-d, d]),
+];
+
+/**
+ * PLC端子へ降ろす縦走りの x を決める。§6.6 / 2026-09-26 利用者報告
+ *
+ * 縦走りは**自分の端子以外のネジから {@link DESK_SCREW_CLEAR_MM} 以上**離し（電線が他の端子に
+ * 重なって見えない）、**ほかの縦走りから {@link DESK_MIN_CLEARANCE_MM} 以上**離す（管が食い込まない）。
+ * 行ダクトに近い端子から順に決めるので、ダクトに近い端子ほど真上（ずらし0）から入り、遠い端子は
+ * 手前の端子のネジを避けて外側を通る（ラックの縦長の端子台で、同じ列の他のネジを踏まない）。
+ * 同じネジへ2本降ろすときは、2本を {@link DESK_MIN_CLEARANCE_MM} 離して中央そろえにする。
+ * どの候補も条件を満たさないときは、ネジからの離れがいちばん大きい候補にして `overflow` を立てる。
+ */
+function planPlcDrops(
+  unit: PlcUnitDefinition,
+  ends: readonly PlcDropEnd[],
+): { dropX: Map<string, number>; overflow: Set<string> } {
+  const dropX = new Map<string, number>();
+  const overflow = new Set<string>();
+  const bundles = new Map<string, PlcDropEnd[]>();
+  for (const end of ends) {
+    const id = String(end.terminal.id);
+    bundles.set(id, [...(bundles.get(id) ?? []), end]);
+  }
+  const reachOf = (bundle: readonly PlcDropEnd[]): number => {
+    const head = bundle[0];
+    /* c8 ignore next -- 束は必ず1本以上を持つ */
+    if (head === undefined) return 0;
+    return Math.abs(head.terminal.pos.y - head.rowY);
+  };
+  const ordered = [...bundles.values()].sort((a, b) => {
+    const d = reachOf(a) - reachOf(b);
+    if (Math.abs(d) > EPS) return d;
+    return (a[0]?.terminal.pos.x ?? 0) - (b[0]?.terminal.pos.x ?? 0);
+  });
+  const runs: PlacedRun[] = [];
+  const jogs: Array<{ y: number; xLo: number; xHi: number }> = [];
+  for (const bundle of ordered) {
+    const first = bundle[0];
+    /* c8 ignore next -- 束は必ず1本以上を持つ */
+    if (first === undefined) continue;
+    const terminal = first.terminal;
+    const approachY = terminal.pos.y + first.side * DESK_SCREW_APPROACH_MM;
+    const others = unit.terminals.filter((u) => u.id !== terminal.id);
+    const xOf = (base: number, i: number): number =>
+      terminal.pos.x + base + (i - (bundle.length - 1) / 2) * DESK_MIN_CLEARANCE_MM;
+    let best: { base: number; clearance: number } | undefined;
+    let chosen: number | undefined;
+    for (const base of DROP_OFFSETS_MM) {
+      let ok = true;
+      let clearance = Number.POSITIVE_INFINITY;
+      bundle.forEach((end, i) => {
+        const x = xOf(base, i);
+        const runA = { x, y: end.rowY };
+        const runB = { x, y: approachY };
+        const jogB = { x: terminal.pos.x, y: approachY };
+        for (const u of others) {
+          const d = Math.min(
+            pointSegmentDistance(u.pos, runA, runB),
+            pointSegmentDistance(u.pos, runB, jogB),
+          );
+          clearance = Math.min(clearance, d);
+          if (d < DESK_SCREW_CLEAR_MM - EPS) ok = false;
+        }
+        const yLo = Math.min(end.rowY, approachY);
+        const yHi = Math.max(end.rowY, approachY);
+        for (const r of runs) {
+          if (r.yHi < yLo - EPS || yHi < r.yLo - EPS) continue;
+          if (Math.abs(r.x - x) < DESK_MIN_CLEARANCE_MM - EPS) ok = false;
+        }
+        const xLo = Math.min(x, terminal.pos.x);
+        const xHi = Math.max(x, terminal.pos.x);
+        for (const j of jogs) {
+          if (Math.abs(j.y - approachY) >= DESK_MIN_CLEARANCE_MM - EPS) continue;
+          if (j.xHi - j.xLo < EPS || xHi - xLo < EPS) continue;
+          if (j.xHi < xLo + EPS || xHi < j.xLo + EPS) continue;
+          ok = false;
+        }
+      });
+      if (ok) {
+        chosen = base;
+        break;
+      }
+      if (best === undefined || clearance > best.clearance + EPS) best = { base, clearance };
+    }
+    const base = chosen ?? best?.base ?? 0;
+    bundle.forEach((end, i) => {
+      const x = xOf(base, i);
+      dropX.set(end.key, x);
+      if (chosen === undefined) overflow.add(end.key);
+      runs.push({ x, yLo: Math.min(end.rowY, approachY), yHi: Math.max(end.rowY, approachY) });
+      jogs.push({
+        y: approachY,
+        xLo: Math.min(x, terminal.pos.x),
+        xHi: Math.max(x, terminal.pos.x),
+      });
+    });
+  }
+  return { dropX, overflow };
 }
 
 function compareKeys(
@@ -678,17 +878,8 @@ export function deskRoutes(
   // 2. レーンを配る。幹線は1本1レーン、行ダクトはダクトごとに詰める
   const rowLanes = new Map<string, number>();
   const channelLanes = new Map<string, number>();
-  const columnSeen = new Map<string, number>();
-  const columnTotal = new Map<string, number>();
   const leadSeen = new Map<string, number>();
   const leadTotal = new Map<string, number>();
-  /**
-   * 端子が降りてくる「列」の鍵。同じ x に何段も並ぶ端子（ラックの2列×9段）をまとめる。
-   * 行ダクトも鍵に入れる — 一体形は入力側と出力側で**同じ x** の端子が向かい合うが、
-   * 別々の行ダクトから降りてくるので、列としては別物である（重ならない）。
-   */
-  const columnKey = (terminal: BoardTerminal, kind: EndKind): string =>
-    `${kind === 'outlet' ? 'outlet' : plcRowKind(unit, terminal)}:${Math.round(terminal.pos.x * 10)}`;
   /**
    * 盤の端子が机上へ引き出す「列」の鍵（帯 ＋ 端子の x）。
    * 引き出しの縦走りは同じ帯・同じ x の端子どうしでしか並走しないので、ずらし量は
@@ -701,39 +892,34 @@ export function deskRoutes(
       [entry.from, entry.fromKind],
       [entry.to, entry.toKind],
     ] as const) {
-      if (kind === 'board') {
-        const key = leadKey(terminal);
-        leadTotal.set(key, (leadTotal.get(key) ?? 0) + 1);
-        continue;
-      }
-      const key = columnKey(terminal, kind);
-      columnTotal.set(key, (columnTotal.get(key) ?? 0) + 1);
+      if (kind !== 'board') continue;
+      const key = leadKey(terminal);
+      leadTotal.set(key, (leadTotal.get(key) ?? 0) + 1);
     }
   }
-  const screwOf = (terminal: BoardTerminal, kind: EndKind): number => {
-    if (kind === 'board') return 0;
-    const key = columnKey(terminal, kind);
-    const total = columnTotal.get(key) ?? 1;
-    const index = columnSeen.get(key) ?? 0;
-    columnSeen.set(key, index + 1);
-    return screwStaggerMm(index, total);
-  };
   const rowSlotOf = (terminal: BoardTerminal, kind: EndKind): RowSlot => {
     const outlet = kind === 'outlet';
-    const duct = outlet ? 'outlet' : plcRowKind(unit, terminal);
-    const ductId = outlet ? 'desk-outlet-row' : duct === 'mid' ? 'desk-row-mid' : 'desk-row-top';
-    // コンセントの行は机の手前（y の大きいほう）へ、PLCの行は机の奥へレーンが増える
-    const direction = outlet ? 1 : -1;
-    const baseY = outlet ? OUTLET_ORIGIN_MM.y + DESK_OUTLET_GAP_MM : plcRowBaseY(unit, terminal);
+    const plcSide = plcSideOf(unit, terminal);
+    const duct = outlet ? 'outlet' : plcSide;
+    const ductId = outlet ? 'desk-outlet-row' : plcSideDuctId(plcSide);
+    // コンセントの行と本体の下の行は机の手前（y の大きいほう）へ、上の行は机の奥へレーンが増える
+    const direction: -1 | 1 = outlet || plcSide === 'bottom' ? 1 : -1;
+    const band = outlet
+      ? {
+          baseY: OUTLET_ORIGIN_MM.y + DESK_OUTLET_GAP_MM,
+          lanes: deskRowLaneCount(OUTLET_ORIGIN_MM.y + DESK_OUTLET_GAP_MM, 1),
+        }
+      : plcSideBand(board, unit, plcSide);
+    const baseY = band.baseY;
     const index = rowLanes.get(duct) ?? 0;
     rowLanes.set(duct, index + 1);
-    const slot = slotAt(index, deskRowLaneCount(baseY, direction), DESK_LAYER_COUNT);
+    const slot = slotAt(index, band.lanes, DESK_LAYER_COUNT);
     return {
       ...slot,
       ductId,
       yMm: baseY + direction * slot.lane * DESK_LANE_PITCH_MM,
       zMm: deskRunZ('x', slot.layer),
-      screwMm: screwOf(terminal, kind),
+      side: direction,
     };
   };
   /** 盤の配線帯のレーン。帯ごとに数えるので、帯が違えば同じ番号を使い回してよい。 */
@@ -748,24 +934,47 @@ export function deskRoutes(
     return { ...slot, leadMm: leadOutStaggerMm(leadIndex, leadTotal.get(key) ?? 1) };
   };
 
-  // 3. 経路を組み立てる
-  const routes: DeskRoute[] = [];
+  // 3. 行ダクトのレーンを配り、PLC端子へ降ろす縦走りの位置を決める
   const emptyRow: RowSlot = {
     ductId: '',
     lane: 0,
     layer: 0,
     yMm: 0,
     zMm: DESK_RUN_X_Z_MM,
-    screwMm: 0,
+    side: -1,
     overflow: false,
   };
+  const rows = entries.map((entry) => ({
+    from: entry.fromKind === 'board' ? emptyRow : rowSlotOf(entry.from, entry.fromKind),
+    to: entry.toKind === 'board' ? emptyRow : rowSlotOf(entry.to, entry.toKind),
+  }));
+  const dropEnds: PlcDropEnd[] = [];
+  entries.forEach((entry, index) => {
+    for (const end of ['from', 'to'] as const) {
+      const kind = end === 'from' ? entry.fromKind : entry.toKind;
+      const row = rows[index]?.[end];
+      if (kind !== 'plc' || row === undefined) continue;
+      dropEnds.push({
+        key: `${String(index)}:${end}`,
+        terminal: end === 'from' ? entry.from : entry.to,
+        rowY: row.yMm,
+        side: row.side,
+      });
+    }
+  });
+  const drops = planPlcDrops(unit, dropEnds);
+
+  // 4. 経路を組み立てる
+  const routes: DeskRoute[] = [];
   entries.forEach((entry, index) => {
     const boardEnd =
       entry.fromKind === 'board' ? entry.from : entry.toKind === 'board' ? entry.to : undefined;
     const channel = boardEnd === undefined ? undefined : channelSlotOf(boardEnd);
     const trunk = trunkSlotAt(unit, index);
-    const fromRow = entry.fromKind === 'board' ? emptyRow : rowSlotOf(entry.from, entry.fromKind);
-    const toRow = entry.toKind === 'board' ? emptyRow : rowSlotOf(entry.to, entry.toKind);
+    const fromRow = rows[index]?.from ?? emptyRow;
+    const toRow = rows[index]?.to ?? emptyRow;
+    const fromKey = `${String(index)}:from`;
+    const toKey = `${String(index)}:to`;
     const assignment: Assignment = {
       wireId: entry.wireId,
       color: entry.color,
@@ -776,10 +985,29 @@ export function deskRoutes(
       trunk,
       channel,
       laneOverflow:
-        (channel?.overflow ?? false) || trunk.overflow || fromRow.overflow || toRow.overflow,
+        (channel?.overflow ?? false) ||
+        trunk.overflow ||
+        fromRow.overflow ||
+        toRow.overflow ||
+        drops.overflow.has(fromKey) ||
+        drops.overflow.has(toKey),
     };
-    const head = approachFor(board, entry.from, entry.fromKind, assignment, fromRow);
-    const tail = approachFor(board, entry.to, entry.toKind, assignment, toRow);
+    const head = approachFor(
+      board,
+      entry.from,
+      entry.fromKind,
+      assignment,
+      fromRow,
+      drops.dropX.get(fromKey) ?? entry.from.pos.x,
+    );
+    const tail = approachFor(
+      board,
+      entry.to,
+      entry.toKind,
+      assignment,
+      toRow,
+      drops.dropX.get(toKey) ?? entry.to.pos.x,
+    );
     const corners = dedupe([...head.corners, ...[...tail.corners].reverse()]);
     const points = filletCorners(corners, DESK_CORNER_RADIUS_MM);
     routes.push({
@@ -808,8 +1036,8 @@ export function deskRoutes(
  * 経路が避ける箱（PLCの筐体・開いた端子カバー・盤・コンセント板）。§10.1 / 決定表#16
  *
  * 筐体・コンセント板・盤は端子の面（z = 0）より**奥**にあるので、机上の電線（z ≥ 6mm）は
- * 素通りできる。気をつけるのは**下ヒンジの端子カバー**だけで、これは開くと手前（z > 0）へ
- * 倒れて本体の下をふさぐ。そこでその列へは本体の中ほどから入れる（{@link plcRowBaseY}）。
+ * 素通りできる。端子カバーは180°まで開いて本体の外に板厚ぶんで寝る（ラックは取り外し）ので、
+ * 机上の電線の高さには届かない（決定表#16 の改訂 2026-09-26）。
  */
 export function deskObstacles(board: BoardDefinition, unit: PlcUnitDefinition): DeskObstacle[] {
   const out: DeskObstacle[] = [
@@ -987,6 +1215,82 @@ export function deskRouteIssues(
       if (shared.length > 0 && nearShared(a, shared) && nearShared(b, shared)) continue;
       issues.push(`並走する区間が近すぎます（${gap.toFixed(2)}mm）: ${a.routeId} / ${b.routeId}`);
     }
+  }
+  issues.push(...screwOverlapIssues(routes, board), ...faceCrossingIssues(all, unit));
+  return issues;
+}
+
+/**
+ * 電線が、自分の載らない端子のネジの上を通っていないか（2026-09-26 利用者報告
+ * 「Pからの配線がNの端子と重なって表示する」）。高さに関係なく平面上の距離で見る
+ * （正面から見ると高さの差は分からないため）。
+ */
+function screwOverlapIssues(routes: readonly DeskRoute[], board: BoardDefinition): string[] {
+  const issues: string[] = [];
+  for (const route of routes) {
+    const first = route.corners[0];
+    const last = route.corners[route.corners.length - 1];
+    const own = (p: Vec3): boolean =>
+      [first, last].some(
+        (end) => end !== undefined && Math.abs(end.x - p.x) <= EPS && Math.abs(end.y - p.y) <= EPS,
+      );
+    for (const segment of segmentsOf(route)) {
+      if (segment.axis === 'z') continue;
+      for (const terminal of board.terminals) {
+        // 配線できない端子（電源の内部端子・押ボタン本体など）は盤の中に隠れていて見えない。
+        // リレーソケットは内側の段（⑤〜⑧・⑨〜⑫）の電線が外側の段のネジの間を抜ける作りで、
+        // 盤の中の経路器と同じ引き出し方をしているので、ここでは数えない
+        if (
+          !terminal.wirable ||
+          own(terminal.pos) ||
+          SOCKET_TERMINAL_RE.test(String(terminal.id))
+        ) {
+          continue;
+        }
+        const d = pointSegmentDistance(terminal.pos, segment.a, segment.b);
+        if (d >= DESK_SCREW_CLEAR_MM - EPS) continue;
+        issues.push(
+          `電線が端子${String(terminal.id)}のネジの上を通ります（${d.toFixed(2)}mm）: ${route.wireId}`,
+        );
+      }
+    }
+  }
+  return issues;
+}
+
+/**
+ * 横へ走る区間が、PLC本体の前面のうち端子台以外（表示灯の帯・銘板・造作）を横切っていないか
+ * （2026-09-26 利用者報告「配線がシーケンサの部分を貫通する」）。端子台の範囲はカバーの矩形
+ * （取り外したカバーも含む）で表す。
+ */
+function faceCrossingIssues(segments: readonly Segment[], unit: PlcUnitDefinition): string[] {
+  const blocks = plcFaces(unit).flatMap((face) =>
+    face.appearance.covers.map((cover) => ({
+      x: face.origin.x + cover.rect.x,
+      y: face.origin.y + cover.rect.y,
+      w: cover.rect.w,
+      h: cover.rect.h,
+    })),
+  );
+  const body = { x: unit.pos.x, y: unit.pos.y, w: unit.sizeMm.width, h: unit.sizeMm.height };
+  const issues: string[] = [];
+  for (const segment of segments) {
+    if (segment.axis !== 'x') continue;
+    const y = segment.a.y;
+    if (y <= body.y + EPS || y >= body.y + body.h - EPS) continue;
+    const lo = Math.max(Math.min(segment.a.x, segment.b.x), body.x);
+    const hi = Math.min(Math.max(segment.a.x, segment.b.x), body.x + body.w);
+    if (hi - lo <= EPS) continue;
+    // 端子台の上下の縁から {@link DESK_SCREW_APPROACH_MM} 以内は、ネジへまっすぐ入る直前の寄せ
+    const margin = DESK_SCREW_APPROACH_MM + EPS;
+    const inBlock = blocks.some(
+      (r) =>
+        y >= r.y - margin && y <= r.y + r.h + margin && lo >= r.x - EPS && hi <= r.x + r.w + EPS,
+    );
+    if (inBlock) continue;
+    issues.push(
+      `横へ走る電線がPLC本体の前面を横切ります（y=${y.toFixed(1)}mm）: ${segment.routeId}`,
+    );
   }
   return issues;
 }
