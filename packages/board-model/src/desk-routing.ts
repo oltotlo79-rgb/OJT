@@ -157,6 +157,13 @@ export const DESK_ROW_LANE_MAX = CHANNEL_LANE_COUNT;
 
 const EPS = 1e-6;
 
+/** 電源のP・N端子（縦に並ぶので横へ逃がしてから下ろす）。 */
+const SUPPLY_TERMINAL_RE = /^(P|N)\./u;
+/** P・N端子から横へ逃がす距離[mm]（盤の中の経路器 `routing.ts` と同じ12mm）。 */
+export const SUPPLY_EXIT_MM = 12;
+/** 横へ逃がすときの高さ[mm]（盤の中の経路器と同じ。ネジ頭の上を越える）。 */
+export const SUPPLY_EXIT_Z_MM = 10;
+
 /**
  * 幹線に並べられるレーンの本数。
  * レーンはPLC本体から左へ伸びていくので、**盤の上**（x < {@link BOARD_WIDTH_MM}）に載らない
@@ -520,8 +527,15 @@ function boardApproach(
     return { corners, trunkY: terminal.pos.y, ductIds: [], channelIds: [], slots: [] };
   }
   const rowY = channel.at + channelLaneShift(channel, slot.lane);
-  const leadX = terminal.pos.x + slot.leadMm;
+  /*
+   * 電源のP・N端子は縦に並んでいる（Pの真下にN）。真下へ下ろすとPの電線がNのネジの上を
+   * 通るので、盤の中の経路器（`routing.ts` の `supplyExit`）と同じく左へ逃がしてから下ろす
+   * （2026-09-26 利用者報告「Pからの配線がNの端子と重なって表示する」）。
+   */
+  const supply = SUPPLY_TERMINAL_RE.test(String(terminal.id));
+  const leadX = terminal.pos.x + slot.leadMm - (supply ? SUPPLY_EXIT_MM : 0);
   const corners = buildCorners(terminal.pos, [
+    ...(supply ? [to(leadX, terminal.pos.y, SUPPLY_EXIT_Z_MM)] : []),
     // 端子 → 盤面へ立ち下げ（同じ列から出る電線どうしは中央そろえで横にずらす）
     to(leadX, terminal.pos.y, runX),
     // 配線帯の行へ引き出す

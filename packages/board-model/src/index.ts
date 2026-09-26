@@ -194,6 +194,8 @@ export {
   deskTrunkLaneCount,
   leadOutStaggerMm,
   screwStaggerMm,
+  SUPPLY_EXIT_MM,
+  SUPPLY_EXIT_Z_MM,
   type DeskDuct,
   type DeskLaneSlot,
   type DeskObstacle,

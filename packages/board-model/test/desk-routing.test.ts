@@ -31,6 +31,8 @@ import {
   PLC_UNIT_PC10G,
   plcCoverAt,
   screwStaggerMm,
+  SUPPLY_EXIT_MM,
+  SUPPLY_EXIT_Z_MM,
   TASK1_SOCKET_ROLES,
   withPlcUnit,
   type BoardDefinition,
@@ -259,9 +261,15 @@ describe('deskRoutes（§10.1 / §11.3）', () => {
         (p) => Math.abs(p.x - DESK_LIP_X_MM) < 1e-6 && Math.abs(p.z - DESK_RUN_X_Z_MM) < 1e-6,
       );
       expect(lift).toBeDefined();
-      // 盤の上は盤の電線と同じ高さのはしごを使う（机上の段より低い）。端子そのものは除く
+      // 盤の上は盤の電線と同じ高さのはしごを使う（机上の段より低い）。端子そのものと、
+      // P・N端子を横へ逃がす区間（ネジ頭を越える高さ。盤の中の経路器と同じ）は除く
       const ends = [route.corners[0], route.corners[route.corners.length - 1]];
-      const onBoard = route.corners.filter((p) => p.x < board.sizeMm.width && !ends.includes(p));
+      const onBoard = route.corners.filter(
+        (p) =>
+          p.x < board.sizeMm.width &&
+          !ends.includes(p) &&
+          Math.abs(p.z - SUPPLY_EXIT_Z_MM) > 1e-6,
+      );
       expect(onBoard.every((p) => p.z <= BOARD_RUN_Y_Z_MM + 1e-6)).toBe(true);
     }
   });
@@ -364,7 +372,9 @@ describe('deskRoutes（§10.1 / §11.3）', () => {
     expect(deskRouteIssues(routes, board, PLC_UNIT_FX5U)).toEqual([]);
     // 引き出しの縦走りは、レーン番号のずらし（0.6mm）ではなく実数で中央そろえする
     const leads = routes.map((route) => route.corners[2]?.x ?? Number.NaN).sort((a, b) => a - b);
-    expect(leads).toEqual([20 - DESK_MIN_CLEARANCE_MM / 2, 20 + DESK_MIN_CLEARANCE_MM / 2]);
+    // P・Nは左へ逃がしてから下ろす（Pの電線がNのネジの上を通らない。2026-09-26）
+    const column = 20 - SUPPLY_EXIT_MM;
+    expect(leads).toEqual([column - DESK_MIN_CLEARANCE_MM / 2, column + DESK_MIN_CLEARANCE_MM / 2]);
   });
 
   it('lifts the ninth cable of one wiring channel onto the second layer (BM-02)', () => {
@@ -464,6 +474,36 @@ describe('deskRoutes（§10.1 / §11.3）', () => {
     // 2本以上なら真ん中を空けて外へ振り分ける（ネジの直前の区間と食い違わない）
     expect([0, 1, 2, 3].map((i) => screwStaggerMm(i, 4))).toEqual([-2, 2, -4, 4]);
   });
+
+  it.each(UNITS.map((unit) => [unit.model, unit] as const))(
+    'leads the P cable sideways so it never passes over the N screw below it (%s)',
+    (_model, unit) => {
+      // 2026-09-26 利用者報告「左上のP,Nの配線をするとPからの配線がNの端子と重なって表示する」
+      const { board, session } = referenceSession(unit);
+      const n = board.terminals.find((term) => term.id === 'N.1');
+      const p = board.terminals.find((term) => term.id === 'P.1');
+      expect(n).toBeDefined();
+      expect(p).toBeDefined();
+      if (n === undefined || p === undefined) return;
+      const pRoutes = deskRoutes(board, session).filter((route) =>
+        [route.corners[0], route.corners.at(-1)].some(
+          (end) => end !== undefined && end.x === p.pos.x && end.y === p.pos.y,
+        ),
+      );
+      expect(pRoutes.length).toBeGreaterThan(0);
+      for (const route of pRoutes) {
+        for (let i = 1; i < route.corners.length; i += 1) {
+          const a = route.corners[i - 1];
+          const b = route.corners[i];
+          if (a === undefined || b === undefined) continue;
+          // 区間とNのネジ（半径3mm）の平面上の距離
+          const dx = Math.max(Math.min(a.x, b.x) - n.pos.x, 0, n.pos.x - Math.max(a.x, b.x));
+          const dy = Math.max(Math.min(a.y, b.y) - n.pos.y, 0, n.pos.y - Math.max(a.y, b.y));
+          expect(Math.hypot(dx, dy), `${route.wireId} の区間${i}`).toBeGreaterThan(3);
+        }
+      }
+    },
+  );
 });
 
 describe('deskDucts / deskObstacles', () => {
