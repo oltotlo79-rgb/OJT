@@ -5,10 +5,7 @@
   "title": "コイル断線とレアショートの区別",
   "grade": 2,
   "difficulty": 3,
-  "tags": [
-    "fault-part",
-    "measure"
-  ],
+  "tags": ["fault-part", "measure"],
   "description": "部品を一つずつチェック用ソケットに挿して点検し、正常か故障かを判定してください。重点は「コイル断線とレアショートの区別」です。コイル抵抗、無励磁時と励磁時のa接点・b接点の順に測り、測定記録に予測と判断を残します。",
   "timeLimit": {
     "standardMin": 30,

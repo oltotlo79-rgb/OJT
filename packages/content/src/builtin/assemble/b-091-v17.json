@@ -5,10 +5,7 @@
   "title": "非常停止の保持と復帰",
   "grade": 2,
   "difficulty": 3,
-  "tags": [
-    "self-hold",
-    "interlock"
-  ],
+  "tags": ["self-hold", "interlock"],
   "description": "黒押ボタン（PB1）で運転を始め、白ランプ（PL1）を自己保持で点灯させなさい。緑押ボタン（PB3）を非常停止とみなし、押されたら運転を止めて赤ランプ（PL4）を点灯し続けること（非常停止の状態を保持する）。非常停止の間はPB1を押しても運転できない。黄押ボタン（PB2）で運転の停止と非常停止の復帰を行う。",
   "timeLimit": {
     "standardMin": 40,

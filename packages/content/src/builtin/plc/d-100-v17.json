@@ -5,11 +5,7 @@
   "title": "PLC 起動遅延と運転時間を組み合わせた運転",
   "grade": 1,
   "difficulty": 5,
-  "tags": [
-    "self-hold",
-    "multi-timer",
-    "sequence"
-  ],
+  "tags": ["self-hold", "multi-timer", "sequence"],
   "description": "黒押ボタン（PB1）で運転を受け付け、1秒間（タイマT1）は黄ランプ（PL2）で準備中を表示しなさい。準備が終わったら白ランプ（PL1）を点灯し、2秒間（タイマT2）運転したら自動的に全体を停止すること。黄押ボタン（PB2）ではいつでも停止できる。自動停止のあとは、もう一度PB1を押せば同じ動作を最初から繰り返す。 入力は X0＝黒（PB1）・X1＝黄（PB2）・X2＝緑（PB3）、出力は盤のリレー（CR1〜）を介して表示灯を点けます。PLCの電源は壁コンセントから取ってください。",
   "timeLimit": {
     "standardMin": 50,
@@ -274,9 +270,6 @@
   ],
   "durationMs": 7000,
   "judge": {
-    "compareSignals": [
-      "PL1",
-      "PL2"
-    ]
+    "compareSignals": ["PL1", "PL2"]
   }
 }

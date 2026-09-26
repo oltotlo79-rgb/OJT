@@ -5,9 +5,7 @@
   "title": "PLC 運転中の一時停止",
   "grade": 2,
   "difficulty": 2,
-  "tags": [
-    "self-hold"
-  ],
+  "tags": ["self-hold"],
   "description": "黒押ボタン（PB1）で運転を始め、白ランプ（PL1）を点灯させなさい（運転状態は自己保持）。緑押ボタン（PB3）を押している間は一時停止としてPL1を消し、黄ランプ（PL2）を点灯させる。PB3を離したら運転を再開すること。黄押ボタン（PB2）で運転を終了する。運転していないときにPB3を押してもPL2は点灯しない。 入力は X0＝黒（PB1）・X1＝黄（PB2）・X2＝緑（PB3）、出力は盤のリレー（CR1〜）を介して表示灯を点けます。PLCの電源は壁コンセントから取ってください。",
   "timeLimit": {
     "standardMin": 40,
@@ -234,9 +232,6 @@
   ],
   "durationMs": 6000,
   "judge": {
-    "compareSignals": [
-      "PL1",
-      "PL2"
-    ]
+    "compareSignals": ["PL1", "PL2"]
   }
 }

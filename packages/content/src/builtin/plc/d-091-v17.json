@@ -5,10 +5,7 @@
   "title": "PLC 非常停止の保持と復帰",
   "grade": 2,
   "difficulty": 3,
-  "tags": [
-    "self-hold",
-    "interlock"
-  ],
+  "tags": ["self-hold", "interlock"],
   "description": "黒押ボタン（PB1）で運転を始め、白ランプ（PL1）を自己保持で点灯させなさい。緑押ボタン（PB3）を非常停止とみなし、押されたら運転を止めて黄ランプ（PL2）を点灯し続けること（非常停止の状態を保持する）。非常停止の間はPB1を押しても運転できない。黄押ボタン（PB2）で運転の停止と非常停止の復帰を行う。 入力は X0＝黒（PB1）・X1＝黄（PB2）・X2＝緑（PB3）、出力は盤のリレー（CR1〜）を介して表示灯を点けます。PLCの電源は壁コンセントから取ってください。",
   "timeLimit": {
     "standardMin": 40,
@@ -292,9 +289,6 @@
   ],
   "durationMs": 6500,
   "judge": {
-    "compareSignals": [
-      "PL1",
-      "PL2"
-    ]
+    "compareSignals": ["PL1", "PL2"]
   }
 }

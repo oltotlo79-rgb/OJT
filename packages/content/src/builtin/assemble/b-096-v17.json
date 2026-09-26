@@ -5,10 +5,7 @@
   "title": "長押しで始動する安全起動",
   "grade": 2,
   "difficulty": 3,
-  "tags": [
-    "self-hold",
-    "timer"
-  ],
+  "tags": ["self-hold", "timer"],
   "description": "誤操作を防ぐため、黒押ボタン（PB1）を1秒以上押し続けたときだけ運転を始め、白ランプ（PL1）を自己保持で点灯させなさい（タイマT1で押している時間を測る）。1秒に満たない短い押し方では始動しないこと。黄押ボタン（PB2）で停止する。",
   "timeLimit": {
     "standardMin": 40,

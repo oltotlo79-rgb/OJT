@@ -40,6 +40,28 @@ import d_098 from './plc/d-098-v17.json' with { type: 'json' };
 import d_099 from './plc/d-099-v17.json' with { type: 'json' };
 import d_100 from './plc/d-100-v17.json' with { type: 'json' };
 export const V17_ASSEMBLE = [b_091, b_092, b_093, b_094, b_095, b_096, b_097, b_098, b_099, b_100];
-export const V17_INSPECT_PARTS = [c1_055, c1_056, c1_057, c1_058, c1_059, c1_060, c1_061, c1_062, c1_063, c1_064];
-export const V17_INSPECT_REPAIR = [c2_091, c2_092, c2_093, c2_094, c2_095, c2_096, c2_097, c2_098, c2_099, c2_100];
+export const V17_INSPECT_PARTS = [
+  c1_055,
+  c1_056,
+  c1_057,
+  c1_058,
+  c1_059,
+  c1_060,
+  c1_061,
+  c1_062,
+  c1_063,
+  c1_064,
+];
+export const V17_INSPECT_REPAIR = [
+  c2_091,
+  c2_092,
+  c2_093,
+  c2_094,
+  c2_095,
+  c2_096,
+  c2_097,
+  c2_098,
+  c2_099,
+  c2_100,
+];
 export const V17_PLC = [d_091, d_092, d_093, d_094, d_095, d_096, d_097, d_098, d_099, d_100];

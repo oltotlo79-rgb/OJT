@@ -5,10 +5,7 @@
   "title": "PLC 警報の確認（ブザー停止）と復帰",
   "grade": 1,
   "difficulty": 4,
-  "tags": [
-    "self-hold",
-    "alarm"
-  ],
+  "tags": ["self-hold", "alarm"],
   "description": "緑押ボタン（PB3）を「異常信号」とみなし、PB3が押されたら白ランプ（PL1）で異常を表示し続け、黄ランプ（PL2）を1秒周期で点滅させて警報しなさい。黒押ボタン（PB1）の「確認」で点滅だけを止め、PL1は点灯を続けること。黄押ボタン（PB2）で復帰してPL1を消す。復帰後に再び異常が起きたら、点滅をもう一度始めること。点滅には1秒クロックの特殊接点を使う。 入力は X0＝黒（PB1）・X1＝黄（PB2）・X2＝緑（PB3）、出力は盤のリレー（CR1〜）を介して表示灯を点けます。PLCの電源は壁コンセントから取ってください。",
   "timeLimit": {
     "standardMin": 50,
@@ -290,9 +287,6 @@
   ],
   "durationMs": 6500,
   "judge": {
-    "compareSignals": [
-      "PL1",
-      "PL2"
-    ]
+    "compareSignals": ["PL1", "PL2"]
   }
 }

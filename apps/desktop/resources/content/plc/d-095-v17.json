@@ -5,10 +5,7 @@
   "title": "PLC 条件付きの順序起動",
   "grade": 2,
   "difficulty": 2,
-  "tags": [
-    "self-hold",
-    "sequence"
-  ],
+  "tags": ["self-hold", "sequence"],
   "description": "黒押ボタン（PB1）で1号機（白ランプ PL1）を自己保持で運転しなさい。2号機（黄ランプ PL2）は緑押ボタン（PB3）で起動するが、1号機が運転しているときだけ起動できること。1号機が止まっているときにPB3を押しても2号機は動かない。黄押ボタン（PB2）で両方を停止する。 入力は X0＝黒（PB1）・X1＝黄（PB2）・X2＝緑（PB3）、出力は盤のリレー（CR1〜）を介して表示灯を点けます。PLCの電源は壁コンセントから取ってください。",
   "timeLimit": {
     "standardMin": 40,
@@ -234,9 +231,6 @@
   ],
   "durationMs": 5500,
   "judge": {
-    "compareSignals": [
-      "PL1",
-      "PL2"
-    ]
+    "compareSignals": ["PL1", "PL2"]
   }
 }

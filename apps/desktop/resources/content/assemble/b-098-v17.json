@@ -5,10 +5,7 @@
   "title": "両手同時押しで始動する自己保持",
   "grade": 2,
   "difficulty": 2,
-  "tags": [
-    "self-hold",
-    "and-or"
-  ],
+  "tags": ["self-hold", "and-or"],
   "description": "黒押ボタン（PB1）と緑押ボタン（PB3）を両方押したときだけ運転を始め、白ランプ（PL1）を自己保持で点灯させなさい。片方だけを押しても始動しないこと。黄押ボタン（PB2）で停止する。",
   "timeLimit": {
     "standardMin": 40,

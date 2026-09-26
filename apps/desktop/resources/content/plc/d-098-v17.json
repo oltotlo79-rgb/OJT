@@ -5,10 +5,7 @@
   "title": "PLC 両手同時押しで始動する自己保持",
   "grade": 2,
   "difficulty": 2,
-  "tags": [
-    "self-hold",
-    "and-or"
-  ],
+  "tags": ["self-hold", "and-or"],
   "description": "黒押ボタン（PB1）と緑押ボタン（PB3）を両方押したときだけ運転を始め、白ランプ（PL1）を自己保持で点灯させなさい。片方だけを押しても始動しないこと。止まっているときに片方だけを押している間は、黄ランプ（PL2）で「片手押し」を警告する。黄押ボタン（PB2）で停止する。 入力は X0＝黒（PB1）・X1＝黄（PB2）・X2＝緑（PB3）、出力は盤のリレー（CR1〜）を介して表示灯を点けます。PLCの電源は壁コンセントから取ってください。",
   "timeLimit": {
     "standardMin": 40,
@@ -277,9 +274,6 @@
   ],
   "durationMs": 5500,
   "judge": {
-    "compareSignals": [
-      "PL1",
-      "PL2"
-    ]
+    "compareSignals": ["PL1", "PL2"]
   }
 }

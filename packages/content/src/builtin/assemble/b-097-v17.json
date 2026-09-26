@@ -5,9 +5,7 @@
   "title": "運転中の一時停止",
   "grade": 3,
   "difficulty": 2,
-  "tags": [
-    "self-hold"
-  ],
+  "tags": ["self-hold"],
   "description": "黒押ボタン（PB1）で運転を始め、白ランプ（PL1）を点灯させなさい（運転状態は自己保持）。緑押ボタン（PB3）を押している間は一時停止としてPL1を消し、黄ランプ（PL2）を点灯させる。PB3を離したら運転を再開すること。黄押ボタン（PB2）で運転を終了する。運転していないときにPB3を押してもPL2は点灯しない。",
   "timeLimit": {
     "standardMin": 30,

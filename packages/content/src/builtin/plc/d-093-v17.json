@@ -5,10 +5,7 @@
   "title": "PLC 起動待ち表示つきの遅延起動",
   "grade": 2,
   "difficulty": 2,
-  "tags": [
-    "self-hold",
-    "timer"
-  ],
+  "tags": ["self-hold", "timer"],
   "description": "黒押ボタン（PB1）を押すと起動準備に入り、黄ランプ（PL2）で「起動待ち」を表示しなさい。1.5秒後（タイマT1）にPL2を消して白ランプ（PL1）を点灯させる。黄押ボタン（PB2）でいつでも停止でき、起動待ちの途中で止めたときはPL1を点灯させないこと。 入力は X0＝黒（PB1）・X1＝黄（PB2）・X2＝緑（PB3）、出力は盤のリレー（CR1〜）を介して表示灯を点けます。PLCの電源は壁コンセントから取ってください。",
   "timeLimit": {
     "standardMin": 40,
@@ -250,9 +247,6 @@
   ],
   "durationMs": 6500,
   "judge": {
-    "compareSignals": [
-      "PL1",
-      "PL2"
-    ]
+    "compareSignals": ["PL1", "PL2"]
   }
 }

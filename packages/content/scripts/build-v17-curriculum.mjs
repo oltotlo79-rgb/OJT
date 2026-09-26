@@ -8,6 +8,7 @@
  *
  * 実行（packages/content で）:
  *   node --experimental-transform-types --import ./scripts/ts-source-resolve.js scripts/build-v17-curriculum.mjs
+ *   （生成後にリポジトリのルートで `pnpm exec prettier --write packages/content apps/desktop/resources/content`）
  *
  * 生成した各題は、模範回路の自己判定（組立・PLC）と、故障が波形に現れること（点検修復）を
  * この場で確かめ、満たさなければ書き出さずに止まる。
