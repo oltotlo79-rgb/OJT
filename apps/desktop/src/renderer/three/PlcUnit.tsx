@@ -161,11 +161,13 @@ export function PlcFace({
       })}
       {/*
         ヒンジ式の端子カバーは**開いた状態**で描く（決定表#16）。蝶番の辺に置いた `group` を
-        `COVER_OPEN_DEG` だけ回し、その中に板を吊るす（姿勢の式は `coverOpenPose()`）。
-        上ヒンジは上へ、下ヒンジは下へ倒れるので、端子の列・机上ケーブルの引き込み・銘板の
-        どれも塞がない（`plc-appearance-view.test.ts` が検査する）。
+        `COVER_OPEN_DEG`（180°）だけ回し、その中に板を吊るす（姿勢の式は `coverOpenPose()`）。
+        上ヒンジは本体の上へ、下ヒンジは本体の下へ平らに寝るので、端子の列・机上ケーブル・銘板の
+        どれも塞がない（`plc-appearance-view.test.ts` が検査する）。取り外した状態（`open:
+        'removed'`。ラックのモジュール）は描かない。
       */}
       {appearance.covers.map((cover) => {
+        if (cover.open === 'removed') return null;
         const pose = coverOpenPose(origin, cover, faceZMm);
         return (
           <group

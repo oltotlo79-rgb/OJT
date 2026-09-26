@@ -191,19 +191,21 @@ describe('端子カバーは開いた状態で描く（決定表#16 / 4B レビ�
     expect(coverOpenPose(origin, coverAt('top'), -4).hinge.z).toBe(-4);
   });
 
-  it('swings the free edge out of the face — up for a top hinge, down for a bottom one', () => {
+  it('lays the plate flat outside the face — above for a top hinge, below for a bottom one', () => {
+    // 180°まで開いて寝かせる（決定表#16 の改訂 2026-09-26）。板は机上の電線（z ≥ 9.6mm）の
+    // 通り道に立たない（2026-09-26 利用者報告「配線がシーケンサを貫通する」）
+    expect(COVER_OPEN_RAD).toBeCloseTo(Math.PI, 12);
     const top = coverOpenTip(coverOpenPose(origin, coverAt('top')));
-    expect(top.z).toBeCloseTo(30 * Math.sin(COVER_OPEN_RAD), 6);
-    expect(top.z).toBeGreaterThan(20);
-    expect(top.y).toBeLessThan(220);
+    expect(top.z).toBeCloseTo(0, 6);
+    expect(top.y).toBeCloseTo(220 - 30, 6);
     const bottom = coverOpenTip(coverOpenPose(origin, coverAt('bottom')));
-    expect(bottom.z).toBeCloseTo(30 * Math.sin(COVER_OPEN_RAD), 6);
-    expect(bottom.y).toBeGreaterThan(250);
+    expect(bottom.z).toBeCloseTo(0, 6);
+    expect(bottom.y).toBeCloseTo(250 + 30, 6);
     const left = coverOpenTip(coverOpenPose(origin, coverAt('left')));
-    expect(left.z).toBeCloseTo(40 * Math.sin(COVER_OPEN_RAD), 6);
-    expect(left.x).toBeLessThan(110);
+    expect(left.z).toBeCloseTo(0, 6);
+    expect(left.x).toBeCloseTo(110 - 40, 6);
     const right = coverOpenTip(coverOpenPose(origin, coverAt('right')));
-    expect(right.x).toBeGreaterThan(150);
+    expect(right.x).toBeCloseTo(150 + 40, 6);
   });
 
   it('never sweeps over a terminal row, the nameplate or the desk cable entry', () => {
@@ -232,6 +234,8 @@ describe('端子カバーは開いた状態で描く（決定表#16 / 4B レビ�
     for (const face of faces) {
       const plate = face.appearance.nameplateRect;
       for (const cover of face.appearance.covers) {
+        // 取り外した状態のカバー（ラックのモジュール）は描かない
+        if (cover.open === 'removed') continue;
         const pose = coverOpenPose(face.origin, cover);
         const tip = coverOpenTip(pose);
         const from = Math.min(pose.hinge.y, tip.y);
@@ -245,8 +249,8 @@ describe('端子カバーは開いた状態で描く（決定表#16 / 4B レビ�
         const plateFrom = face.origin.y + plate.y;
         const plateTo = plateFrom + plate.h;
         expect(plateFrom > to || plateTo < from, `${face.name} ${cover.id} nameplate`).toBe(true);
-        // 面から出ない板は描かない（カバーは必ず前へ出る）
-        expect(tip.z).toBeGreaterThan(0);
+        // 板は面より奥へ沈まない（本体の外に寝る）
+        expect(tip.z).toBeGreaterThan(-1e-9);
       }
     }
   });

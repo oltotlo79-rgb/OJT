@@ -157,6 +157,9 @@ export const DESK_ROW_LANE_MAX = CHANNEL_LANE_COUNT;
 
 const EPS = 1e-6;
 
+/** 開いた端子カバーの板厚の半分[mm]（3Dの `COVER_THICKNESS_MM` 1mm の半分）。 */
+const COVER_PLATE_HALF_MM = 0.5;
+
 /** 電源のP・N端子（縦に並ぶので横へ逃がしてから下ろす）。 */
 const SUPPLY_TERMINAL_RE = /^(P|N)\./u;
 /** P・N端子から横へ逃がす距離[mm]（盤の中の経路器 `routing.ts` と同じ12mm）。 */
@@ -831,8 +834,12 @@ export function deskObstacles(board: BoardDefinition, unit: PlcUnitDefinition): 
       zHiMm: 0,
     });
     for (const cover of face.appearance.covers) {
+      // 取り外した状態のカバー（ラックのモジュール）は3Dに描かないので、避ける箱も無い
+      if (cover.open === 'removed') continue;
       const reach = coverOpenReachMm(cover);
-      const riseMm = coverOpenRiseMm(cover);
+      // 180°で寝かせた板は蝶番の高さ（z = 0）に板厚ぶん載るだけ。`sin` の丸め誤差で
+      // 0 にならないので、板厚の半分（`COVER_PLATE_HALF_MM`）を下限にする
+      const riseMm = Math.max(coverOpenRiseMm(cover), COVER_PLATE_HALF_MM);
       const left = face.origin.x + cover.rect.x;
       const top = face.origin.y + cover.rect.y;
       const rect: Rect =
@@ -843,13 +850,13 @@ export function deskObstacles(board: BoardDefinition, unit: PlcUnitDefinition): 
             : cover.hinge === 'left'
               ? { x: left - reach, y: top, w: reach, h: cover.rect.h }
               : { x: left + cover.rect.w, y: top, w: reach, h: cover.rect.h };
-      // 上・左ヒンジは奥へ、下・右ヒンジは手前へ倒れる（`coverOpenPose()` と同じ向き）
-      const forward = cover.hinge === 'bottom' || cover.hinge === 'right';
+      // どの蝶番も手前（z > 0）へ倒して開く（`coverOpenPose()` と同じ向き）。180°まで開いた板は
+      // 蝶番の高さを中心に板厚ぶんの厚みを持って寝る
       out.push({
         id: `cover-${face.id}-${cover.id}`,
         rect,
-        zLoMm: forward ? 0 : -riseMm,
-        zHiMm: forward ? riseMm : 0,
+        zLoMm: -COVER_PLATE_HALF_MM,
+        zHiMm: riseMm,
       });
     }
   }

@@ -137,11 +137,12 @@ export function litLedKeys(appearance: PlcAppearance, state: PlcLedState): Set<s
  */
 
 /**
- * 端子カバーを開く角度[°]。決定表#16
- * 実機のヒンジ式カバーは 90° を少し越えて開き、開いたまま止まる。ここも 90° ちょうどだと
- * 真横から見たときに板が消えてしまうので、少し倒して「開いている」ことが見えるようにする。
+ * 端子カバーを開く角度[°]。決定表#16（2026-09-26 改訂: 100° → 180°）
+ * 本体の外側に平らに寝かせ、机上の電線（z ≥ 9.6mm）の通り道に板を立てない。100°で手前へ
+ * 立てていたころは上から入る電線がカバーを突き抜けて見えた（2026-09-26 利用者報告）。
+ * `@ojt/board-model` の `PLC_COVER_OPEN_DEG` と必ず同じ値にする（経路が避ける箱と揃える）。
  */
-export const COVER_OPEN_DEG = 100;
+export const COVER_OPEN_DEG = 180;
 /** 同じ角度[rad]。 */
 export const COVER_OPEN_RAD = (COVER_OPEN_DEG * Math.PI) / 180;
 /** 端子カバーの板厚[mm]。 */

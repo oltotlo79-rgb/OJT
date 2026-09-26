@@ -535,19 +535,29 @@ describe('deskDucts / deskObstacles', () => {
     for (const box of boxes.filter((b) => b.id.startsWith('body-'))) {
       expect(box.zHiMm).toBeLessThanOrEqual(0);
     }
-    // ラックのモジュールのカバーは上ヒンジ＝奥へ倒れる（手前の空間を空ける）
-    const covers = boxes.filter((b) => b.id.includes('cover-'));
-    expect(covers.length).toBeGreaterThan(0);
-    expect(covers.every((b) => b.zHiMm <= 0)).toBe(true);
+    // ラックのモジュールのカバーは取り外した状態で描くので、避ける箱も作らない
+    // （開くと表示灯の帯を塞ぐ。決定表#16 の改訂 2026-09-26）
+    expect(boxes.filter((b) => b.id.includes('cover-'))).toEqual([]);
   });
 
-  it('sweeps the bottom-hinged cover forward, below the unit', () => {
+  it('lays the fully opened covers flat outside the unit, below the desk cables', () => {
     const board = withPlcUnit(JIPM_BOARD, PLC_UNIT_FX5U);
-    const box = deskObstacles(board, PLC_UNIT_FX5U).find((b) => b.id.includes('output-cover'));
-    expect(box).toBeDefined();
-    expect(box?.zLoMm).toBe(0);
-    expect(box?.zHiMm).toBeGreaterThan(20);
-    expect(box?.rect.y).toBe(PLC_UNIT_FX5U.pos.y + PLC_UNIT_FX5U.appearance.faceMm.height);
+    const boxes = deskObstacles(board, PLC_UNIT_FX5U);
+    const bottom = boxes.find((b) => b.id.includes('output-cover'));
+    const top = boxes.find((b) => b.id.includes('input-cover'));
+    expect(bottom).toBeDefined();
+    expect(top).toBeDefined();
+    // 180°まで開いた板は板厚ぶんの厚みで寝る。机上の電線（最低 9.6mm）には届かない
+    for (const box of [top, bottom]) {
+      expect(box?.zLoMm).toBe(-0.5);
+      expect(box?.zHiMm).toBe(0.5);
+      expect(box?.zHiMm).toBeLessThan(DESK_RUN_X_Z_MM);
+    }
+    // 下ヒンジは本体の下、上ヒンジは本体の上に、カバーの長さぶん寝る
+    const unitBottom = PLC_UNIT_FX5U.pos.y + PLC_UNIT_FX5U.appearance.faceMm.height;
+    expect(bottom?.rect.y).toBe(unitBottom);
+    expect(bottom?.rect.h).toBeCloseTo(26, 6);
+    expect((top?.rect.y ?? 0) + (top?.rect.h ?? 0)).toBeCloseTo(PLC_UNIT_FX5U.pos.y, 6);
   });
 
   it('reports a cable that runs through an obstacle', () => {
@@ -556,13 +566,14 @@ describe('deskDucts / deskObstacles', () => {
       wireId: 'w-fake',
       kind: 'channel',
       color: '青',
+      // 開いて寝かせた出力カバー（本体の下 y 108〜134）の板の中を這う区間
       corners: [
-        { x: 400, y: 110, z: 10 },
-        { x: 420, y: 110, z: 10 },
+        { x: 400, y: 120, z: 0 },
+        { x: 420, y: 120, z: 0 },
       ],
       points: [
-        { x: 400, y: 110, z: 10 },
-        { x: 420, y: 110, z: 10 },
+        { x: 400, y: 120, z: 0 },
+        { x: 420, y: 120, z: 0 },
       ],
       channelIds: [],
       ductIds: [],
@@ -602,11 +613,12 @@ describe('deskDucts / deskObstacles', () => {
     const boxes = deskObstacles(board, sideways);
     const left = boxes.find((b) => b.id.includes('left-cover'));
     const right = boxes.find((b) => b.id.includes('right-cover'));
-    // 左ヒンジは奥へ、右ヒンジは手前へ倒れる（`coverOpenPose()` と同じ向き）
+    // 左ヒンジは本体の左へ、右ヒンジは本体の右へ平らに寝る（`coverOpenPose()` と同じ向き）
     expect(left?.rect.x).toBeLessThan(sideways.pos.x);
-    expect(left?.zHiMm).toBe(0);
+    expect(left?.rect.w).toBeCloseTo(20, 6);
+    expect(left?.zHiMm).toBe(0.5);
     expect(right?.rect.x).toBeGreaterThan(sideways.pos.x + 60);
-    expect(right?.zLoMm).toBe(0);
+    expect(right?.zLoMm).toBe(-0.5);
   });
 
   it('reports a lane that two cables share, a trunk on the board and a row off the desk', () => {

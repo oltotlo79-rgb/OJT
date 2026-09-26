@@ -624,6 +624,9 @@ function rackFace(options: {
               rect: options.cover,
               color: options.terminalColor,
               hinge: 'top' as const,
+              // 開くと上端の表示灯の帯（上ヒンジ）か隣のモジュール（左右ヒンジ）を塞ぐので、
+              // ラックの端子台カバーは取り外した状態で描く（決定表#16 の改訂、2026-09-26）
+              open: 'removed' as const,
             },
           ],
     leds,
@@ -1032,7 +1035,11 @@ export const OUTLET_TERMINALS: readonly BoardTerminal[] = (['L', 'N'] as const).
 );
 
 /**
- * 端子カバーを開く角度[°]。決定表#16
+ * 端子カバーを開く角度[°]。決定表#16（2026-09-26 改訂: 100° → 180°）
+ *
+ * 180°まで開いたカバーは本体の外側（上ヒンジは本体の上、下ヒンジは本体の下）に平らに寝る。
+ * 100°で手前へ立てていたころは、上から入る机上の電線が立ったカバーを突き抜けて見えた
+ * （2026-09-26 利用者報告）。
  *
  * 3D側の `apps/desktop/src/renderer/three/appearance.ts` の `COVER_OPEN_DEG` と**同じ値**で、
  * 開いたカバーの描画（`coverOpenPose()`）と、机上の経路がカバーを避ける計算
@@ -1040,14 +1047,13 @@ export const OUTLET_TERMINALS: readonly BoardTerminal[] = (['L', 'N'] as const).
  * 依存しないので、この2箇所は import で結べない — 片方だけ変えると経路がカバーを突き抜けるので、
  * 必ず両方直す（`PC10G_OUTPUT_BASE` と同じ事情）。
  */
-export const PLC_COVER_OPEN_DEG = 100;
+export const PLC_COVER_OPEN_DEG = 180;
 
 /** 同じ角度[rad]。 */
 export const PLC_COVER_OPEN_RAD = (PLC_COVER_OPEN_DEG * Math.PI) / 180;
 
 /**
- * 開いた端子カバーが、蝶番の**向こう側**へはみ出す長さ[mm]。
- * 90°を少し越えて開くので、板は蝶番の線を `h·|cos θ|` だけ越える。
+ * 開いた端子カバーが、蝶番の**向こう側**へはみ出す長さ[mm]（`h·|cos θ|`。180°なら板の長さそのもの）。
  */
 export function coverOpenReachMm(
   cover: PlcCoverMark,
