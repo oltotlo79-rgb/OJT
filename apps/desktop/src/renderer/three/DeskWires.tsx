@@ -12,7 +12,13 @@ import { memo, useMemo, useRef, type JSX } from 'react';
 import { BackSide } from 'three';
 import { WIRE_COLORS, WIRE_OUTLINE_COLOR } from '../session/colors.js';
 import { sharedMaterial } from './materials.js';
-import { shouldOutlineWireBody, useTubeGeometry, WIRE_RADIUS_MM } from './Wire.js';
+import {
+  shouldOutlineWireBody,
+  useTubeGeometry,
+  wireBodyColor,
+  WirePickBody,
+  WIRE_RADIUS_MM,
+} from './Wire.js';
 
 /**
  * 机上へ渡るケーブル。設計仕様 §6.6 / §10.1 / §11.3。決定表#9
@@ -22,8 +28,10 @@ import { shouldOutlineWireBody, useTubeGeometry, WIRE_RADIUS_MM } from './Wire.j
  * 沿った**直角の経路**を返すので、ここは盤の電線（`Wire.tsx`）と**同じ描き方**で管にするだけ
  * でよい（半径・色・角の丸め・白線の縁取り・ジオメトリの解放まで `Wire.tsx` のヘルパを使う）。
  *
- * ピックは受けない。机上のケーブルは盤の電線と違って削除モードの対象ではなく、手前を通る管が
- * PLCの端子のクリックを奪うと配線できなくなるためである（§8.2 の操作性を優先）。
+ * ピックは盤の電線と同じ規則で受ける（2026-09-26 利用者指示「選択しても…削除できない部分などないように」。
+ * 以前は机上のケーブルを押しても選べず、PLC本体への配線を3Dから外せなかった）。削除モード・
+ * 配線モードで押すと選べ、Delete で外せる。配線モードでは、同じ点にある端子（PLC本体・盤）へ
+ * クリックを譲る（`WirePickBody` の `yieldsToParts`）ので、ケーブルが端子の配線を邪魔しない。
  */
 
 /** レイキャストを受けない。 */
@@ -57,11 +65,25 @@ function DeskCableOutline({ route }: { route: DeskRoute }): JSX.Element {
   );
 }
 
+/** 机上のケーブルを押せるようにするときの設定（盤の電線と同じ規則）。 */
+export interface DeskPick {
+  /** 当たり判定を作るか（削除・配線モード）。 */
+  pickable: boolean;
+  /** 配線モード: 同じ点の端子へクリックを譲る。 */
+  yieldsToParts: boolean;
+  /** 選択中の電線（連動ハイライトを含む）。 */
+  selected: ReadonlySet<string>;
+  onPick: (wireId: string, locked: boolean) => void;
+}
+
 /** 机上のケーブル1本。 */
-function DeskCable({ route }: { route: DeskRoute }): JSX.Element {
+function DeskCable({ route, pick }: { route: DeskRoute; pick: DeskPick | undefined }): JSX.Element {
   // 形のメモ化（折れ点が同じなら作り直さない）と、作り直したときの解放は `Wire.tsx` と共通
   const geometry = useTubeGeometry(route);
-  const bodyColor = WIRE_COLORS[route.color];
+  const selected = pick?.selected.has(route.wireId) === true;
+  const bodyColor = selected
+    ? wireBodyColor(route, route.color, false, true)
+    : WIRE_COLORS[route.color];
   return (
     <group name={`desk-wire-${route.wireId}`} userData={{ lane: route.lane }}>
       {shouldOutlineWireBody(bodyColor) ? <DeskCableOutline route={route} /> : null}
@@ -70,6 +92,14 @@ function DeskCable({ route }: { route: DeskRoute }): JSX.Element {
         raycast={noPick}
         material={sharedMaterial(bodyColor, { roughness: 0.55, metalness: 0.05 })}
       />
+      {pick?.pickable === true ? (
+        <WirePickBody
+          route={route}
+          locked={false}
+          yieldsToParts={pick.yieldsToParts}
+          onPick={pick.onPick}
+        />
+      ) : null}
     </group>
   );
 }
@@ -106,9 +136,12 @@ export function deskWireSignature(board: BoardDefinition, session: BoardSession)
 function DeskWiresImpl({
   board,
   session,
+  pick,
 }: {
   board: BoardDefinition;
   session: BoardSession;
+  /** 押して選べるようにするとき（省略すると描くだけ）。 */
+  pick?: DeskPick | undefined;
 }): JSX.Element | null {
   const signature = deskWireSignature(board, session);
   /*
@@ -129,7 +162,7 @@ function DeskWiresImpl({
   return (
     <group name="desk-wires">
       {routes.map((route) => (
-        <DeskCable key={route.wireId} route={route} />
+        <DeskCable key={route.wireId} route={route} pick={pick} />
       ))}
     </group>
   );

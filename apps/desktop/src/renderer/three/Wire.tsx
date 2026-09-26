@@ -184,7 +184,7 @@ const WIRE_PICK_MARK = 'wirePick';
  * だけ組み込まれる。別のコンポーネントにしてあるのは、要らないときは形を**作らない**ためで、
  * 外れたときにフックの後始末がそのまま `dispose()` になる。
  */
-function WirePickBody({
+export function WirePickBody({
   route,
   locked,
   yieldsToParts,

@@ -605,6 +605,20 @@ function BoardContents({
     [onPick],
   );
 
+  /**
+   * 机上のケーブル（PLC本体・壁コンセントへの電線）も盤の電線と同じ規則で押して選べるようにする
+   * （2026-09-26 利用者指示。以前は3Dから選べず外せなかった）。
+   */
+  const deskPick = useMemo(
+    () => ({
+      pickable: mode === 'delete' || mode === 'wire',
+      yieldsToParts: mode === 'wire',
+      selected: new Set([...(selectedWire === undefined ? [] : [selectedWire]), ...highlightWires]),
+      onPick: pickWire,
+    }),
+    [mode, selectedWire, highlightWires, pickWire],
+  );
+
   /*
    * Blender 風の中ボタン割り当て（§12.2 / 2026-09-14 の利用者要望）。
    * three の `OrbitControls` は修飾キー付きのボタン割り当てを持たないので、
@@ -1124,7 +1138,9 @@ function BoardContents({
               onHoverTerminal={onHover}
               onPickTerminal={pickTerminal}
             />
-            {session === undefined ? null : <DeskWires board={board} session={session} />}
+            {session === undefined ? null : (
+              <DeskWires board={board} session={session} pick={deskPick} />
+            )}
           </>
         )}
 

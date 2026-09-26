@@ -68,6 +68,26 @@ describe('DeskWires（§10.1 / 決定表#9）', () => {
     disposeSpy.mockRestore();
   });
 
+  it('builds a pick tube per desk cable when the scene lets the trainee pick wires (2026-09-26)', () => {
+    // 以前は机上のケーブルを押せず、PLC本体への配線を3Dから外せなかった
+    const session = sessionWith(board, [
+      ['TB_PB.1a', 'PLC.X0'],
+      ['OUTLET.L', 'PLC.L'],
+    ]);
+    const disposeSpy = vi.spyOn(TubeGeometry.prototype, 'dispose');
+    const { unmount } = render(
+      <DeskWires
+        board={board}
+        session={session}
+        pick={{ pickable: true, yieldsToParts: true, selected: new Set(), onPick: vi.fn() }}
+      />,
+    );
+    unmount();
+    // 胴体2本＋当たり判定2本
+    expect(disposeSpy).toHaveBeenCalledTimes(4);
+    disposeSpy.mockRestore();
+  });
+
   it('adds the dark outline only to a white cable', () => {
     const session = sessionWith(board, [['TB_PB.1a', 'PLC.X0']], ['青', '白']);
     const disposeSpy = vi.spyOn(TubeGeometry.prototype, 'dispose');
