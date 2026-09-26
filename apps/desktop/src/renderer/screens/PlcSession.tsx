@@ -19,7 +19,16 @@ import { getDialect, type DialectProfile } from '@ojt/plc-dialects';
 import { useCallback, useEffect, useMemo, useState, type JSX } from 'react';
 import type { PlcCommandAction } from '../../worker/protocol.js';
 import { useStore } from '../app/store.js';
-import { failedLog, historyLog, JA, powerLog, routeFailedLog, wireCountText } from '../i18n/ja.js';
+import {
+  failedLog,
+  historyLog,
+  JA,
+  powerLog,
+  routeFailedLog,
+  wireCountText,
+  wireLabel,
+} from '../i18n/ja.js';
+import { HoverHint } from '../panels/HoverHint.js';
 import { LadderWorkspace } from '../ladder/LadderWorkspace.js';
 import { NotationDialog } from '../ladder/NotationDialog.js';
 import { LivePanel } from '../panels/LivePanel.js';
@@ -131,6 +140,15 @@ function stepHintText(
   return undefined;
 }
 
+/** 選択中の電線の表示名（見つからなければ電線IDのまま）。 */
+function selectedWireLabel(
+  wires: readonly { id: string; from: string; to: string; color: string }[],
+  id: string,
+): string {
+  const wire = wires.find((w) => w.id === id);
+  return wire === undefined ? id : wireLabel(wire);
+}
+
 /** 書込み／読出し／モニタの表示名（GX Works3 の言い方に揃える）。§10.6 */
 function ladderModeLabel(mode: LadderEditorMode): string {
   if (mode === 'write') return JA.plc.modeWrite;
@@ -158,6 +176,7 @@ export function PlcSession(): JSX.Element {
   const pendingTerminal = useStore((state) => state.pendingTerminal);
   const hoveredTerminal = useStore((state) => state.hoveredTerminal);
   const selectedSocket = useStore((s) => s.selectedSocket);
+  const selectedWire = useStore((s) => s.selectedWire);
   const dragging = useStore((s) => s.dragging);
   const powered = useStore((s) => s.snapshot.powered);
   const tripped = useStore((s) => s.snapshot.tripped);
@@ -732,12 +751,24 @@ export function PlcSession(): JSX.Element {
               onPress={onPress}
               onRelease={onRelease}
             />
+            {/*
+              配線の始点と選択中の電線を字でも出す（組立画面と同じ。2026-09-26 の操作の総点検で、
+              PLC画面だけ「いまどの端子を選んでいるか」「どの電線を選んでいるか」が出ていなかった）。
+            */}
             <div className={styles.statusOverlay} data-testid="status-overlay">
               {powered ? JA.session.powered : JA.session.unpowered} /{' '}
-              {wireCountText(session.wires.length, fixedWireCount)}
+              {wireCountText(session.wires.length, fixedWireCount)} /{' '}
+              {pendingTerminal === undefined
+                ? JA.session.noTerminal
+                : `${JA.session.firstTerminal}: ${pendingTerminal}`}
+              {selectedWire === undefined || selectedWire.length === 0
+                ? ''
+                : ` / ${JA.session.selection}: ${selectedWireLabel(session.wires, selectedWire)}`}
               {tripped ? ` / ${JA.session.tripped}` : ''}
             </div>
             <ViewHint />
+            {/* いま指しているものと、押すと何が起きるか（組立・点検修復と同じ） */}
+            <HoverHint />
           </div>
         )}
         <div className={styles.plcRight}>

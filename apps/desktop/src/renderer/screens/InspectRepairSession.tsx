@@ -109,6 +109,7 @@ export function InspectRepairSession(): JSX.Element {
   const circuit = useStore((s) => s.circuit);
   const reports = useStore((s) => s.reports);
   const pendingReport = useStore((s) => s.pendingReport);
+  const pendingTerminal = useStore((s) => s.pendingTerminal);
   /**
    * 3Dで最後に押した位置（ビューポート内の座標）。指摘の小窓を押した場所のすぐ横に出すのに使う
    * （2026-09-26 利用者指示「3D図内で選択し…指定できるようにして」）。一覧から開いたときは
@@ -756,6 +757,10 @@ export function InspectRepairSession(): JSX.Element {
             {powered ? JA.session.powered : JA.session.unpowered} /{' '}
             {wireCountText(session.wires.length, fixedWireCount)} / {JA.inspectRepair.reportCount}{' '}
             {reports.length}
+            {/* 修復の配線中は始点を字でも出す（組立・PLC画面と同じ。2026-09-26） */}
+            {pendingTerminal === undefined
+              ? ''
+              : ` / ${JA.session.firstTerminal}: ${pendingTerminal}`}
             {tripped ? ` / ${JA.session.tripped}` : ''}
           </div>
           <ViewHint />
