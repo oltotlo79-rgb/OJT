@@ -30,9 +30,10 @@
 }
 
 /*
- * 入れ物は画面いっぱいに敷かれるので、クリックを吸わないよう `pointer-events: none` にする
- * （トースト1枚1枚だけがクリックを受ける）。これが無いと、トーストが出ている間は
- * 右下の3D盤やボタンが押せなくなる。
+ * 入れ物もトースト1枚1枚も、クリックを吸わないよう `pointer-events: none` にする。
+ * トーストは読むだけの知らせ（押せる部品を持たない）なので、下にある右パネルのボタンや
+ * 3D盤をそのまま押せるほうがよい（2026-09-26 の操作の総点検で、I/O表のボタンが
+ * トーストに覆われて4秒間押せなかったのを見つけた）。
  */
 .toasts {
   position: fixed;
@@ -52,7 +53,7 @@
   border-radius: 4px;
   padding: 8px 12px;
   max-width: 420px;
-  pointer-events: auto;
+  pointer-events: none;
 }
 
 .toastError {
