@@ -1,5 +1,6 @@
 import type { SocketId } from '@ojt/board-model';
 import type { JSX } from 'react';
+import { useStore } from '../app/store.js';
 import { JA, mountedPartLabel } from '../i18n/ja.js';
 import { focusDiagnosticTarget } from '../session/diagnostic-navigation.js';
 import styles from './tester.module.css';
@@ -69,6 +70,18 @@ export function RepairPanel({
             onClick={() => focusDiagnosticTarget({ partId: part.partId })}
           >
             {mountedPartLabel(part.partId, part.isTimer)} を表示
+          </button>
+          <button
+            type="button"
+            data-testid={`report-part-${part.partId}`}
+            onClick={() => {
+              // 3Dで部品を押したときと同じ小窓を開く（どちらからでも指摘できる。2026-09-26）
+              const state = useStore.getState();
+              state.setMode('report');
+              state.setPendingReport({ partId: part.partId });
+            }}
+          >
+            {JA.inspectRepair.reportThisPart}
           </button>
           <button
             type="button"

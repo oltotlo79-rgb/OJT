@@ -11,6 +11,7 @@ import {
   isInspectRepairProblem,
   isPlcProblem,
   PART_TRUTHS,
+  FAULT_DETAILS,
   FaultSpecSchema,
   parseProblem,
   replacePart,
@@ -417,6 +418,9 @@ function isFaultReport(value: unknown): value is FaultReport {
   if (typeof kind !== 'string' || !(kinds as readonly string[]).includes(kind)) return false;
   const target = value['target'];
   if (!isRecord(target)) return false;
+  // 部品不良の内容（2026-09-26 追加。任意）。旧ファイルには無い。知らない値の入ったものは読まない
+  const detail = value['detail'];
+  if (detail !== undefined && !(FAULT_DETAILS as readonly unknown[]).includes(detail)) return false;
   return (
     typeof target['wireId'] === 'string' ||
     typeof target['partId'] === 'string' ||

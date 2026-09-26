@@ -267,6 +267,8 @@ export { hashSeed, mulberry32, pickIndex, pickOne } from './rng.js';
 
 export {
   applyFaults,
+  detailReview,
+  FAULT_DETAILS,
   faultParam,
   injectPartFaults,
   matchesSite,
@@ -274,6 +276,8 @@ export {
   withoutPartFaults,
   type AppliedFaults,
   type ApplyFaultsResult,
+  type DetailReview,
+  type FaultDetail,
   type FaultReport,
   type FaultReportKind,
   type FaultSite,

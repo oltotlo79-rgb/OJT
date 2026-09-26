@@ -1,5 +1,5 @@
 import type { BoardSession, SocketId } from '@ojt/board-model';
-import type { FaultReport, FaultReportKind, RepairCircuit } from '@ojt/content';
+import type { FaultDetail, FaultReport, FaultReportKind, RepairCircuit } from '@ojt/content';
 import {
   LOCKED_WIRE_MESSAGE,
   type PickAction,
@@ -43,6 +43,34 @@ export function hasReportFor(
   kind: FaultReportKind,
 ): boolean {
   return reports.some((report) => report.kind === kind && sameTarget(report.target, target));
+}
+
+/** 指摘を登録するときの扱い。 */
+export type ReportRegistration =
+  | { type: 'add'; report: FaultReport }
+  | { type: 'replace'; index: number; report: FaultReport }
+  | { type: 'duplicate' };
+
+/**
+ * 指摘を1件登録するときに、足すか・差し替えるか・断るかを決める。§9.2 / 2026-09-26
+ *
+ * 同じ対象・同じ種別の指摘は断る（`hasReportFor()` の注記のとおり、2件目は過剰指摘になる）。
+ * ただし部品不良で**内容だけを選び直した**ときは、同じ指摘の内容を差し替える（増やさない）。
+ */
+export function registerReport(
+  reports: readonly FaultReport[],
+  target: ReportTarget,
+  kind: FaultReportKind,
+  detail?: FaultDetail,
+): ReportRegistration {
+  const report: FaultReport =
+    kind === 'part-defect' && detail !== undefined ? { target, kind, detail } : { target, kind };
+  const index = reports.findIndex((r) => r.kind === kind && sameTarget(r.target, target));
+  if (index < 0) return { type: 'add', report };
+  if (kind === 'part-defect' && reports[index]?.detail !== report.detail) {
+    return { type: 'replace', index, report };
+  }
+  return { type: 'duplicate' };
 }
 
 /**

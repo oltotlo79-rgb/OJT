@@ -1,0 +1,64 @@
+/*
+ * 3D図の中に出す「故障の指摘」の小窓（2026-09-26）。ビューポート（`position: relative`）の上に
+ * 重ねる。z-index は危険操作の帯（45）・3本目の注意文（46）より上、トースト（50）より下。
+ */
+.popover {
+  position: absolute;
+  z-index: 48;
+  width: 340px;
+  max-width: calc(100% - 16px);
+  max-height: calc(100% - 16px);
+  overflow: auto;
+  background: var(--panel);
+  border: 2px solid var(--accent);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  color: var(--text);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+}
+
+.popover p {
+  margin: 0;
+}
+
+.title {
+  font-weight: 700;
+}
+
+.target {
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.hint {
+  color: var(--muted);
+  font-size: max(12px, 0.75rem);
+  line-height: 1.5;
+}
+
+.kinds {
+  display: flex;
+  gap: 8px;
+}
+
+.kind {
+  flex: 1;
+  font-weight: 700;
+}
+
+.details {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.details button {
+  text-align: left;
+}
+
+.cancel {
+  align-self: flex-end;
+}

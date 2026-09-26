@@ -226,6 +226,44 @@ describe('指摘（§9.2）', () => {
     ]);
   });
 
+  it('部品を押すと3Dの中の小窓で故障の内容まで選べ、選び直すと差し替わる（2026-09-26）', () => {
+    render(<InspectRepairSession />);
+    fireEvent.click(screen.getByTestId('tool-report'));
+    const onPick = picks.at(-1);
+    if (onPick === undefined) return;
+    act(() => {
+      onPick({ kind: 'socket', id: 'S1', occupied: true });
+    });
+    // 小窓はビューポートの中に出る（右パネルではない）
+    const popover = screen.getByTestId('report-popover');
+    expect(screen.getByTestId('viewport').contains(popover)).toBe(true);
+    fireEvent.click(screen.getByTestId('report-detail-coil-open'));
+    expect(useStore.getState().reports).toEqual([
+      { target: { partId: 'CR1' }, kind: 'part-defect', detail: 'coil-open' },
+    ]);
+    // 同じ部品の内容だけを選び直すと、指摘は増えずに差し替わる
+    act(() => {
+      onPick({ kind: 'socket', id: 'S1', occupied: true });
+    });
+    fireEvent.click(screen.getByTestId('report-detail-contact-welded'));
+    expect(useStore.getState().reports).toEqual([
+      { target: { partId: 'CR1' }, kind: 'part-defect', detail: 'contact-welded' },
+    ]);
+    expect(screen.getByTestId('report-kind-text-0').textContent).toBe('部品不良（接点の溶着）');
+  });
+
+  it('修復パネルの部品からも同じ小窓で指摘できる（3Dからでも一覧からでも）', () => {
+    render(<InspectRepairSession />);
+    const button = screen.queryByTestId('report-part-CR1');
+    if (button === null) return;
+    fireEvent.click(button);
+    expect(useStore.getState().mode).toBe('report');
+    fireEvent.click(screen.getByTestId('report-kind-part-defect'));
+    expect(useStore.getState().reports).toEqual([
+      { target: { partId: 'CR1' }, kind: 'part-defect', detail: 'unknown' },
+    ]);
+  });
+
   it('取消で指摘を消せる', () => {
     render(<InspectRepairSession />);
     fireEvent.click(screen.getByTestId('tool-report'));

@@ -4,10 +4,14 @@ import { findPart, loadOhms } from '@ojt/circuit-sim';
 import { describe, expect, it } from 'vitest';
 import {
   applyFaults,
+  detailReview,
+  FAULT_DETAILS,
   faultParam,
   injectPartFaults,
   matchesSite,
   withoutPartFaults,
+  type FaultReport,
+  type FaultSite,
 } from '../src/faults.js';
 import { buildReferenceSession } from '../src/reference.js';
 import type { FaultSpecData } from '../src/schema/faults.js';
@@ -338,5 +342,57 @@ describe('matchesSite', () => {
     expect(matchesSite(site, { target: { partId: 'CR1' }, kind: 'part-defect' })).toBe(true);
     expect(matchesSite(site, { target: { partId: 'CR2' }, kind: 'part-defect' })).toBe(false);
     expect(matchesSite(site, { target: { partId: 'CR1' }, kind: 'wire-open' })).toBe(false);
+  });
+});
+
+describe('部品不良の内容の講評（2026-09-26 「場所で採点・内容は講評」）', () => {
+  const coilSite: FaultSite = {
+    kind: 'coil-open',
+    report: 'part-defect',
+    wireId: undefined,
+    partId: 'CR1',
+    terminals: [],
+  };
+
+  it('選んだ内容が実際の故障と同じなら一致、違えば不一致（合否の照合は場所と種別のまま）', () => {
+    const right: FaultReport = {
+      target: { partId: 'CR1' },
+      kind: 'part-defect',
+      detail: 'coil-open',
+    };
+    const wrong: FaultReport = {
+      target: { partId: 'CR1' },
+      kind: 'part-defect',
+      detail: 'contact-welded',
+    };
+    expect(matchesSite(coilSite, right)).toBe(true);
+    expect(matchesSite(coilSite, wrong)).toBe(true);
+    expect(detailReview(coilSite, right)).toEqual({
+      chosen: 'coil-open',
+      actual: 'coil-open',
+      correct: true,
+    });
+    expect(detailReview(coilSite, wrong)?.correct).toBe(false);
+  });
+
+  it('内容を選んでいない・「分からない」を選んだ指摘は講評だけ出す', () => {
+    const none: FaultReport = { target: { partId: 'CR1' }, kind: 'part-defect' };
+    expect(detailReview(coilSite, none)).toEqual({
+      chosen: undefined,
+      actual: 'coil-open',
+      correct: undefined,
+    });
+    expect(detailReview(coilSite, { ...none, detail: 'unknown' })?.correct).toBeUndefined();
+  });
+
+  it('電線の故障には内容の講評を付けない', () => {
+    const wireSite: FaultSite = {
+      ...coilSite,
+      kind: 'wire-open',
+      report: 'wire-open',
+      wireId: 'w',
+    };
+    expect(detailReview(wireSite, { target: { wireId: 'w' }, kind: 'wire-open' })).toBeUndefined();
+    expect(FAULT_DETAILS).toContain('unknown');
   });
 });

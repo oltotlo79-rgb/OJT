@@ -191,6 +191,28 @@ describe('restoreInspectState（§12.3 / §13 #8）', () => {
     expect(state.circuit?.applied.sites).toEqual(before.applied.sites);
   });
 
+  it('C2は部品不良の内容つきの指摘も戻し、知らない内容の指摘は読まない（2026-09-26）', () => {
+    useStore.getState().openProblem(C2);
+    const faults = useStore.getState().resolvedFaults;
+    if (faults === undefined) return;
+    useStore.getState().abandonSession();
+    const ok = restoreInspectState(C2, {
+      mode: 'inspect-repair',
+      reports: [
+        { target: { partId: 'CR1' }, kind: 'part-defect', detail: 'coil-open' },
+        { target: { partId: 'CR2' }, kind: 'part-defect', detail: 'no-such-detail' },
+        { target: { partId: 'CR3' }, kind: 'part-defect' },
+      ],
+      resolvedFaults: faults,
+      faultSeed: 1,
+    });
+    expect(ok).toBe(true);
+    expect(useStore.getState().reports).toEqual([
+      { target: { partId: 'CR1' }, kind: 'part-defect', detail: 'coil-open' },
+      { target: { partId: 'CR3' }, kind: 'part-defect' },
+    ]);
+  });
+
   it('C2は交換した部品の故障を落として戻す（§9.2）', () => {
     useStore.getState().openProblem(C2);
     const faults = useStore.getState().resolvedFaults;

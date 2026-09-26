@@ -1,5 +1,11 @@
 import type { Wire } from '@ojt/circuit-sim';
-import type { FaultSite, InspectRepairProblem, JudgeInspectRepairResult } from '@ojt/content';
+import {
+  detailReview,
+  type FaultReport,
+  type FaultSite,
+  type InspectRepairProblem,
+  type JudgeInspectRepairResult,
+} from '@ojt/content';
 import type { JSX } from 'react';
 import { JA, reportTargetLabel, schematicOpenCountText, wireLabel } from '../i18n/ja.js';
 import { ChartOverlay } from './ChartOverlay.js';
@@ -32,6 +38,28 @@ function siteLabel(site: FaultSite, wires: readonly Wire[]): string {
     return `${JA.inspectRepair.terminal} ${site.terminals.map((t) => String(t)).join(' / ')}`;
   })();
   return `${where} — ${JA.reportKind[site.report]}`;
+}
+
+/**
+ * 言い当てた部品不良の、故障の内容の講評（2026-09-26「合否は場所で、内容は講評」）。
+ * 部品の故障でなければ undefined。
+ */
+export function detailReviewText(site: FaultSite, report: FaultReport): string | undefined {
+  const review = detailReview(site, report);
+  if (review === undefined) return undefined;
+  const actual = actualDetailName(review.actual);
+  if (review.correct === true) return JA.inspectRepair.detailCorrect(actual);
+  if (review.correct === false && review.chosen !== undefined) {
+    return JA.inspectRepair.detailWrong(JA.faultDetailShort[review.chosen], actual);
+  }
+  return JA.inspectRepair.detailNone(actual);
+}
+
+/** 実際の故障の内容の名前（部品の故障の種別 → 表示名）。 */
+function actualDetailName(kind: FaultSite['kind']): string {
+  return kind in JA.faultDetailShort
+    ? JA.faultDetailShort[kind as keyof typeof JA.faultDetailShort]
+    : JA.reportKind['part-defect'];
 }
 
 /** `wireId` を表示名にする（`wires` に見つからなければやむを得ずIDへ後退する）。UI監査 I5 */
@@ -91,9 +119,23 @@ export function InspectRepairResult({
             {result.reports.matched.length === 0 ? (
               <li>{JA.inspectRepair.none}</li>
             ) : (
-              result.reports.matched.map((hit, index) => (
-                <li key={`m-${String(index)}`}>{siteLabel(hit.site, wires)}</li>
-              ))
+              result.reports.matched.map((hit, index) => {
+                const review = detailReviewText(hit.site, hit.report);
+                return (
+                  <li key={`m-${String(index)}`}>
+                    {siteLabel(hit.site, wires)}
+                    {review === undefined ? null : (
+                      <span
+                        className={styles.detail}
+                        data-testid={`detail-review-${String(index)}`}
+                      >
+                        {' '}
+                        — {review}
+                      </span>
+                    )}
+                  </li>
+                );
+              })
             )}
           </ul>
           <p className={styles.detail}>{JA.inspectRepair.missed}</p>

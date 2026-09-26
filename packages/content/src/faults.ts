@@ -67,10 +67,64 @@ export interface AppliedFaults {
 export type ApplyFaultsResult =
   { ok: true; value: AppliedFaults } | { ok: false; errors: ProblemIssue[] };
 
+/**
+ * 部品不良の内容（訓練者が選ぶ）。部品の故障の種別（§5.4）と同じ語で、`unknown` は
+ * 「内容までは分からないが部品が悪い」。2026-09-26 利用者指示「断線やリレー、接点の不具合などを
+ * 指定できるようにして」／同日の決定「合否は場所で判定し、内容は結果画面で講評する」。
+ */
+export type FaultDetail =
+  | 'coil-open'
+  | 'coil-layer-short'
+  | 'contact-open'
+  | 'contact-welded'
+  | 'contact-resistive'
+  | 'lamp-open'
+  | 'unknown';
+
+/** 選べる部品不良の内容（表示順）。 */
+export const FAULT_DETAILS: readonly FaultDetail[] = [
+  'coil-open',
+  'coil-layer-short',
+  'contact-open',
+  'contact-welded',
+  'contact-resistive',
+  'lamp-open',
+  'unknown',
+];
+
 /** 訓練者の指摘1件。3D盤の上で電線・端子・部品をクリックして種別を選ぶ。§9.2 */
 export interface FaultReport {
   target: { wireId: string } | { partId: string } | { terminalId: string };
   kind: FaultReportKind;
+  /**
+   * 部品不良の内容（`part-defect` のときだけ。省略可）。合否には使わない（場所と種別で判定する）。
+   * 結果画面で実際の故障と並べて講評する（{@link detailReview}）。
+   */
+  detail?: FaultDetail;
+}
+
+/** 部品不良の内容の講評（一致したときだけ意味を持つ）。 */
+export interface DetailReview {
+  /** 訓練者が選んだ内容（選んでいなければ undefined）。 */
+  chosen: FaultDetail | undefined;
+  /** 実際の故障の内容。 */
+  actual: FaultKind;
+  /** 選んだ内容が実際と一致したか（選んでいない・「分からない」なら undefined）。 */
+  correct: boolean | undefined;
+}
+
+/**
+ * 一致した部品不良の指摘について、選んだ内容と実際の故障を並べる。部品の故障でなければ undefined。
+ * 合否には使わない（2026-09-26 の決定「場所で採点・内容は講評」）。
+ */
+export function detailReview(site: FaultSite, report: FaultReport): DetailReview | undefined {
+  if (site.report !== 'part-defect') return undefined;
+  const chosen = report.detail;
+  return {
+    chosen,
+    actual: site.kind,
+    correct: chosen === undefined || chosen === 'unknown' ? undefined : chosen === site.kind,
+  };
 }
 
 /** 注入した種別から、訓練者が選ぶべき指摘の種別を決める。部品の故障はすべて「部品不良」。§9.2 */

@@ -2,7 +2,10 @@ import { toTerminalId, wireId, type Wire } from '@ojt/circuit-sim';
 import { BUILTIN_INSPECT_REPAIR_PROBLEMS, type JudgeInspectRepairResult } from '@ojt/content';
 import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { InspectRepairResult } from '../src/renderer/result/InspectRepairResult.js';
+import {
+  detailReviewText,
+  InspectRepairResult,
+} from '../src/renderer/result/InspectRepairResult.js';
 
 /** テスト用の電線1本（`wireId` から表示名を組み立てるための一覧に渡す）。UI監査 I5 */
 function wire(id: string, from: string, to: string, color: Wire['color'] = '青'): Wire {
@@ -253,5 +256,58 @@ describe('InspectRepairResult（§9.2 判定）', () => {
     );
     const retry = screen.getByRole('button', { name: 'もう一度' });
     expect(retry.parentElement?.className).toMatch(/stickyActions/);
+  });
+});
+
+describe('部品不良の内容の講評（2026-09-26「合否は場所で、内容は講評」）', () => {
+  const coilSite = {
+    kind: 'coil-open' as const,
+    report: 'part-defect' as const,
+    wireId: undefined,
+    partId: 'CR1',
+    terminals: [],
+  };
+
+  it('選んだ内容が違えば、実際の故障の内容と並べて示す', () => {
+    if (C2 === undefined) return;
+    render(
+      <InspectRepairResult
+        problem={C2}
+        result={result({
+          reports: {
+            matched: [
+              {
+                site: coilSite,
+                report: {
+                  target: { partId: 'CR1' },
+                  kind: 'part-defect',
+                  detail: 'contact-welded',
+                },
+              },
+            ],
+            missed: [],
+            extra: [],
+          },
+        })}
+        onRetry={vi.fn()}
+        onBackToList={vi.fn()}
+      />,
+    );
+    expect(screen.getByTestId('detail-review-0').textContent).toContain(
+      '選んだ内容は「接点の溶着」でしたが、実際は「コイル断線」です',
+    );
+  });
+
+  it('内容も合っていれば正解と示し、選んでいなければ実際の内容を教える', () => {
+    expect(
+      detailReviewText(coilSite, {
+        target: { partId: 'CR1' },
+        kind: 'part-defect',
+        detail: 'coil-open',
+      }),
+    ).toBe('内容「コイル断線」も正解です');
+    expect(detailReviewText(coilSite, { target: { partId: 'CR1' }, kind: 'part-defect' })).toBe(
+      '実際の故障の内容は「コイル断線」です',
+    );
   });
 });

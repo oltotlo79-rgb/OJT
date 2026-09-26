@@ -8,6 +8,7 @@ import {
   hasReportFor,
   reportKindsFor,
   reportPickToAction,
+  registerReport,
 } from '../src/renderer/session/inspect-repair.js';
 
 /**
@@ -108,6 +109,36 @@ describe('hasReportFor（重複の抑止）', () => {
   it('対象の種類が違えば別物', () => {
     const reports = [{ target: { terminalId: 'CR1.13' }, kind: 'wire-missing' as const }];
     expect(hasReportFor(reports, { partId: 'CR1.13' }, 'wire-missing')).toBe(false);
+  });
+});
+
+describe('registerReport（2026-09-26 部品不良の内容）', () => {
+  it('新しい指摘は足す。部品不良は内容を持たせる', () => {
+    expect(registerReport([], { partId: 'CR1' }, 'part-defect', 'coil-open')).toEqual({
+      type: 'add',
+      report: { target: { partId: 'CR1' }, kind: 'part-defect', detail: 'coil-open' },
+    });
+    // 電線の指摘には内容を付けない
+    expect(registerReport([], { wireId: 'w' }, 'wire-open', 'coil-open')).toEqual({
+      type: 'add',
+      report: { target: { wireId: 'w' }, kind: 'wire-open' },
+    });
+  });
+
+  it('同じ部品の内容だけを選び直したら差し替え、同じ内容なら重複として断る', () => {
+    const reports = [
+      { target: { wireId: 'w' }, kind: 'wire-open' as const },
+      { target: { partId: 'CR1' }, kind: 'part-defect' as const, detail: 'coil-open' as const },
+    ];
+    expect(registerReport(reports, { partId: 'CR1' }, 'part-defect', 'contact-open')).toEqual({
+      type: 'replace',
+      index: 1,
+      report: { target: { partId: 'CR1' }, kind: 'part-defect', detail: 'contact-open' },
+    });
+    expect(registerReport(reports, { partId: 'CR1' }, 'part-defect', 'coil-open')).toEqual({
+      type: 'duplicate',
+    });
+    expect(registerReport(reports, { wireId: 'w' }, 'wire-open')).toEqual({ type: 'duplicate' });
   });
 });
 

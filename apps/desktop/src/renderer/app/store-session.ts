@@ -464,6 +464,8 @@ export interface SessionSlice {
   addReport: (report: FaultReport) => void;
   /** 指摘を1件取り消す。§9.2 */
   removeReport: (index: number) => void;
+  /** 指摘を1件差し替える（部品不良の内容を選び直したとき。2026-09-26）。 */
+  replaceReport: (index: number, report: FaultReport) => void;
   /** モードC2の回路を差し替える（部品交換のとき）。§9.2 */
   setCircuit: (circuit: RepairCircuit) => void;
   /** 指摘の対象を選んだ（種別ポップオーバーを出す）。§9.2 */
@@ -876,6 +878,9 @@ export const createSessionSlice: StateCreator<AppState, [], [], SessionSlice> = 
   },
   removeReport: (index) => {
     set({ reports: get().reports.filter((_, i) => i !== index) });
+  },
+  replaceReport: (index, report) => {
+    set({ reports: get().reports.map((current, i) => (i === index ? report : current)) });
   },
   setCircuit: (circuit) => {
     set({ circuit });

@@ -442,6 +442,46 @@ export const JA = {
      */
     pickKindHint:
       '端子には『未配線』だけを出しています。断線・誤配線は電線を、部品不良は部品をクリックしてください',
+    /*
+     * 3D図の中で出す指摘の小窓（2026-09-26 利用者指示「どの線に不具合があるのかも3D図内で選択し
+     * 断線やリレー、接点の不具合などを指定できるようにして」）。
+     */
+    popoverTitle: 'この場所の故障を指摘する',
+    popoverWireHint: 'この電線の故障の種類を選んでください',
+    popoverTerminalHint:
+      'この端子に来るはずの電線が無いときは「未配線」を選びます（断線・誤配線は電線を、部品不良は部品を押してください）',
+    popoverPartHint:
+      '部品不良です。分かれば故障の内容も選んでください（合否は場所で決まり、内容は結果で講評します）',
+    partDefectUnknown: '部品不良（内容は分からない）',
+    /** 電線一覧・修復パネルからも同じ小窓を開くボタン。 */
+    reportThisPart: 'この部品の故障を指摘',
+    /** 部品不良の指摘の内容を選び直したとき。 */
+    detailUpdated: '部品不良の内容を選び直しました',
+    /** 結果画面の講評。 */
+    detailCorrect: (chosen: string): string => `内容「${chosen}」も正解です`,
+    detailWrong: (chosen: string, actual: string): string =>
+      `選んだ内容は「${chosen}」でしたが、実際は「${actual}」です`,
+    detailNone: (actual: string): string => `実際の故障の内容は「${actual}」です`,
+  },
+  /** 部品不良の内容（2026-09-26）。`FaultDetail` の表示名。 */
+  faultDetail: {
+    'coil-open': 'コイルの断線（励磁しない）',
+    'coil-layer-short': 'コイルのレアショート（抵抗が小さい）',
+    'contact-open': '接点の導通不良（閉じるはずの接点が閉じない）',
+    'contact-welded': '接点の溶着（開くはずの接点が開かない）',
+    'contact-resistive': '接点の接触不良（接点の抵抗が大きい）',
+    'lamp-open': 'ランプの断線',
+    unknown: '内容は分からない',
+  },
+  /** 部品不良の内容の短い名前（指摘一覧・結果画面）。 */
+  faultDetailShort: {
+    'coil-open': 'コイル断線',
+    'coil-layer-short': 'コイルのレアショート',
+    'contact-open': '接点の導通不良',
+    'contact-welded': '接点の溶着',
+    'contact-resistive': '接点の接触不良',
+    'lamp-open': 'ランプ断線',
+    unknown: '内容不明',
   },
   report: {
     export: 'この結果を書き出す',

@@ -17,9 +17,11 @@ import {
   buildHighlightIndex,
   isInspectRepairProblem,
   replacePart,
+  type FaultDetail,
+  type FaultReportKind,
   type RepairCircuit,
 } from '@ojt/content';
-import { useCallback, useEffect, useMemo, useRef, type JSX } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type JSX } from 'react';
 import { schematicPolicy, useStore } from '../app/store.js';
 import { NO_HIGHLIGHT } from '../app/store-types.js';
 import {
@@ -37,7 +39,8 @@ import { LogPanel } from '../panels/LogPanel.js';
 import { PowerControls } from '../panels/PowerControls.js';
 import { ProblemPanel } from '../panels/ProblemPanel.js';
 import { RepairPanel, type MountedPartRow } from '../panels/RepairPanel.js';
-import { ReportPanel } from '../panels/ReportPanel.js';
+import { ReportPanel, reportKindText } from '../panels/ReportPanel.js';
+import { popoverPosition, ReportPopover } from '../panels/ReportPopover.js';
 import { dispatchTester, TesterPanel } from '../panels/TesterPanel.js';
 import { TimeChartPanel } from '../panels/TimeChartPanel.js';
 import { HoverHint } from '../panels/HoverHint.js';
@@ -58,7 +61,7 @@ import {
   type CommandResult,
   type SessionCommand,
 } from '../session/commands.js';
-import { circuitForJudge, hasReportFor, reportPickToAction } from '../session/inspect-repair.js';
+import { circuitForJudge, registerReport, reportPickToAction } from '../session/inspect-repair.js';
 import {
   deleteKeyToAction,
   escapeToAction,
@@ -94,6 +97,9 @@ import styles from './screens.module.css';
  * （`pickToAction` / `testerPickToAction` / `reportPickToAction`）が持つ。
  */
 
+/** 3Dで押してから指摘の小窓が開くまでの猶予[ms]（これより古い押下の位置は使わない）。 */
+const POINTER_FRESH_MS = 1500;
+
 /** モードC2のセッション画面。 */
 export function InspectRepairSession(): JSX.Element {
   const problem = useStore((s) =>
@@ -103,6 +109,45 @@ export function InspectRepairSession(): JSX.Element {
   const circuit = useStore((s) => s.circuit);
   const reports = useStore((s) => s.reports);
   const pendingReport = useStore((s) => s.pendingReport);
+  /**
+   * 3Dで最後に押した位置（ビューポート内の座標）。指摘の小窓を押した場所のすぐ横に出すのに使う
+   * （2026-09-26 利用者指示「3D図内で選択し…指定できるようにして」）。一覧から開いたときは
+   * ビューポートの外を押しているので、小窓はビューポートの右上に出す。
+   */
+  const viewportRef = useRef<HTMLDivElement | null>(null);
+  const lastPointer = useRef<{ x: number; y: number; at: number } | undefined>(undefined);
+  const [popoverAnchor, setPopoverAnchor] = useState<{ x: number; y: number } | undefined>(
+    undefined,
+  );
+  useEffect(() => {
+    if (pendingReport === undefined) return;
+    // いま押したのがビューポートの中なら、その位置。外（電線一覧など）なら右上。
+    // 視点を回したときの古い位置を使わないよう、押してから間もないものだけを使う
+    const pointer = lastPointer.current;
+    const recent = pointer !== undefined && performance.now() - pointer.at < POINTER_FRESH_MS;
+    setPopoverAnchor(recent ? { x: pointer.x, y: pointer.y } : undefined);
+    lastPointer.current = undefined;
+  }, [pendingReport]);
+  /** 小窓で種別（と部品不良の内容）を選んだ。 */
+  const onReportPick = useCallback((kind: FaultReportKind, detail?: FaultDetail): void => {
+    const store = useStore.getState();
+    const target = store.pendingReport;
+    if (target === undefined) return;
+    store.setPendingReport(undefined);
+    const registration = registerReport(store.reports, target, kind, detail);
+    if (registration.type === 'duplicate') {
+      store.toast(JA.inspectRepair.duplicate, 'error');
+      return;
+    }
+    const text = reportKindText(registration.report);
+    if (registration.type === 'replace') {
+      store.replaceReport(registration.index, registration.report);
+      store.toast(JA.inspectRepair.detailUpdated);
+    } else {
+      store.addReport(registration.report);
+    }
+    store.addLog(`${JA.inspectRepair.reportCount}: ${text}`);
+  }, []);
   const history = useStore((s) => s.history);
   const mode = useStore((s) => s.mode);
   const wireColor = useStore((s) => s.wireColor);
@@ -676,10 +721,37 @@ export function InspectRepairSession(): JSX.Element {
       />
 
       <div className={styles.sessionLayout}>
-        <div className={styles.viewport} data-testid="viewport">
+        <div
+          className={styles.viewport}
+          data-testid="viewport"
+          ref={viewportRef}
+          onPointerDownCapture={(event) => {
+            // 3Dで押した場所のすぐ横に指摘の小窓を出すため、押した位置を覚えておく
+            const rect = event.currentTarget.getBoundingClientRect();
+            lastPointer.current = {
+              x: event.clientX - rect.left,
+              y: event.clientY - rect.top,
+              at: performance.now(),
+            };
+          }}
+        >
           <WarningBanner />
           <WireLimitNotice />
           <BoardScene onPick={onPick} onHover={onHover} onPress={onPress} onRelease={onRelease} />
+          {pendingReport === undefined ? null : (
+            <ReportPopover
+              pending={pendingReport}
+              wires={session.wires}
+              position={popoverPosition(popoverAnchor, {
+                width: viewportRef.current?.clientWidth ?? 800,
+                height: viewportRef.current?.clientHeight ?? 600,
+              })}
+              onPick={onReportPick}
+              onCancel={() => {
+                useStore.getState().setPendingReport(undefined);
+              }}
+            />
+          )}
           <div className={styles.statusOverlay} data-testid="status-overlay">
             {powered ? JA.session.powered : JA.session.unpowered} /{' '}
             {wireCountText(session.wires.length, fixedWireCount)} / {JA.inspectRepair.reportCount}{' '}
@@ -694,23 +766,7 @@ export function InspectRepairSession(): JSX.Element {
           <ProblemPanel problem={problem} />
           <ReportPanel
             reports={reports}
-            pending={pendingReport}
             wires={session.wires}
-            onPick={(kind) => {
-              const store = useStore.getState();
-              const target = store.pendingReport;
-              if (target === undefined) return;
-              store.setPendingReport(undefined);
-              if (hasReportFor(store.reports, target, kind)) {
-                store.toast(JA.inspectRepair.duplicate, 'error');
-                return;
-              }
-              store.addReport({ target, kind });
-              store.addLog(`${JA.inspectRepair.reportCount}: ${JA.reportKind[kind]}`);
-            }}
-            onCancel={() => {
-              useStore.getState().setPendingReport(undefined);
-            }}
             onRemove={(index) => {
               useStore.getState().removeReport(index);
             }}
