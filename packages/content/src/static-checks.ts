@@ -1,5 +1,10 @@
-import { socketPartId, SOCKET_IDS, wireCountAtTerminal } from '@ojt/board-model';
-import { MAX_WIRES_PER_TERMINAL, PICKUP_VOLTS, type TerminalId } from '@ojt/circuit-sim';
+import {
+  effectiveWireLimit,
+  socketPartId,
+  SOCKET_IDS,
+  wireCountAtTerminal,
+} from '@ojt/board-model';
+import { PICKUP_VOLTS, type TerminalId } from '@ojt/circuit-sim';
 import { findForbiddenPatterns } from './forbidden.js';
 import { checkIoAssignment, checkPlcPowerIndependent, checkTwoStage } from './plc-static-checks.js';
 import { STATIC_CHECK_IDS, type StaticCheckId, type StaticChecksData } from './schema/judge.js';
@@ -47,7 +52,7 @@ export function checkWireColorRule(input: StaticCheckInput): StaticCheckResult {
 
 /** 1端子2本まで。§7.4 / §6.6 */
 export function checkTerminalLimit(input: StaticCheckInput): StaticCheckResult {
-  const limit = input.session.boardProfile?.rules.maxWiresPerTerminal ?? MAX_WIRES_PER_TERMINAL;
+  const limit = effectiveWireLimit(input.session.boardProfile?.rules);
   const seen = new Set<TerminalId>();
   const details: string[] = [];
   for (const wire of input.session.wires) {
@@ -215,7 +220,7 @@ export function runStaticChecks(
             .map((wire) => wire.id),
           expected:
             id === 'terminalLimit'
-              ? `1端子${input.session.boardProfile?.rules.maxWiresPerTerminal ?? 2}本まで`
+              ? `1端子${effectiveWireLimit(input.session.boardProfile?.rules)}本まで`
               : expectedFor(id),
           observed: checked.details.join(' / '),
         },
@@ -261,7 +266,7 @@ function checkTargets(id: StaticCheckId, input: StaticCheckInput): string[] {
     return [...new Set(wires.flatMap((wire) => [wire.from, wire.to]))].filter(
       (terminal) =>
         wireCountAtTerminal(input.session, terminal) >
-        (input.session.boardProfile?.rules.maxWiresPerTerminal ?? MAX_WIRES_PER_TERMINAL),
+        effectiveWireLimit(input.session.boardProfile?.rules),
     );
   if (id === 'powerSequence') return ['CB.1', 'SW.1'];
   if (id === 'coilPolarity')

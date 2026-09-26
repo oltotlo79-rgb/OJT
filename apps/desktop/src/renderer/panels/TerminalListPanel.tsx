@@ -1,5 +1,5 @@
 import { CollapsiblePanel } from './CollapsiblePanel.js';
-import type { BoardDefinition, BoardSession } from '@ojt/board-model';
+import { effectiveWireLimit, type BoardDefinition, type BoardSession } from '@ojt/board-model';
 import type { TerminalId } from '@ojt/circuit-sim';
 import { useMemo, useState, type JSX } from 'react';
 import { JA, terminalNoMatchText, terminalFullText } from '../i18n/ja.js';
@@ -120,7 +120,7 @@ export function TerminalListPanel({
                   {...(unavailable ? { 'aria-describedby': reasonId } : {})}
                   title={
                     unavailable
-                      ? terminalFullText(session.boardProfile?.rules.maxWiresPerTerminal ?? 2)
+                      ? terminalFullText(effectiveWireLimit(session.boardProfile?.rules))
                       : row.label
                   }
                   onClick={() => {
@@ -143,11 +143,11 @@ export function TerminalListPanel({
                 >
                   <span className={styles.terminalName}>{row.label}</span>
                   <span className={styles.terminalCount}>
-                    {row.wireCount}/{session.boardProfile?.rules.maxWiresPerTerminal ?? 2}
+                    {row.wireCount}/{effectiveWireLimit(session.boardProfile?.rules)}
                   </span>
                   {unavailable ? (
                     <span className={styles.srOnly} id={reasonId} data-testid={reasonId}>
-                      {terminalFullText(session.boardProfile?.rules.maxWiresPerTerminal ?? 2)}
+                      {terminalFullText(effectiveWireLimit(session.boardProfile?.rules))}
                     </span>
                   ) : null}
                 </button>

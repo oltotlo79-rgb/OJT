@@ -317,6 +317,7 @@ export {
   isBoardProfile,
   STANDARD_TRAINING_RULES,
   FREE_TRAINING_RULES,
+  effectiveWireLimit,
   TRAINING_CHECK_IDS,
   type BoardProfile,
   type TrainingRuleProfile,

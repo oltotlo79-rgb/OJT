@@ -163,22 +163,24 @@ describe('追加実習の操作と期待動作', () => {
     });
   }
 
-  it('自由盤の4本上限を回路計算も受け入れ、5本目は盤が拒否する', () => {
+  it('自由盤でも1端子は2本まで。旧データの4本指定でも3本目は盤が拒否する（2026-09-26）', () => {
     const board = boardFromProfile({
       id: 'expanded',
       terminalPairs: 4,
       extraPushButtons: 0,
       extraLamps: 0,
-      rules: FREE_TRAINING_RULES,
+      // 以前の課題・作業ファイルが持つ「4本まで」は読めるが、実際の上限は2本に丸める
+      rules: { ...FREE_TRAINING_RULES, maxWiresPerTerminal: 4 },
     });
     const session = createSession(board, { includeCheckWires: false });
-    for (let n = 1; n <= 4; n++)
+    for (let n = 1; n <= 2; n++)
       expect(
         addWire(session, board, toTerminalId('P.1'), toTerminalId(`TB_AUX.${n}a`), '青').ok,
       ).toBe(true);
-    expect(addWire(session, board, toTerminalId('P.1'), toTerminalId('TB_PB.1c'), '青').ok).toBe(
+    expect(addWire(session, board, toTerminalId('P.1'), toTerminalId('TB_AUX.3a'), '青').ok).toBe(
       false,
     );
+    expect(FREE_TRAINING_RULES.maxWiresPerTerminal).toBe(2);
     const sim = new Simulation(toNetlist(session, board));
     sim.setBreaker(true);
     sim.setSwitch(true);

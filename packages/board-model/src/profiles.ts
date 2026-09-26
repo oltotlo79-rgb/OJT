@@ -1,4 +1,4 @@
-import { partId, terminalId, type WireColor } from '@ojt/circuit-sim';
+import { MAX_WIRES_PER_TERMINAL, partId, terminalId, type WireColor } from '@ojt/circuit-sim';
 import { MOUNTABLE_KINDS, type MountableKind } from './catalog.js';
 import {
   BLOCK_TERMINAL_Z_MM,
@@ -40,8 +40,21 @@ export const STANDARD_TRAINING_RULES: TrainingRuleProfile = {
 export const FREE_TRAINING_RULES: TrainingRuleProfile = {
   id: 'free',
   allowedColors: ['青', '白', '黄'],
-  maxWiresPerTerminal: 4,
+  maxWiresPerTerminal: 2,
 };
+
+/**
+ * 実際に守る1端子あたりの本数の上限（常に {@link MAX_WIRES_PER_TERMINAL} ＝ 2本）。
+ *
+ * 2026-09-26 利用者指示「同一の端子からは2本までの配線しかできないようにして」により、
+ * 自由練習の盤でも2本に統一した。以前の課題・作業ファイルが持つ `maxWiresPerTerminal: 3 | 4`
+ * は読めるが、ここで2本に丸める（ねじ1か所に3本以上締めると緩み・発熱の原因になる）。
+ */
+export function effectiveWireLimit(
+  rules?: Pick<TrainingRuleProfile, 'maxWiresPerTerminal'>,
+): number {
+  return Math.min(rules?.maxWiresPerTerminal ?? MAX_WIRES_PER_TERMINAL, MAX_WIRES_PER_TERMINAL);
+}
 
 export function isBoardProfile(value: unknown): value is BoardProfile {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;

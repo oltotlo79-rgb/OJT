@@ -75,6 +75,9 @@ import { sameSelection, selectionFor, selectionForHover } from '../session/wirin
 import { loadWorkFileAndApply, saveCurrentWork } from '../session/work-file.js';
 import { SoundEffects, useElapsedTicker } from '../session/use-session-runtime.js';
 import { bridge } from '../session/worker-bridge.js';
+import { terminalLoads } from '../session/terminal-list.js';
+import { clearWireLimit, overloadedEnd, showWireLimit } from '../session/wire-limit.js';
+import { WireLimitNotice } from '../panels/WireLimitNotice.js';
 import { BoardScene, safeRoutes } from '../three/BoardScene.js';
 import { NoProblem } from './NoProblem.js';
 import styles from './screens.module.css';
@@ -136,12 +139,13 @@ export function InspectRepairSession(): JSX.Element {
   const apply = useCallback(<T,>(result: CommandResult<T>, after: () => void): void => {
     const store = useStore.getState();
     if (!result.ok) {
+      // 1端子3本目は注意文で止める（2026-09-26 利用者指示。危険操作には数えない）
+      if (result.code === 'terminal-overload' && result.wire !== undefined && store.session) {
+        showWireLimit(overloadedEnd(store.session, result.wire), '');
+        return;
+      }
       store.toast(result.message, 'error');
       store.addLog(failedLog(result.message));
-      // 1端子3本目は盤としては断るが、実機ではやってしまえるので危険操作として数える（§5.6 #5）
-      if (result.code === 'terminal-overload' && result.wire !== undefined) {
-        bridge.send({ type: 'addWire', wire: result.wire });
-      }
       return;
     }
     const current = store.session;
@@ -163,6 +167,9 @@ export function InspectRepairSession(): JSX.Element {
         case 'beginWire':
           store.setPending(action.from);
           break;
+        case 'wireLimit':
+          showWireLimit(action.terminal, action.label);
+          break;
         case 'cancelWire':
           store.setPending(undefined);
           store.addLog(JA.session.cancelWire);
@@ -170,6 +177,7 @@ export function InspectRepairSession(): JSX.Element {
         case 'completeWire':
           store.setPending(undefined);
           apply(runAddWire(current, action.from, action.to, action.color, JIPM_BOARD), () => {
+            clearWireLimit();
             const next = useStore.getState();
             const wire = next.session?.wires.at(-1);
             const board = next.session;
@@ -312,6 +320,8 @@ export function InspectRepairSession(): JSX.Element {
             pendingTerminal: store.pendingTerminal,
             selectedWire: store.selectedWire,
             wireColor: store.wireColor,
+            // 端子の結線数（2本で一杯の端子を押したら注意文で止める。2026-09-26）
+            terminals: terminalLoads(JIPM_BOARD, current),
           },
           mapped,
         ),
@@ -668,6 +678,7 @@ export function InspectRepairSession(): JSX.Element {
       <div className={styles.sessionLayout}>
         <div className={styles.viewport} data-testid="viewport">
           <WarningBanner />
+          <WireLimitNotice />
           <BoardScene onPick={onPick} onHover={onHover} onPress={onPress} onRelease={onRelease} />
           <div className={styles.statusOverlay} data-testid="status-overlay">
             {powered ? JA.session.powered : JA.session.unpowered} /{' '}

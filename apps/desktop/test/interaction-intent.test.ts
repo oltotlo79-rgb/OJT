@@ -79,7 +79,7 @@ describe('intentOf（対象で決まるモードレス操作。設計 §7.2 案B
     });
   });
 
-  it('2本で一杯の端子でも手は止めない（実機で起こせる操作は危険操作として数える。§5.6 #5）', () => {
+  it('2本で一杯の端子には3本目をつながせず注意文で止める（2026-09-26 利用者指示）', () => {
     const full = state({
       pendingTerminal: T1,
       terminals: [
@@ -87,15 +87,22 @@ describe('intentOf（対象で決まるモードレス操作。設計 §7.2 案B
         { id: T2, wireCount: MAX_WIRES_PER_TERMINAL },
       ],
     });
-    // ここで断ると `addWire()` まで届かず `terminal-overload` が計上されなくなる
+    // 終点に選んだとき: 電線は張らず、1本目の選択は残したまま注意文
     expect(intentOf(full, terminalHit(T2))).toEqual({
-      type: 'completeWire',
-      from: T1,
-      to: T2,
-      color: '青',
+      type: 'wireLimit',
+      terminal: T2,
+      label: String(T2),
     });
-    // 代わりに**押す前に**理由を言う（設計 §7.3.4 のホバー予告）
-    expect(hoverHintFor(full, terminalHit(T2), POWER_OFF)).toBe(JA.refuse.terminalFull);
+    // 始点に選んだとき: 配線を始めさせない
+    const fresh = state({ terminals: [{ id: T2, wireCount: MAX_WIRES_PER_TERMINAL }] });
+    expect(intentOf(fresh, terminalHit(T2))).toEqual({
+      type: 'wireLimit',
+      terminal: T2,
+      label: String(T2),
+    });
+    // 押す前から理由を言う（設計 §7.3.4 のホバー予告）
+    expect(hoverHintFor(full, terminalHit(T2), POWER_OFF)).toBe(JA.hoverHint.wireLimit);
+    expect(pickToAction(full, terminalHit(T2)).type).toBe('wireLimit');
     expect(isTerminalFull(full, T2)).toBe(true);
     expect(isTerminalFull(full, T1)).toBe(false);
   });

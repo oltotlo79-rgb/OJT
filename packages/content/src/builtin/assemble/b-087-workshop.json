@@ -24,7 +24,7 @@
       "rules": {
         "id": "free",
         "allowedColors": ["青", "白", "黄"],
-        "maxWiresPerTerminal": 4
+        "maxWiresPerTerminal": 2
       }
     }
   },

@@ -21,7 +21,7 @@ import {
 import { OUTLET_ID, PLC_PART_ID, SOCKET_IDS, type BoardDefinition } from './board-jipm.js';
 import { socketPartId, type SocketRoles } from './roles.js';
 import { SessionError, type BoardSession } from './session.js';
-import { withBoardProfile } from './profiles.js';
+import { effectiveWireLimit, withBoardProfile } from './profiles.js';
 
 /**
  * 盤セッション → circuit-sim のネットリスト。設計仕様 §6.4 / §4.4。
@@ -160,7 +160,7 @@ export function toNetlist(session: BoardSession, board: BoardDefinition): Netlis
     ...createNetlist(parts, wires, links),
     ...(session.boardProfile === undefined
       ? {}
-      : { maxWiresPerTerminal: session.boardProfile.rules.maxWiresPerTerminal }),
+      : { maxWiresPerTerminal: effectiveWireLimit(session.boardProfile.rules) }),
   };
 }
 

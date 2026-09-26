@@ -211,7 +211,7 @@ describe('端子 → 端子の配線（§8.2）', () => {
     expect(useStore.getState().history.done).toHaveLength(0);
   });
 
-  it('1端子3本目（terminal-overload）は盤には入れずに Worker へだけ送り、履歴は積まない', () => {
+  it('1端子3本目は盤にも Worker にも入れず、注意文を出す（2026-09-26 利用者指示）', () => {
     openSession();
     // TB_PB.2c に2本繋いで上限に達してから3本目を試す
     act(() => {
@@ -230,11 +230,20 @@ describe('端子 → 端子の配線（§8.2）', () => {
     });
 
     const state = useStore.getState();
-    // 盤も履歴も増えないが、危険操作として数えるため Worker へは送る（§5.6 #5）
+    // 盤も履歴も増えず、危険操作にも数えない（Worker へ送らない）
     expect(state.session?.wires).toHaveLength(wiresAfterTwo);
     expect(state.history.done).toHaveLength(historyAfterTwo);
-    expect(sentOf('addWire')).toHaveLength(sentAfterTwo + 1);
-    expect(state.toasts.at(-1)?.tone).toBe('error');
+    expect(sentOf('addWire')).toHaveLength(sentAfterTwo);
+    // 3Dの上に注意文が出て、満杯の端子の名前が入る
+    expect(state.wireLimitNotice).toContain('TB_PB.2c');
+    expect(screen.getByTestId('wire-limit-notice')).toHaveTextContent('2本まで');
+    expect(screen.getByTestId('wire-limit-notice')).toHaveTextContent('TB_PB.2c');
+    // 閉じれば消える
+    act(() => {
+      screen.getByTestId('wire-limit-close').click();
+    });
+    expect(useStore.getState().wireLimitNotice).toBeUndefined();
+    expect(screen.queryByTestId('wire-limit-notice')).toBeNull();
   });
 });
 

@@ -241,6 +241,7 @@ export function sessionFields(
   | 'fatalError'
   | 'webglLost'
   | 'pendingTerminal'
+  | 'wireLimitNotice'
   | 'hoveredTerminal'
   | 'selectedWire'
   | 'selectedSocket'
@@ -270,6 +271,7 @@ export function sessionFields(
     fatalError: undefined,
     webglLost: false,
     pendingTerminal: undefined,
+    wireLimitNotice: undefined,
     hoveredTerminal: undefined,
     selectedWire: undefined,
     selectedSocket: undefined,
@@ -363,6 +365,11 @@ export interface SessionSlice {
   mode: ToolMode;
   wireColor: WireColor;
   pendingTerminal: TerminalId | undefined;
+  /**
+   * 3本目を配線しようとした端子の表示名（注意文を出している間だけ）。2026-09-26 利用者指示
+   * 「3本目を配線しようとしたら注意文を出して」。閉じるか、次に電線を張るか、課題を開き直すと消える。
+   */
+  wireLimitNotice: string | undefined;
   hoveredTerminal: TerminalId | undefined;
   selectedWire: string | undefined;
   selectedSocket: SocketId | undefined;
@@ -412,6 +419,8 @@ export interface SessionSlice {
   setMode: (mode: ToolMode) => void;
   setWireColor: (color: WireColor) => void;
   setPending: (terminal: TerminalId | undefined) => void;
+  /** 3本目の注意文を出す（端子の表示名）／消す（`undefined`）。 */
+  setWireLimitNotice: (label: string | undefined) => void;
   setHovered: (terminal: TerminalId | undefined) => void;
   setSelectedWire: (wireId: string | undefined) => void;
   setSelectedSocket: (socketId: SocketId | undefined) => void;
@@ -510,6 +519,7 @@ export const createSessionSlice: StateCreator<AppState, [], [], SessionSlice> = 
   mode: 'wire',
   wireColor: '青',
   pendingTerminal: undefined,
+  wireLimitNotice: undefined,
   hoveredTerminal: undefined,
   selectedWire: undefined,
   selectedSocket: undefined,
@@ -712,6 +722,9 @@ export const createSessionSlice: StateCreator<AppState, [], [], SessionSlice> = 
   },
   setPending: (pendingTerminal) => {
     set({ pendingTerminal });
+  },
+  setWireLimitNotice: (wireLimitNotice) => {
+    set({ wireLimitNotice });
   },
   setHovered: (hoveredTerminal) => {
     set({ hoveredTerminal });
@@ -923,6 +936,7 @@ export const createSessionSlice: StateCreator<AppState, [], [], SessionSlice> = 
       fatalError: undefined,
       webglLost: false,
       pendingTerminal: undefined,
+      wireLimitNotice: undefined,
       hoveredTerminal: undefined,
       dragging: undefined,
       hoverHint: undefined,

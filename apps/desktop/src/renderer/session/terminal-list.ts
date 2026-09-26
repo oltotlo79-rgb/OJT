@@ -1,11 +1,12 @@
 import {
+  effectiveWireLimit,
   isSocketId,
   toSessionTerminal,
   type BoardDefinition,
   type BoardSession,
   type BoardTerminal,
 } from '@ojt/board-model';
-import { MAX_WIRES_PER_TERMINAL, parseTerminalId, type TerminalId } from '@ojt/circuit-sim';
+import { parseTerminalId, type TerminalId } from '@ojt/circuit-sim';
 import type { TerminalLoad } from './interaction.js';
 
 /**
@@ -63,7 +64,7 @@ function toRow(session: BoardSession, terminal: BoardTerminal): TerminalRow | un
     label: socket ? `${part} ${terminal.label}` : terminal.label,
     group: part,
     wireCount: count,
-    full: count >= (session.boardProfile?.rules.maxWiresPerTerminal ?? MAX_WIRES_PER_TERMINAL),
+    full: count >= effectiveWireLimit(session.boardProfile?.rules),
   };
 }
 
@@ -119,9 +120,7 @@ export function terminalLoads(board: BoardDefinition, session: BoardSession): Te
       out.push({
         id,
         wireCount: count,
-        ...(session.boardProfile === undefined
-          ? {}
-          : { wireLimit: session.boardProfile.rules.maxWiresPerTerminal }),
+        wireLimit: effectiveWireLimit(session.boardProfile?.rules),
       });
     }
   }

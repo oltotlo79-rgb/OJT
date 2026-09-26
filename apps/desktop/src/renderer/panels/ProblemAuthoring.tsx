@@ -467,24 +467,8 @@ export function ProblemAuthoring({
                       </label>
                     ))}
                     <p>
-                      中継端子は同じ番号のa–b間が内部でつながっています。標準盤は1端子2本・青線です。自由練習のルールは以下で変更できます。
+                      中継端子は同じ番号のa–b間が内部でつながっています。1端子に接続できる電線は、どの盤でも2本までです（3本目は画面で止めます）。自由練習の線色などは以下で変更できます。
                     </p>
-                    <label>
-                      1端子の最大本数
-                      <select
-                        aria-label="1端子の最大本数"
-                        value={Number(rules['maxWiresPerTerminal'])}
-                        onChange={(event) =>
-                          patchRules({ maxWiresPerTerminal: Number(event.target.value) })
-                        }
-                      >
-                        {[2, 3, 4].map((n) => (
-                          <option key={n} value={n}>
-                            {n}本
-                          </option>
-                        ))}
-                      </select>
-                    </label>
                     <fieldset>
                       <legend>使える線色</legend>
                       {['青', '白', '黄'].map((color) => (

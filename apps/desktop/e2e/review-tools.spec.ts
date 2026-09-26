@@ -179,7 +179,8 @@ test('GUIで拡張盤を複製・編集・模範検証・保存し、追加端�
     await authoring.getByRole('button', { name: '課題を複製', exact: true }).click();
     await authoring.getByLabel('課題ID', { exact: true }).fill('user-review-expanded');
     await authoring.getByLabel('課題名', { exact: true }).fill('追加端子の検証課題');
-    await authoring.getByLabel('1端子の最大本数', { exact: true }).selectOption('3');
+    // 1端子の本数はどの盤でも2本（2026-09-26 利用者指示）。課題作成画面には選択肢を置かない
+    await expect(authoring.getByLabel('1端子の最大本数', { exact: true })).toHaveCount(0);
     await authoring.getByLabel('ヒントの出し方', { exact: true }).selectOption('off');
     await authoring.getByLabel('追加押ボタン数（PB5〜）', { exact: true }).fill('2');
     await authoring.getByText('操作列（2件）', { exact: true }).click();
@@ -204,7 +205,7 @@ test('GUIで拡張盤を複製・編集・模範検証・保存し、追加端�
     const definition: unknown = JSON.parse(readFileSync(output, 'utf8'));
     expect(definition).toMatchObject({
       id: 'user-review-expanded',
-      board: { profile: { rules: { hintPolicy: 'off', maxWiresPerTerminal: 3 } } },
+      board: { profile: { rules: { hintPolicy: 'off', maxWiresPerTerminal: 2 } } },
     });
     await authoring
       .getByRole('button', { name: '保存先を利用者課題フォルダに設定する', exact: true })

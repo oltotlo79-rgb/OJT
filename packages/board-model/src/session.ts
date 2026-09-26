@@ -1,9 +1,8 @@
-import type { BoardProfile } from './profiles.js';
+import { effectiveWireLimit, type BoardProfile } from './profiles.js';
 import {
   clampPreset,
   createWire,
   IdError,
-  MAX_WIRES_PER_TERMINAL,
   parseTerminalId,
   type PartId,
   type TerminalId,
@@ -334,7 +333,7 @@ function checkTerminal(
   if (found.optional && !session.extraParts.includes(owner)) {
     return fail('terminal-unavailable', `盤に載っていない部品の端子です: ${id}`);
   }
-  const wireLimit = session.boardProfile?.rules.maxWiresPerTerminal ?? MAX_WIRES_PER_TERMINAL;
+  const wireLimit = effectiveWireLimit(session.boardProfile?.rules);
   if (wireCountAtTerminal(session, id) >= wireLimit) {
     return fail('terminal-overload', `1つの端子に接続できるのは${wireLimit}本までです: ${id}`);
   }

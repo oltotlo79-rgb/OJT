@@ -88,6 +88,8 @@ import {
 import { loadWorkFileAndApply, saveCurrentWork } from '../session/work-file.js';
 import { SoundEffects, useElapsedTicker } from '../session/use-session-runtime.js';
 import { bridge } from '../session/worker-bridge.js';
+import { clearWireLimit, overloadedEnd, showWireLimit } from '../session/wire-limit.js';
+import { WireLimitNotice } from '../panels/WireLimitNotice.js';
 import { BoardScene, safeRoutes } from '../three/BoardScene.js';
 import { NoProblem } from './NoProblem.js';
 import styles from './screens.module.css';
@@ -236,17 +238,16 @@ export function Session(): JSX.Element {
   const apply = useCallback(<T,>(result: CommandResult<T>, after: () => void): void => {
     const store = useStore.getState();
     if (!result.ok) {
+      /*
+       * 1端子3本目は注意文で止める（2026-09-26 利用者指示）。以前は危険操作として数えるため
+       * 断った電線を Worker へ送っていたが、つながせない操作は数えない。
+       */
+      if (result.code === 'terminal-overload' && result.wire !== undefined && store.session) {
+        showWireLimit(overloadedEnd(store.session, result.wire), '');
+        return;
+      }
       store.toast(result.message, 'error');
       store.addLog(failedLog(result.message));
-      /*
-       * 1端子3本目は盤としては断るが、実機では**やってしまえる**操作なので
-       * 危険操作として数えたい（§5.6 #5 / §17 #25）。`Simulation.addWire()` は
-       * 上限を超えた電線を**ネットリストに入れずに** `over-wires-per-terminal` を発行して
-       * false を返すので、断られた電線をそのまま Worker へ送れば回路は汚さずに計上できる。
-       */
-      if (result.code === 'terminal-overload' && result.wire !== undefined) {
-        bridge.send({ type: 'addWire', wire: result.wire });
-      }
       return;
     }
     const current = store.session;
@@ -267,6 +268,9 @@ export function Session(): JSX.Element {
         case 'beginWire':
           store.setPending(action.from);
           break;
+        case 'wireLimit':
+          showWireLimit(action.terminal, action.label);
+          break;
         case 'cancelWire':
           store.setPending(undefined);
           store.addLog(JA.session.cancelWire);
@@ -274,6 +278,7 @@ export function Session(): JSX.Element {
         case 'completeWire':
           store.setPending(undefined);
           apply(runAddWire(current, action.from, action.to, action.color, boardDefinition), () => {
+            clearWireLimit();
             const next = useStore.getState();
             const wire = next.session?.wires.at(-1);
             if (wire === undefined) return;
@@ -872,6 +877,7 @@ export function Session(): JSX.Element {
         {assembleView === 'schematic' ? null : (
           <div className={styles.viewport} data-testid="viewport">
             <WarningBanner />
+            <WireLimitNotice />
             <BoardScene
               board={boardDefinition}
               onPick={onPick}

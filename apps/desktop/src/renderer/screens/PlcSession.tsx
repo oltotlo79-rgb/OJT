@@ -58,6 +58,9 @@ import { useViewportShortcuts } from '../session/viewport-keys.js';
 import { loadWorkFileAndApply, saveCurrentWork } from '../session/work-file.js';
 import { SoundEffects, useElapsedTicker } from '../session/use-session-runtime.js';
 import { bridge } from '../session/worker-bridge.js';
+import { terminalLoads } from '../session/terminal-list.js';
+import { clearWireLimit, overloadedEnd, showWireLimit } from '../session/wire-limit.js';
+import { WireLimitNotice } from '../panels/WireLimitNotice.js';
 import { BoardScene, safeRoutes } from '../three/BoardScene.js';
 import { NoProblem } from './NoProblem.js';
 import styles from './screens.module.css';
@@ -186,11 +189,13 @@ export function PlcSession(): JSX.Element {
   const apply = useCallback(<T,>(result: CommandResult<T>, after: () => void): void => {
     const store = useStore.getState();
     if (!result.ok) {
+      // 1端子3本目は注意文で止める（2026-09-26 利用者指示。危険操作には数えない）
+      if (result.code === 'terminal-overload' && result.wire !== undefined && store.session) {
+        showWireLimit(overloadedEnd(store.session, result.wire), '');
+        return;
+      }
       store.toast(result.message, 'error');
       store.addLog(failedLog(result.message));
-      if (result.code === 'terminal-overload' && result.wire !== undefined) {
-        bridge.send({ type: 'addWire', wire: result.wire });
-      }
       return;
     }
     const current = store.session;
@@ -228,6 +233,9 @@ export function PlcSession(): JSX.Element {
         case 'beginWire':
           store.setPending(action.from);
           break;
+        case 'wireLimit':
+          showWireLimit(action.terminal, action.label);
+          break;
         case 'cancelWire':
           store.setPending(undefined);
           store.addLog(JA.session.cancelWire);
@@ -235,6 +243,7 @@ export function PlcSession(): JSX.Element {
         case 'completeWire':
           store.setPending(undefined);
           apply(runAddWire(current, action.from, action.to, action.color, board), () => {
+            clearWireLimit();
             const next = useStore.getState();
             const wire = next.session?.wires.at(-1);
             const boardNow = next.session;
@@ -317,12 +326,14 @@ export function PlcSession(): JSX.Element {
             wireColor: store.wireColor,
             dragging: store.dragging,
             replaying: store.replay !== undefined,
+            // 端子の結線数（2本で一杯の端子を押したら注意文で止める。2026-09-26）
+            terminals: terminalLoads(board, current),
           },
           mapped,
         ),
       );
     },
-    [runAction],
+    [runAction, board],
   );
 
   // 盤のキーボード操作（ラダーにフォーカスがある間は動かさない。決定表#3）
@@ -679,6 +690,7 @@ export function PlcSession(): JSX.Element {
         {view === 'ladder' ? null : (
           <div className={styles.viewport} data-testid="viewport">
             <WarningBanner />
+            <WireLimitNotice />
             <BoardScene
               board={board}
               onPick={onPick}

@@ -131,6 +131,12 @@ export type Intent =
   | { type: 'dropPart'; socketId: SocketId; kind: MountableKind }
   /** 押ボタンを押す。 */
   | { type: 'pressButton'; pbId: string }
+  /**
+   * 2本つながった端子へ3本目をつなごうとした。電線は作らず注意文を出す（危険操作には数えない）。
+   * 2026-09-26 利用者指示「同一の端子からは2本までの配線しかできないようにして。3本目を配線
+   * しようとしたら注意文を出して」。
+   */
+  | { type: 'wireLimit'; terminal: TerminalId; label: string }
   /** 断る（理由つき）。 */
   | { type: 'refuse'; reason: RefuseReason };
 
@@ -176,7 +182,9 @@ export type PickAction =
   /** テスターのプローブを外す（`both` は両方）。§9.3 */
   | { type: 'liftProbe'; probe: 'black' | 'red' | 'both' }
   /** 故障の指摘先を選んだので種別ポップオーバーを出す。§9.2 */
-  | { type: 'openReport'; target: ReportTarget };
+  | { type: 'openReport'; target: ReportTarget }
+  /** 2本つながった端子へ3本目をつなごうとした（注意文を出す。電線は作らない）。 */
+  | { type: 'wireLimit'; terminal: TerminalId; label: string };
 
 /**
  * 固定配線を触ったときの文言（既設配線は本アプリでは全て青。§6.3・§6.6）。
@@ -386,16 +394,18 @@ export function intentOf(state: InteractionState, hit: PickHit): Intent {
     case 'terminal': {
       if (!hit.wirable) return { type: 'refuse', reason: 'not-wirable' };
       const pending = state.pendingTerminal;
-      if (pending === undefined) return { type: 'beginWire', from: hit.id };
       if (pending === hit.id) return { type: 'cancelWire' };
       /*
-       * **2本で一杯の端子でも手は止めない。** 実機ではやってしまえる操作なので、
-       * `addWire()` まで通して `terminal-overload` を出させ、危険操作として計上する
-       * （§5.6 #5 / §17 #25。`Session` の `apply()` が断られた電線を Worker へ送る）。
-       * 訓練者には**押す前に**理由を知らせる: 指した時点で `hoverHintFor()` が
-       * 「この端子はすでに2本つながっています」を下端に出し、`legalTargets()` が
-       * その端子を灰に沈める（Phase 7 設計 §7.3.2・§7.3.4）。
+       * **2本つながった端子には3本目をつながせない**（始点に選んでも、終点に選んでも止める）。
+       * 2026-09-26 利用者指示により、以前の「実機でできる操作は通して危険操作に数える」
+       * （§5.6 #5 / §17 #25）から、「つながせずに注意文で理由と代わりの方法を示す」に改めた。
+       * 始点で止めるので、1本目を選び終えたあとで断られる二度手間も無い。配線中に満杯の端子を
+       * 押しても1本目の選択は残し、別の端子を選び直せるようにする。
        */
+      if (isTerminalFull(state, hit.id)) {
+        return { type: 'wireLimit', terminal: hit.id, label: hit.label };
+      }
+      if (pending === undefined) return { type: 'beginWire', from: hit.id };
       return { type: 'completeWire', from: pending, to: hit.id, color: state.wireColor };
     }
     case 'wire':
@@ -469,32 +479,22 @@ export function hintForIntent(
       return hint.pushButton;
     case 'refuse':
       return refuseMessage(intent.reason);
+    case 'wireLimit':
+      return hint.wireLimit;
     default:
       return undefined;
   }
 }
 
 /**
- * いま指しているものの予告（Phase 7 設計 §7.3.4）。`hintForIntent()` の一段上で、
- * **実行はしないが先に言っておくべきこと**を足す。
- *
- * いまのところ1つだけ: 2本で一杯の端子。手は止めない（`intentOf()` の注記のとおり、
- * 実機で起こせる操作は起こさせて危険操作に数える）が、押す前に理由は言う。
+ * いま指しているものの予告（Phase 7 設計 §7.3.4）。押す前に「押すと何が起きるか」を言う。
+ * 2本で一杯の端子は `intentOf()` が `wireLimit` を返すので、押す前から「3本目は接続できない」と出る。
  */
 export function hoverHintFor(
   state: InteractionState,
   hit: PickHit,
   power: { breakerOn: boolean; switchOn: boolean },
 ): string | undefined {
-  if (
-    hit.kind === 'terminal' &&
-    state.dragging === undefined &&
-    state.mode === 'wire' &&
-    state.pendingTerminal !== hit.id &&
-    isTerminalFull(state, hit.id)
-  ) {
-    return refuseMessage('terminal-full');
-  }
   return hintForIntent(intentOf(state, hit), power);
 }
 
