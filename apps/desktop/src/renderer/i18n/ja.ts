@@ -1054,7 +1054,13 @@ export const JA = {
         : `${name} に切り替えました。盤内の配線${summary.kept}本と部品${summary.parts}個はそのままです。PLC本体・コンセントへの配線${summary.dropped}本を張り直してください`,
     /** 3D表示でも出す「メーカーを切り替える」ボタン（2026-09-26 利用者報告）。 */
     switchVendor: 'メーカーを切り替える',
+    /** 手順帯の「タイムチャートを見る」（右パネルの仕様チャートへ移る。2026-09-26）。 */
+    showChart: 'タイムチャートを見る',
     switchVendorHint: 'ラダーの表記と机上のPLC本体を、別のメーカーのものに替えます',
+    switchVendorHelp:
+      'ラダーの表記と机上のPLC本体を、選んだメーカーのものに替えます。ラダーのプログラムは書き換わりません。',
+    switchVendorPick: 'どのメーカーに切り替えますか？',
+    switchVendorApplyTo: (name: string): string => `${name} に切り替える`,
     // --- /Plan 4B Task 8 ---
   },
   // --- /Plan 3B Task 10 ---

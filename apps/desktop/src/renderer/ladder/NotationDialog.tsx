@@ -37,13 +37,31 @@ interface NotationChoice {
 export function NotationDialog({
   profile,
   onClose,
-  title = JA.ladder.notationTitle,
+  purpose = 'notation',
 }: {
   profile: DialectProfile;
   onClose: () => void;
-  /** 見出し（3D表示の「メーカーを切り替える」から開いたときはその名前にする）。 */
-  title?: string;
+  /**
+   * 開いた入口。`vendor` は PLC画面の「メーカーを切り替える」から開いたとき（2026-09-26）で、
+   * 見出し・説明・ボタンを「メーカー（机上のPLC本体）を替える」言い方にする。切り替わる中身は同じ。
+   */
+  purpose?: 'notation' | 'vendor';
 }): JSX.Element {
+  const words =
+    purpose === 'vendor'
+      ? {
+          title: JA.plc.switchVendor,
+          help: JA.plc.switchVendorHelp,
+          pick: JA.plc.switchVendorPick,
+          applyTo: JA.plc.switchVendorApplyTo,
+        }
+      : {
+          title: JA.ladder.notationTitle,
+          help: JA.ladder.notationHelp,
+          pick: JA.ladder.notationPick,
+          applyTo: JA.ladder.notationApplyTo,
+        };
+  const title = words.title;
   const program = useStore((s) => s.ladder);
   const problem = useStore((s) => s.problem);
   const session = useStore((s) => s.session);
@@ -163,9 +181,9 @@ export function NotationDialog({
             ×
           </button>
         </div>
-        <p className={styles.sideNote}>{JA.ladder.notationHelp}</p>
+        <p className={styles.sideNote}>{words.help}</p>
         <p className={styles.notationPickLabel} id="notation-pick-label">
-          {JA.ladder.notationPick}
+          {words.pick}
         </p>
         <div className={styles.notationPicker} role="group" aria-labelledby="notation-pick-label">
           {choices.map((choice) => (
@@ -272,9 +290,7 @@ export function NotationDialog({
                 data-testid="notation-apply"
                 onClick={apply}
               >
-                {targetName === undefined
-                  ? JA.ladder.notationApply
-                  : JA.ladder.notationApplyTo(targetName)}
+                {targetName === undefined ? JA.ladder.notationApply : words.applyTo(targetName)}
               </button>
               <button type="button" data-testid="notation-cancel" onClick={onClose}>
                 {JA.inspectRepair.cancel}

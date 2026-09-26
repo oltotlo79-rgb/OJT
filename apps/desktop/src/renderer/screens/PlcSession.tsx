@@ -22,6 +22,10 @@ import { useStore } from '../app/store.js';
 import { failedLog, historyLog, JA, powerLog, routeFailedLog, wireCountText } from '../i18n/ja.js';
 import { LadderWorkspace } from '../ladder/LadderWorkspace.js';
 import { NotationDialog } from '../ladder/NotationDialog.js';
+import { LivePanel } from '../panels/LivePanel.js';
+import { TimeChartPanel } from '../panels/TimeChartPanel.js';
+import { buildPlcSpecChart } from '../session/spec-chart.js';
+import { focusWorkPanel } from '../session/workflow.js';
 import { ElapsedTimer } from '../panels/ElapsedTimer.js';
 import { LogPanel } from '../panels/LogPanel.js';
 import { PartsPanel } from '../panels/PartsPanel.js';
@@ -180,6 +184,14 @@ export function PlcSession(): JSX.Element {
   /** 表示列数は設定画面の値。`0` なら方言の既定（§10.6 / 決定表#8）。 */
   const gridColsSetting = useStore((s) => s.ladderGridCols);
   const board = useMemo(() => boardForProblem(problem), [problem]);
+  /**
+   * 課題の仕様タイムチャート（2026-09-26 利用者報告「PLCの課題でタイムチャートが見れないの？
+   * 分かりにくい」）。模範ラダー＋模範配線を課題の操作列で走らせた波形で、判定の期待波形と同じ。
+   */
+  const spec = useMemo(
+    () => (problem === undefined ? undefined : buildPlcSpecChart(problem)),
+    [problem],
+  );
 
   // 視点のショートカットはラダーにフォーカスが無いときだけ効かせる（決定表#3）
   useViewportShortcuts({ enabled: session !== undefined && !ladderFocused });
@@ -675,6 +687,18 @@ export function PlcSession(): JSX.Element {
         testId={{ band: `plc-guide`, step: (key) => `plc-step-${key}`, hint: `plc-hint` }}
       >
         <div className={styles.plcStatus}>
+          {spec !== undefined && spec.ok ? (
+            <button
+              type="button"
+              className={styles.plcChartLink}
+              data-testid="plc-show-chart"
+              onClick={() => {
+                focusWorkPanel('chart-panel');
+              }}
+            >
+              {JA.plc.showChart}
+            </button>
+          ) : null}
           <span className={styles.plcChip} data-testid="plc-ladder-mode">
             {JA.plc.statusLadder}: {ladderModeLabel(ladderMode)}
           </span>
@@ -718,6 +742,9 @@ export function PlcSession(): JSX.Element {
         )}
         <div className={styles.plcRight}>
           <ProblemPanel problem={problem} />
+          {/* 仕様（模範の動き）と実測（いまの動き）を上下に並べる。組立画面と同じ部品 */}
+          {spec !== undefined && spec.ok ? <TimeChartPanel chart={spec.chart} /> : null}
+          <LivePanel />
           {/*
             決定表#7の静的な1行（判定データではないので常に出してよい）。Batch 4+5 レビュー B1。
           */}
@@ -741,11 +768,7 @@ export function PlcSession(): JSX.Element {
             </button>
           </div>
           {vendorDialogOpen ? (
-            <NotationDialog
-              profile={profile}
-              onClose={closeVendorDialog}
-              title={JA.plc.switchVendor}
-            />
+            <NotationDialog profile={profile} onClose={closeVendorDialog} purpose="vendor" />
           ) : null}
           {/*
             モードDもリレーはソケットへ装着してから `CRn.14` へ配線する（§10.2 の2段結線）。

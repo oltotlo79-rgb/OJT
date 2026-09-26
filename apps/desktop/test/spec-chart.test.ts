@@ -1,7 +1,14 @@
 import { JIPM_BOARD } from '@ojt/board-model';
-import { BUILTIN_PROBLEMS, buildReferenceSession, judgeAssemble } from '@ojt/content';
+import {
+  BUILTIN_PLC_PROBLEMS,
+  BUILTIN_PROBLEMS,
+  buildReferenceSession,
+  judgeAssemble,
+  judgePlcReference,
+} from '@ojt/content';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  buildPlcSpecChart,
   buildSpecChart,
   clearSpecChartCache,
   isSpecChartCached,
@@ -161,5 +168,34 @@ describe('判定（worker が呼ぶ経路と同じ）', () => {
     if (!judged.ok) return;
     expect(judged.value.passed).toBe(false);
     expect(judged.value.mismatches.length).toBeGreaterThan(0);
+  });
+});
+
+describe('buildPlcSpecChart（2026-09-26 利用者報告「PLCの課題でタイムチャートが見れない」）', () => {
+  it('D-001 の仕様チャートは判定の期待波形と同じ', () => {
+    const problem = BUILTIN_PLC_PROBLEMS.find((p) => p.id === 'd-001');
+    expect(problem).toBeDefined();
+    if (problem === undefined) return;
+    const result = buildPlcSpecChart(problem);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const judged = judgePlcReference(problem, JIPM_BOARD);
+    expect(judged.ok).toBe(true);
+    if (!judged.ok) return;
+    expect(result.chart).toEqual(judged.value.charts.expected);
+    // 黒（PB1）で運転を始めると白ランプ（PL1）が点く
+    const pl1 = result.chart.signals.find((s) => s.name === 'PL1');
+    expect(pl1?.segments.some((segment) => segment.value)).toBe(true);
+  });
+
+  it('同じ課題の2度目はキャッシュを返し、機種が違えば別に作る', () => {
+    const problem = BUILTIN_PLC_PROBLEMS[0]!;
+    const first = buildPlcSpecChart(problem);
+    expect(buildPlcSpecChart(problem)).toBe(first);
+    const omron = { ...problem, plc: { vendor: 'omron', model: 'CP1E' } } as typeof problem;
+    const other = buildPlcSpecChart(omron);
+    expect(other).not.toBe(first);
+    // 動きはラダーで決まるので、機種が違っても波形は同じ
+    expect(other.ok && first.ok && other.chart.signals).toEqual(first.ok && first.chart.signals);
   });
 });

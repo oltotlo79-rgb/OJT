@@ -249,6 +249,20 @@ describe('モードDのセッション画面（§10.1 / §12.1）', () => {
     expect(screen.getByTestId('plc-model')).toHaveTextContent('FX5U');
   });
 
+  /** 2026-09-26 利用者報告「PLCの課題でタイムチャートが見れないの？分かりにくい」 */
+  it('shows the spec time chart and the live chart in every view', () => {
+    render(<SessionRoute />);
+    for (const view of ['split', 'ladder', 'board'] as const) {
+      act(() => {
+        useStore.getState().setLadderView(view);
+      });
+      expect(screen.getByTestId('chart-panel')).toBeInTheDocument();
+      expect(screen.getByTestId('chart-spec')).toBeInTheDocument();
+      expect(screen.getByTestId('live-panel')).toBeInTheDocument();
+      expect(screen.getByTestId('plc-show-chart')).toHaveTextContent('タイムチャートを見る');
+    }
+  });
+
   /** 2026-09-26 利用者報告「3D図の画面の時に各メーカーのシーケンサーを切り替えることができない」 */
   it('lets the trainee switch the maker from the board-only view as well', () => {
     render(<SessionRoute />);

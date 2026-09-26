@@ -1,11 +1,15 @@
-import { JIPM_BOARD } from '@ojt/board-model';
+import { JIPM_BOARD, withBoardProfile } from '@ojt/board-model';
 import {
+  buildPlcReferenceSession,
   buildReferenceSession,
   buildTimeChart,
   defaultChartSignals,
+  plcTimerMarkers,
   resolveCompareSignals,
   runOperations,
+  runPlcOperations,
   timerMarkers,
+  type PlcProblem,
   type SchematicProblem,
   type TimeChart,
 } from '@ojt/content';
@@ -46,9 +50,9 @@ function fingerprint(text: string): string {
   return (hash >>> 0).toString(36);
 }
 
-/** キャッシュの鍵（ID・版・中身の指紋）。 */
-function cacheKey(problem: SchematicProblem): string {
-  return `${problem.id}@${problem.formatVersion}#${fingerprint(JSON.stringify(problem))}`;
+/** キャッシュの鍵（ID・版・中身の指紋）。PLC課題は機種ごとに別の鍵になる（`plc` も中身に入る）。 */
+function cacheKey(problem: SchematicProblem | PlcProblem): string {
+  return `${problem.mode}:${problem.id}@${problem.formatVersion}#${fingerprint(JSON.stringify(problem))}`;
 }
 
 /** キャッシュを空にする（テスト用）。 */
@@ -92,5 +96,45 @@ function computeSpecChart(problem: SchematicProblem): SpecChartResult {
       problem.durationMs,
       timerMarkers(reference.value.netlist),
     ),
+  };
+}
+
+/**
+ * PLC課題の仕様タイムチャート（2026-09-26 利用者報告「PLCの課題でタイムチャートが見れないの？」）。
+ *
+ * PLC課題の模範は回路図ではなく**I/O割付＋模範ラダー**なので、模範配線を割付から張り、模範ラダーを
+ * 課題の操作列で走らせて波形を作る。判定の「期待波形」（`judgePlc()` の `expectedRun`）と同じ計算で、
+ * 同じ課題なら判定結果の重ね表示と同じ波形になる。キャッシュは組立・点検修復と共有する。
+ */
+export function buildPlcSpecChart(problem: PlcProblem): SpecChartResult {
+  const key = cacheKey(problem);
+  const cached = CACHE.get(key);
+  if (cached !== undefined) return cached;
+  const result = computePlcSpecChart(problem);
+  CACHE.set(key, result);
+  return result;
+}
+
+/** 模範配線＋模範ラダーを走らせて仕様チャートを作る（キャッシュの中身）。 */
+function computePlcSpecChart(problem: PlcProblem): SpecChartResult {
+  const reference = buildPlcReferenceSession(
+    problem,
+    withBoardProfile(JIPM_BOARD, problem.board.profile),
+  );
+  if (!reference.ok) {
+    return { ok: false, errors: reference.errors.map((e) => `${e.path}: ${e.message}`) };
+  }
+  const { netlist, program, unit } = reference.value;
+  const run = runPlcOperations(netlist, program, problem.operations, {
+    durationMs: problem.durationMs,
+    outputCount: unit.spec.outputs.length,
+  });
+  const specs = defaultChartSignals(
+    resolveCompareSignals(problem.judge, problem.board.extraParts ?? []),
+    problem.operations.map((operation) => operation.target),
+  );
+  return {
+    ok: true,
+    chart: buildTimeChart(run.log, specs, problem.durationMs, plcTimerMarkers(program)),
   };
 }
