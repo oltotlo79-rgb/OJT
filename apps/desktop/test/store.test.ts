@@ -472,8 +472,10 @@ describe('ストアの5分割（指摘 DS-3）', () => {
    * 144 → 148: Phase 7 Task 27（3D盤の直接操作）で `dragging` / `hoverHint` と
    * その差し替え（`setDragging` / `setHoverHint`）の4つが増えた。
    * 148 → 150: Phase 7 Task 25（指摘 PR-02）で `hintStage` と `revealHint` の2つが増えた。
+   * 160 → 163: v1.7.0 で3本目の注意文（`wireLimitNotice` / `setWireLimitNotice`）と、
+   * 部品不良の内容の選び直し（`replaceReport`）の3つが増えた。
    */
-  const APP_STATE_KEY_COUNT = 160;
+  const APP_STATE_KEY_COUNT = 163;
 
   /** スライスを1つ組み立てて、公開するキーだけを取り出す（中身は呼ばない）。 */
   function keysOf(

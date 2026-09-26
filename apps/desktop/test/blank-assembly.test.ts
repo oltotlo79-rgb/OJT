@@ -11,7 +11,8 @@ import { checkSessionFor, sessionForProblem } from '../src/renderer/app/store-se
 describe('課題の用途に合った初期配線', () => {
   it('全ての組立・PLC課題は配線ゼロから始まり、点検用の3本を混ぜない', () => {
     const problems = [...BUILTIN_ASSEMBLE_PROBLEMS, ...BUILTIN_PLC_PROBLEMS];
-    expect(problems).toHaveLength(180);
+    // 組立100題＋PLC100題（v1.7.0 で各10題を追加）
+    expect(problems).toHaveLength(200);
     for (const problem of problems) {
       expect(sessionForProblem(problem).wires, problem.id).toEqual([]);
     }
