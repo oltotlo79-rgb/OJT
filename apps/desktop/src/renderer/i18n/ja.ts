@@ -356,6 +356,11 @@ export const JA = {
     probeBlack: '黒プローブ',
     probeRed: '赤プローブ',
     probeNone: '未配置',
+    /** 3Dのテスター棒の名札の頭（「赤 CR1 ⑭ +」。2026-09-26）。 */
+    probeTagBlack: '黒',
+    probeTagRed: '赤',
+    /** 名札で壁コンセントの端子に付ける前置き。 */
+    outletPrefix: 'コンセント',
     /** プローブを外す。 */
     lift: '外す',
     /** 3D盤の端子をクリックして置くことの案内。§9.3 */
@@ -1529,9 +1534,17 @@ export function voltRangeLabel(range: number): string {
 }
 
 /** プローブの配置状況（`黒プローブ: CHK.13`）。§9.3。M1: `side` は `ProbeSide` で受け取る。 */
-export function probeLabel(side: ProbeSide, terminal: string | undefined): string {
+export function probeLabel(
+  side: ProbeSide,
+  terminal: string | undefined,
+  printed?: string,
+): string {
   const name = side === 'black' ? JA.tester.probeBlack : JA.tester.probeRed;
-  return `${name}: ${terminal ?? JA.tester.probeNone}`;
+  if (terminal === undefined) return `${name}: ${JA.tester.probeNone}`;
+  // 盤の印字（3Dの名札と同じ「CR1 ⑭ +」）を添えて、3Dのどこに当てたかと結び付ける（2026-09-26）
+  return printed === undefined || printed === terminal
+    ? `${name}: ${terminal}`
+    : `${name}: ${terminal}（${printed}）`;
 }
 
 /** 級の表示（`3級` など）。 */

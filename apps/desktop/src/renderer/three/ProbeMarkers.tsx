@@ -1,8 +1,10 @@
-import { boardTerminalPos, toPhysicalTerminal } from '@ojt/board-model';
+import { boardTerminalPos, findBoardTerminal, toPhysicalTerminal } from '@ojt/board-model';
 import type { BoardDefinition, SocketRoles } from '@ojt/board-model';
 import type { TerminalId } from '@ojt/circuit-sim';
+import { Html } from '@react-three/drei';
 import type { JSX } from 'react';
-import { HIGHLIGHT_COLOR, PROBE_COLORS } from '../session/colors.js';
+import { JA } from '../i18n/ja.js';
+import { HIGHLIGHT_COLOR, PROBE_COLORS, PROBE_RING_COLORS } from '../session/colors.js';
 import { toScene } from './coords.js';
 import { sharedMaterial } from './materials.js';
 
@@ -21,18 +23,62 @@ import { sharedMaterial } from './materials.js';
  * のハイライトが「盤に無い端子」として黙って消える（レビュー指摘 3D-07）。
  */
 
-/** プローブが浮く高さ[mm]（端子の当たり判定球より手前に出す）。 */
-const PROBE_LIFT_MM = 7;
-/** プローブの円錐の半径・高さ[mm]。 */
-const PROBE_RADIUS_MM = 1.8;
-const PROBE_HEIGHT_MM = 9;
+/*
+ * テスター棒の寸法[mm]（2026-09-26 利用者報告「テスターを当てている個所が3D図で分かりにくい」）。
+ * 以前は端子の上に小さな円錐を浮かべるだけで、黒は盤の色に埋もれて見えなかった。実物の
+ * テスター棒と同じく、金属の先端・つば・色の付いた握りを斜めに当て、端子の周りに光る輪を置き、
+ * 握りの先に「赤 CR1 ⑭ +」のような名札を出す。
+ */
+/** 先端（金属）の長さ・半径。 */
+const TIP_LENGTH_MM = 7;
+const TIP_RADIUS_MM = 0.5;
+/** つば（指を止める円板）の半径・厚み。 */
+const GUARD_RADIUS_MM = 3.2;
+const GUARD_THICKNESS_MM = 1.2;
+/** 握りの長さ・半径。 */
+const GRIP_LENGTH_MM = 24;
+const GRIP_RADIUS_MM = 2.3;
+/** 盤面の法線から傾ける角度[rad]（黒は左、赤は右へ倒すので、隣の端子に当てても重ならない）。 */
+const PROBE_TILT_RAD = (28 * Math.PI) / 180;
+/** 端子を囲む輪の半径・太さ（どの端子に当てているかを遠くからでも分かるようにする）。 */
+const RING_RADIUS_MM = 4.2;
+const RING_TUBE_MM = 0.7;
 /** ハイライトの球の半径[mm]。 */
 const HIGHLIGHT_RADIUS_MM = 3.6;
 
 /** 描くプローブ1本。 */
 export interface ProbePlacement {
   side: 'black' | 'red';
+  /** 当てている端子の3D座標（ネジの中心）。 */
   pos: [number, number, number];
+  /** 名札の文言（「赤 CR1 ⑭ +」など）。 */
+  label: string;
+}
+
+/** ソケットの物理端子（`S1.14` など）。 */
+const SOCKET_TERMINAL_RE = /^S\d+\./u;
+
+/**
+ * 名札に出す端子の名前（役割ID → 盤の印字）。ソケットの端子は役割名を前に付け（`CR1 ⑭ +`）、
+ * PLC本体・壁コンセントも何の端子か分かるように前置きする。盤に無い端子は役割IDのまま出す。
+ */
+export function probeTerminalName(
+  board: BoardDefinition,
+  roles: SocketRoles,
+  terminal: TerminalId,
+): string {
+  try {
+    const physical = toPhysicalTerminal(roles, terminal);
+    const found = findBoardTerminal(board, physical);
+    if (found === undefined) return String(terminal);
+    const role = String(terminal).split('.')[0] ?? '';
+    if (SOCKET_TERMINAL_RE.test(String(physical))) return `${role} ${found.label}`;
+    if (String(physical).startsWith('PLC.')) return `PLC ${found.label}`;
+    if (String(physical).startsWith('OUTLET.')) return `${JA.tester.outletPrefix} ${found.label}`;
+    return found.label;
+  } catch {
+    return String(terminal);
+  }
 }
 
 /** 端子（役割ID）の3D座標を引く。盤に無ければ undefined。 */
@@ -62,7 +108,12 @@ export function probePositions(
     if (terminal === undefined) continue;
     const pos = scenePosOf(board, roles, terminal);
     if (pos === undefined) continue;
-    out.push({ side, pos });
+    const name = probeTerminalName(board, roles, terminal);
+    out.push({
+      side,
+      pos,
+      label: `${side === 'black' ? JA.tester.probeTagBlack : JA.tester.probeTagRed} ${name}`,
+    });
   }
   return out;
 }
@@ -104,23 +155,7 @@ export function ProbeMarkers({
   return (
     <group name="probe-markers">
       {placements.map((placement) => (
-        <mesh
-          key={placement.side}
-          name={`probe-${placement.side}`}
-          raycast={noPick}
-          position={[
-            placement.pos[0],
-            placement.pos[1],
-            placement.pos[2] + PROBE_LIFT_MM + PROBE_HEIGHT_MM / 2,
-          ]}
-          rotation={[Math.PI / 2, 0, 0]}
-          material={sharedMaterial(PROBE_COLORS[placement.side], {
-            metalness: 0.2,
-            roughness: 0.5,
-          })}
-        >
-          <coneGeometry args={[PROBE_RADIUS_MM, PROBE_HEIGHT_MM, 10]} />
-        </mesh>
+        <ProbePen key={placement.side} placement={placement} />
       ))}
       {highlights.map((pos, index) => (
         <mesh
@@ -138,6 +173,88 @@ export function ProbeMarkers({
           <sphereGeometry args={[HIGHLIGHT_RADIUS_MM, 12, 10]} />
         </mesh>
       ))}
+    </group>
+  );
+}
+
+/**
+ * テスター棒1本（先端・つば・握り・端子の輪・名札）。端子のネジの中心から盤面の法線方向へ立て、
+ * 黒は左、赤は右へ傾ける。レイキャストは受けない（下の端子のクリックを奪わない）。
+ */
+export function ProbePen({ placement }: { placement: ProbePlacement }): JSX.Element {
+  const [x, y, z] = placement.pos;
+  const tilt = placement.side === 'black' ? -PROBE_TILT_RAD : PROBE_TILT_RAD;
+  const color = PROBE_COLORS[placement.side];
+  const ring = PROBE_RING_COLORS[placement.side];
+  const gripEnd = TIP_LENGTH_MM + GUARD_THICKNESS_MM + GRIP_LENGTH_MM;
+  const glow = sharedMaterial(ring, {
+    metalness: 0,
+    roughness: 0.4,
+    emissive: ring,
+    emissiveIntensity: 0.6,
+  });
+  return (
+    <group name={`probe-${placement.side}`} position={[x, y, z]}>
+      {/* 当てている端子を囲む輪（盤面と平行。棒の傾きとは別に置く） */}
+      <mesh
+        name={`probe-ring-${placement.side}`}
+        raycast={noPick}
+        position={[0, 0, 0.6]}
+        material={glow}
+      >
+        <torusGeometry args={[RING_RADIUS_MM, RING_TUBE_MM, 10, 32]} />
+      </mesh>
+      {/* 棒は y 軸まわりに傾けた group の中で +z 方向へ積む */}
+      <group rotation={[0, tilt, 0]}>
+        <mesh
+          raycast={noPick}
+          position={[0, 0, TIP_LENGTH_MM / 2]}
+          rotation={[Math.PI / 2, 0, 0]}
+          material={sharedMaterial('#C9CED6', { metalness: 0.85, roughness: 0.25 })}
+        >
+          <cylinderGeometry args={[TIP_RADIUS_MM, TIP_RADIUS_MM * 0.6, TIP_LENGTH_MM, 10]} />
+        </mesh>
+        <mesh
+          raycast={noPick}
+          position={[0, 0, TIP_LENGTH_MM + GUARD_THICKNESS_MM / 2]}
+          rotation={[Math.PI / 2, 0, 0]}
+          material={sharedMaterial(color, { metalness: 0.1, roughness: 0.5 })}
+        >
+          <cylinderGeometry args={[GUARD_RADIUS_MM, GUARD_RADIUS_MM, GUARD_THICKNESS_MM, 18]} />
+        </mesh>
+        <mesh
+          name={`probe-grip-${placement.side}`}
+          raycast={noPick}
+          position={[0, 0, TIP_LENGTH_MM + GUARD_THICKNESS_MM + GRIP_LENGTH_MM / 2]}
+          rotation={[Math.PI / 2, 0, 0]}
+          material={sharedMaterial(color, { metalness: 0.15, roughness: 0.45 })}
+        >
+          <cylinderGeometry args={[GRIP_RADIUS_MM, GRIP_RADIUS_MM * 1.1, GRIP_LENGTH_MM, 14]} />
+        </mesh>
+        {/* 黒い握りは盤に埋もれるので、つばと握りの境に明るい帯を巻く */}
+        <mesh
+          raycast={noPick}
+          position={[0, 0, TIP_LENGTH_MM + GUARD_THICKNESS_MM + 1.2]}
+          rotation={[Math.PI / 2, 0, 0]}
+          material={glow}
+        >
+          <cylinderGeometry args={[GRIP_RADIUS_MM * 1.05, GRIP_RADIUS_MM * 1.05, 1.6, 14]} />
+        </mesh>
+        <Html
+          center
+          position={[0, 0, gripEnd + 4]}
+          distanceFactor={260}
+          zIndexRange={[30, 20]}
+          style={{ pointerEvents: 'none' }}
+        >
+          <span
+            className={`probe-label probe-label-${placement.side}`}
+            data-testid={`probe-label-${placement.side}`}
+          >
+            {placement.label}
+          </span>
+        </Html>
+      </group>
     </group>
   );
 }

@@ -177,6 +177,34 @@ button[aria-pressed='true'] {
   background: rgba(231, 235, 242, 0.92);
 }
 
+/*
+ * 3Dのテスター棒の名札（2026-09-26 利用者報告「テスターを当てている個所が3D図で分かりにくい」）。
+ * 黒・赤の棒の色で縁取り、ほかの名札より手前に常に出す（名札の間引きの対象にしない）。
+ */
+.probe-label {
+  display: inline-block;
+  border-radius: 4px;
+  border: 2px solid;
+  font-size: max(13px, 0.8rem);
+  font-weight: 700;
+  padding: 1px 6px;
+  white-space: nowrap;
+  pointer-events: none;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.45);
+}
+
+.probe-label-black {
+  background: #15181c;
+  border-color: #f4f6fa;
+  color: #f4f6fa;
+}
+
+.probe-label-red {
+  background: #d6262b;
+  border-color: #ffd5d6;
+  color: #ffffff;
+}
+
 .part-label.timer {
   background: rgba(232, 194, 42, 0.95);
 }

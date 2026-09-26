@@ -8,8 +8,11 @@ import {
   type TesterKind,
   type TesterMode,
 } from '@ojt/circuit-sim';
-import type { JSX } from 'react';
+import { toTerminalId } from '@ojt/circuit-sim';
+import { useMemo, type JSX } from 'react';
 import { useStore, type ProbeSide } from '../app/store.js';
+import { boardForProblem } from '../session/plc-session.js';
+import { probeTerminalName } from '../three/ProbeMarkers.js';
 import { JA, ohmRangeLabel, probeLabel, voltRangeLabel } from '../i18n/ja.js';
 import { bridge } from '../session/worker-bridge.js';
 import { AnalogMeter } from './AnalogMeter.js';
@@ -107,6 +110,16 @@ export function TesterReadout({ compact = false }: { compact?: boolean } = {}): 
 function ProbeRow({ side }: { side: ProbeSide }): JSX.Element {
   const terminal = useStore((s) => (side === 'black' ? s.tester.black : s.tester.red));
   const next = useStore((s) => s.nextProbe);
+  const problem = useStore((s) => s.problem);
+  const roles = useStore((s) => s.session?.socketRoles);
+  // 3Dの名札と同じ名前（`CR1 ⑭ +`）を添える
+  const printed = useMemo(
+    () =>
+      terminal === undefined || roles === undefined
+        ? undefined
+        : probeTerminalName(boardForProblem(problem), roles, toTerminalId(terminal)),
+    [problem, roles, terminal],
+  );
   return (
     <div className={styles.probeRow}>
       <button
@@ -119,7 +132,7 @@ function ProbeRow({ side }: { side: ProbeSide }): JSX.Element {
           useStore.getState().setNextProbe(side);
         }}
       >
-        {probeLabel(side, terminal)}
+        {probeLabel(side, terminal, printed)}
       </button>
       {terminal === undefined ? null : (
         <button

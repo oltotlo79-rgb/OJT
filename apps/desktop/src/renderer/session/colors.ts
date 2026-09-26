@@ -71,6 +71,15 @@ export const PROBE_COLORS: Readonly<Record<'black' | 'red', string>> = {
   red: '#D6262B',
 };
 
+/**
+ * テスター棒の輪と帯の色（2026-09-26 利用者報告「テスターを当てている個所が3D図で分かりにくい」）。
+ * 黒い棒は盤や端子台の黒に埋もれるので、黒の輪は明るい白にする。赤は明るい赤。
+ */
+export const PROBE_RING_COLORS: Readonly<Record<'black' | 'red', string>> = {
+  black: '#F4F6FA',
+  red: '#FF5A5F',
+};
+
 /** 回路図と連動して光らせる端子の色（§9.2 の連動ハイライト）。 */
 export const HIGHLIGHT_COLOR = '#FFE066';
 

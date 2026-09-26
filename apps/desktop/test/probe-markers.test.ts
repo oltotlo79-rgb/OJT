@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import {
   highlightPositions,
   ProbeMarkers,
+  ProbePen,
   probePositions,
 } from '../src/renderer/three/ProbeMarkers.js';
 import { visualSignature } from '../src/renderer/three/BoardScene.js';
@@ -74,25 +75,56 @@ describe('probePositions（§6.4 役割ID → 物理端子）', () => {
 
 describe('ProbeMarkers（§9.3: レイキャストを受けない）', () => {
   it('プローブのメッシュは no-op の raycast を持つ（下の端子のクリックを奪わない）', () => {
-    const element = ProbeMarkers({
-      probes: { black: toTerminalId('TB_PB.1a'), red: toTerminalId('CHK.13') },
-      highlightTerminals: [],
-      roles: ROLES,
-      board: JIPM_BOARD,
-    }) as unknown as { props: { children: unknown[] } };
-    const children = element.props.children.flat() as { props?: { name?: string } }[];
-    const probeMeshes = children.filter(
-      (child) => typeof child?.props?.name === 'string' && child.props.name.startsWith('probe-'),
+    const placements = probePositions(
+      { black: toTerminalId('TB_PB.1a'), red: toTerminalId('CHK.13') },
+      ROLES,
+      JIPM_BOARD,
     );
-    expect(probeMeshes).toHaveLength(2);
-    for (const mesh of probeMeshes) {
-      const raycast = (mesh as { props: { raycast?: unknown } }).props.raycast;
-      expect(typeof raycast).toBe('function');
-      // no-op: 何も積まず、何も返さない
-      expect((raycast as () => unknown)()).toBeUndefined();
+    expect(placements).toHaveLength(2);
+    for (const placement of placements) {
+      const meshes = meshesOf(ProbePen({ placement }));
+      // 輪・先端・つば・握り・帯の5つ（どれも下の端子のクリックを奪わない）
+      expect(meshes).toHaveLength(5);
+      for (const raycast of meshes) {
+        expect(typeof raycast).toBe('function');
+        // no-op: 何も積まず、何も返さない
+        expect((raycast as () => unknown)()).toBeUndefined();
+      }
     }
   });
+
+  it('テスター棒に当て先の名札を付ける（2026-09-26 利用者報告「当てている個所が分かりにくい」）', () => {
+    const placements = probePositions(
+      { black: toTerminalId('N.1'), red: toTerminalId('CR1.14') },
+      ROLES,
+      JIPM_BOARD,
+    );
+    expect(placements.map((p) => p.label)).toEqual(['黒 N1', '赤 CR1 ⑭ +']);
+    const plc = probePositions(
+      { black: toTerminalId('OUTLET.N'), red: toTerminalId('PLC.X0') },
+      ROLES,
+      PLC_BOARD,
+    );
+    expect(plc.map((p) => p.label)).toEqual(['黒 コンセント N', '赤 PLC X0']);
+  });
 });
+
+/** 要素の木から `mesh` の `raycast` を集める（描画せずに props だけを見る）。 */
+function meshesOf(element: unknown): unknown[] {
+  const out: unknown[] = [];
+  const walk = (node: unknown): void => {
+    if (Array.isArray(node)) {
+      node.forEach(walk);
+      return;
+    }
+    if (node === null || typeof node !== 'object') return;
+    const el = node as { type?: unknown; props?: { raycast?: unknown; children?: unknown } };
+    if (el.type === 'mesh') out.push(el.props?.raycast);
+    walk(el.props?.children);
+  };
+  walk(element);
+  return out;
+}
 
 describe('モードDの盤の端子（§10.1 / 指摘 3D-07）', () => {
   it('机上のPLC・壁コンセントの端子でもハイライトの座標を返す', () => {
