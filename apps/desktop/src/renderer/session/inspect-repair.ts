@@ -115,6 +115,7 @@ export function reportPickToAction(
  */
 export function circuitForJudge(circuit: RepairCircuit, session: BoardSession): RepairCircuit {
   return {
+    ...circuit,
     session,
     applied: circuit.applied,
     initialWireIds: circuit.initialWireIds,

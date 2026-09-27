@@ -72,7 +72,13 @@ export function carryOverBoard(
   for (const wire of previous.wires) {
     if (wire.locked || touchesPlcDesk(wire)) continue;
     if (carried.wires.some((w) => w.id === wire.id)) continue;
-    addWire(carried, board, wire.from, wire.to, wire.color, { id: wire.id });
+    const added = addWire(carried, board, wire.from, wire.to, wire.color, { id: wire.id });
+    if (!added.ok) continue;
+    const annotation = previous.wireAnnotations?.[wire.id];
+    if (annotation !== undefined) (carried.wireAnnotations ??= {})[wire.id] = { ...annotation };
+    const route = previous.wireRoutePreferences?.[wire.id];
+    if (route !== undefined)
+      (carried.wireRoutePreferences ??= {})[wire.id] = { viaChannelIds: [...route.viaChannelIds] };
   }
   carried.wireSeq = Math.max(carried.wireSeq, previous.wireSeq);
   return carried;

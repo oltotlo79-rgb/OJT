@@ -156,6 +156,7 @@ export function TesterPanel({ children }: { children?: JSX.Element }): JSX.Eleme
   const voltRange = useStore((s) => s.tester.voltRange);
   const ohmRange = useStore((s) => s.tester.ohmRange);
   const zeroAdjusted = useStore((s) => s.tester.zeroAdjusted);
+  const next = useStore((s) => s.nextProbe);
   const isOhmSide = mode === 'OHM' || mode === 'CONT';
   // 0Ω調整はアナログのΩ／導通レンジでしか意味が無い（デジタルは自動で補正する）。§9.3
   const canZero = kind === 'analog' && isOhmSide;
@@ -266,6 +267,10 @@ export function TesterPanel({ children }: { children?: JSX.Element }): JSX.Eleme
 
       <ProbeRow side="black" />
       <ProbeRow side="red" />
+      <p className={styles.hint} role="status" data-testid="next-probe-hint">
+        次に置くのは{next === 'black' ? '黒' : '赤'}プローブです。測定モードでbは黒、rは赤を選び、
+        端子を選択して置きます。0は0Ω調整、Escは両方のプローブを外します。
+      </p>
       {/* プローブの置き場所ショートカット（モードC1）はプローブ欄の隣に出す。§9.1 */}
       {children}
       <p className={styles.hint}>{JA.tester.placeHint}</p>

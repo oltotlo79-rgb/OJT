@@ -7,6 +7,7 @@ import { useStore } from '../src/renderer/app/store.js';
 import { JA } from '../src/renderer/i18n/ja.js';
 import { Home } from '../src/renderer/screens/Home.js';
 import { ProblemList } from '../src/renderer/screens/ProblemList.js';
+import { matchesSearch } from '../src/renderer/screens/problem-filter.js';
 import {
   changeProblemFilters,
   useProblemFilters,
@@ -36,6 +37,12 @@ const PAYLOAD: ProblemListPayload = {
   userDir: 'C:/dummy',
   userDirExists: true,
 };
+
+it('課題検索は全角英数字を正規化し、複数語を課題名・説明・IDから探す', () => {
+  expect(matchesSearch(PAYLOAD.problems[0]!, 'Ｂ－００１　自己保持')).toBe(true);
+  expect(matchesSearch(PAYLOAD.problems[0]!, '自己保持 点灯')).toBe(true);
+  expect(matchesSearch(PAYLOAD.problems[0]!, '自己保持 存在しない語')).toBe(false);
+});
 
 /** preload を差し替える（`delete` で「読み込まれていない」状態に戻せる）。 */
 function setApi(api: Partial<OjtApi> | undefined): void {

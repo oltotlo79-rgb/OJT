@@ -1,6 +1,6 @@
-import { useEffect, useRef, type JSX } from 'react';
+import type { JSX } from 'react';
 import { useStore } from './store.js';
-import { pushModalLayer } from '../session/interaction.js';
+import { ConfirmDialog } from './ConfirmDialog.js';
 import {
   cancelProblemChange,
   confirmProblemChange,
@@ -32,30 +32,13 @@ export function ResumeWorkCard(): JSX.Element | null {
 
 function ChangeDialog(): JSX.Element {
   const { pending, busy, message } = useProblemNavigation();
-  const dialog = useRef<HTMLDialogElement>(null);
-  useEffect(() => {
-    const target = dialog.current;
-    const opener =
-      document.activeElement instanceof HTMLElement ? document.activeElement : undefined;
-    const layer = pushModalLayer();
-    target?.showModal();
-    return () => {
-      target?.close();
-      layer.release();
-      opener?.focus();
-    };
-  }, []);
   return (
-    <dialog
-      ref={dialog}
-      className={styles.dialog}
-      data-testid="problem-change-confirm"
-      aria-labelledby="problem-change-title"
-      onCancel={(event) => {
-        event.preventDefault();
-        cancelProblemChange();
+    <ConfirmDialog
+      testId="problem-change-confirm"
+      titleId="problem-change-title"
+      onCancel={() => {
+        if (!busy) cancelProblemChange();
       }}
-      onKeyDown={(event) => event.stopPropagation()}
     >
       <h2 id="problem-change-title">
         {pending?.restart ? 'この課題を最初からやり直しますか？' : '別の課題へ移りますか？'}
@@ -84,12 +67,12 @@ function ChangeDialog(): JSX.Element {
         >
           保存せず進む
         </button>
-        <button type="button" disabled={busy} onClick={cancelProblemChange} autoFocus>
+        <button type="button" disabled={busy} onClick={cancelProblemChange} data-dialog-autofocus>
           取消
         </button>
       </div>
       {message && <p role="alert">{message}</p>}
-    </dialog>
+    </ConfirmDialog>
   );
 }
 

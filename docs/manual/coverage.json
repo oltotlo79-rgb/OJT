@@ -1011,6 +1011,12 @@
       "section": "mode-d/ラダー図を描く"
     },
     {
+      "testid": "next-probe-hint",
+      "screen": "テスター",
+      "label": "次に置く",
+      "section": "mode-c1/テスターの使い方"
+    },
+    {
       "testid": "no-mismatch",
       "screen": "結果",
       "label": "動作は模範回路と一致しました。",
@@ -1213,6 +1219,12 @@
       "screen": "練習中（モードD）",
       "label": "機種",
       "section": "mode-d/機種を変える"
+    },
+    {
+      "testid": "plc-operation-guide",
+      "screen": "PLC",
+      "label": "変換・書込み・RUNの違い",
+      "section": "mode-d/スキャンを止めて原因を追う"
     },
     {
       "testid": "plc-outlet-note",
@@ -1769,7 +1781,7 @@
     {
       "testid": "session-toolbar",
       "screen": "練習中",
-      "label": "その他の操作",
+      "label": "表示・作業ファイル",
       "section": "screens/画面の上の帯"
     },
     {
@@ -2221,7 +2233,7 @@
     {
       "testid": "toolbar-overflow-toggle",
       "screen": "練習中",
-      "label": "その他の操作",
+      "label": "表示・作業ファイル",
       "section": "screens/画面の上の帯"
     },
     {
@@ -2465,6 +2477,12 @@
       "internal": "親パネルの記録・接続一覧にある1行。対象や値は課題ごとに変わる。"
     },
     {
+      "testid": "wire-selection-summary",
+      "screen": "練習中",
+      "label": "編集対象",
+      "section": "mode-b/電線一覧で接続を探す・直す"
+    },
+    {
       "testid": "workspace-main",
       "internal": "ラダー編集エリアの幅を実測するための入れ物。文字も枠も出ない"
     },
@@ -2557,13 +2575,13 @@
     {
       "key": "b",
       "screen": "テスター",
-      "action": "黒い棒を次の端子へ",
+      "action": "次に置く黒い棒を選び、その後に端子を選ぶ",
       "section": "mode-c1/テスターの使い方"
     },
     {
       "key": "r",
       "screen": "テスター",
-      "action": "赤い棒を次の端子へ",
+      "action": "次に置く赤い棒を選び、その後に端子を選ぶ",
       "section": "mode-c1/テスターの使い方"
     },
     {

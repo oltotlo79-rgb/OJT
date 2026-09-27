@@ -320,11 +320,38 @@ describe('起動時の復元プロンプト（§12.3）', () => {
     render(<App />);
     await screen.findByTestId('restore-prompt');
 
-    fireEvent.click(screen.getByRole('button', { name: JA.session.restoreNo }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: JA.session.restoreNo }));
+      await Promise.resolve();
+    });
 
     expect(loadWorkFile).toHaveBeenLastCalledWith({ kind: 'autosave', discard: true });
     expect(workFileMock.applyWorkFile).not.toHaveBeenCalled();
     expect(screen.queryByTestId('restore-prompt')).toBeNull();
+  });
+
+  it('破棄要求が失敗したら復元確認に理由を出し、再試行できる', async () => {
+    const loadWorkFile = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: true, file: autosaveFile(), path: 'C:/autosave.json' })
+      .mockRejectedValueOnce(new Error('削除要求が失敗しました'))
+      .mockResolvedValue({ ok: false, canceled: true, message: '一時保存を削除しました' });
+    setApi({ getSettings: () => Promise.resolve(DEFAULT_SETTINGS), loadWorkFile });
+    render(<App />);
+    await screen.findByTestId('restore-prompt');
+    expect(screen.getByRole('button', { name: '後で決める' })).toHaveFocus();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: JA.session.restoreNo }));
+      await Promise.resolve();
+    });
+    expect(screen.getByTestId('restore-prompt')).toBeVisible();
+    expect(screen.getByRole('alert')).toHaveTextContent('削除要求が失敗しました');
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: JA.session.restoreNo }));
+      await Promise.resolve();
+    });
+    expect(screen.queryByTestId('restore-prompt')).toBeNull();
+    expect(workFileMock.applyWorkFile).not.toHaveBeenCalled();
   });
 
   /**

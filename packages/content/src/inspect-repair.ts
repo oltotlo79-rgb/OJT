@@ -39,6 +39,8 @@ export interface RepairCircuit {
   initialWires: readonly Wire[];
   /** 回路図の要素 → 物理端子の対応（連動ハイライト用）。§9.2 */
   cells: readonly CellAssignment[];
+  /** 故障の有無とは独立した交換記録。省略は旧保存・旧回路との互換用。 */
+  replacedPartIds?: readonly string[];
 }
 
 /** 構築結果。 */
@@ -106,7 +108,11 @@ export function repairNetlist(
 
 /** 部品を良品に交換した回路を返す（元の回路は変えない）。§9.2 部品交換 */
 export function replacePart(circuit: RepairCircuit, partId: string): RepairCircuit {
-  return { ...circuit, applied: withoutPartFaults(circuit.applied, partId) };
+  return {
+    ...circuit,
+    applied: withoutPartFaults(circuit.applied, partId),
+    replacedPartIds: [...new Set([...(circuit.replacedPartIds ?? []), partId])],
+  };
 }
 
 /** 故障箇所として認められている電線のID（`wire-open` / `wire-misrouted`）。 */

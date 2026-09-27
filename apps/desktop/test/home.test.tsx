@@ -57,6 +57,19 @@ afterEach(() => {
 });
 
 describe('ホーム下段（指摘 UX-28）', () => {
+  it('元の課題定義がなくても保存内の定義で続きから開ける', async () => {
+    const file = {
+      ...AUTOSAVE,
+      problemSnapshot: BUILTIN_PROBLEMS.find((problem) => problem.id === 'b-001')!,
+    };
+    setApi({
+      loadWorkFile: () => Promise.resolve({ ok: true, path: 'C:/autosave.json', file }),
+      readProblem: () => Promise.resolve(null),
+    });
+    render(<Home />);
+    fireEvent.click(await screen.findByTestId('recent-problem'));
+    expect(workFileMock.applyWorkFile).toHaveBeenCalledWith(file);
+  });
   it('「初めての方はここから」の帯から回路組立の一覧へ入れる（指摘 UX-19）', () => {
     render(<Home />);
     const band = screen.getByTestId('start-here');

@@ -4,7 +4,7 @@ import type { OjtApi, WorkFile } from '../../shared/ipc.js';
 import { sounds } from '../audio/sounds.js';
 import { HelpRoot } from '../help/HelpRoot.js';
 import { JA, sessionModeLabel } from '../i18n/ja.js';
-import { applyWorkFile, toInspectWorkFile } from '../session/work-file.js';
+import { applyWorkFile, savedProblemSnapshot, toInspectWorkFile } from '../session/work-file.js';
 import { ErrorBoundary } from './ErrorBoundary.js';
 import { tryOjtApi } from './ojt-api.js';
 import { renderRoute } from './routes.js';
@@ -17,6 +17,7 @@ import { TourOverlay } from '../tour/TourOverlay.js';
 import { useTourStore } from '../tour/tour-store.js';
 import { ProblemChangeDialog } from './ProblemNavigation.js';
 import { startAuthoringDraft } from '../session/authoring-draft.js';
+import { ConfirmDialog } from './ConfirmDialog.js';
 
 /**
  * アプリの外枠。設計仕様 §12.1 / §13 #5 / §12.3 / §15。
@@ -65,6 +66,14 @@ export function App(): JSX.Element {
   const pendingWorkFile = useStore((s) => s.pendingWorkFile);
   const problemId = useStore((s) => s.problem?.id);
   const [pendingRestore, setPendingRestore] = useState<WorkFile | undefined>(undefined);
+  const [restoreBusy, setRestoreBusy] = useState(false);
+  const [restoreError, setRestoreError] = useState('');
+  const [homeRevision, setHomeRevision] = useState(0);
+  const [workFileBusy, setWorkFileBusy] = useState(false);
+  const [workFileError, setWorkFileError] = useState('');
+  useEffect(() => {
+    setWorkFileError('');
+  }, [pendingWorkFile]);
   /** 復元プロンプトの保存時刻（ローカル日時表記）。整形できなければ空文字（時刻無し表示）。 */
   const restoreSavedAtLabel =
     pendingRestore === undefined ? '' : formatSavedAt(pendingRestore.savedAt);
@@ -78,6 +87,11 @@ export function App(): JSX.Element {
   useEffect(() => {
     setRestoreProblemTitle(undefined);
     if (pendingRestore === undefined) return undefined;
+    const saved = savedProblemSnapshot(pendingRestore);
+    if (saved !== undefined) {
+      setRestoreProblemTitle(saved.title);
+      return undefined;
+    }
     const api = tryApi();
     if (api === undefined || typeof api.readProblem !== 'function') return undefined;
     let cancelled = false;
@@ -253,57 +267,81 @@ export function App(): JSX.Element {
         </div>
       )}
       {pendingWorkFile === undefined ? null : (
-        <div className={styles.restorePrompt} role="dialog" data-testid="discard-confirm">
-          <span>{JA.session.discardTitle}</span>
-          <button
-            type="button"
-            onClick={() => {
-              const current = toInspectWorkFile();
-              if (current === undefined) return;
-              void tryApi()
-                ?.saveWorkFile({ kind: 'manual', file: current })
-                .then(async (result) => {
-                  if (!result.ok) {
-                    if (!result.canceled) useStore.getState().toast(result.message, 'error');
-                    return;
-                  }
-                  useStore.getState().setPendingWorkFile(undefined);
-                  await applyWorkFile(pendingWorkFile, { confirmed: true });
-                })
-                .catch((error: unknown) => {
-                  useStore.getState().toast(String(error), 'error');
-                });
-            }}
-          >
-            保存して開く
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              const file = pendingWorkFile;
-              useStore.getState().setPendingWorkFile(undefined);
-              void applyWorkFile(file, { confirmed: true });
-            }}
-          >
-            {JA.session.discardYes}
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              useStore.getState().setPendingWorkFile(undefined);
-            }}
-          >
-            {JA.session.discardNo}
-          </button>
-        </div>
+        <ConfirmDialog
+          testId="discard-confirm"
+          titleId="discard-title"
+          onCancel={() => {
+            if (!workFileBusy) useStore.getState().setPendingWorkFile(undefined);
+          }}
+        >
+          <h2 id="discard-title">{JA.session.discardTitle}</h2>
+          <div className={styles.restoreCardActions}>
+            <button
+              type="button"
+              disabled={workFileBusy}
+              onClick={() => {
+                const current = toInspectWorkFile();
+                if (current === undefined) return;
+                const api = tryApi();
+                if (api === undefined) return;
+                setWorkFileBusy(true);
+                setWorkFileError('');
+                void api
+                  .saveWorkFile({ kind: 'manual', file: current })
+                  .then(async (result) => {
+                    if (!result.ok) {
+                      if (!result.canceled) setWorkFileError(result.message);
+                      return;
+                    }
+                    useStore.getState().setPendingWorkFile(undefined);
+                    await applyWorkFile(pendingWorkFile, { confirmed: true });
+                  })
+                  .catch((error: unknown) => {
+                    setWorkFileError(String(error));
+                  })
+                  .finally(() => setWorkFileBusy(false));
+              }}
+            >
+              保存して開く
+            </button>
+            <button
+              type="button"
+              disabled={workFileBusy}
+              onClick={() => {
+                const file = pendingWorkFile;
+                useStore.getState().setPendingWorkFile(undefined);
+                void applyWorkFile(file, { confirmed: true });
+              }}
+            >
+              {JA.session.discardYes}
+            </button>
+            <button
+              type="button"
+              disabled={workFileBusy}
+              data-dialog-autofocus
+              onClick={() => {
+                useStore.getState().setPendingWorkFile(undefined);
+              }}
+            >
+              {JA.session.discardNo}
+            </button>
+          </div>
+          {workFileError && <p role="alert">{workFileError}</p>}
+        </ConfirmDialog>
       )}
       {pendingRestore === undefined ? null : (
-        <div className={styles.restoreCard} role="dialog" data-testid="restore-prompt">
-          <p className={styles.restoreCardTitle}>
+        <ConfirmDialog
+          testId="restore-prompt"
+          titleId="restore-title"
+          onCancel={() => {
+            if (!restoreBusy) setPendingRestore(undefined);
+          }}
+        >
+          <h2 id="restore-title" className={styles.restoreCardTitle}>
             {restoreSavedAtLabel === ''
               ? JA.session.restoreTitle
               : `${JA.session.restoreTitle}（${restoreSavedAtLabel}）`}
-          </p>
+          </h2>
           {/*
             UXレビュー #15: どの課題のどんな作業を復元するのか（モード・課題名・経過時間）を
             具体的に見せる。「復元する」を押す前に中身が分かるようにする。
@@ -319,6 +357,7 @@ export function App(): JSX.Element {
           <div className={styles.restoreCardActions}>
             <button
               type="button"
+              disabled={restoreBusy}
               onClick={() => {
                 const file = pendingRestore;
                 setPendingRestore(undefined);
@@ -329,15 +368,42 @@ export function App(): JSX.Element {
             </button>
             <button
               type="button"
+              disabled={restoreBusy}
               onClick={() => {
-                setPendingRestore(undefined);
-                void tryApi()?.loadWorkFile({ kind: 'autosave', discard: true });
+                const api = tryApi();
+                if (api === undefined) return;
+                setRestoreBusy(true);
+                setRestoreError('');
+                void api
+                  .loadWorkFile({ kind: 'autosave', discard: true })
+                  .then((result) => {
+                    if (result.ok || !result.canceled) {
+                      setRestoreError(
+                        result.ok ? '一時保存を削除できませんでした。' : result.message,
+                      );
+                      return;
+                    }
+                    setPendingRestore(undefined);
+                    // ホームが保持する以前の保存内容も、削除完了後に読み直す。
+                    setHomeRevision((revision) => revision + 1);
+                  })
+                  .catch((error: unknown) => setRestoreError(String(error)))
+                  .finally(() => setRestoreBusy(false));
               }}
             >
               {JA.session.restoreNo}
             </button>
+            <button
+              type="button"
+              disabled={restoreBusy}
+              data-dialog-autofocus
+              onClick={() => setPendingRestore(undefined)}
+            >
+              後で決める
+            </button>
           </div>
-        </div>
+          {restoreError && <p role="alert">{restoreError}</p>}
+        </ConfirmDialog>
       )}
       <ErrorBoundary
         key={sessionEpoch}
@@ -348,7 +414,7 @@ export function App(): JSX.Element {
           useStore.getState().noteRenderSuccess();
         }}
       >
-        <RouteView route={route} />
+        <RouteView key={route === 'home' ? homeRevision : route} route={route} />
       </ErrorBoundary>
       {/*
         ヘルプの引き出しと `F1` の窓口（Plan 6 Task 9）。`ErrorBoundary` の**外**に置く。

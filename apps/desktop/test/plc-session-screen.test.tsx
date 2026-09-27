@@ -1,4 +1,5 @@
 import { BUILTIN_PLC_PROBLEMS } from '@ojt/content';
+import { toTerminalId } from '@ojt/circuit-sim';
 import { endNetwork, network, no, program, X } from '@ojt/ladder-core';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -7,6 +8,7 @@ import { NO_CONVERT_ISSUES } from '../src/renderer/app/store-types.js';
 import { JA } from '../src/renderer/i18n/ja.js';
 import { SessionRoute } from '../src/renderer/screens/SessionRoute.js';
 import { bridge } from '../src/renderer/session/worker-bridge.js';
+import { pushModalLayer } from '../src/renderer/session/interaction.js';
 import type * as BoardSceneModule from '../src/renderer/three/BoardScene.js';
 import type { OjtApi } from '../src/shared/ipc.js';
 
@@ -147,6 +149,71 @@ describe('モードDのセッション画面（§10.1 / §12.1）', () => {
     });
     fireEvent.keyDown(window, { key: '2' });
     expect(useStore.getState().camera).toBe('top');
+  });
+
+  it('測定キーで次のプローブを選び、0Ω調整と両プローブの解除をWorkerへ送る', () => {
+    useStore.getState().setMode('tester');
+    useStore.getState().setLadderView('board');
+    useStore
+      .getState()
+      .applyTester({ type: 'place-probe', probe: 'black', terminal: toTerminalId('N.1') });
+    useStore
+      .getState()
+      .applyTester({ type: 'place-probe', probe: 'red', terminal: toTerminalId('P.1') });
+    render(<SessionRoute />);
+    sent.length = 0;
+
+    fireEvent.keyDown(window, { key: 'r' });
+    expect(useStore.getState().nextProbe).toBe('red');
+    expect(useStore.getState().tester.red).toBe('P.1');
+    fireEvent.keyDown(window, { key: 'b' });
+    expect(useStore.getState().nextProbe).toBe('black');
+    expect(useStore.getState().tester.black).toBe('N.1');
+    fireEvent.keyDown(window, { key: '0' });
+    expect(sent).toContainEqual({ type: 'tester', action: { type: 'zero-adjust' } });
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(useStore.getState().tester.black).toBeUndefined();
+    expect(useStore.getState().tester.red).toBeUndefined();
+    expect(useStore.getState().nextProbe).toBe('black');
+    expect(sent).toContainEqual({
+      type: 'tester',
+      action: { type: 'place-probe', probe: 'black', terminal: undefined },
+    });
+    expect(sent).toContainEqual({
+      type: 'tester',
+      action: { type: 'place-probe', probe: 'red', terminal: undefined },
+    });
+  });
+
+  it('文字入力・IME変換・ラダー編集中・モーダル表示中は測定キーを無視する', () => {
+    useStore.getState().setMode('tester');
+    useStore.getState().setLadderView('board');
+    render(
+      <>
+        <SessionRoute />
+        <input aria-label="キーボード確認用の入力" />
+      </>,
+    );
+    act(() => useStore.getState().setNextProbe('black'));
+    sent.length = 0;
+    fireEvent.keyDown(screen.getByLabelText('キーボード確認用の入力'), { key: 'r' });
+    fireEvent.keyDown(window, { key: 'r', isComposing: true });
+    expect(useStore.getState().nextProbe).toBe('black');
+    act(() => useStore.getState().setLadderFocused(true));
+    fireEvent.keyDown(window, { key: 'r' });
+    expect(useStore.getState().nextProbe).toBe('black');
+    act(() => useStore.getState().setLadderFocused(false));
+    const modal = pushModalLayer();
+    try {
+      fireEvent.keyDown(window, { key: 'r' });
+      fireEvent.keyDown(window, { key: '0' });
+      expect(useStore.getState().nextProbe).toBe('black');
+      expect(sent).toEqual([]);
+    } finally {
+      modal.release();
+    }
+    fireEvent.keyDown(window, { key: 'r' });
+    expect(useStore.getState().nextProbe).toBe('red');
   });
 
   it('shows which step the trainee is in and what to do first (2026-09-19 の利用者決定)', () => {

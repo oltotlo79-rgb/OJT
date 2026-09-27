@@ -75,6 +75,7 @@ function Player({
   const video = useRef<HTMLVideoElement>(null);
   const [error, setError] = useState(false);
   const [vendor, setVendor] = useState<DialectId>(initialVendor);
+  const [speed, setSpeed] = useState(1);
   const item = TUTORIALS[mode];
   const file = tutorialFile(mode, vendor);
   const title = mode === 'plc' ? `${item.title}（${PLC_TUTORIALS[vendor].label}）` : item.title;
@@ -142,6 +143,9 @@ function Player({
         controls
         preload="metadata"
         playsInline
+        onLoadedMetadata={(event) => {
+          event.currentTarget.playbackRate = speed;
+        }}
         onError={() => setError(true)}
         aria-label={`${title}の解答操作動画`}
       >
@@ -166,9 +170,11 @@ function Player({
           再生速度{' '}
           <select
             aria-label="動画の再生速度"
-            defaultValue="1"
+            value={String(speed)}
             onChange={(event) => {
-              if (video.current) video.current.playbackRate = Number(event.target.value);
+              const next = Number(event.target.value);
+              setSpeed(next);
+              if (video.current) video.current.playbackRate = next;
             }}
           >
             <option value="0.75">0.75倍</option>

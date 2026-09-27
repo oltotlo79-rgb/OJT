@@ -1,7 +1,7 @@
 import { useRuntimeConnection } from '../session/use-runtime-connection.js';
 import { TerminalListPanel } from '../panels/TerminalListPanel.js';
 import { TesterPanel, dispatchTester } from '../panels/TesterPanel.js';
-import { testerPickToAction } from '../session/tester.js';
+import { testerPickToAction, testerShortcut } from '../session/tester.js';
 import { IoTable } from '../ladder/IoTable.js';
 import { BoardFocusNotice } from '../panels/BoardFocusNotice.js';
 import { WireListPanel } from '../panels/WireListPanel.js';
@@ -398,6 +398,19 @@ export function PlcSession(): JSX.Element {
         );
         if (action.type !== 'none') event.preventDefault();
         runAction(action);
+        return;
+      }
+      if (store.mode === 'tester') {
+        const shortcut = testerShortcut(event.key);
+        if (shortcut === undefined) return;
+        event.preventDefault();
+        if (shortcut.type === 'next-probe') store.setNextProbe(shortcut.probe);
+        else if (shortcut.type === 'zero-adjust') dispatchTester({ type: 'zero-adjust' });
+        else {
+          dispatchTester({ type: 'place-probe', probe: 'black', terminal: undefined });
+          dispatchTester({ type: 'place-probe', probe: 'red', terminal: undefined });
+          store.setNextProbe('black');
+        }
         return;
       }
       if (event.key === 'Escape') runAction(escapeToAction(state));

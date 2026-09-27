@@ -1,11 +1,12 @@
 import { workerBridgeMockModule, type WorkerBridgeMockState } from './helpers/worker-bridge.js';
-import { addWire, plcUnitFor } from '@ojt/board-model';
+import { addWire, plcUnitFor, plug } from '@ojt/board-model';
 import { toTerminalId } from '@ojt/circuit-sim';
 import {
   BUILTIN_ALL_PROBLEMS,
   BUILTIN_PLC_PROBLEMS,
   isInspectPartsProblem,
   isInspectRepairProblem,
+  replacePart,
 } from '@ojt/content';
 import { empty, insertNetwork, MAX_NETWORKS, network, type LadderProgram } from '@ojt/ladder-core';
 import { IMPLEMENTED_DIALECT_IDS } from '@ojt/plc-dialects';
@@ -32,6 +33,81 @@ beforeEach(() => {
 });
 
 describe('レビューで確認した保存・復旧の回帰', () => {
+  it('正常部品の交換記録も作業ファイルに保存して復元する', async () => {
+    const source = BUILTIN_ALL_PROBLEMS.find((problem) => problem.id === 'c2-001')!;
+    useStore.getState().openProblem(source);
+    useStore.getState().setCircuit(replacePart(useStore.getState().circuit!, 'CR1'));
+    const file = toInspectWorkFile()!;
+    expect(file.replacedPartIds).toContain('CR1');
+    readProblem.mockResolvedValue(source);
+    expect(await applyWorkFile(file, { confirmed: true })).toBe(true);
+    expect(useStore.getState().circuit?.replacedPartIds).toContain('CR1');
+  });
+  it('メーカー切替で測定・メモ・ウォッチと学習記録を保持し、保存して復元できる', async () => {
+    const source = BUILTIN_PLC_PROBLEMS[0]!;
+    useStore.getState().openProblem(source, { vendor: 'mitsubishi' });
+    const session = structuredClone(useStore.getState().session!);
+    expect(plug(session, 'S1', 'relay-my4n').ok).toBe(true);
+    useStore.getState().setSession(session);
+    useStore
+      .getState()
+      .applyTester({ type: 'place-probe', probe: 'black', terminal: toTerminalId('CR1.9') });
+    useStore
+      .getState()
+      .applyTester({ type: 'place-probe', probe: 'red', terminal: toTerminalId('PLC.X0') });
+    useStore.setState({
+      measurements: [
+        {
+          id: 'measure-1',
+          at: new Date().toISOString(),
+          tMs: 10,
+          mode: 'DCV',
+          kind: 'digital',
+          black: 'PLC.L',
+          red: 'PLC.N',
+          range: 50,
+          value: 24,
+          display: '24',
+          powered: true,
+          note: '切替前の記録',
+        },
+      ],
+      diagnosisNotes: [
+        {
+          id: 'note-1',
+          target: '電源',
+          prediction: '24V',
+          conclusion: '記録を保持',
+          measurementIds: ['measure-1'],
+        },
+      ],
+      watchDevices: [{ kind: 'input', index: 0 }],
+      elapsedMs: 12345,
+      hintStage: 2,
+      schematicOpenCount: 3,
+      restoredHazardCount: 2,
+      sessionHazardCount: 4,
+    });
+    const before = toInspectWorkFile()!;
+    useStore.getState().switchDialect('omron');
+    const after = toInspectWorkFile()!;
+    expect(useStore.getState().tester.black).toBe('CR1.9');
+    expect(useStore.getState().tester.red).toBeUndefined();
+    for (const key of [
+      'measurements',
+      'diagnosisNotes',
+      'watchDevices',
+      'elapsedMs',
+      'learningProgress',
+      'hazardCount',
+    ] as const)
+      expect(after[key], key).toEqual(before[key]);
+    readProblem.mockResolvedValue(source);
+    expect(await applyWorkFile(after, { confirmed: true })).toBe(true);
+    expect(toInspectWorkFile()?.diagnosisNotes).toEqual(before.diagnosisNotes);
+    expect(toInspectWorkFile()?.measurements).toEqual(before.measurements);
+    expect(useStore.getState().tester.black).toBe('CR1.9');
+  });
   it.each(IMPLEMENTED_DIALECT_IDS)(
     'R01/R21: %s の電源線を復元し同じ機種をWorkerに送る',
     async (vendor) => {

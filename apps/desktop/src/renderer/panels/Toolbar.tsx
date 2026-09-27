@@ -116,12 +116,11 @@ export function Toolbar({
    * （レビュー指摘）。頻度の低い3群だけを畳み、線色・元に戻す・判定は常に1行目に残す。
    */
   const [overflowOpen, setOverflowOpen] = useState(false);
-  const [wide, setWide] = useState(() => window.innerWidth >= 1440);
   const overflowRef = useRef<HTMLDivElement>(null);
   const overflowPanelRef = useRef<HTMLDivElement>(null);
   const [overflowPosition, setOverflowPosition] = useState({ left: 12, top: 60 });
   useLayoutEffect(() => {
-    if (!overflowOpen || wide) return;
+    if (!overflowOpen) return;
     const place = (): void => {
       const trigger = overflowRef.current?.querySelector('button')?.getBoundingClientRect();
       const panel = overflowPanelRef.current?.getBoundingClientRect();
@@ -134,12 +133,7 @@ export function Toolbar({
     place();
     window.addEventListener('resize', place);
     return () => window.removeEventListener('resize', place);
-  }, [overflowOpen, wide]);
-  useEffect(() => {
-    const resize = (): void => setWide(window.innerWidth >= 1440);
-    window.addEventListener('resize', resize);
-    return () => window.removeEventListener('resize', resize);
-  }, []);
+  }, [overflowOpen]);
   useEffect(() => {
     if (!overflowOpen) return;
     const outside = (event: PointerEvent): void => {
@@ -339,10 +333,9 @@ export function Toolbar({
           パネルを `.overflowHost`（`position: relative`）でくくり、パネルはその真下に
           浮かせる（`.toolbarScroll` の折り返しの1項目に混ぜない）。
         */}
-        <div className={styles.overflowHost} ref={overflowRef} data-wide={wide}>
+        <div className={styles.overflowHost} ref={overflowRef}>
           <button
             type="button"
-            hidden={wide}
             aria-haspopup="true"
             className={styles.overflowToggle}
             data-testid="toolbar-overflow-toggle"
@@ -352,13 +345,13 @@ export function Toolbar({
               setOverflowOpen((next) => !next);
             }}
           >
-            ⋯
+            ⋯ 表示・作業ファイル
           </button>
-          {overflowOpen || wide ? (
+          {overflowOpen ? (
             <div
               ref={overflowPanelRef}
-              className={wide ? styles.inlineTools : styles.overflowPanel}
-              style={wide ? undefined : overflowPosition}
+              className={styles.overflowPanel}
+              style={overflowPosition}
               data-testid="toolbar-overflow"
               onClick={(event) => {
                 if (event.target instanceof Element && event.target.closest('button'))

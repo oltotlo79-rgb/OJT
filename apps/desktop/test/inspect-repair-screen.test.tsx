@@ -337,6 +337,20 @@ describe('回路図の参照エラー（§9.2。モードBと同じ流儀）', (
 });
 
 describe('部品交換（§9.2）', () => {
+  it('正常部品も交換操作を記録し、Undoで未交換へ戻せる', () => {
+    useStore
+      .getState()
+      .openProblem(BUILTIN_INSPECT_REPAIR_PROBLEMS.find((problem) => problem.id === 'c2-001')!);
+    render(<InspectRepairSession />);
+    const faults = useStore.getState().circuit!.applied.partFaults;
+    fireEvent.click(screen.getByTestId('replace-CR1'));
+    expect(useStore.getState().circuit?.replacedPartIds).toContain('CR1');
+    expect(useStore.getState().circuit?.applied.partFaults).toEqual(faults);
+    expect(useStore.getState().history.done).toHaveLength(1);
+    expect(screen.getByTestId('replace-CR1')).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: JA.session.undo }));
+    expect(screen.getByTestId('replace-CR1')).not.toBeDisabled();
+  });
   it('交換すると unplug と plug を送り、回路から部品の故障が消える', () => {
     expect(C2_PART).toBeDefined();
     if (C2_PART === undefined) return;

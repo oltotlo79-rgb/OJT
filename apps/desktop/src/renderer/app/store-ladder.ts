@@ -1,4 +1,4 @@
-import { plcUnitFor } from '@ojt/board-model';
+import { plcUnitFor, toNetlistTerminal } from '@ojt/board-model';
 import {
   MAX_DEVICE_COMMENTS,
   MAX_DEVICE_COMMENT_LENGTH,
@@ -307,7 +307,8 @@ export const createLadderSlice: StateCreator<AppState, [], [], LadderSlice> = (s
   },
   // --- Plan 4B Task 8 ---
   switchDialect: (dialectId) => {
-    const { problem, ladder, ladderComments, ladderHistory } = get();
+    const before = get();
+    const { problem, ladder, ladderComments, ladderHistory } = before;
     // 課題を開いていないとき（ホームや設定）は方言を入れ替えるだけでよい
     if (problem === undefined || !isPlcProblem(problem)) {
       set({ dialectId });
@@ -344,11 +345,40 @@ export const createLadderSlice: StateCreator<AppState, [], [], LadderSlice> = (s
       previousSession === undefined || fresh === undefined
         ? fresh
         : carryOverBoard(previousSession, fresh, boardForProblem(swapped));
+    const terminals = new Set(
+      boardForProblem(swapped).terminals.map((terminal) =>
+        session === undefined ? terminal.id : toNetlistTerminal(session.socketRoles, terminal.id),
+      ),
+    );
     set({
       ...(session === undefined ? {} : { session }),
       ladder,
       ladderComments,
       ladderHistory,
+      watchDevices: before.watchDevices,
+      measurements: before.measurements,
+      diagnosisNotes: before.diagnosisNotes,
+      tester: {
+        ...before.tester,
+        black:
+          before.tester.black !== undefined && terminals.has(before.tester.black)
+            ? before.tester.black
+            : undefined,
+        red:
+          before.tester.red !== undefined && terminals.has(before.tester.red)
+            ? before.tester.red
+            : undefined,
+      },
+      nextProbe: before.nextProbe,
+      hintStage: before.hintStage,
+      schematicOpenCount: before.schematicOpenCount,
+      sessionOpenedAtMs: before.sessionOpenedAtMs,
+      startedAtMs: before.startedAtMs,
+      elapsedMs: before.elapsedMs,
+      restoredHazardCount:
+        before.restoredHazardCount + Math.max(before.sessionHazardCount, before.hazards.length),
+      logLines: before.logLines,
+      ladderView: before.ladderView,
       converted: false,
       convertIssues: NO_CONVERT_ISSUES,
       /*

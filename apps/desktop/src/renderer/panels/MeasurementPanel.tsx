@@ -1,4 +1,4 @@
-import { useState, type JSX } from 'react';
+import { useRef, useState, type JSX } from 'react';
 import {
   MEASUREMENT_LIMIT,
   measurementDisplay,
@@ -17,6 +17,15 @@ export function MeasurementPanel({ readOnly = false }: { readOnly?: boolean }): 
   const [conclusion, setConclusion] = useState('');
   const [target, setTarget] = useState('');
   const [chosen, setChosen] = useState<readonly string[]>([]);
+  const [editingId, setEditingId] = useState<string>();
+  const targetInput = useRef<HTMLInputElement>(null);
+  const clearEditor = (): void => {
+    setEditingId(undefined);
+    setTarget('');
+    setPrediction('');
+    setConclusion('');
+    setChosen([]);
+  };
   return (
     <CollapsiblePanel
       title="測定記録・診断メモ"
@@ -98,10 +107,11 @@ export function MeasurementPanel({ readOnly = false }: { readOnly?: boolean }): 
       </ol>
       {!readOnly && (
         <fieldset className={styles.formGroup}>
-          <legend>診断の根拠を残す</legend>
+          <legend>{editingId === undefined ? '診断の根拠を残す' : '診断メモを編集'}</legend>
           <label className={styles.formField}>
             対象の線・端子・部品
             <input
+              ref={targetInput}
               maxLength={100}
               value={target}
               onChange={(event) => setTarget(event.target.value)}
@@ -125,26 +135,48 @@ export function MeasurementPanel({ readOnly = false }: { readOnly?: boolean }): 
           </label>
           <button
             type="button"
-            disabled={!target.trim() || !conclusion.trim() || notes.length >= MEASUREMENT_LIMIT}
+            disabled={
+              !target.trim() ||
+              !conclusion.trim() ||
+              (editingId === undefined && notes.length >= MEASUREMENT_LIMIT)
+            }
             onClick={() => {
-              useStore.getState().setDiagnosisNotes([
-                ...notes,
-                {
-                  id: crypto.randomUUID(),
-                  target,
-                  prediction,
-                  conclusion,
-                  measurementIds: chosen.filter((id) => records.some((record) => record.id === id)),
-                },
-              ]);
-              setTarget('');
-              setPrediction('');
-              setConclusion('');
-              setChosen([]);
+              const state = useStore.getState();
+              const note = {
+                id: editingId ?? crypto.randomUUID(),
+                target,
+                prediction,
+                conclusion,
+                measurementIds: chosen.filter((id) =>
+                  state.measurements.some((record) => record.id === id),
+                ),
+              };
+              if (
+                editingId !== undefined &&
+                !state.diagnosisNotes.some((item) => item.id === editingId)
+              ) {
+                state.toast(
+                  'このメモは削除されています。新しいメモとして入力し直してください。',
+                  'warn',
+                );
+                clearEditor();
+                return;
+              }
+              state.setDiagnosisNotes(
+                editingId === undefined
+                  ? [...state.diagnosisNotes, note]
+                  : state.diagnosisNotes.map((item) => (item.id === editingId ? note : item)),
+              );
+              clearEditor();
             }}
           >
-            選んだ測定記録とメモを保存
+            {editingId === undefined ? '選んだ測定記録とメモを保存' : 'メモの変更を保存'}
           </button>
+          {editingId !== undefined && (
+            <button type="button" onClick={clearEditor}>
+              編集を取消
+            </button>
+          )}
         </fieldset>
       )}
       {notes.map((note) => (
@@ -164,6 +196,37 @@ export function MeasurementPanel({ readOnly = false }: { readOnly?: boolean }): 
                 : `#${records.indexOf(record) + 1} ${record.black}→${record.red} ${measurementDisplay(record)}`;
             })
             .join(' ／ ') || 'なし'}
+          {!readOnly && (
+            <>
+              <button
+                type="button"
+                aria-label={`${note.target}のメモを編集`}
+                onClick={() => {
+                  setEditingId(note.id);
+                  setTarget(note.target);
+                  setPrediction(note.prediction);
+                  setConclusion(note.conclusion);
+                  setChosen(note.measurementIds);
+                  targetInput.current?.focus();
+                }}
+              >
+                メモを編集
+              </button>
+              <button
+                type="button"
+                aria-label={`${note.target}のメモを削除`}
+                onClick={() => {
+                  const state = useStore.getState();
+                  state.setDiagnosisNotes(
+                    state.diagnosisNotes.filter((item) => item.id !== note.id),
+                  );
+                  if (editingId === note.id) clearEditor();
+                }}
+              >
+                メモを削除
+              </button>
+            </>
+          )}
         </p>
       ))}
     </CollapsiblePanel>

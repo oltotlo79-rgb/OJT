@@ -101,9 +101,9 @@ export function toWorkFile(
  * 課題も盤も無ければ `undefined`（保存できる状態にない）。
  */
 export function toInspectWorkFile(): WorkFile | undefined {
-  const { problem, session, elapsedMs, hazards, replay } = useStore.getState();
-  // 判定後の見直しを「未完了の作業」として復元対象へ戻さない。手動保存も同じ入口で止める。
-  if (replay !== undefined || problem === undefined || session === undefined) return undefined;
+  const { problem, session, elapsedMs, hazards } = useStore.getState();
+  // 見直しはsnapshotだけを変更する。元の作業は結果・見直し中も保存する。
+  if (problem === undefined || session === undefined) return undefined;
   return toWorkFile(
     problem.id,
     session,
@@ -165,6 +165,15 @@ function replacedPartIds(
   return [...out];
 }
 
+/** 保存内の課題定義。ホーム・復元確認・実際の読込みで同じ検証を使う。 */
+export function savedProblemSnapshot(file: WorkFile): SupportedProblem | undefined {
+  if (file.problemSnapshot === undefined) return undefined;
+  const checked = parseProblem(file.problemSnapshot);
+  return checked.ok && checked.problem.id === file.problemId && checked.problem.mode === file.mode
+    ? checked.problem
+    : undefined;
+}
+
 /** 作業ファイルのモード固有の部分（いまの課題と合うときだけ載せる）。§12.3 */
 function inspectFieldsFor(problemId: string): Partial<WorkFile> {
   const state = useStore.getState();
@@ -189,7 +198,12 @@ function inspectFieldsFor(problemId: string): Partial<WorkFile> {
       replacedPartIds:
         state.circuit === undefined
           ? []
-          : replacedPartIds(resolved, state.circuit.applied.partFaults),
+          : [
+              ...new Set([
+                ...(state.circuit.replacedPartIds ?? []),
+                ...replacedPartIds(resolved, state.circuit.applied.partFaults),
+              ]),
+            ],
       // 回路図ヒントを開いた回数（§8.4）。2級以外は常に0だが、そのまま載せても害はない
       schematicOpenCount: state.schematicOpenCount,
     };
@@ -637,14 +651,14 @@ export async function applyWorkFile(
   }
   let problem = await api.readProblem(file.problemId);
   if (file.problemSnapshot !== undefined) {
-    const checked = parseProblem(file.problemSnapshot);
-    if (!checked.ok || checked.problem.id !== file.problemId) {
+    const saved = savedProblemSnapshot(file);
+    if (saved === undefined) {
       store.toast(JA.session.badSession, 'error');
       return false;
     }
-    if (problem !== null && JSON.stringify(problem) !== JSON.stringify(checked.problem))
+    if (problem !== null && JSON.stringify(problem) !== JSON.stringify(saved))
       store.toast('課題の定義が更新されています。保存時の課題条件で復元します。', 'info');
-    problem = checked.problem;
+    problem = saved;
   }
   if (problem !== null && isPlcProblem(problem) && file.dialectId !== undefined) {
     if (!isDialectId(file.dialectId) || !IMPLEMENTED_DIALECT_IDS.includes(file.dialectId)) {

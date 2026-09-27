@@ -5,7 +5,7 @@ import { parseProblem } from '@ojt/content';
 import { getDialect } from '@ojt/plc-dialects';
 import { toTerminalId } from '@ojt/circuit-sim';
 import { launchApp, shot } from './app.js';
-import { selectView, terminalPoint } from './projection.js';
+import { clickOverflowButton, selectView, terminalPoint } from './projection.js';
 
 test('演算処理が異常終了したときは判定を止め、画面のリセットで再開できる', async () => {
   const { app, page } = await launchApp();
@@ -207,7 +207,7 @@ for (const [mode, id, nextId] of [
       await app.evaluate(({ dialog }, path) => {
         dialog.showSaveDialog = () => Promise.resolve({ canceled: false, filePath: path });
       }, beforePath);
-      await page.getByRole('button', { name: '作業を保存', exact: true }).click();
+      await clickOverflowButton(page, '作業を保存');
       await expect.poll(() => existsSync(beforePath)).toBe(true);
       const before = JSON.parse(readFileSync(beforePath, 'utf8')) as Record<string, unknown>;
       await page.getByTestId('session-back').click();

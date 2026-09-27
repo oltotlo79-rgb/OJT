@@ -99,6 +99,11 @@ export function PlcDebugPanel({
         <button type="button" onClick={() => onPlc({ kind: 'break', condition: null })}>
           条件を解除
         </button>
+        {debug?.paused && (
+          <p>
+            条件を解除しても一時停止は続きます。再開するには「連続実行へ戻る」を押してください。
+          </p>
+        )}
         {error && <p role="alert">{error}</p>}
         {debug?.condition && (
           <p>

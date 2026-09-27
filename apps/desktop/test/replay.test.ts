@@ -139,9 +139,12 @@ describe('実際の採点と再生の一致・元の作業の保護', () => {
     useStore.setState({ startedAtMs: Date.now() - 12345 });
     const before = useStore.getState();
     expect(startReplay()).toBe(true);
-    expect(toInspectWorkFile()).toBeUndefined();
+    const savedDuringReplay = toInspectWorkFile();
+    expect(savedDuringReplay?.elapsedMs).toBe(12345);
+    expect(savedDuringReplay?.session).toMatchObject({ wires: before.session!.wires });
     expect(startReplay()).toBe(false);
     useStore.setState({ snapshot: createReplay(useStore.getState().replay!.source).frame(0) });
+    expect(toInspectWorkFile()?.session).toEqual(savedDuringReplay?.session);
     const enteredAt = useStore.getState().replay!.openedAtMs;
     vi.spyOn(Date, 'now').mockReturnValue(enteredAt + 60_000);
     stopReplay();

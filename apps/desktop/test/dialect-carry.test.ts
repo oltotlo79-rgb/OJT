@@ -51,6 +51,13 @@ describe('dialect-carry', () => {
 
   it('re-lays the board wires and parts on the fresh board of the other maker', () => {
     const previous = wired();
+    const keptId = previous.wires[0]!.id;
+    const droppedId = previous.wires[2]!.id;
+    previous.wireAnnotations = {
+      [keptId]: { label: 'L01', note: '盤内の線' },
+      [droppedId]: { label: 'X01', note: 'PLCへの線' },
+    };
+    previous.wireRoutePreferences = { [keptId]: { viaChannelIds: ['main-top'] } };
     const omron = { ...problem, plc: { vendor: 'omron', model: 'CP1E' } } as typeof problem;
     const board = boardForProblem(omron);
     const fresh = createSession(board, { roles, includeCheckWires: false });
@@ -65,5 +72,8 @@ describe('dialect-carry', () => {
     // 渡した盤は書き換えない
     expect(fresh.wires).toEqual([]);
     expect(carried.wireSeq).toBeGreaterThanOrEqual(previous.wireSeq);
+    expect(carried.wireAnnotations).toEqual({ [keptId]: { label: 'L01', note: '盤内の線' } });
+    expect(carried.wireRoutePreferences).toEqual(previous.wireRoutePreferences);
+    expect(carried.wireAnnotations?.[keptId]).not.toBe(previous.wireAnnotations[keptId]);
   });
 });

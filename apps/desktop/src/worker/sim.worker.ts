@@ -564,6 +564,8 @@ function handle(command: SimCommand): void {
         break;
       }
       if (action.kind === 'run') {
+        if (action.on && plcCoupling === undefined)
+          throw new Error('ラダーを変換または書込みしてからRUNしてください。');
         plcRunning = action.on;
         plcPaused = false;
         if (!action.on) {

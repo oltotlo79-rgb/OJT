@@ -1,6 +1,6 @@
 import { removeWire, isOffBoardTerminal, type BoardDefinition } from '@ojt/board-model';
 import { toTerminalId, type WireColor } from '@ojt/circuit-sim';
-import { useMemo, useState, type JSX } from 'react';
+import { useEffect, useMemo, useState, type JSX } from 'react';
 import { useStore } from '../app/store.js';
 import { cloneSession } from '../session/commands.js';
 import { commitWireEdit, focusWiring, reconnectWire } from '../session/wire-edit.js';
@@ -17,6 +17,17 @@ export function WireListPanel({ board }: { board: BoardDefinition }): JSX.Elemen
   );
   const [query, setQuery] = useState('');
   const [marked, setMarked] = useState<readonly string[]>([]);
+  const activeMarked = marked.filter((id) =>
+    session?.wires.some((wire) => wire.id === id && !wire.locked),
+  );
+  useEffect(() => {
+    setMarked((previous) => {
+      const next = previous.filter((id) =>
+        session?.wires.some((wire) => wire.id === id && !wire.locked),
+      );
+      return next.length === previous.length ? previous : next;
+    });
+  }, [session]);
   const [edit, setEdit] = useState<{ id: string; from: string; to: string; color: WireColor }>();
   const [annotationDraft, setAnnotationDraft] = useState<{
     id: string;
@@ -89,9 +100,9 @@ export function WireListPanel({ board }: { board: BoardDefinition }): JSX.Elemen
           >
             <input
               type="checkbox"
-              aria-label={`選択 ${item.id}`}
+              aria-label={`一括削除の対象 ${item.id} ${item.from} → ${item.to}`}
               disabled={item.locked}
-              checked={marked.includes(item.id)}
+              checked={activeMarked.includes(item.id)}
               onChange={(event) =>
                 setMarked(
                   event.target.checked
@@ -120,12 +131,18 @@ export function WireListPanel({ board }: { board: BoardDefinition }): JSX.Elemen
           </div>
         ))}
       </div>
+      <p role="status" data-testid="wire-selection-summary">
+        編集対象：{wire === undefined ? 'なし' : `${wire.from} → ${wire.to}`}／ 一括削除の対象：
+        {activeMarked.length}本
+        <br />
+        Delete / Backspaceは編集対象の1本を外します。
+      </p>
       <button
         type="button"
-        disabled={powered || marked.length === 0}
+        disabled={powered || activeMarked.length === 0}
         onClick={() => {
           const after = cloneSession(session);
-          for (const id of marked) {
+          for (const id of activeMarked) {
             const result = removeWire(after, id);
             if (!result.ok) {
               useStore.getState().toast(result.message, 'error');
@@ -138,7 +155,7 @@ export function WireListPanel({ board }: { board: BoardDefinition }): JSX.Elemen
               value: after,
               command: {
                 kind: 'removeWire',
-                label: `電線${marked.length}本を削除`,
+                label: `電線${activeMarked.length}本を削除`,
                 before: cloneSession(session),
                 after,
               },
@@ -147,7 +164,7 @@ export function WireListPanel({ board }: { board: BoardDefinition }): JSX.Elemen
             setMarked([]);
         }}
       >
-        選択した電線を削除（Undo可）
+        チェックした電線{activeMarked.length}本を削除（Undo可）
       </button>
       {wire !== undefined && !wire.locked && (
         <button

@@ -260,7 +260,7 @@ describe('結果画面のルート（§8.3 / §12.3）', () => {
     expect(screen.getByText(`${JA.result.hazards}（5）`)).toBeTruthy();
   });
 
-  it('結果を出したら一時保存を消す', () => {
+  it('結果を出しても作業の自動保存を消さない', () => {
     if (PROBLEM === undefined) return;
     const loadWorkFile = vi.fn(() =>
       Promise.resolve({ ok: false, canceled: true, message: '一時保存を削除しました' } as const),
@@ -270,7 +270,7 @@ describe('結果画面のルート（§8.3 / §12.3）', () => {
 
     render(<Result />);
 
-    expect(loadWorkFile).toHaveBeenCalledWith({ kind: 'autosave', discard: true });
+    expect(loadWorkFile).not.toHaveBeenCalled();
   });
 
   it('判定結果が無ければ一時保存には触らない', () => {

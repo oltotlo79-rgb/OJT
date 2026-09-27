@@ -723,6 +723,17 @@ export function LadderWorkspace({
           {/* MERGE 注意 #12: モニタ一覧は `workspaceSide` の先頭（`IoTable` の前）。Task 9 */}
           <MonitorPanel profile={profile} unit={unit} onPlc={onPlc} />
           <PlcDebugPanel profile={profile} unit={unit} onPlc={onPlc} />
+          <details data-testid="plc-operation-guide">
+            <summary>変換・書込み・RUNの違い</summary>
+            <p>
+              {profile.convertStep
+                ? 'この練習では、変換に成功すると実行する回路も更新します。書込みでも同じ回路を反映できます。'
+                : 'この機種の練習では、編集した回路を自動で変換し、成功すると実行する回路を更新します。'}
+            </p>
+            <p>
+              RUNで回路の演算を始め、モニタで値を表示します。作業へ戻ったときは電源を確認してRUNしてください。CPUの途中の値は再開しません。実機PLCへの転送は行いません。
+            </p>
+          </details>
           {/*
             監視（ウォッチ）欄。「デバイス一覧」（全部）と分けた片割れで、利用者が選んだ
             デバイスだけを並べる（Phase 7 設計 §5.5）。名乗らないメーカーでは出ない。

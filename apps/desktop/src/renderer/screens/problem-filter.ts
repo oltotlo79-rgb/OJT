@@ -34,13 +34,13 @@ export function firstSentence(description: string, limit = 42): string {
   return head.length > limit ? `${head.slice(0, limit)}…` : head;
 }
 
-/** 探す言葉が1件に当たるか（課題名・課題文・IDのどれかに含まれていればよい）。 */
+/** 各検索語が課題名・課題文・ID・タグのいずれかに含まれるか。 */
 export function matchesSearch(problem: ProblemSummary, search: string): boolean {
-  const needle = search.trim().toLowerCase();
-  if (needle === '') return true;
-  return [problem.title, problem.description, problem.id].some((field) =>
-    field.toLowerCase().includes(needle),
-  );
+  const normalize = (text: string): string =>
+    text.normalize('NFKC').toLowerCase().replace(/\s+/gu, '');
+  const needles = search.normalize('NFKC').trim().split(/\s+/u).map(normalize).filter(Boolean);
+  const fields = [problem.title, problem.description, problem.id, ...problem.tags].map(normalize);
+  return needles.every((needle) => fields.some((field) => field.includes(needle)));
 }
 
 /** 絞り込みを1件に当てる。 */

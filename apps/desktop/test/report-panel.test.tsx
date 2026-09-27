@@ -156,8 +156,8 @@ describe('RepairPanel（§9.2 修復）', () => {
   it('追加した白線と外した青線を並べる', () => {
     render(
       <RepairPanel
-        addedWires={['CR1.9–PB1.2c の白線']}
-        removedWires={['CR1.9–PB1.2c の青線']}
+        addedWires={[{ id: 'w-001', label: 'CR1.9–PB1.2c の白線' }]}
+        removedWires={[{ id: 'sw-001', label: 'CR1.9–PB1.2c の青線' }]}
         mountedParts={[]}
         onReplacePart={vi.fn()}
       />,
@@ -171,7 +171,7 @@ describe('RepairPanel（§9.2 修復）', () => {
       render(
         <RepairPanel
           addedWires={[]}
-          removedWires={['CR1.9–PB1.2c の青線']}
+          removedWires={[{ id: 'sw-001', label: 'CR1.9–PB1.2c の青線' }]}
           mountedParts={[]}
           onReplacePart={vi.fn()}
         />,

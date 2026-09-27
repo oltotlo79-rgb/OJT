@@ -10,9 +10,8 @@ import {
   wiringSuspects,
 } from '@ojt/content';
 import type { WiringSuspect, WiringSuspectReport } from '@ojt/content';
-import { useCallback, useEffect, useMemo, type JSX } from 'react';
+import { useCallback, useMemo, type JSX } from 'react';
 import { isInspectJudge, isPlcJudge, useStore } from '../app/store.js';
-import { tryOjtApi } from '../app/ojt-api.js';
 import { HelpButton } from '../help/HelpButton.js';
 import { JA } from '../i18n/ja.js';
 import { InspectPartsResult } from '../result/InspectPartsResult.js';
@@ -72,21 +71,9 @@ function ResultBody(): JSX.Element {
   const schematicOpenCount = useStore((s) => s.schematicOpenCount);
   const setRoute = useStore((s) => s.setRoute);
   const resetSession = useStore((s) => s.resetSession);
-  const hasJudge = judge !== undefined;
   const backToList = (): void => {
     setRoute('list');
   };
-
-  /*
-   * 判定まで終わった作業の一時保存は消す（1D2-a のレビュー指摘）。§12.3
-   * 残したままだと次の起動で「前回の作業を復元しますか？」が出て、**終わった課題**を
-   * 判定直前の状態で開き直すことになる。§4.3 の6チャネルを増やさないよう、削除は
-   * `workfile:load` の `discard: true` で表す。preload が無い環境では黙って諦める（§13 #5）。
-   */
-  useEffect(() => {
-    if (!hasJudge) return;
-    void tryOjtApi()?.loadWorkFile({ kind: 'autosave', discard: true });
-  }, [hasJudge]);
 
   /*
    * モードC2の電線ID→表示名（`CR1.9–PB1.2c の青線`）を組み立てるための一覧。§9.2 / UI監査 I5

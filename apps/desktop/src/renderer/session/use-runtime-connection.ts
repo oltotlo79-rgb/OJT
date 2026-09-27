@@ -1,11 +1,14 @@
 import { useEffect } from 'react';
 import type { ProblemMode } from '@ojt/content';
+import { getDialect } from '@ojt/plc-dialects';
 import type { SimMessage } from '../../worker/protocol.js';
 import { useStore } from '../app/store.js';
 import { JA, openedProblemLog, referenceErrorText } from '../i18n/ja.js';
 import { cloneSession } from './commands.js';
 import { replayTesterToWorker } from './work-file.js';
 import { bridge } from './worker-bridge.js';
+import { runConvert } from './ladder-errors.js';
+import { autoConvert } from './plc-skin.js';
 
 type Outcome = Extract<
   SimMessage,
@@ -75,7 +78,24 @@ export function useRuntimeConnection(mode: ProblemMode): void {
           ? { plcModel: problem.plc.model, allowPlcForcing: problem.io.mode === 'free' }
           : {}),
       });
-      if (problem.mode !== 'plc') replayTesterToWorker(store.tester);
+      // Workerのメッセージは送信順に処理される。盤→ラダー→計器の順で、
+      // 画面に残っている作業を新しい演算先へ送り直す。再開時のCPUはSTOP。
+      if (problem.mode === 'plc') {
+        store.setPlcRunning(false);
+        const profile = getDialect(store.dialectId);
+        if (store.ladder !== undefined && (store.converted || autoConvert(profile))) {
+          const converted = runConvert(store.ladder, profile);
+          store.setConverted(converted.ok, converted.issues);
+          if (converted.ok) {
+            bridge.send({ type: 'plc', action: { kind: 'load', program: store.ladder } });
+            bridge.send({
+              type: 'plc',
+              action: { kind: 'monitor', on: store.ladderMode === 'monitor' },
+            });
+          }
+        }
+      }
+      replayTesterToWorker(store.tester);
     }
     store.addLog(openedProblemLog(problem.title));
     return () => bridge.stop();

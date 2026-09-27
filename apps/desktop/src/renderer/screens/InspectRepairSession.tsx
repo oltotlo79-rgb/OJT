@@ -448,7 +448,7 @@ export function InspectRepairSession(): JSX.Element {
     () =>
       removedWireIds.map((id) => {
         const wire = circuit?.initialWires.find((w) => w.id === id);
-        return wire === undefined ? id : wireLabel(wire);
+        return { id, label: wire === undefined ? id : wireLabel(wire) };
       }),
     [removedWireIds, circuit],
   );
@@ -460,7 +460,7 @@ export function InspectRepairSession(): JSX.Element {
         ? []
         : addedWireIds(circuit, session).map((id) => {
             const wire = session.wires.find((w) => w.id === id);
-            return wire === undefined ? id : wireLabel(wire);
+            return { id, label: wire === undefined ? id : wireLabel(wire) };
           }),
     [circuit, session],
   );
@@ -477,17 +477,8 @@ export function InspectRepairSession(): JSX.Element {
         socketId,
         partId,
         isTimer: mounted.kind === 'timer-h3y4',
-        /*
-         * 「交換済み」＝この部品を対象にした故障サイト（`sites`。交換しても残る）はあるのに、
-         * いまの `partFaults`（ネットリスト注入用）にはもう無い（§9.2）。
-         * 元から故障のない部品を誤って「交換済み」扱いしないよう、まず `sites` にあるかで絞る。
-         */
-        replaced:
-          circuit !== undefined &&
-          circuit.applied.sites.some((s) => s.partId === partId) &&
-          !circuit.applied.partFaults.some(
-            (f) => 'partId' in f.target && f.target.partId === partId,
-          ),
+        // 正常・故障によらず、利用者が実行した交換操作を表示する。
+        replaced: circuit?.replacedPartIds?.includes(partId) ?? false,
       });
     }
     return out;
@@ -571,9 +562,7 @@ export function InspectRepairSession(): JSX.Element {
    */
   const onReplacePart = (socketId: SocketId, partId: string): void => {
     // 交換済みの部品にもう一度押しても、undo が壊れる無意味な1手を積まない（§9.2）
-    if (
-      !circuit.applied.partFaults.some((f) => 'partId' in f.target && f.target.partId === partId)
-    ) {
+    if (circuit.replacedPartIds?.includes(partId)) {
       return;
     }
     const store = useStore.getState();
@@ -592,6 +581,7 @@ export function InspectRepairSession(): JSX.Element {
     store.setCircuit(nextCircuit);
     store.pushHistory(command);
     store.addLog(command.label);
+    store.toast(`${partId} を良品に交換しました。動作を確認してください。`);
   };
 
   return (

@@ -7,7 +7,7 @@ import { useStore, type ListMode } from '../app/store.js';
 import { tryOjtApi } from '../app/ojt-api.js';
 import { formatElapsed } from '../../worker/runtime.js';
 import { HelpButton } from '../help/HelpButton.js';
-import { applyWorkFile } from '../session/work-file.js';
+import { applyWorkFile, savedProblemSnapshot } from '../session/work-file.js';
 import type { WorkFile } from '../../shared/ipc.js';
 import styles from './screens.module.css';
 
@@ -124,18 +124,25 @@ export function Home(): JSX.Element {
     const api = tryOjtApi();
     if (api === undefined) return;
     let cancelled = false;
-    void api.loadWorkFile({ kind: 'autosave' }).then((result) => {
-      if (cancelled || !result.ok) return;
-      void api.readProblem(result.file.problemId).then((problem) => {
-        if (cancelled || problem === null) return;
+    void api
+      .loadWorkFile({ kind: 'autosave' })
+      .then(async (result) => {
+        if (cancelled || !result.ok) return;
+        const problem =
+          result.file.problemSnapshot === undefined
+            ? await api.readProblem(result.file.problemId)
+            : savedProblemSnapshot(result.file);
+        if (cancelled || problem === null || problem === undefined) return;
         setRecent({
           title: problem.title,
           mode: result.file.mode,
           elapsedMs: result.file.elapsedMs,
           file: result.file,
         });
+      })
+      .catch(() => {
+        /* 起動は続け、手動読込みで詳細を確認できる。 */
       });
-    });
     return () => {
       cancelled = true;
     };

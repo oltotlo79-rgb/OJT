@@ -22,8 +22,8 @@ export interface MountedPartRow {
  * §9.2 が「削除の可否をその場で判定すると答えが漏れるため警告は出さず、判定時に
  * 『故障箇所でない青線を削除した本数』を改造として結果に計上する」と定めているためである。
  *
- * `addedWires` / `removedWires` は**表示用に組み立て済みの文言**（`CR1.9–PB1.2c の青線` 形式。
- * `wireLabel()`）を渡すこと。内部の電線ID（`w-001` / `sw-005`）をそのまま渡さない（UI監査 I5）。
+ * `addedWires` / `removedWires` は操作対象のIDと、`wireLabel()` の表示名を分けて渡す。
+ * 内部IDを表示名で置き換えると、ボタンから端子へ移動できなくなる。
  */
 export function RepairPanel({
   addedWires,
@@ -31,10 +31,10 @@ export function RepairPanel({
   mountedParts,
   onReplacePart,
 }: {
-  /** 追加した白線の表示名（電線IDではない。呼び出し側で `wireLabel()` を通す）。 */
-  addedWires: readonly string[];
-  /** 外した青線の表示名（電線IDではない。呼び出し側で `wireLabel()` を通す）。 */
-  removedWires: readonly string[];
+  /** 追加した白線のIDと表示名。 */
+  addedWires: readonly { id: string; label: string }[];
+  /** 外した青線のIDと表示名。 */
+  removedWires: readonly { id: string; label: string }[];
   mountedParts: readonly MountedPartRow[];
   onReplacePart: (socketId: SocketId, partId: string) => void;
 }): JSX.Element {
@@ -45,9 +45,13 @@ export function RepairPanel({
       <p className={styles.reportTarget} data-testid="added-wires">
         {addedWires.length === 0
           ? JA.inspectRepair.none
-          : addedWires.map((wireId) => (
-              <button key={wireId} type="button" onClick={() => focusDiagnosticTarget({ wireId })}>
-                {wireId}
+          : addedWires.map((wire) => (
+              <button
+                key={wire.id}
+                type="button"
+                onClick={() => focusDiagnosticTarget({ wireId: wire.id })}
+              >
+                {wire.label}
               </button>
             ))}
       </p>
@@ -55,9 +59,13 @@ export function RepairPanel({
       <p className={styles.reportTarget} data-testid="removed-wires">
         {removedWires.length === 0
           ? JA.inspectRepair.none
-          : removedWires.map((wireId) => (
-              <button key={wireId} type="button" onClick={() => focusDiagnosticTarget({ wireId })}>
-                {wireId} の元の端子
+          : removedWires.map((wire) => (
+              <button
+                key={wire.id}
+                type="button"
+                onClick={() => focusDiagnosticTarget({ wireId: wire.id })}
+              >
+                {wire.label} の元の端子
               </button>
             ))}
       </p>
