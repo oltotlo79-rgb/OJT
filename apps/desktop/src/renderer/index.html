@@ -28,65 +28,193 @@
         inset: 0;
         z-index: 1000;
         display: grid;
-        place-content: center;
-        text-align: center;
-        color: #f4f6fa;
-        background: #1b1e24;
+        place-items: center;
+        overflow: auto;
+        color: #eef6f8;
+        background: radial-gradient(ellipse at 70% 20%, #163442 0, transparent 60%), #09171f;
         font-family: 'Yu Gothic UI', 'Meiryo', sans-serif;
-        padding: 32px;
+        padding: clamp(24px, 5vw, 64px);
+        box-sizing: border-box;
+      }
+      .startup-panel {
+        width: min(100%, 920px);
+        box-sizing: border-box;
+        padding: clamp(28px, 4vw, 48px);
+        border: 1px solid #2a4552;
+        border-radius: 20px;
+        background:
+          linear-gradient(#29444f24 1px, transparent 1px),
+          linear-gradient(90deg, #29444f24 1px, transparent 1px),
+          linear-gradient(135deg, #112934, #0c1d27);
+        background-size:
+          40px 40px,
+          40px 40px,
+          auto;
+        box-shadow: 0 24px 80px #00000040;
+      }
+      .startup-brand {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        color: #83ddca;
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.2em;
+      }
+      .startup-brand::before {
+        content: '';
+        width: 24px;
+        height: 3px;
+        background: currentColor;
+        border-radius: 2px;
+      }
+      .startup-hero {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 280px;
+        align-items: center;
+        gap: 28px;
+        margin: 28px 0 32px;
       }
       #startup h1 {
-        font-size: 30px;
+        font-size: clamp(28px, 4vw, 42px);
         font-weight: 600;
-        margin: 24px 0 16px;
+        letter-spacing: 0.04em;
+        line-height: 1.5;
+        margin: 0 0 14px;
+      }
+      .startup-tagline {
+        color: #b4c9d3;
+        font-size: 15px;
+        line-height: 1.9;
+        margin: 0;
+      }
+      .startup-circuit {
+        width: 100%;
+        height: auto;
+        color: #7bd7c4;
+      }
+      .startup-circuit .circuit-base {
+        stroke: #385764;
+      }
+      .startup-circuit .circuit-pulse {
+        animation: startup-pulse 2.8s ease-in-out infinite;
+        transform-origin: center;
+      }
+      .startup-state {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-top: 22px;
+      }
+      .startup-state::before {
+        content: '';
+        width: 7px;
+        height: 7px;
+        flex: 0 0 auto;
+        background: #83ddca;
+        border-radius: 50%;
+        box-shadow: 0 0 0 4px #83ddca12;
       }
       #startup-status {
-        font-size: 19px;
+        font-size: 17px;
+        font-weight: 600;
+        line-height: 1.8;
         margin: 0;
       }
       #startup-detail {
-        color: #b6c2d2;
-        font-size: 14px;
+        color: #a4bdc9;
+        font-size: 13px;
         line-height: 1.8;
-        max-width: 480px;
-        margin: 16px auto;
+        max-width: 640px;
+        margin: 8px 0 0 17px;
       }
       #startup-indicator {
-        width: 40px;
-        height: 40px;
-        border: 3px solid #344254;
-        border-top-color: #6fd6bf;
-        border-radius: 50%;
-        margin: 0 auto;
-        animation: startup-spin 1s linear infinite;
+        height: 3px;
+        overflow: hidden;
+        background: #2a414c;
+        border-radius: 3px;
+      }
+      #startup-indicator span {
+        display: block;
+        width: 28%;
+        height: 100%;
+        background: linear-gradient(90deg, transparent, #83ddca 50%, #c5f4e9);
+        border-radius: inherit;
+        animation: startup-flow 2.6s ease-in-out infinite;
       }
       #startup-indicator[hidden],
       #startup-retry[hidden] {
         display: none;
       }
       #startup-retry {
-        min-height: 40px;
-        padding: 8px 24px;
-        margin: 8px auto;
-        color: #102d28;
-        background: #6fd6bf;
-        border: 0;
-        border-radius: 6px;
+        min-height: 44px;
+        padding: 10px 24px;
+        margin: 20px 0 0 17px;
+        color: #0b2925;
+        background: #83ddca;
+        border: 1px solid #a1e9d9;
+        border-radius: 8px;
         font: inherit;
+        font-weight: 600;
         cursor: pointer;
+      }
+      #startup-retry:hover {
+        background: #a1e9d9;
       }
       #startup-retry:focus-visible {
         outline: 3px solid #ffffff;
         outline-offset: 4px;
       }
-      @keyframes startup-spin {
+      #startup[data-state='error'] .startup-state::before {
+        background: #e7ba79;
+        box-shadow: 0 0 0 4px #e7ba7914;
+      }
+      #startup[data-state='error'] .circuit-pulse {
+        animation: none;
+      }
+      @keyframes startup-flow {
+        from {
+          transform: translateX(-110%);
+        }
         to {
-          transform: rotate(360deg);
+          transform: translateX(460%);
+        }
+      }
+      @keyframes startup-pulse {
+        0%,
+        100% {
+          opacity: 0.35;
+        }
+        50% {
+          opacity: 1;
+        }
+      }
+      @media (max-width: 740px) {
+        .startup-hero {
+          grid-template-columns: minmax(0, 1fr) 170px;
+          gap: 12px;
+        }
+      }
+      @media (max-width: 560px) {
+        .startup-hero {
+          grid-template-columns: 1fr;
+        }
+        .startup-circuit {
+          width: 180px;
+          justify-self: end;
+          margin-top: -6px;
+        }
+        #startup-detail {
+          margin-left: 0;
         }
       }
       @media (prefers-reduced-motion: reduce) {
-        #startup-indicator {
+        #startup-indicator span,
+        .startup-circuit .circuit-pulse {
           animation: none;
+        }
+        #startup-indicator span {
+          transform: translateX(125%);
         }
       }
       .screen-loading {
@@ -99,11 +227,43 @@
   </head>
   <body>
     <div id="startup" role="status" aria-live="polite">
-      <div id="startup-indicator" aria-hidden="true"></div>
-      <h1>電気教育ツール</h1>
-      <p id="startup-status">起動しています…</p>
-      <p id="startup-detail">画面を準備しています。しばらくお待ちください。</p>
-      <button id="startup-retry" type="button" hidden>再読み込み</button>
+      <div class="startup-panel">
+        <div class="startup-brand" aria-hidden="true">ELECTRICAL TRAINING</div>
+        <div class="startup-hero">
+          <div>
+            <h1>電気教育ツール</h1>
+            <p class="startup-tagline">つないで、測って、動きを理解する。</p>
+          </div>
+          <svg class="startup-circuit" viewBox="0 0 320 200" aria-hidden="true" focusable="false">
+            <g
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path class="circuit-base" d="M24 36H296V164H24Z M24 100H88 M232 100H296" />
+              <path
+                d="M24 36H88Q100 36 100 48V88Q100 100 112 100H136 M184 100H212Q224 100 224 88V48Q224 36 236 36H296"
+              />
+              <rect x="136" y="83" width="48" height="34" rx="5" />
+              <path d="M147 100h26 M24 164H112 M112 164l34-20 M156 164H296" />
+              <circle cx="24" cy="36" r="6" fill="#112934" />
+              <circle cx="296" cy="36" r="6" fill="#112934" />
+              <circle cx="24" cy="164" r="6" fill="#112934" />
+              <circle cx="296" cy="164" r="6" fill="#112934" />
+              <circle cx="112" cy="164" r="3" fill="currentColor" />
+              <circle cx="156" cy="164" r="3" fill="currentColor" />
+            </g>
+            <circle class="circuit-pulse" cx="296" cy="100" r="5" fill="#e7ba79" />
+            <circle class="circuit-pulse" cx="24" cy="100" r="4" fill="#83ddca" />
+          </svg>
+        </div>
+        <div id="startup-indicator" aria-hidden="true"><span></span></div>
+        <div class="startup-state"><p id="startup-status">起動しています…</p></div>
+        <p id="startup-detail">画面を準備しています。しばらくお待ちください。</p>
+        <button id="startup-retry" type="button" hidden>再読み込み</button>
+      </div>
     </div>
     <div id="root" aria-busy="true"></div>
     <script type="module" src="./startup.ts"></script>

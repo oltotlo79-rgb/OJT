@@ -30,6 +30,7 @@ requestAnimationFrame(() => {
       })
       .catch(() => {
         clearTimeout(slow);
+        loading?.setAttribute('data-state', 'error');
         if (startupStatus) startupStatus.textContent = '画面を読み込めませんでした';
         if (detail)
           detail.textContent =
