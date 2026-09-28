@@ -28,7 +28,7 @@ import {
 
 /** 図形の役割（描画側が線幅・色を決めるための分類）。 */
 export type ShapeRole =
-  'bus' | 'wire' | 'symbol' | 'label' | 'preset' | 'junction' | 'terminal' | 'rung';
+  'bus' | 'wire' | 'symbol' | 'label' | 'preset' | 'junction' | 'terminal' | 'rung' | 'wire-number';
 
 /**
  * 図形の出どころ（描画側が図形から文書の要素へ戻るための手がかり）。§11.2

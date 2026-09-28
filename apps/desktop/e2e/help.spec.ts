@@ -181,12 +181,13 @@ async function expectHelpOpensHere(sectionTitle: string): Promise<void> {
  * 章は**いまの節が入っている章だけ**が開いているので（`HelpDrawer` の `<details open>`）、
  * 畳んである章はまず見出しを押して開く。`chapterIndex` は `CHAPTER_TITLES` の位置。
  */
-async function showSection(chapterIndex: number, sectionId: string): Promise<void> {
+async function showSection(sectionId: string): Promise<void> {
   const button = page.getByTestId(`help-section-${sectionId}`);
   if (!(await button.isVisible())) {
     await page
-      .locator('[data-testid="help-contents"] details details > summary')
-      .nth(chapterIndex)
+      .locator('[data-testid="help-contents"] details details')
+      .filter({ has: button })
+      .locator(':scope > summary')
       .click();
   }
   await expect(button).toBeVisible();
@@ -377,7 +378,7 @@ test.describe('ヘルプ（§16 Phase 6 受入基準①②③⑥）', () => {
       page.locator('[data-testid="help-contents"] details details > summary'),
     ).toHaveText([...CHAPTER_TITLES]);
     // 目次から節へ跳べる（この節は図を載せている節でもある）
-    await showSection(2, 'screens/ホームの画面');
+    await showSection('screens/ホームの画面');
     await expect(page.getByTestId('help-section-title')).toHaveText('ホームの画面');
 
     /*
@@ -403,7 +404,7 @@ test.describe('ヘルプ（§16 Phase 6 受入基準①②③⑥）', () => {
     await goHome();
     await setWindow(1280, 800);
     await page.getByTestId('open-help').click();
-    await showSection(CHAPTER_TITLES.length - 1, 'tutorial-features/課題の索引');
+    await showSection('tutorial-features/課題の索引');
     const ids = page.locator('[data-manual-table="problem-index"] tbody tr td:first-child');
     await expect(ids).toHaveCount(372);
     const broken = await ids.evaluateAll((cells) =>
@@ -498,13 +499,13 @@ test.describe('ヘルプ（§16 Phase 6 受入基準①②③⑥）', () => {
      * Task 12 で図を撮ったので、どの節でも**縮小版が読み込めている**ことまで見る
      * （撮る前は枠ごと畳まれていることを見ていた。`figureProblems()` は両方を見分ける）。
      */
-    for (const [chapterIndex, sectionId, title] of [
-      [2, 'screens/ホームの画面', 'ホームの画面'],
-      [2, 'screens/画面の上の帯', '画面の上の帯'],
-      [4, 'mode-c1/答えを書き込む', '答えを書き込む'],
-      [9, 'settings/設定の画面', '設定の画面'],
+    for (const [sectionId, title] of [
+      ['screens/ホームの画面', 'ホームの画面'],
+      ['screens/画面の上の帯', '画面の上の帯'],
+      ['mode-c1/答えを書き込む', '答えを書き込む'],
+      ['settings/設定の画面', '設定の画面'],
     ] as const) {
-      await showSection(chapterIndex, sectionId);
+      await showSection(sectionId);
       await expect(page.getByTestId('help-section-title')).toHaveText(title);
       expect(await figureProblems(), `${sectionId} の図`).toEqual([]);
       // 図の覆いは開いていない（押せない図を押しても何も出ない）
@@ -515,7 +516,7 @@ test.describe('ヘルプ（§16 Phase 6 受入基準①②③⑥）', () => {
      * 受入基準⑧: 本文の図（縮小版）を押すと**原寸**が覆いで開き、`Esc` で戻って
      * 押した図へ焦点が返る。Task 12 で図が入るまでは押せるボタンが1つも無かった。
      */
-    await showSection(2, 'screens/ホームの画面');
+    await showSection('screens/ホームの画面');
     const figure = page.locator('[data-testid="help-prose"] button[data-manual-image]').first();
     await expect(figure).toBeEnabled();
     const name = await figure.getAttribute('data-manual-image');

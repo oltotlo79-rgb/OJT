@@ -1,6 +1,7 @@
 import { useRuntimeConnection } from '../session/use-runtime-connection.js';
 import { BoardFocusNotice } from '../panels/BoardFocusNotice.js';
 import { WireListPanel } from '../panels/WireListPanel.js';
+import { buildWireMarkIndex, wireMarker } from '../session/wire-markers.js';
 import { togglePowerFixture } from '../session/power-toggle.js';
 import { CollapsiblePanel } from '../panels/CollapsiblePanel.js';
 import {
@@ -107,6 +108,19 @@ export function InspectRepairSession(): JSX.Element {
   );
   const session = useStore((s) => s.session);
   const circuit = useStore((s) => s.circuit);
+  const wireMarkIndex = useMemo(
+    () => (problem === undefined ? undefined : buildWireMarkIndex(problem, JIPM_BOARD)),
+    [problem],
+  );
+  const wireMarkers = useMemo(
+    () =>
+      new Map(
+        wireMarkIndex === undefined || session === undefined
+          ? []
+          : session.wires.map((wire) => [wire.id, wireMarker(wireMarkIndex, wire)] as const),
+      ),
+    [wireMarkIndex, session],
+  );
   const reports = useStore((s) => s.reports);
   const pendingReport = useStore((s) => s.pendingReport);
   const pendingTerminal = useStore((s) => s.pendingTerminal);
@@ -728,7 +742,13 @@ export function InspectRepairSession(): JSX.Element {
         >
           <WarningBanner />
           <WireLimitNotice />
-          <BoardScene onPick={onPick} onHover={onHover} onPress={onPress} onRelease={onRelease} />
+          <BoardScene
+            onPick={onPick}
+            onHover={onHover}
+            onPress={onPress}
+            onRelease={onRelease}
+            wireMarkers={wireMarkers}
+          />
           {pendingReport === undefined ? null : (
             <ReportPopover
               pending={pendingReport}
@@ -780,6 +800,12 @@ export function InspectRepairSession(): JSX.Element {
               <div className={styles.schematicBox}>
                 <SchematicView
                   document={problem.schematic}
+                  {...(wireMarkIndex === undefined
+                    ? {}
+                    : {
+                        wireNumbers: wireMarkIndex.nodes,
+                        physicalOverride: wireMarkIndex.cellTerminals,
+                      })}
                   title={JA.session.schematicHint}
                   highlightCellIds={highlightCells}
                   onPickCell={(cellId) => {
@@ -790,7 +816,7 @@ export function InspectRepairSession(): JSX.Element {
             </CollapsiblePanel>
           ) : null}
           <TesterPanel />
-          <WireListPanel board={JIPM_BOARD} />
+          <WireListPanel board={JIPM_BOARD} wireMarkers={wireMarkers} />
           <RepairPanel
             addedWires={addedWireLabels}
             removedWires={removedWires}

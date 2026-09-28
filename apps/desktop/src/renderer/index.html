@@ -17,9 +17,95 @@
       content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; media-src 'self'; connect-src 'self'; worker-src 'self' blob:; base-uri 'none'; form-action 'none'; frame-src 'none'; frame-ancestors 'none'"
     />
     <title>電気教育ツール</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        background: #1b1e24;
+      }
+      #startup {
+        position: fixed;
+        inset: 0;
+        z-index: 1000;
+        display: grid;
+        place-content: center;
+        text-align: center;
+        color: #f4f6fa;
+        background: #1b1e24;
+        font-family: 'Yu Gothic UI', 'Meiryo', sans-serif;
+        padding: 32px;
+      }
+      #startup h1 {
+        font-size: 30px;
+        font-weight: 600;
+        margin: 24px 0 16px;
+      }
+      #startup-status {
+        font-size: 19px;
+        margin: 0;
+      }
+      #startup-detail {
+        color: #b6c2d2;
+        font-size: 14px;
+        line-height: 1.8;
+        max-width: 480px;
+        margin: 16px auto;
+      }
+      #startup-indicator {
+        width: 40px;
+        height: 40px;
+        border: 3px solid #344254;
+        border-top-color: #6fd6bf;
+        border-radius: 50%;
+        margin: 0 auto;
+        animation: startup-spin 1s linear infinite;
+      }
+      #startup-indicator[hidden],
+      #startup-retry[hidden] {
+        display: none;
+      }
+      #startup-retry {
+        min-height: 40px;
+        padding: 8px 24px;
+        margin: 8px auto;
+        color: #102d28;
+        background: #6fd6bf;
+        border: 0;
+        border-radius: 6px;
+        font: inherit;
+        cursor: pointer;
+      }
+      #startup-retry:focus-visible {
+        outline: 3px solid #ffffff;
+        outline-offset: 4px;
+      }
+      @keyframes startup-spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        #startup-indicator {
+          animation: none;
+        }
+      }
+      .screen-loading {
+        display: grid;
+        place-content: center;
+        height: 100%;
+        color: var(--muted);
+      }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
-    <script type="module" src="./main.tsx"></script>
+    <div id="startup" role="status" aria-live="polite">
+      <div id="startup-indicator" aria-hidden="true"></div>
+      <h1>電気教育ツール</h1>
+      <p id="startup-status">起動しています…</p>
+      <p id="startup-detail">画面を準備しています。しばらくお待ちください。</p>
+      <button id="startup-retry" type="button" hidden>再読み込み</button>
+    </div>
+    <div id="root" aria-busy="true"></div>
+    <script type="module" src="./startup.ts"></script>
   </body>
 </html>

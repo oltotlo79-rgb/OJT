@@ -87,6 +87,7 @@ const STROKE: Readonly<Record<ShapeRole, { color: string; width: number }>> = {
   junction: { color: INK, width: 0 },
   terminal: { color: INK_SUB, width: 0 },
   rung: { color: '#6B737D', width: 0 },
+  'wire-number': { color: '#1E5266', width: 0 },
 };
 
 /** 役割ごとの文字寸法と書体。 */
@@ -95,6 +96,7 @@ const TEXT_STYLE: Partial<Record<ShapeRole, { size: number; family: string; weig
   preset: { size: PRESET_FONT_SIZE, family: FONT_STACK, weight: 400 },
   terminal: { size: TERMINAL_FONT_SIZE, family: MONO_STACK, weight: 400 },
   rung: { size: RUNG_FONT_SIZE, family: MONO_STACK, weight: 400 },
+  'wire-number': { size: TERMINAL_FONT_SIZE, family: MONO_STACK, weight: 700 },
 };
 
 /** 連動ハイライトの色。§9.2 白地の図では琥珀が読めないので濃い橙＋薄い暈し（ハロー）で示す。 */
@@ -346,6 +348,7 @@ function drawShape(
           {...common}
           x={shape.x}
           y={shape.y}
+          data-wire-number={shape.role === 'wire-number' ? shape.text : undefined}
           fill={color}
           fontFamily={text.family}
           fontSize={fontSizeOverride ?? text.size}
@@ -409,6 +412,8 @@ export function SchematicSvg({
   onPickSlot,
   testId = 'schematic-svg',
   fit = false,
+  wireNumbers,
+  physicalOverride,
 }: {
   document: SchematicDocument;
   highlightCellIds?: readonly string[];
@@ -432,11 +437,21 @@ export function SchematicSvg({
    * 収める（編集グリッド専用。段が増えて縦に長い文書も、親が縦横とも定寸なら全体が見える）。
    */
   fit?: boolean;
+  wireNumbers?: ReadonlyMap<string, string>;
+  physicalOverride?: LayoutOptions['physicalOverride'];
 }): JSX.Element {
   const host = useRef<SVGSVGElement | null>(null);
   const size = useElementSize(host);
   const uiScale = useUiScale();
-  const result = useMemo(() => layout(doc, SCHEMATIC_LAYOUT), [doc]);
+  const result = useMemo(
+    () =>
+      layout(doc, {
+        ...SCHEMATIC_LAYOUT,
+        ...(wireNumbers === undefined ? {} : { wireNumbers }),
+        ...(physicalOverride === undefined ? {} : { physicalOverride }),
+      }),
+    [doc, wireNumbers, physicalOverride],
+  );
   // 最小寸法の床は編集モード（`onPickSlot` を渡したとき）だけに敷く。読取専用のヒント・
   // 拡大表示はヒント欄の実寸に合わせた縮尺のまま変えない（B1・スキーマティックコア担当の指摘）。
   const view = useMemo(

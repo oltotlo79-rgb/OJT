@@ -22,22 +22,26 @@ import {
  * `ipcRenderer` そのものは決して露出しない。
  */
 
+// ローディング中はまだ編集内容がないため、そのまま閉じられる。Appが自動保存を
+// 登録した後は必ず保存の結果を待つ。登録解除後は安全側に倒し、終了を許可しない。
+let closeHandler: (() => Promise<boolean>) | undefined;
+ipcRenderer.on(IPC_CHANNELS.closeRequest, (_event, token: unknown) => {
+  if (typeof token !== 'number' || !Number.isSafeInteger(token) || token <= 0) return;
+  const handler = closeHandler;
+  void Promise.resolve()
+    .then(() => (handler === undefined ? true : handler()))
+    .then(
+      (ok) => ipcRenderer.send(IPC_CHANNELS.closeReady, token, ok === true),
+      () => ipcRenderer.send(IPC_CHANNELS.closeReady, token, false),
+    );
+});
+
 const api: OjtApi = {
   authorContent: (request) => ipcRenderer.invoke(IPC_CHANNELS.contentAuthor, request),
   onCloseRequest: (handler) => {
-    const listener = (_event: Electron.IpcRendererEvent, token: number): void => {
-      void handler().then(
-        (ok) => {
-          ipcRenderer.send(IPC_CHANNELS.closeReady, token, ok);
-        },
-        () => {
-          ipcRenderer.send(IPC_CHANNELS.closeReady, token, false);
-        },
-      );
-    };
-    ipcRenderer.on(IPC_CHANNELS.closeRequest, listener);
+    closeHandler = handler;
     return () => {
-      ipcRenderer.removeListener(IPC_CHANNELS.closeRequest, listener);
+      if (closeHandler === handler) closeHandler = () => Promise.resolve(false);
     };
   },
   exportResult: (request: ResultExportRequest) =>

@@ -794,7 +794,7 @@ export function cachedFaceTexture(
  * 畳んだうえで、鍵の先頭に必ず名前空間を置いて取り違えを型で防ぐ。
  * `socket` / `block` は `faceKey()` が同じ接頭辞を付ける。
  */
-export type FaceTextureNamespace = 'socket' | 'block' | 'fixture' | 'part';
+export type FaceTextureNamespace = 'socket' | 'block' | 'fixture' | 'part' | 'wire-marker';
 
 /**
  * 名前空間つきの鍵で共有キャッシュに焼く（**このファイルの外から使う唯一の入口**）。3D-13

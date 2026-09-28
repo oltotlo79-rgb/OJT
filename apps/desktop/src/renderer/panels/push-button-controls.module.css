@@ -1,0 +1,26 @@
+.controls {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+  padding: 6px 8px;
+  border-top: 1px solid var(--line);
+  background: var(--panel);
+  font-size: 0.8rem;
+}
+.controls button {
+  min-height: 32px;
+  padding: 3px 8px;
+}
+.controls button[aria-pressed='true'] {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--ink-on-accent);
+}
+.label {
+  font-weight: 700;
+}
+.note {
+  color: var(--muted);
+}

@@ -8,7 +8,8 @@ import { toScene } from './coords.js';
 
 /**
  * 押ボタン（自動復帰型）。設計仕様 §5.3.3 / §8.2。
- * `mousedown` で `press`、`mouseup`（と領域外れ）で `release` を送る＝押しっぱなしで保持できる。
+ * 通常は押している間だけ動作。Shift＋クリックは保持／解除する。
+ * 領域外で離した場合も、共通入力管理がポインターIDを使って解除する。
  */
 
 /** 押ボタンの台座（φ22相当）。 */
@@ -25,11 +26,13 @@ export function PushButton({
   pressed,
   onPress,
   onRelease,
+  onToggleHeld,
 }: {
   definition: PushButtonDefinition;
   pressed: boolean;
-  onPress: (pbId: string) => void;
-  onRelease: (pbId: string) => void;
+  onPress: (pbId: string, pointerId: number) => void;
+  onRelease: (pbId: string, pointerId: number) => void;
+  onToggleHeld: (pbId: string) => void;
 }): JSX.Element {
   const pos = toScene({ ...definition.pos, z: 0 });
   const color = FACE_COLORS[definition.color];
@@ -47,15 +50,14 @@ export function PushButton({
         rotation={[Math.PI / 2, 0, 0]}
         position={[0, 0, pressed ? 4.5 - TRAVEL_MM : 4.5]}
         onPointerDown={(event: ThreeEvent<PointerEvent>) => {
+          if (event.button !== 0) return;
           event.stopPropagation();
-          onPress(definition.id);
+          if (event.shiftKey) onToggleHeld(definition.id);
+          else onPress(definition.id, event.pointerId);
         }}
         onPointerUp={(event: ThreeEvent<PointerEvent>) => {
           event.stopPropagation();
-          onRelease(definition.id);
-        }}
-        onPointerOut={() => {
-          if (pressed) onRelease(definition.id);
+          onRelease(definition.id, event.pointerId);
         }}
       />
     </group>

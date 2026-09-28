@@ -86,6 +86,8 @@ import { WireDragLayer } from './WirePreview.js';
 import { toScene } from './coords.js';
 import { observeWebGlContext } from './webgl-context.js';
 import { useTourStore } from '../tour/tour-store.js';
+import { usePushButtonInput } from '../session/use-push-button-input.js';
+import { PushButtonControls } from '../panels/PushButtonControls.js';
 
 /**
  * 3D盤のシーン。設計仕様 §6.5 / §8.1 / §12.2 / §15。
@@ -360,6 +362,9 @@ function BoardContents({
   onHover,
   onPress,
   onRelease,
+  onToggleHeld,
+  pointerActive,
+  wireMarkers,
   readoutRef,
   perfRef,
 }: {
@@ -376,8 +381,11 @@ function BoardContents({
    */
   onDragPick: (hit: PickHit) => void;
   onHover: (id: TerminalId | undefined) => void;
-  onPress: (pbId: string) => void;
-  onRelease: (pbId: string) => void;
+  onPress: (pbId: string, pointerId: number) => boolean;
+  onRelease: (pbId: string, pointerId: number) => void;
+  onToggleHeld: (pbId: string) => void;
+  pointerActive: boolean;
+  wireMarkers?: ReadonlyMap<string, string>;
   /** E2E 用のカメラ状態の書き出し先（`Canvas` の外の隠し要素）。§14.2 */
   readoutRef: RefObject<HTMLDivElement | null>;
   /** 性能の計測窓の書き出し先（`Canvas` の外の隠し要素）。§15 / 決定表#16 */
@@ -804,7 +812,7 @@ function BoardContents({
         onCanvas: false,
         editDrag: false,
       };
-      if (controls !== null) controls.enabled = true;
+      if (controls !== null) controls.enabled = !pointerActive;
       setWireDragFrom(undefined);
       if (dropCarried) useStore.getState().setDragging(undefined);
     };
@@ -887,7 +895,7 @@ function BoardContents({
       window.removeEventListener('blur', onCancel);
       window.removeEventListener('keydown', onKey);
     };
-  }, [controls, onDragPick, gl]);
+  }, [controls, onDragPick, gl, pointerActive]);
 
   /**
    * カーソルとホバー予告（設計 §7.3.4）。**予告は意図から作る**ので、
@@ -1077,8 +1085,11 @@ function BoardContents({
             key={pb.id}
             definition={pb}
             pressed={buttons[pb.id] === true}
-            onPress={onPress}
+            onPress={(id, pointerId) => {
+              if (onPress(id, pointerId) && controls !== null) controls.enabled = false;
+            }}
             onRelease={onRelease}
+            onToggleHeld={onToggleHeld}
           />
         ))}
 
@@ -1088,6 +1099,9 @@ function BoardContents({
           return (
             <Wire
               key={route.wireId}
+              {...(wireMarkers?.get(route.wireId) === undefined
+                ? {}
+                : { marker: wireMarkers.get(route.wireId)! })}
               route={route}
               color={wire.color}
               locked={wire.locked}
@@ -1179,6 +1193,7 @@ function BoardContents({
       */}
       <OrbitControls
         makeDefault
+        enabled={!pointerActive}
         enableDamping
         enableRotate={false}
         touches={{ ONE: TOUCH.PAN, TWO: TOUCH.DOLLY_PAN }}
@@ -1227,6 +1242,7 @@ function BoardSceneImpl({
   onHover,
   onPress,
   onRelease,
+  wireMarkers,
 }: {
   /**
    * 描く盤。省略すると `JIPM_BOARD`（モードB/C1/C2 はこれまでどおり）。
@@ -1237,10 +1253,22 @@ function BoardSceneImpl({
   onHover: (id: TerminalId | undefined) => void;
   onPress: (pbId: string) => void;
   onRelease: (pbId: string) => void;
+  wireMarkers?: ReadonlyMap<string, string>;
 }): JSX.Element {
   const [generation, setGeneration] = useState(0);
   const setWebglLost = useStore((s) => s.setWebglLost);
   const webglLost = useStore((s) => s.webglLost);
+  const inputDisabled = useStore((s) => s.replay !== undefined || s.judging || s.verifying);
+  // 回路の編集・UndoやC1の部品交換でも、Workerを作り直した際の保持を残さない。
+  const inputEpoch = useStore(useShallow((s) => [s.problem?.id, s.sessionEpoch, s.session]));
+  const pressedButtons = useButtons();
+  const buttonInput = usePushButtonInput({
+    ids: board.pushButtons.map((pb) => pb.id),
+    onPress,
+    onRelease,
+    disabled: inputDisabled || webglLost,
+    epoch: inputEpoch,
+  });
   const detachContext = useRef<(() => void) | undefined>(undefined);
   const tourCanvas = useRef<HTMLCanvasElement | null>(null);
   useEffect(
@@ -1330,12 +1358,24 @@ function BoardSceneImpl({
           onPick={guardedPick}
           onDragPick={onPick}
           onHover={onHover}
-          onPress={onPress}
-          onRelease={onRelease}
+          onPress={buttonInput.startPointer}
+          onRelease={buttonInput.endPointer}
+          onToggleHeld={buttonInput.toggleHeld}
+          pointerActive={buttonInput.pointerActive}
+          {...(wireMarkers === undefined ? {} : { wireMarkers })}
           readoutRef={readoutRef}
           perfRef={perfRef}
         />
       </Canvas>
+      <PushButtonControls
+        buttons={board.pushButtons}
+        held={buttonInput.held}
+        pressed={pressedButtons}
+        active={buttonInput.active}
+        disabled={inputDisabled || webglLost}
+        onToggle={buttonInput.toggleHeld}
+        onClear={buttonInput.releaseAll}
+      />
       {/* E2E からカメラの向き・距離・注視点を読むための隠し要素（画面には出ない）。§14.2 */}
       <div data-testid="camera-readout" hidden ref={readoutRef} />
       {/* 性能の計測窓（§15 / Plan 5 決定表#16）。画面には出ない */}

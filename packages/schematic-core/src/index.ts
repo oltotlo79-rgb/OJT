@@ -51,6 +51,7 @@ export {
 } from './assign.js';
 
 export { toSession, type ToSessionOptions, type ToSessionResult } from './to-session.js';
+export { schematicWireNumbers } from './wire-numbers.js';
 
 export {
   contactShapes,

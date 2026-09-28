@@ -48,7 +48,7 @@ function RouteView({ route }: { route: Route }): JSX.Element {
 }
 
 /** アプリ本体。 */
-export function App(): JSX.Element {
+export function App({ onReady }: { onReady?: () => void } = {}): JSX.Element {
   useEffect(() => {
     const resume = (): void => sounds.resume();
     // Rechecking a running context is cheap and also handles a later OS audio suspension.
@@ -156,6 +156,9 @@ export function App(): JSX.Element {
   // 自動保存の購読と状態表示。変更後の保存・チェックポイント・失敗処理はautosave側で管理する。
   useEffect(() => startAutosave(), []);
   useEffect(() => startAuthoringDraft(), []);
+  useEffect(() => {
+    onReady?.();
+  }, [onReady]);
   const autosave = useAutosaveStatus();
 
   // 未捕捉例外を拾って例外バナーに出す（§13 #5）。描画中の例外は `ErrorBoundary` が拾う

@@ -13,4 +13,9 @@ import './app/global.css';
 const container = document.getElementById('root');
 if (container === null) throw new Error(JA.error.rootMissing);
 
-createRoot(container).render(<App />);
+export async function mountApp(): Promise<void> {
+  if (container === null) throw new Error(JA.error.rootMissing);
+  await new Promise<void>((resolve, reject) => {
+    createRoot(container, { onUncaughtError: reject }).render(<App onReady={resolve} />);
+  });
+}

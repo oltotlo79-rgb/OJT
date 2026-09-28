@@ -8,7 +8,13 @@ import { safeRoutes } from '../session/wire-routes.js';
 import styles from './panels.module.css';
 import { CollapsiblePanel } from './CollapsiblePanel.js';
 
-export function WireListPanel({ board }: { board: BoardDefinition }): JSX.Element | null {
+export function WireListPanel({
+  board,
+  wireMarkers,
+}: {
+  board: BoardDefinition;
+  wireMarkers?: ReadonlyMap<string, string>;
+}): JSX.Element | null {
   const session = useStore((state) => state.session);
   const isRepair = useStore((state) => state.problem?.mode === 'inspect-repair');
   const selected = useStore((state) => state.selectedWire);
@@ -45,11 +51,16 @@ export function WireListPanel({ board }: { board: BoardDefinition }): JSX.Elemen
     annotationDraft !== undefined && annotationDraft.id === selected
       ? annotationDraft.note
       : (session.wireAnnotations?.[selected ?? '']?.note ?? '');
-  const shown = session.wires.filter((candidate) =>
-    `${candidate.id} ${candidate.from} ${candidate.to} ${session.wireAnnotations?.[candidate.id]?.label ?? ''}`
+  const needle = query.trim().toLowerCase();
+  const exactMarker =
+    wireMarkers !== undefined &&
+    [...wireMarkers.values()].some((mark) => mark.toLowerCase() === needle);
+  const shown = session.wires.filter((candidate) => {
+    if (exactMarker) return wireMarkers?.get(candidate.id)?.toLowerCase() === needle;
+    return `${candidate.id} ${candidate.from} ${candidate.to} ${wireMarkers?.get(candidate.id) ?? ''} ${session.wireAnnotations?.[candidate.id]?.label ?? ''}`
       .toLowerCase()
-      .includes(query.toLowerCase()),
-  );
+      .includes(needle);
+  });
   const preview =
     edit === undefined
       ? undefined
@@ -91,6 +102,11 @@ export function WireListPanel({ board }: { board: BoardDefinition }): JSX.Elemen
           onChange={(event) => setQuery(event.target.value)}
         />
       </label>
+      {wireMarkers !== undefined && (
+        <p>
+          回路図の線番はマークチューブの印字です。「線番」「注記」は自分用のメモで、印字は変わりません。
+        </p>
+      )}
       {powered && <p>盤電源OFF・PLC停止で編集できます。</p>}
       <div style={{ maxHeight: 250, overflow: 'auto' }}>
         {shown.map((item) => (
@@ -123,6 +139,7 @@ export function WireListPanel({ board }: { board: BoardDefinition }): JSX.Elemen
             >
               {session.wireAnnotations?.[item.id]?.label || item.id}：{item.from} → {item.to}
               <br />
+              {wireMarkers?.has(item.id) ? `回路図の線番 ${wireMarkers.get(item.id)}・` : ''}
               {item.color}・{item.locked ? '固定' : '編集可'}
               {routing.errors.some((error) => error.wireId === item.id)
                 ? '・接続済み／経路要調整'

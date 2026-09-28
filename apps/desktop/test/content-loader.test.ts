@@ -227,6 +227,21 @@ describe('loadContent の再利用（1D2-a: content:read のたびに読み直�
     const b = tempDir();
     expect(await loadContent(b)).not.toBe(await loadContent(a));
   });
+
+  it('読み込みに3秒以上かかっても、完了直後の課題選択では読み直さない', async () => {
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(10_000).mockReturnValueOnce(0);
+    try {
+      const listed = await loadContent('');
+      expect(await loadContent('')).toBe(listed);
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
+  it('同じ一覧への同時要求は1回の読み込みを共有する', async () => {
+    const [first, second] = await Promise.all([loadContent(''), loadContent('')]);
+    expect(first).toBe(second);
+  });
 });
 
 describe('probeUserDir（1D2-a: 到達できないフォルダで main を止めない。§13 #9）', () => {

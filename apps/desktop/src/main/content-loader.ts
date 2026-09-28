@@ -44,10 +44,12 @@ export const CONTENT_CACHE_TTL_MS = 3000;
 
 /** 直近の読込結果（鍵はフォルダと更新時刻、有効期限つき）。 */
 let cached: { dir: string; mtimeMs: number; atMs: number; content: LoadedContent } | undefined;
+let inFlight: { dir: string; mtimeMs: number; promise: Promise<LoadedContent> } | undefined;
 
 /** 覚えている読込結果を捨てる（テストと設定変更の後始末用）。 */
 export function clearContentCache(): void {
   cached = undefined;
+  inFlight = undefined;
 }
 
 /**
@@ -201,7 +203,18 @@ export async function loadContent(userDir: string): Promise<LoadedContent> {
   ) {
     return hit.content;
   }
-  const content = await readContent(userDir, exists);
-  cached = { dir: userDir, mtimeMs, atMs: now, content };
-  return content;
+  if (inFlight?.dir === userDir && inFlight.mtimeMs === mtimeMs) return inFlight.promise;
+  const request = { dir: userDir, mtimeMs, promise: readContent(userDir, exists) };
+  inFlight = request;
+  try {
+    const content = await request.promise;
+    if (inFlight === request) {
+      // 読込開始時刻で期限を数えると、3秒以上かかった一覧は返した時点で期限切れになる。
+      // 読み終えた時点から数え、直後の課題選択で全件を再読込しない。
+      cached = { dir: userDir, mtimeMs, atMs: Date.now(), content };
+    }
+    return content;
+  } finally {
+    if (inFlight === request) inFlight = undefined;
+  }
 }

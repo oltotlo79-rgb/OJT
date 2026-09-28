@@ -93,6 +93,10 @@ portable:
   artifactName: DenkiKyoikuTool-${version}-${arch}-Portable.${ext}
   unpackDirName: false
   requestExecutionLevel: user
+  # 7z全体の一時コピーを挟まず、NSISから各ファイルを直接展開する。
+  useZip: true
+  # Electron本体の展開が終わる前から、起動中であることを表示する。
+  splashImage: build/startup.bmp
 
 # 完全オフライン。自動更新の設定は持たない（§15）。
 publish: null

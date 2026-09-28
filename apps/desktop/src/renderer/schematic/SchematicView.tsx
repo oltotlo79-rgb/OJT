@@ -1,4 +1,4 @@
-import type { SchematicDocument } from '@ojt/schematic-core';
+import type { LayoutOptions, SchematicDocument } from '@ojt/schematic-core';
 import {
   useCallback,
   useEffect,
@@ -110,6 +110,8 @@ export function SchematicView({
   highlightCellIds,
   onPickCell,
   testId = 'schematic-svg',
+  wireNumbers,
+  physicalOverride,
 }: {
   document: SchematicDocument;
   /** 見出し（拡大表示の題と読み上げ名に使う）。省略すると文書の題。 */
@@ -117,6 +119,8 @@ export function SchematicView({
   highlightCellIds?: readonly string[];
   onPickCell?: (cellId: string | undefined) => void;
   testId?: string;
+  wireNumbers?: ReadonlyMap<string, string>;
+  physicalOverride?: LayoutOptions['physicalOverride'];
 }): JSX.Element {
   const label = title ?? doc.title;
   const [open, setOpen] = useState(false);
@@ -140,6 +144,8 @@ export function SchematicView({
   }, []);
 
   const pass = {
+    ...(wireNumbers === undefined ? {} : { wireNumbers }),
+    ...(physicalOverride === undefined ? {} : { physicalOverride }),
     ...(highlightCellIds === undefined ? {} : { highlightCellIds }),
     ...(onPickCell === undefined ? {} : { onPickCell }),
   };

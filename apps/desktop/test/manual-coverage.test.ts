@@ -33,9 +33,6 @@ const HTML_BY_ID = new Map(MANUAL_SECTIONS.map((section) => [section.id, section
 
 /** 手順として番号付きで書くことを求める節。設計 §6.2 の規則7。 */
 const PROCEDURE_SECTIONS = [
-  'setup/インストーラで入れる',
-  'setup/持ち運び版を使う',
-  'setup/初回に出る青い画面',
   'mode-b/回路を組み立てる',
   'mode-c1/部品を点検する',
   'mode-c2/回路を点検して直す',

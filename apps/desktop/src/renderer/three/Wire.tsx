@@ -13,6 +13,7 @@ import {
 } from '../session/colors.js';
 import { INVISIBLE_MATERIAL, LUG_GEOMETRY, sharedMaterial } from './materials.js';
 import { toScene } from './coords.js';
+import { WireMarkers } from './WireMarker.js';
 
 /**
  * 電線。設計仕様 §6.6 / §8.2。
@@ -238,6 +239,7 @@ export function Wire({
   pickable,
   yieldsToParts = false,
   onPick,
+  marker,
 }: {
   route: WireRoute;
   color: WireColor;
@@ -248,6 +250,7 @@ export function Wire({
   /** 配線モード: 同じ点にある端子・部品へクリックを譲る。 */
   yieldsToParts?: boolean;
   onPick: (wireId: string, locked: boolean) => void;
+  marker?: string;
 }): JSX.Element | null {
   const geometry = useTubeGeometry(route);
   const signature = routeSignature(route);
@@ -272,6 +275,7 @@ export function Wire({
       {shouldOutlineWireBody(bodyColor) ? <WireOutline route={route} /> : null}
       {/* 見た目の電線。クリックは常に下の当たり判定チューブに任せる */}
       <mesh geometry={geometry} material={material} raycast={noPick} />
+      {marker === undefined ? null : <WireMarkers route={route} number={marker} />}
       {/*
         当たり判定だけの太いチューブ。`visible={false}` なので**描かれないが**、three の
         `Raycaster` は `visible` を見ないのでクリックは拾える（`TerminalHit` /

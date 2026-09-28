@@ -1,5 +1,6 @@
 import type { TerminalId } from '@ojt/circuit-sim';
 import type { CellKind, Rung, RungEnd, SchematicCell, SchematicDocument } from './document.js';
+import { nodeKey, resolveNode } from './document.js';
 import {
   contactShapes,
   loadShapes,
@@ -17,6 +18,8 @@ import {
 
 /** レイアウトの寸法設定（論理単位）。 */
 export interface LayoutOptions {
+  /** 3Dのマークチューブと共通の節点線番。省略時は表示しない。 */
+  wireNumbers?: ReadonlyMap<string, string>;
   /** 1列（要素1つ分）の幅。 */
   colWidth?: number;
   /** 1行（段1つ分）の高さ。 */
@@ -63,6 +66,7 @@ export interface LayoutOptions {
  * （`SchematicSvg.SCHEMATIC_LAYOUT` が実際の寸法を持つ）。
  */
 export const DEFAULT_LAYOUT_OPTIONS: Required<LayoutOptions> = {
+  wireNumbers: new Map(),
   colWidth: 24,
   rowHeight: 24,
   marginX: 12,
@@ -338,6 +342,21 @@ export function layout(doc: SchematicDocument, options: LayoutOptions = {}): Sch
         ),
       );
       const mark = marks?.get(cell.id);
+      // 端子番号（記号の下）と区別し、引出線の上に線番を置く。
+      const leftNode = resolveNode(doc, r, index);
+      const rightNode = resolveNode(doc, r, index + 1);
+      const leftNumber = leftNode === undefined ? undefined : o.wireNumbers.get(nodeKey(leftNode));
+      const rightNumber =
+        rightNode === undefined ? undefined : o.wireNumbers.get(nodeKey(rightNode));
+      for (const [value, x] of [
+        [leftNumber, cellLeft + (o.colWidth - o.symbolWidth) / 4],
+        [rightNumber, cellRight - (o.colWidth - o.symbolWidth) / 4],
+      ] as const) {
+        if (value !== undefined)
+          shapes.push(
+            ...tag([text('wire-number', x, y - o.symbolWidth * 0.3, value, 'middle')], r.id),
+          );
+      }
       const preset = presetLabel(cell);
       shapes.push(
         ...tag(

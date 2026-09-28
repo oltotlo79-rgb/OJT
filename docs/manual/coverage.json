@@ -1,5 +1,9 @@
 {
   "controls": [
+    { "testid": "push-button-controls", "screen": "3D図", "label": "押し続ける", "section": "screens/押しボタンを同時に押す" },
+    { "testid": "hold-{}", "screen": "3D図", "label": "保持中", "section": "screens/押しボタンを同時に押す" },
+    { "testid": "release-all-buttons", "screen": "3D図", "label": "すべて離す", "section": "screens/押しボタンを同時に押す" },
+    { "testid": "push-button-state", "screen": "3D図", "label": "押下中", "section": "screens/押しボタンを同時に押す" },
     {
       "testid": "detail-review-{}",
       "screen": "結果（モードC2）",
