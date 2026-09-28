@@ -177,6 +177,12 @@ export async function launchPortable(options: { userDataDir?: string } = {}): Pr
     const context = browser.contexts()[0];
     if (!context) throw new Error('配布EXEの画面がありません');
     const page = context.pages()[0] ?? (await context.waitForEvent('page'));
+    // 独自にCDP接続する配布版では、Playwright標準のpage fixtureに警告が残らない。
+    // 再生や操作が止まった際に、Chromium側の警告も工程ログから確認できるようにする。
+    page.on('console', (message) => {
+      if (message.type() === 'warning' || message.type() === 'error')
+        console.warn(`[配布版 ${message.type()}] ${message.text()}`);
+    });
     return { page, received, close };
   } catch (error) {
     await close();
