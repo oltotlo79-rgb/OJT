@@ -46,8 +46,8 @@ for (const [mode, id] of [
         await app.evaluate(({ dialog }, filePath) => {
           dialog.showSaveDialog = () => Promise.resolve({ canceled: false, filePath });
         }, path);
-        const overflow = page.getByTestId('toolbar-overflow-toggle');
-        if (await overflow.isVisible()) await overflow.click();
+        // 課題の初回表示中も、メニューの入口が操作可能になるまで待つ。
+        await page.getByTestId('toolbar-overflow-toggle').click();
         await page.getByRole('button', { name: '作業を保存', exact: true }).click();
         await expect.poll(() => existsSync(path)).toBe(true);
         return JSON.parse(readFileSync(path, 'utf8')) as WorkFile;
