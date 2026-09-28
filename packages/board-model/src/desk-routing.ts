@@ -8,6 +8,7 @@ import {
   OUTLET_ID,
   PLC_PART_ID,
   runZ,
+  WIRE_LAYER_STEP_MM,
   type BoardDefinition,
   type BoardTerminal,
   type PlcUnitDefinition,
@@ -25,6 +26,8 @@ import {
   deskWires,
   entryChannelFor,
   filletCorners,
+  terminalLeadExitY,
+  terminalLeadZ,
   WIRE_DIAMETER_MM,
   type WireRoute,
 } from './routing.js';
@@ -568,6 +571,7 @@ function boardApproach(
   board: BoardDefinition,
   terminal: BoardTerminal,
   assignment: Assignment,
+  existingRoutes: readonly WireRoute[],
 ): Approach {
   const channel = boardExitChannel(board, terminal);
   const trunkX = assignment.trunk.xMm;
@@ -595,10 +599,16 @@ function boardApproach(
    */
   const supply = SUPPLY_TERMINAL_RE.test(String(terminal.id));
   const leadX = terminal.pos.x + slot.leadMm - (supply ? SUPPLY_EXIT_MM : 0);
+  const leadY = supply
+    ? undefined
+    : terminalLeadExitY(board, terminal, rowY < terminal.pos.y ? 'rear' : 'front');
+  const leadZ = terminalLeadZ(board, terminal, existingRoutes);
   const corners = buildCorners(terminal.pos, [
     ...(supply ? [to(leadX, terminal.pos.y, SUPPLY_EXIT_Z_MM)] : []),
-    // 端子 → 盤面へ立ち下げ（同じ列から出る電線どうしは中央そろえで横にずらす）
-    to(leadX, terminal.pos.y, runX),
+    // ソケット・端子台は台座の外まで高い位置で出す。机上への配線でも台座へ潜らない。
+    ...(leadY === undefined
+      ? [to(leadX, terminal.pos.y, runX)]
+      : [to(leadX, terminal.pos.y, leadZ + WIRE_LAYER_STEP_MM / 2), to(leadX, leadY, leadZ)]),
     // 配線帯の行へ引き出す
     to(leadX, rowY, runY),
     // 行のまま盤の右の縁まで走る
@@ -673,8 +683,9 @@ function approachFor(
   assignment: Assignment,
   row: RowSlot,
   dropX: number,
+  existingRoutes: readonly WireRoute[],
 ): Approach {
-  if (kind === 'board') return boardApproach(board, terminal, assignment);
+  if (kind === 'board') return boardApproach(board, terminal, assignment, existingRoutes);
   if (kind === 'outlet') return outletApproach(terminal, assignment, row);
   return plcApproach(terminal, assignment, row, dropX);
 }
@@ -999,6 +1010,7 @@ export function deskRoutes(
       assignment,
       fromRow,
       drops.dropX.get(fromKey) ?? entry.from.pos.x,
+      routes,
     );
     const tail = approachFor(
       board,
@@ -1007,6 +1019,7 @@ export function deskRoutes(
       assignment,
       toRow,
       drops.dropX.get(toKey) ?? entry.to.pos.x,
+      routes,
     );
     const corners = dedupe([...head.corners, ...[...tail.corners].reverse()]);
     const points = filletCorners(corners, DESK_CORNER_RADIUS_MM);

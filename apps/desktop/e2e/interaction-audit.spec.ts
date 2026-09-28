@@ -3,6 +3,7 @@ import {
   createSession,
   deskRoutes,
   JIPM_BOARD,
+  SOCKET_STEP_HEIGHTS_MM,
   plcUnitFor,
   withPlcUnit,
   type PlcUnitDefinition,
@@ -65,6 +66,26 @@ test('回路組立: 使用中のソケットと端子台の全端子を3Dから�
       const point = terminalPoint(terminal.id, box);
       await page.mouse.click(point.x, point.y);
       await expect(overlay, String(terminal.id)).toContainText('始点:');
+      await page.keyboard.press('Escape');
+      await expect(overlay).toContainText('端子未選択');
+    }
+    // 段付きソケットへ装着した本体が、端子のクリックを遮らないことも確かめる。
+    const socket = JIPM_BOARD.sockets[0]!;
+    const center = boardPoint(
+      {
+        x: socket.origin.x + socket.bodyMm.width / 2,
+        y: socket.origin.y + socket.bodyMm.length / 2,
+        z: SOCKET_STEP_HEIGHTS_MM[2],
+      },
+      box,
+    );
+    await page.mouse.click(center.x, center.y);
+    await page.getByTestId('mount-relay-my4n').click();
+    await expect(page.getByTestId('operation-log')).toContainText('S1 に リレー MY4N を装着');
+    for (const terminal of terminals.filter((item) => item.id.startsWith('S1.'))) {
+      const point = terminalPoint(terminal.id, box);
+      await page.mouse.click(point.x, point.y);
+      await expect(overlay, `装着後 ${String(terminal.id)}`).toContainText('始点:');
       await page.keyboard.press('Escape');
       await expect(overlay).toContainText('端子未選択');
     }

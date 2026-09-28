@@ -318,6 +318,15 @@ describe('routing: 高さのはしごとレーンのスロット（Task 9b）', 
     ];
     const allowed = new Set<number>([
       ...WIRE_Z_LADDER_MM,
+      // 端子台は12mmから出線する。ソケットは縦走行の共通の高さへ揃える。
+      ...[12].flatMap((base) =>
+        Array.from({ length: 16 }, (_, level) =>
+          [
+            base + level * WIRE_LAYER_STEP_MM,
+            base + level * WIRE_LAYER_STEP_MM + SOCKET_LEAD_X_OFFSET_Z_MM,
+          ].map((z) => Math.round(z * 10) / 10),
+        ).flat(),
+      ),
       ...Array.from(
         { length: 16 },
         (_, level) => Math.round((SOCKET_WIRE_LEAD_Z_MM + level * WIRE_LAYER_STEP_MM) * 10) / 10,

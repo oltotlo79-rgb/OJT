@@ -67,8 +67,16 @@ export const SOCKET_PIN_HOLE_COL_PITCH_MM = 12;
 export const SOCKET_PIN_HOLE_ROW_PITCH_MM = 5;
 /** 端子台のネジ端子ピッチ[mm]。 */
 export const BLOCK_PITCH_MM = 9;
-/** ソケットのネジ端子の盤面からの高さ[mm]。 */
+/** ソケット外側のネジ端子の盤面からの高さ[mm]。 */
 export const SOCKET_TERMINAL_Z_MM = 10;
+/** 外側・内側・差込面。高さは表示用の近似寸法で、実機の段構造を表す。 */
+export const SOCKET_STEP_HEIGHTS_MM = [8, 17, 26] as const;
+/** 装着部品の表示用本体高さ[mm]。描画と拡大表示の画角で共有する近似寸法。 */
+export const MOUNTED_PART_HEIGHT_MM = 34;
+/** ネジも台座と同じ段差にする（奥外側・奥内側・手前内側・手前外側）。 */
+export const SOCKET_TERMINAL_ROW_Z_MM = [10, 19, 19, 10] as const;
+/** 両端の端子領域の奥行。中央はリレーの差込面。 */
+export const SOCKET_TIER_DEPTH_MM = 20;
 /** ソケットの印字面より上で、圧着端子から外縁まで電線を見せる高さ[mm]。 */
 export const SOCKET_WIRE_LEAD_Z_MM = 14;
 /** 端子台のネジ端子の盤面からの高さ[mm]。 */
@@ -546,6 +554,26 @@ export function socketRowExit(rowIndex: number): 'rear' | 'front' {
   return rowIndex <= 1 ? 'rear' : 'front';
 }
 
+/** 描画と配線の接触検査で共有する、外側から中央へ上がる5区間。 */
+export function socketStepSections(length: number): Array<{
+  offsetY: number;
+  depth: number;
+  height: number;
+}> {
+  const halfTier = SOCKET_TIER_DEPTH_MM / 2;
+  return [
+    { offsetY: halfTier / 2, depth: halfTier, height: SOCKET_STEP_HEIGHTS_MM[0] },
+    { offsetY: halfTier * 1.5, depth: halfTier, height: SOCKET_STEP_HEIGHTS_MM[1] },
+    {
+      offsetY: length / 2,
+      depth: length - SOCKET_TIER_DEPTH_MM * 2,
+      height: SOCKET_STEP_HEIGHTS_MM[2],
+    },
+    { offsetY: length - halfTier * 1.5, depth: halfTier, height: SOCKET_STEP_HEIGHTS_MM[1] },
+    { offsetY: length - halfTier / 2, depth: halfTier, height: SOCKET_STEP_HEIGHTS_MM[0] },
+  ];
+}
+
 /** 差込穴（14ピン、2列×7段）の中心座標。本体の左奥の角からの相対座標[mm]。 */
 export function socketPinHoleOffsets(): Array<{ dx: number; dy: number }> {
   const out: Array<{ dx: number; dy: number }> = [];
@@ -697,7 +725,7 @@ function buildTerminals(): BoardTerminal[] {
             socketPinTerminal(socket.id, pin),
             `${circledNumber(pin)} ${roleLabel(role)}`,
             role,
-            vec3(socket.origin.x + dx, socket.origin.y + dy, socket.origin.z),
+            vec3(socket.origin.x + dx, socket.origin.y + dy, SOCKET_TERMINAL_ROW_Z_MM[rowIndex]),
             true,
             socketRowExit(rowIndex),
           ),

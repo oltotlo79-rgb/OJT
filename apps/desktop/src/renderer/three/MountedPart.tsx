@@ -4,6 +4,7 @@ import type {
   SocketId,
   SocketRole,
 } from '@ojt/board-model';
+import { MOUNTED_PART_HEIGHT_MM } from '@ojt/board-model';
 import { Html } from '@react-three/drei';
 import type { JSX } from 'react';
 import type { ThreeEvent } from '@react-three/fiber';
@@ -51,7 +52,7 @@ const RUNNING_STYLE = {
 } as const;
 
 /** 本体の高さ[mm]（ソケット面からの突き出し）。 */
-const BODY_HEIGHT_MM = 34;
+const BODY_HEIGHT_MM = MOUNTED_PART_HEIGHT_MM;
 /** 本体の余白[mm]（ソケット台座より一回り小さい）。 */
 const BODY_INSET_MM = 2;
 /** ネジ端子ティアを避けるため、奥行方向に余計に詰める量[mm]。 */

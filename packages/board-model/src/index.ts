@@ -62,6 +62,10 @@ export {
   SOCKET_PITCH_MM,
   SOCKET_SLOT_INSET_MM,
   SOCKET_TERMINAL_Z_MM,
+  SOCKET_TERMINAL_ROW_Z_MM,
+  SOCKET_STEP_HEIGHTS_MM,
+  MOUNTED_PART_HEIGHT_MM,
+  SOCKET_TIER_DEPTH_MM,
   SOCKET_WIRE_LEAD_Z_MM,
   SOCKET_TIER_INSET_MM,
   SOCKET_TIER_ROW_PITCH_MM,
@@ -70,6 +74,7 @@ export {
   socketPinOffset,
   socketPinTerminal,
   socketRowExit,
+  socketStepSections,
   SUPPLY_TERMINAL_COUNT,
   TERMINAL_PICK_RADIUS_MM,
   validateBoard,
@@ -324,3 +329,9 @@ export {
   type BoardProfile,
   type TrainingRuleProfile,
 } from './profiles.js';
+export {
+  terminalBlockShape,
+  terminalBlockFor,
+  TERMINAL_BLOCK_PAD_MM,
+  type TerminalBlockShape,
+} from './terminal-housing.js';

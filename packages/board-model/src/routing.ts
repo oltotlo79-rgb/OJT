@@ -9,6 +9,7 @@ import {
   HARNESS_PITCH_MM,
   isOffBoardTerminal,
   runZ,
+  SOCKET_TERMINAL_Z_MM,
   SOCKET_WIRE_LEAD_Z_MM,
   WIRE_LAYER_COUNT,
   WIRE_LAYER_STEP_MM,
@@ -33,6 +34,7 @@ import {
 } from './geometry.js';
 import { toPhysicalTerminal } from './roles.js';
 import type { BoardSession } from './session.js';
+import { terminalBlockFor } from './terminal-housing.js';
 
 /**
  * 電線の自動経路生成。設計仕様 §6.6。
@@ -576,14 +578,19 @@ function ownerOf(id: TerminalId): string {
   return dot < 0 ? id : id.slice(0, dot);
 }
 
-/** ソケットの端子から出る電線を、本体の外で低い配線層へ下ろす位置。 */
-function socketLeadExitY(board: BoardDefinition, terminal: BoardTerminal): number | undefined {
+/** ソケット・端子台から出る電線を、本体の外で低い配線層へ下ろす位置。 */
+export function terminalLeadExitY(
+  board: BoardDefinition,
+  terminal: BoardTerminal,
+  exit: 'rear' | 'front' = terminal.exit === 'front' ? 'front' : 'rear',
+): number | undefined {
   const socket = board.sockets.find((item) => item.id === ownerOf(terminal.id));
-  if (socket === undefined) return undefined;
+  const block = socket === undefined ? terminalBlockFor(board, terminal) : undefined;
+  if (socket === undefined && block === undefined) return undefined;
   const clearance = WIRE_DIAMETER_MM;
-  return terminal.exit === 'rear'
-    ? socket.origin.y - clearance
-    : socket.origin.y + socket.bodyMm.length + clearance;
+  const rear = socket?.origin.y ?? block!.y;
+  const front = socket === undefined ? block!.y + block!.h : socket.origin.y + socket.bodyMm.length;
+  return exit === 'rear' ? rear - clearance : front + clearance;
 }
 
 /** 同じソケットの同じ列から出る既存線を数え、端子付近の高さを分ける。 */
@@ -593,7 +600,7 @@ function socketLeadLevel(
   existingRoutes: readonly WireRoute[],
 ): number {
   const socket = board.sockets.find((item) => item.id === ownerOf(terminal.id));
-  if (socket === undefined) return 0;
+  if (socket === undefined) return terminalUseLevel(terminal, existingRoutes);
   const front = terminal.exit === 'front';
   let count = 0;
   for (const route of existingRoutes) {
@@ -626,14 +633,44 @@ function reusedTerminalLeadZ(
   return tenthMm(10 + terminalUseLevel(terminal, existingRoutes) * WIRE_LAYER_STEP_MM);
 }
 
-function socketLeadZ(
+export function terminalLeadZ(
   board: BoardDefinition,
   terminal: BoardTerminal,
   existingRoutes: readonly WireRoute[],
 ): number {
-  return tenthMm(
-    SOCKET_WIRE_LEAD_Z_MM + socketLeadLevel(board, terminal, existingRoutes) * WIRE_LAYER_STEP_MM,
-  );
+  const socket = board.sockets.find((item) => item.id === ownerOf(terminal.id));
+  const surface =
+    terminalBlockFor(board, terminal)?.leadZ ??
+    terminal.pos.z + (SOCKET_WIRE_LEAD_Z_MM - SOCKET_TERMINAL_Z_MM);
+  if (socket === undefined) {
+    return tenthMm(surface + terminalUseLevel(terminal, existingRoutes) * WIRE_LAYER_STEP_MM);
+  }
+  // 段差をそのまま出線高さへ足すと、他列の横走行と同じ高さになる。
+  // 縦走行の3.6mm刻みに上げ、横走行との1.8mmの間隔を保つ。
+  let z =
+    SOCKET_WIRE_LEAD_Z_MM +
+    Math.max(0, Math.ceil((surface - SOCKET_WIRE_LEAD_Z_MM - EPS) / WIRE_LAYER_STEP_MM)) *
+      WIRE_LAYER_STEP_MM;
+  const exitY = terminalLeadExitY(board, terminal)!;
+  const lo = Math.min(exitY, terminal.pos.y),
+    hi = Math.max(exitY, terminal.pos.y);
+  const occupied: number[] = [];
+  for (const route of existingRoutes) {
+    if (route.kind === 'harness') continue;
+    for (let index = 1; index < route.corners.length; index++) {
+      const a = route.corners[index - 1]!,
+        b = route.corners[index]!;
+      if (Math.abs(a.x - b.x) > EPS || Math.abs(a.z - b.z) > EPS || Math.abs(a.y - b.y) < EPS)
+        continue;
+      if (Math.abs(a.x - terminal.pos.x) > Math.abs(leadOutOffset(0)) + WIRE_DIAMETER_MM) continue;
+      if (Math.max(a.y, b.y) < lo || Math.min(a.y, b.y) > hi) continue;
+      occupied.push(a.z);
+    }
+  }
+  // 高い内側の列を先に配線した場合も、その高さを後続の外側の列へ再割当しない。
+  while (occupied.some((taken) => Math.abs(z - taken) < WIRE_DIAMETER_MM - EPS))
+    z += WIRE_LAYER_STEP_MM;
+  return tenthMm(z);
 }
 
 /** 渡り線が x 方向に占める範囲（渡り線には必ず折れ点があるので、範囲は空にならない）。 */
@@ -699,11 +736,11 @@ function directRunRoute(
   const jogY = a.pos.y + dir * (DIRECT_JOG_MM + level * CHANNEL_LANE_PITCH_MM);
   if (jogEntersChannelBand(board, lo, hi, a.pos.y, jogY)) return undefined;
 
-  const socketLead = socketLeadExitY(board, a) !== undefined;
+  const socketLead = terminalLeadExitY(board, a) !== undefined;
   const reused = Math.max(terminalUseLevel(a, existingRoutes), terminalUseLevel(b, existingRoutes));
   const raised = socketLead || reused > 0;
   const jogZ = socketLead
-    ? Math.max(socketLeadZ(board, a, existingRoutes), socketLeadZ(board, b, existingRoutes))
+    ? Math.max(terminalLeadZ(board, a, existingRoutes), terminalLeadZ(board, b, existingRoutes))
     : reused > 0
       ? tenthMm(10 + reused * WIRE_LAYER_STEP_MM)
       : WIRE_RUN_Y_Z_MM;
@@ -747,11 +784,11 @@ function sameNodeRoute(
   existingRoutes: readonly WireRoute[],
 ): WireRoute {
   const socketSurface =
-    socketLeadExitY(board, a) !== undefined || socketLeadExitY(board, b) !== undefined;
+    terminalLeadExitY(board, a) !== undefined || terminalLeadExitY(board, b) !== undefined;
   const reused = Math.max(terminalUseLevel(a, existingRoutes), terminalUseLevel(b, existingRoutes));
   const surface = socketSurface || reused > 0;
   const surfaceZ = socketSurface
-    ? Math.max(socketLeadZ(board, a, existingRoutes), socketLeadZ(board, b, existingRoutes))
+    ? Math.max(terminalLeadZ(board, a, existingRoutes), terminalLeadZ(board, b, existingRoutes))
     : tenthMm(10 + reused * WIRE_LAYER_STEP_MM);
   const corners = buildCorners(a.pos, [
     toStep(
@@ -979,14 +1016,14 @@ export function routeWire(
   const endReused = terminalUseLevel(b, existingRoutes) > 0;
   const startX = startSupplyX ?? first.x + startDx;
   const endX = endSupplyX ?? last.x + endDx;
-  // ソケットの上では高い位置を保ち、外縁を出てから低い配線層へ下ろす。
+  // ソケット・端子台の上では高い位置を保ち、外縁を出てから低い配線層へ下ろす。
   // 端子位置で直ちに下げると樹脂本体の中に線が埋まり、端子と離れて見える。
-  const startLeadY = socketLeadExitY(board, a);
-  const endLeadY = socketLeadExitY(board, b);
+  const startLeadY = terminalLeadExitY(board, a, first.y < a.pos.y ? 'rear' : 'front');
+  const endLeadY = terminalLeadExitY(board, b, last.y < b.pos.y ? 'rear' : 'front');
   const startLeadLevel = socketLeadLevel(board, a, existingRoutes);
   const endLeadLevel = socketLeadLevel(board, b, existingRoutes);
-  const startLeadZ = socketLeadZ(board, a, existingRoutes);
-  const endLeadZ = socketLeadZ(board, b, existingRoutes);
+  const startLeadZ = terminalLeadZ(board, a, existingRoutes);
+  const endLeadZ = terminalLeadZ(board, b, existingRoutes);
   const startLeadRunZ = tenthMm(WIRE_RUN_Y_Z_MM + startLeadLevel * WIRE_LAYER_STEP_MM);
   const endLeadRunZ = tenthMm(WIRE_RUN_Y_Z_MM + endLeadLevel * WIRE_LAYER_STEP_MM);
   const steps: RouteStep[] =
@@ -1144,7 +1181,7 @@ export function deskWires(board: BoardDefinition, session: BoardSession): DeskWi
 
 /**
  * 既設の青線ハーネス（端子台 → PB／PL本体）の経路。§6.4 / 写真
- * 配線帯は使わず、端子台の端子から**手前へまっすぐ降り**、機器の根元にある盤面の貫通穴に
+ * 配線帯は使わず、端子台の端子から**機器の方向へ引き出し**、機器の根元にある盤面の貫通穴に
  * 2mmピッチで平行に入って、盤の裏側の本体端子へつながる。機器の中心（押ボタンの頭・
  * ランプのレンズ）の上は通らない。
  *
@@ -1175,9 +1212,16 @@ export function routeFixedLinks(board: BoardDefinition): WireRoute[] {
     seen.set(owner, index + 1);
     const total = link.from.startsWith('PB') || link.to.startsWith('PB') ? 3 : 2;
     const offset = (index - (total - 1) / 2) * HARNESS_PITCH_MM;
-    const approachY = hole.y - HARNESS_APPROACH_MM;
+    const towardFront = hole.y > block.pos.y;
+    const approachY = hole.y + (towardFront ? -HARNESS_APPROACH_MM : HARNESS_APPROACH_MM);
     const holeX = hole.x + offset;
     const corners = buildCorners(block.pos, [
+      riseStep(terminalLeadZ(board, block, [])),
+      toStep(
+        block.pos.x,
+        terminalLeadExitY(board, block, towardFront ? 'front' : 'rear') ?? block.pos.y,
+        terminalLeadZ(board, block, []),
+      ),
       toStep(block.pos.x, approachY, WIRE_RUN_Y_Z_MM),
       toStep(holeX, approachY, WIRE_RUN_X_Z_MM),
       toStep(holeX, hole.y, WIRE_RUN_Y_Z_MM),

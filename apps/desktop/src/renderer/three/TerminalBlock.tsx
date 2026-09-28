@@ -1,8 +1,14 @@
-import type { BoardTerminal } from '@ojt/board-model';
+import { terminalBlockShape, TERMINAL_BLOCK_PAD_MM, type BoardTerminal } from '@ojt/board-model';
 import { Html } from '@react-three/drei';
 import { useMemo, type JSX } from 'react';
 import { TERMINAL_BLOCK_CAP_COLOR, TERMINAL_BLOCK_COLOR } from '../session/colors.js';
-import { blockFaceTexture } from './labels.js';
+import {
+  bakeSharedTexture,
+  blockFaceTexture,
+  labelFont,
+  makeCanvasTexture,
+  PX_PER_MM,
+} from './labels.js';
 import { noPick, sharedMaterial, UNIT_BOX } from './materials.js';
 import { toScene } from './coords.js';
 
@@ -16,18 +22,6 @@ import { toScene } from './coords.js';
  * ここで無効化しないと盤の上のラベルがツールバーのクリックまで飲み込んでしまう。
  */
 const LABEL_STYLE = { pointerEvents: 'none' } as const;
-
-/** 台座の余白[mm]。 */
-const PAD_MM = 6;
-
-/** 台座の最小の幅・奥行[mm]。端子が1〜2点しかない DC24V 端子台でも潰れないようにする。§6.1 */
-const MIN_BODY_MM = 16;
-
-/** 端子台の奥側カバーの奥行[mm]。 */
-const CAP_DEPTH_MM = 9;
-
-/** 印字の板をネジの頭より上に浮かせる量[mm]。 */
-const LABEL_LIFT_MM = 1.4;
 
 /** 端子台1個（台座＋端子＋ラベル）。 */
 export function TerminalBlock({
@@ -51,59 +45,83 @@ export function TerminalBlock({
   terminals: readonly BoardTerminal[];
 }): JSX.Element | null {
   // 印字は端子台1個につきテクスチャ1枚にまとめる（labels.ts の方針）
-  const faceTexture = useMemo(() => blockFaceTexture(terminals, PAD_MM), [terminals]);
-  if (terminals.length === 0) return null;
-  const xs = terminals.map((t) => t.pos.x);
-  const ys = terminals.map((t) => t.pos.y);
-  const zs = terminals.map((t) => t.pos.z);
-  const minX = Math.min(...xs);
-  const maxX = Math.max(...xs);
-  const minY = Math.min(...ys);
-  const maxY = Math.max(...ys);
-  const height = Math.max(...zs);
-  const center = toScene({ x: (minX + maxX) / 2, y: (minY + maxY) / 2, z: height / 2 });
-  const bodyWidth = Math.max(MIN_BODY_MM, maxX - minX + PAD_MM * 2);
-  const bodyDepth = Math.max(MIN_BODY_MM, maxY - minY + PAD_MM * 2);
+  const faceTexture = useMemo(
+    () => blockFaceTexture(terminals, TERMINAL_BLOCK_PAD_MM),
+    [terminals],
+  );
+  const shape = useMemo(() => terminalBlockShape(terminals), [terminals]);
+  const printedName = name.startsWith('TB_PL') || name.startsWith('TB_PB');
+  const nameTexture = useMemo(() => {
+    if (!printedName || shape === undefined) return undefined;
+    return bakeSharedTexture('block', `name:${label}:${shape.w}`, () =>
+      makeCanvasTexture(shape.w, shape.cap.h, (ctx) => {
+        ctx.font = labelFont(2.8);
+        ctx.fillStyle = '#F2F2EE';
+        ctx.fillText(label, (shape.w / 2) * PX_PER_MM, (shape.cap.h / 2) * PX_PER_MM);
+      }),
+    );
+  }, [label, printedName, shape]);
+  if (shape === undefined) return null;
+  const center = toScene({ x: shape.cx, y: shape.cy, z: shape.bodyTop / 2 });
   return (
     <group name={`block-${name}`}>
       <mesh
+        name={`block-body-${name}`}
         geometry={UNIT_BOX}
         raycast={noPick}
         material={sharedMaterial(TERMINAL_BLOCK_COLOR, { roughness: 0.7 })}
         position={center}
-        scale={[bodyWidth, bodyDepth, height]}
+        scale={[shape.w, shape.h, shape.bodyTop]}
       />
       {/* 端子の名前の印字（常時表示）。§6.4 */}
       {faceTexture === undefined ? null : (
-        <mesh raycast={noPick} position={[center[0], center[1], height + LABEL_LIFT_MM]}>
-          <planeGeometry args={[bodyWidth, bodyDepth]} />
+        <mesh raycast={noPick} position={[center[0], center[1], shape.printZ]}>
+          <planeGeometry args={[shape.w, shape.h]} />
           <meshBasicMaterial map={faceTexture} transparent depthWrite={false} />
         </mesh>
       )}
       {/* 端子台の奥側の黒いカバー（実物の見た目） */}
       <mesh
+        name={`block-cap-${name}`}
         geometry={UNIT_BOX}
         raycast={noPick}
         material={sharedMaterial(TERMINAL_BLOCK_CAP_COLOR, { roughness: 0.6 })}
-        position={[center[0], center[1] + bodyDepth / 2 + CAP_DEPTH_MM / 2, height / 2]}
-        scale={[bodyWidth, CAP_DEPTH_MM, height + 2]}
+        position={toScene({ x: shape.cx, y: shape.cap.y + shape.cap.h / 2, z: shape.cap.top / 2 })}
+        scale={[shape.cap.w, shape.cap.h, shape.cap.top]}
       />
-      <Html
-        center
-        style={LABEL_STYLE}
-        distanceFactor={320}
-        position={
-          labelOffsetMm === undefined
-            ? [center[0], center[1] + bodyDepth / 2 + 4, height]
-            : // `toScene()` は盤モデルの y を反転するので、手前（+y）はシーンの −Y になる
-              [center[0] + labelOffsetMm.x, center[1] - labelOffsetMm.y, height]
-        }
-        zIndexRange={[10, 0]}
-      >
-        <span className="block-label" data-label-rank={4}>
-          {label}
-        </span>
-      </Html>
+      {/* 3Dの銘板なら手前の配線を深度で正しく見せられる。DOMの名札で接続部を覆わない。 */}
+      {nameTexture === undefined ? null : (
+        <mesh
+          name={`block-name-${name}`}
+          raycast={noPick}
+          position={toScene({
+            x: shape.cx,
+            y: shape.cap.y + shape.cap.h / 2,
+            z: shape.cap.top + 0.05,
+          })}
+        >
+          <planeGeometry args={[shape.w, shape.cap.h]} />
+          <meshBasicMaterial map={nameTexture} transparent depthWrite={false} />
+        </mesh>
+      )}
+      {printedName ? null : (
+        <Html
+          center
+          style={LABEL_STYLE}
+          distanceFactor={320}
+          position={
+            labelOffsetMm === undefined
+              ? [center[0], center[1] + shape.h / 2 + 4, shape.printZ]
+              : // `toScene()` は盤モデルの y を反転するので、手前（+y）はシーンの −Y になる
+                [center[0] + labelOffsetMm.x, center[1] - labelOffsetMm.y, shape.printZ]
+          }
+          zIndexRange={[10, 0]}
+        >
+          <span className="block-label" data-label-rank={4}>
+            {label}
+          </span>
+        </Html>
+      )}
     </group>
   );
 }

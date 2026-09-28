@@ -169,7 +169,7 @@ export function withBoardProfile(base: BoardDefinition, profile?: BoardProfile):
       panelHole: { x, y: y - 11, z: 0 },
     });
     for (const [index, sign] of (['c', 'a', 'b'] as const).entries()) {
-      addTerminal('TB_PB', `${number}${sign}`, `PB${number} ${sign}`, sign, x - 9 + index * 9, 172);
+      addTerminal('TB_PB', `${number}${sign}`, `PB${number} ${sign}`, sign, x - 9 + index * 9, 168);
       links.push({
         id: `aux-pb-${number}-${sign}`,
         from: terminalId('TB_PB', `${number}${sign}`),
@@ -222,18 +222,18 @@ export function withBoardProfile(base: BoardDefinition, profile?: BoardProfile):
       id: 'TB_PB_EXT',
       kind: 'block',
       x: 355,
-      y: 166,
+      y: 160,
       w: (profile.extraPushButtons - 1) * 48 + 30,
-      h: 12,
+      h: 16,
     });
   if (profile.extraLamps > 0)
     footprints.push({
       id: 'TB_PL_EXT',
       kind: 'block',
       x: 359,
-      y: 124,
+      y: 122,
       w: (profile.extraLamps - 1) * 48 + 22,
-      h: 12,
+      h: 16,
     });
   const width = 550;
   return {

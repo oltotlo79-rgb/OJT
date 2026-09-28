@@ -42,6 +42,15 @@ function session() {
  */
 const ALLOWED_CORNER_Z = new Set<number>([
   ...WIRE_Z_LADDER_MM,
+  // 端子台と、階段状ソケットの内側の列の出線高さ。
+  ...[12].flatMap((base) =>
+    Array.from({ length: 16 }, (_, level) =>
+      [
+        base + level * WIRE_LAYER_STEP_MM,
+        base + level * WIRE_LAYER_STEP_MM + SOCKET_LEAD_X_OFFSET_Z_MM,
+      ].map((z) => Math.round(z * 10) / 10),
+    ).flat(),
+  ),
   ...Array.from({ length: 16 }, (_, level) => SOCKET_WIRE_LEAD_Z_MM + level * WIRE_LAYER_STEP_MM),
   ...Array.from(
     { length: 16 },
@@ -104,7 +113,8 @@ describe('routeWire（直角配線・部品回避）', () => {
     expect(crossesFootprint(JIPM_BOARD, route)).toBe(false);
     const terminal = JIPM_BOARD.terminals.find((t) => String(t.id) === 'S1.10');
     expect(route.points.at(-1)).toEqual(terminal?.pos);
-    expect(route.corners.some((p) => p.z === SOCKET_WIRE_LEAD_Z_MM)).toBe(true);
+    // S1.10は内側の高い列。外側の14mmへ下げず、上方の縦走行段24.8mmから引き出す。
+    expect(route.corners.some((p) => p.z === 24.8)).toBe(true);
   });
 
   it('純粋にy方向だけ渡る経路は x方向の段（2.4mm）を1度も通らない', () => {

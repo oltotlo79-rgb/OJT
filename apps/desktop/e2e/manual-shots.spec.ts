@@ -597,8 +597,11 @@ async function openProblem(modeTestId: string, problemId: string): Promise<void>
     .click();
   await page.getByTestId(`open-${problemId}`).click();
   const change = page.getByTestId('problem-change-confirm');
+  // 課題の読込み後に確認画面が出る。クリック直後のisVisibleだけでは表示前に通過する。
+  await expect(change.or(page.getByTestId('session-back'))).toBeVisible();
   if (await change.isVisible())
     await change.getByRole('button', { name: '保存せず進む', exact: true }).click();
+  await expect(page.getByTestId('session-back')).toBeVisible();
 }
 
 /** WebGL の初期化とシーンの1フレーム目を待つ。 */
@@ -1929,6 +1932,7 @@ test.describe.serial('取扱説明書の図', () => {
     await page.getByTestId('open-b-001').click();
     // 直前に開いていた b-003（タイマを載せた作業）から移るときは確認が出る
     const change = page.getByTestId('problem-change-confirm');
+    await expect(change.or(page.getByTestId('tour-guide'))).toBeVisible();
     if (await change.isVisible())
       await change.getByRole('button', { name: '保存せず進む', exact: true }).click();
     await expect(page.getByTestId('tour-guide')).toBeVisible();

@@ -31,7 +31,6 @@ import {
   PLC_UNIT_PC10G,
   plcCoverAt,
   SUPPLY_EXIT_MM,
-  SUPPLY_EXIT_Z_MM,
   TASK1_SOCKET_ROLES,
   withPlcUnit,
   type BoardDefinition,
@@ -270,14 +269,20 @@ describe('deskRoutes（§10.1 / §11.3）', () => {
         (p) => Math.abs(p.x - DESK_LIP_X_MM) < 1e-6 && Math.abs(p.z - DESK_RUN_X_Z_MM) < 1e-6,
       );
       expect(lift).toBeDefined();
-      // 盤の上は盤の電線と同じ高さのはしごを使う（机上の段より低い）。端子そのものと、
-      // P・N端子を横へ逃がす区間（ネジ頭を越える高さ。盤の中の経路器と同じ）は除く
-      const ends = [route.corners[0], route.corners[route.corners.length - 1]];
-      const onBoard = route.corners.filter(
-        (p) =>
-          p.x < board.sizeMm.width && !ends.includes(p) && Math.abs(p.z - SUPPLY_EXIT_Z_MM) > 1e-6,
-      );
-      expect(onBoard.every((p) => p.z <= BOARD_RUN_Y_Z_MM + 1e-6)).toBe(true);
+      // 台座からの出線は高く保ち、台座の外から盤の縁へ向かう水平走行で低い段に戻す。
+      const exitRuns = route.corners.slice(1).flatMap((b, index) => {
+        const a = route.corners[index]!;
+        return Math.abs(a.x - b.x) > 1 &&
+          Math.abs(a.y - b.y) < 1e-6 &&
+          (Math.abs(a.x - DESK_LIP_X_MM) < 1e-6 || Math.abs(b.x - DESK_LIP_X_MM) < 1e-6) &&
+          Math.min(a.x, b.x) < board.sizeMm.width
+          ? [[a, b]]
+          : [];
+      });
+      expect(exitRuns.length).toBeGreaterThan(0);
+      for (const segment of exitRuns) {
+        expect(segment.every((p) => p.z <= BOARD_RUN_Y_Z_MM + 1e-6)).toBe(true);
+      }
     }
   });
 

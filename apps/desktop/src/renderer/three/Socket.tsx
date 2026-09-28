@@ -1,6 +1,9 @@
 import {
   socketPinHoleOffsets,
+  socketStepSections,
+  SOCKET_STEP_HEIGHTS_MM,
   SOCKET_TERMINAL_Z_MM,
+  SOCKET_TIER_DEPTH_MM,
   SOCKET_WIRE_LEAD_Z_MM,
   type BoardTerminal,
   type MountableKind,
@@ -12,7 +15,14 @@ import { parseTerminalId } from '@ojt/circuit-sim';
 import { Html } from '@react-three/drei';
 import { useEffect, useMemo, useRef, type JSX } from 'react';
 import type { ThreeEvent } from '@react-three/fiber';
-import { Matrix4, Quaternion, Vector3, type InstancedMesh } from 'three';
+import {
+  BufferGeometry,
+  Float32BufferAttribute,
+  Matrix4,
+  Quaternion,
+  Vector3,
+  type InstancedMesh,
+} from 'three';
 import { partKindLabel, socketPinTooltip } from '../i18n/ja.js';
 import {
   SOCKET_BODY_COLOR,
@@ -21,7 +31,13 @@ import {
   SOCKET_SELECTED_COLOR,
 } from '../session/colors.js';
 import { coilBusSide, pinGroup, pinPartners } from '../session/socket-pins.js';
-import { socketFaceTexture, SOCKET_PLATE_MARGIN_MM } from './labels.js';
+import {
+  socketFaceRows,
+  socketFaceTexture,
+  socketLabelBoxes,
+  SOCKET_PLATE_MARGIN_MM,
+  type LabelBox,
+} from './labels.js';
 import {
   applyInstanceMatrices,
   noPick,
@@ -47,9 +63,8 @@ import { toScene } from './coords.js';
 const LABEL_STYLE = { pointerEvents: 'none' } as const;
 
 /** ネジ端子ティアの奥行[mm]（2段ぶん＋余白）。 */
-const TIER_DEPTH_MM = 20;
-/** 外側から中央へ上がる2段の端子台と、中央の差込領域の高さ[mm]。 */
-export const SOCKET_STEP_HEIGHTS_MM = [5.8, 7.8, 9.8] as const;
+const TIER_DEPTH_MM = SOCKET_TIER_DEPTH_MM;
+export { socketStepSections, SOCKET_STEP_HEIGHTS_MM } from '@ojt/board-model';
 /** 中央の差込領域の高さ[mm]。装着部品の底面もこの高さに合わせる。 */
 export const SOCKET_BODY_TOP_Z_MM = SOCKET_STEP_HEIGHTS_MM[2];
 /** 印字の板をネジの頭より上に浮かせる量[mm]（ネジに隠れないようにする）。 */
@@ -71,28 +86,18 @@ const PIN_HOLE_RADIUS_MM = 1;
 const PRINT_CLEARANCE_MM = 0.5;
 
 /**
- * 印字の板を置く高さ[mm]。利用者指摘 2026-09-20
- * 「3Dのリレーソケット部のCOMの文字重なって見えないけど」の**直接の原因**がここだった。
- *
- * 板はこれまで `TIER_HEIGHT_MM + LABEL_LIFT_MM` ＝ **11mm** に置いていた。ところが黄色い保持レバーは
- * `LEVER_CENTER_Z_MM`（10mm）を中心に厚み 2.5mm あり、天面は **11.25mm** ＝ 板より 0.25mm 高い。
- * 板は `depthWrite={false}` でも深度**テスト**はするので、レバーの方が手前と判定され、
- * レバーに重なる印字はレバーに塗り潰される。手前のレバー（本体の手前端から 24mm）は板の座標で
- * y 54〜58mm を占め、COM の段見出し（y 56.5〜59.7mm）の**下半分をちょうど隠していた**。
- * 4つの段見出しのうち COM だけが読めなくなっていたのはこのためで、焼いたテクスチャ自体は
- * 1文字も重なっていない（`test/socket-face-print.test.ts` が mm で確かめている）。
- *
- * 直し方は「板をソケットのいちばん高い立体より上へ出す」。数値を直打ちせずレバーの寸法から出すので、
- * レバーを厚くしても板が自動で追随する。板は 11mm → 11.75mm と 0.75mm 上がるだけなので、
- * 斜めから見たときのネジと番号のずれ（視差）はほぼ変わらない。
+ * 保持レバーに重なる段見出しの高さ。COM等をレバーで隠さない。
+ * 番号・役割文字はこの高さを使わず、各ネジの高さへ追随する。
+ * 全印字を1枚の平面へ載せると階段状の端子から番号が浮いて見えるため、
+ * `socketPrintGeometry()` が文字ごとの高さを持つ1メッシュへ分ける。
  */
 export const SOCKET_PRINT_Z_MM = Math.max(
   SOCKET_STEP_HEIGHTS_MM[1] + LABEL_LIFT_MM,
   LEVER_TOP_Z_MM + PRINT_CLEARANCE_MM,
 );
 
-/** 端子の上の電線が印字板・レバーを抜けて見えるための間隔。 */
-export const SOCKET_WIRE_CLEARANCE_MM = SOCKET_WIRE_LEAD_Z_MM - SOCKET_PRINT_Z_MM;
+/** 外向きの出線と、各ネジ脇の印字との高さの間隔。 */
+export const SOCKET_WIRE_CLEARANCE_MM = SOCKET_WIRE_LEAD_Z_MM - (SOCKET_TERMINAL_Z_MM + 1.2);
 
 /**
  * 保持レバー2本が印字の板の上に落とす影（板の左上を原点とする mm）。
@@ -117,6 +122,92 @@ export function socketLeverFootprints(bodyMm: { width: number; length: number })
       y1: SOCKET_PLATE_MARGIN_MM + y + LEVER_WIDTH_MM / 2,
     }),
   );
+}
+
+export interface SocketPrintPatch {
+  box: LabelBox;
+  z: number;
+  terminalId?: string;
+}
+
+/** 番号は各ネジの段、段見出しはその直下の立体より上へ配置する。 */
+export function socketPrintPatches(
+  socket: SocketDefinition,
+  terminals: readonly BoardTerminal[],
+): SocketPrintPatch[] {
+  const margin = SOCKET_PLATE_MARGIN_MM;
+  const originX = socket.origin.x - margin;
+  const originY = socket.origin.y - margin;
+  const patches: SocketPrintPatch[] = [];
+  const overlaps = (a: LabelBox, b: LabelBox): boolean =>
+    a.x0 < b.x1 && a.x1 > b.x0 && a.y0 < b.y1 && a.y1 > b.y0;
+  for (const terminal of terminals) {
+    const boxes = socketLabelBoxes(terminal, originX, originY);
+    for (const box of [boxes.number, boxes.role]) {
+      patches.push({ box, z: terminal.pos.z + 1.2, terminalId: terminal.id });
+    }
+  }
+  const { headers, bands } = socketFaceRows(terminals, originX, originY);
+  for (const box of [...headers.map((header) => header.plate), ...bands]) {
+    const nearest = [...terminals].sort(
+      (a, b) =>
+        Math.abs(a.pos.y - originY - (box.y0 + box.y1) / 2) -
+        Math.abs(b.pos.y - originY - (box.y0 + box.y1) / 2),
+    )[0];
+    let z = (nearest?.pos.z ?? SOCKET_TERMINAL_Z_MM) + 1.2;
+    for (const section of socketStepSections(socket.bodyMm.length)) {
+      if (
+        overlaps(box, {
+          x0: margin,
+          x1: margin + socket.bodyMm.width,
+          y0: margin + section.offsetY - section.depth / 2,
+          y1: margin + section.offsetY + section.depth / 2,
+        })
+      )
+        z = Math.max(z, section.height + PRINT_CLEARANCE_MM);
+    }
+    if (socketLeverFootprints(socket.bodyMm).some((lever) => overlaps(box, lever))) {
+      z = Math.max(z, SOCKET_PRINT_Z_MM);
+    }
+    patches.push({ box, z });
+  }
+  return patches;
+}
+
+/** 1枚の共有テクスチャを、段ごとの高さを持つ1メッシュに貼る。 */
+export function socketPrintGeometry(
+  socket: SocketDefinition,
+  terminals: readonly BoardTerminal[],
+): BufferGeometry {
+  const width = socket.bodyMm.width + SOCKET_PLATE_MARGIN_MM * 2;
+  const length = socket.bodyMm.length + SOCKET_PLATE_MARGIN_MM * 2;
+  const vertices: number[] = [];
+  const uvs: number[] = [];
+  const indices: number[] = [];
+  for (const { box, z } of socketPrintPatches(socket, terminals)) {
+    // アンチエイリアスの縁も取り込む。隣の文字との最小余白0.8mmより小さくする。
+    const x0 = Math.max(0, box.x0 - 0.1),
+      x1 = Math.min(width, box.x1 + 0.1);
+    const y0 = Math.max(0, box.y0 - 0.1),
+      y1 = Math.min(length, box.y1 + 0.1);
+    const offset = vertices.length / 3;
+    for (const [x, y] of [
+      [x0, y1],
+      [x1, y1],
+      [x1, y0],
+      [x0, y0],
+    ]) {
+      vertices.push(x! - width / 2, length / 2 - y!, z);
+      uvs.push(x! / width, 1 - y! / length);
+    }
+    indices.push(offset, offset + 1, offset + 2, offset, offset + 2, offset + 3);
+  }
+  const geometry = new BufferGeometry();
+  geometry.setAttribute('position', new Float32BufferAttribute(vertices, 3));
+  geometry.setAttribute('uv', new Float32BufferAttribute(uvs, 2));
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
+  return geometry;
 }
 
 /** ソケット本体の光り方。Phase 7 設計 §7.3.4「ホバー＝細い縁取り、選択＝太い縁取り」。 */
@@ -257,30 +348,6 @@ function PinHoles({
   );
 }
 
-/** 外側の低い段、内側の段、中央の差込部を連続した5区間に分ける。 */
-export function socketStepSections(length: number): Array<{
-  offsetY: number;
-  depth: number;
-  height: number;
-}> {
-  const halfTier = TIER_DEPTH_MM / 2;
-  return [
-    { offsetY: halfTier / 2, depth: halfTier, height: SOCKET_STEP_HEIGHTS_MM[0] },
-    { offsetY: halfTier * 1.5, depth: halfTier, height: SOCKET_STEP_HEIGHTS_MM[1] },
-    {
-      offsetY: length / 2,
-      depth: length - TIER_DEPTH_MM * 2,
-      height: SOCKET_BODY_TOP_Z_MM,
-    },
-    {
-      offsetY: length - halfTier * 1.5,
-      depth: halfTier,
-      height: SOCKET_STEP_HEIGHTS_MM[1],
-    },
-    { offsetY: length - halfTier / 2, depth: halfTier, height: SOCKET_STEP_HEIGHTS_MM[0] },
-  ];
-}
-
 /** 段を低くしてもネジ頭が宙に浮かないよう、端子ごとの小さな座をまとめて描く。 */
 function TerminalPads({
   socket,
@@ -296,7 +363,7 @@ function TerminalPads({
       const localY = terminal.pos.y - socket.origin.y;
       const section = sections.find((item) => Math.abs(localY - item.offsetY) <= item.depth / 2);
       const base = section?.height ?? SOCKET_STEP_HEIGHTS_MM[1];
-      const height = SOCKET_TERMINAL_Z_MM - 0.8 - base;
+      const height = terminal.pos.z - 0.8 - base;
       return new Matrix4().compose(
         new Vector3(...toScene({ x: terminal.pos.x, y: terminal.pos.y, z: base + height / 2 })),
         new Quaternion(),
@@ -372,6 +439,8 @@ export function Socket({
     [terminals, originX, originY, plateWidth, plateLength],
   );
   const holes = useMemo(() => socketPinHoleOffsets(), []);
+  const printGeometry = useMemo(() => socketPrintGeometry(socket, terminals), [socket, terminals]);
+  useEffect(() => () => printGeometry.dispose(), [printGeometry]);
 
   const bodyCenter = toScene({ x: centerX, y: centerY, z: SOCKET_BODY_TOP_Z_MM / 2 });
   const bodyEvents = {
@@ -428,9 +497,14 @@ export function Socket({
       })}
       {/* ネジ端子の番号と役割の印字（常時表示）。§6.2 */}
       {faceTexture === undefined ? null : (
-        <mesh raycast={noPick} position={[bodyCenter[0], bodyCenter[1], SOCKET_PRINT_Z_MM]}>
-          <planeGeometry args={[plateWidth, plateLength]} />
-          <meshBasicMaterial map={faceTexture} transparent depthWrite={false} />
+        <mesh
+          name={`socket-print-${socket.id}`}
+          raycast={noPick}
+          position={[bodyCenter[0], bodyCenter[1], 0]}
+          geometry={printGeometry}
+        >
+          {/* 段ごとの印字は透視投影で重なることがある。透明部を捨て、文字の深度は記録する。 */}
+          <meshBasicMaterial map={faceTexture} transparent alphaTest={0.25} depthWrite />
         </mesh>
       )}
       <Html

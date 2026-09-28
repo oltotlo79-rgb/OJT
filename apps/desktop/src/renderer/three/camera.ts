@@ -5,6 +5,8 @@ import {
   OUTLET_ORIGIN_MM,
   PLC_TERMINAL_PITCH_MM,
   PLC_UNIT_FX5U,
+  SOCKET_STEP_HEIGHTS_MM,
+  MOUNTED_PART_HEIGHT_MM,
 } from '@ojt/board-model';
 import type { PlcUnitDefinition } from '@ojt/board-model';
 import type { CameraPreset } from '../app/store-types.js';
@@ -277,9 +279,13 @@ function baseCameraPose(preset: CameraPreset, options: CameraPoseOptions): Camer
       };
     }
     case 'socket': {
-      // ソケット段＋端子台の外接矩形がちょうど収まる距離まで寄る（固定倍率で寄せない）
+      // 盤面の矩形だけでは、手前へ張り出した立体が透視投影で拡大されて左右が切れる。
+      // 装着部品の天面高さを距離へ足し、段付きソケットとリレーの両方に余白を確保する。
       const rect = SOCKET_VIEW_RECT;
-      const distance = fitDistanceMm(rect.w, rect.h, options.aspect ?? SOCKET_VIEW_ASPECT);
+      const distance =
+        fitDistanceMm(rect.w, rect.h, options.aspect ?? SOCKET_VIEW_ASPECT) +
+        SOCKET_STEP_HEIGHTS_MM[2] +
+        MOUNTED_PART_HEIGHT_MM;
       const center: [number, number, number] = [
         rect.x + rect.w / 2 - BOARD_WIDTH_MM / 2,
         h / 2 - (rect.y + rect.h / 2),
