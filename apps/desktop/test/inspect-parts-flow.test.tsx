@@ -119,19 +119,19 @@ describe('判定の往復（judgeParts → inspectResult → 結果画面）', (
     expect(sent.filter((c) => c['type'] === 'judgeParts')).toHaveLength(1);
   });
 
-  it('結果画面が正解数・所要時間・危険操作を出す', () => {
+  it('結果画面が正解数・所要時間・危険操作を出す', async () => {
     if (C1 === undefined) return;
     useStore.getState().setJudge(judgeResult({ hazardCount: 2 }));
     useStore.getState().setRoute('result');
     render(<>{renderRoute('result')}</>);
-    expect(screen.getByTestId('verdict').textContent).toBe('合格');
+    expect((await screen.findByTestId('verdict')).textContent).toBe('合格');
     expect(screen.getByTestId('correct-count').textContent).toContain(
       `${String(C1.parts.length)} / ${String(C1.parts.length)}`,
     );
     expect(screen.getByTestId('result-elapsed').textContent).toContain('05:00.0');
   });
 
-  it('「もう一度」でマークシート・点検中の部品・プローブが消えてセッションへ戻る', () => {
+  it('「もう一度」でマークシート・点検中の部品・プローブが消えてセッションへ戻る', async () => {
     if (C1 === undefined) return;
     const first = C1.parts[0];
     if (first === undefined) return;
@@ -143,7 +143,7 @@ describe('判定の往復（judgeParts → inspectResult → 結果画面）', (
     useStore.getState().setJudge(judgeResult());
     useStore.getState().setRoute('result');
     render(<>{renderRoute('result')}</>);
-    fireEvent.click(screen.getByRole('button', { name: 'もう一度' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'もう一度' }));
     const state = useStore.getState();
     expect(state.route).toBe('session');
     expect(state.answers).toEqual([]);
