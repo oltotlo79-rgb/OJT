@@ -36,6 +36,9 @@ export default defineConfig({
           index: resolve(import.meta.dirname, 'src/main/index.ts'),
           'definition-worker': resolve(import.meta.dirname, 'src/main/definition-worker.ts'),
         },
+        // 遅延読み込み後も、課題検証Workerを import.meta.dirname の直下から起動する。
+        // main のチャンクと Worker の出力先を同じディレクトリに揃える。
+        output: { chunkFileNames: '[name]-[hash].js' },
       },
     },
   },
