@@ -19,6 +19,7 @@ import {
   WirePickBody,
   WIRE_RADIUS_MM,
 } from './Wire.js';
+import { WireConnections } from './WireConnections.js';
 
 /**
  * 机上へ渡るケーブル。設計仕様 §6.6 / §10.1 / §11.3。決定表#9
@@ -50,7 +51,7 @@ export function offBoardTerminals(board: BoardDefinition): BoardTerminal[] {
  * そのまま `dispose()` になる。
  */
 function DeskCableOutline({ route }: { route: DeskRoute }): JSX.Element {
-  const geometry = useTubeGeometry(route, WIRE_RADIUS_MM * 1.5);
+  const geometry = useTubeGeometry(route, WIRE_RADIUS_MM * 1.15);
   return (
     <mesh
       geometry={geometry}
@@ -92,6 +93,7 @@ function DeskCable({ route, pick }: { route: DeskRoute; pick: DeskPick | undefin
         raycast={noPick}
         material={sharedMaterial(bodyColor, { roughness: 0.55, metalness: 0.05 })}
       />
+      <WireConnections route={route} locked={false} />
       {pick?.pickable === true ? (
         <WirePickBody
           route={route}
@@ -137,11 +139,13 @@ function DeskWiresImpl({
   board,
   session,
   pick,
+  routes: supplied,
 }: {
   board: BoardDefinition;
   session: BoardSession;
   /** 押して選べるようにするとき（省略すると描くだけ）。 */
   pick?: DeskPick | undefined;
+  routes?: DeskRoute[];
 }): JSX.Element | null {
   const signature = deskWireSignature(board, session);
   /*
@@ -156,8 +160,8 @@ function DeskWiresImpl({
   const routes = useMemo(() => {
     void signature; // 署名が同じ＝形も色も同じ。作り直しの引き金としてだけ使う
     const { board: b, session: s } = latest.current;
-    return deskRoutes(b, s);
-  }, [signature]);
+    return supplied ?? deskRoutes(b, s);
+  }, [signature, supplied]);
   if (routes.length === 0) return null;
   return (
     <group name="desk-wires">

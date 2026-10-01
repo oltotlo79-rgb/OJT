@@ -8,9 +8,18 @@ import {
   roundVec,
   vec3,
   vecEquals,
+  wireSegmentDistance,
 } from '../src/index.js';
 
 describe('geometry: 幾何ユーティリティ', () => {
+  it('線分間距離は交差・平行・立体交差・端点・長さゼロを区別する', () => {
+    expect(wireSegmentDistance(vec3(0, 0), vec3(10, 0), vec3(5, -5), vec3(5, 5))).toBe(0);
+    expect(wireSegmentDistance(vec3(0, 0), vec3(10, 0), vec3(0, 3), vec3(10, 3))).toBe(3);
+    expect(wireSegmentDistance(vec3(0, 0), vec3(10, 0), vec3(5, -5, 4), vec3(5, 5, 4))).toBe(4);
+    expect(wireSegmentDistance(vec3(0, 0), vec3(2, 0), vec3(5, 4), vec3(5, 8))).toBe(5);
+    expect(wireSegmentDistance(vec3(5, 3), vec3(5, 3), vec3(0, 0), vec3(10, 0))).toBe(3);
+    expect(wireSegmentDistance(vec3(0, 0), vec3(0, 0), vec3(3, 4), vec3(3, 4))).toBe(5);
+  });
   it('距離・折れ線長・丸め', () => {
     expect(distance(vec3(0, 0), vec3(3, 4))).toBe(5);
     expect(polylineLength([vec3(0, 0), vec3(3, 4), vec3(3, 10)])).toBe(11);

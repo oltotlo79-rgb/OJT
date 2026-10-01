@@ -1,10 +1,11 @@
-import { routeFixedLinks, type BoardDefinition } from '@ojt/board-model';
+import { routeFixedLinks, type BoardDefinition, type WireRoute } from '@ojt/board-model';
 import { useEffect, useMemo, useRef, type JSX } from 'react';
 import { Matrix4, Quaternion, Vector3, type InstancedMesh } from 'three';
 import { PANEL_HOLE_COLOR, WIRE_COLORS } from '../session/colors.js';
 import { toScene } from './coords.js';
 import { applyInstanceMatrices, PIN_HOLE_GEOMETRY, sharedMaterial } from './materials.js';
 import { buildTubeGeometry } from './Wire.js';
+import { WireConnections } from './WireConnections.js';
 
 /**
  * 既設配線（端子台 → 各表示灯・押ボタン）。設計仕様 §6.4 / §6.5。
@@ -31,8 +32,14 @@ function noPick(): void {
 }
 
 /** 既設配線と、その行き先の盤面の貫通穴をまとめて描く。 */
-export function FixedWires({ board }: { board: BoardDefinition }): JSX.Element {
-  const routes = useMemo(() => routeFixedLinks(board), [board]);
+export function FixedWires({
+  board,
+  routes: supplied,
+}: {
+  board: BoardDefinition;
+  routes?: WireRoute[];
+}): JSX.Element {
+  const routes = useMemo(() => supplied ?? routeFixedLinks(board), [board, supplied]);
   const geometries = useMemo(
     () => routes.map((route) => ({ id: route.wireId, geometry: buildTubeGeometry(route) })),
     [routes],
@@ -62,6 +69,9 @@ export function FixedWires({ board }: { board: BoardDefinition }): JSX.Element {
     <group name="fixed-wires">
       {geometries.map((entry) => (
         <mesh key={entry.id} geometry={entry.geometry} material={material} raycast={noPick} />
+      ))}
+      {routes.map((route) => (
+        <WireConnections key={route.wireId} route={route} locked={false} />
       ))}
       {/* 貫通穴は共有ジオメトリ1個の `instancedMesh` に畳む（20ドローコール → 1）。3D-02 */}
       <PanelHoles holes={holes} />

@@ -6,7 +6,6 @@ import {
   JIPM_BOARD,
   PLC_UNIT_FX5U,
   plcUnitFor,
-  routeSession,
   trySocketOf,
   type BoardSession,
   type PlcUnitDefinition,
@@ -24,6 +23,7 @@ import {
 import { COIL_COL } from '@ojt/ladder-core';
 import { expect, test, type ElectronApplication, type Locator, type Page } from '@playwright/test';
 import { launchApp } from './app.js';
+import { visibleRoutes } from '../src/renderer/session/wire-routes.js';
 import { powerWellCenterMm } from '../src/renderer/three/AcFixtures.js';
 import { findFixtureFootprint, FIXTURE_HEIGHT_MM } from '../src/renderer/three/Fixtures.js';
 import { finishedSize, overlayHtml, planCallouts } from '../scripts/annotate-shots.mjs';
@@ -783,7 +783,7 @@ async function clickWireFor(
   box: CanvasBox,
 ): Promise<{ x: number; y: number }> {
   const wire = session.wires.find((w) => w.id === wireId);
-  const route = routeSession(JIPM_BOARD, session).find((r) => r.wireId === wireId);
+  const route = visibleRoutes(JIPM_BOARD, session).routes.find((r) => r.wireId === wireId);
   if (wire === undefined || route === undefined) throw new Error(`電線 ${wireId} がありません`);
   const candidates: Array<{ point: { x: number; y: number; z: number }; length: number }> = [];
   for (let index = 0; index + 1 < route.corners.length; index += 1) {
@@ -1505,7 +1505,7 @@ test.describe.serial('取扱説明書の図', () => {
     await page.getByTestId('report-cancel').click();
 
     // 端子を1件登録して「指摘一覧」に中身を作る
-    const firstTerminal = roleTerminalPoint(roles, 'CR1.9', box);
+    const firstTerminal = roleTerminalPoint(roles, 'TB_PL.1+', box);
     await page.mouse.click(firstTerminal.x, firstTerminal.y);
     await expect(page.getByTestId('report-popover')).toBeVisible();
     await page.locator('[data-testid^="report-kind-"]').first().click();
@@ -1529,6 +1529,23 @@ test.describe.serial('取扱説明書の図', () => {
     );
     await page.getByTestId('report-cancel').click();
     await page.getByRole('button', { name: '白', exact: true }).click();
+    // 断線した青線を外し、同じ両端を白線でつなぎ直す。修復の2つの一覧に実例を残す。
+    const broken = built.value.session.wires.find((wire) => wire.id === brokenWire);
+    if (broken === undefined) throw new Error('断線した電線がありません');
+    await openPanel('wire-list');
+    await brokenRow.click();
+    await page
+      .getByRole('button', { name: 'この電線を外す（Delete / Backspace）', exact: true })
+      .click();
+    await expect(brokenRow).toHaveCount(0);
+    await expect(page.getByTestId('removed-wires')).not.toHaveText('なし');
+    await closePanel('wire-list');
+    if (await clearFocus.isVisible()) await clearFocus.click();
+    box = await waitForBoard();
+    for (const terminal of [broken.from, broken.to]) {
+      const point = roleTerminalPoint(roles, String(terminal), box);
+      await page.mouse.click(point.x, point.y);
+    }
     const repairFrom = roleTerminalPoint(roles, 'CR1.6', box);
     const repairTo = roleTerminalPoint(roles, 'TB_PL.1+', box);
     await page.mouse.click(repairFrom.x, repairFrom.y);

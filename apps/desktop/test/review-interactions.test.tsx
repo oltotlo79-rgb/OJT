@@ -124,13 +124,16 @@ it('診断メモを編集しても同じIDと関連測定を保持し、取消�
   expect(useStore.getState().measurements).toHaveLength(1);
 });
 
-it('PLC動画のメーカーを切り替えても選択中の再生速度が反映される', () => {
-  render(<TutorialVideoButton mode="plc" />);
-  fireEvent.click(screen.getByTestId('tutorial-plc'));
-  fireEvent.change(screen.getByLabelText('動画の再生速度'), { target: { value: '1.5' } });
-  fireEvent.click(screen.getByTestId('tutorial-vendor-omron'));
-  const video = document.querySelector('video')!;
-  fireEvent.loadedMetadata(video);
-  expect(screen.getByLabelText('動画の再生速度')).toHaveValue('1.5');
-  expect(video.playbackRate).toBe(1.5);
-});
+it.each([0.5, 0.75, 1, 1.25, 1.5])(
+  'PLC動画のメーカーを切り替えても%s倍の再生速度が反映される',
+  (rate) => {
+    render(<TutorialVideoButton mode="plc" />);
+    fireEvent.click(screen.getByTestId('tutorial-plc'));
+    fireEvent.change(screen.getByLabelText('動画の再生速度'), { target: { value: String(rate) } });
+    fireEvent.click(screen.getByTestId('tutorial-vendor-omron'));
+    const video = document.querySelector('video')!;
+    fireEvent.loadedMetadata(video);
+    expect(screen.getByLabelText('動画の再生速度')).toHaveValue(String(rate));
+    expect(video.playbackRate).toBe(rate);
+  },
+);

@@ -37,7 +37,8 @@ export function terminalBlockShape(
     cx,
     cy,
     bodyTop: screwZ - 0.8,
-    cap: { x, y, w, h: CAP_DEPTH_MM, top: screwZ + 1 },
+    // 出線を隠す高いカバーにしない。銘板は台座の高さに納める。
+    cap: { x, y, w, h: CAP_DEPTH_MM, top: screwZ - 0.8 },
     printZ: screwZ + 1.4,
     leadZ: screwZ + 4,
   };

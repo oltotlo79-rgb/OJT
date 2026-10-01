@@ -1,4 +1,5 @@
-import { addWire, createSession, JIPM_BOARD, routeSession } from '@ojt/board-model';
+import { addWire, createSession, JIPM_BOARD } from '@ojt/board-model';
+import { visibleRoutes } from '../src/renderer/session/wire-routes.js';
 import { toTerminalId } from '@ojt/circuit-sim';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
 import { launchApp } from './app.js';
@@ -26,7 +27,7 @@ function wireCandidates(box: CanvasBox): Array<{ x: number; y: number }> {
   const session = createSession(JIPM_BOARD, { includeCheckWires: false });
   const added = addWire(session, JIPM_BOARD, FROM, TO, '青');
   if (!added.ok) throw new Error(added.message);
-  const route = routeSession(JIPM_BOARD, session).find((r) => r.wireId === added.value.id);
+  const route = visibleRoutes(JIPM_BOARD, session).routes.find((r) => r.wireId === added.value.id);
   if (route === undefined) throw new Error('電線の経路を計算できませんでした');
   const points: Array<{ x: number; y: number }> = [];
   for (let index = 0; index + 1 < route.corners.length; index += 1) {

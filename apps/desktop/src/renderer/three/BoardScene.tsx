@@ -1,4 +1,4 @@
-import { safeRoutes } from '../session/wire-routes.js';
+import { visibleRoutes } from '../session/wire-routes.js';
 export { safeRoutes } from '../session/wire-routes.js';
 import {
   BUZZER_ID,
@@ -451,10 +451,12 @@ function BoardContents({
     [pending, interaction],
   );
 
-  const { routes, errors: routeErrors } = useMemo(
-    () => safeRoutes(board, session),
-    [board, session],
-  );
+  const {
+    routes,
+    fixed,
+    desk,
+    errors: routeErrors,
+  } = useMemo(() => visibleRoutes(board, session), [board, session]);
   /*
    * 経路が解けなかった電線は描けないので、理由をトーストとログに出す（盤は描き続ける）。§6.6
    * `routeErrors` は `session` が変わるたびに新しい配列になるため、そのまま依存に並べると
@@ -1009,7 +1011,7 @@ function BoardContents({
             }
           />
         ))}
-        <FixedWires board={board} />
+        <FixedWires board={board} routes={fixed} />
 
         {/*
           盤の端子はここで**まとめて1回**描く（§15 / 決定表#13）。ソケット・端子台は
@@ -1153,7 +1155,7 @@ function BoardContents({
               onPickTerminal={pickTerminal}
             />
             {session === undefined ? null : (
-              <DeskWires board={board} session={session} pick={deskPick} />
+              <DeskWires board={board} session={session} pick={deskPick} routes={desk} />
             )}
           </>
         )}

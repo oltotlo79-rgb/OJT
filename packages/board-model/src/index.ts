@@ -1,4 +1,13 @@
 export {
+  WIRE_PORT_PITCH_MM,
+  WIRE_LUG_REACH_MM,
+  WIRE_SLEEVE_LENGTH_MM,
+  WIRE_SLEEVE_RADIUS_MM,
+  type WireConnection,
+} from './wire-connection.js';
+export { dressWireRoutes } from './wire-dressing.js';
+
+export {
   addVec,
   distance,
   rectBottom,
@@ -16,6 +25,7 @@ export {
   vec3,
   vecEquals,
   vecLength,
+  wireSegmentDistance,
   type NearestPoint,
   type Polyline,
   type Rect,

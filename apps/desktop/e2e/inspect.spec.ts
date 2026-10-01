@@ -1,6 +1,7 @@
 import { mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { JIPM_BOARD, routeSession, type BoardSession, type Vec3 } from '@ojt/board-model';
+import { JIPM_BOARD, type BoardSession, type Vec3 } from '@ojt/board-model';
+import { visibleRoutes } from '../src/renderer/session/wire-routes.js';
 import {
   BUILTIN_INSPECT_PARTS_PROBLEMS,
   BUILTIN_INSPECT_REPAIR_PROBLEMS,
@@ -161,10 +162,10 @@ async function stubFileDialogs(app: ElectronApplication, filePath: string): Prom
  * 電線の経路上のクリック候補（盤ローカル mm）。長い区間の中点から順に返す。
  *
  * 電線は直角に折れて配線帯を通る（§6.6）ので、両端を結んだ直線の中点は経路の上に無い。
- * アプリと**同じ経路器**（`routeSession()`）で折れ点を求め、その区間上の点を狙う。
+ * アプリで実際に表示する経路（`visibleRoutes()`）から折れ点を求め、その区間上の点を狙う。
  */
 function wireRoutePoints(session: BoardSession, wireId: string): Vec3[] {
-  const route = routeSession(JIPM_BOARD, session).find((r) => r.wireId === wireId);
+  const route = visibleRoutes(JIPM_BOARD, session).routes.find((r) => r.wireId === wireId);
   if (route === undefined) return [];
   const candidates: Array<{ point: Vec3; length: number }> = [];
   for (let index = 0; index + 1 < route.corners.length; index += 1) {

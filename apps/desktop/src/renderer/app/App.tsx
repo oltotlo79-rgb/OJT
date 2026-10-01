@@ -66,6 +66,7 @@ export function App({ onReady }: { onReady?: () => void } = {}): JSX.Element {
   const pendingWorkFile = useStore((s) => s.pendingWorkFile);
   const problemId = useStore((s) => s.problem?.id);
   const [pendingRestore, setPendingRestore] = useState<WorkFile | undefined>(undefined);
+  const [initialized, setInitialized] = useState(false);
   const [restoreBusy, setRestoreBusy] = useState(false);
   const [restoreError, setRestoreError] = useState('');
   const [homeRevision, setHomeRevision] = useState(0);
@@ -122,43 +123,55 @@ export function App({ onReady }: { onReady?: () => void } = {}): JSX.Element {
    */
   useEffect(() => {
     const api = tryApi();
-    if (api === undefined) return;
-    void api.getSettings().then(
-      (settings) => {
-        useTourStore.getState().initialize(settings.tourDone);
-        applyUiPreferences(settings);
-        sounds.configure({ enabled: settings.soundEnabled, volume: settings.soundVolume });
-        useStore.getState().applyLadderSettings({
-          gridCols: settings.ladderGridCols,
-          monitorColor: settings.monitorColor,
-          vendor: settings.defaultVendor,
-        });
-        // 設定ファイルが壊れていた（main が控えを取って既定値で起動した）ことを知らせる。§12.1
-        if (settings.warning !== undefined) {
-          useStore.getState().toast(settings.warning, 'error');
-        }
-        if (!settings.restorePrompt) return;
-        void api.loadWorkFile({ kind: 'autosave' }).then(
-          (restored) => {
-            if (restored.ok) setPendingRestore(restored.file);
-          },
-          () => {
-            // 一時保存が読めなくても起動は続ける
-          },
-        );
-      },
-      () => {
-        // 設定が読めなくても起動は続ける（既定＝内蔵課題のみ・復元確認なし・音は既定のまま）
-      },
-    );
+    if (api === undefined) {
+      setInitialized(true);
+      return;
+    }
+    let active = true;
+    void api
+      .getSettings()
+      .then(
+        async (settings) => {
+          useTourStore.getState().initialize(settings.tourDone);
+          applyUiPreferences(settings);
+          sounds.configure({ enabled: settings.soundEnabled, volume: settings.soundVolume });
+          useStore.getState().applyLadderSettings({
+            gridCols: settings.ladderGridCols,
+            monitorColor: settings.monitorColor,
+            vendor: settings.defaultVendor,
+          });
+          // 設定ファイルが壊れていた（main が控えを取って既定値で起動した）ことを知らせる。§12.1
+          if (settings.warning !== undefined) {
+            useStore.getState().toast(settings.warning, 'error');
+          }
+          if (!settings.restorePrompt) return;
+          await api.loadWorkFile({ kind: 'autosave' }).then(
+            (restored) => {
+              if (active && restored.ok) setPendingRestore(restored.file);
+            },
+            () => {
+              // 一時保存が読めなくても起動は続ける
+            },
+          );
+        },
+        () => {
+          // 設定が読めなくても起動は続ける（既定＝内蔵課題のみ・復元確認なし・音は既定のまま）
+        },
+      )
+      .finally(() => {
+        if (active) setInitialized(true);
+      });
+    return () => {
+      active = false;
+    };
   }, []);
 
   // 自動保存の購読と状態表示。変更後の保存・チェックポイント・失敗処理はautosave側で管理する。
   useEffect(() => startAutosave(), []);
   useEffect(() => startAuthoringDraft(), []);
   useEffect(() => {
-    onReady?.();
-  }, [onReady]);
+    if (initialized) onReady?.();
+  }, [initialized, onReady]);
   const autosave = useAutosaveStatus();
 
   // 未捕捉例外を拾って例外バナーに出す（§13 #5）。描画中の例外は `ErrorBoundary` が拾う

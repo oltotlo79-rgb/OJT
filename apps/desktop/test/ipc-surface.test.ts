@@ -4,10 +4,8 @@ import { IPC_CHANNELS } from '../src/shared/ipc.js';
 /**
  * IPC の公開面（Phase 7 Task 8 / 指摘 DM-7）。設計仕様 §4.3。
  *
- * `registerIpc()` が登録するチャネルの集合が `IPC_CHANNELS` と**完全一致**することを
- * 確かめる。9本以外を1本でも足せば（あるいは `IPC_CHANNELS` にだけ足して登録を忘れれば）
- * ここで落ちる。preload が公開するのはこの表の9本だけなので、これが renderer から
- * 到達できる main の入口のすべてである。
+ * 呼出10本が `registerIpc()` と一致することを確かめる。終了ハンドシェイク2本と
+ * 初期画面の描画完了通知1本は、ウィンドウの生成時に登録する内部イベントである。
  */
 
 const handled = vi.hoisted(() => ({ channels: [] as string[] }));
@@ -26,7 +24,7 @@ vi.mock('electron', () => ({
 
 const { registerIpc } = await import('../src/main/ipc.js');
 
-describe('main の IPC 契約（呼出10本と終了ハンドシェイク2本）', () => {
+describe('main の IPC 契約（呼出10本・終了2本・描画完了1本）', () => {
   it('registers exactly the channels in IPC_CHANNELS', () => {
     handled.channels = [];
     registerIpc();
@@ -34,9 +32,11 @@ describe('main の IPC 契約（呼出10本と終了ハンドシェイク2本）
       Object.values(IPC_CHANNELS)
         .filter(
           (channel) =>
-            ![IPC_CHANNELS.closeRequest, IPC_CHANNELS.closeReady].includes(
-              channel as typeof IPC_CHANNELS.closeRequest,
-            ),
+            ![
+              IPC_CHANNELS.closeRequest,
+              IPC_CHANNELS.closeReady,
+              IPC_CHANNELS.startupReady,
+            ].includes(channel as typeof IPC_CHANNELS.closeRequest),
         )
         .sort(),
     );
@@ -48,8 +48,8 @@ describe('main の IPC 契約（呼出10本と終了ハンドシェイク2本）
     expect(new Set(handled.channels).size).toBe(handled.channels.length);
   });
 
-  it('defines ten invocation channels and two close events', () => {
-    expect(Object.values(IPC_CHANNELS)).toHaveLength(12);
+  it('defines ten invocation channels, two close events and one painted event', () => {
+    expect(Object.values(IPC_CHANNELS)).toHaveLength(13);
     expect(IPC_CHANNELS.resultExport).toBe('result:export');
   });
 });

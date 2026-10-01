@@ -1,7 +1,6 @@
 import {
   addWire,
   createSession,
-  deskRoutes,
   JIPM_BOARD,
   SOCKET_STEP_HEIGHTS_MM,
   plcUnitFor,
@@ -12,6 +11,7 @@ import { BUILTIN_PLC_PROBLEMS, toSocketRoles } from '@ojt/content';
 import type { TerminalId } from '@ojt/circuit-sim';
 import { expect, test, type Page } from '@playwright/test';
 import { launchApp } from './app.js';
+import { visibleRoutes } from '../src/renderer/session/wire-routes.js';
 import {
   boardPoint,
   plcBoardPointFor,
@@ -143,7 +143,7 @@ for (const [vendor, model] of VENDORS) {
       const board = withPlcUnit(JIPM_BOARD, unit);
       const session = createSession(board, { roles: ROLES, includeCheckWires: false });
       addWire(session, board, 'TB_PB.1a' as TerminalId, input.id);
-      const corners = deskRoutes(board, session)[0]!.corners;
+      const corners = visibleRoutes(board, session).desk[0]!.corners;
       let selected = false;
       for (let i = 1; i < corners.length && !selected; i += 1) {
         const a = corners[i - 1]!;

@@ -228,3 +228,36 @@ export function segmentIntersectsRect(a: Vec3, b: Vec3, r: Rect, epsilon = 1e-9)
   if (!clip(dy, y1 - a.y)) return false;
   return t1 - t0 > epsilon;
 }
+
+/** 3D線分どうしの最短距離。曲がり角・立下がりも検査対象にする。 */
+export function wireSegmentDistance(a: Vec3, b: Vec3, c: Vec3, d: Vec3): number {
+  const EPS = 1e-6;
+  const u = [b.x - a.x, b.y - a.y, b.z - a.z];
+  const v = [d.x - c.x, d.y - c.y, d.z - c.z];
+  const w = [a.x - c.x, a.y - c.y, a.z - c.z];
+  const dot = (x: number[], y: number[]): number =>
+    x.reduce((sum, value, i) => sum + value * y[i]!, 0);
+  const uu = dot(u, u),
+    vv = dot(v, v),
+    uv = dot(u, v),
+    uw = dot(u, w),
+    vw = dot(v, w);
+  if (uu < EPS) return nearestPointOnSegment(a, c, d).distance;
+  if (vv < EPS) return nearestPointOnSegment(c, a, b).distance;
+  const clamp = (n: number): number => Math.max(0, Math.min(1, n));
+  const determinant = uu * vv - uv * uv;
+  let s = determinant < EPS ? 0 : clamp((uv * vw - vv * uw) / determinant);
+  let t = (uv * s + vw) / vv;
+  if (t < 0) {
+    t = 0;
+    s = clamp(-uw / uu);
+  } else if (t > 1) {
+    t = 1;
+    s = clamp((uv - uw) / uu);
+  }
+  return Math.hypot(
+    w[0]! + s * u[0]! - t * v[0]!,
+    w[1]! + s * u[1]! - t * v[1]!,
+    w[2]! + s * u[2]! - t * v[2]!,
+  );
+}

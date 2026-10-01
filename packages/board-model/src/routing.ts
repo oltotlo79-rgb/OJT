@@ -35,6 +35,7 @@ import {
 import { toPhysicalTerminal } from './roles.js';
 import type { BoardSession } from './session.js';
 import { terminalBlockFor } from './terminal-housing.js';
+import type { WireConnection } from './wire-connection.js';
 
 /**
  * 電線の自動経路生成。設計仕様 §6.6。
@@ -129,6 +130,8 @@ export interface ChannelLane {
 
 /** 求めた経路。 */
 export interface WireRoute {
+  /** 描画用の側面接続。省略時は従来の端点で描く。 */
+  connections?: WireConnection[];
   wireId: string;
   /** 経路の種類。渡り線・既設ハーネスを配線帯の経路と取り違えないために持つ。 */
   kind: WireRouteKind;

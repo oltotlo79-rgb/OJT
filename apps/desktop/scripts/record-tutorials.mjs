@@ -1,12 +1,12 @@
 /** 実アプリをマウス・キーで操作して解答する。解答状態の注入は行わない。 */
-import { mkdirSync, writeFileSync, copyFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync, copyFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import process from 'node:process';
 import console from 'node:console';
 import { fileURLToPath, URL } from 'node:url';
 import { _electron as electron, expect } from '@playwright/test';
-import { JIPM_BOARD, plcUnitFor, routeSession } from '@ojt/board-model';
+import { JIPM_BOARD, plcUnitFor } from '@ojt/board-model';
 import {
   BUILTIN_INSPECT_REPAIR_PROBLEMS,
   BUILTIN_PLC_PROBLEMS,
@@ -25,7 +25,11 @@ import {
   SELF_HOLD_WIRES,
   plcBoardPointFor,
   plcTerminalPointFor,
+  openOverflow,
+  closeOverflow,
+  selectView,
 } from '../e2e/projection.ts';
+import { visibleRoutes } from '../src/renderer/session/wire-routes.ts';
 
 const appRoot = fileURLToPath(new URL('../', import.meta.url));
 const root = dirname(
@@ -34,7 +38,8 @@ const root = dirname(
     encoding: 'utf8',
   }).trim(),
 );
-const runDir = join(root, 'release/verification/v1.7.0/tutorials');
+const version = JSON.parse(readFileSync(join(appRoot, 'package.json'), 'utf8')).version;
+const runDir = join(root, `release/verification/v${version}/tutorials`);
 const destination = join(appRoot, 'src/renderer/public/tutorials');
 mkdirSync(runDir, { recursive: true });
 mkdirSync(destination, { recursive: true });
@@ -79,9 +84,11 @@ await app.evaluate(({ BrowserWindow }) => {
 });
 /** @type {Array<{at: number; text: string}>} */
 const notes = [];
+/** @type {Array<{stage:string; at:number; highlighted:boolean}>} */
+const lessonReview = [];
 const start = Date.now();
 /** @param {number} ms */
-const pause = (ms) => page.waitForTimeout(dry ? Math.min(ms, 450) : ms);
+const pause = (ms) => page.waitForTimeout(dry ? Math.min(ms, 450) : Math.round(ms * 1.15));
 let pointerPosition = { x: 20, y: 20 };
 /** @param {string} text @param {number} [hold] */
 async function bubble(text, hold = 3200) {
@@ -101,7 +108,7 @@ async function move(x, y) {
     const t = n / steps,
       ease = t * t * (3 - 2 * t);
     await page.mouse.move(origin.x + (x - origin.x) * ease, origin.y + (y - origin.y) * ease);
-    if (!dry) await page.waitForTimeout(20);
+    if (!dry) await page.waitForTimeout(25);
   }
   pointerPosition = { x, y };
   await pause(100);
@@ -145,6 +152,132 @@ async function openExercise(mode, id) {
   await click(page.getByTestId(`open-${id}`));
   await boardReady();
 }
+
+/** 赤い枠・下線を画面上の実物へ描く。解答や課題データは書き換えない。
+ * @param {import('@playwright/test').Locator} target
+ * @param {boolean} [underline]
+ */
+async function highlight(target, underline = false) {
+  await target.scrollIntoViewIfNeeded();
+  await expect(target).toBeVisible();
+  const box = await target.boundingBox();
+  if (!box) throw new Error('強調する課題の内容が表示されていません');
+  await move(box.x + 10, box.y + Math.min(box.height, 40));
+  await page.evaluate(
+    ({ box, underline }) => {
+      globalThis.document.getElementById('recording-highlight')?.remove();
+      const svg = globalThis.document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      svg.id = 'recording-highlight';
+      svg.setAttribute(
+        'style',
+        'position:fixed;inset:0;width:100%;height:100%;z-index:2147483644;pointer-events:none;overflow:visible',
+      );
+      const line = globalThis.document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      const x = box.x - 4,
+        y = box.y - 4,
+        w = box.width + 8,
+        h = box.height + 8;
+      line.setAttribute(
+        'd',
+        underline
+          ? `M ${x} ${y + h} L ${x + w} ${y + h}`
+          : `M ${x} ${y} L ${x + w} ${y} L ${x + w} ${y + h} L ${x} ${y + h} Z`,
+      );
+      line.setAttribute('fill', 'none');
+      line.setAttribute('stroke', '#ed3030');
+      line.setAttribute('stroke-width', '4');
+      line.setAttribute('stroke-linejoin', 'round');
+      line.setAttribute('stroke-linecap', 'round');
+      svg.appendChild(line);
+      globalThis.document.body.appendChild(svg);
+      const length = line.getTotalLength();
+      line.style.strokeDasharray = String(length);
+      line.style.strokeDashoffset = String(length);
+      line.animate([{ strokeDashoffset: String(length) }, { strokeDashoffset: '0' }], {
+        duration: 850,
+        fill: 'forwards',
+      });
+    },
+    { box, underline },
+  );
+  await pause(900);
+}
+async function clearHighlight() {
+  await page.evaluate(() => globalThis.document.getElementById('recording-highlight')?.remove());
+}
+/** @param {'assembly'|'parts'|'repair'|'plc'} kind */
+async function reviewLesson(kind) {
+  await expand('problem-panel');
+  await highlight(page.getByTestId('problem-panel').locator('p').last(), true);
+  await bubble(
+    '作業の前に課題文を読みます。何を作る・点検する課題か、完成後にどの動作を確かめるかを先に整理しましょう。',
+    5600,
+  );
+  lessonReview.push({ stage: 'problem', at: (Date.now() - start) / 1000, highlighted: true });
+  const requirements = {
+    assembly:
+      'PB1でPL1が点灯し、PB1を離しても点灯を続けます。PB2を押すと消灯します。この「開始 → 保持 → 停止」が完成後の確認項目です。',
+    repair:
+      '自己保持回路の正常な動作を確認し、測定によって故障を切り分けます。指摘した後に修復し、最後に開始・保持・停止が仕様どおりか確かめます。',
+    parts:
+      '4個のリレーを、コイルと接点の測定で判断します。コイル抵抗だけで正常と決めず、励磁する前と後のa接点・b接点の変化まで調べます。',
+    plc: 'PB1で運転開始、PB2で停止し、PL1は自己保持します。停止確認のPL2、PB3に応じた点検灯PL3も、課題の仕様とタイムチャートを見て確認します。',
+  };
+  await bubble(requirements[kind], 6400);
+  if (kind !== 'parts') {
+    await clearHighlight();
+    if (kind === 'plc') await click(page.getByTestId('plc-show-chart'));
+    await expand('chart-panel');
+    await bubble(
+      '次に仕様のタイムチャートを拡大します。ボタンを押している区間と、ランプが点灯を続ける区間を比べて読みましょう。',
+      4800,
+    );
+    await click(page.getByTestId('chart-panel').getByTestId('chart-enlarge-button').first());
+    const modal = page.getByTestId('chart-modal');
+    await expect(modal).toBeVisible();
+    const rows = modal.locator('[data-role="row-label"]');
+    /** @type {Array<[string,string]>} */
+    const readings = [
+      [
+        'PB1',
+        '赤い枠のPB1が開始の入力です。PB1を離した後もPL1の点灯が続く部分が、自己保持する区間です。',
+      ],
+      [
+        'PL1',
+        'PL1の点灯区間を読みます。開始ボタンを離しても続き、停止ボタンPB2を押したところで消灯することを、完成後に確認します。',
+      ],
+    ];
+    for (const [signal, message] of readings) {
+      const row = rows.filter({ hasText: signal }).first();
+      await highlight((await row.count()) ? row.locator('..') : modal.locator('svg').first());
+      await bubble(message, 6200);
+    }
+    lessonReview.push({ stage: 'chart', at: (Date.now() - start) / 1000, highlighted: true });
+    await page.screenshot({ path: join(runDir, `${mode}-requirements.png`) });
+    await clearHighlight();
+    await page.keyboard.press('Escape');
+    await expect(modal).toHaveCount(0);
+  } else {
+    await page.screenshot({ path: join(runDir, `${mode}-requirements.png`) });
+    lessonReview.push({
+      stage: 'inspection-criteria',
+      at: (Date.now() - start) / 1000,
+      highlighted: true,
+    });
+    await clearHighlight();
+  }
+  const plans = {
+    assembly:
+      'まず電源OFFで、CR1のソケットへリレーを載せます。その後、電源 → 停止接点 → 開始・自己保持接点 → コイル → ランプの順に配線します。',
+    repair:
+      'まず電源と開始操作の反応を確かめ、電圧を電源側からコイル側へ追います。電源OFFで抵抗も測り、測定結果を記録してから故障箇所を指摘します。',
+    parts:
+      'まず部品1をチェック用ソケットへ挿します。コイル抵抗 → 励磁前の接点 → 励磁後の接点の順に測り、記録を根拠に回答します。',
+    plc: 'まず入力・出力の役割をI/O表で確認し、開始・保持・停止をラダーへ入力します。その後、電源とI/Oを配線し、仕様の3つの動作を順番に確認します。',
+  };
+  await bubble(plans[kind], 6200);
+  lessonReview.push({ stage: 'first-action', at: (Date.now() - start) / 1000, highlighted: false });
+}
 /** @param {string} from @param {string} to */
 async function wire(from, to) {
   await point(terminalPoint(toTerminalId(from), await canvas()));
@@ -172,6 +305,7 @@ async function pressPb(id, ms = 650) {
 async function assembly() {
   await bubble('回路組立：タイムチャートを読み、自己保持回路を配線して合格まで進めます。', 3900);
   await openExercise('assemble', 'b-001');
+  await reviewLesson('assembly');
   await bubble(
     'PB1を離してもPL1が点灯を続け、PB2で消灯します。CR1のa接点で、運転状態を自己保持しましょう。',
     5100,
@@ -296,6 +430,7 @@ async function parts() {
     3900,
   );
   await openExercise('inspect-parts', 'c1-001');
+  await reviewLesson('parts');
   for (const n of [1, 2, 3, 4]) {
     await bubble(
       `部品${n}をチェック用ソケットへ挿します。まずコイル抵抗を測り、次に励磁前後の接点を比べます。`,
@@ -400,13 +535,13 @@ async function clickWire(wireId) {
   if (!built.ok) throw new Error(JSON.stringify(built.errors));
   const session = built.value.session;
   const wire = session.wires.find((w) => w.id === wireId);
-  const route = routeSession(JIPM_BOARD, session).find((r) => r.wireId === wireId);
+  const route = visibleRoutes(JIPM_BOARD, session).routes.find((r) => r.wireId === wireId);
   if (!wire || !route) throw new Error(`電線 ${wireId} がありません`);
   /** @type {Array<{p: {x: number; y: number; z: number}; length: number}>} */
   const candidates = [];
-  for (let i = 0; i + 1 < route.corners.length; i += 1) {
-    const a = route.corners[i],
-      b = route.corners[i + 1];
+  for (let i = 0; i + 1 < route.points.length; i += 1) {
+    const a = route.points[i],
+      b = route.points[i + 1];
     if (!a || !b) continue;
     const length = Math.hypot(b.x - a.x, b.y - a.y, b.z - a.z);
     for (const t of [0.5, 0.35, 0.65])
@@ -437,6 +572,28 @@ async function clickWire(wireId) {
 async function repair() {
   await bubble('回路点検・修復：自己保持回路の故障2箇所を、測定結果から絞り込んで直します。', 3600);
   await openExercise('inspect-repair', 'c2-001');
+  await reviewLesson('repair');
+  await openOverflow(page);
+  await click(page.getByTestId('toggle-schematic'));
+  await closeOverflow(page);
+  await expect(page.getByTestId('schematic-svg')).toBeVisible();
+  await highlight(page.getByTestId('schematic-svg'));
+  await bubble(
+    '回路図の線番は、配線の両端に付いているマークチューブの印字と同じです。線番を照合して、測る端子と電線を取り違えないようにしましょう。',
+    6200,
+  );
+  await clearHighlight();
+  await selectView(page, 'ソケット拡大');
+  await bubble(
+    '端子の横から圧着端子を介して線が出ています。同じ端子に2本ある場合も、別々の出線とマークチューブをたどれます。',
+    6200,
+  );
+  await page.screenshot({ path: join(runDir, 'repair-mark-tubes.png') });
+  lessonReview.push({ stage: 'mark-tubes', at: (Date.now() - start) / 1000, highlighted: true });
+  await selectView(page, '正面');
+  await openOverflow(page);
+  await click(page.getByTestId('toggle-schematic'));
+  await closeOverflow(page);
   await power(true);
   await pressPb('PB1');
   await bubble(
@@ -491,9 +648,15 @@ async function repair() {
   await expect(page.getByTestId('report-popover')).toBeVisible();
   await bubble('この電線はもう指摘してあるので、ここでは「取消」で閉じます。', 2800);
   await click(page.getByTestId('report-cancel'));
-  await bubble('指摘できました。故障した青線だけを外し、同じ両端を白線でつなぎ直します。', 3400);
-  await click(page.getByRole('checkbox', { name: '選択 sw-005', exact: true }));
-  await click(page.getByRole('button', { name: '選択した電線を削除（Undo可）', exact: true }));
+  await bubble(
+    '指摘できました。電線一覧で故障した青線を選び直し、「この電線を外す」で外します。同じ両端を白線でつなぎ直しましょう。',
+    4200,
+  );
+  await click(page.getByTestId('wire-row-sw-005'));
+  await click(
+    page.getByRole('button', { name: 'この電線を外す（Delete / Backspace）', exact: true }),
+  );
+  await expect(page.getByTestId('wire-row-sw-005')).toHaveCount(0);
   await click(page.getByRole('button', { name: '白', exact: true }));
   await wire('TB_PB.1a', 'S1.14');
   await power(true);
@@ -675,21 +838,7 @@ async function plc(vendorId) {
   );
   await openExercise('plc', problem.id);
   await expect(page.getByTestId('plc-model')).toContainText(unit.displayName);
-  await bubble(
-    'まず仕様のタイムチャートを確認します。上の「タイムチャートを見る」を押すと、左の欄の仕様のチャートへ移ります。',
-    3800,
-  );
-  await click(page.getByTestId('plc-show-chart'));
-  await pause(1200);
-  await click(page.getByTestId('chart-panel').getByTestId('chart-enlarge-button').first());
-  await expect(page.getByTestId('chart-modal')).toBeVisible();
-  await bubble(
-    '「拡大」で大きく表示できます。PB1を押すとPL1が点き、PB2で消えるまで続く――この動きをラダーで作ります。',
-    4600,
-  );
-  await page.keyboard.press('Escape');
-  await expect(page.getByTestId('chart-modal')).toHaveCount(0);
-  await pause(500);
+  await reviewLesson('plc');
   await bubble(
     `${dev('input', 0)}で運転を開始し、${dev('input', 1)}で停止します。${dev('output', 0)}の接点を${dev('input', 0)}と並列に置き、ボタンを離しても出力を保持します。`,
     4600,
@@ -887,6 +1036,8 @@ let success = false;
 let contentEndSec = 0;
 /** @type {unknown} */
 let backgroundCapture;
+/** @type {number | undefined} */
+let coverWindowId;
 try {
   await expect(page.getByTestId('mode-assemble')).toBeVisible({ timeout: 30000 });
   if (!dry) {
@@ -895,7 +1046,7 @@ try {
       coverPath,
       '<!doctype html><meta charset="UTF-8"><title>操作動画の収録</title><body style="background:#17212f;color:#edf2f7;font:20px sans-serif;padding:48px"><h1>操作動画を背面で収録しています</h1><p>この下にある練習画面を操作しています。収録中もほかのウィンドウを使用できます。</p></body>',
     );
-    backgroundCapture = await app.evaluate(async ({ BrowserWindow }, file) => {
+    const capture = await app.evaluate(async ({ BrowserWindow }, file) => {
       const target = BrowserWindow.getAllWindows()[0];
       if (!target) throw new Error('収録対象がありません');
       const cover = new BrowserWindow({
@@ -911,12 +1062,15 @@ try {
       cover.focus();
       await new Promise((done) => globalThis.setTimeout(() => done(undefined), 150));
       return {
+        coverId: cover.id,
         covered: true,
         focused: target.isFocused(),
         throttling: target.webContents.getBackgroundThrottling(),
         bounds: target.getBounds(),
       };
     }, coverPath);
+    coverWindowId = capture.coverId;
+    backgroundCapture = capture;
   }
   await page.evaluate(() => {
     const style = globalThis.document.createElement('style');
@@ -963,7 +1117,15 @@ try {
   throw error;
 } finally {
   const video = page.video();
-  await app.close();
+  try {
+    if (coverWindowId !== undefined)
+      await app.evaluate(
+        ({ BrowserWindow }, id) => BrowserWindow.fromId(id)?.close(),
+        coverWindowId,
+      );
+  } finally {
+    await app.close();
+  }
   writeFileSync(
     join(runDir, `${mode}-notes.json`),
     JSON.stringify(
@@ -972,6 +1134,7 @@ try {
         durationSec: (Date.now() - start) / 1000,
         contentEndSec,
         notes,
+        lessonReview,
         faults,
         dataDir,
         backgroundCapture,

@@ -3,6 +3,7 @@ import { app, BrowserWindow, Menu, session, ipcMain, dialog, type WebContents } 
 import { IPC_CHANNELS } from '../shared/ipc.js';
 import { registerIpc } from './ipc.js';
 import { isAppUrl } from './navigation.js';
+import { notifyPortableReady } from './portable-startup.js';
 
 /**
  * Electron main。設計仕様 §4.3 / §12。
@@ -103,7 +104,13 @@ function createWindow(): BrowserWindow {
   let waiting = false;
   let timeout: ReturnType<typeof setTimeout> | undefined;
   const ready = (event: Electron.IpcMainEvent, answer: unknown, ok: unknown): void => {
-    if (event.sender !== window.webContents || answer !== token || !waiting) return;
+    if (
+      event.sender !== window.webContents ||
+      event.senderFrame !== window.webContents.mainFrame ||
+      answer !== token ||
+      !waiting
+    )
+      return;
     waiting = false;
     clearTimeout(timeout);
     if (ok === true) {
@@ -112,6 +119,18 @@ function createWindow(): BrowserWindow {
     }
   };
   ipcMain.on(IPC_CHANNELS.closeReady, ready);
+  let startupPainted = false;
+  const finishStartup = (): void => {
+    if (!startupPainted || !window.isVisible()) return;
+    notifyPortableReady(process.execPath, process.env['OJT_PORTABLE_READY_FILE'], app.isPackaged);
+  };
+  const startupReady = (event: Electron.IpcMainEvent): void => {
+    if (event.sender !== window.webContents || event.senderFrame !== window.webContents.mainFrame)
+      return;
+    startupPainted = true;
+    finishStartup();
+  };
+  ipcMain.on(IPC_CHANNELS.startupReady, startupReady);
   window.on('close', (event) => {
     if (mayClose || window.webContents.isDestroyed()) return;
     event.preventDefault();
@@ -132,10 +151,12 @@ function createWindow(): BrowserWindow {
   window.on('closed', () => {
     clearTimeout(timeout);
     ipcMain.removeListener(IPC_CHANNELS.closeReady, ready);
+    ipcMain.removeListener(IPC_CHANNELS.startupReady, startupReady);
   });
   window.setMenuBarVisibility(false);
   window.on('ready-to-show', () => {
     window.show();
+    finishStartup();
   });
   const dev = devUrl();
   if (dev !== undefined) {

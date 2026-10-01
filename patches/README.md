@@ -4,9 +4,13 @@
 
 - `unpackDirName: false` が、[公式の説明](https://www.electron.build/docs/api/app-builder-lib.interface.portableoptions/#unpackdirname)どおり起動ごとの `$PLUGINSDIR/app` を使うようにする。元の条件式はfalseでもビルド単位の固定名を定義していた。
 - Electronの終了直後にGPU等のプロセスが実行ファイルやDLLを解放するまで、NSISが自分の展開先の削除を250ms間隔・最大240回（60秒）だけ再試行する。ほかの起動や利用者のファイルには触れない。
+- ポータブル版の非solidのzlib圧縮をテンプレートでも明示的に固定する。配布ツールにも同じ既定値があるが、後から圧縮方式を変更されないようにし、起動画像を含む先頭の小さなデータをアプリ全体の展開を待たず読み出せる状態を維持する。
+- 起動画面は、本体のホームまたは読込エラー画面が描画され、ウィンドウが表示されるまで残す。本体は今回の展開先だけへ通知し、ランチャーは通知または本体の終了を待つ。起動失敗時も待機を終了する。
 
 v1.3.0の配布物検査で、10秒の再試行後にもEXEだけが残る事例を検出した。13秒間削除を拒否するWindowsの読取ハンドルを保持する実物検査を追加し、旧版では失敗、新版では解放を待って片付けることを確認する。検査側も製品の60秒の待機を途中で打ち切らない。
 
 根拠: [NSIS RMDirの削除失敗とエラーフラグ](https://nsis.sourceforge.io/Reference/RMDir)、[Windows FileShareのDelete許可](https://learn.microsoft.com/en-us/dotnet/api/system.io.fileshare)。
+
+起動処理の根拠: [NSIS SetCompressorとsolid圧縮](https://nsis.sourceforge.io/Docs/Chapter4.html#SetCompressor)、[Windows CreateProcessW](https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-createprocessw)、[プロセスハンドルの待機](https://learn.microsoft.com/en-us/windows/win32/api/synchapi/nf-synchapi-waitforsingleobject)。
 
 pnpmのpatchedDependenciesとlockfileで適用を固定する。依存を更新するときは、補修を黙って捨てず、`e2e:packaged` で起動ごとの展開先の違い・同時起動・片方を閉じた後の課題表示・全展開物の削除を実際のEXEで確認する。

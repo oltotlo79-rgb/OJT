@@ -25,6 +25,30 @@ import {
 // ローディング中はまだ編集内容がないため、そのまま閉じられる。Appが自動保存を
 // 登録した後は必ず保存の結果を待つ。登録解除後は安全側に倒し、終了を許可しない。
 let closeHandler: (() => Promise<boolean>) | undefined;
+// 静的ローディング表示からホーム（または読込エラー画面）へ移り、描画された後に通知する。
+// 本体の表示より先に、ポータブルEXEの起動画面を消さない。
+window.addEventListener(
+  'DOMContentLoaded',
+  () => {
+    const checkReady = (): void => {
+      const loading = document.getElementById('startup');
+      if (loading !== null && loading.getAttribute('data-state') !== 'error') return;
+      observer.disconnect();
+      requestAnimationFrame(() =>
+        requestAnimationFrame(() => ipcRenderer.send(IPC_CHANNELS.startupReady)),
+      );
+    };
+    const observer = new MutationObserver(checkReady);
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['data-state'],
+    });
+    checkReady();
+  },
+  { once: true },
+);
 ipcRenderer.on(IPC_CHANNELS.closeRequest, (_event, token: unknown) => {
   if (typeof token !== 'number' || !Number.isSafeInteger(token) || token <= 0) return;
   const handler = closeHandler;

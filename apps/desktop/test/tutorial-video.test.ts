@@ -37,7 +37,7 @@ describe('解答操作動画の選び方', () => {
       expect(existsSync(join(TUTORIAL_DIR, `${file}.webm`)), `${file}.webm`).toBe(true);
       expect(existsSync(join(TUTORIAL_DIR, `${file}.vtt`)), `${file}.vtt`).toBe(true);
       expect(catalog[file].durationSec, `${file} の長さ`).toBeGreaterThan(60);
-      expect(catalog[file].durationSec, `${file} の長さ`).toBeLessThan(305);
+      expect(catalog[file].durationSec, `${file} の長さ`).toBeLessThan(600);
     }
   });
 });

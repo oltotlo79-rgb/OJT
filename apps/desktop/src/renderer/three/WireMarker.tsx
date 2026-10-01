@@ -1,12 +1,12 @@
-import type { WireRoute } from '@ojt/board-model';
+import { WIRE_SLEEVE_LENGTH_MM, WIRE_SLEEVE_RADIUS_MM, type WireRoute } from '@ojt/board-model';
 import { useMemo, type JSX } from 'react';
 import { CylinderGeometry, Quaternion, Vector3 } from 'three';
 import { toScene } from './coords.js';
 import { bakeSharedTexture, labelFont, makeCanvasTexture } from './labels.js';
 import { noPick } from './materials.js';
 
-export const MARKER_LENGTH_MM = 6;
-export const MARKER_RADIUS_MM = 1.25;
+export const MARKER_LENGTH_MM = WIRE_SLEEVE_LENGTH_MM;
+export const MARKER_RADIUS_MM = WIRE_SLEEVE_RADIUS_MM;
 const SLEEVE = new CylinderGeometry(MARKER_RADIUS_MM, MARKER_RADIUS_MM, MARKER_LENGTH_MM, 12);
 // 側面印字の中心を盤の正面へ向ける（UVの1/4・3/4周の位置）。
 SLEEVE.rotateY(Math.PI / 2);

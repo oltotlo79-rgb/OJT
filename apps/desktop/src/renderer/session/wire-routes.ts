@@ -1,5 +1,8 @@
 import {
   routeSession,
+  routeFixedLinks,
+  deskRoutes,
+  dressWireRoutes,
   routeWire,
   RoutingError,
   isOffBoardTerminal,
@@ -7,6 +10,7 @@ import {
   type BoardDefinition,
   type BoardSession,
   type WireRoute,
+  type DeskRoute,
 } from '@ojt/board-model';
 import { reasonOf } from '../app/errors.js';
 
@@ -49,4 +53,43 @@ export function safeRoutes(
     }
   }
   return { routes, errors };
+}
+
+/** 既設線・盤内線・PLC線を同時に整え、同じ端子で別々の管が重ならないようにする。 */
+export function visibleRoutes(
+  board: BoardDefinition,
+  session: BoardSession | undefined,
+): {
+  routes: WireRoute[];
+  fixed: WireRoute[];
+  desk: DeskRoute[];
+  errors: RoutingError[];
+} {
+  const routed = safeRoutes(board, session);
+  const fixed = routeFixedLinks(board);
+  const desk = session === undefined ? [] : deskRoutes(board, session);
+  let remaining = [...fixed, ...routed.routes, ...desk];
+  let dressed: WireRoute[] = [];
+  const errors = [...routed.errors];
+  // 極端に混雑した作業ファイルでも、理由を出して盤と編集操作を残す。
+  // 解けない線の接続データは消さず、危険な重なりで代用しない。
+  while (remaining.length > 0) {
+    try {
+      dressed = dressWireRoutes(board, remaining);
+      break;
+    } catch (error) {
+      if (!(error instanceof RoutingError) || !remaining.some((r) => r.wireId === error.wireId))
+        throw error;
+      errors.push(error);
+      remaining = remaining.filter((r) => r.wireId !== error.wireId);
+    }
+  }
+  const fixedIds = new Set(fixed.map((r) => r.wireId));
+  const deskIds = new Set(desk.map((r) => r.wireId));
+  return {
+    fixed: dressed.filter((r) => fixedIds.has(r.wireId)),
+    routes: dressed.filter((r) => !fixedIds.has(r.wireId) && !deskIds.has(r.wireId)),
+    desk: dressed.filter((r) => deskIds.has(r.wireId)) as DeskRoute[],
+    errors,
+  };
 }

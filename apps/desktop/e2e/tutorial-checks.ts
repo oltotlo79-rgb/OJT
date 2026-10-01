@@ -5,7 +5,7 @@ import { expect, type Locator, type Page } from '@playwright/test';
  * 既定メーカー（三菱）の `plc.webm` は下の本体の検査で見るので、ここには残りの3本を並べる。
  */
 /** 動画1本の長さの上限（秒）。 */
-const TUTORIAL_MAX_SEC = 305;
+const TUTORIAL_MAX_SEC = 600;
 
 const OTHER_PLC_VIDEOS = [
   ['jtekt', 'plc-jtekt'],
@@ -101,12 +101,18 @@ export async function verifyTutorials(page: Page): Promise<void> {
         video.evaluate((element: HTMLVideoElement) => element.textTracks[0]?.cues?.length ?? 0),
       )
       .toBeGreaterThan(5);
-    await dialog.getByRole('combobox', { name: '動画の再生速度' }).selectOption('1.25');
-    expect(await video.evaluate((element: HTMLVideoElement) => element.playbackRate)).toBe(1.25);
+    const speed = dialog.getByRole('combobox', { name: '動画の再生速度' });
+    for (const rate of [0.5, 0.75, 1, 1.25, 1.5]) {
+      await speed.selectOption(String(rate));
+      expect(await video.evaluate((element: HTMLVideoElement) => element.playbackRate)).toBe(rate);
+    }
+    await speed.selectOption('0.5');
     expect(await video.evaluate((element: HTMLVideoElement) => element.error)).toBeNull();
     if (mode === 'plc') {
-      for (const [vendor, file] of OTHER_PLC_VIDEOS)
+      for (const [vendor, file] of OTHER_PLC_VIDEOS) {
         await verifySwitchedVideo(dialog, vendor, file);
+        expect(await video.evaluate((element: HTMLVideoElement) => element.playbackRate)).toBe(0.5);
+      }
     }
     await page.keyboard.press('Escape');
     await expect(dialog).toHaveCount(0);

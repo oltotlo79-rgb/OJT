@@ -23,6 +23,7 @@ import { problemIssueText } from './messages.js';
  * renderer から任意のパスを開かせる余地を型の上で持たない。
  */
 export const IPC_CHANNELS = {
+  startupReady: 'app:startup-ready',
   contentAuthor: 'content:author',
   closeRequest: 'app:close-request',
   closeReady: 'app:close-ready',

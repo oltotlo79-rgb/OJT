@@ -1637,7 +1637,7 @@ test.describe.serial('画面品質の機械点検', () => {
    * ----------------------------------------------------------------------- */
 
   test('起動時の復元カード', async () => {
-    // 一時保存は 30 秒ごとなので、いったん課題を開いて待ち、閉じてから開き直す
+    // 課題と部品を実際に保存してから、同じプロファイルで復元カードを開く。
     /*
      * `launchApp()` は起動ごとに使い捨ての `userData` を作る（QA-12）。この test だけは
      * 「前回の一時保存が残っている状態」を作る必要があるので、2回の起動へ**同じ**フォルダを渡す。
@@ -1651,8 +1651,7 @@ test.describe.serial('画面品質の機械点検', () => {
       const edge = boardPoint(socketEdgePoint(), box);
       await first.page.mouse.click(edge.x, edge.y);
       await first.page.getByTestId('mount-relay-my4n').click();
-      // 自動保存（30秒間隔）を1回またぐ
-      await first.page.waitForTimeout(33_000);
+      await expect(first.page.getByTestId('autosave-status')).toContainText('自動保存済み');
     } finally {
       await first.app.close();
     }
@@ -1664,10 +1663,7 @@ test.describe.serial('画面品質の機械点検', () => {
     });
     try {
       const restore = page.getByTestId('restore-prompt');
-      if ((await restore.count()) === 0) {
-        notes.push('restore-prompt: 復元カードが出なかった（一時保存が無い）');
-        return;
-      }
+      await expect(restore).toBeVisible();
       await stop(app, page, 'restore-card', { focus: true });
       await page.getByRole('button', { name: '復元しない' }).click();
     } finally {

@@ -14,11 +14,12 @@ import {
 import { INVISIBLE_MATERIAL, LUG_GEOMETRY, sharedMaterial } from './materials.js';
 import { toScene } from './coords.js';
 import { WireMarkers } from './WireMarker.js';
+import { WireConnections } from './WireConnections.js';
 
 /**
  * 電線。設計仕様 §6.6 / §8.2。
  * `routeWire()` が返す**直角経路の折れ線**（角はフィレット済み）を `TubeGeometry`（半径0.8mm）で
- * 描き、両端に Y型圧着端子の簡易形状（輪）を付ける。色は青／白／黄の物理色。
+ * 描き、両端に横向きのY型圧着端子を付ける。色は青／白／黄の物理色。
  *
  * 高さは経路器が `WIRE_Z_LADDER_MM` の段（x方向は 2.4 / 6.0、y方向は 4.2 / 7.8）で決めてあり、
  * 高さの変わる角には `z` だけ動く点が入っている。**ここで z を足したり丸めたりしない**
@@ -156,13 +157,13 @@ export function shouldOutlineWireBody(bodyColor: string): boolean {
 
 /**
  * 白線だけに付ける、内側から見た暗い輪郭。§6.6
- * 本体の1.5倍の太さのチューブを `BackSide`（裏面）で描き、本体からわずかにはみ出た分だけが
+ * 本体の1.15倍の太さのチューブを `BackSide`（裏面）で描き、本体からわずかにはみ出た分だけが
  * 縁取りとして見える定番のテクニック。別コンポーネントにしてあるのは、白線以外では
  * ジオメトリを**作らない**ためで、外れたときの後始末がそのまま `dispose()` になる
  * （`WirePickBody` と同じ理由）。
  */
 function WireOutline({ route }: { route: WireRoute }): JSX.Element {
-  const geometry = useTubeGeometry(route, WIRE_RADIUS_MM * 1.5, RADIAL_SEGMENTS);
+  const geometry = useTubeGeometry(route, WIRE_RADIUS_MM * 1.15, RADIAL_SEGMENTS);
   return (
     <mesh
       geometry={geometry}
@@ -276,6 +277,7 @@ export function Wire({
       {/* 見た目の電線。クリックは常に下の当たり判定チューブに任せる */}
       <mesh geometry={geometry} material={material} raycast={noPick} />
       {marker === undefined ? null : <WireMarkers route={route} number={marker} />}
+      <WireConnections route={route} locked={locked} />
       {/*
         当たり判定だけの太いチューブ。`visible={false}` なので**描かれないが**、three の
         `Raycaster` は `visible` を見ないのでクリックは拾える（`TerminalHit` /
@@ -284,7 +286,7 @@ export function Wire({
       {pickable ? (
         <WirePickBody route={route} locked={locked} yieldsToParts={yieldsToParts} onPick={onPick} />
       ) : null}
-      {ends.map((pos, index) => (
+      {(route.connections === undefined ? ends : []).map((pos, index) => (
         <mesh
           key={`${route.wireId}-lug-${index}`}
           geometry={LUG_GEOMETRY}

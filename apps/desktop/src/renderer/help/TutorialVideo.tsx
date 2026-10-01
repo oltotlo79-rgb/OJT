@@ -177,6 +177,7 @@ function Player({
               if (video.current) video.current.playbackRate = next;
             }}
           >
+            <option value="0.5">0.5倍</option>
             <option value="0.75">0.75倍</option>
             <option value="1">1倍（標準）</option>
             <option value="1.25">1.25倍</option>

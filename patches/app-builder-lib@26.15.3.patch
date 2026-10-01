@@ -11,13 +11,58 @@
              if (splashImage != null) {
 --- a/templates/nsis/portable.nsi
 +++ b/templates/nsis/portable.nsi
-@@ -87,5 +87,17 @@
+@@ -1,5 +1,8 @@
+ !include "common.nsh"
+ !include "extractAppPackage.nsh"
++
++; Non-solid compression lets the small startup image appear without unpacking the application.
++SetCompressor /FINAL zlib
+ 
+ # https://github.com/electron-userland/electron-builder/issues/3972#issuecomment-505171582
+ CRCCheck off
+@@ -79,13 +82,51 @@
+   System::Call 'Kernel32::SetEnvironmentVariable(t, t)i ("PORTABLE_EXECUTABLE_APP_FILENAME", "${APP_FILENAME}").r0'
+   ${StdUtils.GetAllParameters} $R0 0
+ 
++  ; Keep the splash visible until the application has painted its ready/error screen.
++  System::Call 'Kernel32::SetEnvironmentVariable(t, t)i ("OJT_PORTABLE_READY_FILE", "$PLUGINSDIR\ojt-ready").r0'
++  System::Call '*(i 68, i 0, i 0, i 0, i 0, i 0, i 0, i 0, i 0, i 0, i 0, i 0, i 0, i 0, i 0, i 0, i 0) p .R2'
++  System::Call '*(p 0, p 0, i 0, i 0) p .R3'
++  StrCpy $R8 '"$INSTDIR\${APP_EXECUTABLE_FILENAME}" $R0'
++  System::Call 'kernel32::CreateProcessW(w "$INSTDIR\${APP_EXECUTABLE_FILENAME}", w R8, p 0, p 0, i 0, i 0, p 0, p 0, p R2, p R3) i .R4'
++  System::Free $R2
++  IntCmp $R4 0 portable_launch_failed
++  System::Call '*$R3(p .R5, p .R6, i, i)'
++  System::Free $R3
++  System::Call 'kernel32::CloseHandle(p R6)'
++portable_wait_ready:
++  IfFileExists "$PLUGINSDIR\ojt-ready" portable_ready
++  System::Call 'kernel32::WaitForSingleObject(p R5, i 50) i .R4'
++  IntCmp $R4 0 portable_ready
++  Goto portable_wait_ready
++portable_ready:
+   !ifdef SPLASH_IMAGE
+     BgImage::Destroy
+   !endif
+-
+-	ExecWait "$INSTDIR\${APP_EXECUTABLE_FILENAME} $R0" $0
++  System::Call 'kernel32::WaitForSingleObject(p R5, i -1)'
++  System::Call 'kernel32::GetExitCodeProcess(p R5, *i .r0)'
++  System::Call 'kernel32::CloseHandle(p R5)'
++  Goto portable_process_done
++portable_launch_failed:
++  System::Free $R3
++  !ifdef SPLASH_IMAGE
++    BgImage::Destroy
++  !endif
++  MessageBox MB_OK|MB_ICONSTOP "アプリを起動できませんでした。ポータブル版をもう一度起動してください。"
++  StrCpy $0 1
++portable_process_done:
    SetErrorLevel $0
  
    SetOutPath $EXEDIR
 -	RMDir /r $INSTDIR
-+  ; Electron's GPU/utility processes can release their image handles just after ExecWait.
-+  ; Retry only this launch's extraction directory, for at most sixty seconds.
++  ; Wait only for this launch's image handles to be released.
 +  StrCpy $R1 0
 +portable_cleanup_retry:
 +  ClearErrors

@@ -7,8 +7,9 @@ import {
 } from '@ojt/content';
 import { layout } from '@ojt/schematic-core';
 import { describe, expect, it } from 'vitest';
+import { Vector3 } from 'three';
 import { buildWireMarkIndex, wireMarker } from '../src/renderer/session/wire-markers.js';
-import { safeRoutes } from '../src/renderer/session/wire-routes.js';
+import { visibleRoutes } from '../src/renderer/session/wire-routes.js';
 import { wireMarkerPoses } from '../src/renderer/three/WireMarker.js';
 
 describe('回路図と3D配線の線番', () => {
@@ -51,7 +52,7 @@ describe('回路図と3D配線の線番', () => {
         buildInspectRepairCircuit(problem, JIPM_BOARD, { seed: 42 }),
       ]) {
         if (!built.ok) throw new Error(JSON.stringify(built.errors));
-        const routed = safeRoutes(JIPM_BOARD, built.value.session);
+        const routed = visibleRoutes(JIPM_BOARD, built.value.session);
         expect(routed.errors).toHaveLength(0);
         for (const route of routed.routes) {
           const poses = wireMarkerPoses(route);
@@ -61,6 +62,12 @@ describe('回路図と3D配線の線番', () => {
           ).toHaveLength(2);
           expect(poses.every((pose) => pose.position.toArray().every(Number.isFinite))).toBe(true);
           expect(poses[0]!.position.distanceTo(poses[1]!.position)).toBeGreaterThan(2.5);
+          expect(poses.every((pose) => Math.abs(pose.length - 6) < 1e-6)).toBe(true);
+          expect(
+            poses.every(
+              (pose) => Math.abs(new Vector3(0, 1, 0).applyQuaternion(pose.quaternion).z) < 1e-6,
+            ),
+          ).toBe(true);
         }
       }
     },
