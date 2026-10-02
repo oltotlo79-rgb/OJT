@@ -4,6 +4,7 @@ import { IPC_CHANNELS } from '../shared/ipc.js';
 import { registerIpc } from './ipc.js';
 import { isAppUrl } from './navigation.js';
 import { notifyPortableReady } from './portable-startup.js';
+import { confirmStartupFrame } from './startup-frame.js';
 
 /**
  * Electron main。設計仕様 §4.3 / §12。
@@ -120,9 +121,34 @@ function createWindow(): BrowserWindow {
   };
   ipcMain.on(IPC_CHANNELS.closeReady, ready);
   let startupPainted = false;
+  let startupConfirmed = false;
+  let confirmingStartup = false;
+  let startupRetry: ReturnType<typeof setTimeout> | undefined;
   const finishStartup = (): void => {
-    if (!startupPainted || !window.isVisible()) return;
-    notifyPortableReady(process.execPath, process.env['OJT_PORTABLE_READY_FILE'], app.isPackaged);
+    if (
+      !app.isPackaged ||
+      process.env['OJT_PORTABLE_READY_FILE'] === undefined ||
+      !startupPainted ||
+      startupConfirmed ||
+      confirmingStartup ||
+      window.isDestroyed() ||
+      !window.isVisible() ||
+      window.isMinimized()
+    )
+      return;
+    confirmingStartup = true;
+    void confirmStartupFrame(window).then((painted) => {
+      confirmingStartup = false;
+      if (window.isDestroyed()) return;
+      if (painted) {
+        startupConfirmed = notifyPortableReady(
+          process.execPath,
+          process.env['OJT_PORTABLE_READY_FILE'],
+          app.isPackaged,
+        );
+      }
+      if (!startupConfirmed) startupRetry = setTimeout(finishStartup, 150);
+    });
   };
   const startupReady = (event: Electron.IpcMainEvent): void => {
     if (event.sender !== window.webContents || event.senderFrame !== window.webContents.mainFrame)
@@ -150,6 +176,7 @@ function createWindow(): BrowserWindow {
   });
   window.on('closed', () => {
     clearTimeout(timeout);
+    clearTimeout(startupRetry);
     ipcMain.removeListener(IPC_CHANNELS.closeReady, ready);
     ipcMain.removeListener(IPC_CHANNELS.startupReady, startupReady);
   });
@@ -158,6 +185,8 @@ function createWindow(): BrowserWindow {
     window.show();
     finishStartup();
   });
+  window.on('show', finishStartup);
+  window.on('restore', finishStartup);
   const dev = devUrl();
   if (dev !== undefined) {
     void window.loadURL(dev);

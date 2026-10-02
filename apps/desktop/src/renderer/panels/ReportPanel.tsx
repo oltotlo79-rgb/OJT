@@ -26,6 +26,7 @@ export function reportKindText(report: FaultReport): string {
 export function ReportPanel({
   reports,
   wires = [],
+  onEdit,
   onRemove,
 }: {
   reports: readonly FaultReport[];
@@ -34,6 +35,7 @@ export function ReportPanel({
    * 両端の端子と色で示すための参照。渡さない・見つからないときは電線IDへ後退する。
    */
   wires?: readonly Wire[];
+  onEdit: (index: number) => void;
   onRemove: (index: number) => void;
 }): JSX.Element {
   return (
@@ -62,6 +64,13 @@ export function ReportPanel({
               <span data-testid={`report-kind-text-${String(index)}`}>
                 {reportKindText(report)}
               </span>
+              <button
+                type="button"
+                data-testid={`edit-report-${String(index)}`}
+                onClick={() => onEdit(index)}
+              >
+                {JA.inspectRepair.edit}
+              </button>
               <button
                 type="button"
                 data-testid={`remove-report-${String(index)}`}

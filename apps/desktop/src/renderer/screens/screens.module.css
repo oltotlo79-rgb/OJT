@@ -111,11 +111,16 @@
  * （レビュー指摘: セッション中にキャンバスが伸縮する）。
  */
 .sessionLayout {
+  --bottom-panel-h: 44px;
   display: grid;
   grid-template-columns: 1fr 380px;
-  grid-template-rows: 1fr var(--bottom-panel-h, 200px);
+  grid-template-rows: minmax(0, 1fr) var(--bottom-panel-h);
   flex: 1;
   min-height: 0;
+}
+
+.sessionLayout:has(> .bottomPanel > details[open]) {
+  --bottom-panel-h: 164px;
 }
 
 /*
@@ -143,10 +148,7 @@
   grid-column: 1;
   grid-row: 2;
   border-top: 1px solid var(--line);
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-  padding: 8px;
+  container-type: inline-size;
   /* 行の高さは固定。中身が増えてもパネルの外へは広がらない（ログ側が自分でスクロールする） */
   min-height: 0;
   overflow: hidden;
@@ -154,7 +156,7 @@
 
 .bottomPanel > * {
   min-height: 0;
-  overflow-y: auto;
+  height: 100%;
 }
 
 /*
@@ -391,6 +393,7 @@
 }
 
 .plcRight {
+  container-type: inline-size;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -607,7 +610,7 @@
 @media (max-width: 1439px) {
   .sessionLayout[data-view='split'] {
     grid-template-columns: minmax(0, 1fr) 380px;
-    grid-template-rows: minmax(0, 1fr) minmax(0, 1fr) var(--bottom-panel-h, 200px);
+    grid-template-rows: minmax(0, 1fr) minmax(0, 1fr) var(--bottom-panel-h);
   }
 
   .sessionLayout[data-view='split'] .editorPane {

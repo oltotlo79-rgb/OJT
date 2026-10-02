@@ -198,6 +198,30 @@
   border-bottom: 1px solid var(--line);
   font-size: max(12px, 0.75rem);
   padding: 3px 0;
+  flex-wrap: wrap;
+}
+
+.reportRow > .reportTarget {
+  flex-basis: 100%;
+  text-align: left;
+}
+
+.removedWireRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.removedWireRow > button:first-child {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+}
+
+.removedWireRow > button:last-child {
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .reportTarget {

@@ -19,6 +19,7 @@ import {
   isInspectRepairProblem,
   replacePart,
   type FaultDetail,
+  type FaultReport,
   type FaultReportKind,
   type RepairCircuit,
 } from '@ojt/content';
@@ -35,8 +36,7 @@ import {
   wireCountText,
   wireLabel,
 } from '../i18n/ja.js';
-import { ElapsedTimer } from '../panels/ElapsedTimer.js';
-import { LogPanel } from '../panels/LogPanel.js';
+import { SessionActivity } from '../panels/SessionActivity.js';
 import { PowerControls } from '../panels/PowerControls.js';
 import { ProblemPanel } from '../panels/ProblemPanel.js';
 import { RepairPanel, type MountedPartRow } from '../panels/RepairPanel.js';
@@ -57,12 +57,18 @@ import {
   redo as redoHistory,
   runAddWire,
   runRemoveWire,
+  runRestoreWire,
   undo as undoHistory,
   type CommandHistory,
   type CommandResult,
   type SessionCommand,
 } from '../session/commands.js';
-import { circuitForJudge, registerReport, reportPickToAction } from '../session/inspect-repair.js';
+import {
+  circuitForJudge,
+  editReport,
+  registerReport,
+  reportPickToAction,
+} from '../session/inspect-repair.js';
 import {
   deleteKeyToAction,
   escapeToAction,
@@ -123,6 +129,7 @@ export function InspectRepairSession(): JSX.Element {
   );
   const reports = useStore((s) => s.reports);
   const pendingReport = useStore((s) => s.pendingReport);
+  const [editingReport, setEditingReport] = useState<FaultReport | undefined>(undefined);
   const pendingTerminal = useStore((s) => s.pendingTerminal);
   /**
    * 3Dで最後に押した位置（ビューポート内の座標）。指摘の小窓を押した場所のすぐ横に出すのに使う
@@ -135,6 +142,11 @@ export function InspectRepairSession(): JSX.Element {
     undefined,
   );
   useEffect(() => {
+    if (editingReport !== undefined && pendingReport !== editingReport.target) {
+      setEditingReport(undefined);
+    }
+  }, [pendingReport, editingReport]);
+  useEffect(() => {
     if (pendingReport === undefined) return;
     // いま押したのがビューポートの中なら、その位置。外（電線一覧など）なら右上。
     // 視点を回したときの古い位置を使わないよう、押してから間もないものだけを使う
@@ -144,25 +156,42 @@ export function InspectRepairSession(): JSX.Element {
     lastPointer.current = undefined;
   }, [pendingReport]);
   /** 小窓で種別（と部品不良の内容）を選んだ。 */
-  const onReportPick = useCallback((kind: FaultReportKind, detail?: FaultDetail): void => {
-    const store = useStore.getState();
-    const target = store.pendingReport;
-    if (target === undefined) return;
-    store.setPendingReport(undefined);
-    const registration = registerReport(store.reports, target, kind, detail);
-    if (registration.type === 'duplicate') {
-      store.toast(JA.inspectRepair.duplicate, 'error');
-      return;
-    }
-    const text = reportKindText(registration.report);
-    if (registration.type === 'replace') {
-      store.replaceReport(registration.index, registration.report);
-      store.toast(JA.inspectRepair.detailUpdated);
-    } else {
-      store.addReport(registration.report);
-    }
-    store.addLog(`${JA.inspectRepair.reportCount}: ${text}`);
-  }, []);
+  const onReportPick = useCallback(
+    (kind: FaultReportKind, detail?: FaultDetail): void => {
+      const store = useStore.getState();
+      const target = store.pendingReport;
+      if (target === undefined) return;
+      const currentEdit = editingReport?.target === target ? editingReport : undefined;
+      const registration =
+        currentEdit === undefined
+          ? registerReport(store.reports, target, kind, detail)
+          : editReport(store.reports, store.reports.indexOf(currentEdit), kind, detail);
+      if (registration.type === 'missing') {
+        store.setPendingReport(undefined);
+        setEditingReport(undefined);
+        return;
+      }
+      if (registration.type === 'duplicate') {
+        store.toast(JA.inspectRepair.duplicate, 'error');
+        return;
+      }
+      store.setPendingReport(undefined);
+      setEditingReport(undefined);
+      const text = reportKindText(registration.report);
+      if (registration.type === 'replace') {
+        store.replaceReport(registration.index, registration.report);
+        store.toast(
+          currentEdit === undefined
+            ? JA.inspectRepair.detailUpdated
+            : JA.inspectRepair.reportUpdated,
+        );
+      } else {
+        store.addReport(registration.report);
+      }
+      store.addLog(`${JA.inspectRepair.reportCount}: ${text}`);
+    },
+    [editingReport],
+  );
   const history = useStore((s) => s.history);
   const mode = useStore((s) => s.mode);
   const wireColor = useStore((s) => s.wireColor);
@@ -467,6 +496,15 @@ export function InspectRepairSession(): JSX.Element {
     [removedWireIds, circuit],
   );
 
+  const reportWires = useMemo(
+    () => [
+      ...(circuit?.initialWires.filter((wire) => !session?.wires.some((w) => w.id === wire.id)) ??
+        []),
+      ...(session?.wires ?? []),
+    ],
+    [circuit, session],
+  );
+
   /** 追加した白線の表示名（UI監査 I5）。いま盤にあるので `session.wires` から引く。 */
   const addedWireLabels = useMemo(
     () =>
@@ -752,7 +790,8 @@ export function InspectRepairSession(): JSX.Element {
           {pendingReport === undefined ? null : (
             <ReportPopover
               pending={pendingReport}
-              wires={session.wires}
+              wires={reportWires}
+              {...(editingReport === undefined ? {} : { current: editingReport })}
               position={popoverPosition(popoverAnchor, {
                 width: viewportRef.current?.clientWidth ?? 800,
                 height: viewportRef.current?.clientHeight ?? 600,
@@ -760,6 +799,7 @@ export function InspectRepairSession(): JSX.Element {
               onPick={onReportPick}
               onCancel={() => {
                 useStore.getState().setPendingReport(undefined);
+                setEditingReport(undefined);
               }}
             />
           )}
@@ -781,9 +821,19 @@ export function InspectRepairSession(): JSX.Element {
           <ProblemPanel problem={problem} />
           <ReportPanel
             reports={reports}
-            wires={session.wires}
+            wires={reportWires}
+            onEdit={(index) => {
+              const report = useStore.getState().reports[index];
+              if (report === undefined) return;
+              setEditingReport(report);
+              const store = useStore.getState();
+              store.setMode('report');
+              store.setPendingReport(report.target);
+            }}
             onRemove={(index) => {
               useStore.getState().removeReport(index);
+              useStore.getState().setPendingReport(undefined);
+              setEditingReport(undefined);
             }}
           />
           {/*
@@ -821,6 +871,20 @@ export function InspectRepairSession(): JSX.Element {
             addedWires={addedWireLabels}
             removedWires={removedWires}
             mountedParts={mountedParts}
+            onRestoreWire={(wireId) => {
+              const current = useStore.getState().session;
+              if (current === undefined) return;
+              const result = runRestoreWire(current, circuit, wireId);
+              apply(result, () => {
+                if (!result.ok) return;
+                const store = useStore.getState();
+                store.setSelectedWire(undefined);
+                store.setPending(undefined);
+                clearWireLimit();
+                bridge.send({ type: 'addWire', wire: result.value });
+                store.toast('外した電線を元の端子に戻しました');
+              });
+            }}
             onReplacePart={onReplacePart}
           />
           {spec !== undefined && spec.ok ? <TimeChartPanel chart={spec.chart} /> : null}
@@ -830,13 +894,13 @@ export function InspectRepairSession(): JSX.Element {
         </div>
 
         <div className={styles.bottomPanel}>
-          <LogPanel
+          <SessionActivity
+            limit={problem.timeLimit}
             lines={logLines}
             hazards={hazards}
             chatters={chatters}
             restoredHazardCount={restoredHazardCount}
           />
-          <ElapsedTimer limit={problem.timeLimit} />
         </div>
       </div>
     </>

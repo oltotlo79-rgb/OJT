@@ -1,6 +1,8 @@
+diff --git a/out/targets/nsis/NsisTarget.js b/out/targets/nsis/NsisTarget.js
+index 92cac56e79f94f01525dd9ae007d8e866075de1b..d7464d4039056a1927568ab41d2921c059daf5f0 100644
 --- a/out/targets/nsis/NsisTarget.js
 +++ b/out/targets/nsis/NsisTarget.js
-@@ -243,7 +243,7 @@
+@@ -243,7 +243,7 @@ class NsisTarget extends core_1.Target {
              const { unpackDirName, requestExecutionLevel, splashImage } = options;
              defines.REQUEST_EXECUTION_LEVEL = requestExecutionLevel || "user";
              // https://github.com/electron-userland/electron-builder/issues/5764
@@ -9,33 +11,93 @@
                  defines.UNPACK_DIR_NAME = unpackDirName || (0, builder_util_1.generateKsuid)();
              }
              if (splashImage != null) {
+diff --git a/templates/nsis/portable.nsi b/templates/nsis/portable.nsi
+index e5436bb0f810058b52e15ce65b3d256f86dabc6f..73e71b7eb2ef16911ef0bbf67bae7f0f26fb75d4 100644
 --- a/templates/nsis/portable.nsi
 +++ b/templates/nsis/portable.nsi
-@@ -1,5 +1,8 @@
+@@ -1,28 +1,75 @@
  !include "common.nsh"
  !include "extractAppPackage.nsh"
-+
+ 
 +; Non-solid compression lets the small startup image appear without unpacking the application.
 +SetCompressor /FINAL zlib
- 
++
  # https://github.com/electron-userland/electron-builder/issues/3972#issuecomment-505171582
  CRCCheck off
-@@ -16,6 +19,14 @@
+ WindowIcon Off
+ AutoCloseWindow True
+ RequestExecutionLevel ${REQUEST_EXECUTION_LEVEL}
+ 
++Var OjtSplashWindow
++Var OjtSplashBitmap
++
+ Function .onInit
+   !ifndef SPLASH_IMAGE
+     SetSilent silent
+   !endif
+ 
++  ; Create the loading window before NSIS initializes its internal dialog.
++  ; This window does not inherit the dialog's hide/minimize messages.
++  InitPluginsDir
++  !ifdef SPLASH_IMAGE
++    File /oname=$PLUGINSDIR\splash.bmp "${SPLASH_IMAGE}"
++    System::Call 'user32::LoadImageW(p 0, w "$PLUGINSDIR\splash.bmp", i 0, i 0, i 0, i 0x10) p .s'
++    Pop $OjtSplashBitmap
++    System::Call 'user32::GetSystemMetrics(i 0) i .r0'
++    System::Call 'user32::GetSystemMetrics(i 1) i .r1'
++    IntOp $0 $0 - 640
++    IntOp $0 $0 / 2
++    IntOp $1 $1 - 360
++    IntOp $1 $1 / 2
++    StrCpy $2 0x8000000E
++    StrCmp $OjtSplashBitmap 0 0 +2
++    StrCpy $2 0x80000201
++    ; Keep the loading image above the main window until its compositor frame is confirmed.
++    System::Call 'user32::CreateWindowExW(i 0x08000088, w "STATIC", w "電気教育ツールを起動しています…", i r2, i r0, i r1, i 640, i 360, p 0, p 0, p 0, p 0) p .s'
++    Pop $OjtSplashWindow
++    StrCmp $OjtSplashBitmap 0 +2
++    System::Call 'user32::SendMessageW(p $OjtSplashWindow, i 0x172, p 0, p $OjtSplashBitmap)'
++    System::Call 'user32::ShowWindow(p $OjtSplashWindow, i 4)'
++    System::Call 'user32::UpdateWindow(p $OjtSplashWindow)'
++  !endif
++
+   !insertmacro check64BitAndSetRegView
  FunctionEnd
  
  Function .onGUIInit
+-  InitPluginsDir
 +  ; Keep the internal NSIS dialog non-interactive and without a visible client area.
-+  ; BgImage needs its parent handle, so the parent is retained.
 +  HideWindow
 +  System::Call 'user32::GetWindowLongW(p $HWNDPARENT, i -20) i .r0'
 +  IntOp $0 $0 | 0x80
 +  IntOp $0 $0 & 0xFFFBFFFF
 +  System::Call 'user32::SetWindowLongW(p $HWNDPARENT, i -20, i r0)'
 +  System::Call 'user32::SetWindowPos(p $HWNDPARENT, p 0, i 0, i 0, i 0, i 0, i 0xB6)'
-   InitPluginsDir
++FunctionEnd
  
-   !ifdef SPLASH_IMAGE
-@@ -79,13 +90,51 @@
+-  !ifdef SPLASH_IMAGE
+-    File /oname=$PLUGINSDIR\splash.bmp "${SPLASH_IMAGE}"
+-    BgImage::SetBg $PLUGINSDIR\splash.bmp
+-    BgImage::Redraw
+-  !endif
++Function OjtCloseSplash
++  StrCmp $OjtSplashWindow 0 ojt_splash_closed
++  ; Send WM_CLOSE to the window's GUI thread, also when called by the section worker.
++  System::Call 'user32::SendMessageW(p $OjtSplashWindow, i 0x10, p 0, p 0)'
++  StrCpy $OjtSplashWindow 0
++ojt_splash_closed:
++  StrCmp $OjtSplashBitmap 0 ojt_splash_bitmap_released
++  System::Call 'gdi32::DeleteObject(p $OjtSplashBitmap)'
++  StrCpy $OjtSplashBitmap 0
++ojt_splash_bitmap_released:
++FunctionEnd
++
++Function .onGUIEnd
++  Call OjtCloseSplash
+ FunctionEnd
+ 
+ Section
+@@ -79,13 +126,51 @@ Section
    System::Call 'Kernel32::SetEnvironmentVariable(t, t)i ("PORTABLE_EXECUTABLE_APP_FILENAME", "${APP_FILENAME}").r0'
    ${StdUtils.GetAllParameters} $R0 0
  
@@ -57,7 +119,8 @@
 +  Goto portable_wait_ready
 +portable_ready:
    !ifdef SPLASH_IMAGE
-     BgImage::Destroy
+-    BgImage::Destroy
++    Call OjtCloseSplash
    !endif
 -
 -	ExecWait "$INSTDIR\${APP_EXECUTABLE_FILENAME} $R0" $0
@@ -68,7 +131,7 @@
 +portable_launch_failed:
 +  System::Free $R3
 +  !ifdef SPLASH_IMAGE
-+    BgImage::Destroy
++    Call OjtCloseSplash
 +  !endif
 +  MessageBox MB_OK|MB_ICONSTOP "アプリを起動できませんでした。ポータブル版をもう一度起動してください。"
 +  StrCpy $0 1

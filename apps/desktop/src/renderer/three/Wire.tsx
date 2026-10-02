@@ -45,7 +45,7 @@ export const WIRE_PICK_RADIUS_MM = 3.5;
 /** チューブの分割数（1セグメントあたり）。 */
 const SEGMENTS_PER_POINT = 4;
 /** 断面の分割数。 */
-const RADIAL_SEGMENTS = 6;
+const RADIAL_SEGMENTS = 10;
 /** 当たり判定チューブの断面分割数（見えないので粗くてよい）。 */
 const PICK_RADIAL_SEGMENTS = 4;
 

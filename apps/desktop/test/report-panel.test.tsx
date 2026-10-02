@@ -27,7 +27,7 @@ const REPORTS: FaultReport[] = [
 describe('ReportPanel（§9.2 指摘一覧）', () => {
   it('登録した指摘を並べ、取消せる', () => {
     const onRemove = vi.fn();
-    render(<ReportPanel reports={REPORTS} onRemove={onRemove} />);
+    render(<ReportPanel onEdit={vi.fn()} reports={REPORTS} onRemove={onRemove} />);
     const list = screen.getByTestId('report-list');
     expect(list.textContent).toContain('sw-003');
     expect(list.textContent).toContain('CR1.13');
@@ -42,6 +42,7 @@ describe('ReportPanel（§9.2 指摘一覧）', () => {
   it('部品不良は選んだ内容を添える（2026-09-26）', () => {
     render(
       <ReportPanel
+        onEdit={vi.fn()}
         reports={[{ target: { partId: 'CR2' }, kind: 'part-defect', detail: 'contact-welded' }]}
         onRemove={vi.fn()}
       />,
@@ -53,7 +54,7 @@ describe('ReportPanel（§9.2 指摘一覧）', () => {
   });
 
   it('正誤は出さない（答えが漏れない。§9.2）', () => {
-    render(<ReportPanel reports={REPORTS} onRemove={vi.fn()} />);
+    render(<ReportPanel onEdit={vi.fn()} reports={REPORTS} onRemove={vi.fn()} />);
     const text = screen.getByTestId('report-panel').textContent ?? '';
     expect(text).not.toContain('正解');
     expect(text).not.toContain('見逃し');
@@ -61,7 +62,7 @@ describe('ReportPanel（§9.2 指摘一覧）', () => {
   });
 
   it('件数を出す', () => {
-    render(<ReportPanel reports={REPORTS} onRemove={vi.fn()} />);
+    render(<ReportPanel onEdit={vi.fn()} reports={REPORTS} onRemove={vi.fn()} />);
     expect(screen.getByTestId('report-count').textContent).toContain('3');
   });
 });
@@ -156,6 +157,7 @@ describe('RepairPanel（§9.2 修復）', () => {
   it('追加した白線と外した青線を並べる', () => {
     render(
       <RepairPanel
+        onRestoreWire={vi.fn()}
         addedWires={[{ id: 'w-001', label: 'CR1.9–PB1.2c の白線' }]}
         removedWires={[{ id: 'sw-001', label: 'CR1.9–PB1.2c の青線' }]}
         mountedParts={[]}
@@ -170,6 +172,7 @@ describe('RepairPanel（§9.2 修復）', () => {
     const text =
       render(
         <RepairPanel
+          onRestoreWire={vi.fn()}
           addedWires={[]}
           removedWires={[{ id: 'sw-001', label: 'CR1.9–PB1.2c の青線' }]}
           mountedParts={[]}
@@ -183,6 +186,7 @@ describe('RepairPanel（§9.2 修復）', () => {
     const onReplacePart = vi.fn();
     render(
       <RepairPanel
+        onRestoreWire={vi.fn()}
         addedWires={[]}
         removedWires={[]}
         mountedParts={[{ socketId: 'S1', partId: 'CR1', isTimer: false, replaced: false }]}
@@ -196,6 +200,7 @@ describe('RepairPanel（§9.2 修復）', () => {
   it('交換済みの部品はボタンを無効にして「交換しました」と出す', () => {
     render(
       <RepairPanel
+        onRestoreWire={vi.fn()}
         addedWires={[]}
         removedWires={[]}
         mountedParts={[{ socketId: 'S1', partId: 'CR1', isTimer: false, replaced: true }]}

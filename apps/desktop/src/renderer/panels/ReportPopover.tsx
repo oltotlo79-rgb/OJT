@@ -1,5 +1,10 @@
 import type { Wire } from '@ojt/circuit-sim';
-import { FAULT_DETAILS, type FaultDetail, type FaultReportKind } from '@ojt/content';
+import {
+  FAULT_DETAILS,
+  type FaultDetail,
+  type FaultReport,
+  type FaultReportKind,
+} from '@ojt/content';
 import { useEffect, useRef, type JSX } from 'react';
 import { JA, reportTargetLabel } from '../i18n/ja.js';
 import { reportKindsFor } from '../session/inspect-repair.js';
@@ -55,12 +60,14 @@ export function ReportPopover({
   pending,
   wires,
   position,
+  current,
   onPick,
   onCancel,
 }: {
   pending: ReportTarget;
   wires: readonly Wire[];
   position: { left: number; top: number };
+  current?: FaultReport;
   onPick: (kind: FaultReportKind, detail?: FaultDetail) => void;
   onCancel: () => void;
 }): JSX.Element {
@@ -69,6 +76,7 @@ export function ReportPopover({
     ref.current?.querySelector<HTMLButtonElement>('button')?.focus({ preventScroll: true });
   }, [pending]);
   const kinds = reportKindsFor(pending);
+  const title = current === undefined ? JA.inspectRepair.popoverTitle : JA.inspectRepair.editTitle;
   const hint =
     'wireId' in pending
       ? JA.inspectRepair.popoverWireHint
@@ -81,7 +89,7 @@ export function ReportPopover({
       className={styles.popover}
       style={{ left: position.left, top: position.top }}
       role="dialog"
-      aria-label={JA.inspectRepair.popoverTitle}
+      aria-label={title}
       data-testid="report-popover"
       onKeyDown={(event) => {
         if (event.key === 'Escape') {
@@ -90,7 +98,7 @@ export function ReportPopover({
         }
       }}
     >
-      <p className={styles.title}>{JA.inspectRepair.popoverTitle}</p>
+      <p className={styles.title}>{title}</p>
       <p className={styles.target} data-testid="report-popover-target">
         {reportTargetLabel(pending, wires)}
       </p>
@@ -104,6 +112,7 @@ export function ReportPopover({
               key={detail}
               type="button"
               data-testid={`report-detail-${detail}`}
+              aria-pressed={current?.kind === 'part-defect' && current.detail === detail}
               onClick={() => {
                 onPick('part-defect', detail);
               }}
@@ -114,6 +123,10 @@ export function ReportPopover({
           <button
             type="button"
             data-testid="report-kind-part-defect"
+            aria-pressed={
+              current?.kind === 'part-defect' &&
+              (current.detail === 'unknown' || current.detail === undefined)
+            }
             onClick={() => {
               onPick('part-defect', 'unknown');
             }}
@@ -129,6 +142,7 @@ export function ReportPopover({
               type="button"
               className={styles.kind}
               data-testid={`report-kind-${kind}`}
+              aria-pressed={current?.kind === kind}
               onClick={() => {
                 onPick(kind);
               }}

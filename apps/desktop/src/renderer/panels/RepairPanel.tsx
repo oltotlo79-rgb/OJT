@@ -29,6 +29,7 @@ export function RepairPanel({
   addedWires,
   removedWires,
   mountedParts,
+  onRestoreWire,
   onReplacePart,
 }: {
   /** 追加した白線のIDと表示名。 */
@@ -36,6 +37,7 @@ export function RepairPanel({
   /** 外した青線のIDと表示名。 */
   removedWires: readonly { id: string; label: string }[];
   mountedParts: readonly MountedPartRow[];
+  onRestoreWire: (wireId: string) => void;
   onReplacePart: (socketId: SocketId, partId: string) => void;
 }): JSX.Element {
   return (
@@ -56,19 +58,24 @@ export function RepairPanel({
             ))}
       </p>
       <p className={styles.label}>{JA.inspectRepair.removedWires}</p>
-      <p className={styles.reportTarget} data-testid="removed-wires">
+      <div className={styles.reportTarget} data-testid="removed-wires">
         {removedWires.length === 0
           ? JA.inspectRepair.none
           : removedWires.map((wire) => (
-              <button
-                key={wire.id}
-                type="button"
-                onClick={() => focusDiagnosticTarget({ wireId: wire.id })}
-              >
-                {wire.label} の元の端子
-              </button>
+              <div key={wire.id} className={styles.removedWireRow}>
+                <button type="button" onClick={() => focusDiagnosticTarget({ wireId: wire.id })}>
+                  {wire.label} の元の端子
+                </button>
+                <button
+                  type="button"
+                  data-testid={`restore-wire-${wire.id}`}
+                  onClick={() => onRestoreWire(wire.id)}
+                >
+                  {JA.inspectRepair.restoreWire}
+                </button>
+              </div>
             ))}
-      </p>
+      </div>
       <p className={styles.label}>{JA.inspectRepair.parts}</p>
       {mountedParts.map((part) => (
         /*

@@ -102,6 +102,33 @@ async function bubble(text, hold = 3200) {
 }
 /** @param {number} x @param {number} y */
 async function move(x, y) {
+  // 説明を残したまま、クリックする端子・ボタンを隠さない位置へ移す。
+  await page.evaluate(
+    ({ x, y }) => {
+      const note = globalThis.document.getElementById('recording-intent');
+      if (!note) return;
+      const rect = note.getBoundingClientRect();
+      if (
+        x >= rect.left - 32 &&
+        x <= rect.right + 32 &&
+        y >= rect.top - 32 &&
+        y <= rect.bottom + 32
+      ) {
+        const useTop = y > globalThis.innerHeight / 2;
+        note.style.top = useTop ? '8px' : 'auto';
+        note.style.bottom = useTop ? 'auto' : '8px';
+      }
+      const clear = note.getBoundingClientRect();
+      if (
+        x >= clear.left - 24 &&
+        x <= clear.right + 24 &&
+        y >= clear.top - 24 &&
+        y <= clear.bottom + 24
+      )
+        throw new Error('説明枠が操作対象を隠しています');
+    },
+    { x, y },
+  );
   const origin = pointerPosition;
   const steps = dry ? 1 : 12;
   for (let n = 1; n <= steps; n++) {
@@ -207,6 +234,15 @@ async function clearHighlight() {
 }
 /** @param {'assembly'|'parts'|'repair'|'plc'} kind */
 async function reviewLesson(kind) {
+  await bubble(
+    '操作ログと経過時間は、細い帯にまとめています。必要なときだけ開き、確認後に閉じると3D図を広く使えます。',
+    4700,
+  );
+  await click(page.getByTestId('activity-toggle'));
+  await expect(page.getByTestId('operation-log')).toBeVisible();
+  await pause(1800);
+  await click(page.getByTestId('activity-toggle'));
+  await expect(page.getByTestId('session-activity')).not.toHaveAttribute('open');
   await expand('problem-panel');
   await highlight(page.getByTestId('problem-panel').locator('p').last(), true);
   await bubble(
@@ -639,6 +675,25 @@ async function repair() {
   await click(page.getByTestId('report-kind-wire-open'));
   await expect(page.getByTestId('report-count')).toHaveText('1');
   await bubble(
+    '登録した指摘は、一覧の「変更」から選び直せます。対象の電線はそのままで、種類や部品不良の内容を変更できます。',
+    4800,
+  );
+  await click(page.getByTestId('edit-report-0'));
+  await expect(page.getByTestId('report-popover')).toBeVisible();
+  await bubble(
+    '現在の「断線」が選ばれています。試しに「誤配線」へ変更します。指摘は増えず、この1件の内容が置き換わります。',
+    4800,
+  );
+  await click(page.getByTestId('report-kind-wire-misrouted'));
+  await expect(page.getByTestId('report-count')).toHaveText('1');
+  await click(page.getByTestId('edit-report-0'));
+  await bubble(
+    '測定結果に合う「断線」へ戻します。「取消」やEscで閉じた場合は、登録済みの指摘が残ります。対象を変える場合は一覧で取り消して指摘し直します。',
+    6000,
+  );
+  await click(page.getByTestId('report-kind-wire-open'));
+  lessonReview.push({ stage: 'report-edit', at: (Date.now() - start) / 1000, highlighted: false });
+  await bubble(
     '同じ指摘は右の電線一覧からもできます。電線を選んで「この電線の故障を指摘」を押すと、同じ小窓が開きます。3Dで押しにくい電線に便利です。',
     5000,
   );
@@ -652,6 +707,26 @@ async function repair() {
     '指摘できました。電線一覧で故障した青線を選び直し、「この電線を外す」で外します。同じ両端を白線でつなぎ直しましょう。',
     4200,
   );
+  await click(page.getByTestId('wire-row-sw-005'));
+  await click(
+    page.getByRole('button', { name: 'この電線を外す（Delete / Backspace）', exact: true }),
+  );
+  await expect(page.getByTestId('wire-row-sw-005')).toHaveCount(0);
+  await bubble(
+    '外し間違えた青線は、修復欄の「元に戻す」で1本ずつ戻せます。他の修復や指摘を取り消さず、元の両端・線色・線番へ戻します。',
+    5500,
+  );
+  await click(page.getByTestId('restore-wire-sw-005'));
+  await expect(page.getByTestId('wire-row-sw-005')).toHaveCount(1);
+  await bubble(
+    '青線を復元しました。ただし元から断線していた線なので、故障も元の状態です。復元と修復は別の操作です。この線を再び外し、白線でつなぎ直します。',
+    6200,
+  );
+  lessonReview.push({
+    stage: 'wire-restoration',
+    at: (Date.now() - start) / 1000,
+    highlighted: false,
+  });
   await click(page.getByTestId('wire-row-sw-005'));
   await click(
     page.getByRole('button', { name: 'この電線を外す（Delete / Backspace）', exact: true }),
@@ -1074,7 +1149,7 @@ try {
   }
   await page.evaluate(() => {
     const style = globalThis.document.createElement('style');
-    style.textContent = `#recording-pointer{position:fixed;left:0;top:0;z-index:2147483647;pointer-events:none;width:32px;height:40px;filter:drop-shadow(0 2px 3px #000b)} #recording-ring{position:fixed;z-index:2147483646;pointer-events:none;width:44px;height:44px;border:4px solid #ffbd2e;border-radius:50%;opacity:0;transform:translate(-50%,-50%)} #recording-ring.active{opacity:.85} #recording-intent{position:fixed;z-index:2147483645;pointer-events:none;bottom:36px;left:26px;max-width:600px;background:#fffdf1;color:#17212f;border:3px solid #e7ae24;border-radius:16px;padding:16px 22px;box-shadow:0 5px 24px #0008;font:600 20px/1.65 'Yu Gothic UI',sans-serif;white-space:pre-wrap}`;
+    style.textContent = `#recording-pointer{position:fixed;left:0;top:0;z-index:2147483647;pointer-events:none;width:32px;height:40px;filter:drop-shadow(0 2px 3px #000b)} #recording-ring{position:fixed;z-index:2147483646;pointer-events:none;width:44px;height:44px;border:4px solid #ffbd2e;border-radius:50%;opacity:0;transform:translate(-50%,-50%)} #recording-ring.active{opacity:.85} #recording-intent{position:fixed;z-index:2147483645;pointer-events:none;bottom:8px;left:26px;box-sizing:border-box;width:min(1080px,calc(100vw - 52px));background:#fffdf1;color:#17212f;border:3px solid #e7ae24;border-radius:12px;padding:10px 18px;box-shadow:0 5px 24px #0008;font:600 20px/1.5 'Yu Gothic UI',sans-serif;white-space:pre-wrap}`;
     globalThis.document.head.append(style);
     const pointer = globalThis.document.createElement('div');
     pointer.id = 'recording-pointer';

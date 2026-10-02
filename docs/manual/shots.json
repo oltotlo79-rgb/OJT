@@ -179,6 +179,20 @@
       }
     ]
   },
+  "c2-report-edit": {
+    "caption": "登録した指摘の種類を変更する",
+    "callouts": [
+      { "n": 1, "label": "変更" },
+      { "n": 2, "label": "現在の指摘と選び直す種類" }
+    ]
+  },
+  "c2-wire-return": {
+    "caption": "外した青線の元の端子を確認し、1本ずつ戻す",
+    "callouts": [
+      { "n": 1, "label": "元の端子を確認" },
+      { "n": 2, "label": "1本だけ元に戻す" }
+    ]
+  },
   "c2-repair": {
     "caption": "モードC2の指摘の欄",
     "callouts": [

@@ -533,7 +533,7 @@ test.describe.serial('モードC2 回路点検・修復（§16 Phase 2 受入基
     const box = await canvasBox(page);
     /** 役割端子IDをクリックする。 */
     const clickTerminal = async (terminal: string): Promise<void> => {
-      const point = roleTerminalPoint(socketRoles, terminal, box);
+      const point = roleTerminalPoint(socketRoles, terminal, await canvasBox(page));
       await page.mouse.click(point.x, point.y);
       await page.waitForTimeout(120);
     };
@@ -560,6 +560,46 @@ test.describe.serial('モードC2 回路点検・修復（§16 Phase 2 受入基
       await page.getByTestId(`report-kind-${kind}`).click();
     }
     await expect(page.getByTestId('report-count')).toHaveText('2');
+    // 登録済みの1件を選び直せる。取消しても指摘を失わず、変更で件数を増やさない。
+    await page.getByTestId('edit-report-0').click();
+    await expect(page.getByTestId('report-popover')).toContainText('指摘を変更する');
+    // 選択状態だけ背景が暗くなるため、通常ボタンの文字色を継承すると読めなくなる。
+    // CSSの指定値ではなく、実際の前景・背景色から可読性を検証する。
+    const selectedContrast = await page
+      .getByTestId('report-popover')
+      .locator('button[aria-pressed="true"]')
+      .evaluate((button) => {
+        const style = getComputedStyle(button);
+        const luminance = (color: string): number => {
+          const channels = color
+            .match(/[\d.]+/g)
+            ?.slice(0, 3)
+            .map(Number);
+          if (channels?.length !== 3) throw new Error(`色を測れません: ${color}`);
+          return channels.reduce((sum, channel, index) => {
+            const value = channel / 255;
+            const linear = value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+            return sum + linear * [0.2126, 0.7152, 0.0722][index]!;
+          }, 0);
+        };
+        const foreground = luminance(style.color),
+          background = luminance(style.backgroundColor);
+        return (
+          (Math.max(foreground, background) + 0.05) / (Math.min(foreground, background) + 0.05)
+        );
+      });
+    expect(selectedContrast, '選択した指摘の文字が背景に埋もれない').toBeGreaterThanOrEqual(4.5);
+    await page.getByTestId('report-cancel').click();
+    await expect(page.getByTestId('report-count')).toHaveText('2');
+    const wireReport = await page.getByTestId('report-kind-text-0').textContent();
+    if (wireReport === '断線') {
+      await page.getByTestId('edit-report-0').click();
+      await page.getByTestId('report-kind-wire-misrouted').click();
+      await expect(page.getByTestId('report-kind-text-0')).toHaveText('誤配線');
+      await expect(page.getByTestId('report-count')).toHaveText('2');
+      await page.getByTestId('edit-report-0').click();
+      await page.getByTestId('report-kind-wire-open').click();
+    }
     await expect(page.getByTestId('status-overlay')).toContainText('指摘 2');
     await shot(app, '21-c2-reports');
 
@@ -587,6 +627,23 @@ test.describe.serial('モードC2 回路点検・修復（§16 Phase 2 受入基
          * 当てにせず、改造が0であることは結果画面の `modification-list` で確かめる。
          */
         await expect(page.getByTestId('repair-panel')).toBeVisible();
+        // この線だけを復元でき、取り外す前の故障状態も保持する。
+        const restore = page.getByTestId(`restore-wire-${site.wireId}`);
+        await restore.click();
+        await expect(page.getByTestId('status-overlay')).toContainText(
+          wireCountText(expectedWires + 1, fixedWires),
+        );
+        await expect(restore).toHaveCount(0);
+        await page.getByRole('button', { name: '元に戻す', exact: true }).click();
+        await expect(restore).toBeVisible();
+        await page.getByRole('button', { name: 'やり直し', exact: true }).click();
+        await expect(restore).toHaveCount(0);
+        // 復元した線をもう一度外して、本来の白線修復へ進む。
+        const restoredRow = page.getByTestId(`wire-row-${site.wireId}`);
+        if (!(await restoredRow.isVisible())) await page.getByTestId('wire-list-summary').click();
+        await restoredRow.click();
+        await page.getByRole('button', { name: 'この電線を外す（Delete / Backspace）' }).click();
+        await expect(restore).toBeVisible();
       }
       // 白線を張る（パレットは白だけ。§8.1）
       await page.getByRole('button', { name: '白', exact: true }).click();

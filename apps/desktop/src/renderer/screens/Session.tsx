@@ -28,8 +28,7 @@ import {
   wireCountText,
   wireLabel,
 } from '../i18n/ja.js';
-import { ElapsedTimer } from '../panels/ElapsedTimer.js';
-import { LogPanel } from '../panels/LogPanel.js';
+import { SessionActivity } from '../panels/SessionActivity.js';
 import { DragGhost, PartsPanel } from '../panels/PartsPanel.js';
 import { dispatchTester, TesterPanel } from '../panels/TesterPanel.js';
 import { testerPickToAction, testerShortcut } from '../session/tester.js';
@@ -997,13 +996,13 @@ export function Session(): JSX.Element {
         </div>
 
         <div className={styles.bottomPanel}>
-          <LogPanel
+          <SessionActivity
+            limit={problem.timeLimit}
             lines={logLines}
             hazards={hazards}
             chatters={chatters}
             restoredHazardCount={restoredHazardCount}
           />
-          <ElapsedTimer limit={problem.timeLimit} />
         </div>
       </div>
     </>

@@ -35,8 +35,7 @@ import { LivePanel } from '../panels/LivePanel.js';
 import { TimeChartPanel } from '../panels/TimeChartPanel.js';
 import { buildPlcSpecChart } from '../session/spec-chart.js';
 import { focusWorkPanel } from '../session/workflow.js';
-import { ElapsedTimer } from '../panels/ElapsedTimer.js';
-import { LogPanel } from '../panels/LogPanel.js';
+import { SessionActivity } from '../panels/SessionActivity.js';
 import { PartsPanel } from '../panels/PartsPanel.js';
 import { PowerControls } from '../panels/PowerControls.js';
 import { ProblemPanel } from '../panels/ProblemPanel.js';
@@ -847,8 +846,8 @@ export function PlcSession(): JSX.Element {
           />
           <TesterPanel />
           <WireListPanel board={board} />
-          <ElapsedTimer limit={problem.timeLimit} />
-          <LogPanel
+          <SessionActivity
+            limit={problem.timeLimit}
             lines={logLines}
             hazards={hazards}
             chatters={chatters}

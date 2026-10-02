@@ -69,6 +69,7 @@ test('EXE1個から初回ガイド・372課題・回路の合格・ヘルプ・P
     await page.getByTestId('mode-assemble').click();
     await page.getByTestId('open-b-001').click();
     await expect(page.locator('[data-testid="viewport"] canvas')).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByTestId('session-activity')).not.toHaveAttribute('open', '');
     await expect(page.getByTestId('status-overlay')).toContainText(wireCountText(0, 0));
     await expect(page.getByTestId('tour-guide')).toHaveAttribute('data-step', 'rotate');
     await page.getByTestId('tour-later').click();
@@ -115,6 +116,38 @@ test('EXE1個から初回ガイド・372課題・回路の合格・ヘルプ・P
     await expect(page.getByTestId('no-mismatch')).toBeVisible();
     await page.screenshot({ path: join(SHOT_DIR, 'portable-result-pass.png') });
     await page.getByRole('button', { name: '課題一覧へ', exact: true }).click();
+    await page.getByRole('button', { name: 'ホームへ戻る', exact: true }).click();
+    // 新しい修復操作も、ビルド済みの画面ではなく配布EXEの実操作で確認する。
+    await page.getByTestId('mode-inspect-repair').click();
+    await page.getByTestId('open-c2-001').click();
+    await page
+      .getByTestId('problem-change-confirm')
+      .getByRole('button', { name: '保存せず進む', exact: true })
+      .click();
+    await expect(page.getByTestId('session-activity')).not.toHaveAttribute('open', '');
+    const repairWires = page.getByTestId('wire-list');
+    if ((await repairWires.getAttribute('open')) === null)
+      await repairWires.locator('summary').click();
+    await page.getByTestId('wire-row-sw-005').click();
+    await page.getByRole('button', { name: 'この電線の故障を指摘', exact: true }).click();
+    await page.getByTestId('report-kind-wire-open').click();
+    await page.getByTestId('edit-report-0').click();
+    await page.getByTestId('report-kind-wire-misrouted').click();
+    await expect(page.getByTestId('report-kind-text-0')).toHaveText('誤配線');
+    await page.getByTestId('edit-report-0').click();
+    await page.getByTestId('report-kind-wire-open').click();
+    await expect(page.getByTestId('report-count')).toHaveText('1');
+    await page.getByTestId('wire-row-sw-005').click();
+    await page
+      .getByRole('button', { name: 'この電線を外す（Delete / Backspace）', exact: true })
+      .click();
+    await expect(page.getByTestId('wire-row-sw-005')).toHaveCount(0);
+    await page.getByTestId('restore-wire-sw-005').click();
+    await expect(page.getByTestId('wire-row-sw-005')).toHaveCount(1);
+    await expect(page.getByTestId('restore-wire-sw-005')).toHaveCount(0);
+    await expect(page.getByTestId('report-count')).toHaveText('1');
+    await page.screenshot({ path: join(SHOT_DIR, 'portable-repair-restored.png') });
+    await page.getByTestId('session-back').click();
     await page.getByRole('button', { name: 'ホームへ戻る', exact: true }).click();
     await page.getByTestId('mode-plc').click();
     await page.getByTestId('open-d-001').click();
@@ -230,8 +263,8 @@ test('同じEXEの展開先は起動ごとに変わり、片方を閉じても�
   await expect.poll(() => existsSync(thirdDir)).toBe(false);
 });
 
-/** 本体の準備後に、起動ランチャーの標準進捗画面が再表示されないことを確認する。 */
-test('本体の起動後にNSISの進捗画面を残さない（3回起動）', async () => {
+/** 本体の準備後に、標準進捗画面や独立したローディング画面が残らないことを確認する。 */
+test('本体の起動後に進捗画面とローディング画面を残さない（3回起動）', async () => {
   test.setTimeout(240_000);
   for (let attempt = 0; attempt < 3; attempt++) {
     const app = await launchPortable();
@@ -252,15 +285,20 @@ public static class OjtPortableDialogProbe {
  [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr hwnd,out uint pid);
  [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr hwnd,out Rect rect);
  [DllImport("user32.dll",CharSet=CharSet.Unicode)] static extern int GetClassNameW(IntPtr hwnd,StringBuilder text,int count);
+ [DllImport("user32.dll",CharSet=CharSet.Unicode)] static extern int GetWindowTextW(IntPtr hwnd,StringBuilder text,int count);
  public static string[] Find(uint root) {
   var found=new List<string>();
   EnumWindows((hwnd,data)=>{
    uint pid;GetWindowThreadProcessId(hwnd,out pid);
    if(pid!=root||!IsWindowVisible(hwnd))return true;
    var cls=new StringBuilder(128);GetClassNameW(hwnd,cls,cls.Capacity);
+   var title=new StringBuilder(256);GetWindowTextW(hwnd,title,title.Capacity);
    Rect rect;GetWindowRect(hwnd,out rect);
-   if(cls.ToString()=="#32770"&&rect.right>rect.left&&rect.bottom>rect.top)
-    found.Add(String.Format("{0}x{1}",rect.right-rect.left,rect.bottom-rect.top));
+   var pending=cls.ToString()=="#32770"||
+    (String.Equals(cls.ToString(),"STATIC",StringComparison.OrdinalIgnoreCase)&&
+     title.ToString()=="電気教育ツールを起動しています…");
+   if(pending&&rect.right>rect.left&&rect.bottom>rect.top)
+    found.Add(String.Format("{0}:{1}x{2}",cls,rect.right-rect.left,rect.bottom-rect.top));
    return true;
   },IntPtr.Zero);
   return found.ToArray();

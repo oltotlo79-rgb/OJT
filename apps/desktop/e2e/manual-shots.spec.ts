@@ -1465,6 +1465,21 @@ test.describe.serial('取扱説明書の図', () => {
     await page.getByTestId('report-kind-wire-open').click();
     await expect(page.getByTestId('report-count')).toHaveText('1');
 
+    // --- c2-report-edit: 登録した1件を保ったまま種類を変更する ---
+    const editReport = page.getByTestId('edit-report-0');
+    await editReport.scrollIntoViewIfNeeded();
+    await editReport.click();
+    await expect(page.getByTestId('report-kind-wire-open')).toHaveAttribute('aria-pressed', 'true');
+    await shoot(
+      'c2-report-edit',
+      {
+        1: await rectOf(editReport),
+        2: await rectOf(page.getByTestId('report-popover'), 0),
+      },
+      'auto',
+    );
+    await page.getByTestId('report-cancel').click();
+
     // --- c2-report-from-list: 電線一覧からも同じ小窓を開ける ---
     await openPanel('wire-list');
     const brokenRow = page.getByTestId(`wire-row-${brokenWire}`);
@@ -1539,6 +1554,24 @@ test.describe.serial('取扱説明書の図', () => {
       .click();
     await expect(brokenRow).toHaveCount(0);
     await expect(page.getByTestId('removed-wires')).not.toHaveText('なし');
+    // --- c2-wire-return: 元の端子の確認と、1本だけ戻すボタン ---
+    const restoreWire = page.getByTestId(`restore-wire-${brokenWire}`);
+    await restoreWire.scrollIntoViewIfNeeded();
+    await shoot(
+      'c2-wire-return',
+      {
+        1: await rectOf(page.getByTestId('removed-wires').getByRole('button').first()),
+        2: await rectOf(restoreWire),
+      },
+      'auto',
+    );
+    await restoreWire.click();
+    await expect(brokenRow).toHaveCount(1);
+    await brokenRow.click();
+    await page
+      .getByRole('button', { name: 'この電線を外す（Delete / Backspace）', exact: true })
+      .click();
+    await expect(brokenRow).toHaveCount(0);
     await closePanel('wire-list');
     if (await clearFocus.isVisible()) await clearFocus.click();
     box = await waitForBoard();

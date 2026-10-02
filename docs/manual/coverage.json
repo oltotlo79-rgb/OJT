@@ -1,9 +1,29 @@
 {
   "controls": [
-    { "testid": "push-button-controls", "screen": "3D図", "label": "押し続ける", "section": "screens/押しボタンを同時に押す" },
-    { "testid": "hold-{}", "screen": "3D図", "label": "保持中", "section": "screens/押しボタンを同時に押す" },
-    { "testid": "release-all-buttons", "screen": "3D図", "label": "すべて離す", "section": "screens/押しボタンを同時に押す" },
-    { "testid": "push-button-state", "screen": "3D図", "label": "押下中", "section": "screens/押しボタンを同時に押す" },
+    {
+      "testid": "push-button-controls",
+      "screen": "3D図",
+      "label": "押し続ける",
+      "section": "screens/押しボタンを同時に押す"
+    },
+    {
+      "testid": "hold-{}",
+      "screen": "3D図",
+      "label": "保持中",
+      "section": "screens/押しボタンを同時に押す"
+    },
+    {
+      "testid": "release-all-buttons",
+      "screen": "3D図",
+      "label": "すべて離す",
+      "section": "screens/押しボタンを同時に押す"
+    },
+    {
+      "testid": "push-button-state",
+      "screen": "3D図",
+      "label": "押下中",
+      "section": "screens/押しボタンを同時に押す"
+    },
     {
       "testid": "detail-review-{}",
       "screen": "結果（モードC2）",
@@ -2501,6 +2521,36 @@
       "screen": "テスター",
       "label": "調整済",
       "section": "mode-c1/テスターの使い方"
+    },
+    {
+      "testid": "session-activity",
+      "screen": "練習中",
+      "label": "操作ログ",
+      "section": "screens/練習中の画面の並び"
+    },
+    {
+      "testid": "activity-toggle",
+      "screen": "練習中",
+      "label": "操作ログ",
+      "section": "screens/練習中の画面の並び"
+    },
+    {
+      "testid": "activity-warning-count",
+      "screen": "練習中",
+      "label": "警告",
+      "section": "screens/練習中の画面の並び"
+    },
+    {
+      "testid": "edit-report-{}",
+      "screen": "練習中（モードC2）",
+      "label": "変更",
+      "section": "mode-c2/見つけたところを書き出す"
+    },
+    {
+      "testid": "restore-wire-{}",
+      "screen": "練習中（モードC2）",
+      "label": "元に戻す",
+      "section": "mode-c2/直す"
     }
   ],
   "keys": [

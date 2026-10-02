@@ -8,8 +8,7 @@ import { checkSessionFor, useStore } from '../app/store.js';
 import { contactProbeLabel, JA, powerLog, referenceErrorText, trayPartLabel } from '../i18n/ja.js';
 import { CheckTrayPanel } from '../panels/CheckTrayPanel.js';
 import { DiagnosisHelp } from '../panels/DiagnosisHelp.js';
-import { ElapsedTimer } from '../panels/ElapsedTimer.js';
-import { LogPanel } from '../panels/LogPanel.js';
+import { SessionActivity } from '../panels/SessionActivity.js';
 import { MarkSheetPanel } from '../panels/MarkSheetPanel.js';
 import { PowerControls } from '../panels/PowerControls.js';
 import { ProblemPanel } from '../panels/ProblemPanel.js';
@@ -399,13 +398,13 @@ export function InspectPartsSession(): JSX.Element {
         </div>
 
         <div className={styles.bottomPanel}>
-          <LogPanel
+          <SessionActivity
+            limit={problem.timeLimit}
             lines={logLines}
             hazards={hazards}
             chatters={chatters}
             restoredHazardCount={restoredHazardCount}
           />
-          <ElapsedTimer limit={problem.timeLimit} />
         </div>
       </div>
     </>

@@ -73,6 +73,33 @@ export function registerReport(
   return { type: 'duplicate' };
 }
 
+/** 一覧の「変更」は元の1件を差し替える。取消時や重複時に元の指摘を失わない。 */
+export function editReport(
+  reports: readonly FaultReport[],
+  index: number,
+  kind: FaultReportKind,
+  detail?: FaultDetail,
+): ReportRegistration | { type: 'missing' } {
+  const previous = reports[index];
+  if (previous === undefined || !reportKindsFor(previous.target).includes(kind)) {
+    return { type: 'missing' };
+  }
+  if (
+    hasReportFor(
+      reports.filter((_, i) => i !== index),
+      previous.target,
+      kind,
+    )
+  ) {
+    return { type: 'duplicate' };
+  }
+  const report: FaultReport =
+    kind === 'part-defect' && detail !== undefined
+      ? { target: previous.target, kind, detail }
+      : { target: previous.target, kind };
+  return { type: 'replace', index, report };
+}
+
 /**
  * 指摘モードのピック結果を操作に変換する。§9.2
  * - 電線: 種別ポップオーバーを開く（既設配線＝チェック用回路の3本は指摘できない）

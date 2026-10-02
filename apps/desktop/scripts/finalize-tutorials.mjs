@@ -42,7 +42,7 @@ function timestamp(seconds) {
  */
 function firstExplanationFrame(file) {
   const width = 8;
-  const height = 190;
+  const height = 900;
   const fps = 25;
   const decoded = spawnSync(
     ffmpeg,
@@ -57,14 +57,14 @@ function firstExplanationFrame(file) {
       '-t',
       '5',
       '-vf',
-      `fps=${fps},crop=${width}:${height}:26:680`,
+      `fps=${fps},crop=${width}:${height}:26:0`,
       '-pix_fmt',
       'rgb24',
       '-f',
       'rawvideo',
       'pipe:1',
     ],
-    { windowsHide: true, maxBuffer: 2 * 1024 * 1024 },
+    { windowsHide: true, maxBuffer: 4 * 1024 * 1024 },
   );
   if (decoded.error) throw decoded.error;
   if (decoded.status !== 0) throw new Error(decoded.stderr.toString());
@@ -120,6 +120,12 @@ for (const mode of modes) {
   }
   if (mode === 'repair' && !notes.lessonReview.some((entry) => entry.stage === 'mark-tubes'))
     throw new Error('repair: マークチューブの確認がありません');
+  if (mode === 'repair') {
+    for (const stage of ['report-edit', 'wire-restoration']) {
+      if (!notes.lessonReview.some((entry) => entry.stage === stage))
+        throw new Error(`repair: 指摘変更・配線復元の説明がありません (${stage})`);
+    }
+  }
   const file = join(assets, `${mode}.webm`);
   const probe = spawnSync(ffmpeg, ['-hide_banner', '-i', file], {
     encoding: 'utf8',

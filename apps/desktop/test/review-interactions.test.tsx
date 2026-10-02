@@ -66,6 +66,7 @@ it('C2の修復一覧は追加線と削除線をIDで探し、両端子を表示
   useStore.getState().setSession(session);
   render(
     <RepairPanel
+      onRestoreWire={vi.fn()}
       addedWires={[{ id: added.value.id, label: wireLabel(added.value) }]}
       removedWires={[{ id: removed.id, label: wireLabel(removed) }]}
       mountedParts={[]}
@@ -75,7 +76,9 @@ it('C2の修復一覧は追加線と削除線をIDで探し、両端子を表示
   fireEvent.click(within(screen.getByTestId('added-wires')).getByRole('button'));
   expect(useStore.getState().highlight.wireIds).toContain(added.value.id);
   expect(useStore.getState().highlight.terminals).toEqual([added.value.from, added.value.to]);
-  fireEvent.click(within(screen.getByTestId('removed-wires')).getByRole('button'));
+  fireEvent.click(
+    within(screen.getByTestId('removed-wires')).getByRole('button', { name: /の元の端子/ }),
+  );
   expect(useStore.getState().highlight.terminals).toEqual([removed.from, removed.to]);
   expect(
     useStore.getState().toasts.some((toast) => toast.text.includes('接続先がありません')),

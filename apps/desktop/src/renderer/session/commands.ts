@@ -1,5 +1,6 @@
 import {
   addWire,
+  checkWirableTerminal,
   JIPM_BOARD,
   plug,
   removeWire,
@@ -36,6 +37,7 @@ export interface SessionCommand {
     | 'wireMetadata'
     | 'addWire'
     | 'removeWire'
+    | 'restoreWire'
     | 'plug'
     | 'unplug'
     | 'setPreset'
@@ -184,6 +186,51 @@ export function runRemoveWire(session: BoardSession, wireId: string): CommandRes
   // UXレビュー #6b: 内部の電線ID（`sw-005`）をそのまま出さず、両端の端子と色で示す
   const label = result.ok ? `電線を削除: ${wireLabel(result.value)}` : `電線を削除 ${wireId}`;
   return wrap(before, session, result, 'removeWire', label);
+}
+
+/** 開始時の電線を個別に戻す。断線などの故障も開始時のまま復元する。 */
+export function runRestoreWire(
+  session: BoardSession,
+  circuit: RepairCircuit,
+  wireId: string,
+): CommandResult<Wire> {
+  const original = circuit.initialWires.find((wire) => wire.id === wireId);
+  if (original === undefined || original.locked || session.boardId !== JIPM_BOARD.id) {
+    return { ok: false, code: 'not-restorable', message: 'この電線は元に戻せません' };
+  }
+  if (session.wires.some((wire) => wire.id === wireId)) {
+    return { ok: false, code: 'already-restored', message: 'この電線はすでに盤にあります' };
+  }
+  for (const terminal of [original.from, original.to]) {
+    const result = checkWirableTerminal(session, JIPM_BOARD, terminal);
+    if (!result.ok) {
+      return {
+        ok: false,
+        code: result.code,
+        message: result.message,
+        ...(result.code === 'terminal-overload' ? { wire: { ...original } } : {}),
+      };
+    }
+  }
+  const before = cloneSession(session);
+  const wire = { ...original };
+  // 開始時の並びに戻し、ほかの修復線や線番を巻き戻さない。
+  const rank = circuit.initialWireIds.indexOf(wireId);
+  const insertion = session.wires.findIndex((existing) => {
+    const existingRank = circuit.initialWireIds.indexOf(existing.id);
+    return existingRank < 0 || existingRank > rank;
+  });
+  session.wires.splice(insertion < 0 ? session.wires.length : insertion, 0, wire);
+  return {
+    ok: true,
+    value: wire,
+    command: {
+      kind: 'restoreWire',
+      label: `電線を元に戻す: ${wireLabel(wire)}`,
+      before,
+      after: cloneSession(session),
+    },
+  };
 }
 
 /** 部品を装着する。§8.2 */

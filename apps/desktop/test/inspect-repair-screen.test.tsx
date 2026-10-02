@@ -63,6 +63,45 @@ const C2_PART = BUILTIN_INSPECT_REPAIR_PROBLEMS.find((p) => p.id === 'c2-002');
 const REPAIR_FROM = toTerminalId('S1.6');
 const REPAIR_TO = toTerminalId('TB_PL.1+');
 
+describe('個別の復元と登録済み指摘の変更', () => {
+  it('外した線を戻し、Workerにも故障入りの元の線を送る', () => {
+    render(<InspectRepairSession />);
+    const original = useStore.getState().circuit?.initialWires.find((wire) => wire.open);
+    if (!original) throw new Error('断線した青線がありません');
+    fireEvent.click(screen.getByRole('button', { name: '削除モード' }));
+    act(() => picks.at(-1)?.({ kind: 'wire', id: original.id, locked: false }));
+    fireEvent.keyDown(window, { key: 'Delete' });
+    expect(useStore.getState().session?.wires.some((wire) => wire.id === original.id)).toBe(false);
+    fireEvent.click(screen.getByTestId(`restore-wire-${original.id}`));
+    expect(useStore.getState().session?.wires.find((wire) => wire.id === original.id)).toEqual(
+      original,
+    );
+    expect(sent).toContainEqual({ type: 'addWire', wire: original });
+    expect(screen.queryByTestId(`restore-wire-${original.id}`)).toBeNull();
+    expect(useStore.getState().history.done.at(-1)?.kind).toBe('restoreWire');
+  });
+
+  it('断線の指摘を誤配線へ変更し、取消で元の指摘を保持する', () => {
+    render(<InspectRepairSession />);
+    const original = useStore.getState().circuit?.initialWires[0];
+    if (!original) throw new Error('電線がありません');
+    act(() =>
+      useStore.getState().addReport({ target: { wireId: original.id }, kind: 'wire-open' }),
+    );
+    fireEvent.click(screen.getByTestId('edit-report-0'));
+    expect(screen.getByRole('dialog')).toHaveAccessibleName('指摘を変更する');
+    expect(screen.getByTestId('report-kind-wire-open')).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(screen.getByTestId('report-kind-wire-misrouted'));
+    expect(useStore.getState().reports).toEqual([
+      { target: { wireId: original.id }, kind: 'wire-misrouted' },
+    ]);
+    fireEvent.click(screen.getByTestId('edit-report-0'));
+    fireEvent.click(screen.getByTestId('report-cancel'));
+    expect(useStore.getState().reports[0]?.kind).toBe('wire-misrouted');
+    expect(screen.queryByTestId('report-popover')).toBeNull();
+  });
+});
+
 beforeEach(() => {
   sent.length = 0;
   picks.length = 0;

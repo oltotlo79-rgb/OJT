@@ -33,7 +33,13 @@ export function elapsedScale(
  * 経過時間は**この部品が自分でストアから受け取る**。0.2秒ごとに進む値をセッション画面が
  * 受けると、3Dビューポートを含む画面全体が毎秒5回再描画されてしまうため（§15）。
  */
-export function ElapsedTimer({ limit }: { limit: TimeLimit }): JSX.Element {
+export function ElapsedTimer({
+  limit,
+  showValue = true,
+}: {
+  limit: TimeLimit;
+  showValue?: boolean;
+}): JSX.Element {
   const elapsedMs = useStore((s) => s.elapsedMs);
   const scale = elapsedScale(elapsedMs, limit);
   return (
@@ -45,9 +51,11 @@ export function ElapsedTimer({ limit }: { limit: TimeLimit }): JSX.Element {
           : `${JA.session.remainingTime} ${formatElapsed(limit.cutoffMin * 60_000 - elapsedMs)}`}
       </p>
       <div className={styles.elapsed}>
-        <span className={styles.elapsedValue} data-testid="elapsed">
-          {formatElapsed(elapsedMs)}
-        </span>
+        {showValue && (
+          <span className={styles.elapsedValue} data-testid="elapsed">
+            {formatElapsed(elapsedMs)}
+          </span>
+        )}
         <div className={styles.elapsedBar}>
           <div className={styles.elapsedFill} style={{ width: `${scale.fill * 100}%` }} />
           <div
