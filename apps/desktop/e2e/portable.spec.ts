@@ -1,6 +1,6 @@
 import { existsSync, mkdtempSync, readFileSync, readdirSync } from 'node:fs';
 import { rm } from 'node:fs/promises';
-import { spawn } from 'node:child_process';
+import { spawn, execFileSync } from 'node:child_process';
 import { once } from 'node:events';
 import { dirname, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -228,6 +228,75 @@ test('同じEXEの展開先は起動ごとに変わり、片方を閉じても�
   }
   if (!thirdDir) throw new Error('同時起動の検査が完了していません');
   await expect.poll(() => existsSync(thirdDir)).toBe(false);
+});
+
+/** 本体の準備後に、起動ランチャーの標準進捗画面が再表示されないことを確認する。 */
+test('本体の起動後にNSISの進捗画面を残さない（3回起動）', async () => {
+  test.setTimeout(240_000);
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const app = await launchPortable();
+    try {
+      await expect(app.page.getByTestId('mode-assemble')).toBeVisible();
+      await expect(app.page.locator('#startup')).toHaveCount(0);
+      const script = String.raw`
+Add-Type -ReferencedAssemblies System,System.Core -TypeDefinition @'
+using System;
+using System.Collections.Generic;
+using System.Runtime.InteropServices;
+using System.Text;
+public static class OjtPortableDialogProbe {
+ [StructLayout(LayoutKind.Sequential)] struct Rect {public int left,top,right,bottom;}
+ delegate bool Callback(IntPtr hwnd,IntPtr data);
+ [DllImport("user32.dll")] static extern bool EnumWindows(Callback callback,IntPtr data);
+ [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr hwnd);
+ [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr hwnd,out uint pid);
+ [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr hwnd,out Rect rect);
+ [DllImport("user32.dll",CharSet=CharSet.Unicode)] static extern int GetClassNameW(IntPtr hwnd,StringBuilder text,int count);
+ public static string[] Find(uint root) {
+  var found=new List<string>();
+  EnumWindows((hwnd,data)=>{
+   uint pid;GetWindowThreadProcessId(hwnd,out pid);
+   if(pid!=root||!IsWindowVisible(hwnd))return true;
+   var cls=new StringBuilder(128);GetClassNameW(hwnd,cls,cls.Capacity);
+   Rect rect;GetWindowRect(hwnd,out rect);
+   if(cls.ToString()=="#32770"&&rect.right>rect.left&&rect.bottom>rect.top)
+    found.Add(String.Format("{0}x{1}",rect.right-rect.left,rect.bottom-rect.top));
+   return true;
+  },IntPtr.Zero);
+  return found.ToArray();
+ }
+}
+'@
+$observed=New-Object 'System.Collections.Generic.List[string]'
+for($sample=0;$sample -lt 12;$sample++){
+ foreach($dialog in [OjtPortableDialogProbe]::Find(${app.launcherPid})){$observed.Add($dialog)}
+ Start-Sleep -Milliseconds 100
+}
+@{samples=12;dialogs=@($observed)} | ConvertTo-Json -Compress
+`;
+      const output = execFileSync(
+        'powershell.exe',
+        [
+          '-NoProfile',
+          '-NonInteractive',
+          '-EncodedCommand',
+          Buffer.from(script, 'utf16le').toString('base64'),
+        ],
+        { windowsHide: true, encoding: 'utf8', timeout: 20_000 },
+      );
+      const audit = JSON.parse(output.trim().replace(/^\uFEFF/u, '')) as {
+        samples: number;
+        dialogs: string[];
+      };
+      expect(audit.samples).toBe(12);
+      expect(audit.dialogs, `起動${attempt + 1}回目に進捗画面が残っています`).toEqual([]);
+      await app.page.screenshot({
+        path: join(SHOT_DIR, `portable-no-installer-${attempt + 1}.png`),
+      });
+    } finally {
+      await app.close();
+    }
+  }
 });
 
 /** Windowsの読取ハンドルで削除だけを拒否する。対象はこの検査が起動したEXEだけ。 */

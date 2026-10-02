@@ -18,6 +18,7 @@ import { APP_ROOT, CHROMIUM_FLAGS, SHOT_DIR } from './app.js';
 
 export interface PackagedApp {
   page: Page;
+  launcherPid: number;
   /** このフォルダには配布されたEXE1つしか置かない。 */
   received: string;
   close: () => Promise<void>;
@@ -183,7 +184,8 @@ export async function launchPortable(options: { userDataDir?: string } = {}): Pr
       if (message.type() === 'warning' || message.type() === 'error')
         console.warn(`[配布版 ${message.type()}] ${message.text()}`);
     });
-    return { page, received, close };
+    if (!child.pid) throw new Error('配布EXEの起動プロセスを取得できません');
+    return { page, launcherPid: child.pid, received, close };
   } catch (error) {
     await close();
     throw error;

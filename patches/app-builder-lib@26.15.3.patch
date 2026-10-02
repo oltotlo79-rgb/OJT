@@ -20,7 +20,22 @@
  
  # https://github.com/electron-userland/electron-builder/issues/3972#issuecomment-505171582
  CRCCheck off
-@@ -79,13 +82,51 @@
+@@ -16,6 +19,14 @@
+ FunctionEnd
+ 
+ Function .onGUIInit
++  ; Keep the internal NSIS dialog non-interactive and without a visible client area.
++  ; BgImage needs its parent handle, so the parent is retained.
++  HideWindow
++  System::Call 'user32::GetWindowLongW(p $HWNDPARENT, i -20) i .r0'
++  IntOp $0 $0 | 0x80
++  IntOp $0 $0 & 0xFFFBFFFF
++  System::Call 'user32::SetWindowLongW(p $HWNDPARENT, i -20, i r0)'
++  System::Call 'user32::SetWindowPos(p $HWNDPARENT, p 0, i 0, i 0, i 0, i 0, i 0xB6)'
+   InitPluginsDir
+ 
+   !ifdef SPLASH_IMAGE
+@@ -79,13 +90,51 @@
    System::Call 'Kernel32::SetEnvironmentVariable(t, t)i ("PORTABLE_EXECUTABLE_APP_FILENAME", "${APP_FILENAME}").r0'
    ${StdUtils.GetAllParameters} $R0 0
  
