@@ -42,16 +42,15 @@
 ```ts
 {
   durationMs: number;          // 2,000〜60,000ms、100ms単位（既定 10,000）
-  inputs: { target: 'PB1'|'PB2'|'PB3'|'PB4'; on: [fromMs, toMs][] }[];   // 押している区間
+  operations: Operation[];     // 押ボタン PB1〜PB4 の押す・離す（既存の操作列と同じ形）
   expected?: { signal: 'PL1'|'PL2'|'PL3'|'PL4'; on: [fromMs, toMs][] }[]; // 正解の点灯区間（無ければ実験だけ）
-  judged: ('PL1'|'PL2'|'PL3'|'PL4')[];  // 判定に使うランプ（既定は4つすべて）
-  tolerance: { edgeMs: number; ratio: number }; // 既定は既存と同じ（200ms / 10%）
+  judge: { compareSignals?; tolerance; staticChecks }; // 判定に使うランプ（既定は4つすべて）と許容差（既定は既存と同じ 200ms / 10%）
 }
 ```
 
-- 区間は `0 ≤ from < to ≤ durationMs`、10ms の倍数、重ならず昇順。描く操作は 100ms に吸着する（取り込みは 10ms のまま）。
-- 入力の区間は再生の直前に既存の操作列（`press` / `release`）へ変換する（`runOperations` をそのまま使う）。終端まで押し続ける区間は `release` を書かない。
-- 描いていないランプは「ずっと消灯」が正解。判定から外したいランプは `judged` から外す。
+- 入力は既存の操作列のまま持ち、編集窓では押ボタンごとの「押している区間」に直して見せる（往復の変換関数を用意する）。終端まで押し続ける区間は `release` を書かない。
+- 正解の区間は `0 ≤ from < to ≤ durationMs`、10ms の倍数、重ならず昇順。描く操作は 100ms に吸着する（取り込みは 10ms のまま）。
+- 描いていないランプは「ずっと消灯」が正解。判定から外したいランプは `judge.compareSignals` から外す（編集窓の「判定に使う」の印）。
 
 ### 4.2 実験の課題（その場で作る課題。保存はしない）
 
