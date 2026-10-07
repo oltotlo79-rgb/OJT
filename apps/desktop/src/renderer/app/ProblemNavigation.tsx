@@ -41,7 +41,11 @@ function ChangeDialog(): JSX.Element {
       }}
     >
       <h2 id="problem-change-title">
-        {pending?.restart ? 'この課題を最初からやり直しますか？' : '別の課題へ移りますか？'}
+        {pending?.restart
+          ? 'この課題を最初からやり直しますか？'
+          : pending?.problem.id === pending?.from.id
+            ? 'いまの実験を置き換えて、新しく始めますか？'
+            : '別の課題へ移りますか？'}
       </h2>
       <p>現在の作業：{pending?.from.title}</p>
       {!pending?.restart && <p>次の課題：{pending?.problem.title}</p>}

@@ -41,11 +41,18 @@ export function resumeCurrentProblem(): void {
   useStore.setState({ route: 'session', replay: undefined, judging: false });
 }
 
-/** 利用者が課題を選ぶ入口。復元/採点の内部openProblemにはUI確認を混ぜない。 */
-export function requestOpenProblem(problem: SupportedProblem): void {
+/**
+ * 利用者が課題を選ぶ入口。復元/採点の内部openProblemにはUI確認を混ぜない。
+ * `fresh` は「新しく始める」（回路実験・PLC実験の開始。2026-10-08）で、同じIDの課題を
+ * いま開いていても続きを再開せず、作業を置き換える（必要なら確認を出す）。
+ */
+export function requestOpenProblem(
+  problem: SupportedProblem,
+  options: { fresh?: boolean } = {},
+): void {
   if (useProblemNavigation.getState().pending !== undefined) return;
   const state = useStore.getState();
-  if (state.problem?.id === problem.id && state.session !== undefined) {
+  if (options.fresh !== true && state.problem?.id === problem.id && state.session !== undefined) {
     resumeCurrentProblem();
     return;
   }

@@ -3,7 +3,9 @@ import { ResumeWorkCard } from '../app/ProblemNavigation.js';
 import { changeProblemFilters, DEFAULT_PROBLEM_FILTERS } from './problem-list-state.js';
 import { useEffect, useState, type JSX } from 'react';
 import { JA, sessionModeLabel } from '../i18n/ja.js';
-import { useStore, type ListMode } from '../app/store.js';
+import { useStore } from '../app/store.js';
+import { isLabMode, type ClassicMode, type LabMode } from '@ojt/content';
+import { LabStartDialog } from '../lab/LabStartDialog.js';
 import { tryOjtApi } from '../app/ojt-api.js';
 import { formatElapsed } from '../../worker/runtime.js';
 import { HelpButton } from '../help/HelpButton.js';
@@ -22,45 +24,43 @@ import styles from './screens.module.css';
  * 押すと一時保存をそのまま開き直す（作業ファイルの読込と同じ道）。
  */
 
-/** モードの並び。§12.1 / §16 Phase 2（B・C1・C2 が動く） */
+/** ホームのカードのモード（課題一覧の4モードと、その場で作る実験の2モード）。 */
+type HomeMode = ClassicMode | LabMode;
+
+/**
+ * モードの並び。§12.1 / §16 Phase 2（B・C1・C2 が動く）
+ * 回路実験・PLC実験（2026-10-08）は課題一覧ではなく開始の窓を開く。
+ */
 const MODES: ReadonlyArray<{
-  key: string;
-  mode: ListMode;
+  mode: HomeMode;
   name: string;
   desc: string;
   enabled: boolean;
 }> = [
+  { mode: 'assemble', name: JA.home.assemble, desc: JA.home.assembleDesc, enabled: true },
   {
-    key: 'assemble',
-    mode: 'assemble',
-    name: JA.home.assemble,
-    desc: JA.home.assembleDesc,
-    enabled: true,
-  },
-  {
-    key: 'inspect-parts',
     mode: 'inspect-parts',
     name: JA.home.inspectParts,
     desc: JA.home.inspectPartsDesc,
     enabled: true,
   },
   {
-    key: 'inspect-repair',
     mode: 'inspect-repair',
     name: JA.home.inspectRepair,
     desc: JA.home.inspectRepairDesc,
     enabled: true,
   },
+  { mode: 'plc', name: JA.home.plc, desc: JA.home.plcDesc, enabled: true },
   {
-    key: 'plc',
-    mode: 'plc',
-    name: JA.home.plc,
-    desc: JA.home.plcDesc,
+    mode: 'assemble-lab',
+    name: JA.home.assembleLab,
+    desc: JA.home.assembleLabDesc,
     enabled: true,
   },
+  { mode: 'plc-lab', name: JA.home.plcLab, desc: JA.home.plcLabDesc, enabled: true },
 ];
 
-function ModeSymbol({ mode }: { mode: ListMode }): JSX.Element {
+function ModeSymbol({ mode }: { mode: HomeMode }): JSX.Element {
   return (
     <svg
       viewBox="0 0 64 64"
@@ -89,6 +89,16 @@ function ModeSymbol({ mode }: { mode: ListMode }): JSX.Element {
           <circle cx="26" cy="26" r="17" />
           <path d="m39 39 16 16M16 27h7l4-9 5 17 4-8" />
         </>
+      ) : mode === 'assemble-lab' ? (
+        <>
+          <path d="M6 26h8V12h12v14h32M6 54h12V40h22v14h18" />
+          <circle cx="47" cy="12" r="5" />
+        </>
+      ) : mode === 'plc-lab' ? (
+        <>
+          <rect x="6" y="6" width="22" height="22" rx="3" />
+          <path d="M11 13h12M11 20h12M34 22h6V10h10v12h8M6 54h10V40h18v14h24" />
+        </>
       ) : (
         <>
           <path d="M10 8v48M54 8v48M10 20h13m8 0h10m9 0h4M23 14v12m8-12v12M10 44h25m12 0h7" />
@@ -114,6 +124,8 @@ export function Home(): JSX.Element {
   const currentProblem = useStore((s) => s.problem);
   const setRoute = useStore((s) => s.setRoute);
   const setListMode = useStore((s) => s.setListMode);
+  /** 開いている実験の開始の窓（回路実験・PLC実験のカード）。 */
+  const [labStart, setLabStart] = useState<LabMode | undefined>(undefined);
   /**
    * 最近の課題（UXレビュー #19）。§12.3 の一時保存を読まずに覗くだけ（`discard` を
    * 付けないので一時保存は消えない。`App.tsx` の復元プロンプトとは独立に動く）。
@@ -209,13 +221,17 @@ export function Home(): JSX.Element {
         <div className={styles.modeGrid}>
           {MODES.map((mode) => (
             <button
-              key={mode.key}
+              key={mode.mode}
               type="button"
               className={styles.modeCard}
-              data-mode={mode.key}
+              data-mode={mode.mode}
               disabled={!mode.enabled}
-              data-testid={`mode-${mode.key}`}
+              data-testid={`mode-${mode.mode}`}
               onClick={() => {
+                if (isLabMode(mode.mode)) {
+                  setLabStart(mode.mode);
+                  return;
+                }
                 setListMode(mode.mode);
                 setRoute('list');
               }}
@@ -224,12 +240,20 @@ export function Home(): JSX.Element {
               <span className={styles.modeName}>{mode.name}</span>
               <span className={styles.modeDesc}>{mode.desc}</span>
               <span className={styles.modeAction}>
-                {JA.home.openMode}
+                {isLabMode(mode.mode) ? JA.home.startLab : JA.home.openMode}
                 <span aria-hidden="true"> →</span>
               </span>
             </button>
           ))}
         </div>
+        {labStart === undefined ? null : (
+          <LabStartDialog
+            mode={labStart}
+            onClose={() => {
+              setLabStart(undefined);
+            }}
+          />
+        )}
         {/*
         ホーム下半分（指摘 UX-28: 一等地が約400px ぶん空いていた）。
         左に「はじめての方はここから」（指摘 UX-19: どのモードから始めるかの案内が

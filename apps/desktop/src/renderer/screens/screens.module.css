@@ -937,6 +937,14 @@
   background: #38314e;
   color: #c8b8fb;
 }
+.modeCard[data-mode='assemble-lab'] .modeSymbol {
+  background: #2c4234;
+  color: #9fe0a8;
+}
+.modeCard[data-mode='plc-lab'] .modeSymbol {
+  background: #4a3240;
+  color: #f2a9cf;
+}
 .homeScreen .modeName {
   font-size: 1.125rem;
   margin: 0;

@@ -20,6 +20,7 @@ import { JA, referenceErrorText } from '../i18n/ja.js';
 import { cloneSession } from './commands.js';
 import { shortcutKeyOf } from './ladder.js';
 import { canJudgePlc } from './plc-session.js';
+import { requestOpenProblem } from './problem-navigation.js';
 import { bridge } from './worker-bridge.js';
 
 /**
@@ -56,6 +57,14 @@ export function newLabProblem(mode: LabMode, options: LabStartOptions): LabProbl
   return mode === 'assemble-lab'
     ? createAssembleLabProblem(chart)
     : createPlcLabProblem({ vendor: options.vendor, prewired: options.prewired, ...chart });
+}
+
+/**
+ * 実験を新しく始める（開始の窓の「始める」）。いまの作業があれば置き換える前に確認を出す
+ * （課題を選び直すときと同じ流れ。同じ実験をしていても続きの再開にはしない）。
+ */
+export function startLab(mode: LabMode, options: LabStartOptions): void {
+  requestOpenProblem(newLabProblem(mode, options), { fresh: true });
 }
 
 /** いま開いている実験の課題（実験でなければ `undefined`）。 */
