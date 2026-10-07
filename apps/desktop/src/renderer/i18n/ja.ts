@@ -1557,11 +1557,79 @@ export const JA = {
     /** 正解が無いと判定できない（判定ボタンを押せない理由）。 */
     judgeNeedsExpected: '正解のランプの動きを描くと判定できます',
     /** PLC実験で変換していないラダーを動かそうとした。 */
-    runNotConverted: (convertKey: string): string =>
-      `変換（${convertKey}）を通してから動かします`,
+    runNotConverted: (convertKey: string): string => `変換（${convertKey}）を通してから動かします`,
     /** 動かしている間に押し方を描き直した。 */
     staleRun:
       '動かしている間にタイムチャートの押し方を描き直したので、その結果は使いませんでした。もう一度「動かす」を押してください。',
+    // 右パネルの「タイムチャート実験」
+    panelTitle: 'タイムチャート実験',
+    countsText: (inputs: number, expectedRows: number): string =>
+      expectedRows === 0
+        ? `押し方 ${String(inputs)}区間・正解なし`
+        : `押し方 ${String(inputs)}区間・正解 ${String(expectedRows)}行`,
+    notRunYet: 'まだ動かしていません',
+    runLadderErrors:
+      'ラダーを変換できないため動かせませんでした（出力ウィンドウを確認してください）',
+    runNoExpected: '動かしました（正解が無いので判定はしていません）',
+    runPassed: '正解どおりに動きました',
+    runDiffers: (mismatches: number, failedChecks: number): string =>
+      failedChecks === 0
+        ? `正解と違う所が ${String(mismatches)} 件あります`
+        : `正解と違う所が ${String(mismatches)} 件・配線の決まりの指摘が ${String(failedChecks)} 件あります`,
+    openEditor: '大きく開いて編集',
+    run: '動かす',
+    running: '動かしています…',
+    judge: '判定',
+    replay: '盤で動きを見る',
+    replayNeedsRun: '「動かす」を押すと、その動きを盤で見直せます',
+    restartBoard: '配線をやり直す',
+    notJudged: '（判定しない）',
+    // 「配線をやり直す」の確認
+    restartTitle: '盤を作り直しますか？',
+    restartBody:
+      'いまの配線と部品を外して、盤を最初の状態に戻します。タイムチャートとラダーは残ります。',
+    wiringLegend: '盤の配線',
+    prewired: '配線済みの盤',
+    prewiredNote: '盤とPLCの配線を済ませた状態から始めます（ラダー作りに集中できます）',
+    selfWire: '自分で配線する盤',
+    selfWireNote: 'PLCの電源・入力・出力の配線から自分で行います',
+    restartGo: '作り直す',
+    cancel: '取消',
+    // 編集窓
+    editorTitle: 'タイムチャートを描く',
+    editorHint:
+      '押ボタンの行をドラッグすると押している区間、ランプの行をドラッグすると正解の点灯区間を描きます。点いている所から引くと消します（0.1秒刻み）。クリックだけなら0.1秒ぶんを塗ります。下の一覧で秒を打ち込んでも描けます。',
+    close: '閉じる',
+    duration: '長さ',
+    durationLabel: 'タイムチャートの長さ（秒）',
+    seconds: '秒',
+    badDuration: '長さは2〜60秒・0.1秒単位で入れてください',
+    templatePick: '例題を読み込む…',
+    templateLoaded: (title: string): string => `例題「${title}」を読み込みました`,
+    clearInputs: '押し方を消す',
+    clearExpected: '正解を消す',
+    legendInput: '押し方（描いた入力）',
+    legendExpected: '正解（描いたランプの動き）',
+    legendActual: '動かした結果',
+    legendBand: '正解との違い',
+    capture: 'この結果を正解にする',
+    captureNeedsRun: '「動かす」を押すと、その結果を正解として取り込めます',
+    captureNew: '動かした結果のランプの動きを、正解として取り込みます。',
+    captureReplace: '動かした結果のランプの動きで、いまの正解を置き換えます。',
+    captureConfirm: '取り込む',
+    captured: '動かした結果を正解にしました',
+    judged: '判定に使う',
+    noExpected: '正解はまだありません（ランプの行をドラッグすると描けます）',
+    noIntervals: '区間はありません',
+    intervalFrom: (label: string, n: number): string => `${label} ${String(n)}つ目の始まり（秒）`,
+    intervalTo: (label: string, n: number): string => `${label} ${String(n)}つ目の終わり（秒）`,
+    deleteInterval: '削除',
+    deleteIntervalLabel: (label: string, n: number): string =>
+      `${label} の${String(n)}つ目の区間を削除`,
+    addInterval: '区間を足す',
+    badSeconds: '秒は 0.01 秒単位の数で入れてください（例: 1.5）',
+    badInterval: '区間の終わりは始まりより後にしてください',
+    noRoom: 'この行にはもう区間を足す空きがありません',
   },
   // --- /回路実験・PLC実験 ---
 } as const;

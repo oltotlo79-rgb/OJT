@@ -20,8 +20,8 @@ import styles from './result.module.css';
 /** 差分を敷く区間の最小幅（区間長に対する割合）。細い差分でも目に入る太さにする。 */
 const MIN_BAND_RATIO = 0.015;
 
-/** ある信号の差分区間。期待時刻と実際の時刻のあいだを敷く。 */
-function bandsOf(
+/** ある信号の差分区間。期待時刻と実際の時刻のあいだを敷く（実験の欄も同じ敷き方にする）。 */
+export function bandsOf(
   mismatches: readonly Mismatch[],
   signalName: string,
   durationMs: number,

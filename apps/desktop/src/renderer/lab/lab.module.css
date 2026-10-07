@@ -1,0 +1,301 @@
+/* 回路実験・PLC実験の欄と編集窓（2026-10-08）。色は global.css の変数だけを使う。 */
+
+.status {
+  color: var(--muted);
+  font-size: max(12px, 0.8rem);
+  margin: 0 0 6px;
+}
+
+.statusPassed {
+  color: var(--success-text);
+}
+
+.statusFailed {
+  color: var(--danger-text);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.reason {
+  color: var(--muted);
+  font-size: max(12px, 0.75rem);
+  margin: 6px 0 0;
+}
+
+/* 編集窓（大きな `<dialog>`） */
+.editor {
+  width: min(1180px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+  padding: 16px 20px 20px;
+  border: 1px solid var(--accent);
+  border-radius: 10px;
+  color: var(--text);
+  background: var(--panel);
+}
+
+.editor::backdrop {
+  background: rgb(0 0 0 / 65%);
+}
+
+.editorHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.editorHead h2 {
+  margin: 0;
+}
+
+.hint {
+  color: var(--muted);
+  margin: 6px 0 10px;
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  margin-bottom: 8px;
+}
+
+.field {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.seconds {
+  width: 5.5em;
+}
+
+.canvas {
+  width: 100%;
+  height: auto;
+  touch-action: none;
+  user-select: none;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+.rowHit {
+  fill: transparent;
+  cursor: crosshair;
+}
+
+.rowOutput {
+  fill: var(--panel-2);
+  opacity: 0.35;
+}
+
+.rowLabel {
+  fill: var(--text);
+}
+
+.rowLabelMuted {
+  fill: var(--muted);
+}
+
+.axis {
+  stroke: var(--line);
+  stroke-width: 1;
+}
+
+.tick {
+  stroke: var(--line);
+  stroke-width: 1;
+  opacity: 0.5;
+}
+
+.tickLabel {
+  fill: var(--muted);
+}
+
+.inputFill {
+  fill: var(--accent);
+  opacity: 0.28;
+}
+
+.inputLine {
+  stroke: var(--accent);
+  stroke-width: 2;
+  fill: none;
+}
+
+.expectedFill {
+  fill: var(--warn);
+  opacity: 0.22;
+}
+
+.expectedLine {
+  stroke: var(--warn);
+  stroke-width: 2;
+  stroke-dasharray: 6 4;
+  fill: none;
+}
+
+.actualLine {
+  stroke: var(--accent);
+  stroke-width: 3.5;
+  fill: none;
+}
+
+.band {
+  fill: var(--ng);
+  opacity: 0.32;
+}
+
+.preview {
+  fill: var(--text);
+  opacity: 0.25;
+}
+
+.previewErase {
+  fill: var(--ng);
+  opacity: 0.25;
+}
+
+/* 区間の一覧（キーボードで数値を直す） */
+.lists {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.list {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 8px;
+}
+
+.list h3 {
+  font-size: 1rem;
+  margin: 0 0 6px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.interval {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 4px;
+}
+
+.empty {
+  color: var(--muted);
+  margin: 0 0 4px;
+}
+
+.footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin-top: 12px;
+}
+
+.confirm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-left: 4px solid var(--warn);
+  background: rgba(232, 194, 42, 0.12);
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  color: var(--muted);
+  font-size: max(12px, 0.8rem);
+  margin: 4px 0 8px;
+}
+
+.swatch {
+  display: inline-block;
+  width: 20px;
+  height: 10px;
+  margin-right: 4px;
+  vertical-align: middle;
+  border-radius: 2px;
+}
+
+.swatchInput {
+  background: var(--accent);
+  opacity: 0.6;
+}
+
+.swatchExpected {
+  background: var(--warn);
+  opacity: 0.6;
+}
+
+.swatchActual {
+  height: 0;
+  border-top: 3px solid var(--accent);
+}
+
+.swatchBand {
+  background: var(--ng);
+  opacity: 0.45;
+}
+
+/* 開始の窓・盤の作り直しの窓 */
+.dialog {
+  width: min(560px, calc(100vw - 48px));
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+  padding: 22px;
+  border: 1px solid var(--accent);
+  border-radius: 10px;
+  color: var(--text);
+  background: var(--panel);
+}
+
+.dialog::backdrop {
+  background: rgb(0 0 0 / 65%);
+}
+
+.dialog h2 {
+  margin-top: 0;
+}
+
+.choices {
+  display: grid;
+  gap: 6px;
+  margin: 10px 0 14px;
+  border: 0;
+  padding: 0;
+}
+
+.choices legend {
+  font-weight: bold;
+  margin-bottom: 4px;
+}
+
+.choice {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.choiceNote {
+  color: var(--muted);
+  display: block;
+  font-size: max(12px, 0.8rem);
+}
