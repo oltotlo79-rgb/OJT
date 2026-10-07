@@ -20,14 +20,19 @@ import {
 import {
   buildInspectRepairCircuit,
   defaultChartSignals,
-  isAssembleProblem,
   isInspectPartsProblem,
   isInspectRepairProblem,
+  isLabProblem,
+  isPlcLabProblem,
   isPlcProblem,
+  labChartSignals,
+  labSessionFor,
   REPAIR_WIRE_COLOR,
   resolveCompareSignals,
   resolveFaults,
+  runtimeKindOf,
   toSocketRoles,
+  usesPlc,
   type FaultReport,
   type FaultSpecData,
   type InspectPartAnswer,
@@ -35,6 +40,7 @@ import {
   type JudgeInspectResult,
   type JudgePlcResult,
   type JudgeResult,
+  type LabJudgeResult,
   type PartTruth,
   type RepairCircuit,
   type SupportedProblem,
@@ -54,7 +60,7 @@ import {
 } from '../session/commands.js';
 import type { DragPayload, ToolMode } from '../session/interaction.js';
 import { boardForProblem } from '../session/plc-session.js';
-import { plcForVendor, plcUnitForVendor } from '../session/plc-skin.js';
+import { plcForVendor, plcLabForVendor, plcUnitForVendor } from '../session/plc-skin.js';
 import { nextProbeAfter } from '../session/tester.js';
 import { plcFields } from './store-ladder.js';
 import { schematicFields } from './store-schematic.js';
@@ -136,8 +142,8 @@ function trimLivePoints(
   return points.slice(start);
 }
 
-/** 判定結果（モードB／C1／C2／D）。§8.3 / §9.1 / §9.2 / §10.8 */
-export type AnyJudgeResult = JudgeResult | JudgeInspectResult | JudgePlcResult;
+/** 判定結果（モードB／C1／C2／D と、回路実験・PLC実験）。§8.3 / §9.1 / §9.2 / §10.8 */
+export type AnyJudgeResult = JudgeResult | JudgeInspectResult | JudgePlcResult | LabJudgeResult;
 
 /**
  * 点検系（C1/C2）の判定結果か。§9.1 / §9.2
@@ -153,6 +159,11 @@ export function isInspectJudge(result: AnyJudgeResult): result is JudgeInspectRe
 /** モードDの判定結果か。§10.8 */
 export function isPlcJudge(result: AnyJudgeResult): result is JudgePlcResult {
   return result.mode === 'plc';
+}
+
+/** 回路実験・PLC実験の判定結果か（2026-10-08）。 */
+export function isLabJudge(result: AnyJudgeResult): result is LabJudgeResult {
+  return result.mode === 'assemble-lab' || result.mode === 'plc-lab';
 }
 
 /**
@@ -261,6 +272,8 @@ export function sessionFields(
   | 'schematicOpenCount'
   | 'hintStage'
   | 'assembleView'
+  | 'labRun'
+  | 'labRunning'
 > {
   return {
     measurements: [],
@@ -297,6 +310,9 @@ export function sessionFields(
     hintStage: 0,
     // 盤から始める（Plan 5 Task 7 / 決定表#1）
     assembleView: 'board',
+    // 実験の「動かす」の結果は盤と一緒に作り直す（2026-10-08）
+    labRun: undefined,
+    labRunning: false,
   };
 }
 
@@ -407,6 +423,14 @@ export interface SessionSlice {
    */
   restoredHazardCount: number;
   judge: AnyJudgeResult | undefined;
+  /**
+   * 回路実験・PLC実験で最後に「動かす」した結果（2026-10-08）。設計 §6.2
+   * 実験の欄のチャート・「盤で動きを見る」・「この結果を正解にする」が読む。
+   * 入力（押し方・長さ）を描き直すと捨て、正解だけを描き直したときは比べ直す（`session/lab.ts`）。
+   */
+  labRun: LabJudgeResult | undefined;
+  /** 実験をワーカーで動かしている最中か（「動かす」を二重に押させない）。 */
+  labRunning: boolean;
 
   /**
    * 課題を開く。盤を作れなかった（課題データの誤り）ときは `false` を返し、画面も状態も動かさない。
@@ -436,6 +460,9 @@ export interface SessionSlice {
    * 保持する `judge` が `AnyJudgeResult` なので、入口も同じ広さにしておく（Plan 2B Task 10）。
    */
   setJudge: (result: AnyJudgeResult | undefined) => void;
+  /** 実験の「動かす」の結果を入れる／捨てる。 */
+  setLabRun: (result: LabJudgeResult | undefined) => void;
+  setLabRunning: (running: boolean) => void;
   tickElapsed: () => void;
   /** 作業ファイルから経過時間と危険操作回数を戻す（`startedAtMs` も巻き戻す）。§12.3 */
   restoreProgress: (elapsedMs: number, hazardCount: number) => void;
@@ -541,6 +568,8 @@ export const createSessionSlice: StateCreator<AppState, [], [], SessionSlice> = 
   elapsedMs: 0,
   restoredHazardCount: 0,
   judge: undefined,
+  labRun: undefined,
+  labRunning: false,
 
   openProblem: (problem, options = {}) => {
     /*
@@ -561,7 +590,12 @@ export const createSessionSlice: StateCreator<AppState, [], [], SessionSlice> = 
      * **方言（`dialectId`）を決めるのはここだけ**である（決定表#24）。設定を保存するたびに
      * 上書きすると、復元した方言や表記切替で選んだ方言がセッションの途中で戻る（前提#31b）。
      */
-    let vendor = options.vendor ?? get().defaultVendor;
+    /*
+     * PLC実験（2026-10-08）は始めるときに機種を決めて課題に入れてあるので、その機種のまま開く
+     * （既定メーカーへ戻さない。開始の窓は既定メーカーで作る）。
+     */
+    let vendor =
+      options.vendor ?? (isPlcLabProblem(problem) ? problem.plc.vendor : get().defaultVendor);
     if (isPlcProblem(problem)) {
       const swapped = plcForVendor(problem, vendor);
       if (swapped === undefined) {
@@ -576,6 +610,9 @@ export const createSessionSlice: StateCreator<AppState, [], [], SessionSlice> = 
       } else {
         problem = swapped;
       }
+    } else if (isPlcLabProblem(problem)) {
+      // PLC実験の割付は入力0〜3・出力0〜3だけなので、どのメーカーの機種にも必ず収まる
+      problem = plcLabForVendor(problem, vendor);
     }
     let session: BoardSession;
     let circuit: RepairCircuit | undefined;
@@ -635,6 +672,17 @@ export const createSessionSlice: StateCreator<AppState, [], [], SessionSlice> = 
     } else if (isInspectPartsProblem(problem)) {
       // C1は配線しないので線色パレットは空（`checkSessionFor()` が決める）。§9.1
       session = checkSessionFor(problem);
+    } else if (isLabProblem(problem)) {
+      /*
+       * 回路実験は何も付いていない盤、PLC実験は配線済み（固定電線とリレー4個）か
+       * PLC本体だけの盤から始める（2026-10-08 利用者の決定 D3）。回路図ヒントは無い。
+       */
+      try {
+        session = labSessionFor(problem, JIPM_BOARD);
+      } catch (error) {
+        get().toast(referenceErrorText([String(error)]), 'error');
+        return false;
+      }
     } else {
       session = sessionForProblem(problem);
       // 回路図ヒントの出し方は級だけで決まる（§8.4）
@@ -647,7 +695,7 @@ export const createSessionSlice: StateCreator<AppState, [], [], SessionSlice> = 
      * モードDの「もう一度」はラダーを残す（Batch 4+5 レビュー I4）。`plcFields()` が書き込む
      * 前のいまの値をここで捕まえておく（下の `set()` で上書きされてしまうため）。
      */
-    const keepLadder = options.keepLadder === true && isPlcProblem(problem);
+    const keepLadder = options.keepLadder === true && usesPlc(problem);
     const previousLadder = keepLadder ? get().ladder : undefined;
     const previousLadderComments = keepLadder ? get().ladderComments : undefined;
     set({
@@ -661,20 +709,26 @@ export const createSessionSlice: StateCreator<AppState, [], [], SessionSlice> = 
       resolvedFaults,
       history: emptyHistory(),
       route: 'session',
-      // 配線する2モード（B と D）は電線ツール、点検系（C1/C2）はテスターから始める
-      mode: isAssembleProblem(problem) || isPlcProblem(problem) ? 'wire' : 'tester',
+      // 配線するモード（B・D と実験）は電線ツール、点検系（C1/C2）はテスターから始める
+      mode:
+        runtimeKindOf(problem.mode) === 'assemble' || runtimeKindOf(problem.mode) === 'plc'
+          ? 'wire'
+          : 'tester',
       wireColor,
       snapshot: EMPTY_SNAPSHOT,
       hazards: [],
       sessionHazardCount: 0,
       chatters: [],
-      // C1は波形を比べないのでライブチャートも要らない。モードBとC2は同じ式で信号を決める
+      // C1は波形を比べないのでライブチャートも要らない。モードBとC2は同じ式で信号を決める。
+      // 実験は判定に使わないランプも見たいので、押ボタン4行・ランプ4行をいつも並べる
       chartSpecs: isInspectPartsProblem(problem)
         ? []
-        : defaultChartSignals(
-            resolveCompareSignals(problem.judge, problem.board.extraParts ?? []),
-            problem.operations.map((operation) => operation.target),
-          ),
+        : isLabProblem(problem)
+          ? labChartSignals()
+          : defaultChartSignals(
+              resolveCompareSignals(problem.judge, problem.board.extraParts ?? []),
+              problem.operations.map((operation) => operation.target),
+            ),
       liveTransitions: {},
       logLines: [],
       reportedDroppedTicks: 0,
@@ -695,7 +749,7 @@ export const createSessionSlice: StateCreator<AppState, [], [], SessionSlice> = 
        * それ以外は正面。前の課題（特にモードD）の視点を持ち越すと、配線の相手が
        * 最初から画面の外にいることがある。`cameraNonce` も進めて必ず適用させる。
        */
-      camera: isPlcProblem(problem) ? ('plc' as const) : ('front' as const),
+      camera: usesPlc(problem) ? ('plc' as const) : ('front' as const),
       cameraNonce: get().cameraNonce + 1,
       ...plcFields(problem),
       // 方言を決めるのはこの1箇所だけ（決定表#24）。モードD以外でも入れてよい
@@ -813,6 +867,12 @@ export const createSessionSlice: StateCreator<AppState, [], [], SessionSlice> = 
   setJudge: (judge) => {
     set({ judge });
   },
+  setLabRun: (labRun) => {
+    set({ labRun });
+  },
+  setLabRunning: (labRunning) => {
+    set({ labRunning });
+  },
   tickElapsed: () => {
     const { startedAtMs } = get();
     if (startedAtMs === 0) return;
@@ -922,7 +982,7 @@ export const createSessionSlice: StateCreator<AppState, [], [], SessionSlice> = 
     const reopened = get().openProblem(problem, {
       resolvedFaults: state.resolvedFaults,
       faultSeed: state.faultSeed,
-      keepLadder: isPlcProblem(problem),
+      keepLadder: usesPlc(problem),
       // いまのセッションの方言のまま作り直す（既定メーカーへ戻さない。MERGE 注意 #5 / 決定表#24）
       vendor: state.dialectId,
     });
@@ -938,6 +998,7 @@ export const createSessionSlice: StateCreator<AppState, [], [], SessionSlice> = 
       replay: undefined,
       judge: undefined,
       judging: false,
+      labRunning: false,
       fatalError: undefined,
       webglLost: false,
       pendingTerminal: undefined,

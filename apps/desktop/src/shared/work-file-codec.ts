@@ -137,7 +137,9 @@ export function parseWorkFile(
       mode !== 'assemble' &&
       mode !== 'inspect-parts' &&
       mode !== 'inspect-repair' &&
-      mode !== 'plc'
+      mode !== 'plc' &&
+      mode !== 'assemble-lab' &&
+      mode !== 'plc-lab'
     ) {
       // 知らないモードは「読める形に見えて中身が別物」なので、黙って落とさず断る（§13 #8）
       return { ok: false, message: MSG.workFile.unknownMode };

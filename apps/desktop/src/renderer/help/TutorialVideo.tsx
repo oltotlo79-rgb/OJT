@@ -34,6 +34,11 @@ export const TUTORIALS = {
 export type TutorialMode = keyof typeof TUTORIALS;
 type TutorialFile = keyof typeof catalog;
 
+/** そのモードに基本例題の動画があるか。 */
+export function isTutorialMode(mode: string): mode is TutorialMode {
+  return Object.hasOwn(TUTORIALS, mode);
+}
+
 /**
  * PLCの動画はメーカーごとに1本ずつある（2026-09-26 利用者指示「他メーカーのPLCでも同様に
  * チュートリアルの動画を作成して（他メーカーのシーケンサーでは配線も変わるため）」）。

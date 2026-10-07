@@ -20,6 +20,8 @@ export type HelpScreenId =
   | 'inspect-parts'
   | 'inspect-repair'
   | 'plc'
+  | 'lab-assemble'
+  | 'lab-plc'
   | 'result';
 
 /** 画面ごとに最初に開く節。取扱説明書 設計 §5.2 の表。 */
@@ -32,6 +34,8 @@ export const HELP_SECTION_BY_SCREEN: Readonly<Record<HelpScreenId, string>> = {
   'inspect-parts': 'mode-c1/部品を点検する',
   'inspect-repair': 'mode-c2/回路を点検して直す',
   plc: 'mode-d/PLCの課題を進める',
+  'lab-assemble': 'mode-b/回路を組み立てる',
+  'lab-plc': 'mode-d/PLCの課題を進める',
   result: 'screens/結果の画面',
 };
 
@@ -63,10 +67,21 @@ export function currentHelpScreen(
       return 'inspect-repair';
     case 'plc':
       return 'plc';
+    case 'assemble-lab':
+      return 'lab-assemble';
+    case 'plc-lab':
+      return 'lab-plc';
     default:
       // 課題を開かずにセッション画面へ来た（あり得ないが、黙って落ちないようにする）
       return 'home';
   }
+}
+
+/** 課題のモードに対応するヘルプの画面（検索で、いまのモードの章を先に並べるのに使う）。 */
+function screenOfMode(mode: SessionMode): HelpScreenId {
+  if (mode === 'assemble-lab') return 'lab-assemble';
+  if (mode === 'plc-lab') return 'lab-plc';
+  return mode;
 }
 
 const BY_ID = new Map<string, ManualSection>(
@@ -136,7 +151,7 @@ export function searchManual(
       score: needles.reduce(
         (score, needle) => score + (normalize(section.title).includes(needle) ? 10 : 0),
         mode !== undefined &&
-          section.id.startsWith(`${HELP_SECTION_BY_SCREEN[mode].split('/')[0]}/`)
+          section.id.startsWith(`${HELP_SECTION_BY_SCREEN[screenOfMode(mode)].split('/')[0]}/`)
           ? 3
           : 0,
       ),

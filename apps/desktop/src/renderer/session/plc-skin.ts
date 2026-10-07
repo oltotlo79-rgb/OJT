@@ -1,6 +1,6 @@
 import { JA } from '../i18n/ja.js';
 import { PLC_UNITS, type PlcUnitDefinition } from '@ojt/board-model';
-import { resolvePlcIo, type PlcProblem } from '@ojt/content';
+import { resolvePlcIo, type PlcLabProblem, type PlcProblem } from '@ojt/content';
 import {
   getDialect,
   MAX_GRID_COLS,
@@ -204,5 +204,18 @@ export function plcForVendor(problem: PlcProblem, vendor: DialectId): PlcProblem
    * 「finds one unit per vendor」が `SUPPORTED_PLC_MODELS` と突き合わせて見張る。
    */
   const plc = { vendor, model: unit.model } as PlcProblem['plc'];
+  return { ...problem, plc };
+}
+
+/**
+ * PLC実験の課題を「このメーカーの機種で動かす」形に直す（2026-10-08）。
+ * 実験の割付は入力0〜3・出力0〜3だけで、模範ラダーも無いので4機種すべてに必ず収まる。
+ * 既にそのメーカーなら同じオブジェクトを返す（`plcForVendor()` と同じ約束）。
+ */
+export function plcLabForVendor(problem: PlcLabProblem, vendor: DialectId): PlcLabProblem {
+  if (problem.plc.vendor === vendor) return problem;
+  const unit = plcUnitForVendor(vendor);
+  if (unit === undefined) return problem;
+  const plc = { vendor, model: unit.model } as PlcLabProblem['plc'];
   return { ...problem, plc };
 }

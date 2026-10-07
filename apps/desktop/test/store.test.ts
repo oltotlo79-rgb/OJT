@@ -474,8 +474,10 @@ describe('ストアの5分割（指摘 DS-3）', () => {
    * 148 → 150: Phase 7 Task 25（指摘 PR-02）で `hintStage` と `revealHint` の2つが増えた。
    * 160 → 163: v1.7.0 で3本目の注意文（`wireLimitNotice` / `setWireLimitNotice`）と、
    * 部品不良の内容の選び直し（`replaceReport`）の3つが増えた。
+   * 163 → 167: v1.10.0 の回路実験・PLC実験で、最後に動かした結果（`labRun` / `setLabRun`）と
+   * 動かしている最中か（`labRunning` / `setLabRunning`）の4つが増えた。
    */
-  const APP_STATE_KEY_COUNT = 163;
+  const APP_STATE_KEY_COUNT = 167;
 
   /** スライスを1つ組み立てて、公開するキーだけを取り出す（中身は呼ばない）。 */
   function keysOf(

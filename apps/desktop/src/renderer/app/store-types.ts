@@ -1,5 +1,5 @@
 import type { HazardKind } from '@ojt/circuit-sim';
-import type { SessionMode } from '../../shared/ipc.js';
+import type { ClassicMode } from '@ojt/content';
 
 /**
  * ストアの値型のうち、React にも three にも依存しないもの。設計仕様 §12.1 / §12.2。
@@ -11,10 +11,11 @@ export type Route = 'home' | 'list' | 'session' | 'result' | 'settings';
 
 /**
  * 課題一覧の絞り込み（`undefined` は「すべて」）。§12.1
- * モードの3値は `shared/ipc.ts` の `SessionMode`（`SupportedProblem['mode']` そのもの）を
- * 借りる。同じユニオンを2箇所に書くと、モードが増えたときに片方だけ直してしまう。
+ * 一覧に並ぶ4モード（`@ojt/content` の `ClassicMode`）を借りる。同じユニオンを2箇所に書くと、
+ * モードが増えたときに片方だけ直してしまう。回路実験・PLC実験はその場で作る課題なので
+ * 一覧に出さない（2026-10-08 利用者の決定 D1）。
  */
-export type ListMode = SessionMode | undefined;
+export type ListMode = ClassicMode | undefined;
 
 /**
  * 視点プリセット。§12.2

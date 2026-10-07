@@ -7,9 +7,12 @@ import {
   type TesterState,
 } from '@ojt/circuit-sim';
 import {
+  isAssembleProblem,
   isInspectPartsProblem,
   isInspectRepairProblem,
+  isLabProblem,
   isPlcProblem,
+  usesPlc,
   PART_TRUTHS,
   FAULT_DETAILS,
   FaultSpecSchema,
@@ -40,8 +43,8 @@ export {
   toSchematicDoc,
   toLadderProgram,
 } from '../../shared/work-file-schema.js';
-import { boardForProblem } from './plc-session.js';
-import { plcForVendor } from './plc-skin.js';
+import { allowPlcForcingFor, boardForProblem } from './plc-session.js';
+import { plcForVendor, plcLabForVendor } from './plc-skin.js';
 import {
   JA,
   workFileProblemMissingText,
@@ -208,9 +211,11 @@ function inspectFieldsFor(problemId: string): Partial<WorkFile> {
       schematicOpenCount: state.schematicOpenCount,
     };
   }
-  if (isPlcProblem(problem)) {
+  if (usesPlc(problem)) {
     return {
-      mode: 'plc',
+      // PLC実験（2026-10-08）もラダー・方言・変換の有無を同じ形で残す。課題（描いたチャートと
+      // 配線済みかどうか）は `problemSnapshot` に入る
+      mode: problem.mode,
       tester: savedTester(state.tester),
       dialectId: state.dialectId,
       converted: state.converted,
@@ -237,9 +242,12 @@ function inspectFieldsFor(problemId: string): Partial<WorkFile> {
    * 作りかけでも載せる（妥当性は検算だけが要求する。決定表#3）。§11.4 / Plan 5 Task 6
    */
   return {
-    mode: 'assemble',
+    // 回路実験（2026-10-08）は下書きを持たない（`schematicFields()` が作らない）
+    mode: problem.mode,
     tester: savedTester(state.tester),
-    ...(state.schematicDoc === undefined ? {} : { schematic: state.schematicDoc }),
+    ...(state.schematicDoc === undefined || !isAssembleProblem(problem)
+      ? {}
+      : { schematic: state.schematicDoc }),
   };
 }
 
@@ -273,7 +281,10 @@ export function needsDiscardConfirm(file: WorkFile): boolean {
     state.schematicOpenCount > 0 ||
     state.watchDevices.length > 0 ||
     state.schematicHistory.done.length > 0 ||
-    (isPlcProblem(state.problem!) && hasLadderContent(state.ladder))
+    (usesPlc(state.problem!) && hasLadderContent(state.ladder)) ||
+    // 実験は描いた押し方・正解も作業のうち（2026-10-08）
+    (isLabProblem(state.problem!) &&
+      (state.problem.operations.length > 0 || state.problem.expected !== undefined))
   );
 }
 
@@ -471,7 +482,7 @@ export function restoreInspectState(
   const store = target.getState();
   if (state.mode !== undefined && state.mode !== problem.mode) return false;
 
-  if (isPlcProblem(problem)) {
+  if (usesPlc(problem)) {
     const parsed = toLadderProgram(state.ladder);
     // ラダーが読めない作業ファイルは**開かない**（黙って空のラダーで開くと作業を失う）。§13 #8
     if (state.ladder !== undefined && parsed === undefined) return false;
@@ -613,7 +624,7 @@ function loadPayloadFor(
     if (circuit === undefined) return { session: saved };
     return { session: saved, partFaults: circuit.applied.partFaults };
   }
-  if (isPlcProblem(problem)) return { session: saved, plcModel: problem.plc.model };
+  if (usesPlc(problem)) return { session: saved, plcModel: problem.plc.model };
   return { session: saved };
 }
 
@@ -660,7 +671,7 @@ export async function applyWorkFile(
       store.toast('課題の定義が更新されています。保存時の課題条件で復元します。', 'info');
     problem = saved;
   }
-  if (problem !== null && isPlcProblem(problem) && file.dialectId !== undefined) {
+  if (problem !== null && usesPlc(problem) && file.dialectId !== undefined) {
     if (!isDialectId(file.dialectId) || !IMPLEMENTED_DIALECT_IDS.includes(file.dialectId)) {
       store.toast(
         '保存された表記には対応していないため、課題に記録された機種で復元します。',
@@ -668,7 +679,10 @@ export async function applyWorkFile(
       );
       file = { ...file, dialectId: problem.plc.vendor };
     }
-    const effective = plcForVendor(problem, file.dialectId as typeof problem.plc.vendor);
+    const vendor = file.dialectId as typeof problem.plc.vendor;
+    const effective = isPlcProblem(problem)
+      ? plcForVendor(problem, vendor)
+      : plcLabForVendor(problem, vendor);
     if (effective === undefined) {
       store.toast(JA.session.badWorkFileMode, 'error');
       return false;
@@ -682,7 +696,7 @@ export async function applyWorkFile(
   const session = problem === null ? undefined : toSession(file.session, boardForProblem(problem));
   if (
     session === undefined ||
-    (session.plcAssignment !== undefined && (!isPlcProblem(problem) || problem.io.mode !== 'free'))
+    (session.plcAssignment !== undefined && (!usesPlc(problem) || problem.io.mode !== 'free'))
   ) {
     store.toast(JA.session.badSession, 'error');
     return false;
@@ -741,7 +755,7 @@ export async function applyWorkFile(
       ? {}
       : {
           plcModel: payload.plcModel,
-          allowPlcForcing: isPlcProblem(problem) && problem.io.mode === 'free',
+          allowPlcForcing: allowPlcForcingFor(problem),
         }),
   });
   // つまみは `load` のあとに送り直す（`load` が Worker 側のテスターを既定へ戻すため）。I-3

@@ -17,7 +17,15 @@ const rows = source
       .slice(1, -1)
       .map((cell) => cell.trim()),
   );
-const modes = { assemble: 'B', 'inspect-parts': 'C1', 'inspect-repair': 'C2', plc: 'D' } as const;
+// 同梱課題は4モードだけ（回路実験・PLC実験はその場で作る課題で、索引に載らない）
+const modes = {
+  assemble: 'B',
+  'inspect-parts': 'C1',
+  'inspect-repair': 'C2',
+  plc: 'D',
+  'assemble-lab': '-',
+  'plc-lab': '-',
+} as const;
 
 describe('全課題を1回ずつ探せる索引', () => {
   it('印刷とヘルプで索引を識別し、IDを途中で折り返さない列にする', () => {

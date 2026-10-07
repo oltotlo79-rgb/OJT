@@ -1,5 +1,5 @@
 import { guideIndexFor } from './wiring-guide.js';
-import { buildHighlightIndex, isAssembleProblem } from '@ojt/content';
+import { buildHighlightIndex, isAssembleProblem, usesPlc } from '@ojt/content';
 import { boardForProblem } from './plc-session.js';
 import { addWire, removeWire, type BoardDefinition, type BoardSession } from '@ojt/board-model';
 import type { TerminalId, WireColor } from '@ojt/circuit-sim';
@@ -114,6 +114,6 @@ export function focusWiring(terminals: readonly string[], wireIds: readonly stri
     from: store.route === 'result' ? 'result' : 'diagnosis',
     text: `${terminals.join(' ／ ')} を確認します`,
   });
-  if (store.problem?.mode === 'plc') store.setLadderView('split');
+  if (store.problem !== undefined && usesPlc(store.problem)) store.setLadderView('split');
   else store.setAssembleView('board');
 }

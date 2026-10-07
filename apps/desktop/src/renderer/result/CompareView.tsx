@@ -212,10 +212,14 @@ export function CompareEntry(): JSX.Element | null {
     judge === undefined ||
     problem.mode === 'inspect-parts' ||
     judge.mode === 'inspect-parts' ||
-    judge.mode !== problem.mode
+    judge.mode !== problem.mode ||
+    // 実験で正解を描いていない（動かしただけの）結果には、見くらべる相手が無い
+    judge.charts.expected === undefined
   )
     return null;
-  const unavailable = judge.mode === 'plc' && judge.ladderErrors.length > 0;
+  const expected = judge.charts.expected;
+  const unavailable =
+    (judge.mode === 'plc' || judge.mode === 'plc-lab') && judge.ladderErrors.length > 0;
   return (
     <>
       <button
@@ -234,7 +238,7 @@ export function CompareEntry(): JSX.Element | null {
         <CompareView
           problem={problem}
           session={session}
-          expected={judge.charts.expected}
+          expected={expected}
           actual={judge.charts.actual}
           tolerance={problem.judge.tolerance}
           onClose={close}

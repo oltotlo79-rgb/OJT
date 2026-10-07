@@ -1,7 +1,7 @@
 import type { RoutingErrorReason } from '@ojt/board-model';
 import type { HazardKind, MismatchReason } from '@ojt/circuit-sim';
 import { OUTPUT_LABELS, PB_LABELS } from '@ojt/content';
-import type { FaultReportKind, ProblemTag, StaticCheckId } from '@ojt/content';
+import type { FaultReportKind, ProblemMode, ProblemTag, StaticCheckId } from '@ojt/content';
 import { MSG } from '../../shared/messages.js';
 import type { ProbeSide } from '../app/store-types.js';
 import type { BusSide, PinGroup } from '../session/socket-pins.js';
@@ -120,6 +120,9 @@ export const JA = {
     /** モードDのモードカードの説明。§10 */
     plcDesc: 'PLCでラダーを組み、盤とつないで動かします',
     // --- /Plan 3B Task 15 ---
+    /** 回路実験・PLC実験の名前（2026-10-08 利用者指示）。 */
+    assembleLab: '回路実験',
+    plcLab: 'PLC実験',
     settings: '設定',
     // --- Phase 7 Task 25（指摘 UX-05 / UX-19 / UX-28）---
     /** ホーム下段の「初めての方はここから」の帯。 */
@@ -1545,6 +1548,14 @@ export const JA = {
     measure: '測るときは、電源を切って導通を見るのか、通電して電圧を見るのかを先に決めます。',
   } satisfies Record<ProblemTag, string>,
   // --- /Phase 7 Task 25 ---
+  // --- 回路実験・PLC実験（2026-10-08 利用者指示） ---
+  lab: {
+    /** 描き直したタイムチャートが課題の形にならなかった（壊れた入力の砦）。 */
+    invalidChart: 'タイムチャートを書き換えられませんでした。描き直してください。',
+    /** 「配線をやり直す」のあと。 */
+    boardRestarted: '盤を作り直しました。タイムチャートとラダーはそのまま残っています。',
+  },
+  // --- /回路実験・PLC実験 ---
 } as const;
 
 // --- Plan 6 Task 8 ---
@@ -1591,12 +1602,12 @@ export function gradeLabel(grade: number): string {
  * モードの表示名（UXレビュー #15）。作業ファイルの `mode` は無ければ `assemble` とみなす
  * （`WorkFile.mode` の既定と同じ約束。§12.1）。
  */
-export function sessionModeLabel(
-  mode: 'assemble' | 'inspect-parts' | 'inspect-repair' | 'plc' | undefined,
-): string {
+export function sessionModeLabel(mode: ProblemMode | undefined): string {
   if (mode === 'inspect-parts') return JA.home.inspectParts;
   if (mode === 'inspect-repair') return JA.home.inspectRepair;
   if (mode === 'plc') return JA.home.plc;
+  if (mode === 'assemble-lab') return JA.home.assembleLab;
+  if (mode === 'plc-lab') return JA.home.plcLab;
   return JA.home.assemble;
 }
 

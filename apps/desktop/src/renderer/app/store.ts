@@ -47,6 +47,7 @@ export {
   MAX_LIVE_POINTS,
   checkSessionFor,
   isInspectJudge,
+  isLabJudge,
   isPlcJudge,
   sessionFields,
   sessionForProblem,

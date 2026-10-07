@@ -8,7 +8,7 @@ import { tryOjtApi } from '../app/ojt-api.js';
 import { formatElapsed } from '../../worker/runtime.js';
 import { HelpButton } from '../help/HelpButton.js';
 import { applyWorkFile, savedProblemSnapshot } from '../session/work-file.js';
-import type { WorkFile } from '../../shared/ipc.js';
+import type { SessionMode, WorkFile } from '../../shared/ipc.js';
 import styles from './screens.module.css';
 
 /**
@@ -103,7 +103,7 @@ function ModeSymbol({ mode }: { mode: ListMode }): JSX.Element {
 /** 「最近の課題」の一行に出す情報（UXレビュー #19 / 指摘 UX-05）。 */
 interface RecentProblem {
   title: string;
-  mode: 'assemble' | 'inspect-parts' | 'inspect-repair' | 'plc' | undefined;
+  mode: SessionMode | undefined;
   elapsedMs: number;
   /** 押したときに開き直す一時保存そのもの（指摘 UX-05）。 */
   file: WorkFile;

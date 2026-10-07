@@ -1,4 +1,4 @@
-import { TutorialVideoButton } from './TutorialVideo.js';
+import { isTutorialMode, TutorialVideoButton } from './TutorialVideo.js';
 import type { JSX } from 'react';
 import { useStore } from '../app/store.js';
 import { JA } from '../i18n/ja.js';
@@ -21,7 +21,9 @@ export function HelpButton({ className }: { className?: string }): JSX.Element {
   const assembleView = useStore((s) => s.assembleView);
   return (
     <>
-      {route === 'session' && mode && <TutorialVideoButton mode={mode} />}
+      {route === 'session' && mode !== undefined && isTutorialMode(mode) && (
+        <TutorialVideoButton mode={mode} />
+      )}
       <button
         type="button"
         className={className}

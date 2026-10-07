@@ -1,8 +1,9 @@
 import { withBoardProfile, JIPM_BOARD, type BoardDefinition } from '@ojt/board-model';
 import {
-  isPlcProblem,
+  isPlcLabProblem,
   plcBoardFor,
   resolvePlcIo,
+  usesPlc,
   type ResolvedPlcIo,
   type SupportedProblem,
 } from '@ojt/content';
@@ -18,7 +19,7 @@ import type { LadderProgram } from '@ojt/ladder-core';
  * モードD以外・未対応機種は `undefined`。
  */
 export function plcBoardOf(problem: SupportedProblem): BoardDefinition | undefined {
-  if (!isPlcProblem(problem)) return undefined;
+  if (!usesPlc(problem)) return undefined;
   return plcBoardFor(problem, withBoardProfile(JIPM_BOARD, problem.board.profile));
 }
 
@@ -33,8 +34,16 @@ export function boardForProblem(problem: SupportedProblem | undefined): BoardDef
 
 /** 課題のI/O割付（既定割付の穴埋め済み）。モードD以外は `undefined`。§7.6 */
 export function plcIoOf(problem: SupportedProblem | undefined): ResolvedPlcIo | undefined {
-  if (problem === undefined || !isPlcProblem(problem)) return undefined;
+  if (problem === undefined || !usesPlc(problem)) return undefined;
   return resolvePlcIo(problem.io);
+}
+
+/**
+ * PLCの入力を強制（診断用）してよいか。割付が自由な課題と、PLC実験（自由に試す場）で許す。
+ * Worker の `load` に `allowPlcForcing` として渡す（画面・作業ファイルの復元で同じ値にする）。
+ */
+export function allowPlcForcingFor(problem: SupportedProblem): boolean {
+  return usesPlc(problem) && (isPlcLabProblem(problem) || problem.io.mode === 'free');
 }
 
 /** 判定を送れるか（H-1: 変換を通ったラダーだけを判定に出す）。 */

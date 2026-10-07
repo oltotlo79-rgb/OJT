@@ -98,6 +98,8 @@ export function resultReportHtml(input: ReportInput): string {
     'inspect-parts': JA.home.inspectParts,
     'inspect-repair': JA.home.inspectRepair,
     plc: JA.home.plc,
+    'assemble-lab': JA.home.assembleLab,
+    'plc-lab': JA.home.plcLab,
   };
   const started =
     Number.isFinite(input.sessionOpenedAtMs) && input.sessionOpenedAtMs > 0

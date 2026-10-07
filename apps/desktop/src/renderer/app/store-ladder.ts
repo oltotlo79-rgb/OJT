@@ -3,6 +3,7 @@ import {
   MAX_DEVICE_COMMENTS,
   MAX_DEVICE_COMMENT_LENGTH,
   isPlcProblem,
+  usesPlc,
   type SupportedProblem,
 } from '@ojt/content';
 import { COIL_COL, type Device, type LadderProgram } from '@ojt/ladder-core';
@@ -30,7 +31,7 @@ import {
 } from '../session/ladder.js';
 import { carryOverBoard, carrySummary } from '../session/dialect-carry.js';
 import { boardForProblem } from '../session/plc-session.js';
-import { plcForVendor, plcUnitForVendor } from '../session/plc-skin.js';
+import { plcForVendor, plcLabForVendor, plcUnitForVendor } from '../session/plc-skin.js';
 import { NO_CONVERT_ISSUES, type ConvertIssues, type PlcMonitorSnapshot } from './store-types.js';
 import type { AppState } from './store.js';
 
@@ -68,9 +69,9 @@ export function plcFields(
   | 'plcMonitor'
   | 'plcRunning'
 > {
-  const isPlc = problem !== undefined && isPlcProblem(problem);
+  const isPlc = problem !== undefined && usesPlc(problem);
   return {
-    // モードD以外では `undefined`（3Dだけの画面がラダーを持たない）
+    // モードD・PLC実験以外では `undefined`（3Dだけの画面がラダーを持たない）
     ladder: isPlc ? initialLadder() : undefined,
     ladderComments: {},
     watchDevices: [],
@@ -310,11 +311,18 @@ export const createLadderSlice: StateCreator<AppState, [], [], LadderSlice> = (s
     const before = get();
     const { problem, ladder, ladderComments, ladderHistory } = before;
     // 課題を開いていないとき（ホームや設定）は方言を入れ替えるだけでよい
-    if (problem === undefined || !isPlcProblem(problem)) {
+    if (problem === undefined || !usesPlc(problem)) {
       set({ dialectId });
       return;
     }
-    const swapped = plcForVendor(problem, dialectId);
+    /*
+     * PLC実験（2026-10-08）は割付が入力0〜3・出力0〜3だけなので必ず切り替えられる。配線済みの盤は
+     * `openProblem()` が新しい機種の端子名で固定電線を張り直し、自分で足した電線とリレーの設定は
+     * 下の `carryOverBoard()` が載せ直す（固定電線と使用中のソケットは飛ばす）。
+     */
+    const swapped = isPlcProblem(problem)
+      ? plcForVendor(problem, dialectId)
+      : plcLabForVendor(problem, dialectId);
     if (swapped === undefined) {
       /*
        * 割付がその機種に収まらない（CP1E の出力は12点。決定表#10）。**方言も変えない**——

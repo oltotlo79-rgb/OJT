@@ -11,7 +11,7 @@ import {
 } from '@ojt/content';
 import type { WiringSuspect, WiringSuspectReport } from '@ojt/content';
 import { useCallback, useMemo, type JSX } from 'react';
-import { isInspectJudge, isPlcJudge, useStore } from '../app/store.js';
+import { isInspectJudge, isLabJudge, isPlcJudge, useStore } from '../app/store.js';
 import { HelpButton } from '../help/HelpButton.js';
 import { JA } from '../i18n/ja.js';
 import { InspectPartsResult } from '../result/InspectPartsResult.js';
@@ -175,7 +175,8 @@ function ResultBody(): JSX.Element {
     return <NoResult onBack={backToList} />;
   }
 
-  if (!isAssembleProblem(problem)) {
+  // 回路実験・PLC実験の結果画面は Task 10 で足す（それまでは結果なしの枠）
+  if (isLabJudge(judge) || !isAssembleProblem(problem)) {
     return <NoResult onBack={backToList} />;
   }
 
