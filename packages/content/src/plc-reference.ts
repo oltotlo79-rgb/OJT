@@ -55,9 +55,25 @@ export interface PlcReferenceCircuit {
 export type PlcReferenceResult =
   { ok: true; value: PlcReferenceCircuit } | { ok: false; errors: ProblemIssue[] };
 
+/** 模範どおりに配線する盤の元（PLC課題とPLC実験の課題に共通の項目）。 */
+export type PlcBoardSource = Pick<PlcProblem, 'board' | 'plc' | 'io' | 'inventory'>;
+
+/** 盤とPLCを割付どおりに配線したセッション（模範回路と、PLC実験の配線済みの盤で共有）。 */
+export interface PlcWiredBoard {
+  session: BoardSession;
+  /** PLC本体を載せた派生盤。 */
+  board: BoardDefinition;
+  unit: PlcUnitDefinition;
+  io: ResolvedPlcIo;
+}
+
+/** 配線済みの盤の構築結果。 */
+export type PlcWiredBoardResult =
+  { ok: true; value: PlcWiredBoard } | { ok: false; errors: ProblemIssue[] };
+
 /** 課題の機種に対応するPLC本体を載せた盤。未対応の機種は undefined。§10.1 */
 export function plcBoardFor(
-  problem: PlcProblem,
+  problem: Pick<PlcProblem, 'plc'>,
   board: BoardDefinition,
 ): BoardDefinition | undefined {
   const unit = plcUnitFor(problem.plc.model);
@@ -189,11 +205,16 @@ export function plcWiringPlanIssues(io: ResolvedPlcIo, session: BoardSession): P
   return issues;
 }
 
-/** 模範の盤セッションとネットリストを組む。§7.2 / §13 #2 */
-export function buildPlcReferenceSession(
-  problem: PlcProblem,
+/** 盤の照合とPLC本体を載せた派生盤。 */
+function plcBoardSetup(
+  problem: PlcBoardSource,
   board: BoardDefinition,
-): PlcReferenceResult {
+):
+  | { ok: true; value: { board: BoardDefinition; unit: PlcUnitDefinition } }
+  | {
+      ok: false;
+      errors: ProblemIssue[];
+    } {
   if (problem.board.boardId !== board.id) {
     return {
       ok: false,
@@ -213,17 +234,15 @@ export function buildPlcReferenceSession(
       errors: [{ path: 'plc.model', message: `対応していないPLC機種です: ${problem.plc.model}` }],
     };
   }
-  const compiled = compile(problem.referenceLadder);
-  if (!compiled.ok) {
-    return {
-      ok: false,
-      errors: compiled.errors.map((error) => ({
-        path: 'referenceLadder',
-        message: `模範ラダーを変換できません（${error.code}）: ${error.message}`,
-      })),
-    };
-  }
+  return { ok: true, value: { board: plcBoard, unit } };
+}
 
+/** リレーを装着し、割付どおりの電線（§10.2）を張る。 */
+function wirePlcBoard(
+  problem: PlcBoardSource,
+  plcBoard: BoardDefinition,
+  unit: PlcUnitDefinition,
+): PlcWiredBoardResult {
   const roles = toSocketRoles(problem.board.socketRoles);
   const io = resolvePlcIo(problem.io);
   const session = createSession(plcBoard, {
@@ -262,15 +281,46 @@ export function buildPlcReferenceSession(
     }
   }
   if (errors.length > 0) return { ok: false, errors };
+  return { ok: true, value: { session, board: plcBoard, unit, io } };
+}
 
+/**
+ * 盤とPLCを割付どおりに配線したセッションを組む（リレーを装着し、§10.2 の電線をすべて張る）。
+ * 模範回路（`buildPlcReferenceSession`）と、PLC実験の配線済みの盤（`buildPrewiredPlcSession`）が使う。
+ */
+export function buildPlcWiredBoard(
+  problem: PlcBoardSource,
+  board: BoardDefinition,
+): PlcWiredBoardResult {
+  const setup = plcBoardSetup(problem, board);
+  if (!setup.ok) return setup;
+  return wirePlcBoard(problem, setup.value.board, setup.value.unit);
+}
+
+/** 模範の盤セッションとネットリストを組む。§7.2 / §13 #2 */
+export function buildPlcReferenceSession(
+  problem: PlcProblem,
+  board: BoardDefinition,
+): PlcReferenceResult {
+  const setup = plcBoardSetup(problem, board);
+  if (!setup.ok) return setup;
+  const compiled = compile(problem.referenceLadder);
+  if (!compiled.ok) {
+    return {
+      ok: false,
+      errors: compiled.errors.map((error) => ({
+        path: 'referenceLadder',
+        message: `模範ラダーを変換できません（${error.code}）: ${error.message}`,
+      })),
+    };
+  }
+  const wired = wirePlcBoard(problem, setup.value.board, setup.value.unit);
+  if (!wired.ok) return wired;
   return {
     ok: true,
     value: {
-      session,
-      netlist: toNetlist(session, plcBoard),
-      board: plcBoard,
-      unit,
-      io,
+      ...wired.value,
+      netlist: toNetlist(wired.value.session, wired.value.board),
       program: compiled.program,
     },
   };

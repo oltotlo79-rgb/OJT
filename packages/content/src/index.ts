@@ -244,12 +244,16 @@ export {
 
 export {
   buildPlcReferenceSession,
+  buildPlcWiredBoard,
   PLC_WIRE_COLOR,
   plcBoardFor,
   plcWiringPlan,
   plcWiringPlanIssues,
+  type PlcBoardSource,
   type PlcReferenceCircuit,
   type PlcReferenceResult,
+  type PlcWiredBoard,
+  type PlcWiredBoardResult,
   type PlcWireSpec,
 } from './plc-reference.js';
 
@@ -274,6 +278,18 @@ export {
   type JudgePlcOutcome,
   type JudgePlcResult,
 } from './judge-plc.js';
+
+export {
+  buildPrewiredPlcSession,
+  judgeAssembleLab,
+  judgePlcLab,
+  labCompareSignals,
+  labSessionFor,
+  type AssembleLabJudgeResult,
+  type LabJudgeOutcome,
+  type LabJudgeResult,
+  type PlcLabJudgeResult,
+} from './judge-lab.js';
 
 export { BUILTIN_PLC_PROBLEMS } from './builtin/index.js';
 

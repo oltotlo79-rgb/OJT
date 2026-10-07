@@ -279,7 +279,10 @@ export function createAssembleLabProblem(init: LabChartInit = {}): AssembleLabPr
   };
 }
 
-/** PLC実験の課題を作る（PB1〜PB4→入力0〜3、出力0〜3→CR1〜CR4→PL1〜PL4）。 */
+/**
+ * PLC実験の課題を作る（PB1〜PB4→入力0〜3、出力0〜3→CR1〜CR4→PL1〜PL4）。
+ * 配線済みの盤（`prewired`）は電線を外せないので、割付も固定（割付表から変えない）にする。
+ */
 export function createPlcLabProblem(
   options: { vendor: (typeof PLC_VENDORS)[number]; prewired: boolean } & LabChartInit,
 ): PlcLabProblem {
@@ -301,7 +304,7 @@ export function createPlcLabProblem(
     mode: 'plc-lab',
     plc: { vendor: options.vendor, model: MODEL_OF_VENDOR[options.vendor] },
     io: {
-      mode: 'free',
+      mode: options.prewired ? 'fixed' : 'free',
       wiring: 'sink',
       inputs: [
         { x: 0, pb: 'PB1' },
