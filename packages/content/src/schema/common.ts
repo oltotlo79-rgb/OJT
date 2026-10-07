@@ -40,10 +40,47 @@ export const GradeSchema = z.literal([1, 2, 3]);
 export type Grade = z.infer<typeof GradeSchema>;
 
 /** 課題モード。Phase 1 が実装するのは `assemble` だけ（§16）。§7.1 */
-export const ProblemModeSchema = z.enum(['assemble', 'inspect-parts', 'inspect-repair', 'plc']);
+export const ProblemModeSchema = z.enum([
+  'assemble',
+  'inspect-parts',
+  'inspect-repair',
+  'plc',
+  'assemble-lab',
+  'plc-lab',
+]);
 
 /** 課題モード。 */
 export type ProblemMode = z.infer<typeof ProblemModeSchema>;
+
+/**
+ * 課題一覧に並ぶ4モード。「回路実験」「PLC実験」（`assemble-lab` / `plc-lab`）はその場で作る
+ * 課題なので一覧にも課題ファイルにも出さない（2026-10-08 利用者の決定 D1）。
+ */
+export const CLASSIC_MODES = ['assemble', 'inspect-parts', 'inspect-repair', 'plc'] as const;
+
+/** 課題一覧に並ぶモード。 */
+export type ClassicMode = (typeof CLASSIC_MODES)[number];
+
+/** 実験のモード。 */
+export const LAB_MODES = ['assemble-lab', 'plc-lab'] as const;
+
+/** 実験のモード。 */
+export type LabMode = (typeof LAB_MODES)[number];
+
+/** 実験のモードか。 */
+export function isLabMode(mode: ProblemMode): mode is LabMode {
+  return mode === 'assemble-lab' || mode === 'plc-lab';
+}
+
+/**
+ * 画面・ワーカーの動かし方の種類。実験は配線とPLCの仕組みを回路組立・PLCと共有するので、
+ * `assemble-lab` は `assemble`、`plc-lab` は `plc` として扱う。
+ */
+export function runtimeKindOf(mode: ProblemMode): ClassicMode {
+  if (mode === 'assemble-lab') return 'assemble';
+  if (mode === 'plc-lab') return 'plc';
+  return mode;
+}
 
 /**
  * まだ本体スキーマを定義していないモード。§13 #1

@@ -98,7 +98,7 @@ const StaticChecksInputSchema = z.strictObject({
 });
 
 /** 判定設定のスキーマを、静的チェックの既定を差し替えて作る。§7.4 */
-function judgeSettings(staticDefaults: StaticChecksData) {
+export function judgeSettingsWithDefaults(staticDefaults: StaticChecksData) {
   return z.strictObject({
     compareSignals: z.array(z.string().min(1)).min(1).optional(),
     tolerance: ToleranceSchema.default({
@@ -121,10 +121,10 @@ function judgeSettings(staticDefaults: StaticChecksData) {
 }
 
 /** 判定設定（モードB・C）。§7.4 */
-export const JudgeSettingsSchema = judgeSettings(DEFAULT_STATIC_CHECKS);
+export const JudgeSettingsSchema = judgeSettingsWithDefaults(DEFAULT_STATIC_CHECKS);
 
 /** 判定設定（モードD）。§7.4 の D 列 */
-export const PlcJudgeSettingsSchema = judgeSettings(PLC_DEFAULT_STATIC_CHECKS);
+export const PlcJudgeSettingsSchema = judgeSettingsWithDefaults(PLC_DEFAULT_STATIC_CHECKS);
 
 /** 判定設定。 */
 export type JudgeSettings = z.infer<typeof JudgeSettingsSchema>;

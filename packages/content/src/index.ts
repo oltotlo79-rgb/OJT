@@ -15,6 +15,12 @@ export {
   TimeLimitSchema,
   toSocketRoles,
   UNSUPPORTED_MODES,
+  CLASSIC_MODES,
+  LAB_MODES,
+  isLabMode,
+  runtimeKindOf,
+  type ClassicMode,
+  type LabMode,
   type BoardRef,
   type Grade,
   type InventoryItemData,
@@ -119,9 +125,13 @@ export { InspectRepairProblemSchema, type InspectRepairProblem } from './schema/
 
 export {
   isAssembleProblem,
+  isAssembleLabProblem,
   isInspectPartsProblem,
   isInspectRepairProblem,
+  isLabProblem,
+  isPlcLabProblem,
   isPlcProblem,
+  usesPlc,
   parseProblem,
   problemJsonSchema,
   ProblemSchema,
@@ -169,6 +179,33 @@ export {
   type PlcProblem,
   type ResolvedPlcIo,
 } from './schema/plc.js';
+
+export {
+  ASSEMBLE_LAB_STATIC_CHECKS,
+  AssembleLabProblemSchema,
+  createAssembleLabProblem,
+  createPlcLabProblem,
+  LAB_ASSEMBLE_ID,
+  LAB_DEFAULT_DURATION_MS,
+  LAB_DRAW_STEP_MS,
+  LAB_INPUTS,
+  LAB_MAX_DURATION_MS,
+  LAB_MIN_DURATION_MS,
+  LAB_OUTPUTS,
+  LAB_PLC_ID,
+  LabDurationSchema,
+  LabExpectedSchema,
+  LabIntervalSchema,
+  PLC_LAB_STATIC_CHECKS,
+  PlcLabProblemSchema,
+  type AssembleLabProblem,
+  type LabChartInit,
+  type LabExpected,
+  type LabInput,
+  type LabOutput,
+  type LabProblem,
+  type PlcLabProblem,
+} from './schema/lab.js';
 
 export { PLC_DEFAULT_STATIC_CHECKS, PlcJudgeSettingsSchema } from './schema/judge.js';
 

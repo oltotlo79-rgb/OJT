@@ -3,6 +3,13 @@ import { AssembleProblemSchema, type AssembleProblem } from './assemble.js';
 import { ProblemModeSchema, type ProblemMode } from './common.js';
 import { InspectPartsProblemSchema, type InspectPartsProblem } from './inspect-parts.js';
 import { InspectRepairProblemSchema, type InspectRepairProblem } from './inspect-repair.js';
+import {
+  AssembleLabProblemSchema,
+  PlcLabProblemSchema,
+  type AssembleLabProblem,
+  type LabProblem,
+  type PlcLabProblem,
+} from './lab.js';
 import { PlcProblemSchema, type PlcProblem } from './plc.js';
 
 /**
@@ -30,6 +37,8 @@ export const ProblemSchema = z.discriminatedUnion('mode', [
   InspectPartsProblemSchema,
   InspectRepairProblemSchema,
   PlcProblemSchema,
+  AssembleLabProblemSchema,
+  PlcLabProblemSchema,
 ]);
 
 /** 課題。 */
@@ -37,7 +46,12 @@ export type Problem = z.infer<typeof ProblemSchema>;
 
 /** いま開始できる課題（モードB／モードC1／モードC2／モードD）。§16 */
 export type SupportedProblem =
-  AssembleProblem | InspectPartsProblem | InspectRepairProblem | PlcProblem;
+  | AssembleProblem
+  | InspectPartsProblem
+  | InspectRepairProblem
+  | PlcProblem
+  | AssembleLabProblem
+  | PlcLabProblem;
 
 /** モードB課題か。 */
 export function isAssembleProblem(problem: SupportedProblem): problem is AssembleProblem {
@@ -57,6 +71,26 @@ export function isInspectRepairProblem(problem: SupportedProblem): problem is In
 /** モードD課題か。 */
 export function isPlcProblem(problem: SupportedProblem): problem is PlcProblem {
   return problem.mode === 'plc';
+}
+
+/** 回路実験の課題か。 */
+export function isAssembleLabProblem(problem: SupportedProblem): problem is AssembleLabProblem {
+  return problem.mode === 'assemble-lab';
+}
+
+/** PLC実験の課題か。 */
+export function isPlcLabProblem(problem: SupportedProblem): problem is PlcLabProblem {
+  return problem.mode === 'plc-lab';
+}
+
+/** 実験（回路実験・PLC実験）の課題か。 */
+export function isLabProblem(problem: SupportedProblem): problem is LabProblem {
+  return problem.mode === 'assemble-lab' || problem.mode === 'plc-lab';
+}
+
+/** 机上のPLCを使う課題か（PLC・PLC実験）。 */
+export function usesPlc(problem: SupportedProblem): problem is PlcProblem | PlcLabProblem {
+  return problem.mode === 'plc' || problem.mode === 'plc-lab';
 }
 
 /** スキーマ違反1件（zodのパスとメッセージ）。§13 #1 */
@@ -191,7 +225,11 @@ export function parseProblem(json: unknown): ParseProblemResult {
         ? InspectRepairProblemSchema.safeParse(json)
         : mode === 'plc'
           ? PlcProblemSchema.safeParse(json)
-          : AssembleProblemSchema.safeParse(json);
+          : mode === 'assemble-lab'
+            ? AssembleLabProblemSchema.safeParse(json)
+            : mode === 'plc-lab'
+              ? PlcLabProblemSchema.safeParse(json)
+              : AssembleProblemSchema.safeParse(json);
   if (parsed.success) {
     const problem = parsed.data,
       profile = problem.board.profile;
@@ -238,6 +276,17 @@ export function parseProblem(json: unknown): ParseProblemResult {
  * （実機の zod は 4.6.0）。`z.refine()` / `z.superRefine()` の検査は JSON Schema で表せないので
  * 落ちるが、構造（キー・型・列挙・数値範囲）はそのまま出力される。
  */
+/**
+ * 課題ファイルの形（4モード）。「回路実験」「PLC実験」はアプリの中でその場で作る課題で
+ * ファイルにしない（2026-10-08 利用者の決定 D1）ので、配布する JSON Schema には含めない。
+ */
+const ProblemFileSchema = z.discriminatedUnion('mode', [
+  AssembleProblemSchema,
+  InspectPartsProblemSchema,
+  InspectRepairProblemSchema,
+  PlcProblemSchema,
+]);
+
 export function problemJsonSchema(): Record<string, unknown> {
-  return z.toJSONSchema(ProblemSchema, { io: 'input', target: 'draft-2020-12' });
+  return z.toJSONSchema(ProblemFileSchema, { io: 'input', target: 'draft-2020-12' });
 }

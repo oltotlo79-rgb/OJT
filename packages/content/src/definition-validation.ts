@@ -20,6 +20,7 @@ import {
   isAssembleProblem,
   isInspectPartsProblem,
   isInspectRepairProblem,
+  isLabProblem,
   isPlcProblem,
   parseProblem,
   type SupportedProblem,
@@ -165,6 +166,12 @@ export function validateDefinition(json: unknown): DefinitionValidation {
   const problem = parsed.problem;
   result.id = problem.id;
   result.note = headline(problem);
+  if (isLabProblem(problem)) {
+    result.reasons.push(
+      '回路実験・PLC実験の課題はファイルにしません（アプリの中でその場で作って使います）',
+    );
+    return result;
+  }
 
   if (isAssembleProblem(problem) || isInspectRepairProblem(problem)) {
     const timers = timerNotes(problem, result.reasons);

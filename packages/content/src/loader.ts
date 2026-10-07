@@ -1,7 +1,7 @@
 import { readdir, readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { SupportedProblem } from './schema/index.js';
-import { parseProblem } from './schema/index.js';
+import { isLabProblem, parseProblem } from './schema/index.js';
 import type { ProblemLoadError, ProblemSet } from './problem-set.js';
 
 /**
@@ -192,6 +192,17 @@ async function loadOne(
       message: parsed.message,
       issues: parsed.issues,
       ...(parsed.id === undefined ? {} : { id: parsed.id }),
+    });
+    return;
+  }
+  if (isLabProblem(parsed.problem)) {
+    // 実験はその場で作る課題で、課題一覧にも並べない（2026-10-08 利用者の決定 D1）
+    errors.push({
+      file,
+      reason: 'unsupported-mode',
+      message: '回路実験・PLC実験の課題はファイルにしません（アプリの中でその場で作って使います）',
+      issues: [],
+      id: parsed.problem.id,
     });
     return;
   }
