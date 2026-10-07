@@ -207,6 +207,29 @@ export {
   type PlcLabProblem,
 } from './schema/lab.js';
 
+export {
+  compareWithExpected,
+  expectedFrom,
+  expectedFromChart,
+  expectedIntervals,
+  findLabTemplate,
+  inputIntervals,
+  labChartSignals,
+  labExpectedChart,
+  labExpectedLog,
+  labTemplatesFor,
+  logFromChart,
+  normalizeIntervals,
+  operationsFromInputs,
+  paintIntervals,
+  totalLength,
+  valueAt,
+  type LabChartSource,
+  type LabInterval,
+  type LabTemplate,
+} from './lab-chart.js';
+export { LAB_TEMPLATES } from './lab-templates.js';
+
 export { PLC_DEFAULT_STATIC_CHECKS, PlcJudgeSettingsSchema } from './schema/judge.js';
 
 export {
