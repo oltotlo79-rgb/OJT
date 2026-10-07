@@ -6,7 +6,8 @@ import { startReplay } from '../session/replay.js';
 export function ReplayEntry(): JSX.Element | null {
   const judge = useStore((s) => s.judge);
   if (judge === undefined || judge.mode === 'inspect-parts') return null;
-  const unavailable = judge.mode === 'plc' && judge.ladderErrors.length > 0;
+  const unavailable =
+    (judge.mode === 'plc' || judge.mode === 'plc-lab') && judge.ladderErrors.length > 0;
   return (
     <button
       type="button"

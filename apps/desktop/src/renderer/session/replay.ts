@@ -23,6 +23,8 @@ export interface ReplayState {
   busy: boolean;
   openedAtMs: number;
   before: { snapshot: SimSnapshot; plcMonitor: PlcMonitorSnapshot | undefined };
+  /** 見直しを終えたら戻る画面（結果画面から／実験の欄の「盤で動きを見る」から）。 */
+  returnTo: 'result' | 'session';
 }
 
 /** 差分は採点結果そのもの。許容差を別の規則で計算し直さない。 */
@@ -73,10 +75,15 @@ export function replaySteps(
   });
 }
 
-/** この時点の提出物を固定する。履歴・採点結果・経過時間は変更しない。 */
-export function startReplay(): boolean {
+/**
+ * この時点の提出物を固定する。履歴・採点結果・経過時間は変更しない。
+ * `from: 'lab'` は実験の欄の「盤で動きを見る」（2026-10-08）で、最後に「動かす」した結果
+ * （`labRun`）の差分を添えて見直し、終えたら練習の画面へ戻る。
+ */
+export function startReplay(from: 'result' | 'lab' = 'result'): boolean {
   const s = useStore.getState();
-  const { problem, session, judge } = s;
+  const { problem, session } = s;
+  const judge = from === 'lab' ? s.labRun : s.judge;
   if (
     s.replay !== undefined ||
     problem === undefined ||
@@ -88,6 +95,7 @@ export function startReplay(): boolean {
     return false;
   let source: ReplaySource;
   if (problem.mode === 'assemble') source = { mode: 'assemble', problem, session };
+  else if (problem.mode === 'assemble-lab') source = { mode: 'assemble-lab', problem, session };
   else if (problem.mode === 'inspect-repair' && s.circuit !== undefined)
     source = { mode: 'inspect-repair', problem, circuit: circuitForJudge(s.circuit, session) };
   else if (
@@ -97,6 +105,13 @@ export function startReplay(): boolean {
     s.ladder !== undefined
   )
     source = { mode: 'plc', problem, session, ladder: s.ladder };
+  else if (
+    problem.mode === 'plc-lab' &&
+    judge.mode === 'plc-lab' &&
+    judge.ladderErrors.length === 0 &&
+    s.ladder !== undefined
+  )
+    source = { mode: 'plc-lab', problem, session, ladder: s.ladder };
   else return false;
   useStore.setState({
     route: 'session',
@@ -112,6 +127,7 @@ export function startReplay(): boolean {
       index: 0,
       busy: true,
       before: { snapshot: s.snapshot, plcMonitor: s.plcMonitor },
+      returnTo: from === 'lab' ? 'session' : 'result',
     },
   });
   return true;
@@ -125,6 +141,6 @@ export function stopReplay(): void {
     ...replay.before,
     startedAtMs: startedAtMs === 0 ? 0 : startedAtMs + Math.max(0, Date.now() - replay.openedAtMs),
     replay: undefined,
-    route: 'result',
+    route: replay.returnTo,
   });
 }

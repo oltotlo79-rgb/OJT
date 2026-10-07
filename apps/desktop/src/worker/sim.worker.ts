@@ -35,10 +35,13 @@ import {
   injectPartFaults,
   judgeAssemble,
   judgeInspectParts,
+  judgeAssembleLab,
   judgeInspectRepair,
   judgePlc,
+  judgePlcLab,
   verifySchematic,
   type FaultSpecData,
+  type LabJudgeOutcome,
   type PlcCoupling,
 } from '@ojt/content';
 import { compile, type Device, type LadderProgram } from '@ojt/ladder-core';
@@ -657,6 +660,37 @@ function handle(command: SimCommand): void {
           elapsedMs: command.elapsedMs,
         });
         post({ type: 'verifyResult', result });
+      } finally {
+        resumeLoop();
+      }
+      break;
+    }
+    case 'labRun': {
+      /*
+       * 回路実験・PLC実験（2026-10-08）。訓練者の盤（PLC実験はラダーも）を描いた押し方で最後まで
+       * 回すので、判定と同じくその間は追従ループを止める。ライブの盤には触れない（別のネットリスト）。
+       */
+      if (command.problem.mode === 'plc-lab' && forcedInputs.size > 0)
+        throw new Error(
+          '入力の強制をすべて解除してから動かしてください。実験には実際の配線からの入力を使用します。',
+        );
+      stopLoop();
+      try {
+        const options = { elapsedMs: command.elapsedMs, ...sessionHazardOptions(sim) };
+        let result: LabJudgeOutcome;
+        if (command.problem.mode === 'assemble-lab') {
+          result = judgeAssembleLab(command.problem, JIPM_BOARD, command.session, options);
+        } else {
+          if (command.ladder === undefined) throw new Error('ラダーがありません');
+          result = judgePlcLab(
+            command.problem,
+            JIPM_BOARD,
+            command.session,
+            command.ladder,
+            options,
+          );
+        }
+        post({ type: 'labResult', judge: command.judge, result });
       } finally {
         resumeLoop();
       }

@@ -67,7 +67,7 @@ export function ReplayScreen(): JSX.Element | null {
           stopReplay();
         }}
       />
-      {replay.source.mode === 'plc' ? (
+      {replay.source.mode === 'plc' || replay.source.mode === 'plc-lab' ? (
         <div className={styles.ladder} style={skinCssVars(profile, theme, color)}>
           <LadderGrid
             program={replay.source.ladder}

@@ -1,10 +1,16 @@
-import { JIPM_BOARD, toNetlist } from '@ojt/board-model';
+import {
+  JIPM_BOARD,
+  toNetlist,
+  type BoardDefinition,
+  type PlcUnitDefinition,
+} from '@ojt/board-model';
 import { Simulation } from '@ojt/circuit-sim';
 import {
   buildPlcReferenceSession,
   createOperationPlayback,
   createPlcCoupling,
   operationWindows,
+  plcBoardFor,
   repairNetlist,
   type PlcCoupling,
 } from '@ojt/content';
@@ -16,24 +22,43 @@ export interface ReplayEngine {
   frame: (index: number) => SimSnapshot;
 }
 
+/**
+ * PLC本体を載せた盤と機種。PLC課題は模範回路の盤、PLC実験（2026-10-08）は課題の機種の盤
+ * （模範が無いので `plcBoardFor()` で直接引く）。
+ */
+function plcDeskOf(source: Extract<ReplaySource, { mode: 'plc' | 'plc-lab' }>): {
+  board: BoardDefinition;
+  unit: PlcUnitDefinition;
+} {
+  if (source.mode === 'plc') {
+    const reference = buildPlcReferenceSession(source.problem, JIPM_BOARD);
+    if (!reference.ok) throw new Error(reference.errors.map((issue) => issue.message).join(' / '));
+    return { board: reference.value.board, unit: reference.value.unit };
+  }
+  const board = plcBoardFor(source.problem, JIPM_BOARD);
+  if (board?.plcUnit === undefined)
+    throw new Error(`対応していないPLC機種です: ${source.problem.plc.model}`);
+  return { board, unit: board.plcUnit };
+}
+
 /** 採点と同じネットリスト・操作列・PLCスキャン。元のSimulationには触れない。 */
 export function createReplay(source: ReplaySource): ReplayEngine {
   let sim: Simulation;
   let coupling: PlcCoupling | undefined;
   let presets: Record<number, number> = {};
-  if (source.mode === 'plc') {
-    const reference = buildPlcReferenceSession(source.problem, JIPM_BOARD);
-    if (!reference.ok) throw new Error(reference.errors.map((issue) => issue.message).join(' / '));
+  if (source.mode === 'plc' || source.mode === 'plc-lab') {
+    const desk = plcDeskOf(source);
     const compiled = compile(source.ladder);
     if (!compiled.ok) throw new Error(compiled.errors.map((issue) => issue.message).join(' / '));
-    sim = new Simulation(toNetlist(source.session, reference.value.board));
+    sim = new Simulation(toNetlist(source.session, desk.board));
     coupling = createPlcCoupling(sim, compiled.program, {
-      outputCount: reference.value.unit.spec.outputs.length,
+      outputCount: desk.unit.spec.outputs.length,
     });
     coupling.runtime.setRecordPowered(true);
     presets = timerPresetsOf(compiled.program);
   } else {
-    if (source.mode === 'assemble') sim = new Simulation(toNetlist(source.session, JIPM_BOARD));
+    if (source.mode === 'assemble' || source.mode === 'assemble-lab')
+      sim = new Simulation(toNetlist(source.session, JIPM_BOARD));
     else {
       const repaired = repairNetlist(source.circuit, JIPM_BOARD);
       if (repaired.errors.length > 0)

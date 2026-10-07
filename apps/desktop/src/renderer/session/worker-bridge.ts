@@ -31,6 +31,11 @@ export interface BridgeHandlers {
    */
   onVerify?: (message: Extract<SimMessage, { type: 'verifyResult' }>) => void;
   /**
+   * 回路実験・PLC実験の「動かす」「判定」の結果（2026-10-08）。
+   * 実験の画面だけが渡す（届いても他の画面では何も起きない）。
+   */
+  onLab?: (message: Extract<SimMessage, { type: 'labResult' }>) => void;
+  /**
    * エラー。`fatal` が真なら追従ループが止まっている（Worker の異常終了も含む）。
    * 呼び出し側は例外バナーを出して立て直せるようにする。§13 #6
    */
@@ -57,6 +62,7 @@ export class WorkerBridge {
       else if (message.type === 'inspectResult') handlers.onInspect?.(message);
       else if (message.type === 'plcResult') handlers.onPlc?.(message);
       else if (message.type === 'verifyResult') handlers.onVerify?.(message);
+      else if (message.type === 'labResult') handlers.onLab?.(message);
       else {
         if (message.fatal) this.stop();
         handlers.onError(message.message, message.fatal);

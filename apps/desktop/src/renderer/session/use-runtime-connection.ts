@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import type { ProblemMode } from '@ojt/content';
+import { runtimeKindOf, usesPlc, type ClassicMode } from '@ojt/content';
 import { getDialect } from '@ojt/plc-dialects';
 import type { SimMessage } from '../../worker/protocol.js';
 import { useStore } from '../app/store.js';
@@ -7,7 +7,9 @@ import { JA, openedProblemLog, referenceErrorText } from '../i18n/ja.js';
 import { cloneSession } from './commands.js';
 import { replayTesterToWorker } from './work-file.js';
 import { bridge } from './worker-bridge.js';
+import { acceptLabResult } from './lab.js';
 import { runConvert } from './ladder-errors.js';
+import { allowPlcForcingFor } from './plc-session.js';
 import { autoConvert } from './plc-skin.js';
 
 type Outcome = Extract<
@@ -15,15 +17,21 @@ type Outcome = Extract<
   { type: 'judgeResult' | 'inspectResult' | 'plcResult' }
 >['result'];
 
-/** 永続作業はストアに残し、画面・復旧の世代ごとにライブ演算だけを接続し直す。 */
-export function useRuntimeConnection(mode: ProblemMode): void {
+/**
+ * 永続作業はストアに残し、画面・復旧の世代ごとにライブ演算だけを接続し直す。
+ *
+ * `mode` は画面の動かし方の種類（`runtimeKindOf()`）。回路実験は組立の画面、PLC実験はPLCの画面で
+ * 動くので（2026-10-08）、課題のモードそのものではなく種類で照合する。
+ */
+export function useRuntimeConnection(mode: ClassicMode): void {
   const problemId = useStore((state) => state.problem?.id);
   const epoch = useStore((state) => state.sessionEpoch);
   useEffect(() => {
     const store = useStore.getState(),
       problem = store.problem,
       session = store.session;
-    if (problem?.mode !== mode || session === undefined) return;
+    if (problem === undefined || runtimeKindOf(problem.mode) !== mode || session === undefined)
+      return;
     if (mode === 'inspect-repair' && store.circuit === undefined) return;
     const judged = (result: Outcome): void => {
       const state = useStore.getState();
@@ -53,6 +61,9 @@ export function useRuntimeConnection(mode: ProblemMode): void {
       onPlc: (message) => {
         if (mode === 'plc') judged(message.result);
       },
+      onLab: (message) => {
+        acceptLabResult(message);
+      },
       onVerify: (message) => {
         if (mode === 'assemble') useStore.getState().setVerifyResult(message.result);
       },
@@ -74,13 +85,13 @@ export function useRuntimeConnection(mode: ProblemMode): void {
         problemId: problem.id,
         session: cloneSession(circuit?.session ?? session),
         ...(circuit === undefined ? {} : { partFaults: circuit.applied.partFaults }),
-        ...(problem.mode === 'plc'
-          ? { plcModel: problem.plc.model, allowPlcForcing: problem.io.mode === 'free' }
+        ...(usesPlc(problem)
+          ? { plcModel: problem.plc.model, allowPlcForcing: allowPlcForcingFor(problem) }
           : {}),
       });
       // Workerのメッセージは送信順に処理される。盤→ラダー→計器の順で、
       // 画面に残っている作業を新しい演算先へ送り直す。再開時のCPUはSTOP。
-      if (problem.mode === 'plc') {
+      if (usesPlc(problem)) {
         store.setPlcRunning(false);
         const profile = getDialect(store.dialectId);
         if (store.ladder !== undefined && (store.converted || autoConvert(profile))) {

@@ -10,6 +10,7 @@ import type {
   Wire,
 } from '@ojt/circuit-sim';
 import type {
+  AssembleLabProblem,
   AssembleProblem,
   FaultReport,
   FaultSpecData,
@@ -19,6 +20,8 @@ import type {
   JudgeAssembleResult,
   JudgeInspectResult,
   JudgePlcResult,
+  LabJudgeOutcome,
+  PlcLabProblem,
   PlcProblem,
   ProblemIssue,
   RepairCircuit,
@@ -52,7 +55,9 @@ export const MAX_CATCHUP_TICKS = 20;
 export type ReplaySource =
   | { mode: 'assemble'; problem: AssembleProblem; session: BoardSession }
   | { mode: 'inspect-repair'; problem: InspectRepairProblem; circuit: RepairCircuit }
-  | { mode: 'plc'; problem: PlcProblem; session: BoardSession; ladder: LadderProgram };
+  | { mode: 'plc'; problem: PlcProblem; session: BoardSession; ladder: LadderProgram }
+  | { mode: 'assemble-lab'; problem: AssembleLabProblem; session: BoardSession }
+  | { mode: 'plc-lab'; problem: PlcLabProblem; session: BoardSession; ladder: LadderProgram };
 
 /** renderer → worker のコマンド。 */
 export type SimCommand =
@@ -161,8 +166,20 @@ export type SimCommand =
    * `document` は**訓練者がエディタで描いた文書**（素のJSONなので構造化複製でそのまま渡る）。
    * `judge` と同じく模範回路と訓練者回路の2回ぶんを回すので、追従ループを止めてから実行する。
    */
-  | { type: 'verify'; problem: AssembleProblem; document: SchematicDocument; elapsedMs: number };
-// --- /Plan 5 Task 6 ---
+  | { type: 'verify'; problem: AssembleProblem; document: SchematicDocument; elapsedMs: number }
+  // --- /Plan 5 Task 6 ---
+  /**
+   * 回路実験・PLC実験を描いた押し方で動かす（2026-10-08）。`judge` が真なら「判定」（結果画面へ）、
+   * 偽なら「動かす」（実験の欄に出す）。PLC実験は変換を通したラダーを添える。
+   */
+  | {
+      type: 'labRun';
+      problem: AssembleLabProblem | PlcLabProblem;
+      session: BoardSession;
+      ladder?: LadderProgram;
+      elapsedMs: number;
+      judge: boolean;
+    };
 
 /** `plc` コマンドの中身。 */
 export type PlcCommandAction =
@@ -288,6 +305,8 @@ export type SimMessage =
   | { type: 'plcResult'; result: PlcOutcome }
   /** 検算の結果。§11.4 / Plan 5 Task 6 */
   | { type: 'verifyResult'; result: VerifyResult }
+  /** 回路実験・PLC実験の「動かす」「判定」の結果（2026-10-08）。 */
+  | { type: 'labResult'; judge: boolean; result: LabJudgeOutcome }
   /**
    * エラー。§13 #6
    * `fatal: false` はコマンド1件が失敗しただけ（ループは回り続けるのでトーストで足りる）。

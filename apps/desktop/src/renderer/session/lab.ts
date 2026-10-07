@@ -12,9 +12,15 @@ import {
   type LabProblem,
   type PlcLabProblem,
 } from '@ojt/content';
-import type { DialectId } from '@ojt/plc-dialects';
+import type { LadderProgram } from '@ojt/ladder-core';
+import { getDialect, type DialectId } from '@ojt/plc-dialects';
+import type { SimMessage } from '../../worker/protocol.js';
 import { useStore } from '../app/store.js';
-import { JA } from '../i18n/ja.js';
+import { JA, referenceErrorText } from '../i18n/ja.js';
+import { cloneSession } from './commands.js';
+import { shortcutKeyOf } from './ladder.js';
+import { canJudgePlc } from './plc-session.js';
+import { bridge } from './worker-bridge.js';
 
 /**
  * 「回路実験」「PLC実験」の操作（2026-10-08 利用者指示）。
@@ -134,4 +140,89 @@ export function restartLabBoard(prewired?: boolean): boolean {
 function withPrewired(problem: PlcLabProblem, prewired: boolean): PlcLabProblem {
   const fresh = createPlcLabProblem({ vendor: problem.plc.vendor, prewired });
   return { ...problem, prewired, io: fresh.io };
+}
+
+/** 押し方と長さの鍵（「動かす」を頼んだ時点と結果が届いた時点で同じ押し方かを見る）。 */
+export function labInputsKey(problem: LabProblem): string {
+  return JSON.stringify([problem.durationMs, problem.operations]);
+}
+
+/** いま頼んでいる「動かす」の押し方（結果が届いたら照らし合わせる）。 */
+let requestedInputs: string | undefined;
+
+/**
+ * 「動かす」（`judge=false`）／「判定」（`judge=true`）をワーカーへ頼む。設計 §6.2
+ * 判定は正解を描いてあるときだけ、PLC実験は変換を通したラダーがあるときだけ頼める
+ * （判定の画面と同じ規則。押せない理由はトーストに出す）。頼めたら `true`。
+ */
+export function requestLabRun(judge: boolean): boolean {
+  const store = useStore.getState();
+  const problem = currentLabProblem();
+  const session = store.session;
+  if (problem === undefined || session === undefined) return false;
+  if (store.labRunning || store.judging) return false;
+  if (judge && problem.expected === undefined) {
+    store.toast(JA.lab.judgeNeedsExpected, 'info');
+    return false;
+  }
+  let ladder: LadderProgram | undefined;
+  if (problem.mode === 'plc-lab') {
+    const readiness = canJudgePlc({ converted: store.converted, ladder: store.ladder });
+    if (!readiness.ok) {
+      store.toast(labLadderReason(readiness.reason), 'info');
+      return false;
+    }
+    ladder = store.ladder;
+  }
+  requestedInputs = labInputsKey(problem);
+  store.setLabRunning(true);
+  if (judge) store.setJudging(true);
+  bridge.send({
+    type: 'labRun',
+    problem,
+    session: cloneSession(session),
+    ...(ladder === undefined ? {} : { ladder }),
+    elapsedMs: store.elapsedMs,
+    judge,
+  });
+  return true;
+}
+
+/** PLC実験でラダーを動かせない理由（判定の画面と同じ言い方）。 */
+export function labLadderReason(reason: 'no-ladder' | 'not-converted'): string {
+  if (reason === 'no-ladder') return JA.plc.judgeNoLadder;
+  const key = shortcutKeyOf(getDialect(useStore.getState().dialectId), 'convert');
+  return key === undefined ? JA.plc.judgeAutoConverting : JA.lab.runNotConverted(key);
+}
+
+/**
+ * ワーカーから届いた「動かす」「判定」の結果を受け取る。頼んだあとにタイムチャートの押し方を
+ * 描き直していたら、その結果は今の押し方の結果ではないので使わない。正解だけを描き直していた
+ * ときは比べ直してから入れる。判定なら結果画面へ進む。
+ */
+export function acceptLabResult(message: Extract<SimMessage, { type: 'labResult' }>): void {
+  const store = useStore.getState();
+  store.setLabRunning(false);
+  if (message.judge) store.setJudging(false);
+  const requested = requestedInputs;
+  requestedInputs = undefined;
+  if (!message.result.ok) {
+    store.toast(referenceErrorText(message.result.errors.map((error) => error.message)), 'error');
+    return;
+  }
+  const problem = currentLabProblem();
+  if (
+    problem === undefined ||
+    message.result.value.mode !== problem.mode ||
+    requested !== labInputsKey(problem)
+  ) {
+    store.toast(JA.lab.staleRun, 'info');
+    return;
+  }
+  const run = recomparedLabRun(problem, message.result.value);
+  store.setLabRun(run);
+  if (message.judge) {
+    store.setJudge(run);
+    store.setRoute('result');
+  }
 }
