@@ -35,15 +35,20 @@ async function camera(page: Page): Promise<Camera> {
 }
 
 /** 回転基準に依存する極角ではなく、実カメラの位置・上方向・注視点を照合する。 */
-async function expectCameraPreset(page: Page, preset: 'front' | 'back' | 'top' | 'bottom'): Promise<void> {
+async function expectCameraPreset(
+  page: Page,
+  preset: 'front' | 'back' | 'top' | 'bottom',
+): Promise<void> {
   const box = await canvasBox(page);
   const expected = cameraPose(preset, { aspect: box.w / box.h });
-  await expect.poll(async () => {
-    const state = await camera(page);
-    const actual = [...state.position, ...state.up, state.tx, state.ty, state.tz];
-    const target = [...expected.position, ...expected.up, ...expected.target];
-    return Math.max(...actual.map((value, index) => Math.abs(value - target[index]!)));
-  }).toBeLessThan(0.01);
+  await expect
+    .poll(async () => {
+      const state = await camera(page);
+      const actual = [...state.position, ...state.up, state.tx, state.ty, state.tz];
+      const target = [...expected.position, ...expected.up, ...expected.target];
+      return Math.max(...actual.map((value, index) => Math.abs(value - target[index]!)));
+    })
+    .toBeLessThan(0.01);
 }
 
 /** 3Dキャンバスの矩形。 */
@@ -244,7 +249,13 @@ test.describe('Blender 風の3D操作（§12.2）', () => {
 
   /** 極角の制限で停止していた不具合の再発防止。つかみ直しを含め縦横1周ずつ実測する。 */
   test('キューブは縦横360度回り、真下・真上・裏面でも止まらない', async () => {
-    test.setTimeout(180_000);
+    /*
+     * 32 回のドラッグそれぞれで慣性（ダンピング）が止まるまで待つので、ソフトウェア描画の CI
+     * （2 コア・SwiftShader。別の試験と同時に走る）では 1.7〜3 分以上かかる（2026-10-08 の実行
+     * 37809954118 は 1.7 分で成功、37836531655 は 180 秒で打ち切り）。影の解像度を落としても
+     * （`three/gpu.ts`）足りないので、この試験だけ 7 分まで待つ。手元（GPU なしでも 71 秒）では効かない。
+     */
+    test.setTimeout(420_000);
     for (const preset of ['正面', '下']) {
       for (const [dx, dy] of [
         [125, 0],
