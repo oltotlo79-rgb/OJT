@@ -253,6 +253,31 @@ function Bezel({
 
 /** タイマの天面の印字の文字高さ[mm]。 */
 const TIMER_FACE_MARK_MM = 1.8;
+/** 型式印字の文字高さ[mm]（リレーの型式・定格、タイマの型式）。v2.0.0 Task 8 */
+const MODEL_MARK_MM = 2.6;
+const RATING_MARK_MM = 1.9;
+/** 型式印字を天面の奥端から入れる量[mm]（動作表示窓は手前にあるので奥に置く）。 */
+const MODEL_REAR_INSET_MM = 5;
+
+/**
+ * リレーの天面の型式印字（`MY4N` / `DC24V`）。透明ケースの上に浮かぶ印字なので、暗い内部
+ * （ボビン）の上で読める明るい文字にする。本体の寸法ごとに1枚だけ焼いて使い回す。v2.0.0 Task 8
+ */
+function sharedRelayFaceTexture(widthMm: number, heightMm: number): Texture | undefined {
+  return bakeSharedTexture('part', `relay-face:${widthMm}x${heightMm}`, () =>
+    makeCanvasTexture(widthMm, heightMm, (ctx) => {
+      ctx.fillStyle = '#E8EAEC';
+      ctx.font = labelFont(MODEL_MARK_MM);
+      ctx.fillText(JA_3D.relayModel, (widthMm / 2) * PX_PER_MM, MODEL_REAR_INSET_MM * PX_PER_MM);
+      ctx.font = labelFont(RATING_MARK_MM);
+      ctx.fillText(
+        JA_3D.relayRating,
+        (widthMm / 2) * PX_PER_MM,
+        (MODEL_REAR_INSET_MM + MODEL_MARK_MM + 0.8) * PX_PER_MM,
+      );
+    }),
+  );
+}
 
 /**
  * タイマの天面の印字（`POWER` / `UP`）。文字は固定なので本体の寸法ごとに1枚だけ焼いて使い回す。
@@ -286,6 +311,9 @@ function sharedTimerFaceTexture(widthMm: number, heightMm: number): Texture | un
       const y = (heightMm - FRONT_INSET_MM + 4.6) * PX_PER_MM;
       ctx.fillText(JA_3D.timerPower, (widthMm / 2 - TIMER_LED_PITCH_MM / 2) * PX_PER_MM, y);
       ctx.fillText(JA_3D.timerOut, (widthMm / 2 + TIMER_LED_PITCH_MM / 2) * PX_PER_MM, y);
+      // 型式印字は手前の縁（LED の呼び名より手前）。v2.0.0 Task 8
+      ctx.font = labelFont(RATING_MARK_MM * 0.85);
+      ctx.fillText(JA_3D.timerModel, (widthMm / 2) * PX_PER_MM, (heightMm - 2.2) * PX_PER_MM);
     }),
   );
 }
@@ -299,8 +327,20 @@ function RelayIndicator({
   energized: boolean;
 }): JSX.Element {
   const center = indicatorCenter(box);
+  const faceTexture = sharedRelayFaceTexture(box.width, box.height);
   return (
     <group name="relay-indicator">
+      {/* 天面の型式印字（透明ケースの上に浮かぶ）。v2.0.0 Task 8 */}
+      {faceTexture === undefined ? null : (
+        <mesh
+          name="relay-face"
+          raycast={noPick}
+          position={[box.center[0], box.center[1], box.topZ + 0.3]}
+        >
+          <planeGeometry args={[box.width, box.height]} />
+          <meshBasicMaterial map={faceTexture} transparent depthWrite={false} />
+        </mesh>
+      )}
       <Bezel
         center={center}
         widthMm={RELAY_WINDOW_MM.width}

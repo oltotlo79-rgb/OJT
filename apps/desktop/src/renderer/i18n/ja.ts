@@ -2185,6 +2185,11 @@ export const JA_3D = {
   timerPower: 'POWER',
   /** タイマの限時接点の動作表示灯（タイムアップ）。 */
   timerOut: 'UP',
+  /** リレー本体の天面の型式印字（MY4N 相当・DC24V）。v2.0.0 Task 8 */
+  relayModel: 'MY4N',
+  relayRating: 'DC24V',
+  /** タイマ本体の天面の型式印字（H3Y-4 相当・DC24V）。v2.0.0 Task 8 */
+  timerModel: 'H3Y-4 DC24V',
 } as const;
 // --- /3D fidelity 2026-09-19 ---
 

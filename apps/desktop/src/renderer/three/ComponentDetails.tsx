@@ -46,6 +46,14 @@ const contacts = joined(
     new CylinderGeometry(1.4, 1.4, 0.8, 12).rotateX(Math.PI / 2).translate(x, 10.5, 7.4),
   ]),
 );
+/**
+ * 機械式インジケータ（v2.0.0 Task 8）。実物の MY4N は接点ばねと一緒に動く小さな旗が
+ * 透明ケース越しに見え、励磁したことが窓の点灯と別に分かる。接点（`contacts`）と同じ
+ * 量だけ沈める。
+ */
+const flag = joined([box(6, 1.4, 3.6, 0, 11.6, 9.4)]);
+/** 励磁で接点ばねと旗が沈む量[mm]。 */
+export const ARMATURE_TRAVEL_MM = 1.5;
 const timerVents = joined(
   Array.from({ length: 6 }, (_, i) => box(0.45, 0.7, 18, 14, -7 + i * 2.1, -3)),
 );
@@ -122,8 +130,16 @@ export function ComponentDetails({
           />
           <mesh
             geometry={contacts}
-            position={[0, 0, energized ? -1.5 : 0]}
+            position={[0, 0, energized ? -ARMATURE_TRAVEL_MM : 0]}
             material={sharedMaterial('#dbbd68', { metalness: 0.55, roughness: 0.32 })}
+            raycast={noPick}
+          />
+          {/* 機械式インジケータ（白い旗。励磁で接点と一緒に沈む）。v2.0.0 Task 8 */}
+          <mesh
+            name="relay-flag"
+            geometry={flag}
+            position={[0, 0, energized ? -ARMATURE_TRAVEL_MM : 0]}
+            material={sharedMaterial('#F2F3F0', { roughness: 0.5 })}
             raycast={noPick}
           />
         </>
