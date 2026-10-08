@@ -49,6 +49,22 @@ function forkGeometry(offset: number, slot: number, height: number): BufferGeome
 }
 const AXIS = new Vector3(0, 1, 0);
 
+/*
+ * 絶縁スリーブ（v2.0.0 Task 6・設計 §3.5「形の作り込み」）。
+ * 1.25sq 用の圧着端子には赤い絶縁被覆が付いていて、電線はその中へ入る。半径は電線より太く、
+ * 長さはバレルの出口（`WIRE_LUG_REACH_MM`）から電線の直線部（`wire-dressing.ts` の
+ * STRAIGHT_LEAD_MM = 10mm）の中に収まるので、曲がり角にかぶらない。
+ */
+/** 絶縁スリーブの半径[mm]（電線の直径 1.6 を包む）。 */
+export const SLEEVE_RADIUS_MM = 1.4;
+/** 絶縁スリーブの長さ[mm]。 */
+export const SLEEVE_LENGTH_MM = 3.2;
+/** スリーブの中心をバレルの出口（`WIRE_LUG_REACH_MM`）から電線側へずらす量[mm]。 */
+export const SLEEVE_CENTER_OFFSET_MM = 0.9;
+/** 絶縁スリーブの色（1.25sq ＝ 赤）。 */
+export const SLEEVE_COLOR = '#C8322B';
+const SLEEVE_GEOMETRY = new CylinderGeometry(SLEEVE_RADIUS_MM, SLEEVE_RADIUS_MM, SLEEVE_LENGTH_MM, 12);
+
 export function WireConnections({
   route,
   locked,
@@ -64,20 +80,29 @@ export function WireConnections({
         const offset =
           (connection.contact.x - connection.screw.x) * connection.direction.y -
           (connection.contact.y - connection.screw.y) * connection.direction.x;
+        const height = connection.contact.z - connection.screw.z;
         return (
-          <mesh
+          <group
             key={i}
             name={`wire-connection-${connection.terminalId}-${connection.slot}`}
-            geometry={forkGeometry(
-              -offset,
-              connection.slot,
-              connection.contact.z - connection.screw.z,
-            )}
             position={toScene(connection.screw)}
             quaternion={new Quaternion().setFromUnitVectors(AXIS, direction)}
-            material={presetMaterial('brass', LUG_COLOR, locked ? { roughness: 0.4 } : {})}
-            raycast={noPick}
-          />
+          >
+            {/* Y型の板とバレル（黄銅） */}
+            <mesh
+              geometry={forkGeometry(-offset, connection.slot, height)}
+              material={presetMaterial('brass', LUG_COLOR, locked ? { roughness: 0.4 } : {})}
+              raycast={noPick}
+            />
+            {/* 絶縁スリーブ（赤）。バレルの出口を覆い、電線はこの中へ入る。v2.0.0 Task 6 */}
+            <mesh
+              name={`wire-sleeve-${connection.terminalId}-${connection.slot}`}
+              geometry={SLEEVE_GEOMETRY}
+              material={presetMaterial('pvc', SLEEVE_COLOR)}
+              raycast={noPick}
+              position={[-offset, WIRE_LUG_REACH_MM + SLEEVE_CENTER_OFFSET_MM, height]}
+            />
+          </group>
         );
       })}
     </group>

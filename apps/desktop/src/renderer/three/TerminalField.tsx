@@ -3,7 +3,16 @@ import { parseTerminalId, type TerminalId } from '@ojt/circuit-sim';
 import { Html } from '@react-three/drei';
 import { useThree, type ThreeEvent } from '@react-three/fiber';
 import { useEffect, useMemo, useRef, type JSX } from 'react';
-import { Color, InstancedMesh, Matrix4, MeshStandardMaterial, Quaternion, Vector3 } from 'three';
+import {
+  BoxGeometry,
+  Color,
+  CylinderGeometry,
+  InstancedMesh,
+  Matrix4,
+  MeshStandardMaterial,
+  Quaternion,
+  Vector3,
+} from 'three';
 import {
   TERMINAL_HOVER_COLOR,
   TERMINAL_ILLEGAL_COLOR,
@@ -83,6 +92,43 @@ const HOVER_RING_LIFT_MM = PICK_LIFT_MM - 0.6;
  * 面が完全に一致してZファイティング（ちらつき）になるので、一回りだけ大きくして包む。
  */
 const HOVER_SCREW_SCALE = 1.08;
+
+/*
+ * 座金（ワッシャ）と角座（v2.0.0 Task 6・設計 §3.5「形の作り込み」）。
+ * 実物のネジ端子は、ネジ頭の下に丸い座金、その下に四角い押え板（角座）がある。ネジ頭だけだと
+ * 樹脂の上にネジが浮いて見えるので、頭の縁から座金がのぞき、角座が座の輪郭になる。
+ * どちらも端子の数だけ `instancedMesh` 1本で描く（端子134個で +2 ドローコール）。
+ * 当たり判定は持たない（`raycast={noPick}`。端子を触る相手は下の不可視メッシュのまま）。
+ */
+/** 座金の半径[mm]（ネジ頭の半径 1.8 より大きい）。 */
+export const WASHER_RADIUS_MM = 2.7;
+/** 座金の厚み[mm]。 */
+export const WASHER_THICKNESS_MM = 0.4;
+/**
+ * 座金の中心の高さ（端子の座標からの差[mm]）。
+ * ネジ頭は端子の座標を中心に ±0.7mm（`SCREW_GEOMETRY`）なので、上面（−0.4）が頭の底より上に出る。
+ */
+export const WASHER_CENTER_Z_MM = -0.6;
+/** 角座の一辺[mm]（ソケットの端子座 4mm を一回り超える）。 */
+export const SEAT_SIZE_MM = 4.8;
+/** 角座の厚み[mm]。 */
+export const SEAT_THICKNESS_MM = 0.3;
+/** 角座の中心の高さ（端子の座標からの差[mm]）。座金のすぐ下。 */
+export const SEAT_CENTER_Z_MM =
+  WASHER_CENTER_Z_MM - WASHER_THICKNESS_MM / 2 - SEAT_THICKNESS_MM / 2;
+const WASHER_GEOMETRY = new CylinderGeometry(
+  WASHER_RADIUS_MM,
+  WASHER_RADIUS_MM,
+  WASHER_THICKNESS_MM,
+  16,
+);
+// 円柱の軸（Y）を盤の法線（Z）へ倒す
+WASHER_GEOMETRY.rotateX(Math.PI / 2);
+const SEAT_GEOMETRY = new BoxGeometry(SEAT_SIZE_MM, SEAT_SIZE_MM, SEAT_THICKNESS_MM);
+/** 座金の色（ニッケルめっき。ネジ頭の instanceColor とは別に、常に金属色）。 */
+const WASHER_COLOR = '#C9CED6';
+/** 角座の色（亜鉛めっき鋼。座金より少し暗い）。 */
+const SEAT_COLOR = '#8E969E';
 /** ツールチップの位置（端子の中心からのずれ[mm]。`TerminalHit` と同じ）。 */
 const TOOLTIP_OFFSET_MM: [number, number, number] = [0, -8, 8];
 /** ラベルは見せるだけ（drei の `Html` のラッパがクリックを飲まないようにする）。 */
@@ -163,10 +209,17 @@ export function terminalColorOf(state: TerminalState): string {
 export function terminalFieldMatrices(terminals: readonly BoardTerminal[]): {
   screwMatrices: Matrix4[];
   pickMatrices: Matrix4[];
+  /** 座金（ネジ頭の下）。v2.0.0 Task 6 */
+  washerMatrices: Matrix4[];
+  /** 角座（座金の下）。v2.0.0 Task 6 */
+  seatMatrices: Matrix4[];
 } {
   const screwMatrices: Matrix4[] = [];
   const pickMatrices: Matrix4[] = [];
+  const washerMatrices: Matrix4[] = [];
+  const seatMatrices: Matrix4[] = [];
   const scale = new Vector3(1, 1, 1);
+  const upright = new Quaternion();
   for (const terminal of terminals) {
     const [x, y, z] = toScene(terminal.pos);
     screwMatrices.push(new Matrix4().compose(new Vector3(x, y, z), SCREW_ROTATION, scale));
@@ -177,8 +230,14 @@ export function terminalFieldMatrices(terminals: readonly BoardTerminal[]): {
         new Vector3(terminal.pickRadiusMm, terminal.pickRadiusMm, terminal.pickRadiusMm),
       ),
     );
+    washerMatrices.push(
+      new Matrix4().compose(new Vector3(x, y, z + WASHER_CENTER_Z_MM), upright, scale),
+    );
+    seatMatrices.push(
+      new Matrix4().compose(new Vector3(x, y, z + SEAT_CENTER_Z_MM), upright, scale),
+    );
   }
-  return { screwMatrices, pickMatrices };
+  return { screwMatrices, pickMatrices, washerMatrices, seatMatrices };
 }
 
 /** 盤の端子をまとめて描く。 */
@@ -209,6 +268,8 @@ export function TerminalField({
 }): JSX.Element | null {
   const screws = useRef<InstancedMesh | null>(null);
   const picks = useRef<InstancedMesh | null>(null);
+  const washers = useRef<InstancedMesh | null>(null);
+  const seats = useRef<InstancedMesh | null>(null);
   const count = terminals.length;
   /** `frameloop="demand"` の下で色の書き換えを確実に1枚描かせる（M3）。 */
   const invalidate = useThree((s) => s.invalidate);
@@ -225,6 +286,8 @@ export function TerminalField({
      */
     applyInstanceMatrices(screws.current, matrices.screwMatrices);
     applyInstanceMatrices(picks.current, matrices.pickMatrices);
+    applyInstanceMatrices(washers.current, matrices.washerMatrices);
+    applyInstanceMatrices(seats.current, matrices.seatMatrices);
   }, [matrices]);
 
   /*
@@ -260,6 +323,19 @@ export function TerminalField({
         ref={screws}
         args={[SCREW_GEOMETRY, SCREW_MATERIAL, count]}
         // 見えるだけ。クリックは下の不可視メッシュが受ける（`Socket` / `TerminalBlock` と同じ `noPick`）
+        raycast={noPick}
+      />
+      {/* 座金と角座（飾り。ネジ頭の下に積む）。v2.0.0 Task 6 */}
+      <instancedMesh
+        ref={washers}
+        name="terminal-washers"
+        args={[WASHER_GEOMETRY, presetMaterial('nickel', WASHER_COLOR), count]}
+        raycast={noPick}
+      />
+      <instancedMesh
+        ref={seats}
+        name="terminal-seats"
+        args={[SEAT_GEOMETRY, presetMaterial('steel', SEAT_COLOR), count]}
         raycast={noPick}
       />
       <instancedMesh

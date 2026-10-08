@@ -20,7 +20,12 @@ import {
   terminalFieldMatrices,
   terminalStateOf,
   PICK_LIFT_MM,
+  SEAT_CENTER_Z_MM,
+  SEAT_SIZE_MM,
   TERMINAL_STATE_COLORS,
+  WASHER_CENTER_Z_MM,
+  WASHER_RADIUS_MM,
+  WASHER_THICKNESS_MM,
 } from '../src/renderer/three/TerminalField.js';
 
 /**
@@ -185,5 +190,27 @@ describe('terminalFieldMatrices（当たり判定を `TerminalHit` と同じに�
       ).intersectObject(mesh, false);
       expect(ids[hits[0]?.instanceId ?? -1], id).toBe(id);
     }
+  });
+});
+
+describe('座金と角座（v2.0.0 Task 6）', () => {
+  it('端子ごとに座金と角座の行列があり、ネジ頭の下に積まれる', () => {
+    const terminals = boardFieldTerminals(JIPM_BOARD, extraParts);
+    const { screwMatrices, washerMatrices, seatMatrices } = terminalFieldMatrices(terminals);
+    expect(washerMatrices).toHaveLength(terminals.length);
+    expect(seatMatrices).toHaveLength(terminals.length);
+    const index = terminals.findIndex((t) => t.id === toTerminalId('P.1'));
+    const screw = new Vector3().setFromMatrixPosition(matrixAt(screwMatrices, index));
+    const washer = new Vector3().setFromMatrixPosition(matrixAt(washerMatrices, index));
+    const seat = new Vector3().setFromMatrixPosition(matrixAt(seatMatrices, index));
+    expect([washer.x, washer.y]).toEqual([screw.x, screw.y]);
+    expect(washer.z).toBeCloseTo(screw.z + WASHER_CENTER_Z_MM, 10);
+    expect(seat.z).toBeCloseTo(screw.z + SEAT_CENTER_Z_MM, 10);
+    // 座金の上面はネジ頭の底（−0.7）より上に出てのぞく。角座はその下
+    expect(WASHER_CENTER_Z_MM + WASHER_THICKNESS_MM / 2).toBeGreaterThan(-0.7);
+    expect(SEAT_CENTER_Z_MM).toBeLessThan(WASHER_CENTER_Z_MM);
+    // 座金はネジ頭（半径 1.8）より大きく、角座は座金をほぼ収める
+    expect(WASHER_RADIUS_MM).toBeGreaterThan(1.8);
+    expect(SEAT_SIZE_MM).toBeGreaterThanOrEqual(WASHER_RADIUS_MM * 1.6);
   });
 });
