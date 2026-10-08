@@ -51,6 +51,7 @@
 | S6 | 各社比較の旧補助資料 | 最新の割当を決める根拠には使わない。 |
 | S7 | [JTEKT PCwin公式カタログ CAT-M2067-1](https://www.jtekt.co.jp/data/Tp/Catalog/CAT-M2067-1_PCwin.pdf) | p2–3のメニュー、左プロジェクトツリー、青い文書タイトル、白いラダー、ステップ欄。モニタ項目の読取り誤りをJPI / DOR / MORへ訂正。 |
 | S8 | [SHARP JW-300SPユーザーズマニュアル 第3版](https://jp.sharp/sms/pdf/plc/jw-300sp/m_300sp_3.pdf)（Ver1.2、2004-05） | 第2章の8メニュー、2-193（PDF p215）のキー表、3-3〜3-4（PDF p229–230）の記号先行入力、2-112のプログラムチェック、2-129〜131の各ウィンドウ。 |
+| S9 | GX Works3 のキー割当の解説ページ2件（2026-10-08 確認、二次資料）: [plckouza ST2-2-3](https://plckouza.com/st2/st2_2_3.html)、[三菱電機 GX Works3 操作ガイド 0119](https://www.mitsubishielectric.co.jp/fa/products/cnt/plceng/smerit/gx_works3/gx3go/0119.html) | `Shift+F7`（立上り微分接点）/ `Shift+F8`（立下り微分接点）の割当。`Alt+F7` / `Alt+F8`（OR の微分接点）は本アプリに無いので載せない。操作マニュアル（一次資料）の該当ページは未確認のため、キー表の △ は残す。 |
 
 ### 今回訂正した操作
 

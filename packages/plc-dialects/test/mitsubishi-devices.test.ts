@@ -52,10 +52,11 @@ describe('三菱 FX5U のデバイス表記（§10.5）', () => {
 
   it('publishes the device ranges of §10.5', () => {
     expect(profile.deviceRanges.input).toEqual({ radix: 8, prefix: 'X', min: 0, max: 1023 });
-    // M8000 以降は特殊リレー帯と重なるため internal.max は 7999（レビュー #M1）
+    // M8000 以降は本アプリが特殊リレーの名前（FX3 互換の M8000〜）に使うため internal.max は 7999
+    // （レビュー #M1・意図的な差分）。T・C は v2.0.0 で FX5U-32MR/ES の既定 1024 点に合わせた
     expect(profile.deviceRanges.internal).toEqual({ radix: 10, prefix: 'M', min: 0, max: 7999 });
-    expect(profile.deviceRanges.timer).toEqual({ radix: 10, prefix: 'T', min: 0, max: 7999 });
-    expect(profile.deviceRanges.counter.max).toBe(32767);
+    expect(profile.deviceRanges.timer).toEqual({ radix: 10, prefix: 'T', min: 0, max: 1023 });
+    expect(profile.deviceRanges.counter.max).toBe(1023);
   });
 });
 

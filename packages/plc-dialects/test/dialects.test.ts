@@ -126,7 +126,7 @@ describe.each(cases)('%s プロファイルの不変条件', (_id, profile: Dial
         ).toBe(true);
       }
       // ◎ の行の出典は S1〜S8 の記号（`docs/reference/ladder-skin-sources.md`）
-      if (entry.source !== undefined) expect(entry.source).toMatch(/^S[1-8]$/u);
+      if (entry.source !== undefined) expect(entry.source).toMatch(/^S[1-9]$/u);
       // 押しても効かない行は、なぜ効かないのかを必ず書く（指摘 LE-8）
       if (entry.enabled === false) {
         expect((entry.note ?? '').trim().length, `${profile.id}/${entry.action}`).toBeGreaterThan(

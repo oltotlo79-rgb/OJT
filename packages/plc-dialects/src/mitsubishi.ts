@@ -83,9 +83,16 @@ const MAX_K = 32_767;
 const DEVICE_RANGES: Readonly<Record<DeviceKind, DeviceRange>> = {
   input: { radix: 8, prefix: 'X', min: 0, max: 1023 },
   output: { radix: 8, prefix: 'Y', min: 0, max: 1023 },
+  /*
+   * v2.0.0 設計 §3.6: FX5U-32MR/ES の仕様表（三菱電機 FAspec）に合わせて T・C を既定の 1024 点
+   * （T0〜T1023・C0〜C1023）にする（以前は T7999・C32767 と仮定していた）。
+   * M は実機では 32768 点（M0〜M32767）だが、本アプリは特殊リレーを FX3 互換の `M8000`〜
+   * （`SPECIAL_DEVICES`）の名前で見せているので、内部リレーは M7999 までに留める（意図的な差分。
+   * M8000 以降を内部リレーにすると `parseDevice()` が特殊リレーと取り違える。レビュー #M1）。
+   */
   internal: { radix: 10, prefix: 'M', min: 0, max: 7_999 },
-  timer: { radix: 10, prefix: 'T', min: 0, max: 7_999 },
-  counter: { radix: 10, prefix: 'C', min: 0, max: 32_767 },
+  timer: { radix: 10, prefix: 'T', min: 0, max: 1_023 },
+  counter: { radix: 10, prefix: 'C', min: 0, max: 1_023 },
   // 特殊デバイスはIR側の通し番号（`SP0`〜`SP3`）の範囲。実デバイス名は `SPECIAL_DEVICES` が持つ
   special: { radix: 10, prefix: 'SP', min: 0, max: 3 },
 };

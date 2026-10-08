@@ -61,7 +61,11 @@ export const JTEKT_SKIN: SkinTheme = {
   stepNumbering: 'step',
   commentLines: 1,
   entryTitle: '回路入力',
-  assumed: SKIN_ASSUMED,
+  assumed: [
+    ...SKIN_ASSUMED,
+    // v2.0.0 設計 §3.6: TOYOPUC の取扱説明書（命令語・キー割当）はパスワード付きで未入手
+    'タイマ命令 TMR（0.1秒）/ TMRH（0.01秒）と設定値の書き方（H＋16進4桁）は、TOYOPUC の取扱説明書が未入手（パスワード付き）のため、公開資料の命令一覧から起こした前提のまま',
+  ],
   // キー未確認のため、マウスからの入力を案内する。三菱のキーは流用しない。
   keyMapAssumed: true,
 };

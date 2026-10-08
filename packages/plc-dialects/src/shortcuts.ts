@@ -10,7 +10,7 @@ import type { ShortcutEntry, ShortcutTable } from './profile.js';
  *
  * `confirmed: true` は一次資料で裏が取れた割当（◎）、`false` は §17.1 の前提方針で採用した
  * 慣例（△）である。UIは △ に注記と `source` を出す（§12.1）。出典の記号は
- * `docs/reference/ladder-skin-sources.md` の S1〜S8 を指す。
+ * `docs/reference/ladder-skin-sources.md` の S1〜S9 を指す。
  */
 export const GX_STYLE_SHORTCUTS: ShortcutTable = [
   { action: 'contact-no', keys: 'F5', label: 'a接点', confirmed: true, source: 'S1' },
@@ -35,19 +35,26 @@ export const GX_STYLE_SHORTCUTS: ShortcutTable = [
   { action: 'vline', keys: 'Shift+F9', label: '縦線', confirmed: true, source: 'S1' },
   { action: 'delete-hline', keys: 'Ctrl+F9', label: '横線の削除', confirmed: true, source: 'S1' },
   { action: 'delete-vline', keys: 'Ctrl+F10', label: '縦線の削除', confirmed: true, source: 'S1' },
+  /*
+   * v2.0.0 設計 §3.6: GX Works3 の割当として 2 件の解説ページ（S9）で確認。一次資料（操作マニュアル）の
+   * 該当ページは未確認なので `confirmed` は false のまま、注記で「2次資料で確認」と断る。
+   * `Alt+F7` / `Alt+F8`（OR の微分接点）は本アプリに OR の微分接点が無いので載せない。
+   */
   {
     action: 'pulse-rise',
     keys: 'Shift+F7',
     label: '立上り微分接点',
     confirmed: false,
-    source: 'S2',
+    source: 'S9',
+    note: 'GX Works3 の割当（2次資料で確認）',
   },
   {
     action: 'pulse-fall',
     keys: 'Shift+F8',
     label: '立下り微分接点',
     confirmed: false,
-    source: 'S2',
+    source: 'S9',
+    note: 'GX Works3 の割当（2次資料で確認）',
   },
   {
     action: 'rule-line',
