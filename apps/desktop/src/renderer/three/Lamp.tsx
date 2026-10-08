@@ -1,7 +1,8 @@
 import type { LampDefinition } from '@ojt/board-model';
 import type { LampLevel } from '@ojt/circuit-sim';
 import type { JSX } from 'react';
-import { CylinderGeometry, SphereGeometry } from 'three';
+import { type BufferGeometry, CylinderGeometry, SphereGeometry } from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { FACE_COLORS, LAMP_EMISSIVE } from '../session/colors.js';
 import { noPick, presetMaterial, useLampMaterial } from './materials.js';
 import { toScene } from './coords.js';
@@ -30,15 +31,35 @@ export const LAMP_LENS_BASE_Z_MM = LAMP_BASE_HEIGHT_MM + LAMP_RING_HEIGHT_MM;
 export const LAMP_BASE_COLOR = '#24272B';
 export const LAMP_RING_COLOR = '#D9DDE1';
 
-const BASE = new CylinderGeometry(LAMP_BASE_RADIUS_MM, LAMP_BASE_RADIUS_MM, LAMP_BASE_HEIGHT_MM, 24);
-const RING = new CylinderGeometry(LAMP_RING_RADIUS_MM, LAMP_RING_RADIUS_MM, LAMP_RING_HEIGHT_MM, 32);
-/** レンズの根元を受ける黒い座（化粧リングの内側に見える）。 */
-const LENS_SEAT = new CylinderGeometry(
-  LAMP_LENS_RADIUS_MM + 0.6,
-  LAMP_LENS_RADIUS_MM + 0.6,
-  0.6,
-  24,
+const RING = new CylinderGeometry(
+  LAMP_RING_RADIUS_MM,
+  LAMP_RING_RADIUS_MM,
+  LAMP_RING_HEIGHT_MM,
+  32,
 );
+/**
+ * 取付座と、レンズの根元を受ける黒い座（化粧リングの内側に見える）。同じ黒い樹脂なので
+ * 1つの形に結合して描く（表示灯1個につきドローコール −1。v2.0.0 Task 17）。
+ * 円柱の軸（Y）を盤の法線（Z）へ倒し、それぞれの高さへ置いてから結合する。
+ */
+const BASE_WITH_SEAT = ((): BufferGeometry => {
+  const base = new CylinderGeometry(
+    LAMP_BASE_RADIUS_MM,
+    LAMP_BASE_RADIUS_MM,
+    LAMP_BASE_HEIGHT_MM,
+    24,
+  );
+  base.rotateX(Math.PI / 2);
+  base.translate(0, 0, LAMP_BASE_HEIGHT_MM / 2);
+  const seat = new CylinderGeometry(LAMP_LENS_RADIUS_MM + 0.6, LAMP_LENS_RADIUS_MM + 0.6, 0.6, 24);
+  seat.rotateX(Math.PI / 2);
+  seat.translate(0, 0, LAMP_LENS_BASE_Z_MM + 0.3);
+  const merged = mergeGeometries([base, seat]);
+  base.dispose();
+  seat.dispose();
+  if (merged === null) throw new Error('表示灯の取付座の形状を作れません');
+  return merged;
+})();
 const LENS = new SphereGeometry(LAMP_LENS_RADIUS_MM, 20, 12, 0, Math.PI * 2, 0, Math.PI / 2);
 /** 円柱の軸（Y）を盤の法線（Z）へ倒す。 */
 const UPRIGHT: [number, number, number] = [Math.PI / 2, 0, 0];
@@ -62,13 +83,11 @@ export function Lamp({
   const material = useLampMaterial(color, LAMP_EMISSIVE[level] ?? 0);
   return (
     <group position={pos} name={`pl-${definition.id}`}>
-      {/* 取付座（黒い樹脂） */}
+      {/* 取付座とレンズ受け（黒い樹脂。1つの形に結合済み） */}
       <mesh
         name="lamp-base"
-        geometry={BASE}
+        geometry={BASE_WITH_SEAT}
         material={presetMaterial('blackResin', LAMP_BASE_COLOR)}
-        rotation={UPRIGHT}
-        position={[0, 0, LAMP_BASE_HEIGHT_MM / 2]}
         raycast={noPick}
       />
       {/* 化粧リング（クローム） */}
@@ -78,15 +97,6 @@ export function Lamp({
         material={presetMaterial('nickel', LAMP_RING_COLOR)}
         rotation={UPRIGHT}
         position={[0, 0, LAMP_BASE_HEIGHT_MM + LAMP_RING_HEIGHT_MM / 2]}
-        raycast={noPick}
-      />
-      {/* レンズ受け（リングの内側の黒い座） */}
-      <mesh
-        name="lamp-lens-seat"
-        geometry={LENS_SEAT}
-        material={presetMaterial('blackResin', LAMP_BASE_COLOR)}
-        rotation={UPRIGHT}
-        position={[0, 0, LAMP_LENS_BASE_Z_MM + 0.3]}
         raycast={noPick}
       />
       {/* ドーム形のレンズ。点灯時は内側から光る（`useLampMaterial` の emissive） */}

@@ -67,6 +67,7 @@ import { DinRail } from './DinRail.js';
 import { FixedWires } from './FixedWires.js';
 import { Outlet } from './Outlet.js';
 import { configurePerfCounters, PerfProbe } from './PerfProbe.js';
+import { SHADOW_MAP_SIZE } from './gpu.js';
 import { SceneEnvironment } from './SceneEnvironment.js';
 import { PlcRack } from './PlcRack.js';
 import { PlcUnit } from './PlcUnit.js';
@@ -975,7 +976,7 @@ function BoardContents({
         intensity={1.8}
         color="#fff5e9"
         castShadow
-        shadow-mapSize={[2048, 2048]}
+        shadow-mapSize={[SHADOW_MAP_SIZE, SHADOW_MAP_SIZE]}
         shadow-camera-left={-500}
         shadow-camera-right={500}
         shadow-camera-top={500}

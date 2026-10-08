@@ -466,8 +466,16 @@
 
   /* ラダー（上）→ 3D（下）→ 課題・部品・ログ、の順で高さを配る */
   .plcLayout[data-view='split'] {
-    /* 3D の行は中身なり（キャンバスは比の箱 560×280px のまま）。v2.0.0 Task 3 */
-    grid-template-rows: clamp(560px, 70vh, 760px) auto auto;
+    /*
+     * ラダー（1行目）は、その下の 3D（2行目。比の箱 560×280px のキャンバス）が**最初の画面に
+     * 収まる**高さまでにする（v2.0.0 Task 17）。以前の `clamp(560px, 70vh, 760px)` は、
+     * 窓の内側が 1264×800px（外枠 1280×800 の窓）のとき 3D を画面の外（y=771px）へ押し出し、
+     * CI の画面点検が「3D が単色」で落ちていた。`100vh - 580px` ＝ ツールバー＋手順の帯
+     * （この幅では折り返して約 200px）＋余白＋ 3D の行（約 300px）＋少しの余り。
+     * 800px の高さで 280px（下限）、1080px で 500px。課題・部品（3行目）はその下でスクロール。
+     * （`clamp()` の中は `calc()` なしで書ける。`ladder-layout.test.tsx` がこの行を正規表現で読む）
+     */
+    grid-template-rows: clamp(280px, 100vh - 580px, 760px) auto auto;
   }
 
   .plcLayout[data-view='split'] > [data-testid='ladder-workspace'] {

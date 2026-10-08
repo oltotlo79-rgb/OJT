@@ -87,7 +87,9 @@ describe('押ボタン（化粧リング＋ガード＋押し込む頭）', () =
 
   it('ガードは頭を囲む輪で、頭の中心（E2E が押す z=4.5）は覆わない', () => {
     const { container } = renderButton(false);
-    expect(container.querySelector('mesh[name="pb-guard"]')).not.toBeNull();
+    // ガードは取付座と同じ黒い樹脂なので、取付座と1つの形（`pb-base`）に結合して描く（v2.0.0 Task 17）
+    expect(container.querySelector('mesh[name="pb-base"]')).not.toBeNull();
+    expect(container.querySelector('mesh[name="pb-guard"]')).toBeNull();
     expect(container.querySelector('mesh[name="pb-ring"]')).not.toBeNull();
     expect(CAP_CENTER_Z_MM).toBe(4.5);
     // ガードの内径は頭より大きい（頭が沈める）
@@ -104,8 +106,10 @@ describe('押ボタン（化粧リング＋ガード＋押し込む頭）', () =
     expect(cap).not.toBeNull();
     expect(positionOf(cap)[2]).toBe(CAP_CENTER_Z_MM);
     // 飾りはハンドラを持たない（DOM に onPointerDown が生えない）
-    for (const name of ['pb-base', 'pb-ring', 'pb-guard']) {
-      expect(container.querySelector(`mesh[name="${name}"]`)?.getAttribute('onPointerDown')).toBeNull();
+    for (const name of ['pb-base', 'pb-ring']) {
+      expect(
+        container.querySelector(`mesh[name="${name}"]`)?.getAttribute('onPointerDown'),
+      ).toBeNull();
     }
     if (cap !== null) fireEvent.pointerDown(cap, { button: 0, pointerId: 7 });
     expect(onPress).toHaveBeenCalledWith(JIPM_BOARD.pushButtons[0]?.id, 7);
@@ -157,13 +161,17 @@ describe('端子台（仕切り板と両端の固定ねじ）', () => {
     expect(clearance).toBeGreaterThan(1.8 * 0.75 + 2.7);
   });
 
-  it('描画: 仕切りは instancedMesh 1本、固定ねじは2個で、どれも当たり判定を持たない', () => {
+  it('描画: 仕切りも固定ねじ（2個）も instancedMesh 1本ずつで、どれも当たり判定を持たない', () => {
     const pl = blockTerminals('TB_PL.');
     const { container } = render(
       <TerminalBlock name="TB_PL" label="ランプ用端子台" terminals={pl} />,
     );
     expect(container.querySelectorAll('instancedMesh[name="block-dividers"]')).toHaveLength(1);
-    expect(container.querySelectorAll('mesh[name^="block-end-screw-TB_PL-"]')).toHaveLength(2);
+    // v2.0.0 Task 17: 固定ねじ2個は `mesh` 2個ではなく `instancedMesh` 1本（端子台1個につき −1 ドローコール）
+    expect(container.querySelectorAll('instancedMesh[name="block-end-screws-TB_PL"]')).toHaveLength(
+      1,
+    );
+    expect(container.querySelectorAll('mesh[name^="block-end-screw-"]')).toHaveLength(0);
   });
 });
 

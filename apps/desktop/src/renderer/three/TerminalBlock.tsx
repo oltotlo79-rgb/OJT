@@ -6,7 +6,7 @@ import {
 } from '@ojt/board-model';
 import { Html } from '@react-three/drei';
 import { useEffect, useMemo, useRef, type JSX } from 'react';
-import { Matrix4, Quaternion, Vector3, type InstancedMesh } from 'three';
+import { Euler, Matrix4, Quaternion, Vector3, type InstancedMesh } from 'three';
 import { TERMINAL_BLOCK_CAP_COLOR, TERMINAL_BLOCK_COLOR } from '../session/colors.js';
 import {
   bakeSharedTexture,
@@ -39,7 +39,8 @@ const LABEL_STYLE = { pointerEvents: 'none' } as const;
 /*
  * 仕切り板と両端の固定ねじ（v2.0.0 Task 7・設計 §3.5「形の作り込み」）。
  * 実物の端子台は端子ごとに樹脂の仕切りがあり、台座の両端を小ねじでレールに固定する。
- * 仕切りは端子台1個につき `instancedMesh` 1本（+1 ドローコール）、固定ねじは2個。
+ * 仕切りは端子台1個につき `instancedMesh` 1本（+1 ドローコール）、固定ねじ2個も `instancedMesh`
+ * 1本（+1）。
  * どちらも飾り（`raycast={noPick}`）で、端子の座標・配線の経路・当たり判定は変えない。
  */
 /** 仕切り板の厚み[mm]。 */
@@ -104,6 +105,46 @@ export function terminalBlockEndScrews(
         { x: shape.cx, y: shape.y + END_SCREW_INSET_MM },
         { x: shape.cx, y: shape.y + shape.h - END_SCREW_INSET_MM },
       ];
+}
+
+/**
+ * 両端の固定ねじ（`instancedMesh` 1本）。v2.0.0 Task 17: 以前は2個の `mesh` だった（端子台
+ * 1個につき +2 ドローコール）。ネジ頭の形は端子のネジ（`SCREW_GEOMETRY`）を 0.75 倍で使う。
+ */
+function EndScrews({
+  name,
+  terminals,
+  shape,
+}: {
+  name: string;
+  terminals: readonly BoardTerminal[];
+  shape: TerminalBlockShape;
+}): JSX.Element {
+  const mesh = useRef<InstancedMesh | null>(null);
+  const matrices = useMemo(() => {
+    const rotation = new Quaternion().setFromEuler(new Euler(Math.PI / 2, 0, 0));
+    const scale = new Vector3(END_SCREW_SCALE, END_SCREW_SCALE, END_SCREW_SCALE);
+    return terminalBlockEndScrews(terminals, shape).map((screw) =>
+      new Matrix4().compose(
+        new Vector3(
+          ...toScene({ x: screw.x, y: screw.y, z: shape.bodyTop + 0.7 * END_SCREW_SCALE }),
+        ),
+        rotation,
+        scale,
+      ),
+    );
+  }, [terminals, shape]);
+  useEffect(() => {
+    applyInstanceMatrices(mesh.current, matrices);
+  }, [matrices]);
+  return (
+    <instancedMesh
+      ref={mesh}
+      name={`block-end-screws-${name}`}
+      args={[SCREW_GEOMETRY, presetMaterial('nickel', END_SCREW_COLOR), matrices.length]}
+      raycast={noPick}
+    />
+  );
 }
 
 /** 仕切り板（`instancedMesh` 1本）。 */
@@ -193,18 +234,7 @@ export function TerminalBlock({
       />
       {/* 端子ごとの仕切り板と両端の固定ねじ（飾り）。v2.0.0 Task 7 */}
       <Dividers terminals={terminals} shape={shape} />
-      {terminalBlockEndScrews(terminals, shape).map((screw, index) => (
-        <mesh
-          key={`end-screw-${String(index)}`}
-          name={`block-end-screw-${name}-${String(index)}`}
-          geometry={SCREW_GEOMETRY}
-          material={presetMaterial('nickel', END_SCREW_COLOR)}
-          raycast={noPick}
-          rotation={[Math.PI / 2, 0, 0]}
-          position={toScene({ x: screw.x, y: screw.y, z: shape.bodyTop + 0.7 * END_SCREW_SCALE })}
-          scale={END_SCREW_SCALE}
-        />
-      ))}
+      <EndScrews name={name} terminals={terminals} shape={shape} />
       {/* 端子の名前の印字（常時表示）。§6.4 */}
       {faceTexture === undefined ? null : (
         <mesh raycast={noPick} position={[center[0], center[1], shape.printZ]}>

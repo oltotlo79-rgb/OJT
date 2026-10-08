@@ -1,7 +1,8 @@
 import type { PushButtonDefinition } from '@ojt/board-model';
 import type { JSX } from 'react';
 import type { ThreeEvent } from '@react-three/fiber';
-import { CylinderGeometry, TorusGeometry } from 'three';
+import { type BufferGeometry, CylinderGeometry, TorusGeometry } from 'three';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { FACE_COLORS } from '../session/colors.js';
 import { noPick, presetMaterial, sharedMaterial } from './materials.js';
 import { toScene } from './coords.js';
@@ -37,10 +38,24 @@ export const TRAVEL_MM = 2;
 export const PB_BASE_COLOR = '#24272B';
 export const PB_RING_COLOR = '#D9DDE1';
 
-const BASE = new CylinderGeometry(PB_BASE_RADIUS_MM, PB_BASE_RADIUS_MM, PB_BASE_HEIGHT_MM, 24);
 const RING = new CylinderGeometry(PB_RING_RADIUS_MM, PB_RING_RADIUS_MM, PB_RING_HEIGHT_MM, 32);
-/** ガード。`TorusGeometry` は XY 平面の輪（軸が Z）なので、盤の法線に合わせる回転は要らない。 */
-const GUARD = new TorusGeometry(PB_GUARD_RADIUS_MM, PB_GUARD_TUBE_MM, 8, 32);
+/**
+ * 取付座とガード（頭を囲む輪）。同じ黒い樹脂なので1つの形に結合して描く（押ボタン1個につき
+ * ドローコール −1。v2.0.0 Task 17）。取付座は円柱の軸（Y）を盤の法線（Z）へ倒して高さへ置く。
+ * `TorusGeometry` は XY 平面の輪（軸が Z）なので、盤の法線に合わせる回転は要らない。
+ */
+const BASE_WITH_GUARD = ((): BufferGeometry => {
+  const base = new CylinderGeometry(PB_BASE_RADIUS_MM, PB_BASE_RADIUS_MM, PB_BASE_HEIGHT_MM, 24);
+  base.rotateX(Math.PI / 2);
+  base.translate(0, 0, PB_BASE_HEIGHT_MM / 2);
+  const guard = new TorusGeometry(PB_GUARD_RADIUS_MM, PB_GUARD_TUBE_MM, 8, 32);
+  guard.translate(0, 0, PB_GUARD_Z_MM);
+  const merged = mergeGeometries([base, guard]);
+  base.dispose();
+  guard.dispose();
+  if (merged === null) throw new Error('押ボタンの取付座の形状を作れません');
+  return merged;
+})();
 const CAP = new CylinderGeometry(PB_CAP_RADIUS_MM, PB_CAP_RADIUS_MM, PB_CAP_HEIGHT_MM, 24);
 /** 円柱の軸（Y）を盤の法線（Z）へ倒す。 */
 const UPRIGHT: [number, number, number] = [Math.PI / 2, 0, 0];
@@ -63,13 +78,11 @@ export function PushButton({
   const color = FACE_COLORS[definition.color];
   return (
     <group position={pos} name={`pb-${definition.id}`}>
-      {/* 取付座（黒い樹脂） */}
+      {/* 取付座とガード（頭を囲む黒い輪。押し込むと頭がこの中へ沈む）。1つの形に結合済み */}
       <mesh
         name="pb-base"
-        geometry={BASE}
+        geometry={BASE_WITH_GUARD}
         material={presetMaterial('blackResin', PB_BASE_COLOR)}
-        rotation={UPRIGHT}
-        position={[0, 0, PB_BASE_HEIGHT_MM / 2]}
         raycast={noPick}
       />
       {/* 化粧リング（クローム） */}
@@ -79,14 +92,6 @@ export function PushButton({
         material={presetMaterial('nickel', PB_RING_COLOR)}
         rotation={UPRIGHT}
         position={[0, 0, PB_BASE_HEIGHT_MM + PB_RING_HEIGHT_MM / 2]}
-        raycast={noPick}
-      />
-      {/* ガード（頭を囲む黒い輪。押し込むと頭がこの中へ沈む） */}
-      <mesh
-        name="pb-guard"
-        geometry={GUARD}
-        material={presetMaterial('blackResin', PB_BASE_COLOR)}
-        position={[0, 0, PB_GUARD_Z_MM]}
         raycast={noPick}
       />
       {/* 頭。ここだけがクリックを受ける */}
