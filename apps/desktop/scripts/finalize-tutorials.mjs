@@ -130,6 +130,9 @@ for (const mode of modes) {
   }
   if (mode === 'repair' && !notes.lessonReview.some((entry) => entry.stage === 'mark-tubes'))
     throw new Error('repair: マークチューブの確認がありません');
+  // v2.0.0 設計 §3.7: 全9本に「失敗 → 観察 → 考え方 → 修正」の場面を入れる
+  if (!notes.lessonReview.some((entry) => entry.stage === 'mistake'))
+    throw new Error(`${mode}: 失敗と修正の場面がありません (mistake)`);
   if (mode === 'repair') {
     for (const stage of ['report-edit', 'wire-restoration']) {
       if (!notes.lessonReview.some((entry) => entry.stage === stage))

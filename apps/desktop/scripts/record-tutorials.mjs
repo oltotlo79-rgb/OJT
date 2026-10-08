@@ -314,6 +314,26 @@ async function reviewLesson(kind) {
   await bubble(plans[kind], 6200);
   lessonReview.push({ stage: 'first-action', at: (Date.now() - start) / 1000, highlighted: false });
 }
+/**
+ * 失敗 → 観察 → 考え方 → 修正 の場面を収録ログに残す（v2.0.0 設計 §3.7）。
+ * `finalize-tutorials.mjs` が全9本にこの場面があることを確かめる。
+ * @param {string} what 何を間違えたか（ログ用の短い言葉）
+ */
+function markMistake(what) {
+  lessonReview.push({ stage: 'mistake', at: (Date.now() - start) / 1000, highlighted: true, what });
+}
+/**
+ * 電線一覧から電線を1本外す（3D図で細い線を押すより確実）。
+ * @param {string} wireId
+ */
+async function removeWireFromList(wireId) {
+  await expand('wire-list');
+  await click(page.getByTestId(`wire-row-${wireId}`));
+  await click(
+    page.getByRole('button', { name: 'この電線を外す（Delete / Backspace）', exact: true }),
+  );
+  await expect(page.getByTestId(`wire-row-${wireId}`)).toHaveCount(0);
+}
 /** @param {string} from @param {string} to */
 async function wire(from, to) {
   await point(terminalPoint(toTerminalId(from), await canvas()));
@@ -383,6 +403,28 @@ async function assembly() {
     await bubble(intents[i] ?? '接続を確認します。', i === 0 ? 3800 : 2600);
     const ends = SELF_HOLD_WIRES[i];
     if (!ends) throw new Error('配線がありません');
+    if (ends[0] === 'TB_PB.1a') {
+      /*
+       * わざと間違える（v2.0.0 設計 §3.7）: PB1 の a接点（1a）ではなく b接点（1b）へつないでしまう。
+       * 押しても動かないことを見て、端子台の a / b / c の読み方を確かめてからつなぎ直す。
+       */
+      await wire('TB_PB.1b', ends[1]);
+      await bubble('ブレーカ → 電源スイッチの順でONにして、PB1を押してみます。', 2500);
+      await power(true);
+      await pressPb('PB1');
+      await bubble(
+        '押してもリレーが動きません。端子台の印字を見ると、つないだのは「1b」＝PB1の b接点でした。b接点は押すと切れる接点なので、起動には使えません。',
+        6200,
+      );
+      markMistake('PB1 の b接点に配線');
+      await power(false);
+      await bubble(
+        '電源を切ってから、電線一覧で間違えた線を外します。押ボタンで入れるときは「1a」＝a接点（押すとつながる）を使います。',
+        5000,
+      );
+      await removeWireFromList('w-005');
+      await bubble('PB1の a接点（1a）からCR1のコイル＋（⑭）へつなぎ直します。', 3000);
+    }
     await wire(...ends);
   }
   await bubble('ブレーカ → 電源スイッチの順でONにして、PB1を押します。', 2500);
@@ -494,6 +536,7 @@ async function parts() {
         3900,
       );
       await click(page.getByTestId('answer-p3-normal'));
+      markMistake('コイル抵抗だけで「正常」と答えた');
       await bubble(
         'この部品は接点組2を調べます。a接点（⑩–⑥）が励磁してもOLのままか確認しましょう。',
         3800,
@@ -661,11 +704,31 @@ async function repair() {
     4300,
   );
   await testerMode('OFF');
+  /*
+   * わざと間違える（v2.0.0 設計 §3.7）: 起動信号の経路にある、測っていない青線（PB1 の共通端子へ
+   * 来る線）を「断線」と指摘してしまう。測定（DCV）で電圧が来ていることを確かめ、指摘を取り消す。
+   */
   await bubble(
-    '故障の場所を指摘します。上の「指摘」を選び、3D図で断線している電線（PB1のa接点からCR1⑭への青線）を直接押します。',
+    '故障の場所を指摘します。上の「指摘」を選び、まず PB1 の手前の青線（停止ボタンから PB1 の共通端子へ）を「断線」と指摘してみます。',
     4600,
   );
   await click(page.getByTestId('tool-report'));
+  await clickWire('sw-003');
+  await expect(page.getByTestId('report-popover')).toBeVisible();
+  await click(page.getByTestId('report-kind-wire-open'));
+  await expect(page.getByTestId('report-count')).toHaveText('1');
+  await bubble(
+    'ここで立ち止まります。さっきの測定では、PB1 の a接点の出力に約24Vが出ていました。手前の線が切れていれば、そこに電圧は来ません。つまりこの線は正常です。',
+    6400,
+  );
+  markMistake('正常な青線を断線と指摘');
+  await bubble(
+    '指摘の一覧の「取消」でこの指摘を消し、電圧が消えた区間（PB1 から CR1⑭）に指摘を移します。',
+    4600,
+  );
+  await click(page.getByTestId('remove-report-0'));
+  await expect(page.getByTestId('report-count')).toHaveText('0');
+  await bubble('3D図で断線している電線（PB1のa接点からCR1⑭への青線）を直接押します。', 3800);
   await clickWire('sw-005');
   await expect(page.getByTestId('report-popover')).toBeVisible();
   await bubble(
@@ -820,6 +883,8 @@ async function device(value) {
  *   convertKey: string | undefined;
  *   notation: string;
  *   entry: string;
+ *   wrongEntry: string;
+ *   wrongWhy: string;
  * }>}
  */
 const PLC_VENDORS = {
@@ -829,6 +894,8 @@ const PLC_VENDORS = {
     keys: { 'contact-no': 'F5', 'contact-nc': 'F6', 'or-contact-no': 'Shift+F5', coil: 'F7' },
     networkKey: undefined,
     convertKey: 'F4',
+    wrongEntry: 'X9',
+    wrongWhy: 'X9と入力してエラーになりました。三菱のX・Yは8進表記です。',
     notation: '',
     entry: '',
   },
@@ -838,6 +905,9 @@ const PLC_VENDORS = {
     keys: undefined,
     networkKey: undefined,
     convertKey: undefined,
+    wrongEntry: 'X000',
+    wrongWhy:
+      '「X000」は断られました。TOYOPUC のデバイスは先頭にプログラム番号が要ります。入力の X000 は「1X000」と書きます。',
     notation:
       'TOYOPUCのデバイスは「プログラム番号＋種類＋16進3桁」です。入力の端子X0は1X000、出力の端子Y10は1Y010と書きます。',
     entry:
@@ -849,6 +919,9 @@ const PLC_VENDORS = {
     keys: { 'contact-no': 'C', 'contact-nc': '/', 'or-contact-no': 'W', coil: 'O' },
     networkKey: 'R',
     convertKey: undefined,
+    wrongEntry: '0.12',
+    wrongWhy:
+      '「0.12」は断られました。CP1E の入力チャネル0 のビットは 00〜11 までで、13点目からはチャネル1（1.00）になります。起動入力は 0.00 です。',
     notation:
       'CP1Eのデバイスは「チャネル.ビット」です。入力は0.00から、出力は100.00から始まり、本体の端子の名前と同じです。',
     entry:
@@ -860,6 +933,9 @@ const PLC_VENDORS = {
     keys: { 'contact-no': 'S', 'contact-nc': 'D', 'or-contact-no': 'G', coil: 'X' },
     networkKey: 'L',
     convertKey: undefined,
+    wrongEntry: '000008',
+    wrongWhy:
+      '「000008」は断られました。JW300 のリレー番号は8進なので、各けたは 0〜7 です。000007 の次は 000010 になります。起動入力は 000000 です。',
     notation:
       'JW300のリレー番号は8進6桁です。入力の端子A0は000000、出力の端子C0は000020と書きます。端子名と番号が違う点に注意します。',
     entry:
@@ -928,6 +1004,7 @@ async function plc(vendorId) {
       'X9と入力してエラーになりました。三菱のX・Yは8進表記です。I/O表の起動入力はX0なので、番号を直します。',
       4600,
     );
+    markMistake('X9 と入力（8進）');
     await device('X0');
     await ladderKey('ArrowLeft');
     await ladderKey('Shift+F5');
@@ -937,6 +1014,16 @@ async function plc(vendorId) {
     await bubble(vendor.entry, 4600);
     await cell('n1:0:0');
     await placeSymbol(vendor, 'contact-no');
+    /*
+     * わざと間違える（v2.0.0 設計 §3.7）: そのメーカーで通らない書き方を打って断られ、
+     * 正しい書き方に直す（ジェイテクト: プログラム番号なし、オムロン: 無いビット、シャープ: 8進に 8）。
+     */
+    await click(page.getByTestId('device-text'));
+    await page.keyboard.type(vendor.wrongEntry, { delay: dry ? 10 : 150 });
+    await click(page.getByTestId('device-commit'));
+    await expect(page.getByTestId('device-error')).toBeVisible();
+    await bubble(vendor.wrongWhy, 5600);
+    markMistake(`${vendor.wrongEntry} と入力`);
     await device(dev('input', 0));
     await cell('n1:0:0');
     await placeSymbol(vendor, 'or-contact-no');
@@ -976,6 +1063,17 @@ async function plc(vendorId) {
   await placeSymbol(vendor, 'coil');
   await device(dev('output', 2));
   if (vendor.convertKey !== undefined) {
+    /*
+     * わざと間違える（v2.0.0 設計 §3.7）: 変換せずにモニタを押す。GX Works3 風は編集後に変換が要る。
+     */
+    await bubble('ラダーができたので、そのままモニタを始めてみます。', 2800);
+    await click(page.getByTestId('toolbar-monitor-start'));
+    await expect(page.getByTestId('monitor-panel')).toContainText('先に変換');
+    await bubble(
+      `モニタの欄に「先に変換（${vendor.convertKey}）してください」と出ました。このツールでは、編集したラダーは変換してからでないと書き込めません。`,
+      5600,
+    );
+    markMistake('変換せずにモニタを開始');
     await bubble(
       `${vendor.convertKey}で変換し、入力の誤りや未接続がないか確認します。変換が通ってから配線を進めます。`,
       3400,
@@ -1030,9 +1128,19 @@ async function plc(vendorId) {
   const inputCommon = name(inputCommonId);
   const outputCommon = name(String(plan.find((w) => String(w.from) === inputCommonId)?.to ?? ''));
   const firstOutput = name(String(plan.find((w) => String(w.to) === 'CR1.14')?.from ?? ''));
+  /*
+   * オムロンだけ、わざと間違える（v2.0.0 設計 §3.7）: 出力 COM どうしの渡り（COM1 → COM2）を
+   * 入れ忘れたまま動かし、点かないランプから I/O割付の表で COM の受け持ちを読んでつなぐ。
+   */
+  const skipped =
+    vendorId === 'omron'
+      ? plan.find((w) => String(w.from) === 'PLC.COM1' && String(w.to) === 'PLC.COM2')
+      : undefined;
+  let wired = 0;
   for (const [i, w] of plan.entries()) {
     const from = String(w.from),
       to = String(w.to);
+    if (w === skipped) continue;
     if (i === 0)
       await bubble(
         `まずPLC本体の電源端子（${supply.join('・')}）を壁コンセントのL・Nへ。盤の24V電源P・Nとは別の系統です。`,
@@ -1064,7 +1172,8 @@ async function plc(vendorId) {
       await bubble('Nは押ボタンの共通、CR1〜CR3のコイル−（⑬）、ランプの−へ順に渡します。', 3400);
     await point(plcTerminalPointFor(unit, roles, from, await canvas()));
     await point(plcTerminalPointFor(unit, roles, to, await canvas()));
-    await expect(page.getByTestId('status-overlay')).toContainText(`自分で張った電線 ${i + 1} 本`);
+    wired += 1;
+    await expect(page.getByTestId('status-overlay')).toContainText(`自分で張った電線 ${wired} 本`);
   }
   await bubble(
     '配線できました。盤電源をONにし、モニタを開始してRUNにします。PLCの電源状態も確認します。',
@@ -1077,6 +1186,30 @@ async function plc(vendorId) {
   await click(page.getByTestId('toolbar-plc-run'));
   await click(page.getByTestId('view-board'));
   await pause(700);
+  if (skipped !== undefined) {
+    await bubble('PB1を押して、運転開始のランプ PL1 が点くか見てみます。', 2800);
+    const pb1 = JIPM_BOARD.pushButtons.find((pb) => pb.id === 'PB1');
+    if (!pb1) throw new Error('PB1がありません');
+    const pb1Point = plcBoardPointFor(unit, { x: pb1.pos.x, y: pb1.pos.y, z: 4.5 }, await canvas());
+    await move(pb1Point.x, pb1Point.y);
+    await page.mouse.down();
+    await pause(1500);
+    await page.mouse.up();
+    await pause(600);
+    await bubble(
+      'PLCの出力は入っているのにランプが点きません。I/O割付の表を読むと、出力 100.02 の受け持ちは COM2 です。COM1 から COM2 への渡り配線を入れ忘れていました。',
+      6600,
+    );
+    markMistake('出力COMの渡り（COM1→COM2）を入れ忘れ');
+    await bubble('盤の電源を切ってから、COM1 と COM2 をつなぎます。', 3000);
+    await power(false);
+    await point(plcTerminalPointFor(unit, roles, String(skipped.from), await canvas()));
+    await point(plcTerminalPointFor(unit, roles, String(skipped.to), await canvas()));
+    wired += 1;
+    await expect(page.getByTestId('status-overlay')).toContainText(`自分で張った電線 ${wired} 本`);
+    await power(true);
+    await pause(600);
+  }
   for (const [id, message] of [
     ['PB1', 'PB1で運転開始。離してもPL1が点灯し続ければ自己保持ができています。'],
     ['PB3', 'PB3を押している間、PL3が点灯することを確認します。'],
@@ -1206,8 +1339,15 @@ async function labAssemble() {
   );
   lessonReview.push({ stage: 'chart', at: (Date.now() - start) / 1000, highlighted: true });
   await clearHighlight();
-  await dragRow('PL1', 0.1, 0.6);
-  await expect(page.getByTestId('lab-row-PL1')).toHaveAttribute('data-intervals', '500-3000');
+  /*
+   * わざと間違える（v2.0.0 設計 §3.7）: 停止のあともランプが点いたままの正解を描いてしまう
+   * （PL1 を 0.5秒から最後まで）。動かして違いが出たら、「正解と見くらべる」で時刻を読んで描き直す。
+   */
+  await dragRow('PL1', 0.1, 0.98);
+  await bubble(
+    'ひとまず PL1 を最後まで点いたままに描きました。本当にこれでよいかは、動かしてから確かめます。',
+    4200,
+  );
   await highlight(page.getByTestId('lab-intervals-PL1'));
   await bubble(
     '描いた区間は下の一覧に秒で出ます。ここで数字を打ち込んで直すこともできます。描き終えたら「閉じる」で戻ります。',
@@ -1255,6 +1395,25 @@ async function labAssemble() {
     '配線できました。「動かす」を押すと、描いた押し方のとおりに押ボタンを押して回路を動かします。電源も自動で入れて動かすので、盤の電源はそのままでかまいません。',
     6000,
   );
+  await click(page.getByTestId('lab-run'));
+  await labStatus(/正解と違う所が/u);
+  await bubble(
+    '「正解と違う所」が出ました。太い線（動かした結果）は PB2 を押した3.0秒で消えていますが、細い線（描いた正解）は最後まで点いたままです。停止の操作を正解に入れ忘れていました。',
+    7000,
+  );
+  markMistake('正解のランプを停止後も点いたままに描いた');
+  await clearHighlight();
+  await bubble(
+    '正解を描き直します。「正解を消す」で消してから、PL1 を 0.5秒から 3.0秒まで描き直します。',
+    4200,
+  );
+  await click(page.getByTestId('lab-open-editor'));
+  await expect(page.getByTestId('lab-editor')).toBeVisible();
+  await click(page.getByTestId('lab-clear-expected'));
+  await dragRow('PL1', 0.1, 0.6);
+  await expect(page.getByTestId('lab-row-PL1')).toHaveAttribute('data-intervals', '500-3000');
+  await click(page.getByTestId('lab-close'));
+  await expect(page.getByTestId('lab-editor')).toHaveCount(0);
   await click(page.getByTestId('lab-run'));
   await labStatus('正解どおりに動きました');
   await bubble(
@@ -1340,11 +1499,32 @@ async function labPlc() {
   await device(dev('output', 0));
   const mitsubishi = PLC_VENDORS.mitsubishi;
   if (mitsubishi === undefined) throw new Error('三菱の台本がありません');
-  await placeSymbol(mitsubishi, 'contact-nc');
-  await device(dev('input', 1));
+  /*
+   * わざと間違える（v2.0.0 設計 §3.7）: 停止の b接点を入れずにコイルまで置いて動かし、
+   * 黄（PB2）を押しても止まらないことを見てから、X1 の b接点を足して動かし直す。
+   */
   await cell(`n1:0:${coil}`);
   await placeSymbol(mitsubishi, 'coil');
   await device(dev('output', 0));
+  await bubble('自己保持だけで、まず動かしてみます。F4で変換します。', 2800);
+  await ladderKey('F4');
+  await expect(page.getByTestId('convert-state')).toHaveText('変換に成功しました');
+  await click(page.getByTestId('view-split'));
+  await pause(900);
+  await click(page.getByTestId('lab-run'));
+  await labStatus(/正解と違う所が/u);
+  await bubble(
+    'PL1 が最後まで点いたままです。黄（PB2）を押しても止まりません。1段目に停止の条件、つまり X1 の b接点が無いからです。',
+    6000,
+  );
+  markMistake('停止の b接点を入れ忘れたラダー');
+  await clearHighlight();
+  await bubble(`自己保持の分岐の後ろに ${dev('input', 1)} の b接点を足します。`, 3200);
+  await click(page.getByTestId('view-ladder'));
+  await pause(900);
+  await cell('n1:0:2');
+  await placeSymbol(mitsubishi, 'contact-nc');
+  await device(dev('input', 1));
   await bubble(
     `2段目は停止確認です。${dev('output', 0)}がOFFで${dev('input', 1)}がONのとき${dev('output', 1)}をONにします。`,
     3800,
@@ -1373,7 +1553,7 @@ async function labPlc() {
   await click(page.getByTestId('view-split'));
   await pause(900);
   await bubble(
-    '「動かす」を押すと、描いた押し方でPLCと盤を最初から最後まで動かし、ランプの動きを正解に重ねます。',
+    'もう一度「動かす」を押します。描いた押し方でPLCと盤を最初から最後まで動かし、ランプの動きを正解に重ねます。',
     4600,
   );
   await click(page.getByTestId('lab-run'));
