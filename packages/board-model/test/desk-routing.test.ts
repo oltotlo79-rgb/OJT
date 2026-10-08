@@ -140,7 +140,8 @@ describe('deskRoutes（§10.1 / §11.3）', () => {
     'routes every desk wire of the d-001 reference wiring (%s)',
     (_model, unit) => {
       const { board, session } = referenceSession(unit);
-      expect(session.wires.filter((w) => !w.locked)).toHaveLength(25);
+      // v2.0.0: CP1E の出力COMが 1/1/3/3/4 になり、d-001 は COM0・COM1・COM2 の渡りで 2 本増える
+      expect(session.wires.filter((w) => !w.locked)).toHaveLength(unit.model === 'CP1E' ? 27 : 25);
       const wires = deskWires(board, session);
       const routes = deskRoutes(board, session);
       // 経路は `deskWires()` が選んだ電線と1対1（盤の中で閉じた電線は含まない）
@@ -831,11 +832,7 @@ describe('盤の固定機器は机上経路の障害物（v2.0.0 Task 9・総点
     // 盤の上端を y=14 でまっすぐ横切る偽の経路（以前の見た目）は報告される
     const fake = {
       ...route,
-      corners: [
-        { x: 16, y: 14, z: 8.6 },
-        { x: 340, y: 14, z: 8.6 },
-        ...route.corners.slice(-1),
-      ],
+      corners: [{ x: 16, y: 14, z: 8.6 }, { x: 340, y: 14, z: 8.6 }, ...route.corners.slice(-1)],
     };
     const issues = deskRouteIssues([fake], board, unit);
     expect(issues.some((issue) => issue.includes('fixture-CB'))).toBe(true);

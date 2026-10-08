@@ -328,10 +328,11 @@ export interface PlcCoverMark {
   open?: 'flat' | 'removed';
 }
 
-/** 正面の造作（スイッチ・コネクタ・スロット・ラッチ）。§10.1 */
+/** 正面の造作（スイッチ・コネクタ・スロット・ラッチ・前面パネル）。§10.1 */
 export interface PlcFeatureMark {
   id: string;
-  kind: 'switch' | 'port' | 'slot' | 'latch';
+  /** `panel` は筐体色と違う色の前面パネル（FX5U の黒い中央帯）。他の造作より奥に描く。v2.0.0 */
+  kind: 'switch' | 'port' | 'slot' | 'latch' | 'panel';
   /** 3Dのツールチップに出す名前。 */
   label: string;
   rect: FaceRect;

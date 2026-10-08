@@ -64,7 +64,9 @@ describe('机上の3D（§10.1 / 決定表#9）', () => {
 
   it('paints the body in the colour the model describes (4A 決定表#15)', () => {
     // 3D側は `appearance` だけを読む（`three/**` に hex を書かない。4A H-7 / 決定表#15）
-    expect(PLC_UNIT_FX5U.appearance.bodyColor).toBe('#3A3D42');
+    expect(PLC_UNIT_FX5U.appearance.bodyColor).toBe(
+      '#BFC4C6',
+    ); /* v2.0.0: 仕様表の明灰（マンセル 0.6B 7.6/0.2） */
     expect(PLC_UNIT_CP1E.appearance.bodyColor).not.toBe(PLC_UNIT_FX5U.appearance.bodyColor);
     // 銘板は型式の文字列だけ（`displayName` とは別物。§17）
     expect(PLC_UNIT_FX5U.appearance.nameplate).toBe('FX5U-32MR/ES');

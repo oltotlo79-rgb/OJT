@@ -72,6 +72,8 @@ export const FX5U_SPEC: PlcUnitSpec = {
 export const PLC_LED_GREEN = '#35C759';
 export const PLC_LED_RED = '#FF3B30';
 export const PLC_LED_AMBER = '#FFB020';
+/** 黄（CP1E の INH / PRPHL / BKUP。W479 §3-1-1）。v2.0.0 */
+export const PLC_LED_YELLOW = '#FFD60A';
 /**
  * 消灯しているLEDの色（機種共通）。§10.1 / 決定表#20
  * 点灯色を暗く見せる代わりに共通の暗色を使う。**3Dはここから引く**（`three/**` に色を書かない。
@@ -110,15 +112,21 @@ function statusLedNames(appearances: readonly PlcAppearance[]): readonly string[
     .map((l) => l.name);
 }
 
-/** 濃灰の筐体（FX5U）。 */
-const FX5U_BODY_COLOR = '#3A3D42';
-/** 明灰のヒンジ式端子カバー（FX5U）。 */
-const FX5U_COVER_COLOR = '#C8CBD0';
+/**
+ * 明灰の筐体（FX5U）。三菱電機の仕様表「本体色: マンセル 0.6B 7.6/0.2」（明るい灰）から起こした。
+ * v2.0.0 設計 §3.6（以前は濃灰 `#3A3D42` と仮定していた）。
+ */
+const FX5U_BODY_COLOR = '#BFC4C6';
+/** 明灰のヒンジ式端子カバー（FX5U。筐体より少し明るい）。 */
+const FX5U_COVER_COLOR = '#D5D8DB';
+/** 中央の前面パネル（黒。本体表示LED・入出力表示LED・スイッチ・コネクタが載る帯）。 */
+const FX5U_PANEL_COLOR = '#1B1D20';
 
 /**
  * FX5U-32MR/ES の外観。§10.1 / 決定表#15
- * 濃灰の筐体に明灰のヒンジ式端子カバーが上下2枚、中央の帯に本体表示LED・銘板・入出力表示LED・
- * RUN/STOPスイッチ・Ethernetポート・SDカードスロットが並ぶ。色と配置は本アプリの記述である。
+ * 明灰の筐体に明灰のヒンジ式端子カバーが上下2枚、中央の黒い前面パネルに本体表示LED・銘板・
+ * 入出力表示LED・RUN/STOPスイッチ・Ethernetポート・SDカードスロットが並ぶ。
+ * 筐体色は仕様表から、前面パネルと端子台の黒は一般に知られた見え方（v2.0.0 設計 §3.6）。
  */
 export const FX5U_APPEARANCE: PlcAppearance = {
   faceMm: { width: 150, height: 90 },
@@ -159,6 +167,14 @@ export const FX5U_APPEARANCE: PlcAppearance = {
   ],
   features: [
     {
+      // 黒い前面パネル（他の造作・LED・銘板はこの上に載る）。v2.0.0
+      id: 'front-panel',
+      kind: 'panel',
+      label: '前面パネル',
+      rect: { x: 2, y: 26, w: 146, h: 38 },
+      color: FX5U_PANEL_COLOR,
+    },
+    {
       id: 'run-stop',
       kind: 'switch',
       label: 'RUN/STOP/RESET スイッチ',
@@ -181,7 +197,7 @@ export const FX5U_APPEARANCE: PlcAppearance = {
     },
   ],
   assumed: [
-    '筐体色・端子カバー色（一般に知られた見え方。実機写真は使っていない）',
+    '筐体色は三菱電機の仕様表（本体色 マンセル 0.6B 7.6/0.2）から起こした明灰。前面パネル・端子台の黒と端子カバーの色は一般に知られた見え方（実機写真は使っていない）',
     'LED・スイッチ・コネクタの面上の位置（カタログ寸法と一般的な前面構成から作図）',
     '銘板は型式の文字列のみ（ロゴ・ブランド名は描かない）',
   ],
@@ -276,8 +292,12 @@ export const PLC_UNIT_FX5U: PlcUnitDefinition = {
 export const CP1E_INPUT_OHMS_LOW = 3300;
 /** CP1E の入力抵抗[Ω]（`0.08` 以降）。§5.1.3 */
 export const CP1E_INPUT_OHMS_HIGH = 4800;
-/** CP1E の出力COMごとの点数（§17.1 の前提値 3/3/2/2/2）。 */
-export const CP1E_COMMON_SIZES: readonly number[] = [3, 3, 2, 2, 2];
+/**
+ * CP1E-N30DR-A の出力COMごとの点数。オムロン CP1E ユーザーズマニュアル W479 §3-1-3 の端子配列図
+ * （出力側: `COM 100.00 / COM 100.01 / COM 100.02 100.03 100.04 / COM 100.05 100.06 100.07 /
+ * COM 101.00〜101.03`）から読み取った 1/1/3/3/4。v2.0.0 設計 §3.6（以前は 3/3/2/2/2 と仮定）。
+ */
+export const CP1E_COMMON_SIZES: readonly number[] = [1, 1, 3, 3, 4];
 
 /** `ch.bit` 形式の端子名を作る（`0.00`〜`0.11`）。§10.1 */
 export function channelNames(ch: number, count: number): string[] {
@@ -316,26 +336,116 @@ export const CP1E_SPEC: PlcUnitSpec = {
   })),
 };
 
-/** CP1E の端子（入力側の列 → 出力側の列）。§10.1 の記載順 / §17 #11 */
-function cp1eTerminals(): BoardTerminal[] {
-  const inputSide = [
-    ...CP1E_SPEC.power,
-    ...CP1E_SPEC.inputCommons,
-    ...CP1E_SPEC.inputs.map((input) => input.name),
-  ];
-  const outputSide: string[] = [];
-  let previous = '';
-  for (const output of CP1E_SPEC.outputs) {
-    if (output.com !== previous) outputSide.push(output.com);
-    previous = output.com;
-    outputSide.push(output.name);
+/**
+ * 奥列・手前列を別々に指定して千鳥2列に並べる（空きの端子位置は `null`）。
+ * W479 の端子配列図のように「上段 / 下段」で書かれた資料をそのまま写せる。v2.0.0
+ */
+function staggeredRows(
+  spec: PlcUnitSpec,
+  rear: readonly (string | null)[],
+  front: readonly (string | null)[],
+  origin: Vec3,
+): BoardTerminal[] {
+  const out: BoardTerminal[] = [];
+  const columns = Math.max(rear.length, front.length);
+  for (let column = 0; column < columns; column += 1) {
+    for (const [row, name] of [
+      [0, rear[column]],
+      [1, front[column]],
+    ] as const) {
+      if (name === null || name === undefined) continue;
+      out.push({
+        id: `${PLC_PART_ID}.${name}` as TerminalId,
+        label: plcLabel(name),
+        role: plcRole(spec, name),
+        pos: vec3(
+          origin.x + column * PLC_TERMINAL_PITCH_MM + row * PLC_STAGGER_MM,
+          origin.y + row * PLC_ROW_GAP_MM,
+          origin.z,
+        ),
+        pickRadiusMm: TERMINAL_PICK_RADIUS_MM,
+        wirable: true,
+        optional: false,
+        exit: 'either',
+      });
+    }
   }
-  outputSide.push(...(CP1E_SPEC.service ?? []));
+  return out;
+}
+
+/**
+ * CP1E-N30DR-A の端子配列（W479 §3-1-3 の図どおり）。v2.0.0 設計 §3.6
+ *
+ * - 入力側 上段: `L1 L2/N COM 0.01 0.03 0.05 0.07 0.09 0.11 1.01 1.03 1.05`、
+ *   下段（半ピッチずれ）: `— 0.00 0.02 0.04 0.06 0.08 0.10 1.00 1.02 1.04 NC`
+ * - 出力側 上段: `+ 100.00 100.01 100.02 100.04 100.05 100.07 101.00 101.02`、
+ *   下段: `− COM COM COM 100.03 COM 100.06 COM 101.01 101.03`
+ *
+ * 実機の出力 COM はどれも `COM` と印字されているが、本アプリは受け持ちの群が分かるよう
+ * `COM0`〜`COM4` の名前で呼ぶ（`CP1E_COMMON_SIZES` の順）。空き（`—` / `NC`）は端子にしない。
+ */
+function cp1eTerminals(): BoardTerminal[] {
+  const inputRear = [
+    'L1',
+    'L2N',
+    'COM',
+    '0.01',
+    '0.03',
+    '0.05',
+    '0.07',
+    '0.09',
+    '0.11',
+    '1.01',
+    '1.03',
+    '1.05',
+  ];
+  const inputFront = [
+    null,
+    '0.00',
+    '0.02',
+    '0.04',
+    '0.06',
+    '0.08',
+    '0.10',
+    '1.00',
+    '1.02',
+    '1.04',
+    null,
+  ];
+  const outputRear = [
+    '+',
+    '100.00',
+    '100.01',
+    '100.02',
+    '100.04',
+    '100.05',
+    '100.07',
+    '101.00',
+    '101.02',
+  ];
+  const outputFront = [
+    '-',
+    'COM0',
+    'COM1',
+    'COM2',
+    '100.03',
+    'COM3',
+    '100.06',
+    'COM4',
+    '101.01',
+    '101.03',
+  ];
   return [
-    ...staggeredTerminals(CP1E_SPEC, inputSide, vec3(PLC_ORIGIN_MM.x + 6, PLC_ORIGIN_MM.y + 6, 0)),
-    ...staggeredTerminals(
+    ...staggeredRows(
       CP1E_SPEC,
-      outputSide,
+      inputRear,
+      inputFront,
+      vec3(PLC_ORIGIN_MM.x + 6, PLC_ORIGIN_MM.y + 6, 0),
+    ),
+    ...staggeredRows(
+      CP1E_SPEC,
+      outputRear,
+      outputFront,
       vec3(PLC_ORIGIN_MM.x + 6, PLC_ORIGIN_MM.y + 72, 0),
     ),
   ];
@@ -354,19 +464,20 @@ export const CP1E_APPEARANCE: PlcAppearance = {
   bodyColor: CP1E_BODY_COLOR,
   terminalBlockColor: '#2A2A2A',
   nameplate: 'CP1E-N30DR-A',
-  nameplateRect: { x: 46, y: 27, w: 56, h: 6 },
+  // 本体表示LEDが6灯（x 6〜60）に増えたので、銘板はその右（v2.0.0）
+  nameplateRect: { x: 66, y: 27, w: 56, h: 6 },
   covers: [
     { id: 'input-cover', rect: { x: 0, y: 0, w: 130, h: 24 }, color: '#C0BEB6', hinge: 'top' },
     { id: 'output-cover', rect: { x: 0, y: 66, w: 130, h: 24 }, color: '#C0BEB6', hinge: 'bottom' },
   ],
   leds: [
     ...ledRow(
-      ['POWER', 'RUN', 'ERR', 'ALM'],
+      // W479 §3-1-1 の表: POWER(緑) / RUN(緑) / ERR/ALM(赤) / INH(黄) / PRPHL(黄) / BKUP(黄)。v2.0.0
+      ['POWER', 'RUN', 'ERR/ALM', 'INH', 'PRPHL', 'BKUP'],
       'status',
       { x: 6, y: 27, w: 4, h: 3, pitch: 9 },
       PLC_LED_GREEN,
-      // 【本アプリの前提】ERR/ALM を赤とした（PLC調査資料 O-3 が未確認）
-      { ERR: PLC_LED_RED, ALM: PLC_LED_RED },
+      { 'ERR/ALM': PLC_LED_RED, INH: PLC_LED_YELLOW, PRPHL: PLC_LED_YELLOW, BKUP: PLC_LED_YELLOW },
     ),
     ...ledRow(
       CP1E_SPEC.inputs.map((input) => input.name),
@@ -400,8 +511,8 @@ export const CP1E_APPEARANCE: PlcAppearance = {
   assumed: [
     '筐体色・端子台色（一般に知られた見え方。実機写真は使っていない）',
     'LED・USBポート・オプションボードスロットの面上の位置',
-    '本体表示LEDの種類は §10.1 の【本アプリの前提】（PLC調査資料 O-3 が未確認）',
-    'ERR / ALM の点灯色は本アプリの前提（赤とした）',
+    '本体表示LED（POWER / RUN / ERR/ALM / INH / PRPHL / BKUP）と色、端子配列と出力COMの受け持ちは W479（CP1E ユーザーズマニュアル）§3-1-1・§3-1-3 で確認。INH / PRPHL / BKUP は本アプリでは点灯しない',
+    '実機の出力COMはすべて「COM」の印字。本アプリは受け持ちの群が分かるよう COM0〜COM4 と呼ぶ',
     '銘板は型式の文字列のみ（ロゴ・ブランド名は描かない）',
   ],
 };

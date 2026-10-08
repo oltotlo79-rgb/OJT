@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { PLC_LED_GREEN, PLC_LED_RED, PLC_UNITS, type PlcAppearance } from '../src/index.js';
+import {
+  PLC_LED_GREEN,
+  PLC_LED_RED,
+  PLC_LED_YELLOW,
+  PLC_UNITS,
+  type PlcAppearance,
+} from '../src/index.js';
 
 /** 外観記述1件（本体またはモジュール）とその名前。 */
 const faces: [string, PlcAppearance][] = Object.values(PLC_UNITS).flatMap((unit) => [
@@ -83,7 +89,7 @@ describe('PlcAppearance（3Dが外観を描くための記述）', () => {
     expect(fx5u?.leds.filter((l) => l.group === 'input')).toHaveLength(16);
     expect(fx5u?.leds.filter((l) => l.group === 'output')).toHaveLength(16);
     expect(fx5u?.covers.map((c) => c.hinge)).toEqual(['top', 'bottom']);
-    expect(fx5u?.features.map((f) => f.id)).toEqual(['run-stop', 'ethernet', 'sd-card']);
+    expect(fx5u?.features.map((f) => f.id)).toEqual(['front-panel', 'run-stop', 'ethernet', 'sd-card']);
   });
 
   it('colours the confirmed FX5U status LEDs and the assumed CP1E/JW300 fault LEDs red (§10.1 / B1)', () => {
@@ -95,9 +101,10 @@ describe('PlcAppearance（3Dが外観を描くための記述）', () => {
     expect(colorOf(PLC_UNITS['FX5U']?.appearance, 'P.RUN')).toBe(PLC_LED_GREEN);
     expect(colorOf(PLC_UNITS['FX5U']?.appearance, 'BAT')).toBe(PLC_LED_RED);
     expect(colorOf(PLC_UNITS['FX5U']?.appearance, 'CARD')).toBe(PLC_LED_GREEN);
-    // 【本アプリの前提】CP1E の ERR/ALM と JW300 の FLT を赤とした
-    expect(colorOf(PLC_UNITS['CP1E']?.appearance, 'ERR')).toBe(PLC_LED_RED);
-    expect(colorOf(PLC_UNITS['CP1E']?.appearance, 'ALM')).toBe(PLC_LED_RED);
+    // CP1E は W479 §3-1-1: ERR/ALM(赤)・INH / PRPHL / BKUP(黄)。JW300 の FLT は本アプリの前提で赤
+    expect(colorOf(PLC_UNITS['CP1E']?.appearance, 'ERR/ALM')).toBe(PLC_LED_RED);
+    expect(colorOf(PLC_UNITS['CP1E']?.appearance, 'INH')).toBe(PLC_LED_YELLOW);
+    expect(colorOf(PLC_UNITS['CP1E']?.appearance, 'BKUP')).toBe(PLC_LED_YELLOW);
     const jw312cu = PLC_UNITS['JW-300']?.modules?.find((m) => m.model === 'JW-312CU')?.appearance;
     expect(colorOf(jw312cu, 'FLT')).toBe(PLC_LED_RED);
     expect(colorOf(jw312cu, 'RUN')).toBe(PLC_LED_GREEN);

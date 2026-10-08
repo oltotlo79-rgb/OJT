@@ -106,7 +106,10 @@ function statusLit(name: string, state: PlcLedState): boolean {
   const upper = name.toUpperCase();
   if (upper === 'POWER' || upper === 'PWR') return true;
   if (upper === 'RUN' || upper === 'P.RUN') return state.running;
-  if (upper === 'ERR' || upper === 'ERROR' || upper === 'FLT') return state.convertFailed;
+  if (upper === 'ERR' || upper === 'ERR/ALM' || upper === 'ERROR' || upper === 'FLT') {
+    return state.convertFailed;
+  }
+  // INH / PRPHL / BKUP（CP1E）は本アプリでは点灯しない（出力禁止・周辺通信・バックアップは扱わない）
   return false;
 }
 

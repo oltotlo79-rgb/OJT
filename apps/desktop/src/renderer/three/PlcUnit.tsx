@@ -188,7 +188,9 @@ export function PlcFace({
       })}
       {/* 前面の造作（RUN/STOPスイッチ・コネクタ・スロット・固定ラッチ） */}
       {appearance.features.map((feature) => {
-        const box = faceRectToBoard(origin, feature.rect, faceZMm + FACE_LIFT_MM);
+        // 前面パネル（`panel`）は他の造作・LED・銘板の下に敷くので、少しだけ奥に置く（v2.0.0）
+        const lift = feature.kind === 'panel' ? FACE_LIFT_MM * 0.5 : FACE_LIFT_MM;
+        const box = faceRectToBoard(origin, feature.rect, faceZMm + lift);
         return (
           <mesh
             key={feature.id}
