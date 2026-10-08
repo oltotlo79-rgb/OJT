@@ -110,6 +110,8 @@ const BASELINE: Readonly<Record<string, number>> = {
   'small-target': 0,
   focus: 0,
   canvas: 0,
+  // v2.0.0 Task 3: 分割表示の3D盤の実寸（560×280px 未満は致命）
+  'canvas-size': 0,
 };
 
 /**
@@ -145,7 +147,8 @@ type CheckName =
   | 'small-text'
   | 'small-target'
   | 'focus'
-  | 'canvas';
+  | 'canvas'
+  | 'canvas-size';
 
 type Severity = 'blocking' | 'important' | 'minor';
 
@@ -962,6 +965,26 @@ async function stop(
             h: editor?.height ?? 0,
           },
           detail: 'ラダー編集面は幅240px・高さ180px以上を確保する',
+        });
+      }
+    }
+    /*
+     * v2.0.0 Task 3（F2）: 分割表示の3D盤は 560×280px 以上（`--plc-board-w` の下限 ÷ 比）。
+     * 以前は `.viewport` の高さを状態文・ヒントと分け合い、1280×800 でキャンバスが 110px しか
+     * 無かった。CSS の式は `ladder-layout.test.tsx` が縛るので、ここでは**実寸**を見る。
+     */
+    if (three && /^(modeD-.+|lab-plc)-split$/u.test(screen)) {
+      const rect = canvasArg?.rect;
+      if (rect === undefined || rect.w < 560 || rect.h < 280) {
+        list.push({
+          screen,
+          size: key,
+          check: 'canvas-size',
+          selector: '[data-testid="viewport"] canvas',
+          text: '3D盤',
+          severity: 'blocking',
+          rect: rect ?? { x: 0, y: 0, w: 0, h: 0 },
+          detail: `分割表示の3D盤は幅560px・高さ280px以上を確保する（実測 ${String(rect?.w ?? 0)}×${String(rect?.h ?? 0)}）`,
         });
       }
     }

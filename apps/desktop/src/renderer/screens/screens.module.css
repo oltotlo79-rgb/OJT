@@ -348,11 +348,16 @@
   --plc-chrome: 96px;
   --plc-pane-h: calc(100vh - var(--plc-chrome));
   /*
-   * 3Dの幅の上限。これ以上広げるとラダーの格子（既定 12 列 = 582px）が横スクロールに戻る。
-   * 1920px で 614px、2560px で 819px。下限の 420px は `camera.ts` が想定する最小幅。
+   * 3Dの幅の上限。これ以上広げるとラダーの格子（既定 12 列 = 621px）が横スクロールに戻る。
+   * 1920px で 614px、2560px で 819px。
+   *
+   * 下限は 560px（v2.0.0 Task 3・F2）。以前の 420px では 1280×800 の盤が 420×210px で、しかも
+   * その高さを状態文・ヒント（`.viewport` の中の静的な行）と分け合っていたので、キャンバスは
+   * 110px 程度しか残らず盤がほとんど読めなかった。560px なら 1440px までの画面で 560×280px に
+   * なり、1280px では格子が 10 列（`fitGridCols()` がコイル列を画面内に保つ）に減るだけで済む。
    */
   --plc-board-max: 32vw;
-  --plc-board-w: max(420px, min(var(--plc-board-max), calc(var(--plc-aspect) * var(--plc-pane-h))));
+  --plc-board-w: max(560px, min(var(--plc-board-max), calc(var(--plc-aspect) * var(--plc-pane-h))));
 
   display: grid;
   grid-template-columns: var(--plc-board-w) minmax(0, 1fr);
@@ -365,7 +370,8 @@
 /* 盤の直下に課題・部品欄を配置し、残りの幅を純正ソフトの編集面へ渡す。
  * 左列は盤と道具、右列はラダー。3Dの縦横比はカメラと共通で保つ。 */
 .plcLayout[data-view='split'] {
-  grid-template-rows: calc(var(--plc-board-w) / var(--plc-aspect)) minmax(0, 1fr);
+  /* 1行目は 3D（キャンバス＋状態文＋ヒント）の中身なり。残りの高さを課題・部品欄に渡す */
+  grid-template-rows: auto minmax(0, 1fr);
 }
 
 .plcLayout[data-view='split'] > [data-testid='ladder-workspace'] {
@@ -378,10 +384,28 @@
   grid-row: 2;
 }
 
+/*
+ * v2.0.0 Task 3（F2）: 比の箱に丸めるのは `.viewport` ではなく**キャンバスそのもの**。
+ * `.viewport` は縦に積む flex（状態文・警告・キャンバス・ヒント）なので、`.viewport` の高さを
+ * 比で決めると状態文とヒントのぶんだけキャンバスが削られていた（1280×800 で実測 110px）。
+ */
 .plcLayout[data-view='split'] > .viewport {
   align-self: start;
-  height: calc(var(--plc-board-w) / var(--plc-aspect));
-  max-height: 100%;
+  height: auto;
+  max-height: none;
+  /*
+   * キャンバスの高さ（比の箱）。R3F の `<Canvas>` は外枠の div に inline で `height: 100%` を
+   * 書くので、ここの CSS で `height` を書いても勝てない。`BoardScene.tsx` が `<Canvas style>` で
+   * この変数を読む（`var(--board-canvas-h, 100%)`）。`min-height` だけでは外枠は伸びても内側の
+   * div（`height: 100%` ＝ 親が不定なら内容なり）が伸びず、キャンバスが古い高さに留まった
+   * （2026-10-08 の実測: 1920×1080 で外枠 303px・キャンバス 280px）。
+   */
+  --board-canvas-h: calc(var(--plc-board-w) / var(--plc-aspect));
+}
+
+.plcLayout[data-view='split'] > .viewport > [data-testid='board-canvas'] {
+  flex: 0 0 auto;
+  min-height: var(--board-canvas-h);
 }
 
 .plcLayout[data-view='ladder'] {
@@ -442,7 +466,8 @@
 
   /* ラダー（上）→ 3D（下）→ 課題・部品・ログ、の順で高さを配る */
   .plcLayout[data-view='split'] {
-    grid-template-rows: clamp(560px, 70vh, 760px) clamp(300px, 38vh, 560px) auto;
+    /* 3D の行は中身なり（キャンバスは比の箱 560×280px のまま）。v2.0.0 Task 3 */
+    grid-template-rows: clamp(560px, 70vh, 760px) auto auto;
   }
 
   .plcLayout[data-view='split'] > [data-testid='ladder-workspace'] {

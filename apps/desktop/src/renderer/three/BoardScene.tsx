@@ -1338,6 +1338,7 @@ function BoardSceneImpl({
         dpr={[1, 1.5]}
         camera={{ fov: CAMERA_FOV_DEG, near: 1, far: 4000, position: [0, 0, 380] }}
         data-testid="board-canvas"
+        style={CANVAS_STYLE}
         onPointerMissed={() => {
           guardedPick({ kind: 'empty' });
         }}
@@ -1385,6 +1386,13 @@ function BoardSceneImpl({
     </>
   );
 }
+
+/**
+ * `<Canvas>` の外枠の inline スタイル。R3F は外枠に `height: 100%` を書くので、CSS からは高さを
+ * 変えられない。モードDの分割表示だけ `.viewport` が `--board-canvas-h`（比の箱の高さ）を定義し、
+ * それ以外の画面では既定の `100%` のまま（v2.0.0 Task 3・F2。`ladder-layout.test.tsx` が縛る）。
+ */
+export const CANVAS_STYLE = { height: 'var(--board-canvas-h, 100%)' } as const;
 
 /** 3Dビューポート（親の再描画で巻き添えにならないよう `memo` する）。§15 */
 export const BoardScene = memo(BoardSceneImpl);

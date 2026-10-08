@@ -9,6 +9,7 @@ import { useStore } from '../src/renderer/app/store.js';
 import { fitGridCols } from '../src/renderer/ladder/LadderGrid.js';
 import { LadderWorkspace } from '../src/renderer/ladder/LadderWorkspace.js';
 import { CELL_W } from '../src/renderer/ladder/symbols.js';
+import { CANVAS_STYLE } from '../src/renderer/three/BoardScene.js';
 import { PLC_VIEW_ASPECT } from '../src/renderer/three/camera.js';
 
 /**
@@ -49,9 +50,12 @@ const LAYOUT_GUTTERS = 8 * 2 + 8;
 const RIGHT_COL = 300;
 /** `--plc-chrome`: ツールバー＋手順帯＋上下パディング。 */
 const CHROME = 96;
-/** `--plc-board-max`（32vw）と 3D の下限幅。 */
+/**
+ * `--plc-board-max`（32vw）と 3D の下限幅。
+ * v2.0.0 Task 3（F2）: 下限を 420 → 560px に上げ、1280×800 でも盤を 560×280px で描く。
+ */
 const BOARD_MAX_VW = 0.32;
-const BOARD_MIN = 420;
+const BOARD_MIN = 560;
 /** `--ladder-side-w` / `--ladder-tree-w`（1600px 未満では列を下の帯へ回すので側は 0）。 */
 const SIDE_W = 200;
 const TREE_W = 140;
@@ -209,10 +213,30 @@ describe('分割レイアウトの列（UXレビュー #27）', () => {
     // UI監査バッチE: 丸めは `max-height` ではなく `height` で行う。`align-self: center` は
     // 行いっぱいへの伸長をやめさせるので、`max-height` だけだと高さが中身なり（実測 150px）まで
     // 潰れ、モードDの3Dペインに盤がほとんど描かれていなかった。
-    expect(SCREENS_CSS).toMatch(
-      /\[data-view='split'\] > \.viewport\s*\{[^}]*height:\s*calc\(var\(--plc-board-w\) \/ var\(--plc-aspect\)\)/u,
+    //
+    // v2.0.0 Task 3（F2）: 比の箱にするのは `.viewport` ではなく**キャンバス**。`.viewport` は
+    // 状態文・警告・ヒントも縦に積む flex なので、`.viewport` の高さを比で決めると静的な行の
+    // ぶんだけキャンバスが削られていた（1280×800 で実測 110px）。行は中身なり（`auto`）にする。
+    const wide = SCREENS_CSS.slice(
+      0,
+      SCREENS_CSS.indexOf(`@media (max-width: ${String(SINGLE_PANE_MAX)}px)`),
     );
-    expect(SCREENS_CSS).toMatch(/\[data-view='split'\] > \.viewport\s*\{[^}]*max-height:\s*100%/u);
+    expect(wide).toMatch(
+      /\.plcLayout\[data-view='split'\]\s*\{[^}]*grid-template-rows:\s*auto minmax\(0, 1fr\)/u,
+    );
+    expect(wide).toMatch(/\[data-view='split'\] > \.viewport\s*\{[^}]*height:\s*auto/u);
+    // R3F の `<Canvas>` は外枠に inline で `height: 100%` を書くので、CSS の `height` では勝てない。
+    // `.viewport` が変数で高さを渡し、`BoardScene` の `<Canvas style>` がそれを読む
+    expect(wide).toMatch(
+      /\[data-view='split'\] > \.viewport\s*\{[^}]*--board-canvas-h:\s*calc\(var\(--plc-board-w\) \/ var\(--plc-aspect\)\)/u,
+    );
+    expect(CANVAS_STYLE.height).toBe('var(--board-canvas-h, 100%)');
+    expect(wide).toMatch(
+      /\[data-view='split'\] > \.viewport > \[data-testid='board-canvas'\]\s*\{[^}]*flex:\s*0 0 auto/u,
+    );
+    expect(wide).toMatch(
+      /\[data-view='split'\] > \.viewport > \[data-testid='board-canvas'\]\s*\{[^}]*min-height:\s*var\(--board-canvas-h\)/u,
+    );
   });
 
   /*
@@ -232,11 +256,12 @@ describe('分割レイアウトの列（UXレビュー #27）', () => {
       const height = boardWidth(vw, vh) / PLC_VIEW_ASPECT;
       expect(height, `${String(vw)}×${String(vh)}`).toBeLessThanOrEqual(paneH);
       // 盤（245mm）が中身（285mm）の 86% を占めるので、ペインの高さもそれなりに要る
-      expect(height, `${String(vw)}×${String(vh)}`).toBeGreaterThanOrEqual(200);
+      // （v2.0.0 Task 3: 下限 560px ÷ 2 ＝ 280px）
+      expect(height, `${String(vw)}×${String(vh)}`).toBeGreaterThanOrEqual(280);
     }
-    // 1280×800 で 210px、1440×900 で 230px、1920×1080 で 307px
-    expect(Math.round(boardWidth(1280, 800) / PLC_VIEW_ASPECT)).toBe(210);
-    expect(Math.round(boardWidth(1440, 900) / PLC_VIEW_ASPECT)).toBe(230);
+    // 1280×800 と 1440×900 で 280px（下限）、1920×1080 で 307px
+    expect(Math.round(boardWidth(1280, 800) / PLC_VIEW_ASPECT)).toBe(280);
+    expect(Math.round(boardWidth(1440, 900) / PLC_VIEW_ASPECT)).toBe(280);
     expect(Math.round(boardWidth(1920, 1080) / PLC_VIEW_ASPECT)).toBe(307);
   });
 
@@ -249,9 +274,9 @@ describe('分割レイアウトの列（UXレビュー #27）', () => {
     expect(narrow).toMatch(/\[data-view='split'\] > \.viewport\s*\{[^}]*grid-row:\s*2/u);
     // 高さは行が決めるので、比の丸め（`height` / `max-height`）はここで外す
     expect(narrow).toMatch(/\[data-view='split'\] > \.viewport\s*\{[^}]*height:\s*auto/u);
-    // ラダーと3Dがそれぞれ自分の高さを持つ
+    // ラダーは自分の高さを持ち、3Dの行は中身なり（キャンバスが比の箱 560×280px を持つ）
     expect(narrow).toMatch(
-      /\.plcLayout\[data-view='split'\]\s*\{[^}]*grid-template-rows:\s*clamp\([^)]*\) clamp\([^)]*\) auto/u,
+      /\.plcLayout\[data-view='split'\]\s*\{[^}]*grid-template-rows:\s*clamp\([^)]*\) auto auto/u,
     );
     // 3行ぶんの高さが1列に伸びるので、ここだけ縦スクロールにする
     expect(narrow).toMatch(/overflow-y:\s*auto/u);
@@ -268,13 +293,19 @@ describe('分割レイアウトの列（UXレビュー #27）', () => {
     expect(Math.round(gridWidth(1920, 1080))).toBe(941);
     expect(gridWidth(1920, 1080)).toBeGreaterThanOrEqual(need);
 
-    // 1440×900: 3D 461px / 格子 838px → 既定11列が収まる
-    expect(Math.round(boardWidth(1440, 900))).toBe(461);
-    expect(Math.round(gridWidth(1440, 900))).toBe(838);
+    // 1440×900: 3D 560px（下限）/ 格子 739px → 既定11列が収まる
+    expect(Math.round(boardWidth(1440, 900))).toBe(560);
+    expect(Math.round(gridWidth(1440, 900))).toBe(739);
+    expect(gridWidth(1440, 900)).toBeGreaterThanOrEqual(need);
 
-    // 1280×800（分割の下限。1279px 以下は1列）: 3D 420px / 格子 719px
-    expect(Math.round(boardWidth(1280, 800))).toBe(420);
-    expect(Math.round(gridWidth(1280, 800))).toBe(719);
+    // 1280×800（分割の下限。1279px 以下は1列）: 3D 560px / 格子 579px。
+    // 既定11列（621px）は入らないので `fitGridCols()` が接点列を 10 に減らし、コイル列を
+    // 画面内に保つ（v2.0.0 Task 3: 盤を 560×280px で見せるほうを優先した）
+    expect(Math.round(boardWidth(1280, 800))).toBe(560);
+    expect(Math.round(gridWidth(1280, 800))).toBe(579);
+    expect(
+      fitGridCols(11, gridWidth(1280, 800), { stepGutterPx: STEP_GUTTER, widthPx: CELL_W }),
+    ).toBe(10);
 
     // 1279×800（1列。ラダーが幅いっぱい）: 格子 1146px → 横スクロールなし
     expect(Math.round(gridWidth(1279, 800))).toBe(1146);
