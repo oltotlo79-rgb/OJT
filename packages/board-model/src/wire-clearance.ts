@@ -34,8 +34,20 @@ class WireSpace {
     private holes: Map<string, Vec3>,
     private ports: Map<string, WireConnection[]>,
   ) {
+    /*
+     * 電線が通れない立体: ソケット・端子台に加えて**ブレーカ・電源スイッチ**（v2.0.0 Task 9・
+     * 総点検 F4）。以前はこの2つが無かったので、`shortenBody()` が机上へ出る P の電線を
+     * 「盤の上端をまっすぐ右へ」と縮め、ブレーカと電源スイッチの本体（高さ22mm）を貫いていた。
+     * DC24V電源（`supply`）は P/N 端子そのものを含むので障害物にしない（出線は左へ出す）。
+     */
     this.obstacles = board.footprints
-      .filter((fp) => fp.kind === 'socket' || fp.kind === 'block')
+      .filter(
+        (fp) =>
+          fp.kind === 'socket' ||
+          fp.kind === 'block' ||
+          fp.kind === 'breaker' ||
+          fp.kind === 'switch',
+      )
       .map((fp) => ({ x: fp.x - 0.8, y: fp.y - 0.8, w: fp.w + 1.6, h: fp.h + 1.6 }));
     this.deskScrews = board.terminals.filter((terminal) => /^(PLC|OUTLET)\./u.test(terminal.id));
     const unit = board.plcUnit;

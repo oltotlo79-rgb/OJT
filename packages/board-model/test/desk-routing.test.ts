@@ -17,6 +17,7 @@ import {
   DESK_RUN_Y_Z_MM,
   DESK_Z_LADDER_MM,
   deskDucts,
+  BOARD_FIXTURE_HEIGHT_MM,
   deskObstacles,
   deskRouteIssues,
   deskRoutes,
@@ -794,4 +795,50 @@ describe('机上配線の総当たり（2026-09-26 利用者報告「貫通・�
       expect(problems).toEqual([]);
     },
   );
+});
+
+describe('盤の固定機器は机上経路の障害物（v2.0.0 Task 9・総点検 F4）', () => {
+  it('deskObstacles にブレーカと電源スイッチの箱（高さ22mm）が入る', () => {
+    const unit = UNITS[0];
+    if (unit === undefined) throw new Error('PLC本体が無い');
+    const board = withPlcUnit(JIPM_BOARD, unit);
+    const obstacles = deskObstacles(board, unit);
+    for (const id of ['CB', 'SW']) {
+      const footprint = board.footprints.find((fp) => fp.id === id);
+      const box = obstacles.find((item) => item.id === `fixture-${id}`);
+      if (footprint === undefined || box === undefined) throw new Error(`${id} が無い`);
+      expect(box.rect).toEqual({ x: footprint.x, y: footprint.y, w: footprint.w, h: footprint.h });
+      expect(box.zLoMm).toBe(0);
+      expect(box.zHiMm).toBe(BOARD_FIXTURE_HEIGHT_MM);
+    }
+    // DC24V電源は P/N 端子を含むので障害物にしない（出線は左へ出す）
+    expect(obstacles.some((item) => item.id === 'fixture-supply')).toBe(false);
+  });
+
+  it('deskRouteIssues はブレーカの中を通る区間を報告する', () => {
+    const unit = UNITS[0];
+    if (unit === undefined) throw new Error('PLC本体が無い');
+    const board = withPlcUnit(JIPM_BOARD, unit);
+    const session = createSession(board, { roles: TASK1_SOCKET_ROLES });
+    const terminal = unit.terminals[0];
+    if (terminal === undefined) throw new Error('PLC端子が無い');
+    expect(addWire(session, board, t('P.1'), terminal.id).ok).toBe(true);
+    const routes = deskRoutes(board, session);
+    const route = routes[0];
+    if (route === undefined) throw new Error('経路が無い');
+    // 本来の経路は機器を避ける
+    expect(deskRouteIssues(routes, board, unit)).toEqual([]);
+    // 盤の上端を y=14 でまっすぐ横切る偽の経路（以前の見た目）は報告される
+    const fake = {
+      ...route,
+      corners: [
+        { x: 16, y: 14, z: 8.6 },
+        { x: 340, y: 14, z: 8.6 },
+        ...route.corners.slice(-1),
+      ],
+    };
+    const issues = deskRouteIssues([fake], board, unit);
+    expect(issues.some((issue) => issue.includes('fixture-CB'))).toBe(true);
+    expect(issues.some((issue) => issue.includes('fixture-SW'))).toBe(true);
+  });
 });

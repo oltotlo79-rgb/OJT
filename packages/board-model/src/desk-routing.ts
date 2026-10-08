@@ -392,6 +392,8 @@ function plcSideOf(unit: PlcUnitDefinition, terminal: BoardTerminal): PlcSide {
 
 /** 下の行ダクトに最低限ほしいレーンの本数（これより狭い隙間は使わない）。 */
 const DESK_BOTTOM_MIN_LANES = 5;
+/** 盤の固定機器（ブレーカ・電源スイッチ）の高さ[mm]（`Fixtures.tsx` の `FIXTURE_HEIGHT_MM` と同じ）。 */
+export const BOARD_FIXTURE_HEIGHT_MM = 22;
 
 /**
  * 行ダクトの線の y[mm]（レーン0の位置）と、手前へ並べられるレーンの本数。
@@ -1061,6 +1063,16 @@ export function deskObstacles(board: BoardDefinition, unit: PlcUnitDefinition): 
       zHiMm: 0,
     },
   ];
+  // 盤の上端のブレーカ・電源スイッチ（高さ22mm）。机上へ出る電線が貫かないこと（v2.0.0 Task 9・F4）
+  for (const footprint of board.footprints) {
+    if (footprint.kind !== 'breaker' && footprint.kind !== 'switch') continue;
+    out.push({
+      id: `fixture-${footprint.id}`,
+      rect: { x: footprint.x, y: footprint.y, w: footprint.w, h: footprint.h },
+      zLoMm: 0,
+      zHiMm: BOARD_FIXTURE_HEIGHT_MM,
+    });
+  }
   const faces: PlcFacePlacement[] = plcFaces(unit);
   for (const face of faces) {
     out.push({

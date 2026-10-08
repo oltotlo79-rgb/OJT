@@ -202,6 +202,7 @@ export {
   DESK_TRUNK_GAP_MM,
   DESK_Z_LADDER_MM,
   deskDucts,
+  BOARD_FIXTURE_HEIGHT_MM,
   deskObstacles,
   deskRouteIssues,
   deskRoutes,
