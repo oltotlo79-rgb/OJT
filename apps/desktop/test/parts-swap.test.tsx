@@ -369,14 +369,18 @@ describe('3Dの装着部品のクリック（§8.2 / 利用者要望 2026-09-19�
     expect(sharedBodyEdges(box.width, box.height)).toBe(before);
   });
 
-  it('選択中のソケット本体は発光し、同じ状態なら同じマテリアルを使い回す', () => {
-    // Phase 7 Task 27 で光り方が4通り（通常・ホバー・選択・落とせる）になった
-    const lit = socketBodyMaterial('selected');
-    const dark = socketBodyMaterial('plain');
+  it('選択中のソケット本体は光らず（輪郭で示す）、落とせるソケットだけ弱く光る', () => {
+    // Phase 7 Task 27 で光り方が4通り（通常・ホバー・選択・落とせる）になり、
+    // v2.0.0 Task 4（F3）で発光は「落とせる」だけに絞った（選択・ホバーは台座の輪郭。
+    // `test/socket-outline.test.tsx`）。同じ状態なら同じマテリアルを使い回す。
+    const selected = socketBodyMaterial('selected');
+    const plain = socketBodyMaterial('plain');
+    const droppable = socketBodyMaterial('droppable');
 
-    expect(lit.emissiveIntensity).toBeGreaterThan(0);
-    expect(dark.emissiveIntensity).toBe(0);
-    expect(lit).not.toBe(dark);
-    expect(socketBodyMaterial('selected')).toBe(lit);
+    expect(selected.emissiveIntensity).toBe(0);
+    expect(selected).toBe(plain);
+    expect(droppable.emissiveIntensity).toBeGreaterThan(0);
+    expect(droppable).not.toBe(plain);
+    expect(socketBodyMaterial('droppable')).toBe(droppable);
   });
 });

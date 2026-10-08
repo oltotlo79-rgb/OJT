@@ -17,7 +17,9 @@ import { useEffect, useMemo, useRef, type JSX } from 'react';
 import type { ThreeEvent } from '@react-three/fiber';
 import {
   BufferGeometry,
+  EdgesGeometry,
   Float32BufferAttribute,
+  LineBasicMaterial,
   Matrix4,
   Quaternion,
   Vector3,
@@ -213,13 +215,75 @@ export function socketPrintGeometry(
 /** ソケット本体の光り方。Phase 7 設計 §7.3.4「ホバー＝細い縁取り、選択＝太い縁取り」。 */
 export type SocketGlow = 'plain' | 'hovered' | 'selected' | 'droppable';
 
-/** 光り方ごとの発光の強さ（0 は光らない）。落とせるソケットがいちばん強い。 */
+/**
+ * 光り方ごとの発光の強さ（0 は光らない）。
+ *
+ * v2.0.0 Task 4（F3）: 選択・ホバーは**発光させない**。本体を光らせると、透明なリレーのケース
+ * （`ComponentDetails.tsx` の `RELAY_SHELL`・opacity 0.2）越しに台座が水色に染まり、部品そのものが
+ * 光っているように見えた（2026-10-08 の総点検 F3）。選択とホバーは台座の輪郭
+ * （`socketOutlineOf()`）で示し、運搬中の「ここに落とせる」だけ弱い発光を残す
+ * （落とせるソケットは空なので、ケース越しに染まることがない）。
+ */
 export const SOCKET_GLOW_INTENSITY: Readonly<Record<SocketGlow, number>> = {
   plain: 0,
-  hovered: 0.35,
-  selected: 0.6,
-  droppable: 0.9,
+  hovered: 0,
+  selected: 0,
+  droppable: 0.35,
 };
+
+/** ホバー中の輪郭の色（装着部品の稜線のホバー色と同じ白）。 */
+export const SOCKET_HOVER_OUTLINE_COLOR = '#FFFFFF';
+
+/** 台座の輪郭線。`passes` は太く見せるためにずらして重ねる本数（WebGL は線幅を変えられない）。 */
+export interface SocketOutline {
+  color: string;
+  passes: number;
+}
+
+/**
+ * 光り方ごとの輪郭（純関数。色と本数を単体テストで縛る）。
+ * 選択＝水色の太線（3本）、ホバー＝白の細線、落とせる＝緑の細線（弱い発光と併用）、通常＝無し。
+ * Phase 7 設計 §7.3.4「ホバー＝細い縁取り、選択＝太い縁取り」の本来の形。
+ */
+export function socketOutlineOf(glow: SocketGlow): SocketOutline | undefined {
+  switch (glow) {
+    case 'selected':
+      return { color: SOCKET_SELECTED_COLOR, passes: 3 };
+    case 'hovered':
+      return { color: SOCKET_HOVER_OUTLINE_COLOR, passes: 1 };
+    case 'droppable':
+      return { color: SOCKET_DROP_COLOR, passes: 1 };
+    case 'plain':
+      return undefined;
+  }
+}
+
+/**
+ * 輪郭の形（単位箱の稜線。`scale` で各段の外形に伸ばす）。全ソケット・全段で1個を使い回す。
+ *
+ * 輪郭は**段付きの外形そのもの**（`socketStepSections()` の5区間それぞれの箱）に引く。
+ * 最下段だけの箱では、正面の視点で手前の1辺しか見えず、ホバーの白線がほとんど読めなかった
+ * （2026-10-08 の撮影確認）。5区間の稜線なら、正面・俯瞰・拡大のどこからでも
+ * 「このソケット」が縁取りで分かる（装着部品の稜線 `MountedPart.tsx` と同じ見せ方）。
+ */
+const OUTLINE_EDGES = new EdgesGeometry(UNIT_BOX);
+/** 輪郭を段の面から外へ逃がす量[mm]（面と同じ位置だと深度で負けてちらつく）。 */
+const OUTLINE_GROW_MM = 0.3;
+/** 2本目以降の輪郭のずらし量[mm]（約1px ずつ外に重ねて太く見せる）。 */
+const OUTLINE_PASS_STEP_MM = 0.5;
+/** 輪郭の箱を盤面から浮かせる量[mm]（底の辺が盤面と同じ深度にならないように）。 */
+const OUTLINE_LIFT_MM = 0.15;
+
+const outlineMaterials = new Map<string, LineBasicMaterial>();
+
+/** 輪郭の線のマテリアル（色ごとに1個。トーンマッピングを受けず、水色・白がくすまない）。 */
+export function socketOutlineMaterial(color: string): LineBasicMaterial {
+  const cached = outlineMaterials.get(color);
+  if (cached !== undefined) return cached;
+  const material = new LineBasicMaterial({ color, toneMapped: false });
+  outlineMaterials.set(color, material);
+  return material;
+}
 
 /**
  * いまの状態の光り方（純関数。優先順を単体テストで縛る）。
@@ -236,10 +300,10 @@ export function socketGlowOf(state: {
 }
 
 /**
- * ソケット本体（差込領域）のマテリアル。選択中・ホバー中・落とせるときに発光を足す。
- * 「いまどのソケットを触っているか」が3Dの側でも分かるようにするため（利用者要望 2026-09-19 /
- * Phase 7 設計 §7.3.4）。`sharedMaterial()` は設定ごとに1個しか作らないので、
- * 光り方の4通りぶんに収まる（§15）。
+ * ソケット本体（差込領域）のマテリアル。落とせるときだけ弱い発光を足す。
+ * 「いまどのソケットを触っているか」は輪郭（`socketOutlineOf()`）で示す（利用者要望 2026-09-19 /
+ * Phase 7 設計 §7.3.4 / v2.0.0 Task 4）。`sharedMaterial()` は設定ごとに1個しか作らないので、
+ * 通常と落とせるの2個に収まる（§15）。
  */
 export function socketBodyMaterial(glow: SocketGlow): ReturnType<typeof sharedMaterial> {
   const intensity = SOCKET_GLOW_INTENSITY[glow];
@@ -248,7 +312,7 @@ export function socketBodyMaterial(glow: SocketGlow): ReturnType<typeof sharedMa
     : sharedMaterial(SOCKET_BODY_COLOR, {
         roughness: 0.55,
         metalness: 0.1,
-        emissive: glow === 'droppable' ? SOCKET_DROP_COLOR : SOCKET_SELECTED_COLOR,
+        emissive: SOCKET_DROP_COLOR,
         emissiveIntensity: intensity,
       });
 }
@@ -443,6 +507,8 @@ export function Socket({
   useEffect(() => () => printGeometry.dispose(), [printGeometry]);
 
   const bodyCenter = toScene({ x: centerX, y: centerY, z: SOCKET_BODY_TOP_Z_MM / 2 });
+  const glow = socketGlowOf({ selected, hovered, droppable });
+  const outline = socketOutlineOf(glow);
   const bodyEvents = {
     onClick: (event: ThreeEvent<MouseEvent>): void => {
       event.stopPropagation();
@@ -469,12 +535,39 @@ export function Socket({
           castShadow
           name={index === 2 ? `socket-body-${socket.id}` : `socket-step-${socket.id}-${index}`}
           geometry={UNIT_BOX}
-          material={socketBodyMaterial(socketGlowOf({ selected, hovered, droppable }))}
+          material={socketBodyMaterial(glow)}
           position={toScene({ x: centerX, y: originY + section.offsetY, z: section.height / 2 })}
           scale={[width, section.depth, section.height]}
           {...bodyEvents}
         />
       ))}
+      {/*
+        段付きの外形の輪郭（5区間それぞれの稜線）。選択＝水色の太線、ホバー＝白、落とせる＝緑。
+        本体を光らせないので、透明なリレーのケース越しに台座が染まらない。v2.0.0 Task 4（F3）
+      */}
+      {outline === undefined
+        ? null
+        : Array.from({ length: outline.passes }, (_, pass) => {
+            const grow = OUTLINE_GROW_MM + pass * OUTLINE_PASS_STEP_MM;
+            return socketStepSections(length).map((section, index) => {
+              const boxHeight = section.height + grow;
+              return (
+                <lineSegments
+                  key={`outline-${String(pass)}-${String(index)}`}
+                  name={`socket-outline-${socket.id}-${String(pass)}-${String(index)}`}
+                  geometry={OUTLINE_EDGES}
+                  material={socketOutlineMaterial(outline.color)}
+                  raycast={noPick}
+                  position={toScene({
+                    x: centerX,
+                    y: originY + section.offsetY,
+                    z: boxHeight / 2 + OUTLINE_LIFT_MM,
+                  })}
+                  scale={[width + grow * 2, section.depth + grow * 2, boxHeight]}
+                />
+              );
+            });
+          })}
       <TerminalPads socket={socket} terminals={terminals} />
       {/* 差込穴（2列×7段。中央の差込領域に並ぶ）。共有ジオメトリ1個の `instancedMesh`。3D-02 */}
       <PinHoles originX={originX} originY={originY} holes={holes} />
