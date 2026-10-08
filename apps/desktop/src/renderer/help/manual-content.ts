@@ -111,8 +111,20 @@ import full_plc_show_chart from '@manual-images/plc-show-chart.png';
 import small_plc_show_chart from '@manual-images/small/plc-show-chart.png';
 import full_plc_special_contact from '@manual-images/plc-special-contact.png';
 import small_plc_special_contact from '@manual-images/small/plc-special-contact.png';
+import full_plc_split_view from '@manual-images/plc-split-view.png';
+import small_plc_split_view from '@manual-images/small/plc-split-view.png';
 import full_plc_switch_vendor from '@manual-images/plc-switch-vendor.png';
 import small_plc_switch_vendor from '@manual-images/small/plc-switch-vendor.png';
+import full_plc_timer_unit from '@manual-images/plc-timer-unit.png';
+import small_plc_timer_unit from '@manual-images/small/plc-timer-unit.png';
+import full_plc_unit_jtekt from '@manual-images/plc-unit-jtekt.png';
+import small_plc_unit_jtekt from '@manual-images/small/plc-unit-jtekt.png';
+import full_plc_unit_mitsubishi from '@manual-images/plc-unit-mitsubishi.png';
+import small_plc_unit_mitsubishi from '@manual-images/small/plc-unit-mitsubishi.png';
+import full_plc_unit_omron from '@manual-images/plc-unit-omron.png';
+import small_plc_unit_omron from '@manual-images/small/plc-unit-omron.png';
+import full_plc_unit_sharp from '@manual-images/plc-unit-sharp.png';
+import small_plc_unit_sharp from '@manual-images/small/plc-unit-sharp.png';
 import full_plc_vendor_jtekt from '@manual-images/plc-vendor-jtekt.png';
 import small_plc_vendor_jtekt from '@manual-images/small/plc-vendor-jtekt.png';
 import full_plc_vendor_omron from '@manual-images/plc-vendor-omron.png';
@@ -141,6 +153,8 @@ import full_settings_accessibility from '@manual-images/settings-accessibility.p
 import small_settings_accessibility from '@manual-images/small/settings-accessibility.png';
 import full_socket_card from '@manual-images/socket-card.png';
 import small_socket_card from '@manual-images/small/socket-card.png';
+import full_step_parts_done from '@manual-images/step-parts-done.png';
+import small_step_parts_done from '@manual-images/small/step-parts-done.png';
 import full_terminal_list from '@manual-images/terminal-list.png';
 import small_terminal_list from '@manual-images/small/terminal-list.png';
 import full_tester_analog from '@manual-images/tester-analog.png';
@@ -163,6 +177,8 @@ import full_wire_limit_notice from '@manual-images/wire-limit-notice.png';
 import small_wire_limit_notice from '@manual-images/small/wire-limit-notice.png';
 import full_wire_list_edit from '@manual-images/wire-list-edit.png';
 import small_wire_list_edit from '@manual-images/small/wire-list-edit.png';
+import full_wire_lug_sleeve from '@manual-images/wire-lug-sleeve.png';
+import small_wire_lug_sleeve from '@manual-images/small/wire-lug-sleeve.png';
 import full_workfile_menu from '@manual-images/workfile-menu.png';
 import small_workfile_menu from '@manual-images/small/workfile-menu.png';
 
@@ -250,13 +266,13 @@ export const MANUAL_IMAGES: Readonly<Record<string, ManualImage>> = {
   "plc-scan-debug": { small: small_plc_scan_debug, full: full_plc_scan_debug },
   "plc-show-chart": { small: small_plc_show_chart, full: full_plc_show_chart },
   "plc-special-contact": { small: small_plc_special_contact, full: full_plc_special_contact },
-  "plc-split-view": { small: '', full: '' },
+  "plc-split-view": { small: small_plc_split_view, full: full_plc_split_view },
   "plc-switch-vendor": { small: small_plc_switch_vendor, full: full_plc_switch_vendor },
-  "plc-timer-unit": { small: '', full: '' },
-  "plc-unit-jtekt": { small: '', full: '' },
-  "plc-unit-mitsubishi": { small: '', full: '' },
-  "plc-unit-omron": { small: '', full: '' },
-  "plc-unit-sharp": { small: '', full: '' },
+  "plc-timer-unit": { small: small_plc_timer_unit, full: full_plc_timer_unit },
+  "plc-unit-jtekt": { small: small_plc_unit_jtekt, full: full_plc_unit_jtekt },
+  "plc-unit-mitsubishi": { small: small_plc_unit_mitsubishi, full: full_plc_unit_mitsubishi },
+  "plc-unit-omron": { small: small_plc_unit_omron, full: full_plc_unit_omron },
+  "plc-unit-sharp": { small: small_plc_unit_sharp, full: full_plc_unit_sharp },
   "plc-vendor-jtekt": { small: small_plc_vendor_jtekt, full: full_plc_vendor_jtekt },
   "plc-vendor-omron": { small: small_plc_vendor_omron, full: full_plc_vendor_omron },
   "plc-vendor-sharp": { small: small_plc_vendor_sharp, full: full_plc_vendor_sharp },
@@ -271,7 +287,7 @@ export const MANUAL_IMAGES: Readonly<Record<string, ManualImage>> = {
   "settings": { small: small_settings, full: full_settings },
   "settings-accessibility": { small: small_settings_accessibility, full: full_settings_accessibility },
   "socket-card": { small: small_socket_card, full: full_socket_card },
-  "step-parts-done": { small: '', full: '' },
+  "step-parts-done": { small: small_step_parts_done, full: full_step_parts_done },
   "terminal-list": { small: small_terminal_list, full: full_terminal_list },
   "tester-analog": { small: small_tester_analog, full: full_tester_analog },
   "tester-probes": { small: small_tester_probes, full: full_tester_probes },
@@ -283,7 +299,7 @@ export const MANUAL_IMAGES: Readonly<Record<string, ManualImage>> = {
   "wire-drag": { small: small_wire_drag, full: full_wire_drag },
   "wire-limit-notice": { small: small_wire_limit_notice, full: full_wire_limit_notice },
   "wire-list-edit": { small: small_wire_list_edit, full: full_wire_list_edit },
-  "wire-lug-sleeve": { small: '', full: '' },
+  "wire-lug-sleeve": { small: small_wire_lug_sleeve, full: full_wire_lug_sleeve },
   "workfile-menu": { small: small_workfile_menu, full: full_workfile_menu },
 };
 

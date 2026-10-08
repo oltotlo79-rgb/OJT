@@ -14,6 +14,7 @@ import {
   boardToWorld,
   CAMERA_FOV_DEG,
   cameraPose,
+  MIN_CAMERA_DISTANCE_MM,
   type CameraPose,
 } from '../src/renderer/three/camera.js';
 import { toScene } from '../src/renderer/three/coords.js';
@@ -113,6 +114,35 @@ export function boardPoint(
     cameraPose('front', { aspect: aspectOf(box) }),
     box,
   );
+}
+
+/**
+ * ホイールで**寄せ切った**（カメラ距離が下限 `MIN_CAMERA_DISTANCE_MM`）ときに、正面視で
+ * `point`（ページ座標）にあった盤面の点が来るページ座標。
+ *
+ * `BoardScene.tsx` の `OrbitControls` は `zoomToCursor` なので、ポインタの下の盤面の点
+ * （`cursorMm`。盤ローカル座標 mm。ポインタはその点 `boardPoint(cursorMm, box)` に置く）は
+ * 動かず、カメラはその点へ向かう直線上を距離の差だけ進む。盤面の点はポインタを中心に
+ * 「寄せる前の奥行き ÷ 寄せた後の奥行き」倍に広がる（ポインタと同じ高さ（盤の y）の
+ * 近くの点についての近似。端子台1つ分の範囲なら数px以内。three-stdlib の
+ * `getZoomScale()` はホイール1回で 0.95^zoomSpeed 倍なので、正面視から下限へは 30 回あまりで届く）。
+ */
+export function zoomedInPoint(
+  point: { x: number; y: number },
+  cursorMm: { x: number; y: number; z: number },
+  box: CanvasBox,
+): { x: number; y: number } {
+  const pose = cameraPose('front', { aspect: aspectOf(box) });
+  const forward = normalize(sub(pose.target, pose.position));
+  const cursorWorld = boardToWorld(toScene(cursorMm));
+  const relative = sub(cursorWorld, pose.position);
+  const depth = dot(relative, forward);
+  const ray = normalize(relative);
+  const orbit = sub(pose.target, pose.position);
+  const travel = Math.max(0, Math.hypot(orbit[0], orbit[1], orbit[2]) - MIN_CAMERA_DISTANCE_MM);
+  const scale = depth / (depth - travel * dot(ray, forward));
+  const cursor = projectToScreen(cursorWorld, pose, box);
+  return { x: cursor.x + (point.x - cursor.x) * scale, y: cursor.y + (point.y - cursor.y) * scale };
 }
 
 /**

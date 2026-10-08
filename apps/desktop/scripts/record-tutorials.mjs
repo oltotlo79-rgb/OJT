@@ -84,7 +84,7 @@ await app.evaluate(({ BrowserWindow }) => {
 });
 /** @type {Array<{at: number; text: string}>} */
 const notes = [];
-/** @type {Array<{stage:string; at:number; highlighted:boolean}>} */
+/** @type {Array<{stage:string; at:number; highlighted:boolean; what?:string}>} */
 const lessonReview = [];
 const start = Date.now();
 /** @param {number} ms */

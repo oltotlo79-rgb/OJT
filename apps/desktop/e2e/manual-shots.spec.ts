@@ -3,11 +3,13 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
+  boardTerminalPos,
   JIPM_BOARD,
   PLC_UNIT_FX5U,
   plcFaces,
   plcUnitFor,
   trySocketOf,
+  WIRE_LUG_REACH_MM,
   type BoardSession,
   type PlcUnitDefinition,
 } from '@ojt/board-model';
@@ -35,6 +37,7 @@ import {
   GIZMO_GRID_PX,
   gizmoLayoutForViewport,
 } from '../src/renderer/three/ViewGizmo.js';
+import { SLEEVE_CENTER_OFFSET_MM } from '../src/renderer/three/WireConnections.js';
 import {
   boardPoint,
   closeOverflow,
@@ -47,6 +50,7 @@ import {
   roleTerminalPoint,
   SELF_HOLD_WIRES,
   terminalPoint,
+  zoomedInPoint,
   type CanvasBox,
 } from './projection.js';
 
@@ -101,6 +105,8 @@ const SHOTS = JSON.parse(readFileSync(join(MANUAL_DIR, 'shots.json'), 'utf8')) a
 
 /** 撮る大きさ。枠を除いた**中身**を 1280×800 にする（決定表#24）。 */
 const SHOT_SIZE = { width: 1280, height: 800 } as const;
+/** `wire-lug-sleeve` で寄せる中心を端子から左へずらす量（盤ローカル mm）。 */
+const ZOOM_CURSOR_LEFT_MM = 50;
 
 /** 画面の倍率が 100% でないパソコンでも 1280×800 ちょうどで撮れるようにする。 */
 const EXTRA_FLAGS = ['--force-device-scale-factor=1'];
@@ -1108,26 +1114,49 @@ test.describe.serial('取扱説明書の図', () => {
       await page.mouse.click(b.x, b.y);
     }
 
-    // --- wire-lug-sleeve: ねじ端子の圧着端子と絶縁スリーブ（ホイールで寄って撮る。v2.0.0） ---
+    // --- wire-lug-sleeve: ねじ端子の圧着端子と絶縁スリーブ（ホイールで寄せ切って撮る。v2.0.0） ---
     {
-      const lampWire = SELF_HOLD_WIRES.flat().find((id) => id.startsWith('TB_PL.'));
-      if (lampWire === undefined) throw new Error('ランプ端子台への配線の見本がありません');
-      const target = terminalPoint(toTerminalId(lampWire), box);
-      await page.mouse.move(target.x, target.y);
-      for (let step = 0; step < 9; step += 1) {
+      // 見本配線でランプ端子台に張った2本（PL1 の − と +）。ポインタは − の端子に置いて寄せる
+      const [sleeveWire, lugWire] = SELF_HOLD_WIRES.flat().filter((id) => id.startsWith('TB_PL.'));
+      if (sleeveWire === undefined || lugWire === undefined) {
+        throw new Error('ランプ端子台への配線の見本が2本ありません');
+      }
+      const sleeveTerminal = toTerminalId(sleeveWire);
+      const sleeveMm = boardTerminalPos(JIPM_BOARD, sleeveTerminal);
+      // ポインタは − の端子と同じ高さで 50mm 左の盤面に置く（zoomToCursor でその点は動かない）。
+      // 寄せると端子台は右へ広がって図の中央に来て、左上のビューキューブが図に入らない
+      const cursorMm = { x: sleeveMm.x - ZOOM_CURSOR_LEFT_MM, y: sleeveMm.y, z: sleeveMm.z };
+      const cursor = boardPoint(cursorMm, box);
+      await page.mouse.move(cursor.x, cursor.y);
+      // three-stdlib の OrbitControls はホイール1回で 0.95^0.9 倍。正面視（約370mm）から
+      // 下限（90mm）へは31回で届く。余分な回は何もしない
+      for (let step = 0; step < 36; step += 1) {
         await page.mouse.wheel(0, -400);
         await page.waitForTimeout(80);
-        await page.mouse.move(target.x + (step % 2), target.y);
+        await page.mouse.move(cursor.x + (step % 2), cursor.y);
       }
-      await page.mouse.move(target.x, target.y);
+      // 札（ツールチップ）を図に写さないよう、ポインタを3D図の外（右の欄）へ逃がす（寄せた視点はそのまま）
+      await page.mouse.move(box.x + box.width + 40, box.y + box.height / 2);
       await page.waitForTimeout(600);
-      // 寄せた中心が端子のネジ。圧着端子はその手前（画面では下）に出て、スリーブはさらに手前
+      // 寄せ切ったときの位置は `zoomedInPoint()` で射影する。①圧着端子は隣（+）の端子のねじ・座金・
+      // 金具、②絶縁スリーブはポインタの端子（−）のねじから電線側（盤の上向き）へ
+      // 圧着端子の長さ + スリーブの中心のずれ だけ離れた所
+      const lug = zoomedInPoint(terminalPoint(toTerminalId(lugWire), box), cursorMm, box);
+      const sleeve = zoomedInPoint(
+        boardPoint(
+          {
+            x: sleeveMm.x,
+            y: sleeveMm.y - (WIRE_LUG_REACH_MM + SLEEVE_CENTER_OFFSET_MM),
+            z: sleeveMm.z,
+          },
+          box,
+        ),
+        cursorMm,
+        box,
+      );
       await shoot(
         'wire-lug-sleeve',
-        {
-          1: rectAt({ x: target.x, y: target.y + 22 }, 44),
-          2: rectAt({ x: target.x, y: target.y + 62 }, 40),
-        },
+        { 1: rectAt({ x: lug.x, y: lug.y + 2 }, 36), 2: rectAt(sleeve, 28) },
         'auto',
       );
       await page.keyboard.press('Home');
