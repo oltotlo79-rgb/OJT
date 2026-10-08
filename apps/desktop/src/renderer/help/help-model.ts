@@ -34,8 +34,8 @@ export const HELP_SECTION_BY_SCREEN: Readonly<Record<HelpScreenId, string>> = {
   'inspect-parts': 'mode-c1/部品を点検する',
   'inspect-repair': 'mode-c2/回路を点検して直す',
   plc: 'mode-d/PLCの課題を進める',
-  'lab-assemble': 'mode-b/回路を組み立てる',
-  'lab-plc': 'mode-d/PLCの課題を進める',
+  'lab-assemble': 'lab/このモードでやること',
+  'lab-plc': 'lab/このモードでやること',
   result: 'screens/結果の画面',
 };
 

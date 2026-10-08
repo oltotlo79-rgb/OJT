@@ -5,6 +5,7 @@ import { LadderGrid } from '../ladder/LadderGrid.js';
 import { skinCssVars, skinThemeOf } from '../ladder/skins/index.js';
 import { ReplayBar } from '../panels/ReplayBar.js';
 import { skinGridCols } from '../session/plc-skin.js';
+import { JA } from '../i18n/ja.js';
 import { stopReplay } from '../session/replay.js';
 import { WorkerBridge } from '../session/worker-bridge.js';
 import { BoardScene } from '../three/BoardScene.js';
@@ -66,6 +67,7 @@ export function ReplayScreen(): JSX.Element | null {
           worker.stop();
           stopReplay();
         }}
+        stopLabel={replay.returnTo === 'session' ? JA.replay.stopToSession : JA.replay.stop}
       />
       {replay.source.mode === 'plc' || replay.source.mode === 'plc-lab' ? (
         <div className={styles.ladder} style={skinCssVars(profile, theme, color)}>

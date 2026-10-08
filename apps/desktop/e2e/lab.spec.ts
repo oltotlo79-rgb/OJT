@@ -81,6 +81,7 @@ test('回路実験: 例題から描いて動かし、結果を正解に取り込
     await page.getByTestId('lab-replay').click();
     await expect(page.getByTestId('replay-bar')).toHaveAttribute('aria-busy', 'false');
     await expect(page.getByTestId('replay-viewport')).toBeVisible();
+    await expect(page.getByTestId('replay-stop')).toHaveText('練習の画面へ戻る');
     await page.getByTestId('replay-stop').click();
     await expect(page.getByTestId('lab-panel')).toBeVisible();
 

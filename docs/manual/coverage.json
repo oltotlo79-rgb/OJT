@@ -2551,6 +2551,248 @@
       "screen": "練習中（モードC2）",
       "label": "元に戻す",
       "section": "mode-c2/直す"
+    },
+    {
+      "testid": "lab-start",
+      "screen": "ホーム（実験を始める窓）",
+      "label": "回路実験を始める",
+      "section": "lab/実験を始める"
+    },
+    {
+      "testid": "lab-start-template",
+      "screen": "ホーム（実験を始める窓）",
+      "label": "はじめのタイムチャート",
+      "section": "lab/実験を始める"
+    },
+    {
+      "testid": "lab-start-template-note",
+      "screen": "ホーム（実験を始める窓）",
+      "label": "押し方も正解も描いていない状態から始めます。",
+      "section": "lab/実験を始める"
+    },
+    {
+      "testid": "lab-start-prewired",
+      "screen": "ホーム（実験を始める窓）",
+      "label": "配線済みの盤",
+      "section": "lab/実験を始める"
+    },
+    {
+      "testid": "lab-start-self-wire",
+      "screen": "ホーム（実験を始める窓）",
+      "label": "自分で配線する盤",
+      "section": "lab/実験を始める"
+    },
+    {
+      "testid": "lab-start-resume",
+      "screen": "ホーム（実験を始める窓）",
+      "label": "いまの実験を続ける",
+      "section": "lab/実験を始める"
+    },
+    {
+      "testid": "lab-start-go",
+      "screen": "ホーム（実験を始める窓）",
+      "label": "始める",
+      "section": "lab/実験を始める"
+    },
+    {
+      "testid": "lab-start-cancel",
+      "screen": "ホーム（実験を始める窓）",
+      "label": "取消",
+      "section": "lab/実験を始める"
+    },
+    {
+      "testid": "lab-panel",
+      "screen": "練習中（回路実験・PLC実験）",
+      "label": "タイムチャート実験",
+      "section": "lab/このモードでやること"
+    },
+    {
+      "testid": "lab-status",
+      "screen": "練習中（回路実験・PLC実験）",
+      "label": "まだ動かしていません",
+      "section": "lab/動かして確かめる"
+    },
+    {
+      "testid": "lab-open-editor",
+      "screen": "練習中（回路実験・PLC実験）",
+      "label": "大きく開いて編集",
+      "section": "lab/押し方を描く"
+    },
+    {
+      "testid": "lab-run",
+      "screen": "練習中（回路実験・PLC実験）",
+      "label": "動かす",
+      "section": "lab/動かして確かめる"
+    },
+    {
+      "testid": "lab-replay",
+      "screen": "練習中（回路実験・PLC実験）",
+      "label": "盤で動きを見る",
+      "section": "lab/動かして確かめる"
+    },
+    {
+      "testid": "lab-restart-board",
+      "screen": "練習中（回路実験・PLC実験）",
+      "label": "配線をやり直す",
+      "section": "lab/PLC実験の配線"
+    },
+    {
+      "testid": "lab-judge-reason",
+      "screen": "練習中（回路実験・PLC実験）",
+      "label": "正解のランプの動きを描くと判定できます",
+      "section": "lab/判定する"
+    },
+    {
+      "testid": "lab-wiring-mode",
+      "screen": "練習中（PLC実験）",
+      "label": "盤: 配線済み",
+      "section": "lab/PLC実験の配線"
+    },
+    {
+      "testid": "lab-restart",
+      "screen": "練習中（回路実験・PLC実験）",
+      "label": "盤を作り直しますか？",
+      "section": "lab/PLC実験の配線"
+    },
+    {
+      "testid": "lab-restart-prewired",
+      "screen": "練習中（回路実験・PLC実験）",
+      "label": "配線済みの盤",
+      "section": "lab/PLC実験の配線"
+    },
+    {
+      "testid": "lab-restart-self-wire",
+      "screen": "練習中（回路実験・PLC実験）",
+      "label": "自分で配線する盤",
+      "section": "lab/PLC実験の配線"
+    },
+    {
+      "testid": "lab-restart-go",
+      "screen": "練習中（回路実験・PLC実験）",
+      "label": "作り直す",
+      "section": "lab/PLC実験の配線"
+    },
+    {
+      "testid": "lab-editor",
+      "screen": "タイムチャートを描く窓",
+      "label": "タイムチャートを描く",
+      "section": "lab/押し方を描く"
+    },
+    {
+      "testid": "lab-close",
+      "screen": "タイムチャートを描く窓",
+      "label": "閉じる",
+      "section": "lab/押し方を描く"
+    },
+    {
+      "testid": "lab-duration",
+      "screen": "タイムチャートを描く窓",
+      "label": "長さ",
+      "section": "lab/押し方を描く"
+    },
+    {
+      "testid": "lab-template",
+      "screen": "タイムチャートを描く窓",
+      "label": "例題を読み込む…",
+      "section": "lab/押し方を描く"
+    },
+    {
+      "testid": "lab-clear-inputs",
+      "screen": "タイムチャートを描く窓",
+      "label": "押し方を消す",
+      "section": "lab/押し方を描く"
+    },
+    {
+      "testid": "lab-clear-expected",
+      "screen": "タイムチャートを描く窓",
+      "label": "正解を消す",
+      "section": "lab/正解を作る"
+    },
+    {
+      "testid": "lab-interval-{}-add",
+      "screen": "タイムチャートを描く窓",
+      "label": "区間を足す",
+      "section": "lab/押し方を描く"
+    },
+    {
+      "testid": "lab-interval-{}-{}-delete",
+      "screen": "タイムチャートを描く窓",
+      "label": "削除",
+      "section": "lab/押し方を描く"
+    },
+    {
+      "testid": "lab-interval-{}-{}-from",
+      "screen": "タイムチャートを描く窓",
+      "label": "つ目の始まり（秒）",
+      "section": "lab/押し方を描く"
+    },
+    {
+      "testid": "lab-interval-{}-{}-to",
+      "screen": "タイムチャートを描く窓",
+      "label": "つ目の終わり（秒）",
+      "section": "lab/押し方を描く"
+    },
+    {
+      "testid": "lab-judged-{}",
+      "screen": "タイムチャートを描く窓",
+      "label": "判定に使う",
+      "section": "lab/正解を作る"
+    },
+    {
+      "testid": "lab-run-in-editor",
+      "screen": "タイムチャートを描く窓",
+      "label": "動かす",
+      "section": "lab/動かして確かめる"
+    },
+    {
+      "testid": "lab-capture",
+      "screen": "タイムチャートを描く窓",
+      "label": "この結果を正解にする",
+      "section": "lab/正解を作る"
+    },
+    {
+      "testid": "lab-capture-confirm",
+      "screen": "タイムチャートを描く窓",
+      "label": "取り込む",
+      "section": "lab/正解を作る"
+    },
+    {
+      "testid": "lab-editor-status",
+      "screen": "タイムチャートを描く窓",
+      "label": "正解どおりに動きました",
+      "section": "lab/動かして確かめる"
+    },
+    {
+      "testid": "lab-why",
+      "screen": "結果（回路実験・PLC実験）",
+      "label": "この判定になった理由",
+      "section": "lab/判定する"
+    },
+    {
+      "testid": "lab-why-passed",
+      "screen": "結果（回路実験・PLC実験）",
+      "label": "描いた正解どおりに動き、配線の検査もすべて通りました。",
+      "section": "lab/判定する"
+    },
+    {
+      "testid": "lab-mini-chart",
+      "internal": "実験の欄の小さいチャート。親の「タイムチャート実験」で説明済み（押し方・正解・動かした結果の線の読み方）"
+    },
+    {
+      "testid": "lab-editor-chart",
+      "internal": "編集窓の描く面（8行の入れ物）。親の「タイムチャートを描く」で説明済み"
+    },
+    {
+      "testid": "lab-row-{}",
+      "internal": "編集窓の1行（押しボタン・ランプ）の波形。親の描く面で説明済み"
+    },
+    {
+      "testid": "lab-row-hit-{}",
+      "internal": "行のドラッグを受ける透明な枠。親の描く面で説明済み"
+    },
+    {
+      "testid": "lab-intervals-{}",
+      "internal": "行ごとの区間の一覧の入れ物。中の欄とボタンで説明済み"
     }
   ],
   "keys": [
@@ -2793,6 +3035,12 @@
       "screen": "ラダー（三菱の書き方）",
       "action": "次の記号へ進む",
       "section": "mode-d/キーの割り当て"
+    },
+    {
+      "key": "Esc",
+      "screen": "タイムチャートを描く窓",
+      "action": "窓を閉じる（描いた内容は残る）",
+      "section": "lab/押し方を描く"
     }
   ],
   "gestures": [
@@ -2945,6 +3193,12 @@
       "screen": "ラダー",
       "action": "記号とデバイスの入力欄を開く",
       "section": "tutorial-features/ラダーの記号を置く"
+    },
+    {
+      "name": "ドラッグ",
+      "screen": "タイムチャートを描く窓",
+      "action": "押している区間・正解の点灯区間を塗る（点いている所から始めると消す）",
+      "section": "lab/押し方を描く"
     }
   ],
   "messages": [

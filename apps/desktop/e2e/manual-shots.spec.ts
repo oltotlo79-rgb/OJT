@@ -580,10 +580,32 @@ async function goHome(): Promise<void> {
     const toList = page.getByRole('button', { name: '課題一覧へ', exact: true });
     if ((await toList.count()) > 0) await toList.first().click();
   }
+  // 回路実験・PLC実験は課題一覧に無いので、戻るとホームへ直接着く（2026-10-08）
+  if ((await home.count()) > 0) {
+    await expect(home).toBeVisible();
+    return;
+  }
   const listBack = page.getByRole('button', { name: 'ホームへ戻る', exact: true });
   await expect(listBack).toBeVisible();
   await listBack.first().click();
   await expect(home).toBeVisible();
+}
+
+/**
+ * ホームの実験のカードから、例題を選んで実験を始める（2026-10-08）。
+ * 作業が残っていて置き換えの確認が出たら「保存せず進む」。
+ */
+async function startLab(modeTestId: string, templateId: string): Promise<void> {
+  await goHome();
+  await page.getByTestId(modeTestId).click();
+  await expect(page.getByTestId('lab-start')).toBeVisible();
+  await page.getByTestId('lab-start-template').selectOption(templateId);
+  await page.getByTestId('lab-start-go').click();
+  const change = page.getByTestId('problem-change-confirm');
+  await expect(change.or(page.getByTestId('session-back'))).toBeVisible();
+  if (await change.isVisible())
+    await change.getByRole('button', { name: '保存せず進む', exact: true }).click();
+  await expect(page.getByTestId('lab-panel')).toBeVisible();
 }
 
 /** ホーム → モード → 課題を開く。 */
@@ -2161,6 +2183,110 @@ test.describe.serial('取扱説明書の図', () => {
       'full',
     );
     await editor.getByRole('button', { name: '編集を終える', exact: true }).click();
+  });
+
+  test('回路実験・PLC実験', async () => {
+    // --- lab-start: PLC実験を始める窓（例題を選んだところ） ---
+    await goHome();
+    await page.getByTestId('mode-plc-lab').click();
+    await expect(page.getByTestId('lab-start')).toBeVisible();
+    await page.getByTestId('lab-start-template').selectOption('self-hold');
+    await expect(page.getByTestId('lab-start-template-note')).toContainText('PB1で運転');
+    await shoot(
+      'lab-start',
+      {
+        1: await rectOf(page.getByTestId('lab-start-template')),
+        2: await rectOf(page.getByTestId('lab-start-prewired').locator('xpath=ancestor::label[1]')),
+        3: await rectOf(page.getByTestId('lab-start-go')),
+      },
+      'auto',
+    );
+    await page.getByTestId('lab-start-cancel').click();
+    await expect(page.getByTestId('lab-start')).toHaveCount(0);
+
+    // --- lab-plc-prewired: 配線済みの盤（盤だけを大きく出す） ---
+    await startLab('mode-plc-lab', 'self-hold');
+    await page.getByTestId('view-board').click();
+    await waitForBoard();
+    const restart = page.getByTestId('lab-restart-board');
+    // 右下の「自動保存済み」の表示に重ならないよう、欄の中ほどまで送ってから撮る
+    await restart.evaluate((element) => {
+      element.scrollIntoView({ block: 'center' });
+    });
+    await shoot(
+      'lab-plc-prewired',
+      {
+        1: await rectOf(page.getByTestId('lab-wiring-mode')),
+        2: await rectOf(page.getByTestId('status-overlay')),
+        3: await rectOf(restart),
+      },
+      'full',
+    );
+
+    // --- lab-session: 回路実験（例題「自己保持」を何も付いていない盤で動かしたところ） ---
+    await startLab('mode-assemble-lab', 'self-hold');
+    await waitForBoard();
+    await page.getByTestId('lab-run').click();
+    await expect(page.getByTestId('lab-status')).toContainText('正解と違う所');
+    await page.getByTestId('lab-panel').evaluate((element) => {
+      element.scrollIntoView({ block: 'start' });
+    });
+    await shoot(
+      'lab-session',
+      {
+        1: await rectOf(page.getByTestId('lab-panel-summary')),
+        2: await rectOf(page.getByTestId('lab-open-editor')),
+        3: await rectOf(page.getByTestId('lab-run')),
+        4: await rectOf(page.getByTestId('lab-replay')),
+        5: await rectOf(page.getByTestId('judge-button')),
+      },
+      'full',
+    );
+
+    // --- lab-editor: タイムチャートを描く窓 ---
+    await page.getByTestId('lab-open-editor').click();
+    await expect(page.getByTestId('lab-editor')).toBeVisible();
+    await shoot(
+      'lab-editor',
+      {
+        1: await rectOf(page.getByTestId('lab-duration')),
+        2: await rectOf(page.getByTestId('lab-template')),
+        3: await rectOf(page.getByTestId('lab-row-hit-PB1')),
+        4: await rectOf(page.getByTestId('lab-run-in-editor')),
+        5: await rectOf(page.getByTestId('lab-close')),
+      },
+      'full',
+    );
+
+    // --- lab-capture: 動かした結果を正解に取り込むところ ---
+    await page.getByTestId('lab-capture').click();
+    await expect(page.getByTestId('lab-capture-confirm')).toBeVisible();
+    await shoot(
+      'lab-capture',
+      {
+        1: await rectOf(page.getByTestId('lab-row-hit-PL1')),
+        2: await rectOf(page.getByTestId('lab-capture')),
+        3: await rectOf(page.getByTestId('lab-capture-confirm')),
+      },
+      'auto',
+    );
+
+    // --- lab-result: 取り込んだ正解で判定した結果 ---
+    await page.getByTestId('lab-capture-confirm').click();
+    await page.getByTestId('lab-close').click();
+    await expect(page.getByTestId('lab-editor')).toHaveCount(0);
+    await page.getByTestId('judge-button').click();
+    await expect(page.getByTestId('verdict')).toHaveText('合格');
+    await shoot(
+      'lab-result',
+      {
+        1: await rectOf(page.getByTestId('verdict')),
+        2: await rectOf(page.getByTestId('lab-why'), 0),
+        3: await rectOf(page.getByTestId('chart-overlay'), 0),
+      },
+      'full',
+    );
+    await goHome();
   });
 
   test('吹き出しを描き込んで仕上げる', async () => {

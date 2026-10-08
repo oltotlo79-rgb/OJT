@@ -48,6 +48,8 @@ export const JA = {
     next: '次へ',
     restart: '最初から',
     stop: '結果へ戻る',
+    /** 実験の欄の「盤で動きを見る」から始めた見直しを終える（2026-10-08）。 */
+    stopToSession: '練習の画面へ戻る',
     power: 'ブレーカ → 電源スイッチの順に通電',
     press: 'を押す',
     release: 'を離す',

@@ -8,11 +8,14 @@ export function ReplayBar({
   busy,
   onStep,
   onStop,
+  stopLabel = JA.replay.stop,
 }: {
   step: ReplayStep;
   busy: boolean;
   onStep: (index: number) => void;
   onStop: () => void;
+  /** 終えたときに戻る先の言い方（実験の欄から始めた見直しは練習の画面へ戻る。2026-10-08）。 */
+  stopLabel?: string;
 }): JSX.Element {
   const move = (index: number): void => {
     if (!busy && index >= 0 && index < step.total) onStep(index);
@@ -60,7 +63,7 @@ export function ReplayBar({
           {JA.replay.restart}
         </button>
         <button type="button" data-testid="replay-stop" className={styles.stop} onClick={onStop}>
-          {JA.replay.stop}
+          {stopLabel}
         </button>
       </div>
       <div className={styles.step} aria-live="polite" role="status">
