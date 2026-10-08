@@ -6,7 +6,7 @@ import { sharedHousing } from './ComponentDetails.js';
 import { DIN_RAIL_COLOR } from '../session/colors.js';
 import { JA_3D } from '../i18n/ja.js';
 import { bakeSharedTexture, labelFont, makeCanvasTexture, PX_PER_MM } from './labels.js';
-import { SCREW_GEOMETRY, sharedMaterial, UNIT_BOX } from './materials.js';
+import { presetMaterial, SCREW_GEOMETRY, sharedMaterial, UNIT_BOX } from './materials.js';
 import { toScene } from './coords.js';
 
 /**
@@ -365,7 +365,7 @@ function ScrewShroud({
         <mesh
           key={offset}
           geometry={SCREW_GEOMETRY}
-          material={sharedMaterial('#9AA0A6', { metalness: 0.7, roughness: 0.3 })}
+          material={presetMaterial('nickel', '#9AA0A6')}
           raycast={noPick}
           rotation={[Math.PI / 2, 0, 0]}
           position={toScene({ x: x + offset, y: terminal.pos.y, z: topZ + 0.4 })}
@@ -499,7 +499,7 @@ function SeatAndBase({ footprint }: { footprint: Footprint }): JSX.Element {
     <>
       <mesh
         geometry={UNIT_BOX}
-        material={sharedMaterial(DIN_RAIL_COLOR, { metalness: 0.75, roughness: 0.35 })}
+        material={presetMaterial('steel', DIN_RAIL_COLOR)}
         raycast={noPick}
         position={toScene({ x, y, z: SEAT_HEIGHT_MM / 2 })}
         scale={[footprint.w, footprint.h, SEAT_HEIGHT_MM]}

@@ -139,6 +139,57 @@ export function sharedMaterial(
   return material;
 }
 
+/** `sharedMaterial()` の見た目の設定（材質表の上書きにも使う）。 */
+export interface MaterialOptions {
+  metalness?: number;
+  roughness?: number;
+  emissive?: string;
+  emissiveIntensity?: number;
+  opacity?: number;
+  transparent?: boolean;
+  side?: Side;
+}
+
+/**
+ * 材質の表（v2.0.0 Task 5・設計 §3.5「描画の土台」）。
+ *
+ * 実物の材料に合わせた粗さ（roughness）と金属度（metalness）を**名前**で持ち、盤面・レール・
+ * ネジ・樹脂・電線・圧着端子が同じ名前の材質を使う。以前は部品ごとにばらばらの数値を書いていて、
+ * 環境マップ（`SceneEnvironment.tsx`）を入れたときに「金属が金属らしく、樹脂が樹脂らしく」
+ * 映り込むかどうかが部品によって違っていた。値の根拠:
+ *
+ * - 塗装（盤面）: メラミン焼付けの半艶。金属の下地は塗膜で隠れるので金属度は低い
+ * - 亜鉛めっき鋼（DINレール・縁）: 梨地の金属。鏡面ほど滑らかではない
+ * - ニッケルめっき（ネジ頭）: いちばん滑らかで、光が強く映る
+ * - 黒い樹脂（ソケット・端子台の PBT）: 艶消しに近いが、わずかに光る
+ * - PVC（電線の被覆）: 樹脂。金属度 0
+ * - 黄銅（圧着端子。すずめっき）: 金属。ネジより少し粗い
+ */
+export const MATERIAL_PRESETS = {
+  paint: { roughness: 0.6, metalness: 0.1 },
+  steel: { metalness: 0.85, roughness: 0.35 },
+  nickel: { metalness: 0.9, roughness: 0.25 },
+  blackResin: { roughness: 0.5, metalness: 0.05 },
+  pvc: { roughness: 0.45, metalness: 0 },
+  brass: { metalness: 0.8, roughness: 0.3 },
+} as const satisfies Record<string, { roughness: number; metalness: number }>;
+
+/** 材質表の名前。 */
+export type MaterialPreset = keyof typeof MATERIAL_PRESETS;
+
+/**
+ * 材質表の材質（色ごとに1個。`sharedMaterial()` のキャッシュに載る）。
+ * `options` で発光・透明度などを足せる（粗さ・金属度の上書きもできるが、表の意味が薄れるので
+ * 固定配線の圧着端子のように理由があるときだけ）。
+ */
+export function presetMaterial(
+  preset: MaterialPreset,
+  color: string,
+  options: MaterialOptions = {},
+): MeshStandardMaterial {
+  return sharedMaterial(color, { ...MATERIAL_PRESETS[preset], ...options });
+}
+
 /** 発光強度だけが変わるマテリアル（ランプ用。色ごとにインスタンスを分ける）。§5.3.4 */
 export function useLampMaterial(color: string, intensity: number): MeshStandardMaterial {
   const material = useMemo(

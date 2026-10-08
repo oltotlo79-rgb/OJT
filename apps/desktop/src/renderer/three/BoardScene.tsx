@@ -14,7 +14,7 @@ import {
 import { parseTerminalId, type LampLevel, type TerminalId } from '@ojt/circuit-sim';
 import { OrbitControls } from '@react-three/drei';
 import { Canvas, useThree } from '@react-three/fiber';
-import { MOUSE, TOUCH } from 'three';
+import { ACESFilmicToneMapping, MOUSE, TOUCH } from 'three';
 import {
   memo,
   useCallback,
@@ -67,6 +67,7 @@ import { DinRail } from './DinRail.js';
 import { FixedWires } from './FixedWires.js';
 import { Outlet } from './Outlet.js';
 import { configurePerfCounters, PerfProbe } from './PerfProbe.js';
+import { SceneEnvironment } from './SceneEnvironment.js';
 import { PlcRack } from './PlcRack.js';
 import { PlcUnit } from './PlcUnit.js';
 import { Fixture, FIXTURE_LABEL_OFFSET_MM, FIXTURES } from './Fixtures.js';
@@ -960,15 +961,21 @@ function BoardContents({
     <>
       <Invalidator />
       <PerfProbe nodeRef={perfRef} />
+      {/* 室内の環境マップ（金属・樹脂への映り込み）。v2.0.0 Task 5 */}
+      <SceneEnvironment />
       <color attach="background" args={['#141820']} />
-      <ambientLight intensity={0.35} />
-      <hemisphereLight args={['#e5efff', '#4b4841', 0.75]} />
+      {/*
+        環境マップが拡散光も足すので、環境光と半球光は以前（0.35 / 0.75）より弱くし、
+        合計の明るさを保つ（v2.0.0 Task 5。強いままだと盤面が白く飛ぶ）。
+      */}
+      <ambientLight intensity={0.15} />
+      <hemisphereLight args={['#e5efff', '#4b4841', 0.45]} />
       <directionalLight
         position={[220, 520, 420]}
         intensity={1.8}
         color="#fff5e9"
         castShadow
-        shadow-mapSize={[1024, 1024]}
+        shadow-mapSize={[2048, 2048]}
         shadow-camera-left={-500}
         shadow-camera-right={500}
         shadow-camera-top={500}
@@ -1351,6 +1358,12 @@ function BoardSceneImpl({
            * 値**しか測らない。止めたぶんは `PerfProbe` が毎フレーム自分で戻す。
            */
           configurePerfCounters(gl);
+          /*
+           * トーンマッピングは ACES（露出 1.0）。R3F の既定でもあるが、環境マップ・材質表
+           * （v2.0.0 Task 5）の見た目はこの前提で決めているので、ここで明示して固定する。
+           */
+          gl.toneMapping = ACESFilmicToneMapping;
+          gl.toneMappingExposure = 1;
           detachContext.current?.();
           setWebglLost(false);
           detachContext.current = observeWebGlContext(gl.domElement, setWebglLost);

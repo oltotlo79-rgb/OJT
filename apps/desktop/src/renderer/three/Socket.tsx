@@ -44,6 +44,7 @@ import {
   applyInstanceMatrices,
   noPick,
   PIN_HOLE_GEOMETRY,
+  presetMaterial,
   sharedMaterial,
   UNIT_BOX,
 } from './materials.js';
@@ -307,11 +308,10 @@ export function socketGlowOf(state: {
  */
 export function socketBodyMaterial(glow: SocketGlow): ReturnType<typeof sharedMaterial> {
   const intensity = SOCKET_GLOW_INTENSITY[glow];
+  // 材質表（v2.0.0 Task 5）: ソケットは黒い樹脂（PBT）
   return intensity === 0
-    ? sharedMaterial(SOCKET_BODY_COLOR, { roughness: 0.55, metalness: 0.1 })
-    : sharedMaterial(SOCKET_BODY_COLOR, {
-        roughness: 0.55,
-        metalness: 0.1,
+    ? presetMaterial('blackResin', SOCKET_BODY_COLOR)
+    : presetMaterial('blackResin', SOCKET_BODY_COLOR, {
         emissive: SOCKET_DROP_COLOR,
         emissiveIntensity: intensity,
       });

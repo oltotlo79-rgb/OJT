@@ -4,7 +4,7 @@ import type { JSX } from 'react';
 import { BoxGeometry, BufferGeometry, CylinderGeometry, Float32BufferAttribute } from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { BOARD_PLATE_COLOR, CONSOLE_SIDE_COLOR } from '../session/colors.js';
-import { sharedMaterial, UNIT_BOX } from './materials.js';
+import { presetMaterial, sharedMaterial, UNIT_BOX } from './materials.js';
 
 /**
  * 盤の筐体（傾斜コンソール）。設計仕様 §6.5。
@@ -111,8 +111,9 @@ export function BoardPlate({ board }: { board: BoardDefinition }): JSX.Element {
   const height = board.sizeMm.height;
   const { frontHeightMm, rearHeightMm } = board.console;
   const details = detailsFor(width, height, frontHeightMm, rearHeightMm);
-  const plate = sharedMaterial(BOARD_PLATE_COLOR, { metalness: 0.14, roughness: 0.58 });
-  const side = sharedMaterial(CONSOLE_SIDE_COLOR, { metalness: 0.18, roughness: 0.55 });
+  // 材質表（v2.0.0 Task 5）: 盤面も筐体も半艶の塗装
+  const plate = presetMaterial('paint', BOARD_PLATE_COLOR);
+  const side = presetMaterial('paint', CONSOLE_SIDE_COLOR);
   return (
     <group name="board-console" position={[(width - BOARD_WIDTH_MM) / 2, 0, 0]}>
       <mesh
@@ -126,7 +127,7 @@ export function BoardPlate({ board }: { board: BoardDefinition }): JSX.Element {
       <mesh geometry={details.body} raycast={noPick} material={side} />
       <mesh
         geometry={details.rim}
-        material={sharedMaterial('#86929b', { metalness: 0.65, roughness: 0.3 })}
+        material={presetMaterial('steel', '#86929b')}
         raycast={noPick}
       />
       <mesh

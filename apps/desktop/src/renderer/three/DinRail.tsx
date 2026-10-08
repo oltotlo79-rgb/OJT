@@ -1,7 +1,7 @@
 import type { BoardTerminal } from '@ojt/board-model';
 import type { JSX } from 'react';
 import { DIN_RAIL_COLOR } from '../session/colors.js';
-import { sharedMaterial, UNIT_BOX } from './materials.js';
+import { presetMaterial, UNIT_BOX } from './materials.js';
 import { toScene } from './coords.js';
 
 /**
@@ -39,7 +39,7 @@ export function DinRail({
     <mesh
       geometry={UNIT_BOX}
       raycast={noPick}
-      material={sharedMaterial(DIN_RAIL_COLOR, { metalness: 0.75, roughness: 0.35 })}
+      material={presetMaterial('steel', DIN_RAIL_COLOR)}
       position={center}
       scale={[maxX - minX + RAIL_MARGIN_MM * 2, RAIL_WIDTH_MM, RAIL_THICKNESS_MM]}
     />

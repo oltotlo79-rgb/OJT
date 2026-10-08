@@ -11,7 +11,7 @@ import {
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { LUG_COLOR } from '../session/colors.js';
 import { toScene } from './coords.js';
-import { noPick, sharedMaterial } from './materials.js';
+import { noPick, presetMaterial } from './materials.js';
 
 /** Y型圧着端子。平たい二股をネジへ差し込み、その横のバレルへ電線が入る。 */
 const FORKS = new Map<string, BufferGeometry>();
@@ -75,7 +75,7 @@ export function WireConnections({
             )}
             position={toScene(connection.screw)}
             quaternion={new Quaternion().setFromUnitVectors(AXIS, direction)}
-            material={sharedMaterial(LUG_COLOR, { metalness: 0.75, roughness: locked ? 0.4 : 0.3 })}
+            material={presetMaterial('brass', LUG_COLOR, locked ? { roughness: 0.4 } : {})}
             raycast={noPick}
           />
         );

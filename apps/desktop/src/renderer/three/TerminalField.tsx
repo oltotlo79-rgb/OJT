@@ -17,6 +17,8 @@ import {
   INVISIBLE_MATERIAL,
   noPick,
   PICK_GEOMETRY,
+  MATERIAL_PRESETS,
+  presetMaterial,
   SCREW_GEOMETRY,
   sharedMaterial,
 } from './materials.js';
@@ -96,10 +98,10 @@ const SCREW_ROTATION = new Quaternion().setFromAxisAngle(new Vector3(1, 0, 0), M
  * プログラムの再コンパイルを誘発する（あるいは白いはずの部品がインスタンス色に染まる）。
  * ここは**この場だけの1個**を持つ。白にするのは `instanceColor` を素直に乗せるため。
  */
-const SCREW_MATERIAL = new MeshStandardMaterial({
+export const SCREW_MATERIAL = new MeshStandardMaterial({
   color: '#FFFFFF',
-  metalness: 0.7,
-  roughness: 0.3,
+  // 材質表のニッケルめっき（v2.0.0 Task 5）。`presetMaterial()` はキャッシュに載るのでここでは使わない
+  ...MATERIAL_PRESETS.nickel,
 });
 
 /**
@@ -312,9 +314,7 @@ export function TerminalField({
           {/* 発光するネジ（`instanceColor` では `emissive` を載せられないので実体を重ねる） */}
           <mesh
             geometry={SCREW_GEOMETRY}
-            material={sharedMaterial(hoveredScrew.color, {
-              metalness: 0.7,
-              roughness: 0.3,
+            material={presetMaterial('nickel', hoveredScrew.color, {
               ...(hoveredScrew.emissive === undefined
                 ? {}
                 : {

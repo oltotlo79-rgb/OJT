@@ -9,7 +9,7 @@ import {
   makeCanvasTexture,
   PX_PER_MM,
 } from './labels.js';
-import { noPick, sharedMaterial, UNIT_BOX } from './materials.js';
+import { noPick, presetMaterial, sharedMaterial, UNIT_BOX } from './materials.js';
 import { toScene } from './coords.js';
 
 /**
@@ -69,7 +69,7 @@ export function TerminalBlock({
         name={`block-body-${name}`}
         geometry={UNIT_BOX}
         raycast={noPick}
-        material={sharedMaterial(TERMINAL_BLOCK_COLOR, { roughness: 0.7 })}
+        material={presetMaterial('blackResin', TERMINAL_BLOCK_COLOR)}
         position={center}
         scale={[shape.w, shape.h, shape.bodyTop]}
       />

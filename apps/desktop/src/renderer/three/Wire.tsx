@@ -11,7 +11,7 @@ import {
   WIRE_OUTLINE_COLOR,
   WIRE_SELECTED_COLOR,
 } from '../session/colors.js';
-import { INVISIBLE_MATERIAL, LUG_GEOMETRY, sharedMaterial } from './materials.js';
+import { INVISIBLE_MATERIAL, LUG_GEOMETRY, presetMaterial, sharedMaterial } from './materials.js';
 import { toScene } from './coords.js';
 import { WireMarkers } from './WireMarker.js';
 import { WireConnections } from './WireConnections.js';
@@ -263,10 +263,8 @@ export function Wire({
   }, [signature]);
   if (route.points.length < 2) return null;
   const bodyColor = wireBodyColor(route, color, locked, selected);
-  const material = sharedMaterial(bodyColor, {
-    roughness: locked ? 0.35 : 0.55,
-    metalness: 0.05,
-  });
+  // 材質表（v2.0.0 Task 5）: 被覆は PVC（固定配線も同じ材質。違いは色と圧着端子の輪で出す）
+  const material = presetMaterial('pvc', bodyColor);
   return (
     <group
       name={`wire-${route.wireId}`}
@@ -290,10 +288,7 @@ export function Wire({
         <mesh
           key={`${route.wireId}-lug-${index}`}
           geometry={LUG_GEOMETRY}
-          material={sharedMaterial(locked ? LOCKED_RING_COLOR : LUG_COLOR, {
-            metalness: 0.8,
-            roughness: 0.3,
-          })}
+          material={presetMaterial('brass', locked ? LOCKED_RING_COLOR : LUG_COLOR)}
           raycast={noPick}
           position={pos}
           rotation={[Math.PI / 2, 0, 0]}
