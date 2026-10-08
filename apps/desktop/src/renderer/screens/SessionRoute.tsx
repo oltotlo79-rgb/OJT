@@ -29,6 +29,7 @@ export function SessionRoute(): JSX.Element {
     case 'inspect-repair':
       return <InspectRepairSession />;
     case 'plc':
+    case 'plc-lab':
       return <PlcSession />;
     default:
       return (

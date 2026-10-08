@@ -1,5 +1,5 @@
 import { PLC_UNIT_FX5U, plcUnitFor } from '@ojt/board-model';
-import { isPlcProblem, resolvePlcIo, type PlcProblem } from '@ojt/content';
+import { resolvePlcIo, usesPlc, type PlcLabProblem, type PlcProblem } from '@ojt/content';
 import {
   deleteNetwork,
   deleteRow,
@@ -81,7 +81,8 @@ export function LadderWorkspace({
   gridCols,
   onPlc,
 }: {
-  problem: PlcProblem;
+  /** PLC課題か PLC実験の課題（2026-10-08）。割付・機種・課題IDだけを読む。 */
+  problem: PlcProblem | PlcLabProblem;
   profile: DialectProfile;
   gridCols: number;
   /** Worker への `plc` コマンド（親がブリッジへ流す）。§10.4 */
@@ -301,7 +302,7 @@ export function LadderWorkspace({
     [profile],
   );
 
-  if (program === undefined || !isPlcProblem(problem)) {
+  if (program === undefined || !usesPlc(problem)) {
     return <div className={styles.workspace} data-testid="ladder-workspace" />;
   }
 

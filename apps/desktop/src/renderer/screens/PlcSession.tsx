@@ -14,7 +14,10 @@ import {
   type SocketId,
 } from '@ojt/board-model';
 import type { TerminalId } from '@ojt/circuit-sim';
-import { isPlcProblem, resolvePlcIo } from '@ojt/content';
+import { isPlcLabProblem, isPlcProblem, resolvePlcIo, usesPlc } from '@ojt/content';
+import { LabChartPanel } from '../lab/LabChartPanel.js';
+import { requestLabRun } from '../session/lab.js';
+import { labStepHint, labSteps, type LabStepKey } from '../session/step-guide.js';
 import { getDialect, type DialectProfile } from '@ojt/plc-dialects';
 import { useCallback, useEffect, useMemo, useState, type JSX } from 'react';
 import type { PlcCommandAction } from '../../worker/protocol.js';
@@ -65,7 +68,12 @@ import {
   type PickHit,
 } from '../session/interaction.js';
 import { hasLadderContent, shortcutKeyOf, type LadderEditorMode } from '../session/ladder.js';
-import { boardForProblem, canJudgePlc, plcBoardOf } from '../session/plc-session.js';
+import {
+  allowPlcForcingFor,
+  boardForProblem,
+  canJudgePlc,
+  plcBoardOf,
+} from '../session/plc-session.js';
 import { autoConvert, skinGridCols, skinStepKeys, type PlcStepKey } from '../session/plc-skin.js';
 import { useViewportShortcuts } from '../session/viewport-keys.js';
 import { loadWorkFileAndApply, saveCurrentWork } from '../session/work-file.js';
@@ -158,8 +166,15 @@ function ladderModeLabel(mode: LadderEditorMode): string {
 /** モードDのセッション画面。 */
 export function PlcSession(): JSX.Element {
   const problem = useStore((s) =>
-    s.problem !== undefined && isPlcProblem(s.problem) ? s.problem : undefined,
+    s.problem !== undefined && usesPlc(s.problem) ? s.problem : undefined,
   );
+  /**
+   * PLC課題（PLC実験では `undefined`）。仕様のタイムチャート（模範ラダーの動き）はこちらだけ。
+   * PLC実験（2026-10-08）は模範を持たず、右パネルの「タイムチャート実験」で押し方と正解を描く。
+   */
+  const plcProblem = problem !== undefined && isPlcProblem(problem) ? problem : undefined;
+  const lab = problem !== undefined && isPlcLabProblem(problem) ? problem : undefined;
+  const labRan = useStore((s) => s.labRun !== undefined);
   const session = useStore((s) => s.session);
   const history = useStore((s) => s.history);
   const mode = useStore((s) => s.mode);
@@ -207,8 +222,8 @@ export function PlcSession(): JSX.Element {
    * 分かりにくい」）。模範ラダー＋模範配線を課題の操作列で走らせた波形で、判定の期待波形と同じ。
    */
   const spec = useMemo(
-    () => (problem === undefined ? undefined : buildPlcSpecChart(problem)),
-    [problem],
+    () => (plcProblem === undefined ? undefined : buildPlcSpecChart(plcProblem)),
+    [plcProblem],
   );
 
   // 視点のショートカットはラダーにフォーカスが無いときだけ効かせる（決定表#3）
@@ -494,15 +509,19 @@ export function PlcSession(): JSX.Element {
   const readiness = canJudgePlc({ converted, ladder });
   /** 「変換」を持たないメーカー（`convertStep: false`）では `undefined`。決定表#3 */
   const convertKey = shortcutKeyOf(profile, 'convert');
+  /** PLC実験は正解を描かないと判定できない（2026-10-08）。 */
+  const needsExpected = lab !== undefined && lab.expected === undefined;
   const judgeTitle = !modelKnown
     ? JA.plc.unknownModel(problem.plc.model)
-    : readiness.ok
-      ? JA.session.judge
-      : readiness.reason === 'no-ladder'
-        ? JA.plc.judgeNoLadder
-        : convertKey === undefined
-          ? JA.plc.judgeAutoConverting
-          : JA.plc.judgeNotConverted(convertKey);
+    : needsExpected
+      ? JA.lab.judgeNeedsExpected
+      : readiness.ok
+        ? JA.session.judge
+        : readiness.reason === 'no-ladder'
+          ? JA.plc.judgeNoLadder
+          : convertKey === undefined
+            ? JA.plc.judgeAutoConverting
+            : JA.plc.judgeNotConverted(convertKey);
 
   /*
    * 手順の見える化（2026-09-19 の利用者決定「分かりやすく直感的に」）。
@@ -556,6 +575,32 @@ export function PlcSession(): JSX.Element {
     steps.push({ key, label: stepLabel[key], state });
   }
 
+  /*
+   * PLC実験の手順帯（2026-10-08）。押し方を描く → 正解（任意）→ ラダーを作る（変換まで）→
+   * 配線（配線済みの盤なら済）→ 動かす → 判定。ラダーの段の案内はメーカーのキーを出す。
+   */
+  const labStepList =
+    lab === undefined
+      ? undefined
+      : labSteps({
+          inputs: lab.operations.length > 0,
+          expected: lab.expected !== undefined,
+          ladder: written && converted,
+          wired: lab.prewired || session.wires.some((w) => !w.locked),
+          ran: labRan,
+        });
+  const labStepKey: LabStepKey | undefined = labStepList?.find(
+    (step) => step.state === 'current',
+  )?.key;
+  const guideHint =
+    labStepList === undefined
+      ? stepHintText(currentStepKey, profile)
+      : labStepKey === 'ladder'
+        ? written
+          ? convertHintText(profile)
+          : ladderHintText(profile)
+        : labStepHint(labStepKey, { expected: lab?.expected !== undefined, plc: true });
+
   /** 元に戻す／やり直し（盤のみ。ラダーは `Ctrl+Z` がエディタで処理する。決定表#3） */
   const restore = (step: ReturnType<typeof undoHistory>, verb: string): void => {
     if (step === undefined) return;
@@ -571,7 +616,7 @@ export function PlcSession(): JSX.Element {
       problemId: problem.id,
       session: cloneSession(step.session),
       plcModel: problem.plc.model,
-      allowPlcForcing: problem.io.mode === 'free',
+      allowPlcForcing: allowPlcForcingFor(problem),
     });
     // 盤を読み直すとスキャン結合も捨てられるので、変換済みのラダーを載せ直す（§10.4）
     const after = useStore.getState();
@@ -595,18 +640,28 @@ export function PlcSession(): JSX.Element {
         allowedColors={session.allowedColors}
         camera={camera}
         /* 段階的に開くヒント（指摘 PR-02）。1段目は手順帯がいま出している案内そのもの。 */
-        hints={hintStages({
-          mode: 'plc',
-          profile,
-          grade: problem.grade,
-          stepHint: stepHintText(currentStepKey, profile),
-          tags: problem.tags,
-        })}
+        hints={
+          lab === undefined
+            ? hintStages({
+                mode: 'plc',
+                profile,
+                grade: problem.grade,
+                stepHint: guideHint,
+                tags: problem.tags,
+              })
+            : hintStages({
+                mode: 'plc-lab',
+                profile,
+                grade: 2,
+                stepHint: guideHint,
+                texts: [JA.lab.hintIdea, JA.lab.hintCheck],
+              })
+        }
         showPlcView
         canUndo={history.done.length > 0}
         canRedo={history.undone.length > 0}
         judging={judging}
-        judgeDisabled={!readiness.ok || !modelKnown}
+        judgeDisabled={!readiness.ok || !modelKnown || needsExpected}
         judgeTitle={judgeTitle}
         extraTools={
           <>
@@ -648,6 +703,12 @@ export function PlcSession(): JSX.Element {
           restore(redoHistory(history), JA.session.redo);
         }}
         onJudge={() => {
+          // PLC実験は描いた正解と比べる判定（実験の欄の「判定」と同じ。2026-10-08）
+          if (lab !== undefined) {
+            requestLabRun(true);
+            return;
+          }
+          if (plcProblem === undefined) return;
           const store = useStore.getState();
           if (store.judging || !modelKnown) return;
           const boardSession = store.session;
@@ -657,15 +718,17 @@ export function PlcSession(): JSX.Element {
           store.setJudging(true);
           bridge.send({
             type: 'judgePlc',
-            problem,
+            problem: plcProblem,
             session: cloneSession(boardSession),
             ladder: currentLadder,
             elapsedMs: store.elapsedMs,
           });
         }}
         onBack={() => {
-          useStore.getState().setRoute('list');
+          // 実験は課題一覧に無いので、ホームへ戻る
+          useStore.getState().setRoute(lab === undefined ? 'list' : 'home');
         }}
+        {...(lab === undefined ? {} : { backLabel: JA.problemList.back })}
         onSave={() => {
           saveCurrentWork(problem.id, session);
         }}
@@ -709,15 +772,24 @@ export function PlcSession(): JSX.Element {
         配線の中身（＝合否）には一切触れない（決定表#7）。
       */}
       <StepGuide
-        steps={steps}
+        steps={labStepList ?? steps}
         actions={{
           wire: () => useStore.getState().setLadderView('board'),
           ladder: () => useStore.getState().setLadderView('ladder'),
+          inputs: () => focusWorkPanel('lab-open-editor'),
+          expected: () => focusWorkPanel('lab-open-editor'),
+          run: () => focusWorkPanel('lab-run'),
+          judge: lab === undefined ? undefined : () => focusWorkPanel('lab-judge'),
         }}
-        hint={stepHintText(currentStepKey, profile)}
+        hint={guideHint}
         testId={{ band: `plc-guide`, step: (key) => `plc-step-${key}`, hint: `plc-hint` }}
       >
         <div className={styles.plcStatus}>
+          {lab === undefined ? null : (
+            <span className={styles.plcChip} data-testid="lab-wiring-mode">
+              {lab.prewired ? JA.lab.wiringPrewired : JA.lab.wiringSelf}
+            </span>
+          )}
           {spec !== undefined && spec.ok ? (
             <button
               type="button"
@@ -785,6 +857,8 @@ export function PlcSession(): JSX.Element {
         )}
         <div className={styles.plcRight}>
           <ProblemPanel problem={problem} />
+          {/* PLC実験の主役（押し方と正解を描いて動かす。2026-10-08） */}
+          {lab === undefined ? null : <LabChartPanel />}
           {/* 仕様（模範の動き）と実測（いまの動き）を上下に並べる。組立画面と同じ部品 */}
           {spec !== undefined && spec.ok ? <TimeChartPanel chart={spec.chart} /> : null}
           <LivePanel />

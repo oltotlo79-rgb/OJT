@@ -1623,6 +1623,9 @@ export const JA = {
     selfWireNote: 'PLCの電源・入力・出力の配線から自分で行います',
     restartGo: '作り直す',
     cancel: '取消',
+    /** PLC実験の手順帯の右に出す、いまの盤の種類。 */
+    wiringPrewired: '盤: 配線済み',
+    wiringSelf: '盤: 自分で配線',
     // 開始の窓
     startAssembleTitle: '回路実験を始める',
     startPlcTitle: 'PLC実験を始める',
