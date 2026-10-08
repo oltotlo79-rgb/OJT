@@ -52,6 +52,8 @@ describe('行', () => {
     expect(rows[4]?.intervals).toEqual([[500, 3_000]]);
     expect(rows[4]?.judged).toBe(true);
     expect(chartCounts(base)).toEqual({ inputs: 1, expectedRows: 1 });
+    expect(chartCounts(clearExpected(base)).expectedRows).toBeUndefined();
+    expect(chartCounts({ ...base, expected: [] }).expectedRows).toBe(0);
   });
 });
 

@@ -1004,6 +1004,8 @@ async function goHome(page: Page): Promise<void> {
     const toList = page.getByRole('button', { name: '課題一覧へ', exact: true });
     if ((await toList.count()) > 0) await toList.first().click();
   }
+  // 回路実験・PLC実験は課題一覧に無いので、戻るとホームへ直接着く（2026-10-08）
+  if ((await page.getByTestId('mode-assemble').count()) > 0) return;
   const listBack = page.getByRole('button', { name: 'ホームへ戻る', exact: true });
   await expect(listBack).toBeVisible();
   await listBack.click();
@@ -1633,6 +1635,83 @@ test.describe.serial('画面品質の機械点検', () => {
   }
 
   /* ----------------------------------------------------------------------- *
+   * ⑥-b 回路実験・PLC実験（2026-10-08 利用者指示）
+   * ----------------------------------------------------------------------- */
+
+  test('回路実験・PLC実験（開始の窓・練習の画面・編集窓・盤の作り直し・結果）', async () => {
+    const { app, page } = await launch();
+    try {
+      await page.getByTestId('mode-assemble-lab').click();
+      await expect(page.getByTestId('lab-start')).toBeVisible();
+      await page.getByTestId('lab-start-template').selectOption('self-hold');
+      await stop(app, page, 'lab-start-assemble', { focus: true });
+      await page.getByTestId('lab-start-go').click();
+      await waitForBoard(page);
+      await stop(app, page, 'lab-assemble-session', { three: true, focus: true });
+
+      await step('回路実験（編集窓・取り込みの確認）', async () => {
+        await page.getByTestId('lab-open-editor').click();
+        await expect(page.getByTestId('lab-editor')).toBeVisible();
+        await page.getByTestId('lab-run-in-editor').click();
+        await expect(page.getByTestId('lab-editor-status')).toContainText('正解と違う所');
+        await page.getByTestId('lab-capture').click();
+        await expect(page.getByTestId('lab-capture-confirm')).toBeVisible();
+        await stop(app, page, 'lab-editor');
+        await page.getByTestId('lab-capture-confirm').click();
+        await page.getByTestId('lab-close').click();
+        await expect(page.getByTestId('lab-editor')).toHaveCount(0);
+      });
+
+      await step('回路実験（盤の作り直しの確認）', async () => {
+        await page.getByTestId('lab-restart-board').click();
+        await expect(page.getByTestId('lab-restart')).toBeVisible();
+        await stop(app, page, 'lab-restart-assemble');
+        await page
+          .getByTestId('lab-restart')
+          .getByRole('button', { name: '取消', exact: true })
+          .click();
+      });
+
+      await step('回路実験（結果）', async () => {
+        await page.getByTestId('judge-button').click();
+        await expect(page.getByTestId('verdict')).toHaveText('合格', { timeout: 60_000 });
+        await stop(app, page, 'lab-result', { focus: true });
+      });
+
+      await step('PLC実験（開始の窓・配線済みの盤）', async () => {
+        await goHome(page);
+        await page.getByTestId('mode-plc-lab').click();
+        await expect(page.getByTestId('lab-start')).toBeVisible();
+        await stop(app, page, 'lab-start-plc');
+        await page.getByTestId('lab-start-go').click();
+        const confirmation = page.getByTestId('problem-change-confirm');
+        await expect(confirmation.or(page.getByTestId('plc-session'))).toBeVisible();
+        if (await confirmation.isVisible())
+          await confirmation.getByRole('button', { name: '保存せず進む', exact: true }).click();
+        await expect(page.getByTestId('plc-session')).toBeVisible();
+        await page.getByTestId('view-board').click();
+        await waitForBoard(page);
+        await stop(app, page, 'lab-plc-board', { three: true });
+        await page.getByTestId('view-split').click();
+        await waitForBoard(page);
+        await stop(app, page, 'lab-plc-split', { three: true });
+      });
+
+      await step('PLC実験（盤の作り直しの確認）', async () => {
+        await page.getByTestId('lab-restart-board').click();
+        await expect(page.getByTestId('lab-restart')).toBeVisible();
+        await stop(app, page, 'lab-restart-plc');
+        await page
+          .getByTestId('lab-restart')
+          .getByRole('button', { name: '取消', exact: true })
+          .click();
+      });
+    } finally {
+      await app.close();
+    }
+  });
+
+  /* ----------------------------------------------------------------------- *
    * ⑦ 復元カード（前回の作業が残っているときだけ出る）
    * ----------------------------------------------------------------------- */
 
@@ -1738,6 +1817,24 @@ test.describe.serial('画面品質の機械点検', () => {
         await expect(page.getByTestId('help-drawer')).toBeVisible();
         await inspect(`help-${mode}`);
         await page.keyboard.press('Escape');
+      }
+      // 回路実験・PLC実験（2026-10-08）も特大表示で操作できる
+      for (const mode of ['assemble-lab', 'plc-lab'] as const) {
+        await goHome(page);
+        await page.getByTestId(`mode-${mode}`).click();
+        await expect(page.getByTestId('lab-start')).toBeVisible();
+        await inspect(`start-${mode}`);
+        await page.getByTestId('lab-start-go').click();
+        const confirmation = page.getByTestId('problem-change-confirm');
+        await expect(confirmation.or(page.getByTestId('viewport'))).toBeVisible();
+        if (await confirmation.isVisible())
+          await confirmation.getByRole('button', { name: '保存せず進む', exact: true }).click();
+        await waitForBoard(page);
+        await inspect(mode);
+        await page.getByTestId('lab-open-editor').click();
+        await expect(page.getByTestId('lab-editor')).toBeVisible();
+        await inspect(`editor-${mode}`);
+        await page.getByTestId('lab-close').click();
       }
     } finally {
       mkdirSync(AUDIT_DIR, { recursive: true });

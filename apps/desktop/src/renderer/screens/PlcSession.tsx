@@ -779,7 +779,7 @@ export function PlcSession(): JSX.Element {
           inputs: () => focusWorkPanel('lab-open-editor'),
           expected: () => focusWorkPanel('lab-open-editor'),
           run: () => focusWorkPanel('lab-run'),
-          judge: lab === undefined ? undefined : () => focusWorkPanel('lab-judge'),
+          judge: lab === undefined ? undefined : () => focusWorkPanel('judge-button'),
         }}
         hint={guideHint}
         testId={{ band: `plc-guide`, step: (key) => `plc-step-${key}`, hint: `plc-hint` }}

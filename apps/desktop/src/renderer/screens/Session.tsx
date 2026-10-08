@@ -880,7 +880,7 @@ export function Session(): JSX.Element {
             useStore.getState().setMode('wire');
           },
           power: () => focusWorkPanel('power-breaker'),
-          judge: () => focusWorkPanel(lab === undefined ? 'judge-button' : 'lab-judge'),
+          judge: () => focusWorkPanel('judge-button'),
         }}
       />
 

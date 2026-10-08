@@ -48,9 +48,13 @@
 .library h2 {
   font-size: 18px;
 }
+/*
+ * 列の幅は文字の大きさ（rem）で決める。窓の幅だけで4列に固定すると、特大表示（130%）の
+ * 1280px幅で「▶ 基本例題の動画（C1-001）」が語の途中で折り返していた（2026-10-08 の画面品質点検）。
+ */
 .grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(18rem, 1fr));
   gap: 12px;
 }
 .grid article {
@@ -66,11 +70,6 @@
   font-size: 13px;
   min-height: 42px;
   line-height: 1.6;
-}
-@media (max-width: 1200px) {
-  .grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
 }
 /* PLCの動画のメーカー切替（2026-09-26）。押しているメーカーの色は global.css の aria-pressed に従う */
 .vendors {

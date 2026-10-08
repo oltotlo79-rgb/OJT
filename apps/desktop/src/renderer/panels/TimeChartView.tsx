@@ -229,7 +229,13 @@ export function ChartCanvas({
   className?: string | undefined;
 }): JSX.Element {
   const hostRef = useRef<SVGSVGElement | null>(null);
-  const availableWidth = useElementWidth(hostRef);
+  const measuredWidth = useElementWidth(hostRef);
+  /*
+   * 実測幅は 415.63px のように半端になる。そのまま viewBox にすると、描画時に 1/64px 単位へ
+   * 丸められた実寸のほうがわずかに小さくなり、12px の文字が 11.9996px に縮んで読めない扱いになる
+   * （2026-10-08 の画面品質点検。実験の欄の小さいチャート）。整数へ切り捨てて、拡大の向きにだけ丸める。
+   */
+  const availableWidth = measuredWidth === undefined ? undefined : Math.floor(measuredWidth);
   const scale = useUiScale();
   const geom = fitChartGeometry(baseGeom, availableWidth, scale);
   const width = chartWidth(geom);

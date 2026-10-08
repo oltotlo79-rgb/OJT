@@ -198,7 +198,7 @@ describe('実験の欄', () => {
   it('正解が無ければ判定を押せず、理由を出す', () => {
     openLab();
     render(<LabChartPanel />);
-    expect(screen.getByTestId('lab-judge')).toHaveAttribute('aria-disabled', 'true');
+    expect(screen.queryByTestId('lab-judge')).toBeNull();
     expect(screen.getByTestId('lab-judge-reason')).toHaveTextContent(
       '正解のランプの動きを描くと判定できます',
     );
@@ -209,16 +209,13 @@ describe('実験の欄', () => {
     expect(screen.getByTestId('lab-status')).toHaveTextContent('まだ動かしていません');
   });
 
-  it('動かす・判定をワーカーへ頼む', () => {
+  it('「動かす」をワーカーへ頼む（判定はツールバーの1か所だけ）', () => {
     openLab('self-hold');
     render(<LabChartPanel />);
+    expect(screen.getByTestId('lab-judge-reason')).toHaveTextContent('上の「判定」');
     fireEvent.click(screen.getByTestId('lab-run'));
     expect(bridgeMock.sent.at(-1)?.['judge']).toBe(false);
-    act(() => {
-      useStore.setState({ labRunning: false });
-    });
-    fireEvent.click(screen.getByTestId('lab-judge'));
-    expect(bridgeMock.sent.at(-1)?.['judge']).toBe(true);
+    expect(screen.getByTestId('lab-run')).toHaveAttribute('aria-disabled', 'true');
   });
 
   it('大きく開いて編集し、閉じる', () => {

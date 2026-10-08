@@ -19,7 +19,9 @@ import styles from './lab.module.css';
  * 右パネルの「タイムチャート実験」（2026-10-08）。設計 §6.2
  *
  * 描いた押し方と正解・最後に動かした結果を小さいチャートで見せ、「大きく開いて編集」「動かす」
- * 「判定」「盤で動きを見る」「配線をやり直す」を並べる。回路実験とPLC実験の画面で同じ部品を使う。
+ * 「盤で動きを見る」「配線をやり直す」を並べる。回路実験とPLC実験の画面で同じ部品を使う。
+ * 「判定」はツールバーの判定ボタンが実験の判定を頼む（同じ操作を2か所に置かない。
+ * 利用者要求 2026-09-20「同じようなものが2つある意味がない」）。
  */
 export function LabChartPanel(): JSX.Element | null {
   const problem = useStore((s) =>
@@ -105,17 +107,6 @@ export function LabChartPanel(): JSX.Element | null {
           </button>
           <button
             type="button"
-            data-testid="lab-judge"
-            aria-disabled={busy || problem.expected === undefined}
-            title={problem.expected === undefined ? JA.lab.judgeNeedsExpected : undefined}
-            onClick={() => {
-              requestLabRun(true);
-            }}
-          >
-            {JA.lab.judge}
-          </button>
-          <button
-            type="button"
             data-testid="lab-replay"
             aria-disabled={!replayable}
             title={replayable ? undefined : JA.lab.replayNeedsRun}
@@ -139,11 +130,9 @@ export function LabChartPanel(): JSX.Element | null {
             {JA.lab.restartBoard}
           </button>
         </div>
-        {problem.expected === undefined ? (
-          <p className={styles.reason} data-testid="lab-judge-reason">
-            {JA.lab.judgeNeedsExpected}
-          </p>
-        ) : null}
+        <p className={styles.reason} data-testid="lab-judge-reason">
+          {problem.expected === undefined ? JA.lab.judgeNeedsExpected : JA.lab.judgeWhere}
+        </p>
       </CollapsiblePanel>
       {/* 開閉できる欄の外に置く（欄を畳んでも窓は消えない） */}
       {editorOpen ? (

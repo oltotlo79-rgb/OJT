@@ -187,6 +187,19 @@
   gap: 8px;
 }
 
+/* 「判定に使う」の欄。チェック欄は小さいので、ラベル全体を32px以上の押せる領域にする */
+.judgedToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  min-width: 32px;
+  cursor: pointer;
+  font-size: max(12px, 0.85rem);
+  font-weight: normal;
+  white-space: nowrap;
+}
+
 .interval {
   display: flex;
   align-items: center;

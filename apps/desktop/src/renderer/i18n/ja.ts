@@ -1579,6 +1579,8 @@ export const JA = {
     boardRestarted: '盤を作り直しました。タイムチャートとラダーはそのまま残っています。',
     /** 正解が無いと判定できない（判定ボタンを押せない理由）。 */
     judgeNeedsExpected: '正解のランプの動きを描くと判定できます',
+    /** 正解があるとき、判定の場所を知らせる（判定は上のツールバーの1か所だけ）。 */
+    judgeWhere: '正解と比べるときは、上の「判定」を押します',
     /** ヒントの2段目・3段目（実験には模範回路が無いので、確かめ方の案内にする）。 */
     hintIdea:
       '押し方を1つずつ変えて動かし、ランプがいつ点き・いつ消えるかを見比べると、回路のはたらきが分かります。',
@@ -1591,10 +1593,12 @@ export const JA = {
       '動かしている間にタイムチャートの押し方を描き直したので、その結果は使いませんでした。もう一度「動かす」を押してください。',
     // 右パネルの「タイムチャート実験」
     panelTitle: 'タイムチャート実験',
-    countsText: (inputs: number, expectedRows: number): string =>
-      expectedRows === 0
+    countsText: (inputs: number, expectedRows: number | undefined): string =>
+      expectedRows === undefined
         ? `押し方 ${String(inputs)}区間・正解なし`
-        : `押し方 ${String(inputs)}区間・正解 ${String(expectedRows)}行`,
+        : expectedRows === 0
+          ? `押し方 ${String(inputs)}区間・正解はランプがすべて消えたまま`
+          : `押し方 ${String(inputs)}区間・正解 ${String(expectedRows)}行`,
     notRunYet: 'まだ動かしていません',
     runLadderErrors:
       'ラダーを変換できないため動かせませんでした（出力ウィンドウを確認してください）',
@@ -1607,7 +1611,6 @@ export const JA = {
     openEditor: '大きく開いて編集',
     run: '動かす',
     running: '動かしています…',
-    judge: '判定',
     replay: '盤で動きを見る',
     replayNeedsRun: '「動かす」を押すと、その動きを盤で見直せます',
     restartBoard: '配線をやり直す',

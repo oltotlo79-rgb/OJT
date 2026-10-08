@@ -191,12 +191,18 @@ export function parseSeconds(text: string, maxMs?: number): number | undefined {
   return ms;
 }
 
-/** 実験の欄の1行に出す数（押し方の区間数・正解を描いたランプの数）。 */
-export function chartCounts(problem: LabProblem): { inputs: number; expectedRows: number } {
+/**
+ * 実験の欄の1行に出す数（押し方の区間数・正解を描いたランプの数）。正解が無いときは
+ * `expectedRows` が `undefined`（0 は「ランプはすべて消えたまま」という正解）。
+ */
+export function chartCounts(problem: LabProblem): {
+  inputs: number;
+  expectedRows: number | undefined;
+} {
   const inputs = inputIntervals(problem.operations, problem.durationMs);
   return {
     inputs: LAB_INPUTS.reduce((sum, signal) => sum + inputs[signal].length, 0),
-    expectedRows: problem.expected?.length ?? 0,
+    expectedRows: problem.expected?.length,
   };
 }
 

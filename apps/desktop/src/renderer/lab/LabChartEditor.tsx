@@ -555,7 +555,7 @@ function IntervalLists({ problem }: { problem: LabProblem }): JSX.Element {
           <h3>
             <span>{row.label}</span>
             {row.kind === 'output' ? (
-              <label>
+              <label className={styles.judgedToggle}>
                 <input
                   type="checkbox"
                   data-testid={`lab-judged-${row.signal}`}
