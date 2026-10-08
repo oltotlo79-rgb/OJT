@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import {
   JIPM_BOARD,
   PLC_UNIT_FX5U,
+  plcFaces,
   plcUnitFor,
   trySocketOf,
   type BoardSession,
@@ -40,6 +41,7 @@ import {
   openOverflow,
   PLC_BOARD,
   plcBoardPoint,
+  plcBoardPointFor,
   plcTerminalPoint,
   plcTerminalPointFor,
   roleTerminalPoint,
@@ -740,6 +742,20 @@ async function buildReferenceLadder(): Promise<void> {
     },
     'auto',
   );
+  // --- plc-timer-unit: 出力の種別をタイマにすると「時間単位」の選択が出る（v2.0.0） ---
+  await page.getByTestId('output-kind').selectOption('TON');
+  await page.getByTestId('device-text').fill('T0');
+  await page.getByTestId('preset-text').fill('K30');
+  await expect(page.getByTestId('timer-base')).toBeVisible();
+  await shoot(
+    'plc-timer-unit',
+    {
+      1: await rectOf(page.getByTestId('timer-base')),
+      2: await rectOf(page.getByTestId('preset-text')),
+    },
+    'auto',
+  );
+  await page.getByTestId('output-kind').selectOption('OUT');
   await commitDevice('Y0');
 
   await insertNetwork('n2');
@@ -861,6 +877,61 @@ async function shootDesk(name: string, unit: PlcUnitDefinition, box: CanvasBox):
     throw new Error(`${unit.model} の配線の見本が足りません`);
   const at = (id: string): Rect => rectAt(plcTerminalPointFor(unit, PLC_ROLES, id, box), 30);
   await shoot(name, { 1: at(power), 2: at(common), 3: at(input), 4: at(output) }, 'auto');
+}
+
+/**
+ * PLC本体の前面を近くで撮る（v2.0.0 Task 13）。銘板・本体表示灯の帯・入力端子・出力端子に吹き出しを
+ * 付け、`auto` の切り抜きで本体のまわりだけを図にする。ラックの形は本体表示灯を持つ面（CPU）を使う。
+ */
+async function shootUnit(name: string, unit: PlcUnitDefinition, box: CanvasBox): Promise<void> {
+  const faces = plcFaces(unit);
+  const face =
+    faces.find((item) => item.appearance.leds.some((led) => led.group === 'status')) ?? faces[0];
+  if (face === undefined) throw new Error(`${unit.model} の面がありません`);
+  const status = face.appearance.leds.filter((led) => led.group === 'status');
+  const first = status[0];
+  const last = status[status.length - 1];
+  if (first === undefined || last === undefined)
+    throw new Error(`${unit.model} に本体表示灯がありません`);
+  const faceRect = (rect: { x: number; y: number; w: number; h: number }): Rect => {
+    const a = plcBoardPointFor(
+      unit,
+      { x: face.origin.x + rect.x, y: face.origin.y + rect.y, z: 0 },
+      box,
+    );
+    const b = plcBoardPointFor(
+      unit,
+      { x: face.origin.x + rect.x + rect.w, y: face.origin.y + rect.y + rect.h, z: 0 },
+      box,
+    );
+    return clampRect({
+      x: Math.min(a.x, b.x) - 6,
+      y: Math.min(a.y, b.y) - 6,
+      w: Math.abs(b.x - a.x) + 12,
+      h: Math.abs(b.y - a.y) + 12,
+    });
+  };
+  const ledsRect = faceRect({
+    x: first.rect.x,
+    y: first.rect.y,
+    w: last.rect.x + last.rect.w - first.rect.x,
+    h: Math.max(first.rect.h, last.rect.h),
+  });
+  const input = unit.spec.inputs[0]?.name;
+  const output = unit.spec.outputs[0]?.name;
+  if (input === undefined || output === undefined)
+    throw new Error(`${unit.model} の端子名がありません`);
+  const at = (id: string): Rect => rectAt(plcTerminalPointFor(unit, PLC_ROLES, id, box), 30);
+  await shoot(
+    name,
+    {
+      1: faceRect(face.appearance.nameplateRect),
+      2: ledsRect,
+      3: at(`PLC.${input}`),
+      4: at(`PLC.${output}`),
+    },
+    'auto',
+  );
 }
 
 /* ------------------------------------------------------------------ *
@@ -995,6 +1066,17 @@ test.describe.serial('取扱説明書の図', () => {
       'auto',
     );
 
+    // --- step-parts-done: 課題で使う部品（CR1）を載せると「部品装着」に「済」が付く（v2.0.0） ---
+    await expect(page.getByTestId('step-parts')).toContainText('済');
+    await shoot(
+      'step-parts-done',
+      {
+        1: await rectOf(page.getByTestId('step-parts')),
+        2: await rectOf(page.getByTestId('step-wire')),
+      },
+      'auto',
+    );
+
     // --- session-terminal: 端子にマウスを乗せたときの札 ---
     const terminal = terminalPoint(toTerminalId('S1.9'), box);
     await page.mouse.move(terminal.x, terminal.y);
@@ -1024,6 +1106,33 @@ test.describe.serial('取扱説明書の図', () => {
       const b = terminalPoint(toTerminalId(to), box);
       await page.mouse.click(a.x, a.y);
       await page.mouse.click(b.x, b.y);
+    }
+
+    // --- wire-lug-sleeve: ねじ端子の圧着端子と絶縁スリーブ（ホイールで寄って撮る。v2.0.0） ---
+    {
+      const lampWire = SELF_HOLD_WIRES.flat().find((id) => id.startsWith('TB_PL.'));
+      if (lampWire === undefined) throw new Error('ランプ端子台への配線の見本がありません');
+      const target = terminalPoint(toTerminalId(lampWire), box);
+      await page.mouse.move(target.x, target.y);
+      for (let step = 0; step < 9; step += 1) {
+        await page.mouse.wheel(0, -400);
+        await page.waitForTimeout(80);
+        await page.mouse.move(target.x + (step % 2), target.y);
+      }
+      await page.mouse.move(target.x, target.y);
+      await page.waitForTimeout(600);
+      // 寄せた中心が端子のネジ。圧着端子はその手前（画面では下）に出て、スリーブはさらに手前
+      await shoot(
+        'wire-lug-sleeve',
+        {
+          1: rectAt({ x: target.x, y: target.y + 22 }, 44),
+          2: rectAt({ x: target.x, y: target.y + 62 }, 40),
+        },
+        'auto',
+      );
+      await page.keyboard.press('Home');
+      await page.waitForTimeout(600);
+      box = await waitForBoard();
     }
 
     // --- b-first-wire: 1つ目の端子を選ぶと、左上に「始点」、下の1行に次の操作が出る ---
@@ -1807,10 +1916,22 @@ test.describe.serial('取扱説明書の図', () => {
       await plcWire(box, from, to);
     }
     await shootDesk('plc-desk-mitsubishi', PLC_UNIT_FX5U, box);
+    // --- plc-unit-mitsubishi: 本体を近くで（v2.0.0） ---
+    await shootUnit('plc-unit-mitsubishi', PLC_UNIT_FX5U, box);
 
     await page.getByTestId('view-split').click();
     await expect(page.getByTestId('plc-session')).toHaveAttribute('data-view', 'split');
     await page.waitForTimeout(600);
+    // --- plc-split-view: 3D盤・課題の欄・ラダーの並び（v2.0.0） ---
+    await shoot(
+      'plc-split-view',
+      {
+        1: await rectOf(page.getByTestId('viewport'), 0),
+        2: await rectOf(page.locator('[class*="plcRight"]').first(), 0),
+        3: await rectOf(page.getByTestId('ladder-workspace'), 0),
+      },
+      'full',
+    );
     await page.getByTestId('toolbar-monitor-start').click();
     await expect(page.getByTestId('plc-ladder-mode')).toContainText('モニタ');
     await page.getByTestId('toolbar-plc-run').click();
@@ -1977,6 +2098,7 @@ test.describe.serial('取扱説明書の図', () => {
         if (desk) await plcDeskWire(unit, box, from, to);
       }
       await shootDesk(`plc-desk-${vendor}`, unit, box);
+      await shootUnit(`plc-unit-${vendor}`, unit, box);
       await page.getByTestId('view-ladder').click();
     }
   });

@@ -1270,5 +1270,71 @@
         "label": "作業を読込"
       }
     ]
+  },
+  "step-parts-done": {
+    "caption": "「部品装着」に「済」が付いた手順の案内。",
+    "callouts": [
+      { "n": 1, "label": "部品装着" },
+      { "n": 2, "label": "配線" }
+    ]
+  },
+  "wire-lug-sleeve": {
+    "caption": "ねじ端子につないだ電線を近くで見たところ。圧着端子と赤い絶縁スリーブ。",
+    "callouts": [
+      { "n": 1, "label": "圧着端子" },
+      { "n": 2, "label": "絶縁スリーブ" }
+    ]
+  },
+  "plc-split-view": {
+    "caption": "「分割」の表示。左上に3D盤、その下に課題、右にラダー。",
+    "callouts": [
+      { "n": 1, "label": "3D盤" },
+      { "n": 2, "label": "課題" },
+      { "n": 3, "label": "ラダー" }
+    ]
+  },
+  "plc-unit-mitsubishi": {
+    "caption": "三菱 FX5U-32MR/ES の本体を近くで見たところ。",
+    "callouts": [
+      { "n": 1, "label": "銘板" },
+      { "n": 2, "label": "表示灯" },
+      { "n": 3, "label": "入力端子" },
+      { "n": 4, "label": "出力端子" }
+    ]
+  },
+  "plc-unit-omron": {
+    "caption": "オムロン CP1E-N30DR-A の本体を近くで見たところ。",
+    "callouts": [
+      { "n": 1, "label": "銘板" },
+      { "n": 2, "label": "表示灯" },
+      { "n": 3, "label": "入力端子" },
+      { "n": 4, "label": "出力端子" }
+    ]
+  },
+  "plc-unit-jtekt": {
+    "caption": "ジェイテクト PC10G-1SP（ラックの形）を近くで見たところ。",
+    "callouts": [
+      { "n": 1, "label": "銘板" },
+      { "n": 2, "label": "表示灯" },
+      { "n": 3, "label": "入力端子" },
+      { "n": 4, "label": "出力端子" }
+    ]
+  },
+  "plc-unit-sharp": {
+    "caption": "シャープ JW300（ラックの形）を近くで見たところ。",
+    "callouts": [
+      { "n": 1, "label": "銘板" },
+      { "n": 2, "label": "表示灯" },
+      { "n": 3, "label": "入力端子" },
+      { "n": 4, "label": "出力端子" }
+    ]
+  },
+  "plc-timer-unit": {
+    "caption": "タイマの「時間単位」の選択。",
+    "callouts": [
+      { "n": 1, "label": "時間単位" },
+      { "n": 2, "label": "設定値" }
+    ]
   }
 }
+
