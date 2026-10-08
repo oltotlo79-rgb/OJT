@@ -6,6 +6,8 @@ import {
   inspectPartsStepHint,
   inspectRepairSteps,
   inspectRepairStepHint,
+  labStepHint,
+  labSteps,
   sequentialSteps,
 } from '../src/renderer/session/step-guide.js';
 
@@ -178,5 +180,34 @@ describe('inspectRepairSteps（モードC2: 指摘 → 修復 → 判定）', ()
   it('gives a hint only for the current step', () => {
     expect(inspectRepairStepHint('report')).toContain('故障');
     expect(inspectRepairStepHint(undefined)).toBeUndefined();
+  });
+});
+
+describe('回路実験・PLC実験の手順帯（2026-10-08）', () => {
+  it('正解を作るのは任意（いつでも）で、ほかは順に「いまここ」が進む', () => {
+    const start = labSteps({ inputs: false, expected: false, wired: false, ran: false });
+    expect(start.map((step) => [step.key, step.state])).toEqual([
+      ['inputs', 'current'],
+      ['expected', 'anytime'],
+      ['wire', 'todo'],
+      ['run', 'todo'],
+      ['judge', 'todo'],
+    ]);
+    const plc = labSteps({ inputs: true, expected: true, ladder: false, wired: true, ran: false });
+    expect(plc.map((step) => [step.key, step.state])).toEqual([
+      ['inputs', 'done'],
+      ['expected', 'done'],
+      ['ladder', 'current'],
+      ['wire', 'done'],
+      ['run', 'todo'],
+      ['judge', 'todo'],
+    ]);
+  });
+
+  it('判定の段の案内は、正解が無ければ描き方を案内する', () => {
+    expect(labStepHint('judge', { expected: false, plc: false })).toContain('この結果を正解にする');
+    expect(labStepHint('judge', { expected: true, plc: false })).toContain('「判定」');
+    expect(labStepHint('wire', { expected: true, plc: true })).toContain('配線済みの盤');
+    expect(labStepHint(undefined, { expected: true, plc: true })).toBeUndefined();
   });
 });

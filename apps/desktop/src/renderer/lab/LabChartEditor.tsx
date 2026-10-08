@@ -223,8 +223,12 @@ function EditorToolbar({ problem }: { problem: LabProblem }): JSX.Element {
       <button
         type="button"
         data-testid="lab-clear-expected"
-        disabled={problem.expected === undefined}
+        aria-disabled={problem.expected === undefined}
         onClick={() => {
+          if (problem.expected === undefined) {
+            useStore.getState().toast(JA.lab.noExpected, 'info');
+            return;
+          }
           editLab(clearExpected);
         }}
       >
@@ -471,7 +475,7 @@ function EditorFooter({
       <button
         type="button"
         data-testid="lab-run-in-editor"
-        disabled={running}
+        aria-disabled={running}
         aria-busy={running}
         onClick={() => {
           requestLabRun(false);
@@ -482,9 +486,13 @@ function EditorFooter({
       <button
         type="button"
         data-testid="lab-capture"
-        disabled={!capturable}
+        aria-disabled={!capturable}
         title={capturable ? undefined : JA.lab.captureNeedsRun}
         onClick={() => {
+          if (!capturable) {
+            useStore.getState().toast(JA.lab.captureNeedsRun, 'info');
+            return;
+          }
           setConfirming(true);
         }}
       >

@@ -31,7 +31,8 @@ export interface HintStage {
 
 /** ヒントを組み立てるのに要るもの。 */
 export interface HintInput {
-  readonly mode?: 'assemble' | 'inspect-parts' | 'inspect-repair' | 'plc';
+  readonly mode?:
+    'assemble' | 'inspect-parts' | 'inspect-repair' | 'plc' | 'assemble-lab' | 'plc-lab';
   readonly profile?: DialectProfile;
   /** 想定級（ヒントの出し方が変わる。§8.4）。 */
   readonly grade: 1 | 2 | 3;

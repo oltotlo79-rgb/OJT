@@ -11,7 +11,8 @@ import {
   toSessionTerminal,
   toNetlistTerminal,
 } from '@ojt/board-model';
-import { isAssembleProblem } from '@ojt/content';
+import { isAssembleLabProblem, isAssembleProblem, isLabProblem } from '@ojt/content';
+import { LabChartPanel } from '../lab/LabChartPanel.js';
 import type { BoardSession, MountableKind, SocketId } from '@ojt/board-model';
 import type { TerminalId } from '@ojt/circuit-sim';
 import { useCallback, useEffect, useMemo, useRef, type JSX } from 'react';
@@ -74,6 +75,8 @@ import { buildSpecChart } from '../session/spec-chart.js';
 import {
   assembleStepHint,
   assembleSteps,
+  labStepHint,
+  labSteps,
   schematicStepHint,
   schematicSteps,
 } from '../session/step-guide.js';
@@ -85,6 +88,7 @@ import {
   selectionForHover,
 } from '../session/wiring-guide.js';
 import { loadWorkFileAndApply, saveCurrentWork } from '../session/work-file.js';
+import { requestLabRun } from '../session/lab.js';
 import { SoundEffects, useElapsedTicker } from '../session/use-session-runtime.js';
 import { bridge } from '../session/worker-bridge.js';
 import { clearWireLimit, overloadedEnd, showWireLimit } from '../session/wire-limit.js';
@@ -122,8 +126,18 @@ export function Session(): JSX.Element {
    * 振り分けは `SessionRoute` が行うので、絞り込みに漏れたら「課題が選ばれていません」になる。
    */
   const problem = useStore((s) =>
-    s.problem !== undefined && isAssembleProblem(s.problem) ? s.problem : undefined,
+    s.problem !== undefined && (isAssembleProblem(s.problem) || isAssembleLabProblem(s.problem))
+      ? s.problem
+      : undefined,
   );
+  /**
+   * 回路組立の課題（回路実験では `undefined`）。回路図ヒント・模範回路・回路図エディタ・仕様の
+   * タイムチャートはこちらだけが持つ。回路実験（2026-10-08）は模範回路を持たず、右パネルの
+   * 「タイムチャート実験」で押し方と正解を描いて動かす。
+   */
+  const assemble = problem !== undefined && isAssembleProblem(problem) ? problem : undefined;
+  const lab = problem !== undefined && isAssembleLabProblem(problem) ? problem : undefined;
+  const labRan = useStore((s) => s.labRun !== undefined);
   const session = useStore((s) => s.session);
   const boardDefinition = useMemo(() => boardForProblem(problem), [problem]);
   const history = useStore((s) => s.history);
@@ -172,9 +186,9 @@ export function Session(): JSX.Element {
    * や2級で閉じているあいだも、盤の端子にホバーするだけで模範回路の答えが輪で漏れてしまう。
    */
   const policy =
-    problem === undefined
+    assemble === undefined
       ? undefined
-      : schematicPolicy(problem.grade, problem.board.profile?.rules.hintPolicy);
+      : schematicPolicy(assemble.grade, assemble.board.profile?.rules.hintPolicy);
   const showSchematic =
     policy !== undefined && (policy.toggleable ? schematicVisible : policy.shown);
 
@@ -332,18 +346,18 @@ export function Session(): JSX.Element {
    */
   const draftGuideIndex = useMemo(
     () =>
-      problem === undefined || session === undefined
+      assemble === undefined || session === undefined
         ? undefined
-        : guideIndexFor({ doc: schematicDoc, problem, board: boardDefinition, session }),
-    [schematicDoc, problem, session, boardDefinition],
+        : guideIndexFor({ doc: schematicDoc, problem: assemble, board: boardDefinition, session }),
+    [schematicDoc, assemble, session, boardDefinition],
   );
   /** 配線ガイドの索引（課題の模範回路＝回路図ヒント用）。`doc: undefined` で模範回路に落ちる。 */
   const hintGuideIndex = useMemo(
     () =>
-      problem === undefined || session === undefined
+      assemble === undefined || session === undefined
         ? undefined
-        : guideIndexFor({ doc: undefined, problem, board: boardDefinition, session }),
-    [problem, session, boardDefinition],
+        : guideIndexFor({ doc: undefined, problem: assemble, board: boardDefinition, session }),
+    [assemble, session, boardDefinition],
   );
 
   /**
@@ -482,6 +496,8 @@ export function Session(): JSX.Element {
        * 抜け出せるように、下のフォーカス除けより**先**に見る（F2 はエディタの割当と重ならない）。
        */
       if (event.key === 'F2') {
+        // 回路実験には回路図エディタが無いので、盤だけの表示のまま（2026-10-08）
+        if (store.problem !== undefined && isLabProblem(store.problem)) return;
         event.preventDefault();
         store.setAssembleView(nextAssembleView(store.assembleView));
         return;
@@ -530,8 +546,8 @@ export function Session(): JSX.Element {
   }, [runAction]);
 
   const spec = useMemo(
-    () => (problem === undefined ? undefined : buildSpecChart(problem)),
-    [problem],
+    () => (assemble === undefined ? undefined : buildSpecChart(assemble)),
+    [assemble],
   );
 
   /*
@@ -636,14 +652,33 @@ export function Session(): JSX.Element {
     fixedWireCount,
     powered,
   });
+  /*
+   * 回路実験（2026-10-08）は「押し方を描く → 正解（任意）→ 配線 → 動かす → 判定」。
+   * 部品の装着は配線の一部として扱う（在庫を全部使う課題ではないため）。
+   */
+  const labStepList =
+    lab === undefined
+      ? undefined
+      : labSteps({
+          inputs: lab.operations.length > 0,
+          expected: lab.expected !== undefined,
+          wired: session.wires.some((w) => !w.locked),
+          ran: labRan,
+        });
   const steps: ReadonlyArray<{
     key: string;
     label: string;
     state: (typeof assembleStepList)[number]['state'];
-  }> = showSchematicSteps ? schematicStepList : assembleStepList;
-  const stepHint = showSchematicSteps
-    ? schematicStepHint(schematicStepList.find((step) => step.state === 'current')?.key)
-    : assembleStepHint(assembleStepList.find((step) => step.state === 'current')?.key);
+  }> = labStepList ?? (showSchematicSteps ? schematicStepList : assembleStepList);
+  const stepHint =
+    labStepList !== undefined
+      ? labStepHint(labStepList.find((step) => step.state === 'current')?.key, {
+          expected: lab?.expected !== undefined,
+          plc: false,
+        })
+      : showSchematicSteps
+        ? schematicStepHint(schematicStepList.find((step) => step.state === 'current')?.key)
+        : assembleStepHint(assembleStepList.find((step) => step.state === 'current')?.key);
   /*
    * レビュー指摘 UI-04: 状態オーバーレイの「選択中」が内部の電線ID（`w-003`）を
    * そのまま出していた。両端の端子と色から組み立てた表示名にする（見つからない
@@ -671,35 +706,44 @@ export function Session(): JSX.Element {
         canRedo={history.undone.length > 0}
         /* 段階的に開くヒント（指摘 PR-02）。1段目は手順帯がいま出している案内そのもの。 */
         hints={
-          problem.board.profile?.rules.hintPolicy === 'off'
-            ? []
-            : hintStages({
-                grade: problem.board.profile?.rules.hintPolicy === 'always' ? 3 : problem.grade,
+          lab !== undefined
+            ? hintStages({
+                mode: 'assemble-lab',
+                grade: 3,
                 stepHint,
-                tags: problem.tags,
+                texts: [JA.lab.hintIdea, JA.lab.hintCheck],
               })
+            : problem.board.profile?.rules.hintPolicy === 'off'
+              ? []
+              : hintStages({
+                  grade: problem.board.profile?.rules.hintPolicy === 'always' ? 3 : problem.grade,
+                  stepHint,
+                  tags: problem.tags,
+                })
         }
         viewSwitch={
-          <>
-            <span className={styles.toolLabelInline}>{JA.schematic.viewLabel}</span>
-            {ASSEMBLE_VIEWS.map(([view, label, title]) => (
-              <button
-                key={view}
-                type="button"
-                data-testid={`assemble-view-${view}`}
-                aria-pressed={assembleView === view}
-                title={title}
-                onClick={() => {
-                  useStore.getState().setAssembleView(view);
-                }}
-              >
-                {label}
-              </button>
-            ))}
-            <span className={styles.toolKeyBadge} data-testid="assemble-view-key">
-              {JA.schematic.viewKey}
-            </span>
-          </>
+          lab !== undefined ? undefined : (
+            <>
+              <span className={styles.toolLabelInline}>{JA.schematic.viewLabel}</span>
+              {ASSEMBLE_VIEWS.map(([view, label, title]) => (
+                <button
+                  key={view}
+                  type="button"
+                  data-testid={`assemble-view-${view}`}
+                  aria-pressed={assembleView === view}
+                  title={title}
+                  onClick={() => {
+                    useStore.getState().setAssembleView(view);
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
+              <span className={styles.toolKeyBadge} data-testid="assemble-view-key">
+                {JA.schematic.viewKey}
+              </span>
+            </>
+          )
         }
         extraTools={
           <button
@@ -727,20 +771,34 @@ export function Session(): JSX.Element {
           restore(redoHistory(history), JA.session.redo);
         }}
         judging={judging}
+        {...(lab === undefined
+          ? {}
+          : {
+              judgeDisabled: lab.expected === undefined,
+              judgeTitle: lab.expected === undefined ? JA.lab.judgeNeedsExpected : JA.session.judge,
+            })}
         onJudge={() => {
+          // 回路実験は描いた正解と比べる判定（実験の欄の「判定」と同じ。2026-10-08）
+          if (lab !== undefined) {
+            requestLabRun(true);
+            return;
+          }
+          if (assemble === undefined) return;
           // 往復中は押させない（結果が返るか Worker が落ちるまで `judging` が立つ）。§8.2
           if (useStore.getState().judging) return;
           useStore.getState().setJudging(true);
           bridge.send({
             type: 'judge',
-            problem,
+            problem: assemble,
             session: cloneSession(session),
             elapsedMs: useStore.getState().elapsedMs,
           });
         }}
         onBack={() => {
-          useStore.getState().setRoute('list');
+          // 実験は課題一覧に無いので、ホームへ戻る
+          useStore.getState().setRoute(lab === undefined ? 'list' : 'home');
         }}
+        {...(lab === undefined ? {} : { backLabel: JA.problemList.back })}
         onSave={() => {
           saveCurrentWork(problem.id, session);
         }}
@@ -808,6 +866,9 @@ export function Session(): JSX.Element {
         steps={steps}
         hint={stepHint}
         actions={{
+          inputs: () => focusWorkPanel('lab-open-editor'),
+          expected: () => focusWorkPanel('lab-open-editor'),
+          run: () => focusWorkPanel('lab-run'),
           parts: () => {
             useStore.getState().setMode('wire');
             useStore.getState().setAssembleView('board');
@@ -819,7 +880,7 @@ export function Session(): JSX.Element {
             useStore.getState().setMode('wire');
           },
           power: () => focusWorkPanel('power-breaker'),
-          judge: () => focusWorkPanel('judge-button'),
+          judge: () => focusWorkPanel(lab === undefined ? 'judge-button' : 'lab-judge'),
         }}
       />
 
@@ -859,10 +920,10 @@ export function Session(): JSX.Element {
           回路図エディタと検算の結果。§11.4 / Plan 5 決定表#1・#4
           `data-editor-pane` は盤のショートカット（Esc / Delete）の除けにも使う（上のキー購読）。
         */}
-        {assembleView === 'board' || schematicDoc === undefined ? null : (
+        {assembleView === 'board' || schematicDoc === undefined || assemble === undefined ? null : (
           <div className={styles.editorPane} data-editor-pane data-testid="editor-pane">
             <SchematicEditor
-              problem={problem}
+              problem={assemble}
               board={boardDefinition}
               document={schematicDoc}
               cursor={schematicCursor}
@@ -891,7 +952,7 @@ export function Session(): JSX.Element {
                 store.setVerifying(true);
                 bridge.send({
                   type: 'verify',
-                  problem,
+                  problem: assemble,
                   document: store.schematicDoc,
                   elapsedMs: store.elapsedMs,
                 });
@@ -909,7 +970,7 @@ export function Session(): JSX.Element {
             />
             {verifyResult === undefined ? null : (
               <VerifyPanel
-                problem={problem}
+                problem={assemble}
                 document={schematicDoc}
                 result={verifyResult}
                 onPickCell={onPickDraftCell}
@@ -927,6 +988,8 @@ export function Session(): JSX.Element {
         */}
         <div className={styles.rightPanel}>
           <ProblemPanel problem={problem} />
+          {/* 回路実験の主役（押し方と正解を描いて動かす。2026-10-08） */}
+          {lab === undefined ? null : <LabChartPanel />}
           {mode === 'tester' ? <TesterPanel /> : null}
           <PartsPanel
             session={session}
@@ -945,16 +1008,16 @@ export function Session(): JSX.Element {
             onPreset={onPreset}
           />
 
-          {showSchematic ? (
+          {showSchematic && assemble !== undefined ? (
             <CollapsiblePanel
               title={JA.session.schematicHint}
               testId="schematic-hint"
               open
-              collapsible={problem.grade !== 3}
+              collapsible={assemble.grade !== 3}
             >
               <div className={styles.schematicBox}>
                 <SchematicView
-                  document={problem.schematic}
+                  document={assemble.schematic}
                   title={JA.session.schematicHint}
                   highlightCellIds={highlightCells}
                   onPickCell={onPickHintCell}

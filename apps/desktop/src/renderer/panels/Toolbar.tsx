@@ -47,6 +47,7 @@ export function Toolbar({
   onRedo,
   onJudge,
   onBack,
+  backLabel = JA.session.back,
   onSave,
   onLoad,
   hints,
@@ -76,7 +77,7 @@ export function Toolbar({
    * （「…」の中には畳まない。利用者要求 2026-09-19「切替が一目で分かること」）。
    * 渡さない画面には出ない。
    */
-  viewSwitch?: JSX.Element;
+  viewSwitch?: JSX.Element | undefined;
   camera: CameraPreset;
   canUndo: boolean;
   canRedo: boolean;
@@ -93,6 +94,8 @@ export function Toolbar({
   onRedo: () => void;
   onJudge: () => void;
   onBack: () => void;
+  /** 戻るボタンの文言（実験は課題一覧に無いので「ホームへ戻る」。2026-10-08）。 */
+  backLabel?: string;
   /** 作業ファイルの保存・読込。§12.3 */
   onSave: () => void;
   onLoad: () => void;
@@ -236,7 +239,7 @@ export function Toolbar({
       */}
       <div className={styles.toolbarScroll}>
         <button type="button" data-testid="session-back" onClick={onBack}>
-          {JA.session.back}
+          {backLabel}
         </button>
         {/*
           ヘルプ（Plan 6 Task 9）。この1つで4つのセッション画面（モードB・C1・C2・D）

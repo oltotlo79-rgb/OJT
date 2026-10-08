@@ -160,7 +160,7 @@ describe('編集窓', () => {
 
     fireEvent.click(screen.getByTestId('lab-clear-expected'));
     expect(lab().expected).toBeUndefined();
-    expect(screen.getByTestId('lab-clear-expected')).toBeDisabled();
+    expect(screen.getByTestId('lab-clear-expected')).toHaveAttribute('aria-disabled', 'true');
     fireEvent.click(screen.getByTestId('lab-clear-inputs'));
     expect(lab().operations).toEqual([]);
   });
@@ -171,7 +171,9 @@ describe('編集窓', () => {
     if (!reference.ok) throw new Error('reference');
     useStore.getState().setSession(reference.value.session);
     render(<LabChartEditor onClose={() => {}} />);
-    expect(screen.getByTestId('lab-capture')).toBeDisabled();
+    expect(screen.getByTestId('lab-capture')).toHaveAttribute('aria-disabled', 'true');
+    fireEvent.click(screen.getByTestId('lab-capture'));
+    expect(screen.queryByTestId('lab-capture-confirm')).toBeNull();
     fireEvent.click(screen.getByTestId('lab-run-in-editor'));
     expect(bridgeMock.sent.at(-1)?.['type']).toBe('labRun');
     // 正解を消してから、模範の盤で動かした結果を入れる
@@ -196,11 +198,14 @@ describe('実験の欄', () => {
   it('正解が無ければ判定を押せず、理由を出す', () => {
     openLab();
     render(<LabChartPanel />);
-    expect(screen.getByTestId('lab-judge')).toBeDisabled();
+    expect(screen.getByTestId('lab-judge')).toHaveAttribute('aria-disabled', 'true');
     expect(screen.getByTestId('lab-judge-reason')).toHaveTextContent(
       '正解のランプの動きを描くと判定できます',
     );
-    expect(screen.getByTestId('lab-replay')).toBeDisabled();
+    expect(screen.getByTestId('lab-replay')).toHaveAttribute('aria-disabled', 'true');
+    fireEvent.click(screen.getByTestId('lab-replay'));
+    expect(useStore.getState().replay).toBeUndefined();
+    expect(useStore.getState().toasts.at(-1)?.text).toContain('盤で見直せます');
     expect(screen.getByTestId('lab-status')).toHaveTextContent('まだ動かしていません');
   });
 

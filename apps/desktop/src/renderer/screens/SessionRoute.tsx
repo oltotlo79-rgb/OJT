@@ -22,6 +22,7 @@ export function SessionRoute(): JSX.Element {
   if (replaying) return <ReplayScreen />;
   switch (mode) {
     case 'assemble':
+    case 'assemble-lab':
       return <Session />;
     case 'inspect-parts':
       return <InspectPartsSession />;

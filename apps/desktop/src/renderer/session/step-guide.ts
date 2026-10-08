@@ -141,6 +141,59 @@ export function inspectRepairStepHint(key: InspectRepairStepKey | undefined): st
   return undefined;
 }
 
+/**
+ * 回路実験・PLC実験の手順キー（2026-10-08）。
+ * 入力を描く → 正解を作る（任意）→（PLCはラダー）→ 配線 → 動かす → 判定
+ */
+export type LabStepKey = 'inputs' | 'expected' | 'ladder' | 'wire' | 'run' | 'judge';
+
+/**
+ * 実験の手順帯。正解を作るのは任意なので「いつでも」（描いたら「済」）にし、ほかは
+ * 一直線に「いまここ」を進める。`ladder` を渡したとき（PLC実験）だけラダーの段を入れる。
+ */
+export function labSteps(input: {
+  /** 押し方を1区間でも描いたか。 */
+  inputs: boolean;
+  /** 正解を描いたか。 */
+  expected: boolean;
+  /** PLC実験: ラダーを書いて変換を通したか（回路実験では渡さない）。 */
+  ladder?: boolean | undefined;
+  /** 配線したか（配線済みの盤なら真）。 */
+  wired: boolean;
+  /** 「動かす」をしたか。 */
+  ran: boolean;
+}): ReadonlyArray<GuideStep<LabStepKey>> {
+  const steps = sequentialSteps<LabStepKey>([
+    { key: 'inputs', label: JA.stepGuide.labInputs, done: input.inputs },
+    ...(input.ladder === undefined
+      ? []
+      : [{ key: 'ladder' as const, label: JA.stepGuide.labLadder, done: input.ladder }]),
+    { key: 'wire', label: JA.stepGuide.labWire, done: input.wired },
+    { key: 'run', label: JA.stepGuide.labRun, done: input.ran },
+    { key: 'judge', label: JA.stepGuide.labJudge, done: false },
+  ]);
+  const expected: GuideStep<LabStepKey> = {
+    key: 'expected',
+    label: JA.stepGuide.labExpected,
+    state: input.expected ? 'done' : 'anytime',
+  };
+  return [steps[0]!, expected, ...steps.slice(1)];
+}
+
+/** いまの手順にだけ効く1行の案内（実験）。 */
+export function labStepHint(
+  key: LabStepKey | undefined,
+  context: { expected: boolean; plc: boolean },
+): string | undefined {
+  if (key === 'inputs') return JA.stepGuide.labInputsHint;
+  if (key === 'ladder') return JA.stepGuide.labLadderHint;
+  if (key === 'wire') return context.plc ? JA.stepGuide.labWirePlcHint : JA.stepGuide.labWireHint;
+  if (key === 'run') return JA.stepGuide.labRunHint;
+  if (key === 'judge')
+    return context.expected ? JA.stepGuide.labJudgeHint : JA.stepGuide.labNeedsExpectedHint;
+  return undefined;
+}
+
 // --- Plan 5 Task 4 ---
 
 /** 回路図エディタの手順キー（描く → 検算 → 盤に配線）。Plan 5 決定表#24 */

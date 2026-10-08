@@ -88,10 +88,14 @@ export function LabChartPanel(): JSX.Element | null {
           >
             {JA.lab.openEditor}
           </button>
+          {/*
+            押せないときも `disabled` にはしない（`title` の理由が出なくなる）。`aria-disabled` にして、
+            押したら理由を知らせる（ツールバーの判定ボタンと同じ流儀。UXレビュー UI-03 / UI-06）。
+          */}
           <button
             type="button"
             data-testid="lab-run"
-            disabled={busy}
+            aria-disabled={busy}
             aria-busy={running}
             onClick={() => {
               requestLabRun(false);
@@ -102,7 +106,7 @@ export function LabChartPanel(): JSX.Element | null {
           <button
             type="button"
             data-testid="lab-judge"
-            disabled={busy || problem.expected === undefined}
+            aria-disabled={busy || problem.expected === undefined}
             title={problem.expected === undefined ? JA.lab.judgeNeedsExpected : undefined}
             onClick={() => {
               requestLabRun(true);
@@ -113,9 +117,13 @@ export function LabChartPanel(): JSX.Element | null {
           <button
             type="button"
             data-testid="lab-replay"
-            disabled={!replayable}
+            aria-disabled={!replayable}
             title={replayable ? undefined : JA.lab.replayNeedsRun}
             onClick={() => {
+              if (!replayable) {
+                useStore.getState().toast(JA.lab.replayNeedsRun, 'info');
+                return;
+              }
               if (!startReplay('lab')) useStore.getState().toast(JA.replay.cannotReplay, 'info');
             }}
           >
