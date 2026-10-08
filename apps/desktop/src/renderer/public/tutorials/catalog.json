@@ -1,65 +1,65 @@
 {
   "assembly": {
-    "durationSec": 241.6,
-    "bytes": 22169133,
+    "durationSec": 227.4,
+    "bytes": 20564202,
     "width": 1600,
     "height": 900,
-    "captionCount": 25
+    "captionCount": 29
   },
   "parts": {
-    "durationSec": 347.44,
-    "bytes": 33647046,
+    "durationSec": 226.16,
+    "bytes": 21609209,
     "width": 1600,
     "height": 900,
     "captionCount": 21
   },
   "repair": {
-    "durationSec": 310.08,
-    "bytes": 28700709,
+    "durationSec": 329.48,
+    "bytes": 31326773,
+    "width": 1600,
+    "height": 900,
+    "captionCount": 33
+  },
+  "plc": {
+    "durationSec": 339.24,
+    "bytes": 32719870,
     "width": 1600,
     "height": 900,
     "captionCount": 30
   },
-  "plc": {
-    "durationSec": 325.76,
-    "bytes": 31588681,
-    "width": 1600,
-    "height": 900,
-    "captionCount": 28
-  },
   "plc-jtekt": {
-    "durationSec": 345.6,
-    "bytes": 33654236,
+    "durationSec": 354.88,
+    "bytes": 33790071,
     "width": 1600,
     "height": 900,
-    "captionCount": 29
+    "captionCount": 30
   },
   "plc-omron": {
-    "durationSec": 341.56,
-    "bytes": 33694125,
+    "durationSec": 389.28,
+    "bytes": 38084952,
     "width": 1600,
     "height": 900,
-    "captionCount": 29
+    "captionCount": 33
   },
   "plc-sharp": {
-    "durationSec": 339.72,
-    "bytes": 32713630,
+    "durationSec": 352.48,
+    "bytes": 34041260,
     "width": 1600,
     "height": 900,
-    "captionCount": 29
+    "captionCount": 30
   },
   "lab-assemble": {
-    "durationSec": 178.2,
-    "bytes": 15913319,
+    "durationSec": 217.36,
+    "bytes": 19867580,
     "width": 1600,
     "height": 900,
-    "captionCount": 17
+    "captionCount": 20
   },
   "lab-plc": {
-    "durationSec": 185.68,
-    "bytes": 17406428,
+    "durationSec": 221.68,
+    "bytes": 20549505,
     "width": 1600,
     "height": 900,
-    "captionCount": 17
+    "captionCount": 20
   }
 }
