@@ -408,8 +408,10 @@ function presetEmit(
   key: 'timer' | 'counter',
   target: Device,
   preset: string,
+  /** 命令名の上書き（タイマは時間単位ごとに命令が違う。v2.0.0 設計 §3.6）。 */
+  nameOverride?: string,
 ): Emit {
-  const name = profile.instructionNames[key];
+  const name = nameOverride ?? profile.instructionNames[key];
   const prefix = profile.deviceRanges[target.kind].prefix;
   const text = profile.formatDevice(target);
   if (prefix.length > 0 && name.endsWith(prefix) && text.startsWith(prefix)) {
@@ -442,7 +444,7 @@ function emitOutput(
     return;
   }
   if (cell.kind === 'timer') {
-    const preset = profile.timerPreset(cell.presetMs, cell.device);
+    const preset = profile.timerPreset(cell.presetMs, cell.device, cell.base);
     if (preset instanceof Error) {
       errors.push({
         code: 'preset-unavailable',
@@ -451,8 +453,16 @@ function emitOutput(
         networkId,
       });
     }
+    // 命令名は時間単位で変わる（`OUT T` / `OUTH T` / `OUTHS T` など）。v2.0.0 設計 §3.6
+    const base = cell.base ?? profile.timerBases[0];
     out.push(
-      presetEmit(profile, 'timer', cell.device, preset instanceof Error ? '?' : preset.text),
+      presetEmit(
+        profile,
+        'timer',
+        cell.device,
+        preset instanceof Error ? '?' : preset.text,
+        base === undefined ? undefined : profile.timerInstructionName(base),
+      ),
     );
     return;
   }

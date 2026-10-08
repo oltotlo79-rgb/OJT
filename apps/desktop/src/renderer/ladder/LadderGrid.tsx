@@ -225,11 +225,13 @@ function cellLabels(
     };
   }
   if (cell.kind === 'timer') {
-    const preset = profile.timerPreset(cell.presetMs, cell.device);
+    const preset = profile.timerPreset(cell.presetMs, cell.device, cell.base);
+    // 命令名は時間単位で変わる（`OUT T` / `OUTH T` …）。v2.0.0 設計 §3.6
+    const base = cell.base ?? profile.timerBases[0];
     return {
       device: profile.formatDevice(cell.device),
       preset: preset instanceof Error ? `${String(cell.presetMs)}ms` : preset.text,
-      mnemonic: names.timer,
+      mnemonic: base === undefined ? names.timer : profile.timerInstructionName(base),
     };
   }
   if (cell.kind === 'counter') {

@@ -1,5 +1,5 @@
-import { T, X, Y, type Cell } from '@ojt/ladder-core';
-import type { DialectProfile } from '@ojt/plc-dialects';
+import { T, X, Y, type Cell, type TimerBase } from '@ojt/ladder-core';
+import { defaultTimerBase, timerBaseChoices, type DialectProfile } from '@ojt/plc-dialects';
 import {
   useEffect,
   useMemo,
@@ -181,9 +181,10 @@ export function DeviceInput({
     if (next.target === 'output' && next.output === 'TON' && presetOverrideMs === undefined) {
       const device = profile.parseDevice(next.deviceText);
       if (!(device instanceof Error)) {
-        const ms = timerPresetMs(next.presetText, device, profile);
+        const base = next.base ?? defaultTimerBase(profile);
+        const ms = timerPresetMs(next.presetText, device, profile, base);
         if (!(ms instanceof Error)) {
-          const suggestion = roundSuggestionFor(ms, device, profile);
+          const suggestion = roundSuggestionFor(ms, device, profile, base);
           if (suggestion !== undefined) {
             setRound({
               rounded: suggestion.rounded,
@@ -303,6 +304,23 @@ export function DeviceInput({
               }}
               onKeyDown={onFieldKeyDown}
             />
+            {form.target === 'output' && form.output === 'TON' ? (
+              /* 時間単位は命令で選ぶ（OUT T＝0.1秒 / OUTH T＝0.01秒 …）。v2.0.0 設計 §3.6 */
+              <select
+                data-testid="timer-base"
+                aria-label={JA.ladder.timerBase}
+                value={String(form.base ?? defaultTimerBase(profile))}
+                onChange={(event) => {
+                  setForm({ ...form, base: Number(event.target.value) as TimerBase });
+                }}
+              >
+                {timerBaseChoices(profile).map((choice) => (
+                  <option key={choice.base} value={String(choice.base)}>
+                    {`${choice.name}（${choice.label}）`}
+                  </option>
+                ))}
+              </select>
+            ) : null}
             {form.target === 'output' && (form.output === 'TON' || form.output === 'CTU') ? (
               <input
                 data-testid="preset-text"

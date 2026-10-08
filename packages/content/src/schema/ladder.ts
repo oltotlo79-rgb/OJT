@@ -71,6 +71,8 @@ export const CellSchema = z.discriminatedUnion('kind', [
       .refine((ms) => ms % TIMER_STEP_MS === 0, {
         message: `タイマ設定値は ${TIMER_STEP_MS}ms の倍数にします`,
       }),
+    /** 命令で選ぶ時間単位[ms]（100＝OUT/TIM/TMR、10＝OUTH/TIMH/TMRH、1＝OUTHS/TMHH）。省略可。v2.0.0 */
+    base: z.union([z.literal(100), z.literal(10), z.literal(1)]).optional(),
   }),
   z.strictObject({
     kind: z.literal('counter'),
@@ -102,8 +104,18 @@ function isOutputCellData(cell: CellData): boolean {
  * 手前を横線で埋める。** 実機のラダーでもコイルは必ず右母線に付くので、課題JSONに横線を12個も
  * 並べずに済む。出力セルで終わらない行は、足りないぶんを空セルで詰める。
  */
+/**
+ * 課題JSONのセルを IR のセルにする。`base` を書かないタイマは `base` の鍵ごと落とす
+ * （`exactOptionalPropertyTypes`。`undefined` の鍵を残すと IR の型に合わない）。
+ */
+function toCell(cell: CellData): Cell {
+  if (cell.kind !== 'timer') return cell;
+  const { base, ...rest } = cell;
+  return base === undefined ? rest : { ...rest, base };
+}
+
 function padRow(cells: readonly CellData[]): Cell[] {
-  const row: Cell[] = [...cells];
+  const row: Cell[] = cells.map(toCell);
   const last = row[row.length - 1];
   if (last !== undefined && isOutputCellData(last) && row.length < IR_COLS) {
     row.pop();

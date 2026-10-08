@@ -1357,6 +1357,12 @@
       "section": "mode-d/ラダー図を描く"
     },
     {
+      "testid": "timer-base",
+      "screen": "練習中（モードD）",
+      "label": "時間単位",
+      "section": "mode-d/ラダー図を描く"
+    },
+    {
       "testid": "preset-up",
       "screen": "回路図",
       "label": "設定時間を0.1秒ふやす",

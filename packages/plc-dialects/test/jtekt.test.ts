@@ -197,7 +197,8 @@ describe('PCwin風スキン（§10.6 / §17 #19）', () => {
     expect(names.orBlock).toBe('ORB');
     expect(names.mc).toBe('MC');
     expect(names.end).toBe('END');
-    expect(names.timer).toBe('OUT');
+    // タイマは TMR（0.1秒）/ TMRH（0.01秒）。v2.0.0 設計 §3.6（以前は PCwin の OUT と仮定していた）
+    expect(names.timer).toBe('TMR');
     expect(names.counter).toBe('OUT');
   });
 

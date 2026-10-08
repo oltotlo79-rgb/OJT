@@ -1,4 +1,4 @@
-import type { Device, DeviceKind, LadderProgram } from '@ojt/ladder-core';
+import type { Device, DeviceKind, LadderProgram, TimerBase } from '@ojt/ladder-core';
 
 /**
  * 方言プロファイルのインターフェース。設計仕様 §10.5 / §10.6。
@@ -195,16 +195,28 @@ export interface DialectProfile {
   /** 方言表記 → IRのデバイス。読めない表記は `Error` を返す（投げない）。 */
   parseDevice(text: string): Device | Error;
   deviceRanges: Readonly<Record<DeviceKind, DeviceRange>>;
-  /** ms → 方言のタイマ設定表記。機種で表せない値は `Error`。§10.5 */
-  timerPreset(ms: number, device: Device): TimerPresetText | Error;
+  /**
+   * ms → 方言のタイマ設定表記。機種で表せない値は `Error`。§10.5
+   * `base` は命令で選んだ時間単位（v2.0.0 設計 §3.6）。省略すると方言の既定（三菱は番号帯）。
+   */
+  timerPreset(ms: number, device: Device, base?: TimerBase): TimerPresetText | Error;
   /** 方言のタイマ設定表記 → ms。 */
-  parseTimerPreset(text: string, device: Device): number | Error;
+  parseTimerPreset(text: string, device: Device, base?: TimerBase): number | Error;
   /**
    * タイマ設定値の丸め提案（§10.5「刻みに丸めますか？」）に使う時間単位[ms]。指摘 LE-6
    *
-   * 各方言の検証・表記変換と同じ規則を使う。三菱は番号帯、それ以外は TimerRule に従う。
+   * `base` があればそれ（命令で選んだ単位）。無ければ各方言の既定（三菱は旧来の番号帯、
+   * それ以外は TimerRule）に従う。
    */
-  timerBaseMs(device: Device): number;
+  timerBaseMs(device: Device, base?: TimerBase): number;
+  /**
+   * この機種で選べるタイマの時間単位（命令で選ぶ）。先頭が既定。v2.0.0 設計 §3.6
+   * 三菱 [100, 10, 1]（OUT/OUTH/OUTHS）、オムロン [100, 10, 1]（TIM/TIMH/TMHH）、
+   * ジェイテクト [100, 10]（TMR/TMRH）、シャープ [100]（TMR）。
+   */
+  timerBases: readonly TimerBase[];
+  /** 時間単位ごとのタイマ命令名（命令語リスト・グリッドの表示に使う）。 */
+  timerInstructionName(base: TimerBase): string;
   /**
    * カウンタ設定値の方言表記（三菱 `K5` / OMRON `#0005` / JTEKT `H0005` / シャープ `0005`）。
    * 命令語リスト（§10.7）と 4B のカウンタ設定値欄が使う。タイマの `timerPreset` と対になる

@@ -38,6 +38,7 @@ export {
   SPECIAL_FIRST_SCAN,
   SPECIAL_INDEXES,
   T,
+  TIMER_BASES,
   ton,
   vline,
   X,
@@ -52,6 +53,7 @@ export {
   type Network,
   type NetworkOptions,
   type OutputCell,
+  type TimerBase,
 } from './ir.js';
 
 export {

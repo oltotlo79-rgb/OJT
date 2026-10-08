@@ -1,4 +1,4 @@
-import type { Device, LadderProgram } from '@ojt/ladder-core';
+import type { Device, LadderProgram, TimerBase } from '@ojt/ladder-core';
 import { collectDevices } from './device-rules.js';
 import type { DialectError, DialectId, DialectProfile } from './profile.js';
 
@@ -61,11 +61,11 @@ function presetChanges(
         seen.add(key);
         const before =
           cell.kind === 'timer'
-            ? formatTimerPreset(from, cell.presetMs, cell.device)
+            ? formatTimerPreset(from, cell.presetMs, cell.device, cell.base)
             : formatCounterPreset(from, cell.preset);
         const after =
           cell.kind === 'timer'
-            ? formatTimerPreset(to, cell.presetMs, cell.device)
+            ? formatTimerPreset(to, cell.presetMs, cell.device, cell.base)
             : formatCounterPreset(to, cell.preset);
         if (before === after) continue;
         changes.push({ device: cell.device, from: before, to: after });
@@ -76,8 +76,13 @@ function presetChanges(
 }
 
 /** タイマ設定値を方言表記にする。表せない値は `?`。 */
-function formatTimerPreset(profile: DialectProfile, ms: number, device: Device): string {
-  const preset = profile.timerPreset(ms, device);
+function formatTimerPreset(
+  profile: DialectProfile,
+  ms: number,
+  device: Device,
+  base: TimerBase | undefined,
+): string {
+  const preset = profile.timerPreset(ms, device, base);
   return preset instanceof Error ? '?' : preset.text;
 }
 

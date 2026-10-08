@@ -1,12 +1,13 @@
 import {
   device,
-  SPECIAL_ALWAYS_ON,
   SPECIAL_ALWAYS_OFF,
+  SPECIAL_ALWAYS_ON,
   SPECIAL_CLOCK_1S,
   SPECIAL_FIRST_SCAN,
   type Device,
   type DeviceKind,
   type LadderProgram,
+  type TimerBase,
 } from '@ojt/ladder-core';
 import {
   collectDeviceIssues,
@@ -171,6 +172,13 @@ const TIMER: TimerRule = {
 const timerPreset = makeTimerPreset(TIMER, formatDevice);
 const parseTimerPreset = makeParseTimerPreset(TIMER);
 
+/** 命令で選べる時間単位（v2.0.0 設計 §3.6）。先頭が既定。 */
+const TIMER_BASES: readonly TimerBase[] = [100, 10];
+/** 時間単位ごとのタイマ命令名。 */
+function timerInstructionName(base: TimerBase): string {
+  return base === 10 ? 'TMRH' : 'TMR';
+}
+
 /** カウンタ設定値の範囲（設定値レジスタ `H` ＋ 16進4桁）。§17 #20 の前提 */
 const COUNTER_MIN = 1;
 const COUNTER_MAX = 0xffff;
@@ -209,6 +217,7 @@ const RULES: DeviceRuleSet = {
   specialDevices: SPECIAL_DEVICES,
   formatDevice,
   timer: TIMER,
+  timerBases: TIMER_BASES,
   counter: { min: COUNTER_MIN, max: COUNTER_MAX },
 };
 
@@ -270,7 +279,8 @@ const INSTRUCTION_NAMES: Readonly<Record<InstructionKey, string>> = {
   rst: 'RST',
   pulseUp: 'PLS',
   pulseDown: 'PLF',
-  timer: 'OUT',
+  // タイマは TMR（0.1秒）/ TMRH（0.01秒）。命令語リスト・グリッドは `timerInstructionName()` で単位ごとに書く（v2.0.0）
+  timer: 'TMR',
   counter: 'OUT',
   mc: 'MC',
   mcr: 'MCR',
@@ -331,7 +341,9 @@ export const JTEKT_PC10G: DialectProfile = {
   deviceRanges: DEVICE_RANGES,
   timerPreset,
   parseTimerPreset,
-  timerBaseMs: () => TIMER.baseMs,
+  timerBaseMs: (_device, base) => base ?? TIMER.baseMs,
+  timerBases: TIMER_BASES,
+  timerInstructionName: timerInstructionName,
   counterPresetText,
   parseCounterPreset,
   specialDevices: SPECIAL_DEVICES,

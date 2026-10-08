@@ -1,12 +1,13 @@
 import {
   device,
-  SPECIAL_ALWAYS_ON,
   SPECIAL_ALWAYS_OFF,
+  SPECIAL_ALWAYS_ON,
   SPECIAL_CLOCK_1S,
   SPECIAL_FIRST_SCAN,
   type Device,
   type DeviceKind,
   type LadderProgram,
+  type TimerBase,
 } from '@ojt/ladder-core';
 import {
   collectDeviceIssues,
@@ -167,6 +168,13 @@ const TIMER: TimerRule = {
 const timerPreset = makeTimerPreset(TIMER, formatDevice);
 const parseTimerPreset = makeParseTimerPreset(TIMER);
 
+/** 命令で選べる時間単位（v2.0.0 設計 §3.6）。先頭が既定。 */
+const TIMER_BASES: readonly TimerBase[] = [100];
+/** 時間単位ごとのタイマ命令名。 */
+function timerInstructionName(base: TimerBase): string {
+  return base === 100 ? 'TMR' : 'TMR';
+}
+
 /** カウンタ設定値の範囲（10進4桁）。§10.5 の `DCNT(BCD)` の書式 */
 const COUNTER_MIN = 1;
 const COUNTER_MAX = 9_999;
@@ -205,6 +213,7 @@ const RULES: DeviceRuleSet = {
   specialDevices: SPECIAL_DEVICES,
   formatDevice,
   timer: TIMER,
+  timerBases: TIMER_BASES,
   counter: { min: COUNTER_MIN, max: COUNTER_MAX },
 };
 
@@ -287,7 +296,9 @@ export const SHARP_JW300: DialectProfile = {
   deviceRanges: DEVICE_RANGES,
   timerPreset,
   parseTimerPreset,
-  timerBaseMs: () => TIMER.baseMs,
+  timerBaseMs: (_device, base) => base ?? TIMER.baseMs,
+  timerBases: TIMER_BASES,
+  timerInstructionName: timerInstructionName,
   counterPresetText,
   parseCounterPreset,
   specialDevices: SPECIAL_DEVICES,

@@ -1,9 +1,11 @@
 import {
   device,
+  TIMER_STEP_MS,
   type Cell,
   type Device,
   type DeviceKind,
   type LadderProgram,
+  type TimerBase,
 } from '@ojt/ladder-core';
 import type { DeviceRange, DialectError, TimerPresetText } from './profile.js';
 
@@ -43,18 +45,38 @@ export function normalizeDeviceText(text: string): string {
   return text.normalize('NFKC').trim().toUpperCase();
 }
 
-/** `DialectProfile.timerPreset` を作る。 */
+/** 時間単位[ms] → 画面に出す単位名（`0.1秒` / `0.01秒` / `0.001秒`）。v2.0.0 設計 §3.6 */
+export function unitLabelOf(baseMs: number): string {
+  if (baseMs === 100) return '0.1秒';
+  if (baseMs === 10) return '0.01秒';
+  if (baseMs === 1) return '0.001秒';
+  return `${baseMs}ms`;
+}
+
+/**
+ * 本アプリの演算刻み（`TIMER_STEP_MS` = 10ms）に合わない設定値の文言。
+ * 1ms 単位の命令（OUTHS / TMHH）でも、設定値は 10ms の倍数でなければ動作に表せない。
+ */
+function stepMismatch(formatDevice: (device: Device) => string, timer: Device, ms: number): Error {
+  return new Error(
+    `${formatDevice(timer)} の設定値 ${ms}ms は本アプリの演算刻み（${TIMER_STEP_MS}ms）に合いません（${TIMER_STEP_MS}ms の倍数にします）`,
+  );
+}
+
+/** `DialectProfile.timerPreset` を作る。`base` は命令で選んだ時間単位（省略時は規則の既定）。 */
 export function makeTimerPreset(
   rule: TimerRule,
   formatDevice: (device: Device) => string,
-): (ms: number, timer: Device) => TimerPresetText | Error {
-  return (ms, timer) => {
-    if (!Number.isInteger(ms) || ms <= 0 || ms % rule.baseMs !== 0) {
+): (ms: number, timer: Device, base?: TimerBase) => TimerPresetText | Error {
+  return (ms, timer, base) => {
+    const baseMs = base ?? rule.baseMs;
+    if (!Number.isInteger(ms) || ms <= 0 || ms % baseMs !== 0) {
       return new Error(
-        `${formatDevice(timer)} は${rule.unitLabel}単位で指定します（${ms}ms は指定できません）`,
+        `${formatDevice(timer)} は${unitLabelOf(baseMs)}単位で指定します（${ms}ms は指定できません）`,
       );
     }
-    const count = ms / rule.baseMs;
+    if (ms % TIMER_STEP_MS !== 0) return stepMismatch(formatDevice, timer, ms);
+    const count = ms / baseMs;
     if (count < rule.min || count > rule.max) {
       return new Error(
         `${formatDevice(timer)} の設定値が範囲外です（${rule.format(rule.min)}〜${rule.format(rule.max)}）: ${rule.format(count)}`,
@@ -64,11 +86,11 @@ export function makeTimerPreset(
   };
 }
 
-/** `DialectProfile.parseTimerPreset` を作る。 */
+/** `DialectProfile.parseTimerPreset` を作る。`base` は命令で選んだ時間単位（省略時は規則の既定）。 */
 export function makeParseTimerPreset(
   rule: TimerRule,
-): (text: string, timer: Device) => number | Error {
-  return (text) => {
+): (text: string, timer: Device, base?: TimerBase) => number | Error {
+  return (text, _timer, base) => {
     const count = rule.parse(text);
     if (count === undefined) return new Error(`読めないタイマ設定値です: ${text}`);
     if (count < rule.min || count > rule.max) {
@@ -76,7 +98,7 @@ export function makeParseTimerPreset(
         `タイマ設定値が範囲外です（${rule.format(rule.min)}〜${rule.format(rule.max)}）: ${text}`,
       );
     }
-    return count * rule.baseMs;
+    return count * (base ?? rule.baseMs);
   };
 }
 
@@ -108,6 +130,8 @@ export interface DeviceRuleSet {
   specialDevices: Readonly<Record<number, string>>;
   formatDevice(device: Device): string;
   timer: TimerRule;
+  /** この機種で選べるタイマの時間単位（命令で選ぶ）。v2.0.0 設計 §3.6 */
+  timerBases: readonly TimerBase[];
   counter: { min: number; max: number };
 }
 
@@ -206,16 +230,28 @@ function checkCell(
   cell: Cell,
   place: DevicePlace,
   rules: DeviceRuleSet,
-  timerPreset: (ms: number, timer: Device) => TimerPresetText | Error,
+  timerPreset: (ms: number, timer: Device, base?: TimerBase) => TimerPresetText | Error,
   errors: DialectError[],
 ): void {
   if (cell.kind === 'timer') {
-    const preset = timerPreset(cell.presetMs, cell.device);
+    // 命令で選んだ時間単位がこの機種に無い（例: シャープへ切り替えた 10ms のタイマ）。v2.0.0
+    if (cell.base !== undefined && !rules.timerBases.includes(cell.base)) {
+      errors.push({
+        code: 'timer-unit',
+        message: `${rules.formatDevice(cell.device)} の時間単位 ${unitLabelOf(cell.base)} は、この機種のタイマ命令にありません`,
+        device: cell.device,
+        ...place,
+      });
+      return;
+    }
+    const preset = timerPreset(cell.presetMs, cell.device, cell.base);
     if (preset instanceof Error) {
+      const baseMs = cell.base ?? rules.timer.baseMs;
       const divisible =
         Number.isInteger(cell.presetMs) &&
         cell.presetMs > 0 &&
-        cell.presetMs % rules.timer.baseMs === 0;
+        cell.presetMs % baseMs === 0 &&
+        cell.presetMs % TIMER_STEP_MS === 0;
       errors.push({
         code: divisible ? 'timer-range' : 'timer-unit',
         message: preset.message,

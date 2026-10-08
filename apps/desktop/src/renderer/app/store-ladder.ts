@@ -8,6 +8,7 @@ import {
 } from '@ojt/content';
 import { COIL_COL, type Device, type LadderProgram } from '@ojt/ladder-core';
 import {
+  coerceTimerBases,
   getDialect,
   IMPLEMENTED_DIALECT_IDS,
   isDialectId,
@@ -345,6 +346,16 @@ export const createLadderSlice: StateCreator<AppState, [], [], LadderSlice> = (s
      * 壁コンセントの端子は機種で名前が変わるので、そこへつながる電線だけ外し、盤の中の電線と
      * 装着した部品は新しい機種の盤へ載せ直す（`carryOverBoard()`）。
      */
+    /*
+     * 切替先に無いタイマの時間単位（例: シャープへ 10ms の OUTH）は既定の単位へ寄せ、設定値を
+     * その刻みへ丸める（v2.0.0 設計 §3.6）。寄せたことは警告で知らせる（黙って変えない）。
+     */
+    const coerced =
+      ladder === undefined ? undefined : coerceTimerBases(ladder, getDialect(dialectId));
+    const ladderAfter = coerced === undefined ? ladder : coerced.program;
+    if (coerced !== undefined && coerced.changed.length > 0) {
+      get().toast(JA.plc.timerBasesCoerced(coerced.changed.length), 'info');
+    }
     const previousSession = get().session;
     const summary = previousSession === undefined ? undefined : carrySummary(previousSession);
     if (!get().openProblem(swapped, { vendor: dialectId })) return;
@@ -360,7 +371,7 @@ export const createLadderSlice: StateCreator<AppState, [], [], LadderSlice> = (s
     );
     set({
       ...(session === undefined ? {} : { session }),
-      ladder,
+      ladder: ladderAfter,
       ladderComments,
       ladderHistory,
       watchDevices: before.watchDevices,

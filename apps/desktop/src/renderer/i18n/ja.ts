@@ -688,6 +688,8 @@ export const JA = {
     mcr: 'マスタコントロール解除（MCR）',
     device: 'デバイス',
     preset: '設定値',
+    /** タイマの時間単位（命令で選ぶ。v2.0.0） */
+    timerBase: '時間単位',
     resetDevice: 'リセットデバイス',
     commit: '確定',
     roundYes: 'はい',
@@ -1042,6 +1044,9 @@ export const JA = {
     // --- /Plan 4B Task 3 ---
     // --- Plan 4B Task 7 ---
     /** 既定メーカーの機種では開けない課題（決定表#10）。 */
+    /** 表記切替で、切替先に無い時間単位のタイマを既定の単位へ寄せた（v2.0.0 設計 §3.6）。 */
+    timerBasesCoerced: (count: number): string =>
+      `タイマ ${count} 個の時間単位が切替先の機種にないため、既定の単位（0.1秒）に寄せて設定値を丸めました。設定値を確かめてください`,
     modelNotUsable: (wanted: string, used: string): string =>
       `この課題の入出力の割付は ${wanted} に収まらないため、${used} のまま開きました`,
     /** セッション画面に出す機種名（3Dの本体と同じ機種であることを見せる）。 */

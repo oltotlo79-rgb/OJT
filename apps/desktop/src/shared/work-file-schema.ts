@@ -341,7 +341,10 @@ function isCellLike(value: unknown): boolean {
   if (!isDeviceLike(value['device'])) return false;
   if (kind === 'timer') {
     const preset = value['presetMs'];
-    return typeof preset === 'number' && Number.isInteger(preset) && preset > 0;
+    if (!(typeof preset === 'number' && Number.isInteger(preset) && preset > 0)) return false;
+    // 命令で選ぶ時間単位（省略可。v2.0.0）。語彙の外の値は読まない
+    const base = value['base'];
+    return base === undefined || base === 100 || base === 10 || base === 1;
   }
   if (kind === 'counter') {
     const preset = value['preset'];

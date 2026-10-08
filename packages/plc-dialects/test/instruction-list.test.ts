@@ -114,7 +114,8 @@ describe('instructionList（§10.7 / §16 Phase 4 受入基準⑥）', () => {
     const p = program(network('n1', [rung(no(X(0)), ton(T(0), 3000))]), endNetwork());
     expect(mnemonics(MITSUBISHI_FX5U, p)).toEqual(['LD X0', 'OUT T0 K30', 'END']);
     expect(mnemonics(OMRON_CP1E, p)).toEqual(['LD 0.00', 'TIM T0 #0030', 'END']);
-    expect(mnemonics(JTEKT_PC10G, p)).toEqual(['LD 1X000', 'OUT 1T000 H001E', 'END']);
+    // ジェイテクトのタイマ命令は TMR（0.1秒）。v2.0.0 設計 §3.6（以前は PCwin の OUT と仮定していた）
+    expect(mnemonics(JTEKT_PC10G, p)).toEqual(['LD 1X000', 'TMR 1T000 H001E', 'END']);
     expect(mnemonics(SHARP_JW300, p)).toEqual(['STR 000000', 'TMR00000 0030', 'F-40']);
   });
 

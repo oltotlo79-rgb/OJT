@@ -2041,6 +2041,22 @@
                                 "type": "integer",
                                 "minimum": 10,
                                 "maximum": 3600000
+                              },
+                              "base": {
+                                "anyOf": [
+                                  {
+                                    "type": "number",
+                                    "const": 100
+                                  },
+                                  {
+                                    "type": "number",
+                                    "const": 10
+                                  },
+                                  {
+                                    "type": "number",
+                                    "const": 1
+                                  }
+                                ]
                               }
                             },
                             "required": ["kind", "type", "device", "presetMs"],

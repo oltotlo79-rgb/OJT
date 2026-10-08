@@ -70,6 +70,7 @@ const RULES: DeviceRuleSet = {
       ? (RULES.specialDevices[d.index] ?? `SP${d.index}`)
       : `${RULES.deviceRanges[d.kind].prefix}${d.index}`,
   timer: TIMER,
+  timerBases: [100],
   counter: { min: 1, max: 999 },
 };
 

@@ -47,6 +47,16 @@ export {
 
 export { MITSUBISHI_FX5U, roundTimerPreset, timerBaseMs } from './mitsubishi.js';
 
+export { unitLabelOf } from './device-rules.js';
+
+export {
+  coerceTimerBases,
+  defaultTimerBase,
+  timerBaseChoices,
+  type CoercedTimer,
+  type TimerBaseChoice,
+} from './timer-base.js';
+
 export { OMRON_CP1E } from './omron.js';
 
 export { JTEKT_PC10G } from './jtekt.js';

@@ -14,8 +14,10 @@ import {
   type Cell,
   type Device,
   type DeviceKind,
+  type TimerBase,
 } from '@ojt/ladder-core';
 import {
+  defaultTimerBase,
   nativeContact,
   roundTimerPreset,
   type DialectProfile,
@@ -44,6 +46,8 @@ export interface CellForm {
   presetText: string;
   /** CTU のリセットデバイス。 */
   resetText: string;
+  /** TON の時間単位（命令で選ぶ。v2.0.0 設計 §3.6）。省略すると方言の既定。 */
+  base?: TimerBase;
 }
 
 /** 空の入力欄。 */
@@ -91,10 +95,11 @@ export function timerPresetMs(
   text: string,
   device: Device,
   profile: DialectProfile,
+  base?: TimerBase,
 ): number | Error {
   const trimmed = text.trim();
   if (trimmed.length === 0) return new Error('設定値を入力してください');
-  const parsed = profile.parseTimerPreset(trimmed, device);
+  const parsed = profile.parseTimerPreset(trimmed, device, base);
   if (typeof parsed === 'number') return parsed;
   if (/^[0-9]+$/u.test(trimmed)) {
     const ms = Number(trimmed);
@@ -122,9 +127,10 @@ export function roundSuggestionFor(
   ms: number,
   device: Device,
   profile: DialectProfile,
+  base?: TimerBase,
 ): RoundSuggestion | undefined {
-  if (!(profile.timerPreset(ms, device) instanceof Error)) return undefined;
-  const baseMs = profile.timerBaseMs(device);
+  if (!(profile.timerPreset(ms, device, base) instanceof Error)) return undefined;
+  const baseMs = profile.timerBaseMs(device, base);
   return { ms, baseMs, rounded: roundTimerPreset(ms, baseMs) };
 }
 
@@ -182,11 +188,13 @@ export function buildCell(form: CellForm, profile: DialectProfile): Cell | Error
   if (form.output === 'MC') return mc(device);
   if (form.output === 'MCR') return mcr(device);
   if (form.output === 'TON') {
-    const ms = timerPresetMs(form.presetText, device, profile);
+    // 時間単位は必ずセルに書く（命令で選ぶ。v2.0.0 設計 §3.6）。欄が空なら方言の既定
+    const base = form.base ?? defaultTimerBase(profile);
+    const ms = timerPresetMs(form.presetText, device, profile, base);
     if (ms instanceof Error) return ms;
-    const preset = profile.timerPreset(ms, device);
+    const preset = profile.timerPreset(ms, device, base);
     if (preset instanceof Error) return preset;
-    return ton(device, ms);
+    return ton(device, ms, base);
   }
   // Phase 4: 設定値の綴りは方言が決める（`DialectProfile.parseCounterPreset`。申し送り F-2）
   const preset = parseCounterPreset(form.presetText, profile);
@@ -216,12 +224,13 @@ export function formForCell(cell: Cell, profile: DialectProfile): CellForm {
     return { ...base, output: cell.type, deviceText: profile.formatDevice(cell.device) };
   }
   if (cell.kind === 'timer') {
-    const preset = profile.timerPreset(cell.presetMs, cell.device);
+    const preset = profile.timerPreset(cell.presetMs, cell.device, cell.base);
     return {
       ...base,
       output: 'TON',
       deviceText: profile.formatDevice(cell.device),
       presetText: preset instanceof Error ? String(cell.presetMs) : preset.text,
+      ...(cell.base === undefined ? {} : { base: cell.base }),
     };
   }
   if (cell.kind === 'counter') {
@@ -265,6 +274,8 @@ interface EntrySpec {
   output?: OutputForm;
   /** 並列（OR）の命令か。 */
   branch?: boolean;
+  /** タイマ命令の時間単位（`OUTH T` → 10ms）。v2.0.0 設計 §3.6 */
+  base?: TimerBase;
 }
 
 /**
@@ -341,6 +352,16 @@ function entryTable(profile: DialectProfile): Map<string, EntrySpec> {
     const spec = ENTRY_SPECS.find((item) => item.key === key);
     if (spec !== undefined) table.set(alias, spec);
   }
+  // 時間単位ごとのタイマ命令（`OUTH T0 K50` / `TIMH T0 #0050`）。既定の綴りは上で入っている。
+  // `OUTH T` のように末尾がデバイス接頭辞の綴りは、`OUTH T0` と続けて打つので先頭の語でも引く
+  for (const base of profile.timerBases) {
+    const full = normalizeEntryText(profile.timerInstructionName(base)).toUpperCase();
+    const spec: EntrySpec = { key: 'timer', target: 'output', output: 'TON', base };
+    for (const name of [full, full.split(' ')[0] ?? full]) {
+      if (name.length === 0 || table.has(name)) continue;
+      table.set(name, spec);
+    }
+  }
   return table;
 }
 
@@ -416,6 +437,7 @@ export function parseDirectEntry(
     form.target = spec.target;
     if (spec.contact !== undefined) form.contact = spec.contact;
     if (spec.output !== undefined) form.output = spec.output;
+    if (spec.base !== undefined) form.base = spec.base;
   }
   form.deviceText = rest[0] ?? '';
   if (form.target === 'output') {

@@ -1,14 +1,16 @@
 import {
   device,
   deviceLabel,
-  SPECIAL_ALWAYS_ON,
   SPECIAL_ALWAYS_OFF,
+  SPECIAL_ALWAYS_ON,
   SPECIAL_CLOCK_1S,
   SPECIAL_FIRST_SCAN,
+  TIMER_STEP_MS,
   type Cell,
   type Device,
   type DeviceKind,
   type LadderProgram,
+  type TimerBase,
 } from '@ojt/ladder-core';
 import { normalizeDeviceText } from './device-rules.js';
 import type {
@@ -32,11 +34,23 @@ import { GX_STYLE_SHORTCUTS } from './shortcuts.js';
  * 変更しなくてよい。
  */
 
-/** タイマの番号帯ごとの時間単位[ms]。§8.2 / §17 #20 */
-export function timerBaseMs(timer: Device): number {
+/**
+ * タイマの時間単位[ms]。§8.2 / §17 #20 / v2.0.0 設計 §3.6
+ *
+ * 実機（FX5U）は**命令で選ぶ**（`OUT`＝100ms・`OUTH`＝10ms・`OUTHS`＝1ms）。`base` があれば
+ * それを使う。無いセル（v2.0.0 より前の作業ファイル・課題）は旧来の番号帯
+ * （T0〜199＝100ms・T200〜255＝10ms・T256〜＝1ms）で読み、以前と同じ動作を保つ（互換）。
+ */
+export function timerBaseMs(timer: Device, base?: TimerBase): number {
+  if (base !== undefined) return base;
   if (timer.index >= 256) return 1;
   if (timer.index >= 200) return 10;
   return 100;
+}
+
+/** 時間単位ごとのタイマ命令名（GX Works3 の `OUT T` / `OUTH T` / `OUTHS T`）。 */
+export function mitsubishiTimerInstructionName(base: TimerBase): string {
+  return base === 100 ? 'OUT T' : base === 10 ? 'OUTH T' : 'OUTHS T';
 }
 
 /**
@@ -150,12 +164,17 @@ function isTimerUnitMismatch(ms: number, base: number): boolean {
   return !Number.isInteger(ms) || ms <= 0 || ms % base !== 0;
 }
 
-/** ms → `K` 表記。番号帯の単位で割り切れないと Error。§10.5 */
-function timerPreset(ms: number, timer: Device): TimerPresetText | Error {
-  const base = timerBaseMs(timer);
+/** ms → `K` 表記。時間単位（命令、無ければ番号帯）で割り切れないと Error。§10.5 */
+function timerPreset(ms: number, timer: Device, unit?: TimerBase): TimerPresetText | Error {
+  const base = timerBaseMs(timer, unit);
   if (isTimerUnitMismatch(ms, base)) {
     return new Error(
       `${formatDevice(timer)} は ${base}ms 単位で指定します（${ms}ms は指定できません）`,
+    );
+  }
+  if (ms % TIMER_STEP_MS !== 0) {
+    return new Error(
+      `${formatDevice(timer)} の設定値 ${ms}ms は本アプリの演算刻み（${TIMER_STEP_MS}ms）に合いません（${TIMER_STEP_MS}ms の倍数にします）`,
     );
   }
   const k = ms / base;
@@ -166,7 +185,7 @@ function timerPreset(ms: number, timer: Device): TimerPresetText | Error {
 }
 
 /** `K` 表記 → ms。§10.5 */
-function parseTimerPreset(text: string, timer: Device): number | Error {
+function parseTimerPreset(text: string, timer: Device, unit?: TimerBase): number | Error {
   // 指摘 PD-1: 全角の `Ｋ３０` も読む
   const matched = /^K([0-9]+)$/u.exec(normalizeDeviceText(text));
   const digits = matched?.[1];
@@ -175,7 +194,7 @@ function parseTimerPreset(text: string, timer: Device): number | Error {
   if (k < MIN_K || k > MAX_K) {
     return new Error(`タイマ設定値が範囲外です（K${MIN_K}〜K${MAX_K}）: ${text}`);
   }
-  return k * timerBaseMs(timer);
+  return k * timerBaseMs(timer, unit);
 }
 
 /**
@@ -280,8 +299,10 @@ const ERROR_MESSAGES: Readonly<Record<string, string>> = {
  * タイマ設定値のエラー種別を判定する。`timerPreset()` は失敗理由（単位に合わない／K値が
  * 範囲外）ごとに文言を変えるが `code` までは持たないので、`checkCell` はここで再判定する。
  */
-function timerErrorCode(ms: number, timer: Device): 'timer-unit' | 'timer-range' {
-  return isTimerUnitMismatch(ms, timerBaseMs(timer)) ? 'timer-unit' : 'timer-range';
+function timerErrorCode(ms: number, timer: Device, unit?: TimerBase): 'timer-unit' | 'timer-range' {
+  return isTimerUnitMismatch(ms, timerBaseMs(timer, unit)) || ms % TIMER_STEP_MS !== 0
+    ? 'timer-unit'
+    : 'timer-range';
 }
 
 /** セルが参照するデバイスを列挙する（設定値の検査もここで行う）。 */
@@ -302,10 +323,10 @@ function checkCell(
     devices.push(cell.device);
   } else if (cell.kind === 'timer') {
     devices.push(cell.device);
-    const preset = timerPreset(cell.presetMs, cell.device);
+    const preset = timerPreset(cell.presetMs, cell.device, cell.base);
     if (preset instanceof Error) {
       errors.push({
-        code: timerErrorCode(cell.presetMs, cell.device),
+        code: timerErrorCode(cell.presetMs, cell.device, cell.base),
         message: preset.message,
         device: cell.device,
         networkId,
@@ -381,8 +402,11 @@ export const MITSUBISHI_FX5U: DialectProfile = {
   deviceRanges: DEVICE_RANGES,
   timerPreset,
   parseTimerPreset,
-  // 指摘 LE-6: 三菱だけ番号帯でタイマの時間単位が変わるので、丸め提案にもそれを使う
+  // 指摘 LE-6: 三菱は（命令が無いセルでは）番号帯でタイマの時間単位が変わるので、丸め提案にもそれを使う
   timerBaseMs,
+  // 時間単位は命令で選ぶ（OUT / OUTH / OUTHS）。v2.0.0 設計 §3.6
+  timerBases: [100, 10, 1],
+  timerInstructionName: mitsubishiTimerInstructionName,
   counterPresetText,
   parseCounterPreset,
   specialDevices: SPECIAL_DEVICES,

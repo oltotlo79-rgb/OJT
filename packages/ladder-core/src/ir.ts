@@ -77,11 +77,21 @@ export function isDraftOutput(symbol: DraftSymbol): boolean {
   return !(['NO', 'NC', 'P', 'F'] as readonly string[]).includes(symbol);
 }
 
+/**
+ * タイマの時間単位[ms]（設定値1カウントの長さ）。v2.0.0 設計 §3.6
+ * 実機では**命令で選ぶ**（三菱 OUT/OUTH/OUTHS、オムロン TIM/TIMH/TMHH、ジェイテクト TMR/TMRH）。
+ * IR は `presetMs` を正本に持つので、`base` は表記（命令名・設定値の書き方）と検査にだけ効き、
+ * ランタイムの動作は変わらない。省略したセルは方言の既定（三菱は旧来の番号帯）で読む。
+ */
+export type TimerBase = 100 | 10 | 1;
+/** 選べる時間単位（既定は先頭の 100ms）。 */
+export const TIMER_BASES: readonly TimerBase[] = [100, 10, 1];
+
 /** セル。§10.3 */
 export type Cell =
   | { kind: 'contact'; type: ContactType; device: Device }
   | { kind: 'coil'; type: CoilType; device: Device }
-  | { kind: 'timer'; type: 'TON'; device: Device; presetMs: number }
+  | { kind: 'timer'; type: 'TON'; device: Device; presetMs: number; base?: TimerBase }
   | { kind: 'counter'; type: 'CTU'; device: Device; preset: number; resetDevice: Device }
   | { kind: 'mc'; device: Device }
   | { kind: 'mcr'; device: Device }
@@ -197,9 +207,14 @@ export function set(d: Device): Cell {
 export function rst(d: Device): Cell {
   return { kind: 'coil', type: 'RST', device: d };
 }
-/** オンディレータイマ。設定値はmsで持つ（方言表記への変換は `timerPreset()`）。§10.3 */
-export function ton(d: Device, presetMs: number): Cell {
-  return { kind: 'timer', type: 'TON', device: d, presetMs };
+/**
+ * オンディレータイマ。設定値はmsで持つ（方言表記への変換は `timerPreset()`）。§10.3
+ * `base` は命令で選ぶ時間単位（v2.0.0 設計 §3.6）。省略すると方言の既定で読む。
+ */
+export function ton(d: Device, presetMs: number, base?: TimerBase): Cell {
+  return base === undefined
+    ? { kind: 'timer', type: 'TON', device: d, presetMs }
+    : { kind: 'timer', type: 'TON', device: d, presetMs, base };
 }
 /** 加算カウンタ。 */
 export function ctu(d: Device, preset: number, resetDevice: Device): Cell {

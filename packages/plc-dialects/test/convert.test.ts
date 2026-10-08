@@ -147,6 +147,8 @@ describe('§10.5 vendor neutrality: convert() through a non-Mitsubishi stub prof
     timerPreset: (ms, d) => ({ text: `#${ms}`, device: d }),
     parseTimerPreset: (text) => Number(text.replace('#', '')),
     timerBaseMs: () => 1,
+    timerBases: [100],
+    timerInstructionName: () => 'TMR',
     instructionNames: {
       ld: 'STR',
       ldi: 'STR NOT',
