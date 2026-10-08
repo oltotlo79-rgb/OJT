@@ -1,6 +1,6 @@
 import type { ChatterEvent, HazardEvent } from '@ojt/circuit-sim';
 import type { JSX } from 'react';
-import { JA, restoredHazardsText } from '../i18n/ja.js';
+import { hazardDetailText, JA, restoredHazardsText } from '../i18n/ja.js';
 import { useStore, type LogLine } from '../app/store.js';
 import styles from './panels.module.css';
 
@@ -48,7 +48,7 @@ export function LogPanel({
           )}
           {hazards.map((hazard, index) => (
             <li key={`h-${index}`}>
-              {JA.hazard[hazard.kind]}（{hazard.detail}）
+              {JA.hazard[hazard.kind]}（{hazardDetailText(hazard.kind, hazard.detail)}）
             </li>
           ))}
           {chatters.length === 0 ? null : <li>{JA.result.forbidden}</li>}

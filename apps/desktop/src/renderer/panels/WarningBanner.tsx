@@ -1,6 +1,6 @@
 import type { JSX } from 'react';
 import { useStore } from '../app/store.js';
-import { JA, mistakeCountText } from '../i18n/ja.js';
+import { hazardDetailText, JA, mistakeCountText } from '../i18n/ja.js';
 import styles from './warning.module.css';
 
 /**
@@ -20,8 +20,10 @@ export function WarningBanner(): JSX.Element | null {
   if (banner === undefined) return null;
   return (
     <div className={styles.warnBanner} role="alert" data-testid="hazard-banner">
+      <span className={styles.warnLabel}>{JA.session.warnLabel}</span>
       <span className={styles.warnKind}>{JA.hazard[banner.kind]}</span>
-      <span>{banner.detail}</span>
+      {/* 内部の識別子（`breaker:on`）を訓練者に見せない（v2.0.0 総点検 F15） */}
+      <span>{hazardDetailText(banner.kind, banner.detail)}</span>
       <span className={styles.warnSpacer} />
       <span data-testid="mistake-count">{mistakeCountText(count + restored)}</span>
       <button

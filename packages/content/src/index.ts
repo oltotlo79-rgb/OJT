@@ -480,3 +480,4 @@ export {
 } from './wiring-diff.js';
 
 export { validateDefinition, type DefinitionValidation } from './definition-validation.js';
+export { requiredPartRoles } from './required-parts.js';

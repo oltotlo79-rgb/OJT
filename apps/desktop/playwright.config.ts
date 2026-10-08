@@ -31,8 +31,23 @@ export default defineConfig({
    *   pnpm --filter @ojt/desktop e2e:shots   図の撮り直し（撮ったら `git status docs/manual` を確認）
    */
   projects: [
-    { name: 'default', testIgnore: ['**/manual-shots.spec.ts', '**/portable.spec.ts'] },
+    {
+      name: 'default',
+      testIgnore: [
+        '**/manual-shots.spec.ts',
+        '**/portable.spec.ts',
+        '**/manual-walkthrough.spec.ts',
+      ],
+    },
     { name: 'manual-shots', testMatch: ['**/manual-shots.spec.ts'] },
     { name: 'packaged', testMatch: ['**/portable.spec.ts'] },
+    /*
+     * 説明書の記述を実画面で確かめる通し点検（v2.0.0 総点検）。記録を
+     * `OJT/release/verification/v<version>/manual-walkthrough.{json,md}` に書き出す。
+     * 不一致はテストの失敗にしないので、既定の E2E には混ぜない。
+     *
+     *   pnpm --filter @ojt/desktop e2e:walkthrough
+     */
+    { name: 'walkthrough', testMatch: ['**/manual-walkthrough.spec.ts'] },
   ],
 });

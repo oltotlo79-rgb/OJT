@@ -279,6 +279,8 @@ export const JA = {
     log: '操作ログ',
     /** 警告バナーを畳む。§5.6 */
     warnDismiss: '閉じる',
+    /** 危険操作の帯の先頭に出す見出し（説明書 03章「赤い「警告」の帯」と同じ語）。 */
+    warnLabel: '警告',
     problem: '課題',
     chart: 'タイムチャート（仕様）',
     cancelWire: '配線を取り消しました',
@@ -1213,6 +1215,20 @@ export const JA = {
     assemblePower: '通電（ブレーカ→電源スイッチ）',
     assembleJudge: '判定',
     assemblePartsHint: '部品パネルでソケットを選び、「装着」を押します。',
+    /**
+     * 次に載せる役割とソケットを言う（v2.0.0 総点検 Task 2）。
+     * 「CR1 をソケット S1 に載せます（部品パネルで選ぶか、カードをソケットへ運びます）。残り: T1」
+     */
+    assemblePartsHintFor: (missing: ReadonlyArray<{ role: string; socket: string }>): string => {
+      const first = missing[0];
+      if (first === undefined) return '部品パネルでソケットを選び、「装着」を押します。';
+      const where = first.socket === '' ? '' : `ソケット ${first.socket} に`;
+      const rest = missing
+        .slice(1)
+        .map((item) => item.role)
+        .join('・');
+      return `${first.role} を${where}載せます（部品パネルで選ぶか、カードをソケットへ運びます）。${rest === '' ? '' : `残り: ${rest}`}`;
+    },
     assembleWireHint: '3D盤の端子を2つクリックして配線します。',
     /** モードC1: 部品を挿す → 通電 → 測る → マーク → 判定 */
     inspectPlug: '部品を挿す',
@@ -1981,6 +1997,37 @@ export function suspectMoreText(count: number): string {
  */
 export function mistakeCountText(count: number): string {
   return `${JA.result.mistakes} ${count} ${JA.result.times}${JA.result.mistakesSuffix}`;
+}
+
+/**
+ * 危険操作の詳細（`HazardEvent.detail`）を訓練者向けの日本語にする。v2.0.0 総点検 F15
+ *
+ * `detail` はシミュレーションが機械向けに書く短い識別子（電源手順は `breaker:on`、通電中の
+ * Ω測定は `CHK.13-CHK.14`、3本目は端子IDの列）で、そのまま帯に出すと内部の言葉が見える。
+ * 読めない形はそのまま返す（情報を落とさない）。
+ */
+export function hazardDetailText(kind: HazardKind, detail: string): string {
+  if (kind === 'power-sequence-violation') {
+    const order = '正しい順は、入れるとき ①ブレーカ→②電源スイッチ、切るとき ②→①です';
+    const texts: Record<string, string> = {
+      'switch:on': `ブレーカが切れたまま電源スイッチを入れました。${order}`,
+      'breaker:on': `電源スイッチが入ったままブレーカを入れました。${order}`,
+      'breaker:off': `電源スイッチを切る前にブレーカを切りました。${order}`,
+      'switch:off': `電源スイッチを切りました。${order}`,
+    };
+    return texts[detail] ?? detail;
+  }
+  if (kind === 'ohm-on-live') {
+    const [black, red] = detail.split('-');
+    return black === undefined || red === undefined || black === '' || red === ''
+      ? detail
+      : `黒 ${black}・赤 ${red} を当てたまま通電しています。電源を切ってから測ります`;
+  }
+  if (kind === 'over-wires-per-terminal') {
+    const terminals = detail.split(',').filter((id) => id !== '');
+    return terminals.length === 0 ? detail : `端子 ${terminals.join('・')} に3本以上`;
+  }
+  return detail;
 }
 
 /** 接点の組のプローブ位置の表示（`1組 a接点`）。§9.1 */

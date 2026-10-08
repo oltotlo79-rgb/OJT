@@ -39,10 +39,26 @@ export function sequentialSteps<K extends string>(
 /** モードBの手順キー（部品装着 → 配線 → 通電 → 判定）。 */
 export type AssembleStepKey = 'parts' | 'wire' | 'power' | 'judge';
 
-/** モードBの手順帯。 */
+/** まだ載せていない部品（役割と、その役割のソケット）。案内文に使う。 */
+export interface MissingPart {
+  role: string;
+  socket: string;
+}
+
+/**
+ * モードBの手順帯。
+ *
+ * 「部品装着 済」は**課題の模範が使う役割（`requiredRoles`）が全部載ったとき**に付ける
+ * （v2.0.0 総点検 Task 2）。以前は在庫の残り（`partsRemaining`）で決めていたため、
+ * 在庫に予備のタイマがある b-001 では CR1 を載せても永遠に「いまここ」のままで、
+ * 在庫を全部載せると今度は「未使用部品」の静的チェックで不合格になる、という行き止まりがあった。
+ * 要求する役割が無い課題（自由練習の盤など）は最初から済にする。
+ */
 export function assembleSteps(input: {
-  /** 未装着の部品の種類数（0で全部装着済み）。 */
-  partsRemaining: number;
+  /** 課題の模範が使う部品の役割（`@ojt/content` の `requiredPartRoles()`）。 */
+  requiredRoles: readonly string[];
+  /** いま部品が載っているソケットの役割。 */
+  mountedRoles: readonly string[];
   /** いまの電線の本数。 */
   wireCount: number;
   /** 固定（訓練者が外せない）電線の本数。 */
@@ -50,7 +66,7 @@ export function assembleSteps(input: {
   /** 通電しているか。 */
   powered: boolean;
 }): ReadonlyArray<GuideStep<AssembleStepKey>> {
-  const partsDone = input.partsRemaining <= 0;
+  const partsDone = missingParts(input.requiredRoles, input.mountedRoles, {}).length === 0;
   const wireDone = input.wireCount > input.fixedWireCount;
   const powerDone = input.powered;
   return sequentialSteps([
@@ -114,9 +130,33 @@ export function inspectRepairSteps(input: {
   ]);
 }
 
-/** いまの手順にだけ効く1行の案内（`PlcSession.tsx` の `stepHintText` と同じ方針）。 */
-export function assembleStepHint(key: AssembleStepKey | undefined): string | undefined {
-  if (key === 'parts') return JA.stepGuide.assemblePartsHint;
+/**
+ * まだ載せていない役割を、要求の並び（CR1〜CR4・T1・T2）のまま返す。
+ * `socketsByRole` に無い役割はソケット名を空にする（案内文は役割だけを言う）。
+ */
+export function missingParts(
+  requiredRoles: readonly string[],
+  mountedRoles: readonly string[],
+  socketsByRole: Readonly<Record<string, string | undefined>>,
+): MissingPart[] {
+  return requiredRoles
+    .filter((role) => !mountedRoles.includes(role))
+    .map((role) => ({ role, socket: socketsByRole[role] ?? '' }));
+}
+
+/**
+ * いまの手順にだけ効く1行の案内（`PlcSession.tsx` の `stepHintText` と同じ方針）。
+ * 「部品装着」の案内は**次に載せる役割とソケット**を言う（「CR1 をソケット S1 に載せます」）。
+ */
+export function assembleStepHint(
+  key: AssembleStepKey | undefined,
+  missing: readonly MissingPart[] = [],
+): string | undefined {
+  if (key === 'parts') {
+    return missing.length === 0
+      ? JA.stepGuide.assemblePartsHint
+      : JA.stepGuide.assemblePartsHintFor(missing);
+  }
   if (key === 'wire') return JA.stepGuide.assembleWireHint;
   if (key === 'power') return JA.stepGuide.powerHint;
   if (key === 'judge') return JA.stepGuide.judgeHint;

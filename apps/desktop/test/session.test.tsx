@@ -297,9 +297,12 @@ describe('手順帯（UXレビュー #3: 部品装着 → 配線 → 通電 → 
     const session = useStore.getState().session;
     if (session === undefined) throw new Error('セッションがありません');
 
-    // 部品を使い切った体で「配線」がいまここになることを確かめる（装着の中身は問わない）
+    // 課題で使う部品（b-001 は CR1）を載せたら「配線」がいまここになる。在庫の残りは見ない
+    // （v2.0.0 総点検 Task 2。以前は在庫を使い切ったことにしていた）
     act(() => {
-      useStore.getState().setSession({ ...session, inventory: [] });
+      useStore
+        .getState()
+        .setSession({ ...session, mounted: { ...session.mounted, S1: { kind: 'relay-my4n' } } });
     });
     expect(screen.getByTestId('step-wire')).toHaveAttribute('data-state', 'current');
     expect(screen.getByTestId('step-power')).toHaveAttribute('data-state', 'todo');

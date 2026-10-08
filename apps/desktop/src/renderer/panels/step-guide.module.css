@@ -17,6 +17,15 @@
   padding: 8px 12px;
 }
 
+/* 帯の見出し「手順」。段の札より少し薄く、1語で終わる */
+.label {
+  color: var(--muted);
+  font-size: max(12px, 0.75rem);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
 .list {
   display: flex;
   flex-wrap: wrap;

@@ -32,6 +32,18 @@
   padding: 6px 12px;
 }
 
+/* 帯の先頭の見出し「警告」（説明書 03章の「赤い「警告」の帯」と同じ語で読めるようにする） */
+.warnLabel {
+  background: var(--warn);
+  border-radius: 4px;
+  color: #1b1207;
+  font-size: max(12px, 0.75rem);
+  font-weight: 700;
+  line-height: 1.4;
+  padding: 1px 6px;
+  white-space: nowrap;
+}
+
 .warnKind {
   font-weight: 700;
 }

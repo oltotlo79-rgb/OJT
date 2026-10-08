@@ -8,6 +8,7 @@ import {
   inspectRepairStepHint,
   labStepHint,
   labSteps,
+  missingParts,
   sequentialSteps,
 } from '../src/renderer/session/step-guide.js';
 
@@ -37,7 +38,8 @@ describe('sequentialSteps（一直線の手順の状態付け）', () => {
 describe('assembleSteps（モードB: 部品装着 → 配線 → 通電 → 判定）', () => {
   it('starts at parts when nothing is mounted', () => {
     const steps = assembleSteps({
-      partsRemaining: 2,
+      requiredRoles: ['CR1', 'T1'],
+      mountedRoles: [],
       wireCount: 3,
       fixedWireCount: 3,
       powered: false,
@@ -52,7 +54,8 @@ describe('assembleSteps（モードB: 部品装着 → 配線 → 通電 → 判
 
   it('moves to wire once parts are all mounted, before any new wire is drawn', () => {
     const steps = assembleSteps({
-      partsRemaining: 0,
+      requiredRoles: ['CR1'],
+      mountedRoles: ['CR1'],
       wireCount: 3,
       fixedWireCount: 3,
       powered: false,
@@ -62,7 +65,8 @@ describe('assembleSteps（モードB: 部品装着 → 配線 → 通電 → 判
 
   it('moves to power once a wire beyond the fixed ones is drawn', () => {
     const steps = assembleSteps({
-      partsRemaining: 0,
+      requiredRoles: ['CR1'],
+      mountedRoles: ['CR1'],
       wireCount: 4,
       fixedWireCount: 3,
       powered: false,
@@ -73,7 +77,8 @@ describe('assembleSteps（モードB: 部品装着 → 配線 → 通電 → 判
 
   it('moves to judge once powered', () => {
     const steps = assembleSteps({
-      partsRemaining: 0,
+      requiredRoles: ['CR1'],
+      mountedRoles: ['CR1'],
       wireCount: 4,
       fixedWireCount: 3,
       powered: true,
@@ -85,6 +90,57 @@ describe('assembleSteps（モードB: 部品装着 → 配線 → 通電 → 判
   it('gives a hint only for the current step', () => {
     expect(assembleStepHint('parts')).toContain('装着');
     expect(assembleStepHint(undefined)).toBeUndefined();
+  });
+
+  /*
+   * v2.0.0 総点検 Task 2: 「部品装着 済」は課題の模範が使う役割が全部載ったとき。
+   * 在庫の残り（予備のタイマなど）では決めない。
+   */
+  it('marks parts done when every required role is mounted, even if stock remains', () => {
+    const steps = assembleSteps({
+      requiredRoles: ['CR1'],
+      mountedRoles: ['CR1'],
+      wireCount: 0,
+      fixedWireCount: 0,
+      powered: false,
+    });
+    expect(steps.map((s) => [s.key, s.state])).toEqual([
+      ['parts', 'done'],
+      ['wire', 'current'],
+      ['power', 'todo'],
+      ['judge', 'todo'],
+    ]);
+  });
+
+  it('keeps parts current while a required role is missing, and names the next one', () => {
+    const missing = missingParts(['CR1', 'T1'], ['CR1'], { CR1: 'S1', T1: 'S5' });
+    expect(missing).toEqual([{ role: 'T1', socket: 'S5' }]);
+    const steps = assembleSteps({
+      requiredRoles: ['CR1', 'T1'],
+      mountedRoles: ['CR1'],
+      wireCount: 0,
+      fixedWireCount: 0,
+      powered: false,
+    });
+    expect(steps[0]).toMatchObject({ key: 'parts', state: 'current' });
+    expect(assembleStepHint('parts', missing)).toBe(
+      'T1 をソケット S5 に載せます（部品パネルで選ぶか、カードをソケットへ運びます）。',
+    );
+    expect(
+      assembleStepHint('parts', missingParts(['CR1', 'T1'], [], { CR1: 'S1', T1: 'S5' })),
+    ).toContain('残り: T1');
+  });
+
+  it('starts at wire when the problem needs no parts', () => {
+    const steps = assembleSteps({
+      requiredRoles: [],
+      mountedRoles: [],
+      wireCount: 0,
+      fixedWireCount: 0,
+      powered: false,
+    });
+    expect(steps[0]).toMatchObject({ key: 'parts', state: 'done' });
+    expect(steps[1]).toMatchObject({ key: 'wire', state: 'current' });
   });
 });
 

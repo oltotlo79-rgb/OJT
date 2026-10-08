@@ -123,3 +123,27 @@ test('見直し中の通常終了で作業を保存し、復元確認のキー�
     await third.app.close();
   }
 });
+
+/*
+ * v2.0.0 総点検 Task 2: 手順帯の「部品装着」は、課題の回路で使う部品が載ったら「済」になる。
+ * b-001 は在庫にリレー2・タイマ2があるが、使うのは CR1 だけ。以前は在庫の残りで決めていたため
+ * CR1 を載せても「いまここ」のままだった。
+ */
+test('部品装着は課題で使う部品（CR1）を載せた時点で済になり、案内は次の部品とソケットを言う', async () => {
+  const { app, page } = await launchApp({ contentSize: { width: 1440, height: 900 } });
+  try {
+    await page.getByTestId('mode-assemble').click();
+    await page.getByTestId('open-b-001').click();
+    await expect(page.getByTestId('step-parts')).toHaveAttribute('data-state', 'current');
+    await expect(page.getByTestId('step-hint')).toContainText('CR1 をソケット S1 に載せます');
+    await page.getByTestId('socket-list-S1').click();
+    await page.getByTestId('mount-relay-my4n').click();
+    await expect(page.getByTestId('step-parts')).toHaveAttribute('data-state', 'done');
+    await expect(page.getByTestId('step-wire')).toHaveAttribute('data-state', 'current');
+    await expect(page.getByTestId('step-hint')).toContainText('3D盤の端子を2つクリックして配線します');
+    // 在庫にはタイマが残っているが、載せなくても「済」のまま
+    await expect(page.getByTestId('parts-palette')).toContainText('残り');
+  } finally {
+    await app.close();
+  }
+});

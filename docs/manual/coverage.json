@@ -271,7 +271,7 @@
     {
       "testid": "chart-backdrop",
       "screen": "練習中",
-      "label": "図の外をクリックすると閉じます",
+      "label": "窓の外をクリック",
       "section": "screens/タイムチャートの読み方"
     },
     {
@@ -1677,7 +1677,7 @@
     {
       "testid": "schematic-backdrop",
       "screen": "練習中",
-      "label": "図の外をクリックすると閉じます",
+      "label": "窓の外をクリック",
       "section": "mode-c2/回路図と盤を行き来する"
     },
     {
@@ -1953,7 +1953,7 @@
     {
       "testid": "skin-assumed",
       "screen": "設定",
-      "label": "画面の見た目の前提",
+      "label": "この見た目の根拠（指導員向け）",
       "section": "settings/PLCの既定のメーカー"
     },
     {

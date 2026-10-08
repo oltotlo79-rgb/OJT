@@ -4,14 +4,18 @@ import { WireListPanel } from '../panels/WireListPanel.js';
 import { togglePowerFixture } from '../session/power-toggle.js';
 import { CollapsiblePanel } from '../panels/CollapsiblePanel.js';
 import {
-  mountedKinds,
-  remainingInventory,
   socketPartId,
   toPhysicalTerminal,
   toSessionTerminal,
   toNetlistTerminal,
+  trySocketOf,
 } from '@ojt/board-model';
-import { isAssembleLabProblem, isAssembleProblem, isLabProblem } from '@ojt/content';
+import {
+  isAssembleLabProblem,
+  isAssembleProblem,
+  isLabProblem,
+  requiredPartRoles,
+} from '@ojt/content';
 import { LabChartPanel } from '../lab/LabChartPanel.js';
 import type { BoardSession, MountableKind, SocketId } from '@ojt/board-model';
 import type { TerminalId } from '@ojt/circuit-sim';
@@ -75,6 +79,7 @@ import { buildSpecChart } from '../session/spec-chart.js';
 import {
   assembleStepHint,
   assembleSteps,
+  missingParts,
   labStepHint,
   labSteps,
   schematicStepHint,
@@ -629,10 +634,20 @@ export function Session(): JSX.Element {
    * モードDの手順帯（`PlcSession.tsx`）と同じ考え方で、見るのは**部品装着・配線・通電**だけ
    * （配線の中身は一切見ない。決定表#7と同じ理由）。
    */
-  const partsRemaining = remainingInventory(session.inventory, mountedKinds(session)).reduce(
-    (sum, item) => sum + item.count,
-    0,
-  );
+  /*
+   * 「部品装着 済」は課題の模範が使う役割が全部載ったとき（v2.0.0 総点検 Task 2）。
+   * 在庫の残りで決めると、予備のタイマがある課題では済にならず、在庫を全部載せれば
+   * 「未使用部品」で不合格になる行き止まりだった。
+   */
+  // この下にはフックを置かない（上の早期 return より後ろなので、ここは素の計算にする）
+  const requiredRoles = requiredPartRoles(problem);
+  const mountedRoles = Object.keys(session.mounted)
+    .map((socketId) => session.socketRoles[socketId as SocketId])
+    .filter((role): role is NonNullable<typeof role> => role !== undefined);
+  const socketsByRole = Object.fromEntries(
+    requiredRoles.map((role) => [role, trySocketOf(session.socketRoles, role)]),
+  ) as Readonly<Record<string, string | undefined>>;
+  const missing = missingParts(requiredRoles, mountedRoles, socketsByRole);
   const fixedWireCount = session.wires.filter((w) => w.locked).length;
   /*
    * UXレビュー UX-04: 回路図エディタだけを出しているあいだ（`並べて` ではなく `schematic`）は、
@@ -647,7 +662,8 @@ export function Session(): JSX.Element {
     boardWired: session.wires.some((w) => !w.locked),
   });
   const assembleStepList = assembleSteps({
-    partsRemaining,
+    requiredRoles,
+    mountedRoles,
     wireCount: session.wires.length,
     fixedWireCount,
     powered,
@@ -678,7 +694,10 @@ export function Session(): JSX.Element {
         })
       : showSchematicSteps
         ? schematicStepHint(schematicStepList.find((step) => step.state === 'current')?.key)
-        : assembleStepHint(assembleStepList.find((step) => step.state === 'current')?.key);
+        : assembleStepHint(
+            assembleStepList.find((step) => step.state === 'current')?.key,
+            missing,
+          );
   /*
    * レビュー指摘 UI-04: 状態オーバーレイの「選択中」が内部の電線ID（`w-003`）を
    * そのまま出していた。両端の端子と色から組み立てた表示名にする（見つからない

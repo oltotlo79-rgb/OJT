@@ -63,6 +63,10 @@ export function StepGuide({
 }): JSX.Element {
   return (
     <div className={styles.guide} data-testid={testId?.band ?? `step-guide`}>
+      {/* 見出しは目にも見せる（説明書「画面では「手順」と出ます」。v2.0.0 総点検 F16） */}
+      <span className={styles.label} aria-hidden="true">
+        {label}
+      </span>
       <ol
         className={styles.list}
         aria-label={label}
