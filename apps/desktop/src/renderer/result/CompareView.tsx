@@ -22,7 +22,40 @@ const COMPARE_GEOMETRY = {
   labelFont: 16,
 };
 
-function figureOf(expected: TimeChart, rows: readonly CompareRow[]): ChartFigure {
+/**
+ * 見くらべる窓の文言。回路実験・PLC実験は模範ではなく描いた正解と比べるので、
+ * その言い方にする（2026-10-08）。
+ */
+function compareTexts(problem: SupportedProblem): {
+  title: string;
+  expected: string;
+  actual: string;
+  legend: string;
+  noReference: string;
+} {
+  if (problem.mode === 'assemble-lab' || problem.mode === 'plc-lab') {
+    return {
+      title: JA.lab.compareTitle,
+      expected: JA.lab.compareExpected,
+      actual: JA.lab.compareActual,
+      legend: JA.lab.compareLegend,
+      noReference: JA.lab.compareNoReference,
+    };
+  }
+  return {
+    title: JA.compare.title,
+    expected: JA.compare.expected,
+    actual: JA.compare.actual,
+    legend: JA.compare.legend,
+    noReference: JA.compare.noReference,
+  };
+}
+
+function figureOf(
+  expected: TimeChart,
+  rows: readonly CompareRow[],
+  texts: { expected: string; actual: string },
+): ChartFigure {
   return {
     durationMs: expected.durationMs,
     edges: operationEdgeTimes(expected),
@@ -32,13 +65,13 @@ function figureOf(expected: TimeChart, rows: readonly CompareRow[]): ChartFigure
       { key: `${row.signal}-heading`, label: row.label, heading: true, waves: [] },
       {
         key: `${row.signal}-expected`,
-        label: JA.compare.expected,
+        label: texts.expected,
         waves: [{ key: 'expected', className: styles.expected ?? '', segments: row.expected }],
         bands: row.diffWindows,
       },
       {
         key: `${row.signal}-actual`,
-        label: JA.compare.actual,
+        label: texts.actual,
         waves: [{ key: 'actual', className: styles.actual ?? '', segments: row.actual }],
         bands: row.diffWindows,
       },
@@ -67,7 +100,8 @@ export function CompareView({
     () => compareCharts(expected, actual, tolerance),
     [expected, actual, tolerance],
   );
-  const figure = useMemo(() => figureOf(expected, rows), [expected, rows]);
+  const texts = useMemo(() => compareTexts(problem), [problem]);
+  const figure = useMemo(() => figureOf(expected, rows, texts), [expected, rows, texts]);
   const allowed = mayShowReference(problem);
   const report = useMemo(
     () =>
@@ -112,7 +146,7 @@ export function CompareView({
       >
         <header className={styles.header}>
           <div>
-            <h2 id="compare-title">{JA.compare.title}</h2>
+            <h2 id="compare-title">{texts.title}</h2>
             <p>{problem.title}</p>
           </div>
           <button ref={close} type="button" data-testid="compare-close" onClick={onClose}>
@@ -120,10 +154,10 @@ export function CompareView({
           </button>
         </header>
         <div className={styles.body}>
-          <p className={styles.legend}>{JA.compare.legend}</p>
+          <p className={styles.legend}>{texts.legend}</p>
           <div className={styles.chart}>
             <EnlargeableChart
-              title={JA.compare.title}
+              title={texts.title}
               figure={figure}
               smallGeom={COMPARE_GEOMETRY}
               largeGeom={COMPARE_GEOMETRY}
@@ -188,7 +222,7 @@ export function CompareView({
             </details>
           ) : (
             <p data-testid="compare-reference-hidden" className={styles.note}>
-              {JA.compare.noReference}
+              {texts.noReference}
             </p>
           )}
         </div>
@@ -232,7 +266,7 @@ export function CompareEntry(): JSX.Element | null {
           else setOpen(true);
         }}
       >
-        {JA.compare.title}
+        {compareTexts(problem).title}
       </button>
       {open ? (
         <CompareView

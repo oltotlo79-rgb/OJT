@@ -47,5 +47,19 @@
     "width": 1600,
     "height": 900,
     "captionCount": 29
+  },
+  "lab-assemble": {
+    "durationSec": 178.2,
+    "bytes": 15913319,
+    "width": 1600,
+    "height": 900,
+    "captionCount": 17
+  },
+  "lab-plc": {
+    "durationSec": 185.68,
+    "bytes": 17406428,
+    "width": 1600,
+    "height": 900,
+    "captionCount": 17
   }
 }

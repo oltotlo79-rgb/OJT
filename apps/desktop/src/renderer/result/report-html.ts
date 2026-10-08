@@ -149,6 +149,10 @@ export function resultReportHtml(input: ReportInput): string {
         result.reports.matched.length + result.reports.missed.length,
       );
     }
+    // 実験は模範回路ではなく描いた正解と比べる（2026-10-08）
+    if ((result.mode === 'assemble-lab' || result.mode === 'plc-lab') && result.passed) {
+      summary = JA.lab.summaryPassed;
+    }
     if ((result.mode === 'plc' || result.mode === 'plc-lab') && result.ladderErrors.length > 0) {
       summary = `${JA.report.ladderErrors}: ${count(result.ladderErrors.length)}`;
       details += list(JA.report.ladderErrors, [], result.ladderErrors.length);

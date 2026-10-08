@@ -15,12 +15,22 @@ const root = dirname(commonDir);
 const version = JSON.parse(readFileSync(join(appRoot, 'package.json'), 'utf8')).version;
 const notesDir = process.argv[2] ?? join(root, `release/verification/v${version}/tutorials`);
 /**
- * 仕上げる動画（既定は全7本）。PLCはメーカーごとに1本ずつある（`plc` が三菱。2026-09-26
+ * 仕上げる動画（既定は全9本。v1.10.0 で回路実験・PLC実験の2本を追加）。PLCはメーカーごとに1本ずつある（`plc` が三菱。2026-09-26
  * 利用者指示「他メーカーのPLCでも同様にチュートリアルの動画を作成して」）。
  * 一部だけ撮り直したときは `node finalize-tutorials.mjs <記録の場所> plc-omron` のように
  * 名前を並べる。並べなかった動画の目録（`catalog.json`）の行はそのまま残す。
  */
-const ALL_MODES = ['assembly', 'parts', 'repair', 'plc', 'plc-jtekt', 'plc-omron', 'plc-sharp'];
+const ALL_MODES = [
+  'assembly',
+  'parts',
+  'repair',
+  'plc',
+  'plc-jtekt',
+  'plc-omron',
+  'plc-sharp',
+  'lab-assemble',
+  'lab-plc',
+];
 const modes = process.argv.length > 3 ? process.argv.slice(3) : ALL_MODES;
 const unknown = modes.filter((mode) => !ALL_MODES.includes(mode));
 if (unknown.length > 0) throw new Error(`知らない動画の名前です: ${unknown.join(', ')}`);

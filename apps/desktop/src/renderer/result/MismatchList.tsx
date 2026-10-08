@@ -18,15 +18,24 @@ export function formatMs(ms: number): string {
   return timeReadout(ms);
 }
 
-/** 差分一覧。 */
-export function MismatchList({ mismatches }: { mismatches: readonly Mismatch[] }): JSX.Element {
+/**
+ * 差分一覧。`emptyText` は違いが無いときの1行（回路実験・PLC実験は模範回路ではなく
+ * 描いた正解と比べるので、その言い方を渡す。2026-10-08）。
+ */
+export function MismatchList({
+  mismatches,
+  emptyText = JA.result.noMismatch,
+}: {
+  mismatches: readonly Mismatch[];
+  emptyText?: string;
+}): JSX.Element {
   return (
     <div className={styles.card}>
       <h2>
         {JA.result.mismatches}（{mismatches.length}）
       </h2>
       {mismatches.length === 0 ? (
-        <p data-testid="no-mismatch">{JA.result.noMismatch}</p>
+        <p data-testid="no-mismatch">{emptyText}</p>
       ) : (
         <table className={styles.table} data-testid="mismatch-table">
           <thead>

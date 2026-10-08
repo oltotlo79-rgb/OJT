@@ -1107,6 +1107,339 @@ async function plc(vendorId) {
     5500,
   );
 }
+/*
+ * 回路実験・PLC実験の動画（2026-10-08 利用者指示）。
+ * 回路実験＝空のタイムチャートから押し方と正解を描き、自己保持を配線して動かし、盤で見直して判定。
+ * PLC実験＝配線済みの盤で例題「自己保持」のラダーを組んで動かし判定し、動かした結果を正解に
+ * 取り込む方法と、自分で配線する盤への作り直しを見せる。
+ */
+
+/** 編集窓の行を、描画域の割合 `from`〜`to`（0〜1）だけドラッグする。 @param {string} signal @param {number} from @param {number} to */
+async function dragRow(signal, from, to) {
+  const hit = page.getByTestId(`lab-row-hit-${signal}`);
+  await hit.scrollIntoViewIfNeeded();
+  const box = await hit.boundingBox();
+  if (!box) throw new Error(`${signal} の行が表示されていません`);
+  const y = box.y + box.height / 2;
+  await move(box.x + box.width * from, y);
+  await page.mouse.down();
+  await pause(250);
+  const steps = dry ? 2 : 10;
+  for (let n = 1; n <= steps; n++) {
+    const x = box.x + box.width * (from + ((to - from) * n) / steps);
+    await page.mouse.move(x, y);
+    pointerPosition = { x, y };
+    if (!dry) await page.waitForTimeout(45);
+  }
+  await pause(200);
+  await page.mouse.up();
+  await pause(500);
+}
+/** ホームの実験のカードから始める。 @param {'assemble-lab'|'plc-lab'} labMode @param {string} templateId @param {boolean} prewired */
+async function startLabFromHome(labMode, templateId, prewired) {
+  await click(page.getByTestId(`mode-${labMode}`));
+  await expect(page.getByTestId('lab-start')).toBeVisible();
+  await pause(900);
+  const template = page.getByTestId('lab-start-template');
+  await click(template);
+  await template.selectOption(templateId);
+  await expect(page.getByTestId('lab-start')).toBeVisible();
+  await pause(1200);
+  if (labMode === 'plc-lab') {
+    await click(page.getByTestId(prewired ? 'lab-start-prewired' : 'lab-start-self-wire'));
+  }
+  await click(page.getByTestId('lab-start-go'));
+  await expect(page.getByTestId('lab-panel')).toBeVisible();
+  await boardReady();
+}
+/** 実験の欄の1行の結果を待って読む。 @param {RegExp|string} text */
+async function labStatus(text) {
+  await expect(page.getByTestId('lab-status')).toContainText(text, { timeout: 60000 });
+  await highlight(page.getByTestId('lab-status'), true);
+  await pause(600);
+}
+
+async function labAssemble() {
+  await bubble(
+    '回路実験：押ボタンの押し方とランプの正しい動きを自分で描き、組んだ回路がそのとおりに動くかを確かめます。',
+    4300,
+  );
+  await startLabFromHome('assemble-lab', '', false);
+  await expand('problem-panel');
+  await highlight(page.getByTestId('problem-panel').locator('p').last(), true);
+  await bubble(
+    '回路実験には決まった課題がありません。押し方を描いて「動かす」と、組んだ回路でランプがどう動くかを見られます。正解の動きを描けば判定もできます。',
+    6000,
+  );
+  lessonReview.push({ stage: 'problem', at: (Date.now() - start) / 1000, highlighted: true });
+  await clearHighlight();
+  await highlight(page.getByTestId('lab-panel'));
+  await bubble(
+    '右の「タイムチャート実験」が中心です。描いた押し方・正解と、最後に動かした結果がここに出ます。まず「大きく開いて編集」で描きます。',
+    5600,
+  );
+  await clearHighlight();
+  await click(page.getByTestId('lab-open-editor'));
+  await expect(page.getByTestId('lab-editor')).toBeVisible();
+  await pause(800);
+  await highlight(page.getByTestId('lab-row-PB1'));
+  await bubble(
+    '上の4行が押ボタン、下の4行がランプです。押ボタンの行をドラッグすると、その区間だけ押したことになります。0.1秒ごとに合わせます。',
+    5800,
+  );
+  await clearHighlight();
+  const duration = page.getByTestId('lab-duration');
+  await click(duration);
+  await duration.fill('5');
+  await duration.press('Enter');
+  await expect(duration).toHaveValue('5');
+  await bubble('まず長さを5秒にします。長さは2〜60秒の間で、0.1秒単位で決められます。', 3800);
+  // 長さ5秒: 描画域の10%＝0.5秒
+  await dragRow('PB1', 0.1, 0.16);
+  await bubble('黒押ボタン（PB1）を0.5秒から0.8秒まで押します。運転開始の操作です。', 3800);
+  await dragRow('PB2', 0.6, 0.66);
+  await bubble('黄押ボタン（PB2）を3.0秒から3.3秒まで押します。停止の操作です。', 3800);
+  await highlight(page.getByTestId('lab-row-PL1'));
+  await bubble(
+    '次に正解を描きます。自己保持なら、PB1を押してからPB2を押すまで白ランプ（PL1）が点灯を続けるはずです。PL1の行を0.5秒から3.0秒までドラッグします。',
+    6400,
+  );
+  lessonReview.push({ stage: 'chart', at: (Date.now() - start) / 1000, highlighted: true });
+  await clearHighlight();
+  await dragRow('PL1', 0.1, 0.6);
+  await expect(page.getByTestId('lab-row-PL1')).toHaveAttribute('data-intervals', '500-3000');
+  await highlight(page.getByTestId('lab-intervals-PL1'));
+  await bubble(
+    '描いた区間は下の一覧に秒で出ます。ここで数字を打ち込んで直すこともできます。描き終えたら「閉じる」で戻ります。',
+    5200,
+  );
+  await clearHighlight();
+  await click(page.getByTestId('lab-close'));
+  await expect(page.getByTestId('lab-editor')).toHaveCount(0);
+  await bubble(
+    'これで「自分で作った問題」ができました。CR1のa接点で自己保持する回路を組み、描いたとおりに動くか確かめます。まずリレーをCR1のソケットへ載せます。',
+    6000,
+  );
+  lessonReview.push({ stage: 'first-action', at: (Date.now() - start) / 1000, highlighted: false });
+  const socket = JIPM_BOARD.sockets[0];
+  if (!socket) throw new Error('S1がありません');
+  const p = boardPoint(
+    {
+      x: socket.origin.x + socket.bodyMm.width / 2,
+      y: socket.origin.y + socket.bodyMm.length / 2,
+      z: 9,
+    },
+    await canvas(),
+  );
+  const card = page.getByTestId('palette-relay-my4n');
+  await card.scrollIntoViewIfNeeded();
+  const cardBox = await card.boundingBox();
+  if (!cardBox) throw new Error('部品カードが見つかりません');
+  await move(cardBox.x + cardBox.width / 2, cardBox.y + cardBox.height / 2);
+  await page.mouse.down();
+  await pause(300);
+  await move(p.x, p.y);
+  await pause(300);
+  await page.mouse.up();
+  await pause(600);
+  await expect(page.getByTestId('select-S1')).toBeVisible();
+  await bubble(
+    '電源 → 停止のb接点 → 開始と自己保持の並列 → コイル → ランプの順に配線します。',
+    3800,
+  );
+  for (const ends of SELF_HOLD_WIRES) await wire(...ends);
+  await expect(page.getByTestId('status-overlay')).toContainText(
+    `自分で張った電線 ${SELF_HOLD_WIRES.length} 本`,
+  );
+  await bubble(
+    '配線できました。「動かす」を押すと、描いた押し方のとおりに押ボタンを押して回路を動かします。電源も自動で入れて動かすので、盤の電源はそのままでかまいません。',
+    6000,
+  );
+  await click(page.getByTestId('lab-run'));
+  await labStatus('正解どおりに動きました');
+  await bubble(
+    '正解どおりに動きました。小さいチャートでは、細い薄色の線が描いた正解、太い線が動かした結果です。リレーの動作の遅れ（0.02秒ほど）は同じ動きとみなします。',
+    6200,
+  );
+  await clearHighlight();
+  await bubble('「盤で動きを見る」で、押し方が変わる区間ごとに3Dの盤で止めて見直せます。', 3800);
+  await click(page.getByTestId('lab-replay'));
+  await expect(page.getByTestId('replay-bar')).toHaveAttribute('aria-busy', 'false');
+  for (let index = 0; index < 2; index++) {
+    await click(page.getByTestId('replay-next'));
+    await expect(page.getByTestId('replay-bar')).toHaveAttribute('aria-busy', 'false');
+    await pause(1800);
+  }
+  await bubble(
+    'PB1を押した区間でリレーが入り、離したあともランプが点灯を続けています。見直しを終えて戻ります。',
+    4200,
+  );
+  await click(page.getByTestId('replay-stop'));
+  await expect(page.getByTestId('lab-panel')).toBeVisible();
+  await boardReady();
+  await bubble('最後に上の「判定」で、正解の動きと配線の決まりをまとめて確かめます。', 3600);
+  await click(page.getByTestId('judge-button'));
+  await expect(page.getByTestId('verdict')).toHaveText('合格', { timeout: 60000 });
+  await highlight(page.getByTestId('lab-why'));
+  await bubble(
+    '合格です。見比べる相手は模範回路ではなく、自分で描いた正解です。押し方や正解を描き換えて、いろいろな回路を試してみましょう。',
+    6000,
+  );
+  await clearHighlight();
+}
+
+async function labPlc() {
+  const unit = plcUnitFor('FX5U');
+  if (unit === undefined) throw new Error('FX5U の定義がありません');
+  const dialect = getDialect('mitsubishi');
+  /** @param {'input' | 'output'} kind @param {number} index */
+  const dev = (kind, index) => dialect.formatDevice({ kind, index });
+  const coil = String(COIL_COL);
+  await bubble(
+    'PLC実験：配線済みの盤から始め、ラダー作りに集中します。例題「自己保持」のタイムチャートどおりに動くラダーを作ります。',
+    4600,
+  );
+  await startLabFromHome('plc-lab', 'self-hold', true);
+  await expand('problem-panel');
+  await highlight(page.getByTestId('problem-panel').locator('p').last(), true);
+  await bubble(
+    'PLC実験も決まった課題はありません。押し方と正解をタイムチャートに描き、ラダーで動かして確かめます。今回は例題の押し方と正解が入った状態から始めました。',
+    6200,
+  );
+  lessonReview.push({ stage: 'problem', at: (Date.now() - start) / 1000, highlighted: true });
+  await clearHighlight();
+  await highlight(page.getByTestId('lab-wiring-mode'));
+  await bubble(
+    '「盤: 配線済み」です。リレー4個と、盤とPLCの電線がすべて張ってあります。張ってある電線は固定電線なので外れません。入力は X0〜X3 が PB1〜PB4、出力は Y0〜Y3 がリレー CR1〜CR4 を通って PL1〜PL4 です。',
+    7200,
+  );
+  await clearHighlight();
+  await click(page.getByTestId('lab-open-editor'));
+  await expect(page.getByTestId('lab-editor')).toBeVisible();
+  await pause(800);
+  await highlight(page.getByTestId('lab-row-PL1'));
+  await bubble(
+    '例題の正解です。PB1を押すとPL1が点灯を続け、PB2で消えます。PB2を押している間は停止確認のPL2、PB3を押している間は点検灯のPL3が点きます。',
+    6400,
+  );
+  lessonReview.push({ stage: 'chart', at: (Date.now() - start) / 1000, highlighted: true });
+  await clearHighlight();
+  await click(page.getByTestId('lab-close'));
+  await expect(page.getByTestId('lab-editor')).toHaveCount(0);
+  await bubble(
+    `まずラダーの1段目で自己保持を作ります。${dev('input', 0)}のa接点と並列に${dev('output', 0)}の接点を置き、停止の${dev('input', 1)}はb接点で直列に入れます。`,
+    5400,
+  );
+  lessonReview.push({ stage: 'first-action', at: (Date.now() - start) / 1000, highlighted: false });
+  await click(page.getByTestId('view-ladder'));
+  await pause(900);
+  await ladderKey('F5');
+  await device(dev('input', 0));
+  await ladderKey('ArrowLeft');
+  await ladderKey('Shift+F5');
+  await device(dev('output', 0));
+  const mitsubishi = PLC_VENDORS.mitsubishi;
+  if (mitsubishi === undefined) throw new Error('三菱の台本がありません');
+  await placeSymbol(mitsubishi, 'contact-nc');
+  await device(dev('input', 1));
+  await cell(`n1:0:${coil}`);
+  await placeSymbol(mitsubishi, 'coil');
+  await device(dev('output', 0));
+  await bubble(
+    `2段目は停止確認です。${dev('output', 0)}がOFFで${dev('input', 1)}がONのとき${dev('output', 1)}をONにします。`,
+    3800,
+  );
+  await addNetwork(mitsubishi);
+  await placeSymbol(mitsubishi, 'contact-nc');
+  await device(dev('output', 0));
+  await placeSymbol(mitsubishi, 'contact-no');
+  await device(dev('input', 1));
+  await cell(`n2:0:${coil}`);
+  await placeSymbol(mitsubishi, 'coil');
+  await device(dev('output', 1));
+  await bubble(
+    `3段目は点検灯です。${dev('input', 2)}を押している間だけ${dev('output', 2)}をONにします。`,
+    3400,
+  );
+  await addNetwork(mitsubishi);
+  await placeSymbol(mitsubishi, 'contact-no');
+  await device(dev('input', 2));
+  await cell(`n3:0:${coil}`);
+  await placeSymbol(mitsubishi, 'coil');
+  await device(dev('output', 2));
+  await bubble('F4で変換します。変換が通ったラダーだけを動かせます。', 3200);
+  await ladderKey('F4');
+  await expect(page.getByTestId('convert-state')).toHaveText('変換に成功しました');
+  await click(page.getByTestId('view-split'));
+  await pause(900);
+  await bubble(
+    '「動かす」を押すと、描いた押し方でPLCと盤を最初から最後まで動かし、ランプの動きを正解に重ねます。',
+    4600,
+  );
+  await click(page.getByTestId('lab-run'));
+  await labStatus('正解どおりに動きました');
+  await bubble(
+    '正解どおりに動きました。PLCのスキャンとリレーの遅れ（0.03秒ほど）は、同じ動きとみなします。上の「判定」で確かめます。',
+    5000,
+  );
+  await clearHighlight();
+  await click(page.getByTestId('judge-button'));
+  await expect(page.getByTestId('verdict')).toHaveText('合格', { timeout: 60000 });
+  await highlight(page.getByTestId('lab-why'));
+  await bubble('合格です。配線済みの盤なので、PLC電源の独立と二段構成の検査も通っています。', 4200);
+  await clearHighlight();
+  await bubble(
+    '正解は、動かした結果から作ることもできます。作業へ戻り、正解を消してから試します。',
+    4000,
+  );
+  await click(page.getByTestId('result-resume'));
+  await expect(page.getByTestId('lab-panel')).toBeVisible();
+  await boardReady();
+  await click(page.getByTestId('lab-open-editor'));
+  await expect(page.getByTestId('lab-editor')).toBeVisible();
+  await click(page.getByTestId('lab-clear-expected'));
+  await bubble(
+    '「正解を消す」でランプの行が空になりました。この状態で「動かす」を押すと、結果だけが出ます。',
+    4200,
+  );
+  await click(page.getByTestId('lab-run-in-editor'));
+  await expect(page.getByTestId('lab-editor-status')).toContainText('判定はしていません', {
+    timeout: 60000,
+  });
+  await highlight(page.getByTestId('lab-row-PL1'));
+  await bubble(
+    '太い線が動かした結果です。思ったとおりの動きなら「この結果を正解にする」を押し、「取り込む」で正解にします。',
+    5200,
+  );
+  await clearHighlight();
+  await click(page.getByTestId('lab-capture'));
+  await click(page.getByTestId('lab-capture-confirm'));
+  await expect(page.getByTestId('lab-editor-status')).toContainText('正解どおりに動きました');
+  await bubble(
+    '取り込めました。こうして作った問題は、配線やラダーを作り直して何度でも判定に使えます。',
+    4400,
+  );
+  await click(page.getByTestId('lab-close'));
+  await expect(page.getByTestId('lab-editor')).toHaveCount(0);
+  await bubble(
+    '最後に、配線も自分で練習したいときは「配線をやり直す」から「自分で配線する盤」を選びます。タイムチャートとラダーは残ります。',
+    5400,
+  );
+  await click(page.getByTestId('lab-restart-board'));
+  await expect(page.getByTestId('lab-restart')).toBeVisible();
+  await pause(900);
+  await click(page.getByTestId('lab-restart-self-wire'));
+  await click(page.getByTestId('lab-restart-go'));
+  await expect(page.getByTestId('lab-wiring-mode')).toHaveText('盤: 自分で配線');
+  await boardReady();
+  await highlight(page.getByTestId('status-overlay'));
+  await bubble(
+    '盤がPLC本体だけになりました。PLCの電源・入力・出力とリレーを配線してから、もう一度「動かす」「判定」で確かめます。',
+    5600,
+  );
+  await clearHighlight();
+}
+
 let success = false;
 let contentEndSec = 0;
 /** @type {unknown} */
@@ -1175,6 +1508,8 @@ try {
   if (mode === 'assembly') await assembly();
   else if (mode === 'parts') await parts();
   else if (mode === 'repair') await repair();
+  else if (mode === 'lab-assemble') await labAssemble();
+  else if (mode === 'lab-plc') await labPlc();
   else if (plcVendor !== undefined) await plc(plcVendor);
   else throw new Error(`収録シナリオが未定義です: ${mode}`);
   await page.screenshot({ path: join(runDir, `${mode}-passed.png`) });

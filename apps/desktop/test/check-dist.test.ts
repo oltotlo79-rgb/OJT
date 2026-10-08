@@ -63,6 +63,8 @@ async function fixture() {
     'plc-jtekt',
     'plc-omron',
     'plc-sharp',
+    'lab-assemble',
+    'lab-plc',
   ]) {
     put(join(src, `out/renderer/tutorials/${mode}.webm`), 'fixture-video');
     put(join(src, `out/renderer/tutorials/${mode}.vtt`), 'WEBVTT\n');

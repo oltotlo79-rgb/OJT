@@ -30,9 +30,30 @@ export const TUTORIALS = {
     problem: 'D-001 自己保持回路',
     topic: '電源とI/Oの配線、ラダー入力、動作確認、判定まで',
   },
+  // 回路実験・PLC実験（2026-10-08）。課題番号が無いので、ボタンには実験の名前を出す
+  'assemble-lab': {
+    title: '回路実験',
+    file: 'lab-assemble',
+    problem: '空のタイムチャートから自己保持',
+    short: '回路実験',
+    topic: '押し方と正解を描き、配線して動かし、盤で見直して判定まで',
+  },
+  'plc-lab': {
+    title: 'PLC実験',
+    file: 'lab-plc',
+    problem: '例題「自己保持」（配線済みの盤）',
+    short: 'PLC実験',
+    topic: 'ラダー作成・変換・動かす・判定、結果の取り込み、自分で配線する盤への作り直し',
+  },
 } as const;
 export type TutorialMode = keyof typeof TUTORIALS;
 type TutorialFile = keyof typeof catalog;
+
+/** ボタンに出す短い名前（課題番号。実験は実験の名前）。 */
+export function tutorialShortName(mode: TutorialMode): string {
+  const item = TUTORIALS[mode];
+  return 'short' in item ? item.short : (item.problem.split(' ')[0] ?? item.problem);
+}
 
 /** そのモードに基本例題の動画があるか。 */
 export function isTutorialMode(mode: string): mode is TutorialMode {
@@ -209,7 +230,7 @@ export function TutorialVideoButton({ mode }: { mode: TutorialMode }): JSX.Eleme
         onClick={() => setOpen(true)}
         title={`${example}の操作例です。選択中の課題と異なる場合があります。`}
       >
-        ▶ 基本例題の動画（{TUTORIALS[mode].problem.split(' ')[0]}）
+        ▶ 基本例題の動画（{tutorialShortName(mode)}）
       </button>
       {open && <Player mode={mode} initialVendor={vendor} onClose={() => setOpen(false)} />}
     </>

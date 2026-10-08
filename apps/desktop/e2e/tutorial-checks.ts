@@ -56,7 +56,14 @@ async function verifySwitchedVideo(dialog: Locator, vendor: string, file: string
 
 /** 開発版と単一EXEの両方で、同梱動画を実際のfile://配信から再生する。 */
 export async function verifyTutorials(page: Page): Promise<void> {
-  for (const mode of ['assemble', 'inspect-parts', 'inspect-repair', 'plc']) {
+  for (const mode of [
+    'assemble',
+    'inspect-parts',
+    'inspect-repair',
+    'plc',
+    'assemble-lab',
+    'plc-lab',
+  ]) {
     const opener = page.getByTestId(`tutorial-${mode}`);
     await opener.click();
     const dialog = page.getByTestId('tutorial-player');

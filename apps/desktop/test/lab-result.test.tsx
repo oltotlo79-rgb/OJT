@@ -61,14 +61,31 @@ describe('実験の結果画面', () => {
     render(<Result />);
     expect(screen.getByTestId('verdict')).toHaveTextContent('合格');
     expect(screen.getByTestId('lab-why-passed')).toHaveTextContent('描いた正解どおり');
+    // 模範回路ではなく描いた正解と比べたことを、要約と差分一覧でも言う
+    expect(screen.getByTestId('verdict-summary')).toHaveTextContent('描いた正解どおりでした');
+    expect(screen.getByTestId('no-mismatch')).toHaveTextContent('描いた正解と一致しました');
+    expect(document.body.textContent).not.toContain('模範回路と一致');
     expect(
       screen.getByText('チャート重ね表示（薄色＝描いた正解／濃色＝動かした結果）'),
     ).toBeInTheDocument();
     expect(screen.getByTestId('chart-legend')).toHaveTextContent('動かした結果（太い線）');
     // 結果画面の上の帯（見直し・見くらべ・書き出し）も使える
     expect(screen.getByTestId('replay-open')).toBeInTheDocument();
-    expect(screen.getByTestId('compare-open')).toBeInTheDocument();
+    expect(screen.getByTestId('compare-open')).toHaveTextContent('正解と見くらべる');
     expect(screen.getByTestId('result-export')).toBeInTheDocument();
+  });
+
+  it('見くらべる窓も、相手を描いた正解と言う', () => {
+    judged();
+    render(<Result />);
+    fireEvent.click(screen.getByTestId('compare-open'));
+    const dialog = screen.getByTestId('compare-dialog');
+    expect(dialog).toHaveTextContent('正解と見くらべる');
+    expect(dialog).toHaveTextContent('上が描いた正解（破線）・下が動かした結果（実線）');
+    expect(screen.getByTestId('compare-reference-hidden')).toHaveTextContent(
+      '実験には模範回路図・模範ラダーがありません',
+    );
+    expect(dialog.textContent).not.toContain('模範（破線）');
   });
 
   it('不合格: 理由と違いの一覧を出す', () => {
@@ -123,5 +140,6 @@ describe('実験の結果画面', () => {
     });
     expect(html).toContain('回路実験');
     expect(html).toContain('合格');
+    expect(html).toContain('描いた正解どおりでした');
   });
 });

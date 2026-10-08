@@ -46,7 +46,8 @@ export function LabResult({
     staticChecks: result.staticChecks,
     mismatches: result.mismatches,
   });
-  const summary = verdictSummary(result);
+  // 合格の1行も「模範回路と一致」ではなく、描いた正解どおりと言う
+  const summary = result.passed ? JA.lab.summaryPassed : verdictSummary(result).text;
   const expected = result.charts.expected;
   return (
     <ResultShell
@@ -56,7 +57,7 @@ export function LabResult({
       timeLimit={problem.timeLimit}
       verdictBig
       forbidden={result.chatter.length > 0}
-      summary={summary.text}
+      summary={summary}
       onRetry={onRetry}
       onBackToList={onBackToList}
       backLabel={JA.problemList.back}
@@ -94,7 +95,7 @@ export function LabResult({
             labels={LAB_LABELS}
           />
         )}
-        <MismatchList mismatches={result.mismatches} />
+        <MismatchList mismatches={result.mismatches} emptyText={JA.lab.noMismatch} />
         <StaticCheckList checks={result.staticChecks} />
         <HazardList
           counts={result.hazardsByKind}
