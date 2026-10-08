@@ -124,7 +124,8 @@ export function Fixture({
   footprints: readonly Footprint[];
   /**
    * 投入状態（ブレーカ＝`SimSnapshot.breakerOn`、電源スイッチ＝`switchOn`）。
-   * ハンドル／ロッカーの倒れる向きに出る。DC24V電源では使わない。
+   * ハンドル／ロッカーの倒れる向きに出る。DC24V電源では「DC が出ているか」（両方が入）で、
+   * 表示LEDの点灯に使う（v2.0.0 Task 7）。
    */
   on: boolean;
   /**
@@ -164,7 +165,7 @@ export function Fixture({
           onHover={onHover}
         />
       ) : (
-        <SupplyUnit footprint={footprint} />
+        <SupplyUnit footprint={footprint} lit={on} />
       )}
       {/*
         名札は機器の**手前側**に置く。以前は機器の真上に置いていたため、盤の上端に並ぶ

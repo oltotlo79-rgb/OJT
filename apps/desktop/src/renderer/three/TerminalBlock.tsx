@@ -1,6 +1,12 @@
-import { terminalBlockShape, TERMINAL_BLOCK_PAD_MM, type BoardTerminal } from '@ojt/board-model';
+import {
+  terminalBlockShape,
+  TERMINAL_BLOCK_PAD_MM,
+  type BoardTerminal,
+  type TerminalBlockShape,
+} from '@ojt/board-model';
 import { Html } from '@react-three/drei';
-import { useMemo, type JSX } from 'react';
+import { useEffect, useMemo, useRef, type JSX } from 'react';
+import { Matrix4, Quaternion, Vector3, type InstancedMesh } from 'three';
 import { TERMINAL_BLOCK_CAP_COLOR, TERMINAL_BLOCK_COLOR } from '../session/colors.js';
 import {
   bakeSharedTexture,
@@ -9,7 +15,14 @@ import {
   makeCanvasTexture,
   PX_PER_MM,
 } from './labels.js';
-import { noPick, presetMaterial, sharedMaterial, UNIT_BOX } from './materials.js';
+import {
+  applyInstanceMatrices,
+  noPick,
+  presetMaterial,
+  SCREW_GEOMETRY,
+  sharedMaterial,
+  UNIT_BOX,
+} from './materials.js';
 import { toScene } from './coords.js';
 
 /**
@@ -22,6 +35,111 @@ import { toScene } from './coords.js';
  * ここで無効化しないと盤の上のラベルがツールバーのクリックまで飲み込んでしまう。
  */
 const LABEL_STYLE = { pointerEvents: 'none' } as const;
+
+/*
+ * 仕切り板と両端の固定ねじ（v2.0.0 Task 7・設計 §3.5「形の作り込み」）。
+ * 実物の端子台は端子ごとに樹脂の仕切りがあり、台座の両端を小ねじでレールに固定する。
+ * 仕切りは端子台1個につき `instancedMesh` 1本（+1 ドローコール）、固定ねじは2個。
+ * どちらも飾り（`raycast={noPick}`）で、端子の座標・配線の経路・当たり判定は変えない。
+ */
+/** 仕切り板の厚み[mm]。 */
+export const DIVIDER_THICKNESS_MM = 0.6;
+/** 仕切り板が台座の天面から出る高さ[mm]（印字の板 `printZ` より下に収める）。 */
+export const DIVIDER_RISE_MM = 2;
+/** 固定ねじの中心を台座の端から入れる量[mm]と、ネジ頭の縮尺（端の端子の座金と重ならない）。 */
+export const END_SCREW_INSET_MM = 1.7;
+export const END_SCREW_SCALE = 0.75;
+/** 仕切り板の色（台座より少し明るい黒い樹脂）。 */
+const DIVIDER_COLOR = '#3B4047';
+/** 固定ねじの色（ニッケルめっき）。 */
+const END_SCREW_COLOR = '#C9CED6';
+
+/** 端子の並ぶ向き（横一列なら x、縦一列の P/N なら y）。 */
+export function terminalBlockAxis(terminals: readonly BoardTerminal[]): 'x' | 'y' {
+  const xs = terminals.map((t) => t.pos.x);
+  const ys = terminals.map((t) => t.pos.y);
+  const spanX = Math.max(...xs) - Math.min(...xs);
+  const spanY = Math.max(...ys) - Math.min(...ys);
+  return spanX >= spanY ? 'x' : 'y';
+}
+
+/**
+ * 隣り合う端子のあいだの仕切り板の中心（盤モデル mm）。純関数（個数と位置を単体テストで縛る）。
+ * 同じ位置に重なる端子（距離 1mm 未満）のあいだには置かない。
+ */
+export function terminalBlockDividers(
+  terminals: readonly BoardTerminal[],
+  shape: Pick<TerminalBlockShape, 'cx' | 'cy'>,
+): { x: number; y: number; along: 'x' | 'y' }[] {
+  const along = terminalBlockAxis(terminals);
+  const sorted = [...terminals].sort((a, b) =>
+    along === 'x' ? a.pos.x - b.pos.x : a.pos.y - b.pos.y,
+  );
+  const out: { x: number; y: number; along: 'x' | 'y' }[] = [];
+  for (let i = 1; i < sorted.length; i += 1) {
+    const a = sorted[i - 1]!;
+    const b = sorted[i]!;
+    const gap = along === 'x' ? b.pos.x - a.pos.x : b.pos.y - a.pos.y;
+    if (gap < 1) continue;
+    out.push(
+      along === 'x'
+        ? { x: (a.pos.x + b.pos.x) / 2, y: shape.cy, along }
+        : { x: shape.cx, y: (a.pos.y + b.pos.y) / 2, along },
+    );
+  }
+  return out;
+}
+
+/** 両端の固定ねじの中心（盤モデル mm）。端子の並ぶ向きの両端。 */
+export function terminalBlockEndScrews(
+  terminals: readonly BoardTerminal[],
+  shape: Pick<TerminalBlockShape, 'x' | 'y' | 'w' | 'h' | 'cx' | 'cy'>,
+): { x: number; y: number }[] {
+  return terminalBlockAxis(terminals) === 'x'
+    ? [
+        { x: shape.x + END_SCREW_INSET_MM, y: shape.cy },
+        { x: shape.x + shape.w - END_SCREW_INSET_MM, y: shape.cy },
+      ]
+    : [
+        { x: shape.cx, y: shape.y + END_SCREW_INSET_MM },
+        { x: shape.cx, y: shape.y + shape.h - END_SCREW_INSET_MM },
+      ];
+}
+
+/** 仕切り板（`instancedMesh` 1本）。 */
+function Dividers({
+  terminals,
+  shape,
+}: {
+  terminals: readonly BoardTerminal[];
+  shape: TerminalBlockShape;
+}): JSX.Element | null {
+  const mesh = useRef<InstancedMesh | null>(null);
+  const matrices = useMemo(() => {
+    const height = shape.bodyTop + DIVIDER_RISE_MM;
+    return terminalBlockDividers(terminals, shape).map((divider) =>
+      new Matrix4().compose(
+        new Vector3(...toScene({ x: divider.x, y: divider.y, z: height / 2 })),
+        new Quaternion(),
+        divider.along === 'x'
+          ? new Vector3(DIVIDER_THICKNESS_MM, shape.h - 1, height)
+          : new Vector3(shape.w - 1, DIVIDER_THICKNESS_MM, height),
+      ),
+    );
+  }, [terminals, shape]);
+  useEffect(() => {
+    applyInstanceMatrices(mesh.current, matrices);
+  }, [matrices]);
+  if (matrices.length === 0) return null;
+  return (
+    <instancedMesh
+      ref={mesh}
+      name="block-dividers"
+      args={[UNIT_BOX, presetMaterial('blackResin', DIVIDER_COLOR), matrices.length]}
+      raycast={noPick}
+    />
+  );
+}
 
 /** 端子台1個（台座＋端子＋ラベル）。 */
 export function TerminalBlock({
@@ -73,6 +191,20 @@ export function TerminalBlock({
         position={center}
         scale={[shape.w, shape.h, shape.bodyTop]}
       />
+      {/* 端子ごとの仕切り板と両端の固定ねじ（飾り）。v2.0.0 Task 7 */}
+      <Dividers terminals={terminals} shape={shape} />
+      {terminalBlockEndScrews(terminals, shape).map((screw, index) => (
+        <mesh
+          key={`end-screw-${String(index)}`}
+          name={`block-end-screw-${name}-${String(index)}`}
+          geometry={SCREW_GEOMETRY}
+          material={presetMaterial('nickel', END_SCREW_COLOR)}
+          raycast={noPick}
+          rotation={[Math.PI / 2, 0, 0]}
+          position={toScene({ x: screw.x, y: screw.y, z: shape.bodyTop + 0.7 * END_SCREW_SCALE })}
+          scale={END_SCREW_SCALE}
+        />
+      ))}
       {/* 端子の名前の印字（常時表示）。§6.4 */}
       {faceTexture === undefined ? null : (
         <mesh raycast={noPick} position={[center[0], center[1], shape.printZ]}>

@@ -1001,7 +1001,14 @@ function BoardContents({
             kind={fixture.kind}
             terminals={fixture.terminals}
             footprints={board.footprints}
-            on={fixture.kind === 'breaker' ? breakerOn : fixture.kind === 'switch' && switchOn}
+            on={
+              fixture.kind === 'breaker'
+                ? breakerOn
+                : fixture.kind === 'switch'
+                  ? switchOn
+                  : // DC24V電源: ブレーカと電源スイッチの両方が入ったときだけ DC が出る（表示LED）
+                    breakerOn && switchOn
+            }
             {...(FIXTURE_LABEL_OFFSET_MM[fixture.id] === undefined
               ? {}
               : { labelOffsetMm: FIXTURE_LABEL_OFFSET_MM[fixture.id] })}

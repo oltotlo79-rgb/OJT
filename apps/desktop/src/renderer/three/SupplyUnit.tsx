@@ -1,12 +1,31 @@
 import type { Footprint } from '@ojt/board-model';
 import type { JSX } from 'react';
+import { CylinderGeometry, type MeshStandardMaterial } from 'three';
 import { sharedHousing } from './ComponentDetails.js';
 import { toScene } from './coords.js';
 import { bakeSharedTexture, labelFont, makeCanvasTexture, PX_PER_MM } from './labels.js';
 import { noPick, sharedMaterial, UNIT_BOX } from './materials.js';
 
-/** 実物写真のDC24V出力部。P/Nのネジと左向きの出線口を塞がない開放型端子台。 */
-export function SupplyUnit({ footprint }: { footprint: Footprint }): JSX.Element {
+/** DC出力の表示LED（v2.0.0 Task 7）。通電中は緑に光り、無通電では暗い緑。 */
+export const SUPPLY_LED_ON_COLOR = '#37D05A';
+export const SUPPLY_LED_OFF_COLOR = '#12301C';
+const LED_GEOMETRY = new CylinderGeometry(1.2, 1.2, 1.2, 12);
+
+/** 表示LEDのマテリアル（純関数。点灯で発光する約束を単体テストで縛る）。 */
+export function supplyLedMaterial(lit: boolean): MeshStandardMaterial {
+  return lit
+    ? sharedMaterial(SUPPLY_LED_ON_COLOR, {
+        emissive: SUPPLY_LED_ON_COLOR,
+        emissiveIntensity: 2.2,
+      })
+    : sharedMaterial(SUPPLY_LED_OFF_COLOR, { roughness: 0.6 });
+}
+
+/**
+ * 実物写真のDC24V出力部。P/Nのネジと左向きの出線口を塞がない開放型端子台。
+ * `lit` は DC が出ているか（ブレーカと電源スイッチの両方が入）。表示LEDの点灯に使う。
+ */
+export function SupplyUnit({ footprint, lit }: { footprint: Footprint; lit: boolean }): JSX.Element {
   const x = footprint.x + footprint.w / 2;
   const y = footprint.y + footprint.h / 2;
   const face = bakeSharedTexture('fixture', 'supply-output-v2', () =>
@@ -73,6 +92,15 @@ export function SupplyUnit({ footprint }: { footprint: Footprint }): JSX.Element
           <meshBasicMaterial map={face} />
         </mesh>
       )}
+      {/* DC出力の表示LED（印字板の上端。「P +」の印字より奥）。v2.0.0 Task 7 */}
+      <mesh
+        name="supply-led"
+        geometry={LED_GEOMETRY}
+        material={supplyLedMaterial(lit)}
+        rotation={[Math.PI / 2, 0, 0]}
+        position={toScene({ x: 32, y: footprint.y + 2.5, z: 5.9 })}
+        raycast={noPick}
+      />
     </group>
   );
 }
