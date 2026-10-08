@@ -29,6 +29,7 @@ export function ResultShell({
   extraAction,
   onRetry,
   onBackToList,
+  backLabel = JA.result.toList,
   children,
 }: {
   /** 課題の題名（見出しに「判定結果: 〜」の形で出る）。 */
@@ -53,6 +54,8 @@ export function ResultShell({
   extraAction?: ReactNode;
   onRetry: () => void;
   onBackToList: () => void;
+  /** 下端バーの戻る先の文言（実験は課題一覧に無いので「ホームへ戻る」。2026-10-08）。 */
+  backLabel?: string;
   children: ReactNode;
 }): JSX.Element {
   // 開いたヒントの段数（4画面とも同じ出し方なので外殻が読む）。指摘 PR-02
@@ -129,7 +132,7 @@ export function ResultShell({
           {JA.result.retry}
         </button>
         <button type="button" onClick={onBackToList}>
-          {JA.result.toList}
+          {backLabel}
         </button>
       </div>
     </div>

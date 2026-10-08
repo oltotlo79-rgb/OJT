@@ -149,7 +149,7 @@ export function resultReportHtml(input: ReportInput): string {
         result.reports.matched.length + result.reports.missed.length,
       );
     }
-    if (result.mode === 'plc' && result.ladderErrors.length > 0) {
+    if ((result.mode === 'plc' || result.mode === 'plc-lab') && result.ladderErrors.length > 0) {
       summary = `${JA.report.ladderErrors}: ${count(result.ladderErrors.length)}`;
       details += list(JA.report.ladderErrors, [], result.ladderErrors.length);
     }

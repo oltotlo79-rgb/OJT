@@ -6,6 +6,7 @@ import {
   isAssembleProblem,
   isInspectPartsProblem,
   isInspectRepairProblem,
+  isLabProblem,
   isPlcProblem,
   wiringSuspects,
 } from '@ojt/content';
@@ -17,6 +18,7 @@ import { JA } from '../i18n/ja.js';
 import { InspectPartsResult } from '../result/InspectPartsResult.js';
 import { InspectRepairResult } from '../result/InspectRepairResult.js';
 import { PlcResult } from '../result/PlcResult.js';
+import { LabResult } from '../result/LabResult.js';
 import { ResultView } from '../result/ResultView.js';
 import styles from './screens.module.css';
 
@@ -175,8 +177,30 @@ function ResultBody(): JSX.Element {
     return <NoResult onBack={backToList} />;
   }
 
-  // 回路実験・PLC実験の結果画面は Task 10 で足す（それまでは結果なしの枠）
-  if (isLabJudge(judge) || !isAssembleProblem(problem)) {
+  /*
+   * 回路実験・PLC実験（2026-10-08）。「もう一度」は盤を作り直し、描いたタイムチャートと
+   * ラダーは残す（`resetSession()` は同じ課題＝同じチャートで開き直す）。
+   */
+  if (isLabJudge(judge)) {
+    if (!isLabProblem(problem) || problem.mode !== judge.mode) {
+      return <NoResult onBack={backToList} />;
+    }
+    return (
+      <LabResult
+        problem={problem}
+        result={judge}
+        restoredHazardCount={restoredHazardCount}
+        onRetry={() => {
+          resetSession();
+        }}
+        onBackToList={() => {
+          setRoute('home');
+        }}
+      />
+    );
+  }
+
+  if (!isAssembleProblem(problem)) {
     return <NoResult onBack={backToList} />;
   }
 

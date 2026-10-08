@@ -80,14 +80,35 @@ function overlayFigure(
   };
 }
 
+/**
+ * 見出しと凡例の言い方。既定は「模範と訓練者」。回路実験・PLC実験（2026-10-08）は
+ * 模範回路ではなく描いた正解と見比べるので、「描いた正解と動かした結果」に差し替える。
+ */
+export interface ChartOverlayLabels {
+  title: string;
+  expectedHeading: string;
+  actualHeading: string;
+  legendExpected: string;
+  legendActual: string;
+}
+
+const DEFAULT_LABELS: ChartOverlayLabels = {
+  title: JA.result.chartOverlay,
+  expectedHeading: JA.timeChart.expected,
+  actualHeading: JA.timeChart.actual,
+  legendExpected: JA.chartLegend.expected,
+  legendActual: JA.chartLegend.actual,
+};
+
 /** 積み上げ表示（拡大したときの図）。期待と実際が同じ時間軸に並ぶ。 */
 function stackedFigure(
   expected: TimeChart,
   actual: TimeChart,
   mismatches: readonly Mismatch[],
+  labels: ChartOverlayLabels,
 ): ChartFigure {
   const rows: ChartFigure['rows'] = [
-    { key: 'head-expected', label: JA.timeChart.expected, heading: true, waves: [] },
+    { key: 'head-expected', label: labels.expectedHeading, heading: true, waves: [] },
     ...expected.signals.map((signal) => ({
       key: `expected-${signal.name}`,
       label: signal.label,
@@ -101,7 +122,7 @@ function stackedFigure(
         },
       ],
     })),
-    { key: 'head-actual', label: JA.timeChart.actual, heading: true, waves: [] },
+    { key: 'head-actual', label: labels.actualHeading, heading: true, waves: [] },
     ...actual.signals.map((signal) => ({
       key: `actual-${signal.name}`,
       label: signal.label,
@@ -129,31 +150,34 @@ export function ChartOverlay({
   expected,
   actual,
   mismatches = [],
+  labels = DEFAULT_LABELS,
 }: {
   expected: TimeChart;
   actual: TimeChart;
   /** 許容差を超えた遷移。区間を赤く敷いて見比べの手がかりにする。§8.3 */
   mismatches?: readonly Mismatch[];
+  /** 見出しと凡例の言い方（省くと「模範と訓練者」）。 */
+  labels?: ChartOverlayLabels;
 }): JSX.Element {
   const small = useMemo(
     () => overlayFigure(expected, actual, mismatches),
     [expected, actual, mismatches],
   );
   const large = useMemo(
-    () => stackedFigure(expected, actual, mismatches),
-    [expected, actual, mismatches],
+    () => stackedFigure(expected, actual, mismatches, labels),
+    [expected, actual, mismatches, labels],
   );
   return (
     <div className={styles.card}>
-      <h2>{JA.result.chartOverlay}</h2>
+      <h2>{labels.title}</h2>
       <EnlargeableChart
-        title={JA.result.chartOverlay}
+        title={labels.title}
         figure={small}
         largeFigure={large}
         largeGeom={LARGE_STACKED_GEOMETRY}
         testId="chart-overlay"
         smallClassName={panels.chart}
-        legend={<ChartLegend />}
+        legend={<ChartLegend labels={labels} />}
       />
     </div>
   );
@@ -163,16 +187,16 @@ export function ChartOverlay({
  * 波形の見比べの凡例（UXレビュー #7）。色見本は `result.module.css` の
  * `.overlayExpected` / `.overlayActual` / `.legendBand` と同じ見た目にする。
  */
-function ChartLegend(): JSX.Element {
+function ChartLegend({ labels }: { labels: ChartOverlayLabels }): JSX.Element {
   return (
     <p className={styles.legend} data-testid="chart-legend">
       <span className={styles.legendItem}>
         <span className={`${styles.legendSwatch} ${styles.legendExpected}`} aria-hidden="true" />
-        {JA.chartLegend.expected}
+        {labels.legendExpected}
       </span>
       <span className={styles.legendItem}>
         <span className={`${styles.legendSwatch} ${styles.legendActual}`} aria-hidden="true" />
-        {JA.chartLegend.actual}
+        {labels.legendActual}
       </span>
       <span className={styles.legendItem}>
         <span className={`${styles.legendSwatch} ${styles.legendBand}`} aria-hidden="true" />

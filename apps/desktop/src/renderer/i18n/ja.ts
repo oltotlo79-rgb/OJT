@@ -1623,6 +1623,16 @@ export const JA = {
     selfWireNote: 'PLCの電源・入力・出力の配線から自分で行います',
     restartGo: '作り直す',
     cancel: '取消',
+    // 結果画面
+    whyPassed: '描いた正解どおりに動き、配線の検査もすべて通りました。',
+    resultNote:
+      '見比べた相手は模範回路ではなく、描いた（取り込んだ）正解のランプの動きです。タイミングは0.2秒（区間の長さの1割が大きければそちら）までのずれを同じとみなします。',
+    actualChart: '動かした結果のタイムチャート',
+    overlayTitle: 'チャート重ね表示（薄色＝描いた正解／濃色＝動かした結果）',
+    overlayExpected: '期待（描いた正解）',
+    overlayActual: '実際（動かした結果）',
+    overlayLegendExpected: '正解（細い薄色）',
+    overlayLegendActual: '動かした結果（太い線）',
     /** PLC実験の手順帯の右に出す、いまの盤の種類。 */
     wiringPrewired: '盤: 配線済み',
     wiringSelf: '盤: 自分で配線',

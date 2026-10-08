@@ -92,7 +92,9 @@ export function mismatchReason(mismatch: Mismatch): string {
  * ①変換エラー（シミュレートすらされていない）②落ちた静的チェック（配線の誤り）
  * ③動作の差分（時刻と信号）。合格なら空配列を返す。
  */
-export function failureReasons(result: JudgePlcResult): string[] {
+export function failureReasons(
+  result: Pick<JudgePlcResult, 'ladderErrors' | 'staticChecks' | 'mismatches'>,
+): string[] {
   const lines: string[] = [];
   if (result.ladderErrors.length > 0) lines.push(ladderErrorSummary(result.ladderErrors.length));
   for (const check of result.staticChecks) {
