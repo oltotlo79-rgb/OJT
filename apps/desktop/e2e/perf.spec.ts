@@ -165,10 +165,13 @@ test.describe.serial('性能（§16 Phase 5 受入基準④）', () => {
     }
     // 視点プリセットは「…」の中（UXレビュー #17。`projection.ts` の `selectView()`）
     const byView: Record<string, Record<string, number>> = {};
+    /** 視点ごとのカメラの向き・距離（`camera-readout`）。視点が本当に切り替わったかを見る。 */
+    const cameraByView: Record<string, string> = {};
     for (const view of VIEWS) {
       await selectView(page, view);
       const perf = await readSettledPerf(page);
       byView[view] = perf;
+      cameraByView[view] = (await page.getByTestId('camera-readout').textContent()) ?? '';
       expect(perf['triangles'], `${view} の三角形数`).toBeLessThanOrEqual(TRIANGLE_BUDGET);
       expect(perf['calls'], `${view} のドローコール`).toBeLessThanOrEqual(DRAW_CALL_BUDGET);
     }
@@ -195,19 +198,19 @@ test.describe.serial('性能（§16 Phase 5 受入基準④）', () => {
     expect(typeof front?.['calls'], '正面 のドローコールが読めている').toBe('number');
     expect(typeof zoom?.['calls'], 'ソケット拡大 のドローコールが読めている').toBe('number');
     /*
-     * v2.1.0: 視野角を 24° にして遠くから見るようになったので、ソケット拡大でも下段の押ボタン・
-     * ランプの一部が視錐台に残り、ドローコールが正面と同じになることがある（instancedMesh の
-     * 端子は盤全体で1本なので、ソケット1個に寄っても減らない）。盤を測れていることは、
-     * (1) 正面がビューキューブ単体（約30）よりずっと多い、(2) 三角形数かドローコールのどちらかが
-     * 視点で変わる、の2つで確かめる。
+     * v2.1.0: 視野角を 24° にして遠くから見るようになったので、ソケット拡大でも盤の物がほとんど
+     * 視錐台に残り、ドローコールも三角形数も正面と同じになることがある（instancedMesh の端子は
+     * 盤全体で1本なので、ソケット1個に寄っても減らない）。盤を測れていることは、
+     * (1) 正面がビューキューブ単体（約30）よりずっと多い、(2) 正面とソケット拡大でカメラの
+     * 向き・距離（`camera-readout`）が違う＝視点が本当に切り替わってから測った、の2つで確かめる。
      */
     expect(
       front?.['calls'] ?? 0,
       '正面 のドローコールがビューキューブ単体より多い（3D-01）',
     ).toBeGreaterThan(100);
     expect(
-      front?.['calls'] !== zoom?.['calls'] || front?.['triangles'] !== zoom?.['triangles'],
-      '正面 と ソケット拡大 が三角形数もドローコールも同値＝盤ではなくビューキューブを測っている（3D-01）',
+      cameraByView['正面'] !== cameraByView['ソケット拡大'] && cameraByView['正面'] !== '',
+      '正面 と ソケット拡大 でカメラが同じ＝視点を切り替えずに測っている',
     ).toBe(true);
   });
 
