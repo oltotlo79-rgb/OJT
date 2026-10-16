@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { PLC_UNIT_CP1E, PLC_UNIT_FX5U, PLC_UNIT_JW300 } from '@ojt/board-model';
 import { BUILTIN_PLC_PROBLEMS, resolvePlcIo } from '@ojt/content';
 import {
@@ -22,6 +24,12 @@ import { IoTable } from '../src/renderer/ladder/IoTable.js';
 import { ShortcutHelp } from '../src/renderer/ladder/ShortcutHelp.js';
 import { WatchPanel } from '../src/renderer/ladder/WatchPanel.js';
 import { useStore } from '../src/renderer/app/store.js';
+import { JA } from '../src/renderer/i18n/ja.js';
+
+/** I/O割付の表の1行の「PLC端子」の欄の文字（2列目）。 */
+function terminalCell(testId: string): string | null | undefined {
+  return screen.getByTestId(testId).querySelectorAll('td')[1]?.textContent;
+}
 
 afterEach(cleanup);
 beforeEach(() => useStore.setState({ watchDevices: [] }));
@@ -135,8 +143,23 @@ describe('I/Oテーブル（§7.6 / 決定表#7 / #16）', () => {
     };
     render(<IoTable io={wide} profile={MITSUBISHI_FX5U} unit={unit} />);
     // IR の 10 番目の入力は FX5U の端子 X12、8 番目の出力は Y10（どちらも8進）
-    expect(screen.getByTestId('io-input-0')).toHaveTextContent('PLC.X12');
-    expect(screen.getByTestId('io-output-0')).toHaveTextContent('PLC.Y10');
+    expect(terminalCell('io-input-0')).toBe('X12');
+    expect(terminalCell('io-output-0')).toBe('Y10');
+  });
+
+  it('leaves "PLC." to the column header and never breaks an identifier (v2.1.0 監査 U5)', () => {
+    render(<IoTable io={io} profile={MITSUBISHI_FX5U} unit={unit} />);
+    expect(screen.getByRole('columnheader', { name: JA.ladder.ioTerminal })).toBeDefined();
+    expect(terminalCell('io-input-0')).toBe('X0');
+    expect(screen.getByTestId('io-common').textContent).not.toContain('PLC.');
+    // 識別子の途中で折る指定（`overflow-wrap: anywhere`）を表に残さない
+    const css = readFileSync(
+      resolve(__dirname, '../src/renderer/ladder/ladder.module.css'),
+      'utf8',
+    );
+    const table = css.slice(css.lastIndexOf('.ioTable {'));
+    expect(table).toMatch(/\.ioTable th,\s*\.ioTable td\s*\{[^}]*white-space:\s*nowrap/u);
+    expect(table).toMatch(/\.ioTable caption\s*\{[^}]*text-align:\s*left/u);
   });
 
   it('says whether the assignment is fixed or a suggestion', () => {
@@ -217,10 +240,10 @@ describe('キー割当表と端子名のスキン差（§10.6 / §10.1）', () =
 
   it('names the terminals of the model, not the Mitsubishi spelling (4A H-1)', () => {
     render(<IoTable io={IO} profile={OMRON_CP1E} unit={PLC_UNIT_CP1E} />);
-    expect(screen.getByTestId('io-input-0')).toHaveTextContent('PLC.0.00');
+    expect(terminalCell('io-input-0')).toBe('0.00');
     cleanup();
     render(<IoTable io={IO} profile={SHARP_JW300} unit={PLC_UNIT_JW300} />);
-    expect(screen.getByTestId('io-input-0')).toHaveTextContent('PLC.A0');
+    expect(terminalCell('io-input-0')).toBe('A0');
     expect(screen.getByTestId('io-common')).toHaveTextContent('COM.A');
   });
 });

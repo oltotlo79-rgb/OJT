@@ -2,7 +2,7 @@ import type { PlcUnitDefinition } from '@ojt/board-model';
 import type { ResolvedPlcIo } from '@ojt/content';
 import { X, Y } from '@ojt/ladder-core';
 import type { DialectProfile } from '@ojt/plc-dialects';
-import { Fragment, type JSX, type ReactNode } from 'react';
+import type { JSX } from 'react';
 import { JA } from '../i18n/ja.js';
 import { useStore } from '../app/store.js';
 import { focusIo } from '../session/plc-assignment.js';
@@ -12,23 +12,6 @@ import { SidePanel } from './SidePanel.js';
 import styles from './ladder.module.css';
 
 /**
- * `PLC.100.02` のような端子名を「.」の直後だけで折り返せるようにする（UI監査バッチF
- * wrap 7件）。狭い列幅では `overflow-wrap: anywhere`（#27。表を列幅に収めるための指定）が
- * 数字の途中（`10` と `0.02` の間など）で折り返していた。`.` の直後に `<wbr>` を挟むと、
- * 折り返しが要る時も意味の区切り（`PLC.` / `100.` / `02`）でだけ割れる。
- */
-function terminalNode(name: string): ReactNode {
-  const parts = name.split('.');
-  return parts.map((part, index) => (
-    <Fragment key={index}>
-      {index > 0 ? '.' : ''}
-      {part}
-      {index < parts.length - 1 ? <wbr /> : null}
-    </Fragment>
-  ));
-}
-
-/**
  * I/O割付表。設計仕様 §7.6 / §10.2。
  *
  * 課題の固定割付、または学習者が編集した自由割付を出す。モニタ中は入力・出力の
@@ -36,6 +19,10 @@ function terminalNode(name: string): ReactNode {
  *
  * 「ラダーのデバイス名」は方言（`profile.formatDevice`）から、「PLC本体の端子名」は機種
  * （`unit.spec`）から引く。三菱では両方とも8進で一致するが、根拠が違う（決定表#16）。
+ *
+ * 端子名は列の見出し「PLC端子」に任せて `PLC.` を付けない（`X0` / `0.00` / `A0`。v2.1.0 監査 U5）。
+ * 以前は盤の端子IDと同じ `PLC.X0` の形で出していて、狭い右の欄では `PLC.0` と `.00` のように
+ * 識別子の途中で折れていた。識別子は折らない（`ladder.module.css` の `.ioTable`）。
  */
 export function IoTable({
   io: specifiedIo,
@@ -75,7 +62,7 @@ export function IoTable({
             {JA.plc.outletNote}
           </span>
           <span className={styles.ioCaptionLine} data-testid="io-common">
-            {JA.ladder.ioCommon}: {unit.spec.inputCommons.map((name) => `PLC.${name}`).join('・')}
+            {JA.ladder.ioCommon}: {unit.spec.inputCommons.join('・')}
           </span>
         </caption>
         <thead>
@@ -101,11 +88,7 @@ export function IoTable({
                     {monitor === undefined ? '—' : monitor.inputs[input.x] ? '● ON' : '○ OFF'}
                   </button>
                 </td>
-                <td>
-                  {terminal === undefined
-                    ? JA.ladder.ioTerminalUnknown
-                    : terminalNode(`PLC.${terminal}`)}
-                </td>
+                <td>{terminal ?? JA.ladder.ioTerminalUnknown}</td>
                 <td>{input.pb}</td>
               </tr>
             );
@@ -129,11 +112,7 @@ export function IoTable({
                     {monitor === undefined ? '—' : monitor.outputs[output.y] ? '● ON' : '○ OFF'}
                   </button>
                 </td>
-                <td>
-                  {terminal === undefined
-                    ? JA.ladder.ioTerminalUnknown
-                    : terminalNode(`PLC.${terminal}`)}
-                </td>
+                <td>{terminal ?? JA.ladder.ioTerminalUnknown}</td>
                 <td>
                   {output.cr} → {output.pl}
                 </td>

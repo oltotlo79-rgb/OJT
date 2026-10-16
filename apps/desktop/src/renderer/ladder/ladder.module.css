@@ -16,7 +16,7 @@
   --ladder-fg-faint: #6b7280;
   --ladder-line: #d5d8de;
   /* 右の折りたたみ列の幅。`workspaceBody` の3列目（#27） */
-  --ladder-side-w: 200px;
+  --ladder-side-w: 260px;
   /* 左のプロジェクトツリーの上限幅。回路コメントが長くてもここより広げない（#27） */
   --ladder-tree-w: max(140px, 9rem);
 
@@ -1237,6 +1237,12 @@ details[open] > .sideSummary::before {
 }
 /* --- /Phase 7 Task 22 --- */
 
+/*
+ * I/O割付の表（v2.1.0 監査 U5）。端子名・デバイス名は識別子なので途中で折らない
+ * （`X0` が `X` と `0` に、`0.00` が `0.` と `00` に割れていた）。割当の列（`CR1 → PL1`）だけは
+ * 語の切れ目（空白）で折り返してよい。表の上の注記（`<caption>`）は既定の中央揃えをやめて左に
+ * そろえ、欄の幅で折り返す。
+ */
 .ioTable {
   table-layout: auto;
 }
@@ -1244,6 +1250,13 @@ details[open] > .sideSummary::before {
 .ioTable td {
   white-space: nowrap;
   overflow-wrap: normal;
+}
+.ioTable td:nth-child(3) {
+  white-space: normal;
+  word-break: keep-all;
+}
+.ioTable caption {
+  text-align: left;
 }
 .treeList button {
   min-width: 32px;

@@ -726,6 +726,8 @@ export const JA = {
     comments: 'デバイスコメント',
     comment: 'コメント',
     noDevices: 'まだデバイスを置いていません。',
+    /** 変換・書込み・RUNの関係を説明する右の欄（`LadderWorkspace`）。 */
+    operationGuide: '変換・書込み・RUNの違い',
     ioTable: 'I/O割付',
     ioDevice: 'デバイス',
     /** PLC本体の端子名（機種の8進表記）。決定表#16 */

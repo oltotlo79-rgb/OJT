@@ -57,7 +57,7 @@ const CHROME = 96;
 const BOARD_MAX_VW = 0.32;
 const BOARD_MIN = 560;
 /** `--ladder-side-w` / `--ladder-tree-w`（1600px 未満では列を下の帯へ回すので側は 0）。 */
-const SIDE_W = 200;
+const SIDE_W = 260;
 const TREE_W = 140;
 const TREE_W_NARROW = 116;
 /** 1列に落ちる境界（利用者決定）。 */
@@ -284,13 +284,15 @@ describe('分割レイアウトの列（UXレビュー #27）', () => {
 
   it('代表的な画面サイズで格子に残る幅（スクリーンショット確認の目標値）', () => {
     const need = gridNeeded(11);
-    // 12列（接点11＋コイル1）で 621px。1920×1080 の格子 941px に収まる
+    // 12列（接点11＋コイル1）で 621px。1920×1080 の格子 881px に収まる
     expect(need).toBe(621);
     expect(need).toBeLessThanOrEqual(gridWidth(1920, 1080));
 
-    // 1920×1080: 3D 614px / ラダー枠 1281px / 格子 941px → 横スクロールなし
+    // 1920×1080: 3D 614px / ラダー枠 1281px / 右の欄 260px（v2.1.0 監査 U5。196px では
+    // I/O割付の表が切れた）/ 格子 881px → 横スクロールなし
     expect(Math.round(boardWidth(1920, 1080))).toBe(614);
-    expect(Math.round(gridWidth(1920, 1080))).toBe(941);
+    expect(Math.round(gridWidth(1920, 1080))).toBe(881);
+    expect(LADDER_CSS).toMatch(/--ladder-side-w:\s*260px/u);
     expect(gridWidth(1920, 1080)).toBeGreaterThanOrEqual(need);
 
     // 1440×900: 3D 560px（下限）/ 格子 739px → 既定11列が収まる
