@@ -119,6 +119,12 @@
   min-height: 0;
 }
 
+/*
+ * 操作ログ（`SessionActivity`）を開いたら下の欄を広げる。v2.1.0 Task 2 で帯を
+ * `[data-testid='session-activity-row']`（ログの開閉＋自動保存の表示）で包んだので、
+ * `<details>` は欄の直下ではなくその中にある（直下の子で見ていた指定が効かなくなっていた）。
+ */
+.sessionLayout:has(> .bottomPanel > [data-testid='session-activity-row'] > details[open]),
 .sessionLayout:has(> .bottomPanel > details[open]) {
   --bottom-panel-h: 164px;
 }
