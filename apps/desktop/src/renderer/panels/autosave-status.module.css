@@ -1,0 +1,15 @@
+/* 自動保存の状態（下の帯・結果画面の帯の中に置く）。v2.1.0 Task 2 */
+.status {
+  color: var(--muted);
+  font-size: max(12px, 0.75rem);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.retry {
+  min-height: 32px;
+  padding: 2px 10px;
+  font-size: max(12px, 0.75rem);
+  color: var(--danger, #ffbc78);
+  border-color: var(--danger, #ffbc78);
+}

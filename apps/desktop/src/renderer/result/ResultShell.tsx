@@ -1,3 +1,4 @@
+import { AutosaveStatus } from '../panels/AutosaveStatus.js';
 import { MeasurementPanel } from '../panels/MeasurementPanel.js';
 import type { JSX, ReactNode } from 'react';
 import { formatElapsed } from '../../worker/runtime.js';
@@ -134,6 +135,10 @@ export function ResultShell({
         <button type="button" onClick={onBackToList}>
           {backLabel}
         </button>
+        {/* 自動保存の状態は帯の右端（画面に重ねない。v2.1.0 Task 2） */}
+        <span className={styles.actionsStatus}>
+          <AutosaveStatus />
+        </span>
       </div>
     </div>
   );

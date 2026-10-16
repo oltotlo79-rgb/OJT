@@ -1,4 +1,4 @@
-import { startAutosave, useAutosaveStatus, flushAutosave } from '../session/autosave.js';
+import { startAutosave } from '../session/autosave.js';
 import { useEffect, useState, type JSX } from 'react';
 import type { OjtApi, WorkFile } from '../../shared/ipc.js';
 import { sounds } from '../audio/sounds.js';
@@ -172,7 +172,6 @@ export function App({ onReady }: { onReady?: () => void } = {}): JSX.Element {
   useEffect(() => {
     if (initialized) onReady?.();
   }, [initialized, onReady]);
-  const autosave = useAutosaveStatus();
 
   // 未捕捉例外を拾って例外バナーに出す（§13 #5）。描画中の例外は `ErrorBoundary` が拾う
   useEffect(() => {
@@ -210,41 +209,10 @@ export function App({ onReady }: { onReady?: () => void } = {}): JSX.Element {
 
   return (
     <div className={styles.shell}>
-      {problemId === undefined ? null : (
-        <div
-          role="status"
-          data-testid="autosave-status"
-          style={{
-            position: 'fixed',
-            bottom: 4,
-            right: 12,
-            zIndex: 20,
-            background: 'var(--panel-bg, #202630)',
-            padding: '2px 8px',
-            borderRadius: 4,
-            fontSize: 12,
-          }}
-        >
-          {autosave.state === 'saving' ? (
-            '自動保存中…'
-          ) : autosave.state === 'pending' ? (
-            '自動保存待ち'
-          ) : autosave.state === 'failed' ? (
-            <button
-              title={autosave.message}
-              onClick={() => {
-                void flushAutosave();
-              }}
-            >
-              自動保存失敗 — 再試行
-            </button>
-          ) : autosave.state === 'saved' ? (
-            `自動保存済み ${new Date(autosave.at!).toLocaleTimeString('ja-JP')}`
-          ) : (
-            '自動保存を準備しています'
-          )}
-        </div>
-      )}
+      {/*
+        自動保存の状態は各練習画面の下の帯と結果画面の帯に出す（`panels/AutosaveStatus.tsx`）。
+        以前はここで画面の右下に固定して重ねていたため、右の欄のボタンを覆っていた（v2.1.0 Task 2）。
+      */}
       {fatalError === undefined ? null : (
         <div className={styles.banner} role="alert" data-testid="error-banner">
           <span>

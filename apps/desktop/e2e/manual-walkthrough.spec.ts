@@ -2393,13 +2393,16 @@ test.describe.serial('説明書の通し点検', () => {
     await claim(
       '08-autosave',
       '08 自動保存と通常終了',
-      '画面右下の「自動保存済み」と保存時刻',
+      '練習の画面の下の帯の右に「自動保存済み」と保存時刻',
       async () => {
         await goHome();
         await openProblem('mode-assemble', 'b-001');
         await waitForBoard();
         await page.waitForTimeout(2500);
-        const observed = await textOf(page.getByTestId('autosave-status'));
+        // 下の帯（操作ログ・経過時間）の右に並ぶ（v2.1.0 Task 2。画面に重ねる固定表示ではない）
+        const observed = await textOf(
+          page.getByTestId('session-activity-row').getByTestId('autosave-status'),
+        );
         return { observed, ok: /自動保存(済み|待ち|中)/u.test(observed) };
       },
     );

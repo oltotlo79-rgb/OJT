@@ -34,12 +34,17 @@ const BOOM = '描画で落ちました';
 const routeMock = vi.hoisted(() => ({ throwing: false }));
 const workFileMock = vi.hoisted(() => ({ applyWorkFile: vi.fn(() => Promise.resolve(true)) }));
 
-vi.mock('../src/renderer/app/routes.js', () => ({
-  renderRoute: () => {
-    if (routeMock.throwing) throw new Error(BOOM);
-    return createElement('div', { 'data-testid': 'route' });
-  },
-}));
+vi.mock('../src/renderer/app/routes.js', async () => {
+  // 自動保存の表示は練習画面の下の帯にある（v2.1.0 Task 2。以前は App が画面の右下に重ねていた）。
+  // 画面の中身を差し替えるこのテストでは、その表示だけを代わりに置く。
+  const { AutosaveStatus } = await import('../src/renderer/panels/AutosaveStatus.js');
+  return {
+    renderRoute: () => {
+      if (routeMock.throwing) throw new Error(BOOM);
+      return createElement('div', { 'data-testid': 'route' }, createElement(AutosaveStatus));
+    },
+  };
+});
 
 vi.mock('../src/renderer/session/work-file.js', async (importOriginal) => {
   const actual = await importOriginal<typeof WorkFileModule>();

@@ -200,8 +200,14 @@
 .actions {
   display: flex;
   flex: 0 0 auto;
+  align-items: center;
   gap: 10px;
   padding: 10px 24px;
+}
+
+/* 自動保存の状態は帯の右端に寄せる（v2.1.0 Task 2。以前は画面の右下に重ねていた） */
+.actionsStatus {
+  margin-left: auto;
 }
 
 /*
