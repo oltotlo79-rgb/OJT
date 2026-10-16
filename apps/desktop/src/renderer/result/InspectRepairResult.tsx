@@ -1,3 +1,4 @@
+import type { SocketRoles } from '@ojt/board-model';
 import type { Wire } from '@ojt/circuit-sim';
 import {
   detailReview,
@@ -7,7 +8,14 @@ import {
   type JudgeInspectRepairResult,
 } from '@ojt/content';
 import type { JSX } from 'react';
-import { JA, reportTargetLabel, schematicOpenCountText, wireLabel } from '../i18n/ja.js';
+import { useStore } from '../app/store.js';
+import {
+  JA,
+  reportTargetLabel,
+  schematicOpenCountText,
+  terminalTargetLabel,
+  wireLabel,
+} from '../i18n/ja.js';
 import { ChartOverlay } from './ChartOverlay.js';
 import { MismatchList } from './MismatchList.js';
 import { ResultShell } from './ResultShell.js';
@@ -27,15 +35,24 @@ import styles from './result.module.css';
  * すでに盤から無い（`wires` に見つからない）ときは見えている端子（`terminals`）で示す
  * （レビュー指摘 M1）。
  */
-function siteLabel(site: FaultSite, wires: readonly Wire[]): string {
+function siteLabel(site: FaultSite, wires: readonly Wire[], roles?: SocketRoles): string {
+  // 端子は3Dの札・指摘の小窓と同じ「S1 端子9（CR1⑨）」で呼ぶ（v2.1.0 監査 U7）
+  // 回路の端子IDのまま出す端子は「端子 TB_PB.1a / CR1.14」と見出しを1つにまとめる（これまでどおり）
+  const terminals = (): string => {
+    const plain = `${JA.inspectRepair.terminal} `;
+    return site.terminals
+      .map((t) => terminalTargetLabel(String(t), roles))
+      .map((name, index) => (index > 0 && name.startsWith(plain) ? name.slice(plain.length) : name))
+      .join(' / ');
+  };
   const where = (() => {
     if (site.wireId !== undefined) {
       const wire = wires.find((w) => w.id === site.wireId);
       if (wire !== undefined) return wireLabel(wire);
-      return `${JA.inspectRepair.terminal} ${site.terminals.map((t) => String(t)).join(' / ')}`;
+      return terminals();
     }
     if (site.partId !== undefined) return `${JA.session.parts} ${site.partId}`;
-    return `${JA.inspectRepair.terminal} ${site.terminals.map((t) => String(t)).join(' / ')}`;
+    return terminals();
   })();
   return `${where} — ${JA.reportKind[site.report]}`;
 }
@@ -94,6 +111,7 @@ export function InspectRepairResult({
   onBackToList: () => void;
 }): JSX.Element {
   const elapsedMs = result.elapsedMs ?? 0;
+  const roles = useStore((state) => state.session?.socketRoles);
   return (
     <ResultShell
       title={problem.title}
@@ -123,7 +141,7 @@ export function InspectRepairResult({
                 const review = detailReviewText(hit.site, hit.report);
                 return (
                   <li key={`m-${String(index)}`}>
-                    {siteLabel(hit.site, wires)}
+                    {siteLabel(hit.site, wires, roles)}
                     {review === undefined ? null : (
                       <span
                         className={styles.detail}
@@ -144,7 +162,7 @@ export function InspectRepairResult({
               <li>{JA.inspectRepair.none}</li>
             ) : (
               result.reports.missed.map((site, index) => (
-                <li key={`x-${String(index)}`}>{siteLabel(site, wires)}</li>
+                <li key={`x-${String(index)}`}>{siteLabel(site, wires, roles)}</li>
               ))
             )}
           </ul>
@@ -155,7 +173,7 @@ export function InspectRepairResult({
             ) : (
               result.reports.extra.map((report, index) => (
                 <li key={`e-${String(index)}`}>
-                  {reportTargetLabel(report.target, wires)} — {JA.reportKind[report.kind]}
+                  {reportTargetLabel(report.target, wires, roles)} — {JA.reportKind[report.kind]}
                 </li>
               ))
             )}

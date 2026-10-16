@@ -86,13 +86,19 @@ export function inspectPartsSteps(input: {
   plugged: boolean;
   /** 通電しているか。 */
   powered: boolean;
+  /**
+   * いま挿している部品に一度でも通電したか（v2.1.0 監査 U8）。
+   * コイル抵抗は電源を切って測るので、「いま通電しているか」だけで見ると、正しく作業するほど
+   * 「通電 いまここ」に戻り、後ろの「測る 済」「マーク 済」と並んでいた。省略は「まだ」。
+   */
+  poweredOnce?: boolean;
   /** テスターの黒・赤の両プローブが端子に置かれているか。 */
   probed: boolean;
   /** マークシートに解答が1件以上あるか。 */
   answered: boolean;
 }): ReadonlyArray<GuideStep<InspectPartsStepKey>> {
   const plugDone = input.plugged;
-  const powerDone = input.powered;
+  const powerDone = input.powered || input.poweredOnce === true;
   const measureDone = input.probed;
   const markDone = input.answered;
   return sequentialSteps([

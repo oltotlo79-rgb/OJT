@@ -63,6 +63,15 @@ describe('reportTargetLabel（#6b: 指摘対象の表示）', () => {
     expect(reportTargetLabel({ terminalId: 'CR1.13' })).toContain('CR1.13');
     expect(reportTargetLabel({ partId: 'CR2' })).toContain('CR2');
   });
+
+  it('役割の割当が分かれば、端子をソケットの番号で呼ぶ（v2.1.0 監査 U7）', () => {
+    const roles = { S1: 'CR1', S5: 'T1' } as const;
+    expect(reportTargetLabel({ terminalId: 'CR1.9' }, [], roles)).toBe('S1 端子9（CR1⑨）');
+    expect(reportTargetLabel({ terminalId: 'T1.13' }, [], roles)).toBe('S5 端子13（T1⑬）');
+    // 割当の無い役割・ソケット以外の端子は回路の端子IDのまま
+    expect(reportTargetLabel({ terminalId: 'CR3.9' }, [], roles)).toBe('端子 CR3.9');
+    expect(reportTargetLabel({ terminalId: 'TB_PB.1a' }, [], roles)).toBe('端子 TB_PB.1a');
+  });
 });
 
 describe('wireCountText（#21: 電線の本数）', () => {

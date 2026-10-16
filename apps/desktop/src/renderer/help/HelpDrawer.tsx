@@ -458,8 +458,57 @@ export function HelpDrawer({ onClose }: { onClose: () => void }): JSX.Element {
   );
 }
 
+/** 拡大した図が使ってよい窓の割合（幅 92%・高さ 85%）。v2.1.0（監査 U9） */
+const FIGURE_VIEW_WIDTH = 0.92;
+const FIGURE_VIEW_HEIGHT = 0.85;
+/** 図の板の上下左右の余白と「図を閉じる」の行のぶん[px]（`help.module.css` の `.figurePanel`）。 */
+const FIGURE_CHROME_X_PX = 16;
+const FIGURE_CHROME_Y_PX = 64;
+
 /**
- * 図の原寸を覆いで出す（利用者の決定 2026-09-20）。
+ * 拡大した図の大きさ[px]。v2.1.0（監査 U9）
+ *
+ * 窓の幅 92%・高さ 85%（図の板の余白と「図を閉じる」の行を除く）に収まる**最大の**大きさ。
+ * 縦横比は変えない。以前は撮った画像の大きさのまま出していたので、620×320px の切り抜きの図は
+ * 「大きく見る」を押してもほとんど大きくならなかった（小さい図は引き伸ばす）。
+ */
+export function enlargedFigureSize(
+  natural: { width: number; height: number },
+  viewport: { width: number; height: number },
+): { width: number; height: number } {
+  if (natural.width <= 0 || natural.height <= 0) return { width: 0, height: 0 };
+  const room = {
+    width: Math.max(1, viewport.width * FIGURE_VIEW_WIDTH - FIGURE_CHROME_X_PX),
+    height: Math.max(1, viewport.height * FIGURE_VIEW_HEIGHT - FIGURE_CHROME_Y_PX),
+  };
+  const scale = Math.min(room.width / natural.width, room.height / natural.height);
+  return {
+    width: Math.floor(natural.width * scale),
+    height: Math.floor(natural.height * scale),
+  };
+}
+
+/** いまの窓の大きさ（窓を変えると図の大きさも合わせ直す）。 */
+function useWindowSize(): { width: number; height: number } {
+  const read = (): { width: number; height: number } => ({
+    width: window.innerWidth,
+    height: window.innerHeight,
+  });
+  const [size, setSize] = useState(read);
+  useEffect(() => {
+    const onResize = (): void => {
+      setSize(read());
+    };
+    window.addEventListener('resize', onResize);
+    return () => {
+      window.removeEventListener('resize', onResize);
+    };
+  }, []);
+  return size;
+}
+
+/**
+ * 図を覆いで大きく出す（利用者の決定 2026-09-20。v2.1.0 から窓に合わせて拡大する）。
  * 引き出しの上にもう1枚積むので、`Esc` は**この覆いだけ**を閉じる（`topModalLayer()` で見分ける）。
  * 閉じると、開くのに押した図のボタンへ焦点が戻る。
  */
@@ -473,6 +522,10 @@ function FigureOverlay({
   const closeRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const full = MANUAL_IMAGES[figure.name]?.full ?? '';
+  // 画像の原寸は読み込んでから分かる。分かるまでは原寸のまま（`style` を付けない）
+  const [natural, setNatural] = useState<{ width: number; height: number } | undefined>(undefined);
+  const viewport = useWindowSize();
+  const size = natural === undefined ? undefined : enlargedFigureSize(natural, viewport);
   // Minor#13: 呼び出し元（`HelpDrawer`）は毎回新しい関数を渡してくる。ref で最新値を読む。
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
@@ -522,7 +575,16 @@ function FigureOverlay({
           event.stopPropagation();
         }}
       >
-        <img src={full} alt={figure.alt} data-testid="help-figure-full" />
+        <img
+          src={full}
+          alt={figure.alt}
+          data-testid="help-figure-full"
+          style={size === undefined ? undefined : { width: size.width, height: size.height }}
+          onLoad={(event) => {
+            const image = event.currentTarget;
+            setNatural({ width: image.naturalWidth, height: image.naturalHeight });
+          }}
+        />
         <button type="button" ref={closeRef} data-testid="help-figure-close" onClick={onClose}>
           {JA.help.figureClose}
         </button>

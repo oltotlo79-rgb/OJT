@@ -5,10 +5,12 @@ import { JA } from '../src/renderer/i18n/ja.js';
 import { RepairPanel } from '../src/renderer/panels/RepairPanel.js';
 import { ReportPanel, reportKindText } from '../src/renderer/panels/ReportPanel.js';
 import {
+  popoverAreaOf,
   popoverPosition,
   POPOVER_WIDTH_PX,
   ReportPopover,
 } from '../src/renderer/panels/ReportPopover.js';
+import { useStore } from '../src/renderer/app/store.js';
 
 /**
  * モードC2の指摘・修復パネル（Plan 2B Task 13）。設計仕様 §9.2。
@@ -68,7 +70,8 @@ describe('ReportPanel（§9.2 指摘一覧）', () => {
 });
 
 describe('3D図の中の指摘の小窓（2026-09-26 利用者指示）', () => {
-  const at = { left: 10, top: 20 };
+  /** 小窓を置ける範囲（ビューポートの中のキャンバスの矩形）。 */
+  const AREA = { left: 0, top: 30, right: 1000, bottom: 600 };
 
   it('電線を選んだら 断線 と 誤配線 を出す', () => {
     const onPick = vi.fn();
@@ -76,7 +79,8 @@ describe('3D図の中の指摘の小窓（2026-09-26 利用者指示）', () => 
       <ReportPopover
         pending={{ wireId: 'sw-003' }}
         wires={[]}
-        position={at}
+        anchor={undefined}
+        area={AREA}
         onPick={onPick}
         onCancel={vi.fn()}
       />,
@@ -92,7 +96,8 @@ describe('3D図の中の指摘の小窓（2026-09-26 利用者指示）', () => 
       <ReportPopover
         pending={{ terminalId: 'CR1.13' }}
         wires={[]}
-        position={at}
+        anchor={undefined}
+        area={AREA}
         onPick={vi.fn()}
         onCancel={vi.fn()}
       />,
@@ -110,7 +115,8 @@ describe('3D図の中の指摘の小窓（2026-09-26 利用者指示）', () => 
       <ReportPopover
         pending={{ partId: 'CR2' }}
         wires={[]}
-        position={at}
+        anchor={undefined}
+        area={AREA}
         onPick={onPick}
         onCancel={vi.fn()}
       />,
@@ -129,7 +135,8 @@ describe('3D図の中の指摘の小窓（2026-09-26 利用者指示）', () => 
       <ReportPopover
         pending={{ partId: 'CR2' }}
         wires={[]}
-        position={at}
+        anchor={undefined}
+        area={AREA}
         onPick={vi.fn()}
         onCancel={onCancel}
       />,
@@ -139,15 +146,100 @@ describe('3D図の中の指摘の小窓（2026-09-26 利用者指示）', () => 
     expect(onCancel).toHaveBeenCalledTimes(2);
   });
 
-  it('押した場所の右下に出し、はみ出すときは内側へ寄せる', () => {
-    const viewport = { width: 1000, height: 700 };
-    expect(popoverPosition({ x: 100, y: 100 }, viewport)).toEqual({ left: 114, top: 114 });
-    // 右端・下端の近くで押したら内側へ
-    const edge = popoverPosition({ x: 990, y: 690 }, viewport);
-    expect(edge.left + POPOVER_WIDTH_PX).toBeLessThanOrEqual(viewport.width);
-    expect(edge.top).toBeLessThan(690);
-    // 一覧から開いたとき（押した場所が無い）は右上
-    expect(popoverPosition(undefined, viewport).top).toBe(56);
+  it('押した場所の右下に出し、入らなければ左・上へ回す（実寸で決める。v2.1.0 監査 U7）', () => {
+    const size = { width: 340, height: 300 };
+    // 右下に入る
+    expect(popoverPosition({ x: 100, y: 100 }, AREA, size)).toEqual({ left: 114, top: 114 });
+    // 右に入らない → 押した点の左
+    expect(popoverPosition({ x: 900, y: 100 }, AREA, size).left).toBe(900 - 14 - 340);
+    // 下に入らない → 押した点の上（押した物を隠さない）
+    expect(popoverPosition({ x: 100, y: 500 }, AREA, size).top).toBe(500 - 14 - 300);
+    // 上下どちらにも入らない高さ → 置き場の中へ寄せる（下の帯へははみ出さない）
+    const tall = popoverPosition({ x: 100, y: 300 }, AREA, { width: 340, height: 560 });
+    expect(tall.top).toBeGreaterThanOrEqual(AREA.top);
+    expect(tall.top + 560).toBeLessThanOrEqual(AREA.bottom);
+    // 一覧から開いたとき（押した点が無い）は置き場の右上
+    expect(popoverPosition(undefined, AREA, size)).toEqual({ left: 1000 - 340 - 8, top: 38 });
+    expect(POPOVER_WIDTH_PX).toBe(340);
+  });
+
+  it('置き場は3Dを描くキャンバスの矩形（押しボタンの帯・状態の帯を含めない）', () => {
+    const viewport = document.createElement('div');
+    const canvas = document.createElement('canvas');
+    viewport.append(canvas);
+    document.body.append(viewport);
+    vi.spyOn(viewport, 'getBoundingClientRect').mockReturnValue(new DOMRect(100, 50, 900, 700));
+    vi.spyOn(canvas, 'getBoundingClientRect').mockReturnValue(new DOMRect(100, 80, 900, 520));
+    expect(popoverAreaOf(viewport)).toEqual({ left: 0, top: 30, right: 900, bottom: 550 });
+    viewport.remove();
+  });
+
+  it('開いたあとの実寸で置き直す（押した点の上に出す）', () => {
+    vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockReturnValue(340);
+    vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockReturnValue(420);
+    render(
+      <ReportPopover
+        pending={{ partId: 'CR2' }}
+        wires={[]}
+        anchor={{ x: 200, y: 560 }}
+        area={AREA}
+        onPick={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+    );
+    const popover = screen.getByTestId('report-popover');
+    // 実寸 420px は押した点の下（560 + 14）に入らないので上へ出す
+    expect(popover.style.top).toBe(`${String(560 - 14 - 420)}px`);
+    expect(popover.style.left).toBe('214px');
+    vi.restoreAllMocks();
+  });
+
+  it('置き場を省くと、入れてある3Dの枠のキャンバスを測って置く', () => {
+    const host = document.createElement('div');
+    const canvas = document.createElement('canvas');
+    host.append(canvas);
+    document.body.append(host);
+    vi.spyOn(host, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 100, 1000, 700));
+    // キャンバスは状態の帯（30px）の下から、押しボタンの帯（下 90px）の上まで
+    vi.spyOn(canvas, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 130, 1000, 580));
+    vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockReturnValue(340);
+    vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockReturnValue(200);
+    render(
+      <ReportPopover
+        pending={{ partId: 'CR2' }}
+        wires={[]}
+        anchor={{ x: 100, y: 500 }}
+        onPick={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+      { container: host },
+    );
+    const popover = screen.getByTestId('report-popover');
+    // 下（500 + 14 + 200 = 714）はキャンバスの下端（610）を越えるので、押した点の上へ
+    expect(popover.style.top).toBe(`${String(500 - 14 - 200)}px`);
+    expect(popover.style.left).toBe('114px');
+    vi.restoreAllMocks();
+    host.remove();
+  });
+
+  it('端子はソケットの番号でも呼ぶ（3Dの札「S1 端子9」とそろえる。v2.1.0 監査 U7）', () => {
+    useStore.setState({
+      session: { socketRoles: { S1: 'CR1', S2: 'CR2' } } as unknown as ReturnType<
+        typeof useStore.getState
+      >['session'],
+    });
+    render(
+      <ReportPopover
+        pending={{ terminalId: 'CR1.9' }}
+        wires={[]}
+        anchor={undefined}
+        area={AREA}
+        onPick={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+    );
+    expect(screen.getByTestId('report-popover-target').textContent).toBe('S1 端子9（CR1⑨）');
+    useStore.setState({ session: undefined });
   });
 });
 

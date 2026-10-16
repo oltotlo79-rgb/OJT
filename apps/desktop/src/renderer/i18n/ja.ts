@@ -1,4 +1,4 @@
-import type { RoutingErrorReason } from '@ojt/board-model';
+import type { RoutingErrorReason, SocketRoles } from '@ojt/board-model';
 import type { HazardKind, MismatchReason } from '@ojt/circuit-sim';
 import { OUTPUT_LABELS, PB_LABELS } from '@ojt/content';
 import type { FaultReportKind, ProblemMode, ProblemTag, StaticCheckId } from '@ojt/content';
@@ -2098,18 +2098,42 @@ export function wireLabel(wire: { from: string; to: string; color: string }): st
 }
 
 /**
- * 指摘の対象の表示（`端子 CR1.13` / `部品 CR2`、電線は `wires` が渡っていれば
+ * 指摘の対象の端子の呼び名。v2.1.0（監査 U7）
+ *
+ * 3Dの端子の札（ホバー）は「S1 端子9: CR1 リレー …」とソケットの番号で呼ぶのに、指摘の小窓は
+ * 回路の端子ID（`CR1.9`）で「端子 CR1.9」と出していて、同じ端子に見えなかった。ソケットの
+ * 役割の割当（`roles`）が分かるときは「S1 端子9（CR1⑨）」にそろえる。割当が無い・ソケット
+ * 以外の端子（`TB_PB.1a` など）は「端子 TB_PB.1a」のまま。
+ */
+export function terminalTargetLabel(terminalId: string, roles?: SocketRoles): string {
+  const dot = terminalId.indexOf('.');
+  const role = terminalId.slice(0, dot);
+  const pin = terminalId.slice(dot + 1);
+  if (roles !== undefined && dot > 0 && /^\d+$/u.test(pin)) {
+    const socket = (Object.keys(roles) as Array<keyof SocketRoles>).find(
+      (id) => roles[id] === role,
+    );
+    if (socket !== undefined) {
+      return `${socket} ${JA_PIN.pin}${pin}（${role}${circledNumber(Number(pin))}）`;
+    }
+  }
+  return `${JA.inspectRepair.terminal} ${terminalId}`;
+}
+
+/**
+ * 指摘の対象の表示（端子は `terminalTargetLabel()`、`部品 CR2`、電線は `wires` が渡っていれば
  * `CR1.9–PB1.2c の青線`。渡っていない・見つからないときは電線IDへ後退する）。§9.2 / UXレビュー #6b
  */
 export function reportTargetLabel(
   target: { wireId: string } | { partId: string } | { terminalId: string },
   wires?: readonly { id: string; from: string; to: string; color: string }[],
+  roles?: SocketRoles,
 ): string {
   if ('wireId' in target) {
     const wire = wires?.find((w) => w.id === target.wireId);
     return wire === undefined ? `${JA.session.wires} ${target.wireId}` : wireLabel(wire);
   }
-  if ('terminalId' in target) return `${JA.inspectRepair.terminal} ${target.terminalId}`;
+  if ('terminalId' in target) return terminalTargetLabel(target.terminalId, roles);
   return `${JA.session.parts} ${target.partId}`;
 }
 

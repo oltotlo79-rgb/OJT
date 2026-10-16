@@ -136,6 +136,14 @@ button[aria-pressed='true'] {
 }
 
 /* drei の <Html> が描くラベル（CSS Modules の外なのでグローバルに置く） */
+/*
+ * 指摘の小窓（C2）が開いている間は、端子の札（ホバー）を出さない（v2.1.0 監査 U7。小窓の
+ * 後ろに札が残り、どちらを見ればよいか分からなかった）。
+ */
+[data-testid='viewport']:has([data-testid='report-popover']) .terminal-tooltip {
+  display: none;
+}
+
 .terminal-tooltip {
   background: rgba(16, 21, 28, 0.92);
   border: 1px solid var(--accent);

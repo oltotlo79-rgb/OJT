@@ -1,6 +1,7 @@
 import type { Wire } from '@ojt/circuit-sim';
 import type { FaultReport } from '@ojt/content';
 import type { JSX } from 'react';
+import { useStore } from '../app/store.js';
 import { JA, reportTargetLabel } from '../i18n/ja.js';
 import { focusDiagnosticTarget } from '../session/diagnostic-navigation.js';
 import styles from './tester.module.css';
@@ -38,6 +39,8 @@ export function ReportPanel({
   onEdit: (index: number) => void;
   onRemove: (index: number) => void;
 }): JSX.Element {
+  // 端子は3Dの札と同じ「S1 端子9（CR1⑨）」で呼ぶ（v2.1.0 監査 U7）
+  const roles = useStore((state) => state.session?.socketRoles);
   return (
     <section className={styles.panel} data-testid="report-panel">
       <h2 className={styles.title}>
@@ -59,7 +62,7 @@ export function ReportPanel({
                 className={styles.reportTarget}
                 onClick={() => focusDiagnosticTarget(report.target)}
               >
-                {reportTargetLabel(report.target, wires)} を表示
+                {reportTargetLabel(report.target, wires, roles)} を表示
               </button>
               <span data-testid={`report-kind-text-${String(index)}`}>
                 {reportKindText(report)}

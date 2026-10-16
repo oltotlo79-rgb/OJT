@@ -5,7 +5,7 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { act, type JSX } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useStore } from '../src/renderer/app/store.js';
-import { HelpDrawer } from '../src/renderer/help/HelpDrawer.js';
+import { enlargedFigureSize, HelpDrawer } from '../src/renderer/help/HelpDrawer.js';
 import {
   anchorIdOf,
   defaultSectionId,
@@ -507,6 +507,41 @@ describe('図（利用者の決定 2026-09-20）', () => {
       IMAGES.real['home']?.full ?? '',
     );
     expect(IMAGES.real['home']?.full).not.toBe(IMAGES.real['home']?.small);
+  });
+
+  it('enlarges the figure to the largest size that fits 92% × 85% of the window (v2.1.0 U9)', () => {
+    // 620×320 の切り抜きは 1280×800 の窓で 1161×599 まで引き伸ばす（幅で決まる）
+    const crop = enlargedFigureSize({ width: 620, height: 320 }, { width: 1280, height: 800 });
+    expect(crop).toEqual({ width: 1161, height: 599 });
+    expect(crop.width).toBeLessThanOrEqual(1280 * 0.92 - 16);
+    expect(crop.height).toBeLessThanOrEqual(800 * 0.85 - 64);
+    expect(crop.width / crop.height).toBeCloseTo(620 / 320, 2);
+    // 窓より大きい画像は窓に収める
+    const full = enlargedFigureSize({ width: 2560, height: 1600 }, { width: 1280, height: 800 });
+    expect(full.width).toBeLessThanOrEqual(1280 * 0.92);
+    expect(full.height).toBeLessThanOrEqual(800 * 0.85);
+    // 原寸が分からない画像は大きさを付けない
+    expect(enlargedFigureSize({ width: 0, height: 0 }, { width: 1280, height: 800 })).toEqual({
+      width: 0,
+      height: 0,
+    });
+  });
+
+  it('sizes the overlay picture from its natural size once it has loaded', () => {
+    render(<HelpDrawer onClose={() => undefined} />);
+    fireEvent.click(figureButton('home') as HTMLButtonElement);
+    const image = screen.getByTestId('help-figure-full');
+    expect(image.style.width).toBe('');
+    Object.defineProperty(image, 'naturalWidth', { configurable: true, value: 620 });
+    Object.defineProperty(image, 'naturalHeight', { configurable: true, value: 320 });
+    fireEvent.load(image);
+    const expected = enlargedFigureSize(
+      { width: 620, height: 320 },
+      { width: window.innerWidth, height: window.innerHeight },
+    );
+    expect(image.style.width).toBe(`${String(expected.width)}px`);
+    expect(image.style.height).toBe(`${String(expected.height)}px`);
+    expect(expected.width).toBeGreaterThan(620);
   });
 
   it('closes the overlay with Escape, leaves the drawer open and gives the focus back', () => {

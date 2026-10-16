@@ -311,7 +311,7 @@
 
 .figurePanel {
   max-width: 96vw;
-  max-height: 88vh;
+  max-height: 96vh;
   background: var(--paper);
   padding: 8px;
   border-radius: 4px;
@@ -321,9 +321,13 @@
   gap: 8px;
 }
 
+/*
+ * 大きさは `HelpDrawer.tsx` の `enlargedFigureSize()` が窓の 92%×85% に合わせて付ける
+ * （v2.1.0 監査 U9）。ここの上限は付ける前（読み込み中）の保険。
+ */
 .figurePanel img {
   max-width: 100%;
-  max-height: 76vh;
+  max-height: 85vh;
   object-fit: contain;
 }
 

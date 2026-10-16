@@ -1,6 +1,7 @@
 import { mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { JIPM_BOARD, type BoardSession, type Vec3 } from '@ojt/board-model';
+import { terminalTargetLabel } from '../src/renderer/i18n/ja.js';
 import { visibleRoutes } from '../src/renderer/session/wire-routes.js';
 import {
   BUILTIN_INSPECT_PARTS_PROBLEMS,
@@ -548,7 +549,10 @@ test.describe.serial('モードC2 回路点検・修復（§16 Phase 2 受入基
         expect(terminal).toBeDefined();
         if (terminal === undefined) continue;
         await clickTerminal(String(terminal));
-        await expect(page.getByTestId('report-popover')).toContainText(`端子 ${String(terminal)}`);
+        // 小窓の見出しは3Dの端子の札と同じ呼び名（`S1 端子9（CR1⑨）`。v2.1.0 監査 U7）
+        await expect(page.getByTestId('report-popover')).toContainText(
+          terminalTargetLabel(String(terminal), socketRoles),
+        );
         await page.getByTestId('report-kind-wire-missing').click();
         continue;
       }

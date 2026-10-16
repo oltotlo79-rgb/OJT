@@ -145,6 +145,30 @@ describe('assembleSteps（モードB: 部品装着 → 配線 → 通電 → 判
 });
 
 describe('inspectPartsSteps（モードC1: 部品を挿す → 通電 → 測る → マーク → 判定）', () => {
+  it('keeps power done once the plugged part has been powered, even after switching off (v2.1.0 U8)', () => {
+    const steps = inspectPartsSteps({
+      plugged: true,
+      powered: false,
+      poweredOnce: true,
+      probed: true,
+      answered: true,
+    });
+    expect(steps.find((s) => s.key === 'power')?.state).toBe('done');
+    // 測る・マークまで済めば、いまここは判定
+    expect(steps.find((s) => s.key === 'judge')?.state).toBe('current');
+  });
+
+  it('goes back to power when a new part has not been powered yet', () => {
+    const steps = inspectPartsSteps({
+      plugged: true,
+      powered: false,
+      poweredOnce: false,
+      probed: false,
+      answered: false,
+    });
+    expect(steps.find((s) => s.key === 'power')?.state).toBe('current');
+  });
+
   it('starts at plug', () => {
     const steps = inspectPartsSteps({
       plugged: false,

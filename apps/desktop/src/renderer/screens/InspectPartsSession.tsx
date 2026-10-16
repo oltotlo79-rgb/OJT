@@ -3,7 +3,7 @@ import { togglePowerFixture } from '../session/power-toggle.js';
 import { toNetlistTerminal } from '@ojt/board-model';
 import type { TerminalId } from '@ojt/circuit-sim';
 import { isInspectPartsProblem } from '@ojt/content';
-import { useCallback, useEffect, type JSX } from 'react';
+import { useCallback, useEffect, useState, type JSX } from 'react';
 import { checkSessionFor, useStore } from '../app/store.js';
 import { contactProbeLabel, JA, powerLog, referenceErrorText, trayPartLabel } from '../i18n/ja.js';
 import { CheckTrayPanel } from '../panels/CheckTrayPanel.js';
@@ -97,6 +97,14 @@ export function InspectPartsSession(): JSX.Element {
    * `snapshot` をまるごと購読すると3Dビューポートごと巻き添えになる（§15）。
    */
   const powered = useStore((s) => s.snapshot.powered);
+  /*
+   * いま挿している部品に一度でも通電したか（手順帯の「通電」。v2.1.0 監査 U8）。
+   * 部品を差し替えると、新しい部品に通電するまで「通電」に戻る。
+   */
+  const [poweredPartId, setPoweredPartId] = useState<string | undefined>(undefined);
+  useEffect(() => {
+    if (powered && checkPartId !== undefined) setPoweredPartId(checkPartId);
+  }, [powered, checkPartId]);
   const tripped = useStore((s) => s.snapshot.tripped);
   const breakerOn = useStore((s) => s.snapshot.breakerOn);
   const switchOn = useStore((s) => s.snapshot.switchOn);
@@ -268,6 +276,7 @@ export function InspectPartsSession(): JSX.Element {
   const steps = inspectPartsSteps({
     plugged: checkPartId !== undefined,
     powered,
+    poweredOnce: checkPartId !== undefined && poweredPartId === checkPartId,
     probed: probeBlack !== undefined && probeRed !== undefined,
     answered: answers.length > 0,
   });

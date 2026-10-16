@@ -41,7 +41,7 @@ import { PowerControls } from '../panels/PowerControls.js';
 import { ProblemPanel } from '../panels/ProblemPanel.js';
 import { RepairPanel, type MountedPartRow } from '../panels/RepairPanel.js';
 import { ReportPanel, reportKindText } from '../panels/ReportPanel.js';
-import { popoverPosition, ReportPopover } from '../panels/ReportPopover.js';
+import { ReportPopover } from '../panels/ReportPopover.js';
 import { dispatchTester, TesterPanel } from '../panels/TesterPanel.js';
 import { TimeChartPanel } from '../panels/TimeChartPanel.js';
 import { HoverHint } from '../panels/HoverHint.js';
@@ -792,10 +792,7 @@ export function InspectRepairSession(): JSX.Element {
               pending={pendingReport}
               wires={reportWires}
               {...(editingReport === undefined ? {} : { current: editingReport })}
-              position={popoverPosition(popoverAnchor, {
-                width: viewportRef.current?.clientWidth ?? 800,
-                height: viewportRef.current?.clientHeight ?? 600,
-              })}
+              anchor={popoverAnchor}
               onPick={onReportPick}
               onCancel={() => {
                 useStore.getState().setPendingReport(undefined);
