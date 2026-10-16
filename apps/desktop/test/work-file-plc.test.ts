@@ -333,7 +333,7 @@ describe('applyWorkFile（PLC に書き込んだプログラム。v2.1.0 監査 
     );
     const store = useStore.getState();
     store.setLadder(written);
-    store.setPlcProgram(useStore.getState().ladder!);
+    store.setPlcProgram(useStore.getState().ladder);
     const file = toWorkFile(problem.id, useStore.getState().session!, 0, 0);
     expect(file.plcProgram).toBeDefined();
 
