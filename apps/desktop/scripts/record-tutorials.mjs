@@ -1061,17 +1061,22 @@ async function plc(vendorId) {
   await device(dev('input', 2));
   await cell(`n3:0:${coil}`);
   await placeSymbol(vendor, 'coil');
-  await device(dev('output', 2));
+  /*
+   * 三菱だけ、点検灯のコイルを打ち間違えたまま進める（v2.1.0 設計 §2.12）。
+   * 動かして点かないことに気づき、直して変換したあと**書込みを忘れて** RUN のまま試し、
+   * 手順の帯の札「エディタと違う」を見て書き込む。
+   */
+  await device(vendorId === 'mitsubishi' ? dev('output', 3) : dev('output', 2));
   if (vendor.convertKey !== undefined) {
     /*
      * わざと間違える（v2.0.0 設計 §3.7）: 変換せずにモニタを押す。GX Works3 風は編集後に変換が要る。
      */
     await bubble('ラダーができたので、そのままモニタを始めてみます。', 2800);
     await click(page.getByTestId('toolbar-monitor-start'));
-    await expect(page.getByTestId('monitor-panel')).toContainText('先に変換');
+    await expect(page.getByTestId('monitor-panel')).toContainText('PLCにプログラムがありません');
     await bubble(
-      `モニタの欄に「先に変換（${vendor.convertKey}）してください」と出ました。このツールでは、編集したラダーは変換してからでないと書き込めません。`,
-      5600,
+      `モニタの欄に「PLCにプログラムがありません。先に変換（${vendor.convertKey}）して、「シーケンサへの書込み」で書き込むと…」と出ました。編集したラダーは、変換してPLCへ書き込むまで動きません。`,
+      6000,
     );
     markMistake('変換せずにモニタを開始');
     await bubble(
@@ -1080,6 +1085,12 @@ async function plc(vendorId) {
     );
     await ladderKey(vendor.convertKey);
     await expect(page.getByTestId('convert-state')).toHaveText('変換に成功しました');
+    await bubble(
+      '変換が通ったら「シーケンサへの書込み」でPLCへ書き込みます。手順の帯の札が「PLCのプログラム: 書込み済み」になります。',
+      4600,
+    );
+    await click(page.getByTestId('toolbar-download'));
+    await expect(page.getByTestId('plc-program-status')).toHaveAttribute('data-state', 'written');
   } else {
     await expect(page.getByTestId('convert-state')).toHaveText(
       '変換に成功しました（自動で変換されます）',
@@ -1183,9 +1194,75 @@ async function plc(vendorId) {
   await click(page.getByTestId('view-split'));
   await pause(800);
   await click(page.getByTestId('toolbar-monitor-start'));
+  const writeButton = page.getByTestId('toolbar-download').first();
+  // ボタンの文字の前にある矢印の印（↓）は名前に含めない
+  const writeName = ((await writeButton.textContent()) ?? '').replace(/^[^\p{L}]+/u, '').trim();
+  if (vendorId !== 'mitsubishi') {
+    /*
+     * わざと間違える（v2.1.0 設計 §2.12）: 書き込む前に RUN を押す。自動で変換されていても、
+     * PLC にはまだプログラムが無い。
+     */
+    await click(page.getByTestId('toolbar-plc-run'));
+    await expect(
+      page.getByTestId('toast').filter({ hasText: 'PLCにプログラムがありません' }),
+    ).toBeVisible();
+    await bubble(
+      'RUNを押したら「PLCにプログラムがありません。書込みをしてから RUN します」と出て、PLC本体のERRが点きました。ラダーは自動で変換されていますが、まだPLCへ書き込んでいません。',
+      6400,
+    );
+    markMistake('書き込まずにRUN');
+    await bubble(`「${writeName}」でPLCへ書き込んでから、もう一度RUNにします。`, 3600);
+    await click(writeButton);
+    await expect(page.getByTestId('plc-program-status')).toHaveAttribute('data-state', 'written');
+  }
   await click(page.getByTestId('toolbar-plc-run'));
   await click(page.getByTestId('view-board'));
   await pause(700);
+  if (vendorId === 'mitsubishi') {
+    await bubble('PB3を押して、点検灯 PL3 が点くか見てみます。', 2800);
+    await pressPlcPb(unit, 'PB3', 1500);
+    await bubble(
+      `PB3を押してもPL3が点きません。ラダーを見ると、3段目のコイルが ${dev('output', 3)} になっています。I/O表では PL3 は ${dev('output', 2)} です。番号を打ち間違えていました。`,
+      6400,
+    );
+    markMistake(`点検灯のコイルを ${dev('output', 3)} と入力`);
+    await click(page.getByTestId('view-ladder'));
+    await pause(700);
+    // モニタを止めると書込みモードに戻り、編集できる
+    await click(page.getByTestId('toolbar-monitor-stop'));
+    await cell(`n3:0:${coil}`);
+    await placeSymbol(vendor, 'coil');
+    await device(dev('output', 2));
+    await ladderKey('F4');
+    await expect(page.getByTestId('convert-state')).toHaveText('変換に成功しました');
+    await bubble(
+      `${dev('output', 2)} に直して変換しました。盤でもう一度 PB3 を押してみます。`,
+      3400,
+    );
+    await click(page.getByTestId('view-board'));
+    await pause(700);
+    await pressPlcPb(unit, 'PB3', 1500);
+    await highlight(page.getByTestId('plc-program-status'));
+    await bubble(
+      '直したのに、まだ点きません。手順の帯の札は「PLCのプログラム: エディタと違う」です。変換しただけで、PLCには直す前のプログラムが入ったままでした。',
+      6600,
+    );
+    markMistake('直したあと書込みを忘れた');
+    await clearHighlight();
+    await bubble(
+      '「シーケンサへの書込み」を押します。運転中のPLCには書き込めないので「STOPして書き込む」を選び、書き込んだらRUNにし直します。',
+      5200,
+    );
+    await click(page.getByTestId('view-split'));
+    await pause(700);
+    await click(page.getByTestId('toolbar-download'));
+    await click(page.getByTestId('plc-write-confirm-stop'));
+    await expect(page.getByTestId('plc-program-status')).toHaveAttribute('data-state', 'written');
+    await click(page.getByTestId('toolbar-monitor-start'));
+    await click(page.getByTestId('toolbar-plc-run'));
+    await click(page.getByTestId('view-board'));
+    await pause(700);
+  }
   if (skipped !== undefined) {
     await bubble('PB1を押して、運転開始のランプ PL1 が点くか見てみます。', 2800);
     const pb1 = JIPM_BOARD.pushButtons.find((pb) => pb.id === 'PB1');
@@ -1268,6 +1345,25 @@ async function dragRow(signal, from, to) {
   await page.mouse.up();
   await pause(500);
 }
+/**
+ * PLC の机の盤で押しボタンを押し続けてから離す（`plcBoardPointFor` は机の配置で射影する）。
+ * @param {import('@ojt/board-model').PlcUnitDefinition} unit @param {string} id @param {number} ms
+ */
+async function pressPlcPb(unit, id, ms) {
+  const definition = JIPM_BOARD.pushButtons.find((pb) => pb.id === id);
+  if (!definition) throw new Error(`${id} がありません`);
+  const p = plcBoardPointFor(
+    unit,
+    { x: definition.pos.x, y: definition.pos.y, z: 4.5 },
+    await canvas(),
+  );
+  await move(p.x, p.y);
+  await page.mouse.down();
+  await pause(ms);
+  await page.mouse.up();
+  await pause(700);
+}
+
 /** ホームの実験のカードから始める。 @param {'assemble-lab'|'plc-lab'} labMode @param {string} templateId @param {boolean} prewired */
 async function startLabFromHome(labMode, templateId, prewired) {
   await click(page.getByTestId(`mode-${labMode}`));
@@ -1506,9 +1602,14 @@ async function labPlc() {
   await cell(`n1:0:${coil}`);
   await placeSymbol(mitsubishi, 'coil');
   await device(dev('output', 0));
-  await bubble('自己保持だけで、まず動かしてみます。F4で変換します。', 2800);
+  await bubble(
+    '自己保持だけで、まず動かしてみます。F4で変換し、「シーケンサへの書込み」でPLCへ書き込みます。',
+    4000,
+  );
   await ladderKey('F4');
   await expect(page.getByTestId('convert-state')).toHaveText('変換に成功しました');
+  await click(page.getByTestId('toolbar-download'));
+  await expect(page.getByTestId('plc-program-status')).toHaveAttribute('data-state', 'written');
   await click(page.getByTestId('view-split'));
   await pause(900);
   await click(page.getByTestId('lab-run'));
@@ -1547,9 +1648,14 @@ async function labPlc() {
   await cell(`n3:0:${coil}`);
   await placeSymbol(mitsubishi, 'coil');
   await device(dev('output', 2));
-  await bubble('F4で変換します。変換が通ったラダーだけを動かせます。', 3200);
+  await bubble(
+    'F4で変換して、「シーケンサへの書込み」で書き込みます。PLC実験も、PLCに書き込んだラダーで動かします。',
+    4400,
+  );
   await ladderKey('F4');
   await expect(page.getByTestId('convert-state')).toHaveText('変換に成功しました');
+  await click(page.getByTestId('toolbar-download'));
+  await expect(page.getByTestId('plc-program-status')).toHaveAttribute('data-state', 'written');
   await click(page.getByTestId('view-split'));
   await pause(900);
   await bubble(
