@@ -93,7 +93,8 @@ describe('実際に表示する電線と端子の接続', () => {
     expect(visible.errors).toEqual([]);
     expect(visible.routes).toHaveLength(70);
     inspectConnections(JIPM_BOARD, [...visible.fixed, ...visible.routes]);
-  });
+    // 単独では約8秒。全スイートの並列実行中は CPU が混み合い、既定の15秒を超えることがある
+  }, 45_000);
   it('最も複雑な修復課題でも、接続・穴を保ち、元の配線データを書き換えない', () => {
     const problem = BUILTIN_INSPECT_REPAIR_PROBLEMS.at(-1)!;
     const built = buildReferenceSession(problem, JIPM_BOARD);
