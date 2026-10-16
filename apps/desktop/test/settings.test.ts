@@ -172,8 +172,16 @@ describe('writeSettings（レビュー指摘: renderer からの入力を信用�
       ladderGridCols: DEFAULT_SETTINGS.ladderGridCols,
       monitorColor: DEFAULT_SETTINGS.monitorColor,
       monitorColorMigrated: true,
+      showBoardLabels: true,
     });
     expect(readSettings()).toEqual(saved);
+  });
+
+  it('3Dの名札の表示（showBoardLabels）は真偽値だけ保存し、他の型は無視する（v2.1.0 監査 U3）', () => {
+    expect(writeSettings({ showBoardLabels: false }).showBoardLabels).toBe(false);
+    expect(readSettings().showBoardLabels).toBe(false);
+    expect(writeSettings({ showBoardLabels: 'off' }).showBoardLabels).toBe(false);
+    expect(writeSettings({ showBoardLabels: true }).showBoardLabels).toBe(true);
   });
 
   it('未知のキーはホワイトリストで落とし、ファイルにも書かれない', () => {
@@ -191,6 +199,7 @@ describe('writeSettings（レビュー指摘: renderer からの入力を信用�
         'monitorColor',
         'monitorColorMigrated',
         'restorePrompt',
+        'showBoardLabels',
         'soundEnabled',
         'soundVolume',
         'userContentDir',

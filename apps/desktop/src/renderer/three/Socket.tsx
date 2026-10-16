@@ -12,7 +12,6 @@ import {
   type SocketRole,
 } from '@ojt/board-model';
 import { parseTerminalId } from '@ojt/circuit-sim';
-import { Html } from '@react-three/drei';
 import { useEffect, useMemo, useRef, type JSX } from 'react';
 import type { ThreeEvent } from '@react-three/fiber';
 import {
@@ -33,6 +32,7 @@ import {
   SOCKET_SELECTED_COLOR,
 } from '../session/colors.js';
 import { coilBusSide, pinGroup, pinPartners } from '../session/socket-pins.js';
+import { BoardLabel } from './BoardLabel.js';
 import {
   socketFaceRows,
   socketFaceTexture,
@@ -60,10 +60,11 @@ import { toScene } from './coords.js';
  */
 
 /**
- * ラベルは見せるだけ。drei の `Html` はラッパの div に `pointer-events: auto` を付けるので、
- * ここで無効化しないと盤の上のラベルがツールバーのクリックまで飲み込んでしまう。
+ * ソケットの名札（役割名とソケット番号）の置き場[mm]。v2.1.0（監査 U3）
+ * 名札はソケットの奥端の上に下端を合わせて置き、奥へ伸びる。奥の上段の固定機器（DC24V電源・
+ * ブレーカ・電源スイッチ）の手前の縁（y 36）までの帯に収まる高さ、隣2個ぶんの幅まで。
  */
-const LABEL_STYLE = { pointerEvents: 'none' } as const;
+const SOCKET_LABEL_ROOM = { w: 64, h: 20 } as const;
 
 /** ネジ端子ティアの奥行[mm]（2段ぶん＋余白）。 */
 const TIER_DEPTH_MM = SOCKET_TIER_DEPTH_MM;
@@ -600,18 +601,17 @@ export function Socket({
           <meshBasicMaterial map={faceTexture} transparent alphaTest={0.25} depthWrite />
         </mesh>
       )}
-      <Html
-        center
-        style={LABEL_STYLE}
+      <BoardLabel
+        position={[bodyCenter[0], bodyCenter[1] + length / 2 + 2, SOCKET_BODY_TOP_Z_MM]}
+        anchor="bottom"
         distanceFactor={280}
-        position={[bodyCenter[0], bodyCenter[1] + length / 2 + 5, SOCKET_BODY_TOP_Z_MM]}
-        zIndexRange={[10, 0]}
+        rank={3}
+        room={SOCKET_LABEL_ROOM}
+        className="socket-label"
       >
-        <span className="socket-label" data-label-rank={3}>
-          {role ?? '予備'}
-          <small>{socket.id}</small>
-        </span>
-      </Html>
+        {role ?? '予備'}
+        <small>{socket.id}</small>
+      </BoardLabel>
     </group>
   );
 }

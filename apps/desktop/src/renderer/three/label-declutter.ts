@@ -33,6 +33,55 @@ export interface LabelRect {
 export interface LabelCandidate {
   rank: number;
   rect: LabelRect;
+  /**
+   * 名札が自分の置き場（`data-label-room`）に収まるか。`false` なら重なりに関わらず出さない
+   * （省略は「収まる」）。v2.1.0（監査 U3）
+   */
+  fits?: boolean;
+}
+
+/**
+ * 名札が周りの機器にかからずに置ける広さ（盤の上の mm）。名札の要素に
+ * `data-label-room="幅 高さ"` で書く（`BoardLabel.tsx`）。v2.1.0（監査 U3）
+ */
+export interface LabelRoomMm {
+  w: number;
+  h: number;
+}
+
+/** `data-label-room` を読む。無い・読めないときは `undefined`（広さを問わない）。 */
+export function parseLabelRoom(raw: string | undefined): LabelRoomMm | undefined {
+  if (raw === undefined) return undefined;
+  const [w, h] = raw.trim().split(/\s+/).map(Number);
+  if (w === undefined || h === undefined || !Number.isFinite(w) || !Number.isFinite(h)) {
+    return undefined;
+  }
+  return { w, h };
+}
+
+/**
+ * 名札が盤の上で占める大きさ[mm]。v2.1.0（監査 U3）
+ *
+ * drei の `Html`（`distanceFactor`）は名札を「`distanceFactor` ÷ その距離で画面に映る高さ[mm]」
+ * 倍に拡大する。一方、画面の 1px は「その距離で画面に映る高さ[mm] ÷ ペインの高さ[px]」mm に
+ * 当たる。掛けると距離と視野角が消えて、**名札の大きさ[mm] = CSS の大きさ[px] ×
+ * `distanceFactor` ÷ ペインの高さ[px]**。ペインが低いほど名札は盤の上で大きくなり、
+ * 名札の置き場（機器と機器のすき間）からはみ出して機器を覆う（PLC分割・狭い窓の「並べて」）。
+ */
+export function labelWorldSizeMm(
+  cssWidthPx: number,
+  cssHeightPx: number,
+  distanceFactor: number,
+  paneHeightPx: number,
+): LabelRoomMm {
+  if (!(paneHeightPx > 0)) return { w: Number.POSITIVE_INFINITY, h: Number.POSITIVE_INFINITY };
+  const mmPerCssPx = distanceFactor / paneHeightPx;
+  return { w: cssWidthPx * mmPerCssPx, h: cssHeightPx * mmPerCssPx };
+}
+
+/** 名札が置き場に収まるか（置き場の無い名札はいつも収まる）。 */
+export function fitsLabelRoom(size: LabelRoomMm, room: LabelRoomMm | undefined): boolean {
+  return room === undefined || (size.w <= room.w && size.h <= room.h);
 }
 
 /** 名札どうし・名札と状態表示のあいだに必ず空ける隙間[px]。 */
@@ -76,7 +125,7 @@ export function pickVisibleLabels(
     .map((label, index) => ({ label, index }))
     .sort((a, b) => a.label.rank - b.label.rank || a.index - b.index);
   for (const { label, index } of ordered) {
-    if (!isDrawn(label.rect)) continue;
+    if (!isDrawn(label.rect) || label.fits === false) continue;
     if (
       bounds !== undefined &&
       isDrawn(bounds) &&
@@ -128,13 +177,39 @@ export function applyLabelVisibility(
   return written;
 }
 
+/**
+ * 名札が自分の置き場（`data-label-room`）に収まるか。置き場か `data-label-df`
+ * （`distanceFactor`）の無い名札は問わない（いつも収まる）。
+ */
+function fitsOwnRoom(el: HTMLElement, paneHeightPx: number): boolean {
+  const room = parseLabelRoom(el.dataset['labelRoom']);
+  const distanceFactor = Number(el.dataset['labelDf']);
+  if (room === undefined || !Number.isFinite(distanceFactor)) return true;
+  return fitsLabelRoom(
+    labelWorldSizeMm(el.offsetWidth, el.offsetHeight, distanceFactor, paneHeightPx),
+    room,
+  );
+}
+
 /** DOM更新・リサイズの通知中に測り、次の描画より前に名札の重なりを解消する。 */
 export function observeLabelLayout(scope: Element): () => void {
   const measure = (): void => {
     const labels = [...scope.querySelectorAll<HTMLElement>(LABEL_SELECTOR)];
-    const candidates = labels.map((el) => ({ rank: rankOf(el), rect: rectOf(el) }));
+    /*
+     * 名札が出られるのは**3Dを描くキャンバスの中だけ**（R3F の外枠が `overflow: hidden` で切る）。
+     * ビューポートの枠（`scope`）は上に状態表示の帯、下に押しボタンの帯を含むので、枠で測ると
+     * キャンバスの外で切れている名札を「出ている」と数えていた（v2.1.0 監査 U3）。
+     */
+    const canvas = scope.querySelector('canvas');
+    const bounds = rectOf(canvas ?? scope);
+    // 名札の大きさ[mm]は3Dを描くキャンバスの高さで決まる（`labelWorldSizeMm()`）
+    const paneHeightPx = canvas?.clientHeight || bounds.b - bounds.t;
+    const candidates = labels.map((el) => ({
+      rank: rankOf(el),
+      rect: rectOf(el),
+      fits: fitsOwnRoom(el, paneHeightPx),
+    }));
     const reserved = [...scope.querySelectorAll<HTMLElement>(RESERVED_SELECTOR)].map(rectOf);
-    const bounds = rectOf(scope);
     const gizmo = gizmoLayoutForViewport(bounds.r - bounds.l, bounds.b - bounds.t);
     if (gizmo !== null) {
       reserved.push({

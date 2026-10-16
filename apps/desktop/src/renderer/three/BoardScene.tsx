@@ -71,7 +71,7 @@ import { SHADOW_MAP_SIZE } from './gpu.js';
 import { SceneEnvironment } from './SceneEnvironment.js';
 import { PlcRack } from './PlcRack.js';
 import { PlcUnit } from './PlcUnit.js';
-import { Fixture, FIXTURE_LABEL_OFFSET_MM, FIXTURES } from './Fixtures.js';
+import { Fixture, FIXTURES } from './Fixtures.js';
 import { LabelDeclutter } from './label-declutter.js';
 import { Lamp } from './Lamp.js';
 import { MountedPart } from './MountedPart.js';
@@ -1010,9 +1010,6 @@ function BoardContents({
                   : // DC24V電源: ブレーカと電源スイッチの両方が入ったときだけ DC が出る（表示LED）
                     breakerOn && switchOn
             }
-            {...(FIXTURE_LABEL_OFFSET_MM[fixture.id] === undefined
-              ? {}
-              : { labelOffsetMm: FIXTURE_LABEL_OFFSET_MM[fixture.id] })}
             {
               /*
               電源は4モード共通。見直し中だけ操作を停止する。

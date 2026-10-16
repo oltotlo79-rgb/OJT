@@ -794,7 +794,8 @@ export function cachedFaceTexture(
  * 畳んだうえで、鍵の先頭に必ず名前空間を置いて取り違えを型で防ぐ。
  * `socket` / `block` は `faceKey()` が同じ接頭辞を付ける。
  */
-export type FaceTextureNamespace = 'socket' | 'block' | 'fixture' | 'part' | 'wire-marker';
+export type FaceTextureNamespace =
+  'socket' | 'block' | 'fixture' | 'part' | 'wire-marker' | 'nameplate';
 
 /**
  * 名前空間つきの鍵で共有キャッシュに焼く（**このファイルの外から使う唯一の入口**）。3D-13
@@ -1014,5 +1015,61 @@ export function blockPolarityBox(terminal: BoardTerminal): LabelBox | undefined 
     terminal.pos.y + BLOCK_POLARITY_OFFSET_MM,
     mark,
     BLOCK_POLARITY_MM,
+  );
+}
+
+/** 暗い下地（FX5U の黒い前面パネルなど）に印字する銘板の字の色。v2.1.0（監査 U3） */
+export const NAMEPLATE_INK_ON_DARK = '#E8EAED';
+/** 明るい下地（CP1E の筐体・ラックのモジュールなど）に印字する銘板の字の色。 */
+export const NAMEPLATE_INK_ON_LIGHT = '#1D2024';
+/** 銘板の文字の高さの上限（板の高さに対する割合）。 */
+const NAMEPLATE_FONT_RATIO = 0.72;
+/** 銘板の左右の余白[mm]（片側）。 */
+const NAMEPLATE_SIDE_MM = 0.5;
+
+/** 下地の色に合う銘板の字の色。 */
+export function nameplateInk(backgroundColor: string): string {
+  return plateLuminance(backgroundColor) < PLATE_DARK_LUMINANCE
+    ? NAMEPLATE_INK_ON_DARK
+    : NAMEPLATE_INK_ON_LIGHT;
+}
+
+/**
+ * 銘板の文字の高さ[mm]。板の高さの7割強を上限に、板の幅に収まるまで下げる。
+ * 銘板の板（`nameplateRect`）は機種ごとに幅が違うので、長い型式（`CP1E-N30DR-A`）でも
+ * はみ出さないようにここで合わせる。
+ */
+export function nameplateFontMm(text: string, widthMm: number, heightMm: number): number {
+  const byHeight = heightMm * NAMEPLATE_FONT_RATIO;
+  const usable = widthMm - NAMEPLATE_SIDE_MM * 2;
+  const width = labelWidthMm(text, byHeight);
+  return width <= usable ? byHeight : byHeight * (usable / width);
+}
+
+/**
+ * PLC本体・ラックのモジュール・ベースの銘板（型式の文字だけ。ロゴは描かない。§17）を焼く。
+ * v2.1.0（監査 U3）
+ *
+ * 以前は HTML の名札（`<Html>`）で出していたため、3Dが小さく映るほど名札だけが相対的に
+ * 大きくなり、表示灯の列・端子の上に被さっていた。面に印字すれば3Dと一緒に縮むので、
+ * 何も覆わない。地は透明にして本体・前面パネルに直に刷ったように見せ、字の色は下地の明るさで
+ * 選ぶ（`nameplateInk()`）。同じ型式・大きさ・色の銘板は1枚を使い回す（共有キャッシュ）。
+ */
+export function nameplateTexture(
+  text: string,
+  widthMm: number,
+  heightMm: number,
+  backgroundColor: string,
+): Texture | undefined {
+  const ink = nameplateInk(backgroundColor);
+  return bakeSharedTexture(
+    'nameplate',
+    `${text}:${widthMm.toFixed(2)}x${heightMm.toFixed(2)}:${ink}`,
+    () =>
+      makeCanvasTexture(widthMm, heightMm, (ctx, widthPx, heightPx) => {
+        ctx.font = labelFont(nameplateFontMm(text, widthMm, heightMm));
+        ctx.fillStyle = ink;
+        ctx.fillText(text, widthPx / 2, heightPx / 2);
+      }),
   );
 }

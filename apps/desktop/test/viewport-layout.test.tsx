@@ -5,9 +5,10 @@ import type { CameraPreset } from '../src/renderer/app/store-types.js';
 import { boardToWorld, CAMERA_FOV_DEG, cameraPose } from '../src/renderer/three/camera.js';
 import {
   findFixtureFootprint,
+  fixtureLabelPlacement,
   fixtureLabelPositionScene,
-  FIXTURE_LABEL_OFFSET_MM,
 } from '../src/renderer/three/Fixtures.js';
+import { fitsLabelRoom, labelWorldSizeMm } from '../src/renderer/three/label-declutter.js';
 import {
   gizmoLayoutForViewport,
   GIZMO_MAX_FOOTPRINT_PX,
@@ -20,9 +21,9 @@ import {
  * - ビューキューブ（左上）と視点ヘルプ「?」（`ViewHint.tsx`、右下）は対角のコーナーに
  *   固定してあるので、**キューブが出る幅では必ず離れる**ことを式で確かめる（B4）。
  * - ブレーカ・電源スイッチの名札は、footprint が隙間なく隣り合っている（B3）ので、
- *   `Fixtures.tsx` の `FIXTURE_LABEL_OFFSET_MM` で左右・上下にずらしてある。実際に射影した
- *   矩形が重ならないことを、1280×800 / 1440×900 / 1920×1080 の3サイズ・6方向の
- *   カメラプリセットで確かめる。
+ *   `Fixtures.tsx` の `fixtureLabelPlacement()` でブレーカの左隣に2段で並べてある
+ *   （v2.1.0 監査 U3）。実際に射影した矩形が重ならないことを、
+ *   1280×800 / 1440×900 / 1920×1080 の3サイズ・カメラプリセットで確かめる。
  */
 
 /** `panels/view-hint.module.css` の「?」ボタン（既定・閉じた状態）の右下からの位置[px]。 */
@@ -104,18 +105,20 @@ function rectsOverlap(a: Rect, b: Rect): boolean {
   return a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
 }
 
-/** 固定機器（ブレーカ／電源スイッチ）の名札の投影矩形。 */
+/**
+ * 固定機器（ブレーカ／電源スイッチ）の名札の投影矩形。名札が置き場（`room`）に収まらない大きさに
+ * 映るペインでは画面に出さない（`label-declutter.ts`）ので `undefined` を返す。
+ */
 function fixtureLabelRect(
   kind: 'breaker' | 'switch',
   label: string,
   preset: CameraPreset,
   box: CanvasBox,
-): Rect {
+): Rect | undefined {
   const footprint = findFixtureFootprint(JIPM_BOARD.footprints, kind);
   if (footprint === undefined) throw new Error(`footprint が見つかりません: ${kind}`);
-  const offset = FIXTURE_LABEL_OFFSET_MM[kind === 'breaker' ? 'CB' : 'SW'];
-  const scenePos = fixtureLabelPositionScene(kind, footprint, offset);
-  const world = boardToWorld(scenePos);
+  const placement = fixtureLabelPlacement(kind, footprint, JIPM_BOARD.footprints);
+  const world = boardToWorld(fixtureLabelPositionScene(placement));
   const pose = cameraPose(preset, { aspect: box.width / box.height });
   const anchor = projectToScreen(world, pose, box);
   const distance = Math.hypot(
@@ -125,12 +128,18 @@ function fixtureLabelRect(
   );
   const scale = htmlDistanceFactorScale(distance);
   const { halfW, halfH } = labelHalfExtentPx(label, scale);
-  return {
-    left: anchor.x - halfW,
-    right: anchor.x + halfW,
-    top: anchor.y - halfH,
-    bottom: anchor.y + halfH,
-  };
+  const native = labelHalfExtentPx(label, 1);
+  const size = labelWorldSizeMm(2 * native.halfW, 2 * native.halfH, 320, box.height);
+  if (!fitsLabelRoom(size, placement.room)) return undefined;
+  // 名札の基準点の合わせ方（`BoardLabel.tsx`）: `top-*` は上端、`bottom-*` は下端、`*-right` は右の角
+  const left =
+    placement.anchor === 'top-right' || placement.anchor === 'bottom-right'
+      ? anchor.x - 2 * halfW
+      : placement.anchor === 'top-left'
+        ? anchor.x
+        : anchor.x - halfW;
+  const top = placement.anchor.startsWith('bottom') ? anchor.y - 2 * halfH : anchor.y;
+  return { left, right: left + 2 * halfW, top, bottom: top + 2 * halfH };
 }
 
 /**
@@ -178,7 +187,7 @@ describe('ブレーカ・電源スイッチの名札は重ならない（監査�
    * `right`（真横）は除く。ブレーカ・電源スイッチは盤の**右端**に隙間なく隣接しているため、
    * 真横から見ると2つの機器の**本体そのもの**がほぼ重なって見える（名札だけの問題ではない、
    * 盤の物理配置がそのまま生む遠近の圧縮）。`left`（反対の真横）はまだ十分距離があるので
-   * 対象に含める。6方向のうち5方向・3サイズ・盤のみ／並べての両方＝実質30通りを検算する。
+   * 対象に含める。6方向のうち5方向・3サイズ・盤のみ／並べての両方＝30通りを検算する。
    */
   const PRESETS: readonly CameraPreset[] = ['front', 'back', 'left', 'top', 'bottom'];
 
@@ -186,16 +195,20 @@ describe('ブレーカ・電源スイッチの名札は重ならない（監査�
     for (const preset of PRESETS) {
       it(`${String(size.width)}x${String(size.height)} / ${preset} / 盤のみ表示`, () => {
         const box = boardViewportBox(size.width, size.height);
-        const cb = fixtureLabelRect('breaker', 'ブレーカ', preset, box);
-        const sw = fixtureLabelRect('switch', '電源スイッチ', preset, box);
-        expect(rectsOverlap(cb, sw)).toBe(false);
+        const cb = fixtureLabelRect('breaker', 'ブレーカ 切 OFF', preset, box);
+        const sw = fixtureLabelRect('switch', '電源スイッチ 切 OFF', preset, box);
+        // 盤のみ表示では2枚とも出る（置き場に収まる）
+        expect(cb).toBeDefined();
+        expect(sw).toBeDefined();
+        if (cb !== undefined && sw !== undefined) expect(rectsOverlap(cb, sw)).toBe(false);
       });
 
       it(`${String(size.width)}x${String(size.height)} / ${preset} / 並べて表示`, () => {
         const box = splitViewportBox(size.width, size.height);
-        const cb = fixtureLabelRect('breaker', 'ブレーカ', preset, box);
-        const sw = fixtureLabelRect('switch', '電源スイッチ', preset, box);
-        expect(rectsOverlap(cb, sw)).toBe(false);
+        const cb = fixtureLabelRect('breaker', 'ブレーカ 切 OFF', preset, box);
+        const sw = fixtureLabelRect('switch', '電源スイッチ 切 OFF', preset, box);
+        // 低いペインでは置き場に収まらない名札は出ない。出る2枚どうしは重ならない
+        if (cb !== undefined && sw !== undefined) expect(rectsOverlap(cb, sw)).toBe(false);
       });
     }
   }

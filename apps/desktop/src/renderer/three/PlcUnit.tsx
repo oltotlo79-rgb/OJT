@@ -5,8 +5,8 @@ import {
   type PlcUnitDefinition,
   type Vec3,
 } from '@ojt/board-model';
+import { BOARD_WIDTH_MM, OUTLET_ORIGIN_MM } from '@ojt/board-model';
 import type { TerminalId } from '@ojt/circuit-sim';
-import { Html } from '@react-three/drei';
 import { useEffect, useMemo, type JSX } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useStore } from '../app/store.js';
@@ -14,18 +14,29 @@ import {
   coverOpenPose,
   faceRectToBoard,
   litLedKeys,
+  nameplateBackgroundColor,
   nameplateRectMm,
+  plcVisualRectMm,
   COVER_THICKNESS_MM,
   FACE_LABEL_LIFT_MM,
   FACE_LED_LIFT_MM,
   FACE_LIFT_MM,
   PLC_BODY_Z_MM,
-  type NameplateOffsetMm,
+  type BoardRectMm,
   type PlcLedState,
 } from './appearance.js';
+import { BoardLabel } from './BoardLabel.js';
+import type { LabelRoomMm } from './label-declutter.js';
 // `plcFaceRect()` は landed のまま `labels.ts` の `faceRect()` を包む（4A H-7 の「残す2つ」）
-import { blockFaceTexture, faceRect, isSharedFaceTexture, roleColorsFor } from './labels.js';
+import {
+  blockFaceTexture,
+  faceRect,
+  isSharedFaceTexture,
+  nameplateTexture,
+  roleColorsFor,
+} from './labels.js';
 import { sharedMaterial, UNIT_BOX } from './materials.js';
+import { OUTLET_PLATE_H_MM } from './outlet-geometry.js';
 import { deskTerminalTooltip, TerminalField } from './TerminalField.js';
 import { toScene } from './coords.js';
 
@@ -38,9 +49,6 @@ import { toScene } from './coords.js';
  * **各社のロゴ・銘板画像・画面キャプチャは描かない**（§17 / PLC調査資料 §6）。銘板は
  * `appearance.nameplate`（型式の文字列だけ）を出す。
  */
-
-/** ラベルは見せるだけ（drei の `Html` はラッパに `pointer-events: auto` を付ける）。 */
-const LABEL_STYLE = { pointerEvents: 'none' } as const;
 
 /**
  * 印字の板の余白[mm]。
@@ -101,7 +109,6 @@ export function PlcFace({
   depthMm,
   ledState,
   faceZMm = 0,
-  nameplateOffsetMm,
 }: {
   /** 左奥の角（`unit.pos` / `module.pos`）。 */
   origin: Vec3;
@@ -114,15 +121,21 @@ export function PlcFace({
    * ラックのベースだけモジュールより奥へ下げるので、そのぶんをここで渡す（4B レビュー I3）。
    */
   faceZMm?: number;
-  /**
-   * 銘板だけを既定位置からずらす量[mm]（既定は動かさない）。
-   * `PlcRack.tsx` がベースの銘板を先頭モジュールの銘板と重ならない位置へ渡す（項目2）。
-   */
-  nameplateOffsetMm?: NameplateOffsetMm;
 }): JSX.Element {
   const lit = useMemo(() => litLedKeys(appearance, ledState), [appearance, ledState]);
   const { width, height } = appearance.faceMm;
-  const nameplate = nameplateRectMm(origin, appearance.nameplateRect, nameplateOffsetMm);
+  const nameplate = nameplateRectMm(origin, appearance.nameplateRect);
+  // 同じ型式・大きさ・下地の銘板は1枚を共有する（`labels.ts` の共有キャッシュが寿命を持つ）
+  const nameplateMap = useMemo(
+    () =>
+      nameplateTexture(
+        appearance.nameplate,
+        appearance.nameplateRect.w,
+        appearance.nameplateRect.h,
+        nameplateBackgroundColor(appearance),
+      ),
+    [appearance],
+  );
   return (
     <group name="plc-face">
       {/* 筐体。端子（z = 0）の**下**へ沈める（台の上に乗せると端子が埋まる） */}
@@ -222,25 +235,70 @@ export function PlcFace({
           />
         );
       })}
-      {/* 銘板は型式の文字だけ（ロゴ・ブランド名は描かない。§17 / 4A 前提#14） */}
-      <Html
-        center
-        style={LABEL_STYLE}
-        distanceFactor={420}
-        position={toScene({
-          x: (nameplate.x0 + nameplate.x1) / 2,
-          y: (nameplate.y0 + nameplate.y1) / 2,
-          z: faceZMm + FACE_LED_LIFT_MM,
-        })}
-        zIndexRange={[10, 0]}
-      >
-        {/* 銘板は機種名（下の `displayName`）と同じことを言うので、ぶつかったらこちらを譲る */}
-        <span className="block-label" data-label-rank={5}>
-          {appearance.nameplate}
-        </span>
-      </Html>
+      {/*
+        銘板は型式の文字だけ（ロゴ・ブランド名は描かない。§17 / 4A 前提#14）。
+        v2.1.0（監査 U3）: 以前は HTML の名札で出していて、3Dが小さく映るほど名札だけが
+        相対的に大きくなり、表示灯の列の上に被さっていた。面に直に刷る（3Dと一緒に縮む）。
+      */}
+      {nameplateMap === undefined ? null : (
+        <mesh
+          name="plc-nameplate"
+          raycast={noPick}
+          position={toScene({
+            x: (nameplate.x0 + nameplate.x1) / 2,
+            y: (nameplate.y0 + nameplate.y1) / 2,
+            z: faceZMm + FACE_LABEL_LIFT_MM,
+          })}
+        >
+          <planeGeometry args={[nameplate.x1 - nameplate.x0, nameplate.y1 - nameplate.y0]} />
+          <meshBasicMaterial map={nameplateMap} transparent depthWrite={false} />
+        </mesh>
+      )}
     </group>
   );
+}
+
+/**
+ * 3Dの機種名の名札に出す文字。v2.1.0（監査 U3）
+ * ラック形の `displayName` は「JTEKT TOYOPUC PC10G-1SP（基本ベース＋POWER1＋CPU＋…）」のように
+ * 構成を括弧で添えていて、盤の右の机に収まらず名札ごと出なくなっていた。構成はモジュールの面に
+ * 刷った形式名で読めるので、名札は括弧の前（メーカー・シリーズ・型式）までにする。
+ */
+export function modelLabelText(displayName: string): string {
+  const paren = displayName.indexOf('（');
+  return paren === -1 ? displayName : displayName.slice(0, paren).trim();
+}
+
+/** 機種名の名札を本体（開いた端子カバーを含む）の下端から離す量[mm]。v2.1.0（監査 U3） */
+const MODEL_LABEL_GAP_MM = 3;
+/** 機種名の名札が盤（左）と壁コンセント（下）から最低限空ける量[mm]。 */
+const MODEL_LABEL_CLEARANCE_MM = 1;
+
+/**
+ * 機種名の名札（`displayName`）の基準点と置き場（盤モデル mm）。v2.1.0（監査 U3）
+ *
+ * 名札は本体の**見た目の外形**（開いた端子カバーを含む。`plcVisualRectMm()`）の下に、
+ * 上端を合わせて置く（`anchor: 'top'`）。置き場は「壁コンセントの板の上端まで」×
+ * 「盤の右端にかからない幅」。ペインが低くて名札がそれより大きく映るときは出さない
+ * （以前は本体の下端の 8mm 下に**中心**を置いていたので、狭いペインでは開いたカバーと
+ * 下段の出力端子の上に乗っていた）。
+ */
+export function modelLabelPlacement(visual: BoardRectMm): {
+  x: number;
+  y: number;
+  room: LabelRoomMm;
+} {
+  const x = (visual.x0 + visual.x1) / 2;
+  const y = visual.y1 + MODEL_LABEL_GAP_MM;
+  const outletTop = OUTLET_ORIGIN_MM.y - OUTLET_PLATE_H_MM / 2;
+  return {
+    x,
+    y,
+    room: {
+      w: 2 * (x - BOARD_WIDTH_MM - MODEL_LABEL_CLEARANCE_MM),
+      h: outletTop - y - MODEL_LABEL_CLEARANCE_MM,
+    },
+  };
 }
 
 /** PLC本体。 */
@@ -287,6 +345,10 @@ export function PlcUnit({
   }, [faceTexture]);
   const face = useMemo(() => plcFaceRect(terminals), [terminals]);
   const ledState = useLedState();
+  const modelLabel = useMemo(
+    () => modelLabelPlacement(plcVisualRectMm(unit.pos, unit.appearance)),
+    [unit.pos, unit.appearance],
+  );
   return (
     <group name="plc-unit">
       <PlcFace
@@ -325,22 +387,16 @@ export function PlcUnit({
         onHover={onHoverTerminal}
         onPick={onPickTerminal}
       />
-      {/* 機種名は本体の上に1枚（`displayName`。銘板とは別物。ベンダーの画像は持たない。§17） */}
-      <Html
-        center
-        style={LABEL_STYLE}
+      {/* 機種名は本体の下に1枚（`displayName`。銘板とは別物。ベンダーの画像は持たない。§17） */}
+      <BoardLabel
+        position={toScene({ x: modelLabel.x, y: modelLabel.y, z: 0 })}
+        anchor="top"
         distanceFactor={420}
-        position={toScene({
-          x: unit.pos.x + unit.sizeMm.width / 2,
-          y: unit.pos.y + unit.sizeMm.height + 8,
-          z: 0,
-        })}
-        zIndexRange={[10, 0]}
+        rank={1}
+        room={modelLabel.room}
       >
-        <span className="block-label" data-label-rank={1}>
-          {unit.displayName}
-        </span>
-      </Html>
+        {modelLabelText(unit.displayName)}
+      </BoardLabel>
     </group>
   );
 }

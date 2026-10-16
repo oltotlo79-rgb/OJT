@@ -802,7 +802,10 @@ const PC10G_BASE_APPEARANCE: PlcAppearance = {
   bodyColor: '#9AA0A6',
   terminalBlockColor: PC10G_TERMINAL_COLOR,
   nameplate: 'PC10G-1SP',
-  nameplateRect: { x: 4, y: 132, w: 40, h: 6 },
+  // ベースの銘板は下のレール（モジュールの下端とベースの下端のあいだ、高さ5mm）に刷る。
+  // 以前は y 132（先頭モジュールの銘板と重なるので 3D 側で 6mm 下げていた）で、面に刷ると
+  // ベースの下端からはみ出した（v2.1.0 監査 U3）
+  nameplateRect: { x: 12, y: RACK_BASE_HEIGHT_MM - RACK_RAIL_HEIGHT_MM + 0.5, w: 40, h: 4 },
   covers: [],
   leds: [],
   // ベース側の造作はモジュールを並べるスロットの上下レールだけ（モジュールはこの間に載る。M1）
@@ -992,7 +995,10 @@ const JW300_BASE_APPEARANCE: PlcAppearance = {
   bodyColor: '#A9A8A2',
   terminalBlockColor: JW300_TERMINAL_COLOR,
   nameplate: 'JW-300',
-  nameplateRect: { x: 4, y: 132, w: 40, h: 6 },
+  // ベースの銘板は下のレール（モジュールの下端とベースの下端のあいだ、高さ5mm）に刷る。
+  // 以前は y 132（先頭モジュールの銘板と重なるので 3D 側で 6mm 下げていた）で、面に刷ると
+  // ベースの下端からはみ出した（v2.1.0 監査 U3）
+  nameplateRect: { x: 12, y: RACK_BASE_HEIGHT_MM - RACK_RAIL_HEIGHT_MM + 0.5, w: 40, h: 4 },
   covers: [],
   leds: [],
   // ベース側の造作はモジュールを並べるスロットの上下レールだけ（モジュールはこの間に載る。M1）

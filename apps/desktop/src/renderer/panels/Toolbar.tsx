@@ -3,7 +3,9 @@ import { useEffect, useId, useLayoutEffect, useRef, useState, type JSX } from 'r
 import { HelpButton } from '../help/HelpButton.js';
 import { useHelpStore } from '../help/help-store.js';
 import { JA } from '../i18n/ja.js';
+import { setBoardLabelsVisible } from '../app/board-labels.js';
 import { useStore, type CameraPreset } from '../app/store.js';
+import { useBoardLabelsVisible } from '../app/ui-preferences.js';
 import type { HintStage } from '../session/hints.js';
 import type { ToolMode } from '../session/interaction.js';
 import styles from './panels.module.css';
@@ -119,6 +121,7 @@ export function Toolbar({
    * （レビュー指摘）。頻度の低い3群だけを畳み、線色・元に戻す・判定は常に1行目に残す。
    */
   const [overflowOpen, setOverflowOpen] = useState(false);
+  const boardLabels = useBoardLabelsVisible();
   const overflowRef = useRef<HTMLDivElement>(null);
   const overflowPanelRef = useRef<HTMLDivElement>(null);
   const [overflowPosition, setOverflowPosition] = useState({ left: 12, top: 60 });
@@ -389,6 +392,23 @@ export function Toolbar({
                     {JA.plc.viewPlc}
                   </button>
                 ) : null}
+              </div>
+              <div className={styles.toolGroup}>
+                <span className={styles.toolLabel}>{JA.toolbarOverflow.display}</span>
+                {/*
+                  3Dの名札の表示（v2.1.0 監査 U3）。名札で機器が見えにくいときに切る。
+                  端子のホバーの札・入/切などの状態は切っても残る（`global.css`）。
+                */}
+                <button
+                  type="button"
+                  aria-pressed={boardLabels}
+                  data-testid="toggle-board-labels"
+                  onClick={() => {
+                    setBoardLabelsVisible(!boardLabels);
+                  }}
+                >
+                  {JA.toolbarOverflow.boardLabels}
+                </button>
               </div>
               <div className={styles.toolGroup}>
                 <span className={styles.toolLabel}>{JA.toolbarOverflow.workFile}</span>

@@ -124,9 +124,12 @@ export function MountedLabelContent({
       >
         {mountedLabel(role, part)}
       </span>
-      {/* 励磁中だけ出す札。ランプの点灯と同じ情報を文字でも読めるようにする（§8.2） */}
+      {/*
+        励磁中だけ出す札。ランプの点灯と同じ情報を文字でも読めるようにする（§8.2）。
+        状態の表示なので「3Dの名札を表示」を切っても残す（`part-status`。v2.1.0）
+      */}
       {energized ? (
-        <span className="part-label" data-label-rank={2} style={RUNNING_STYLE}>
+        <span className="part-label part-status" data-label-rank={2} style={RUNNING_STYLE}>
           {JA_3D.running}
         </span>
       ) : null}

@@ -1,16 +1,16 @@
 import type { BoardTerminal, PlcAppearance, PlcUnitDefinition, Vec3 } from '@ojt/board-model';
 import type { TerminalId } from '@ojt/circuit-sim';
-import { Html } from '@react-three/drei';
 import { useEffect, useMemo, type JSX } from 'react';
 import {
   FACE_LABEL_LIFT_MM,
   PLC_BODY_Z_MM,
   RACK_BODY_Z_MM,
   nameplateRectMm,
-  type NameplateOffsetMm,
+  plcVisualRectMm,
 } from './appearance.js';
+import { BoardLabel } from './BoardLabel.js';
 import { blockFaceTexture, faceRect, isSharedFaceTexture, roleColorsFor } from './labels.js';
-import { PlcFace, useLedState } from './PlcUnit.js';
+import { modelLabelPlacement, modelLabelText, PlcFace, useLedState } from './PlcUnit.js';
 import { deskTerminalTooltip, TerminalField } from './TerminalField.js';
 import { toScene } from './coords.js';
 
@@ -23,9 +23,6 @@ import { toScene } from './coords.js';
  * 色・寸法はすべて `PlcAppearance` から引く（4A 決定表#15）。
  */
 
-/** ラベルは見せるだけ。 */
-const LABEL_STYLE = { pointerEvents: 'none' } as const;
-
 /** ラックの端子の印字板の余白[mm]（`PlcUnit` と同じ理由で下端の列を切らない）。 */
 const RACK_LABEL_PAD_MM = 6;
 
@@ -35,24 +32,14 @@ const RACK_LABEL_PAD_MM = 6;
  */
 const RACK_BASE_FACE_Z_MM = -RACK_BODY_Z_MM / 2;
 
-/**
- * ベースの銘板（`PC10G-1SP` / `JW-300`）を既定位置から下へ逃がす量[mm]。
- *
- * ベースの `nameplateRect` と、先頭モジュール（`POWER1` / `JW-301PU`）の `nameplateRect`
- * （全モジュール共通の `RACK_NAMEPLATE_RECT`）はどちらも下段レール付近の近い y にあり、
- * 素のままだと重なって読めなかった（今日のスクリーンショット確認 04/06・レビュー指摘・項目2）。
- * y だけ下げれば、どのモジュールの銘板とも（x に関わらず）重ならなくなる。
- */
-const RACK_BASE_NAMEPLATE_OFFSET: NameplateOffsetMm = { x: 0, y: 6 };
-
 function noPick(): void {
   // 交差候補を積まない
 }
 
 /**
- * ベースの銘板の外接矩形（盤モデル mm）。3Dが実際に描く位置（`RACK_BASE_NAMEPLATE_OFFSET` 込み）
- * と同じ式を使う。単体テストが「先頭モジュールの銘板と重ならない」ことを数値で確かめられるよう
- * 公開する（項目2）。
+ * ベースの銘板の外接矩形（盤モデル mm）。3Dが実際に描く位置と同じ式を使う。単体テストが
+ * 「どのモジュールの銘板とも重ならない」「ベースからはみ出さない」ことを数値で確かめられるよう
+ * 公開する（項目2・v2.1.0 監査 U3。銘板は下のレールに刷る）。
  */
 export function rackBaseNameplateRect(unit: PlcUnitDefinition): {
   x0: number;
@@ -60,7 +47,7 @@ export function rackBaseNameplateRect(unit: PlcUnitDefinition): {
   x1: number;
   y1: number;
 } {
-  return nameplateRectMm(unit.pos, unit.appearance.nameplateRect, RACK_BASE_NAMEPLATE_OFFSET);
+  return nameplateRectMm(unit.pos, unit.appearance.nameplateRect);
 }
 
 /** 3Dが描くモジュール1枚ぶんの箱。 */
@@ -133,7 +120,10 @@ export function PlcRack({
     };
   }, [faceTexture]);
   const labelFace = useMemo(() => faceRect(terminals, RACK_LABEL_PAD_MM), [terminals]);
-  const { width, height } = unit.sizeMm;
+  const modelLabel = useMemo(
+    () => modelLabelPlacement(plcVisualRectMm(unit.pos, unit.appearance)),
+    [unit.pos, unit.appearance],
+  );
   return (
     <group name="plc-rack">
       {/*
@@ -147,36 +137,20 @@ export function PlcRack({
         depthMm={PLC_BODY_Z_MM}
         ledState={ledState}
         faceZMm={RACK_BASE_FACE_Z_MM}
-        nameplateOffsetMm={RACK_BASE_NAMEPLATE_OFFSET}
       />
       {modules.map((module) => (
         <group key={module.model} name={`rack-module-${module.model}`}>
+          {/*
+            モジュールの形式名（`IN-12` / `JW-212NA`）は銘板として面に刷る（`PlcFace`）。
+            v2.1.0（監査 U3）: 以前はモジュールの上端に HTML の名札を重ね、銘板の名札と合わせて
+            同じ形式名を2回出していた。狭いペインでは名札が表示灯の帯と隣のモジュールを覆った。
+          */}
           <PlcFace
             origin={module.origin}
             appearance={module.appearance}
             depthMm={module.depthMm}
             ledState={ledState}
           />
-          {/*
-            モジュールの名札は**形式名だけ**（`IN-12` / `JW-212NA`）をモジュールの上端に出す。
-            長い `displayName`（`DC入力16点（THK-2750）`）は35mmピッチの列に並べると隣と重なって
-            読めなかったので、マウスオーバーの `title` に回す（4B レビュー I4）。
-          */}
-          <Html
-            center
-            style={LABEL_STYLE}
-            distanceFactor={520}
-            position={toScene({
-              x: module.origin.x + module.appearance.faceMm.width / 2,
-              y: module.origin.y - 5,
-              z: 0,
-            })}
-            zIndexRange={[10, 0]}
-          >
-            <span className="block-label" title={module.displayName} data-label-rank={6}>
-              {module.model}
-            </span>
-          </Html>
         </group>
       ))}
       {/* 端子の印字はラック全体で1枚（モジュールごとに割らない。決定表#17） */}
@@ -204,17 +178,16 @@ export function PlcRack({
         onHover={onHoverTerminal}
         onPick={onPickTerminal}
       />
-      <Html
-        center
-        style={LABEL_STYLE}
+      {/* 機種名はラックの下に1枚（`PlcUnit` と同じ置き方。v2.1.0 監査 U3） */}
+      <BoardLabel
+        position={toScene({ x: modelLabel.x, y: modelLabel.y, z: 0 })}
+        anchor="top"
         distanceFactor={420}
-        position={toScene({ x: unit.pos.x + width / 2, y: unit.pos.y + height + 8, z: 0 })}
-        zIndexRange={[10, 0]}
+        rank={1}
+        room={modelLabel.room}
       >
-        <span className="block-label" data-label-rank={1}>
-          {unit.displayName}
-        </span>
-      </Html>
+        {modelLabelText(unit.displayName)}
+      </BoardLabel>
     </group>
   );
 }

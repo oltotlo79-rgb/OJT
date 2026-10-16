@@ -27,7 +27,7 @@ import { writeFileAtomic } from './fs-atomic.js';
  * `app.getPath('userData')/settings.json` に1ファイルで持つ。読めなければ既定値で動く。
  *
  * `settings:set` は renderer からの入力をそのまま書かない（1D2 レビュー指摘）。
- * `sanitizePatch()` が `AppSettings` の4キーだけを型を確かめて取り込み、それ以外の
+ * `sanitizePatch()` が `AppSettings` の既知のキーだけを型を確かめて取り込み、それ以外の
  * キー・型の違う値は黙って捨てる（renderer は信用しない。§4.3）。保存も `work-files.ts` と
  * 同じ一時ファイル→rename にする（書込の途中でアプリが落ちても本体が壊れた内容で残らない）。
  *
@@ -74,7 +74,7 @@ export function defaultUserContentDir(): string {
  */
 
 /**
- * `patch` のうち `AppSettings` の4キーだけを型を確かめて `base` に重ねる（ホワイトリスト）。
+ * `patch` のうち `AppSettings` の既知のキーだけを型を確かめて `base` に重ねる（ホワイトリスト）。
  * 未知のキー・型の違う値は無視する。`base` 自体は書き換えない。
  */
 function sanitizePatch(base: AppSettings, patch: unknown): AppSettings {
@@ -99,6 +99,9 @@ function sanitizePatch(base: AppSettings, patch: unknown): AppSettings {
     next.soundVolume = Math.min(1, Math.max(0, volume));
   }
   if (typeof source['restorePrompt'] === 'boolean') next.restorePrompt = source['restorePrompt'];
+  if (typeof source['showBoardLabels'] === 'boolean') {
+    next.showBoardLabels = source['showBoardLabels'];
+  }
   const vendor = source['defaultVendor'];
   if (
     typeof vendor === 'string' &&

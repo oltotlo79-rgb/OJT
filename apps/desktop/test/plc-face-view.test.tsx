@@ -32,7 +32,11 @@ vi.mock('@react-three/fiber', () => ({
 // 印字テクスチャの焼き付けは**本物を呼びつつ**引数を見る（どの色表で焼いたか。B1）
 vi.mock('../src/renderer/three/labels.js', async (importOriginal) => {
   const actual = await importOriginal<typeof LabelsModule>();
-  return { ...actual, blockFaceTexture: vi.fn(actual.blockFaceTexture) };
+  return {
+    ...actual,
+    blockFaceTexture: vi.fn(actual.blockFaceTexture),
+    nameplateTexture: vi.fn(actual.nameplateTexture),
+  };
 });
 
 const labels = await import('../src/renderer/three/labels.js');
@@ -41,9 +45,11 @@ const { PlcRack } = await import('../src/renderer/three/PlcRack.js');
 const { useStore } = await import('../src/renderer/app/store.js');
 
 const bake = vi.mocked(labels.blockFaceTexture);
+const bakeNameplate = vi.mocked(labels.nameplateTexture);
 
 beforeEach(() => {
   bake.mockClear();
+  bakeNameplate.mockClear();
 });
 
 afterEach(() => {
@@ -93,10 +99,14 @@ function renderRack(unit = PLC_UNIT_PC10G): ReturnType<typeof render> {
   );
 }
 
-/** 名札の文字（`title` を持つのはモジュールの名札だけ）。 */
-function labelTexts(container: HTMLElement, titled: boolean): (string | null)[] {
-  const selector = titled ? 'span.block-label[title]' : 'span.block-label:not([title])';
-  return [...container.querySelectorAll(selector)].map((el) => el.textContent);
+/** HTML の名札（`.block-label`）の文字。 */
+function labelTexts(container: HTMLElement): (string | null)[] {
+  return [...container.querySelectorAll('span.block-label')].map((el) => el.textContent);
+}
+
+/** 面に刷った銘板の文字（`nameplateTexture()` に渡した型式）。 */
+function printedNameplates(): string[] {
+  return bakeNameplate.mock.calls.map((call) => call[0]);
 }
 
 describe('端子の印字は端子台の色に合わせて焼く（4B レビュー B1）', () => {
@@ -176,33 +186,48 @@ describe('焼いたテクスチャの解放は共有キャッシュの責任（I
   });
 });
 
-describe('ラックの名札と銘板（4B レビュー I3・I4）', () => {
-  it('labels every module with its short model and hides the long name in the title', () => {
-    const { container } = renderRack();
-    expect(labelTexts(container, true)).toEqual(['POWER1', 'PC10G-1SP', 'IN-12', 'OUT-12']);
-    const titles = [...container.querySelectorAll('span.block-label[title]')].map((el) =>
-      el.getAttribute('title'),
-    );
-    expect(titles).toEqual([
-      '電源モジュール',
-      'CPUモジュール',
-      'DC入力16点（THK-2750）',
-      'リレー出力16点（THK-2752）',
-    ]);
-    // 長い名前は名札そのものには出さない（35mmピッチでは隣と重なって読めない）
-    expect(labelTexts(container, true)).not.toContain('DC入力16点（THK-2750）');
+describe('銘板は面に刷り、HTML の名札は機種名だけ（4B レビュー I3・I4 / v2.1.0 監査 U3）', () => {
+  afterEach(() => {
+    labels.clearFaceTextureCache();
   });
 
-  it('draws the base nameplate (PC10G-1SP / JW-300) that the hand-drawn base used to drop', () => {
-    const toyopuc = renderRack();
-    // ベースの銘板＋CPUモジュールの銘板で2枚（モジュールの名札は `title` 付きなので別勘定）
-    expect(
-      labelTexts(toyopuc.container, false).filter((text) => text === 'PC10G-1SP'),
-    ).toHaveLength(2);
-    cleanup();
+  it('prints the FX5U nameplate on the black front panel in a light ink', () => {
+    stubCanvas2d();
+    const { container } = renderUnit();
+    expect(container.querySelectorAll('mesh[name="plc-nameplate"]')).toHaveLength(1);
+    expect(printedNameplates()).toEqual(['FX5U-32MR/ES']);
+    const background = bakeNameplate.mock.calls[0]?.[3] ?? '';
+    expect(labels.nameplateInk(background)).toBe(labels.NAMEPLATE_INK_ON_DARK);
+    // 型式は HTML の名札にしない（表示灯の列に被さっていた）。HTML は機種名の1枚だけ
+    expect(labelTexts(container)).toEqual([PLC_UNIT_FX5U.displayName]);
+  });
+
+  it('prints every module model and the base model on the rack instead of HTML labels', () => {
+    stubCanvas2d();
+    const { container } = renderRack();
+    // ベース1枚＋モジュール4枚（CPUモジュールの型式もベースと同じ PC10G-1SP）
+    expect(container.querySelectorAll('mesh[name="plc-nameplate"]')).toHaveLength(5);
+    expect(printedNameplates().sort()).toEqual(
+      ['PC10G-1SP', 'POWER1', 'PC10G-1SP', 'IN-12', 'OUT-12'].sort(),
+    );
+    // 以前はモジュールの上端に形式名の名札を重ね、銘板の名札と合わせて同じ文字を2回出していた
+    // 機種名の名札は構成の括弧を外す（構成はモジュールの面に刷った形式名で読める）
+    expect(labelTexts(container)).toEqual(['JTEKT TOYOPUC PC10G-1SP']);
+  });
+
+  it('prints the JW300 base nameplate and keeps the model name as the only HTML label', () => {
+    stubCanvas2d();
     const sharp = renderRack(PLC_UNIT_JW300);
-    expect(labelTexts(sharp.container, false)).toContain('JW-300');
-    expect(labelTexts(sharp.container, false)).toContain(PLC_UNIT_JW300.displayName);
+    expect(printedNameplates()).toContain('JW-300');
+    expect(labelTexts(sharp.container)).toEqual(['シャープ JW300']);
+  });
+
+  it('anchors the model label by its top edge below the unit (data-anchor="top")', () => {
+    const { container } = renderUnit();
+    const label = container.querySelector('span.block-label');
+    expect(label?.getAttribute('data-anchor')).toBe('top');
+    expect(label?.getAttribute('data-label-rank')).toBe('1');
+    expect(label?.getAttribute('data-label-room')).toMatch(/^\d+(\.\d+)? \d+(\.\d+)?$/);
   });
 });
 

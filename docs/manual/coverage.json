@@ -2261,6 +2261,12 @@
       "section": "screens/画面の上の帯"
     },
     {
+      "testid": "toggle-board-labels",
+      "screen": "練習中",
+      "label": "3Dの名札を表示",
+      "section": "screens/3Dの見方と動かし方"
+    },
+    {
       "testid": "toolbar-overflow-toggle",
       "screen": "練習中",
       "label": "表示・作業ファイル",

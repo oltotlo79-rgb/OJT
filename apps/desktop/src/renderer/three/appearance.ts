@@ -86,6 +86,26 @@ export function nameplateRectMm(
 }
 
 /**
+ * 銘板の下地の色。v2.1.0（監査 U3）
+ *
+ * 銘板は型式を本体の面へ直に印字する（`labels.ts` の `nameplateTexture()`）。字の色は下地の
+ * 明るさで選ぶので、銘板の中心の下にある造作（FX5U の黒い前面パネルなど）の色を、無ければ
+ * 筐体の色を返す。造作は後に書いたものほど手前に載る（`PlcFace` の描く順）ので後ろから探す。
+ */
+export function nameplateBackgroundColor(appearance: PlcAppearance): string {
+  const { x, y, w, h } = appearance.nameplateRect;
+  const cx = x + w / 2;
+  const cy = y + h / 2;
+  for (let index = appearance.features.length - 1; index >= 0; index -= 1) {
+    const feature = appearance.features[index];
+    if (feature === undefined) continue;
+    const r = feature.rect;
+    if (cx >= r.x && cx <= r.x + r.w && cy >= r.y && cy <= r.y + r.h) return feature.color;
+  }
+  return appearance.bodyColor;
+}
+
+/**
  * LEDが映す状態。決定表#20
  * **配線の情報は持たない**（`plcPowerIndependent` の判定結果を3Dから漏らさないため。
  * 3B 決定表#7）。本アプリのPLCはAC電源を電気的に解かないので、`POWER` は常時点灯である。
@@ -224,6 +244,42 @@ export function coverOpenPose(
         h,
       };
   }
+}
+
+/** 盤モデル mm の矩形（左上 x0/y0・右下 x1/y1）。 */
+export interface BoardRectMm {
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+}
+
+/**
+ * 本体（ラックはモジュール1枚）が正面から見て占める矩形（盤モデル mm）。v2.1.0（監査 U3）
+ *
+ * 筐体の正面に、**開いた端子カバー**（蝶番から自由端まで）を足した外接矩形。FX5U・CP1E の
+ * 下ヒンジのカバーは本体の下へ平らに寝るので、機種名の名札を本体の下端（`sizeMm.height`）の
+ * すぐ下に置くと、開いたカバーと下段の出力端子の上に乗っていた。名札はこの矩形の外に置く。
+ * 取り外したカバー（`open: 'removed'`）は描かないので数えない。
+ */
+export function plcVisualRectMm(origin: Vec3, appearance: PlcAppearance, faceZMm = 0): BoardRectMm {
+  let x0 = origin.x;
+  let y0 = origin.y;
+  let x1 = origin.x + appearance.faceMm.width;
+  let y1 = origin.y + appearance.faceMm.height;
+  for (const cover of appearance.covers) {
+    if (cover.open === 'removed') continue;
+    const pose = coverOpenPose(origin, cover, faceZMm);
+    const tip = coverOpenTip(pose);
+    const left = origin.x + cover.rect.x;
+    const top = origin.y + cover.rect.y;
+    const horizontalHinge = cover.hinge === 'top' || cover.hinge === 'bottom';
+    x0 = Math.min(x0, horizontalHinge ? left : Math.min(pose.hinge.x, tip.x));
+    x1 = Math.max(x1, horizontalHinge ? left + cover.rect.w : Math.max(pose.hinge.x, tip.x));
+    y0 = Math.min(y0, horizontalHinge ? Math.min(pose.hinge.y, tip.y) : top);
+    y1 = Math.max(y1, horizontalHinge ? Math.max(pose.hinge.y, tip.y) : top + cover.rect.h);
+  }
+  return { x0, y0, x1, y1 };
 }
 
 /**

@@ -4,10 +4,10 @@ import {
   type BoardTerminal,
   type TerminalBlockShape,
 } from '@ojt/board-model';
-import { Html } from '@react-three/drei';
 import { useEffect, useMemo, useRef, type JSX } from 'react';
 import { Euler, Matrix4, Quaternion, Vector3, type InstancedMesh } from 'three';
 import { TERMINAL_BLOCK_CAP_COLOR, TERMINAL_BLOCK_COLOR } from '../session/colors.js';
+import { BoardLabel } from './BoardLabel.js';
 import {
   bakeSharedTexture,
   blockFaceTexture,
@@ -29,12 +29,6 @@ import { toScene } from './coords.js';
  * 端子台（ランプ用8P・押ボタン用12P・P/N供給端子）。設計仕様 §6.1 / §6.5。
  * 端子の座標は盤定義から取り、台座は端子の外接矩形から自動で作るのでハードコードしない。
  */
-
-/**
- * ラベルは見せるだけ。drei の `Html` はラッパの div に `pointer-events: auto` を付けるので、
- * ここで無効化しないと盤の上のラベルがツールバーのクリックまで飲み込んでしまう。
- */
-const LABEL_STYLE = { pointerEvents: 'none' } as const;
 
 /*
  * 仕切り板と両端の固定ねじ（v2.0.0 Task 7・設計 §3.5「形の作り込み」）。
@@ -266,23 +260,31 @@ export function TerminalBlock({
           <meshBasicMaterial map={nameTexture} transparent depthWrite={false} />
         </mesh>
       )}
-      {printedName ? null : (
-        <Html
-          center
-          style={LABEL_STYLE}
+      {/*
+        印字していない端子台（中継端子台・P/N 供給端子台）の名札。v2.1.0（監査 U3）
+        既定は台座の奥の縁に下端を合わせて奥へ伸ばす。P/N 供給端子台は右へずらして置き、
+        名札が大きく映って台座にかかる幅になったら出さない（`room`）。
+      */}
+      {printedName ? null : labelOffsetMm === undefined ? (
+        <BoardLabel
+          position={[center[0], center[1] + shape.h / 2 + 2, shape.printZ]}
+          anchor="bottom"
           distanceFactor={320}
-          position={
-            labelOffsetMm === undefined
-              ? [center[0], center[1] + shape.h / 2 + 4, shape.printZ]
-              : // `toScene()` は盤モデルの y を反転するので、手前（+y）はシーンの −Y になる
-                [center[0] + labelOffsetMm.x, center[1] - labelOffsetMm.y, shape.printZ]
-          }
-          zIndexRange={[10, 0]}
+          rank={4}
         >
-          <span className="block-label" data-label-rank={4}>
-            {label}
-          </span>
-        </Html>
+          {label}
+        </BoardLabel>
+      ) : (
+        <BoardLabel
+          // `toScene()` は盤モデルの y を反転するので、手前（+y）はシーンの −Y になる
+          position={[center[0] + labelOffsetMm.x, center[1] - labelOffsetMm.y, shape.printZ]}
+          anchor="top"
+          distanceFactor={320}
+          rank={4}
+          room={{ w: 2 * (Math.abs(labelOffsetMm.x) - shape.w / 2 - 1), h: 20 }}
+        >
+          {label}
+        </BoardLabel>
       )}
     </group>
   );

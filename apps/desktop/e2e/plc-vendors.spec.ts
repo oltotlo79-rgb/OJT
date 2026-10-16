@@ -151,31 +151,28 @@ async function showBoardOnly(page: Page): Promise<CanvasBox> {
 }
 
 /**
- * ラックのモジュールの名札（`PlcRack.tsx` L164-176 の `<Html>`）が3Dに出ていること。
- * **3Dビューポートの中だけ**を、**完全一致**で見る（右の `plc-model` にも
- * `JTEKT TOYOPUC PC10G-1SP（基本ベース＋POWER1＋CPU＋IN-12＋OUT-12）` のように型式が
- * 部分文字列として出るので、部分一致だと名札が描かれていなくても通ってしまう）。
+ * ラックの構成（モジュール4枚の形式名）が読め、3Dに機種名の名札が出ていること。
  *
- * UI監査バッチE: 「4枚とも**見えている**」ことは要求できなくなった。ラックのモジュールは
- * 幅 40mm 前後で、画面上の間隔（3Dペインの大きさ次第で 30px 前後）より名札のほうが広いので、
- * 全部出すと必ず重なる。デザイン規則「なにも重ならない」を優先して
- * `three/label-declutter.ts` が入らない名札を引っ込めるため、ここでは
+ * v2.1.0（監査 U3）から、モジュールの形式名（`POWER1` / `IN-12` …）とベースの型式は
+ * **3Dのモジュールの面に刷る**（`PlcFace` の銘板）。HTML の名札を重ねていたころは、狭いペインで
+ * 名札が表示灯の帯と隣のモジュールを覆っていた。刷った文字は DOM からは読めないので、型式ごとに
+ * 刷っていることは `test/plc-face-view.test.tsx` が確かめる。ここでは
  *
- *   - 4枚とも**3Dビューポートの中の名札として描かれている**（`.block-label`。右の
- *     `plc-model` の部分文字列ではない）
- *   - そのうち**少なくとも1枚は読める状態**で出ている
+ *   - 右の欄の機種（`plc-model`）に4枚の形式名がすべて出ている
+ *   - 3Dビューポートの中に機種名の名札（構成の括弧を外した短い名前）が描かれている
  *
- * を見る。型式そのものは右の `plc-model` が必ず全部出す（同じテストが別途見ている）。
+ * を見る。
  */
-async function expectRackModules(page: Page, models: readonly string[]): Promise<void> {
-  const viewport = page.locator('[data-testid="viewport"]');
-  let shown = 0;
+async function expectRackModules(
+  page: Page,
+  modelLabel: string,
+  models: readonly string[],
+): Promise<void> {
   for (const model of models) {
-    const labels = viewport.getByText(model, { exact: true });
-    await expect(labels.first()).toHaveClass(/block-label/u);
-    if (await labels.first().isVisible()) shown += 1;
+    await expect(page.getByTestId('plc-model')).toContainText(model);
   }
-  expect(shown, `ラックの名札が1枚も読めない: ${models.join(' / ')}`).toBeGreaterThan(0);
+  const label = page.locator('[data-testid="viewport"]').getByText(modelLabel, { exact: true });
+  await expect(label.first()).toHaveClass(/block-label/u);
 }
 
 /** ラダーエディタにキーを送る（`press()` は要素にフォーカスしてから押す）。 */
@@ -345,8 +342,13 @@ test.describe('Phase 4 受入基準（4メーカー）', () => {
       await page.mouse.click(from.x, from.y);
       await page.mouse.click(to.x, to.y);
       await expect(page.getByTestId('operation-log')).toContainText('PLC.ICOM0');
-      // ラックのモジュール4枚の名札がDOMに出ている（`PlcRack` の `<Html>`。受入基準③）
-      await expectRackModules(page, ['POWER1', 'PC10G-1SP', 'IN-12', 'OUT-12']);
+      // ラックのモジュール4枚の形式名が読める（受入基準③。v2.1.0 から形式名は面に刷る）
+      await expectRackModules(page, 'JTEKT TOYOPUC PC10G-1SP', [
+        'POWER1',
+        'PC10G-1SP',
+        'IN-12',
+        'OUT-12',
+      ]);
       await settledShot(app, page, '44-jtekt-rack');
       // 同番号（`1X010` と `1Y010`）を使うとバリデータがエラーを出す（4A 決定表#16）
       await page.getByTestId('view-ladder').click();
@@ -392,8 +394,13 @@ test.describe('Phase 4 受入基準（4メーカー）', () => {
       await page.mouse.click(to.x, to.y);
       // 端子名が `COM` に切れていないこと（4A H-8）
       await expect(page.getByTestId('operation-log')).toContainText('PLC.COM.A');
-      // ラックのモジュール4枚の名札がDOMに出ている（受入基準⑤）
-      await expectRackModules(page, ['JW-301PU', 'JW-312CU', 'JW-212NA', 'JW-214SA']);
+      // ラックのモジュール4枚の形式名が読める（受入基準⑤。v2.1.0 から形式名は面に刷る）
+      await expectRackModules(page, 'シャープ JW300', [
+        'JW-301PU',
+        'JW-312CU',
+        'JW-212NA',
+        'JW-214SA',
+      ]);
       await settledShot(app, page, '45-sharp-rack');
     });
   });

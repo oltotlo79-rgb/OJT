@@ -237,6 +237,12 @@ export interface AppSettings {
    * 印を持たないと、移行のあとで利用者が改めて選び直した `#1E64FF` を毎回消してしまう。
    */
   monitorColorMigrated: boolean;
+  /**
+   * 3D盤・机上のPLCの名札（ソケットの役割名・機器名・機種名）を出すか（v2.1.0 監査 U3）。
+   * 「表示・作業ファイル」の「3Dの名札を表示」で切り替える。端子のホバーの札・入/切などの
+   * 状態の表示は切っても残る。
+   */
+  showBoardLabels: boolean;
 }
 
 /**
@@ -270,6 +276,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   monitorColor: '',
   // 新しい設定ファイルには移行すべき旧既定が入っていないので、最初から済み扱いでよい
   monitorColorMigrated: true,
+  showBoardLabels: true,
 };
 
 /** preload が `window.ojt` に公開する型付きAPI。§4.3 */

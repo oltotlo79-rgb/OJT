@@ -1,19 +1,35 @@
-import { OUTLET_ORIGIN_MM, PLC_TERMINAL_PITCH_MM, type BoardTerminal } from '@ojt/board-model';
+import {
+  BOARD_WIDTH_MM,
+  OUTLET_ORIGIN_MM,
+  PLC_TERMINAL_PITCH_MM,
+  type BoardTerminal,
+} from '@ojt/board-model';
 import type { TerminalId } from '@ojt/circuit-sim';
-import { Html } from '@react-three/drei';
 import type { JSX } from 'react';
 import { JA } from '../i18n/ja.js';
+import { BoardLabel } from './BoardLabel.js';
+import type { LabelRoomMm } from './label-declutter.js';
 import { sharedMaterial, UNIT_BOX } from './materials.js';
+import {
+  OUTLET_PLATE_H_MM as PLATE_H_MM,
+  OUTLET_PLATE_W_MM as PLATE_W_MM,
+  OUTLET_PLATE_Z_MM as PLATE_Z_MM,
+} from './outlet-geometry.js';
 import { deskTerminalTooltip, TerminalField } from './TerminalField.js';
 import { toScene } from './coords.js';
 
-/** 壁コンセント（AC100V）。設計仕様 §10.1。 */
-const PLATE_W_MM = 34;
-const PLATE_H_MM = 24;
-const PLATE_Z_MM = 4;
+/** 壁コンセントの名札を板の下端から離す量[mm]。 */
+const LABEL_GAP_MM = 3;
 
-/** ラベルは見せるだけ（drei の `Html` はラッパに `pointer-events: auto` を付ける）。 */
-const LABEL_STYLE = { pointerEvents: 'none' } as const;
+/** 名札の基準点（板の下端の中央。名札は下へ伸びる。v2.1.0 監査 U3）。 */
+const LABEL_X_MM = OUTLET_ORIGIN_MM.x + PLC_TERMINAL_PITCH_MM / 2;
+const LABEL_Y_MM = OUTLET_ORIGIN_MM.y + PLATE_H_MM / 2 + LABEL_GAP_MM;
+
+/**
+ * 名札の置き場[mm]。板の下は机の上で何も無いが、左へ広がると盤の右端にかかるので、
+ * 幅は「盤の右端から基準点までの2倍」まで。
+ */
+const LABEL_ROOM: LabelRoomMm = { w: 2 * (LABEL_X_MM - BOARD_WIDTH_MM - 1), h: 100 };
 
 function noPick(): void {
   // 交差候補を積まない
@@ -66,22 +82,16 @@ export function Outlet({
         onHover={onHoverTerminal}
         onPick={onPickTerminal}
       />
-      <Html
-        center
-        style={LABEL_STYLE}
+      {/* PLCの電源を取る先なので、端子台の名札より優先して残す（`label-declutter.ts`） */}
+      <BoardLabel
+        position={toScene({ x: LABEL_X_MM, y: LABEL_Y_MM, z: 0 })}
+        anchor="top"
         distanceFactor={360}
-        position={toScene({
-          x: OUTLET_ORIGIN_MM.x + PLC_TERMINAL_PITCH_MM / 2,
-          y: OUTLET_ORIGIN_MM.y + PLATE_H_MM / 2 + 6,
-          z: 0,
-        })}
-        zIndexRange={[10, 0]}
+        rank={2}
+        room={LABEL_ROOM}
       >
-        {/* PLCの電源を取る先なので、端子台の名札より優先して残す（`label-declutter.ts`） */}
-        <span className="block-label" data-label-rank={2}>
-          {JA.plc.outlet}
-        </span>
-      </Html>
+        {JA.plc.outlet}
+      </BoardLabel>
     </group>
   );
 }
