@@ -44,6 +44,7 @@ export function StepGuide({
   testId,
   notes = true,
   actions,
+  layout = 'inline',
   children,
 }: {
   /** 手順の並びと現在地（`session/step-guide.ts` が組み立てる）。 */
@@ -58,6 +59,14 @@ export function StepGuide({
   notes?: boolean;
   /** 移動できる手順だけを実際のボタンとして表示する。 */
   actions?: Readonly<Record<string, (() => void) | undefined>>;
+  /**
+   * `inline`: 追加の表示と案内を手順の後ろへ続けて並べる（収まらなければ折り返す）。
+   * `two-rows`: 1段目に手順、2段目に追加の表示と案内を置く（モードD）。状態の札の文字
+   * （「PLC: 電源なし」→「PLC: 停止中（STOP）」など）が変わっても折り返しの位置が変わらず、
+   * 帯の高さが動かない。v2.1.0 監査: 帯が1段↔2段で伸び縮みすると、下の3D盤とラダーが
+   * 27px 上下にずれ、配線している最中の端子が押した所から逃げた。
+   */
+  layout?: 'inline' | 'two-rows';
   /** 帯に並べる追加の表示（モードDの状態チップ、回路図の分岐案内）。 */
   children?: ReactNode;
 }): JSX.Element {
@@ -103,12 +112,27 @@ export function StepGuide({
           );
         })}
       </ol>
-      {/* 追加の表示は案内の前に置く（案内は残り幅を埋める1行なので必ず最後にする） */}
-      {children}
-      {hint === undefined ? null : (
-        <p className={styles.hint} data-testid={testId === undefined ? `step-hint` : testId.hint}>
-          {hint}
-        </p>
+      {layout === 'two-rows' ? (
+        // 2段目は案内が無いときも高さを保つ（帯の高さを動かさない）
+        <div className={styles.secondRow}>
+          {children}
+          <p className={styles.hint} data-testid={testId === undefined ? `step-hint` : testId.hint}>
+            {hint ?? ''}
+          </p>
+        </div>
+      ) : (
+        <>
+          {/* 追加の表示は案内の前に置く（案内は残り幅を埋める1行なので必ず最後にする） */}
+          {children}
+          {hint === undefined ? null : (
+            <p
+              className={styles.hint}
+              data-testid={testId === undefined ? `step-hint` : testId.hint}
+            >
+              {hint}
+            </p>
+          )}
+        </>
       )}
     </div>
   );

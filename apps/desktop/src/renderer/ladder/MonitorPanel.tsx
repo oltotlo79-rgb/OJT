@@ -9,6 +9,8 @@ import type { DialectProfile } from '@ojt/plc-dialects';
 import type { JSX } from 'react';
 import type { PlcCommandAction } from '../../worker/protocol.js';
 import { useStore } from '../app/store.js';
+import { plcProgramState } from '../session/plc-session.js';
+import { writeLabel } from '../session/plc-write.js';
 import { JA, onOffLabel, plcInputSpecText, secondsLabel } from '../i18n/ja.js';
 import { shortcutKeyOf } from '../session/ladder.js';
 import { monitorStartLabel } from '../session/plc-skin.js';
@@ -34,10 +36,16 @@ export function MonitorPanel({
   const monitor = useStore((s) => s.plcMonitor);
   const mode = useStore((s) => s.ladderMode);
   const running = useStore((s) => s.plcRunning);
+  /** PLC に書き込んだプログラムとエディタの関係（v2.1.0 監査 P1）。 */
+  const programState = useStore((s) => plcProgramState(s));
   const converted = useStore((s) => s.converted);
+  /**
+   * まだ変換していないときに添える「変換」のキー。「変換」を持たないスキン（`convertStep: false`）は
+   * 編集すると自動で変換されるので添えない（決定表#3 / レビュー B1）。
+   */
+  const convertKey =
+    profile.convertStep && !converted ? shortcutKeyOf(profile, 'convert') : undefined;
   const terminal = (name: string | undefined): string => `PLC.${name ?? ''}`;
-  /** 「変換」のキー。無いスキン（`convertStep: false`）では `undefined`。決定表#3 */
-  const convertKey = profile.convertStep ? shortcutKeyOf(profile, 'convert') : undefined;
   return (
     // RUN/STOP とデバイスの状態は作業中いつでも見たいので、既定は開いた状態（#27）
     <SidePanel title={JA.ladder.monitor} testId="monitor-panel" open>
@@ -60,18 +68,14 @@ export function MonitorPanel({
       </div>
       {/*
         「モニタが動いていない」理由を2通りに分ける（Batch 3 レビュー I3）。
-        変換前はいつまで待っても Worker から `snapshot.plc` が来ないので、未変換のときは
-        その旨を、変換済みでまだ1枚も届いていないときは RUN 待ちである旨を出す。
+        モニタが映すのは **PLC に書き込んだプログラム**の値（v2.1.0 監査 P1）。プログラムが無い
+        うちはいつまで待っても Worker から `snapshot.plc` が来ないので、その旨と書込みの操作の
+        名前（未変換なら変換のキーも）を出す。書込み済みでまだ1枚も届いていないときは
+        RUN 待ちである旨を出す。
       */}
-      {!converted ? (
-        <p className={styles.sideNote} data-testid="monitor-not-converted">
-          {/*
-            「変換」を持たないメーカーでは押す場所が無いので、変換キーを名乗らずに自動で変換される
-            旨を出す（`OutputWindow` の `convert-state` と同じ分岐。レビュー B1）。
-          */}
-          {convertKey === undefined
-            ? JA.ladder.notConvertedAuto
-            : JA.ladder.monitorNotConverted(convertKey)}
+      {programState === 'none' ? (
+        <p className={styles.sideNote} data-testid="monitor-no-program">
+          {JA.ladder.monitorNoProgram(writeLabel(profile), convertKey)}
         </p>
       ) : monitor === undefined ? (
         <p className={styles.sideNote} data-testid="monitor-no-snapshot">
@@ -87,6 +91,11 @@ export function MonitorPanel({
         </p>
       ) : (
         <>
+          {programState === 'stale' ? (
+            <p className={styles.sideNote} data-testid="monitor-stale">
+              {JA.ladder.monitorStale}
+            </p>
+          ) : null}
           <p className={styles.sideNote} data-testid="monitor-scan">
             {JA.ladder.scanCount}: {monitor.scanCount}（{secondsLabel(monitor.tMs)}）
           </p>

@@ -163,6 +163,21 @@ export function parseWorkFile(
       return { ok: false, message: MSG.workFile.badLadder };
     optional.ladder = ladder;
   }
+  // PLC に書き込んだプログラム（v2.1.0）。ラダーと同じ検証を通す
+  const plcProgram = source['plcProgram'];
+  if (plcProgram !== undefined) {
+    if (typeof plcProgram !== 'object' || plcProgram === null) {
+      return { ok: false, message: MSG.workFile.badLadder };
+    }
+    const networks = (plcProgram as Record<string, unknown>)['networks'];
+    if (!Array.isArray(networks)) return { ok: false, message: MSG.workFile.badLadder };
+    if (networks.length > MAX_WORK_FILE_NETWORKS) {
+      return { ok: false, message: MSG.workFile.tooManyNetworks };
+    }
+    if (toLadderProgram(plcProgram) === undefined)
+      return { ok: false, message: MSG.workFile.badLadder };
+    optional.plcProgram = plcProgram;
+  }
   // 下書きは任意だが、存在するときは全体を検証し、破損を黙って捨てない。
   const schematic = source['schematic'];
   if (schematic !== undefined && toSchematicDoc(schematic) === undefined)

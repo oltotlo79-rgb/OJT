@@ -110,3 +110,16 @@
   line-height: 1.6;
   margin: 0;
 }
+
+/*
+ * `layout="two-rows"` の2段目（状態の札と案内）。必ず新しい段から始め、案内が空でも
+ * 1行ぶんの高さを保つ（札の文字が変わっても帯の高さが動かない。v2.1.0 監査）。
+ */
+.secondRow {
+  display: flex;
+  flex: 1 0 100%;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 14px;
+  min-height: 26px;
+}

@@ -14,6 +14,7 @@ import {
   type SocketId,
 } from '@ojt/board-model';
 import type { TerminalId } from '@ojt/circuit-sim';
+import type { LadderProgram } from '@ojt/ladder-core';
 import { isPlcLabProblem, isPlcProblem, resolvePlcIo, usesPlc } from '@ojt/content';
 import { LabChartPanel } from '../lab/LabChartPanel.js';
 import { requestLabRun } from '../session/lab.js';
@@ -73,7 +74,12 @@ import {
   boardForProblem,
   canJudgePlc,
   plcBoardOf,
+  plcJudgePlan,
+  plcProgramState,
 } from '../session/plc-session.js';
+import { writeLabel, writeLadderToPlc } from '../session/plc-write.js';
+import { ConfirmDialog } from '../app/ConfirmDialog.js';
+import navigation from '../app/problem-navigation.module.css';
 import { autoConvert, skinGridCols, skinStepKeys, type PlcStepKey } from '../session/plc-skin.js';
 import { useViewportShortcuts } from '../session/viewport-keys.js';
 import { loadWorkFileAndApply, saveCurrentWork } from '../session/work-file.js';
@@ -142,6 +148,7 @@ function stepHintText(
 ): string | undefined {
   if (stepKey === 'ladder') return ladderHintText(profile);
   if (stepKey === 'convert') return convertHintText(profile);
+  if (stepKey === 'write') return JA.plc.writeHint(writeLabel(profile));
   if (stepKey === 'run') return runHintText(profile);
   if (stepKey === 'judge') return JA.plc.judgeHint;
   return undefined;
@@ -239,6 +246,13 @@ export function PlcSession(): JSX.Element {
   const onPlc = useCallback((action: PlcCommandAction): void => {
     bridge.send({ type: 'plc', action });
   }, []);
+
+  /** PLC に書き込んだプログラムとエディタの関係（v2.1.0 監査 P1）。 */
+  const programState = useStore((s) => plcProgramState(s));
+  /** 判定の前の確かめ（PLC のプログラムで判定する。v2.1.0 監査 P1）。 */
+  const [judgeConfirm, setJudgeConfirm] = useState<
+    { canWrite: boolean; canJudgeAsIs: boolean } | undefined
+  >(undefined);
 
   /** Worker を起こし、PLC本体つきの盤を読ませる。§10.1 */
   useRuntimeConnection('plc');
@@ -512,7 +526,15 @@ export function PlcSession(): JSX.Element {
   /** 状態オーバーレイの電線カウントが見る「固定」本数（UXレビュー #21）。 */
   const fixedWireCount = session.wires.filter((w) => w.locked).length;
 
-  const readiness = canJudgePlc({ converted, ladder });
+  /*
+   * 判定ボタンを押せるか。PLC課題は PLC にプログラムがあれば押せる（書き込んでいない変更は
+   * 押したあとで確かめる。`plcJudgePlan()`）。プログラムが無ければ、書き込める変換済みの
+   * ラダーがあるか（従来どおり）。PLC実験の判定は「動かす」と同じ流れ（`requestLabRun()`）。
+   */
+  const readiness: ReturnType<typeof canJudgePlc> =
+    lab === undefined && programState !== 'none'
+      ? { ok: true }
+      : canJudgePlc({ converted, ladder });
   /** 「変換」を持たないメーカー（`convertStep: false`）では `undefined`。決定表#3 */
   const convertKey = shortcutKeyOf(profile, 'convert');
   /** PLC実験は正解を描かないと判定できない（2026-10-08）。 */
@@ -551,6 +573,7 @@ export function PlcSession(): JSX.Element {
     wire: JA.plc.stepWire,
     ladder: JA.plc.stepLadder,
     convert: JA.plc.stepConvert,
+    write: JA.plc.stepWrite,
     run: JA.plc.stepRun,
     judge: JA.plc.stepJudge,
   };
@@ -558,6 +581,8 @@ export function PlcSession(): JSX.Element {
   const stepDone: Readonly<Record<Exclude<PlcStepKey, 'wire'>, boolean>> = {
     ladder: written,
     convert: converted,
+    // 書込み: PLC のプログラムがいまのエディタのラダーと同じ（v2.1.0 監査 P1）
+    write: programState === 'written',
     run: plcRunning,
     judge: false,
   };
@@ -624,10 +649,10 @@ export function PlcSession(): JSX.Element {
       plcModel: problem.plc.model,
       allowPlcForcing: allowPlcForcingFor(problem),
     });
-    // 盤を読み直すとスキャン結合も捨てられるので、変換済みのラダーを載せ直す（§10.4）
+    // 盤を読み直すとスキャン結合も捨てられるので、PLC に書き込んだプログラムを載せ直す（§10.4）
     const after = useStore.getState();
-    if (after.converted && ladder !== undefined) {
-      bridge.send({ type: 'plc', action: { kind: 'load', program: ladder } });
+    if (after.plcProgram !== undefined) {
+      bridge.send({ type: 'plc', action: { kind: 'load', program: after.plcProgram } });
       // `load` は Worker 側で RUN もモニタも落とす（Task 3）。画面が RUN／モニタのままなら
       // 送り直さないと「ボタンは RUN なのに動かない」状態になる（レビュー指摘 B4）
       if (after.plcRunning) bridge.send({ type: 'plc', action: { kind: 'run', on: true } });
@@ -637,9 +662,84 @@ export function PlcSession(): JSX.Element {
     }
   };
 
+  /** PLC のプログラムで判定する（`judgePlc`）。 */
+  const sendJudge = (program: LadderProgram): void => {
+    if (plcProblem === undefined) return;
+    const store = useStore.getState();
+    const boardSession = store.session;
+    if (store.judging || boardSession === undefined) return;
+    store.setJudging(true);
+    bridge.send({
+      type: 'judgePlc',
+      problem: plcProblem,
+      session: cloneSession(boardSession),
+      ladder: program,
+      elapsedMs: store.elapsedMs,
+    });
+  };
+
   return (
     <>
       <SoundEffects />
+      {judgeConfirm === undefined ? null : (
+        <ConfirmDialog
+          testId="plc-judge-confirm"
+          titleId="plc-judge-confirm-title"
+          onCancel={() => {
+            setJudgeConfirm(undefined);
+          }}
+        >
+          <h2 id="plc-judge-confirm-title">{JA.plc.judgeConfirmTitle}</h2>
+          <p>
+            {judgeConfirm.canJudgeAsIs ? JA.plc.judgeConfirmStale : JA.plc.judgeConfirmNone}
+            {judgeConfirm.canWrite
+              ? plcRunning
+                ? JA.plc.judgeConfirmRunning
+                : ''
+              : convertKey === undefined
+                ? JA.plc.judgeConfirmNeedsFix
+                : JA.plc.judgeConfirmNeedsConvert(convertKey)}
+          </p>
+          <div className={navigation.actions}>
+            {judgeConfirm.canWrite ? (
+              <button
+                type="button"
+                data-testid="plc-judge-write"
+                onClick={() => {
+                  setJudgeConfirm(undefined);
+                  if (!writeLadderToPlc(onPlc)) return;
+                  const program = useStore.getState().plcProgram;
+                  if (program !== undefined) sendJudge(program);
+                }}
+              >
+                {JA.plc.judgeWriteThenJudge}
+              </button>
+            ) : null}
+            {judgeConfirm.canJudgeAsIs ? (
+              <button
+                type="button"
+                data-testid="plc-judge-as-is"
+                onClick={() => {
+                  setJudgeConfirm(undefined);
+                  const program = useStore.getState().plcProgram;
+                  if (program !== undefined) sendJudge(program);
+                }}
+              >
+                {JA.plc.judgeAsIs}
+              </button>
+            ) : null}
+            <button
+              type="button"
+              data-dialog-autofocus
+              onClick={() => {
+                setJudgeConfirm(undefined);
+              }}
+            >
+              {JA.plc.judgeCancel}
+            </button>
+          </div>
+        </ConfirmDialog>
+      )}
       <Toolbar
         mode={mode}
         wireColor={wireColor}
@@ -717,18 +817,15 @@ export function PlcSession(): JSX.Element {
           if (plcProblem === undefined) return;
           const store = useStore.getState();
           if (store.judging || !modelKnown) return;
-          const boardSession = store.session;
-          const currentLadder = store.ladder;
-          if (boardSession === undefined || currentLadder === undefined) return;
-          if (!canJudgePlc({ converted: store.converted, ladder: currentLadder }).ok) return;
-          store.setJudging(true);
-          bridge.send({
-            type: 'judgePlc',
-            problem: plcProblem,
-            session: cloneSession(boardSession),
-            ladder: currentLadder,
-            elapsedMs: store.elapsedMs,
-          });
+          // 判定は PLC に書き込んだプログラムで行う（実機の試験と同じく「動いている PLC」を
+          // 見る）。書き込んでいない変更があれば確かめる（v2.1.0 監査 P1）
+          const plan = plcJudgePlan(store);
+          if (plan.kind === 'blocked') return;
+          if (plan.kind === 'confirm') {
+            setJudgeConfirm({ canWrite: plan.canWrite, canJudgeAsIs: plan.canJudgeAsIs });
+            return;
+          }
+          sendJudge(plan.program);
         }}
         onBack={() => {
           // 実験は課題一覧に無いので、ホームへ戻る
@@ -778,6 +875,7 @@ export function PlcSession(): JSX.Element {
         配線の中身（＝合否）には一切触れない（決定表#7）。
       */}
       <StepGuide
+        layout="two-rows"
         steps={labStepList ?? steps}
         actions={{
           wire: () => useStore.getState().setLadderView('board'),
@@ -823,6 +921,26 @@ export function PlcSession(): JSX.Element {
               : plcRunning
                 ? JA.plc.statusRunning
                 : JA.plc.statusStopped}
+          </span>
+          {/* PLC に書き込んだプログラムの状態（v2.1.0 監査 P1） */}
+          <span
+            className={styles.plcChip}
+            data-testid="plc-program-status"
+            data-state={programState}
+            title={
+              programState === 'written'
+                ? JA.plc.programWrittenTitle
+                : programState === 'stale'
+                  ? JA.plc.programStaleTitle
+                  : JA.plc.programNoneTitle
+            }
+          >
+            {JA.plc.programChip}:{' '}
+            {programState === 'written'
+              ? JA.plc.programWritten
+              : programState === 'stale'
+                ? JA.plc.programStale
+                : JA.plc.programNone}
           </span>
         </div>
       </StepGuide>

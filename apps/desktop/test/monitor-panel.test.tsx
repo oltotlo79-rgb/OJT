@@ -5,6 +5,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useStore } from '../src/renderer/app/store.js';
 import type { PlcMonitorSnapshot } from '../src/renderer/app/store-types.js';
 import { MonitorPanel } from '../src/renderer/ladder/MonitorPanel.js';
+import { endNetwork, network, no, out, program, X, Y } from '@ojt/ladder-core';
+
+/** PLC に書き込んだまま（エディタと同じ）のプログラム。モニタはこのプログラムの値を映す（v2.1.0 監査 P1）。 */
+const WRITTEN_PROGRAM = program(network('n1', [[no(X(0)), out(Y(0))]]), endNetwork());
+const WRITTEN = {
+  converted: true,
+  ladder: WRITTEN_PROGRAM,
+  plcProgram: WRITTEN_PROGRAM,
+  plcProgramSource: WRITTEN_PROGRAM,
+} as const;
 
 function snapshot(overrides: Partial<PlcMonitorSnapshot> = {}): PlcMonitorSnapshot {
   return {
@@ -31,34 +41,52 @@ beforeEach(() => {
     plcRunning: false,
     ladderMode: 'write',
     converted: false,
+    plcProgram: undefined,
+    plcProgramSource: undefined,
   });
 });
 
 afterEach(cleanup);
 
 describe('モニタ一覧（§10.7）', () => {
-  it('asks to convert first while the ladder is not converted (I3)', () => {
+  it('asks to convert and write a program first while the PLC has none (v2.1.0 監査 P1)', () => {
     panel();
-    expect(screen.getByTestId('monitor-not-converted')).toHaveTextContent('F4');
+    const note = screen.getByTestId('monitor-no-program');
+    expect(note).toHaveTextContent('先に変換（F4）して');
+    expect(note).toHaveTextContent('シーケンサへの書込み');
+    cleanup();
+    // 変換済みなら書込みだけを案内する
+    useStore.setState({ converted: true });
+    panel();
+    expect(screen.getByTestId('monitor-no-program')).not.toHaveTextContent('先に変換');
   });
 
-  /** レビュー B1: OMRON（`convertStep: false`）は押す場所が無いので変換キーを名乗らない。 */
-  it('says conversion happens automatically under a skin with no 変換 key (B1)', () => {
+  /** OMRON は書込みの操作の名前（転送［PC → PLC］）で案内する（レビュー B1 を引き継ぐ）。 */
+  it('names the vendor write operation under each skin (B1 / v2.1.0)', () => {
     render(<MonitorPanel profile={OMRON_CP1E} unit={PLC_UNIT_CP1E} onPlc={vi.fn()} />);
-    const note = screen.getByTestId('monitor-not-converted');
-    expect(note).not.toHaveTextContent('先に変換');
+    const note = screen.getByTestId('monitor-no-program');
+    expect(note).toHaveTextContent('転送［PC → PLC］');
     expect(note).not.toHaveTextContent('F4');
-    expect(note).toHaveTextContent('自動で変換します');
+  });
+
+  it('says the monitor shows the PLC program when the editor has unwritten changes', () => {
+    useStore.setState({
+      ...WRITTEN,
+      ladder: program(network('n1', [[no(X(1))]]), endNetwork()),
+      plcMonitor: snapshot(),
+    });
+    panel();
+    expect(screen.getByTestId('monitor-stale')).toBeInTheDocument();
   });
 
   it('asks to start monitoring, then to RUN, once converted (I3 / Plan 4B Task 3)', () => {
-    useStore.setState({ converted: true });
+    useStore.setState({ ...WRITTEN });
     panel();
     // モニタを始めていないうちはスナップショットが来ないのが当たり前なので、そう案内する
     // （キーは方言プロファイルから。`JA.ladder.monitorOff` の関数化。前提#22）
     expect(screen.getByTestId('monitor-no-snapshot')).toHaveTextContent('モニタ（F3）');
     cleanup();
-    useStore.setState({ converted: true, ladderMode: 'monitor' });
+    useStore.setState({ ...WRITTEN, ladderMode: 'monitor' });
     panel();
     expect(screen.getByTestId('monitor-no-snapshot')).toHaveTextContent('RUN');
   });
@@ -68,7 +96,7 @@ describe('モニタ一覧（§10.7）', () => {
    * ため、存在しないキーを教えていた。`monitorStartLabel()` はツールバー項目名へ倒す。
    */
   it('names the OMRON toolbar label, not the invented F3 (LE-7)', () => {
-    useStore.setState({ converted: true });
+    useStore.setState({ ...WRITTEN });
     render(<MonitorPanel profile={OMRON_CP1E} unit={PLC_UNIT_CP1E} onPlc={vi.fn()} />);
     const note = screen.getByTestId('monitor-no-snapshot');
     expect(note).not.toHaveTextContent('F3');
@@ -80,7 +108,7 @@ describe('モニタ一覧（§10.7）', () => {
       plcMonitor: snapshot(),
       ladderMode: 'monitor',
       plcRunning: true,
-      converted: true,
+      ...WRITTEN,
     });
     panel();
     expect(screen.getByTestId('monitor-input-0')).toHaveTextContent('X0');
@@ -98,7 +126,7 @@ describe('モニタ一覧（§10.7）', () => {
   });
 
   it('names the FX5U input spec, not the engine defaults (3A レビュー指摘)', () => {
-    useStore.setState({ plcMonitor: snapshot(), ladderMode: 'monitor', converted: true });
+    useStore.setState({ plcMonitor: snapshot(), ladderMode: 'monitor', ...WRITTEN });
     panel();
     const note = screen.getByTestId('monitor-spec');
     expect(note).toHaveTextContent('4.5');
@@ -117,7 +145,7 @@ describe('モニタ一覧（§10.7）', () => {
       plcMonitor: snapshot(),
       ladderMode: 'monitor',
       plcRunning: false,
-      converted: true,
+      ...WRITTEN,
     });
     panel();
     expect(screen.getByTestId('monitor-stopped')).toHaveTextContent('RUN');

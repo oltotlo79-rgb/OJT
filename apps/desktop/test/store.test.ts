@@ -476,8 +476,11 @@ describe('ストアの5分割（指摘 DS-3）', () => {
    * 部品不良の内容の選び直し（`replaceReport`）の3つが増えた。
    * 163 → 167: v1.10.0 の回路実験・PLC実験で、最後に動かした結果（`labRun` / `setLabRun`）と
    * 動かしている最中か（`labRunning` / `setLabRunning`）の4つが増えた。
+   * 167 → 172: v2.1.0 監査 P1 で PLC に書き込んだプログラム（`plcProgram` / `plcProgramSource` /
+   * `setPlcProgram`）と、プログラム無しで RUN したときの ERR（`plcNoProgramError` /
+   * `setPlcNoProgramError`）の5つが増えた。
    */
-  const APP_STATE_KEY_COUNT = 167;
+  const APP_STATE_KEY_COUNT = 172;
 
   /** スライスを1つ組み立てて、公開するキーだけを取り出す（中身は呼ばない）。 */
   function keysOf(

@@ -757,7 +757,37 @@ export const JA = {
     insertRow: '行挿入',
     deleteRow: '行削除',
     convertFailed: '変換できませんでした（出力ウィンドウを確認してください）',
-    downloaded: 'シーケンサへ書き込みました（変換済みのラダーを反映）',
+    // --- v2.1.0 監査 P1: PLC への書込み ---
+    /** 書込みの操作の一般名（道具列に書込みを持たないときの言い方）。 */
+    writeGeneric: 'PLCへの書込み',
+    /** 書き込んだ（STOP のまま。RUN し直すと新しいプログラムで動く）。 */
+    written: '書き込みました。RUN にすると新しいプログラムで動きます',
+    writeWhileRunning: '運転中（RUN）のPLCには書き込めません。STOPにして書き込みますか？',
+    writeStopAndWrite: 'STOPして書き込む',
+    writeCancel: '取消',
+    /** プログラムの無い PLC を RUN しようとした（ERR の表示灯が点く）。 */
+    runNoProgram: 'PLCにプログラムがありません。書込みをしてから RUN します',
+    /** 「変換・書込み・RUNの違い」の欄。 */
+    guideConvert:
+      '変換: ラダーの誤りを調べて、PLCで動かせる形に直します。変換しただけでは、PLCの動きは変わりません。',
+    guideConvertAuto:
+      'このメーカーのツールには「変換」の操作がありません。編集すると自動で変換されます。変換しただけでは、PLCの動きは変わりません。',
+    guideWrite: (label: string): string =>
+      `書込み（「${label}」）: 変換したラダーをPLCへ送ります。PLCは書き込まれたプログラムで動きます。運転中（RUN）のPLCには書き込めないので、STOPにして書き込みます。`,
+    guideRun:
+      'RUN: PLCのプログラムで運転を始め、モニタで値を表示します。判定もPLCのプログラムで行います。作業へ戻ったときは電源を確認してRUNしてください。CPUの途中の値は再開しません。実機PLCとの通信は行いません。',
+    /**
+     * モニタの欄: PLC にプログラムが無い（書込みの操作の名前を渡す）。まだ変換していない
+     * ときは変換のキーも渡す（変換の操作が無いメーカー・変換済みなら渡さない）。
+     */
+    monitorNoProgram: (label: string, convertKey?: string): string =>
+      convertKey === undefined
+        ? `PLCにプログラムがありません。「${label}」で書き込むと、ここに値が出ます。`
+        : `PLCにプログラムがありません。先に変換（${convertKey}）して、「${label}」で書き込むと、ここに値が出ます。`,
+    /** モニタの欄: エディタを変更したが、まだ書き込んでいない。 */
+    monitorStale:
+      'エディタのラダーはPLCに書き込んだプログラムと違います（モニタはPLCのプログラムの値です）。',
+    // --- /v2.1.0 監査 P1 ---
     // --- /Plan 3B Task 8 ---
     // --- Plan 3B Task 9 ---
     /** モニタ一覧と RUN/STOP。§10.6 / §10.7 */
@@ -776,7 +806,6 @@ export const JA = {
      * モニタ表示の空状態を「未変換」と「変換済みだがまだスナップショット無し」に分ける（I3）。
      * 変換キーはメーカー（方言プロファイル）から渡す（Batch 4+5 レビュー M9）。
      */
-    monitorNotConverted: (convertKey: string): string => `先に変換（${convertKey}）してください`,
     monitorNoSnapshot: 'RUN にすると動きます',
     /** I/O割付表で機種の端子範囲を超えたとき（M3） */
     ioTerminalUnknown: '—',
@@ -1016,6 +1045,33 @@ export const JA = {
     stepConvert: '変換',
     stepRun: 'モニタ開始・RUN',
     stepJudge: '判定',
+    /** 手順帯の「書込み」（v2.1.0 監査 P1）。 */
+    stepWrite: '書込み',
+    /** 書込みの手順の案内（書込みの操作の名前を渡す）。 */
+    writeHint: (label: string): string => `PLCへ書き込みます: 「${label}」`,
+    /** 手順帯の札「PLCのプログラム: …」（v2.1.0 監査 P1）。 */
+    programChip: 'PLCのプログラム',
+    programWritten: '書込み済み',
+    programStale: 'エディタと違う',
+    programNone: 'なし',
+    /** 札にポインタを合わせると出る説明（札そのものは短く保つ。帯の高さを動かさない）。 */
+    programWrittenTitle: 'PLCはエディタのラダーと同じプログラムで動きます',
+    programStaleTitle:
+      'エディタの変更はまだPLCに書き込まれていません。変換して書き込むと、PLCは新しいラダーで動きます',
+    programNoneTitle: 'PLCにプログラムがありません。変換したラダーを書き込むと動かせます',
+    /** 判定の前の確かめ（PLC のプログラムで判定する。v2.1.0 監査 P1）。 */
+    judgeConfirmTitle: 'PLCのプログラムで判定します',
+    judgeConfirmStale: 'エディタの変更がPLCに書き込まれていません。',
+    judgeConfirmNone: 'PLCにプログラムが書き込まれていません。',
+    judgeConfirmRunning: '「書き込んでから判定」では、運転中のPLCを STOP にしてから書き込みます。',
+    /** 変換していない変更は書き込めない（変換のキーを渡す）。 */
+    judgeConfirmNeedsConvert: (key: string): string =>
+      `変換していない変更は書き込めません。変換（${key}）と書込みをしてから判定するときは「取消」で戻ります。`,
+    /** 自動で変換するメーカーで、ラダーに直す所がある。 */
+    judgeConfirmNeedsFix: 'ラダーに直す所があるので書き込めません（出力ウィンドウで確かめます）。',
+    judgeWriteThenJudge: '書き込んでから判定',
+    judgeAsIs: 'このまま判定',
+    judgeCancel: '取消',
     /** 「配線」はいつでも行えるので完了印を出さない（決定表#7 に触れない）。 */
     stepAnytime: 'いつでも',
     /** いまの状態（ボタンの見た目だけに頼らず文字でも出す）。 */
@@ -1624,6 +1680,8 @@ export const JA = {
       '思った動きと違ったら「盤で動きを見る」で区間ごとに止め、リレーの動作表示とランプを確かめます。PLC実験ではモニタで入力→接点→出力の順に追います。',
     /** PLC実験で変換していないラダーを動かそうとした。 */
     runNotConverted: (convertKey: string): string => `変換（${convertKey}）を通してから動かします`,
+    /** PLC実験の「動かす」は PLC に書き込んだプログラムで動かす（v2.1.0 監査 P1）。 */
+    runNoProgram: 'PLCにプログラムがありません。書込みをしてから動かします',
     /** 動かしている間に押し方を描き直した。 */
     staleRun:
       '動かしている間にタイムチャートの押し方を描き直したので、その結果は使いませんでした。もう一度「動かす」を押してください。',

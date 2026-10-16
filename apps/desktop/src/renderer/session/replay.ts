@@ -98,20 +98,24 @@ export function startReplay(from: 'result' | 'lab' = 'result'): boolean {
   else if (problem.mode === 'assemble-lab') source = { mode: 'assemble-lab', problem, session };
   else if (problem.mode === 'inspect-repair' && s.circuit !== undefined)
     source = { mode: 'inspect-repair', problem, circuit: circuitForJudge(s.circuit, session) };
+  /*
+   * PLC は判定・実験と同じく**PLC に書き込んだプログラム**で動かし直す（v2.1.0 監査 P1）。
+   * エディタのラダーで動かすと、「このまま判定」したときに判定と見直しの動きが食い違う。
+   */
   else if (
     problem.mode === 'plc' &&
     judge.mode === 'plc' &&
     judge.ladderErrors.length === 0 &&
-    s.ladder !== undefined
+    s.plcProgram !== undefined
   )
-    source = { mode: 'plc', problem, session, ladder: s.ladder };
+    source = { mode: 'plc', problem, session, ladder: s.plcProgram };
   else if (
     problem.mode === 'plc-lab' &&
     judge.mode === 'plc-lab' &&
     judge.ladderErrors.length === 0 &&
-    s.ladder !== undefined
+    s.plcProgram !== undefined
   )
-    source = { mode: 'plc-lab', problem, session, ladder: s.ladder };
+    source = { mode: 'plc-lab', problem, session, ladder: s.plcProgram };
   else return false;
   useStore.setState({
     route: 'session',

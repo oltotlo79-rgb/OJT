@@ -949,6 +949,12 @@
       "internal": "モニタ一覧の1行。親のモニタで説明済み"
     },
     {
+      "testid": "monitor-no-program",
+      "screen": "練習中（モードD）",
+      "label": "PLCにプログラムがありません",
+      "section": "mode-d/動きを見る"
+    },
+    {
       "testid": "monitor-internal-{}",
       "internal": "モニタ一覧の1行。親のモニタで説明済み"
     },
@@ -957,12 +963,6 @@
       "screen": "練習中（モードD）",
       "label": "RUN にすると動きます",
       "section": "mode-d/動きを見る"
-    },
-    {
-      "testid": "monitor-not-converted",
-      "screen": "練習中（モードD）",
-      "label": "先に変換",
-      "section": "mode-d/変換する"
     },
     {
       "testid": "monitor-output-{}",
@@ -991,6 +991,12 @@
       "screen": "PLC",
       "section": "mode-d/特殊接点を使う",
       "label": "特殊接点"
+    },
+    {
+      "testid": "monitor-stale",
+      "screen": "練習中（モードD）",
+      "label": "エディタのラダーはPLCに書き込んだプログラムと違います",
+      "section": "mode-d/動きを見る"
     },
     {
       "testid": "monitor-stopped",
@@ -1221,6 +1227,24 @@
       "section": "mode-d/スキャンを止めて原因を追う"
     },
     {
+      "testid": "plc-judge-as-is",
+      "screen": "練習中（モードD）",
+      "label": "このまま判定",
+      "section": "mode-d/変換・書込みと作業の再開"
+    },
+    {
+      "testid": "plc-judge-confirm",
+      "screen": "練習中（モードD）",
+      "label": "エディタの変更がPLCに書き込まれていません。",
+      "section": "mode-d/変換・書込みと作業の再開"
+    },
+    {
+      "testid": "plc-judge-write",
+      "screen": "練習中（モードD）",
+      "label": "書き込んでから判定",
+      "section": "mode-d/変換・書込みと作業の再開"
+    },
+    {
       "testid": "plc-guide",
       "screen": "練習中（モードD）",
       "label": "手順",
@@ -1248,7 +1272,13 @@
       "testid": "plc-operation-guide",
       "screen": "PLC",
       "label": "変換・書込み・RUNの違い",
-      "section": "mode-d/スキャンを止めて原因を追う"
+      "section": "mode-d/変換・書込みと作業の再開"
+    },
+    {
+      "testid": "plc-program-status",
+      "screen": "練習中（モードD）",
+      "label": "PLCのプログラム",
+      "section": "mode-d/PLCの課題を進める"
     },
     {
       "testid": "plc-outlet-note",
@@ -1297,6 +1327,18 @@
       "screen": "練習・設定",
       "label": "PLC電源",
       "section": "mode-d/PLCの電源状態とI/Oを調べる"
+    },
+    {
+      "testid": "plc-write-confirm",
+      "screen": "練習中（モードD）",
+      "label": "運転中（RUN）のPLCには書き込めません。",
+      "section": "mode-d/PLCに書き込む"
+    },
+    {
+      "testid": "plc-write-confirm-stop",
+      "screen": "練習中（モードD）",
+      "label": "STOPして書き込む",
+      "section": "mode-d/PLCに書き込む"
     },
     {
       "testid": "plc-why",

@@ -92,11 +92,12 @@ export function useLedState(): PlcLedState {
   const powered = useStore((s) => s.snapshot.plcIo?.powered ?? false);
   const running = useStore((s) => s.plcRunning);
   const convertFailed = useStore((s) => !s.converted && s.convertIssues.errors.length > 0);
+  const noProgram = useStore((s) => s.plcNoProgramError);
   const inputs = useStore(useShallow((s) => s.snapshot.plcIo?.inputs));
   const outputs = useStore(useShallow((s) => s.snapshot.plcIo?.outputs));
   return useMemo(
-    () => ({ powered, running, convertFailed, inputs, outputs }),
-    [powered, running, convertFailed, inputs, outputs],
+    () => ({ powered, running, convertFailed, noProgram, inputs, outputs }),
+    [powered, running, convertFailed, noProgram, inputs, outputs],
   );
 }
 

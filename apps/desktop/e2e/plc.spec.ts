@@ -8,7 +8,7 @@ import {
 } from '@ojt/content';
 import { COIL_COL } from '@ojt/ladder-core';
 import { expect, test, type Page } from '@playwright/test';
-import { launchApp, shot, type Launched } from './app.js';
+import { launchApp, shot, writePlc, type Launched } from './app.js';
 import {
   PLC_BOARD,
   plcBoardPoint,
@@ -312,6 +312,15 @@ test.describe('モードD（PLC）', () => {
       await expect(page.getByTestId('plc-ladder-mode')).toContainText('モニタ');
       // UI監査バッチD（`340b2d9`）で画面内の RUN は1つになり、ツールバーの
       // `toolbar-plc-run`（`ladder/LadderWorkspace.tsx:366-375`）だけが残った。
+      // 変換しただけでは PLC にプログラムが無く、RUN にならない（v2.1.0 監査 P1）
+      await expect(page.getByTestId('plc-program-status')).toHaveAttribute('data-state', 'none');
+      await page.getByTestId('toolbar-plc-run').click();
+      await expect(
+        page.getByTestId('toast').filter({ hasText: 'PLCにプログラムがありません' }),
+      ).toBeVisible();
+      await expect(page.getByTestId('toolbar-plc-run')).toHaveAttribute('aria-pressed', 'false');
+      // 「シーケンサへの書込み」で書き込んでから RUN する
+      await writePlc(page);
       await page.getByTestId('toolbar-plc-run').click();
       await expect(page.getByTestId('toolbar-plc-run')).toHaveAttribute('aria-pressed', 'true');
       // 電源ボタンの文言は「① ブレーカ」「② 電源スイッチ」になった（UXレビュー #10）。
@@ -361,7 +370,14 @@ test.describe('モードD（PLC）', () => {
       await wireReference(page, box, ['CR1.14', 'CR1.5']);
       await wire(page, box, 'PLC.Y0', 'TB_PL.1+');
 
+      // 書き込まずに判定を押すと、書き込んでから判定するかを確かめる（v2.1.0 監査 P1）。
+      // PLC にプログラムが無いので「このまま判定」は出ない
       await page.getByTestId('judge-button').click();
+      await expect(page.getByTestId('plc-judge-confirm')).toContainText(
+        'PLCにプログラムが書き込まれていません。',
+      );
+      await expect(page.getByTestId('plc-judge-as-is')).toHaveCount(0);
+      await page.getByTestId('plc-judge-write').click();
       await expect(page.getByTestId('verdict')).toHaveText('不合格', { timeout: 30_000 });
       const check = page.getByTestId('static-check-twoStage');
       await expect(check).toContainText('二段構成');
@@ -390,6 +406,7 @@ test.describe('モードD（PLC）', () => {
       await wire(page, box, 'TB_PL.3-', 'PLC.N');
 
       await page.getByTestId('judge-button').click();
+      await page.getByTestId('plc-judge-write').click();
       await expect(page.getByTestId('verdict')).toHaveText('不合格', { timeout: 30_000 });
       const check = page.getByTestId('static-check-plcPowerIndependent');
       await expect(check).toContainText('PLC電源の独立');

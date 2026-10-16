@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
-import { launchApp, settledShot } from './app.js';
+import { launchApp, settledShot, writePlc } from './app.js';
 
 /**
  * 回路実験・PLC実験の通し検査（2026-10-08 利用者指示）。
@@ -134,6 +134,10 @@ test('PLC実験: 配線済みの盤で始め、変換したラダーで動かし
     await page.getByTestId('ladder-editor').press('F4');
     await expect(page.getByTestId('convert-state')).toHaveText('変換に成功しました');
     await page.getByTestId('view-split').click();
+    // 変換しただけでは動かない。PLC に書き込んでから動かす（v2.1.0 監査 P1）
+    await page.getByTestId('lab-run').click();
+    await expect(page.getByTestId('toast').last()).toContainText('書込みをしてから動かします');
+    await writePlc(page);
     await page.getByTestId('lab-run').click();
     await expect(page.getByTestId('lab-status')).toContainText('正解と違う所');
     await settledShot(app, page, 'lab-plc-ladder');

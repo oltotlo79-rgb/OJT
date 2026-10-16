@@ -1538,14 +1538,23 @@ test.describe.serial('説明書の通し点検', () => {
     await expectText(
       '06-steps',
       '06 PLCの課題を進める',
-      '手順: ①配線（3D盤）いつでも、②ラダー作成、③変換、④モニタ開始・RUN、⑤判定。最初の案内「まずラダーを作ります」',
+      '手順: ①配線（3D盤）いつでも、②ラダー作成、③変換、④書込み、⑤モニタ開始・RUN、⑥判定。札「PLCのプログラム: なし」',
       page.getByTestId('plc-guide'),
-      ['配線', 'いつでも', 'ラダー作成', '変換', 'モニタ開始', '判定'],
+      [
+        '配線',
+        'いつでも',
+        'ラダー作成',
+        '変換',
+        '書込み',
+        'モニタ開始',
+        '判定',
+        'PLCのプログラム: なし',
+      ],
     );
     await expectText(
       '06-hint',
       '06 PLCの課題を進める',
-      '案内のすぐ下に「まずラダーを作ります」',
+      '札の右に「まずラダーを作ります」',
       page.getByTestId('plc-hint'),
       ['まずラダーを作ります'],
     );
@@ -1680,14 +1689,19 @@ test.describe.serial('説明書の通し点検', () => {
     await claim(
       '06-monitor-before-convert',
       '06 変換する',
-      '変換がまだのうちにモニタを押すと「先に変換（F4）してください」',
+      'PLCにプログラムが無いうちにモニタを始めると、「モニタ」の欄に「PLCにプログラムがありません。先に変換（F4）して、「シーケンサへの書込み」で書き込むと、ここに値が出ます。」',
       async () => {
         await page.getByTestId('cell-n1:0:0').click();
         await ladderKey('F5');
         await commitDevice('X0');
         await page.getByTestId('toolbar-monitor-start').click();
-        const observed = `${await textOf(page.getByTestId('toast'))} ${await textOf(page.getByTestId('monitor-not-converted'))}`;
-        return { observed: observed.trim(), ok: observed.includes('先に変換（F4）してください') };
+        const observed = await textOf(page.getByTestId('monitor-no-program'));
+        return {
+          observed,
+          ok: observed.includes(
+            'PLCにプログラムがありません。先に変換（F4）して、「シーケンサへの書込み」で書き込むと、ここに値が出ます。',
+          ),
+        };
       },
     );
     await claim(
@@ -1729,6 +1743,54 @@ test.describe.serial('説明書の通し点検', () => {
             '書き込んでいるデバイス',
             '使われていないデバイス（表示のみ・合否には影響しません）',
           ]),
+        };
+      },
+    );
+    await claim(
+      '06-program-none',
+      '06 PLCに書き込む',
+      '変換しただけでは、PLC の動きは変わりません（札は「PLCのプログラム: なし」のまま）',
+      async () => {
+        const observed = await textOf(page.getByTestId('plc-program-status'));
+        return { observed, ok: observed.includes('PLCのプログラム: なし') };
+      },
+    );
+    await claim(
+      '06-run-no-program',
+      '06 PLCに書き込む',
+      'PLCにプログラムが無いままRUNにしようとすると「PLCにプログラムがありません。書込みをしてから RUN します」',
+      async () => {
+        await page.getByTestId('toolbar-plc-run').click();
+        await page.waitForTimeout(300);
+        const toast = await textOf(
+          page.getByTestId('toast').filter({ hasText: 'PLCにプログラムがありません' }),
+        );
+        const pressed = await page.getByTestId('toolbar-plc-run').getAttribute('aria-pressed');
+        return {
+          observed: `${toast} ／ RUN の押下: ${pressed ?? ''}`,
+          ok:
+            toast.includes('PLCにプログラムがありません。書込みをしてから RUN します') &&
+            pressed === 'false',
+        };
+      },
+    );
+    await claim(
+      '06-write',
+      '06 PLCに書き込む',
+      '三菱の書き方では「シーケンサへの書込み」。書き込むと「書き込みました。RUN にすると新しいプログラムで動きます」。札は「PLCのプログラム: 書込み済み」',
+      async () => {
+        const button = page.getByTestId('toolbar-download');
+        const label = await textOf(button);
+        await button.click();
+        await page.waitForTimeout(300);
+        const toast = await textOf(page.getByTestId('toast').filter({ hasText: '書き込みました' }));
+        const chip = await textOf(page.getByTestId('plc-program-status'));
+        return {
+          observed: `${label} ／ ${toast} ／ ${chip}`,
+          ok:
+            label.includes('シーケンサへの書込み') &&
+            toast.includes('書き込みました。RUN にすると新しいプログラムで動きます') &&
+            chip.includes('PLCのプログラム: 書込み済み'),
         };
       },
     );
@@ -1820,6 +1882,26 @@ test.describe.serial('説明書の通し点検', () => {
         return {
           observed: observed.slice(0, 160),
           ok: chip.includes('PLC: 電源なし') && observed.includes('スキャン'),
+        };
+      },
+    );
+    await claim(
+      '06-write-while-running',
+      '06 PLCに書き込む',
+      '運転中に書込みを押すと「運転中（RUN）のPLCには書き込めません。STOPにして書き込みますか？」。「STOPして書き込む」',
+      async () => {
+        await page.getByTestId('toolbar-download').click();
+        const dialog = page.getByTestId('plc-write-confirm');
+        await dialog.waitFor({ state: 'visible', timeout: 5_000 });
+        const observed = await textOf(dialog);
+        await dialog.getByRole('button', { name: '取消', exact: true }).click();
+        return {
+          observed: observed.slice(0, 160),
+          ok: includesAll(observed, [
+            '運転中（RUN）のPLCには書き込めません。STOPにして書き込みますか？',
+            'STOPして書き込む',
+            '取消',
+          ]),
         };
       },
     );
@@ -1918,6 +2000,45 @@ test.describe.serial('説明書の通し点検', () => {
         return {
           observed: observed.slice(0, 200),
           ok: includesAll(observed, ['特殊接点', '用途から選ぶ', '常時ON：']),
+        };
+      },
+    );
+    await claim(
+      '06-program-stale',
+      '06 PLCの課題を進める',
+      '書き込んだあとでラダーを編集すると、札が「PLCのプログラム: エディタと違う」になり、「いまここ」が「変換」へ戻る',
+      async () => {
+        await page.getByTestId('cell-n1:0:2').click();
+        await ladderKey('F5');
+        await commitDevice('X1');
+        const chip = await textOf(page.getByTestId('plc-program-status'));
+        const step = await page.getByTestId('plc-step-convert').getAttribute('data-state');
+        return {
+          observed: `${chip} ／ 変換の段: ${step ?? ''}`,
+          ok:
+            chip.includes('PLCのプログラム: エディタと違う') && step === 'current',
+        };
+      },
+    );
+    await claim(
+      '06-judge-confirm',
+      '06 変換・書込みと作業の再開',
+      '書き込んでいない変更があると判定の前に「エディタの変更がPLCに書き込まれていません。」。「このまま判定」「取消」。変換していない変更のときは「書き込んでから判定」は出ない',
+      async () => {
+        await page.getByTestId('judge-button').click();
+        const dialog = page.getByTestId('plc-judge-confirm');
+        await dialog.waitFor({ state: 'visible', timeout: 5_000 });
+        const observed = await textOf(dialog);
+        const writeButtons = await page.getByTestId('plc-judge-write').count();
+        await dialog.getByRole('button', { name: '取消', exact: true }).click();
+        return {
+          observed: observed.slice(0, 200),
+          ok:
+            includesAll(observed, [
+              'エディタの変更がPLCに書き込まれていません。',
+              'このまま判定',
+              '取消',
+            ]) && writeButtons === 0,
         };
       },
     );
@@ -2206,6 +2327,37 @@ test.describe.serial('説明書の通し点検', () => {
         return {
           observed: observed.trim(),
           ok: observed.includes('変換') || observed.includes('ラダーがありません'),
+        };
+      },
+    );
+    await claim(
+      '15-run-needs-write',
+      '15 動かして確かめる',
+      '変換してあっても書き込んでいないと「PLCにプログラムがありません。書込みをしてから動かします」。書き込むと動く',
+      async () => {
+        await page.getByTestId('view-ladder').click();
+        await page.getByTestId('cell-n1:0:0').click();
+        await ladderKey('F5');
+        await commitDevice('X0');
+        await page.getByTestId(`cell-n1:0:${String(COIL_COL)}`).click();
+        await ladderKey('F7');
+        await commitDevice('Y0');
+        await ladderKey('F4');
+        await expect(page.getByTestId('convert-state')).toHaveText('変換に成功しました');
+        await page.getByTestId('lab-run').click();
+        await page.waitForTimeout(300);
+        const toast = await textOf(
+          page.getByTestId('toast').filter({ hasText: 'PLCにプログラムがありません' }),
+        );
+        await page.getByTestId('toolbar-download').click();
+        await page.getByTestId('lab-run').click();
+        await expect(page.getByTestId('lab-status')).toContainText('正解と違う所', {
+          timeout: 60_000,
+        });
+        const status = await textOf(page.getByTestId('lab-status'));
+        return {
+          observed: `${toast} ／ 書込み後: ${status.slice(0, 60)}`,
+          ok: toast.includes('PLCにプログラムがありません。書込みをしてから動かします'),
         };
       },
     );

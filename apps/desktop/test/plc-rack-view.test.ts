@@ -80,6 +80,7 @@ describe('ラックの外観の記述（4B レビュー M12）', () => {
     powered: true,
     running: false,
     convertFailed: false,
+    noProgram: false,
     inputs: undefined,
     outputs: undefined,
   };

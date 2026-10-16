@@ -43,8 +43,13 @@ function boot(contact: Cell) {
 describe('メーカーの特殊接点を入力して実行する', () => {
   for (const profile of availableDialects()) {
     it(`${profile.id}: 一覧には特殊接点の実際の値を表示し、JWの反転表記を重複させない`, () => {
+      // モニタの一覧は PLC に書き込んだプログラムの値（v2.1.0 監査 P1）
+      const written = program(network('n1', [[no(SP(0)), out(Y(0))]]), endNetwork());
       useStore.setState({
+        ladder: written,
         converted: true,
+        plcProgram: written,
+        plcProgramSource: written,
         ladderMode: 'monitor',
         plcMonitor: {
           tMs: 10,
@@ -62,7 +67,12 @@ describe('メーカーの特殊接点を入力して実行する', () => {
       expect(screen.getByTestId('monitor-special-3')).toHaveTextContent('OFF');
       if (profile.id === 'sharp') expect(screen.queryByTestId('monitor-special-0')).toBeNull();
       else expect(screen.getByTestId('monitor-special-0')).toHaveTextContent('ON');
-      useStore.setState({ plcMonitor: undefined });
+      useStore.setState({
+        plcMonitor: undefined,
+        ladder: undefined,
+        plcProgram: undefined,
+        plcProgramSource: undefined,
+      });
     });
 
     for (const choice of specialContactChoices(profile)) {
@@ -143,8 +153,7 @@ describe('メーカーの特殊接点を入力して実行する', () => {
     for (let run = 0; run < 2; run += 1) {
       const before = { ...runtime.state(), timers: {}, powered: {} };
       expect(before.scanCount).toBe(0);
-      for (const index of [0, 1, 2, 3])
-        expect(watchValueOf(before, SP(index)).on).toBeUndefined();
+      for (const index of [0, 1, 2, 3]) expect(watchValueOf(before, SP(index)).on).toBeUndefined();
       runtime.scan();
       expect(runtime.state().specials[1]).toBe(true);
       expect(runtime.state().outputs[0]).toBe(true);

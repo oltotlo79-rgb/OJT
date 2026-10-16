@@ -55,6 +55,15 @@ function workspace(profile = MITSUBISHI_FX5U, onPlc = vi.fn()): typeof onPlc {
   return onPlc;
 }
 
+/** PLC にプログラムを書き込んだ状態にする（RUN はプログラムが要る。v2.1.0 監査 P1）。 */
+function writeProgram(): void {
+  act(() => {
+    useStore
+      .getState()
+      .setPlcProgram(program(network('n1', [[no(X(0)), out(Y(0))]]), endNetwork()));
+  });
+}
+
 describe('スキンごとのツールバー（§10.6 / §16 Phase 4 受入基準①）', () => {
   /**
    * UI監査 2026-09-20 Important #9: `vendor-only`（押しても何も起きない実機だけの項目。
@@ -98,6 +107,8 @@ describe('スキンごとのツールバー（§10.6 / §16 Phase 4 受入基準
     expect(nativeItem('plc-stop', 'cpu')).toHaveTextContent('STP');
     expect(screen.getByTestId('toolbar-plc-run')).toHaveTextContent('RUN');
     expect(nativeItem('plc-reset', 'cpu')).toHaveTextContent('RES');
+    // PLC への書込み（v2.1.0 監査 P1）も道具列に出る
+    expect(screen.getByTestId('toolbar-download')).toHaveTextContent('PCへ書込み');
   });
 
   /**
@@ -115,8 +126,15 @@ describe('スキンごとのツールバー（§10.6 / §16 Phase 4 受入基準
     expect(run).toHaveLength(1);
     expect(run[0]).toHaveTextContent('RUN');
     expect(run[0]).toHaveAttribute('aria-pressed', 'false');
+    // PLC にプログラムが無いうちは RUN にならない（v2.1.0 監査 P1）
     act(() => {
       fireEvent.click(run[0]!);
+    });
+    expect(onPlc).not.toHaveBeenCalledWith({ kind: 'run', on: true });
+    expect(screen.getByTestId('toolbar-plc-run')).toHaveAttribute('aria-pressed', 'false');
+    writeProgram();
+    act(() => {
+      fireEvent.click(screen.getByTestId('toolbar-plc-run'));
     });
     expect(onPlc).toHaveBeenCalledWith({ kind: 'run', on: true });
     expect(screen.getByTestId('toolbar-plc-run')).toHaveTextContent('STOP');
@@ -133,6 +151,7 @@ describe('スキンごとのツールバー（§10.6 / §16 Phase 4 受入基準
 
   it('sends run / stop / reset from the PCwin buttons', () => {
     const onPlc = workspace(JTEKT_PC10G);
+    writeProgram();
     act(() => {
       fireEvent.click(screen.getByTestId('toolbar-plc-run'));
     });
@@ -307,12 +326,11 @@ describe('変換のいらないスキン（§10.6 / 決定表#3）', () => {
   it('converts on every change when the skin has no 変換 step', () => {
     const onPlc = workspace(OMRON_CP1E);
     /*
-     * 課題を開いた直後の空のラダーは変換を通るので、マウント時の自動変換で Worker へ1回載る
-     * （それが自動変換の目的である）。ここで見たいのは「**落ちた**変換は Worker へ載せない」
-     * ことなので、載った1回を数え直す。
+     * 課題を開いた直後の空のラダーは変換を通るので、マウント時の自動変換で変換済みになる。
+     * 変換は PLC へ送らない（送るのは書込み。v2.1.0 監査 P1）ので、Worker へは何も行かない。
      */
-    expect(onPlc).toHaveBeenCalledTimes(1);
-    onPlc.mockClear();
+    expect(useStore.getState().converted).toBe(true);
+    expect(onPlc).not.toHaveBeenCalled();
     // トーストはセッションを捨てても残るので、このケースで増えないことを見る
     const toasts = useStore.getState().toasts.length;
     act(() => {

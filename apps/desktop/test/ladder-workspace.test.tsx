@@ -4,6 +4,7 @@ import { MITSUBISHI_FX5U, OMRON_CP1E, SHARP_JW300 } from '@ojt/plc-dialects';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useStore } from '../src/renderer/app/store.js';
+import { JA } from '../src/renderer/i18n/ja.js';
 import { LadderWorkspace } from '../src/renderer/ladder/LadderWorkspace.js';
 import { ShortcutHelp } from '../src/renderer/ladder/ShortcutHelp.js';
 import { applyLadderCell } from '../src/renderer/session/ladder.js';
@@ -60,11 +61,39 @@ describe('GX Works3風の枠（§10.6 / §17）', () => {
     ]);
   });
 
-  it('converts and sends the ladder to the worker when it succeeds (H-1)', () => {
+  it('converts without sending anything to the PLC, and writes on "シーケンサへの書込み" (v2.1.0 監査 P1)', () => {
     const onPlc = workspace();
     fireEvent.click(screen.getByTestId('toolbar-convert'));
     expect(useStore.getState().converted).toBe(true);
+    // 変換しただけでは PLC の動きは変わらない（実機と同じ）
+    expect(onPlc).not.toHaveBeenCalledWith({ kind: 'load', program: useStore.getState().ladder });
+    fireEvent.click(screen.getByTestId('toolbar-download'));
     expect(onPlc).toHaveBeenCalledWith({ kind: 'load', program: useStore.getState().ladder });
+    expect(useStore.getState().plcProgram).toBe(useStore.getState().ladder);
+  });
+
+  it('asks before writing to a running PLC and writes after STOP (v2.1.0 監査 P1)', () => {
+    const onPlc = workspace();
+    fireEvent.click(screen.getByTestId('toolbar-convert'));
+    useStore.getState().setPlcRunning(true);
+    onPlc.mockClear();
+    fireEvent.click(screen.getByTestId('toolbar-download'));
+    expect(screen.getByTestId('plc-write-confirm')).toHaveTextContent(JA.ladder.writeWhileRunning);
+    expect(onPlc).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByTestId('plc-write-confirm-stop'));
+    expect(onPlc.mock.calls.map(([action]) => (action as { kind: string }).kind)).toEqual([
+      'run',
+      'load',
+    ]);
+    expect(useStore.getState().plcRunning).toBe(false);
+  });
+
+  it('refuses RUN while the PLC has no program (v2.1.0 監査 P1)', () => {
+    const onPlc = workspace();
+    fireEvent.click(screen.getByTestId('toolbar-plc-run'));
+    expect(onPlc).not.toHaveBeenCalledWith({ kind: 'run', on: true });
+    expect(useStore.getState().plcNoProgramError).toBe(true);
+    expect(useStore.getState().toasts.map((toast) => toast.text)).toContain(JA.ladder.runNoProgram);
   });
 
   /**

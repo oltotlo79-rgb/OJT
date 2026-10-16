@@ -39,6 +39,8 @@ it.each(IMPLEMENTED_DIALECT_IDS)(
     state.setSession(built.value.session);
     state.setLadder(ladder);
     state.setConverted(true, converted.issues);
+    // 再開で載せ直すのは PLC に書き込んだプログラム（v2.1.0 監査 P1）
+    state.setPlcProgram(ladder);
     state.setLadderMode('monitor');
     state.applyTester({ type: 'set-mode', mode: 'DCV' });
     state.applyTester({ type: 'place-probe', probe: 'black', terminal: toTerminalId('N.1') });

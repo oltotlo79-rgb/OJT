@@ -29,7 +29,7 @@ export type ToolbarAction =
   | 'write-mode'
   /** 読出しモード。 */
   | 'read-mode'
-  /** オンライン（本アプリでは書込みと同じ。Plan 3B 意図的な差分 #2）。 */
+  /** オンライン（本アプリでは押すと PLC への書込みになる。v2.1.0 監査 P1）。 */
   | 'online'
   /** PLCへの書込み・転送。 */
   | 'download'
@@ -63,7 +63,8 @@ export const TOOLBAR_ACTIONS_BY_DIALECT: Readonly<Record<DialectId, readonly Too
     'monitor-start',
     'monitor-stop',
   ],
-  // JPI／DOR／MOR／STP／RDY／RUN／RES／モニタ開始／モニタ停止
+  // JPI／DOR／MOR／STP／RDY／RUN／RES／PCへ書込み／モニタ開始／モニタ停止
+  // （「PCへ書込み」は v2.1.0 監査 P1 で足した。PCwin の資料が未入手のため名前は前提）
   jtekt: [
     'vendor-only',
     'vendor-only',
@@ -72,6 +73,7 @@ export const TOOLBAR_ACTIONS_BY_DIALECT: Readonly<Record<DialectId, readonly Too
     'vendor-only',
     'plc-run',
     'plc-reset',
+    'download',
     'monitor-start',
     'monitor-stop',
   ],
@@ -102,8 +104,12 @@ export function toolbarItems(profile: DialectProfile): ToolbarItem[] {
   });
 }
 
-/** 手順表の段。§10.6 の操作フロー */
-export const PLC_STEP_KEYS = ['wire', 'ladder', 'convert', 'run', 'judge'] as const;
+/**
+ * 手順表の段。§10.6 の操作フロー。v2.1.0（監査 P1）で「書込み」を足した: 実機と同じく、
+ * 変換したラダーは PLC へ書き込んで初めて動く（配線 → ラダー作成 → 変換 → 書込み →
+ * モニタ開始・RUN → 判定）。
+ */
+export const PLC_STEP_KEYS = ['wire', 'ladder', 'convert', 'write', 'run', 'judge'] as const;
 export type PlcStepKey = (typeof PLC_STEP_KEYS)[number];
 
 /**

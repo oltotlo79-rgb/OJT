@@ -9,6 +9,7 @@ import {
 } from '@ojt/content';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useStore } from '../src/renderer/app/store.js';
+import { JA } from '../src/renderer/i18n/ja.js';
 import {
   acceptLabResult,
   currentLabProblem,
@@ -101,7 +102,7 @@ describe('動かす・判定', () => {
     expect(useStore.getState().toasts.at(-1)?.text).toContain('描き直した');
   });
 
-  it('PLC実験は変換を通したラダーが無いと動かさない（理由を出す）', () => {
+  it('PLC実験は PLC に書き込んだプログラムで動かす（無ければ理由を出す。v2.1.0 監査 P1）', () => {
     useStore
       .getState()
       .openProblem(newLabProblem('plc-lab', { vendor: 'mitsubishi', prewired: true }));
@@ -109,9 +110,15 @@ describe('動かす・判定', () => {
     expect(requestLabRun(false)).toBe(false);
     expect(useStore.getState().toasts.at(-1)?.text).toContain('変換');
     expect(bridgeMock.sent.filter((c) => c['type'] === 'labRun')).toHaveLength(0);
+    // 変換しただけでは動かさない（書込みを促す）
     useStore.setState({ converted: true });
+    expect(requestLabRun(false)).toBe(false);
+    expect(useStore.getState().toasts.at(-1)?.text).toBe(JA.lab.runNoProgram);
+    const ladder = useStore.getState().ladder;
+    if (ladder === undefined) throw new Error('ラダーがありません');
+    useStore.getState().setPlcProgram(ladder);
     expect(requestLabRun(false)).toBe(true);
-    expect(bridgeMock.sent.at(-1)?.['ladder']).toEqual(useStore.getState().ladder);
+    expect(bridgeMock.sent.at(-1)?.['ladder']).toEqual(ladder);
   });
 });
 

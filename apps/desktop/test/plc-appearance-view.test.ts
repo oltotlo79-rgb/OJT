@@ -42,6 +42,7 @@ const OFF: PlcLedState = {
   powered: true,
   running: false,
   convertFailed: false,
+  noProgram: false,
   inputs: undefined,
   outputs: undefined,
 };
@@ -86,6 +87,15 @@ describe('LEDが映すもの（決定表#20）', () => {
     expect([...lit].every((key) => key.startsWith('status:'))).toBe(true);
   });
 
+  it('lights ERR when RUN was asked of a PLC with no program (v2.1.0 監査 P1)', () => {
+    expect(
+      litLedKeys(PLC_UNIT_FX5U.appearance, { ...OFF, noProgram: true }).has('status:ERR'),
+    ).toBe(true);
+    expect(
+      litLedKeys(PLC_UNIT_CP1E.appearance, { ...OFF, noProgram: true }).has('status:ERR/ALM'),
+    ).toBe(true);
+  });
+
   it('lights RUN while the PLC runs and ERR after a failed convert', () => {
     expect(
       litLedKeys(PLC_UNIT_FX5U.appearance, { ...OFF, running: true }).has('status:P.RUN'),
@@ -115,7 +125,7 @@ describe('LEDが映すもの（決定表#20）', () => {
     // 配線の中身（どの端子がどこへ）は持たず、給電の可否だけを持つ。可否は I/O割付の欄の
     // 「PLC電源：接続正常／電源の確認」ですでに出している（v2.1.0 監査 P2）
     const keys = Object.keys(OFF).sort();
-    expect(keys).toEqual(['convertFailed', 'inputs', 'outputs', 'powered', 'running']);
+    expect(keys).toEqual(['convertFailed', 'inputs', 'noProgram', 'outputs', 'powered', 'running']);
   });
 });
 

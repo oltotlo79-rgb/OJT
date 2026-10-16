@@ -65,6 +65,8 @@ describe('ツールバーの項目 → 操作（§10.6 / 決定表#2）', () => 
     expect(jtekt.find((item) => item.label === 'RUN')?.action).toBe('plc-run');
     expect(jtekt.find((item) => item.label === 'STP')?.action).toBe('plc-stop');
     expect(jtekt.find((item) => item.label === 'RES')?.action).toBe('plc-reset');
+    // PLC への書込み（v2.1.0 監査 P1。名前は前提）
+    expect(jtekt.find((item) => item.label === 'PCへ書込み')?.action).toBe('download');
   });
 });
 
@@ -77,9 +79,10 @@ describe('変換の要否（§10.6 / 決定表#3）', () => {
 
   it('drops the 変換 step from the guide when the skin has none', () => {
     expect(skinStepKeys(getDialect('mitsubishi'))).toEqual([...PLC_STEP_KEYS]);
-    expect(skinStepKeys(getDialect('omron'))).toEqual(['wire', 'ladder', 'run', 'judge']);
-    expect(skinStepKeys(getDialect('jtekt'))).toEqual(['wire', 'ladder', 'run', 'judge']);
-    expect(skinStepKeys(getDialect('sharp'))).toEqual(['wire', 'ladder', 'run', 'judge']);
+    // 書込みの段はどのメーカーにもある（v2.1.0 監査 P1）
+    expect(skinStepKeys(getDialect('omron'))).toEqual(['wire', 'ladder', 'write', 'run', 'judge']);
+    expect(skinStepKeys(getDialect('jtekt'))).toEqual(['wire', 'ladder', 'write', 'run', 'judge']);
+    expect(skinStepKeys(getDialect('sharp'))).toEqual(['wire', 'ladder', 'write', 'run', 'judge']);
   });
 });
 

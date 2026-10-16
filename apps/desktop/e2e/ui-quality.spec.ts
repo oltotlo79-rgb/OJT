@@ -5,7 +5,7 @@ import { JIPM_BOARD } from '@ojt/board-model';
 import { toTerminalId } from '@ojt/circuit-sim';
 import { COIL_COL } from '@ojt/ladder-core';
 import { expect, test, type ElectronApplication, type Page } from '@playwright/test';
-import { launchApp, settleFrames, SHOT_DIR, type Launched } from './app.js';
+import { launchApp, settleFrames, SHOT_DIR, writePlc, type Launched } from './app.js';
 import { captureReady } from './capture.js';
 import {
   boardPoint,
@@ -1628,6 +1628,8 @@ test.describe.serial('画面品質の機械点検', () => {
         });
 
         await step(`modeD-${vendor}-monitor`, async () => {
+          // PLC は書き込んだプログラムで動く（v2.1.0 監査 P1）。書き込んでから RUN する
+          await writePlc(page);
           // UI監査バッチD（`340b2d9`）で RUN はツールバーの1つだけになった
           await page.getByTestId('toolbar-plc-run').first().click();
           await page.getByTestId('toolbar-monitor-start').first().click();

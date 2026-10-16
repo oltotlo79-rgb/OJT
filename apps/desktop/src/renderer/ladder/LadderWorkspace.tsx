@@ -14,6 +14,8 @@ import {
 import { instructionList, INSTRUCTION_LIST_MESSAGES, type DialectProfile } from '@ojt/plc-dialects';
 import { useCallback, useEffect, useMemo, useRef, useState, type JSX } from 'react';
 import type { PlcCommandAction } from '../../worker/protocol.js';
+import { ConfirmDialog } from '../app/ConfirmDialog.js';
+import navigation from '../app/problem-navigation.module.css';
 import { useHelpStore } from '../help/help-store.js';
 import { loadWorkFileAndApply, saveCurrentWork } from '../session/work-file.js';
 import { NativeMenuBar, type NativeMenuItem } from './NativeMenuBar.js';
@@ -25,6 +27,7 @@ import { JA } from '../i18n/ja.js';
 import { isModalOpen } from '../session/interaction.js';
 import { errorCellKeys, runConvert } from '../session/ladder-errors.js';
 import { nextNetworkId, shortcutKeyOf, type LadderEditorMode } from '../session/ladder.js';
+import { startPlc, stopPlc, writeLabel, writeLadderToPlc } from '../session/plc-write.js';
 import {
   autoConvert,
   toolbarItems,
@@ -173,7 +176,10 @@ export function LadderWorkspace({
   }, []);
 
   /**
-   * 「変換」。成功したときだけ Worker へ載せる（H-1）。§10.6
+   * 「変換」。§10.6 / H-1
+   * 格子の誤りを調べて実行形式を作るだけで、**PLC へは送らない**（v2.1.0 監査 P1）。実機と同じく、
+   * PLC が新しいプログラムで動くのは書込み（`writeLadderToPlc()`）のあと。以前は変換に成功すると
+   * そのまま Worker へ載せていた（変換＝書込み。意図的な差分 #2 は廃止）。
    * `silent` は自動変換（`convertStep: false` のスキン）から呼ぶとき。結果は出力ウィンドウに
    * 出るので、編集のたびにトーストを積まない（決定表#3）。
    *
@@ -189,14 +195,37 @@ export function LadderWorkspace({
       if (current === undefined) return;
       const run = runConvert(current, profile);
       store.setConverted(run.ok, run.issues);
-      if (!run.ok) {
-        if (options.silent !== true) store.toast(JA.ladder.convertFailed, 'error');
-        return;
-      }
-      onPlcRef.current({ kind: 'load', program: current });
+      if (!run.ok && options.silent !== true) store.toast(JA.ladder.convertFailed, 'error');
     },
     [profile],
   );
+
+  /** RUN 中に書き込もうとしたときの確かめの窓（v2.1.0 監査 P1）。 */
+  const [writeConfirmOpen, setWriteConfirmOpen] = useState(false);
+
+  /**
+   * 「書込み」（三菱「シーケンサへの書込み」・オムロン「転送［PC → PLC］」・シャープ「PLCへの
+   * 書込み」・ジェイテクト「PCへ書込み」）。v2.1.0 監査 P1
+   * 変換を通っていなければ断る。運転中（RUN）なら実機と同じく書き込めないので、STOP にして
+   * 書き込むかを確かめる。
+   */
+  const write = useCallback((): void => {
+    const store = useStore.getState();
+    if (store.ladder === undefined) return;
+    if (!store.converted) {
+      const convertKey = shortcutKeyOf(profile, 'convert');
+      store.toast(
+        convertKey === undefined ? JA.ladder.notConvertedAuto : JA.ladder.notConverted(convertKey),
+        'error',
+      );
+      return;
+    }
+    if (store.plcRunning) {
+      setWriteConfirmOpen(true);
+      return;
+    }
+    if (writeLadderToPlc(onPlcRef.current)) store.toast(JA.ladder.written);
+  }, [profile]);
 
   /**
    * 「変換」のないスキンでは、ラダーが変わるたびに黙って変換し直す（決定表#3）。
@@ -311,7 +340,6 @@ export function LadderWorkspace({
 
   const onToolbar = (action: ToolbarAction): void => {
     const store = useStore.getState();
-    const convertKey = shortcutKeyOf(profile, 'convert');
     switch (action) {
       case 'convert':
       case 'convert-all':
@@ -325,18 +353,8 @@ export function LadderWorkspace({
         break;
       case 'online':
       case 'download':
-        // 本アプリでは「変換」がそのまま書込みに当たる（意図的な差分 #2）
-        if (!store.converted) {
-          store.toast(
-            convertKey === undefined
-              ? JA.ladder.notConvertedAuto
-              : JA.ladder.notConverted(convertKey),
-            'error',
-          );
-          break;
-        }
-        onPlc({ kind: 'load', program });
-        store.toast(JA.ladder.downloaded);
+        // 書込み（v2.1.0 監査 P1。変換は PLC へ送らない）
+        write();
         break;
       case 'monitor-start':
         changeMode('monitor');
@@ -354,12 +372,12 @@ export function LadderWorkspace({
         changeMode('write');
         break;
       case 'plc-run':
-        onPlc({ kind: 'run', on: !store.plcRunning });
-        store.setPlcRunning(!store.plcRunning);
+        // PLC にプログラムが無ければ断る（ERR の表示灯。v2.1.0 監査 P1）
+        if (store.plcRunning) stopPlc(onPlc);
+        else startPlc(onPlc);
         break;
       case 'plc-stop':
-        onPlc({ kind: 'run', on: false });
-        store.setPlcRunning(false);
+        stopPlc(onPlc);
         break;
       case 'plc-reset':
         onPlc({ kind: 'reset' });
@@ -684,10 +702,8 @@ export function LadderWorkspace({
                 )
               )
                 editCommand(command);
-              else if (command === 'plc-run') {
-                onPlc({ kind: 'run', on: true });
-                useStore.getState().setPlcRunning(true);
-              } else if (command === 'plc-stop' || command === 'download') onToolbar(command);
+              else if (command === 'plc-run') startPlc(onPlc);
+              else if (command === 'plc-stop' || command === 'download') onToolbar(command);
             }}
             ref={entryRef}
             profile={profile}
@@ -722,6 +738,42 @@ export function LadderWorkspace({
         <div className={styles.workspaceSide}>
           {/* 表記切替ダイアログ（画面中央に出る。Task 8） */}
           {notationOpen ? <NotationDialog profile={profile} onClose={closeNotation} /> : null}
+          {/* RUN 中の書込みの確かめ（v2.1.0 監査 P1） */}
+          {writeConfirmOpen ? (
+            <ConfirmDialog
+              testId="plc-write-confirm"
+              titleId="plc-write-confirm-title"
+              onCancel={() => {
+                setWriteConfirmOpen(false);
+              }}
+            >
+              <h2 id="plc-write-confirm-title">{writeLabel(profile)}</h2>
+              <p>{JA.ladder.writeWhileRunning}</p>
+              <div className={navigation.actions}>
+                <button
+                  type="button"
+                  data-testid="plc-write-confirm-stop"
+                  onClick={() => {
+                    setWriteConfirmOpen(false);
+                    if (writeLadderToPlc(onPlcRef.current)) {
+                      useStore.getState().toast(JA.ladder.written);
+                    }
+                  }}
+                >
+                  {JA.ladder.writeStopAndWrite}
+                </button>
+                <button
+                  type="button"
+                  data-dialog-autofocus
+                  onClick={() => {
+                    setWriteConfirmOpen(false);
+                  }}
+                >
+                  {JA.ladder.writeCancel}
+                </button>
+              </div>
+            </ConfirmDialog>
+          ) : null}
           {/* MERGE 注意 #12: モニタ一覧は `workspaceSide` の先頭（`IoTable` の前）。Task 9 */}
           <MonitorPanel profile={profile} unit={unit} onPlc={onPlc} />
           <PlcDebugPanel profile={profile} unit={unit} onPlc={onPlc} />
@@ -731,13 +783,10 @@ export function LadderWorkspace({
           */}
           <SidePanel title={JA.ladder.operationGuide} testId="plc-operation-guide">
             <p className={styles.sideNote}>
-              {profile.convertStep
-                ? 'この練習では、変換に成功すると実行する回路も更新します。書込みでも同じ回路を反映できます。'
-                : 'この機種の練習では、編集した回路を自動で変換し、成功すると実行する回路を更新します。'}
+              {profile.convertStep ? JA.ladder.guideConvert : JA.ladder.guideConvertAuto}
             </p>
-            <p className={styles.sideNote}>
-              RUNで回路の演算を始め、モニタで値を表示します。作業へ戻ったときは電源を確認してRUNしてください。CPUの途中の値は再開しません。実機PLCへの転送は行いません。
-            </p>
+            <p className={styles.sideNote}>{JA.ladder.guideWrite(writeLabel(profile))}</p>
+            <p className={styles.sideNote}>{JA.ladder.guideRun}</p>
           </SidePanel>
           {/*
             監視（ウォッチ）欄。「デバイス一覧」（全部）と分けた片割れで、利用者が選んだ

@@ -4,7 +4,7 @@ import { expect, test } from '@playwright/test';
 import { parseProblem } from '@ojt/content';
 import { getDialect } from '@ojt/plc-dialects';
 import { toTerminalId } from '@ojt/circuit-sim';
-import { launchApp, shot } from './app.js';
+import { launchApp, shot, writePlc } from './app.js';
 import { clickOverflowButton, selectView, terminalPoint } from './projection.js';
 
 test('演算処理が異常終了したときは判定を止め、画面のリセットで再開できる', async () => {
@@ -348,6 +348,7 @@ test('N04: 模範ラダーをGUIで変更し、検証・保存・読込・配線
     }
     await page.getByTestId('ladder-editor').press('F4');
     await expect(page.getByTestId('convert-state')).toHaveText('変換に成功しました');
+    await writePlc(page);
     const io = page.getByTestId('io-assignment-editor');
     await io.getByRole('button', { name: 'I/O割付を変更', exact: true }).click();
     await io.getByRole('checkbox').check();

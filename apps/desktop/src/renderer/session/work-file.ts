@@ -235,6 +235,10 @@ function inspectFieldsFor(problemId: string): Partial<WorkFile> {
                 : { comments: { ...state.ladderComments } }),
             },
           }),
+      // PLC に書き込んだプログラム（v2.1.0 監査 P1）。無いときはキーごと省く
+      ...(state.plcProgram === undefined
+        ? {}
+        : { plcProgram: { networks: state.plcProgram.networks } }),
     };
   }
   /*
@@ -306,6 +310,8 @@ export interface InspectWorkState {
   dialectId?: string;
   /** 保存時点でラダーが変換を通っていたか。§10.6 */
   converted?: boolean;
+  /** PLC に書き込んだプログラム（v2.1.0 監査 P1）。 */
+  plcProgram?: unknown;
   /** モードBの回路図エディタの下書き（`SchematicDocument` の形）。§11.4 / 決定表#23 */
   schematic?: unknown;
 }
@@ -474,6 +480,29 @@ function isAnswerFor(value: unknown, partIds: ReadonlySet<string>): value is Ins
  * 呼び直させない（Plan 2A I-4）。種だけを保存して引き直すと、`random.seed` の無い課題は
  * 内部で `Date.now()` を使うため初回と別の故障になってしまう。
  */
+/**
+ * PLC に書き込んだプログラムを戻す（v2.1.0 監査 P1）。読込むと PLC はそのプログラムを持ったまま
+ * STOP で始まる。エディタのラダーと同じ中身なら「書込み済み」（同じ物を指す）にする。
+ * `plcProgram` を持たない**以前の作業ファイル**は、変換済みならエディタのラダーを書込み済みとして
+ * 扱う（以前は変換がそのまま書込みだったので、開いたあとの動きが同じになる）。読めない
+ * プログラムは黙って捨てる（ラダーは読めているので作業は失わない）。
+ */
+function restorePlcProgram(state: InspectWorkState, target: typeof useStore): void {
+  const store = target.getState();
+  const ladder = store.ladder;
+  if (state.plcProgram === undefined) {
+    if (state.converted === true && ladder !== undefined) store.setPlcProgram(ladder);
+    return;
+  }
+  const written = toLadderProgram(state.plcProgram);
+  if (written === undefined) return;
+  const same =
+    ladder !== undefined &&
+    JSON.stringify(written.program.networks) === JSON.stringify(ladder.networks);
+  if (same) store.setPlcProgram(ladder);
+  else store.setPlcProgram(written.program);
+}
+
 export function restoreInspectState(
   problem: SupportedProblem,
   state: InspectWorkState,
@@ -509,6 +538,7 @@ export function restoreInspectState(
       return false;
     }
     if (parsed !== undefined) store.restoreLadder(parsed.program, parsed.comments);
+    restorePlcProgram(state, target);
     const tester = toSavedTester(state.tester);
     if (tester !== undefined) store.setTester(testerStateFrom(tester));
     return true;

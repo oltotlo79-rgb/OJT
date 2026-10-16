@@ -176,12 +176,16 @@ export function requestLabRun(judge: boolean): boolean {
   }
   let ladder: LadderProgram | undefined;
   if (problem.mode === 'plc-lab') {
-    const readiness = canJudgePlc({ converted: store.converted, ladder: store.ladder });
-    if (!readiness.ok) {
-      store.toast(labLadderReason(readiness.reason), 'info');
+    /*
+     * 動かすのも判定も PLC に書き込んだプログラムで行う（v2.1.0 監査 P1）。プログラムが無ければ、
+     * まず変換（ラダーの誤り）を、変換済みなら書込みを促す。
+     */
+    if (store.plcProgram === undefined) {
+      const readiness = canJudgePlc({ converted: store.converted, ladder: store.ladder });
+      store.toast(readiness.ok ? JA.lab.runNoProgram : labLadderReason(readiness.reason), 'info');
       return false;
     }
-    ladder = store.ladder;
+    ladder = store.plcProgram;
   }
   requestedInputs = labInputsKey(problem);
   store.setLabRunning(true);

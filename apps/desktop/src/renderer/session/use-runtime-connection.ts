@@ -97,13 +97,15 @@ export function useRuntimeConnection(mode: ClassicMode): void {
         if (store.ladder !== undefined && (store.converted || autoConvert(profile))) {
           const converted = runConvert(store.ladder, profile);
           store.setConverted(converted.ok, converted.issues);
-          if (converted.ok) {
-            bridge.send({ type: 'plc', action: { kind: 'load', program: store.ladder } });
-            bridge.send({
-              type: 'plc',
-              action: { kind: 'monitor', on: store.ladderMode === 'monitor' },
-            });
-          }
+        }
+        // PLC は書き込まれたプログラムを覚えている（電源を切っても消えない。v2.1.0 監査 P1）
+        const program = useStore.getState().plcProgram;
+        if (program !== undefined) {
+          bridge.send({ type: 'plc', action: { kind: 'load', program } });
+          bridge.send({
+            type: 'plc',
+            action: { kind: 'monitor', on: store.ladderMode === 'monitor' },
+          });
         }
       }
       replayTesterToWorker(store.tester);

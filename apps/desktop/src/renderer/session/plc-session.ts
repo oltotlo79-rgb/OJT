@@ -63,3 +63,54 @@ export function canJudgePlc(state: {
   if (!state.converted) return { ok: false, reason: 'not-converted' };
   return { ok: true };
 }
+
+/**
+ * PLC に書き込んだプログラムとエディタのラダーの関係（v2.1.0 監査 P1）。
+ * - `none`: PLC にプログラムが無い
+ * - `written`: エディタのラダーを書き込んだまま（変更していない）
+ * - `stale`: 書き込んだあとでエディタを変更した（書込みが必要）
+ */
+export type PlcProgramState = 'none' | 'written' | 'stale';
+
+/** PLC のプログラムの状態。エディタのラダーが書き込んだときの物と同じかで見る。 */
+export function plcProgramState(state: {
+  plcProgram: LadderProgram | undefined;
+  plcProgramSource: LadderProgram | undefined;
+  ladder: LadderProgram | undefined;
+}): PlcProgramState {
+  if (state.plcProgram === undefined) return 'none';
+  return state.plcProgramSource === state.ladder ? 'written' : 'stale';
+}
+
+/**
+ * 判定ボタンを押したときにすること（v2.1.0 監査 P1）。判定は PLC に書き込んだプログラムで行う。
+ * - `judge`: そのまま判定する（書き込んだまま変更していない）
+ * - `confirm`: 確かめの窓を出す。`canWrite` は「書き込んでから判定」を出せるか（変換済みか）、
+ *   `canJudgeAsIs` は「このまま判定」を出せるか（PLC にプログラムがあるか）
+ * - `blocked`: 押せない（プログラムが無く、書き込める変換済みのラダーも無い）
+ */
+export type PlcJudgePlan =
+  | { kind: 'judge'; program: LadderProgram }
+  | { kind: 'confirm'; canWrite: boolean; canJudgeAsIs: boolean }
+  | { kind: 'blocked'; reason: 'no-ladder' | 'not-converted' };
+
+/** 判定ボタンを押したときの段取りを決める。 */
+export function plcJudgePlan(state: {
+  plcProgram: LadderProgram | undefined;
+  plcProgramSource: LadderProgram | undefined;
+  ladder: LadderProgram | undefined;
+  converted: boolean;
+}): PlcJudgePlan {
+  const programState = plcProgramState(state);
+  if (programState === 'written' && state.plcProgram !== undefined) {
+    return { kind: 'judge', program: state.plcProgram };
+  }
+  const canWrite = state.ladder !== undefined && state.converted;
+  if (programState === 'none' && !canWrite) {
+    return {
+      kind: 'blocked',
+      reason: state.ladder === undefined ? 'no-ladder' : 'not-converted',
+    };
+  }
+  return { kind: 'confirm', canWrite, canJudgeAsIs: programState === 'stale' };
+}

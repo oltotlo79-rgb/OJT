@@ -5,7 +5,7 @@ import { JIPM_BOARD } from '@ojt/board-model';
 import { terminalId } from '@ojt/circuit-sim';
 import { BUILTIN_PROBLEMS, buildReferenceSession, judgeAssemble } from '@ojt/content';
 import { resultReportHtml } from '../src/renderer/result/report-html.js';
-import { launchApp, SHOT_DIR, shot } from './app.js';
+import { launchApp, SHOT_DIR, shot, writePlc } from './app.js';
 
 function freshOutput(): string {
   const parent = join(SHOT_DIR, 'result-reports');
@@ -60,6 +60,7 @@ for (const [mode, id] of [
         await page.getByTestId('device-commit').click();
         await page.getByTestId('ladder-editor').press('F4');
         await expect(page.getByTestId('convert-state')).toHaveText('変換に成功しました');
+        await writePlc(page);
       }
       await page.getByTestId('judge-button').click();
       const save = page.getByTestId('result-export');

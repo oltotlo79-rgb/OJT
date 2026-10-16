@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useStore } from '../src/renderer/app/store.js';
 import { SessionRoute } from '../src/renderer/screens/SessionRoute.js';
@@ -90,11 +90,19 @@ describe('PLC実験の練習画面', () => {
     openPlcLab(true, 'self-hold');
     useStore.setState({ converted: true });
     render(<SessionRoute />);
+    // 変換してあっても、PLC に書き込むまでは動かさない（v2.1.0 監査 P1）
+    fireEvent.click(screen.getByTestId('judge-button'));
+    expect(sent.some((command) => command.type === 'labRun')).toBe(false);
+    expect(useStore.getState().toasts.at(-1)?.text).toContain('書込み');
+    act(() => {
+      const ladder = useStore.getState().ladder;
+      if (ladder !== undefined) useStore.getState().setPlcProgram(ladder);
+    });
     fireEvent.click(screen.getByTestId('judge-button'));
     const last = sent.at(-1);
     expect(last?.type).toBe('labRun');
     expect(last?.type === 'labRun' && last.judge).toBe(true);
-    expect(last?.type === 'labRun' && last.ladder).toEqual(useStore.getState().ladder);
+    expect(last?.type === 'labRun' && last.ladder).toEqual(useStore.getState().plcProgram);
   });
 
   it('戻るとホームへ', () => {

@@ -5,7 +5,7 @@ import { BUILTIN_PLC_PROBLEMS, buildPlcReferenceSession } from '@ojt/content';
 import { endNetwork, hline, network, no, out, program, X, Y } from '@ojt/ladder-core';
 import { expect, test } from '@playwright/test';
 import { WORK_FILE_FORMAT_VERSION, type WorkFile } from '../src/shared/ipc.js';
-import { launchApp, settledShot } from './app.js';
+import { launchApp, settledShot, writePlc } from './app.js';
 
 test('PLCの結果から戻り、再変換せずに実際のスキャンを再開できる', async () => {
   const { app, page, userDataDir } = await launchApp({ contentSize: { width: 1440, height: 900 } });
@@ -40,8 +40,11 @@ test('PLCの結果から戻り、再変換せずに実際のスキャンを再�
     await page.getByTestId('view-ladder').click();
     await page.getByTestId('ladder-editor').press('F4');
     await expect(page.getByTestId('convert-state')).toHaveText('変換に成功しました');
+    // PLC は書き込んだプログラムで動く（v2.1.0 監査 P1）。戻ったあとも書き直さずに RUN できる
+    await writePlc(page);
     await page.getByTestId('judge-button').click();
     await page.getByTestId('result-resume').click();
+    await expect(page.getByTestId('plc-program-status')).toHaveAttribute('data-state', 'written');
     await expect(page.getByTestId('toolbar-plc-run')).toHaveAttribute('aria-pressed', 'false');
     await page.getByTestId('power-breaker').click();
     await page.getByTestId('power-switch').click();
@@ -140,7 +143,9 @@ test('部品装着は課題で使う部品（CR1）を載せた時点で済に�
     await page.getByTestId('mount-relay-my4n').click();
     await expect(page.getByTestId('step-parts')).toHaveAttribute('data-state', 'done');
     await expect(page.getByTestId('step-wire')).toHaveAttribute('data-state', 'current');
-    await expect(page.getByTestId('step-hint')).toContainText('3D盤の端子を2つクリックして配線します');
+    await expect(page.getByTestId('step-hint')).toContainText(
+      '3D盤の端子を2つクリックして配線します',
+    );
     // 在庫にはタイマが残っているが、載せなくても「済」のまま
     await expect(page.getByTestId('parts-palette')).toContainText('残り');
   } finally {

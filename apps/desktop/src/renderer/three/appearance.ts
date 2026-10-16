@@ -120,6 +120,8 @@ export interface PlcLedState {
   running: boolean;
   /** 直前の変換が失敗したか。 */
   convertFailed: boolean;
+  /** プログラムの無い PLC を RUN しようとしたか（ERR。v2.1.0 監査 P1）。 */
+  noProgram: boolean;
   /** 実際の入力（給電されていないときは空。モニタの有無は問わない）。 */
   inputs: readonly boolean[] | undefined;
   /** 実際の出力。 */
@@ -132,7 +134,7 @@ function statusLit(name: string, state: PlcLedState): boolean {
   if (upper === 'POWER' || upper === 'PWR') return true;
   if (upper === 'RUN' || upper === 'P.RUN') return state.running;
   if (upper === 'ERR' || upper === 'ERR/ALM' || upper === 'ERROR' || upper === 'FLT') {
-    return state.convertFailed;
+    return state.convertFailed || state.noProgram;
   }
   // INH / PRPHL / BKUP（CP1E）は本アプリでは点灯しない（出力禁止・周辺通信・バックアップは扱わない）
   return false;

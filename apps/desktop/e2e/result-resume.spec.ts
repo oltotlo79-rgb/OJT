@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, test } from '@playwright/test';
 import type { WorkFile } from '../src/shared/ipc.js';
-import { launchApp } from './app.js';
+import { launchApp, writePlc } from './app.js';
 
 for (const [mode, id] of [
   ['assemble', 'b-001'],
@@ -40,6 +40,7 @@ for (const [mode, id] of [
         await page.getByTestId('device-commit').click();
         await page.getByTestId('ladder-editor').press('F4');
         await expect(page.getByTestId('convert-state')).toHaveText('変換に成功しました');
+        await writePlc(page);
       }
       const save = async (name: string): Promise<WorkFile> => {
         const path = join(userDataDir, `${name}.ojtw`);

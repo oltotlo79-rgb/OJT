@@ -69,6 +69,9 @@ export function plcFields(
   | 'convertIssues'
   | 'plcMonitor'
   | 'plcRunning'
+  | 'plcProgram'
+  | 'plcProgramSource'
+  | 'plcNoProgramError'
 > {
   const isPlc = problem !== undefined && usesPlc(problem);
   return {
@@ -87,6 +90,10 @@ export function plcFields(
     convertIssues: NO_CONVERT_ISSUES,
     plcMonitor: undefined,
     plcRunning: false,
+    // 課題を開き直す・メーカーを替えると PLC 本体が替わるので、書き込んだプログラムも空になる
+    plcProgram: undefined,
+    plcProgramSource: undefined,
+    plcNoProgramError: false,
   };
 }
 
@@ -136,6 +143,21 @@ export interface LadderSlice {
   plcMonitor: PlcMonitorSnapshot | undefined;
   /** PLCが RUN 中か。§10.6 */
   plcRunning: boolean;
+  /**
+   * PLC に書き込んだプログラム（v2.1.0 監査 P1）。実機と同じく、PLC はこのプログラムで動き、
+   * 判定もこれで行う。変換は格子の誤りを調べて実行形式を作るだけで、PLC の動きは変えない。
+   * 書込み（`setPlcProgram`）のときだけ、その時点の変換済みラダーをここへ入れ、Worker へ送る。
+   */
+  plcProgram: LadderProgram | undefined;
+  /**
+   * 書き込んだときのエディタのラダー（同じ物を指していれば「書込み済み」。編集すると
+   * エディタのラダーは別の物になるので「エディタと違う」になる。`plcProgramState()`）。
+   */
+  plcProgramSource: LadderProgram | undefined;
+  /**
+   * プログラムの無い PLC を RUN しようとした（実機の ERR 表示灯に当たる）。書込み・STOP で消える。
+   */
+  plcNoProgramError: boolean;
 
   // --- /Plan 5 Task 6 ---
   /** ラダーを差し替える（前の状態を履歴に積み、変換済みフラグを落とす）。§10.6 */
@@ -167,6 +189,14 @@ export interface LadderSlice {
   setPlcMonitor: (monitor: PlcMonitorSnapshot | undefined) => void;
   /** RUN/STOP。§10.6 */
   setPlcRunning: (running: boolean) => void;
+  /**
+   * PLC に書き込んだプログラムを入れる（Worker へ送るのは呼び出し側）。v2.1.0 監査 P1
+   * `source` は書き込んだときのエディタのラダー（省略すると `program` と同じ）。
+   * 書き込むと「プログラムの無い RUN」の印は消える。
+   */
+  setPlcProgram: (program: LadderProgram | undefined, source?: LadderProgram) => void;
+  /** プログラムの無い PLC を RUN しようとした印（ERR の表示灯）。 */
+  setPlcNoProgramError: (on: boolean) => void;
   /** 設定画面の値をラダーへ反映する。§12.1 */
   applyLadderSettings: (settings: {
     gridCols: number;
@@ -275,6 +305,16 @@ export const createLadderSlice: StateCreator<AppState, [], [], LadderSlice> = (s
   },
   setPlcRunning: (plcRunning) => {
     set({ plcRunning });
+  },
+  setPlcProgram: (plcProgram, source) => {
+    set({
+      plcProgram,
+      plcProgramSource: plcProgram === undefined ? undefined : (source ?? plcProgram),
+      plcNoProgramError: false,
+    });
+  },
+  setPlcNoProgramError: (plcNoProgramError) => {
+    set({ plcNoProgramError });
   },
   applyLadderSettings: ({ gridCols, monitorColor, vendor }) => {
     // 0 は「スキンの既定列数」の印なのでそのまま持つ（丸めない。決定表#8）

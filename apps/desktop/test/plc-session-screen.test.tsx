@@ -117,14 +117,18 @@ describe('モードDのセッション画面（§10.1 / §12.1）', () => {
     expect(sent.filter((c) => (c as { type: string }).type === 'judgePlc')).toHaveLength(0);
   });
 
-  it('sends the judge command once the ladder is converted', () => {
+  it('sends the judge command with the program written to the PLC', () => {
     render(<SessionRoute />);
     act(() => {
-      useStore.getState().setConverted(true, NO_CONVERT_ISSUES);
+      const store = useStore.getState();
+      store.setConverted(true, NO_CONVERT_ISSUES);
+      // 判定は PLC に書き込んだプログラムで行う（v2.1.0 監査 P1）
+      if (store.ladder !== undefined) store.setPlcProgram(store.ladder);
     });
     fireEvent.click(screen.getByTestId('judge-button'));
     const judged = sent.find((c) => (c as { type: string }).type === 'judgePlc');
     expect(judged).toMatchObject({ type: 'judgePlc', problem: { id: problem.id } });
+    expect((judged as { ladder: unknown }).ladder).toBe(useStore.getState().plcProgram);
     expect(useStore.getState().judging).toBe(true);
   });
 
@@ -285,7 +289,7 @@ describe('モードDのセッション画面（§10.1 / §12.1）', () => {
    * 3段が同時に「いまここ」になり得た（`setConverted(true)` だけで、何も書いていなくても
    * `judge` が「いまここ」になっていた）。いまは決まった順で1つずつ進む。
    */
-  it('keeps exactly one current step, in order: ladder → convert → run → judge', () => {
+  it('keeps exactly one current step, in order: ladder → convert → write → run → judge', () => {
     render(<SessionRoute />);
     expect(currentSteps()).toEqual(['plc-step-ladder']);
 
@@ -297,16 +301,52 @@ describe('モードDのセッション画面（§10.1 / §12.1）', () => {
     act(() => {
       useStore.getState().setConverted(true, NO_CONVERT_ISSUES);
     });
-    // 変換済み・RUN前は「モニタ開始RUN」がいまの手順（判定はまだ先）。判定はRUNを要らない
-    // ので、ボタン自体は押せる（Batch 4+5 レビュー M8 は維持する）。
-    expect(currentSteps()).toEqual(['plc-step-run']);
-    expect(useStore.getState().plcRunning).toBe(false);
+    // 変換済み・書込み前は「書込み」がいまの手順（v2.1.0 監査 P1）。判定はRUNも書込みも要らずに
+    // 押せる（押すと「書き込んでから判定」を確かめる。Batch 4+5 レビュー M8 は維持する）
+    expect(currentSteps()).toEqual(['plc-step-write']);
+    expect(screen.getByTestId('plc-program-status')).toHaveTextContent(
+      `${JA.plc.programChip}: ${JA.plc.programNone}`,
+    );
     expect(screen.getByTestId('judge-button')).toHaveAttribute('aria-disabled', 'false');
+
+    act(() => {
+      useStore.getState().setPlcProgram(useStore.getState().ladder);
+    });
+    expect(currentSteps()).toEqual(['plc-step-run']);
+    expect(screen.getByTestId('plc-program-status')).toHaveTextContent(JA.plc.programWritten);
+    expect(useStore.getState().plcRunning).toBe(false);
 
     act(() => {
       useStore.getState().setPlcRunning(true);
     });
     expect(currentSteps()).toEqual(['plc-step-judge']);
+
+    // 書き込んだあとで編集すると「書込み」に戻り、札は「エディタと違う」
+    act(() => {
+      useStore.getState().setLadder(program(network('n1', [[no(X(1))]]), endNetwork()));
+      useStore.getState().setConverted(true, NO_CONVERT_ISSUES);
+    });
+    expect(currentSteps()).toEqual(['plc-step-write']);
+    expect(screen.getByTestId('plc-program-status')).toHaveTextContent(JA.plc.programStale);
+  });
+
+  it('asks before judging a ladder that has not been written (v2.1.0 監査 P1)', () => {
+    render(<SessionRoute />);
+    act(() => {
+      useStore.getState().setLadder(program(network('n1', [[no(X(0))]]), endNetwork()));
+      useStore.getState().setConverted(true, NO_CONVERT_ISSUES);
+    });
+    fireEvent.click(screen.getByTestId('judge-button'));
+    const dialog = screen.getByTestId('plc-judge-confirm');
+    expect(dialog).toHaveTextContent(JA.plc.judgeConfirmNone);
+    expect(screen.queryByTestId('plc-judge-as-is')).toBeNull();
+    sent.length = 0;
+    fireEvent.click(screen.getByTestId('plc-judge-write'));
+    // 書き込んでから（load）、PLC のプログラムで判定する
+    const kinds = sent.map((command) => (command as { type: string }).type);
+    expect(kinds).toContain('plc');
+    expect(kinds.at(-1)).toBe('judgePlc');
+    expect(useStore.getState().plcProgram).toBe(useStore.getState().ladder);
   });
 
   /**

@@ -196,6 +196,21 @@ export async function settleFrames(page: Page): Promise<void> {
   }
 }
 
+/**
+ * PLC へ書き込む（v2.1.0 監査 P1。PLC は書き込んだプログラムで動き、判定もそれで行う）。
+ * 道具列の書込み（三菱「シーケンサへの書込み」・オムロン「転送［PC → PLC］」など。どのメーカーも
+ * `toolbar-download`）を押し、運転中なら確かめの窓で「STOPして書き込む」を選ぶ。書き込めたことを
+ * 手順の帯の札（`plc-program-status`）で確かめる。
+ */
+export async function writePlc(page: Page): Promise<void> {
+  await page.getByTestId('toolbar-download').first().click();
+  const confirm = page.getByTestId('plc-write-confirm');
+  const written = page.locator("[data-testid='plc-program-status'][data-state='written']");
+  await expect(confirm.or(written).first()).toBeVisible();
+  if (await confirm.isVisible()) await page.getByTestId('plc-write-confirm-stop').click();
+  await expect(written).toBeVisible();
+}
+
 /** 一時フォルダを捨てる（Windows では直後だと掴まれていることがあるので数回粘る）。 */
 function removeDir(dir: string): void {
   try {
