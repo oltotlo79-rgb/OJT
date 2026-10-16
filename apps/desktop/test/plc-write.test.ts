@@ -1,5 +1,5 @@
 import { BUILTIN_PLC_PROBLEMS } from '@ojt/content';
-import { endNetwork, network, no, out, program, X, Y } from '@ojt/ladder-core';
+import { COIL_COL, endNetwork, hline, network, no, out, program, X, Y } from '@ojt/ladder-core';
 import { getDialect } from '@ojt/plc-dialects';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { PlcCommandAction } from '../src/worker/protocol.js';
@@ -184,6 +184,24 @@ describe('作業ファイル（PLC のプログラムも保存する）', () => 
     if (file === undefined) return;
     useStore.getState().abandonSession();
     expect(restoreInspectState(problem, file)).toBe(true);
+    expect(plcProgramState(useStore.getState())).toBe('written');
+  });
+
+  it('re-converts a ladder that was saved converted, so it is not shown as unconverted', () => {
+    // 変換が本当に通るラダー（コイルはコイル列）
+    convertedLadder(
+      program(
+        network('n1', [[no(X(0)), ...Array.from({ length: COIL_COL - 1 }, hline), out(Y(0))]]),
+        endNetwork(),
+      ),
+    );
+    writeLadderToPlc(send);
+    const file = toInspectWorkFile();
+    if (file === undefined) throw new Error('作業ファイルが作れません');
+    expect(file.converted).toBe(true);
+    useStore.getState().abandonSession();
+    restoreInspectState(problem, file);
+    expect(useStore.getState().converted).toBe(true);
     expect(plcProgramState(useStore.getState())).toBe('written');
   });
 

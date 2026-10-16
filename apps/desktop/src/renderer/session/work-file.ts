@@ -24,7 +24,7 @@ import {
   type InspectPartAnswer,
   type SupportedProblem,
 } from '@ojt/content';
-import { IMPLEMENTED_DIALECT_IDS, isDialectId } from '@ojt/plc-dialects';
+import { getDialect, IMPLEMENTED_DIALECT_IDS, isDialectId } from '@ojt/plc-dialects';
 import { WORK_FILE_FORMAT_VERSION, type WorkFile } from '../../shared/ipc.js';
 import { reasonOf } from '../app/errors.js';
 import { ojtApi } from '../app/ojt-api.js';
@@ -55,6 +55,7 @@ import { cloneSession } from './commands.js';
 import { checkLoadFor } from './inspect-parts.js';
 import { circuitForJudge } from './inspect-repair.js';
 import { hasLadderContent } from './ladder.js';
+import { runConvert } from './ladder-errors.js';
 import { bridge } from './worker-bridge.js';
 
 /**
@@ -539,6 +540,16 @@ export function restoreInspectState(
     }
     if (parsed !== undefined) store.restoreLadder(parsed.program, parsed.comments);
     restorePlcProgram(state, target);
+    /*
+     * 保存したときに変換済みだったラダーは、開くときに変換し直して確かめる（v2.1.0 監査 P1）。
+     * PLC に書き込んだプログラムも戻る（Worker へは `applyWorkFile()` が載せ直す）ので、札は
+     * 「書込み済み」なのに格子は「未変換」と出る食い違いを作らない。
+     */
+    const restored = target.getState();
+    if (state.converted === true && restored.ladder !== undefined) {
+      const run = runConvert(restored.ladder, getDialect(restored.dialectId));
+      restored.setConverted(run.ok, run.issues);
+    }
     const tester = toSavedTester(state.tester);
     if (tester !== undefined) store.setTester(testerStateFrom(tester));
     return true;
