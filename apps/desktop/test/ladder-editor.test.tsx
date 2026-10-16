@@ -90,6 +90,46 @@ describe('キー操作（§10.6 の割当表から引く）', () => {
     expect(useStore.getState().ladderCursor.col).toBe(2);
   });
 
+  /**
+   * v2.1.0 監査: 1280×800 では格子と入力欄の入る高さが約290pxしかなく、入力欄を見せるために
+   * 格子が上へ送られて、どのマスに置くのかが見えなくなっていた。入力欄を開いたら、いまのマスと
+   * 欄全体（格子＋入力欄）が見える位置へ送り、閉じたらいまのマスが見える位置へ戻す。
+   */
+  it('scrolls the current cell and the whole editor into view while entering a device', () => {
+    const scrolled: Element[] = [];
+    // jsdom は `scrollIntoView` を持たないので、送られた要素を記録する代わりを置く
+    const descriptor = Object.getOwnPropertyDescriptor(Element.prototype, 'scrollIntoView');
+    Object.defineProperty(Element.prototype, 'scrollIntoView', {
+      configurable: true,
+      value: function scrollIntoView(this: Element): void {
+        scrolled.push(this);
+      },
+    });
+    try {
+      editor();
+      // 最初の表示では送らない（外側の画面を勝手に動かさない）
+      expect(scrolled).toEqual([]);
+      fireEvent.keyDown(grid(), { key: 'F5' });
+      expect(scrolled.map((element) => element.getAttribute('data-testid'))).toEqual([
+        'cell-n1:0:0',
+        'ladder-editor',
+      ]);
+      scrolled.length = 0;
+      fireEvent.change(screen.getByTestId('device-text'), { target: { value: 'X0' } });
+      fireEvent.click(screen.getByTestId('device-commit'));
+      // 閉じたら、右へ進んだいまのマスを見せる
+      expect(scrolled.map((element) => element.getAttribute('data-testid'))).toEqual([
+        'cell-n1:0:1',
+      ]);
+    } finally {
+      if (descriptor === undefined) {
+        delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
+      } else {
+        Object.defineProperty(Element.prototype, 'scrollIntoView', descriptor);
+      }
+    }
+  });
+
   it('places a coil on F7 at the coil column', () => {
     editor();
     useStore.getState().setLadderCursor({ networkId: 'n1', row: 0, col: COIL_COL });

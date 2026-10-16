@@ -4,6 +4,7 @@ import {
   useCallback,
   useEffect,
   useImperativeHandle,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -237,6 +238,30 @@ export function LadderEditor({
   );
   /** 指摘 LE-13: `Escape` でここへフォーカスを手放す（`Tab` は罫線送りに使っており脱出口が無かった）。 */
   const editorRef = useRef<HTMLDivElement | null>(null);
+
+  /*
+   * デバイス入力欄を開いたら、いまのマスと入力欄の両方を見せる（v2.1.0 監査）。
+   * 1280×800 では格子と入力欄の入る高さが約290pxしかなく、入力欄を見せるために格子が上へ
+   * 送られ、どのマスに置くのかが見えなくなっていた。入力欄を開いている間は格子の下限を
+   * 下げ（`ladder.module.css` の `.editor:has(> .inputBox)`）、格子の中でいまのマスまで送ってから
+   * 欄全体（格子＋入力欄）が見える位置へ外側を送る。閉じたあとは、いまのマスが見える位置へ戻す。
+   */
+  const entryWasOpen = useRef(false);
+  useLayoutEffect(() => {
+    const open = pending !== undefined;
+    // 開きも閉じもしていない（最初の表示など）ときは送らない
+    if (!open && !entryWasOpen.current) return;
+    entryWasOpen.current = open;
+    const editor = editorRef.current;
+    if (editor === null) return;
+    const cell = editor.querySelector<HTMLElement>('[aria-selected="true"]');
+    if (typeof cell?.scrollIntoView === 'function') {
+      cell.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    }
+    if (open && typeof editor.scrollIntoView === 'function') {
+      editor.scrollIntoView({ block: 'nearest' });
+    }
+  }, [pending]);
 
   /**
    * セルをクリックしてカーソルを動かす。`memo(LadderGrid)` を効かせるため、毎レンダーで

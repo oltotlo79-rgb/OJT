@@ -276,6 +276,16 @@
   border-color: #1e64ff;
 }
 
+/*
+ * デバイス入力欄を開いている間は、格子の下限を「いまの行が見える高さ」まで下げる（v2.1.0 監査）。
+ * 1280×800 では `.workspaceMain` が約290pxしかなく、格子の下限 300px の下に入力欄が続くと、
+ * 入力欄を見せるために格子が上へ送られ、どのマスに置くのかが見えなくなっていた。
+ * 格子はこの高さの中で送り、いまのマスを見せる（`LadderEditor` の `useLayoutEffect`）。
+ */
+.editor:has(> .inputBox) > .gridScroll {
+  min-height: 132px;
+}
+
 .inputBox {
   border-top: 1px solid var(--ladder-line);
   background: #fff;
