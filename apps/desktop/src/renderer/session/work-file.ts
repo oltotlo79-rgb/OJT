@@ -788,6 +788,18 @@ export async function applyWorkFile(
           allowPlcForcing: allowPlcForcingFor(problem),
         }),
   });
+  /*
+   * PLC に書き込んであったプログラムを Worker へ載せ直す（v2.1.0 監査 P1）。盤の `load` は
+   * Worker のスキャン結合も捨てるので、送らないと札は「書込み済み」なのに RUN で
+   * 「ラダーを変換または書込みしてから」と Worker に断られていた。
+   */
+  const written = useStore.getState().plcProgram;
+  if (usesPlc(problem) && written !== undefined) {
+    bridge.send({ type: 'plc', action: { kind: 'load', program: written } });
+    if (useStore.getState().ladderMode === 'monitor') {
+      bridge.send({ type: 'plc', action: { kind: 'monitor', on: true } });
+    }
+  }
   // つまみは `load` のあとに送り直す（`load` が Worker 側のテスターを既定へ戻すため）。I-3
   if (file.tester !== undefined) replayTesterToWorker(useStore.getState().tester);
   store.addLog(workFileRestoredLog(file.savedAt));

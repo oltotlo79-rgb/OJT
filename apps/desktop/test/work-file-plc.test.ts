@@ -324,6 +324,42 @@ describe('applyWorkFile（モードDの往復。§12.3 / Batch 4+5 レビュー 
   });
 });
 
+describe('applyWorkFile（PLC に書き込んだプログラム。v2.1.0 監査 P1）', () => {
+  it('loads the written program into the Worker after the board, so RUN works right away', async () => {
+    apiState.readProblem.mockResolvedValue(problem);
+    const written = program(
+      network('n1', [[no(X(0)), ...Array.from({ length: COIL_COL - 1 }, hline), out(Y(0))]]),
+      endNetwork(),
+    );
+    const store = useStore.getState();
+    store.setLadder(written);
+    store.setPlcProgram(useStore.getState().ladder!);
+    const file = toWorkFile(problem.id, useStore.getState().session!, 0, 0);
+    expect(file.plcProgram).toBeDefined();
+
+    useStore.getState().abandonSession();
+    bridgeMock.sent.length = 0;
+    expect(await applyWorkFile(file)).toBe(true);
+    const kinds = (bridgeMock.sent as Array<{ type: string; action?: { kind: string } }>).map(
+      (command) => (command.type === 'plc' ? `plc:${command.action?.kind ?? ''}` : command.type),
+    );
+    // 盤の load のあとに、PLC のプログラムを載せる（盤の load は Worker のスキャン結合を捨てる）
+    expect(kinds.indexOf('plc:load')).toBeGreaterThan(kinds.indexOf('load'));
+    expect(useStore.getState().plcProgram?.networks).toEqual(written.networks);
+  });
+
+  it('sends no program when the file has none', async () => {
+    apiState.readProblem.mockResolvedValue(problem);
+    const file = toWorkFile(problem.id, useStore.getState().session!, 0, 0);
+    useStore.getState().abandonSession();
+    bridgeMock.sent.length = 0;
+    expect(await applyWorkFile(file)).toBe(true);
+    expect(
+      (bridgeMock.sent as Array<{ type: string }>).some((command) => command.type === 'plc'),
+    ).toBe(false);
+  });
+});
+
 describe('4方言の作業ファイル往復（§12.3 / 4A H-2）', () => {
   it.each(['mitsubishi', 'jtekt', 'omron', 'sharp'] as const)(
     'round-trips the dialect id %s',
