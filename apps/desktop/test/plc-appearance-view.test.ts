@@ -37,7 +37,9 @@ import {
  * 4B 決定表#15・#20 / 4A H-7・H-8。three を読み込まないので Node でも動く。
  */
 
+/** 給電中・停止・入出力なし。 */
 const OFF: PlcLedState = {
+  powered: true,
   running: false,
   convertFailed: false,
   inputs: undefined,
@@ -63,7 +65,20 @@ describe('正面座標（左上原点・mm）→ 盤モデル座標（4A Task 9 
 });
 
 describe('LEDが映すもの（決定表#20）', () => {
-  it('keeps POWER on and everything else off while the session is idle', () => {
+  it('lights nothing while the PLC has no power (v2.1.0 監査 P2)', () => {
+    expect(
+      litLedKeys(PLC_UNIT_FX5U.appearance, {
+        ...OFF,
+        powered: false,
+        running: true,
+        convertFailed: true,
+        inputs: [true, true],
+        outputs: [true],
+      }).size,
+    ).toBe(0);
+  });
+
+  it('keeps POWER on and everything else off while the powered PLC is idle', () => {
     const lit = litLedKeys(PLC_UNIT_FX5U.appearance, OFF);
     expect(lit.has('status:PWR')).toBe(true);
     expect(lit.has('status:P.RUN')).toBe(false);
@@ -80,7 +95,7 @@ describe('LEDが映すもの（決定表#20）', () => {
     ).toBe(true);
   });
 
-  it('lights the input and output lamps only from a monitor snapshot', () => {
+  it('lights the input and output lamps from the real points (monitor or not)', () => {
     const lit = litLedKeys(PLC_UNIT_CP1E.appearance, {
       ...OFF,
       inputs: [true, false, true],
@@ -96,10 +111,11 @@ describe('LEDが映すもの（決定表#20）', () => {
     expect(lit.has(`input:${inputs.at(-1)?.name ?? ''}`)).toBe(false);
   });
 
-  it('never reads the AC wiring (決定表#20: 判定結果を漏らさない)', () => {
-    // `PlcLedState` に配線の情報が無いことを型で縛る
+  it('reads only whether the PLC is powered, not how it is wired (決定表#20 の改訂)', () => {
+    // 配線の中身（どの端子がどこへ）は持たず、給電の可否だけを持つ。可否は I/O割付の欄の
+    // 「PLC電源：接続正常／電源の確認」ですでに出している（v2.1.0 監査 P2）
     const keys = Object.keys(OFF).sort();
-    expect(keys).toEqual(['convertFailed', 'inputs', 'outputs', 'running']);
+    expect(keys).toEqual(['convertFailed', 'inputs', 'outputs', 'powered', 'running']);
   });
 });
 

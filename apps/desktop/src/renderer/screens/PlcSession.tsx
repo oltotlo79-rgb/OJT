@@ -186,6 +186,12 @@ export function PlcSession(): JSX.Element {
   const converted = useStore((s) => s.converted);
   const ladder = useStore((s) => s.ladder);
   const plcRunning = useStore((s) => s.plcRunning);
+  /*
+   * PLC本体に給電されているか（v2.1.0 監査 P3）。給電されていなければ札は「PLC: 電源なし」。
+   * 運転の指示（RUN）は覚えたままで、給電されれば運転中に戻る。スナップショットが来る前は
+   * 札を変えない（起動直後に一瞬「電源なし」と出さない）。
+   */
+  const plcPowered = useStore((s) => s.snapshot.plcIo?.powered ?? true);
   const debug = useStore((state) => state.snapshot.plcDebug);
   const pendingTerminal = useStore((state) => state.pendingTerminal);
   const hoveredTerminal = useStore((state) => state.hoveredTerminal);
@@ -808,9 +814,15 @@ export function PlcSession(): JSX.Element {
           <span
             className={styles.plcChip}
             data-testid="plc-run-status"
-            data-on={plcRunning ? 'true' : 'false'}
+            data-on={plcPowered && plcRunning ? 'true' : 'false'}
+            data-power={plcPowered ? 'on' : 'off'}
           >
-            {JA.plc.statusPlc}: {plcRunning ? JA.plc.statusRunning : JA.plc.statusStopped}
+            {JA.plc.statusPlc}:{' '}
+            {!plcPowered
+              ? JA.plc.statusNoPower
+              : plcRunning
+                ? JA.plc.statusRunning
+                : JA.plc.statusStopped}
           </span>
         </div>
       </StepGuide>

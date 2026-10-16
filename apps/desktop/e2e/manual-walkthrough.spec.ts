@@ -1810,16 +1810,16 @@ test.describe.serial('説明書の通し点検', () => {
     await claim(
       '06-run',
       '06 動きを見る',
-      'RUN を押すと「運転中（RUN）」。「スキャン回数」',
+      'PLCに電源が来ていないときは、RUN を押しても札は「PLC: 電源なし」のままで、PLCは動きません。「スキャン回数」',
       async () => {
         await page.getByTestId('toolbar-plc-run').click();
         await page.waitForTimeout(800);
-        // 「運転中（RUN）」は手順の帯の状態チップ、「スキャン回数」はモニタの欄
+        // この時点の盤は PLC の電源を配線していない。札は手順の帯の状態チップ、「スキャン回数」はモニタの欄
         const chip = await textOf(page.getByTestId('plc-run-status'));
         const observed = `${chip} ／ ${await textOf(page.getByTestId('monitor-panel'))}`;
         return {
           observed: observed.slice(0, 160),
-          ok: observed.includes('運転中') && observed.includes('スキャン'),
+          ok: chip.includes('PLC: 電源なし') && observed.includes('スキャン'),
         };
       },
     );

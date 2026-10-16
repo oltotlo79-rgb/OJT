@@ -75,7 +75,9 @@ describe('ラックの3D（§10.1 / §16 Phase 4 受入基準③⑤）', () => {
 });
 
 describe('ラックの外観の記述（4B レビュー M12）', () => {
+  /** 給電中・停止・入出力なし。 */
   const OFF: PlcLedState = {
+    powered: true,
     running: false,
     convertFailed: false,
     inputs: undefined,
@@ -112,9 +114,10 @@ describe('ラックの外観の記述（4B レビュー M12）', () => {
         expect(lit.has('status:RUN'), module.model).toBe(false);
       }
     }
-    // 電源モジュールの POWER だけは常時点灯（本アプリはAC電源を解かない。決定表#20）
+    // 給電中は電源モジュールの POWER だけが点く。給電されていなければ消える（v2.1.0 監査 P2）
     const power = (PLC_UNIT_PC10G.modules ?? [])[0];
     expect([...litLedKeys(power!.appearance, OFF)]).toEqual(['status:POWER']);
+    expect([...litLedKeys(power!.appearance, { ...OFF, powered: false })]).toEqual([]);
   });
 
   it('orders the point lamps the way the monitor snapshot is indexed', () => {

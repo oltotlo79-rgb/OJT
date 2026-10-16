@@ -123,6 +123,23 @@ let allowPlcForcing = false;
 const forcedInputs = new Map<number, boolean>();
 /** モニタ（`F3`）中か。true の間だけスナップショットに `plc` を載せる。決定表#5 */
 let plcMonitoring = false;
+/**
+ * PLC本体に給電されているか（スナップショットのたびに測り直す。v2.1.0 監査 P3）。
+ * 実機と同じく、電源が無い間はスキャンしない。電源を失ったら実行状態を初期化する
+ * （説明書06章「PLC電源の喪失でも実行状態は初期化されます」。以前はこの処理が無く、
+ * 電源の無い PLC もスキャンを回していた）。RUN の指示（`plcRunning`）は覚えたままで、
+ * 電源が戻れば最初のスキャンから動き出す。
+ */
+let plcPowered = false;
+
+/** 給電の可否を受け取り、電源を失ったときは実行状態を初期化する。 */
+function notePlcPower(ready: boolean): void {
+  if (plcPowered && !ready) {
+    plcCoupling?.runtime.reset();
+    forcedInputs.clear();
+  }
+  plcPowered = ready;
+}
 /** 直近の `stepTester()` 実測からの経過tick数。§9.3 / 前提D */
 let ticksSinceTesterMeasure = 0;
 /** つまみ・レンジ・プローブ・盤が変わって、次tickで即座に実測し直す必要があるか。 */
@@ -179,6 +196,7 @@ function load(
   plcBreak = null;
   forcedInputs.clear();
   plcMonitoring = false;
+  plcPowered = false;
   /*
    * 盤を作り直したらプローブは外す（前の盤の端子IDは新しいネットリストに無いかもしれない）。
    * **つまみとレンジは残す。** テスターは盤ではなく計器であり、C1では部品を挿し替えるたびに
@@ -260,6 +278,10 @@ function loadLadder(sim: Simulation, source: LadderProgram): void {
  */
 function buildSnapshot(sim: Simulation): SimSnapshot {
   const state = sim.state();
+  // PLC の給電は表示灯・札・デバッグ欄が共有する（網の組み立てを1回で済ませる）
+  const plcSupply = board.plcUnit === undefined ? undefined : sim.plcPowerStatus('PLC');
+  if (plcSupply !== undefined) notePlcPower(plcSupply.ready);
+  const plcRuntime = state.plcs['PLC'];
   const logDelta = sim.log.drain();
   const events = sim.events.drain();
   const hazardDelta = events.filter((event): event is HazardEvent => event.type === 'hazard');
@@ -284,11 +306,20 @@ function buildSnapshot(sim: Simulation): SimSnapshot {
     hazardTotal,
     chatterDelta,
     tester: testerSnapshot(),
-    ...(board.plcUnit === undefined
+    ...(plcSupply === undefined
       ? {}
       : {
+          /*
+           * 表示灯の入出力はモニタの有無にかかわらず実際の値を映す（v2.1.0 監査 P2）。
+           * 給電されていなければ入出力は空（どの表示灯も点かない）。
+           */
+          plcIo: {
+            powered: plcSupply.ready,
+            inputs: plcSupply.ready ? [...(plcRuntime?.inputs ?? [])] : [],
+            outputs: plcSupply.ready ? [...(plcRuntime?.outputs ?? [])] : [],
+          },
           plcDebug: {
-            supply: sim.plcPowerStatus('PLC'),
+            supply: plcSupply,
             paused: plcPaused,
             running: plcRunning,
             condition: plcBreak,
@@ -359,7 +390,10 @@ function loop(): void {
        *  →②ネットワークを上から順に実行 →③`sim.setPlcOutputs()` でY接点を書く」
        * のあとに `sim.step()` が今tickの回路を解く。実機と同じく入力は1スキャンぶん遅れる。
        */
-      if (plcRunning && plcCoupling !== undefined) plcCoupling.beforeTick(sim, sim.tMs);
+      // 電源の無い PLC はスキャンしない（`notePlcPower()`。v2.1.0 監査 P3）
+      if (plcRunning && plcPowered && plcCoupling !== undefined) {
+        plcCoupling.beforeTick(sim, sim.tMs);
+      }
       sim.step(TICK_MS);
       if (
         plcRunning &&

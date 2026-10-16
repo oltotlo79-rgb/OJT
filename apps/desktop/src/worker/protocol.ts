@@ -246,8 +246,23 @@ export interface TesterSnapshot {
   conductive: boolean;
 }
 
+/**
+ * PLC本体の給電と実際の入出力（3Dの表示灯と手順帯の札が見る）。v2.1.0（監査 P2・P3）
+ * モニタの有無にかかわらず、PLC を持つ盤では毎回載せる。給電されていなければ入出力は空。
+ */
+export interface PlcIoSnapshot {
+  /** 壁コンセントの L・N から正しく給電されているか（`plcPowerStatus().ready`）。 */
+  powered: boolean;
+  /** 入力点の論理値（入力番号順）。 */
+  inputs: readonly boolean[];
+  /** 出力点の論理値（出力番号順）。 */
+  outputs: readonly boolean[];
+}
+
 /** 約30fpsで送る状態スナップショット。ログ・イベントは前回送出からの差分のみ。§4.3 */
 export interface SimSnapshot {
+  /** PLC本体の給電と入出力（PLC を持つ盤だけ）。v2.1.0 */
+  plcIo?: PlcIoSnapshot;
   plcDebug?: {
     supply: PlcPowerStatus;
     paused: boolean;

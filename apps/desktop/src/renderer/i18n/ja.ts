@@ -1023,6 +1023,8 @@ export const JA = {
     statusPlc: 'PLC',
     statusRunning: '運転中（RUN）',
     statusStopped: '停止中（STOP）',
+    /** PLC本体に給電されていない（壁コンセントの L・N）。v2.1.0 監査 P3 */
+    statusNoPower: '電源なし',
     modeWrite: '書込モード',
     modeRead: '読出モード',
     modeMonitor: 'モニタ',

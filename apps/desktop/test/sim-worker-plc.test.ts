@@ -141,6 +141,49 @@ async function running(ladder: LadderProgram = simpleLadder()): Promise<Harness>
   return h;
 }
 
+describe('PLCの給電と表示灯の入出力（v2.1.0 監査 P2・P3）', () => {
+  /** 参照の盤で PLC の電源（L）を壁コンセントへつないでいる電線。 */
+  function powerWire(): { id: string; wire: ReturnType<typeof createWire> } {
+    const wire = referenceSession().wires.find((w) =>
+      [String(w.from), String(w.to)].some((end) => end === 'PLC.L'),
+    );
+    if (wire === undefined) throw new Error('PLC.L の電線がありません');
+    return { id: wire.id, wire: createWire(wire.id, wire.from, wire.to, wire.color) };
+  }
+
+  it('carries the power and the real points in every snapshot, monitor or not', async () => {
+    const h = await running();
+    h.send({ type: 'press', pbId: 'PB1' });
+    h.advance(200);
+    const last = h.snapshots.at(-1);
+    // モニタしていなくても表示灯用の入出力は載る（モニタの `plc` は載らない）
+    expect(last?.plc).toBeUndefined();
+    expect(last?.plcIo?.powered).toBe(true);
+    expect(last?.plcIo?.inputs[0]).toBe(true);
+    expect(last?.plcIo?.outputs[0]).toBe(true);
+  });
+
+  it('stops scanning and clears the PLC when it loses power, and runs again on power', async () => {
+    const h = await running();
+    h.send({ type: 'plc', action: { kind: 'monitor', on: true } });
+    h.advance(200);
+    expect(h.snapshots.at(-1)?.plc?.scanCount ?? 0).toBeGreaterThan(0);
+    const { id, wire } = powerWire();
+    h.send({ type: 'removeWire', wireId: id });
+    h.advance(200);
+    const dark = h.snapshots.at(-1);
+    expect(dark?.plcIo).toEqual({ powered: false, inputs: [], outputs: [] });
+    // 電源を失ったら実行状態を初期化し、電源が無い間はスキャンしない
+    expect(dark?.plc?.scanCount).toBe(0);
+    // RUN の指示は覚えたまま（手順帯の札は「PLC: 電源なし」）
+    expect(dark?.plcDebug?.running).toBe(true);
+    h.send({ type: 'addWire', wire });
+    h.advance(200);
+    expect(h.snapshots.at(-1)?.plcIo?.powered).toBe(true);
+    expect(h.snapshots.at(-1)?.plc?.scanCount ?? 0).toBeGreaterThan(0);
+  });
+});
+
 describe('モードDの盤とスキャン（§10.1 / §10.4）', () => {
   it('loads the derived board so PLC.* terminals exist', async () => {
     const h = await running();

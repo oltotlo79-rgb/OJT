@@ -3,7 +3,6 @@ import { act, cleanup, render } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { CanvasTexture } from 'three';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { PlcMonitorSnapshot } from '../src/renderer/app/store-types.js';
 // 型だけの読み込み（`vi.mock` の工場は巻き上げられるが、型は実行時に残らないので競合しない）
 import type * as LabelsModule from '../src/renderer/three/labels.js';
 
@@ -54,7 +53,11 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
-  useStore.setState({ plcMonitor: undefined, plcRunning: false });
+  useStore.setState((state) => {
+    const snapshot = { ...state.snapshot };
+    delete snapshot.plcIo;
+    return { plcMonitor: undefined, plcRunning: false, snapshot };
+  });
   vi.restoreAllMocks();
 });
 
@@ -231,18 +234,11 @@ describe('銘板は面に刷り、HTML の名札は機種名だけ（4B レビ�
   });
 });
 
-/** モニタのスナップショット（LEDが見る欄だけ本物にする）。 */
-function monitor(inputs: boolean[], outputs: boolean[] = []): PlcMonitorSnapshot {
-  return {
-    scanCount: 1,
-    tMs: 0,
-    powered: {},
-    inputs,
-    outputs,
-    internals: {},
-    timers: {},
-    counters: {},
-  };
+/** 給電と入出力だけ本物にしたスナップショット（LEDが見る欄）。 */
+function withPlcIo(inputs: boolean[], outputs: boolean[] = [], powered = true): void {
+  useStore.setState((state) => ({
+    snapshot: { ...state.snapshot, plcIo: { powered, inputs, outputs } },
+  }));
 }
 
 describe('LEDの購読（4B レビュー I5）', () => {
@@ -255,16 +251,16 @@ describe('LEDの購読（4B レビュー I5）', () => {
     render(<Probe />);
     expect(seen).toHaveLength(1);
     act(() => {
-      useStore.setState({ plcMonitor: monitor([false, true]) });
+      withPlcIo([false, true]);
     });
     expect(seen).toHaveLength(2);
-    // 同じ点灯状態のスナップショットが続いても再描画しない（配列は毎スキャン作り直される）
+    // 同じ点灯状態のスナップショットが続いても再描画しない（配列は毎回作り直される）
     act(() => {
-      useStore.setState({ plcMonitor: monitor([false, true]) });
+      withPlcIo([false, true]);
     });
     expect(seen).toHaveLength(2);
     act(() => {
-      useStore.setState({ plcMonitor: monitor([true, true]) });
+      withPlcIo([true, true]);
     });
     expect(seen).toHaveLength(3);
     expect(seen.at(-1)).toEqual([true, true]);

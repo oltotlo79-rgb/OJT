@@ -258,6 +258,28 @@ describe('モードDのセッション画面（§10.1 / §12.1）', () => {
     expect(screen.getByTestId('plc-run-status')).toHaveTextContent('運転中');
   });
 
+  it('says the PLC has no power instead of RUN/STOP, and keeps the RUN order (v2.1.0 監査 P3)', () => {
+    render(<SessionRoute />);
+    const chip = screen.getByTestId('plc-run-status');
+    act(() => {
+      useStore.getState().setPlcRunning(true);
+      useStore.setState((state) => ({
+        snapshot: { ...state.snapshot, plcIo: { powered: false, inputs: [], outputs: [] } },
+      }));
+    });
+    expect(chip).toHaveTextContent(`${JA.plc.statusPlc}: ${JA.plc.statusNoPower}`);
+    expect(chip).toHaveAttribute('data-power', 'off');
+    expect(chip).toHaveAttribute('data-on', 'false');
+    // 給電されれば、覚えていた RUN の指示どおり運転中に戻る
+    act(() => {
+      useStore.setState((state) => ({
+        snapshot: { ...state.snapshot, plcIo: { powered: true, inputs: [], outputs: [] } },
+      }));
+    });
+    expect(chip).toHaveTextContent('運転中');
+    expect(chip).toHaveAttribute('data-power', 'on');
+  });
+
   /*
    * UI監査 2026-09-20 Blocking #7 / B8: 以前は「ラダー作成」「モニタ開始RUN」「判定」の
    * 3段が同時に「いまここ」になり得た（`setConverted(true)` だけで、何も書いていなくても

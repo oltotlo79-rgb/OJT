@@ -106,18 +106,23 @@ export function nameplateBackgroundColor(appearance: PlcAppearance): string {
 }
 
 /**
- * LEDが映す状態。決定表#20
- * **配線の情報は持たない**（`plcPowerIndependent` の判定結果を3Dから漏らさないため。
- * 3B 決定表#7）。本アプリのPLCはAC電源を電気的に解かないので、`POWER` は常時点灯である。
+ * LEDが映す状態。決定表#20（v2.1.0 監査 P2 で改訂）
+ *
+ * 以前は「配線の情報は持たない」（`plcPowerIndependent` の判定結果を3Dから漏らさないため。
+ * 3B 決定表#7）として POWER を常時点灯にしていたが、PLC の給電の可否は I/O割付の欄の
+ * 「PLC電源：接続正常／電源の確認」ですでに出している。実機と同じく、給電されていなければ
+ * どの表示灯も点かないようにする（`powered` は Worker の `plcPowerStatus().ready`）。
  */
 export interface PlcLedState {
+  /** PLC本体に給電されているか（壁コンセントの L・N から正しく）。 */
+  powered: boolean;
   /** RUN 中か。 */
   running: boolean;
   /** 直前の変換が失敗したか。 */
   convertFailed: boolean;
-  /** モニタ中の入力（モニタでないときは `undefined`）。 */
+  /** 実際の入力（給電されていないときは空。モニタの有無は問わない）。 */
   inputs: readonly boolean[] | undefined;
-  /** モニタ中の出力。 */
+  /** 実際の出力。 */
   outputs: readonly boolean[] | undefined;
 }
 
@@ -135,10 +140,12 @@ function statusLit(name: string, state: PlcLedState): boolean {
 
 /**
  * 点灯しているLEDの鍵（`<group>:<name>`）。§10.1 / 決定表#20
- * 入出力表示灯は**モニタ中だけ**光る（`SimSnapshot.plc` はモニタ中しか載らない。3B 決定表#5）。
+ * 給電されていなければ何も点かない。給電中は POWER が点き、RUN は運転中、ERR は変換の失敗、
+ * 入出力表示灯は**実際の入出力**を映す（モニタ中だけではない。v2.1.0 監査 P2）。
  */
 export function litLedKeys(appearance: PlcAppearance, state: PlcLedState): Set<string> {
   const lit = new Set<string>();
+  if (!state.powered) return lit;
   const counters: Record<PlcLedMark['group'], number> = { status: 0, input: 0, output: 0 };
   for (const led of appearance.leds) {
     const index = counters[led.group];

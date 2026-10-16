@@ -78,24 +78,25 @@ export function plcFaceRect(
 }
 
 /**
- * いまのLEDの状態をストアから作る（決定表#20）。
+ * いまのLEDの状態をストアから作る（決定表#20。v2.1.0 監査 P2 で入出力は実際の値）。
  *
- * 入出力の配列は `plcMonitor` がスキャンごとに作り直す（中身が同じでも参照が変わる）ので、
- * `s.plcMonitor?.inputs` をそのまま購読すると**スナップショットが届くたびに再描画**になる
- * （4B レビュー I5）。`useShallow` で「点の並びが変わったときだけ」通す。
+ * 入出力の配列はスナップショットのたびに作り直される（中身が同じでも参照が変わる）ので、
+ * そのまま購読すると**スナップショットが届くたびに再描画**になる（4B レビュー I5）。
+ * `useShallow` で「点の並びが変わったときだけ」通す。
  *
  * 再描画さえ起きればLEDは塗り替わる: R3F 9 の再構成器は prop を書き換えるたびに
  * `invalidateInstance()` を呼ぶので、`frameloop="demand"` でも LED の色替えは1フレーム描き直される
  * （「変わった印」＝ `visualSignature` のような値を別に持たせる必要はない）。
  */
 export function useLedState(): PlcLedState {
+  const powered = useStore((s) => s.snapshot.plcIo?.powered ?? false);
   const running = useStore((s) => s.plcRunning);
   const convertFailed = useStore((s) => !s.converted && s.convertIssues.errors.length > 0);
-  const inputs = useStore(useShallow((s) => s.plcMonitor?.inputs));
-  const outputs = useStore(useShallow((s) => s.plcMonitor?.outputs));
+  const inputs = useStore(useShallow((s) => s.snapshot.plcIo?.inputs));
+  const outputs = useStore(useShallow((s) => s.snapshot.plcIo?.outputs));
   return useMemo(
-    () => ({ running, convertFailed, inputs, outputs }),
-    [running, convertFailed, inputs, outputs],
+    () => ({ powered, running, convertFailed, inputs, outputs }),
+    [powered, running, convertFailed, inputs, outputs],
   );
 }
 
