@@ -40,7 +40,10 @@ async function expectCameraPreset(
   preset: 'front' | 'back' | 'top' | 'bottom',
 ): Promise<void> {
   const box = await canvasBox(page);
-  const expected = cameraPose(preset, { aspect: box.w / box.h });
+  const expected = cameraPose(preset, {
+    aspect: box.w / box.h,
+    viewportPx: { width: box.w, height: box.h },
+  });
   await expect
     .poll(async () => {
       const state = await camera(page);

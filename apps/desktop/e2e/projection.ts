@@ -86,10 +86,24 @@ function aspectOf(box: CanvasBox): number {
   return box.height > 0 ? box.width / box.height : 1.6;
 }
 
+/**
+ * `cameraPose()` へ渡す付帯条件（縦横比と3Dペインの実寸）。アプリの `CameraPresets.tsx` と同じく
+ * 実寸も渡すので、カメラはビューキューブ（左上）を避けて中身を収める（v2.1.0 点検 U1）。
+ * E2E が実寸を渡さないと、アプリとずれた位置を端子だと思い込んでクリックが外れる。
+ */
+export function poseOptions(box: CanvasBox): {
+  aspect: number;
+  viewportPx?: { width: number; height: number };
+} {
+  return box.width > 0 && box.height > 0
+    ? { aspect: aspectOf(box), viewportPx: { width: box.width, height: box.height } }
+    : { aspect: aspectOf(box) };
+}
+
 /** 盤の**物理**端子IDの中心が来るページ座標（正面視プリセット前提）。 */
 export function terminalPoint(terminal: TerminalId, box: CanvasBox): { x: number; y: number } {
   const world = boardToWorld(toScene(boardTerminalPos(JIPM_BOARD, terminal)));
-  return projectToScreen(world, cameraPose('front', { aspect: aspectOf(box) }), box);
+  return projectToScreen(world, cameraPose('front', poseOptions(box)), box);
 }
 
 /**
@@ -109,11 +123,7 @@ export function boardPoint(
   point: { x: number; y: number; z: number },
   box: CanvasBox,
 ): { x: number; y: number } {
-  return projectToScreen(
-    boardToWorld(toScene(point)),
-    cameraPose('front', { aspect: aspectOf(box) }),
-    box,
-  );
+  return projectToScreen(boardToWorld(toScene(point)), cameraPose('front', poseOptions(box)), box);
 }
 
 /**
@@ -132,7 +142,7 @@ export function zoomedInPoint(
   cursorMm: { x: number; y: number; z: number },
   box: CanvasBox,
 ): { x: number; y: number } {
-  const pose = cameraPose('front', { aspect: aspectOf(box) });
+  const pose = cameraPose('front', poseOptions(box));
   const forward = normalize(sub(pose.target, pose.position));
   const cursorWorld = boardToWorld(toScene(cursorMm));
   const relative = sub(cursorWorld, pose.position);
@@ -191,11 +201,7 @@ export function plcBoardPoint(
   point: { x: number; y: number; z: number },
   box: CanvasBox,
 ): { x: number; y: number } {
-  return projectToScreen(
-    boardToWorld(toScene(point)),
-    cameraPose('plc', { aspect: aspectOf(box) }),
-    box,
-  );
+  return projectToScreen(boardToWorld(toScene(point)), cameraPose('plc', poseOptions(box)), box);
 }
 
 /**
@@ -229,7 +235,7 @@ export function plcBoardPointFor(
 ): { x: number; y: number } {
   return projectToScreen(
     boardToWorld(toScene(point)),
-    cameraPose('plc', { plcUnit: unit, aspect: aspectOf(box) }),
+    cameraPose('plc', { plcUnit: unit, ...poseOptions(box) }),
     box,
   );
 }

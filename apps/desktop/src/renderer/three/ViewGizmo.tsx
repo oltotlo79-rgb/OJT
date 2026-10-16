@@ -140,6 +140,7 @@ export {
   GIZMO_GRID_PX,
   GIZMO_MARGIN,
   GIZMO_MAX_FOOTPRINT_PX,
+  GIZMO_MIN_VIEWPORT_HEIGHT_PX,
   GIZMO_MIN_VIEWPORT_PX,
   GIZMO_PLATE_RADIUS,
   GIZMO_SIZE,
@@ -489,7 +490,9 @@ export function ViewGizmo({
 
   return (
     <GizmoHelper
-      alignment={preset === 'plc' ? 'bottom-right' : 'top-left'}
+      // どの視点でも左上（v2.1.0 点検 U11。PLC の視点だけ右下だった）。カメラはこの場所を避けて
+      // 中身を収める（`camera.ts` の `avoidGizmo()`）
+      alignment="top-left"
       margin={layout.margin}
       renderPriority={1}
     >

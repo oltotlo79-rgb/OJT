@@ -4,7 +4,7 @@ import { BUILTIN_ASSEMBLE_PROBLEMS } from '@ojt/content';
 import type { Matrix4 } from 'three';
 import { Group, InstancedMesh, PerspectiveCamera, Raycaster, Scene, Vector2, Vector3 } from 'three';
 import { describe, expect, it } from 'vitest';
-import { terminalPoint, type CanvasBox } from '../e2e/projection.js';
+import { poseOptions, terminalPoint, type CanvasBox } from '../e2e/projection.js';
 import { sessionForProblem } from '../src/renderer/app/store.js';
 import {
   BOARD_TILT_RAD,
@@ -174,7 +174,7 @@ describe('terminalFieldMatrices（当たり判定を `TerminalHit` と同じに�
   it('正面視から P.1 の射影点へ飛ばしたレイは instanceId で P.1 に解決する', () => {
     const { mesh, ids } = pickField();
     const hits = rayTo(
-      cameraPose('front'),
+      cameraPose('front', poseOptions(CANVAS)),
       terminalPoint(toTerminalId('P.1'), CANVAS),
     ).intersectObject(mesh, false);
     expect(hits.length).toBeGreaterThan(0);
@@ -185,7 +185,7 @@ describe('terminalFieldMatrices（当たり判定を `TerminalHit` と同じに�
     const { mesh, ids } = pickField();
     for (const id of ['N.1', 'S1.9', 'TB_PB.1c']) {
       const hits = rayTo(
-        cameraPose('front'),
+        cameraPose('front', poseOptions(CANVAS)),
         terminalPoint(toTerminalId(id), CANVAS),
       ).intersectObject(mesh, false);
       expect(ids[hits[0]?.instanceId ?? -1], id).toBe(id);

@@ -87,6 +87,7 @@ const {
   GIZMO_SIZE,
   GIZMO_SIZE_NARROW,
   GIZMO_MIN_VIEWPORT_PX,
+  GIZMO_MIN_VIEWPORT_HEIGHT_PX,
   GIZMO_WIDE_VIEWPORT_PX,
   GIZMO_BUTTON,
   GIZMO_BUTTON_PREFIX,
@@ -486,11 +487,17 @@ describe('HUD の大きさはキャンバス幅で決まる（2026-09-20 の利�
     const wide = gizmoLayoutForViewport(GIZMO_WIDE_VIEWPORT_PX);
     if (wide === null) throw new Error('layout is null');
     const footprint = wide.margin[1] + wide.plateRadius;
+    // v2.1.0: 低いペイン（360px 未満）ではそもそも出さない。下地の丸の高さはそれより低い
+    expect(footprint).toBeLessThan(GIZMO_MIN_VIEWPORT_HEIGHT_PX);
 
-    // 収まる高さでは既定どおり出る
-    expect(gizmoLayoutForViewport(GIZMO_WIDE_VIEWPORT_PX, footprint)).not.toBeNull();
-    // ちょうど1px足りないと隠す
-    expect(gizmoLayoutForViewport(GIZMO_WIDE_VIEWPORT_PX, footprint - 1)).toBeNull();
+    // 出せる高さでは既定どおり出る
+    expect(
+      gizmoLayoutForViewport(GIZMO_WIDE_VIEWPORT_PX, GIZMO_MIN_VIEWPORT_HEIGHT_PX),
+    ).not.toBeNull();
+    // 1px でも低いと隠す
+    expect(
+      gizmoLayoutForViewport(GIZMO_WIDE_VIEWPORT_PX, GIZMO_MIN_VIEWPORT_HEIGHT_PX - 1),
+    ).toBeNull();
 
     // モードB「並べて」の1280px幅・縦2段積みで3Dペインが約200px台まで潰れる場合
     expect(gizmoLayoutForViewport(1280, 140)).toBeNull();
@@ -920,10 +927,11 @@ describe('HUDは分割ビューの盤に重ならない（2026-09-20 の利用�
         height,
       );
     }
-    // 420px / 461px は下限（600px）未満なので隠れる
+    // 420px / 461px は幅の下限（600px）未満、614×307px は高さの下限（360px。v2.1.0）未満で隠れる。
+    // 分割の小さい盤をキューブで覆わない（視点は「…」とキーで変えられる）
     expect(gizmoLayoutForViewport(420, 210)).toBeNull();
     expect(gizmoLayoutForViewport(461, 230)).toBeNull();
-    expect(gizmoLayoutForViewport(614, 307)).not.toBeNull();
+    expect(gizmoLayoutForViewport(614, 307)).toBeNull();
   });
 });
 

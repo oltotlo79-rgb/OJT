@@ -63,7 +63,11 @@ function expectedPose(
   preset: Parameters<typeof cameraPose>[0],
   extra: Parameters<typeof cameraPose>[1] = {},
 ): ReturnType<typeof cameraPose> {
-  return cameraPose(preset, { ...extra, aspect: harness.size.width / harness.size.height });
+  return cameraPose(preset, {
+    ...extra,
+    aspect: harness.size.width / harness.size.height,
+    viewportPx: { width: harness.size.width, height: harness.size.height },
+  });
 }
 
 let positions: Array<[number, number, number]>;
@@ -320,14 +324,9 @@ describe('CameraPresets と机上の機種（決定表#18）', () => {
     expect(positions.at(-1)).toEqual(jw300Pose.position);
     expect(targets.at(-1)).toEqual(jw300Pose.target);
 
-    // 機種で画角そのものが変わっている（FX5U と同じ視点のままではない）ことを確かめる
+    // 機種で画角そのものが変わっている（FX5U と同じ視点のままではない）ことを確かめる。
+    // 距離はペインの形によっては同じになる（v2.1.0: 1280×800 ではビューキューブを避けて
+    // 高さで収めるので、高さの同じ2機種は同じ距離）。注視点（横の中心）は機種の幅で必ず変わる
     expect(jw300Pose.target).not.toEqual(fx5uPose.target);
-    const distanceOf = (pose: typeof fx5uPose): number =>
-      Math.hypot(
-        pose.position[0] - pose.target[0],
-        pose.position[1] - pose.target[1],
-        pose.position[2] - pose.target[2],
-      );
-    expect(distanceOf(jw300Pose)).not.toBeCloseTo(distanceOf(fx5uPose), 3);
   });
 });

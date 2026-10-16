@@ -60,7 +60,8 @@ export const FIXTURE_LABEL_OFFSET_MM: Readonly<
   Record<string, { x: number; y: number; z: number }>
 > = {
   CB: { x: -18, y: -4, z: -6 },
-  SW: { x: 20, y: 16, z: 20 },
+  // v2.1.0: 視野角 24° で遠近の詰まり方が変わり、狭い「並べて」でブレーカの名札にかかったので 4mm 下げる
+  SW: { x: 20, y: 20, z: 20 },
 };
 
 /**

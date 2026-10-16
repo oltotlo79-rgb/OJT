@@ -11,20 +11,31 @@ import {
 import type { PlcUnitDefinition } from '@ojt/board-model';
 import type { CameraPreset } from '../app/store-types.js';
 import { Matrix4, Quaternion, Vector3 } from 'three';
+import { toScene } from './coords.js';
+import { GIZMO_GRID_PX, gizmoLayoutForViewport } from './view-gizmo-layout.js';
 
 /**
  * 盤の傾きと視点プリセットの純粋な計算。設計仕様 §6.5 / §12.2。
  * Reactに依存せず、単体テストからもE2Eの射影計算からも読める。
  */
 
-/** カメラの垂直視野角[度]。`BoardScene` の `Canvas` に渡す値。 */
-export const CAMERA_FOV_DEG = 38;
+/**
+ * カメラの垂直視野角[度]。`BoardScene` の `Canvas` に渡す値。
+ *
+ * v2.1.0（点検 U4）で 38° → 24° にした。38° では盤へ近づいて見るぶん透視の視差が大きく、
+ * 高さ約60mmのリレー・タイマが画面の外側へずれて、隣のソケットや盤の縁（PLCの視点では盤の外）へ
+ * はみ出して見えていた。24° なら同じ枠に収める距離が約1.6倍になり、ずれは約4割減る。
+ */
+export const CAMERA_FOV_DEG = 24;
 
-/** カメラが盤へ寄れる最短距離[mm]（端子の印字が読める程度まで）。§12.2 */
-export const MIN_CAMERA_DISTANCE_MM = 90;
+/**
+ * カメラが盤へ寄れる最短距離[mm]（端子の印字が読める程度まで）。§12.2
+ * 視野角を 24° にしたので、寄せ切ったときに見える幅が以前（38°・90mm）と同じになる距離にする。
+ */
+export const MIN_CAMERA_DISTANCE_MM = 145;
 
-/** カメラが離れられる最長距離[mm]。 */
-export const MAX_CAMERA_DISTANCE_MM = 1200;
+/** カメラが離れられる最長距離[mm]（以前の 38°・1200mm と同じ見える幅）。 */
+export const MAX_CAMERA_DISTANCE_MM = 1900;
 
 /** 盤の裏側も含む全方向。キューブは上方向も回すため極で止まらない。 */
 export const MAX_POLAR_ANGLE = Math.PI;
@@ -199,6 +210,13 @@ export interface CameraPoseOptions {
   /** モードDで机上に置いている本体。省くと FX5U（決定表#18）。 */
   plcUnit?: PlcUnitDefinition;
   /**
+   * 3Dペインの実寸[px]（`useThree(state => state.size)`）。渡すと、左上のビューキューブ
+   * （`ViewGizmo`。下地の丸とボタン）の場所を避けて中身を収める（v2.1.0 点検 U1）。
+   * 省くと避けない（単体テストの既存の数値のまま）。E2E の射影（`e2e/projection.ts`）は
+   * アプリと同じ値を渡す。
+   */
+  viewportPx?: { width: number; height: number };
+  /**
    * 実際のビューポート（3Dペイン）の縦横比（幅[px] ÷ 高さ[px]）。省くと `front` / `back` /
    * `bottom` は「16:10 のビューポート」を仮定した固定距離のまま、`socket` / `plc` は
    * `SOCKET_VIEW_ASPECT` / `PLC_VIEW_ASPECT` の仮定値のまま（＝既存の呼び出し・テストは
@@ -231,14 +249,12 @@ const FACE_DISTANCE_MARGIN = 1.05;
 function baseCameraPose(preset: CameraPreset, options: CameraPoseOptions): CameraPose {
   const w = options.boardWidth ?? BOARD_WIDTH_MM;
   const h = BOARD_HEIGHT_MM;
-  // 視野角38°・横基準。盤の幅330mmが収まるには距離 ≥ 165/(tan(19°)×aspect) 必要で、
-  // 16:10 のビューポート（aspect 1.6）なら 305mm。1割の余白を足した w × 1.05 を面直視の距離にする。
-  // `options.aspect` が渡されたときは、その実測の縦横比で盤いっぱいに収まる距離へ計算し直す
-  // （`fitDistanceMm()` は幅・高さ両方の充足条件の大きいほうを返すので、狭いペインでも切れない）。
-  const faceDistance =
-    options.aspect === undefined
-      ? Math.max(w * 1.05, h * 1.55)
-      : fitDistanceMm(w, h, options.aspect) * FACE_DISTANCE_MARGIN;
+  // 盤の幅・高さが視野（`CAMERA_FOV_DEG`）に収まる面直の距離に 5% の余白を足す。
+  // `options.aspect` が渡されないときは 16:10 のビューポートを仮定する（v2.1.0 で視野角を
+  // 38° → 24° にしたので、以前の固定式 `max(w × 1.05, h × 1.55)` は使えない）。渡されたときは
+  // その実測の縦横比で盤いっぱいに収まる距離へ計算し直す（`fitDistanceMm()` は幅・高さ両方の
+  // 充足条件の大きいほうを返すので、狭いペインでも切れない）。
+  const faceDistance = fitDistanceMm(w, h, options.aspect ?? DEFAULT_ASPECT) * FACE_DISTANCE_MARGIN;
   switch (preset) {
     case 'front':
       return {
@@ -259,11 +275,20 @@ function baseCameraPose(preset: CameraPreset, options: CameraPoseOptions): Camer
     case 'bottom':
       return { position: [0, -faceDistance, 0], target: [0, 0, 0], up: [0, 0, 1] };
     case 'top':
-      return {
-        position: [-w * 0.62, h * 1.1, h * 1.05],
-        target: [0, 0, -h * 0.02],
-        up: [0, 1, 0],
-      };
+      // 実物写真と同じ左手前・上からの斜め俯瞰。向きだけを決め、距離と注視点は盤の箱
+      // （部品の高さまで）の8隅が枠に収まるよう合わせる（v2.1.0 点検 U10。以前は固定の位置で、
+      // 横長でないペインでは手前のランプが切れていた）
+      return fitInto(
+        {
+          position: [-w * 0.62, h * 1.1, h * 1.05],
+          target: [0, 0, -h * 0.02],
+          up: [0, 1, 0],
+        },
+        boardContentPoints(w),
+        options.aspect ?? DEFAULT_ASPECT,
+        FULL_NDC,
+        FACE_DISTANCE_MARGIN,
+      );
     case 'plc': {
       // 机上のPLC本体と壁コンセントが収まるまで寄る（盤面の延長なので面直で見る）。§10.1
       const rect = plcViewRect(options.plcUnit ?? PLC_UNIT_FX5U);
@@ -393,12 +418,207 @@ export function interpolatePose(from: CameraPose, to: CameraPose, t: number): Ca
 
 /** 追加盤も標準盤と同じ座標原点で配置し、全体表示の中心だけ広がった盤へ移す。 */
 export function cameraPose(preset: CameraPreset, options: CameraPoseOptions = {}): CameraPose {
-  const pose = baseCameraPose(preset, options);
-  if (preset === 'socket' || preset === 'plc') return pose;
+  const base = baseCameraPose(preset, options);
   const dx = ((options.boardWidth ?? BOARD_WIDTH_MM) - BOARD_WIDTH_MM) / 2;
+  const pose: CameraPose =
+    preset === 'socket' || preset === 'plc' || preset === 'top'
+      ? base
+      : {
+          ...base,
+          position: [base.position[0] + dx, base.position[1], base.position[2]],
+          target: [base.target[0] + dx, base.target[1], base.target[2]],
+        };
+  if (options.viewportPx === undefined) return pose;
+  return avoidGizmo(pose, contentPoints(preset, options), options.viewportPx);
+}
+
+/* ------------------------------------------------------------------------- *
+ * 中身を枠に収める・ビューキューブを避ける（v2.1.0 点検 U1・U10）
+ * ------------------------------------------------------------------------- */
+
+type Vec = [number, number, number];
+
+function sub3(a: readonly number[], b: readonly number[]): Vec {
+  return [a[0]! - b[0]!, a[1]! - b[1]!, a[2]! - b[2]!];
+}
+function add3(a: readonly number[], b: readonly number[]): Vec {
+  return [a[0]! + b[0]!, a[1]! + b[1]!, a[2]! + b[2]!];
+}
+function scale3(a: readonly number[], k: number): Vec {
+  return [a[0]! * k, a[1]! * k, a[2]! * k];
+}
+function dot3(a: readonly number[], b: readonly number[]): number {
+  return a[0]! * b[0]! + a[1]! * b[1]! + a[2]! * b[2]!;
+}
+function cross3(a: readonly number[], b: readonly number[]): Vec {
+  return [
+    a[1]! * b[2]! - a[2]! * b[1]!,
+    a[2]! * b[0]! - a[0]! * b[2]!,
+    a[0]! * b[1]! - a[1]! * b[0]!,
+  ];
+}
+function unit3(a: readonly number[]): Vec {
+  const length = Math.hypot(a[0]!, a[1]!, a[2]!);
+  return length === 0 ? [0, 0, 0] : [a[0]! / length, a[1]! / length, a[2]! / length];
+}
+
+/** 縦横比を渡されなかったときの想定（16:10）。 */
+const DEFAULT_ASPECT = 1.6;
+
+/** 正規化デバイス座標（NDC）の矩形。x は右、y は上が正で、画面全体は ±1。 */
+interface NdcRect {
+  x0: number;
+  x1: number;
+  y0: number;
+  y1: number;
+}
+
+/** 画面全体。 */
+const FULL_NDC: NdcRect = { x0: -1, x1: 1, y0: -1, y1: 1 };
+
+/** 盤に載る部品の天面の高さ[mm]（ソケットの最上段＋リレー・タイマ）。立体の外形に使う。 */
+const PART_TOP_MM = SOCKET_STEP_HEIGHTS_MM[2] + MOUNTED_PART_HEIGHT_MM;
+
+/** 盤モデルの矩形（mm）の4隅を、高さ `z` で（ワールド座標）。 */
+function rectCorners(rect: { x: number; y: number; w: number; h: number }, z: number): Vec[] {
+  return (
+    [
+      [rect.x, rect.y],
+      [rect.x + rect.w, rect.y],
+      [rect.x, rect.y + rect.h],
+      [rect.x + rect.w, rect.y + rect.h],
+    ] as const
+  ).map(([x, y]) => boardToWorld(toScene({ x, y, z })));
+}
+
+/**
+ * 背の高い物（ソケットと、その上のリレー・タイマ）が並ぶ範囲（盤モデル mm）。
+ * 中身の外形は「盤面（高さ0）」と「この範囲の部品の天面」の2段で取る（盤の縁に高い物は無い）。
+ */
+export const TALL_PARTS_RECT = ((): { x: number; y: number; w: number; h: number } => {
+  const sockets = JIPM_BOARD.sockets;
+  const xs = sockets.flatMap((socket) => [socket.origin.x, socket.origin.x + socket.bodyMm.width]);
+  const ys = sockets.flatMap((socket) => [socket.origin.y, socket.origin.y + socket.bodyMm.length]);
+  if (xs.length === 0) return { x: 0, y: 0, w: 0, h: 0 };
   return {
-    ...pose,
-    position: [pose.position[0] + dx, pose.position[1], pose.position[2]],
-    target: [pose.target[0] + dx, pose.target[1], pose.target[2]],
+    x: Math.min(...xs),
+    y: Math.min(...ys),
+    w: Math.max(...xs) - Math.min(...xs),
+    h: Math.max(...ys) - Math.min(...ys),
   };
+})();
+
+/** 盤面の矩形と、その中の背の高い物の天面の8点。 */
+function withTallParts(rect: { x: number; y: number; w: number; h: number }): Vec[] {
+  return [...rectCorners(rect, 0), ...rectCorners(TALL_PARTS_RECT, PART_TOP_MM)];
+}
+
+/** 盤全体（幅 `w`）の中身。 */
+function boardContentPoints(w: number): Vec[] {
+  return withTallParts({ x: 0, y: 0, w, h: BOARD_HEIGHT_MM });
+}
+
+/** プリセットが収める中身（盤・ソケット段・盤＋PLC）の点。 */
+function contentPoints(preset: CameraPreset, options: CameraPoseOptions): Vec[] {
+  if (preset === 'socket') return withTallParts(SOCKET_VIEW_RECT);
+  if (preset === 'plc') return withTallParts(plcViewRect(options.plcUnit ?? PLC_UNIT_FX5U));
+  return boardContentPoints(options.boardWidth ?? BOARD_WIDTH_MM);
+}
+
+/** 点群をいまの視点で射影したときの NDC の外接矩形。 */
+function ndcBounds(points: readonly Vec[], pose: CameraPose, aspect: number): NdcRect {
+  const forward = unit3(sub3(pose.target, pose.position));
+  const right = unit3(cross3(forward, pose.up));
+  const up = cross3(right, forward);
+  const bounds = { x0: Infinity, x1: -Infinity, y0: Infinity, y1: -Infinity };
+  for (const point of points) {
+    const relative = sub3(point, pose.position);
+    const depth = dot3(relative, forward);
+    const x = dot3(relative, right) / (depth * HALF_FOV_TAN * aspect);
+    const y = dot3(relative, up) / (depth * HALF_FOV_TAN);
+    bounds.x0 = Math.min(bounds.x0, x);
+    bounds.x1 = Math.max(bounds.x1, x);
+    bounds.y0 = Math.min(bounds.y0, y);
+    bounds.y1 = Math.max(bounds.y1, y);
+  }
+  return bounds;
+}
+
+/**
+ * 視線の向きと上方向を保ったまま、点群が `region`（NDC）の中に `margin` 倍の余白つきで収まる
+ * 距離と注視点に合わせ直す。透視なので、距離を変えると点の NDC は「前の距離 ÷ 新しい距離」倍に
+ * 縮むとみなして数回くり返して詰める（奥行きの差が小さい盤では2〜3回で十分に収束する）。
+ */
+function fitInto(
+  pose: CameraPose,
+  points: readonly Vec[],
+  aspect: number,
+  region: NdcRect,
+  margin: number,
+): CameraPose {
+  let current = pose;
+  for (let step = 0; step < 6; step += 1) {
+    const bounds = ndcBounds(points, current, aspect);
+    const forward = unit3(sub3(current.target, current.position));
+    const right = unit3(cross3(forward, current.up));
+    const up = cross3(right, forward);
+    const distance = Math.hypot(...sub3(current.target, current.position));
+    const ratio = Math.max(
+      ((bounds.x1 - bounds.x0) * margin) / (region.x1 - region.x0),
+      ((bounds.y1 - bounds.y0) * margin) / (region.y1 - region.y0),
+    );
+    const next = distance * ratio;
+    const shrink = distance / next;
+    const centerX = ((bounds.x0 + bounds.x1) / 2) * shrink;
+    const centerY = ((bounds.y0 + bounds.y1) / 2) * shrink;
+    // カメラを右へ動かすと中身は画面の左へ寄る（NDC で −移動量 ÷（距離 × tan × 縦横比））
+    const moveRight = (centerX - (region.x0 + region.x1) / 2) * next * HALF_FOV_TAN * aspect;
+    const moveUp = (centerY - (region.y0 + region.y1) / 2) * next * HALF_FOV_TAN;
+    const target = add3(current.target, add3(scale3(right, moveRight), scale3(up, moveUp)));
+    current = { position: add3(target, scale3(forward, -next)), target, up: current.up };
+  }
+  return current;
+}
+
+/** 2つの NDC 矩形が交わるか。 */
+function overlapsNdc(a: NdcRect, b: NdcRect): boolean {
+  return a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1;
+}
+
+/** ビューキューブ（下地の丸とボタン）が左上の角から占める正方形の一辺[px]。出ないときは 0。 */
+export function gizmoReservePx(viewport: { width: number; height: number }): number {
+  const layout = gizmoLayoutForViewport(viewport.width, viewport.height);
+  if (layout === null) return 0;
+  return layout.margin[0] + layout.plateRadius + GIZMO_GRID_PX;
+}
+
+/**
+ * 中身がビューキューブ（左上）に重なるなら、キューブの右（左の列を空ける）か下（上の帯を空ける）の
+ * 残りへ収め直す。2案のうち中身が大きく映る（カメラが近い）ほうを選ぶ。重ならないなら動かさない。
+ */
+function avoidGizmo(
+  pose: CameraPose,
+  points: readonly Vec[],
+  viewport: { width: number; height: number },
+): CameraPose {
+  if (viewport.width <= 0 || viewport.height <= 0) return pose;
+  const reserve = gizmoReservePx(viewport);
+  if (reserve === 0) return pose;
+  const aspect = viewport.width / viewport.height;
+  const gizmo: NdcRect = {
+    x0: -1,
+    x1: -1 + (2 * reserve) / viewport.width,
+    y0: 1 - (2 * reserve) / viewport.height,
+    y1: 1,
+  };
+  if (!overlapsNdc(ndcBounds(points, pose, aspect), gizmo)) return pose;
+  const candidates = [
+    fitInto(pose, points, aspect, { ...FULL_NDC, x0: gizmo.x1 }, FACE_DISTANCE_MARGIN),
+    fitInto(pose, points, aspect, { ...FULL_NDC, y1: gizmo.y0 }, FACE_DISTANCE_MARGIN),
+  ];
+  const distance = (candidate: CameraPose): number =>
+    Math.hypot(...sub3(candidate.target, candidate.position));
+  return candidates.reduce((best, candidate) =>
+    distance(candidate) < distance(best) ? candidate : best,
+  );
 }

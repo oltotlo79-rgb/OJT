@@ -115,6 +115,10 @@ export function CameraPresets({
       boardWidth: board.sizeMm.width,
       ...(plcUnit === undefined ? {} : { plcUnit }),
       ...(aspect === undefined ? {} : { aspect }),
+      // ビューキューブ（左上）を避けて収める（v2.1.0 点検 U1）
+      ...(size.width > 0 && size.height > 0
+        ? { viewportPx: { width: size.width, height: size.height } }
+        : {}),
     });
     if (currentPose.current === null) {
       // マウント直後・OrbitControls 接続前は補間せず即座に合わせる
@@ -134,7 +138,19 @@ export function CameraPresets({
     invalidate();
     // `aspect` はペインのリサイズ（例: ビュー切替・ウィンドウのリサイズ）のたびに変わりうる。
     // 変わったら視点を組み直して、常にそのペインいっぱいに盤を収め直す。
-  }, [preset, nonce, plcUnit, board.sizeMm.width, aspect, applyPose, invalidate, camera, controls]);
+  }, [
+    preset,
+    nonce,
+    plcUnit,
+    board.sizeMm.width,
+    aspect,
+    size.width,
+    size.height,
+    applyPose,
+    invalidate,
+    camera,
+    controls,
+  ]);
 
   useFrame(() => {
     // キューブ操作をプリセットの補間で上書きしない。

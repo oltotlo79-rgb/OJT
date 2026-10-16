@@ -62,6 +62,13 @@ export const GIZMO_WIDE_VIEWPORT_PX = 900;
 export const GIZMO_MIN_VIEWPORT_PX = 600;
 
 /**
+ * 高さがこれ未満のペインではキューブを出さない（v2.1.0 点検 U1）。PLC「分割」（約614×307px）や
+ * 狭い窓のモードB「並べて」のように低いペインでは、下地の丸が中身の大きな割合を覆い、避けて
+ * 収めると盤が小さくなりすぎる。視点はツールバーの「…」とキーで変えられる。
+ */
+export const GIZMO_MIN_VIEWPORT_HEIGHT_PX = 360;
+
+/**
  * ビューポートの上端からキューブの上端までに空ける余白[px]。
  * 状態オーバーレイは右上へ移したので（`screens.module.css` の `.statusOverlay`）、
  * 左上はキューブの場所として空いている。盤の上端の名札と重ならない高さに置く。
@@ -176,6 +183,7 @@ export interface GizmoLayout {
  */
 export function gizmoLayoutForViewport(widthPx: number, heightPx?: number): GizmoLayout | null {
   if (widthPx < GIZMO_MIN_VIEWPORT_PX) return null;
+  if (heightPx !== undefined && heightPx < GIZMO_MIN_VIEWPORT_HEIGHT_PX) return null;
   const size = widthPx < GIZMO_WIDE_VIEWPORT_PX ? GIZMO_SIZE_NARROW : GIZMO_SIZE;
   const margin = gizmoMarginPx(size);
   const plateRadius = gizmoPlateRadiusPx(size);

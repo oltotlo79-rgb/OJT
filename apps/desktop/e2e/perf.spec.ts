@@ -179,24 +179,36 @@ test.describe.serial('性能（§16 Phase 5 受入基準④）', () => {
      * 盤全体が視野に入る `正面` と、1個のソケットへ寄って他が視錐台から外れる `ソケット拡大` で
      * `calls` は必ず違う（実測 309 と 253）。HUD だけを測る退行が起きた瞬間にここが落ちる。
      */
-    const frontCalls = byView['正面']?.['calls'];
-    const zoomCalls = byView['ソケット拡大']?.['calls'];
-    expect(typeof frontCalls, '正面 のドローコールが読めている').toBe('number');
-    expect(typeof zoomCalls, 'ソケット拡大 のドローコールが読めている').toBe('number');
-    expect(
-      frontCalls,
-      '正面 と ソケット拡大 のドローコールが同値＝盤ではなくビューキューブを測っている（3D-01）',
-    ).not.toBe(zoomCalls);
     const worst = {
       triangles: Math.max(...VIEWS.map((view) => byView[view]?.['triangles'] ?? 0)),
       calls: Math.max(...VIEWS.map((view) => byView[view]?.['calls'] ?? 0)),
     };
+    // 先に書き出す（自己検査で落ちたときも実測を読めるように）
     mkdirSync(SHOT_DIR, { recursive: true });
     writeFileSync(
       join(SHOT_DIR, 'perf-report.json'),
       JSON.stringify({ byView, worst }, null, 2),
       'utf8',
     );
+    const front = byView['正面'];
+    const zoom = byView['ソケット拡大'];
+    expect(typeof front?.['calls'], '正面 のドローコールが読めている').toBe('number');
+    expect(typeof zoom?.['calls'], 'ソケット拡大 のドローコールが読めている').toBe('number');
+    /*
+     * v2.1.0: 視野角を 24° にして遠くから見るようになったので、ソケット拡大でも下段の押ボタン・
+     * ランプの一部が視錐台に残り、ドローコールが正面と同じになることがある（instancedMesh の
+     * 端子は盤全体で1本なので、ソケット1個に寄っても減らない）。盤を測れていることは、
+     * (1) 正面がビューキューブ単体（約30）よりずっと多い、(2) 三角形数かドローコールのどちらかが
+     * 視点で変わる、の2つで確かめる。
+     */
+    expect(
+      front?.['calls'] ?? 0,
+      '正面 のドローコールがビューキューブ単体より多い（3D-01）',
+    ).toBeGreaterThan(100);
+    expect(
+      front?.['calls'] !== zoom?.['calls'] || front?.['triangles'] !== zoom?.['triangles'],
+      '正面 と ソケット拡大 が三角形数もドローコールも同値＝盤ではなくビューキューブを測っている（3D-01）',
+    ).toBe(true);
   });
 
   test('無操作では1枚も描かない（frameloop="demand" の監査）', async () => {
