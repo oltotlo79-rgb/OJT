@@ -186,6 +186,20 @@ export interface TimerPresetText {
   device: Device;
 }
 
+/**
+ * モニタ中に出すタイマ・カウンタの現在値の数え方と書き方（v2.1.0 監査 P5）。
+ *
+ * - `countsDown`: 減算式か。オムロン（`TIM`・`CNT`）とシャープ（`TMR`・`CNT`）は設定値から0へ
+ *   数える減算式（PLC調査資料の命令表）。三菱は0から設定値へ数える加算式。ジェイテクトは
+ *   資料（PCwin・TOYOPUC の取扱説明書）が未入手のため加算式を前提にする（スキンの根拠に記す）。
+ * - `format`: 現在値（タイマは時間単位の数、カウンタは回数）の書き方。設定値の書き方から
+ *   定数の印（`K`・`#`・`H`）を外した形（三菱 `12`／オムロン・シャープ `0018`／ジェイテクト `000C`）。
+ */
+export interface PresentValueRule {
+  countsDown: boolean;
+  format(count: number): string;
+}
+
 /** 方言プロファイル。§10.5 */
 export interface DialectProfile {
   id: DialectId;
@@ -228,6 +242,8 @@ export interface DialectProfile {
    * Plan 4B の申し送り F-2。
    */
   parseCounterPreset?(text: string): number | Error;
+  /** モニタ中のタイマ・カウンタの現在値（v2.1.0 監査 P5）。 */
+  presentValue: PresentValueRule;
   instructionNames: Readonly<Record<InstructionKey, string>>;
   /** 特殊デバイス番号（`SP0`〜`SP3`）→ 実デバイス名。§10.3 / §10.5 */
   specialDevices: Readonly<Record<number, string>>;

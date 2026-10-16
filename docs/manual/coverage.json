@@ -1341,6 +1341,16 @@
       "section": "mode-d/PLCに書き込む"
     },
     {
+      "testid": "present-{}",
+      "screen": "練習中（モードD）",
+      "label": "現在値",
+      "section": "mode-d/動きを見る"
+    },
+    {
+      "testid": "present-value-{}:{}",
+      "internal": "現在値の1件。親の現在値（present-{}）で説明済み"
+    },
+    {
       "testid": "plc-why",
       "screen": "結果",
       "label": "この判定になった理由",

@@ -14,6 +14,12 @@ import { memo, useMemo, useRef, type JSX } from 'react';
 import { useStore } from '../app/store.js';
 import { JA } from '../i18n/ja.js';
 import { counterPresetText } from '../session/ladder-cell.js';
+import {
+  hasTimerOrCounter,
+  parsePresentValuesKey,
+  presentValuesKey,
+  presentValuesOf,
+} from './present-value.js';
 import { shortcutKeyOf, type LadderCursor, type LadderEditorMode } from '../session/ladder.js';
 import { skinMonitorColor } from '../session/plc-skin.js';
 import type { SkinCell, SkinTheme } from './skins/index.js';
@@ -705,6 +711,17 @@ const NetworkView = memo(function NetworkView({
   const bits = useStore((s) => (mode === 'monitor' ? (s.plcMonitor?.powered[net.id] ?? '') : ''));
   const on = (row: number, col: number): boolean => bits.charAt(row * IR_COLS + col) === '1';
   /*
+   * モニタ中のタイマ・カウンタの現在値（v2.1.0 監査 P5）。通電と同じく文字列1本で購読して、
+   * 値が変わった回路ブロックだけを描き直す。タイマ・カウンタの無い回路ブロックは購読しない。
+   */
+  const timed = useMemo(() => hasTimerOrCounter(net), [net]);
+  const presentKey = useStore((s) =>
+    mode === 'monitor' && timed && s.plcMonitor !== undefined
+      ? presentValuesKey(presentValuesOf(net, s.plcMonitor, profile))
+      : '',
+  );
+  const presentValues = useMemo(() => parsePresentValuesKey(presentKey), [presentKey]);
+  /*
    * 設定画面のモニタ色（`monitorColor`）が方言の既定色（`profile.monitorColors.powered`）を
    * 上書きする（Task 16 で設定を追加したが配線されていなかった。Batch 4+5 レビュー M15）。
    * 未設定（空文字）なら方言の既定へ戻す。`idle`（非通電）色は方言のまま。
@@ -755,6 +772,33 @@ const NetworkView = memo(function NetworkView({
         {unconvertedNote === undefined ? null : (
           <span className={styles.sideNote} data-testid={`unconverted-${net.id}`}>
             {unconvertedNote}
+          </span>
+        )}
+        {/*
+          モニタ中のタイマ・カウンタの現在値（v2.1.0 監査 P5）。マスの中は命令の箱・デバイス
+          コメントと重なるので、見出しの右に並べる。数え方（加算式・減算式）はポインタで読める。
+        */}
+        {presentValues.length === 0 ? null : (
+          <span
+            className={styles.presentValues}
+            data-testid={`present-${net.id}`}
+            title={
+              profile.presentValue.countsDown
+                ? JA.ladder.presentCountsDown
+                : JA.ladder.presentCountsUp
+            }
+          >
+            {presentValues.map((item) => (
+              <span
+                key={item.key}
+                className={styles.presentValue}
+                data-testid={`present-value-${net.id}:${item.key}`}
+              >
+                {item.device} {JA.ladder.presentValue}{' '}
+                <strong className={styles.presentNumber}>{item.value}</strong>（
+                {JA.ladder.presentPreset} {item.preset}）
+              </span>
+            ))}
           </span>
         )}
       </header>

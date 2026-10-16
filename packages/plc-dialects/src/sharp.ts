@@ -301,6 +301,8 @@ export const SHARP_JW300: DialectProfile = {
   timerInstructionName: timerInstructionName,
   counterPresetText,
   parseCounterPreset,
+  // TMR・CNT は減算式（設定値から0へ）。現在値は設定値と同じ4桁。v2.1.0 監査 P5
+  presentValue: { countsDown: true, format: (count) => String(count).padStart(4, '0') },
   specialDevices: SPECIAL_DEVICES,
   specialInverted: [SPECIAL_ALWAYS_ON],
   instructionNames: INSTRUCTION_NAMES,

@@ -149,6 +149,7 @@ describe('§10.5 vendor neutrality: convert() through a non-Mitsubishi stub prof
     timerBaseMs: () => 1,
     timerBases: [100],
     timerInstructionName: () => 'TMR',
+    presentValue: { countsDown: false, format: (count) => String(count) },
     instructionNames: {
       ld: 'STR',
       ldi: 'STR NOT',

@@ -431,6 +431,8 @@ export const OMRON_CP1E: DialectProfile = {
   timerInstructionName: timerInstructionName,
   counterPresetText,
   parseCounterPreset,
+  // TIM・CNT は減算式（設定値から0へ）。現在値は `#` を外した BCD 4桁。v2.1.0 監査 P5
+  presentValue: { countsDown: true, format: (count) => String(count).padStart(4, '0') },
   specialDevices: SPECIAL_DEVICES,
   instructionNames: INSTRUCTION_NAMES,
   symbols: SYMBOLS,

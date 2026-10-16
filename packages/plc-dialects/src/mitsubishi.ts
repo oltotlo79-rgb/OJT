@@ -416,6 +416,8 @@ export const MITSUBISHI_FX5U: DialectProfile = {
   timerInstructionName: mitsubishiTimerInstructionName,
   counterPresetText,
   parseCounterPreset,
+  // 加算式。現在値は `K` を外した10進（`K30` の途中なら `12`）。v2.1.0 監査 P5
+  presentValue: { countsDown: false, format: (count) => String(count) },
   specialDevices: SPECIAL_DEVICES,
   instructionNames: INSTRUCTION_NAMES,
   symbols: SYMBOLS,

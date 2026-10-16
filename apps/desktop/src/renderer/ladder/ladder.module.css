@@ -62,6 +62,33 @@
   margin-bottom: 10px;
 }
 
+/*
+ * モニタ中のタイマ・カウンタの現在値（回路ブロックの見出しの右。v2.1.0 監査 P5）。
+ * 数字は等幅（`tabular-nums`）にして、値が変わっても文字の幅が揺れないようにする。
+ */
+.presentValues {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin-left: auto;
+  font-size: max(12px, 0.75rem);
+  font-variant-numeric: tabular-nums;
+  color: var(--ladder-fg);
+}
+
+.presentValue {
+  white-space: nowrap;
+}
+
+.presentNumber {
+  display: inline-block;
+  min-width: 4ch;
+  padding: 0 4px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--skin-powered, #1e64ff) 14%, transparent);
+  text-align: right;
+}
+
 .networkHeader {
   display: flex;
   gap: 8px;

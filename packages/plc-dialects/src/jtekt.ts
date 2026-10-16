@@ -361,6 +361,14 @@ export const JTEKT_PC10G: DialectProfile = {
   timerInstructionName: timerInstructionName,
   counterPresetText,
   parseCounterPreset,
+  /*
+   * 現在値（現在値レジスタ N）は設定値と同じ16進4桁で `H` を外す。数え方は資料が未入手のため
+   * 加算式を前提にする（スキンの根拠に記す）。v2.1.0 監査 P5
+   */
+  presentValue: {
+    countsDown: false,
+    format: (count) => count.toString(16).toUpperCase().padStart(4, '0'),
+  },
   specialDevices: SPECIAL_DEVICES,
   instructionNames: INSTRUCTION_NAMES,
   symbols: SYMBOLS,

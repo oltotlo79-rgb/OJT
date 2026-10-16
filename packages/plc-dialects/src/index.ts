@@ -39,6 +39,7 @@ export {
   type MonitorColors,
   type PanelLayout,
   type PanelStatusItem,
+  type PresentValueRule,
   type ShortcutEntry,
   type ShortcutTable,
   type SymbolDrawing,

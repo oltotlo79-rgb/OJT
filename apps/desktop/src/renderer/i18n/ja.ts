@@ -671,6 +671,11 @@ export const JA = {
     title: 'ラダーエディタ',
     /** 表示列数を超えた位置にセルがある。§10.6 */
     hiddenCells: '表示列数の外にセルがあります（設定でラダーの表示列数を増やしてください）',
+    /** モニタ中のタイマ・カウンタの現在値（回路ブロックの見出しの右。v2.1.0 監査 P5）。 */
+    presentValue: '現在値',
+    presentPreset: '設定',
+    presentCountsUp: '0から設定値まで数えます（加算式）',
+    presentCountsDown: '設定値から0まで数えます（減算式）',
     // --- Plan 3B Task 5 ---
     inputTitle: 'デバイスの入力',
     contactKind: '接点の種別',
