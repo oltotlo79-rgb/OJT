@@ -25,6 +25,32 @@
       }
     ]
   },
+  "authoring-validate": {
+    "caption": "課題を検証して合格したところ",
+    "callouts": [
+      {
+        "n": 1,
+        "label": "課題を検証（模範の自己判定）"
+      },
+      {
+        "n": 2,
+        "label": "検証合格"
+      }
+    ]
+  },
+  "autosave-status": {
+    "caption": "下の帯の自動保存の表示",
+    "callouts": [
+      {
+        "n": 1,
+        "label": "自動保存済み"
+      },
+      {
+        "n": 2,
+        "label": "操作ログ"
+      }
+    ]
+  },
   "b-first-wire": {
     "caption": "1つ目の端子を選んだところ",
     "callouts": [
@@ -85,6 +111,19 @@
       }
     ]
   },
+  "c1-ol": {
+    "caption": "つながっていない所を抵抗で測ったときのOL",
+    "callouts": [
+      {
+        "n": 1,
+        "label": "OL"
+      },
+      {
+        "n": 2,
+        "label": "コイル"
+      }
+    ]
+  },
   "c1-probe-pens": {
     "caption": "3D図に立つテスターの棒と端子名の札",
     "callouts": [
@@ -108,6 +147,19 @@
       {
         "n": 2,
         "label": "作業へ戻る"
+      }
+    ]
+  },
+  "c1-steps": {
+    "caption": "部品を挿したところの手順の案内",
+    "callouts": [
+      {
+        "n": 1,
+        "label": "部品を挿す"
+      },
+      {
+        "n": 2,
+        "label": "通電"
       }
     ]
   },
@@ -261,14 +313,10 @@
     "callouts": [
       {
         "n": 1,
-        "label": "指摘"
-      },
-      {
-        "n": 2,
         "label": "押した電線"
       },
       {
-        "n": 3,
+        "n": 2,
         "label": "小窓"
       }
     ]
@@ -303,6 +351,19 @@
       }
     ]
   },
+  "c2-steps": {
+    "caption": "回路点検・修復の手順の案内",
+    "callouts": [
+      {
+        "n": 1,
+        "label": "指摘"
+      },
+      {
+        "n": 2,
+        "label": "修復"
+      }
+    ]
+  },
   "c2-tester": {
     "caption": "回路をテスターで調べる",
     "callouts": [
@@ -329,6 +390,19 @@
       }
     ]
   },
+  "hazard-warning": {
+    "caption": "危険な操作をしたときの警告の帯",
+    "callouts": [
+      {
+        "n": 1,
+        "label": "警告"
+      },
+      {
+        "n": 2,
+        "label": "閉じる"
+      }
+    ]
+  },
   "help-drawer": {
     "caption": "ヘルプの引き出し",
     "callouts": [
@@ -347,6 +421,19 @@
       {
         "n": 4,
         "label": "閉じる"
+      }
+    ]
+  },
+  "help-search-hits": {
+    "caption": "ヘルプで言葉を探したところ",
+    "callouts": [
+      {
+        "n": 1,
+        "label": "言葉で探す"
+      },
+      {
+        "n": 2,
+        "label": "見つかった節"
       }
     ]
   },
@@ -377,6 +464,23 @@
       {
         "n": 2,
         "label": "基本例題の動画"
+      }
+    ]
+  },
+  "intro-modes": {
+    "caption": "ホームの練習のカード",
+    "callouts": [
+      {
+        "n": 1,
+        "label": "回路を組み立てる"
+      },
+      {
+        "n": 2,
+        "label": "回路実験"
+      },
+      {
+        "n": 3,
+        "label": "PLC実験"
       }
     ]
   },
@@ -422,6 +526,19 @@
       }
     ]
   },
+  "lab-compare": {
+    "caption": "描いた正解と動かした結果を見くらべる",
+    "callouts": [
+      {
+        "n": 1,
+        "label": "正解（破線）"
+      },
+      {
+        "n": 2,
+        "label": "動かした結果（実線）"
+      }
+    ]
+  },
   "lab-editor": {
     "caption": "タイムチャートを描く窓",
     "callouts": [
@@ -444,6 +561,19 @@
       {
         "n": 5,
         "label": "閉じる"
+      }
+    ]
+  },
+  "lab-judge-disabled": {
+    "caption": "正解がまだ無いので判定が押せない実験",
+    "callouts": [
+      {
+        "n": 1,
+        "label": "判定"
+      },
+      {
+        "n": 2,
+        "label": "大きく開いて編集"
       }
     ]
   },
@@ -520,6 +650,19 @@
       {
         "n": 3,
         "label": "始める"
+      }
+    ]
+  },
+  "labels-toggle": {
+    "caption": "3Dの名札の表示を切り替える",
+    "callouts": [
+      {
+        "n": 1,
+        "label": "3Dの名札を表示"
+      },
+      {
+        "n": 2,
+        "label": "ソケットの名札"
       }
     ]
   },
@@ -602,6 +745,19 @@
       {
         "n": 2,
         "label": "出力の欄の見出し"
+      }
+    ]
+  },
+  "plc-convert-error": {
+    "caption": "変換で誤りが出たときの出力ウィンドウ",
+    "callouts": [
+      {
+        "n": 1,
+        "label": "出力ウィンドウ"
+      },
+      {
+        "n": 2,
+        "label": "未変換（F4 で変換します）"
       }
     ]
   },
@@ -689,6 +845,19 @@
       }
     ]
   },
+  "plc-device-list": {
+    "caption": "モニタのデバイス一覧",
+    "callouts": [
+      {
+        "n": 1,
+        "label": "デバイス一覧"
+      },
+      {
+        "n": 2,
+        "label": "□"
+      }
+    ]
+  },
   "plc-io-power": {
     "caption": "I/O割付のPLC電源と入出力の値",
     "callouts": [
@@ -712,6 +881,36 @@
       {
         "n": 2,
         "label": "PLC電源は壁コンセント（AC100V）から取ります。"
+      }
+    ]
+  },
+  "plc-jtekt-write": {
+    "caption": "ジェイテクトの書き方の書込みと運転のボタン",
+    "callouts": [
+      {
+        "n": 1,
+        "label": "PCへ書込み"
+      },
+      {
+        "n": 2,
+        "label": "RUN"
+      }
+    ]
+  },
+  "plc-judge-confirm": {
+    "caption": "書き込んでいない変更があるときの判定の確かめ",
+    "callouts": [
+      {
+        "n": 1,
+        "label": "書き込んでから判定"
+      },
+      {
+        "n": 2,
+        "label": "このまま判定"
+      },
+      {
+        "n": 3,
+        "label": "取消"
       }
     ]
   },
@@ -791,6 +990,19 @@
       }
     ]
   },
+  "plc-no-power": {
+    "caption": "電源が来ていないPLCをRUNにしたところ",
+    "callouts": [
+      {
+        "n": 1,
+        "label": "PLC: 電源なし"
+      },
+      {
+        "n": 2,
+        "label": "RUN／STOP"
+      }
+    ]
+  },
   "plc-notation": {
     "caption": "表記の切替",
     "callouts": [
@@ -805,6 +1017,32 @@
       {
         "n": 3,
         "label": "この表記に切り替える"
+      }
+    ]
+  },
+  "plc-present-value": {
+    "caption": "モニタ中のタイマの現在値",
+    "callouts": [
+      {
+        "n": 1,
+        "label": "現在値"
+      },
+      {
+        "n": 2,
+        "label": "T0"
+      }
+    ]
+  },
+  "plc-program-stale": {
+    "caption": "書き込んだあとでラダーを編集したところ",
+    "callouts": [
+      {
+        "n": 1,
+        "label": "PLCのプログラム: エディタと違う"
+      },
+      {
+        "n": 2,
+        "label": "変換"
       }
     ]
   },
@@ -864,6 +1102,23 @@
       }
     ]
   },
+  "plc-split-view": {
+    "caption": "「分割」の表示。左上に3D盤、その下に課題、右にラダー。",
+    "callouts": [
+      {
+        "n": 1,
+        "label": "3D盤"
+      },
+      {
+        "n": 2,
+        "label": "課題"
+      },
+      {
+        "n": 3,
+        "label": "ラダー"
+      }
+    ]
+  },
   "plc-switch-vendor": {
     "caption": "盤を見たままメーカーを切り替える",
     "callouts": [
@@ -878,6 +1133,103 @@
       {
         "n": 3,
         "label": "外れる配線と残るものの知らせ"
+      }
+    ]
+  },
+  "plc-timer-unit": {
+    "caption": "タイマの「時間単位」の選択。",
+    "callouts": [
+      {
+        "n": 1,
+        "label": "時間単位"
+      },
+      {
+        "n": 2,
+        "label": "設定値"
+      }
+    ]
+  },
+  "plc-unit-jtekt": {
+    "caption": "ジェイテクト PC10G-1SP（ラックの形）を近くで見たところ。",
+    "callouts": [
+      {
+        "n": 1,
+        "label": "銘板"
+      },
+      {
+        "n": 2,
+        "label": "表示灯"
+      },
+      {
+        "n": 3,
+        "label": "入力端子"
+      },
+      {
+        "n": 4,
+        "label": "出力端子"
+      }
+    ]
+  },
+  "plc-unit-mitsubishi": {
+    "caption": "三菱 FX5U-32MR/ES の本体を近くで見たところ。",
+    "callouts": [
+      {
+        "n": 1,
+        "label": "銘板"
+      },
+      {
+        "n": 2,
+        "label": "表示灯"
+      },
+      {
+        "n": 3,
+        "label": "入力端子"
+      },
+      {
+        "n": 4,
+        "label": "出力端子"
+      }
+    ]
+  },
+  "plc-unit-omron": {
+    "caption": "オムロン CP1E-N30DR-A の本体を近くで見たところ。",
+    "callouts": [
+      {
+        "n": 1,
+        "label": "銘板"
+      },
+      {
+        "n": 2,
+        "label": "表示灯"
+      },
+      {
+        "n": 3,
+        "label": "入力端子"
+      },
+      {
+        "n": 4,
+        "label": "出力端子"
+      }
+    ]
+  },
+  "plc-unit-sharp": {
+    "caption": "シャープ JW300（ラックの形）を近くで見たところ。",
+    "callouts": [
+      {
+        "n": 1,
+        "label": "銘板"
+      },
+      {
+        "n": 2,
+        "label": "表示灯"
+      },
+      {
+        "n": 3,
+        "label": "入力端子"
+      },
+      {
+        "n": 4,
+        "label": "出力端子"
       }
     ]
   },
@@ -920,6 +1272,49 @@
       }
     ]
   },
+  "plc-watch": {
+    "caption": "ウォッチにデバイスを足したところ",
+    "callouts": [
+      {
+        "n": 1,
+        "label": "監視に追加"
+      },
+      {
+        "n": 2,
+        "label": "Y0"
+      }
+    ]
+  },
+  "plc-write": {
+    "caption": "シーケンサへの書込みでPLCに書き込んだところ",
+    "callouts": [
+      {
+        "n": 1,
+        "label": "シーケンサへの書込み"
+      },
+      {
+        "n": 2,
+        "label": "PLCのプログラム: 書込み済み"
+      },
+      {
+        "n": 3,
+        "label": "書込み"
+      }
+    ]
+  },
+  "plc-write-confirm": {
+    "caption": "運転中に書込みを押したときの確かめ",
+    "callouts": [
+      {
+        "n": 1,
+        "label": "STOPして書き込む"
+      },
+      {
+        "n": 2,
+        "label": "取消"
+      }
+    ]
+  },
   "power-controls": {
     "caption": "ブレーカと電源スイッチ",
     "callouts": [
@@ -933,6 +1328,23 @@
       }
     ]
   },
+  "push-hold": {
+    "caption": "押しボタンを押し続けているところ",
+    "callouts": [
+      {
+        "n": 1,
+        "label": "黒 PB1"
+      },
+      {
+        "n": 2,
+        "label": "すべて離す"
+      },
+      {
+        "n": 3,
+        "label": "押下中"
+      }
+    ]
+  },
   "pushbutton": {
     "caption": "押しボタンで動きを確かめる",
     "callouts": [
@@ -943,6 +1355,44 @@
       {
         "n": 2,
         "label": "白ランプ"
+      }
+    ]
+  },
+  "recover-prompt": {
+    "caption": "前回の作業の復元の確認",
+    "callouts": [
+      {
+        "n": 1,
+        "label": "前回の作業を復元しますか？"
+      },
+      {
+        "n": 2,
+        "label": "復元する"
+      },
+      {
+        "n": 3,
+        "label": "復元しない"
+      }
+    ]
+  },
+  "relay-pins": {
+    "caption": "部品のカードのピン配列",
+    "callouts": [
+      {
+        "n": 1,
+        "label": "b接点"
+      },
+      {
+        "n": 2,
+        "label": "a接点"
+      },
+      {
+        "n": 3,
+        "label": "COM"
+      },
+      {
+        "n": 4,
+        "label": "コイル"
       }
     ]
   },
@@ -982,6 +1432,19 @@
       {
         "n": 2,
         "label": "次へ"
+      }
+    ]
+  },
+  "schematic-branch": {
+    "caption": "分岐を作り始めたところ",
+    "callouts": [
+      {
+        "n": 1,
+        "label": "この段を分岐にする"
+      },
+      {
+        "n": 2,
+        "label": "分岐の始点をクリックしてください"
       }
     ]
   },
@@ -1078,6 +1541,36 @@
       }
     ]
   },
+  "settings-ladder": {
+    "caption": "設定のラダーの見た目",
+    "callouts": [
+      {
+        "n": 1,
+        "label": "ラダーの表示列数"
+      },
+      {
+        "n": 2,
+        "label": "通電色"
+      }
+    ]
+  },
+  "settings-plc": {
+    "caption": "設定のPLCの既定のメーカー",
+    "callouts": [
+      {
+        "n": 1,
+        "label": "既定メーカー"
+      },
+      {
+        "n": 2,
+        "label": "この見た目の根拠（指導員向け）"
+      },
+      {
+        "n": 3,
+        "label": "既定に戻す"
+      }
+    ]
+  },
   "socket-card": {
     "caption": "ソケットのカード",
     "callouts": [
@@ -1092,6 +1585,32 @@
       {
         "n": 3,
         "label": "交換…"
+      }
+    ]
+  },
+  "step-parts-done": {
+    "caption": "「部品装着」に「済」が付いた手順の案内。",
+    "callouts": [
+      {
+        "n": 1,
+        "label": "部品装着"
+      },
+      {
+        "n": 2,
+        "label": "配線"
+      }
+    ]
+  },
+  "suspect-wires": {
+    "caption": "配線する前に判定したときの疑わしい配線",
+    "callouts": [
+      {
+        "n": 1,
+        "label": "疑わしい配線"
+      },
+      {
+        "n": 2,
+        "label": "盤で見る"
       }
     ]
   },
@@ -1258,6 +1777,19 @@
       }
     ]
   },
+  "wire-lug-sleeve": {
+    "caption": "ねじ端子につないだ電線を近くで見たところ。圧着端子と赤い絶縁スリーブ。",
+    "callouts": [
+      {
+        "n": 1,
+        "label": "圧着端子"
+      },
+      {
+        "n": 2,
+        "label": "絶縁スリーブ"
+      }
+    ]
+  },
   "workfile-menu": {
     "caption": "作業ファイルの保存と読込",
     "callouts": [
@@ -1270,71 +1802,5 @@
         "label": "作業を読込"
       }
     ]
-  },
-  "step-parts-done": {
-    "caption": "「部品装着」に「済」が付いた手順の案内。",
-    "callouts": [
-      { "n": 1, "label": "部品装着" },
-      { "n": 2, "label": "配線" }
-    ]
-  },
-  "wire-lug-sleeve": {
-    "caption": "ねじ端子につないだ電線を近くで見たところ。圧着端子と赤い絶縁スリーブ。",
-    "callouts": [
-      { "n": 1, "label": "圧着端子" },
-      { "n": 2, "label": "絶縁スリーブ" }
-    ]
-  },
-  "plc-split-view": {
-    "caption": "「分割」の表示。左上に3D盤、その下に課題、右にラダー。",
-    "callouts": [
-      { "n": 1, "label": "3D盤" },
-      { "n": 2, "label": "課題" },
-      { "n": 3, "label": "ラダー" }
-    ]
-  },
-  "plc-unit-mitsubishi": {
-    "caption": "三菱 FX5U-32MR/ES の本体を近くで見たところ。",
-    "callouts": [
-      { "n": 1, "label": "銘板" },
-      { "n": 2, "label": "表示灯" },
-      { "n": 3, "label": "入力端子" },
-      { "n": 4, "label": "出力端子" }
-    ]
-  },
-  "plc-unit-omron": {
-    "caption": "オムロン CP1E-N30DR-A の本体を近くで見たところ。",
-    "callouts": [
-      { "n": 1, "label": "銘板" },
-      { "n": 2, "label": "表示灯" },
-      { "n": 3, "label": "入力端子" },
-      { "n": 4, "label": "出力端子" }
-    ]
-  },
-  "plc-unit-jtekt": {
-    "caption": "ジェイテクト PC10G-1SP（ラックの形）を近くで見たところ。",
-    "callouts": [
-      { "n": 1, "label": "銘板" },
-      { "n": 2, "label": "表示灯" },
-      { "n": 3, "label": "入力端子" },
-      { "n": 4, "label": "出力端子" }
-    ]
-  },
-  "plc-unit-sharp": {
-    "caption": "シャープ JW300（ラックの形）を近くで見たところ。",
-    "callouts": [
-      { "n": 1, "label": "銘板" },
-      { "n": 2, "label": "表示灯" },
-      { "n": 3, "label": "入力端子" },
-      { "n": 4, "label": "出力端子" }
-    ]
-  },
-  "plc-timer-unit": {
-    "caption": "タイマの「時間単位」の選択。",
-    "callouts": [
-      { "n": 1, "label": "時間単位" },
-      { "n": 2, "label": "設定値" }
-    ]
   }
 }
-
