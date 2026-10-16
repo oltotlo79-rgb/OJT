@@ -163,9 +163,9 @@ Git運用（利用者決定 2026-10-16）: **各タスクが緑になった時�
 
 **Files:** Modify `apps/desktop/scripts/record-tutorials.mjs`、`docs/tutorial-recording.md`、`apps/desktop/src/renderer/public/tutorials/*`
 
-- [ ] **Step 1:** PLC の4本に書込みの手順と失敗の場面（三菱: 書込み忘れ、ほか: 書込み前の RUN）を足す。dry run（`OJT_TUTORIAL_DRY=1`）で9本を通す。
-- [ ] **Step 2:** ビルドしてから9本を1本ずつ収録し、`finalize-tutorials.mjs`、`review-tools.spec.ts`。失敗の場面のフレームを確かめる。
-- [ ] **Step 3:** コミット「動画9本を新しい画面と書込みの手順で撮り直す」→ push。
+- [x] **Step 1:** PLC の4本に書込みの手順と失敗の場面（三菱: 書込み忘れ、ほか: 書込み前の RUN）を足す。dry run（`OJT_TUTORIAL_DRY=1`）で9本を通す。
+- [x] **Step 2:** ビルドしてから9本を1本ずつ収録し、`finalize-tutorials.mjs`、`review-tools.spec.ts`。失敗の場面のフレームを確かめる。
+- [x] **Step 3:** コミット「動画9本を新しい画面と書込みの手順で撮り直す」→ push。
 
 ### Task 15: PDF と通し点検
 
