@@ -135,9 +135,9 @@ Git運用（利用者決定 2026-10-16）: **各タスクが緑になった時�
 
 **Files:** Modify `docs/manual/06-mode-d.md`、`test/manual-appdata.test.ts`
 
-- [ ] **Step 1: 失敗するテスト** — 06章「本アプリの命令表記」の表の各セルが、方言の `instructionNames` と `timerInstructionName()` から作った文字列と一致する。
-- [ ] **Step 2:** 表を直す（ジェイテクト TMR・TMRH など）。
-- [ ] **Step 3:** コミット「命令表記の表をメーカーの方言から確かめるテストを足し、ジェイテクトのタイマを直す」→ push。
+- [x] **Step 1: 失敗するテスト** — 06章「本アプリの命令表記」の表の各セルが、方言の `instructionNames` と `timerInstructionName()` から作った文字列と一致する。
+- [x] **Step 2:** 表を直す（ジェイテクト TMR・TMRH など）。
+- [x] **Step 3:** コミット「命令表記の表をメーカーの方言から確かめるテストを足し、ジェイテクトのタイマを直す」→ push。
 
 ### Task 12: 説明書の本文（R1・R5）
 

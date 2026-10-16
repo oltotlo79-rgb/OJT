@@ -442,8 +442,10 @@ STOPは出力をOFFにして内部値を保持します。「デバイス初期�
 | 意味 | 三菱 | オムロン | ジェイテクト | シャープ |
 |---|---|---|---|---|
 | セット／リセット | SET／RST | SET／RSET | SET／RST | SET／RST |
-| タイマ／カウンタ | OUT T／OUT C | TIM／CNT | OUT T／OUT C | TMR／CNT |
+| タイマ／カウンタ | OUT T・OUTH T・OUTHS T／OUT C | TIM・TIMH・TMHH／CNT | TMR・TMRH／OUT 1C | TMR／CNT |
 | 立上り／立下りの出力 | PLS／PLF | DIFU／DIFD | PLS／PLF | OUT POS／OUT NEG |
 | マスタ制御／解除 | MC／MCR | IL／ILC | MC／MCR | F-47／F-48 |
+
+タイマは時間単位で命令が変わります（左から0.1秒・0.01秒・0.001秒。シャープは0.1秒の TMR だけです）。ジェイテクトのカウンタは「OUT」のあとに 1C で始まるカウンタの番号を続けて書きます（例: OUT 1C000 H0005）。
 
 この表はアプリが提供する表記です。実機への転送やメーカーの全命令には対応していません。対応範囲外のデバイス、時間単位、命令は変換時に理由を表示します。

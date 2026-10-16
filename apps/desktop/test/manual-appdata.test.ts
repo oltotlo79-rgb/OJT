@@ -1,5 +1,5 @@
 import { DIAGNOSIS_TABLE, PART_TRUTH_LABELS, type DiagnosisRow } from '@ojt/content';
-import type { DialectId } from '@ojt/plc-dialects';
+import type { DialectId, DialectProfile } from '@ojt/plc-dialects';
 import { describe, expect, it } from 'vitest';
 import { MANUAL_SECTIONS } from '../src/renderer/help/manual-content.js';
 import { JA } from '../src/renderer/i18n/ja.js';
@@ -167,6 +167,59 @@ describe('モードD のキー割当（§10.6）', () => {
       (id) => dialects.getDialect(id).shortcuts,
     );
     expect(missing.length).toBeGreaterThan(0);
+  });
+});
+
+/**
+ * 06章「本アプリの命令表記」の表（v2.1.0 監査 P4）。v2.0.0 でジェイテクトのタイマを
+ * `TMR`／`TMRH` に変えたのに、表は `OUT T` のまま残っていた（表を見張る検査が無かった）。
+ * 各セルを方言の `instructionNames`・`timerInstructionName()` から組み立てて照合する。
+ */
+describe('本アプリの命令表記の表（v2.1.0 監査 P4）', () => {
+  /** 表の列の並び（三菱・オムロン・ジェイテクト・シャープ）。 */
+  const ORDER: readonly DialectId[] = ['mitsubishi', 'omron', 'jtekt', 'sharp'];
+
+  /**
+   * カウンタの命令の書き方。命令語がデバイスの接頭辞で終わる方言（三菱 `OUT C`・シャープ `CNT`）は
+   * そのまま、`OUT` で書く方言（ジェイテクト）はデバイスの接頭辞を添える（`OUT 1C`）。
+   * 命令語リストの書き方（`instruction-list.ts` の `presetEmit()`）と同じ考え方。
+   */
+  function counterName(profile: DialectProfile): string {
+    const name = profile.instructionNames.counter;
+    const prefix = profile.deviceRanges.counter.prefix;
+    return name === profile.instructionNames.out ? `${name} ${prefix}` : name;
+  }
+
+  const ROWS: ReadonlyArray<readonly [string, (profile: DialectProfile) => string]> = [
+    ['セット／リセット', (p) => `${p.instructionNames.set}／${p.instructionNames.rst}`],
+    [
+      'タイマ／カウンタ',
+      (p) =>
+        `${p.timerBases.map((base) => p.timerInstructionName(base)).join('・')}／${counterName(p)}`,
+    ],
+    [
+      '立上り／立下りの出力',
+      (p) => `${p.instructionNames.pulseUp}／${p.instructionNames.pulseDown}`,
+    ],
+    ['マスタ制御／解除', (p) => `${p.instructionNames.mc}／${p.instructionNames.mcr}`],
+  ];
+
+  it('writes every cell from the dialects', async () => {
+    const dialects = await import('@ojt/plc-dialects');
+    const tables = tablesIn(htmlOf('mode-d/本アプリの命令表記'));
+    expect(tables).toHaveLength(1);
+    const rows = rowsOfTable(tables[0] ?? '');
+    expect(rows.map((row) => row[0])).toEqual(ROWS.map(([meaning]) => meaning));
+    const mismatches: string[] = [];
+    ROWS.forEach(([meaning, cellOf], rowIndex) => {
+      ORDER.forEach((id, column) => {
+        const expected = cellOf(dialects.getDialect(id));
+        const actual = rows[rowIndex]?.[column + 1];
+        if (actual !== expected)
+          mismatches.push(`${meaning} の ${id}: 「${actual ?? ''}」→「${expected}」`);
+      });
+    });
+    expect(mismatches).toEqual([]);
   });
 });
 
