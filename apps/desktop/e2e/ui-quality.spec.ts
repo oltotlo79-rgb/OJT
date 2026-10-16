@@ -925,6 +925,40 @@ async function stop(
     }
 
     let canvasArg: { rect: Rect; cssWidth: number } | null = null;
+    /*
+     * v2.1.0（監査 U6）: 狭い窓の PLC「分割」は 3D がラダーの下にあり、利用者も下へ送って見る。
+     * 単色の点検はキャンバスを画面に入れてから測り、撮ったあと送った位置を元へ戻す
+     * （DOM の点検は最初の画面のまま見る）。
+     */
+    let restoreScroll: Array<{ index: number; top: number }> = [];
+    if (three) {
+      restoreScroll = await page.evaluate(() => {
+        const canvas = document.querySelector('[data-testid="viewport"] canvas');
+        if (canvas === null) return [];
+        const all = [...document.querySelectorAll('*')];
+        const saved: Array<{ index: number; top: number }> = [];
+        for (let el = canvas.parentElement; el !== null; el = el.parentElement) {
+          if (el.scrollHeight > el.clientHeight) {
+            saved.push({ index: all.indexOf(el), top: el.scrollTop });
+          }
+        }
+        canvas.scrollIntoView({ block: 'nearest' });
+        return saved;
+      });
+      if (restoreScroll.length > 0) {
+        await page.evaluate(
+          async () =>
+            new Promise<void>((done) => {
+              requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                  done();
+                });
+              });
+            }),
+        );
+        await page.waitForTimeout(600);
+      }
+    }
     if (three) {
       const measured = await page.evaluate(() => {
         const canvas = document.querySelector('[data-testid="viewport"] canvas');
@@ -945,6 +979,16 @@ async function stop(
     }
 
     const stats = await capture(app, `ui-${screen}-${key}`, canvasArg);
+    if (restoreScroll.length > 0) {
+      await page.evaluate((saved) => {
+        const all = [...document.querySelectorAll('*')];
+        for (const { index, top } of saved) {
+          const el = all[index];
+          if (el !== undefined) el.scrollTop = top;
+        }
+      }, restoreScroll);
+      await page.waitForTimeout(200);
+    }
     const raw = await auditDom(page);
     const list: Finding[] = raw.map((item) => ({ ...item, screen, size: key }));
     if (/^modeD-.+-ladder$/u.test(screen)) {

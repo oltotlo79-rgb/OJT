@@ -213,6 +213,13 @@ describe('「並べて」の折り返し（レビュー I6: 1280×800 で回路�
     expect(breakpoint).toBeGreaterThanOrEqual(1439);
     expect(breakpoint).toBeGreaterThanOrEqual(1280);
   });
+
+  it('keeps the stacked 3D canvas at 300px or more and the editor at 420px, and scrolls the page (v2.1.0 監査 U6)', () => {
+    const media = SCREENS_CSS.slice(SCREENS_CSS.indexOf('@media (max-width: 1439px)'));
+    const rule = /\.sessionLayout\[data-view='split'\]\s*\{([^}]*)\}/u.exec(media)?.[1] ?? '';
+    expect(rule).toMatch(/grid-template-rows:\s*minmax\(440px, 1fr\) minmax\(420px, 1fr\)/u);
+    expect(rule).toMatch(/overflow-y:\s*auto/u);
+  });
 });
 
 describe('「⤢ 拡大」は1行のまま図に被らない（UI監査バッチB）', () => {

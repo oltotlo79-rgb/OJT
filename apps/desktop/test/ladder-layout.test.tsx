@@ -278,8 +278,17 @@ describe('分割レイアウトの列（UXレビュー #27）', () => {
     expect(narrow).toMatch(
       /\.plcLayout\[data-view='split'\]\s*\{[^}]*grid-template-rows:\s*clamp\([^)]*\) auto auto/u,
     );
+    // v2.1.0（監査 U6）: ラダーは 420px 以上（1回路しか見えなかった 280px まで詰めない）。
+    // 3D はその下へ送って見る
+    expect(narrow).toMatch(
+      /\.plcLayout\[data-view='split'\]\s*\{[^}]*grid-template-rows:\s*clamp\(420px, 70vh, 760px\)/u,
+    );
     // 3行ぶんの高さが1列に伸びるので、ここだけ縦スクロールにする
     expect(narrow).toMatch(/overflow-y:\s*auto/u);
+    // 3D と課題・部品の行は中身より縮めない（3D の枠が 28px に潰れ、キャンバスがはみ出していた）
+    expect(narrow).toMatch(
+      /\.plcLayout\[data-view='split'\] > \.viewport,\s*\.plcLayout\[data-view='split'\] > \.plcRight\s*\{[^}]*min-height:\s*auto/u,
+    );
   });
 
   it('代表的な画面サイズで格子に残る幅（スクリーンショット確認の目標値）', () => {

@@ -467,15 +467,14 @@
   /* ラダー（上）→ 3D（下）→ 課題・部品・ログ、の順で高さを配る */
   .plcLayout[data-view='split'] {
     /*
-     * ラダー（1行目）は、その下の 3D（2行目。比の箱 560×280px のキャンバス）が**最初の画面に
-     * 収まる**高さまでにする（v2.0.0 Task 17）。以前の `clamp(560px, 70vh, 760px)` は、
-     * 窓の内側が 1264×800px（外枠 1280×800 の窓）のとき 3D を画面の外（y=771px）へ押し出し、
-     * CI の画面点検が「3D が単色」で落ちていた。`100vh - 580px` ＝ ツールバー＋手順の帯
-     * （この幅では折り返して約 200px）＋余白＋ 3D の行（約 300px）＋少しの余り。
-     * 800px の高さで 280px（下限）、1080px で 500px。課題・部品（3行目）はその下でスクロール。
+     * ラダー（1行目）は 420px〜760px（画面の高さの7割。761px の窓で回路3〜4本）。3D（2行目。比の箱 560×280px）は
+     * その下にあり、`.plcLayout` を下へスクロールして見る（v2.1.0 監査 U6）。
+     * v2.0.0 Task 17 では 3D を最初の画面に入れるためにこの行を `100vh - 580px`（800px の高さで
+     * 280px）まで詰めたが、ラダーが1回路ぶんしか見えず編集にならなかった。画面点検の「3D が
+     * 単色」はキャンバスを画面に入れてから測る（`e2e/ui-quality.spec.ts`）。
      * （`clamp()` の中は `calc()` なしで書ける。`ladder-layout.test.tsx` がこの行を正規表現で読む）
      */
-    grid-template-rows: clamp(280px, 100vh - 580px, 760px) auto auto;
+    grid-template-rows: clamp(420px, 70vh, 760px) auto auto;
   }
 
   .plcLayout[data-view='split'] > [data-testid='ladder-workspace'] {
@@ -512,6 +511,17 @@
   /* 入れ子のスクロールを増やさない（縦スクロールは `.plcLayout` の1本だけ） */
   .plcRight {
     overflow: visible;
+  }
+
+  /*
+   * 3D と課題・部品の行は中身の高さより縮めない（v2.1.0 監査 U6）。既定の `min-height: 0` の
+   * ままだと、ラダーの行が高さを取った残りに押し縮められ（3D の枠が 28px）、キャンバスが枠から
+   * はみ出して課題・部品の欄と重なり、枠の右下に付く「?」（視点操作の早見表）がラダーの欄に
+   * 乗っていた。縮めずに `.plcLayout` を下へ送って見る。
+   */
+  .plcLayout[data-view='split'] > .viewport,
+  .plcLayout[data-view='split'] > .plcRight {
+    min-height: auto;
   }
 }
 
@@ -641,9 +651,17 @@
  * 図が読めなかった。1440px 未満は「盤が上・エディタが下」の1列に積み替える。
  */
 @media (max-width: 1439px) {
+  /*
+   * 盤（上）とエディタ（下）は最低限の高さを持たせ、足りない分は画面ごと縦に送る
+   * （v2.1.0 監査 U6）。以前は2つで1画面を分け合い、1264×761px で 3D が約160px・
+   * 作図面が約90pxの高さまで潰れていた。盤の行には状態の帯・押し続ける帯・操作のヒント
+   * （計 約130px）も入るので、行は 440px（キャンバスが 300px 以上残る）、エディタ
+   * （ツールバー＋作図面）は 420px。
+   */
   .sessionLayout[data-view='split'] {
     grid-template-columns: minmax(0, 1fr) 380px;
-    grid-template-rows: minmax(0, 1fr) minmax(0, 1fr) var(--bottom-panel-h);
+    grid-template-rows: minmax(440px, 1fr) minmax(420px, 1fr) var(--bottom-panel-h);
+    overflow-y: auto;
   }
 
   .sessionLayout[data-view='split'] .editorPane {
