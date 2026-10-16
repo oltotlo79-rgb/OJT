@@ -632,6 +632,33 @@ test.describe.serial('説明書の通し点検', () => {
       },
     );
     await claim(
+      '02-labels-toggle',
+      '02 3Dの見方と動かし方',
+      '「表示・作業ファイル」の「3Dの名札を表示」を押すと名札が消え、もう一度押すと出る（v2.1.0）',
+      async () => {
+        const labels = page.locator('.socket-label:visible');
+        const before = await labels.count();
+        const toggle = page.getByTestId('toggle-board-labels');
+        const pressToggle = async (): Promise<void> => {
+          if (!(await toggle.isVisible()))
+            await page.getByTestId('toolbar-overflow-toggle').click();
+          await toggle.click();
+          await page.waitForTimeout(500);
+        };
+        await page.getByTestId('toolbar-overflow-toggle').click();
+        const label = await textOf(toggle);
+        await pressToggle();
+        const hidden = await labels.count();
+        await pressToggle();
+        const after = await labels.count();
+        await page.keyboard.press('Escape');
+        return {
+          observed: `「${label}」 ソケットの名札 ${String(before)} → ${String(hidden)} → ${String(after)}`,
+          ok: label.includes('3Dの名札を表示') && before > 0 && hidden === 0 && after > 0,
+        };
+      },
+    );
+    await claim(
       '02-view-keys',
       '02 3Dの見方と動かし方',
       'キー 1 正面・2 上・3 ソケット・Home 全体',
@@ -1250,6 +1277,25 @@ test.describe.serial('説明書の通し点検', () => {
         await page.waitForTimeout(800);
         const observed = await textOf(page.getByTestId('tester-buzz'));
         return { observed, ok: observed.includes('ブザー鳴動中') };
+      },
+    );
+    await claim(
+      '04-power-once',
+      '04 部品を点検する',
+      '「通電」は、いま挿している部品に一度でも電気を流せば「済」になり、電源を切っても「済」のまま（v2.1.0）',
+      async () => {
+        // 導通のまま通電すると危険操作になるので、電圧の測定に替えてから入れる
+        await page.getByRole('button', { name: 'DCV', exact: true }).click();
+        await powerOn();
+        await page.waitForTimeout(400);
+        const on = await page.getByTestId('step-power').getAttribute('data-state');
+        await powerOff();
+        await page.waitForTimeout(400);
+        const off = await page.getByTestId('step-power').getAttribute('data-state');
+        return {
+          observed: `通電中: ${on ?? ''} ／ 切ったあと: ${off ?? ''}`,
+          ok: on === 'done' && off === 'done',
+        };
       },
     );
     await expectText(
@@ -2015,8 +2061,7 @@ test.describe.serial('説明書の通し点検', () => {
         const step = await page.getByTestId('plc-step-convert').getAttribute('data-state');
         return {
           observed: `${chip} ／ 変換の段: ${step ?? ''}`,
-          ok:
-            chip.includes('PLCのプログラム: エディタと違う') && step === 'current',
+          ok: chip.includes('PLCのプログラム: エディタと違う') && step === 'current',
         };
       },
     );
