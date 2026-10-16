@@ -88,9 +88,12 @@ describe('通し練習を最後まで読める構成', () => {
     const blocks = source
       .split(/^## /mu)
       .slice(1)
+      // 章の案内（「この章でできること」・「予測して、測って、確かめる」）と索引は機能の節ではない
       .filter(
         (block) =>
-          !block.startsWith('課題の索引') && !block.startsWith('予測して、測って、確かめる'),
+          !block.startsWith('課題の索引') &&
+          !block.startsWith('予測して、測って、確かめる') &&
+          !block.startsWith('この章でできること'),
       );
     const learning = source.split('## 予測して、測って、確かめる')[1]?.split('## 3Dの見方')[0];
     expect(learning).toContain('測定例：リレーが動かない');

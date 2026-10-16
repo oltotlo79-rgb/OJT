@@ -143,10 +143,10 @@ Git運用（利用者決定 2026-10-16）: **各タスクが緑になった時�
 
 **Files:** Modify `docs/manual/00〜15*.md`、`docs/manual/coverage.json`、`docs/manual/terms.json`（必要なら）
 
-- [ ] **Step 1:** Task 2〜10 の変更を本文に入れる（自動保存の場所、名札の切替、キューブの場所、書込み・表示灯・電源なし・現在値、C1 の手順帯、小窓、ヘルプの図）。
-- [ ] **Step 2:** 「親切に」: 各章の最初に「この章でできること」の1行と、手順の節に「うまくいかないとき」の1〜2行を足す。13章の手順12を直す。
-- [ ] **Step 3:** `node scripts/build-manual.mjs`、manual 系の単体テスト（sync・style・coverage・appdata）。
-- [ ] **Step 4:** コミット「説明書を新しい画面とPLCの書込みに合わせて直す」→ push。
+- [x] **Step 1:** Task 2〜10 の変更を本文に入れる（自動保存の場所、名札の切替、キューブの場所、書込み・表示灯・電源なし・現在値、C1 の手順帯、小窓、ヘルプの図）。
+- [x] **Step 2:** 「親切に」: 各章の最初に「この章でできること」の1行と、手順の節に「うまくいかないとき」の1〜2行を足す。13章の手順12を直す。
+- [x] **Step 3:** `node scripts/build-manual.mjs`、manual 系の単体テスト（sync・style・coverage・appdata）。
+- [x] **Step 4:** コミット「説明書を新しい画面とPLCの書込みに合わせて直す」→ push。
 
 ### Task 13: 説明書の図を増やして全部撮り直す（R5）
 
