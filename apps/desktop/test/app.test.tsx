@@ -223,6 +223,16 @@ describe('トースト（§8.2）', () => {
   });
 });
 
+/**
+ * 復元確認が**開いて押せる**ところまで待つ。確認は `<dialog>` を描いたあとの effect で
+ * `showModal()` するので、要素が DOM に出た直後はまだ閉じていて、中のボタンが読み上げの木に
+ * 無い瞬間がある（並列実行で負荷が高いと、その間にボタンを探して落ちていた）。
+ */
+async function restorePromptReady(): Promise<void> {
+  await screen.findByTestId('restore-prompt');
+  await screen.findByRole('button', { name: JA.session.restoreNo });
+}
+
 describe('起動時の復元プロンプト（§12.3）', () => {
   it('preload が無くても落ちない', async () => {
     render(<App />);
@@ -307,7 +317,7 @@ describe('起動時の復元プロンプト（§12.3）', () => {
       loadWorkFile: () => Promise.resolve({ ok: true, file, path: 'C:/autosave.json' }),
     });
     render(<App />);
-    await screen.findByTestId('restore-prompt');
+    await restorePromptReady();
 
     fireEvent.click(screen.getByRole('button', { name: JA.session.restoreYes }));
 
@@ -323,7 +333,7 @@ describe('起動時の復元プロンプト（§12.3）', () => {
       .mockResolvedValue({ ok: false, canceled: true, message: '一時保存を削除しました' });
     setApi({ getSettings: () => Promise.resolve(DEFAULT_SETTINGS), loadWorkFile });
     render(<App />);
-    await screen.findByTestId('restore-prompt');
+    await restorePromptReady();
 
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: JA.session.restoreNo }));
@@ -343,7 +353,7 @@ describe('起動時の復元プロンプト（§12.3）', () => {
       .mockResolvedValue({ ok: false, canceled: true, message: '一時保存を削除しました' });
     setApi({ getSettings: () => Promise.resolve(DEFAULT_SETTINGS), loadWorkFile });
     render(<App />);
-    await screen.findByTestId('restore-prompt');
+    await restorePromptReady();
     expect(screen.getByRole('button', { name: '後で決める' })).toHaveFocus();
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: JA.session.restoreNo }));
@@ -369,7 +379,7 @@ describe('起動時の復元プロンプト（§12.3）', () => {
       loadWorkFile: () => Promise.resolve({ ok: true, file: autosaveFile(), path: 'C:/a.json' }),
     });
     render(<App />);
-    await screen.findByTestId('restore-prompt');
+    await restorePromptReady();
 
     act(() => {
       useStore.getState().openProblem(PROBLEM);
