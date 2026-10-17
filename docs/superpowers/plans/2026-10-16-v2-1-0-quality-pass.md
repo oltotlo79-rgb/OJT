@@ -177,6 +177,6 @@ Git運用（利用者決定 2026-10-16）: **各タスクが緑になった時�
 
 ### Task 16: 検証・配布・公開（v2.1.0）
 
-- [ ] 版を `2.1.0`、`docs/releases/v2.1.0.md`、README のリンク。
+- [x] 版を `2.1.0`、`docs/releases/v2.1.0.md`、README のリンク。
 - [ ] `pnpm install --frozen-lockfile`、`pnpm verify`、`validate src/builtin`、ビルド＋既定の E2E ×2、`dist`（check-dist）、`e2e:packaged`、同梱物の照合、記録 `OJT/release/verification/v2.1.0/README.md`。
 - [ ] 注釈付きタグ `v2.1.0` → push、下書きリリース（EXE 2個）、main とタグの CI 成功、`pnpm release:publish`、認証なしのダウンロード照合、`OJT/release/v2.1.0` に Portable EXE を1個。
